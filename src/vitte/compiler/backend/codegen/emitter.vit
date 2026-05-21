@@ -1,14 +1,174 @@
 space vitte/compiler/backend/codegen
 
-proc emit_x86_64_text(lines: [string]) -> string {
-  let output: string = "";
-  let i: u64 = 0;
-  while i < len(lines) {
-    if i > 0 {
-      set output = output + "\n";
-    }
-    set output = output + lines[i];
-    set i = i + 1;
-  }
-  give output;
+pick TextSectionStyle {
+    Compact
+    Pretty
+    Debug
 }
+
+form TextEmitConfig {
+    indent: string
+    trailing_newline: bool
+    trim_empty_lines: bool
+    align_labels: bool
+    style: TextSectionStyle
+}
+
+proc default_text_emit_config() -> TextEmitConfig {
+    give TextEmitConfig {
+        indent: "    ",
+        trailing_newline: true,
+        trim_empty_lines: false,
+        align_labels: true,
+        style: TextSectionStyle::Pretty
+    };
+}
+
+proc is_empty_line(line: string) -> bool {
+    give str.trim(line) == "";
+}
+
+proc is_label_line(line: string) -> bool {
+    give str.ends_with(str.trim(line), ":");
+}
+
+proc normalize_line(
+    config: TextEmitConfig,
+    line: string
+) -> string {
+    let normalized = line;
+
+    if config.trim_empty_lines
+        && is_empty_line(normalized) {
+
+        give "";
+    }
+
+    if config.style == TextSectionStyle::Compact {
+        set normalized = str.trim(normalized);
+    }
+
+    if config.style == TextSectionStyle::Pretty {
+        if !is_label_line(normalized)
+            && !is_empty_line(normalized) {
+
+            set normalized =
+                config.indent + str.trim(normalized);
+        }
+    }
+
+    give normalized;
+}
+
+proc append_line(
+    output: string,
+    line: string,
+    first: bool
+) -> string {
+    let result = output;
+
+    if !first {
+        set result = result + "\n";
+    }
+
+    set result = result + line;
+
+    give result;
+}
+
+proc emit_x86_64_text_with_config(
+    config: TextEmitConfig,
+    lines: [string]
+) -> string {
+    let output: string = "";
+    let first: bool = true;
+    let i: u64 = 0;
+
+    while i < len(lines) {
+        let line =
+            normalize_line(config, lines[i]);
+
+        if config.trim_empty_lines
+            && line == "" {
+
+            set i = i + 1;
+            continue;
+        }
+
+        set output =
+            append_line(output, line, first);
+
+        set first = false;
+        set i = i + 1;
+    }
+
+    if config.trailing_newline
+        && output != "" {
+
+        set output = output + "\n";
+    }
+
+    give output;
+}
+
+proc emit_x86_64_text(
+    lines: [string]
+) -> string {
+    let config =
+        default_text_emit_config();
+
+    give emit_x86_64_text_with_config(
+        config,
+        lines
+    );
+}
+
+proc emit_x86_64_debug_text(
+    lines: [string]
+) -> string {
+    let config =
+        default_text_emit_config();
+
+    set config.style =
+        TextSectionStyle::Debug;
+
+    set config.trailing_newline = true;
+    set config.trim_empty_lines = false;
+
+    give emit_x86_64_text_with_config(
+        config,
+        lines
+    );
+}
+
+proc emit_x86_64_compact_text(
+    lines: [string]
+) -> string {
+    let config =
+        default_text_emit_config();
+
+    set config.style =
+        TextSectionStyle::Compact;
+
+    set config.indent = "";
+    set config.trim_empty_lines = true;
+
+    give emit_x86_64_text_with_config(
+        config,
+        lines
+    );
+}
+
+share TextSectionStyle
+share TextEmitConfig
+
+share default_text_emit_config
+share is_empty_line
+share is_label_line
+share normalize_line
+share append_line
+
+share emit_x86_64_text
+share emit_x86_64_text_with_config
+share emit_x86_64_debug_text
+share emit_x86_64_compact_text

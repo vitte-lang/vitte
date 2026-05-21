@@ -22,6 +22,7 @@ trap 'rm -rf "$TMP_DIR"' EXIT HUP INT TERM
 
 STAGE2_SRC="$ROOT_DIR/toolchain/stage2/src/main.vit"
 STAGE1_SRC="$ROOT_DIR/toolchain/stage1/src/main.vit"
+COMPILER_ENTRY_SRC="$ROOT_DIR/src/vitte/compiler/driver/compiler.vit"
 
 check_ir() {
     name="$1"
@@ -230,8 +231,8 @@ check_emission_hashes() {
     "$TMP_DIR/vittec1.a" dump-native-ir --src "$STAGE2_SRC" > "$TMP_DIR/stage2.vittec1.ir"
     diff -u "$SNAP_DIR/stage2.ir.must" "$TMP_DIR/stage2.vittec1.ir" || die "stage2 IR via vittec1 drift"
 
-    "$TMP_DIR/vittec1.a" build-native --src "$STAGE2_SRC" --out "$TMP_DIR/vittec.a"
-    "$TMP_DIR/vittec1.a" build-native --src "$STAGE2_SRC" --out "$TMP_DIR/vittec.b"
+    "$TMP_DIR/vittec1.a" build-native --src "$COMPILER_ENTRY_SRC" --out "$TMP_DIR/vittec.a"
+    "$TMP_DIR/vittec1.a" build-native --src "$COMPILER_ENTRY_SRC" --out "$TMP_DIR/vittec.b"
     cmp "$TMP_DIR/vittec.a" "$TMP_DIR/vittec.b" || die "stage2 build-native output is not deterministic"
     [ "$("$TMP_DIR/vittec.a" --version)" = "vittec2 stage2-vitte 0.1.0" ] || die "stage2 version mismatch"
     "$TMP_DIR/vittec.a" --help > "$TMP_DIR/help.vittec"

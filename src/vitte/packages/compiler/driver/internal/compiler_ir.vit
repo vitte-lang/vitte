@@ -2,71 +2,792 @@ space compiler/driver/private/compiler_ir
 
 use compiler_ast
 
-proc stmt_kind_name(kind: compiler_ast.StmtKind) -> string {
-  if kind == compiler_ast.StmtKind.Give { give "give" }
-  if kind == compiler_ast.StmtKind.Let { give "let" }
-  if kind == compiler_ast.StmtKind.Set { give "set" }
-  give "expr"
+export *
+
+<<< ========================================================= >>>
+<<< Driver intermediate representation                        >>>
+<<< Lightweight lowering IR for backend emission              >>>
+<<< ========================================================= >>>
+
+pick IrStmtKind {
+  Unknown,
+
+  Give,
+
+  Let,
+  Const,
+  Set,
+
+  If,
+  While,
+  Loop,
+
+  Break,
+  Continue,
+
+  Emit,
+  Assert,
+  Panic,
+
+  Expr,
+}
+
+pick IrExprKind {
+  Empty,
+
+  Literal,
+  Variable,
+  Path,
+
+  Call,
+  Unary,
+  Binary,
+
+  Member,
+  Index,
+
+  Cast,
+
+  Raw,
+
+  Unknown,
+}
+
+form IrMetadata {
+  node_count: u64
+
+  stmt_count: u64
+  expr_count: u64
+
+  function_count: u64
+
+  valid: bool
+}
+
+form IrExpr {
+  kind: IrExprKind
+
+  text: string
+
+  operator: string
+
+  type_name: string
+
+  callee: string
+
+  children: [IrExpr]
+
+  valid: bool
 }
 
 form IrStmt {
-  kind: string,
-  name: string,
-  type_name: string,
-  expr: compiler_ast.Expr,
+  kind: IrStmtKind
+
+  name: string
+
+  type_name: string
+
+  expr: IrExpr
+
+  child_stmts: [IrStmt]
+
   raw_text: string
+
+  valid: bool
 }
 
 form IrFunction {
-  name: string,
-  return_type_name: string,
-  params: [compiler_ast.Param],
+  name: string
+
+  return_type_name: string
+
+  params: [compiler_ast.Param]
+
   body_stmts: [IrStmt]
+
+  local_count: u64
+
+  stmt_count: u64
+
+  valid: bool
 }
 
 form IrModule {
-  source_name: string,
-  module_name: string,
-  uses: [string],
+  source_name: string
+
+  module_name: string
+
+  uses: [string]
+
   functions: [IrFunction]
+
+  metadata: IrMetadata
+
+  valid: bool
 }
 
-proc lower(module_value: compiler_ast.Module) -> IrModule {
-  let functions: [IrFunction] = []
-  let i: int = 0
-  while i < module_value.decls.len {
-    let decl: compiler_ast.Decl = module_value.decls[i]
-    if decl.kind == compiler_ast.DeclKind.Proc {
-      let proc_decl: compiler_ast.ProcDecl = decl.proc_decl
-      let stmts: [IrStmt] = []
-      let j: int = 0
-      while j < proc_decl.body_stmts.len {
-        let stmt: compiler_ast.Stmt = proc_decl.body_stmts[j]
-        let kind_text: string = stmt_kind_name(stmt.kind)
-        set stmts = stmts + [IrStmt {
-          kind: kind_text,
-          name: stmt.name,
-          type_name: stmt.type_name,
-          expr: stmt.expr,
-          raw_text: stmt.raw_text
-        }]
-        set j = j + 1
-      }
-      set functions = functions + [IrFunction {
-        name: proc_decl.name,
-        return_type_name: proc_decl.return_type_name,
-        params: proc_decl.params,
-        body_stmts: stmts
-      }]
+<<< ========================================================= >>>
+<<< Expression lowering                                       >>>
+<<< ========================================================= >>>
+
+proc ir_expr_kind(
+  kind: compiler_ast.ExprKind
+) -> IrExprKind {
+
+  if kind == compiler_ast.ExprKind.Empty {
+    give IrExprKind.Empty;
+  }
+
+  if kind == compiler_ast.ExprKind.Literal {
+    give IrExprKind.Literal;
+  }
+
+  if kind == compiler_ast.ExprKind.Variable {
+    give IrExprKind.Variable;
+  }
+
+  if kind == compiler_ast.ExprKind.Path {
+    give IrExprKind.Path;
+  }
+
+  if kind == compiler_ast.ExprKind.Call {
+    give IrExprKind.Call;
+  }
+
+  if kind == compiler_ast.ExprKind.Unary {
+    give IrExprKind.Unary;
+  }
+
+  if kind == compiler_ast.ExprKind.Binary {
+    give IrExprKind.Binary;
+  }
+
+  if kind == compiler_ast.ExprKind.Member {
+    give IrExprKind.Member;
+  }
+
+  if kind == compiler_ast.ExprKind.Index {
+    give IrExprKind.Index;
+  }
+
+  if kind == compiler_ast.ExprKind.Cast {
+    give IrExprKind.Cast;
+  }
+
+  if kind == compiler_ast.ExprKind.Raw {
+    give IrExprKind.Raw;
+  }
+
+  give IrExprKind.Unknown;
+}
+
+proc lower_expr(
+  expr: compiler_ast.Expr
+) -> IrExpr {
+
+  let children: [IrExpr] = [];
+
+  let i: int = 0;
+
+  while i < expr.children.len {
+
+    set children =
+      children
+      + [
+          lower_expr(
+            expr.children[i]
+          )
+        ];
+
+    set i =
+      i + 1;
+  }
+
+  set i = 0;
+
+  while i < expr.args.len {
+
+    set children =
+      children
+      + [
+          lower_expr(
+            expr.args[i]
+          )
+        ];
+
+    set i =
+      i + 1;
+  }
+
+  give IrExpr {
+    kind:
+      ir_expr_kind(
+        expr.kind
+      ),
+
+    text: expr.text,
+
+    operator: expr.operator,
+
+    type_name: expr.type_name,
+
+    callee: expr.callee,
+
+    children: children,
+
+    valid: expr.valid
+  };
+}
+
+proc empty_expr() -> IrExpr {
+
+  give IrExpr {
+    kind: IrExprKind.Empty,
+
+    text: "",
+
+    operator: "",
+
+    type_name: "",
+
+    callee: "",
+
+    children: [],
+
+    valid: false
+  };
+}
+
+<<< ========================================================= >>>
+<<< Statement lowering                                        >>>
+<<< ========================================================= >>>
+
+proc stmt_kind_name(
+  kind: compiler_ast.StmtKind
+) -> string {
+
+  if kind == compiler_ast.StmtKind.Give {
+    give "give";
+  }
+
+  if kind == compiler_ast.StmtKind.Let {
+    give "let";
+  }
+
+  if kind == compiler_ast.StmtKind.Const {
+    give "const";
+  }
+
+  if kind == compiler_ast.StmtKind.Set {
+    give "set";
+  }
+
+  if kind == compiler_ast.StmtKind.If {
+    give "if";
+  }
+
+  if kind == compiler_ast.StmtKind.While {
+    give "while";
+  }
+
+  if kind == compiler_ast.StmtKind.Loop {
+    give "loop";
+  }
+
+  if kind == compiler_ast.StmtKind.Break {
+    give "break";
+  }
+
+  if kind == compiler_ast.StmtKind.Continue {
+    give "continue";
+  }
+
+  if kind == compiler_ast.StmtKind.Emit {
+    give "emit";
+  }
+
+  if kind == compiler_ast.StmtKind.Assert {
+    give "assert";
+  }
+
+  if kind == compiler_ast.StmtKind.Panic {
+    give "panic";
+  }
+
+  give "expr";
+}
+
+proc ir_stmt_kind(
+  kind: compiler_ast.StmtKind
+) -> IrStmtKind {
+
+  if kind == compiler_ast.StmtKind.Give {
+    give IrStmtKind.Give;
+  }
+
+  if kind == compiler_ast.StmtKind.Let {
+    give IrStmtKind.Let;
+  }
+
+  if kind == compiler_ast.StmtKind.Const {
+    give IrStmtKind.Const;
+  }
+
+  if kind == compiler_ast.StmtKind.Set {
+    give IrStmtKind.Set;
+  }
+
+  if kind == compiler_ast.StmtKind.If {
+    give IrStmtKind.If;
+  }
+
+  if kind == compiler_ast.StmtKind.While {
+    give IrStmtKind.While;
+  }
+
+  if kind == compiler_ast.StmtKind.Loop {
+    give IrStmtKind.Loop;
+  }
+
+  if kind == compiler_ast.StmtKind.Break {
+    give IrStmtKind.Break;
+  }
+
+  if kind == compiler_ast.StmtKind.Continue {
+    give IrStmtKind.Continue;
+  }
+
+  if kind == compiler_ast.StmtKind.Emit {
+    give IrStmtKind.Emit;
+  }
+
+  if kind == compiler_ast.StmtKind.Assert {
+    give IrStmtKind.Assert;
+  }
+
+  if kind == compiler_ast.StmtKind.Panic {
+    give IrStmtKind.Panic;
+  }
+
+  if kind == compiler_ast.StmtKind.Expr {
+    give IrStmtKind.Expr;
+  }
+
+  give IrStmtKind.Unknown;
+}
+
+proc lower_stmt(
+  stmt: compiler_ast.Stmt
+) -> IrStmt {
+
+  let child_stmts: [IrStmt] = [];
+
+  let i: int = 0;
+
+  while i < stmt.child_stmts.len {
+
+    set child_stmts =
+      child_stmts
+      + [
+          lower_stmt(
+            stmt.child_stmts[i]
+          )
+        ];
+
+    set i =
+      i + 1;
+  }
+
+  give IrStmt {
+    kind:
+      ir_stmt_kind(
+        stmt.kind
+      ),
+
+    name: stmt.name,
+
+    type_name: stmt.type_name,
+
+    expr:
+      lower_expr(
+        stmt.expr
+      ),
+
+    child_stmts: child_stmts,
+
+    raw_text: stmt.raw_text,
+
+    valid: stmt.valid
+  };
+}
+
+proc empty_stmt() -> IrStmt {
+
+  give IrStmt {
+    kind: IrStmtKind.Unknown,
+
+    name: "",
+
+    type_name: "",
+
+    expr: empty_expr(),
+
+    child_stmts: [],
+
+    raw_text: "",
+
+    valid: false
+  };
+}
+
+<<< ========================================================= >>>
+<<< Function lowering                                         >>>
+<<< ========================================================= >>>
+
+proc count_local_stmts(
+  stmts: [IrStmt]
+) -> u64 {
+
+  let total: u64 = 0;
+
+  let i: int = 0;
+
+  while i < stmts.len {
+
+    let stmt: IrStmt =
+      stmts[i];
+
+    if stmt.kind == IrStmtKind.Let
+      or stmt.kind == IrStmtKind.Const {
+
+      set total =
+        total + 1;
     }
-    set i = i + 1
+
+    set total =
+      total
+      + count_local_stmts(
+          stmt.child_stmts
+        );
+
+    set i =
+      i + 1;
   }
-  give IrModule {
-    source_name: module_value.source_name,
-    module_name: module_value.space_name,
-    uses: module_value.uses,
-    functions: functions
-  }
+
+  give total;
 }
 
-export *
+proc count_stmt_tree(
+  stmts: [IrStmt]
+) -> u64 {
+
+  let total: u64 = 0;
+
+  let i: int = 0;
+
+  while i < stmts.len {
+
+    set total =
+      total + 1;
+
+    set total =
+      total
+      + count_stmt_tree(
+          stmts[i].child_stmts
+        );
+
+    set i =
+      i + 1;
+  }
+
+  give total;
+}
+
+proc lower_function(
+  proc_decl: compiler_ast.ProcDecl
+) -> IrFunction {
+
+  let stmts: [IrStmt] = [];
+
+  let i: int = 0;
+
+  while i < proc_decl.body_stmts.len {
+
+    set stmts =
+      stmts
+      + [
+          lower_stmt(
+            proc_decl.body_stmts[i]
+          )
+        ];
+
+    set i =
+      i + 1;
+  }
+
+  give IrFunction {
+    name: proc_decl.name,
+
+    return_type_name:
+      proc_decl.return_type_name,
+
+    params: proc_decl.params,
+
+    body_stmts: stmts,
+
+    local_count:
+      count_local_stmts(stmts),
+
+    stmt_count:
+      count_stmt_tree(stmts),
+
+    valid:
+      proc_decl.valid
+  };
+}
+
+proc empty_function() -> IrFunction {
+
+  give IrFunction {
+    name: "",
+
+    return_type_name: "",
+
+    params: [],
+
+    body_stmts: [],
+
+    local_count: 0,
+
+    stmt_count: 0,
+
+    valid: false
+  };
+}
+
+<<< ========================================================= >>>
+<<< Metadata                                                  >>>
+<<< ========================================================= >>>
+
+proc ir_metadata(
+  stmt_count: u64,
+  expr_count: u64,
+  function_count: u64
+) -> IrMetadata {
+
+  give IrMetadata {
+    node_count:
+      stmt_count
+      + expr_count
+      + function_count,
+
+    stmt_count: stmt_count,
+    expr_count: expr_count,
+
+    function_count: function_count,
+
+    valid: true
+  };
+}
+
+proc count_expr_tree(
+  expr: IrExpr
+) -> u64 {
+
+  if not expr.valid {
+    give 0;
+  }
+
+  let total: u64 = 1;
+
+  let i: int = 0;
+
+  while i < expr.children.len {
+
+    set total =
+      total
+      + count_expr_tree(
+          expr.children[i]
+        );
+
+    set i =
+      i + 1;
+  }
+
+  give total;
+}
+
+proc count_stmt_exprs(
+  stmts: [IrStmt]
+) -> u64 {
+
+  let total: u64 = 0;
+
+  let i: int = 0;
+
+  while i < stmts.len {
+
+    set total =
+      total
+      + count_expr_tree(
+          stmts[i].expr
+        );
+
+    set total =
+      total
+      + count_stmt_exprs(
+          stmts[i].child_stmts
+        );
+
+    set i =
+      i + 1;
+  }
+
+  give total;
+}
+
+<<< ========================================================= >>>
+<<< Module lowering                                           >>>
+<<< ========================================================= >>>
+
+proc lower(
+  module_value: compiler_ast.Module
+) -> IrModule {
+
+  let functions: [IrFunction] = [];
+
+  let stmt_total: u64 = 0;
+  let expr_total: u64 = 0;
+
+  let i: int = 0;
+
+  while i < module_value.decls.len {
+
+    let decl: compiler_ast.Decl =
+      module_value.decls[i];
+
+    if decl.kind
+      == compiler_ast.DeclKind.Proc {
+
+      let function_value: IrFunction =
+        lower_function(
+          decl.proc_decl
+        );
+
+      set stmt_total =
+        stmt_total
+        + function_value.stmt_count;
+
+      set expr_total =
+        expr_total
+        + count_stmt_exprs(
+            function_value.body_stmts
+          );
+
+      set functions =
+        functions
+        + [function_value];
+    }
+
+    set i =
+      i + 1;
+  }
+
+  let metadata: IrMetadata =
+    ir_metadata(
+      stmt_total,
+      expr_total,
+      functions.len
+    );
+
+  give IrModule {
+    source_name:
+      module_value.source_name,
+
+    module_name:
+      module_value.space_name,
+
+    uses:
+      module_value.uses,
+
+    functions: functions,
+
+    metadata: metadata,
+
+    valid:
+      module_value.valid
+      and module_value.space_name != ""
+  };
+}
+
+proc empty_module() -> IrModule {
+
+  give IrModule {
+    source_name: "",
+
+    module_name: "",
+
+    uses: [],
+
+    functions: [],
+
+    metadata:
+      ir_metadata(
+        0,
+        0,
+        0
+      ),
+
+    valid: false
+  };
+}
+
+<<< ========================================================= >>>
+<<< Statistics                                                >>>
+<<< ========================================================= >>>
+
+proc function_count(
+  module_value: IrModule
+) -> u64 {
+
+  give module_value.functions.len;
+}
+
+proc total_stmt_count(
+  module_value: IrModule
+) -> u64 {
+
+  give module_value.metadata.stmt_count;
+}
+
+proc total_expr_count(
+  module_value: IrModule
+) -> u64 {
+
+  give module_value.metadata.expr_count;
+}
+
+proc module_summary(
+  module_value: IrModule
+) -> string {
+
+  give "module="
+    + module_value.module_name
+    + " functions="
+    + (function_count(module_value) as string)
+    + " stmts="
+    + (total_stmt_count(module_value) as string)
+    + " exprs="
+    + (total_expr_count(module_value) as string)
+    + " valid="
+    + (module_value.valid as string);
+}
+
+proc ir_selftest() -> bool {
+
+  let module_value: IrModule =
+    empty_module();
+
+  give module_summary(module_value)
+    != "";
+}

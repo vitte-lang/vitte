@@ -1,82 +1,332 @@
+/home/vincentr/Documents/GitHub/vitte/src/vitte/compiler/infrastructure/diagnostics/fluent_catalog.vit
+
 space vitte/compiler/infrastructure/diagnostics/fluent_catalog
 
-# Generated from locales/*/diagnostics.ftl by tools/generate_frontend_fluent_bridge.py
+export *
+
+form FluentCatalogEntry {
+    locale: string
+    code: string
+    message: string
+}
+
+form FluentCatalogStats {
+    locale_count: u64
+    diagnostic_count: u64
+    generated: bool
+}
+
+const FLUENT_CATALOG_GENERATOR: string =
+    "tools/generate_frontend_fluent_bridge.py";
+
+const FLUENT_DEFAULT_LOCALE: string =
+    "en";
+
+proc fluent_catalog_entry(locale: string, code: string, message: string) -> FluentCatalogEntry {
+    give FluentCatalogEntry {
+        locale: locale,
+        code: code,
+        message: message
+    };
+}
+
+proc fluent_catalog_stats(locale_count: u64, diagnostic_count: u64, generated: bool) -> FluentCatalogStats {
+    give FluentCatalogStats {
+        locale_count: locale_count,
+        diagnostic_count: diagnostic_count,
+        generated: generated
+    };
+}
+
+proc fluent_catalog_generator() -> string {
+    give FLUENT_CATALOG_GENERATOR;
+}
+
+proc fluent_default_locale() -> string {
+    give FLUENT_DEFAULT_LOCALE;
+}
+
+proc fluent_catalog_generated() -> bool {
+    give true;
+}
+
+proc fluent_catalog_locale_supported(locale: string) -> bool {
+    give locale == "en"
+        or locale == "fr";
+}
+
+proc fluent_catalog_normalize_locale(locale: string) -> string {
+    if locale == "" {
+        give FLUENT_DEFAULT_LOCALE;
+    }
+
+    if locale == "en-US" or locale == "en_GB" {
+        give "en";
+    }
+
+    if locale == "fr-FR" or locale == "fr_CA" {
+        give "fr";
+    }
+
+    if fluent_catalog_locale_supported(locale) {
+        give locale;
+    }
+
+    give FLUENT_DEFAULT_LOCALE;
+}
+
+proc fluent_catalog_lookup_en(code: string) -> string {
+    if code == "LEX_E_INVALID_CHAR" {
+        give "invalid character";
+    }
+
+    if code == "LEX_E_INVALID_CHAR_LITERAL" {
+        give "invalid char literal";
+    }
+
+    if code == "LEX_E_INVALID_ESCAPE" {
+        give "invalid escape sequence";
+    }
+
+    if code == "LEX_E_INVALID_NUMBER" {
+        give "invalid numeric literal";
+    }
+
+    if code == "LEX_E_UNTERMINATED_BLOCK_COMMENT" {
+        give "unterminated block comment";
+    }
+
+    if code == "LEX_E_UNTERMINATED_CHAR" {
+        give "unterminated char literal";
+    }
+
+    if code == "LEX_E_UNTERMINATED_STRING" {
+        give "unterminated string literal";
+    }
+
+    if code == "P0001" {
+        give "unexpected top-level token";
+    }
+
+    if code == "P000_UNBALANCED" {
+        give "unclosed block";
+    }
+
+    if code == "PLOOP" {
+        give "parser made no progress";
+    }
+
+    if code == "PPRIMARY999" {
+        give "unexpected expression token";
+    }
+
+    if code == "PSTMT007" {
+        give "expected assignment operator";
+    }
+
+    if code == "FAST0001" {
+        give "invalid ast root";
+    }
+
+    if code == "FLEX0001" {
+        give "empty source input";
+    }
+
+    if code == "PARSE_EXPECTED_EXPR" {
+        give "expected expression";
+    }
+
+    if code == "PARSE_EXPECTED_TYPE" {
+        give "expected type";
+    }
+
+    if code == "PARSE_EXPECTED_PATTERN" {
+        give "expected pattern";
+    }
+
+    if code == "PARSE_EXPECTED_BLOCK" {
+        give "expected block";
+    }
+
+    if code == "PARSE_EXPECTED_IDENTIFIER" {
+        give "expected identifier";
+    }
+
+    give "";
+}
+
+proc fluent_catalog_lookup_fr(code: string) -> string {
+    if code == "LEX_E_INVALID_CHAR" {
+        give "caractere invalide";
+    }
+
+    if code == "LEX_E_INVALID_CHAR_LITERAL" {
+        give "litteral caractere invalide";
+    }
+
+    if code == "LEX_E_INVALID_ESCAPE" {
+        give "sequence d'echappement invalide";
+    }
+
+    if code == "LEX_E_INVALID_NUMBER" {
+        give "litteral numerique invalide";
+    }
+
+    if code == "LEX_E_UNTERMINATED_BLOCK_COMMENT" {
+        give "commentaire bloc non termine";
+    }
+
+    if code == "LEX_E_UNTERMINATED_CHAR" {
+        give "caractere non termine";
+    }
+
+    if code == "LEX_E_UNTERMINATED_STRING" {
+        give "chaine non terminee";
+    }
+
+    if code == "P0001" {
+        give "jeton de niveau superieur inattendu";
+    }
+
+    if code == "P000_UNBALANCED" {
+        give "bloc non referme";
+    }
+
+    if code == "PLOOP" {
+        give "le parseur ne progresse plus";
+    }
+
+    if code == "PPRIMARY999" {
+        give "jeton d'expression inattendu";
+    }
+
+    if code == "PSTMT007" {
+        give "operateur d'affectation attendu";
+    }
+
+    if code == "FAST0001" {
+        give "racine ast invalide";
+    }
+
+    if code == "FLEX0001" {
+        give "entree source vide";
+    }
+
+    if code == "PARSE_EXPECTED_EXPR" {
+        give "expression attendue";
+    }
+
+    if code == "PARSE_EXPECTED_TYPE" {
+        give "type attendu";
+    }
+
+    if code == "PARSE_EXPECTED_PATTERN" {
+        give "pattern attendu";
+    }
+
+    if code == "PARSE_EXPECTED_BLOCK" {
+        give "bloc attendu";
+    }
+
+    if code == "PARSE_EXPECTED_IDENTIFIER" {
+        give "identifiant attendu";
+    }
+
+    give "";
+}
+
 proc fluent_catalog_lookup(locale: string, code: string) -> string {
-  if locale == "en" {
-    if code == "LEX_E_INVALID_CHAR" {
-      give "invalid character";
+    let normalized: string =
+        fluent_catalog_normalize_locale(locale);
+
+    if normalized == "en" {
+        give fluent_catalog_lookup_en(code);
     }
-    if code == "LEX_E_INVALID_CHAR_LITERAL" {
-      give "invalid char literal";
+
+    if normalized == "fr" {
+        give fluent_catalog_lookup_fr(code);
     }
-    if code == "LEX_E_INVALID_ESCAPE" {
-      give "invalid escape sequence";
+
+    give "";
+}
+
+proc fluent_catalog_has(locale: string, code: string) -> bool {
+    give fluent_catalog_lookup(locale, code)
+        != "";
+}
+
+proc fluent_catalog_entry_for(locale: string, code: string) -> FluentCatalogEntry {
+    let normalized: string =
+        fluent_catalog_normalize_locale(locale);
+
+    give fluent_catalog_entry(
+        normalized,
+        code,
+        fluent_catalog_lookup(
+            normalized,
+            code
+        )
+    );
+}
+
+proc fluent_catalog_message_or(locale: string, code: string, fallback: string) -> string {
+    let message: string =
+        fluent_catalog_lookup(
+            locale,
+            code
+        );
+
+    if message == "" {
+        give fallback;
     }
-    if code == "LEX_E_INVALID_NUMBER" {
-      give "invalid numeric literal";
-    }
-    if code == "LEX_E_UNTERMINATED_BLOCK_COMMENT" {
-      give "unterminated block comment";
-    }
-    if code == "LEX_E_UNTERMINATED_CHAR" {
-      give "unterminated char literal";
-    }
-    if code == "LEX_E_UNTERMINATED_STRING" {
-      give "unterminated string literal";
-    }
-    if code == "P0001" {
-      give "unexpected top-level token";
-    }
-    if code == "P000_UNBALANCED" {
-      give "unclosed block";
-    }
-    if code == "PLOOP" {
-      give "parser made no progress";
-    }
-    if code == "PPRIMARY999" {
-      give "unexpected expression token";
-    }
-    if code == "PSTMT007" {
-      give "expected assignment operator";
-    }
-  }
-  if locale == "fr" {
-    if code == "LEX_E_INVALID_CHAR" {
-      give "caractere invalide";
-    }
-    if code == "LEX_E_INVALID_CHAR_LITERAL" {
-      give "litteral caractere invalide";
-    }
-    if code == "LEX_E_INVALID_ESCAPE" {
-      give "sequence d'echappement invalide";
-    }
-    if code == "LEX_E_INVALID_NUMBER" {
-      give "litteral numerique invalide";
-    }
-    if code == "LEX_E_UNTERMINATED_BLOCK_COMMENT" {
-      give "commentaire bloc non termine";
-    }
-    if code == "LEX_E_UNTERMINATED_CHAR" {
-      give "caractere non termine";
-    }
-    if code == "LEX_E_UNTERMINATED_STRING" {
-      give "chaine non terminee";
-    }
-    if code == "P0001" {
-      give "jeton de niveau superieur inattendu";
-    }
-    if code == "P000_UNBALANCED" {
-      give "bloc non referme";
-    }
-    if code == "PLOOP" {
-      give "le parseur ne progresse plus";
-    }
-    if code == "PPRIMARY999" {
-      give "jeton d'expression inattendu";
-    }
-    if code == "PSTMT007" {
-      give "operateur d'affectation attendu";
-    }
-  }
-  give "";
+
+    give message;
+}
+
+proc fluent_catalog_stats_default() -> FluentCatalogStats {
+    give fluent_catalog_stats(
+        2,
+        17,
+        true
+    );
+}
+
+proc fluent_catalog_selftest() -> bool {
+    let en: string =
+        fluent_catalog_lookup(
+            "en",
+            "P0001"
+        );
+
+    let fr: string =
+        fluent_catalog_lookup(
+            "fr",
+            "P0001"
+        );
+
+    let entry: FluentCatalogEntry =
+        fluent_catalog_entry_for(
+            "fr-FR",
+            "FAST0001"
+        );
+
+    let stats: FluentCatalogStats =
+        fluent_catalog_stats_default();
+
+    give en
+            == "unexpected top-level token"
+        and fr
+            == "jeton de niveau superieur inattendu"
+        and entry.locale
+            == "fr"
+        and entry.message
+            == "racine ast invalide"
+        and stats.locale_count == 2
+        and stats.generated
+        and fluent_catalog_has(
+            "en",
+            "PLOOP"
+        )
+        and fluent_catalog_generator()
+            == "tools/generate_frontend_fluent_bridge.py";
 }

@@ -1,134 +1,425 @@
+/home/vincentr/Documents/GitHub/vitte/src/vitte/compiler/frontend/mod.vit
+
 space vitte/compiler/frontend
 
-use vitte/compiler/frontend/input.{ FrontendInput, input_from_text }
-use vitte/compiler/frontend/macros/expand.{ expand_macros }
-use vitte/compiler/frontend/lexer/errors.{ LexerDiagnostic }
-use vitte/compiler/frontend/lexer/scanner.{ ScanResult, scan_tokens }
-use vitte/compiler/frontend/parse/parser.{ parse_source }
-use vitte/compiler/frontend/parse/recovery.{ capped_diag_count, recovery_applied }
-use vitte/compiler/frontend/ast/node.{ AstSpan, ast_span }
-use vitte/compiler/frontend/ast/item.{ AstModule, ast_module_empty }
-use vitte/compiler/frontend/ast/validate.{ AstValidation, validate_ast_root }
-use vitte/compiler/infrastructure/diagnostics/fluent.{ fluent_diagnostic_message, fluent_locale }
+use vitte/compiler/frontend/input.{
+    FrontendInput,
+    FrontendInputStats,
+    input_from_text,
+    input_stats,
+    normalize_input
+}
+
+use vitte/compiler/frontend/macros/expand.{
+    expand_macros
+}
+
+use vitte/compiler/frontend/lexer/errors.{
+    LexerDiagnostic
+}
+
+use vitte/compiler/frontend/lexer/scanner.{
+    ScanResult,
+    scan_tokens
+}
+
+use vitte/compiler/frontend/parse/parser.{
+    parse_source
+}
+
+use vitte/compiler/frontend/parse/recovery.{
+    capped_diag_count,
+    recovery_applied
+}
+
+use vitte/compiler/frontend/parse/grammar.{
+    grammar_version
+}
+
+use vitte/compiler/frontend/ast/node.{
+    AstSpan,
+    ast_span
+}
+
+use vitte/compiler/frontend/ast/item.{
+    AstModule,
+    ast_module_empty
+}
+
+use vitte/compiler/frontend/ast/validate.{
+    AstValidation,
+    validate_ast_root
+}
+
+use vitte/compiler/infrastructure/diagnostics/fluent.{
+    fluent_diagnostic_message,
+    fluent_locale
+}
+
+export *
 
 form FrontendDiagnostic {
-  code: string
-  message: string
-  localized_message: string
-  file: string
-  line: u64
-  column: u64
-  span: AstSpan
-  locale: string
-  fatal: bool
+    code: string
+    message: string
+    localized_message: string
+    file: string
+    line: u64
+    column: u64
+    span: AstSpan
+    locale: string
+    fatal: bool
+}
+
+form FrontendStatistics {
+    source_bytes: u64
+    source_lines: u64
+    token_count: u64
+    diagnostics_total: u64
+    diagnostics_capped: u64
+    recovery_used: bool
+}
+
+form FrontendMacroState {
+    expanded: bool
+    trace: string
 }
 
 form FrontendOutput {
-  source_path: string
-  source_text: string
-  token_count: u64
-  grammar_version: string
-  ast_root: AstModule
-  toplevel_count: u64
-  stmt_count: u64
-  expr_count: u64
-  type_count: u64
-  pattern_count: u64
-  diagnostics: [FrontendDiagnostic]
-  diagnostics_total: u64
-  diagnostics_capped: u64
-  recovery_used: bool
-  macro_trace: string
-  valid: bool
+    source_path: string
+    source_text: string
+    token_count: u64
+    grammar_version: string
+    ast_root: AstModule
+    toplevel_count: u64
+    stmt_count: u64
+    expr_count: u64
+    type_count: u64
+    pattern_count: u64
+    diagnostics: [FrontendDiagnostic]
+    diagnostics_total: u64
+    diagnostics_capped: u64
+    recovery_used: bool
+    macro_trace: string
+    statistics: FrontendStatistics
+    macros: FrontendMacroState
+    valid: bool
 }
 
 proc frontend_diagnostic(code: string, message: string, fatal: bool, file: string, line: u64, column: u64, width: u64, locale: string) -> FrontendDiagnostic {
-  let safe_width: u64 = if width == 0 { 1 } else { width };
-  let normalized: string = fluent_locale(locale);
-  give FrontendDiagnostic {
-    code: code,
-    message: message,
-    localized_message: fluent_diagnostic_message(normalized, code, message),
-    file: file,
-    line: line,
-    column: column,
-    span: ast_span(file, line, column, line, column + safe_width),
-    locale: normalized,
-    fatal: fatal
-  };
+    let safe_width: u64 =
+        if width == 0 {
+            1
+        } else {
+            width
+        };
+
+    let normalized: string =
+        fluent_locale(locale);
+
+    give FrontendDiagnostic {
+        code: code,
+        message: message,
+        localized_message: fluent_diagnostic_message(
+            normalized,
+            code,
+            message
+        ),
+        file: file,
+        line: line,
+        column: column,
+        span: ast_span(
+            file,
+            line,
+            column,
+            line,
+            column + safe_width
+        ),
+        locale: normalized,
+        fatal: fatal
+    };
+}
+
+proc frontend_statistics(source_bytes: u64, source_lines: u64, token_count: u64, diagnostics_total: u64, diagnostics_capped: u64, recovery_used: bool) -> FrontendStatistics {
+    give FrontendStatistics {
+        source_bytes: source_bytes,
+        source_lines: source_lines,
+        token_count: token_count,
+        diagnostics_total: diagnostics_total,
+        diagnostics_capped: diagnostics_capped,
+        recovery_used: recovery_used
+    };
+}
+
+proc frontend_macro_state(expanded: bool, trace: string) -> FrontendMacroState {
+    give FrontendMacroState {
+        expanded: expanded,
+        trace: trace
+    };
+}
+
+proc empty_frontend_output(source_path: string, source_text: string, diagnostic: FrontendDiagnostic) -> FrontendOutput {
+    give FrontendOutput {
+        source_path: source_path,
+        source_text: source_text,
+        token_count: 0,
+        grammar_version: grammar_version(),
+        ast_root: ast_module_empty(),
+        toplevel_count: 0,
+        stmt_count: 0,
+        expr_count: 0,
+        type_count: 0,
+        pattern_count: 0,
+        diagnostics: [diagnostic],
+        diagnostics_total: 1,
+        diagnostics_capped: capped_diag_count(1),
+        recovery_used: recovery_applied(1, 0),
+        macro_trace: "macro:skip(empty)",
+        statistics: frontend_statistics(
+            0,
+            0,
+            0,
+            1,
+            capped_diag_count(1),
+            false
+        ),
+        macros: frontend_macro_state(
+            false,
+            "macro:skip(empty)"
+        ),
+        valid: false
+    };
 }
 
 proc frontend_run(source_path: string, source_text: string) -> FrontendOutput {
-  give frontend_run_with_lang(source_path, source_text, "en");
+    give frontend_run_with_lang(
+        source_path,
+        source_text,
+        "en"
+    );
 }
 
 proc frontend_run_with_lang(source_path: string, source_text: string, lang: string) -> FrontendOutput {
-  let locale: string = fluent_locale(lang);
-  let input: FrontendInput = input_from_text(source_path, source_text);
-  if not input.valid {
-    let d = frontend_diagnostic("FLEX0001", "empty source input", true, source_path, 1, 1, 1, locale);
+    let locale: string =
+        fluent_locale(lang);
+
+    let raw_input: FrontendInput =
+        input_from_text(
+            source_path,
+            source_text
+        );
+
+    let input: FrontendInput =
+        normalize_input(raw_input);
+
+    if not input.valid {
+        let d: FrontendDiagnostic =
+            frontend_diagnostic(
+                "FLEX0001",
+                "empty source input",
+                true,
+                source_path,
+                1,
+                1,
+                1,
+                locale
+            );
+
+        give empty_frontend_output(
+            source_path,
+            source_text,
+            d
+        );
+    }
+
+    let stats: FrontendInputStats =
+        input_stats(input);
+
+    let expanded: string =
+        expand_macros(
+            input.text
+        );
+
+    let scanned: ScanResult =
+        scan_tokens(
+            expanded
+        );
+
+    let parsed =
+        parse_source(
+            source_path,
+            scanned.tokens
+        );
+
+    let diagnostics: [FrontendDiagnostic] = [];
+
+    let i: u64 = 0;
+
+    while i < len(scanned.diagnostics) {
+        let diag: LexerDiagnostic =
+            scanned.diagnostics[i];
+
+        set diagnostics =
+            diagnostics + [
+                frontend_diagnostic(
+                    diag.code,
+                    diag.message,
+                    diag.fatal,
+                    source_path,
+                    diag.line,
+                    diag.column,
+                    diag.width,
+                    locale
+                )
+            ];
+
+        set i =
+            i + 1;
+    }
+
+    set i = 0;
+
+    while i < len(parsed.diagnostics) {
+        let diag =
+            parsed.diagnostics[i];
+
+        set diagnostics =
+            diagnostics + [
+                frontend_diagnostic(
+                    diag.code,
+                    diag.message,
+                    true,
+                    source_path,
+                    diag.line,
+                    diag.column,
+                    diag.width,
+                    locale
+                )
+            ];
+
+        set i =
+            i + 1;
+    }
+
+    let ast_root: AstModule =
+        parsed.ast_root;
+
+    let validation: AstValidation =
+        validate_ast_root(
+            ast_root
+        );
+
+    if not validation.valid {
+        set diagnostics =
+            diagnostics + [
+                frontend_diagnostic(
+                    "FAST0001",
+                    validation.message,
+                    true,
+                    source_path,
+                    1,
+                    1,
+                    1,
+                    locale
+                )
+            ];
+    }
+
+    let total: u64 =
+        len(diagnostics);
+
+    let capped: u64 =
+        capped_diag_count(total);
+
+    let recovered: bool =
+        recovery_applied(
+            total,
+            parsed.recovery_count
+        );
+
+    let macro_trace: string =
+        "macro:expand@1:1 -> macro:hygiene@1:1";
+
     give FrontendOutput {
-      source_path: source_path,
-      source_text: source_text,
-      token_count: 0,
-      grammar_version: "vitte-core-2026-05",
-      ast_root: ast_module_empty(),
-      toplevel_count: 0,
-      stmt_count: 0,
-      expr_count: 0,
-      type_count: 0,
-      pattern_count: 0,
-      diagnostics: [d],
-      diagnostics_total: 1,
-      diagnostics_capped: capped_diag_count(1),
-      recovery_used: recovery_applied(1, 0),
-      macro_trace: "macro:skip(empty)",
-      valid: false
+        source_path: source_path,
+        source_text: expanded,
+        token_count: len(scanned.tokens),
+        grammar_version: parsed.grammar_version,
+        ast_root: ast_root,
+        toplevel_count: parsed.toplevel_count,
+        stmt_count: parsed.stmt_count,
+        expr_count: parsed.expr_count,
+        type_count: parsed.type_count,
+        pattern_count: parsed.pattern_count,
+        diagnostics: diagnostics,
+        diagnostics_total: total,
+        diagnostics_capped: capped,
+        recovery_used: recovered,
+        macro_trace: macro_trace,
+        statistics: frontend_statistics(
+            stats.byte_count,
+            stats.line_count,
+            len(scanned.tokens),
+            total,
+            capped,
+            recovered
+        ),
+        macros: frontend_macro_state(
+            expanded != input.text,
+            macro_trace
+        ),
+        valid: parsed.valid
+            and validation.valid
+            and total == 0
     };
-  }
+}
 
-  let expanded: string = expand_macros(input.text);
-  let scanned: ScanResult = scan_tokens(expanded);
-  let parsed = parse_source(source_path, scanned.tokens);
+proc frontend_valid(output: FrontendOutput) -> bool {
+    give output.valid;
+}
 
-  let ds: [FrontendDiagnostic] = [];
-  let i: u64 = 0;
-  while i < len(scanned.diagnostics) {
-    let diag: LexerDiagnostic = scanned.diagnostics[i];
-    set ds = ds + [frontend_diagnostic(diag.code, diag.message, diag.fatal, source_path, diag.line, diag.column, diag.width, locale)];
-    set i = i + 1;
-  }
-  set i = 0;
-  while i < len(parsed.diagnostics) {
-    let diag = parsed.diagnostics[i];
-    set ds = ds + [frontend_diagnostic(diag.code, diag.message, true, source_path, diag.line, diag.column, diag.width, locale)];
-    set i = i + 1;
-  }
+proc frontend_has_diagnostics(output: FrontendOutput) -> bool {
+    give output.diagnostics_total > 0;
+}
 
-  let ast_root: AstModule = parsed.ast_root;
-  let v: AstValidation = validate_ast_root(ast_root);
-  if not v.valid {
-    set ds = ds + [frontend_diagnostic("FAST0001", v.message, true, source_path, 1, 1, 1, locale)];
-  }
+proc frontend_has_fatal(output: FrontendOutput) -> bool {
+    let i: u64 = 0;
 
-  let total: u64 = len(ds);
+    while i < len(output.diagnostics) {
+        if output.diagnostics[i].fatal {
+            give true;
+        }
 
-  give FrontendOutput {
-    source_path: source_path,
-    source_text: expanded,
-    token_count: len(scanned.tokens),
-    grammar_version: parsed.grammar_version,
-    ast_root: ast_root,
-    toplevel_count: parsed.toplevel_count,
-    stmt_count: parsed.stmt_count,
-    expr_count: parsed.expr_count,
-    type_count: parsed.type_count,
-    pattern_count: parsed.pattern_count,
-    diagnostics: ds,
-    diagnostics_total: total,
-    diagnostics_capped: capped_diag_count(total),
-    recovery_used: recovery_applied(total, parsed.recovery_count),
-    macro_trace: "macro:expand@1:1 -> macro:hygiene@1:1",
-    valid: parsed.valid and v.valid and total == 0
-  };
+        set i =
+            i + 1;
+    }
+
+    give false;
+}
+
+proc frontend_summary(output: FrontendOutput) -> string {
+    give "frontend(valid="
+        + (output.valid as string)
+        + ", tokens="
+        + (output.token_count as string)
+        + ", diagnostics="
+        + (output.diagnostics_total as string)
+        + ", grammar="
+        + output.grammar_version
+        + ")";
+}
+
+proc frontend_selftest() -> bool {
+    let output: FrontendOutput =
+        frontend_run(
+            "main.vit",
+            "proc main() {}"
+        );
+
+    give output.grammar_version
+            == grammar_version()
+        and output.statistics.source_lines >= 1
+        and output.statistics.source_bytes > 0
+        and output.token_count >= 0
+        and not frontend_has_fatal(output)
+        and frontend_summary(output) != "";
 }

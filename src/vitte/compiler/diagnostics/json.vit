@@ -1,0 +1,609 @@
+<<<
+    /home/vincentr/Documents/GitHub/vitte/src/vitte/compiler/diagnostics/json.vit
+
+    JSON serialization layer for Vitte diagnostics.
+>>>
+
+space vitte/compiler/diagnostics/json
+
+use vitte/compiler/diagnostics/diagnostic.{
+    Diagnostic,
+    DiagnosticReport,
+    DiagnosticSeverity,
+    DiagnosticPhase,
+    DiagnosticLabel,
+    DiagnosticLabelKind,
+    DiagnosticNote,
+    DiagnosticHelp,
+    DiagnosticSuggestion,
+    DiagnosticSuggestionKind,
+    SourceSpan,
+    severity_name,
+    phase_name,
+    label_kind_name,
+    suggestion_kind_name
+}
+
+proc json_escape(text: string) -> string {
+    let out: string = "";
+    let i: u64 = 0;
+
+    while i < len(text) {
+        let ch: string = slice(text, i, i + 1);
+
+        if ch == "\\" {
+            set out = out + "\\\\";
+        } elif ch == "\"" {
+            set out = out + "\\\"";
+        } elif ch == "\n" {
+            set out = out + "\\n";
+        } elif ch == "\r" {
+            set out = out + "\\r";
+        } elif ch == "\t" {
+            set out = out + "\\t";
+        } else {
+            set out = out + ch;
+        }
+
+        set i = i + 1;
+    }
+
+    give out;
+}
+
+proc json_quote(text: string) -> string {
+    give "\"" + json_escape(text) + "\"";
+}
+
+proc json_bool(value: bool) -> string {
+    if value {
+        give "true";
+    }
+
+    give "false";
+}
+
+proc json_key_value(
+    key: string,
+    value: string
+) -> string {
+    give json_quote(key) + ": " + value;
+}
+
+proc json_join(
+    values: [string]
+) -> string {
+    let out: string = "";
+    let i: u64 = 0;
+
+    while i < len(values) {
+        if i > 0 {
+            set out = out + ", ";
+        }
+
+        set out = out + values[i];
+        set i = i + 1;
+    }
+
+    give out;
+}
+
+proc json_array(
+    values: [string]
+) -> string {
+    give "[" + json_join(values) + "]";
+}
+
+proc json_object(
+    fields: [string]
+) -> string {
+    give "{ " + json_join(fields) + " }";
+}
+
+proc json_string_array(
+    values: [string]
+) -> string {
+    let encoded: [string] = [];
+    let i: u64 = 0;
+
+    while i < len(values) {
+        set encoded =
+            encoded + [
+                json_quote(values[i])
+            ];
+
+        set i = i + 1;
+    }
+
+    give json_array(encoded);
+}
+
+proc json_source_span(
+    span: SourceSpan
+) -> string {
+    give json_object([
+        json_key_value("file", json_quote(span.file)),
+        json_key_value("start_line", span.start_line as string),
+        json_key_value("start_column", span.start_column as string),
+        json_key_value("end_line", span.end_line as string),
+        json_key_value("end_column", span.end_column as string),
+        json_key_value("length", span.length as string),
+        json_key_value("valid", json_bool(span.valid))
+    ]);
+}
+
+proc json_label(
+    label: DiagnosticLabel
+) -> string {
+    give json_object([
+        json_key_value(
+            "kind",
+            json_quote(
+                label_kind_name(label.kind)
+            )
+        ),
+
+        json_key_value(
+            "message",
+            json_quote(label.message)
+        ),
+
+        json_key_value(
+            "span",
+            json_source_span(label.span)
+        ),
+
+        json_key_value(
+            "primary",
+            json_bool(label.primary)
+        ),
+
+        json_key_value(
+            "valid",
+            json_bool(label.valid)
+        )
+    ]);
+}
+
+proc json_labels(
+    labels: [DiagnosticLabel]
+) -> string {
+    let encoded: [string] = [];
+    let i: u64 = 0;
+
+    while i < len(labels) {
+        set encoded =
+            encoded + [
+                json_label(labels[i])
+            ];
+
+        set i = i + 1;
+    }
+
+    give json_array(encoded);
+}
+
+proc json_note(
+    note: DiagnosticNote
+) -> string {
+    give json_object([
+        json_key_value(
+            "message",
+            json_quote(note.message)
+        ),
+
+        json_key_value(
+            "valid",
+            json_bool(note.valid)
+        )
+    ]);
+}
+
+proc json_notes(
+    notes: [DiagnosticNote]
+) -> string {
+    let encoded: [string] = [];
+    let i: u64 = 0;
+
+    while i < len(notes) {
+        set encoded =
+            encoded + [
+                json_note(notes[i])
+            ];
+
+        set i = i + 1;
+    }
+
+    give json_array(encoded);
+}
+
+proc json_help(
+    help: DiagnosticHelp
+) -> string {
+    give json_object([
+        json_key_value(
+            "message",
+            json_quote(help.message)
+        ),
+
+        json_key_value(
+            "valid",
+            json_bool(help.valid)
+        )
+    ]);
+}
+
+proc json_helps(
+    helps: [DiagnosticHelp]
+) -> string {
+    let encoded: [string] = [];
+    let i: u64 = 0;
+
+    while i < len(helps) {
+        set encoded =
+            encoded + [
+                json_help(helps[i])
+            ];
+
+        set i = i + 1;
+    }
+
+    give json_array(encoded);
+}
+
+proc json_suggestion(
+    suggestion: DiagnosticSuggestion
+) -> string {
+    give json_object([
+        json_key_value(
+            "kind",
+            json_quote(
+                suggestion_kind_name(
+                    suggestion.kind
+                )
+            )
+        ),
+
+        json_key_value(
+            "message",
+            json_quote(
+                suggestion.message
+            )
+        ),
+
+        json_key_value(
+            "replacement",
+            json_quote(
+                suggestion.replacement
+            )
+        ),
+
+        json_key_value(
+            "machine_applicable",
+            json_bool(
+                suggestion.machine_applicable
+            )
+        ),
+
+        json_key_value(
+            "span",
+            json_source_span(
+                suggestion.span
+            )
+        ),
+
+        json_key_value(
+            "valid",
+            json_bool(
+                suggestion.valid
+            )
+        )
+    ]);
+}
+
+proc json_suggestions(
+    suggestions: [DiagnosticSuggestion]
+) -> string {
+    let encoded: [string] = [];
+    let i: u64 = 0;
+
+    while i < len(suggestions) {
+        set encoded =
+            encoded + [
+                json_suggestion(
+                    suggestions[i]
+                )
+            ];
+
+        set i = i + 1;
+    }
+
+    give json_array(encoded);
+}
+
+proc json_diagnostic(
+    diagnostic: Diagnostic
+) -> string {
+    give json_object([
+        json_key_value(
+            "code",
+            json_quote(
+                diagnostic.code
+            )
+        ),
+
+        json_key_value(
+            "severity",
+            json_quote(
+                severity_name(
+                    diagnostic.severity
+                )
+            )
+        ),
+
+        json_key_value(
+            "phase",
+            json_quote(
+                phase_name(
+                    diagnostic.phase
+                )
+            )
+        ),
+
+        json_key_value(
+            "message",
+            json_quote(
+                diagnostic.message
+            )
+        ),
+
+        json_key_value(
+            "span",
+            json_source_span(
+                diagnostic.span
+            )
+        ),
+
+        json_key_value(
+            "labels",
+            json_labels(
+                diagnostic.labels
+            )
+        ),
+
+        json_key_value(
+            "notes",
+            json_notes(
+                diagnostic.notes
+            )
+        ),
+
+        json_key_value(
+            "helps",
+            json_helps(
+                diagnostic.helps
+            )
+        ),
+
+        json_key_value(
+            "suggestions",
+            json_suggestions(
+                diagnostic.suggestions
+            )
+        ),
+
+        json_key_value(
+            "deprecated",
+            json_bool(
+                diagnostic.deprecated
+            )
+        ),
+
+        json_key_value(
+            "unnecessary",
+            json_bool(
+                diagnostic.unnecessary
+            )
+        ),
+
+        json_key_value(
+            "fatal",
+            json_bool(
+                diagnostic.fatal
+            )
+        ),
+
+        json_key_value(
+            "valid",
+            json_bool(
+                diagnostic.valid
+            )
+        )
+    ]);
+}
+
+proc json_diagnostics(
+    diagnostics: [Diagnostic]
+) -> string {
+    let encoded: [string] = [];
+    let i: u64 = 0;
+
+    while i < len(diagnostics) {
+        set encoded =
+            encoded + [
+                json_diagnostic(
+                    diagnostics[i]
+                )
+            ];
+
+        set i = i + 1;
+    }
+
+    give json_array(encoded);
+}
+
+proc json_report(
+    report: DiagnosticReport
+) -> string {
+    give json_object([
+        json_key_value(
+            "valid",
+            json_bool(report.valid)
+        ),
+
+        json_key_value(
+            "error_count",
+            report.error_count as string
+        ),
+
+        json_key_value(
+            "warning_count",
+            report.warning_count as string
+        ),
+
+        json_key_value(
+            "fatal_count",
+            report.fatal_count as string
+        ),
+
+        json_key_value(
+            "diagnostics",
+            json_diagnostics(
+                report.diagnostics
+            )
+        )
+    ]);
+}
+
+proc json_compact_diagnostic(
+    diagnostic: Diagnostic
+) -> string {
+    give json_object([
+        json_key_value(
+            "code",
+            json_quote(
+                diagnostic.code
+            )
+        ),
+
+        json_key_value(
+            "severity",
+            json_quote(
+                severity_name(
+                    diagnostic.severity
+                )
+            )
+        ),
+
+        json_key_value(
+            "message",
+            json_quote(
+                diagnostic.message
+            )
+        ),
+
+        json_key_value(
+            "file",
+            json_quote(
+                diagnostic.span.file
+            )
+        ),
+
+        json_key_value(
+            "line",
+            diagnostic.span.start_line as string
+        ),
+
+        json_key_value(
+            "column",
+            diagnostic.span.start_column as string
+        )
+    ]);
+}
+
+proc json_compact_report(
+    report: DiagnosticReport
+) -> string {
+    let encoded: [string] = [];
+    let i: u64 = 0;
+
+    while i < len(report.diagnostics) {
+        set encoded =
+            encoded + [
+                json_compact_diagnostic(
+                    report.diagnostics[i]
+                )
+            ];
+
+        set i = i + 1;
+    }
+
+    give json_object([
+        json_key_value(
+            "valid",
+            json_bool(report.valid)
+        ),
+
+        json_key_value(
+            "diagnostics",
+            json_array(encoded)
+        )
+    ]);
+}
+
+proc json_summary(
+    report: DiagnosticReport
+) -> string {
+    give json_object([
+        json_key_value(
+            "errors",
+            report.error_count as string
+        ),
+
+        json_key_value(
+            "warnings",
+            report.warning_count as string
+        ),
+
+        json_key_value(
+            "fatals",
+            report.fatal_count as string
+        ),
+
+        json_key_value(
+            "valid",
+            json_bool(report.valid)
+        )
+    ]);
+}
+
+share json_escape
+share json_quote
+share json_bool
+share json_key_value
+share json_join
+share json_array
+share json_object
+share json_string_array
+
+share json_source_span
+
+share json_label
+share json_labels
+
+share json_note
+share json_notes
+
+share json_help
+share json_helps
+
+share json_suggestion
+share json_suggestions
+
+share json_diagnostic
+share json_diagnostics
+share json_report
+
+share json_compact_diagnostic
+share json_compact_report
+share json_summary

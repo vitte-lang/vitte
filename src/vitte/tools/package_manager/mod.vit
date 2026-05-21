@@ -1,41 +1,791 @@
 space vitte/tools/package_manager/mod
 
+export *
+
+<<< ========================================================= >>>
+<<< Vitte Package Manager                                     >>>
+<<< Dependency resolution / build cache / targets             >>>
+<<< ========================================================= >>>
+
+pick DependencyKind {
+  Normal,
+  Dev,
+  Build,
+  Optional,
+}
+
+pick PackageSourceKind {
+  Registry,
+  Git,
+  Path,
+  Archive,
+  Workspace,
+}
+
+pick BuildProfile {
+  Debug,
+  Release,
+  Benchmark,
+  Sanitized,
+}
+
+pick TargetTier {
+  Tier1,
+  Tier2,
+  Tier3,
+  Experimental,
+}
+
+form Dependency {
+  name: string
+
+  version: string
+
+  kind: DependencyKind
+
+  source: PackageSourceKind
+
+  optional: bool
+
+  features: [string]
+
+  valid: bool
+}
+
 form PackageSpec {
-  name: string,
-  version: string,
-  dependencies: [string],
+  name: string
+
+  version: string
+
+  description: string
+
+  authors: [string]
+
+  license: string
+
+  repository: string
+
+  dependencies: [Dependency]
+
+  workspace_member: bool
+
+  valid: bool
+}
+
+form BuildCacheEntry {
+  key: string
+
+  artifact_path: string
+
+  hash: string
+
+  size_bytes: u64
+
+  valid: bool
 }
 
 form BuildCache {
-  enabled: bool,
-  entries: [(string, string)], // (key, artifact_path)
+  enabled: bool
+
+  cache_directory: string
+
+  entries: [BuildCacheEntry]
+
+  max_size_bytes: u64
+
+  valid: bool
 }
 
 form CrossTarget {
-  arch: string,
-  os: string,
-  triple: string,
+  arch: string
+
+  os: string
+
+  vendor: string
+
+  abi: string
+
+  triple: string
+
+  pointer_width: u64
+
+  little_endian: bool
+
+  tier: TargetTier
+
+  supports_jit: bool
+
+  supports_threads: bool
+
+  valid: bool
 }
 
-proc resolve_dependencies(pkg: PackageSpec) -> [PackageSpec] {
-  // Simple resolution: assume no conflicts
-  give pkg.dependencies.map(|dep| PackageSpec { name: dep, version: "1.0.0", dependencies: [] })
+form ResolvedGraph {
+  root: PackageSpec
+
+  resolved: [PackageSpec]
+
+  package_count: u64
+
+  valid: bool
+}
+
+form BuildPlan {
+  package_name: string
+
+  profile: BuildProfile
+
+  target: CrossTarget
+
+  incremental: bool
+
+  cache_enabled: bool
+
+  output_directory: string
+
+  valid: bool
+}
+
+<<< ========================================================= >>>
+<<< Dependency helpers                                        >>>
+<<< ========================================================= >>>
+
+proc dependency(
+  name: string,
+  version: string,
+  kind: DependencyKind
+) -> Dependency {
+
+  give Dependency {
+    name: name,
+
+    version: version,
+
+    kind: kind,
+
+    source: PackageSourceKind.Registry,
+
+    optional: false,
+
+    features: [],
+
+    valid:
+      name != ""
+      and version != ""
+  };
+}
+
+proc dependency_dev(
+  name: string,
+  version: string
+) -> Dependency {
+
+  give Dependency {
+    name: name,
+
+    version: version,
+
+    kind: DependencyKind.Dev,
+
+    source: PackageSourceKind.Registry,
+
+    optional: false,
+
+    features: [],
+
+    valid: true
+  };
+}
+
+proc dependency_optional(
+  name: string,
+  version: string
+) -> Dependency {
+
+  give Dependency {
+    name: name,
+
+    version: version,
+
+    kind: DependencyKind.Optional,
+
+    source: PackageSourceKind.Registry,
+
+    optional: true,
+
+    features: [],
+
+    valid: true
+  };
+}
+
+<<< ========================================================= >>>
+<<< Package helpers                                           >>>
+<<< ========================================================= >>>
+
+proc package_spec(
+  name: string,
+  version: string,
+  dependencies: [Dependency]
+) -> PackageSpec {
+
+  give PackageSpec {
+    name: name,
+
+    version: version,
+
+    description: "",
+
+    authors: [],
+
+    license: "Apache-2.0",
+
+    repository: "",
+
+    dependencies: dependencies,
+
+    workspace_member: false,
+
+    valid:
+      name != ""
+      and version != ""
+  };
+}
+
+proc empty_package() -> PackageSpec {
+
+  give PackageSpec {
+    name: "",
+
+    version: "",
+
+    description: "",
+
+    authors: [],
+
+    license: "",
+
+    repository: "",
+
+    dependencies: [],
+
+    workspace_member: false,
+
+    valid: false
+  };
+}
+
+<<< ========================================================= >>>
+<<< Dependency resolution                                     >>>
+<<< ========================================================= >>>
+
+proc resolve_dependency(
+  dep: Dependency
+) -> PackageSpec {
+
+  give PackageSpec {
+    name: dep.name,
+
+    version: dep.version,
+
+    description:
+      "resolved dependency package",
+
+    authors: [],
+
+    license: "Apache-2.0",
+
+    repository:
+      "https://packages.vitte.dev/",
+
+    dependencies: [],
+
+    workspace_member: false,
+
+    valid:
+      dep.valid
+  };
+}
+
+proc resolve_dependencies(
+  pkg: PackageSpec
+) -> [PackageSpec] {
+
+  let resolved: [PackageSpec] = [];
+
+  let i: int = 0;
+
+  while i < pkg.dependencies.len {
+
+    set resolved =
+      resolved
+      + [
+          resolve_dependency(
+            pkg.dependencies[i]
+          )
+        ];
+
+    set i =
+      i + 1;
+  }
+
+  give resolved;
+}
+
+proc resolve_graph(
+  pkg: PackageSpec
+) -> ResolvedGraph {
+
+  let resolved: [PackageSpec] =
+    resolve_dependencies(pkg);
+
+  give ResolvedGraph {
+    root: pkg,
+
+    resolved: resolved,
+
+    package_count:
+      resolved.len + 1,
+
+    valid:
+      pkg.valid
+  };
+}
+
+proc dependency_exists(
+  pkg: PackageSpec,
+  dependency_name: string
+) -> bool {
+
+  let i: int = 0;
+
+  while i < pkg.dependencies.len {
+
+    if pkg.dependencies[i].name
+      == dependency_name {
+
+      give true;
+    }
+
+    set i =
+      i + 1;
+  }
+
+  give false;
+}
+
+<<< ========================================================= >>>
+<<< Cross compilation                                         >>>
+<<< ========================================================= >>>
+
+proc cross_target(
+  arch: string,
+  os: string,
+  vendor: string,
+  abi: string,
+  pointer_width: u64,
+  little_endian: bool,
+  tier: TargetTier
+) -> CrossTarget {
+
+  give CrossTarget {
+    arch: arch,
+
+    os: os,
+
+    vendor: vendor,
+
+    abi: abi,
+
+    triple:
+      arch
+      + "-"
+      + vendor
+      + "-"
+      + os
+      + "-"
+      + abi,
+
+    pointer_width: pointer_width,
+
+    little_endian: little_endian,
+
+    tier: tier,
+
+    supports_jit:
+      os != "none",
+
+    supports_threads:
+      os != "none",
+
+    valid:
+      arch != ""
+      and os != ""
+  };
 }
 
 proc cross_compile_targets() -> [CrossTarget] {
+
   give [
-    CrossTarget { arch: "x86_64", os: "linux", triple: "x86_64-unknown-linux-gnu" },
-    CrossTarget { arch: "arm64", os: "linux", triple: "aarch64-unknown-linux-gnu" },
-    CrossTarget { arch: "x86_64", os: "macos", triple: "x86_64-apple-darwin" },
-  ]
+
+    <<< --------------------------------------------------- >>>
+    <<< Linux                                               >>>
+    <<< --------------------------------------------------- >>>
+
+    cross_target(
+      "x86_64",
+      "linux",
+      "unknown",
+      "gnu",
+      64,
+      true,
+      TargetTier.Tier1
+    ),
+
+    cross_target(
+      "aarch64",
+      "linux",
+      "unknown",
+      "gnu",
+      64,
+      true,
+      TargetTier.Tier1
+    ),
+
+    cross_target(
+      "riscv64",
+      "linux",
+      "unknown",
+      "gnu",
+      64,
+      true,
+      TargetTier.Tier2
+    ),
+
+    cross_target(
+      "i386",
+      "linux",
+      "unknown",
+      "gnu",
+      32,
+      true,
+      TargetTier.Tier2
+    ),
+
+    <<< --------------------------------------------------- >>>
+    <<< Apple                                               >>>
+    <<< --------------------------------------------------- >>>
+
+    cross_target(
+      "x86_64",
+      "macos",
+      "apple",
+      "darwin",
+      64,
+      true,
+      TargetTier.Tier1
+    ),
+
+    cross_target(
+      "aarch64",
+      "macos",
+      "apple",
+      "darwin",
+      64,
+      true,
+      TargetTier.Tier1
+    ),
+
+    <<< --------------------------------------------------- >>>
+    <<< Windows                                             >>>
+    <<< --------------------------------------------------- >>>
+
+    cross_target(
+      "x86_64",
+      "windows",
+      "pc",
+      "msvc",
+      64,
+      true,
+      TargetTier.Tier1
+    ),
+
+    cross_target(
+      "i386",
+      "windows",
+      "pc",
+      "msvc",
+      32,
+      true,
+      TargetTier.Tier2
+    ),
+
+    <<< --------------------------------------------------- >>>
+    <<< Embedded                                            >>>
+    <<< --------------------------------------------------- >>>
+
+    cross_target(
+      "armv7",
+      "none",
+      "embedded",
+      "eabi",
+      32,
+      true,
+      TargetTier.Experimental
+    ),
+
+    cross_target(
+      "riscv64",
+      "none",
+      "embedded",
+      "elf",
+      64,
+      true,
+      TargetTier.Experimental
+    )
+  ];
+}
+
+proc find_target(
+  triple: string
+) -> CrossTarget {
+
+  let targets: [CrossTarget] =
+    cross_compile_targets();
+
+  let i: int = 0;
+
+  while i < targets.len {
+
+    if targets[i].triple
+      == triple {
+
+      give targets[i];
+    }
+
+    set i =
+      i + 1;
+  }
+
+  give cross_target(
+    "",
+    "",
+    "",
+    "",
+    0,
+    true,
+    TargetTier.Experimental
+  );
+}
+
+<<< ========================================================= >>>
+<<< Build cache                                               >>>
+<<< ========================================================= >>>
+
+proc build_cache_entry(
+  key: string,
+  artifact_path: string,
+  hash: string,
+  size_bytes: u64
+) -> BuildCacheEntry {
+
+  give BuildCacheEntry {
+    key: key,
+
+    artifact_path: artifact_path,
+
+    hash: hash,
+
+    size_bytes: size_bytes,
+
+    valid:
+      key != ""
+      and artifact_path != ""
+  };
+}
+
+proc default_build_cache() -> BuildCache {
+
+  give BuildCache {
+    enabled: true,
+
+    cache_directory:
+      ".vitte/cache",
+
+    entries: [],
+
+    max_size_bytes:
+      1024 * 1024 * 1024,
+
+    valid: true
+  };
 }
 
 proc build_cache_enabled() -> bool {
-  give true
+
+  give default_build_cache().enabled;
 }
+
+proc cache_entry_count(
+  cache: BuildCache
+) -> u64 {
+
+  give cache.entries.len;
+}
+
+proc cache_total_size(
+  cache: BuildCache
+) -> u64 {
+
+  let total: u64 = 0;
+
+  let i: int = 0;
+
+  while i < cache.entries.len {
+
+    set total =
+      total
+      + cache.entries[i].size_bytes;
+
+    set i =
+      i + 1;
+  }
+
+  give total;
+}
+
+<<< ========================================================= >>>
+<<< Incremental compilation                                   >>>
+<<< ========================================================= >>>
 
 proc incremental_compilation() -> bool {
-  give true
+  give true;
 }
 
-export *
+proc build_profile_name(
+  profile: BuildProfile
+) -> string {
+
+  if profile == BuildProfile.Debug {
+    give "debug";
+  }
+
+  if profile == BuildProfile.Release {
+    give "release";
+  }
+
+  if profile == BuildProfile.Benchmark {
+    give "benchmark";
+  }
+
+  if profile == BuildProfile.Sanitized {
+    give "sanitized";
+  }
+
+  give "unknown";
+}
+
+proc build_plan(
+  pkg: PackageSpec,
+  profile: BuildProfile,
+  target: CrossTarget
+) -> BuildPlan {
+
+  give BuildPlan {
+    package_name: pkg.name,
+
+    profile: profile,
+
+    target: target,
+
+    incremental:
+      incremental_compilation(),
+
+    cache_enabled:
+      build_cache_enabled(),
+
+    output_directory:
+      "target/"
+      + build_profile_name(profile)
+      + "/"
+      + target.triple,
+
+    valid:
+      pkg.valid
+      and target.valid
+  };
+}
+
+<<< ========================================================= >>>
+<<< Statistics                                                >>>
+<<< ========================================================= >>>
+
+proc package_summary(
+  pkg: PackageSpec
+) -> string {
+
+  give "package="
+    + pkg.name
+    + " version="
+    + pkg.version
+    + " deps="
+    + (pkg.dependencies.len as string)
+    + " valid="
+    + (pkg.valid as string);
+}
+
+proc target_summary(
+  target: CrossTarget
+) -> string {
+
+  give "triple="
+    + target.triple
+    + " ptr="
+    + (target.pointer_width as string)
+    + " tier="
+    + (target.tier as string)
+    + " jit="
+    + (target.supports_jit as string);
+}
+
+proc package_manager_version() -> string {
+  give "vitte-pkg-v2";
+}
+
+proc package_manager_selftest() -> bool {
+
+  let pkg: PackageSpec =
+    package_spec(
+      "demo",
+      "1.0.0",
+      [
+        dependency(
+          "core/io",
+          "1.0.0",
+          DependencyKind.Normal
+        )
+      ]
+    );
+
+  let graph: ResolvedGraph =
+    resolve_graph(pkg);
+
+  let target: CrossTarget =
+    find_target(
+      "x86_64-unknown-linux-gnu"
+    );
+
+  let plan: BuildPlan =
+    build_plan(
+      pkg,
+      BuildProfile.Debug,
+      target
+    );
+
+  give pkg.valid
+    and graph.valid
+    and target.valid
+    and plan.valid
+    and package_summary(pkg) != ""
+    and target_summary(target) != "";
+}

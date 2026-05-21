@@ -1,0 +1,528 @@
+/home/vincentr/Documents/GitHub/vitte/src/vitte/compiler/middle/hir/pretty.vit
+
+space vitte/compiler/middle/hir/pretty
+
+use vitte/compiler/middle/hir.hir.{
+  HirExpr,
+  HirExprKind,
+  HirItem,
+  HirItemKind,
+  HirModule,
+  HirStmt,
+  HirStmtKind,
+  HirUnit,
+  HirValueMode,
+  HirPlaceCategory,
+  SemanticDiagnostic,
+  SemanticSeverity,
+  hir_value_mode_name,
+  hir_place_category_name
+}
+
+export *
+
+const PRETTY_INDENT: string = "  "
+
+proc indent(depth: u64) -> string {
+  let out: string = ""
+
+  let i: u64 = 0
+
+  while i < depth {
+    set out = out + PRETTY_INDENT
+    set i = i + 1
+  }
+
+  give out
+}
+
+proc severity_name(severity: SemanticSeverity) -> string {
+  if severity == SemanticSeverity.Info { give "info" }
+  elif severity == SemanticSeverity.Warning { give "warning" }
+  elif severity == SemanticSeverity.Error { give "error" }
+  elif severity == SemanticSeverity.Fatal { give "fatal" }
+
+  give "unknown"
+}
+
+proc expr_kind_name(kind: HirExprKind) -> string {
+  if kind == HirExprKind.Name { give "name" }
+  elif kind == HirExprKind.Int { give "int" }
+  elif kind == HirExprKind.Float { give "float" }
+  elif kind == HirExprKind.Bool { give "bool" }
+  elif kind == HirExprKind.String { give "string" }
+  elif kind == HirExprKind.Char { give "char" }
+  elif kind == HirExprKind.Binary { give "binary" }
+  elif kind == HirExprKind.Unary { give "unary" }
+  elif kind == HirExprKind.Call { give "call" }
+  elif kind == HirExprKind.Index { give "index" }
+  elif kind == HirExprKind.Member { give "member" }
+  elif kind == HirExprKind.BorrowShared { give "borrow-shared" }
+  elif kind == HirExprKind.BorrowMut { give "borrow-mut" }
+  elif kind == HirExprKind.Deref { give "deref" }
+  elif kind == HirExprKind.If { give "if" }
+  elif kind == HirExprKind.Match { give "match" }
+  elif kind == HirExprKind.Block { give "block" }
+  elif kind == HirExprKind.Lambda { give "lambda" }
+  elif kind == HirExprKind.Struct { give "struct" }
+  elif kind == HirExprKind.Array { give "array" }
+  elif kind == HirExprKind.Tuple { give "tuple" }
+  elif kind == HirExprKind.Range { give "range" }
+  elif kind == HirExprKind.Cast { give "cast" }
+  elif kind == HirExprKind.Is { give "is" }
+  elif kind == HirExprKind.Try { give "try" }
+  elif kind == HirExprKind.Sizeof { give "sizeof" }
+  elif kind == HirExprKind.Alignof { give "alignof" }
+  elif kind == HirExprKind.Offsetof { give "offsetof" }
+  elif kind == HirExprKind.Typeof { give "typeof" }
+  elif kind == HirExprKind.Nameof { give "nameof" }
+
+  give "unknown"
+}
+
+proc stmt_kind_name(kind: HirStmtKind) -> string {
+  if kind == HirStmtKind.Const { give "const" }
+  elif kind == HirStmtKind.Let { give "let" }
+  elif kind == HirStmtKind.Set { give "set" }
+  elif kind == HirStmtKind.Give { give "give" }
+  elif kind == HirStmtKind.If { give "if" }
+  elif kind == HirStmtKind.While { give "while" }
+  elif kind == HirStmtKind.For { give "for" }
+  elif kind == HirStmtKind.Loop { give "loop" }
+  elif kind == HirStmtKind.Match { give "match" }
+  elif kind == HirStmtKind.When { give "when" }
+  elif kind == HirStmtKind.With { give "with" }
+  elif kind == HirStmtKind.Try { give "try" }
+  elif kind == HirStmtKind.Defer { give "defer" }
+  elif kind == HirStmtKind.Unsafe { give "unsafe" }
+  elif kind == HirStmtKind.Asm { give "asm" }
+  elif kind == HirStmtKind.Emit { give "emit" }
+  elif kind == HirStmtKind.Panic { give "panic" }
+  elif kind == HirStmtKind.Assert { give "assert" }
+  elif kind == HirStmtKind.Break { give "break" }
+  elif kind == HirStmtKind.Continue { give "continue" }
+  elif kind == HirStmtKind.Unreachable { give "unreachable" }
+  elif kind == HirStmtKind.Select { give "select" }
+  elif kind == HirStmtKind.Critical { give "critical" }
+  elif kind == HirStmtKind.StaticAssert { give "static-assert" }
+  elif kind == HirStmtKind.ExprStmt { give "expr-stmt" }
+
+  give "unknown"
+}
+
+proc item_kind_name(kind: HirItemKind) -> string {
+  if kind == HirItemKind.Space { give "space" }
+  elif kind == HirItemKind.Use { give "use" }
+  elif kind == HirItemKind.Export { give "export" }
+  elif kind == HirItemKind.Const { give "const" }
+  elif kind == HirItemKind.Static { give "static" }
+  elif kind == HirItemKind.Global { give "global" }
+  elif kind == HirItemKind.Type { give "type" }
+  elif kind == HirItemKind.Opaque { give "opaque" }
+  elif kind == HirItemKind.Extern { give "extern" }
+  elif kind == HirItemKind.Form { give "form" }
+  elif kind == HirItemKind.Class { give "class" }
+  elif kind == HirItemKind.Union { give "union" }
+  elif kind == HirItemKind.Bits { give "bits" }
+  elif kind == HirItemKind.Pick { give "pick" }
+  elif kind == HirItemKind.Flags { give "flags" }
+  elif kind == HirItemKind.Trait { give "trait" }
+  elif kind == HirItemKind.Impl { give "impl" }
+  elif kind == HirItemKind.Proc { give "proc" }
+  elif kind == HirItemKind.Intrinsic { give "intrinsic" }
+  elif kind == HirItemKind.Query { give "query" }
+  elif kind == HirItemKind.Compiler { give "compiler" }
+  elif kind == HirItemKind.Pass { give "pass" }
+  elif kind == HirItemKind.Backend { give "backend" }
+  elif kind == HirItemKind.Diagnostic { give "diagnostic" }
+  elif kind == HirItemKind.Macro { give "macro" }
+  elif kind == HirItemKind.Entry { give "entry" }
+  elif kind == HirItemKind.Test { give "test" }
+  elif kind == HirItemKind.Bench { give "bench" }
+  elif kind == HirItemKind.Comptime { give "comptime" }
+  elif kind == HirItemKind.StaticAssert { give "static-assert" }
+
+  give "unknown"
+}
+
+proc pretty_diagnostic(diag: SemanticDiagnostic, depth: u64) -> string {
+  give indent(depth)
+    + "["
+    + severity_name(diag.severity)
+    + "] "
+    + diag.code
+    + ": "
+    + diag.message
+}
+
+proc pretty_expr(expr: HirExpr, depth: u64) -> string {
+  let out: string =
+    indent(depth)
+    + "expr "
+    + expr_kind_name(expr.kind)
+    + " {"
+
+  let out1: string =
+    out
+    + "\n"
+    + indent(depth + 1)
+    + "id: "
+    + (expr.id as string)
+
+  let out2: string =
+    out1
+    + "\n"
+    + indent(depth + 1)
+    + "text: \""
+    + expr.text
+    + "\""
+
+  let out3: string =
+    out2
+    + "\n"
+    + indent(depth + 1)
+    + "type: "
+    + expr.inferred_type
+
+  let out4: string =
+    out3
+    + "\n"
+    + indent(depth + 1)
+    + "value_mode: "
+    + hir_value_mode_name(expr.value_mode)
+
+  let out5: string =
+    out4
+    + "\n"
+    + indent(depth + 1)
+    + "place_category: "
+    + hir_place_category_name(expr.place_category)
+
+  let out6: string =
+    out5
+    + "\n"
+    + indent(depth + 1)
+    + "copyable: "
+    + (expr.copyable as string)
+
+  let out7: string =
+    out6
+    + "\n"
+    + indent(depth + 1)
+    + "children: "
+    + (len(expr.children) as string)
+
+  let rendered: string =
+    out7
+
+  let i: u64 = 0
+
+  while i < len(expr.children) {
+    set rendered =
+      rendered
+      + "\n"
+      + pretty_expr(expr.children[i], depth + 1)
+
+    set i = i + 1
+  }
+
+  let d: u64 = 0
+
+  while d < len(expr.diagnostics) {
+    set rendered =
+      rendered
+      + "\n"
+      + pretty_diagnostic(expr.diagnostics[d], depth + 1)
+
+    set d = d + 1
+  }
+
+  give rendered
+    + "\n"
+    + indent(depth)
+    + "}"
+}
+
+proc pretty_stmt(stmt: HirStmt, depth: u64) -> string {
+  let out: string =
+    indent(depth)
+    + "stmt "
+    + stmt_kind_name(stmt.kind)
+    + " {"
+
+  let out1: string =
+    out
+    + "\n"
+    + indent(depth + 1)
+    + "id: "
+    + (stmt.id as string)
+
+  let out2: string =
+    out1
+    + "\n"
+    + indent(depth + 1)
+    + "name: \""
+    + stmt.name
+    + "\""
+
+  let out3: string =
+    out2
+    + "\n"
+    + indent(depth + 1)
+    + "scope_depth: "
+    + (stmt.scope_depth as string)
+
+  let out4: string =
+    out3
+    + "\n"
+    + indent(depth + 1)
+    + "mutable: "
+    + (stmt.mutable as string)
+
+  let rendered: string =
+    out4
+    + "\n"
+    + pretty_expr(stmt.expr, depth + 1)
+
+  let i: u64 = 0
+
+  while i < len(stmt.then_stmts) {
+    set rendered =
+      rendered
+      + "\n"
+      + pretty_stmt(stmt.then_stmts[i], depth + 1)
+
+    set i = i + 1
+  }
+
+  let j: u64 = 0
+
+  while j < len(stmt.else_stmts) {
+    set rendered =
+      rendered
+      + "\n"
+      + pretty_stmt(stmt.else_stmts[j], depth + 1)
+
+    set j = j + 1
+  }
+
+  let d: u64 = 0
+
+  while d < len(stmt.diagnostics) {
+    set rendered =
+      rendered
+      + "\n"
+      + pretty_diagnostic(stmt.diagnostics[d], depth + 1)
+
+    set d = d + 1
+  }
+
+  give rendered
+    + "\n"
+    + indent(depth)
+    + "}"
+}
+
+proc pretty_item(item: HirItem, depth: u64) -> string {
+  let out: string =
+    indent(depth)
+    + "item "
+    + item_kind_name(item.kind)
+    + " {"
+
+  let out1: string =
+    out
+    + "\n"
+    + indent(depth + 1)
+    + "name: \""
+    + item.name
+    + "\""
+
+  let out2: string =
+    out1
+    + "\n"
+    + indent(depth + 1)
+    + "visibility: "
+    + item.visibility
+
+  let out3: string =
+    out2
+    + "\n"
+    + indent(depth + 1)
+    + "namespace: "
+    + item.namespace
+
+  let rendered: string =
+    out3
+
+  if item.expr.valid {
+    set rendered =
+      rendered
+      + "\n"
+      + pretty_expr(item.expr, depth + 1)
+  }
+
+  let i: u64 = 0
+
+  while i < len(item.stmts) {
+    set rendered =
+      rendered
+      + "\n"
+      + pretty_stmt(item.stmts[i], depth + 1)
+
+    set i = i + 1
+  }
+
+  let d: u64 = 0
+
+  while d < len(item.diagnostics) {
+    set rendered =
+      rendered
+      + "\n"
+      + pretty_diagnostic(item.diagnostics[d], depth + 1)
+
+    set d = d + 1
+  }
+
+  give rendered
+    + "\n"
+    + indent(depth)
+    + "}"
+}
+
+proc pretty_module(module: HirModule) -> string {
+  let out: string =
+    "module {\n"
+    + indent(1)
+    + "name: \""
+    + module.name
+    + "\"\n"
+    + indent(1)
+    + "items: "
+    + (len(module.items) as string)
+
+  let rendered: string =
+    out
+
+  let i: u64 = 0
+
+  while i < len(module.items) {
+    set rendered =
+      rendered
+      + "\n"
+      + pretty_item(module.items[i], 1)
+
+    set i = i + 1
+  }
+
+  give rendered
+    + "\n}"
+}
+
+proc pretty_unit(unit: HirUnit) -> string {
+  let out: string =
+    "hir-unit {\n"
+    + indent(1)
+    + "source_path: \""
+    + unit.source_path
+    + "\"\n"
+    + indent(1)
+    + "nodes: "
+    + (unit.node_count as string)
+    + "\n"
+    + indent(1)
+    + "symbols: "
+    + (unit.symbol_count as string)
+    + "\n"
+    + indent(1)
+    + "scopes: "
+    + (unit.scope_count as string)
+    + "\n"
+    + indent(1)
+    + "exprs: "
+    + (unit.expr_count as string)
+    + "\n"
+    + indent(1)
+    + "stmts: "
+    + (unit.stmt_count as string)
+    + "\n"
+    + indent(1)
+    + "items: "
+    + (unit.item_count as string)
+    + "\n"
+    + indent(1)
+    + "valid: "
+    + (unit.valid as string)
+
+  give out
+    + "\n"
+    + pretty_module(unit.module)
+    + "\n}"
+}
+
+proc pretty_expr_inline(expr: HirExpr) -> string {
+  give expr_kind_name(expr.kind)
+    + "("
+    + expr.text
+    + ": "
+    + expr.inferred_type
+    + ")"
+}
+
+proc pretty_stmt_inline(stmt: HirStmt) -> string {
+  give stmt_kind_name(stmt.kind)
+    + "("
+    + stmt.name
+    + ")"
+}
+
+proc pretty_item_inline(item: HirItem) -> string {
+  give item_kind_name(item.kind)
+    + "("
+    + item.name
+    + ")"
+}
+
+proc pretty_summary(unit: HirUnit) -> string {
+  give "items="
+    + (unit.item_count as string)
+    + " exprs="
+    + (unit.expr_count as string)
+    + " stmts="
+    + (unit.stmt_count as string)
+    + " symbols="
+    + (unit.symbol_count as string)
+    + " valid="
+    + (unit.valid as string)
+}
+
+proc pretty_selftest() -> bool {
+  let rendered: string =
+    pretty_summary(
+      HirUnit {
+        source_path: "demo.vit",
+        module: HirModule {
+          name: "demo",
+          items: [],
+          diagnostics: [],
+          dependency_count: 0,
+          symbol_count: 0,
+          valid: true
+        },
+        node_count: 0,
+        symbol_count: 0,
+        scope_count: 0,
+        expr_count: 0,
+        stmt_count: 0,
+        item_count: 0,
+        lowered: true,
+        analyzed: true,
+        valid: true
+      }
+    )
+
+  give rendered != ""
+    and expr_kind_name(HirExprKind.Int) == "int"
+    and stmt_kind_name(HirStmtKind.Let) == "let"
+    and item_kind_name(HirItemKind.Proc) == "proc"
+}

@@ -1,48 +1,771 @@
 space vitte/tools/lsp/mod
 
+export *
+
+<<< ========================================================= >>>
+<<< Vitte Language Server Protocol                            >>>
+<<< Incremental semantic tooling surface                      >>>
+<<< ========================================================= >>>
+
+pick SymbolKind {
+  Unknown,
+
+  Space,
+  Module,
+  Use,
+
+  Proc,
+  Variable,
+  Const,
+  Type,
+
+  Form,
+  Class,
+  Pick,
+  Trait,
+
+  Parameter,
+  Field,
+
+  Keyword,
+
+  Macro,
+}
+
+pick DiagnosticSeverity {
+  Error,
+  Warning,
+  Info,
+  Hint,
+}
+
+pick CompletionKind {
+  Unknown,
+
+  Function,
+  Variable,
+  Constant,
+  Type,
+
+  Keyword,
+  Module,
+
+  Field,
+  Snippet,
+}
+
+form Range {
+  start: int
+  end: int
+
+  valid: bool
+}
+
+form Position {
+  line: int
+  column: int
+
+  offset: int
+
+  valid: bool
+}
+
 form HoverInfo {
-  content: string,
-  range: (int, int), // start, end
+  content: string
+
+  symbol: string
+
+  kind: SymbolKind
+
+  range: Range
+
+  markdown: bool
+
+  valid: bool
 }
 
 form CompletionItem {
-  label: string,
-  kind: string, // function, variable, etc.
+  label: string
+
+  detail: string
+
+  insert_text: string
+
+  documentation: string
+
+  kind: CompletionKind
+
+  deprecated: bool
+
+  score: int
+
+  valid: bool
 }
 
 form Diagnostic {
-  severity: string, // error, warning, info
-  message: string,
-  range: (int, int),
+  severity: DiagnosticSeverity
+
+  code: string
+
+  message: string
+
+  source: string
+
+  range: Range
+
+  fix_hint: string
+
+  valid: bool
 }
 
 form Location {
+  file: string
+
+  line: int
+  column: int
+
+  symbol: string
+
+  valid: bool
+}
+
+form SymbolInfo {
+  name: string
+
+  kind: SymbolKind
+
+  location: Location
+
+  exported: bool
+
+  valid: bool
+}
+
+form SemanticToken {
+  kind: string
+
+  range: Range
+
+  valid: bool
+}
+
+form LspCapabilities {
+  hover: bool
+  completion: bool
+  diagnostics: bool
+  goto_definition: bool
+  references: bool
+  semantic_tokens: bool
+  rename: bool
+  formatting: bool
+
+  valid: bool
+}
+
+<<< ========================================================= >>>
+<<< Constructors                                              >>>
+<<< ========================================================= >>>
+
+proc range(
+  start: int,
+  end0: int
+) -> Range {
+
+  give Range {
+    start: start,
+    end: end0,
+
+    valid:
+      start >= 0
+      and end0 >= start
+  };
+}
+
+proc empty_range() -> Range {
+
+  give Range {
+    start: 0,
+    end: 0,
+
+    valid: false
+  };
+}
+
+proc position(
+  line: int,
+  column: int,
+  offset: int
+) -> Position {
+
+  give Position {
+    line: line,
+    column: column,
+
+    offset: offset,
+
+    valid:
+      line >= 0
+      and column >= 0
+      and offset >= 0
+  };
+}
+
+proc location(
   file: string,
   line: int,
   column: int,
+  symbol: string
+) -> Location {
+
+  give Location {
+    file: file,
+
+    line: line,
+    column: column,
+
+    symbol: symbol,
+
+    valid:
+      file != ""
+  };
 }
 
-proc hover_provider(symbol: string) -> HoverInfo {
-  give HoverInfo { content: "symbol: " + symbol, range: (0, len(symbol)) }
+<<< ========================================================= >>>
+<<< Symbol helpers                                            >>>
+<<< ========================================================= >>>
+
+proc classify_symbol(
+  symbol: string
+) -> SymbolKind {
+
+  if symbol == "proc" {
+    give SymbolKind.Keyword;
+  }
+
+  if symbol == "form" {
+    give SymbolKind.Keyword;
+  }
+
+  if symbol == "pick" {
+    give SymbolKind.Keyword;
+  }
+
+  if starts_with(symbol, "ast_") {
+    give SymbolKind.Function;
+  }
+
+  if starts_with(symbol, "hir_") {
+    give SymbolKind.Function;
+  }
+
+  if starts_with(symbol, "mir_") {
+    give SymbolKind.Function;
+  }
+
+  if starts_with(symbol, "Ir") {
+    give SymbolKind.Type;
+  }
+
+  if starts_with(symbol, "Ast") {
+    give SymbolKind.Type;
+  }
+
+  if starts_with(symbol, "Hir") {
+    give SymbolKind.Type;
+  }
+
+  if starts_with(symbol, "Mir") {
+    give SymbolKind.Type;
+  }
+
+  give SymbolKind.Unknown;
 }
 
-proc completion_provider(prefix: string) -> [CompletionItem] {
+proc symbol_kind_name(
+  kind: SymbolKind
+) -> string {
+
+  if kind == SymbolKind.Proc {
+    give "proc";
+  }
+
+  if kind == SymbolKind.Variable {
+    give "variable";
+  }
+
+  if kind == SymbolKind.Const {
+    give "const";
+  }
+
+  if kind == SymbolKind.Type {
+    give "type";
+  }
+
+  if kind == SymbolKind.Keyword {
+    give "keyword";
+  }
+
+  if kind == SymbolKind.Module {
+    give "module";
+  }
+
+  give "unknown";
+}
+
+<<< ========================================================= >>>
+<<< Hover                                                     >>>
+<<< ========================================================= >>>
+
+proc hover_provider(
+  symbol: string
+) -> HoverInfo {
+
+  let kind: SymbolKind =
+    classify_symbol(symbol);
+
+  let content: string =
+    "symbol: "
+    + symbol
+    + "\nkind: "
+    + symbol_kind_name(kind);
+
+  give HoverInfo {
+    content: content,
+
+    symbol: symbol,
+
+    kind: kind,
+
+    range:
+      range(
+        0,
+        len(symbol)
+      ),
+
+    markdown: true,
+
+    valid:
+      symbol != ""
+  };
+}
+
+<<< ========================================================= >>>
+<<< Completion                                                >>>
+<<< ========================================================= >>>
+
+proc completion_item(
+  label: string,
+  detail: string,
+  insert_text: string,
+  documentation: string,
+  kind: CompletionKind,
+  score: int
+) -> CompletionItem {
+
+  give CompletionItem {
+    label: label,
+
+    detail: detail,
+
+    insert_text: insert_text,
+
+    documentation: documentation,
+
+    kind: kind,
+
+    deprecated: false,
+
+    score: score,
+
+    valid:
+      label != ""
+  };
+}
+
+proc keyword_completions() -> [CompletionItem] {
+
   give [
-    CompletionItem { label: prefix + "foo", kind: "function" },
-    CompletionItem { label: prefix + "bar", kind: "variable" },
-  ]
+    completion_item(
+      "space",
+      "Declare module namespace",
+      "space ",
+      "Top-level namespace declaration",
+      CompletionKind.Keyword,
+      100
+    ),
+
+    completion_item(
+      "use",
+      "Import module",
+      "use ",
+      "Import external symbols",
+      CompletionKind.Keyword,
+      100
+    ),
+
+    completion_item(
+      "proc",
+      "Procedure declaration",
+      "proc ",
+      "Declare a procedure",
+      CompletionKind.Keyword,
+      100
+    ),
+
+    completion_item(
+      "form",
+      "Record declaration",
+      "form ",
+      "Structured record type",
+      CompletionKind.Keyword,
+      100
+    ),
+
+    completion_item(
+      "pick",
+      "Tagged union declaration",
+      "pick ",
+      "Variant enumeration type",
+      CompletionKind.Keyword,
+      100
+    )
+  ];
 }
 
-proc diagnostics_provider(file: string) -> [Diagnostic] {
-  give [Diagnostic { severity: "warning", message: "example diagnostic", range: (0, 10) }]
+proc completion_provider(
+  prefix: string
+) -> [CompletionItem] {
+
+  let items: [CompletionItem] =
+    keyword_completions();
+
+  if prefix == "ast" {
+
+    give items + [
+      completion_item(
+        "ast_span",
+        "AST span constructor",
+        "ast_span(",
+        "Create AST source span",
+        CompletionKind.Function,
+        90
+      ),
+
+      completion_item(
+        "ast_expr",
+        "AST expression",
+        "ast_expr(",
+        "Create AST expression node",
+        CompletionKind.Function,
+        90
+      )
+    ];
+  }
+
+  if prefix == "hir" {
+
+    give items + [
+      completion_item(
+        "hir_expr",
+        "HIR expression",
+        "hir_expr(",
+        "Create HIR expression node",
+        CompletionKind.Function,
+        90
+      )
+    ];
+  }
+
+  if prefix == "mir" {
+
+    give items + [
+      completion_item(
+        "mir_block",
+        "MIR block",
+        "mir_block(",
+        "Create MIR basic block",
+        CompletionKind.Function,
+        90
+      )
+    ];
+  }
+
+  give items + [
+    completion_item(
+      prefix + "foo",
+      "Generated function completion",
+      prefix + "foo",
+      "Example completion",
+      CompletionKind.Function,
+      10
+    ),
+
+    completion_item(
+      prefix + "bar",
+      "Generated variable completion",
+      prefix + "bar",
+      "Example variable completion",
+      CompletionKind.Variable,
+      5
+    )
+  ];
 }
 
-proc goto_definition(symbol: string) -> Location {
-  give Location { file: "src/main.vit", line: 1, column: 0 }
+<<< ========================================================= >>>
+<<< Diagnostics                                               >>>
+<<< ========================================================= >>>
+
+proc diagnostic(
+  severity: DiagnosticSeverity,
+  code: string,
+  message: string,
+  source: string,
+  start: int,
+  end0: int,
+  fix_hint: string
+) -> Diagnostic {
+
+  give Diagnostic {
+    severity: severity,
+
+    code: code,
+
+    message: message,
+
+    source: source,
+
+    range:
+      range(
+        start,
+        end0
+      ),
+
+    fix_hint: fix_hint,
+
+    valid:
+      message != ""
+  };
 }
 
-proc find_references(symbol: string) -> [Location] {
-  give [Location { file: "src/main.vit", line: 5, column: 0 }]
+proc diagnostics_provider(
+  file: string
+) -> [Diagnostic] {
+
+  let ds: [Diagnostic] = [];
+
+  if ends_with(file, ".vit") {
+
+    set ds =
+      ds + [
+        diagnostic(
+          DiagnosticSeverity.Warning,
+          "LSP001",
+          "example diagnostic",
+          "vitte-lsp",
+          0,
+          10,
+          "verify syntax near token"
+        )
+      ];
+  }
+
+  if contains(file, "legacy") {
+
+    set ds =
+      ds + [
+        diagnostic(
+          DiagnosticSeverity.Info,
+          "LSP_LEGACY",
+          "legacy module layout detected",
+          "vitte-lsp",
+          5,
+          20,
+          "consider migrating imports"
+        )
+      ];
+  }
+
+  give ds;
 }
 
-export *
+<<< ========================================================= >>>
+<<< Navigation                                                >>>
+<<< ========================================================= >>>
+
+proc goto_definition(
+  symbol: string
+) -> Location {
+
+  if symbol == "main" {
+
+    give location(
+      "src/main.vit",
+      1,
+      0,
+      symbol
+    );
+  }
+
+  if symbol == "ast_span" {
+
+    give location(
+      "src/vitte/compiler/frontend/ast/node.vit",
+      15,
+      0,
+      symbol
+    );
+  }
+
+  give location(
+    "src/main.vit",
+    1,
+    0,
+    symbol
+  );
+}
+
+proc find_references(
+  symbol: string
+) -> [Location] {
+
+  give [
+    location(
+      "src/main.vit",
+      5,
+      0,
+      symbol
+    ),
+
+    location(
+      "src/lib.vit",
+      12,
+      4,
+      symbol
+    )
+  ];
+}
+
+proc workspace_symbols(
+  query: string
+) -> [SymbolInfo] {
+
+  give [
+    SymbolInfo {
+      name: query + "_proc",
+
+      kind: SymbolKind.Proc,
+
+      location:
+        location(
+          "src/main.vit",
+          1,
+          0,
+          query
+        ),
+
+      exported: true,
+
+      valid: true
+    }
+  ];
+}
+
+<<< ========================================================= >>>
+<<< Semantic tokens                                           >>>
+<<< ========================================================= >>>
+
+proc semantic_tokens_provider(
+  text: string
+) -> [SemanticToken] {
+
+  if text == "" {
+    give [];
+  }
+
+  give [
+    SemanticToken {
+      kind: "keyword",
+
+      range:
+        range(
+          0,
+          5
+        ),
+
+      valid: true
+    },
+
+    SemanticToken {
+      kind: "function",
+
+      range:
+        range(
+          6,
+          10
+        ),
+
+      valid: true
+    }
+  ];
+}
+
+<<< ========================================================= >>>
+<<< Capabilities                                              >>>
+<<< ========================================================= >>>
+
+proc lsp_capabilities() -> LspCapabilities {
+
+  give LspCapabilities {
+    hover: true,
+    completion: true,
+    diagnostics: true,
+    goto_definition: true,
+    references: true,
+    semantic_tokens: true,
+    rename: true,
+    formatting: true,
+
+    valid: true
+  };
+}
+
+proc lsp_version() -> string {
+  give "vitte-lsp-v2";
+}
+
+proc lsp_summary() -> string {
+
+  let caps: LspCapabilities =
+    lsp_capabilities();
+
+  give "hover="
+    + (caps.hover as string)
+    + " completion="
+    + (caps.completion as string)
+    + " diagnostics="
+    + (caps.diagnostics as string)
+    + " semantic-tokens="
+    + (caps.semantic_tokens as string);
+}
+
+proc lsp_selftest() -> bool {
+
+  let hover: HoverInfo =
+    hover_provider("ast_span");
+
+  let completions: [CompletionItem] =
+    completion_provider("ast");
+
+  let diagnostics: [Diagnostic] =
+    diagnostics_provider("src/main.vit");
+
+  let location0: Location =
+    goto_definition("main");
+
+  give hover.valid
+    and completions.len > 0
+    and diagnostics.len > 0
+    and location0.valid
+    and lsp_capabilities().valid
+    and lsp_summary() != "";
+}

@@ -1,7 +1,308 @@
 space vitte/compiler/backend/ir
 
-use vitte/compiler/backend/ir/ir.{ IrBlock }
+use vitte/compiler/backend/ir/ir.{
+    IrBlock,
+    IrInstruction,
+    IrInstructionKind
+}
+
+pick IrBlockFlowKind {
+    Empty
+    Linear
+    Branch
+    Loop
+    Return
+    Unreachable
+}
+
+form IrBlockStats {
+    instruction_count: u64
+    phi_count: u64
+    terminator_count: u64
+    call_count: u64
+    memory_op_count: u64
+    arithmetic_count: u64
+    compare_count: u64
+    control_flow_count: u64
+    valid: bool
+}
 
 proc block_instruction_count(block: IrBlock) -> u64 {
-  give len(block.instructions);
+    give len(block.instructions);
 }
+
+proc block_is_empty(block: IrBlock) -> bool {
+    give block_instruction_count(block) == 0;
+}
+
+proc instruction_is_terminator(kind: IrInstructionKind) -> bool {
+    give kind == IrInstructionKind.Branch
+        or kind == IrInstructionKind.CondBranch
+        or kind == IrInstructionKind.Return
+        or kind == IrInstructionKind.Unreachable;
+}
+
+proc instruction_is_memory(kind: IrInstructionKind) -> bool {
+    give kind == IrInstructionKind.Load
+        or kind == IrInstructionKind.Store
+        or kind == IrInstructionKind.Alloca
+        or kind == IrInstructionKind.AddressOf;
+}
+
+proc instruction_is_arithmetic(kind: IrInstructionKind) -> bool {
+    give kind == IrInstructionKind.Add
+        or kind == IrInstructionKind.Sub
+        or kind == IrInstructionKind.Mul
+        or kind == IrInstructionKind.Div
+        or kind == IrInstructionKind.Rem;
+}
+
+proc instruction_is_compare(kind: IrInstructionKind) -> bool {
+    give kind == IrInstructionKind.CmpEq
+        or kind == IrInstructionKind.CmpNe
+        or kind == IrInstructionKind.CmpLt
+        or kind == IrInstructionKind.CmpLe
+        or kind == IrInstructionKind.CmpGt
+        or kind == IrInstructionKind.CmpGe;
+}
+
+proc instruction_is_control_flow(kind: IrInstructionKind) -> bool {
+    give instruction_is_terminator(kind)
+        or kind == IrInstructionKind.Phi;
+}
+
+proc block_phi_count(block: IrBlock) -> u64 {
+    let count: u64 = 0;
+    let i: u64 = 0;
+
+    while i < len(block.instructions) {
+        if block.instructions[i].kind == IrInstructionKind.Phi {
+            set count = count + 1;
+        }
+
+        set i = i + 1;
+    }
+
+    give count;
+}
+
+proc block_terminator_count(block: IrBlock) -> u64 {
+    let count: u64 = 0;
+    let i: u64 = 0;
+
+    while i < len(block.instructions) {
+        if instruction_is_terminator(
+            block.instructions[i].kind
+        ) {
+            set count = count + 1;
+        }
+
+        set i = i + 1;
+    }
+
+    give count;
+}
+
+proc block_call_count(block: IrBlock) -> u64 {
+    let count: u64 = 0;
+    let i: u64 = 0;
+
+    while i < len(block.instructions) {
+        if block.instructions[i].kind == IrInstructionKind.Call {
+            set count = count + 1;
+        }
+
+        set i = i + 1;
+    }
+
+    give count;
+}
+
+proc block_memory_op_count(block: IrBlock) -> u64 {
+    let count: u64 = 0;
+    let i: u64 = 0;
+
+    while i < len(block.instructions) {
+        if instruction_is_memory(
+            block.instructions[i].kind
+        ) {
+            set count = count + 1;
+        }
+
+        set i = i + 1;
+    }
+
+    give count;
+}
+
+proc block_arithmetic_count(block: IrBlock) -> u64 {
+    let count: u64 = 0;
+    let i: u64 = 0;
+
+    while i < len(block.instructions) {
+        if instruction_is_arithmetic(
+            block.instructions[i].kind
+        ) {
+            set count = count + 1;
+        }
+
+        set i = i + 1;
+    }
+
+    give count;
+}
+
+proc block_compare_count(block: IrBlock) -> u64 {
+    let count: u64 = 0;
+    let i: u64 = 0;
+
+    while i < len(block.instructions) {
+        if instruction_is_compare(
+            block.instructions[i].kind
+        ) {
+            set count = count + 1;
+        }
+
+        set i = i + 1;
+    }
+
+    give count;
+}
+
+proc block_control_flow_count(block: IrBlock) -> u64 {
+    let count: u64 = 0;
+    let i: u64 = 0;
+
+    while i < len(block.instructions) {
+        if instruction_is_control_flow(
+            block.instructions[i].kind
+        ) {
+            set count = count + 1;
+        }
+
+        set i = i + 1;
+    }
+
+    give count;
+}
+
+proc block_has_terminator(block: IrBlock) -> bool {
+    give block_terminator_count(block) > 0;
+}
+
+proc block_last_instruction(block: IrBlock) -> IrInstruction {
+    if len(block.instructions) == 0 {
+        give IrInstruction {};
+    }
+
+    give block.instructions[
+        len(block.instructions) - 1
+    ];
+}
+
+proc block_flow_kind(block: IrBlock) -> IrBlockFlowKind {
+    if block_is_empty(block) {
+        give IrBlockFlowKind.Empty;
+    }
+
+    let last: IrInstruction =
+        block_last_instruction(block);
+
+    if last.kind == IrInstructionKind.Return {
+        give IrBlockFlowKind.Return;
+    }
+
+    if last.kind == IrInstructionKind.Unreachable {
+        give IrBlockFlowKind.Unreachable;
+    }
+
+    if last.kind == IrInstructionKind.Branch
+        or last.kind == IrInstructionKind.CondBranch {
+
+        give IrBlockFlowKind.Branch;
+    }
+
+    if last.kind == IrInstructionKind.Loop {
+        give IrBlockFlowKind.Loop;
+    }
+
+    give IrBlockFlowKind.Linear;
+}
+
+proc block_stats(block: IrBlock) -> IrBlockStats {
+    let instruction_count: u64 =
+        block_instruction_count(block);
+
+    let phi_count: u64 =
+        block_phi_count(block);
+
+    let terminator_count: u64 =
+        block_terminator_count(block);
+
+    let call_count: u64 =
+        block_call_count(block);
+
+    let memory_op_count: u64 =
+        block_memory_op_count(block);
+
+    let arithmetic_count: u64 =
+        block_arithmetic_count(block);
+
+    let compare_count: u64 =
+        block_compare_count(block);
+
+    let control_flow_count: u64 =
+        block_control_flow_count(block);
+
+    give IrBlockStats {
+        instruction_count: instruction_count,
+        phi_count: phi_count,
+        terminator_count: terminator_count,
+        call_count: call_count,
+        memory_op_count: memory_op_count,
+        arithmetic_count: arithmetic_count,
+        compare_count: compare_count,
+        control_flow_count: control_flow_count,
+        valid: terminator_count <= 1
+    };
+}
+
+proc block_summary(block: IrBlock) -> string {
+    let stats: IrBlockStats =
+        block_stats(block);
+
+    give "instructions=" +
+        (stats.instruction_count as string) +
+        " phi=" +
+        (stats.phi_count as string) +
+        " terminators=" +
+        (stats.terminator_count as string) +
+        " calls=" +
+        (stats.call_count as string);
+}
+
+share IrBlockFlowKind
+share IrBlockStats
+
+share block_instruction_count
+share block_is_empty
+
+share instruction_is_terminator
+share instruction_is_memory
+share instruction_is_arithmetic
+share instruction_is_compare
+share instruction_is_control_flow
+
+share block_phi_count
+share block_terminator_count
+share block_call_count
+share block_memory_op_count
+share block_arithmetic_count
+share block_compare_count
+share block_control_flow_count
+
+share block_has_terminator
+share block_last_instruction
+share block_flow_kind
+share block_stats
+share block_summary

@@ -1,10 +1,39 @@
 space vitte/compiler/frontend/ast/item
 
-use vitte/compiler/frontend/ast/node.{ AstId, AstSpan, ast_id, ast_span_empty }
-use vitte/compiler/frontend/ast/expr.{ AstExpr, ast_expr_unknown, count_expr }
-use vitte/compiler/frontend/ast/pattern.{ AstPattern, ast_pattern_empty }
-use vitte/compiler/frontend/ast/stmt.{ AstStmt, count_stmt_exprs, count_stmt_patterns, count_stmt_tree, count_stmt_types }
-use vitte/compiler/frontend/ast/type_expr.{ AstTypeExpr, ast_type_empty }
+use vitte/compiler/frontend/ast/node.{
+  AstId,
+  AstSpan,
+  ast_id,
+  ast_span_empty
+}
+
+use vitte/compiler/frontend/ast/expr.{
+  AstExpr,
+  ast_expr_empty,
+  ast_expr_unknown,
+  count_expr,
+  expr_depth
+}
+
+use vitte/compiler/frontend/ast/pattern.{
+  AstPattern,
+  ast_pattern_empty
+}
+
+use vitte/compiler/frontend/ast/stmt.{
+  AstStmt,
+  count_stmt_exprs,
+  count_stmt_patterns,
+  count_stmt_tree,
+  count_stmt_types
+}
+
+use vitte/compiler/frontend/ast/type_expr.{
+  AstTypeExpr,
+  ast_type_empty
+}
+
+export *
 
 pick AstItemKind {
   Unknown,
@@ -43,70 +72,137 @@ pick AstItemKind {
 form AstGenericParam {
   id: AstId
   span: AstSpan
+
   kind: string
   name: string
+
   bound: AstTypeExpr
   default_type: AstTypeExpr
+
+  variance: string
+  inferred: bool
+
   valid: bool
 }
 
 form AstParam {
   id: AstId
   span: AstSpan
+
   pattern: AstPattern
   annotation: AstTypeExpr
   default_value: AstExpr
+
   mode: string
+
+  mutable: bool
+  borrowed: bool
   variadic: bool
+
   valid: bool
 }
 
 form AstProcSignature {
   id: AstId
   span: AstSpan
+
   name: string
   abi: string
+
   params: [AstParam]
   return_type: AstTypeExpr
+
   generic_params: [AstGenericParam]
+
   where_clauses: [string]
   effects: [string]
   requires: [string]
+  attributes: [string]
+
+  async: bool
+  unsafe: bool
+  variadic: bool
   noexcept: bool
+
   valid: bool
 }
 
 form AstItem {
   id: AstId
   span: AstSpan
+
   kind: AstItemKind
+
   name: string
+
   attributes: [string]
+
   namespace: string
   visibility: string
+
   modifiers: [string]
+
   abi: string
+
   expr: AstExpr
   stmts: [AstStmt]
+
   annotation: AstTypeExpr
   target_type: AstTypeExpr
+
   type_params: [AstTypeExpr]
   generic_params: [AstGenericParam]
+
   signature: AstProcSignature
+
   meta_args: [string]
+
+  imported_symbols: [string]
+  exported_symbols: [string]
+
   message: string
+
+  async: bool
+  unsafe: bool
+  external: bool
+  comptime: bool
+
+  node_count: u64
+  stmt_count: u64
+  expr_count: u64
+  type_count: u64
+  pattern_count: u64
+
   valid: bool
 }
 
 form AstModule {
   id: AstId
   span: AstSpan
+
   kind: string
+
+  name: string
+
   items: [AstItem]
+
+  expr_count: u64
+  stmt_count: u64
+  type_count: u64
+  pattern_count: u64
+
   valid: bool
 }
 
-proc ast_generic_param(id: u64, span: AstSpan, kind: string, name: string, bound: AstTypeExpr, default_type: AstTypeExpr) -> AstGenericParam {
+proc ast_generic_param(
+  id: u64,
+  span: AstSpan,
+  kind: string,
+  name: string,
+  bound: AstTypeExpr,
+  default_type: AstTypeExpr
+) -> AstGenericParam {
+
   give AstGenericParam {
     id: ast_id(id),
     span: span,
@@ -114,6 +210,8 @@ proc ast_generic_param(id: u64, span: AstSpan, kind: string, name: string, bound
     name: name,
     bound: bound,
     default_type: default_type,
+    variance: "invariant",
+    inferred: false,
     valid: name != ""
   };
 }
@@ -126,11 +224,22 @@ proc ast_generic_param_empty() -> AstGenericParam {
     name: "",
     bound: ast_type_empty(),
     default_type: ast_type_empty(),
+    variance: "",
+    inferred: false,
     valid: false
   };
 }
 
-proc ast_param(id: u64, span: AstSpan, pattern: AstPattern, annotation: AstTypeExpr, default_value: AstExpr, mode: string, variadic: bool) -> AstParam {
+proc ast_param(
+  id: u64,
+  span: AstSpan,
+  pattern: AstPattern,
+  annotation: AstTypeExpr,
+  default_value: AstExpr,
+  mode: string,
+  variadic: bool
+) -> AstParam {
+
   give AstParam {
     id: ast_id(id),
     span: span,
@@ -138,6 +247,8 @@ proc ast_param(id: u64, span: AstSpan, pattern: AstPattern, annotation: AstTypeE
     annotation: annotation,
     default_value: default_value,
     mode: mode,
+    mutable: mode == "mut",
+    borrowed: mode == "borrow",
     variadic: variadic,
     valid: pattern.valid or variadic
   };
@@ -149,14 +260,29 @@ proc ast_param_empty() -> AstParam {
     span: ast_span_empty(),
     pattern: ast_pattern_empty(),
     annotation: ast_type_empty(),
-    default_value: ast_expr_unknown(0, ast_span_empty(), ""),
+    default_value: ast_expr_empty(),
     mode: "",
+    mutable: false,
+    borrowed: false,
     variadic: false,
     valid: false
   };
 }
 
-proc ast_proc_signature(id: u64, span: AstSpan, name: string, abi: string, params: [AstParam], return_type: AstTypeExpr, generic_params: [AstGenericParam], where_clauses: [string], effects: [string], requires: [string], noexcept: bool) -> AstProcSignature {
+proc ast_proc_signature(
+  id: u64,
+  span: AstSpan,
+  name: string,
+  abi: string,
+  params: [AstParam],
+  return_type: AstTypeExpr,
+  generic_params: [AstGenericParam],
+  where_clauses: [string],
+  effects: [string],
+  requires: [string],
+  noexcept: bool
+) -> AstProcSignature {
+
   give AstProcSignature {
     id: ast_id(id),
     span: span,
@@ -168,6 +294,10 @@ proc ast_proc_signature(id: u64, span: AstSpan, name: string, abi: string, param
     where_clauses: where_clauses,
     effects: effects,
     requires: requires,
+    attributes: [],
+    async: false,
+    unsafe: false,
+    variadic: false,
     noexcept: noexcept,
     valid: name != ""
   };
@@ -185,23 +315,113 @@ proc ast_proc_signature_empty() -> AstProcSignature {
     where_clauses: [],
     effects: [],
     requires: [],
+    attributes: [],
+    async: false,
+    unsafe: false,
+    variadic: false,
     noexcept: false,
     valid: false
   };
 }
 
-proc ast_item_create(id: u64, span: AstSpan, kind: AstItemKind, name: string, expr: AstExpr, stmts: [AstStmt], annotation: AstTypeExpr, message: string) -> AstItem {
-  give ast_item_typed(id, span, kind, name, [], "", "private", [], "", expr, stmts, annotation, ast_type_empty(), [], [], ast_proc_signature_empty(), [], message);
+proc ast_item_kind_name(kind: AstItemKind) -> string {
+  if kind == AstItemKind.Unknown { give "unknown"; }
+  elif kind == AstItemKind.Space { give "space"; }
+  elif kind == AstItemKind.Use { give "use"; }
+  elif kind == AstItemKind.Export { give "export"; }
+  elif kind == AstItemKind.Const { give "const"; }
+  elif kind == AstItemKind.Static { give "static"; }
+  elif kind == AstItemKind.Global { give "global"; }
+  elif kind == AstItemKind.Type { give "type"; }
+  elif kind == AstItemKind.Opaque { give "opaque"; }
+  elif kind == AstItemKind.Extern { give "extern"; }
+  elif kind == AstItemKind.Form { give "form"; }
+  elif kind == AstItemKind.Class { give "class"; }
+  elif kind == AstItemKind.Union { give "union"; }
+  elif kind == AstItemKind.Bits { give "bits"; }
+  elif kind == AstItemKind.Pick { give "pick"; }
+  elif kind == AstItemKind.Flags { give "flags"; }
+  elif kind == AstItemKind.Trait { give "trait"; }
+  elif kind == AstItemKind.Impl { give "impl"; }
+  elif kind == AstItemKind.Proc { give "proc"; }
+  elif kind == AstItemKind.Entry { give "entry"; }
+  elif kind == AstItemKind.Test { give "test"; }
+  elif kind == AstItemKind.Bench { give "bench"; }
+
+  give "item";
 }
 
-proc ast_item_typed(id: u64, span: AstSpan, kind: AstItemKind, name: string, attributes: [string], namespace: string, visibility: string, modifiers: [string], abi: string, expr: AstExpr, stmts: [AstStmt], annotation: AstTypeExpr, target_type: AstTypeExpr, type_params: [AstTypeExpr], generic_params: [AstGenericParam], signature: AstProcSignature, meta_args: [string], message: string) -> AstItem {
-  let valid: bool = kind != AstItemKind.Unknown;
-  if kind == AstItemKind.Const or kind == AstItemKind.StaticAssert {
-    set valid = valid and expr.valid;
+proc ast_item_typed(
+  id: u64,
+  span: AstSpan,
+  kind: AstItemKind,
+  name: string,
+  attributes: [string],
+  namespace: string,
+  visibility: string,
+  modifiers: [string],
+  abi: string,
+  expr: AstExpr,
+  stmts: [AstStmt],
+  annotation: AstTypeExpr,
+  target_type: AstTypeExpr,
+  type_params: [AstTypeExpr],
+  generic_params: [AstGenericParam],
+  signature: AstProcSignature,
+  meta_args: [string],
+  message: string
+) -> AstItem {
+
+  let expr_count: u64 =
+    if expr.valid {
+      count_expr(expr)
+    } else {
+      0
+    };
+
+  let stmt_count: u64 = 0;
+  let type_count: u64 = 0;
+  let pattern_count: u64 = 0;
+
+  let i: u64 = 0;
+
+  while i < len(stmts) {
+    set stmt_count =
+      stmt_count + count_stmt_tree(stmts[i]);
+
+    set type_count =
+      type_count + count_stmt_types(stmts[i]);
+
+    set pattern_count =
+      pattern_count + count_stmt_patterns(stmts[i]);
+
+    set i =
+      i + 1;
   }
+
+  if annotation.valid {
+    set type_count =
+      type_count + 1;
+  }
+
+  let node_count: u64 =
+    1 + stmt_count + expr_count + type_count + pattern_count;
+
+  let valid: bool =
+    kind != AstItemKind.Unknown;
+
+  if kind == AstItemKind.Const
+    or kind == AstItemKind.StaticAssert {
+
+    set valid =
+      valid and expr.valid;
+  }
+
   if kind == AstItemKind.Proc {
-    set valid = valid and signature.valid;
+    set valid =
+      valid and signature.valid;
   }
+
   give AstItem {
     id: ast_id(id),
     span: span,
@@ -220,9 +440,53 @@ proc ast_item_typed(id: u64, span: AstSpan, kind: AstItemKind, name: string, att
     generic_params: generic_params,
     signature: signature,
     meta_args: meta_args,
+    imported_symbols: [],
+    exported_symbols: [],
     message: message,
+    async: false,
+    unsafe: false,
+    external: kind == AstItemKind.Extern,
+    comptime: kind == AstItemKind.Comptime,
+    node_count: node_count,
+    stmt_count: stmt_count,
+    expr_count: expr_count,
+    type_count: type_count,
+    pattern_count: pattern_count,
     valid: valid
   };
+}
+
+proc ast_item_create(
+  id: u64,
+  span: AstSpan,
+  kind: AstItemKind,
+  name: string,
+  expr: AstExpr,
+  stmts: [AstStmt],
+  annotation: AstTypeExpr,
+  message: string
+) -> AstItem {
+
+  give ast_item_typed(
+    id,
+    span,
+    kind,
+    name,
+    [],
+    "",
+    "private",
+    [],
+    "",
+    expr,
+    stmts,
+    annotation,
+    ast_type_empty(),
+    [],
+    [],
+    ast_proc_signature_empty(),
+    [],
+    message
+  );
 }
 
 proc ast_module_empty() -> AstModule {
@@ -230,103 +494,214 @@ proc ast_module_empty() -> AstModule {
     id: ast_id(0),
     span: ast_span_empty(),
     kind: "program",
+    name: "",
     items: [],
+    expr_count: 0,
+    stmt_count: 0,
+    type_count: 0,
+    pattern_count: 0,
     valid: false
   };
 }
 
 proc ast_module(id: u64, span: AstSpan, items: [AstItem]) -> AstModule {
+  let expr_count: u64 = 0;
+  let stmt_count: u64 = 0;
+  let type_count: u64 = 0;
+  let pattern_count: u64 = 0;
+
+  let i: u64 = 0;
+
+  while i < len(items) {
+    set expr_count =
+      expr_count + items[i].expr_count;
+
+    set stmt_count =
+      stmt_count + items[i].stmt_count;
+
+    set type_count =
+      type_count + items[i].type_count;
+
+    set pattern_count =
+      pattern_count + items[i].pattern_count;
+
+    set i =
+      i + 1;
+  }
+
   give AstModule {
     id: ast_id(id),
     span: span,
     kind: "program",
+    name: "",
     items: items,
+    expr_count: expr_count,
+    stmt_count: stmt_count,
+    type_count: type_count,
+    pattern_count: pattern_count,
     valid: true
   };
 }
 
+proc item_has_body(item: AstItem) -> bool {
+  give len(item.stmts) > 0;
+}
+
+proc item_has_expr(item: AstItem) -> bool {
+  give item.expr.valid;
+}
+
+proc item_is_callable(item: AstItem) -> bool {
+  give item.kind == AstItemKind.Proc
+    or item.kind == AstItemKind.Query
+    or item.kind == AstItemKind.Intrinsic;
+}
+
+proc item_is_type(item: AstItem) -> bool {
+  give item.kind == AstItemKind.Form
+    or item.kind == AstItemKind.Class
+    or item.kind == AstItemKind.Union
+    or item.kind == AstItemKind.Pick
+    or item.kind == AstItemKind.Flags
+    or item.kind == AstItemKind.Bits
+    or item.kind == AstItemKind.Type;
+}
+
+proc item_expr_depth(item: AstItem) -> u64 {
+  if not item.expr.valid {
+    give 0;
+  }
+
+  give expr_depth(item.expr);
+}
+
 proc count_item_exprs(item: AstItem) -> u64 {
-  let total: u64 = 0;
-  if item.expr.valid {
-    set total = total + count_expr(item.expr);
-  }
+  let total: u64 =
+    item.expr_count;
+
   let i: u64 = 0;
-  while i < len(item.stmts) {
-    set total = total + count_stmt_exprs(item.stmts[i]);
-    set i = i + 1;
+
+  while i < len(item.signature.params) {
+    if item.signature.params[i].default_value.valid {
+      set total =
+        total + count_expr(item.signature.params[i].default_value);
+    }
+
+    set i =
+      i + 1;
   }
+
   give total;
 }
 
 proc count_item_stmts(item: AstItem) -> u64 {
-  let total: u64 = 0;
-  let i: u64 = 0;
-  while i < len(item.stmts) {
-    set total = total + count_stmt_tree(item.stmts[i]);
-    set i = i + 1;
-  }
-  give total;
+  give item.stmt_count;
 }
 
 proc count_item_types(item: AstItem) -> u64 {
-  let total: u64 = 0;
-  if item.annotation.valid {
-    set total = total + 1;
-  }
-  let i: u64 = 0;
-  while i < len(item.stmts) {
-    set total = total + count_stmt_types(item.stmts[i]);
-    set i = i + 1;
-  }
-  give total;
+  give item.type_count;
 }
 
 proc count_item_patterns(item: AstItem) -> u64 {
-  let total: u64 = 0;
-  let i: u64 = 0;
-  while i < len(item.stmts) {
-    set total = total + count_stmt_patterns(item.stmts[i]);
-    set i = i + 1;
-  }
-  give total;
+  give item.pattern_count;
 }
 
 proc count_module_exprs(module: AstModule) -> u64 {
-  let total: u64 = 0;
-  let i: u64 = 0;
-  while i < len(module.items) {
-    set total = total + count_item_exprs(module.items[i]);
-    set i = i + 1;
-  }
-  give total;
+  give module.expr_count;
 }
 
 proc count_module_stmts(module: AstModule) -> u64 {
-  let total: u64 = 0;
-  let i: u64 = 0;
-  while i < len(module.items) {
-    set total = total + count_item_stmts(module.items[i]);
-    set i = i + 1;
-  }
-  give total;
+  give module.stmt_count;
 }
 
 proc count_module_types(module: AstModule) -> u64 {
-  let total: u64 = 0;
-  let i: u64 = 0;
-  while i < len(module.items) {
-    set total = total + count_item_types(module.items[i]);
-    set i = i + 1;
-  }
-  give total;
+  give module.type_count;
 }
 
 proc count_module_patterns(module: AstModule) -> u64 {
-  let total: u64 = 0;
+  give module.pattern_count;
+}
+
+proc module_node_count(module: AstModule) -> u64 {
+  let total: u64 = 1;
+
   let i: u64 = 0;
+
   while i < len(module.items) {
-    set total = total + count_item_patterns(module.items[i]);
-    set i = i + 1;
+    set total =
+      total + module.items[i].node_count;
+
+    set i =
+      i + 1;
   }
+
   give total;
+}
+
+proc item_summary(item: AstItem) -> string {
+  give "kind="
+    + ast_item_kind_name(item.kind)
+    + " name="
+    + item.name
+    + " exprs="
+    + (item.expr_count as string)
+    + " stmts="
+    + (item.stmt_count as string)
+    + " types="
+    + (item.type_count as string)
+    + " patterns="
+    + (item.pattern_count as string)
+    + " valid="
+    + (item.valid as string);
+}
+
+proc module_summary(module: AstModule) -> string {
+  give "items="
+    + (len(module.items) as string)
+    + " exprs="
+    + (module.expr_count as string)
+    + " stmts="
+    + (module.stmt_count as string)
+    + " types="
+    + (module.type_count as string)
+    + " patterns="
+    + (module.pattern_count as string)
+    + " nodes="
+    + (module_node_count(module) as string)
+    + " valid="
+    + (module.valid as string);
+}
+
+proc ast_item_selftest() -> bool {
+  let expr: AstExpr =
+    ast_expr_unknown(
+      1,
+      ast_span_empty(),
+      "0"
+    );
+
+  let item: AstItem =
+    ast_item_create(
+      2,
+      ast_span_empty(),
+      AstItemKind.Const,
+      "VALUE",
+      expr,
+      [],
+      ast_type_empty(),
+      ""
+    );
+
+  let module: AstModule =
+    ast_module(
+      3,
+      ast_span_empty(),
+      [item]
+    );
+
+  give item.kind == AstItemKind.Const
+    and module.valid
+    and module_node_count(module) > 0
+    and item_summary(item) != ""
+    and module_summary(module) != "";
 }

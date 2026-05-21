@@ -29,8 +29,8 @@ fi
 
 # 0b) Structured stage1/stage2 parity on parse/check/IR traces
 if [ "$STRICT" -eq 1 ]; then
-  go env ALLOW_BOOTSTRAP_SCHEMA_COMPAT=1 tools/stage_parity_structured.sh
-  go env ALLOW_BOOTSTRAP_SCHEMA_COMPAT=1 tools/native_json_schema_contract_test.sh
+  go tools/stage_parity_structured.sh
+  go tools/native_json_schema_contract_test.sh
 fi
 
 # 1) Golden frontend snapshots

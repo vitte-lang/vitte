@@ -30,6 +30,10 @@ count_lines() {
 }
 
 compiler_dirs="src/vitte/compiler src/vitte/stdlib/compiler src/vitte/packages/compiler/driver"
+expected_compiler_root="src/vitte/compiler"
+expected_compiler_entry="src/vitte/compiler/driver/compiler.vit"
+stage_sources="toolchain/stage1/src/main.vit toolchain/stage2/src/main.vit"
+audit_errors=0
 
 legacy_source_files=$(
   find "$ROOT_DIR" \
@@ -62,4 +66,35 @@ fi
 printf 'Vitte compiler surface: %s .vit / %s .vitl\n' \
   "$compiler_vitte_files" "$compiler_vitl_files"
 
-printf '\nNext step: keep bootstrap checks green while expanding the Vitte compiler implementation.\n'
+printf '\nCompiler source contract:\n'
+for stage_src in $stage_sources; do
+  root_value=$(awk -F= '/^[[:space:]]*const[[:space:]]+COMPILER_SOURCE_ROOT[[:space:]]*:/ {gsub(/^[[:space:]]*"|"[[:space:]]*$/, "", $2); gsub(/^[[:space:]]+|[[:space:]]+$/, "", $2); print $2; exit}' "$stage_src")
+  entry_value=$(awk -F= '/^[[:space:]]*const[[:space:]]+COMPILER_ENTRY_POINT[[:space:]]*:/ {gsub(/^[[:space:]]*"|"[[:space:]]*$/, "", $2); gsub(/^[[:space:]]+|[[:space:]]+$/, "", $2); print $2; exit}' "$stage_src")
+  printf '  %s\n' "$stage_src"
+  printf '    COMPILER_SOURCE_ROOT=%s\n' "${root_value:-<missing>}"
+  printf '    COMPILER_ENTRY_POINT=%s\n' "${entry_value:-<missing>}"
+  if [ "$root_value" != "$expected_compiler_root" ]; then
+    printf '    [error] expected COMPILER_SOURCE_ROOT=%s\n' "$expected_compiler_root"
+    audit_errors=1
+  fi
+  if [ "$entry_value" != "$expected_compiler_entry" ]; then
+    printf '    [error] expected COMPILER_ENTRY_POINT=%s\n' "$expected_compiler_entry"
+    audit_errors=1
+  fi
+done
+
+if [ ! -d "$expected_compiler_root" ]; then
+  printf '\n[error] missing compiler source root: %s\n' "$expected_compiler_root"
+  audit_errors=1
+fi
+
+if [ ! -f "$expected_compiler_entry" ]; then
+  printf '\n[error] missing compiler entry point: %s\n' "$expected_compiler_entry"
+  audit_errors=1
+fi
+
+if [ "$audit_errors" -ne 0 ]; then
+  exit 1
+fi
+
+printf '\nStage2 entry is anchored to %s; next step is replacing bootstrap-compatible shell emission with the real compiler backend path.\n' "$expected_compiler_entry"

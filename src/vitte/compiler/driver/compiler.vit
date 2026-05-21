@@ -1,5 +1,1344 @@
-space vitte/compiler/driver
+<<<
+    /home/vincentr/Documents/GitHub/vitte/src/vitte/compiler/driver/compiler.vit
+    Vitte compiler driver core
+>>>
 
-proc compiler() -> string {
-  give "compiler"
+space vitte/compiler/driver/compiler
+
+const BOOTSTRAP_FULL_COMPILER: int = 1
+const VERSION_TEXT: string = "vittec2 stage2-vitte 0.1.0"
+const BANNER_TEXT: string = "vittec2 stage2 compiler driver"
+const COMPILER_SOURCE_ROOT: string = "src/vitte/compiler"
+const COMPILER_ENTRY_POINT: string = "src/vitte/compiler/driver/compiler.vit"
+
+proc version_text() -> string {
+    give VERSION_TEXT
 }
+
+proc banner_text() -> string {
+    give BANNER_TEXT
+}
+
+proc compiler_source_root() -> string {
+    give COMPILER_SOURCE_ROOT
+}
+
+proc compiler_entry_point() -> string {
+    give COMPILER_ENTRY_POINT
+}
+
+proc main(args: list[string]) -> int {
+    give 0
+}
+
+use vitte/compiler/driver
+use vitte/compiler/driver/config
+use vitte/compiler/driver/pipeline
+use vitte/compiler/driver/session
+use vitte/compiler/diagnostics/mod
+use vitte/compiler/diagnostics/report
+use vitte/compiler/frontend/mod
+use vitte/compiler/frontend/pipeline.{ FrontendDiagnostic, FrontendOutput, frontend_run }
+use vitte/compiler/frontend/parse/mod
+use vitte/compiler/frontend/lexer/mod
+use vitte/compiler/frontend/ast/mod
+use vitte/compiler/analysis/mod
+use vitte/compiler/analysis/pipeline.{ AnalysisOutput, analysis_run }
+use vitte/compiler/analysis/report.{ AnalysisDiagnostic }
+use vitte/compiler/analysis/sema/mod
+use vitte/compiler/analysis/typeck/mod
+use vitte/compiler/analysis/borrowck/mod
+use vitte/compiler/analysis/const_eval/mod
+use vitte/compiler/analysis/lint/mod
+use vitte/compiler/analysis/lint/engine
+use vitte/compiler/analysis/lint/report
+use vitte/compiler/analysis/lint/rules
+use vitte/compiler/analysis/static/mod
+use vitte/compiler/middle/mod
+use vitte/compiler/middle/pipeline.{ MiddleOutput, middle_run }
+use vitte/compiler/middle/hir/mod
+use vitte/compiler/middle/mir/mod
+use vitte/compiler/middle/borrow/mod
+use vitte/compiler/middle/borrow/checks
+use vitte/compiler/middle/borrow/regions
+use vitte/compiler/middle/dataflow/mod
+use vitte/compiler/middle/dataflow/cfg
+use vitte/compiler/middle/dataflow/liveness
+use vitte/compiler/middle/infer/mod
+use vitte/compiler/middle/infer/constraints
+use vitte/compiler/middle/infer/solver
+use vitte/compiler/middle/lower/mod
+use vitte/compiler/middle/lower/lowering_context
+use vitte/compiler/middle/typecheck/mod
+use vitte/compiler/middle/typecheck/diagnostics
+use vitte/compiler/middle/typecheck/rules
+use vitte/compiler/backend/mod
+use vitte/compiler/backend/pipeline.{ BackendPipelineResult, compile_to_valid_ir_with_profile_and_packaging }
+use vitte/compiler/backend/codegen/mod
+use vitte/compiler/backend/link/mod
+use vitte/compiler/backend/ir/mod
+use vitte/compiler/backend/target/mod
+use vitte/compiler/infrastructure/mod
+use vitte/compiler/infrastructure/diagnostics/mod
+use vitte/compiler/infrastructure/errors/mod
+use vitte/compiler/infrastructure/incremental/mod
+use vitte/compiler/infrastructure/session/mod
+use vitte/compiler/ir/mod
+use vitte/compiler/mod
+use vitte/compiler/backends/llvm_bindings.{ default_llvm_toolchain_paths }
+use vitte/compiler/backends/llvm_bindings/mod
+use vitte/compiler/backends/vitte_emit/mod
+use vitte/compiler/backends/vitte_emit/abi_bridge
+use vitte/compiler/backends/vitte_emit/cfg
+use vitte/compiler/backends/vitte_emit/config
+use vitte/compiler/backends/vitte_emit/contracts
+use vitte/compiler/backends/vitte_emit/emit
+use vitte/compiler/backends/vitte_emit/intrinsics
+use vitte/compiler/backends/vitte_emit/ir
+use vitte/compiler/backends/vitte_emit/lowering
+use vitte/compiler/backends/vitte_emit/passes
+use vitte/compiler/backends/vitte_emit/pipeline
+use vitte/compiler/backends/vitte_emit/types
+use vitte/compiler/backends/vitte_emit/validate
+use vitte/compiler/infrastructure/errors/code
+use vitte/compiler/infrastructure/errors/registry
+use vitte/compiler/infrastructure/errors/severity
+use vitte/compiler/infrastructure/incremental/fingerprint
+use vitte/compiler/infrastructure/incremental/reuse
+use vitte/compiler/infrastructure/session/config
+use vitte/compiler/infrastructure/session/context
+use vitte/compiler/infrastructure/session/files
+use vitte/compiler/infrastructure/session/options
+use vitte/compiler/driver/mod
+use vitte/compiler/driver/cli
+use vitte/compiler/driver/bootstrap_pipeline
+use vitte/compiler/driver/compilation_pipeline
+use vitte/compiler/driver/integration_orchestrator
+use vitte/compiler/ir/ast
+use vitte/compiler/ir/hir_to_mir_lowering
+use vitte/compiler/ir/mir_extended
+use vitte/compiler/ir/mir_optimizations
+use vitte/compiler/ir/pipeline
+use vitte/compiler/prelude
+use vitte/compiler/version
+use vitte/compiler/frontend/macros/mod
+use vitte/compiler/frontend/macros/errors
+use vitte/compiler/backends/backend_infrastructure
+use vitte/compiler/backends/c_emit
+use vitte/compiler/backends/llvm_emit
+use vitte/compiler/backends/wasm/mod
+
+pick CompilerMode {
+    Check,
+    Build,
+    Run,
+    Test,
+    EmitAst,
+    EmitHir,
+    EmitMir,
+    EmitIr,
+    EmitObject,
+    EmitAssembly,
+}
+
+pick CompilerStage {
+    Init,
+    Configure,
+    LoadInput,
+    Lex,
+    Parse,
+    Ast,
+    Hir,
+    Resolve,
+    Typeck,
+    Borrowck,
+    Mir,
+    MirValidate,
+    MirOptimize,
+    Ir,
+    IrValidate,
+    Codegen,
+    Object,
+    Link,
+    Run,
+    Done,
+}
+
+form CompilerInput {
+    path: string
+    source: string
+    virtual: bool
+}
+
+form CompilerOutput {
+    executable_path: string
+    object_path: string
+    assembly_path: string
+    ir_path: string
+    report_path: string
+}
+
+form CompilerOptions {
+    mode: CompilerMode
+    target: string
+    profile: string
+    output_dir: string
+    emit_report: bool
+    emit_json: bool
+    validate_links: bool
+    stop_after: CompilerStage
+}
+
+form CompilerState {
+    stage: CompilerStage
+    ok: bool
+    input_loaded: bool
+    frontend_ok: bool
+    analysis_ok: bool
+    mir_ok: bool
+    ir_ok: bool
+    codegen_ok: bool
+    link_ok: bool
+}
+
+form CompilerResult {
+    status: driver.DriverExitStatus
+    code: u64
+    message: string
+    stage: CompilerStage
+    output: CompilerOutput
+    diagnostics: List<report.Diagnostic>
+}
+
+form Compiler {
+    options: CompilerOptions
+    state: CompilerState
+    input: CompilerInput
+    output: CompilerOutput
+    diagnostics: List<report.Diagnostic>
+}
+
+proc default_options() -> CompilerOptions {
+    give CompilerOptions {
+        mode: CompilerMode::Build,
+        target: "native",
+        profile: "debug",
+        output_dir: "build",
+        emit_report: true,
+        emit_json: false,
+        validate_links: true,
+        stop_after: CompilerStage::Done
+    };
+}
+
+proc empty_input() -> CompilerInput {
+    give CompilerInput {
+        path: "",
+        source: "",
+        virtual: false
+    };
+}
+
+proc empty_output() -> CompilerOutput {
+    give CompilerOutput {
+        executable_path: "",
+        object_path: "",
+        assembly_path: "",
+        ir_path: "",
+        report_path: ""
+    };
+}
+
+proc initial_state() -> CompilerState {
+    give CompilerState {
+        stage: CompilerStage::Init,
+        ok: true,
+        input_loaded: false,
+        frontend_ok: false,
+        analysis_ok: false,
+        mir_ok: false,
+        ir_ok: false,
+        codegen_ok: false,
+        link_ok: false
+    };
+}
+
+proc new_compiler(options: CompilerOptions) -> Compiler {
+    give Compiler {
+        options: options,
+        state: initial_state(),
+        input: empty_input(),
+        output: empty_output(),
+        diagnostics: []
+    };
+}
+
+proc compiler_from_source(
+    path: string,
+    source: string,
+    options: CompilerOptions
+) -> Compiler {
+    let compiler = new_compiler(options);
+
+    set compiler.input = CompilerInput {
+        path: path,
+        source: source,
+        virtual: true
+    };
+
+    set compiler.state.input_loaded = true;
+
+    give compiler;
+}
+
+proc set_stage(
+    compiler: Compiler,
+    stage: CompilerStage
+) -> Compiler {
+    set compiler.state.stage = stage;
+    give compiler;
+}
+
+proc should_stop(
+    compiler: Compiler,
+    stage: CompilerStage
+) -> bool {
+    give compiler.options.stop_after == stage;
+}
+
+proc stop_after_stage_from_cli(name: string) -> CompilerStage {
+    if name == "lex" { give CompilerStage::Lex; }
+    if name == "parse" { give CompilerStage::Parse; }
+    if name == "ast" { give CompilerStage::Ast; }
+    if name == "hir" { give CompilerStage::Hir; }
+    if name == "resolve" { give CompilerStage::Resolve; }
+    if name == "typeck" { give CompilerStage::Typeck; }
+    if name == "borrowck" { give CompilerStage::Borrowck; }
+    if name == "mir" { give CompilerStage::Mir; }
+    if name == "mir_validate" { give CompilerStage::MirValidate; }
+    if name == "mir_optimize" { give CompilerStage::MirOptimize; }
+    if name == "ir" { give CompilerStage::Ir; }
+    if name == "ir_validate" { give CompilerStage::IrValidate; }
+    if name == "codegen" { give CompilerStage::Codegen; }
+    if name == "object" { give CompilerStage::Object; }
+    if name == "link" { give CompilerStage::Link; }
+    if name == "run" { give CompilerStage::Run; }
+    give CompilerStage::Done;
+}
+
+proc stop_stage_in_frontend(stage: CompilerStage) -> bool {
+    give stage == CompilerStage::Lex
+        or stage == CompilerStage::Parse
+        or stage == CompilerStage::Ast
+        or stage == CompilerStage::Hir;
+}
+
+proc stop_stage_in_analysis(stage: CompilerStage) -> bool {
+    give stage == CompilerStage::Resolve
+        or stage == CompilerStage::Typeck
+        or stage == CompilerStage::Borrowck;
+}
+
+proc stop_stage_in_mir(stage: CompilerStage) -> bool {
+    give stage == CompilerStage::Mir
+        or stage == CompilerStage::MirValidate
+        or stage == CompilerStage::MirOptimize;
+}
+
+proc stop_stage_in_ir(stage: CompilerStage) -> bool {
+    give stage == CompilerStage::Ir
+        or stage == CompilerStage::IrValidate;
+}
+
+proc stop_stage_in_codegen(stage: CompilerStage) -> bool {
+    give stage == CompilerStage::Codegen
+        or stage == CompilerStage::Object;
+}
+
+proc stop_stage_in_link(stage: CompilerStage) -> bool {
+    give stage == CompilerStage::Link;
+}
+
+proc stop_stage_in_run(stage: CompilerStage) -> bool {
+    give stage == CompilerStage::Run;
+}
+
+proc stop_reached_in_frontend(compiler: Compiler) -> bool {
+    give stop_stage_in_frontend(compiler.options.stop_after)
+        and compiler.state.stage == compiler.options.stop_after;
+}
+
+proc stop_reached_in_analysis(compiler: Compiler) -> bool {
+    give stop_stage_in_analysis(compiler.options.stop_after)
+        and compiler.state.stage == compiler.options.stop_after;
+}
+
+proc stop_reached_in_mir(compiler: Compiler) -> bool {
+    give stop_stage_in_mir(compiler.options.stop_after)
+        and compiler.state.stage == compiler.options.stop_after;
+}
+
+proc stop_reached_in_ir(compiler: Compiler) -> bool {
+    give stop_stage_in_ir(compiler.options.stop_after)
+        and compiler.state.stage == compiler.options.stop_after;
+}
+
+proc stop_reached_in_codegen(compiler: Compiler) -> bool {
+    give stop_stage_in_codegen(compiler.options.stop_after)
+        and compiler.state.stage == compiler.options.stop_after;
+}
+
+proc stop_reached_in_link(compiler: Compiler) -> bool {
+    give stop_stage_in_link(compiler.options.stop_after)
+        and compiler.state.stage == compiler.options.stop_after;
+}
+
+proc stop_reached_in_run(compiler: Compiler) -> bool {
+    give stop_stage_in_run(compiler.options.stop_after)
+        and compiler.state.stage == compiler.options.stop_after;
+}
+
+proc fail(
+    compiler: Compiler,
+    status: driver.DriverExitStatus,
+    message: string
+) -> CompilerResult {
+    set compiler.state.ok = false;
+
+    give CompilerResult {
+        status: status,
+        code: driver.exit_code(status),
+        message: message,
+        stage: compiler.state.stage,
+        output: compiler.output,
+        diagnostics: compiler.diagnostics
+    };
+}
+
+proc success(
+    compiler: Compiler,
+    message: string
+) -> CompilerResult {
+    give CompilerResult {
+        status: driver.DriverExitStatus::Ok,
+        code: 0,
+        message: message,
+        stage: compiler.state.stage,
+        output: compiler.output,
+        diagnostics: compiler.diagnostics
+    };
+}
+
+proc add_diagnostic(
+    compiler: Compiler,
+    diagnostic: report.Diagnostic
+) -> Compiler {
+    set compiler.diagnostics =
+        list.push(compiler.diagnostics, diagnostic);
+
+    give compiler;
+}
+
+proc has_diagnostics(compiler: Compiler) -> bool {
+    give list.len(compiler.diagnostics) > 0;
+}
+
+proc configure_compiler(compiler: Compiler) -> Compiler {
+    set compiler = set_stage(compiler, CompilerStage::Configure);
+
+    if compiler.options.target == "" {
+        set compiler = add_typed_diagnostic(
+            compiler,
+            "error",
+            "DRIVER_E_MISSING_TARGET",
+            "missing compiler target"
+        );
+        set compiler.state.ok = false;
+    }
+
+    if compiler.options.output_dir == "" {
+        set compiler = add_typed_diagnostic(
+            compiler,
+            "error",
+            "DRIVER_E_MISSING_OUTPUT_DIR",
+            "missing compiler output directory"
+        );
+        set compiler.state.ok = false;
+    }
+
+    give compiler;
+}
+
+proc validate_input(compiler: Compiler) -> Compiler {
+    set compiler = set_stage(compiler, CompilerStage::LoadInput);
+
+    if compiler.input.path == "" && compiler.input.source == "" {
+        set compiler = add_typed_diagnostic(
+            compiler,
+            "error",
+            "DRIVER_E_NO_INPUT",
+            "no input file or source provided"
+        );
+        set compiler.state.ok = false;
+    }
+
+    if compiler.input.path != "" {
+        set compiler.state.input_loaded = true;
+    }
+
+    give compiler;
+}
+
+proc validate_compiler_links(compiler: Compiler) -> Compiler {
+    if !compiler.options.validate_links {
+        give compiler;
+    }
+
+    if compiler.options.target == "" {
+        set compiler = add_typed_diagnostic(
+            compiler,
+            "error",
+            "DRIVER_E_INVALID_LINK_TARGET",
+            "invalid compiler link: target is empty"
+        );
+        set compiler.state.ok = false;
+    }
+
+    if compiler.options.profile == "" {
+        set compiler = add_typed_diagnostic(
+            compiler,
+            "error",
+            "DRIVER_E_INVALID_LINK_PROFILE",
+            "invalid compiler link: profile is empty"
+        );
+        set compiler.state.ok = false;
+    }
+
+    give compiler;
+}
+
+proc compiler_source_text(compiler: Compiler) -> string {
+    if compiler.input.source != "" {
+        give compiler.input.source;
+    }
+    give "";
+}
+
+proc typed_diag_text(
+    severity: string,
+    code: string,
+    file: string,
+    line: u64,
+    column: u64,
+    message: string
+) -> string {
+    give "severity="
+        + severity
+        + " code="
+        + code
+        + " span="
+        + file
+        + ":"
+        + (line as string)
+        + ":"
+        + (column as string)
+        + " message="
+        + message;
+}
+
+proc frontend_diag_message(diag: FrontendDiagnostic) -> string {
+    let sev: string = if diag.fatal { "fatal" } else { "error" };
+    give typed_diag_text(
+        sev,
+        "DRIVER_E_FRONTEND_DIAG_" + diag.code,
+        diag.file,
+        diag.line,
+        diag.column,
+        diag.message
+    );
+}
+
+proc analysis_diag_message(diag: AnalysisDiagnostic) -> string {
+    give typed_diag_text(
+        diag.severity,
+        "DRIVER_E_ANALYSIS_DIAG_" + diag.code,
+        diag.file,
+        diag.line,
+        diag.column,
+        diag.phase + ": " + diag.message
+    );
+}
+
+proc add_typed_diagnostic(
+    compiler: Compiler,
+    severity: string,
+    code: string,
+    message: string
+) -> Compiler {
+    let d =
+        report.diagnostic(
+            severity,
+            code,
+            compiler.input.path,
+            1,
+            1,
+            message
+        );
+    give add_diagnostic(compiler, d);
+}
+
+proc append_frontend_diagnostics(
+    compiler: Compiler,
+    diagnostics: [FrontendDiagnostic]
+) -> Compiler {
+    let out: Compiler = compiler;
+    let i: u64 = 0;
+    while i < len(diagnostics) {
+        let severity: string = if diagnostics[i].fatal { "fatal" } else { "error" };
+        let d = report.diagnostic(
+            severity,
+            "DRIVER_E_FRONTEND_DIAG_" + diagnostics[i].code,
+            diagnostics[i].file,
+            diagnostics[i].line,
+            diagnostics[i].column,
+            diagnostics[i].message
+        );
+        set out = add_diagnostic(out, d);
+        set i = i + 1;
+    }
+    give out;
+}
+
+proc append_analysis_diagnostics(
+    compiler: Compiler,
+    diagnostics: [AnalysisDiagnostic]
+) -> Compiler {
+    let out: Compiler = compiler;
+    let i: u64 = 0;
+    while i < len(diagnostics) {
+        let d = report.diagnostic(
+            diagnostics[i].severity,
+            "DRIVER_E_ANALYSIS_DIAG_" + diagnostics[i].code,
+            diagnostics[i].file,
+            diagnostics[i].line,
+            diagnostics[i].column,
+            diagnostics[i].phase + ": " + diagnostics[i].message
+        );
+        set out = add_diagnostic(out, d);
+        set i = i + 1;
+    }
+    give out;
+}
+
+proc run_frontend(compiler: Compiler) -> Compiler {
+    set compiler = set_stage(compiler, CompilerStage::Lex);
+    if should_stop(compiler, CompilerStage::Lex) {
+        set compiler.state.frontend_ok = true;
+        give compiler;
+    }
+
+    if !compiler.state.input_loaded {
+        set compiler = add_typed_diagnostic(
+            compiler,
+            "error",
+            "DRIVER_E_FRONTEND_INPUT_NOT_LOADED",
+            "frontend failed: input was not loaded"
+        );
+        set compiler.state.ok = false;
+        give compiler;
+    }
+
+    set compiler = set_stage(compiler, CompilerStage::Parse);
+    if should_stop(compiler, CompilerStage::Parse) {
+        set compiler.state.frontend_ok = true;
+        give compiler;
+    }
+
+    if compiler.input.source == "" && compiler.input.path == "" {
+        set compiler = add_typed_diagnostic(
+            compiler,
+            "error",
+            "DRIVER_E_PARSE_EMPTY_SOURCE",
+            "parse failed: empty source input"
+        );
+        set compiler.state.ok = false;
+        give compiler;
+    }
+
+    let frontend_out: FrontendOutput =
+        frontend_run(
+            compiler.input.path,
+            compiler_source_text(compiler)
+        );
+    set compiler =
+        append_frontend_diagnostics(
+            compiler,
+            frontend_out.diagnostics
+        );
+
+    if !frontend_out.valid {
+        set compiler = add_typed_diagnostic(
+            compiler,
+            "error",
+            "DRIVER_E_FRONTEND_INVALID",
+            "frontend pipeline returned invalid output"
+        );
+        set compiler.state.ok = false;
+        give compiler;
+    }
+
+    set compiler = set_stage(compiler, CompilerStage::Ast);
+    if should_stop(compiler, CompilerStage::Ast) {
+        set compiler.state.frontend_ok = true;
+        give compiler;
+    }
+    set compiler = set_stage(compiler, CompilerStage::Hir);
+    if should_stop(compiler, CompilerStage::Hir) {
+        set compiler.state.frontend_ok = true;
+        give compiler;
+    }
+
+    set compiler.state.frontend_ok = true;
+
+    give compiler;
+}
+
+proc run_analysis(compiler: Compiler) -> Compiler {
+    set compiler = set_stage(compiler, CompilerStage::Resolve);
+    if should_stop(compiler, CompilerStage::Resolve) {
+        set compiler.state.analysis_ok = true;
+        give compiler;
+    }
+
+    if !compiler.state.frontend_ok {
+        set compiler = add_typed_diagnostic(
+            compiler,
+            "error",
+            "DRIVER_E_ANALYSIS_FRONTEND_INCOMPLETE",
+            "analysis failed: frontend did not complete"
+        );
+        set compiler.state.ok = false;
+        give compiler;
+    }
+
+    let frontend_out: FrontendOutput =
+        frontend_run(
+            compiler.input.path,
+            compiler_source_text(compiler)
+        );
+    let analysis_out: AnalysisOutput =
+        analysis_run(frontend_out);
+    set compiler =
+        append_frontend_diagnostics(
+            compiler,
+            frontend_out.diagnostics
+        );
+    set compiler =
+        append_analysis_diagnostics(
+            compiler,
+            analysis_out.diagnostics
+        );
+
+    if !analysis_out.valid {
+        set compiler = add_typed_diagnostic(
+            compiler,
+            "error",
+            "DRIVER_E_ANALYSIS_INVALID",
+            "analysis pipeline returned invalid output"
+        );
+        set compiler.state.ok = false;
+        give compiler;
+    }
+
+    set compiler = set_stage(compiler, CompilerStage::Typeck);
+    if should_stop(compiler, CompilerStage::Typeck) {
+        set compiler.state.analysis_ok = true;
+        give compiler;
+    }
+    set compiler = set_stage(compiler, CompilerStage::Borrowck);
+    if should_stop(compiler, CompilerStage::Borrowck) {
+        set compiler.state.analysis_ok = true;
+        give compiler;
+    }
+
+    set compiler.state.analysis_ok = true;
+
+    give compiler;
+}
+
+proc run_mir_pipeline(compiler: Compiler) -> Compiler {
+    set compiler = set_stage(compiler, CompilerStage::Mir);
+    if should_stop(compiler, CompilerStage::Mir) {
+        set compiler.state.mir_ok = true;
+        give compiler;
+    }
+
+    if !compiler.state.analysis_ok {
+        set compiler = add_typed_diagnostic(
+            compiler,
+            "error",
+            "DRIVER_E_MIR_ANALYSIS_INCOMPLETE",
+            "MIR build failed: analysis did not complete"
+        );
+        set compiler.state.ok = false;
+        give compiler;
+    }
+
+    let frontend_out: FrontendOutput =
+        frontend_run(
+            compiler.input.path,
+            compiler_source_text(compiler)
+        );
+    let middle_out: MiddleOutput =
+        middle_run(frontend_out);
+    set compiler =
+        append_frontend_diagnostics(
+            compiler,
+            frontend_out.diagnostics
+        );
+    set compiler =
+        append_analysis_diagnostics(
+            compiler,
+            middle_out.analysis.diagnostics
+        );
+
+    if !middle_out.analysis.valid {
+        set compiler = add_typed_diagnostic(
+            compiler,
+            "error",
+            "DRIVER_E_MIR_ANALYSIS_INVALID",
+            "middle pipeline analysis invalid"
+        );
+        set compiler.state.ok = false;
+        give compiler;
+    }
+
+    if !middle_out.mir.valid {
+        set compiler = add_typed_diagnostic(
+            compiler,
+            "error",
+            "DRIVER_E_MIR_INVALID",
+            "MIR validation failed in middle pipeline"
+        );
+        set compiler.state.ok = false;
+        give compiler;
+    }
+
+    set compiler = set_stage(compiler, CompilerStage::MirValidate);
+    if should_stop(compiler, CompilerStage::MirValidate) {
+        set compiler.state.mir_ok = true;
+        give compiler;
+    }
+    set compiler = set_stage(compiler, CompilerStage::MirOptimize);
+    if should_stop(compiler, CompilerStage::MirOptimize) {
+        set compiler.state.mir_ok = true;
+        give compiler;
+    }
+
+    set compiler.state.mir_ok = true;
+
+    give compiler;
+}
+
+proc run_ir_pipeline(compiler: Compiler) -> Compiler {
+    set compiler = set_stage(compiler, CompilerStage::Ir);
+    if should_stop(compiler, CompilerStage::Ir) {
+        set compiler.state.ir_ok = true;
+        give compiler;
+    }
+
+    if !compiler.state.mir_ok {
+        set compiler = add_typed_diagnostic(
+            compiler,
+            "error",
+            "DRIVER_E_IR_MIR_INCOMPLETE",
+            "mir_to_ir failed: MIR pipeline did not complete"
+        );
+        set compiler.state.ok = false;
+        give compiler;
+    }
+
+    let frontend_out: FrontendOutput =
+        frontend_run(
+            compiler.input.path,
+            compiler_source_text(compiler)
+        );
+    let middle_out: MiddleOutput =
+        middle_run(frontend_out);
+    set compiler =
+        append_frontend_diagnostics(
+            compiler,
+            frontend_out.diagnostics
+        );
+    set compiler =
+        append_analysis_diagnostics(
+            compiler,
+            middle_out.analysis.diagnostics
+        );
+
+    if !middle_out.ir.valid {
+        set compiler = add_typed_diagnostic(
+            compiler,
+            "error",
+            "DRIVER_E_IR_INVALID",
+            "IR lowering/verification failed in middle pipeline"
+        );
+        set compiler.state.ok = false;
+        give compiler;
+    }
+
+    set compiler = set_stage(compiler, CompilerStage::IrValidate);
+    if should_stop(compiler, CompilerStage::IrValidate) {
+        set compiler.state.ir_ok = true;
+        give compiler;
+    }
+
+    set compiler.state.ir_ok = true;
+
+    give compiler;
+}
+
+proc run_codegen(compiler: Compiler) -> Compiler {
+    set compiler = set_stage(compiler, CompilerStage::Codegen);
+    if should_stop(compiler, CompilerStage::Codegen) {
+        set compiler.state.codegen_ok = true;
+        give compiler;
+    }
+
+    if !compiler.state.ir_ok {
+        set compiler = add_typed_diagnostic(
+            compiler,
+            "error",
+            "DRIVER_E_CODEGEN_IR_INCOMPLETE",
+            "codegen failed: IR pipeline did not complete"
+        );
+        set compiler.state.ok = false;
+        give compiler;
+    }
+
+    let backend_out: BackendPipelineResult =
+        compile_to_valid_ir_with_profile_and_packaging(
+            compiler.input.path,
+            compiler_source_text(compiler),
+            "x86_64",
+            "x86_64-linux",
+            "enterprise-default",
+            true,
+            true,
+            "executable",
+            false,
+            default_llvm_toolchain_paths()
+        );
+    set compiler =
+        append_frontend_diagnostics(
+            compiler,
+            backend_out.frontend.diagnostics
+        );
+    set compiler =
+        append_analysis_diagnostics(
+            compiler,
+            backend_out.analysis.diagnostics
+        );
+
+    if !backend_out.codegen.valid {
+        set compiler = add_typed_diagnostic(
+            compiler,
+            "error",
+            "DRIVER_E_CODEGEN_INVALID",
+            "backend codegen failed"
+        );
+        set compiler.state.ok = false;
+        give compiler;
+    }
+
+    set compiler = set_stage(compiler, CompilerStage::Object);
+    if should_stop(compiler, CompilerStage::Object) {
+        set compiler.state.codegen_ok = true;
+        give compiler;
+    }
+
+    set compiler.output.object_path =
+        compiler.options.output_dir + "/main.o";
+
+    set compiler.state.codegen_ok = true;
+
+    give compiler;
+}
+
+proc run_linker(compiler: Compiler) -> Compiler {
+    set compiler = set_stage(compiler, CompilerStage::Link);
+    if should_stop(compiler, CompilerStage::Link) {
+        set compiler.state.link_ok = true;
+        give compiler;
+    }
+
+    if !compiler.state.codegen_ok {
+        set compiler = add_typed_diagnostic(
+            compiler,
+            "error",
+            "DRIVER_E_LINK_CODEGEN_INCOMPLETE",
+            "link failed: object emission did not complete"
+        );
+        set compiler.state.ok = false;
+        give compiler;
+    }
+
+    let backend_out: BackendPipelineResult =
+        compile_to_valid_ir_with_profile_and_packaging(
+            compiler.input.path,
+            compiler_source_text(compiler),
+            "x86_64",
+            "x86_64-linux",
+            "enterprise-default",
+            true,
+            true,
+            "executable",
+            false,
+            default_llvm_toolchain_paths()
+        );
+    set compiler =
+        append_frontend_diagnostics(
+            compiler,
+            backend_out.frontend.diagnostics
+        );
+    set compiler =
+        append_analysis_diagnostics(
+            compiler,
+            backend_out.analysis.diagnostics
+        );
+
+    if !backend_out.artifact.valid {
+        set compiler = add_typed_diagnostic(
+            compiler,
+            "error",
+            "DRIVER_E_LINK_INVALID",
+            "backend linker artifact invalid"
+        );
+        set compiler.state.ok = false;
+        give compiler;
+    }
+
+    set compiler.output.executable_path =
+        compiler.options.output_dir + "/main";
+
+    set compiler.state.link_ok = true;
+
+    give compiler;
+}
+
+proc run_executable(compiler: Compiler) -> Compiler {
+    set compiler = set_stage(compiler, CompilerStage::Run);
+    if should_stop(compiler, CompilerStage::Run) {
+        give compiler;
+    }
+
+    if !compiler.state.link_ok {
+        set compiler = add_typed_diagnostic(
+            compiler,
+            "error",
+            "DRIVER_E_RUN_LINK_INCOMPLETE",
+            "run failed: executable was not linked"
+        );
+        set compiler.state.ok = false;
+        give compiler;
+    }
+
+    give compiler;
+}
+
+proc status_for_stage(stage: CompilerStage) -> driver.DriverExitStatus {
+    if stage == CompilerStage::LoadInput {
+        give driver.DriverExitStatus::InvalidInput;
+    }
+
+    if stage == CompilerStage::Lex {
+        give driver.DriverExitStatus::LexFailure;
+    }
+
+    if stage == CompilerStage::Parse {
+        give driver.DriverExitStatus::ParseFailure;
+    }
+
+    if stage == CompilerStage::Ast {
+        give driver.DriverExitStatus::AstFailure;
+    }
+
+    if stage == CompilerStage::Hir {
+        give driver.DriverExitStatus::HirFailure;
+    }
+
+    if stage == CompilerStage::Resolve {
+        give driver.DriverExitStatus::ResolveFailure;
+    }
+
+    if stage == CompilerStage::Typeck {
+        give driver.DriverExitStatus::TypeFailure;
+    }
+
+    if stage == CompilerStage::Borrowck {
+        give driver.DriverExitStatus::BorrowckFailure;
+    }
+
+    if stage == CompilerStage::Mir {
+        give driver.DriverExitStatus::MirBuildFailure;
+    }
+
+    if stage == CompilerStage::MirValidate {
+        give driver.DriverExitStatus::MirValidationFailure;
+    }
+
+    if stage == CompilerStage::Ir {
+        give driver.DriverExitStatus::IrLoweringFailure;
+    }
+
+    if stage == CompilerStage::IrValidate {
+        give driver.DriverExitStatus::IrValidationFailure;
+    }
+
+    if stage == CompilerStage::Codegen {
+        give driver.DriverExitStatus::CodegenFailure;
+    }
+
+    if stage == CompilerStage::Object {
+        give driver.DriverExitStatus::ObjectEmissionFailure;
+    }
+
+    if stage == CompilerStage::Link {
+        give driver.DriverExitStatus::LinkFailure;
+    }
+
+    give driver.DriverExitStatus::InternalError;
+}
+
+proc finalize_compiler(compiler: Compiler) -> CompilerResult {
+    if !compiler.state.ok {
+        give fail(
+            compiler,
+            status_for_stage(compiler.state.stage),
+            "compiler failed at stage: " + stage_name(compiler.state.stage)
+        );
+    }
+
+    if compiler.state.stage == compiler.options.stop_after {
+        give success(
+            compiler,
+            "compiler stopped after stage: " + stage_name(compiler.state.stage)
+        );
+    }
+
+    set compiler = set_stage(compiler, CompilerStage::Done);
+
+    give success(compiler, "compiler pipeline completed successfully");
+}
+
+proc run_compiler(compiler: Compiler) -> CompilerResult {
+    set compiler = configure_compiler(compiler);
+
+    if !compiler.state.ok {
+        give finalize_compiler(compiler);
+    }
+
+    set compiler = validate_input(compiler);
+
+    if !compiler.state.ok {
+        give finalize_compiler(compiler);
+    }
+
+    set compiler = validate_compiler_links(compiler);
+
+    if !compiler.state.ok {
+        give finalize_compiler(compiler);
+    }
+
+    set compiler = run_frontend(compiler);
+
+    if !compiler.state.ok || stop_reached_in_frontend(compiler) {
+        give finalize_compiler(compiler);
+    }
+
+    set compiler = run_analysis(compiler);
+
+    if !compiler.state.ok || stop_reached_in_analysis(compiler) {
+        give finalize_compiler(compiler);
+    }
+
+    set compiler = run_mir_pipeline(compiler);
+
+    if !compiler.state.ok || stop_reached_in_mir(compiler) {
+        give finalize_compiler(compiler);
+    }
+
+    set compiler = run_ir_pipeline(compiler);
+
+    if !compiler.state.ok || stop_reached_in_ir(compiler) {
+        give finalize_compiler(compiler);
+    }
+
+    if compiler.options.mode == CompilerMode::Check {
+        give finalize_compiler(compiler);
+    }
+
+    set compiler = run_codegen(compiler);
+
+    if !compiler.state.ok || stop_reached_in_codegen(compiler) {
+        give finalize_compiler(compiler);
+    }
+
+    set compiler = run_linker(compiler);
+
+    if !compiler.state.ok || stop_reached_in_link(compiler) {
+        give finalize_compiler(compiler);
+    }
+
+    if compiler.options.mode == CompilerMode::Run {
+        set compiler = run_executable(compiler);
+        if !compiler.state.ok || stop_reached_in_run(compiler) {
+            give finalize_compiler(compiler);
+        }
+    }
+
+    give finalize_compiler(compiler);
+}
+
+proc compile_source(
+    path: string,
+    source: string,
+    options: CompilerOptions
+) -> CompilerResult {
+    let compiler = compiler_from_source(path, source, options);
+    give run_compiler(compiler);
+}
+
+proc compile_file(
+    path: string,
+    options: CompilerOptions
+) -> CompilerResult {
+    let compiler = new_compiler(options);
+
+    set compiler.input = CompilerInput {
+        path: path,
+        source: "",
+        virtual: false
+    };
+
+    give run_compiler(compiler);
+}
+
+proc stage_name(stage: CompilerStage) -> string {
+    if stage == CompilerStage::Init {
+        give "init";
+    }
+
+    if stage == CompilerStage::Configure {
+        give "configure";
+    }
+
+    if stage == CompilerStage::LoadInput {
+        give "load_input";
+    }
+
+    if stage == CompilerStage::Lex {
+        give "lex";
+    }
+
+    if stage == CompilerStage::Parse {
+        give "parse";
+    }
+
+    if stage == CompilerStage::Ast {
+        give "ast";
+    }
+
+    if stage == CompilerStage::Hir {
+        give "hir";
+    }
+
+    if stage == CompilerStage::Resolve {
+        give "resolve";
+    }
+
+    if stage == CompilerStage::Typeck {
+        give "typeck";
+    }
+
+    if stage == CompilerStage::Borrowck {
+        give "borrowck";
+    }
+
+    if stage == CompilerStage::Mir {
+        give "mir";
+    }
+
+    if stage == CompilerStage::MirValidate {
+        give "mir_validate";
+    }
+
+    if stage == CompilerStage::MirOptimize {
+        give "mir_optimize";
+    }
+
+    if stage == CompilerStage::Ir {
+        give "ir";
+    }
+
+    if stage == CompilerStage::IrValidate {
+        give "ir_validate";
+    }
+
+    if stage == CompilerStage::Codegen {
+        give "codegen";
+    }
+
+    if stage == CompilerStage::Object {
+        give "object";
+    }
+
+    if stage == CompilerStage::Link {
+        give "link";
+    }
+
+    if stage == CompilerStage::Run {
+        give "run";
+    }
+
+    if stage == CompilerStage::Done {
+        give "done";
+    }
+
+    give "unknown";
+}
+
+share CompilerMode
+share CompilerStage
+share CompilerInput
+share CompilerOutput
+share CompilerOptions
+share CompilerState
+share CompilerResult
+share Compiler
+
+share default_options
+share empty_input
+share empty_output
+share initial_state
+share new_compiler
+share compiler_from_source
+
+share configure_compiler
+share validate_input
+share validate_compiler_links
+share run_frontend
+share run_analysis
+share run_mir_pipeline
+share run_ir_pipeline
+share run_codegen
+share run_linker
+share run_executable
+share run_compiler
+
+share compile_source
+share compile_file
+share stage_name
+share stop_after_stage_from_cli
+
+export *

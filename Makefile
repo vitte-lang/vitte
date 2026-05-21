@@ -1082,7 +1082,7 @@ ci-fast-compiler:
 
 .PHONY: stage-parity-structured
 stage-parity-structured:
-	@ALLOW_BOOTSTRAP_SCHEMA_COMPAT=$${ALLOW_BOOTSTRAP_SCHEMA_COMPAT:-1} tools/stage_parity_structured.sh
+	@tools/stage_parity_structured.sh
 
 .PHONY: compiler-src-critical
 compiler-src-critical:
@@ -1090,7 +1090,7 @@ compiler-src-critical:
 
 .PHONY: native-json-schema-contract
 native-json-schema-contract:
-	@ALLOW_BOOTSTRAP_SCHEMA_COMPAT=$${ALLOW_BOOTSTRAP_SCHEMA_COMPAT:-1} tools/native_json_schema_contract_test.sh
+	@tools/native_json_schema_contract_test.sh
 
 .PHONY: bootstrap-selfhost-repro
 bootstrap-selfhost-repro:

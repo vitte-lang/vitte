@@ -1,15 +1,169 @@
+/home/vincentr/Documents/GitHub/vitte/src/vitte/compiler/frontend/input.vit
+
 space vitte/compiler/frontend/input
 
+export *
+
 form FrontendInput {
-  path: string
-  text: string
-  valid: bool
+    path: string
+    text: string
+    valid: bool
+}
+
+form FrontendInputStats {
+    byte_count: u64
+    line_count: u64
+    empty: bool
+}
+
+proc frontend_input(path: string, text: string, valid: bool) -> FrontendInput {
+    give FrontendInput {
+        path: path,
+        text: text,
+        valid: valid
+    };
+}
+
+proc frontend_input_stats(byte_count: u64, line_count: u64, empty: bool) -> FrontendInputStats {
+    give FrontendInputStats {
+        byte_count: byte_count,
+        line_count: line_count,
+        empty: empty
+    };
 }
 
 proc input_from_text(path: string, text: string) -> FrontendInput {
-  give FrontendInput {
-    path: path,
-    text: text,
-    valid: text != ""
-  };
+    give frontend_input(
+        path,
+        text,
+        text != ""
+    );
+}
+
+proc empty_input() -> FrontendInput {
+    give frontend_input(
+        "",
+        "",
+        false
+    );
+}
+
+proc input_valid(input: FrontendInput) -> bool {
+    give input.valid;
+}
+
+proc input_empty(input: FrontendInput) -> bool {
+    give input.text == "";
+}
+
+proc input_path(input: FrontendInput) -> string {
+    give input.path;
+}
+
+proc input_text(input: FrontendInput) -> string {
+    give input.text;
+}
+
+proc input_byte_count(input: FrontendInput) -> u64 {
+    give len(input.text);
+}
+
+proc input_line_count(input: FrontendInput) -> u64 {
+    if input.text == "" {
+        give 0;
+    }
+
+    let count: u64 = 1;
+
+    let i: u64 = 0;
+
+    while i < len(input.text) {
+        if input.text[i] == '\n' {
+            set count =
+                count + 1;
+        }
+
+        set i =
+            i + 1;
+    }
+
+    give count;
+}
+
+proc input_stats(input: FrontendInput) -> FrontendInputStats {
+    give frontend_input_stats(
+        input_byte_count(input),
+        input_line_count(input),
+        input_empty(input)
+    );
+}
+
+proc normalize_input(input: FrontendInput) -> FrontendInput {
+    let normalized: string = "";
+
+    let i: u64 = 0;
+
+    while i < len(input.text) {
+        if input.text[i] != '\r' {
+            set normalized =
+                normalized + ((input.text[i] as int) as string);
+        }
+
+        set i =
+            i + 1;
+    }
+
+    give frontend_input(
+        input.path,
+        normalized,
+        normalized != ""
+    );
+}
+
+proc clone_input(input: FrontendInput) -> FrontendInput {
+    give frontend_input(
+        input.path,
+        input.text,
+        input.valid
+    );
+}
+
+proc frontend_input_summary(input: FrontendInput) -> string {
+    let stats: FrontendInputStats =
+        input_stats(input);
+
+    give "path="
+        + input.path
+        + " bytes="
+        + (stats.byte_count as string)
+        + " lines="
+        + (stats.line_count as string);
+}
+
+proc frontend_input_selftest() -> bool {
+    let input: FrontendInput =
+        input_from_text(
+            "main.vit",
+            "proc main() {}"
+        );
+
+    let stats: FrontendInputStats =
+        input_stats(input);
+
+    let normalized: FrontendInput =
+        normalize_input(
+            frontend_input(
+                "main.vit",
+                "a\r\nb",
+                true
+            )
+        );
+
+    give input_valid(input)
+        and not input_empty(input)
+        and stats.line_count == 1
+        and stats.byte_count > 0
+        and normalized.text == "a\nb"
+        and frontend_input_summary(input)
+            != "";
 }

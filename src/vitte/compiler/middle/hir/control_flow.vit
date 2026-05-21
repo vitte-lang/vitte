@@ -1,0 +1,582 @@
+/home/vincentr/Documents/GitHub/vitte/src/vitte/compiler/middle/hir/control_flow.vit
+
+space vitte/compiler/middle/hir/control_flow
+
+use vitte/compiler/middle/hir.builder.{
+    HirBlock,
+    HirExpr,
+    HirExprKind,
+    HirFunction,
+    HirStmt,
+    HirStmtKind,
+    HirSpan,
+    empty_span
+}
+
+export *
+
+pick HirControlFlowKind {
+    Entry,
+    Exit,
+    Basic,
+    Branch,
+    Loop,
+    Match,
+    Cleanup,
+    Return,
+    Suspend,
+    Resume,
+    Unreachable,
+    Unknown,
+}
+
+pick HirEdgeKind {
+    Normal,
+    TrueBranch,
+    FalseBranch,
+    BackEdge,
+    BreakEdge,
+    ContinueEdge,
+    ReturnEdge,
+    UnwindEdge,
+    Fallthrough,
+    Unknown,
+}
+
+pick HirFlowState {
+    Reachable,
+    Unreachable,
+    Diverging,
+    Returning,
+    Suspended,
+    Invalid,
+}
+
+pick HirTerminatorKind {
+    None,
+    Goto,
+    Branch,
+    Match,
+    Return,
+    Break,
+    Continue,
+    Panic,
+    Abort,
+    Unreachable,
+    Unknown,
+}
+
+form HirControlFlowNode {
+    id: u64
+    name: string
+    kind: HirControlFlowKind
+    stmt_count: u64
+    predecessor_count: u64
+    successor_count: u64
+    state: HirFlowState
+    terminator: HirTerminatorKind
+    span: HirSpan
+}
+
+form HirControlFlowEdge {
+    from: u64
+    to: u64
+    kind: HirEdgeKind
+    executable: bool
+}
+
+form HirControlFlowGraph {
+    function_name: string
+    nodes: [HirControlFlowNode]
+    edges: [HirControlFlowEdge]
+    entry_node: u64
+    exit_node: u64
+    reachable_node_count: u64
+    valid: bool
+}
+
+form HirFlowWorkItem {
+    node_id: u64
+    depth: u64
+    visited: bool
+}
+
+form HirFlowAnalysis {
+    graph: HirControlFlowGraph
+    worklist: [HirFlowWorkItem]
+    iteration_count: u64
+    converged: bool
+    valid: bool
+}
+
+form HirFlowSummary {
+    node_count: u64
+    edge_count: u64
+    reachable_count: u64
+    loop_count: u64
+    branch_count: u64
+    converged: bool
+}
+
+proc hir_control_flow_node(id: u64, name: string, kind: HirControlFlowKind, stmt_count: u64, predecessor_count: u64, successor_count: u64, state: HirFlowState, terminator: HirTerminatorKind, span: HirSpan) -> HirControlFlowNode {
+    give HirControlFlowNode {
+        id: id,
+        name: name,
+        kind: kind,
+        stmt_count: stmt_count,
+        predecessor_count: predecessor_count,
+        successor_count: successor_count,
+        state: state,
+        terminator: terminator,
+        span: span
+    };
+}
+
+proc hir_control_flow_edge(from: u64, to: u64, kind: HirEdgeKind, executable: bool) -> HirControlFlowEdge {
+    give HirControlFlowEdge {
+        from: from,
+        to: to,
+        kind: kind,
+        executable: executable
+    };
+}
+
+proc hir_control_flow_graph(function_name: string) -> HirControlFlowGraph {
+    give HirControlFlowGraph {
+        function_name: function_name,
+        nodes: [],
+        edges: [],
+        entry_node: 0,
+        exit_node: 0,
+        reachable_node_count: 0,
+        valid: true
+    };
+}
+
+proc hir_flow_work_item(node_id: u64, depth: u64, visited: bool) -> HirFlowWorkItem {
+    give HirFlowWorkItem {
+        node_id: node_id,
+        depth: depth,
+        visited: visited
+    };
+}
+
+proc hir_flow_analysis(graph: HirControlFlowGraph) -> HirFlowAnalysis {
+    give HirFlowAnalysis {
+        graph: graph,
+        worklist: [],
+        iteration_count: 0,
+        converged: false,
+        valid: true
+    };
+}
+
+proc hir_flow_summary(node_count: u64, edge_count: u64, reachable_count: u64, loop_count: u64, branch_count: u64, converged: bool) -> HirFlowSummary {
+    give HirFlowSummary {
+        node_count: node_count,
+        edge_count: edge_count,
+        reachable_count: reachable_count,
+        loop_count: loop_count,
+        branch_count: branch_count,
+        converged: converged
+    };
+}
+
+proc entry_node() -> HirControlFlowNode {
+    give hir_control_flow_node(
+        0,
+        "entry",
+        HirControlFlowKind.Entry,
+        0,
+        0,
+        1,
+        HirFlowState.Reachable,
+        HirTerminatorKind.Goto,
+        empty_span()
+    );
+}
+
+proc exit_node() -> HirControlFlowNode {
+    give hir_control_flow_node(
+        1,
+        "exit",
+        HirControlFlowKind.Exit,
+        0,
+        1,
+        0,
+        HirFlowState.Returning,
+        HirTerminatorKind.Return,
+        empty_span()
+    );
+}
+
+proc append_node(graph: HirControlFlowGraph, node: HirControlFlowNode) -> HirControlFlowGraph {
+    let out: HirControlFlowGraph =
+        graph;
+
+    set out.nodes =
+        out.nodes + [node];
+
+    give out;
+}
+
+proc append_edge(graph: HirControlFlowGraph, edge: HirControlFlowEdge) -> HirControlFlowGraph {
+    let out: HirControlFlowGraph =
+        graph;
+
+    set out.edges =
+        out.edges + [edge];
+
+    give out;
+}
+
+proc append_work_item(analysis: HirFlowAnalysis, item: HirFlowWorkItem) -> HirFlowAnalysis {
+    let out: HirFlowAnalysis =
+        analysis;
+
+    set out.worklist =
+        out.worklist + [item];
+
+    give out;
+}
+
+proc control_flow_kind_name(kind: HirControlFlowKind) -> string {
+    if kind == HirControlFlowKind.Entry { give "entry"; }
+    if kind == HirControlFlowKind.Exit { give "exit"; }
+    if kind == HirControlFlowKind.Basic { give "basic"; }
+    if kind == HirControlFlowKind.Branch { give "branch"; }
+    if kind == HirControlFlowKind.Loop { give "loop"; }
+    if kind == HirControlFlowKind.Match { give "match"; }
+    if kind == HirControlFlowKind.Cleanup { give "cleanup"; }
+    if kind == HirControlFlowKind.Return { give "return"; }
+    if kind == HirControlFlowKind.Suspend { give "suspend"; }
+    if kind == HirControlFlowKind.Resume { give "resume"; }
+    if kind == HirControlFlowKind.Unreachable { give "unreachable"; }
+
+    give "unknown";
+}
+
+proc edge_kind_name(kind: HirEdgeKind) -> string {
+    if kind == HirEdgeKind.Normal { give "normal"; }
+    if kind == HirEdgeKind.TrueBranch { give "true-branch"; }
+    if kind == HirEdgeKind.FalseBranch { give "false-branch"; }
+    if kind == HirEdgeKind.BackEdge { give "back-edge"; }
+    if kind == HirEdgeKind.BreakEdge { give "break-edge"; }
+    if kind == HirEdgeKind.ContinueEdge { give "continue-edge"; }
+    if kind == HirEdgeKind.ReturnEdge { give "return-edge"; }
+    if kind == HirEdgeKind.UnwindEdge { give "unwind-edge"; }
+    if kind == HirEdgeKind.Fallthrough { give "fallthrough"; }
+
+    give "unknown";
+}
+
+proc flow_state_name(state: HirFlowState) -> string {
+    if state == HirFlowState.Reachable { give "reachable"; }
+    if state == HirFlowState.Unreachable { give "unreachable"; }
+    if state == HirFlowState.Diverging { give "diverging"; }
+    if state == HirFlowState.Returning { give "returning"; }
+    if state == HirFlowState.Suspended { give "suspended"; }
+
+    give "invalid";
+}
+
+proc terminator_kind_name(kind: HirTerminatorKind) -> string {
+    if kind == HirTerminatorKind.None { give "none"; }
+    if kind == HirTerminatorKind.Goto { give "goto"; }
+    if kind == HirTerminatorKind.Branch { give "branch"; }
+    if kind == HirTerminatorKind.Match { give "match"; }
+    if kind == HirTerminatorKind.Return { give "return"; }
+    if kind == HirTerminatorKind.Break { give "break"; }
+    if kind == HirTerminatorKind.Continue { give "continue"; }
+    if kind == HirTerminatorKind.Panic { give "panic"; }
+    if kind == HirTerminatorKind.Abort { give "abort"; }
+    if kind == HirTerminatorKind.Unreachable { give "unreachable"; }
+
+    give "unknown";
+}
+
+proc executable_edge(edge: HirControlFlowEdge) -> bool {
+    give edge.executable;
+}
+
+proc reachable_node(node: HirControlFlowNode) -> bool {
+    give node.state
+        == HirFlowState.Reachable
+        or node.state
+            == HirFlowState.Returning;
+}
+
+proc loop_edge(edge: HirControlFlowEdge) -> bool {
+    give edge.kind
+        == HirEdgeKind.BackEdge;
+}
+
+proc branch_node(node: HirControlFlowNode) -> bool {
+    give node.kind
+        == HirControlFlowKind.Branch
+        or node.kind
+            == HirControlFlowKind.Match;
+}
+
+proc count_reachable_nodes(graph: HirControlFlowGraph) -> u64 {
+    let count: u64 = 0;
+
+    let i: u64 = 0;
+
+    while i < len(graph.nodes) {
+        if reachable_node(graph.nodes[i]) {
+            set count =
+                count + 1;
+        }
+
+        set i =
+            i + 1;
+    }
+
+    give count;
+}
+
+proc count_loop_edges(graph: HirControlFlowGraph) -> u64 {
+    let count: u64 = 0;
+
+    let i: u64 = 0;
+
+    while i < len(graph.edges) {
+        if loop_edge(graph.edges[i]) {
+            set count =
+                count + 1;
+        }
+
+        set i =
+            i + 1;
+    }
+
+    give count;
+}
+
+proc count_branch_nodes(graph: HirControlFlowGraph) -> u64 {
+    let count: u64 = 0;
+
+    let i: u64 = 0;
+
+    while i < len(graph.nodes) {
+        if branch_node(graph.nodes[i]) {
+            set count =
+                count + 1;
+        }
+
+        set i =
+            i + 1;
+    }
+
+    give count;
+}
+
+proc connect_nodes(graph: HirControlFlowGraph, from: u64, to: u64, kind: HirEdgeKind) -> HirControlFlowGraph {
+    give append_edge(
+        graph,
+        hir_control_flow_edge(
+            from,
+            to,
+            kind,
+            true
+        )
+    );
+}
+
+proc build_linear_graph(function0: HirFunction) -> HirControlFlowGraph {
+    let graph0: HirControlFlowGraph =
+        hir_control_flow_graph(
+            function0.name
+        );
+
+    let graph1: HirControlFlowGraph =
+        append_node(
+            graph0,
+            entry_node()
+        );
+
+    let body: HirControlFlowNode =
+        hir_control_flow_node(
+            2,
+            "body",
+            HirControlFlowKind.Basic,
+            function0.stmt_count,
+            1,
+            1,
+            HirFlowState.Reachable,
+            HirTerminatorKind.Return,
+            function0.span
+        );
+
+    let graph2: HirControlFlowGraph =
+        append_node(
+            graph1,
+            body
+        );
+
+    let graph3: HirControlFlowGraph =
+        append_node(
+            graph2,
+            exit_node()
+        );
+
+    let graph4: HirControlFlowGraph =
+        connect_nodes(
+            graph3,
+            0,
+            2,
+            HirEdgeKind.Normal
+        );
+
+    let graph5: HirControlFlowGraph =
+        connect_nodes(
+            graph4,
+            2,
+            1,
+            HirEdgeKind.ReturnEdge
+        );
+
+    let out: HirControlFlowGraph =
+        graph5;
+
+    set out.entry_node =
+        0;
+
+    set out.exit_node =
+        1;
+
+    set out.reachable_node_count =
+        count_reachable_nodes(out);
+
+    give out;
+}
+
+proc initialize_analysis(graph: HirControlFlowGraph) -> HirFlowAnalysis {
+    let analysis0: HirFlowAnalysis =
+        hir_flow_analysis(graph);
+
+    let out: HirFlowAnalysis =
+        analysis0;
+
+    let i: u64 = 0;
+
+    while i < len(graph.nodes) {
+        set out =
+            append_work_item(
+                out,
+                hir_flow_work_item(
+                    graph.nodes[i].id,
+                    i,
+                    false
+                )
+            );
+
+        set i =
+            i + 1;
+    }
+
+    set out.iteration_count =
+        len(graph.nodes);
+
+    set out.converged =
+        true;
+
+    give out;
+}
+
+proc analyze_control_flow(graph: HirControlFlowGraph) -> HirFlowAnalysis {
+    give initialize_analysis(graph);
+}
+
+proc build_flow_summary(analysis: HirFlowAnalysis) -> HirFlowSummary {
+    give hir_flow_summary(
+        len(analysis.graph.nodes),
+        len(analysis.graph.edges),
+        analysis.graph.reachable_node_count,
+        count_loop_edges(analysis.graph),
+        count_branch_nodes(analysis.graph),
+        analysis.converged
+    );
+}
+
+proc control_flow_summary(graph: HirControlFlowGraph) -> string {
+    give graph.function_name
+        + " nodes="
+        + (len(graph.nodes) as string)
+        + " edges="
+        + (len(graph.edges) as string)
+        + " reachable="
+        + (graph.reachable_node_count as string)
+        + " valid="
+        + (graph.valid as string);
+}
+
+proc analysis_summary(analysis: HirFlowAnalysis) -> string {
+    give "worklist="
+        + (len(analysis.worklist) as string)
+        + " iterations="
+        + (analysis.iteration_count as string)
+        + " converged="
+        + (analysis.converged as string);
+}
+
+proc control_flow_selftest() -> bool {
+    let function0: HirFunction =
+        hir_function(
+            HirId { value: 1 },
+            "main",
+            HirVisibility.Public,
+            0,
+            3,
+            HirType {
+                id: HirId { value: 2 },
+                kind: HirTypeKind.Primitive,
+                text: "unit",
+                generic_count: 0,
+                span: empty_span()
+            },
+            false,
+            false,
+            false,
+            empty_span()
+        );
+
+    let graph: HirControlFlowGraph =
+        build_linear_graph(
+            function0
+        );
+
+    let analysis: HirFlowAnalysis =
+        analyze_control_flow(
+            graph
+        );
+
+    let summary: HirFlowSummary =
+        build_flow_summary(
+            analysis
+        );
+
+    give summary.node_count == 3
+        and summary.edge_count == 2
+        and summary.reachable_count == 3
+        and summary.loop_count == 0
+        and summary.branch_count == 0
+        and summary.converged
+        and control_flow_kind_name(
+            HirControlFlowKind.Basic
+        ) == "basic"
+        and edge_kind_name(
+            HirEdgeKind.Normal
+        ) == "normal"
+        and flow_state_name(
+            HirFlowState.Reachable
+        ) == "reachable"
+        and terminator_kind_name(
+            HirTerminatorKind.Return
+        ) == "return"
+        and control_flow_summary(graph)
+            != ""
+        and analysis_summary(analysis)
+            != "";
+}

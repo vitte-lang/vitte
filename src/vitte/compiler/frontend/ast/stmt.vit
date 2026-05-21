@@ -1,9 +1,35 @@
 space vitte/compiler/frontend/ast/stmt
 
-use vitte/compiler/frontend/ast/node.{ AstId, AstSpan, ast_id, ast_span_empty }
-use vitte/compiler/frontend/ast/expr.{ AstExpr, ast_expr_unknown, count_expr }
-use vitte/compiler/frontend/ast/pattern.{ AstPattern, ast_pattern_empty }
-use vitte/compiler/frontend/ast/type_expr.{ AstTypeExpr, ast_type_empty }
+use vitte/compiler/frontend/ast/node.{
+  AstId,
+  AstSpan,
+  ast_id,
+  ast_span_empty,
+  merge_spans
+}
+
+use vitte/compiler/frontend/ast/expr.{
+  AstExpr,
+  ast_expr_empty,
+  ast_expr_unknown,
+  count_expr,
+  expr_depth,
+  expr_is_place
+}
+
+use vitte/compiler/frontend/ast/pattern.{
+  AstPattern,
+  ast_pattern_empty,
+  count_patterns,
+  pattern_depth
+}
+
+use vitte/compiler/frontend/ast/type_expr.{
+  AstTypeExpr,
+  ast_type_empty
+}
+
+export *
 
 pick AstStmtKind {
   Unknown,
@@ -37,132 +63,681 @@ pick AstStmtKind {
 form AstStmt {
   id: AstId
   span: AstSpan
+
   kind: AstStmtKind
+
   pattern: AstPattern
+
   target: string
   target_expr: AstExpr
+
   expr: AstExpr
   annotation: AstTypeExpr
+
   condition: AstExpr
+
   then_stmts: [AstStmt]
   else_stmts: [AstStmt]
   catch_stmts: [AstStmt]
+
+  label: string
   message: string
+
+  mutable: bool
+  async: bool
+  unsafe: bool
+  deferred: bool
+  terminated: bool
+
+  stmt_count: u64
+  expr_count: u64
+  type_count: u64
+  pattern_count: u64
+
+  depth: u64
+
   valid: bool
 }
 
-proc ast_stmt_create(id: u64, span: AstSpan, kind: AstStmtKind, pattern: AstPattern, target: string, expr: AstExpr, annotation: AstTypeExpr, message: string, then_stmts: [AstStmt], else_stmts: [AstStmt]) -> AstStmt {
-  give ast_stmt_targeted(id, span, kind, pattern, target, ast_expr_unknown(0, ast_span_empty(), ""), expr, annotation, message, then_stmts, else_stmts);
+proc ast_stmt_kind_name(kind: AstStmtKind) -> string {
+  if kind == AstStmtKind.Unknown { give "unknown"; }
+  elif kind == AstStmtKind.Const { give "const"; }
+  elif kind == AstStmtKind.Let { give "let"; }
+  elif kind == AstStmtKind.Set { give "set"; }
+  elif kind == AstStmtKind.Give { give "give"; }
+  elif kind == AstStmtKind.If { give "if"; }
+  elif kind == AstStmtKind.While { give "while"; }
+  elif kind == AstStmtKind.For { give "for"; }
+  elif kind == AstStmtKind.Loop { give "loop"; }
+  elif kind == AstStmtKind.Match { give "match"; }
+  elif kind == AstStmtKind.When { give "when"; }
+  elif kind == AstStmtKind.With { give "with"; }
+  elif kind == AstStmtKind.Try { give "try"; }
+  elif kind == AstStmtKind.Defer { give "defer"; }
+  elif kind == AstStmtKind.Unsafe { give "unsafe"; }
+  elif kind == AstStmtKind.Asm { give "asm"; }
+  elif kind == AstStmtKind.Emit { give "emit"; }
+  elif kind == AstStmtKind.Panic { give "panic"; }
+  elif kind == AstStmtKind.Assert { give "assert"; }
+  elif kind == AstStmtKind.Break { give "break"; }
+  elif kind == AstStmtKind.Continue { give "continue"; }
+  elif kind == AstStmtKind.Unreachable { give "unreachable"; }
+  elif kind == AstStmtKind.Select { give "select"; }
+  elif kind == AstStmtKind.Critical { give "critical"; }
+  elif kind == AstStmtKind.StaticAssert { give "static-assert"; }
+  elif kind == AstStmtKind.ExprStmt { give "expr"; }
+
+  give "stmt";
 }
 
-proc ast_stmt_targeted(id: u64, span: AstSpan, kind: AstStmtKind, pattern: AstPattern, target: string, target_expr: AstExpr, expr: AstExpr, annotation: AstTypeExpr, message: string, then_stmts: [AstStmt], else_stmts: [AstStmt]) -> AstStmt {
-  let valid: bool = kind != AstStmtKind.Unknown and expr.valid;
+proc stmt_depth(then_stmts: [AstStmt], else_stmts: [AstStmt], catch_stmts: [AstStmt]) -> u64 {
+  let depth: u64 = 1;
+
+  let i: u64 = 0;
+
+  while i < len(then_stmts) {
+    let child_depth: u64 =
+      then_stmts[i].depth + 1;
+
+    if child_depth > depth {
+      set depth = child_depth;
+    }
+
+    set i = i + 1;
+  }
+
+  set i = 0;
+
+  while i < len(else_stmts) {
+    let child_depth: u64 =
+      else_stmts[i].depth + 1;
+
+    if child_depth > depth {
+      set depth = child_depth;
+    }
+
+    set i = i + 1;
+  }
+
+  set i = 0;
+
+  while i < len(catch_stmts) {
+    let child_depth: u64 =
+      catch_stmts[i].depth + 1;
+
+    if child_depth > depth {
+      set depth = child_depth;
+    }
+
+    set i = i + 1;
+  }
+
+  give depth;
+}
+
+proc stmt_expr_count(
+  target_expr: AstExpr,
+  expr: AstExpr,
+  condition: AstExpr,
+  then_stmts: [AstStmt],
+  else_stmts: [AstStmt],
+  catch_stmts: [AstStmt]
+) -> u64 {
+
+  let total: u64 = 0;
+
+  if target_expr.valid {
+    set total =
+      total + count_expr(target_expr);
+  }
+
+  if expr.valid {
+    set total =
+      total + count_expr(expr);
+  }
+
+  if condition.valid
+    and condition.text != expr.text {
+
+    set total =
+      total + count_expr(condition);
+  }
+
+  let i: u64 = 0;
+
+  while i < len(then_stmts) {
+    set total =
+      total + then_stmts[i].expr_count;
+
+    set i =
+      i + 1;
+  }
+
+  set i = 0;
+
+  while i < len(else_stmts) {
+    set total =
+      total + else_stmts[i].expr_count;
+
+    set i =
+      i + 1;
+  }
+
+  set i = 0;
+
+  while i < len(catch_stmts) {
+    set total =
+      total + catch_stmts[i].expr_count;
+
+    set i =
+      i + 1;
+  }
+
+  give total;
+}
+
+proc stmt_type_count(
+  annotation: AstTypeExpr,
+  then_stmts: [AstStmt],
+  else_stmts: [AstStmt],
+  catch_stmts: [AstStmt]
+) -> u64 {
+
+  let total: u64 =
+    if annotation.valid { 1 } else { 0 };
+
+  let i: u64 = 0;
+
+  while i < len(then_stmts) {
+    set total =
+      total + then_stmts[i].type_count;
+
+    set i =
+      i + 1;
+  }
+
+  set i = 0;
+
+  while i < len(else_stmts) {
+    set total =
+      total + else_stmts[i].type_count;
+
+    set i =
+      i + 1;
+  }
+
+  set i = 0;
+
+  while i < len(catch_stmts) {
+    set total =
+      total + catch_stmts[i].type_count;
+
+    set i =
+      i + 1;
+  }
+
+  give total;
+}
+
+proc stmt_pattern_count(
+  pattern: AstPattern,
+  then_stmts: [AstStmt],
+  else_stmts: [AstStmt],
+  catch_stmts: [AstStmt]
+) -> u64 {
+
+  let total: u64 =
+    if pattern.valid {
+      count_patterns(pattern)
+    } else {
+      0
+    };
+
+  let i: u64 = 0;
+
+  while i < len(then_stmts) {
+    set total =
+      total + then_stmts[i].pattern_count;
+
+    set i =
+      i + 1;
+  }
+
+  set i = 0;
+
+  while i < len(else_stmts) {
+    set total =
+      total + else_stmts[i].pattern_count;
+
+    set i =
+      i + 1;
+  }
+
+  set i = 0;
+
+  while i < len(catch_stmts) {
+    set total =
+      total + catch_stmts[i].pattern_count;
+
+    set i =
+      i + 1;
+  }
+
+  give total;
+}
+
+proc stmt_tree_count(then_stmts: [AstStmt], else_stmts: [AstStmt], catch_stmts: [AstStmt]) -> u64 {
+  let total: u64 = 1;
+
+  let i: u64 = 0;
+
+  while i < len(then_stmts) {
+    set total =
+      total + then_stmts[i].stmt_count;
+
+    set i =
+      i + 1;
+  }
+
+  set i = 0;
+
+  while i < len(else_stmts) {
+    set total =
+      total + else_stmts[i].stmt_count;
+
+    set i =
+      i + 1;
+  }
+
+  set i = 0;
+
+  while i < len(catch_stmts) {
+    set total =
+      total + catch_stmts[i].stmt_count;
+
+    set i =
+      i + 1;
+  }
+
+  give total;
+}
+
+proc ast_stmt_targeted(
+  id: u64,
+  span: AstSpan,
+  kind: AstStmtKind,
+  pattern: AstPattern,
+  target: string,
+  target_expr: AstExpr,
+  expr: AstExpr,
+  annotation: AstTypeExpr,
+  message: string,
+  then_stmts: [AstStmt],
+  else_stmts: [AstStmt]
+) -> AstStmt {
+
+  let catch_stmts: [AstStmt] = [];
+
+  let stmt_count: u64 =
+    stmt_tree_count(
+      then_stmts,
+      else_stmts,
+      catch_stmts
+    );
+
+  let expr_count: u64 =
+    stmt_expr_count(
+      target_expr,
+      expr,
+      expr,
+      then_stmts,
+      else_stmts,
+      catch_stmts
+    );
+
+  let type_count: u64 =
+    stmt_type_count(
+      annotation,
+      then_stmts,
+      else_stmts,
+      catch_stmts
+    );
+
+  let pattern_count: u64 =
+    stmt_pattern_count(
+      pattern,
+      then_stmts,
+      else_stmts,
+      catch_stmts
+    );
+
+  let valid: bool =
+    kind != AstStmtKind.Unknown;
+
+  if kind == AstStmtKind.Set {
+    set valid =
+      valid
+      and target_expr.valid
+      and expr.valid
+      and expr_is_place(target_expr);
+  }
+  elif kind == AstStmtKind.Let
+    or kind == AstStmtKind.Const {
+
+    set valid =
+      valid
+      and pattern.valid
+      and expr.valid;
+  }
+  elif kind == AstStmtKind.ExprStmt {
+    set valid =
+      valid
+      and expr.valid;
+  }
+
   give AstStmt {
     id: ast_id(id),
     span: span,
+
     kind: kind,
+
     pattern: pattern,
+
     target: target,
     target_expr: target_expr,
+
     expr: expr,
     annotation: annotation,
-    condition: expr,
-    then_stmts: then_stmts,
-    else_stmts: else_stmts,
-    catch_stmts: [],
-    message: message,
-    valid: kind != AstStmtKind.Unknown and valid
-  };
-}
 
-proc ast_stmt_conditional(id: u64, span: AstSpan, kind: AstStmtKind, condition: AstExpr, then_stmts: [AstStmt], else_stmts: [AstStmt]) -> AstStmt {
-  let valid: bool = kind != AstStmtKind.Unknown and condition.valid;
-  give AstStmt {
-    id: ast_id(id),
-    span: span,
-    kind: kind,
-    pattern: ast_pattern_empty(),
-    target: "",
-    target_expr: ast_expr_unknown(0, ast_span_empty(), ""),
-    expr: condition,
-    annotation: ast_type_empty(),
-    condition: condition,
+    condition: expr,
+
     then_stmts: then_stmts,
     else_stmts: else_stmts,
-    catch_stmts: [],
-    message: "",
+    catch_stmts: catch_stmts,
+
+    label: "",
+    message: message,
+
+    mutable: pattern.mutable,
+    async: false,
+    unsafe: kind == AstStmtKind.Unsafe,
+    deferred: kind == AstStmtKind.Defer,
+    terminated: kind == AstStmtKind.Give
+      or kind == AstStmtKind.Panic
+      or kind == AstStmtKind.Unreachable,
+
+    stmt_count: stmt_count,
+    expr_count: expr_count,
+    type_count: type_count,
+    pattern_count: pattern_count,
+
+    depth: stmt_depth(
+      then_stmts,
+      else_stmts,
+      catch_stmts
+    ),
+
     valid: valid
   };
 }
 
+proc ast_stmt_create(
+  id: u64,
+  span: AstSpan,
+  kind: AstStmtKind,
+  pattern: AstPattern,
+  target: string,
+  expr: AstExpr,
+  annotation: AstTypeExpr,
+  message: string,
+  then_stmts: [AstStmt],
+  else_stmts: [AstStmt]
+) -> AstStmt {
+
+  give ast_stmt_targeted(
+    id,
+    span,
+    kind,
+    pattern,
+    target,
+    ast_expr_empty(),
+    expr,
+    annotation,
+    message,
+    then_stmts,
+    else_stmts
+  );
+}
+
+proc ast_stmt_conditional(
+  id: u64,
+  span: AstSpan,
+  kind: AstStmtKind,
+  condition: AstExpr,
+  then_stmts: [AstStmt],
+  else_stmts: [AstStmt]
+) -> AstStmt {
+
+  let catch_stmts: [AstStmt] = [];
+
+  let stmt_count: u64 =
+    stmt_tree_count(
+      then_stmts,
+      else_stmts,
+      catch_stmts
+    );
+
+  let expr_count: u64 =
+    stmt_expr_count(
+      ast_expr_empty(),
+      condition,
+      condition,
+      then_stmts,
+      else_stmts,
+      catch_stmts
+    );
+
+  let type_count: u64 =
+    stmt_type_count(
+      ast_type_empty(),
+      then_stmts,
+      else_stmts,
+      catch_stmts
+    );
+
+  let pattern_count: u64 =
+    stmt_pattern_count(
+      ast_pattern_empty(),
+      then_stmts,
+      else_stmts,
+      catch_stmts
+    );
+
+  give AstStmt {
+    id: ast_id(id),
+    span: span,
+
+    kind: kind,
+
+    pattern: ast_pattern_empty(),
+
+    target: "",
+    target_expr: ast_expr_empty(),
+
+    expr: condition,
+    annotation: ast_type_empty(),
+
+    condition: condition,
+
+    then_stmts: then_stmts,
+    else_stmts: else_stmts,
+    catch_stmts: catch_stmts,
+
+    label: "",
+    message: "",
+
+    mutable: false,
+    async: false,
+    unsafe: false,
+    deferred: false,
+    terminated: false,
+
+    stmt_count: stmt_count,
+    expr_count: expr_count,
+    type_count: type_count,
+    pattern_count: pattern_count,
+
+    depth: stmt_depth(
+      then_stmts,
+      else_stmts,
+      catch_stmts
+    ),
+
+    valid: kind != AstStmtKind.Unknown
+      and condition.valid
+  };
+}
+
+proc ast_stmt_empty() -> AstStmt {
+  give AstStmt {
+    id: ast_id(0),
+    span: ast_span_empty(),
+
+    kind: AstStmtKind.Unknown,
+
+    pattern: ast_pattern_empty(),
+
+    target: "",
+    target_expr: ast_expr_empty(),
+
+    expr: ast_expr_empty(),
+    annotation: ast_type_empty(),
+
+    condition: ast_expr_empty(),
+
+    then_stmts: [],
+    else_stmts: [],
+    catch_stmts: [],
+
+    label: "",
+    message: "",
+
+    mutable: false,
+    async: false,
+    unsafe: false,
+    deferred: false,
+    terminated: false,
+
+    stmt_count: 0,
+    expr_count: 0,
+    type_count: 0,
+    pattern_count: 0,
+
+    depth: 0,
+
+    valid: false
+  };
+}
+
+proc stmt_has_branches(stmt: AstStmt) -> bool {
+  give len(stmt.then_stmts) > 0
+    or len(stmt.else_stmts) > 0
+    or len(stmt.catch_stmts) > 0;
+}
+
+proc stmt_has_expr(stmt: AstStmt) -> bool {
+  give stmt.expr.valid;
+}
+
+proc stmt_has_target(stmt: AstStmt) -> bool {
+  give stmt.target != ""
+    or stmt.target_expr.valid;
+}
+
+proc stmt_is_loop(stmt: AstStmt) -> bool {
+  give stmt.kind == AstStmtKind.While
+    or stmt.kind == AstStmtKind.For
+    or stmt.kind == AstStmtKind.Loop;
+}
+
+proc stmt_is_terminator(stmt: AstStmt) -> bool {
+  give stmt.terminated;
+}
+
+proc stmt_is_conditional(stmt: AstStmt) -> bool {
+  give stmt.kind == AstStmtKind.If
+    or stmt.kind == AstStmtKind.Match
+    or stmt.kind == AstStmtKind.When
+    or stmt.kind == AstStmtKind.Select;
+}
+
+proc stmt_child(stmt: AstStmt, index: u64) -> AstStmt {
+  if index < len(stmt.then_stmts) {
+    give stmt.then_stmts[index];
+  }
+
+  let else_index: u64 =
+    index - len(stmt.then_stmts);
+
+  if else_index < len(stmt.else_stmts) {
+    give stmt.else_stmts[else_index];
+  }
+
+  give ast_stmt_empty();
+}
+
 proc count_stmt_exprs(stmt: AstStmt) -> u64 {
-  let total: u64 = 0;
-  if stmt.target_expr.valid {
-    set total = total + count_expr(stmt.target_expr);
-  }
-  if stmt.expr.valid {
-    set total = total + count_expr(stmt.expr);
-  }
-  let i: u64 = 0;
-  while i < len(stmt.then_stmts) {
-    set total = total + count_stmt_exprs(stmt.then_stmts[i]);
-    set i = i + 1;
-  }
-  set i = 0;
-  while i < len(stmt.else_stmts) {
-    set total = total + count_stmt_exprs(stmt.else_stmts[i]);
-    set i = i + 1;
-  }
-  give total;
+  give stmt.expr_count;
 }
 
 proc count_stmt_types(stmt: AstStmt) -> u64 {
-  let total: u64 = 0;
-  if stmt.annotation.valid {
-    set total = total + 1;
-  }
-  let i: u64 = 0;
-  while i < len(stmt.then_stmts) {
-    set total = total + count_stmt_types(stmt.then_stmts[i]);
-    set i = i + 1;
-  }
-  set i = 0;
-  while i < len(stmt.else_stmts) {
-    set total = total + count_stmt_types(stmt.else_stmts[i]);
-    set i = i + 1;
-  }
-  give total;
+  give stmt.type_count;
 }
 
 proc count_stmt_patterns(stmt: AstStmt) -> u64 {
-  let total: u64 = 0;
-  if stmt.pattern.valid {
-    set total = total + 1;
-  }
-  let i: u64 = 0;
-  while i < len(stmt.then_stmts) {
-    set total = total + count_stmt_patterns(stmt.then_stmts[i]);
-    set i = i + 1;
-  }
-  set i = 0;
-  while i < len(stmt.else_stmts) {
-    set total = total + count_stmt_patterns(stmt.else_stmts[i]);
-    set i = i + 1;
-  }
-  give total;
+  give stmt.pattern_count;
 }
 
 proc count_stmt_tree(stmt: AstStmt) -> u64 {
-  let total: u64 = 1;
-  let i: u64 = 0;
-  while i < len(stmt.then_stmts) {
-    set total = total + count_stmt_tree(stmt.then_stmts[i]);
-    set i = i + 1;
-  }
-  i = 0;
-  while i < len(stmt.else_stmts) {
-    set total = total + count_stmt_tree(stmt.else_stmts[i]);
-    set i = i + 1;
-  }
-  give total;
+  give stmt.stmt_count;
+}
+
+proc stmt_summary(stmt: AstStmt) -> string {
+  give "kind="
+    + ast_stmt_kind_name(stmt.kind)
+    + " exprs="
+    + (stmt.expr_count as string)
+    + " stmts="
+    + (stmt.stmt_count as string)
+    + " depth="
+    + (stmt.depth as string)
+    + " terminated="
+    + (stmt.terminated as string)
+    + " valid="
+    + (stmt.valid as string);
+}
+
+proc ast_stmt_selftest() -> bool {
+  let expr: AstExpr =
+    ast_expr_unknown(
+      1,
+      ast_span_empty(),
+      "x"
+    );
+
+  let stmt: AstStmt =
+    ast_stmt_conditional(
+      2,
+      ast_span_empty(),
+      AstStmtKind.If,
+      expr,
+      [],
+      []
+    );
+
+  give stmt.valid
+    and stmt_is_conditional(stmt)
+    and stmt_has_expr(stmt)
+    and count_stmt_tree(stmt) == 1
+    and stmt_summary(stmt) != "";
 }

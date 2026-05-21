@@ -1,21 +1,460 @@
 space vitte/compiler/frontend/lexer/errors
 
+export *
+
+pick LexerDiagnosticSeverity {
+  Info,
+  Warning,
+  Error,
+  Fatal,
+}
+
+pick LexerDiagnosticKind {
+  InvalidCharacter,
+  InvalidUtf8,
+  InvalidEscape,
+  InvalidNumber,
+  InvalidFloat,
+  InvalidBinary,
+  InvalidOctal,
+  InvalidHex,
+  InvalidUnicodeEscape,
+  UnterminatedString,
+  UnterminatedChar,
+  UnterminatedBlockComment,
+  UnterminatedRegionComment,
+  UnexpectedEof,
+  InvalidIndentation,
+  InvalidToken,
+  Internal,
+}
+
 form LexerDiagnostic {
   code: string
+  kind: LexerDiagnosticKind
+  severity: LexerDiagnosticSeverity
   message: string
+  hint: string
+  source_line: string
   line: u64
   column: u64
   width: u64
+  offset: u64
+  recoverable: bool
   fatal: bool
+  valid: bool
 }
 
-proc lex_error(code: string, message: string, line: u64, column: u64, width: u64) -> LexerDiagnostic {
+form LexerDiagnosticBag {
+  diagnostics: [LexerDiagnostic]
+  info_count: u64
+  warning_count: u64
+  error_count: u64
+  fatal_count: u64
+  valid: bool
+}
+
+proc lexer_diagnostic(
+  code: string,
+  kind: LexerDiagnosticKind,
+  severity: LexerDiagnosticSeverity,
+  message: string,
+  hint: string,
+  source_line: string,
+  line: u64,
+  column: u64,
+  width: u64,
+  offset: u64,
+  recoverable: bool,
+  fatal: bool,
+  valid: bool
+) -> LexerDiagnostic {
+
   give LexerDiagnostic {
     code: code,
+    kind: kind,
+    severity: severity,
     message: message,
+    hint: hint,
+    source_line: source_line,
     line: line,
     column: column,
     width: width,
-    fatal: true
+    offset: offset,
+    recoverable: recoverable,
+    fatal: fatal,
+    valid: valid
   };
+}
+
+proc lexer_diagnostic_bag() -> LexerDiagnosticBag {
+  give LexerDiagnosticBag {
+    diagnostics: [],
+    info_count: 0,
+    warning_count: 0,
+    error_count: 0,
+    fatal_count: 0,
+    valid: true
+  };
+}
+
+proc severity_name(severity: LexerDiagnosticSeverity) -> string {
+  if severity == LexerDiagnosticSeverity.Info { give "info"; }
+  elif severity == LexerDiagnosticSeverity.Warning { give "warning"; }
+  elif severity == LexerDiagnosticSeverity.Error { give "error"; }
+  elif severity == LexerDiagnosticSeverity.Fatal { give "fatal"; }
+
+  give "unknown";
+}
+
+proc diagnostic_kind_name(kind: LexerDiagnosticKind) -> string {
+  if kind == LexerDiagnosticKind.InvalidCharacter { give "invalid-character"; }
+  elif kind == LexerDiagnosticKind.InvalidUtf8 { give "invalid-utf8"; }
+  elif kind == LexerDiagnosticKind.InvalidEscape { give "invalid-escape"; }
+  elif kind == LexerDiagnosticKind.InvalidNumber { give "invalid-number"; }
+  elif kind == LexerDiagnosticKind.InvalidFloat { give "invalid-float"; }
+  elif kind == LexerDiagnosticKind.InvalidBinary { give "invalid-binary"; }
+  elif kind == LexerDiagnosticKind.InvalidOctal { give "invalid-octal"; }
+  elif kind == LexerDiagnosticKind.InvalidHex { give "invalid-hex"; }
+  elif kind == LexerDiagnosticKind.InvalidUnicodeEscape { give "invalid-unicode-escape"; }
+  elif kind == LexerDiagnosticKind.UnterminatedString { give "unterminated-string"; }
+  elif kind == LexerDiagnosticKind.UnterminatedChar { give "unterminated-char"; }
+  elif kind == LexerDiagnosticKind.UnterminatedBlockComment { give "unterminated-block-comment"; }
+  elif kind == LexerDiagnosticKind.UnterminatedRegionComment { give "unterminated-region-comment"; }
+  elif kind == LexerDiagnosticKind.UnexpectedEof { give "unexpected-eof"; }
+  elif kind == LexerDiagnosticKind.InvalidIndentation { give "invalid-indentation"; }
+  elif kind == LexerDiagnosticKind.InvalidToken { give "invalid-token"; }
+  elif kind == LexerDiagnosticKind.Internal { give "internal"; }
+
+  give "unknown";
+}
+
+proc append_diagnostic(bag: LexerDiagnosticBag, diagnostic: LexerDiagnostic) -> LexerDiagnosticBag {
+  let out: LexerDiagnosticBag =
+    bag;
+
+  set out.diagnostics =
+    out.diagnostics + [diagnostic];
+
+  if diagnostic.severity == LexerDiagnosticSeverity.Info {
+    set out.info_count =
+      out.info_count + 1;
+  }
+  elif diagnostic.severity == LexerDiagnosticSeverity.Warning {
+    set out.warning_count =
+      out.warning_count + 1;
+  }
+  elif diagnostic.severity == LexerDiagnosticSeverity.Error {
+    set out.error_count =
+      out.error_count + 1;
+  }
+  elif diagnostic.severity == LexerDiagnosticSeverity.Fatal {
+    set out.error_count =
+      out.error_count + 1;
+
+    set out.fatal_count =
+      out.fatal_count + 1;
+  }
+
+  set out.valid =
+    out.valid and diagnostic.valid;
+
+  give out;
+}
+
+proc lex_error(
+  code: string,
+  message: string,
+  line: u64,
+  column: u64,
+  width: u64
+) -> LexerDiagnostic {
+
+  let safe_width: u64 =
+    if width == 0 { 1 } else { width };
+
+  give lexer_diagnostic(
+    code,
+    LexerDiagnosticKind.InvalidToken,
+    LexerDiagnosticSeverity.Fatal,
+    message,
+    "",
+    "",
+    line,
+    column,
+    safe_width,
+    0,
+    false,
+    true,
+    true
+  );
+}
+
+proc lex_warning(
+  code: string,
+  message: string,
+  line: u64,
+  column: u64
+) -> LexerDiagnostic {
+
+  give lexer_diagnostic(
+    code,
+    LexerDiagnosticKind.InvalidToken,
+    LexerDiagnosticSeverity.Warning,
+    message,
+    "",
+    "",
+    line,
+    column,
+    1,
+    0,
+    true,
+    false,
+    true
+  );
+}
+
+proc invalid_character(
+  ch: string,
+  line: u64,
+  column: u64
+) -> LexerDiagnostic {
+
+  give lexer_diagnostic(
+    "LEX_E_INVALID_CHAR",
+    LexerDiagnosticKind.InvalidCharacter,
+    LexerDiagnosticSeverity.Fatal,
+    "invalid character `" + ch + "`",
+    "remove or replace the unsupported character",
+    "",
+    line,
+    column,
+    1,
+    0,
+    false,
+    true,
+    true
+  );
+}
+
+proc invalid_escape(
+  escape0: string,
+  line: u64,
+  column: u64
+) -> LexerDiagnostic {
+
+  give lexer_diagnostic(
+    "LEX_E_INVALID_ESCAPE",
+    LexerDiagnosticKind.InvalidEscape,
+    LexerDiagnosticSeverity.Error,
+    "invalid escape sequence `" + escape0 + "`",
+    "use a valid escape sequence",
+    "",
+    line,
+    column,
+    len(escape0),
+    0,
+    true,
+    false,
+    true
+  );
+}
+
+proc invalid_number(
+  value: string,
+  line: u64,
+  column: u64
+) -> LexerDiagnostic {
+
+  give lexer_diagnostic(
+    "LEX_E_INVALID_NUMBER",
+    LexerDiagnosticKind.InvalidNumber,
+    LexerDiagnosticSeverity.Error,
+    "invalid numeric literal `" + value + "`",
+    "verify integer or float syntax",
+    "",
+    line,
+    column,
+    len(value),
+    0,
+    true,
+    false,
+    true
+  );
+}
+
+proc unterminated_string(
+  line: u64,
+  column: u64
+) -> LexerDiagnostic {
+
+  give lexer_diagnostic(
+    "LEX_E_UNTERMINATED_STRING",
+    LexerDiagnosticKind.UnterminatedString,
+    LexerDiagnosticSeverity.Fatal,
+    "unterminated string literal",
+    "close the string with `\"`",
+    "",
+    line,
+    column,
+    1,
+    0,
+    false,
+    true,
+    true
+  );
+}
+
+proc unterminated_char(
+  line: u64,
+  column: u64
+) -> LexerDiagnostic {
+
+  give lexer_diagnostic(
+    "LEX_E_UNTERMINATED_CHAR",
+    LexerDiagnosticKind.UnterminatedChar,
+    LexerDiagnosticSeverity.Fatal,
+    "unterminated char literal",
+    "close the char literal with `'`",
+    "",
+    line,
+    column,
+    1,
+    0,
+    false,
+    true,
+    true
+  );
+}
+
+proc unterminated_block_comment(
+  line: u64,
+  column: u64
+) -> LexerDiagnostic {
+
+  give lexer_diagnostic(
+    "LEX_E_UNTERMINATED_BLOCK_COMMENT",
+    LexerDiagnosticKind.UnterminatedBlockComment,
+    LexerDiagnosticSeverity.Fatal,
+    "unterminated block comment",
+    "close the comment with `*/`",
+    "",
+    line,
+    column,
+    2,
+    0,
+    false,
+    true,
+    true
+  );
+}
+
+proc unterminated_region_comment(
+  line: u64,
+  column: u64
+) -> LexerDiagnostic {
+
+  give lexer_diagnostic(
+    "LEX_E_UNTERMINATED_REGION_COMMENT",
+    LexerDiagnosticKind.UnterminatedRegionComment,
+    LexerDiagnosticSeverity.Fatal,
+    "unterminated region comment",
+    "close the region comment with `>>>`",
+    "",
+    line,
+    column,
+    3,
+    0,
+    false,
+    true,
+    true
+  );
+}
+
+proc unexpected_eof(
+  line: u64,
+  column: u64
+) -> LexerDiagnostic {
+
+  give lexer_diagnostic(
+    "LEX_E_UNEXPECTED_EOF",
+    LexerDiagnosticKind.UnexpectedEof,
+    LexerDiagnosticSeverity.Fatal,
+    "unexpected end of file",
+    "complete the current token or construct",
+    "",
+    line,
+    column,
+    1,
+    0,
+    false,
+    true,
+    true
+  );
+}
+
+proc internal_lexer_error(message: string) -> LexerDiagnostic {
+  give lexer_diagnostic(
+    "LEX_E_INTERNAL",
+    LexerDiagnosticKind.Internal,
+    LexerDiagnosticSeverity.Fatal,
+    "internal lexer error: " + message,
+    "report this issue to the compiler maintainers",
+    "",
+    1,
+    1,
+    1,
+    0,
+    false,
+    true,
+    true
+  );
+}
+
+proc diagnostic_is_error(diagnostic: LexerDiagnostic) -> bool {
+  give diagnostic.severity == LexerDiagnosticSeverity.Error
+    or diagnostic.severity == LexerDiagnosticSeverity.Fatal;
+}
+
+proc diagnostic_is_warning(diagnostic: LexerDiagnostic) -> bool {
+  give diagnostic.severity == LexerDiagnosticSeverity.Warning;
+}
+
+proc diagnostic_summary(bag: LexerDiagnosticBag) -> string {
+  give "diagnostics="
+    + (len(bag.diagnostics) as string)
+    + " infos="
+    + (bag.info_count as string)
+    + " warnings="
+    + (bag.warning_count as string)
+    + " errors="
+    + (bag.error_count as string)
+    + " fatals="
+    + (bag.fatal_count as string)
+    + " valid="
+    + (bag.valid as string);
+}
+
+proc lexer_errors_selftest() -> bool {
+  let d0: LexerDiagnostic =
+    invalid_character("@", 1, 4);
+
+  let d1: LexerDiagnostic =
+    unterminated_string(2, 8);
+
+  let bag0: LexerDiagnosticBag =
+    lexer_diagnostic_bag();
+
+  let bag1: LexerDiagnosticBag =
+    append_diagnostic(bag0, d0);
+
+  let bag2: LexerDiagnosticBag =
+    append_diagnostic(bag1, d1);
+
+  give diagnostic_kind_name(LexerDiagnosticKind.InvalidCharacter) == "invalid-character"
+    and severity_name(LexerDiagnosticSeverity.Fatal) == "fatal"
+    and diagnostic_is_error(d0)
+    and bag2.error_count == 2
+    and bag2.fatal_count == 2
+    and diagnostic_summary(bag2) != "";
 }

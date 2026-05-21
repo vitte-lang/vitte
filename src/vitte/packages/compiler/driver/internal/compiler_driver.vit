@@ -4,29 +4,439 @@ use compiler_emit
 use compiler_ir
 use compiler_parser
 
-form CompileReport {
-  success: bool,
-  emitted_source: string,
-  source_name: string,
-  module_name: string
-}
-
-proc compile_source(source_name: string, source_text: string) -> CompileReport {
-  let parsed: compiler_parser.ParsedModule = compiler_parser.parse_source(source_name, source_text)
-  let ir_module: compiler_ir.IrModule = compiler_ir.lower(parsed.module_value)
-  let emitted_source: string = compiler_emit.emit_module(ir_module)
-  let success: bool =
-    source_name != "" and
-    parsed.module_value.source_name == source_name and
-    parsed.module_value.space_name != "" and
-    ir_module.module_name == parsed.module_value.space_name and
-    emitted_source != ""
-  give CompileReport {
-    success: success,
-    emitted_source: emitted_source,
-    source_name: source_name,
-    module_name: ir_module.module_name
-  }
-}
-
 export *
+
+<<< ========================================================= >>>
+<<< Compiler driver                                           >>>
+<<< Parse -> IR -> Emit pipeline                              >>>
+<<< ========================================================= >>>
+
+pick CompileStage {
+  None,
+
+  Parse,
+  Lower,
+  Emit,
+
+  Complete,
+
+  Failed,
+}
+
+form DriverDiagnostic {
+  code: string
+
+  stage: CompileStage
+
+  message: string
+
+  fatal: bool
+
+  valid: bool
+}
+
+form CompileStats {
+  use_count: u64
+  decl_count: u64
+
+  emitted_bytes: u64
+
+  valid: bool
+}
+
+form CompileReport {
+  success: bool
+
+  stage: CompileStage
+
+  emitted_source: string
+
+  source_name: string
+  module_name: string
+
+  diagnostics: [DriverDiagnostic]
+
+  stats: CompileStats
+
+  parse_ok: bool
+  lower_ok: bool
+  emit_ok: bool
+
+  valid: bool
+}
+
+proc driver_diagnostic(
+  code: string,
+  stage: CompileStage,
+  message: string,
+  fatal: bool
+) -> DriverDiagnostic {
+
+  give DriverDiagnostic {
+    code: code,
+
+    stage: stage,
+
+    message: message,
+
+    fatal: fatal,
+
+    valid:
+      code != ""
+      and message != ""
+  };
+}
+
+proc compile_stats(
+  use_count: u64,
+  decl_count: u64,
+  emitted_bytes: u64
+) -> CompileStats {
+
+  give CompileStats {
+    use_count: use_count,
+    decl_count: decl_count,
+
+    emitted_bytes: emitted_bytes,
+
+    valid: true
+  };
+}
+
+proc empty_compile_report(
+  source_name: string
+) -> CompileReport {
+
+  give CompileReport {
+    success: false,
+
+    stage: CompileStage.None,
+
+    emitted_source: "",
+
+    source_name: source_name,
+    module_name: "",
+
+    diagnostics: [],
+
+    stats: compile_stats(
+      0,
+      0,
+      0
+    ),
+
+    parse_ok: false,
+    lower_ok: false,
+    emit_ok: false,
+
+    valid: false
+  };
+}
+
+proc compile_source(
+  source_name: string,
+  source_text: string
+) -> CompileReport {
+
+  if source_name == "" {
+
+    let diag: DriverDiagnostic =
+      driver_diagnostic(
+        "DRV0001",
+        CompileStage.Parse,
+        "missing source name",
+        true
+      );
+
+    give CompileReport {
+      success: false,
+
+      stage: CompileStage.Failed,
+
+      emitted_source: "",
+
+      source_name: "",
+      module_name: "",
+
+      diagnostics: [diag],
+
+      stats: compile_stats(
+        0,
+        0,
+        0
+      ),
+
+      parse_ok: false,
+      lower_ok: false,
+      emit_ok: false,
+
+      valid: false
+    };
+  }
+
+  if source_text == "" {
+
+    let diag: DriverDiagnostic =
+      driver_diagnostic(
+        "DRV0002",
+        CompileStage.Parse,
+        "empty source text",
+        true
+      );
+
+    give CompileReport {
+      success: false,
+
+      stage: CompileStage.Failed,
+
+      emitted_source: "",
+
+      source_name: source_name,
+      module_name: "",
+
+      diagnostics: [diag],
+
+      stats: compile_stats(
+        0,
+        0,
+        0
+      ),
+
+      parse_ok: false,
+      lower_ok: false,
+      emit_ok: false,
+
+      valid: false
+    };
+  }
+
+  <<< ===================================================== >>>
+  <<< Parse stage                                           >>>
+  <<< ===================================================== >>>
+
+  let parsed: compiler_parser.ParsedModule =
+    compiler_parser.parse_source(
+      source_name,
+      source_text
+    );
+
+  let parse_ok: bool =
+    parsed.module_value.source_name == source_name
+    and parsed.module_value.space_name != "";
+
+  if not parse_ok {
+
+    let diag: DriverDiagnostic =
+      driver_diagnostic(
+        "DRV1000",
+        CompileStage.Parse,
+        "parser produced invalid module",
+        true
+      );
+
+    give CompileReport {
+      success: false,
+
+      stage: CompileStage.Parse,
+
+      emitted_source: "",
+
+      source_name: source_name,
+      module_name: "",
+
+      diagnostics: [diag],
+
+      stats: compile_stats(
+        len(parsed.module_value.uses),
+        len(parsed.module_value.decls),
+        0
+      ),
+
+      parse_ok: false,
+      lower_ok: false,
+      emit_ok: false,
+
+      valid: false
+    };
+  }
+
+  <<< ===================================================== >>>
+  <<< Lower stage                                           >>>
+  <<< ===================================================== >>>
+
+  let ir_module: compiler_ir.IrModule =
+    compiler_ir.lower(
+      parsed.module_value
+    );
+
+  let lower_ok: bool =
+    ir_module.module_name
+      == parsed.module_value.space_name;
+
+  if not lower_ok {
+
+    let diag: DriverDiagnostic =
+      driver_diagnostic(
+        "DRV2000",
+        CompileStage.Lower,
+        "IR lowering mismatch",
+        true
+      );
+
+    give CompileReport {
+      success: false,
+
+      stage: CompileStage.Lower,
+
+      emitted_source: "",
+
+      source_name: source_name,
+      module_name: ir_module.module_name,
+
+      diagnostics: [diag],
+
+      stats: compile_stats(
+        len(parsed.module_value.uses),
+        len(parsed.module_value.decls),
+        0
+      ),
+
+      parse_ok: true,
+      lower_ok: false,
+      emit_ok: false,
+
+      valid: false
+    };
+  }
+
+  <<< ===================================================== >>>
+  <<< Emit stage                                            >>>
+  <<< ===================================================== >>>
+
+  let emitted_source: string =
+    compiler_emit.emit_module(
+      ir_module
+    );
+
+  let emit_ok: bool =
+    emitted_source != "";
+
+  if not emit_ok {
+
+    let diag: DriverDiagnostic =
+      driver_diagnostic(
+        "DRV3000",
+        CompileStage.Emit,
+        "emitter produced empty output",
+        true
+      );
+
+    give CompileReport {
+      success: false,
+
+      stage: CompileStage.Emit,
+
+      emitted_source: "",
+
+      source_name: source_name,
+      module_name: ir_module.module_name,
+
+      diagnostics: [diag],
+
+      stats: compile_stats(
+        len(parsed.module_value.uses),
+        len(parsed.module_value.decls),
+        0
+      ),
+
+      parse_ok: true,
+      lower_ok: true,
+      emit_ok: false,
+
+      valid: false
+    };
+  }
+
+  <<< ===================================================== >>>
+  <<< Success                                               >>>
+  <<< ===================================================== >>>
+
+  let stats: CompileStats =
+    compile_stats(
+      len(parsed.module_value.uses),
+      len(parsed.module_value.decls),
+      len(emitted_source)
+    );
+
+  give CompileReport {
+    success: true,
+
+    stage: CompileStage.Complete,
+
+    emitted_source: emitted_source,
+
+    source_name: source_name,
+    module_name: ir_module.module_name,
+
+    diagnostics: [],
+
+    stats: stats,
+
+    parse_ok: true,
+    lower_ok: true,
+    emit_ok: true,
+
+    valid: true
+  };
+}
+
+proc compile_success(
+  report: CompileReport
+) -> bool {
+
+  give report.success
+    and report.valid
+    and report.parse_ok
+    and report.lower_ok
+    and report.emit_ok;
+}
+
+proc compile_failed(
+  report: CompileReport
+) -> bool {
+
+  give not compile_success(report);
+}
+
+proc compile_summary(
+  report: CompileReport
+) -> string {
+
+  give "source="
+    + report.source_name
+    + " module="
+    + report.module_name
+    + " success="
+    + (report.success as string)
+    + " stage="
+    + (report.stage as string)
+    + " decls="
+    + (report.stats.decl_count as string)
+    + " emitted="
+    + (report.stats.emitted_bytes as string);
+}
+
+proc compile_selftest() -> bool {
+
+  let source: string =
+    "space demo/main";
+
+  let report: CompileReport =
+    compile_source(
+      "main.vit",
+      source
+    );
+
+  give report.valid
+    and compile_summary(report) != "";
+}

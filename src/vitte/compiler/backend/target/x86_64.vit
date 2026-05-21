@@ -1,19 +1,405 @@
 space vitte/compiler/backend/target/x86_64
 
-use vitte/compiler/backend/target/triple.{ TargetTriple, triple_x86_64_linux }
+use vitte/compiler/backend/target/triple.{
+  TargetTriple,
+  target_triple
+}
 
-form X86_64Target {
+export *
+
+form X8664Target {
   triple: TargetTriple
+
+  cpu: string
+  vendor_name: string
+
   pointer_width: u64
+  register_width: u64
+
   little_endian: bool
+
+  stack_alignment: u64
+  function_alignment: u64
+
+  redzone_size: u64
+
+  supports_sse: bool
+  supports_sse2: bool
+  supports_sse3: bool
+  supports_ssse3: bool
+  supports_sse41: bool
+  supports_sse42: bool
+
+  supports_avx: bool
+  supports_avx2: bool
+  supports_fma: bool
+
+  supports_aes: bool
+  supports_sha: bool
+
+  supports_bmi1: bool
+  supports_bmi2: bool
+
+  supports_popcnt: bool
+  supports_lzcnt: bool
+
+  supports_atomic64: bool
+
+  calling_convention: string
+  object_format: string
+
+  executable_extension: string
+  static_library_extension: string
+  dynamic_library_extension: string
+
   valid: bool
 }
 
-proc target_x86_64_default() -> X86_64Target {
-  give X86_64Target {
-    triple: triple_x86_64_linux(),
+proc x86_64_target(
+  vendor: string,
+  os: string,
+  abi: string
+) -> X8664Target {
+
+  let triple: TargetTriple =
+    target_triple(
+      "x86_64",
+      vendor,
+      os,
+      abi
+    );
+
+  let object_format: string =
+    if os == "windows" {
+      "coff"
+    }
+    elif os == "macos" {
+      "macho"
+    }
+    else {
+      "elf"
+    };
+
+  let cc: string =
+    if os == "windows" {
+      "win64"
+    } else {
+      "sysv"
+    };
+
+  let dll_ext: string =
+    if os == "windows" {
+      ".dll"
+    }
+    elif os == "macos" {
+      ".dylib"
+    }
+    else {
+      ".so"
+    };
+
+  let exe_ext: string =
+    if os == "windows" {
+      ".exe"
+    } else {
+      ""
+    };
+
+  let static_ext: string =
+    if os == "windows" {
+      ".lib"
+    } else {
+      ".a"
+    };
+
+  give X8664Target {
+    triple: triple,
+
+    cpu: "generic-x86_64",
+    vendor_name: vendor,
+
     pointer_width: 64,
+    register_width: 64,
+
     little_endian: true,
+
+    stack_alignment: 16,
+    function_alignment: 16,
+
+    redzone_size:
+      if os == "windows" {
+        0
+      } else {
+        128
+      },
+
+    supports_sse: true,
+    supports_sse2: true,
+    supports_sse3: true,
+    supports_ssse3: true,
+    supports_sse41: true,
+    supports_sse42: true,
+
+    supports_avx: true,
+    supports_avx2: true,
+    supports_fma: true,
+
+    supports_aes: true,
+    supports_sha: true,
+
+    supports_bmi1: true,
+    supports_bmi2: true,
+
+    supports_popcnt: true,
+    supports_lzcnt: true,
+
+    supports_atomic64: true,
+
+    calling_convention: cc,
+    object_format: object_format,
+
+    executable_extension: exe_ext,
+    static_library_extension: static_ext,
+    dynamic_library_extension: dll_ext,
+
     valid: true
   };
+}
+
+proc target_x86_64_linux() -> X8664Target {
+  give x86_64_target(
+    "vitte",
+    "linux",
+    "gnu"
+  );
+}
+
+proc target_x86_64_windows() -> X8664Target {
+  give x86_64_target(
+    "pc",
+    "windows",
+    "msvc"
+  );
+}
+
+proc target_x86_64_macos() -> X8664Target {
+  give x86_64_target(
+    "apple",
+    "macos",
+    "macho"
+  );
+}
+
+proc target_x86_64_retro() -> X8664Target {
+
+  let base: X8664Target =
+    target_x86_64_linux();
+
+  give X8664Target {
+    triple: base.triple,
+
+    cpu: "core2duo",
+    vendor_name: base.vendor_name,
+
+    pointer_width: base.pointer_width,
+    register_width: base.register_width,
+
+    little_endian: true,
+
+    stack_alignment: 16,
+    function_alignment: 16,
+
+    redzone_size: base.redzone_size,
+
+    supports_sse: true,
+    supports_sse2: true,
+    supports_sse3: true,
+    supports_ssse3: false,
+    supports_sse41: false,
+    supports_sse42: false,
+
+    supports_avx: false,
+    supports_avx2: false,
+    supports_fma: false,
+
+    supports_aes: false,
+    supports_sha: false,
+
+    supports_bmi1: false,
+    supports_bmi2: false,
+
+    supports_popcnt: false,
+    supports_lzcnt: false,
+
+    supports_atomic64: true,
+
+    calling_convention: base.calling_convention,
+    object_format: base.object_format,
+
+    executable_extension: base.executable_extension,
+    static_library_extension: base.static_library_extension,
+    dynamic_library_extension: base.dynamic_library_extension,
+
+    valid: true
+  };
+}
+
+proc target_x86_64_modern() -> X8664Target {
+
+  let base: X8664Target =
+    target_x86_64_linux();
+
+  give X8664Target {
+    triple: base.triple,
+
+    cpu: "zen4",
+    vendor_name: base.vendor_name,
+
+    pointer_width: base.pointer_width,
+    register_width: base.register_width,
+
+    little_endian: true,
+
+    stack_alignment: 32,
+    function_alignment: 32,
+
+    redzone_size: base.redzone_size,
+
+    supports_sse: true,
+    supports_sse2: true,
+    supports_sse3: true,
+    supports_ssse3: true,
+    supports_sse41: true,
+    supports_sse42: true,
+
+    supports_avx: true,
+    supports_avx2: true,
+    supports_fma: true,
+
+    supports_aes: true,
+    supports_sha: true,
+
+    supports_bmi1: true,
+    supports_bmi2: true,
+
+    supports_popcnt: true,
+    supports_lzcnt: true,
+
+    supports_atomic64: true,
+
+    calling_convention: base.calling_convention,
+    object_format: base.object_format,
+
+    executable_extension: base.executable_extension,
+    static_library_extension: base.static_library_extension,
+    dynamic_library_extension: base.dynamic_library_extension,
+
+    valid: true
+  };
+}
+
+proc target_supports_vector128(
+  target: X8664Target
+) -> bool {
+
+  give target.supports_sse2;
+}
+
+proc target_supports_vector256(
+  target: X8664Target
+) -> bool {
+
+  give target.supports_avx;
+}
+
+proc target_supports_crypto(
+  target: X8664Target
+) -> bool {
+
+  give target.supports_aes
+    or target.supports_sha;
+}
+
+proc target_supports_modern_isa(
+  target: X8664Target
+) -> bool {
+
+  give target.supports_avx2
+    and target.supports_fma
+    and target.supports_bmi2;
+}
+
+proc target_is_retro(
+  target: X8664Target
+) -> bool {
+
+  give not target.supports_avx
+    and not target.supports_sse42;
+}
+
+proc target_is_windows(
+  target: X8664Target
+) -> bool {
+
+  give target.triple.os == "windows";
+}
+
+proc target_is_linux(
+  target: X8664Target
+) -> bool {
+
+  give target.triple.os == "linux";
+}
+
+proc target_is_macos(
+  target: X8664Target
+) -> bool {
+
+  give target.triple.os == "macos";
+}
+
+proc target_summary(
+  target: X8664Target
+) -> string {
+
+  give "cpu="
+    + target.cpu
+    + " os="
+    + target.triple.os
+    + " abi="
+    + target.triple.abi
+    + " avx2="
+    + (target.supports_avx2 as string)
+    + " fma="
+    + (target.supports_fma as string)
+    + " aes="
+    + (target.supports_aes as string)
+    + " redzone="
+    + (target.redzone_size as string)
+    + " cc="
+    + target.calling_convention
+    + " obj="
+    + target.object_format
+    + " valid="
+    + (target.valid as string);
+}
+
+proc target_selftest() -> bool {
+
+  let linux: X8664Target =
+    target_x86_64_linux();
+
+  let retro: X8664Target =
+    target_x86_64_retro();
+
+  let modern: X8664Target =
+    target_x86_64_modern();
+
+  give linux.valid
+    and retro.valid
+    and modern.valid
+    and target_supports_vector128(linux)
+    and target_supports_modern_isa(modern)
+    and target_is_retro(retro)
+    and target_summary(linux) != "";
 }

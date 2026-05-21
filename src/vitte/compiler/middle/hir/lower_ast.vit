@@ -1,10 +1,23 @@
 space vitte/compiler/middle/hir/lower_ast
 
 use vitte/compiler/frontend/pipeline.{ FrontendOutput }
-use vitte/compiler/frontend/ast/expr.{ AstExpr, AstExprKind }
-use vitte/compiler/frontend/ast/item.{ AstItem, AstItemKind }
-use vitte/compiler/frontend/ast/stmt.{ AstStmt, AstStmtKind }
-use vitte/compiler/middle/hir/hir.{
+
+use vitte/compiler/frontend/ast.expr.{
+  AstExpr,
+  AstExprKind
+}
+
+use vitte/compiler/frontend/ast.item.{
+  AstItem,
+  AstItemKind
+}
+
+use vitte/compiler/frontend/ast.stmt.{
+  AstStmt,
+  AstStmtKind
+}
+
+use vitte/compiler/middle/hir.hir.{
   HirExpr,
   HirExprKind,
   HirItem,
@@ -13,237 +26,528 @@ use vitte/compiler/middle/hir/hir.{
   HirStmt,
   HirStmtKind,
   HirUnit,
+  HirValueMode,
+  HirPlaceCategory,
+  SemanticDiagnostic,
+  SemanticSeverity,
   hir_expr,
   hir_expr_empty,
-  hir_module_empty
+  hir_stmt,
+  hir_item,
+  hir_module,
+  hir_module_empty,
+  hir_unit,
+  semantic_diagnostic
+}
+
+export *
+
+proc lower_expr_kind(kind: AstExprKind) -> HirExprKind {
+  if kind == AstExprKind.Name { give HirExprKind.Name; }
+  elif kind == AstExprKind.Int { give HirExprKind.Int; }
+  elif kind == AstExprKind.Float { give HirExprKind.Float; }
+  elif kind == AstExprKind.Bool { give HirExprKind.Bool; }
+  elif kind == AstExprKind.String { give HirExprKind.String; }
+  elif kind == AstExprKind.Char { give HirExprKind.Char; }
+  elif kind == AstExprKind.Binary { give HirExprKind.Binary; }
+  elif kind == AstExprKind.Unary { give HirExprKind.Unary; }
+  elif kind == AstExprKind.Call { give HirExprKind.Call; }
+  elif kind == AstExprKind.Index { give HirExprKind.Index; }
+  elif kind == AstExprKind.Member { give HirExprKind.Member; }
+  elif kind == AstExprKind.BorrowShared { give HirExprKind.BorrowShared; }
+  elif kind == AstExprKind.BorrowMut { give HirExprKind.BorrowMut; }
+  elif kind == AstExprKind.Deref { give HirExprKind.Deref; }
+  elif kind == AstExprKind.If { give HirExprKind.If; }
+  elif kind == AstExprKind.Match { give HirExprKind.Match; }
+  elif kind == AstExprKind.Block { give HirExprKind.Block; }
+  elif kind == AstExprKind.Lambda { give HirExprKind.Lambda; }
+  elif kind == AstExprKind.Struct { give HirExprKind.Struct; }
+  elif kind == AstExprKind.Array { give HirExprKind.Array; }
+  elif kind == AstExprKind.Tuple { give HirExprKind.Tuple; }
+  elif kind == AstExprKind.Range { give HirExprKind.Range; }
+  elif kind == AstExprKind.Cast { give HirExprKind.Cast; }
+  elif kind == AstExprKind.Is { give HirExprKind.Is; }
+  elif kind == AstExprKind.Try { give HirExprKind.Try; }
+  elif kind == AstExprKind.Sizeof { give HirExprKind.Sizeof; }
+  elif kind == AstExprKind.Alignof { give HirExprKind.Alignof; }
+  elif kind == AstExprKind.Offsetof { give HirExprKind.Offsetof; }
+  elif kind == AstExprKind.Typeof { give HirExprKind.Typeof; }
+  elif kind == AstExprKind.Nameof { give HirExprKind.Nameof; }
+
+  give HirExprKind.Unknown;
+}
+
+proc lower_stmt_kind(kind: AstStmtKind) -> HirStmtKind {
+  if kind == AstStmtKind.Const { give HirStmtKind.Const; }
+  elif kind == AstStmtKind.Let { give HirStmtKind.Let; }
+  elif kind == AstStmtKind.Set { give HirStmtKind.Set; }
+  elif kind == AstStmtKind.Give { give HirStmtKind.Give; }
+  elif kind == AstStmtKind.If { give HirStmtKind.If; }
+  elif kind == AstStmtKind.While { give HirStmtKind.While; }
+  elif kind == AstStmtKind.For { give HirStmtKind.For; }
+  elif kind == AstStmtKind.Loop { give HirStmtKind.Loop; }
+  elif kind == AstStmtKind.Match { give HirStmtKind.Match; }
+  elif kind == AstStmtKind.When { give HirStmtKind.When; }
+  elif kind == AstStmtKind.With { give HirStmtKind.With; }
+  elif kind == AstStmtKind.Try { give HirStmtKind.Try; }
+  elif kind == AstStmtKind.Defer { give HirStmtKind.Defer; }
+  elif kind == AstStmtKind.Unsafe { give HirStmtKind.Unsafe; }
+  elif kind == AstStmtKind.Asm { give HirStmtKind.Asm; }
+  elif kind == AstStmtKind.Emit { give HirStmtKind.Emit; }
+  elif kind == AstStmtKind.Panic { give HirStmtKind.Panic; }
+  elif kind == AstStmtKind.Assert { give HirStmtKind.Assert; }
+  elif kind == AstStmtKind.Break { give HirStmtKind.Break; }
+  elif kind == AstStmtKind.Continue { give HirStmtKind.Continue; }
+  elif kind == AstStmtKind.Unreachable { give HirStmtKind.Unreachable; }
+  elif kind == AstStmtKind.Select { give HirStmtKind.Select; }
+  elif kind == AstStmtKind.Critical { give HirStmtKind.Critical; }
+  elif kind == AstStmtKind.StaticAssert { give HirStmtKind.StaticAssert; }
+  elif kind == AstStmtKind.ExprStmt { give HirStmtKind.ExprStmt; }
+
+  give HirStmtKind.Unknown;
+}
+
+proc lower_item_kind(kind: AstItemKind) -> HirItemKind {
+  if kind == AstItemKind.Space { give HirItemKind.Space; }
+  elif kind == AstItemKind.Use { give HirItemKind.Use; }
+  elif kind == AstItemKind.Export { give HirItemKind.Export; }
+  elif kind == AstItemKind.Const { give HirItemKind.Const; }
+  elif kind == AstItemKind.Static { give HirItemKind.Static; }
+  elif kind == AstItemKind.Global { give HirItemKind.Global; }
+  elif kind == AstItemKind.Type { give HirItemKind.Type; }
+  elif kind == AstItemKind.Opaque { give HirItemKind.Opaque; }
+  elif kind == AstItemKind.Extern { give HirItemKind.Extern; }
+  elif kind == AstItemKind.Form { give HirItemKind.Form; }
+  elif kind == AstItemKind.Class { give HirItemKind.Class; }
+  elif kind == AstItemKind.Union { give HirItemKind.Union; }
+  elif kind == AstItemKind.Bits { give HirItemKind.Bits; }
+  elif kind == AstItemKind.Pick { give HirItemKind.Pick; }
+  elif kind == AstItemKind.Flags { give HirItemKind.Flags; }
+  elif kind == AstItemKind.Trait { give HirItemKind.Trait; }
+  elif kind == AstItemKind.Impl { give HirItemKind.Impl; }
+  elif kind == AstItemKind.Proc { give HirItemKind.Proc; }
+  elif kind == AstItemKind.Intrinsic { give HirItemKind.Intrinsic; }
+  elif kind == AstItemKind.Query { give HirItemKind.Query; }
+  elif kind == AstItemKind.Compiler { give HirItemKind.Compiler; }
+  elif kind == AstItemKind.Pass { give HirItemKind.Pass; }
+  elif kind == AstItemKind.Backend { give HirItemKind.Backend; }
+  elif kind == AstItemKind.Diagnostic { give HirItemKind.Diagnostic; }
+  elif kind == AstItemKind.Macro { give HirItemKind.Macro; }
+  elif kind == AstItemKind.Entry { give HirItemKind.Entry; }
+  elif kind == AstItemKind.Test { give HirItemKind.Test; }
+  elif kind == AstItemKind.Bench { give HirItemKind.Bench; }
+  elif kind == AstItemKind.Comptime { give HirItemKind.Comptime; }
+  elif kind == AstItemKind.StaticAssert { give HirItemKind.StaticAssert; }
+
+  give HirItemKind.Unknown;
+}
+
+proc infer_value_mode(expr: AstExpr) -> HirValueMode {
+  if expr.kind == AstExprKind.Name {
+    give HirValueMode.Place;
+  }
+
+  if expr.kind == AstExprKind.BorrowShared {
+    give HirValueMode.BorrowShared;
+  }
+
+  if expr.kind == AstExprKind.BorrowMut {
+    give HirValueMode.BorrowMut;
+  }
+
+  give HirValueMode.Value;
+}
+
+proc infer_place_category(expr: AstExpr) -> HirPlaceCategory {
+  if expr.kind == AstExprKind.Name {
+    give HirPlaceCategory.Local;
+  }
+
+  if expr.kind == AstExprKind.Member {
+    give HirPlaceCategory.Field;
+  }
+
+  if expr.kind == AstExprKind.Index {
+    give HirPlaceCategory.Index;
+  }
+
+  if expr.kind == AstExprKind.Deref {
+    give HirPlaceCategory.Deref;
+  }
+
+  give HirPlaceCategory.Value;
+}
+
+proc infer_expr_type(expr: AstExpr) -> string {
+  if expr.kind == AstExprKind.Int {
+    give "i32";
+  }
+
+  if expr.kind == AstExprKind.Float {
+    give "f64";
+  }
+
+  if expr.kind == AstExprKind.Bool {
+    give "bool";
+  }
+
+  if expr.kind == AstExprKind.String {
+    give "string";
+  }
+
+  if expr.kind == AstExprKind.Char {
+    give "char";
+  }
+
+  if expr.kind == AstExprKind.Range {
+    give "range";
+  }
+
+  if expr.kind == AstExprKind.Array {
+    give "array";
+  }
+
+  if expr.kind == AstExprKind.Tuple {
+    give "tuple";
+  }
+
+  give "unknown";
+}
+
+proc lower_expr_children(children0: [AstExpr]) -> [HirExpr] {
+  let children: [HirExpr] = [];
+
+  let i: u64 = 0;
+
+  while i < len(children0) {
+    set children =
+      children + [
+        lower_expr(children0[i])
+      ];
+
+    set i =
+      i + 1;
+  }
+
+  give children;
 }
 
 proc lower_expr(expr: AstExpr) -> HirExpr {
-  let children: [HirExpr] = [];
+  let children: [HirExpr] =
+    lower_expr_children(expr.children);
+
+  let binding: string =
+    expr.binding_name;
+
+  if binding == "" {
+    set binding =
+      expr.name;
+  }
+
+  let diagnostics: [SemanticDiagnostic] = [];
+
+  if not expr.valid {
+    set diagnostics =
+      diagnostics + [
+        semantic_diagnostic(
+          "HIR0001",
+          SemanticSeverity.Error,
+          "invalid ast expression",
+          expr.span,
+          expr.name,
+          ""
+        )
+      ];
+  }
+
+  let copyable: bool =
+    expr.kind == AstExprKind.Int
+    or expr.kind == AstExprKind.Float
+    or expr.kind == AstExprKind.Bool
+    or expr.kind == AstExprKind.Char;
+
+  let constant: bool =
+    expr.kind == AstExprKind.Int
+    or expr.kind == AstExprKind.Float
+    or expr.kind == AstExprKind.Bool
+    or expr.kind == AstExprKind.String
+    or expr.kind == AstExprKind.Char;
+
+  give hir_expr(
+    expr.id.value,
+    expr.span,
+    lower_expr_kind(expr.kind),
+    expr.text,
+    expr.name,
+    expr.operator,
+    binding,
+    0,
+    "",
+    false,
+    infer_value_mode(expr),
+    infer_expr_type(expr),
+    infer_place_category(expr),
+    copyable,
+    constant,
+    infer_value_mode(expr) == HirValueMode.Place,
+    false,
+    diagnostics,
+    children,
+    expr.valid
+  );
+}
+
+proc lower_stmt_list(stmts0: [AstStmt], scope_depth: u64) -> [HirStmt] {
+  let out: [HirStmt] = [];
+
   let i: u64 = 0;
-  while i < len(expr.children) {
-    set children = children + [lower_expr(expr.children[i])];
-    set i = i + 1;
+
+  while i < len(stmts0) {
+    set out =
+      out + [
+        lower_stmt(stmts0[i], scope_depth)
+      ];
+
+    set i =
+      i + 1;
   }
 
-  let kind: HirExprKind = HirExprKind.Unknown;
-  if expr.kind == AstExprKind.Name { set kind = HirExprKind.Name; }
-  elif expr.kind == AstExprKind.Int { set kind = HirExprKind.Int; }
-  elif expr.kind == AstExprKind.Float { set kind = HirExprKind.Float; }
-  elif expr.kind == AstExprKind.Bool { set kind = HirExprKind.Bool; }
-  elif expr.kind == AstExprKind.String { set kind = HirExprKind.String; }
-  elif expr.kind == AstExprKind.Char { set kind = HirExprKind.Char; }
-  elif expr.kind == AstExprKind.Binary { set kind = HirExprKind.Binary; }
-  elif expr.kind == AstExprKind.Unary { set kind = HirExprKind.Unary; }
-  elif expr.kind == AstExprKind.Call { set kind = HirExprKind.Call; }
-  elif expr.kind == AstExprKind.Index { set kind = HirExprKind.Index; }
-  elif expr.kind == AstExprKind.Member { set kind = HirExprKind.Member; }
-  elif expr.kind == AstExprKind.BorrowShared { set kind = HirExprKind.BorrowShared; }
-  elif expr.kind == AstExprKind.BorrowMut { set kind = HirExprKind.BorrowMut; }
-  elif expr.kind == AstExprKind.Deref { set kind = HirExprKind.Deref; }
-  elif expr.kind == AstExprKind.If { set kind = HirExprKind.If; }
-  elif expr.kind == AstExprKind.Match { set kind = HirExprKind.Match; }
-  elif expr.kind == AstExprKind.Range { set kind = HirExprKind.Range; }
-  elif expr.kind == AstExprKind.Cast { set kind = HirExprKind.Cast; }
-  elif expr.kind == AstExprKind.Is { set kind = HirExprKind.Is; }
-  elif expr.kind == AstExprKind.Try { set kind = HirExprKind.Try; }
-  elif expr.kind == AstExprKind.Sizeof { set kind = HirExprKind.Sizeof; }
-  elif expr.kind == AstExprKind.Alignof { set kind = HirExprKind.Alignof; }
-  elif expr.kind == AstExprKind.Offsetof { set kind = HirExprKind.Offsetof; }
-  elif expr.kind == AstExprKind.Typeof { set kind = HirExprKind.Typeof; }
-  elif expr.kind == AstExprKind.Nameof { set kind = HirExprKind.Nameof; }
-
-  let binding: string = "";
-  let value_mode: string = "rvalue";
-  let inferred_type: string = "unknown";
-  let place_category: string = "value";
-  if expr.kind == AstExprKind.Name {
-    if expr.binding_name != "" {
-      set binding = expr.binding_name;
-    } else {
-      set binding = expr.name;
-    }
-    set value_mode = "lvalue";
-    set place_category = "local";
-  } elif expr.kind == AstExprKind.BorrowShared or expr.kind == AstExprKind.BorrowMut {
-    set value_mode = "borrow";
-  } elif expr.kind == AstExprKind.Member {
-    set place_category = "field";
-  } elif expr.kind == AstExprKind.Index {
-    set place_category = "index";
-  } elif expr.kind == AstExprKind.Deref {
-    set place_category = "deref";
-  }
-
-  give hir_expr(expr.id.value, expr.span, kind, expr.text, expr.name, expr.operator, binding, 0, "", false, value_mode, inferred_type, place_category, false, [], children, expr.valid);
+  give out;
 }
 
 proc lower_stmt(stmt: AstStmt, scope_depth: u64) -> HirStmt {
-  let then_stmts: [HirStmt] = [];
-  let else_stmts: [HirStmt] = [];
-  let ti: u64 = 0;
-  while ti < len(stmt.then_stmts) {
-    set then_stmts = then_stmts + [lower_stmt(stmt.then_stmts[ti], scope_depth + 1)];
-    set ti = ti + 1;
-  }
-  let ei: u64 = 0;
-  while ei < len(stmt.else_stmts) {
-    set else_stmts = else_stmts + [lower_stmt(stmt.else_stmts[ei], scope_depth + 1)];
-    set ei = ei + 1;
+  let diagnostics: [SemanticDiagnostic] = [];
+
+  if not stmt.valid {
+    set diagnostics =
+      diagnostics + [
+        semantic_diagnostic(
+          "HIR0002",
+          SemanticSeverity.Error,
+          "invalid ast statement",
+          stmt.span,
+          stmt.pattern.name,
+          ""
+        )
+      ];
   }
 
-  let kind: HirStmtKind = HirStmtKind.Unknown;
-  if stmt.kind == AstStmtKind.Const { set kind = HirStmtKind.Const; }
-  elif stmt.kind == AstStmtKind.Let { set kind = HirStmtKind.Let; }
-  elif stmt.kind == AstStmtKind.Set { set kind = HirStmtKind.Set; }
-  elif stmt.kind == AstStmtKind.Give { set kind = HirStmtKind.Give; }
-  elif stmt.kind == AstStmtKind.If { set kind = HirStmtKind.If; }
-  elif stmt.kind == AstStmtKind.While { set kind = HirStmtKind.While; }
-  elif stmt.kind == AstStmtKind.For { set kind = HirStmtKind.For; }
-  elif stmt.kind == AstStmtKind.Loop { set kind = HirStmtKind.Loop; }
-  elif stmt.kind == AstStmtKind.Match { set kind = HirStmtKind.Match; }
-  elif stmt.kind == AstStmtKind.When { set kind = HirStmtKind.When; }
-  elif stmt.kind == AstStmtKind.With { set kind = HirStmtKind.With; }
-  elif stmt.kind == AstStmtKind.Try { set kind = HirStmtKind.Try; }
-  elif stmt.kind == AstStmtKind.Defer { set kind = HirStmtKind.Defer; }
-  elif stmt.kind == AstStmtKind.Unsafe { set kind = HirStmtKind.Unsafe; }
-  elif stmt.kind == AstStmtKind.Asm { set kind = HirStmtKind.Asm; }
-  elif stmt.kind == AstStmtKind.Emit { set kind = HirStmtKind.Emit; }
-  elif stmt.kind == AstStmtKind.Panic { set kind = HirStmtKind.Panic; }
-  elif stmt.kind == AstStmtKind.Assert { set kind = HirStmtKind.Assert; }
-  elif stmt.kind == AstStmtKind.Break { set kind = HirStmtKind.Break; }
-  elif stmt.kind == AstStmtKind.Continue { set kind = HirStmtKind.Continue; }
-  elif stmt.kind == AstStmtKind.Unreachable { set kind = HirStmtKind.Unreachable; }
-  elif stmt.kind == AstStmtKind.Select { set kind = HirStmtKind.Select; }
-  elif stmt.kind == AstStmtKind.Critical { set kind = HirStmtKind.Critical; }
-  elif stmt.kind == AstStmtKind.StaticAssert { set kind = HirStmtKind.StaticAssert; }
-  elif stmt.kind == AstStmtKind.ExprStmt { set kind = HirStmtKind.ExprStmt; }
+  give hir_stmt(
+    stmt.id.value,
+    stmt.span,
+    lower_stmt_kind(stmt.kind),
+    stmt.pattern.name,
+    stmt.target,
+    stmt.target,
+    0,
+    "",
+    lower_expr(stmt.expr),
+    stmt.message,
+    stmt.pattern.mutable,
+    stmt.kind == AstStmtKind.Give
+      or stmt.kind == AstStmtKind.Panic
+      or stmt.kind == AstStmtKind.Unreachable,
+    false,
+    scope_depth,
+    lower_stmt_list(stmt.then_stmts, scope_depth + 1),
+    lower_stmt_list(stmt.else_stmts, scope_depth + 1),
+    [],
+    diagnostics,
+    stmt.valid
+  );
+}
 
-  give HirStmt {
-    id: stmt.id.value,
-    span: stmt.span,
-    kind: kind,
-    name: stmt.pattern.name,
-    target: stmt.target,
-    target_binding: stmt.target,
-    target_resolved_id: 0,
-    target_resolved_kind: "",
-    expr: lower_expr(stmt.expr),
-    message: stmt.message,
-    mutable: stmt.pattern.mutable,
-    scope_depth: scope_depth,
-    then_stmts: then_stmts,
-    else_stmts: else_stmts,
-    catch_stmts: [],
-    diagnostics: [],
-    valid: stmt.valid
-  };
+proc lower_item_stmts(item: AstItem) -> [HirStmt] {
+  let stmts: [HirStmt] = [];
+
+  let i: u64 = 0;
+
+  while i < len(item.stmts) {
+    set stmts =
+      stmts + [
+        lower_stmt(item.stmts[i], 1)
+      ];
+
+    set i =
+      i + 1;
+  }
+
+  give stmts;
 }
 
 proc lower_item(item: AstItem) -> HirItem {
-  let stmts: [HirStmt] = [];
-  let i: u64 = 0;
-  while i < len(item.stmts) {
-    set stmts = stmts + [lower_stmt(item.stmts[i], 1)];
-    set i = i + 1;
-  }
+  let expr: HirExpr =
+    hir_expr_empty();
 
-  let kind: HirItemKind = HirItemKind.Unknown;
-  if item.kind == AstItemKind.Space { set kind = HirItemKind.Space; }
-  elif item.kind == AstItemKind.Use { set kind = HirItemKind.Use; }
-  elif item.kind == AstItemKind.Export { set kind = HirItemKind.Export; }
-  elif item.kind == AstItemKind.Const { set kind = HirItemKind.Const; }
-  elif item.kind == AstItemKind.Static { set kind = HirItemKind.Static; }
-  elif item.kind == AstItemKind.Global { set kind = HirItemKind.Global; }
-  elif item.kind == AstItemKind.Type { set kind = HirItemKind.Type; }
-  elif item.kind == AstItemKind.Opaque { set kind = HirItemKind.Opaque; }
-  elif item.kind == AstItemKind.Extern { set kind = HirItemKind.Extern; }
-  elif item.kind == AstItemKind.Form { set kind = HirItemKind.Form; }
-  elif item.kind == AstItemKind.Class { set kind = HirItemKind.Class; }
-  elif item.kind == AstItemKind.Union { set kind = HirItemKind.Union; }
-  elif item.kind == AstItemKind.Bits { set kind = HirItemKind.Bits; }
-  elif item.kind == AstItemKind.Pick { set kind = HirItemKind.Pick; }
-  elif item.kind == AstItemKind.Flags { set kind = HirItemKind.Flags; }
-  elif item.kind == AstItemKind.Proc { set kind = HirItemKind.Proc; }
-  elif item.kind == AstItemKind.Intrinsic { set kind = HirItemKind.Intrinsic; }
-  elif item.kind == AstItemKind.Query { set kind = HirItemKind.Query; }
-  elif item.kind == AstItemKind.Compiler { set kind = HirItemKind.Compiler; }
-  elif item.kind == AstItemKind.Pass { set kind = HirItemKind.Pass; }
-  elif item.kind == AstItemKind.Backend { set kind = HirItemKind.Backend; }
-  elif item.kind == AstItemKind.Diagnostic { set kind = HirItemKind.Diagnostic; }
-  elif item.kind == AstItemKind.Macro { set kind = HirItemKind.Macro; }
-  elif item.kind == AstItemKind.Entry { set kind = HirItemKind.Entry; }
-  elif item.kind == AstItemKind.Trait { set kind = HirItemKind.Trait; }
-  elif item.kind == AstItemKind.Impl { set kind = HirItemKind.Impl; }
-  elif item.kind == AstItemKind.Test { set kind = HirItemKind.Test; }
-  elif item.kind == AstItemKind.Bench { set kind = HirItemKind.Bench; }
-  elif item.kind == AstItemKind.Comptime { set kind = HirItemKind.Comptime; }
-  elif item.kind == AstItemKind.StaticAssert { set kind = HirItemKind.StaticAssert; }
-
-  let expr: HirExpr = hir_expr_empty();
   if item.expr.valid {
-    set expr = lower_expr(item.expr);
+    set expr =
+      lower_expr(item.expr);
   }
 
-  give HirItem {
-    id: item.id.value,
-    span: item.span,
-    kind: kind,
-    name: item.name,
-    resolved_id: 0,
-    namespace: item.namespace,
-    visibility: item.visibility,
-    expr: expr,
-    stmts: stmts,
-    message: item.message,
-    scope_depth: 0,
-    diagnostics: [],
-    valid: item.valid
-  };
+  let diagnostics: [SemanticDiagnostic] = [];
+
+  if not item.valid {
+    set diagnostics =
+      diagnostics + [
+        semantic_diagnostic(
+          "HIR0003",
+          SemanticSeverity.Error,
+          "invalid ast item",
+          item.span,
+          item.name,
+          ""
+        )
+      ];
+  }
+
+  give hir_item(
+    item.id.value,
+    item.span,
+    lower_item_kind(item.kind),
+    item.name,
+    0,
+    item.namespace,
+    item.visibility,
+    item.visibility == "public",
+    0,
+    expr,
+    lower_item_stmts(item),
+    item.message,
+    0,
+    diagnostics,
+    item.valid
+  );
+}
+
+proc count_item_nodes(item: HirItem) -> u64 {
+  let count: u64 =
+    1 + len(item.stmts);
+
+  let i: u64 = 0;
+
+  while i < len(item.stmts) {
+    set count =
+      count
+      + len(item.stmts[i].then_stmts)
+      + len(item.stmts[i].else_stmts);
+
+    set i =
+      i + 1;
+  }
+
+  give count;
 }
 
 proc lower_ast_to_hir(frontend: FrontendOutput) -> HirUnit {
-  if not frontend.valid or not frontend.ast_root.valid {
-    give HirUnit {
-      source_path: frontend.source_path,
-      module: hir_module_empty(),
-      node_count: 0,
-      symbol_count: 0,
-      scope_count: 0,
-      valid: false
-    };
+  if not frontend.valid
+    or not frontend.ast_root.valid {
+
+    give hir_unit(
+      frontend.source_path,
+      hir_module_empty(),
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      false,
+      false,
+      false
+    );
   }
 
   let items: [HirItem] = [];
+
   let i: u64 = 0;
+
   let node_count: u64 = 0;
+
   let symbol_count: u64 = 0;
-  let scope_count: u64 = 0;
+
+  let scope_count: u64 = 1;
+
+  let expr_count: u64 = 0;
+
+  let stmt_count: u64 = 0;
+
   while i < len(frontend.ast_root.items) {
-    let item: HirItem = lower_item(frontend.ast_root.items[i]);
-    set items = items + [item];
-    set node_count = node_count + 1 + len(item.stmts);
-    set scope_count = 1;
-    if item.name != "" {
-      set symbol_count = symbol_count + 1;
+    let item: HirItem =
+      lower_item(
+        frontend.ast_root.items[i]
+      );
+
+    set items =
+      items + [item];
+
+    set node_count =
+      node_count
+      + count_item_nodes(item);
+
+    set stmt_count =
+      stmt_count
+      + len(item.stmts);
+
+    if item.expr.valid {
+      set expr_count =
+        expr_count + 1;
     }
+
+    if item.name != "" {
+      set symbol_count =
+        symbol_count + 1;
+    }
+
     let j: u64 = 0;
+
     while j < len(item.stmts) {
       if item.stmts[j].name != "" {
-        set symbol_count = symbol_count + 1;
+        set symbol_count =
+          symbol_count + 1;
       }
-      set node_count = node_count + len(item.stmts[j].then_stmts) + len(item.stmts[j].else_stmts);
-      set j = j + 1;
+
+      if item.stmts[j].expr.valid {
+        set expr_count =
+          expr_count + 1;
+      }
+
+      set scope_count =
+        scope_count
+        + len(item.stmts[j].then_stmts)
+        + len(item.stmts[j].else_stmts);
+
+      set j =
+        j + 1;
     }
-    set i = i + 1;
+
+    set i =
+      i + 1;
   }
 
-  give HirUnit {
-    source_path: frontend.source_path,
-    module: HirModule { items: items, valid: len(items) > 0 },
-    node_count: node_count,
-    symbol_count: symbol_count,
-    scope_count: scope_count,
-    valid: len(items) > 0
-  };
+  let module_valid: bool =
+    len(items) > 0;
+
+  let module: HirModule =
+    hir_module(
+      frontend.source_path,
+      items,
+      [],
+      0,
+      symbol_count,
+      module_valid
+    );
+
+  give hir_unit(
+    frontend.source_path,
+    module,
+    node_count,
+    symbol_count,
+    scope_count,
+    expr_count,
+    stmt_count,
+    len(items),
+    true,
+    false,
+    module_valid
+  );
 }

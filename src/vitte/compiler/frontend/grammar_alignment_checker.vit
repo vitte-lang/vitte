@@ -1,119 +1,610 @@
-space vitte/compiler/frontend/grammar_alignment_checker
+/home/vincentr/Documents/GitHub/vitte/src/vitte/compiler/frontend/parse/recovery.vit
 
-pick GrammarRuleStatus {
-  NotStarted,
-  Partial,
-  Complete,
-  Tested,
+space vitte/compiler/frontend/parse/recovery
+
+use vitte/compiler/frontend/lexer/token.{ Token, TokenKind }
+
+export *
+
+const PARSE_DIAG_CAP: u64 = 3
+const RECOVERY_WINDOW_LIMIT: u64 = 64
+
+pick RecoveryKind {
+    None
+    Statement
+    Block
+    Declaration
+    Expression
+    Type
+    Pattern
+    Toplevel
 }
 
-pick GrammarRuleCategory {
-  Declaration,
-  Statement,
-  Expression,
-  TypeExpr,
-  Pattern,
+pick RecoveryReason {
+    UnexpectedToken
+    MissingToken
+    InvalidExpression
+    InvalidType
+    InvalidPattern
+    UnterminatedBlock
+    UnexpectedEof
 }
 
-form GrammarRuleCoverage {
-  name: string
-  category: GrammarRuleCategory
-  status: GrammarRuleStatus
-  parser_evidence: string
-  ast_evidence: string
-  fixture_evidence: string
+form RecoveryPoint {
+    index: u64
+    kind: RecoveryKind
+    recovered: bool
 }
 
-form GrammarAlignmentReport {
-  grammar_version: string
-  declaration_count: u64
-  statement_count: u64
-  expression_count: u64
-  type_count: u64
-  pattern_count: u64
-  complete_count: u64
-  tested_count: u64
+form RecoveryStats {
+    diagnostic_count: u64
+    recovery_count: u64
+    skipped_token_count: u64
+    capped: bool
 }
 
-proc grammar_rule_coverage() -> [GrammarRuleCoverage] {
-  give [
-    GrammarRuleCoverage { name: "space_decl", category: GrammarRuleCategory.Declaration, status: GrammarRuleStatus.Tested, parser_evidence: "parse_decl(space)", ast_evidence: "AstItemKind.Space", fixture_evidence: "compiler_surface" },
-    GrammarRuleCoverage { name: "use_decl", category: GrammarRuleCategory.Declaration, status: GrammarRuleStatus.Tested, parser_evidence: "parse_decl(use)", ast_evidence: "AstItemKind.Use", fixture_evidence: "compiler_surface" },
-    GrammarRuleCoverage { name: "proc_decl", category: GrammarRuleCategory.Declaration, status: GrammarRuleStatus.Tested, parser_evidence: "parse_proc_decl", ast_evidence: "AstItemKind.Proc", fixture_evidence: "compiler_surface" },
-    GrammarRuleCoverage { name: "const_decl", category: GrammarRuleCategory.Declaration, status: GrammarRuleStatus.Tested, parser_evidence: "parse_const_decl", ast_evidence: "AstItemKind.Const", fixture_evidence: "stmt_expr_type_pattern" },
-    GrammarRuleCoverage { name: "type_decl", category: GrammarRuleCategory.Declaration, status: GrammarRuleStatus.Complete, parser_evidence: "parse_type_decl", ast_evidence: "AstItemKind.Type", fixture_evidence: "stmt_expr_type_pattern" },
-    GrammarRuleCoverage { name: "let_stmt", category: GrammarRuleCategory.Statement, status: GrammarRuleStatus.Tested, parser_evidence: "parse_stmt(let)", ast_evidence: "AstStmtKind.Let", fixture_evidence: "stmt_expr_type_pattern" },
-    GrammarRuleCoverage { name: "set_stmt", category: GrammarRuleCategory.Statement, status: GrammarRuleStatus.Tested, parser_evidence: "parse_stmt(set)", ast_evidence: "AstStmtKind.Set", fixture_evidence: "stmt_expr_type_pattern" },
-    GrammarRuleCoverage { name: "give_stmt", category: GrammarRuleCategory.Statement, status: GrammarRuleStatus.Tested, parser_evidence: "parse_stmt(give)", ast_evidence: "AstStmtKind.Give", fixture_evidence: "stmt_expr_type_pattern" },
-    GrammarRuleCoverage { name: "if_stmt", category: GrammarRuleCategory.Statement, status: GrammarRuleStatus.Tested, parser_evidence: "parse_if_expr", ast_evidence: "AstStmtKind.If", fixture_evidence: "stmt_expr_type_pattern" },
-    GrammarRuleCoverage { name: "while_stmt", category: GrammarRuleCategory.Statement, status: GrammarRuleStatus.Complete, parser_evidence: "parse_stmt(while)", ast_evidence: "AstStmtKind.While", fixture_evidence: "stmt_expr_type_pattern" },
-    GrammarRuleCoverage { name: "literal_expr", category: GrammarRuleCategory.Expression, status: GrammarRuleStatus.Tested, parser_evidence: "parse_primary(literal)", ast_evidence: "AstExprKind.Int", fixture_evidence: "stmt_expr_type_pattern" },
-    GrammarRuleCoverage { name: "binary_expr", category: GrammarRuleCategory.Expression, status: GrammarRuleStatus.Tested, parser_evidence: "parse_expr(binary)", ast_evidence: "AstExprKind.Binary", fixture_evidence: "stmt_expr_type_pattern" },
-    GrammarRuleCoverage { name: "call_expr", category: GrammarRuleCategory.Expression, status: GrammarRuleStatus.Complete, parser_evidence: "parse_postfix_expr(call)", ast_evidence: "AstExprKind.Call", fixture_evidence: "compiler_surface" },
-    GrammarRuleCoverage { name: "block_expr", category: GrammarRuleCategory.Expression, status: GrammarRuleStatus.Complete, parser_evidence: "parse_primary(block)", ast_evidence: "AstExprKind.Block", fixture_evidence: "stmt_expr_type_pattern" },
-    GrammarRuleCoverage { name: "named_type", category: GrammarRuleCategory.TypeExpr, status: GrammarRuleStatus.Tested, parser_evidence: "parse_type_primary(path)", ast_evidence: "AstTypeKind.Name", fixture_evidence: "stmt_expr_type_pattern" },
-    GrammarRuleCoverage { name: "reference_type", category: GrammarRuleCategory.TypeExpr, status: GrammarRuleStatus.Complete, parser_evidence: "parse_type_expr(&)", ast_evidence: "AstTypeKind.Reference", fixture_evidence: "stmt_expr_type_pattern" },
-    GrammarRuleCoverage { name: "proc_type", category: GrammarRuleCategory.TypeExpr, status: GrammarRuleStatus.Complete, parser_evidence: "parse_type_primary(proc)", ast_evidence: "AstTypeKind.Proc", fixture_evidence: "compiler_surface" },
-    GrammarRuleCoverage { name: "name_pattern", category: GrammarRuleCategory.Pattern, status: GrammarRuleStatus.Tested, parser_evidence: "parse_pattern_atom(path)", ast_evidence: "AstPatternKind.Name", fixture_evidence: "stmt_expr_type_pattern" },
-    GrammarRuleCoverage { name: "tuple_pattern", category: GrammarRuleCategory.Pattern, status: GrammarRuleStatus.Complete, parser_evidence: "parse_pattern_atom(tuple)", ast_evidence: "AstPatternKind.Tuple", fixture_evidence: "stmt_expr_type_pattern" },
-    GrammarRuleCoverage { name: "range_pattern", category: GrammarRuleCategory.Pattern, status: GrammarRuleStatus.Complete, parser_evidence: "parse_pattern_atom(range)", ast_evidence: "AstPatternKind.Range", fixture_evidence: "stmt_expr_type_pattern" }
-  ];
+form RecoveryWindow {
+    start: u64
+    current: u64
+    limit: u64
 }
 
-proc category_count(entries: [GrammarRuleCoverage], category: GrammarRuleCategory) -> u64 {
-  let count: u64 = 0;
-  let i: u64 = 0;
-  while i < len(entries) {
-    if entries[i].category == category {
-      set count = count + 1;
+form RecoveryEvent {
+    kind: RecoveryKind
+    reason: RecoveryReason
+    start: u64
+    recovered_index: u64
+}
+
+proc recovery_point(index: u64, kind: RecoveryKind, recovered: bool) -> RecoveryPoint {
+    give RecoveryPoint {
+        index: index,
+        kind: kind,
+        recovered: recovered
+    };
+}
+
+proc recovery_stats(diagnostic_count: u64, recovery_count: u64, skipped_token_count: u64) -> RecoveryStats {
+    give RecoveryStats {
+        diagnostic_count: diagnostic_count,
+        recovery_count: recovery_count,
+        skipped_token_count: skipped_token_count,
+        capped: diagnostic_count > PARSE_DIAG_CAP
+    };
+}
+
+proc recovery_window(start: u64) -> RecoveryWindow {
+    give RecoveryWindow {
+        start: start,
+        current: start,
+        limit: RECOVERY_WINDOW_LIMIT
+    };
+}
+
+proc recovery_event(kind: RecoveryKind, reason: RecoveryReason, start: u64, recovered_index: u64) -> RecoveryEvent {
+    give RecoveryEvent {
+        kind: kind,
+        reason: reason,
+        start: start,
+        recovered_index: recovered_index
+    };
+}
+
+proc parse_diag_cap() -> u64 {
+    give PARSE_DIAG_CAP;
+}
+
+proc recovery_window_limit() -> u64 {
+    give RECOVERY_WINDOW_LIMIT;
+}
+
+proc capped_diag_count(count: u64) -> u64 {
+    if count > PARSE_DIAG_CAP {
+        give PARSE_DIAG_CAP;
     }
-    set i = i + 1;
-  }
-  give count;
+
+    give count;
 }
 
-proc complete_count(entries: [GrammarRuleCoverage]) -> u64 {
-  let count: u64 = 0;
-  let i: u64 = 0;
-  while i < len(entries) {
-    if entries[i].status == GrammarRuleStatus.Complete or entries[i].status == GrammarRuleStatus.Tested {
-      set count = count + 1;
+proc recovery_applied(diagnostic_count: u64, recovery_count: u64) -> bool {
+    give recovery_count > 0
+        or diagnostic_count > PARSE_DIAG_CAP;
+}
+
+proc eof_token(tok: Token) -> bool {
+    give tok.kind == TokenKind.Eof;
+}
+
+proc newline_token(tok: Token) -> bool {
+    give tok.kind == TokenKind.Newline;
+}
+
+proc comment_token(tok: Token) -> bool {
+    give tok.kind == TokenKind.Comment;
+}
+
+proc trivia_token(tok: Token) -> bool {
+    give newline_token(tok)
+        or comment_token(tok);
+}
+
+proc block_end_token(tok: Token) -> bool {
+    give tok.lexeme == "}";
+}
+
+proc expression_boundary(tok: Token) -> bool {
+    give eof_token(tok)
+        or tok.lexeme == ";"
+        or tok.lexeme == ","
+        or tok.lexeme == ":"
+        or tok.lexeme == ")"
+        or tok.lexeme == "]"
+        or tok.lexeme == "}";
+}
+
+proc type_boundary(tok: Token) -> bool {
+    give eof_token(tok)
+        or tok.lexeme == ","
+        or tok.lexeme == ";"
+        or tok.lexeme == "="
+        or tok.lexeme == "{"
+        or tok.lexeme == ")"
+        or tok.lexeme == "]"
+        or tok.lexeme == "}";
+}
+
+proc pattern_boundary(tok: Token) -> bool {
+    give eof_token(tok)
+        or tok.lexeme == ","
+        or tok.lexeme == ":"
+        or tok.lexeme == "="
+        or tok.lexeme == "in"
+        or tok.lexeme == ")"
+        or tok.lexeme == "]"
+        or tok.lexeme == "}";
+}
+
+proc statement_boundary(tok: Token) -> bool {
+    give eof_token(tok)
+        or tok.lexeme == ";"
+        or tok.lexeme == "}";
+}
+
+proc declaration_boundary(tok: Token) -> bool {
+    give eof_token(tok)
+        or tok.lexeme == ";"
+        or tok.lexeme == "}"
+        or is_toplevel_sync_keyword(tok.lexeme);
+}
+
+proc is_toplevel_sync_keyword(lex: string) -> bool {
+    if lex == "space" or lex == "use" or lex == "export" {
+        give true;
     }
-    set i = i + 1;
-  }
-  give count;
-}
 
-proc tested_count(entries: [GrammarRuleCoverage]) -> u64 {
-  let count: u64 = 0;
-  let i: u64 = 0;
-  while i < len(entries) {
-    if entries[i].status == GrammarRuleStatus.Tested {
-      set count = count + 1;
+    if lex == "const" or lex == "static" or lex == "global" {
+        give true;
     }
-    set i = i + 1;
-  }
-  give count;
+
+    if lex == "type" or lex == "opaque" or lex == "extern" {
+        give true;
+    }
+
+    if lex == "form" or lex == "class" or lex == "union" {
+        give true;
+    }
+
+    if lex == "bits" or lex == "pick" or lex == "flags" {
+        give true;
+    }
+
+    if lex == "trait" or lex == "impl" or lex == "proc" {
+        give true;
+    }
+
+    if lex == "intrinsic" or lex == "compiler" or lex == "query" {
+        give true;
+    }
+
+    if lex == "pass" or lex == "backend" or lex == "diagnostic" {
+        give true;
+    }
+
+    if lex == "macro" or lex == "comptime" or lex == "static_assert" {
+        give true;
+    }
+
+    if lex == "test" or lex == "bench" or lex == "entry" {
+        give true;
+    }
+
+    give false;
 }
 
-proc grammar_alignment_report() -> GrammarAlignmentReport {
-  let coverage: [GrammarRuleCoverage] = grammar_rule_coverage();
-  give GrammarAlignmentReport {
-    grammar_version: "vitte-core-2026-05",
-    declaration_count: category_count(coverage, GrammarRuleCategory.Declaration),
-    statement_count: category_count(coverage, GrammarRuleCategory.Statement),
-    expression_count: category_count(coverage, GrammarRuleCategory.Expression),
-    type_count: category_count(coverage, GrammarRuleCategory.TypeExpr),
-    pattern_count: category_count(coverage, GrammarRuleCategory.Pattern),
-    complete_count: complete_count(coverage),
-    tested_count: tested_count(coverage)
-  };
+proc token_at(tokens: [Token], index: u64) -> Token {
+    if index >= len(tokens) {
+        give Token {
+            kind: TokenKind.Eof,
+            lexeme: "",
+            line: 0,
+            column: 0
+        };
+    }
+
+    give tokens[index];
 }
 
-proc grammar_alignment_summary() -> string {
-  let report: GrammarAlignmentReport = grammar_alignment_report();
-  give
-    "grammar=" + report.grammar_version +
-    " complete=" + (report.complete_count as string) +
-    " tested=" + (report.tested_count as string);
+proc skip_trivia(tokens: [Token], start: u64) -> u64 {
+    let i: u64 = start;
+
+    while i < len(tokens) {
+        if not trivia_token(tokens[i]) {
+            break;
+        }
+
+        set i =
+            i + 1;
+    }
+
+    give i;
+}
+
+proc recover_stmt_index(tokens: [Token], start: u64) -> u64 {
+    let i: u64 =
+        skip_trivia(tokens, start);
+
+    while i < len(tokens) {
+        let tok: Token =
+            token_at(tokens, i);
+
+        if declaration_boundary(tok) {
+            if tok.lexeme == ";" {
+                give i + 1;
+            }
+
+            give i;
+        }
+
+        set i =
+            i + 1;
+    }
+
+    give len(tokens);
+}
+
+proc recover_block_index(tokens: [Token], start: u64) -> u64 {
+    let i: u64 =
+        skip_trivia(tokens, start);
+
+    let depth: u64 = 0;
+
+    while i < len(tokens) {
+        let tok: Token =
+            token_at(tokens, i);
+
+        if tok.lexeme == "{" {
+            set depth =
+                depth + 1;
+        }
+
+        if tok.lexeme == "}" {
+            if depth == 0 {
+                give i;
+            }
+
+            set depth =
+                depth - 1;
+        }
+
+        if eof_token(tok) {
+            give i;
+        }
+
+        set i =
+            i + 1;
+    }
+
+    give len(tokens);
+}
+
+proc recover_decl_index(tokens: [Token], start: u64) -> u64 {
+    let i: u64 =
+        skip_trivia(tokens, start);
+
+    while i < len(tokens) {
+        let tok: Token =
+            token_at(tokens, i);
+
+        if declaration_boundary(tok) {
+            if tok.lexeme == ";" {
+                give i + 1;
+            }
+
+            give i;
+        }
+
+        set i =
+            i + 1;
+    }
+
+    give len(tokens);
+}
+
+proc recover_expr_index(tokens: [Token], start: u64) -> u64 {
+    let i: u64 =
+        skip_trivia(tokens, start);
+
+    while i < len(tokens) {
+        let tok: Token =
+            token_at(tokens, i);
+
+        if expression_boundary(tok) {
+            give i;
+        }
+
+        set i =
+            i + 1;
+    }
+
+    give len(tokens);
+}
+
+proc recover_type_index(tokens: [Token], start: u64) -> u64 {
+    let i: u64 =
+        skip_trivia(tokens, start);
+
+    while i < len(tokens) {
+        let tok: Token =
+            token_at(tokens, i);
+
+        if type_boundary(tok) {
+            give i;
+        }
+
+        set i =
+            i + 1;
+    }
+
+    give len(tokens);
+}
+
+proc recover_pattern_index(tokens: [Token], start: u64) -> u64 {
+    let i: u64 =
+        skip_trivia(tokens, start);
+
+    while i < len(tokens) {
+        let tok: Token =
+            token_at(tokens, i);
+
+        if pattern_boundary(tok) {
+            give i;
+        }
+
+        set i =
+            i + 1;
+    }
+
+    give len(tokens);
+}
+
+proc recover_toplevel_index(tokens: [Token], start: u64) -> u64 {
+    let i: u64 =
+        skip_trivia(tokens, start);
+
+    while i < len(tokens) {
+        let tok: Token =
+            token_at(tokens, i);
+
+        if eof_token(tok)
+            or is_toplevel_sync_keyword(tok.lexeme) {
+
+            give i;
+        }
+
+        set i =
+            i + 1;
+    }
+
+    give len(tokens);
+}
+
+proc recover_statement(tokens: [Token], start: u64) -> RecoveryPoint {
+    give recovery_point(
+        recover_stmt_index(tokens, start),
+        RecoveryKind.Statement,
+        true
+    );
+}
+
+proc recover_block(tokens: [Token], start: u64) -> RecoveryPoint {
+    give recovery_point(
+        recover_block_index(tokens, start),
+        RecoveryKind.Block,
+        true
+    );
+}
+
+proc recover_declaration(tokens: [Token], start: u64) -> RecoveryPoint {
+    give recovery_point(
+        recover_decl_index(tokens, start),
+        RecoveryKind.Declaration,
+        true
+    );
+}
+
+proc recover_expression(tokens: [Token], start: u64) -> RecoveryPoint {
+    give recovery_point(
+        recover_expr_index(tokens, start),
+        RecoveryKind.Expression,
+        true
+    );
+}
+
+proc recover_type(tokens: [Token], start: u64) -> RecoveryPoint {
+    give recovery_point(
+        recover_type_index(tokens, start),
+        RecoveryKind.Type,
+        true
+    );
+}
+
+proc recover_pattern(tokens: [Token], start: u64) -> RecoveryPoint {
+    give recovery_point(
+        recover_pattern_index(tokens, start),
+        RecoveryKind.Pattern,
+        true
+    );
+}
+
+proc recover_toplevel(tokens: [Token], start: u64) -> RecoveryPoint {
+    give recovery_point(
+        recover_toplevel_index(tokens, start),
+        RecoveryKind.Toplevel,
+        true
+    );
+}
+
+proc skipped_token_count(start: u64, recovered: u64) -> u64 {
+    if recovered <= start {
+        give 0;
+    }
+
+    give recovered - start;
+}
+
+proc recovery_reason_name(reason: RecoveryReason) -> string {
+    if reason == RecoveryReason.UnexpectedToken {
+        give "unexpected-token";
+    }
+
+    if reason == RecoveryReason.MissingToken {
+        give "missing-token";
+    }
+
+    if reason == RecoveryReason.InvalidExpression {
+        give "invalid-expression";
+    }
+
+    if reason == RecoveryReason.InvalidType {
+        give "invalid-type";
+    }
+
+    if reason == RecoveryReason.InvalidPattern {
+        give "invalid-pattern";
+    }
+
+    if reason == RecoveryReason.UnterminatedBlock {
+        give "unterminated-block";
+    }
+
+    give "unexpected-eof";
+}
+
+proc recovery_kind_name(kind: RecoveryKind) -> string {
+    if kind == RecoveryKind.Statement {
+        give "statement";
+    }
+
+    if kind == RecoveryKind.Block {
+        give "block";
+    }
+
+    if kind == RecoveryKind.Declaration {
+        give "declaration";
+    }
+
+    if kind == RecoveryKind.Expression {
+        give "expression";
+    }
+
+    if kind == RecoveryKind.Type {
+        give "type";
+    }
+
+    if kind == RecoveryKind.Pattern {
+        give "pattern";
+    }
+
+    if kind == RecoveryKind.Toplevel {
+        give "toplevel";
+    }
+
+    give "none";
+}
+
+proc format_recovery_event(event: RecoveryEvent) -> string {
+    give recovery_kind_name(event.kind)
+        + ":"
+        + recovery_reason_name(event.reason)
+        + "@"
+        + (event.start as string)
+        + "->"
+        + (event.recovered_index as string);
+}
+
+proc recovery_selftest() -> bool {
+    let tokens: [Token] = [
+        Token {
+            kind: TokenKind.Identifier,
+            lexeme: "let",
+            line: 1,
+            column: 1
+        },
+
+        Token {
+            kind: TokenKind.Identifier,
+            lexeme: "x",
+            line: 1,
+            column: 5
+        },
+
+        Token {
+            kind: TokenKind.Symbol,
+            lexeme: ";",
+            line: 1,
+            column: 6
+        },
+
+        Token {
+            kind: TokenKind.Identifier,
+            lexeme: "proc",
+            line: 2,
+            column: 1
+        }
+    ];
+
+    let stmt: RecoveryPoint =
+        recover_statement(tokens, 0);
+
+    let top: RecoveryPoint =
+        recover_toplevel(tokens, 1);
+
+    let stats: RecoveryStats =
+        recovery_stats(
+            10,
+            1,
+            skipped_token_count(
+                0,
+                stmt.index
+            )
+        );
+
+    let event: RecoveryEvent =
+        recovery_event(
+            RecoveryKind.Statement,
+            RecoveryReason.UnexpectedToken,
+            0,
+            stmt.index
+        );
+
+    give stmt.index == 3
+        and top.index == 3
+        and stats.capped
+        and stats.skipped_token_count == 3
+        and recovery_applied(10, 1)
+        and is_toplevel_sync_keyword("proc")
+        and parse_diag_cap() == 3
+        and recovery_window_limit() == 64
+        and format_recovery_event(event)
+            == "statement:unexpected-token@0->3";
 }

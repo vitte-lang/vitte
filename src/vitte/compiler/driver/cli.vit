@@ -1,6 +1,6 @@
 space vitte/compiler/driver
 
-use vitte/compiler/driver/compile.{ DriverCompileConfig, DriverCompileResult, DriverModuleInput, check_source, check_source_with_config, compile_source, compile_source_set, compile_source_set_with_config, compile_source_with_config, driver_compile_config_full, profile_emit_debug_sections, profile_lto_enabled, profile_opt_level, profile_packaging, profile_pgo_mode }
+use vitte/compiler/driver/compile.{ DriverCompileConfig, DriverCompileResult, DriverModuleInput, check_source, check_source_with_config, compile_source, compile_source_set, compile_source_set_with_config, compile_source_with_config, driver_compile_config_full, dump_ast_json, dump_diagnostics_json, dump_hir_json, dump_mir_json, profile_emit_debug_sections, profile_lto_enabled, profile_opt_level, profile_packaging, profile_pgo_mode }
 use vitte/compiler/backends/llvm_bindings.{ LlvmToolchainPaths, default_llvm_toolchain_paths, llvm_toolchain_paths }
 use vitte/compiler/driver/exit_status.{ exit_code }
 use vitte/compiler/driver/pipeline.{ CompileReport, ModuleSetCompileReport, compile_report_json, module_set_compile_report_json, run_and_report, run_and_report_with_config, run_set_and_report, run_set_and_report_with_config }
@@ -114,6 +114,58 @@ proc run_check_report_with_config_cli(source_path: string, source_text: string, 
         code: report.exit_code,
         message: report.status,
         report_json: compile_report_json(report)
+    };
+}
+
+proc run_parse_ast_json_cli(source_path: string, source_text: string) -> CliReportResult {
+    give run_parse_ast_json_with_config_cli(source_path, source_text, driver_compile_config_full("x86_64", "x86_64-linux", "enterprise-default", profile_opt_level("enterprise-default"), profile_packaging("enterprise-default"), true, true, profile_emit_debug_sections("enterprise-default", true), profile_lto_enabled("enterprise-default"), profile_pgo_mode("enterprise-default"), false, default_llvm_toolchain_paths()));
+}
+
+proc run_parse_ast_json_with_config_cli(source_path: string, source_text: string, config: DriverCompileConfig) -> CliReportResult {
+    let result: DriverCompileResult = check_source_with_config(source_path, source_text, config);
+    give CliReportResult {
+        code: exit_code(result.status),
+        message: result.message,
+        report_json: dump_ast_json(source_path, source_text)
+    };
+}
+
+proc run_check_hir_json_cli(source_path: string, source_text: string) -> CliReportResult {
+    give run_check_hir_json_with_config_cli(source_path, source_text, driver_compile_config_full("x86_64", "x86_64-linux", "enterprise-default", profile_opt_level("enterprise-default"), profile_packaging("enterprise-default"), true, true, profile_emit_debug_sections("enterprise-default", true), profile_lto_enabled("enterprise-default"), profile_pgo_mode("enterprise-default"), false, default_llvm_toolchain_paths()));
+}
+
+proc run_check_hir_json_with_config_cli(source_path: string, source_text: string, config: DriverCompileConfig) -> CliReportResult {
+    let result: DriverCompileResult = check_source_with_config(source_path, source_text, config);
+    give CliReportResult {
+        code: exit_code(result.status),
+        message: result.message,
+        report_json: dump_hir_json(source_path, source_text)
+    };
+}
+
+proc run_check_mir_json_cli(source_path: string, source_text: string) -> CliReportResult {
+    give run_check_mir_json_with_config_cli(source_path, source_text, driver_compile_config_full("x86_64", "x86_64-linux", "enterprise-default", profile_opt_level("enterprise-default"), profile_packaging("enterprise-default"), true, true, profile_emit_debug_sections("enterprise-default", true), profile_lto_enabled("enterprise-default"), profile_pgo_mode("enterprise-default"), false, default_llvm_toolchain_paths()));
+}
+
+proc run_check_mir_json_with_config_cli(source_path: string, source_text: string, config: DriverCompileConfig) -> CliReportResult {
+    let result: DriverCompileResult = check_source_with_config(source_path, source_text, config);
+    give CliReportResult {
+        code: exit_code(result.status),
+        message: result.message,
+        report_json: dump_mir_json(source_path, source_text)
+    };
+}
+
+proc run_check_diagnostics_json_cli(source_path: string, source_text: string) -> CliReportResult {
+    give run_check_diagnostics_json_with_config_cli(source_path, source_text, driver_compile_config_full("x86_64", "x86_64-linux", "enterprise-default", profile_opt_level("enterprise-default"), profile_packaging("enterprise-default"), true, true, profile_emit_debug_sections("enterprise-default", true), profile_lto_enabled("enterprise-default"), profile_pgo_mode("enterprise-default"), false, default_llvm_toolchain_paths()));
+}
+
+proc run_check_diagnostics_json_with_config_cli(source_path: string, source_text: string, config: DriverCompileConfig) -> CliReportResult {
+    let result: DriverCompileResult = check_source_with_config(source_path, source_text, config);
+    give CliReportResult {
+        code: exit_code(result.status),
+        message: result.message,
+        report_json: dump_diagnostics_json(source_path, source_text)
     };
 }
 

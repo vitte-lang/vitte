@@ -1,60 +1,711 @@
 space vitte/compiler/analysis
 
+pick AnalysisSeverity {
+    Help
+    Note
+    Warning
+    Error
+    Fatal
+}
+
+pick AnalysisPhase {
+    Parse
+    Ast
+    Hir
+    Resolve
+    Typeck
+    Borrowck
+    Lifetime
+    ConstEval
+    Mir
+    Ir
+    Codegen
+    Link
+    Unknown
+}
+
+pick AnalysisDiagnosticKind {
+    Syntax
+    NameResolution
+    TypeMismatch
+    BorrowConflict
+    LifetimeConflict
+    MoveError
+    DropError
+    ConstEvalError
+    IrLoweringError
+    Internal
+    Unknown
+}
+
+form AnalysisLabel {
+    message: string
+    line: u64
+    column: u64
+    length: u64
+    primary: bool
+}
+
 form AnalysisDiagnostic {
-  phase: string
-  code: string
-  severity: string
-  message: string
-  labels: [string]
-  suggestion: string
-  line: u64
-  column: u64
-  length: u64
-  notes: [string]
-  fatal: bool
+    phase: string
+    code: string
+    severity: string
+    message: string
+    labels: [string]
+    suggestion: string
+    line: u64
+    column: u64
+    length: u64
+    notes: [string]
+    fatal: bool
+
+    kind: AnalysisDiagnosticKind
+    phase_kind: AnalysisPhase
+    severity_kind: AnalysisSeverity
+    primary_label: AnalysisLabel
+    related_labels: [AnalysisLabel]
+    help: string
+    file: string
+    source_excerpt: string
+}
+
+form AnalysisDiagnosticBuilder {
+    phase: string
+    code: string
+    severity: string
+    message: string
+    labels: [string]
+    suggestion: string
+    line: u64
+    column: u64
+    length: u64
+    notes: [string]
+    fatal: bool
+
+    kind: AnalysisDiagnosticKind
+    phase_kind: AnalysisPhase
+    severity_kind: AnalysisSeverity
+    related_labels: [AnalysisLabel]
+    help: string
+    file: string
+    source_excerpt: string
 }
 
 proc ast_span_length(start_column: u64, end_column: u64) -> u64 {
-  if end_column > start_column {
-    give end_column - start_column;
-  }
-  give 1;
+    if end_column > start_column {
+        give end_column - start_column;
+    }
+
+    give 1;
 }
 
-proc analysis_context_notes(labels: [string], suggestion: string) -> [string] {
-  let notes: [string] = [];
-  if len(labels) > 0 {
-    set notes = notes + ["context: " + labels[0]];
-  }
-  if suggestion != "" {
-    set notes = notes + ["suggestion: " + suggestion];
-  }
-  give notes;
+proc normalize_span_length(length: u64) -> u64 {
+    if length == 0 {
+        give 1;
+    }
+
+    give length;
+}
+
+proc severity_text(severity: AnalysisSeverity) -> string {
+    if severity == AnalysisSeverity.Help {
+        give "help";
+    }
+
+    if severity == AnalysisSeverity.Note {
+        give "note";
+    }
+
+    if severity == AnalysisSeverity.Warning {
+        give "warning";
+    }
+
+    if severity == AnalysisSeverity.Error {
+        give "error";
+    }
+
+    if severity == AnalysisSeverity.Fatal {
+        give "fatal";
+    }
+
+    give "error";
+}
+
+proc phase_text(phase: AnalysisPhase) -> string {
+    if phase == AnalysisPhase.Parse {
+        give "parse";
+    }
+
+    if phase == AnalysisPhase.Ast {
+        give "ast";
+    }
+
+    if phase == AnalysisPhase.Hir {
+        give "hir";
+    }
+
+    if phase == AnalysisPhase.Resolve {
+        give "resolve";
+    }
+
+    if phase == AnalysisPhase.Typeck {
+        give "typeck";
+    }
+
+    if phase == AnalysisPhase.Borrowck {
+        give "borrowck";
+    }
+
+    if phase == AnalysisPhase.Lifetime {
+        give "lifetime";
+    }
+
+    if phase == AnalysisPhase.ConstEval {
+        give "const_eval";
+    }
+
+    if phase == AnalysisPhase.Mir {
+        give "mir";
+    }
+
+    if phase == AnalysisPhase.Ir {
+        give "ir";
+    }
+
+    if phase == AnalysisPhase.Codegen {
+        give "codegen";
+    }
+
+    if phase == AnalysisPhase.Link {
+        give "link";
+    }
+
+    give "unknown";
+}
+
+proc kind_text(kind: AnalysisDiagnosticKind) -> string {
+    if kind == AnalysisDiagnosticKind.Syntax {
+        give "syntax";
+    }
+
+    if kind == AnalysisDiagnosticKind.NameResolution {
+        give "name_resolution";
+    }
+
+    if kind == AnalysisDiagnosticKind.TypeMismatch {
+        give "type_mismatch";
+    }
+
+    if kind == AnalysisDiagnosticKind.BorrowConflict {
+        give "borrow_conflict";
+    }
+
+    if kind == AnalysisDiagnosticKind.LifetimeConflict {
+        give "lifetime_conflict";
+    }
+
+    if kind == AnalysisDiagnosticKind.MoveError {
+        give "move_error";
+    }
+
+    if kind == AnalysisDiagnosticKind.DropError {
+        give "drop_error";
+    }
+
+    if kind == AnalysisDiagnosticKind.ConstEvalError {
+        give "const_eval_error";
+    }
+
+    if kind == AnalysisDiagnosticKind.IrLoweringError {
+        give "ir_lowering_error";
+    }
+
+    if kind == AnalysisDiagnosticKind.Internal {
+        give "internal";
+    }
+
+    give "unknown";
+}
+
+proc is_fatal_severity(severity: AnalysisSeverity) -> bool {
+    if severity == AnalysisSeverity.Fatal {
+        give true;
+    }
+
+    give false;
+}
+
+proc is_error_severity(severity: AnalysisSeverity) -> bool {
+    if severity == AnalysisSeverity.Error {
+        give true;
+    }
+
+    if severity == AnalysisSeverity.Fatal {
+        give true;
+    }
+
+    give false;
+}
+
+proc make_analysis_label(
+    message: string,
+    line: u64,
+    column: u64,
+    length: u64,
+    primary: bool
+) -> AnalysisLabel {
+    give AnalysisLabel {
+        message: message,
+        line: line,
+        column: column,
+        length: normalize_span_length(length),
+        primary: primary
+    };
+}
+
+proc empty_analysis_label() -> AnalysisLabel {
+    give AnalysisLabel {
+        message: "",
+        line: 0,
+        column: 0,
+        length: 1,
+        primary: false
+    };
+}
+
+proc analysis_context_notes(
+    labels: [string],
+    suggestion: string
+) -> [string] {
+    let notes: [string] = [];
+
+    if len(labels) > 0 {
+        set notes = notes + ["context: " + labels[0]];
+    }
+
+    if suggestion != "" {
+        set notes = notes + ["suggestion: " + suggestion];
+    }
+
+    give notes;
+}
+
+proc append_note(
+    notes: [string],
+    note: string
+) -> [string] {
+    if note == "" {
+        give notes;
+    }
+
+    give notes + [note];
+}
+
+proc append_label_text(
+    labels: [string],
+    label: string
+) -> [string] {
+    if label == "" {
+        give labels;
+    }
+
+    give labels + [label];
 }
 
 proc analysis_diagnostic(
-  phase: string,
-  code: string,
-  severity: string,
-  message: string,
-  labels: [string],
-  suggestion: string,
-  line: u64,
-  column: u64,
-  length: u64,
-  fatal: bool
+    phase: string,
+    code: string,
+    severity: string,
+    message: string,
+    labels: [string],
+    suggestion: string,
+    line: u64,
+    column: u64,
+    length: u64,
+    fatal: bool
 ) -> AnalysisDiagnostic {
-  give AnalysisDiagnostic {
-    phase: phase,
-    code: code,
-    severity: severity,
-    message: message,
-    labels: labels,
-    suggestion: suggestion,
-    line: line,
-    column: column,
-    length: length,
-    notes: analysis_context_notes(labels, suggestion),
-    fatal: fatal
-  };
+    give AnalysisDiagnostic {
+        phase: phase,
+        code: code,
+        severity: severity,
+        message: message,
+        labels: labels,
+        suggestion: suggestion,
+        line: line,
+        column: column,
+        length: normalize_span_length(length),
+        notes: analysis_context_notes(labels, suggestion),
+        fatal: fatal,
+
+        kind: AnalysisDiagnosticKind.Unknown,
+        phase_kind: AnalysisPhase.Unknown,
+        severity_kind: AnalysisSeverity.Error,
+        primary_label: make_analysis_label(message, line, column, length, true),
+        related_labels: [],
+        help: suggestion,
+        file: "",
+        source_excerpt: ""
+    };
 }
+
+proc typed_analysis_diagnostic(
+    phase_kind: AnalysisPhase,
+    kind: AnalysisDiagnosticKind,
+    severity_kind: AnalysisSeverity,
+    code: string,
+    message: string,
+    file: string,
+    line: u64,
+    column: u64,
+    length: u64,
+    suggestion: string
+) -> AnalysisDiagnostic {
+    let labels: [string] = [message];
+
+    give AnalysisDiagnostic {
+        phase: phase_text(phase_kind),
+        code: code,
+        severity: severity_text(severity_kind),
+        message: message,
+        labels: labels,
+        suggestion: suggestion,
+        line: line,
+        column: column,
+        length: normalize_span_length(length),
+        notes: analysis_context_notes(labels, suggestion),
+        fatal: is_fatal_severity(severity_kind),
+
+        kind: kind,
+        phase_kind: phase_kind,
+        severity_kind: severity_kind,
+        primary_label: make_analysis_label(message, line, column, length, true),
+        related_labels: [],
+        help: suggestion,
+        file: file,
+        source_excerpt: ""
+    };
+}
+
+proc new_diagnostic_builder() -> AnalysisDiagnosticBuilder {
+    give AnalysisDiagnosticBuilder {
+        phase: "analysis",
+        code: "A0000",
+        severity: "error",
+        message: "",
+        labels: [],
+        suggestion: "",
+        line: 0,
+        column: 0,
+        length: 1,
+        notes: [],
+        fatal: false,
+
+        kind: AnalysisDiagnosticKind.Unknown,
+        phase_kind: AnalysisPhase.Unknown,
+        severity_kind: AnalysisSeverity.Error,
+        related_labels: [],
+        help: "",
+        file: "",
+        source_excerpt: ""
+    };
+}
+
+proc builder_phase(
+    builder: AnalysisDiagnosticBuilder,
+    phase_kind: AnalysisPhase
+) -> AnalysisDiagnosticBuilder {
+    set builder.phase_kind = phase_kind;
+    set builder.phase = phase_text(phase_kind);
+    give builder;
+}
+
+proc builder_kind(
+    builder: AnalysisDiagnosticBuilder,
+    kind: AnalysisDiagnosticKind
+) -> AnalysisDiagnosticBuilder {
+    set builder.kind = kind;
+    give builder;
+}
+
+proc builder_severity(
+    builder: AnalysisDiagnosticBuilder,
+    severity_kind: AnalysisSeverity
+) -> AnalysisDiagnosticBuilder {
+    set builder.severity_kind = severity_kind;
+    set builder.severity = severity_text(severity_kind);
+    set builder.fatal = is_fatal_severity(severity_kind);
+    give builder;
+}
+
+proc builder_code(
+    builder: AnalysisDiagnosticBuilder,
+    code: string
+) -> AnalysisDiagnosticBuilder {
+    set builder.code = code;
+    give builder;
+}
+
+proc builder_message(
+    builder: AnalysisDiagnosticBuilder,
+    message: string
+) -> AnalysisDiagnosticBuilder {
+    set builder.message = message;
+    give builder;
+}
+
+proc builder_location(
+    builder: AnalysisDiagnosticBuilder,
+    file: string,
+    line: u64,
+    column: u64,
+    length: u64
+) -> AnalysisDiagnosticBuilder {
+    set builder.file = file;
+    set builder.line = line;
+    set builder.column = column;
+    set builder.length = normalize_span_length(length);
+    give builder;
+}
+
+proc builder_label(
+    builder: AnalysisDiagnosticBuilder,
+    label: string
+) -> AnalysisDiagnosticBuilder {
+    set builder.labels = append_label_text(builder.labels, label);
+    give builder;
+}
+
+proc builder_related_label(
+    builder: AnalysisDiagnosticBuilder,
+    label: AnalysisLabel
+) -> AnalysisDiagnosticBuilder {
+    set builder.related_labels =
+        builder.related_labels + [label];
+
+    give builder;
+}
+
+proc builder_suggestion(
+    builder: AnalysisDiagnosticBuilder,
+    suggestion: string
+) -> AnalysisDiagnosticBuilder {
+    set builder.suggestion = suggestion;
+    set builder.help = suggestion;
+    give builder;
+}
+
+proc builder_note(
+    builder: AnalysisDiagnosticBuilder,
+    note: string
+) -> AnalysisDiagnosticBuilder {
+    set builder.notes = append_note(builder.notes, note);
+    give builder;
+}
+
+proc finish_diagnostic(
+    builder: AnalysisDiagnosticBuilder
+) -> AnalysisDiagnostic {
+    let labels = builder.labels;
+
+    if len(labels) == 0 && builder.message != "" {
+        set labels = labels + [builder.message];
+    }
+
+    let notes = builder.notes;
+
+    if len(notes) == 0 {
+        set notes =
+            analysis_context_notes(
+                labels,
+                builder.suggestion
+            );
+    }
+
+    give AnalysisDiagnostic {
+        phase: builder.phase,
+        code: builder.code,
+        severity: builder.severity,
+        message: builder.message,
+        labels: labels,
+        suggestion: builder.suggestion,
+        line: builder.line,
+        column: builder.column,
+        length: normalize_span_length(builder.length),
+        notes: notes,
+        fatal: builder.fatal,
+
+        kind: builder.kind,
+        phase_kind: builder.phase_kind,
+        severity_kind: builder.severity_kind,
+        primary_label: make_analysis_label(
+            builder.message,
+            builder.line,
+            builder.column,
+            builder.length,
+            true
+        ),
+        related_labels: builder.related_labels,
+        help: builder.help,
+        file: builder.file,
+        source_excerpt: builder.source_excerpt
+    };
+}
+
+proc syntax_error(
+    code: string,
+    message: string,
+    file: string,
+    line: u64,
+    column: u64,
+    length: u64
+) -> AnalysisDiagnostic {
+    give typed_analysis_diagnostic(
+        AnalysisPhase.Parse,
+        AnalysisDiagnosticKind.Syntax,
+        AnalysisSeverity.Error,
+        code,
+        message,
+        file,
+        line,
+        column,
+        length,
+        ""
+    );
+}
+
+proc type_error(
+    code: string,
+    message: string,
+    file: string,
+    line: u64,
+    column: u64,
+    length: u64,
+    suggestion: string
+) -> AnalysisDiagnostic {
+    give typed_analysis_diagnostic(
+        AnalysisPhase.Typeck,
+        AnalysisDiagnosticKind.TypeMismatch,
+        AnalysisSeverity.Error,
+        code,
+        message,
+        file,
+        line,
+        column,
+        length,
+        suggestion
+    );
+}
+
+proc borrow_error(
+    code: string,
+    message: string,
+    file: string,
+    line: u64,
+    column: u64,
+    length: u64,
+    suggestion: string
+) -> AnalysisDiagnostic {
+    give typed_analysis_diagnostic(
+        AnalysisPhase.Borrowck,
+        AnalysisDiagnosticKind.BorrowConflict,
+        AnalysisSeverity.Error,
+        code,
+        message,
+        file,
+        line,
+        column,
+        length,
+        suggestion
+    );
+}
+
+proc ir_lowering_error(
+    code: string,
+    message: string,
+    file: string,
+    line: u64,
+    column: u64,
+    length: u64,
+    suggestion: string
+) -> AnalysisDiagnostic {
+    give typed_analysis_diagnostic(
+        AnalysisPhase.Ir,
+        AnalysisDiagnosticKind.IrLoweringError,
+        AnalysisSeverity.Error,
+        code,
+        message,
+        file,
+        line,
+        column,
+        length,
+        suggestion
+    );
+}
+
+proc diagnostic_is_error(diagnostic: AnalysisDiagnostic) -> bool {
+    if diagnostic.fatal {
+        give true;
+    }
+
+    if diagnostic.severity == "error" {
+        give true;
+    }
+
+    if diagnostic.severity == "fatal" {
+        give true;
+    }
+
+    give false;
+}
+
+proc diagnostic_summary(diagnostic: AnalysisDiagnostic) -> string {
+    give diagnostic.severity +
+        "[" + diagnostic.code + "] " +
+        diagnostic.phase +
+        ": " +
+        diagnostic.message;
+}
+
+share AnalysisSeverity
+share AnalysisPhase
+share AnalysisDiagnosticKind
+share AnalysisLabel
+share AnalysisDiagnostic
+share AnalysisDiagnosticBuilder
+
+share ast_span_length
+share normalize_span_length
+share severity_text
+share phase_text
+share kind_text
+share is_fatal_severity
+share is_error_severity
+
+share make_analysis_label
+share empty_analysis_label
+share analysis_context_notes
+share append_note
+share append_label_text
+
+share analysis_diagnostic
+share typed_analysis_diagnostic
+share new_diagnostic_builder
+share builder_phase
+share builder_kind
+share builder_severity
+share builder_code
+share builder_message
+share builder_location
+share builder_label
+share builder_related_label
+share builder_suggestion
+share builder_note
+share finish_diagnostic
+
+share syntax_error
+share type_error
+share borrow_error
+share ir_lowering_error
+
+share diagnostic_is_error
+share diagnostic_summary

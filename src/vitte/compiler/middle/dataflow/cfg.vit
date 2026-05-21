@@ -1,5 +1,498 @@
-space vitte/compiler/middle/dataflow
+/home/vincentr/Documents/GitHub/vitte/src/vitte/compiler/middle/dataflow/cfg.vit
 
-proc cfg() -> string {
-  give "cfg"
+space vitte/compiler/middle/dataflow/cfg
+
+export *
+
+pick CfgBlockKind {
+    Entry,
+    Exit,
+    Basic,
+    LoopHeader,
+    LoopBody,
+    LoopExit,
+    MatchDispatch,
+    MatchArm,
+    Cleanup,
+    Unreachable,
+    Unknown,
+}
+
+pick CfgEdgeKind {
+    Normal,
+    TrueBranch,
+    FalseBranch,
+    BackEdge,
+    LoopExit,
+    Exceptional,
+    Unwind,
+    Fallthrough,
+    Unknown,
+}
+
+pick CfgTerminatorKind {
+    Return,
+    Goto,
+    Branch,
+    Switch,
+    Call,
+    Panic,
+    Resume,
+    Abort,
+    Unreachable,
+    Unknown,
+}
+
+pick CfgValueState {
+    Unknown,
+    Initialized,
+    Moved,
+    Borrowed,
+    Dropped,
+    Invalid,
+}
+
+form CfgSpan {
+    file: string
+    start_line: u64
+    start_column: u64
+    end_line: u64
+    end_column: u64
+}
+
+form CfgInstruction {
+    id: u64
+    opcode: string
+    operand_count: u64
+    text: string
+}
+
+form CfgValue {
+    name: string
+    state: CfgValueState
+    mutable: bool
+}
+
+form CfgBlock {
+    id: u64
+    name: string
+    kind: CfgBlockKind
+    instruction_count: u64
+    predecessor_count: u64
+    successor_count: u64
+    terminator: CfgTerminatorKind
+    span: CfgSpan
+}
+
+form CfgEdge {
+    from: u64
+    to: u64
+    kind: CfgEdgeKind
+    executable: bool
+}
+
+form CfgGraph {
+    name: string
+    blocks: [CfgBlock]
+    edges: [CfgEdge]
+    values: [CfgValue]
+    entry: u64
+    exit: u64
+    valid: bool
+}
+
+form CfgTraversal {
+    visited_blocks: u64
+    traversed_edges: u64
+    terminated: bool
+}
+
+form CfgSummary {
+    block_count: u64
+    edge_count: u64
+    value_count: u64
+    reachable_blocks: u64
+    loop_count: u64
+}
+
+proc cfg_span(file: string, start_line: u64, start_column: u64, end_line: u64, end_column: u64) -> CfgSpan {
+    give CfgSpan {
+        file: file,
+        start_line: start_line,
+        start_column: start_column,
+        end_line: end_line,
+        end_column: end_column
+    };
+}
+
+proc cfg_instruction(id: u64, opcode: string, operand_count: u64, text: string) -> CfgInstruction {
+    give CfgInstruction {
+        id: id,
+        opcode: opcode,
+        operand_count: operand_count,
+        text: text
+    };
+}
+
+proc cfg_value(name: string, state: CfgValueState, mutable: bool) -> CfgValue {
+    give CfgValue {
+        name: name,
+        state: state,
+        mutable: mutable
+    };
+}
+
+proc cfg_block(id: u64, name: string, kind: CfgBlockKind, instruction_count: u64, predecessor_count: u64, successor_count: u64, terminator: CfgTerminatorKind, span: CfgSpan) -> CfgBlock {
+    give CfgBlock {
+        id: id,
+        name: name,
+        kind: kind,
+        instruction_count: instruction_count,
+        predecessor_count: predecessor_count,
+        successor_count: successor_count,
+        terminator: terminator,
+        span: span
+    };
+}
+
+proc cfg_edge(from: u64, to: u64, kind: CfgEdgeKind, executable: bool) -> CfgEdge {
+    give CfgEdge {
+        from: from,
+        to: to,
+        kind: kind,
+        executable: executable
+    };
+}
+
+proc cfg_graph(name: string) -> CfgGraph {
+    give CfgGraph {
+        name: name,
+        blocks: [],
+        edges: [],
+        values: [],
+        entry: 0,
+        exit: 0,
+        valid: true
+    };
+}
+
+proc cfg_traversal(visited_blocks: u64, traversed_edges: u64, terminated: bool) -> CfgTraversal {
+    give CfgTraversal {
+        visited_blocks: visited_blocks,
+        traversed_edges: traversed_edges,
+        terminated: terminated
+    };
+}
+
+proc cfg_summary(block_count: u64, edge_count: u64, value_count: u64, reachable_blocks: u64, loop_count: u64) -> CfgSummary {
+    give CfgSummary {
+        block_count: block_count,
+        edge_count: edge_count,
+        value_count: value_count,
+        reachable_blocks: reachable_blocks,
+        loop_count: loop_count
+    };
+}
+
+proc empty_span() -> CfgSpan {
+    give cfg_span(
+        "",
+        1,
+        1,
+        1,
+        1
+    );
+}
+
+proc entry_block() -> CfgBlock {
+    give cfg_block(
+        0,
+        "entry",
+        CfgBlockKind.Entry,
+        0,
+        0,
+        1,
+        CfgTerminatorKind.Goto,
+        empty_span()
+    );
+}
+
+proc exit_block() -> CfgBlock {
+    give cfg_block(
+        1,
+        "exit",
+        CfgBlockKind.Exit,
+        0,
+        1,
+        0,
+        CfgTerminatorKind.Return,
+        empty_span()
+    );
+}
+
+proc append_block(graph: CfgGraph, block: CfgBlock) -> CfgGraph {
+    let out: CfgGraph =
+        graph;
+
+    set out.blocks =
+        out.blocks + [block];
+
+    give out;
+}
+
+proc append_edge(graph: CfgGraph, edge: CfgEdge) -> CfgGraph {
+    let out: CfgGraph =
+        graph;
+
+    set out.edges =
+        out.edges + [edge];
+
+    give out;
+}
+
+proc append_value(graph: CfgGraph, value: CfgValue) -> CfgGraph {
+    let out: CfgGraph =
+        graph;
+
+    set out.values =
+        out.values + [value];
+
+    give out;
+}
+
+proc cfg_block_kind_name(kind: CfgBlockKind) -> string {
+    if kind == CfgBlockKind.Entry { give "entry"; }
+    if kind == CfgBlockKind.Exit { give "exit"; }
+    if kind == CfgBlockKind.Basic { give "basic"; }
+    if kind == CfgBlockKind.LoopHeader { give "loop-header"; }
+    if kind == CfgBlockKind.LoopBody { give "loop-body"; }
+    if kind == CfgBlockKind.LoopExit { give "loop-exit"; }
+    if kind == CfgBlockKind.MatchDispatch { give "match-dispatch"; }
+    if kind == CfgBlockKind.MatchArm { give "match-arm"; }
+    if kind == CfgBlockKind.Cleanup { give "cleanup"; }
+    if kind == CfgBlockKind.Unreachable { give "unreachable"; }
+
+    give "unknown";
+}
+
+proc cfg_edge_kind_name(kind: CfgEdgeKind) -> string {
+    if kind == CfgEdgeKind.Normal { give "normal"; }
+    if kind == CfgEdgeKind.TrueBranch { give "true-branch"; }
+    if kind == CfgEdgeKind.FalseBranch { give "false-branch"; }
+    if kind == CfgEdgeKind.BackEdge { give "back-edge"; }
+    if kind == CfgEdgeKind.LoopExit { give "loop-exit"; }
+    if kind == CfgEdgeKind.Exceptional { give "exceptional"; }
+    if kind == CfgEdgeKind.Unwind { give "unwind"; }
+    if kind == CfgEdgeKind.Fallthrough { give "fallthrough"; }
+
+    give "unknown";
+}
+
+proc cfg_terminator_name(kind: CfgTerminatorKind) -> string {
+    if kind == CfgTerminatorKind.Return { give "return"; }
+    if kind == CfgTerminatorKind.Goto { give "goto"; }
+    if kind == CfgTerminatorKind.Branch { give "branch"; }
+    if kind == CfgTerminatorKind.Switch { give "switch"; }
+    if kind == CfgTerminatorKind.Call { give "call"; }
+    if kind == CfgTerminatorKind.Panic { give "panic"; }
+    if kind == CfgTerminatorKind.Resume { give "resume"; }
+    if kind == CfgTerminatorKind.Abort { give "abort"; }
+    if kind == CfgTerminatorKind.Unreachable { give "unreachable"; }
+
+    give "unknown";
+}
+
+proc cfg_value_state_name(state: CfgValueState) -> string {
+    if state == CfgValueState.Unknown { give "unknown"; }
+    if state == CfgValueState.Initialized { give "initialized"; }
+    if state == CfgValueState.Moved { give "moved"; }
+    if state == CfgValueState.Borrowed { give "borrowed"; }
+    if state == CfgValueState.Dropped { give "dropped"; }
+
+    give "invalid";
+}
+
+proc reachable_block(block: CfgBlock) -> bool {
+    give block.kind
+        != CfgBlockKind.Unreachable;
+}
+
+proc executable_edge(edge: CfgEdge) -> bool {
+    give edge.executable;
+}
+
+proc loop_edge(edge: CfgEdge) -> bool {
+    give edge.kind
+        == CfgEdgeKind.BackEdge;
+}
+
+proc count_reachable_blocks(graph: CfgGraph) -> u64 {
+    let count: u64 = 0;
+
+    let i: u64 = 0;
+
+    while i < len(graph.blocks) {
+        if reachable_block(graph.blocks[i]) {
+            set count =
+                count + 1;
+        }
+
+        set i =
+            i + 1;
+    }
+
+    give count;
+}
+
+proc count_loop_edges(graph: CfgGraph) -> u64 {
+    let count: u64 = 0;
+
+    let i: u64 = 0;
+
+    while i < len(graph.edges) {
+        if loop_edge(graph.edges[i]) {
+            set count =
+                count + 1;
+        }
+
+        set i =
+            i + 1;
+    }
+
+    give count;
+}
+
+proc build_cfg_summary(graph: CfgGraph) -> CfgSummary {
+    give cfg_summary(
+        len(graph.blocks),
+        len(graph.edges),
+        len(graph.values),
+        count_reachable_blocks(graph),
+        count_loop_edges(graph)
+    );
+}
+
+proc connect_blocks(graph: CfgGraph, from: u64, to: u64, kind: CfgEdgeKind) -> CfgGraph {
+    give append_edge(
+        graph,
+        cfg_edge(
+            from,
+            to,
+            kind,
+            true
+        )
+    );
+}
+
+proc build_linear_cfg(name: string) -> CfgGraph {
+    let graph0: CfgGraph =
+        cfg_graph(name);
+
+    let graph1: CfgGraph =
+        append_block(
+            graph0,
+            entry_block()
+        );
+
+    let body: CfgBlock =
+        cfg_block(
+            2,
+            "body",
+            CfgBlockKind.Basic,
+            3,
+            1,
+            1,
+            CfgTerminatorKind.Return,
+            empty_span()
+        );
+
+    let graph2: CfgGraph =
+        append_block(
+            graph1,
+            body
+        );
+
+    let graph3: CfgGraph =
+        append_block(
+            graph2,
+            exit_block()
+        );
+
+    let graph4: CfgGraph =
+        connect_blocks(
+            graph3,
+            0,
+            2,
+            CfgEdgeKind.Normal
+        );
+
+    let graph5: CfgGraph =
+        connect_blocks(
+            graph4,
+            2,
+            1,
+            CfgEdgeKind.Fallthrough
+        );
+
+    let out: CfgGraph =
+        graph5;
+
+    set out.entry = 0;
+    set out.exit = 1;
+
+    give out;
+}
+
+proc cfg_graph_summary(graph: CfgGraph) -> string {
+    give graph.name
+        + " blocks="
+        + (len(graph.blocks) as string)
+        + " edges="
+        + (len(graph.edges) as string)
+        + " values="
+        + (len(graph.values) as string)
+        + " valid="
+        + (graph.valid as string);
+}
+
+proc cfg_selftest() -> bool {
+    let graph0: CfgGraph =
+        build_linear_cfg(
+            "demo"
+        );
+
+    let graph1: CfgGraph =
+        append_value(
+            graph0,
+            cfg_value(
+                "counter",
+                CfgValueState.Initialized,
+                true
+            )
+        );
+
+    let summary: CfgSummary =
+        build_cfg_summary(
+            graph1
+        );
+
+    give summary.block_count == 3
+        and summary.edge_count == 2
+        and summary.value_count == 1
+        and summary.reachable_blocks == 3
+        and summary.loop_count == 0
+        and cfg_block_kind_name(
+            CfgBlockKind.Basic
+        ) == "basic"
+        and cfg_edge_kind_name(
+            CfgEdgeKind.Normal
+        ) == "normal"
+        and cfg_terminator_name(
+            CfgTerminatorKind.Return
+        ) == "return"
+        and cfg_value_state_name(
+            CfgValueState.Initialized
+        ) == "initialized"
+        and cfg_graph_summary(graph1)
+            != "";
 }

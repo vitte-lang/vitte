@@ -1,5 +1,386 @@
-space vitte/compiler/middle/typecheck
+/home/vincentr/Documents/GitHub/vitte/src/vitte/compiler/middle/typecheck/diagnostics.vit
 
-proc diagnostics() -> string {
-  give "diagnostics"
+space vitte/compiler/middle/typecheck/diagnostics
+
+use vitte/compiler/frontend/ast.node.{ AstSpan, ast_span_empty }
+
+export *
+
+pick TypeDiagnosticSeverity {
+  Info,
+  Warning,
+  Error,
+  Fatal,
+}
+
+pick TypeDiagnosticKind {
+  UnknownType,
+  UnknownSymbol,
+  InvalidAssignment,
+  InvalidBorrow,
+  InvalidMove,
+  InvalidCall,
+  InvalidReturn,
+  InvalidCast,
+  InvalidBinaryOperator,
+  InvalidUnaryOperator,
+  InvalidIndex,
+  InvalidField,
+  InvalidPattern,
+  InvalidMatch,
+  InvalidMutability,
+  InvalidLifetime,
+  InvalidTraitBound,
+  InvalidGenericArgument,
+  InvalidConstExpr,
+  InvalidControlFlow,
+  TypeMismatch,
+  ArityMismatch,
+  RecursiveType,
+  Unreachable,
+  Internal,
+}
+
+form TypeDiagnostic {
+  code: string
+  kind: TypeDiagnosticKind
+  severity: TypeDiagnosticSeverity
+  message: string
+  expected: string
+  found: string
+  hint: string
+  span: AstSpan
+  recoverable: bool
+  valid: bool
+}
+
+form TypeDiagnosticBag {
+  diagnostics: [TypeDiagnostic]
+  error_count: u64
+  warning_count: u64
+  fatal_count: u64
+  valid: bool
+}
+
+proc type_diagnostic(code: string, kind: TypeDiagnosticKind, severity: TypeDiagnosticSeverity, message: string, expected: string, found: string, hint: string, span: AstSpan, recoverable: bool, valid: bool) -> TypeDiagnostic {
+  give TypeDiagnostic {
+    code: code,
+    kind: kind,
+    severity: severity,
+    message: message,
+    expected: expected,
+    found: found,
+    hint: hint,
+    span: span,
+    recoverable: recoverable,
+    valid: valid
+  }
+}
+
+proc diagnostic_bag() -> TypeDiagnosticBag {
+  give TypeDiagnosticBag {
+    diagnostics: [],
+    error_count: 0,
+    warning_count: 0,
+    fatal_count: 0,
+    valid: true
+  }
+}
+
+proc severity_name(severity: TypeDiagnosticSeverity) -> string {
+  if severity == TypeDiagnosticSeverity.Info { give "info" }
+  elif severity == TypeDiagnosticSeverity.Warning { give "warning" }
+  elif severity == TypeDiagnosticSeverity.Error { give "error" }
+  elif severity == TypeDiagnosticSeverity.Fatal { give "fatal" }
+
+  give "unknown"
+}
+
+proc diagnostic_kind_name(kind: TypeDiagnosticKind) -> string {
+  if kind == TypeDiagnosticKind.UnknownType { give "unknown-type" }
+  elif kind == TypeDiagnosticKind.UnknownSymbol { give "unknown-symbol" }
+  elif kind == TypeDiagnosticKind.InvalidAssignment { give "invalid-assignment" }
+  elif kind == TypeDiagnosticKind.InvalidBorrow { give "invalid-borrow" }
+  elif kind == TypeDiagnosticKind.InvalidMove { give "invalid-move" }
+  elif kind == TypeDiagnosticKind.InvalidCall { give "invalid-call" }
+  elif kind == TypeDiagnosticKind.InvalidReturn { give "invalid-return" }
+  elif kind == TypeDiagnosticKind.InvalidCast { give "invalid-cast" }
+  elif kind == TypeDiagnosticKind.InvalidBinaryOperator { give "invalid-binary-operator" }
+  elif kind == TypeDiagnosticKind.InvalidUnaryOperator { give "invalid-unary-operator" }
+  elif kind == TypeDiagnosticKind.InvalidIndex { give "invalid-index" }
+  elif kind == TypeDiagnosticKind.InvalidField { give "invalid-field" }
+  elif kind == TypeDiagnosticKind.InvalidPattern { give "invalid-pattern" }
+  elif kind == TypeDiagnosticKind.InvalidMatch { give "invalid-match" }
+  elif kind == TypeDiagnosticKind.InvalidMutability { give "invalid-mutability" }
+  elif kind == TypeDiagnosticKind.InvalidLifetime { give "invalid-lifetime" }
+  elif kind == TypeDiagnosticKind.InvalidTraitBound { give "invalid-trait-bound" }
+  elif kind == TypeDiagnosticKind.InvalidGenericArgument { give "invalid-generic-argument" }
+  elif kind == TypeDiagnosticKind.InvalidConstExpr { give "invalid-const-expr" }
+  elif kind == TypeDiagnosticKind.InvalidControlFlow { give "invalid-control-flow" }
+  elif kind == TypeDiagnosticKind.TypeMismatch { give "type-mismatch" }
+  elif kind == TypeDiagnosticKind.ArityMismatch { give "arity-mismatch" }
+  elif kind == TypeDiagnosticKind.RecursiveType { give "recursive-type" }
+  elif kind == TypeDiagnosticKind.Unreachable { give "unreachable" }
+  elif kind == TypeDiagnosticKind.Internal { give "internal" }
+
+  give "unknown"
+}
+
+proc append_diagnostic(bag: TypeDiagnosticBag, diagnostic: TypeDiagnostic) -> TypeDiagnosticBag {
+  let out: TypeDiagnosticBag =
+    bag
+
+  set out.diagnostics =
+    out.diagnostics + [diagnostic]
+
+  if diagnostic.severity == TypeDiagnosticSeverity.Warning {
+    set out.warning_count =
+      out.warning_count + 1
+  }
+  elif diagnostic.severity == TypeDiagnosticSeverity.Fatal {
+    set out.fatal_count =
+      out.fatal_count + 1
+
+    set out.error_count =
+      out.error_count + 1
+  }
+  elif diagnostic.severity == TypeDiagnosticSeverity.Error {
+    set out.error_count =
+      out.error_count + 1
+  }
+
+  set out.valid =
+    out.fatal_count == 0
+
+  give out
+}
+
+proc diagnostic_error(code: string, kind: TypeDiagnosticKind, message: string, expected: string, found: string, hint: string, span: AstSpan) -> TypeDiagnostic {
+  give type_diagnostic(
+    code,
+    kind,
+    TypeDiagnosticSeverity.Error,
+    message,
+    expected,
+    found,
+    hint,
+    span,
+    true,
+    true
+  )
+}
+
+proc diagnostic_warning(code: string, kind: TypeDiagnosticKind, message: string, hint: string, span: AstSpan) -> TypeDiagnostic {
+  give type_diagnostic(
+    code,
+    kind,
+    TypeDiagnosticSeverity.Warning,
+    message,
+    "",
+    "",
+    hint,
+    span,
+    true,
+    true
+  )
+}
+
+proc diagnostic_fatal(code: string, kind: TypeDiagnosticKind, message: string, span: AstSpan) -> TypeDiagnostic {
+  give type_diagnostic(
+    code,
+    kind,
+    TypeDiagnosticSeverity.Fatal,
+    message,
+    "",
+    "",
+    "",
+    span,
+    false,
+    true
+  )
+}
+
+proc type_mismatch(expected: string, found: string, span: AstSpan) -> TypeDiagnostic {
+  give diagnostic_error(
+    "TYPE0001",
+    TypeDiagnosticKind.TypeMismatch,
+    "type mismatch",
+    expected,
+    found,
+    "ensure both sides use compatible types",
+    span
+  )
+}
+
+proc invalid_assignment(expected: string, found: string, span: AstSpan) -> TypeDiagnostic {
+  give diagnostic_error(
+    "TYPE0002",
+    TypeDiagnosticKind.InvalidAssignment,
+    "invalid assignment",
+    expected,
+    found,
+    "check mutability and assignment compatibility",
+    span
+  )
+}
+
+proc invalid_borrow(name: string, span: AstSpan) -> TypeDiagnostic {
+  give diagnostic_error(
+    "TYPE0003",
+    TypeDiagnosticKind.InvalidBorrow,
+    "invalid borrow of value `" + name + "`",
+    "borrowable value",
+    name,
+    "ensure the value is still alive and not mutably borrowed",
+    span
+  )
+}
+
+proc invalid_move(name: string, span: AstSpan) -> TypeDiagnostic {
+  give diagnostic_error(
+    "TYPE0004",
+    TypeDiagnosticKind.InvalidMove,
+    "use after move",
+    "available value",
+    name,
+    "consider borrowing or cloning the value",
+    span
+  )
+}
+
+proc unknown_type(name: string, span: AstSpan) -> TypeDiagnostic {
+  give diagnostic_error(
+    "TYPE0005",
+    TypeDiagnosticKind.UnknownType,
+    "unknown type `" + name + "`",
+    "known type",
+    name,
+    "import or declare the type before use",
+    span
+  )
+}
+
+proc unknown_symbol(name: string, span: AstSpan) -> TypeDiagnostic {
+  give diagnostic_error(
+    "TYPE0006",
+    TypeDiagnosticKind.UnknownSymbol,
+    "unknown symbol `" + name + "`",
+    "known symbol",
+    name,
+    "check spelling or missing imports",
+    span
+  )
+}
+
+proc invalid_call(name: string, expected: string, found: string, span: AstSpan) -> TypeDiagnostic {
+  give diagnostic_error(
+    "TYPE0007",
+    TypeDiagnosticKind.InvalidCall,
+    "invalid call to `" + name + "`",
+    expected,
+    found,
+    "verify parameter types and argument count",
+    span
+  )
+}
+
+proc invalid_return(expected: string, found: string, span: AstSpan) -> TypeDiagnostic {
+  give diagnostic_error(
+    "TYPE0008",
+    TypeDiagnosticKind.InvalidReturn,
+    "invalid return type",
+    expected,
+    found,
+    "ensure returned expression matches function return type",
+    span
+  )
+}
+
+proc invalid_binary_operator(operator: string, left: string, right: string, span: AstSpan) -> TypeDiagnostic {
+  give diagnostic_error(
+    "TYPE0009",
+    TypeDiagnosticKind.InvalidBinaryOperator,
+    "invalid binary operator `" + operator + "`",
+    left + " " + operator + " " + right,
+    left + " " + operator + " " + right,
+    "verify operator support for both operand types",
+    span
+  )
+}
+
+proc unreachable_code(span: AstSpan) -> TypeDiagnostic {
+  give diagnostic_warning(
+    "TYPE0010",
+    TypeDiagnosticKind.Unreachable,
+    "unreachable code detected",
+    "remove dead code or adjust control flow",
+    span
+  )
+}
+
+proc internal_error(message: string) -> TypeDiagnostic {
+  give diagnostic_fatal(
+    "TYPE9999",
+    TypeDiagnosticKind.Internal,
+    "internal typecheck error: " + message,
+    ast_span_empty()
+  )
+}
+
+proc has_errors(bag: TypeDiagnosticBag) -> bool {
+  give bag.error_count > 0
+}
+
+proc has_warnings(bag: TypeDiagnosticBag) -> bool {
+  give bag.warning_count > 0
+}
+
+proc has_fatal(bag: TypeDiagnosticBag) -> bool {
+  give bag.fatal_count > 0
+}
+
+proc diagnostic_summary(bag: TypeDiagnosticBag) -> string {
+  give "diagnostics="
+    + (len(bag.diagnostics) as string)
+    + " errors="
+    + (bag.error_count as string)
+    + " warnings="
+    + (bag.warning_count as string)
+    + " fatals="
+    + (bag.fatal_count as string)
+    + " valid="
+    + (bag.valid as string)
+}
+
+proc typecheck_diagnostics_selftest() -> bool {
+  let span: AstSpan =
+    ast_span_empty()
+
+  let bag0: TypeDiagnosticBag =
+    diagnostic_bag()
+
+  let bag1: TypeDiagnosticBag =
+    append_diagnostic(
+      bag0,
+      type_mismatch(
+        "i32",
+        "string",
+        span
+      )
+    )
+
+  let bag2: TypeDiagnosticBag =
+    append_diagnostic(
+      bag1,
+      unreachable_code(span)
+    )
+
+  give has_errors(bag2)
+    and has_warnings(bag2)
+    and not has_fatal(bag2)
+    and bag2.error_count == 1
+    and bag2.warning_count == 1
+    and severity_name(TypeDiagnosticSeverity.Error) == "error"
+    and diagnostic_kind_name(TypeDiagnosticKind.TypeMismatch) == "type-mismatch"
+    and diagnostic_summary(bag2) != ""
 }

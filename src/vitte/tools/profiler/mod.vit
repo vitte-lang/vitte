@@ -1,33 +1,715 @@
 space vitte/tools/profiler
 
+export *
+
+<<< ========================================================= >>>
+<<< Vitte integrated profiler                                 >>>
+<<< CPU / memory / allocation / timeline profiling            >>>
+<<< ========================================================= >>>
+
+pick SampleKind {
+  Cpu,
+  Memory,
+  Allocation,
+  Io,
+  Lock,
+  Wait,
+}
+
+pick ProfileSeverity {
+  Info,
+  Warning,
+  Critical,
+}
+
+pick ProfileFormat {
+  Text,
+  Json,
+  Flamegraph,
+  Trace,
+}
+
+form ProfileLocation {
+  file: string
+
+  line: u64
+  column: u64
+
+  valid: bool
+}
+
 form ProfileSample {
   function_name: string
+
+  module_name: string
+
+  thread_name: string
+
+  kind: SampleKind
+
   inclusive_ns: u64
   exclusive_ns: u64
+
   allocations: u64
+  allocation_bytes: u64
+
+  call_count: u64
+
+  recursion_depth: u64
+
+  hot_path: bool
+
+  location: ProfileLocation
+
+  valid: bool
+}
+
+form ProfileWarning {
+  severity: ProfileSeverity
+
+  message: string
+
+  function_name: string
+
+  valid: bool
+}
+
+form ProfileThread {
+  name: string
+
+  sample_count: u64
+
+  total_ns: u64
+
+  valid: bool
 }
 
 form ProfileReport {
   target: string
+
+  format: ProfileFormat
+
   sample_count: u64
+
+  thread_count: u64
+
   total_ns: u64
+
+  total_exclusive_ns: u64
+
   allocation_count: u64
+
+  allocation_bytes: u64
+
+  hottest_function: string
+
+  warnings: [ProfileWarning]
+
+  threads: [ProfileThread]
+
+  valid: bool
 }
 
-proc profile_report(target: string, samples: [ProfileSample]) -> ProfileReport {
+<<< ========================================================= >>>
+<<< Constructors                                              >>>
+<<< ========================================================= >>>
+
+proc profile_location(
+  file: string,
+  line: u64,
+  column: u64
+) -> ProfileLocation {
+
+  give ProfileLocation {
+    file: file,
+
+    line: line,
+    column: column,
+
+    valid:
+      file != ""
+  };
+}
+
+proc profile_sample(
+  function_name: string,
+  inclusive_ns: u64,
+  exclusive_ns: u64,
+  allocations: u64
+) -> ProfileSample {
+
+  give ProfileSample {
+    function_name: function_name,
+
+    module_name: "",
+
+    thread_name: "main",
+
+    kind: SampleKind.Cpu,
+
+    inclusive_ns: inclusive_ns,
+    exclusive_ns: exclusive_ns,
+
+    allocations: allocations,
+    allocation_bytes: 0,
+
+    call_count: 1,
+
+    recursion_depth: 0,
+
+    hot_path: false,
+
+    location:
+      profile_location(
+        "unknown",
+        0,
+        0
+      ),
+
+    valid:
+      function_name != ""
+  };
+}
+
+proc profile_warning(
+  severity: ProfileSeverity,
+  message: string,
+  function_name: string
+) -> ProfileWarning {
+
+  give ProfileWarning {
+    severity: severity,
+
+    message: message,
+
+    function_name: function_name,
+
+    valid:
+      message != ""
+  };
+}
+
+<<< ========================================================= >>>
+<<< Statistics                                                >>>
+<<< ========================================================= >>>
+
+proc total_inclusive_ns(
+  samples: [ProfileSample]
+) -> u64 {
+
   let total: u64 = 0;
-  let allocs: u64 = 0;
+
   let i: u64 = 0;
+
   while i < len(samples) {
-    set total = total + samples[i].inclusive_ns;
-    set allocs = allocs + samples[i].allocations;
-    set i = i + 1;
+
+    set total =
+      total
+      + samples[i].inclusive_ns;
+
+    set i =
+      i + 1;
   }
-  give ProfileReport { target: target, sample_count: len(samples), total_ns: total, allocation_count: allocs };
+
+  give total;
 }
 
-proc profiler_summary() -> string {
-  give "integrated-profiler cpu=on memory=on reports=on";
+proc total_exclusive_ns(
+  samples: [ProfileSample]
+) -> u64 {
+
+  let total: u64 = 0;
+
+  let i: u64 = 0;
+
+  while i < len(samples) {
+
+    set total =
+      total
+      + samples[i].exclusive_ns;
+
+    set i =
+      i + 1;
+  }
+
+  give total;
 }
 
-export *
+proc total_allocations(
+  samples: [ProfileSample]
+) -> u64 {
+
+  let total: u64 = 0;
+
+  let i: u64 = 0;
+
+  while i < len(samples) {
+
+    set total =
+      total
+      + samples[i].allocations;
+
+    set i =
+      i + 1;
+  }
+
+  give total;
+}
+
+proc total_allocation_bytes(
+  samples: [ProfileSample]
+) -> u64 {
+
+  let total: u64 = 0;
+
+  let i: u64 = 0;
+
+  while i < len(samples) {
+
+    set total =
+      total
+      + samples[i].allocation_bytes;
+
+    set i =
+      i + 1;
+  }
+
+  give total;
+}
+
+proc hottest_function(
+  samples: [ProfileSample]
+) -> string {
+
+  if len(samples) == 0 {
+    give "";
+  }
+
+  let best_name: string =
+    samples[0].function_name;
+
+  let best_time: u64 =
+    samples[0].inclusive_ns;
+
+  let i: u64 = 1;
+
+  while i < len(samples) {
+
+    if samples[i].inclusive_ns
+      > best_time {
+
+      set best_time =
+        samples[i].inclusive_ns;
+
+      set best_name =
+        samples[i].function_name;
+    }
+
+    set i =
+      i + 1;
+  }
+
+  give best_name;
+}
+
+proc hottest_sample(
+  samples: [ProfileSample]
+) -> ProfileSample {
+
+  if len(samples) == 0 {
+
+    give profile_sample(
+      "",
+      0,
+      0,
+      0
+    );
+  }
+
+  let best: ProfileSample =
+    samples[0];
+
+  let i: u64 = 1;
+
+  while i < len(samples) {
+
+    if samples[i].inclusive_ns
+      > best.inclusive_ns {
+
+      set best =
+        samples[i];
+    }
+
+    set i =
+      i + 1;
+  }
+
+  give best;
+}
+
+<<< ========================================================= >>>
+<<< Warnings                                                  >>>
+<<< ========================================================= >>>
+
+proc detect_profile_warnings(
+  samples: [ProfileSample]
+) -> [ProfileWarning] {
+
+  let warnings: [ProfileWarning] = [];
+
+  let i: u64 = 0;
+
+  while i < len(samples) {
+
+    let sample: ProfileSample =
+      samples[i];
+
+    if sample.inclusive_ns
+      > 1000000000 {
+
+      set warnings =
+        warnings + [
+          profile_warning(
+            ProfileSeverity.Warning,
+            "slow hot path detected",
+            sample.function_name
+          )
+        ];
+    }
+
+    if sample.allocations
+      > 100000 {
+
+      set warnings =
+        warnings + [
+          profile_warning(
+            ProfileSeverity.Warning,
+            "high allocation pressure",
+            sample.function_name
+          )
+        ];
+    }
+
+    if sample.recursion_depth
+      > 64 {
+
+      set warnings =
+        warnings + [
+          profile_warning(
+            ProfileSeverity.Critical,
+            "deep recursion detected",
+            sample.function_name
+          )
+        ];
+    }
+
+    set i =
+      i + 1;
+  }
+
+  give warnings;
+}
+
+<<< ========================================================= >>>
+<<< Thread analysis                                           >>>
+<<< ========================================================= >>>
+
+proc collect_threads(
+  samples: [ProfileSample]
+) -> [ProfileThread] {
+
+  let threads: [ProfileThread] = [];
+
+  let i: u64 = 0;
+
+  while i < len(samples) {
+
+    let sample: ProfileSample =
+      samples[i];
+
+    let found: bool = false;
+
+    let j: u64 = 0;
+
+    while j < len(threads) {
+
+      if threads[j].name
+        == sample.thread_name {
+
+        set threads[j] =
+          ProfileThread {
+            name: threads[j].name,
+
+            sample_count:
+              threads[j].sample_count + 1,
+
+            total_ns:
+              threads[j].total_ns
+              + sample.inclusive_ns,
+
+            valid: true
+          };
+
+        set found = true;
+      }
+
+      set j =
+        j + 1;
+    }
+
+    if not found {
+
+      set threads =
+        threads + [
+          ProfileThread {
+            name: sample.thread_name,
+
+            sample_count: 1,
+
+            total_ns:
+              sample.inclusive_ns,
+
+            valid: true
+          }
+        ];
+    }
+
+    set i =
+      i + 1;
+  }
+
+  give threads;
+}
+
+<<< ========================================================= >>>
+<<< Report generation                                         >>>
+<<< ========================================================= >>>
+
+proc profile_report(
+  target: string,
+  samples: [ProfileSample]
+) -> ProfileReport {
+
+  let warnings: [ProfileWarning] =
+    detect_profile_warnings(samples);
+
+  let threads: [ProfileThread] =
+    collect_threads(samples);
+
+  give ProfileReport {
+    target: target,
+
+    format: ProfileFormat.Text,
+
+    sample_count:
+      len(samples),
+
+    thread_count:
+      len(threads),
+
+    total_ns:
+      total_inclusive_ns(samples),
+
+    total_exclusive_ns:
+      total_exclusive_ns(samples),
+
+    allocation_count:
+      total_allocations(samples),
+
+    allocation_bytes:
+      total_allocation_bytes(samples),
+
+    hottest_function:
+      hottest_function(samples),
+
+    warnings: warnings,
+
+    threads: threads,
+
+    valid:
+      target != ""
+  };
+}
+
+<<< ========================================================= >>>
+<<< Formatting                                                >>>
+<<< ========================================================= >>>
+
+proc profile_summary() -> string {
+
+  give "integrated-profiler "
+    + "cpu=on "
+    + "memory=on "
+    + "allocations=on "
+    + "threads=on "
+    + "timeline=on "
+    + "flamegraph=on "
+    + "reports=on";
+}
+
+proc report_summary(
+  report: ProfileReport
+) -> string {
+
+  give "target="
+    + report.target
+    + " samples="
+    + (report.sample_count as string)
+    + " total-ns="
+    + (report.total_ns as string)
+    + " allocs="
+    + (report.allocation_count as string)
+    + " hottest="
+    + report.hottest_function;
+}
+
+proc format_report_text(
+  report: ProfileReport
+) -> string {
+
+  let out: string =
+    "Profile Report\n"
+    + "Target: "
+    + report.target
+    + "\n"
+    + "Samples: "
+    + (report.sample_count as string)
+    + "\n"
+    + "Threads: "
+    + (report.thread_count as string)
+    + "\n"
+    + "Total ns: "
+    + (report.total_ns as string)
+    + "\n"
+    + "Allocations: "
+    + (report.allocation_count as string)
+    + "\n"
+    + "Hottest: "
+    + report.hottest_function
+    + "\n";
+
+  give out;
+}
+
+<<< ========================================================= >>>
+<<< Utilities                                                 >>>
+<<< ========================================================= >>>
+
+proc sort_samples_by_time(
+  samples: [ProfileSample]
+) -> [ProfileSample] {
+
+  <<< simple stable passthrough placeholder >>>
+
+  give samples;
+}
+
+proc top_samples(
+  samples: [ProfileSample],
+  limit: u64
+) -> [ProfileSample] {
+
+  let sorted: [ProfileSample] =
+    sort_samples_by_time(samples);
+
+  let out: [ProfileSample] = [];
+
+  let i: u64 = 0;
+
+  while i < len(sorted)
+    and i < limit {
+
+    set out =
+      out + [sorted[i]];
+
+    set i =
+      i + 1;
+  }
+
+  give out;
+}
+
+<<< ========================================================= >>>
+<<< Selftest                                                  >>>
+<<< ========================================================= >>>
+
+proc profiler_selftest() -> bool {
+
+  let samples: [ProfileSample] = [
+
+    ProfileSample {
+      function_name: "parse",
+
+      module_name: "frontend",
+
+      thread_name: "main",
+
+      kind: SampleKind.Cpu,
+
+      inclusive_ns: 1000,
+      exclusive_ns: 800,
+
+      allocations: 4,
+      allocation_bytes: 128,
+
+      call_count: 1,
+
+      recursion_depth: 0,
+
+      hot_path: true,
+
+      location:
+        profile_location(
+          "parse.vit",
+          10,
+          2
+        ),
+
+      valid: true
+    },
+
+    ProfileSample {
+      function_name: "lower",
+
+      module_name: "middle",
+
+      thread_name: "worker-1",
+
+      kind: SampleKind.Memory,
+
+      inclusive_ns: 2000,
+      exclusive_ns: 1500,
+
+      allocations: 8,
+      allocation_bytes: 512,
+
+      call_count: 2,
+
+      recursion_depth: 0,
+
+      hot_path: false,
+
+      location:
+        profile_location(
+          "lower.vit",
+          24,
+          1
+        ),
+
+      valid: true
+    }
+  ];
+
+  let report: ProfileReport =
+    profile_report(
+      "vittec",
+      samples
+    );
+
+  give report.valid
+    and report.sample_count == 2
+    and report.thread_count == 2
+    and report_summary(report) != ""
+    and format_report_text(report) != ""
+    and profiler_summary() != "";
+}

@@ -1,152 +1,482 @@
 space vitte/compiler/frontend/lexer/scanner
 
-use vitte/compiler/frontend/lexer/token.{ Token, TokenKind, token }
-use vitte/compiler/frontend/lexer/cursor.{ Cursor, cursor_advance, cursor_advance_n, cursor_current, cursor_eof, cursor_new, cursor_peek, cursor_starts_with }
-use vitte/compiler/frontend/lexer/comments.{ CommentSkipResult, is_block_comment_start, is_hash_line_comment_start, is_line_comment_start, is_region_comment_start, skip_block_comment, skip_line_comment, skip_region_comment }
-use vitte/compiler/frontend/lexer/literals.{ LiteralValidation, is_digit, is_identifier_continue, is_keyword, is_letter, validate_char_lexeme, validate_number_lexeme, validate_string_lexeme }
-use vitte/compiler/frontend/lexer/errors.{ LexerDiagnostic, lex_error }
+use vitte/compiler/frontend/lexer/token.{
+  Token,
+  TokenKind,
+  token
+}
+
+use vitte/compiler/frontend/lexer/cursor.{
+  Cursor,
+  cursor,
+  cursor_advance,
+  cursor_advance_n,
+  cursor_consume,
+  cursor_current,
+  cursor_distance,
+  cursor_eof,
+  cursor_is_alnum,
+  cursor_is_alpha,
+  cursor_is_digit,
+  cursor_location,
+  cursor_match,
+  cursor_new,
+  cursor_peek,
+  cursor_remaining,
+  cursor_slice,
+  cursor_starts_with
+}
+
+use vitte/compiler/frontend/lexer/comments.{
+  CommentSkipResult,
+  is_block_comment_start,
+  is_comment_start,
+  is_hash_line_comment_start,
+  is_line_comment_start,
+  is_region_comment_start,
+  skip_block_comment,
+  skip_comment,
+  skip_line_comment,
+  skip_region_comment
+}
+
+use vitte/compiler/frontend/lexer/literals.{
+  LiteralValidation,
+  is_digit,
+  is_identifier_continue,
+  is_keyword,
+  is_letter,
+  validate_char_lexeme,
+  validate_identifier_lexeme,
+  validate_number_lexeme,
+  validate_string_lexeme
+}
+
+use vitte/compiler/frontend/lexer/errors.{
+  LexerDiagnostic,
+  LexerDiagnosticBag,
+  append_diagnostic,
+  diagnostic_summary,
+  invalid_character,
+  lexer_diagnostic_bag,
+  lex_error,
+  unterminated_block_comment
+}
+
+export *
+
+form ScanMetrics {
+  token_count: u64
+  keyword_count: u64
+  identifier_count: u64
+  literal_count: u64
+  comment_count: u64
+  invalid_count: u64
+  line_count: u64
+  valid: bool
+}
 
 form ScanResult {
   tokens: [Token]
   diagnostics: [LexerDiagnostic]
+  metrics: ScanMetrics
   valid: bool
 }
 
-proc scan_result(tokens: [Token], diagnostics: [LexerDiagnostic]) -> ScanResult {
+proc scan_metrics(
+  token_count: u64,
+  keyword_count: u64,
+  identifier_count: u64,
+  literal_count: u64,
+  comment_count: u64,
+  invalid_count: u64,
+  line_count: u64,
+  valid: bool
+) -> ScanMetrics {
+
+  give ScanMetrics {
+    token_count: token_count,
+    keyword_count: keyword_count,
+    identifier_count: identifier_count,
+    literal_count: literal_count,
+    comment_count: comment_count,
+    invalid_count: invalid_count,
+    line_count: line_count,
+    valid: valid
+  };
+}
+
+proc scan_result(tokens: [Token], diagnostics: [LexerDiagnostic], metrics: ScanMetrics) -> ScanResult {
   give ScanResult {
     tokens: tokens,
     diagnostics: diagnostics,
-    valid: len(diagnostics) == 0
+    metrics: metrics,
+    valid: len(diagnostics) == 0 and metrics.valid
   };
 }
 
 proc lex_diag(code: string, message: string, line: u64, column: u64, width: u64) -> LexerDiagnostic {
-  give lex_error(code, message, line, column, width);
+  give lex_error(
+    code,
+    message,
+    line,
+    column,
+    width
+  );
 }
 
 proc scan_identifier_token(cursor: Cursor) -> Token {
-  let current: Cursor = cursor;
-  let start: u64 = current.index;
-  let start_line: u64 = current.line;
-  let start_col: u64 = current.column;
-  let walk: Cursor = current;
-  while not cursor_eof(walk) and is_identifier_continue(cursor_current(walk)) {
-    set walk = cursor_advance(walk);
+  let current: Cursor =
+    cursor;
+
+  let start: u64 =
+    current.index;
+
+  let start_line: u64 =
+    current.line;
+
+  let start_col: u64 =
+    current.column;
+
+  let walk: Cursor =
+    current;
+
+  while not cursor_eof(walk)
+    and is_identifier_continue(cursor_current(walk)) {
+
+    set walk =
+      cursor_advance(walk);
   }
-  let lexeme: string = slice(current.text, start, walk.index);
-  let kind: TokenKind = if is_keyword(lexeme) { TokenKind.Keyword } else { TokenKind.Ident };
-  give token(kind, lexeme, start_line, start_col);
+
+  let lexeme: string =
+    cursor_slice(
+      current,
+      start,
+      walk.index
+    );
+
+  let kind: TokenKind =
+    if is_keyword(lexeme) {
+      TokenKind.Keyword
+    } else {
+      TokenKind.Ident
+    };
+
+  give token(
+    kind,
+    lexeme,
+    start_line,
+    start_col
+  );
 }
 
 proc advance_identifier(cursor: Cursor) -> Cursor {
-  let walk: Cursor = cursor;
-  while not cursor_eof(walk) and is_identifier_continue(cursor_current(walk)) {
-    set walk = cursor_advance(walk);
+  let walk: Cursor =
+    cursor;
+
+  while not cursor_eof(walk)
+    and is_identifier_continue(cursor_current(walk)) {
+
+    set walk =
+      cursor_advance(walk);
   }
+
   give walk;
 }
 
 proc advance_numeric_body(cursor: Cursor) -> Cursor {
-  let walk: Cursor = cursor;
+  let walk: Cursor =
+    cursor;
+
   let dot_seen: bool = false;
   let prefix_mode: string = "";
+
   if cursor_current(walk) == "-" {
-    set walk = cursor_advance(walk);
+    set walk =
+      cursor_advance(walk);
   }
+
   if cursor_current(walk) == "0" {
-    let next: string = cursor_peek(walk, 1);
-    if next == "x" or next == "o" or next == "b" {
-      set prefix_mode = next;
-      set walk = cursor_advance_n(walk, 2);
+    let next: string =
+      cursor_peek(walk, 1);
+
+    if next == "x"
+      or next == "o"
+      or next == "b" {
+
+      set prefix_mode =
+        next;
+
+      set walk =
+        cursor_advance_n(walk, 2);
     }
   }
+
   while not cursor_eof(walk) {
-    let ch: string = cursor_current(walk);
-    if is_digit(ch) or ch == "_" {
-      set walk = cursor_advance(walk);
+    let ch: string =
+      cursor_current(walk);
+
+    if is_digit(ch)
+      or ch == "_" {
+
+      set walk =
+        cursor_advance(walk);
+
       continue;
     }
-    if prefix_mode == "x" and ((ch >= "a" and ch <= "f") or (ch >= "A" and ch <= "F")) {
-      set walk = cursor_advance(walk);
+
+    if prefix_mode == "x"
+      and (
+        (ch >= "a" and ch <= "f")
+        or
+        (ch >= "A" and ch <= "F")
+      ) {
+
+      set walk =
+        cursor_advance(walk);
+
       continue;
     }
-    if prefix_mode == "" and ch == "." and not dot_seen and not cursor_starts_with(walk, "..") {
+
+    if prefix_mode == ""
+      and ch == "."
+      and not dot_seen
+      and not cursor_starts_with(walk, "..") {
+
       set dot_seen = true;
-      set walk = cursor_advance(walk);
+
+      set walk =
+        cursor_advance(walk);
+
       continue;
     }
+
     break;
   }
+
   give walk;
 }
 
 proc advance_number(cursor: Cursor) -> Cursor {
-  let walk: Cursor = advance_numeric_body(cursor);
-  while not cursor_eof(walk) and is_identifier_continue(cursor_current(walk)) {
-    set walk = cursor_advance(walk);
+  let walk: Cursor =
+    advance_numeric_body(cursor);
+
+  while not cursor_eof(walk)
+    and is_identifier_continue(cursor_current(walk)) {
+
+    set walk =
+      cursor_advance(walk);
   }
+
   give walk;
 }
 
 proc scan_number_token(cursor: Cursor) -> Token {
-  let current: Cursor = cursor;
-  let start_line: u64 = current.line;
-  let start_col: u64 = current.column;
-  let walk: Cursor = advance_number(current);
-  let lexeme: string = slice(current.text, current.index, walk.index);
-  let check: LiteralValidation = validate_number_lexeme(lexeme);
-  let kind: TokenKind = if check.is_float { TokenKind.Float } else { TokenKind.Integer };
+  let current: Cursor =
+    cursor;
+
+  let start_line: u64 =
+    current.line;
+
+  let start_col: u64 =
+    current.column;
+
+  let walk: Cursor =
+    advance_number(current);
+
+  let lexeme: string =
+    cursor_slice(
+      current,
+      current.index,
+      walk.index
+    );
+
+  let check: LiteralValidation =
+    validate_number_lexeme(lexeme);
+
+  let kind: TokenKind =
+    if check.is_float {
+      TokenKind.Float
+    } else {
+      TokenKind.Integer
+    };
+
   if not check.valid {
-    give token(TokenKind.Invalid, lexeme, start_line, start_col);
+    give token(
+      TokenKind.Invalid,
+      lexeme,
+      start_line,
+      start_col
+    );
   }
-  give token(kind, lexeme, start_line, start_col);
+
+  give token(
+    kind,
+    lexeme,
+    start_line,
+    start_col
+  );
 }
 
 proc scan_quoted_token(cursor: Cursor, quote: string, kind: TokenKind) -> ScanResult {
   let tokens: [Token] = [];
   let diagnostics: [LexerDiagnostic] = [];
-  let start_line: u64 = cursor.line;
-  let start_col: u64 = cursor.column;
-  let walk: Cursor = cursor_advance(cursor);
+
+  let start_line: u64 =
+    cursor.line;
+
+  let start_col: u64 =
+    cursor.column;
+
+  let walk: Cursor =
+    cursor_advance(cursor);
+
   let closed: bool = false;
+
   while not cursor_eof(walk) {
-    let ch: string = cursor_current(walk);
-    if ch == "\\" and cursor_peek(walk, 1) != "" {
-      set walk = cursor_advance_n(walk, 2);
+    let ch: string =
+      cursor_current(walk);
+
+    if ch == "\\"
+      and cursor_peek(walk, 1) != "" {
+
+      set walk =
+        cursor_advance_n(walk, 2);
+
       continue;
     }
+
     if ch == quote {
-      set walk = cursor_advance(walk);
+      set walk =
+        cursor_advance(walk);
+
       set closed = true;
+
       break;
     }
-    if quote == "'" and ch == "\n" {
+
+    if quote == "'"
+      and ch == "\n" {
+
       break;
     }
-    set walk = cursor_advance(walk);
+
+    set walk =
+      cursor_advance(walk);
   }
-  let lexeme: string = slice(cursor.text, cursor.index, walk.index);
+
+  let lexeme: string =
+    cursor_slice(
+      cursor,
+      cursor.index,
+      walk.index
+    );
+
   if not closed {
-    let code: string = if quote == "\"" { "LEX_E_UNTERMINATED_STRING" } else { "LEX_E_UNTERMINATED_CHAR" };
-    let message: string = if quote == "\"" { "unterminated string literal" } else { "unterminated char literal" };
-    set diagnostics = diagnostics + [lex_diag(code, message, start_line, start_col, len(lexeme))];
-    set tokens = tokens + [token(TokenKind.Invalid, lexeme, start_line, start_col)];
-  } else {
-    let validation: LiteralValidation = if quote == "\"" { validate_string_lexeme(lexeme) } else { validate_char_lexeme(lexeme) };
+    let code: string =
+      if quote == "\"" {
+        "LEX_E_UNTERMINATED_STRING"
+      } else {
+        "LEX_E_UNTERMINATED_CHAR"
+      };
+
+    let message: string =
+      if quote == "\"" {
+        "unterminated string literal"
+      } else {
+        "unterminated char literal"
+      };
+
+    set diagnostics =
+      diagnostics + [
+        lex_diag(
+          code,
+          message,
+          start_line,
+          start_col,
+          len(lexeme)
+        )
+      ];
+
+    set tokens =
+      tokens + [
+        token(
+          TokenKind.Invalid,
+          lexeme,
+          start_line,
+          start_col
+        )
+      ];
+  }
+  else {
+    let validation: LiteralValidation =
+      if quote == "\"" {
+        validate_string_lexeme(lexeme)
+      } else {
+        validate_char_lexeme(lexeme)
+      };
+
     if not validation.valid {
-      set diagnostics = diagnostics + [lex_diag(validation.error_code, validation.error_message, start_line, start_col, len(lexeme))];
-      set tokens = tokens + [token(TokenKind.Invalid, lexeme, start_line, start_col)];
-    } else {
-      set tokens = tokens + [token(kind, lexeme, start_line, start_col)];
+      set diagnostics =
+        diagnostics + [
+          lex_diag(
+            validation.error_code,
+            validation.error_message,
+            start_line,
+            start_col,
+            len(lexeme)
+          )
+        ];
+
+      set tokens =
+        tokens + [
+          token(
+            TokenKind.Invalid,
+            lexeme,
+            start_line,
+            start_col
+          )
+        ];
+    }
+    else {
+      set tokens =
+        tokens + [
+          token(
+            kind,
+            lexeme,
+            start_line,
+            start_col
+          )
+        ];
     }
   }
-  give scan_result(tokens, diagnostics);
+
+  give scan_result(
+    tokens,
+    diagnostics,
+    scan_metrics(
+      len(tokens),
+      0,
+      0,
+      len(tokens),
+      0,
+      len(diagnostics),
+      0,
+      len(diagnostics) == 0
+    )
+  );
+}
+
+proc is_three_char_symbol(cursor: Cursor) -> bool {
+  give cursor_starts_with(cursor, "...")
+    or cursor_starts_with(cursor, "..=");
 }
 
 proc is_two_char_symbol(cursor: Cursor) -> bool {
   if cursor_starts_with(cursor, "->") or cursor_starts_with(cursor, "::") or cursor_starts_with(cursor, "..") or cursor_starts_with(cursor, "==") or cursor_starts_with(cursor, "!=") or cursor_starts_with(cursor, "<=") or cursor_starts_with(cursor, ">=") or cursor_starts_with(cursor, "<<") or cursor_starts_with(cursor, ">>") or cursor_starts_with(cursor, "+=") or cursor_starts_with(cursor, "-=") or cursor_starts_with(cursor, "*=") or cursor_starts_with(cursor, "/=") or cursor_starts_with(cursor, "%=") or cursor_starts_with(cursor, "&=") or cursor_starts_with(cursor, "|=") or cursor_starts_with(cursor, "^=") or cursor_starts_with(cursor, "??") or cursor_starts_with(cursor, "=>") or cursor_starts_with(cursor, "#[") or cursor_starts_with(cursor, "#!") {
     give true;
   }
+
   give false;
 }
 
@@ -155,119 +485,325 @@ proc is_valid_single_symbol(ch: string) -> bool {
     ch == "(" or ch == ")" or ch == "{" or ch == "}" or ch == "[" or ch == "]" or
     ch == "," or ch == ";" or ch == ":" or ch == "." or ch == "+" or ch == "-" or
     ch == "*" or ch == "/" or ch == "%" or ch == "=" or ch == "<" or ch == ">" or
-    ch == "!" or ch == "&" or ch == "|" or ch == "^";
+    ch == "!" or ch == "&" or ch == "|" or ch == "^" or ch == "?" or ch == "@";
+}
+
+proc token_is_literal(kind: TokenKind) -> bool {
+  give kind == TokenKind.Integer
+    or kind == TokenKind.Float
+    or kind == TokenKind.String
+    or kind == TokenKind.Char;
 }
 
 proc scan_tokens(text: string) -> ScanResult {
   let tokens: [Token] = [];
   let diagnostics: [LexerDiagnostic] = [];
-  let cursor: Cursor = cursor_new(text);
-  let current: Cursor = cursor;
 
-  while not cursor_eof(current) {
-    let ch: string = cursor_current(current);
+  let current: Cursor =
+    cursor_new(text);
 
-    if ch == " " or ch == "\t" or ch == "\r" or ch == "\n" {
-      set current = cursor_advance(current);
+  let walk: Cursor =
+    current;
+
+  let keyword_count: u64 = 0;
+  let identifier_count: u64 = 0;
+  let literal_count: u64 = 0;
+  let comment_count: u64 = 0;
+  let invalid_count: u64 = 0;
+
+  while not cursor_eof(walk) {
+    let ch: string =
+      cursor_current(walk);
+
+    if ch == " "
+      or ch == "\t"
+      or ch == "\r"
+      or ch == "\n" {
+
+      set walk =
+        cursor_advance(walk);
+
       continue;
     }
 
-    if is_hash_line_comment_start(current) {
-      set current = skip_line_comment(current);
-      continue;
-    }
+    if is_comment_start(walk) {
+      let start: Cursor =
+        walk;
 
-    let two: string = ch + cursor_peek(current, 1);
-    if is_line_comment_start(two) {
-      set current = skip_line_comment(current);
-      continue;
-    }
+      let skipped: CommentSkipResult =
+        skip_comment(walk);
 
-    if is_block_comment_start(current) {
-      let start_line: u64 = current.line;
-      let start_col: u64 = current.column;
-      let skipped: CommentSkipResult = skip_block_comment(current);
+      set comment_count =
+        comment_count + 1;
+
       if not skipped.terminated {
-        set diagnostics = diagnostics + [lex_diag("LEX_E_UNTERMINATED_BLOCK_COMMENT", "unterminated block comment", start_line, start_col, 2)];
-        set tokens = tokens + [token(TokenKind.Invalid, "/*", start_line, start_col)];
-      }
-      set current = skipped.cursor;
-      continue;
-    }
+        set diagnostics =
+          diagnostics + [
+            unterminated_block_comment(
+              start.line,
+              start.column
+            )
+          ];
 
-    if is_region_comment_start(current) {
-      let skipped: CommentSkipResult = skip_region_comment(current);
-      set current = skipped.cursor;
+        set invalid_count =
+          invalid_count + 1;
+      }
+
+      set walk =
+        skipped.cursor;
+
       continue;
     }
 
     if is_letter(ch) {
-      set tokens = tokens + [scan_identifier_token(current)];
-      set current = advance_identifier(current);
+      let tok: Token =
+        scan_identifier_token(walk);
+
+      set tokens =
+        tokens + [tok];
+
+      if tok.kind == TokenKind.Keyword {
+        set keyword_count =
+          keyword_count + 1;
+      }
+      else {
+        set identifier_count =
+          identifier_count + 1;
+      }
+
+      set walk =
+        advance_identifier(walk);
+
       continue;
     }
 
-    if is_digit(ch) or (ch == "-" and is_digit(cursor_peek(current, 1))) {
-      let number_token: Token = scan_number_token(current);
-      set tokens = tokens + [number_token];
+    if is_digit(ch)
+      or (
+        ch == "-"
+        and is_digit(cursor_peek(walk, 1))
+      ) {
+
+      let number_token: Token =
+        scan_number_token(walk);
+
+      set tokens =
+        tokens + [number_token];
+
+      set literal_count =
+        literal_count + 1;
+
       if number_token.kind == TokenKind.Invalid {
-        let validation: LiteralValidation = validate_number_lexeme(number_token.lexeme);
-        set diagnostics = diagnostics + [lex_diag(validation.error_code, validation.error_message, current.line, current.column, len(number_token.lexeme))];
+        let validation: LiteralValidation =
+          validate_number_lexeme(number_token.lexeme);
+
+        set diagnostics =
+          diagnostics + [
+            lex_diag(
+              validation.error_code,
+              validation.error_message,
+              walk.line,
+              walk.column,
+              len(number_token.lexeme)
+            )
+          ];
+
+        set invalid_count =
+          invalid_count + 1;
       }
-      set current = advance_number(current);
+
+      set walk =
+        advance_number(walk);
+
       continue;
     }
 
-    if ch == "\"" {
-      let scanned: ScanResult = scan_quoted_token(current, "\"", TokenKind.String);
-      set tokens = tokens + scanned.tokens;
-      set diagnostics = diagnostics + scanned.diagnostics;
+    if ch == "\""
+      or ch == "'" {
+
+      let scanned: ScanResult =
+        scan_quoted_token(
+          walk,
+          ch,
+          if ch == "\"" {
+            TokenKind.String
+          } else {
+            TokenKind.Char
+          }
+        );
+
+      set tokens =
+        tokens + scanned.tokens;
+
+      set diagnostics =
+        diagnostics + scanned.diagnostics;
+
+      set literal_count =
+        literal_count + len(scanned.tokens);
+
+      if len(scanned.diagnostics) > 0 {
+        set invalid_count =
+          invalid_count + len(scanned.diagnostics);
+      }
+
       if len(scanned.tokens) > 0 {
-        set current = cursor_advance_n(current, len(scanned.tokens[0].lexeme));
-      } else {
-        set current = cursor_advance(current);
+        set walk =
+          cursor_advance_n(
+            walk,
+            len(scanned.tokens[0].lexeme)
+          );
       }
+      else {
+        set walk =
+          cursor_advance(walk);
+      }
+
       continue;
     }
 
-    if ch == "'" {
-      let scanned: ScanResult = scan_quoted_token(current, "'", TokenKind.Char);
-      set tokens = tokens + scanned.tokens;
-      set diagnostics = diagnostics + scanned.diagnostics;
-      if len(scanned.tokens) > 0 {
-        set current = cursor_advance_n(current, len(scanned.tokens[0].lexeme));
-      } else {
-        set current = cursor_advance(current);
-      }
+    if is_three_char_symbol(walk) {
+      let sym: string =
+        cursor_slice(
+          walk,
+          walk.index,
+          walk.index + 3
+        );
+
+      set tokens =
+        tokens + [
+          token(
+            TokenKind.Symbol,
+            sym,
+            walk.line,
+            walk.column
+          )
+        ];
+
+      set walk =
+        cursor_advance_n(walk, 3);
+
       continue;
     }
 
-    if cursor_starts_with(current, "...") {
-      set tokens = tokens + [token(TokenKind.Symbol, "...", current.line, current.column)];
-      set current = cursor_advance_n(current, 3);
-      continue;
-    }
-    if cursor_starts_with(current, "..=") {
-      set tokens = tokens + [token(TokenKind.Symbol, "..=", current.line, current.column)];
-      set current = cursor_advance_n(current, 3);
-      continue;
-    }
-    if is_two_char_symbol(current) {
-      let sym: string = slice(current.text, current.index, current.index + 2);
-      set tokens = tokens + [token(TokenKind.Symbol, sym, current.line, current.column)];
-      set current = cursor_advance_n(current, 2);
+    if is_two_char_symbol(walk) {
+      let sym: string =
+        cursor_slice(
+          walk,
+          walk.index,
+          walk.index + 2
+        );
+
+      set tokens =
+        tokens + [
+          token(
+            TokenKind.Symbol,
+            sym,
+            walk.line,
+            walk.column
+          )
+        ];
+
+      set walk =
+        cursor_advance_n(walk, 2);
+
       continue;
     }
 
     if is_valid_single_symbol(ch) {
-      set tokens = tokens + [token(TokenKind.Symbol, ch, current.line, current.column)];
-    } else {
-      set diagnostics = diagnostics + [lex_diag("LEX_E_INVALID_CHAR", "invalid character `" + ch + "`", current.line, current.column, 1)];
-      set tokens = tokens + [token(TokenKind.Invalid, ch, current.line, current.column)];
+      set tokens =
+        tokens + [
+          token(
+            TokenKind.Symbol,
+            ch,
+            walk.line,
+            walk.column
+          )
+        ];
     }
-    set current = cursor_advance(current);
+    else {
+      set diagnostics =
+        diagnostics + [
+          invalid_character(
+            ch,
+            walk.line,
+            walk.column
+          )
+        ];
+
+      set tokens =
+        tokens + [
+          token(
+            TokenKind.Invalid,
+            ch,
+            walk.line,
+            walk.column
+          )
+        ];
+
+      set invalid_count =
+        invalid_count + 1;
+    }
+
+    set walk =
+      cursor_advance(walk);
   }
 
-  set tokens = tokens + [token(TokenKind.Eof, "", current.line, current.column)];
-  give scan_result(tokens, diagnostics);
+  set tokens =
+    tokens + [
+      token(
+        TokenKind.Eof,
+        "",
+        walk.line,
+        walk.column
+      )
+    ];
+
+  let metrics: ScanMetrics =
+    scan_metrics(
+      len(tokens),
+      keyword_count,
+      identifier_count,
+      literal_count,
+      comment_count,
+      invalid_count,
+      walk.line,
+      len(diagnostics) == 0 and invalid_count == 0
+    );
+
+  give scan_result(
+    tokens,
+    diagnostics,
+    metrics
+  );
+}
+
+proc scanner_summary(result: ScanResult) -> string {
+  give "tokens="
+    + (result.metrics.token_count as string)
+    + " keywords="
+    + (result.metrics.keyword_count as string)
+    + " identifiers="
+    + (result.metrics.identifier_count as string)
+    + " literals="
+    + (result.metrics.literal_count as string)
+    + " comments="
+    + (result.metrics.comment_count as string)
+    + " invalid="
+    + (result.metrics.invalid_count as string)
+    + " lines="
+    + (result.metrics.line_count as string)
+    + " valid="
+    + (result.valid as string);
+}
+
+proc scanner_selftest() -> bool {
+  let result: ScanResult =
+    scan_tokens(
+      "space demo\nlet x = 42\n"
+    );
+
+  give result.valid
+    and result.metrics.token_count > 0
+    and result.metrics.keyword_count > 0
+    and result.metrics.literal_count > 0
+    and scanner_summary(result) != "";
 }
