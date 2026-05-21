@@ -28,10 +28,11 @@ proc compiler_entry_point() -> string {
 }
 
 proc main(args: list[string]) -> int {
-    give 0
+    give run_cli_main(args);
 }
 
 use vitte/compiler/driver
+use vitte/compiler/driver/compile.{ DriverCompileConfig, DriverCompileResult, check_source_with_config, compile_source_with_config, default_compile_config }
 use vitte/compiler/driver/config
 use vitte/compiler/driver/pipeline
 use vitte/compiler/driver/session
@@ -111,6 +112,7 @@ use vitte/compiler/infrastructure/session/files
 use vitte/compiler/infrastructure/session/options
 use vitte/compiler/driver/mod
 use vitte/compiler/driver/cli
+use vitte/compiler/driver/integration_registry
 use vitte/compiler/driver/bootstrap_pipeline
 use vitte/compiler/driver/compilation_pipeline
 use vitte/compiler/driver/integration_orchestrator
@@ -218,6 +220,16 @@ form Compiler {
     diagnostics: List<report.Diagnostic>
 }
 
+form CompilerCliRequest {
+    command: string
+    input_path: string
+    output_path: string
+    source_text: string
+    valid: bool
+    status: driver.DriverExitStatus
+    message: string
+}
+
 proc default_options() -> CompilerOptions {
     give CompilerOptions {
         mode: CompilerMode::Build,
@@ -261,6 +273,196 @@ proc initial_state() -> CompilerState {
         codegen_ok: false,
         link_ok: false
     };
+}
+
+proc cli_exit_code(status: driver.DriverExitStatus) -> int {
+    give (driver.exit_code(status) as int);
+}
+
+proc empty_cli_request() -> CompilerCliRequest {
+    give CompilerCliRequest {
+        command: "",
+        input_path: "",
+        output_path: "a.out",
+        source_text: "",
+        valid: false,
+        status: driver.DriverExitStatus::InvalidArguments,
+        message: "missing compiler command"
+    };
+}
+
+proc cli_command_from_text(text: string) -> string {
+    if text == "check" {
+        give "check";
+    }
+    if text == "build" {
+        give "build";
+    }
+    if text == "compile" {
+        give "build";
+    }
+    if text == "run" {
+        give "run";
+    }
+    if text == "test" {
+        give "test";
+    }
+    if text == "help" or text == "--help" or text == "-h" {
+        give "help";
+    }
+    give "";
+}
+
+proc cli_is_output_flag(text: string) -> bool {
+    give text == "-o" or text == "--out" or text == "--output";
+}
+
+proc cli_is_source_flag(text: string) -> bool {
+    give text == "--source" or text == "--source-text";
+}
+
+proc cli_is_input_flag(text: string) -> bool {
+    give text == "--src" or text == "--input";
+}
+
+proc cli_is_known_flag(text: string) -> bool {
+    give cli_is_output_flag(text)
+        or cli_is_source_flag(text)
+        or cli_is_input_flag(text)
+        or text == "--native"
+        or text == "--no-native"
+        or text == "--json";
+}
+
+proc parse_cli_request(args: list[string]) -> CompilerCliRequest {
+    let request: CompilerCliRequest = empty_cli_request();
+
+    if len(args) == 0 {
+        set request.command = "help";
+        set request.valid = true;
+        set request.status = driver.DriverExitStatus::Ok;
+        set request.message = "usage: vittec check|build|run|test <file.vit> [-o out]";
+        give request;
+    }
+
+    set request.command = cli_command_from_text(args[0]);
+
+    if request.command == "" {
+        set request.status = driver.DriverExitStatus::InvalidArguments;
+        set request.message = "unknown compiler command: " + args[0];
+        give request;
+    }
+
+    if request.command == "help" {
+        set request.valid = true;
+        set request.status = driver.DriverExitStatus::Ok;
+        set request.message = "usage: vittec check|build|run|test <file.vit> [-o out]";
+        give request;
+    }
+
+    let i: u64 = 1;
+    while i < len(args) {
+        let arg: string = args[i];
+
+        if cli_is_output_flag(arg) {
+            if i + 1 >= len(args) {
+                set request.status = driver.DriverExitStatus::InvalidArguments;
+                set request.message = "missing value after " + arg;
+                give request;
+            }
+            set request.output_path = args[i + 1];
+            set i = i + 2;
+        } elif cli_is_source_flag(arg) {
+            if i + 1 >= len(args) {
+                set request.status = driver.DriverExitStatus::InvalidArguments;
+                set request.message = "missing value after " + arg;
+                give request;
+            }
+            set request.source_text = args[i + 1];
+            set i = i + 2;
+        } elif cli_is_input_flag(arg) {
+            if i + 1 >= len(args) {
+                set request.status = driver.DriverExitStatus::InvalidArguments;
+                set request.message = "missing value after " + arg;
+                give request;
+            }
+            set request.input_path = args[i + 1];
+            set i = i + 2;
+        } elif cli_is_known_flag(arg) {
+            set i = i + 1;
+        } else {
+            if request.input_path == "" {
+                set request.input_path = arg;
+            }
+            set i = i + 1;
+        }
+    }
+
+    if request.input_path == "" and request.source_text != "" {
+        set request.input_path = "inline.vit";
+    }
+
+    if request.input_path == "" and request.source_text == "" {
+        set request.status = driver.DriverExitStatus::MissingInput;
+        set request.message = "missing input file or --source text";
+        give request;
+    }
+
+    set request.valid = true;
+    set request.status = driver.DriverExitStatus::Ok;
+    set request.message = "compiler request parsed";
+
+    give request;
+}
+
+proc cli_compile_config(request: CompilerCliRequest) -> DriverCompileConfig {
+    let config: DriverCompileConfig = default_compile_config();
+    give config;
+}
+
+proc run_cli_request(request: CompilerCliRequest) -> int {
+    if !request.valid {
+        give cli_exit_code(request.status);
+    }
+
+    if request.command == "help" {
+        give cli_exit_code(driver.DriverExitStatus::Ok);
+    }
+
+    if request.source_text == "" {
+        give cli_exit_code(driver.DriverExitStatus::IoFailure);
+    }
+
+    let config: DriverCompileConfig = cli_compile_config(request);
+    let result: DriverCompileResult;
+
+    if request.command == "check" {
+        set result = check_source_with_config(request.input_path, request.source_text, config);
+        give cli_exit_code(result.status);
+    }
+
+    if request.command == "build" {
+        set result = compile_source_with_config(request.input_path, request.source_text, config);
+        give cli_exit_code(result.status);
+    }
+
+    if request.command == "run" {
+        set result = compile_source_with_config(request.input_path, request.source_text, config);
+        if result.status != driver.DriverExitStatus::Ok {
+            give cli_exit_code(result.status);
+        }
+        give cli_exit_code(driver.DriverExitStatus::RuntimeFailure);
+    }
+
+    if request.command == "test" {
+        give cli_exit_code(driver.DriverExitStatus::UnsupportedFeature);
+    }
+
+    give cli_exit_code(driver.DriverExitStatus::InvalidArguments);
+}
+
+proc run_cli_main(args: list[string]) -> int {
+    give run_cli_request(parse_cli_request(args));
 }
 
 proc new_compiler(options: CompilerOptions) -> Compiler {
@@ -1316,11 +1518,15 @@ share CompilerOptions
 share CompilerState
 share CompilerResult
 share Compiler
+share CompilerCliRequest
 
 share default_options
 share empty_input
 share empty_output
 share initial_state
+share parse_cli_request
+share run_cli_request
+share run_cli_main
 share new_compiler
 share compiler_from_source
 

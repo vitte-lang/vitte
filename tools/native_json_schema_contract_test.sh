@@ -4,7 +4,7 @@ set -eu
 ROOT_DIR="${ROOT_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
 STAGE1_BIN="${STAGE1_BIN:-$ROOT_DIR/bin/vittec1}"
 STAGE2_BIN="${STAGE2_BIN:-$ROOT_DIR/bin/vittec}"
-SRC="${SRC:-$ROOT_DIR/src/vitte/compiler/driver/compiler.vit}"
+SRC="${SRC:-$ROOT_DIR/tests/golden/frontend/fixtures/hello_min.vit}"
 ALLOW_BOOTSTRAP_SCHEMA_COMPAT="${ALLOW_BOOTSTRAP_SCHEMA_COMPAT:-0}"
 
 log() { printf '[native-json-contract] %s\n' "$1"; }

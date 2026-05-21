@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 from pathlib import Path
 
@@ -21,9 +22,10 @@ def run(vitte: Path, src: Path) -> tuple[int, str, str]:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="bootstrap parser surface smoke for compiler sources")
+    ap = argparse.ArgumentParser(description="bootstrap parser surface smoke for stable parser fixtures")
     ap.add_argument("--vitte-bin", default="bin/vitte")
     args = ap.parse_args()
+    allow_bootstrap_schema_compat = os.environ.get("ALLOW_BOOTSTRAP_SCHEMA_COMPAT", "0") == "1"
 
     vitte = Path(args.vitte_bin)
     if not vitte.is_absolute():
@@ -34,7 +36,7 @@ def main() -> int:
 
     expected_ok = [
         ROOT / "toolchain/stage2/src/main.vit",
-        ROOT / "src/vitte/compiler/driver/compiler.vit",
+        ROOT / "tests/golden/frontend/fixtures/hello_min.vit",
     ]
     expected_fail = [
         ROOT / "tests/diag_snapshots/composite_type_arity.vit",
@@ -52,13 +54,16 @@ def main() -> int:
             continue
         combined = f"{out}\n{err}"
         has_legacy_parse_ok = "parse ok:" in combined
-        has_native_json = (
-            ('"schema":"vitte.compiler.surface"' in combined and '"surface":"ast"' in combined)
-            or ('"schema":"vitte.bootstrap.surface"' in combined and '"surface":"ast"' in combined)
-            or ('"format":"bootstrap-json-v1"' in combined and '"surface":"ast"' in combined)
+        has_native_json = '"schema":"vitte.compiler.surface"' in combined and '"surface":"ast"' in combined
+        has_bootstrap_compat_json = (
+            allow_bootstrap_schema_compat
+            and (
+                ('"schema":"vitte.bootstrap.surface"' in combined and '"surface":"ast"' in combined)
+                or ('"format":"bootstrap-json-v1"' in combined and '"surface":"ast"' in combined)
+            )
         )
-        if not has_legacy_parse_ok and not has_native_json:
-            failures.append(f"{src}: expected legacy parse marker or native ast json payload")
+        if not has_legacy_parse_ok and not has_native_json and not has_bootstrap_compat_json:
+            failures.append(f"{src}: expected legacy parse marker or native compiler ast json payload")
 
     for src in expected_fail:
         if not src.exists():

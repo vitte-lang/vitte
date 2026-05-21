@@ -2,9 +2,9 @@ space vitte/compiler/tests/pipeline_tests
 
 use vitte/compiler/driver/compile.{ DriverAnalysisArtifacts, DriverModuleSetArtifacts, analyze_source, analyze_source_set, check_source, compile_source_with_config, default_compile_config, driver_module_input, dump_ast_json, dump_diagnostics_json, dump_hir_json, dump_hir_resolved, dump_hir_typed, dump_mir_json, incremental_analysis_graph, lower_mir_source }
 use vitte/compiler/driver/exit_status.{ DriverExitStatus }
-use vitte/compiler/driver/mod.{ main_driver_surface_report_json, main_driver_surface_report_json_from_args, run_check_diagnostics_json_cli, run_check_hir_json_cli, run_check_mir_json_cli, run_parse_ast_json_cli }
+use vitte/compiler/driver/mod.{ main_driver_report_json, main_driver_surface_report_json, main_driver_surface_report_json_from_args, run_check_diagnostics_json_cli, run_check_hir_json_cli, run_check_mir_json_cli, run_parse_ast_json_cli }
 use vitte/compiler/driver/result.{ CliReportResult }
-use vitte/compiler/driver/compiler.{ CompilerMode, CompilerOptions, CompilerResult, CompilerStage, compiler_from_source, default_options, run_compiler }
+use vitte/compiler/driver/compiler.{ CompilerMode, CompilerOptions, CompilerResult, CompilerStage, compiler_from_source, default_options, run_cli_main, run_compiler }
 use vitte/compiler/infrastructure/incremental.{ IncrementalGraph, InvalidationResult, analysis_node_key, invalidate_graph_from_key }
 
 const VERSION_TEXT: string = "compiler pipeline tests 0.2.0"
@@ -14,6 +14,18 @@ proc test_compile_source_success() -> bool {
   let source_text: string = "proc main() -> int { give 0 }";
   let result = compile_source_with_config("pipeline_compile_ok.vit", source_text, default_compile_config());
   give result.status == DriverExitStatus.Ok;
+}
+
+proc test_compiler_main_dispatches_inline_check() -> bool {
+  give run_cli_main(["check", "--source", "proc main() -> int { give 0; }"]) == 0;
+}
+
+proc test_compiler_main_dispatches_inline_build() -> bool {
+  give run_cli_main(["build", "--source", "proc main() -> int { give 0; }", "-o", "target/pipeline_cli_hello"]) == 0;
+}
+
+proc test_compiler_main_refuses_file_without_loader() -> bool {
+  give run_cli_main(["check", "tests/golden/frontend/fixtures/hello_min.vit"]) != 0;
 }
 
 proc run_stop_after(stage: CompilerStage, mode: CompilerMode) -> CompilerResult {
@@ -189,12 +201,17 @@ proc test_runtime_surface_dispatch_prefers_pipeline_json() -> bool {
   let hir_report: CliReportResult = main_driver_surface_report_json("check", "--dump-hir-json", "pipeline_dispatch_hir.vit", source_text);
   let mir_report: CliReportResult = main_driver_surface_report_json("check", "--dump-mir-json", "pipeline_dispatch_mir.vit", source_text);
   let diag_report: CliReportResult = main_driver_surface_report_json("check", "--diagnostics-json", "pipeline_dispatch_diag.vit", source_text);
-  let fallback_report: CliReportResult = main_driver_surface_report_json("check", "--unknown-flag", "pipeline_dispatch_fallback.vit", source_text);
+  let unsupported_report: CliReportResult = main_driver_surface_report_json("check", "--unknown-flag", "pipeline_dispatch_fallback.vit", source_text);
   give find(ast_report.report_json, "\"schema\":\"vitte.compiler.surface\"") >= 0
+    and find(ast_report.report_json, "\"schema_version\":\"1.0.0\"") >= 0
     and find(hir_report.report_json, "\"surface\":\"hir\"") >= 0
+    and find(hir_report.report_json, "\"schema\":\"vitte.compiler.surface\"") >= 0
     and find(mir_report.report_json, "\"surface\":\"mir\"") >= 0
+    and find(mir_report.report_json, "\"schema\":\"vitte.compiler.surface\"") >= 0
     and find(diag_report.report_json, "\"surface\":\"diagnostics\"") >= 0
-    and find(fallback_report.report_json, "\"command\":\"check\"") >= 0;
+    and find(diag_report.report_json, "\"schema\":\"vitte.compiler.surface\"") >= 0
+    and unsupported_report.code == 2
+    and find(unsupported_report.report_json, "\"code\":\"E_DRIVER_SURFACE_UNAVAILABLE\"") >= 0;
 }
 
 proc test_runtime_surface_dispatch_from_args() -> bool {
@@ -204,8 +221,19 @@ proc test_runtime_surface_dispatch_from_args() -> bool {
   let fallback_args_report: CliReportResult = main_driver_surface_report_json_from_args("check", ["check", "--strict"], "pipeline_args_fallback.vit", source_text);
   give find(ast_args_report.report_json, "\"surface\":\"ast\"") >= 0
     and find(hir_args_report.report_json, "\"surface\":\"hir\"") >= 0
-    and find(fallback_args_report.report_json, "\"command\":\"check\"") >= 0
-    and fallback_args_report.code == 0;
+    and fallback_args_report.code == 2
+    and find(fallback_args_report.report_json, "\"code\":\"E_DRIVER_SURFACE_UNAVAILABLE\"") >= 0;
+}
+
+proc test_driver_report_includes_registry_sections() -> bool {
+  let source_text: string = "proc main() -> int { give 0; }\n";
+  let report_json: string = main_driver_report_json("check", "pipeline_registry_report.vit", source_text);
+  give find(report_json, "driver:integration_registry=active") >= 0
+    and find(report_json, "frontend:parse=active") >= 0
+    and find(report_json, "analysis:typeck=active") >= 0
+    and find(report_json, "middle:hir=active") >= 0
+    and find(report_json, "backend:codegen=active") >= 0
+    and find(report_json, "infra:session=active") >= 0;
 }
 
 proc test_runtime_surface_dispatch_rejects_unsupported_combo() -> bool {
@@ -221,6 +249,9 @@ proc test_runtime_surface_dispatch_rejects_unsupported_combo() -> bool {
 proc run_all_tests() -> int {
   let failures: int = 0;
   if not test_compile_source_success() { set failures = failures + 1; }
+  if not test_compiler_main_dispatches_inline_check() { set failures = failures + 1; }
+  if not test_compiler_main_dispatches_inline_build() { set failures = failures + 1; }
+  if not test_compiler_main_refuses_file_without_loader() { set failures = failures + 1; }
   if not test_check_source_uses_validated_middle_path() { set failures = failures + 1; }
   if not test_lint_warning_is_nonfatal() { set failures = failures + 1; }
   if not test_check_source_uses_copy_aware_borrowck() { set failures = failures + 1; }
@@ -244,6 +275,7 @@ proc run_all_tests() -> int {
   if not test_runtime_surface_dispatch_prefers_pipeline_json() { set failures = failures + 1; }
   if not test_runtime_surface_dispatch_from_args() { set failures = failures + 1; }
   if not test_runtime_surface_dispatch_rejects_unsupported_combo() { set failures = failures + 1; }
+  if not test_driver_report_includes_registry_sections() { set failures = failures + 1; }
   give failures;
 }
 

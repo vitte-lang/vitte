@@ -307,6 +307,14 @@ diagnostics-migration-gate:
 compiler-reachability-audit:
 	@python3 tools/compiler_reachability_audit.py
 
+.PHONY: compiler-real-pipeline-audit
+compiler-real-pipeline-audit:
+	@python3 tools/compiler_real_pipeline_audit.py
+
+.PHONY: compiler-audit-report
+compiler-audit-report:
+	@python3 tools/compiler_audit_report.py
+
 .PHONY: driver-surface-audit
 driver-surface-audit:
 	@$(VITTE_BOOTSTRAP) check src/vitte/packages/compiler/driver/mod.vit >/dev/null
@@ -829,7 +837,6 @@ wrapper-stage-test:
 .PHONY: grammar-sync
 grammar-sync:
 	@python3 docs/book/grammar/scripts/sync_grammar.py
-	@python3 docs/book/grammar/scripts/sync_pest.py
 	@python3 docs/book/grammar/scripts/sync_precedence.py
 
 .PHONY: harden-mod-vits
@@ -840,7 +847,6 @@ harden-mod-vits:
 .PHONY: grammar-check
 grammar-check:
 	@python3 docs/book/grammar/scripts/sync_grammar.py --check
-	@python3 docs/book/grammar/scripts/sync_pest.py --check
 	@python3 docs/book/grammar/scripts/sync_precedence.py --check
 
 .PHONY: grammar-test
