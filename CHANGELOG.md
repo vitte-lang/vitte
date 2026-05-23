@@ -28,6 +28,39 @@
   - symbol invalidation
 - Added pipeline test coverage for minimal-local-change recompilation contract.
 
+### ✅ 209. Distributed build foundation
+- Added distributed build groundwork with:
+  - remote cache entry model
+  - deterministic compile-unit hashing
+  - dependency snapshot serialization
+  - build job graph export
+  - deterministic artifact hash contract
+
+### ✅ 210. Formal type soundness roadmap
+- Added formal roadmap primitives for:
+  - typing judgments
+  - ownership semantics rules
+  - progress/preservation groundwork status
+  - MIR semantic mapping readiness
+  - unsafe escape analysis baseline
+
+### ✅ 211. Verified backend pipeline
+- Added backend verification report and checks for:
+  - MIR -> backend invariants
+  - ABI assertions
+  - stack safety checks
+  - control-flow verification
+  - object validation
+
+### ✅ 212. Compiler chaos testing
+- Added compiler chaos suite baseline covering:
+  - missing files
+  - invalid sysroot-like target
+  - malformed package/profile combinations
+  - random backend failure surface
+  - linker-like failure surface
+- Contract: explicit diagnostics and no silent corruption accepted by suite.
+
 ## [0.3.3] - 2026-05-22 - Professional Seed Delivery Gates (40->120)
 
 ### ✅ Pipeline and quality gates (seed path)

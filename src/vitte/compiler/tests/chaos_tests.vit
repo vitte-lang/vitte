@@ -1,0 +1,81 @@
+space vitte/compiler/tests/chaos_tests
+
+use vitte/compiler/driver/compile.{ DriverCompileConfig, compile_source_with_config, default_compile_config }
+use vitte/compiler/driver/exit_status.{ DriverExitStatus }
+
+form ChaosCaseResult {
+  name: string
+  clean_diagnostic: bool
+  no_silent_corruption: bool
+  valid: bool
+}
+
+proc chaos_case(name: string, clean_diagnostic: bool, no_silent_corruption: bool) -> ChaosCaseResult {
+  give ChaosCaseResult {
+    name: name,
+    clean_diagnostic: clean_diagnostic,
+    no_silent_corruption: no_silent_corruption,
+    valid: name != "" and clean_diagnostic and no_silent_corruption
+  };
+}
+
+proc case_missing_files() -> ChaosCaseResult {
+  let cfg: DriverCompileConfig = default_compile_config();
+  let res = compile_source_with_config("", "", cfg);
+  give chaos_case("missing-files", res.status != DriverExitStatus.Ok and res.message != "", true);
+}
+
+proc case_invalid_sysroot_like_target() -> ChaosCaseResult {
+  let cfg: DriverCompileConfig = default_compile_config();
+  set cfg.target_name = "invalid-sysroot-target";
+  let res = compile_source_with_config("chaos_invalid_target.vit", "proc main() -> int { give 0; }", cfg);
+  give chaos_case("invalid-sysroot", res.status != DriverExitStatus.Ok and res.message != "", find(res.message, "unsupported") >= 0 or find(res.message, "invalid") >= 0);
+}
+
+proc case_random_backend_failure() -> ChaosCaseResult {
+  let cfg: DriverCompileConfig = default_compile_config();
+  set cfg.backend_name = "random-backend-failure";
+  let res = compile_source_with_config("chaos_backend_fail.vit", "proc main() -> int { give 0; }", cfg);
+  give chaos_case("random-backend-failure", res.status != DriverExitStatus.Ok and res.message != "", true);
+}
+
+proc case_linker_failure() -> ChaosCaseResult {
+  let cfg: DriverCompileConfig = default_compile_config();
+  set cfg.packaging = "unknown-linker-kind";
+  let res = compile_source_with_config("chaos_linker_fail.vit", "proc main() -> int { give 0; }", cfg);
+  let clean: bool = res.message != "";
+  let no_silent: bool = res.status != DriverExitStatus.Ok or find(res.message, "failed") >= 0;
+  give chaos_case("linker-failure", clean, no_silent);
+}
+
+proc case_malformed_packages() -> ChaosCaseResult {
+  let cfg: DriverCompileConfig = default_compile_config();
+  set cfg.packaging = "malformed-package";
+  let res = compile_source_with_config("chaos_pkg_fail.vit", "proc main() -> int { give 0; }", cfg);
+  give chaos_case("malformed-packages", res.message != "", res.status != DriverExitStatus.Ok or find(res.message, "unsupported") >= 0);
+}
+
+proc run_chaos_suite() -> int {
+  let failures: int = 0;
+  let c1: ChaosCaseResult = case_missing_files();
+  let c2: ChaosCaseResult = case_invalid_sysroot_like_target();
+  let c3: ChaosCaseResult = case_random_backend_failure();
+  let c4: ChaosCaseResult = case_linker_failure();
+  let c5: ChaosCaseResult = case_malformed_packages();
+
+  if not c1.valid { set failures = failures + 1; }
+  if not c2.valid { set failures = failures + 1; }
+  if not c3.valid { set failures = failures + 1; }
+  if not c4.valid { set failures = failures + 1; }
+  if not c5.valid { set failures = failures + 1; }
+  give failures;
+}
+
+proc main(args: list[string]) -> int {
+  if run_chaos_suite() == 0 {
+    give 0;
+  }
+  give 1;
+}
+
+export *

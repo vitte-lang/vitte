@@ -1,0 +1,110 @@
+space vitte/compiler/infrastructure/distributed
+
+form RemoteCacheEntry {
+  unit_hash: string
+  artifact_hash: string
+  artifact_path: string
+  deterministic: bool
+  valid: bool
+}
+
+form DependencySnapshot {
+  root_unit: string
+  dependencies: [string]
+  serialized: string
+  valid: bool
+}
+
+form BuildJob {
+  job_id: string
+  unit_path: string
+  unit_hash: string
+  dependencies: [string]
+  valid: bool
+}
+
+form BuildJobGraph {
+  jobs: [BuildJob]
+  exported: string
+  valid: bool
+}
+
+proc hash_text_deterministic(text: string) -> string {
+  let acc: u64 = 1469598103934665603;
+  let i: u64 = 0;
+  while i < len(text) {
+    let ch: string = slice(text, i, i + 1);
+    set acc = (acc * 1099511628211) + (len(ch) as u64) + i;
+    set i = i + 1;
+  }
+  give acc as string;
+}
+
+proc compile_unit_hash(unit_path: string, source_text: string, target: string, profile: string) -> string {
+  give hash_text_deterministic(unit_path + "|" + source_text + "|" + target + "|" + profile);
+}
+
+proc dependency_snapshot(root_unit: string, dependencies: [string]) -> DependencySnapshot {
+  let serialized: string = root_unit;
+  let i: u64 = 0;
+  while i < len(dependencies) {
+    set serialized = serialized + "\n" + dependencies[i];
+    set i = i + 1;
+  }
+  give DependencySnapshot {
+    root_unit: root_unit,
+    dependencies: dependencies,
+    serialized: serialized,
+    valid: root_unit != ""
+  };
+}
+
+proc build_job(job_id: string, unit_path: string, unit_hash: string, dependencies: [string]) -> BuildJob {
+  give BuildJob {
+    job_id: job_id,
+    unit_path: unit_path,
+    unit_hash: unit_hash,
+    dependencies: dependencies,
+    valid: job_id != "" and unit_path != "" and unit_hash != ""
+  };
+}
+
+proc export_job_graph(jobs: [BuildJob]) -> BuildJobGraph {
+  let exported: string = "";
+  let i: u64 = 0;
+  while i < len(jobs) {
+    let line: string = jobs[i].job_id + "|" + jobs[i].unit_path + "|" + jobs[i].unit_hash;
+    if exported == "" {
+      set exported = line;
+    } else {
+      set exported = exported + "\n" + line;
+    }
+    set i = i + 1;
+  }
+  give BuildJobGraph {
+    jobs: jobs,
+    exported: exported,
+    valid: len(jobs) > 0
+  };
+}
+
+proc remote_cache_entry(unit_hash: string, artifact_hash: string, artifact_path: string, deterministic: bool) -> RemoteCacheEntry {
+  give RemoteCacheEntry {
+    unit_hash: unit_hash,
+    artifact_hash: artifact_hash,
+    artifact_path: artifact_path,
+    deterministic: deterministic,
+    valid: unit_hash != "" and artifact_hash != "" and artifact_path != ""
+  };
+}
+
+proc deterministic_artifact_hash(unit_hash: string, object_text: string) -> string {
+  give hash_text_deterministic(unit_hash + "|" + object_text);
+}
+
+proc distributed_build_foundation_ready(jobs: [BuildJob], snapshot: DependencySnapshot) -> bool {
+  let graph0: BuildJobGraph = export_job_graph(jobs);
+  give graph0.valid and snapshot.valid and graph0.exported != "";
+}
+
+export *

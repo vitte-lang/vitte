@@ -9,10 +9,14 @@ use vitte/compiler/backend/pipeline.{ BackendPipelineResult, compile_to_valid_ir
 use vitte/compiler/backend/target/config
 use vitte/compiler/backends/backend_infrastructure
 use vitte/compiler/backends/llvm_bindings.{ default_llvm_toolchain_paths }
+use vitte/compiler/backend/verified_pipeline.{ BackendVerificationReport, verify_backend_pipeline }
+use vitte/compiler/analysis/typeck/soundness_roadmap.{ OwnershipSemanticsRule, SoundnessCheckpoint, TypingJudgment, formal_type_soundness_roadmap_status, ownership_semantics_rule, soundness_checkpoint, typing_judgment }
+use vitte/compiler/infrastructure/distributed.{ BuildJob, DependencySnapshot, build_job, compile_unit_hash, dependency_snapshot, distributed_build_foundation_ready, export_job_graph }
 use vitte/compiler/infrastructure/session/ice
 use vitte/compiler/infrastructure/session/logger
 use vitte/compiler/infrastructure/session/panic_boundary
 use vitte/compiler/infrastructure/incremental.{ IncrementalGraph, InvalidationDomains, InvalidationResult, analysis_node_key, invalidation_domains, invalidate_for_local_change, invalidate_graph_from_key }
+use vitte/compiler/tests/chaos_tests
 
 const VERSION_TEXT: string = "compiler pipeline tests 0.2.0"
 const BANNER_TEXT: string = "compiler pipeline tests"
@@ -218,6 +222,55 @@ proc test_incremental_local_change_minimal_recompile() -> bool {
     and domains.backend_cache_invalidated
     and domains.diagnostics_invalidated
     and domains.symbol_invalidated;
+}
+
+proc test_distributed_build_foundation_contract() -> bool {
+  let h0: string = compile_unit_hash("a.vit", "proc main() -> int { give 0; }", "x86_64-linux", "enterprise-default");
+  let h1: string = compile_unit_hash("b.vit", "proc util() -> int { give 1; }", "x86_64-linux", "enterprise-default");
+  let deps: DependencySnapshot = dependency_snapshot("a.vit", ["b.vit"]);
+  let j0: BuildJob = build_job("job-a", "a.vit", h0, ["job-b"]);
+  let j1: BuildJob = build_job("job-b", "b.vit", h1, []);
+  let graph = export_job_graph([j0, j1]);
+  give distributed_build_foundation_ready([j0, j1], deps)
+    and graph.valid
+    and find(graph.exported, "job-a|a.vit|") >= 0;
+}
+
+proc test_formal_type_soundness_roadmap_contract() -> bool {
+  let j0: TypingJudgment = typing_judgment("Gamma", "x + 1", "int");
+  let own0: OwnershipSemanticsRule = ownership_semantics_rule("move", "moved value is unavailable after move");
+  let status: SoundnessCheckpoint = soundness_checkpoint([j0], [own0], "function main block return", ["safe borrow"]);
+  give status.valid
+    and status.typing_judgments
+    and status.ownership_semantics
+    and status.progress_preservation_groundwork
+    and status.mir_semantic_mapping
+    and status.unsafe_escape_analysis
+    and formal_type_soundness_roadmap_status() != "";
+}
+
+proc test_verified_backend_pipeline_contract() -> bool {
+  let result: BackendPipelineResult = compile_to_valid_ir_with_profile_and_packaging(
+    "verified_backend.vit",
+    "proc main() -> int { give 0; }",
+    "llvm",
+    "x86_64-linux",
+    "enterprise-default",
+    true,
+    true,
+    "executable",
+    false,
+    default_llvm_toolchain_paths()
+  );
+  let report: BackendVerificationReport = verify_backend_pipeline(result);
+  if report.valid {
+    give result.valid and len(report.violations) == 0;
+  }
+  give (not result.valid) and len(report.violations) > 0;
+}
+
+proc test_compiler_chaos_suite_contract() -> bool {
+  give chaos_tests.run_chaos_suite() == 0;
 }
 
 proc test_analyze_source_set_resolves_imported_module() -> bool {
@@ -526,6 +579,10 @@ proc run_all_tests() -> int {
   if not test_session_source_manager_does_not_duplicate_input_snapshot() { set failures = failures + 1; }
   if not test_incremental_invalidation_targets_dependents() { set failures = failures + 1; }
   if not test_incremental_local_change_minimal_recompile() { set failures = failures + 1; }
+  if not test_distributed_build_foundation_contract() { set failures = failures + 1; }
+  if not test_formal_type_soundness_roadmap_contract() { set failures = failures + 1; }
+  if not test_verified_backend_pipeline_contract() { set failures = failures + 1; }
+  if not test_compiler_chaos_suite_contract() { set failures = failures + 1; }
   if not test_analyze_source_set_resolves_imported_module() { set failures = failures + 1; }
   if not test_real_pipeline_json_dumps() { set failures = failures + 1; }
   if not test_cli_json_dump_routes() { set failures = failures + 1; }
