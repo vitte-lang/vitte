@@ -18,7 +18,7 @@ Use canonical `diagnostics` naming everywhere while preserving temporary compati
 
 4. Remove compatibility
 - Empty allowlist.
-- Delete `src/vitte/compiler/dignostics`.
+- Delete `src/vitte/compiler/diagnostics` compatibility shims that keep typo-era aliases.
 - Keep gate strict so typo cannot reappear.
 
 ## Exit Criteria

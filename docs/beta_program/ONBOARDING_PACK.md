@@ -5,9 +5,8 @@
 - `docs/book/compiler-stdlib-contract.html`
 
 ## Example projects
-- `examples/core_examples.vitl`
-- `examples/io_examples.vitl`
-- `examples/kernel_examples.vitl`
+- `examples/hello.vit`
+- `examples/modules/main.vit`
 
 ## Troubleshooting guide
 - `docs/book/chapters/31-build-errors.html`

@@ -38,16 +38,6 @@ make help
 - `make ci-fast`: run fast CI chain for language/compiler snapshots and checks
 - `make ci-strict`: run strict CI chain with additional diagnostics/highlight checks
 - `make ci-completions`: run completion check + lint + snapshots + fallback
-- `make bootstrap-native-snapshots`: verify `docs/bootstrap_native_ir.md` snapshots and emission hashes
-- `make bootstrap-native-drift-check`: ensure native bootstrap changes carry matching snapshots
-- `make bootstrap-native-contract`: run seed verification, native snapshots, and bootstrap verification
-- `make bootstrap-native-fast-contract`: run fast bootstrap-native checks without rebuilding the full stage chain
-- `make bootstrap-source-coverage-check`: verify seed/stage2 exercise current bootstrap-native forms
-- `make bootstrap-contracts-index-check`: verify bootstrap contract docs paths and targets
-- `make seed-manifest-update`: regenerate `toolchain/seed/manifest.txt` from the audited seed artifact
-- `make seed-rotation-report`: print seed manifest/hash/version rotation status
-- `make bootstrap-posix-smoke`: run POSIX shell syntax and minimal-env smoke checks for bootstrap artifacts
-- `make bootstrap-parity`: compare stage1/stage2 command output on the bootstrap subset
 - `make repo-hygiene-check`: verify root-level repository hygiene constraints
 - `make docs-paths-check`: verify README/docs local path references exist
 - `make dx-adoption`: run DX/adoption quality gates
@@ -56,10 +46,6 @@ make help
 - `make all-tests`: run full grouped test inventory
 - `make reports-index`: build target/reports/index.json (unified reports registry)
 - `make release-doctor`: run the snapshot/release readiness report suite
-
-Bootstrap targets that rebuild the stage chain rewrite shared `bin/vittec*`
-artifacts. Run `make bootstrap-native-contract`, `make bootstrap-verify`, and
-`make bootstrap-posix-smoke` one at a time in a local worktree.
 
 ## VitteOS
 

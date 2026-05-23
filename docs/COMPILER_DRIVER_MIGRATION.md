@@ -33,7 +33,7 @@ This package now owns:
 
 The compiler driver implementation lives in:
 
-- `src/vitte/compiler/driver/options.vit`
+- `src/vitte/compiler/driver/compile.vit`
 - `src/vitte/compiler/driver/compiler.vit`
 - `src/vitte/compiler/driver/mod.vit`
 

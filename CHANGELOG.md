@@ -1,5 +1,31 @@
 # Changelog - Vitte Bootstrap Toolchain
 
+## [0.3.3] - 2026-05-22 - Professional Seed Delivery Gates (40->120)
+
+### ✅ Pipeline and quality gates (seed path)
+- Added professional gate coverage from compiler validation through delivery:
+  - no-stub gate, phase coverage checks, import cycle tests, visibility checks,
+    ABI/toolchain checks, deterministic build checks, and strict CI gate wiring.
+- Added structured artifact outputs under `build/` for tokens/AST/HIR/MIR/backend logs/diagnostics.
+
+### ✅ Self-host and bootstrap baseline
+- Added executable self-host checks:
+  - stage0 -> stage1 -> stage2 chain
+  - behavior comparison reports + artifact hash reports.
+- Added bootstrap documentation set under `docs/bootstrap/` with stage roles, reproducibility and troubleshooting.
+
+### ✅ Release/package/workspace baseline
+- Added minimal operational commands on seed command surface:
+  - `release build|verify`
+  - `package init|add|build|test`
+  - `workspace check --strict`
+  - `doctor`, `compat-check`, `migrate`, `stress`, `ci-gate --strict`.
+- Added release archive/checksum flow and delivery layout baseline for installable artifacts.
+
+### ✅ Docs and truthfulness policy
+- Added compiler docs/spec/compat matrix pages matching current implemented subset.
+- Hardened rule: features are considered real only when pipeline-connected, test-covered, documented, and proven end-to-end.
+
 ## [0.3.2] - 2026-05-22 - Compiler Hardening, Native Panic Boundary, Expanded Targets
 
 ### ✅ Compiler pipeline hardening

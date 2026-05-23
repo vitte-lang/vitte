@@ -38,7 +38,23 @@ def run_parse(vitte_bin: Path, file_path: Path, strict_core: bool = False) -> li
 
     start = out.find("{")
     if start < 0:
-        return []
+        # Fallback for text diagnostics format:
+        # path:line:col: CODE: message
+        rows: list[dict[str, object]] = []
+        pattern = re.compile(r"^.+:(\d+):(\d+):\s+([A-Za-z0-9_]+):\s*(.*)$")
+        for line in out.splitlines():
+            match = pattern.match(line.strip())
+            if not match:
+                continue
+            rows.append(
+                {
+                    "code": match.group(3),
+                    "message": match.group(4),
+                    # normalize() only needs start; 0 maps to line=1,col=1.
+                    "start": 0,
+                }
+            )
+        return rows
 
     decoder = json.JSONDecoder()
     try:
