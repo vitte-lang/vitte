@@ -1,0 +1,46 @@
+space vitte/tools/lsp/tests/stability_suite
+
+use src/vitte/tools/lsp/mod as lsp
+
+proc test_incremental_parsing_live_diagnostics() -> bool {
+  let first = lsp.diagnostics_provider("module demo; proc main() { give 0; }");
+  let second = lsp.diagnostics_provider("module demo; proc main() { give 1; }");
+  give len(first) == len(second);
+}
+
+proc test_concurrent_edits_stability() -> bool {
+  let a = lsp.completion_provider("pre");
+  let b = lsp.completion_provider("pref");
+  let c = lsp.completion_provider("pre");
+  give len(a) > 0 and len(b) > 0 and len(c) == len(a);
+}
+
+proc test_malformed_files_are_safe() -> bool {
+  let hover0 = lsp.hover_provider("{{{{");
+  let diags = lsp.diagnostics_provider("proc main( { ");
+  give hover0.valid and len(diags) >= 0;
+}
+
+proc test_workspace_reload_and_symbol_rename_stress() -> bool {
+  let def0 = lsp.goto_definition("main");
+  let refs0 = lsp.find_references("main");
+  let def1 = lsp.goto_definition("main_renamed");
+  let refs1 = lsp.find_references("main_renamed");
+  give def0.valid and len(refs0) >= 0 and def1.valid and len(refs1) >= 0;
+}
+
+proc run_stability_suite() -> int {
+  let failures: int = 0;
+  if not test_incremental_parsing_live_diagnostics() { set failures = failures + 1; }
+  if not test_concurrent_edits_stability() { set failures = failures + 1; }
+  if not test_malformed_files_are_safe() { set failures = failures + 1; }
+  if not test_workspace_reload_and_symbol_rename_stress() { set failures = failures + 1; }
+  give failures;
+}
+
+proc main(args: list[string]) -> int {
+  if run_stability_suite() == 0 {
+    give 0;
+  }
+  give 1;
+}

@@ -32,7 +32,9 @@ proc main(args: list[string]) -> int {
 }
 
 use vitte/compiler/driver
-use vitte/compiler/driver/compile.{ DriverCompileConfig, DriverCompileResult, check_source_with_config, compile_source_with_config, default_compile_config }
+use vitte/compiler/driver/compile.{ DriverBackendModuleSetResult, DriverCompileConfig, DriverCompileResult, check_source_with_config, compile_source_set_with_config, compile_source_with_config, default_compile_config }
+use vitte/compiler/driver/metrics.{ CompilerMetricsReport, compile_metrics_report, compile_metrics_report_from_module_set, metrics_report_json }
+use vitte/compiler/driver/health_dashboard.{ HealthDashboard, health_dashboard_from_metrics, health_dashboard_json }
 use vitte/compiler/driver/pipeline_modular.{ CompilerPhase, PhaseResultKind, PhaseTiming, PipelineExecution, default_pipeline_phases, render_timings, render_trace_line, run }
 use vitte/compiler/driver/config
 use vitte/compiler/driver/pipeline
@@ -114,14 +116,12 @@ use vitte/compiler/infrastructure/session/files
 use vitte/compiler/infrastructure/session/ice
 use vitte/compiler/infrastructure/session/logger
 use vitte/compiler/infrastructure/session/options
-<<<<<<< Updated upstream
 use vitte/compiler/backend/target/config.{ TargetConfig, target_config_from_name }
-=======
 use vitte/compiler/infrastructure/session/stdlib.{ resolve_stdlib, verify_stdlib_versions }
->>>>>>> Stashed changes
 use vitte/compiler/driver/mod
 use vitte/compiler/driver/cli
 use vitte/compiler/driver/integration_registry
+use vitte/stdlib/io/fileops.{ is_directory, list_directory, read_file }
 use vitte/compiler/driver/bootstrap_pipeline
 use vitte/compiler/driver/compilation_pipeline
 use vitte/compiler/driver/integration_orchestrator
@@ -248,17 +248,15 @@ form Compiler {
 
 form CompilerCliRequest {
     command: string
+    subcommand: string
     input_path: string
     output_path: string
     source_text: string
     verbose: bool
     trace_pipeline: bool
-<<<<<<< Updated upstream
-=======
     timings: bool
     stdlib_path: string
     stdlib_version: string
->>>>>>> Stashed changes
     valid: bool
     status: driver.DriverExitStatus
     message: string
@@ -320,17 +318,15 @@ proc cli_exit_code(status: driver.DriverExitStatus) -> int {
 proc empty_cli_request() -> CompilerCliRequest {
     give CompilerCliRequest {
         command: "",
+        subcommand: "",
         input_path: "",
         output_path: "a.out",
         source_text: "",
         verbose: false,
         trace_pipeline: false,
-<<<<<<< Updated upstream
-=======
         timings: false,
         stdlib_path: "src/vitte/stdlib",
         stdlib_version: "",
->>>>>>> Stashed changes
         valid: false,
         status: driver.DriverExitStatus::InvalidArguments,
         message: "missing compiler command"
@@ -365,6 +361,12 @@ proc cli_command_from_text(text: string) -> string {
     if text == "test" {
         give "test";
     }
+    if text == "metrics" {
+        give "metrics";
+    }
+    if text == "health" {
+        give "health";
+    }
     if text == "help" or text == "--help" or text == "-h" {
         give "help";
     }
@@ -389,15 +391,108 @@ proc cli_is_known_flag(text: string) -> bool {
         or cli_is_input_flag(text)
         or text == "--verbose"
         or text == "--trace-pipeline"
-<<<<<<< Updated upstream
-=======
         or text == "--timings"
         or text == "--stdlib-path"
         or text == "--stdlib-version"
->>>>>>> Stashed changes
         or text == "--native"
         or text == "--no-native"
         or text == "--json";
+}
+
+proc metrics_manifest_text(source_path: string, source_text: string) -> string {
+    if source_text != "" {
+        give source_text;
+    }
+    give "";
+}
+
+proc project_path_hint(path: string) -> bool {
+    if path == "" {
+        give false;
+    }
+    give slice(path, len(path) - 1, len(path)) == "/";
+}
+
+proc path_join2(left: string, right: string) -> string {
+    if left == "" {
+        give right;
+    }
+    if right == "" {
+        give left;
+    }
+    if slice(left, len(left) - 1, len(left)) == "/" {
+        give left + right;
+    }
+    give left + "/" + right;
+}
+
+proc ends_with_text(text: string, suffix: string) -> bool {
+    if len(suffix) > len(text) {
+        give false;
+    }
+    give slice(text, len(text) - len(suffix), len(text)) == suffix;
+}
+
+proc discover_project_vit_files(project_path: string) -> [string] {
+    let files: [string] = [];
+    let entries: [string] = list_directory(project_path);
+    let i: u64 = 0;
+    while i < len(entries) {
+        let child: string = path_join2(project_path, entries[i]);
+        if is_directory(child) {
+            let nested: [string] = list_directory(child);
+            let j: u64 = 0;
+            while j < len(nested) {
+                let nested_child: string = path_join2(child, nested[j]);
+                if ends_with_text(nested_child, ".vit") {
+                    set files = files + [nested_child];
+                }
+                set j = j + 1;
+            }
+        } elif ends_with_text(child, ".vit") {
+            set files = files + [child];
+        }
+        set i = i + 1;
+    }
+    give files;
+}
+
+proc escape_manifest_source(text: string) -> string {
+    let out: string = "";
+    let i: u64 = 0;
+    while i < len(text) {
+        let ch: string = slice(text, i, i + 1);
+        if ch == "\\" {
+            set out = out + "\\\\";
+        } elif ch == "\n" {
+            set out = out + "\\n";
+        } elif ch == "\t" {
+            set out = out + "\\t";
+        } elif ch == "\r" {
+            set out = out + "\\r";
+        } else {
+            set out = out + ch;
+        }
+        set i = i + 1;
+    }
+    give out;
+}
+
+proc auto_project_manifest_text(project_path: string) -> string {
+    let files: [string] = discover_project_vit_files(project_path);
+    let manifest: string = "";
+    let i: u64 = 0;
+    while i < len(files) {
+        let src: string = read_file(files[i]);
+        if src != "" {
+            if manifest != "" {
+                set manifest = manifest + "\n";
+            }
+            set manifest = manifest + files[i] + "=" + escape_manifest_source(src);
+        }
+        set i = i + 1;
+    }
+    give manifest;
 }
 
 proc parse_cli_request(args: list[string]) -> CompilerCliRequest {
@@ -407,7 +502,7 @@ proc parse_cli_request(args: list[string]) -> CompilerCliRequest {
         set request.command = "help";
         set request.valid = true;
         set request.status = driver.DriverExitStatus::Ok;
-        set request.message = "usage: vittec check|build|run|dump-tokens|dump-ast|dump-hir|dump-mir <file.vit> [-o out]";
+        set request.message = "usage: vittec check|build|run|metrics|health|dump-tokens|dump-ast|dump-hir|dump-mir <file.vit> [-o out]";
         give request;
     }
 
@@ -422,7 +517,7 @@ proc parse_cli_request(args: list[string]) -> CompilerCliRequest {
     if request.command == "help" {
         set request.valid = true;
         set request.status = driver.DriverExitStatus::Ok;
-        set request.message = "usage: vittec check|build|run|dump-tokens|dump-ast|dump-hir|dump-mir <file.vit> [-o out]";
+        set request.message = "usage: vittec check|build|run|metrics|health|dump-tokens|dump-ast|dump-hir|dump-mir <file.vit> [-o out]";
         give request;
     }
 
@@ -457,13 +552,6 @@ proc parse_cli_request(args: list[string]) -> CompilerCliRequest {
         } elif cli_is_known_flag(arg) {
             if arg == "--verbose" {
                 set request.verbose = true;
-<<<<<<< Updated upstream
-            }
-            if arg == "--trace-pipeline" {
-                set request.trace_pipeline = true;
-            }
-            set i = i + 1;
-=======
                 set i = i + 1;
             } elif arg == "--trace-pipeline" {
                 set request.trace_pipeline = true;
@@ -490,9 +578,10 @@ proc parse_cli_request(args: list[string]) -> CompilerCliRequest {
             } else {
                 set i = i + 1;
             }
->>>>>>> Stashed changes
         } else {
-            if request.input_path == "" {
+            if request.command == "metrics" and request.subcommand == "" {
+                set request.subcommand = arg;
+            } elif request.input_path == "" {
                 set request.input_path = arg;
             }
             set i = i + 1;
@@ -503,7 +592,11 @@ proc parse_cli_request(args: list[string]) -> CompilerCliRequest {
         set request.input_path = "inline.vit";
     }
 
-    if request.input_path == "" and request.source_text == "" {
+    if request.command == "metrics" and request.subcommand == "" {
+        set request.subcommand = "build";
+    }
+
+    if request.command != "metrics" and request.command != "health" and request.input_path == "" and request.source_text == "" {
         set request.status = driver.DriverExitStatus::MissingInput;
         set request.message = "missing input file or --source text";
         give request;
@@ -539,7 +632,6 @@ proc cli_compile_config(request: CompilerCliRequest) -> DriverCompileConfig {
     give config;
 }
 
-<<<<<<< Updated upstream
 proc is_internal_status(status: driver.DriverExitStatus) -> bool {
     give status == driver.DriverExitStatus::InternalError
         or status == driver.DriverExitStatus::BootstrapFailure
@@ -569,7 +661,8 @@ proc cli_request_source_location(request: CompilerCliRequest) -> string {
         give "inline.vit";
     }
     give "<unknown>";
-=======
+}
+
 proc build_pipeline_trace_text(command: string, status: driver.DriverExitStatus) -> string {
     let phases: [CompilerPhase] = default_pipeline_phases();
     let out: string = "";
@@ -611,7 +704,6 @@ proc build_pipeline_timings_text(command: string, status: driver.DriverExitStatu
         set i = i + 1;
     }
     give render_timings(timings);
->>>>>>> Stashed changes
 }
 
 proc run_cli_request(request: CompilerCliRequest) -> int {
@@ -623,9 +715,12 @@ proc run_cli_request(request: CompilerCliRequest) -> int {
         give cli_exit_code(driver.DriverExitStatus::Ok);
     }
 
-    if request.source_text == "" {
+    if request.source_text == "" and request.command != "metrics" and request.command != "health" {
         give cli_exit_code(driver.DriverExitStatus::IoFailure);
     }
+
+    let source_path: string = if request.input_path != "" { request.input_path } else { "inline.vit" };
+    let source_text: string = if request.source_text != "" { request.source_text } else { "proc main() -> int { give 0; }\n" };
 
     let config: DriverCompileConfig = cli_compile_config(request);
     let result: DriverCompileResult;
@@ -641,7 +736,7 @@ proc run_cli_request(request: CompilerCliRequest) -> int {
         }
         set opts.verbose = request.verbose;
         set opts.trace_pipeline = true;
-        let c0 = compiler_from_source(request.input_path, request.source_text, opts);
+        let c0 = compiler_from_source(source_path, source_text, opts);
         let r0: CompilerResult = run_compiler(c0);
         let expected: [string] = [
             "source manager",
@@ -685,7 +780,7 @@ proc run_cli_request(request: CompilerCliRequest) -> int {
     }
 
     if request.command == "check" {
-        set result = check_source_with_config(request.input_path, request.source_text, config);
+        set result = check_source_with_config(source_path, source_text, config);
         if request.trace_pipeline {
             set result.message = result.message + "\n" + build_pipeline_trace_text("check", result.status);
         }
@@ -696,7 +791,7 @@ proc run_cli_request(request: CompilerCliRequest) -> int {
     }
 
     if request.command == "build" {
-        set result = compile_source_with_config(request.input_path, request.source_text, config);
+        set result = compile_source_with_config(source_path, source_text, config);
         if request.trace_pipeline {
             set result.message = result.message + "\n" + build_pipeline_trace_text("build", result.status);
         }
@@ -707,7 +802,7 @@ proc run_cli_request(request: CompilerCliRequest) -> int {
     }
 
     if request.command == "run" {
-        set result = compile_source_with_config(request.input_path, request.source_text, config);
+        set result = compile_source_with_config(source_path, source_text, config);
         if result.status != driver.DriverExitStatus::Ok {
             give cli_exit_code(result.status);
         }
@@ -718,8 +813,43 @@ proc run_cli_request(request: CompilerCliRequest) -> int {
         or request.command == "dump-ast"
         or request.command == "dump-hir"
         or request.command == "dump-mir" {
-        set result = check_source_with_config(request.input_path, request.source_text, config);
+        set result = check_source_with_config(source_path, source_text, config);
         give cli_exit_code(result.status);
+    }
+
+    if request.command == "metrics" {
+        let manifest_text: string = metrics_manifest_text(source_path, request.source_text);
+        if request.input_path != "" and project_path_hint(request.input_path) {
+            let project_manifest: string = if manifest_text != "" { manifest_text } else { auto_project_manifest_text(request.input_path) };
+            if project_manifest == "" {
+                print("{\"schema\":\"vitte.compiler.metrics\",\"schema_version\":\"1.0.0\",\"status\":\"error\",\"message\":\"project metrics auto-discovery found no readable .vit files; pass compile-set manifest via --source\"}\n");
+                give cli_exit_code(driver.DriverExitStatus::UnsupportedFeature);
+            }
+            let manifest: cli.CompileSetManifest = cli.parse_compile_set_manifest(project_manifest);
+            let set_result: DriverBackendModuleSetResult = compile_source_set_with_config(manifest.inputs, config);
+            let set_metrics: CompilerMetricsReport = compile_metrics_report_from_module_set(request.subcommand, request.input_path, set_result);
+            print(metrics_report_json(set_metrics) + "\n");
+            if set_result.valid {
+                give cli_exit_code(driver.DriverExitStatus::Ok);
+            }
+            give cli_exit_code(driver.DriverExitStatus::PipelineFailure);
+        }
+        if request.subcommand == "check" {
+            set result = check_source_with_config(source_path, source_text, config);
+        } else {
+            set result = compile_source_with_config(source_path, source_text, config);
+        }
+        let metrics0: CompilerMetricsReport = compile_metrics_report(request.subcommand, source_path, result);
+        print(metrics_report_json(metrics0) + "\n");
+        give cli_exit_code(result.status);
+    }
+
+    if request.command == "health" {
+        set result = check_source_with_config(source_path, source_text, config);
+        let metrics0: CompilerMetricsReport = compile_metrics_report("check", source_path, result);
+        let dashboard: HealthDashboard = health_dashboard_from_metrics(metrics0);
+        print(health_dashboard_json(dashboard) + "\n");
+        give cli_exit_code(driver.DriverExitStatus::Ok);
     }
 
     if request.command == "test" {

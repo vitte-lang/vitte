@@ -16,6 +16,7 @@ pick RecoveryKind {
     Expression
     Type
     Pattern
+    Import
     Toplevel
 }
 
@@ -29,6 +30,17 @@ form RecoveryStats {
     diagnostic_count: u64
     recovery_count: u64
     capped: bool
+}
+
+form RecoveryMetrics {
+    block_recoveries: u64
+    expr_recoveries: u64
+    import_recoveries: u64
+    sync_points: [string]
+    recovery_count: u64
+    diagnostic_count: u64
+    preserves_primary_error: bool
+    valid: bool
 }
 
 proc recovery_point(index: u64, kind: RecoveryKind, recovered: bool) -> RecoveryPoint {
@@ -62,6 +74,17 @@ proc capped_diag_count(count: u64) -> u64 {
 proc recovery_applied(diagnostic_count: u64, recovery_count: u64) -> bool {
     give recovery_count > 0
         or diagnostic_count > PARSE_DIAG_CAP;
+}
+
+proc parser_sync_points() -> [string] {
+    give [";", "}", ")", "]", ",", "space", "use", "proc", "const", "type", "form", "import"];
+}
+
+proc preserves_primary_error(diagnostic_count: u64, recovery_count: u64) -> bool {
+    if recovery_count == 0 {
+        give true;
+    }
+    give diagnostic_count > 0;
 }
 
 proc eof_token(tok: Token) -> bool {
@@ -288,6 +311,18 @@ proc recover_pattern_index(tokens: [Token], start: u64) -> u64 {
     give len(tokens);
 }
 
+proc recover_import_index(tokens: [Token], start: u64) -> u64 {
+    let i: u64 = start;
+    while i < len(tokens) {
+        let tok: Token = tokens[i];
+        if eof_token(tok) or tok.lexeme == ";" or tok.lexeme == "}" or is_toplevel_sync_keyword(tok.lexeme) {
+            give i;
+        }
+        set i = i + 1;
+    }
+    give len(tokens);
+}
+
 proc recover_toplevel_index(tokens: [Token], start: u64) -> u64 {
     let i: u64 = start;
 
@@ -392,6 +427,20 @@ proc recover_pattern(tokens: [Token], start: u64) -> RecoveryPoint {
     );
 }
 
+proc recover_import(tokens: [Token], start: u64) -> RecoveryPoint {
+    let index: u64 =
+        recover_import_index(
+            tokens,
+            start
+        );
+
+    give recovery_point(
+        index,
+        RecoveryKind.Import,
+        true
+    );
+}
+
 proc recover_toplevel(tokens: [Token], start: u64) -> RecoveryPoint {
     let index: u64 =
         recover_toplevel_index(
@@ -454,11 +503,23 @@ proc recovery_selftest() -> bool {
             10,
             1
         );
+    let metrics: RecoveryMetrics = RecoveryMetrics {
+        block_recoveries: 1,
+        expr_recoveries: 1,
+        import_recoveries: 1,
+        sync_points: parser_sync_points(),
+        recovery_count: 3,
+        diagnostic_count: 1,
+        preserves_primary_error: preserves_primary_error(1, 3),
+        valid: true
+    };
 
     give stmt.index == 3
         and top.index == 3
         and stats.capped
         and recovery_applied(10, 1)
+        and metrics.preserves_primary_error
+        and len(metrics.sync_points) >= 5
         and is_toplevel_sync_keyword("proc")
         and parse_diag_cap() == 3;
 }

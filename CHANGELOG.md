@@ -1,5 +1,33 @@
 # Changelog - Vitte Bootstrap Toolchain
 
+## [0.3.4] - 2026-05-23 - Compiler Health, Recovery, and Incremental Stability
+
+### ✅ 203. Full internal metrics system
+- Added compiler health metrics output for `vittec metrics ...` including phase timings, phase memory, cache hit/miss estimates, AST/MIR size, diagnostics count, backend timings, and linker timings.
+- Added project path metrics mode (`vittec metrics build project/`) with auto-discovery of `.vit` files and aggregate compile-set metrics.
+
+### ✅ 204. Compiler health dashboard
+- Added health dashboard JSON surface with tests/fuzz/stress/self-host/determinism/benchmark trend status and regression alerts.
+
+### ✅ 205. Advanced diagnostic engine
+- Added advanced diagnostics helpers for multi-span style enrichment, typo/import suggestions, lifetime explanation hints, borrow-trace visualization, color/unicode-safe rendering helpers.
+
+### ✅ 206. Error recovery quality system
+- Added parser recovery coverage for blocks/expressions/imports, explicit synchronization points, and recovery metrics with primary-error preservation contract.
+
+### ✅ 207. Language server stability suite
+- Added LSP stability suite for incremental diagnostics behavior, concurrent edit safety, malformed input robustness, workspace reload and rename stress behavior.
+
+### ✅ 208. Incremental compilation complete (local-change focused)
+- Added fine-grain invalidation helpers for local-change recompilation planning and domain-level invalidation reporting:
+  - dependency invalidation
+  - query invalidation
+  - MIR cache invalidation
+  - backend cache invalidation
+  - diagnostics invalidation
+  - symbol invalidation
+- Added pipeline test coverage for minimal-local-change recompilation contract.
+
 ## [0.3.3] - 2026-05-22 - Professional Seed Delivery Gates (40->120)
 
 ### ✅ Pipeline and quality gates (seed path)

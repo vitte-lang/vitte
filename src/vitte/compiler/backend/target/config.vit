@@ -1,4 +1,3 @@
-<<<<<<< Updated upstream
 space vitte/compiler/backend/target
 
 form TargetConfig {
@@ -16,40 +15,11 @@ form TargetConfig {
 proc target_config(name: string, pointer_size: u64, endianness: string, abi: string, linker_path: string, object_format: string, backend_name: string, target_triple: string) -> TargetConfig {
   give TargetConfig {
     name: name,
-=======
-space vitte/compiler/backend/target/config
-
-form TargetConfig {
-  triple: string
-  pointer_size: u64
-  endianness: string
-  abi: string
-  linker_path: string
-  object_format: string
-  valid: bool
-}
-
-proc normalize_target_triple(triple: string) -> string {
-  if triple == "x64-linux" or triple == "amd64-linux" {
-    give "x86_64-linux-gnu";
-  }
-  if triple == "arm64-linux" {
-    give "aarch64-linux-gnu";
-  }
-  give triple;
-}
-
-proc target_config(triple0: string, pointer_size: u64, endianness: string, abi: string, linker_path: string, object_format: string) -> TargetConfig {
-  let triple: string = normalize_target_triple(triple0);
-  give TargetConfig {
-    triple: triple,
->>>>>>> Stashed changes
     pointer_size: pointer_size,
     endianness: endianness,
     abi: abi,
     linker_path: linker_path,
     object_format: object_format,
-<<<<<<< Updated upstream
     backend_name: backend_name,
     target_triple: target_triple,
     valid: name != "" and pointer_size > 0 and endianness != "" and abi != "" and object_format != "" and target_triple != ""
@@ -247,27 +217,3 @@ share target_config_aarch64_linux_gnu
 share target_config_riscv64_linux_gnu
 share target_config_legacy_compatible
 share target_config_from_name
-=======
-    valid: triple != "" and pointer_size > 0 and (endianness == "little" or endianness == "big") and abi != "" and object_format != ""
-  };
-}
-
-proc target_x86_64_linux_gnu() -> TargetConfig {
-  give target_config("x86_64-linux-gnu", 64, "little", "gnu", "ld", "elf");
-}
-
-proc target_aarch64_linux_gnu() -> TargetConfig {
-  give target_config("aarch64-linux-gnu", 64, "little", "gnu", "ld", "elf");
-}
-
-proc target_config_from_triple(triple: string) -> TargetConfig {
-  let normalized: string = normalize_target_triple(triple);
-  if normalized == "x86_64-linux-gnu" {
-    give target_x86_64_linux_gnu();
-  }
-  if normalized == "aarch64-linux-gnu" {
-    give target_aarch64_linux_gnu();
-  }
-  give target_config(normalized, 0, "little", "unknown", "ld", "unknown");
-}
->>>>>>> Stashed changes

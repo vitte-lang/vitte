@@ -12,7 +12,7 @@ use vitte/compiler/backends/llvm_bindings.{ default_llvm_toolchain_paths }
 use vitte/compiler/infrastructure/session/ice
 use vitte/compiler/infrastructure/session/logger
 use vitte/compiler/infrastructure/session/panic_boundary
-use vitte/compiler/infrastructure/incremental.{ IncrementalGraph, InvalidationResult, analysis_node_key, invalidate_graph_from_key }
+use vitte/compiler/infrastructure/incremental.{ IncrementalGraph, InvalidationDomains, InvalidationResult, analysis_node_key, invalidation_domains, invalidate_for_local_change, invalidate_graph_from_key }
 
 const VERSION_TEXT: string = "compiler pipeline tests 0.2.0"
 const BANNER_TEXT: string = "compiler pipeline tests"
@@ -191,7 +191,7 @@ proc test_incremental_invalidation_targets_dependents() -> bool {
   let saw_ir: bool = false;
   let saw_codegen: bool = false;
   let saw_link: bool = false;
-  let i: u64 = 0;
+  let i: int = 0;
   while i < len(result.invalidated_keys) {
     if result.invalidated_keys[i] == analysis_node_key("pipeline_incremental.vit", "ir") {
       set saw_ir = true;
@@ -205,6 +205,19 @@ proc test_incremental_invalidation_targets_dependents() -> bool {
     set i = i + 1;
   }
   give result.valid and len(result.invalidated_keys) >= 6 and saw_ir and saw_codegen and saw_link;
+}
+
+proc test_incremental_local_change_minimal_recompile() -> bool {
+  let graph: IncrementalGraph = incremental_analysis_graph("pipeline_incremental.vit");
+  let result: InvalidationResult = invalidate_for_local_change(graph, "pipeline_incremental.vit");
+  let domains: InvalidationDomains = invalidation_domains(result);
+  give result.valid
+    and len(result.invalidated_keys) > 0
+    and domains.query_invalidated
+    and domains.mir_cache_invalidated
+    and domains.backend_cache_invalidated
+    and domains.diagnostics_invalidated
+    and domains.symbol_invalidated;
 }
 
 proc test_analyze_source_set_resolves_imported_module() -> bool {
@@ -391,7 +404,7 @@ proc test_runtime_c_native_contract_is_wired() -> bool {
   let saw_triggered: bool = false;
   let saw_code: bool = false;
   let saw_reset: bool = false;
-  let j: u64 = 0;
+  let j: int = 0;
   while j < len(runtime0.functions) {
     let link_name: string = runtime0.functions[j].link_name;
     if link_name == "vitte_runtime_panic_boundary_begin" { set saw_begin = true; }
@@ -512,6 +525,7 @@ proc run_all_tests() -> int {
   if not test_stop_after_run_exact() { set failures = failures + 1; }
   if not test_session_source_manager_does_not_duplicate_input_snapshot() { set failures = failures + 1; }
   if not test_incremental_invalidation_targets_dependents() { set failures = failures + 1; }
+  if not test_incremental_local_change_minimal_recompile() { set failures = failures + 1; }
   if not test_analyze_source_set_resolves_imported_module() { set failures = failures + 1; }
   if not test_real_pipeline_json_dumps() { set failures = failures + 1; }
   if not test_cli_json_dump_routes() { set failures = failures + 1; }
