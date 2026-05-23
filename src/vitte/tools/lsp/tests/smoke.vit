@@ -26,3 +26,20 @@ proc smoke_references() -> bool {
   let refs = lsp.find_references("var")
   give refs.len == 1 && refs[0].line == 5
 }
+
+proc run_smoke_suite() -> int {
+  let failures: int = 0;
+  if not smoke_hover() { set failures = failures + 1; }
+  if not smoke_completion() { set failures = failures + 1; }
+  if not smoke_diagnostics() { set failures = failures + 1; }
+  if not smoke_definition() { set failures = failures + 1; }
+  if not smoke_references() { set failures = failures + 1; }
+  give failures;
+}
+
+proc main(args: list[string]) -> int {
+  if run_smoke_suite() == 0 {
+    give 0;
+  }
+  give 1;
+}
