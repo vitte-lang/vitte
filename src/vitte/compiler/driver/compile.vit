@@ -386,6 +386,178 @@ form DriverBackendModuleSetResult {
     valid: bool
 }
 
+form InputGuardResult {
+    ok: bool
+    status: DriverExitStatus
+    message: string
+}
+
+const LIMIT_FILE_SIZE_MAX_BYTES: u64 = 8 * 1024 * 1024;
+const LIMIT_TOKEN_SIZE_MAX_BYTES: u64 = 64 * 1024;
+const LIMIT_AST_DEPTH_MAX: u64 = 512;
+const LIMIT_EXPR_DEPTH_MAX: u64 = 256;
+const LIMIT_IMPORT_DEPTH_MAX: u64 = 32;
+const LIMIT_MODULE_COUNT_MAX: u64 = 1024;
+const LIMIT_DIAGNOSTICS_MAX: u64 = 2048;
+const LIMIT_SYMBOL_COUNT_MAX: u64 = 200000;
+const LIMIT_PARSER_RECURSION_MAX: u64 = 256;
+const LIMIT_MACRO_EXPANSION_MAX: u64 = 4096;
+
+proc str_contains(text: string, needle: string) -> bool {
+    if needle == "" {
+        give true;
+    }
+    if len(needle) > len(text) {
+        give false;
+    }
+    let i: u64 = 0;
+    while i + len(needle) <= len(text) {
+        if slice(text, i, i + len(needle)) == needle {
+            give true;
+        }
+        set i = i + 1;
+    }
+    give false;
+}
+
+proc max_line_length(text: string) -> u64 {
+    let max_len: u64 = 0;
+    let cur: u64 = 0;
+    let i: u64 = 0;
+    while i < len(text) {
+        let ch: string = slice(text, i, i + 1);
+        if ch == "\n" or ch == "\r" or ch == "\t" or ch == " " {
+            if cur > max_len {
+                set max_len = cur;
+            }
+            set cur = 0;
+        } else {
+            set cur = cur + 1;
+        }
+        set i = i + 1;
+    }
+    if cur > max_len {
+        set max_len = cur;
+    }
+    give max_len;
+}
+
+proc max_nesting_depth(text: string, open_ch: string, close_ch: string) -> u64 {
+    let depth: u64 = 0;
+    let max_depth: u64 = 0;
+    let i: u64 = 0;
+    while i < len(text) {
+        let ch: string = slice(text, i, i + 1);
+        if ch == open_ch {
+            set depth = depth + 1;
+            if depth > max_depth {
+                set max_depth = depth;
+            }
+        } elif ch == close_ch and depth > 0 {
+            set depth = depth - 1;
+        }
+        set i = i + 1;
+    }
+    give max_depth;
+}
+
+proc count_occurrences(text: string, needle: string) -> u64 {
+    if needle == "" or len(needle) > len(text) {
+        give 0;
+    }
+    let n: u64 = 0;
+    let i: u64 = 0;
+    while i + len(needle) <= len(text) {
+        if slice(text, i, i + len(needle)) == needle {
+            set n = n + 1;
+        }
+        set i = i + 1;
+    }
+    give n;
+}
+
+proc max_import_path_depth(source_text: string) -> u64 {
+    let lines = split(source_text, "\n");
+    let max_depth: u64 = 0;
+    let i: u64 = 0;
+    while i < len(lines) {
+        let line: string = trim(lines[i]);
+        if starts_with(line, "use ") {
+            let depth0: u64 = count_occurrences(line, "/") + count_occurrences(line, "::");
+            if depth0 > max_depth {
+                set max_depth = depth0;
+            }
+        }
+        set i = i + 1;
+    }
+    give max_depth;
+}
+
+proc path_is_absolute(path: string) -> bool {
+    if path == "" {
+        give false;
+    }
+    if starts_with(path, "/") {
+        give true;
+    }
+    if len(path) >= 2 and slice(path, 1, 2) == ":" {
+        give true;
+    }
+    give false;
+}
+
+proc validate_source_path(path: string) -> InputGuardResult {
+    if path == "" {
+        give InputGuardResult { ok: false, status: DriverExitStatus.InvalidInput, message: "error[INPUT_PATH_EMPTY]: missing source path" };
+    }
+    if str_contains(path, "../") or str_contains(path, "/..") or starts_with(path, "..") {
+        give InputGuardResult { ok: false, status: DriverExitStatus.InvalidInput, message: "error[INPUT_PATH_TRAVERSAL]: path traversal is not allowed: " + path };
+    }
+    if str_contains(path, "/./") {
+        give InputGuardResult { ok: false, status: DriverExitStatus.InvalidInput, message: "error[INPUT_PATH_NOT_NORMALIZED]: non-normalized path is not allowed: " + path };
+    }
+    if path_is_absolute(path) {
+        give InputGuardResult { ok: false, status: DriverExitStatus.InvalidInput, message: "error[INPUT_PATH_OUTSIDE_PROJECT]: absolute source paths are not allowed: " + path };
+    }
+    give InputGuardResult { ok: true, status: DriverExitStatus.Ok, message: "" };
+}
+
+proc validate_source_limits(source_path: string, source_text: string) -> InputGuardResult {
+    let path_check: InputGuardResult = validate_source_path(source_path);
+    if not path_check.ok {
+        give path_check;
+    }
+    if source_text == "" {
+        give InputGuardResult { ok: false, status: DriverExitStatus.InvalidInput, message: "error[INPUT_EMPTY]: empty source input" };
+    }
+    if len(source_text) > LIMIT_FILE_SIZE_MAX_BYTES {
+        give InputGuardResult { ok: false, status: DriverExitStatus.InvalidInput, message: "error[LIMIT_FILE_SIZE_MAX]: source exceeds max bytes limit" };
+    }
+    if max_line_length(source_text) > LIMIT_TOKEN_SIZE_MAX_BYTES {
+        give InputGuardResult { ok: false, status: DriverExitStatus.InvalidInput, message: "error[LIMIT_TOKEN_SIZE_MAX]: token size exceeds max limit" };
+    }
+    let ast_depth: u64 = max_nesting_depth(source_text, "{", "}");
+    if ast_depth > LIMIT_AST_DEPTH_MAX {
+        give InputGuardResult { ok: false, status: DriverExitStatus.InvalidInput, message: "error[LIMIT_AST_DEPTH_MAX]: AST nesting depth exceeds max limit" };
+    }
+    let expr_depth: u64 = max_nesting_depth(source_text, "(", ")");
+    if expr_depth > LIMIT_EXPR_DEPTH_MAX {
+        give InputGuardResult { ok: false, status: DriverExitStatus.InvalidInput, message: "error[LIMIT_EXPR_DEPTH_MAX]: expression nesting depth exceeds max limit" };
+    }
+    if expr_depth > LIMIT_PARSER_RECURSION_MAX {
+        give InputGuardResult { ok: false, status: DriverExitStatus.InvalidInput, message: "error[LIMIT_PARSER_RECURSION_MAX]: parser recursion depth exceeds max limit" };
+    }
+    let import_depth: u64 = max_import_path_depth(source_text);
+    if import_depth > LIMIT_IMPORT_DEPTH_MAX {
+        give InputGuardResult { ok: false, status: DriverExitStatus.InvalidInput, message: "error[LIMIT_IMPORT_DEPTH_MAX]: import path depth exceeds max limit" };
+    }
+    let macro_markers: u64 = count_occurrences(source_text, "macro ") + count_occurrences(source_text, "!");
+    if macro_markers > LIMIT_MACRO_EXPANSION_MAX {
+        give InputGuardResult { ok: false, status: DriverExitStatus.InvalidInput, message: "error[LIMIT_MACRO_EXPANSION_MAX]: macro expansion budget exceeded" };
+    }
+    give InputGuardResult { ok: true, status: DriverExitStatus.Ok, message: "" };
+}
+
 proc invalid_hir_unit(source_path: string) -> HirUnit {
     give HirUnit {
         source_path: source_path,
@@ -597,6 +769,35 @@ proc lower_module_set_to_ir(artifacts: DriverModuleSetArtifacts, config: DriverC
 }
 
 proc compile_source_set_with_config(inputs: [DriverModuleInput], config: DriverCompileConfig) -> DriverBackendModuleSetResult {
+    if len(inputs) > LIMIT_MODULE_COUNT_MAX {
+        give DriverBackendModuleSetResult {
+            analysis: DriverModuleSetArtifacts { modules: [], valid: false },
+            config: config,
+            ir_unit: unit_with_state(unit_empty(target_from_name(config.target_name)), IrUnitState.Invalid),
+            codegen: CodegenResult {
+                target: config.backend_name,
+                assembly: "",
+                object_text: "",
+                object_format: "",
+                profile_name: config.profile_name,
+                section_count: 0,
+                diagnostic_count: 0,
+                native_toolchain_ready: false,
+                native_toolchain_summary: "",
+                instruction_selected: false,
+                registers_allocated: false,
+                object_ready: false,
+                errors: ["error[LIMIT_MODULE_COUNT_MAX]: module count exceeds max limit"],
+                diagnostics: [],
+                valid: false
+            },
+            artifact: artifact_create(1, "module-set-invalid-artifact", link_target_from_name(config.target_name)),
+            entry_symbol: "",
+            message: "error[LIMIT_MODULE_COUNT_MAX]: module count exceeds max limit",
+            diagnostics: [driver_diagnostic(DriverDiagnosticLevel.Error, "driver", "LIMIT_MODULE_COUNT_MAX", "module count exceeds max limit")],
+            valid: false
+        };
+    }
     let support_error: string = config_support_message(config);
     let analyzed: DriverModuleSetArtifacts = analyze_source_set(inputs);
     let ir0: IrUnit = lower_module_set_to_ir(analyzed, config);
@@ -805,8 +1006,9 @@ proc check_source(source_path: string, source_text: string) -> DriverCompileResu
 }
 
 proc check_source_with_config(source_path: string, source_text: string, config: DriverCompileConfig) -> DriverCompileResult {
-    if source_text == "" {
-        give empty_compile_result(DriverExitStatus.InvalidInput, "empty source input", false, config);
+    let guard: InputGuardResult = validate_source_limits(source_path, source_text);
+    if not guard.ok {
+        give empty_compile_result(guard.status, guard.message, false, config);
     }
     let support_error: string = config_support_message(config);
     if support_error != "" {
@@ -817,10 +1019,16 @@ proc check_source_with_config(source_path: string, source_text: string, config: 
     if not fe.valid {
         give frontend_compile_result(DriverExitStatus.FrontendFailure, "frontend failed", false, fe, config);
     }
+    if fe.token_count > LIMIT_DIAGNOSTICS_MAX {
+        give frontend_compile_result(DriverExitStatus.InvalidInput, "error[LIMIT_DIAGNOSTICS_MAX]: diagnostic budget exceeded during frontend", false, fe, config);
+    }
 
     let middle: MiddleOutput = middle_run_for_target(fe, target_from_name(config.target_name));
     if not middle.analysis.valid or not middle.hir.valid or not middle.mir.valid {
         give frontend_compile_result(DriverExitStatus.AnalysisFailure, "analysis failed", false, fe, config);
+    }
+    if middle.hir.symbol_count > LIMIT_SYMBOL_COUNT_MAX {
+        give frontend_compile_result(DriverExitStatus.InvalidInput, "error[LIMIT_SYMBOL_COUNT_MAX]: symbol budget exceeded", false, fe, config);
     }
 
     give frontend_compile_result(DriverExitStatus.Ok, "check pipeline completed", false, fe, config);
@@ -831,8 +1039,9 @@ proc compile_source(source_path: string, source_text: string) -> DriverCompileRe
 }
 
 proc compile_source_with_config(source_path: string, source_text: string, config: DriverCompileConfig) -> DriverCompileResult {
-    if source_text == "" {
-        give empty_compile_result(DriverExitStatus.InvalidInput, "empty source input", false, config);
+    let guard: InputGuardResult = validate_source_limits(source_path, source_text);
+    if not guard.ok {
+        give empty_compile_result(guard.status, guard.message, false, config);
     }
     let support_error: string = config_support_message(config);
     if support_error != "" {

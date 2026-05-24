@@ -1,0 +1,31 @@
+name: nightly-long-term-stability
+
+on:
+  schedule:
+    # Daily at 02:30 UTC
+    - cron: "30 2 * * *"
+  workflow_dispatch:
+
+jobs:
+  long-term-stability:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Build project
+        run: make build
+
+      - name: Run long-term stability suite
+        run: make long-term-stability-suite
+
+      - name: Upload long-term stability reports
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: long-term-stability-reports
+          path: |
+            build/reports/nightly.md
+            build/reports/benchmarks.json
+            build/reports/regressions.txt
+            build/reports/stress.txt
+          if-no-files-found: warn

@@ -228,6 +228,30 @@ cli-diagnostics-snapshots:
 test:
 	@toolchain/scripts/test/run.sh
 
+.PHONY: security-input-limits-smoke
+security-input-limits-smoke:
+	@bash tools/security_input_limits_smoke.sh
+
+.PHONY: sanitizers-maximal
+sanitizers-maximal:
+	@bash tools/sanitizers_maximal.sh
+
+.PHONY: release-engineering
+release-engineering:
+	@bash tools/release_engineering_maximal.sh
+
+.PHONY: version-compatibility-gate
+version-compatibility-gate:
+	@python3 tools/version_compatibility_gate.py
+
+.PHONY: migration-system-check
+migration-system-check:
+	@bash tools/migration_system_check.sh
+
+.PHONY: edition-system-check
+edition-system-check:
+	@bash tools/edition_system_check.sh
+
 .PHONY: quickstart-check
 quickstart-check:
 	@tools/quickstart_check.sh
@@ -691,6 +715,14 @@ diag-autofix-frequent:
 .PHONY: stress-alloc
 stress-alloc:
 	@tools/stress_alloc_examples.sh
+
+.PHONY: stress-maximal
+stress-maximal:
+	@python3 tools/compiler_stress_maximal.py --all --report build/reports/stress.txt
+
+.PHONY: long-term-stability-suite
+long-term-stability-suite:
+	@python3 tools/long_term_stability_suite.py
 
 .PHONY: core-projects
 core-projects:

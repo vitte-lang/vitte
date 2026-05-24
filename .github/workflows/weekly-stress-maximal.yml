@@ -1,0 +1,27 @@
+name: weekly-stress-maximal
+
+on:
+  schedule:
+    # Monday at 03:00 UTC
+    - cron: "0 3 * * 1"
+  workflow_dispatch:
+
+jobs:
+  stress-maximal:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Build project
+        run: make build
+
+      - name: Run stress maximal suite
+        run: make stress-maximal
+
+      - name: Upload stress report
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: stress-maximal-report
+          path: build/reports/stress.txt
+          if-no-files-found: error
