@@ -90,6 +90,11 @@ main.return=0
 - `proc name() -> int { give NAME }`
 - `proc main(args: list[string]) -> int { give <integer> }`
 - `proc main(args: list[string]) -> int { give NAME }`
+- `use <path>` / `share <path>` / `import <path>` at top level when
+  `const BOOTSTRAP_FULL_COMPILER: int = 1` is present
+- `proc main(args: list[string]) -> int { ... }` with local `let`, direct call
+  expressions, and `if` control flow when `BOOTSTRAP_FULL_COMPILER: int = 1`
+  is present
 - `export *`
 
 Only `version_text()` and `banner_text()` are currently materialized as compiler
@@ -101,6 +106,10 @@ lowering shape, but they are record-only in v1. They are not callable from the
 generated shell compiler and do not affect process behavior unless their value
 is used through `main.return`.
 
+When `BOOTSTRAP_FULL_COMPILER` is enabled, the richer `main` body is accepted as
+source coverage for the real compiler entry point, but v1 still lowers it to the
+same shell contract and keeps `main.return=0`.
+
 ## Non-Goals v1
 
 The v1 subset intentionally does not support:
@@ -108,8 +117,10 @@ The v1 subset intentionally does not support:
 - string escapes or embedded double quotes,
 - multi-line declarations or multi-line procedure signatures,
 - `bool`, list, map, user-defined, or composite constants,
-- procedure calls or expression evaluation,
-- statements other than a single supported `give` inside each procedure,
+- procedure calls or expression evaluation outside the guarded full-compiler
+  `main`,
+- statements other than a single supported `give` inside each procedure, except
+  for the guarded full-compiler `main`,
 - general-purpose Vitte parsing or semantic analysis.
 
 ## Invariants

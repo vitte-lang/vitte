@@ -47,9 +47,55 @@ proc error_text(message: string) -> Diagnostic {
     give diagnostic("error", "DRIVER_E_TEXT", "", 1, 1, message);
 }
 
+proc ansi_reset() -> string {
+    give "\x1b[0m";
+}
+
+proc ansi_bold() -> string {
+    give "\x1b[1m";
+}
+
+proc ansi_bright_red() -> string {
+    give "\x1b[91m";
+}
+
+proc ansi_yellow() -> string {
+    give "\x1b[33m";
+}
+
+proc ansi_blue() -> string {
+    give "\x1b[34m";
+}
+
+proc ansi_cyan() -> string {
+    give "\x1b[36m";
+}
+
+proc colorize_severity(severity: string) -> string {
+    let text: string = severity;
+
+    if severity == "fatal" or severity == "error" {
+        give ansi_bold() + ansi_bright_red() + text + ansi_reset();
+    }
+
+    if severity == "warning" {
+        give ansi_bold() + ansi_yellow() + text + ansi_reset();
+    }
+
+    if severity == "note" {
+        give ansi_blue() + text + ansi_reset();
+    }
+
+    if severity == "help" {
+        give ansi_cyan() + text + ansi_reset();
+    }
+
+    give text;
+}
+
 proc render_text(diagnostic0: Diagnostic) -> string {
     give "severity="
-        + diagnostic0.severity
+        + colorize_severity(diagnostic0.severity)
         + " code="
         + diagnostic0.code
         + " span="

@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Seed Diagnostics Surface</title>
+<meta name="description" content="Stage0 seed diagnostics contract for the shell seed and canonical Vitte seed source.">
+<link rel="icon" href="svg/logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="css/site.css?v=34fa1e8389">
+<link rel="stylesheet" href="css/print.css" media="print">
+<link rel="canonical" href="https://vitte-lang.org/seed_diagnostics.html">
+<meta property="og:title" content="Seed Diagnostics Surface">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://vitte-lang.org/seed_diagnostics.html">
+<meta name="twitter:card" content="summary">
+<link rel="alternate" hreflang="en" href="https://vitte-lang.org/seed_diagnostics.html">
+<link rel="alternate" hreflang="x-default" href="https://vitte-lang.org/seed_diagnostics.html">
+
+<link rel="preload" as="style" href="css/site.css?v=34fa1e8389">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; font-src 'self'; connect-src 'self';">
+</head>
+<body class="classic-doc">
+<a class="skip-link" href="#main-content">Skip to content</a>
+<div class="site-shell">
+<header class="site-header">
+<a class="site-brand" href="index.html"><img class="site-brand-mark" src="svg/logo.svg" alt="" width="32" height="32"><span>Vitte</span></a>
+<nav class="site-nav" aria-label="Primary"><ul class="nav-band"><li><a class="nav-chip" href="index.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="svg/sprite.svg#i-home"></use></svg><span>Welcome</span></a></li><li><a class="nav-chip" href="doc.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="svg/sprite.svg#i-docs"></use></svg><span>Documentation</span></a></li><li><a class="nav-chip" href="download.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="svg/sprite.svg#i-docs"></use></svg><span>Download</span></a></li><li><a class="nav-chip" href="source.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="svg/sprite.svg#i-docs"></use></svg><span>Source</span></a></li><li><a class="nav-chip" href="community.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="svg/sprite.svg#i-docs"></use></svg><span>Community</span></a></li><li><a class="nav-chip" href="news.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="svg/sprite.svg#i-news"></use></svg><span>News</span></a></li><li><a class="nav-chip" href="diagnostics.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="svg/sprite.svg#i-docs"></use></svg><span>Diagnostics</span></a></li><li><a class="nav-chip" href="suggestions.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="svg/sprite.svg#i-docs"></use></svg><span>Suggestions</span></a></li></ul></nav>
+</header>
+<main id="main-content" class="site-main">
+<article class="doc-content">
+<center>
+<h1>Seed Diagnostics Surface</h1>
+<p>Stage0 shell seed and canonical Vitte seed source now share a phase-oriented diagnostics contract.</p>
+</center>
+<hr>
+<h2>Required phases</h2>
+<p>Every seed diagnostic must declare one explicit phase:</p>
+<ul>
+<li><code>lexer</code></li>
+<li><code>parser</code></li>
+<li><code>ast_validation</code></li>
+<li><code>module_resolution</code></li>
+<li><code>symbol_resolution</code></li>
+<li><code>sema</code></li>
+<li><code>typeck</code></li>
+<li><code>borrowck</code></li>
+<li><code>mir_lowering</code></li>
+<li><code>mir_verification</code></li>
+<li><code>backend</code></li>
+<li><code>linker</code></li>
+<li><code>runtime_execution</code></li>
+</ul>
+<p>Generic phase-less bootstrap failures are outside the accepted diagnostics surface.</p>
+<h2>Lexer coverage</h2>
+<ul>
+<li><code>LEX_E_INVALID_CHAR</code></li>
+<li><code>LEX_E_UNTERMINATED_STRING</code></li>
+<li><code>LEX_E_INVALID_CHAR_LITERAL</code></li>
+<li><code>LEX_E_INVALID_ESCAPE</code></li>
+<li><code>LEX_E_INVALID_UNICODE</code></li>
+<li><code>LEX_E_INVALID_NUMBER</code></li>
+<li><code>LEX_E_UNTERMINATED_COMMENT</code></li>
+<li><code>LEX_E_TOKEN_TOO_LARGE</code></li>
+</ul>
+<p>The shell seed includes byte-oriented hints when they can be computed from the raw source bytes. The Vitte seed mirrors the same codes and phase split and is converging toward identical message wording.</p>
+<h2>Parser coverage</h2>
+<ul>
+<li><code>PARSE_E_TOPLEVEL_DECL_EXPECTED</code></li>
+<li><code>PARSE_E_INCOMPLETE_EXPR</code></li>
+<li><code>PARSE_E_UNCLOSED_BLOCK</code></li>
+<li><code>PARSE_E_MISSING_RPAREN</code></li>
+<li><code>PARSE_E_MISSING_COMMA</code></li>
+<li><code>PARSE_E_TYPE_EXPECTED</code></li>
+<li><code>PARSE_E_PATTERN_EXPECTED</code></li>
+<li><code>PARSE_E_BLOCK_EXPECTED</code></li>
+</ul>
+<p>The parser surface now carries expected token, found token, syntax context, and recovery status for the supported bootstrap subset.</p>
+<h2>Module and symbol coverage</h2>
+<p>Module resolution now reports import chain, tested paths, requester module, and a closest-name hint. Symbol resolution now reports current scope, active imports, closest symbol, and original declaration information when available.</p>
+<h2>Available surfaces</h2>
+<h3>Shell seed</h3>
+<p><code>toolchain/seed/vittec0.seed</code> exposes text diagnostics and JSON diagnostics with <code>pipeline_failed_at</code>, <code>primary_report</code>, and <code>phase_reports</code>.</p>
+<h3>Canonical Vitte seed</h3>
+<p><code>toolchain/seed/src/main.vit</code> now exposes:</p>
+<ul>
+<li><code>diag &lt;file&gt;</code></li>
+<li><code>diag-json &lt;file&gt;</code></li>
+<li><code>check &lt;file&gt;</code></li>
+<li><code>diagnostics_text_for_source(...)</code></li>
+<li><code>diagnostics_json_for_source(...)</code></li>
+</ul>
+<p>This Vitte surface reads a real file, analyzes it by phase, and renders a diagnostics JSON shape that is much closer to the shell seed surface.</p>
+<nav class="doc-pagination"><a href="diagnostics.html">← Previous</a><a href="news.html">Next →</a></nav>
+</article>
+</main>
+<footer class="site-footer">
+<p class="site-footer-path">seed_diagnostics.html</p>
+<p><a href="index.html">Back to home</a> · <a href="status-public.html">Public status</a></p>
+</footer>
+</div>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
