@@ -59,6 +59,15 @@ VITTE_STRICT_FAIL ?= 1
 VITTE_BRAIN_AUTOFIX_SAFE ?= 0
 DEPFILES     =
 KERNEL_TOOLS_DIR := target/kernel-tools
+MACOS_UNIVERSAL_DIR := target/universal
+MACOS_ARM64_DIR := target/macos-arm64
+MACOS_X86_64_DIR := target/macos-x86_64
+MACOS_PKG_DIR := target/macos-pkg
+MACOS_CC_WRAPPER_DIR := target/tooling
+MACOS_UNIVERSAL_SRC ?= src/vitte/compiler/main.vit
+MACOS_PKG_ENTRY := $(MACOS_PKG_DIR)/main.pkg.vit
+MACOS_PKG_COMPILER_ROOT := /usr/local/share/vitte/src/vitte/compiler
+MACOS_PKG_COMPILER_ENTRY := $(MACOS_PKG_COMPILER_ROOT)/main.vit
 
 # ------------------------------------------------------------
 # Default target
@@ -178,14 +187,16 @@ vitte-source-audit:
 		-path './.git' -prune -o \
 		-path './bin' -prune -o \
 		-path './build' -prune -o \
+		-path './.pkgstage' -prune -o \
 		-path './target' -prune -o \
+		-path './src/vitte/compiler/backends/runtime_c' -prune -o \
 		-type f \( -name '*.'c -o -name '*.'cc -o -name '*.'c'pp' -o -name '*.'cxx -o -name '*.'h -o -name '*.'h'pp' -o -name '*.'hxx \) -print | sort)"; \
 	if [ -n "$$bad" ]; then \
 		echo "[vitte-source-audit][error] non-Vitte source files remain in workspace:"; \
 		printf '%s\n' "$$bad"; \
 		exit 1; \
 	fi; \
-	echo "[vitte-source-audit] ok: workspace source is Vitte-only"
+	echo "[vitte-source-audit] ok: workspace source is Vitte-only outside approved native/runtime staging paths"
 
 vitte-legacy-text-audit:
 	@tools/ci_surface_legacy_audit.sh
@@ -570,12 +581,13 @@ bootstrap-verify: bootstrap-all
 	@bin/vittec1 --version
 	@bin/vittec --version
 	@bin/vitte --version
-	@bin/vittec0 check src/vitte/compiler/ir/ast.vit
-	@bin/vittec0 check src/vitte/compiler/ir/pipeline.vit
+	@bin/vittec0 check tests/bootstrap_native/main_proc.vit
+	@bin/vittec0 check tests/bootstrap_native/main_const_int.vit
 	@bin/vitte check src/vitte/compiler/tests/smoke.vit
-	@bin/vitte check src/vitte/compiler/driver/compiler.vit
+	@bin/vitte check src/vitte/compiler/ir/ast.vit
+	@bin/vitte check src/vitte/compiler/ir/pipeline.vit
 	@$(MAKE) --no-print-directory bootstrap-parity
-	@echo "[bootstrap-verify] versions + smoke + AST/IR checks ok"
+	@echo "[bootstrap-verify] versions + smoke + bootstrap-subset checks ok"
 
 .PHONY: bootstrap-native-contract
 bootstrap-native-contract: seed-verify bootstrap-source-coverage-check posix-seed-shell-check bootstrap-native-snapshots bootstrap-verify bootstrap-posix-smoke
@@ -1122,6 +1134,14 @@ ci-fast-compiler:
 stage-parity-structured:
 	@tools/stage_parity_structured.sh
 
+.PHONY: stage-parity-report-check
+stage-parity-report-check:
+	@python3 tools/stage_parity_report_check.py
+
+.PHONY: compiler-intrinsic-surface-audit
+compiler-intrinsic-surface-audit:
+	@python3 tools/compiler_intrinsic_surface_audit.py
+
 .PHONY: compiler-src-critical
 compiler-src-critical:
 	@tools/compile_all_compiler_files.sh
@@ -1321,6 +1341,14 @@ package-check:
 packages-check-all:
 	@tools/package_check_all.sh
 
+.PHONY: pkg-matrix
+pkg-matrix:
+	@tools/pkg_matrix.sh
+
+.PHONY: pkg-cli-integration
+pkg-cli-integration:
+	@tools/pkg_cli_integration.sh
+
 .PHONY: modules-perf-cache
 modules-perf-cache:
 	@tools/modules_cache_perf.sh tests/modules/mod_doctor/main.vit
@@ -1335,6 +1363,12 @@ packages-contract-snapshots-update:
 
 .PHONY: packages-gate
 packages-gate: package-layout-lint-strict packages-governance-lint no-std-lint module-naming-lint legacy-import-path-lint critical-runtime-matrix-lint new-public-packages-snapshots-lint modules-perf-cache packages-dependency-overlap-lint packages-contract-snapshots
+
+.PHONY: packages-only-ci
+packages-only-ci: packages-governance-lint packages-check-all pkg-matrix pkg-cli-integration
+
+.PHONY: packages-strict-ci
+packages-strict-ci: package-layout-lint-strict packages-governance-lint no-std-lint module-naming-lint packages-check-all pkg-matrix pkg-cli-integration
 
 .PHONY: modules-ci-strict
 modules-ci-strict: modules-tests modules-snapshots modules-contract-snapshots module-tree-lint module-naming-lint critical-module-contract-lint experimental-modules-lint public-modules-snapshots-lint modules-perf-cache legacy-import-path-lint migration-check modules-report
@@ -1565,12 +1599,55 @@ pkg-debian-install: pkg-debian
 	@sudo dpkg -i pkgout/vitte_$(PKG_VERSION)_$$(dpkg --print-architecture).deb
 
 .PHONY: pkg-macos
-pkg-macos:
-	@VERSION=$(PKG_VERSION) toolchain/scripts/package/make-macos-pkg.sh
+pkg-macos: macos-pkg-bin
+	@VERSION=$(PKG_VERSION) \
+		VITTE_BIN_OVERRIDE="$(CURDIR)/$(MACOS_PKG_DIR)/vitte" \
+		CHECKSUM_TARGET_BIN="$(CURDIR)/$(MACOS_PKG_DIR)/vitte" \
+		toolchain/scripts/package/make-macos-pkg.sh
+
+.PHONY: macos-pkg-entry
+macos-pkg-entry:
+	@$(MKDIR) "$(MACOS_PKG_DIR)"
+	@sed \
+		-e 's|const COMPILER_SOURCE_ROOT: string = ".*"|const COMPILER_SOURCE_ROOT: string = "$(MACOS_PKG_COMPILER_ROOT)"|' \
+		-e 's|const COMPILER_ENTRY_POINT: string = ".*"|const COMPILER_ENTRY_POINT: string = "$(MACOS_PKG_COMPILER_ENTRY)"|' \
+		"$(MACOS_UNIVERSAL_SRC)" > "$(MACOS_PKG_ENTRY)"
+
+.PHONY: macos-pkg-bin
+macos-pkg-bin: macos-pkg-entry
+	@uname -s | grep -qx 'Darwin' || { echo "[macos-pkg-bin][error] target requires macOS"; exit 1; }
+	@command -v cc >/dev/null 2>&1 || { echo "[macos-pkg-bin][error] missing cc"; exit 1; }
+	@test -x bin/vitte || $(MAKE) --no-print-directory bootstrap-all-legacy
+	@CC=cc bin/vitte build "$(MACOS_PKG_ENTRY)" -o "$(MACOS_PKG_DIR)/vitte"
+	@cp "$(MACOS_PKG_DIR)/vitte" "$(MACOS_PKG_DIR)/vittec"
+	@chmod 755 "$(MACOS_PKG_DIR)/vitte" "$(MACOS_PKG_DIR)/vittec"
+
+.PHONY: macos-universal-bin
+macos-universal-bin: macos-pkg-entry
+	@uname -s | grep -qx 'Darwin' || { echo "[macos-universal-bin][error] target requires macOS"; exit 1; }
+	@command -v lipo >/dev/null 2>&1 || { echo "[macos-universal-bin][error] missing lipo"; exit 1; }
+	@command -v cc >/dev/null 2>&1 || { echo "[macos-universal-bin][error] missing cc"; exit 1; }
+	@test -x bin/vitte || $(MAKE) --no-print-directory bootstrap-all-legacy
+	@test -f "$(MACOS_PKG_ENTRY)" || { echo "[macos-universal-bin][error] missing source $(MACOS_PKG_ENTRY)"; exit 1; }
+	@$(MKDIR) "$(MACOS_ARM64_DIR)" "$(MACOS_X86_64_DIR)" "$(MACOS_UNIVERSAL_DIR)" "$(MACOS_CC_WRAPPER_DIR)"
+	@printf '%s\n' '#!/usr/bin/env sh' 'exec cc -arch arm64 "$$@"' > "$(MACOS_CC_WRAPPER_DIR)/cc-arm64"
+	@printf '%s\n' '#!/usr/bin/env sh' 'exec cc -arch x86_64 "$$@"' > "$(MACOS_CC_WRAPPER_DIR)/cc-x86_64"
+	@chmod 755 "$(MACOS_CC_WRAPPER_DIR)/cc-arm64" "$(MACOS_CC_WRAPPER_DIR)/cc-x86_64"
+	@echo "[macos-universal-bin] building arm64"
+	@CC="$(CURDIR)/$(MACOS_CC_WRAPPER_DIR)/cc-arm64" bin/vitte build "$(MACOS_PKG_ENTRY)" -o "$(MACOS_ARM64_DIR)/vitte"
+	@echo "[macos-universal-bin] building x86_64"
+	@CC="$(CURDIR)/$(MACOS_CC_WRAPPER_DIR)/cc-x86_64" bin/vitte build "$(MACOS_PKG_ENTRY)" -o "$(MACOS_X86_64_DIR)/vitte"
+	@lipo -create -output "$(MACOS_UNIVERSAL_DIR)/vitte" "$(MACOS_ARM64_DIR)/vitte" "$(MACOS_X86_64_DIR)/vitte"
+	@chmod 755 "$(MACOS_UNIVERSAL_DIR)/vitte"
+	@lipo -info "$(MACOS_UNIVERSAL_DIR)/vitte"
 
 .PHONY: pkg-macos-universal
-pkg-macos-universal:
-	@echo "[pkg-macos-universal] retired in Vitte-only toolchain; use make pkg-macos"
+pkg-macos-universal: macos-universal-bin
+	@VERSION=$(PKG_VERSION) \
+		VITTE_BIN_OVERRIDE="$(CURDIR)/$(MACOS_UNIVERSAL_DIR)/vitte" \
+		CHECKSUM_TARGET_BIN="$(CURDIR)/$(MACOS_UNIVERSAL_DIR)/vitte" \
+		OUT_FILE_NAME="vitte-$(PKG_VERSION)-universal.pkg" \
+		toolchain/scripts/package/make-macos-pkg.sh
 
 .PHONY: pkg-macos-uninstall
 pkg-macos-uninstall:
@@ -1849,7 +1926,8 @@ help:
 	@echo "  make pkg-debian-audit audit generated Debian .deb content and largest files"
 	@echo "  make pkg-debian-install build and install Debian .deb locally via dpkg"
 	@echo "  make pkg-macos build macOS installer pkg (PKG_VERSION=$(PKG_VERSION))"
-	@echo "  make pkg-macos-universal build macOS universal installer pkg (vitte_03_2025_macOS_universal.pkg)"
+	@echo "  make macos-universal-bin build target/universal/vitte (arm64 + x86_64 via lipo)"
+	@echo "  make pkg-macos-universal build macOS universal installer pkg (vitte-$(PKG_VERSION)-universal.pkg)"
 	@echo "  make pkg-macos-uninstall build macOS uninstall pkg (PKG_VERSION=$(PKG_VERSION))"
 	@echo "  make release-check run build + core-release-gate + ci-fast + ci-completions + pkg build"
 	@echo "  make release-doctor run the snapshot/release readiness report suite"
