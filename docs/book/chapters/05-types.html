@@ -126,12 +126,22 @@
 <p>Reference: see the <code>Vitte Glossary</code> in <code>docs/book/glossary.html</code> and the <code>Editorial Checklist</code> in <code>docs/book/checklist.html</code>. Complement: <code>docs/book/classic-mistakes.html</code>.</p>
 <h2>5.1 Describe data with a structural type</h2>
 <p>A structural type groups together several named fields that form a single logical entity. It is no longer a question of "any two integers", but of a point in the plan with an explicit business meaning.</p>
+<p><strong>Vitte:</strong></p>
 <pre><code class="language-vit">form Point {
   x: int
   y: int
 }
 proc manhattan(p: Point) -&gt; int {
   give p.x + p.y
+}</code></pre>
+<p><strong>C Equivalent:</strong></p>
+<pre><code class="language-c">typedef struct {
+  int x;
+  int y;
+} Point;
+
+int manhattan(Point p) {
+  return p.x + p.y;
 }</code></pre>
 <p>Guided algorithmic reading:</p>
 <ol>
@@ -159,10 +169,22 @@ proc manhattan(p: Point) -&gt; int {
 </ul>
 <h2>5.2 Representing alternatives with a sum type</h2>
 <p>Some values ​​do not have a single possible form. A result can succeed, or it can fail. A parser can produce a value, or an error. The sum type is used precisely to encode these alternatives without ambiguity.</p>
+<p><strong>Vitte:</strong></p>
 <pre><code class="language-vit">pick Result {
   case Ok(value: int)
   case Err(code: int)
 }</code></pre>
+<p><strong>C Equivalent:</strong></p>
+<pre><code class="language-c">typedef enum { RESULT_OK, RESULT_ERR } ResultTag;
+
+typedef struct {
+  ResultTag tag;
+  union {
+    int value;  // for RESULT_OK
+    int code;   // for RESULT_ERR
+  } data;
+} Result;
+</code></pre>
 <p>Guided algorithmic reading:</p>
 <ol>
 <li>Input read: first identify the parameters and their type, these are the starting data for the calculation.</li>
@@ -189,6 +211,7 @@ proc manhattan(p: Point) -&gt; int {
 </ul>
 <h2>5.3 Processing a variant with <code>match</code></h2>
 <p>Once the sum type is defined, the correct reading consists of explicitly processing each variant. The <code>match</code> aligns flow control with the type structure.</p>
+<p><strong>Vitte:</strong></p>
 <pre><code class="language-vit">proc unwrap_or_zero(r: Result) -&gt; int {
 
   match r {
@@ -197,6 +220,18 @@ proc manhattan(p: Point) -&gt; int {
     otherwise { give 0 }
   }
 }</code></pre>
+<p><strong>C Equivalent:</strong></p>
+<pre><code class="language-c">int unwrap_or_zero(Result r) {
+  switch (r.tag) {
+    case RESULT_OK:
+      return r.data.value;
+    case RESULT_ERR:
+      return 0;
+    default:
+      return 0;
+  }
+}
+</code></pre>
 <p>Guided algorithmic reading:</p>
 <ol>
 <li>Input read: first identify the parameters and their type, these are the starting data for the calculation.</li>

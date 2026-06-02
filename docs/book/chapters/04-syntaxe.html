@@ -98,8 +98,13 @@
 </ol>
 <h2>4.1 Define a procedure and its output</h2>
 <p>A procedure always begins with an explicit promise: "if you give me these values, I will give you this type of result". In Vitte, this promise can be read in the signature. The reader does not have to guess the types or format of the return.</p>
+<p><strong>Vitte:</strong></p>
 <pre><code class="language-vit">proc add(a: int, b: int) -&gt; int {
   give a + b
+}</code></pre>
+<p><strong>C Equivalent:</strong></p>
+<pre><code class="language-c">int add(int a, int b) {
+  return a + b;
 }</code></pre>
 <p>Guided algorithmic reading:</p>
 <ol>
@@ -127,6 +132,7 @@
 </ul>
 <h2>4.2 Framing a value with tests</h2>
 <p>In most programs, bugs come less from the normal case than from the edges: negative values, overflows, unexpected entries. So a good habit is to protect the boundaries first, then leave the nominal case last.</p>
+<p><strong>Vitte:</strong></p>
 <pre><code class="language-vit">proc clamp01(v: int) -&gt; int {
 
   if v &lt; 0 { give 0 }
@@ -134,6 +140,12 @@
   if v &gt; 1 { give 1 }
 
   give v
+}</code></pre>
+<p><strong>C Equivalent:</strong></p>
+<pre><code class="language-c">int clamp01(int v) {
+  if (v &lt; 0) return 0;
+  if (v &gt; 1) return 1;
+  return v;
 }</code></pre>
 <p>Guided algorithmic reading:</p>
 <ol>
@@ -161,6 +173,7 @@
 </ul>
 <h2>4.3 Iterate with an explicit mutation</h2>
 <p>A loop becomes dangerous as soon as we no longer know exactly how the state is evolving. In Vitte, the mutation is explicit with <code>set</code>, which requires you to show in black and white the transition from one state to the next.</p>
+<p><strong>Vitte:</strong></p>
 <pre><code class="language-vit">proc count(n: int) -&gt; int {
   let i: int = 0
 
@@ -172,6 +185,19 @@
   }
 
   give i
+}</code></pre>
+<p><strong>C Equivalent:</strong></p>
+<pre><code class="language-c">int count(int n) {
+  int i = 0;
+  
+  /* Loop: controlled progression to the bound */
+  while (1) {
+    /* Stop bound: stops the loop explicitly */
+    if (i &gt;= n) break;
+    i = i + 1;
+  }
+  
+  return i;
 }</code></pre>
 <p>Guided algorithmic reading:</p>
 <ol>
@@ -234,6 +260,7 @@
 <li><code>docs/book/chapters/keywords/if.html</code>.</li>
 </ul>
 <h2>Extended Example</h2>
+<p><strong>Vitte:</strong></p>
 <pre><code class="language-vit">// Scenario syntaxe: execution complete et verifiable
 space demo/syntaxe
 
@@ -292,6 +319,68 @@ entry main at core/app {
   let p: ParseState = parse(t)
 
   return to_exit(p)
+}</code></pre>
+<p><strong>C Equivalent:</strong></p>
+<pre><code class="language-c">#include &lt;stdint.h&gt;
+
+typedef struct {
+  int bytes;
+  int lines;
+  int tokens_hint;
+} SourceUnit;
+
+typedef enum { PARSED, FAILED } ParseStateTag;
+
+typedef struct {
+  ParseStateTag tag;
+  union {
+    int nodes;  // for PARSED
+    int code;   // for FAILED
+  } data;
+} ParseState;
+
+/* Scan: transform raw input into exploitable signal */
+int scan(SourceUnit u) {
+  if (u.bytes &lt;= 0) return 0;
+  if (u.lines &lt;= 0) return 0;
+  return (u.tokens_hint + u.lines);
+}
+
+/* Parse: build stable syntactic state */
+ParseState parse(int token_count) {
+  if (token_count == 0) {
+    return (ParseState){.tag = FAILED, .data.code = 101};
+  }
+  if (token_count &lt; 4) {
+    return (ParseState){.tag = FAILED, .data.code = 102};
+  }
+  return (ParseState){.tag = PARSED, .data.nodes = token_count};
+}
+
+int validate_structure(int nodes) {
+  if (nodes &lt;= 0) return 201;
+  if (nodes &gt; 200000) return 202;
+  return 0;
+}
+
+/* Final conversion to exit code */
+int to_exit(ParseState p) {
+  if (p.tag == PARSED) {
+    int v = validate_structure(p.data.nodes);
+    if (v != 0) return v;
+    return 0;
+  } else {  // FAILED
+    return p.data.code;
+  }
+  return 70;
+}
+
+/* Scenario entry point */
+int main(void) {
+  SourceUnit u = {120, 12, 18};
+  int t = scan(u);
+  ParseState p = parse(t);
+  return to_exit(p);
 }</code></pre>
 <h2>Detailed explanation of the big block</h2>
 <p>This large block shows an entire program, not an isolated extract: we follow the flow from start to finish.</p>
