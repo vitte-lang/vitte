@@ -55,9 +55,14 @@ log "stage1    = $STAGE1_DIR"
 log "running stage0 compatibility checks"
 
 check_files="$STAGE1_DIR/src/main.vit"
+TMP_COMPAT_DIR="${TMPDIR:-/tmp}/vitte-stage1-compat.$$"
+trap 'rm -rf "$TMP_COMPAT_DIR"' EXIT HUP INT TERM
+mkdir -p "$TMP_COMPAT_DIR"
 
 for src in $check_files; do
-    "$STAGE0_BIN" check "$src" || die "stage0 compatibility failed: $src"
+    out="$TMP_COMPAT_DIR/$(basename "$src").native"
+    "$STAGE0_BIN" build-native --src "$src" --out "$out" || die "stage0 compatibility failed: $src"
+    [ -x "$out" ] || die "stage0 compatibility did not produce artifact: $src"
 done
 
 log "building vittec1 from Vitte source via vittec0"
@@ -74,5 +79,8 @@ chmod +x "$STAGE1_BIN"
 log "verifying vittec1"
 
 "$BIN_DIR/vittec1" --version || die "vittec1 verification failed"
+
+rm -rf "$TMP_COMPAT_DIR"
+trap - EXIT HUP INT TERM
 
 log "stage1 completed successfully"

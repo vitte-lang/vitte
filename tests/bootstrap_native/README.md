@@ -13,8 +13,8 @@ integer procedure lowering, not callable commands in generated shell compilers.
 ## IR snapshots
 
 `*.ir.must` files pin the deterministic `native_ir_v1` text emitted by
-`dump-native-ir`. They cover the stage2 compiler entry and each accepted
-bootstrap-native fixture.
+`dump-native-ir`. They cover the real compiler entry, the stage1/stage2
+bootstrap entries, and each accepted bootstrap-native fixture.
 
 `stage2.v2.ir.must` pins the current optional `native_ir_v2` additive contract.
 The v1 and v2 contracts are validated independently.
@@ -27,7 +27,7 @@ location, and human-facing reason without depending on incidental shell output.
 
 ## CLI snapshots
 
-`cli.*.err.must`, `parse.stage2.must`, `check.stage2.must`, and
+`cli.*.err.must`, `parse.stage2.must`, `check.stage2.out.must`, `check.stage2.must`, and
 `check.*.err.must` pin command-surface behavior for missing arguments,
 unsupported bootstrap commands, parse parity output, and `check` success/failure
 behavior.

@@ -5,8 +5,8 @@
 - `docs/book/compiler-stdlib-contract.html`
 
 ## Example projects
-- `examples/hello.vit`
-- `examples/modules/main.vit`
+- `tests/bootstrap_native/native_user_main.vit`
+- `src/vitte/compiler/tests/smoke.vit`
 
 ## Troubleshooting guide
 - `docs/book/chapters/31-build-errors.html`

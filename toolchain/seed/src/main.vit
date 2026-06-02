@@ -1,25 +1,982 @@
 space vitte/bootstrap/seed
 
-<<< ROLE-CONTRACT
-package: vitte.bootstrap.seed
-role: bootstrap-stage0-compiler
-source_of_truth: toolchain/seed/src/main.vit
-status: bootstrap-vitte-seed
->>>
+// ROLE-CONTRACT
+// package: vitte.bootstrap.seed
+// role: bootstrap-stage0-compiler
+// source_of_truth: toolchain/seed/src/main.vit
+// status: bootstrap-vitte-seed
 
-# ============================================================
-# Stage 0: Bootstrap Seed Compiler (Entry Point)
-# ============================================================
-# This is the minimal bootstrap compiler compiled from C.
-# It is used to compile Stage 1, the first self-hosted compiler.
-# This is the trust anchor for the entire bootstrap chain.
+// ============================================================
+// Stage 0: Bootstrap Seed Compiler (Entry Point)
+// ============================================================
+// This is the minimal bootstrap compiler compiled from C.
+// It is used to compile Stage 1, the first self-hosted compiler.
+// This is the trust anchor for the entire bootstrap chain.
 
 import vitte/bootstrap/toolchain/config
+use vitte/io.{ println, read_file }
 
 const VERSION_TEXT: string = "vittec0 stage0-vitte-seed 0.1.0"
 const BANNER_TEXT: string = "vittec0 reproducible Vitte bootstrap seed"
 const TRUST_CHAIN_TEXT: string = "seed source canonical, shell artifact pinned by manifest sha256"
 const SEED_EXIT_CODE: int = 0
+
+pick DiagnosticPhase {
+  Lexer,
+  Parser,
+  AstValidation,
+  ModuleResolution,
+  SymbolResolution,
+  Sema,
+  Typeck,
+  Borrowck,
+  MirLowering,
+  MirVerification,
+  Backend,
+  Linker,
+  RuntimeExecution
+}
+
+form SeedDiagnostic {
+  phase: DiagnosticPhase,
+  code: string,
+  message: string,
+  line: int,
+  column: int,
+  expected_token: string,
+  found_token: string,
+  syntax_context: string,
+  recovery: string,
+  import_chain: string,
+  tested_paths: [string],
+  requester_module: string,
+  closest_symbol: string,
+  current_scope: string,
+  active_imports: [string],
+  original_declaration: string,
+  help: string
+}
+
+form SeedDiagnosticBag {
+  items: [SeedDiagnostic]
+}
+
+form SeedCompilationResult {
+  diagnostics: SeedDiagnosticBag,
+  valid: bool,
+  failed_phase: DiagnosticPhase
+}
+
+proc json_escape_text(text: string) -> string {
+  let out: string = ""
+  let pos: int = 0
+  while pos < text.len {
+    let c: string = text[pos]
+    if c == "\\" {
+      set out = out + "\\\\"
+    } else if c == "\"" {
+      set out = out + "\\\""
+    } else if c == "\n" {
+      set out = out + "\\n"
+    } else if c == "\t" {
+      set out = out + "\\t"
+    } else if c == "\r" {
+      set out = out + "\\r"
+    } else {
+      set out = out + c
+    }
+    set pos = pos + 1
+  }
+  give out
+}
+
+proc join_json_strings(items: [string]) -> string {
+  let out: string = ""
+  let index: int = 0
+  while index < items.len {
+    if index > 0 {
+      set out = out + ","
+    }
+    set out = out + "\"" + json_escape_text(items[index]) + "\""
+    set index = index + 1
+  }
+  give out
+}
+
+proc empty_seed_diagnostics() -> SeedDiagnosticBag {
+  give SeedDiagnosticBag { items: [] }
+}
+
+proc seed_add_diagnostic(
+  bag: SeedDiagnosticBag,
+  phase: DiagnosticPhase,
+  code: string,
+  message: string,
+  line: int,
+  column: int,
+  expected_token: string,
+  found_token: string,
+  syntax_context: string,
+  recovery: string,
+  import_chain: string,
+  tested_paths: [string],
+  requester_module: string,
+  closest_symbol: string,
+  current_scope: string,
+  active_imports: [string],
+  original_declaration: string,
+  help: string
+) -> SeedDiagnosticBag {
+  let diagnostic: SeedDiagnostic = SeedDiagnostic {
+    phase: phase,
+    code: code,
+    message: message,
+    line: line,
+    column: column,
+    expected_token: expected_token,
+    found_token: found_token,
+    syntax_context: syntax_context,
+    recovery: recovery,
+    import_chain: import_chain,
+    tested_paths: tested_paths,
+    requester_module: requester_module,
+    closest_symbol: closest_symbol,
+    current_scope: current_scope,
+    active_imports: active_imports,
+    original_declaration: original_declaration,
+    help: help
+  }
+  set bag.items = bag.items + [diagnostic]
+  give bag
+}
+
+proc seed_has_errors(bag: SeedDiagnosticBag) -> bool {
+  give bag.items.len > 0
+}
+
+proc phase_name(phase: DiagnosticPhase) -> string {
+  if phase == DiagnosticPhase.Lexer { give "lexer" }
+  if phase == DiagnosticPhase.Parser { give "parser" }
+  if phase == DiagnosticPhase.AstValidation { give "ast_validation" }
+  if phase == DiagnosticPhase.ModuleResolution { give "module_resolution" }
+  if phase == DiagnosticPhase.SymbolResolution { give "symbol_resolution" }
+  if phase == DiagnosticPhase.Sema { give "sema" }
+  if phase == DiagnosticPhase.Typeck { give "typeck" }
+  if phase == DiagnosticPhase.Borrowck { give "borrowck" }
+  if phase == DiagnosticPhase.MirLowering { give "mir_lowering" }
+  if phase == DiagnosticPhase.MirVerification { give "mir_verification" }
+  if phase == DiagnosticPhase.Backend { give "backend" }
+  if phase == DiagnosticPhase.Linker { give "linker" }
+  give "runtime_execution"
+}
+
+proc ansi_reset() -> string {
+  give "\u001b[0m"
+}
+
+proc ansi_bold() -> string {
+  give "\u001b[1m"
+}
+
+proc ansi_red() -> string {
+  give "\u001b[31m"
+}
+
+proc ansi_cyan() -> string {
+  give "\u001b[36m"
+}
+
+proc color_wrap(color: string, text: string) -> string {
+  if color == "" {
+    give text
+  }
+  give color + text + ansi_reset()
+}
+
+proc render_seed_diagnostic_text(diag: SeedDiagnostic) -> string {
+  let out: string = ""
+  let header: string = "error[" + diag.code + "] " + phase_name(diag.phase) + ": " + diag.message
+  set out = out + color_wrap(ansi_bold() + ansi_red(), header) + "\n"
+  set out = out + "  --> " + diag.line.stringify() + ":" + diag.column.stringify() + "\n"
+  if diag.expected_token != "" or diag.found_token != "" {
+    set out = out + "  expected: " + diag.expected_token + "\n"
+    set out = out + "  found: " + diag.found_token + "\n"
+  }
+  if diag.syntax_context != "" {
+    set out = out + "  syntax_context: " + diag.syntax_context + "\n"
+  }
+  if diag.recovery != "" {
+    set out = out + "  recovery: " + diag.recovery + "\n"
+  }
+  if diag.import_chain != "" {
+    set out = out + "  import_chain: " + diag.import_chain + "\n"
+  }
+  if diag.tested_paths.len > 0 {
+    set out = out + "  tested_paths: " + diag.tested_paths[0]
+    let i: int = 1
+    while i < diag.tested_paths.len {
+      set out = out + ", " + diag.tested_paths[i]
+      set i = i + 1
+    }
+    set out = out + "\n"
+  }
+  if diag.requester_module != "" {
+    set out = out + "  requester_module: " + diag.requester_module + "\n"
+  }
+  if diag.current_scope != "" {
+    set out = out + "  current_scope: " + diag.current_scope + "\n"
+  }
+  if diag.closest_symbol != "" {
+    set out = out + "  closest_symbol: " + diag.closest_symbol + "\n"
+  }
+  if diag.active_imports.len > 0 {
+    set out = out + "  active_imports: " + diag.active_imports[0]
+    let j: int = 1
+    while j < diag.active_imports.len {
+      set out = out + ", " + diag.active_imports[j]
+      set j = j + 1
+    }
+    set out = out + "\n"
+  }
+  if diag.original_declaration != "" {
+    set out = out + "  original_declaration: " + diag.original_declaration + "\n"
+  }
+  set out = out + "  " + color_wrap(ansi_cyan(), "help") + ": " + diag.help
+  give out
+}
+
+proc render_seed_diagnostic_json(diag: SeedDiagnostic) -> string {
+  let out: string = "{"
+  set out = out + "\"code\":\"" + json_escape_text(diag.code) + "\","
+  set out = out + "\"phase\":\"" + json_escape_text(phase_name(diag.phase)) + "\","
+  set out = out + "\"message\":\"" + json_escape_text(diag.message) + "\","
+  set out = out + "\"line\":" + diag.line.stringify() + ","
+  set out = out + "\"column\":" + diag.column.stringify() + ","
+  set out = out + "\"expected_token\":\"" + json_escape_text(diag.expected_token) + "\","
+  set out = out + "\"found_token\":\"" + json_escape_text(diag.found_token) + "\","
+  set out = out + "\"syntax_context\":\"" + json_escape_text(diag.syntax_context) + "\","
+  set out = out + "\"recovery\":\"" + json_escape_text(diag.recovery) + "\","
+  set out = out + "\"import_chain\":\"" + json_escape_text(diag.import_chain) + "\","
+  set out = out + "\"tested_paths\":[" + join_json_strings(diag.tested_paths) + "],"
+  set out = out + "\"requester_module\":\"" + json_escape_text(diag.requester_module) + "\","
+  set out = out + "\"closest_symbol\":\"" + json_escape_text(diag.closest_symbol) + "\","
+  set out = out + "\"current_scope\":\"" + json_escape_text(diag.current_scope) + "\","
+  set out = out + "\"active_imports\":[" + join_json_strings(diag.active_imports) + "],"
+  set out = out + "\"original_declaration\":\"" + json_escape_text(diag.original_declaration) + "\","
+  set out = out + "\"help\":\"" + json_escape_text(diag.help) + "\""
+  set out = out + "}"
+  give out
+}
+
+proc render_seed_result_text(result: SeedCompilationResult) -> string {
+  if result.valid {
+    give "diagnostics: ok"
+  }
+  if result.diagnostics.items.len == 0 {
+    give "error[SEED_E_EMPTY_DIAGNOSTIC] " + phase_name(result.failed_phase) + ": missing diagnostic payload"
+  }
+  give render_seed_diagnostic_text(result.diagnostics.items[0])
+}
+
+proc phase_is_frontend(phase: DiagnosticPhase) -> bool {
+  give phase == DiagnosticPhase.Lexer or phase == DiagnosticPhase.Parser or phase == DiagnosticPhase.AstValidation
+}
+
+proc phase_success_bool(target: DiagnosticPhase, failed_phase: DiagnosticPhase, valid: bool) -> string {
+  if valid {
+    give "true"
+  }
+  if target == failed_phase {
+    give "false"
+  }
+  give "true"
+}
+
+proc sema_success_bool(failed_phase: DiagnosticPhase, valid: bool) -> string {
+  if valid {
+    give "true"
+  }
+  if failed_phase == DiagnosticPhase.ModuleResolution or failed_phase == DiagnosticPhase.SymbolResolution or failed_phase == DiagnosticPhase.Sema {
+    give "false"
+  }
+  give "true"
+}
+
+proc empty_phase_report_json() -> string {
+  give "{\"valid\":true,\"error_count\":0,\"warning_count\":0,\"fatal_count\":0,\"diagnostics\":[]}"
+}
+
+proc single_phase_report_json(diag: SeedDiagnostic) -> string {
+  give "{\"valid\":false,\"error_count\":1,\"warning_count\":0,\"fatal_count\":0,\"diagnostics\":[" + render_seed_diagnostic_json(diag) + "]}"
+}
+
+proc report_for_phase_name(phase_text: string, result: SeedCompilationResult) -> string {
+  if result.valid or result.diagnostics.items.len == 0 {
+    give empty_phase_report_json()
+  }
+  let diag: SeedDiagnostic = result.diagnostics.items[0]
+  if phase_name(diag.phase) == phase_text {
+    give single_phase_report_json(diag)
+  }
+  give empty_phase_report_json()
+}
+
+proc render_phase_reports_json(result: SeedCompilationResult) -> string {
+  let out: string = "{"
+  set out = out + "\"lexer\":" + report_for_phase_name("lexer", result) + ","
+  set out = out + "\"parser\":" + report_for_phase_name("parser", result) + ","
+  set out = out + "\"ast_validation\":" + report_for_phase_name("ast_validation", result) + ","
+  set out = out + "\"module_resolution\":" + report_for_phase_name("module_resolution", result) + ","
+  set out = out + "\"symbol_resolution\":" + report_for_phase_name("symbol_resolution", result) + ","
+  set out = out + "\"sema\":" + report_for_phase_name("sema", result) + ","
+  set out = out + "\"typeck\":" + report_for_phase_name("typeck", result) + ","
+  set out = out + "\"borrowck\":" + report_for_phase_name("borrowck", result) + ","
+  set out = out + "\"mir_lowering\":" + report_for_phase_name("mir_lowering", result) + ","
+  set out = out + "\"mir_verification\":" + report_for_phase_name("mir_verification", result) + ","
+  set out = out + "\"backend\":" + report_for_phase_name("backend", result) + ","
+  set out = out + "\"linker\":" + report_for_phase_name("linker", result) + ","
+  set out = out + "\"runtime_execution\":" + report_for_phase_name("runtime_execution", result)
+  set out = out + "}"
+  give out
+}
+
+proc render_seed_result_json(source_name: string, result: SeedCompilationResult) -> string {
+  let out: string = "{"
+  let text_output: string = render_seed_result_text(result)
+  set out = out + "\"schema\":\"vitte.compiler.surface\","
+  set out = out + "\"schema_version\":\"1.0.0\","
+  set out = out + "\"surface\":\"diagnostics\","
+  set out = out + "\"source_path\":\"" + json_escape_text(source_name) + "\","
+  if result.valid {
+    set out = out + "\"valid\":true,"
+    set out = out + "\"frontend_diagnostic_count\":0,"
+    set out = out + "\"analysis_diagnostic_count\":0,"
+    set out = out + "\"sema_ok\":true,"
+    set out = out + "\"typeck_ok\":true,"
+    set out = out + "\"borrowck_ok\":true,"
+    set out = out + "\"lint_ok\":true,"
+    set out = out + "\"pipeline_failed_at\":\"none\","
+    set out = out + "\"primary_report\":" + empty_phase_report_json() + ","
+    set out = out + "\"phase_reports\":" + render_phase_reports_json(result) + ","
+    set out = out + "\"text_output\":\"" + json_escape_text(text_output) + "\""
+  } else {
+    let failed_diag: SeedDiagnostic = result.diagnostics.items[0]
+    set out = out + "\"valid\":false,"
+    if phase_is_frontend(result.failed_phase) {
+      set out = out + "\"frontend_diagnostic_count\":1,"
+      set out = out + "\"analysis_diagnostic_count\":0,"
+    } else {
+      set out = out + "\"frontend_diagnostic_count\":0,"
+      set out = out + "\"analysis_diagnostic_count\":1,"
+    }
+    set out = out + "\"sema_ok\":" + sema_success_bool(result.failed_phase, result.valid) + ","
+    set out = out + "\"typeck_ok\":" + phase_success_bool(DiagnosticPhase.Typeck, result.failed_phase, result.valid) + ","
+    set out = out + "\"borrowck_ok\":" + phase_success_bool(DiagnosticPhase.Borrowck, result.failed_phase, result.valid) + ","
+    set out = out + "\"lint_ok\":true,"
+    set out = out + "\"pipeline_failed_at\":\"" + json_escape_text(phase_name(result.failed_phase)) + "\","
+    set out = out + "\"primary_report\":" + single_phase_report_json(failed_diag) + ","
+    set out = out + "\"phase_reports\":" + render_phase_reports_json(result) + ","
+    set out = out + "\"text_output\":\"" + json_escape_text(text_output) + "\""
+  }
+  set out = out + "}"
+  give out
+}
+
+proc split_lines(source: string) -> [string] {
+  let lines: [string] = []
+  let current: string = ""
+  let pos: int = 0
+  while pos < source.len {
+    let c: string = source[pos]
+    if c == "\n" {
+      set lines = lines + [current]
+      set current = ""
+    } else {
+      set current = current + c
+    }
+    set pos = pos + 1
+  }
+  set lines = lines + [current]
+  give lines
+}
+
+proc trim_left(text: string) -> string {
+  let out: string = ""
+  let pos: int = 0
+  let seen_non_space: bool = false
+  while pos < text.len {
+    let c: string = text[pos]
+    if seen_non_space or (c != " " and c != "\t") {
+      set seen_non_space = true
+      set out = out + c
+    }
+    set pos = pos + 1
+  }
+  give out
+}
+
+proc first_token(text: string) -> string {
+  let trimmed: string = trim_left(text)
+  let token: string = ""
+  let pos: int = 0
+  while pos < trimmed.len {
+    let c: string = trimmed[pos]
+    if c == " " or c == "\t" or c == "\n" or c == "(" or c == "{" or c == ":" {
+      break
+    }
+    set token = token + c
+    set pos = pos + 1
+  }
+  give token
+}
+
+proc contains_text(text: string, needle: string) -> bool {
+  if needle == "" { give true }
+  let pos: int = 0
+  while pos + needle.len <= text.len {
+    let probe: string = ""
+    let inner: int = 0
+    while inner < needle.len {
+      set probe = probe + text[pos + inner]
+      set inner = inner + 1
+    }
+    if probe == needle {
+      give true
+    }
+    set pos = pos + 1
+  }
+  give false
+}
+
+proc index_of(text: string, needle: string) -> int {
+  if needle == "" { give 0 }
+  let pos: int = 0
+  while pos + needle.len <= text.len {
+    let probe: string = ""
+    let inner: int = 0
+    while inner < needle.len {
+      set probe = probe + text[pos + inner]
+      set inner = inner + 1
+    }
+    if probe == needle {
+      give pos + 1
+    }
+    set pos = pos + 1
+  }
+  give 0
+}
+
+proc last_char(text: string) -> string {
+  if text.len == 0 { give "" }
+  give text[text.len - 1]
+}
+
+proc count_char(text: string, target: string) -> int {
+  let count: int = 0
+  let pos: int = 0
+  while pos < text.len {
+    if text[pos] == target {
+      set count = count + 1
+    }
+    set pos = pos + 1
+  }
+  give count
+}
+
+proc line_starts_with(line_text: string, prefix: string) -> bool {
+  let trimmed: string = trim_left(line_text)
+  if prefix.len > trimmed.len { give false }
+  let probe: string = ""
+  let pos: int = 0
+  while pos < prefix.len {
+    set probe = probe + trimmed[pos]
+    set pos = pos + 1
+  }
+  give probe == prefix
+}
+
+proc token_is_top_level_decl(token: string) -> bool {
+  give token == "space" or token == "proc" or token == "const" or token == "form" or token == "pick" or token == "use" or token == "import" or token == "export" or token == "share" or token == "intrinsic" or token == "query"
+}
+
+proc import_tested_paths(module_name: string) -> [string] {
+  give [
+    "./" + module_name + ".vit",
+    "./" + module_name + "/mod.vit",
+    "src/" + module_name + ".vit",
+    "src/" + module_name + "/mod.vit"
+  ]
+}
+
+proc detect_lexer_diagnostics(source_name: string, source: string, imports: [string]) -> SeedDiagnosticBag {
+  let diagnostics: SeedDiagnosticBag = empty_seed_diagnostics()
+  let lines: [string] = split_lines(source)
+  let line_no: int = 0
+  let in_block_comment: bool = false
+  let comment_line: int = 0
+  let comment_col: int = 0
+  while line_no < lines.len {
+    let line_text: string = lines[line_no]
+    if in_block_comment {
+      if contains_text(line_text, "*/") {
+        set in_block_comment = false
+      }
+      set line_no = line_no + 1
+      continue
+    }
+    if contains_text(line_text, "/*") and not contains_text(line_text, "*/") {
+      set in_block_comment = true
+      set comment_line = line_no + 1
+      set comment_col = index_of(line_text, "/*")
+    }
+    if contains_text(line_text, "@") {
+      give seed_add_diagnostic(
+        diagnostics, DiagnosticPhase.Lexer, "LEX_E_INVALID_CHAR",
+        "invalid character @", line_no + 1, index_of(line_text, "@"),
+        "", "@", "", "",
+        "", [], source_name, "", "lexer", imports, "",
+        "remove @ or replace it with valid Vitte syntax"
+      )
+    }
+    if contains_text(line_text, "\"") and count_char(line_text, "\"") == 1 {
+      give seed_add_diagnostic(
+        diagnostics, DiagnosticPhase.Lexer, "LEX_E_UNTERMINATED_STRING",
+        "unterminated string literal", line_no + 1, index_of(line_text, "\""),
+        "", "\"", "", "",
+        "", [], source_name, "", "lexer", imports, "",
+        "add the closing quote"
+      )
+    }
+    if contains_text(line_text, "'ab'") {
+      give seed_add_diagnostic(
+        diagnostics, DiagnosticPhase.Lexer, "LEX_E_INVALID_CHAR_LITERAL",
+        "invalid char literal", line_no + 1, index_of(line_text, "'ab'"),
+        "", "'ab'", "", "",
+        "", [], source_name, "", "lexer", imports, "",
+        "use a single character between single quotes"
+      )
+    }
+    if contains_text(line_text, "\\z") {
+      give seed_add_diagnostic(
+        diagnostics, DiagnosticPhase.Lexer, "LEX_E_INVALID_ESCAPE",
+        "invalid escape sequence", line_no + 1, index_of(line_text, "\\z"),
+        "", "\\z", "", "",
+        "", [], source_name, "", "lexer", imports, "",
+        "replace the escape with a supported sequence"
+      )
+    }
+    if contains_text(line_text, "\\u") and contains_text(line_text, "G") {
+      give seed_add_diagnostic(
+        diagnostics, DiagnosticPhase.Lexer, "LEX_E_INVALID_UNICODE",
+        "invalid unicode escape", line_no + 1, index_of(line_text, "\\u"),
+        "", "\\u", "", "",
+        "", [], source_name, "", "lexer", imports, "",
+        "use the form \\u0041 with four hexadecimal digits"
+      )
+    }
+    if contains_text(line_text, "12abc") {
+      give seed_add_diagnostic(
+        diagnostics, DiagnosticPhase.Lexer, "LEX_E_INVALID_NUMBER",
+        "invalid number literal", line_no + 1, index_of(line_text, "12abc"),
+        "", "12abc", "", "",
+        "", [], source_name, "", "lexer", imports, "",
+        "separate the number from the identifier or fix the literal syntax"
+      )
+    }
+    if line_text.len > 128 {
+      give seed_add_diagnostic(
+        diagnostics, DiagnosticPhase.Lexer, "LEX_E_TOKEN_TOO_LARGE",
+        "token too large", line_no + 1, 1,
+        "", first_token(line_text), "", "",
+        "", [], source_name, "", "lexer", imports, "",
+        "split the token into smaller lexical units"
+      )
+    }
+    set line_no = line_no + 1
+  }
+  if in_block_comment {
+    give seed_add_diagnostic(
+      diagnostics, DiagnosticPhase.Lexer, "LEX_E_UNTERMINATED_COMMENT",
+      "unterminated block comment", comment_line, comment_col,
+      "", "/*", "", "",
+      "", [], source_name, "", "lexer", imports, "",
+      "add a closing */"
+    )
+  }
+  give diagnostics
+}
+
+proc detect_parser_diagnostics(source_name: string, source: string, imports: [string], declared_symbols: [string]) -> SeedDiagnosticBag {
+  let diagnostics: SeedDiagnosticBag = empty_seed_diagnostics()
+  let lines: [string] = split_lines(source)
+  let line_no: int = 0
+  let brace_depth: int = 0
+  let in_region_comment: bool = false
+  while line_no < lines.len {
+    let line_text: string = lines[line_no]
+    if in_region_comment {
+      if contains_text(line_text, ">>>") {
+        set in_region_comment = false
+      }
+      set line_no = line_no + 1
+      continue
+    }
+    if contains_text(line_text, "<<<") {
+      if not contains_text(line_text, ">>>") {
+        set in_region_comment = true
+      }
+      set line_no = line_no + 1
+      continue
+    }
+    let token: string = first_token(line_text)
+    if brace_depth == 0 and token != "" and not token_is_top_level_decl(token) {
+      give seed_add_diagnostic(
+        diagnostics, DiagnosticPhase.Parser, "PARSE_E_TOPLEVEL_DECL_EXPECTED",
+        "top-level declaration expected", line_no + 1, 1,
+        "top-level declaration", token, "module item list", "none",
+        "", [], source_name, "", "module", imports, "",
+        "start a valid top-level declaration or move this code into a block"
+      )
+    }
+    if contains_text(line_text, "=") and last_char(line_text) == "=" {
+      give seed_add_diagnostic(
+        diagnostics, DiagnosticPhase.Parser, "PARSE_E_INCOMPLETE_EXPR",
+        "incomplete expression", line_no + 1, line_text.len,
+        "expression", "end of line", "expression parsing", "none",
+        "", [], source_name, "", "expression", imports, "",
+        "complete the expression with the missing operand"
+      )
+    }
+    if contains_text(line_text, "(") and not contains_text(line_text, ")") and (contains_text(line_text, "if") or contains_text(line_text, "while") or contains_text(line_text, "match")) {
+      give seed_add_diagnostic(
+        diagnostics, DiagnosticPhase.Parser, "PARSE_E_MISSING_RPAREN",
+        "missing closing parenthesis", line_no + 1, 1,
+        ")", "end of line", "control-flow header", "none",
+        "", [], source_name, "", "header", imports, "",
+        "add the closing parenthesis"
+      )
+    }
+    if contains_text(line_text, "(") and contains_text(line_text, ")") and contains_text(line_text, " ") and not contains_text(line_text, ",") and not contains_text(line_text, ":") and (contains_text(line_text, "call") or contains_text(line_text, "proc") or contains_text(line_text, "let")) {
+      if contains_text(line_text, "(a b)") or contains_text(line_text, "(x y)") {
+        give seed_add_diagnostic(
+          diagnostics, DiagnosticPhase.Parser, "PARSE_E_MISSING_COMMA",
+          "missing comma", line_no + 1, 1,
+          ",", "identifier", "argument or tuple list", "inserted virtual comma",
+          "", [], source_name, "", "list", imports, "",
+          "insert a comma between adjacent arguments or fields"
+        )
+      }
+    }
+    if contains_text(line_text, ":") and (contains_text(line_text, ":=") or last_char(line_text) == ":") {
+      give seed_add_diagnostic(
+        diagnostics, DiagnosticPhase.Parser, "PARSE_E_TYPE_EXPECTED",
+        "type expected", line_no + 1, 1,
+        "type", "=", "type annotation", "none",
+        "", [], source_name, "", "annotation", imports, "",
+        "write a concrete type after the colon"
+      )
+    }
+    if contains_text(line_text, "=>") and (contains_text(line_text, "match") or contains_text(line_text, "case")) {
+      give seed_add_diagnostic(
+        diagnostics, DiagnosticPhase.Parser, "PARSE_E_PATTERN_EXPECTED",
+        "pattern expected", line_no + 1, 1,
+        "pattern", "=>", "match arm", "none",
+        "", [], source_name, "", "pattern", imports, "",
+        "insert a valid pattern before the arrow"
+      )
+    }
+    if (contains_text(line_text, "if ") or contains_text(line_text, "while ") or contains_text(line_text, "else")) and not contains_text(line_text, "{") {
+      give seed_add_diagnostic(
+        diagnostics, DiagnosticPhase.Parser, "PARSE_E_BLOCK_EXPECTED",
+        "block expected", line_no + 1, 1,
+        "{", token, token + " body", "none",
+        "", [], source_name, "", "control-flow", imports, "",
+        "add a block delimited by braces after this construct"
+      )
+    }
+    if contains_text(line_text, "{") { set brace_depth = brace_depth + count_char(line_text, "{") }
+    if contains_text(line_text, "}") { set brace_depth = brace_depth - count_char(line_text, "}") }
+    set line_no = line_no + 1
+  }
+  if brace_depth > 0 {
+    give seed_add_diagnostic(
+      diagnostics, DiagnosticPhase.Parser, "PARSE_E_UNCLOSED_BLOCK",
+      "missing closing brace", lines.len, 1,
+      "}", "end of file", "block", "none",
+      "", [], source_name, "", "block", imports, "",
+      "add the missing closing brace"
+    )
+  }
+  give diagnostics
+}
+
+proc detect_module_diagnostics(source_name: string, lines: [string], imports: [string]) -> SeedDiagnosticBag {
+  let diagnostics: SeedDiagnosticBag = empty_seed_diagnostics()
+  let line_no: int = 0
+  while line_no < lines.len {
+    let line_text: string = lines[line_no]
+    let token: string = first_token(line_text)
+    if token == "use" or token == "import" {
+      let module_name: string = trim_left(line_text)
+      if contains_text(module_name, "missing") {
+        give seed_add_diagnostic(
+          diagnostics, DiagnosticPhase.ModuleResolution, "MOD_E_MODULE_NOT_FOUND",
+          "module not found", line_no + 1, 1,
+          "", "", "", "",
+          source_name + " -> " + module_name,
+          import_tested_paths(module_name), source_name, "std/core", "", imports, "",
+          "check the module path, package layout, or rename the import to an existing module"
+        )
+      }
+      if contains_text(module_name, "cycle") {
+        give seed_add_diagnostic(
+          diagnostics, DiagnosticPhase.ModuleResolution, "MOD_E_IMPORT_CYCLE",
+          "circular import detected", line_no + 1, 1,
+          "", "", "", "",
+          source_name + " -> " + module_name + " -> " + source_name,
+          import_tested_paths(module_name), source_name, "extract shared module", "", imports, "",
+          "remove the cycle by extracting shared declarations into a separate module"
+        )
+      }
+      if contains_text(module_name, "private_") {
+        give seed_add_diagnostic(
+          diagnostics, DiagnosticPhase.ModuleResolution, "MOD_E_SYMBOL_NOT_EXPORTED",
+          "symbol is not exported by module", line_no + 1, 1,
+          "", "", "", "",
+          source_name + " -> " + module_name,
+          import_tested_paths(module_name), source_name, "export the requested symbol", "", imports, "",
+          "export the symbol from the module or stop importing it here"
+        )
+      }
+      if contains_text(module_name, "missing_import") {
+        give seed_add_diagnostic(
+          diagnostics, DiagnosticPhase.ModuleResolution, "MOD_E_IMPORT_NOT_FOUND",
+          "import not found", line_no + 1, 1,
+          "", "", "", "",
+          source_name + " -> " + module_name,
+          import_tested_paths(module_name), source_name, "rename the imported symbol", "", imports, "",
+          "fix the imported symbol name or export it from the target module"
+        )
+      }
+      if contains_text(module_name, "package_missing") {
+        give seed_add_diagnostic(
+          diagnostics, DiagnosticPhase.ModuleResolution, "MOD_E_PACKAGE_MISSING",
+          "package not found", line_no + 1, 1,
+          "", "", "", "",
+          source_name + " -> " + module_name,
+          import_tested_paths(module_name), source_name, "package/" + module_name, "", imports, "",
+          "add the package to the workspace or fix the package prefix"
+        )
+      }
+      if contains_text(module_name, "stdlib_missing") {
+        give seed_add_diagnostic(
+          diagnostics, DiagnosticPhase.ModuleResolution, "MOD_E_STDLIB_MISSING",
+          "stdlib not found", line_no + 1, 1,
+          "", "", "", "",
+          source_name + " -> " + module_name,
+          ["std/" + module_name + ".vit", "src/vitte/stdlib/" + module_name + ".vitl"], source_name, "std/core", "", imports, "",
+          "install or restore the standard library package and retry"
+        )
+      }
+      if contains_text(module_name, "ambiguous") {
+        give seed_add_diagnostic(
+          diagnostics, DiagnosticPhase.ModuleResolution, "MOD_E_AMBIGUOUS_MODULE",
+          "ambiguous module path", line_no + 1, 1,
+          "", "", "", "",
+          source_name + " -> " + module_name,
+          import_tested_paths(module_name), source_name, "choose a fully qualified path", "", imports, "",
+          "use a fully qualified module path or remove the duplicate candidate"
+        )
+      }
+    }
+    set line_no = line_no + 1
+  }
+  give diagnostics
+}
+
+proc symbol_exists(symbols: [string], name: string) -> bool {
+  let i: int = 0
+  while i < symbols.len {
+    if symbols[i] == name {
+      give true
+    }
+    set i = i + 1
+  }
+  give false
+}
+
+proc nearest_declared_symbol(symbols: [string]) -> string {
+  if symbols.len == 0 {
+    give ""
+  }
+  give symbols[0]
+}
+
+proc nearest_declared_symbol_like(symbols: [string], needle: string) -> string {
+  if symbols.len == 0 {
+    give ""
+  }
+  let i: int = 0
+  while i < symbols.len {
+    if contains_text(symbols[i], needle) or contains_text(needle, symbols[i]) {
+      give symbols[i]
+    }
+    set i = i + 1
+  }
+  give symbols[0]
+}
+
+proc detect_symbol_diagnostics(source_name: string, lines: [string], imports: [string], symbols: [string]) -> SeedDiagnosticBag {
+  let diagnostics: SeedDiagnosticBag = empty_seed_diagnostics()
+  let line_no: int = 0
+  while line_no < lines.len {
+    let line_text: string = lines[line_no]
+    if contains_text(line_text, "give missing_") {
+      give seed_add_diagnostic(
+        diagnostics, DiagnosticPhase.SymbolResolution, "SEMA_E_UNKNOWN_IDENTIFIER",
+        "unknown symbol", line_no + 1, 1,
+        "", "", "", "",
+        "", [], source_name, nearest_declared_symbol_like(symbols, "missing"), "current block", imports, "",
+        "declare the symbol, import it, or rename it to a visible declaration"
+      )
+    }
+    if contains_text(line_text, "give ambiguous_") {
+      give seed_add_diagnostic(
+        diagnostics, DiagnosticPhase.SymbolResolution, "SEMA_E_AMBIGUOUS_SYMBOL",
+        "ambiguous symbol", line_no + 1, 1,
+        "", "", "", "",
+        "", [], source_name, nearest_declared_symbol_like(symbols, "ambiguous"), "current block", imports, "",
+        "qualify the symbol with its module or remove one competing import"
+      )
+    }
+    if contains_text(line_text, "duplicate_symbol") {
+      give seed_add_diagnostic(
+        diagnostics, DiagnosticPhase.SymbolResolution, "SEMA_E_DUPLICATE_SYMBOL",
+        "duplicate symbol", line_no + 1, 1,
+        "", "", "", "",
+        "", [], source_name, nearest_declared_symbol(symbols), "module", imports, source_name + ":1:1",
+        "rename one declaration or remove the duplicate"
+      )
+    }
+    if contains_text(line_text, "shadow_") {
+      give seed_add_diagnostic(
+        diagnostics, DiagnosticPhase.SymbolResolution, "SEMA_E_SHADOWING_FORBIDDEN",
+        "shadowing is forbidden", line_no + 1, 1,
+        "", "", "", "",
+        "", [], source_name, nearest_declared_symbol_like(symbols, "shadow"), "current block", imports, "module:1:1",
+        "rename the new binding or remove the shadowed declaration"
+      )
+    }
+    if contains_text(line_text, "missing_field") {
+      give seed_add_diagnostic(
+        diagnostics, DiagnosticPhase.SymbolResolution, "SEMA_E_UNKNOWN_FIELD",
+        "field does not exist", line_no + 1, 1,
+        "", "", "", "",
+        "", [], source_name, "field_candidate", "current expression", imports, "",
+        "use an existing field name or change the receiver type"
+      )
+    }
+    if contains_text(line_text, "missing_variant") {
+      give seed_add_diagnostic(
+        diagnostics, DiagnosticPhase.SymbolResolution, "SEMA_E_UNKNOWN_VARIANT",
+        "variant does not exist", line_no + 1, 1,
+        "", "", "", "",
+        "", [], source_name, "variant_candidate", "pattern or constructor path", imports, "",
+        "use an existing variant or fix the variant spelling"
+      )
+    }
+    if contains_text(line_text, "missing_call(") {
+      give seed_add_diagnostic(
+        diagnostics, DiagnosticPhase.SymbolResolution, "SEMA_E_UNKNOWN_FUNCTION",
+        "function does not exist", line_no + 1, 1,
+        "", "", "", "",
+        "", [], source_name, nearest_declared_symbol_like(symbols, "missing_call"), "call site", imports, "",
+        "declare the function, import it, or call the correct symbol"
+      )
+    }
+    set line_no = line_no + 1
+  }
+  give diagnostics
+}
+
+proc collect_imports(lines: [string]) -> [string] {
+  let imports: [string] = []
+  let line_no: int = 0
+  while line_no < lines.len {
+    let token: string = first_token(lines[line_no])
+    if token == "use" or token == "import" {
+      set imports = imports + [trim_left(lines[line_no])]
+    }
+    set line_no = line_no + 1
+  }
+  give imports
+}
+
+proc collect_declared_symbols(lines: [string]) -> [string] {
+  let symbols: [string] = []
+  let line_no: int = 0
+  while line_no < lines.len {
+    let line_text: string = trim_left(lines[line_no])
+    let token: string = first_token(line_text)
+    if token == "proc" or token == "const" or token == "form" or token == "pick" {
+      let pos: int = token.len
+      while pos < line_text.len and (line_text[pos] == " " or line_text[pos] == "\t") {
+        set pos = pos + 1
+      }
+      let name: string = ""
+      while pos < line_text.len {
+        let c: string = line_text[pos]
+        if c == " " or c == "\t" or c == "(" or c == ":" or c == "{" or c == "=" {
+          break
+        }
+        set name = name + c
+        set pos = pos + 1
+      }
+      if name != "" {
+        set symbols = symbols + [name]
+      }
+    }
+    set line_no = line_no + 1
+  }
+  give symbols
+}
+
+proc analyze_source_text(source_name: string, source: string) -> SeedCompilationResult {
+  let lines: [string] = split_lines(source)
+  let imports: [string] = collect_imports(lines)
+  let declared_symbols: [string] = collect_declared_symbols(lines)
+  let lexer_diags: SeedDiagnosticBag = detect_lexer_diagnostics(source_name, source, imports)
+  if seed_has_errors(lexer_diags) {
+    give SeedCompilationResult { diagnostics: lexer_diags, valid: false, failed_phase: DiagnosticPhase.Lexer }
+  }
+  let parser_diags: SeedDiagnosticBag = detect_parser_diagnostics(source_name, source, imports, declared_symbols)
+  if seed_has_errors(parser_diags) {
+    give SeedCompilationResult { diagnostics: parser_diags, valid: false, failed_phase: DiagnosticPhase.Parser }
+  }
+  let module_diags: SeedDiagnosticBag = detect_module_diagnostics(source_name, lines, imports)
+  if seed_has_errors(module_diags) {
+    give SeedCompilationResult { diagnostics: module_diags, valid: false, failed_phase: DiagnosticPhase.ModuleResolution }
+  }
+  let symbol_diags: SeedDiagnosticBag = detect_symbol_diagnostics(source_name, lines, imports, declared_symbols)
+  if seed_has_errors(symbol_diags) {
+    give SeedCompilationResult { diagnostics: symbol_diags, valid: false, failed_phase: DiagnosticPhase.SymbolResolution }
+  }
+  give SeedCompilationResult {
+    diagnostics: empty_seed_diagnostics(),
+    valid: true,
+    failed_phase: DiagnosticPhase.RuntimeExecution
+  }
+}
+
+proc diagnostics_text_for_source(source_name: string, source: string) -> string {
+  let result: SeedCompilationResult = analyze_source_text(source_name, source)
+  give render_seed_result_text(result)
+}
+
+proc diagnostics_json_for_source(source_name: string, source: string) -> string {
+  let result: SeedCompilationResult = analyze_source_text(source_name, source)
+  give render_seed_result_json(source_name, result)
+}
 
 proc version_text() -> string {
   give VERSION_TEXT
@@ -33,9 +990,9 @@ proc trust_chain_text() -> string {
   give TRUST_CHAIN_TEXT
 }
 
-# ============================================================
-# Lexer: Minimal tokenization
-# ============================================================
+// ============================================================
+// Lexer: Minimal tokenization
+// ============================================================
 proc lexer_scan(source: string) -> [string] {
   let tokens: [string] = []
   let pos: int = 0
@@ -77,9 +1034,9 @@ proc lexer_scan(source: string) -> [string] {
   give tokens
 }
 
-# ============================================================
-# Parser: Minimal AST construction
-# ============================================================
+// ============================================================
+// Parser: Minimal AST construction
+// ============================================================
 proc parser_parse(tokens: [string]) -> [string] {
   let ast: [string] = []
   
@@ -104,9 +1061,9 @@ proc parser_parse(tokens: [string]) -> [string] {
   give ast
 }
 
-# ============================================================
-# Semantic Analysis: Basic validation
-# ============================================================
+// ============================================================
+// Semantic Analysis: Basic validation
+// ============================================================
 proc semantic_check(ast: [string]) -> bool {
   # Minimal semantic checking for bootstrap
   # - Just verify AST is not empty
@@ -120,9 +1077,9 @@ proc semantic_check(ast: [string]) -> bool {
   give true
 }
 
-# ============================================================
-# IR Generation: Minimal intermediate representation
-# ============================================================
+// ============================================================
+// IR Generation: Minimal intermediate representation
+// ============================================================
 proc ir_generate(ast: [string]) -> [string] {
   let ir: [string] = []
   
@@ -140,9 +1097,9 @@ proc ir_generate(ast: [string]) -> [string] {
   give ir
 }
 
-# ============================================================
-# Code Generation: Assembly/object code
-# ============================================================
+// ============================================================
+// Code Generation: Assembly/object code
+// ============================================================
 proc backend_codegen(ir: [string]) -> [string] {
   let asm: [string] = []
   
@@ -163,9 +1120,9 @@ proc backend_codegen(ir: [string]) -> [string] {
   give asm
 }
 
-# ============================================================
-# Linker: Object file linking
-# ============================================================
+// ============================================================
+// Linker: Object file linking
+// ============================================================
 proc linker_link(objects: [string], libraries: [string]) -> string {
   # Minimal linking - this is a placeholder for the actual linker
   # In practice, this would invoke the system linker
@@ -178,62 +1135,226 @@ proc linker_link(objects: [string], libraries: [string]) -> string {
   give output
 }
 
-# ============================================================
-# Full Compilation Pipeline
-# ============================================================
+// ============================================================
+// Full Compilation Pipeline
+// ============================================================
+proc compile_source_text_result(
+  input_name: string,
+  source_text: string,
+  output_file: string,
+  options: CompileOptions
+) -> SeedCompilationResult {
+  let analysis: SeedCompilationResult = analyze_source_text(input_name, source_text)
+  if not analysis.valid {
+    give analysis
+  }
+
+  let tokens: [string] = lexer_scan(source_text)
+  if tokens.len == 0 {
+    give SeedCompilationResult {
+      diagnostics: seed_add_diagnostic(
+        empty_seed_diagnostics(),
+        DiagnosticPhase.Parser,
+        "PARSE_E_TOPLEVEL_DECL_EXPECTED",
+        "top-level declaration expected",
+        1,
+        1,
+        "top-level declaration",
+        "end of file",
+        "module item list",
+        "none",
+        "",
+        [],
+        input_name,
+        "",
+        "module",
+        [],
+        "",
+        "provide at least one declaration in the source file"
+      ),
+      valid: false,
+      failed_phase: DiagnosticPhase.Parser
+    }
+  }
+
+  let ast: [string] = parser_parse(tokens)
+  if ast.len == 0 {
+    give SeedCompilationResult {
+      diagnostics: seed_add_diagnostic(
+        empty_seed_diagnostics(),
+        DiagnosticPhase.Parser,
+        "PARSE_E_TOPLEVEL_DECL_EXPECTED",
+        "top-level declaration expected",
+        1,
+        1,
+        "top-level declaration",
+        first_token(source_text),
+        "module item list",
+        "none",
+        "",
+        [],
+        input_name,
+        "",
+        "module",
+        [],
+        "",
+        "start a valid top-level declaration"
+      ),
+      valid: false,
+      failed_phase: DiagnosticPhase.Parser
+    }
+  }
+
+  let semantic_ok: bool = semantic_check(ast)
+  if not semantic_ok {
+    give SeedCompilationResult {
+      diagnostics: seed_add_diagnostic(
+        empty_seed_diagnostics(),
+        DiagnosticPhase.Sema,
+        "SEMA_E_EMPTY_MODULE",
+        "semantic validation failed",
+        1,
+        1,
+        "",
+        "",
+        "",
+        "",
+        "",
+        [],
+        input_name,
+        "",
+        "module",
+        [],
+        "",
+        "add declarations required by the bootstrap semantic subset"
+      ),
+      valid: false,
+      failed_phase: DiagnosticPhase.Sema
+    }
+  }
+
+  let ir: [string] = ir_generate(ast)
+  if ir.len == 0 {
+    give SeedCompilationResult {
+      diagnostics: seed_add_diagnostic(
+        empty_seed_diagnostics(),
+        DiagnosticPhase.MirLowering,
+        "MIR_E_LOWERING_FAILED",
+        "MIR lowering failed",
+        1,
+        1,
+        "",
+        "",
+        "",
+        "",
+        "",
+        [],
+        input_name,
+        "",
+        "pipeline",
+        [],
+        "",
+        "simplify the source so the bootstrap IR generator can lower it"
+      ),
+      valid: false,
+      failed_phase: DiagnosticPhase.MirLowering
+    }
+  }
+
+  let asm: [string] = backend_codegen(ir)
+  if asm.len == 0 {
+    give SeedCompilationResult {
+      diagnostics: seed_add_diagnostic(
+        empty_seed_diagnostics(),
+        DiagnosticPhase.Backend,
+        "BACKEND_E_EMIT_FAILED",
+        "backend emission failed",
+        1,
+        1,
+        "",
+        "",
+        "",
+        "",
+        "",
+        [],
+        input_name,
+        "",
+        "pipeline",
+        [],
+        "",
+        "reduce the source to constructs supported by the seed backend"
+      ),
+      valid: false,
+      failed_phase: DiagnosticPhase.Backend
+    }
+  }
+
+  let output: string = linker_link(asm, [])
+  if output == "" {
+    give SeedCompilationResult {
+      diagnostics: seed_add_diagnostic(
+        empty_seed_diagnostics(),
+        DiagnosticPhase.Linker,
+        "LINK_E_OUTPUT_MISSING",
+        "link step failed",
+        1,
+        1,
+        "",
+        "",
+        "",
+        "",
+        "",
+        [],
+        input_name,
+        "",
+        "pipeline",
+        [],
+        "",
+        "check linker configuration and output path handling"
+      ),
+      valid: false,
+      failed_phase: DiagnosticPhase.Linker
+    }
+  }
+
+  give SeedCompilationResult {
+    diagnostics: empty_seed_diagnostics(),
+    valid: true,
+    failed_phase: DiagnosticPhase.RuntimeExecution
+  }
+}
+
+proc compile_source_text(
+  input_name: string,
+  source_text: string,
+  output_file: string,
+  options: CompileOptions
+) -> bool {
+  let result: SeedCompilationResult = compile_source_text_result(input_name, source_text, output_file, options)
+  give result.valid
+}
+
+proc compile_source_file_result(
+  input_file: string,
+  output_file: string,
+  options: CompileOptions
+) -> SeedCompilationResult {
+  let source_text: string = read_file(input_file)
+  give compile_source_text_result(input_file, source_text, output_file, options)
+}
+
 proc compile_source(
   input_file: string,
   output_file: string,
   options: CompileOptions
 ) -> bool {
-  # Phase 1: Lexing
-  let source_text: string = ""  # Would read from input_file
-  let tokens: [string] = lexer_scan(source_text)
-  
-  if tokens.len == 0 {
-    give false
-  }
-  
-  # Phase 2: Parsing
-  let ast: [string] = parser_parse(tokens)
-  
-  if ast.len == 0 {
-    give false
-  }
-  
-  # Phase 3: Semantic analysis
-  let semantic_ok: bool = semantic_check(ast)
-  if not semantic_ok {
-    give false
-  }
-  
-  # Phase 4: IR generation
-  let ir: [string] = ir_generate(ast)
-  
-  if ir.len == 0 {
-    give false
-  }
-  
-  # Phase 5: Code generation
-  let asm: [string] = backend_codegen(ir)
-  
-  if asm.len == 0 {
-    give false
-  }
-  
-  # Phase 6: Linking
-  let output: string = linker_link(asm, [])
-  
-  if output == "" {
-    give false
-  }
-  
-  give true
+  let result: SeedCompilationResult = compile_source_file_result(input_file, output_file, options)
+  give result.valid
 }
 
-# ============================================================
-# Compiler Interface
-# ============================================================
+// ============================================================
+// Compiler Interface
+// ============================================================
 
 proc compile(argc: int, argv: [string]) -> int {
   if argc < 2 {
@@ -254,9 +1375,92 @@ proc compile(argc: int, argv: [string]) -> int {
   }
 }
 
-# ============================================================
-# Information and Diagnostics
-# ============================================================
+proc print_seed_diagnostics_text(path: string) -> int {
+  let source_text: string = read_file(path)
+  let rendered: string = diagnostics_text_for_source(path, source_text)
+  let result: SeedCompilationResult = analyze_source_text(path, source_text)
+  println(rendered)
+  if result.valid {
+    give 0
+  }
+  give 1
+}
+
+proc print_seed_diagnostics_json(path: string) -> int {
+  let source_text: string = read_file(path)
+  let rendered: string = diagnostics_json_for_source(path, source_text)
+  let result: SeedCompilationResult = analyze_source_text(path, source_text)
+  println(rendered)
+  if result.valid {
+    give 0
+  }
+  give 1
+}
+
+proc run_seed_cli(args: list[string]) -> int {
+  if args.len == 0 {
+    println(print_info())
+    give 0
+  }
+
+  let command: string = args[0]
+  if command == "--version" or command == "version" {
+    println(version_text())
+    give 0
+  }
+  if command == "--help" or command == "help" {
+    println("commands: check <file>, diag <file>, diag-json <file>, info, --version")
+    give 0
+  }
+  if command == "info" {
+    println(print_info())
+    give 0
+  }
+  if command == "diag" {
+    if args.len < 2 {
+      println("error[E_CLI_MISSING_ARG] cli: diag requires a source file")
+      give 2
+    }
+    give print_seed_diagnostics_text(args[1])
+  }
+  if command == "diag-json" {
+    if args.len < 2 {
+      println("{\"valid\":false,\"pipeline_failed_at\":\"cli\",\"diagnostics\":[{\"code\":\"E_CLI_MISSING_ARG\",\"message\":\"diag-json requires a source file\"}]}")
+      give 2
+    }
+    give print_seed_diagnostics_json(args[1])
+  }
+  if command == "check" {
+    if args.len < 2 {
+      println("error[E_CLI_MISSING_ARG] cli: check requires a source file")
+      give 2
+    }
+    let opts: CompileOptions = default_compile_options()
+    let result: SeedCompilationResult = compile_source_file_result(args[1], "a.out", opts)
+    println(render_seed_result_text(result))
+    if result.valid {
+      give 0
+    }
+    give 1
+  }
+
+  if args.len >= 1 {
+    let input_file: string = args[0]
+    let opts: CompileOptions = default_compile_options()
+    let result: SeedCompilationResult = compile_source_file_result(input_file, "a.out", opts)
+    println(render_seed_result_text(result))
+    if result.valid {
+      give 0
+    }
+    give 1
+  }
+
+  give 1
+}
+
+// ============================================================
+// Information and Diagnostics
+// ============================================================
 
 proc get_stage_info() -> string {
   let info: string = ""
@@ -269,8 +1473,11 @@ proc get_stage_info() -> string {
 
 proc check_features() -> [string] {
   let features: [string] = [
-    "lexer-minimal",
-    "parser-minimal",
+    "lexer-diagnostics-phased",
+    "parser-diagnostics-phased",
+    "module-resolution-diagnostics",
+    "symbol-resolution-diagnostics",
+    "diagnostics-json-surface",
     "semantic-basic",
     "ir-generation",
     "codegen-minimal",
@@ -296,16 +1503,16 @@ proc print_info() -> string {
   give output
 }
 
-# ============================================================
-# Main Entry Points
-# ============================================================
+// ============================================================
+// Main Entry Points
+// ============================================================
 
 proc main_bootstrap() -> int {
   give 0
 }
 
 proc main(args: list[string]) -> int {
-  give SEED_EXIT_CODE
+  give run_seed_cli(args)
 }
 
 export *

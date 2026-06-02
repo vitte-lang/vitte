@@ -66,7 +66,7 @@ Minimal native assembly backend is now selectable as `asm-native`:
 - object text packaging for linker integration
 
 Primary implementation:
-- `src/vitte/compiler/backend/codegen/native_asm.vit`
+- `src/vitte/compiler/backend/codegen/machine.vit`
 - `src/vitte/compiler/backend/codegen/mod.vit`
 - `src/vitte/compiler/backend/pipeline.vit`
 - [native_asm_backend.md](/home/vincentr/Documents/GitHub/vitte/docs/compiler/native_asm_backend.md)

@@ -164,25 +164,44 @@ stage_payload() {
 
   mkdir -p "$STAGE_ROOT/usr/local/libexec/vitte" "$STAGE_ROOT/usr/local/bin"
   install -m 0755 "$vitte_bin" "$STAGE_ROOT/usr/local/libexec/vitte/vitte"
+  install -m 0755 "$vitte_bin" "$STAGE_ROOT/usr/local/libexec/vitte/vittec"
 
   cat > "$STAGE_ROOT/usr/local/bin/vitte" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
-if [ -z "${VITTE_ROOT:-}" ]; then
-  export VITTE_ROOT="/usr/local/share/vitte"
+root="${VITTE_ROOT:-/usr/local/share/vitte}"
+export VITTE_ROOT="$root"
+if [ "${1:-}" = "selfhost-source" ] || [ "${1:-}" = "--selfhost-source" ]; then
+  printf 'compiler_source_root=%s\n' "$root/src/vitte/compiler"
+  printf 'compiler_entry_point=%s\n' "$root/src/vitte/compiler/main.vit"
+  exit 0
 fi
 exec /usr/local/libexec/vitte/vitte "$@"
 EOF
   chmod 0755 "$STAGE_ROOT/usr/local/bin/vitte"
 
+  cat > "$STAGE_ROOT/usr/local/bin/vittec" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+root="${VITTE_ROOT:-/usr/local/share/vitte}"
+export VITTE_ROOT="$root"
+if [ "${1:-}" = "selfhost-source" ] || [ "${1:-}" = "--selfhost-source" ]; then
+  printf 'compiler_source_root=%s\n' "$root/src/vitte/compiler"
+  printf 'compiler_entry_point=%s\n' "$root/src/vitte/compiler/main.vit"
+  exit 0
+fi
+exec /usr/local/libexec/vitte/vittec "$@"
+EOF
+  chmod 0755 "$STAGE_ROOT/usr/local/bin/vittec"
+
   mkdir -p "$STAGE_ROOT/usr/local/share/vitte/src/vitte"
+  mkdir -p "$STAGE_ROOT/usr/local/share/vitte/src/vitte/compiler"
   mkdir -p "$STAGE_ROOT/usr/local/share/vitte/src/compiler/backends"
 
   rsync -a "${RSYNC_COMMON_EXCLUDES[@]}" "$ROOT_DIR/src/vitte/packages/" "$STAGE_ROOT/usr/local/share/vitte/src/vitte/packages/"
-  rsync -a "${RSYNC_COMMON_EXCLUDES[@]}" "$ROOT_DIR/src/compiler/backends/runtime/" "$STAGE_ROOT/usr/local/share/vitte/src/compiler/backends/runtime/"
-  if [ -f "$ROOT_DIR/version" ]; then
-    install -m 0644 "$ROOT_DIR/version" "$STAGE_ROOT/usr/local/share/vitte/version"
-  fi
+  rsync -a "${RSYNC_COMMON_EXCLUDES[@]}" "$ROOT_DIR/src/vitte/compiler/" "$STAGE_ROOT/usr/local/share/vitte/src/vitte/compiler/"
+  rsync -a "${RSYNC_COMMON_EXCLUDES[@]}" "$ROOT_DIR/src/vitte/compiler/backends/runtime_c/" "$STAGE_ROOT/usr/local/share/vitte/src/compiler/backends/runtime/"
+  install -m 0644 "$PKG_VERSION_FILE" "$STAGE_ROOT/usr/local/share/vitte/version"
 
   if [ "$INCLUDE_EDITORS" = "1" ]; then
     mkdir -p "$STAGE_ROOT/usr/local/share/vitte/editors"
@@ -418,7 +437,7 @@ EOF
   cat > "$TMP" <<'VEOF'
 use vitte/core as core_pkg
 
-entry main at core/app {
+proc main() -> int {
   give 0
 }
 VEOF

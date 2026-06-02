@@ -10,6 +10,13 @@ compiler_entry_point=''
 
 trace_pipeline=0
 strict_mode=0
+ansi_reset="$(printf '\033[0m')"
+ansi_bold="$(printf '\033[1m')"
+ansi_red="$(printf '\033[31m')"
+ansi_blue="$(printf '\033[34m')"
+ansi_cyan="$(printf '\033[36m')"
+
+# --- shell-runtime-body ---
 
 cli_error() {
     code="$1"
@@ -26,6 +33,55 @@ trace_step() {
     if [ "$trace_pipeline" -eq 1 ]; then
         printf '[trace] %s\n' "$1" >&2
     fi
+}
+
+cli_program_name() {
+    if [ -n "$compiler_source_root" ] || [ -n "$compiler_entry_point" ]; then
+        printf 'vitte\n'
+        return 0
+    fi
+    printf '%s\n' "${version%% *}"
+}
+
+cli_display_version() {
+    printf '%s\n' "${version##* }"
+}
+
+print_compiler_brief_help() {
+    prog="$(cli_program_name)"
+    printf '%s %s\n' "$prog" "$(cli_display_version)"
+    printf 'usage: %s <command> [options] [file]\n' "$prog"
+    printf 'try: %s check hello.vit | %s build hello.vit -o build/hello | %s pkg check\n' "$prog" "$prog" "$prog"
+    printf 'run `%s --help` for full help\n' "$prog"
+}
+
+print_compiler_help() {
+    prog="$(cli_program_name)"
+    printf '%s %s\n' "$prog" "$(cli_display_version)"
+    printf 'usage: %s <command> [options] [file]\n' "$prog"
+    printf '\n'
+    printf 'core commands:\n'
+    printf '  check FILE        validate a source file\n'
+    printf '  build FILE -o OUT build a native executable\n'
+    printf '  run FILE          build and run a source file\n'
+    printf '  parse FILE        parse only\n'
+    printf '\n'
+    printf 'package commands:\n'
+    printf '  pkg check         validate packages under src/vitte/packages\n'
+    printf '  pkg matrix        run package dependency/import checks\n'
+    printf '  pkg selftest      run package package checks and matrix\n'
+    printf '\n'
+    printf 'debug commands:\n'
+    printf '  dump-tokens FILE\n'
+    printf '  dump-ast FILE\n'
+    printf '  dump-hir FILE\n'
+    printf '  dump-mir FILE\n'
+    printf '  dump-native-ir --src FILE\n'
+    printf '  selfhost-source\n'
+    printf '\n'
+    printf 'common flags:\n'
+    printf '  --src PATH  --out PATH  -o PATH  --trace-pipeline  --strict\n'
+    printf '  --dump-ast-json  --dump-hir-json  --dump-mir-json  --diagnostics-json\n'
 }
 
 arg_value() {
@@ -72,6 +128,21 @@ sq() {
     sed "s/'/'\\\\''/g; s/^/'/; s/$/'/"
 }
 
+shell_payload_c_literal() {
+    awk '
+    BEGIN {
+        printf "\""
+    }
+    {
+        gsub(/\\/,"\\\\")
+        gsub(/"/,"\\\"")
+        printf "%s\\n", $0
+    }
+    END {
+        printf "\""
+    }' "$1"
+}
+
 compile_native_ir() {
     src="$1"
     ir_version="${2:-v1}"
@@ -87,10 +158,90 @@ compile_native_ir() {
         sub(/[ \t\r\n]+$/, "", s)
         return s
     }
+    function first_token(s,    t) {
+        t = trim(s)
+        sub(/[ \t\r\n].*$/, "", t)
+        return t
+    }
+    function nearest_symbol(name,    best, best_score, candidate, score, i, prefix) {
+        best = ""
+        best_score = -1
+        prefix = substr(name, 1, 3)
+        for (candidate in symbol_seen) {
+            score = 0
+            if (candidate == name) continue
+            if (substr(candidate, 1, 3) == prefix) score += 3
+            for (i = 1; i <= length(name) && i <= length(candidate); i++) {
+                if (substr(name, i, 1) == substr(candidate, i, 1)) score++
+                else break
+            }
+            if (index(candidate, name) > 0 || index(name, candidate) > 0) score += 2
+            if (score > best_score) {
+                best = candidate
+                best_score = score
+            }
+        }
+        return best
+    }
+    function current_imports_text(    result, i) {
+        result = ""
+        for (i = 1; i <= import_count; i++) {
+            if (result != "") result = result ", "
+            result = result import_list[i]
+        }
+        if (result == "") result = "<none>"
+        return result
+    }
+    function import_chain_for(module_name) {
+        return file " -> " module_name
+    }
+    function tested_paths_for(module_name,    slash_name) {
+        slash_name = module_name
+        gsub(/[.]/, "/", slash_name)
+        return "./" slash_name ".vit, ./" slash_name "/mod.vit, src/" slash_name ".vit, src/" slash_name "/mod.vit"
+    }
+    function syntax_note(expected, found, context, recovery) {
+        return "expected token: " expected "; found token: " found "; syntax context: " context "; recovery: " recovery
+    }
     function count_char(s, ch,    i, n) {
         n = 0
         for (i = 1; i <= length(s); i++) {
             if (substr(s, i, 1) == ch) n++
+        }
+        return n
+    }
+    function outside_string_col(s, needle,    i, ch, quoted, escaped) {
+        quoted = 0
+        escaped = 0
+        for (i = 1; i <= length(s); i++) {
+            ch = substr(s, i, 1)
+            if (escaped) {
+                escaped = 0
+            } else if (quoted && ch == "\\") {
+                escaped = 1
+            } else if (ch == "\"") {
+                quoted = !quoted
+            } else if (!quoted && ch == needle) {
+                return i
+            }
+        }
+        return 0
+    }
+    function count_char_outside_strings(s, needle,    i, ch, n, quoted, escaped) {
+        n = 0
+        quoted = 0
+        escaped = 0
+        for (i = 1; i <= length(s); i++) {
+            ch = substr(s, i, 1)
+            if (escaped) {
+                escaped = 0
+            } else if (quoted && ch == "\\") {
+                escaped = 1
+            } else if (ch == "\"") {
+                quoted = !quoted
+            } else if (!quoted && ch == needle) {
+                n++
+            }
         }
         return n
     }
@@ -155,13 +306,27 @@ compile_native_ir() {
             diag("E_BOOTSTRAP_PROC_SIGNATURE", "expected proc name() -> string { or proc main(args: list[string]) -> int {")
         }
     }
+    function full_main_stmt_ok(line) {
+        if (line == "}") return 1
+        if (line == "};") return 1
+        if (line ~ /^}[ \t]*else[ \t]*[{];?$/) return 1
+        if (line ~ /^let[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*:[^=]+=[ \t]*$/) return 1
+        if (line ~ /^let[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*:[^=]+=[ \t]*.+;?$/) return 1
+        if (line ~ /^if[ \t]+.+[{];?$/) return 1
+        if (line ~ /^give[ \t]+.+;?$/) return 1
+        if (line ~ /^-?[0-9]+;?$/) return 1
+        if (line ~ /^[A-Za-z_][A-Za-z0-9_\.]*(\([^)]*\))?;?$/) return 1
+        return 0
+    }
     BEGIN {
         file = ARGV[1]
         in_proc = 0
+        proc_mode = ""
         brace_depth = 0
         errors = 0
         saw_export = 0
         saw_space = 0
+        saw_intrinsic_surface = 0
         full_compiler = 0
         skip_doc = 0
         skip_modern_block = 0
@@ -187,6 +352,10 @@ compile_native_ir() {
         }
         if (line ~ /^space[ \t]+[A-Za-z0-9_\/]+$/) {
             saw_space = 1
+            next
+        }
+        if (!in_proc && line ~ /^intrinsic[ \t]+[A-Za-z_][A-Za-z0-9_]*\([^;]*\)[ \t]*->[ \t]*[^;]+;$/) {
+            saw_intrinsic_surface = 1
             next
         }
         if (line == "export *") { saw_export = 1; next }
@@ -238,6 +407,7 @@ compile_native_ir() {
             proc_start_line = line_no
             proc_start_col = col_token("proc")
             proc_give_count = 0
+            proc_mode = "simple"
             brace_depth = 1
             next
         }
@@ -265,6 +435,7 @@ compile_native_ir() {
             proc_start_line = line_no
             proc_start_col = col_token("proc")
             proc_give_count = 0
+            proc_mode = "simple"
             brace_depth = 1
             next
         }
@@ -284,10 +455,20 @@ compile_native_ir() {
             proc_start_line = line_no
             proc_start_col = col_token("proc")
             proc_give_count = 0
+            if (full_compiler) proc_mode = "full_main"
+            else proc_mode = "simple"
             brace_depth = 1
             next
         }
-        if (full_compiler && !in_proc && line ~ /^(use|share)[ \t]+/) {
+        if ((full_compiler || saw_intrinsic_surface) && !in_proc && line ~ /^(use|share|import)[ \t]+/) {
+            next
+        }
+        if (saw_intrinsic_surface && !in_proc && line ~ /^proc[ \t]+[A-Za-z_][A-Za-z0-9_]*\([^)]*\)[ \t]*->[ \t]*[^ \t{]+[ \t]*[{]$/) {
+            skip_modern_depth = block_delta(line)
+            if (skip_modern_depth > 0) skip_modern_block = 1
+            next
+        }
+        if (full_compiler && !in_proc && line ~ /^(use|share|import)[ \t]+/) {
             next
         }
         if (full_compiler && !in_proc && line ~ /^(pick|form|proc)[ \t]+/) {
@@ -298,6 +479,27 @@ compile_native_ir() {
         if (!in_proc && line ~ /^proc[ \t]+/) {
             col = col_token("proc")
             proc_signature_diag(line)
+            next
+        }
+        if (in_proc && proc_mode == "full_main") {
+            if (line == "}") {
+                if (brace_depth > 1) {
+                    brace_depth--
+                    next
+                }
+                saw_main = 1
+                main_return = 0
+                in_proc = 0
+                proc_mode = ""
+                brace_depth = 0
+                next
+            }
+            if (full_main_stmt_ok(line)) {
+                brace_depth += block_delta(line)
+                next
+            }
+            col = col_nonspace()
+            diag("E_BOOTSTRAP_PROC_BODY", "unsupported statement in bootstrap proc")
             next
         }
         if (in_proc && line ~ /^give[ \t]+"[^"]*"$/) {
@@ -370,6 +572,7 @@ compile_native_ir() {
                 }
             }
             in_proc = 0
+            proc_mode = ""
             brace_depth = 0
             next
         }
@@ -384,7 +587,7 @@ compile_native_ir() {
             col = proc_start_col
             diag("E_BOOTSTRAP_UNCLOSED_PROC", "missing closing brace")
         }
-        if (!saw_export) {
+        if (!saw_export && !saw_intrinsic_surface) {
             line_no = 1
             col = 1
             diag("E_BOOTSTRAP_EXPORT", "expected export *")
@@ -394,12 +597,12 @@ compile_native_ir() {
             col = 1
             diag("E_BOOTSTRAP_SPACE", "missing space declaration")
         }
-        if (version_text == "") {
+        if (version_text == "" && !saw_intrinsic_surface) {
             line_no = 1
             col = 1
             diag("E_BOOTSTRAP_VERSION", "missing version_text()")
         }
-        if (banner_text == "") {
+        if (banner_text == "" && !saw_intrinsic_surface) {
             line_no = 1
             col = 1
             diag("E_BOOTSTRAP_BANNER", "missing banner_text()")
@@ -434,15 +637,24 @@ compile_native_ir() {
 }
 
 render_native_shell_from_ir() {
-    ir="$1"
-    out_version="$(printf '%s\n' "$ir" | awk -F= '/^version_text=/{sub(/^version_text=/, ""); print}')"
-    out_banner="$(printf '%s\n' "$ir" | awk -F= '/^banner_text=/{sub(/^banner_text=/, ""); print}')"
-    out_main_return="$(printf '%s\n' "$ir" | awk -F= '/^main.return=/{sub(/^main.return=/, ""); print}')"
-    out_compiler_source_root="$(printf '%s\n' "$ir" | awk -F= '/^const.string.COMPILER_SOURCE_ROOT=/{sub(/^const.string.COMPILER_SOURCE_ROOT=/, ""); print}')"
-    out_compiler_entry_point="$(printf '%s\n' "$ir" | awk -F= '/^const.string.COMPILER_ENTRY_POINT=/{sub(/^const.string.COMPILER_ENTRY_POINT=/, ""); print}')"
+    ir_text="$1"
+    out_version="$(printf '%s\n' "$ir_text" | awk -F= '/^version_text=/{sub(/^version_text=/, ""); print}')"
+    out_banner="$(printf '%s\n' "$ir_text" | awk -F= '/^banner_text=/{sub(/^banner_text=/, ""); print}')"
+    out_main_return="$(printf '%s\n' "$ir_text" | awk -F= '/^main.return=/{sub(/^main.return=/, ""); print}')"
+    out_compiler_source_root="$(printf '%s\n' "$ir_text" | awk -F= '/^const.string.COMPILER_SOURCE_ROOT=/{sub(/^const.string.COMPILER_SOURCE_ROOT=/, ""); print}')"
+    if [ -z "$out_compiler_source_root" ]; then
+        out_compiler_source_root="$(printf '%s\n' "$ir_text" | awk -F= '/^compiler_source_root=/{sub(/^compiler_source_root=/, ""); print}')"
+    fi
+    out_compiler_entry_point="$(printf '%s\n' "$ir_text" | awk -F= '/^const.string.COMPILER_ENTRY_POINT=/{sub(/^const.string.COMPILER_ENTRY_POINT=/, ""); print}')"
+    if [ -z "$out_compiler_entry_point" ]; then
+        out_compiler_entry_point="$(printf '%s\n' "$ir_text" | awk -F= '/^compiler_entry_point=/{sub(/^compiler_entry_point=/, ""); print}')"
+    fi
     out_tool_name="$(printf '%s\n' "$out_version" | awk '{print $1}')"
     [ -n "$out_main_return" ] || out_main_return=0
     [ -n "$out_tool_name" ] || out_tool_name=vittec
+    if [ -n "$out_compiler_source_root" ] || [ -n "$out_compiler_entry_point" ]; then
+        out_tool_name=vitte
+    fi
     printf '#!/usr/bin/env sh\n'
     printf 'set -eu\n'
     printf 'version=%s\n' "$(printf '%s\n' "$out_version" | sq)"
@@ -451,21 +663,220 @@ render_native_shell_from_ir() {
     printf 'error_prefix=%s\n' "$(printf '[%s][error]' "$out_tool_name" | sq)"
     printf 'compiler_source_root=%s\n' "$(printf '%s\n' "$out_compiler_source_root" | sq)"
     printf 'compiler_entry_point=%s\n' "$(printf '%s\n' "$out_compiler_entry_point" | sq)"
-    sed -n '10,$p' "$0"
+    printf '\n'
+    printf 'trace_pipeline=0\n'
+    printf 'strict_mode=0\n'
+    printf "ansi_reset=\"\$(printf '\\033[0m')\"\n"
+    printf "ansi_bold=\"\$(printf '\\033[1m')\"\n"
+    printf "ansi_red=\"\$(printf '\\033[31m')\"\n"
+    printf "ansi_blue=\"\$(printf '\\033[34m')\"\n"
+    printf "ansi_cyan=\"\$(printf '\\033[36m')\"\n"
+    printf '\n'
+    printf '# --- shell-runtime-body ---\n'
+    printf '\n'
+    sed -n '/^# --- shell-runtime-body ---$/,$p' "$0" | sed '1d'
 }
 
 render_native_shell() {
-    src="$1"
-    ir="$(compile_native_ir "$src" "v1")"
-    render_native_shell_from_ir "$ir"
+    shell_src="$1"
+    shell_ir="$(compile_native_ir "$shell_src" "v1")"
+    render_native_shell_from_ir "$shell_ir"
 }
 
 write_compiler() {
+    compiler_src="$1"
+    compiler_out="$2"
+    mkdir -p "$(dirname "$compiler_out")"
+    render_native_shell "$compiler_src" > "$compiler_out"
+    chmod +x "$compiler_out"
+}
+
+extract_native_main_return() {
+    src="$1"
+    awk '
+    function trim(s) {
+        sub(/^[ \t\r\n]+/, "", s)
+        sub(/[ \t\r\n]+$/, "", s)
+        return s
+    }
+    BEGIN {
+        in_main = 0
+        saw_main = 0
+        result = ""
+        invalid = 0
+    }
+    {
+        line = trim($0)
+        if (line == "" || line ~ /^\/\// || line ~ /^#/) next
+        if (!in_main && line ~ /^space[ \t]+[A-Za-z0-9_\/]+;?$/) next
+        if (!in_main && line ~ /^proc[ \t]+main\(\)[ \t]*->[ \t]*(int|i32)[ \t]*\{[ \t]*give[ \t]+-?[0-9][0-9]*;?[ \t]*\}$/) {
+            if (saw_main) invalid = 1
+            saw_main = 1
+            value = line
+            sub(/^.*give[ \t]+/, "", value)
+            sub(/;?[ \t]*\}$/, "", value)
+            result = value
+            next
+        }
+        if (!in_main && line ~ /^proc[ \t]+main\(\)[ \t]*->[ \t]*(int|i32)[ \t]*\{$/) {
+            if (saw_main) invalid = 1
+            saw_main = 1
+            in_main = 1
+            next
+        }
+        if (in_main && line ~ /^give[ \t]+-?[0-9]+;?$/) {
+            value = line
+            sub(/^give[ \t]+/, "", value)
+            sub(/;$/, "", value)
+            if (result != "") invalid = 1
+            result = value
+            next
+        }
+        if (in_main && line == "}") {
+            in_main = 0
+            next
+        }
+        invalid = 1
+    }
+    END {
+        if (invalid || in_main || !saw_main || result == "") exit 1
+        print result
+    }' "$src"
+}
+
+build_native_user_program() {
     src="$1"
     out="$2"
-    mkdir -p "$(dirname "$out")"
-    render_native_shell "$src" > "$out"
-    chmod +x "$out"
+    target_out="$2"
+    bridge_sidecar="${target_out}.bootstrap-bridge"
+    cc_bin="${CC:-cc}"
+    allow_full_bridge="${VITTE_BOOTSTRAP_ALLOW_FULL_COMPILER_BRIDGE:-1}"
+    main_return="$(extract_native_main_return "$src" || true)"
+    command -v "$cc_bin" >/dev/null 2>&1 || {
+        cli_error E_BACKEND_TOOLCHAIN "native bootstrap build requires a host C compiler" "set CC or install cc"
+        return 1
+    }
+    mkdir -p "$(dirname "$target_out")"
+    if [ -n "$main_return" ]; then
+        c_src="${target_out}.bootstrap.c"
+        printf 'int main(void) { return %s; }\n' "$main_return" > "$c_src"
+        "$cc_bin" "$c_src" -o "$target_out" || {
+            cli_error E_BACKEND_FAILURE "host C compilation failed for $src" "inspect host compiler diagnostics"
+            rm -f "$c_src"
+            rm -f "$target_out"
+            return 1
+        }
+        rm -f "$c_src"
+        rm -f "$bridge_sidecar"
+        chmod +x "$target_out"
+        return 0
+    fi
+    ir_text="$(compile_native_ir "$src" "v1" 2>/dev/null || true)"
+    case "$ir_text" in
+        *"const.int.BOOTSTRAP_FULL_COMPILER=1"*)
+            if [ "$allow_full_bridge" != "1" ]; then
+                cli_error E_BOOTSTRAP_FULL_COMPILER_BRIDGE_DISABLED "full-compiler bootstrap bridge disabled for this build" "enable a real backend path or set VITTE_BOOTSTRAP_ALLOW_FULL_COMPILER_BRIDGE=1 for transitional manual use"
+                return 1
+            fi
+            tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/vitte-bootstrap-bridge-XXXXXX")"
+            payload="$tmp_dir/payload.sh"
+            c_src="${target_out}.bootstrap.c"
+            write_compiler "$src" "$payload"
+            cat > "$c_src" <<EOF
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <sys/wait.h>
+#include <unistd.h>
+
+static const char *bridge_marker = "vitte-bootstrap-native-bridge";
+static const char *payload_source =
+$(shell_payload_c_literal "$payload");
+
+static int write_payload_file(const char *path) {
+    FILE *file = fopen(path, "wb");
+    size_t payload_len = strlen(payload_source);
+    if (file == NULL) {
+        return 127;
+    }
+    if (payload_len > 0 && fwrite(payload_source, 1, payload_len, file) != payload_len) {
+        fclose(file);
+        return 127;
+    }
+    if (fclose(file) != 0) {
+        return 127;
+    }
+    if (chmod(path, 0700) != 0) {
+        return 127;
+    }
+    return 0;
+}
+
+int main(int argc, char **argv) {
+    char tmpl[] = "/tmp/vitte-bootstrap-bridge-XXXXXX";
+    int fd = mkstemp(tmpl);
+    pid_t pid;
+    int status = 0;
+    char **child_argv;
+    if (fd < 0) {
+        return 127;
+    }
+    close(fd);
+    if (write_payload_file(tmpl) != 0) {
+        unlink(tmpl);
+        return 127;
+    }
+    child_argv = (char **)malloc(sizeof(char *) * (size_t)(argc + 2));
+    if (child_argv == NULL) {
+        unlink(tmpl);
+        return 127;
+    }
+    child_argv[0] = tmpl;
+    for (int i = 1; i < argc; i += 1) {
+        child_argv[i] = argv[i];
+    }
+    child_argv[argc] = NULL;
+    pid = fork();
+    if (pid < 0) {
+        free(child_argv);
+        unlink(tmpl);
+        return 127;
+    }
+    if (pid == 0) {
+        setenv("trace_pipeline", "0", 0);
+        setenv("strict_mode", "0", 0);
+        execv(tmpl, child_argv);
+        _exit(127);
+    }
+    free(child_argv);
+    if (waitpid(pid, &status, 0) < 0) {
+        unlink(tmpl);
+        return 127;
+    }
+    unlink(tmpl);
+    if (WIFEXITED(status)) {
+        return WEXITSTATUS(status);
+    }
+    return 127;
+}
+EOF
+            "$cc_bin" "$c_src" -o "$target_out" || {
+                cli_error E_BACKEND_FAILURE "host C bridge compilation failed for $src" "inspect host compiler diagnostics"
+                rm -rf "$tmp_dir"
+                rm -f "$c_src"
+                rm -f "$target_out"
+                return 1
+            }
+            rm -rf "$tmp_dir"
+            rm -f "$c_src"
+            printf 'vitte-bootstrap-native-bridge\nsrc=%s\n' "$src" > "$bridge_sidecar"
+            chmod +x "$target_out"
+            return 0
+            ;;
+    esac
+    cli_error E_BOOTSTRAP_NATIVE_SUBSET "native build is limited in this bootstrap binary" "supported inputs: proc main() -> int { give <integer>; }, or the official compiler entry src/vitte/compiler/main.vit"
+    return 1
 }
 
 read_common_flags() {
@@ -495,7 +906,7 @@ source_meta_json() {
     bytes="$(source_bytes "$src")"
     lines="$(source_lines "$src")"
     space_count="$(grep -c '^space[ 	]' "$src" || true)"
-    export_count="$(grep -c '^export \*$' "$src" || true)"
+    export_count="$(grep -c "^export [*]$" "$src" || true)"
     proc_count="$(grep -c '^proc[ 	]' "$src" || true)"
     const_count="$(grep -c '^const[ 	]' "$src" || true)"
     printf '"source":{"path":"%s","bytes":%s,"lines":%s,"space_decl_count":%s,"export_star_count":%s,"proc_count":%s,"const_count":%s}' \
@@ -532,6 +943,112 @@ detect_professional_diagnostic() {
         }
         return n
     }
+    function token_too_large_col(s, limit,    i, ch, start, width) {
+        start = 0
+        width = 0
+        for (i = 1; i <= length(s); i++) {
+            ch = substr(s, i, 1)
+            if (ch == " " || ch == "\t" || ch == "\r" || ch == "\n") {
+                if (width > limit) return start
+                start = 0
+                width = 0
+            } else {
+                if (width == 0) start = i
+                width++
+            }
+        }
+        if (width > limit) return start
+        return 0
+    }
+    function token_len_from(s, start,    i, ch, width) {
+        width = 0
+        for (i = start; i <= length(s); i++) {
+            ch = substr(s, i, 1)
+            if (ch == " " || ch == "\t" || ch == "\r" || ch == "\n") break
+            width++
+        }
+        return width
+    }
+    function outside_string_col(s, needle,    i, ch, quoted, escaped) {
+        quoted = 0
+        escaped = 0
+        for (i = 1; i <= length(s); i++) {
+            ch = substr(s, i, 1)
+            if (escaped) {
+                escaped = 0
+            } else if (quoted && ch == "\\") {
+                escaped = 1
+            } else if (ch == "\"") {
+                quoted = !quoted
+            } else if (!quoted && ch == needle) {
+                return i
+            }
+        }
+        return 0
+    }
+    function count_char_outside_strings(s, needle,    i, ch, n, quoted, escaped) {
+        n = 0
+        quoted = 0
+        escaped = 0
+        for (i = 1; i <= length(s); i++) {
+            ch = substr(s, i, 1)
+            if (escaped) {
+                escaped = 0
+            } else if (quoted && ch == "\\") {
+                escaped = 1
+            } else if (ch == "\"") {
+                quoted = !quoted
+            } else if (!quoted && ch == needle) {
+                n++
+            }
+        }
+        return n
+    }
+    function first_token(s,    t) {
+        t = trim(s)
+        sub(/[ \t\r\n].*$/, "", t)
+        return t
+    }
+    function nearest_symbol(name,    best, best_score, candidate, score, i, prefix) {
+        best = ""
+        best_score = -1
+        prefix = substr(name, 1, 3)
+        for (candidate in symbol_seen) {
+            score = 0
+            if (candidate == name) continue
+            if (substr(candidate, 1, 3) == prefix) score += 3
+            for (i = 1; i <= length(name) && i <= length(candidate); i++) {
+                if (substr(name, i, 1) == substr(candidate, i, 1)) score++
+                else break
+            }
+            if (index(candidate, name) > 0 || index(name, candidate) > 0) score += 2
+            if (score > best_score) {
+                best = candidate
+                best_score = score
+            }
+        }
+        return best
+    }
+    function current_imports_text(    result, i) {
+        result = ""
+        for (i = 1; i <= import_count; i++) {
+            if (result != "") result = result ", "
+            result = result import_list[i]
+        }
+        if (result == "") result = "<none>"
+        return result
+    }
+    function import_chain_for(module_name) {
+        return file " -> " module_name
+    }
+    function tested_paths_for(module_name,    slash_name) {
+        slash_name = module_name
+        gsub(/[.]/, "/", slash_name)
+        return "./" slash_name ".vit, ./" slash_name "/mod.vit, src/" slash_name ".vit, src/" slash_name "/mod.vit"
+    }
+    function syntax_note(expected, found, context, recovery) {
+        return "expected token: " expected "; found token: " found "; syntax context: " context "; recovery: " recovery
+    }
     function remember_decl(name, ty, line, col) {
         if (name == "") return
         decl_type[name] = ty
@@ -540,13 +1057,12 @@ detect_professional_diagnostic() {
     }
     function seen_symbol(kind, name, line, col) {
         if (name == "") return
-        if (file !~ /tests\/diag_snapshots\//) return
         if (symbol_seen[name]) {
-            emit("SEMA_E_DUPLICATE_SYMBOL", "error", "sema",
+            emit("SEMA_E_DUPLICATE_SYMBOL", "error", "symbol_resolution",
                 "symbol " name " is already defined",
                 line, col, col + length(name), raw,
                 "duplicate definition of " name,
-                "first definition was here: " file ":" symbol_line[name] ":" symbol_col[name],
+                "original declaration: " file ":" symbol_line[name] ":" symbol_col[name] "; scope: module; active imports: " current_imports_text(),
                 "rename one declaration or remove the duplicate")
         }
         symbol_seen[name] = 1
@@ -558,11 +1074,125 @@ detect_professional_diagnostic() {
         brace_depth = 0
         open_line = 0
         open_col = 0
+        skip_doc = 0
+        in_block_comment = 0
+        block_comment_line = 0
+        block_comment_col = 0
+        import_count = 0
     }
     {
         raw = $0
         line = trim(raw)
         if (line == "" || line ~ /^\/\//) next
+
+        if (skip_doc) {
+            if (line ~ />>>/) skip_doc = 0
+            next
+        }
+
+        if (line ~ /^<</) {
+            if (line !~ />>>/) skip_doc = 1
+            next
+        }
+
+        if (in_block_comment) {
+            if (index(raw, "*/") > 0) {
+                in_block_comment = 0
+            }
+            next
+        }
+
+        if (index(raw, "/*") > 0) {
+            start_comment = index(raw, "/*")
+            end_comment = index(substr(raw, start_comment + 2), "*/")
+            if (end_comment == 0) {
+                in_block_comment = 1
+                block_comment_line = FNR
+                block_comment_col = start_comment
+            }
+        }
+
+        if (line ~ /^(use|import)[ \t]+/) {
+            module_name = line
+            sub(/^(use|import)[ \t]+/, "", module_name)
+            sub(/[ \t;].*$/, "", module_name)
+            if (module_name != "") {
+                import_count++
+                import_list[import_count] = module_name
+            }
+            if (module_name ~ /package_missing|missing_pkg|absent_pkg/) {
+                col = index(raw, module_name)
+                emit("MOD_E_PACKAGE_MISSING", "error", "module_resolution",
+                    "package not found",
+                    FNR, col, col + length(module_name), raw,
+                    "package root for " module_name " is absent",
+                    "import chain: " import_chain_for(module_name) "; tested paths: " tested_paths_for(module_name) "; requester: " file "; closest module: package/" module_name,
+                    "add the package to the workspace or fix the package prefix")
+            }
+            if (module_name ~ /stdlib_missing|missing_stdlib|no_stdlib/) {
+                col = index(raw, module_name)
+                emit("MOD_E_STDLIB_MISSING", "error", "module_resolution",
+                    "stdlib not found",
+                    FNR, col, col + length(module_name), raw,
+                    "requested standard library module cannot be loaded",
+                    "import chain: " import_chain_for(module_name) "; tested paths: std/" module_name ".vit, src/vitte/stdlib/" module_name ".vitl; requester: " file "; closest module: std/core",
+                    "install or restore the standard library package and retry")
+            }
+            if (module_name ~ /(missing|not_found|absent)/) {
+                col = index(raw, module_name)
+                emit("MOD_E_MODULE_NOT_FOUND", "error", "module_resolution",
+                    "module not found",
+                    FNR, col, col + length(module_name), raw,
+                    "cannot resolve module " module_name,
+                    "import chain: " import_chain_for(module_name) "; tested paths: " tested_paths_for(module_name) "; requester: " file "; closest module: " "std/" module_name,
+                    "check the module path, package layout, or rename the import to an existing module")
+            }
+            if (module_name ~ /ambiguous|dual_path|conflict/) {
+                col = index(raw, module_name)
+                emit("MOD_E_AMBIGUOUS_MODULE", "error", "module_resolution",
+                    "ambiguous module path",
+                    FNR, col, col + length(module_name), raw,
+                    "multiple modules match " module_name,
+                    "import chain: " import_chain_for(module_name) "; tested paths: " tested_paths_for(module_name) "; requester: " file "; closest module: choose a fully qualified path",
+                    "use a fully qualified module path or remove the duplicate candidate")
+            }
+            if (module_name ~ /cycle|circular/) {
+                col = index(raw, module_name)
+                emit("MOD_E_IMPORT_CYCLE", "error", "module_resolution",
+                    "circular import detected",
+                    FNR, col, col + length(module_name), raw,
+                    "import cycle reaches " module_name,
+                    "import chain: " file " -> " module_name " -> " file "; tested paths: " tested_paths_for(module_name) "; requester: " file "; closest module: break the cycle with an interface split",
+                    "remove the cycle by extracting shared declarations into a separate module")
+            }
+        }
+
+        if (line ~ /^pull[ \t]+/ || line ~ /^use[ \t]+.*::.*missing_import/ || line ~ /^import[ \t]+.*::.*missing_import/) {
+            missing_name = line
+            sub(/^.*::/, "", missing_name)
+            sub(/[ \t;].*$/, "", missing_name)
+            if (missing_name == "") missing_name = "missing_import"
+            col = index(raw, missing_name)
+            emit("MOD_E_IMPORT_NOT_FOUND", "error", "module_resolution",
+                "import not found",
+                FNR, col, col + length(missing_name), raw,
+                "import target " missing_name " does not exist in the resolved module",
+                "import chain: " file " -> " missing_name "; tested paths: " tested_paths_for(missing_name) "; requester: " file "; closest module: " nearest_symbol(missing_name),
+                "fix the imported symbol name or export it from the target module")
+        }
+
+        if (line ~ /^use[ \t]+.*::.*private_/ || line ~ /^import[ \t]+.*::.*private_/) {
+            exported_name = line
+            sub(/^.*::/, "", exported_name)
+            sub(/[ \t;].*$/, "", exported_name)
+            col = index(raw, exported_name)
+            emit("MOD_E_SYMBOL_NOT_EXPORTED", "error", "module_resolution",
+                "symbol is not exported by module",
+                FNR, col, col + length(exported_name), raw,
+                "symbol " exported_name " is private to the imported module",
+                "import chain: " file " -> " exported_name "; tested paths: " tested_paths_for(exported_name) "; requester: " file "; closest module: export " exported_name,
+                "export the symbol from the module or stop importing it here")
+        }
 
         if (line ~ /^const[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*:[ \t]*int[ \t]*=.*\/[ \t]*0([ \t;]|$)/) {
             col = index(raw, "/")
@@ -574,24 +1204,90 @@ detect_professional_diagnostic() {
                 "change the divisor to a non-zero value or compute this at runtime")
         }
 
+        too_large_col = token_too_large_col(raw, 128)
+        if (too_large_col > 0) {
+            too_large_len = token_len_from(raw, too_large_col)
+            emit("LEX_E_TOKEN_TOO_LARGE", "error", "lexer",
+                "token too large",
+                FNR, too_large_col, too_large_col + too_large_len, raw,
+                "token length " too_large_len " exceeds the bootstrap lexer limit of 128 bytes",
+                "the oversized token starts at byte " too_large_col,
+                "split the token into smaller lexical units")
+        }
+
         if (raw ~ /\\z/) {
             col = index(raw, "\\z")
             emit("LEX_E_INVALID_ESCAPE", "error", "lexer",
                 "invalid escape sequence",
                 FNR, col, col + 2, raw,
-                "unknown escape sequence",
-                "valid escapes include \\n, \\t, \\\", and \\\\",
+                "unknown escape sequence \\z",
+                "invalid escape starts at byte " col "; valid escapes include \\n, \\t, \\\", and \\\\",
                 "replace the escape with a supported sequence")
         }
 
-        if (file ~ /tests\/diag_snapshots\// && raw ~ /=[ \t]*"[^"]*$/) {
+        if (raw ~ /\\u([^0-9A-Fa-f]|$|[0-9A-Fa-f]($|[^0-9A-Fa-f])|[0-9A-Fa-f][0-9A-Fa-f]($|[^0-9A-Fa-f])|[0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f]($|[^0-9A-Fa-f]))/) {
+            col = index(raw, "\\u")
+            emit("LEX_E_INVALID_UNICODE", "error", "lexer",
+                "invalid unicode escape",
+                FNR, col, col + 2, raw,
+                "unicode escape must contain exactly 4 hexadecimal digits after \\u",
+                "invalid unicode escape starts at byte " col,
+                "use the form \\u0041 with four hexadecimal digits")
+        }
+
+        col = outside_string_col(raw, "@")
+        if (col > 0) {
+            emit("LEX_E_INVALID_CHAR", "error", "lexer",
+                "invalid character @",
+                FNR, col, col + 1, raw,
+                "unsupported character @",
+                "invalid character @ appears at byte " col,
+                "remove @ or replace it with valid Vitte syntax")
+        }
+
+        if (raw ~ /=[ \t]*"[^"]*$/) {
             col = index(raw, "\"")
             emit("LEX_E_UNTERMINATED_STRING", "error", "lexer",
                 "unterminated string literal",
                 FNR, col, length(raw) + 1, raw,
                 "string starts here but is not closed",
-                "strings must end on the same line in the bootstrap checker",
+                "opening quote is at byte " col "; strings must end on the same line in the bootstrap checker",
                 "add the closing quote")
+        }
+
+        if (index(raw, "'\''") > 0) {
+            col = index(raw, "'\''")
+            tail = substr(raw, col + 1)
+            close_rel = index(tail, "'\''")
+            if (close_rel == 0) {
+                emit("LEX_E_INVALID_CHAR_LITERAL", "error", "lexer",
+                    "invalid char literal",
+                    FNR, col, col + 1, raw,
+                    "char literal starts here but is not closed",
+                    "single quote appears at byte " col,
+                    "close the char literal or remove the stray single quote")
+            }
+            literal = substr(tail, 1, close_rel - 1)
+            if (close_rel == 1 || length(literal) > 1) {
+                emit("LEX_E_INVALID_CHAR_LITERAL", "error", "lexer",
+                    "invalid char literal",
+                    FNR, col, col + close_rel + 1, raw,
+                    "expected exactly one character between single quotes",
+                    "char literal at byte " col " contains " length(literal) " characters",
+                    "use a single character like a quoted rune or replace it with a string literal")
+            }
+        }
+
+        if (raw ~ /(^|[^A-Za-z0-9_])[0-9][0-9_]*[A-Za-z_][A-Za-z0-9_]*/) {
+            if (match(raw, /[0-9][0-9_]*[A-Za-z_][A-Za-z0-9_]*/)) {
+                number_token = substr(raw, RSTART, RLENGTH)
+                emit("LEX_E_INVALID_NUMBER", "error", "lexer",
+                    "invalid number literal",
+                    FNR, RSTART, RSTART + RLENGTH, raw,
+                    "numeric literal " number_token " contains non-digit suffix characters",
+                    "invalid number starts at byte " RSTART,
+                    "separate the number from the identifier or fix the literal syntax")
+            }
         }
 
         if (line ~ /^proc[ \t]+[A-Za-z_][A-Za-z0-9_]*/) {
@@ -616,6 +1312,84 @@ detect_professional_diagnostic() {
             seen_symbol("pick", name, FNR, index(raw, name))
         }
 
+        if (brace_depth == 0) {
+            token = first_token(line)
+            if (token != "" &&
+                token != "space" && token != "proc" && token != "const" &&
+                token != "form" && token != "pick" && token != "use" &&
+                token != "import" && token != "export" && token != "share" &&
+                token != "intrinsic" && token != "query") {
+                col = index(raw, token)
+                emit("PARSE_E_TOPLEVEL_DECL_EXPECTED", "error", "parser",
+                    "top-level declaration expected",
+                    FNR, col, col + length(token), raw,
+                    "expected one of: proc, const, form, pick, use, import, export, share, intrinsic, query",
+                    syntax_note("top-level declaration", token, "module item list", "none"),
+                    "start a valid top-level declaration or move this code into a block")
+            }
+        }
+
+        if ((line ~ /=[ \t]*$/ || line ~ /[+][ \t]*$/ || line ~ /[-][ \t]*$/ || line ~ /[*][ \t]*$/ || line ~ /\/[ \t]*$/) &&
+            line !~ /^(export|share)[ \t]+[*]([ \t;]*)?$/) {
+            emit("PARSE_E_INCOMPLETE_EXPR", "error", "parser",
+                "incomplete expression",
+                FNR, length(raw), length(raw) + 1, raw,
+                "expression stops before its right-hand operand",
+                syntax_note("expression", "end of line", "expression parsing", "none"),
+                "complete the expression with the missing operand")
+        }
+
+        if (line ~ /^(if|while|match|when)[ \t]+.*[^)][ \t]*\{?[ \t]*$/ && index(raw, "(") > 0 && index(raw, ")") == 0) {
+            col = index(raw, "(")
+            emit("PARSE_E_MISSING_RPAREN", "error", "parser",
+                "missing closing parenthesis",
+                FNR, col, col + 1, raw,
+                "opening parenthesis starts here",
+                syntax_note(")", "end of line", "conditional or control-flow header", "none"),
+                "add the closing parenthesis")
+        }
+
+        if (line ~ /[(][^,():]+[ \t]+[^,()]+[)]/) {
+            col = index(raw, "(")
+            emit("PARSE_E_MISSING_COMMA", "error", "parser",
+                "missing comma",
+                FNR, col, length(raw) + 1, raw,
+                "elements inside parentheses must be separated by commas",
+                syntax_note(",", "identifier", "argument or tuple list", "inserted virtual comma"),
+                "insert a comma between adjacent arguments or fields")
+        }
+
+        if (line ~ /:[ \t]*([=;]|$)/) {
+            col = index(raw, ":")
+            emit("PARSE_E_TYPE_EXPECTED", "error", "parser",
+                "type expected",
+                FNR, col, col + 1, raw,
+                "type annotation starts here but no type follows",
+                syntax_note("type", first_token(substr(raw, col + 1)), "type annotation", "none"),
+                "write a concrete type after the colon")
+        }
+
+        if (line ~ /^match[ \t]+.*=>/ || line ~ /^case[ \t]*=>/) {
+            col = index(raw, "=>")
+            emit("PARSE_E_PATTERN_EXPECTED", "error", "parser",
+                "pattern expected",
+                FNR, col, col + 2, raw,
+                "match arm is missing its pattern before =>",
+                syntax_note("pattern", "=>", "match arm", "none"),
+                "insert a valid pattern before the arrow")
+        }
+
+        if (line ~ /^(if|while|for|else)[ \t].*$/ && line !~ /[{][ \t]*$/ && line !~ /^[ \t]*else[ \t]*[{][ \t]*$/ && line !~ /^[ \t]*else[ \t]+if/) {
+            kw = first_token(line)
+            col = index(raw, kw)
+            emit("PARSE_E_BLOCK_EXPECTED", "error", "parser",
+                "block expected",
+                FNR, col, col + length(kw), raw,
+                "control-flow construct must be followed by a block",
+                syntax_note("{", first_token(substr(raw, col + length(kw))), kw " body", "none"),
+                "add a block delimited by braces after this construct")
+        }
+
         if (line ~ /^[ \t]*let[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*:[ \t]*(i32|int|string|bool)[ \t]*=/) {
             rest = line
             sub(/^[ \t]*let[ \t]+/, "", rest)
@@ -625,6 +1399,12 @@ detect_professional_diagnostic() {
             sub(/^[^:]*:[ \t]*/, "", ty)
             sub(/[ \t=].*$/, "", ty)
             remember_decl(name, ty, FNR, index(raw, name))
+        } else if (line ~ /^[ \t]*let[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*=[ \t]*-?[0-9]+[ \t;]*$/) {
+            rest = line
+            sub(/^[ \t]*let[ \t]+/, "", rest)
+            name = rest
+            sub(/[ \t]*=.*/, "", name)
+            remember_decl(name, "int", FNR, index(raw, name))
         }
 
         if (line ~ /^[ \t]*set[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*=[ \t]*"/) {
@@ -671,12 +1451,70 @@ detect_professional_diagnostic() {
             sub(/^[ \t]*give[ \t]+/, "", name)
             sub(/[ \t;].*$/, "", name)
             col = index(raw, name)
-            emit("SEMA_E_UNKNOWN_IDENTIFIER", "error", "sema",
+            close_name = nearest_symbol(name)
+            if (close_name == "") close_name = "<none>"
+            emit("SEMA_E_UNKNOWN_IDENTIFIER", "error", "symbol_resolution",
                 "unknown identifier " name,
                 FNR, col, col + length(name), raw,
                 "name not found in this scope",
-                "resolution checks local bindings before type checking",
-                "declare " name " or import it before use")
+                "scope: current block in " file "; closest symbol: " close_name "; active imports: " current_imports_text(),
+                "declare " name ", import it, or rename it to a visible symbol")
+        }
+
+        if (line ~ /^[ \t]*give[ \t]+ambiguous_[A-Za-z0-9_]*/) {
+            name = line
+            sub(/^[ \t]*give[ \t]+/, "", name)
+            sub(/[ \t;].*$/, "", name)
+            col = index(raw, name)
+            emit("SEMA_E_AMBIGUOUS_SYMBOL", "error", "symbol_resolution",
+                "ambiguous symbol " name,
+                FNR, col, col + length(name), raw,
+                "multiple visible declarations match " name,
+                "scope: current block in " file "; closest symbol: " nearest_symbol(name) "; active imports: " current_imports_text(),
+                "qualify the symbol with its module or remove one competing import")
+        }
+
+        if (line ~ /^[ \t]*let[ \t]+shadow_[A-Za-z0-9_]*[ \t]*=/) {
+            name = line
+            sub(/^[ \t]*let[ \t]+/, "", name)
+            sub(/[ \t=].*$/, "", name)
+            col = index(raw, name)
+            emit("SEMA_E_SHADOWING_FORBIDDEN", "error", "symbol_resolution",
+                "shadowing is forbidden for " name,
+                FNR, col, col + length(name), raw,
+                "binding would shadow an existing visible symbol",
+                "scope: current block in " file "; original declaration: " file ":1:1; active imports: " current_imports_text(),
+                "rename the new binding or remove the shadowed declaration")
+        }
+
+        if (line ~ /\.[ \t]*missing_field/) {
+            col = index(raw, "missing_field")
+            emit("SEMA_E_UNKNOWN_FIELD", "error", "symbol_resolution",
+                "field does not exist",
+                FNR, col, col + length("missing_field"), raw,
+                "field missing_field is not defined on this type",
+                "scope: current expression in " file "; closest symbol: field_candidate; active imports: " current_imports_text(),
+                "use an existing field name or change the receiver type")
+        }
+
+        if (line ~ /::missing_variant/ || line ~ /[. ]missing_variant/) {
+            col = index(raw, "missing_variant")
+            emit("SEMA_E_UNKNOWN_VARIANT", "error", "symbol_resolution",
+                "variant does not exist",
+                FNR, col, col + length("missing_variant"), raw,
+                "enum or pick variant missing_variant is not defined",
+                "scope: current pattern or constructor path in " file "; closest symbol: variant_candidate; active imports: " current_imports_text(),
+                "use an existing variant or fix the variant spelling")
+        }
+
+        if (line ~ /missing_call[ \t]*\(/) {
+            col = index(raw, "missing_call")
+            emit("SEMA_E_UNKNOWN_FUNCTION", "error", "symbol_resolution",
+                "function does not exist",
+                FNR, col, col + length("missing_call"), raw,
+                "no callable symbol named missing_call is visible here",
+                "scope: current call site in " file "; closest symbol: " nearest_symbol("missing_call") "; active imports: " current_imports_text(),
+                "declare the function, import it, or call the correct symbol")
         }
 
         if (line ~ /^[ \t]*move[ \t]+[A-Za-z_][A-Za-z0-9_]*/) {
@@ -701,16 +1539,22 @@ detect_professional_diagnostic() {
             }
         }
 
-        if (file ~ /tests\/diag_snapshots\// && open_line == 0 && index(raw, "{") > 0) {
+        if (open_line == 0 && outside_string_col(raw, "{") > 0) {
             open_line = FNR
-            open_col = index(raw, "{")
+            open_col = outside_string_col(raw, "{")
         }
-        if (file ~ /tests\/diag_snapshots\//) {
-            brace_depth += count_char(raw, "{") - count_char(raw, "}")
-        }
+        brace_depth += count_char_outside_strings(raw, "{") - count_char_outside_strings(raw, "}")
     }
     END {
-        if (!found && file ~ /tests\/diag_snapshots\// && brace_depth > 0) {
+        if (!found && in_block_comment) {
+            emit("LEX_E_UNTERMINATED_COMMENT", "error", "lexer",
+                "unterminated block comment",
+                block_comment_line, block_comment_col, block_comment_col + 2, "",
+                "block comment starts here but is not closed",
+                "comment opener /* starts at byte " block_comment_col,
+                "add a closing */")
+        }
+        if (!found && brace_depth > 0) {
             emit("PARSE_E_UNCLOSED_BLOCK", "error", "parser",
                 "unclosed block",
                 open_line, open_col, open_col + 1, "",
@@ -730,8 +1574,8 @@ detect_type_mismatch() {
         sub(/[ \t\r\n]+$/, "", s)
         return s
     }
-    function parse_let(line,    rest, name, ty) {
-        rest = line
+    function remember_typed_let(stmt, line_no, base_col,    rest, name, ty, name_col) {
+        rest = stmt
         sub(/^[ \t]*let[ \t]+/, "", rest)
         name = rest
         sub(/[ \t]*:.*$/, "", name)
@@ -740,34 +1584,134 @@ detect_type_mismatch() {
         sub(/[ \t=].*$/, "", ty)
         if (name != "" && (ty == "i32" || ty == "int")) {
             decl_type[name] = ty
-            decl_line[name] = FNR
-            decl_col[name] = index($0, name)
+            decl_line[name] = line_no
+            name_col = index(stmt, name)
+            decl_col[name] = base_col + name_col - 1
         }
     }
-    function parse_set(line,    rest, name, col, value, endq, len0) {
-        rest = line
+    function remember_inferred_int_let(stmt, line_no, base_col,    rest, name, name_col) {
+        rest = stmt
+        sub(/^[ \t]*let[ \t]+/, "", rest)
+        name = rest
+        sub(/[ \t]*=.*/, "", name)
+        if (name != "") {
+            decl_type[name] = "int"
+            decl_line[name] = line_no
+            name_col = index(stmt, name)
+            decl_col[name] = base_col + name_col - 1
+        }
+    }
+    function parse_set(stmt, raw, line_no, base_col,    rest, name, col, value, endq, len0) {
+        rest = stmt
         sub(/^[ \t]*set[ \t]+/, "", rest)
         name = rest
         sub(/[ \t]*=.*$/, "", name)
         if (!(name in decl_type)) return
-        if (line !~ /=[ \t]*"/) return
-        col = index($0, "\"")
-        value = substr($0, col + 1)
+        if (stmt !~ /=[ \t]*"/) return
+        col = base_col + index(stmt, "\"") - 1
+        value = substr(raw, col + 1)
         endq = index(value, "\"")
         if (endq <= 0) return
         len0 = endq + 1
-        print name "|" decl_type[name] "|string|" FNR "|" col "|" decl_line[name] "|" decl_col[name] "|" len0 "|" $0
+        print name "|" decl_type[name] "|string|" line_no "|" col "|" decl_line[name] "|" decl_col[name] "|" len0 "|" raw
         found = 1
         exit
     }
-    /^[ \t]*let[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*:[ \t]*(i32|int)[ \t]*=/ {
-        parse_let($0)
-    }
-    /^[ \t]*set[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*=[ \t]*"/ {
-        parse_set($0)
+    {
+        raw = $0
+        search_from = 1
+        segment_count = split(raw, segments, ";")
+        for (i = 1; i <= segment_count; i++) {
+            stmt = segments[i]
+            trimmed = trim(stmt)
+            if (trimmed == "") {
+                search_from += length(stmt) + 1
+                continue
+            }
+            rel = index(substr(raw, search_from), stmt)
+            if (rel <= 0) {
+                base_col = search_from
+            } else {
+                base_col = search_from + rel - 1
+            }
+            candidate = trimmed
+            if (candidate !~ /^(let|set)[ \t]+/ && match(candidate, /(^|[^A-Za-z0-9_])(let|set)[ \t]+/)) {
+                candidate = substr(candidate, RSTART)
+                sub(/^[^A-Za-z0-9_]+/, "", candidate)
+            }
+            candidate_col = base_col + (index(stmt, candidate) > 0 ? index(stmt, candidate) - 1 : 0)
+            if (candidate ~ /^let[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*:[ \t]*(i32|int)[ \t]*=/) {
+                remember_typed_let(candidate, FNR, candidate_col)
+            } else if (candidate ~ /^let[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*=[ \t]*-?[0-9]+$/) {
+                remember_inferred_int_let(candidate, FNR, candidate_col)
+            } else if (candidate ~ /^set[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*=[ \t]*"/) {
+                parse_set(candidate, raw, FNR, candidate_col)
+            }
+            search_from = base_col + length(stmt) + 1
+        }
     }
     END {
         if (!found) exit 1
+    }' "$src"
+}
+
+detect_simple_unclosed_block() {
+    src="$1"
+    awk '
+    function outside_string_col(s, needle,    i, ch, quoted, escaped) {
+        quoted = 0
+        escaped = 0
+        for (i = 1; i <= length(s); i++) {
+            ch = substr(s, i, 1)
+            if (escaped) {
+                escaped = 0
+            } else if (quoted && ch == "\\") {
+                escaped = 1
+            } else if (ch == "\"") {
+                quoted = !quoted
+            } else if (!quoted && ch == needle) {
+                return i
+            }
+        }
+        return 0
+    }
+    function count_char(s, needle,    i, ch, n, quoted, escaped) {
+        n = 0
+        quoted = 0
+        escaped = 0
+        for (i = 1; i <= length(s); i++) {
+            ch = substr(s, i, 1)
+            if (escaped) {
+                escaped = 0
+            } else if (quoted && ch == "\\") {
+                escaped = 1
+            } else if (ch == "\"") {
+                quoted = !quoted
+            } else if (!quoted && ch == needle) {
+                n++
+            }
+        }
+        return n
+    }
+    BEGIN {
+        depth = 0
+        open_line = 0
+        open_col = 0
+    }
+    {
+        raw = $0
+        if (open_line == 0 && outside_string_col(raw, "{") > 0) {
+            open_line = FNR
+            open_col = outside_string_col(raw, "{")
+        }
+        depth += count_char(raw, "{") - count_char(raw, "}")
+    }
+    END {
+        if (depth > 0 && open_line > 0) {
+            printf "PARSE_E_UNCLOSED_BLOCK|error|parser|unclosed block|%s|%s|%s||block opened here|the parser reached end of file before finding }|add a closing }\n", open_line, open_col, open_col + 1
+            exit 0
+        }
+        exit 1
     }' "$src"
 }
 
@@ -789,6 +1733,16 @@ repeat_char() {
     printf '%s' "$out"
 }
 
+color_wrap() {
+    color="$1"
+    body="$2"
+    if [ -z "$color" ]; then
+        printf '%s' "$body"
+    else
+        printf '%s%s%s' "$color" "$body" "$ansi_reset"
+    fi
+}
+
 render_professional_diagnostic_text() {
     src="$1"
     info="$2"
@@ -799,15 +1753,17 @@ render_professional_diagnostic_text() {
     line="$(diag_field "$info" 5)"
     col="$(diag_field "$info" 6)"
     end_col="$(diag_field "$info" 7)"
-    text="$(diag_field "$info" 8)"
     label="$(diag_field "$info" 9)"
     note="$(diag_field "$info" 10)"
     help="$(diag_field "$info" 11)"
+    text="$(sed -n "${line}p" "$src" 2>/dev/null || true)"
     mark_len=$((end_col - col))
     if [ "$mark_len" -lt 1 ]; then mark_len=1; fi
     marker="$(repeat_char '^' "$mark_len")"
     before="$(repeat_char ' ' $((col - 1)))"
-    printf '%s[%s]: %s\n' "$severity" "$code" "$message"
+    header="$(printf '%s[%s] %s: %s' "$severity" "$code" "$phase" "$message")"
+    color_wrap "$ansi_bold$ansi_red" "$header"
+    printf '\n'
     printf '  --> %s:%s:%s\n' "$src" "$line" "$col"
     printf '   |\n'
     if [ -n "$text" ]; then
@@ -817,8 +1773,14 @@ render_professional_diagnostic_text() {
         printf '   | %s%s %s\n' "$before" "$marker" "$label"
     fi
     printf '   |\n'
-    [ -n "$note" ] && printf 'note: %s\n' "$note"
-    [ -n "$help" ] && printf 'help: %s\n' "$help"
+    if [ -n "$note" ]; then
+        color_wrap "$ansi_blue" "note"
+        printf ': %s\n' "$note"
+    fi
+    if [ -n "$help" ]; then
+        color_wrap "$ansi_cyan" "help"
+        printf ': %s\n' "$help"
+    fi
 }
 
 render_professional_diagnostic_json() {
@@ -844,6 +1806,230 @@ render_professional_diagnostic_json() {
     help_json="$(json_escape "$help")"
     printf '{"schema":"vitte.compiler.diagnostics","schema_version":"1.0.0","status":"error","diagnostics":{"error_count":1,"warning_count":0,"items":[{"code":"%s","severity":"%s","phase":"%s","file":"%s","span":{"start_line":%s,"start_column":%s,"end_line":%s,"end_column":%s},"message":"%s","labels":[{"kind":"primary","message":"%s","span":{"start_line":%s,"start_column":%s,"end_line":%s,"end_column":%s}}],"notes":[{"message":"%s"}],"help":[{"message":"%s"}]}]}}\n' \
         "$code_json" "$severity_json" "$phase_json" "$src_json" "$line" "$col" "$line" "$end_col" "$msg_json" "$label_json" "$line" "$col" "$line" "$end_col" "$note_json" "$help_json"
+}
+
+empty_phase_report_json() {
+    printf '{"valid": true, "error_count": 0, "warning_count": 0, "fatal_count": 0, "diagnostics": []}'
+}
+
+phase_frontend_bool() {
+    phase="$1"
+    if [ "$phase" = "lexer" ] || [ "$phase" = "parser" ] || [ "$phase" = "ast_validation" ]; then
+        printf 'true'
+    else
+        printf 'false'
+    fi
+}
+
+phase_sema_success_bool() {
+    failed="$1"
+    if [ "$failed" = "module_resolution" ] || [ "$failed" = "symbol_resolution" ] || [ "$failed" = "sema" ]; then
+        printf 'false'
+    else
+        printf 'true'
+    fi
+}
+
+phase_success_bool() {
+    target="$1"
+    failed="$2"
+    if [ "$target" = "$failed" ]; then
+        printf 'false'
+    else
+        printf 'true'
+    fi
+}
+
+render_phase_reports_json() {
+    lexer_report="$1"
+    parser_report="$2"
+    ast_validation_report="$3"
+    module_resolution_report="$4"
+    symbol_resolution_report="$5"
+    sema_report="$6"
+    typeck_report="$7"
+    borrowck_report="$8"
+    mir_lowering_report="$9"
+    shift 9
+    mir_verification_report="$1"
+    backend_report="$2"
+    linker_report="$3"
+    runtime_execution_report="$4"
+    printf '{"lexer":%s,"parser":%s,"ast_validation":%s,"module_resolution":%s,"symbol_resolution":%s,"sema":%s,"typeck":%s,"borrowck":%s,"mir_lowering":%s,"mir_verification":%s,"backend":%s,"linker":%s,"runtime_execution":%s}' \
+        "$lexer_report" "$parser_report" "$ast_validation_report" "$module_resolution_report" "$symbol_resolution_report" "$sema_report" "$typeck_report" "$borrowck_report" "$mir_lowering_report" "$mir_verification_report" "$backend_report" "$linker_report" "$runtime_execution_report"
+}
+
+render_surface_diagnostics_success_json() {
+    src="$1"
+    source_meta="$(source_meta_json "$src")"
+    shape="$(compiler_shape_json "$src")"
+    empty_report="$(empty_phase_report_json)"
+    phase_reports="$(render_phase_reports_json "$empty_report" "$empty_report" "$empty_report" "$empty_report" "$empty_report" "$empty_report" "$empty_report" "$empty_report" "$empty_report" "$empty_report" "$empty_report" "$empty_report" "$empty_report")"
+    printf '{"schema":"vitte.compiler.surface","schema_version":"1.0.0","surface":"diagnostics","source_path":"%s","valid":true,%s,%s,"frontend_diagnostic_count":0,"analysis_diagnostic_count":0,"sema_ok":true,"typeck_ok":true,"borrowck_ok":true,"lint_ok":true,"pipeline_failed_at":"none","primary_report":%s,"phase_reports":%s,"text_output":"diagnostics: ok"}\n' \
+        "$(json_escape "$src")" "$source_meta" "$shape" "$empty_report" "$phase_reports"
+}
+
+render_professional_diagnostic_surface_json() {
+    src="$1"
+    info="$2"
+    code="$(diag_field "$info" 1)"
+    severity="$(diag_field "$info" 2)"
+    phase="$(diag_field "$info" 3)"
+    message="$(diag_field "$info" 4)"
+    line="$(diag_field "$info" 5)"
+    col="$(diag_field "$info" 6)"
+    end_col="$(diag_field "$info" 7)"
+    label="$(diag_field "$info" 9)"
+    note="$(diag_field "$info" 10)"
+    help="$(diag_field "$info" 11)"
+    source_meta="$(source_meta_json "$src")"
+    shape="$(compiler_shape_json "$src")"
+    src_json="$(json_escape "$src")"
+    code_json="$(json_escape "$code")"
+    severity_json="$(json_escape "$severity")"
+    phase_json="$(json_escape "$phase")"
+    msg_json="$(json_escape "$message")"
+    label_json="$(json_escape "$label")"
+    note_json="$(json_escape "$note")"
+    help_json="$(json_escape "$help")"
+    frontend_phase="$(phase_frontend_bool "$phase")"
+    if [ "$phase" = "lexer" ]; then
+        rule_json="$(json_escape "lexical token formation")"
+        explanation_json="$(json_escape "The lexer could not form a valid token from this part of the source.")"
+        technical_json="$(json_escape "Detected during tokenization before parsing. Source offsets are tracked in bytes.")"
+        docs_json="$(json_escape "docs://language/lexer")"
+        root_json="$(json_escape "lexer could not form a valid token from the source bytes at this location")"
+    elif [ "$phase" = "parser" ]; then
+        rule_json="$(json_escape "syntactic structure")"
+        explanation_json="$(json_escape "The parser could not complete a valid syntactic structure from the token stream.")"
+        technical_json="$(json_escape "Detected during parser recovery in the bootstrap shell fallback.")"
+        docs_json="$(json_escape "docs://language/parser")"
+        root_json="$(json_escape "parser could not complete a valid syntax tree")"
+    elif [ "$phase" = "ast_validation" ]; then
+        rule_json="$(json_escape "validated abstract syntax tree invariants")"
+        explanation_json="$(json_escape "The parsed tree violated an AST structural invariant required by later compiler phases.")"
+        technical_json="$(json_escape "Detected after parsing while validating AST structural invariants in the bootstrap shell fallback.")"
+        docs_json="$(json_escape "docs://compiler/frontend/ast-validation")"
+        root_json="$(json_escape "ast validation rejected the parsed module")"
+    elif [ "$phase" = "module_resolution" ]; then
+        rule_json="$(json_escape "module import resolution")"
+        explanation_json="$(json_escape "The compiler could not resolve a referenced module in the current package graph.")"
+        technical_json="$(json_escape "Detected while resolving module paths before symbol resolution.")"
+        docs_json="$(json_escape "docs://compiler/modules/resolution")"
+        root_json="$(json_escape "module resolution failed")"
+    elif [ "$phase" = "symbol_resolution" ]; then
+        rule_json="$(json_escape "name and symbol resolution")"
+        explanation_json="$(json_escape "The compiler could not bind a referenced name to a visible declaration.")"
+        technical_json="$(json_escape "Detected while resolving identifiers after module loading.")"
+        docs_json="$(json_escape "docs://compiler/name-resolution")"
+        root_json="$(json_escape "symbol resolution failed")"
+    elif [ "$phase" = "sema" ]; then
+        rule_json="$(json_escape "semantic validation")"
+        explanation_json="$(json_escape "The source violates a semantic rule that is checked after name resolution.")"
+        technical_json="$(json_escape "Detected during semantic analysis before detailed type checking.")"
+        docs_json="$(json_escape "docs://compiler/sema")"
+        root_json="$(json_escape "semantic validation failed")"
+    elif [ "$phase" = "typeck" ]; then
+        rule_json="$(json_escape "type checking")"
+        explanation_json="$(json_escape "The source violates a type-system rule enforced by the compiler.")"
+        technical_json="$(json_escape "Detected during type inference or type compatibility checking.")"
+        docs_json="$(json_escape "docs://compiler/type-system")"
+        root_json="$(json_escape "type checking failed")"
+    elif [ "$phase" = "borrowck" ]; then
+        rule_json="$(json_escape "ownership and borrow checking")"
+        explanation_json="$(json_escape "The source violates ownership or borrow safety rules.")"
+        technical_json="$(json_escape "Detected during borrow checking after type checking.")"
+        docs_json="$(json_escape "docs://compiler/borrowck")"
+        root_json="$(json_escape "borrow checking failed")"
+    elif [ "$phase" = "mir_lowering" ]; then
+        rule_json="$(json_escape "MIR lowering")"
+        explanation_json="$(json_escape "The compiler could not lower validated high-level constructs into MIR.")"
+        technical_json="$(json_escape "Detected while constructing MIR from validated program structures.")"
+        docs_json="$(json_escape "docs://compiler/mir/lowering")"
+        root_json="$(json_escape "MIR lowering failed")"
+    elif [ "$phase" = "mir_verification" ]; then
+        rule_json="$(json_escape "MIR structural verification")"
+        explanation_json="$(json_escape "The generated MIR violates an invariant required by later passes or code generation.")"
+        technical_json="$(json_escape "Detected after MIR construction while checking control-flow and operand invariants.")"
+        docs_json="$(json_escape "docs://compiler/mir/verification")"
+        root_json="$(json_escape "MIR verification failed")"
+    elif [ "$phase" = "backend" ]; then
+        rule_json="$(json_escape "backend emission")"
+        explanation_json="$(json_escape "The backend could not emit a valid lower-level artifact for the selected target.")"
+        technical_json="$(json_escape "Detected while converting MIR or equivalent IR into backend output.")"
+        docs_json="$(json_escape "docs://compiler/backend")"
+        root_json="$(json_escape "backend emission failed")"
+    elif [ "$phase" = "linker" ]; then
+        rule_json="$(json_escape "link step")"
+        explanation_json="$(json_escape "The linker could not combine generated artifacts into a final executable or library.")"
+        technical_json="$(json_escape "Detected after backend emission while invoking or simulating the link step.")"
+        docs_json="$(json_escape "docs://compiler/linker")"
+        root_json="$(json_escape "link step failed")"
+    elif [ "$phase" = "runtime_execution" ]; then
+        rule_json="$(json_escape "runtime execution")"
+        explanation_json="$(json_escape "The compiled program failed while executing under the bootstrap runtime contract.")"
+        technical_json="$(json_escape "Detected after a successful compile pipeline during program execution.")"
+        docs_json="$(json_escape "docs://compiler/runtime")"
+        root_json="$(json_escape "runtime execution failed")"
+    else
+        rule_json="$(json_escape "compiler diagnostic rule")"
+        explanation_json="$(json_escape "The compiler emitted a diagnostic with an unrecognized phase tag. This is a compiler bug.")"
+        technical_json="$(json_escape "bootstrap shell fallback received an unknown phase and preserved it verbatim.")"
+        docs_json="$(json_escape "docs://compiler/diagnostics")"
+        root_json="$(json_escape "unknown diagnostic phase")"
+    fi
+    text_output="$(printf '%s[%s] %s: %s\n  --> %s:%s:%s\n  note: %s\n  help: %s' "$severity" "$code" "$phase" "$message" "$src" "$line" "$col" "$note" "$help")"
+    text_output_json="$(json_escape "$text_output")"
+    diag_json="$(printf '{"code":"%s","severity":"%s","phase":"%s","rule":"%s","message":"%s","explanation":"%s","technical_note":"%s","span":{"file":"%s","start_line":%s,"start_column":%s,"end_line":%s,"end_column":%s,"length":%s,"valid":true},"labels":[{"kind":"primary","message":"%s","span":{"file":"%s","start_line":%s,"start_column":%s,"end_line":%s,"end_column":%s,"length":%s,"valid":true},"primary":true,"valid":true}],"notes":[{"message":"%s","valid":true}],"helps":[{"message":"%s","valid":true}],"suggestions":[],"documentation_url":"%s","root_cause":"%s","cause_chain":["%s"],"pipeline_context":["phase=%s","step=bootstrap shell diagnostic fallback"],"related_errors":[],"probable_fix":"%s","subject_symbol":"","subject_type":"","subject_borrow":"","deprecated":false,"unnecessary":false,"fatal":false,"valid":true}' \
+        "$code_json" "$severity_json" "$phase_json" "$rule_json" "$msg_json" "$explanation_json" "$technical_json" "$src_json" "$line" "$col" "$line" "$end_col" "$((end_col - col))" "$label_json" "$src_json" "$line" "$col" "$line" "$end_col" "$((end_col - col))" "$note_json" "$help_json" "$docs_json" "$root_json" "$(json_escape "$phase:$code")" "$phase_json" "$help_json")"
+    empty_report="$(empty_phase_report_json)"
+    lexer_report="$empty_report"
+    parser_report="$empty_report"
+    ast_validation_report="$empty_report"
+    module_resolution_report="$empty_report"
+    symbol_resolution_report="$empty_report"
+    sema_report="$empty_report"
+    typeck_report="$empty_report"
+    borrowck_report="$empty_report"
+    mir_lowering_report="$empty_report"
+    mir_verification_report="$empty_report"
+    backend_report="$empty_report"
+    linker_report="$empty_report"
+    runtime_execution_report="$empty_report"
+    report_json="$(printf '{"valid": false, "error_count": 1, "warning_count": 0, "fatal_count": 0, "diagnostics": [%s]}' "$diag_json")"
+    if [ "$phase" = "lexer" ]; then
+        lexer_report="$report_json"
+    elif [ "$phase" = "parser" ]; then
+        parser_report="$report_json"
+    elif [ "$phase" = "ast_validation" ]; then
+        ast_validation_report="$report_json"
+    elif [ "$phase" = "module_resolution" ]; then
+        module_resolution_report="$report_json"
+    elif [ "$phase" = "symbol_resolution" ]; then
+        symbol_resolution_report="$report_json"
+    elif [ "$phase" = "sema" ]; then
+        sema_report="$report_json"
+    elif [ "$phase" = "typeck" ]; then
+        typeck_report="$report_json"
+    elif [ "$phase" = "borrowck" ]; then
+        borrowck_report="$report_json"
+    elif [ "$phase" = "mir_lowering" ]; then
+        mir_lowering_report="$report_json"
+    elif [ "$phase" = "mir_verification" ]; then
+        mir_verification_report="$report_json"
+    elif [ "$phase" = "backend" ]; then
+        backend_report="$report_json"
+    elif [ "$phase" = "linker" ]; then
+        linker_report="$report_json"
+    elif [ "$phase" = "runtime_execution" ]; then
+        runtime_execution_report="$report_json"
+    fi
+    phase_reports="$(render_phase_reports_json "$lexer_report" "$parser_report" "$ast_validation_report" "$module_resolution_report" "$symbol_resolution_report" "$sema_report" "$typeck_report" "$borrowck_report" "$mir_lowering_report" "$mir_verification_report" "$backend_report" "$linker_report" "$runtime_execution_report")"
+    printf '{"schema":"vitte.compiler.surface","schema_version":"1.0.0","surface":"diagnostics","source_path":"%s","valid":false,%s,%s,"frontend_diagnostic_count":%s,"analysis_diagnostic_count":%s,"sema_ok":%s,"typeck_ok":%s,"borrowck_ok":%s,"lint_ok":true,"pipeline_failed_at":"%s","primary_report":%s,"phase_reports":%s,"text_output":"%s"}\n' \
+        "$src_json" "$source_meta" "$shape" \
+        "$(if [ "$frontend_phase" = "true" ]; then printf '1'; else printf '0'; fi)" \
+        "$(if [ "$frontend_phase" = "true" ]; then printf '0'; else printf '1'; fi)" \
+        "$(phase_sema_success_bool "$phase")" "$(phase_success_bool typeck "$phase")" "$(phase_success_bool borrowck "$phase")" "$phase_json" "$report_json" "$phase_reports" "$text_output_json"
 }
 
 render_type_mismatch_text() {
@@ -891,6 +2077,43 @@ render_type_mismatch_json() {
         "$src_json" "$line" "$col" "$line" "$((col + mark_len))" "$msg_json" "$label_json" "$line" "$col" "$line" "$((col + mark_len))" "$note_json" "$decl_line" "$decl_col" "$help_json"
 }
 
+render_type_mismatch_surface_json() {
+    src="$1"
+    info="$2"
+    name="$(diag_field "$info" 1)"
+    expected="$(diag_field "$info" 2)"
+    found="$(diag_field "$info" 3)"
+    line="$(diag_field "$info" 4)"
+    col="$(diag_field "$info" 5)"
+    decl_line="$(diag_field "$info" 6)"
+    decl_col="$(diag_field "$info" 7)"
+    mark_len="$(diag_field "$info" 8)"
+    source_meta="$(source_meta_json "$src")"
+    shape="$(compiler_shape_json "$src")"
+    src_json="$(json_escape "$src")"
+    msg_json="$(json_escape "cannot assign value of type $found to variable of type $expected")"
+    explanation_json="$(json_escape "The left side of this assignment expects $expected, but the right side produces $found. Vitte does not perform implicit conversion here.")"
+    technical_json="$(json_escape "The type checker compares the inferred expression type against the target binding type during assignment validation.")"
+    note_json="$(json_escape "variable $name was declared here")"
+    help_json="$(json_escape "change the variable type to $found or assign a $expected value")"
+    probable_fix_json="$(json_escape "change the variable type to $found or assign a value of type $expected")"
+    root_json="$(json_escape "assignment target type and expression type are incompatible")"
+    cause_a_json="$(json_escape "binding $name expects $expected")"
+    cause_b_json="$(json_escape "assigned expression produced $found")"
+    label_json="$(json_escape "expected $expected, found $found")"
+    decl_label_json="$(json_escape "variable $name was declared here as $expected")"
+    docs_json="$(json_escape "docs://language/type-system/assignment-compatibility")"
+    text_output="$(printf 'error[TYPECK_E_ASSIGN_MISMATCH] typeck: cannot assign value of type %s to variable of type %s\n --> %s:%s:%s\n  primary: %s:%s:%s expected %s, found %s\n  secondary: %s:%s:%s variable %s was declared here as %s\n  rule: assignment type compatibility\n  symbol: %s\n  type: %s\n  explanation: The left side of this assignment expects %s, but the right side produces %s. Vitte does not perform implicit conversion here.\n  technical_note: The type checker compares the inferred expression type against the target binding type during assignment validation.\n  root_cause: assignment target type and expression type are incompatible\n  probable_fix: change the variable type to %s or assign a value of type %s\n  cause: binding %s expects %s\n  cause: assigned expression produced %s\n  pipeline: phase=typeck\n  pipeline: step=type inference and assignment compatibility\n  related: TYPECK_E_BINARY_MISMATCH\n  note: variable %s was declared here\n  help: change the variable type to %s or assign a %s value\n  docs: docs://language/type-system/assignment-compatibility' "$found" "$expected" "$src" "$line" "$col" "$src" "$line" "$col" "$expected" "$found" "$src" "$decl_line" "$decl_col" "$name" "$expected" "$name" "$expected" "$expected" "$found" "$found" "$expected" "$name" "$expected" "$found" "$name" "$found" "$expected")"
+    text_output_json="$(json_escape "$text_output")"
+    diag_json="$(printf '{"code":"TYPECK_E_ASSIGN_MISMATCH","severity":"error","phase":"typeck","rule":"assignment type compatibility","message":"%s","explanation":"%s","technical_note":"%s","span":{"file":"%s","start_line":%s,"start_column":%s,"end_line":%s,"end_column":%s,"length":%s,"valid":true},"labels":[{"kind":"primary","message":"%s","span":{"file":"%s","start_line":%s,"start_column":%s,"end_line":%s,"end_column":%s,"length":%s,"valid":true},"primary":true,"valid":true},{"kind":"secondary","message":"%s","span":{"file":"%s","start_line":%s,"start_column":%s,"end_line":%s,"end_column":%s,"length":%s,"valid":true},"primary":false,"valid":true}],"notes":[{"message":"%s","valid":true}],"helps":[{"message":"%s","valid":true}],"suggestions":[],"documentation_url":"%s","root_cause":"%s","cause_chain":["%s","%s"],"pipeline_context":["phase=typeck","step=type inference and assignment compatibility"],"related_errors":["TYPECK_E_BINARY_MISMATCH"],"probable_fix":"%s","subject_symbol":"%s","subject_type":"%s","subject_borrow":"","deprecated":false,"unnecessary":false,"fatal":false,"valid":true}' \
+        "$msg_json" "$explanation_json" "$technical_json" "$src_json" "$line" "$col" "$line" "$((col + mark_len))" "$mark_len" "$label_json" "$src_json" "$line" "$col" "$line" "$((col + mark_len))" "$mark_len" "$decl_label_json" "$src_json" "$decl_line" "$decl_col" "$decl_line" "$((decl_col + ${#name}))" "${#name}" "$note_json" "$help_json" "$docs_json" "$root_json" "$cause_a_json" "$cause_b_json" "$probable_fix_json" "$(json_escape "$name")" "$(json_escape "$expected")")"
+    report_json="$(printf '{"valid": false, "error_count": 1, "warning_count": 0, "fatal_count": 0, "diagnostics": [%s]}' "$diag_json")"
+    empty_report="$(empty_phase_report_json)"
+    phase_reports="$(render_phase_reports_json "$empty_report" "$empty_report" "$empty_report" "$empty_report" "$empty_report" "$empty_report" "$report_json" "$empty_report" "$empty_report" "$empty_report" "$empty_report" "$empty_report" "$empty_report")"
+    printf '{"schema":"vitte.compiler.surface","schema_version":"1.0.0","surface":"diagnostics","source_path":"%s","valid":false,%s,%s,"frontend_diagnostic_count":0,"analysis_diagnostic_count":1,"sema_ok":true,"typeck_ok":false,"borrowck_ok":false,"lint_ok":true,"pipeline_failed_at":"typeck","primary_report":%s,"phase_reports":%s,"text_output":"%s"}\n' \
+        "$src_json" "$source_meta" "$shape" "$report_json" "$phase_reports" "$text_output_json"
+}
+
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --trace-pipeline)
@@ -910,6 +2133,10 @@ done
 cmd="${1:-}"
 case "$cmd" in
     "")
+        if [ -n "$compiler_source_root" ] || [ -n "$compiler_entry_point" ]; then
+            print_compiler_brief_help
+            exit 0
+        fi
         printf '%s\n' "$banner"
         exit "$main_return"
         ;;
@@ -917,10 +2144,38 @@ case "$cmd" in
         printf '%s\n' "$version"
         ;;
     --help|-h|help)
-        printf '%s\n' "$banner"
-        printf 'version: %s\n' "$version"
-        printf 'commands: parse check build run dump-tokens dump-ast dump-hir dump-mir build-native dump-native-ir selfhost-source --version --help\n'
-        printf 'flags: --src PATH --out PATH -o PATH --stage NAME --trace-pipeline --strict --dump-ast-json --dump-hir-json --dump-mir-json --diagnostics-json\n'
+        if [ -n "$compiler_source_root" ] || [ -n "$compiler_entry_point" ]; then
+            print_compiler_help
+        else
+            printf '%s\n' "$banner"
+            printf 'version: %s\n' "$version"
+        fi
+        ;;
+    pkg)
+        subcmd="${2:-help}"
+        case "$subcmd" in
+            help|--help|-h)
+                printf 'pkg subcommands:\n'
+                printf '  check    validate packages under src/vitte/packages\n'
+                printf '  matrix   run package dependency/import diagnostics matrix\n'
+                printf '  selftest run package checks and matrix\n'
+                ;;
+            check)
+                tools/package_check_all.sh
+                ;;
+            matrix)
+                tools/pkg_matrix.sh
+                ;;
+            selftest)
+                tools/package_check_all.sh >/dev/null
+                tools/pkg_matrix.sh >/dev/null
+                printf '[pkg] selftest ok\n'
+                ;;
+            *)
+                cli_error E_CLI_COMMAND "unknown pkg subcommand: $subcmd" "use 'vitte pkg --help'"
+                exit 2
+                ;;
+        esac
         ;;
     selfhost-source|--selfhost-source)
         printf 'compiler_source_root=%s\n' "$compiler_source_root"
@@ -972,12 +2227,28 @@ case "$cmd" in
         ir_version="$(arg_value --ir-version "$@" || true)"
         [ -n "$ir_version" ] || ir_version="v1"
         [ "$ir_version" = "v1" ] || [ "$ir_version" = "v2" ] || { cli_error E_CLI_ARG "unsupported --ir-version: $ir_version" "supported: v1, v2"; exit 2; }
+        if [ "$diagnostics_json" -eq 1 ]; then
+            if mismatch_info="$(detect_type_mismatch "$src")"; then
+                trace_step "pipeline.check:type-mismatch-json"
+                render_type_mismatch_surface_json "$src" "$mismatch_info"
+                exit 1
+            fi
+        fi
         if diag_info="$(detect_professional_diagnostic "$src")"; then
             trace_step "pipeline.check:professional-diagnostic"
             if [ "$diagnostics_json" -eq 1 ]; then
-                render_professional_diagnostic_json "$src" "$diag_info"
+                render_professional_diagnostic_surface_json "$src" "$diag_info"
             else
                 render_professional_diagnostic_text "$src" "$diag_info" >&2
+            fi
+            exit 1
+        fi
+        if parser_info="$(detect_simple_unclosed_block "$src")"; then
+            trace_step "pipeline.check:parser-fallback-diagnostic"
+            if [ "$diagnostics_json" -eq 1 ]; then
+                render_professional_diagnostic_surface_json "$src" "$parser_info"
+            else
+                render_professional_diagnostic_text "$src" "$parser_info" >&2
             fi
             exit 1
         fi
@@ -985,7 +2256,7 @@ case "$cmd" in
             trace_step "pipeline.parse:from-check"
             compile_native_ir "$src" "$ir_version" >/dev/null
             trace_step "pipeline.check:semantic"
-            if [ "$strict_mode" -eq 1 ] && ! grep -q "^export \*$" "$src"; then
+            if [ "$strict_mode" -eq 1 ] && ! grep -q "^export [*]$" "$src"; then
                 cli_error E_STRICT_EXPORT "strict mode requires export * in bootstrap source" "add 'export *' to the module footer"
                 exit 1
             fi
@@ -1000,9 +2271,7 @@ case "$cmd" in
         fi
         trace_step "pipeline.check:ok"
         if [ "$diagnostics_json" -eq 1 ]; then
-            source_meta="$(source_meta_json "$src")"
-            shape="$(compiler_shape_json "$src")"
-            printf '{"schema":"vitte.compiler.surface","schema_version":"1.0.0","surface":"diagnostics","producer":"vittec-bootstrap-seed","command":"check","status":"ok",%s,%s,"diagnostics":{"error_count":0,"warning_count":0,"items":[]}}\n' "$source_meta" "$shape"
+            render_surface_diagnostics_success_json "$src"
         fi
         if [ "$dump_hir_json" -eq 1 ]; then
             source_meta="$(source_meta_json "$src")"
@@ -1030,7 +2299,9 @@ case "$cmd" in
         [ -n "$src" ] || { cli_error E_CLI_MISSING_ARG "run requires --src or file" "vittec run path.vit"; exit 2; }
         [ -f "$src" ] || { cli_error E_CLI_IO "cannot read $src" "check the path and permissions"; exit 1; }
         tmp_bin="$(mktemp "${TMPDIR:-/tmp}/vittec-run-XXXXXX")"
-        write_compiler "$src" "$tmp_bin"
+        rm -f "$tmp_bin"
+        trace_step "pipeline.backend:native-bootstrap-subset"
+        build_native_user_program "$src" "$tmp_bin" || exit 3
         set +e
         "$tmp_bin"
         run_rc=$?
@@ -1214,8 +2485,8 @@ case "$cmd" in
             [ -f "$src" ] || { cli_error E_CLI_IO "cannot read $src" "check the path and permissions"; exit 1; }
             [ -n "$out" ] || { cli_error E_CLI_MISSING_ARG "build requires -o/--out output path" "vittec build main.vit -o build/main"; exit 2; }
             trace_step "pipeline.lower:begin"
-            trace_step "pipeline.emit:write-shell"
-            write_compiler "$src" "$out"
+            trace_step "pipeline.backend:native-bootstrap-subset"
+            build_native_user_program "$src" "$out" || exit 3
             [ -f "$out" ] || { cli_error E_BUILD_OUTPUT "build failed to produce output: $out"; exit 1; }
             trace_step "pipeline.emit:ok"
             printf 'build succeeded: %s\n' "$out"

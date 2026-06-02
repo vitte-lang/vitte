@@ -41,105 +41,6 @@ is_machine_executable() {
     return 1
 }
 
-has_host_native_toolchain() {
-    command -v "${CC:-cc}" >/dev/null 2>&1 && command -v od >/dev/null 2>&1
-}
-
-build_native_launcher() {
-    shell_payload="$1"
-    out_bin="$2"
-    work_dir="$3"
-    cc_bin="${CC:-cc}"
-    [ -f "$shell_payload" ] || die "missing shell payload: $shell_payload"
-    mkdir -p "$work_dir"
-    payload_tmp="$work_dir/payload_bytes.txt"
-    payload_len="$(wc -c < "$shell_payload" | tr -d ' ')"
-    od -An -v -t u1 "$shell_payload" | tr -s '[:space:]' '\n' | sed '/^$/d' > "$payload_tmp"
-    {
-        printf 'unsigned char vittec_payload[] = {\n'
-        first=1
-        while IFS= read -r b; do
-            if [ "$first" -eq 1 ]; then
-                printf '  %s' "$b"
-                first=0
-            else
-                printf ', %s' "$b"
-            fi
-        done < "$payload_tmp"
-        printf '\n};\n'
-        printf 'unsigned int vittec_payload_len = %s;\n' "$payload_len"
-    } > "$work_dir/payload.h"
-    cat > "$work_dir/wrapper.c" <<'EOF'
-#include <errno.h>
-#include <fcntl.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/stat.h>
-#include <unistd.h>
-
-#include "payload.h"
-
-static int write_all(int fd, const unsigned char *buf, size_t len) {
-    size_t off = 0;
-    while (off < len) {
-        ssize_t wrote = write(fd, buf + off, len - off);
-        if (wrote <= 0) {
-            if (errno == EINTR) {
-                continue;
-            }
-            return 0;
-        }
-        off += (size_t)wrote;
-    }
-    return 1;
-}
-
-int main(int argc, char **argv) {
-    char path[] = "/tmp/vittec-native-XXXXXX";
-    int fd = mkstemp(path);
-    if (fd < 0) {
-        fprintf(stderr, "[stage2-native][error] mkstemp failed: %s\n", strerror(errno));
-        return 1;
-    }
-    if (!write_all(fd, vittec_payload, vittec_payload_len)) {
-        fprintf(stderr, "[stage2-native][error] write payload failed: %s\n", strerror(errno));
-        close(fd);
-        unlink(path);
-        return 1;
-    }
-    if (fchmod(fd, 0700) != 0) {
-        fprintf(stderr, "[stage2-native][error] chmod payload failed: %s\n", strerror(errno));
-        close(fd);
-        unlink(path);
-        return 1;
-    }
-    close(fd);
-
-    char **exec_argv = (char **)calloc((size_t)argc + 3, sizeof(char *));
-    if (exec_argv == NULL) {
-        fprintf(stderr, "[stage2-native][error] alloc argv failed\n");
-        unlink(path);
-        return 1;
-    }
-    exec_argv[0] = "sh";
-    exec_argv[1] = path;
-    for (int i = 1; i < argc; ++i) {
-        exec_argv[i + 1] = argv[i];
-    }
-    exec_argv[argc + 1] = NULL;
-
-    execv("/bin/sh", exec_argv);
-    fprintf(stderr, "[stage2-native][error] exec /bin/sh failed: %s\n", strerror(errno));
-    unlink(path);
-    free(exec_argv);
-    return 1;
-}
-EOF
-    "$cc_bin" -O2 -s "$work_dir/wrapper.c" -o "$out_bin" || die "native launcher compilation failed"
-    chmod +x "$out_bin"
-}
-
 # ------------------------------------------------------------
 # Paths
 # ------------------------------------------------------------
@@ -161,11 +62,12 @@ OUT_DIR="$ROOT_DIR/target/bootstrap/stage2"
 
 BUILD_TYPE="${BUILD_TYPE:-Release}"
 OPT_LEVEL="${OPT_LEVEL:-2}"
-VITTE_BACKEND_MODE="${VITTE_BACKEND_MODE:-shell}"
-VITTE_BACKEND_FALLBACK="${VITTE_BACKEND_FALLBACK:-1}"
-VITTE_NATIVE_BRIDGE_COMPAT="${VITTE_NATIVE_BRIDGE_COMPAT:-0}"
+VITTE_BACKEND_MODE="${VITTE_BACKEND_MODE:-native}"
+VITTE_BACKEND_FALLBACK="${VITTE_BACKEND_FALLBACK:-0}"
 VITTE_ENFORCE_COMPILER_REACHABILITY="${VITTE_ENFORCE_COMPILER_REACHABILITY:-1}"
 VITTE_STAGE2_BOOTSTRAP_COMPAT="${VITTE_STAGE2_BOOTSTRAP_COMPAT:-1}"
+VITTE_BOOTSTRAP_ALLOW_FULL_COMPILER_BRIDGE="${VITTE_BOOTSTRAP_ALLOW_FULL_COMPILER_BRIDGE:-0}"
+VITTE_STAGE2_ALLOW_BRIDGE_ARTIFACT="${VITTE_STAGE2_ALLOW_BRIDGE_ARTIFACT:-1}"
 
 # ------------------------------------------------------------
 # Checks
@@ -199,18 +101,45 @@ build_stage2_shell_payload() {
     requested_src="$1"
     out_bin="$2"
     entry_err="$BUILD_DIR/bootstrap-entry.err"
-    if "$STAGE1_BIN" build-native --src "$requested_src" --out "$out_bin" 2>"$entry_err"; then
+    if "$STAGE1_BIN" dump-native-shell --src "$requested_src" > "$out_bin" 2>"$entry_err"; then
+        chmod +x "$out_bin"
+        sh -n "$out_bin" || {
+            cat "$entry_err" >&2
+            die "generated stage2 shell payload is not valid POSIX shell"
+        }
         rm -f "$entry_err"
         return 0
     fi
     if [ "$VITTE_STAGE2_BOOTSTRAP_COMPAT" = "1" ]; then
         compat_src="$STAGE2_DIR/src/main.vit"
         log "compiler entry exceeds bootstrap subset; using temporary stage2 shell payload: $compat_src"
-        "$STAGE1_BIN" build-native --src "$compat_src" --out "$out_bin"
+        "$STAGE1_BIN" dump-native-shell --src "$compat_src" > "$out_bin"
+        chmod +x "$out_bin"
+        sh -n "$out_bin"
         return $?
     fi
     cat "$entry_err" >&2
     return 1
+}
+
+is_bootstrap_bridge_artifact() {
+    file_path="$1"
+    [ -f "${file_path}.bootstrap-bridge" ]
+}
+
+enforce_native_artifact_policy() {
+    file_path="$1"
+    context="$2"
+    if ! is_machine_executable "$file_path"; then
+        die "$context did not produce a machine executable"
+    fi
+    if is_bootstrap_bridge_artifact "$file_path"; then
+        if [ "$VITTE_STAGE2_ALLOW_BRIDGE_ARTIFACT" = "1" ]; then
+            log "$context produced a bootstrap bridge artifact; accepting transitional native wrapper"
+            return 0
+        fi
+        die "$context produced a bootstrap bridge artifact instead of a real backend executable"
+    fi
 }
 
 # ------------------------------------------------------------
@@ -230,20 +159,8 @@ case "$VITTE_BACKEND_MODE" in
         ;;
     native)
         log "backend mode=native (experimental)"
-        if "$STAGE1_BIN" build --stage stage1 --src "$STAGE2_DIR/src" --out "$OUT_DIR" >/dev/null 2>&1 && [ -x "$OUT_DIR/vittec1" ]; then
-            if is_machine_executable "$OUT_DIR/vittec1"; then
-                cp "$OUT_DIR/vittec1" "$OUT_DIR/vittec"
-            elif [ "$VITTE_NATIVE_BRIDGE_COMPAT" = "1" ] && has_host_native_toolchain; then
-                log "native compat: converting stage artifact into host executable launcher"
-                build_native_launcher "$OUT_DIR/vittec1" "$OUT_DIR/vittec" "$BUILD_DIR/native-wrap"
-            elif [ "$VITTE_NATIVE_BRIDGE_COMPAT" = "1" ]; then
-                die "native bridge compat requested but host toolchain (cc+od) is unavailable"
-            elif [ "$VITTE_BACKEND_FALLBACK" = "1" ]; then
-                log "native backend produced non-machine artifact; explicit fallback -> shell"
-                build_stage2_shell_payload "$SRC_VIT" "$OUT_DIR/vittec" || die "stage2 build-native fallback failed"
-            else
-                die "native backend did not produce machine executable (set VITTE_NATIVE_BRIDGE_COMPAT=1 for temporary wrapper compatibility)"
-            fi
+        if "$STAGE1_BIN" build "$SRC_VIT" -o "$OUT_DIR/vittec" && [ -x "$OUT_DIR/vittec" ]; then
+            enforce_native_artifact_policy "$OUT_DIR/vittec" "native backend"
         elif [ "$VITTE_BACKEND_FALLBACK" = "1" ]; then
             log "native backend unavailable; explicit fallback -> shell"
             build_stage2_shell_payload "$SRC_VIT" "$OUT_DIR/vittec" || die "stage2 build-native fallback failed"
@@ -261,8 +178,8 @@ VITTEC_BIN="$OUT_DIR/vittec"
 if [ "$VITTE_BACKEND_MODE" = "native" ] && [ "$VITTE_BACKEND_FALLBACK" != "1" ] && ! is_machine_executable "$VITTEC_BIN"; then
     die "native mode requested but final artifact is not a machine executable"
 fi
-if [ "$VITTE_BACKEND_MODE" = "native" ] && ! is_machine_executable "$VITTEC_BIN"; then
-    die "native mode must produce a machine executable (got non-native artifact)"
+if [ "$VITTE_BACKEND_MODE" = "native" ]; then
+    enforce_native_artifact_policy "$VITTEC_BIN" "native mode"
 fi
 log "installing vittec → $BIN_DIR"
 cp "$VITTEC_BIN" "$BIN_DIR/vittec"
@@ -292,7 +209,12 @@ if [ "${VITTE_SELF_CHECK:-1}" -eq 1 ]; then
     SELF_BIN="$SELF_DIR/vittec"
     mkdir -p "$SELF_DIR"
 
-    build_stage2_shell_payload "$SRC_VIT" "$SELF_BIN" || die "stage2 selfcheck build-native failed"
+    if [ "$VITTE_BACKEND_MODE" = "native" ]; then
+        "$BIN_DIR/vittec" build "$SRC_VIT" -o "$SELF_BIN" || die "stage2 native selfcheck build failed"
+        enforce_native_artifact_policy "$SELF_BIN" "stage2 native selfcheck"
+    else
+        build_stage2_shell_payload "$SRC_VIT" "$SELF_BIN" || die "stage2 selfcheck build-native failed"
+    fi
     [ -x "$SELF_BIN" ] || die "stage2 selfcheck compiler missing"
     if is_shell_script "$SELF_BIN"; then
         sh -n "$SELF_BIN" || die "stage2 selfcheck compiler is not POSIX shell"

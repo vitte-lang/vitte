@@ -15,6 +15,7 @@ IDENTIFIER="${IDENTIFIER:-org.vitte.toolchain}"
 OUT_DIR="${OUT_DIR:-$ROOT_DIR/pkgout}"
 OUT_FILE_NAME="${OUT_FILE_NAME:-}"
 VITTE_BIN_OVERRIDE="${VITTE_BIN_OVERRIDE:-}"
+VITTEC_BIN_OVERRIDE="${VITTEC_BIN_OVERRIDE:-}"
 CHECKSUM_TARGET_BIN="${CHECKSUM_TARGET_BIN:-$ROOT_DIR/target/universal/vitte}"
 
 STAGE_BASE="$ROOT_DIR/.pkgstage/vitte-$VERSION"
@@ -77,40 +78,69 @@ else
 fi
 [ -n "$VITTE_BIN" ] || die "vitte binary not found (expected bin/vitte or target/bin/vitte)"
 
+if [ -n "$VITTEC_BIN_OVERRIDE" ] && [ -x "$VITTEC_BIN_OVERRIDE" ]; then
+  VITTEC_BIN="$VITTEC_BIN_OVERRIDE"
+else
+  VITTEC_BIN="$VITTE_BIN"
+fi
+
 mkdir -p "$STAGE_ROOT/usr/local/libexec/vitte" "$STAGE_ROOT/usr/local/bin"
 install -m 0755 "$VITTE_BIN" "$STAGE_ROOT/usr/local/libexec/vitte/vitte"
+install -m 0755 "$VITTEC_BIN" "$STAGE_ROOT/usr/local/libexec/vitte/vittec"
 
 # Primary wrapper with VITTE_ROOT default.
 cat > "$STAGE_ROOT/usr/local/bin/vitte" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
-if [ -z "${VITTE_ROOT:-}" ]; then
-  export VITTE_ROOT="/usr/local/share/vitte"
+root="${VITTE_ROOT:-/usr/local/share/vitte}"
+export VITTE_ROOT="$root"
+if [ "${1:-}" = "selfhost-source" ] || [ "${1:-}" = "--selfhost-source" ]; then
+  printf 'compiler_source_root=%s\n' "$root/src/vitte/compiler"
+  printf 'compiler_entry_point=%s\n' "$root/src/vitte/compiler/main.vit"
+  exit 0
 fi
 exec /usr/local/libexec/vitte/vitte "$@"
 EOF
 chmod 0755 "$STAGE_ROOT/usr/local/bin/vitte"
 
+cat > "$STAGE_ROOT/usr/local/bin/vittec" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+root="${VITTE_ROOT:-/usr/local/share/vitte}"
+export VITTE_ROOT="$root"
+if [ "${1:-}" = "selfhost-source" ] || [ "${1:-}" = "--selfhost-source" ]; then
+  printf 'compiler_source_root=%s\n' "$root/src/vitte/compiler"
+  printf 'compiler_entry_point=%s\n' "$root/src/vitte/compiler/main.vit"
+  exit 0
+fi
+exec /usr/local/libexec/vitte/vittec "$@"
+EOF
+chmod 0755 "$STAGE_ROOT/usr/local/bin/vittec"
+
 # Share tree.
 mkdir -p "$STAGE_ROOT/usr/local/share/vitte/src/vitte"
+mkdir -p "$STAGE_ROOT/usr/local/share/vitte/src/vitte/compiler"
 mkdir -p "$STAGE_ROOT/usr/local/share/vitte/src/compiler/backends"
 mkdir -p "$STAGE_ROOT/usr/local/share/vitte/editors"
 mkdir -p "$STAGE_ROOT/usr/local/share/vitte/completions"
 mkdir -p "$STAGE_ROOT/usr/local/share/vitte/docs"
-mkdir -p "$STAGE_ROOT/usr/local/share/vitte/tests/modules/contracts"
+mkdir -p "$STAGE_ROOT/usr/local/share/vitte/tests/modules"
 mkdir -p "$STAGE_ROOT/usr/local/share/vitte/toolchain/scripts/install/templates"
 mkdir -p "$STAGE_ROOT/usr/local/share/vitte/checksums"
 mkdir -p "$STAGE_ROOT/usr/local/share/vitte/manifest"
 
 rsync -a "$ROOT_DIR/src/vitte/packages/" "$STAGE_ROOT/usr/local/share/vitte/src/vitte/packages/"
-rsync -a "$ROOT_DIR/src/compiler/backends/runtime/" "$STAGE_ROOT/usr/local/share/vitte/src/compiler/backends/runtime/"
+rsync -a "$ROOT_DIR/src/vitte/compiler/" "$STAGE_ROOT/usr/local/share/vitte/src/vitte/compiler/"
+rsync -a "$ROOT_DIR/src/vitte/compiler/backends/runtime_c/" "$STAGE_ROOT/usr/local/share/vitte/src/compiler/backends/runtime/"
 rsync -a "$ROOT_DIR/docs/" "$STAGE_ROOT/usr/local/share/vitte/docs/"
-rsync -a "$ROOT_DIR/tests/modules/contracts/" "$STAGE_ROOT/usr/local/share/vitte/tests/modules/contracts/"
+rsync -a "$ROOT_DIR/tests/modules/" "$STAGE_ROOT/usr/local/share/vitte/tests/modules/"
 rsync -a "$ROOT_DIR/toolchain/scripts/install/templates/" "$STAGE_ROOT/usr/local/share/vitte/toolchain/scripts/install/templates/"
 
 # Normalize source payload permissions so postinstall verification can read modules.
 find "$STAGE_ROOT/usr/local/share/vitte/src/vitte/packages" -type d -exec chmod 0755 {} +
 find "$STAGE_ROOT/usr/local/share/vitte/src/vitte/packages" -type f -exec chmod 0644 {} +
+find "$STAGE_ROOT/usr/local/share/vitte/src/vitte/compiler" -type d -exec chmod 0755 {} +
+find "$STAGE_ROOT/usr/local/share/vitte/src/vitte/compiler" -type f -exec chmod 0644 {} +
 find "$STAGE_ROOT/usr/local/share/vitte/src/compiler/backends/runtime" -type d -exec chmod 0755 {} +
 find "$STAGE_ROOT/usr/local/share/vitte/src/compiler/backends/runtime" -type f -exec chmod 0644 {} +
 
@@ -123,7 +153,7 @@ install -m 0644 "$ROOT_DIR/toolchain/scripts/install/templates/env.sh" "$STAGE_R
 # Shared metadata files.
 install -m 0644 "$ROOT_DIR/LICENSE" "$STAGE_ROOT/usr/local/share/vitte/LICENSE"
 install -m 0644 "$ROOT_DIR/CHANGELOG.md" "$STAGE_ROOT/usr/local/share/vitte/CHANGELOG"
-install -m 0644 "$ROOT_DIR/version" "$STAGE_ROOT/usr/local/share/vitte/VERSION"
+install -m 0644 "$PKG_VERSION_FILE" "$STAGE_ROOT/usr/local/share/vitte/VERSION"
 if [ -f "$ROOT_DIR/NOTICE" ]; then
   install -m 0644 "$ROOT_DIR/NOTICE" "$STAGE_ROOT/usr/local/share/vitte/NOTICE"
 else
@@ -138,8 +168,8 @@ EOF
 fi
 
 # Read-only snapshots for post-install audit.
-find "$STAGE_ROOT/usr/local/share/vitte/tests/modules/contracts" -type d -exec chmod 0555 {} +
-find "$STAGE_ROOT/usr/local/share/vitte/tests/modules/contracts" -type f -exec chmod 0444 {} +
+find "$STAGE_ROOT/usr/local/share/vitte/tests/modules" -type d -exec chmod 0555 {} +
+find "$STAGE_ROOT/usr/local/share/vitte/tests/modules" -type f -exec chmod 0444 {} +
 
 # Checksums/signature bundle for universal binary.
 if [ -x "$CHECKSUM_TARGET_BIN" ]; then
@@ -220,6 +250,33 @@ cleanup_user_editor_config() {
   done
 }
 
+strip_managed_block() {
+  local file_path="$1"
+  local begin_marker="$2"
+  local end_marker="$3"
+  [ -f "$file_path" ] || return 0
+  cp "$file_path" "$file_path.vitte-uninstall.bak"
+  awk -v begin="$begin_marker" -v end="$end_marker" '
+    $0 == begin { skip = 1; next }
+    $0 == end { skip = 0; next }
+    !skip { print }
+  ' "$file_path.vitte-uninstall.bak" > "$file_path.tmp" || true
+  mv "$file_path.tmp" "$file_path"
+  log "updated: $file_path (backup: $file_path.vitte-uninstall.bak)"
+}
+
+cleanup_user_shell_config() {
+  local user_name="$1"
+  local home_dir="$2"
+  [ -n "$user_name" ] || return 0
+  [ -d "$home_dir" ] || return 0
+
+  strip_managed_block "$home_dir/.zshrc" "# >>> vitte pkg shell >>>" "# <<< vitte pkg shell <<<"
+  strip_managed_block "$home_dir/.bashrc" "# >>> vitte pkg shell >>>" "# <<< vitte pkg shell <<<"
+  strip_managed_block "$home_dir/.bash_profile" "# >>> vitte pkg shell >>>" "# <<< vitte pkg shell <<<"
+  remove_path "$home_dir/.config/fish/conf.d/vitte.fish"
+}
+
 remove_path "/usr/local/bin/vitte"
 remove_path "/usr/local/bin/vittec"
 remove_path "/usr/local/libexec/vitte"
@@ -239,10 +296,12 @@ if [ "${REMOVE_USER_EDITOR_CONFIG:-0}" = "1" ]; then
   if [ -n "$console_user" ] && [ "$console_user" != "root" ]; then
     console_home="$(dscl . -read "/Users/$console_user" NFSHomeDirectory 2>/dev/null | awk '{print $2}' || true)"
     cleanup_user_editor_config "$console_user" "$console_home"
+    cleanup_user_shell_config "$console_user" "$console_home"
   fi
   if [ -n "${SUDO_USER:-}" ] && [ "${SUDO_USER}" != "root" ] && [ "${SUDO_USER}" != "${console_user:-}" ]; then
     sudo_home="$(dscl . -read "/Users/$SUDO_USER" NFSHomeDirectory 2>/dev/null | awk '{print $2}' || true)"
     cleanup_user_editor_config "$SUDO_USER" "$sudo_home"
+    cleanup_user_shell_config "$SUDO_USER" "$sudo_home"
   fi
 fi
 
@@ -374,6 +433,67 @@ EINIT
   chown -R "$user_name" "$home_dir/.vim" "$home_dir/.emacs.d" "$home_dir/.config/nano" "$home_dir/.config/geany" "$home_dir/.nanorc" "$home_dir/Library/Application Support/geany" >/dev/null 2>&1 || true
 }
 
+append_managed_block() {
+  local file_path="$1"
+  local begin_marker="$2"
+  local end_marker="$3"
+  local body="$4"
+  mkdir -p "$(dirname "$file_path")"
+  touch "$file_path"
+  if grep -Fq "$begin_marker" "$file_path" 2>/dev/null; then
+    return 0
+  fi
+  {
+    printf '\n%s\n' "$begin_marker"
+    printf '%s\n' "$body"
+    printf '%s\n' "$end_marker"
+  } >> "$file_path"
+}
+
+install_user_shell_support() {
+  local user_name="$1"
+  local home_dir="$2"
+  [ -n "$user_name" ] || return 0
+  [ -d "$home_dir" ] || return 0
+
+  local shell_path
+  local shell_name
+  shell_path="$(dscl . -read "/Users/$user_name" UserShell 2>/dev/null | awk '{print $2}' || true)"
+  shell_name="$(basename "$shell_path")"
+
+  local sh_block='export VITTE_ROOT="/usr/local/share/vitte"
+case ":${PATH}:" in
+  *":/usr/local/bin:"*) ;;
+  *) export PATH="/usr/local/bin:${PATH}" ;;
+esac'
+
+  case "$shell_name" in
+    zsh)
+      append_managed_block "$home_dir/.zshrc" "# >>> vitte pkg shell >>>" "# <<< vitte pkg shell <<<" "$sh_block"
+      chown "$user_name" "$home_dir/.zshrc" >/dev/null 2>&1 || true
+      ;;
+    bash)
+      append_managed_block "$home_dir/.bashrc" "# >>> vitte pkg shell >>>" "# <<< vitte pkg shell <<<" "$sh_block"
+      append_managed_block "$home_dir/.bash_profile" "# >>> vitte pkg shell >>>" "# <<< vitte pkg shell <<<" "$sh_block"
+      chown "$user_name" "$home_dir/.bashrc" "$home_dir/.bash_profile" >/dev/null 2>&1 || true
+      ;;
+    fish)
+      mkdir -p "$home_dir/.config/fish/conf.d"
+      cat > "$home_dir/.config/fish/conf.d/vitte.fish" <<'FEOF'
+set -gx VITTE_ROOT /usr/local/share/vitte
+if not contains /usr/local/bin $PATH
+  set -gx PATH /usr/local/bin $PATH
+end
+FEOF
+      chown -R "$user_name" "$home_dir/.config/fish" >/dev/null 2>&1 || true
+      ;;
+    *)
+      append_managed_block "$home_dir/.zshrc" "# >>> vitte pkg shell >>>" "# <<< vitte pkg shell <<<" "$sh_block"
+      chown "$user_name" "$home_dir/.zshrc" >/dev/null 2>&1 || true
+      ;;
+  esac
+}
+
 if ! /usr/local/bin/vitte --help >/dev/null 2>&1; then
   log_line "[error] vitte --help failed"
   echo "[vitte pkg] postinstall check failed: vitte --help" >&2
@@ -381,22 +501,30 @@ if ! /usr/local/bin/vitte --help >/dev/null 2>&1; then
 fi
 log_line "[ok] vitte --help"
 
+if ! /usr/local/bin/vittec --help >/dev/null 2>&1; then
+  log_line "[error] vittec --help failed"
+  echo "[vitte pkg] postinstall check failed: vittec --help" >&2
+  exit 1
+fi
+log_line "[ok] vittec --help"
+
 TMP="/tmp/vitte_pkg_verify_$$.vit"
 cat > "$TMP" <<'VEOF'
 use vitte/core as core_pkg
 
-entry main at core/app {
+proc main() -> int {
   give 0
 }
 VEOF
 
 if ! /usr/local/bin/vitte check "$TMP" >/dev/null 2>&1; then
-  log_line "[warn] vitte check package import test failed"
-  echo "[vitte pkg] warning: package import test failed (see $LOG_FILE)" >&2
+  log_line "[error] vitte check package import test failed"
+  echo "[vitte pkg] postinstall check failed: package import test failed (see $LOG_FILE)" >&2
   rm -f "$TMP"
+  exit 1
 fi
 rm -f "$TMP"
-log_line "[ok] vitte check package import test (or warning already logged)"
+log_line "[ok] vitte check package import test"
 
 for p in \
   /usr/local/etc/bash_completion.d/vitte \
@@ -416,12 +544,14 @@ console_user="$(stat -f%Su /dev/console 2>/dev/null || true)"
 if [ -n "$console_user" ] && [ "$console_user" != "root" ]; then
   console_home="$(dscl . -read "/Users/$console_user" NFSHomeDirectory 2>/dev/null | awk '{print $2}' || true)"
   install_user_editor_support "$console_user" "$console_home"
+  install_user_shell_support "$console_user" "$console_home"
 fi
 if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ] && [ "${SUDO_USER}" != "${console_user:-}" ]; then
   sudo_home="$(dscl . -read "/Users/$SUDO_USER" NFSHomeDirectory 2>/dev/null | awk '{print $2}' || true)"
   install_user_editor_support "$SUDO_USER" "$sudo_home"
+  install_user_shell_support "$SUDO_USER" "$sudo_home"
 fi
-log_line "[ok] editor support installed"
+log_line "[ok] editor and shell support installed"
 
 if /usr/local/bin/vitte doctor --help >/dev/null 2>&1; then
   log_line "[run] vitte doctor"
@@ -433,11 +563,11 @@ fi
 cat <<MSG
 [vitte pkg] install complete
 [vitte pkg] binary: /usr/local/bin/vitte
+[vitte pkg] compiler: /usr/local/bin/vittec
 [vitte pkg] root:   /usr/local/share/vitte
 [vitte pkg] man:    /usr/local/share/man/man1/{vitte,vittec}.1
 [vitte pkg] editors: ~/.vim ~/.emacs.d ~/.config/nano + Geany configured
-[vitte pkg] zsh:    autoload -U compinit && compinit
-[vitte pkg] env:    source /usr/local/share/vitte/env.sh
+[vitte pkg] shell:  login shell auto-configured when supported (zsh/bash/fish)
 [vitte pkg] log:    $LOG_FILE
 MSG
 EOF
