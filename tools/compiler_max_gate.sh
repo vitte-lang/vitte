@@ -33,6 +33,7 @@ fi
 # 0b) Structured stage1/stage2 parity on parse/check/IR traces
 if [ "$STRICT" -eq 1 ]; then
   go tools/stage_parity_structured.sh
+  go python3 tools/stage_parity_report_check.py
   go tools/native_json_schema_contract_test.sh
 fi
 

@@ -14,7 +14,7 @@ log "module_smoke"
 
 log "hir_mir_repro_alloc_break_index"
 # The current bootstrap CLI exposes MIR/HIR regression coverage through `check`,
-# while `build` is reserved for the stage1 bootstrap flow.
+# while `build-native` remains reserved for the compiler bootstrap flow.
 "$BIN" check --mir-only "$ROOT_DIR/tests/repro/alloc_hir_break_index.vit"
 
 log "hir_mir_repro_alloc_string_index"

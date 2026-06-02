@@ -6,6 +6,7 @@ STAGE1_BIN="${STAGE1_BIN:-$ROOT_DIR/bin/vittec1}"
 STAGE2_BIN="${STAGE2_BIN:-$ROOT_DIR/bin/vittec}"
 PARITY_SRC="${PARITY_SRC:-$ROOT_DIR/src/vitte/compiler/main.vit}"
 PARITY_SOURCE_LIST="${PARITY_SOURCE_LIST:-}"
+PARITY_SOURCE_FILE="${PARITY_SOURCE_FILE:-$ROOT_DIR/tools/stage_parity_sources.txt}"
 REPORT_DIR="$ROOT_DIR/target/reports/stage_parity"
 REPORT_JSON="$REPORT_DIR/stage1_stage2_parity.json"
 DIFF_TXT="$REPORT_DIR/stage1_stage2_parity.diff.txt"
@@ -35,6 +36,13 @@ hash_text() {
 
 json_escape() {
   printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
+}
+
+strip_check_success_line() {
+  file="$1"
+  tmp_file="$file.tmp"
+  sed '/^check succeeded$/d' "$file" > "$tmp_file"
+  mv "$tmp_file" "$file"
 }
 
 run_capture() {
@@ -127,7 +135,8 @@ run_pair() {
   # Stage2 currently emits a benign success line for `check` while stage1 is silent.
   # Normalize this cosmetic difference so parity keeps focusing on structural output.
   if [ "$kind" = "check" ]; then
-    sed -i '/^check succeeded$/d' "$REPORT_DIR/$pair_key.$kind.stage1.all" "$REPORT_DIR/$pair_key.$kind.stage2.all"
+    strip_check_success_line "$REPORT_DIR/$pair_key.$kind.stage1.all"
+    strip_check_success_line "$REPORT_DIR/$pair_key.$kind.stage2.all"
   fi
 
   s1_hash=$(hash_text "$REPORT_DIR/$pair_key.$kind.stage1.all")
@@ -146,6 +155,13 @@ if [ -n "$PARITY_SOURCE_LIST" ]; then
     [ -n "$rel" ] || continue
     printf '%s\n' "$ROOT_DIR/$rel" >> "$source_list_file"
   done
+elif [ -f "$PARITY_SOURCE_FILE" ]; then
+  while IFS= read -r rel; do
+    case "$rel" in
+      ""|\#*) continue ;;
+    esac
+    printf '%s\n' "$ROOT_DIR/$rel" >> "$source_list_file"
+  done < "$PARITY_SOURCE_FILE"
 else
   cat > "$source_list_file" <<LIST
 $ROOT_DIR/src/vitte/compiler/main.vit
@@ -350,20 +366,29 @@ done < "$source_list_file"
 
 {
   printf '{\n'
+  printf '  "schema": "vitte.stage_parity.report",\n'
+  printf '  "schema_version": "1.0.0",\n'
   printf '  "mode": "structured-hash-diff",\n'
+  printf '  "source_manifest": "%s",\n' "$(json_escape "${PARITY_SOURCE_FILE#$ROOT_DIR/}")"
   printf '  "source_count": %s,\n' "$source_total"
   printf '  "ok_count": %s,\n' "$source_ok"
   printf '  "native_json": {"enabled_surface_count": %s},\n' "$native_surface_enabled_count"
   printf '  "sources": [\n'
   first=1
-  for f in "$fragments_dir"/*.json; do
-    [ -f "$f" ] || continue
+  idx=1
+  while [ "$idx" -le "$source_total" ]; do
+    f="$fragments_dir/s$idx.json"
+    if [ ! -f "$f" ]; then
+      idx=$((idx + 1))
+      continue
+    fi
     if [ "$first" -eq 1 ]; then
       first=0
     else
       printf ',\n'
     fi
     sed 's/^/    /' "$f"
+    idx=$((idx + 1))
   done
   printf '\n  ]\n'
   printf '}\n'

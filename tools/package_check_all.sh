@@ -14,43 +14,29 @@ mkdir -p "$REPORT_DIR"
 total=0
 ok=0
 fail=0
-
-legacy_structural_ok() {
-  local src="$1"
-  if rg -q '^[[:space:]]*space[[:space:]]+' "$src"; then
-    return 0
-  fi
-  return 1
-}
+native_ok=0
+portable_ok=0
 
 while IFS= read -r src; do
   total=$((total + 1))
-  if rg -q '^[[:space:]]*package[[:space:]]+vitte/' "$src"; then
-    if "$CHECK_SCRIPT" "$src" >/dev/null 2>&1; then
-      ok=$((ok + 1))
-      printf '[ok] %s\n' "$src" >>"$SUMMARY"
-    else
-      fail=$((fail + 1))
-      printf '[fail] %s\n' "$src" >>"$SUMMARY"
-      {
-        printf '=== %s ===\n' "$src"
-        "$CHECK_SCRIPT" "$src" 2>&1 || true
-        printf '\n'
-      } >>"$FAILURES"
-    fi
+  if "$ROOT_DIR/bin/vitte" check --lang=en --allow-internal --resolve-only "$src" >/dev/null 2>&1; then
+    ok=$((ok + 1))
+    native_ok=$((native_ok + 1))
+    printf '[ok][native] %s\n' "$src" >>"$SUMMARY"
+  elif "$CHECK_SCRIPT" "$src" >/dev/null 2>&1; then
+    ok=$((ok + 1))
+    portable_ok=$((portable_ok + 1))
+    printf '[ok][portable-fallback] %s\n' "$src" >>"$SUMMARY"
   else
-    if "$ROOT_DIR/bin/vitte" check --lang=en --allow-internal --resolve-only "$src" >/dev/null 2>&1 || legacy_structural_ok "$src"; then
-      ok=$((ok + 1))
-      printf '[ok][legacy] %s\n' "$src" >>"$SUMMARY"
-    else
-      fail=$((fail + 1))
-      printf '[fail][legacy] %s\n' "$src" >>"$SUMMARY"
-      {
-        printf '=== %s ===\n' "$src"
-        "$ROOT_DIR/bin/vitte" check --lang=en --allow-internal --resolve-only "$src" 2>&1 || true
-        printf '\n'
-      } >>"$FAILURES"
-    fi
+    fail=$((fail + 1))
+    printf '[fail] %s\n' "$src" >>"$SUMMARY"
+    {
+      printf '=== %s ===\n' "$src"
+      "$ROOT_DIR/bin/vitte" check --lang=en --allow-internal --resolve-only "$src" 2>&1 || true
+      printf '\n'
+      "$CHECK_SCRIPT" "$src" 2>&1 || true
+      printf '\n'
+    } >>"$FAILURES"
   fi
 done < <(find "$ROOT_DIR/src/vitte/packages" -name mod.vit | sort)
 
@@ -58,11 +44,13 @@ done < <(find "$ROOT_DIR/src/vitte/packages" -name mod.vit | sort)
   printf 'total=%d\n' "$total"
   printf 'ok=%d\n' "$ok"
   printf 'fail=%d\n' "$fail"
+  printf 'native_ok=%d\n' "$native_ok"
+  printf 'portable_ok=%d\n' "$portable_ok"
   printf 'summary=%s\n' "$SUMMARY"
   printf 'failures=%s\n' "$FAILURES"
 } >>"$SUMMARY"
 
-printf '[packages-check-all] total=%d ok=%d fail=%d\n' "$total" "$ok" "$fail"
+printf '[packages-check-all] total=%d ok=%d fail=%d native_ok=%d portable_ok=%d\n' "$total" "$ok" "$fail" "$native_ok" "$portable_ok"
 printf '[packages-check-all] summary: %s\n' "$SUMMARY"
 if [ "$fail" -gt 0 ]; then
   printf '[packages-check-all] failures: %s\n' "$FAILURES" >&2

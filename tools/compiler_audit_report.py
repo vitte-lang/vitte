@@ -173,7 +173,7 @@ def main() -> int:
         "MIR optimisation is represented in modules/tests, but the compile path uses MIR validation before IR lowering, not a full optimisation pipeline.",
         "Object emission is pseudo text (`pseudo-object` / `elf-pseudo`), not a machine object file.",
         "Linker creates `vitte-bootstrap-artifact`, not a real native linked binary.",
-        "stage2 native mode requires a compatibility wrapper unless the backend starts producing a machine executable directly.",
+        "stage2 native mode now rejects bootstrap shell output; a real stage1 capable of compiling src/vitte/compiler/main.vit is still required.",
     ]
     if not source_main_wired:
         critical_absent = ["compiler.vit main(args) does not dispatch the CLI; it still returns 0."] + critical_absent

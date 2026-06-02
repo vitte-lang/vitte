@@ -10,6 +10,17 @@ die() {
     exit 1
 }
 
+require_file() {
+    path="$1"
+    [ -f "$path" ] || die "missing bootstrap artifact: $path"
+}
+
+is_posix_shell_artifact() {
+    path="$1"
+    first_line="$(sed -n '1p' "$path" 2>/dev/null || true)"
+    [ "$first_line" = "#!/usr/bin/env sh" ]
+}
+
 "$ROOT_DIR/tools/check_posix_seed_shell.sh"
 
 mkdir -p "$ROOT_DIR/target"
@@ -23,8 +34,10 @@ for bin in \
     "$ROOT_DIR/bin/vittec" \
     "$ROOT_DIR/bin/vitte"
 do
-    [ -f "$bin" ] || die "missing shell artifact: $bin"
-    sh -n "$bin" || die "sh -n failed for $bin"
+    require_file "$bin"
+    if is_posix_shell_artifact "$bin"; then
+        sh -n "$bin" || die "sh -n failed for $bin"
+    fi
 done
 
 env -i PATH="$PATH_VALUE" "$ROOT_DIR/bin/vittec0" --version > "$TMP_DIR/vittec0.version"
@@ -40,7 +53,12 @@ env -i PATH="$PATH_VALUE" "$TMP_DIR/main-const" --help > "$TMP_DIR/main-const.he
 grep -Fx "vittec0 stage0-vitte-seed 0.1.0" "$TMP_DIR/vittec0.version" >/dev/null || die "vittec0 version mismatch"
 grep -Fx "vittec1 stage1-vitte 0.1.0" "$TMP_DIR/vittec1.version" >/dev/null || die "vittec1 version mismatch"
 grep -Fx "vittec2 stage2-vitte 0.1.0" "$TMP_DIR/vittec.version" >/dev/null || die "vittec version mismatch"
-grep -F "commands: parse check build-native dump-native-ir build --version --help" "$TMP_DIR/vitte.help" >/dev/null || die "vitte help command surface mismatch"
+grep -F "core commands:" "$TMP_DIR/vitte.help" >/dev/null || die "vitte help core section missing"
+grep -F "  check FILE        validate a source file" "$TMP_DIR/vitte.help" >/dev/null || die "vitte help check command missing"
+grep -F "package commands:" "$TMP_DIR/vitte.help" >/dev/null || die "vitte help package section missing"
+grep -F "  pkg selftest      run package package checks and matrix" "$TMP_DIR/vitte.help" >/dev/null || die "vitte help pkg selftest command missing"
+grep -F "debug commands:" "$TMP_DIR/vitte.help" >/dev/null || die "vitte help debug section missing"
+grep -F "  dump-native-ir --src FILE" "$TMP_DIR/vitte.help" >/dev/null || die "vitte help dump-native-ir command missing"
 grep -F "parse ok:" "$TMP_DIR/parse.out" >/dev/null || die "vittec parse smoke failed"
 grep -F "vittec native main const" "$TMP_DIR/main-const.help" >/dev/null || die "env build-native output help mismatch"
 

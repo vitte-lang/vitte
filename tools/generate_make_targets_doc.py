@@ -72,6 +72,8 @@ SECTIONS: list[tuple[str, list[str]]] = [
             "pkg-debian",
             "pkg-debian-audit",
             "pkg-macos",
+            "macos-universal-bin",
+            "pkg-macos-universal",
             "release-check",
         ],
     ),

@@ -14,7 +14,7 @@ all_targets=(
   grammar-check ci-fast ci-strict
   extern-abi-host extern-abi-arduino extern-abi-kernel extern-abi-kernel-uefi extern-abi-all stdlib-api-lint stdlib-profile-snapshots stdlib-abi-compat
   modules-tests modules-snapshots modules-contract-snapshots modules-ci-strict
-  packages-governance-lint critical-runtime-matrix-lint packages-gate
+  packages-governance-lint critical-runtime-matrix-lint packages-check-all pkg-matrix pkg-cli-integration packages-gate
   core-only-ci core-strict-ci std-only-ci std-strict-ci log-only-ci log-strict-ci fs-only-ci fs-strict-ci db-only-ci db-strict-ci http-only-ci http-strict-ci http-client-only-ci http-client-strict-ci process-only-ci process-strict-ci json-only-ci json-strict-ci yaml-only-ci yaml-strict-ci test-only-ci test-strict-ci lint-only-ci lint-strict-ci
   packages-only-ci packages-strict-ci
 )
@@ -37,7 +37,7 @@ select_targets() {
       printf "%s\n" modules-tests modules-snapshots modules-contract-snapshots modules-ci-strict
       ;;
     packages)
-      printf "%s\n" packages-governance-lint critical-runtime-matrix-lint packages-gate
+      printf "%s\n" packages-governance-lint critical-runtime-matrix-lint packages-check-all pkg-matrix pkg-cli-integration packages-gate
       ;;
     package-ci-fast)
       printf "%s\n" core-only-ci std-only-ci log-only-ci fs-only-ci db-only-ci http-only-ci http-client-only-ci process-only-ci json-only-ci yaml-only-ci test-only-ci lint-only-ci packages-only-ci

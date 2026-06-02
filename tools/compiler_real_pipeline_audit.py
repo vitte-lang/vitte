@@ -80,6 +80,7 @@ def detect_forbidden_surfaces() -> list[dict[str, str]]:
         "src/vitte/compiler/backend/codegen/mod.vit": read("src/vitte/compiler/backend/codegen/mod.vit"),
         "src/vitte/compiler/backend/codegen/object.vit": read("src/vitte/compiler/backend/codegen/object.vit"),
         "src/vitte/compiler/backend/link/linker.vit": read("src/vitte/compiler/backend/link/linker.vit"),
+        "toolchain/seed/vittec0.seed": read("toolchain/seed/vittec0.seed"),
         "toolchain/scripts/bootstrap/stage2.sh": read("toolchain/scripts/bootstrap/stage2.sh"),
     }
     patterns = [
@@ -88,6 +89,7 @@ def detect_forbidden_surfaces() -> list[dict[str, str]]:
         ("vitte-bootstrap-artifact", "bootstrap artifact name marks linker output as adapter-level"),
         ("build_native_wrapper", "native wrapper bridge is compatibility, not real backend emission"),
         ("native bridge: wrapping stage artifact", "stage2 bridge wraps shell payload instead of linking backend object"),
+        ("build-native output remains the v1-compatible shell artifact", "seed compiler cannot yet build the real native stage2 driver"),
     ]
 
     found: list[dict[str, str]] = []
@@ -98,10 +100,30 @@ def detect_forbidden_surfaces() -> list[dict[str, str]]:
     return found
 
 
+def detect_bridge_artifacts() -> list[dict[str, str]]:
+    candidates = [
+        ROOT / "target" / "bootstrap" / "stage2" / "vittec",
+        ROOT / "bin" / "vitte",
+        ROOT / "bin" / "vittec",
+    ]
+    found: list[dict[str, str]] = []
+    for path in candidates:
+        sidecar = Path(str(path) + ".bootstrap-bridge")
+        if sidecar.is_file():
+            found.append(
+                {
+                    "file": str(sidecar.relative_to(ROOT)),
+                    "pattern": "vitte-bootstrap-native-bridge",
+                    "reason": "native stage artifact is still a bootstrap bridge wrapper",
+                }
+            )
+    return found
+
+
 def main() -> int:
     steps = check_required_steps()
     cli_entry = detect_cli_entry()
-    forbidden = detect_forbidden_surfaces()
+    forbidden = detect_forbidden_surfaces() + detect_bridge_artifacts()
     missing_steps = [s for s in steps if s["status"] != "present"]
 
     failures: list[str] = []

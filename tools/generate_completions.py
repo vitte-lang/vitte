@@ -59,7 +59,8 @@ def run_help(binary: Path, args: list[str]) -> tuple[str, bool]:
         _warn(f"failed to run {' '.join(cmd)}: {e}")
         return "", False
     text = (proc.stdout or "") + "\n" + (proc.stderr or "")
-    ok = "Commands:" in text and "Options:" in text
+    lower = text.lower()
+    ok = "commands:" in lower and ("options:" in lower or "flags:" in lower)
     return text, ok
 
 
@@ -74,10 +75,10 @@ def parse_help_text(text: str) -> dict:
     section = None
     for raw in text.splitlines():
         line = raw.rstrip()
-        if line.startswith("Commands:"):
+        if line.startswith("Commands:") or line.startswith("commands:"):
             section = "commands"
             continue
-        if line.startswith("Options:"):
+        if line.startswith("Options:") or line.startswith("options:") or line.startswith("flags:"):
             section = "options"
             continue
         if section == "commands":
