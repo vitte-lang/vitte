@@ -1,7 +1,9 @@
 space vitte/compiler/tests/lexer_tests
 
 use vitte/compiler/frontend/lexer/scanner.{ ScanResult, scan_tokens }
+use vitte/compiler/frontend/lexer/errors.{ LexerDiagnostic, invalid_character, invalid_char_literal, invalid_number, invalid_unicode_escape, lexer_diagnostic_as_diagnostic, token_too_large, unterminated_block_comment, unterminated_string }
 use vitte/compiler/frontend/lexer/token.{ TokenKind }
+use vitte/compiler/diagnostics/diagnostic.{ Diagnostic, DiagnosticPhase }
 use vitte/compiler/tests/frontend_fixtures/valid/lexer.{ attributes_source, number_suffix_source, positions_source }
 use vitte/compiler/tests/frontend_fixtures/invalid/lexer.{ invalid_char_literal_source, invalid_escape_source, invalid_number_source }
 
@@ -74,6 +76,42 @@ proc test_scanner_reports_precise_invalid_char() -> bool {
   give diag.code == "LEX_E_INVALID_CHAR" and diag.line == 1 and diag.column == 15 and diag.width == 1;
 }
 
+proc test_lexer_canonical_diagnostic_declares_phase_and_fix() -> bool {
+  let raw: LexerDiagnostic = invalid_character("@", 1, 15);
+  let diag: Diagnostic = lexer_diagnostic_as_diagnostic("lexer_phase.vit", raw);
+  give diag.phase == DiagnosticPhase.Lexer
+    and diag.rule == "source character set"
+    and diag.probable_fix != ""
+    and len(diag.pipeline_context) >= 2;
+}
+
+proc test_lexer_expected_error_kinds_have_rich_diagnostics() -> bool {
+  let diags: [LexerDiagnostic] = [
+    invalid_number("1__2", 1, 1),
+    unterminated_string(1, 5),
+    invalid_char_literal("'ab'", 2, 3),
+    unterminated_block_comment(3, 1),
+    invalid_unicode_escape("\\u{ZZ}", 4, 6),
+    token_too_large("payload", 5, 2, 17)
+  ];
+
+  let i: u64 = 0;
+  while i < len(diags) {
+    let diag: Diagnostic = lexer_diagnostic_as_diagnostic("lexer_rich.vit", diags[i]);
+    if diag.phase != DiagnosticPhase.Lexer
+      or diag.explanation == ""
+      or diag.documentation_url == ""
+      or diag.probable_fix == "" {
+
+      give false;
+    }
+
+    set i = i + 1;
+  }
+
+  give true;
+}
+
 proc run_all_tests() -> int {
   let failures: int = 0;
   if not test_scanner_preserves_positions_after_comments() { set failures = failures + 1; }
@@ -81,6 +119,8 @@ proc run_all_tests() -> int {
   if not test_scanner_reports_precise_invalid_number() { set failures = failures + 1; }
   if not test_scanner_reports_precise_invalid_char() { set failures = failures + 1; }
   if not test_scanner_reports_precise_invalid_escape_and_char_literal() { set failures = failures + 1; }
+  if not test_lexer_canonical_diagnostic_declares_phase_and_fix() { set failures = failures + 1; }
+  if not test_lexer_expected_error_kinds_have_rich_diagnostics() { set failures = failures + 1; }
   if not test_scanner_keeps_attribute_tokens() { set failures = failures + 1; }
   give failures;
 }

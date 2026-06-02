@@ -1,5 +1,3 @@
-/home/vincentr/Documents/GitHub/vitte/src/vitte/stdlib/core/algorithms.vitl
-
 space vitte/stdlib/core/algorithms
 
 export *
@@ -169,22 +167,20 @@ proc quick_sort_range_i64(values: [i64], low: int, high: int, order: SortOrder) 
   set out = swap_i64(out, boundary, high)
 
   if boundary > 0 {
-    set out =
-      quick_sort_range_i64(
-        out,
-        low,
-        boundary - 1,
-        order
-      )
-  }
-
-  set out =
-    quick_sort_range_i64(
+    set out = quick_sort_range_i64(
       out,
-      boundary + 1,
-      high,
+      low,
+      boundary - 1,
       order
     )
+  }
+
+  set out = quick_sort_range_i64(
+    out,
+    boundary + 1,
+    high,
+    order
+  )
 
   give out
 }
@@ -234,8 +230,9 @@ proc binary_search_i64(values: [i64], target: i64) -> SearchResult {
   let right: int = values.len - 1
 
   while left <= right {
-    let middle: int =
-      left + ((right - left) / 2)
+    let distance: int = right - left
+    let half: int = distance / 2
+    let middle: int = left + half
 
     if values[middle] == target {
       give SearchResult {
@@ -358,17 +355,33 @@ proc unique_i64(values: [i64]) -> [i64] {
 
 proc algorithms_selftest() -> bool {
   let values: [i64] = [9, 4, 1, 7, 2]
-  let sorted: [i64] =
-    quick_sort_i64(
-      values,
-      SortOrder::Ascending
-    )
+  let sorted: [i64] = quick_sort_i64(values, SortOrder::Ascending)
+  let reversed: [i64] = reverse_i64(values)
+  let bubble_desc: [i64] = bubble_sort_i64(values, SortOrder::Descending)
+  let insertion_sorted: [i64] = insertion_sort_i64(values, SortOrder::Ascending)
+  let selection_sorted: [i64] = selection_sort_i64(values, SortOrder::Ascending)
+  let linear_hit: SearchResult = linear_search_i64(values, 7)
+  let binary_hit: SearchResult = binary_search_i64(sorted, 7)
+  let uniques: [i64] = unique_i64([1, 2, 2, 3, 1])
 
   give sorted[0] == 1
     and sorted[4] == 9
+    and reversed[0] == 2
+    and reversed[4] == 9
+    and bubble_desc[0] == 9
+    and bubble_desc[4] == 1
+    and insertion_sorted[2] == 4
+    and selection_sorted[3] == 7
+    and linear_hit.found
+    and linear_hit.index == 3
+    and binary_hit.found
+    and binary_hit.index == 3
     and contains_i64(sorted, 7)
     and max_i64(sorted) == 9
     and min_i64(sorted) == 1
     and sum_i64(sorted) == 23
+    and average_i64(sorted) == 4.6
     and is_sorted_i64(sorted, SortOrder::Ascending)
+    and is_sorted_i64(bubble_desc, SortOrder::Descending)
+    and uniques.len == 3
 }

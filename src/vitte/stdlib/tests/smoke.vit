@@ -3,19 +3,49 @@ space vitte/stdlib/tests/smoke
 use src/vitte/stdlib/mod as std
 
 proc smoke_vector() -> bool {
-  let vec = std.vector_new<int>()
-  let vec2 = std.vector_push(vec, 42)
-  give vec2.data.len == 1 && vec2.data[0] == 42
+  let vec = std.vector_new<int>();
+  let vec2 = std.vector_push(vec, 42);
+  give vec2.data.len == 1 && vec2.data[0] == 42;
 }
 
 proc smoke_hashmap() -> bool {
-  let map = std.hashmap_new<string, int>()
-  let map2 = std.hashmap_insert(map, "key", 123)
-  give map2.entries.len == 1 && map2.entries[0].0 == "key"
+  let map = std.hashmap_new<string, int>();
+  let map2 = std.hashmap_insert(map, "key", 123);
+  give map2.entries.len == 1 && map2.entries[0].0 == "key";
 }
 
 proc smoke_io() -> bool {
-  let content = std.io_read_file("test.txt")
-  let success = std.io_write_file("out.txt", "data")
-  give content == "file content" && success
+  let dir: string = "target/stdlib-smoke";
+  let path: string = "target/stdlib-smoke/smoke.txt";
+  let copy_path: string = "target/stdlib-smoke/smoke-copy.txt";
+  let moved_path: string = "target/stdlib-smoke/smoke-moved.txt";
+  let dir_ok: bool = std.io_create_directory(dir);
+  let write_ok: bool = std.io_write_file(path, "hello");
+  let append_ok: bool = std.io_append_file(path, "\nworld");
+  let copy_ok: bool = std.io_copy_file(path, copy_path);
+  let move_ok: bool = std.io_move_file(copy_path, moved_path);
+  let entries: [string] = std.io_list_directory(dir);
+  let content: string = std.io_read_file(path);
+  give dir_ok
+    && write_ok
+    && append_ok
+    && copy_ok
+    && move_ok
+    && std.io_file_exists(path)
+    && std.io_file_exists(moved_path)
+    && std.io_is_file(path)
+    && std.io_is_directory(dir)
+    && entries.len >= 2
+    && content == "hello\nworld";
+}
+
+proc smoke_suite_ok() -> bool {
+  give smoke_vector()
+    && smoke_hashmap()
+    && smoke_io();
+}
+
+proc main(args: list[string]) -> int {
+  let ok: bool = smoke_suite_ok();
+  give if ok { 0 } else { 1 };
 }

@@ -1,5 +1,7 @@
 space vitte/stdlib/io/fileops
 
+use vitte/stdlib/io/host_runtime.{ host_append_file, host_copy_file, host_delete_directory, host_delete_file, host_file_exists, host_is_directory, host_is_file, host_list_directory, host_mkdir_all, host_move_file, host_read_file, host_runtime_available, host_write_file }
+
 form FileOpsManifest {
   name: string,
   version: string,
@@ -19,7 +21,7 @@ form FileOpsSummary {
 }
 
 proc read_file(path: string) -> string {
-  give "file_content(" + path + ")"
+  give host_read_file(path)
 }
 
 proc fileops_version() -> string {
@@ -27,7 +29,7 @@ proc fileops_version() -> string {
 }
 
 proc fileops_ready() -> bool {
-  give true
+  give host_runtime_available()
 }
 
 proc fileops_manifest() -> FileOpsManifest {
@@ -41,9 +43,9 @@ proc fileops_manifest() -> FileOpsManifest {
 proc fileops_health() -> FileOpsHealth {
   give FileOpsHealth {
     ready: fileops_ready(),
-    read_ready: true,
-    write_ready: true,
-    dir_ready: true
+    read_ready: fileops_ready(),
+    write_ready: fileops_ready(),
+    dir_ready: fileops_ready()
   }
 }
 
@@ -55,53 +57,77 @@ proc fileops_summary() -> FileOpsSummary {
 }
 
 proc write_file(path: string, content: string) -> bool {
-  give true
+  give host_write_file(path, content) >= 0
 }
 
 proc append_file(path: string, content: string) -> bool {
-  give true
+  give host_append_file(path, content) >= 0
 }
 
 proc file_exists(path: string) -> bool {
-  give true
+  give host_file_exists(path)
 }
 
 proc delete_file(path: string) -> bool {
-  give true
+  give host_delete_file(path) == 0
 }
 
 proc copy_file(src: string, dst: string) -> bool {
-  give true
+  give host_copy_file(src, dst) == 0
 }
 
 proc move_file(src: string, dst: string) -> bool {
-  give true
+  give host_move_file(src, dst) == 0
 }
 
 proc list_directory(path: string) -> [string] {
-  give []
+  give host_list_directory(path)
 }
 
 proc create_directory(path: string) -> bool {
-  give true
+  give host_mkdir_all(path) == 0
 }
 
 proc delete_directory(path: string) -> bool {
-  give true
+  give host_delete_directory(path) == 0
 }
 
 proc get_file_size(path: string) -> int {
-  give 0
+  if not host_is_file(path) {
+    give 0
+  }
+  give host_read_file(path).len
 }
 
-proc is_file(path: string) -> bool { give true }
+proc is_file(path: string) -> bool { give host_is_file(path) }
 
-proc is_directory(path: string) -> bool { give false }
+proc is_directory(path: string) -> bool { give host_is_directory(path) }
 
 proc fileops_selftest() -> bool {
+  let dir_path: string = "target/stdlib-smoke"
+  let file_path: string = "target/stdlib-smoke/fileops.txt"
+  let copy_path: string = "target/stdlib-smoke/fileops-copy.txt"
+  let move_path: string = "target/stdlib-smoke/fileops-moved.txt"
   let summary: FileOpsSummary = fileops_summary()
-  give fileops_ready()
-    and summary.health.ready
+  let dir_ok: bool = create_directory(dir_path)
+  let write_ok: bool = write_file(file_path, "alpha")
+  let append_ok: bool = append_file(file_path, "\nbeta")
+  let copy_ok: bool = copy_file(file_path, copy_path)
+  let move_ok: bool = move_file(copy_path, move_path)
+  let entries: [string] = list_directory(dir_path)
+  let content: string = read_file(file_path)
+  give summary.health.ready == fileops_ready()
     and summary.manifest.version == "max-1"
-    and read_file("/tmp/demo") == "file_content(/tmp/demo)"
+    and dir_ok
+    and write_ok
+    and append_ok
+    and file_exists(file_path)
+    and is_file(file_path)
+    and is_directory(dir_path)
+    and copy_ok
+    and move_ok
+    and file_exists(move_path)
+    and len(entries) >= 2
+    and get_file_size(file_path) == content.len
+    and content == "alpha\nbeta"
 }

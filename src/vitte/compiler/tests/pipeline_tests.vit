@@ -1,10 +1,10 @@
 space vitte/compiler/tests/pipeline_tests
 
-use vitte/compiler/driver/compile.{ DriverAnalysisArtifacts, DriverModuleSetArtifacts, analyze_source, analyze_source_set, check_source, compile_source_with_config, default_compile_config, driver_module_input, dump_ast_json, dump_diagnostics_json, dump_hir_json, dump_hir_resolved, dump_hir_typed, dump_mir_json, incremental_analysis_graph, lower_mir_source }
+use vitte/compiler/driver/compile.{ DriverAnalysisArtifacts, DriverCompileConfig, DriverModuleSetArtifacts, DriverNativeBackendResult, analyze_source, analyze_source_set, check_source, compile_source_with_config, default_compile_config, driver_module_input, dump_ast_json, dump_diagnostics_json, dump_hir_json, dump_hir_resolved, dump_hir_typed, dump_mir_json, emit_native_backend_object_with_config, incremental_analysis_graph, link_native_backend_executable_with_config, lower_mir_source }
 use vitte/compiler/driver/exit_status.{ DriverExitStatus, exit_code }
 use vitte/compiler/driver/mod.{ main_driver_report_json, main_driver_surface_report_json, main_driver_surface_report_json_from_args, run_check_diagnostics_json_cli, run_check_hir_json_cli, run_check_mir_json_cli, run_parse_ast_json_cli }
 use vitte/compiler/driver/result.{ CliReportResult }
-use vitte/compiler/driver/compiler.{ CompilerMode, CompilerOptions, CompilerResult, CompilerStage, compiler_from_source, default_options, run_cli_main, run_compiler }
+use vitte/compiler/driver/compiler.{ CompilerMode, CompilerOptions, CompilerResult, CompilerStage, PhaseResult, compiler_from_source, default_options, new_compiler, record_phase_result, run_cli_main, run_compiler, structured_driver_failure_message }
 use vitte/compiler/backend/pipeline.{ BackendPipelineResult, compile_to_valid_ir_with_profile_and_packaging }
 use vitte/compiler/backend/target/config
 use vitte/compiler/backends/backend_infrastructure
@@ -27,20 +27,33 @@ proc test_compile_source_success() -> bool {
   give result.status == DriverExitStatus.Ok;
 }
 
+proc test_check_source_accepts_intrinsic_surface() -> bool {
+  let source_text: string = "intrinsic vitte_host_runtime_available() -> bool;\nproc main() -> int { give 0; }\n";
+  let result = check_source("pipeline_intrinsic_surface.vit", source_text);
+  let ast_json: string = dump_ast_json("pipeline_intrinsic_surface.vit", source_text);
+  give result.status == DriverExitStatus.Ok
+    and find(ast_json, "vitte_host_runtime_available") >= 0
+    and find(ast_json, "\"surface\":\"ast\"") >= 0;
+}
+
 proc test_compiler_main_dispatches_inline_check() -> bool {
   give run_cli_main(["check", "--source", "proc main() -> int { give 0; }"]) == 0;
 }
 
-proc test_compiler_main_dispatches_inline_build() -> bool {
+proc test_compiler_main_builds_native_output() -> bool {
   give run_cli_main(["build", "--source", "proc main() -> int { give 0; }", "-o", "target/pipeline_cli_hello"]) == 0;
+}
+
+proc test_compiler_main_runs_native_output() -> bool {
+  give run_cli_main(["run", "--source", "proc main() -> int { give 0; }"]) == 0;
 }
 
 proc test_compiler_main_accepts_verbose_flag() -> bool {
   give run_cli_main(["check", "--verbose", "--source", "proc main() -> int { give 0; }"]) == 0;
 }
 
-proc test_compiler_main_refuses_file_without_loader() -> bool {
-  give run_cli_main(["check", "tests/golden/frontend/fixtures/hello_min.vit"]) != 0;
+proc test_compiler_main_loads_file_through_host_runtime() -> bool {
+  give run_cli_main(["check", "tests/golden/frontend/fixtures/hello_min.vit"]) == 0;
 }
 
 proc run_stop_after(stage: CompilerStage, mode: CompilerMode) -> CompilerResult {
@@ -53,6 +66,35 @@ proc run_stop_after(stage: CompilerStage, mode: CompilerMode) -> CompilerResult 
     options
   );
   give run_compiler(compiler);
+}
+
+proc test_compiler_check_stops_after_borrowck() -> bool {
+  let options: CompilerOptions = default_options();
+  set options.mode = CompilerMode::Check;
+  let compiler = compiler_from_source(
+    "pipeline_check_only.vit",
+    "proc main() -> int { give 0; }",
+    options
+  );
+  let result: CompilerResult = run_compiler(compiler);
+  let saw_borrowck: bool = false;
+  let saw_mir: bool = false;
+  let saw_backend: bool = false;
+  let i: u64 = 0;
+  while i < len(result.phase_results) {
+    if result.phase_results[i] == "borrowck=Success" { set saw_borrowck = true; }
+    if result.phase_results[i] == "MIR lowering=Success" { set saw_mir = true; }
+    if result.phase_results[i] == "backend=Success" { set saw_backend = true; }
+    set i = i + 1;
+  }
+  give result.status == DriverExitStatus.Ok and saw_borrowck and not saw_mir and not saw_backend;
+}
+
+proc test_critical_skipped_or_unimplemented_phase_fails() -> bool {
+  let compiler0 = new_compiler(default_options());
+  let skipped = record_phase_result(compiler0, "borrowck", PhaseResult::Skipped, true);
+  let unimplemented = record_phase_result(compiler0, "backend", PhaseResult::Unimplemented, true);
+  give not skipped.state.ok and not unimplemented.state.ok;
 }
 
 proc assert_stop_after(stage: CompilerStage, mode: CompilerMode) -> bool {
@@ -269,6 +311,45 @@ proc test_verified_backend_pipeline_contract() -> bool {
   give (not result.valid) and len(report.violations) > 0;
 }
 
+proc native_backend_test_config() -> DriverCompileConfig {
+  let config: DriverCompileConfig = default_compile_config();
+  set config.backend_name = "llvm";
+  set config.target_name = "x86_64-linux";
+  set config.packaging = "executable";
+  set config.prefer_native_toolchain = true;
+  give config;
+}
+
+proc test_driver_native_object_materialization_contract() -> bool {
+  let source_text: string = "proc main() -> int { give 0; }\n";
+  let result: DriverNativeBackendResult = emit_native_backend_object_with_config(
+    "pipeline_native_object.vit",
+    source_text,
+    "target/pipeline_native_object_contract",
+    native_backend_test_config()
+  );
+  give result.compile.status == DriverExitStatus.Ok
+    and result.backend.valid
+    and result.object_result.valid
+    and result.object_result.object_path == "target/pipeline_native_object_contract.o"
+    and result.executable_result.valid == false;
+}
+
+proc test_driver_native_link_contract() -> bool {
+  let source_text: string = "proc main() -> int { give 0; }\n";
+  let result: DriverNativeBackendResult = link_native_backend_executable_with_config(
+    "pipeline_native_link.vit",
+    source_text,
+    "target/pipeline_native_link_contract",
+    native_backend_test_config()
+  );
+  give result.compile.status == DriverExitStatus.Ok
+    and result.backend.valid
+    and result.object_result.valid
+    and result.executable_result.valid
+    and result.executable_result.executable_path == "target/pipeline_native_link_contract";
+}
+
 proc test_compiler_chaos_suite_contract() -> bool {
   give chaos_tests.run_chaos_suite() == 0;
 }
@@ -284,7 +365,7 @@ proc test_analyze_source_set_resolves_imported_module() -> bool {
 }
 
 proc test_real_pipeline_json_dumps() -> bool {
-  let source_text: string = "proc main() -> int { let x = 1; give x; }\n";
+  let source_text: string = "proc main() -> int { let x = 1; set x = \"oops\"; give x; }\n";
   let ast_json: string = dump_ast_json("pipeline_ast_json.vit", source_text);
   let hir_json: string = dump_hir_json("pipeline_hir_json.vit", source_text);
   let mir_json: string = dump_mir_json("pipeline_mir_json.vit", source_text);
@@ -297,8 +378,34 @@ proc test_real_pipeline_json_dumps() -> bool {
     and find(mir_json, "\"instruction_count\":") >= 0
     and find(diag_json, "\"surface\":\"diagnostics\"") >= 0
     and find(diag_json, "\"analysis_diagnostic_count\":") >= 0
+    and find(diag_json, "\"primary_report\":") >= 0
+    and find(diag_json, "\"phase_reports\":") >= 0
+    and find(diag_json, "\"module_resolution\":") >= 0
+    and find(diag_json, "\"symbol_resolution\":") >= 0
+    and find(diag_json, "\"sema\":") >= 0
+    and find(diag_json, "\"mir_lowering\":") >= 0
+    and find(diag_json, "\"mir_verification\":") >= 0
+    and find(diag_json, "\"backend\":") >= 0
+    and find(diag_json, "\"linker\":") >= 0
+    and find(diag_json, "\"runtime_execution\":") >= 0
+    and find(diag_json, "\"pipeline_failed_at\":\"typeck\"") >= 0
+    and find(diag_json, "\"rule\": \"assignment type compatibility\"") >= 0
+    and find(diag_json, "\"subject_symbol\": \"x\"") >= 0
+    and find(diag_json, "\"documentation_url\": \"docs://language/type-system/assignment-compatibility\"") >= 0
+    and find(diag_json, "\"text_output\":") >= 0
     and find(ast_json, "bootstrap-json-v1") < 0
     and find(ast_json, "ast-json-missing") < 0;
+}
+
+proc test_diagnostics_json_reports_lexer_phase() -> bool {
+  let source_text: string = "proc main() { @ }\n";
+  let diag_json: string = dump_diagnostics_json("pipeline_lexer_diag_json.vit", source_text);
+  give find(diag_json, "\"pipeline_failed_at\":\"lexer\"") >= 0
+    and find(diag_json, "\"lexer\":") >= 0
+    and find(diag_json, "\"phase\":\"lexer\"") >= 0
+    and find(diag_json, "\"rule\":\"source character set\"") >= 0
+    and find(diag_json, "\"documentation_url\":\"docs://language/lexer/source-characters\"") >= 0
+    and find(diag_json, "\"byte offset: 14\"") >= 0;
 }
 
 proc test_cli_json_dump_routes() -> bool {
@@ -391,14 +498,20 @@ proc test_pipeline_fixture_syntax_error_fails_before_sema() -> bool {
   give result.status == DriverExitStatus.ParseFailure and result.stage == CompilerStage::Parse;
 }
 
-proc test_pipeline_fixture_type_error_fails_in_analysis() -> bool {
-  let result = check_source("tests/pipeline/type_error.vit", "proc main() -> int { give true; }");
-  give result.status == DriverExitStatus.AnalysisFailure;
+proc test_pipeline_fixture_type_error_fails_during_typeck() -> bool {
+  let options: CompilerOptions = default_options();
+  set options.mode = CompilerMode::Check;
+  let compiler = compiler_from_source("tests/pipeline/type_error.vit", "proc main() -> int { give true; }", options);
+  let result: CompilerResult = run_compiler(compiler);
+  give result.status == DriverExitStatus.TypeFailure and result.stage == CompilerStage::Typeck;
 }
 
-proc test_pipeline_fixture_borrow_error_fails_in_analysis() -> bool {
-  let result = check_source("tests/pipeline/borrow_error.vit", "proc main() { let x = make_box(); let y = x; give x; }");
-  give result.status == DriverExitStatus.AnalysisFailure;
+proc test_pipeline_fixture_borrow_error_fails_during_borrowck() -> bool {
+  let options: CompilerOptions = default_options();
+  set options.mode = CompilerMode::Check;
+  let compiler = compiler_from_source("tests/pipeline/borrow_error.vit", "proc main() { let x = make_box(); let y = x; give x; }", options);
+  let result: CompilerResult = run_compiler(compiler);
+  give result.status == DriverExitStatus.BorrowckFailure and result.stage == CompilerStage::Borrowck;
 }
 
 proc test_pipeline_fixture_backend_failure_fails_build() -> bool {
@@ -457,6 +570,12 @@ proc test_runtime_c_native_contract_is_wired() -> bool {
   let saw_triggered: bool = false;
   let saw_code: bool = false;
   let saw_reset: bool = false;
+  let saw_read_file: bool = false;
+  let saw_write_file: bool = false;
+  let saw_system: bool = false;
+  let saw_emit_object: bool = false;
+  let saw_link_executable: bool = false;
+  let saw_run_executable: bool = false;
   let j: int = 0;
   while j < len(runtime0.functions) {
     let link_name: string = runtime0.functions[j].link_name;
@@ -465,12 +584,20 @@ proc test_runtime_c_native_contract_is_wired() -> bool {
     if link_name == "vitte_runtime_panic_boundary_triggered" { set saw_triggered = true; }
     if link_name == "vitte_runtime_panic_boundary_code" { set saw_code = true; }
     if link_name == "vitte_runtime_panic_boundary_reset" { set saw_reset = true; }
+    if link_name == "vitte_host_read_file" { set saw_read_file = true; }
+    if link_name == "vitte_host_write_file" { set saw_write_file = true; }
+    if link_name == "vitte_host_system" { set saw_system = true; }
+    if link_name == "vitte_host_emit_llvm_object" { set saw_emit_object = true; }
+    if link_name == "vitte_host_link_executable" { set saw_link_executable = true; }
+    if link_name == "vitte_host_run_executable" { set saw_run_executable = true; }
     set j = j + 1;
   }
   give runtime0.name == "vitte_runtime"
     and runtime0.c_header_path == "src/vitte/compiler/backends/runtime_c/vitte_runtime.h"
     and runtime0.c_source_path == "src/vitte/compiler/backends/runtime_c/vitte_runtime.c"
-    and saw_begin and saw_end and saw_triggered and saw_code and saw_reset;
+    and saw_begin and saw_end and saw_triggered and saw_code and saw_reset
+    and saw_read_file and saw_write_file and saw_system
+    and saw_emit_object and saw_link_executable and saw_run_executable;
 }
 
 proc test_linker_auto_wires_runtime_c_payload() -> bool {
@@ -494,6 +621,23 @@ proc test_linker_auto_wires_runtime_c_payload() -> bool {
     and find(result.artifact.sections[5].content, "runtime_c_source=src/vitte/compiler/backends/runtime_c/vitte_runtime.c") >= 0
     and find(result.artifact.sections[5].content, "runtime_symbol=vitte_runtime_panic_boundary_begin") >= 0;
   give result.valid and runtime_output_ok and runtime_section_ok;
+}
+
+proc test_structured_driver_failure_message_contract() -> bool {
+  let text: string = structured_driver_failure_message(
+    "native linker invocation failed",
+    "x86_64-linux",
+    "llvm",
+    "host_link_executable(build/main.o, build/main)",
+    "stderr unavailable from native host runtime bridge",
+    "build/main"
+  );
+  give find(text, "native linker invocation failed") >= 0
+    and find(text, "target: x86_64-linux") >= 0
+    and find(text, "backend: llvm") >= 0
+    and find(text, "command: host_link_executable") >= 0
+    and find(text, "stderr: stderr unavailable from native host runtime bridge") >= 0
+    and find(text, "expected_artifact: build/main") >= 0;
 }
 
 proc test_compiler_logger_levels_contract() -> bool {
@@ -556,9 +700,13 @@ proc run_all_tests() -> int {
   let failures: int = 0;
   if not test_compile_source_success() { set failures = failures + 1; }
   if not test_compiler_main_dispatches_inline_check() { set failures = failures + 1; }
-  if not test_compiler_main_dispatches_inline_build() { set failures = failures + 1; }
+  if not test_compiler_main_builds_native_output() { set failures = failures + 1; }
+  if not test_compiler_main_runs_native_output() { set failures = failures + 1; }
   if not test_compiler_main_accepts_verbose_flag() { set failures = failures + 1; }
-  if not test_compiler_main_refuses_file_without_loader() { set failures = failures + 1; }
+  if not test_compiler_main_loads_file_through_host_runtime() { set failures = failures + 1; }
+  if not test_check_source_accepts_intrinsic_surface() { set failures = failures + 1; }
+  if not test_compiler_check_stops_after_borrowck() { set failures = failures + 1; }
+  if not test_critical_skipped_or_unimplemented_phase_fails() { set failures = failures + 1; }
   if not test_check_source_uses_validated_middle_path() { set failures = failures + 1; }
   if not test_lint_warning_is_nonfatal() { set failures = failures + 1; }
   if not test_check_source_uses_copy_aware_borrowck() { set failures = failures + 1; }
@@ -582,9 +730,12 @@ proc run_all_tests() -> int {
   if not test_distributed_build_foundation_contract() { set failures = failures + 1; }
   if not test_formal_type_soundness_roadmap_contract() { set failures = failures + 1; }
   if not test_verified_backend_pipeline_contract() { set failures = failures + 1; }
+  if not test_driver_native_object_materialization_contract() { set failures = failures + 1; }
+  if not test_driver_native_link_contract() { set failures = failures + 1; }
   if not test_compiler_chaos_suite_contract() { set failures = failures + 1; }
   if not test_analyze_source_set_resolves_imported_module() { set failures = failures + 1; }
   if not test_real_pipeline_json_dumps() { set failures = failures + 1; }
+  if not test_diagnostics_json_reports_lexer_phase() { set failures = failures + 1; }
   if not test_cli_json_dump_routes() { set failures = failures + 1; }
   if not test_runtime_surface_dispatch_prefers_pipeline_json() { set failures = failures + 1; }
   if not test_runtime_surface_dispatch_from_args() { set failures = failures + 1; }
@@ -593,14 +744,15 @@ proc run_all_tests() -> int {
   if not test_driver_report_includes_stage_logs() { set failures = failures + 1; }
   if not test_pipeline_fixture_hello_world_builds() { set failures = failures + 1; }
   if not test_pipeline_fixture_syntax_error_fails_before_sema() { set failures = failures + 1; }
-  if not test_pipeline_fixture_type_error_fails_in_analysis() { set failures = failures + 1; }
-  if not test_pipeline_fixture_borrow_error_fails_in_analysis() { set failures = failures + 1; }
+  if not test_pipeline_fixture_type_error_fails_during_typeck() { set failures = failures + 1; }
+  if not test_pipeline_fixture_borrow_error_fails_during_borrowck() { set failures = failures + 1; }
   if not test_pipeline_fixture_backend_failure_fails_build() { set failures = failures + 1; }
   if not test_unix_exit_code_contract() { set failures = failures + 1; }
   if not test_internal_compiler_error_renderer_contract() { set failures = failures + 1; }
   if not test_native_panic_boundary_contract_surface() { set failures = failures + 1; }
   if not test_runtime_c_native_contract_is_wired() { set failures = failures + 1; }
   if not test_linker_auto_wires_runtime_c_payload() { set failures = failures + 1; }
+  if not test_structured_driver_failure_message_contract() { set failures = failures + 1; }
   if not test_compiler_logger_levels_contract() { set failures = failures + 1; }
   if not test_target_config_profiles_contract() { set failures = failures + 1; }
   give failures;

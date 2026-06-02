@@ -1,6 +1,6 @@
-/home/vincentr/Documents/GitHub/vitte/src/vitte/stdlib/core/io_helpers.vitl
-
 space vitte/stdlib/core/io_helpers
+
+use vitte/stdlib/io/host_runtime.{ host_append_file, host_file_exists, host_is_file, host_runtime_available, host_write_file, host_read_file, host_mkdir_all }
 
 export *
 
@@ -72,12 +72,24 @@ proc empty_write_result(status: IoStatus) -> WriteResult {
 }
 
 proc file_info(path: string) -> FileInfo {
+    let path_exists: bool = exists(path);
+    let path_is_file: bool = host_runtime_available()
+        and host_is_file(path);
+    let size: int = 0;
+
+    if path_is_file {
+        let content: ReadResult = read_text(path);
+        if content.success {
+            set size = content.data.len;
+        }
+    }
+
     give FileInfo {
         path: path,
-        exists: false,
-        size: 0,
-        readable: false,
-        writable: false
+        exists: path_exists,
+        size: size,
+        readable: path_exists,
+        writable: path_exists
     };
 }
 
@@ -88,10 +100,24 @@ proc read_text(path: string) -> ReadResult {
         );
     }
 
+    if not host_runtime_available() {
+        give empty_read_result(
+            IoStatus.IOError
+        );
+    }
+
+    if not host_file_exists(path) {
+        give empty_read_result(
+            IoStatus.NotFound
+        );
+    }
+
     give ReadResult {
         status: IoStatus.Ok,
         success: true,
-        data: "mock-file-content"
+        data: normalize_newlines(
+            host_read_file(path)
+        )
     };
 }
 
@@ -102,10 +128,24 @@ proc write_text(path: string, data: string) -> WriteResult {
         );
     }
 
+    if not host_runtime_available() {
+        give empty_write_result(
+            IoStatus.IOError
+        );
+    }
+
+    let written: int = host_write_file(path, data);
+
+    if written < 0 {
+        give empty_write_result(
+            IoStatus.IOError
+        );
+    }
+
     give WriteResult {
         status: IoStatus.Ok,
         success: true,
-        written: data.len
+        written: written
     };
 }
 
@@ -116,16 +156,29 @@ proc append_text(path: string, data: string) -> WriteResult {
         );
     }
 
+    if not host_runtime_available() {
+        give empty_write_result(
+            IoStatus.IOError
+        );
+    }
+
+    let written: int = host_append_file(path, data);
+
+    if written < 0 {
+        give empty_write_result(
+            IoStatus.IOError
+        );
+    }
+
     give WriteResult {
         status: IoStatus.Ok,
         success: true,
-        written: data.len
+        written: written
     };
 }
 
 proc read_lines(path: string) -> [string] {
-    let result: ReadResult =
-        read_text(path);
+    let result: ReadResult = read_text(path);
 
     if not result.success {
         give [];
@@ -138,8 +191,7 @@ proc read_lines(path: string) -> [string] {
     let i: int = 0;
 
     while i < result.data.len {
-        let ch: string =
-            ((result.data[i] as int) as string);
+        let ch: string = slice(result.data, i, i + 1);
 
         if ch == "\n" {
             set out = out + [current];
@@ -164,12 +216,10 @@ proc write_lines(path: string, lines: [string]) -> WriteResult {
     let i: int = 0;
 
     while i < lines.len {
-        set content =
-            content + lines[i];
+        set content = content + lines[i];
 
         if i + 1 < lines.len {
-            set content =
-                content + "\n";
+            set content = content + "\n";
         }
 
         set i = i + 1;
@@ -183,7 +233,11 @@ proc exists(path: string) -> bool {
         give false;
     }
 
-    give true;
+    if not host_runtime_available() {
+        give false;
+    }
+
+    give host_file_exists(path);
 }
 
 proc readable(path: string) -> bool {
@@ -191,7 +245,7 @@ proc readable(path: string) -> bool {
         give false;
     }
 
-    give true;
+    give exists(path);
 }
 
 proc writable(path: string) -> bool {
@@ -199,7 +253,7 @@ proc writable(path: string) -> bool {
         give false;
     }
 
-    give true;
+    give exists(path);
 }
 
 proc basename(path: string) -> string {
@@ -212,8 +266,7 @@ proc basename(path: string) -> string {
     let i: int = 0;
 
     while i < path.len {
-        let ch: string =
-            ((path[i] as int) as string);
+        let ch: string = slice(path, i, i + 1);
 
         if ch == "/" {
             set out = "";
@@ -232,40 +285,60 @@ proc dirname(path: string) -> string {
         give "";
     }
 
-    let out: string = "";
-
+    let last_sep: int = -1;
     let i: int = 0;
 
     while i < path.len {
-        let ch: string =
-            ((path[i] as int) as string);
+        let ch: string = slice(path, i, i + 1);
 
-        if i + 1 < path.len {
-            set out = out + ch;
+        if ch == "/" {
+            set last_sep = i;
         }
 
         set i = i + 1;
+    }
+
+    if last_sep < 0 {
+        give "";
+    }
+
+    let out: string = "";
+    let j: int = 0;
+
+    while j < last_sep {
+        set out = out + slice(path, j, j + 1);
+        set j = j + 1;
     }
 
     give out;
 }
 
 proc extension(path: string) -> string {
+    let name: string = basename(path);
     let ext: string = "";
+    let last_dot: int = -1;
 
     let i: int = 0;
 
-    while i < path.len {
-        let ch: string =
-            ((path[i] as int) as string);
+    while i < name.len {
+        let ch: string = slice(name, i, i + 1);
 
         if ch == "." {
-            set ext = "";
-        } else {
-            set ext = ext + ch;
+            set last_dot = i;
         }
 
         set i = i + 1;
+    }
+
+    if last_dot <= 0 or last_dot + 1 >= name.len {
+        give "";
+    }
+
+    let j: int = last_dot + 1;
+
+    while j < name.len {
+        set ext = ext + slice(name, j, j + 1);
+        set j = j + 1;
     }
 
     give ext;
@@ -289,8 +362,7 @@ proc normalize_newlines(text: string) -> string {
     let i: int = 0;
 
     while i < text.len {
-        let ch: string =
-            ((text[i] as int) as string);
+        let ch: string = slice(text, i, i + 1);
 
         if ch != "\r" {
             set out = out + ch;
@@ -303,8 +375,7 @@ proc normalize_newlines(text: string) -> string {
 }
 
 proc read_bytes(path: string) -> [int] {
-    let result: ReadResult =
-        read_text(path);
+    let result: ReadResult = read_text(path);
 
     if not result.success {
         give [];
@@ -315,8 +386,7 @@ proc read_bytes(path: string) -> [int] {
     let i: int = 0;
 
     while i < result.data.len {
-        set out =
-            out + [result.data[i] as int];
+        set out = out + [result.data[i] as int];
 
         set i = i + 1;
     }
@@ -330,8 +400,7 @@ proc write_bytes(path: string, data: [int]) -> WriteResult {
     let i: int = 0;
 
     while i < data.len {
-        set out =
-            out + ((data[i]) as string);
+        set out = out + ((data[i]) as string);
 
         set i = i + 1;
     }
@@ -340,31 +409,43 @@ proc write_bytes(path: string, data: [int]) -> WriteResult {
 }
 
 proc io_helpers_selftest() -> bool {
-    let path: string =
-        "/tmp/example.txt";
+    let dir_path: string = "target/stdlib-smoke";
+    let path: string = join_path(dir_path, "example.txt");
 
-    let write_result: WriteResult =
-        write_text(
-            path,
-            "hello"
-        );
+    if host_runtime_available() {
+        if host_mkdir_all(dir_path) != 0 {
+            give false;
+        }
+    }
 
-    let read_result: ReadResult =
-        read_text(path);
+    let write_result: WriteResult = write_text(
+        path,
+        "hello"
+    );
 
-    let lines: [string] =
-        write_lines(
-            path,
-            ["a", "b", "c"]
-        );
+    let append_result: WriteResult = append_text(
+        path,
+        "\nworld"
+    );
+
+    let read_result: ReadResult = read_text(path);
+
+    let lines_result: WriteResult = write_lines(
+        path,
+        ["a", "b", "c"]
+    );
 
     give write_result.success
+        and append_result.success
         and read_result.success
+        and read_result.data == "hello\nworld"
         and exists(path)
         and readable(path)
         and writable(path)
         and basename(path) == "example.txt"
+        and dirname(path) == "target/stdlib-smoke"
         and extension(path) == "txt"
         and join_path("/tmp", "a.txt") == "/tmp/a.txt"
-        and lines.success;
+        and lines_result.success
+        and file_info(path).size > 0;
 }

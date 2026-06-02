@@ -2,6 +2,7 @@ space vitte/compiler/tests/parser_tests
 
 use vitte/compiler/frontend/pipeline.{ FrontendOutput, frontend_run, frontend_run_with_lang }
 use vitte/compiler/frontend/lexer/scanner.{ ScanResult, scan_tokens }
+use vitte/compiler/frontend/ast/item.{ AstItemKind }
 use vitte/compiler/frontend/parse/recovery.{ recover_decl_index, recover_stmt_index }
 use vitte/compiler/frontend/grammar_alignment_checker.{ GrammarAlignmentReport, grammar_alignment_report, grammar_alignment_summary }
 use vitte/compiler/tests/frontend_fixtures/valid/parser.{ grammar_surface_source }
@@ -65,6 +66,16 @@ proc test_frontend_accepts_valid_surface_fixture() -> bool {
   give fe.valid and fe.toplevel_count >= 2 and fe.stmt_count >= 3 and fe.expr_count >= 4;
 }
 
+proc test_frontend_accepts_intrinsic_toplevel_decl() -> bool {
+  let source_text: string = "intrinsic vitte_host_runtime_available() -> bool;\nproc main() -> int { give 0; }\n";
+  let fe: FrontendOutput = frontend_run("intrinsic_surface.vit", source_text);
+  give fe.valid
+    and len(fe.ast_root.items) >= 2
+    and fe.ast_root.items[0].kind == AstItemKind.Intrinsic
+    and fe.ast_root.items[0].name == "vitte_host_runtime_available"
+    and fe.ast_root.items[1].kind == AstItemKind.Proc;
+}
+
 proc test_grammar_alignment_report_is_computed() -> bool {
   let report: GrammarAlignmentReport = grammar_alignment_report();
   let summary: string = grammar_alignment_summary();
@@ -78,6 +89,7 @@ proc run_all_tests() -> int {
   if not test_recovery_syncs_toplevel_boundary() { set failures = failures + 1; }
   if not test_frontend_marks_recovery_usage() { set failures = failures + 1; }
   if not test_frontend_accepts_valid_surface_fixture() { set failures = failures + 1; }
+  if not test_frontend_accepts_intrinsic_toplevel_decl() { set failures = failures + 1; }
   if not test_grammar_alignment_report_is_computed() { set failures = failures + 1; }
   give failures;
 }
