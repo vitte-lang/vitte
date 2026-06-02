@@ -32,6 +32,24 @@ int32_t vitte_runtime_panic_boundary_triggered(void);
 int32_t vitte_runtime_panic_boundary_code(void);
 int32_t vitte_runtime_panic_boundary_reset(void);
 
+int32_t vitte_host_runtime_available(void);
+VitteString vitte_host_read_file(VitteString path);
+int32_t vitte_host_write_file(VitteString path, VitteString content);
+int32_t vitte_host_append_file(VitteString path, VitteString content);
+int32_t vitte_host_file_exists(VitteString path);
+int32_t vitte_host_is_file(VitteString path);
+int32_t vitte_host_is_directory(VitteString path);
+int32_t vitte_host_mkdir_all(VitteString path);
+int32_t vitte_host_delete_file(VitteString path);
+int32_t vitte_host_copy_file(VitteString src, VitteString dst);
+int32_t vitte_host_move_file(VitteString src, VitteString dst);
+int32_t vitte_host_delete_directory(VitteString path);
+VitteSliceString vitte_host_list_directory(VitteString path);
+int32_t vitte_host_system(VitteString command);
+int32_t vitte_host_emit_llvm_object(VitteString ir_text, VitteString object_path);
+int32_t vitte_host_link_executable(VitteString object_path, VitteString executable_path);
+int32_t vitte_host_run_executable(VitteString executable_path);
+
 VitteSliceI32 vitte_empty_slice_i32(void);
 VitteSliceString vitte_empty_slice_string(void);
 VitteSliceI32 vitte_slice_push_i32(VitteSliceI32 base, int32_t value);

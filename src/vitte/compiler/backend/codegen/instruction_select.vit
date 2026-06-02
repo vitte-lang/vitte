@@ -51,7 +51,11 @@ proc select_instruction_line(function_name: string, instruction: IrInstruction) 
     give ["  # borrow_mut " + instruction.text] + store_result_lines(instruction, "%rax");
   }
   if instruction.kind == IrInstructionKind.Assert {
-    give load_operand_lines(instruction, 0, "%rax") + ["  cmp $0, %rax", "  jne .L_assert_ok_" + (instruction.id as string), "  ud2", ".L_assert_ok_" + (instruction.id as string) + ":"];
+    let instruction_id: string = instruction.id as string;
+    let assert_label: string = ".L_assert_ok_" + instruction_id;
+    let lines: [string] = load_operand_lines(instruction, 0, "%rax");
+    let tail: [string] = ["  cmp $0, %rax", "  jne " + assert_label, "  ud2", assert_label + ":"];
+    give lines + tail;
   }
   if instruction.kind == IrInstructionKind.ReturnValue {
     give load_operand_lines(instruction, 0, "%rax");
@@ -63,11 +67,11 @@ proc select_instruction_line(function_name: string, instruction: IrInstruction) 
     give ["  jmp " + machine_branch_label(function_name, instruction.target_block)];
   }
   if instruction.kind == IrInstructionKind.Branch {
-    give load_operand_lines(instruction, 0, "%r10") + [
-      "  cmp $0, %r10",
-      "  jne " + machine_branch_label(function_name, instruction.target_block),
-      "  jmp " + machine_branch_label(function_name, instruction.else_block)
-    ];
+    let lines: [string] = load_operand_lines(instruction, 0, "%r10");
+    let target_label: string = machine_branch_label(function_name, instruction.target_block);
+    let else_label: string = machine_branch_label(function_name, instruction.else_block);
+    let tail: [string] = ["  cmp $0, %r10", "  jne " + target_label, "  jmp " + else_label];
+    give lines + tail;
   }
   if instruction.kind == IrInstructionKind.Switch {
     give ["  # switch " + instruction.text];

@@ -1,7 +1,7 @@
 space vitte/compiler/analysis/typeck
 
 use vitte/compiler/analysis/typeck/coercion.{ types_compatible }
-use vitte/compiler/analysis/typeck/errors.{ TypeckDiagnostic, TypeckResult, add_unique_diag, typeck_diag, typeck_invalid_hir_result }
+use vitte/compiler/analysis/typeck/errors.{ TypeckDiagnostic, TypeckResult, add_unique_diag, typeck_assignment_mismatch, typeck_condition_type, typeck_diag, typeck_invalid_hir_result, typeck_non_exhaustive_match }
 use vitte/compiler/analysis/typeck/infer.{ TypeBinding, env_get, env_has, env_set, infer_expr_type }
 use vitte/compiler/analysis/typeck/traits.{ type_is_copy, type_is_known, type_is_truthy }
 use vitte/compiler/middle/hir/hir.{ HirExpr, HirItem, HirItemKind, HirModule, HirStmt, HirStmtKind, HirUnit }
@@ -11,6 +11,18 @@ form TypeckStmtWalk {
   env: [TypeBinding]
   diagnostics: [TypeckDiagnostic]
   valid: bool
+}
+
+proc match_stmt_has_fallback_arm(stmt: HirStmt) -> bool {
+  let i: u64 = 0;
+  while i < len(stmt.then_stmts) {
+    let is_fallback_arm: bool = stmt.then_stmts[i].name == "_" or stmt.then_stmts[i].name == "else";
+    if stmt.then_stmts[i].kind == HirStmtKind.When and is_fallback_arm {
+      give true;
+    }
+    set i = i + 1;
+  }
+  give false;
 }
 
 proc run_typeck_hir(hir: HirUnit) -> TypeckResult {
@@ -110,26 +122,27 @@ proc check_stmt_tree(diagnostics: [TypeckDiagnostic], env: [TypeBinding], stmts:
         set target_name = stmt.target;
       }
       if target_name != "" and env_has(current_env, target_name) and type_is_known(result.ty) and not types_compatible(env_get(current_env, target_name), result.ty) {
-        set out = add_unique_diag(out, typeck_diag(
-          "TYPECK_E_ASSIGN_MISMATCH",
-          "cannot assign `" + result.ty + "` to `" + target_name + "` of type `" + env_get(current_env, target_name) + "`",
-          [target_name, env_get(current_env, target_name), result.ty],
-          "make the assigned value match the target type",
-          stmt.span,
-          true
+        set out = add_unique_diag(out, typeck_assignment_mismatch(
+          target_name,
+          env_get(current_env, target_name),
+          result.ty,
+          stmt.span
         ));
       } elif target_name != "" and not env_has(current_env, target_name) {
         set current_env = env_set(current_env, target_name, result.ty);
       }
     } elif stmt.kind == HirStmtKind.StaticAssert or stmt.kind == HirStmtKind.If or stmt.kind == HirStmtKind.While {
       if not type_is_truthy(result.ty) {
-        set out = add_unique_diag(out, typeck_diag(
-          "TYPECK_E_CONDITION_TYPE",
-          "condition requires a truthy type, got `" + result.ty + "`",
-          [result.ty],
-          "use a bool, int, or explicitly typed external value in the condition",
-          stmt.span,
-          true
+        set out = add_unique_diag(out, typeck_condition_type(
+          result.ty,
+          stmt.span
+        ));
+      }
+    } elif stmt.kind == HirStmtKind.Match {
+      if !match_stmt_has_fallback_arm(stmt) {
+        set out = add_unique_diag(out, typeck_non_exhaustive_match(
+          "_",
+          stmt.span
         ));
       }
     }

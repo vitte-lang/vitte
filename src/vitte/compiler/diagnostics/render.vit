@@ -78,10 +78,7 @@ proc render_color_mode_name(mode: RenderColorMode) -> string {
     give "never";
 }
 
-proc source_line(
-    number: u64,
-    text: string
-) -> SourceLine {
+proc source_line(number: u64, text: string) -> SourceLine {
     give SourceLine {
         number: number,
         text: text,
@@ -97,18 +94,12 @@ proc source_file_empty() -> SourceFile {
     };
 }
 
-proc source_file(
-    path: string,
-    lines: [string]
-) -> SourceFile {
+proc source_file(path: string, lines: [string]) -> SourceFile {
     let built: [SourceLine] = [];
     let i: u64 = 0;
 
     while i < len(lines) {
-        set built =
-            built + [
-                source_line(i + 1, lines[i])
-            ];
+        set built = built + [source_line(i + 1, lines[i])];
 
         set i = i + 1;
     }
@@ -129,10 +120,7 @@ proc render_context_default() -> RenderContext {
     };
 }
 
-proc render_context(
-    config: DiagnosticRenderConfig,
-    source: SourceFile
-) -> RenderContext {
+proc render_context(config: DiagnosticRenderConfig, source: SourceFile) -> RenderContext {
     give RenderContext {
         config: config,
         source: source,
@@ -154,38 +142,34 @@ proc should_color(ctx: RenderContext) -> bool {
 }
 
 proc ansi_reset() -> string {
-    give "\x1b[0m";
+    give "";
 }
 
 proc ansi_bold() -> string {
-    give "\x1b[1m";
+    give "";
 }
 
 proc ansi_red() -> string {
-    give "\x1b[31m";
+    give "";
 }
 
 proc ansi_yellow() -> string {
-    give "\x1b[33m";
+    give "";
 }
 
 proc ansi_blue() -> string {
-    give "\x1b[34m";
+    give "";
 }
 
 proc ansi_cyan() -> string {
-    give "\x1b[36m";
+    give "";
 }
 
 proc ansi_dim() -> string {
-    give "\x1b[2m";
+    give "";
 }
 
-proc color_wrap(
-    ctx: RenderContext,
-    color: string,
-    text: string
-) -> string {
+proc color_wrap(ctx: RenderContext, color: string, text: string) -> string {
     if !should_color(ctx) {
         give text;
     }
@@ -193,9 +177,7 @@ proc color_wrap(
     give color + text + ansi_reset();
 }
 
-proc severity_color(
-    severity: DiagnosticSeverity
-) -> string {
+proc severity_color(severity: DiagnosticSeverity) -> string {
     if severity == DiagnosticSeverity.Error {
         give ansi_red();
     }
@@ -219,10 +201,7 @@ proc severity_color(
     give "";
 }
 
-proc append_line(
-    text: string,
-    line: string
-) -> string {
+proc append_line(text: string, line: string) -> string {
     if text == "" {
         give line;
     }
@@ -289,52 +268,32 @@ proc render_empty_gutter(ctx: RenderContext) -> string {
     give "  | ";
 }
 
-proc render_header(
-    ctx: RenderContext,
-    diagnostic: Diagnostic
-) -> string {
-    let sev: string =
-        severity_name(diagnostic.severity);
-
-    let head: string =
-        color_wrap(
-            ctx,
-            severity_color(diagnostic.severity),
-            sev
-        );
+proc render_header(ctx: RenderContext, diagnostic: Diagnostic) -> string {
+    let sev: string = severity_name(diagnostic.severity);
+    let color: string = severity_color(diagnostic.severity);
+    let head: string = color_wrap(ctx, color, sev);
 
     let text: string = head;
 
     if ctx.config.show_code and diagnostic.code != "" {
-        set text =
-            text + "[" + diagnostic.code + "]";
+        set text = text + "[" + diagnostic.code + "]";
     }
 
     if ctx.config.show_phase {
-        set text =
-            text + " " + phase_name(diagnostic.phase);
+        set text = text + " " + phase_name(diagnostic.phase);
     }
 
-    set text =
-        text + ": " + diagnostic.message;
+    set text = text + ": " + diagnostic.message;
 
     give text;
 }
 
-proc render_location(
-    ctx: RenderContext,
-    span: SourceSpan
-) -> string {
-    give " " +
-        render_arrow(ctx) +
-        " " +
-        span_location_text(span);
+proc render_location(ctx: RenderContext, span: SourceSpan) -> string {
+    let arrow: string = render_arrow(ctx);
+    give " " + arrow + " " + span_location_text(span);
 }
 
-proc source_line_at(
-    source: SourceFile,
-    line: u64
-) -> SourceLine {
+proc source_line_at(source: SourceFile, line: u64) -> SourceLine {
     if line == 0 {
         give source_line(0, "");
     }
@@ -348,10 +307,7 @@ proc source_line_at(
     give source.lines[index];
 }
 
-proc repeat_text(
-    text: string,
-    count: u64
-) -> string {
+proc repeat_text(text: string, count: u64) -> string {
     let out: string = "";
     let i: u64 = 0;
 
@@ -403,10 +359,7 @@ proc decimal_width(value: u64) -> u64 {
     give 1;
 }
 
-proc pad_left(
-    text: string,
-    width: u64
-) -> string {
+proc pad_left(text: string, width: u64) -> string {
     let out: string = text;
 
     while len(out) < width {
@@ -416,9 +369,7 @@ proc pad_left(
     give out;
 }
 
-proc source_gutter_width(
-    diagnostic: Diagnostic
-) -> u64 {
+proc source_gutter_width(diagnostic: Diagnostic) -> u64 {
     let max_line: u64 = diagnostic.span.end_line;
 
     if diagnostic.span.start_line > max_line {
@@ -428,35 +379,16 @@ proc source_gutter_width(
     give decimal_width(max_line);
 }
 
-proc render_source_line(
-    ctx: RenderContext,
-    source: SourceFile,
-    span: SourceSpan,
-    width: u64
-) -> string {
-    let line: SourceLine =
-        source_line_at(source, span.start_line);
-
-    let number: string =
-        pad_left(span.start_line as string, width);
-
-    give number +
-        render_separator(ctx) +
-        line.text;
+proc render_source_line(ctx: RenderContext, source: SourceFile, span: SourceSpan, width: u64) -> string {
+    let line: SourceLine = source_line_at(source, span.start_line);
+    let line_number: string = span.start_line as string;
+    let number: string = pad_left(line_number, width);
+    give number + render_separator(ctx) + line.text;
 }
 
-proc render_marker_line(
-    ctx: RenderContext,
-    span: SourceSpan,
-    message: string,
-    width: u64
-) -> string {
-    let prefix: string =
-        repeat_text(" ", width) +
-        render_separator(ctx);
-
-    let before: string =
-        repeat_text(" ", span.start_column - 1);
+proc render_marker_line(ctx: RenderContext, span: SourceSpan, message: string, width: u64) -> string {
+    let prefix: string = repeat_text(" ", width) + render_separator(ctx);
+    let before: string = repeat_text(" ", span.start_column - 1);
 
     let mark_len: u64 = span.length;
 
@@ -464,72 +396,34 @@ proc render_marker_line(
         set mark_len = 1;
     }
 
-    let marker: string =
-        repeat_text(render_caret(ctx), mark_len);
-
-    let colored: string =
-        color_wrap(
-            ctx,
-            severity_color(DiagnosticSeverity.Error),
-            marker
-        );
+    let caret: string = render_caret(ctx);
+    let marker: string = repeat_text(caret, mark_len);
+    let error_color: string = severity_color(DiagnosticSeverity.Error);
+    let colored: string = color_wrap(ctx, error_color, marker);
 
     give prefix + before + colored + " " + message;
 }
 
-proc render_label_block(
-    ctx: RenderContext,
-    diagnostic: Diagnostic,
-    label: DiagnosticLabel
-) -> string {
+proc render_label_block(ctx: RenderContext, diagnostic: Diagnostic, label: DiagnosticLabel) -> string {
     let out: string = "";
-    let width: u64 =
-        source_gutter_width(diagnostic);
+    let width: u64 = source_gutter_width(diagnostic);
 
-    if ctx.source.valid
-        and label.span.valid
-        and label.span.file == ctx.source.path {
-
-        set out =
-            append_line(
-                out,
-                render_source_line(ctx, ctx.source, label.span, width)
-            );
-
-        set out =
-            append_line(
-                out,
-                render_marker_line(ctx, label.span, label.message, width)
-            );
+    if ctx.source.valid and label.span.valid and label.span.file == ctx.source.path {
+        set out = append_line(out, render_source_line(ctx, ctx.source, label.span, width));
+        set out = append_line(out, render_marker_line(ctx, label.span, label.message, width));
 
         give out;
     }
 
-    give "  " +
-        label_kind_name(label.kind) +
-        ": " +
-        span_location_text(label.span) +
-        " " +
-        label.message;
+    give "  " + label_kind_name(label.kind) + ": " + span_location_text(label.span) + " " + label.message;
 }
 
-proc render_labels(
-    ctx: RenderContext,
-    diagnostic: Diagnostic
-) -> string {
+proc render_labels(ctx: RenderContext, diagnostic: Diagnostic) -> string {
     let out: string = "";
     let i: u64 = 0;
 
     while i < len(diagnostic.labels) {
-        set out =
-            append_line(
-                out,
-                render_label_block(
-                    ctx,
-                    diagnostic,
-                    diagnostic.labels[i]
-                )
-            );
+        set out = append_line(out, render_label_block(ctx, diagnostic, diagnostic.labels[i]));
 
         set i = i + 1;
     }
@@ -537,53 +431,41 @@ proc render_labels(
     give out;
 }
 
-proc render_note_line(
-    ctx: RenderContext,
-    note: DiagnosticNote
-) -> string {
-    give color_wrap(ctx, ansi_blue(), "  note") +
-        ": " +
-        note.message;
+proc render_note_line(ctx: RenderContext, note: DiagnosticNote) -> string {
+    let prefix: string = color_wrap(ctx, ansi_blue(), "  note");
+    give prefix + ": " + note.message;
 }
 
-proc render_help_line(
-    ctx: RenderContext,
-    help: DiagnosticHelp
-) -> string {
-    give color_wrap(ctx, ansi_cyan(), "  help") +
-        ": " +
-        help.message;
+proc render_help_line(ctx: RenderContext, help: DiagnosticHelp) -> string {
+    let prefix: string = color_wrap(ctx, ansi_cyan(), "  help");
+    give prefix + ": " + help.message;
 }
 
-proc render_suggestion_line(
-    ctx: RenderContext,
-    suggestion: DiagnosticSuggestion
-) -> string {
-    let text: string =
-        "  suggestion: " +
-        suggestion_kind_name(suggestion.kind) +
-        " " +
-        span_location_text(suggestion.span) +
-        " " +
-        suggestion.message;
+proc render_lparen() -> string {
+    give slice("()", 0, 1);
+}
+
+proc render_rparen() -> string {
+    give slice("()", 1, 2);
+}
+
+proc render_suggestion_line(ctx: RenderContext, suggestion: DiagnosticSuggestion) -> string {
+    let kind_name: string = suggestion_kind_name(suggestion.kind);
+    let location: string = span_location_text(suggestion.span);
+    let text: string = "  suggestion: " + kind_name + " " + location + " " + suggestion.message;
 
     if suggestion.replacement != "" {
-        set text =
-            text + " => `" + suggestion.replacement + "`";
+        set text = text + " => `" + suggestion.replacement + "`";
     }
 
     if suggestion.machine_applicable {
-        set text =
-            text + " [machine-applicable]";
+        set text = text + " [machine-applicable]";
     }
 
     give color_wrap(ctx, ansi_cyan(), text);
 }
 
-proc render_notes(
-    ctx: RenderContext,
-    diagnostic: Diagnostic
-) -> string {
+proc render_notes(ctx: RenderContext, diagnostic: Diagnostic) -> string {
     let out: string = "";
 
     if !ctx.config.show_notes {
@@ -593,11 +475,7 @@ proc render_notes(
     let i: u64 = 0;
 
     while i < len(diagnostic.notes) {
-        set out =
-            append_line(
-                out,
-                render_note_line(ctx, diagnostic.notes[i])
-            );
+        set out = append_line(out, render_note_line(ctx, diagnostic.notes[i]));
 
         set i = i + 1;
     }
@@ -605,10 +483,7 @@ proc render_notes(
     give out;
 }
 
-proc render_helps(
-    ctx: RenderContext,
-    diagnostic: Diagnostic
-) -> string {
+proc render_helps(ctx: RenderContext, diagnostic: Diagnostic) -> string {
     let out: string = "";
 
     if !ctx.config.show_helps {
@@ -618,11 +493,7 @@ proc render_helps(
     let i: u64 = 0;
 
     while i < len(diagnostic.helps) {
-        set out =
-            append_line(
-                out,
-                render_help_line(ctx, diagnostic.helps[i])
-            );
+        set out = append_line(out, render_help_line(ctx, diagnostic.helps[i]));
 
         set i = i + 1;
     }
@@ -630,10 +501,7 @@ proc render_helps(
     give out;
 }
 
-proc render_suggestions(
-    ctx: RenderContext,
-    diagnostic: Diagnostic
-) -> string {
+proc render_suggestions(ctx: RenderContext, diagnostic: Diagnostic) -> string {
     let out: string = "";
 
     if !ctx.config.show_suggestions {
@@ -643,14 +511,7 @@ proc render_suggestions(
     let i: u64 = 0;
 
     while i < len(diagnostic.suggestions) {
-        set out =
-            append_line(
-                out,
-                render_suggestion_line(
-                    ctx,
-                    diagnostic.suggestions[i]
-                )
-            );
+        set out = append_line(out, render_suggestion_line(ctx, diagnostic.suggestions[i]));
 
         set i = i + 1;
     }
@@ -658,67 +519,41 @@ proc render_suggestions(
     give out;
 }
 
-proc render_diagnostic_text(
-    ctx: RenderContext,
-    diagnostic: Diagnostic
-) -> string {
-    let out: string =
-        render_header(ctx, diagnostic);
-
-    set out =
-        append_line(
-            out,
-            render_location(ctx, diagnostic.span)
-        );
-
-    let labels: string =
-        render_labels(ctx, diagnostic);
+proc render_diagnostic_text(ctx: RenderContext, diagnostic: Diagnostic) -> string {
+    let out: string = render_header(ctx, diagnostic);
+    set out = append_line(out, render_location(ctx, diagnostic.span));
+    let labels: string = render_labels(ctx, diagnostic);
 
     if labels != "" {
-        set out =
-            append_line(out, labels);
+        set out = append_line(out, labels);
     }
 
-    let notes: string =
-        render_notes(ctx, diagnostic);
+    let notes: string = render_notes(ctx, diagnostic);
 
     if notes != "" {
-        set out =
-            append_line(out, notes);
+        set out = append_line(out, notes);
     }
 
-    let helps: string =
-        render_helps(ctx, diagnostic);
+    let helps: string = render_helps(ctx, diagnostic);
 
     if helps != "" {
-        set out =
-            append_line(out, helps);
+        set out = append_line(out, helps);
     }
 
-    let suggestions: string =
-        render_suggestions(ctx, diagnostic);
+    let suggestions: string = render_suggestions(ctx, diagnostic);
 
     if suggestions != "" {
-        set out =
-            append_line(out, suggestions);
+        set out = append_line(out, suggestions);
     }
 
     give out;
 }
 
-proc render_diagnostic(
-    ctx: RenderContext,
-    diagnostic: Diagnostic
-) -> RenderedDiagnostic {
-    give rendered_diagnostic(
-        render_diagnostic_text(ctx, diagnostic)
-    );
+proc render_diagnostic(ctx: RenderContext, diagnostic: Diagnostic) -> RenderedDiagnostic {
+    give rendered_diagnostic(render_diagnostic_text(ctx, diagnostic));
 }
 
-proc render_report_text(
-    ctx: RenderContext,
-    report: DiagnosticReport
-) -> string {
+proc render_report_text(ctx: RenderContext, report: DiagnosticReport) -> string {
     let out: string = "";
     let i: u64 = 0;
 
@@ -727,11 +562,7 @@ proc render_report_text(
             set out = out + "\n\n";
         }
 
-        set out =
-            out + render_diagnostic_text(
-                ctx,
-                report.diagnostics[i]
-            );
+        set out = out + render_diagnostic_text(ctx, report.diagnostics[i]);
 
         set i = i + 1;
     }
@@ -743,13 +574,8 @@ proc render_report_text(
     give out;
 }
 
-proc render_report(
-    ctx: RenderContext,
-    report: DiagnosticReport
-) -> RenderedDiagnostic {
-    give rendered_diagnostic(
-        render_report_text(ctx, report)
-    );
+proc render_report(ctx: RenderContext, report: DiagnosticReport) -> RenderedDiagnostic {
+    give rendered_diagnostic(render_report_text(ctx, report));
 }
 
 proc render_report_summary(report: DiagnosticReport) -> string {
@@ -757,39 +583,22 @@ proc render_report_summary(report: DiagnosticReport) -> string {
         give "diagnostics ok";
     }
 
-    give "diagnostics failed: " +
-        (report.error_count as string) +
-        " error(s), " +
-        (report.warning_count as string) +
-        " warning(s), " +
-        (report.fatal_count as string) +
-        " fatal(s)";
+    let error_count: string = report.error_count as string;
+    let warning_count: string = report.warning_count as string;
+    let fatal_count: string = report.fatal_count as string;
+    give "diagnostics failed: " + error_count + " error" + render_lparen() + "s" + render_rparen() + ", " + warning_count + " warning" + render_lparen() + "s" + render_rparen() + ", " + fatal_count + " fatal" + render_lparen() + "s" + render_rparen();
 }
 
-proc render_plain_diagnostic(
-    diagnostic: Diagnostic
-) -> string {
-    give severity_name(diagnostic.severity) +
-        "[" +
-        diagnostic.code +
-        "]: " +
-        diagnostic.message +
-        " at " +
-        span_location_text(diagnostic.span);
+proc render_plain_diagnostic(diagnostic: Diagnostic) -> string {
+    give severity_name(diagnostic.severity) + "[" + diagnostic.code + "]: " + diagnostic.message + " at " + span_location_text(diagnostic.span);
 }
 
-proc render_plain_report(
-    report: DiagnosticReport
-) -> string {
+proc render_plain_report(report: DiagnosticReport) -> string {
     let out: string = "";
     let i: u64 = 0;
 
     while i < len(report.diagnostics) {
-        set out =
-            append_line(
-                out,
-                render_plain_diagnostic(report.diagnostics[i])
-            );
+        set out = append_line(out, render_plain_diagnostic(report.diagnostics[i]));
 
         set i = i + 1;
     }
@@ -801,38 +610,16 @@ proc render_plain_report(
     give out;
 }
 
-proc render_with_source_lines(
-    diagnostic: Diagnostic,
-    path: string,
-    lines: [string]
-) -> string {
-    let ctx: RenderContext =
-        render_context(
-            default_render_config(),
-            source_file(path, lines)
-        );
-
-    give render_diagnostic_text(
-        ctx,
-        diagnostic
-    );
+proc render_with_source_lines(diagnostic: Diagnostic, path: string, lines: [string]) -> string {
+    let source: SourceFile = source_file(path, lines);
+    let ctx: RenderContext = render_context(default_render_config(), source);
+    give render_diagnostic_text(ctx, diagnostic);
 }
 
-proc render_report_with_source_lines(
-    report: DiagnosticReport,
-    path: string,
-    lines: [string]
-) -> string {
-    let ctx: RenderContext =
-        render_context(
-            default_render_config(),
-            source_file(path, lines)
-        );
-
-    give render_report_text(
-        ctx,
-        report
-    );
+proc render_report_with_source_lines(report: DiagnosticReport, path: string, lines: [string]) -> string {
+    let source: SourceFile = source_file(path, lines);
+    let ctx: RenderContext = render_context(default_render_config(), source);
+    give render_report_text(ctx, report);
 }
 
 share RenderColorMode

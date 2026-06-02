@@ -1,8 +1,12 @@
 #include "vitte_runtime.h"
 
+#include <dirent.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <sys/wait.h>
+#include <unistd.h>
 
 static _Thread_local int32_t g_boundary_depth = 0;
 static _Thread_local int32_t g_panic_triggered = 0;
@@ -50,6 +54,380 @@ int32_t vitte_runtime_panic_boundary_reset(void) {
   g_panic_triggered = 0;
   g_panic_code = 0;
   return 0;
+}
+
+static char *vitte_string_to_c(VitteString input) {
+  char *out = (char *)malloc(input.len + 1);
+  if (out == NULL) {
+    vitte_note_panic(3);
+    return NULL;
+  }
+  if (input.data != NULL && input.len > 0) {
+    memcpy(out, input.data, input.len);
+  }
+  out[input.len] = '\0';
+  return out;
+}
+
+static VitteString vitte_string_from_cstr(const char *input) {
+  VitteString empty = {NULL, 0};
+  size_t len = 0;
+  char *buf = NULL;
+  if (input == NULL) {
+    return empty;
+  }
+  len = strlen(input);
+  buf = (char *)malloc(len + 1);
+  if (buf == NULL) {
+    vitte_note_panic(3);
+    return empty;
+  }
+  memcpy(buf, input, len + 1);
+  empty.data = buf;
+  empty.len = len;
+  return empty;
+}
+
+int32_t vitte_host_runtime_available(void) {
+  return 1;
+}
+
+VitteString vitte_host_read_file(VitteString path) {
+  VitteString empty = {NULL, 0};
+  char *native_path = vitte_string_to_c(path);
+  if (native_path == NULL) {
+    return empty;
+  }
+  FILE *file = fopen(native_path, "rb");
+  free(native_path);
+  if (file == NULL || fseek(file, 0, SEEK_END) != 0) {
+    if (file != NULL) {
+      fclose(file);
+    }
+    return empty;
+  }
+  long size = ftell(file);
+  if (size < 0 || fseek(file, 0, SEEK_SET) != 0) {
+    fclose(file);
+    return empty;
+  }
+  char *buf = (char *)malloc((size_t)size + 1);
+  if (buf == NULL) {
+    fclose(file);
+    vitte_note_panic(3);
+    return empty;
+  }
+  size_t count = fread(buf, 1, (size_t)size, file);
+  fclose(file);
+  buf[count] = '\0';
+  VitteString out = {buf, count};
+  return out;
+}
+
+static int32_t vitte_host_write_mode(VitteString path, VitteString content, const char *mode) {
+  char *native_path = vitte_string_to_c(path);
+  if (native_path == NULL) {
+    return -1;
+  }
+  FILE *file = fopen(native_path, mode);
+  free(native_path);
+  if (file == NULL) {
+    return -1;
+  }
+  size_t wrote = fwrite(content.data, 1, content.len, file);
+  int close_result = fclose(file);
+  if (wrote != content.len || close_result != 0) {
+    return -1;
+  }
+  return (int32_t)wrote;
+}
+
+int32_t vitte_host_write_file(VitteString path, VitteString content) {
+  return vitte_host_write_mode(path, content, "wb");
+}
+
+int32_t vitte_host_append_file(VitteString path, VitteString content) {
+  return vitte_host_write_mode(path, content, "ab");
+}
+
+static int32_t vitte_host_stat_mode(VitteString path, int want_file, int want_directory) {
+  char *native_path = vitte_string_to_c(path);
+  if (native_path == NULL) {
+    return 0;
+  }
+  struct stat info;
+  int ok = stat(native_path, &info) == 0;
+  free(native_path);
+  if (!ok) {
+    return 0;
+  }
+  if (want_file) {
+    return S_ISREG(info.st_mode) ? 1 : 0;
+  }
+  if (want_directory) {
+    return S_ISDIR(info.st_mode) ? 1 : 0;
+  }
+  return 1;
+}
+
+int32_t vitte_host_file_exists(VitteString path) {
+  return vitte_host_stat_mode(path, 0, 0);
+}
+
+int32_t vitte_host_is_file(VitteString path) {
+  return vitte_host_stat_mode(path, 1, 0);
+}
+
+int32_t vitte_host_is_directory(VitteString path) {
+  return vitte_host_stat_mode(path, 0, 1);
+}
+
+int32_t vitte_host_mkdir_all(VitteString path) {
+  char *native_path = vitte_string_to_c(path);
+  if (native_path == NULL) {
+    return -1;
+  }
+  for (char *cursor = native_path + 1; *cursor != '\0'; cursor += 1) {
+    if (*cursor == '/') {
+      *cursor = '\0';
+      if (mkdir(native_path, 0777) != 0) {
+        struct stat parent;
+        if (stat(native_path, &parent) != 0 || !S_ISDIR(parent.st_mode)) {
+          free(native_path);
+          return -1;
+        }
+      }
+      *cursor = '/';
+    }
+  }
+  if (mkdir(native_path, 0777) != 0) {
+    struct stat final_dir;
+    if (stat(native_path, &final_dir) != 0 || !S_ISDIR(final_dir.st_mode)) {
+      free(native_path);
+      return -1;
+    }
+  }
+  free(native_path);
+  return 0;
+}
+
+int32_t vitte_host_delete_file(VitteString path) {
+  char *native_path = vitte_string_to_c(path);
+  int32_t result = -1;
+  if (native_path == NULL) {
+    return -1;
+  }
+  result = remove(native_path) == 0 ? 0 : -1;
+  free(native_path);
+  return result;
+}
+
+int32_t vitte_host_copy_file(VitteString src, VitteString dst) {
+  char *src_path = vitte_string_to_c(src);
+  char *dst_path = vitte_string_to_c(dst);
+  FILE *src_file = NULL;
+  FILE *dst_file = NULL;
+  char buffer[4096];
+  size_t read_count = 0;
+  int32_t result = -1;
+  if (src_path == NULL || dst_path == NULL) {
+    free(src_path);
+    free(dst_path);
+    return -1;
+  }
+  src_file = fopen(src_path, "rb");
+  dst_file = fopen(dst_path, "wb");
+  if (src_file == NULL || dst_file == NULL) {
+    goto cleanup_copy;
+  }
+  while ((read_count = fread(buffer, 1, sizeof(buffer), src_file)) > 0) {
+    if (fwrite(buffer, 1, read_count, dst_file) != read_count) {
+      goto cleanup_copy;
+    }
+  }
+  if (ferror(src_file) != 0 || fclose(dst_file) != 0) {
+    dst_file = NULL;
+    goto cleanup_copy;
+  }
+  dst_file = NULL;
+  result = 0;
+
+cleanup_copy:
+  if (src_file != NULL) {
+    fclose(src_file);
+  }
+  if (dst_file != NULL) {
+    fclose(dst_file);
+  }
+  free(src_path);
+  free(dst_path);
+  return result;
+}
+
+int32_t vitte_host_move_file(VitteString src, VitteString dst) {
+  char *src_path = vitte_string_to_c(src);
+  char *dst_path = vitte_string_to_c(dst);
+  int32_t result = -1;
+  if (src_path == NULL || dst_path == NULL) {
+    free(src_path);
+    free(dst_path);
+    return -1;
+  }
+  result = rename(src_path, dst_path) == 0 ? 0 : -1;
+  free(src_path);
+  free(dst_path);
+  return result;
+}
+
+int32_t vitte_host_delete_directory(VitteString path) {
+  char *native_path = vitte_string_to_c(path);
+  int32_t result = -1;
+  if (native_path == NULL) {
+    return -1;
+  }
+  result = rmdir(native_path) == 0 ? 0 : -1;
+  free(native_path);
+  return result;
+}
+
+VitteSliceString vitte_host_list_directory(VitteString path) {
+  VitteSliceString out = {0};
+  char *native_path = vitte_string_to_c(path);
+  DIR *dir = NULL;
+  struct dirent *entry = NULL;
+  if (native_path == NULL) {
+    return out;
+  }
+  dir = opendir(native_path);
+  free(native_path);
+  if (dir == NULL) {
+    return out;
+  }
+  while ((entry = readdir(dir)) != NULL) {
+    VitteString item;
+    if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
+      continue;
+    }
+    item = vitte_string_from_cstr(entry->d_name);
+    if (item.data == NULL && item.len == 0) {
+      closedir(dir);
+      return out;
+    }
+    out = vitte_slice_push_string(out, item);
+  }
+  closedir(dir);
+  return out;
+}
+
+int32_t vitte_host_system(VitteString command) {
+  char *native_command = vitte_string_to_c(command);
+  if (native_command == NULL) {
+    return -1;
+  }
+  int result = system(native_command);
+  free(native_command);
+  if (result < 0) {
+    return -1;
+  }
+  if (WIFEXITED(result)) {
+    return (int32_t)WEXITSTATUS(result);
+  }
+  return -1;
+}
+
+static int32_t vitte_run_argv(char *const argv[]) {
+  pid_t pid = fork();
+  int status = 0;
+  if (pid < 0) {
+    return -1;
+  }
+  if (pid == 0) {
+    execvp(argv[0], argv);
+    _exit(127);
+  }
+  if (waitpid(pid, &status, 0) < 0) {
+    return -1;
+  }
+  if (WIFEXITED(status)) {
+    return (int32_t)WEXITSTATUS(status);
+  }
+  return -1;
+}
+
+int32_t vitte_host_emit_llvm_object(VitteString ir_text, VitteString object_path) {
+  char *object_c = vitte_string_to_c(object_path);
+  char *ir_path = NULL;
+  FILE *stream = NULL;
+  char *argv[7];
+  int32_t result = -1;
+  if (object_c == NULL) {
+    return -1;
+  }
+  ir_path = (char *)malloc(strlen(object_c) + sizeof(".ll"));
+  if (ir_path == NULL) {
+    free(object_c);
+    return -1;
+  }
+  strcpy(ir_path, object_c);
+  strcat(ir_path, ".ll");
+  stream = fopen(ir_path, "wb");
+  if (stream != NULL &&
+      (ir_text.len == 0 || fwrite(ir_text.data, 1, ir_text.len, stream) == ir_text.len) &&
+      fclose(stream) == 0) {
+    stream = NULL;
+    argv[0] = "clang";
+    argv[1] = "-Wno-override-module";
+    argv[2] = "-c";
+    argv[3] = ir_path;
+    argv[4] = "-o";
+    argv[5] = object_c;
+    argv[6] = NULL;
+    result = vitte_run_argv(argv);
+  }
+  if (stream != NULL) {
+    fclose(stream);
+  }
+  free(ir_path);
+  free(object_c);
+  return result;
+}
+
+int32_t vitte_host_link_executable(VitteString object_path, VitteString executable_path) {
+  char *object_c = vitte_string_to_c(object_path);
+  char *executable_c = vitte_string_to_c(executable_path);
+  char *argv[8];
+  int32_t result = -1;
+  if (object_c == NULL || executable_c == NULL) {
+    free(object_c);
+    free(executable_c);
+    return -1;
+  }
+  argv[0] = "cc";
+  argv[1] = object_c;
+  argv[2] = "src/vitte/compiler/backends/runtime_c/vitte_runtime.c";
+  argv[3] = "-I";
+  argv[4] = "src/vitte/compiler/backends/runtime_c";
+  argv[5] = "-o";
+  argv[6] = executable_c;
+  argv[7] = NULL;
+  result = vitte_run_argv(argv);
+  free(object_c);
+  free(executable_c);
+  return result;
+}
+
+int32_t vitte_host_run_executable(VitteString executable_path) {
+  char *executable_c = vitte_string_to_c(executable_path);
+  char *argv[2];
+  int32_t result = -1;
+  if (executable_c == NULL) {
+    return -1;
+  }
+  argv[0] = executable_c;
+  argv[1] = NULL;
+  result = vitte_run_argv(argv);
+  free(executable_c);
+  return result;
 }
 
 void vitte_builtin_trap(VitteString msg) {

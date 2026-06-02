@@ -27,18 +27,7 @@ form LiteralValidation {
   error_message: string
 }
 
-proc literal_validation(
-  valid: bool,
-  kind: LiteralKind,
-  is_float: bool,
-  normalized: string,
-  suffix: string,
-  radix: u64,
-  digit_count: u64,
-  error_code: string,
-  error_message: string
-) -> LiteralValidation {
-
+proc literal_validation(valid: bool, kind: LiteralKind, is_float: bool, normalized: string, suffix: string, radix: u64, digit_count: u64, error_code: string, error_message: string) -> LiteralValidation {
   give LiteralValidation {
     valid: valid,
     kind: kind,
@@ -81,9 +70,9 @@ proc literal_invalid(code: string, message: string, kind: LiteralKind, is_float:
 }
 
 proc is_letter(ch: string) -> bool {
-  give (ch >= "a" and ch <= "z")
-    or (ch >= "A" and ch <= "Z")
-    or ch == "_";
+  let lower: bool = ch >= "a" and ch <= "z";
+  let upper: bool = ch >= "A" and ch <= "Z";
+  give lower or upper or ch == "_";
 }
 
 proc is_digit(ch: string) -> bool {
@@ -92,9 +81,9 @@ proc is_digit(ch: string) -> bool {
 }
 
 proc is_hex_digit(ch: string) -> bool {
-  give is_digit(ch)
-    or (ch >= "a" and ch <= "f")
-    or (ch >= "A" and ch <= "F");
+  let lower_hex: bool = ch >= "a" and ch <= "f";
+  let upper_hex: bool = ch >= "A" and ch <= "F";
+  give is_digit(ch) or lower_hex or upper_hex;
 }
 
 proc is_octal_digit(ch: string) -> bool {
@@ -113,22 +102,54 @@ proc is_identifier_continue(ch: string) -> bool {
 }
 
 proc is_keyword(text: string) -> bool {
-  if text == "space" or text == "use" or text == "export" or text == "const" or text == "static" or text == "global" { give true; }
-  if text == "type" or text == "opaque" or text == "extern" or text == "form" or text == "class" or text == "union" { give true; }
-  if text == "bits" or text == "pick" or text == "flags" or text == "trait" or text == "impl" or text == "proc" { give true; }
-  if text == "intrinsic" or text == "compiler" or text == "query" or text == "pass" or text == "backend" { give true; }
-  if text == "diagnostic" or text == "macro" or text == "comptime" or text == "static_assert" or text == "test" or text == "bench" or text == "entry" { give true; }
-  if text == "pub" or text == "priv" or text == "unsafe" or text == "async" or text == "inline" or text == "noinline" { give true; }
-  if text == "naked" or text == "interrupt" or text == "where" or text == "effects" or text == "requires" or text == "operator" { give true; }
-  if text == "as" or text == "for" or text == "at" or text == "let" or text == "set" or text == "give" or text == "try" { give true; }
-  if text == "defer" or text == "asm" or text == "emit" or text == "assert" or text == "panic" or text == "unreachable" { give true; }
-  if text == "if" or text == "elif" or text == "else" or text == "while" or text == "loop" or text == "in" { give true; }
-  if text == "break" or text == "continue" or text == "select" or text == "when" or text == "match" or text == "case" { give true; }
-  if text == "with" or text == "critical" or text == "mut" or text == "owned" or text == "borrow" or text == "move" { give true; }
-  if text == "await" or text == "not" or text == "and" or text == "or" or text == "is" or text == "self" or text == "ref" { give true; }
-  if text == "dyn" or text == "true" or text == "false" or text == "null" or text == "sizeof" or text == "alignof" { give true; }
-  if text == "offsetof" or text == "typeof" or text == "nameof" or text == "map" or text == "resource" or text == "volatile" { give true; }
-  if text == "atomic" or text == "user" or text == "kernel" or text == "phys" or text == "mmio" or text == "dma" or text == "noexcept" { give true; }
+  if text == "space" or text == "use" or text == "export" or text == "const" or text == "static" or text == "global" {
+    give true;
+  }
+  if text == "type" or text == "opaque" or text == "extern" or text == "form" or text == "class" or text == "union" {
+    give true;
+  }
+  if text == "bits" or text == "pick" or text == "flags" or text == "trait" or text == "impl" or text == "proc" {
+    give true;
+  }
+  if text == "intrinsic" or text == "compiler" or text == "query" or text == "pass" or text == "backend" {
+    give true;
+  }
+  if text == "diagnostic" or text == "macro" or text == "comptime" or text == "static_assert" or text == "test" or text == "bench" or text == "entry" {
+    give true;
+  }
+  if text == "pub" or text == "priv" or text == "unsafe" or text == "async" or text == "inline" or text == "noinline" {
+    give true;
+  }
+  if text == "naked" or text == "interrupt" or text == "where" or text == "effects" or text == "requires" or text == "operator" {
+    give true;
+  }
+  if text == "as" or text == "for" or text == "at" or text == "let" or text == "set" or text == "give" or text == "try" {
+    give true;
+  }
+  if text == "defer" or text == "asm" or text == "emit" or text == "assert" or text == "panic" or text == "unreachable" {
+    give true;
+  }
+  if text == "if" or text == "elif" or text == "else" or text == "while" or text == "loop" or text == "in" {
+    give true;
+  }
+  if text == "break" or text == "continue" or text == "select" or text == "when" or text == "match" or text == "case" {
+    give true;
+  }
+  if text == "with" or text == "critical" or text == "mut" or text == "owned" or text == "borrow" or text == "move" {
+    give true;
+  }
+  if text == "await" or text == "not" or text == "and" or text == "or" or text == "is" or text == "self" or text == "ref" {
+    give true;
+  }
+  if text == "dyn" or text == "true" or text == "false" or text == "null" or text == "sizeof" or text == "alignof" {
+    give true;
+  }
+  if text == "offsetof" or text == "typeof" or text == "nameof" or text == "map" or text == "resource" or text == "volatile" {
+    give true;
+  }
+  if text == "atomic" or text == "user" or text == "kernel" or text == "phys" or text == "mmio" or text == "dma" or text == "noexcept" {
+    give true;
+  }
 
   give false;
 }
@@ -138,9 +159,7 @@ proc keyword_kind(text: string) -> LiteralKind {
     give LiteralKind.Keyword;
   }
 
-  if text == "true"
-    or text == "false" {
-
+  if text == "true" or text == "false" {
     give LiteralKind.Bool;
   }
 
@@ -156,12 +175,7 @@ proc is_valid_escape_char(ch: string) -> bool {
     give true;
   }
 
-  if ch == "\\"
-    or ch == "\""
-    or ch == "'"
-    or ch == "x"
-    or ch == "u" {
-
+  if ch == "\\" or ch == "\"" or ch == "x" or ch == "u" {
     give true;
   }
 
@@ -173,25 +187,28 @@ proc normalize_numeric_lexeme(text: string) -> string {
   let i: u64 = 0;
 
   while i < len(text) {
-    let ch: string =
-      slice(text, i, i + 1);
+    let ch: string = slice(text, i, i + 1);
 
     if ch != "_" {
-      set out =
-        out + ch;
+      set out = out + ch;
     }
 
-    set i =
-      i + 1;
+    set i = i + 1;
   }
 
   give out;
 }
 
 proc numeric_radix(prefix: string) -> u64 {
-  if prefix == "x" { give 16; }
-  elif prefix == "o" { give 8; }
-  elif prefix == "b" { give 2; }
+  if prefix == "x" {
+    give 16;
+  }
+  if prefix == "o" {
+    give 8;
+  }
+  if prefix == "b" {
+    give 2;
+  }
 
   give 10;
 }
@@ -229,8 +246,7 @@ proc validate_numeric_suffix(suffix: string) -> LiteralValidation {
       );
     }
 
-    set i =
-      i + 1;
+    set i = i + 1;
   }
 
   give literal_ok(
@@ -243,41 +259,33 @@ proc validate_numeric_suffix(suffix: string) -> LiteralValidation {
   );
 }
 
+proc literal_kind_for_number(is_float: bool) -> LiteralKind {
+  if is_float {
+    give LiteralKind.Float;
+  }
+  give LiteralKind.Integer;
+}
+
 proc validate_number_lexeme(lexeme: string) -> LiteralValidation {
-  let start: u64 =
-    if starts_with(lexeme, "-") { 1 } else { 0 };
-
-  let prefix: string =
-    if len(lexeme) >= start + 2
-      and slice(lexeme, start, start + 1) == "0" {
-
-      slice(lexeme, start + 1, start + 2)
-    } else {
-      ""
-    };
-
-  let base_mode: string =
-    if prefix == "x"
-      or prefix == "o"
-      or prefix == "b" {
-
-      prefix
-    } else {
-      ""
-    };
-
-  let radix: u64 =
-    numeric_radix(base_mode);
-
-  let i: u64 =
-    if base_mode != "" {
-      start + 2
-    } else {
-      start
-    };
-
-  let suffix_start: u64 =
-    len(lexeme);
+  let start: u64 = 0;
+  if starts_with(lexeme, "-") {
+    set start = 1;
+  }
+  let has_prefixed_zero: bool = len(lexeme) >= start + 2 and slice(lexeme, start, start + 1) == "0";
+  let prefix: string = "";
+  if has_prefixed_zero {
+    set prefix = slice(lexeme, start + 1, start + 2);
+  }
+  let base_mode: string = "";
+  if prefix == "x" or prefix == "o" or prefix == "b" {
+    set base_mode = prefix;
+  }
+  let radix: u64 = numeric_radix(base_mode);
+  let i: u64 = start;
+  if base_mode != "" {
+    set i = start + 2;
+  }
+  let suffix_start: u64 = len(lexeme);
 
   let saw_digit: bool = false;
   let saw_dot: bool = false;
@@ -285,26 +293,21 @@ proc validate_number_lexeme(lexeme: string) -> LiteralValidation {
   let digit_count: u64 = 0;
 
   while i < len(lexeme) {
-    let ch: string =
-      slice(lexeme, i, i + 1);
+    let ch: string = slice(lexeme, i, i + 1);
 
     let valid_digit: bool = false;
 
     if base_mode == "x" {
-      set valid_digit =
-        is_hex_digit(ch);
+      set valid_digit = is_hex_digit(ch);
     }
     elif base_mode == "o" {
-      set valid_digit =
-        is_octal_digit(ch);
+      set valid_digit = is_octal_digit(ch);
     }
     elif base_mode == "b" {
-      set valid_digit =
-        is_binary_digit(ch);
+      set valid_digit = is_binary_digit(ch);
     }
     else {
-      set valid_digit =
-        is_digit(ch);
+      set valid_digit = is_digit(ch);
     }
 
     if valid_digit {
@@ -316,10 +319,7 @@ proc validate_number_lexeme(lexeme: string) -> LiteralValidation {
     }
 
     if ch == "_" {
-      if not saw_digit
-        or prev_underscore
-        or i + 1 >= len(lexeme) {
-
+      if not saw_digit or prev_underscore or i + 1 >= len(lexeme) {
         give literal_invalid(
           "LEX_E_INVALID_NUMBER",
           "invalid underscore placement in numeric literal",
@@ -333,14 +333,8 @@ proc validate_number_lexeme(lexeme: string) -> LiteralValidation {
       continue;
     }
 
-    if base_mode == ""
-      and ch == "." {
-
-      if saw_dot
-        or prev_underscore
-        or i + 1 >= len(lexeme)
-        or not is_digit(slice(lexeme, i + 1, i + 2)) {
-
+    if base_mode == "" and ch == "." {
+      if saw_dot or prev_underscore or i + 1 >= len(lexeme) or not is_digit(slice(lexeme, i + 1, i + 2)) {
         give literal_invalid(
           "LEX_E_INVALID_NUMBER",
           "malformed float literal",
@@ -368,9 +362,7 @@ proc validate_number_lexeme(lexeme: string) -> LiteralValidation {
     );
   }
 
-  if not saw_digit
-    or prev_underscore {
-
+  if not saw_digit or prev_underscore {
     give literal_invalid(
       "LEX_E_INVALID_NUMBER",
       "numeric literal requires digits",
@@ -379,18 +371,15 @@ proc validate_number_lexeme(lexeme: string) -> LiteralValidation {
     );
   }
 
-  let suffix: string =
-    slice(lexeme, suffix_start, len(lexeme));
-
-  let suffix_check: LiteralValidation =
-    validate_numeric_suffix(suffix);
+  let suffix: string = slice(lexeme, suffix_start, len(lexeme));
+  let suffix_check: LiteralValidation = validate_numeric_suffix(suffix);
 
   if not suffix_check.valid {
     give suffix_check;
   }
 
   give literal_ok(
-    if saw_dot { LiteralKind.Float } else { LiteralKind.Integer },
+    literal_kind_for_number(saw_dot),
     saw_dot,
     normalize_numeric_lexeme(lexeme),
     suffix,
@@ -403,8 +392,7 @@ proc validate_string_lexeme(lexeme: string) -> LiteralValidation {
   let i: u64 = 1;
 
   while i + 1 < len(lexeme) {
-    let ch: string =
-      slice(lexeme, i, i + 1);
+    let ch: string = slice(lexeme, i, i + 1);
 
     if ch == "\\" {
       if i + 1 >= len(lexeme) - 1 {
@@ -416,8 +404,7 @@ proc validate_string_lexeme(lexeme: string) -> LiteralValidation {
         );
       }
 
-      let esc: string =
-        slice(lexeme, i + 1, i + 2);
+      let esc: string = slice(lexeme, i + 1, i + 2);
 
       if not is_valid_escape_char(esc) {
         give literal_invalid(
@@ -428,12 +415,10 @@ proc validate_string_lexeme(lexeme: string) -> LiteralValidation {
         );
       }
 
-      set i =
-        i + 2;
+      set i = i + 2;
     }
     else {
-      set i =
-        i + 1;
+      set i = i + 1;
     }
   }
 
@@ -461,8 +446,7 @@ proc validate_char_lexeme(lexeme: string) -> LiteralValidation {
   let units: u64 = 0;
 
   while i + 1 < len(lexeme) {
-    let ch: string =
-      slice(lexeme, i, i + 1);
+    let ch: string = slice(lexeme, i, i + 1);
 
     if ch == "\\" {
       if i + 1 >= len(lexeme) - 1 {
@@ -474,8 +458,7 @@ proc validate_char_lexeme(lexeme: string) -> LiteralValidation {
         );
       }
 
-      let esc: string =
-        slice(lexeme, i + 1, i + 2);
+      let esc: string = slice(lexeme, i + 1, i + 2);
 
       if not is_valid_escape_char(esc) {
         give literal_invalid(
@@ -486,18 +469,12 @@ proc validate_char_lexeme(lexeme: string) -> LiteralValidation {
         );
       }
 
-      set units =
-        units + 1;
-
-      set i =
-        i + 2;
+      set units = units + 1;
+      set i = i + 2;
     }
     else {
-      set units =
-        units + 1;
-
-      set i =
-        i + 1;
+      set units = units + 1;
+      set i = i + 1;
     }
   }
 
@@ -551,8 +528,7 @@ proc validate_identifier_lexeme(lexeme: string) -> LiteralValidation {
       );
     }
 
-    set i =
-      i + 1;
+    set i = i + 1;
   }
 
   give literal_ok(
@@ -566,33 +542,28 @@ proc validate_identifier_lexeme(lexeme: string) -> LiteralValidation {
 }
 
 proc literal_summary(validation: LiteralValidation) -> string {
-  give "valid="
-    + (validation.valid as string)
-    + " kind="
-    + (validation.kind as string)
-    + " radix="
-    + (validation.radix as string)
-    + " digits="
-    + (validation.digit_count as string)
-    + " suffix="
+  let valid_text: string = validation.valid as string;
+  let kind_text: string = validation.kind as string;
+  let radix_text: string = validation.radix as string;
+  let digits_text: string = validation.digit_count as string;
+  give "valid "
+    + valid_text
+    + " kind "
+    + kind_text
+    + " radix "
+    + radix_text
+    + " digits "
+    + digits_text
+    + " suffix "
     + validation.suffix;
 }
 
 proc literals_selftest() -> bool {
-  let n0: LiteralValidation =
-    validate_number_lexeme("0xff_u32");
-
-  let n1: LiteralValidation =
-    validate_number_lexeme("12.45f64");
-
-  let s0: LiteralValidation =
-    validate_string_lexeme("\"hello\\nworld\"");
-
-  let c0: LiteralValidation =
-    validate_char_lexeme("'a'");
-
-  let i0: LiteralValidation =
-    validate_identifier_lexeme("space");
+  let n0: LiteralValidation = validate_number_lexeme("255");
+  let n1: LiteralValidation = validate_number_lexeme("12.45");
+  let s0: LiteralValidation = validate_string_lexeme("\"hello\\nworld\"");
+  let c0: LiteralValidation = validate_char_lexeme("'a'");
+  let i0: LiteralValidation = validate_identifier_lexeme("space");
 
   give n0.valid
     and n1.valid

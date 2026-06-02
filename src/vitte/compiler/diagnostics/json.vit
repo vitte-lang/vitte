@@ -63,16 +63,11 @@ proc json_bool(value: bool) -> string {
     give "false";
 }
 
-proc json_key_value(
-    key: string,
-    value: string
-) -> string {
+proc json_key_value(key: string, value: string) -> string {
     give json_quote(key) + ": " + value;
 }
 
-proc json_join(
-    values: [string]
-) -> string {
+proc json_join(values: [string]) -> string {
     let out: string = "";
     let i: u64 = 0;
 
@@ -88,29 +83,20 @@ proc json_join(
     give out;
 }
 
-proc json_array(
-    values: [string]
-) -> string {
+proc json_array(values: [string]) -> string {
     give "[" + json_join(values) + "]";
 }
 
-proc json_object(
-    fields: [string]
-) -> string {
+proc json_object(fields: [string]) -> string {
     give "{ " + json_join(fields) + " }";
 }
 
-proc json_string_array(
-    values: [string]
-) -> string {
+proc json_string_array(values: [string]) -> string {
     let encoded: [string] = [];
     let i: u64 = 0;
 
     while i < len(values) {
-        set encoded =
-            encoded + [
-                json_quote(values[i])
-            ];
+        set encoded = encoded + [json_quote(values[i])];
 
         set i = i + 1;
     }
@@ -118,9 +104,11 @@ proc json_string_array(
     give json_array(encoded);
 }
 
-proc json_source_span(
-    span: SourceSpan
-) -> string {
+proc json_optional_string(value: string) -> string {
+    give json_quote(value);
+}
+
+proc json_source_span(span: SourceSpan) -> string {
     give json_object([
         json_key_value("file", json_quote(span.file)),
         json_key_value("start_line", span.start_line as string),
@@ -132,9 +120,7 @@ proc json_source_span(
     ]);
 }
 
-proc json_label(
-    label: DiagnosticLabel
-) -> string {
+proc json_label(label: DiagnosticLabel) -> string {
     give json_object([
         json_key_value(
             "kind",
@@ -165,17 +151,12 @@ proc json_label(
     ]);
 }
 
-proc json_labels(
-    labels: [DiagnosticLabel]
-) -> string {
+proc json_labels(labels: [DiagnosticLabel]) -> string {
     let encoded: [string] = [];
     let i: u64 = 0;
 
     while i < len(labels) {
-        set encoded =
-            encoded + [
-                json_label(labels[i])
-            ];
+        set encoded = encoded + [json_label(labels[i])];
 
         set i = i + 1;
     }
@@ -183,9 +164,7 @@ proc json_labels(
     give json_array(encoded);
 }
 
-proc json_note(
-    note: DiagnosticNote
-) -> string {
+proc json_note(note: DiagnosticNote) -> string {
     give json_object([
         json_key_value(
             "message",
@@ -199,17 +178,12 @@ proc json_note(
     ]);
 }
 
-proc json_notes(
-    notes: [DiagnosticNote]
-) -> string {
+proc json_notes(notes: [DiagnosticNote]) -> string {
     let encoded: [string] = [];
     let i: u64 = 0;
 
     while i < len(notes) {
-        set encoded =
-            encoded + [
-                json_note(notes[i])
-            ];
+        set encoded = encoded + [json_note(notes[i])];
 
         set i = i + 1;
     }
@@ -217,9 +191,7 @@ proc json_notes(
     give json_array(encoded);
 }
 
-proc json_help(
-    help: DiagnosticHelp
-) -> string {
+proc json_help(help: DiagnosticHelp) -> string {
     give json_object([
         json_key_value(
             "message",
@@ -233,17 +205,12 @@ proc json_help(
     ]);
 }
 
-proc json_helps(
-    helps: [DiagnosticHelp]
-) -> string {
+proc json_helps(helps: [DiagnosticHelp]) -> string {
     let encoded: [string] = [];
     let i: u64 = 0;
 
     while i < len(helps) {
-        set encoded =
-            encoded + [
-                json_help(helps[i])
-            ];
+        set encoded = encoded + [json_help(helps[i])];
 
         set i = i + 1;
     }
@@ -251,9 +218,7 @@ proc json_helps(
     give json_array(encoded);
 }
 
-proc json_suggestion(
-    suggestion: DiagnosticSuggestion
-) -> string {
+proc json_suggestion(suggestion: DiagnosticSuggestion) -> string {
     give json_object([
         json_key_value(
             "kind",
@@ -286,6 +251,20 @@ proc json_suggestion(
         ),
 
         json_key_value(
+            "confidence",
+            json_quote(
+                suggestion.confidence
+            )
+        ),
+
+        json_key_value(
+            "reason",
+            json_quote(
+                suggestion.reason
+            )
+        ),
+
+        json_key_value(
             "span",
             json_source_span(
                 suggestion.span
@@ -301,19 +280,12 @@ proc json_suggestion(
     ]);
 }
 
-proc json_suggestions(
-    suggestions: [DiagnosticSuggestion]
-) -> string {
+proc json_suggestions(suggestions: [DiagnosticSuggestion]) -> string {
     let encoded: [string] = [];
     let i: u64 = 0;
 
     while i < len(suggestions) {
-        set encoded =
-            encoded + [
-                json_suggestion(
-                    suggestions[i]
-                )
-            ];
+        set encoded = encoded + [json_suggestion(suggestions[i])];
 
         set i = i + 1;
     }
@@ -321,9 +293,7 @@ proc json_suggestions(
     give json_array(encoded);
 }
 
-proc json_diagnostic(
-    diagnostic: Diagnostic
-) -> string {
+proc json_diagnostic(diagnostic: Diagnostic) -> string {
     give json_object([
         json_key_value(
             "code",
@@ -351,9 +321,37 @@ proc json_diagnostic(
         ),
 
         json_key_value(
+            "file",
+            json_quote(
+                diagnostic.span.file
+            )
+        ),
+
+        json_key_value(
+            "rule",
+            json_optional_string(
+                diagnostic.rule
+            )
+        ),
+
+        json_key_value(
             "message",
             json_quote(
                 diagnostic.message
+            )
+        ),
+
+        json_key_value(
+            "explanation",
+            json_optional_string(
+                diagnostic.explanation
+            )
+        ),
+
+        json_key_value(
+            "technical_note",
+            json_optional_string(
+                diagnostic.technical_note
             )
         ),
 
@@ -393,6 +391,83 @@ proc json_diagnostic(
         ),
 
         json_key_value(
+            "documentation_url",
+            json_optional_string(
+                diagnostic.documentation_url
+            )
+        ),
+
+        json_key_value(
+            "documentation",
+            json_optional_string(
+                diagnostic.documentation_url
+            )
+        ),
+
+        json_key_value(
+            "root_cause",
+            json_optional_string(
+                diagnostic.root_cause
+            )
+        ),
+
+        json_key_value(
+            "cause_chain",
+            json_string_array(
+                diagnostic.cause_chain
+            )
+        ),
+
+        json_key_value(
+            "pipeline_context",
+            json_string_array(
+                diagnostic.pipeline_context
+            )
+        ),
+
+        json_key_value(
+            "pipeline",
+            json_string_array(
+                diagnostic.pipeline_context
+            )
+        ),
+
+        json_key_value(
+            "related_errors",
+            json_string_array(
+                diagnostic.related_errors
+            )
+        ),
+
+        json_key_value(
+            "probable_fix",
+            json_optional_string(
+                diagnostic.probable_fix
+            )
+        ),
+
+        json_key_value(
+            "subject_symbol",
+            json_optional_string(
+                diagnostic.subject_symbol
+            )
+        ),
+
+        json_key_value(
+            "subject_type",
+            json_optional_string(
+                diagnostic.subject_type
+            )
+        ),
+
+        json_key_value(
+            "subject_borrow",
+            json_optional_string(
+                diagnostic.subject_borrow
+            )
+        ),
+
+        json_key_value(
             "deprecated",
             json_bool(
                 diagnostic.deprecated
@@ -422,19 +497,12 @@ proc json_diagnostic(
     ]);
 }
 
-proc json_diagnostics(
-    diagnostics: [Diagnostic]
-) -> string {
+proc json_diagnostics(diagnostics: [Diagnostic]) -> string {
     let encoded: [string] = [];
     let i: u64 = 0;
 
     while i < len(diagnostics) {
-        set encoded =
-            encoded + [
-                json_diagnostic(
-                    diagnostics[i]
-                )
-            ];
+        set encoded = encoded + [json_diagnostic(diagnostics[i])];
 
         set i = i + 1;
     }
@@ -442,9 +510,7 @@ proc json_diagnostics(
     give json_array(encoded);
 }
 
-proc json_report(
-    report: DiagnosticReport
-) -> string {
+proc json_report(report: DiagnosticReport) -> string {
     give json_object([
         json_key_value(
             "valid",
@@ -475,9 +541,7 @@ proc json_report(
     ]);
 }
 
-proc json_compact_diagnostic(
-    diagnostic: Diagnostic
-) -> string {
+proc json_compact_diagnostic(diagnostic: Diagnostic) -> string {
     give json_object([
         json_key_value(
             "code",
@@ -521,19 +585,12 @@ proc json_compact_diagnostic(
     ]);
 }
 
-proc json_compact_report(
-    report: DiagnosticReport
-) -> string {
+proc json_compact_report(report: DiagnosticReport) -> string {
     let encoded: [string] = [];
     let i: u64 = 0;
 
     while i < len(report.diagnostics) {
-        set encoded =
-            encoded + [
-                json_compact_diagnostic(
-                    report.diagnostics[i]
-                )
-            ];
+        set encoded = encoded + [json_compact_diagnostic(report.diagnostics[i])];
 
         set i = i + 1;
     }
@@ -551,9 +608,7 @@ proc json_compact_report(
     ]);
 }
 
-proc json_summary(
-    report: DiagnosticReport
-) -> string {
+proc json_summary(report: DiagnosticReport) -> string {
     give json_object([
         json_key_value(
             "errors",
@@ -585,6 +640,7 @@ share json_join
 share json_array
 share json_object
 share json_string_array
+share json_optional_string
 
 share json_source_span
 

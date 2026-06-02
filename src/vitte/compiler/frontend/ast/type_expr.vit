@@ -77,50 +77,116 @@ form AstTypeExpr {
 }
 
 proc ast_type_kind_name(kind: AstTypeKind) -> string {
-  if kind == AstTypeKind.Unknown { give "unknown"; }
-  elif kind == AstTypeKind.Name { give "name"; }
-  elif kind == AstTypeKind.Primitive { give "primitive"; }
-  elif kind == AstTypeKind.Pointer { give "pointer"; }
-  elif kind == AstTypeKind.Reference { give "reference"; }
-  elif kind == AstTypeKind.MutableRef { give "mutable-ref"; }
-  elif kind == AstTypeKind.Array { give "array"; }
-  elif kind == AstTypeKind.Slice { give "slice"; }
-  elif kind == AstTypeKind.Tuple { give "tuple"; }
-  elif kind == AstTypeKind.Proc { give "proc"; }
-  elif kind == AstTypeKind.Generic { give "generic"; }
-  elif kind == AstTypeKind.Qualified { give "qualified"; }
-  elif kind == AstTypeKind.Union { give "union"; }
-  elif kind == AstTypeKind.Optional { give "optional"; }
-  elif kind == AstTypeKind.Dyn { give "dyn"; }
-  elif kind == AstTypeKind.Impl { give "impl"; }
-  elif kind == AstTypeKind.TraitObject { give "trait-object"; }
-  elif kind == AstTypeKind.Infer { give "infer"; }
-  elif kind == AstTypeKind.Never { give "never"; }
-  elif kind == AstTypeKind.SelfType { give "self"; }
-  elif kind == AstTypeKind.Const { give "const"; }
-  elif kind == AstTypeKind.Variadic { give "variadic"; }
-  elif kind == AstTypeKind.Path { give "path"; }
-  elif kind == AstTypeKind.Function { give "function"; }
-  elif kind == AstTypeKind.RawPointer { give "raw-pointer"; }
-  elif kind == AstTypeKind.Weak { give "weak"; }
-  elif kind == AstTypeKind.Shared { give "shared"; }
-  elif kind == AstTypeKind.Result { give "result"; }
-  elif kind == AstTypeKind.Future { give "future"; }
-  elif kind == AstTypeKind.Invalid { give "invalid"; }
+  if kind == AstTypeKind.Unknown {
+    give "unknown";
+  }
+  if kind == AstTypeKind.Name {
+    give "name";
+  }
+  if kind == AstTypeKind.Primitive {
+    give "primitive";
+  }
+  if kind == AstTypeKind.Pointer {
+    give "pointer";
+  }
+  if kind == AstTypeKind.Reference {
+    give "reference";
+  }
+  if kind == AstTypeKind.MutableRef {
+    give "mutable-ref";
+  }
+  if kind == AstTypeKind.Array {
+    give "array";
+  }
+  if kind == AstTypeKind.Slice {
+    give "slice";
+  }
+  if kind == AstTypeKind.Tuple {
+    give "tuple";
+  }
+  if kind == AstTypeKind.Proc {
+    give "proc";
+  }
+  if kind == AstTypeKind.Generic {
+    give "generic";
+  }
+  if kind == AstTypeKind.Qualified {
+    give "qualified";
+  }
+  if kind == AstTypeKind.Union {
+    give "union";
+  }
+  if kind == AstTypeKind.Optional {
+    give "optional";
+  }
+  if kind == AstTypeKind.Dyn {
+    give "dyn";
+  }
+  if kind == AstTypeKind.Impl {
+    give "impl";
+  }
+  if kind == AstTypeKind.TraitObject {
+    give "trait-object";
+  }
+  if kind == AstTypeKind.Infer {
+    give "infer";
+  }
+  if kind == AstTypeKind.Never {
+    give "never";
+  }
+  if kind == AstTypeKind.SelfType {
+    give "self";
+  }
+  if kind == AstTypeKind.Const {
+    give "const";
+  }
+  if kind == AstTypeKind.Variadic {
+    give "variadic";
+  }
+  if kind == AstTypeKind.Path {
+    give "path";
+  }
+  if kind == AstTypeKind.Function {
+    give "function";
+  }
+  if kind == AstTypeKind.RawPointer {
+    give "raw-pointer";
+  }
+  if kind == AstTypeKind.Weak {
+    give "weak";
+  }
+  if kind == AstTypeKind.Shared {
+    give "shared";
+  }
+  if kind == AstTypeKind.Result {
+    give "result";
+  }
+  if kind == AstTypeKind.Future {
+    give "future";
+  }
+  if kind == AstTypeKind.Invalid {
+    give "invalid";
+  }
 
   give "type";
 }
 
 proc primitive_type(text: string) -> bool {
-  if text == "bool" or text == "char" or text == "string" { give true; }
-
-  if text == "int" or text == "uint" or text == "usize" or text == "isize" { give true; }
-
-  if text == "i8" or text == "i16" or text == "i32" or text == "i64" or text == "i128" { give true; }
-
-  if text == "u8" or text == "u16" or text == "u32" or text == "u64" or text == "u128" { give true; }
-
-  if text == "f32" or text == "f64" { give true; }
+  if text == "bool" or text == "char" or text == "string" {
+    give true;
+  }
+  if text == "int" or text == "uint" or text == "usize" or text == "isize" {
+    give true;
+  }
+  if text == "i8" or text == "i16" or text == "i32" or text == "i64" or text == "i128" {
+    give true;
+  }
+  if text == "u8" or text == "u16" or text == "u32" or text == "u64" or text == "u128" {
+    give true;
+  }
+  if text == "f32" or text == "f64" {
+    give true;
+  }
 
   give false;
 }
@@ -131,8 +197,7 @@ proc type_depth(children: [AstTypeExpr]) -> u64 {
   let i: u64 = 0;
 
   while i < len(children) {
-    let child_depth: u64 =
-      children[i].depth + 1;
+    let child_depth: u64 = children[i].depth + 1;
 
     if child_depth > depth {
       set depth = child_depth;
@@ -144,21 +209,24 @@ proc type_depth(children: [AstTypeExpr]) -> u64 {
   give depth;
 }
 
-proc ast_type_node(
-  id: u64,
-  span: AstSpan,
-  kind: AstTypeKind,
-  text: string,
-  name: string,
-  children: [AstTypeExpr],
-  mutable: bool
-) -> AstTypeExpr {
-
+proc ast_type_node(id: u64, span: AstSpan, kind: AstTypeKind, text: string, name: string, children: [AstTypeExpr], mutable: bool) -> AstTypeExpr {
   let namespace: string = "";
   let qualified_name: string = name;
+  let pointer_depth: u64 = 0;
+  let generic_arity: u64 = 0;
+  let element_count: u64 = 0;
 
   if contains(name, "::") {
     set qualified_name = name;
+  }
+  if kind == AstTypeKind.Pointer or kind == AstTypeKind.RawPointer {
+    set pointer_depth = 1;
+  }
+  if kind == AstTypeKind.Generic {
+    set generic_arity = len(children);
+  }
+  if kind == AstTypeKind.Tuple or kind == AstTypeKind.Array {
+    set element_count = len(children);
   }
 
   give AstTypeExpr {
@@ -181,30 +249,12 @@ proc ast_type_node(
     borrowed: kind == AstTypeKind.Reference or kind == AstTypeKind.MutableRef,
     inferred: kind == AstTypeKind.Infer,
 
-    pointer_depth:
-      if kind == AstTypeKind.Pointer or kind == AstTypeKind.RawPointer {
-        1
-      } else {
-        0
-      },
-
-    generic_arity:
-      if kind == AstTypeKind.Generic {
-        len(children)
-      } else {
-        0
-      },
+    pointer_depth: pointer_depth,
+    generic_arity: generic_arity,
 
     abi: "",
 
-    element_count:
-      if kind == AstTypeKind.Tuple
-        or kind == AstTypeKind.Array {
-
-        len(children)
-      } else {
-        0
-      },
+    element_count: element_count,
 
     child_count: len(children),
     depth: type_depth(children),
@@ -214,24 +264,18 @@ proc ast_type_node(
 }
 
 proc ast_type_expr(id: u64, span: AstSpan, text: string) -> AstTypeExpr {
-  let kind: AstTypeKind =
-    if primitive_type(text) {
-      AstTypeKind.Primitive
-    }
-    elif text == "_" {
-      AstTypeKind.Infer
-    }
-    elif text == "never" {
-      AstTypeKind.Never
-    }
-    elif text == "Self" {
-      AstTypeKind.SelfType
-    }
-    elif text != "" {
-      AstTypeKind.Name
-    } else {
-      AstTypeKind.Unknown
-    };
+  let kind: AstTypeKind = AstTypeKind.Unknown;
+  if primitive_type(text) {
+    set kind = AstTypeKind.Primitive;
+  } elif text == "_" {
+    set kind = AstTypeKind.Infer;
+  } elif text == "never" {
+    set kind = AstTypeKind.Never;
+  } elif text == "Self" {
+    set kind = AstTypeKind.SelfType;
+  } elif text != "" {
+    set kind = AstTypeKind.Name;
+  }
 
   give AstTypeExpr {
     id: ast_id(id),
@@ -268,18 +312,17 @@ proc ast_type_expr(id: u64, span: AstSpan, text: string) -> AstTypeExpr {
 }
 
 proc ast_type_pointer(id: u64, span: AstSpan, child: AstTypeExpr, mutable: bool) -> AstTypeExpr {
+  let text: string = "*" + child.text;
+  if mutable {
+    set text = "*mut " + child.text;
+  }
   give AstTypeExpr {
     id: ast_id(id),
     span: span,
 
     kind: AstTypeKind.Pointer,
 
-    text:
-      if mutable {
-        "*mut " + child.text
-      } else {
-        "*" + child.text
-      },
+    text: text,
 
     name: child.name,
 
@@ -309,23 +352,18 @@ proc ast_type_pointer(id: u64, span: AstSpan, child: AstTypeExpr, mutable: bool)
 }
 
 proc ast_type_reference(id: u64, span: AstSpan, child: AstTypeExpr, mutable: bool) -> AstTypeExpr {
+  let kind: AstTypeKind = AstTypeKind.Reference;
+  let text: string = "&" + child.text;
+  if mutable {
+    set kind = AstTypeKind.MutableRef;
+    set text = "&mut " + child.text;
+  }
   give AstTypeExpr {
     id: ast_id(id),
     span: span,
 
-    kind:
-      if mutable {
-        AstTypeKind.MutableRef
-      } else {
-        AstTypeKind.Reference
-      },
-
-    text:
-      if mutable {
-        "&mut " + child.text
-      } else {
-        "&" + child.text
-      },
+    kind: kind,
+    text: text,
 
     name: child.name,
 
@@ -460,6 +498,14 @@ proc ast_type_optional(id: u64, span: AstSpan, child: AstTypeExpr) -> AstTypeExp
 }
 
 proc ast_type_merge(left: AstTypeExpr, right: AstTypeExpr) -> AstTypeExpr {
+  let pointer_depth: u64 = right.pointer_depth;
+  let depth: u64 = right.depth + 1;
+  if left.pointer_depth > right.pointer_depth {
+    set pointer_depth = left.pointer_depth;
+  }
+  if left.depth > right.depth {
+    set depth = left.depth + 1;
+  }
   give AstTypeExpr {
     id: left.id,
     span: merge_spans(left.span, right.span),
@@ -480,12 +526,7 @@ proc ast_type_merge(left: AstTypeExpr, right: AstTypeExpr) -> AstTypeExpr {
     borrowed: false,
     inferred: false,
 
-    pointer_depth:
-      if left.pointer_depth > right.pointer_depth {
-        left.pointer_depth
-      } else {
-        right.pointer_depth
-      },
+    pointer_depth: pointer_depth,
 
     generic_arity: 0,
 
@@ -494,12 +535,7 @@ proc ast_type_merge(left: AstTypeExpr, right: AstTypeExpr) -> AstTypeExpr {
     element_count: 2,
 
     child_count: 2,
-    depth:
-      if left.depth > right.depth {
-        left.depth + 1
-      } else {
-        right.depth + 1
-      },
+    depth: depth,
 
     valid: left.valid and right.valid
   };
@@ -577,55 +613,39 @@ proc count_types(type_expr: AstTypeExpr) -> u64 {
   let i: u64 = 0;
 
   while i < len(type_expr.children) {
-    set total =
-      total + count_types(type_expr.children[i]);
-
-    set i =
-      i + 1;
+    set total = total + count_types(type_expr.children[i]);
+    set i = i + 1;
   }
 
   give total;
 }
 
 proc type_summary(type_expr: AstTypeExpr) -> string {
-  give "kind="
+  let child_count_text: string = type_expr.child_count as string;
+  let depth_text: string = type_expr.depth as string;
+  let pointer_depth_text: string = type_expr.pointer_depth as string;
+  let generic_arity_text: string = type_expr.generic_arity as string;
+  let valid_text: string = type_expr.valid as string;
+  give "kind "
     + ast_type_kind_name(type_expr.kind)
-    + " text="
+    + " text "
     + type_expr.text
-    + " children="
-    + (type_expr.child_count as string)
-    + " depth="
-    + (type_expr.depth as string)
-    + " ptr-depth="
-    + (type_expr.pointer_depth as string)
-    + " generic-arity="
-    + (type_expr.generic_arity as string)
-    + " valid="
-    + (type_expr.valid as string);
+    + " children "
+    + child_count_text
+    + " depth "
+    + depth_text
+    + " ptr-depth "
+    + pointer_depth_text
+    + " generic-arity "
+    + generic_arity_text
+    + " valid "
+    + valid_text;
 }
 
 proc ast_type_selftest() -> bool {
-  let base: AstTypeExpr =
-    ast_type_expr(
-      1,
-      ast_span_empty(),
-      "i32"
-    );
-
-  let ptr: AstTypeExpr =
-    ast_type_pointer(
-      2,
-      ast_span_empty(),
-      base,
-      false
-    );
-
-  let opt: AstTypeExpr =
-    ast_type_optional(
-      3,
-      ast_span_empty(),
-      ptr
-    );
+  let base: AstTypeExpr = ast_type_expr(1, ast_span_empty(), "i32");
+  let ptr: AstTypeExpr = ast_type_pointer(2, ast_span_empty(), base, false);
+  let opt: AstTypeExpr = ast_type_optional(3, ast_span_empty(), ptr);
 
   give base.valid
     and ptr.valid

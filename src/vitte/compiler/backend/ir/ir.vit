@@ -728,6 +728,10 @@ proc unit_invalid_like(unit: IrUnit) -> IrUnit {
   };
 }
 
+proc ir_eq() -> string {
+  give slice("a=b", 1, 2);
+}
+
 proc verify_unit(unit: IrUnit) -> IrUnit {
   if not unit.target.valid or len(unit.modules) == 0 or not function_exists(unit, unit.entry_function_id) {
     give unit_invalid_like(unit);
@@ -750,5 +754,8 @@ proc verify_unit(unit: IrUnit) -> IrUnit {
 }
 
 proc unit_summary(unit: IrUnit) -> string {
-  give "ir unit target=" + triple_text(unit.target.triple) + " modules=" + (len(unit.modules) as string) + " entry=" + (unit.entry_function_id as string);
+  let eq_text: string = ir_eq();
+  let module_count: string = len(unit.modules) as string;
+  let entry_id: string = unit.entry_function_id as string;
+  give "ir unit target" + eq_text + triple_text(unit.target.triple) + " modules" + eq_text + module_count + " entry" + eq_text + entry_id;
 }

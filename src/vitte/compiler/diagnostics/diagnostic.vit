@@ -10,6 +10,8 @@
 
 space vitte/compiler/diagnostics/diagnostic
 
+use vitte/stdlib/io/fileops.{ is_file, read_file }
+
 pick DiagnosticSeverity {
     Help
     Note
@@ -22,15 +24,21 @@ pick DiagnosticPhase {
     Lexer
     Parser
     Ast
+    AstValidation
+    ModuleResolution
+    SymbolResolution
     Sema
     Hir
     Typeck
     Borrowck
     Lifetime
     Mir
+    MirLowering
+    MirVerification
     Ir
     Backend
     Linker
+    RuntimeExecution
     Driver
     Internal
     Unknown
@@ -73,14 +81,17 @@ form DiagnosticLabel {
     message: string
     span: SourceSpan
     primary: bool
+    valid: bool
 }
 
 form DiagnosticNote {
     message: string
+    valid: bool
 }
 
 form DiagnosticHelp {
     message: string
+    valid: bool
 }
 
 form DiagnosticSuggestion {
@@ -89,18 +100,35 @@ form DiagnosticSuggestion {
     replacement: string
     span: SourceSpan
     machine_applicable: bool
+    confidence: string
+    reason: string
+    valid: bool
 }
 
 form Diagnostic {
     code: string
     phase: DiagnosticPhase
     severity: DiagnosticSeverity
+    rule: string
     message: string
+    explanation: string
+    technical_note: string
     labels: [DiagnosticLabel]
     notes: [DiagnosticNote]
     helps: [DiagnosticHelp]
     suggestions: [DiagnosticSuggestion]
+    documentation_url: string
+    root_cause: string
+    cause_chain: [string]
+    pipeline_context: [string]
+    related_errors: [string]
+    probable_fix: string
+    subject_symbol: string
+    subject_type: string
+    subject_borrow: string
     span: SourceSpan
+    deprecated: bool
+    unnecessary: bool
     fatal: bool
     valid: bool
 }
@@ -135,12 +163,7 @@ proc span_empty() -> SourceSpan {
     };
 }
 
-proc span_create(
-    file: string,
-    line: u64,
-    column: u64,
-    length: u64
-) -> SourceSpan {
+proc span_create(file: string, line: u64, column: u64, length: u64) -> SourceSpan {
     let normalized_length: u64 = length;
 
     if normalized_length == 0 {
@@ -158,13 +181,7 @@ proc span_create(
     };
 }
 
-proc span_range(
-    file: string,
-    start_line: u64,
-    start_column: u64,
-    end_line: u64,
-    end_column: u64
-) -> SourceSpan {
+proc span_range(file: string, start_line: u64, start_column: u64, end_line: u64, end_column: u64) -> SourceSpan {
     let length: u64 = 1;
 
     if end_line == start_line and end_column > start_column {
@@ -215,6 +232,18 @@ proc phase_name(phase: DiagnosticPhase) -> string {
         give "ast";
     }
 
+    if phase == DiagnosticPhase.AstValidation {
+        give "ast_validation";
+    }
+
+    if phase == DiagnosticPhase.ModuleResolution {
+        give "module_resolution";
+    }
+
+    if phase == DiagnosticPhase.SymbolResolution {
+        give "symbol_resolution";
+    }
+
     if phase == DiagnosticPhase.Sema {
         give "sema";
     }
@@ -239,6 +268,14 @@ proc phase_name(phase: DiagnosticPhase) -> string {
         give "mir";
     }
 
+    if phase == DiagnosticPhase.MirLowering {
+        give "mir_lowering";
+    }
+
+    if phase == DiagnosticPhase.MirVerification {
+        give "mir_verification";
+    }
+
     if phase == DiagnosticPhase.Ir {
         give "ir";
     }
@@ -249,6 +286,10 @@ proc phase_name(phase: DiagnosticPhase) -> string {
 
     if phase == DiagnosticPhase.Linker {
         give "linker";
+    }
+
+    if phase == DiagnosticPhase.RuntimeExecution {
+        give "runtime_execution";
     }
 
     if phase == DiagnosticPhase.Driver {
@@ -307,243 +348,273 @@ proc suggestion_kind_name(kind: DiagnosticSuggestionKind) -> string {
     give "help";
 }
 
-proc diagnostic_label(
-    kind: DiagnosticLabelKind,
-    message: string,
-    span: SourceSpan
-) -> DiagnosticLabel {
+proc diagnostic_label(kind: DiagnosticLabelKind, message: string, span: SourceSpan) -> DiagnosticLabel {
     give DiagnosticLabel {
         kind: kind,
         message: message,
         span: span,
-        primary: kind == DiagnosticLabelKind.Primary
+        primary: kind == DiagnosticLabelKind.Primary,
+        valid: message != "" and span.valid
     };
 }
 
 proc primary_label(message: string, span: SourceSpan) -> DiagnosticLabel {
-    give diagnostic_label(
-        DiagnosticLabelKind.Primary,
-        message,
-        span
-    );
+    give diagnostic_label(DiagnosticLabelKind.Primary, message, span);
 }
 
 proc secondary_label(message: string, span: SourceSpan) -> DiagnosticLabel {
-    give diagnostic_label(
-        DiagnosticLabelKind.Secondary,
-        message,
-        span
-    );
+    give diagnostic_label(DiagnosticLabelKind.Secondary, message, span);
 }
 
 proc previous_label(message: string, span: SourceSpan) -> DiagnosticLabel {
-    give diagnostic_label(
-        DiagnosticLabelKind.Previous,
-        message,
-        span
-    );
+    give diagnostic_label(DiagnosticLabelKind.Previous, message, span);
 }
 
 proc diagnostic_note(message: string) -> DiagnosticNote {
     give DiagnosticNote {
-        message: message
+        message: message,
+        valid: message != ""
     };
 }
 
 proc diagnostic_help(message: string) -> DiagnosticHelp {
     give DiagnosticHelp {
-        message: message
+        message: message,
+        valid: message != ""
     };
 }
 
-proc diagnostic_suggestion(
-    kind: DiagnosticSuggestionKind,
-    message: string,
-    replacement: string,
-    span: SourceSpan,
-    machine_applicable: bool
-) -> DiagnosticSuggestion {
+proc diagnostic_suggestion(kind: DiagnosticSuggestionKind, message: string, replacement: string, span: SourceSpan, machine_applicable: bool) -> DiagnosticSuggestion {
+    let confidence: string = if machine_applicable { "high" } else { "low" };
     give DiagnosticSuggestion {
         kind: kind,
         message: message,
         replacement: replacement,
         span: span,
-        machine_applicable: machine_applicable
+        machine_applicable: machine_applicable,
+        confidence: confidence,
+        reason: message,
+        valid: message != "" and span.valid
     };
 }
 
-proc diagnostic_create(
-    code: string,
-    phase: DiagnosticPhase,
-    severity: DiagnosticSeverity,
-    message: string,
-    span: SourceSpan
-) -> Diagnostic {
+proc diagnostic_suggestion_detail(kind: DiagnosticSuggestionKind, message: string, replacement: string, span: SourceSpan, machine_applicable: bool, confidence: string, reason: string) -> DiagnosticSuggestion {
+    let suggestion: DiagnosticSuggestion = diagnostic_suggestion(kind, message, replacement, span, machine_applicable);
+
+    if confidence != "" {
+        set suggestion.confidence = confidence;
+    }
+
+    if reason != "" {
+        set suggestion.reason = reason;
+    }
+
+    give suggestion;
+}
+
+proc diagnostic_create(code: string, phase: DiagnosticPhase, severity: DiagnosticSeverity, message: string, span: SourceSpan) -> Diagnostic {
     give Diagnostic {
         code: code,
         phase: phase,
         severity: severity,
+        rule: "",
         message: message,
+        explanation: "",
+        technical_note: "",
         labels: [primary_label(message, span)],
         notes: [],
         helps: [],
         suggestions: [],
+        documentation_url: "",
+        root_cause: "",
+        cause_chain: [],
+        pipeline_context: [],
+        related_errors: [],
+        probable_fix: "",
+        subject_symbol: "",
+        subject_type: "",
+        subject_borrow: "",
         span: span,
+        deprecated: false,
+        unnecessary: false,
         fatal: severity_is_fatal(severity),
         valid: code != "" and message != ""
     };
 }
 
-proc diagnostic_error(
-    code: string,
-    phase: DiagnosticPhase,
-    message: string,
-    span: SourceSpan
-) -> Diagnostic {
-    give diagnostic_create(
-        code,
-        phase,
-        DiagnosticSeverity.Error,
-        message,
-        span
-    );
+proc diagnostic_with_rule(diagnostic: Diagnostic, rule: string) -> Diagnostic {
+    if rule == "" {
+        give diagnostic;
+    }
+
+    set diagnostic.rule = rule;
+    give diagnostic;
 }
 
-proc diagnostic_warning(
-    code: string,
-    phase: DiagnosticPhase,
-    message: string,
-    span: SourceSpan
-) -> Diagnostic {
-    give diagnostic_create(
-        code,
-        phase,
-        DiagnosticSeverity.Warning,
-        message,
-        span
-    );
+proc diagnostic_with_explanation(diagnostic: Diagnostic, explanation: string) -> Diagnostic {
+    if explanation == "" {
+        give diagnostic;
+    }
+
+    set diagnostic.explanation = explanation;
+    give diagnostic;
 }
 
-proc diagnostic_fatal(
-    code: string,
-    phase: DiagnosticPhase,
-    message: string,
-    span: SourceSpan
-) -> Diagnostic {
-    give diagnostic_create(
-        code,
-        phase,
-        DiagnosticSeverity.Fatal,
-        message,
-        span
-    );
+proc diagnostic_with_technical_note(diagnostic: Diagnostic, technical_note: string) -> Diagnostic {
+    if technical_note == "" {
+        give diagnostic;
+    }
+
+    set diagnostic.technical_note = technical_note;
+    give diagnostic;
 }
 
-proc diagnostic_with_label(
-    diagnostic: Diagnostic,
-    label: DiagnosticLabel
-) -> Diagnostic {
-    set diagnostic.labels =
-        diagnostic.labels + [label];
+proc diagnostic_with_documentation(diagnostic: Diagnostic, documentation_url: string) -> Diagnostic {
+    if documentation_url == "" {
+        give diagnostic;
+    }
+
+    set diagnostic.documentation_url = documentation_url;
+    give diagnostic;
+}
+
+proc diagnostic_with_root_cause(diagnostic: Diagnostic, root_cause: string) -> Diagnostic {
+    if root_cause == "" {
+        give diagnostic;
+    }
+
+    set diagnostic.root_cause = root_cause;
+    give diagnostic;
+}
+
+proc diagnostic_add_cause(diagnostic: Diagnostic, cause: string) -> Diagnostic {
+    if cause == "" {
+        give diagnostic;
+    }
+
+    set diagnostic.cause_chain = diagnostic.cause_chain + [cause];
+    give diagnostic;
+}
+
+proc diagnostic_add_pipeline_context(diagnostic: Diagnostic, context: string) -> Diagnostic {
+    if context == "" {
+        give diagnostic;
+    }
+
+    set diagnostic.pipeline_context = diagnostic.pipeline_context + [context];
+    give diagnostic;
+}
+
+proc diagnostic_add_related_error(diagnostic: Diagnostic, related_error: string) -> Diagnostic {
+    if related_error == "" {
+        give diagnostic;
+    }
+
+    set diagnostic.related_errors = diagnostic.related_errors + [related_error];
+    give diagnostic;
+}
+
+proc diagnostic_with_probable_fix(diagnostic: Diagnostic, probable_fix: string) -> Diagnostic {
+    if probable_fix == "" {
+        give diagnostic;
+    }
+
+    set diagnostic.probable_fix = probable_fix;
+    give diagnostic;
+}
+
+proc diagnostic_with_subject_symbol(diagnostic: Diagnostic, subject_symbol: string) -> Diagnostic {
+    if subject_symbol == "" {
+        give diagnostic;
+    }
+
+    set diagnostic.subject_symbol = subject_symbol;
+    give diagnostic;
+}
+
+proc diagnostic_with_subject_type(diagnostic: Diagnostic, subject_type: string) -> Diagnostic {
+    if subject_type == "" {
+        give diagnostic;
+    }
+
+    set diagnostic.subject_type = subject_type;
+    give diagnostic;
+}
+
+proc diagnostic_with_subject_borrow(diagnostic: Diagnostic, subject_borrow: string) -> Diagnostic {
+    if subject_borrow == "" {
+        give diagnostic;
+    }
+
+    set diagnostic.subject_borrow = subject_borrow;
+    give diagnostic;
+}
+
+proc diagnostic_error(code: string, phase: DiagnosticPhase, message: string, span: SourceSpan) -> Diagnostic {
+    give diagnostic_create(code, phase, DiagnosticSeverity.Error, message, span);
+}
+
+proc diagnostic_warning(code: string, phase: DiagnosticPhase, message: string, span: SourceSpan) -> Diagnostic {
+    give diagnostic_create(code, phase, DiagnosticSeverity.Warning, message, span);
+}
+
+proc diagnostic_fatal(code: string, phase: DiagnosticPhase, message: string, span: SourceSpan) -> Diagnostic {
+    give diagnostic_create(code, phase, DiagnosticSeverity.Fatal, message, span);
+}
+
+proc diagnostic_with_label(diagnostic: Diagnostic, label: DiagnosticLabel) -> Diagnostic {
+    set diagnostic.labels = diagnostic.labels + [label];
 
     give diagnostic;
 }
 
-proc diagnostic_with_note(
-    diagnostic: Diagnostic,
-    message: string
-) -> Diagnostic {
+proc diagnostic_with_note(diagnostic: Diagnostic, message: string) -> Diagnostic {
     if message == "" {
         give diagnostic;
     }
 
-    set diagnostic.notes =
-        diagnostic.notes + [diagnostic_note(message)];
+    set diagnostic.notes = diagnostic.notes + [diagnostic_note(message)];
 
     give diagnostic;
 }
 
-proc diagnostic_with_help(
-    diagnostic: Diagnostic,
-    message: string
-) -> Diagnostic {
+proc diagnostic_with_help(diagnostic: Diagnostic, message: string) -> Diagnostic {
     if message == "" {
         give diagnostic;
     }
 
-    set diagnostic.helps =
-        diagnostic.helps + [diagnostic_help(message)];
+    set diagnostic.helps = diagnostic.helps + [diagnostic_help(message)];
 
     give diagnostic;
 }
 
-proc diagnostic_with_suggestion(
-    diagnostic: Diagnostic,
-    suggestion: DiagnosticSuggestion
-) -> Diagnostic {
-    set diagnostic.suggestions =
-        diagnostic.suggestions + [suggestion];
+proc diagnostic_with_suggestion(diagnostic: Diagnostic, suggestion: DiagnosticSuggestion) -> Diagnostic {
+    set diagnostic.suggestions = diagnostic.suggestions + [suggestion];
 
     give diagnostic;
 }
 
-proc diagnostic_with_replace(
-    diagnostic: Diagnostic,
-    message: string,
-    replacement: string,
-    span: SourceSpan
-) -> Diagnostic {
-    give diagnostic_with_suggestion(
-        diagnostic,
-        diagnostic_suggestion(
-            DiagnosticSuggestionKind.Replace,
-            message,
-            replacement,
-            span,
-            true
-        )
-    );
+proc diagnostic_with_suggestion_detail(diagnostic: Diagnostic, kind: DiagnosticSuggestionKind, message: string, replacement: string, span: SourceSpan, machine_applicable: bool, confidence: string, reason: string) -> Diagnostic {
+    let suggestion: DiagnosticSuggestion = diagnostic_suggestion_detail(kind, message, replacement, span, machine_applicable, confidence, reason);
+    give diagnostic_with_suggestion(diagnostic, suggestion);
 }
 
-proc diagnostic_with_insert(
-    diagnostic: Diagnostic,
-    message: string,
-    replacement: string,
-    span: SourceSpan
-) -> Diagnostic {
-    give diagnostic_with_suggestion(
-        diagnostic,
-        diagnostic_suggestion(
-            DiagnosticSuggestionKind.Insert,
-            message,
-            replacement,
-            span,
-            true
-        )
-    );
+proc diagnostic_with_replace(diagnostic: Diagnostic, message: string, replacement: string, span: SourceSpan) -> Diagnostic {
+    let suggestion: DiagnosticSuggestion = diagnostic_suggestion(DiagnosticSuggestionKind.Replace, message, replacement, span, true);
+    give diagnostic_with_suggestion(diagnostic, suggestion);
 }
 
-proc diagnostic_with_remove(
-    diagnostic: Diagnostic,
-    message: string,
-    span: SourceSpan
-) -> Diagnostic {
-    give diagnostic_with_suggestion(
-        diagnostic,
-        diagnostic_suggestion(
-            DiagnosticSuggestionKind.Remove,
-            message,
-            "",
-            span,
-            true
-        )
-    );
+proc diagnostic_with_insert(diagnostic: Diagnostic, message: string, replacement: string, span: SourceSpan) -> Diagnostic {
+    let suggestion: DiagnosticSuggestion = diagnostic_suggestion(DiagnosticSuggestionKind.Insert, message, replacement, span, true);
+    give diagnostic_with_suggestion(diagnostic, suggestion);
 }
 
-proc same_diagnostic(
-    left: Diagnostic,
-    right: Diagnostic
-) -> bool {
+proc diagnostic_with_remove(diagnostic: Diagnostic, message: string, span: SourceSpan) -> Diagnostic {
+    let suggestion: DiagnosticSuggestion = diagnostic_suggestion(DiagnosticSuggestionKind.Remove, message, "", span, true);
+    give diagnostic_with_suggestion(diagnostic, suggestion);
+}
+
+proc same_diagnostic(left: Diagnostic, right: Diagnostic) -> bool {
     if left.code != right.code {
         give false;
     }
@@ -567,10 +638,7 @@ proc same_diagnostic(
     give true;
 }
 
-proc add_unique_diagnostic(
-    diagnostics: [Diagnostic],
-    diagnostic: Diagnostic
-) -> [Diagnostic] {
+proc add_unique_diagnostic(diagnostics: [Diagnostic], diagnostic: Diagnostic) -> [Diagnostic] {
     let i: u64 = 0;
 
     while i < len(diagnostics) {
@@ -584,10 +652,7 @@ proc add_unique_diagnostic(
     give diagnostics + [diagnostic];
 }
 
-proc merge_diagnostics(
-    left: [Diagnostic],
-    right: [Diagnostic]
-) -> [Diagnostic] {
+proc merge_diagnostics(left: [Diagnostic], right: [Diagnostic]) -> [Diagnostic] {
     let out: [Diagnostic] = left;
     let i: u64 = 0;
 
@@ -599,10 +664,7 @@ proc merge_diagnostics(
     give out;
 }
 
-proc diagnostic_count_severity(
-    diagnostics: [Diagnostic],
-    severity: DiagnosticSeverity
-) -> u64 {
+proc diagnostic_count_severity(diagnostics: [Diagnostic], severity: DiagnosticSeverity) -> u64 {
     let count: u64 = 0;
     let i: u64 = 0;
 
@@ -676,28 +738,14 @@ proc diagnostic_report_empty() -> DiagnosticReport {
     give diagnostic_report([]);
 }
 
-proc diagnostic_report_add(
-    report: DiagnosticReport,
-    diagnostic: Diagnostic
-) -> DiagnosticReport {
-    give diagnostic_report(
-        add_unique_diagnostic(
-            report.diagnostics,
-            diagnostic
-        )
-    );
+proc diagnostic_report_add(report: DiagnosticReport, diagnostic: Diagnostic) -> DiagnosticReport {
+    let diagnostics: [Diagnostic] = add_unique_diagnostic(report.diagnostics, diagnostic);
+    give diagnostic_report(diagnostics);
 }
 
-proc diagnostic_report_merge(
-    left: DiagnosticReport,
-    right: DiagnosticReport
-) -> DiagnosticReport {
-    give diagnostic_report(
-        merge_diagnostics(
-            left.diagnostics,
-            right.diagnostics
-        )
-    );
+proc diagnostic_report_merge(left: DiagnosticReport, right: DiagnosticReport) -> DiagnosticReport {
+    let diagnostics: [Diagnostic] = merge_diagnostics(left.diagnostics, right.diagnostics);
+    give diagnostic_report(diagnostics);
 }
 
 proc default_render_config() -> DiagnosticRenderConfig {
@@ -708,8 +756,76 @@ proc default_render_config() -> DiagnosticRenderConfig {
         show_notes: true,
         show_helps: true,
         show_suggestions: true,
-        color: false
+        color: true
     };
+}
+
+proc ansi_reset() -> string {
+    give "";
+}
+
+proc ansi_bold() -> string {
+    give "";
+}
+
+proc ansi_red() -> string {
+    give "";
+}
+
+proc ansi_yellow() -> string {
+    give "";
+}
+
+proc ansi_blue() -> string {
+    give "";
+}
+
+proc ansi_cyan() -> string {
+    give "";
+}
+
+proc diag_lparen() -> string {
+    give slice("()", 0, 1);
+}
+
+proc diag_rparen() -> string {
+    give slice("()", 1, 2);
+}
+
+proc diag_eq() -> string {
+    give slice("a=b", 1, 2);
+}
+
+proc diag_kv(key: string, value: string) -> string {
+    give key + diag_eq() + value;
+}
+
+proc severity_color(severity: DiagnosticSeverity) -> string {
+    if severity == DiagnosticSeverity.Error or severity == DiagnosticSeverity.Fatal {
+        give ansi_bold() + ansi_red();
+    }
+
+    if severity == DiagnosticSeverity.Warning {
+        give ansi_bold() + ansi_yellow();
+    }
+
+    if severity == DiagnosticSeverity.Note {
+        give ansi_blue();
+    }
+
+    if severity == DiagnosticSeverity.Help {
+        give ansi_cyan();
+    }
+
+    give "";
+}
+
+proc color_wrap(config: DiagnosticRenderConfig, color: string, text: string) -> string {
+    if !config.color or color == "" {
+        give text;
+    }
+
+    give color + text + ansi_reset();
 }
 
 proc span_location_text(span: SourceSpan) -> string {
@@ -717,65 +833,200 @@ proc span_location_text(span: SourceSpan) -> string {
         give "<unknown>";
     }
 
-    give span.file +
-        ":" +
-        (span.start_line as string) +
-        ":" +
-        (span.start_column as string);
+    let start_line: string = span.start_line as string;
+    let start_column: string = span.start_column as string;
+    give span.file + ":" + start_line + ":" + start_column;
 }
 
-proc diagnostic_header_text(
-    diagnostic: Diagnostic,
-    config: DiagnosticRenderConfig
-) -> string {
-    let text: string =
-        severity_name(diagnostic.severity);
+proc diagnostic_header_text(diagnostic: Diagnostic, config: DiagnosticRenderConfig) -> string {
+    let text: string = severity_name(diagnostic.severity);
 
     if config.show_code and diagnostic.code != "" {
-        set text =
-            text + "[" + diagnostic.code + "]";
+        set text = text + "[" + diagnostic.code + "]";
     }
 
     if config.show_phase {
-        set text =
-            text + " " + phase_name(diagnostic.phase);
+        set text = text + " " + phase_name(diagnostic.phase);
     }
 
-    set text =
-        text + ": " + diagnostic.message;
+    set text = text + ": " + diagnostic.message;
 
-    give text;
+    let color: string = severity_color(diagnostic.severity);
+    give color_wrap(config, color, text);
 }
 
-proc render_label(label: DiagnosticLabel) -> string {
-    give "  " +
-        label_kind_name(label.kind) +
-        ": " +
-        span_location_text(label.span) +
-        " " +
-        label.message;
+proc render_label(label: DiagnosticLabel, config: DiagnosticRenderConfig) -> string {
+    let prefix: string = color_wrap(config, ansi_blue(), label_kind_name(label.kind));
+    let location: string = span_location_text(label.span);
+    give "  " + prefix + ": " + location + " " + label.message;
 }
 
-proc render_note(note: DiagnosticNote) -> string {
-    give "  note: " + note.message;
+proc render_note(note: DiagnosticNote, config: DiagnosticRenderConfig) -> string {
+    let prefix: string = color_wrap(config, ansi_blue(), "note");
+    give "  " + prefix + ": " + note.message;
 }
 
-proc render_help(help: DiagnosticHelp) -> string {
-    give "  help: " + help.message;
+proc render_help(help: DiagnosticHelp, config: DiagnosticRenderConfig) -> string {
+    let prefix: string = color_wrap(config, ansi_cyan(), "help");
+    give "  " + prefix + ": " + help.message;
 }
 
-proc render_suggestion(suggestion: DiagnosticSuggestion) -> string {
-    let text: string =
-        "  suggestion: " +
-        suggestion_kind_name(suggestion.kind) +
-        " " +
-        span_location_text(suggestion.span) +
-        " " +
-        suggestion.message;
+proc render_detail(prefix: string, value: string) -> string {
+    give "  " + prefix + ": " + value;
+}
+
+proc repeat_text(text: string, count: u64) -> string {
+    let out: string = "";
+    let i: u64 = 0;
+
+    while i < count {
+        set out = out + text;
+        set i = i + 1;
+    }
+
+    give out;
+}
+
+proc line_number_width(line: u64) -> u64 {
+    let width: u64 = 1;
+    let value: u64 = line;
+
+    while value >= 10 {
+        set width = width + 1;
+        set value = value / 10;
+    }
+
+    give width;
+}
+
+proc padding(width: u64, text: string) -> string {
+    if len(text) >= width {
+        give text;
+    }
+
+    give repeat_text(" ", width - len(text)) + text;
+}
+
+proc read_source_line(file: string, line_number: u64) -> string {
+    if file == "" or !is_file(file) {
+        give "";
+    }
+
+    let source_text: string = read_file(file);
+
+    if source_text == "" {
+        give "";
+    }
+
+    let lines: [string] = split(source_text, "\n");
+
+    if line_number == 0 or line_number > len(lines) {
+        give "";
+    }
+
+    give lines[line_number - 1];
+}
+
+proc label_marker(label: DiagnosticLabel) -> string {
+    if label.kind == DiagnosticLabelKind.Primary {
+        give "^";
+    }
+
+    if label.kind == DiagnosticLabelKind.Previous {
+        give "-";
+    }
+
+    give "~";
+}
+
+proc render_source_line_block(label: DiagnosticLabel, line_width: u64) -> [string] {
+    let source_line: string = read_source_line(label.span.file, label.span.start_line);
+
+    if source_line == "" {
+        give [];
+    }
+
+    let line_number: string = label.span.start_line as string;
+    let line_text: string = padding(line_width, line_number);
+    let marker_width: u64 = label.span.length;
+
+    if marker_width == 0 {
+        set marker_width = 1;
+    }
+
+    let caret_offset: u64 = if label.span.start_column > 0 { label.span.start_column - 1 } else { 0 };
+    let caret_padding: string = repeat_text(" ", caret_offset);
+    let caret_marker: string = label_marker(label);
+    let caret_text: string = repeat_text(caret_marker, marker_width);
+
+    give [
+        " " + line_text + " | " + source_line,
+        " " + repeat_text(" ", line_width) + " | " + caret_padding + caret_text + " " + label.message
+    ];
+}
+
+proc render_pipeline_block(values: [string]) -> [string] {
+    let filtered: [string] = [];
+    let pipeline_text: string = "";
+    let i: u64 = 0;
+
+    while i < len(values) {
+        if values[i] != "" {
+            set filtered = filtered + [values[i]];
+        }
+        set i = i + 1;
+    }
+
+    if len(filtered) == 0 {
+        give [];
+    }
+
+    i = 0;
+    while i < len(filtered) {
+        if i > 0 {
+            set pipeline_text = pipeline_text + " -> ";
+        }
+        set pipeline_text = pipeline_text + filtered[i];
+        set i = i + 1;
+    }
+
+    give [
+        "",
+        "Pipeline:",
+        "  " + pipeline_text
+    ];
+}
+
+proc render_string_list(prefix: string, values: [string]) -> [string] {
+    let out: [string] = [];
+    let i: u64 = 0;
+
+    while i < len(values) {
+        if values[i] != "" {
+            set out = out + [render_detail(prefix, values[i])];
+        }
+        set i = i + 1;
+    }
+
+    give out;
+}
+
+proc render_suggestion(suggestion: DiagnosticSuggestion, config: DiagnosticRenderConfig) -> string {
+    let prefix: string = color_wrap(config, ansi_cyan(), "suggestion");
+    let kind_name: string = suggestion_kind_name(suggestion.kind);
+    let location: string = span_location_text(suggestion.span);
+    let text: string = "  " + prefix + ": " + kind_name + " " + location + " " + suggestion.message;
 
     if suggestion.replacement != "" {
-        set text =
-            text + " => `" + suggestion.replacement + "`";
+        set text = text + " => `" + suggestion.replacement + "`";
+    }
+
+    if suggestion.confidence != "" {
+        set text = text + " " + diag_lparen() + suggestion.confidence + " confidence" + diag_rparen();
+    }
+
+    if suggestion.reason != "" and suggestion.reason != suggestion.message {
+        set text = text + " because " + suggestion.reason;
     }
 
     give text;
@@ -789,21 +1040,147 @@ proc append_line(text: string, line: string) -> string {
     give text + "\n" + line;
 }
 
-proc render_diagnostic(
-    diagnostic: Diagnostic,
-    config: DiagnosticRenderConfig
-) -> string {
-    let out: string =
-        diagnostic_header_text(diagnostic, config);
+proc render_diagnostic(diagnostic: Diagnostic, config: DiagnosticRenderConfig) -> string {
+    if config.style == DiagnosticStyle.Human {
+        let out_human: string = diagnostic_header_text(diagnostic, config);
+        let location_header: string = "  --> " + span_location_text(diagnostic.span);
+        let human_out: string = append_line(out_human, location_header);
+        let line_width: u64 = line_number_width(diagnostic.span.start_line);
+        let i_human: u64 = 0;
 
-    set out =
-        append_line(out, " --> " + span_location_text(diagnostic.span));
+        set human_out = append_line(human_out, " " + repeat_text(" ", line_width) + " |");
+
+        while i_human < len(diagnostic.labels) {
+            let label: DiagnosticLabel = diagnostic.labels[i_human];
+            let blocks: [string] = render_source_line_block(label, line_width);
+
+            if len(blocks) > 0 {
+                let j_human: u64 = 0;
+                while j_human < len(blocks) {
+                    set human_out = append_line(human_out, blocks[j_human]);
+                    set j_human = j_human + 1;
+                }
+            }
+
+            set i_human = i_human + 1;
+        }
+
+        set human_out = append_line(human_out, " " + repeat_text(" ", line_width) + " |");
+
+        if diagnostic.explanation != "" {
+            set human_out = append_line(human_out, "note: " + diagnostic.explanation);
+        }
+
+        if diagnostic.root_cause != "" {
+            set human_out = append_line(human_out, "cause: " + diagnostic.root_cause);
+        }
+
+        let cause_human: u64 = 0;
+        while cause_human < len(diagnostic.cause_chain) {
+                set human_out = append_line(human_out, "cause: " + diagnostic.cause_chain[cause_human]);
+            set cause_human = cause_human + 1;
+        }
+
+        if diagnostic.probable_fix != "" {
+            set human_out = append_line(human_out, "help: " + diagnostic.probable_fix);
+        }
+
+        let notes_human: u64 = 0;
+        while notes_human < len(diagnostic.notes) {
+            set human_out = append_line(human_out, "note: " + diagnostic.notes[notes_human].message);
+            set notes_human = notes_human + 1;
+        }
+
+        let helps_human: u64 = 0;
+        while helps_human < len(diagnostic.helps) {
+            set human_out = append_line(human_out, "help: " + diagnostic.helps[helps_human].message);
+            set helps_human = helps_human + 1;
+        }
+
+        if config.show_suggestions {
+            let suggestion_human: u64 = 0;
+            while suggestion_human < len(diagnostic.suggestions) {
+                let suggestion_text: string = render_suggestion(diagnostic.suggestions[suggestion_human], config);
+                set human_out = append_line(human_out, suggestion_text);
+                set suggestion_human = suggestion_human + 1;
+            }
+        }
+
+        let pipeline_blocks: [string] = render_pipeline_block(diagnostic.pipeline_context);
+        let pipeline_human: u64 = 0;
+        while pipeline_human < len(pipeline_blocks) {
+            set human_out = append_line(human_out, pipeline_blocks[pipeline_human]);
+            set pipeline_human = pipeline_human + 1;
+        }
+
+        if diagnostic.documentation_url != "" {
+            set human_out = append_line(human_out, "docs: " + diagnostic.documentation_url);
+        }
+
+        give human_out;
+    }
+
+    let out: string = diagnostic_header_text(diagnostic, config);
+
+    set out = append_line(out, " --> " + span_location_text(diagnostic.span));
 
     let i: u64 = 0;
 
     while i < len(diagnostic.labels) {
-        set out =
-            append_line(out, render_label(diagnostic.labels[i]));
+        set out = append_line(out, render_label(diagnostic.labels[i], config));
+        set i = i + 1;
+    }
+
+    if diagnostic.rule != "" {
+        set out = append_line(out, render_detail("rule", diagnostic.rule));
+    }
+
+    if diagnostic.subject_symbol != "" {
+        set out = append_line(out, render_detail("symbol", diagnostic.subject_symbol));
+    }
+
+    if diagnostic.subject_type != "" {
+        set out = append_line(out, render_detail("type", diagnostic.subject_type));
+    }
+
+    if diagnostic.subject_borrow != "" {
+        set out = append_line(out, render_detail("borrow", diagnostic.subject_borrow));
+    }
+
+    if diagnostic.explanation != "" {
+        set out = append_line(out, render_detail("explanation", diagnostic.explanation));
+    }
+
+    if diagnostic.technical_note != "" {
+        set out = append_line(out, render_detail("technical_note", diagnostic.technical_note));
+    }
+
+    if diagnostic.root_cause != "" {
+        set out = append_line(out, render_detail("root_cause", diagnostic.root_cause));
+    }
+
+    if diagnostic.probable_fix != "" {
+        set out = append_line(out, render_detail("probable_fix", diagnostic.probable_fix));
+    }
+
+    let extra_lines: [string] = render_string_list("cause", diagnostic.cause_chain);
+    i = 0;
+    while i < len(extra_lines) {
+        set out = append_line(out, extra_lines[i]);
+        set i = i + 1;
+    }
+
+    let pipeline_lines: [string] = render_string_list("pipeline", diagnostic.pipeline_context);
+    i = 0;
+    while i < len(pipeline_lines) {
+        set out = append_line(out, pipeline_lines[i]);
+        set i = i + 1;
+    }
+
+    let related_lines: [string] = render_string_list("related", diagnostic.related_errors);
+    i = 0;
+    while i < len(related_lines) {
+        set out = append_line(out, related_lines[i]);
         set i = i + 1;
     }
 
@@ -811,8 +1188,7 @@ proc render_diagnostic(
         set i = 0;
 
         while i < len(diagnostic.notes) {
-            set out =
-                append_line(out, render_note(diagnostic.notes[i]));
+            set out = append_line(out, render_note(diagnostic.notes[i], config));
             set i = i + 1;
         }
     }
@@ -821,8 +1197,7 @@ proc render_diagnostic(
         set i = 0;
 
         while i < len(diagnostic.helps) {
-            set out =
-                append_line(out, render_help(diagnostic.helps[i]));
+            set out = append_line(out, render_help(diagnostic.helps[i], config));
             set i = i + 1;
         }
     }
@@ -831,19 +1206,19 @@ proc render_diagnostic(
         set i = 0;
 
         while i < len(diagnostic.suggestions) {
-            set out =
-                append_line(out, render_suggestion(diagnostic.suggestions[i]));
+            set out = append_line(out, render_suggestion(diagnostic.suggestions[i], config));
             set i = i + 1;
         }
+    }
+
+    if diagnostic.documentation_url != "" {
+        set out = append_line(out, render_detail("docs", diagnostic.documentation_url));
     }
 
     give out;
 }
 
-proc render_report(
-    report: DiagnosticReport,
-    config: DiagnosticRenderConfig
-) -> string {
+proc render_report(report: DiagnosticReport, config: DiagnosticRenderConfig) -> string {
     let out: string = "";
     let i: u64 = 0;
 
@@ -852,8 +1227,7 @@ proc render_report(
             set out = out + "\n\n";
         }
 
-        set out =
-            out + render_diagnostic(report.diagnostics[i], config);
+        set out = out + render_diagnostic(report.diagnostics[i], config);
 
         set i = i + 1;
     }
@@ -870,13 +1244,278 @@ proc report_summary(report: DiagnosticReport) -> string {
         give "diagnostics ok";
     }
 
-    give "diagnostics failed: " +
-        (report.error_count as string) +
-        " error(s), " +
-        (report.warning_count as string) +
-        " warning(s), " +
-        (report.fatal_count as string) +
-        " fatal(s)";
+    let error_count: string = report.error_count as string;
+    let warning_count: string = report.warning_count as string;
+    let fatal_count: string = report.fatal_count as string;
+    give "diagnostics failed: " + error_count + " error" + diag_lparen() + "s" + diag_rparen() + ", " + warning_count + " warning" + diag_lparen() + "s" + diag_rparen() + ", " + fatal_count + " fatal" + diag_lparen() + "s" + diag_rparen();
+}
+
+proc first_backtick_fragment(text: string) -> string {
+    let start: int = find(text, "`");
+
+    if start < 0 {
+        give "";
+    }
+
+    let rest_start_i: int = start + 1;
+    let rest_start: u64 = rest_start_i as u64;
+    let rest: string = slice(text, rest_start, len(text));
+    let end0: int = find(rest, "`");
+
+    if end0 < 0 {
+        give "";
+    }
+
+    let fragment_end: u64 = end0 as u64;
+    give slice(rest, 0, fragment_end);
+}
+
+proc lexer_rule_from_code(code: string) -> string {
+    if code == "LEX_E_INVALID_CHAR" {
+        give "source character set";
+    }
+
+    if code == "LEX_E_UNTERMINATED_STRING" {
+        give "string literal termination";
+    }
+
+    if code == "LEX_E_UNTERMINATED_CHAR" or code == "LEX_E_INVALID_CHAR_LITERAL" {
+        give "char literal shape";
+    }
+
+    if code == "LEX_E_INVALID_NUMBER" {
+        give "numeric literal grammar";
+    }
+
+    if code == "LEX_E_UNTERMINATED_BLOCK_COMMENT" or code == "LEX_E_UNTERMINATED_REGION_COMMENT" {
+        give "comment termination";
+    }
+
+    if code == "LEX_E_INVALID_UNICODE" or code == "LEX_E_INVALID_UNICODE_ESCAPE" {
+        give "unicode escape syntax";
+    }
+
+    if code == "LEX_E_TOKEN_TOO_LARGE" {
+        give "maximum token byte length";
+    }
+
+    if code == "LEX_E_INVALID_UTF8" {
+        give "utf-8 source decoding";
+    }
+
+    if code == "LEX_E_INVALID_ESCAPE" {
+        give "escape sequence grammar";
+    }
+
+    give "lexical token formation";
+}
+
+proc lexer_explanation_from_surface(code: string, message: string) -> string {
+    let fragment: string = first_backtick_fragment(message);
+
+    if code == "LEX_E_INVALID_CHAR" {
+        if fragment != "" {
+            give "The lexer encountered the unsupported character `" + fragment + "` and could not classify it as whitespace, punctuation, identifier, or literal content.";
+        }
+
+        give "The lexer encountered a source character that does not belong to the Vitte lexical grammar.";
+    }
+
+    if code == "LEX_E_UNTERMINATED_STRING" {
+        give "The lexer reached the end of the current string token before finding the closing quote, so parsing cannot continue with a stable token stream.";
+    }
+
+    if code == "LEX_E_UNTERMINATED_CHAR" {
+        give "The lexer reached the end of the char literal before finding the closing quote, so the token does not represent exactly one character.";
+    }
+
+    if code == "LEX_E_INVALID_CHAR_LITERAL" {
+        give "A Vitte char literal must encode exactly one character after escape decoding, but this token does not satisfy that rule.";
+    }
+
+    if code == "LEX_E_INVALID_NUMBER" {
+        give "The numeric token does not match the accepted integer or float grammar for its radix, separators, or suffix.";
+    }
+
+    if code == "LEX_E_UNTERMINATED_BLOCK_COMMENT" or code == "LEX_E_UNTERMINATED_REGION_COMMENT" {
+        give "The lexer entered a comment construct and reached the end of the source before its terminating delimiter was found.";
+    }
+
+    if code == "LEX_E_INVALID_UNICODE" or code == "LEX_E_INVALID_UNICODE_ESCAPE" {
+        give "The lexer found a unicode escape that does not encode a valid scalar value or does not follow the required escape syntax.";
+    }
+
+    if code == "LEX_E_INVALID_UTF8" {
+        give "The source buffer contains bytes that are not valid UTF-8, so the lexer cannot interpret the next source character reliably.";
+    }
+
+    if code == "LEX_E_TOKEN_TOO_LARGE" {
+        give "The lexer accepted the token shape, but its byte length exceeded the implementation limit for a single token.";
+    }
+
+    if code == "LEX_E_INVALID_ESCAPE" {
+        give "The escape sequence inside the literal is not recognized by the Vitte lexer.";
+    }
+
+    give "The lexer could not form a valid token from this part of the source.";
+}
+
+proc lexer_probable_fix_from_surface(code: string, message: string) -> string {
+    let fragment: string = first_backtick_fragment(message);
+
+    if code == "LEX_E_INVALID_CHAR" {
+        if fragment != "" {
+            give "remove `" + fragment + "` or replace it with valid Vitte syntax";
+        }
+
+        give "remove or replace the unsupported source character";
+    }
+
+    if code == "LEX_E_UNTERMINATED_STRING" {
+        give "insert the missing closing quote for the string literal";
+    }
+
+    if code == "LEX_E_UNTERMINATED_CHAR" or code == "LEX_E_INVALID_CHAR_LITERAL" {
+        give "rewrite the char literal so it contains exactly one character and a closing quote";
+    }
+
+    if code == "LEX_E_INVALID_NUMBER" {
+        give "rewrite the numeric literal using a valid radix, separator, and suffix combination";
+    }
+
+    if code == "LEX_E_UNTERMINATED_BLOCK_COMMENT" {
+        give "close the block comment with `*/`";
+    }
+
+    if code == "LEX_E_UNTERMINATED_REGION_COMMENT" {
+        give "close the region comment with `>>>`";
+    }
+
+    if code == "LEX_E_INVALID_UNICODE" or code == "LEX_E_INVALID_UNICODE_ESCAPE" {
+        give "use a valid unicode scalar escape such as `u+0041`";
+    }
+
+    if code == "LEX_E_INVALID_UTF8" {
+        give "save the source file as UTF-8 or remove the offending byte sequence";
+    }
+
+    if code == "LEX_E_TOKEN_TOO_LARGE" {
+        give "split the token into smaller pieces or move the data into runtime input";
+    }
+
+    if code == "LEX_E_INVALID_ESCAPE" {
+        give "replace the escape with a supported sequence such as `\\n`, `\\t`, `\\\\`, `\\\"`, or a valid unicode escape";
+    }
+
+    give "rewrite this token so it matches the Vitte lexical grammar";
+}
+
+proc lexer_documentation_from_code(code: string) -> string {
+    if code == "LEX_E_INVALID_CHAR" {
+        give "docs://language/lexer/source-characters";
+    }
+
+    if code == "LEX_E_UNTERMINATED_STRING" {
+        give "docs://language/lexer/string-literals";
+    }
+
+    if code == "LEX_E_UNTERMINATED_CHAR" or code == "LEX_E_INVALID_CHAR_LITERAL" {
+        give "docs://language/lexer/char-literals";
+    }
+
+    if code == "LEX_E_INVALID_NUMBER" {
+        give "docs://language/lexer/numeric-literals";
+    }
+
+    if code == "LEX_E_UNTERMINATED_BLOCK_COMMENT" or code == "LEX_E_UNTERMINATED_REGION_COMMENT" {
+        give "docs://language/lexer/comments";
+    }
+
+    if code == "LEX_E_INVALID_UNICODE" or code == "LEX_E_INVALID_UNICODE_ESCAPE" or code == "LEX_E_INVALID_UTF8" {
+        give "docs://language/lexer/unicode";
+    }
+
+    if code == "LEX_E_TOKEN_TOO_LARGE" {
+        give "docs://language/implementation/lexer-limits";
+    }
+
+    if code == "LEX_E_INVALID_ESCAPE" {
+        give "docs://language/lexer/escape-sequences";
+    }
+
+    give "docs://language/lexer";
+}
+
+proc diagnostic_from_surface(code: string, message: string, span: SourceSpan, fatal: bool, byte_offset: u64) -> Diagnostic {
+    let phase: DiagnosticPhase = phase_from_code(code);
+    let severity: DiagnosticSeverity = if fatal {
+        DiagnosticSeverity.Fatal
+    } else {
+        severity_from_code(code)
+    };
+    let diag0: Diagnostic = diagnostic_create(code, phase, severity, message, span);
+    let diag1: Diagnostic = diagnostic_add_pipeline_context(diag0, diag_kv("phase", phase_name(phase)));
+
+    if phase == DiagnosticPhase.Lexer {
+        let diag2: Diagnostic = diagnostic_with_rule(diag1, lexer_rule_from_code(code));
+        let diag3: Diagnostic = diagnostic_with_explanation(diag2, lexer_explanation_from_surface(code, message));
+        let diag4: Diagnostic = diagnostic_with_technical_note(diag3, "Detected during tokenization before parsing. Source offsets are tracked in bytes.");
+        let diag5: Diagnostic = diagnostic_with_documentation(diag4, lexer_documentation_from_code(code));
+        let diag6: Diagnostic = diagnostic_with_root_cause(diag5, "lexer could not form a valid token from the source bytes at this location");
+        let diag7: Diagnostic = diagnostic_with_probable_fix(diag6, lexer_probable_fix_from_surface(code, message));
+        let diag8: Diagnostic = diagnostic_add_pipeline_context(diag7, diag_kv("step", "tokenization"));
+        let diag9: Diagnostic = diagnostic_with_note(diag8, "detected by the lexer before parser recovery");
+
+        if byte_offset > 0 {
+            let byte_offset_text: string = byte_offset as string;
+            give diagnostic_with_note(diag9, "byte offset: " + byte_offset_text);
+        }
+
+        give diag9;
+    }
+
+    if phase == DiagnosticPhase.Parser {
+        let diag2: Diagnostic = diagnostic_with_note(diag1, "detected during parser recovery or syntax validation");
+        give diagnostic_add_pipeline_context(diag2, diag_kv("step", "syntax parsing"));
+    }
+
+    if phase == DiagnosticPhase.AstValidation {
+        let diag2: Diagnostic = diagnostic_with_rule(diag1, "validated abstract syntax tree invariants");
+        let diag3: Diagnostic = diagnostic_with_note(diag2, "detected after parsing while validating AST structural invariants");
+        give diagnostic_add_pipeline_context(diag3, diag_kv("step", "ast validation"));
+    }
+
+    if phase == DiagnosticPhase.ModuleResolution {
+        let diag2: Diagnostic = diagnostic_with_note(diag1, "detected while resolving modules and imports");
+        give diagnostic_add_pipeline_context(diag2, diag_kv("step", "module resolution"));
+    }
+
+    if phase == DiagnosticPhase.SymbolResolution {
+        let diag2: Diagnostic = diagnostic_with_note(diag1, "detected while resolving names to visible symbols");
+        give diagnostic_add_pipeline_context(diag2, diag_kv("step", "symbol resolution"));
+    }
+
+    if phase == DiagnosticPhase.MirLowering {
+        give diagnostic_add_pipeline_context(diag1, diag_kv("step", "mir lowering"));
+    }
+
+    if phase == DiagnosticPhase.MirVerification {
+        give diagnostic_add_pipeline_context(diag1, diag_kv("step", "mir verification"));
+    }
+
+    if phase == DiagnosticPhase.Backend {
+        give diagnostic_add_pipeline_context(diag1, diag_kv("step", "backend code generation"));
+    }
+
+    if phase == DiagnosticPhase.Linker {
+        give diagnostic_add_pipeline_context(diag1, diag_kv("step", "link"));
+    }
+
+    if phase == DiagnosticPhase.RuntimeExecution {
+        give diagnostic_add_pipeline_context(diag1, diag_kv("step", "runtime execution"));
+    }
+
+    give diag1;
 }
 
 proc phase_from_code(code: string) -> DiagnosticPhase {
@@ -884,15 +1523,27 @@ proc phase_from_code(code: string) -> DiagnosticPhase {
         give DiagnosticPhase.Lexer;
     }
 
-    if starts_with(code, "P")
-        or starts_with(code, "E00") {
+    if starts_with(code, "FLEX") {
+        give DiagnosticPhase.Lexer;
+    }
 
+    if starts_with(code, "P") or starts_with(code, "E00") {
         give DiagnosticPhase.Parser;
     }
 
-    if starts_with(code, "E10")
-        or starts_with(code, "SEMA_") {
+    if starts_with(code, "FAST") {
+        give DiagnosticPhase.AstValidation;
+    }
 
+    if code == "SEMA_E_INVALID_IMPORT" or code == "SEMA_E_INVALID_EXPORT" or code == "SEMA_E_INVALID_MODULE" or starts_with(code, "MODULE_") {
+        give DiagnosticPhase.ModuleResolution;
+    }
+
+    if code == "SEMA_E_DUPLICATE_SYMBOL" or code == "SEMA_E_UNKNOWN_SYMBOL" or starts_with(code, "SYMBOL_") {
+        give DiagnosticPhase.SymbolResolution;
+    }
+
+    if starts_with(code, "E10") or starts_with(code, "SEMA_") {
         give DiagnosticPhase.Sema;
     }
 
@@ -912,6 +1563,14 @@ proc phase_from_code(code: string) -> DiagnosticPhase {
         give DiagnosticPhase.Mir;
     }
 
+    if starts_with(code, "MIRLOWER_") {
+        give DiagnosticPhase.MirLowering;
+    }
+
+    if starts_with(code, "MIRVERIFY_") {
+        give DiagnosticPhase.MirVerification;
+    }
+
     if starts_with(code, "IR_") {
         give DiagnosticPhase.Ir;
     }
@@ -920,36 +1579,31 @@ proc phase_from_code(code: string) -> DiagnosticPhase {
         give DiagnosticPhase.Backend;
     }
 
+    if starts_with(code, "LINKER_") {
+        give DiagnosticPhase.Linker;
+    }
+
+    if starts_with(code, "RUNTIME_") {
+        give DiagnosticPhase.RuntimeExecution;
+    }
+
     if starts_with(code, "DRIVER_") {
         give DiagnosticPhase.Driver;
     }
 
-    give DiagnosticPhase.Unknown;
+    give DiagnosticPhase.Internal;
 }
 
 proc severity_from_code(code: string) -> DiagnosticSeverity {
-    if code == "PLOOP"
-        or code == "P000_UNBALANCED"
-        or ends_with(code, "_INTERNAL") {
-
+    if code == "PLOOP" or code == "P000_UNBALANCED" or ends_with(code, "_INTERNAL") {
         give DiagnosticSeverity.Fatal;
     }
 
     give DiagnosticSeverity.Error;
 }
 
-proc diagnostic_from_catalog(
-    code: string,
-    message: string,
-    span: SourceSpan
-) -> Diagnostic {
-    give diagnostic_create(
-        code,
-        phase_from_code(code),
-        severity_from_code(code),
-        message,
-        span
-    );
+proc diagnostic_from_catalog(code: string, message: string, span: SourceSpan) -> Diagnostic {
+    give diagnostic_create(code, phase_from_code(code), severity_from_code(code), message, span);
 }
 
 proc parser_expected_identifier(span: SourceSpan) -> Diagnostic {
@@ -977,198 +1631,170 @@ proc parser_expected_expression(span: SourceSpan) -> Diagnostic {
 }
 
 proc parser_unclosed_block(open_span: SourceSpan, eof_span: SourceSpan) -> Diagnostic {
-    let diag: Diagnostic =
-        diagnostic_error(
-            "P000_UNBALANCED",
-            DiagnosticPhase.Parser,
-            "unclosed block",
-            eof_span
-        );
-
-    set diag =
-        diagnostic_with_label(
-            diag,
-            previous_label(
-                "block starts here",
-                open_span
-            )
-        );
-
-    set diag =
-        diagnostic_with_help(
-            diag,
-            "insert the missing closing delimiter"
-        );
+    let diag: Diagnostic = diagnostic_error("P000_UNBALANCED", DiagnosticPhase.Parser, "unclosed block", eof_span);
+    let open_label: DiagnosticLabel = previous_label("block starts here", open_span);
+    set diag = diagnostic_with_label(diag, open_label);
+    set diag = diagnostic_with_help(diag, "insert the missing closing delimiter");
 
     give diag;
 }
 
 proc lexer_unterminated_string(span: SourceSpan) -> Diagnostic {
-    let diag: Diagnostic =
-        diagnostic_error(
-            "LEX_E_UNTERMINATED_STRING",
-            DiagnosticPhase.Lexer,
-            "unterminated string literal",
-            span
-        );
-
-    give diagnostic_with_help(
-        diag,
-        "terminate the string with a matching quote"
-    );
+    let diag: Diagnostic = diagnostic_error("LEX_E_UNTERMINATED_STRING", DiagnosticPhase.Lexer, "unterminated string literal", span);
+    give diagnostic_with_help(diag, "terminate the string with a matching quote");
 }
 
 proc sema_unknown_identifier(name: string, span: SourceSpan) -> Diagnostic {
-    let diag: Diagnostic =
-        diagnostic_error(
-            "E1005",
-            DiagnosticPhase.Sema,
-            "unknown identifier `" + name + "`",
-            span
-        );
-
-    set diag =
-        diagnostic_with_note(
-            diag,
-            "no matching local, import, or item exists in this scope"
-        );
-
-    set diag =
-        diagnostic_with_help(
-            diag,
-            "declare the symbol before use or import it from a module"
-        );
+    let diag: Diagnostic = diagnostic_error("E1005", DiagnosticPhase.Sema, "unknown identifier `" + name + "`", span);
+    set diag = diagnostic_with_note(diag, "no matching local, import, or item exists in this scope");
+    set diag = diagnostic_with_help(diag, "declare the symbol before use or import it from a module");
 
     give diag;
 }
 
-proc typeck_assignment_mismatch(
-    expected: string,
-    found: string,
-    span: SourceSpan
-) -> Diagnostic {
-    let diag: Diagnostic =
-        diagnostic_error(
-            "TYPECK_E_ASSIGN_MISMATCH",
-            DiagnosticPhase.Typeck,
-            "assignment type mismatch",
-            span
-        );
-
-    set diag =
-        diagnostic_with_label(
-            diag,
-            secondary_label(
-                "expected `" + expected + "`, found `" + found + "`",
-                span
-            )
-        );
-
-    set diag =
-        diagnostic_with_help(
-            diag,
-            "change the assigned value or add an explicit conversion"
-        );
+proc typeck_assignment_mismatch(expected: string, found: string, span: SourceSpan) -> Diagnostic {
+    let diag: Diagnostic = diagnostic_error("TYPECK_E_ASSIGN_MISMATCH", DiagnosticPhase.Typeck, "assignment type mismatch", span);
+    let mismatch_label: DiagnosticLabel = secondary_label("expected `" + expected + "`, found `" + found + "`", span);
+    set diag = diagnostic_with_label(diag, mismatch_label);
+    set diag = diagnostic_with_help(diag, "change the assigned value or add an explicit conversion");
 
     give diag;
 }
 
-proc borrowck_use_after_move(
-    name: string,
-    use_span: SourceSpan,
-    move_span: SourceSpan
-) -> Diagnostic {
-    let diag: Diagnostic =
-        diagnostic_error(
-            "BORROWCK_E_USE_AFTER_MOVE",
-            DiagnosticPhase.Borrowck,
-            "value `" + name + "` used after move",
-            use_span
-        );
-
-    set diag =
-        diagnostic_with_label(
-            diag,
-            previous_label(
-                "value was moved here",
-                move_span
-            )
-        );
-
-    set diag =
-        diagnostic_with_note(
-            diag,
-            "moved values cannot be accessed again until reinitialized"
-        );
-
-    set diag =
-        diagnostic_with_help(
-            diag,
-            "borrow the value instead of moving it, or clone it if duplication is intended"
-        );
+proc borrowck_use_after_move(name: string, use_span: SourceSpan, move_span: SourceSpan) -> Diagnostic {
+    let diag: Diagnostic = diagnostic_error("BORROWCK_E_USE_AFTER_MOVE", DiagnosticPhase.Borrowck, "value `" + name + "` used after move", use_span);
+    let move_label: DiagnosticLabel = previous_label("value was moved here", move_span);
+    set diag = diagnostic_with_label(diag, move_label);
+    set diag = diagnostic_with_note(diag, "moved values cannot be accessed again until reinitialized");
+    set diag = diagnostic_with_help(diag, "borrow the value instead of moving it, or clone it if duplication is intended");
 
     give diag;
 }
 
-proc borrowck_mutable_borrow_conflict(
-    name: string,
-    request_span: SourceSpan,
-    active_span: SourceSpan
-) -> Diagnostic {
-    let diag: Diagnostic =
-        diagnostic_error(
-            "BORROWCK_E_MUTABLE_BORROW_CONFLICT",
-            DiagnosticPhase.Borrowck,
-            "cannot mutably borrow `" + name + "` while another borrow is active",
-            request_span
-        );
-
-    set diag =
-        diagnostic_with_label(
-            diag,
-            previous_label(
-                "active borrow starts here",
-                active_span
-            )
-        );
-
-    set diag =
-        diagnostic_with_note(
-            diag,
-            "mutable access requires exclusive access"
-        );
-
-    set diag =
-        diagnostic_with_help(
-            diag,
-            "end the previous borrow before taking mutable access"
-        );
+proc borrowck_mutable_borrow_conflict(name: string, request_span: SourceSpan, active_span: SourceSpan) -> Diagnostic {
+    let diag: Diagnostic = diagnostic_error("BORROWCK_E_MUTABLE_BORROW_CONFLICT", DiagnosticPhase.Borrowck, "cannot mutably borrow `" + name + "` while another borrow is active", request_span);
+    let active_label: DiagnosticLabel = previous_label("active borrow starts here", active_span);
+    set diag = diagnostic_with_label(diag, active_label);
+    set diag = diagnostic_with_note(diag, "mutable access requires exclusive access");
+    set diag = diagnostic_with_help(diag, "end the previous borrow before taking mutable access");
 
     give diag;
 }
 
 proc ir_invalid_terminator(span: SourceSpan) -> Diagnostic {
-    let diag: Diagnostic =
-        diagnostic_error(
-            "IR_E_INVALID_TERMINATOR",
-            DiagnosticPhase.Ir,
-            "invalid block terminator",
-            span
-        );
-
-    set diag =
-        diagnostic_with_note(
-            diag,
-            "basic blocks must end with exactly one terminator"
-        );
-
-    set diag =
-        diagnostic_with_help(
-            diag,
-            "insert a return, jump, branch, or unreachable instruction"
-        );
+    let diag: Diagnostic = diagnostic_error("IR_E_INVALID_TERMINATOR", DiagnosticPhase.Ir, "invalid block terminator", span);
+    set diag = diagnostic_with_note(diag, "basic blocks must end with exactly one terminator");
+    set diag = diagnostic_with_help(diag, "insert a return, jump, branch, or unreachable instruction");
 
     give diag;
+}
+
+proc attach_expected_found_details(diagnostic: Diagnostic, rule_name: string, expected: string, found: string, expected_origin: string, found_origin: string, probable_fix: string) -> Diagnostic {
+    let diag0: Diagnostic = diagnostic_with_rule(diagnostic, rule_name);
+    let diag1: Diagnostic = diagnostic_with_explanation(diag0, "expected `" + expected + "` but got `" + found + "`");
+    let diag2: Diagnostic = diagnostic_with_root_cause(diag1, "type compatibility rule was violated");
+    let diag3: Diagnostic = diagnostic_add_cause(diag2, "expected type comes from " + expected_origin);
+    let diag4: Diagnostic = diagnostic_add_cause(diag3, "found type comes from " + found_origin);
+    let diag5: Diagnostic = diagnostic_with_subject_type(diag4, expected);
+
+    if probable_fix != "" {
+        give diagnostic_with_probable_fix(diag5, probable_fix);
+    }
+
+    give diag5;
+}
+
+proc typeck_argument_mismatch(expected: string, found: string, expected_origin: string, found_origin: string, span: SourceSpan) -> Diagnostic {
+    let diag0: Diagnostic = diagnostic_error("TYPECK_E_ARGUMENT_MISMATCH", DiagnosticPhase.Typeck, "call argument type mismatch", span);
+    let diag1: Diagnostic = diagnostic_with_help(diag0, "pass a `" + expected + "` value or change the callee signature");
+    give attach_expected_found_details(diag1, "function argument compatibility", expected, found, expected_origin, found_origin, "align the argument type with the parameter type");
+}
+
+proc typeck_invalid_call_arity(callee: string, expected_arity: u64, found_arity: u64, span: SourceSpan) -> Diagnostic {
+    let diag0: Diagnostic = diagnostic_error("TYPECK_E_CALL_ARITY", DiagnosticPhase.Typeck, "wrong number of call arguments", span);
+    let diag1: Diagnostic = diagnostic_with_rule(diag0, "function call arity");
+    let diag2: Diagnostic = diagnostic_with_subject_symbol(diag1, callee);
+    let expected_arity_text: string = expected_arity as string;
+    let found_arity_text: string = found_arity as string;
+    let diag3: Diagnostic = diagnostic_add_cause(diag2, "callee `" + callee + "` expects " + expected_arity_text + " argument" + diag_lparen() + "s" + diag_rparen());
+    let diag4: Diagnostic = diagnostic_add_cause(diag3, "call site provided " + found_arity_text + " argument" + diag_lparen() + "s" + diag_rparen());
+    give diagnostic_with_probable_fix(diag4, "add or remove arguments so the call matches the callee signature");
+}
+
+proc typeck_if_branch_mismatch(then_type: string, else_type: string, span: SourceSpan) -> Diagnostic {
+    let diag0: Diagnostic = diagnostic_error("TYPECK_E_IF_BRANCH_MISMATCH", DiagnosticPhase.Typeck, "if branches produce incompatible types", span);
+    let diag1: Diagnostic = diagnostic_with_help(diag0, "make both branches return the same type or insert an explicit conversion");
+    give attach_expected_found_details(diag1, "if expression branch unification", then_type, else_type, "the then branch result", "the else branch result", "normalize both branches to one common result type");
+}
+
+proc typeck_non_exhaustive_match(missing_case: string, span: SourceSpan) -> Diagnostic {
+    let diag0: Diagnostic = diagnostic_error("TYPECK_E_MATCH_NON_EXHAUSTIVE", DiagnosticPhase.Typeck, "match expression is not exhaustive", span);
+    let diag1: Diagnostic = diagnostic_with_rule(diag0, "pattern coverage completeness");
+    let diag2: Diagnostic = diagnostic_add_cause(diag1, "missing case: `" + missing_case + "`");
+    give diagnostic_with_probable_fix(diag2, "add the missing arm or a catch-all pattern");
+}
+
+proc borrowck_move_while_borrowed(name: string, move_span: SourceSpan, borrow_span: SourceSpan, use_span: SourceSpan, lifetime_text: string) -> Diagnostic {
+    let diag0: Diagnostic = diagnostic_error("BORROWCK_E_MOVE_WHILE_BORROWED", DiagnosticPhase.Borrowck, "cannot move `" + name + "` while a borrow is still active", use_span);
+    let diag1: Diagnostic = diagnostic_with_subject_symbol(diag0, name);
+    let diag2: Diagnostic = diagnostic_with_subject_borrow(diag1, lifetime_text);
+    let borrow_label: DiagnosticLabel = previous_label("borrow starts here", borrow_span);
+    let move_label: DiagnosticLabel = secondary_label("move attempted here", move_span);
+    let diag3: Diagnostic = diagnostic_with_label(diag2, borrow_label);
+    let diag4: Diagnostic = diagnostic_with_label(diag3, move_label);
+    let borrow_start_line: string = borrow_span.start_line as string;
+    let diag5: Diagnostic = diagnostic_add_cause(diag4, "borrow is active from line " + borrow_start_line + " to about line " + lifetime_text);
+    let diag6: Diagnostic = diagnostic_add_cause(diag5, "move would invalidate a reference that may still be used later");
+    give diagnostic_with_probable_fix(diag6, "shorten the borrow scope, clone the value, or move after the borrow ends");
+}
+
+proc borrowck_shared_borrow_conflict(name: string, request_span: SourceSpan, active_span: SourceSpan, lifetime_text: string) -> Diagnostic {
+    let diag0: Diagnostic = diagnostic_error("BORROWCK_E_SHARED_BORROW_CONFLICT", DiagnosticPhase.Borrowck, "cannot shared-borrow `" + name + "` while a mutable borrow is active", request_span);
+    let diag1: Diagnostic = diagnostic_with_subject_symbol(diag0, name);
+    let diag2: Diagnostic = diagnostic_with_subject_borrow(diag1, lifetime_text);
+    let active_label: DiagnosticLabel = previous_label("mutable borrow starts here", active_span);
+    let diag3: Diagnostic = diagnostic_with_label(diag2, active_label);
+    let diag4: Diagnostic = diagnostic_add_cause(diag3, "the mutable borrow remains active until about line " + lifetime_text);
+    give diagnostic_with_probable_fix(diag4, "use a shorter mutable borrow scope or replace it with a shared reference");
+}
+
+proc borrowck_lifetime_too_short(name: string, borrow_span: SourceSpan, drop_span: SourceSpan, lifetime_text: string) -> Diagnostic {
+    let diag0: Diagnostic = diagnostic_error("BORROWCK_E_LIFETIME_TOO_SHORT", DiagnosticPhase.Borrowck, "borrowed value `" + name + "` does not live long enough", borrow_span);
+    let diag1: Diagnostic = diagnostic_with_subject_symbol(diag0, name);
+    let diag2: Diagnostic = diagnostic_with_subject_borrow(diag1, lifetime_text);
+    let borrow_label: DiagnosticLabel = previous_label("borrow created here", borrow_span);
+    let drop_label: DiagnosticLabel = secondary_label("owner stops being valid here", drop_span);
+    let diag3: Diagnostic = diagnostic_with_label(diag2, borrow_label);
+    let diag4: Diagnostic = diagnostic_with_label(diag3, drop_label);
+    let diag5: Diagnostic = diagnostic_add_cause(diag4, "borrow needs to survive until about line " + lifetime_text);
+    give diagnostic_with_probable_fix(diag5, "move the owner to a longer-lived scope or keep the reference inside a shorter scope");
+}
+
+proc mir_cfg_incoherent(span: SourceSpan) -> Diagnostic {
+    let diag0: Diagnostic = diagnostic_error("MIR_E_CFG_INCOHERENT", DiagnosticPhase.MirVerification, "MIR control-flow graph is incoherent", span);
+    let diag1: Diagnostic = diagnostic_with_rule(diag0, "each MIR edge must point to a valid reachable basic block");
+    give diagnostic_with_help(diag1, "repair the malformed control-flow edge or lower the source again");
+}
+
+proc backend_unsupported_target_detail(backend_name: string, target_name: string, span: SourceSpan) -> Diagnostic {
+    let diag0: Diagnostic = diagnostic_fatal("BACKEND_E_UNSUPPORTED_TARGET", DiagnosticPhase.Backend, "backend target is not supported", span);
+    let diag1: Diagnostic = diagnostic_add_pipeline_context(diag0, diag_kv("backend", backend_name));
+    let diag2: Diagnostic = diagnostic_add_pipeline_context(diag1, diag_kv("target", target_name));
+    give diagnostic_with_probable_fix(diag2, "switch target or select a backend that supports " + target_name);
+}
+
+proc backend_command_failed(phase: DiagnosticPhase, code: string, message: string, backend_name: string, target_name: string, command_text: string, stderr_text: string, expected_artifact: string, span: SourceSpan) -> Diagnostic {
+    let diag0: Diagnostic = diagnostic_fatal(code, phase, message, span);
+    let diag1: Diagnostic = diagnostic_add_pipeline_context(diag0, diag_kv("backend", backend_name));
+    let diag2: Diagnostic = diagnostic_add_pipeline_context(diag1, diag_kv("target", target_name));
+    let diag3: Diagnostic = diagnostic_add_cause(diag2, "external command: " + command_text);
+    let diag4: Diagnostic = diagnostic_add_cause(diag3, "stderr: " + stderr_text);
+    give diagnostic_with_probable_fix(diag4, "ensure the tool exists and produces `" + expected_artifact + "`");
+}
+
+proc linker_unresolved_symbol(symbol_name: string, backend_name: string, target_name: string, command_text: string, stderr_text: string, expected_artifact: string, span: SourceSpan) -> Diagnostic {
+    let diag0: Diagnostic = backend_command_failed(DiagnosticPhase.Linker, "LINKER_E_UNRESOLVED_SYMBOL", "linker could not resolve external symbol `" + symbol_name + "`", backend_name, target_name, command_text, stderr_text, expected_artifact, span);
+    give diagnostic_with_subject_symbol(diag0, symbol_name);
 }
 
 share DiagnosticSeverity
@@ -1204,6 +1830,7 @@ share previous_label
 share diagnostic_note
 share diagnostic_help
 share diagnostic_suggestion
+share diagnostic_suggestion_detail
 
 share diagnostic_create
 share diagnostic_error
@@ -1211,12 +1838,25 @@ share diagnostic_warning
 share diagnostic_fatal
 
 share diagnostic_with_label
+share diagnostic_with_rule
+share diagnostic_with_explanation
+share diagnostic_with_technical_note
 share diagnostic_with_note
 share diagnostic_with_help
 share diagnostic_with_suggestion
+share diagnostic_with_documentation
+share diagnostic_with_root_cause
+share diagnostic_add_cause
+share diagnostic_add_pipeline_context
+share diagnostic_add_related_error
+share diagnostic_with_probable_fix
+share diagnostic_with_subject_symbol
+share diagnostic_with_subject_type
+share diagnostic_with_subject_borrow
 share diagnostic_with_replace
 share diagnostic_with_insert
 share diagnostic_with_remove
+share diagnostic_with_suggestion_detail
 
 share same_diagnostic
 share add_unique_diagnostic
@@ -1237,6 +1877,7 @@ share render_label
 share render_note
 share render_help
 share render_suggestion
+share repeat_text
 share append_line
 share render_diagnostic
 share render_report
@@ -1245,6 +1886,7 @@ share report_summary
 share phase_from_code
 share severity_from_code
 share diagnostic_from_catalog
+share diagnostic_from_surface
 
 share parser_expected_identifier
 share parser_expected_expression
@@ -1252,6 +1894,17 @@ share parser_unclosed_block
 share lexer_unterminated_string
 share sema_unknown_identifier
 share typeck_assignment_mismatch
+share typeck_argument_mismatch
+share typeck_invalid_call_arity
+share typeck_if_branch_mismatch
+share typeck_non_exhaustive_match
 share borrowck_use_after_move
 share borrowck_mutable_borrow_conflict
+share borrowck_move_while_borrowed
+share borrowck_shared_borrow_conflict
+share borrowck_lifetime_too_short
 share ir_invalid_terminator
+share mir_cfg_incoherent
+share backend_unsupported_target_detail
+share backend_command_failed
+share linker_unresolved_symbol

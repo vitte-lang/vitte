@@ -37,6 +37,14 @@ proc default_pseudo_object_config() -> PseudoObjectConfig {
     };
 }
 
+proc pseudo_eq() -> string {
+    give slice("a=b", 1, 2);
+}
+
+proc pseudo_kv(key: string, value: string) -> string {
+    give key + pseudo_eq() + value;
+}
+
 proc pseudo_object_format_text(format: PseudoObjectFormat) -> string {
     if format == PseudoObjectFormat.ElfPseudo {
         give "elf64-relocatable-model";
@@ -165,11 +173,8 @@ proc pseudo_symbol_table(unit: IrUnit) -> string {
         while j < len(module0.functions) {
             let fn0 = module0.functions[j];
 
-            let line: string =
-                pseudo_qualified_symbol(module0.name, fn0.name) +
-                " linkage=" + pseudo_linkage_text(fn0.linkage) +
-                " blocks=" + (len(fn0.blocks) as string) +
-                " entry=" + pseudo_bool_text(fn0.is_entry);
+            let block_count: string = len(fn0.blocks) as string;
+            let line: string = pseudo_qualified_symbol(module0.name, fn0.name) + " " + pseudo_kv("linkage", pseudo_linkage_text(fn0.linkage)) + " " + pseudo_kv("blocks", block_count) + " " + pseudo_kv("entry", pseudo_bool_text(fn0.is_entry));
 
             set built = pseudo_append_line(built, line);
             set j = j + 1;
@@ -245,12 +250,7 @@ proc pseudo_relocation_table(unit: IrUnit) -> string {
         while j < len(module0.external_symbols) {
             let symbol_name = module0.external_symbols[j];
 
-            let line: string =
-                module0.name +
-                " -> " +
-                symbol_name +
-                " section=.text relocation=call symbol=" +
-                symbol_name;
+            let line: string = module0.name + " -> " + symbol_name + " " + pseudo_kv("section", ".text") + " " + pseudo_kv("relocation", "call") + " " + pseudo_kv("symbol", symbol_name);
 
             set built = pseudo_append_line(built, line);
             set j = j + 1;
@@ -267,33 +267,34 @@ proc pseudo_debug_section(unit: IrUnit) -> string {
 
     let built: string = "";
 
-    set built = pseudo_append_line(built, "source=" + unit.source_path);
-    set built = pseudo_append_line(built, "target=" + pseudo_target_name(unit));
-    set built = pseudo_append_line(built, "arch=" + unit.target.triple.arch);
-    set built = pseudo_append_line(built, "os=" + unit.target.triple.os);
-    set built = pseudo_append_line(built, "pointer_width=" + (unit.target.pointer_width as string));
-    set built = pseudo_append_line(built, "module_count=" + (len(unit.modules) as string));
-    set built = pseudo_append_line(built, "entry_symbol=" + entry_symbol);
-    set built = pseudo_append_line(built, "entry_function_id=" + (unit.entry_function_id as string));
-    set built = pseudo_append_line(built, "data_layout=" + unit.target.data_layout);
+    set built = pseudo_append_line(built, pseudo_kv("source", unit.source_path));
+    set built = pseudo_append_line(built, pseudo_kv("target", pseudo_target_name(unit)));
+    set built = pseudo_append_line(built, pseudo_kv("arch", unit.target.triple.arch));
+    set built = pseudo_append_line(built, pseudo_kv("os", unit.target.triple.os));
+    let pointer_width: string = unit.target.pointer_width as string;
+    let module_count: string = len(unit.modules) as string;
+    let entry_function_id: string = unit.entry_function_id as string;
+    set built = pseudo_append_line(built, pseudo_kv("pointer_width", pointer_width));
+    set built = pseudo_append_line(built, pseudo_kv("module_count", module_count));
+    set built = pseudo_append_line(built, pseudo_kv("entry_symbol", entry_symbol));
+    set built = pseudo_append_line(built, pseudo_kv("entry_function_id", entry_function_id));
+    set built = pseudo_append_line(built, pseudo_kv("data_layout", unit.target.data_layout));
 
     give built;
 }
 
-proc pseudo_metadata_section(
-    unit: IrUnit,
-    config: PseudoObjectConfig
-) -> string {
+proc pseudo_metadata_section(unit: IrUnit, config: PseudoObjectConfig) -> string {
     let built: string = "";
+    let section_count: string = pseudo_object_section_count(config) as string;
 
-    set built = pseudo_append_line(built, "producer=vittec");
-    set built = pseudo_append_line(built, "object_format=" + pseudo_object_format_text(config.format));
-    set built = pseudo_append_line(built, "target=" + pseudo_target_name(unit));
-    set built = pseudo_append_line(built, "sections=" + (pseudo_object_section_count(config) as string));
-    set built = pseudo_append_line(built, "has_debug=" + pseudo_bool_text(config.include_debug));
-    set built = pseudo_append_line(built, "has_symtab=" + pseudo_bool_text(config.include_symbol_table));
-    set built = pseudo_append_line(built, "has_strtab=" + pseudo_bool_text(config.include_string_table));
-    set built = pseudo_append_line(built, "has_relocations=" + pseudo_bool_text(config.include_relocations));
+    set built = pseudo_append_line(built, pseudo_kv("producer", "vittec"));
+    set built = pseudo_append_line(built, pseudo_kv("object_format", pseudo_object_format_text(config.format)));
+    set built = pseudo_append_line(built, pseudo_kv("target", pseudo_target_name(unit)));
+    set built = pseudo_append_line(built, pseudo_kv("sections", section_count));
+    set built = pseudo_append_line(built, pseudo_kv("has_debug", pseudo_bool_text(config.include_debug)));
+    set built = pseudo_append_line(built, pseudo_kv("has_symtab", pseudo_bool_text(config.include_symbol_table)));
+    set built = pseudo_append_line(built, pseudo_kv("has_strtab", pseudo_bool_text(config.include_string_table)));
+    set built = pseudo_append_line(built, pseudo_kv("has_relocations", pseudo_bool_text(config.include_relocations)));
 
     give built;
 }
@@ -326,11 +327,7 @@ proc pseudo_section_header(kind: PseudoSectionKind) -> string {
     give "[.unknown]";
 }
 
-proc pseudo_emit_section(
-    text: string,
-    kind: PseudoSectionKind,
-    body: string
-) -> string {
+proc pseudo_emit_section(text: string, kind: PseudoSectionKind, body: string) -> string {
     let built = text;
 
     set built = pseudo_append_line(built, pseudo_section_header(kind));
@@ -342,19 +339,17 @@ proc pseudo_emit_section(
     give built;
 }
 
-proc build_pseudo_object_text_with_config(
-    unit: IrUnit,
-    assembly: string,
-    config: PseudoObjectConfig
-) -> string {
+proc build_pseudo_object_text_with_config(unit: IrUnit, assembly: string, config: PseudoObjectConfig) -> string {
     let built: string = "";
+    let module_count: string = len(unit.modules) as string;
+    let section_count: string = pseudo_object_section_count(config) as string;
 
     set built = pseudo_append_line(built, "vitte-object-model");
-    set built = pseudo_append_line(built, "format=" + pseudo_object_format_text(config.format));
-    set built = pseudo_append_line(built, "target=" + pseudo_target_name(unit));
-    set built = pseudo_append_line(built, "module_count=" + (len(unit.modules) as string));
-    set built = pseudo_append_line(built, "entry_symbol=" + pseudo_entry_symbol(unit));
-    set built = pseudo_append_line(built, "section_count=" + (pseudo_object_section_count(config) as string));
+    set built = pseudo_append_line(built, pseudo_kv("format", pseudo_object_format_text(config.format)));
+    set built = pseudo_append_line(built, pseudo_kv("target", pseudo_target_name(unit)));
+    set built = pseudo_append_line(built, pseudo_kv("module_count", module_count));
+    set built = pseudo_append_line(built, pseudo_kv("entry_symbol", pseudo_entry_symbol(unit)));
+    set built = pseudo_append_line(built, pseudo_kv("section_count", section_count));
 
     set built = pseudo_emit_section(
         built,

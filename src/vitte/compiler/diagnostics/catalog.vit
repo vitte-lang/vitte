@@ -58,11 +58,7 @@ form DiagnosticCatalog {
   valid: bool
 }
 
-proc diagnostic_label(
-  message: string,
-  span: AstSpan,
-  primary: bool
-) -> DiagnosticLabel {
+proc diagnostic_label(message: string, span: AstSpan, primary: bool) -> DiagnosticLabel {
 
   give DiagnosticLabel {
     message: message,
@@ -72,9 +68,7 @@ proc diagnostic_label(
   }
 }
 
-proc diagnostic_note(
-  text: string
-) -> DiagnosticNote {
+proc diagnostic_note(text: string) -> DiagnosticNote {
 
   give DiagnosticNote {
     text: text,
@@ -82,13 +76,8 @@ proc diagnostic_note(
   }
 }
 
-proc diagnostic_code(
-  code: string,
-  category: DiagnosticCategory,
-  severity: DiagnosticSeverity,
-  title: string,
-  explanation: string
-) -> DiagnosticCode {
+proc diagnostic_code(code: string, category: DiagnosticCategory, severity: DiagnosticSeverity, title: string, explanation: string) -> DiagnosticCode {
+  let valid: bool = code != "" and title != "" and explanation != "";
 
   give DiagnosticCode {
     code: code,
@@ -98,35 +87,24 @@ proc diagnostic_code(
     explanation: explanation,
     notes: [],
     labels: [],
-    valid:
-      code != ""
-      and title != ""
-      and explanation != ""
+    valid: valid
   }
 }
 
-proc add_note(
-  diagnostic: DiagnosticCode,
-  note: DiagnosticNote
-) -> DiagnosticCode {
+proc add_note(diagnostic: DiagnosticCode, note: DiagnosticNote) -> DiagnosticCode {
 
   make next = diagnostic
 
-  set next.notes =
-    next.notes + [note]
+  set next.notes = next.notes + [note]
 
   give next
 }
 
-proc add_label(
-  diagnostic: DiagnosticCode,
-  label: DiagnosticLabel
-) -> DiagnosticCode {
+proc add_label(diagnostic: DiagnosticCode, label: DiagnosticLabel) -> DiagnosticCode {
 
   make next = diagnostic
 
-  set next.labels =
-    next.labels + [label]
+  set next.labels = next.labels + [label]
 
   give next
 }
@@ -140,23 +118,16 @@ proc empty_catalog() -> DiagnosticCatalog {
   }
 }
 
-proc register(
-  catalog: DiagnosticCatalog,
-  diagnostic: DiagnosticCode
-) -> DiagnosticCatalog {
+proc register(catalog: DiagnosticCatalog, diagnostic: DiagnosticCode) -> DiagnosticCatalog {
 
   make next = catalog
 
-  set next.diagnostics =
-    next.diagnostics + [diagnostic]
+  set next.diagnostics = next.diagnostics + [diagnostic]
 
   give next
 }
 
-proc find_by_code(
-  catalog: DiagnosticCatalog,
-  code: string
-) -> DiagnosticCode {
+proc find_by_code(catalog: DiagnosticCatalog, code: string) -> DiagnosticCode {
 
   let i: i32 = 0
 
@@ -180,297 +151,103 @@ proc find_by_code(
 
 proc bootstrap_catalog() -> DiagnosticCatalog {
 
-  make catalog =
-    empty_catalog()
+  make catalog = empty_catalog()
 
   <<< ===================================================== >>>
   <<< Lexer diagnostics                                     >>>
   <<< ===================================================== >>>
 
-  set catalog =
-    register(
-      catalog,
+  let unterminated_string_diag = diagnostic_code("LEX_E_UNTERMINATED_STRING", DiagnosticCategory.Lexer, DiagnosticSeverity.Error, "unterminated string literal", "lexer reached end of file before string termination")
+  let unterminated_string_note_text = "expected closing quote"
+  let unterminated_string_note = diagnostic_note(unterminated_string_note_text)
+  let unterminated_string_entry = add_note(unterminated_string_diag, unterminated_string_note)
+  set catalog = register(catalog, unterminated_string_entry)
 
-      add_note(
-        diagnostic_code(
-          "LEX_E_UNTERMINATED_STRING",
-          DiagnosticCategory.Lexer,
-          DiagnosticSeverity.Error,
-          "unterminated string literal",
-          "lexer reached end of file before string termination"
-        ),
-
-        diagnostic_note(
-          "expected closing quote"
-        )
-      )
-    )
-
-  set catalog =
-    register(
-      catalog,
-
-      diagnostic_code(
-        "LEX_E_INVALID_CHAR",
-        DiagnosticCategory.Lexer,
-        DiagnosticSeverity.Error,
-        "invalid character",
-        "source contains unsupported character sequence"
-      )
-    )
+  set catalog = register(catalog, diagnostic_code("LEX_E_INVALID_CHAR", DiagnosticCategory.Lexer, DiagnosticSeverity.Error, "invalid character", "source contains unsupported character sequence"))
 
   <<< ===================================================== >>>
   <<< Parser diagnostics                                    >>>
   <<< ===================================================== >>>
 
-  set catalog =
-    register(
-      catalog,
+  set catalog = register(catalog, diagnostic_code("PARSE_E_EXPECTED_TOKEN", DiagnosticCategory.Parser, DiagnosticSeverity.Error, "expected token", "parser expected another token kind"))
 
-      diagnostic_code(
-        "PARSE_E_EXPECTED_TOKEN",
-        DiagnosticCategory.Parser,
-        DiagnosticSeverity.Error,
-        "expected token",
-        "parser expected another token kind"
-      )
-    )
-
-  set catalog =
-    register(
-      catalog,
-
-      diagnostic_code(
-        "PARSE_E_UNEXPECTED_TOKEN",
-        DiagnosticCategory.Parser,
-        DiagnosticSeverity.Error,
-        "unexpected token",
-        "unexpected token encountered during parsing"
-      )
-    )
+  set catalog = register(catalog, diagnostic_code("PARSE_E_UNEXPECTED_TOKEN", DiagnosticCategory.Parser, DiagnosticSeverity.Error, "unexpected token", "unexpected token encountered during parsing"))
 
   <<< ===================================================== >>>
   <<< AST diagnostics                                       >>>
   <<< ===================================================== >>>
 
-  set catalog =
-    register(
-      catalog,
-
-      diagnostic_code(
-        "AST_E_INVALID_NODE",
-        DiagnosticCategory.Ast,
-        DiagnosticSeverity.Error,
-        "invalid AST node",
-        "AST node failed semantic invariants"
-      )
-    )
+  set catalog = register(catalog, diagnostic_code("AST_E_INVALID_NODE", DiagnosticCategory.Ast, DiagnosticSeverity.Error, "invalid AST node", "AST node failed semantic invariants"))
 
   <<< ===================================================== >>>
   <<< HIR diagnostics                                       >>>
   <<< ===================================================== >>>
 
-  set catalog =
-    register(
-      catalog,
-
-      diagnostic_code(
-        "HIR_E_INVALID_EXPR",
-        DiagnosticCategory.Hir,
-        DiagnosticSeverity.Error,
-        "invalid HIR expression",
-        "HIR expression validation failed"
-      )
-    )
+  set catalog = register(catalog, diagnostic_code("HIR_E_INVALID_EXPR", DiagnosticCategory.Hir, DiagnosticSeverity.Error, "invalid HIR expression", "HIR expression validation failed"))
 
   <<< ===================================================== >>>
   <<< MIR diagnostics                                       >>>
   <<< ===================================================== >>>
 
-  set catalog =
-    register(
-      catalog,
-
-      diagnostic_code(
-        "MIR_E_INVALID_BLOCK",
-        DiagnosticCategory.Mir,
-        DiagnosticSeverity.Error,
-        "invalid MIR block",
-        "MIR control flow graph is invalid"
-      )
-    )
+  set catalog = register(catalog, diagnostic_code("MIR_E_INVALID_BLOCK", DiagnosticCategory.Mir, DiagnosticSeverity.Error, "invalid MIR block", "MIR control flow graph is invalid"))
 
   <<< ===================================================== >>>
   <<< Borrow checker diagnostics                            >>>
   <<< ===================================================== >>>
 
-  set catalog =
-    register(
-      catalog,
+  set catalog = register(catalog, diagnostic_code("BORROWCK_E_MOVE_AFTER_BORROW", DiagnosticCategory.Borrowck, DiagnosticSeverity.Error, "move after borrow", "value moved while active borrow exists"))
 
-      diagnostic_code(
-        "BORROWCK_E_MOVE_AFTER_BORROW",
-        DiagnosticCategory.Borrowck,
-        DiagnosticSeverity.Error,
-        "move after borrow",
-        "value moved while active borrow exists"
-      )
-    )
-
-  set catalog =
-    register(
-      catalog,
-
-      diagnostic_code(
-        "BORROWCK_E_MUTABLE_ALIAS",
-        DiagnosticCategory.Borrowck,
-        DiagnosticSeverity.Error,
-        "mutable alias violation",
-        "multiple mutable references detected"
-      )
-    )
+  set catalog = register(catalog, diagnostic_code("BORROWCK_E_MUTABLE_ALIAS", DiagnosticCategory.Borrowck, DiagnosticSeverity.Error, "mutable alias violation", "multiple mutable references detected"))
 
   <<< ===================================================== >>>
   <<< Type checker diagnostics                              >>>
   <<< ===================================================== >>>
 
-  set catalog =
-    register(
-      catalog,
+  set catalog = register(catalog, diagnostic_code("TYPECK_E_ASSIGN_MISMATCH", DiagnosticCategory.Typeck, DiagnosticSeverity.Error, "assignment type mismatch", "assigned expression type does not match target type"))
 
-      diagnostic_code(
-        "TYPECK_E_ASSIGN_MISMATCH",
-        DiagnosticCategory.Typeck,
-        DiagnosticSeverity.Error,
-        "assignment type mismatch",
-        "assigned expression type does not match target type"
-      )
-    )
+  set catalog = register(catalog, diagnostic_code("TYPECK_E_UNKNOWN_TYPE", DiagnosticCategory.Typeck, DiagnosticSeverity.Error, "unknown type", "type resolution failed"))
 
-  set catalog =
-    register(
-      catalog,
-
-      diagnostic_code(
-        "TYPECK_E_UNKNOWN_TYPE",
-        DiagnosticCategory.Typeck,
-        DiagnosticSeverity.Error,
-        "unknown type",
-        "type resolution failed"
-      )
-    )
-
-  set catalog =
-    register(
-      catalog,
-
-      diagnostic_code(
-        "TYPECK_E_INVALID_CALL",
-        DiagnosticCategory.Typeck,
-        DiagnosticSeverity.Error,
-        "invalid function call",
-        "call arguments do not match function signature"
-      )
-    )
+  set catalog = register(catalog, diagnostic_code("TYPECK_E_INVALID_CALL", DiagnosticCategory.Typeck, DiagnosticSeverity.Error, "invalid function call", "call arguments do not match function signature"))
 
   <<< ===================================================== >>>
   <<< Backend diagnostics                                   >>>
   <<< ===================================================== >>>
 
-  set catalog =
-    register(
-      catalog,
-
-      diagnostic_code(
-        "BACKEND_E_UNSUPPORTED_TARGET",
-        DiagnosticCategory.Backend,
-        DiagnosticSeverity.Fatal,
-        "unsupported backend target",
-        "backend does not support selected target"
-      )
-    )
+  set catalog = register(catalog, diagnostic_code("BACKEND_E_UNSUPPORTED_TARGET", DiagnosticCategory.Backend, DiagnosticSeverity.Fatal, "unsupported backend target", "backend does not support selected target"))
 
   <<< ===================================================== >>>
   <<< Linker diagnostics                                    >>>
   <<< ===================================================== >>>
 
-  set catalog =
-    register(
-      catalog,
-
-      diagnostic_code(
-        "LINK_E_UNDEFINED_SYMBOL",
-        DiagnosticCategory.Linker,
-        DiagnosticSeverity.Error,
-        "undefined symbol",
-        "linker failed to resolve symbol"
-      )
-    )
+  set catalog = register(catalog, diagnostic_code("LINK_E_UNDEFINED_SYMBOL", DiagnosticCategory.Linker, DiagnosticSeverity.Error, "undefined symbol", "linker failed to resolve symbol"))
 
   <<< ===================================================== >>>
   <<< Runtime diagnostics                                   >>>
   <<< ===================================================== >>>
 
-  set catalog =
-    register(
-      catalog,
-
-      diagnostic_code(
-        "RUNTIME_E_PANIC",
-        DiagnosticCategory.Runtime,
-        DiagnosticSeverity.Fatal,
-        "runtime panic",
-        "runtime entered unrecoverable state"
-      )
-    )
+  set catalog = register(catalog, diagnostic_code("RUNTIME_E_PANIC", DiagnosticCategory.Runtime, DiagnosticSeverity.Fatal, "runtime panic", "runtime entered unrecoverable state"))
 
   <<< ===================================================== >>>
   <<< Driver diagnostics                                    >>>
   <<< ===================================================== >>>
 
-  set catalog =
-    register(
-      catalog,
-
-      diagnostic_code(
-        "DRIVER_E_INVALID_ARGUMENT",
-        DiagnosticCategory.Driver,
-        DiagnosticSeverity.Error,
-        "invalid command line argument",
-        "driver received unsupported argument"
-      )
-    )
+  set catalog = register(catalog, diagnostic_code("DRIVER_E_INVALID_ARGUMENT", DiagnosticCategory.Driver, DiagnosticSeverity.Error, "invalid command line argument", "driver received unsupported argument"))
 
   <<< ===================================================== >>>
   <<< Bootstrap diagnostics                                 >>>
   <<< ===================================================== >>>
 
-  set catalog =
-    register(
-      catalog,
-
-      diagnostic_code(
-        "BOOTSTRAP_E_STAGE_FAILURE",
-        DiagnosticCategory.Bootstrap,
-        DiagnosticSeverity.Fatal,
-        "bootstrap stage failure",
-        "compiler bootstrap stage failed"
-      )
-    )
+  set catalog = register(catalog, diagnostic_code("BOOTSTRAP_E_STAGE_FAILURE", DiagnosticCategory.Bootstrap, DiagnosticSeverity.Fatal, "bootstrap stage failure", "compiler bootstrap stage failed"))
 
   give catalog
 }
 
-proc catalog_size(
-  catalog: DiagnosticCatalog
-) -> i32 {
+proc catalog_size(catalog: DiagnosticCatalog) -> i32 {
 
   give len(catalog.diagnostics)
 }
 
-proc catalog_valid(
-  catalog: DiagnosticCatalog
-) -> bool {
+proc catalog_valid(catalog: DiagnosticCatalog) -> bool {
 
   if not catalog.valid {
     give false

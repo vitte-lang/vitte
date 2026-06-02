@@ -100,17 +100,8 @@ proc sema_visibility_from_text(text: string) -> SemaVisibility {
     give SemaVisibility.Private;
 }
 
-proc sema_symbol(
-    id: u64,
-    name: string,
-    kind: SemaSymbolKind,
-    scope_depth: u64,
-    mutable: bool,
-    visibility: string,
-    line: u64
-) -> SemaSymbol {
-    let visibility_kind: SemaVisibility =
-        sema_visibility_from_text(visibility);
+proc sema_symbol(id: u64, name: string, kind: SemaSymbolKind, scope_depth: u64, mutable: bool, visibility: string, line: u64) -> SemaSymbol {
+    let visibility_kind: SemaVisibility = sema_visibility_from_text(visibility);
 
     give SemaSymbol {
         id: id,
@@ -130,20 +121,7 @@ proc sema_symbol(
     };
 }
 
-proc sema_symbol_full(
-    id: u64,
-    name: string,
-    qualified_name: string,
-    kind: SemaSymbolKind,
-    state: SemaSymbolState,
-    scope_depth: u64,
-    mutable: bool,
-    visibility: SemaVisibility,
-    module_path: string,
-    ty: string,
-    line: u64,
-    column: u64
-) -> SemaSymbol {
+proc sema_symbol_full(id: u64, name: string, qualified_name: string, kind: SemaSymbolKind, state: SemaSymbolState, scope_depth: u64, mutable: bool, visibility: SemaVisibility, module_path: string, ty: string, line: u64, column: u64) -> SemaSymbol {
     give SemaSymbol {
         id: id,
         name: name,
@@ -204,17 +182,11 @@ proc symbol_index(symbols: [SemaSymbol], name: string) -> int {
     give -1;
 }
 
-proc symbol_index_in_scope(
-    symbols: [SemaSymbol],
-    name: string,
-    scope_depth: u64
-) -> int {
+proc symbol_index_in_scope(symbols: [SemaSymbol], name: string, scope_depth: u64) -> int {
     let i: int = 0;
 
     while i < len(symbols) {
-        if symbols[i].name == name
-            and symbols[i].scope_depth == scope_depth {
-
+        if symbols[i].name == name and symbols[i].scope_depth == scope_depth {
             give i;
         }
 
@@ -224,10 +196,7 @@ proc symbol_index_in_scope(
     give -1;
 }
 
-proc symbol_index_qualified(
-    symbols: [SemaSymbol],
-    qualified_name: string
-) -> int {
+proc symbol_index_qualified(symbols: [SemaSymbol], qualified_name: string) -> int {
     let i: int = 0;
 
     while i < len(symbols) {
@@ -271,24 +240,14 @@ proc symbol_is_value_level(symbol: SemaSymbol) -> bool {
         or symbol.kind == SemaSymbolKind.External;
 }
 
-proc symbol_find_visible(
-    symbols: [SemaSymbol],
-    name: string,
-    scope_depth: u64
-) -> SemaSymbol {
+proc symbol_find_visible(symbols: [SemaSymbol], name: string, scope_depth: u64) -> SemaSymbol {
     let i: int = len(symbols) as int - 1;
 
     while i >= 0 {
         let symbol: SemaSymbol = symbols[i as u64];
 
-        if symbol.name == name
-            and symbol.valid
-            and symbol.state != SemaSymbolState.Invalid
-            and (
-                !symbol_is_local(symbol)
-                or symbol.scope_depth <= scope_depth
-            ) {
-
+        let local_visible: bool = !symbol_is_local(symbol) or symbol.scope_depth <= scope_depth;
+        if symbol.name == name and symbol.valid and symbol.state != SemaSymbolState.Invalid and local_visible {
             give symbol;
         }
 
@@ -298,10 +257,7 @@ proc symbol_find_visible(
     give sema_invalid_symbol();
 }
 
-proc symbol_find_qualified(
-    symbols: [SemaSymbol],
-    qualified_name: string
-) -> SemaSymbol {
+proc symbol_find_qualified(symbols: [SemaSymbol], qualified_name: string) -> SemaSymbol {
     let index: int = symbol_index_qualified(symbols, qualified_name);
 
     if index < 0 {
@@ -399,10 +355,7 @@ proc symbol_state_name(state: SemaSymbolState) -> string {
     give "invalid";
 }
 
-proc symbol_qualified_name(
-    module_path: string,
-    name: string
-) -> string {
+proc symbol_qualified_name(module_path: string, name: string) -> string {
     if module_path == "" {
         give name;
     }
@@ -440,34 +393,9 @@ proc symbol_table_leave_scope(table: SemaSymbolTable) -> SemaSymbolTable {
     give table;
 }
 
-proc symbol_table_insert(
-    table: SemaSymbolTable,
-    name: string,
-    kind: SemaSymbolKind,
-    mutable: bool,
-    visibility: SemaVisibility,
-    ty: string,
-    line: u64,
-    column: u64
-) -> SemaSymbolTable {
-    let qualified: string =
-        symbol_qualified_name(table.module_path, name);
-
-    let symbol: SemaSymbol =
-        sema_symbol_full(
-            table.next_id,
-            name,
-            qualified,
-            kind,
-            SemaSymbolState.Declared,
-            table.scope_depth,
-            mutable,
-            visibility,
-            table.module_path,
-            ty,
-            line,
-            column
-        );
+proc symbol_table_insert(table: SemaSymbolTable, name: string, kind: SemaSymbolKind, mutable: bool, visibility: SemaVisibility, ty: string, line: u64, column: u64) -> SemaSymbolTable {
+    let qualified: string = symbol_qualified_name(table.module_path, name);
+    let symbol: SemaSymbol = sema_symbol_full(table.next_id, name, qualified, kind, SemaSymbolState.Declared, table.scope_depth, mutable, visibility, table.module_path, ty, line, column);
 
     set table.symbols = table.symbols + [symbol];
     set table.next_id = table.next_id + 1;
@@ -475,52 +403,21 @@ proc symbol_table_insert(
     give table;
 }
 
-proc symbol_table_define(
-    table: SemaSymbolTable,
-    name: string
-) -> SemaSymbolTable {
-    let index: int =
-        symbol_index_in_scope(
-            table.symbols,
-            name,
-            table.scope_depth
-        );
+proc symbol_table_define(table: SemaSymbolTable, name: string) -> SemaSymbolTable {
+    let index: int = symbol_index_in_scope(table.symbols, name, table.scope_depth);
 
     if index < 0 {
         give table;
     }
 
-    set table.symbols[index as u64].state =
-        SemaSymbolState.Defined;
+    set table.symbols[index as u64].state = SemaSymbolState.Defined;
 
     give table;
 }
 
-proc symbol_table_import(
-    table: SemaSymbolTable,
-    name: string,
-    module_path: string,
-    ty: string,
-    line: u64
-) -> SemaSymbolTable {
-    let qualified: string =
-        symbol_qualified_name(module_path, name);
-
-    let symbol: SemaSymbol =
-        sema_symbol_full(
-            table.next_id,
-            name,
-            qualified,
-            SemaSymbolKind.Imported,
-            SemaSymbolState.Imported,
-            0,
-            false,
-            SemaVisibility.Public,
-            module_path,
-            ty,
-            line,
-            0
-        );
+proc symbol_table_import(table: SemaSymbolTable, name: string, module_path: string, ty: string, line: u64) -> SemaSymbolTable {
+    let qualified: string = symbol_qualified_name(module_path, name);
+    let symbol: SemaSymbol = sema_symbol_full(table.next_id, name, qualified, SemaSymbolKind.Imported, SemaSymbolState.Imported, 0, false, SemaVisibility.Public, module_path, ty, line, 0);
 
     set table.symbols = table.symbols + [symbol];
     set table.next_id = table.next_id + 1;
@@ -528,26 +425,8 @@ proc symbol_table_import(
     give table;
 }
 
-proc symbol_table_add_builtin(
-    table: SemaSymbolTable,
-    name: string,
-    ty: string
-) -> SemaSymbolTable {
-    let symbol: SemaSymbol =
-        sema_symbol_full(
-            table.next_id,
-            name,
-            name,
-            SemaSymbolKind.Builtin,
-            SemaSymbolState.Defined,
-            0,
-            false,
-            SemaVisibility.Public,
-            "builtin",
-            ty,
-            0,
-            0
-        );
+proc symbol_table_add_builtin(table: SemaSymbolTable, name: string, ty: string) -> SemaSymbolTable {
+    let symbol: SemaSymbol = sema_symbol_full(table.next_id, name, name, SemaSymbolKind.Builtin, SemaSymbolState.Defined, 0, false, SemaVisibility.Public, "builtin", ty, 0, 0);
 
     set table.symbols = table.symbols + [symbol];
     set table.next_id = table.next_id + 1;
@@ -555,36 +434,19 @@ proc symbol_table_add_builtin(
     give table;
 }
 
-proc symbol_table_resolve(
-    table: SemaSymbolTable,
-    name: string
-) -> SemaSymbol {
+proc symbol_table_resolve(table: SemaSymbolTable, name: string) -> SemaSymbol {
     if find(name, "::") >= 0 {
         give symbol_find_qualified(table.symbols, name);
     }
 
-    give symbol_find_visible(
-        table.symbols,
-        name,
-        table.scope_depth
-    );
+    give symbol_find_visible(table.symbols, name, table.scope_depth);
 }
 
-proc symbol_table_has_duplicate_in_current_scope(
-    table: SemaSymbolTable,
-    name: string
-) -> bool {
-    give symbol_index_in_scope(
-        table.symbols,
-        name,
-        table.scope_depth
-    ) >= 0;
+proc symbol_table_has_duplicate_in_current_scope(table: SemaSymbolTable, name: string) -> bool {
+    give symbol_index_in_scope(table.symbols, name, table.scope_depth) >= 0;
 }
 
-proc symbol_table_count_kind(
-    table: SemaSymbolTable,
-    kind: SemaSymbolKind
-) -> u64 {
+proc symbol_table_count_kind(table: SemaSymbolTable, kind: SemaSymbolKind) -> u64 {
     let count: u64 = 0;
     let i: u64 = 0;
 

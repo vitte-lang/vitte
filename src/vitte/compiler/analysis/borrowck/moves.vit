@@ -59,12 +59,7 @@ form MoveTracker {
     valid: bool
 }
 
-proc move_event(
-    local: string,
-    kind: MoveEventKind,
-    line: u64,
-    detail: string
-) -> MoveEvent {
+proc move_event(local: string, kind: MoveEventKind, line: u64, detail: string) -> MoveEvent {
     give MoveEvent {
         local: local,
         kind: kind,
@@ -84,13 +79,7 @@ proc invalid_move_event() -> MoveEvent {
     };
 }
 
-proc move_conflict(
-    local: string,
-    kind: MoveConflictKind,
-    previous: MoveEvent,
-    current: MoveEvent,
-    message: string
-) -> MoveConflict {
+proc move_conflict(local: string, kind: MoveConflictKind, previous: MoveEvent, current: MoveEvent, message: string) -> MoveConflict {
     give MoveConflict {
         local: local,
         kind: kind,
@@ -214,10 +203,7 @@ proc move_conflict_name(kind: MoveConflictKind) -> string {
     give "none";
 }
 
-proc tracker_add_event(
-    tracker: MoveTracker,
-    event: MoveEvent
-) -> MoveTracker {
+proc tracker_add_event(tracker: MoveTracker, event: MoveEvent) -> MoveTracker {
     let next: MoveTracker = tracker;
 
     set next.events = next.events + [event];
@@ -226,10 +212,7 @@ proc tracker_add_event(
     give next;
 }
 
-proc tracker_add_conflict(
-    tracker: MoveTracker,
-    conflict: MoveConflict
-) -> MoveTracker {
+proc tracker_add_conflict(tracker: MoveTracker, conflict: MoveConflict) -> MoveTracker {
     if !conflict.valid {
         give tracker;
     }
@@ -242,125 +225,51 @@ proc tracker_add_conflict(
     give next;
 }
 
-proc tracker_record_event_checked(
-    tracker: MoveTracker,
-    event: MoveEvent
-) -> MoveTracker {
-    let previous: MoveEvent =
-        last_event_for(tracker, event.local);
-
-    let conflict: MoveConflict =
-        move_conflict_for(previous, event);
-
-    let next: MoveTracker =
-        tracker_add_event(tracker, event);
+proc tracker_record_event_checked(tracker: MoveTracker, event: MoveEvent) -> MoveTracker {
+    let previous: MoveEvent = last_event_for(tracker, event.local);
+    let conflict: MoveConflict = move_conflict_for(previous, event);
+    let next: MoveTracker = tracker_add_event(tracker, event);
 
     give tracker_add_conflict(next, conflict);
 }
 
-proc tracker_record_move(
-    tracker: MoveTracker,
-    local: string,
-    line: u64
-) -> MoveTracker {
-    give tracker_record_event_checked(
-        tracker,
-        move_event(local, MoveEventKind.Move, line, "move value")
-    );
+proc tracker_record_move(tracker: MoveTracker, local: string, line: u64) -> MoveTracker {
+    give tracker_record_event_checked(tracker, move_event(local, MoveEventKind.Move, line, "move value"));
 }
 
-proc tracker_record_copy(
-    tracker: MoveTracker,
-    local: string,
-    line: u64
-) -> MoveTracker {
-    give tracker_record_event_checked(
-        tracker,
-        move_event(local, MoveEventKind.Copy, line, "copy value")
-    );
+proc tracker_record_copy(tracker: MoveTracker, local: string, line: u64) -> MoveTracker {
+    give tracker_record_event_checked(tracker, move_event(local, MoveEventKind.Copy, line, "copy value"));
 }
 
-proc tracker_record_reinit(
-    tracker: MoveTracker,
-    local: string,
-    line: u64
-) -> MoveTracker {
-    give tracker_record_event_checked(
-        tracker,
-        move_event(local, MoveEventKind.Reinitialize, line, "reinitialize value")
-    );
+proc tracker_record_reinit(tracker: MoveTracker, local: string, line: u64) -> MoveTracker {
+    give tracker_record_event_checked(tracker, move_event(local, MoveEventKind.Reinitialize, line, "reinitialize value"));
 }
 
-proc tracker_record_use(
-    tracker: MoveTracker,
-    local: string,
-    line: u64
-) -> MoveTracker {
-    give tracker_record_event_checked(
-        tracker,
-        move_event(local, MoveEventKind.Use, line, "use value")
-    );
+proc tracker_record_use(tracker: MoveTracker, local: string, line: u64) -> MoveTracker {
+    give tracker_record_event_checked(tracker, move_event(local, MoveEventKind.Use, line, "use value"));
 }
 
-proc tracker_record_return(
-    tracker: MoveTracker,
-    local: string,
-    line: u64
-) -> MoveTracker {
-    give tracker_record_event_checked(
-        tracker,
-        move_event(local, MoveEventKind.Return, line, "return value")
-    );
+proc tracker_record_return(tracker: MoveTracker, local: string, line: u64) -> MoveTracker {
+    give tracker_record_event_checked(tracker, move_event(local, MoveEventKind.Return, line, "return value"));
 }
 
-proc tracker_record_drop(
-    tracker: MoveTracker,
-    local: string,
-    line: u64
-) -> MoveTracker {
-    give tracker_record_event_checked(
-        tracker,
-        move_event(local, MoveEventKind.Drop, line, "drop value")
-    );
+proc tracker_record_drop(tracker: MoveTracker, local: string, line: u64) -> MoveTracker {
+    give tracker_record_event_checked(tracker, move_event(local, MoveEventKind.Drop, line, "drop value"));
 }
 
-proc tracker_record_storage_dead(
-    tracker: MoveTracker,
-    local: string,
-    line: u64
-) -> MoveTracker {
-    give tracker_record_event_checked(
-        tracker,
-        move_event(local, MoveEventKind.StorageDead, line, "storage dead")
-    );
+proc tracker_record_storage_dead(tracker: MoveTracker, local: string, line: u64) -> MoveTracker {
+    give tracker_record_event_checked(tracker, move_event(local, MoveEventKind.StorageDead, line, "storage dead"));
 }
 
-proc tracker_record_shared_borrow(
-    tracker: MoveTracker,
-    local: string,
-    line: u64
-) -> MoveTracker {
-    give tracker_record_event_checked(
-        tracker,
-        move_event(local, MoveEventKind.BorrowShared, line, "shared borrow")
-    );
+proc tracker_record_shared_borrow(tracker: MoveTracker, local: string, line: u64) -> MoveTracker {
+    give tracker_record_event_checked(tracker, move_event(local, MoveEventKind.BorrowShared, line, "shared borrow"));
 }
 
-proc tracker_record_mut_borrow(
-    tracker: MoveTracker,
-    local: string,
-    line: u64
-) -> MoveTracker {
-    give tracker_record_event_checked(
-        tracker,
-        move_event(local, MoveEventKind.BorrowMutable, line, "mutable borrow")
-    );
+proc tracker_record_mut_borrow(tracker: MoveTracker, local: string, line: u64) -> MoveTracker {
+    give tracker_record_event_checked(tracker, move_event(local, MoveEventKind.BorrowMutable, line, "mutable borrow"));
 }
 
-proc last_event_for(
-    tracker: MoveTracker,
-    local: string
-) -> MoveEvent {
+proc last_event_for(tracker: MoveTracker, local: string) -> MoveEvent {
     let i: int = len(tracker.events) as int - 1;
 
     while i >= 0 {
@@ -374,12 +283,8 @@ proc last_event_for(
     give invalid_move_event();
 }
 
-proc last_state_for(
-    tracker: MoveTracker,
-    local: string
-) -> MoveState {
-    let event: MoveEvent =
-        last_event_for(tracker, local);
+proc last_state_for(tracker: MoveTracker, local: string) -> MoveState {
+    let event: MoveEvent = last_event_for(tracker, local);
 
     if !event.valid {
         give MoveState.Unknown;
@@ -405,12 +310,7 @@ proc state_after_event(event: MoveEvent) -> MoveState {
         give MoveState.Dead;
     }
 
-    if event.kind == MoveEventKind.Copy
-        or event.kind == MoveEventKind.Use
-        or event.kind == MoveEventKind.Return
-        or event.kind == MoveEventKind.BorrowShared
-        or event.kind == MoveEventKind.BorrowMutable {
-
+    if event.kind == MoveEventKind.Copy or event.kind == MoveEventKind.Use or event.kind == MoveEventKind.Return or event.kind == MoveEventKind.BorrowShared or event.kind == MoveEventKind.BorrowMutable {
         give MoveState.Available;
     }
 
@@ -418,17 +318,11 @@ proc state_after_event(event: MoveEvent) -> MoveState {
 }
 
 proc event_consumes_value(kind: MoveEventKind) -> bool {
-    give kind == MoveEventKind.Move
-        or kind == MoveEventKind.Return
-        or kind == MoveEventKind.Drop;
+    give kind == MoveEventKind.Move or kind == MoveEventKind.Return or kind == MoveEventKind.Drop;
 }
 
 proc event_reads_value(kind: MoveEventKind) -> bool {
-    give kind == MoveEventKind.Use
-        or kind == MoveEventKind.Copy
-        or kind == MoveEventKind.Return
-        or kind == MoveEventKind.BorrowShared
-        or kind == MoveEventKind.BorrowMutable;
+    give kind == MoveEventKind.Use or kind == MoveEventKind.Copy or kind == MoveEventKind.Return or kind == MoveEventKind.BorrowShared or kind == MoveEventKind.BorrowMutable;
 }
 
 proc move_conflict_message(kind: MoveConflictKind) -> string {
@@ -467,10 +361,7 @@ proc move_conflict_message(kind: MoveConflictKind) -> string {
     give "";
 }
 
-proc move_conflict_for(
-    previous: MoveEvent,
-    current: MoveEvent
-) -> MoveConflict {
+proc move_conflict_for(previous: MoveEvent, current: MoveEvent) -> MoveConflict {
     if !current.valid {
         give move_conflict(
             current.local,
@@ -512,9 +403,7 @@ proc move_conflict_for(
             );
         }
 
-        if current.kind == MoveEventKind.Use
-            or current.kind == MoveEventKind.Copy {
-
+        if current.kind == MoveEventKind.Use or current.kind == MoveEventKind.Copy {
             give move_conflict(
                 current.local,
                 MoveConflictKind.UseAfterMove,
@@ -524,9 +413,7 @@ proc move_conflict_for(
             );
         }
 
-        if current.kind == MoveEventKind.BorrowShared
-            or current.kind == MoveEventKind.BorrowMutable {
-
+        if current.kind == MoveEventKind.BorrowShared or current.kind == MoveEventKind.BorrowMutable {
             give move_conflict(
                 current.local,
                 MoveConflictKind.BorrowAfterMove,
@@ -558,9 +445,7 @@ proc move_conflict_for(
     }
 
     if previous.kind == MoveEventKind.Drop {
-        if event_reads_value(current.kind)
-            or event_consumes_value(current.kind) {
-
+        if event_reads_value(current.kind) or event_consumes_value(current.kind) {
             give move_conflict(
                 current.local,
                 MoveConflictKind.UseAfterDrop,
@@ -603,13 +488,10 @@ proc first_identifier(text: string) -> string {
 
     while i < len(trimmed) {
         let ch: string = slice(trimmed, i, i + 1);
-        let is_alpha: bool =
-            (ch >= "a" and ch <= "z")
-            or (ch >= "A" and ch <= "Z")
-            or ch == "_";
-
-        let is_digit: bool =
-            ch >= "0" and ch <= "9";
+        let is_lower_alpha: bool = ch >= "a" and ch <= "z";
+        let is_upper_alpha: bool = ch >= "A" and ch <= "Z";
+        let is_alpha: bool = is_lower_alpha or is_upper_alpha or ch == "_";
+        let is_digit: bool = ch >= "0" and ch <= "9";
 
         if i == 0 {
             if !is_alpha {
@@ -651,32 +533,18 @@ proc move_source_from_expr(expr: string) -> string {
     give first_identifier(trimmed);
 }
 
-proc move_event_from_expr(
-    expr: string,
-    line: u64
-) -> MoveEvent {
-    let source: string =
-        move_source_from_expr(expr);
+proc move_event_from_expr(expr: string, line: u64) -> MoveEvent {
+    let source: string = move_source_from_expr(expr);
 
     if source == "" {
         give invalid_move_event();
     }
 
-    give move_event(
-        source,
-        MoveEventKind.Move,
-        line,
-        "move from expression"
-    );
+    give move_event(source, MoveEventKind.Move, line, "move from expression");
 }
 
-proc tracker_apply_expr_move(
-    tracker: MoveTracker,
-    expr: string,
-    line: u64
-) -> MoveTracker {
-    let event: MoveEvent =
-        move_event_from_expr(expr, line);
+proc tracker_apply_expr_move(tracker: MoveTracker, expr: string, line: u64) -> MoveTracker {
+    let event: MoveEvent = move_event_from_expr(expr, line);
 
     if !event.valid {
         give tracker;

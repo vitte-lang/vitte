@@ -49,6 +49,7 @@ proc span_contains(parent: AstSpan, child: AstSpan) -> bool {
 }
 
 proc validate_type_expr(node: AstTypeExpr, context: string) -> string {
+  let unary_type_kind: bool = node.kind == AstTypeKind.Pointer or node.kind == AstTypeKind.Reference or node.kind == AstTypeKind.MutableRef or node.kind == AstTypeKind.Array or node.kind == AstTypeKind.Slice or node.kind == AstTypeKind.Optional or node.kind == AstTypeKind.Dyn or node.kind == AstTypeKind.Impl;
   if not node.valid {
     give context + " missing type";
   }
@@ -61,7 +62,7 @@ proc validate_type_expr(node: AstTypeExpr, context: string) -> string {
   if node.text == "" {
     give context + " has empty type text";
   }
-  if (node.kind == AstTypeKind.Pointer or node.kind == AstTypeKind.Reference or node.kind == AstTypeKind.MutableRef or node.kind == AstTypeKind.Array or node.kind == AstTypeKind.Slice or node.kind == AstTypeKind.Optional or node.kind == AstTypeKind.Dyn or node.kind == AstTypeKind.Impl) and len(node.children) != 1 {
+  if unary_type_kind and len(node.children) != 1 {
     give context + " has invalid unary type shape";
   }
   if node.kind == AstTypeKind.Tuple and len(node.children) < 2 {
@@ -119,6 +120,8 @@ proc validate_generic_param(node: AstGenericParam, context: string) -> string {
 }
 
 proc validate_pattern(node: AstPattern, context: string) -> string {
+  let named_pattern: bool = node.kind == AstPatternKind.Name or node.kind == AstPatternKind.Struct or node.kind == AstPatternKind.Enum;
+  let ref_pattern: bool = node.kind == AstPatternKind.Ref or node.kind == AstPatternKind.MutableRef;
   if not node.valid {
     give context + " missing pattern";
   }
@@ -131,10 +134,10 @@ proc validate_pattern(node: AstPattern, context: string) -> string {
   if node.kind == AstPatternKind.Wildcard or node.kind == AstPatternKind.Literal {
     give "";
   }
-  if (node.kind == AstPatternKind.Name or node.kind == AstPatternKind.Struct or node.kind == AstPatternKind.Enum) and node.name == "" {
+  if named_pattern and node.name == "" {
     give context + " has empty pattern name";
   }
-  if (node.kind == AstPatternKind.Ref or node.kind == AstPatternKind.MutableRef) and len(node.children) != 1 {
+  if ref_pattern and len(node.children) != 1 {
     give context + " reference pattern needs one child";
   }
   if node.kind == AstPatternKind.Tuple and len(node.children) < 2 {
@@ -239,6 +242,9 @@ proc validate_proc_signature(node: AstProcSignature, context: string) -> string 
 }
 
 proc validate_expr(node: AstExpr, context: string) -> string {
+  let literal_expr: bool = node.kind == AstExprKind.Int or node.kind == AstExprKind.Float or node.kind == AstExprKind.Bool or node.kind == AstExprKind.String or node.kind == AstExprKind.Char;
+  let unary_expr: bool = node.kind == AstExprKind.Unary or node.kind == AstExprKind.BorrowShared or node.kind == AstExprKind.BorrowMut or node.kind == AstExprKind.Deref or node.kind == AstExprKind.Try or node.kind == AstExprKind.Sizeof or node.kind == AstExprKind.Alignof or node.kind == AstExprKind.Offsetof or node.kind == AstExprKind.Typeof or node.kind == AstExprKind.Nameof;
+  let binary_like_expr: bool = node.kind == AstExprKind.Binary or node.kind == AstExprKind.Index or node.kind == AstExprKind.Range or node.kind == AstExprKind.Is or node.kind == AstExprKind.Cast;
   if not node.valid {
     give context + " missing expression";
   }
@@ -254,34 +260,39 @@ proc validate_expr(node: AstExpr, context: string) -> string {
   if node.kind == AstExprKind.Name and node.binding_name == "" {
     give context + " has empty binding name";
   }
-  if (node.kind == AstExprKind.Int or node.kind == AstExprKind.Float or node.kind == AstExprKind.Bool or node.kind == AstExprKind.String or node.kind == AstExprKind.Char) and node.text == "" {
+  if literal_expr and node.text == "" {
     give context + " has empty literal text";
   }
-  if (node.kind == AstExprKind.Unary or node.kind == AstExprKind.BorrowShared or node.kind == AstExprKind.BorrowMut or node.kind == AstExprKind.Deref or node.kind == AstExprKind.Try or node.kind == AstExprKind.Sizeof or node.kind == AstExprKind.Alignof or node.kind == AstExprKind.Offsetof or node.kind == AstExprKind.Typeof or node.kind == AstExprKind.Nameof) and len(node.children) != 1 {
+  if unary_expr and len(node.children) != 1 {
     give context + " must have exactly one child";
   }
-  if (node.kind == AstExprKind.Binary or node.kind == AstExprKind.Index or node.kind == AstExprKind.Range or node.kind == AstExprKind.Is or node.kind == AstExprKind.Cast) and len(node.children) != 2 {
+  if binary_like_expr and len(node.children) != 2 {
     give context + " must have exactly two children";
   }
   if node.kind == AstExprKind.Call and len(node.children) == 0 {
     give context + " must include callee child";
   }
-  if node.kind == AstExprKind.Member and (len(node.children) != 2 or node.member_name == "") {
+  let invalid_member_shape: bool = len(node.children) != 2 or node.member_name == "";
+  if node.kind == AstExprKind.Member and invalid_member_shape {
     give context + " must include base and member name";
   }
-  if (node.kind == AstExprKind.Unary or node.kind == AstExprKind.BorrowShared or node.kind == AstExprKind.BorrowMut or node.kind == AstExprKind.Deref or node.kind == AstExprKind.Try or node.kind == AstExprKind.Sizeof or node.kind == AstExprKind.Alignof or node.kind == AstExprKind.Offsetof or node.kind == AstExprKind.Typeof or node.kind == AstExprKind.Nameof) and node.subject_index >= len(node.children) {
+  if unary_expr and node.subject_index >= len(node.children) {
     give context + " has invalid subject index";
   }
   if node.kind == AstExprKind.Call and node.callee_index >= len(node.children) {
     give context + " has invalid callee index";
   }
-  if (node.kind == AstExprKind.Binary or node.kind == AstExprKind.Range or node.kind == AstExprKind.Is or node.kind == AstExprKind.Cast) and (node.lhs_index >= len(node.children) or node.rhs_index >= len(node.children) or node.lhs_index == node.rhs_index) {
+  let invalid_binary_indexes: bool = node.lhs_index >= len(node.children) or node.rhs_index >= len(node.children) or node.lhs_index == node.rhs_index;
+  let binary_expr: bool = node.kind == AstExprKind.Binary or node.kind == AstExprKind.Range or node.kind == AstExprKind.Is or node.kind == AstExprKind.Cast;
+  if binary_expr and invalid_binary_indexes {
     give context + " has invalid binary child indexes";
   }
-  if node.kind == AstExprKind.Member and (node.base_index >= len(node.children) or node.member_name == "") {
+  let invalid_member_structure: bool = node.base_index >= len(node.children) or node.member_name == "";
+  if node.kind == AstExprKind.Member and invalid_member_structure {
     give context + " has invalid member structure";
   }
-  if node.kind == AstExprKind.Index and (node.base_index >= len(node.children) or node.index_index >= len(node.children) or node.base_index == node.index_index) {
+  let invalid_index_structure: bool = node.base_index >= len(node.children) or node.index_index >= len(node.children) or node.base_index == node.index_index;
+  if node.kind == AstExprKind.Index and invalid_index_structure {
     give context + " has invalid index structure";
   }
   let i: u64 = 0;
@@ -305,6 +316,9 @@ proc validate_expr(node: AstExpr, context: string) -> string {
 }
 
 proc validate_stmt(node: AstStmt, context: string) -> string {
+  let binding_stmt: bool = node.kind == AstStmtKind.Let or node.kind == AstStmtKind.Const;
+  let conditional_stmt: bool = node.kind == AstStmtKind.If or node.kind == AstStmtKind.While;
+  let control_stmt: bool = node.kind == AstStmtKind.Break or node.kind == AstStmtKind.Continue or node.kind == AstStmtKind.Unreachable;
   if not node.valid {
     give context + " missing statement";
   }
@@ -314,7 +328,7 @@ proc validate_stmt(node: AstStmt, context: string) -> string {
   if not span_is_valid(node.span) {
     give context + " has invalid statement span";
   }
-  if node.kind == AstStmtKind.Let or node.kind == AstStmtKind.Const {
+  if binding_stmt {
     let pattern_error: string = validate_pattern(node.pattern, context + " binding");
     if pattern_error != "" {
       give pattern_error;
@@ -335,7 +349,7 @@ proc validate_stmt(node: AstStmt, context: string) -> string {
     if expr_error != "" {
       give expr_error;
     }
-  } elif node.kind == AstStmtKind.If or node.kind == AstStmtKind.While {
+  } elif conditional_stmt {
     let cond_error: string = validate_expr(node.condition, context + " condition");
     if cond_error != "" {
       give cond_error;
@@ -346,7 +360,7 @@ proc validate_stmt(node: AstStmt, context: string) -> string {
       give expr_error;
     }
   }
-  if (node.kind == AstStmtKind.Break or node.kind == AstStmtKind.Continue or node.kind == AstStmtKind.Unreachable) and len(node.then_stmts) > 0 {
+  if control_stmt and len(node.then_stmts) > 0 {
     give context + " control statement must not carry then stmts";
   }
   if node.annotation.valid {
@@ -387,6 +401,9 @@ proc validate_stmt(node: AstStmt, context: string) -> string {
 }
 
 proc validate_item(node: AstItem, context: string) -> string {
+  let named_decl_item: bool = node.kind == AstItemKind.Const or node.kind == AstItemKind.Proc or node.kind == AstItemKind.Form or node.kind == AstItemKind.Class or node.kind == AstItemKind.Union or node.kind == AstItemKind.Trait or node.kind == AstItemKind.Test or node.kind == AstItemKind.Bench;
+  let other_named_item: bool = node.kind == AstItemKind.Type or node.kind == AstItemKind.Opaque or node.kind == AstItemKind.Extern or node.kind == AstItemKind.Impl or node.kind == AstItemKind.Intrinsic or node.kind == AstItemKind.Query or node.kind == AstItemKind.Compiler or node.kind == AstItemKind.Pass or node.kind == AstItemKind.Backend or node.kind == AstItemKind.Diagnostic or node.kind == AstItemKind.Macro or node.kind == AstItemKind.Entry;
+  let type_decl_item: bool = node.kind == AstItemKind.Type or node.kind == AstItemKind.Opaque;
   if not node.valid {
     give context + " missing item";
   }
@@ -396,10 +413,10 @@ proc validate_item(node: AstItem, context: string) -> string {
   if not span_is_valid(node.span) {
     give context + " has invalid item span";
   }
-  if (node.kind == AstItemKind.Const or node.kind == AstItemKind.Proc or node.kind == AstItemKind.Form or node.kind == AstItemKind.Class or node.kind == AstItemKind.Union or node.kind == AstItemKind.Trait or node.kind == AstItemKind.Test or node.kind == AstItemKind.Bench) and node.name == "" {
+  if named_decl_item and node.name == "" {
     give context + " missing item name";
   }
-  if (node.kind == AstItemKind.Type or node.kind == AstItemKind.Opaque or node.kind == AstItemKind.Extern or node.kind == AstItemKind.Impl or node.kind == AstItemKind.Compiler or node.kind == AstItemKind.Pass or node.kind == AstItemKind.Backend or node.kind == AstItemKind.Diagnostic or node.kind == AstItemKind.Macro or node.kind == AstItemKind.Entry) and node.name == "" {
+  if other_named_item and node.name == "" {
     give context + " missing item name";
   }
   if node.visibility == "" {
@@ -417,7 +434,7 @@ proc validate_item(node: AstItem, context: string) -> string {
   if node.kind == AstItemKind.Impl and not node.target_type.valid {
     give context + " impl item missing target type";
   }
-  if (node.kind == AstItemKind.Type or node.kind == AstItemKind.Opaque) and not node.annotation.valid {
+  if type_decl_item and not node.annotation.valid {
     give context + " type item missing target type";
   }
   if node.kind == AstItemKind.Extern and node.abi == "" and find(node.name, "extern") < 0 {

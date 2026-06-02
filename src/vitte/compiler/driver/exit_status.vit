@@ -71,21 +71,15 @@ proc exit_code(status: DriverExitStatus) -> u64 {
     if status == DriverExitStatus.Ok {
         give 0;
     }
-    if status == DriverExitStatus.InternalError
-        or status == DriverExitStatus.BootstrapFailure
-        or status == DriverExitStatus.PipelineFailure {
+    if status == DriverExitStatus.InternalError or status == DriverExitStatus.BootstrapFailure or status == DriverExitStatus.PipelineFailure {
         give 2;
     }
 
-    if status == DriverExitStatus.BackendSelectionFailure
-        or status == DriverExitStatus.CodegenFailure
-        or status == DriverExitStatus.ObjectEmissionFailure
-        or status == DriverExitStatus.AssemblyEmissionFailure {
+    if status == DriverExitStatus.BackendSelectionFailure or status == DriverExitStatus.CodegenFailure or status == DriverExitStatus.ObjectEmissionFailure or status == DriverExitStatus.AssemblyEmissionFailure {
         give 3;
     }
 
-    if status == DriverExitStatus.LinkFailure
-        or status == DriverExitStatus.ArchiveFailure {
+    if status == DriverExitStatus.LinkFailure or status == DriverExitStatus.ArchiveFailure {
         give 4;
     }
 
@@ -252,10 +246,7 @@ proc is_fatal(status: DriverExitStatus) -> bool {
     give true;
 }
 
-proc make_status_info(
-    status: DriverExitStatus,
-    description: string
-) -> DriverStatusInfo {
+proc make_status_info(status: DriverExitStatus, description: string) -> DriverStatusInfo {
     give DriverStatusInfo {
         status: status,
         code: exit_code(status),
@@ -270,8 +261,7 @@ proc driver_error_code_contract_version() -> string {
 }
 
 proc driver_error_code_contract_text() -> string {
-    give
-        "DRIVER_E_MISSING_TARGET,"
+    give "DRIVER_E_MISSING_TARGET,"
         + "DRIVER_E_MISSING_OUTPUT_DIR,"
         + "DRIVER_E_NO_INPUT,"
         + "DRIVER_E_INVALID_LINK_TARGET,"

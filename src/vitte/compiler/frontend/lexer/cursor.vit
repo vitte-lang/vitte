@@ -98,8 +98,7 @@ proc cursor_previous(cursor: Cursor) -> string {
 }
 
 proc cursor_peek(cursor: Cursor, offset: u64) -> string {
-  let target: u64 =
-    cursor.index + offset;
+  let target: u64 = cursor.index + offset;
 
   if target >= cursor.length {
     give "";
@@ -117,12 +116,10 @@ proc cursor_slice(cursor: Cursor, start: u64, end0: u64) -> string {
     give "";
   }
 
-  let safe_end: u64 =
-    if end0 > cursor.length {
-      cursor.length
-    } else {
-      end0
-    };
+  let safe_end: u64 = end0;
+  if end0 > cursor.length {
+    set safe_end = cursor.length;
+  }
 
   if start >= safe_end {
     give "";
@@ -163,8 +160,7 @@ proc cursor_is_newline(cursor: Cursor) -> bool {
 }
 
 proc cursor_is_space(cursor: Cursor) -> bool {
-  let ch: string =
-    cursor_current(cursor);
+  let ch: string = cursor_current(cursor);
 
   give ch == " "
     or ch == "\t"
@@ -173,20 +169,17 @@ proc cursor_is_space(cursor: Cursor) -> bool {
 }
 
 proc cursor_is_digit(cursor: Cursor) -> bool {
-  let ch: string =
-    cursor_current(cursor);
+  let ch: string = cursor_current(cursor);
 
   give ch >= "0"
     and ch <= "9";
 }
 
 proc cursor_is_alpha(cursor: Cursor) -> bool {
-  let ch: string =
-    cursor_current(cursor);
-
-  give (ch >= "a" and ch <= "z")
-    or (ch >= "A" and ch <= "Z")
-    or ch == "_";
+  let ch: string = cursor_current(cursor);
+  let lower: bool = ch >= "a" and ch <= "z";
+  let upper: bool = ch >= "A" and ch <= "Z";
+  give lower or upper or ch == "_";
 }
 
 proc cursor_is_alnum(cursor: Cursor) -> bool {
@@ -199,8 +192,7 @@ proc cursor_advance(cursor: Cursor) -> Cursor {
     give cursor;
   }
 
-  let ch: string =
-    cursor_current(cursor);
+  let ch: string = cursor_current(cursor);
 
   if ch == "\n" {
     give Cursor {
@@ -224,47 +216,33 @@ proc cursor_advance(cursor: Cursor) -> Cursor {
 }
 
 proc cursor_advance_n(cursor: Cursor, count: u64) -> Cursor {
-  let current: Cursor =
-    cursor;
+  let current: Cursor = cursor;
 
   let i: u64 = 0;
 
-  while i < count
-    and not cursor_eof(current) {
-
-    set current =
-      cursor_advance(current);
-
-    set i =
-      i + 1;
+  while i < count and not cursor_eof(current) {
+    set current = cursor_advance(current);
+    set i = i + 1;
   }
 
   give current;
 }
 
 proc cursor_skip_spaces(cursor: Cursor) -> Cursor {
-  let current: Cursor =
-    cursor;
+  let current: Cursor = cursor;
 
-  while not cursor_eof(current)
-    and cursor_is_space(current) {
-
-    set current =
-      cursor_advance(current);
+  while not cursor_eof(current) and cursor_is_space(current) {
+    set current = cursor_advance(current);
   }
 
   give current;
 }
 
 proc cursor_skip_until(cursor: Cursor, needle: string) -> Cursor {
-  let current: Cursor =
-    cursor;
+  let current: Cursor = cursor;
 
-  while not cursor_eof(current)
-    and not cursor_starts_with(current, needle) {
-
-    set current =
-      cursor_advance(current);
+  while not cursor_eof(current) and not cursor_starts_with(current, needle) {
+    set current = cursor_advance(current);
   }
 
   give current;
@@ -275,10 +253,7 @@ proc cursor_consume(cursor: Cursor, needle: string) -> Cursor {
     give cursor;
   }
 
-  give cursor_advance_n(
-    cursor,
-    len(needle)
-  );
+  give cursor_advance_n(cursor, len(needle));
 }
 
 proc cursor_distance(start: Cursor, end0: Cursor) -> u64 {
@@ -290,39 +265,35 @@ proc cursor_distance(start: Cursor, end0: Cursor) -> u64 {
 }
 
 proc cursor_location(cursor: Cursor) -> string {
-  give (cursor.line as string)
-    + ":"
-    + (cursor.column as string);
+  let line_text: string = cursor.line as string;
+  let column_text: string = cursor.column as string;
+  give line_text + ":" + column_text;
 }
 
 proc cursor_summary(cursor: Cursor) -> string {
-  give "index="
-    + (cursor.index as string)
-    + " line="
-    + (cursor.line as string)
-    + " column="
-    + (cursor.column as string)
-    + " remaining="
-    + (cursor_remaining(cursor) as string)
-    + " eof="
-    + (cursor_eof(cursor) as string);
+  let index_text: string = cursor.index as string;
+  let line_text: string = cursor.line as string;
+  let column_text: string = cursor.column as string;
+  let remaining_text: string = cursor_remaining(cursor) as string;
+  let eof_text: string = cursor_eof(cursor) as string;
+  give "index "
+    + index_text
+    + " line "
+    + line_text
+    + " column "
+    + column_text
+    + " remaining "
+    + remaining_text
+    + " eof "
+    + eof_text;
 }
 
 proc cursor_selftest() -> bool {
-  let c0: Cursor =
-    cursor_new("abc\n123");
-
-  let c1: Cursor =
-    cursor_advance(c0);
-
-  let c2: Cursor =
-    cursor_advance_n(c1, 3);
-
-  let snap: CursorSnapshot =
-    cursor_snapshot(c2);
-
-  let c3: Cursor =
-    cursor_restore(c2, snap);
+  let c0: Cursor = cursor_new("abc\n123");
+  let c1: Cursor = cursor_advance(c0);
+  let c2: Cursor = cursor_advance_n(c1, 3);
+  let snap: CursorSnapshot = cursor_snapshot(c2);
+  let c3: Cursor = cursor_restore(c2, snap);
 
   give cursor_current(c0) == "a"
     and cursor_peek(c0, 1) == "b"

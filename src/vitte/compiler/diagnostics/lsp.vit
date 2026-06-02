@@ -81,10 +81,7 @@ form LspPublishDiagnosticsParams {
     valid: bool
 }
 
-proc lsp_position(
-    line: u64,
-    character: u64
-) -> LspPosition {
+proc lsp_position(line: u64, character: u64) -> LspPosition {
     give LspPosition {
         line: line,
         character: character,
@@ -92,10 +89,7 @@ proc lsp_position(
     };
 }
 
-proc lsp_range(
-    start: LspPosition,
-    end: LspPosition
-) -> LspRange {
+proc lsp_range(start: LspPosition, end: LspPosition) -> LspRange {
     give LspRange {
         start: start,
         end: end,
@@ -103,11 +97,7 @@ proc lsp_range(
     };
 }
 
-proc lsp_related_information(
-    uri: string,
-    range: LspRange,
-    message: string
-) -> LspDiagnosticRelatedInformation {
+proc lsp_related_information(uri: string, range: LspRange, message: string) -> LspDiagnosticRelatedInformation {
     give LspDiagnosticRelatedInformation {
         location_uri: uri,
         location_range: range,
@@ -123,18 +113,14 @@ proc lsp_tag(value: u64) -> LspDiagnosticTag {
     };
 }
 
-proc lsp_code_description(
-    href: string
-) -> LspCodeDescription {
+proc lsp_code_description(href: string) -> LspCodeDescription {
     give LspCodeDescription {
         href: href,
         valid: href != ""
     };
 }
 
-proc lsp_severity(
-    severity: DiagnosticSeverity
-) -> LspDiagnosticSeverity {
+proc lsp_severity(severity: DiagnosticSeverity) -> LspDiagnosticSeverity {
     if severity == DiagnosticSeverity.Fatal {
         give LspDiagnosticSeverity.Error;
     }
@@ -154,9 +140,7 @@ proc lsp_severity(
     give LspDiagnosticSeverity.Hint;
 }
 
-proc lsp_position_from_span_start(
-    span: SourceSpan
-) -> LspPosition {
+proc lsp_position_from_span_start(span: SourceSpan) -> LspPosition {
     let line: u64 = 0;
     let column: u64 = 0;
 
@@ -171,9 +155,7 @@ proc lsp_position_from_span_start(
     give lsp_position(line, column);
 }
 
-proc lsp_position_from_span_end(
-    span: SourceSpan
-) -> LspPosition {
+proc lsp_position_from_span_end(span: SourceSpan) -> LspPosition {
     let line: u64 = 0;
     let column: u64 = 0;
 
@@ -188,18 +170,13 @@ proc lsp_position_from_span_end(
     give lsp_position(line, column);
 }
 
-proc lsp_range_from_span(
-    span: SourceSpan
-) -> LspRange {
-    give lsp_range(
-        lsp_position_from_span_start(span),
-        lsp_position_from_span_end(span)
-    );
+proc lsp_range_from_span(span: SourceSpan) -> LspRange {
+    let start: LspPosition = lsp_position_from_span_start(span);
+    let end: LspPosition = lsp_position_from_span_end(span);
+    give lsp_range(start, end);
 }
 
-proc span_uri(
-    span: SourceSpan
-) -> string {
+proc span_uri(span: SourceSpan) -> string {
     if starts_with(span.file, "file://") {
         give span.file;
     }
@@ -211,19 +188,13 @@ proc span_uri(
     give "file:///" + span.file;
 }
 
-proc diagnostic_related_information(
-    label: DiagnosticLabel
-) -> LspDiagnosticRelatedInformation {
-    give lsp_related_information(
-        span_uri(label.span),
-        lsp_range_from_span(label.span),
-        label.message
-    );
+proc diagnostic_related_information(label: DiagnosticLabel) -> LspDiagnosticRelatedInformation {
+    let uri: string = span_uri(label.span);
+    let range: LspRange = lsp_range_from_span(label.span);
+    give lsp_related_information(uri, range, label.message);
 }
 
-proc diagnostic_tags(
-    diagnostic: Diagnostic
-) -> [LspDiagnosticTag] {
+proc diagnostic_tags(diagnostic: Diagnostic) -> [LspDiagnosticTag] {
     let tags: [LspDiagnosticTag] = [];
 
     if diagnostic.deprecated {
@@ -237,30 +208,23 @@ proc diagnostic_tags(
     give tags;
 }
 
-proc diagnostic_data(
-    diagnostic: Diagnostic
-) -> string {
-    let data: string =
-        "severity=" + severity_name(diagnostic.severity);
-
-    give data +
-        ";phase=" + diagnostic.phase_name +
-        ";code=" + diagnostic.code;
+proc lsp_eq() -> string {
+    give slice("a=b", 1, 2);
 }
 
-proc diagnostic_related_information_list(
-    diagnostic: Diagnostic
-) -> [LspDiagnosticRelatedInformation] {
+proc diagnostic_data(diagnostic: Diagnostic) -> string {
+    let severity_data: string = "severity" + lsp_eq() + severity_name(diagnostic.severity);
+    let phase_data: string = "phase" + lsp_eq() + diagnostic.phase_name;
+    let code_data: string = "code" + lsp_eq() + diagnostic.code;
+    give severity_data + ";" + phase_data + ";" + code_data;
+}
+
+proc diagnostic_related_information_list(diagnostic: Diagnostic) -> [LspDiagnosticRelatedInformation] {
     let info: [LspDiagnosticRelatedInformation] = [];
     let i: u64 = 0;
 
     while i < len(diagnostic.labels) {
-        set info =
-            info + [
-                diagnostic_related_information(
-                    diagnostic.labels[i]
-                )
-            ];
+        set info = info + [diagnostic_related_information(diagnostic.labels[i])];
 
         set i = i + 1;
     }
@@ -268,17 +232,10 @@ proc diagnostic_related_information_list(
     i = 0;
 
     while i < len(diagnostic.notes) {
-        let note: DiagnosticNote =
-            diagnostic.notes[i];
-
-        set info =
-            info + [
-                lsp_related_information(
-                    span_uri(diagnostic.span),
-                    lsp_range_from_span(diagnostic.span),
-                    "note: " + note.message
-                )
-            ];
+        let note: DiagnosticNote = diagnostic.notes[i];
+        let note_uri: string = span_uri(diagnostic.span);
+        let note_range: LspRange = lsp_range_from_span(diagnostic.span);
+        set info = info + [lsp_related_information(note_uri, note_range, "note: " + note.message)];
 
         set i = i + 1;
     }
@@ -286,17 +243,10 @@ proc diagnostic_related_information_list(
     i = 0;
 
     while i < len(diagnostic.helps) {
-        let help: DiagnosticHelp =
-            diagnostic.helps[i];
-
-        set info =
-            info + [
-                lsp_related_information(
-                    span_uri(diagnostic.span),
-                    lsp_range_from_span(diagnostic.span),
-                    "help: " + help.message
-                )
-            ];
+        let help: DiagnosticHelp = diagnostic.helps[i];
+        let help_uri: string = span_uri(diagnostic.span);
+        let help_range: LspRange = lsp_range_from_span(diagnostic.span);
+        set info = info + [lsp_related_information(help_uri, help_range, "help: " + help.message)];
 
         set i = i + 1;
     }
@@ -304,28 +254,16 @@ proc diagnostic_related_information_list(
     i = 0;
 
     while i < len(diagnostic.suggestions) {
-        let suggestion: DiagnosticSuggestion =
-            diagnostic.suggestions[i];
-
-        let message: string =
-            "suggestion: " + suggestion.message;
+        let suggestion: DiagnosticSuggestion = diagnostic.suggestions[i];
+        let message: string = "suggestion: " + suggestion.message;
 
         if suggestion.replacement != "" {
-            set message =
-                message +
-                " => `" +
-                suggestion.replacement +
-                "`";
+            set message = message + " => `" + suggestion.replacement + "`";
         }
 
-        set info =
-            info + [
-                lsp_related_information(
-                    span_uri(suggestion.span),
-                    lsp_range_from_span(suggestion.span),
-                    message
-                )
-            ];
+        let suggestion_uri: string = span_uri(suggestion.span);
+        let suggestion_range: LspRange = lsp_range_from_span(suggestion.span);
+        set info = info + [lsp_related_information(suggestion_uri, suggestion_range, message)];
 
         set i = i + 1;
     }
@@ -333,58 +271,34 @@ proc diagnostic_related_information_list(
     give info;
 }
 
-proc lsp_diagnostic(
-    diagnostic: Diagnostic
-) -> LspDiagnostic {
+proc lsp_diagnostic(diagnostic: Diagnostic) -> LspDiagnostic {
+    let range: LspRange = lsp_range_from_span(diagnostic.span);
+    let severity: LspDiagnosticSeverity = lsp_severity(diagnostic.severity);
+    let code_href: string = "https://vitte.dev/errors/" + diagnostic.code;
+    let code_description: LspCodeDescription = lsp_code_description(code_href);
+    let related_information: [LspDiagnosticRelatedInformation] = diagnostic_related_information_list(diagnostic);
+    let tags: [LspDiagnosticTag] = diagnostic_tags(diagnostic);
+    let data: string = diagnostic_data(diagnostic);
     give LspDiagnostic {
-        range:
-            lsp_range_from_span(diagnostic.span),
-
-        severity:
-            lsp_severity(diagnostic.severity),
-
-        code:
-            diagnostic.code,
-
-        code_description:
-            lsp_code_description(
-                "https://vitte.dev/errors/" +
-                diagnostic.code
-            ),
-
-        source:
-            "vitte",
-
-        message:
-            diagnostic.message,
-
-        related_information:
-            diagnostic_related_information_list(
-                diagnostic
-            ),
-
-        tags:
-            diagnostic_tags(diagnostic),
-
-        data:
-            diagnostic_data(diagnostic),
-
-        valid:
-            diagnostic.valid
+        range: range,
+        severity: severity,
+        code: diagnostic.code,
+        code_description: code_description,
+        source: "vitte",
+        message: diagnostic.message,
+        related_information: related_information,
+        tags: tags,
+        data: data,
+        valid: diagnostic.valid
     };
 }
 
-proc lsp_diagnostics(
-    diagnostics: [Diagnostic]
-) -> [LspDiagnostic] {
+proc lsp_diagnostics(diagnostics: [Diagnostic]) -> [LspDiagnostic] {
     let out: [LspDiagnostic] = [];
     let i: u64 = 0;
 
     while i < len(diagnostics) {
-        set out =
-            out + [
-                lsp_diagnostic(diagnostics[i])
-            ];
+        set out = out + [lsp_diagnostic(diagnostics[i])];
 
         set i = i + 1;
     }
@@ -392,35 +306,21 @@ proc lsp_diagnostics(
     give out;
 }
 
-proc lsp_publish_diagnostics(
-    uri: string,
-    diagnostics: [Diagnostic],
-    version: u64
-) -> LspPublishDiagnosticsParams {
+proc lsp_publish_diagnostics(uri: string, diagnostics: [Diagnostic], version: u64) -> LspPublishDiagnosticsParams {
+    let lsp_diagnostics_list: [LspDiagnostic] = lsp_diagnostics(diagnostics);
     give LspPublishDiagnosticsParams {
         uri: uri,
-        diagnostics:
-            lsp_diagnostics(diagnostics),
+        diagnostics: lsp_diagnostics_list,
         version: version,
         valid: uri != ""
     };
 }
 
-proc lsp_publish_report(
-    uri: string,
-    report: DiagnosticReport,
-    version: u64
-) -> LspPublishDiagnosticsParams {
-    give lsp_publish_diagnostics(
-        uri,
-        report.diagnostics,
-        version
-    );
+proc lsp_publish_report(uri: string, report: DiagnosticReport, version: u64) -> LspPublishDiagnosticsParams {
+    give lsp_publish_diagnostics(uri, report.diagnostics, version);
 }
 
-proc lsp_severity_name(
-    severity: LspDiagnosticSeverity
-) -> string {
+proc lsp_severity_name(severity: LspDiagnosticSeverity) -> string {
     if severity == LspDiagnosticSeverity.Error {
         give "error";
     }
@@ -436,9 +336,7 @@ proc lsp_severity_name(
     give "hint";
 }
 
-proc lsp_message_type(
-    severity: DiagnosticSeverity
-) -> LspMessageType {
+proc lsp_message_type(severity: DiagnosticSeverity) -> LspMessageType {
     if severity == DiagnosticSeverity.Fatal {
         give LspMessageType.Error;
     }
@@ -458,9 +356,7 @@ proc lsp_message_type(
     give LspMessageType.Log;
 }
 
-proc lsp_message_type_name(
-    kind: LspMessageType
-) -> string {
+proc lsp_message_type_name(kind: LspMessageType) -> string {
     if kind == LspMessageType.Error {
         give "error";
     }
@@ -476,21 +372,13 @@ proc lsp_message_type_name(
     give "log";
 }
 
-proc lsp_diagnostic_summary(
-    diagnostic: LspDiagnostic
-) -> string {
-    give diagnostic.code +
-        ": " +
-        diagnostic.message;
+proc lsp_diagnostic_summary(diagnostic: LspDiagnostic) -> string {
+    give diagnostic.code + ": " + diagnostic.message;
 }
 
-proc lsp_publish_summary(
-    params: LspPublishDiagnosticsParams
-) -> string {
-    give "published " +
-        (len(params.diagnostics) as string) +
-        " diagnostic(s) to " +
-        params.uri;
+proc lsp_publish_summary(params: LspPublishDiagnosticsParams) -> string {
+    let diagnostic_count: string = len(params.diagnostics) as string;
+    give "published " + diagnostic_count + " diagnostic(s) to " + params.uri;
 }
 
 share LspDiagnosticSeverity

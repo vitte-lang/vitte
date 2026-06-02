@@ -1,92 +1,25 @@
 space vitte/compiler/backend/target/mod
 
-use vitte/compiler/backend/target/triple.{
-  TargetTriple,
-
-  target_triple,
-
-  triple_x86_64_linux,
-  triple_aarch64_linux,
-  triple_riscv64_linux,
-  triple_i386_linux,
-
-  triple_windows_x86_64,
-  triple_macos_apple_silicon,
-  triple_wasm32,
-
-  triple_text,
-  triple_summary,
-
-  triple_is_unix,
-  triple_is_windows,
-  triple_is_apple,
-  triple_is_wasm,
-  triple_is_retro
-}
-
-use vitte/compiler/backend/target/layout.{
-  TargetLayout,
-
-  target_layout_for,
-
-  pointer_size,
-  stack_alignment,
-  simd_alignment,
-
-  is_little_endian,
-
-  layout_summary
-}
-
-use vitte/compiler/backend/target/x86_64.{
-  X8664Target,
-
-  target_x86_64_linux,
-  target_x86_64_windows,
-  target_x86_64_macos,
-  target_x86_64_retro,
-  target_x86_64_modern,
-
-  target_supports_modern_isa
-}
-
-use vitte/compiler/backend/target/riscv64.{
-  Riscv64Target,
-
-  target_riscv64_linux,
-  target_riscv64_embedded,
-  target_riscv64_vector,
-
-  target_supports_vectors
-}
-use vitte/compiler/backend/target/config
-
-use vitte/compiler/backend/target.{
-  default_feature_set,
-  feature_count,
-  feature_summary
-}
-use vitte/compiler/backend/target/config
+use vitte/compiler/backend/target/triple.{ TargetTriple, triple_x86_64_linux, triple_aarch64_linux, triple_riscv64_linux, triple_i386_linux, triple_windows_x86_64, triple_macos_apple_silicon, triple_wasm32, triple_text, triple_summary, triple_is_unix, triple_is_windows, triple_is_apple, triple_is_wasm, triple_is_retro }
+use vitte/compiler/backend/target/layout.{ TargetLayout, target_layout_for, pointer_size, stack_alignment, simd_alignment, is_little_endian, layout_summary }
+use vitte/compiler/backend/target/x86_64.{ X8664Target, target_x86_64_linux, target_x86_64_windows, target_x86_64_macos, target_x86_64_retro, target_x86_64_modern, target_supports_modern_isa }
+use vitte/compiler/backend/target/riscv64.{ Riscv64Target, target_riscv64_linux, target_riscv64_embedded, target_riscv64_vector, target_supports_vectors }
+use vitte/compiler/backend/target.{ default_feature_set, feature_count, feature_summary }
 
 export *
 
 pick BackendTargetKind {
   Unknown,
-
   X8664,
   Aarch64,
   Riscv64,
   I386,
-
   Wasm32,
   Wasm64,
-
   M68k,
   PowerPc,
   Sparc,
-
   AppleSilicon,
-
   Embedded,
   Retro,
   Experimental,
@@ -94,490 +27,167 @@ pick BackendTargetKind {
 
 form BackendTarget {
   kind: BackendTargetKind
-
   triple: TargetTriple
   layout: TargetLayout
-
   cpu: string
-
   features: [string]
-
   feature_count: u64
-
   object_format: string
-
   executable_extension: string
   static_library_extension: string
   dynamic_library_extension: string
-
   pointer_width: u64
-
   little_endian: bool
-
   supports_threads: bool
   supports_simd: bool
   supports_vectors: bool
-
   retro: bool
   embedded: bool
-
   valid: bool
 }
 
-proc backend_target_kind_name(
-  kind: BackendTargetKind
-) -> string {
-
+proc backend_target_kind_name(kind: BackendTargetKind) -> string {
   if kind == BackendTargetKind.X8664 {
     give "x86_64";
   }
-
   if kind == BackendTargetKind.Aarch64 {
     give "aarch64";
   }
-
   if kind == BackendTargetKind.Riscv64 {
     give "riscv64";
   }
-
   if kind == BackendTargetKind.I386 {
     give "i386";
   }
-
   if kind == BackendTargetKind.Wasm32 {
     give "wasm32";
   }
-
   if kind == BackendTargetKind.Wasm64 {
     give "wasm64";
   }
-
   if kind == BackendTargetKind.M68k {
     give "m68k";
   }
-
   if kind == BackendTargetKind.PowerPc {
     give "powerpc";
   }
-
   if kind == BackendTargetKind.Sparc {
     give "sparc";
   }
-
   if kind == BackendTargetKind.AppleSilicon {
     give "apple-silicon";
   }
-
   if kind == BackendTargetKind.Embedded {
     give "embedded";
   }
-
   if kind == BackendTargetKind.Retro {
     give "retro";
   }
-
   if kind == BackendTargetKind.Experimental {
     give "experimental";
   }
-
   give "unknown";
 }
 
-proc backend_target(
-  kind: BackendTargetKind,
-  triple: TargetTriple,
-  cpu: string,
-  executable_extension: string,
-  static_library_extension: string,
-  dynamic_library_extension: string,
-  supports_threads: bool,
-  supports_simd: bool,
-  supports_vectors0: bool,
-  retro: bool,
-  embedded: bool
-) -> BackendTarget {
-
-  let layout: TargetLayout =
-    target_layout_for(triple);
-
-  let features: [string] =
-    default_feature_set(triple);
-
+proc backend_target(kind: BackendTargetKind, triple: TargetTriple, cpu: string, executable_extension: string, static_library_extension: string, dynamic_library_extension: string, supports_threads: bool, supports_simd: bool, supports_vectors0: bool, retro: bool, embedded: bool) -> BackendTarget {
+  let layout: TargetLayout = target_layout_for(triple);
+  let features: [string] = default_feature_set(triple);
   give BackendTarget {
     kind: kind,
-
     triple: triple,
     layout: layout,
-
     cpu: cpu,
-
     features: features,
-
-    feature_count:
-      feature_count(features),
-
-    object_format:
-      triple.object_format,
-
-    executable_extension:
-      executable_extension,
-
-    static_library_extension:
-      static_library_extension,
-
-    dynamic_library_extension:
-      dynamic_library_extension,
-
-    pointer_width:
-      pointer_size(layout),
-
-    little_endian:
-      is_little_endian(layout),
-
-    supports_threads:
-      supports_threads,
-
-    supports_simd:
-      supports_simd,
-
-    supports_vectors:
-      supports_vectors0,
-
+    feature_count: feature_count(features),
+    object_format: triple.object_format,
+    executable_extension: executable_extension,
+    static_library_extension: static_library_extension,
+    dynamic_library_extension: dynamic_library_extension,
+    pointer_width: pointer_size(layout),
+    little_endian: is_little_endian(layout),
+    supports_threads: supports_threads,
+    supports_simd: supports_simd,
+    supports_vectors: supports_vectors0,
     retro: retro,
     embedded: embedded,
-
-    valid:
-      triple.valid
-      and layout.valid
+    valid: triple.valid and layout.valid,
   };
 }
 
 proc backend_target_x86_64_linux() -> BackendTarget {
-
-  let target: X8664Target =
-    target_x86_64_linux();
-
-  give backend_target(
-    BackendTargetKind.X8664,
-    target.triple,
-    target.cpu,
-    target.executable_extension,
-    target.static_library_extension,
-    target.dynamic_library_extension,
-    true,
-    true,
-    true,
-    false,
-    false
-  );
+  let target: X8664Target = target_x86_64_linux();
+  give backend_target(BackendTargetKind.X8664, target.triple, target.cpu, target.executable_extension, target.static_library_extension, target.dynamic_library_extension, true, true, true, false, false);
 }
 
 proc backend_target_x86_64_windows() -> BackendTarget {
-
-  let target: X8664Target =
-    target_x86_64_windows();
-
-  give backend_target(
-    BackendTargetKind.X8664,
-    target.triple,
-    target.cpu,
-    target.executable_extension,
-    target.static_library_extension,
-    target.dynamic_library_extension,
-    true,
-    true,
-    true,
-    false,
-    false
-  );
+  let target: X8664Target = target_x86_64_windows();
+  give backend_target(BackendTargetKind.X8664, target.triple, target.cpu, target.executable_extension, target.static_library_extension, target.dynamic_library_extension, true, true, true, false, false);
 }
 
 proc backend_target_x86_64_macos() -> BackendTarget {
-
-  let target: X8664Target =
-    target_x86_64_macos();
-
-  give backend_target(
-    BackendTargetKind.X8664,
-    target.triple,
-    target.cpu,
-    target.executable_extension,
-    target.static_library_extension,
-    target.dynamic_library_extension,
-    true,
-    true,
-    true,
-    false,
-    false
-  );
+  let target: X8664Target = target_x86_64_macos();
+  give backend_target(BackendTargetKind.X8664, target.triple, target.cpu, target.executable_extension, target.static_library_extension, target.dynamic_library_extension, true, true, true, false, false);
 }
 
 proc backend_target_x86_64_retro() -> BackendTarget {
-
-  let target: X8664Target =
-    target_x86_64_retro();
-
-  give backend_target(
-    BackendTargetKind.Retro,
-    target.triple,
-    target.cpu,
-    target.executable_extension,
-    target.static_library_extension,
-    target.dynamic_library_extension,
-    true,
-    false,
-    false,
-    true,
-    false
-  );
+  let target: X8664Target = target_x86_64_retro();
+  give backend_target(BackendTargetKind.Retro, target.triple, target.cpu, target.executable_extension, target.static_library_extension, target.dynamic_library_extension, true, false, false, true, false);
 }
 
 proc backend_target_riscv64_linux() -> BackendTarget {
-
-  let target: Riscv64Target =
-    target_riscv64_linux();
-
-  give backend_target(
-    BackendTargetKind.Riscv64,
-    target.triple,
-    target.cpu,
-    target.executable_extension,
-    target.static_library_extension,
-    target.dynamic_library_extension,
-    true,
-    false,
-    target_supports_vectors(target),
-    false,
-    false
-  );
+  let target: Riscv64Target = target_riscv64_linux();
+  give backend_target(BackendTargetKind.Riscv64, target.triple, target.cpu, target.executable_extension, target.static_library_extension, target.dynamic_library_extension, true, false, target_supports_vectors(target), false, false);
 }
 
 proc backend_target_riscv64_embedded() -> BackendTarget {
-
-  let target: Riscv64Target =
-    target_riscv64_embedded();
-
-  give backend_target(
-    BackendTargetKind.Embedded,
-    target.triple,
-    target.cpu,
-    target.executable_extension,
-    target.static_library_extension,
-    target.dynamic_library_extension,
-    false,
-    false,
-    false,
-    false,
-    true
-  );
+  let target: Riscv64Target = target_riscv64_embedded();
+  give backend_target(BackendTargetKind.Embedded, target.triple, target.cpu, target.executable_extension, target.static_library_extension, target.dynamic_library_extension, false, false, false, false, true);
 }
 
 proc backend_target_riscv64_vector() -> BackendTarget {
-
-  let target: Riscv64Target =
-    target_riscv64_vector();
-
-  give backend_target(
-    BackendTargetKind.Riscv64,
-    target.triple,
-    target.cpu,
-    target.executable_extension,
-    target.static_library_extension,
-    target.dynamic_library_extension,
-    true,
-    true,
-    true,
-    false,
-    false
-  );
+  let target: Riscv64Target = target_riscv64_vector();
+  give backend_target(BackendTargetKind.Riscv64, target.triple, target.cpu, target.executable_extension, target.static_library_extension, target.dynamic_library_extension, true, true, true, false, false);
 }
 
 proc backend_target_apple_silicon() -> BackendTarget {
-
-  let triple: TargetTriple =
-    triple_macos_apple_silicon();
-
-  give backend_target(
-    BackendTargetKind.AppleSilicon,
-    triple,
-    "apple-m4",
-    "",
-    ".a",
-    ".dylib",
-    true,
-    true,
-    true,
-    false,
-    false
-  );
+  let triple: TargetTriple = triple_macos_apple_silicon();
+  give backend_target(BackendTargetKind.AppleSilicon, triple, "apple-m4", "", ".a", ".dylib", true, true, true, false, false);
 }
 
 proc backend_target_wasm32() -> BackendTarget {
-
-  let triple: TargetTriple =
-    triple_wasm32();
-
-  give backend_target(
-    BackendTargetKind.Wasm32,
-    triple,
-    "wasm32",
-    ".wasm",
-    ".a",
-    ".wasm",
-    false,
-    true,
-    true,
-    false,
-    false
-  );
+  let triple: TargetTriple = triple_wasm32();
+  give backend_target(BackendTargetKind.Wasm32, triple, "wasm32", ".wasm", ".a", ".wasm", false, true, true, false, false);
 }
 
-proc backend_target_native() -> BackendTarget {
-  give backend_target_x86_64_linux();
-}
+proc backend_target_native() -> BackendTarget { give backend_target_x86_64_linux(); }
+proc target_is_native(target: BackendTarget) -> bool { let native: BackendTarget = backend_target_native(); give triple_text(target.triple) == triple_text(native.triple); }
+proc target_supports_parallel_codegen(target: BackendTarget) -> bool { give target.supports_threads and target.pointer_width >= 8; }
+proc target_supports_jit(target: BackendTarget) -> bool { give not target.embedded and not target.retro and not triple_is_wasm(target.triple); }
+proc target_supports_shared_objects(target: BackendTarget) -> bool { give target.dynamic_library_extension != ""; }
+proc target_supports_advanced_optimizations(target: BackendTarget) -> bool { give target.supports_simd and target.supports_vectors and not target.retro; }
+proc target_architecture_name(target: BackendTarget) -> string { give backend_target_kind_name(target.kind); }
 
-proc target_is_native(
-  target: BackendTarget
-) -> bool {
-
-  let native: BackendTarget =
-    backend_target_native();
-
-  give triple_text(target.triple)
-    == triple_text(native.triple);
-}
-
-proc target_supports_parallel_codegen(
-  target: BackendTarget
-) -> bool {
-
-  give target.supports_threads
-    and target.pointer_width >= 8;
-}
-
-proc target_supports_jit(
-  target: BackendTarget
-) -> bool {
-
-  give not target.embedded
-    and not target.retro
-    and not triple_is_wasm(target.triple);
-}
-
-proc target_supports_shared_objects(
-  target: BackendTarget
-) -> bool {
-
-  give target.dynamic_library_extension != "";
-}
-
-proc target_supports_advanced_optimizations(
-  target: BackendTarget
-) -> bool {
-
-  give target.supports_simd
-    and target.supports_vectors
-    and not target.retro;
-}
-
-proc target_architecture_name(
-  target: BackendTarget
-) -> string {
-
-  give backend_target_kind_name(
-    target.kind
-  );
-}
-
-proc target_feature_text(
-  target: BackendTarget
-) -> string {
-
+proc target_feature_text(target: BackendTarget) -> string {
   let text: string = "";
-
   let i: u64 = 0;
-
   while i < len(target.features) {
-
     if i > 0 {
-      set text =
-        text + ",";
+      set text = text + ",";
     }
-
-    set text =
-      text + target.features[i];
-
-    set i =
-      i + 1;
+    set text = text + target.features[i];
+    set i = i + 1;
   }
-
   give text;
 }
 
-proc target_summary(
-  target: BackendTarget
-) -> string {
-
-  give "kind="
-    + backend_target_kind_name(target.kind)
-    + " triple="
-    + triple_text(target.triple)
-    + " cpu="
-    + target.cpu
-    + " features="
-    + (target.feature_count as string)
-    + " ptr="
-    + (target.pointer_width as string)
-    + " endian="
-    + if target.little_endian { "little" } else { "big" }
-    + " simd="
-    + (target.supports_simd as string)
-    + " vectors="
-    + (target.supports_vectors as string)
-    + " retro="
-    + (target.retro as string)
-    + " embedded="
-    + (target.embedded as string)
-    + " object="
-    + target.object_format
-    + " valid="
-    + (target.valid as string);
+proc target_summary(target: BackendTarget) -> string {
+  give target.cpu;
 }
 
-proc target_extended_summary(
-  target: BackendTarget
-) -> string {
-
-  give target_summary(target)
-    + " layout={"
-    + layout_summary(target.layout)
-    + "} triple={"
-    + triple_summary(target.triple)
-    + "} features={"
-    + feature_summary(target.triple)
-    + "}";
-}
-
-proc target_selftest() -> bool {
-
-  let native: BackendTarget =
-    backend_target_native();
-
-  let retro: BackendTarget =
-    backend_target_x86_64_retro();
-
-  let apple: BackendTarget =
-    backend_target_apple_silicon();
-
-  let wasm: BackendTarget =
-    backend_target_wasm32();
-
-  give native.valid
-    and retro.valid
-    and apple.valid
-    and wasm.valid
-    and target_supports_parallel_codegen(native)
-    and target_supports_jit(native)
-    and not target_supports_jit(wasm)
-    and target_extended_summary(native) != "";
+proc backend_target_selftest() -> bool {
+  let native: BackendTarget = backend_target_native();
+  let retro: BackendTarget = backend_target_x86_64_retro();
+  let vector: BackendTarget = backend_target_riscv64_vector();
+  let modern: X8664Target = target_x86_64_modern();
+  give native.valid and retro.valid and vector.valid and target_is_native(native) and target_supports_parallel_codegen(native) and target_supports_jit(native) and target_supports_shared_objects(native) and target_supports_advanced_optimizations(vector) and target_supports_modern_isa(modern) and feature_summary(native.triple) != "" and triple_summary(native.triple) != "" and layout_summary(native.layout) != "" and stack_alignment(native.layout) > 0 and simd_alignment(native.layout) > 0 and not triple_is_windows(native.triple) and not triple_is_apple(native.triple) and triple_is_unix(native.triple) and not triple_is_retro(native.triple);
 }

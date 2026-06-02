@@ -40,23 +40,12 @@ proc source_manager_for_frontend(frontend: FrontendOutput) -> SourceManager {
   give cache_source(source_manager_empty(), frontend.source_path, frontend.source_text, true);
 }
 
-proc make_analysis_diag_with_source(
-  frontend: FrontendOutput,
-  phase: string,
-  code: string,
-  severity: string,
-  message: string,
-  labels: [string],
-  suggestion: string,
-  line: u64,
-  column: u64,
-  length: u64,
-  fatal: bool
-) -> AnalysisDiagnostic {
+proc make_analysis_diag_with_source(frontend: FrontendOutput, phase: string, code: string, severity: string, message: string, labels: [string], suggestion: string, line: u64, column: u64, length: u64, fatal: bool) -> AnalysisDiagnostic {
   let manager0: SourceManager = source_manager_for_frontend(frontend);
   let file_id0: u64 = source_manager_file_id(manager0, frontend.source_path);
   let start0: u64 = offset_lookup(manager0, file_id0, line, column);
-  let width0: u64 = ast_span_length(column, column + if length == 0 { 1 } else { length });
+  let width_len: u64 = if length == 0 { 1 } else { length };
+  let width0: u64 = ast_span_length(column, column + width_len);
   give analysis_diagnostic_with_span(
     phase,
     code,
@@ -80,19 +69,8 @@ proc collect_sema_diagnostics(frontend: FrontendOutput, checked: SemaResult) -> 
   let i: u64 = 0;
   while i < len(checked.diagnostics) {
     let diagnostic: SemaDiagnostic = checked.diagnostics[i];
-    set output = output + [make_analysis_diag_with_source(
-      frontend,
-      "sema",
-      diagnostic.code,
-      sema_severity_name(diagnostic.severity),
-      diagnostic.message,
-      diagnostic.labels,
-      diagnostic.suggestion,
-      diagnostic.span.start_line,
-      diagnostic.span.start_column,
-      ast_span_length(diagnostic.span.start_column, diagnostic.span.end_column),
-      diagnostic.fatal
-    )];
+    let out_diag: AnalysisDiagnostic = make_analysis_diag_with_source(frontend, "sema", diagnostic.code, sema_severity_name(diagnostic.severity), diagnostic.message, diagnostic.labels, diagnostic.suggestion, diagnostic.span.start_line, diagnostic.span.start_column, ast_span_length(diagnostic.span.start_column, diagnostic.span.end_column), diagnostic.fatal);
+    set output = output + [out_diag];
     set i = i + 1;
   }
   give output;
@@ -107,19 +85,8 @@ proc collect_typeck_diagnostics(frontend: FrontendOutput, checked: TypeckResult)
   let i: u64 = 0;
   while i < len(checked.diagnostics) {
     let diagnostic: TypeckDiagnostic = checked.diagnostics[i];
-    set output = output + [make_analysis_diag_with_source(
-      frontend,
-      "typeck",
-      diagnostic.code,
-      "error",
-      diagnostic.message,
-      diagnostic.labels,
-      diagnostic.suggestion,
-      diagnostic.span.start_line,
-      diagnostic.span.start_column,
-      ast_span_length(diagnostic.span.start_column, diagnostic.span.end_column),
-      diagnostic.fatal
-    )];
+    let out_diag: AnalysisDiagnostic = make_analysis_diag_with_source(frontend, "typeck", diagnostic.code, "error", diagnostic.message, diagnostic.labels, diagnostic.suggestion, diagnostic.span.start_line, diagnostic.span.start_column, ast_span_length(diagnostic.span.start_column, diagnostic.span.end_column), diagnostic.fatal);
+    set output = output + [out_diag];
     set i = i + 1;
   }
   give output;
@@ -132,19 +99,8 @@ proc collect_borrowck_diagnostics(frontend: FrontendOutput, hir: HirUnit) -> [An
 
   while i < len(checked.diagnostics) {
     let diagnostic: BorrowDiagnostic = checked.diagnostics[i];
-    set output = output + [make_analysis_diag_with_source(
-      frontend,
-      "borrowck",
-      diagnostic.code,
-      severity_name(diagnostic.severity),
-      diagnostic.message,
-      diagnostic.labels,
-      diagnostic.suggestion,
-      diagnostic.span.line,
-      diagnostic.span.column,
-      diagnostic.span.length,
-      diagnostic.fatal
-    )];
+    let out_diag: AnalysisDiagnostic = make_analysis_diag_with_source(frontend, "borrowck", diagnostic.code, severity_name(diagnostic.severity), diagnostic.message, diagnostic.labels, diagnostic.suggestion, diagnostic.span.line, diagnostic.span.column, diagnostic.span.length, diagnostic.fatal);
+    set output = output + [out_diag];
     set i = i + 1;
   }
   give output;
@@ -164,19 +120,8 @@ proc run_const_eval_phase(frontend: FrontendOutput) -> [AnalysisDiagnostic] {
 
   while i < len(checked.diagnostics) {
     let diagnostic: ConstEvalDiagnostic = checked.diagnostics[i];
-    set output = output + [make_analysis_diag_with_source(
-      frontend,
-      "const_eval",
-      diagnostic.code,
-      const_eval_severity_name(diagnostic.severity),
-      diagnostic.message,
-      diagnostic.labels,
-      diagnostic.suggestion,
-      diagnostic.span.line,
-      diagnostic.span.column,
-      diagnostic.span.length,
-      diagnostic.fatal
-    )];
+    let out_diag: AnalysisDiagnostic = make_analysis_diag_with_source(frontend, "const_eval", diagnostic.code, const_eval_severity_name(diagnostic.severity), diagnostic.message, diagnostic.labels, diagnostic.suggestion, diagnostic.span.line, diagnostic.span.column, diagnostic.span.length, diagnostic.fatal);
+    set output = output + [out_diag];
     set i = i + 1;
   }
   give output;
@@ -188,19 +133,8 @@ proc run_lint(frontend: FrontendOutput, hir: HirUnit) -> [AnalysisDiagnostic] {
   let i: u64 = 0;
   while i < len(checked.diagnostics) {
     let diagnostic: LintDiagnostic = checked.diagnostics[i];
-    set output = output + [make_analysis_diag_with_source(
-      frontend,
-      "lint",
-      diagnostic.code,
-      lint_severity_name(diagnostic.severity),
-      diagnostic.message,
-      diagnostic.labels,
-      diagnostic.suggestion,
-      diagnostic.span.start_line,
-      diagnostic.span.start_column,
-      ast_span_length(diagnostic.span.start_column, diagnostic.span.end_column),
-      diagnostic.fatal
-    )];
+    let out_diag: AnalysisDiagnostic = make_analysis_diag_with_source(frontend, "lint", diagnostic.code, lint_severity_name(diagnostic.severity), diagnostic.message, diagnostic.labels, diagnostic.suggestion, diagnostic.span.start_line, diagnostic.span.start_column, ast_span_length(diagnostic.span.start_column, diagnostic.span.end_column), diagnostic.fatal);
+    set output = output + [out_diag];
     set i = i + 1;
   }
   give output;
@@ -298,6 +232,9 @@ proc analysis_run_prechecked(frontend: FrontendOutput, sema_result: SemaResult, 
 
 proc analysis_run_hir_mir(frontend: FrontendOutput, hir: HirUnit, mir: MirUnit) -> AnalysisOutput {
   if not frontend.valid {
+    let fallback_file_id: u64 = if len(frontend.diagnostics) > 0 { frontend.diagnostics[0].file_id } else { 0 };
+    let fallback_span_start: u64 = if len(frontend.diagnostics) > 0 { frontend.diagnostics[0].span_start } else { 0 };
+    let fallback_span_end: u64 = if len(frontend.diagnostics) > 0 { frontend.diagnostics[0].span_end } else { 1 };
     let d = analysis_diagnostic_with_span(
       "frontend",
       "A0001",
@@ -310,9 +247,9 @@ proc analysis_run_hir_mir(frontend: FrontendOutput, hir: HirUnit, mir: MirUnit) 
       1,
       true,
       frontend.source_path,
-      if len(frontend.diagnostics) > 0 { frontend.diagnostics[0].file_id } else { 0 },
-      if len(frontend.diagnostics) > 0 { frontend.diagnostics[0].span_start } else { 0 },
-      if len(frontend.diagnostics) > 0 { frontend.diagnostics[0].span_end } else { 1 }
+      fallback_file_id,
+      fallback_span_start,
+      fallback_span_end
     );
     give AnalysisOutput {
       source_path: frontend.source_path,

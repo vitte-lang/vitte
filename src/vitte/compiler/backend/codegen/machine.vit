@@ -39,6 +39,14 @@ proc default_machine_text_config() -> MachineTextConfig {
     };
 }
 
+proc token_lparen() -> string {
+    give slice("a(b", 1, 2);
+}
+
+proc token_quote() -> string {
+    give slice("a\"b", 1, 2);
+}
+
 proc sanitize_machine_symbol(name: string) -> string {
     if name == "" {
         give "__anonymous";
@@ -62,10 +70,7 @@ proc sanitize_machine_symbol(name: string) -> string {
     give out;
 }
 
-proc machine_symbol(
-    config: MachineTextConfig,
-    name: string
-) -> string {
+proc machine_symbol(config: MachineTextConfig, name: string) -> string {
     if config.sanitize_symbols {
         give sanitize_machine_symbol(name);
     }
@@ -77,13 +82,9 @@ proc machine_symbol(
     give name;
 }
 
-proc machine_label_text(
-    config: MachineTextConfig,
-    function_name: string,
-    kind: MachineLabelKind,
-    block_id: u64
-) -> string {
+proc machine_label_text(config: MachineTextConfig, function_name: string, kind: MachineLabelKind, block_id: u64) -> string {
     let fn_name = machine_symbol(config, function_name);
+    let block_text: string = block_id as string;
 
     if kind == MachineLabelKind::Function {
         give fn_name;
@@ -94,22 +95,22 @@ proc machine_label_text(
     }
 
     if kind == MachineLabelKind::Block {
-        give config.local_prefix + fn_name + "_" + config.block_prefix + (block_id as string);
+        give config.local_prefix + fn_name + "_" + config.block_prefix + block_text;
     }
 
     if kind == MachineLabelKind::LandingPad {
-        give config.local_prefix + fn_name + "_landingpad_" + (block_id as string);
+        give config.local_prefix + fn_name + "_landingpad_" + block_text;
     }
 
     if kind == MachineLabelKind::Cold {
-        give config.local_prefix + fn_name + "_cold_" + (block_id as string);
+        give config.local_prefix + fn_name + "_cold_" + block_text;
     }
 
     if kind == MachineLabelKind::Trap {
-        give config.local_prefix + fn_name + "_trap_" + (block_id as string);
+        give config.local_prefix + fn_name + "_trap_" + block_text;
     }
 
-    give config.local_prefix + fn_name + "_label_" + (block_id as string);
+    give config.local_prefix + fn_name + "_label_" + block_text;
 }
 
 proc machine_label_def(text: string) -> string {
@@ -170,6 +171,7 @@ proc machine_prologue_x86_64() -> [string] {
 proc machine_prologue_x86_64_with_stack(stack_size: u64) -> [string] {
     let config = default_machine_text_config();
     let lines: [string] = [];
+    let stack_text: string = stack_size as string;
 
     if config.emit_frame_pointer {
         set lines = list.push(lines, config.indent + "push %rbp");
@@ -177,7 +179,7 @@ proc machine_prologue_x86_64_with_stack(stack_size: u64) -> [string] {
     }
 
     if stack_size > 0 {
-        set lines = list.push(lines, config.indent + "sub $" + (stack_size as string) + ", %rsp");
+        set lines = list.push(lines, config.indent + "sub $" + stack_text + ", %rsp");
     }
 
     give lines;
@@ -201,9 +203,10 @@ proc machine_epilogue_x86_64() -> [string] {
 proc machine_epilogue_x86_64_with_stack(stack_size: u64) -> [string] {
     let config = default_machine_text_config();
     let lines: [string] = [];
+    let stack_text: string = stack_size as string;
 
     if stack_size > 0 {
-        set lines = list.push(lines, config.indent + "add $" + (stack_size as string) + ", %rsp");
+        set lines = list.push(lines, config.indent + "add $" + stack_text + ", %rsp");
     }
 
     if config.emit_frame_pointer {
@@ -230,8 +233,10 @@ proc machine_align_stack_size(size: u64, alignment: u64) -> u64 {
 }
 
 proc machine_stack_slot_offset(slot: u64) -> string {
-    let offset = (slot + 1) * 8;
-    give "-" + (offset as string) + "(%rbp)";
+    let slot_index: u64 = slot + 1;
+    let offset: u64 = slot_index * 8;
+    let offset_text: string = offset as string;
+    give "-" + offset_text + token_lparen() + "%rbp)";
 }
 
 proc machine_arg_register_x86_64(index: u64) -> string {
@@ -273,7 +278,7 @@ proc machine_bool_immediate(text: string) -> string {
 }
 
 proc machine_string_literal_immediate(text: string) -> string {
-    if starts_with(text, "\"") {
+    if starts_with(text, token_quote()) {
         give "$0";
     }
 
@@ -300,11 +305,7 @@ proc machine_operand_immediate_text(text: string) -> string {
     give "$" + trim(text);
 }
 
-proc machine_operand_debug_name(
-    name: string,
-    place: string,
-    fallback: string
-) -> string {
+proc machine_operand_debug_name(name: string, place: string, fallback: string) -> string {
     if trim(place) != "" {
         give trim(place);
     }
@@ -327,7 +328,7 @@ proc machine_call_target_text(text: string) -> string {
         give "__indirect_call";
     }
 
-    let marker: int = find(trimmed, "(");
+    let marker: int = find(trimmed, token_lparen());
 
     if marker > 0 {
         give trim(slice(trimmed, 0, marker));

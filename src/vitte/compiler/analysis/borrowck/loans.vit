@@ -99,31 +99,11 @@ proc loan_state_name(state: LoanState) -> string {
     give "invalid";
 }
 
-proc loan_create(
-    id: u64,
-    alias: string,
-    owner: string,
-    kind: LoanKind,
-    line: u64
-) -> Loan {
-    give loan_create_scoped(
-        id,
-        alias,
-        owner,
-        kind,
-        line,
-        line
-    );
+proc loan_create(id: u64, alias: string, owner: string, kind: LoanKind, line: u64) -> Loan {
+    give loan_create_scoped(id, alias, owner, kind, line, line);
 }
 
-proc loan_create_scoped(
-    id: u64,
-    alias: string,
-    owner: string,
-    kind: LoanKind,
-    line: u64,
-    scope_end_line: u64
-) -> Loan {
+proc loan_create_scoped(id: u64, alias: string, owner: string, kind: LoanKind, line: u64, scope_end_line: u64) -> Loan {
     give Loan {
         id: id,
         alias: alias,
@@ -177,61 +157,39 @@ proc loan_is_mutating(kind: LoanKind) -> bool {
 }
 
 proc loan_is_shared(kind: LoanKind) -> bool {
-    give kind == LoanKind.Shared
-        or kind == LoanKind.RawConst;
+    give kind == LoanKind.Shared or kind == LoanKind.RawConst;
 }
 
-proc loan_conflict_kind(
-    active_kind: LoanKind,
-    requested_kind: LoanKind
-) -> LoanConflictKind {
-    if active_kind == LoanKind.Shared
-        and requested_kind == LoanKind.Mutable {
-
+proc loan_conflict_kind(active_kind: LoanKind, requested_kind: LoanKind) -> LoanConflictKind {
+    if active_kind == LoanKind.Shared and requested_kind == LoanKind.Mutable {
         give LoanConflictKind.MutableWhileShared;
     }
 
-    if active_kind == LoanKind.Mutable
-        and requested_kind == LoanKind.Shared {
-
+    if active_kind == LoanKind.Mutable and requested_kind == LoanKind.Shared {
         give LoanConflictKind.SharedWhileMutable;
     }
 
-    if active_kind == LoanKind.Mutable
-        and requested_kind == LoanKind.Mutable {
-
+    if active_kind == LoanKind.Mutable and requested_kind == LoanKind.Mutable {
         give LoanConflictKind.MutableWhileMutable;
     }
 
-    if active_kind == LoanKind.Unique
-        or requested_kind == LoanKind.Unique {
-
+    if active_kind == LoanKind.Unique or requested_kind == LoanKind.Unique {
         give LoanConflictKind.UniqueWhileBorrowed;
     }
 
-    if active_kind == LoanKind.RawMut
-        or requested_kind == LoanKind.RawMut {
-
+    if active_kind == LoanKind.RawMut or requested_kind == LoanKind.RawMut {
         give LoanConflictKind.RawMutableWhileBorrowed;
     }
 
-    if loan_is_mutating(active_kind)
-        or loan_is_mutating(requested_kind) {
-
+    if loan_is_mutating(active_kind) or loan_is_mutating(requested_kind) {
         give LoanConflictKind.MutableWhileShared;
     }
 
     give LoanConflictKind.None;
 }
 
-proc loan_conflicts(
-    active_kind: LoanKind,
-    requested_kind: LoanKind
-) -> bool {
-    give loan_conflict_kind(
-        active_kind,
-        requested_kind
-    ) != LoanConflictKind.None;
+proc loan_conflicts(active_kind: LoanKind, requested_kind: LoanKind) -> bool {
+    give loan_conflict_kind(active_kind, requested_kind) != LoanConflictKind.None;
 }
 
 proc loan_conflict_message(kind: LoanConflictKind) -> string {
@@ -258,12 +216,7 @@ proc loan_conflict_message(kind: LoanConflictKind) -> string {
     give "";
 }
 
-proc loan_conflict(
-    active_loan: Loan,
-    requested_loan: Loan,
-    kind: LoanConflictKind,
-    line: u64
-) -> LoanConflict {
+proc loan_conflict(active_loan: Loan, requested_loan: Loan, kind: LoanConflictKind, line: u64) -> LoanConflict {
     give LoanConflict {
         active_loan: active_loan,
         requested_loan: requested_loan,
@@ -283,42 +236,21 @@ proc add_loan(table: LoanTable, loan: Loan) -> LoanTable {
     };
 }
 
-proc add_loan_auto(
-    table: LoanTable,
-    alias: string,
-    owner: string,
-    kind: LoanKind,
-    line: u64,
-    scope_end_line: u64
-) -> LoanTable {
-    let loan: Loan =
-        loan_create_scoped(
-            table.next_id,
-            alias,
-            owner,
-            kind,
-            line,
-            scope_end_line
-        );
+proc add_loan_auto(table: LoanTable, alias: string, owner: string, kind: LoanKind, line: u64, scope_end_line: u64) -> LoanTable {
+    let loan: Loan = loan_create_scoped(table.next_id, alias, owner, kind, line, scope_end_line);
 
     set table.next_id = table.next_id + 1;
     give add_loan(table, loan);
 }
 
-proc owner_has_active_shared(
-    table: LoanTable,
-    owner: string
-) -> u64 {
+proc owner_has_active_shared(table: LoanTable, owner: string) -> u64 {
     let count: u64 = 0;
     let i: u64 = 0;
 
     while i < len(table.loans) {
         let loan: Loan = table.loans[i];
 
-        if loan_is_active(loan)
-            and loan.owner == owner
-            and loan.kind == LoanKind.Shared {
-
+        if loan_is_active(loan) and loan.owner == owner and loan.kind == LoanKind.Shared {
             set count = count + 1;
         }
 
@@ -328,19 +260,13 @@ proc owner_has_active_shared(
     give count;
 }
 
-proc owner_has_active_mutable(
-    table: LoanTable,
-    owner: string
-) -> bool {
+proc owner_has_active_mutable(table: LoanTable, owner: string) -> bool {
     let i: u64 = 0;
 
     while i < len(table.loans) {
         let loan: Loan = table.loans[i];
 
-        if loan_is_active(loan)
-            and loan.owner == owner
-            and loan.kind == LoanKind.Mutable {
-
+        if loan_is_active(loan) and loan.owner == owner and loan.kind == LoanKind.Mutable {
             give true;
         }
 
@@ -350,19 +276,13 @@ proc owner_has_active_mutable(
     give false;
 }
 
-proc owner_has_active_unique(
-    table: LoanTable,
-    owner: string
-) -> bool {
+proc owner_has_active_unique(table: LoanTable, owner: string) -> bool {
     let i: u64 = 0;
 
     while i < len(table.loans) {
         let loan: Loan = table.loans[i];
 
-        if loan_is_active(loan)
-            and loan.owner == owner
-            and loan.kind == LoanKind.Unique {
-
+        if loan_is_active(loan) and loan.owner == owner and loan.kind == LoanKind.Unique {
             give true;
         }
 
@@ -372,20 +292,13 @@ proc owner_has_active_unique(
     give false;
 }
 
-proc owner_has_conflict(
-    table: LoanTable,
-    owner: string,
-    requested_kind: LoanKind
-) -> bool {
+proc owner_has_conflict(table: LoanTable, owner: string, requested_kind: LoanKind) -> bool {
     let i: u64 = 0;
 
     while i < len(table.loans) {
         let loan: Loan = table.loans[i];
 
-        if loan_is_active(loan)
-            and loan.owner == owner
-            and loan_conflicts(loan.kind, requested_kind) {
-
+        if loan_is_active(loan) and loan.owner == owner and loan_conflicts(loan.kind, requested_kind) {
             give true;
         }
 
@@ -395,35 +308,19 @@ proc owner_has_conflict(
     give false;
 }
 
-proc owner_conflicts(
-    table: LoanTable,
-    requested: Loan
-) -> [LoanConflict] {
+proc owner_conflicts(table: LoanTable, requested: Loan) -> [LoanConflict] {
     let conflicts: [LoanConflict] = [];
     let i: u64 = 0;
 
     while i < len(table.loans) {
         let active: Loan = table.loans[i];
 
-        if loan_is_active(active)
-            and active.owner == requested.owner {
-
-            let kind: LoanConflictKind =
-                loan_conflict_kind(
-                    active.kind,
-                    requested.kind
-                );
+        if loan_is_active(active) and active.owner == requested.owner {
+            let kind: LoanConflictKind = loan_conflict_kind(active.kind, requested.kind);
 
             if kind != LoanConflictKind.None {
-                set conflicts =
-                    conflicts + [
-                        loan_conflict(
-                            active,
-                            requested,
-                            kind,
-                            requested.start_line
-                        )
-                    ];
+                let conflict0: LoanConflict = loan_conflict(active, requested, kind, requested.start_line);
+                set conflicts = conflicts + [conflict0];
             }
         }
 
@@ -433,12 +330,8 @@ proc owner_conflicts(
     give conflicts;
 }
 
-proc add_loan_checked(
-    table: LoanTable,
-    loan: Loan
-) -> LoanTable {
-    let conflicts: [LoanConflict] =
-        owner_conflicts(table, loan);
+proc add_loan_checked(table: LoanTable, loan: Loan) -> LoanTable {
+    let conflicts: [LoanConflict] = owner_conflicts(table, loan);
 
     if len(conflicts) > 0 {
         give LoanTable {
@@ -456,9 +349,7 @@ proc alias_is_active(table: LoanTable, alias: string) -> bool {
     let i: u64 = 0;
 
     while i < len(table.loans) {
-        if loan_is_active(table.loans[i])
-            and table.loans[i].alias == alias {
-
+        if loan_is_active(table.loans[i]) and table.loans[i].alias == alias {
             give true;
         }
 
@@ -472,9 +363,7 @@ proc owner_for_alias(table: LoanTable, alias: string) -> string {
     let i: u64 = 0;
 
     while i < len(table.loans) {
-        if loan_is_active(table.loans[i])
-            and table.loans[i].alias == alias {
-
+        if loan_is_active(table.loans[i]) and table.loans[i].alias == alias {
             give table.loans[i].owner;
         }
 
@@ -488,9 +377,7 @@ proc kind_for_alias(table: LoanTable, alias: string) -> LoanKind {
     let i: u64 = 0;
 
     while i < len(table.loans) {
-        if loan_is_active(table.loans[i])
-            and table.loans[i].alias == alias {
-
+        if loan_is_active(table.loans[i]) and table.loans[i].alias == alias {
             give table.loans[i].kind;
         }
 
@@ -504,9 +391,7 @@ proc loan_by_alias(table: LoanTable, alias: string) -> Loan {
     let i: u64 = 0;
 
     while i < len(table.loans) {
-        if loan_is_active(table.loans[i])
-            and table.loans[i].alias == alias {
-
+        if loan_is_active(table.loans[i]) and table.loans[i].alias == alias {
             give table.loans[i];
         }
 
@@ -530,11 +415,7 @@ proc loan_by_id(table: LoanTable, id: u64) -> Loan {
     give loan_invalid();
 }
 
-proc replace_loan_at(
-    loans: [Loan],
-    index: u64,
-    replacement: Loan
-) -> [Loan] {
+proc replace_loan_at(loans: [Loan], index: u64, replacement: Loan) -> [Loan] {
     let out: [Loan] = [];
     let i: u64 = 0;
 
@@ -551,11 +432,7 @@ proc replace_loan_at(
     give out;
 }
 
-proc deactivate_loan(
-    loan: Loan,
-    line: u64,
-    state: LoanState
-) -> Loan {
+proc deactivate_loan(loan: Loan, line: u64, state: LoanState) -> Loan {
     give Loan {
         id: loan.id,
         alias: loan.alias,
@@ -571,11 +448,7 @@ proc deactivate_loan(
     };
 }
 
-proc deactivate_alias(
-    table: LoanTable,
-    alias: string,
-    line: u64
-) -> LoanTable {
+proc deactivate_alias(table: LoanTable, alias: string, line: u64) -> LoanTable {
     let loans: [Loan] = [];
     let i: u64 = 0;
 
@@ -583,14 +456,8 @@ proc deactivate_alias(
         let loan: Loan = table.loans[i];
 
         if loan_is_active(loan) and loan.alias == alias {
-            set loans =
-                loans + [
-                    deactivate_loan(
-                        loan,
-                        line,
-                        LoanState.Inactive
-                    )
-                ];
+            let inactive_loan: Loan = deactivate_loan(loan, line, LoanState.Inactive);
+            set loans = loans + [inactive_loan];
         } else {
             set loans = loans + [loan];
         }
@@ -606,11 +473,7 @@ proc deactivate_alias(
     };
 }
 
-proc deactivate_owner(
-    table: LoanTable,
-    owner: string,
-    line: u64
-) -> LoanTable {
+proc deactivate_owner(table: LoanTable, owner: string, line: u64) -> LoanTable {
     let loans: [Loan] = [];
     let i: u64 = 0;
 
@@ -618,14 +481,8 @@ proc deactivate_owner(
         let loan: Loan = table.loans[i];
 
         if loan_is_active(loan) and loan.owner == owner {
-            set loans =
-                loans + [
-                    deactivate_loan(
-                        loan,
-                        line,
-                        LoanState.Inactive
-                    )
-                ];
+            let inactive_loan: Loan = deactivate_loan(loan, line, LoanState.Inactive);
+            set loans = loans + [inactive_loan];
         } else {
             set loans = loans + [loan];
         }
@@ -641,27 +498,16 @@ proc deactivate_owner(
     };
 }
 
-proc deactivate_expired_loans(
-    table: LoanTable,
-    line: u64
-) -> LoanTable {
+proc deactivate_expired_loans(table: LoanTable, line: u64) -> LoanTable {
     let loans: [Loan] = [];
     let i: u64 = 0;
 
     while i < len(table.loans) {
         let loan: Loan = table.loans[i];
 
-        if loan_is_active(loan)
-            and loan.scope_end_line < line {
-
-            set loans =
-                loans + [
-                    deactivate_loan(
-                        loan,
-                        line,
-                        LoanState.Expired
-                    )
-                ];
+        if loan_is_active(loan) and loan.scope_end_line < line {
+            let expired_loan: Loan = deactivate_loan(loan, line, LoanState.Expired);
+            set loans = loans + [expired_loan];
         } else {
             set loans = loans + [loan];
         }
@@ -677,10 +523,7 @@ proc deactivate_expired_loans(
     };
 }
 
-proc mark_loan_escaped(
-    table: LoanTable,
-    alias: string
-) -> LoanTable {
+proc mark_loan_escaped(table: LoanTable, alias: string) -> LoanTable {
     let loans: [Loan] = [];
     let i: u64 = 0;
 

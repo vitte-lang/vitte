@@ -57,7 +57,10 @@ proc root_binding_name(name: string) -> string {
   let i: u64 = 0;
   while i < len(trimmed) {
     let ch: string = slice(trimmed, i, i + 1);
-    let valid_ident: bool = (ch >= "a" and ch <= "z") or (ch >= "A" and ch <= "Z") or ch == "_" or (ch >= "0" and ch <= "9");
+    let is_lower_alpha: bool = ch >= "a" and ch <= "z";
+    let is_upper_alpha: bool = ch >= "A" and ch <= "Z";
+    let is_digit: bool = ch >= "0" and ch <= "9";
+    let valid_ident: bool = is_lower_alpha or is_upper_alpha or ch == "_" or is_digit;
     if not valid_ident {
       break;
     }
@@ -93,7 +96,9 @@ proc collect_stmt_data(source_path: string, diagnostics: [LintDiagnostic], stats
     }
   }
 
-  if (stmt.kind == HirStmtKind.If or stmt.kind == HirStmtKind.While) and expr_is_constant_bool(stmt.expr) {
+  let is_branch_stmt: bool = stmt.kind == HirStmtKind.If or stmt.kind == HirStmtKind.While;
+  let has_constant_condition: bool = expr_is_constant_bool(stmt.expr);
+  if is_branch_stmt and has_constant_condition {
     set current_diagnostics = lint_add_diag(current_diagnostics, lint_diagnostic(
       "LINT_W_CONSTANT_CONDITION",
       LintSeverity.Warning,

@@ -59,6 +59,14 @@ form CCodeGenContext {
   var_counter: int
 }
 
+proc c_emit_lparen() -> string {
+  give slice("a(b", 1, 2)
+}
+
+proc c_emit_rparen() -> string {
+  give slice("a)b", 1, 2)
+}
+
 proc new_c_codegen_context() -> CCodeGenContext {
   let includes: [string] = []
   push(includes, "#include <stdint.h>")
@@ -90,6 +98,8 @@ proc emit_c_includes(ctx: *CCodeGenContext) {
 }
 
 proc emit_c_runtime_header(ctx: *CCodeGenContext) {
+  let lparen = c_emit_lparen()
+  let rparen = c_emit_rparen()
   ctx.output_buffer = ctx.output_buffer + "// ============================================================================\n"
   ctx.output_buffer = ctx.output_buffer + "// Vitte Runtime Library\n"
   ctx.output_buffer = ctx.output_buffer + "// ============================================================================\n\n"
@@ -100,9 +110,9 @@ proc emit_c_runtime_header(ctx: *CCodeGenContext) {
   ctx.output_buffer = ctx.output_buffer + "  int64_t capacity;\n"
   ctx.output_buffer = ctx.output_buffer + "} vitte_string_t;\n\n"
   
-  ctx.output_buffer = ctx.output_buffer + "void* vitte_alloc(int64_t size);\n"
-  ctx.output_buffer = ctx.output_buffer + "void vitte_free(void* ptr);\n"
-  ctx.output_buffer = ctx.output_buffer + "void vitte_print(vitte_string_t str);\n\n"
+  ctx.output_buffer = ctx.output_buffer + "void* vitte_alloc" + lparen + "int64_t size" + rparen + ";\n"
+  ctx.output_buffer = ctx.output_buffer + "void vitte_free" + lparen + "void* ptr" + rparen + ";\n"
+  ctx.output_buffer = ctx.output_buffer + "void vitte_print" + lparen + "vitte_string_t str" + rparen + ";\n\n"
 }
 
 proc emit_c_type_defs(ctx: *CCodeGenContext) {
@@ -132,10 +142,12 @@ proc emit_c_function_defs(ctx: *CCodeGenContext) {
 
 proc emit_mir_function_as_c(mir_fn: mir_extended.MirFunction, ctx: *CCodeGenContext) -> string {
   let c_code = ""
+  let lparen = c_emit_lparen()
+  let rparen = c_emit_rparen()
   
   // Function signature
   c_code = c_code + "// Function: " + mir_fn.ident + "\n"
-  c_code = c_code + mir_fn.ident + "("
+  c_code = c_code + mir_fn.ident + lparen
   
   // Parameters
   for i = 0; i < length(mir_fn.sig.inputs); i = i + 1 {
@@ -146,7 +158,7 @@ proc emit_mir_function_as_c(mir_fn: mir_extended.MirFunction, ctx: *CCodeGenCont
     c_code = c_code + param_type.name + " arg" + string_of_int(i)
   }
   
-  c_code = c_code + ") {\n"
+  c_code = c_code + rparen + " {\n"
   
   // Function body: emit basic blocks
   if length(mir_fn.body.basic_blocks) > 0 {

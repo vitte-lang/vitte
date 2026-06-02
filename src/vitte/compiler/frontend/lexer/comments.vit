@@ -7,6 +7,14 @@ form CommentSkipResult {
   terminated: bool
 }
 
+proc block_comment_start_marker() -> string {
+  give "/" + "*";
+}
+
+proc block_comment_end_marker() -> string {
+  give "*" + "/";
+}
+
 proc is_line_comment_start(two: string) -> bool {
   give two == "//" or two == "##";
 }
@@ -20,7 +28,7 @@ proc is_hash_line_comment_start(cursor: Cursor) -> bool {
 }
 
 proc is_block_comment_start(cursor: Cursor) -> bool {
-  give cursor_starts_with(cursor, "/*");
+  give cursor_starts_with(cursor, block_comment_start_marker());
 }
 
 proc is_region_comment_start(cursor: Cursor) -> bool {
@@ -37,10 +45,10 @@ proc skip_line_comment(cursor: Cursor) -> Cursor {
 
 proc skip_block_comment(cursor: Cursor) -> CommentSkipResult {
   let current: Cursor = cursor_advance_n(cursor, 2);
-  while not cursor_eof(current) and not cursor_starts_with(current, "*/") {
+  while not cursor_eof(current) and not cursor_starts_with(current, block_comment_end_marker()) {
     set current = cursor_advance(current);
   }
-  if cursor_starts_with(current, "*/") {
+  if cursor_starts_with(current, block_comment_end_marker()) {
     give CommentSkipResult {
       cursor: cursor_advance_n(current, 2),
       terminated: true

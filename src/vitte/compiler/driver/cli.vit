@@ -41,6 +41,78 @@ proc decode_manifest_source(text: string) -> string {
     give decoded;
 }
 
+proc cli_eq() -> string {
+    give slice("a=b", 1, 2);
+}
+
+proc manifest_backend_prefix() -> string {
+    give "@backend" + cli_eq();
+}
+
+proc manifest_target_prefix() -> string {
+    give "@target" + cli_eq();
+}
+
+proc manifest_profile_prefix() -> string {
+    give "@profile" + cli_eq();
+}
+
+proc manifest_opt_level_prefix() -> string {
+    give "@opt-level" + cli_eq();
+}
+
+proc manifest_packaging_prefix() -> string {
+    give "@packaging" + cli_eq();
+}
+
+proc manifest_deterministic_prefix() -> string {
+    give "@deterministic" + cli_eq();
+}
+
+proc manifest_debug_prefix() -> string {
+    give "@debug" + cli_eq();
+}
+
+proc manifest_emit_debug_sections_prefix() -> string {
+    give "@emit-debug-sections" + cli_eq();
+}
+
+proc manifest_lto_prefix() -> string {
+    give "@lto" + cli_eq();
+}
+
+proc manifest_pgo_prefix() -> string {
+    give "@pgo" + cli_eq();
+}
+
+proc manifest_native_llvm_prefix() -> string {
+    give "@native-llvm" + cli_eq();
+}
+
+proc manifest_clang_prefix() -> string {
+    give "@clang" + cli_eq();
+}
+
+proc manifest_lld_prefix() -> string {
+    give "@lld" + cli_eq();
+}
+
+proc manifest_llvm_as_prefix() -> string {
+    give "@llvm-as" + cli_eq();
+}
+
+proc manifest_llc_prefix() -> string {
+    give "@llc" + cli_eq();
+}
+
+proc manifest_llvm_mc_prefix() -> string {
+    give "@llvm-mc" + cli_eq();
+}
+
+proc manifest_ar_prefix() -> string {
+    give "@ar" + cli_eq();
+}
+
 proc run_compile_cli(source_path: string, source_text: string) -> CliRunResult {
     let result: DriverCompileResult = compile_source(source_path, source_text);
 
@@ -233,49 +305,66 @@ proc parse_compile_set_manifest(manifest_text: string) -> CompileSetManifest {
     let inputs: [DriverModuleInput] = [];
     let lines = split(manifest_text, "\n");
     let i: u64 = 0;
+    let backend_prefix: string = manifest_backend_prefix();
+    let target_prefix: string = manifest_target_prefix();
+    let profile_prefix: string = manifest_profile_prefix();
+    let opt_level_prefix: string = manifest_opt_level_prefix();
+    let packaging_prefix: string = manifest_packaging_prefix();
+    let deterministic_prefix: string = manifest_deterministic_prefix();
+    let debug_prefix: string = manifest_debug_prefix();
+    let emit_debug_sections_prefix: string = manifest_emit_debug_sections_prefix();
+    let lto_prefix: string = manifest_lto_prefix();
+    let pgo_prefix: string = manifest_pgo_prefix();
+    let native_llvm_prefix: string = manifest_native_llvm_prefix();
+    let clang_prefix: string = manifest_clang_prefix();
+    let lld_prefix: string = manifest_lld_prefix();
+    let llvm_as_prefix: string = manifest_llvm_as_prefix();
+    let llc_prefix: string = manifest_llc_prefix();
+    let llvm_mc_prefix: string = manifest_llvm_mc_prefix();
+    let ar_prefix: string = manifest_ar_prefix();
     while i < len(lines) {
         let line: string = trim(lines[i]);
-        if starts_with(line, "@backend=") {
+        if starts_with(line, backend_prefix) {
             set backend_name = trim(slice(line, 9, len(line)));
-        } elif starts_with(line, "@target=") {
+        } elif starts_with(line, target_prefix) {
             set target_name = trim(slice(line, 8, len(line)));
-        } elif starts_with(line, "@profile=") {
+        } elif starts_with(line, profile_prefix) {
             set profile_name = trim(slice(line, 9, len(line)));
-        } elif starts_with(line, "@opt-level=") {
+        } elif starts_with(line, opt_level_prefix) {
             set opt_level = trim(slice(line, 11, len(line)));
             set explicit_opt_level = true;
-        } elif starts_with(line, "@packaging=") {
+        } elif starts_with(line, packaging_prefix) {
             set packaging = trim(slice(line, 11, len(line)));
             set explicit_packaging = true;
-        } elif starts_with(line, "@deterministic=") {
+        } elif starts_with(line, deterministic_prefix) {
             set deterministic = bool_from_text(trim(slice(line, 15, len(line))));
-        } elif starts_with(line, "@debug=") {
+        } elif starts_with(line, debug_prefix) {
             set debug_enabled = bool_from_text(trim(slice(line, 7, len(line))));
-        } elif starts_with(line, "@emit-debug-sections=") {
+        } elif starts_with(line, emit_debug_sections_prefix) {
             set emit_debug_sections = bool_from_text(trim(slice(line, 21, len(line))));
             set explicit_emit_debug_sections = true;
-        } elif starts_with(line, "@lto=") {
+        } elif starts_with(line, lto_prefix) {
             set lto_enabled = bool_from_text(trim(slice(line, 5, len(line))));
             set explicit_lto = true;
-        } elif starts_with(line, "@pgo=") {
+        } elif starts_with(line, pgo_prefix) {
             set pgo_mode = trim(slice(line, 5, len(line)));
             set explicit_pgo = true;
-        } elif starts_with(line, "@native-llvm=") {
+        } elif starts_with(line, native_llvm_prefix) {
             set prefer_native_toolchain = bool_from_text(trim(slice(line, 13, len(line))));
-        } elif starts_with(line, "@clang=") {
+        } elif starts_with(line, clang_prefix) {
             set llvm_toolchain = llvm_toolchain_paths(trim(slice(line, 7, len(line))), llvm_toolchain.lld_path, llvm_toolchain.llvm_as_path, llvm_toolchain.llc_path, llvm_toolchain.llvm_mc_path, llvm_toolchain.ar_path);
-        } elif starts_with(line, "@lld=") {
+        } elif starts_with(line, lld_prefix) {
             set llvm_toolchain = llvm_toolchain_paths(llvm_toolchain.clang_path, trim(slice(line, 5, len(line))), llvm_toolchain.llvm_as_path, llvm_toolchain.llc_path, llvm_toolchain.llvm_mc_path, llvm_toolchain.ar_path);
-        } elif starts_with(line, "@llvm-as=") {
+        } elif starts_with(line, llvm_as_prefix) {
             set llvm_toolchain = llvm_toolchain_paths(llvm_toolchain.clang_path, llvm_toolchain.lld_path, trim(slice(line, 9, len(line))), llvm_toolchain.llc_path, llvm_toolchain.llvm_mc_path, llvm_toolchain.ar_path);
-        } elif starts_with(line, "@llc=") {
+        } elif starts_with(line, llc_prefix) {
             set llvm_toolchain = llvm_toolchain_paths(llvm_toolchain.clang_path, llvm_toolchain.lld_path, llvm_toolchain.llvm_as_path, trim(slice(line, 5, len(line))), llvm_toolchain.llvm_mc_path, llvm_toolchain.ar_path);
-        } elif starts_with(line, "@llvm-mc=") {
+        } elif starts_with(line, llvm_mc_prefix) {
             set llvm_toolchain = llvm_toolchain_paths(llvm_toolchain.clang_path, llvm_toolchain.lld_path, llvm_toolchain.llvm_as_path, llvm_toolchain.llc_path, trim(slice(line, 9, len(line))), llvm_toolchain.ar_path);
-        } elif starts_with(line, "@ar=") {
+        } elif starts_with(line, ar_prefix) {
             set llvm_toolchain = llvm_toolchain_paths(llvm_toolchain.clang_path, llvm_toolchain.lld_path, llvm_toolchain.llvm_as_path, llvm_toolchain.llc_path, llvm_toolchain.llvm_mc_path, trim(slice(line, 4, len(line))));
-        } elif line != "" and find(line, "=") > 0 {
-            let pivot: int = find(line, "=");
+        } elif line != "" and find(line, cli_eq()) > 0 {
+            let pivot: int = find(line, cli_eq());
             let path: string = trim(slice(line, 0, pivot));
             let source: string = decode_manifest_source(slice(line, pivot + 1, len(line)));
             set inputs = inputs + [DriverModuleInput {

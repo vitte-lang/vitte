@@ -74,9 +74,21 @@ proc ends_with(text: string, suffix: string) -> bool {
   give slice(text, len(text) - len(suffix), len(text)) == suffix;
 }
 
+proc assign_separator() -> string {
+  give slice("a=b", 1, 2);
+}
+
+proc sym_lparen() -> string {
+  give slice("(", 0, 1);
+}
+
+proc sym_rparen() -> string {
+  give slice(")", 0, 1);
+}
+
 proc parse_const_decl_line(line_text: string, line: u64) -> ConstDecl {
   let rest: string = trim(slice(line_text, 6, len(line_text)));
-  let eq: int = find(rest, "=");
+  let eq: int = find(rest, assign_separator());
   if eq < 0 {
     give ConstDecl { name: "", expr: "", line: line, valid: false };
   }
@@ -113,9 +125,9 @@ proc split_assert_args(text: string) -> [string] {
       continue;
     }
     if not in_string {
-      if ch == "(" {
+      if ch == sym_lparen() {
         set depth = depth + 1;
-      } elif ch == ")" {
+      } elif ch == sym_rparen() {
         set depth = depth - 1;
       } elif ch == "," and depth == 0 {
         set parts = parts + [trim(current)];
@@ -135,9 +147,9 @@ proc split_assert_args(text: string) -> [string] {
 }
 
 proc parse_static_assert_line(line_text: string, line: u64) -> StaticAssertDecl {
-  let open: int = find(line_text, "(");
+  let open: int = find(line_text, sym_lparen());
   let close: int = len(line_text) - 1;
-  while close >= 0 and slice(line_text, close, close + 1) != ")" {
+  while close >= 0 and slice(line_text, close, close + 1) != sym_rparen() {
     set close = close - 1;
   }
   if open < 0 or close <= open {
@@ -437,12 +449,7 @@ proc run_static_asserts_ast(source_path: string, asserts: [StaticAssertDeclAst],
   };
 }
 
-proc run_static_asserts(
-  source_path: string,
-  asserts: [StaticAssertDecl],
-  env: ConstEnv,
-  diagnostics: [ConstEvalDiagnostic]
-) -> ConstEvalRunResult {
+proc run_static_asserts(source_path: string, asserts: [StaticAssertDecl], env: ConstEnv, diagnostics: [ConstEvalDiagnostic]) -> ConstEvalRunResult {
   let output: [ConstEvalDiagnostic] = diagnostics;
   let i: int = 0;
 

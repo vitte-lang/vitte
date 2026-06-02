@@ -74,13 +74,7 @@ form LifetimeResult {
     valid: bool
 }
 
-proc lifetime_fact(
-    alias: string,
-    owner: string,
-    region_name: string,
-    line: u64,
-    kind: LifetimeFactKind
-) -> LifetimeFact {
+proc lifetime_fact(alias: string, owner: string, region_name: string, line: u64, kind: LifetimeFactKind) -> LifetimeFact {
     give LifetimeFact {
         alias: alias,
         owner: owner,
@@ -93,15 +87,7 @@ proc lifetime_fact(
     };
 }
 
-proc lifetime_fact_full(
-    alias: string,
-    owner: string,
-    region_name: string,
-    owner_region: string,
-    line: u64,
-    kind: LifetimeFactKind,
-    escape: LifetimeEscapeKind
-) -> LifetimeFact {
+proc lifetime_fact_full(alias: string, owner: string, region_name: string, owner_region: string, line: u64, kind: LifetimeFactKind, escape: LifetimeEscapeKind) -> LifetimeFact {
     give LifetimeFact {
         alias: alias,
         owner: owner,
@@ -114,13 +100,7 @@ proc lifetime_fact_full(
     };
 }
 
-proc lifetime_edge(
-    from_region: string,
-    to_region: string,
-    kind: RegionConstraintKind,
-    line: u64,
-    reason: string
-) -> LifetimeEdge {
+proc lifetime_edge(from_region: string, to_region: string, kind: RegionConstraintKind, line: u64, reason: string) -> LifetimeEdge {
     give LifetimeEdge {
         from_region: from_region,
         to_region: to_region,
@@ -140,10 +120,7 @@ proc lifetime_result_empty(regions: RegionSolution) -> LifetimeResult {
     };
 }
 
-proc lifetime_result_with_diag(
-    result: LifetimeResult,
-    diagnostic: BorrowDiagnostic
-) -> LifetimeResult {
+proc lifetime_result_with_diag(result: LifetimeResult, diagnostic: BorrowDiagnostic) -> LifetimeResult {
     give LifetimeResult {
         facts: result.facts,
         edges: result.edges,
@@ -153,10 +130,7 @@ proc lifetime_result_with_diag(
     };
 }
 
-proc lifetime_result_with_region(
-    result: LifetimeResult,
-    regions: RegionSolution
-) -> LifetimeResult {
+proc lifetime_result_with_region(result: LifetimeResult, regions: RegionSolution) -> LifetimeResult {
     give LifetimeResult {
         facts: result.facts,
         edges: result.edges,
@@ -167,14 +141,12 @@ proc lifetime_result_with_region(
 }
 
 proc add_fact(result: LifetimeResult, fact: LifetimeFact) -> LifetimeResult {
-    let regions0: RegionSolution =
-        ensure_region(result.regions, fact.region_name, fact.line);
+    let regions0: RegionSolution = ensure_region(result.regions, fact.region_name, fact.line);
 
     let regions1: RegionSolution = regions0;
 
     if fact.owner_region != "" {
-        set regions1 =
-            ensure_region(regions0, fact.owner_region, fact.line);
+        set regions1 = ensure_region(regions0, fact.owner_region, fact.line);
     }
 
     give LifetimeResult {
@@ -186,39 +158,12 @@ proc add_fact(result: LifetimeResult, fact: LifetimeFact) -> LifetimeResult {
     };
 }
 
-proc add_lifetime_edge(
-    result: LifetimeResult,
-    from_region: string,
-    to_region: string,
-    kind: RegionConstraintKind,
-    line: u64,
-    reason: string
-) -> LifetimeResult {
-    let regions0: RegionSolution =
-        ensure_region(result.regions, from_region, line);
-
-    let regions1: RegionSolution =
-        ensure_region(regions0, to_region, line);
-
-    let constraint =
-        constraint_create(
-            from_region,
-            to_region,
-            kind,
-            line
-        );
-
-    let regions2: RegionSolution =
-        add_constraint(regions1, constraint);
-
-    let edge: LifetimeEdge =
-        lifetime_edge(
-            from_region,
-            to_region,
-            kind,
-            line,
-            reason
-        );
+proc add_lifetime_edge(result: LifetimeResult, from_region: string, to_region: string, kind: RegionConstraintKind, line: u64, reason: string) -> LifetimeResult {
+    let regions0: RegionSolution = ensure_region(result.regions, from_region, line);
+    let regions1: RegionSolution = ensure_region(regions0, to_region, line);
+    let constraint = constraint_create(from_region, to_region, kind, line);
+    let regions2: RegionSolution = add_constraint(regions1, constraint);
+    let edge: LifetimeEdge = lifetime_edge(from_region, to_region, kind, line, reason);
 
     give LifetimeResult {
         facts: result.facts,
@@ -229,12 +174,7 @@ proc add_lifetime_edge(
     };
 }
 
-proc add_return_constraint(
-    result: LifetimeResult,
-    local_region: string,
-    return_region: string,
-    line: u64
-) -> LifetimeResult {
+proc add_return_constraint(result: LifetimeResult, local_region: string, return_region: string, line: u64) -> LifetimeResult {
     give add_lifetime_edge(
         result,
         return_region,
@@ -245,21 +185,8 @@ proc add_return_constraint(
     );
 }
 
-proc add_borrow_constraint(
-    result: LifetimeResult,
-    alias_region: string,
-    owner_region: string,
-    line: u64
-) -> LifetimeResult {
-    let result0: LifetimeResult =
-        add_lifetime_edge(
-            result,
-            owner_region,
-            alias_region,
-            RegionConstraintKind.Outlives,
-            line,
-            "borrow owner must outlive alias"
-        );
+proc add_borrow_constraint(result: LifetimeResult, alias_region: string, owner_region: string, line: u64) -> LifetimeResult {
+    let result0: LifetimeResult = add_lifetime_edge(result, owner_region, alias_region, RegionConstraintKind.Outlives, line, "borrow owner must outlive alias");
 
     give add_lifetime_edge(
         result0,
@@ -271,32 +198,9 @@ proc add_borrow_constraint(
     );
 }
 
-proc add_reborrow_constraint(
-    result: LifetimeResult,
-    reborrow_region: string,
-    source_borrow_region: string,
-    owner_region: string,
-    line: u64
-) -> LifetimeResult {
-    let result0: LifetimeResult =
-        add_lifetime_edge(
-            result,
-            source_borrow_region,
-            reborrow_region,
-            RegionConstraintKind.Outlives,
-            line,
-            "source borrow must outlive reborrow"
-        );
-
-    let result1: LifetimeResult =
-        add_lifetime_edge(
-            result0,
-            owner_region,
-            reborrow_region,
-            RegionConstraintKind.Outlives,
-            line,
-            "owner must outlive reborrow"
-        );
+proc add_reborrow_constraint(result: LifetimeResult, reborrow_region: string, source_borrow_region: string, owner_region: string, line: u64) -> LifetimeResult {
+    let result0: LifetimeResult = add_lifetime_edge(result, source_borrow_region, reborrow_region, RegionConstraintKind.Outlives, line, "source borrow must outlive reborrow");
+    let result1: LifetimeResult = add_lifetime_edge(result0, owner_region, reborrow_region, RegionConstraintKind.Outlives, line, "owner must outlive reborrow");
 
     give add_lifetime_edge(
         result1,
@@ -308,12 +212,7 @@ proc add_reborrow_constraint(
     );
 }
 
-proc add_assignment_constraint(
-    result: LifetimeResult,
-    target_region: string,
-    source_region: string,
-    line: u64
-) -> LifetimeResult {
+proc add_assignment_constraint(result: LifetimeResult, target_region: string, source_region: string, line: u64) -> LifetimeResult {
     give add_lifetime_edge(
         result,
         source_region,
@@ -324,13 +223,7 @@ proc add_assignment_constraint(
     );
 }
 
-proc add_escape_constraint(
-    result: LifetimeResult,
-    escaped_region: string,
-    required_region: string,
-    line: u64,
-    reason: string
-) -> LifetimeResult {
+proc add_escape_constraint(result: LifetimeResult, escaped_region: string, required_region: string, line: u64, reason: string) -> LifetimeResult {
     give add_lifetime_edge(
         result,
         escaped_region,
@@ -341,27 +234,9 @@ proc add_escape_constraint(
     );
 }
 
-proc add_borrow_fact(
-    result: LifetimeResult,
-    alias: string,
-    owner: string,
-    alias_region: string,
-    owner_region: string,
-    line: u64
-) -> LifetimeResult {
-    let fact: LifetimeFact =
-        lifetime_fact_full(
-            alias,
-            owner,
-            alias_region,
-            owner_region,
-            line,
-            LifetimeFactKind.Borrow,
-            LifetimeEscapeKind.None
-        );
-
-    let result0: LifetimeResult =
-        add_fact(result, fact);
+proc add_borrow_fact(result: LifetimeResult, alias: string, owner: string, alias_region: string, owner_region: string, line: u64) -> LifetimeResult {
+    let fact: LifetimeFact = lifetime_fact_full(alias, owner, alias_region, owner_region, line, LifetimeFactKind.Borrow, LifetimeEscapeKind.None);
+    let result0: LifetimeResult = add_fact(result, fact);
 
     give add_borrow_constraint(
         result0,
@@ -371,27 +246,9 @@ proc add_borrow_fact(
     );
 }
 
-proc add_return_fact(
-    result: LifetimeResult,
-    alias: string,
-    owner: string,
-    local_region: string,
-    return_region: string,
-    line: u64
-) -> LifetimeResult {
-    let fact: LifetimeFact =
-        lifetime_fact_full(
-            alias,
-            owner,
-            return_region,
-            local_region,
-            line,
-            LifetimeFactKind.Return,
-            LifetimeEscapeKind.Return
-        );
-
-    let result0: LifetimeResult =
-        add_fact(result, fact);
+proc add_return_fact(result: LifetimeResult, alias: string, owner: string, local_region: string, return_region: string, line: u64) -> LifetimeResult {
+    let fact: LifetimeFact = lifetime_fact_full(alias, owner, return_region, local_region, line, LifetimeFactKind.Return, LifetimeEscapeKind.Return);
+    let result0: LifetimeResult = add_fact(result, fact);
 
     give add_return_constraint(
         result0,
@@ -401,28 +258,9 @@ proc add_return_fact(
     );
 }
 
-proc add_reborrow_fact(
-    result: LifetimeResult,
-    alias: string,
-    owner: string,
-    reborrow_region: string,
-    source_borrow_region: string,
-    owner_region: string,
-    line: u64
-) -> LifetimeResult {
-    let fact: LifetimeFact =
-        lifetime_fact_full(
-            alias,
-            owner,
-            reborrow_region,
-            owner_region,
-            line,
-            LifetimeFactKind.Reborrow,
-            LifetimeEscapeKind.None
-        );
-
-    let result0: LifetimeResult =
-        add_fact(result, fact);
+proc add_reborrow_fact(result: LifetimeResult, alias: string, owner: string, reborrow_region: string, source_borrow_region: string, owner_region: string, line: u64) -> LifetimeResult {
+    let fact: LifetimeFact = lifetime_fact_full(alias, owner, reborrow_region, owner_region, line, LifetimeFactKind.Reborrow, LifetimeEscapeKind.None);
+    let result0: LifetimeResult = add_fact(result, fact);
 
     give add_reborrow_constraint(
         result0,
@@ -433,22 +271,10 @@ proc add_reborrow_fact(
     );
 }
 
-proc add_returned_local_diagnostic(
-    result: LifetimeResult,
-    file: string,
-    line: u64,
-    owner: string,
-    alias: string,
-    direct_ref: bool
-) -> LifetimeResult {
-    let kind: BorrowErrorKind =
-        BorrowErrorKind.ReturnBorrowOfLocal;
-
-    let message: string =
-        "returning borrow of local `" + owner + "`";
-
-    let suggestion: string =
-        "return an owned value or extend the owner lifetime";
+proc add_returned_local_diagnostic(result: LifetimeResult, file: string, line: u64, owner: string, alias: string, direct_ref: bool) -> LifetimeResult {
+    let kind: BorrowErrorKind = BorrowErrorKind.ReturnBorrowOfLocal;
+    let message: string = "returning borrow of local `" + owner + "`";
+    let suggestion: string = "return an owned value or extend the owner lifetime";
 
     if direct_ref {
         set kind = BorrowErrorKind.ReturnRefToLocal;
@@ -461,38 +287,13 @@ proc add_returned_local_diagnostic(
         set labels = labels + [alias];
     }
 
-    let diagnostic: BorrowDiagnostic =
-        diagnostic_create(
-            kind,
-            file,
-            line,
-            message,
-            labels,
-            suggestion,
-            true
-        );
+    let diagnostic: BorrowDiagnostic = diagnostic_create(kind, file, line, message, labels, suggestion, true);
 
     give lifetime_result_with_diag(result, diagnostic);
 }
 
-proc add_lifetime_too_short_diagnostic(
-    result: LifetimeResult,
-    file: string,
-    line: u64,
-    region_name: string,
-    required_region: string
-) -> LifetimeResult {
-    let diagnostic: BorrowDiagnostic =
-        diagnostic_full(
-            BorrowErrorKind.LifetimeTooShort,
-            BorrowSeverity.Error,
-            BorrowPhase.RegionCheck,
-            "lifetime `" + region_name + "` does not live long enough",
-            [region_name, required_region],
-            "extend the source lifetime or avoid storing the borrow beyond its owner",
-            span_create(file, line, 1, 1),
-            0
-        );
+proc add_lifetime_too_short_diagnostic(result: LifetimeResult, file: string, line: u64, region_name: string, required_region: string) -> LifetimeResult {
+    let diagnostic: BorrowDiagnostic = diagnostic_full(BorrowErrorKind.LifetimeTooShort, BorrowSeverity.Error, BorrowPhase.RegionCheck, "lifetime `" + region_name + "` does not live long enough", [region_name, required_region], "extend the source lifetime or avoid storing the borrow beyond its owner", span_create(file, line, 1, 1), 0);
 
     give lifetime_result_with_diag(result, diagnostic);
 }
@@ -568,12 +369,12 @@ proc escape_kind_name(kind: LifetimeEscapeKind) -> string {
 }
 
 proc lifetime_fact_summary(fact: LifetimeFact) -> string {
-    give fact_kind_name(fact.kind) +
-        " alias=" + fact.alias +
-        " owner=" + fact.owner +
-        " region=" + fact.region_name +
-        " owner_region=" + fact.owner_region +
-        " escape=" + escape_kind_name(fact.escape);
+    let summary: string = fact_kind_name(fact.kind) + " alias " + fact.alias;
+    set summary = summary + " owner " + fact.owner;
+    set summary = summary + " region " + fact.region_name;
+    set summary = summary + " owner_region " + fact.owner_region;
+    set summary = summary + " escape " + escape_kind_name(fact.escape);
+    give summary;
 }
 
 proc lifetime_has_invalid_facts(result: LifetimeResult) -> bool {
@@ -595,8 +396,7 @@ proc lifetime_has_diagnostics(result: LifetimeResult) -> bool {
 }
 
 proc finalize_lifetimes(result: LifetimeResult) -> LifetimeResult {
-    let solved: RegionSolution =
-        solve_regions(result.regions);
+    let solved: RegionSolution = solve_regions(result.regions);
 
     give LifetimeResult {
         facts: result.facts,
@@ -615,10 +415,11 @@ proc lifetime_result_summary(result: LifetimeResult) -> string {
         give "lifetimes ok";
     }
 
-    give "lifetimes failed: facts=" +
-        (len(result.facts) as string) +
-        " diagnostics=" +
-        (len(result.diagnostics) as string);
+    let fact_count: string = len(result.facts) as string;
+    let diag_count: string = len(result.diagnostics) as string;
+    let summary: string = "lifetimes failed: facts " + fact_count;
+    set summary = summary + " diagnostics " + diag_count;
+    give summary;
 }
 
 share LifetimeFactKind

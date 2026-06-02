@@ -97,34 +97,7 @@ form AstExpr {
   valid: bool
 }
 
-proc ast_expr(
-  id: u64,
-  span: AstSpan,
-  kind: AstExprKind,
-  text: string,
-  name: string,
-  operator: string,
-  binding_name: string,
-  member_name: string,
-  subject_index: u64,
-  callee_index: u64,
-  lhs_index: u64,
-  rhs_index: u64,
-  base_index: u64,
-  index_index: u64,
-  argument_count: u64,
-  generic_argument_count: u64,
-  mutable: bool,
-  borrowed: bool,
-  moved: bool,
-  comptime: bool,
-  inferred_type_name: string,
-  resolved_symbol: string,
-  children: [AstExpr],
-  type_annotation: AstTypeExpr,
-  valid: bool
-) -> AstExpr {
-
+proc ast_expr(id: u64, span: AstSpan, kind: AstExprKind, text: string, name: string, operator: string, binding_name: string, member_name: string, subject_index: u64, callee_index: u64, lhs_index: u64, rhs_index: u64, base_index: u64, index_index: u64, argument_count: u64, generic_argument_count: u64, mutable: bool, borrowed: bool, moved: bool, comptime: bool, inferred_type_name: string, resolved_symbol: string, children: [AstExpr], type_annotation: AstTypeExpr, valid: bool) -> AstExpr {
   give AstExpr {
     id: ast_id(id),
     span: span,
@@ -215,12 +188,7 @@ proc ast_expr_unknown(id: u64, span: AstSpan, text: string) -> AstExpr {
 }
 
 proc ast_expr_leaf(id: u64, span: AstSpan, kind: AstExprKind, text: string, name: string) -> AstExpr {
-  let binding_name: string =
-    if kind == AstExprKind.Name {
-      name
-    } else {
-      ""
-    };
+  let binding_name: string = if kind == AstExprKind.Name { name } else { "" };
 
   give ast_expr(
     id,
@@ -252,12 +220,7 @@ proc ast_expr_leaf(id: u64, span: AstSpan, kind: AstExprKind, text: string, name
 }
 
 proc ast_expr_node(id: u64, span: AstSpan, kind: AstExprKind, text: string, name: string, operator: string, children: [AstExpr]) -> AstExpr {
-  let binding_name: string =
-    if kind == AstExprKind.Name {
-      name
-    } else {
-      ""
-    };
+  let binding_name: string = if kind == AstExprKind.Name { name } else { "" };
 
   give ast_expr(
     id,
@@ -289,16 +252,7 @@ proc ast_expr_node(id: u64, span: AstSpan, kind: AstExprKind, text: string, name
 }
 
 proc ast_expr_typed(id: u64, span: AstSpan, kind: AstExprKind, text: string, name: string, operator: string, children: [AstExpr], annotation: AstTypeExpr) -> AstExpr {
-  let node: AstExpr =
-    ast_expr_node(
-      id,
-      span,
-      kind,
-      text,
-      name,
-      operator,
-      children
-    );
+  let node: AstExpr = ast_expr_node(id, span, kind, text, name, operator, children);
 
   give AstExpr {
     id: node.id,
@@ -330,16 +284,7 @@ proc ast_expr_typed(id: u64, span: AstSpan, kind: AstExprKind, text: string, nam
 }
 
 proc ast_expr_unary(id: u64, span: AstSpan, kind: AstExprKind, text: string, operator: string, subject: AstExpr) -> AstExpr {
-  let node: AstExpr =
-    ast_expr_node(
-      id,
-      span,
-      kind,
-      text,
-      "",
-      operator,
-      [subject]
-    );
+  let node: AstExpr = ast_expr_node(id, span, kind, text, "", operator, [subject]);
 
   give AstExpr {
     id: node.id,
@@ -371,16 +316,7 @@ proc ast_expr_unary(id: u64, span: AstSpan, kind: AstExprKind, text: string, ope
 }
 
 proc ast_expr_binary(id: u64, span: AstSpan, kind: AstExprKind, text: string, operator: string, lhs: AstExpr, rhs: AstExpr) -> AstExpr {
-  let node: AstExpr =
-    ast_expr_node(
-      id,
-      span,
-      kind,
-      text,
-      "",
-      operator,
-      [lhs, rhs]
-    );
+  let node: AstExpr = ast_expr_node(id, span, kind, text, "", operator, [lhs, rhs]);
 
   give AstExpr {
     id: node.id,
@@ -412,29 +348,16 @@ proc ast_expr_binary(id: u64, span: AstSpan, kind: AstExprKind, text: string, op
 }
 
 proc ast_expr_call(id: u64, span: AstSpan, text: string, name: string, callee: AstExpr, args: [AstExpr]) -> AstExpr {
-  let children: [AstExpr] =
-    [callee];
+  let children: [AstExpr] = [callee];
 
   let i: u64 = 0;
 
   while i < len(args) {
-    set children =
-      children + [args[i]];
-
-    set i =
-      i + 1;
+    set children = children + [args[i]];
+    set i = i + 1;
   }
 
-  let node: AstExpr =
-    ast_expr_node(
-      id,
-      span,
-      AstExprKind.Call,
-      text,
-      name,
-      "()",
-      children
-    );
+  let node: AstExpr = ast_expr_node(id, span, AstExprKind.Call, text, name, "call", children);
 
   give AstExpr {
     id: node.id,
@@ -466,25 +389,8 @@ proc ast_expr_call(id: u64, span: AstSpan, text: string, name: string, callee: A
 }
 
 proc ast_expr_member(id: u64, span: AstSpan, text: string, receiver: AstExpr, member_name: string) -> AstExpr {
-  let member_leaf: AstExpr =
-    ast_expr_leaf(
-      id + 1,
-      span,
-      AstExprKind.Name,
-      member_name,
-      member_name
-    );
-
-  let node: AstExpr =
-    ast_expr_node(
-      id,
-      span,
-      AstExprKind.Member,
-      text,
-      member_name,
-      ".",
-      [receiver, member_leaf]
-    );
+  let member_leaf: AstExpr = ast_expr_leaf(id + 1, span, AstExprKind.Name, member_name, member_name);
+  let node: AstExpr = ast_expr_node(id, span, AstExprKind.Member, text, member_name, ".", [receiver, member_leaf]);
 
   give AstExpr {
     id: node.id,
@@ -516,16 +422,7 @@ proc ast_expr_member(id: u64, span: AstSpan, text: string, receiver: AstExpr, me
 }
 
 proc ast_expr_index(id: u64, span: AstSpan, text: string, base: AstExpr, index_expr: AstExpr) -> AstExpr {
-  let node: AstExpr =
-    ast_expr_node(
-      id,
-      span,
-      AstExprKind.Index,
-      text,
-      "",
-      "[]",
-      [base, index_expr]
-    );
+  let node: AstExpr = ast_expr_node(id, span, AstExprKind.Index, text, "", "index", [base, index_expr]);
 
   give AstExpr {
     id: node.id,
@@ -557,34 +454,63 @@ proc ast_expr_index(id: u64, span: AstSpan, text: string, base: AstExpr, index_e
 }
 
 proc ast_expr_kind_name(kind: AstExprKind) -> string {
-  if kind == AstExprKind.Unknown { give "unknown"; }
-  elif kind == AstExprKind.Name { give "name"; }
-  elif kind == AstExprKind.Int { give "int"; }
-  elif kind == AstExprKind.Float { give "float"; }
-  elif kind == AstExprKind.Bool { give "bool"; }
-  elif kind == AstExprKind.String { give "string"; }
-  elif kind == AstExprKind.Char { give "char"; }
-  elif kind == AstExprKind.Binary { give "binary"; }
-  elif kind == AstExprKind.Unary { give "unary"; }
-  elif kind == AstExprKind.Call { give "call"; }
-  elif kind == AstExprKind.Index { give "index"; }
-  elif kind == AstExprKind.Member { give "member"; }
-  elif kind == AstExprKind.BorrowShared { give "borrow-shared"; }
-  elif kind == AstExprKind.BorrowMut { give "borrow-mut"; }
-  elif kind == AstExprKind.Deref { give "deref"; }
-  elif kind == AstExprKind.Move { give "move"; }
-  elif kind == AstExprKind.If { give "if"; }
-  elif kind == AstExprKind.Match { give "match"; }
-  elif kind == AstExprKind.Block { give "block"; }
-  elif kind == AstExprKind.Struct { give "struct"; }
-  elif kind == AstExprKind.Array { give "array"; }
-  elif kind == AstExprKind.Tuple { give "tuple"; }
-  elif kind == AstExprKind.Range { give "range"; }
-  elif kind == AstExprKind.Cast { give "cast"; }
-  elif kind == AstExprKind.Is { give "is"; }
-  elif kind == AstExprKind.Try { give "try"; }
-  elif kind == AstExprKind.Assign { give "assign"; }
-  elif kind == AstExprKind.CompoundAssign { give "compound-assign"; }
+  if kind == AstExprKind.Unknown {
+    give "unknown";
+  } elif kind == AstExprKind.Name {
+    give "name";
+  } elif kind == AstExprKind.Int {
+    give "int";
+  } elif kind == AstExprKind.Float {
+    give "float";
+  } elif kind == AstExprKind.Bool {
+    give "bool";
+  } elif kind == AstExprKind.String {
+    give "string";
+  } elif kind == AstExprKind.Char {
+    give "char";
+  } elif kind == AstExprKind.Binary {
+    give "binary";
+  } elif kind == AstExprKind.Unary {
+    give "unary";
+  } elif kind == AstExprKind.Call {
+    give "call";
+  } elif kind == AstExprKind.Index {
+    give "index";
+  } elif kind == AstExprKind.Member {
+    give "member";
+  } elif kind == AstExprKind.BorrowShared {
+    give "borrow-shared";
+  } elif kind == AstExprKind.BorrowMut {
+    give "borrow-mut";
+  } elif kind == AstExprKind.Deref {
+    give "deref";
+  } elif kind == AstExprKind.Move {
+    give "move";
+  } elif kind == AstExprKind.If {
+    give "if";
+  } elif kind == AstExprKind.Match {
+    give "match";
+  } elif kind == AstExprKind.Block {
+    give "block";
+  } elif kind == AstExprKind.Struct {
+    give "struct";
+  } elif kind == AstExprKind.Array {
+    give "array";
+  } elif kind == AstExprKind.Tuple {
+    give "tuple";
+  } elif kind == AstExprKind.Range {
+    give "range";
+  } elif kind == AstExprKind.Cast {
+    give "cast";
+  } elif kind == AstExprKind.Is {
+    give "is";
+  } elif kind == AstExprKind.Try {
+    give "try";
+  } elif kind == AstExprKind.Assign {
+    give "assign";
+  } elif kind == AstExprKind.CompoundAssign {
+    give "compound-assign";
+  }
 
   give "expr";
 }
@@ -633,16 +559,13 @@ proc expr_depth(expr: AstExpr) -> u64 {
   let i: u64 = 0;
 
   while i < len(expr.children) {
-    let child_depth: u64 =
-      1 + expr_depth(expr.children[i]);
+    let child_depth: u64 = 1 + expr_depth(expr.children[i]);
 
     if child_depth > depth {
-      set depth =
-        child_depth;
+      set depth = child_depth;
     }
 
-    set i =
-      i + 1;
+    set i = i + 1;
   }
 
   give depth;
@@ -654,56 +577,24 @@ proc count_expr(expr: AstExpr) -> u64 {
   let i: u64 = 0;
 
   while i < len(expr.children) {
-    set total =
-      total + count_expr(expr.children[i]);
-
-    set i =
-      i + 1;
+    set total = total + count_expr(expr.children[i]);
+    set i = i + 1;
   }
 
   give total;
 }
 
 proc expr_summary(expr: AstExpr) -> string {
-  give "kind="
-    + ast_expr_kind_name(expr.kind)
-    + " children="
-    + (len(expr.children) as string)
-    + " depth="
-    + (expr_depth(expr) as string)
-    + " valid="
-    + (expr.valid as string);
+  let child_count: string = len(expr.children) as string;
+  let depth_text: string = expr_depth(expr) as string;
+  let valid_text: string = expr.valid as string;
+  give "kind " + ast_expr_kind_name(expr.kind) + " children " + child_count + " depth " + depth_text + " valid " + valid_text;
 }
 
 proc ast_expr_selftest() -> bool {
-  let left: AstExpr =
-    ast_expr_leaf(
-      1,
-      ast_span_empty(),
-      AstExprKind.Int,
-      "1",
-      ""
-    );
-
-  let right: AstExpr =
-    ast_expr_leaf(
-      2,
-      ast_span_empty(),
-      AstExprKind.Int,
-      "2",
-      ""
-    );
-
-  let binary: AstExpr =
-    ast_expr_binary(
-      3,
-      ast_span_empty(),
-      AstExprKind.Binary,
-      "1 + 2",
-      "+",
-      left,
-      right
-    );
+  let left: AstExpr = ast_expr_leaf(1, ast_span_empty(), AstExprKind.Int, "1", "");
+  let right: AstExpr = ast_expr_leaf(2, ast_span_empty(), AstExprKind.Int, "2", "");
+  let binary: AstExpr = ast_expr_binary(3, ast_span_empty(), AstExprKind.Binary, "1 + 2", "+", left, right);
 
   give binary.valid
     and expr_has_children(binary)

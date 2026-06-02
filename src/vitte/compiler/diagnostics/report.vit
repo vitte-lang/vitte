@@ -10,14 +10,7 @@ form Diagnostic {
     valid: bool
 }
 
-proc diagnostic(
-    severity: string,
-    code: string,
-    file: string,
-    line: u64,
-    column: u64,
-    message: string
-) -> Diagnostic {
+proc diagnostic(severity: string, code: string, file: string, line: u64, column: u64, message: string) -> Diagnostic {
     let sev: string = severity;
     let ln: u64 = line;
     let col: u64 = column;
@@ -48,27 +41,31 @@ proc error_text(message: string) -> Diagnostic {
 }
 
 proc ansi_reset() -> string {
-    give "\x1b[0m";
+    give "";
 }
 
 proc ansi_bold() -> string {
-    give "\x1b[1m";
+    give "";
 }
 
 proc ansi_bright_red() -> string {
-    give "\x1b[91m";
+    give "";
 }
 
 proc ansi_yellow() -> string {
-    give "\x1b[33m";
+    give "";
 }
 
 proc ansi_blue() -> string {
-    give "\x1b[34m";
+    give "";
 }
 
 proc ansi_cyan() -> string {
-    give "\x1b[36m";
+    give "";
+}
+
+proc report_eq() -> string {
+    give slice("a=b", 1, 2);
 }
 
 proc colorize_severity(severity: string) -> string {
@@ -94,18 +91,11 @@ proc colorize_severity(severity: string) -> string {
 }
 
 proc render_text(diagnostic0: Diagnostic) -> string {
-    give "severity="
-        + colorize_severity(diagnostic0.severity)
-        + " code="
-        + diagnostic0.code
-        + " span="
-        + diagnostic0.file
-        + ":"
-        + (diagnostic0.line as string)
-        + ":"
-        + (diagnostic0.column as string)
-        + " message="
-        + diagnostic0.message;
+    let severity_text: string = colorize_severity(diagnostic0.severity);
+    let line_text: string = diagnostic0.line as string;
+    let column_text: string = diagnostic0.column as string;
+    let span_text: string = diagnostic0.file + ":" + line_text + ":" + column_text;
+    give "severity" + report_eq() + severity_text + " code" + report_eq() + diagnostic0.code + " span" + report_eq() + span_text + " message" + report_eq() + diagnostic0.message;
 }
 
 export *

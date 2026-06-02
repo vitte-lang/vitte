@@ -58,6 +58,14 @@ form ResolvedSymbolTarget {
     resolved: bool
 }
 
+proc linker_eq() -> string {
+    give slice("a=b", 1, 2);
+}
+
+proc linker_kv(key: string, value: string) -> string {
+    give key + linker_eq() + value;
+}
+
 proc split_external_symbol_name(text: string) -> ExternalSymbolName {
     let marker: string = "::";
     let index: int = find(text, marker);
@@ -242,7 +250,8 @@ proc add_ir_symbols(artifact: LinkArtifact, unit: IrUnit) -> LinkArtifact {
         while j < len(module0.external_symbols) {
             let split: ExternalSymbolName = split_external_symbol_name(module0.external_symbols[j]);
             let target: ResolvedSymbolTarget = resolve_external_symbol(unit, split.module_name, split.symbol_name);
-            let source_offset: u64 = current_offset + (j * 8);
+            let relocation_stride: u64 = j * 8;
+            let source_offset: u64 = current_offset + relocation_stride;
             let external_symbol: LinkSymbol = symbol_create(
                 next_symbol_id,
                 split.symbol_name,
@@ -295,13 +304,13 @@ proc runtime_object_output_path(output_path: string) -> string {
 }
 
 proc runtime_metadata_content(runtime0: RuntimeLibrary) -> string {
-    let built: string = "runtime_name=" + runtime0.name + "\n"
-        + "runtime_c_header=" + runtime0.c_header_path + "\n"
-        + "runtime_c_source=" + runtime0.c_source_path + "\n";
+    let built: string = linker_kv("runtime_name", runtime0.name) + "\n"
+        + linker_kv("runtime_c_header", runtime0.c_header_path) + "\n"
+        + linker_kv("runtime_c_source", runtime0.c_source_path) + "\n";
     let i: u64 = 0;
     let out: string = built;
     while i < len(runtime0.functions) {
-        set out = out + "runtime_symbol=" + runtime0.functions[i].link_name + "\n";
+        set out = out + linker_kv("runtime_symbol", runtime0.functions[i].link_name) + "\n";
         set i = i + 1;
     }
     give out;
@@ -335,7 +344,8 @@ proc link_ir_unit(unit: IrUnit, output_path: string) -> LinkArtifact {
 }
 
 proc link_ir_unit_with_kind(unit: IrUnit, output_path: string, artifact_kind: LinkArtifactKind) -> LinkArtifact {
-    let target = link_target_from_name(unit.target.triple.arch + "-" + unit.target.triple.os);
+    let target_name: string = unit.target.triple.arch + "-" + unit.target.triple.os;
+    let target = link_target_from_name(target_name);
     let runtime0: RuntimeLibrary = create_vitte_runtime();
     let art0: LinkArtifact = artifact_create(1, "vitte-linked-artifact", target);
     let entry_name: string = function_name_by_id(unit, unit.entry_function_id);

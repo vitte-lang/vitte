@@ -28,6 +28,10 @@ form IrFunctionStats {
     valid: bool
 }
 
+proc function_eq() -> string {
+    give slice("a=b", 1, 2);
+}
+
 proc function_block_count(fn0: IrFunction) -> u64 {
     give len(fn0.blocks);
 }
@@ -101,9 +105,8 @@ proc function_branch_count(fn0: IrFunction) -> u64 {
         let j: u64 = 0;
 
         while j < len(block.instructions) {
-            if block.instructions[j].kind == IrInstructionKind.Branch
-                or block.instructions[j].kind == IrInstructionKind.CondBranch {
-
+            let branch_kind: bool = block.instructions[j].kind == IrInstructionKind.Branch or block.instructions[j].kind == IrInstructionKind.CondBranch;
+            if branch_kind {
                 set count = count + 1;
             }
 
@@ -125,11 +128,8 @@ proc function_terminator_count(fn0: IrFunction) -> u64 {
         let j: u64 = 0;
 
         while j < len(block.instructions) {
-            if block.instructions[j].kind == IrInstructionKind.Return
-                or block.instructions[j].kind == IrInstructionKind.Branch
-                or block.instructions[j].kind == IrInstructionKind.CondBranch
-                or block.instructions[j].kind == IrInstructionKind.Unreachable {
-
+            let terminator_kind: bool = block.instructions[j].kind == IrInstructionKind.Return or block.instructions[j].kind == IrInstructionKind.Branch or block.instructions[j].kind == IrInstructionKind.CondBranch or block.instructions[j].kind == IrInstructionKind.Unreachable;
+            if terminator_kind {
                 set count = count + 1;
             }
 
@@ -151,11 +151,8 @@ proc function_memory_op_count(fn0: IrFunction) -> u64 {
         let j: u64 = 0;
 
         while j < len(block.instructions) {
-            if block.instructions[j].kind == IrInstructionKind.Load
-                or block.instructions[j].kind == IrInstructionKind.Store
-                or block.instructions[j].kind == IrInstructionKind.Alloca
-                or block.instructions[j].kind == IrInstructionKind.AddressOf {
-
+            let memory_kind: bool = block.instructions[j].kind == IrInstructionKind.Load or block.instructions[j].kind == IrInstructionKind.Store or block.instructions[j].kind == IrInstructionKind.Alloca or block.instructions[j].kind == IrInstructionKind.AddressOf;
+            if memory_kind {
                 set count = count + 1;
             }
 
@@ -205,26 +202,13 @@ proc function_kind(fn0: IrFunction) -> IrFunctionKind {
 }
 
 proc function_stats(fn0: IrFunction) -> IrFunctionStats {
-    let block_count: u64 =
-        function_block_count(fn0);
-
-    let instruction_count: u64 =
-        function_instruction_count(fn0);
-
-    let terminator_count: u64 =
-        function_terminator_count(fn0);
-
-    let call_count: u64 =
-        function_call_count(fn0);
-
-    let return_count: u64 =
-        function_return_count(fn0);
-
-    let branch_count: u64 =
-        function_branch_count(fn0);
-
-    let memory_op_count: u64 =
-        function_memory_op_count(fn0);
+    let block_count: u64 = function_block_count(fn0);
+    let instruction_count: u64 = function_instruction_count(fn0);
+    let terminator_count: u64 = function_terminator_count(fn0);
+    let call_count: u64 = function_call_count(fn0);
+    let return_count: u64 = function_return_count(fn0);
+    let branch_count: u64 = function_branch_count(fn0);
+    let memory_op_count: u64 = function_memory_op_count(fn0);
 
     give IrFunctionStats {
         block_count: block_count,
@@ -239,17 +223,13 @@ proc function_stats(fn0: IrFunction) -> IrFunctionStats {
 }
 
 proc function_summary(fn0: IrFunction) -> string {
-    let stats: IrFunctionStats =
-        function_stats(fn0);
-
-    give "blocks=" +
-        (stats.block_count as string) +
-        " instructions=" +
-        (stats.instruction_count as string) +
-        " calls=" +
-        (stats.call_count as string) +
-        " returns=" +
-        (stats.return_count as string);
+    let stats: IrFunctionStats = function_stats(fn0);
+    let eq_text: string = function_eq();
+    let block_count: string = stats.block_count as string;
+    let instruction_count: string = stats.instruction_count as string;
+    let call_count: string = stats.call_count as string;
+    let return_count: string = stats.return_count as string;
+    give "blocks" + eq_text + block_count + " instructions" + eq_text + instruction_count + " calls" + eq_text + call_count + " returns" + eq_text + return_count;
 }
 
 share IrFunctionKind

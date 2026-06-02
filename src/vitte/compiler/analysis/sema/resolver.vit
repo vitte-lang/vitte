@@ -129,8 +129,6 @@ proc symbol_or_external(symbols: [SemaSymbol], name: string, scope_depth: u64, n
   };
 }
 
-proc annotate_expr(expr: HirExpr, symbols: [SemaSymbol], scope_depth: u64, next_symbol_id: u64) -> SemaExprWalk;
-
 proc annotate_expr_children(children: [HirExpr], symbols: [SemaSymbol], scope_depth: u64, next_symbol_id: u64) -> SemaExprWalk {
   let out_children: [HirExpr] = [];
   let current_symbols: [SemaSymbol] = symbols;
@@ -194,6 +192,7 @@ proc annotate_expr(expr: HirExpr, symbols: [SemaSymbol], scope_depth: u64, next_
   let resolved_kind: string = expr.resolved_kind;
   let external: bool = expr.external;
   let place_category: string = expr.place_category;
+  let is_borrow_expr: bool = expr.kind == HirExprKind.BorrowShared or expr.kind == HirExprKind.BorrowMut;
 
   if expr.kind == HirExprKind.Name and expr.name != "" {
     let ensure: SemaWalk = symbol_or_external(current_symbols, expr.name, scope_depth, current_next_id);
@@ -249,7 +248,7 @@ proc annotate_expr(expr: HirExpr, symbols: [SemaSymbol], scope_depth: u64, next_
     set resolved_kind = "deref";
     set external = base.external;
     set place_category = "deref";
-  } elif (expr.kind == HirExprKind.BorrowShared or expr.kind == HirExprKind.BorrowMut) and len(children) > 0 {
+  } elif is_borrow_expr and len(children) > 0 {
     let base: HirExpr = children[0];
     set binding = base.binding;
     set resolved_id = base.resolved_id;
@@ -290,8 +289,6 @@ proc annotate_expr(expr: HirExpr, symbols: [SemaSymbol], scope_depth: u64, next_
     valid: not sema_has_fatal(diagnostics)
   };
 }
-
-proc annotate_stmt_list(module_symbols: [SemaSymbol], local_symbols: [SemaSymbol], stmts: [HirStmt], next_symbol_id: u64) -> SemaStmtListWalk;
 
 proc resolve_target(symbols: [SemaSymbol], target: string, scope_depth: u64, span_line: u64, span: HirExpr) -> SemaWalk {
   let root: string = place_root_name(target);
@@ -406,6 +403,10 @@ proc annotate_stmt(module_symbols: [SemaSymbol], local_symbols: [SemaSymbol], st
   let then_walk: SemaStmtListWalk = annotate_stmt_list(module_symbols, current_symbols, stmt.then_stmts, current_next_id);
   let else_walk: SemaStmtListWalk = annotate_stmt_list(module_symbols, current_symbols, stmt.else_stmts, then_walk.next_symbol_id);
 
+  let all_diagnostics: [SemaDiagnostic] = diagnostics + then_walk.diagnostics + else_walk.diagnostics;
+  let all_valid: bool = not sema_has_fatal(all_diagnostics);
+  let all_diagnostics: [SemaDiagnostic] = expr_walk.diagnostics + body_walk.diagnostics;
+  let all_valid: bool = not sema_has_fatal(all_diagnostics);
   give SemaStmtWalk {
     stmt: HirStmt {
       id: stmt.id,
@@ -426,10 +427,10 @@ proc annotate_stmt(module_symbols: [SemaSymbol], local_symbols: [SemaSymbol], st
       diagnostics: stmt.diagnostics,
       valid: stmt.valid
     },
-    diagnostics: diagnostics + then_walk.diagnostics + else_walk.diagnostics,
+    diagnostics: all_diagnostics,
     symbols: current_symbols + expr_walk.symbols,
     next_symbol_id: else_walk.next_symbol_id,
-    valid: not sema_has_fatal(diagnostics + then_walk.diagnostics + else_walk.diagnostics)
+    valid: all_valid
   };
 }
 
@@ -531,10 +532,10 @@ proc annotate_item(module_symbols: [SemaSymbol], item: HirItem, next_symbol_id: 
       diagnostics: [],
       valid: true
     },
-    diagnostics: expr_walk.diagnostics + body_walk.diagnostics,
+    diagnostics: all_diagnostics,
     symbols: body_walk.symbols,
     next_symbol_id: body_walk.next_symbol_id,
-    valid: not sema_has_fatal(expr_walk.diagnostics + body_walk.diagnostics)
+    valid: all_valid
   };
 }
 

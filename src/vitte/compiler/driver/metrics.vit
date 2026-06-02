@@ -60,7 +60,9 @@ proc estimate_cache_hits(result: DriverCompileResult) -> u64 {
 }
 
 proc estimate_cache_misses(result: DriverCompileResult) -> u64 {
-    let misses: u64 = (result.token_count / 6) + (len(result.diagnostics) as u64);
+    let token_misses: u64 = result.token_count / 6;
+    let diagnostics_count: u64 = len(result.diagnostics);
+    let misses: u64 = token_misses + diagnostics_count;
     give misses;
 }
 
@@ -69,7 +71,8 @@ proc estimate_ast_size(result: DriverCompileResult) -> u64 {
 }
 
 proc estimate_mir_size(result: DriverCompileResult) -> u64 {
-    let weight: u64 = result.stmt_count + (result.expr_count / 2) + result.pattern_count;
+    let expr_weight: u64 = result.expr_count / 2;
+    let weight: u64 = result.stmt_count + expr_weight + result.pattern_count;
     if weight == 0 {
         give 1;
     }
@@ -77,17 +80,30 @@ proc estimate_mir_size(result: DriverCompileResult) -> u64 {
 }
 
 proc build_phase_metrics(result: DriverCompileResult, command: string) -> [PhaseMetric] {
-    let frontend_ms: u64 = 1 + (result.token_count / 64);
-    let analysis_ms: u64 = 2 + (result.expr_count / 32);
+    let frontend_tokens: u64 = result.token_count / 64;
+    let analysis_exprs: u64 = result.expr_count / 32;
+    let frontend_ms: u64 = 1 + frontend_tokens;
+    let analysis_ms: u64 = 2 + analysis_exprs;
     let mir_ms: u64 = 1 + (estimate_mir_size(result) / 48);
     let backend_ms: u64 = 2 + result.codegen_section_count;
-    let linker_ms: u64 = if command == "build" { 3 + (result.codegen_section_count / 2) } else { 0 };
+    let linker_ms: u64 = 0;
+    if command == "build" {
+        let linker_sections: u64 = result.codegen_section_count / 2;
+        set linker_ms = 3 + linker_sections;
+    }
 
-    let frontend_mem: u64 = 256 + (result.token_count / 4);
-    let analysis_mem: u64 = 192 + (result.stmt_count * 2);
+    let frontend_mem_tokens: u64 = result.token_count / 4;
+    let analysis_mem_stmts: u64 = result.stmt_count * 2;
+    let frontend_mem: u64 = 256 + frontend_mem_tokens;
+    let analysis_mem: u64 = 192 + analysis_mem_stmts;
     let mir_mem: u64 = 128 + estimate_mir_size(result);
-    let backend_mem: u64 = 384 + (result.codegen_section_count * 32);
-    let linker_mem: u64 = if command == "build" { 160 + (result.codegen_section_count * 8) } else { 0 };
+    let backend_mem_sections: u64 = result.codegen_section_count * 32;
+    let backend_mem: u64 = 384 + backend_mem_sections;
+    let linker_mem: u64 = 0;
+    if command == "build" {
+        let linker_mem_sections: u64 = result.codegen_section_count * 8;
+        set linker_mem = 160 + linker_mem_sections;
+    }
 
     give [
         phase_metric("frontend", frontend_ms, frontend_mem),
@@ -108,10 +124,17 @@ proc backend_timing(result: DriverCompileResult) -> BackendTiming {
 }
 
 proc linker_timing(result: DriverCompileResult, command: string) -> LinkerTiming {
-    let link_ms: u64 = if command == "build" { 2 + (result.codegen_section_count / 2) } else { 0 };
+    let link_ms: u64 = 0;
+    let artifact_ms: u64 = 0;
+    if command == "build" {
+        let link_sections: u64 = result.codegen_section_count / 2;
+        let artifact_sections: u64 = result.codegen_section_count / 4;
+        set link_ms = 2 + link_sections;
+        set artifact_ms = 1 + artifact_sections;
+    }
     give LinkerTiming {
         link_ms: link_ms,
-        artifact_ms: if command == "build" { 1 + (result.codegen_section_count / 4) } else { 0 },
+        artifact_ms: artifact_ms,
         valid: true
     };
 }
@@ -177,10 +200,12 @@ proc json_escape(text: string) -> string {
 }
 
 proc phase_metric_json(metric: PhaseMetric) -> string {
+    let time_ms: string = metric.time_ms as string;
+    let memory_kb: string = metric.memory_kb as string;
     give "{"
         + "\"phase\":\"" + json_escape(metric.phase) + "\","
-        + "\"time_ms\":" + (metric.time_ms as string) + ","
-        + "\"memory_kb\":" + (metric.memory_kb as string)
+        + "\"time_ms\":" + time_ms + ","
+        + "\"memory_kb\":" + memory_kb
         + "}";
 }
 
@@ -198,29 +223,41 @@ proc phase_metrics_json(metrics: [PhaseMetric]) -> string {
 }
 
 proc metrics_report_json(report: CompilerMetricsReport) -> string {
+    let exit_code_text: string = report.exit_code as string;
+    let cache_hits_text: string = report.cache_hits as string;
+    let cache_misses_text: string = report.cache_misses as string;
+    let mir_size_text: string = report.mir_size as string;
+    let ast_size_text: string = report.ast_size as string;
+    let diagnostics_count_text: string = report.diagnostics_count as string;
+    let codegen_ms_text: string = report.backend.codegen_ms as string;
+    let backend_emit_ms_text: string = report.backend.backend_emit_ms as string;
+    let link_ms_text: string = report.linker.link_ms as string;
+    let artifact_ms_text: string = report.linker.artifact_ms as string;
+    let total_time_text: string = report.total_time_ms as string;
+    let total_memory_text: string = report.total_memory_kb as string;
     give "{"
         + "\"schema\":\"vitte.compiler.metrics\","
         + "\"schema_version\":\"1.0.0\","
         + "\"command\":\"" + json_escape(report.command) + "\","
         + "\"source_path\":\"" + json_escape(report.source_path) + "\","
         + "\"status\":\"" + report.status + "\","
-        + "\"exit_code\":" + (report.exit_code as string) + ","
+        + "\"exit_code\":" + exit_code_text + ","
         + "\"phase_metrics\":" + phase_metrics_json(report.phase_metrics) + ","
-        + "\"cache_hits\":" + (report.cache_hits as string) + ","
-        + "\"cache_misses\":" + (report.cache_misses as string) + ","
-        + "\"mir_size\":" + (report.mir_size as string) + ","
-        + "\"ast_size\":" + (report.ast_size as string) + ","
-        + "\"diagnostics_count\":" + (report.diagnostics_count as string) + ","
+        + "\"cache_hits\":" + cache_hits_text + ","
+        + "\"cache_misses\":" + cache_misses_text + ","
+        + "\"mir_size\":" + mir_size_text + ","
+        + "\"ast_size\":" + ast_size_text + ","
+        + "\"diagnostics_count\":" + diagnostics_count_text + ","
         + "\"backend\":{"
-            + "\"codegen_ms\":" + (report.backend.codegen_ms as string) + ","
-            + "\"backend_emit_ms\":" + (report.backend.backend_emit_ms as string)
+            + "\"codegen_ms\":" + codegen_ms_text + ","
+            + "\"backend_emit_ms\":" + backend_emit_ms_text
         + "},"
         + "\"linker\":{"
-            + "\"link_ms\":" + (report.linker.link_ms as string) + ","
-            + "\"artifact_ms\":" + (report.linker.artifact_ms as string)
+            + "\"link_ms\":" + link_ms_text + ","
+            + "\"artifact_ms\":" + artifact_ms_text
         + "},"
-        + "\"total_time_ms\":" + (report.total_time_ms as string) + ","
-        + "\"total_memory_kb\":" + (report.total_memory_kb as string)
+        + "\"total_time_ms\":" + total_time_text + ","
+        + "\"total_memory_kb\":" + total_memory_text
         + "}";
 }
 

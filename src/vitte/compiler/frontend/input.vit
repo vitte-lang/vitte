@@ -1,5 +1,3 @@
-/home/vincentr/Documents/GitHub/vitte/src/vitte/compiler/frontend/input.vit
-
 space vitte/compiler/frontend/input
 
 export *
@@ -74,17 +72,13 @@ proc input_line_count(input: FrontendInput) -> u64 {
     }
 
     let count: u64 = 1;
-
     let i: u64 = 0;
-
     while i < len(input.text) {
-        if input.text[i] == '\n' {
-            set count =
-                count + 1;
+        let ch: string = slice(input.text, i, i + 1);
+        if ch == "\n" {
+            set count = count + 1;
         }
-
-        set i =
-            i + 1;
+        set i = i + 1;
     }
 
     give count;
@@ -100,17 +94,13 @@ proc input_stats(input: FrontendInput) -> FrontendInputStats {
 
 proc normalize_input(input: FrontendInput) -> FrontendInput {
     let normalized: string = "";
-
     let i: u64 = 0;
-
     while i < len(input.text) {
-        if input.text[i] != '\r' {
-            set normalized =
-                normalized + ((input.text[i] as int) as string);
+        let ch: string = slice(input.text, i, i + 1);
+        if ch != "\r" {
+            set normalized = normalized + ch;
         }
-
-        set i =
-            i + 1;
+        set i = i + 1;
     }
 
     give frontend_input(
@@ -129,35 +119,21 @@ proc clone_input(input: FrontendInput) -> FrontendInput {
 }
 
 proc frontend_input_summary(input: FrontendInput) -> string {
-    let stats: FrontendInputStats =
-        input_stats(input);
-
-    give "path="
+    let stats: FrontendInputStats = input_stats(input);
+    let byte_count_text: string = stats.byte_count as string;
+    let line_count_text: string = stats.line_count as string;
+    give "path "
         + input.path
-        + " bytes="
-        + (stats.byte_count as string)
-        + " lines="
-        + (stats.line_count as string);
+        + " bytes "
+        + byte_count_text
+        + " lines "
+        + line_count_text;
 }
 
 proc frontend_input_selftest() -> bool {
-    let input: FrontendInput =
-        input_from_text(
-            "main.vit",
-            "proc main() {}"
-        );
-
-    let stats: FrontendInputStats =
-        input_stats(input);
-
-    let normalized: FrontendInput =
-        normalize_input(
-            frontend_input(
-                "main.vit",
-                "a\r\nb",
-                true
-            )
-        );
+    let input: FrontendInput = input_from_text("main.vit", "proc main() {}");
+    let stats: FrontendInputStats = input_stats(input);
+    let normalized: FrontendInput = normalize_input(frontend_input("main.vit", "a\r\nb", true));
 
     give input_valid(input)
         and not input_empty(input)

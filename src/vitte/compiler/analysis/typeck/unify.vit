@@ -118,6 +118,22 @@ proc max_rank(left: u64, right: u64) -> u64 {
     give right;
 }
 
+proc op_eq_eq() -> string {
+    give slice("a==b", 1, 3);
+}
+
+proc op_bang_eq() -> string {
+    give slice("a!=b", 1, 3);
+}
+
+proc op_lt_eq() -> string {
+    give slice("a<=b", 1, 3);
+}
+
+proc op_gt_eq() -> string {
+    give slice("a>=b", 1, 3);
+}
+
 proc unify_integer_types(left: string, right: string) -> string {
     let l: string = normalize_type_name(left);
     let r: string = normalize_type_name(right);
@@ -143,8 +159,7 @@ proc unify_integer_types(left: string, right: string) -> string {
 }
 
 proc unify_float_types(left: string, right: string) -> string {
-    let rank: u64 =
-        max_rank(float_rank(left), float_rank(right));
+    let rank: u64 = max_rank(float_rank(left), float_rank(right));
 
     if rank <= 32 {
         give "f32";
@@ -161,10 +176,7 @@ proc unify_numeric_types(left: string, right: string) -> string {
     give unify_integer_types(left, right);
 }
 
-proc type_inner_after_prefix(
-    ty: string,
-    prefix: string
-) -> string {
+proc type_inner_after_prefix(ty: string, prefix: string) -> string {
     let value: string = normalize_type_name(ty);
 
     if starts_with(value, prefix) {
@@ -379,13 +391,8 @@ proc can_unify_types(left: string, right: string) -> bool {
     give unify_types_result(left, right).success;
 }
 
-proc unify_or_fallback(
-    left: string,
-    right: string,
-    fallback: string
-) -> string {
-    let result: TypeUnifyResult =
-        unify_types_result(left, right);
+proc unify_or_fallback(left: string, right: string, fallback: string) -> string {
+    let result: TypeUnifyResult = unify_types_result(left, right);
 
     if result.success {
         give result.ty;
@@ -394,10 +401,7 @@ proc unify_or_fallback(
     give fallback;
 }
 
-proc unify_assignment_type(
-    expected: string,
-    actual: string
-) -> TypeUnifyResult {
+proc unify_assignment_type(expected: string, actual: string) -> TypeUnifyResult {
     let e: string = normalize_type_name(expected);
     let a: string = normalize_type_name(actual);
 
@@ -440,12 +444,12 @@ proc unify_assignment_type(
     };
 }
 
-proc unify_binary_result_type(
-    left: string,
-    op: string,
-    right: string
-) -> TypeUnifyResult {
-    if op == "==" or op == "!=" or op == "<" or op == "<=" or op == ">" or op == ">=" {
+proc unify_binary_result_type(left: string, op: string, right: string) -> TypeUnifyResult {
+    let eq_eq: string = op_eq_eq();
+    let bang_eq: string = op_bang_eq();
+    let lt_eq: string = op_lt_eq();
+    let gt_eq: string = op_gt_eq();
+    if op == eq_eq or op == bang_eq or op == "<" or op == lt_eq or op == ">" or op == gt_eq {
         let result = unify_types_result(left, right);
 
         if result.success {

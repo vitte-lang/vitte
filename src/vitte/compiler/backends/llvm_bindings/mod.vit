@@ -116,8 +116,16 @@ proc supported_opt_levels() -> string {
   give "O0,O1,O2,O3,Os,Oz";
 }
 
+proc llvm_eq() -> string {
+  give slice("a=b", 1, 2);
+}
+
+proc llvm_kv(key: string, value: string) -> string {
+  give key + llvm_eq() + value;
+}
+
 proc canonical_backend_surface() -> string {
-  give "src/vitte/compiler/backend/*";
+  give "src/vitte/compiler/backend/" + "*";
 }
 
 proc emit_llvm_ir_from_mir() -> string {
@@ -290,13 +298,17 @@ proc emit_llvm_instruction(instruction: IrInstruction) -> [string] {
 proc emit_llvm_terminator(block: IrBlock) -> [string] {
   let terminator = block.terminator;
   if terminator.kind == IrInstructionKind.Jump {
-    give ["  br label %bb" + (terminator.target_block as string)];
+    let target_block: string = terminator.target_block as string;
+    give ["  br label %bb" + target_block];
   }
   if terminator.kind == IrInstructionKind.Branch {
-    give ["  br i1 1, label %bb" + (terminator.target_block as string) + ", label %bb" + (terminator.else_block as string)];
+    let target_block: string = terminator.target_block as string;
+    let else_block: string = terminator.else_block as string;
+    give ["  br i1 1, label %bb" + target_block + ", label %bb" + else_block];
   }
   if terminator.kind == IrInstructionKind.Switch {
-    give ["  br label %bb" + (terminator.else_block as string)];
+    let else_block: string = terminator.else_block as string;
+    give ["  br label %bb" + else_block];
   }
   if terminator.kind == IrInstructionKind.Return {
     give ["  ret i64 0"];
@@ -305,7 +317,8 @@ proc emit_llvm_terminator(block: IrBlock) -> [string] {
 }
 
 proc emit_llvm_block(block: IrBlock) -> [string] {
-  let lines: [string] = ["bb" + (block.id as string) + ":"];
+  let block_id: string = block.id as string;
+  let lines: [string] = ["bb" + block_id + ":"];
   let i: u64 = 0;
   while i < len(block.instructions) {
     set lines = lines + emit_llvm_instruction(block.instructions[i]);
@@ -392,44 +405,62 @@ proc llvm_relocation(id: u64, section_id: u64, offset: u64, kind: string, target
 }
 
 proc llvm_object_text(sections: [LlvmObjectSection], symbols: [LlvmObjectSymbol], relocations: [LlvmObjectRelocation], diagnostics: [LlvmDiagnostic], options: LlvmBuildOptions) -> string {
+  let deterministic: string = if options.deterministic { "true" } else { "false" };
+  let debug_enabled: string = if options.debug_enabled { "true" } else { "false" };
+  let emit_debug_sections: string = if options.emit_debug_sections { "true" } else { "false" };
+  let lto_enabled: string = if options.lto_enabled { "true" } else { "false" };
+  let section_count: string = len(sections) as string;
+  let symbol_count: string = len(symbols) as string;
+  let relocation_count: string = len(relocations) as string;
+  let diagnostic_count: string = len(diagnostics) as string;
   let lines: [string] = [
     "llvm-object-bundle",
-    "target=" + options.target,
-    "opt_level=" + options.opt_level,
-    "deterministic=" + if options.deterministic { "true" } else { "false" },
-    "debug_enabled=" + if options.debug_enabled { "true" } else { "false" },
-    "emit_debug_sections=" + if options.emit_debug_sections { "true" } else { "false" },
-    "lto_enabled=" + if options.lto_enabled { "true" } else { "false" },
-    "pgo_mode=" + options.pgo_mode,
-    "section_count=" + (len(sections) as string),
-    "symbol_count=" + (len(symbols) as string),
-    "relocation_count=" + (len(relocations) as string),
-    "diagnostic_count=" + (len(diagnostics) as string),
+    llvm_kv("target", options.target),
+    llvm_kv("opt_level", options.opt_level),
+    llvm_kv("deterministic", deterministic),
+    llvm_kv("debug_enabled", debug_enabled),
+    llvm_kv("emit_debug_sections", emit_debug_sections),
+    llvm_kv("lto_enabled", lto_enabled),
+    llvm_kv("pgo_mode", options.pgo_mode),
+    llvm_kv("section_count", section_count),
+    llvm_kv("symbol_count", symbol_count),
+    llvm_kv("relocation_count", relocation_count),
+    llvm_kv("diagnostic_count", diagnostic_count),
     ""
   ];
   let built: [string] = lines;
   let i: u64 = 0;
   while i < len(sections) {
     let section0 = sections[i];
-    set built = built + ["section[" + (i as string) + "]=" + section0.name + " offset=" + (section0.offset as string) + " size=" + (section0.size as string)];
+    let index_text: string = i as string;
+    let offset_text: string = section0.offset as string;
+    let size_text: string = section0.size as string;
+    set built = built + ["section[" + index_text + "]" + llvm_eq() + section0.name + " " + llvm_kv("offset", offset_text) + " " + llvm_kv("size", size_text)];
     set i = i + 1;
   }
   i = 0;
   while i < len(symbols) {
     let symbol0 = symbols[i];
-    set built = built + ["symbol[" + (i as string) + "]=" + symbol0.name + " section=" + (symbol0.section_id as string) + " offset=" + (symbol0.offset as string)];
+    let index_text: string = i as string;
+    let section_id: string = symbol0.section_id as string;
+    let offset_text: string = symbol0.offset as string;
+    set built = built + ["symbol[" + index_text + "]" + llvm_eq() + symbol0.name + " " + llvm_kv("section", section_id) + " " + llvm_kv("offset", offset_text)];
     set i = i + 1;
   }
   i = 0;
   while i < len(relocations) {
     let reloc0 = relocations[i];
-    set built = built + ["relocation[" + (i as string) + "]=" + reloc0.kind + " section=" + (reloc0.section_id as string) + " offset=" + (reloc0.offset as string) + " target=" + reloc0.target_symbol];
+    let index_text: string = i as string;
+    let section_id: string = reloc0.section_id as string;
+    let offset_text: string = reloc0.offset as string;
+    set built = built + ["relocation[" + index_text + "]" + llvm_eq() + reloc0.kind + " " + llvm_kv("section", section_id) + " " + llvm_kv("offset", offset_text) + " " + llvm_kv("target", reloc0.target_symbol)];
     set i = i + 1;
   }
   i = 0;
   while i < len(diagnostics) {
     let diag0 = diagnostics[i];
-    set built = built + ["diagnostic[" + (i as string) + "]=" + diag0.code + ":" + diag0.message];
+    let index_text: string = i as string;
+    set built = built + ["diagnostic[" + index_text + "]" + llvm_eq() + diag0.code + ":" + diag0.message];
     set i = i + 1;
   }
   give join_lines(built);
@@ -528,13 +559,14 @@ proc emit_llvm_object_from_ir_with_toolchain(unit: IrUnit, options: LlvmBuildOpt
   let reloc_offset: u64 = strtab_offset + 128;
   let debug_offset: u64 = reloc_offset + 128;
   let metadata_offset: u64 = if options.emit_debug_sections { debug_offset + 128 } else { reloc_offset + 128 };
+  let metadata_text: string = llvm_kv("opt", options.opt_level) + "," + llvm_kv("pgo", options.pgo_mode);
 
   let sections: [LlvmObjectSection] = [
     text_section,
     llvm_section(2, ".symtab", LlvmSectionKind.SymbolTable, 8, symtab_offset, "llvm symtab"),
     llvm_section(3, ".strtab", LlvmSectionKind.StringTable, 1, strtab_offset, "llvm strtab"),
     llvm_section(4, ".rela.text", LlvmSectionKind.Relocation, 8, reloc_offset, "llvm relocations"),
-    llvm_section(5, ".llvm.meta", LlvmSectionKind.Metadata, 8, metadata_offset, "opt=" + options.opt_level + ",pgo=" + options.pgo_mode)
+    llvm_section(5, ".llvm.meta", LlvmSectionKind.Metadata, 8, metadata_offset, metadata_text)
   ];
   let built_sections: [LlvmObjectSection] = if options.emit_debug_sections {
     sections + [llvm_section(6, ".debug_info", LlvmSectionKind.Debug, 1, debug_offset, "dwarf-like debug info")]
@@ -566,7 +598,9 @@ proc emit_llvm_object_from_ir_with_toolchain(unit: IrUnit, options: LlvmBuildOpt
         while m < len(block0.instructions) {
           let instruction: IrInstruction = block0.instructions[m];
           if instruction.kind == IrInstructionKind.Call {
-            set built_relocations = built_relocations + [llvm_relocation(next_relocation_id, 1, current_offset + (m * 4), "R_CALL64", instruction.text, 0, true)];
+            let relocation_stride: u64 = m * 4;
+            let relocation_offset: u64 = current_offset + relocation_stride;
+            set built_relocations = built_relocations + [llvm_relocation(next_relocation_id, 1, relocation_offset, "R_CALL64", instruction.text, 0, true)];
             set next_relocation_id = next_relocation_id + 1;
           }
           set m = m + 1;

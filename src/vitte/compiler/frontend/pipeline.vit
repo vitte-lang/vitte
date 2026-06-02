@@ -1,5 +1,3 @@
-/home/vincentr/Documents/GitHub/vitte/src/vitte/compiler/frontend/mod.vit
-
 space vitte/compiler/frontend
 
 use vitte/compiler/frontend/input.{
@@ -110,15 +108,11 @@ form FrontendOutput {
 }
 
 proc frontend_diagnostic(code: string, message: string, fatal: bool, file: string, line: u64, column: u64, width: u64, locale: string) -> FrontendDiagnostic {
-    let safe_width: u64 =
-        if width == 0 {
-            1
-        } else {
-            width
-        };
-
-    let normalized: string =
-        fluent_locale(locale);
+    let safe_width: u64 = width;
+    if width == 0 {
+        set safe_width = 1;
+    }
+    let normalized: string = fluent_locale(locale);
 
     give FrontendDiagnostic {
         code: code,
@@ -146,27 +140,8 @@ proc frontend_diagnostic(code: string, message: string, fatal: bool, file: strin
     };
 }
 
-proc frontend_diagnostic_with_source_map(
-    manager: SourceManager,
-    code: string,
-    message: string,
-    fatal: bool,
-    file: string,
-    line: u64,
-    column: u64,
-    width: u64,
-    locale: string
-) -> FrontendDiagnostic {
-    let base: FrontendDiagnostic = frontend_diagnostic(
-        code,
-        message,
-        fatal,
-        file,
-        line,
-        column,
-        width,
-        locale
-    );
+proc frontend_diagnostic_with_source_map(manager: SourceManager, code: string, message: string, fatal: bool, file: string, line: u64, column: u64, width: u64, locale: string) -> FrontendDiagnostic {
+    let base: FrontendDiagnostic = frontend_diagnostic(code, message, fatal, file, line, column, width, locale);
     let file_id0: u64 = source_manager_file_id(manager, file);
     let start0: u64 = offset_lookup(manager, file_id0, line, column);
     let safe_width: u64 = if width == 0 { 1 } else { width };
@@ -246,182 +221,79 @@ proc frontend_run(source_path: string, source_text: string) -> FrontendOutput {
 }
 
 proc frontend_run_with_lang(source_path: string, source_text: string, lang: string) -> FrontendOutput {
-    let locale: string =
-        fluent_locale(lang);
+    let locale: string = fluent_locale(lang);
+    let raw_input: FrontendInput = input_from_text(source_path, source_text);
+    let input: FrontendInput = normalize_input(raw_input);
+    let source_manager0: SourceManager = cache_source(source_manager_empty(), source_path, source_text, true);
 
-    let raw_input: FrontendInput =
-        input_from_text(
-            source_path,
-            source_text
-        );
-
-    let input: FrontendInput =
-        normalize_input(raw_input);
-    let source_manager0: SourceManager =
-        cache_source(source_manager_empty(), source_path, source_text, true);
-
-    if not input.valid {
-        let d: FrontendDiagnostic =
-            frontend_diagnostic_with_source_map(
-                source_manager0,
-                "FLEX0001",
-                "empty source input",
-                true,
-                source_path,
-                1,
-                1,
-                1,
-                locale
-            );
-
-        give empty_frontend_output(
-            source_path,
-            source_text,
-            d
-        );
+        if not input.valid {
+        let d: FrontendDiagnostic = frontend_diagnostic_with_source_map(source_manager0, "FLEX0001", "empty source input", true, source_path, 1, 1, 1, locale);
+        give empty_frontend_output(source_path, source_text, d);
     }
 
-    let stats: FrontendInputStats =
-        input_stats(input);
-
-    let expanded: string =
-        expand_macros(
-            input.text
-        );
-
-    let scanned: ScanResult =
-        scan_tokens(
-            expanded
-        );
-
-    let parsed =
-        parse_source(
-            source_path,
-            scanned.tokens
-        );
+    let stats: FrontendInputStats = input_stats(input);
+    let expanded: string = expand_macros(input.text);
+    let scanned: ScanResult = scan_tokens(expanded);
+    let parsed = parse_source(source_path, scanned.tokens);
 
     let diagnostics: [FrontendDiagnostic] = [];
 
     let i: u64 = 0;
 
     while i < len(scanned.diagnostics) {
-        let diag: LexerDiagnostic =
-            scanned.diagnostics[i];
+        let diag: LexerDiagnostic = scanned.diagnostics[i];
         let safe_width: u64 = if diag.width == 0 { 1 } else { diag.width };
-        let base_diag: FrontendDiagnostic =
-            frontend_diagnostic_with_source_map(
-                source_manager0,
-                diag.code,
-                diag.message,
-                diag.fatal,
-                source_path,
-                diag.line,
-                diag.column,
-                diag.width,
-                locale
-            );
-
-        set diagnostics =
-            diagnostics + [
-                FrontendDiagnostic {
-                    code: base_diag.code,
-                    message: base_diag.message,
-                    localized_message: base_diag.localized_message,
-                    file: base_diag.file,
-                    file_id: base_diag.file_id,
-                    line: base_diag.line,
-                    column: base_diag.column,
-                    span_start: diag.offset,
-                    span_end: diag.offset + safe_width,
-                    span: base_diag.span,
-                    locale: base_diag.locale,
-                    fatal: base_diag.fatal
-                }
-            ];
-
-        set i =
-            i + 1;
+        let base_diag: FrontendDiagnostic = frontend_diagnostic_with_source_map(source_manager0, diag.code, diag.message, diag.fatal, source_path, diag.line, diag.column, diag.width, locale);
+        set diagnostics = diagnostics + [FrontendDiagnostic {
+            code: base_diag.code,
+            message: base_diag.message,
+            localized_message: base_diag.localized_message,
+            file: base_diag.file,
+            file_id: base_diag.file_id,
+            line: base_diag.line,
+            column: base_diag.column,
+            span_start: diag.offset,
+            span_end: diag.offset + safe_width,
+            span: base_diag.span,
+            locale: base_diag.locale,
+            fatal: base_diag.fatal
+        }];
+        set i = i + 1;
     }
 
     set i = 0;
 
     while i < len(parsed.diagnostics) {
-        let diag =
-            parsed.diagnostics[i];
-        let base_diag: FrontendDiagnostic =
-            frontend_diagnostic_with_source_map(
-                source_manager0,
-                diag.code,
-                diag.message,
-                true,
-                source_path,
-                diag.line,
-                diag.column,
-                diag.width,
-                locale
-            );
-
-        set diagnostics =
-            diagnostics + [
-                FrontendDiagnostic {
-                    code: base_diag.code,
-                    message: base_diag.message,
-                    localized_message: base_diag.localized_message,
-                    file: base_diag.file,
-                    file_id: base_diag.file_id,
-                    line: base_diag.line,
-                    column: base_diag.column,
-                    span_start: diag.span_start,
-                    span_end: diag.span_end,
-                    span: base_diag.span,
-                    locale: base_diag.locale,
-                    fatal: base_diag.fatal
-                }
-            ];
-
-        set i =
-            i + 1;
+        let diag = parsed.diagnostics[i];
+        let base_diag: FrontendDiagnostic = frontend_diagnostic_with_source_map(source_manager0, diag.code, diag.message, true, source_path, diag.line, diag.column, diag.width, locale);
+        set diagnostics = diagnostics + [FrontendDiagnostic {
+            code: base_diag.code,
+            message: base_diag.message,
+            localized_message: base_diag.localized_message,
+            file: base_diag.file,
+            file_id: base_diag.file_id,
+            line: base_diag.line,
+            column: base_diag.column,
+            span_start: diag.span_start,
+            span_end: diag.span_end,
+            span: base_diag.span,
+            locale: base_diag.locale,
+            fatal: base_diag.fatal
+        }];
+        set i = i + 1;
     }
 
-    let ast_root: AstModule =
-        parsed.ast_root;
-
-    let validation: AstValidation =
-        validate_ast_root(
-            ast_root
-        );
+    let ast_root: AstModule = parsed.ast_root;
+    let validation: AstValidation = validate_ast_root(ast_root);
 
     if not validation.valid {
-        set diagnostics =
-            diagnostics + [
-                frontend_diagnostic_with_source_map(
-                    source_manager0,
-                    "FAST0001",
-                    validation.message,
-                    true,
-                    source_path,
-                    1,
-                    1,
-                    1,
-                    locale
-                )
-            ];
+        set diagnostics = diagnostics + [frontend_diagnostic_with_source_map(source_manager0, "FAST0001", validation.message, true, source_path, 1, 1, 1, locale)];
     }
 
-    let total: u64 =
-        len(diagnostics);
-
-    let capped: u64 =
-        capped_diag_count(total);
-
-    let recovered: bool =
-        recovery_applied(
-            total,
-            parsed.recovery_count
-        );
-
-    let macro_trace: string =
-        "macro:expand@1:1 -> macro:hygiene@1:1";
+    let total: u64 = len(diagnostics);
+    let capped: u64 = capped_diag_count(total);
+    let recovered: bool = recovery_applied(total, parsed.recovery_count);
+    let macro_trace: string = "macro:expand@1:1 -> macro:hygiene@1:1";
 
     give FrontendOutput {
         source_path: source_path,
@@ -473,31 +345,28 @@ proc frontend_has_fatal(output: FrontendOutput) -> bool {
             give true;
         }
 
-        set i =
-            i + 1;
+        set i = i + 1;
     }
 
     give false;
 }
 
 proc frontend_summary(output: FrontendOutput) -> string {
-    give "frontend(valid="
-        + (output.valid as string)
-        + ", tokens="
-        + (output.token_count as string)
-        + ", diagnostics="
-        + (output.diagnostics_total as string)
-        + ", grammar="
-        + output.grammar_version
-        + ")";
+    let valid_text: string = output.valid as string;
+    let token_text: string = output.token_count as string;
+    let diagnostics_text: string = output.diagnostics_total as string;
+    give "frontend valid "
+        + valid_text
+        + " tokens "
+        + token_text
+        + " diagnostics "
+        + diagnostics_text
+        + " grammar "
+        + output.grammar_version;
 }
 
 proc frontend_selftest() -> bool {
-    let output: FrontendOutput =
-        frontend_run(
-            "main.vit",
-            "proc main() {}"
-        );
+    let output: FrontendOutput = frontend_run("main.vit", "proc main() {}");
 
     give output.grammar_version
             == grammar_version()

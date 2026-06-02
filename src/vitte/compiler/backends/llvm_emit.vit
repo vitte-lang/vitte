@@ -168,8 +168,9 @@ proc emit_mir_function_as_llvm(mir_fn: mir_extended.MirFunction, ctx: *LLVMGenCo
           llvm_code = llvm_code + "  br label %bb" + string_of_int(bb.terminator.target) + "\n"
         }
         mir_extended.TerminatorKind.If => {
-          llvm_code = llvm_code + "  br i1 %cond, label %bb" + string_of_int(bb.terminator.if_true) +
-                       ", label %bb" + string_of_int(bb.terminator.if_false) + "\n"
+          let if_true: string = string_of_int(bb.terminator.if_true)
+          let if_false: string = string_of_int(bb.terminator.if_false)
+          llvm_code = llvm_code + "  br i1 %cond, label %bb" + if_true + ", label %bb" + if_false + "\n"
         }
         _ => {
           llvm_code = llvm_code + "  ; unknown terminator\n"
@@ -248,9 +249,7 @@ form LLVMEmissionResult {
   optimization_time_ms: int
 }
 
-proc emit_mir_to_llvm(mir_crate: mir_extended.MirCrate, 
-                      target: backend_infrastructure.TargetInfo,
-                      opt_level: int) -> LLVMEmissionResult {
+proc emit_mir_to_llvm(mir_crate: mir_extended.MirCrate, target: backend_infrastructure.TargetInfo, opt_level: int) -> LLVMEmissionResult {
   let ctx = new_llvm_gen_context(target)
   let errors: [string] = []
   let warnings: [string] = []
@@ -299,9 +298,7 @@ form LLVMLinkerOptions {
   lto: string               // none, thin, full
 }
 
-proc generate_machine_code_from_llvm(llvm_ir: string, 
-                                     target: backend_infrastructure.TargetInfo,
-                                     linker_opts: LLVMLinkerOptions) -> string {
+proc generate_machine_code_from_llvm(llvm_ir: string, target: backend_infrastructure.TargetInfo, linker_opts: LLVMLinkerOptions) -> string {
   // In a real implementation, would invoke LLVM tools:
   // llvm-as (assemble IR) → llc (compile to assembly) → as (assemble) → ld (link)
   

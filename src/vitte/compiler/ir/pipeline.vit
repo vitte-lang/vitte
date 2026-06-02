@@ -1,5 +1,3 @@
-/home/vincentr/Documents/GitHub/vitte/src/vitte/compiler/ir/pipeline.vit
-
 space vitte/compiler/ir/pipeline
 
 use vitte/compiler/ir.ast.{
@@ -152,45 +150,23 @@ proc status_name(status: PipelineStatus) -> string {
 }
 
 proc ok_message(stage: PipelineStage, code: string, message: string) -> PipelineMessage {
-    give pipeline_message(
-        stage,
-        PipelineStatus.Ok,
-        code,
-        message
-    );
+    give pipeline_message(stage, PipelineStatus.Ok, code, message);
 }
 
 proc warning_message(stage: PipelineStage, code: string, message: string) -> PipelineMessage {
-    give pipeline_message(
-        stage,
-        PipelineStatus.Warning,
-        code,
-        message
-    );
+    give pipeline_message(stage, PipelineStatus.Warning, code, message);
 }
 
 proc error_message(stage: PipelineStage, code: string, message: string) -> PipelineMessage {
-    give pipeline_message(
-        stage,
-        PipelineStatus.Error,
-        code,
-        message
-    );
+    give pipeline_message(stage, PipelineStatus.Error, code, message);
 }
 
 proc empty_metrics() -> PipelineMetrics {
-    give pipeline_metrics(
-        0,
-        0,
-        0,
-        0,
-        0
-    );
+    give pipeline_metrics(0, 0, 0, 0, 0);
 }
 
 proc compute_metrics(module: MirModule) -> PipelineMetrics {
-    let function_count: u64 =
-        len(module.functions);
+    let function_count: u64 = len(module.functions);
 
     let block_count: u64 = 0;
 
@@ -201,42 +177,26 @@ proc compute_metrics(module: MirModule) -> PipelineMetrics {
     let i: u64 = 0;
 
     while i < len(module.functions) {
-        let fn: MirFunction =
-            module.functions[i];
+        let fn: MirFunction = module.functions[i];
 
-        set local_count =
-            local_count
-            + len(fn.body.locals);
+        set local_count = local_count + len(fn.body.locals);
 
-        set block_count =
-            block_count
-            + len(fn.body.blocks);
+        set block_count = block_count + len(fn.body.blocks);
 
         let j: u64 = 0;
 
         while j < len(fn.body.blocks) {
-            let bb: MirBasicBlock =
-                fn.body.blocks[j];
+            let bb: MirBasicBlock = fn.body.blocks[j];
 
-            set statement_count =
-                statement_count
-                + len(bb.statements);
+            set statement_count = statement_count + len(bb.statements);
 
-            set j =
-                j + 1;
+            set j = j + 1;
         }
 
-        set i =
-            i + 1;
+        set i = i + 1;
     }
 
-    give pipeline_metrics(
-        function_count,
-        block_count,
-        statement_count,
-        local_count,
-        1
-    );
+    give pipeline_metrics(function_count, block_count, statement_count, local_count, 1);
 }
 
 proc append_message(messages: [PipelineMessage], message: PipelineMessage) -> [PipelineMessage] {
@@ -248,17 +208,13 @@ proc append_stage(stages: [PipelineStageResult], stage: PipelineStageResult) -> 
 }
 
 proc create_default_pipeline(module_name: string) -> MirModule {
-    let module: MirModule =
-        mir_module(module_name);
+    let module: MirModule = mir_module(module_name);
 
-    let fn: MirFunction =
-        lower_empty_function("main");
+    let fn: MirFunction = lower_empty_function("main");
 
-    let out: MirModule =
-        module;
+    let out: MirModule = module;
 
-    set out.functions =
-        [fn];
+    set out.functions = [fn];
 
     give out;
 }
@@ -275,135 +231,48 @@ proc verify_pipeline(module: MirModule) -> bool {
             give false;
         }
 
-        set i =
-            i + 1;
+        set i = i + 1;
     }
 
     give true;
 }
 
 proc run_ir_pipeline(ast: AstModule) -> IrPipelineResult {
-    let module: MirModule =
-        create_default_pipeline(
-            ast.name
-        );
+    let module: MirModule = create_default_pipeline(ast.name);
 
-    let ctx: LoweringContext =
-        lowering_context();
+    let ctx: LoweringContext = lowering_context();
 
-    let lowering: LoweringStats =
-        lowering_summary(ctx);
+    let lowering: LoweringStats = lowering_summary(ctx);
 
-    let metrics: PipelineMetrics =
-        compute_metrics(module);
+    let metrics: PipelineMetrics = compute_metrics(module);
 
-    let valid: bool =
-        verify_pipeline(module);
+    let valid: bool = verify_pipeline(module);
 
     let messages: [PipelineMessage] = [];
 
-    set messages =
-        append_message(
-            messages,
-            ok_message(
-                PipelineStage.Parse,
-                "PIPE0001",
-                "ast parsed"
-            )
-        );
+    set messages = append_message(messages, ok_message(PipelineStage.Parse, "PIPE0001", "ast parsed"));
 
-    set messages =
-        append_message(
-            messages,
-            ok_message(
-                PipelineStage.Hir,
-                "PIPE0002",
-                "hir generated"
-            )
-        );
+    set messages = append_message(messages, ok_message(PipelineStage.Hir, "PIPE0002", "hir generated"));
 
-    set messages =
-        append_message(
-            messages,
-            ok_message(
-                PipelineStage.Mir,
-                "PIPE0003",
-                "mir lowered"
-            )
-        );
+    set messages = append_message(messages, ok_message(PipelineStage.Mir, "PIPE0003", "mir lowered"));
 
     if valid {
-        set messages =
-            append_message(
-                messages,
-                ok_message(
-                    PipelineStage.Verify,
-                    "PIPE0004",
-                    "pipeline verified"
-                )
-            );
+        set messages = append_message(messages, ok_message(PipelineStage.Verify, "PIPE0004", "pipeline verified"));
     } else {
-        set messages =
-            append_message(
-                messages,
-                error_message(
-                    PipelineStage.Verify,
-                    "PIPE9999",
-                    "pipeline verification failed"
-                )
-            );
+        set messages = append_message(messages, error_message(PipelineStage.Verify, "PIPE9999", "pipeline verification failed"));
     }
 
     let stages: [PipelineStageResult] = [];
 
-    set stages =
-        append_stage(
-            stages,
-            pipeline_stage_result(
-                PipelineStage.Parse,
-                true,
-                1
-            )
-        );
+    set stages = append_stage(stages, pipeline_stage_result(PipelineStage.Parse, true, 1));
 
-    set stages =
-        append_stage(
-            stages,
-            pipeline_stage_result(
-                PipelineStage.Hir,
-                true,
-                1
-            )
-        );
+    set stages = append_stage(stages, pipeline_stage_result(PipelineStage.Hir, true, 1));
 
-    set stages =
-        append_stage(
-            stages,
-            pipeline_stage_result(
-                PipelineStage.Mir,
-                true,
-                1
-            )
-        );
+    set stages = append_stage(stages, pipeline_stage_result(PipelineStage.Mir, true, 1));
 
-    set stages =
-        append_stage(
-            stages,
-            pipeline_stage_result(
-                PipelineStage.Verify,
-                valid,
-                1
-            )
-        );
+    set stages = append_stage(stages, pipeline_stage_result(PipelineStage.Verify, valid, 1));
 
-    give ir_pipeline_result(
-        module,
-        metrics,
-        messages,
-        stages,
-        lowering,
-        valid
-    );
+    give ir_pipeline_result(module, metrics, messages, stages, lowering, valid);
 }
 
 proc pipeline_message_count(result: IrPipelineResult) -> u64 {
@@ -415,37 +284,44 @@ proc pipeline_stage_count(result: IrPipelineResult) -> u64 {
 }
 
 proc pipeline_summary(result: IrPipelineResult) -> string {
-    give "functions="
-        + (result.metrics.function_count as string)
-        + " blocks="
-        + (result.metrics.block_count as string)
-        + " statements="
-        + (result.metrics.statement_count as string)
-        + " valid="
-        + (result.valid as string);
+    let out: string = "";
+    let function_count_text: string = result.metrics.function_count as string;
+    let block_count_text: string = result.metrics.block_count as string;
+    let statement_count_text: string = result.metrics.statement_count as string;
+    let valid_text: string = result.valid as string;
+    set out = out + slice("functions=x", 0, 10);
+    set out = out + function_count_text;
+    set out = out + slice(" blocks=x", 0, 8);
+    set out = out + block_count_text;
+    set out = out + slice(" statements=x", 0, 12);
+    set out = out + statement_count_text;
+    set out = out + slice(" valid=x", 0, 7);
+    set out = out + valid_text;
+    give out;
 }
 
 proc pipeline_stage_summary(stage: PipelineStageResult) -> string {
-    give stage_name(stage.stage)
-        + ":"
-        + (stage.valid as string);
+    let out: string = "";
+    let valid_text: string = stage.valid as string;
+    set out = out + stage_name(stage.stage);
+    set out = out + ":";
+    set out = out + valid_text;
+    give out;
 }
 
 proc pipeline_selftest() -> bool {
-    let ast: AstModule =
-        AstModule {
-            name: "demo",
-            decl_count: 1,
-            stmt_count: 2,
-            expr_count: 3,
-            type_count: 1,
-            pattern_count: 0,
-            attribute_count: 0,
-            valid: true
-        };
+    let ast: AstModule = AstModule {
+        name: "demo",
+        decl_count: 1,
+        stmt_count: 2,
+        expr_count: 3,
+        type_count: 1,
+        pattern_count: 0,
+        attribute_count: 0,
+        valid: true
+    };
 
-    let result: IrPipelineResult =
-        run_ir_pipeline(ast);
+    let result: IrPipelineResult = run_ir_pipeline(ast);
 
     give result.valid
         and result.metrics.function_count == 1

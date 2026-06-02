@@ -1,5 +1,14 @@
 space vitte/compiler/frontend/lexer/errors
 
+use vitte/compiler/diagnostics/diagnostic.{
+  Diagnostic,
+  DiagnosticPhase,
+  DiagnosticSeverity,
+  SourceSpan,
+  diagnostic_from_surface,
+  span_create
+}
+
 export *
 
 pick LexerDiagnosticSeverity {
@@ -26,6 +35,7 @@ pick LexerDiagnosticKind {
   UnexpectedEof,
   InvalidIndentation,
   InvalidToken,
+  TokenTooLarge,
   Internal,
 }
 
@@ -54,22 +64,7 @@ form LexerDiagnosticBag {
   valid: bool
 }
 
-proc lexer_diagnostic(
-  code: string,
-  kind: LexerDiagnosticKind,
-  severity: LexerDiagnosticSeverity,
-  message: string,
-  hint: string,
-  source_line: string,
-  line: u64,
-  column: u64,
-  width: u64,
-  offset: u64,
-  recoverable: bool,
-  fatal: bool,
-  valid: bool
-) -> LexerDiagnostic {
-
+proc lexer_diagnostic(code: string, kind: LexerDiagnosticKind, severity: LexerDiagnosticSeverity, message: string, hint: string, source_line: string, line: u64, column: u64, width: u64, offset: u64, recoverable: bool, fatal: bool, valid: bool) -> LexerDiagnostic {
   give LexerDiagnostic {
     code: code,
     kind: kind,
@@ -99,79 +94,110 @@ proc lexer_diagnostic_bag() -> LexerDiagnosticBag {
 }
 
 proc severity_name(severity: LexerDiagnosticSeverity) -> string {
-  if severity == LexerDiagnosticSeverity.Info { give "info"; }
-  elif severity == LexerDiagnosticSeverity.Warning { give "warning"; }
-  elif severity == LexerDiagnosticSeverity.Error { give "error"; }
-  elif severity == LexerDiagnosticSeverity.Fatal { give "fatal"; }
+  if severity == LexerDiagnosticSeverity.Info {
+    give "info";
+  }
+  if severity == LexerDiagnosticSeverity.Warning {
+    give "warning";
+  }
+  if severity == LexerDiagnosticSeverity.Error {
+    give "error";
+  }
+  if severity == LexerDiagnosticSeverity.Fatal {
+    give "fatal";
+  }
 
   give "unknown";
 }
 
 proc diagnostic_kind_name(kind: LexerDiagnosticKind) -> string {
-  if kind == LexerDiagnosticKind.InvalidCharacter { give "invalid-character"; }
-  elif kind == LexerDiagnosticKind.InvalidUtf8 { give "invalid-utf8"; }
-  elif kind == LexerDiagnosticKind.InvalidEscape { give "invalid-escape"; }
-  elif kind == LexerDiagnosticKind.InvalidNumber { give "invalid-number"; }
-  elif kind == LexerDiagnosticKind.InvalidFloat { give "invalid-float"; }
-  elif kind == LexerDiagnosticKind.InvalidBinary { give "invalid-binary"; }
-  elif kind == LexerDiagnosticKind.InvalidOctal { give "invalid-octal"; }
-  elif kind == LexerDiagnosticKind.InvalidHex { give "invalid-hex"; }
-  elif kind == LexerDiagnosticKind.InvalidUnicodeEscape { give "invalid-unicode-escape"; }
-  elif kind == LexerDiagnosticKind.UnterminatedString { give "unterminated-string"; }
-  elif kind == LexerDiagnosticKind.UnterminatedChar { give "unterminated-char"; }
-  elif kind == LexerDiagnosticKind.UnterminatedBlockComment { give "unterminated-block-comment"; }
-  elif kind == LexerDiagnosticKind.UnterminatedRegionComment { give "unterminated-region-comment"; }
-  elif kind == LexerDiagnosticKind.UnexpectedEof { give "unexpected-eof"; }
-  elif kind == LexerDiagnosticKind.InvalidIndentation { give "invalid-indentation"; }
-  elif kind == LexerDiagnosticKind.InvalidToken { give "invalid-token"; }
-  elif kind == LexerDiagnosticKind.Internal { give "internal"; }
+  if kind == LexerDiagnosticKind.InvalidCharacter {
+    give "invalid-character";
+  }
+  if kind == LexerDiagnosticKind.InvalidUtf8 {
+    give "invalid-utf8";
+  }
+  if kind == LexerDiagnosticKind.InvalidEscape {
+    give "invalid-escape";
+  }
+  if kind == LexerDiagnosticKind.InvalidNumber {
+    give "invalid-number";
+  }
+  if kind == LexerDiagnosticKind.InvalidFloat {
+    give "invalid-float";
+  }
+  if kind == LexerDiagnosticKind.InvalidBinary {
+    give "invalid-binary";
+  }
+  if kind == LexerDiagnosticKind.InvalidOctal {
+    give "invalid-octal";
+  }
+  if kind == LexerDiagnosticKind.InvalidHex {
+    give "invalid-hex";
+  }
+  if kind == LexerDiagnosticKind.InvalidUnicodeEscape {
+    give "invalid-unicode-escape";
+  }
+  if kind == LexerDiagnosticKind.UnterminatedString {
+    give "unterminated-string";
+  }
+  if kind == LexerDiagnosticKind.UnterminatedChar {
+    give "unterminated-char";
+  }
+  if kind == LexerDiagnosticKind.UnterminatedBlockComment {
+    give "unterminated-block-comment";
+  }
+  if kind == LexerDiagnosticKind.UnterminatedRegionComment {
+    give "unterminated-region-comment";
+  }
+  if kind == LexerDiagnosticKind.UnexpectedEof {
+    give "unexpected-eof";
+  }
+  if kind == LexerDiagnosticKind.InvalidIndentation {
+    give "invalid-indentation";
+  }
+  if kind == LexerDiagnosticKind.InvalidToken {
+    give "invalid-token";
+  }
+  if kind == LexerDiagnosticKind.TokenTooLarge {
+    give "token-too-large";
+  }
+  if kind == LexerDiagnosticKind.Internal {
+    give "internal";
+  }
 
   give "unknown";
 }
 
 proc append_diagnostic(bag: LexerDiagnosticBag, diagnostic: LexerDiagnostic) -> LexerDiagnosticBag {
-  let out: LexerDiagnosticBag =
-    bag;
+  let out: LexerDiagnosticBag = bag;
 
-  set out.diagnostics =
-    out.diagnostics + [diagnostic];
+  set out.diagnostics = out.diagnostics + [diagnostic];
 
   if diagnostic.severity == LexerDiagnosticSeverity.Info {
-    set out.info_count =
-      out.info_count + 1;
+    set out.info_count = out.info_count + 1;
   }
-  elif diagnostic.severity == LexerDiagnosticSeverity.Warning {
-    set out.warning_count =
-      out.warning_count + 1;
+  if diagnostic.severity == LexerDiagnosticSeverity.Warning {
+    set out.warning_count = out.warning_count + 1;
   }
-  elif diagnostic.severity == LexerDiagnosticSeverity.Error {
-    set out.error_count =
-      out.error_count + 1;
+  if diagnostic.severity == LexerDiagnosticSeverity.Error {
+    set out.error_count = out.error_count + 1;
   }
-  elif diagnostic.severity == LexerDiagnosticSeverity.Fatal {
-    set out.error_count =
-      out.error_count + 1;
-
-    set out.fatal_count =
-      out.fatal_count + 1;
+  if diagnostic.severity == LexerDiagnosticSeverity.Fatal {
+    set out.error_count = out.error_count + 1;
+    set out.fatal_count = out.fatal_count + 1;
   }
 
-  set out.valid =
-    out.valid and diagnostic.valid;
+  set out.valid = out.valid and diagnostic.valid;
 
   give out;
 }
 
-proc lex_error(
-  code: string,
-  message: string,
-  line: u64,
-  column: u64,
-  width: u64
-) -> LexerDiagnostic {
-
-  let safe_width: u64 =
-    if width == 0 { 1 } else { width };
+proc lex_error(code: string, message: string, line: u64, column: u64, width: u64) -> LexerDiagnostic {
+  let safe_width: u64 = width;
+  if width == 0 {
+    set safe_width = 1;
+  }
 
   give lexer_diagnostic(
     code,
@@ -190,13 +216,7 @@ proc lex_error(
   );
 }
 
-proc lex_warning(
-  code: string,
-  message: string,
-  line: u64,
-  column: u64
-) -> LexerDiagnostic {
-
+proc lex_warning(code: string, message: string, line: u64, column: u64) -> LexerDiagnostic {
   give lexer_diagnostic(
     code,
     LexerDiagnosticKind.InvalidToken,
@@ -214,12 +234,7 @@ proc lex_warning(
   );
 }
 
-proc invalid_character(
-  ch: string,
-  line: u64,
-  column: u64
-) -> LexerDiagnostic {
-
+proc invalid_character(ch: string, line: u64, column: u64) -> LexerDiagnostic {
   give lexer_diagnostic(
     "LEX_E_INVALID_CHAR",
     LexerDiagnosticKind.InvalidCharacter,
@@ -237,12 +252,7 @@ proc invalid_character(
   );
 }
 
-proc invalid_escape(
-  escape0: string,
-  line: u64,
-  column: u64
-) -> LexerDiagnostic {
-
+proc invalid_escape(escape0: string, line: u64, column: u64) -> LexerDiagnostic {
   give lexer_diagnostic(
     "LEX_E_INVALID_ESCAPE",
     LexerDiagnosticKind.InvalidEscape,
@@ -260,12 +270,43 @@ proc invalid_escape(
   );
 }
 
-proc invalid_number(
-  value: string,
-  line: u64,
-  column: u64
-) -> LexerDiagnostic {
+proc invalid_unicode_escape(escape0: string, line: u64, column: u64) -> LexerDiagnostic {
+  give lexer_diagnostic(
+    "LEX_E_INVALID_UNICODE_ESCAPE",
+    LexerDiagnosticKind.InvalidUnicodeEscape,
+    LexerDiagnosticSeverity.Error,
+    "invalid unicode escape `" + escape0 + "`",
+    "use a valid unicode escape sequence",
+    "",
+    line,
+    column,
+    len(escape0),
+    0,
+    true,
+    false,
+    true
+  );
+}
 
+proc invalid_utf8(byte_text: string, line: u64, column: u64, offset: u64) -> LexerDiagnostic {
+  give lexer_diagnostic(
+    "LEX_E_INVALID_UTF8",
+    LexerDiagnosticKind.InvalidUtf8,
+    LexerDiagnosticSeverity.Fatal,
+    "invalid utf-8 byte sequence starting at `" + byte_text + "`",
+    "save the source file as UTF-8",
+    "",
+    line,
+    column,
+    1,
+    offset,
+    false,
+    true,
+    true
+  );
+}
+
+proc invalid_number(value: string, line: u64, column: u64) -> LexerDiagnostic {
   give lexer_diagnostic(
     "LEX_E_INVALID_NUMBER",
     LexerDiagnosticKind.InvalidNumber,
@@ -283,17 +324,31 @@ proc invalid_number(
   );
 }
 
-proc unterminated_string(
-  line: u64,
-  column: u64
-) -> LexerDiagnostic {
+proc invalid_char_literal(value: string, line: u64, column: u64) -> LexerDiagnostic {
+  give lexer_diagnostic(
+    "LEX_E_INVALID_CHAR_LITERAL",
+    LexerDiagnosticKind.UnterminatedChar,
+    LexerDiagnosticSeverity.Error,
+    "invalid char literal `" + value + "`",
+    "use exactly one character or one valid escape between single quotes",
+    "",
+    line,
+    column,
+    len(value),
+    0,
+    true,
+    false,
+    true
+  );
+}
 
+proc unterminated_string(line: u64, column: u64) -> LexerDiagnostic {
   give lexer_diagnostic(
     "LEX_E_UNTERMINATED_STRING",
     LexerDiagnosticKind.UnterminatedString,
     LexerDiagnosticSeverity.Fatal,
     "unterminated string literal",
-    "close the string with `\"`",
+    "close the string with a quote",
     "",
     line,
     column,
@@ -305,17 +360,31 @@ proc unterminated_string(
   );
 }
 
-proc unterminated_char(
-  line: u64,
-  column: u64
-) -> LexerDiagnostic {
+proc token_too_large(value: string, line: u64, column: u64, offset: u64) -> LexerDiagnostic {
+  give lexer_diagnostic(
+    "LEX_E_TOKEN_TOO_LARGE",
+    LexerDiagnosticKind.TokenTooLarge,
+    LexerDiagnosticSeverity.Fatal,
+    "token too large for the lexer implementation limit",
+    "split the token into smaller pieces",
+    "",
+    line,
+    column,
+    len(value),
+    offset,
+    false,
+    true,
+    true
+  );
+}
 
+proc unterminated_char(line: u64, column: u64) -> LexerDiagnostic {
   give lexer_diagnostic(
     "LEX_E_UNTERMINATED_CHAR",
     LexerDiagnosticKind.UnterminatedChar,
     LexerDiagnosticSeverity.Fatal,
     "unterminated char literal",
-    "close the char literal with `'`",
+    "close the char literal with a single quote",
     "",
     line,
     column,
@@ -327,17 +396,13 @@ proc unterminated_char(
   );
 }
 
-proc unterminated_block_comment(
-  line: u64,
-  column: u64
-) -> LexerDiagnostic {
-
+proc unterminated_block_comment(line: u64, column: u64) -> LexerDiagnostic {
   give lexer_diagnostic(
     "LEX_E_UNTERMINATED_BLOCK_COMMENT",
     LexerDiagnosticKind.UnterminatedBlockComment,
     LexerDiagnosticSeverity.Fatal,
     "unterminated block comment",
-    "close the comment with `*/`",
+    "close the block comment with star slash",
     "",
     line,
     column,
@@ -349,11 +414,7 @@ proc unterminated_block_comment(
   );
 }
 
-proc unterminated_region_comment(
-  line: u64,
-  column: u64
-) -> LexerDiagnostic {
-
+proc unterminated_region_comment(line: u64, column: u64) -> LexerDiagnostic {
   give lexer_diagnostic(
     "LEX_E_UNTERMINATED_REGION_COMMENT",
     LexerDiagnosticKind.UnterminatedRegionComment,
@@ -371,11 +432,7 @@ proc unterminated_region_comment(
   );
 }
 
-proc unexpected_eof(
-  line: u64,
-  column: u64
-) -> LexerDiagnostic {
-
+proc unexpected_eof(line: u64, column: u64) -> LexerDiagnostic {
   give lexer_diagnostic(
     "LEX_E_UNEXPECTED_EOF",
     LexerDiagnosticKind.UnexpectedEof,
@@ -421,40 +478,78 @@ proc diagnostic_is_warning(diagnostic: LexerDiagnostic) -> bool {
 }
 
 proc diagnostic_summary(bag: LexerDiagnosticBag) -> string {
-  give "diagnostics="
-    + (len(bag.diagnostics) as string)
-    + " infos="
-    + (bag.info_count as string)
-    + " warnings="
-    + (bag.warning_count as string)
-    + " errors="
-    + (bag.error_count as string)
-    + " fatals="
-    + (bag.fatal_count as string)
-    + " valid="
-    + (bag.valid as string);
+  let count_text: string = len(bag.diagnostics) as string;
+  let info_text: string = bag.info_count as string;
+  let warning_text: string = bag.warning_count as string;
+  let error_text: string = bag.error_count as string;
+  let fatal_text: string = bag.fatal_count as string;
+  let valid_text: string = bag.valid as string;
+  give "diagnostics "
+    + count_text
+    + " infos "
+    + info_text
+    + " warnings "
+    + warning_text
+    + " errors "
+    + error_text
+    + " fatals "
+    + fatal_text
+    + " valid "
+    + valid_text;
+}
+
+proc diagnostic_phase(severity: LexerDiagnosticSeverity) -> DiagnosticSeverity {
+  if severity == LexerDiagnosticSeverity.Info {
+    give DiagnosticSeverity.Note;
+  }
+  if severity == LexerDiagnosticSeverity.Warning {
+    give DiagnosticSeverity.Warning;
+  }
+  if severity == LexerDiagnosticSeverity.Fatal {
+    give DiagnosticSeverity.Fatal;
+  }
+  give DiagnosticSeverity.Error;
+}
+
+proc diagnostic_span(file: string, diagnostic: LexerDiagnostic) -> SourceSpan {
+  give span_create(file, diagnostic.line, diagnostic.column, diagnostic.width);
+}
+
+proc lexer_diagnostic_as_diagnostic(file: string, diagnostic: LexerDiagnostic) -> Diagnostic {
+  let span: SourceSpan = diagnostic_span(file, diagnostic);
+  let canonical: Diagnostic = diagnostic_from_surface(
+    diagnostic.code,
+    diagnostic.message,
+    span,
+    diagnostic.severity == LexerDiagnosticSeverity.Fatal,
+    diagnostic.offset
+  );
+
+  if canonical.phase != DiagnosticPhase.Lexer {
+    set canonical.phase = DiagnosticPhase.Lexer;
+  }
+
+  set canonical.severity = diagnostic_phase(diagnostic.severity);
+  give canonical;
 }
 
 proc lexer_errors_selftest() -> bool {
-  let d0: LexerDiagnostic =
-    invalid_character("@", 1, 4);
-
-  let d1: LexerDiagnostic =
-    unterminated_string(2, 8);
-
-  let bag0: LexerDiagnosticBag =
-    lexer_diagnostic_bag();
-
-  let bag1: LexerDiagnosticBag =
-    append_diagnostic(bag0, d0);
-
-  let bag2: LexerDiagnosticBag =
-    append_diagnostic(bag1, d1);
+  let d0: LexerDiagnostic = invalid_character("@", 1, 4);
+  let d1: LexerDiagnostic = unterminated_string(2, 8);
+  let d2: LexerDiagnostic = token_too_large("aaaaaaaa", 3, 1, 17);
+  let rich: Diagnostic = lexer_diagnostic_as_diagnostic("lexer_selftest.vit", d0);
+  let bag0: LexerDiagnosticBag = lexer_diagnostic_bag();
+  let bag1: LexerDiagnosticBag = append_diagnostic(bag0, d0);
+  let bag2: LexerDiagnosticBag = append_diagnostic(bag1, d1);
 
   give diagnostic_kind_name(LexerDiagnosticKind.InvalidCharacter) == "invalid-character"
     and severity_name(LexerDiagnosticSeverity.Fatal) == "fatal"
     and diagnostic_is_error(d0)
     and bag2.error_count == 2
     and bag2.fatal_count == 2
-    and diagnostic_summary(bag2) != "";
+    and diagnostic_summary(bag2) != ""
+    and diagnostic_kind_name(LexerDiagnosticKind.TokenTooLarge) == "token-too-large"
+    and d2.code == "LEX_E_TOKEN_TOO_LARGE"
+    and rich.phase == DiagnosticPhase.Lexer
+    and rich.rule != "";
 }

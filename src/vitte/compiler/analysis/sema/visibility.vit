@@ -122,46 +122,33 @@ proc visibility_valid(visibility: string) -> bool {
 }
 
 proc visibility_exported(visibility: string) -> bool {
-    let kind: VisibilityKind =
-        visibility_kind(visibility);
+    let kind: VisibilityKind = visibility_kind(visibility);
 
-    give kind == VisibilityKind.Public
-        or kind == VisibilityKind.Export
-        or kind == VisibilityKind.External;
+    give kind == VisibilityKind.Public or kind == VisibilityKind.Export or kind == VisibilityKind.External;
 }
 
 proc visibility_externally_visible(visibility: string) -> bool {
-    let kind: VisibilityKind =
-        visibility_kind(visibility);
+    let kind: VisibilityKind = visibility_kind(visibility);
 
-    give kind == VisibilityKind.Public
-        or kind == VisibilityKind.External;
+    give kind == VisibilityKind.Public or kind == VisibilityKind.External;
 }
 
 proc visibility_is_internal_only(visibility: string) -> bool {
-    let kind: VisibilityKind =
-        visibility_kind(visibility);
+    let kind: VisibilityKind = visibility_kind(visibility);
 
-    give kind == VisibilityKind.Private
-        or kind == VisibilityKind.Internal
-        or kind == VisibilityKind.Package
-        or kind == VisibilityKind.Protected;
+    give kind == VisibilityKind.Private or kind == VisibilityKind.Internal or kind == VisibilityKind.Package or kind == VisibilityKind.Protected;
 }
 
 proc visibility_info(visibility: string) -> VisibilityInfo {
-    let normalized: string =
-        normalize_visibility(visibility);
-
-    let kind: VisibilityKind =
-        visibility_kind(normalized);
+    let normalized: string = normalize_visibility(visibility);
+    let kind: VisibilityKind = visibility_kind(normalized);
 
     give VisibilityInfo {
         text: visibility,
         kind: kind,
         normalized: normalized,
         exported: visibility_exported(normalized),
-        externally_visible:
-            visibility_externally_visible(normalized),
+        externally_visible: visibility_externally_visible(normalized),
         valid: kind != VisibilityKind.Invalid
     };
 }
@@ -174,19 +161,14 @@ proc inherited_visibility() -> string {
     give "";
 }
 
-proc visibility_merge(
-    parent_visibility: string,
-    child_visibility: string
-) -> string {
-    let child: string =
-        normalize_visibility(child_visibility);
+proc visibility_merge(parent_visibility: string, child_visibility: string) -> string {
+    let child: string = normalize_visibility(child_visibility);
 
     if child != "" {
         give child;
     }
 
-    let parent: string =
-        normalize_visibility(parent_visibility);
+    let parent: string = normalize_visibility(parent_visibility);
 
     if parent != "" {
         give parent;
@@ -195,104 +177,66 @@ proc visibility_merge(
     give default_visibility();
 }
 
-proc visibility_more_permissive(
-    left: string,
-    right: string
-) -> string {
-    let l: VisibilityKind =
-        visibility_kind(left);
+proc visibility_more_permissive(left: string, right: string) -> string {
+    let l: VisibilityKind = visibility_kind(left);
+    let r: VisibilityKind = visibility_kind(right);
 
-    let r: VisibilityKind =
-        visibility_kind(right);
-
-    if l == VisibilityKind.External
-        or r == VisibilityKind.External {
-
+    if l == VisibilityKind.External or r == VisibilityKind.External {
         give "external";
     }
 
-    if l == VisibilityKind.Public
-        or r == VisibilityKind.Public {
-
+    if l == VisibilityKind.Public or r == VisibilityKind.Public {
         give "public";
     }
 
-    if l == VisibilityKind.Export
-        or r == VisibilityKind.Export {
-
+    if l == VisibilityKind.Export or r == VisibilityKind.Export {
         give "export";
     }
 
-    if l == VisibilityKind.Internal
-        or r == VisibilityKind.Internal {
-
+    if l == VisibilityKind.Internal or r == VisibilityKind.Internal {
         give "internal";
     }
 
-    if l == VisibilityKind.Package
-        or r == VisibilityKind.Package {
-
+    if l == VisibilityKind.Package or r == VisibilityKind.Package {
         give "package";
     }
 
-    if l == VisibilityKind.Protected
-        or r == VisibilityKind.Protected {
-
+    if l == VisibilityKind.Protected or r == VisibilityKind.Protected {
         give "protected";
     }
 
     give "private";
 }
 
-proc visibility_less_permissive(
-    left: string,
-    right: string
-) -> string {
-    let l: VisibilityKind =
-        visibility_kind(left);
+proc visibility_less_permissive(left: string, right: string) -> string {
+    let l: VisibilityKind = visibility_kind(left);
+    let r: VisibilityKind = visibility_kind(right);
 
-    let r: VisibilityKind =
-        visibility_kind(right);
-
-    if l == VisibilityKind.Private
-        or r == VisibilityKind.Private {
-
+    if l == VisibilityKind.Private or r == VisibilityKind.Private {
         give "private";
     }
 
-    if l == VisibilityKind.Protected
-        or r == VisibilityKind.Protected {
-
+    if l == VisibilityKind.Protected or r == VisibilityKind.Protected {
         give "protected";
     }
 
-    if l == VisibilityKind.Package
-        or r == VisibilityKind.Package {
-
+    if l == VisibilityKind.Package or r == VisibilityKind.Package {
         give "package";
     }
 
-    if l == VisibilityKind.Internal
-        or r == VisibilityKind.Internal {
-
+    if l == VisibilityKind.Internal or r == VisibilityKind.Internal {
         give "internal";
     }
 
-    if l == VisibilityKind.Export
-        or r == VisibilityKind.Export {
-
+    if l == VisibilityKind.Export or r == VisibilityKind.Export {
         give "export";
     }
 
-    if l == VisibilityKind.Public
-        or r == VisibilityKind.Public {
-
+    if l == VisibilityKind.Public or r == VisibilityKind.Public {
         give "public";
     }
 
-    if l == VisibilityKind.External
-        or r == VisibilityKind.External {
-
+    if l == VisibilityKind.External or r == VisibilityKind.External {
         give "external";
     }
 

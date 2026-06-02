@@ -1,5 +1,3 @@
-/home/vincentr/Documents/GitHub/vitte/src/vitte/compiler/frontend/parse/lookahead.vit
-
 space vitte/compiler/frontend/parse/lookahead
 
 use vitte/compiler/frontend/lex/token.{ Token, TokenKind }
@@ -139,23 +137,13 @@ proc match_lexeme(tokens: [Token], cursor: u64, lexeme: string) -> LookaheadResu
 }
 
 proc next_is(tokens: [Token], cursor: u64, kind: TokenKind) -> bool {
-    let result: LookaheadResult =
-        match_kind(
-            tokens,
-            cursor + 1,
-            kind
-        );
+    let result: LookaheadResult = match_kind(tokens, cursor + 1, kind);
 
     give result.matched;
 }
 
 proc current_is(tokens: [Token], cursor: u64, kind: TokenKind) -> bool {
-    let result: LookaheadResult =
-        match_kind(
-            tokens,
-            cursor,
-            kind
-        );
+    let result: LookaheadResult = match_kind(tokens, cursor, kind);
 
     give result.matched;
 }
@@ -172,8 +160,7 @@ proc skip_newlines(tokens: [Token], cursor: u64) -> u64 {
     let current: u64 = cursor;
 
     while current_is(tokens, current, TokenKind.Newline) {
-        set current =
-            current + 1;
+        set current = current + 1;
     }
 
     give current;
@@ -183,8 +170,7 @@ proc skip_comments(tokens: [Token], cursor: u64) -> u64 {
     let current: u64 = cursor;
 
     while current_is(tokens, current, TokenKind.Comment) {
-        set current =
-            current + 1;
+        set current = current + 1;
     }
 
     give current;
@@ -194,20 +180,11 @@ proc skip_trivia(tokens: [Token], cursor: u64) -> u64 {
     let current: u64 = cursor;
 
     while true {
-        let before: u64 =
-            current;
+        let before: u64 = current;
 
-        set current =
-            skip_newlines(
-                tokens,
-                current
-            );
+        set current = skip_newlines(tokens, current);
 
-        set current =
-            skip_comments(
-                tokens,
-                current
-            );
+        set current = skip_comments(tokens, current);
 
         if before == current {
             break;
@@ -270,8 +247,7 @@ proc expect_semicolon(tokens: [Token], cursor: u64) -> bool {
 }
 
 proc lookahead_selftest() -> bool {
-    let tokens: [Token] =
-        [
+    let tokens: [Token] = [
             Token {
                 kind: TokenKind.Identifier,
                 lexeme: "main",
@@ -292,14 +268,9 @@ proc lookahead_selftest() -> bool {
                 line: 1,
                 column: 6
             }
-        ];
+    ];
 
-    let result: LookaheadResult =
-        match_kind(
-            tokens,
-            0,
-            TokenKind.Identifier
-        );
+    let result: LookaheadResult = match_kind(tokens, 0, TokenKind.Identifier);
 
     give result.matched
         and current_is(

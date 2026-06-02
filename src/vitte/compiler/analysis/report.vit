@@ -253,13 +253,7 @@ proc is_error_severity(severity: AnalysisSeverity) -> bool {
     give false;
 }
 
-proc make_analysis_label(
-    message: string,
-    line: u64,
-    column: u64,
-    length: u64,
-    primary: bool
-) -> AnalysisLabel {
+proc make_analysis_label(message: string, line: u64, column: u64, length: u64, primary: bool) -> AnalysisLabel {
     give AnalysisLabel {
         message: message,
         line: line,
@@ -279,10 +273,7 @@ proc empty_analysis_label() -> AnalysisLabel {
     };
 }
 
-proc analysis_context_notes(
-    labels: [string],
-    suggestion: string
-) -> [string] {
+proc analysis_context_notes(labels: [string], suggestion: string) -> [string] {
     let notes: [string] = [];
 
     if len(labels) > 0 {
@@ -296,10 +287,7 @@ proc analysis_context_notes(
     give notes;
 }
 
-proc append_note(
-    notes: [string],
-    note: string
-) -> [string] {
+proc append_note(notes: [string], note: string) -> [string] {
     if note == "" {
         give notes;
     }
@@ -307,10 +295,7 @@ proc append_note(
     give notes + [note];
 }
 
-proc append_label_text(
-    labels: [string],
-    label: string
-) -> [string] {
+proc append_label_text(labels: [string], label: string) -> [string] {
     if label == "" {
         give labels;
     }
@@ -318,18 +303,7 @@ proc append_label_text(
     give labels + [label];
 }
 
-proc analysis_diagnostic(
-    phase: string,
-    code: string,
-    severity: string,
-    message: string,
-    labels: [string],
-    suggestion: string,
-    line: u64,
-    column: u64,
-    length: u64,
-    fatal: bool
-) -> AnalysisDiagnostic {
+proc analysis_diagnostic(phase: string, code: string, severity: string, message: string, labels: [string], suggestion: string, line: u64, column: u64, length: u64, fatal: bool) -> AnalysisDiagnostic {
     give AnalysisDiagnostic {
         phase: phase,
         code: code,
@@ -357,34 +331,8 @@ proc analysis_diagnostic(
     };
 }
 
-proc analysis_diagnostic_with_span(
-    phase: string,
-    code: string,
-    severity: string,
-    message: string,
-    labels: [string],
-    suggestion: string,
-    line: u64,
-    column: u64,
-    length: u64,
-    fatal: bool,
-    file: string,
-    file_id: u64,
-    span_start: u64,
-    span_end: u64
-) -> AnalysisDiagnostic {
-    let base: AnalysisDiagnostic = analysis_diagnostic(
-        phase,
-        code,
-        severity,
-        message,
-        labels,
-        suggestion,
-        line,
-        column,
-        length,
-        fatal
-    );
+proc analysis_diagnostic_with_span(phase: string, code: string, severity: string, message: string, labels: [string], suggestion: string, line: u64, column: u64, length: u64, fatal: bool, file: string, file_id: u64, span_start: u64, span_end: u64) -> AnalysisDiagnostic {
+    let base: AnalysisDiagnostic = analysis_diagnostic(phase, code, severity, message, labels, suggestion, line, column, length, fatal);
     give AnalysisDiagnostic {
         phase: base.phase,
         code: base.code,
@@ -412,18 +360,7 @@ proc analysis_diagnostic_with_span(
     };
 }
 
-proc typed_analysis_diagnostic(
-    phase_kind: AnalysisPhase,
-    kind: AnalysisDiagnosticKind,
-    severity_kind: AnalysisSeverity,
-    code: string,
-    message: string,
-    file: string,
-    line: u64,
-    column: u64,
-    length: u64,
-    suggestion: string
-) -> AnalysisDiagnostic {
+proc typed_analysis_diagnostic(phase_kind: AnalysisPhase, kind: AnalysisDiagnosticKind, severity_kind: AnalysisSeverity, code: string, message: string, file: string, line: u64, column: u64, length: u64, suggestion: string) -> AnalysisDiagnostic {
     let labels: [string] = [message];
 
     give AnalysisDiagnostic {
@@ -480,56 +417,35 @@ proc new_diagnostic_builder() -> AnalysisDiagnosticBuilder {
     };
 }
 
-proc builder_phase(
-    builder: AnalysisDiagnosticBuilder,
-    phase_kind: AnalysisPhase
-) -> AnalysisDiagnosticBuilder {
+proc builder_phase(builder: AnalysisDiagnosticBuilder, phase_kind: AnalysisPhase) -> AnalysisDiagnosticBuilder {
     set builder.phase_kind = phase_kind;
     set builder.phase = phase_text(phase_kind);
     give builder;
 }
 
-proc builder_kind(
-    builder: AnalysisDiagnosticBuilder,
-    kind: AnalysisDiagnosticKind
-) -> AnalysisDiagnosticBuilder {
+proc builder_kind(builder: AnalysisDiagnosticBuilder, kind: AnalysisDiagnosticKind) -> AnalysisDiagnosticBuilder {
     set builder.kind = kind;
     give builder;
 }
 
-proc builder_severity(
-    builder: AnalysisDiagnosticBuilder,
-    severity_kind: AnalysisSeverity
-) -> AnalysisDiagnosticBuilder {
+proc builder_severity(builder: AnalysisDiagnosticBuilder, severity_kind: AnalysisSeverity) -> AnalysisDiagnosticBuilder {
     set builder.severity_kind = severity_kind;
     set builder.severity = severity_text(severity_kind);
     set builder.fatal = is_fatal_severity(severity_kind);
     give builder;
 }
 
-proc builder_code(
-    builder: AnalysisDiagnosticBuilder,
-    code: string
-) -> AnalysisDiagnosticBuilder {
+proc builder_code(builder: AnalysisDiagnosticBuilder, code: string) -> AnalysisDiagnosticBuilder {
     set builder.code = code;
     give builder;
 }
 
-proc builder_message(
-    builder: AnalysisDiagnosticBuilder,
-    message: string
-) -> AnalysisDiagnosticBuilder {
+proc builder_message(builder: AnalysisDiagnosticBuilder, message: string) -> AnalysisDiagnosticBuilder {
     set builder.message = message;
     give builder;
 }
 
-proc builder_location(
-    builder: AnalysisDiagnosticBuilder,
-    file: string,
-    line: u64,
-    column: u64,
-    length: u64
-) -> AnalysisDiagnosticBuilder {
+proc builder_location(builder: AnalysisDiagnosticBuilder, file: string, line: u64, column: u64, length: u64) -> AnalysisDiagnosticBuilder {
     set builder.file = file;
     set builder.line = line;
     set builder.column = column;
@@ -538,44 +454,29 @@ proc builder_location(
     give builder;
 }
 
-proc builder_label(
-    builder: AnalysisDiagnosticBuilder,
-    label: string
-) -> AnalysisDiagnosticBuilder {
+proc builder_label(builder: AnalysisDiagnosticBuilder, label: string) -> AnalysisDiagnosticBuilder {
     set builder.labels = append_label_text(builder.labels, label);
     give builder;
 }
 
-proc builder_related_label(
-    builder: AnalysisDiagnosticBuilder,
-    label: AnalysisLabel
-) -> AnalysisDiagnosticBuilder {
-    set builder.related_labels =
-        builder.related_labels + [label];
+proc builder_related_label(builder: AnalysisDiagnosticBuilder, label: AnalysisLabel) -> AnalysisDiagnosticBuilder {
+    set builder.related_labels = builder.related_labels + [label];
 
     give builder;
 }
 
-proc builder_suggestion(
-    builder: AnalysisDiagnosticBuilder,
-    suggestion: string
-) -> AnalysisDiagnosticBuilder {
+proc builder_suggestion(builder: AnalysisDiagnosticBuilder, suggestion: string) -> AnalysisDiagnosticBuilder {
     set builder.suggestion = suggestion;
     set builder.help = suggestion;
     give builder;
 }
 
-proc builder_note(
-    builder: AnalysisDiagnosticBuilder,
-    note: string
-) -> AnalysisDiagnosticBuilder {
+proc builder_note(builder: AnalysisDiagnosticBuilder, note: string) -> AnalysisDiagnosticBuilder {
     set builder.notes = append_note(builder.notes, note);
     give builder;
 }
 
-proc finish_diagnostic(
-    builder: AnalysisDiagnosticBuilder
-) -> AnalysisDiagnostic {
+proc finish_diagnostic(builder: AnalysisDiagnosticBuilder) -> AnalysisDiagnostic {
     let labels = builder.labels;
 
     if len(labels) == 0 && builder.message != "" {
@@ -585,11 +486,7 @@ proc finish_diagnostic(
     let notes = builder.notes;
 
     if len(notes) == 0 {
-        set notes =
-            analysis_context_notes(
-                labels,
-                builder.suggestion
-            );
+        set notes = analysis_context_notes(labels, builder.suggestion);
     }
 
     give AnalysisDiagnostic {
@@ -608,13 +505,7 @@ proc finish_diagnostic(
         kind: builder.kind,
         phase_kind: builder.phase_kind,
         severity_kind: builder.severity_kind,
-        primary_label: make_analysis_label(
-            builder.message,
-            builder.line,
-            builder.column,
-            builder.length,
-            true
-        ),
+        primary_label: make_analysis_label(builder.message, builder.line, builder.column, builder.length, true),
         related_labels: builder.related_labels,
         help: builder.help,
         file: builder.file,
@@ -625,95 +516,20 @@ proc finish_diagnostic(
     };
 }
 
-proc syntax_error(
-    code: string,
-    message: string,
-    file: string,
-    line: u64,
-    column: u64,
-    length: u64
-) -> AnalysisDiagnostic {
-    give typed_analysis_diagnostic(
-        AnalysisPhase.Parse,
-        AnalysisDiagnosticKind.Syntax,
-        AnalysisSeverity.Error,
-        code,
-        message,
-        file,
-        line,
-        column,
-        length,
-        ""
-    );
+proc syntax_error(code: string, message: string, file: string, line: u64, column: u64, length: u64) -> AnalysisDiagnostic {
+    give typed_analysis_diagnostic(AnalysisPhase.Parse, AnalysisDiagnosticKind.Syntax, AnalysisSeverity.Error, code, message, file, line, column, length, "");
 }
 
-proc type_error(
-    code: string,
-    message: string,
-    file: string,
-    line: u64,
-    column: u64,
-    length: u64,
-    suggestion: string
-) -> AnalysisDiagnostic {
-    give typed_analysis_diagnostic(
-        AnalysisPhase.Typeck,
-        AnalysisDiagnosticKind.TypeMismatch,
-        AnalysisSeverity.Error,
-        code,
-        message,
-        file,
-        line,
-        column,
-        length,
-        suggestion
-    );
+proc type_error(code: string, message: string, file: string, line: u64, column: u64, length: u64, suggestion: string) -> AnalysisDiagnostic {
+    give typed_analysis_diagnostic(AnalysisPhase.Typeck, AnalysisDiagnosticKind.TypeMismatch, AnalysisSeverity.Error, code, message, file, line, column, length, suggestion);
 }
 
-proc borrow_error(
-    code: string,
-    message: string,
-    file: string,
-    line: u64,
-    column: u64,
-    length: u64,
-    suggestion: string
-) -> AnalysisDiagnostic {
-    give typed_analysis_diagnostic(
-        AnalysisPhase.Borrowck,
-        AnalysisDiagnosticKind.BorrowConflict,
-        AnalysisSeverity.Error,
-        code,
-        message,
-        file,
-        line,
-        column,
-        length,
-        suggestion
-    );
+proc borrow_error(code: string, message: string, file: string, line: u64, column: u64, length: u64, suggestion: string) -> AnalysisDiagnostic {
+    give typed_analysis_diagnostic(AnalysisPhase.Borrowck, AnalysisDiagnosticKind.BorrowConflict, AnalysisSeverity.Error, code, message, file, line, column, length, suggestion);
 }
 
-proc ir_lowering_error(
-    code: string,
-    message: string,
-    file: string,
-    line: u64,
-    column: u64,
-    length: u64,
-    suggestion: string
-) -> AnalysisDiagnostic {
-    give typed_analysis_diagnostic(
-        AnalysisPhase.Ir,
-        AnalysisDiagnosticKind.IrLoweringError,
-        AnalysisSeverity.Error,
-        code,
-        message,
-        file,
-        line,
-        column,
-        length,
-        suggestion
-    );
+proc ir_lowering_error(code: string, message: string, file: string, line: u64, column: u64, length: u64, suggestion: string) -> AnalysisDiagnostic {
+    give typed_analysis_diagnostic(AnalysisPhase.Ir, AnalysisDiagnosticKind.IrLoweringError, AnalysisSeverity.Error, code, message, file, line, column, length, suggestion);
 }
 
 proc diagnostic_is_error(diagnostic: AnalysisDiagnostic) -> bool {
@@ -733,11 +549,11 @@ proc diagnostic_is_error(diagnostic: AnalysisDiagnostic) -> bool {
 }
 
 proc diagnostic_summary(diagnostic: AnalysisDiagnostic) -> string {
-    give diagnostic.severity +
-        "[" + diagnostic.code + "] " +
-        diagnostic.phase +
-        ": " +
-        diagnostic.message;
+    let summary: string = diagnostic.severity + "[" + diagnostic.code + "] ";
+    set summary = summary + diagnostic.phase;
+    set summary = summary + ": ";
+    set summary = summary + diagnostic.message;
+    give summary;
 }
 
 share AnalysisSeverity

@@ -46,10 +46,10 @@ space vitte/compiler/driver/bootstrap_pipeline
 // ============================================================================
 
 pick BootstrapStage {
-  Stage1,     // Parse-only (lexer output)
-  Stage2,     // AST builder (AST output)
-  Stage3,     // HIR lowering (HIR output)
-  Stage4      // Code generation (binary output)
+  Stage1,
+  Stage2,
+  Stage3,
+  Stage4
 }
 
 form BootstrapStageInfo {
@@ -64,10 +64,10 @@ form BootstrapStageInfo {
 proc stage1_info() -> BootstrapStageInfo {
   give BootstrapStageInfo {
     stage: BootstrapStage.Stage1,
-    input_format: ".vit (Vitte source)",
-    output_format: "tokens (serialized)",
+    input_format: ".vit source",
+    output_format: "tokens serialized",
     implementation_language: "C/Vitte",
-    compiler_used: "C compiler (gcc/clang)",
+    compiler_used: "C compiler gcc or clang",
     artifact_name: "vitte-stage1"
   }
 }
@@ -75,8 +75,8 @@ proc stage1_info() -> BootstrapStageInfo {
 proc stage2_info() -> BootstrapStageInfo {
   give BootstrapStageInfo {
     stage: BootstrapStage.Stage2,
-    input_format: "tokens (from Stage 1)",
-    output_format: "AST (serialized)",
+    input_format: "tokens from Stage 1",
+    output_format: "AST serialized",
     implementation_language: "Vitte",
     compiler_used: "Stage 1 compiler",
     artifact_name: "vitte-stage2"
@@ -86,8 +86,8 @@ proc stage2_info() -> BootstrapStageInfo {
 proc stage3_info() -> BootstrapStageInfo {
   give BootstrapStageInfo {
     stage: BootstrapStage.Stage3,
-    input_format: "AST (from Stage 2)",
-    output_format: "HIR (serialized)",
+    input_format: "AST from Stage 2",
+    output_format: "HIR serialized",
     implementation_language: "Vitte",
     compiler_used: "Stage 2 compiler",
     artifact_name: "vitte-stage3"
@@ -97,11 +97,11 @@ proc stage3_info() -> BootstrapStageInfo {
 proc stage4_info() -> BootstrapStageInfo {
   give BootstrapStageInfo {
     stage: BootstrapStage.Stage4,
-    input_format: "HIR (from Stage 3)",
+    input_format: "HIR from Stage 3",
     output_format: "binary executable",
     implementation_language: "Vitte",
     compiler_used: "Stage 3 compiler",
-    artifact_name: "vitte (final)"
+    artifact_name: "vitte final"
   }
 }
 
@@ -332,7 +332,7 @@ proc execute_stage4(ctx: *BootstrapContext, hir_path: string) -> Stage4Result {
   // Simulated code generation
   let functions_generated = 350
   let loc = 42500
-  let binary_size = 8388608  // ~8MB typical for compiler
+  let binary_size = 8388608
 
   let result = Stage4Result {
     success: true,

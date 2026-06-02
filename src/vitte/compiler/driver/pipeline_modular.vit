@@ -76,7 +76,9 @@ proc run(phase: CompilerPhase, status: PhaseResultKind, message: string, duratio
     phase: phase.phase_name,
     duration_ms: duration_ms
   };
-  let fatal_now: bool = status == PhaseResultKind.FatalError or ((status == PhaseResultKind.Skipped or status == PhaseResultKind.Unimplemented) and phase.critical);
+  let skipped_like: bool = status == PhaseResultKind.Skipped or status == PhaseResultKind.Unimplemented;
+  let skipped_critical: bool = skipped_like and phase.critical;
+  let fatal_now: bool = status == PhaseResultKind.FatalError or skipped_critical;
   give PipelineExecution {
     valid: not fatal_now,
     status: if fatal_now { PhaseResultKind.FatalError } else { status },
@@ -86,11 +88,21 @@ proc run(phase: CompilerPhase, status: PhaseResultKind, message: string, duratio
 }
 
 proc phase_result_kind_text(kind: PhaseResultKind) -> string {
-  if kind == PhaseResultKind.Success { give "Success"; }
-  if kind == PhaseResultKind.Warning { give "Warning"; }
-  if kind == PhaseResultKind.FatalError { give "FatalError"; }
-  if kind == PhaseResultKind.Skipped { give "Skipped"; }
-  if kind == PhaseResultKind.Unimplemented { give "Unimplemented"; }
+  if kind == PhaseResultKind.Success {
+    give "Success";
+  }
+  if kind == PhaseResultKind.Warning {
+    give "Warning";
+  }
+  if kind == PhaseResultKind.FatalError {
+    give "FatalError";
+  }
+  if kind == PhaseResultKind.Skipped {
+    give "Skipped";
+  }
+  if kind == PhaseResultKind.Unimplemented {
+    give "Unimplemented";
+  }
   give "Unknown";
 }
 
@@ -163,7 +175,8 @@ proc render_timings(timings: [PhaseTiming]) -> string {
   let out: string = "";
   let i: u64 = 0;
   while i < len(timings) {
-    let line = timings[i].phase + " " + (timings[i].duration_ms as string) + "ms";
+    let duration_text: string = timings[i].duration_ms as string;
+    let line = timings[i].phase + " " + duration_text + "ms";
     if out == "" {
       set out = line;
     } else {

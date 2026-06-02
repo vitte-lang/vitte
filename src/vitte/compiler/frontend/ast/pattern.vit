@@ -62,25 +62,45 @@ form AstPattern {
 }
 
 proc ast_pattern_kind_name(kind: AstPatternKind) -> string {
-  if kind == AstPatternKind.Unknown { give "unknown"; }
-  elif kind == AstPatternKind.Name { give "name"; }
-  elif kind == AstPatternKind.Literal { give "literal"; }
-  elif kind == AstPatternKind.Wildcard { give "wildcard"; }
-  elif kind == AstPatternKind.Ref { give "ref"; }
-  elif kind == AstPatternKind.MutableRef { give "mutable-ref"; }
-  elif kind == AstPatternKind.Struct { give "struct"; }
-  elif kind == AstPatternKind.Enum { give "enum"; }
-  elif kind == AstPatternKind.Tuple { give "tuple"; }
-  elif kind == AstPatternKind.Array { give "array"; }
-  elif kind == AstPatternKind.Slice { give "slice"; }
-  elif kind == AstPatternKind.Range { give "range"; }
-  elif kind == AstPatternKind.Or { give "or"; }
-  elif kind == AstPatternKind.Rest { give "rest"; }
-  elif kind == AstPatternKind.Path { give "path"; }
-  elif kind == AstPatternKind.Variant { give "variant"; }
-  elif kind == AstPatternKind.Typed { give "typed"; }
-  elif kind == AstPatternKind.Binding { give "binding"; }
-  elif kind == AstPatternKind.Invalid { give "invalid"; }
+  if kind == AstPatternKind.Unknown {
+    give "unknown";
+  } elif kind == AstPatternKind.Name {
+    give "name";
+  } elif kind == AstPatternKind.Literal {
+    give "literal";
+  } elif kind == AstPatternKind.Wildcard {
+    give "wildcard";
+  } elif kind == AstPatternKind.Ref {
+    give "ref";
+  } elif kind == AstPatternKind.MutableRef {
+    give "mutable-ref";
+  } elif kind == AstPatternKind.Struct {
+    give "struct";
+  } elif kind == AstPatternKind.Enum {
+    give "enum";
+  } elif kind == AstPatternKind.Tuple {
+    give "tuple";
+  } elif kind == AstPatternKind.Array {
+    give "array";
+  } elif kind == AstPatternKind.Slice {
+    give "slice";
+  } elif kind == AstPatternKind.Range {
+    give "range";
+  } elif kind == AstPatternKind.Or {
+    give "or";
+  } elif kind == AstPatternKind.Rest {
+    give "rest";
+  } elif kind == AstPatternKind.Path {
+    give "path";
+  } elif kind == AstPatternKind.Variant {
+    give "variant";
+  } elif kind == AstPatternKind.Typed {
+    give "typed";
+  } elif kind == AstPatternKind.Binding {
+    give "binding";
+  } elif kind == AstPatternKind.Invalid {
+    give "invalid";
+  }
 
   give "pattern";
 }
@@ -91,39 +111,21 @@ proc pattern_depth(children: [AstPattern]) -> u64 {
   let i: u64 = 0;
 
   while i < len(children) {
-    let child_depth: u64 =
-      1 + children[i].depth;
+    let child_depth: u64 = 1 + children[i].depth;
 
     if child_depth > depth {
-      set depth =
-        child_depth;
+      set depth = child_depth;
     }
 
-    set i =
-      i + 1;
+    set i = i + 1;
   }
 
   give depth;
 }
 
-proc ast_pattern_node(
-  id: u64,
-  span: AstSpan,
-  kind: AstPatternKind,
-  text: string,
-  name: string,
-  mutable: bool,
-  children: [AstPattern]
-) -> AstPattern {
-
-  let binding_name: string =
-    if kind == AstPatternKind.Name
-      or kind == AstPatternKind.Binding {
-
-      name
-    } else {
-      ""
-    };
+proc ast_pattern_node(id: u64, span: AstSpan, kind: AstPatternKind, text: string, name: string, mutable: bool, children: [AstPattern]) -> AstPattern {
+  let binding_kind: bool = kind == AstPatternKind.Name or kind == AstPatternKind.Binding;
+  let binding_name: string = if binding_kind { name } else { "" };
 
   give AstPattern {
     id: ast_id(id),
@@ -155,22 +157,8 @@ proc ast_pattern_node(
   };
 }
 
-proc ast_pattern(
-  id: u64,
-  span: AstSpan,
-  name: string,
-  mutable: bool
-) -> AstPattern {
-
-  let kind: AstPatternKind =
-    if name == "_" {
-      AstPatternKind.Wildcard
-    }
-    elif name != "" {
-      AstPatternKind.Name
-    } else {
-      AstPatternKind.Unknown
-    };
+proc ast_pattern(id: u64, span: AstSpan, name: string, mutable: bool) -> AstPattern {
+  let kind: AstPatternKind = if name == "_" { AstPatternKind.Wildcard } elif name != "" { AstPatternKind.Name } else { AstPatternKind.Unknown };
 
   give AstPattern {
     id: ast_id(id),
@@ -327,6 +315,7 @@ proc ast_pattern_variant(id: u64, span: AstSpan, variant_name: string, children:
 }
 
 proc ast_pattern_merge(left: AstPattern, right: AstPattern) -> AstPattern {
+  let merged_depth: u64 = if left.depth > right.depth { left.depth + 1 } else { right.depth + 1 };
   give AstPattern {
     id: left.id,
     span: merge_spans(left.span, right.span),
@@ -351,11 +340,7 @@ proc ast_pattern_merge(left: AstPattern, right: AstPattern) -> AstPattern {
     children: [left, right],
 
     child_count: 2,
-    depth: if left.depth > right.depth {
-      left.depth + 1
-    } else {
-      right.depth + 1
-    },
+    depth: merged_depth,
 
     valid: left.valid and right.valid
   };
@@ -431,55 +416,26 @@ proc count_patterns(pattern: AstPattern) -> u64 {
   let i: u64 = 0;
 
   while i < len(pattern.children) {
-    set total =
-      total + count_patterns(pattern.children[i]);
-
-    set i =
-      i + 1;
+    set total = total + count_patterns(pattern.children[i]);
+    set i = i + 1;
   }
 
   give total;
 }
 
 proc pattern_summary(pattern: AstPattern) -> string {
-  give "kind="
-    + ast_pattern_kind_name(pattern.kind)
-    + " name="
-    + pattern.name
-    + " children="
-    + (pattern.child_count as string)
-    + " depth="
-    + (pattern.depth as string)
-    + " mutable="
-    + (pattern.mutable as string)
-    + " borrowed="
-    + (pattern.borrowed as string)
-    + " valid="
-    + (pattern.valid as string);
+  let child_count: string = pattern.child_count as string;
+  let depth: string = pattern.depth as string;
+  let mutable_text: string = pattern.mutable as string;
+  let borrowed_text: string = pattern.borrowed as string;
+  let valid_text: string = pattern.valid as string;
+  give "kind " + ast_pattern_kind_name(pattern.kind) + " name " + pattern.name + " children " + child_count + " depth " + depth + " mutable " + mutable_text + " borrowed " + borrowed_text + " valid " + valid_text;
 }
 
 proc ast_pattern_selftest() -> bool {
-  let left: AstPattern =
-    ast_pattern(
-      1,
-      ast_span_empty(),
-      "left",
-      false
-    );
-
-  let right: AstPattern =
-    ast_pattern(
-      2,
-      ast_span_empty(),
-      "right",
-      true
-    );
-
-  let merged: AstPattern =
-    ast_pattern_merge(
-      left,
-      right
-    );
+  let left: AstPattern = ast_pattern(1, ast_span_empty(), "left", false);
+  let right: AstPattern = ast_pattern(2, ast_span_empty(), "right", true);
+  let merged: AstPattern = ast_pattern_merge(left, right);
 
   give left.valid
     and right.valid

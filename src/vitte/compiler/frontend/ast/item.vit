@@ -194,15 +194,7 @@ form AstModule {
   valid: bool
 }
 
-proc ast_generic_param(
-  id: u64,
-  span: AstSpan,
-  kind: string,
-  name: string,
-  bound: AstTypeExpr,
-  default_type: AstTypeExpr
-) -> AstGenericParam {
-
+proc ast_generic_param(id: u64, span: AstSpan, kind: string, name: string, bound: AstTypeExpr, default_type: AstTypeExpr) -> AstGenericParam {
   give AstGenericParam {
     id: ast_id(id),
     span: span,
@@ -230,16 +222,7 @@ proc ast_generic_param_empty() -> AstGenericParam {
   };
 }
 
-proc ast_param(
-  id: u64,
-  span: AstSpan,
-  pattern: AstPattern,
-  annotation: AstTypeExpr,
-  default_value: AstExpr,
-  mode: string,
-  variadic: bool
-) -> AstParam {
-
+proc ast_param(id: u64, span: AstSpan, pattern: AstPattern, annotation: AstTypeExpr, default_value: AstExpr, mode: string, variadic: bool) -> AstParam {
   give AstParam {
     id: ast_id(id),
     span: span,
@@ -269,20 +252,7 @@ proc ast_param_empty() -> AstParam {
   };
 }
 
-proc ast_proc_signature(
-  id: u64,
-  span: AstSpan,
-  name: string,
-  abi: string,
-  params: [AstParam],
-  return_type: AstTypeExpr,
-  generic_params: [AstGenericParam],
-  where_clauses: [string],
-  effects: [string],
-  requires: [string],
-  noexcept: bool
-) -> AstProcSignature {
-
+proc ast_proc_signature(id: u64, span: AstSpan, name: string, abi: string, params: [AstParam], return_type: AstTypeExpr, generic_params: [AstGenericParam], where_clauses: [string], effects: [string], requires: [string], noexcept: bool) -> AstProcSignature {
   give AstProcSignature {
     id: ast_id(id),
     span: span,
@@ -325,59 +295,75 @@ proc ast_proc_signature_empty() -> AstProcSignature {
 }
 
 proc ast_item_kind_name(kind: AstItemKind) -> string {
-  if kind == AstItemKind.Unknown { give "unknown"; }
-  elif kind == AstItemKind.Space { give "space"; }
-  elif kind == AstItemKind.Use { give "use"; }
-  elif kind == AstItemKind.Export { give "export"; }
-  elif kind == AstItemKind.Const { give "const"; }
-  elif kind == AstItemKind.Static { give "static"; }
-  elif kind == AstItemKind.Global { give "global"; }
-  elif kind == AstItemKind.Type { give "type"; }
-  elif kind == AstItemKind.Opaque { give "opaque"; }
-  elif kind == AstItemKind.Extern { give "extern"; }
-  elif kind == AstItemKind.Form { give "form"; }
-  elif kind == AstItemKind.Class { give "class"; }
-  elif kind == AstItemKind.Union { give "union"; }
-  elif kind == AstItemKind.Bits { give "bits"; }
-  elif kind == AstItemKind.Pick { give "pick"; }
-  elif kind == AstItemKind.Flags { give "flags"; }
-  elif kind == AstItemKind.Trait { give "trait"; }
-  elif kind == AstItemKind.Impl { give "impl"; }
-  elif kind == AstItemKind.Proc { give "proc"; }
-  elif kind == AstItemKind.Entry { give "entry"; }
-  elif kind == AstItemKind.Test { give "test"; }
-  elif kind == AstItemKind.Bench { give "bench"; }
+  if kind == AstItemKind.Unknown {
+    give "unknown";
+  } elif kind == AstItemKind.Space {
+    give "space";
+  } elif kind == AstItemKind.Use {
+    give "use";
+  } elif kind == AstItemKind.Export {
+    give "export";
+  } elif kind == AstItemKind.Const {
+    give "const";
+  } elif kind == AstItemKind.Static {
+    give "static";
+  } elif kind == AstItemKind.Global {
+    give "global";
+  } elif kind == AstItemKind.Type {
+    give "type";
+  } elif kind == AstItemKind.Opaque {
+    give "opaque";
+  } elif kind == AstItemKind.Extern {
+    give "extern";
+  } elif kind == AstItemKind.Form {
+    give "form";
+  } elif kind == AstItemKind.Class {
+    give "class";
+  } elif kind == AstItemKind.Union {
+    give "union";
+  } elif kind == AstItemKind.Bits {
+    give "bits";
+  } elif kind == AstItemKind.Pick {
+    give "pick";
+  } elif kind == AstItemKind.Flags {
+    give "flags";
+  } elif kind == AstItemKind.Trait {
+    give "trait";
+  } elif kind == AstItemKind.Impl {
+    give "impl";
+  } elif kind == AstItemKind.Proc {
+    give "proc";
+  } elif kind == AstItemKind.Intrinsic {
+    give "intrinsic";
+  } elif kind == AstItemKind.Query {
+    give "query";
+  } elif kind == AstItemKind.Compiler {
+    give "compiler";
+  } elif kind == AstItemKind.Pass {
+    give "pass";
+  } elif kind == AstItemKind.Backend {
+    give "backend";
+  } elif kind == AstItemKind.Diagnostic {
+    give "diagnostic";
+  } elif kind == AstItemKind.Macro {
+    give "macro";
+  } elif kind == AstItemKind.Entry {
+    give "entry";
+  } elif kind == AstItemKind.Test {
+    give "test";
+  } elif kind == AstItemKind.Bench {
+    give "bench";
+  } elif kind == AstItemKind.Comptime {
+    give "comptime";
+  } elif kind == AstItemKind.StaticAssert {
+    give "static-assert";
+  }
 
   give "item";
 }
 
-proc ast_item_typed(
-  id: u64,
-  span: AstSpan,
-  kind: AstItemKind,
-  name: string,
-  attributes: [string],
-  namespace: string,
-  visibility: string,
-  modifiers: [string],
-  abi: string,
-  expr: AstExpr,
-  stmts: [AstStmt],
-  annotation: AstTypeExpr,
-  target_type: AstTypeExpr,
-  type_params: [AstTypeExpr],
-  generic_params: [AstGenericParam],
-  signature: AstProcSignature,
-  meta_args: [string],
-  message: string
-) -> AstItem {
-
-  let expr_count: u64 =
-    if expr.valid {
-      count_expr(expr)
-    } else {
-      0
-    };
+proc ast_item_typed(id: u64, span: AstSpan, kind: AstItemKind, name: string, attributes: [string], namespace: string, visibility: string, modifiers: [string], abi: string, expr: AstExpr, stmts: [AstStmt], annotation: AstTypeExpr, target_type: AstTypeExpr, type_params: [AstTypeExpr], generic_params: [AstGenericParam], signature: AstProcSignature, meta_args: [string], message: string) -> AstItem {
+  let expr_count: u64 = if expr.valid { count_expr(expr) } else { 0 };
 
   let stmt_count: u64 = 0;
   let type_count: u64 = 0;
@@ -386,40 +372,25 @@ proc ast_item_typed(
   let i: u64 = 0;
 
   while i < len(stmts) {
-    set stmt_count =
-      stmt_count + count_stmt_tree(stmts[i]);
-
-    set type_count =
-      type_count + count_stmt_types(stmts[i]);
-
-    set pattern_count =
-      pattern_count + count_stmt_patterns(stmts[i]);
-
-    set i =
-      i + 1;
+    set stmt_count = stmt_count + count_stmt_tree(stmts[i]);
+    set type_count = type_count + count_stmt_types(stmts[i]);
+    set pattern_count = pattern_count + count_stmt_patterns(stmts[i]);
+    set i = i + 1;
   }
 
   if annotation.valid {
-    set type_count =
-      type_count + 1;
+    set type_count = type_count + 1;
   }
 
-  let node_count: u64 =
-    1 + stmt_count + expr_count + type_count + pattern_count;
+  let node_count: u64 = 1 + stmt_count + expr_count + type_count + pattern_count;
+  let valid: bool = kind != AstItemKind.Unknown;
 
-  let valid: bool =
-    kind != AstItemKind.Unknown;
-
-  if kind == AstItemKind.Const
-    or kind == AstItemKind.StaticAssert {
-
-    set valid =
-      valid and expr.valid;
+  if kind == AstItemKind.Const or kind == AstItemKind.StaticAssert {
+    set valid = valid and expr.valid;
   }
 
   if kind == AstItemKind.Proc {
-    set valid =
-      valid and signature.valid;
+    set valid = valid and signature.valid;
   }
 
   give AstItem {
@@ -456,37 +427,8 @@ proc ast_item_typed(
   };
 }
 
-proc ast_item_create(
-  id: u64,
-  span: AstSpan,
-  kind: AstItemKind,
-  name: string,
-  expr: AstExpr,
-  stmts: [AstStmt],
-  annotation: AstTypeExpr,
-  message: string
-) -> AstItem {
-
-  give ast_item_typed(
-    id,
-    span,
-    kind,
-    name,
-    [],
-    "",
-    "private",
-    [],
-    "",
-    expr,
-    stmts,
-    annotation,
-    ast_type_empty(),
-    [],
-    [],
-    ast_proc_signature_empty(),
-    [],
-    message
-  );
+proc ast_item_create(id: u64, span: AstSpan, kind: AstItemKind, name: string, expr: AstExpr, stmts: [AstStmt], annotation: AstTypeExpr, message: string) -> AstItem {
+  give ast_item_typed(id, span, kind, name, [], "", "private", [], "", expr, stmts, annotation, ast_type_empty(), [], [], ast_proc_signature_empty(), [], message);
 }
 
 proc ast_module_empty() -> AstModule {
@@ -513,20 +455,11 @@ proc ast_module(id: u64, span: AstSpan, items: [AstItem]) -> AstModule {
   let i: u64 = 0;
 
   while i < len(items) {
-    set expr_count =
-      expr_count + items[i].expr_count;
-
-    set stmt_count =
-      stmt_count + items[i].stmt_count;
-
-    set type_count =
-      type_count + items[i].type_count;
-
-    set pattern_count =
-      pattern_count + items[i].pattern_count;
-
-    set i =
-      i + 1;
+    set expr_count = expr_count + items[i].expr_count;
+    set stmt_count = stmt_count + items[i].stmt_count;
+    set type_count = type_count + items[i].type_count;
+    set pattern_count = pattern_count + items[i].pattern_count;
+    set i = i + 1;
   }
 
   give AstModule {
@@ -576,19 +509,16 @@ proc item_expr_depth(item: AstItem) -> u64 {
 }
 
 proc count_item_exprs(item: AstItem) -> u64 {
-  let total: u64 =
-    item.expr_count;
+  let total: u64 = item.expr_count;
 
   let i: u64 = 0;
 
   while i < len(item.signature.params) {
     if item.signature.params[i].default_value.valid {
-      set total =
-        total + count_expr(item.signature.params[i].default_value);
+      set total = total + count_expr(item.signature.params[i].default_value);
     }
 
-    set i =
-      i + 1;
+    set i = i + 1;
   }
 
   give total;
@@ -628,76 +558,37 @@ proc module_node_count(module: AstModule) -> u64 {
   let i: u64 = 0;
 
   while i < len(module.items) {
-    set total =
-      total + module.items[i].node_count;
-
-    set i =
-      i + 1;
+    set total = total + module.items[i].node_count;
+    set i = i + 1;
   }
 
   give total;
 }
 
 proc item_summary(item: AstItem) -> string {
-  give "kind="
-    + ast_item_kind_name(item.kind)
-    + " name="
-    + item.name
-    + " exprs="
-    + (item.expr_count as string)
-    + " stmts="
-    + (item.stmt_count as string)
-    + " types="
-    + (item.type_count as string)
-    + " patterns="
-    + (item.pattern_count as string)
-    + " valid="
-    + (item.valid as string);
+  let expr_count: string = item.expr_count as string;
+  let stmt_count: string = item.stmt_count as string;
+  let type_count: string = item.type_count as string;
+  let pattern_count: string = item.pattern_count as string;
+  let valid_text: string = item.valid as string;
+  give "kind " + ast_item_kind_name(item.kind) + " name " + item.name + " exprs " + expr_count + " stmts " + stmt_count + " types " + type_count + " patterns " + pattern_count + " valid " + valid_text;
 }
 
 proc module_summary(module: AstModule) -> string {
-  give "items="
-    + (len(module.items) as string)
-    + " exprs="
-    + (module.expr_count as string)
-    + " stmts="
-    + (module.stmt_count as string)
-    + " types="
-    + (module.type_count as string)
-    + " patterns="
-    + (module.pattern_count as string)
-    + " nodes="
-    + (module_node_count(module) as string)
-    + " valid="
-    + (module.valid as string);
+  let item_count: string = len(module.items) as string;
+  let expr_count: string = module.expr_count as string;
+  let stmt_count: string = module.stmt_count as string;
+  let type_count: string = module.type_count as string;
+  let pattern_count: string = module.pattern_count as string;
+  let node_count: string = module_node_count(module) as string;
+  let valid_text: string = module.valid as string;
+  give "items " + item_count + " exprs " + expr_count + " stmts " + stmt_count + " types " + type_count + " patterns " + pattern_count + " nodes " + node_count + " valid " + valid_text;
 }
 
 proc ast_item_selftest() -> bool {
-  let expr: AstExpr =
-    ast_expr_unknown(
-      1,
-      ast_span_empty(),
-      "0"
-    );
-
-  let item: AstItem =
-    ast_item_create(
-      2,
-      ast_span_empty(),
-      AstItemKind.Const,
-      "VALUE",
-      expr,
-      [],
-      ast_type_empty(),
-      ""
-    );
-
-  let module: AstModule =
-    ast_module(
-      3,
-      ast_span_empty(),
-      [item]
-    );
+  let expr: AstExpr = ast_expr_unknown(1, ast_span_empty(), "0");
+  let item: AstItem = ast_item_create(2, ast_span_empty(), AstItemKind.Const, "VALUE", expr, [], ast_type_empty(), "");
+  let module: AstModule = ast_module(3, ast_span_empty(), [item]);
 
   give item.kind == AstItemKind.Const
     and module.valid

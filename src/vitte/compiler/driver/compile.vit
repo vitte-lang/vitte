@@ -1,11 +1,14 @@
 space vitte/compiler/driver
 
-use vitte/compiler/frontend/pipeline.{ FrontendOutput, frontend_run }
+use vitte/compiler/frontend/pipeline.{ FrontendDiagnostic, FrontendOutput, frontend_run }
 use vitte/compiler/analysis/pipeline.{ AnalysisOutput, analysis_run_prechecked }
+use vitte/compiler/analysis/borrowck.{ BorrowCheckResult, borrow_check_hir }
 use vitte/compiler/analysis/sema.{ SemaModuleImport, SemaModuleSummary, SemaResult, imported_symbols_from_summary, run_sema_hir, run_sema_hir_with_imports, summarize_module_hir }
 use vitte/compiler/analysis/sema/scopes.{ SemaSymbol }
 use vitte/compiler/analysis/typeck/checker.{ run_typeck_hir }
 use vitte/compiler/analysis/typeck/errors.{ TypeckResult }
+use vitte/compiler/diagnostics/diagnostic.{ Diagnostic, DiagnosticPhase, DiagnosticReport, DiagnosticRenderConfig, DiagnosticStyle, SourceSpan, default_render_config, diagnostic_from_surface, diagnostic_report, diagnostic_report_empty, phase_name, render_report, span_range }
+use vitte/compiler/diagnostics/json.{ json_report }
 use vitte/compiler/infrastructure/incremental.{ IncrementalGraph, build_analysis_graph }
 use vitte/compiler/middle/hir/hir.{ HirUnit, hir_module_empty }
 use vitte/compiler/middle/hir/lower_ast.{ lower_ast_to_hir }
@@ -19,7 +22,8 @@ use vitte/compiler/backend/codegen.{ CodegenResult, run_codegen_llvm_with_profil
 use vitte/compiler/backend/ir/ir.{ IrFunction, IrModule, IrModuleKind, IrTarget, IrUnit, IrUnitState, function_name_by_id, target_from_name, unit_add_module, unit_empty, unit_is_valid, unit_set_entry, unit_with_source_path, unit_with_state, verify_unit }
 use vitte/compiler/backend/link/artifact.{ LinkArtifact, LinkArtifactKind, artifact_create, artifact_is_valid, link_target_from_name }
 use vitte/compiler/backend/link/linker.{ link_ir_unit_with_kind }
-use vitte/compiler/backend/pipeline.{ compile_to_valid_ir_with_profile_and_packaging }
+use vitte/compiler/backend/native_bridge.{ NativeBridgeResult, emit_native_object_from_llvm_ir, link_native_executable }
+use vitte/compiler/backend/pipeline.{ BackendPipelineResult, compile_to_valid_ir_with_profile_and_packaging }
 use vitte/compiler/backends/llvm_bindings.{ LlvmDiagnosticLevel, LlvmToolchainPaths, default_llvm_toolchain_paths }
 use vitte/compiler/driver/exit_status.{ DriverExitStatus }
 
@@ -81,6 +85,14 @@ form DriverCompileConfig {
     valid: bool
 }
 
+form DriverNativeBackendResult {
+    compile: DriverCompileResult
+    backend: BackendPipelineResult
+    object_result: NativeBridgeResult
+    executable_result: NativeBridgeResult
+    valid: bool
+}
+
 proc json_escape(text: string) -> string {
     let escaped: string = "";
     let i: u64 = 0;
@@ -102,6 +114,61 @@ proc json_escape(text: string) -> string {
         set i = i + 1;
     }
     give escaped;
+}
+
+proc frontend_diag_source_span(diag: FrontendDiagnostic) -> SourceSpan {
+    let width: u64 = 1;
+
+    if diag.span.end_line == diag.span.start_line and diag.span.end_column > diag.span.start_column {
+        set width = diag.span.end_column - diag.span.start_column;
+    }
+
+    if diag.line > 0 and diag.column > 0 {
+        give span_range(
+            diag.file,
+            diag.line,
+            diag.column,
+            diag.span.end_line,
+            diag.span.end_column
+        );
+    }
+
+    give SourceSpan {
+        file: diag.file,
+        start_line: diag.span.start_line,
+        start_column: diag.span.start_column,
+        end_line: diag.span.end_line,
+        end_column: diag.span.end_column,
+        length: width,
+        valid: diag.file != "" and diag.span.start_line > 0 and diag.span.start_column > 0
+    };
+}
+
+proc frontend_diag_as_diagnostic(diag: FrontendDiagnostic) -> Diagnostic {
+    give diagnostic_from_surface(
+        diag.code,
+        diag.message,
+        frontend_diag_source_span(diag),
+        diag.fatal,
+        diag.span_start
+    );
+}
+
+proc filter_frontend_phase_report(diags: [FrontendDiagnostic], phase: DiagnosticPhase) -> DiagnosticReport {
+    let out: [Diagnostic] = [];
+    let i: u64 = 0;
+
+    while i < len(diags) {
+        let diagnostic0: Diagnostic = frontend_diag_as_diagnostic(diags[i]);
+
+        if diagnostic0.phase == phase {
+            set out = out + [diagnostic0];
+        }
+
+        set i = i + 1;
+    }
+
+    give diagnostic_report(out);
 }
 
 proc profile_opt_level(profile_name: string) -> string {
@@ -275,6 +342,42 @@ proc artifact_kind_from_packaging(packaging: string) -> LinkArtifactKind {
         give LinkArtifactKind.ObjectFile;
     }
     give LinkArtifactKind.Executable;
+}
+
+proc output_dir_from_path(path: string) -> string {
+    if path == "" {
+        give ".";
+    }
+    let i: u64 = len(path);
+    while i > 0 {
+        let idx: u64 = i - 1;
+        let ch: string = slice(path, idx, idx + 1);
+        if ch == "/" or ch == "\\" {
+            if idx == 0 {
+                give "/";
+            }
+            give slice(path, 0, idx);
+        }
+        set i = idx;
+    }
+    give ".";
+}
+
+proc native_object_output_path(executable_path: string, config: DriverCompileConfig) -> string {
+    if config.packaging == "object" {
+        give executable_path;
+    }
+    give executable_path + ".o";
+}
+
+proc empty_native_bridge_result(message: string) -> NativeBridgeResult {
+    give NativeBridgeResult {
+        object_path: "",
+        executable_path: "",
+        message: message,
+        exit_code: -1,
+        valid: false
+    };
 }
 
 proc empty_compile_result(status: DriverExitStatus, message: string, ir_valid: bool, config: DriverCompileConfig) -> DriverCompileResult {
@@ -619,7 +722,8 @@ proc imported_symbols_for_summary(summary: SemaModuleSummary, summaries: [SemaMo
         let dependency: SemaModuleImport = summary.imports[i];
         let index: int = module_summary_index(summaries, dependency.module_path);
         if index >= 0 {
-            set imported = imported + imported_symbols_from_summary(summaries[index as u64]);
+            let summary_index: u64 = index as u64;
+            set imported = imported + imported_symbols_from_summary(summaries[summary_index]);
         }
         set i = i + 1;
     }
@@ -637,9 +741,11 @@ proc analyze_source_set(inputs: [DriverModuleInput]) -> DriverModuleSetArtifacts
         let frontend: FrontendOutput = parse_source(input.source_path, input.source_text);
         let hir0: HirUnit = lower_ast_to_hir(frontend);
         let hir1: HirUnit = validate_hir(hir0);
+        let module_index: u64 = i + 1;
+        let module_seed: u64 = module_index * 1000000;
         set frontends = frontends + [frontend];
         set hirs = hirs + [hir1];
-        set summaries = summaries + [summarize_module_hir(hir1, (i + 1) * 1000000)];
+        set summaries = summaries + [summarize_module_hir(hir1, module_seed)];
         set valid = valid and frontend.valid and hir1.valid;
         set i = i + 1;
     }
@@ -729,7 +835,9 @@ proc lower_module_set_to_ir(artifacts: DriverModuleSetArtifacts, config: DriverC
     let summaries: [SemaModuleSummary] = [];
     let i: u64 = 0;
     while i < len(artifacts.modules) {
-        set summaries = summaries + [summarize_module_hir(artifacts.modules[i].typed_hir, (i + 1) * 1000000)];
+        let module_index: u64 = i + 1;
+        let module_seed: u64 = module_index * 1000000;
+        set summaries = summaries + [summarize_module_hir(artifacts.modules[i].typed_hir, module_seed)];
         set i = i + 1;
     }
 
@@ -928,73 +1036,123 @@ proc dump_hir_typed(source_path: string, source_text: string) -> HirUnit {
 proc dump_ast_json(source_path: string, source_text: string) -> string {
     let artifacts: DriverAnalysisArtifacts = analyze_source(source_path, source_text);
     let fe: FrontendOutput = artifacts.frontend;
-    give "{" +
-        "\"schema\":\"vitte.compiler.surface\"," +
-        "\"schema_version\":\"1.0.0\"," +
-        "\"surface\":\"ast\"," +
-        "\"source_path\":\"" + json_escape(fe.source_path) + "\"," +
-        "\"valid\":" + if fe.valid { "true" } else { "false" } + "," +
-        "\"grammar_version\":\"" + json_escape(fe.grammar_version) + "\"," +
-        "\"token_count\":" + (fe.token_count as string) + "," +
-        "\"toplevel_count\":" + (fe.toplevel_count as string) + "," +
-        "\"stmt_count\":" + (fe.stmt_count as string) + "," +
-        "\"expr_count\":" + (fe.expr_count as string) + "," +
-        "\"type_count\":" + (fe.type_count as string) + "," +
-        "\"pattern_count\":" + (fe.pattern_count as string) +
-        "}";
+    let valid_text: string = if fe.valid { "true" } else { "false" };
+    let token_count: string = fe.token_count as string;
+    let toplevel_count: string = fe.toplevel_count as string;
+    let stmt_count: string = fe.stmt_count as string;
+    let expr_count: string = fe.expr_count as string;
+    let type_count: string = fe.type_count as string;
+    let pattern_count: string = fe.pattern_count as string;
+    give "{\"schema\":\"vitte.compiler.surface\",\"schema_version\":\"1.0.0\",\"surface\":\"ast\",\"source_path\":\"" + json_escape(fe.source_path) + "\",\"valid\":" + valid_text + ",\"grammar_version\":\"" + json_escape(fe.grammar_version) + "\",\"token_count\":" + token_count + ",\"toplevel_count\":" + toplevel_count + ",\"stmt_count\":" + stmt_count + ",\"expr_count\":" + expr_count + ",\"type_count\":" + type_count + ",\"pattern_count\":" + pattern_count + "}";
 }
 
 proc dump_hir_json(source_path: string, source_text: string) -> string {
     let artifacts: DriverAnalysisArtifacts = analyze_source(source_path, source_text);
     let hir0: HirUnit = artifacts.typed_hir;
-    give "{" +
-        "\"schema\":\"vitte.compiler.surface\"," +
-        "\"schema_version\":\"1.0.0\"," +
-        "\"surface\":\"hir\"," +
-        "\"source_path\":\"" + json_escape(hir0.source_path) + "\"," +
-        "\"valid\":" + if hir0.valid { "true" } else { "false" } + "," +
-        "\"node_count\":" + (hir0.node_count as string) + "," +
-        "\"item_count\":" + (hir0.item_count as string) + "," +
-        "\"stmt_count\":" + (hir0.stmt_count as string) + "," +
-        "\"expr_count\":" + (hir0.expr_count as string) + "," +
-        "\"symbol_count\":" + (hir0.symbol_count as string) + "," +
-        "\"scope_count\":" + (hir0.scope_count as string) +
-        "}";
+    let valid_text: string = if hir0.valid { "true" } else { "false" };
+    let node_count: string = hir0.node_count as string;
+    let item_count: string = hir0.item_count as string;
+    let stmt_count: string = hir0.stmt_count as string;
+    let expr_count: string = hir0.expr_count as string;
+    let symbol_count: string = hir0.symbol_count as string;
+    let scope_count: string = hir0.scope_count as string;
+    give "{\"schema\":\"vitte.compiler.surface\",\"schema_version\":\"1.0.0\",\"surface\":\"hir\",\"source_path\":\"" + json_escape(hir0.source_path) + "\",\"valid\":" + valid_text + ",\"node_count\":" + node_count + ",\"item_count\":" + item_count + ",\"stmt_count\":" + stmt_count + ",\"expr_count\":" + expr_count + ",\"symbol_count\":" + symbol_count + ",\"scope_count\":" + scope_count + "}";
 }
 
 proc dump_mir_json(source_path: string, source_text: string) -> string {
     let artifacts: DriverAnalysisArtifacts = analyze_source(source_path, source_text);
     let mir0: MirUnit = artifacts.mir;
-    give "{" +
-        "\"schema\":\"vitte.compiler.surface\"," +
-        "\"schema_version\":\"1.0.0\"," +
-        "\"surface\":\"mir\"," +
-        "\"source_path\":\"" + json_escape(mir0.source_path) + "\"," +
-        "\"valid\":" + if mir0.valid { "true" } else { "false" } + "," +
-        "\"function_count\":" + (mir0.function_count as string) + "," +
-        "\"block_count\":" + (mir0.block_count as string) + "," +
-        "\"instruction_count\":" + (mir0.instruction_count as string) + "," +
-        "\"lowered\":" + if mir0.lowered { "true" } else { "false" } +
-        "}";
+    let valid_text: string = if mir0.valid { "true" } else { "false" };
+    let function_count: string = mir0.function_count as string;
+    let block_count: string = mir0.block_count as string;
+    let instruction_count: string = mir0.instruction_count as string;
+    let lowered_text: string = if mir0.lowered { "true" } else { "false" };
+    give "{\"schema\":\"vitte.compiler.surface\",\"schema_version\":\"1.0.0\",\"surface\":\"mir\",\"source_path\":\"" + json_escape(mir0.source_path) + "\",\"valid\":" + valid_text + ",\"function_count\":" + function_count + ",\"block_count\":" + block_count + ",\"instruction_count\":" + instruction_count + ",\"lowered\":" + lowered_text + "}";
 }
 
 proc dump_diagnostics_json(source_path: string, source_text: string) -> string {
     let artifacts: DriverAnalysisArtifacts = analyze_source(source_path, source_text);
     let fe: FrontendOutput = artifacts.frontend;
     let analysis: AnalysisOutput = artifacts.analysis;
-    give "{" +
-        "\"schema\":\"vitte.compiler.surface\"," +
-        "\"schema_version\":\"1.0.0\"," +
-        "\"surface\":\"diagnostics\"," +
-        "\"source_path\":\"" + json_escape(source_path) + "\"," +
-        "\"valid\":" + if artifacts.valid { "true" } else { "false" } + "," +
-        "\"frontend_diagnostic_count\":" + (len(fe.diagnostics) as string) + "," +
-        "\"analysis_diagnostic_count\":" + (len(analysis.diagnostics) as string) + "," +
-        "\"sema_ok\":" + if analysis.sema_ok { "true" } else { "false" } + "," +
-        "\"typeck_ok\":" + if analysis.typeck_ok { "true" } else { "false" } + "," +
-        "\"borrowck_ok\":" + if analysis.borrowck_ok { "true" } else { "false" } + "," +
-        "\"lint_ok\":" + if analysis.lint_ok { "true" } else { "false" } +
-        "}";
+    let lexer_report0: DiagnosticReport = filter_frontend_phase_report(fe.diagnostics, DiagnosticPhase.Lexer);
+    let parser_report0: DiagnosticReport = filter_frontend_phase_report(fe.diagnostics, DiagnosticPhase.Parser);
+    let ast_validation_report0: DiagnosticReport = filter_frontend_phase_report(fe.diagnostics, DiagnosticPhase.AstValidation);
+    let module_resolution_report0: DiagnosticReport = diagnostic_report_empty();
+    let symbol_resolution_report0: DiagnosticReport = diagnostic_report_empty();
+    let sema_report0: DiagnosticReport = diagnostic_report_empty();
+    let typeck_report0: DiagnosticReport = if artifacts.frontend.valid and artifacts.resolved_hir.valid {
+        run_typeck_hir(artifacts.resolved_hir).report
+    } else {
+        diagnostic_report_empty()
+    };
+    let borrow_report0: DiagnosticReport = if artifacts.frontend.valid and artifacts.typed_hir.valid {
+        diagnostic_report(borrow_check_hir(source_path, artifacts.typed_hir).diagnostics)
+    } else {
+        diagnostic_report_empty()
+    };
+    let mir_lowering_report0: DiagnosticReport = diagnostic_report_empty();
+    let mir_verification_report0: DiagnosticReport = diagnostic_report_empty();
+    let backend_report0: DiagnosticReport = diagnostic_report_empty();
+    let linker_report0: DiagnosticReport = diagnostic_report_empty();
+    let runtime_execution_report0: DiagnosticReport = diagnostic_report_empty();
+    let primary_report0: DiagnosticReport = if len(lexer_report0.diagnostics) > 0 {
+        lexer_report0
+    } else {
+        if len(parser_report0.diagnostics) > 0 {
+            parser_report0
+        } else {
+            if len(ast_validation_report0.diagnostics) > 0 {
+                ast_validation_report0
+            } else {
+                if len(typeck_report0.diagnostics) > 0 {
+                    typeck_report0
+                } else {
+                    borrow_report0
+                }
+            }
+        }
+    };
+    let pipeline_failed_at0: string = if len(lexer_report0.diagnostics) > 0 {
+        phase_name(DiagnosticPhase.Lexer)
+    } else {
+        if len(parser_report0.diagnostics) > 0 {
+            phase_name(DiagnosticPhase.Parser)
+        } else {
+            if len(ast_validation_report0.diagnostics) > 0 {
+                phase_name(DiagnosticPhase.AstValidation)
+            } else {
+                if len(typeck_report0.diagnostics) > 0 {
+                    phase_name(DiagnosticPhase.Typeck)
+                } else {
+                    if len(borrow_report0.diagnostics) > 0 {
+                        phase_name(DiagnosticPhase.Borrowck)
+                    } else {
+                        "none"
+                    }
+                }
+            }
+        }
+    };
+    let text_config0: DiagnosticRenderConfig = DiagnosticRenderConfig {
+        style: DiagnosticStyle.Human,
+        show_code: true,
+        show_phase: true,
+        show_notes: true,
+        show_helps: true,
+        show_suggestions: true,
+        color: false
+    };
+    let text_output0: string = render_report(primary_report0, text_config0);
+    let artifacts_valid: string = if artifacts.valid { "true" } else { "false" };
+    let frontend_diagnostic_count: string = len(fe.diagnostics) as string;
+    let analysis_diagnostic_count: string = len(analysis.diagnostics) as string;
+    let sema_ok: string = if analysis.sema_ok { "true" } else { "false" };
+    let typeck_ok: string = if analysis.typeck_ok { "true" } else { "false" };
+    let borrowck_ok: string = if analysis.borrowck_ok { "true" } else { "false" };
+    let lint_ok: string = if analysis.lint_ok { "true" } else { "false" };
+    let phase_reports_json: string = "\"phase_reports\":{\"lexer\":" + json_report(lexer_report0) + ",\"parser\":" + json_report(parser_report0) + ",\"ast_validation\":" + json_report(ast_validation_report0) + ",\"module_resolution\":" + json_report(module_resolution_report0) + ",\"symbol_resolution\":" + json_report(symbol_resolution_report0) + ",\"sema\":" + json_report(sema_report0) + ",\"typeck\":" + json_report(typeck_report0) + ",\"borrowck\":" + json_report(borrow_report0) + ",\"mir_lowering\":" + json_report(mir_lowering_report0) + ",\"mir_verification\":" + json_report(mir_verification_report0) + ",\"backend\":" + json_report(backend_report0) + ",\"linker\":" + json_report(linker_report0) + ",\"runtime_execution\":" + json_report(runtime_execution_report0) + "}";
+    let json: string = "{\"schema\":\"vitte.compiler.surface\",\"schema_version\":\"1.0.0\",\"surface\":\"diagnostics\",\"source_path\":\"" + json_escape(source_path) + "\",\"valid\":" + artifacts_valid + ",\"frontend_diagnostic_count\":" + frontend_diagnostic_count + ",\"analysis_diagnostic_count\":" + analysis_diagnostic_count + ",\"sema_ok\":" + sema_ok + ",\"typeck_ok\":" + typeck_ok + ",\"borrowck_ok\":" + borrowck_ok + ",\"lint_ok\":" + lint_ok + ",\"pipeline_failed_at\":\"" + pipeline_failed_at0 + "\",\"primary_report\":" + json_report(primary_report0) + "," + phase_reports_json + ",\"text_output\":\"" + json_escape(text_output0) + "\"}";
+    give json;
 }
 
 proc incremental_analysis_graph(source_path: string) -> IncrementalGraph {
@@ -1036,6 +1194,56 @@ proc check_source_with_config(source_path: string, source_text: string, config: 
 
 proc compile_source(source_path: string, source_text: string) -> DriverCompileResult {
     give compile_source_with_config(source_path, source_text, default_compile_config());
+}
+
+proc emit_native_backend_object_with_config(source_path: string, source_text: string, executable_path: string, config: DriverCompileConfig) -> DriverNativeBackendResult {
+    let compile0: DriverCompileResult = compile_source_with_config(source_path, source_text, config);
+    let backend0: BackendPipelineResult = compile_to_valid_ir_with_profile_and_packaging(
+        source_path,
+        source_text,
+        config.backend_name,
+        config.target_name,
+        config.profile_name,
+        config.deterministic,
+        config.debug_enabled,
+        config.packaging,
+        config.prefer_native_toolchain,
+        config.llvm_toolchain
+    );
+    let object_path0: string = native_object_output_path(executable_path, config);
+    let object_skip_message: string = "native object emission skipped";
+    let object0: NativeBridgeResult = empty_native_bridge_result(object_skip_message);
+    if compile0.status == DriverExitStatus.Ok and backend0.valid {
+        let object_output_dir: string = output_dir_from_path(object_path0);
+        set object0 = emit_native_object_from_llvm_ir(backend0.codegen.assembly, object_output_dir, object_path0);
+    }
+    let executable_skip_message: string = "native executable not linked";
+    let executable_result0: NativeBridgeResult = empty_native_bridge_result(executable_skip_message);
+    give DriverNativeBackendResult {
+        compile: compile0,
+        backend: backend0,
+        object_result: object0,
+        executable_result: executable_result0,
+        valid: compile0.status == DriverExitStatus.Ok and backend0.valid and object0.valid
+    };
+}
+
+proc link_native_backend_executable_with_config(source_path: string, source_text: string, executable_path: string, config: DriverCompileConfig) -> DriverNativeBackendResult {
+    let object0: DriverNativeBackendResult = emit_native_backend_object_with_config(source_path, source_text, executable_path, config);
+    let executable_skip_message: string = "native executable link skipped";
+    let executable0: NativeBridgeResult = empty_native_bridge_result(executable_skip_message);
+    if object0.valid and config.packaging != "object" {
+        set executable0 = link_native_executable(object0.object_result.object_path, executable_path);
+    }
+    let object_only_packaging: bool = config.packaging == "object";
+    let executable_ok: bool = object_only_packaging or executable0.valid;
+    give DriverNativeBackendResult {
+        compile: object0.compile,
+        backend: object0.backend,
+        object_result: object0.object_result,
+        executable_result: executable0,
+        valid: object0.valid and executable_ok
+    };
 }
 
 proc compile_source_with_config(source_path: string, source_text: string, config: DriverCompileConfig) -> DriverCompileResult {
@@ -1178,3 +1386,35 @@ proc compile_source_with_config(source_path: string, source_text: string, config
         pattern_count: base.pattern_count
     };
 }
+
+share DriverDiagnosticLevel
+share DriverDiagnostic
+share DriverCompileResult
+share DriverCompileConfig
+share DriverNativeBackendResult
+share DriverAnalysisArtifacts
+share DriverModuleInput
+share DriverModuleArtifact
+share DriverModuleSetArtifacts
+share DriverBackendModuleSetResult
+
+share driver_compile_config_full
+share driver_compile_config
+share default_compile_config
+share analyze_source
+share analyze_source_set
+share check_source
+share check_source_with_config
+share compile_source_set_with_config
+share compile_source_with_config
+share emit_native_backend_object_with_config
+share link_native_backend_executable_with_config
+share driver_module_input
+share dump_ast_json
+share dump_diagnostics_json
+share dump_hir_json
+share dump_hir_resolved
+share dump_hir_typed
+share dump_mir_json
+share incremental_analysis_graph
+share lower_mir_source

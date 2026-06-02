@@ -229,6 +229,7 @@ proc section_create(id: u64, name: string, kind: LinkSectionKind, alignment: u64
 }
 
 proc symbol_create(id: u64, name: string, module_name: string, offset: u64, size: u64, section_index: u64, defined: bool, imported: bool, entry: bool) -> LinkSymbol {
+  let definition_conflict: bool = defined and imported;
   give LinkSymbol {
     id: id,
     name: name,
@@ -239,7 +240,7 @@ proc symbol_create(id: u64, name: string, module_name: string, offset: u64, size
     defined: defined,
     imported: imported,
     entry: entry,
-    valid: id > 0 and name != "" and not (defined and imported)
+    valid: id > 0 and name != "" and not definition_conflict
   };
 }
 

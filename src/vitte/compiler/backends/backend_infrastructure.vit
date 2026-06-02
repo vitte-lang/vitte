@@ -15,10 +15,10 @@ space vitte/compiler/backends/backend_infrastructure
 // ============================================================================
 
 form TargetTriple {
-  architecture: string,    // x86_64, arm64, riscv64, wasm32
-  vendor: string,          // apple, pc, unknown
-  operating_system: string, // linux, macos, windows, none (bare metal)
-  environment: string      // gnu, musl, msvc, wasi
+  architecture: string,
+  vendor: string,
+  operating_system: string,
+  environment: string
 }
 
 pick Architecture {
@@ -43,15 +43,15 @@ pick OperatingSystem {
 
 form TargetInfo {
   triple: TargetTriple,
-  data_layout: string,           // e.g., "e-m:e-i64:64-f80:128-n8:16:32:64-S128"
-  pointer_width: int,            // 32, 64, 128
-  endianness: string,            // little, big
+  data_layout: string,
+  pointer_width: int,
+  endianness: string,
   word_size: int,
   alignment_size: int,
   max_align: int,
-  has_capability: [string],      // simd, atomic, neon, avx, etc.
-  calling_convention: string,    // cdecl, stdcall, fastcall, etc.
-  default_abi: string            // c, rust, system, etc.
+  has_capability: [string],
+  calling_convention: string,
+  default_abi: string
 }
 
 proc new_target_triple(arch: string, os: string) -> TargetTriple {
@@ -116,21 +116,21 @@ proc new_target_info_wasm32() -> TargetInfo {
 // ============================================================================
 
 pick CodegenBackend {
-  Native,     // Direct machine code
-  LLVM,       // LLVM IR emission
-  C,          // C source output
-  Assembly,   // Assembly text
-  Bytecode,   // Stack machine bytecode
-  WebAssembly // WASM binary
+  Native,
+  LLVM,
+  C,
+  Assembly,
+  Bytecode,
+  WebAssembly
 }
 
 form CodegenStrategy {
   backend: CodegenBackend,
   target: TargetInfo,
-  optimization_level: int,    // 0-3: O0, O1, O2, O3
+  optimization_level: int,
   debug_info: bool,
-  sanitizers: [string],       // asan, ubsan, msan, tsan
-  lto: string                 // none, thin, full
+  sanitizers: [string],
+  lto: string
 }
 
 proc new_codegen_strategy(backend: CodegenBackend, target: TargetInfo) -> CodegenStrategy {
@@ -223,7 +223,7 @@ proc empty_emission_result() -> EmissionResult {
 form BackendInterface {
   name: string,
   version: string,
-  emit_function: string,      // Function name for emission
+  emit_function: string,
   supported_targets: [TargetTriple],
   capabilities: [string]
 }
@@ -330,6 +330,125 @@ proc create_vitte_runtime() -> RuntimeLibrary {
     link_name: "vitte_runtime_panic_boundary_reset"
   })
 
+  push(funcs, RuntimeFunction {
+    name: "host_runtime_available",
+    signature: "fn host_runtime_available() -> bool",
+    is_intrinsic: true,
+    link_name: "vitte_host_runtime_available"
+  })
+
+  push(funcs, RuntimeFunction {
+    name: "host_read_file",
+    signature: "fn host_read_file(path: string) -> string",
+    is_intrinsic: true,
+    link_name: "vitte_host_read_file"
+  })
+
+  push(funcs, RuntimeFunction {
+    name: "host_write_file",
+    signature: "fn host_write_file(path: string, content: string) -> int",
+    is_intrinsic: true,
+    link_name: "vitte_host_write_file"
+  })
+
+  push(funcs, RuntimeFunction {
+    name: "host_append_file",
+    signature: "fn host_append_file(path: string, content: string) -> int",
+    is_intrinsic: true,
+    link_name: "vitte_host_append_file"
+  })
+
+  push(funcs, RuntimeFunction {
+    name: "host_file_exists",
+    signature: "fn host_file_exists(path: string) -> bool",
+    is_intrinsic: true,
+    link_name: "vitte_host_file_exists"
+  })
+
+  push(funcs, RuntimeFunction {
+    name: "host_is_file",
+    signature: "fn host_is_file(path: string) -> bool",
+    is_intrinsic: true,
+    link_name: "vitte_host_is_file"
+  })
+
+  push(funcs, RuntimeFunction {
+    name: "host_is_directory",
+    signature: "fn host_is_directory(path: string) -> bool",
+    is_intrinsic: true,
+    link_name: "vitte_host_is_directory"
+  })
+
+  push(funcs, RuntimeFunction {
+    name: "host_mkdir_all",
+    signature: "fn host_mkdir_all(path: string) -> int",
+    is_intrinsic: true,
+    link_name: "vitte_host_mkdir_all"
+  })
+
+  push(funcs, RuntimeFunction {
+    name: "host_delete_file",
+    signature: "fn host_delete_file(path: string) -> int",
+    is_intrinsic: true,
+    link_name: "vitte_host_delete_file"
+  })
+
+  push(funcs, RuntimeFunction {
+    name: "host_copy_file",
+    signature: "fn host_copy_file(src: string, dst: string) -> int",
+    is_intrinsic: true,
+    link_name: "vitte_host_copy_file"
+  })
+
+  push(funcs, RuntimeFunction {
+    name: "host_move_file",
+    signature: "fn host_move_file(src: string, dst: string) -> int",
+    is_intrinsic: true,
+    link_name: "vitte_host_move_file"
+  })
+
+  push(funcs, RuntimeFunction {
+    name: "host_delete_directory",
+    signature: "fn host_delete_directory(path: string) -> int",
+    is_intrinsic: true,
+    link_name: "vitte_host_delete_directory"
+  })
+
+  push(funcs, RuntimeFunction {
+    name: "host_list_directory",
+    signature: "fn host_list_directory(path: string) -> [string]",
+    is_intrinsic: true,
+    link_name: "vitte_host_list_directory"
+  })
+
+  push(funcs, RuntimeFunction {
+    name: "host_system",
+    signature: "fn host_system(command: string) -> int",
+    is_intrinsic: true,
+    link_name: "vitte_host_system"
+  })
+
+  push(funcs, RuntimeFunction {
+    name: "host_emit_llvm_object",
+    signature: "fn host_emit_llvm_object(ir_text: string, object_path: string) -> int",
+    is_intrinsic: true,
+    link_name: "vitte_host_emit_llvm_object"
+  })
+
+  push(funcs, RuntimeFunction {
+    name: "host_link_executable",
+    signature: "fn host_link_executable(object_path: string, executable_path: string) -> int",
+    is_intrinsic: true,
+    link_name: "vitte_host_link_executable"
+  })
+
+  push(funcs, RuntimeFunction {
+    name: "host_run_executable",
+    signature: "fn host_run_executable(executable_path: string) -> int",
+    is_intrinsic: true,
+    link_name: "vitte_host_run_executable"
+  })
+
   give RuntimeLibrary {
     name: "vitte_runtime",
     functions: funcs,
@@ -348,8 +467,8 @@ form Symbol {
   name: string,
   mangled_name: string,
   kind: SymbolKind,
-  visibility: string,    // public, private, internal
-  scope: string          // global, local
+  visibility: string,
+  scope: string
 }
 
 pick SymbolKind {
@@ -391,16 +510,16 @@ proc add_symbol(table: *SymbolTable, name: string, kind: SymbolKind, visibility:
 
 form Section {
   name: string,
-  kind: string,             // text, data, rodata, bss, debug
+  kind: string,
   content: string,
   size: int,
   alignment: int,
-  permissions: string       // rx, rw, r
+  permissions: string
 }
 
 form SectionLayout {
   sections: [Section],
-  layout_order: [string]    // Order of sections in output
+  layout_order: [string]
 }
 
 proc new_section_layout() -> SectionLayout {
