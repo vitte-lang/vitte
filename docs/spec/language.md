@@ -26,3 +26,31 @@ This freezes the supported subset for current professional gate.
 
 ## Backend Support
 - only C backend is production-functional in this subset.
+
+## Exemples pédagogiques
+### Hello World
+```vit
+space main
+
+proc main() -> void {
+  give "Hello, Vitte!"
+}
+```
+Ce programme illustre la structure minimale d'un module Vitte et la procédure d'entrée `main`.
+
+### Déclaration et flux
+```vit
+space math
+
+const PI = 3.14
+
+proc area(radius: int) -> int {
+  let result = PI * radius * radius
+  give result
+}
+```
+Cet exemple montre une constante, une procédure, et le calcul d'une valeur retournée.
+
+### Ownership / borrowing
+Pour ce sous-ensemble, l'idée clé est le contrôle des transferts d'alias et l'interdiction de `use-after-move`.
+Un code correct doit éviter de prêter mutablement et d'utiliser une valeur après qu'elle a été déplacée.

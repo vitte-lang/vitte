@@ -31,6 +31,25 @@ Current compiler surfaces:
 - macro diagnostics mapped to source spans (`line`, `column`, `width`)
 - recursion limit protection to keep expansion safe
 
+## Exemple de flux de compilation
+Pour un fichier source simple, le pipeline suit ces étapes:
+```vit
+space app
+
+proc main() -> void {
+  let x = 1
+  if x == 1 {
+    give "ok"
+  }
+}
+```
+1. Résolution des modules et vérification des imports.
+2. Vérification des symboles et shadowing.
+3. Construction du type database.
+4. Validation HIR et les vérifications sémantiques.
+5. Contrôle de flux, borrow checks, puis génération MIR.
+6. Vérification MIR, évaluation des constantes, et enfin abaissement backend.
+
 ## Async/Coroutine Stages (171-172)
 
 - HIR lowering records async/await usage markers.

@@ -34,3 +34,12 @@ Roadmap links (161-200):
 - [FR pro roadmap](/home/vincentr/Documents/GitHub/vitte/docs/roadmap_161_200_pro.md)
 - [Quarterly execution plan](/home/vincentr/Documents/GitHub/vitte/docs/roadmap_161_200_quarterly.md)
 - [EN pro roadmap](/home/vincentr/Documents/GitHub/vitte/docs/roadmap_161_200_pro_en.md)
+
+## Exemple d'utilisation
+Un développeur qui souhaite vérifier un module utilise la commande `check` du compilateur seed :
+```sh
+./toolchain/seed/vittec0.seed check src/app.vit
+```
+Ce mode exécute les étapes principales du frontend et du pipeline de validation sans produire d'objet exécutable.
+- `check` lance la résolution de module, la validation HIR, la vérification sémantique et le borrow check.
+- L'étape backend est ignorée sauf pour les diagnostics qui nécessitent l'abaissement.
