@@ -36,25 +36,37 @@ proc async_example_1() {
 
   // Block and wait for result
   let result = await<int>(future)
-  println("Result: " + ((result) as string))
+  let result_text = result as string
+  let result_prefix = "Result: "
+  let message = result_prefix + result_text
+  println(message)
 }
 
 // Example 2: Multiple concurrent tasks
 proc async_example_2() {
-  let fut1 = async<int> { give 10 }
-  let fut2 = async<int> { give 20 }
-  let fut3 = async<int> { give 30 }
+  let fut1 = async<int> {
+    give 10
+  }
+  let fut2 = async<int> {
+    give 20
+  }
+  let fut3 = async<int> {
+    give 30
+  }
 
   // Wait for all to complete
   let results = parallel_all<int>([fut1, fut2, fut3])
 
   let total = results[0] + results[1] + results[2]
-  println("Total: " + ((total) as string))
+  let total_text = total as string
+  let total_prefix = "Total: "
+  let message = total_prefix + total_text
+  println(message)
 }
 
 // Example 3: Channel-based communication
 proc async_example_3() {
-  let (ch, send, recv) = create_channel<string>(100)
+  let ch = create_channel<string>(100)
 
   // Producer
   spawn_task<bool>(async<bool> {
@@ -66,19 +78,27 @@ proc async_example_3() {
   // Consumer
   let msg1 = channel_recv<string>(ch)
   let msg2 = channel_recv<string>(ch)
-  println(msg1 + " " + msg2)
+  let with_space = msg1 + " "
+  let message = with_space + msg2
+  println(message)
 }
 
 // Example 4: Timeout handling
 proc async_example_4() {
-  let future = async<int> { give 42 }
+  let future = async<int> {
+    give 42
+  }
 
   let result = with_timeout<int>(future, 1000)  // 1 second timeout
 
   if result.completed {
-    println("Got result: " + ((result.value) as string))
+    let result_text = result.value as string
+    let result_prefix = "Got result: "
+    let message = result_prefix + result_text
+    println(message)
   } else {
-    println("Timed out!")
+    let message = "Timed out!"
+    println(message)
   }
 }
 
@@ -90,27 +110,32 @@ proc async_example_4() {
 
 // Example 1: Simple thread
 proc threading_example_1() {
-  let thread = thread_spawn("worker", proc() {
-    println("Running on separate thread")
+  let worker_name = "worker"
+  let thread = thread_spawn(worker_name, proc() {
+    let message = "Running on separate thread"
+    println(message)
   })
 
   thread_join(thread)
-  println("Thread finished")
+  let message = "Thread finished"
+  println(message)
 }
 
 // Example 2: Shared mutable state with Mutex
 proc threading_example_2() {
   let counter = mutex_new<int>(0)
+  let t1_name = "t1"
+  let t2_name = "t2"
 
   // Thread 1
-  let t1 = thread_spawn("t1", proc() {
+  let t1 = thread_spawn(t1_name, proc() {
     mutex_lock(counter)
     // Safely access counter
     mutex_unlock(counter)
   })
 
   // Thread 2
-  let t2 = thread_spawn("t2", proc() {
+  let t2 = thread_spawn(t2_name, proc() {
     mutex_lock(counter)
     // Safely access counter
     mutex_unlock(counter)
@@ -122,7 +147,8 @@ proc threading_example_2() {
 
 // Example 3: Read-write lock (multiple readers, exclusive writer)
 proc threading_example_3() {
-  let data = rwlock_new<string>("initial value")
+  let initial_value = "initial value"
+  let data = rwlock_new<string>(initial_value)
 
   // Many readers can work concurrently
   rwlock_read_lock(data)
@@ -137,7 +163,8 @@ proc threading_example_3() {
 
 // Example 4: Thread pool for work distribution
 proc threading_example_4() {
-  let pool = threadpool_new(4, "workers")
+  let worker_group = "workers"
+  let pool = threadpool_new(4, worker_group)
 
   // Submit multiple tasks
   let i = 0
@@ -157,16 +184,18 @@ proc threading_example_4() {
 proc threading_example_5() {
   let empty = semaphore_new(10)     // 10 slots
   let full = semaphore_new(0)       // 0 items
+  let producer_name = "producer"
+  let consumer_name = "consumer"
 
   // Producer
-  let producer = thread_spawn("producer", proc() {
+  let producer = thread_spawn(producer_name, proc() {
     semaphore_acquire(empty)
     // Add item
     semaphore_release(full)
   })
 
   // Consumer
-  let consumer = thread_spawn("consumer", proc() {
+  let consumer = thread_spawn(consumer_name, proc() {
     semaphore_acquire(full)
     // Remove item
     semaphore_release(empty)
@@ -187,8 +216,14 @@ proc ffi_example_1() {
   let sin_val = ffi_call_f64(math_lib.sin, [1.57])  // ~π/2
   let sqrt_val = ffi_call_f64(math_lib.sqrt, [16.0])
 
-  println("sin(π/2) ≈ " + ((sin_val) as string))
-  println("sqrt(16) = " + ((sqrt_val) as string))
+  let sin_text = sin_val as string
+  let sqrt_text = sqrt_val as string
+  let sin_prefix = "sin value "
+  let sqrt_prefix = "sqrt value "
+  let sin_message = sin_prefix + sin_text
+  let sqrt_message = sqrt_prefix + sqrt_text
+  println(sin_message)
+  println(sqrt_message)
 }
 
 // Example 2: String library
@@ -201,14 +236,10 @@ proc ffi_example_2() {
 
 // Example 3: Custom C function binding
 proc ffi_example_3() {
-  let custom_lib = ffi_load_library("/path/to/libcustom.so")
+  let custom_path = "/path/to/libcustom.so"
+  let custom_lib = ffi_load_library(custom_path)
 
-  let my_func = ffi_register_function(
-    custom_lib,
-    "my_function",
-    ["i32", "string"],
-    "i32"
-  )
+  let my_func = ffi_register_function(custom_lib, "my_function", ["i32", "string"], "i32")
 
   let result = ffi_call(my_func, [42])
 }
@@ -261,19 +292,23 @@ proc reflection_example_3() {
 
 // Example 1: Simple HTTP server
 proc http_example_1() {
-  let server = http_server_new("0.0.0.0", 8080)
+  let host = "0.0.0.0"
+  let root_route = "/"
+  let users_route = "/api/users/:id"
+  let create_route = "/api/users"
+  let server = http_server_new(host, 8080)
 
   // Register routes
-  server_get(server, "/", proc() {
+  server_get(server, root_route, proc() {
     // Handle GET /
   })
 
-  server_get(server, "/api/users/:id", proc() {
+  server_get(server, users_route, proc() {
     // Handle GET /api/users/123
     // Extract :id parameter
   })
 
-  server_post(server, "/api/users", proc() {
+  server_post(server, create_route, proc() {
     // Handle POST with form data or JSON
   })
 
@@ -282,7 +317,8 @@ proc http_example_1() {
 
 // Example 2: Middleware for logging and security
 proc http_example_2() {
-  let server = http_server_new("0.0.0.0", 8080)
+  let host = "0.0.0.0"
+  let server = http_server_new(host, 8080)
 
   // Add middleware in order
   server_use_middleware(server, middleware_logger())
@@ -304,7 +340,9 @@ proc http_example_2() {
 
 // Example 3: JSON API with request validation
 proc http_example_3() {
-  let server = http_server_new("0.0.0.0", 8080)
+  let host = "0.0.0.0"
+  let create_route = "/api/users"
+  let server = http_server_new(host, 8080)
 
   // Parse JSON bodies automatically
   server_use_middleware(server, middleware_json_parser(ParseOptions {
@@ -312,7 +350,7 @@ proc http_example_3() {
     max_size: 1048576,
   }))
 
-  server_post(server, "/api/users", proc() {
+  server_post(server, create_route, proc() {
     // Body is automatically parsed as JSON
     // validate(request)
     // send_json(response, result, 201)
@@ -350,18 +388,25 @@ proc profiling_example_2() {
   let leaks = memory_profiler_leaks(mem_profiler)
 
   if leaks.len > 0 {
-    println("Memory leaks detected!")
+    let message = "Memory leaks detected!"
+    println(message)
     // Log leak info
   }
 }
 
 // Example 3: Benchmarking
 proc profiling_example_3() {
-  let benchmark = benchmark("expensive_operation", proc() {
+  let bench_name = "expensive_operation"
+  let benchmark = benchmark(bench_name, proc() {
     // expensive_operation()
   }, 1000)  // Run 1000 times
 
-  println("Average time: " + ((benchmark.average_time_ns / 1000.0) as string) + " us")
+  let average_us = benchmark.average_time_ns / 1000.0
+  let average_text = average_us as string
+  let average_prefix = "Average time: "
+  let prefix = average_prefix + average_text
+  let message = prefix + " us"
+  println(message)
 }
 
 // ============================================================================
@@ -372,10 +417,13 @@ proc profiling_example_3() {
 
 // Example 1: Installing packages
 proc packages_example_1() {
-  let registry = package_registry_new("~/.vitte/packages")
+  let package_dir = "~/.vitte/packages"
+  let package_name = "web-framework"
+  let package_version = "^2.0.0"
+  let registry = package_registry_new(package_dir)
 
   // Install a package
-  let pkg = package_install(registry, "web-framework", "^2.0.0")
+  let pkg = package_install(registry, package_name, package_version)
 
   // Now use it
   // use web_framework
@@ -384,19 +432,15 @@ proc packages_example_1() {
 // Example 2: Creating package.vit manifest
 proc packages_example_2() {
   // In your project, create package.vit:
-  /*
-  space myproject
-
-  name: "my-awesome-lib"
-  version: "1.0.0"
-  author: "Your Name <you@example.com>"
-  description: "An awesome Vitte library"
-  license: "MIT"
-
-  dependencies:
-    - web-framework: "^2.0.0"
-    - data-parser: "~1.2"
-  */
+  // space myproject
+  // name: "my-awesome-lib"
+  // version: "1.0.0"
+  // author: "Your Name <you@example.com>"
+  // description: "An awesome Vitte library"
+  // license: "MIT"
+  // dependencies:
+  //   - web-framework: "^2.0.0"
+  //   - data-parser: "~1.2"
 }
 
 // ============================================================================
@@ -439,7 +483,7 @@ proc packages_example_2() {
 
 // Pattern 1: Producer-Consumer with channels
 proc pattern_producer_consumer() {
-  let (ch, send, recv) = create_channel<int>(10)
+  let ch = create_channel<int>(10)
 
   // Producer
   spawn_task<bool>(async<bool> {
@@ -481,15 +525,18 @@ proc pattern_worker_pool() {
 
 // Pattern 3: HTTP request with middleware
 proc pattern_http_middleware() {
-  let server = http_server_new("0.0.0.0", 8080)
+  let host = "0.0.0.0"
+  let api_route = "/api/data"
+  let report_route = "/csp-report"
+  let server = http_server_new(host, 8080)
 
   server_use_middleware(server, middleware_logger())
   server_use_middleware(server, middleware_csp(CSPOptions {
-    directives: ["default-src 'self'"],
-    report_uri: "/csp-report",
+    directives: ["default-src self"],
+    report_uri: report_route,
   }))
 
-  server_get(server, "/api/data", proc() {
+  server_get(server, api_route, proc() {
     // Middleware will have already logged and checked CSP
   })
 }

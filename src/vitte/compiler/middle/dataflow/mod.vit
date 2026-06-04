@@ -131,33 +131,69 @@ proc dataflow_summary(pass_count: u64, completed_pass_count: u64, diagnostic_cou
     };
 }
 
+proc dataflow_eq() -> string {
+    give slice("a=b", 1, 2);
+}
+
 proc pass_kind_name(kind: DataflowPassKind) -> string {
-    if kind == DataflowPassKind.CfgConstruction { give "cfg-construction"; }
-    if kind == DataflowPassKind.Liveness { give "liveness"; }
-    if kind == DataflowPassKind.ReachingDefinitions { give "reaching-definitions"; }
-    if kind == DataflowPassKind.Dominators { give "dominators"; }
-    if kind == DataflowPassKind.PostDominators { give "post-dominators"; }
-    if kind == DataflowPassKind.BorrowFlow { give "borrow-flow"; }
-    if kind == DataflowPassKind.MoveFlow { give "move-flow"; }
-    if kind == DataflowPassKind.ConstantPropagation { give "constant-propagation"; }
-    if kind == DataflowPassKind.DeadCodeElimination { give "dead-code-elimination"; }
-    if kind == DataflowPassKind.LoopAnalysis { give "loop-analysis"; }
-    if kind == DataflowPassKind.SsaConstruction { give "ssa-construction"; }
+    if kind == DataflowPassKind.CfgConstruction {
+        give "cfg-construction";
+    }
+    if kind == DataflowPassKind.Liveness {
+        give "liveness";
+    }
+    if kind == DataflowPassKind.ReachingDefinitions {
+        give "reaching-definitions";
+    }
+    if kind == DataflowPassKind.Dominators {
+        give "dominators";
+    }
+    if kind == DataflowPassKind.PostDominators {
+        give "post-dominators";
+    }
+    if kind == DataflowPassKind.BorrowFlow {
+        give "borrow-flow";
+    }
+    if kind == DataflowPassKind.MoveFlow {
+        give "move-flow";
+    }
+    if kind == DataflowPassKind.ConstantPropagation {
+        give "constant-propagation";
+    }
+    if kind == DataflowPassKind.DeadCodeElimination {
+        give "dead-code-elimination";
+    }
+    if kind == DataflowPassKind.LoopAnalysis {
+        give "loop-analysis";
+    }
+    if kind == DataflowPassKind.SsaConstruction {
+        give "ssa-construction";
+    }
 
     give "unknown";
 }
 
 proc pass_state_name(state: DataflowPassState) -> string {
-    if state == DataflowPassState.Pending { give "pending"; }
-    if state == DataflowPassState.Running { give "running"; }
-    if state == DataflowPassState.Completed { give "completed"; }
+    if state == DataflowPassState.Pending {
+        give "pending";
+    }
+    if state == DataflowPassState.Running {
+        give "running";
+    }
+    if state == DataflowPassState.Completed {
+        give "completed";
+    }
 
     give "failed";
 }
 
 proc severity_name(severity: DataflowSeverity) -> string {
-    if severity == DataflowSeverity.Info { give "info"; }
-    if severity == DataflowSeverity.Warning { give "warning"; }
+    if severity == DataflowSeverity.Info {
+        give "info";
+    }
+    if severity == DataflowSeverity.Warning {
+        give "warning";
+    }
 
     give "error";
 }
@@ -171,13 +207,11 @@ proc append_diagnostic(diagnostics: [DataflowDiagnostic], diagnostic: DataflowDi
 }
 
 proc completed_pass(pass: DataflowPass) -> bool {
-    give pass.state
-        == DataflowPassState.Completed;
+    give pass.state == DataflowPassState.Completed;
 }
 
 proc failed_pass(pass: DataflowPass) -> bool {
-    give pass.state
-        == DataflowPassState.Failed;
+    give pass.state == DataflowPassState.Failed;
 }
 
 proc count_completed_passes(passes: [DataflowPass]) -> u64 {
@@ -187,12 +221,10 @@ proc count_completed_passes(passes: [DataflowPass]) -> u64 {
 
     while i < len(passes) {
         if completed_pass(passes[i]) {
-            set count =
-                count + 1;
+            set count = count + 1;
         }
 
-        set i =
-            i + 1;
+        set i = i + 1;
     }
 
     give count;
@@ -205,12 +237,10 @@ proc count_failed_passes(passes: [DataflowPass]) -> u64 {
 
     while i < len(passes) {
         if failed_pass(passes[i]) {
-            set count =
-                count + 1;
+            set count = count + 1;
         }
 
-        set i =
-            i + 1;
+        set i = i + 1;
     }
 
     give count;
@@ -219,48 +249,10 @@ proc count_failed_passes(passes: [DataflowPass]) -> u64 {
 proc build_default_passes() -> [DataflowPass] {
     let passes: [DataflowPass] = [];
 
-    let passes1: [DataflowPass] =
-        append_pass(
-            passes,
-            dataflow_pass(
-                DataflowPassKind.CfgConstruction,
-                DataflowPassState.Completed,
-                1,
-                true
-            )
-        );
-
-    let passes2: [DataflowPass] =
-        append_pass(
-            passes1,
-            dataflow_pass(
-                DataflowPassKind.Liveness,
-                DataflowPassState.Completed,
-                2,
-                true
-            )
-        );
-
-    let passes3: [DataflowPass] =
-        append_pass(
-            passes2,
-            dataflow_pass(
-                DataflowPassKind.Dominators,
-                DataflowPassState.Completed,
-                1,
-                false
-            )
-        );
-
-    give append_pass(
-        passes3,
-        dataflow_pass(
-            DataflowPassKind.ConstantPropagation,
-            DataflowPassState.Completed,
-            3,
-            true
-        )
-    );
+    let passes1: [DataflowPass] = append_pass(passes, dataflow_pass(DataflowPassKind.CfgConstruction, DataflowPassState.Completed, 1, true));
+    let passes2: [DataflowPass] = append_pass(passes1, dataflow_pass(DataflowPassKind.Liveness, DataflowPassState.Completed, 2, true));
+    let passes3: [DataflowPass] = append_pass(passes2, dataflow_pass(DataflowPassKind.Dominators, DataflowPassState.Completed, 1, false));
+    give append_pass(passes3, dataflow_pass(DataflowPassKind.ConstantPropagation, DataflowPassState.Completed, 3, true));
 }
 
 proc build_pipeline_metrics(cfg: CfgSummary, liveness: LivenessSummary, pass_count: u64) -> DataflowMetrics {
@@ -274,44 +266,17 @@ proc build_pipeline_metrics(cfg: CfgSummary, liveness: LivenessSummary, pass_cou
 }
 
 proc build_dataflow_pipeline(name: string) -> DataflowPipeline {
-    let cfg: CfgGraph =
-        build_linear_cfg(name);
-
-    let liveness0: LivenessContext =
-        liveness_context(cfg);
-
-    let liveness1: LivenessContext =
-        analyze_liveness(liveness0);
-
-    let cfg_summary0: CfgSummary =
-        build_cfg_summary(cfg);
-
-    let liveness_summary0: LivenessSummary =
-        build_liveness_summary(liveness1);
-
-    let passes: [DataflowPass] =
-        build_default_passes();
-
-    let diagnostics: [DataflowDiagnostic] =
-        [
-            dataflow_diagnostic(
-                DataflowSeverity.Info,
-                "DF0001",
-                "cfg constructed"
-            ),
-            dataflow_diagnostic(
-                DataflowSeverity.Info,
-                "DF0002",
-                "liveness converged"
-            )
-        ];
-
-    let metrics: DataflowMetrics =
-        build_pipeline_metrics(
-            cfg_summary0,
-            liveness_summary0,
-            len(passes)
-        );
+    let cfg: CfgGraph = build_linear_cfg(name);
+    let liveness0: LivenessContext = liveness_context(cfg);
+    let liveness1: LivenessContext = analyze_liveness(liveness0);
+    let cfg_summary0: CfgSummary = build_cfg_summary(cfg);
+    let liveness_summary0: LivenessSummary = build_liveness_summary(liveness1);
+    let passes: [DataflowPass] = build_default_passes();
+    let diagnostics: [DataflowDiagnostic] = [
+        dataflow_diagnostic(DataflowSeverity.Info, "DF0001", "cfg constructed"),
+        dataflow_diagnostic(DataflowSeverity.Info, "DF0002", "liveness converged")
+    ];
+    let metrics: DataflowMetrics = build_pipeline_metrics(cfg_summary0, liveness_summary0, len(passes));
 
     give dataflow_pipeline(
         cfg,
@@ -324,25 +289,16 @@ proc build_dataflow_pipeline(name: string) -> DataflowPipeline {
 }
 
 proc build_dataflow_summary(pipeline: DataflowPipeline) -> DataflowSummary {
-    give dataflow_summary(
-        len(pipeline.passes),
-        count_completed_passes(
-            pipeline.passes
-        ),
-        len(pipeline.diagnostics),
-        pipeline.valid
-    );
+    give dataflow_summary(len(pipeline.passes), count_completed_passes(pipeline.passes), len(pipeline.diagnostics), pipeline.valid);
 }
 
 proc pipeline_summary(pipeline: DataflowPipeline) -> string {
-    give "passes="
-        + (len(pipeline.passes) as string)
-        + " diagnostics="
-        + (len(pipeline.diagnostics) as string)
-        + " cfg_blocks="
-        + (pipeline.metrics.cfg_block_count as string)
-        + " valid="
-        + (pipeline.valid as string);
+    let pass_count: string = len(pipeline.passes) as string;
+    let diagnostic_count: string = len(pipeline.diagnostics) as string;
+    let block_count: string = pipeline.metrics.cfg_block_count as string;
+    let valid_text: string = pipeline.valid as string;
+    let eq: string = dataflow_eq();
+    give "passes" + eq + pass_count + " diagnostics" + eq + diagnostic_count + " cfg_blocks" + eq + block_count + " valid" + eq + valid_text;
 }
 
 proc dataflow_mod_summary() -> string {
@@ -350,15 +306,8 @@ proc dataflow_mod_summary() -> string {
 }
 
 proc dataflow_selftest() -> bool {
-    let pipeline: DataflowPipeline =
-        build_dataflow_pipeline(
-            "demo"
-        );
-
-    let summary: DataflowSummary =
-        build_dataflow_summary(
-            pipeline
-        );
+    let pipeline: DataflowPipeline = build_dataflow_pipeline("demo");
+    let summary: DataflowSummary = build_dataflow_summary(pipeline);
 
     give summary.pass_count == 4
         and summary.completed_pass_count == 4

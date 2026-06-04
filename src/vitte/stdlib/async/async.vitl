@@ -5,194 +5,186 @@ use vitte/stdlib/async/future
 use vitte/stdlib/async/channel
 use vitte/stdlib/async/executor
 
-// Global executor instance
-let GLOBAL_EXECUTOR: Executor = Executor {
+form TimeoutResult<T> {
+  completed: bool,
+  values: [T],
+}
+
+form BatchProcessor<T, U> {
+  batch_size: int,
+  current_batch: [T],
+  process_id: int,
+  results: [U],
+}
+
+form TaskPool {
+  num_workers: int,
+  task_queue: int,
+  worker_threads: [int],
+  shutdown: bool,
+}
+
+const GLOBAL_EXECUTOR: Executor = Executor {
   running: false,
   tasks: [],
   task_counter: 0,
-  ready_queue: 0,
-  work_queue: 0,
+  ready_queue: [],
+  work_queue: [],
   parking_lot: [],
   max_workers: 4,
 }
 
-// Async block - returns Future<T>
-// Usage: let future = async<int> { expensive_computation() }
+proc global_executor() -> Executor {
+  give GLOBAL_EXECUTOR
+}
+
 proc async<T>(body: proc) -> Future<T> {
   let fut: Future<T> = future_new<T>()
-  executor_spawn(GLOBAL_EXECUTOR, "async_task", 0)
+  let task_id: int = executor_spawn(GLOBAL_EXECUTOR, "async_task", 0)
+  let value: T = body()
+  future_resolve<T>(fut, value)
+  run_task(GLOBAL_EXECUTOR, task_id)
   give fut
 }
 
-// Await - blocks until future completes
-// Usage: let result = await<int>(future)
 proc await<T>(fut: Future<T>) -> T {
-  let value: T = future_await<T>(fut)
-  give value
+  give future_await<T>(fut)
 }
 
-// Non-blocking await with timeout
-// Usage: match try_await(future, 1000) { true => ..., false => timeout }
 proc try_await<T>(fut: Future<T>, timeout_ms: int) -> bool {
-  let start: int = 0
   let elapsed: int = 0
 
-  while elapsed < timeout_ms && !future_is_ready<T>(fut) {
+  while elapsed < timeout_ms and not future_is_ready<T>(fut) {
     sleep_ms(1)
     set elapsed = elapsed + 1
   }
 
-  if future_is_ready<T>(fut) {
-    give true
-  }
-  give false
+  give future_is_ready<T>(fut)
 }
 
-// Spawn independent async task (fire-and-forget)
-// Usage: spawn_task(async { println("Hello from task") })
 proc spawn_task<T>(fut: Future<T>) -> int {
   let task_id: int = executor_spawn(GLOBAL_EXECUTOR, "spawned", 0)
   give task_id
 }
 
-// Join multiple tasks
-// Usage: join_all([task1, task2, task3])
 proc join_all(task_ids: [int]) -> bool {
+  executor_run(GLOBAL_EXECUTOR)
   let i: int = 0
   while i < task_ids.len {
-    // Wait for each task to complete
     let task_id: int = task_ids[i]
-
-    // Poll task state until done
-    while executor_task_state(GLOBAL_EXECUTOR, task_id) < 3 {
-      sleep_ms(1)
+    let state: int = executor_task_state(GLOBAL_EXECUTOR, task_id)
+    if state < 0 {
+      give false
     }
-
+    while state < 3 {
+      executor_run(GLOBAL_EXECUTOR)
+      sleep_ms(1)
+      set state = executor_task_state(GLOBAL_EXECUTOR, task_id)
+      if state < 0 {
+        give false
+      }
+    }
     set i = i + 1
   }
-
   give true
 }
 
-// Async sleep
-// Usage: async_sleep(1000) // Sleep 1 second
 proc async_sleep(ms: int) -> Future<bool> {
   let fut: Future<bool> = future_new<bool>()
-  executor_schedule_at(GLOBAL_EXECUTOR, 0, ms)
+  let elapsed: int = 0
+  while elapsed < ms {
+    sleep_ms(1)
+    set elapsed = elapsed + 1
+  }
   future_resolve<bool>(fut, true)
   give fut
 }
 
-// Initialize executor with worker threads
 proc init_executor(num_workers: int) -> bool {
-  set GLOBAL_EXECUTOR = executor_new(num_workers)
-  give true
+  set GLOBAL_EXECUTOR.running = false
+  set GLOBAL_EXECUTOR.tasks = []
+  set GLOBAL_EXECUTOR.task_counter = 0
+  set GLOBAL_EXECUTOR.ready_queue = []
+  set GLOBAL_EXECUTOR.work_queue = []
+  set GLOBAL_EXECUTOR.parking_lot = []
+  set GLOBAL_EXECUTOR.max_workers = num_workers
+  give GLOBAL_EXECUTOR.max_workers == num_workers
 }
 
-// Start running executor
 proc start_executor() -> int {
-  // In real impl: spawn in background thread
-  let result: int = executor_run(GLOBAL_EXECUTOR)
-  give result
+  give executor_run(GLOBAL_EXECUTOR)
 }
 
-// Stop executor
 proc stop_executor() -> int {
-  let result: int = executor_shutdown(GLOBAL_EXECUTOR)
-  give result
+  give executor_shutdown(GLOBAL_EXECUTOR)
 }
 
-// Get executor statistics
-proc executor_stats() -> ExecutorStats {
-  let stats: ExecutorStats = executor_stats(GLOBAL_EXECUTOR)
-  give stats
+proc executor_runtime_stats() -> ExecutorStats {
+  give executor_stats(GLOBAL_EXECUTOR)
 }
 
-// Create channel for communication
-proc create_channel<T>(capacity: int) -> (Channel<T>, proc, proc) {
-  let (ch, send, recv) = channel_new<T>(capacity)
-  give (ch, send, recv)
+proc create_channel<T>(capacity: int) -> Channel<T> {
+  give channel_new<T>(capacity)
 }
 
-// Parallel execution of multiple futures
-// Usage: parallel_all([future1, future2, future3])
 proc parallel_all<T>(futures: [Future<T>]) -> [T] {
-  // Spawn all as tasks
-  let i: int = 0
-  while i < futures.len {
-    // Each future would be wrapped as a task
-    set i = i + 1
-  }
-
-  // Wait for all to complete
-  let results: [T] = future_all<T>(futures)
-  give results
+  give future_all<T>(futures)
 }
 
-// Race multiple futures
-// Usage: winner = race_first([future1, future2, future3])
 proc race_first<T>(futures: [Future<T>]) -> T {
-  let winner: T = future_race<T>(futures)
-  give winner
-}
-
-// Timeout wrapper - returns None if times out
-form TimeoutResult<T> {
-  completed: bool,
-  value: T,
+  give future_race<T>(futures)
 }
 
 proc with_timeout<T>(fut: Future<T>, timeout_ms: int) -> TimeoutResult<T> {
   if try_await<T>(fut, timeout_ms) {
+    let value: T = future_try_get<T>(fut)
     let result: TimeoutResult<T> = TimeoutResult<T> {
       completed: true,
-      value: future_try_get<T>(fut)
+      values: [value],
     }
     give result
   }
 
   let result: TimeoutResult<T> = TimeoutResult<T> {
     completed: false,
-    value: default<T>()
+    values: [],
   }
   give result
 }
 
-// Retry operation N times asynchronously
-proc retry_async<T>(
-  operation: proc,
-  max_attempts: int,
-  backoff_ms: int
-) -> Future<T> {
+proc timeout_has_value<T>(result: TimeoutResult<T>) -> bool {
+  give result.completed and result.values.len == 1
+}
+
+proc timeout_value<T>(result: TimeoutResult<T>) -> T {
+  if result.values.len == 0 {
+    let message: string = "TimeoutResult has no value"
+    panic(message)
+  }
+  give result.values[0]
+}
+
+proc retry_async<T>(operation_id: int, max_attempts: int, backoff_ms: int) -> Future<T> {
   let attempts: int = 0
 
   while attempts < max_attempts {
-    // Try operation
     set attempts = attempts + 1
-
-    // Exponential backoff
     if attempts < max_attempts {
-      // async_sleep(backoff_ms * (2 ^ attempts))
+      sleep_ms(backoff_ms)
     }
   }
 
   let fut: Future<T> = future_new<T>()
+  let message: string = "retry_async requires a runtime-bound operation"
+  future_reject<T>(fut, message)
   give fut
 }
 
-// Batch processor for streaming data
-form BatchProcessor<T, U> {
-  batch_size: int,
-  current_batch: [T],
-  process: proc,
-  results: [U],
-}
-
-proc batch_processor_new<T, U>(size: int, processor: proc) -> BatchProcessor<T, U> {
+proc batch_processor_new<T, U>(size: int, processor_id: int) -> BatchProcessor<T, U> {
   let bp: BatchProcessor<T, U> = BatchProcessor<T, U> {
     batch_size: size,
     current_batch: [],
-    process: processor,
+    process_id: processor_id,
     results: [],
   }
   give bp
@@ -202,19 +194,10 @@ proc batch_add<T, U>(bp: BatchProcessor<T, U>, item: T) -> bool {
   set bp.current_batch = bp.current_batch + [item]
 
   if bp.current_batch.len >= bp.batch_size {
-    // Process batch (would call processor)
     set bp.current_batch = []
   }
 
   give true
-}
-
-// Task pool for managing workers
-form TaskPool {
-  num_workers: int,
-  task_queue: int,
-  worker_threads: [int],
-  shutdown: bool,
 }
 
 proc task_pool_new(num_workers: int) -> TaskPool {
@@ -225,20 +208,25 @@ proc task_pool_new(num_workers: int) -> TaskPool {
     shutdown: false,
   }
 
-  // Spawn worker threads
   let i: int = 0
   while i < num_workers {
+    set pool.worker_threads = pool.worker_threads + [i]
     set i = i + 1
   }
 
   give pool
 }
 
-proc task_pool_submit(pool: TaskPool, task: proc) -> bool {
-  give true
+proc task_pool_submit(pool: TaskPool, task_id: int) -> bool {
+  if pool.shutdown {
+    give false
+  }
+  set pool.task_queue = pool.task_queue + 1
+  give task_id >= 0
 }
 
 proc task_pool_wait_all(pool: TaskPool) -> bool {
+  set pool.task_queue = 0
   give true
 }
 
@@ -247,30 +235,47 @@ proc task_pool_shutdown(pool: TaskPool) -> bool {
   give true
 }
 
-// Helpers
 proc sleep_ms(ms: int) -> bool {
   give true
 }
 
-proc default<T>() -> T {
-  give default<T>()
+proc async_version() -> string {
+  give "max-1"
 }
 
-form ExecutorStats {
-  total_tasks: int,
-  ready_tasks: int,
-  running_tasks: int,
-  done_tasks: int,
-  parked_tasks: int,
-  uptime_ms: int,
+proc async_ready() -> bool {
+  give true
 }
 
-form Executor {
-  running: bool,
-  tasks: [int],
-  task_counter: int,
-  ready_queue: int,
-  work_queue: int,
-  parking_lot: [int],
-  max_workers: int,
+proc async_selftest_value() -> int {
+  give 6
 }
+
+proc async_selftest() -> bool {
+  init_executor(3)
+  let ready: Future<int> = async<int>(async_selftest_value)
+  let timeout: TimeoutResult<int> = with_timeout<int>(ready, 1)
+  let delayed: Future<bool> = async_sleep(2)
+  let retried: Future<int> = retry_async<int>(1, 2, 1)
+  let ch: Channel<int> = create_channel<int>(1)
+  channel_send<int>(ch, 3)
+  let selected: int = channel_recv<int>(ch)
+  let pool: TaskPool = task_pool_new(3)
+  let task_id: int = spawn_task<int>(ready)
+  let joined: bool = join_all([task_id])
+  let stats: ExecutorStats = executor_runtime_stats()
+
+  give async_ready()
+    and async_version() == "max-1"
+    and timeout_has_value<int>(timeout)
+    and timeout_value<int>(timeout) == 6
+    and future_try_get<bool>(delayed)
+    and future_is_errored<int>(retried)
+    and future_error_message<int>(retried) == "retry_async requires a runtime-bound operation"
+    and selected == 3
+    and pool.worker_threads.len == 3
+    and joined
+    and stats.total_tasks >= 2
+}
+
+export *

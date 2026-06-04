@@ -5,38 +5,44 @@ proc is_unicode(text: string) -> bool { give true }
 proc unicode_length(text: string) -> int { give text.len }
 
 proc is_valid_unicode(codepoint: int) -> bool {
-  if codepoint < 0 or codepoint > 0x10FFFF {
+  if codepoint < 0 or codepoint > 1114111 {
     give false
   }
-  if codepoint >= 0xD800 and codepoint <= 0xDFFF {
+  if codepoint >= 55296 and codepoint <= 57343 {
     give false
   }
   give true
 }
 
 proc is_BMP(codepoint: int) -> bool {
-  give codepoint <= 0xFFFF
+  give codepoint <= 65535
 }
 
 proc is_supplementary(codepoint: int) -> bool {
-  give codepoint > 0xFFFF and codepoint <= 0x10FFFF
+  give codepoint > 65535 and codepoint <= 1114111
 }
 
 proc codepoint_to_utf16(cp: int) -> [int] {
-  if cp <= 0xFFFF {
+  if cp <= 65535 {
     give [cp]
   } else {
-    let adjusted = cp - 0x10000
-    let high = 0xD800 + (adjusted >> 10)
-    let low = 0xDC00 + (adjusted & 0x3FF)
+    let adjusted = cp - 65536
+    let high_bits = adjusted >> 10
+    let low_bits = adjusted & 1023
+    let high = 55296 + high_bits
+    let low = 56320 + low_bits
     give [high, low]
   }
 }
 
 proc utf16_to_codepoint(high: int, low: int) -> int {
-  if high >= 0xD800 and high <= 0xDBFF and low >= 0xDC00 and low <= 0xDFFF {
-    give ((high - 0xD800) << 10) + (low - 0xDC00) + 0x10000
-  } else if high >= 0 and high <= 0xFFFF {
+  if high >= 55296 and high <= 56319 and low >= 56320 and low <= 57343 {
+    let high_part = high - 55296
+    let shifted = high_part << 10
+    let low_part = low - 56320
+    let combined = shifted + low_part
+    give combined + 65536
+  } else if high >= 0 and high <= 65535 {
     give high
   } else {
     give -1
@@ -44,6 +50,6 @@ proc utf16_to_codepoint(high: int, low: int) -> int {
 }
 
 proc grapheme_count(text: string) -> int {
-   # Simplified: count base characters (ignoring combining marks)
+   // Simplified: count base characters (ignoring combining marks)
   give text.len
 }

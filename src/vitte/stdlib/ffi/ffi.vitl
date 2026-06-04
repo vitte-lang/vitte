@@ -35,7 +35,10 @@ proc ffi_load_library(path: string) -> ForeignLibrary {
   }
 
   // Runtime simulation: consider known stdlibs loadable.
-  if path == "libc.so.6" || path == "libm.so.6" || path == "libpthread.so.0" {
+  let is_libc: bool = path == "libc.so.6"
+  let is_libm: bool = path == "libm.so.6"
+  let is_libpthread: bool = path == "libpthread.so.0"
+  if is_libc || is_libm || is_libpthread {
     set lib.loaded = true
     set lib.handle = 1
   }
@@ -54,12 +57,7 @@ proc ffi_get_stdlib(name: string) -> ForeignLibrary {
 }
 
 // Register foreign function
-proc ffi_register_function(
-  lib: ForeignLibrary,
-  fn_name: string,
-  arg_types: [string],
-  return_type: string
-) -> ForeignFunction {
+proc ffi_register_function(lib: ForeignLibrary, fn_name: string, arg_types: [string], return_type: string) -> ForeignFunction {
   let func: ForeignFunction = ForeignFunction {
     name: fn_name,
     lib_name: lib.name,
@@ -74,7 +72,8 @@ proc ffi_register_function(
   set lib.functions = lib.functions + [func]
 
   // Runtime simulation: resolve known symbols.
-  if lib.loaded && is_known_symbol(lib.name, fn_name) {
+  let known_symbol: bool = is_known_symbol(lib.name, fn_name)
+  if lib.loaded && known_symbol {
     set func.loaded = true
     set func.handle = 1
   }
@@ -85,13 +84,16 @@ proc ffi_register_function(
 // Call foreign function with arguments
 proc ffi_call(func: ForeignFunction, args: [int]) -> int {
   if !func.loaded {
-    panic("Function not loaded: " + func.name)
+    let message_prefix: string = "Function not loaded: "
+    let message: string = message_prefix + func.name
+    panic(message)
   }
 
   let profile: ABIProfile = abi_profile_current()
   let conv_name: string = profile.calling_convention.name
   if conv_name == "" {
-    panic("No ABI calling convention available for platform")
+    let message: string = "No ABI calling convention available for platform"
+    panic(message)
   }
 
   if func.name == "puts" {
@@ -107,12 +109,18 @@ proc ffi_call(func: ForeignFunction, args: [int]) -> int {
     give 0
   }
   if func.name == "strcmp" {
-    if args.len >= 2 && args[0] == args[1] {
+    let enough_args: bool = args.len >= 2
+    let same_args: bool = enough_args && args[0] == args[1]
+    if same_args {
       give 0
     }
     give 1
   }
-  if func.name == "pthread_create" || func.name == "pthread_join" || func.name == "pthread_mutex_lock" || func.name == "pthread_mutex_unlock" {
+  let is_pthread_create: bool = func.name == "pthread_create"
+  let is_pthread_join: bool = func.name == "pthread_join"
+  let is_mutex_lock: bool = func.name == "pthread_mutex_lock"
+  let is_mutex_unlock: bool = func.name == "pthread_mutex_unlock"
+  if is_pthread_create || is_pthread_join || is_mutex_lock || is_mutex_unlock {
     give 0
   }
   give 0
@@ -125,22 +133,38 @@ proc ffi_call_str(func: ForeignFunction, args: [int]) -> string {
 
 // Call foreign function returning floating point
 proc ffi_call_f64(func: ForeignFunction, args: [int]) -> f64 {
-  if func.name == "sqrt" && args.len > 0 {
-    if args[0] == 0 { give 0.0 }
-    if args[0] == 1 { give 1.0 }
-    if args[0] == 4 { give 2.0 }
-    if args[0] == 9 { give 3.0 }
-    if args[0] == 16 { give 4.0 }
+  let has_args: bool = args.len > 0
+  if func.name == "sqrt" && has_args {
+    if args[0] == 0 {
+      give 0.0
+    }
+    if args[0] == 1 {
+      give 1.0
+    }
+    if args[0] == 4 {
+      give 2.0
+    }
+    if args[0] == 9 {
+      give 3.0
+    }
+    if args[0] == 16 {
+      give 4.0
+    }
   }
-  if func.name == "sin" && args.len > 0 && args[0] == 0 {
+  let zero_arg: bool = has_args && args[0] == 0
+  if func.name == "sin" && zero_arg {
     give 0.0
   }
-  if func.name == "cos" && args.len > 0 && args[0] == 0 {
+  if func.name == "cos" && zero_arg {
     give 1.0
   }
   if func.name == "pow" && args.len >= 2 {
-    if args[0] == 2 && args[1] == 3 { give 8.0 }
-    if args[1] == 1 { give 1.0 * args[0] }
+    if args[0] == 2 && args[1] == 3 {
+      give 8.0
+    }
+    if args[1] == 1 {
+      give 1.0 * args[0]
+    }
   }
   give 0.0
 }
@@ -314,17 +338,42 @@ proc panic(msg: string) -> bool {
 
 proc is_known_symbol(lib_name: string, fn_name: string) -> bool {
   if lib_name == "m" {
-    if fn_name == "sin" || fn_name == "cos" || fn_name == "tan" || fn_name == "sqrt" || fn_name == "pow" || fn_name == "log" || fn_name == "exp" {
+    let is_sin: bool = fn_name == "sin"
+    let is_cos: bool = fn_name == "cos"
+    let is_tan: bool = fn_name == "tan"
+    let is_sqrt: bool = fn_name == "sqrt"
+    let is_pow: bool = fn_name == "pow"
+    let is_log: bool = fn_name == "log"
+    let is_exp: bool = fn_name == "exp"
+    if is_sin || is_cos || is_tan || is_sqrt || is_pow || is_log || is_exp {
       give true
     }
   }
   if lib_name == "c" {
-    if fn_name == "printf" || fn_name == "fprintf" || fn_name == "sprintf" || fn_name == "scanf" || fn_name == "gets" || fn_name == "puts" || fn_name == "strlen" || fn_name == "strcpy" || fn_name == "strcat" || fn_name == "strcmp" || fn_name == "strstr" || fn_name == "strtok" {
+    let is_printf: bool = fn_name == "printf"
+    let is_fprintf: bool = fn_name == "fprintf"
+    let is_sprintf: bool = fn_name == "sprintf"
+    let is_scanf: bool = fn_name == "scanf"
+    let is_gets: bool = fn_name == "gets"
+    let is_puts: bool = fn_name == "puts"
+    let is_strlen: bool = fn_name == "strlen"
+    let is_strcpy: bool = fn_name == "strcpy"
+    let is_strcat: bool = fn_name == "strcat"
+    let is_strcmp: bool = fn_name == "strcmp"
+    let is_strstr: bool = fn_name == "strstr"
+    let is_strtok: bool = fn_name == "strtok"
+    if is_printf || is_fprintf || is_sprintf || is_scanf || is_gets || is_puts || is_strlen || is_strcpy || is_strcat || is_strcmp || is_strstr || is_strtok {
       give true
     }
   }
   if lib_name == "pthread" {
-    if fn_name == "pthread_create" || fn_name == "pthread_join" || fn_name == "pthread_exit" || fn_name == "pthread_mutex_init" || fn_name == "pthread_mutex_lock" || fn_name == "pthread_mutex_unlock" {
+    let is_create: bool = fn_name == "pthread_create"
+    let is_join: bool = fn_name == "pthread_join"
+    let is_exit: bool = fn_name == "pthread_exit"
+    let is_mutex_init: bool = fn_name == "pthread_mutex_init"
+    let is_mutex_lock: bool = fn_name == "pthread_mutex_lock"
+    let is_mutex_unlock: bool = fn_name == "pthread_mutex_unlock"
+    if is_create || is_join || is_exit || is_mutex_init || is_mutex_lock || is_mutex_unlock {
       give true
     }
   }

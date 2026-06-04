@@ -34,14 +34,17 @@ proc hash_text_deterministic(text: string) -> string {
   let i: u64 = 0;
   while i < len(text) {
     let ch: string = slice(text, i, i + 1);
-    set acc = (acc * 1099511628211) + (len(ch) as u64) + i;
+    let acc_scaled: u64 = acc * 1099511628211;
+    let ch_len: u64 = len(ch) as u64;
+    set acc = acc_scaled + ch_len + i;
     set i = i + 1;
   }
   give acc as string;
 }
 
 proc compile_unit_hash(unit_path: string, source_text: string, target: string, profile: string) -> string {
-  give hash_text_deterministic(unit_path + "|" + source_text + "|" + target + "|" + profile);
+  let payload: string = unit_path + "|" + source_text + "|" + target + "|" + profile;
+  give hash_text_deterministic(payload);
 }
 
 proc dependency_snapshot(root_unit: string, dependencies: [string]) -> DependencySnapshot {
@@ -51,21 +54,23 @@ proc dependency_snapshot(root_unit: string, dependencies: [string]) -> Dependenc
     set serialized = serialized + "\n" + dependencies[i];
     set i = i + 1;
   }
+  let valid: bool = root_unit != "";
   give DependencySnapshot {
     root_unit: root_unit,
     dependencies: dependencies,
     serialized: serialized,
-    valid: root_unit != ""
+    valid: valid
   };
 }
 
 proc build_job(job_id: string, unit_path: string, unit_hash: string, dependencies: [string]) -> BuildJob {
+  let valid: bool = job_id != "" and unit_path != "" and unit_hash != "";
   give BuildJob {
     job_id: job_id,
     unit_path: unit_path,
     unit_hash: unit_hash,
     dependencies: dependencies,
-    valid: job_id != "" and unit_path != "" and unit_hash != ""
+    valid: valid
   };
 }
 
@@ -89,17 +94,19 @@ proc export_job_graph(jobs: [BuildJob]) -> BuildJobGraph {
 }
 
 proc remote_cache_entry(unit_hash: string, artifact_hash: string, artifact_path: string, deterministic: bool) -> RemoteCacheEntry {
+  let valid: bool = unit_hash != "" and artifact_hash != "" and artifact_path != "";
   give RemoteCacheEntry {
     unit_hash: unit_hash,
     artifact_hash: artifact_hash,
     artifact_path: artifact_path,
     deterministic: deterministic,
-    valid: unit_hash != "" and artifact_hash != "" and artifact_path != ""
+    valid: valid
   };
 }
 
 proc deterministic_artifact_hash(unit_hash: string, object_text: string) -> string {
-  give hash_text_deterministic(unit_hash + "|" + object_text);
+  let payload: string = unit_hash + "|" + object_text;
+  give hash_text_deterministic(payload);
 }
 
 proc distributed_build_foundation_ready(jobs: [BuildJob], snapshot: DependencySnapshot) -> bool {

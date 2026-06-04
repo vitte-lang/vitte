@@ -16,38 +16,27 @@ const VITTE_VERSION_YEAR: u64 = 2026
 const VITTE_VERSION_MONTH: u64 = 5
 const VITTE_VERSION_DAY: u64 = 20
 
-const VITTE_GRAMMAR_VERSION: string =
-  "complete-core-grammar-2026.05"
+const VITTE_GRAMMAR_VERSION: string = "complete-core-grammar-2026.05"
 
-const VITTE_AST_VERSION: string =
-  "full-grammar-ast-v2"
+const VITTE_AST_VERSION: string = "full-grammar-ast-v2"
 
-const VITTE_HIR_VERSION: string =
-  "hir-sema-v2"
+const VITTE_HIR_VERSION: string = "hir-sema-v2"
 
-const VITTE_MIR_VERSION: string =
-  "mir-dataflow-v2"
+const VITTE_MIR_VERSION: string = "mir-dataflow-v2"
 
-const VITTE_IR_VERSION: string =
-  "ir-lowered-v2"
+const VITTE_IR_VERSION: string = "ir-lowered-v2"
 
-const VITTE_PIPELINE_VERSION: string =
-  "pipeline-2026.05"
+const VITTE_PIPELINE_VERSION: string = "pipeline-2026.05"
 
-const VITTE_TARGET_VERSION: string =
-  "targets-unified-v2"
+const VITTE_TARGET_VERSION: string = "targets-unified-v2"
 
-const VITTE_DEFAULT_VENDOR: string =
-  "vitte"
+const VITTE_DEFAULT_VENDOR: string = "vitte"
 
-const VITTE_LICENSE: string =
-  "Apache-2.0"
+const VITTE_LICENSE: string = "Apache-2.0"
 
-const VITTE_REPOSITORY: string =
-  "https://github.com/vitte-lang/vitte"
+const VITTE_REPOSITORY: string = "https://github.com/vitte-lang/vitte"
 
-const VITTE_WEBSITE: string =
-  "https://vitte.dev"
+const VITTE_WEBSITE: string = "https://vitte.dev"
 
 form CompilerVersion {
   name: string
@@ -87,9 +76,11 @@ form CompilerVersion {
 }
 
 proc compiler_version() -> CompilerVersion {
-
-  let semantic: string =
-    semantic_version();
+  let semantic: string = semantic_version();
+  let version_text: string = compiler_version_text();
+  let build_date_text: string = build_date();
+  let experimental: bool = VITTE_VERSION_CHANNEL != "stable";
+  let stable: bool = VITTE_VERSION_CHANNEL == "stable";
 
   give CompilerVersion {
     name: VITTE_NAME,
@@ -101,162 +92,90 @@ proc compiler_version() -> CompilerVersion {
 
     channel: VITTE_VERSION_CHANNEL,
 
-    version_text:
-      compiler_version_text(),
-
-    semantic_version:
-      semantic,
-
-    build_date:
-      build_date(),
-
-    grammar_version:
-      VITTE_GRAMMAR_VERSION,
-
-    ast_version:
-      VITTE_AST_VERSION,
-
-    hir_version:
-      VITTE_HIR_VERSION,
-
-    mir_version:
-      VITTE_MIR_VERSION,
-
-    ir_version:
-      VITTE_IR_VERSION,
-
-    pipeline_version:
-      VITTE_PIPELINE_VERSION,
-
-    target_version:
-      VITTE_TARGET_VERSION,
-
-    vendor:
-      VITTE_DEFAULT_VENDOR,
-
-    license:
-      VITTE_LICENSE,
-
-    repository:
-      VITTE_REPOSITORY,
-
-    website:
-      VITTE_WEBSITE,
+    version_text: version_text,
+    semantic_version: semantic,
+    build_date: build_date_text,
+    grammar_version: VITTE_GRAMMAR_VERSION,
+    ast_version: VITTE_AST_VERSION,
+    hir_version: VITTE_HIR_VERSION,
+    mir_version: VITTE_MIR_VERSION,
+    ir_version: VITTE_IR_VERSION,
+    pipeline_version: VITTE_PIPELINE_VERSION,
+    target_version: VITTE_TARGET_VERSION,
+    vendor: VITTE_DEFAULT_VENDOR,
+    license: VITTE_LICENSE,
+    repository: VITTE_REPOSITORY,
+    website: VITTE_WEBSITE,
 
     bootstrap: false,
-
-    experimental:
-      VITTE_VERSION_CHANNEL != "stable",
-
-    stable:
-      VITTE_VERSION_CHANNEL == "stable",
+    experimental: experimental,
+    stable: stable,
 
     valid: true
   };
 }
 
 proc semantic_version() -> string {
-
-  give (VITTE_VERSION_MAJOR as string)
-    + "."
-    + (VITTE_VERSION_MINOR as string)
-    + "."
-    + (VITTE_VERSION_PATCH as string);
+  let major_text: string = VITTE_VERSION_MAJOR as string;
+  let minor_text: string = VITTE_VERSION_MINOR as string;
+  let patch_text: string = VITTE_VERSION_PATCH as string;
+  give major_text + "." + minor_text + "." + patch_text;
 }
 
 proc compiler_version_text() -> string {
-
-  give VITTE_NAME
-    + " "
-    + semantic_version()
-    + "-"
-    + VITTE_VERSION_CHANNEL;
+  give VITTE_NAME + " " + semantic_version() + "-" + VITTE_VERSION_CHANNEL;
 }
 
 proc build_date() -> string {
-
-  give (VITTE_VERSION_YEAR as string)
-    + "-"
-    + two_digit(VITTE_VERSION_MONTH)
-    + "-"
-    + two_digit(VITTE_VERSION_DAY);
+  let year_text: string = VITTE_VERSION_YEAR as string;
+  let month_text: string = two_digit(VITTE_VERSION_MONTH);
+  let day_text: string = two_digit(VITTE_VERSION_DAY);
+  give year_text + "-" + month_text + "-" + day_text;
 }
 
 proc two_digit(value: u64) -> string {
 
   if value < 10 {
-    give "0"
-      + (value as string);
+    let value_text: string = value as string;
+    give "0" + value_text;
   }
 
   give value as string;
 }
 
 proc compiler_banner() -> string {
-
-  let version: CompilerVersion =
-    compiler_version();
-
-  give version.name
-    + " "
-    + version.semantic_version
-    + " ("
-    + version.channel
-    + ") "
-    + "["
-    + version.grammar_version
-    + "]";
+  let version: CompilerVersion = compiler_version();
+  let out: string = version.name + " " + version.semantic_version;
+  let with_channel_open: string = out + " (";
+  let with_channel: string = with_channel_open + version.channel;
+  let with_channel_close: string = with_channel + ") ";
+  let with_bracket_open: string = with_channel_close + "[";
+  let with_grammar: string = with_bracket_open + version.grammar_version;
+  give with_grammar + "]";
 }
 
 proc compiler_long_banner() -> string {
-
-  let version: CompilerVersion =
-    compiler_version();
-
-  give compiler_banner()
-    + " "
-    + version.repository
-    + " "
-    + version.build_date;
+  let version: CompilerVersion = compiler_version();
+  give compiler_banner() + " " + version.repository + " " + version.build_date;
 }
 
 proc compiler_pipeline_signature() -> string {
-
-  let version: CompilerVersion =
-    compiler_version();
-
-  give "frontend="
-    + version.grammar_version
-    + " ast="
-    + version.ast_version
-    + " hir="
-    + version.hir_version
-    + " mir="
-    + version.mir_version
-    + " ir="
-    + version.ir_version
-    + " pipeline="
-    + version.pipeline_version;
+  let version: CompilerVersion = compiler_version();
+  let out: string = "frontend " + version.grammar_version;
+  let with_ast: string = out + " ast " + version.ast_version;
+  let with_hir: string = with_ast + " hir " + version.hir_version;
+  let with_mir: string = with_hir + " mir " + version.mir_version;
+  let with_ir: string = with_mir + " ir " + version.ir_version;
+  give with_ir + " pipeline " + version.pipeline_version;
 }
 
 proc compiler_target_signature() -> string {
-
-  let version: CompilerVersion =
-    compiler_version();
-
-  give "targets="
-    + version.target_version
-    + " vendor="
-    + version.vendor;
+  let version: CompilerVersion = compiler_version();
+  give "targets " + version.target_version + " vendor " + version.vendor;
 }
 
 proc compiler_full_signature() -> string {
-
-  give compiler_long_banner()
-    + " "
-    + compiler_pipeline_signature()
-    + " "
-    + compiler_target_signature();
+  give compiler_long_banner() + " " + compiler_pipeline_signature() + " " + compiler_target_signature();
 }
 
 proc compiler_is_dev() -> bool {
@@ -296,7 +215,6 @@ proc compiler_supports_wasm() -> bool {
 }
 
 proc compiler_feature_list() -> [string] {
-
   give [
     "frontend",
     "lexer",
@@ -329,20 +247,14 @@ proc compiler_feature_count() -> u64 {
 }
 
 proc compiler_summary() -> string {
-
-  give compiler_version_text()
-    + " features="
-    + (compiler_feature_count() as string)
-    + " build="
-    + build_date()
-    + " channel="
-    + VITTE_VERSION_CHANNEL;
+  let feature_count_text: string = compiler_feature_count() as string;
+  let out: string = compiler_version_text() + " features " + feature_count_text;
+  let with_build: string = out + " build " + build_date();
+  give with_build + " channel " + VITTE_VERSION_CHANNEL;
 }
 
 proc compiler_selftest() -> bool {
-
-  let version: CompilerVersion =
-    compiler_version();
+  let version: CompilerVersion = compiler_version();
 
   give version.valid
     and compiler_banner() != ""

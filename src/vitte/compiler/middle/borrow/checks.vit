@@ -183,7 +183,7 @@ proc empty_span() -> BorrowSpan {
 proc root_region() -> BorrowRegion {
     give borrow_region(
         0,
-        "'root",
+        "root",
         0,
         true
     );
@@ -214,41 +214,29 @@ proc severity_warning() -> BorrowSeverity {
 }
 
 proc add_region(ctx: BorrowContext, region: BorrowRegion) -> BorrowContext {
-    let out: BorrowContext =
-        ctx;
-
-    set out.regions =
-        out.regions + [region];
+    let out: BorrowContext = ctx;
+    set out.regions = out.regions + [region];
 
     give out;
 }
 
 proc add_loan(ctx: BorrowContext, loan: BorrowLoan) -> BorrowContext {
-    let out: BorrowContext =
-        ctx;
-
-    set out.loans =
-        out.loans + [loan];
+    let out: BorrowContext = ctx;
+    set out.loans = out.loans + [loan];
 
     give out;
 }
 
 proc add_state(ctx: BorrowContext, state: BorrowStateEntry) -> BorrowContext {
-    let out: BorrowContext =
-        ctx;
-
-    set out.states =
-        out.states + [state];
+    let out: BorrowContext = ctx;
+    set out.states = out.states + [state];
 
     give out;
 }
 
 proc add_diagnostic(ctx: BorrowContext, diagnostic: BorrowDiagnostic) -> BorrowContext {
-    let out: BorrowContext =
-        ctx;
-
-    set out.diagnostics =
-        out.diagnostics + [diagnostic];
+    let out: BorrowContext = ctx;
+    set out.diagnostics = out.diagnostics + [diagnostic];
 
     give out;
 }
@@ -298,39 +286,49 @@ proc borrow_kind_name(kind: BorrowCheckKind) -> string {
 }
 
 proc borrow_state_name(state: BorrowState) -> string {
-    if state == BorrowState.Free { give "free"; }
-    if state == BorrowState.Shared { give "shared"; }
-    if state == BorrowState.Mutable { give "mutable"; }
-    if state == BorrowState.Moved { give "moved"; }
-    if state == BorrowState.Dropped { give "dropped"; }
+    if state == BorrowState.Free {
+        give "free";
+    }
+    if state == BorrowState.Shared {
+        give "shared";
+    }
+    if state == BorrowState.Mutable {
+        give "mutable";
+    }
+    if state == BorrowState.Moved {
+        give "moved";
+    }
+    if state == BorrowState.Dropped {
+        give "dropped";
+    }
 
     give "invalid";
 }
 
 proc severity_name(severity: BorrowSeverity) -> string {
-    if severity == BorrowSeverity.Info { give "info"; }
-    if severity == BorrowSeverity.Warning { give "warning"; }
-    if severity == BorrowSeverity.Error { give "error"; }
+    if severity == BorrowSeverity.Info {
+        give "info";
+    }
+    if severity == BorrowSeverity.Warning {
+        give "warning";
+    }
+    if severity == BorrowSeverity.Error {
+        give "error";
+    }
 
     give "fatal";
 }
 
 proc mutable_conflict(left: BorrowState, right: BorrowState) -> bool {
-    if left == BorrowState.Mutable
-        and right == BorrowState.Mutable {
-
+    if left == BorrowState.Mutable and right == BorrowState.Mutable {
         give true;
     }
 
-    if left == BorrowState.Mutable
-        and right == BorrowState.Shared {
-
+    if left == BorrowState.Mutable and right == BorrowState.Shared {
         give true;
     }
 
-    if left == BorrowState.Shared
-        and right == BorrowState.Mutable {
-
+    if left == BorrowState.Shared and right == BorrowState.Mutable {
         give true;
     }
 
@@ -346,8 +344,7 @@ proc dropped_state(state: BorrowState) -> bool {
 }
 
 proc active_loan(loan: BorrowLoan) -> bool {
-    give loan.active
-        and loan.region.active;
+    give loan.active and loan.region.active;
 }
 
 proc find_state(ctx: BorrowContext, name: string) -> BorrowStateEntry {
@@ -358,8 +355,7 @@ proc find_state(ctx: BorrowContext, name: string) -> BorrowStateEntry {
             give ctx.states[i];
         }
 
-        set i =
-            i + 1;
+        set i = i + 1;
     }
 
     give borrow_state_entry(
@@ -375,11 +371,7 @@ proc find_state(ctx: BorrowContext, name: string) -> BorrowStateEntry {
 }
 
 proc validate_move(ctx: BorrowContext, place: BorrowPlace, span: BorrowSpan) -> BorrowContext {
-    let state: BorrowStateEntry =
-        find_state(
-            ctx,
-            place.name
-        );
+    let state: BorrowStateEntry = find_state(ctx, place.name);
 
     if moved_state(state.state) {
         give add_diagnostic(
@@ -398,11 +390,7 @@ proc validate_move(ctx: BorrowContext, place: BorrowPlace, span: BorrowSpan) -> 
 }
 
 proc validate_use(ctx: BorrowContext, place: BorrowPlace, span: BorrowSpan) -> BorrowContext {
-    let state: BorrowStateEntry =
-        find_state(
-            ctx,
-            place.name
-        );
+    let state: BorrowStateEntry = find_state(ctx, place.name);
 
     if moved_state(state.state) {
         give add_diagnostic(
@@ -434,17 +422,9 @@ proc validate_use(ctx: BorrowContext, place: BorrowPlace, span: BorrowSpan) -> B
 }
 
 proc validate_mutable_alias(ctx: BorrowContext, place: BorrowPlace, state: BorrowState, span: BorrowSpan) -> BorrowContext {
-    let current: BorrowStateEntry =
-        find_state(
-            ctx,
-            place.name
-        );
+    let current: BorrowStateEntry = find_state(ctx, place.name);
 
-    if mutable_conflict(
-        current.state,
-        state
-    ) {
-
+    if mutable_conflict(current.state, state) {
         give add_diagnostic(
             ctx,
             borrow_diagnostic(
@@ -487,17 +467,11 @@ proc count_errors(diagnostics: [BorrowDiagnostic]) -> u64 {
     let i: u64 = 0;
 
     while i < len(diagnostics) {
-        if diagnostics[i].severity
-            == BorrowSeverity.Error
-            or diagnostics[i].severity
-                == BorrowSeverity.Fatal {
-
-            set count =
-                count + 1;
+        if diagnostics[i].severity == BorrowSeverity.Error or diagnostics[i].severity == BorrowSeverity.Fatal {
+            set count = count + 1;
         }
 
-        set i =
-            i + 1;
+        set i = i + 1;
     }
 
     give count;
@@ -509,30 +483,19 @@ proc count_warnings(diagnostics: [BorrowDiagnostic]) -> u64 {
     let i: u64 = 0;
 
     while i < len(diagnostics) {
-        if diagnostics[i].severity
-            == BorrowSeverity.Warning {
-
-            set count =
-                count + 1;
+        if diagnostics[i].severity == BorrowSeverity.Warning {
+            set count = count + 1;
         }
 
-        set i =
-            i + 1;
+        set i = i + 1;
     }
 
     give count;
 }
 
 proc finalize_borrow_check(ctx: BorrowContext) -> BorrowCheckResult {
-    let errors: u64 =
-        count_errors(
-            ctx.diagnostics
-        );
-
-    let warnings: u64 =
-        count_warnings(
-            ctx.diagnostics
-        );
+    let errors: u64 = count_errors(ctx.diagnostics);
+    let warnings: u64 = count_warnings(ctx.diagnostics);
 
     give borrow_check_result(
         ctx.diagnostics,
@@ -544,65 +507,34 @@ proc finalize_borrow_check(ctx: BorrowContext) -> BorrowCheckResult {
 }
 
 proc borrow_summary(result: BorrowCheckResult) -> string {
-    give "checked="
-        + (result.checked_places as string)
-        + " errors="
-        + (result.error_count as string)
-        + " warnings="
-        + (result.warning_count as string)
-        + " valid="
-        + (result.valid as string);
+    let checked_text: string = result.checked_places as string;
+    let error_text: string = result.error_count as string;
+    let warning_text: string = result.warning_count as string;
+    let valid_text: string = result.valid as string;
+    give "checked "
+        + checked_text
+        + " errors "
+        + error_text
+        + " warnings "
+        + warning_text
+        + " valid "
+        + valid_text;
 }
 
 proc borrow_selftest() -> bool {
-    let ctx: BorrowContext =
-        borrow_context();
-
-    let place: BorrowPlace =
-        borrow_place(
-            "value",
-            0,
-            true
-        );
-
-    let state: BorrowStateEntry =
-        borrow_state_entry(
-            place,
-            BorrowState.Moved,
-            1,
-            0
-        );
-
-    let ctx1: BorrowContext =
-        add_state(
-            ctx,
-            state
-        );
-
-    let ctx2: BorrowContext =
-        validate_use(
-            ctx1,
-            place,
-            empty_span()
-        );
-
-    let result: BorrowCheckResult =
-        finalize_borrow_check(
-            ctx2
-        );
+    let ctx: BorrowContext = borrow_context();
+    let place: BorrowPlace = borrow_place("value", 0, true);
+    let state: BorrowStateEntry = borrow_state_entry(place, BorrowState.Moved, 1, 0);
+    let ctx1: BorrowContext = add_state(ctx, state);
+    let ctx2: BorrowContext = validate_use(ctx1, place, empty_span());
+    let result: BorrowCheckResult = finalize_borrow_check(ctx2);
 
     give result.error_count == 1
         and result.checked_places == 1
         and not result.valid
-        and borrow_kind_name(
-            BorrowCheckKind.UseAfterMove
-        ) == "use-after-move"
-        and borrow_state_name(
-            BorrowState.Moved
-        ) == "moved"
-        and severity_name(
-            BorrowSeverity.Error
-        ) == "error"
+        and borrow_kind_name(BorrowCheckKind.UseAfterMove) == "use-after-move"
+        and borrow_state_name(BorrowState.Moved) == "moved"
+        and severity_name(BorrowSeverity.Error) == "error"
         and borrow_summary(result)
             != "";
 }

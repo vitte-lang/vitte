@@ -86,69 +86,91 @@ proc diagnostic_bag() -> TypeDiagnosticBag {
 }
 
 proc severity_name(severity: TypeDiagnosticSeverity) -> string {
-  if severity == TypeDiagnosticSeverity.Info { give "info" }
-  elif severity == TypeDiagnosticSeverity.Warning { give "warning" }
-  elif severity == TypeDiagnosticSeverity.Error { give "error" }
-  elif severity == TypeDiagnosticSeverity.Fatal { give "fatal" }
+  if severity == TypeDiagnosticSeverity.Info {
+    give "info"
+  } elif severity == TypeDiagnosticSeverity.Warning {
+    give "warning"
+  } elif severity == TypeDiagnosticSeverity.Error {
+    give "error"
+  } elif severity == TypeDiagnosticSeverity.Fatal {
+    give "fatal"
+  }
 
   give "unknown"
 }
 
 proc diagnostic_kind_name(kind: TypeDiagnosticKind) -> string {
-  if kind == TypeDiagnosticKind.UnknownType { give "unknown-type" }
-  elif kind == TypeDiagnosticKind.UnknownSymbol { give "unknown-symbol" }
-  elif kind == TypeDiagnosticKind.InvalidAssignment { give "invalid-assignment" }
-  elif kind == TypeDiagnosticKind.InvalidBorrow { give "invalid-borrow" }
-  elif kind == TypeDiagnosticKind.InvalidMove { give "invalid-move" }
-  elif kind == TypeDiagnosticKind.InvalidCall { give "invalid-call" }
-  elif kind == TypeDiagnosticKind.InvalidReturn { give "invalid-return" }
-  elif kind == TypeDiagnosticKind.InvalidCast { give "invalid-cast" }
-  elif kind == TypeDiagnosticKind.InvalidBinaryOperator { give "invalid-binary-operator" }
-  elif kind == TypeDiagnosticKind.InvalidUnaryOperator { give "invalid-unary-operator" }
-  elif kind == TypeDiagnosticKind.InvalidIndex { give "invalid-index" }
-  elif kind == TypeDiagnosticKind.InvalidField { give "invalid-field" }
-  elif kind == TypeDiagnosticKind.InvalidPattern { give "invalid-pattern" }
-  elif kind == TypeDiagnosticKind.InvalidMatch { give "invalid-match" }
-  elif kind == TypeDiagnosticKind.InvalidMutability { give "invalid-mutability" }
-  elif kind == TypeDiagnosticKind.InvalidLifetime { give "invalid-lifetime" }
-  elif kind == TypeDiagnosticKind.InvalidTraitBound { give "invalid-trait-bound" }
-  elif kind == TypeDiagnosticKind.InvalidGenericArgument { give "invalid-generic-argument" }
-  elif kind == TypeDiagnosticKind.InvalidConstExpr { give "invalid-const-expr" }
-  elif kind == TypeDiagnosticKind.InvalidControlFlow { give "invalid-control-flow" }
-  elif kind == TypeDiagnosticKind.TypeMismatch { give "type-mismatch" }
-  elif kind == TypeDiagnosticKind.ArityMismatch { give "arity-mismatch" }
-  elif kind == TypeDiagnosticKind.RecursiveType { give "recursive-type" }
-  elif kind == TypeDiagnosticKind.Unreachable { give "unreachable" }
-  elif kind == TypeDiagnosticKind.Internal { give "internal" }
+  if kind == TypeDiagnosticKind.UnknownType {
+    give "unknown-type"
+  } elif kind == TypeDiagnosticKind.UnknownSymbol {
+    give "unknown-symbol"
+  } elif kind == TypeDiagnosticKind.InvalidAssignment {
+    give "invalid-assignment"
+  } elif kind == TypeDiagnosticKind.InvalidBorrow {
+    give "invalid-borrow"
+  } elif kind == TypeDiagnosticKind.InvalidMove {
+    give "invalid-move"
+  } elif kind == TypeDiagnosticKind.InvalidCall {
+    give "invalid-call"
+  } elif kind == TypeDiagnosticKind.InvalidReturn {
+    give "invalid-return"
+  } elif kind == TypeDiagnosticKind.InvalidCast {
+    give "invalid-cast"
+  } elif kind == TypeDiagnosticKind.InvalidBinaryOperator {
+    give "invalid-binary-operator"
+  } elif kind == TypeDiagnosticKind.InvalidUnaryOperator {
+    give "invalid-unary-operator"
+  } elif kind == TypeDiagnosticKind.InvalidIndex {
+    give "invalid-index"
+  } elif kind == TypeDiagnosticKind.InvalidField {
+    give "invalid-field"
+  } elif kind == TypeDiagnosticKind.InvalidPattern {
+    give "invalid-pattern"
+  } elif kind == TypeDiagnosticKind.InvalidMatch {
+    give "invalid-match"
+  } elif kind == TypeDiagnosticKind.InvalidMutability {
+    give "invalid-mutability"
+  } elif kind == TypeDiagnosticKind.InvalidLifetime {
+    give "invalid-lifetime"
+  } elif kind == TypeDiagnosticKind.InvalidTraitBound {
+    give "invalid-trait-bound"
+  } elif kind == TypeDiagnosticKind.InvalidGenericArgument {
+    give "invalid-generic-argument"
+  } elif kind == TypeDiagnosticKind.InvalidConstExpr {
+    give "invalid-const-expr"
+  } elif kind == TypeDiagnosticKind.InvalidControlFlow {
+    give "invalid-control-flow"
+  } elif kind == TypeDiagnosticKind.TypeMismatch {
+    give "type-mismatch"
+  } elif kind == TypeDiagnosticKind.ArityMismatch {
+    give "arity-mismatch"
+  } elif kind == TypeDiagnosticKind.RecursiveType {
+    give "recursive-type"
+  } elif kind == TypeDiagnosticKind.Unreachable {
+    give "unreachable"
+  } elif kind == TypeDiagnosticKind.Internal {
+    give "internal"
+  }
 
   give "unknown"
 }
 
 proc append_diagnostic(bag: TypeDiagnosticBag, diagnostic: TypeDiagnostic) -> TypeDiagnosticBag {
-  let out: TypeDiagnosticBag =
-    bag
+  let out: TypeDiagnosticBag = bag
 
-  set out.diagnostics =
-    out.diagnostics + [diagnostic]
+  set out.diagnostics = out.diagnostics + [diagnostic]
 
   if diagnostic.severity == TypeDiagnosticSeverity.Warning {
-    set out.warning_count =
-      out.warning_count + 1
-  }
-  elif diagnostic.severity == TypeDiagnosticSeverity.Fatal {
-    set out.fatal_count =
-      out.fatal_count + 1
+    set out.warning_count = out.warning_count + 1
+  } elif diagnostic.severity == TypeDiagnosticSeverity.Fatal {
+    set out.fatal_count = out.fatal_count + 1
 
-    set out.error_count =
-      out.error_count + 1
-  }
-  elif diagnostic.severity == TypeDiagnosticSeverity.Error {
-    set out.error_count =
-      out.error_count + 1
+    set out.error_count = out.error_count + 1
+  } elif diagnostic.severity == TypeDiagnosticSeverity.Error {
+    set out.error_count = out.error_count + 1
   }
 
-  set out.valid =
-    out.fatal_count == 0
+  set out.valid = out.fatal_count == 0
 
   give out
 }
@@ -338,40 +360,23 @@ proc has_fatal(bag: TypeDiagnosticBag) -> bool {
 }
 
 proc diagnostic_summary(bag: TypeDiagnosticBag) -> string {
-  give "diagnostics="
-    + (len(bag.diagnostics) as string)
-    + " errors="
-    + (bag.error_count as string)
-    + " warnings="
-    + (bag.warning_count as string)
-    + " fatals="
-    + (bag.fatal_count as string)
-    + " valid="
-    + (bag.valid as string)
+  let diagnostic_count_text: string = len(bag.diagnostics) as string
+  let error_count_text: string = bag.error_count as string
+  let warning_count_text: string = bag.warning_count as string
+  let fatal_count_text: string = bag.fatal_count as string
+  let valid_text: string = bag.valid as string
+  let out: string = "diagnostics " + diagnostic_count_text
+  let with_errors: string = out + " errors " + error_count_text
+  let with_warnings: string = with_errors + " warnings " + warning_count_text
+  let with_fatals: string = with_warnings + " fatals " + fatal_count_text
+  give with_fatals + " valid " + valid_text
 }
 
 proc typecheck_diagnostics_selftest() -> bool {
-  let span: AstSpan =
-    ast_span_empty()
-
-  let bag0: TypeDiagnosticBag =
-    diagnostic_bag()
-
-  let bag1: TypeDiagnosticBag =
-    append_diagnostic(
-      bag0,
-      type_mismatch(
-        "i32",
-        "string",
-        span
-      )
-    )
-
-  let bag2: TypeDiagnosticBag =
-    append_diagnostic(
-      bag1,
-      unreachable_code(span)
-    )
+  let span: AstSpan = ast_span_empty()
+  let bag0: TypeDiagnosticBag = diagnostic_bag()
+  let bag1: TypeDiagnosticBag = append_diagnostic(bag0, type_mismatch("i32", "string", span))
+  let bag2: TypeDiagnosticBag = append_diagnostic(bag1, unreachable_code(span))
 
   give has_errors(bag2)
     and has_warnings(bag2)

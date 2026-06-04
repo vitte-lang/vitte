@@ -187,7 +187,7 @@ proc root_region() -> Region {
     give region(
         region_id(0),
         region_id(0),
-        "'root",
+        "root",
         RegionKind.Root,
         RegionState.Active,
         0,
@@ -198,11 +198,7 @@ proc root_region() -> Region {
 }
 
 proc create_region(ctx: RegionContext, parent: RegionId, name: string, kind: RegionKind, span: RegionSpan) -> Region {
-    let parent_depth: u64 =
-        region_depth(
-            ctx,
-            parent
-        );
+    let parent_depth: u64 = region_depth(ctx, parent);
 
     give region(
         region_id(ctx.next_region_id),
@@ -218,77 +214,61 @@ proc create_region(ctx: RegionContext, parent: RegionId, name: string, kind: Reg
 }
 
 proc activate_region(region0: Region) -> Region {
-    let out: Region =
-        region0;
+    let out: Region = region0;
 
-    set out.state =
-        RegionState.Active;
+    set out.state = RegionState.Active;
 
     give out;
 }
 
 proc suspend_region(region0: Region) -> Region {
-    let out: Region =
-        region0;
+    let out: Region = region0;
 
-    set out.state =
-        RegionState.Suspended;
+    set out.state = RegionState.Suspended;
 
     give out;
 }
 
 proc drop_region(region0: Region) -> Region {
-    let out: Region =
-        region0;
+    let out: Region = region0;
 
-    set out.state =
-        RegionState.Dropped;
+    set out.state = RegionState.Dropped;
 
     give out;
 }
 
 proc append_region(ctx: RegionContext, region0: Region) -> RegionContext {
-    let out: RegionContext =
-        ctx;
+    let out: RegionContext = ctx;
 
-    set out.regions =
-        out.regions + [region0];
+    set out.regions = out.regions + [region0];
 
-    set out.next_region_id =
-        out.next_region_id + 1;
+    set out.next_region_id = out.next_region_id + 1;
 
     give out;
 }
 
 proc append_variable(ctx: RegionContext, variable: RegionVariable) -> RegionContext {
-    let out: RegionContext =
-        ctx;
+    let out: RegionContext = ctx;
 
-    set out.variables =
-        out.variables + [variable];
+    set out.variables = out.variables + [variable];
 
     give out;
 }
 
 proc append_loan(ctx: RegionContext, loan: RegionLoan) -> RegionContext {
-    let out: RegionContext =
-        ctx;
+    let out: RegionContext = ctx;
 
-    set out.loans =
-        out.loans + [loan];
+    set out.loans = out.loans + [loan];
 
-    set out.next_loan_id =
-        out.next_loan_id + 1;
+    set out.next_loan_id = out.next_loan_id + 1;
 
     give out;
 }
 
 proc append_edge(ctx: RegionContext, edge: RegionGraphEdge) -> RegionContext {
-    let out: RegionContext =
-        ctx;
+    let out: RegionContext = ctx;
 
-    set out.edges =
-        out.edges + [edge];
+    set out.edges = out.edges + [edge];
 
     give out;
 }
@@ -301,8 +281,7 @@ proc region_depth(ctx: RegionContext, id: RegionId) -> u64 {
             give ctx.regions[i].depth;
         }
 
-        set i =
-            i + 1;
+        set i = i + 1;
     }
 
     give 0;
@@ -316,8 +295,7 @@ proc find_region(ctx: RegionContext, id: RegionId) -> Region {
             give ctx.regions[i];
         }
 
-        set i =
-            i + 1;
+        set i = i + 1;
     }
 
     give region(
@@ -341,8 +319,7 @@ proc find_variable(ctx: RegionContext, name: string) -> RegionVariable {
             give ctx.variables[i];
         }
 
-        set i =
-            i + 1;
+        set i = i + 1;
     }
 
     give region_variable(
@@ -355,33 +332,67 @@ proc find_variable(ctx: RegionContext, name: string) -> RegionVariable {
 }
 
 proc region_kind_name(kind: RegionKind) -> string {
-    if kind == RegionKind.Root { give "root"; }
-    if kind == RegionKind.Function { give "function"; }
-    if kind == RegionKind.Block { give "block"; }
-    if kind == RegionKind.Loop { give "loop"; }
-    if kind == RegionKind.Match { give "match"; }
-    if kind == RegionKind.Closure { give "closure"; }
-    if kind == RegionKind.Async { give "async"; }
-    if kind == RegionKind.Generator { give "generator"; }
-    if kind == RegionKind.Temporary { give "temporary"; }
-    if kind == RegionKind.Borrow { give "borrow"; }
+    if kind == RegionKind.Root {
+        give "root";
+    }
+    if kind == RegionKind.Function {
+        give "function";
+    }
+    if kind == RegionKind.Block {
+        give "block";
+    }
+    if kind == RegionKind.Loop {
+        give "loop";
+    }
+    if kind == RegionKind.Match {
+        give "match";
+    }
+    if kind == RegionKind.Closure {
+        give "closure";
+    }
+    if kind == RegionKind.Async {
+        give "async";
+    }
+    if kind == RegionKind.Generator {
+        give "generator";
+    }
+    if kind == RegionKind.Temporary {
+        give "temporary";
+    }
+    if kind == RegionKind.Borrow {
+        give "borrow";
+    }
 
     give "unknown";
 }
 
 proc region_state_name(state: RegionState) -> string {
-    if state == RegionState.Created { give "created"; }
-    if state == RegionState.Active { give "active"; }
-    if state == RegionState.Suspended { give "suspended"; }
-    if state == RegionState.Dropped { give "dropped"; }
+    if state == RegionState.Created {
+        give "created";
+    }
+    if state == RegionState.Active {
+        give "active";
+    }
+    if state == RegionState.Suspended {
+        give "suspended";
+    }
+    if state == RegionState.Dropped {
+        give "dropped";
+    }
 
     give "invalid";
 }
 
 proc loan_kind_name(kind: LoanKind) -> string {
-    if kind == LoanKind.Shared { give "shared"; }
-    if kind == LoanKind.Mutable { give "mutable"; }
-    if kind == LoanKind.Move { give "move"; }
+    if kind == LoanKind.Shared {
+        give "shared";
+    }
+    if kind == LoanKind.Mutable {
+        give "mutable";
+    }
+    if kind == LoanKind.Move {
+        give "move";
+    }
 
     give "raw";
 }
@@ -396,11 +407,7 @@ proc active_loan(loan: RegionLoan) -> bool {
 }
 
 proc variable_accessible(ctx: RegionContext, name: string) -> bool {
-    let variable: RegionVariable =
-        find_variable(
-            ctx,
-            name
-        );
+    let variable: RegionVariable = find_variable(ctx, name);
 
     give variable.name != ""
         and not variable.moved
@@ -413,19 +420,13 @@ proc mutable_loan_conflict(ctx: RegionContext, variable: string) -> bool {
     let i: u64 = 0;
 
     while i < len(ctx.loans) {
-        let loan: RegionLoan =
-            ctx.loans[i];
+        let loan: RegionLoan = ctx.loans[i];
 
-        if loan.variable == variable
-            and loan.active
-            and loan.kind == LoanKind.Mutable {
-
-            set mutable_count =
-                mutable_count + 1;
+        if loan.variable == variable and loan.active and loan.kind == LoanKind.Mutable {
+            set mutable_count = mutable_count + 1;
         }
 
-        set i =
-            i + 1;
+        set i = i + 1;
     }
 
     give mutable_count > 1;
@@ -454,31 +455,25 @@ proc create_mutable_loan(ctx: RegionContext, variable: string, borrower: string,
 }
 
 proc deactivate_loan(loan: RegionLoan) -> RegionLoan {
-    let out: RegionLoan =
-        loan;
+    let out: RegionLoan = loan;
 
-    set out.active =
-        false;
+    set out.active = false;
 
     give out;
 }
 
 proc move_variable(variable: RegionVariable) -> RegionVariable {
-    let out: RegionVariable =
-        variable;
+    let out: RegionVariable = variable;
 
-    set out.moved =
-        true;
+    set out.moved = true;
 
     give out;
 }
 
 proc drop_variable(variable: RegionVariable) -> RegionVariable {
-    let out: RegionVariable =
-        variable;
+    let out: RegionVariable = variable;
 
-    set out.dropped =
-        true;
+    set out.dropped = true;
 
     give out;
 }
@@ -490,12 +485,10 @@ proc count_active_regions(ctx: RegionContext) -> u64 {
 
     while i < len(ctx.regions) {
         if active_region(ctx.regions[i]) {
-            set count =
-                count + 1;
+            set count = count + 1;
         }
 
-        set i =
-            i + 1;
+        set i = i + 1;
     }
 
     give count;
@@ -511,97 +504,40 @@ proc build_region_summary(ctx: RegionContext) -> RegionSummary {
 }
 
 proc region_context_summary(ctx: RegionContext) -> string {
-    give "regions="
-        + (len(ctx.regions) as string)
-        + " variables="
-        + (len(ctx.variables) as string)
-        + " loans="
-        + (len(ctx.loans) as string)
-        + " valid="
-        + (ctx.valid as string);
+    let region_count_text: string = len(ctx.regions) as string;
+    let variable_count_text: string = len(ctx.variables) as string;
+    let loan_count_text: string = len(ctx.loans) as string;
+    let valid_text: string = ctx.valid as string;
+    give "regions "
+        + region_count_text
+        + " variables "
+        + variable_count_text
+        + " loans "
+        + loan_count_text
+        + " valid "
+        + valid_text;
 }
 
 proc regions_selftest() -> bool {
-    let ctx0: RegionContext =
-        region_context();
-
-    let root: Region =
-        root_region();
-
-    let ctx1: RegionContext =
-        append_region(
-            ctx0,
-            root
-        );
-
-    let child: Region =
-        activate_region(
-            create_region(
-                ctx1,
-                root.id,
-                "'fn",
-                RegionKind.Function,
-                empty_span()
-            )
-        );
-
-    let ctx2: RegionContext =
-        append_region(
-            ctx1,
-            child
-        );
-
-    let variable: RegionVariable =
-        region_variable(
-            "value",
-            true,
-            false,
-            false,
-            child.id
-        );
-
-    let ctx3: RegionContext =
-        append_variable(
-            ctx2,
-            variable
-        );
-
-    let loan: RegionLoan =
-        create_mutable_loan(
-            ctx3,
-            "value",
-            "borrower",
-            child.id
-        );
-
-    let ctx4: RegionContext =
-        append_loan(
-            ctx3,
-            loan
-        );
-
-    let summary: RegionSummary =
-        build_region_summary(
-            ctx4
-        );
+    let ctx0: RegionContext = region_context();
+    let root: Region = root_region();
+    let ctx1: RegionContext = append_region(ctx0, root);
+    let child: Region = activate_region(create_region(ctx1, root.id, "fn", RegionKind.Function, empty_span()));
+    let ctx2: RegionContext = append_region(ctx1, child);
+    let variable: RegionVariable = region_variable("value", true, false, false, child.id);
+    let ctx3: RegionContext = append_variable(ctx2, variable);
+    let loan: RegionLoan = create_mutable_loan(ctx3, "value", "borrower", child.id);
+    let ctx4: RegionContext = append_loan(ctx3, loan);
+    let summary: RegionSummary = build_region_summary(ctx4);
 
     give summary.region_count == 2
         and summary.variable_count == 1
         and summary.loan_count == 1
         and active_loan(loan)
-        and variable_accessible(
-            ctx4,
-            "value"
-        )
-        and region_kind_name(
-            RegionKind.Function
-        ) == "function"
-        and region_state_name(
-            RegionState.Active
-        ) == "active"
-        and loan_kind_name(
-            LoanKind.Mutable
-        ) == "mutable"
+        and variable_accessible(ctx4, "value")
+        and region_kind_name(RegionKind.Function) == "function"
+        and region_state_name(RegionState.Active) == "active"
+        and loan_kind_name(LoanKind.Mutable) == "mutable"
         and region_context_summary(ctx4)
             != "";
 }

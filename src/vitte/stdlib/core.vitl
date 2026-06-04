@@ -258,44 +258,110 @@ proc core_summary() -> CoreSummary {
 }
 
 proc errno_name(code: int) -> string {
-  if code == EPERM { give "EPERM" }
-  if code == ENOENT { give "ENOENT" }
-  if code == ESRCH { give "ESRCH" }
-  if code == EINTR { give "EINTR" }
-  if code == EIO { give "EIO" }
-  if code == ENXIO { give "ENXIO" }
-  if code == E2BIG { give "E2BIG" }
-  if code == ENOEXEC { give "ENOEXEC" }
-  if code == EBADF { give "EBADF" }
-  if code == ECHILD { give "ECHILD" }
-  if code == EAGAIN { give "EAGAIN" }
-  if code == ENOMEM { give "ENOMEM" }
-  if code == EACCES { give "EACCES" }
-  if code == EFAULT { give "EFAULT" }
-  if code == EBUSY { give "EBUSY" }
-  if code == EEXIST { give "EEXIST" }
-  if code == EINVAL { give "EINVAL" }
-  if code == ENOSYS { give "ENOSYS" }
-  if code == ENOTSUP { give "ENOTSUP" }
+  if code == EPERM {
+    give "EPERM"
+  }
+  if code == ENOENT {
+    give "ENOENT"
+  }
+  if code == ESRCH {
+    give "ESRCH"
+  }
+  if code == EINTR {
+    give "EINTR"
+  }
+  if code == EIO {
+    give "EIO"
+  }
+  if code == ENXIO {
+    give "ENXIO"
+  }
+  if code == E2BIG {
+    give "E2BIG"
+  }
+  if code == ENOEXEC {
+    give "ENOEXEC"
+  }
+  if code == EBADF {
+    give "EBADF"
+  }
+  if code == ECHILD {
+    give "ECHILD"
+  }
+  if code == EAGAIN {
+    give "EAGAIN"
+  }
+  if code == ENOMEM {
+    give "ENOMEM"
+  }
+  if code == EACCES {
+    give "EACCES"
+  }
+  if code == EFAULT {
+    give "EFAULT"
+  }
+  if code == EBUSY {
+    give "EBUSY"
+  }
+  if code == EEXIST {
+    give "EEXIST"
+  }
+  if code == EINVAL {
+    give "EINVAL"
+  }
+  if code == ENOSYS {
+    give "ENOSYS"
+  }
+  if code == ENOTSUP {
+    give "ENOTSUP"
+  }
 
   give "EUNKNOWN"
 }
 
 proc strerror(code: int) -> string {
-  if code == 0 { give "ok" }
-  if code == EPERM { give "operation not permitted" }
-  if code == ENOENT { give "no such file or directory" }
-  if code == EINTR { give "interrupted operation" }
-  if code == EIO { give "input/output error" }
-  if code == EBADF { give "bad file descriptor" }
-  if code == EAGAIN { give "try again" }
-  if code == ENOMEM { give "out of memory" }
-  if code == EACCES { give "permission denied" }
-  if code == EFAULT { give "bad address" }
-  if code == EEXIST { give "already exists" }
-  if code == EINVAL { give "invalid argument" }
-  if code == ENOSYS { give "function not implemented" }
-  if code == ENOTSUP { give "operation not supported" }
+  if code == 0 {
+    give "ok"
+  }
+  if code == EPERM {
+    give "operation not permitted"
+  }
+  if code == ENOENT {
+    give "no such file or directory"
+  }
+  if code == EINTR {
+    give "interrupted operation"
+  }
+  if code == EIO {
+    give "input/output error"
+  }
+  if code == EBADF {
+    give "bad file descriptor"
+  }
+  if code == EAGAIN {
+    give "try again"
+  }
+  if code == ENOMEM {
+    give "out of memory"
+  }
+  if code == EACCES {
+    give "permission denied"
+  }
+  if code == EFAULT {
+    give "bad address"
+  }
+  if code == EEXIST {
+    give "already exists"
+  }
+  if code == EINVAL {
+    give "invalid argument"
+  }
+  if code == ENOSYS {
+    give "function not implemented"
+  }
+  if code == ENOTSUP {
+    give "operation not supported"
+  }
 
   give "unknown error"
 }
@@ -461,7 +527,8 @@ proc align_up(value: usize, align: usize) -> usize {
     give value
   }
 
-  give value + (align - rem)
+  let padding = align - rem
+  give value + padding
 }
 
 proc align_down(value: usize, align: usize) -> usize {
@@ -469,7 +536,8 @@ proc align_down(value: usize, align: usize) -> usize {
     give value
   }
 
-  give value - (value % align)
+  let rem = value % align
+  give value - rem
 }
 
 proc is_aligned(value: usize, align: usize) -> bool {
@@ -501,7 +569,9 @@ proc ptr_sub(ptr: usize, offset: usize) -> usize {
 }
 
 proc ptr_diff(a: usize, b: usize) -> isize {
-  give (a as isize) - (b as isize)
+  let left = a as isize
+  let right = b as isize
+  give left - right
 }
 
 proc bit(n: int) -> usize {
@@ -513,7 +583,8 @@ proc bit(n: int) -> usize {
 }
 
 proc bit_is_set(value: usize, n: int) -> bool {
-  give (value & bit(n)) != 0
+  let masked = value & bit(n)
+  give masked != 0
 }
 
 proc bit_set(value: usize, n: int) -> usize {
@@ -529,26 +600,41 @@ proc bit_toggle(value: usize, n: int) -> usize {
 }
 
 proc low_byte(value: usize) -> u8 {
-  give (value & 255) as u8
+  let masked = value & 255
+  give masked as u8
 }
 
 proc high_byte_u16(value: u16) -> u8 {
-  give ((value >> 8) & 255) as u8
+  let shifted = value >> 8
+  let masked = shifted & 255
+  give masked as u8
 }
 
 proc make_u16(lo: u8, hi: u8) -> u16 {
-  give (lo as u16) | ((hi as u16) << 8)
+  let lo16 = lo as u16
+  let hi16 = hi as u16
+  let shifted = hi16 << 8
+  give lo16 | shifted
 }
 
 proc swap_u16(x: u16) -> u16 {
-  give ((x & 255) << 8) | ((x >> 8) & 255)
+  let lo_masked = x & 255
+  let lo = lo_masked << 8
+  let hi_shifted = x >> 8
+  let hi = hi_shifted & 255
+  give lo | hi
 }
 
 proc swap_u32(x: u32) -> u32 {
-  give ((x & 255) << 24)
-     | ((x & 65280) << 8)
-     | ((x >> 8) & 65280)
-     | ((x >> 24) & 255)
+  let x_low = x & 255
+  let b0 = x_low << 24
+  let x_mid_low = x & 65280
+  let b1 = x_mid_low << 8
+  let x_mid_high = x >> 8
+  let b2 = x_mid_high & 65280
+  let x_high = x >> 24
+  let b3 = x_high & 255
+  give b0 | b1 | b2 | b3
 }
 
 proc strlen(s: string) -> usize {
@@ -723,17 +809,28 @@ proc char_is_alnum(c: char) -> bool {
 }
 
 proc char_is_space(c: char) -> bool {
-  if c == ' ' { give true }
-  if c == '\n' { give true }
-  if c == '\r' { give true }
-  if c == '\t' { give true }
+  let code = c as int
+  if c == ' ' {
+    give true
+  }
+  if code == 10 {
+    give true
+  }
+  if code == 13 {
+    give true
+  }
+  if code == 9 {
+    give true
+  }
 
   give false
 }
 
 proc char_to_lower(c: char) -> char {
   if char_is_upper(c) {
-    give ((c as int) + 32) as char
+    let code = c as int
+    let shifted = code + 32
+    give shifted as char
   }
 
   give c
@@ -741,7 +838,9 @@ proc char_to_lower(c: char) -> char {
 
 proc char_to_upper(c: char) -> char {
   if char_is_lower(c) {
-    give ((c as int) - 32) as char
+    let code = c as int
+    let shifted = code - 32
+    give shifted as char
   }
 
   give c
@@ -817,7 +916,8 @@ proc array_first_int(xs: [int]) -> Option[int] {
     give Option[int].None
   }
 
-  give Option[int].Some(xs[0])
+  let first = xs[0]
+  give Option[int].Some(first)
 }
 
 proc array_last_int(xs: [int]) -> Option[int] {
@@ -825,7 +925,9 @@ proc array_last_int(xs: [int]) -> Option[int] {
     give Option[int].None
   }
 
-  give Option[int].Some(xs[xs.len - 1])
+  let last_index = xs.len - 1
+  let last = xs[last_index]
+  give Option[int].Some(last)
 }
 
 proc array_contains_int(xs: [int], value: int) -> bool {
@@ -971,7 +1073,8 @@ proc memcpy(dst: bytes, src: bytes, count: usize) -> bytes {
 }
 
 proc memzero(count: usize) -> bytes {
-  give memset(b"", 0 as u8, count)
+  let zero = 0 as u8
+  give memset(b"", zero, count)
 }
 
 proc atoi(s: string) -> i64 {
@@ -990,7 +1093,12 @@ proc atoi(s: string) -> i64 {
   }
 
   while i < text.len and char_is_digit(text[i]) {
-    set out = (out * 10) + ((text[i] as int) - ('0' as int))
+    let digit_char = text[i]
+    let digit_code = digit_char as int
+    let zero_code = '0' as int
+    let digit = digit_code - zero_code
+    let scaled = out * 10
+    set out = scaled + digit
     set i = i + 1
   }
 
@@ -1006,10 +1114,18 @@ proc parse_int(s: string) -> int {
 }
 
 proc parse_bool(s: string) -> bool {
-  if s == "true" { give true }
-  if s == "1" { give true }
-  if s == "yes" { give true }
-  if s == "on" { give true }
+  if s == "true" {
+    give true
+  }
+  if s == "1" {
+    give true
+  }
+  if s == "yes" {
+    give true
+  }
+  if s == "on" {
+    give true
+  }
 
   give false
 }
@@ -1031,7 +1147,10 @@ proc itoa(value: i64) -> string {
 
   while v > 0 {
     let digit = v % 10
-    set out = ((('0' as int) + digit) as char) + out
+    let zero_code = '0' as int
+    let digit_code = zero_code + digit
+    let digit_char = digit_code as char
+    set out = digit_char + out
     set v = v / 10
   }
 
@@ -1043,7 +1162,8 @@ proc itoa(value: i64) -> string {
 }
 
 proc to_string_int(value: int) -> string {
-  give itoa(value as i64)
+  let wide = value as i64
+  give itoa(wide)
 }
 
 proc to_string_i64(value: i64) -> string {
@@ -1083,9 +1203,14 @@ proc to_string_status(status: CoreStatus) -> string {
 
 proc hash_int(value: int) -> usize {
   let x = value as usize
-  set x = ((x >> 16) ^ x) * 73244475
-  set x = ((x >> 16) ^ x) * 73244475
-  set x = (x >> 16) ^ x
+  let x_hi0 = x >> 16
+  let mix0 = x_hi0 ^ x
+  set x = mix0 * 73244475
+  let x_hi1 = x >> 16
+  let mix1 = x_hi1 ^ x
+  set x = mix1 * 73244475
+  let mix2 = x >> 16
+  set x = mix2 ^ x
   give x
 }
 
@@ -1094,7 +1219,9 @@ proc hash_string(s: string) -> usize {
   let i = 0
 
   while i < s.len {
-    set h = ((h << 5) + h) + (s[i] as usize)
+    let shifted = h << 5
+    let c = s[i] as usize
+    set h = shifted + h + c
     set i = i + 1
   }
 
@@ -1159,7 +1286,8 @@ proc random_seed(seed: u64) -> u64 {
 }
 
 proc random_next(seed: u64) -> u64 {
-  give (seed * 6364136223846793005) + 1
+  let scaled = seed * 6364136223846793005
+  give scaled + 1
 }
 
 proc random_range(seed: u64, min: int, max: int) -> int {
@@ -1168,7 +1296,11 @@ proc random_range(seed: u64, min: int, max: int) -> int {
   }
 
   let n = random_next(seed)
-  give min + ((n % ((max - min) as u64)) as int)
+  let span = max - min
+  let span_u64 = span as u64
+  let offset_u64 = n % span_u64
+  let offset = offset_u64 as int
+  give min + offset
 }
 
 proc clock_ticks() -> i64 {

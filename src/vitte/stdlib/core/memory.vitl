@@ -83,39 +83,19 @@ proc allocator(total: u64) -> Allocator {
 
 proc allocate(alloc: Allocator, address: u64, size: u64) -> Allocator {
     let out: Allocator = alloc;
-
-    let block: MemoryBlock =
-        memory_block(
-            address,
-            size
-        );
-
-    set out.blocks =
-        out.blocks + [block];
-
-    set out.stats.used =
-        out.stats.used + size;
-
-    set out.stats.free =
-        out.stats.free - size;
-
-    set out.stats.allocations =
-        out.stats.allocations + 1;
+    let block: MemoryBlock = memory_block(address, size);
+    set out.blocks = out.blocks + [block];
+    set out.stats.used = out.stats.used + size;
+    set out.stats.free = out.stats.free - size;
+    set out.stats.allocations = out.stats.allocations + 1;
 
     give out;
 }
 
 proc reserve(alloc: Allocator, address: u64, size: u64) -> Allocator {
     let out: Allocator = alloc;
-
-    let block: MemoryBlock =
-        reserved_block(
-            address,
-            size
-        );
-
-    set out.blocks =
-        out.blocks + [block];
+    let block: MemoryBlock = reserved_block(address, size);
+    set out.blocks = out.blocks + [block];
 
     give out;
 }
@@ -128,36 +108,21 @@ proc release(alloc: Allocator, address: u64) -> Allocator {
     let i: int = 0;
 
     while i < out.blocks.len {
-        let block: MemoryBlock =
-            out.blocks[i];
+        let block: MemoryBlock = out.blocks[i];
 
         if block.address == address {
-            set out.stats.used =
-                out.stats.used - block.size;
-
-            set out.stats.free =
-                out.stats.free + block.size;
-
-            set out.stats.frees =
-                out.stats.frees + 1;
-
-            set updated =
-                updated + [
-                    free_block(
-                        block.address,
-                        block.size
-                    )
-                ];
+            set out.stats.used = out.stats.used - block.size;
+            set out.stats.free = out.stats.free + block.size;
+            set out.stats.frees = out.stats.frees + 1;
+            set updated = updated + [free_block(block.address, block.size)];
         } else {
-            set updated =
-                updated + [block];
+            set updated = updated + [block];
         }
 
         set i = i + 1;
     }
 
-    set out.blocks =
-        updated;
+    set out.blocks = updated;
 
     give out;
 }
@@ -177,25 +142,13 @@ proc find_block(alloc: Allocator, address: u64) -> MemoryBlock {
 }
 
 proc allocated(alloc: Allocator, address: u64) -> bool {
-    let block: MemoryBlock =
-        find_block(
-            alloc,
-            address
-        );
-
-    give block.state
-        == AllocationState.Used;
+    let block: MemoryBlock = find_block(alloc, address);
+    give block.state == AllocationState.Used;
 }
 
 proc reserved(alloc: Allocator, address: u64) -> bool {
-    let block: MemoryBlock =
-        find_block(
-            alloc,
-            address
-        );
-
-    give block.state
-        == AllocationState.Reserved;
+    let block: MemoryBlock = find_block(alloc, address);
+    give block.state == AllocationState.Reserved;
 }
 
 proc total_used(alloc: Allocator) -> u64 {
@@ -244,28 +197,10 @@ proc clone_allocator(alloc: Allocator) -> Allocator {
 }
 
 proc memory_selftest() -> bool {
-    let alloc: Allocator =
-        allocator(4096);
-
-    let alloc2: Allocator =
-        allocate(
-            alloc,
-            1000,
-            256
-        );
-
-    let alloc3: Allocator =
-        reserve(
-            alloc2,
-            2000,
-            128
-        );
-
-    let alloc4: Allocator =
-        release(
-            alloc3,
-            1000
-        );
+    let alloc: Allocator = allocator(4096);
+    let alloc2: Allocator = allocate(alloc, 1000, 256);
+    let alloc3: Allocator = reserve(alloc2, 2000, 128);
+    let alloc4: Allocator = release(alloc3, 1000);
 
     give total_used(alloc2) == 256
         and total_free(alloc2) == 3840

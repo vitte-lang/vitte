@@ -473,34 +473,67 @@ proc semantic_warning(code: string, message: string) -> SemanticDiagnostic {
   );
 }
 
+proc hir_eq() -> string {
+  give slice("a=b", 1, 2);
+}
+
 proc hir_value_mode_name(mode: HirValueMode) -> string {
-  if mode == HirValueMode.Value { give "value"; }
-  if mode == HirValueMode.Place { give "place"; }
-  if mode == HirValueMode.Move { give "move"; }
-  if mode == HirValueMode.Copy { give "copy"; }
-  if mode == HirValueMode.BorrowShared { give "borrow-shared"; }
-  if mode == HirValueMode.BorrowMut { give "borrow-mut"; }
-  if mode == HirValueMode.Const { give "const"; }
+  if mode == HirValueMode.Value {
+    give "value";
+  }
+  if mode == HirValueMode.Place {
+    give "place";
+  }
+  if mode == HirValueMode.Move {
+    give "move";
+  }
+  if mode == HirValueMode.Copy {
+    give "copy";
+  }
+  if mode == HirValueMode.BorrowShared {
+    give "borrow-shared";
+  }
+  if mode == HirValueMode.BorrowMut {
+    give "borrow-mut";
+  }
+  if mode == HirValueMode.Const {
+    give "const";
+  }
 
   give "invalid";
 }
 
 proc hir_place_category_name(category: HirPlaceCategory) -> string {
-  if category == HirPlaceCategory.Value { give "value"; }
-  if category == HirPlaceCategory.Local { give "local"; }
-  if category == HirPlaceCategory.Global { give "global"; }
-  if category == HirPlaceCategory.Field { give "field"; }
-  if category == HirPlaceCategory.Index { give "index"; }
-  if category == HirPlaceCategory.Deref { give "deref"; }
-  if category == HirPlaceCategory.Static { give "static"; }
-  if category == HirPlaceCategory.Temporary { give "temporary"; }
+  if category == HirPlaceCategory.Value {
+    give "value";
+  }
+  if category == HirPlaceCategory.Local {
+    give "local";
+  }
+  if category == HirPlaceCategory.Global {
+    give "global";
+  }
+  if category == HirPlaceCategory.Field {
+    give "field";
+  }
+  if category == HirPlaceCategory.Index {
+    give "index";
+  }
+  if category == HirPlaceCategory.Deref {
+    give "deref";
+  }
+  if category == HirPlaceCategory.Static {
+    give "static";
+  }
+  if category == HirPlaceCategory.Temporary {
+    give "temporary";
+  }
 
   give "invalid";
 }
 
 proc hir_expr_is_place(expr: HirExpr) -> bool {
-  give expr.place_category != HirPlaceCategory.Value
-    and expr.place_category != HirPlaceCategory.Invalid;
+  give expr.place_category != HirPlaceCategory.Value and expr.place_category != HirPlaceCategory.Invalid;
 }
 
 proc hir_expr_is_move(expr: HirExpr) -> bool {
@@ -508,8 +541,7 @@ proc hir_expr_is_move(expr: HirExpr) -> bool {
 }
 
 proc hir_expr_is_borrow(expr: HirExpr) -> bool {
-  give expr.kind == HirExprKind.BorrowShared
-    or expr.kind == HirExprKind.BorrowMut;
+  give expr.kind == HirExprKind.BorrowShared or expr.kind == HirExprKind.BorrowMut;
 }
 
 proc hir_expr_child_count(expr: HirExpr) -> u64 {
@@ -517,10 +549,7 @@ proc hir_expr_child_count(expr: HirExpr) -> u64 {
 }
 
 proc hir_stmt_terminated(stmt: HirStmt) -> bool {
-  give stmt.terminated
-    or stmt.kind == HirStmtKind.Give
-    or stmt.kind == HirStmtKind.Panic
-    or stmt.kind == HirStmtKind.Unreachable;
+  give stmt.terminated or stmt.kind == HirStmtKind.Give or stmt.kind == HirStmtKind.Panic or stmt.kind == HirStmtKind.Unreachable;
 }
 
 proc hir_item_stmt_count(item: HirItem) -> u64 {
@@ -532,109 +561,21 @@ proc hir_module_item_count(module: HirModule) -> u64 {
 }
 
 proc hir_unit_summary(unit: HirUnit) -> string {
-  give "items="
-    + (unit.item_count as string)
-    + " exprs="
-    + (unit.expr_count as string)
-    + " stmts="
-    + (unit.stmt_count as string)
-    + " scopes="
-    + (unit.scope_count as string)
-    + " valid="
-    + (unit.valid as string);
+  let item_count: string = unit.item_count as string;
+  let expr_count: string = unit.expr_count as string;
+  let stmt_count: string = unit.stmt_count as string;
+  let scope_count: string = unit.scope_count as string;
+  let valid_text: string = unit.valid as string;
+  let eq: string = hir_eq();
+  give "items" + eq + item_count + " exprs" + eq + expr_count + " stmts" + eq + stmt_count + " scopes" + eq + scope_count + " valid" + eq + valid_text;
 }
 
 proc hir_selftest() -> bool {
-  let expr: HirExpr =
-    hir_expr(
-      1,
-      ast_span_empty(),
-      HirExprKind.Int,
-      "42",
-      "",
-      "",
-      "",
-      0,
-      "",
-      false,
-      HirValueMode.Copy,
-      "i32",
-      HirPlaceCategory.Value,
-      true,
-      true,
-      false,
-      false,
-      [],
-      [],
-      true
-    );
-
-  let stmt: HirStmt =
-    hir_stmt(
-      2,
-      ast_span_empty(),
-      HirStmtKind.ExprStmt,
-      "",
-      "",
-      "",
-      0,
-      "",
-      expr,
-      "",
-      false,
-      false,
-      false,
-      0,
-      [],
-      [],
-      [],
-      [],
-      true
-    );
-
-  let item: HirItem =
-    hir_item(
-      3,
-      ast_span_empty(),
-      HirItemKind.Proc,
-      "main",
-      0,
-      "demo",
-      "public",
-      true,
-      0,
-      expr,
-      [stmt],
-      "",
-      0,
-      [],
-      true
-    );
-
-  let module: HirModule =
-    hir_module(
-      "demo",
-      [item],
-      [],
-      0,
-      1,
-      true
-    );
-
-  let unit: HirUnit =
-    hir_unit(
-      "demo.vit",
-      module,
-      3,
-      1,
-      1,
-      1,
-      1,
-      1,
-      true,
-      true,
-      true
-    );
+  let expr: HirExpr = hir_expr(1, ast_span_empty(), HirExprKind.Int, "42", "", "", "", 0, "", false, HirValueMode.Copy, "i32", HirPlaceCategory.Value, true, true, false, false, [], [], true);
+  let stmt: HirStmt = hir_stmt(2, ast_span_empty(), HirStmtKind.ExprStmt, "", "", "", 0, "", expr, "", false, false, false, 0, [], [], [], [], true);
+  let item: HirItem = hir_item(3, ast_span_empty(), HirItemKind.Proc, "main", 0, "demo", "public", true, 0, expr, [stmt], "", 0, [], true);
+  let module: HirModule = hir_module("demo", [item], [], 0, 1, true);
+  let unit: HirUnit = hir_unit("demo.vit", module, 3, 1, 1, 1, 1, 1, true, true, true);
 
   give hir_expr_is_borrow(expr) == false
     and hir_expr_child_count(expr) == 0

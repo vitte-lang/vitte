@@ -44,7 +44,10 @@ proc mir_place_from_name(name: string) -> MirPlace {
   let start: u64 = i;
   while i < len(trimmed) {
     let ch: string = slice(trimmed, i, i + 1);
-    let valid_ident: bool = (ch >= "a" and ch <= "z") or (ch >= "A" and ch <= "Z") or ch == "_" or (ch >= "0" and ch <= "9");
+    let lower_alpha: bool = ch >= "a" and ch <= "z";
+    let upper_alpha: bool = ch >= "A" and ch <= "Z";
+    let digit: bool = ch >= "0" and ch <= "9";
+    let valid_ident: bool = lower_alpha or upper_alpha or ch == "_" or digit;
     if not valid_ident {
       break;
     }
@@ -196,7 +199,7 @@ proc build_stmt_sequence(hir_stmts: [HirStmt], fallthrough_block: u64, next_bloc
     let mir_stmt: MirStatement = mir_statement_from_stmt(stmt);
     let terminator: MirTerminator = mir_terminator_return();
     if stmt.kind != HirStmtKind.Give {
-      terminator = mir_terminator_goto(current_entry);
+      set terminator = mir_terminator_goto(current_entry);
     }
     let block: MirBlock = block_single(next_id, mir_stmt, terminator);
     set built = [block] + built;

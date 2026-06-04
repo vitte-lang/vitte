@@ -12,21 +12,27 @@ const Z_RLE: i32 = 3
 const ALGO_DEFLATE: i32 = 1
 const ALGO_ZLIB: i32 = 3
 
-# ----------------------------------------------------------
-# Core metrics
-# ----------------------------------------------------------
+// ----------------------------------------------------------
+// Core metrics
+// ----------------------------------------------------------
 
 proc get_compression_ratio(original_size: i64, compressed_size: i64) -> f64 {
-  if original_size == 0 { give 0.0 }
-  give (compressed_size as f64) / (original_size as f64)
+  if original_size == 0 {
+    give 0.0
+  }
+  let compressed_f64: f64 = compressed_size as f64
+  let original_f64: f64 = original_size as f64
+  give compressed_f64 / original_f64
 }
 
-# ----------------------------------------------------------
-# Heuristics
-# ----------------------------------------------------------
+// ----------------------------------------------------------
+// Heuristics
+// ----------------------------------------------------------
 
 proc detect_repetition_ratio(data: [i32]) -> f64 {
-  if data.len == 0 { give 0.0 }
+  if data.len == 0 {
+    give 0.0
+  }
 
   let repeats: i32 = 0
   let i: i32 = 1
@@ -38,11 +44,15 @@ proc detect_repetition_ratio(data: [i32]) -> f64 {
     set i = i + 1
   }
 
-  give (repeats as f64) / (data.len as f64)
+  let repeats_f64: f64 = repeats as f64
+  let data_len_f64: f64 = data.len as f64
+  give repeats_f64 / data_len_f64
 }
 
 proc count_unique(data: [i32]) -> i32 {
-  if data.len == 0 { give 0 }
+  if data.len == 0 {
+    give 0
+  }
 
   let unique: i32 = 1
   let i: i32 = 1
@@ -70,34 +80,42 @@ proc count_unique(data: [i32]) -> i32 {
 }
 
 proc estimate_entropy(data: [i32]) -> f64 {
-  if data.len == 0 { give 0.0 }
+  if data.len == 0 {
+    give 0.0
+  }
 
   let uniq = count_unique(data)
 
-  # rough entropy proxy
-  give (uniq as f64) / (data.len as f64)
+  // rough entropy proxy
+  let uniq_f64: f64 = uniq as f64
+  let data_len_f64: f64 = data.len as f64
+  give uniq_f64 / data_len_f64
 }
 
 proc estimate_compressed_size(data: [i32]) -> i64 {
-  if data.len == 0 { give 0 }
+  if data.len == 0 {
+    give 0
+  }
 
   let rep = detect_repetition_ratio(data)
   let entropy = estimate_entropy(data)
 
   if rep > 0.6 {
-    give (data.len / 3) as i64
+    let third: i32 = data.len / 3
+    give third as i64
   }
 
   if entropy < 0.3 {
-    give (data.len / 2) as i64
+    let half: i32 = data.len / 2
+    give half as i64
   }
 
   give data.len as i64
 }
 
-# ----------------------------------------------------------
-# Strategy & level selection
-# ----------------------------------------------------------
+// ----------------------------------------------------------
+// Strategy & level selection
+// ----------------------------------------------------------
 
 proc get_best_compression_level(data: [i32]) -> i32 {
   if data.len < 64 {
@@ -140,9 +158,9 @@ proc estimate_best_algorithm(data: [i32]) -> i32 {
   give ALGO_ZLIB
 }
 
-# ----------------------------------------------------------
-# Stats structure
-# ----------------------------------------------------------
+// ----------------------------------------------------------
+// Stats structure
+// ----------------------------------------------------------
 
 form CompressionStats {
   input_size: i64
@@ -208,14 +226,14 @@ proc compress_ex(data: [i32], algo: i32, level: i32, strategy: i32) -> [i32] {
   give data
 }
 
-# ----------------------------------------------------------
-# Auto compression
-# ----------------------------------------------------------
+// ----------------------------------------------------------
+// Auto compression
+// ----------------------------------------------------------
 
 proc compress_auto(data: [i32]) -> [i32] {
   let compression_stats = analyze_data(data)
 
-  # skip compression if no gain expected
+  // skip compression if no gain expected
   if compression_stats.estimated_size >= compression_stats.input_size {
     give data
   }

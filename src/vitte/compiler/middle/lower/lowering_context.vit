@@ -195,94 +195,98 @@ proc lowering_context(source_path: string) -> LoweringContext {
   }
 }
 
+proc lowering_eq() -> string {
+  give slice("a=b", 1, 2)
+}
+
 proc phase_name(phase: LoweringPhase) -> string {
-  if phase == LoweringPhase.Init { give "init" }
-  elif phase == LoweringPhase.HirScan { give "hir-scan" }
-  elif phase == LoweringPhase.ProcLowering { give "proc-lowering" }
-  elif phase == LoweringPhase.ExprLowering { give "expr-lowering" }
-  elif phase == LoweringPhase.ControlFlow { give "control-flow" }
-  elif phase == LoweringPhase.TerminatorBuild { give "terminator-build" }
-  elif phase == LoweringPhase.Finalize { give "finalize" }
-  elif phase == LoweringPhase.Failed { give "failed" }
+  if phase == LoweringPhase.Init {
+    give "init"
+  } elif phase == LoweringPhase.HirScan {
+    give "hir-scan"
+  } elif phase == LoweringPhase.ProcLowering {
+    give "proc-lowering"
+  } elif phase == LoweringPhase.ExprLowering {
+    give "expr-lowering"
+  } elif phase == LoweringPhase.ControlFlow {
+    give "control-flow"
+  } elif phase == LoweringPhase.TerminatorBuild {
+    give "terminator-build"
+  } elif phase == LoweringPhase.Finalize {
+    give "finalize"
+  } elif phase == LoweringPhase.Failed {
+    give "failed"
+  }
 
   give "unknown"
 }
 
 proc scope_kind_name(kind: LoweringScopeKind) -> string {
-  if kind == LoweringScopeKind.Module { give "module" }
-  elif kind == LoweringScopeKind.Function { give "function" }
-  elif kind == LoweringScopeKind.Block { give "block" }
-  elif kind == LoweringScopeKind.Loop { give "loop" }
-  elif kind == LoweringScopeKind.Match { give "match" }
-  elif kind == LoweringScopeKind.Closure { give "closure" }
-  elif kind == LoweringScopeKind.Unsafe { give "unsafe" }
+  if kind == LoweringScopeKind.Module {
+    give "module"
+  } elif kind == LoweringScopeKind.Function {
+    give "function"
+  } elif kind == LoweringScopeKind.Block {
+    give "block"
+  } elif kind == LoweringScopeKind.Loop {
+    give "loop"
+  } elif kind == LoweringScopeKind.Match {
+    give "match"
+  } elif kind == LoweringScopeKind.Closure {
+    give "closure"
+  } elif kind == LoweringScopeKind.Unsafe {
+    give "unsafe"
+  }
 
   give "unknown"
 }
 
 proc temporary_kind_name(kind: TemporaryKind) -> string {
-  if kind == TemporaryKind.Value { give "value" }
-  elif kind == TemporaryKind.Address { give "address" }
-  elif kind == TemporaryKind.BorrowShared { give "borrow-shared" }
-  elif kind == TemporaryKind.BorrowMut { give "borrow-mut" }
-  elif kind == TemporaryKind.Aggregate { give "aggregate" }
-  elif kind == TemporaryKind.Call { give "call" }
-  elif kind == TemporaryKind.Phi { give "phi" }
+  if kind == TemporaryKind.Value {
+    give "value"
+  } elif kind == TemporaryKind.Address {
+    give "address"
+  } elif kind == TemporaryKind.BorrowShared {
+    give "borrow-shared"
+  } elif kind == TemporaryKind.BorrowMut {
+    give "borrow-mut"
+  } elif kind == TemporaryKind.Aggregate {
+    give "aggregate"
+  } elif kind == TemporaryKind.Call {
+    give "call"
+  } elif kind == TemporaryKind.Phi {
+    give "phi"
+  }
 
   give "unknown"
 }
 
 proc append_diagnostic(ctx: LoweringContext, diagnostic: string) -> LoweringContext {
-  let out: LoweringContext =
-    ctx
-
-  set out.diagnostics =
-    out.diagnostics + [diagnostic]
+  let out: LoweringContext = ctx
+  set out.diagnostics = out.diagnostics + [diagnostic]
 
   give out
 }
 
 proc set_phase(ctx: LoweringContext, phase: LoweringPhase) -> LoweringContext {
-  let out: LoweringContext =
-    ctx
-
-  set out.current_phase =
-    phase
+  let out: LoweringContext = ctx
+  set out.current_phase = phase
 
   give out
 }
 
 proc allocate_block(ctx: LoweringContext) -> LoweringContext {
-  let out: LoweringContext =
-    ctx
-
-  let id: u64 =
-    out.next_block_id + 1
-
-  set out.blocks =
-    out.blocks + [
-      lowering_block_state(
-        id,
-        false,
-        0,
-        0,
-        false,
-        true
-      )
-    ]
-
-  set out.next_block_id =
-    id
+  let out: LoweringContext = ctx
+  let id: u64 = out.next_block_id + 1
+  set out.blocks = out.blocks + [lowering_block_state(id, false, 0, 0, false, true)]
+  set out.next_block_id = id
 
   give out
 }
 
 proc allocate_scope(ctx: LoweringContext, kind: LoweringScopeKind) -> LoweringContext {
-  let out: LoweringContext =
-    ctx
-
-  let id: u64 =
-    out.next_scope_id + 1
+  let out: LoweringContext = ctx
+  let id: u64 = out.next_scope_id + 1
 
   let depth: u64 = 0
 
@@ -290,86 +294,46 @@ proc allocate_scope(ctx: LoweringContext, kind: LoweringScopeKind) -> LoweringCo
 
   while i < len(out.scopes) {
     if out.scopes[i].id == out.current_scope {
-      set depth =
-        out.scopes[i].depth + 1
+      set depth = out.scopes[i].depth + 1
     }
 
-    set i =
-      i + 1
+    set i = i + 1
   }
 
-  set out.scopes =
-    out.scopes + [
-      lowering_scope(
-        id,
-        out.current_scope,
-        kind,
-        depth,
-        0,
-        0,
-        true
-      )
-    ]
-
-  set out.current_scope =
-    id
-
-  set out.next_scope_id =
-    id
+  set out.scopes = out.scopes + [lowering_scope(id, out.current_scope, kind, depth, 0, 0, true)]
+  set out.current_scope = id
+  set out.next_scope_id = id
 
   give out
 }
 
 proc leave_scope(ctx: LoweringContext) -> LoweringContext {
-  let out: LoweringContext =
-    ctx
+  let out: LoweringContext = ctx
 
   let i: u64 = 0
 
   while i < len(out.scopes) {
-    let scope: LoweringScope =
-      out.scopes[i]
+    let scope: LoweringScope = out.scopes[i]
 
     if scope.id == out.current_scope {
-      set out.current_scope =
-        scope.parent_scope
+      set out.current_scope = scope.parent_scope
 
       break
     }
 
-    set i =
-      i + 1
+    set i = i + 1
   }
 
   give out
 }
 
 proc allocate_temporary(ctx: LoweringContext, kind: TemporaryKind, ty: string) -> LoweringContext {
-  let out: LoweringContext =
-    ctx
-
-  let id: u64 =
-    out.next_temporary_id + 1
-
-  let name: string =
-    "_t" + (id as string)
-
-  set out.temporaries =
-    out.temporaries + [
-      lowering_temporary(
-        id,
-        name,
-        kind,
-        ty,
-        false,
-        false,
-        false,
-        true
-      )
-    ]
-
-  set out.next_temporary_id =
-    id
+  let out: LoweringContext = ctx
+  let id: u64 = out.next_temporary_id + 1
+  let id_text: string = id as string
+  let name: string = "_t" + id_text
+  set out.temporaries = out.temporaries + [lowering_temporary(id, name, kind, ty, false, false, false, true)]
+  set out.next_temporary_id = id
 
   give out
 }
@@ -379,10 +343,7 @@ proc temporary_place(ctx: LoweringContext) -> MirPlace {
     give mir_place_empty()
   }
 
-  let temp: LoweringTemporary =
-    ctx.temporaries[
-      len(ctx.temporaries) - 1
-    ]
+  let temp: LoweringTemporary = ctx.temporaries[len(ctx.temporaries) - 1]
 
   give MirPlace {
     local: temp.name,
@@ -392,184 +353,106 @@ proc temporary_place(ctx: LoweringContext) -> MirPlace {
 }
 
 proc mark_block_terminated(ctx: LoweringContext, block_id: u64) -> LoweringContext {
-  let out: LoweringContext =
-    ctx
+  let out: LoweringContext = ctx
 
   let blocks: [LoweringBlockState] = []
 
   let i: u64 = 0
 
   while i < len(out.blocks) {
-    let block: LoweringBlockState =
-      out.blocks[i]
+    let block: LoweringBlockState = out.blocks[i]
 
     if block.id == block_id {
-      set blocks =
-        blocks + [
-          lowering_block_state(
-            block.id,
-            block.sealed,
-            block.predecessor_count,
-            block.statement_count,
-            true,
-            block.valid
-          )
-        ]
+      set blocks = blocks + [lowering_block_state(block.id, block.sealed, block.predecessor_count, block.statement_count, true, block.valid)]
     } else {
-      set blocks =
-        blocks + [block]
+      set blocks = blocks + [block]
     }
 
-    set i =
-      i + 1
+    set i = i + 1
   }
 
-  set out.blocks =
-    blocks
+  set out.blocks = blocks
 
   give out
 }
 
 proc increment_statement_count(ctx: LoweringContext, block_id: u64) -> LoweringContext {
-  let out: LoweringContext =
-    ctx
+  let out: LoweringContext = ctx
 
   let blocks: [LoweringBlockState] = []
 
   let i: u64 = 0
 
   while i < len(out.blocks) {
-    let block: LoweringBlockState =
-      out.blocks[i]
+    let block: LoweringBlockState = out.blocks[i]
 
     if block.id == block_id {
-      set blocks =
-        blocks + [
-          lowering_block_state(
-            block.id,
-            block.sealed,
-            block.predecessor_count,
-            block.statement_count + 1,
-            block.terminated,
-            block.valid
-          )
-        ]
+      set blocks = blocks + [lowering_block_state(block.id, block.sealed, block.predecessor_count, block.statement_count + 1, block.terminated, block.valid)]
     } else {
-      set blocks =
-        blocks + [block]
+      set blocks = blocks + [block]
     }
 
-    set i =
-      i + 1
+    set i = i + 1
   }
 
-  set out.blocks =
-    blocks
-
-  set out.lowered_stmt_count =
-    out.lowered_stmt_count + 1
+  set out.blocks = blocks
+  set out.lowered_stmt_count = out.lowered_stmt_count + 1
 
   give out
 }
 
 proc increment_expr_count(ctx: LoweringContext, expr: HirExpr) -> LoweringContext {
-  let out: LoweringContext =
-    ctx
-
-  set out.lowered_expr_count =
-    out.lowered_expr_count + 1
+  let out: LoweringContext = ctx
+  set out.lowered_expr_count = out.lowered_expr_count + 1
 
   if expr.kind == HirExprKind.Call {
-    set out.lowered_call_count =
-      out.lowered_call_count + 1
+    set out.lowered_call_count = out.lowered_call_count + 1
   }
 
   give out
 }
 
 proc increment_branch_count(ctx: LoweringContext) -> LoweringContext {
-  let out: LoweringContext =
-    ctx
-
-  set out.lowered_branch_count =
-    out.lowered_branch_count + 1
+  let out: LoweringContext = ctx
+  set out.lowered_branch_count = out.lowered_branch_count + 1
 
   give out
 }
 
 proc enter_function(ctx: LoweringContext, item: HirItem) -> LoweringContext {
-  let out: LoweringContext =
-    allocate_scope(
-      ctx,
-      LoweringScopeKind.Function
-    )
-
-  set out.current_function =
-    item.name
-
-  set out.current_phase =
-    LoweringPhase.ProcLowering
+  let out: LoweringContext = allocate_scope(ctx, LoweringScopeKind.Function)
+  set out.current_function = item.name
+  set out.current_phase = LoweringPhase.ProcLowering
 
   give out
 }
 
 proc leave_function(ctx: LoweringContext) -> LoweringContext {
-  let out: LoweringContext =
-    leave_scope(ctx)
-
-  set out.current_function =
-    ""
-
-  set out.current_phase =
-    LoweringPhase.Finalize
+  let out: LoweringContext = leave_scope(ctx)
+  set out.current_function = ""
+  set out.current_phase = LoweringPhase.Finalize
 
   give out
 }
 
 proc lowering_summary(ctx: LoweringContext) -> string {
-  give "phase="
-    + phase_name(ctx.current_phase)
-    + " scopes="
-    + (len(ctx.scopes) as string)
-    + " temporaries="
-    + (len(ctx.temporaries) as string)
-    + " blocks="
-    + (len(ctx.blocks) as string)
-    + " stmts="
-    + (ctx.lowered_stmt_count as string)
-    + " exprs="
-    + (ctx.lowered_expr_count as string)
-    + " branches="
-    + (ctx.lowered_branch_count as string)
-    + " calls="
-    + (ctx.lowered_call_count as string)
-    + " valid="
-    + (ctx.valid as string)
+  let scope_count: string = len(ctx.scopes) as string
+  let temporary_count: string = len(ctx.temporaries) as string
+  let block_count: string = len(ctx.blocks) as string
+  let stmt_count: string = ctx.lowered_stmt_count as string
+  let expr_count: string = ctx.lowered_expr_count as string
+  let branch_count: string = ctx.lowered_branch_count as string
+  let call_count: string = ctx.lowered_call_count as string
+  let valid_text: string = ctx.valid as string
+  let eq: string = lowering_eq()
+  give "phase" + eq + phase_name(ctx.current_phase) + " scopes" + eq + scope_count + " temporaries" + eq + temporary_count + " blocks" + eq + block_count + " stmts" + eq + stmt_count + " exprs" + eq + expr_count + " branches" + eq + branch_count + " calls" + eq + call_count + " valid" + eq + valid_text
 }
 
 proc lowering_context_selftest() -> bool {
-  let ctx0: LoweringContext =
-    lowering_context(
-      "demo.vit"
-    )
-
-  let ctx1: LoweringContext =
-    allocate_temporary(
-      ctx0,
-      TemporaryKind.Value,
-      "i32"
-    )
-
-  let ctx2: LoweringContext =
-    allocate_scope(
-      ctx1,
-      LoweringScopeKind.Block
-    )
-
-  let ctx3: LoweringContext =
-    allocate_block(
-      ctx2
-    )
+  let ctx0: LoweringContext = lowering_context("demo.vit")
+  let ctx1: LoweringContext = allocate_temporary(ctx0, TemporaryKind.Value, "i32")
+  let ctx2: LoweringContext = allocate_scope(ctx1, LoweringScopeKind.Block)
+  let ctx3: LoweringContext = allocate_block(ctx2)
 
   give ctx3.valid
     and len(ctx3.temporaries) == 1

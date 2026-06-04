@@ -46,7 +46,8 @@ proc vector_new(capacity: i32) -> Vector {
    --------------------------------------------------------- >>>
 
 proc _vector_resize(v: Vector) {
-    let new_cap = v.capacity + (v.capacity / 2)
+    let growth = v.capacity / 2
+    let new_cap = v.capacity + growth
     let new_data: [i64] = _repeat_i64(0, new_cap)
 
     let i: i32 = 0
@@ -96,7 +97,9 @@ proc vector_push_unchecked(v: Vector, value: i64) {
 }
 
 proc vector_insert(v: Vector, idx: i32, value: i64) -> int {
-    if idx < 0 or idx > v.size { give -1 }
+    if idx < 0 or idx > v.size {
+        give -1
+    }
 
     if v.size == v.capacity {
         _vector_resize(v)
@@ -129,7 +132,9 @@ proc vector_pop(v: Vector) -> i64 {
 }
 
 proc vector_remove_at(v: Vector, idx: i32) -> i64 {
-    if idx < 0 or idx >= v.size { give 0 }
+    if idx < 0 or idx >= v.size {
+        give 0
+    }
 
     let val = v.data[idx]
 
@@ -193,7 +198,9 @@ proc vector_reverse(v: Vector) {
    --------------------------------------------------------- >>>
 
 proc vector_reserve(v: Vector, new_cap: i32) {
-    if new_cap <= v.capacity { return }
+    if new_cap <= v.capacity {
+        give
+    }
 
     let new_data: [i64] = _repeat_i64(0, new_cap)
 
@@ -246,9 +253,15 @@ proc vector_extend(v: Vector, other: Vector) {
 }
 
 proc vector_slice(v: Vector, start: i32, end: i32) -> [i64] {
-    if start < 0 { set start = 0 }
-    if end > v.size { set end = v.size }
-    if start >= end { give [] }
+    if start < 0 {
+        set start = 0
+    }
+    if end > v.size {
+        set end = v.size
+    }
+    if start >= end {
+        give []
+    }
 
     let len = end - start
     let out: [i64] = _repeat_i64(0, len)
@@ -265,18 +278,24 @@ proc vector_slice(v: Vector, start: i32, end: i32) -> [i64] {
 proc vector_find(v: Vector, value: i64) -> i32 {
     let i: i32 = 0
     while i < v.size {
-        if v.data[i] == value { give i }
+        if v.data[i] == value {
+            give i
+        }
         i += 1
     }
     give -1
 }
 
 proc vector_equals(a: Vector, b: Vector) -> int {
-    if a.size != b.size { give 0 }
+    if a.size != b.size {
+        give 0
+    }
 
     let i: i32 = 0
     while i < a.size {
-        if a.data[i] != b.data[i] { give 0 }
+        if a.data[i] != b.data[i] {
+            give 0
+        }
         i += 1
     }
 
@@ -284,8 +303,12 @@ proc vector_equals(a: Vector, b: Vector) -> int {
 }
 
 proc vector_truncate(v: Vector, n: i32) {
-    if n < 0 { set n = 0 }
-    if n >= v.size { return }
+    if n < 0 {
+        set n = 0
+    }
+    if n >= v.size {
+        give
+    }
 
     let i: i32 = n
     while i < v.size {

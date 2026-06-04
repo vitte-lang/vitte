@@ -174,29 +174,21 @@ export *
 <<< Compiler constants                                        >>>
 <<< ========================================================= >>>
 
-const PRELUDE_VERSION: string =
-  "compiler-prelude-2026.05"
+const PRELUDE_VERSION: string = "compiler-prelude-2026.05"
 
-const DEFAULT_SOURCE_EXTENSION: string =
-  ".vit"
+const DEFAULT_SOURCE_EXTENSION: string = ".vit"
 
-const DEFAULT_LIBRARY_EXTENSION: string =
-  ".vitl"
+const DEFAULT_LIBRARY_EXTENSION: string = ".vitl"
 
-const DEFAULT_OBJECT_EXTENSION: string =
-  ".o"
+const DEFAULT_OBJECT_EXTENSION: string = ".o"
 
-const DEFAULT_IR_EXTENSION: string =
-  ".ir"
+const DEFAULT_IR_EXTENSION: string = ".ir"
 
-const DEFAULT_MIR_EXTENSION: string =
-  ".mir"
+const DEFAULT_MIR_EXTENSION: string = ".mir"
 
-const DEFAULT_HIR_EXTENSION: string =
-  ".hir"
+const DEFAULT_HIR_EXTENSION: string = ".hir"
 
-const DEFAULT_AST_EXTENSION: string =
-  ".ast"
+const DEFAULT_AST_EXTENSION: string = ".ast"
 
 <<< ========================================================= >>>
 <<< Compiler session                                          >>>
@@ -225,49 +217,28 @@ form CompilerSession {
   valid: bool
 }
 
-proc compiler_session(
-  source_path: string,
-  output_path: string,
-  target: BackendTarget
-) -> CompilerSession {
-
+proc compiler_session(source_path: string, output_path: string, target: BackendTarget) -> CompilerSession {
+  let version: CompilerVersion = compiler_version();
+  let valid: bool = source_path != "" and target.valid;
   give CompilerSession {
-    version:
-      compiler_version(),
-
+    version: version,
     target: target,
-
     source_path: source_path,
     output_path: output_path,
-
     optimize: false,
     debug: true,
-
     emit_ast: false,
     emit_hir: false,
     emit_mir: false,
     emit_ir: false,
-
     diagnostics_enabled: true,
-
     locale: "en",
-
-    valid:
-      source_path != ""
-      and target.valid
+    valid: valid
   };
 }
 
-proc compiler_session_native(
-  source_path: string,
-  output_path: string
-) -> CompilerSession {
-
-  give compiler_session(
-    source_path,
-    output_path,
-    backend_target_native()
-  );
+proc compiler_session_native(source_path: string, output_path: string) -> CompilerSession {
+  give compiler_session(source_path, output_path, backend_target_native());
 }
 
 <<< ========================================================= >>>
@@ -283,42 +254,25 @@ proc default_triple() -> TargetTriple {
 }
 
 proc default_layout() -> TargetLayout {
-
-  give target_layout_for(
-    default_triple()
-  );
+  give target_layout_for(default_triple());
 }
 
 proc compiler_pointer_width() -> u64 {
-
-  give pointer_size(
-    default_layout()
-  );
+  give pointer_size(default_layout());
 }
 
 proc compiler_stack_alignment() -> u64 {
-
-  give stack_alignment(
-    default_layout()
-  );
+  give stack_alignment(default_layout());
 }
 
 proc compiler_banner_text() -> string {
-
-  give compiler_banner()
-    + " "
-    + target_summary(
-      default_target()
-    );
+  let target_text: string = target_summary(default_target());
+  give compiler_banner() + " " + target_text;
 }
 
 proc compiler_environment_summary() -> string {
-
-  let triple: TargetTriple =
-    default_triple();
-
-  let layout: TargetLayout =
-    default_layout();
+  let triple: TargetTriple = default_triple();
+  let layout: TargetLayout = default_layout();
 
   give triple_summary(triple)
     + " "
@@ -326,66 +280,33 @@ proc compiler_environment_summary() -> string {
 }
 
 proc compiler_support_summary() -> string {
-
-  give "bootstrap="
-    + (compiler_supports_bootstrap() as string)
-    + " cross="
-    + (compiler_supports_cross_compile() as string)
-    + " incremental="
-    + (compiler_supports_incremental() as string);
+  let bootstrap_text: string = compiler_supports_bootstrap() as string;
+  let cross_text: string = compiler_supports_cross_compile() as string;
+  let incremental_text: string = compiler_supports_incremental() as string;
+  let out: string = "bootstrap " + bootstrap_text;
+  let with_cross: string = out + " cross " + cross_text;
+  give with_cross + " incremental " + incremental_text;
 }
 
 <<< ========================================================= >>>
 <<< Pipeline helpers                                          >>>
 <<< ========================================================= >>>
 
-proc run_frontend(
-  path: string,
-  text: string
-) -> FrontendOutput {
-
-  give frontend_run(
-    path,
-    text
-  );
+proc run_frontend(path: string, text: string) -> FrontendOutput {
+  give frontend_run(path, text);
 }
 
-proc run_middle(
-  frontend: FrontendOutput
-) -> MiddleOutput {
-
-  give middle_run(
-    frontend
-  );
+proc run_middle(frontend: FrontendOutput) -> MiddleOutput {
+  give middle_run(frontend);
 }
 
-proc run_pipeline(
-  path: string,
-  text: string
-) -> MiddleOutput {
-
-  let frontend: FrontendOutput =
-    run_frontend(
-      path,
-      text
-    );
-
-  give run_middle(
-    frontend
-  );
+proc run_pipeline(path: string, text: string) -> MiddleOutput {
+  let frontend: FrontendOutput = run_frontend(path, text);
+  give run_middle(frontend);
 }
 
-proc run_pipeline_for_target(
-  path: string,
-  text: string,
-  target: BackendTarget
-) -> MiddleOutput {
-
-  let frontend: FrontendOutput =
-    run_frontend(
-      path,
-      text
-    );
+proc run_pipeline_for_target(path: string, text: string, target: BackendTarget) -> MiddleOutput {
+  let frontend: FrontendOutput = run_frontend(path, text);
 
   give middle_run_for_target(
     frontend,
@@ -397,33 +318,16 @@ proc run_pipeline_for_target(
 <<< Diagnostics                                               >>>
 <<< ========================================================= >>>
 
-proc compiler_error(
-  message: string
-) -> string {
-
-  give ansi_red()
-    + "error: "
-    + message
-    + ansi_reset();
+proc compiler_error(message: string) -> string {
+  give ansi_red() + "error: " + message + ansi_reset();
 }
 
-proc compiler_warning(
-  message: string
-) -> string {
-
-  give ansi_yellow()
-    + "warning: "
-    + message
-    + ansi_reset();
+proc compiler_warning(message: string) -> string {
+  give ansi_yellow() + "warning: " + message + ansi_reset();
 }
 
-proc compiler_success(
-  message: string
-) -> string {
-
-  give ansi_green()
-    + message
-    + ansi_reset();
+proc compiler_success(message: string) -> string {
+  give ansi_green() + message + ansi_reset();
 }
 
 <<< ========================================================= >>>
@@ -431,18 +335,9 @@ proc compiler_success(
 <<< ========================================================= >>>
 
 proc prelude_selftest() -> bool {
-
-  let session: CompilerSession =
-    compiler_session_native(
-      "main.vit",
-      "main.o"
-    );
-
-  let layout: TargetLayout =
-    default_layout();
-
-  let target: BackendTarget =
-    default_target();
+  let session: CompilerSession = compiler_session_native("main.vit", "main.o");
+  let layout: TargetLayout = default_layout();
+  let target: BackendTarget = default_target();
 
   give session.valid
     and layout.valid

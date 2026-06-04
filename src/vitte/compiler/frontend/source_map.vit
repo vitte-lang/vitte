@@ -108,8 +108,7 @@ proc source_span_from_ast(span: AstSpan) -> SourceSpan {
 }
 
 proc empty_span(file: string) -> SourceSpan {
-    let start: SourceLoc =
-        loc_start();
+    let start: SourceLoc = loc_start();
 
     give source_span(
         file,
@@ -128,13 +127,12 @@ proc compute_line_count(text: string) -> u64 {
     let i: u64 = 0;
 
     while i < len(text) {
-        if text[i] == '\n' {
-            set count =
-                count + 1;
+        let ch: string = slice(text, i, i + 1);
+        if ch == "\n" {
+            set count = count + 1;
         }
 
-        set i =
-            i + 1;
+        set i = i + 1;
     }
 
     give count;
@@ -150,109 +148,71 @@ proc build_lines(text: string) -> [SourceLineInfo] {
     let i: u64 = 0;
 
     while i < len(text) {
-        if text[i] == '\n' {
-            set lines =
-                lines + [
-                    source_line_info(
-                        line,
-                        start,
-                        i
-                    )
-                ];
+        let ch: string = slice(text, i, i + 1);
+        if ch == "\n" {
+            set lines = lines + [source_line_info(line, start, i)];
 
-            set line =
-                line + 1;
+            set line = line + 1;
 
-            set start =
-                i + 1;
+            set start = i + 1;
         }
 
-        set i =
-            i + 1;
+        set i = i + 1;
     }
 
-    set lines =
-        lines + [
-            source_line_info(
-                line,
-                start,
-                len(text)
-            )
-        ];
+    set lines = lines + [source_line_info(line, start, len(text))];
 
     give lines;
 }
 
 proc build_source_map(path: string, text: string) -> SourceMap {
-    let file: SourceFile =
-        source_file(
-            path,
-            text
-        );
+    let file: SourceFile = source_file(path, text);
 
-    give source_map(
-        file,
-        build_lines(text)
-    );
+    give source_map(file, build_lines(text));
 }
 
 proc lookup_offset(map: SourceMap, offset: u64) -> SourceLookup {
     let i: u64 = 0;
 
     while i < len(map.lines) {
-        let line: SourceLineInfo =
-            map.lines[i];
+        let line: SourceLineInfo = map.lines[i];
 
-        if offset >= line.start_offset
-            and offset <= line.end_offset {
-
-            give source_lookup(
-                true,
-                offset,
-                source_loc(
-                    line.line,
-                    (offset - line.start_offset) + 1
-                )
-            );
+        if offset >= line.start_offset and offset <= line.end_offset {
+            let relative: u64 = offset - line.start_offset;
+            let column: u64 = relative + 1;
+            let loc: SourceLoc = source_loc(line.line, column);
+            give source_lookup(true, offset, loc);
         }
 
-        set i =
-            i + 1;
+        set i = i + 1;
     }
 
-    give source_lookup(
-        false,
-        offset,
-        source_loc(0, 0)
-    );
+    give source_lookup(false, offset, source_loc(0, 0));
 }
 
 proc line_text(map: SourceMap, line_number: u64) -> string {
     let i: u64 = 0;
 
     while i < len(map.lines) {
-        let line: SourceLineInfo =
-            map.lines[i];
+        let line: SourceLineInfo = map.lines[i];
 
         if line.line == line_number {
             let out: string = "";
 
-            let j: u64 =
-                line.start_offset;
+            let j: u64 = line.start_offset;
 
             while j < line.end_offset {
-                set out =
-                    out + ((map.file.text[j] as int) as string);
+                let byte_value: int = map.file.text[j] as int;
+                let byte_text: string = byte_value as string;
+                set out = out + byte_text;
 
-                set j =
-                    j + 1;
+                set j = j + 1;
             }
 
             give out;
         }
 
-        set i =
-            i + 1;
+        set i = i + 1;
     }
 
     give "";
@@ -264,11 +224,11 @@ proc source_slice(map: SourceMap, start: u64, end0: u64) -> string {
     let i: u64 = start;
 
     while i < end0 and i < len(map.file.text) {
-        set out =
-            out + ((map.file.text[i] as int) as string);
+        let byte_value: int = map.file.text[i] as int;
+        let byte_text: string = byte_value as string;
+        set out = out + byte_text;
 
-        set i =
-            i + 1;
+        set i = i + 1;
     }
 
     give out;
@@ -285,8 +245,7 @@ proc merge_spans(left: SourceSpan, right: SourceSpan) -> SourceSpan {
 proc span_width(span: SourceSpan) -> u64 {
     if span.start.line == span.end.line {
         if span.end.column >= span.start.column {
-            give span.end.column
-                - span.start.column;
+            give span.end.column - span.start.column;
         }
     }
 
@@ -310,15 +269,11 @@ proc contains_loc(span: SourceSpan, loc: SourceLoc) -> bool {
         give false;
     }
 
-    if loc.line == span.start.line
-        and loc.column < span.start.column {
-
+    if loc.line == span.start.line and loc.column < span.start.column {
         give false;
     }
 
-    if loc.line == span.end.line
-        and loc.column > span.end.column {
-
+    if loc.line == span.end.line and loc.column > span.end.column {
         give false;
     }
 
@@ -326,9 +281,9 @@ proc contains_loc(span: SourceSpan, loc: SourceLoc) -> bool {
 }
 
 proc format_loc(loc: SourceLoc) -> string {
-    give (loc.line as string)
-        + ":"
-        + (loc.column as string);
+    let line_text: string = loc.line as string;
+    let column_text: string = loc.column as string;
+    give line_text + ":" + column_text;
 }
 
 proc format_span(span: SourceSpan) -> string {
@@ -340,32 +295,20 @@ proc format_span(span: SourceSpan) -> string {
 }
 
 proc source_map_summary(map: SourceMap) -> string {
-    give map.file.path
-        + " lines="
-        + (map.file.line_count as string)
-        + " size="
-        + (map.file.size as string);
+    let line_count_text: string = map.file.line_count as string;
+    let size_text: string = map.file.size as string;
+    let out: string = map.file.path + " lines ";
+    let with_lines: string = out + line_count_text;
+    let with_size_label: string = with_lines + " size ";
+    give with_size_label + size_text;
 }
 
 proc source_map_selftest() -> bool {
-    let map: SourceMap =
-        build_source_map(
-            "main.vit",
-            "a\nb\nc"
-        );
+    let map: SourceMap = build_source_map("main.vit", "a\nb\nc");
 
-    let lookup: SourceLookup =
-        lookup_offset(
-            map,
-            2
-        );
+    let lookup: SourceLookup = lookup_offset(map, 2);
 
-    let span: SourceSpan =
-        source_span(
-            "main.vit",
-            source_loc(1, 1),
-            source_loc(1, 5)
-        );
+    let span: SourceSpan = source_span("main.vit", source_loc(1, 1), source_loc(1, 5));
 
     give map.file.line_count == 3
         and lookup.valid

@@ -45,13 +45,17 @@ proc queue_new(capacity: i32) -> Queue {
 }
 
 proc queue_reserve(q: Queue, new_cap: i32) {
-    if new_cap <= q.capacity { return }
+    if new_cap <= q.capacity {
+        give
+    }
 
     let new_data: [i64] = _repeat_i64(0, new_cap)
 
     let i: i64 = 0
     while i < q.size {
-        set new_data[i] = q.data[(q.front + i) % q.capacity]
+        let source_offset = q.front + i
+        let source_index = source_offset % q.capacity
+        set new_data[i] = q.data[source_index]
         i += 1
     }
 
@@ -71,7 +75,9 @@ proc _queue_resize(q: Queue) {
 
     let i: i64 = 0
     while i < q.size {
-        set new_data[i] = q.data[(q.front + i) % q.capacity]
+        let source_offset = q.front + i
+        let source_index = source_offset % q.capacity
+        set new_data[i] = q.data[source_index]
         i += 1
     }
 
@@ -88,7 +94,9 @@ proc _queue_shrink(q: Queue) {
 
         let i: i64 = 0
         while i < q.size {
-            set new_data[i] = q.data[(q.front + i) % q.capacity]
+            let source_offset = q.front + i
+            let source_index = source_offset % q.capacity
+            set new_data[i] = q.data[source_index]
             i += 1
         }
 
@@ -109,7 +117,8 @@ proc queue_enqueue(q: Queue, value: i64) -> int {
     }
 
     set q.data[q.rear] = value
-    set q.rear = (q.rear + 1) % q.capacity
+    let next_rear = q.rear + 1
+    set q.rear = next_rear % q.capacity
     set q.size = q.size + 1
 
     give 1
@@ -121,7 +130,8 @@ proc queue_dequeue(q: Queue) -> i64 {
     }
 
     let val = q.data[q.front]
-    set q.front = (q.front + 1) % q.capacity
+    let next_front = q.front + 1
+    set q.front = next_front % q.capacity
     set q.size = q.size - 1
 
     _queue_shrink(q)
@@ -138,7 +148,8 @@ proc queue_push_front(q: Queue, value: i64) -> int {
         _queue_resize(q)
     }
 
-    set q.front = (q.front - 1 + q.capacity) % q.capacity
+    let next_front = q.front - 1 + q.capacity
+    set q.front = next_front % q.capacity
     set q.data[q.front] = value
     set q.size = q.size + 1
 
@@ -150,7 +161,8 @@ proc queue_pop_back(q: Queue) -> i64 {
         give 0
     }
 
-    set q.rear = (q.rear - 1 + q.capacity) % q.capacity
+    let next_rear = q.rear - 1 + q.capacity
+    set q.rear = next_rear % q.capacity
     let val = q.data[q.rear]
     set q.size = q.size - 1
 
@@ -164,13 +176,18 @@ proc queue_pop_back(q: Queue) -> i64 {
    --------------------------------------------------------- >>>
 
 proc queue_front(q: Queue) -> i64 {
-    if q.size == 0 { give 0 }
+    if q.size == 0 {
+        give 0
+    }
     give q.data[q.front]
 }
 
 proc queue_back(q: Queue) -> i64 {
-    if q.size == 0 { give 0 }
-    let idx = (q.rear - 1 + q.capacity) % q.capacity
+    if q.size == 0 {
+        give 0
+    }
+    let back_index = q.rear - 1 + q.capacity
+    let idx = back_index % q.capacity
     give q.data[idx]
 }
 
@@ -209,8 +226,12 @@ proc queue_is_full(q: Queue) -> int {
    --------------------------------------------------------- >>>
 
 proc queue_get(q: Queue, idx: i64) -> i64 {
-    if idx < 0 or idx >= q.size { give 0 }
-    give q.data[(q.front + idx) % q.capacity]
+    if idx < 0 or idx >= q.size {
+        give 0
+    }
+    let offset = q.front + idx
+    let slot = offset % q.capacity
+    give q.data[slot]
 }
 
 <<< ---------------------------------------------------------
@@ -222,7 +243,9 @@ proc queue_to_array(q: Queue) -> [i64] {
     let i: i64 = 0
 
     while i < q.size {
-        set out[i] = q.data[(q.front + i) % q.capacity]
+        let source_offset = q.front + i
+        let source_index = source_offset % q.capacity
+        set out[i] = q.data[source_index]
         i += 1
     }
 

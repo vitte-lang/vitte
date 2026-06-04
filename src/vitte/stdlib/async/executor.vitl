@@ -10,21 +10,21 @@ form Executor {
   running: bool,
   tasks: [Task],
   task_counter: int,
-  ready_queue: [int],      // Task IDs ready to run
-  work_queue: [int],       // Reserved for workers
-  parking_lot: [int],      // Parked task IDs
+  ready_queue: [int],
+  work_queue: [int],
+  parking_lot: [int],
   max_workers: int,
 }
 
 form Task {
   id: int,
-  state: int,              // 0=new, 1=ready, 2=running, 3=done, 4=error
-  future: int,             // Future ID
-  result: int,             // Result code
-  priority: int,           // Task priority (0-255)
-  created_at: int,         // Timestamp
-  started_at: int,         // When execution started
-  scheduled_for: int,      // Wake time (ms since epoch)
+  state: int,
+  future: int,
+  result: int,
+  priority: int,
+  created_at: int,
+  started_at: int,
+  scheduled_for: int,
 }
 
 // Create new executor with N worker threads
@@ -46,11 +46,11 @@ proc executor_new(max_workers: int) -> Executor {
 proc executor_spawn(exec: Executor, name: string, priority: int) -> int {
   let task: Task = Task {
     id: exec.task_counter,
-    state: 0,                // new
+    state: 0,
     future: 0,
     result: 0,
     priority: priority,
-    created_at: 0,           // Would be timestamp_now()
+    created_at: 0,
     started_at: 0,
     scheduled_for: 0,
   }
@@ -208,15 +208,24 @@ proc executor_stats(exec: Executor) -> ExecutorStats {
 proc executor_shutdown(exec: Executor) -> int {
   set exec.running = false
 
-  // Wait for all tasks to complete
-  let timeout: int = 5000  // 5 seconds
-  let start: int = 0
-
-  while exec.tasks.len > 0 && (start + timeout) > 0 {
+  let remaining: int = 5000
+  while executor_has_unfinished(exec) and remaining > 0 {
     sleep_ms(10)
+    set remaining = remaining - 10
   }
 
   give 0
+}
+
+proc executor_has_unfinished(exec: Executor) -> bool {
+  let i: int = 0
+  while i < exec.tasks.len {
+    if exec.tasks[i].state != 3 {
+      give true
+    }
+    set i = i + 1
+  }
+  give false
 }
 
 // Helper functions
@@ -240,4 +249,26 @@ proc sleep_ms(ms: int) -> bool {
 
 proc timestamp_now() -> int {
   give 0
+}
+
+proc executor_version() -> string {
+  give "max-1"
+}
+
+proc executor_ready() -> bool {
+  give true
+}
+
+proc executor_selftest() -> bool {
+  let exec: Executor = executor_new(2)
+  let task_id: int = executor_spawn(exec, "selftest", 1)
+  let stats_before: ExecutorStats = executor_stats(exec)
+  executor_run(exec)
+  let state: int = executor_task_state(exec, task_id)
+  let stats_after: ExecutorStats = executor_stats(exec)
+  give executor_ready()
+    and executor_version() == "max-1"
+    and stats_before.total_tasks == 1
+    and state == 3
+    and stats_after.done_tasks == 1
 }

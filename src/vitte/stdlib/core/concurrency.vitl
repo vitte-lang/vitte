@@ -342,38 +342,13 @@ proc build_runtime_stats(tasks: [Task]) -> RuntimeStats {
 }
 
 proc concurrency_selftest() -> bool {
-    let t0: Task =
-        start_task(
-            task(1, "scheduler")
-        );
-
-    let t1: Task =
-        complete_task(
-            task(2, "worker")
-        );
-
-    let tasks: [Task] =
-        [t0, t1];
-
-    let stats: RuntimeStats =
-        build_runtime_stats(tasks);
-
-    let lock: Mutex =
-        lock_mutex(
-            mutex(),
-            7
-        );
-
-    let sem: Semaphore =
-        acquire_semaphore(
-            semaphore(4)
-        );
-
-    let ch: Channel =
-        send_message(
-            channel(1),
-            "ping"
-        );
+    let t0: Task = start_task(task(1, "scheduler"));
+    let t1: Task = complete_task(task(2, "worker"));
+    let tasks: [Task] = [t0, t1];
+    let stats: RuntimeStats = build_runtime_stats(tasks);
+    let lock: Mutex = lock_mutex(mutex(), 7);
+    let sem: Semaphore = acquire_semaphore(semaphore(4));
+    let ch: Channel = send_message(channel(1), "ping");
 
     give stats.task_count == 2
         and stats.running_count == 1

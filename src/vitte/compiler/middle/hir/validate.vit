@@ -50,15 +50,16 @@ proc validation_error(code: string, message: string) -> SemanticDiagnostic {
   );
 }
 
+proc hir_validate_eq() -> string {
+  give slice("a=b", 1, 2);
+}
+
 proc expr_requires_place(expr: HirExpr) -> bool {
-  give expr.kind == HirExprKind.BorrowShared
-    or expr.kind == HirExprKind.BorrowMut
-    or expr.kind == HirExprKind.Deref;
+  give expr.kind == HirExprKind.BorrowShared or expr.kind == HirExprKind.BorrowMut or expr.kind == HirExprKind.Deref;
 }
 
 proc expr_is_place(expr: HirExpr) -> bool {
-  give expr.place_category != HirPlaceCategory.Value
-    and expr.place_category != HirPlaceCategory.Invalid;
+  give expr.place_category != HirPlaceCategory.Value and expr.place_category != HirPlaceCategory.Invalid;
 }
 
 proc expr_is_constant(expr: HirExpr) -> bool {
@@ -69,79 +70,33 @@ proc validate_expr(expr: HirExpr) -> [SemanticDiagnostic] {
   let diagnostics: [SemanticDiagnostic] = []
 
   if not expr.valid {
-    set diagnostics =
-      diagnostics + [
-        validation_error(
-          "HIRV0001",
-          "invalid hir expression"
-        )
-      ]
+    set diagnostics = diagnostics + [validation_error("HIRV0001", "invalid hir expression")]
   }
 
   if expr.kind == HirExprKind.Unknown {
-    set diagnostics =
-      diagnostics + [
-        validation_error(
-          "HIRV0002",
-          "unknown hir expression kind"
-        )
-      ]
+    set diagnostics = diagnostics + [validation_error("HIRV0002", "unknown hir expression kind")]
   }
 
-  if expr_requires_place(expr)
-    and not expr_is_place(expr) {
-
-    set diagnostics =
-      diagnostics + [
-        validation_error(
-          "HIRV0003",
-          "borrow expression requires place expression"
-        )
-      ]
+  if expr_requires_place(expr) and not expr_is_place(expr) {
+    set diagnostics = diagnostics + [validation_error("HIRV0003", "borrow expression requires place expression")]
   }
 
-  if expr.kind == HirExprKind.Int
-    and expr.inferred_type == "unknown" {
-
-    set diagnostics =
-      diagnostics + [
-        validation_error(
-          "HIRV0004",
-          "integer expression missing inferred type"
-        )
-      ]
+  if expr.kind == HirExprKind.Int and expr.inferred_type == "unknown" {
+    set diagnostics = diagnostics + [validation_error("HIRV0004", "integer expression missing inferred type")]
   }
 
-  if expr.kind == HirExprKind.Set
-    and not expr.assignable {
-
-    set diagnostics =
-      diagnostics + [
-        validation_error(
-          "HIRV0005",
-          "assignment target is not assignable"
-        )
-      ]
+  if expr.kind == HirExprKind.Set and not expr.assignable {
+    set diagnostics = diagnostics + [validation_error("HIRV0005", "assignment target is not assignable")]
   }
 
-  if expr.kind == HirExprKind.Name
-    and expr.binding == "" {
-
-    set diagnostics =
-      diagnostics + [
-        validation_error(
-          "HIRV0006",
-          "name expression missing binding"
-        )
-      ]
+  if expr.kind == HirExprKind.Name and expr.binding == "" {
+    set diagnostics = diagnostics + [validation_error("HIRV0006", "name expression missing binding")]
   }
 
   let i: u64 = 0
 
   while i < len(expr.children) {
-    set diagnostics =
-      diagnostics
-      + validate_expr(expr.children[i])
+    set diagnostics = diagnostics + validate_expr(expr.children[i])
 
     set i = i + 1
   }
@@ -153,82 +108,35 @@ proc validate_stmt(stmt: HirStmt) -> [SemanticDiagnostic] {
   let diagnostics: [SemanticDiagnostic] = []
 
   if not stmt.valid {
-    set diagnostics =
-      diagnostics + [
-        validation_error(
-          "HIRV0100",
-          "invalid hir statement"
-        )
-      ]
+    set diagnostics = diagnostics + [validation_error("HIRV0100", "invalid hir statement")]
   }
 
   if stmt.kind == HirStmtKind.Unknown {
-    set diagnostics =
-      diagnostics + [
-        validation_error(
-          "HIRV0101",
-          "unknown hir statement kind"
-        )
-      ]
+    set diagnostics = diagnostics + [validation_error("HIRV0101", "unknown hir statement kind")]
   }
 
-  if stmt.kind == HirStmtKind.Let
-    and stmt.name == "" {
-
-    set diagnostics =
-      diagnostics + [
-        validation_error(
-          "HIRV0102",
-          "let statement missing binding name"
-        )
-      ]
+  if stmt.kind == HirStmtKind.Let and stmt.name == "" {
+    set diagnostics = diagnostics + [validation_error("HIRV0102", "let statement missing binding name")]
   }
 
-  if stmt.kind == HirStmtKind.Set
-    and stmt.target == "" {
-
-    set diagnostics =
-      diagnostics + [
-        validation_error(
-          "HIRV0103",
-          "set statement missing target"
-        )
-      ]
+  if stmt.kind == HirStmtKind.Set and stmt.target == "" {
+    set diagnostics = diagnostics + [validation_error("HIRV0103", "set statement missing target")]
   }
 
-  if stmt.kind == HirStmtKind.Assert
-    and stmt.expr.inferred_type != "bool" {
-
-    set diagnostics =
-      diagnostics + [
-        validation_error(
-          "HIRV0104",
-          "assert expression must be bool"
-        )
-      ]
+  if stmt.kind == HirStmtKind.Assert and stmt.expr.inferred_type != "bool" {
+    set diagnostics = diagnostics + [validation_error("HIRV0104", "assert expression must be bool")]
   }
 
-  if stmt.kind == HirStmtKind.StaticAssert
-    and not expr_is_constant(stmt.expr) {
-
-    set diagnostics =
-      diagnostics + [
-        validation_error(
-          "HIRV0105",
-          "static assert requires constant expression"
-        )
-      ]
+  if stmt.kind == HirStmtKind.StaticAssert and not expr_is_constant(stmt.expr) {
+    set diagnostics = diagnostics + [validation_error("HIRV0105", "static assert requires constant expression")]
   }
 
-  set diagnostics =
-    diagnostics + validate_expr(stmt.expr)
+  set diagnostics = diagnostics + validate_expr(stmt.expr)
 
   let i: u64 = 0
 
   while i < len(stmt.then_stmts) {
-    set diagnostics =
-      diagnostics
-      + validate_stmt(stmt.then_stmts[i])
+    set diagnostics = diagnostics + validate_stmt(stmt.then_stmts[i])
 
     set i = i + 1
   }
@@ -236,9 +144,7 @@ proc validate_stmt(stmt: HirStmt) -> [SemanticDiagnostic] {
   let j: u64 = 0
 
   while j < len(stmt.else_stmts) {
-    set diagnostics =
-      diagnostics
-      + validate_stmt(stmt.else_stmts[j])
+    set diagnostics = diagnostics + validate_stmt(stmt.else_stmts[j])
 
     set j = j + 1
   }
@@ -246,9 +152,7 @@ proc validate_stmt(stmt: HirStmt) -> [SemanticDiagnostic] {
   let k: u64 = 0
 
   while k < len(stmt.catch_stmts) {
-    set diagnostics =
-      diagnostics
-      + validate_stmt(stmt.catch_stmts[k])
+    set diagnostics = diagnostics + validate_stmt(stmt.catch_stmts[k])
 
     set k = k + 1
   }
@@ -260,58 +164,29 @@ proc validate_item(item: HirItem) -> [SemanticDiagnostic] {
   let diagnostics: [SemanticDiagnostic] = []
 
   if not item.valid {
-    set diagnostics =
-      diagnostics + [
-        validation_error(
-          "HIRV0200",
-          "invalid hir item"
-        )
-      ]
+    set diagnostics = diagnostics + [validation_error("HIRV0200", "invalid hir item")]
   }
 
   if item.kind == HirItemKind.Unknown {
-    set diagnostics =
-      diagnostics + [
-        validation_error(
-          "HIRV0201",
-          "unknown hir item kind"
-        )
-      ]
+    set diagnostics = diagnostics + [validation_error("HIRV0201", "unknown hir item kind")]
   }
 
   if item.name == "" {
-    set diagnostics =
-      diagnostics + [
-        validation_error(
-          "HIRV0202",
-          "hir item missing name"
-        )
-      ]
+    set diagnostics = diagnostics + [validation_error("HIRV0202", "hir item missing name")]
   }
 
-  if item.kind == HirItemKind.Proc
-    and len(item.stmts) == 0 {
-
-    set diagnostics =
-      diagnostics + [
-        validation_error(
-          "HIRV0203",
-          "procedure item missing body"
-        )
-      ]
+  if item.kind == HirItemKind.Proc and len(item.stmts) == 0 {
+    set diagnostics = diagnostics + [validation_error("HIRV0203", "procedure item missing body")]
   }
 
   if item.expr.valid {
-    set diagnostics =
-      diagnostics + validate_expr(item.expr)
+    set diagnostics = diagnostics + validate_expr(item.expr)
   }
 
   let i: u64 = 0
 
   while i < len(item.stmts) {
-    set diagnostics =
-      diagnostics
-      + validate_stmt(item.stmts[i])
+    set diagnostics = diagnostics + validate_stmt(item.stmts[i])
 
     set i = i + 1
   }
@@ -323,31 +198,17 @@ proc validate_module(module: HirModule) -> [SemanticDiagnostic] {
   let diagnostics: [SemanticDiagnostic] = []
 
   if not module.valid {
-    set diagnostics =
-      diagnostics + [
-        validation_error(
-          "HIRV0300",
-          "invalid hir module"
-        )
-      ]
+    set diagnostics = diagnostics + [validation_error("HIRV0300", "invalid hir module")]
   }
 
   if len(module.items) == 0 {
-    set diagnostics =
-      diagnostics + [
-        validation_error(
-          "HIRV0301",
-          "hir module contains no items"
-        )
-      ]
+    set diagnostics = diagnostics + [validation_error("HIRV0301", "hir module contains no items")]
   }
 
   let i: u64 = 0
 
   while i < len(module.items) {
-    set diagnostics =
-      diagnostics
-      + validate_item(module.items[i])
+    set diagnostics = diagnostics + validate_item(module.items[i])
 
     set i = i + 1
   }
@@ -366,9 +227,7 @@ proc build_validation_result(hir: HirUnit, diagnostics: [SemanticDiagnostic]) ->
 }
 
 proc validate_hir(hir: HirUnit) -> HirUnit {
-  if not hir.module.valid
-    or hir.node_count == 0 {
-
+  if not hir.module.valid or hir.node_count == 0 {
     give HirUnit {
       source_path: hir.source_path,
       module: hir_module_empty(),
@@ -384,26 +243,16 @@ proc validate_hir(hir: HirUnit) -> HirUnit {
     }
   }
 
-  let diagnostics: [SemanticDiagnostic] =
-    validate_module(hir.module)
-
-  let result: HirValidationResult =
-    build_validation_result(
-      hir,
-      diagnostics
-    )
-
-  let module: HirModule =
-    HirModule {
-      name: hir.module.name,
-      items: hir.module.items,
-      diagnostics:
-        hir.module.diagnostics
-        + diagnostics,
-      dependency_count: hir.module.dependency_count,
-      symbol_count: hir.module.symbol_count,
-      valid: result.valid
-    }
+  let diagnostics: [SemanticDiagnostic] = validate_module(hir.module)
+  let result: HirValidationResult = build_validation_result(hir, diagnostics)
+  let module: HirModule = HirModule {
+    name: hir.module.name,
+    items: hir.module.items,
+    diagnostics: hir.module.diagnostics + diagnostics,
+    dependency_count: hir.module.dependency_count,
+    symbol_count: hir.module.symbol_count,
+    valid: result.valid
+  }
 
   give HirUnit {
     source_path: hir.source_path,
@@ -421,27 +270,17 @@ proc validate_hir(hir: HirUnit) -> HirUnit {
 }
 
 proc hir_validation_summary(result: HirValidationResult) -> string {
-  give "items="
-    + (result.checked_items as string)
-    + " stmts="
-    + (result.checked_stmts as string)
-    + " exprs="
-    + (result.checked_exprs as string)
-    + " diagnostics="
-    + (len(result.diagnostics) as string)
-    + " valid="
-    + (result.valid as string)
+  let checked_items: string = result.checked_items as string
+  let checked_stmts: string = result.checked_stmts as string
+  let checked_exprs: string = result.checked_exprs as string
+  let diagnostic_count: string = len(result.diagnostics) as string
+  let valid_text: string = result.valid as string
+  let eq: string = hir_validate_eq()
+  give "items" + eq + checked_items + " stmts" + eq + checked_stmts + " exprs" + eq + checked_exprs + " diagnostics" + eq + diagnostic_count + " valid" + eq + valid_text
 }
 
 proc hir_validate_selftest() -> bool {
-  let result: HirValidationResult =
-    validation_result(
-      [],
-      1,
-      2,
-      3,
-      true
-    )
+  let result: HirValidationResult = validation_result([], 1, 2, 3, true)
 
   give result.valid
     and result.checked_items == 1

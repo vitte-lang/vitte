@@ -133,16 +133,36 @@ proc compression_summary() -> CompressionSummary {
 }
 
 proc _char_to_digit(ch: char) -> i32 {
-  if ch == '0' { give 0 }
-  if ch == '1' { give 1 }
-  if ch == '2' { give 2 }
-  if ch == '3' { give 3 }
-  if ch == '4' { give 4 }
-  if ch == '5' { give 5 }
-  if ch == '6' { give 6 }
-  if ch == '7' { give 7 }
-  if ch == '8' { give 8 }
-  if ch == '9' { give 9 }
+  if ch == '0' {
+    give 0
+  }
+  if ch == '1' {
+    give 1
+  }
+  if ch == '2' {
+    give 2
+  }
+  if ch == '3' {
+    give 3
+  }
+  if ch == '4' {
+    give 4
+  }
+  if ch == '5' {
+    give 5
+  }
+  if ch == '6' {
+    give 6
+  }
+  if ch == '7' {
+    give 7
+  }
+  if ch == '8' {
+    give 8
+  }
+  if ch == '9' {
+    give 9
+  }
   give -1
 }
 
@@ -158,7 +178,9 @@ proc _escape_marker(text: string) -> string {
     if ch == '~' {
       set out = out + "~~"
     } else {
-      set out = out + ((ch as i32) as string)
+      let ch_code: i32 = ch as i32
+      let ch_text: string = ch_code as string
+      set out = out + ch_text
     }
     set i = i + 1
   }
@@ -174,7 +196,9 @@ proc _unescape_marker(text: string) -> string {
       set out = out + "~"
       set i = i + 2
     } else {
-      set out = out + ((ch as i32) as string)
+      let ch_code: i32 = ch as i32
+      let ch_text: string = ch_code as string
+      set out = out + ch_text
       set i = i + 1
     }
   }
@@ -186,7 +210,9 @@ proc _parse_int(text: string, start: i32, end: i32) -> i32 {
   let i: i32 = start
   while i < end {
     let digit: i32 = _char_to_digit(text[i])
-    if digit < 0 { give -1 }
+    if digit < 0 {
+      give -1
+    }
     set value = value * 10 + digit
     set i = i + 1
   }
@@ -197,25 +223,37 @@ proc _read_run(text: string, index: i32) -> [i32] {
   let i: i32 = index + 1
   let count_start: i32 = i
   while i < len(text) and text[i] != ':' {
-    if not _is_digit(text[i]) { give [-1, -1, -1] }
+    if not _is_digit(text[i]) {
+      give [-1, -1, -1]
+    }
     set i = i + 1
   }
-  if i >= len(text) { give [-1, -1, -1] }
+  if i >= len(text) {
+    give [-1, -1, -1]
+  }
 
   let count: i32 = _parse_int(text, count_start, i)
-  if count < 0 { give [-1, -1, -1] }
+  if count < 0 {
+    give [-1, -1, -1]
+  }
   set i = i + 1
-  if i >= len(text) { give [-1, -1, -1] }
+  if i >= len(text) {
+    give [-1, -1, -1]
+  }
 
   let ch: i32 = text[i] as i32
   set i = i + 1
-  if i >= len(text) or text[i] != ';' { give [-1, -1, -1] }
+  if i >= len(text) or text[i] != ';' {
+    give [-1, -1, -1]
+  }
 
   give [count, ch, i + 1]
 }
 
 proc compress_rle(data: string) -> string {
-  if len(data) == 0 { give "" }
+  if len(data) == 0 {
+    give ""
+  }
 
   let out: string = ""
   let i: i32 = 0
@@ -229,11 +267,16 @@ proc compress_rle(data: string) -> string {
     }
 
     if count >= 4 or ch == '~' {
-      set out = out + "~" + (count as string) + ":" + ((ch as i32) as string) + ";"
+      let count_text: string = count as string
+      let ch_code: i32 = ch as i32
+      let ch_text: string = ch_code as string
+      set out = out + "~" + count_text + ":" + ch_text + ";"
     } else {
       let k: i32 = 0
       while k < count {
-        set out = out + ((ch as i32) as string)
+        let ch_code: i32 = ch as i32
+        let ch_text: string = ch_code as string
+        set out = out + ch_text
         set k = k + 1
       }
     }
@@ -251,13 +294,17 @@ proc decompress_rle(data: string) -> string {
     let ch: char = data[i]
     if ch == '~' {
       let parsed: [i32] = _read_run(data, i)
-      if parsed[0] < 0 { give "" }
+      if parsed[0] < 0 {
+        give ""
+      }
       let count: i32 = parsed[0]
       let run_ch: char = parsed[1] as char
       let next_i: i32 = parsed[2]
       let k: i32 = 0
       while k < count {
-        set out = out + ((run_ch as i32) as string)
+        let ch_code: i32 = run_ch as i32
+        let ch_text: string = ch_code as string
+        set out = out + ch_text
         set k = k + 1
       }
       set i = next_i
@@ -265,7 +312,9 @@ proc decompress_rle(data: string) -> string {
       set out = out + "~"
       set i = i + 2
     } else {
-      set out = out + ((ch as i32) as string)
+      let ch_code: i32 = ch as i32
+      let ch_text: string = ch_code as string
+      set out = out + ch_text
       set i = i + 1
     }
   }
@@ -273,19 +322,26 @@ proc decompress_rle(data: string) -> string {
 }
 
 proc _wrap_algo(tag: string, data: string, level: i32) -> string {
-  give tag + ":" + (level as string) + ":" + compress_rle(data)
+  let level_text: string = level as string
+  give tag + ":" + level_text + ":" + compress_rle(data)
 }
 
 proc _unwrap_algo(tag: string, data: string) -> string {
   let prefix: string = tag + ":"
-  if len(data) <= len(prefix) { give "" }
-  if _slice_text(data, 0, len(prefix)) != prefix { give "" }
+  if len(data) <= len(prefix) {
+    give ""
+  }
+  if _slice_text(data, 0, len(prefix)) != prefix {
+    give ""
+  }
 
   let pos: i32 = len(prefix)
   while pos < len(data) and data[pos] != ':' {
     set pos = pos + 1
   }
-  if pos >= len(data) { give "" }
+  if pos >= len(data) {
+    give ""
+  }
   set pos = pos + 1
   give decompress_rle(_slice_text(data, pos, len(data)))
 }
@@ -294,7 +350,9 @@ proc _slice_text(text: string, start: i32, end: i32) -> string {
   let out: string = ""
   let i: i32 = start
   while i < end and i < len(text) {
-    set out = out + ((text[i] as i32) as string)
+    let ch_code: i32 = text[i] as i32
+    let ch_text: string = ch_code as string
+    set out = out + ch_text
     set i = i + 1
   }
   give out
@@ -374,12 +432,24 @@ proc compressor_compress(c: Compressor, data: string) -> string {
   if c.algorithm == ALGO_RLE or c.strategy == Z_RLE {
     give compress_rle(data)
   }
-  if c.algorithm == ALGO_DEFLATE { give compress_deflate(data, c.level) }
-  if c.algorithm == ALGO_GZIP { give compress_gzip(data, c.level) }
-  if c.algorithm == ALGO_ZLIB { give compress_zlib(data, c.level) }
-  if c.algorithm == ALGO_HUFFMAN { give compress_huffman(data) }
-  if c.algorithm == ALGO_LZ77 { give compress_lz77(data) }
-  if c.algorithm == ALGO_BROTLI { give compress_brotli(data, c.level) }
+  if c.algorithm == ALGO_DEFLATE {
+    give compress_deflate(data, c.level)
+  }
+  if c.algorithm == ALGO_GZIP {
+    give compress_gzip(data, c.level)
+  }
+  if c.algorithm == ALGO_ZLIB {
+    give compress_zlib(data, c.level)
+  }
+  if c.algorithm == ALGO_HUFFMAN {
+    give compress_huffman(data)
+  }
+  if c.algorithm == ALGO_LZ77 {
+    give compress_lz77(data)
+  }
+  if c.algorithm == ALGO_BROTLI {
+    give compress_brotli(data, c.level)
+  }
   give ""
 }
 
@@ -411,13 +481,27 @@ proc decompressor_set_algorithm(d: Decompressor, algorithm: i32) -> int {
 }
 
 proc decompressor_decompress(d: Decompressor, data: string) -> string {
-  if d.algorithm == ALGO_RLE { give decompress_rle(data) }
-  if d.algorithm == ALGO_DEFLATE { give decompress_deflate(data) }
-  if d.algorithm == ALGO_GZIP { give decompress_gzip(data) }
-  if d.algorithm == ALGO_ZLIB { give decompress_zlib(data) }
-  if d.algorithm == ALGO_HUFFMAN { give decompress_huffman(data) }
-  if d.algorithm == ALGO_LZ77 { give decompress_lz77(data) }
-  if d.algorithm == ALGO_BROTLI { give decompress_brotli(data) }
+  if d.algorithm == ALGO_RLE {
+    give decompress_rle(data)
+  }
+  if d.algorithm == ALGO_DEFLATE {
+    give decompress_deflate(data)
+  }
+  if d.algorithm == ALGO_GZIP {
+    give decompress_gzip(data)
+  }
+  if d.algorithm == ALGO_ZLIB {
+    give decompress_zlib(data)
+  }
+  if d.algorithm == ALGO_HUFFMAN {
+    give decompress_huffman(data)
+  }
+  if d.algorithm == ALGO_LZ77 {
+    give decompress_lz77(data)
+  }
+  if d.algorithm == ALGO_BROTLI {
+    give decompress_brotli(data)
+  }
   give ""
 }
 
@@ -433,26 +517,36 @@ proc decompressor_reset(d: Decompressor) -> int {
 
 proc compress(data: string, algo: i32, level: i32) -> string {
   let c: Compressor = compressor_new(level)
-  if compressor_set_algorithm(c, algo) != 0 { give "" }
+  if compressor_set_algorithm(c, algo) != 0 {
+    give ""
+  }
   give compressor_compress(c, data)
 }
 
 proc decompress(data: string, algo: i32) -> string {
   let d: Decompressor = decompressor_new()
-  if decompressor_set_algorithm(d, algo) != 0 { give "" }
+  if decompressor_set_algorithm(d, algo) != 0 {
+    give ""
+  }
   give decompressor_decompress(d, data)
 }
 
 proc compress_ex(data: string, algo: i32, level: i32, strategy: i32) -> string {
   let c: Compressor = compressor_new(level)
-  if compressor_set_algorithm(c, algo) != 0 { give "" }
+  if compressor_set_algorithm(c, algo) != 0 {
+    give ""
+  }
   set c.strategy = strategy
   give compressor_compress(c, data)
 }
 
 proc get_compression_ratio(original_size: i64, compressed_size: i64) -> f64 {
-  if original_size <= 0 { give 0.0 }
-  give (compressed_size as f64) / (original_size as f64)
+  if original_size <= 0 {
+    give 0.0
+  }
+  let compressed_f64: f64 = compressed_size as f64
+  let original_f64: f64 = original_size as f64
+  give compressed_f64 / original_f64
 }
 
 proc estimate_compressed_size(data: string) -> i64 {
@@ -461,8 +555,12 @@ proc estimate_compressed_size(data: string) -> i64 {
 }
 
 proc get_best_compression_level(data: string) -> i32 {
-  if len(data) > 1024 { give Z_BEST_COMPRESSION }
-  if len(data) > 256 { give Z_DEFAULT_COMPRESSION }
+  if len(data) > 1024 {
+    give Z_BEST_COMPRESSION
+  }
+  if len(data) > 256 {
+    give Z_DEFAULT_COMPRESSION
+  }
   give Z_FAST_COMPRESSION
 }
 

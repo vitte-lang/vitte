@@ -121,29 +121,49 @@ proc type_rule_engine() -> TypeRuleEngine {
 }
 
 proc rule_kind_name(kind: TypeRuleKind) -> string {
-  if kind == TypeRuleKind.Expr { give "expr" }
-  elif kind == TypeRuleKind.Statement { give "statement" }
-  elif kind == TypeRuleKind.Assignment { give "assignment" }
-  elif kind == TypeRuleKind.Borrow { give "borrow" }
-  elif kind == TypeRuleKind.Move { give "move" }
-  elif kind == TypeRuleKind.Call { give "call" }
-  elif kind == TypeRuleKind.Return { give "return" }
-  elif kind == TypeRuleKind.Binary { give "binary" }
-  elif kind == TypeRuleKind.Unary { give "unary" }
-  elif kind == TypeRuleKind.Match { give "match" }
-  elif kind == TypeRuleKind.Pattern { give "pattern" }
-  elif kind == TypeRuleKind.Cast { give "cast" }
-  elif kind == TypeRuleKind.ControlFlow { give "control-flow" }
-  elif kind == TypeRuleKind.Lifetime { give "lifetime" }
-  elif kind == TypeRuleKind.TraitBound { give "trait-bound" }
+  if kind == TypeRuleKind.Expr {
+    give "expr"
+  } elif kind == TypeRuleKind.Statement {
+    give "statement"
+  } elif kind == TypeRuleKind.Assignment {
+    give "assignment"
+  } elif kind == TypeRuleKind.Borrow {
+    give "borrow"
+  } elif kind == TypeRuleKind.Move {
+    give "move"
+  } elif kind == TypeRuleKind.Call {
+    give "call"
+  } elif kind == TypeRuleKind.Return {
+    give "return"
+  } elif kind == TypeRuleKind.Binary {
+    give "binary"
+  } elif kind == TypeRuleKind.Unary {
+    give "unary"
+  } elif kind == TypeRuleKind.Match {
+    give "match"
+  } elif kind == TypeRuleKind.Pattern {
+    give "pattern"
+  } elif kind == TypeRuleKind.Cast {
+    give "cast"
+  } elif kind == TypeRuleKind.ControlFlow {
+    give "control-flow"
+  } elif kind == TypeRuleKind.Lifetime {
+    give "lifetime"
+  } elif kind == TypeRuleKind.TraitBound {
+    give "trait-bound"
+  }
 
   give "unknown"
 }
 
 proc rule_result_name(kind: TypeRuleResultKind) -> string {
-  if kind == TypeRuleResultKind.Accepted { give "accepted" }
-  elif kind == TypeRuleResultKind.Rejected { give "rejected" }
-  elif kind == TypeRuleResultKind.Deferred { give "deferred" }
+  if kind == TypeRuleResultKind.Accepted {
+    give "accepted"
+  } elif kind == TypeRuleResultKind.Rejected {
+    give "rejected"
+  } elif kind == TypeRuleResultKind.Deferred {
+    give "deferred"
+  }
 
   give "unknown"
 }
@@ -161,40 +181,27 @@ proc append_engine_diagnostic(engine: TypeRuleEngine, diagnostic: TypeDiagnostic
 }
 
 proc register_result(engine: TypeRuleEngine, result: TypeRuleResult) -> TypeRuleEngine {
-  let out: TypeRuleEngine =
-    engine
+  let out: TypeRuleEngine = engine
 
-  set out.checked_rules =
-    out.checked_rules + 1
+  set out.checked_rules = out.checked_rules + 1
 
   if result.result == TypeRuleResultKind.Accepted {
-    set out.accepted_rules =
-      out.accepted_rules + 1
-  }
-  elif result.result == TypeRuleResultKind.Rejected {
-    set out.rejected_rules =
-      out.rejected_rules + 1
-  }
-  elif result.result == TypeRuleResultKind.Deferred {
-    set out.deferred_rules =
-      out.deferred_rules + 1
+    set out.accepted_rules = out.accepted_rules + 1
+  } elif result.result == TypeRuleResultKind.Rejected {
+    set out.rejected_rules = out.rejected_rules + 1
+  } elif result.result == TypeRuleResultKind.Deferred {
+    set out.deferred_rules = out.deferred_rules + 1
   }
 
   let i: u64 = 0
 
   while i < len(result.diagnostics) {
-    set out =
-      append_engine_diagnostic(
-        out,
-        result.diagnostics[i]
-      )
+    set out = append_engine_diagnostic(out, result.diagnostics[i])
 
-    set i =
-      i + 1
+    set i = i + 1
   }
 
-  set out.valid =
-    out.valid and result.valid
+  set out.valid = out.valid and result.valid
 
   give out
 }
@@ -228,9 +235,7 @@ proc valid_binary_expr(expr: HirExpr) -> bool {
 }
 
 proc valid_borrow_expr(expr: HirExpr) -> bool {
-  if expr.kind != HirExprKind.BorrowShared
-    and expr.kind != HirExprKind.BorrowMut {
-
+  if expr.kind != HirExprKind.BorrowShared and expr.kind != HirExprKind.BorrowMut {
     give true
   }
 
@@ -417,8 +422,7 @@ proc resolve_rule(engine: TypeRuleEngine, kind: TypeRuleKind) -> TypeRule {
       give engine.rules[i]
     }
 
-    set i =
-      i + 1
+    set i = i + 1
   }
 
   give type_rule(
@@ -432,179 +436,111 @@ proc resolve_rule(engine: TypeRuleEngine, kind: TypeRuleKind) -> TypeRule {
 }
 
 proc check_expr_rules(engine: TypeRuleEngine, expr: HirExpr) -> TypeRuleEngine {
-  let out: TypeRuleEngine =
-    engine
+  let out: TypeRuleEngine = engine
 
   if expr.kind == HirExprKind.Binary {
-    set out =
-      register_result(
-        out,
-        check_binary_rule(
-          resolve_rule(out, TypeRuleKind.Binary),
-          expr
-        )
-      )
+    let rule: TypeRule = resolve_rule(out, TypeRuleKind.Binary)
+    let result: TypeRuleResult = check_binary_rule(rule, expr)
+    set out = register_result(out, result)
   }
 
-  if expr.kind == HirExprKind.BorrowShared
-    or expr.kind == HirExprKind.BorrowMut {
-
-    set out =
-      register_result(
-        out,
-        check_borrow_rule(
-          resolve_rule(out, TypeRuleKind.Borrow),
-          expr
-        )
-      )
+  if expr.kind == HirExprKind.BorrowShared or expr.kind == HirExprKind.BorrowMut {
+    let rule: TypeRule = resolve_rule(out, TypeRuleKind.Borrow)
+    let result: TypeRuleResult = check_borrow_rule(rule, expr)
+    set out = register_result(out, result)
   }
 
   if expr.kind == HirExprKind.Call {
-    set out =
-      register_result(
-        out,
-        check_call_rule(
-          resolve_rule(out, TypeRuleKind.Call),
-          expr
-        )
-      )
+    let rule: TypeRule = resolve_rule(out, TypeRuleKind.Call)
+    let result: TypeRuleResult = check_call_rule(rule, expr)
+    set out = register_result(out, result)
   }
 
-  set out =
-    register_result(
-      out,
-      check_move_rule(
-        resolve_rule(out, TypeRuleKind.Move),
-        expr
-      )
-    )
+  let move_rule: TypeRule = resolve_rule(out, TypeRuleKind.Move)
+  let move_result: TypeRuleResult = check_move_rule(move_rule, expr)
+  set out = register_result(out, move_result)
 
   let i: u64 = 0
 
   while i < len(expr.children) {
-    set out =
-      check_expr_rules(
-        out,
-        expr.children[i]
-      )
+    set out = check_expr_rules(out, expr.children[i])
 
-    set i =
-      i + 1
+    set i = i + 1
   }
 
   give out
 }
 
 proc check_stmt_rules(engine: TypeRuleEngine, stmt: HirStmt, expected_return: string) -> TypeRuleEngine {
-  let out: TypeRuleEngine =
-    engine
+  let out: TypeRuleEngine = engine
 
-  if stmt.kind == HirStmtKind.Set
-    or stmt.kind == HirStmtKind.Let {
-
-    set out =
-      register_result(
-        out,
-        check_assignment_rule(
-          resolve_rule(out, TypeRuleKind.Assignment),
-          stmt
-        )
-      )
+  if stmt.kind == HirStmtKind.Set or stmt.kind == HirStmtKind.Let {
+    let rule: TypeRule = resolve_rule(out, TypeRuleKind.Assignment)
+    let result: TypeRuleResult = check_assignment_rule(rule, stmt)
+    set out = register_result(out, result)
   }
 
   if stmt.kind == HirStmtKind.Give {
-    set out =
-      register_result(
-        out,
-        check_return_rule(
-          resolve_rule(out, TypeRuleKind.Return),
-          stmt,
-          expected_return
-        )
-      )
+    let rule: TypeRule = resolve_rule(out, TypeRuleKind.Return)
+    let result: TypeRuleResult = check_return_rule(rule, stmt, expected_return)
+    set out = register_result(out, result)
   }
 
-  set out =
-    check_expr_rules(
-      out,
-      stmt.expr
-    )
+  set out = check_expr_rules(out, stmt.expr)
 
   let i: u64 = 0
 
   while i < len(stmt.then_stmts) {
-    set out =
-      check_stmt_rules(
-        out,
-        stmt.then_stmts[i],
-        expected_return
-      )
+    set out = check_stmt_rules(out, stmt.then_stmts[i], expected_return)
 
-    set i =
-      i + 1
+    set i = i + 1
   }
 
   set i = 0
 
   while i < len(stmt.else_stmts) {
-    set out =
-      check_stmt_rules(
-        out,
-        stmt.else_stmts[i],
-        expected_return
-      )
+    set out = check_stmt_rules(out, stmt.else_stmts[i], expected_return)
 
-    set i =
-      i + 1
+    set i = i + 1
   }
 
   give out
 }
 
 proc check_item_rules(engine: TypeRuleEngine, item: HirItem) -> TypeRuleEngine {
-  let out: TypeRuleEngine =
-    engine
-
-  let expected_return: string =
-    "void"
+  let out: TypeRuleEngine = engine
+  let expected_return: string = "void"
 
   let i: u64 = 0
 
   while i < len(item.stmts) {
-    set out =
-      check_stmt_rules(
-        out,
-        item.stmts[i],
-        expected_return
-      )
+    set out = check_stmt_rules(out, item.stmts[i], expected_return)
 
-    set i =
-      i + 1
+    set i = i + 1
   }
 
   give out
 }
 
 proc engine_summary(engine: TypeRuleEngine) -> string {
-  give "rules="
-    + (len(engine.rules) as string)
-    + " checked="
-    + (engine.checked_rules as string)
-    + " accepted="
-    + (engine.accepted_rules as string)
-    + " rejected="
-    + (engine.rejected_rules as string)
-    + " deferred="
-    + (engine.deferred_rules as string)
-    + " diagnostics="
-    + (len(engine.diagnostics.diagnostics) as string)
-    + " valid="
-    + (engine.valid as string)
+  let rule_count_text: string = len(engine.rules) as string
+  let checked_text: string = engine.checked_rules as string
+  let accepted_text: string = engine.accepted_rules as string
+  let rejected_text: string = engine.rejected_rules as string
+  let deferred_text: string = engine.deferred_rules as string
+  let diagnostic_count_text: string = len(engine.diagnostics.diagnostics) as string
+  let valid_text: string = engine.valid as string
+  let out: string = "rules " + rule_count_text
+  let with_checked: string = out + " checked " + checked_text
+  let with_accepted: string = with_checked + " accepted " + accepted_text
+  let with_rejected: string = with_accepted + " rejected " + rejected_text
+  let with_deferred: string = with_rejected + " deferred " + deferred_text
+  let with_diagnostics: string = with_deferred + " diagnostics " + diagnostic_count_text
+  give with_diagnostics + " valid " + valid_text
 }
 
 proc typecheck_rules_selftest() -> bool {
-  let expr: HirExpr =
-    HirExpr {
+  let expr: HirExpr = HirExpr {
       id: 1,
       span: ast_span_empty(),
       kind: HirExprKind.Binary,
@@ -663,8 +599,7 @@ proc typecheck_rules_selftest() -> bool {
       valid: true
     }
 
-  let stmt: HirStmt =
-    HirStmt {
+  let stmt: HirStmt = HirStmt {
       id: 1,
       span: ast_span_empty(),
       kind: HirStmtKind.Set,
@@ -684,8 +619,7 @@ proc typecheck_rules_selftest() -> bool {
       valid: true
     }
 
-  let item: HirItem =
-    HirItem {
+  let item: HirItem = HirItem {
       id: 1,
       span: ast_span_empty(),
       kind: HirItemKind.Proc,
@@ -701,11 +635,7 @@ proc typecheck_rules_selftest() -> bool {
       valid: true
     }
 
-  let engine: TypeRuleEngine =
-    check_item_rules(
-      type_rule_engine(),
-      item
-    )
+  let engine: TypeRuleEngine = check_item_rules(type_rule_engine(), item)
 
   give engine.valid
     and engine.checked_rules > 0

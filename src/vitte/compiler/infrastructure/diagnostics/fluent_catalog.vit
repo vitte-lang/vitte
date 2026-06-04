@@ -14,11 +14,9 @@ form FluentCatalogStats {
     generated: bool
 }
 
-const FLUENT_CATALOG_GENERATOR: string =
-    "tools/generate_frontend_fluent_bridge.py";
+const FLUENT_CATALOG_GENERATOR: string = "tools/generate_frontend_fluent_bridge.py";
 
-const FLUENT_DEFAULT_LOCALE: string =
-    "en";
+const FLUENT_DEFAULT_LOCALE: string = "en";
 
 proc fluent_catalog_entry(locale: string, code: string, message: string) -> FluentCatalogEntry {
     give FluentCatalogEntry {
@@ -163,7 +161,7 @@ proc fluent_catalog_lookup_fr(code: string) -> string {
     }
 
     if code == "LEX_E_INVALID_ESCAPE" {
-        give "sequence d'echappement invalide";
+        give "sequence dechapement invalide";
     }
 
     if code == "LEX_E_INVALID_NUMBER" {
@@ -195,11 +193,11 @@ proc fluent_catalog_lookup_fr(code: string) -> string {
     }
 
     if code == "PPRIMARY999" {
-        give "jeton d'expression inattendu";
+        give "jeton dexpression inattendu";
     }
 
     if code == "PSTMT007" {
-        give "operateur d'affectation attendu";
+        give "operateur daffectation attendu";
     }
 
     if code == "FAST0001" {
@@ -234,8 +232,7 @@ proc fluent_catalog_lookup_fr(code: string) -> string {
 }
 
 proc fluent_catalog_lookup(locale: string, code: string) -> string {
-    let normalized: string =
-        fluent_catalog_normalize_locale(locale);
+    let normalized: string = fluent_catalog_normalize_locale(locale);
 
     if normalized == "en" {
         give fluent_catalog_lookup_en(code);
@@ -254,25 +251,12 @@ proc fluent_catalog_has(locale: string, code: string) -> bool {
 }
 
 proc fluent_catalog_entry_for(locale: string, code: string) -> FluentCatalogEntry {
-    let normalized: string =
-        fluent_catalog_normalize_locale(locale);
-
-    give fluent_catalog_entry(
-        normalized,
-        code,
-        fluent_catalog_lookup(
-            normalized,
-            code
-        )
-    );
+    let normalized: string = fluent_catalog_normalize_locale(locale);
+    give fluent_catalog_entry(normalized, code, fluent_catalog_lookup(normalized, code));
 }
 
 proc fluent_catalog_message_or(locale: string, code: string, fallback: string) -> string {
-    let message: string =
-        fluent_catalog_lookup(
-            locale,
-            code
-        );
+    let message: string = fluent_catalog_lookup(locale, code);
 
     if message == "" {
         give fallback;
@@ -282,34 +266,14 @@ proc fluent_catalog_message_or(locale: string, code: string, fallback: string) -
 }
 
 proc fluent_catalog_stats_default() -> FluentCatalogStats {
-    give fluent_catalog_stats(
-        2,
-        17,
-        true
-    );
+    give fluent_catalog_stats(2, 17, true);
 }
 
 proc fluent_catalog_selftest() -> bool {
-    let en: string =
-        fluent_catalog_lookup(
-            "en",
-            "P0001"
-        );
-
-    let fr: string =
-        fluent_catalog_lookup(
-            "fr",
-            "P0001"
-        );
-
-    let entry: FluentCatalogEntry =
-        fluent_catalog_entry_for(
-            "fr-FR",
-            "FAST0001"
-        );
-
-    let stats: FluentCatalogStats =
-        fluent_catalog_stats_default();
+    let en: string = fluent_catalog_lookup("en", "P0001");
+    let fr: string = fluent_catalog_lookup("fr", "P0001");
+    let entry: FluentCatalogEntry = fluent_catalog_entry_for("fr-FR", "FAST0001");
+    let stats: FluentCatalogStats = fluent_catalog_stats_default();
 
     give en
             == "unexpected top-level token"
@@ -321,10 +285,7 @@ proc fluent_catalog_selftest() -> bool {
             == "racine ast invalide"
         and stats.locale_count == 2
         and stats.generated
-        and fluent_catalog_has(
-            "en",
-            "PLOOP"
-        )
+        and fluent_catalog_has("en", "PLOOP")
         and fluent_catalog_generator()
             == "tools/generate_frontend_fluent_bridge.py";
 }

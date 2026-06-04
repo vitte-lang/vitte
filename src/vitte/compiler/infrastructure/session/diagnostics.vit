@@ -52,12 +52,16 @@ proc diagnostic_session_add(session0: DiagnosticSession, diagnostic0: SessionDia
   set out.diagnostics = out.diagnostics + [diagnostic0];
   if diagnostic0.severity == SessionDiagnosticSeverity.Fatal {
     set out.fatal_count = out.fatal_count + 1;
-  } elif diagnostic0.severity == SessionDiagnosticSeverity.Error {
-    set out.error_count = out.error_count + 1;
-  } elif diagnostic0.severity == SessionDiagnosticSeverity.Warning {
-    set out.warning_count = out.warning_count + 1;
   } else {
+    if diagnostic0.severity == SessionDiagnosticSeverity.Error {
+    set out.error_count = out.error_count + 1;
+    } else {
+      if diagnostic0.severity == SessionDiagnosticSeverity.Warning {
+    set out.warning_count = out.warning_count + 1;
+      } else {
     set out.note_count = out.note_count + 1;
+      }
+    }
   }
   set out.valid = out.valid and diagnostic0.valid;
   give out;
@@ -84,9 +88,15 @@ proc has_errors(session0: DiagnosticSession) -> bool {
 }
 
 proc severity_text(severity: SessionDiagnosticSeverity) -> string {
-  if severity == SessionDiagnosticSeverity.Note { give "note"; }
-  if severity == SessionDiagnosticSeverity.Warning { give "warning"; }
-  if severity == SessionDiagnosticSeverity.Fatal { give "fatal"; }
+  if severity == SessionDiagnosticSeverity.Note {
+    give "note";
+  }
+  if severity == SessionDiagnosticSeverity.Warning {
+    give "warning";
+  }
+  if severity == SessionDiagnosticSeverity.Fatal {
+    give "fatal";
+  }
   give "error";
 }
 
@@ -104,12 +114,17 @@ proc render_text(session0: DiagnosticSession, manager: SourceManager) -> string 
       }
       set j = j + 1;
     }
+    let file_id_text: string = d.span.file_id as string;
+    let span_start_text: string = d.span.start as string;
+    let span_end_text: string = d.span.end as string;
+    let line_no_text: string = loc.line as string;
+    let column_text: string = loc.column as string;
     let line_text: string = severity_text(d.severity)
       + " " + d.code
-      + " file_id=" + (d.span.file_id as string)
-      + " span=" + (d.span.start as string) + "-" + (d.span.end as string)
-      + " at=" + file_name + ":" + (loc.line as string) + ":" + (loc.column as string)
-      + " message=" + d.message;
+      + " file_id " + file_id_text
+      + " span " + span_start_text + "-" + span_end_text
+      + " at " + file_name + ":" + line_no_text + ":" + column_text
+      + " message " + d.message;
     if i == 0 {
       set out = line_text;
     } else {
@@ -122,14 +137,21 @@ proc render_text(session0: DiagnosticSession, manager: SourceManager) -> string 
 
 proc render_json(session0: DiagnosticSession) -> string {
   let out: string = "{";
-  set out = out + "\"fatal_count\":" + (session0.fatal_count as string) + ",";
-  set out = out + "\"error_count\":" + (session0.error_count as string) + ",";
-  set out = out + "\"warning_count\":" + (session0.warning_count as string) + ",";
-  set out = out + "\"note_count\":" + (session0.note_count as string) + ",";
+  let fatal_count_text: string = session0.fatal_count as string;
+  let error_count_text: string = session0.error_count as string;
+  let warning_count_text: string = session0.warning_count as string;
+  let note_count_text: string = session0.note_count as string;
+  set out = out + "\"fatal_count\":" + fatal_count_text + ",";
+  set out = out + "\"error_count\":" + error_count_text + ",";
+  set out = out + "\"warning_count\":" + warning_count_text + ",";
+  set out = out + "\"note_count\":" + note_count_text + ",";
   set out = out + "\"diagnostics\":[";
   let i: u64 = 0;
   while i < len(session0.diagnostics) {
     let d: SessionDiagnostic = session0.diagnostics[i];
+    let file_id_text: string = d.span.file_id as string;
+    let start_text: string = d.span.start as string;
+    let end_text: string = d.span.end as string;
     if i > 0 {
       set out = out + ",";
     }
@@ -138,9 +160,9 @@ proc render_json(session0: DiagnosticSession) -> string {
       + "\"severity\":\"" + severity_text(d.severity) + "\"," 
       + "\"code\":\"" + d.code + "\"," 
       + "\"message\":\"" + d.message + "\"," 
-      + "\"file_id\":" + (d.span.file_id as string) + ","
-      + "\"start\":" + (d.span.start as string) + ","
-      + "\"end\":" + (d.span.end as string)
+      + "\"file_id\":" + file_id_text + ","
+      + "\"start\":" + start_text + ","
+      + "\"end\":" + end_text
       + "}";
     set i = i + 1;
   }

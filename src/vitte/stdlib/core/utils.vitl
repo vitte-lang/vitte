@@ -92,11 +92,9 @@ proc repeat_string(text: string, count: int) -> string {
     let i: int = 0;
 
     while i < count {
-        set out =
-            out + text;
+        set out = out + text;
 
-        set i =
-            i + 1;
+        set i = i + 1;
     }
 
     give out;
@@ -108,16 +106,13 @@ proc join_strings(values: [string], separator: string) -> string {
     let i: int = 0;
 
     while i < values.len {
-        set out =
-            out + values[i];
+        set out = out + values[i];
 
         if i + 1 < values.len {
-            set out =
-                out + separator;
+            set out = out + separator;
         }
 
-        set i =
-            i + 1;
+        set i = i + 1;
     }
 
     give out;
@@ -135,8 +130,7 @@ proc starts_with(text: string, prefix: string) -> bool {
             give false;
         }
 
-        set i =
-            i + 1;
+        set i = i + 1;
     }
 
     give true;
@@ -147,8 +141,7 @@ proc ends_with(text: string, suffix: string) -> bool {
         give false;
     }
 
-    let offset: int =
-        text.len - suffix.len;
+    let offset: int = text.len - suffix.len;
 
     let i: int = 0;
 
@@ -157,8 +150,7 @@ proc ends_with(text: string, suffix: string) -> bool {
             give false;
         }
 
-        set i =
-            i + 1;
+        set i = i + 1;
     }
 
     give true;
@@ -186,16 +178,14 @@ proc contains(text: string, pattern: string) -> bool {
                 break;
             }
 
-            set j =
-                j + 1;
+            set j = j + 1;
         }
 
         if matched {
             give true;
         }
 
-        set i =
-            i + 1;
+        set i = i + 1;
     }
 
     give false;
@@ -204,15 +194,14 @@ proc contains(text: string, pattern: string) -> bool {
 proc reverse_string(text: string) -> string {
     let out: string = "";
 
-    let i: int =
-        text.len - 1;
+    let i: int = text.len - 1;
 
     while i >= 0 {
-        set out =
-            out + ((text[i] as int) as string);
+        let ch_code: int = text[i] as i32;
+        let ch_text: string = ch_code as string;
+        set out = out + ch_text;
 
-        set i =
-            i - 1;
+        set i = i - 1;
     }
 
     give out;
@@ -226,27 +215,22 @@ proc split_lines(text: string) -> [string] {
     let i: int = 0;
 
     while i < text.len {
-        let ch: string =
-            ((text[i] as int) as string);
+        let ch_code: int = text[i] as i32;
+        let ch: string = ch_code as string;
 
         if ch == "\n" {
-            set out =
-                out + [current];
+            set out = out + [current];
 
-            set current =
-                "";
+            set current = "";
         } else {
-            set current =
-                current + ch;
+            set current = current + ch;
         }
 
-        set i =
-            i + 1;
+        set i = i + 1;
     }
 
     if current != "" {
-        set out =
-            out + [current];
+        set out = out + [current];
     }
 
     give out;
@@ -258,16 +242,14 @@ proc trim_spaces(text: string) -> string {
     let i: int = 0;
 
     while i < text.len {
-        let ch: string =
-            ((text[i] as int) as string);
+        let ch_code: int = text[i] as i32;
+        let ch: string = ch_code as string;
 
         if ch != " " {
-            set out =
-                out + ch;
+            set out = out + ch;
         }
 
-        set i =
-            i + 1;
+        set i = i + 1;
     }
 
     give out;
@@ -293,16 +275,14 @@ proc count_char(text: string, target: string) -> int {
     let i: int = 0;
 
     while i < text.len {
-        let ch: string =
-            ((text[i] as int) as string);
+        let ch_code: int = text[i] as i32;
+        let ch: string = ch_code as string;
 
         if ch == target {
-            set total =
-                total + 1;
+            set total = total + 1;
         }
 
-        set i =
-            i + 1;
+        set i = i + 1;
     }
 
     give total;
@@ -314,30 +294,24 @@ proc unique_strings(values: [string]) -> [string] {
     let i: int = 0;
 
     while i < values.len {
-        if not contains(
-            join_strings(out, ","),
-            values[i]
-        ) {
-            set out =
-                out + [values[i]];
+        let joined: string = join_strings(out, ",");
+        let present: bool = contains(joined, values[i]);
+        if not present {
+            set out = out + [values[i]];
         }
 
-        set i =
-            i + 1;
+        set i = i + 1;
     }
 
     give out;
 }
 
 proc utils_selftest() -> bool {
-    let r: Range =
-        range(0, 10);
+    let r: Range = range(0, 10);
 
-    let p: Pair[string, int] =
-        pair("age", 42);
+    let p: Pair[string, int] = pair("age", 42);
 
-    let c: ClampResult =
-        clamp(99, 0, 10);
+    let c: ClampResult = clamp(99, 0, 10);
 
     give r.start == 0
         and r.end == 10

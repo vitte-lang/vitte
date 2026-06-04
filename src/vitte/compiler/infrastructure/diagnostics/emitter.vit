@@ -123,11 +123,13 @@ proc diagnostic_level_name(level: DiagnosticLevel) -> string {
 }
 
 proc render_location(location: DiagnosticLocation) -> string {
+    let line_text: string = location.line as string;
+    let column_text: string = location.column as string;
     give location.file
         + ":"
-        + (location.line as string)
+        + line_text
         + ":"
-        + (location.column as string);
+        + column_text;
 }
 
 proc render_label(label: DiagnosticLabel) -> string {
@@ -137,10 +139,7 @@ proc render_label(label: DiagnosticLabel) -> string {
 }
 
 proc render_header(diag: DiagnosticMessage) -> string {
-    let prefix: string =
-        diagnostic_level_name(
-            diag.level
-        );
+    let prefix: string = diagnostic_level_name(diag.level);
 
     give prefix
         + "["
@@ -151,8 +150,7 @@ proc render_header(diag: DiagnosticMessage) -> string {
 }
 
 proc render_header_colored(diag: DiagnosticMessage) -> string {
-    let header: string =
-        render_header(diag);
+    let header: string = render_header(diag);
 
     if diag.level == DiagnosticLevel.Error {
         give apply_error(header);
@@ -174,21 +172,17 @@ proc render_header_colored(diag: DiagnosticMessage) -> string {
 }
 
 proc add_label(diag: DiagnosticMessage, label: DiagnosticLabel) -> DiagnosticMessage {
-    let out: DiagnosticMessage =
-        diag;
+    let out: DiagnosticMessage = diag;
 
-    set out.labels =
-        out.labels + [label];
+    set out.labels = out.labels + [label];
 
     give out;
 }
 
 proc add_note(diag: DiagnosticMessage, note: string) -> DiagnosticMessage {
-    let out: DiagnosticMessage =
-        diag;
+    let out: DiagnosticMessage = diag;
 
-    set out.notes =
-        out.notes + [note];
+    set out.notes = out.notes + [note];
 
     give out;
 }
@@ -199,18 +193,13 @@ proc render_notes(notes: [string]) -> string {
     let i: u64 = 0;
 
     while i < len(notes) {
-        set out =
-            out
-            + "note: "
-            + notes[i];
+        set out = out + "note: " + notes[i];
 
         if i + 1 < len(notes) {
-            set out =
-                out + "\n";
+            set out = out + "\n";
         }
 
-        set i =
-            i + 1;
+        set i = i + 1;
     }
 
     give out;
@@ -222,16 +211,13 @@ proc render_labels(labels: [DiagnosticLabel]) -> string {
     let i: u64 = 0;
 
     while i < len(labels) {
-        set out =
-            out + render_label(labels[i]);
+        set out = out + render_label(labels[i]);
 
         if i + 1 < len(labels) {
-            set out =
-                out + "\n";
+            set out = out + "\n";
         }
 
-        set i =
-            i + 1;
+        set i = i + 1;
     }
 
     give out;
@@ -241,29 +227,17 @@ proc emit(diag: DiagnosticMessage, options: EmitterOptions) -> EmitResult {
     let rendered: string = "";
 
     if options.use_colors {
-        set rendered =
-            render_header_colored(diag);
+        set rendered = render_header_colored(diag);
     } else {
-        set rendered =
-            render_header(diag);
+        set rendered = render_header(diag);
     }
 
-    if options.show_location
-        and len(diag.labels) > 0 {
-
-        set rendered =
-            rendered
-            + "\n"
-            + render_labels(diag.labels);
+    if options.show_location and len(diag.labels) > 0 {
+        set rendered = rendered + "\n" + render_labels(diag.labels);
     }
 
-    if options.show_notes
-        and len(diag.notes) > 0 {
-
-        set rendered =
-            rendered
-            + "\n"
-            + render_notes(diag.notes);
+    if options.show_notes and len(diag.notes) > 0 {
+        set rendered = rendered + "\n" + render_notes(diag.notes);
     }
 
     give emit_result(
@@ -283,13 +257,12 @@ proc count_lines(text: string) -> u64 {
     let i: u64 = 0;
 
     while i < len(text) {
-        if text[i] == '\n' {
-            set count =
-                count + 1;
+        let ch: string = slice(text, i, i + 1);
+        if ch == "\n" {
+            set count = count + 1;
         }
 
-        set i =
-            i + 1;
+        set i = i + 1;
     }
 
     give count;
@@ -341,67 +314,25 @@ proc diagnostic_info(code: string, message: string) -> DiagnosticMessage {
 }
 
 proc emit_plain(diag: DiagnosticMessage) -> string {
-    let result: EmitResult =
-        emit(
-            diag,
-            emitter_options(
-                false,
-                true,
-                true
-            )
-        );
+    let result: EmitResult = emit(diag, emitter_options(false, true, true));
 
     give result.rendered;
 }
 
 proc emit_colored(diag: DiagnosticMessage) -> string {
-    let result: EmitResult =
-        emit(
-            diag,
-            default_emitter_options()
-        );
+    let result: EmitResult = emit(diag, default_emitter_options());
 
     give result.rendered;
 }
 
 proc emitter_selftest() -> bool {
-    let diag: DiagnosticMessage =
-        add_note(
-            add_label(
-                diagnostic_error(
-                    "E0001",
-                    "unexpected token"
-                ),
-                diagnostic_label(
-                    "expected expression",
-                    diagnostic_location(
-                        "main.vit",
-                        10,
-                        5
-                    )
-                )
-            ),
-            "parser recovery applied"
-        );
-
-    let result: EmitResult =
-        emit(
-            diag,
-            default_emitter_options()
-        );
+    let diag: DiagnosticMessage = add_note(add_label(diagnostic_error("E0001", "unexpected token"), diagnostic_label("expected expression", diagnostic_location("main.vit", 10, 5))), "parser recovery applied");
+    let result: EmitResult = emit(diag, default_emitter_options());
+    let location_text: string = render_location(diagnostic_location("main.vit", 1, 1));
 
     give result.line_count >= 2
         and result.has_colors
-        and strip_ansi(result.rendered)
-            != ""
-        and render_location(
-            diagnostic_location(
-                "main.vit",
-                1,
-                1
-            )
-        ) == "main.vit:1:1"
-        and diagnostic_level_name(
-            DiagnosticLevel.Error
-        ) == "error";
+        and strip_ansi(result.rendered) != ""
+        and location_text == "main.vit:1:1"
+        and diagnostic_level_name(DiagnosticLevel.Error) == "error";
 }

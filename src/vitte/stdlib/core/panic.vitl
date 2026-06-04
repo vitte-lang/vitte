@@ -185,10 +185,7 @@ proc panic_message(result: PanicResult) -> string {
 
 proc add_frame(data: PanicData, frame: PanicFrame) -> PanicData {
     let out: PanicData = data;
-
-    set out.stacktrace =
-        out.stacktrace + [frame];
-
+    set out.stacktrace = out.stacktrace + [frame];
     give out;
 }
 
@@ -261,11 +258,9 @@ proc panic_level_name(level: PanicLevel) -> string {
 }
 
 proc format_location(location: PanicLocation) -> string {
-    give location.file
-        + ":"
-        + (location.line as string)
-        + ":"
-        + (location.column as string);
+    let line_text: string = location.line as string;
+    let column_text: string = location.column as string;
+    give location.file + ":" + line_text + ":" + column_text;
 }
 
 proc format_frame(frame: PanicFrame) -> string {
@@ -282,13 +277,10 @@ proc format_stacktrace(frames: [PanicFrame]) -> string {
     let i: int = 0;
 
     while i < frames.len {
-        set out =
-            out
-            + format_frame(frames[i]);
+        set out = out + format_frame(frames[i]);
 
         if i + 1 < frames.len {
-            set out =
-                out + "\n";
+            set out = out + "\n";
         }
 
         set i = i + 1;
@@ -298,15 +290,9 @@ proc format_stacktrace(frames: [PanicFrame]) -> string {
 }
 
 proc format_panic(data: PanicData) -> string {
-    let header: string =
-        panic_level_name(data.level)
-        + ": "
-        + data.message;
+    let header: string = panic_level_name(data.level) + ": " + data.message;
 
-    let location: string =
-        format_location(
-            data.location
-        );
+    let location: string = format_location(data.location);
 
     if data.stacktrace.len == 0 {
         give header
@@ -324,37 +310,10 @@ proc format_panic(data: PanicData) -> string {
 }
 
 proc panic_selftest() -> bool {
-    let ok: PanicResult =
-        assert(
-            true,
-            "ok"
-        );
-
-    let warn: PanicResult =
-        warning(
-            "warning"
-        );
-
-    let data: PanicData =
-        build_fatal(
-            "fatal",
-            "main.vit",
-            10,
-            4
-        );
-
-    let traced: PanicData =
-        add_frame(
-            data,
-            panic_frame(
-                "main",
-                panic_location(
-                    "main.vit",
-                    10,
-                    4
-                )
-            )
-        );
+    let ok: PanicResult = assert(true, "ok");
+    let warn: PanicResult = warning("warning");
+    let data: PanicData = build_fatal("fatal", "main.vit", 10, 4);
+    let traced: PanicData = add_frame(data, panic_frame("main", panic_location("main.vit", 10, 4)));
 
     give not panic_triggered(ok)
         and panic_triggered(warn)

@@ -129,35 +129,60 @@ proc dataflow_result(function_name: string, direction: DataflowDirection) -> Dat
   }
 }
 
+proc mir_dataflow_eq() -> string {
+  give slice("a=b", 1, 2)
+}
+
 proc direction_name(direction: DataflowDirection) -> string {
-  if direction == DataflowDirection.Forward { give "forward" }
-  elif direction == DataflowDirection.Backward { give "backward" }
+  if direction == DataflowDirection.Forward {
+    give "forward"
+  } elif direction == DataflowDirection.Backward {
+    give "backward"
+  }
 
   give "unknown"
 }
 
 proc state_name(state: DataflowStateKind) -> string {
-  if state == DataflowStateKind.Unknown { give "unknown" }
-  elif state == DataflowStateKind.Uninitialized { give "uninitialized" }
-  elif state == DataflowStateKind.Initialized { give "initialized" }
-  elif state == DataflowStateKind.Moved { give "moved" }
-  elif state == DataflowStateKind.BorrowedShared { give "borrowed-shared" }
-  elif state == DataflowStateKind.BorrowedMut { give "borrowed-mut" }
-  elif state == DataflowStateKind.Dropped { give "dropped" }
-  elif state == DataflowStateKind.Invalid { give "invalid" }
+  if state == DataflowStateKind.Unknown {
+    give "unknown"
+  } elif state == DataflowStateKind.Uninitialized {
+    give "uninitialized"
+  } elif state == DataflowStateKind.Initialized {
+    give "initialized"
+  } elif state == DataflowStateKind.Moved {
+    give "moved"
+  } elif state == DataflowStateKind.BorrowedShared {
+    give "borrowed-shared"
+  } elif state == DataflowStateKind.BorrowedMut {
+    give "borrowed-mut"
+  } elif state == DataflowStateKind.Dropped {
+    give "dropped"
+  } elif state == DataflowStateKind.Invalid {
+    give "invalid"
+  }
 
   give "unknown"
 }
 
 proc fact_kind_name(kind: DataflowFactKind) -> string {
-  if kind == DataflowFactKind.Definition { give "definition" }
-  elif kind == DataflowFactKind.Use { give "use" }
-  elif kind == DataflowFactKind.Kill { give "kill" }
-  elif kind == DataflowFactKind.Borrow { give "borrow" }
-  elif kind == DataflowFactKind.Move { give "move" }
-  elif kind == DataflowFactKind.Drop { give "drop" }
-  elif kind == DataflowFactKind.Reachability { give "reachability" }
-  elif kind == DataflowFactKind.Liveness { give "liveness" }
+  if kind == DataflowFactKind.Definition {
+    give "definition"
+  } elif kind == DataflowFactKind.Use {
+    give "use"
+  } elif kind == DataflowFactKind.Kill {
+    give "kill"
+  } elif kind == DataflowFactKind.Borrow {
+    give "borrow"
+  } elif kind == DataflowFactKind.Move {
+    give "move"
+  } elif kind == DataflowFactKind.Drop {
+    give "drop"
+  } elif kind == DataflowFactKind.Reachability {
+    give "reachability"
+  } elif kind == DataflowFactKind.Liveness {
+    give "liveness"
+  }
 
   give "unknown"
 }
@@ -198,52 +223,18 @@ proc statement_facts(block_id: u64, stmt: MirStatement) -> [DataflowFact] {
   let facts: [DataflowFact] = []
 
   if stmt.place.valid {
-    set facts =
-      append_fact(
-        facts,
-        dataflow_fact(
-          DataflowFactKind.Definition,
-          block_id,
-          stmt.id,
-          place_value(stmt.place),
-          stmt.valid
-        )
-      )
+    set facts = append_fact(facts, dataflow_fact(DataflowFactKind.Definition, block_id, stmt.id, place_value(stmt.place), stmt.valid))
   }
 
   let i: u64 = 0
 
   while i < len(stmt.rvalue.operands) {
-    set facts =
-      append_fact(
-        facts,
-        dataflow_fact(
-          DataflowFactKind.Use,
-          block_id,
-          stmt.id,
-          operand_value(
-            stmt.rvalue.operands[i]
-          ),
-          stmt.valid
-        )
-      )
-
-    set i =
-      i + 1
+    set facts = append_fact(facts, dataflow_fact(DataflowFactKind.Use, block_id, stmt.id, operand_value(stmt.rvalue.operands[i]), stmt.valid))
+    set i = i + 1
   }
 
   if stmt.kind == MirStatementKind.Drop {
-    set facts =
-      append_fact(
-        facts,
-        dataflow_fact(
-          DataflowFactKind.Drop,
-          block_id,
-          stmt.id,
-          place_value(stmt.place),
-          stmt.valid
-        )
-      )
+    set facts = append_fact(facts, dataflow_fact(DataflowFactKind.Drop, block_id, stmt.id, place_value(stmt.place), stmt.valid))
   }
 
   give facts
@@ -253,50 +244,25 @@ proc terminator_facts(block_id: u64, term: MirTerminator) -> [DataflowFact] {
   let facts: [DataflowFact] = []
 
   if term.kind == MirTerminatorKind.Branch {
-    set facts =
-      append_fact(
-        facts,
-        dataflow_fact(
-          DataflowFactKind.Reachability,
-          block_id,
-          0,
-          operand_value(term.condition),
-          term.valid
-        )
-      )
+    set facts = append_fact(facts, dataflow_fact(DataflowFactKind.Reachability, block_id, 0, operand_value(term.condition), term.valid))
   }
 
   give facts
 }
 
 proc analyze_block(block: MirBlock) -> DataflowBlockState {
-  let state: DataflowBlockState =
-    dataflow_block_state(
-      block.id
-    )
+  let state: DataflowBlockState = dataflow_block_state(block.id)
 
   let out_facts: [DataflowFact] = []
 
   let i: u64 = 0
 
   while i < len(block.statements) {
-    set out_facts =
-      out_facts
-      + statement_facts(
-          block.id,
-          block.statements[i]
-        )
-
-    set i =
-      i + 1
+    set out_facts = out_facts + statement_facts(block.id, block.statements[i])
+    set i = i + 1
   }
 
-  set out_facts =
-    out_facts
-    + terminator_facts(
-        block.id,
-        block.terminator
-      )
+  set out_facts = out_facts + terminator_facts(block.id, block.terminator)
 
   give DataflowBlockState {
     block_id: block.id,
@@ -320,38 +286,16 @@ proc append_block_state(result: DataflowResult, state: DataflowBlockState) -> Da
 }
 
 proc analyze_function(function0: MirFunction, direction: DataflowDirection) -> DataflowResult {
-  let result0: DataflowResult =
-    dataflow_result(
-      function0.name,
-      direction
-    )
-
-  let result1: DataflowResult =
-    DataflowResult {
-      function_name: result0.function_name,
-      direction: result0.direction,
-      blocks: result0.blocks,
-      iteration_count: 1,
-      converged: false,
-      valid: result0.valid
-    }
+  let result0: DataflowResult = dataflow_result(function0.name, direction)
+  let result1: DataflowResult = DataflowResult { function_name: result0.function_name, direction: result0.direction, blocks: result0.blocks, iteration_count: 1, converged: false, valid: result0.valid }
 
   let i: u64 = 0
 
-  let out: DataflowResult =
-    result1
+  let out: DataflowResult = result1
 
   while i < len(function0.blocks) {
-    set out =
-      append_block_state(
-        out,
-        analyze_block(
-          function0.blocks[i]
-        )
-      )
-
-    set i =
-      i + 1
+    set out = append_block_state(out, analyze_block(function0.blocks[i]))
+    set i = i + 1
   }
 
   give DataflowResult {
@@ -374,33 +318,25 @@ proc build_summary(result: DataflowResult) -> DataflowSummary {
   let i: u64 = 0
 
   while i < len(result.blocks) {
-    let block: DataflowBlockState =
-      result.blocks[i]
+    let block: DataflowBlockState = result.blocks[i]
 
-    set fact_count =
-      fact_count
-      + len(block.in_facts)
-      + len(block.out_facts)
+    set fact_count = fact_count + len(block.in_facts) + len(block.out_facts)
 
     if block.reachable {
-      set reachable_blocks =
-        reachable_blocks + 1
+      set reachable_blocks = reachable_blocks + 1
     }
 
     let j: u64 = 0
 
     while j < len(block.out_facts) {
       if block.out_facts[j].value.live {
-        set live_values =
-          live_values + 1
+        set live_values = live_values + 1
       }
 
-      set j =
-        j + 1
+      set j = j + 1
     }
 
-    set i =
-      i + 1
+    set i = i + 1
   }
 
   give DataflowSummary {
@@ -424,90 +360,31 @@ proc analyze_mir(unit: MirUnit) -> [DataflowResult] {
   let i: u64 = 0
 
   while i < len(unit.module.functions) {
-    set results =
-      results + [
-        analyze_function(
-          unit.module.functions[i],
-          DataflowDirection.Forward
-        )
-      ]
-
-    set i =
-      i + 1
+    set results = results + [analyze_function(unit.module.functions[i], DataflowDirection.Forward)]
+    set i = i + 1
   }
 
   give results
 }
 
 proc summary_string(summary: DataflowSummary) -> string {
-  give "blocks="
-    + (summary.block_count as string)
-    + " facts="
-    + (summary.fact_count as string)
-    + " reachable="
-    + (summary.reachable_blocks as string)
-    + " live="
-    + (summary.live_values as string)
-    + " iterations="
-    + (summary.iteration_count as string)
-    + " converged="
-    + (summary.converged as string)
-    + " valid="
-    + (summary.valid as string)
+  let block_count: string = summary.block_count as string
+  let fact_count: string = summary.fact_count as string
+  let reachable_count: string = summary.reachable_blocks as string
+  let live_count: string = summary.live_values as string
+  let iteration_count: string = summary.iteration_count as string
+  let converged_text: string = summary.converged as string
+  let valid_text: string = summary.valid as string
+  let eq: string = mir_dataflow_eq()
+  give "blocks" + eq + block_count + " facts" + eq + fact_count + " reachable" + eq + reachable_count + " live" + eq + live_count + " iterations" + eq + iteration_count + " converged" + eq + converged_text + " valid" + eq + valid_text
 }
 
 proc dataflow_selftest() -> bool {
-  let stmt: MirStatement =
-    MirStatement {
-      id: 1,
-      span: ast_span_empty(),
-      kind: MirStatementKind.Assign,
-      place: MirPlace {
-        local: "x",
-        projection: "",
-        valid: true
-      },
-      rvalue: MirRvalue {
-        kind: MirRvalueKind.Use,
-        text: "42",
-        operator: "",
-        operands: [
-          MirOperand {
-            text: "42",
-            place: mir_place_empty(),
-            valid: true
-          }
-        ],
-        valid: true
-      },
-      valid: true
-    }
-
-  let block: MirBlock =
-    MirBlock {
-      id: 1,
-      statements: [stmt],
-      terminator: mir_terminator_return(),
-      valid: true
-    }
-
-  let function0: MirFunction =
-    MirFunction {
-      id: 1,
-      name: "main",
-      entry_block: 1,
-      blocks: [block],
-      valid: true
-    }
-
-  let result: DataflowResult =
-    analyze_function(
-      function0,
-      DataflowDirection.Forward
-    )
-
-  let summary: DataflowSummary =
-    build_summary(result)
+  let stmt: MirStatement = MirStatement { id: 1, span: ast_span_empty(), kind: MirStatementKind.Assign, place: MirPlace { local: "x", projection: "", valid: true }, rvalue: MirRvalue { kind: MirRvalueKind.Use, text: "42", operator: "", operands: [MirOperand { text: "42", place: mir_place_empty(), valid: true }], valid: true }, valid: true }
+  let block: MirBlock = MirBlock { id: 1, statements: [stmt], terminator: mir_terminator_return(), valid: true }
+  let function0: MirFunction = MirFunction { id: 1, name: "main", entry_block: 1, blocks: [block], valid: true }
+  let result: DataflowResult = analyze_function(function0, DataflowDirection.Forward)
+  let summary: DataflowSummary = build_summary(result)
 
   give result.valid
     and result.converged

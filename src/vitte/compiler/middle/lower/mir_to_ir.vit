@@ -170,7 +170,9 @@ proc ir_terminator_from_mir(term: MirTerminator) -> IrInstruction {
 }
 
 proc lower_mir_block(block: MirBlock, function_name: string) -> IrBlock {
-    let ir_block: IrBlock = block_create(block.id, function_name + "_bb" + (block.id as string));
+    let block_id_text: string = block.id as string;
+    let block_name: string = function_name + "_bb" + block_id_text;
+    let ir_block: IrBlock = block_create(block.id, block_name);
     let i: u64 = 0;
     let built: IrBlock = ir_block;
     while i < len(block.statements) {
@@ -213,17 +215,17 @@ proc lower_mir_as_ir_module(module_id: u64, module_name: string, source_path: st
         set built = module_add_import(built, imported_names[i]);
         set i = i + 1;
     }
-    i = 0;
+    set i = 0;
     while i < len(mir.module.functions) {
         set built = module_add_function(built, lower_mir_function(module_name, mir.module.functions[i], exported_names));
         set i = i + 1;
     }
-    i = 0;
+    set i = 0;
     while i < len(external_symbol_names) {
         set built = module_add_external_symbol(built, external_symbol_names[i]);
         set i = i + 1;
     }
-    i = 0;
+    set i = 0;
     while i < len(exported_names) {
         set built = module_add_export(built, exported_names[i]);
         set i = i + 1;
