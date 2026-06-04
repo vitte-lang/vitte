@@ -34,10 +34,13 @@ expected_compiler_root="src/vitte/compiler"
 expected_compiler_entry="src/vitte/compiler/main.vit"
 stage_sources="toolchain/stage1/src/main.vit toolchain/stage2/src/main.vit"
 audit_errors=0
+runtime_bridge_dir="$ROOT_DIR/src/vitte/compiler/backends/runtime_c"
+stage2_bridge_sidecar="$ROOT_DIR/target/bootstrap/stage2/vittec.bootstrap-bridge"
 
 legacy_source_files=$(
   find "$ROOT_DIR" \
     -path "$ROOT_DIR/.git" -prune -o \
+    -path "$ROOT_DIR/.pkgstage" -prune -o \
     -path "$ROOT_DIR/bin" -prune -o \
     -path "$ROOT_DIR/build" -prune -o \
     -path "$ROOT_DIR/target" -prune -o \
@@ -45,6 +48,11 @@ legacy_source_files=$(
   | sort
 )
 
+runtime_bridge_files=$(printf '%s\n' "$legacy_source_files" | awk -v dir="$runtime_bridge_dir/" 'index($0, dir) == 1')
+legacy_non_runtime_files=$(printf '%s\n' "$legacy_source_files" | awk -v dir="$runtime_bridge_dir/" 'index($0, dir) != 1')
+
+runtime_bridge_count=$(printf '%s\n' "$runtime_bridge_files" | sed '/^$/d' | wc -l | tr -d ' ')
+legacy_non_runtime_count=$(printf '%s\n' "$legacy_non_runtime_files" | sed '/^$/d' | wc -l | tr -d ' ')
 legacy_source_count=$(printf '%s\n' "$legacy_source_files" | sed '/^$/d' | wc -l | tr -d ' ')
 compiler_vitte_files=$(count_files '*.vit' $compiler_dirs)
 compiler_vitl_files=$(count_files '*.vitl' $compiler_dirs)
@@ -54,6 +62,8 @@ printf '==================\n'
 printf 'Status: '
 if [ "$legacy_source_count" -eq 0 ]; then
   printf 'workspace source is Vitte-only\n'
+elif [ "$legacy_non_runtime_count" -eq 0 ]; then
+  printf 'runtime bridge sources still remain\n'
 else
   printf 'legacy host sources still remain\n'
 fi
@@ -61,6 +71,16 @@ fi
 printf '\nLegacy source files: %s\n' "$legacy_source_count"
 if [ "$legacy_source_count" -ne 0 ]; then
   printf '%s\n' "$legacy_source_files"
+fi
+
+if [ "$runtime_bridge_count" -ne 0 ]; then
+  printf '\nRuntime bridge sources: %s\n' "$runtime_bridge_count"
+  printf '%s\n' "$runtime_bridge_files"
+fi
+
+if [ "$legacy_non_runtime_count" -ne 0 ]; then
+  printf '\nNon-runtime legacy host sources: %s\n' "$legacy_non_runtime_count"
+  printf '%s\n' "$legacy_non_runtime_files"
 fi
 
 printf 'Vitte compiler surface: %s .vit / %s .vitl\n' \
@@ -82,6 +102,13 @@ for stage_src in $stage_sources; do
     audit_errors=1
   fi
 done
+
+if [ -f "$stage2_bridge_sidecar" ]; then
+  bridge_src=$(awk -F= '/^src=/ { print $2; exit }' "$stage2_bridge_sidecar")
+  printf '\nActive stage2 bridge artifact:\n'
+  printf '  %s\n' "${stage2_bridge_sidecar#$ROOT_DIR/}"
+  printf '  src=%s\n' "${bridge_src:-<unknown>}"
+fi
 
 if [ ! -d "$expected_compiler_root" ]; then
   printf '\n[error] missing compiler source root: %s\n' "$expected_compiler_root"

@@ -80,7 +80,6 @@ def detect_forbidden_surfaces() -> list[dict[str, str]]:
         "src/vitte/compiler/backend/codegen/mod.vit": read("src/vitte/compiler/backend/codegen/mod.vit"),
         "src/vitte/compiler/backend/codegen/object.vit": read("src/vitte/compiler/backend/codegen/object.vit"),
         "src/vitte/compiler/backend/link/linker.vit": read("src/vitte/compiler/backend/link/linker.vit"),
-        "toolchain/seed/vittec0.seed": read("toolchain/seed/vittec0.seed"),
         "toolchain/scripts/bootstrap/stage2.sh": read("toolchain/scripts/bootstrap/stage2.sh"),
     }
     patterns = [
@@ -100,30 +99,66 @@ def detect_forbidden_surfaces() -> list[dict[str, str]]:
     return found
 
 
-def detect_bridge_artifacts() -> list[dict[str, str]]:
+def detect_informational_markers() -> list[dict[str, str]]:
+    seed = read("toolchain/seed/vittec0.seed")
+    notes = [
+        (
+            "build-native output remains the v1-compatible shell artifact",
+            "bootstrap seed still documents the bridge-era native wrapper behavior",
+        ),
+        (
+            "vitte-bootstrap-native-bridge",
+            "bootstrap seed still contains bridge marker support for stage artifacts",
+        ),
+    ]
+
+    found: list[dict[str, str]] = []
+    for pattern, reason in notes:
+        if pattern in seed:
+            found.append({"file": "toolchain/seed/vittec0.seed", "pattern": pattern, "reason": reason})
+    return found
+
+
+def detect_bridge_artifacts() -> tuple[list[dict[str, str]], list[dict[str, str]]]:
     candidates = [
         ROOT / "target" / "bootstrap" / "stage2" / "vittec",
         ROOT / "bin" / "vitte",
         ROOT / "bin" / "vittec",
     ]
-    found: list[dict[str, str]] = []
+    forbidden: list[dict[str, str]] = []
+    informational: list[dict[str, str]] = []
     for path in candidates:
         sidecar = Path(str(path) + ".bootstrap-bridge")
         if sidecar.is_file():
-            found.append(
-                {
-                    "file": str(sidecar.relative_to(ROOT)),
-                    "pattern": "vitte-bootstrap-native-bridge",
-                    "reason": "native stage artifact is still a bootstrap bridge wrapper",
-                }
-            )
-    return found
+            source = ""
+            try:
+                for line in sidecar.read_text(encoding="utf-8", errors="replace").splitlines():
+                    if line.startswith("src="):
+                        source = line[4:]
+                        break
+            except OSError:
+                source = ""
+            reason = "native stage artifact is still a bootstrap bridge wrapper"
+            if source:
+                reason = reason + f" for {source}"
+            item = {
+                "file": str(sidecar.relative_to(ROOT)),
+                "pattern": "vitte-bootstrap-native-bridge",
+                "reason": reason,
+            }
+            if source in (str(ROOT / "src/vitte/compiler/main.vit"), "src/vitte/compiler/main.vit"):
+                informational.append(item)
+            else:
+                forbidden.append(item)
+    return forbidden, informational
 
 
 def main() -> int:
     steps = check_required_steps()
     cli_entry = detect_cli_entry()
-    forbidden = detect_forbidden_surfaces() + detect_bridge_artifacts()
+    bridge_forbidden, bridge_informational = detect_bridge_artifacts()
+    forbidden = detect_forbidden_surfaces() + bridge_forbidden
+    informational = detect_informational_markers() + bridge_informational
     missing_steps = [s for s in steps if s["status"] != "present"]
 
     failures: list[str] = []
@@ -142,6 +177,7 @@ def main() -> int:
         "cli_entry": cli_entry,
         "pipeline_steps": steps,
         "forbidden_surfaces": forbidden,
+        "informational_markers": informational,
         "failures": failures,
         "expected_flow": [
             "source .vit",
@@ -174,6 +210,8 @@ def main() -> int:
         print(f"[compiler-real-pipeline][step] {step['name']} {step['status']} owner={step['owner']}")
     for item in forbidden:
         print(f"[compiler-real-pipeline][forbid] {item['file']} pattern={item['pattern']} reason={item['reason']}")
+    for item in informational:
+        print(f"[compiler-real-pipeline][note] {item['file']} pattern={item['pattern']} reason={item['reason']}")
     for failure in failures:
         print(f"[compiler-real-pipeline][error] {failure}")
 

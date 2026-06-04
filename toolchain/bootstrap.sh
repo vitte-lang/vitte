@@ -186,6 +186,48 @@ prepare_build_directory() {
   log_success "Build directory prepared"
 }
 
+patch_generated_script() {
+  local script_path="$1"
+  if ! [ -f "$script_path" ]; then
+    return 0
+  fi
+
+  awk '
+    BEGIN {
+      normalized = 0
+      pending = 0
+      blank_count = 0
+    }
+    /^# --- shell-runtime-body ---$/ && normalized == 0 {
+      print
+      pending = 1
+      next
+    }
+    pending == 1 && $0 == "" {
+      blank_count++
+      next
+    }
+    pending == 1 {
+      for (i = 0; i < 5; i++) {
+        print ""
+      }
+      pending = 0
+      normalized = 1
+    }
+    {
+      print
+    }
+    END {
+      if (pending == 1) {
+        for (i = 0; i < 5; i++) {
+          print ""
+        }
+      }
+    }
+  ' "$script_path" > "$script_path.tmp" && mv "$script_path.tmp" "$script_path"
+  chmod +x "$script_path"
+}
+
 run_bootstrap_stages() {
   local mode="$1"
   
@@ -220,8 +262,7 @@ run_bootstrap_stages() {
     log_error "Failed to generate shell script for stage1"
     return 1
   fi
-  # Fix common script issues
-  sed -i 's/trace_pipeline/${trace_pipeline:-0}/g' "$BUILD_DIR/vittec1" || true
+  patch_generated_script "$BUILD_DIR/vittec1"
   
   # Stage 2: Second self-hosted compilation
   log_info "Stage 2: Second self-hosted compilation..."
@@ -229,8 +270,7 @@ run_bootstrap_stages() {
     log_error "Failed to generate shell script for stage2"
     return 1
   fi
-  # Fix common script issues
-  sed -i 's/trace_pipeline/${trace_pipeline:-0}/g' "$BUILD_DIR/vittec2" || true
+  patch_generated_script "$BUILD_DIR/vittec2"
   
   # Stage 3: Third self-hosted compilation
   log_info "Stage 3: Third self-hosted compilation..."
@@ -238,8 +278,7 @@ run_bootstrap_stages() {
     log_error "Failed to generate shell script for stage3"
     return 1
   fi
-  # Fix common script issues
-  sed -i 's/trace_pipeline/${trace_pipeline:-0}/g' "$BUILD_DIR/vittec3" || true
+  patch_generated_script "$BUILD_DIR/vittec3"
 
   # Stage 4: Fourth self-hosted compilation placeholder
   log_info "Stage 4: Fourth self-hosted compilation..."
@@ -247,7 +286,7 @@ run_bootstrap_stages() {
     log_error "Failed to generate shell script for stage4"
     return 1
   fi
-  sed -i 's/trace_pipeline/${trace_pipeline:-0}/g' "$BUILD_DIR/vittec4" || true
+  patch_generated_script "$BUILD_DIR/vittec4"
   
   # Verification: Compare stage2 and stage3
   log_info "Verification: Comparing binary outputs..."

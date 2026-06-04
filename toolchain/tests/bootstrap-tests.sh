@@ -18,9 +18,10 @@ TESTS_PASSED=0
 TESTS_FAILED=0
 
 # Configuration
-BOOTSTRAP_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BUILD_DIR="${BOOTSTRAP_ROOT}/build"
-TEST_DIR="${BOOTSTRAP_ROOT}/tests"
+TOOLCHAIN_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PROJECT_ROOT="$(cd "${TOOLCHAIN_ROOT}/.." && pwd)"
+BUILD_DIR="${PROJECT_ROOT}/build"
+TEST_DIR="${TOOLCHAIN_ROOT}/tests"
 LOG_FILE="${BUILD_DIR}/bootstrap-tests.log"
 
 # ============================================================
@@ -30,19 +31,19 @@ LOG_FILE="${BUILD_DIR}/bootstrap-tests.log"
 test_start() {
   local test_name="$1"
   echo -e "${BLUE}▶${NC} Testing: $test_name"
-  ((TESTS_RUN++))
+  ((TESTS_RUN+=1))
 }
 
 test_pass() {
   local message="${1:-Success}"
   echo -e "  ${GREEN}✓${NC} $message"
-  ((TESTS_PASSED++))
+  ((TESTS_PASSED+=1))
 }
 
 test_fail() {
   local message="${1:-Failed}"
   echo -e "  ${RED}✗${NC} $message"
-  ((TESTS_FAILED++))
+  ((TESTS_FAILED+=1))
 }
 
 test_info() {
@@ -234,24 +235,24 @@ test_stage4_executable() {
 # ============================================================
 
 test_binary_reproducibility() {
-  test_start "Binary reproducibility (Stage 1 == Stage 2)"
+  test_start "Binary reproducibility (Stage 2 == Stage 3)"
   
-  if ! [ -f "$BUILD_DIR/vittec1" ] || ! [ -f "$BUILD_DIR/vittec2" ]; then
+  if ! [ -f "$BUILD_DIR/vittec2" ] || ! [ -f "$BUILD_DIR/vittec3" ]; then
     test_info "Skipped: Not all stages built"
     return 0
   fi
   
-  if cmp -s "$BUILD_DIR/vittec1" "$BUILD_DIR/vittec2"; then
-    test_pass "vittec1 and vittec2 are byte-identical"
+  if cmp -s "$BUILD_DIR/vittec2" "$BUILD_DIR/vittec3"; then
+    test_pass "vittec2 and vittec3 are byte-identical"
     return 0
   else
-    test_fail "vittec1 and vittec2 differ (binary mismatch)"
+    test_fail "vittec2 and vittec3 differ (binary mismatch)"
     
     # Get sizes for debugging
-    local size1=$(stat -f%z "$BUILD_DIR/vittec1" 2>/dev/null || stat -c%s "$BUILD_DIR/vittec1")
     local size2=$(stat -f%z "$BUILD_DIR/vittec2" 2>/dev/null || stat -c%s "$BUILD_DIR/vittec2")
-    test_info "vittec1 size: $size1 bytes"
+    local size3=$(stat -f%z "$BUILD_DIR/vittec3" 2>/dev/null || stat -c%s "$BUILD_DIR/vittec3")
     test_info "vittec2 size: $size2 bytes"
+    test_info "vittec3 size: $size3 bytes"
     
     return 1
   fi
@@ -260,22 +261,26 @@ test_binary_reproducibility() {
 test_checksums() {
   test_start "Checksum verification"
   
-  if ! [ -f "$BUILD_DIR/vittec1" ] || ! [ -f "$BUILD_DIR/vittec2" ]; then
+  if ! [ -f "$BUILD_DIR/vittec2" ] || ! [ -f "$BUILD_DIR/vittec3" ]; then
     test_info "Skipped: Not all stages built"
     return 0
   fi
   
-  local sum1=$(sha256sum "$BUILD_DIR/vittec1" | cut -d' ' -f1)
-  local sum2=$(sha256sum "$BUILD_DIR/vittec2" | cut -d' ' -f1)
+  local sha_cmd="sha256sum"
+  if ! command -v "$sha_cmd" >/dev/null 2>&1; then
+    sha_cmd="shasum -a 256"
+  fi
+  local sum2=$(eval "$sha_cmd" "\"$BUILD_DIR/vittec2\"" | cut -d' ' -f1)
+  local sum3=$(eval "$sha_cmd" "\"$BUILD_DIR/vittec3\"" | cut -d' ' -f1)
   
-  if [ "$sum1" = "$sum2" ]; then
+  if [ "$sum2" = "$sum3" ]; then
     test_pass "SHA256 checksums match"
-    test_info "Checksum: $sum1"
+    test_info "Checksum: $sum2"
     return 0
   else
     test_fail "SHA256 checksums differ"
-    test_info "vittec1: $sum1"
     test_info "vittec2: $sum2"
+    test_info "vittec3: $sum3"
     return 1
   fi
 }

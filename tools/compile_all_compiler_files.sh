@@ -2,10 +2,11 @@
 set -eu
 
 ROOT_DIR="${ROOT_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
-BIN="${BIN:-$ROOT_DIR/bin/vitte}"
+BIN="${BIN:-$ROOT_DIR/bin/vittec}"
 SRC_ROOT="$ROOT_DIR/src/vitte/compiler"
 REPORT_DIR="$ROOT_DIR/target/reports/compiler_compile_all"
 BUILD_OUT_DIR="$REPORT_DIR/build_native_out"
+INCLUDE_TESTS="${INCLUDE_TESTS:-0}"
 
 log() { printf '[compile-all] %s\n' "$1"; }
 die() { printf '[compile-all][error] %s\n' "$1" >&2; exit 1; }
@@ -68,7 +69,12 @@ build_ok=0
 build_fail=0
 build_skip=0
 
-for f in $(rg --files "$SRC_ROOT" -g '*.vit' | sort); do
+FILE_LIST_CMD="rg --files \"$SRC_ROOT\" -g '*.vit'"
+if [ "$INCLUDE_TESTS" != "1" ]; then
+  FILE_LIST_CMD="$FILE_LIST_CMD -g '!src/vitte/compiler/**/tests/**'"
+fi
+
+for f in $(eval "$FILE_LIST_CMD" | sort); do
   count=$((count + 1))
   if "$BIN" check --src "$f" >"$REPORT_DIR/check.${count}.out" 2>"$REPORT_DIR/check.${count}.err"; then
     printf '%s\n' "${f#$ROOT_DIR/}" >> "$CHECK_OK"

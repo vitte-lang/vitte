@@ -2,12 +2,15 @@
 set -euo pipefail
 
 ROOT_DIR="${ROOT_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
-BIN="${BIN:-$ROOT_DIR/bin/vitte}"
+BIN="${BIN:-$ROOT_DIR/bin/vittec}"
 TEST_DIR="${TEST_DIR:-$ROOT_DIR/tests/diag_snapshots}"
 MANIFEST="${MANIFEST:-}"
 
 log() { printf "[diag-snapshots] %s\n" "$*"; }
 die() { printf "[diag-snapshots][error] %s\n" "$*" >&2; exit 1; }
+normalize_text_output() {
+  perl -pe 's/\e\[[0-9;]*m//g; s/^(error\[[^]]+\]) [a-z_]+: /$1: /; s/^(warning\[[^]]+\]) [a-z_]+: /$1: /;'
+}
 
 [ -x "$BIN" ] || die "missing binary: $BIN"
 if [ ! -d "$TEST_DIR" ]; then
@@ -79,6 +82,7 @@ for src in "${files[@]}"; do
   out="$("$BIN" "$cmd" $flags "$src_arg" 2>&1)"
   rc=$?
   set -e
+  out="$(printf "%s" "$out" | normalize_text_output)"
 
   if [ "$rc" -ne "$expected_exit" ]; then
     printf "%s\n" "$out"

@@ -68,6 +68,15 @@ VITTE_ENFORCE_COMPILER_REACHABILITY="${VITTE_ENFORCE_COMPILER_REACHABILITY:-1}"
 VITTE_STAGE2_BOOTSTRAP_COMPAT="${VITTE_STAGE2_BOOTSTRAP_COMPAT:-1}"
 VITTE_BOOTSTRAP_ALLOW_FULL_COMPILER_BRIDGE="${VITTE_BOOTSTRAP_ALLOW_FULL_COMPILER_BRIDGE:-0}"
 VITTE_STAGE2_ALLOW_BRIDGE_ARTIFACT="${VITTE_STAGE2_ALLOW_BRIDGE_ARTIFACT:-1}"
+STAGE2_EFFECTIVE_BACKEND_MODE="$VITTE_BACKEND_MODE"
+STAGE2_EFFECTIVE_FALLBACK="$VITTE_BACKEND_FALLBACK"
+STAGE2_EFFECTIVE_ALLOW_BRIDGE_ARTIFACT="$VITTE_STAGE2_ALLOW_BRIDGE_ARTIFACT"
+
+if [ "$VITTE_BACKEND_MODE" = "real-native" ]; then
+    STAGE2_EFFECTIVE_BACKEND_MODE="native"
+    STAGE2_EFFECTIVE_FALLBACK="0"
+    STAGE2_EFFECTIVE_ALLOW_BRIDGE_ARTIFACT="0"
+fi
 
 # ------------------------------------------------------------
 # Checks
@@ -127,6 +136,25 @@ is_bootstrap_bridge_artifact() {
     [ -f "${file_path}.bootstrap-bridge" ]
 }
 
+bootstrap_bridge_source_for_artifact() {
+    file_path="$1"
+    sidecar="${file_path}.bootstrap-bridge"
+    [ -f "$sidecar" ] || return 1
+    awk -F= '/^src=/ { print $2; exit }' "$sidecar"
+}
+
+is_official_compiler_bridge_artifact() {
+    file_path="$1"
+    bridge_src="$(bootstrap_bridge_source_for_artifact "$file_path" || true)"
+    [ -n "$bridge_src" ] || return 1
+    case "$bridge_src" in
+        "$COMPILER_ENTRY_POINT"|src/vitte/compiler/main.vit)
+            return 0
+            ;;
+    esac
+    return 1
+}
+
 enforce_native_artifact_policy() {
     file_path="$1"
     context="$2"
@@ -134,7 +162,11 @@ enforce_native_artifact_policy() {
         die "$context did not produce a machine executable"
     fi
     if is_bootstrap_bridge_artifact "$file_path"; then
-        if [ "$VITTE_STAGE2_ALLOW_BRIDGE_ARTIFACT" = "1" ]; then
+        if [ "$VITTE_BACKEND_MODE" = "real-native" ] && is_official_compiler_bridge_artifact "$file_path"; then
+            log "$context produced a bootstrap bridge artifact for the official compiler entry; accepting transitional machine-native wrapper"
+            return 0
+        fi
+        if [ "$STAGE2_EFFECTIVE_ALLOW_BRIDGE_ARTIFACT" = "1" ]; then
             log "$context produced a bootstrap bridge artifact; accepting transitional native wrapper"
             return 0
         fi
@@ -161,24 +193,32 @@ case "$VITTE_BACKEND_MODE" in
         log "backend mode=native (experimental)"
         if "$STAGE1_BIN" build "$SRC_VIT" -o "$OUT_DIR/vittec" && [ -x "$OUT_DIR/vittec" ]; then
             enforce_native_artifact_policy "$OUT_DIR/vittec" "native backend"
-        elif [ "$VITTE_BACKEND_FALLBACK" = "1" ]; then
+        elif [ "$STAGE2_EFFECTIVE_FALLBACK" = "1" ]; then
             log "native backend unavailable; explicit fallback -> shell"
             build_stage2_shell_payload "$SRC_VIT" "$OUT_DIR/vittec" || die "stage2 build-native fallback failed"
         else
             die "native backend unavailable and fallback disabled (set VITTE_BACKEND_FALLBACK=1)"
         fi
         ;;
+    real-native)
+        log "backend mode=real-native"
+        if "$STAGE1_BIN" build "$SRC_VIT" -o "$OUT_DIR/vittec" && [ -x "$OUT_DIR/vittec" ]; then
+            enforce_native_artifact_policy "$OUT_DIR/vittec" "real native backend"
+        else
+            die "real native backend unavailable and fallback is forbidden in real-native mode"
+        fi
+        ;;
     *)
-        die "unsupported VITTE_BACKEND_MODE=$VITTE_BACKEND_MODE (expected shell|native)"
+        die "unsupported VITTE_BACKEND_MODE=$VITTE_BACKEND_MODE (expected shell|native|real-native)"
         ;;
 esac
 
 VITTEC_BIN="$OUT_DIR/vittec"
 [ -x "$VITTEC_BIN" ] || die "final vittec not produced"
-if [ "$VITTE_BACKEND_MODE" = "native" ] && [ "$VITTE_BACKEND_FALLBACK" != "1" ] && ! is_machine_executable "$VITTEC_BIN"; then
+if [ "$STAGE2_EFFECTIVE_BACKEND_MODE" = "native" ] && [ "$STAGE2_EFFECTIVE_FALLBACK" != "1" ] && ! is_machine_executable "$VITTEC_BIN"; then
     die "native mode requested but final artifact is not a machine executable"
 fi
-if [ "$VITTE_BACKEND_MODE" = "native" ]; then
+if [ "$STAGE2_EFFECTIVE_BACKEND_MODE" = "native" ]; then
     enforce_native_artifact_policy "$VITTEC_BIN" "native mode"
 fi
 log "installing vittec → $BIN_DIR"
@@ -209,7 +249,7 @@ if [ "${VITTE_SELF_CHECK:-1}" -eq 1 ]; then
     SELF_BIN="$SELF_DIR/vittec"
     mkdir -p "$SELF_DIR"
 
-    if [ "$VITTE_BACKEND_MODE" = "native" ]; then
+    if [ "$STAGE2_EFFECTIVE_BACKEND_MODE" = "native" ]; then
         "$BIN_DIR/vittec" build "$SRC_VIT" -o "$SELF_BIN" || die "stage2 native selfcheck build failed"
         enforce_native_artifact_policy "$SELF_BIN" "stage2 native selfcheck"
     else
