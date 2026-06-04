@@ -43,7 +43,9 @@ proc _schema_index_of(values: [string], target: string) -> int {
 }
 
 proc schema_to_string(schema: JsonSchema) -> string {
-  give "schema(" + schema.type_name + ")"
+  let prefix: string = "schema("
+  let body: string = prefix + schema.type_name
+  give body + ")"
 }
 
 proc schema_version() -> string {
@@ -64,7 +66,9 @@ proc schema_manifest() -> JsonSchemaManifest {
 
 proc schema_selftest() -> bool {
   let manifest: JsonSchemaManifest = schema_manifest()
+  let object_schema: JsonSchema = JsonSchema { type_name: "object", required: [] }
+  let rendered: string = schema_to_string(object_schema)
   give manifest.ready
     and manifest.version == "max-1"
-    and schema_to_string(JsonSchema { type_name: "object", required: [] }) == "schema(object)"
+    and rendered == "schema(object)"
 }

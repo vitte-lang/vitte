@@ -28,7 +28,9 @@ proc sqrt_floor(value: int) -> int {
   let best: int = 0
 
   while low <= high {
-    let mid: int = low + (high - low) / 2
+    let span: int = high - low
+    let half_span: int = span / 2
+    let mid: int = low + half_span
     if mid == 0 or mid <= value / mid {
       set best = mid
       set low = mid + 1
@@ -462,5 +464,29 @@ proc complex_re(value: [int]) -> int {
 
 proc complex_im(value: [int]) -> int {
   give complex_imag(value)
+}
+
+proc complex_version() -> string {
+  give "max-1"
+}
+
+proc complex_ready() -> bool {
+  give true
+}
+
+proc complex_selftest() -> bool {
+  let z: [int] = complex_pair(3, 4)
+  let w: [int] = complex_pair(1, -2)
+  let powers: [[int]] = complex_powers(complex_i(), 4)
+
+  give complex_ready()
+    and complex_version() == "max-1"
+    and complex_equal(complex_add(z, w), [4, 2])
+    and complex_equal(complex_mul(z, w), [11, -2])
+    and complex_equal(complex_conj(z), [3, -4])
+    and complex_abs_sq(z) == 25
+    and complex_equal(complex_pow(complex_i(), 2), [-1, 0])
+    and powers.len == 4
+    and complex_equal(powers[3], [0, -1])
 }
 export *

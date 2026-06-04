@@ -73,7 +73,8 @@ proc cube_le_non_negative(candidate: int, limit: int) -> bool {
     give false
   }
 
-  give candidate <= limit / (candidate * candidate)
+  let candidate_sq: int = candidate * candidate
+  give candidate <= limit / candidate_sq
 }
 
 proc cube_eq_non_negative(candidate: int, value: int) -> bool {
@@ -198,7 +199,9 @@ proc sqrt_floor(value: int) -> int {
   let best: int = 0
 
   while low <= high {
-    let mid: int = low + (high - low) / 2
+    let span: int = high - low
+    let half_span: int = span / 2
+    let mid: int = low + half_span
 
     if square_le(mid, value) {
       set best = mid
@@ -282,7 +285,9 @@ proc cube_root_floor_non_negative(value: int) -> int {
   let best: int = 0
 
   while low <= high {
-    let mid: int = low + (high - low) / 2
+    let span: int = high - low
+    let half_span: int = span / 2
+    let mid: int = low + half_span
 
     if cube_le_non_negative(mid, value) {
       set best = mid
@@ -331,8 +336,14 @@ proc cube_root_round(value: int) -> int {
 
   let low_root: int = cube_root_floor(value)
   let high_root: int = cube_root_ceil(value)
-  let low_diff: int = abs_int(value - low_root * low_root * low_root)
-  let high_diff: int = abs_int(high_root * high_root * high_root - value)
+  let low_square: int = low_root * low_root
+  let low_cube: int = low_square * low_root
+  let low_delta: int = value - low_cube
+  let low_diff: int = abs_int(low_delta)
+  let high_square: int = high_root * high_root
+  let high_cube: int = high_square * high_root
+  let high_delta: int = high_cube - value
+  let high_diff: int = abs_int(high_delta)
 
   if high_diff < low_diff {
     give high_root
@@ -378,7 +389,9 @@ proc iroot_floor_non_negative(value: int, degree: int) -> int {
   let best: int = 0
 
   while low <= high {
-    let mid: int = low + (high - low) / 2
+    let span: int = high - low
+    let half_span: int = span / 2
+    let mid: int = low + half_span
 
     if pow_le_non_negative(mid, degree, value) {
       set best = mid
@@ -412,7 +425,8 @@ proc iroot_floor(value: int, degree: int) -> int {
   if pow_eq_non_negative(abs_root_floor, degree, -value) {
     give -abs_root_floor
   } else {
-    give -(abs_root_floor + 1)
+    let next_root: int = abs_root_floor + 1
+    give -next_root
   }
 }
 
@@ -693,5 +707,31 @@ proc is_perfect_square(value: int) -> bool {
 
 proc is_perfect_cube(value: int) -> bool {
   give is_cube(value)
+}
+
+proc roots_version() -> string {
+  give "max-1"
+}
+
+proc roots_ready() -> bool {
+  give true
+}
+
+proc roots_selftest() -> bool {
+  give roots_ready()
+    and roots_version() == "max-1"
+    and sqrt_floor(17) == 4
+    and sqrt_ceil(17) == 5
+    and sqrt_round(15) == 4
+    and is_square(49)
+    and cbrt_floor(28) == 3
+    and cbrt_ceil(28) == 4
+    and is_cube(27)
+    and nth_root_floor(81, 4) == 3
+    and nth_root_ceil(82, 4) == 4
+    and is_power_of_two(32)
+    and decimal_digits(999) == 3
+    and binary_digits(8) == 4
+    and distance_to_nearest_square(15) == 1
 }
 export *

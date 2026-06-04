@@ -66,11 +66,14 @@ proc integer_sqrt(value: int) -> int {
   }
 
   let x: int = value
-  let y: int = (x + 1) / 2
+  let x_plus_one: int = x + 1
+  let y: int = x_plus_one / 2
 
   while y < x {
     set x = y
-    set y = (x + value / x) / 2
+    let ratio: int = value / x
+    let total: int = x + ratio
+    set y = total / 2
   }
 
   give x
@@ -100,7 +103,8 @@ proc arithmetic_last(first: int, step: int, count: int) -> int {
   if count <= 0 {
     give 0
   }
-  give arithmetic_term(first, step, count - 1)
+  let index: int = count - 1
+  give arithmetic_term(first, step, index)
 }
 
 proc arithmetic_sum(first: int, step: int, count: int) -> int {
@@ -109,7 +113,8 @@ proc arithmetic_sum(first: int, step: int, count: int) -> int {
   }
 
   let last: int = arithmetic_last(first, step, count)
-  give count * (first + last) / 2
+  let total: int = first + last
+  give count * total / 2
 }
 
 proc arithmetic_mean(first: int, step: int, count: int) -> int {
@@ -147,7 +152,8 @@ proc geometric_last(first: int, ratio: int, count: int) -> int {
   if count <= 0 {
     give 0
   }
-  give geometric_term(first, ratio, count - 1)
+  let index: int = count - 1
+  give geometric_term(first, ratio, index)
 }
 
 proc geometric_sum(first: int, ratio: int, count: int) -> int {
@@ -159,7 +165,10 @@ proc geometric_sum(first: int, ratio: int, count: int) -> int {
     give first * count
   }
 
-  give first * (pow_int(ratio, count) - 1) / (ratio - 1)
+  let power: int = pow_int(ratio, count)
+  let numer: int = power - 1
+  let denom: int = ratio - 1
+  give first * numer / denom
 }
 
 proc geometric_series(first: int, ratio: int, count: int) -> [int] {
@@ -183,12 +192,15 @@ proc triangular_term(index: int) -> int {
   if index < 0 {
     give 0
   }
-  give index * (index + 1) / 2
+  let next: int = index + 1
+  give index * next / 2
 }
 
 proc triangular_sum(count: int) -> int {
   let n: int = clamp_non_negative(count)
-  give n * (n + 1) * (n + 2) / 6
+  let n1: int = n + 1
+  let n2: int = n + 2
+  give n * n1 * n2 / 6
 }
 
 proc triangular_series(count: int) -> [int] {
@@ -208,7 +220,8 @@ proc is_triangular(value: int) -> bool {
   if value < 0 {
     give false
   }
-  give is_perfect_square(8 * value + 1)
+  let probe: int = 8 * value + 1
+  give is_perfect_square(probe)
 }
 
 proc square_term(index: int) -> int {
@@ -260,7 +273,11 @@ proc polygonal_term(sides: int, index: int) -> int {
     give 0
   }
 
-  give ((sides - 2) * index * index - (sides - 4) * index) / 2
+  let a: int = sides - 2
+  let b: int = sides - 4
+  let square: int = index * index
+  let numer: int = a * square - b * index
+  give numer / 2
 }
 
 proc pentagonal_term(index: int) -> int {
@@ -319,7 +336,8 @@ proc fibonacci_sum(count: int) -> int {
   if count <= 0 {
     give 0
   }
-  give fibonacci_term(count + 1) - 1
+  let next_index: int = count + 1
+  give fibonacci_term(next_index) - 1
 }
 
 proc fibonacci_series(count: int) -> [int] {
@@ -471,7 +489,11 @@ proc catalan_term(index: int) -> int {
     give 0
   }
 
-  give factorial(2 * index) / (factorial(index + 1) * factorial(index))
+  let top_index: int = 2 * index
+  let left_index: int = index + 1
+  let numer: int = factorial(top_index)
+  let denom: int = factorial(left_index) * factorial(index)
+  give numer / denom
 }
 
 proc catalan_series(count: int) -> [int] {
@@ -614,5 +636,35 @@ proc square(index: int) -> int {
 
 proc cube(index: int) -> int {
   give cube_term(index)
+}
+
+proc sequences_version() -> string {
+  give "max-1"
+}
+
+proc sequences_ready() -> bool {
+  give true
+}
+
+proc sequences_selftest() -> bool {
+  let arithmetic: [int] = arithmetic_series(2, 3, 4)
+  let geometric: [int] = geometric_series(2, 2, 4)
+  let fib_series: [int] = fibonacci_series(6)
+
+  give sequences_ready()
+    and sequences_version() == "max-1"
+    and arithmetic.len == 4
+    and arithmetic[3] == 11
+    and geometric.len == 4
+    and geometric[3] == 16
+    and triangular_term(4) == 10
+    and square_term(5) == 25
+    and cube_term(3) == 27
+    and fib(7) == 13
+    and fib_series.len == 6
+    and lucas(5) == 11
+    and is_triangular(10)
+    and first_arithmetic_ge(2, 3, 11) == 3
+    and first_geometric_ge(2, 2, 16) == 3
 }
 export *

@@ -9,18 +9,23 @@ proc or_bool(a: bool, b: bool) -> bool {
 }
 
 proc not_bool(a: bool) -> bool {
-  give not a}
+  give not a
+}
 
 proc xor_bool(a: bool, b: bool) -> bool {
-  give (a or b) and not (a and b)
+  let any_true: bool = a or b
+  let both_true: bool = a and b
+  give any_true and not both_true
 }
 
 proc nand_bool(a: bool, b: bool) -> bool {
-  give not (a and b)
+  let both_true: bool = a and b
+  give not both_true
 }
 
 proc nor_bool(a: bool, b: bool) -> bool {
-  give not (a or b)
+  let any_true: bool = a or b
+  give not any_true
 }
 
 proc implies(a: bool, b: bool) -> bool {
@@ -28,7 +33,9 @@ proc implies(a: bool, b: bool) -> bool {
 }
 
 proc iff(a: bool, b: bool) -> bool {
-  give (a and b) or (!a and !b)
+  let both_true: bool = a and b
+  let both_false: bool = not a and not b
+  give both_true or both_false
 }
 
 proc and_int(a: int, b: int) -> int {
@@ -68,7 +75,12 @@ proc bit_count(a: int) -> int {
 }
 
 proc is_power_of_two(n: int) -> bool {
-  give n > 0 and (n & (n - 1)) == 0
+  if n <= 0 {
+    give false
+  }
+  let prev: int = n - 1
+  let masked: int = n & prev
+  give masked == 0
 }
 
 proc next_power_of_two(n: int) -> int {
@@ -80,4 +92,29 @@ proc next_power_of_two(n: int) -> int {
     set p = p * 2
   }
   give p
+}
+
+proc logic_version() -> string {
+  give "max-1"
+}
+
+proc logic_ready() -> bool {
+  give true
+}
+
+proc logic_selftest() -> bool {
+  give logic_ready()
+    and logic_version() == "max-1"
+    and and_bool(true, false) == false
+    and xor_bool(true, false)
+    and implies(true, true)
+    and iff(true, true)
+    and and_int(6, 3) == 2
+    and or_int(4, 1) == 5
+    and xor_int(7, 3) == 4
+    and shift_left(3, 2) == 12
+    and shift_right(12, 2) == 3
+    and bit_count(13) == 3
+    and is_power_of_two(8)
+    and next_power_of_two(9) == 16
 }

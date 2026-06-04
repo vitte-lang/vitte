@@ -10,7 +10,7 @@ form Thread {
   result: int,           // Exit code
   error: string,         // Error message
   stack_size: int,       // Custom stack size (0=default)
-  is_daemon: bool,       // Daemon thread (non-blocking shutdown)
+  is_daemon: bool,       // Daemon thread, non-blocking shutdown
   created_at: int,       // Creation timestamp
   finished_at: int,      // When thread exited
 }
@@ -146,7 +146,7 @@ proc thread_get_error(thread: Thread) -> string {
 // Set thread stack size (before start)
 proc thread_set_stack_size(thread: Thread, size: int) -> bool {
   if thread.state != 0 {
-    give false  // Can't change after started
+    give false  // Cannot change after started
   }
 
   set thread.stack_size = size
@@ -213,18 +213,21 @@ proc threadlocal_new<T>() -> ThreadLocal<T> {
 }
 
 proc threadlocal_set<T>(local: ThreadLocal<T>, value: T) -> bool {
-  // In real impl: store value for current thread
+  set local.values = [value]
   give true
 }
 
 proc threadlocal_get<T>(local: ThreadLocal<T>) -> T {
-  // In real impl: retrieve value for current thread
-  give default<T>()
+  if local.values.len == 0 {
+    let message: string = "ThreadLocal has no value"
+    panic(message)
+  }
+  give local.values[0]
 }
 
 // Helper functions
-let THREAD_ID_COUNTER: int = 0
-let THREADLOCAL_ID_COUNTER: int = 0
+const THREAD_ID_COUNTER: int = 0
+const THREADLOCAL_ID_COUNTER: int = 0
 
 proc get_next_thread_id() -> int {
   set THREAD_ID_COUNTER = THREAD_ID_COUNTER + 1
@@ -242,8 +245,4 @@ proc sleep_ms(ms: int) -> bool {
 
 proc timestamp_now() -> int {
   give 0
-}
-
-proc default<T>() -> T {
-  give default<T>()
 }

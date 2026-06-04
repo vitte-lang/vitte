@@ -114,7 +114,8 @@ proc falling_factorial(n: int, k: int) -> int {
   let i: int = 0
 
   while i < k {
-    set result = result * (n - i)
+    let factor: int = n - i
+    set result = result * factor
     set i = i + 1
   }
 
@@ -134,7 +135,8 @@ proc rising_factorial(n: int, k: int) -> int {
   let i: int = 0
 
   while i < k {
-    set result = result * (n + i)
+    let factor: int = n + i
+    set result = result * factor
     set i = i + 1
   }
 
@@ -182,7 +184,8 @@ proc combinations(n: int, k: int) -> int {
     give 0
   }
 
-  let kk: int = min_int(k, n - k)
+  let remaining: int = n - k
+  let kk: int = min_int(k, remaining)
 
   if kk == 0 {
     give 1
@@ -232,7 +235,8 @@ proc combinations_with_repetition(n: int, k: int) -> int {
     }
   }
 
-  give combinations(n + k - 1, k)
+  let top: int = n + k - 1
+  give combinations(top, k)
 }
 
 proc multiset_combinations(n: int, k: int) -> int {
@@ -248,7 +252,8 @@ proc pairings(total: int) -> int {
     give 0
   }
 
-  give total * (total - 1) / 2
+  let prev: int = total - 1
+  give total * prev / 2
 }
 
 proc unordered_pairs(total: int) -> int {
@@ -260,7 +265,8 @@ proc ordered_pairs(total: int) -> int {
     give 0
   }
 
-  give total * (total - 1)
+  let prev: int = total - 1
+  give total * prev
 }
 
 proc derangements(n: int) -> int {
@@ -281,7 +287,9 @@ proc derangements(n: int) -> int {
   let i: int = 2
 
   while i <= n {
-    let current: int = (i - 1) * (prev1 + prev2)
+    let factor: int = i - 1
+    let sum_prev: int = prev1 + prev2
+    let current: int = factor * sum_prev
     set prev2 = prev1
     set prev1 = current
     set i = i + 1
@@ -347,7 +355,8 @@ proc complement_probability(part: int, total: int) -> f64 {
     give 0.0
   }
 
-  give (total - part) as f64 / total as f64
+  let remaining: int = total - part
+  give remaining as f64 / total as f64
 }
 
 proc complement_percent(part: int, total: int) -> int {
@@ -355,7 +364,8 @@ proc complement_percent(part: int, total: int) -> int {
     give 0
   }
 
-  give (total - part) * 100 / total
+  let remaining: int = total - part
+  give remaining * 100 / total
 }
 
 proc success_rate_f64(successes: int, total: int) -> f64 {
@@ -367,7 +377,8 @@ proc failure_rate_f64(successes: int, total: int) -> f64 {
     give 0.0
   }
 
-  give (total - successes) as f64 / total as f64
+  let failures: int = total - successes
+  give failures as f64 / total as f64
 }
 
 proc success_rate_percent(successes: int, total: int) -> int {
@@ -379,7 +390,8 @@ proc failure_rate_percent(successes: int, total: int) -> int {
     give 0
   }
 
-  give (total - successes) * 100 / total
+  let failures: int = total - successes
+  give failures * 100 / total
 }
 
 <<< ---------------------------------------------------------
@@ -430,7 +442,9 @@ proc odds_ratio_2x2(a: int, b: int, c: int, d: int) -> f64 {
     give 0.0
   }
 
-  give (a as f64 * d as f64) / (b as f64 * c as f64)
+  let numer: f64 = a as f64 * d as f64
+  let denom: f64 = b as f64 * c as f64
+  give numer / denom
 }
 
 <<< ---------------------------------------------------------
@@ -470,7 +484,10 @@ proc conditional_probability(intersection: f64, given_event: f64) -> f64 {
 }
 
 proc expected_value_binary(success_probability: f64, success_value: f64, failure_value: f64) -> f64 {
-  give success_probability * success_value + (1.0 - success_probability) * failure_value
+  let success_term: f64 = success_probability * success_value
+  let complement: f64 = 1.0 - success_probability
+  let failure_term: f64 = complement * failure_value
+  give success_term + failure_term
 }
 
 <<< ---------------------------------------------------------
@@ -498,7 +515,8 @@ proc binomial_pmf(trials: int, successes: int, p: f64) -> f64 {
 
   let j: int = 0
   while j < trials - successes {
-    set failure_term = failure_term * (1.0 - p)
+    let complement: f64 = 1.0 - p
+    set failure_term = failure_term * complement
     set j = j + 1
   }
 
@@ -518,7 +536,8 @@ proc geometric_pmf(trial_index: int, p: f64) -> f64 {
   let i: int = 1
 
   while i < trial_index {
-    set fail_term = fail_term * (1.0 - p)
+    let complement: f64 = 1.0 - p
+    set fail_term = fail_term * complement
     set i = i + 1
   }
 
@@ -553,7 +572,8 @@ proc hypergeometric_pmf(population: int, success_population: int, draws: int, ob
     give 0.0
   }
 
-  give (top_left as f64 * top_right as f64) / bottom as f64
+  let numer: f64 = top_left as f64 * top_right as f64
+  give numer / bottom as f64
 }
 
 <<< ---------------------------------------------------------
@@ -570,5 +590,31 @@ proc percent_f64(part: int, total: int) -> f64 {
 
 proc choose_probability(favorable: int, total: int) -> f64 {
   give probability(favorable, total)
+}
+
+proc probability_version() -> string {
+  give "max-1"
+}
+
+proc probability_ready() -> bool {
+  give true
+}
+
+proc probability_selftest() -> bool {
+  let binomial: f64 = binomial_pmf(3, 2, 0.5)
+  let geometric: f64 = geometric_pmf(3, 0.5)
+  let hyper: f64 = hypergeometric_pmf(5, 2, 2, 1)
+
+  give probability_ready()
+    and probability_version() == "max-1"
+    and factorial(5) == 120
+    and falling_factorial(5, 2) == 20
+    and combinations(5, 2) == 10
+    and combinations_with_repetition(3, 2) == 6
+    and probability(1, 4) == 0.25
+    and percent(1, 4) == 25
+    and binomial > 0.0
+    and geometric > 0.0
+    and hyper > 0.0
 }
 export *

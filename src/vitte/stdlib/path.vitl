@@ -78,12 +78,13 @@ proc lstat(p: string) -> FileStat {
   }
 }
 
-# Internal helpers
+// Internal helpers
 proc _path_slice(str: string, start: int, end: int) -> string {
   let result: string = ""
   let i: int = start
   while i < end {
-    set result = result + (str[i] as string)
+    let ch: string = str[i] as string
+    set result = result + ch
     set i = i + 1
   }
   give result
@@ -92,10 +93,15 @@ proc _path_slice(str: string, start: int, end: int) -> string {
 proc _path_strip_trailing_separator(p: string) -> string {
   let sep: int = PATH_SEPARATOR[0] as i32
   let end: int = len(p) - 1
-  while end > 0 and (p[end] as i32) == sep {
+  while end > 0 {
+    let ch: int = p[end] as i32
+    if ch != sep {
+      break
+    }
     set end = end - 1
   }
-  give _path_slice(p, 0, end + 1)
+  let stop: int = end + 1
+  give _path_slice(p, 0, stop)
 }
 
 proc _path_split(p: string) -> [string] {
@@ -112,7 +118,8 @@ proc _path_split(p: string) -> [string] {
         set current = ""
       }
     } else {
-      set current = current + (p[i] as string)
+      let ch: string = p[i] as string
+      set current = current + ch
     }
     set i = i + 1
   }
@@ -125,7 +132,9 @@ proc _path_split(p: string) -> [string] {
 
 proc _path_join_parts(parts: [string], absolute: int) -> string {
   if len(parts) == 0 {
-    if absolute { give PATH_SEPARATOR }
+    if absolute {
+      give PATH_SEPARATOR
+    }
     give "."
   }
 
@@ -168,7 +177,8 @@ proc _path_segment_matches(text: string, pattern: string) -> int {
   while ti < len(text) {
     if pi < len(pattern) {
       let pc: int = pattern[pi] as i32
-      if pc == 63 or pc == (text[ti] as i32) {
+      let tc: int = text[ti] as i32
+      if pc == 63 or pc == tc {
         set ti = ti + 1
         set pi = pi + 1
         continue
@@ -191,7 +201,11 @@ proc _path_segment_matches(text: string, pattern: string) -> int {
     give 0
   }
 
-  while pi < len(pattern) and (pattern[pi] as i32) == 42 {
+  while pi < len(pattern) {
+    let pc: int = pattern[pi] as i32
+    if pc != 42 {
+      break
+    }
     set pi = pi + 1
   }
 
@@ -206,7 +220,8 @@ proc _path_match_parts(parts: [string], pattern_parts: [string], pi: int, qi: in
   if pattern_parts[qi] == "**" {
     let skip: int = pi
     while skip <= len(parts) {
-      if _path_match_parts(parts, pattern_parts, skip, qi + 1) {
+      let next_qi: int = qi + 1
+      if _path_match_parts(parts, pattern_parts, skip, next_qi) {
         give 1
       }
       set skip = skip + 1
@@ -219,7 +234,9 @@ proc _path_match_parts(parts: [string], pattern_parts: [string], pi: int, qi: in
   }
 
   if _path_segment_matches(parts[pi], pattern_parts[qi]) {
-    give _path_match_parts(parts, pattern_parts, pi + 1, qi + 1)
+    let next_pi: int = pi + 1
+    let next_qi: int = qi + 1
+    give _path_match_parts(parts, pattern_parts, next_pi, next_qi)
   }
 
   give 0
@@ -335,7 +352,7 @@ proc path_selftest() -> bool {
     and len(home) >= 0
 }
 
-# Path creation and parsing
+// Path creation and parsing
 proc path_new(p: string) -> Path {
   give Path {
     path_str: p,
@@ -356,10 +373,15 @@ proc path_normalize(p: string) -> string {
   while i < len(components) {
     let part: string = components[i]
     if part == "" or part == "." {
-      # skip
+      // skip
     } elif part == ".." {
-      if len(normalized) > 0 and normalized[len(normalized) - 1] != ".." {
-        set normalized = _path_remove_last_component(normalized)
+      if len(normalized) > 0 {
+        let last_index: int = len(normalized) - 1
+        if normalized[last_index] != ".." {
+          set normalized = _path_remove_last_component(normalized)
+        } elif not absolute {
+          set normalized = normalized + [".."]
+        }
       } elif not absolute {
         set normalized = normalized + [".."]
       }
@@ -408,7 +430,10 @@ proc path_relative(base: string, target: string) -> string {
   let target_parts: [string] = _path_split(target_norm)
   let i: int = 0
 
-  while i < len(base_parts) and i < len(target_parts) and base_parts[i] == target_parts[i] {
+  while i < len(base_parts) and i < len(target_parts) {
+    if base_parts[i] != target_parts[i] {
+      break
+    }
     set i = i + 1
   }
 
@@ -432,7 +457,7 @@ proc path_relative(base: string, target: string) -> string {
   give _path_join_parts(result_parts, 0)
 }
 
-# Path components
+// Path components
 proc path_get_parent(p: string) -> string {
   if len(p) == 0 {
     give "."
@@ -447,7 +472,8 @@ proc path_get_parent(p: string) -> string {
   let i: int = len(trimmed) - 1
   let sep: int = PATH_SEPARATOR[0] as i32
   while i >= 0 {
-    if (trimmed[i] as i32) == sep {
+    let ch: int = trimmed[i] as i32
+    if ch == sep {
       set last_sep = i
       break
     }
@@ -474,8 +500,10 @@ proc path_get_filename(p: string) -> string {
   let sep: int = PATH_SEPARATOR[0] as i32
 
   while i >= 0 {
-    if (trimmed[i] as i32) == sep {
-      give _path_slice(trimmed, i + 1, len(trimmed))
+    let ch: int = trimmed[i] as i32
+    if ch == sep {
+      let start: int = i + 1
+      give _path_slice(trimmed, start, len(trimmed))
     }
     set i = i - 1
   }
@@ -507,7 +535,8 @@ proc path_get_extension(p: string) -> string {
 
   while i > 0 {
     if filename[i] == "." {
-      give _path_slice(filename, i + 1, len(filename))
+      let start: int = i + 1
+      give _path_slice(filename, start, len(filename))
     }
     set i = i - 1
   }
@@ -526,7 +555,7 @@ proc path_get_root(p: string) -> string {
   give ""
 }
 
-# Path composition
+// Path composition
 proc path_join(base: string, component: string) -> string {
   if len(base) == 0 {
     give component
@@ -537,7 +566,7 @@ proc path_join(base: string, component: string) -> string {
 
   let sep: int = PATH_SEPARATOR[0] as i32
   let base_last: int = (base[len(base) - 1] as i32)
-  let comp_first: int = (component[0] as i32)
+  let comp_first: int = component[0] as i32
 
   if base_last == sep and comp_first == sep {
     give base ++ _path_slice(component, 1, len(component))
@@ -593,35 +622,43 @@ proc path_with_filename(p: string, filename: string) -> string {
   give path_join(directory, filename)
 }
 
-# Path predicates
+// Path predicates
 proc path_exists(p: string) -> int {
   give access(p, 0) == 0
 }
 
 proc path_is_file(p: string) -> int {
   let info: FileStat = stat(p)
-  give (info.st_mode & S_ISREG) == S_ISREG
+  let masked: int = info.st_mode & S_ISREG
+  give masked == S_ISREG
 }
 
 proc path_is_dir(p: string) -> int {
   let info: FileStat = stat(p)
-  give (info.st_mode & S_ISDIR) == S_ISDIR
+  let masked: int = info.st_mode & S_ISDIR
+  give masked == S_ISDIR
 }
 
 proc path_is_symlink(p: string) -> int {
   let info: FileStat = lstat(p)
-  give (info.st_mode & S_ISLNK) == S_ISLNK
+  let masked: int = info.st_mode & S_ISLNK
+  give masked == S_ISLNK
 }
 
 proc path_is_absolute(p: string) -> int {
   if len(p) == 0 {
     give 0
   }
-  give (p[0] as i32) == (PATH_SEPARATOR[0] as i32)
+  let left: int = p[0] as i32
+  let right: int = PATH_SEPARATOR[0] as i32
+  give left == right
 }
 
 proc path_is_relative(p: string) -> int {
-  give len(p) > 0 and not path_is_absolute(p)
+  if len(p) <= 0 {
+    give 0
+  }
+  give not path_is_absolute(p)
 }
 
 proc path_is_hidden(p: string) -> int {
@@ -632,7 +669,7 @@ proc path_is_hidden(p: string) -> int {
   give filename[0] == "."
 }
 
-# Path comparison
+// Path comparison
 proc path_equals(p1: string, p2: string) -> int {
   give path_normalize(p1) == path_normalize(p2)
 }
@@ -671,7 +708,7 @@ proc path_ends_with(p: string, suffix: string) -> int {
   give 1
 }
 
-# Globbing patterns
+// Globbing patterns
 proc path_matches(p: string, pattern: string) -> int {
   let normalized_path: string = path_normalize(p)
   let normalized_pattern: string = path_normalize(pattern)
@@ -699,7 +736,7 @@ proc path_glob_recursive(pattern: string) -> [string] {
   give path_glob(pattern)
 }
 
-# Walk filesystem
+// Walk filesystem
 proc path_walk(root: string) -> PathWalker {
   let entries: [string] = []
   let search_root: string = if root == "." { "" } else { root }
@@ -746,7 +783,7 @@ proc path_walker_has_next(w: PathWalker) -> int {
   give w.index < len(w.entries)
 }
 
-# Path utilities
+// Path utilities
 proc path_clean(p: string) -> string {
   give path_normalize(p)
 }
@@ -785,7 +822,8 @@ proc path_expand_env(p: string) -> string {
         let j: int = i + 2
         let name: string = ""
         while j < len(p) and p[j] != "}" {
-          set name = name + (p[j] as string)
+          let ch: string = p[j] as string
+          set name = name + ch
           set j = j + 1
         }
         if j < len(p) and p[j] == "}" {
@@ -799,8 +837,13 @@ proc path_expand_env(p: string) -> string {
       let j: int = i + 1
       while j < len(p) {
         let c: int = p[j] as i32
-        if (c >= 65 and c <= 90) or (c >= 97 and c <= 122) or (c >= 48 and c <= 57) or c == 95 {
-          set name = name + (p[j] as string)
+        let upper: bool = c >= 65 and c <= 90
+        let lower: bool = c >= 97 and c <= 122
+        let digit: bool = c >= 48 and c <= 57
+        let underscore: bool = c == 95
+        if upper or lower or digit or underscore {
+          let ch: string = p[j] as string
+          set name = name + ch
           set j = j + 1
           continue
         }
@@ -813,14 +856,15 @@ proc path_expand_env(p: string) -> string {
       }
     }
 
-    set result = result + (p[i] as string)
+    let ch: string = p[i] as string
+    set result = result + ch
     set i = i + 1
   }
 
   give result
 }
 
-# Get special directories
+// Get special directories
 proc home_dir() -> string {
   let value: string = _get_env_variable("HOME")
   if len(value) > 0 {
@@ -834,8 +878,10 @@ proc home_dir() -> string {
 
   let drive: string = _get_env_variable("HOMEDRIVE")
   let path: string = _get_env_variable("HOMEPATH")
-  if len(drive) > 0 and len(path) > 0 {
-    give drive ++ path
+  if len(drive) > 0 {
+    if len(path) > 0 {
+      give drive ++ path
+    }
   }
 
   give ""
@@ -908,7 +954,7 @@ proc downloads_dir() -> string {
   give path_join(home_dir(), "Downloads")
 }
 
-# Environment variables
+// Environment variables
 proc get_path_env() -> [string] {
   let value: string = _get_env_variable("PATH")
   if len(value) == 0 {
@@ -926,7 +972,8 @@ proc get_path_env() -> [string] {
       set parts = parts + [current]
       set current = ""
     } else {
-      set current = current + (value[i] as string)
+      let ch: string = value[i] as string
+      set current = current + ch
     }
     set i = i + 1
   }

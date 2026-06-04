@@ -149,7 +149,8 @@ form ThreadPoolStats {
 proc threadpool_stats(pool: ThreadPool) -> ThreadPoolStats {
   let active: int = threadpool_active_tasks(pool)
   let pending: int = threadpool_pending_tasks(pool)
-  let utilization: int = (active * 100) / pool.num_workers
+  let scaled_active: int = active * 100
+  let utilization: int = scaled_active / pool.num_workers
 
   let stats: ThreadPoolStats = ThreadPoolStats {
     pool_id: pool.id,
@@ -240,24 +241,19 @@ form ScheduledTask {
   id: int,
   name: string,
   pool: ThreadPool,
-  task: proc,
+  task_id: int,
   interval_ms: int,
   initial_delay_ms: int,
   active: bool,
   runs_completed: int,
 }
 
-proc scheduled_task_new(
-  name: string,
-  pool: ThreadPool,
-  task: proc,
-  interval_ms: int
-) -> ScheduledTask {
+proc scheduled_task_new(name: string, pool: ThreadPool, task_id: int, interval_ms: int) -> ScheduledTask {
   let sched: ScheduledTask = ScheduledTask {
     id: get_next_scheduled_id(),
     name: name,
     pool: pool,
-    task: task,
+    task_id: task_id,
     interval_ms: interval_ms,
     initial_delay_ms: 0,
     active: false,
@@ -286,10 +282,10 @@ proc scheduled_task_cancel(sched: ScheduledTask) -> bool {
 
 // Helpers
 
-let POOL_ID_COUNTER: int = 0
-let TASK_ID_COUNTER: int = 0
-let FORKJOIN_ID_COUNTER: int = 0
-let SCHEDULED_ID_COUNTER: int = 0
+const POOL_ID_COUNTER: int = 0
+const TASK_ID_COUNTER: int = 0
+const FORKJOIN_ID_COUNTER: int = 0
+const SCHEDULED_ID_COUNTER: int = 0
 
 proc get_next_pool_id() -> int {
   set POOL_ID_COUNTER = POOL_ID_COUNTER + 1

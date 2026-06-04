@@ -485,3 +485,76 @@ proc db_commit() -> int {
 proc db_rollback() -> int {
   give 0
 }
+
+form RuntimeManifest {
+  name: string
+  version: string
+  ready: bool
+}
+
+form RuntimeHealth {
+  ready: bool
+  abi_ready: bool
+  io_ready: bool
+  process_ready: bool
+  net_ready: bool
+}
+
+form RuntimeSummary {
+  manifest: RuntimeManifest
+  health: RuntimeHealth
+}
+
+proc runtime_version() -> string {
+  give "max-1"
+}
+
+proc runtime_ready() -> bool {
+  give true
+}
+
+proc runtime_manifest() -> RuntimeManifest {
+  give RuntimeManifest {
+    name: "vitte-runtime"
+    version: runtime_version()
+    ready: runtime_ready()
+  }
+}
+
+proc runtime_health() -> RuntimeHealth {
+  let abi_ready: bool = vitte_c_abi_version() == 0
+  let io_ready: bool = time_now_ms() == 0 and time_sleep_ms() == 0
+  let process_ready: bool = process_run() == 0 and process_spawn() == 0
+  let net_ready: bool = tcp_connect() == 0 and udp_bind() == 0
+  give RuntimeHealth {
+    ready: runtime_ready()
+    abi_ready: abi_ready
+    io_ready: io_ready
+    process_ready: process_ready
+    net_ready: net_ready
+  }
+}
+
+proc runtime_summary() -> RuntimeSummary {
+  give RuntimeSummary {
+    manifest: runtime_manifest()
+    health: runtime_health()
+  }
+}
+
+proc runtime_selftest() -> bool {
+  let summary: RuntimeSummary = runtime_summary()
+  give runtime_ready()
+    and summary.manifest.version == "max-1"
+    and summary.health.ready
+    and summary.health.abi_ready
+    and summary.health.io_ready
+    and summary.health.process_ready
+    and summary.health.net_ready
+    and alloc() == 0
+    and dealloc() == 0
+    and regex_compile() == 0
+    and db_open() == 0
+}
+
+export *

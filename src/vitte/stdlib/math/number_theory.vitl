@@ -1,155 +1,492 @@
-space vitte/stdlib_checked/math_number_theory
+space vitte/stdlib/math/number_theory
 
+<<< =========================================================
+   Number Theory — integer divisibility and prime helpers
+   ========================================================= >>>
 
+proc abs_int(value: int) -> int {
+  if value < 0 {
+    give 0 - value
+  } else {
+    give value
+  }
+}
 
-<<< generated checkable stdlib surface >>>
+proc min_int(a: int, b: int) -> int {
+  if a < b {
+    give a
+  } else {
+    give b
+  }
+}
 
+proc max_int(a: int, b: int) -> int {
+  if a > b {
+    give a
+  } else {
+    give b
+  }
+}
 
+proc reverse_copy(values: [int]) -> [int] {
+  let out: [int] = []
+  let i: int = values.len - 1
 
-proc abs_int() -> int {
+  while i >= 0 {
+    set out = out + [values[i]]
+    set i = i - 1
+  }
+
+  give out
+}
+
+proc is_even(value: int) -> bool {
+  give value % 2 == 0
+}
+
+proc is_odd(value: int) -> bool {
+  give value % 2 != 0
+}
+
+proc is_multiple_of(value: int, divisor: int) -> bool {
+  if divisor == 0 {
+    give false
+  }
+
+  give value % divisor == 0
+}
+
+proc divides(divisor: int, value: int) -> bool {
+  give is_multiple_of(value, divisor)
+}
+
+proc gcd(a: int, b: int) -> int {
+  let x: int = abs_int(a)
+  let y: int = abs_int(b)
+
+  while y != 0 {
+    let remainder: int = x % y
+    set x = y
+    set y = remainder
+  }
+
+  give x
+}
+
+proc lcm(a: int, b: int) -> int {
+  if a == 0 or b == 0 {
+    give 0
+  }
+
+  let divisor: int = gcd(a, b)
+  let scaled: int = a / divisor
+  let product: int = scaled * b
+  give abs_int(product)
+}
+
+proc are_coprime(a: int, b: int) -> bool {
+  give gcd(a, b) == 1
+}
+
+proc gcd_many(values: [int]) -> int {
+  if values.len == 0 {
+    give 0
+  }
+
+  let result: int = abs_int(values[0])
+  let i: int = 1
+
+  while i < values.len {
+    set result = gcd(result, values[i])
+    set i = i + 1
+  }
+
+  give result
+}
+
+proc lcm_many(values: [int]) -> int {
+  if values.len == 0 {
+    give 0
+  }
+
+  let result: int = abs_int(values[0])
+  let i: int = 1
+
+  while i < values.len {
+    set result = lcm(result, values[i])
+    if result == 0 {
+      give 0
+    }
+    set i = i + 1
+  }
+
+  give result
+}
+
+proc is_prime(value: int) -> bool {
+  if value <= 1 {
+    give false
+  }
+
+  if value == 2 {
+    give true
+  }
+
+  if is_even(value) {
+    give false
+  }
+
+  let divisor: int = 3
+
+  while divisor <= value / divisor {
+    if value % divisor == 0 {
+      give false
+    }
+    set divisor = divisor + 2
+  }
+
+  give true
+}
+
+proc is_composite(value: int) -> bool {
+  give value > 1 and not is_prime(value)
+}
+
+proc next_prime(value: int) -> int {
+  if value < 2 {
+    give 2
+  }
+
+  let candidate: int = value + 1
+  if is_even(candidate) and candidate != 2 {
+    set candidate = candidate + 1
+  }
+
+  while not is_prime(candidate) {
+    set candidate = candidate + 2
+  }
+
+  give candidate
+}
+
+proc prev_prime(value: int) -> int {
+  if value <= 2 {
+    give 0
+  }
+
+  let candidate: int = value - 1
+  if is_even(candidate) and candidate != 2 {
+    set candidate = candidate - 1
+  }
+
+  while candidate >= 2 {
+    if is_prime(candidate) {
+      give candidate
+    }
+    set candidate = candidate - 2
+  }
+
   give 0
 }
 
-proc min_int() -> int {
-  give 0
+proc nth_prime(index: int) -> int {
+  if index <= 0 {
+    give 0
+  }
+
+  let count: int = 0
+  let candidate: int = 1
+
+  while count < index {
+    set candidate = next_prime(candidate)
+    set count = count + 1
+  }
+
+  give candidate
 }
 
-proc max_int() -> int {
-  give 0
+proc primes_up_to(limit: int) -> [int] {
+  let out: [int] = []
+
+  if limit < 2 {
+    give out
+  }
+
+  let value: int = 2
+  while value <= limit {
+    if is_prime(value) {
+      set out = out + [value]
+    }
+    set value = value + 1
+  }
+
+  give out
 }
 
-proc reverse_copy() -> int {
-  give 0
+proc prime_count(limit: int) -> int {
+  give primes_up_to(limit).len
 }
 
-proc is_even() -> int {
-  give 0
+proc prime_factors(value: int) -> [int] {
+  let n: int = abs_int(value)
+  let factors: [int] = []
+  let current: int = n
+  let divisor: int = 2
+
+  if current <= 1 {
+    give factors
+  }
+
+  while divisor <= current / divisor {
+    while current % divisor == 0 {
+      set factors = factors + [divisor]
+      set current = current / divisor
+    }
+
+    if divisor == 2 {
+      set divisor = 3
+    } else {
+      set divisor = divisor + 2
+    }
+  }
+
+  if current > 1 {
+    set factors = factors + [current]
+  }
+
+  give factors
 }
 
-proc is_odd() -> int {
-  give 0
+proc distinct_prime_factors(value: int) -> [int] {
+  let factors: [int] = prime_factors(value)
+  let out: [int] = []
+  let i: int = 0
+  let last: int = 0
+  let has_last: bool = false
+
+  while i < factors.len {
+    if not has_last or factors[i] != last {
+      set out = out + [factors[i]]
+      set last = factors[i]
+      set has_last = true
+    }
+    set i = i + 1
+  }
+
+  give out
 }
 
-proc is_multiple_of() -> int {
-  give 0
+proc prime_factor_count(value: int) -> int {
+  give prime_factors(value).len
 }
 
-proc divides() -> int {
-  give 0
+proc distinct_prime_factor_count(value: int) -> int {
+  give distinct_prime_factors(value).len
 }
 
-proc gcd() -> int {
-  give 0
+proc smallest_prime_factor(value: int) -> int {
+  let factors: [int] = prime_factors(value)
+  if factors.len == 0 {
+    give 0
+  }
+
+  give factors[0]
 }
 
-proc lcm() -> int {
-  give 0
+proc largest_prime_factor(value: int) -> int {
+  let factors: [int] = prime_factors(value)
+  if factors.len == 0 {
+    give 0
+  }
+
+  give factors[factors.len - 1]
 }
 
-proc are_coprime() -> int {
-  give 0
+proc divisors(value: int) -> [int] {
+  let n: int = abs_int(value)
+  let small: [int] = []
+  let large: [int] = []
+  let d: int = 1
+
+  if n == 0 {
+    give []
+  }
+
+  while d <= n / d {
+    if n % d == 0 {
+      set small = small + [d]
+      if d != n / d {
+        set large = large + [n / d]
+      }
+    }
+    set d = d + 1
+  }
+
+  give small + reverse_copy(large)
 }
 
-proc gcd_many() -> int {
-  give 0
+proc proper_divisors(value: int) -> [int] {
+  let all: [int] = divisors(value)
+  if all.len == 0 {
+    give []
+  }
+
+  let out: [int] = []
+  let i: int = 0
+  let n: int = abs_int(value)
+
+  while i < all.len {
+    if all[i] != n {
+      set out = out + [all[i]]
+    }
+    set i = i + 1
+  }
+
+  give out
 }
 
-proc lcm_many() -> int {
-  give 0
+proc divisors_count(value: int) -> int {
+  give divisors(value).len
 }
 
-proc is_prime() -> int {
-  give 0
+proc sum_of_divisors(value: int) -> int {
+  let ds: [int] = divisors(value)
+  let total: int = 0
+  let i: int = 0
+
+  while i < ds.len {
+    set total = total + ds[i]
+    set i = i + 1
+  }
+
+  give total
 }
 
-proc is_composite() -> int {
-  give 0
+proc proper_divisors_sum(value: int) -> int {
+  let ds: [int] = proper_divisors(value)
+  let total: int = 0
+  let i: int = 0
+
+  while i < ds.len {
+    set total = total + ds[i]
+    set i = i + 1
+  }
+
+  give total
 }
 
-proc next_prime() -> int {
-  give 0
+proc totient(value: int) -> int {
+  let n: int = abs_int(value)
+  let factors: [int] = distinct_prime_factors(n)
+  let result: int = n
+  let i: int = 0
+
+  if n == 0 {
+    give 0
+  }
+
+  while i < factors.len {
+    let reduced: int = result / factors[i]
+    let multiplier: int = factors[i] - 1
+    set result = reduced * multiplier
+    set i = i + 1
+  }
+
+  give result
 }
 
-proc prev_prime() -> int {
-  give 0
+proc mobius(value: int) -> int {
+  let n: int = abs_int(value)
+  let factors: [int] = prime_factors(n)
+  let i: int = 1
+
+  if n == 1 {
+    give 1
+  }
+
+  if n == 0 {
+    give 0
+  }
+
+  while i < factors.len {
+    if factors[i] == factors[i - 1] {
+      give 0
+    }
+    set i = i + 1
+  }
+
+  if is_even(factors.len) {
+    give 1
+  } else {
+    give -1
+  }
 }
 
-proc nth_prime() -> int {
-  give 0
+proc is_perfect_number(value: int) -> bool {
+  if value <= 1 {
+    give false
+  }
+
+  give proper_divisors_sum(value) == value
 }
 
-proc primes_up_to() -> int {
-  give 0
+proc is_abundant_number(value: int) -> bool {
+  if value <= 0 {
+    give false
+  }
+
+  give proper_divisors_sum(value) > value
 }
 
-proc prime_count() -> int {
-  give 0
+proc is_deficient_number(value: int) -> bool {
+  if value <= 0 {
+    give false
+  }
+
+  give proper_divisors_sum(value) < value
 }
 
-proc prime_factors() -> int {
-  give 0
+proc coprime(a: int, b: int) -> bool {
+  give are_coprime(a, b)
 }
 
-proc distinct_prime_factors() -> int {
-  give 0
+proc number_theory_version() -> string {
+  give "max-1"
 }
 
-proc prime_factor_count() -> int {
-  give 0
+proc number_theory_ready() -> bool {
+  give true
 }
 
-proc distinct_prime_factor_count() -> int {
-  give 0
+proc number_theory_selftest() -> bool {
+  let primes: [int] = primes_up_to(10)
+  let factors: [int] = prime_factors(84)
+  let divisors_28: [int] = divisors(28)
+
+  give number_theory_ready()
+    and number_theory_version() == "max-1"
+    and gcd(54, 24) == 6
+    and lcm(6, 8) == 24
+    and are_coprime(35, 64)
+    and is_prime(29)
+    and not is_prime(21)
+    and next_prime(29) == 31
+    and prev_prime(29) == 23
+    and nth_prime(6) == 13
+    and primes.len == 4
+    and prime_count(10) == 4
+    and factors.len == 4
+    and factors[0] == 2
+    and largest_prime_factor(84) == 7
+    and divisors_28.len == 6
+    and divisors_count(28) == 6
+    and proper_divisors_sum(28) == 28
+    and totient(9) == 6
+    and mobius(30) == -1
+    and mobius(12) == 0
+    and is_perfect_number(28)
+    and is_abundant_number(12)
+    and is_deficient_number(8)
 }
 
-proc smallest_prime_factor() -> int {
-  give 0
-}
-
-proc largest_prime_factor() -> int {
-  give 0
-}
-
-proc divisors() -> int {
-  give 0
-}
-
-proc proper_divisors() -> int {
-  give 0
-}
-
-proc divisors_count() -> int {
-  give 0
-}
-
-proc sum_of_divisors() -> int {
-  give 0
-}
-
-proc proper_divisors_sum() -> int {
-  give 0
-}
-
-proc totient() -> int {
-  give 0
-}
-
-proc mobius() -> int {
-  give 0
-}
-
-proc is_perfect_number() -> int {
-  give 0
-}
-
-proc is_abundant_number() -> int {
-  give 0
-}
-
-proc is_deficient_number() -> int {
-  give 0
-}
-
-proc coprime() -> int {
-  give 0
-}
+export *

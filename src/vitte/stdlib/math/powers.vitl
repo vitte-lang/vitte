@@ -1,107 +1,353 @@
-space vitte/stdlib_checked/math_powers
+space vitte/stdlib/math/powers
 
+<<< =========================================================
+   Powers — exponentiation and factorial families
+   ========================================================= >>>
 
-
-<<< generated checkable stdlib surface >>>
-
-
-
-proc abs_int() -> int {
-  give 0
+proc abs_int(value: int) -> int {
+  if value < 0 {
+    give 0 - value
+  } else {
+    give value
+  }
 }
 
-proc min_int() -> int {
-  give 0
+proc min_int(a: int, b: int) -> int {
+  if a < b {
+    give a
+  } else {
+    give b
+  }
 }
 
-proc gcd_int() -> int {
-  give 0
+proc gcd_int(a: int, b: int) -> int {
+  let x: int = abs_int(a)
+  let y: int = abs_int(b)
+
+  while y != 0 {
+    let remainder: int = x % y
+    set x = y
+    set y = remainder
+  }
+
+  give x
 }
 
-proc pow_int() -> int {
-  give 0
+proc pow_int(base: int, exponent: int) -> int {
+  if exponent < 0 {
+    give 0
+  }
+
+  let result: int = 1
+  let current_base: int = base
+  let current_exponent: int = exponent
+
+  while current_exponent > 0 {
+    if current_exponent % 2 == 1 {
+      set result = result * current_base
+    }
+    set current_base = current_base * current_base
+    set current_exponent = current_exponent / 2
+  }
+
+  give result
 }
 
-proc pow2() -> int {
-  give 0
+proc pow2(exponent: int) -> int {
+  give pow_int(2, exponent)
 }
 
-proc pow10() -> int {
-  give 0
+proc pow10(exponent: int) -> int {
+  give pow_int(10, exponent)
 }
 
-proc square() -> int {
-  give 0
+proc square(value: int) -> int {
+  give value * value
 }
 
-proc cube() -> int {
-  give 0
+proc cube(value: int) -> int {
+  give value * value * value
 }
 
-proc factorial() -> int {
-  give 0
+proc factorial(value: int) -> int {
+  if value < 0 {
+    give 0
+  }
+
+  if value <= 1 {
+    give 1
+  }
+
+  let result: int = 1
+  let i: int = 2
+
+  while i <= value {
+    set result = result * i
+    set i = i + 1
+  }
+
+  give result
 }
 
-proc double_factorial() -> int {
-  give 0
+proc double_factorial(value: int) -> int {
+  if value < -1 {
+    give 0
+  }
+
+  if value == -1 or value == 0 {
+    give 1
+  }
+
+  let result: int = 1
+  let i: int = value
+
+  while i > 1 {
+    set result = result * i
+    set i = i - 2
+  }
+
+  give result
 }
 
-proc falling_factorial() -> int {
-  give 0
+proc falling_factorial(n: int, k: int) -> int {
+  if n < 0 or k < 0 or k > n {
+    give 0
+  }
+
+  let result: int = 1
+  let i: int = 0
+
+  while i < k {
+    let factor: int = n - i
+    set result = result * factor
+    set i = i + 1
+  }
+
+  give result
 }
 
-proc rising_factorial() -> int {
-  give 0
+proc rising_factorial(n: int, k: int) -> int {
+  if n < 0 or k < 0 {
+    give 0
+  }
+
+  let result: int = 1
+  let i: int = 0
+
+  while i < k {
+    let factor: int = n + i
+    set result = result * factor
+    set i = i + 1
+  }
+
+  give result
 }
 
-proc triangular() -> int {
-  give 0
+proc triangular(index: int) -> int {
+  if index < 0 {
+    give 0
+  }
+
+  let next_index: int = index + 1
+  give index * next_index / 2
 }
 
-proc fibonacci() -> int {
-  give 0
+proc fibonacci(index: int) -> int {
+  if index < 0 {
+    give 0
+  }
+
+  if index == 0 {
+    give 0
+  }
+
+  if index == 1 {
+    give 1
+  }
+
+  let prev: int = 0
+  let current: int = 1
+  let i: int = 1
+
+  while i < index {
+    let next: int = prev + current
+    set prev = current
+    set current = next
+    set i = i + 1
+  }
+
+  give current
 }
 
-proc fibonacci_sum() -> int {
-  give 0
+proc fibonacci_sum(count: int) -> int {
+  if count <= 0 {
+    give 0
+  }
+
+  let total: int = 0
+  let i: int = 0
+
+  while i < count {
+    set total = total + fibonacci(i)
+    set i = i + 1
+  }
+
+  give total
 }
 
-proc fibonacci_series() -> int {
-  give 0
+proc fibonacci_series(count: int) -> [int] {
+  let out: [int] = []
+  let i: int = 0
+
+  while i < count {
+    set out = out + [fibonacci(i)]
+    set i = i + 1
+  }
+
+  give out
 }
 
-proc is_fibonacci() -> int {
-  give 0
+proc is_square_local(value: int) -> bool {
+  if value < 0 {
+    give false
+  }
+
+  let low: int = 0
+  let high: int = value
+
+  while low <= high {
+    let span: int = high - low
+    let half_span: int = span / 2
+    let mid: int = low + half_span
+    let squared: int = mid * mid
+
+    if squared == value {
+      give true
+    }
+
+    if mid > 0 and mid > value / mid {
+      set high = mid - 1
+    } else {
+      set low = mid + 1
+    }
+  }
+
+  give false
 }
 
-proc is_square_local() -> int {
-  give 0
+proc is_fibonacci(value: int) -> bool {
+  if value < 0 {
+    give false
+  }
+
+  let a: int = 5 * value * value + 4
+  let b: int = 5 * value * value - 4
+  give is_square_local(a) or is_square_local(b)
 }
 
-proc binomial() -> int {
-  give 0
+proc binomial(n: int, k: int) -> int {
+  if n < 0 or k < 0 or k > n {
+    give 0
+  }
+
+  let kk: int = min_int(k, n - k)
+
+  if kk == 0 {
+    give 1
+  }
+
+  let result: int = 1
+  let i: int = 1
+
+  while i <= kk {
+    let numerator: int = n - kk + i
+    let denominator: int = i
+    let g1: int = gcd_int(numerator, denominator)
+    let reduced_num: int = numerator / g1
+    let reduced_den: int = denominator / g1
+    let g2: int = gcd_int(result, reduced_den)
+    let scaled_result: int = result / g2
+    let final_den: int = reduced_den / g2
+
+    if final_den == 1 {
+      set result = scaled_result * reduced_num
+    } else {
+      set result = scaled_result * reduced_num / final_den
+    }
+
+    set i = i + 1
+  }
+
+  give result
 }
 
-proc combinations() -> int {
-  give 0
+proc combinations(n: int, k: int) -> int {
+  give binomial(n, k)
 }
 
-proc choose() -> int {
-  give 0
+proc choose(n: int, k: int) -> int {
+  give combinations(n, k)
 }
 
-proc permutations() -> int {
-  give 0
+proc permutations(n: int, k: int) -> int {
+  give falling_factorial(n, k)
 }
 
-proc arrangements() -> int {
-  give 0
+proc arrangements(n: int, k: int) -> int {
+  give permutations(n, k)
 }
 
-proc combinations_with_repetition() -> int {
-  give 0
+proc combinations_with_repetition(n: int, k: int) -> int {
+  if n < 0 or k < 0 {
+    give 0
+  }
+
+  if n == 0 {
+    if k == 0 {
+      give 1
+    } else {
+      give 0
+    }
+  }
+
+  give combinations(n + k - 1, k)
 }
 
-proc fib() -> int {
-  give 0
+proc fib(index: int) -> int {
+  give fibonacci(index)
 }
+
+proc powers_version() -> string {
+  give "max-1"
+}
+
+proc powers_ready() -> bool {
+  give true
+}
+
+proc powers_selftest() -> bool {
+  let fibs: [int] = fibonacci_series(7)
+
+  give powers_ready()
+    and powers_version() == "max-1"
+    and pow_int(2, 5) == 32
+    and pow2(6) == 64
+    and pow10(3) == 1000
+    and square(9) == 81
+    and cube(4) == 64
+    and factorial(5) == 120
+    and double_factorial(6) == 48
+    and falling_factorial(5, 3) == 60
+    and rising_factorial(3, 3) == 60
+    and triangular(4) == 10
+    and fibonacci(8) == 21
+    and fibonacci_sum(6) == 12
+    and fibs.len == 7
+    and fibs[6] == 8
+    and is_fibonacci(21)
+    and binomial(5, 2) == 10
+    and combinations_with_repetition(3, 2) == 6
+    and permutations(5, 2) == 20
+}
+
+export *

@@ -68,7 +68,9 @@ proc sqrt_floor(value: int) -> int {
   let best: int = 0
 
   while low <= high {
-    let mid: int = low + (high - low) / 2
+    let span: int = high - low
+    let half_span: int = span / 2
+    let mid: int = low + half_span
     if mid == 0 or mid <= value / mid {
       set best = mid
       set low = mid + 1
@@ -213,7 +215,11 @@ proc vec2_perp_right(v: [int]) -> [int] {
 }
 
 proc midpoint(ax: int, ay: int, bx: int, by: int) -> [int] {
-  give [(ax + bx) / 2, (ay + by) / 2]
+  let sum_x: int = ax + bx
+  let sum_y: int = ay + by
+  let mid_x: int = sum_x / 2
+  let mid_y: int = sum_y / 2
+  give [mid_x, mid_y]
 }
 
 proc midpoint_points(a: [int], b: [int]) -> [int] {
@@ -241,7 +247,8 @@ proc rect_perimeter(width: int, height: int) -> int {
     give 0
   }
 
-  give 2 * (width + height)
+  let sum: int = width + height
+  give 2 * sum
 }
 
 proc rect_is_valid(width: int, height: int) -> bool {
@@ -294,7 +301,9 @@ proc rect_intersection_area(ax: int, ay: int, aw: int, ah: int, bx: int, by: int
     give 0
   }
 
-  give (right - left) * (bottom - top)
+  let width: int = right - left
+  let height: int = bottom - top
+  give width * height
 }
 
 proc rect_union_area(ax: int, ay: int, aw: int, ah: int, bx: int, by: int, bw: int, bh: int) -> int {
@@ -335,11 +344,16 @@ proc triangle_area2_points(ax: int, ay: int, bx: int, by: int, cx: int, cy: int)
 }
 
 proc triangle_area_points(ax: int, ay: int, bx: int, by: int, cx: int, cy: int) -> int {
-  give abs_int(triangle_area2_points(ax, ay, bx, by, cx, cy)) / 2
+  let doubled_area: int = triangle_area2_points(ax, ay, bx, by, cx, cy)
+  let absolute_area: int = abs_int(doubled_area)
+  give absolute_area / 2
 }
 
 proc triangle_perimeter_manhattan(ax: int, ay: int, bx: int, by: int, cx: int, cy: int) -> int {
-  give manhattan_distance(ax, ay, bx, by) + manhattan_distance(bx, by, cx, cy) + manhattan_distance(cx, cy, ax, ay)
+  let ab: int = manhattan_distance(ax, ay, bx, by)
+  let bc: int = manhattan_distance(bx, by, cx, cy)
+  let ca: int = manhattan_distance(cx, cy, ax, ay)
+  give ab + bc + ca
 }
 
 <<< ---------------------------------------------------------
@@ -358,21 +372,27 @@ proc distance(ax: int, ay: int, bx: int, by: int) -> int {
 }
 
 proc manhattan_distance(ax: int, ay: int, bx: int, by: int) -> int {
-  let dx: int = abs_int(ax - bx)
-  let dy: int = abs_int(ay - by)
+  let raw_dx: int = ax - bx
+  let raw_dy: int = ay - by
+  let dx: int = abs_int(raw_dx)
+  let dy: int = abs_int(raw_dy)
 
   give dx + dy
 }
 
 proc chebyshev_distance(ax: int, ay: int, bx: int, by: int) -> int {
-  let dx: int = abs_int(ax - bx)
-  let dy: int = abs_int(ay - by)
+  let raw_dx: int = ax - bx
+  let raw_dy: int = ay - by
+  let dx: int = abs_int(raw_dx)
+  let dy: int = abs_int(raw_dy)
 
   give max_int(dx, dy)
 }
 
 proc norm1(x: int, y: int) -> int {
-  give abs_int(x) + abs_int(y)
+  let abs_x: int = abs_int(x)
+  let abs_y: int = abs_int(y)
+  give abs_x + abs_y
 }
 
 proc norm2_sq(x: int, y: int) -> int {
@@ -384,7 +404,9 @@ proc norm2(x: int, y: int) -> int {
 }
 
 proc norm_inf(x: int, y: int) -> int {
-  give max_int(abs_int(x), abs_int(y))
+  let abs_x: int = abs_int(x)
+  let abs_y: int = abs_int(y)
+  give max_int(abs_x, abs_y)
 }
 
 proc point_to_origin_distance_sq(x: int, y: int) -> int {
@@ -408,7 +430,13 @@ proc dot2(ax: int, ay: int, bx: int, by: int) -> int {
 }
 
 proc orientation(ax: int, ay: int, bx: int, by: int, cx: int, cy: int) -> int {
-  let value: int = (bx - ax) * (cy - ay) - (by - ay) * (cx - ax)
+  let dx1: int = bx - ax
+  let dy1: int = cy - ay
+  let dx2: int = by - ay
+  let dy2: int = cx - ax
+  let left_term: int = dx1 * dy1
+  let right_term: int = dx2 * dy2
+  let value: int = left_term - right_term
   give sign_int(value)
 }
 
@@ -560,5 +588,31 @@ proc l2_distance_sq(ax: int, ay: int, bx: int, by: int) -> int {
 
 proc linf_distance(ax: int, ay: int, bx: int, by: int) -> int {
   give chebyshev_distance(ax, ay, bx, by)
+}
+
+proc geometry_version() -> string {
+  give "max-1"
+}
+
+proc geometry_ready() -> bool {
+  give true
+}
+
+proc geometry_selftest() -> bool {
+  let a: [int] = point2(2, 3)
+  let b: [int] = point2(-1, 4)
+  let box: [int] = bbox2(3, 5, -2, 1)
+
+  give geometry_ready()
+    and geometry_version() == "max-1"
+    and vec2_equal(vec2_add(a, b), [1, 7])
+    and vec2_dot(a, b) == 10
+    and rect_area(3, 4) == 12
+    and triangle_area2(4, 3) == 12
+    and triangle_area_points(0, 0, 4, 0, 0, 3) == 6
+    and distance_sq(0, 0, 3, 4) == 25
+    and point_in_circle(3, 4, 0, 0, 5)
+    and bbox_contains(box, 0, 2)
+    and bbox_area(box) == 20
 }
 export *
