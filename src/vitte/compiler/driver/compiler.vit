@@ -460,6 +460,27 @@ proc resolve_project_entry_path(project_path: string) -> string {
     give "";
 }
 
+proc resolve_cli_input_path(input_path: string) -> string {
+    if input_path == "" {
+        give "";
+    }
+    if project_path_hint(input_path) or is_directory(input_path) {
+        let project_entry: string = resolve_project_entry_path(input_path);
+        if project_entry != "" {
+            give project_entry;
+        }
+    }
+    give input_path;
+}
+
+proc resolve_cli_input_source_text(input_path: string) -> string {
+    let resolved_path: string = resolve_cli_input_path(input_path);
+    if resolved_path == "" {
+        give "";
+    }
+    give read_file(resolved_path);
+}
+
 proc discover_project_vit_files(project_path: string) -> [string] {
     let files: [string] = [];
     let entries: [string] = list_directory(project_path);
@@ -695,13 +716,7 @@ proc cli_request_source_location(request: CompilerCliRequest) -> string {
 
 proc cli_request_source_path(request: CompilerCliRequest) -> string {
     if request.input_path != "" {
-        if project_path_hint(request.input_path) or is_directory(request.input_path) {
-            let project_entry: string = resolve_project_entry_path(request.input_path);
-            if project_entry != "" {
-                give project_entry;
-            }
-        }
-        give request.input_path;
+        give resolve_cli_input_path(request.input_path);
     }
     give "inline.vit";
 }
@@ -862,14 +877,7 @@ proc cli_request_source_text(request: CompilerCliRequest) -> string {
         give request.source_text;
     }
     if request.input_path != "" {
-        if project_path_hint(request.input_path) or is_directory(request.input_path) {
-            let project_entry: string = resolve_project_entry_path(request.input_path);
-            if project_entry != "" {
-                give read_file(project_entry);
-            }
-            give "";
-        }
-        give read_file(request.input_path);
+        give resolve_cli_input_source_text(request.input_path);
     }
     give "";
 }

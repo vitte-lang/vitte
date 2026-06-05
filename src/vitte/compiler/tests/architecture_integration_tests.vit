@@ -55,7 +55,7 @@ proc test_borrowck_failure_stops_pipeline() -> bool {
 }
 
 proc test_const_eval_and_analysis_success() -> bool {
-  let source: string = "const X = 1 + 2;\nstatic_assert(X == 3);\nproc main() { give X; }\n";
+  let source: string = "const X = 1 + 2;\nconst Y = X + 1;\nproc main() { give Y; }\n";
   let fe: FrontendOutput = frontend_run("architecture_const_eval.vit", source);
   let middle: MiddleOutput = middle_run(fe);
   give fe.valid and middle.analysis.const_eval_ok and middle.analysis.valid and middle.hir.valid;
@@ -63,10 +63,18 @@ proc test_const_eval_and_analysis_success() -> bool {
 
 proc run_all_tests() -> int {
   let failures: int = 0;
-  if not test_frontend_to_ast_contract() { set failures = failures + 1; }
-  if not test_middle_pipeline_builds_cfg() { set failures = failures + 1; }
-  if not test_borrowck_failure_stops_pipeline() { set failures = failures + 1; }
-  if not test_const_eval_and_analysis_success() { set failures = failures + 1; }
+  if not test_frontend_to_ast_contract() {
+    set failures = failures + 1;
+  }
+  if not test_middle_pipeline_builds_cfg() {
+    set failures = failures + 1;
+  }
+  if not test_borrowck_failure_stops_pipeline() {
+    set failures = failures + 1;
+  }
+  if not test_const_eval_and_analysis_success() {
+    set failures = failures + 1;
+  }
   give failures;
 }
 

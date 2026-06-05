@@ -4,7 +4,7 @@ use vitte/compiler/driver/compile.{ DriverAnalysisArtifacts, DriverCompileConfig
 use vitte/compiler/driver/exit_status.{ DriverExitStatus, exit_code }
 use vitte/compiler/driver/mod.{ main_driver_report_json, main_driver_surface_report_json, main_driver_surface_report_json_from_args, run_check_diagnostics_json_cli, run_check_hir_json_cli, run_check_mir_json_cli, run_parse_ast_json_cli }
 use vitte/compiler/driver/result.{ CliReportResult }
-use vitte/compiler/driver/compiler.{ CompilerMode, CompilerOptions, CompilerResult, CompilerStage, PhaseResult, compiler_from_source, default_options, new_compiler, record_phase_result, run_cli_main, run_compiler, structured_driver_failure_message }
+use vitte/compiler/driver/compiler.{ CompilerCliRequest, CompilerMode, CompilerOptions, CompilerResult, CompilerStage, PhaseResult, compiler_from_source, default_options, new_compiler, parse_cli_request, record_phase_result, run_cli_main, run_compiler, structured_driver_failure_message }
 use vitte/compiler/backend/pipeline.{ BackendPipelineResult, compile_to_valid_ir_with_profile_and_packaging }
 use vitte/compiler/backend/target/config
 use vitte/compiler/backends/backend_infrastructure
@@ -54,6 +54,20 @@ proc test_compiler_main_accepts_verbose_flag() -> bool {
 
 proc test_compiler_main_loads_file_through_host_runtime() -> bool {
   give run_cli_main(["check", "tests/golden/frontend/fixtures/hello_min.vit"]) == 0;
+}
+
+proc test_parse_cli_request_defaults_project_root_for_source_commands() -> bool {
+  let request: CompilerCliRequest = parse_cli_request(["check"]);
+  give request.valid and request.input_path == ".";
+}
+
+proc test_compiler_main_resolves_project_root_input_path() -> bool {
+  give run_cli_main(["check", "."]) == 0
+    and run_cli_main(["check", "toolchain/stage2/"]) == 0;
+}
+
+proc test_compiler_main_builds_from_project_root_input_path() -> bool {
+  give run_cli_main(["build", ".", "-o", "target/pipeline_cli_project_root"]) == 0;
 }
 
 proc run_stop_after(stage: CompilerStage, mode: CompilerMode) -> CompilerResult {
@@ -446,6 +460,29 @@ proc test_diagnostics_json_reports_lexer_phase() -> bool {
     and find(diag_json, "\"byte offset: 14\"") >= 0;
 }
 
+proc test_json_surfaces_report_error_status_for_invalid_inputs() -> bool {
+  let parse_source_text: string = "proc main() -> int { let x = ; }\n";
+  let type_source_text: string = "proc main() -> int { let x = 1; set x = \"oops\"; give x; }\n";
+  let ast_json: string = dump_ast_json("pipeline_ast_json_error.vit", parse_source_text);
+  let hir_json: string = dump_hir_json("pipeline_hir_json_error.vit", type_source_text);
+  let mir_json: string = dump_mir_json("pipeline_mir_json_error.vit", type_source_text);
+  let diag_json: string = dump_diagnostics_json("pipeline_diag_json_error.vit", type_source_text);
+  give find(ast_json, "\"surface\":\"ast\"") >= 0
+    and find(ast_json, "\"status\":\"error\"") >= 0
+    and find(ast_json, "\"source\":{\"path\":\"pipeline_ast_json_error.vit\",\"bytes\":") >= 0
+    and find(hir_json, "\"surface\":\"hir\"") >= 0
+    and find(hir_json, "\"status\":\"error\"") >= 0
+    and find(hir_json, "\"hir\":{\"kind\":\"native-typed\"") >= 0
+    and find(mir_json, "\"surface\":\"mir\"") >= 0
+    and find(mir_json, "\"status\":\"error\"") >= 0
+    and find(mir_json, "\"mir\":{\"kind\":\"native-lowered\"") >= 0
+    and find(diag_json, "\"surface\":\"diagnostics\"") >= 0
+    and find(diag_json, "\"status\":\"error\"") >= 0
+    and find(diag_json, "\"pipeline_failed_at\":\"typeck\"") >= 0
+    and find(diag_json, "\"summary\":{\"frontend_diagnostic_count\":0") >= 0
+    and find(diag_json, "\"primary_report\":") >= 0;
+}
+
 proc test_cli_json_dump_routes() -> bool {
   let source_text: string = "proc main() -> int { give 0; }\n";
   let ast_report: CliReportResult = run_parse_ast_json_cli("pipeline_cli_ast.vit", source_text);
@@ -789,6 +826,15 @@ proc run_all_tests() -> int {
   if not test_compiler_main_loads_file_through_host_runtime() {
     set failures = failures + 1;
   }
+  if not test_parse_cli_request_defaults_project_root_for_source_commands() {
+    set failures = failures + 1;
+  }
+  if not test_compiler_main_resolves_project_root_input_path() {
+    set failures = failures + 1;
+  }
+  if not test_compiler_main_builds_from_project_root_input_path() {
+    set failures = failures + 1;
+  }
   if not test_check_source_accepts_intrinsic_surface() {
     set failures = failures + 1;
   }
@@ -883,6 +929,9 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if not test_diagnostics_json_reports_lexer_phase() {
+    set failures = failures + 1;
+  }
+  if not test_json_surfaces_report_error_status_for_invalid_inputs() {
     set failures = failures + 1;
   }
   if not test_cli_json_dump_routes() {
