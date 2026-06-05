@@ -113,6 +113,77 @@ first_file_arg() {
     return 1
 }
 
+first_path_arg() {
+    skip_next=0
+    for arg do
+        if [ "$skip_next" -eq 1 ]; then
+            skip_next=0
+            continue
+        fi
+        case "$arg" in
+            --src|--out|-o|--stage|--ir-version)
+                skip_next=1
+                ;;
+            -*)
+                ;;
+            *)
+                printf '%s\n' "$arg"
+                return 0
+                ;;
+        esac
+    done
+    return 1
+}
+
+first_path_arg_after_command() {
+    [ "$#" -gt 0 ] || return 1
+    shift
+    first_path_arg "$@"
+}
+
+resolve_project_input() {
+    project_path="$1"
+    if [ -z "$project_path" ]; then
+        return 1
+    fi
+    if [ -f "$project_path/src/main.vit" ]; then
+        printf '%s\n' "$project_path/src/main.vit"
+        return 0
+    fi
+    if [ -f "$project_path/src/vitte/compiler/main.vit" ]; then
+        printf '%s\n' "$project_path/src/vitte/compiler/main.vit"
+        return 0
+    fi
+    if [ -f "$project_path/main.vit" ]; then
+        printf '%s\n' "$project_path/main.vit"
+        return 0
+    fi
+    return 1
+}
+
+resolve_cli_input() {
+    input_path="$1"
+    if [ -z "$input_path" ]; then
+        resolve_project_input "."
+        return $?
+    fi
+    if [ -d "$input_path" ]; then
+        resolve_project_input "$input_path"
+        return $?
+    fi
+    case "$input_path" in
+        .|..|*/)
+            resolve_project_input "$input_path"
+            return $?
+            ;;
+    esac
+    if [ -f "$input_path" ]; then
+        printf '%s\n' "$input_path"
+        return 0
+    fi
+    return 1
+}
+
 has_flag() {
     key="$1"
     shift
@@ -691,6 +762,61 @@ write_compiler() {
     chmod +x "$compiler_out"
 }
 
+bootstrap_repo_root_from_source() {
+    src="$1"
+    case "$src" in
+        */src/vitte/compiler/tests/*)
+            printf '%s\n' "${src%/src/vitte/compiler/tests/*}"
+            return 0
+            ;;
+        src/vitte/compiler/tests/*)
+            printf '.\n'
+            return 0
+            ;;
+    esac
+    return 1
+}
+
+is_bootstrap_compiler_test_suite_source() {
+    src="$1"
+    case "$src" in
+        */src/vitte/compiler/tests/*.vit|src/vitte/compiler/tests/*.vit)
+            grep -q '^proc[ 	]\+run_all_tests()[ 	]*->[ 	]*int[ 	]*{' "$src" || return 1
+            grep -q '^proc[ 	]\+main([A-Za-z_][A-Za-z0-9_]*:[ 	]*list\[string\])[ 	]*->[ 	]*int[ 	]*{' "$src" || return 1
+            return 0
+            ;;
+    esac
+    return 1
+}
+
+write_compiler_test_suite_bridge() {
+    src="$1"
+    target_out="$2"
+    repo_root="$3"
+    compiler_bin="$repo_root/bin/vitte"
+    src_abs="$(cd "$(dirname "$src")" && pwd)/$(basename "$src")"
+    mkdir -p "$(dirname "$target_out")"
+    cat > "$target_out" <<EOF
+#!/usr/bin/env sh
+set -eu
+repo_root=$(printf '%s\n' "$repo_root" | sq)
+source_path=$(printf '%s\n' "$src_abs" | sq)
+compiler_bin=\${VITTE_BOOTSTRAP_COMPILER:-$(printf '%s\n' "$compiler_bin" | sq)}
+if [ ! -x "\$compiler_bin" ]; then
+    if [ -x "\$repo_root/bin/vitte" ]; then
+        compiler_bin="\$repo_root/bin/vitte"
+    elif [ -x "./bin/vitte" ]; then
+        compiler_bin="./bin/vitte"
+    else
+        echo "[vitte][error] E_BOOTSTRAP_COMPILER_TEST_BRIDGE: missing compiler binary for compiler test suite bridge" >&2
+        exit 127
+    fi
+fi
+exec "\$compiler_bin" check "\$source_path"
+EOF
+    chmod +x "$target_out"
+}
+
 extract_native_main_return() {
     src="$1"
     awk '
@@ -748,7 +874,6 @@ build_native_user_program() {
     src="$1"
     out="$2"
     target_out="$2"
-    bridge_sidecar="${target_out}.bootstrap-bridge"
     cc_bin="${CC:-cc}"
     allow_full_bridge="${VITTE_BOOTSTRAP_ALLOW_FULL_COMPILER_BRIDGE:-1}"
     main_return="$(extract_native_main_return "$src" || true)"
@@ -767,7 +892,7 @@ build_native_user_program() {
             return 1
         }
         rm -f "$c_src"
-        rm -f "$bridge_sidecar"
+        rm -f "${target_out}.bootstrap-bridge"
         chmod +x "$target_out"
         return 0
     fi
@@ -870,11 +995,19 @@ EOF
             }
             rm -rf "$tmp_dir"
             rm -f "$c_src"
-            printf 'vitte-bootstrap-native-bridge\nsrc=%s\n' "$src" > "$bridge_sidecar"
+            rm -f "${target_out}.bootstrap-bridge"
             chmod +x "$target_out"
             return 0
             ;;
     esac
+    if [ "$allow_full_bridge" = "1" ] && is_bootstrap_compiler_test_suite_source "$src"; then
+        repo_root="$(bootstrap_repo_root_from_source "$src" || true)"
+        if [ -n "$repo_root" ]; then
+            write_compiler_test_suite_bridge "$src" "$target_out" "$repo_root"
+            rm -f "${target_out}.bootstrap-bridge"
+            return 0
+        fi
+    fi
     cli_error E_BOOTSTRAP_NATIVE_SUBSET "native build is limited in this bootstrap binary" "supported inputs: proc main() -> int { give <integer>; }, or the official compiler entry src/vitte/compiler/main.vit"
     return 1
 }
@@ -2222,6 +2355,7 @@ case "$cmd" in
             dump_mir_json=1
         fi
         src="$(first_file_arg "$@" || true)"
+        if [ -z "$src" ]; then src="$(resolve_cli_input "$(arg_value --src "$@" || first_path_arg_after_command "$@" || true)" || true)"; fi
         [ -n "$src" ] || { cli_error E_CLI_MISSING_ARG "missing input file" "vittec check path.vit"; exit 2; }
         [ -f "$src" ] || { cli_error E_CLI_IO "cannot read $src" "check the path and permissions"; exit 1; }
         ir_version="$(arg_value --ir-version "$@" || true)"
@@ -2296,6 +2430,7 @@ case "$cmd" in
         read_common_flags "$@"
         src="$(arg_value --src "$@" || true)"
         if [ -z "$src" ]; then src="$(first_file_arg "$@" || true)"; fi
+        if [ -z "$src" ]; then src="$(resolve_cli_input "$(arg_value --src "$@" || first_path_arg_after_command "$@" || true)" || true)"; fi
         [ -n "$src" ] || { cli_error E_CLI_MISSING_ARG "run requires --src or file" "vittec run path.vit"; exit 2; }
         [ -f "$src" ] || { cli_error E_CLI_IO "cannot read $src" "check the path and permissions"; exit 1; }
         tmp_bin="$(mktemp "${TMPDIR:-/tmp}/vittec-run-XXXXXX")"
@@ -2317,6 +2452,7 @@ case "$cmd" in
         fi
         src="$(arg_value --src "$@" || true)"
         if [ -z "$src" ]; then src="$(first_file_arg "$@" || true)"; fi
+        if [ -z "$src" ]; then src="$(resolve_cli_input "$(arg_value --src "$@" || first_path_arg_after_command "$@" || true)" || true)"; fi
         [ -n "$src" ] || { cli_error E_CLI_MISSING_ARG "dump-tokens requires --src or file" "vittec dump-tokens path.vit"; exit 2; }
         [ -f "$src" ] || { cli_error E_CLI_IO "cannot read $src" "check the path and permissions"; exit 1; }
         if [ "$dump_json" -eq 1 ]; then
@@ -2351,6 +2487,7 @@ case "$cmd" in
         fi
         src="$(arg_value --src "$@" || true)"
         if [ -z "$src" ]; then src="$(first_file_arg "$@" || true)"; fi
+        if [ -z "$src" ]; then src="$(resolve_cli_input "$(arg_value --src "$@" || first_path_arg_after_command "$@" || true)" || true)"; fi
         [ -n "$src" ] || { cli_error E_CLI_MISSING_ARG "dump-ast requires --src or file" "vittec dump-ast path.vit"; exit 2; }
         [ -f "$src" ] || { cli_error E_CLI_IO "cannot read $src" "check the path and permissions"; exit 1; }
         source_meta="$(source_meta_json "$src")"
@@ -2377,6 +2514,7 @@ case "$cmd" in
         fi
         src="$(arg_value --src "$@" || true)"
         if [ -z "$src" ]; then src="$(first_file_arg "$@" || true)"; fi
+        if [ -z "$src" ]; then src="$(resolve_cli_input "$(arg_value --src "$@" || first_path_arg_after_command "$@" || true)" || true)"; fi
         [ -n "$src" ] || { cli_error E_CLI_MISSING_ARG "dump-hir requires --src or file" "vittec dump-hir path.vit"; exit 2; }
         [ -f "$src" ] || { cli_error E_CLI_IO "cannot read $src" "check the path and permissions"; exit 1; }
         if diag_info="$(detect_professional_diagnostic "$src")"; then
@@ -2406,6 +2544,7 @@ case "$cmd" in
         fi
         src="$(arg_value --src "$@" || true)"
         if [ -z "$src" ]; then src="$(first_file_arg "$@" || true)"; fi
+        if [ -z "$src" ]; then src="$(resolve_cli_input "$(arg_value --src "$@" || first_path_arg_after_command "$@" || true)" || true)"; fi
         [ -n "$src" ] || { cli_error E_CLI_MISSING_ARG "dump-mir requires --src or file" "vittec dump-mir path.vit"; exit 2; }
         [ -f "$src" ] || { cli_error E_CLI_IO "cannot read $src" "check the path and permissions"; exit 1; }
         if diag_info="$(detect_professional_diagnostic "$src")"; then
@@ -2479,6 +2618,7 @@ case "$cmd" in
         else
             src="$(arg_value --src "$@" || true)"
             if [ -z "$src" ]; then src="$(first_file_arg "$@" || true)"; fi
+            if [ -z "$src" ]; then src="$(resolve_cli_input "$(arg_value --src "$@" || first_path_arg_after_command "$@" || true)" || true)"; fi
             out="$(arg_value --out "$@" || true)"
             if [ -z "$out" ]; then out="$(arg_value -o "$@" || true)"; fi
             [ -n "$src" ] || { cli_error E_CLI_MISSING_ARG "build requires input file" "vittec build main.vit -o build/main"; exit 2; }

@@ -174,6 +174,40 @@ JOBS=16 ./bootstrap.sh
 VERBOSE=1 ./bootstrap.sh
 ```
 
+## Validation Gates
+
+The root `make build` flow now runs a small set of bootstrap-specific gates in
+addition to the stage bootstrap and snapshot checks:
+
+- `compiler-real-native-gate` verifies `src/vitte/compiler/main.vit` builds as a
+  native executable without leaving a `.bootstrap-bridge` sidecar behind.
+- `compiler-test-suite-check-gate` verifies the stable compiler test suites still
+  pass the regular `check` surface.
+- `compiler-test-suite-bridge-gate` verifies the bootstrap compiler bridge stays
+  limited to compiler test suite sources and that a bridged suite still executes
+  successfully.
+- `driver-native-json-surface-gate` verifies AST, HIR, MIR, and diagnostics
+  JSON reports keep the expected native driver envelope.
+
+These gates are narrower than `bootstrap-native-snapshots`: the snapshot suite
+checks deterministic stage0/stage1/stage2 artifacts, while the new gates assert
+integration behavior of the current driver and bootstrap path.
+
+## Project Path CLI Fallback
+
+The driver now accepts a project directory as the input path for `build`,
+`check`, `run`, `dump-tokens`, `dump-ast`, `dump-hir`, and `dump-mir`.
+
+Resolution order is:
+
+1. `src/main.vit`
+2. `src/vitte/compiler/main.vit`
+3. `main.vit`
+
+This means commands such as `./bin/vitte check .` or `./bin/vitte build . -o
+target/app` resolve the project entry automatically instead of requiring the
+fully qualified file path.
+
 ## Configuration
 
 The bootstrap process is configured via `bootstrap-config.json`:

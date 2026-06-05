@@ -57,6 +57,19 @@ make bootstrap-native-drift-check
 make bootstrap-posix-smoke
 ```
 
+`make build` also runs bootstrap integration gates before the final source audit:
+
+- `compiler-real-native-gate`
+- `compiler-test-suite-check-gate`
+- `compiler-test-suite-bridge-gate`
+- `driver-native-json-surface-gate`
+
+These are complementary to `make bootstrap-native-snapshots`. The snapshot suite
+locks the emitted stage artifacts and diagnostics; the integration gates verify
+that the current driver still exposes the expected native JSON envelopes, that
+the compiler entry builds without a bridge sidecar, and that the compiler test
+suite bridge remains scoped to compiler test sources.
+
 ## Local Parallelism
 
 CI jobs run in isolated workspaces, so their bootstrap artifacts do not collide.
@@ -93,6 +106,19 @@ bootstrap-native forms they rely on:
 
 This is checked by `make bootstrap-source-coverage-check` and is included in the
 bootstrap-native contract targets.
+
+## Project Path Resolution
+
+Bootstrap and driver flows now accept a project directory as the CLI input path.
+When a command such as `./bin/vitte check .` or `./bin/vitte build . -o
+target/app` receives a directory-like path, it resolves the entry in this order:
+
+1. `src/main.vit`
+2. `src/vitte/compiler/main.vit`
+3. `main.vit`
+
+This keeps bootstrap-oriented projects and the compiler source tree addressable
+through the same CLI surface.
 
 For CI or release checks, `SEED_CONTRACT_BASE` may be set to the base commit or
 branch used for the diff:

@@ -82,9 +82,15 @@ proc test_compiler_check_stops_after_borrowck() -> bool {
   let saw_backend: bool = false;
   let i: u64 = 0;
   while i < len(result.phase_results) {
-    if result.phase_results[i] == "borrowck=Success" { set saw_borrowck = true; }
-    if result.phase_results[i] == "MIR lowering=Success" { set saw_mir = true; }
-    if result.phase_results[i] == "backend=Success" { set saw_backend = true; }
+    if result.phase_results[i] == "borrowck=Success" {
+      set saw_borrowck = true;
+    }
+    if result.phase_results[i] == "MIR lowering=Success" {
+      set saw_mir = true;
+    }
+    if result.phase_results[i] == "backend=Success" {
+      set saw_backend = true;
+    }
     set i = i + 1;
   }
   give result.status == DriverExitStatus.Ok and saw_borrowck and not saw_mir and not saw_backend;
@@ -141,22 +147,34 @@ proc test_session_source_manager_does_not_duplicate_input_snapshot() -> bool {
   let compiler0 = compiler_from_source(path, source_text, options);
 
   let compiler1 = configure_compiler(compiler0);
-  if not compiler1.state.ok { give false; }
+  if not compiler1.state.ok {
+    give false;
+  }
 
   let compiler2 = validate_input(compiler1);
-  if not compiler2.state.ok { give false; }
+  if not compiler2.state.ok {
+    give false;
+  }
 
   let compiler3 = validate_compiler_links(compiler2);
-  if not compiler3.state.ok { give false; }
+  if not compiler3.state.ok {
+    give false;
+  }
 
   let compiler4 = run_frontend(compiler3);
-  if not compiler4.state.ok { give false; }
+  if not compiler4.state.ok {
+    give false;
+  }
 
   let compiler5 = run_analysis(compiler4);
-  if not compiler5.state.ok { give false; }
+  if not compiler5.state.ok {
+    give false;
+  }
 
   let compiler6 = run_mir_pipeline(compiler5);
-  if not compiler6.state.ok { give false; }
+  if not compiler6.state.ok {
+    give false;
+  }
 
   let compiler7 = run_ir_pipeline(compiler6);
   give compiler7.state.ok
@@ -308,7 +326,7 @@ proc test_verified_backend_pipeline_contract() -> bool {
   if report.valid {
     give result.valid and len(report.violations) == 0;
   }
-  give (not result.valid) and len(report.violations) > 0;
+  give not result.valid and len(report.violations) > 0;
 }
 
 proc native_backend_test_config() -> DriverCompileConfig {
@@ -372,12 +390,32 @@ proc test_real_pipeline_json_dumps() -> bool {
   let diag_json: string = dump_diagnostics_json("pipeline_diag_json.vit", source_text);
   give find(ast_json, "\"surface\":\"ast\"") >= 0
     and find(ast_json, "\"token_count\":") >= 0
+    and find(ast_json, "\"producer\":\"vitte-driver-native\"") >= 0
+    and find(ast_json, "\"command\":\"parse\"") >= 0
+    and find(ast_json, "\"status\":\"ok\"") >= 0
+    and find(ast_json, "\"source\":{\"path\":\"pipeline_ast_json.vit\",\"bytes\":") >= 0
+    and find(ast_json, "\"summary\":{\"token_count\":") >= 0
+    and find(ast_json, "\"ast\":{\"kind\":\"native-structural\"") >= 0
+    and find(ast_json, "\"macro_trace\":\"macro:") >= 0
     and find(hir_json, "\"surface\":\"hir\"") >= 0
     and find(hir_json, "\"node_count\":") >= 0
+    and find(hir_json, "\"producer\":\"vitte-driver-native\"") >= 0
+    and find(hir_json, "\"command\":\"check\"") >= 0
+    and find(hir_json, "\"summary\":{\"node_count\":") >= 0
+    and find(hir_json, "\"hir\":{\"kind\":\"native-typed\"") >= 0
+    and find(hir_json, "\"first_item_name\":\"main\"") >= 0
     and find(mir_json, "\"surface\":\"mir\"") >= 0
     and find(mir_json, "\"instruction_count\":") >= 0
+    and find(mir_json, "\"producer\":\"vitte-driver-native\"") >= 0
+    and find(mir_json, "\"summary\":{\"function_count\":") >= 0
+    and find(mir_json, "\"mir\":{\"kind\":\"native-lowered\"") >= 0
+    and find(mir_json, "\"first_function_name\":\"main\"") >= 0
+    and find(mir_json, "\"entry_block\":") >= 0
     and find(diag_json, "\"surface\":\"diagnostics\"") >= 0
     and find(diag_json, "\"analysis_diagnostic_count\":") >= 0
+    and find(diag_json, "\"producer\":\"vitte-driver-native\"") >= 0
+    and find(diag_json, "\"summary\":{\"frontend_diagnostic_count\":") >= 0
+    and find(diag_json, "\"source\":{\"path\":\"pipeline_diag_json.vit\",\"bytes\":") >= 0
     and find(diag_json, "\"primary_report\":") >= 0
     and find(diag_json, "\"phase_reports\":") >= 0
     and find(diag_json, "\"module_resolution\":") >= 0
@@ -419,9 +457,14 @@ proc test_cli_json_dump_routes() -> bool {
     and mir_report.code == 0
     and diag_report.code == 0
     and find(ast_report.report_json, "\"surface\":\"ast\"") >= 0
+    and find(ast_report.report_json, "\"source\":{\"path\":\"pipeline_cli_ast.vit\",\"bytes\":") >= 0
+    and find(ast_report.report_json, "\"ast\":{\"kind\":\"native-structural\"") >= 0
     and find(hir_report.report_json, "\"surface\":\"hir\"") >= 0
+    and find(hir_report.report_json, "\"hir\":{\"kind\":\"native-typed\"") >= 0
     and find(mir_report.report_json, "\"surface\":\"mir\"") >= 0
-    and find(diag_report.report_json, "\"surface\":\"diagnostics\"") >= 0;
+    and find(mir_report.report_json, "\"mir\":{\"kind\":\"native-lowered\"") >= 0
+    and find(diag_report.report_json, "\"surface\":\"diagnostics\"") >= 0
+    and find(diag_report.report_json, "\"summary\":{\"frontend_diagnostic_count\":0") >= 0;
 }
 
 proc test_runtime_surface_dispatch_prefers_pipeline_json() -> bool {
@@ -433,12 +476,17 @@ proc test_runtime_surface_dispatch_prefers_pipeline_json() -> bool {
   let unsupported_report: CliReportResult = main_driver_surface_report_json("check", "--unknown-flag", "pipeline_dispatch_fallback.vit", source_text);
   give find(ast_report.report_json, "\"schema\":\"vitte.compiler.surface\"") >= 0
     and find(ast_report.report_json, "\"schema_version\":\"1.0.0\"") >= 0
+    and find(ast_report.report_json, "\"producer\":\"vitte-driver-native\"") >= 0
+    and find(ast_report.report_json, "\"summary\":{\"token_count\":") >= 0
     and find(hir_report.report_json, "\"surface\":\"hir\"") >= 0
     and find(hir_report.report_json, "\"schema\":\"vitte.compiler.surface\"") >= 0
+    and find(hir_report.report_json, "\"hir\":{\"kind\":\"native-typed\"") >= 0
     and find(mir_report.report_json, "\"surface\":\"mir\"") >= 0
     and find(mir_report.report_json, "\"schema\":\"vitte.compiler.surface\"") >= 0
+    and find(mir_report.report_json, "\"mir\":{\"kind\":\"native-lowered\"") >= 0
     and find(diag_report.report_json, "\"surface\":\"diagnostics\"") >= 0
     and find(diag_report.report_json, "\"schema\":\"vitte.compiler.surface\"") >= 0
+    and find(diag_report.report_json, "\"source\":{\"path\":\"pipeline_dispatch_diag.vit\",\"bytes\":") >= 0
     and unsupported_report.code == 1
     and find(unsupported_report.report_json, "\"code\":\"E_DRIVER_SURFACE_UNAVAILABLE\"") >= 0;
 }
@@ -449,7 +497,10 @@ proc test_runtime_surface_dispatch_from_args() -> bool {
   let hir_args_report: CliReportResult = main_driver_surface_report_json_from_args("check", ["check", "--dump-hir-json"], "pipeline_args_hir.vit", source_text);
   let fallback_args_report: CliReportResult = main_driver_surface_report_json_from_args("check", ["check", "--strict"], "pipeline_args_fallback.vit", source_text);
   give find(ast_args_report.report_json, "\"surface\":\"ast\"") >= 0
+    and find(ast_args_report.report_json, "\"command\":\"parse\"") >= 0
     and find(hir_args_report.report_json, "\"surface\":\"hir\"") >= 0
+    and find(hir_args_report.report_json, "\"command\":\"check\"") >= 0
+    and find(hir_args_report.report_json, "\"first_item_name\":\"main\"") >= 0
     and fallback_args_report.code == 1
     and find(fallback_args_report.report_json, "\"code\":\"E_DRIVER_SURFACE_UNAVAILABLE\"") >= 0;
 }
@@ -579,17 +630,39 @@ proc test_runtime_c_native_contract_is_wired() -> bool {
   let j: int = 0;
   while j < len(runtime0.functions) {
     let link_name: string = runtime0.functions[j].link_name;
-    if link_name == "vitte_runtime_panic_boundary_begin" { set saw_begin = true; }
-    if link_name == "vitte_runtime_panic_boundary_end" { set saw_end = true; }
-    if link_name == "vitte_runtime_panic_boundary_triggered" { set saw_triggered = true; }
-    if link_name == "vitte_runtime_panic_boundary_code" { set saw_code = true; }
-    if link_name == "vitte_runtime_panic_boundary_reset" { set saw_reset = true; }
-    if link_name == "vitte_host_read_file" { set saw_read_file = true; }
-    if link_name == "vitte_host_write_file" { set saw_write_file = true; }
-    if link_name == "vitte_host_system" { set saw_system = true; }
-    if link_name == "vitte_host_emit_llvm_object" { set saw_emit_object = true; }
-    if link_name == "vitte_host_link_executable" { set saw_link_executable = true; }
-    if link_name == "vitte_host_run_executable" { set saw_run_executable = true; }
+    if link_name == "vitte_runtime_panic_boundary_begin" {
+      set saw_begin = true;
+    }
+    if link_name == "vitte_runtime_panic_boundary_end" {
+      set saw_end = true;
+    }
+    if link_name == "vitte_runtime_panic_boundary_triggered" {
+      set saw_triggered = true;
+    }
+    if link_name == "vitte_runtime_panic_boundary_code" {
+      set saw_code = true;
+    }
+    if link_name == "vitte_runtime_panic_boundary_reset" {
+      set saw_reset = true;
+    }
+    if link_name == "vitte_host_read_file" {
+      set saw_read_file = true;
+    }
+    if link_name == "vitte_host_write_file" {
+      set saw_write_file = true;
+    }
+    if link_name == "vitte_host_system" {
+      set saw_system = true;
+    }
+    if link_name == "vitte_host_emit_llvm_object" {
+      set saw_emit_object = true;
+    }
+    if link_name == "vitte_host_link_executable" {
+      set saw_link_executable = true;
+    }
+    if link_name == "vitte_host_run_executable" {
+      set saw_run_executable = true;
+    }
     set j = j + 1;
   }
   give runtime0.name == "vitte_runtime"
@@ -698,63 +771,177 @@ proc test_target_config_profiles_contract() -> bool {
 
 proc run_all_tests() -> int {
   let failures: int = 0;
-  if not test_compile_source_success() { set failures = failures + 1; }
-  if not test_compiler_main_dispatches_inline_check() { set failures = failures + 1; }
-  if not test_compiler_main_builds_native_output() { set failures = failures + 1; }
-  if not test_compiler_main_runs_native_output() { set failures = failures + 1; }
-  if not test_compiler_main_accepts_verbose_flag() { set failures = failures + 1; }
-  if not test_compiler_main_loads_file_through_host_runtime() { set failures = failures + 1; }
-  if not test_check_source_accepts_intrinsic_surface() { set failures = failures + 1; }
-  if not test_compiler_check_stops_after_borrowck() { set failures = failures + 1; }
-  if not test_critical_skipped_or_unimplemented_phase_fails() { set failures = failures + 1; }
-  if not test_check_source_uses_validated_middle_path() { set failures = failures + 1; }
-  if not test_lint_warning_is_nonfatal() { set failures = failures + 1; }
-  if not test_check_source_uses_copy_aware_borrowck() { set failures = failures + 1; }
-  if not test_check_source_releases_branch_borrow_at_scope_end() { set failures = failures + 1; }
-  if not test_check_source_allows_partial_move_of_disjoint_field() { set failures = failures + 1; }
-  if not test_check_source_resolved_reference_flow() { set failures = failures + 1; }
-  if not test_analyze_source_exposes_resolved_and_typed_hir() { set failures = failures + 1; }
-  if not test_native_spans_are_emitted_for_frontend_and_analysis_diagnostics() { set failures = failures + 1; }
-  if not test_dump_hir_and_lower_mir_helpers() { set failures = failures + 1; }
-  if not test_stop_after_parse_exact() { set failures = failures + 1; }
-  if not test_stop_after_hir_exact() { set failures = failures + 1; }
-  if not test_stop_after_typeck_exact() { set failures = failures + 1; }
-  if not test_stop_after_mir_exact() { set failures = failures + 1; }
-  if not test_stop_after_ir_exact() { set failures = failures + 1; }
-  if not test_stop_after_codegen_exact() { set failures = failures + 1; }
-  if not test_stop_after_link_exact() { set failures = failures + 1; }
-  if not test_stop_after_run_exact() { set failures = failures + 1; }
-  if not test_session_source_manager_does_not_duplicate_input_snapshot() { set failures = failures + 1; }
-  if not test_incremental_invalidation_targets_dependents() { set failures = failures + 1; }
-  if not test_incremental_local_change_minimal_recompile() { set failures = failures + 1; }
-  if not test_distributed_build_foundation_contract() { set failures = failures + 1; }
-  if not test_formal_type_soundness_roadmap_contract() { set failures = failures + 1; }
-  if not test_verified_backend_pipeline_contract() { set failures = failures + 1; }
-  if not test_driver_native_object_materialization_contract() { set failures = failures + 1; }
-  if not test_driver_native_link_contract() { set failures = failures + 1; }
-  if not test_compiler_chaos_suite_contract() { set failures = failures + 1; }
-  if not test_analyze_source_set_resolves_imported_module() { set failures = failures + 1; }
-  if not test_real_pipeline_json_dumps() { set failures = failures + 1; }
-  if not test_diagnostics_json_reports_lexer_phase() { set failures = failures + 1; }
-  if not test_cli_json_dump_routes() { set failures = failures + 1; }
-  if not test_runtime_surface_dispatch_prefers_pipeline_json() { set failures = failures + 1; }
-  if not test_runtime_surface_dispatch_from_args() { set failures = failures + 1; }
-  if not test_runtime_surface_dispatch_rejects_unsupported_combo() { set failures = failures + 1; }
-  if not test_driver_report_includes_registry_sections() { set failures = failures + 1; }
-  if not test_driver_report_includes_stage_logs() { set failures = failures + 1; }
-  if not test_pipeline_fixture_hello_world_builds() { set failures = failures + 1; }
-  if not test_pipeline_fixture_syntax_error_fails_before_sema() { set failures = failures + 1; }
-  if not test_pipeline_fixture_type_error_fails_during_typeck() { set failures = failures + 1; }
-  if not test_pipeline_fixture_borrow_error_fails_during_borrowck() { set failures = failures + 1; }
-  if not test_pipeline_fixture_backend_failure_fails_build() { set failures = failures + 1; }
-  if not test_unix_exit_code_contract() { set failures = failures + 1; }
-  if not test_internal_compiler_error_renderer_contract() { set failures = failures + 1; }
-  if not test_native_panic_boundary_contract_surface() { set failures = failures + 1; }
-  if not test_runtime_c_native_contract_is_wired() { set failures = failures + 1; }
-  if not test_linker_auto_wires_runtime_c_payload() { set failures = failures + 1; }
-  if not test_structured_driver_failure_message_contract() { set failures = failures + 1; }
-  if not test_compiler_logger_levels_contract() { set failures = failures + 1; }
-  if not test_target_config_profiles_contract() { set failures = failures + 1; }
+  if not test_compile_source_success() {
+    set failures = failures + 1;
+  }
+  if not test_compiler_main_dispatches_inline_check() {
+    set failures = failures + 1;
+  }
+  if not test_compiler_main_builds_native_output() {
+    set failures = failures + 1;
+  }
+  if not test_compiler_main_runs_native_output() {
+    set failures = failures + 1;
+  }
+  if not test_compiler_main_accepts_verbose_flag() {
+    set failures = failures + 1;
+  }
+  if not test_compiler_main_loads_file_through_host_runtime() {
+    set failures = failures + 1;
+  }
+  if not test_check_source_accepts_intrinsic_surface() {
+    set failures = failures + 1;
+  }
+  if not test_compiler_check_stops_after_borrowck() {
+    set failures = failures + 1;
+  }
+  if not test_critical_skipped_or_unimplemented_phase_fails() {
+    set failures = failures + 1;
+  }
+  if not test_check_source_uses_validated_middle_path() {
+    set failures = failures + 1;
+  }
+  if not test_lint_warning_is_nonfatal() {
+    set failures = failures + 1;
+  }
+  if not test_check_source_uses_copy_aware_borrowck() {
+    set failures = failures + 1;
+  }
+  if not test_check_source_releases_branch_borrow_at_scope_end() {
+    set failures = failures + 1;
+  }
+  if not test_check_source_allows_partial_move_of_disjoint_field() {
+    set failures = failures + 1;
+  }
+  if not test_check_source_resolved_reference_flow() {
+    set failures = failures + 1;
+  }
+  if not test_analyze_source_exposes_resolved_and_typed_hir() {
+    set failures = failures + 1;
+  }
+  if not test_native_spans_are_emitted_for_frontend_and_analysis_diagnostics() {
+    set failures = failures + 1;
+  }
+  if not test_dump_hir_and_lower_mir_helpers() {
+    set failures = failures + 1;
+  }
+  if not test_stop_after_parse_exact() {
+    set failures = failures + 1;
+  }
+  if not test_stop_after_hir_exact() {
+    set failures = failures + 1;
+  }
+  if not test_stop_after_typeck_exact() {
+    set failures = failures + 1;
+  }
+  if not test_stop_after_mir_exact() {
+    set failures = failures + 1;
+  }
+  if not test_stop_after_ir_exact() {
+    set failures = failures + 1;
+  }
+  if not test_stop_after_codegen_exact() {
+    set failures = failures + 1;
+  }
+  if not test_stop_after_link_exact() {
+    set failures = failures + 1;
+  }
+  if not test_stop_after_run_exact() {
+    set failures = failures + 1;
+  }
+  if not test_session_source_manager_does_not_duplicate_input_snapshot() {
+    set failures = failures + 1;
+  }
+  if not test_incremental_invalidation_targets_dependents() {
+    set failures = failures + 1;
+  }
+  if not test_incremental_local_change_minimal_recompile() {
+    set failures = failures + 1;
+  }
+  if not test_distributed_build_foundation_contract() {
+    set failures = failures + 1;
+  }
+  if not test_formal_type_soundness_roadmap_contract() {
+    set failures = failures + 1;
+  }
+  if not test_verified_backend_pipeline_contract() {
+    set failures = failures + 1;
+  }
+  if not test_driver_native_object_materialization_contract() {
+    set failures = failures + 1;
+  }
+  if not test_driver_native_link_contract() {
+    set failures = failures + 1;
+  }
+  if not test_compiler_chaos_suite_contract() {
+    set failures = failures + 1;
+  }
+  if not test_analyze_source_set_resolves_imported_module() {
+    set failures = failures + 1;
+  }
+  if not test_real_pipeline_json_dumps() {
+    set failures = failures + 1;
+  }
+  if not test_diagnostics_json_reports_lexer_phase() {
+    set failures = failures + 1;
+  }
+  if not test_cli_json_dump_routes() {
+    set failures = failures + 1;
+  }
+  if not test_runtime_surface_dispatch_prefers_pipeline_json() {
+    set failures = failures + 1;
+  }
+  if not test_runtime_surface_dispatch_from_args() {
+    set failures = failures + 1;
+  }
+  if not test_runtime_surface_dispatch_rejects_unsupported_combo() {
+    set failures = failures + 1;
+  }
+  if not test_driver_report_includes_registry_sections() {
+    set failures = failures + 1;
+  }
+  if not test_driver_report_includes_stage_logs() {
+    set failures = failures + 1;
+  }
+  if not test_pipeline_fixture_hello_world_builds() {
+    set failures = failures + 1;
+  }
+  if not test_pipeline_fixture_syntax_error_fails_before_sema() {
+    set failures = failures + 1;
+  }
+  if not test_pipeline_fixture_type_error_fails_during_typeck() {
+    set failures = failures + 1;
+  }
+  if not test_pipeline_fixture_borrow_error_fails_during_borrowck() {
+    set failures = failures + 1;
+  }
+  if not test_pipeline_fixture_backend_failure_fails_build() {
+    set failures = failures + 1;
+  }
+  if not test_unix_exit_code_contract() {
+    set failures = failures + 1;
+  }
+  if not test_internal_compiler_error_renderer_contract() {
+    set failures = failures + 1;
+  }
+  if not test_native_panic_boundary_contract_surface() {
+    set failures = failures + 1;
+  }
+  if not test_runtime_c_native_contract_is_wired() {
+    set failures = failures + 1;
+  }
+  if not test_linker_auto_wires_runtime_c_payload() {
+    set failures = failures + 1;
+  }
+  if not test_structured_driver_failure_message_contract() {
+    set failures = failures + 1;
+  }
+  if not test_compiler_logger_levels_contract() {
+    set failures = failures + 1;
+  }
+  if not test_target_config_profiles_contract() {
+    set failures = failures + 1;
+  }
   give failures;
 }
 

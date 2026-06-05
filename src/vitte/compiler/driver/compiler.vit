@@ -421,7 +421,7 @@ proc project_path_hint(path: string) -> bool {
     if path == "" {
         give false;
     }
-    give slice(path, len(path) - 1, len(path)) == "/";
+    give path == "." or path == ".." or slice(path, len(path) - 1, len(path)) == "/";
 }
 
 proc path_join2(left: string, right: string) -> string {
@@ -442,6 +442,22 @@ proc ends_with_text(text: string, suffix: string) -> bool {
         give false;
     }
     give slice(text, len(text) - len(suffix), len(text)) == suffix;
+}
+
+proc resolve_project_entry_path(project_path: string) -> string {
+    let src_main: string = path_join2(path_join2(project_path, "src"), "main.vit");
+    if is_file(src_main) {
+        give src_main;
+    }
+    let compiler_main: string = path_join2(path_join2(path_join2(project_path, "src"), "vitte"), "compiler/main.vit");
+    if is_file(compiler_main) {
+        give compiler_main;
+    }
+    let root_main: string = path_join2(project_path, "main.vit");
+    if is_file(root_main) {
+        give root_main;
+    }
+    give "";
 }
 
 proc discover_project_vit_files(project_path: string) -> [string] {
@@ -617,9 +633,13 @@ proc parse_cli_request(args: list[string]) -> CompilerCliRequest {
     }
 
     if request.command != "metrics" and request.command != "health" and request.command != "pkg" and request.input_path == "" and request.source_text == "" {
-        set request.status = driver.DriverExitStatus::MissingInput;
-        set request.message = "missing input file or --source text";
-        give request;
+        if request.command == "build" or request.command == "check" or request.command == "run" or request.command == "dump-tokens" or request.command == "dump-ast" or request.command == "dump-hir" or request.command == "dump-mir" {
+            set request.input_path = ".";
+        } else {
+            set request.status = driver.DriverExitStatus::MissingInput;
+            set request.message = "missing input file or --source text";
+            give request;
+        }
     }
 
     set request.valid = true;
@@ -671,6 +691,19 @@ proc cli_request_source_location(request: CompilerCliRequest) -> string {
         give "inline.vit";
     }
     give "<unknown>";
+}
+
+proc cli_request_source_path(request: CompilerCliRequest) -> string {
+    if request.input_path != "" {
+        if project_path_hint(request.input_path) or is_directory(request.input_path) {
+            let project_entry: string = resolve_project_entry_path(request.input_path);
+            if project_entry != "" {
+                give project_entry;
+            }
+        }
+        give request.input_path;
+    }
+    give "inline.vit";
 }
 
 proc build_pipeline_trace_text(command: string, status: driver.DriverExitStatus) -> string {
@@ -829,6 +862,13 @@ proc cli_request_source_text(request: CompilerCliRequest) -> string {
         give request.source_text;
     }
     if request.input_path != "" {
+        if project_path_hint(request.input_path) or is_directory(request.input_path) {
+            let project_entry: string = resolve_project_entry_path(request.input_path);
+            if project_entry != "" {
+                give read_file(project_entry);
+            }
+            give "";
+        }
         give read_file(request.input_path);
     }
     give "";
@@ -912,7 +952,7 @@ proc run_cli_request(request: CompilerCliRequest) -> int {
         give cli_exit_code(driver.DriverExitStatus::UnsupportedFeature);
     }
 
-    let source_path: string = if request.input_path != "" { request.input_path } else { "inline.vit" };
+    let source_path: string = cli_request_source_path(request);
     let source_text: string = cli_request_source_text(request);
     let virtual_source: bool = cli_request_is_virtual_source(request);
     if request.command != "metrics" and request.command != "health" and source_text == "" {

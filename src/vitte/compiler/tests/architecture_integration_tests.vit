@@ -8,9 +8,7 @@ const VERSION_TEXT: string = "compiler architecture integration tests 0.3.0"
 const BANNER_TEXT: string = "compiler architecture integration tests"
 
 proc test_frontend_to_ast_contract() -> bool {
-  let source: string =
-    "const ANSWER = 42;\n" +
-    "proc main() { let x = ANSWER; give x; }\n";
+  let source: string = "const ANSWER = 42;\nproc main() { let x = ANSWER; give x; }\n";
   let fe: FrontendOutput = frontend_run("architecture_frontend.vit", source);
   if not fe.valid {
     give false;
@@ -22,8 +20,7 @@ proc test_frontend_to_ast_contract() -> bool {
 }
 
 proc test_middle_pipeline_builds_cfg() -> bool {
-  let source: string =
-    "proc main() { let x = 1; if x { set x = x + 1; } else { set x = x + 2; } while x { set x = x - 1; } give x; }\n";
+  let source: string = "proc main() { let x = 1; if x { set x = x + 1; } else { set x = x + 2; } while x { set x = x - 1; } give x; }\n";
   let fe: FrontendOutput = frontend_run("architecture_middle_cfg.vit", source);
   let middle: MiddleOutput = middle_run(fe);
   if not middle.hir.valid or not middle.mir.valid {
@@ -51,18 +48,14 @@ proc test_middle_pipeline_builds_cfg() -> bool {
 }
 
 proc test_borrowck_failure_stops_pipeline() -> bool {
-  let source: string =
-    "proc main() { let x = make_box(); let a = &x; let b = &mut x; give x; }\n";
+  let source: string = "proc main() { let x = make_box(); let a = &x; let b = &mut x; give x; }\n";
   let fe: FrontendOutput = frontend_run("architecture_borrowck_fail.vit", source);
   let middle: MiddleOutput = middle_run(fe);
   give fe.valid and not middle.analysis.valid and not middle.analysis.borrowck_ok and not middle.valid;
 }
 
 proc test_const_eval_and_analysis_success() -> bool {
-  let source: string =
-    "const X = 1 + 2;\n" +
-    "static_assert(X == 3);\n" +
-    "proc main() { give X; }\n";
+  let source: string = "const X = 1 + 2;\nstatic_assert(X == 3);\nproc main() { give X; }\n";
   let fe: FrontendOutput = frontend_run("architecture_const_eval.vit", source);
   let middle: MiddleOutput = middle_run(fe);
   give fe.valid and middle.analysis.const_eval_ok and middle.analysis.valid and middle.hir.valid;

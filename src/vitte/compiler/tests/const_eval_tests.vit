@@ -18,11 +18,7 @@ proc has_code(result: ConstEvalRunResult, code: string) -> bool {
 }
 
 proc test_valid_arithmetic_chain() -> bool {
-  let source: string =
-    "const A = 2;\n" +
-    "const B = A + 3;\n" +
-    "const C = B * 4;\n" +
-    "static_assert(C == 20);\n";
+  let source: string = "const A = 2;\nconst B = A + 3;\nconst C = B * 4;\nstatic_assert(C == 20);\n";
   let result: ConstEvalRunResult = run_const_eval("const_eval_valid_chain.vit", source);
   give result.valid and len(result.bindings) == 3 and result.assert_count == 1;
 }
@@ -46,26 +42,19 @@ proc test_non_const_call() -> bool {
 }
 
 proc test_static_assert_failure() -> bool {
-  let source: string =
-    "const A = 1 + 1;\n" +
-    "static_assert(A == 3, \"bad math\");\n";
+  let source: string = "const A = 1 + 1;\nstatic_assert(A == 3, \"bad math\");\n";
   let result: ConstEvalRunResult = run_const_eval("const_eval_assert_fail.vit", source);
   give has_code(result, "CONST_EVAL_E_STATIC_ASSERT_FAILED");
 }
 
 proc test_cycle_detection() -> bool {
-  let source: string =
-    "const A = B + 1;\n" +
-    "const B = A + 1;\n";
+  let source: string = "const A = B + 1;\nconst B = A + 1;\n";
   let result: ConstEvalRunResult = run_const_eval("const_eval_cycle.vit", source);
   give has_code(result, "CONST_EVAL_E_CYCLE");
 }
 
 proc test_ast_const_eval_path() -> bool {
-  let source: string =
-    "const A = 2;\n" +
-    "const B = A + 3;\n" +
-    "static_assert(B == 5);\n";
+  let source: string = "const A = 2;\nconst B = A + 3;\nstatic_assert(B == 5);\n";
   let fe: FrontendOutput = frontend_run("const_eval_ast.vit", source);
   let result: ConstEvalRunResult = run_const_eval_ast("const_eval_ast.vit", fe.ast_root);
   give fe.valid and result.valid and len(result.bindings) == 2 and result.assert_count == 1;
@@ -73,13 +62,27 @@ proc test_ast_const_eval_path() -> bool {
 
 proc run_all_tests() -> int {
   let failures: int = 0;
-  if not test_valid_arithmetic_chain() { set failures = failures + 1; }
-  if not test_division_by_zero() { set failures = failures + 1; }
-  if not test_unknown_name() { set failures = failures + 1; }
-  if not test_non_const_call() { set failures = failures + 1; }
-  if not test_static_assert_failure() { set failures = failures + 1; }
-  if not test_cycle_detection() { set failures = failures + 1; }
-  if not test_ast_const_eval_path() { set failures = failures + 1; }
+  if not test_valid_arithmetic_chain() {
+    set failures = failures + 1;
+  }
+  if not test_division_by_zero() {
+    set failures = failures + 1;
+  }
+  if not test_unknown_name() {
+    set failures = failures + 1;
+  }
+  if not test_non_const_call() {
+    set failures = failures + 1;
+  }
+  if not test_static_assert_failure() {
+    set failures = failures + 1;
+  }
+  if not test_cycle_detection() {
+    set failures = failures + 1;
+  }
+  if not test_ast_const_eval_path() {
+    set failures = failures + 1;
+  }
   give failures;
 }
 

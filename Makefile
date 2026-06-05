@@ -126,7 +126,7 @@ install-debian-2.1.1: install-debian
 # ------------------------------------------------------------
 
 .PHONY: build
-build: dirs bootstrap-all bootstrap-native-snapshots vitte-source-audit packages-check-all
+build: dirs bootstrap-all compiler-real-native-gate compiler-test-suite-check-gate compiler-test-suite-bridge-gate driver-native-json-surface-gate bootstrap-native-snapshots vitte-source-audit packages-check-all
 
 .PHONY: vittec-kernel kernel-tools
 vittec-kernel: vitte-bootstrap-check
@@ -179,7 +179,7 @@ format:
 # Static analysis
 # ------------------------------------------------------------
 
-.PHONY: tidy vitte-source-audit vitte-legacy-text-audit vitte-bootstrap-check bootstrap-native-snapshots
+.PHONY: tidy vitte-source-audit vitte-legacy-text-audit vitte-bootstrap-check bootstrap-native-snapshots compiler-real-native-gate compiler-test-suite-check-gate compiler-test-suite-bridge-gate driver-native-json-surface-gate
 tidy: vitte-source-audit vitte-legacy-text-audit
 
 vitte-source-audit:
@@ -226,6 +226,18 @@ vitte-bootstrap-check:
 
 bootstrap-native-snapshots:
 	@tools/bootstrap_native_snapshots.sh
+
+compiler-real-native-gate:
+	@tools/compiler_real_native_gate.sh
+
+compiler-test-suite-check-gate:
+	@tools/compiler_test_suite_check_gate.sh
+
+compiler-test-suite-bridge-gate:
+	@tools/compiler_test_suite_bridge_gate.sh
+
+driver-native-json-surface-gate:
+	@tools/driver_native_json_surface_gate.sh
 
 .PHONY: cli-diagnostics-snapshots
 cli-diagnostics-snapshots:
@@ -584,6 +596,7 @@ bootstrap-verify: bootstrap-all
 	@bin/vittec0 check tests/bootstrap_native/main_proc.vit
 	@bin/vittec0 check tests/bootstrap_native/main_const_int.vit
 	@bin/vitte check src/vitte/compiler/tests/smoke.vit
+	@bin/vitte check src/vitte/compiler/tests/pipeline_tests.vit
 	@bin/vitte check src/vitte/compiler/ir/ast.vit
 	@bin/vitte check src/vitte/compiler/ir/pipeline.vit
 	@$(MAKE) --no-print-directory bootstrap-parity

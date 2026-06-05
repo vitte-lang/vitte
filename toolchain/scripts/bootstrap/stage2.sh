@@ -67,7 +67,7 @@ VITTE_BACKEND_FALLBACK="${VITTE_BACKEND_FALLBACK:-0}"
 VITTE_ENFORCE_COMPILER_REACHABILITY="${VITTE_ENFORCE_COMPILER_REACHABILITY:-1}"
 VITTE_STAGE2_BOOTSTRAP_COMPAT="${VITTE_STAGE2_BOOTSTRAP_COMPAT:-1}"
 VITTE_BOOTSTRAP_ALLOW_FULL_COMPILER_BRIDGE="${VITTE_BOOTSTRAP_ALLOW_FULL_COMPILER_BRIDGE:-0}"
-VITTE_STAGE2_ALLOW_BRIDGE_ARTIFACT="${VITTE_STAGE2_ALLOW_BRIDGE_ARTIFACT:-1}"
+VITTE_STAGE2_ALLOW_BRIDGE_ARTIFACT="${VITTE_STAGE2_ALLOW_BRIDGE_ARTIFACT:-0}"
 STAGE2_EFFECTIVE_BACKEND_MODE="$VITTE_BACKEND_MODE"
 STAGE2_EFFECTIVE_FALLBACK="$VITTE_BACKEND_FALLBACK"
 STAGE2_EFFECTIVE_ALLOW_BRIDGE_ARTIFACT="$VITTE_STAGE2_ALLOW_BRIDGE_ARTIFACT"
@@ -162,10 +162,6 @@ enforce_native_artifact_policy() {
         die "$context did not produce a machine executable"
     fi
     if is_bootstrap_bridge_artifact "$file_path"; then
-        if [ "$VITTE_BACKEND_MODE" = "real-native" ] && is_official_compiler_bridge_artifact "$file_path"; then
-            log "$context produced a bootstrap bridge artifact for the official compiler entry; accepting transitional machine-native wrapper"
-            return 0
-        fi
         if [ "$STAGE2_EFFECTIVE_ALLOW_BRIDGE_ARTIFACT" = "1" ]; then
             log "$context produced a bootstrap bridge artifact; accepting transitional native wrapper"
             return 0
