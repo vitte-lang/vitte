@@ -7,7 +7,7 @@ Designed for scalable systems software, compilers, runtimes, tooling, and long-t
 ![status](https://img.shields.io/badge/status-active-4c1)
 ![language](https://img.shields.io/badge/language-Vitte-7a3cff)
 ![build](https://img.shields.io/badge/build-experimental-orange)
-![license](https://img.shields.io/badge/license-MIT-blue)
+
 
 Vitte is a modern programming language focused on clarity, structure, performance, and long-term maintainability.
 
