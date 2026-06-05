@@ -141,24 +141,59 @@ first_path_arg_after_command() {
     first_path_arg "$@"
 }
 
+path_join2() {
+    left="$1"
+    right="$2"
+    if [ -z "$left" ]; then
+        printf '%s\n' "$right"
+        return 0
+    fi
+    if [ -z "$right" ]; then
+        printf '%s\n' "$left"
+        return 0
+    fi
+    case "$left" in
+        */)
+            printf '%s%s\n' "$left" "$right"
+            ;;
+        *)
+            printf '%s/%s\n' "$left" "$right"
+            ;;
+    esac
+}
+
+project_path_hint() {
+    path="$1"
+    case "$path" in
+        "" )
+            return 1
+            ;;
+        .|..|*/)
+            return 0
+            ;;
+    esac
+    return 1
+}
+
+resolve_project_entry_candidates() {
+    project_path="$1"
+    shift
+    for suffix do
+        candidate="$(path_join2 "$project_path" "$suffix")"
+        if [ -f "$candidate" ]; then
+            printf '%s\n' "$candidate"
+            return 0
+        fi
+    done
+    return 1
+}
+
 resolve_project_input() {
     project_path="$1"
     if [ -z "$project_path" ]; then
         return 1
     fi
-    if [ -f "$project_path/src/main.vit" ]; then
-        printf '%s\n' "$project_path/src/main.vit"
-        return 0
-    fi
-    if [ -f "$project_path/src/vitte/compiler/main.vit" ]; then
-        printf '%s\n' "$project_path/src/vitte/compiler/main.vit"
-        return 0
-    fi
-    if [ -f "$project_path/main.vit" ]; then
-        printf '%s\n' "$project_path/main.vit"
-        return 0
-    fi
-    return 1
+    resolve_project_entry_candidates "$project_path" "src/main.vit" "src/vitte/compiler/main.vit" "main.vit"
 }
 
 resolve_cli_input() {
@@ -167,16 +202,10 @@ resolve_cli_input() {
         resolve_project_input "."
         return $?
     fi
-    if [ -d "$input_path" ]; then
+    if [ -d "$input_path" ] || project_path_hint "$input_path"; then
         resolve_project_input "$input_path"
         return $?
     fi
-    case "$input_path" in
-        .|..|*/)
-            resolve_project_input "$input_path"
-            return $?
-            ;;
-    esac
     if [ -f "$input_path" ]; then
         printf '%s\n' "$input_path"
         return 0

@@ -1343,6 +1343,64 @@ proc compile_source_file_result(
   give compile_source_text_result(input_file, source_text, output_file, options)
 }
 
+proc path_join2(left: string, right: string) -> string {
+  if left == "" {
+    give right
+  }
+  if right == "" {
+    give left
+  }
+  if left[left.len - 1] == "/" {
+    give left + right
+  }
+  give left + "/" + right
+}
+
+proc project_path_hint(path: string) -> bool {
+  if path == "" {
+    give false
+  }
+  if path == "." or path == ".." {
+    give true
+  }
+  give path[path.len - 1] == "/"
+}
+
+proc resolve_project_entry_path(project_path: string) -> string {
+  let src_main: string = path_join2(project_path, "src/main.vit")
+  if read_file(src_main) != "" {
+    give src_main
+  }
+  let compiler_main: string = path_join2(project_path, "src/vitte/compiler/main.vit")
+  if read_file(compiler_main) != "" {
+    give compiler_main
+  }
+  let root_main: string = path_join2(project_path, "main.vit")
+  if read_file(root_main) != "" {
+    give root_main
+  }
+  give ""
+}
+
+proc resolve_cli_input_path(input_path: string) -> string {
+  if input_path == "" {
+    give ""
+  }
+  let project_entry: string = resolve_project_entry_path(input_path)
+  if project_entry != "" and (project_path_hint(input_path) or project_entry != input_path) {
+    give project_entry
+  }
+  give input_path
+}
+
+proc resolve_cli_input_source_text(input_path: string) -> string {
+  let resolved_path: string = resolve_cli_input_path(input_path)
+  if resolved_path == "" {
+    give ""
+  }
+  give read_file(resolved_path)
+}
+
 proc compile_source(
   input_file: string,
   output_file: string,
@@ -1376,9 +1434,10 @@ proc compile(argc: int, argv: [string]) -> int {
 }
 
 proc print_seed_diagnostics_text(path: string) -> int {
-  let source_text: string = read_file(path)
-  let rendered: string = diagnostics_text_for_source(path, source_text)
-  let result: SeedCompilationResult = analyze_source_text(path, source_text)
+  let resolved_path: string = resolve_cli_input_path(path)
+  let source_text: string = resolve_cli_input_source_text(path)
+  let rendered: string = diagnostics_text_for_source(resolved_path, source_text)
+  let result: SeedCompilationResult = analyze_source_text(resolved_path, source_text)
   println(rendered)
   if result.valid {
     give 0
@@ -1387,9 +1446,10 @@ proc print_seed_diagnostics_text(path: string) -> int {
 }
 
 proc print_seed_diagnostics_json(path: string) -> int {
-  let source_text: string = read_file(path)
-  let rendered: string = diagnostics_json_for_source(path, source_text)
-  let result: SeedCompilationResult = analyze_source_text(path, source_text)
+  let resolved_path: string = resolve_cli_input_path(path)
+  let source_text: string = resolve_cli_input_source_text(path)
+  let rendered: string = diagnostics_json_for_source(resolved_path, source_text)
+  let result: SeedCompilationResult = analyze_source_text(resolved_path, source_text)
   println(rendered)
   if result.valid {
     give 0
@@ -1435,8 +1495,10 @@ proc run_seed_cli(args: list[string]) -> int {
       println("error[E_CLI_MISSING_ARG] cli: check requires a source file")
       give 2
     }
+    let resolved_path: string = resolve_cli_input_path(args[1])
+    let source_text: string = resolve_cli_input_source_text(args[1])
     let opts: CompileOptions = default_compile_options()
-    let result: SeedCompilationResult = compile_source_file_result(args[1], "a.out", opts)
+    let result: SeedCompilationResult = compile_source_text_result(resolved_path, source_text, "a.out", opts)
     println(render_seed_result_text(result))
     if result.valid {
       give 0
@@ -1445,9 +1507,10 @@ proc run_seed_cli(args: list[string]) -> int {
   }
 
   if args.len >= 1 {
-    let input_file: string = args[0]
+    let input_file: string = resolve_cli_input_path(args[0])
+    let source_text: string = resolve_cli_input_source_text(args[0])
     let opts: CompileOptions = default_compile_options()
-    let result: SeedCompilationResult = compile_source_file_result(input_file, "a.out", opts)
+    let result: SeedCompilationResult = compile_source_text_result(input_file, source_text, "a.out", opts)
     println(render_seed_result_text(result))
     if result.valid {
       give 0
