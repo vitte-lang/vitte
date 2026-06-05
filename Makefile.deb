@@ -1,0 +1,118 @@
+# ============================================================
+# Makefile.deb — Vitte Debian Package Distribution
+# Target: Create complete distribution package for Debian x86_64
+# ============================================================
+
+.PHONY: help deb deb-clean deb-bundle deb-complete verify-deb install-deb
+
+# Configuration
+SCRIPTS_DIR := scripts
+BUILD_SCRIPT := $(SCRIPTS_DIR)/build-debian-x86_64-deb.sh
+DIST_SCRIPT := $(SCRIPTS_DIR)/build-debian-distribution-bundle.sh
+COMPLETE_SCRIPT := $(SCRIPTS_DIR)/build-debian-complete-pkg.sh
+
+PKG_VERSION_FILE := toolchain/scripts/package/PACKAGE_VERSION
+VERSION := $(shell tr -d ' \r\n' < $(PKG_VERSION_FILE) 2>/dev/null || echo 2.1.1)
+
+OUT_DIR ?= pkgout
+ARCH ?= amd64
+PACKAGE_NAME ?= vitte
+
+DEB_FILE := $(OUT_DIR)/$(PACKAGE_NAME)_$(VERSION)_$(ARCH).deb
+
+# Color output
+BLUE := \033[0;34m
+GREEN := \033[0;32m
+YELLOW := \033[1;33m
+RED := \033[0;31m
+NC := \033[0m
+
+help:
+	@echo "$(BLUE)Vitte Debian Package Build Targets$(NC)"
+	@echo ""
+	@echo "  $(GREEN)make -f Makefile.deb deb-complete$(NC)   - Complete build workflow (recommended)"
+	@echo "                         Builds compiler, creates .deb, generates distribution"
+	@echo ""
+	@echo "  $(GREEN)make -f Makefile.deb deb$(NC)              - Build Debian .deb package only"
+	@echo "  $(GREEN)make -f Makefile.deb deb-clean$(NC)        - Clean package build artifacts"
+	@echo "  $(GREEN)make -f Makefile.deb deb-bundle$(NC)       - Create distribution bundle (checksums, docs)"
+	@echo ""
+	@echo "  $(GREEN)make -f Makefile.deb verify-deb$(NC)       - Verify package integrity"
+	@echo "  $(GREEN)make -f Makefile.deb install-deb$(NC)      - Install the built package"
+	@echo ""
+	@echo "  $(GREEN)make -f Makefile.deb help$(NC)             - Show this help message"
+	@echo ""
+	@echo "$(YELLOW)Environment Variables:$(NC)"
+	@echo "  OUT_DIR        - Output directory (default: $(OUT_DIR))"
+	@echo "  VERSION        - Package version (default: $(VERSION))"
+	@echo "  ARCH           - Architecture (default: $(ARCH))"
+	@echo "  PACKAGE_NAME   - Package name (default: $(PACKAGE_NAME))"
+	@echo "  JOBS           - Parallel jobs for compilation"
+	@echo "  OPT_LEVEL      - Optimization level (0-3, default: 2)"
+	@echo ""
+
+# Complete workflow (recommended entry point)
+deb-complete: deb-clean
+	@echo "$(BLUE)═══════════════════════════════════════════════════════════$(NC)"
+	@echo "$(BLUE)Building complete Vitte Debian distribution package$(NC)"
+	@echo "$(BLUE)═══════════════════════════════════════════════════════════$(NC)"
+	@echo ""
+	@chmod +x $(COMPLETE_SCRIPT)
+	@bash $(COMPLETE_SCRIPT)
+
+# Build .deb package
+deb: check-prerequisites
+	@echo "$(BLUE)Building Debian .deb package...$(NC)"
+	@chmod +x $(BUILD_SCRIPT)
+	@bash $(BUILD_SCRIPT)
+
+# Clean build artifacts
+deb-clean:
+	@echo "$(BLUE)Cleaning package build artifacts...$(NC)"
+	@rm -rf build target/debian-x86_64 .debstage
+	@echo "$(GREEN)✓ Build artifacts cleaned$(NC)"
+
+# Create distribution bundle (checksums, docs, quickstart)
+deb-bundle:
+	@echo "$(BLUE)Creating distribution bundle...$(NC)"
+	@chmod +x $(DIST_SCRIPT)
+	@bash $(DIST_SCRIPT)
+
+# Verify package integrity
+verify-deb:
+	@if [ ! -f "$(OUT_DIR)/verify-debian.sh" ]; then \
+		echo "$(RED)Error: Verification script not found$(NC)"; \
+		echo "Run 'make -f Makefile.deb deb-bundle' first"; \
+		exit 1; \
+	fi
+	@bash $(OUT_DIR)/verify-debian.sh $(ARCH) $(PACKAGE_NAME) $(VERSION)
+
+# Install the built package
+install-deb: verify-deb
+	@echo "$(BLUE)Installing Vitte Debian package...$(NC)"
+	@if [ ! -f "$(DEB_FILE)" ]; then \
+		echo "$(RED)Error: Package file not found: $(DEB_FILE)$(NC)"; \
+		exit 1; \
+	fi
+	@sudo dpkg -i $(DEB_FILE)
+	@echo "$(GREEN)✓ Installation complete$(NC)"
+	@echo ""
+	@echo "Verify with: vitte --version"
+
+# Check prerequisites
+check-prerequisites:
+	@if [[ "$$OSTYPE" != "linux-gnu"* ]]; then \
+		echo "$(RED)Error: This target requires Linux$(NC)"; \
+		exit 1; \
+	fi
+	@if ! command -v dpkg-deb &>/dev/null; then \
+		echo "$(RED)Error: dpkg-deb is required$(NC)"; \
+		exit 1; \
+	fi
+	@if ! command -v make &>/dev/null; then \
+		echo "$(RED)Error: make is required$(NC)"; \
+		exit 1; \
+	fi
+	@echo "$(GREEN)✓ Prerequisites check passed$(NC)"
+
+.DEFAULT_GOAL := help

@@ -1,0 +1,117 @@
+# ============================================================
+# Makefile.deb-i686 — Vitte Debian i686 Package Distribution
+# Target: Create .deb package for Debian i686 (32-bit)
+# ============================================================
+
+.PHONY: help deb-i686 deb-i686-clean deb-i686-bundle deb-i686-complete verify-deb-i686 install-deb-i686
+
+# Configuration
+SCRIPTS_DIR := scripts
+BUILD_SCRIPT := $(SCRIPTS_DIR)/build-debian-i686-deb.sh
+DIST_SCRIPT := $(SCRIPTS_DIR)/build-debian-i686-distribution-bundle.sh
+COMPLETE_SCRIPT := $(SCRIPTS_DIR)/build-debian-i686-complete-pkg.sh
+
+PKG_VERSION_FILE := toolchain/scripts/package/PACKAGE_VERSION
+VERSION := $(shell tr -d ' \r\n' < $(PKG_VERSION_FILE) 2>/dev/null || echo 2.1.1)
+
+OUT_DIR ?= pkgout
+ARCH ?= i386
+PACKAGE_NAME ?= vitte
+
+DEB_FILE := $(OUT_DIR)/$(PACKAGE_NAME)_$(VERSION)_$(ARCH).deb
+
+# Color output
+BLUE := \033[0;34m
+GREEN := \033[0;32m
+YELLOW := \033[1;33m
+RED := \033[0;31m
+NC := \033[0m
+
+help:
+	@echo "$(BLUE)Vitte Debian i686 (32-bit) Package Build Targets$(NC)"
+	@echo ""
+	@echo "  $(GREEN)make -f Makefile.deb-i686 deb-i686-complete$(NC)   - Complete build (recommended)"
+	@echo "                                   Builds compiler, creates .deb, generates distribution"
+	@echo ""
+	@echo "  $(GREEN)make -f Makefile.deb-i686 deb-i686$(NC)              - Build .deb package only"
+	@echo "  $(GREEN)make -f Makefile.deb-i686 deb-i686-clean$(NC)        - Clean build artifacts"
+	@echo "  $(GREEN)make -f Makefile.deb-i686 deb-i686-bundle$(NC)       - Create distribution files"
+	@echo ""
+	@echo "  $(GREEN)make -f Makefile.deb-i686 verify-deb-i686$(NC)       - Verify package integrity"
+	@echo "  $(GREEN)make -f Makefile.deb-i686 install-deb-i686$(NC)      - Install package"
+	@echo ""
+	@echo "  $(GREEN)make -f Makefile.deb-i686 help$(NC)                  - Show this help message"
+	@echo ""
+	@echo "$(YELLOW)Environment Variables:$(NC)"
+	@echo "  OUT_DIR        - Output directory (default: $(OUT_DIR))"
+	@echo "  VERSION        - Package version (default: $(VERSION))"
+	@echo "  ARCH           - Architecture (default: $(ARCH) = i386)"
+	@echo "  PACKAGE_NAME   - Package name (default: $(PACKAGE_NAME))"
+	@echo "  JOBS           - Parallel jobs"
+	@echo "  OPT_LEVEL      - Optimization level (0-3)"
+	@echo ""
+	@echo "$(YELLOW)Note:$(NC) This builds 32-bit (i686) packages. For 64-bit, use Makefile.deb"
+	@echo ""
+
+# Complete workflow
+deb-i686-complete: deb-i686-clean
+	@echo "$(BLUE)═══════════════════════════════════════════════════════════$(NC)"
+	@echo "$(BLUE)Building Vitte Debian i686 (32-bit) distribution package$(NC)"
+	@echo "$(BLUE)═══════════════════════════════════════════════════════════$(NC)"
+	@echo ""
+	@chmod +x $(COMPLETE_SCRIPT)
+	@bash $(COMPLETE_SCRIPT)
+
+# Build .deb package
+deb-i686: check-prerequisites
+	@echo "$(BLUE)Building Debian i686 (32-bit) .deb package...$(NC)"
+	@chmod +x $(BUILD_SCRIPT)
+	@bash $(BUILD_SCRIPT)
+
+# Clean build artifacts
+deb-i686-clean:
+	@echo "$(BLUE)Cleaning i686 build artifacts...$(NC)"
+	@rm -rf build target/debian-i686 .debstage-i686
+	@echo "$(GREEN)✓ Build artifacts cleaned$(NC)"
+
+# Create distribution bundle
+deb-i686-bundle:
+	@echo "$(BLUE)Creating i686 distribution bundle...$(NC)"
+	@chmod +x $(DIST_SCRIPT)
+	@bash $(DIST_SCRIPT)
+
+# Verify package integrity
+verify-deb-i686:
+	@if [ ! -f "$(OUT_DIR)/verify-debian-i686.sh" ]; then \
+		echo "$(RED)Error: Verification script not found$(NC)"; \
+		echo "Run 'make -f Makefile.deb-i686 deb-i686-bundle' first"; \
+		exit 1; \
+	fi
+	@bash $(OUT_DIR)/verify-debian-i686.sh $(ARCH) $(PACKAGE_NAME) $(VERSION)
+
+# Install package
+install-deb-i686: verify-deb-i686
+	@echo "$(BLUE)Installing Vitte Debian i686 (32-bit) package...$(NC)"
+	@if [ ! -f "$(DEB_FILE)" ]; then \
+		echo "$(RED)Error: Package file not found: $(DEB_FILE)$(NC)"; \
+		exit 1; \
+	fi
+	@sudo dpkg -i $(DEB_FILE)
+	@echo "$(GREEN)✓ Installation complete$(NC)"
+	@echo ""
+	@echo "Verify with: vitte --version"
+
+# Check prerequisites
+check-prerequisites:
+	@if [[ "$$OSTYPE" != "linux-gnu"* ]]; then \
+		echo "$(RED)Error: This target requires Linux$(NC)"; \
+		exit 1; \
+	fi
+	@if ! command -v dpkg-deb &>/dev/null; then \
+		echo "$(RED)Error: dpkg-deb is required$(NC)"; \
+		exit 1; \
+	fi
+	@echo "$(GREEN)✓ Prerequisites check passed (for i686)$(NC)"
+	@echo "$(YELLOW)Note: 32-bit compiler support (gcc -m32) required$(NC)"
+
+.DEFAULT_GOAL := help

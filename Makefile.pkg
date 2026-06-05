@@ -1,0 +1,116 @@
+# ============================================================
+# Makefile — Vitte macOS Package Distribution
+# Target: Create complete distribution package for macOS x86_64
+# ============================================================
+
+.PHONY: help pkg pkg-clean pkg-bundle pkg-complete dmg dmg-create verify-pkg install-pkg
+
+# Configuration
+SCRIPTS_DIR := scripts
+BUILD_SCRIPT := $(SCRIPTS_DIR)/build-macos-x86_64-universal-pkg.sh
+DIST_SCRIPT := $(SCRIPTS_DIR)/build-distribution-bundle.sh
+COMPLETE_SCRIPT := $(SCRIPTS_DIR)/build-complete-pkg.sh
+
+PKG_VERSION_FILE := toolchain/scripts/package/PACKAGE_VERSION
+VERSION := $(shell tr -d ' \r\n' < $(PKG_VERSION_FILE) 2>/dev/null || echo 2.1.1)
+
+OUT_DIR ?= pkgout
+PKG_FILE := $(OUT_DIR)/vitte-$(VERSION).pkg
+DMG_FILE := $(OUT_DIR)/vitte-$(VERSION).dmg
+
+# Color output
+BLUE := \033[0;34m
+GREEN := \033[0;32m
+YELLOW := \033[1;33m
+RED := \033[0;31m
+NC := \033[0m
+
+help:
+	@echo "$(BLUE)Vitte macOS Package Build Targets$(NC)"
+	@echo ""
+	@echo "  $(GREEN)make pkg-complete$(NC)   - Complete build workflow (recommended)"
+	@echo "                     Builds compiler, creates .pkg, generates distribution"
+	@echo ""
+	@echo "  $(GREEN)make pkg$(NC)              - Build macOS .pkg installer only"
+	@echo "  $(GREEN)make pkg-clean$(NC)        - Clean package build artifacts"
+	@echo "  $(GREEN)make pkg-bundle$(NC)       - Create distribution bundle (checksums, docs)"
+	@echo ""
+	@echo "  $(GREEN)make dmg$(NC)              - Create DMG image"
+	@echo "  $(GREEN)make verify-pkg$(NC)       - Verify package integrity"
+	@echo "  $(GREEN)make install-pkg$(NC)      - Install the built package"
+	@echo ""
+	@echo "  $(GREEN)make help$(NC)             - Show this help message"
+	@echo ""
+	@echo "$(YELLOW)Environment Variables:$(NC)"
+	@echo "  OUT_DIR        - Output directory (default: $(OUT_DIR))"
+	@echo "  VERSION        - Package version (default: $(VERSION))"
+	@echo "  JOBS           - Parallel jobs for compilation"
+	@echo "  OPT_LEVEL      - Optimization level (0-3, default: 2)"
+	@echo ""
+
+# Complete workflow (recommended entry point)
+pkg-complete: pkg-clean
+	@echo "$(BLUE)═══════════════════════════════════════════════════════════$(NC)"
+	@echo "$(BLUE)Building complete Vitte distribution package$(NC)"
+	@echo "$(BLUE)═══════════════════════════════════════════════════════════$(NC)"
+	@echo ""
+	@chmod +x $(COMPLETE_SCRIPT)
+	@bash $(COMPLETE_SCRIPT)
+
+# Build .pkg installer
+pkg: check-prerequisites
+	@echo "$(BLUE)Building macOS .pkg installer...$(NC)"
+	@chmod +x $(BUILD_SCRIPT)
+	@bash $(BUILD_SCRIPT)
+
+# Clean build artifacts
+pkg-clean:
+	@echo "$(BLUE)Cleaning package build artifacts...$(NC)"
+	@rm -rf build target/macos-x86_64 target/universal .pkgstage
+	@echo "$(GREEN)✓ Build artifacts cleaned$(NC)"
+
+# Create distribution bundle (checksums, docs, quickstart)
+pkg-bundle:
+	@echo "$(BLUE)Creating distribution bundle...$(NC)"
+	@chmod +x $(DIST_SCRIPT)
+	@bash $(DIST_SCRIPT)
+
+# Create DMG image
+dmg: pkg-bundle
+	@echo "$(BLUE)Creating DMG image...$(NC)"
+	@bash $(DIST_SCRIPT) $(VERSION)
+
+# Verify package integrity
+verify-pkg:
+	@if [ ! -f "$(OUT_DIR)/verify.sh" ]; then \
+		echo "$(RED)Error: Verification script not found$(NC)"; \
+		echo "Run 'make pkg-bundle' first"; \
+		exit 1; \
+	fi
+	@bash $(OUT_DIR)/verify.sh $(VERSION)
+
+# Install the built package
+install-pkg: verify-pkg
+	@echo "$(BLUE)Installing Vitte package...$(NC)"
+	@if [ ! -f "$(PKG_FILE)" ]; then \
+		echo "$(RED)Error: Package file not found: $(PKG_FILE)$(NC)"; \
+		exit 1; \
+	fi
+	@sudo installer -pkg $(PKG_FILE) -target /
+	@echo "$(GREEN)✓ Installation complete$(NC)"
+	@echo ""
+	@echo "Verify with: vitte --version"
+
+# Check prerequisites
+check-prerequisites:
+	@if [[ "$$OSTYPE" != "darwin"* ]]; then \
+		echo "$(RED)Error: This target requires macOS$(NC)"; \
+		exit 1; \
+	fi
+	@if ! command -v make &>/dev/null; then \
+		echo "$(RED)Error: make is required$(NC)"; \
+		exit 1; \
+	fi
+	@echo "$(GREEN)✓ Prerequisites check passed$(NC)"
+
+.DEFAULT_GOAL := help
