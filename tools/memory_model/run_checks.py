@@ -6,9 +6,16 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-MOD = ROOT / 'src' / 'vitte' / 'compiler' / 'memory' / 'model' / 'mod.vit'
-SMOKE = ROOT / 'src' / 'vitte' / 'compiler' / 'memory' / 'model' / 'tests' / 'smoke.vit'
 FIXTURES = ROOT / 'tests' / 'memory_model'
+
+CONTRACT_FILES = {
+    'borrowck': ROOT / 'src' / 'vitte' / 'compiler' / 'analysis' / 'borrowck' / 'mod.vit',
+    'ownership': ROOT / 'src' / 'vitte' / 'compiler' / 'analysis' / 'borrowck' / 'ownership.vit',
+    'lifetimes': ROOT / 'src' / 'vitte' / 'compiler' / 'analysis' / 'borrowck' / 'lifetimes.vit',
+    'regions': ROOT / 'src' / 'vitte' / 'compiler' / 'analysis' / 'borrowck' / 'regions.vit',
+    'middle_checks': ROOT / 'src' / 'vitte' / 'compiler' / 'middle' / 'borrow' / 'checks.vit',
+    'stdlib_memory': ROOT / 'src' / 'vitte' / 'stdlib' / 'memory.vitl',
+}
 
 METRIC_RE = re.compile(
     r"metrics:\s*gc_cycles=(\d+)\s+manual_memory_ops=(\d+)\s+ownership_checks=(\d+)\s+zero_cost_paths=(\d+)\s+simd_kernels=(\d+)"
@@ -22,21 +29,52 @@ REQUIRED_FIXTURES = {
     'simd_intrinsics_positive.vit',
 }
 
-REQUIRED_SYMBOLS = [
-    'baseline_metrics',
-    'garbage_collection_optional',
-    'manual_memory_management',
-    'ownership_system_rust_like',
-    'zero_cost_abstractions',
-    'simd_intrinsics',
-    'run_all_memory_features',
-]
-
-REQUIRED_SMOKE_SYMBOLS = [
-    'smoke_memory_feature_count',
-    'smoke_memory_feature_success',
-    'smoke_memory_metric_thresholds',
-]
+REQUIRED_SYMBOLS = {
+    'borrowck': [
+        'borrow_check_hir',
+        'borrow_check_hir_mir',
+        'BorrowCheckResult',
+        'replace_ownership',
+        'replace_lifetimes',
+    ],
+    'ownership': [
+        'OwnershipStateKind',
+        'BorrowedShared',
+        'BorrowedMutable',
+        'add_shared_borrow',
+        'set_mutable_borrow',
+        'mark_moved',
+    ],
+    'lifetimes': [
+        'LifetimeFactKind',
+        'LifetimeResult',
+        'add_borrow_constraint',
+        'add_return_constraint',
+        'finalize_lifetimes',
+    ],
+    'regions': [
+        'RegionConstraintKind',
+        'RegionSolution',
+        'ensure_region',
+        'close_region',
+        'solve_regions',
+    ],
+    'middle_checks': [
+        'BorrowCheckKind',
+        'BorrowState',
+        'BorrowLoan',
+        'borrow_context',
+        'finalize_borrow_check',
+    ],
+    'stdlib_memory': [
+        'MemoryRegion',
+        'Heap',
+        'Arena',
+        'Pool',
+        'align_up',
+        'ptr_add',
+    ],
+}
 
 
 def fail(msg: str) -> int:
@@ -45,8 +83,9 @@ def fail(msg: str) -> int:
 
 
 def main() -> int:
-    if not MOD.exists() or not SMOKE.exists():
-        return fail('missing memory model files')
+    missing_contract_files = [name for name, path in CONTRACT_FILES.items() if not path.exists()]
+    if missing_contract_files:
+        return fail(f'missing memory model files: {", ".join(sorted(missing_contract_files))}')
     if not FIXTURES.exists():
         return fail('missing tests/memory_model fixtures')
 
@@ -55,15 +94,11 @@ def main() -> int:
     if missing:
         return fail(f'missing fixtures: {", ".join(missing)}')
 
-    mod_text = MOD.read_text(encoding='utf-8')
-    for sym in REQUIRED_SYMBOLS:
-        if sym not in mod_text:
-            return fail(f'missing symbol in mod.vit: {sym}')
-
-    smoke_text = SMOKE.read_text(encoding='utf-8')
-    for sym in REQUIRED_SMOKE_SYMBOLS:
-        if sym not in smoke_text:
-            return fail(f'missing symbol in smoke.vit: {sym}')
+    for name, path in CONTRACT_FILES.items():
+        text = path.read_text(encoding='utf-8')
+        for sym in REQUIRED_SYMBOLS[name]:
+            if sym not in text:
+                return fail(f'missing symbol in {path.relative_to(ROOT)}: {sym}')
 
     fixtures = sorted(FIXTURES.glob('*.vit'))
     if len(fixtures) < 5:
