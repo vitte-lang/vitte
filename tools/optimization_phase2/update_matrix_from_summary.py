@@ -163,6 +163,10 @@ def main() -> int:
     if missing:
         raise SystemExit(f"[update-matrix][error] missing keys in SUMMARY.md: {', '.join(missing)}")
 
+    if not MATRIX.exists():
+        print(f"[update-matrix] skipped: legacy matrix not found at {MATRIX.relative_to(ROOT)}")
+        return 0
+
     text = MATRIX.read_text(encoding="utf-8")
     start = "//   - ✅ Optimize hot paths (identified from Phase 1 profiling)"
     end = "//   - ✅ Add SIMD support for math and string operations"
