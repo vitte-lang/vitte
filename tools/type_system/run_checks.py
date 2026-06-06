@@ -6,9 +6,16 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-MOD = ROOT / 'src' / 'vitte' / 'compiler' / 'types' / 'advanced' / 'mod.vit'
-SMOKE = ROOT / 'src' / 'vitte' / 'compiler' / 'types' / 'advanced' / 'tests' / 'smoke.vit'
 FIXTURES = ROOT / 'tests' / 'type_system'
+
+CONTRACT_FILES = {
+    'typeck_mod': ROOT / 'src' / 'vitte' / 'compiler' / 'analysis' / 'typeck' / 'mod.vit',
+    'typeck_infer': ROOT / 'src' / 'vitte' / 'compiler' / 'analysis' / 'typeck' / 'infer.vit',
+    'typeck_traits': ROOT / 'src' / 'vitte' / 'compiler' / 'analysis' / 'typeck' / 'traits.vit',
+    'typeck_unify': ROOT / 'src' / 'vitte' / 'compiler' / 'analysis' / 'typeck' / 'unify.vit',
+    'typeck_coercion': ROOT / 'src' / 'vitte' / 'compiler' / 'analysis' / 'typeck' / 'coercion.vit',
+    'typeck_tests': ROOT / 'src' / 'vitte' / 'compiler' / 'tests' / 'typeck_tests.vit',
+}
 
 METRIC_RE = re.compile(
     r"metrics:\s*generic_instantiations=(\d+)\s+trait_impls=(\d+)\s+sum_variants=(\d+)\s+pattern_arms=(\d+)\s+inference_constraints=(\d+)"
@@ -22,26 +29,53 @@ REQUIRED_FIXTURES = {
     'edge_ambiguous_constraints.vit',
 }
 
-REQUIRED_SYMBOLS = [
-    'generic_catalog',
-    'trait_catalog',
-    'sum_catalog',
-    'pattern_catalog',
-    'inference_catalog',
-    'compute_metrics',
-    'generics_templates',
-    'traits_interfaces',
-    'sum_types',
-    'advanced_pattern_matching',
-    'type_inference_complete',
-    'run_all_type_features',
-]
-
-REQUIRED_SMOKE_SYMBOLS = [
-    'smoke_type_feature_count',
-    'smoke_type_feature_success',
-    'smoke_type_metrics_thresholds',
-]
+REQUIRED_SYMBOLS = {
+    'typeck_mod': [
+        'checker',
+        'coercion',
+        'infer',
+        'traits',
+        'unify',
+        'soundness_roadmap',
+    ],
+    'typeck_infer': [
+        'TypeInferContext',
+        'infer_call_type',
+        'type_binding',
+        'type_env',
+        'type_is_copy',
+        'unify_types',
+    ],
+    'typeck_traits': [
+        'TypeClass',
+        'type_is_numeric',
+        'type_is_truthy',
+        'type_is_known',
+        'type_is_function',
+        'normalize_type_name',
+    ],
+    'typeck_unify': [
+        'TypeUnifyResult',
+        'unify_types',
+        'unify_binary_result_type',
+        'unify_assignment_type',
+        'NumericPromotion',
+    ],
+    'typeck_coercion': [
+        'TypeProjectionResult',
+        'type_deref_target',
+        'type_index_element',
+        'types_compatible',
+        'projection_member_name',
+    ],
+    'typeck_tests': [
+        'run_typeck_hir',
+        'infer_call_type',
+        'test_valid_numeric_flow',
+        'test_assign_mismatch',
+        'test_call_arity_carries_signature_context',
+    ],
+}
 
 
 def fail(msg: str) -> int:
@@ -50,8 +84,9 @@ def fail(msg: str) -> int:
 
 
 def main() -> int:
-    if not MOD.exists() or not SMOKE.exists():
-        return fail('missing type system module or smoke test')
+    missing_contract_files = [name for name, path in CONTRACT_FILES.items() if not path.exists()]
+    if missing_contract_files:
+        return fail(f'missing type system contract files: {", ".join(sorted(missing_contract_files))}')
     if not FIXTURES.exists():
         return fail('missing tests/type_system fixtures directory')
 
@@ -60,15 +95,11 @@ def main() -> int:
     if missing:
         return fail(f'missing fixtures: {", ".join(missing)}')
 
-    mod_text = MOD.read_text(encoding='utf-8')
-    for sym in REQUIRED_SYMBOLS:
-        if sym not in mod_text:
-            return fail(f'missing symbol in mod.vit: {sym}')
-
-    smoke_text = SMOKE.read_text(encoding='utf-8')
-    for sym in REQUIRED_SMOKE_SYMBOLS:
-        if sym not in smoke_text:
-            return fail(f'missing symbol in smoke.vit: {sym}')
+    for name, path in CONTRACT_FILES.items():
+        text = path.read_text(encoding='utf-8')
+        for sym in REQUIRED_SYMBOLS[name]:
+            if sym not in text:
+                return fail(f'missing symbol in {path.relative_to(ROOT)}: {sym}')
 
     fixture_files = sorted(FIXTURES.glob('*.vit'))
     if len(fixture_files) < 5:
