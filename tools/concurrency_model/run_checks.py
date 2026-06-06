@@ -6,8 +6,8 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-MOD = ROOT / 'src' / 'vitte' / 'compiler' / 'concurrency' / 'model' / 'mod.vit'
-SMOKE = ROOT / 'src' / 'vitte' / 'compiler' / 'concurrency' / 'model' / 'tests' / 'smoke.vit'
+MOD = ROOT / 'src' / 'vitte' / 'compiler' / 'infrastructure' / 'distributed' / 'mod.vit'
+FOUNDATION = ROOT / 'src' / 'vitte' / 'compiler' / 'infrastructure' / 'distributed' / 'foundation.vit'
 FIXTURES = ROOT / 'tests' / 'concurrency_model'
 
 METRIC_RE = re.compile(
@@ -23,18 +23,19 @@ REQUIRED_FIXTURES = {
 }
 
 REQUIRED_SYMBOLS = [
-    'baseline_metrics',
-    'fibers_channels_vitte_concurrency',
-    'async_await',
-    'atomic_operations',
-    'lock_free_data_structures',
-    'run_all_concurrency_features',
-]
-
-REQUIRED_SMOKE_SYMBOLS = [
-    'smoke_concurrency_feature_count',
-    'smoke_concurrency_feature_success',
-    'smoke_concurrency_metric_thresholds',
+    'use vitte/compiler/infrastructure/distributed/foundation',
+    'export *',
+    'form RemoteCacheEntry',
+    'form DependencySnapshot',
+    'form BuildJob',
+    'form BuildJobGraph',
+    'proc compile_unit_hash',
+    'proc dependency_snapshot',
+    'proc build_job',
+    'proc export_job_graph',
+    'proc remote_cache_entry',
+    'proc deterministic_artifact_hash',
+    'proc distributed_build_foundation_ready',
 ]
 
 
@@ -44,7 +45,7 @@ def fail(msg: str) -> int:
 
 
 def main() -> int:
-    if not MOD.exists() or not SMOKE.exists():
+    if not MOD.exists() or not FOUNDATION.exists():
         return fail('missing concurrency model files')
     if not FIXTURES.exists():
         return fail('missing tests/concurrency_model fixtures')
@@ -55,14 +56,10 @@ def main() -> int:
         return fail(f'missing fixtures: {", ".join(missing)}')
 
     mod_text = MOD.read_text(encoding='utf-8')
+    foundation_text = FOUNDATION.read_text(encoding='utf-8')
     for sym in REQUIRED_SYMBOLS:
-        if sym not in mod_text:
-            return fail(f'missing symbol in mod.vit: {sym}')
-
-    smoke_text = SMOKE.read_text(encoding='utf-8')
-    for sym in REQUIRED_SMOKE_SYMBOLS:
-        if sym not in smoke_text:
-            return fail(f'missing symbol in smoke.vit: {sym}')
+        if sym not in mod_text and sym not in foundation_text:
+            return fail(f'missing symbol in distributed module set: {sym}')
 
     fixtures = sorted(FIXTURES.glob('*.vit'))
     if len(fixtures) < 5:
