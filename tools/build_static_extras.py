@@ -44,7 +44,10 @@ for p in html_files:
     s = s.replace('</head>', f'<meta http-equiv="Content-Security-Policy" content="{STRICT_CSP}">\n</head>')
     p.write_text(s,encoding='utf-8')
 
-urls=[f'<url><loc>{BASE}/{str(p.relative_to(DOCS)).replace("\\\\","/")}</loc></url>' for p in sorted(DOCS.rglob('*.html'))]
+urls=[]
+for p in sorted(DOCS.rglob('*.html')):
+    rel = str(p.relative_to(DOCS)).replace('\\', '/')
+    urls.append(f'<url><loc>{BASE}/{rel}</loc></url>')
 (DOCS/'sitemap.xml').write_text('<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'+'\n'.join(urls)+'\n</urlset>\n',encoding='utf-8')
 (DOCS/'robots.txt').write_text('User-agent: *\nAllow: /\nSitemap: https://vitte-lang.org/sitemap.xml\n',encoding='utf-8')
 
