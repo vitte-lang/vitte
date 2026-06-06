@@ -7,42 +7,8 @@
 <link rel="icon" href="../../svg/logo.svg" type="image/svg+xml">
 <link rel="stylesheet" href="../../css/site.css">
 <link rel="stylesheet" href="../../css/print.css" media="print">
-
 <link rel="alternate" hreflang="en" href="https://vitte-lang.org/04-syntaxe.html">
 <link rel="alternate" hreflang="x-default" href="https://vitte-lang.org/04-syntaxe.html">
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; font-src 'self'; connect-src 'self';">
 </head>
 <body class="classic-doc">
@@ -58,479 +24,80 @@
 <article class="doc-content">
 <p class="book-progress"></p>
 <h1>4. Essential Syntax</h1>
-<p class="chapter-meta" data-chapter-meta="1">Level: <strong>beginner</strong> · Reading time: <strong>15 min</strong> · Prerequisite: <code>book/chapters/04-syntax.html</code> · Last review: <strong>2026-05-09</strong></p><section class="chapter-tldr"><h2>TL;DR (5 lines)</h2><ul><li>Read the core idea first.</li><li>Understand one concept at a time.</li><li>Run small examples.</li><li>Fix errors early.</li><li>Move to next chapter only when clear.</li></ul></section><section class="chapter-errors"><h2>Frequent mistakes</h2><ul><li>Skipping prerequisites.</li><li>Reading without trying examples.</li><li>Fixing too many errors at once.</li></ul></section>
-<p>Level: Beginner</p>
-<p>Prerequisites: previous chapter <code>docs/book/chapters/03-project.html</code> and <code>docs/book/glossary.html</code>. See also: <code>docs/book/chapters/03-project.html</code>, <code>docs/book/chapters/05-types.html</code>, <code>docs/book/glossary.html</code>.</p>
+<p class="chapter-meta" data-chapter-meta="1">Level: <strong>beginner</strong> · Reading time: <strong>15 min</strong> · Prerequisite: <a href="../../book/chapters/04-syntax.html"><code>book/chapters/04-syntax.html</code></a> · Track: <strong>essential</strong> · Maturity: <strong>reviewed</strong> · Last review: <strong>2026-05-09</strong></p>
+<section class="chapter-tldr"><h2>TL;DR (5 lines)</h2><ul>
+<li>Syntax is about shape before detail.</li>
+<li>A valid block is the smallest useful teaching unit.</li>
+<li>Statements and declarations belong to different layers.</li>
+<li>Invalid examples should isolate shape errors.</li>
+<li>The reader should leave able to recognize a healthy block instantly.</li>
+</ul></section>
+<section class="chapter-errors"><h2>Frequent mistakes</h2><ul>
+<li>Teaching surface tokens without explaining block shape.</li>
+<li>Using syntax pages to comment every line instead of naming the pattern.</li>
+<li>Confusing grammar shape with later semantic checks.</li>
+</ul></section>
+<p>Prerequisites: <a href="../../book/chapters/04-syntax.html"><code>book/chapters/04-syntax.html</code></a>. See also: <a href="../../book/chapters/04-syntax.html"><code>book/chapters/04-syntax.html</code></a>, <a href="../../book/chapters/27-grammar.html"><code>book/chapters/27-grammar.html</code></a>, <a href="../../book/chapters/31-build-errors.html"><code>book/chapters/31-build-errors.html</code></a>.</p>
 <h2>Concrete Problem</h2>
-<p>Real situation: Essential syntax is best understood by replaying the program as an executable algorithm. You read the incoming data, the condition evaluated, and then the returned value. Guiding question: Which condition is evaluated first, and what output does this decision impose?</p>
+<p>Syntax pages become noisy when they enumerate tokens without showing how a complete block is supposed to look.</p>
 <h2>Red Thread (Single Project)</h2>
-<p>Common thread: we keep the same mini-program to compare the effects of a modification without changing the entire context. Educational objective: move from passive reading to proof: same input, same branch, same expected output.</p>
-<h2>Goal</h2>
-<p>You need to be able to reread a snippet, predict its outcome, and then verify that prediction with simple execution.</p>
-<h2>Why it matters</h2>
-<p>This chapter gives you a clear understanding of <strong>Essential Syntax</strong>. You will find the framework, the invariants and the reading decisions useful in practice.</p>
-<h2>What you will do</h2>
-<p>You'll read the snippets in actual execution order, then validate the expected outputs on a nominal case and an error case.</p>
-<h2>Minimal example</h2>
-<p>Recommended first reflex: read the entries and conditions first, then only the syntactic form.</p>
-<h2>How to read</h2>
-<ol>
-<li>Identify the intent of the block.</li>
-<li>Check the main condition or test.</li>
-<li>Confirm the observable output.</li>
-<li>Note how this block serves <strong>Essential Syntax</strong> throughout the chapter.</li>
-</ol>
-<h2>Common pitfalls</h2>
-<ul>
-<li>Read the syntax without checking the behavior.</li>
-<li>Mix general rule and error cases in the same explanation.</li>
-<li>Introduce an optimization before having stabilized the flow of <strong>Essential Syntax</strong>.</li>
+<p>One small block shows declarations, expressions, and returns in a single readable flow.</p>
+<h2>For what</h2>
+<p>This chapter helps the reader recognize valid Vitte shapes quickly.</p>
+<h2>What you are going to do</h2>
+<p>You will read one valid block, map its parts to grammar roles, then inspect an invalid variant that breaks the shape.</p>
+<h2>Coherent example</h2>
+<pre><code class="language-vit">space demo/syntax
+
+proc compute(x: int, y: int) -&gt; int {
+  let sum: int = x + y
+  if sum &lt; 0 { give 0 }
+  give sum
+}
+
+entry main at core/app {
+  return compute(1, 2)
+}</code></pre>
+<h2>Global explanation</h2>
+<p>Essential syntax is best taught as structure. The reader should see where declarations live, where statements live, and how a block closes with an explicit result.</p>
+<h2>Invalid case</h2>
+<pre><code class="language-vit">proc broken(x: int) -&gt; int
+  give x
+}</code></pre>
+<p>This invalid case is intentionally small. It exists to isolate the contract failure that the chapter is trying to teach.</p>
+<h2>Common pitfalls</h2><ul>
+<li>Teaching surface tokens without explaining block shape.</li>
+<li>Using syntax pages to comment every line instead of naming the pattern.</li>
+<li>Confusing grammar shape with later semantic checks.</li>
 </ul>
 <h2>Short exercise</h2>
-<p>Take an example from the chapter on <strong>Essential Syntax</strong>. Change a condition or input value, then check if the result remains as expected.</p>
-<h2>Summary in 5 points</h2>
-<ol>
-<li>You know the objective of the chapter on <strong>Essential Syntax</strong>.</li>
-<li>You know how to read an example of the chapter in a structured way.</li>
-<li>You distinguish nominal case and error case.</li>
-<li>You avoid the most common pitfalls.</li>
-<li>You can reuse these rules in the next chapter.</li>
+<p>Add one extra branch and one extra local binding while preserving the same readable block structure.</p>
+<h2>Summary in 5 points</h2><ol>
+<li>Syntax is about shape before detail.</li>
+<li>A valid block is the smallest useful teaching unit.</li>
+<li>Statements and declarations belong to different layers.</li>
+<li>Invalid examples should isolate shape errors.</li>
+<li>The reader should leave able to recognize a healthy block instantly.</li>
 </ol>
-<h2>4.1 Define a procedure and its output</h2>
-<p>A procedure always begins with an explicit promise: "if you give me these values, I will give you this type of result". In Vitte, this promise can be read in the signature. The reader does not have to guess the types or format of the return.</p>
-<p><strong>Vitte:</strong></p>
-<pre><code class="language-vit">proc add(a: int, b: int) -&gt; int {
-  give a + b
-}</code></pre>
-<p><strong>C Equivalent:</strong></p>
-<pre><code class="language-c">int add(int a, int b) {
-  return a + b;
-}</code></pre>
-<p>Guided algorithmic reading:</p>
-<ol>
-<li>Input read: first identify the parameters and their type, these are the starting data for the calculation.</li>
-<li>No critical branching here: the flow is sequential, line by line.</li>
-<li>Processing: Apply the operations in the written order, without skipping any implicit steps.</li>
-<li>Output produced: current path returns <code>a + b</code>.</li>
-<li>Beginner concept: a variable is a named memory box which contains a value of a declared type.</li>
-<li>Beginner concept: a Boolean condition is worth <code>vrai</code> or <code>faux</code>; it is this which determines the branch executed.</li>
-</ol>
-<p>Quick check: Trace an execution with concrete values ​​(<code>x=...</code>, <code>i=...</code>) to confirm the branch actually taken.</p>
-<p>This function reads almost like a sentence: take <code>a</code> and <code>b</code>, add them together, return the result. For <code>add(1, 2)</code>, the calculation gives <code>3</code>. For <code>add(10, -4)</code>, it gives <code>6</code>. Nothing else happens, no side effects disrupt the reading.</p>
-<p>This detail is more important than it seems. The keyword <code>give</code> makes the exit voluntary and visible. In a real project, this explanation enormously reduces misunderstandings: we know where the value is produced, and we know why.</p>
-<p>When you reread a procedure, ask yourself three simple questions:</p>
-<ul>
-<li>what entries are allowed.</li>
-<li>what result is promised.</li>
-<li>where exactly the value is returned.</li>
-</ul>
-<p>Classic mistakes to avoid:</p>
-<ul>
-<li>forget to announce the correct return type in the signature.</li>
-<li>doing correct calculations but returning the wrong value.</li>
-<li>write a simple function with an unnecessarily complex structure.</li>
-</ul>
-<h2>4.2 Framing a value with tests</h2>
-<p>In most programs, bugs come less from the normal case than from the edges: negative values, overflows, unexpected entries. So a good habit is to protect the boundaries first, then leave the nominal case last.</p>
-<p><strong>Vitte:</strong></p>
-<pre><code class="language-vit">proc clamp01(v: int) -&gt; int {
-
-  if v &lt; 0 { give 0 }
-
-  if v &gt; 1 { give 1 }
-
-  give v
-}</code></pre>
-<p><strong>C Equivalent:</strong></p>
-<pre><code class="language-c">int clamp01(int v) {
-  if (v &lt; 0) return 0;
-  if (v &gt; 1) return 1;
-  return v;
-}</code></pre>
-<p>Guided algorithmic reading:</p>
-<ol>
-<li>Input read: first identify the parameters and their type, these are the starting data for the calculation.</li>
-<li>Condition evaluated first: <code>v &lt; 0</code>. If true, the test path is executed immediately.</li>
-<li>Processing: Apply the operations in the written order, without skipping any implicit steps.</li>
-<li>Output produced: current path returns <code>0</code>.</li>
-<li>Beginner concept: a variable is a named memory box which contains a value of a declared type.</li>
-<li>Beginner concept: a Boolean condition is worth <code>vrai</code> or <code>faux</code>; it is this which determines the branch executed.</li>
-</ol>
-<p>Quick check: test a nominal input then a limit input, and compare the two outputs obtained.</p>
-<p>The intention is clear: force a value to stay in the range <code>[0, 1]</code>. We read the code in natural order. If <code>v</code> is too small, we immediately return <code>0</code>. If it is too large, we immediately return <code>1</code>. Otherwise, we send it back as is.</p>
-<p>Step by step reading:</p>
-<ul>
-<li><code>clamp01(-2)</code>: the first test is true (<code>v &lt; 0</code>), so return <code>0</code>.</li>
-<li><code>clamp01(0)</code>: neither test is true, so return <code>0</code>.</li>
-<li><code>clamp01(9)</code>: the second test is true (<code>v &gt; 1</code>), so return <code>1</code>.</li>
-</ul>
-<p>The strength of this style is its frankness. Each line answers a specific question: “what to do if it’s too low?”, “what to do if it’s too high?”, “what to do otherwise?”. This structure makes the code solid and pleasant to reread.</p>
-<p>Classic mistakes to avoid:</p>
-<ul>
-<li>treat the nominal case before the bounds, which hides the exceptions.</li>
-<li>forget one of the two edges of the interval.</li>
-<li>multiply nested branches when simple tests are enough.</li>
-</ul>
-<h2>4.3 Iterate with an explicit mutation</h2>
-<p>A loop becomes dangerous as soon as we no longer know exactly how the state is evolving. In Vitte, the mutation is explicit with <code>set</code>, which requires you to show in black and white the transition from one state to the next.</p>
-<p><strong>Vitte:</strong></p>
-<pre><code class="language-vit">proc count(n: int) -&gt; int {
-  let i: int = 0
-
-  // Boucle: progression controlee jusqu&#x27;a la borne
-  loop {
-    // Borne d&#x27;arret: stoppe la boucle de maniere explicite
-    if i &gt;= n { break }
-    set i = i + 1
-  }
-
-  give i
-}</code></pre>
-<p><strong>C Equivalent:</strong></p>
-<pre><code class="language-c">int count(int n) {
-  int i = 0;
-  
-  /* Loop: controlled progression to the bound */
-  while (1) {
-    /* Stop bound: stops the loop explicitly */
-    if (i &gt;= n) break;
-    i = i + 1;
-  }
-  
-  return i;
-}</code></pre>
-<p>Guided algorithmic reading:</p>
-<ol>
-<li>Input read: first identify the parameters and their type, these are the starting data for the calculation.</li>
-<li>Condition evaluated first: <code>i &gt;= n</code>. If true, the test path is executed immediately.</li>
-<li>Loop: check the stopping condition and state progress in each iteration.</li>
-<li>Output produced: current path returns <code>i</code>.</li>
-<li>Beginner concept: a variable is a named memory box which contains a value of a declared type.</li>
-<li>Beginner concept: a Boolean condition is worth <code>vrai</code> or <code>faux</code>; it is this which determines the branch executed.</li>
-</ol>
-<p>Quick check: Keep the same entry before/after modification to prove that the expected behavior is preserved.</p>
-<p>The logic here is deliberately simple. We initialize <code>i</code> to <code>0</code>. At each turn, we check the stopping condition: if <code>i &gt;= n</code>, we leave the loop. Otherwise, we take a step forward with <code>set i = i + 1</code>.</p>
-<p>For <code>n = 4</code>, the trajectory is:</p>
-<ul>
-<li>departure <code>i = 0</code>.</li>
-<li>round 1: <code>i = 1</code>.</li>
-<li>round 2: <code>i = 2</code>.</li>
-<li>round 3: <code>i = 3</code>.</li>
-<li>round 4: <code>i = 4</code>.</li>
-<li>next turn: <code>i &gt;= n</code>, stop, return <code>4</code>.</li>
-</ul>
-<p>What this example teaches goes beyond counting. It shows how to keep a loop under control: a clearly identified state variable, a readable stop condition, a unique and explicit progression.</p>
-<p>Classic mistakes to avoid:</p>
-<ul>
-<li>forgetting to increment the variable, which creates an infinite loop.</li>
-<li>placing the stopping condition in the wrong place.</li>
-<li>evolve several states at once without necessity.</li>
-</ul>
-<h2>Keep in mind</h2>
-<p>If you only remember one idea, remember this: good code is not only correct, it is explicit. In Vitte, this explanation involves clear signatures, honest tests of limits, and loops where each mutation is visible. When these three elements are in place, you get a program that can be understood without guessing, corrected without trembling, and evolved without breaking it.</p>
-<p>Practical quality criterion for this chapter:</p>
-<ul>
-<li>you can explain each example out loud in less than a minute.</li>
-<li>you know how to predict the outcome of a call before executing it.</li>
-<li>you know how to immediately identify where the flow stops.</li>
-</ul>
-<h2>Quick check</h2>
-<p>Question: What happens if the entry is invalid? Benchmark: An explicit test or stable fallback path must apply.</p>
-<h2>Try this</h2>
-<ol>
-<li>Take an example from the chapter and modify a test condition to observe different behavior.</li>
-<li>Write a mini mental test on an invalid entry in the chapter, then predict the executed branch.</li>
-</ol>
-<h2>If you're stuck</h2>
-<ul>
-<li>identify the modified line and explain in one sentence the new expected output.</li>
-<li>Name the test or fallback branch actually used.</li>
-</ul>
-<h2>EBNF compliant</h2>
-<<< quick check >>>
-- Top-level: only module declarations (`space`, `pull`, `use`, `share`, `const`, `type`, `form`, `pick`, `proc`, `entry`, `macro`) appear outside the block.
-- Statements: instructions (`let`, `make`, `set`, `give`, `emit`, `if`, `loop`, `for`, `match`, `select`, `return`) remain in a `block`.
-- Primary types: `bool`, `string`, `int`, `i32`, `i64`, `i128`, `u32`, `u64`, `u128` are accepted in `type_primary`.
-<h2>Keywords to review</h2>
-<ul>
-<li><code>docs/book/chapters/keywords/break.html</code>.</li>
-<li><code>docs/book/chapters/keywords/case.html</code>.</li>
-<li><code>docs/book/chapters/keywords/continue.html</code>.</li>
-<li><code>docs/book/chapters/keywords/give.html</code>.</li>
-<li><code>docs/book/chapters/keywords/if.html</code>.</li>
-</ul>
-<h2>Extended Example</h2>
-<p><strong>Vitte:</strong></p>
-<pre><code class="language-vit">// Scenario syntaxe: execution complete et verifiable
-space demo/syntaxe
-
-form SourceUnit { bytes: int lines: int tokens_hint: int }
-pick ParseState { case Parsed(nodes: int) case Failed(code: int) }
-
-// Scan: transforme l&#x27;entrée brute en signal exploitable
-proc scan(u: SourceUnit) -&gt; int {
-
-  if u.bytes &lt;= 0 { give 0 }
-
-  if u.lines &lt;= 0 { give 0 }
-
-  give (u.tokens_hint + u.lines)
-}
-
-// Parse: construit un état syntaxique stable
-proc parse(token_count: int) -&gt; ParseState {
-
-  if token_count == 0 { give ParseState.Failed(101) }
-
-  if token_count &lt; 4 { give ParseState.Failed(102) }
-
-  give ParseState.Parsed(token_count)
-}
-
-proc validate_structure(nodes: int) -&gt; int {
-
-  if nodes &lt;= 0 { give 201 }
-
-  if nodes &gt; 200000 { give 202 }
-
-  give 0
-}
-
-// Conversion finale vers un code de sortie
-proc to_exit(p: ParseState) -&gt; int {
-
-  match p {
-    case Parsed(n) {
-      let v: int = validate_structure(n)
-
-      if v != 0 { give v }
-
-      give 0
-    }
-    case Failed(c) { give c }
-    otherwise { give 70 }
-  }
-}
-
-// Point d&#x27;entree du scenario
-entry main at core/app {
-  let u: SourceUnit = SourceUnit(120, 12, 18)
-  let t: int = scan(u)
-  let p: ParseState = parse(t)
-
-  return to_exit(p)
-}</code></pre>
-<p><strong>C Equivalent:</strong></p>
-<pre><code class="language-c">#include &lt;stdint.h&gt;
-
-typedef struct {
-  int bytes;
-  int lines;
-  int tokens_hint;
-} SourceUnit;
-
-typedef enum { PARSED, FAILED } ParseStateTag;
-
-typedef struct {
-  ParseStateTag tag;
-  union {
-    int nodes;  // for PARSED
-    int code;   // for FAILED
-  } data;
-} ParseState;
-
-/* Scan: transform raw input into exploitable signal */
-int scan(SourceUnit u) {
-  if (u.bytes &lt;= 0) return 0;
-  if (u.lines &lt;= 0) return 0;
-  return (u.tokens_hint + u.lines);
-}
-
-/* Parse: build stable syntactic state */
-ParseState parse(int token_count) {
-  if (token_count == 0) {
-    return (ParseState){.tag = FAILED, .data.code = 101};
-  }
-  if (token_count &lt; 4) {
-    return (ParseState){.tag = FAILED, .data.code = 102};
-  }
-  return (ParseState){.tag = PARSED, .data.nodes = token_count};
-}
-
-int validate_structure(int nodes) {
-  if (nodes &lt;= 0) return 201;
-  if (nodes &gt; 200000) return 202;
-  return 0;
-}
-
-/* Final conversion to exit code */
-int to_exit(ParseState p) {
-  if (p.tag == PARSED) {
-    int v = validate_structure(p.data.nodes);
-    if (v != 0) return v;
-    return 0;
-  } else {  // FAILED
-    return p.data.code;
-  }
-  return 70;
-}
-
-/* Scenario entry point */
-int main(void) {
-  SourceUnit u = {120, 12, 18};
-  int t = scan(u);
-  ParseState p = parse(t);
-  return to_exit(p);
-}</code></pre>
-<h2>Detailed explanation of the big block</h2>
-<p>This large block shows an entire program, not an isolated extract: we follow the flow from start to finish.</p>
-<h3>1. Role of each party</h3>
-<ul>
-<li>Starting point: <code>entry main at core/app</code>.</li>
-<li><code>scan</code>: reads <code>u: SourceUnit</code> and returns <code>int</code>.</li>
-<li><code>parse</code>: reads <code>token_count: int</code> and returns <code>ParseState</code>.</li>
-<li><code>validate_structure</code>: reads <code>nodes: int</code> and returns <code>int</code>.</li>
-<li><code>to_exit</code>: reads <code>p: ParseState</code> and returns <code>int</code>.</li>
-</ul>
-<h3>2. Actual execution order</h3>
-<ol>
-<li>The program enters <code>main</code>.</li>
-<li><code>scan</code> is called to process the next step.</li>
-<li><code>parse</code> is called to process the next step.</li>
-<li><code>to_exit</code> is called to process the next step.</li>
-<li>The final value is converted to process output (<code>return ...</code>).</li>
-</ol>
-<h3>3. Tests that change the path</h3>
-<ul>
-<li>Test evaluated: <code>u.bytes &lt;= 0</code>.</li>
-<li>Test evaluated: <code>u.lines &lt;= 0</code>.</li>
-<li>Test evaluated: <code>token_count == 0</code>.</li>
-<li>Test evaluated: <code>token_count &lt; 4</code>.</li>
-<li>Test evaluated: <code>nodes &lt;= 0</code>.</li>
-<li>Test evaluated: <code>nodes &gt; 200000</code>.</li>
-<li>Selection by <code>match p</code>: the path depends on the state received.</li>
-</ul>
-<h3>4. Quick trace with values</h3>
-<ul>
-<li>Nominal example: <code>entrée valide -&gt; scan -&gt; parse -&gt; to_exit -&gt; sortie 0</code>.</li>
-<li>Example error: <code>entrée invalide -&gt; scan renvoie un code d&#x27;erreur -&gt; sortie non nulle</code>.</li>
-</ul>
-<h3>5. Why this division is useful</h3>
-<ul>
-<li>You test each function on its own, then the entire flow.</li>
-<li>You know where to change a rule without breaking the entire program.</li>
-<li>You can explain the output by simply following the calls.</li>
-</ul>
-<h3>6. Quick Check</h3>
-<ol>
-<li>Retry with a normal entry and note the exit.</li>
-<li>Restart with invalid input and check the error code.</li>
-<li>Confirm that the same input always gives the same output.</li>
-</ol>
-<h2>Design Notes</h2>
-<ul>
-<li>The snippet favors explicit boundaries rather than minimalist code.</li>
-<li>Tests are placed early to reduce the cost of diagnosis.</li>
-<li>The output is projected at the end of the flow to keep the business independent of transport.</li>
-</ul>
-<p>Actual error case:</p>
-<ul>
-<li>Degraded or incomplete input: the test must cut the flow early with an explicit exit.</li>
-</ul>
-<p>To test:</p>
-<ul>
-<li>Valid unit -> output 0.</li>
-<li>Empty input (bytes=0) -> output 101.</li>
-<li>Oversized structure -> exit 202.</li>
-</ul>
-<h3>7. Line by line (variables + values)</h3>
-<p>Convenient reading: Follow the variables in the actual order of execution, then check the observed output.</p>
-<ul>
-<li>Entry point:</li>
-<li><code>entry main at core/app</code> launches the complete scenario.</li>
-</ul>
-<ul>
-<li>Block functions:</li>
-<li><code>scan</code> reads <code>u: SourceUnit</code> then returns <code>int</code>.</li>
-<li><code>parse</code> reads <code>token_count: int</code> then returns <code>ParseState</code>.</li>
-<li><code>validate_structure</code> reads <code>nodes: int</code> then returns <code>int</code>.</li>
-<li><code>to_exit</code> reads <code>p: ParseState</code> then returns <code>int</code>.</li>
-</ul>
-<ul>
-<li>Variables created (initial value):</li>
-<li><code>v: int</code> starts with <code>validate_structure(n)</code>.</li>
-<li><code>u: SourceUnit</code> starts with <code>SourceUnit(120, 12, 18)</code>.</li>
-<li><code>t: int</code> starts with <code>scan(u)</code>.</li>
-<li><code>p: ParseState</code> starts with <code>parse(t)</code>.</li>
-</ul>
-<ul>
-<li>Conditions that change the path:</li>
-<li>if <code>u.bytes &lt;= 0</code> is true: early exit or dedicated branch; otherwise: the flow continues.</li>
-<li>if <code>u.lines &lt;= 0</code> is true: early exit or dedicated branch; otherwise: the flow continues.</li>
-<li>if <code>token_count == 0</code> is true: early exit or dedicated branch; otherwise: the flow continues.</li>
-<li>if <code>token_count &lt; 4</code> is true: early exit or dedicated branch; otherwise: the flow continues.</li>
-<li>if <code>nodes &lt;= 0</code> is true: early exit or dedicated branch; otherwise: the flow continues.</li>
-<li>if <code>nodes &gt; 200000</code> is true: early exit or dedicated branch; otherwise: the flow continues.</li>
-<li>if <code>v != 0</code> is true: early exit or dedicated branch; otherwise: the flow continues.</li>
-</ul>
-<ul>
-<li>Nominal trace (example values):</li>
-<li>initialization: v=validate_structure(n) -> u=SourceUnit(120, 12, 18) -> t=scan(u) -> p=parse(t)</li>
-<li>sequence: scan -> parse -> to_exit</li>
-<li>final output on this path: <code>to_exit(p)</code>.</li>
-</ul>
-<ul>
-<li>Error trace (example values):</li>
-<li>if <code>u.bytes &lt;= 0</code> becomes true, the function returns <code>0</code>.</li>
-</ul>
-<ul>
-<li>Quick check:</li>
-<li>restart with normal input and note the output,</li>
-<li>restart with an invalid entry and note the error code,</li>
-<li>confirm that the same input always produces the same output.</li>
-</ul>
-<h2>Trade-offs</h2>
-<table border="1" cellpadding="6" cellspacing="0">
-<tr><th>Constraint</th><th>Option A</th><th>Option B</th><th>Recommended decision</th></tr>
-<tr><td>Priority readability</td><td>Explicit branches</td><td>Compact code</td><td>If the team maintains the code for a long time</td></tr>
-<tr><td>Critical performance</td><td>Targeted specialization</td><td>Generalization</td><td>A if profiling confirms the gain</td></tr>
-<tr><td>Rapid evolution</td><td>Strict contracts</td><td>Implicit conventions</td><td>A to reduce regressions</td></tr>
-</table>
-<h2>Decision According to Constraint</h2>
-<ul>
-<li>If the dominant constraint is safety: validate early, fail explicitly.</li>
-<li>If the dominant constraint is latency: measure first, optimize later.</li>
-<li>If the dominant constraint is scalability: isolate orchestration, decisions and output conversion.</li>
-</ul>
-<h2>Rapid Diagnosis</h2>
-<table border="1" cellpadding="6" cellspacing="0">
-<tr><th>Symptom</th><th>Probable cause</th><th>Verification</th><th>Correction</th></tr>
-<tr><td>Unexpected exit</td><td>Test missing or poorly ordered</td><td>Replay with error case</td><td>Reassemble the test before the sensitive area</td></tr>
-<tr><td>Branch not taken</td><td>Condition too broad/too strict</td><td>Trace the effective entry</td><td>Make the condition explicit and tested</td></tr>
-<tr><td>Silent regression</td><td>Implicit rule</td><td>Compare nominal vs. limit</td><td>Formalize the rule in code</td></tr>
-</table>
-<h2>Checkpoint</h2>
-<p>At this point you should know:</p>
-<ul>
-<li>explain the input -> decision -> output flow without ambiguity,</li>
-<li>isolate a real error case and predict its exit,</li>
-<li>identify where to add a test without breaking the nominal.</li>
-</ul>
-<h2>What I would do in code review</h2>
-<ol>
-<li>Verify that input tests are placed before sensitive operations.</li>
-<li>Verify that the business decision is separated from the output projection.</li>
-<li>Verify a nominal test and a limit test that are actually executable.</li>
-</ol>
-<section class="chapter-quiz"><h2>Mini quiz</h2><ol><li>What is the main goal of this chapter?</li><li>Which concept is most important?</li><li>What will you try right now?</li></ol><button class="quiz-save" type="button">Mark as reviewed</button></section><section class="chapter-see-also"><h2>See also</h2><ul><li><a href="../../book/chapters/04-syntax.html">04-syntax</a></li><li><a href="../../book/chapters/05-types.html">5. Types and values</a></li><li><a href="../../book/chapters/06-procedures.html">6. Procedures and rules</a></li></ul></section><section class="chapter-cta"><h2>Next best action</h2><p>Apply one idea from this chapter in a tiny example, then continue.</p></section></article>
+<section class="chapter-quiz"><h2>Mini quiz</h2><ol>
+<li>What contract is the coherent example trying to make explicit?</li>
+<li>Why does the invalid example fail?</li>
+<li>What boundary should remain visible if you extend the example?</li>
+</ol><button class="quiz-save" type="button">Mark as reviewed</button></section>
+<section class="chapter-see-also"><h2>See also</h2><ul>
+<li><a href="../../book/chapters/04-syntax.html"><code>book/chapters/04-syntax.html</code></a></li>
+<li><a href="../../book/chapters/27-grammar.html"><code>book/chapters/27-grammar.html</code></a></li>
+<li><a href="../../book/chapters/31-build-errors.html"><code>book/chapters/31-build-errors.html</code></a></li>
+</ul></section>
+<section class="chapter-cta"><h2>Next best action</h2><p>Extend the coherent example by one small, justified step and keep the same contract visible from input to output.</p></section>
+</article>
 </main>
 <footer class="site-footer">
-<p class="site-footer-path">book/chapters/04-syntax.html</p>
+<p class="site-footer-path">book/chapters/04-syntaxe.html</p>
 <p><a href="../../index.html">Back to home</a></p>
 </footer>
 </div>
 <script type="module" src="../../js/book-learning.js"></script>
 <script type="module" src="../../js/main.js"></script>
-<script type="module" src="js/main.js"></script>
 </body>
 </html>

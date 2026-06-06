@@ -7,42 +7,8 @@
 <link rel="icon" href="../../svg/logo.svg" type="image/svg+xml">
 <link rel="stylesheet" href="../../css/site.css">
 <link rel="stylesheet" href="../../css/print.css" media="print">
-
 <link rel="alternate" hreflang="en" href="https://vitte-lang.org/20a-architecture-globale.html">
 <link rel="alternate" hreflang="x-default" href="https://vitte-lang.org/20a-architecture-globale.html">
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; font-src 'self'; connect-src 'self';">
 </head>
 <body class="classic-doc">
@@ -58,331 +24,90 @@
 <article class="doc-content">
 <p class="book-progress"></p>
 <h1>20a. Overall Language Architecture</h1>
-<p class="chapter-meta" data-chapter-meta="1">Level: <strong>beginner</strong> · Reading time: <strong>10 min</strong> · Prerequisite: <code>book/chapters/20-reproducibility.html</code> · Last review: <strong>2026-05-09</strong></p><section class="chapter-tldr"><h2>TL;DR (5 lines)</h2><ul><li>Read the core idea first.</li><li>Understand one concept at a time.</li><li>Run small examples.</li><li>Fix errors early.</li><li>Move to next chapter only when clear.</li></ul></section><section class="chapter-errors"><h2>Frequent mistakes</h2><ul><li>Skipping prerequisites.</li><li>Reading without trying examples.</li><li>Fixing too many errors at once.</li></ul></section>
-<div class="page-band">
-<a href="15-pipeline.html"><img src="../../svg/pipeline.svg" alt="" width="14" height="14">Pipeline</a>
-<a href="../34-compiler-mental-model.html"><img src="../../svg/compiler.svg" alt="" width="14" height="14">Compile model</a>
-<a href="../64-ast-to-ir-mapping.html"><img src="../../svg/ast.svg" alt="" width="14" height="14">AST to IR</a>
-<a href="../27-grammar.html"><img src="../../svg/parser.svg" alt="" width="14" height="14">Grammar</a>
-</div>
-<p>Level: Intermediate.</p>
-<p>Prerequisites: previous chapter <code>docs/book/chapters/20-reproducibility.html</code> and <code>docs/book/glossary.html</code>. See also: <code>docs/book/chapters/21-cli-project.html</code>, <code>docs/book/chapters/15-pipeline.html</code>, <code>docs/book/technical-index.html</code>.</p>
+<p class="chapter-meta" data-chapter-meta="1">Level: <strong>beginner</strong> · Reading time: <strong>10 min</strong> · Prerequisite: <a href="../../book/chapters/20-reproducibility.html"><code>book/chapters/20-reproducibility.html</code></a> · Track: <strong>essential</strong> · Maturity: <strong>reviewed</strong> · Last review: <strong>2026-05-09</strong></p>
+<section class="chapter-tldr"><h2>TL;DR (5 lines)</h2><ul>
+<li>Stages are ownership boundaries.</li>
+<li>Data movement matters as much as stage names.</li>
+<li>Small compiler examples should still show multiple layers.</li>
+<li>Broken stage structure should remain visible in invalid examples.</li>
+<li>A mental model is a data-flow model.</li>
+</ul></section>
+<section class="chapter-errors"><h2>Frequent mistakes</h2><ul>
+<li>Describing a pipeline as a list of names with no data movement.</li>
+<li>Collapsing stages so tightly that diagnostics lose their context.</li>
+<li>Teaching advanced compiler topics without a small staged example.</li>
+</ul></section>
+<p>Prerequisites: <a href="../../book/chapters/20-reproducibility.html"><code>book/chapters/20-reproducibility.html</code></a>. See also: <a href="../../book/chapters/20-reproducibility.html"><code>book/chapters/20-reproducibility.html</code></a>, <a href="../../book/chapters/27-grammar.html"><code>book/chapters/27-grammar.html</code></a>, <a href="../../book/chapters/31-build-errors.html"><code>book/chapters/31-build-errors.html</code></a>.</p>
 <h2>Concrete Problem</h2>
-<p>Actual situation: 20a. The overall architecture of the language is best understood by replaying the program as an executable algorithm. You read the incoming data, the condition evaluated, and then the returned value. Guiding question: Which condition is evaluated first, and what output does this decision impose?</p>
+<p>Compiler-facing chapters become vague when they talk about stages but never show how data crosses stage boundaries.</p>
 <h2>Red Thread (Single Project)</h2>
-<p>Common thread: each section uses the same scenario to isolate a single technical decision at a time. Educational objective: understand why a line exists and what it changes in the trajectory of the program.</p>
-<h2>Why it matters</h2>
-<p>This chapter gives you a clear understanding of <strong>Overall Language Architecture</strong>. You will find the framework, the invariants and the reading decisions useful in practice.</p>
-<h2>What you will do</h2>
-<p>You'll read the snippets in actual execution order, then validate the expected outputs on a nominal case and an error case.</p>
-<h2>Minimal example</h2>
-<p>Recommended first reflex: read the entries and conditions first, then only the syntactic form.</p>
-<h2>Step-by-step explanation</h2>
-<ol>
-<li>Identify the intent of the block.</li>
-<li>Check the main condition or test.</li>
-<li>Confirm the observable output.</li>
-<li>Note how this block serves <strong>Overall Language Architecture</strong> throughout the chapter.</li>
-</ol>
-<h2>Common pitfalls</h2>
-<ul>
-<li>Read the syntax without checking the behavior.</li>
-<li>Mix general rule and error cases in the same explanation.</li>
-<li>Introduce an optimization before having stabilized the flow of <strong>Overall Language Architecture</strong>.</li>
-</ul>
-<h2>Short exercise</h2>
-<p>Take an example from the chapter on <strong>Overall Language Architecture</strong>. Change a condition or input value, then check if the result remains as expected.</p>
-<h2>Summary in 5 points</h2>
-<ol>
-<li>You know the objective of the chapter on <strong>Overall Language Architecture</strong>.</li>
-<li>You know how to read an example of the chapter in a structured way.</li>
-<li>You distinguish nominal case and error case.</li>
-<li>You avoid the most common pitfalls.</li>
-<li>You can reuse these rules in the next chapter.</li>
-</ol>
-<h2>EBNF compliant</h2>
-<<< quick check >>>
-- Top-level: only module declarations (`space`, `pull`, `use`, `share`, `const`, `type`, `form`, `pick`, `proc`, `entry`, `macro`) appear outside the block.
-- Statements: instructions (`let`, `make`, `set`, `give`, `emit`, `if`, `loop`, `for`, `match`, `select`, `return`) remain in a `block`.
-- Primary types: `bool`, `string`, `int`, `i32`, `i64`, `i128`, `u32`, `u64`, `u128` are accepted in `type_primary`.
-<h2>Keywords to review</h2>
-<ul>
-<li><code>docs/book/chapters/keywords/proc.html</code>.</li>
-<li><code>docs/book/chapters/keywords/type.html</code>.</li>
-<li><code>docs/book/chapters/keywords/form.html</code>.</li>
-<li><code>docs/book/chapters/keywords/pick.html</code>.</li>
-<li><code>docs/book/chapters/keywords/match.html</code>.</li>
-</ul>
-<h2>Goal</h2>
-<p>Understand the boundary of each layer to quickly locate a bug, regression or architectural decision.</p>
-<h2>Example</h2>
-<p>Input: a procedure with a condition and a return. Processing: the parser forms the AST, checking confirms the types, then the backend produces the executable code. Output: Same behavior observable on all compatible platforms.</p>
-<h2>Why it matters</h2>
-<p>Most errors come from layer confusion. An explicit architecture allows you to correct in the right place. It also avoids workarounds that mask the real problem.</p>
-<h2>Quick check</h2>
-<p>Question: What happens if the entry is invalid? Expected answer: the rejection must be done in the first layer capable of proving the invalidity (lexing, parsing, typing).</p>
-<h2>Try this</h2>
-<ol>
-<li>Classify three fictitious errors in the correct layer of the pipeline.</li>
-<li>Describe an invariant per layer (lexer, parser, type checker, backend).</li>
-</ol>
-<h2>If you're stuck</h2>
-<p>A token error is a matter of lexer; a form error is a matter for the parser; a type error is the responsibility of the checker. The backend does not correct semantic inconsistencies.</p>
-<p><!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 START --></p>
-<h2>Representative examples based on chapter code</h2>
-<p>Theme: <strong>global language architecture</strong>. This section avoids generalizations and starts from a real extract.</p>
-<h3>Example A: Executable reading of the main snippet</h3>
-<pre><code class="language-vit">entry main at app/demo {
-  return 0
-}</code></pre>
-<p>Reading line by line:</p>
-<ol>
-<li><code>entry main at app/demo {</code> -> defines the entry point of the scenario.</li>
-<li><code>return 0</code> -> returns verifiable output.</li>
-<li><code>}</code> -> participates in the processing process.</li>
-</ol>
-<h3>Example B: error case variant (same intention, safe behavior)</h3>
-<p>Goal: keep the business logic while adding an explicit test.</p>
-<p>Steps:</p>
-<ol>
-<li>Identify the line that decides the exit.</li>
-<li>Add a test before this line.</li>
-<li>Check the new output on a limit input.</li>
-</ol>
-<h3>Example C: reproducible bug then local correction</h3>
-<p>Procedure:</p>
-<ol>
-<li>Introduce a type mismatch on a call.</li>
-<li>Compile and read the first diagnosis.</li>
-<li>Fix a single line (no global refactor).</li>
-<li>Recompile and check the nominal return.</li>
-</ol>
-<h3>Expected result</h3>
-<ul>
-<li>The reader understands what the code does without unnecessary abstraction.</li>
-<li>Each example is linked to a concrete action.</li>
-<li>The correction is reproducible and testable.</li>
-</ul>
-<p><!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 END --></p>
-<h2>Extended Example</h2>
-<pre><code class="language-vit">// Scenario architecture globale: execution complete et verifiable
-space demo/architecture-globale
+<p>One small compiler-like flow reads a source input, validates shape, transforms state, and produces an exit-oriented result.</p>
+<h2>For what</h2>
+<p>This chapter helps the reader build a mental model of pipeline boundaries.</p>
+<h2>What you are going to do</h2>
+<p>You will inspect a staged flow, name what each stage owns, then compare it to a collapsed design that hides those boundaries.</p>
+<h2>Coherent example</h2>
+<pre><code class="language-vit">space demo/compiler
 
-form Request { id: int amount: int quota: int }
-pick Result { case Accepted(total: int) case Rejected(code: int) }
-
-// Entrée applicative: validation des invariants de requête
-proc parse_request(r: Request) -&gt; Result {
-
-  if r.id &lt;= 0 { give Result.Rejected(91) }
-
-  if r.quota &lt; 0 { give Result.Rejected(92) }
-
-  if r.amount &lt; 0 { give Result.Rejected(93) }
-
-  give Result.Accepted(r.amount)
+pick ParseState {
+  case Parsed(nodes: int)
+  case Failed(code: int)
 }
 
-// Politique métier: applique les règles de décision
-proc apply_policy(total: int, quota: int) -&gt; Result {
-  let capped: int = total
-  if capped &gt; quota { set capped = quota }
-
-  if capped &lt; 5 { give Result.Rejected(94) }
-
-  give Result.Accepted(capped)
+proc parse(size: int) -&gt; ParseState {
+  if size &lt;= 0 { give ParseState.Failed(11) }
+  give ParseState.Parsed(size)
 }
 
-// Persistance simulée: matérialise un résultat sans I/O réel
-proc persist_sim(x: Result) -&gt; Result {
-
-  match x {
-    case Accepted(v) {
-      if v % 13 == 0 { give Result.Rejected(95) }
-
-      give Result.Accepted(v)
-    }
-    case Rejected(c) { give Result.Rejected(c) }
-    otherwise { give Result.Rejected(70) }
-  }
-}
-
-// Conversion finale vers un code de sortie
-proc to_exit(x: Result) -&gt; int {
-
-  match x {
-    case Accepted(_) { give 0 }
-    case Rejected(c) { give c }
+proc lower(state: ParseState) -&gt; int {
+  match state {
+    case Parsed(nodes) { give nodes }
+    case Failed(code) { give code }
     otherwise { give 70 }
   }
-}
-
-// Point d&#x27;entree du scenario
-entry main at core/app {
-  let req: Request = Request(7, 12, 15)
-  let p: Result = parse_request(req)
-  let d: Result = apply_policy(12, req.quota)
-  let s: Result = persist_sim(d)
-  let _probe: int = to_exit(p)
-
-  return to_exit(s)
 }</code></pre>
-<h2>Detailed explanation of the big block</h2>
-<p>Here the goal is to understand the actual path of the program, line by line, to the exit code.</p>
-<h3>1. Role of each party</h3>
-<ul>
-<li>Starting point: <code>entry main at core/app</code>.</li>
-<li><code>parse_request</code>: reads <code>r: Request</code> and returns <code>Result</code>.</li>
-<li><code>apply_policy</code>: reads <code>total: int, quota: int</code> and returns <code>Result</code>.</li>
-<li><code>persist_sim</code>: reads <code>x: Result</code> and returns <code>Result</code>.</li>
-<li><code>to_exit</code>: reads <code>x: Result</code> and returns <code>int</code>.</li>
+<h2>Global explanation</h2>
+<p>Pipeline chapters are most useful when they keep stage ownership explicit. The reader should know what the parse stage owns, what the transform stage owns, and where errors cross boundaries.</p>
+<h2>Invalid case</h2>
+<pre><code class="language-vit">proc broken_pipeline(size: int) -&gt; int {
+  match size
+    case 0 { give 0 }
+  }
+}</code></pre>
+<p>This invalid case is intentionally small. It exists to isolate the contract failure that the chapter is trying to teach.</p>
+<h2>Common pitfalls</h2><ul>
+<li>Describing a pipeline as a list of names with no data movement.</li>
+<li>Collapsing stages so tightly that diagnostics lose their context.</li>
+<li>Teaching advanced compiler topics without a small staged example.</li>
 </ul>
-<h3>2. Actual execution order</h3>
-<ol>
-<li>The program enters <code>main</code>.</li>
-<li><code>parse_request</code> is called to process the next step.</li>
-<li><code>apply_policy</code> is called to process the next step.</li>
-<li><code>persist_sim</code> is called to process the next step.</li>
-<li><code>to_exit</code> is called to process the next step.</li>
-<li>The final value is converted to process output (<code>return ...</code>).</li>
+<h2>Short exercise</h2>
+<p>Add one extra stage to the example and explain what data it receives and what it returns.</p>
+<h2>Summary in 5 points</h2><ol>
+<li>Stages are ownership boundaries.</li>
+<li>Data movement matters as much as stage names.</li>
+<li>Small compiler examples should still show multiple layers.</li>
+<li>Broken stage structure should remain visible in invalid examples.</li>
+<li>A mental model is a data-flow model.</li>
 </ol>
-<h3>3. Tests that change the path</h3>
-<ul>
-<li>Test evaluated: <code>r.id &lt;= 0</code>.</li>
-<li>Test evaluated: <code>r.quota &lt; 0</code>.</li>
-<li>Test evaluated: <code>r.amount &lt; 0</code>.</li>
-<li>Test evaluated: <code>capped &gt; quota</code>.</li>
-<li>Test evaluated: <code>capped &lt; 5</code>.</li>
-<li>Test evaluated: <code>v % 13 == 0</code>.</li>
-<li>Selection by <code>match x</code>: the path depends on the state received.</li>
-<li>Selection by <code>match x</code>: the path depends on the state received.</li>
-</ul>
-<h3>4. Quick trace with values</h3>
-<ul>
-<li>Nominal example: <code>entrée valide -&gt; parse_request -&gt; apply_policy -&gt; persist_sim -&gt; to_exit -&gt; sortie 0</code>.</li>
-<li>Example error: <code>entrée invalide -&gt; parse_request renvoie un code d&#x27;erreur -&gt; sortie non nulle</code>.</li>
-</ul>
-<h3>5. Why this division is useful</h3>
-<ul>
-<li>You test each function on its own, then the entire flow.</li>
-<li>You know where to change a rule without breaking the entire program.</li>
-<li>You can explain the output by simply following the calls.</li>
-</ul>
-<h3>6. Quick Check</h3>
-<ol>
-<li>Retry with a normal entry and note the exit.</li>
-<li>Restart with invalid input and check the error code.</li>
-<li>Confirm that the same input always gives the same output.</li>
-</ol>
-<h2>Design Notes</h2>
-<ul>
-<li>The snippet favors explicit boundaries rather than minimalist code.</li>
-<li>Tests are placed early to reduce the cost of diagnosis.</li>
-<li>The output is projected at the end of the flow to keep the business independent of transport.</li>
-</ul>
-<p>Actual error case:</p>
-<ul>
-<li>Degraded or incomplete input: the test must cut the flow early with an explicit exit.</li>
-</ul>
-<p>To test:</p>
-<ul>
-<li>Nominal request -> output 0.</li>
-<li>Invalid input id<=0 -> output 91.</li>
-<li>Business refusal value<5 -> exit 94.</li>
-</ul>
-<h3>7. Line by line (variables + values)</h3>
-<p>Convenient reading: Follow the variables in the actual order of execution, then check the observed output.</p>
-<ul>
-<li>Entry point:</li>
-<li><code>entry main at core/app</code> launches the complete scenario.</li>
-</ul>
-<ul>
-<li>Block functions:</li>
-<li><code>parse_request</code> reads <code>r: Request</code> then returns <code>Result</code>.</li>
-<li><code>apply_policy</code> reads <code>total: int, quota: int</code> then returns <code>Result</code>.</li>
-<li><code>persist_sim</code> reads <code>x: Result</code> then returns <code>Result</code>.</li>
-<li><code>to_exit</code> reads <code>x: Result</code> then returns <code>int</code>.</li>
-</ul>
-<ul>
-<li>Variables created (initial value):</li>
-<li><code>capped: int</code> starts with <code>total</code>.</li>
-<li><code>req: Request</code> starts with <code>Request(7, 12, 15)</code>.</li>
-<li><code>p: Result</code> starts with <code>parse_request(req)</code>.</li>
-<li><code>d: Result</code> starts with <code>apply_policy(12, req.quota)</code>.</li>
-<li><code>s: Result</code> starts with <code>persist_sim(d)</code>.</li>
-<li><code>_probe: int</code> starts with <code>to_exit(p)</code>.</li>
-</ul>
-<ul>
-<li>Variables changed during processing:</li>
-<li><code>capped</code> is updated with <code>quota</code>.</li>
-</ul>
-<ul>
-<li>Conditions that change the path:</li>
-<li>if <code>r.id &lt;= 0</code> is true: early exit or dedicated branch; otherwise: the flow continues.</li>
-<li>if <code>r.quota &lt; 0</code> is true: early exit or dedicated branch; otherwise: the flow continues.</li>
-<li>if <code>r.amount &lt; 0</code> is true: early exit or dedicated branch; otherwise: the flow continues.</li>
-<li>if <code>capped &gt; quota</code> is true: early exit or dedicated branch; otherwise: the flow continues.</li>
-<li>if <code>capped &lt; 5</code> is true: early exit or dedicated branch; otherwise: the flow continues.</li>
-<li>if <code>v % 13 == 0</code> is true: early exit or dedicated branch; otherwise: the flow continues.</li>
-</ul>
-<ul>
-<li>Nominal trace (example values):</li>
-<li>initialization: capped=total -> req=Request(7, 12, 15) -> p=parse_request(req) -> d=apply_policy(12, req.quota)</li>
-<li>sequence: parse_request -> apply_policy -> persist_sim -> to_exit</li>
-<li>final output on this path: <code>to_exit(s)</code>.</li>
-</ul>
-<ul>
-<li>Error trace (example values):</li>
-<li>if <code>r.id &lt;= 0</code> becomes true, the function returns <code>Result.Rejected(91)</code>.</li>
-</ul>
-<ul>
-<li>Quick check:</li>
-<li>restart with normal input and note the output,</li>
-<li>restart with an invalid entry and note the error code,</li>
-<li>confirm that the same input always produces the same output.</li>
-</ul>
-<h2>Trade-offs</h2>
-<table border="1" cellpadding="6" cellspacing="0">
-<tr><th>Constraint</th><th>Option A</th><th>Option B</th><th>Recommended decision</th></tr>
-<tr><td>Priority readability</td><td>Explicit branches</td><td>Compact code</td><td>If the team maintains the code for a long time</td></tr>
-<tr><td>Critical performance</td><td>Targeted specialization</td><td>Generalization</td><td>A if profiling confirms the gain</td></tr>
-<tr><td>Rapid evolution</td><td>Strict contracts</td><td>Implicit conventions</td><td>A to reduce regressions</td></tr>
-</table>
-<h2>Decision According to Constraint</h2>
-<ul>
-<li>If the dominant constraint is safety: validate early, fail explicitly.</li>
-<li>If the dominant constraint is latency: measure first, optimize later.</li>
-<li>If the dominant constraint is scalability: isolate orchestration, decisions and output conversion.</li>
-</ul>
-<h2>Rapid Diagnosis</h2>
-<table border="1" cellpadding="6" cellspacing="0">
-<tr><th>Symptom</th><th>Probable cause</th><th>Verification</th><th>Correction</th></tr>
-<tr><td>Unexpected exit</td><td>Test missing or poorly ordered</td><td>Replay with error case</td><td>Reassemble the test before the sensitive area</td></tr>
-<tr><td>Branch not taken</td><td>Condition too broad/too strict</td><td>Trace the effective entry</td><td>Make the condition explicit and tested</td></tr>
-<tr><td>Silent regression</td><td>Implicit rule</td><td>Compare nominal vs. limit</td><td>Formalize the rule in code</td></tr>
-</table>
-<h2>Checkpoint</h2>
-<p>At this point you should know:</p>
-<ul>
-<li>explain the input -> decision -> output flow without ambiguity,</li>
-<li>isolate a real error case and predict its exit,</li>
-<li>identify where to add a test without breaking the nominal.</li>
-</ul>
-<h2>What I would do in code review</h2>
-<ol>
-<li>Verify that input tests are placed before sensitive operations.</li>
-<li>Verify that the business decision is separated from the output projection.</li>
-<li>Verify a nominal test and a limit test that are actually executable.</li>
-</ol>
-<section class="chapter-quiz"><h2>Mini quiz</h2><ol><li>What is the main goal of this chapter?</li><li>Which concept is most important?</li><li>What will you try right now?</li></ol><button class="quiz-save" type="button">Mark as reviewed</button></section><section class="chapter-see-also"><h2>See also</h2><ul><li><a href="../../book/chapters/20-reproducibility.html">20-reproducibility</a></li><li><a href="../../book/chapters/20a-overall-architecture.html">20a-overall-architecture</a></li><li><a href="../../book/chapters/21-cli-project.html">21. CLI Project</a></li></ul></section><section class="chapter-cta"><h2>Next best action</h2><p>Apply one idea from this chapter in a tiny example, then continue.</p></section></article>
+<section class="chapter-quiz"><h2>Mini quiz</h2><ol>
+<li>What contract is the coherent example trying to make explicit?</li>
+<li>Why does the invalid example fail?</li>
+<li>What boundary should remain visible if you extend the example?</li>
+</ol><button class="quiz-save" type="button">Mark as reviewed</button></section>
+<section class="chapter-see-also"><h2>See also</h2><ul>
+<li><a href="../../book/chapters/20-reproducibility.html"><code>book/chapters/20-reproducibility.html</code></a></li>
+<li><a href="../../book/chapters/27-grammar.html"><code>book/chapters/27-grammar.html</code></a></li>
+<li><a href="../../book/chapters/31-build-errors.html"><code>book/chapters/31-build-errors.html</code></a></li>
+</ul></section>
+<section class="chapter-cta"><h2>Next best action</h2><p>Extend the coherent example by one small, justified step and keep the same contract visible from input to output.</p></section>
+</article>
 </main>
 <footer class="site-footer">
-<p class="site-footer-path">book/chapters/20a-overall-architecture.html</p>
+<p class="site-footer-path">book/chapters/20a-architecture-globale.html</p>
 <p><a href="../../index.html">Back to home</a></p>
 </footer>
 </div>
 <script type="module" src="../../js/book-learning.js"></script>
 <script type="module" src="../../js/main.js"></script>
-<script type="module" src="js/main.js"></script>
 </body>
 </html>

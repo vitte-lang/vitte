@@ -10,18 +10,6 @@ H1_RE = re.compile(r"<h1\b", re.I)
 FENCE_RE = re.compile(r"```.*?```", re.S)
 TAG_RE = re.compile(r"<[^>]+>")
 
-CHAPTER_REQUIRED = [
-    "Concrete Problem",
-    "Red Thread (Single Project)",
-    "For what",
-    "What you are going to do",
-    "Minimal example",
-    "Step by step explanation",
-    "Common pitfalls",
-    "Short exercise",
-    "Summary in 5 points",
-]
-
 KEYWORD_REQUIRED = [
     "Quick reading",
     "Why (job)",
@@ -48,6 +36,7 @@ KEYWORD_SKIP = {
     "non-utilises.html",
     "erreurs-compilateur.html",
     "all.html",
+    "commented-examples.html",
 }
 
 
@@ -58,6 +47,10 @@ def strip_html(text: str) -> str:
 def has_heading(text: str, title: str) -> bool:
     pattern = rf"<h2\b[^>]*>\s*{re.escape(title)}\s*</h2>"
     return re.search(pattern, text, flags=re.I | re.S) is not None
+
+
+def has_any_heading(text: str, titles: list[str]) -> bool:
+    return any(has_heading(text, title) for title in titles)
 
 
 def is_redirect_page(text: str) -> bool:
@@ -85,9 +78,29 @@ def main() -> int:
         h1 = len(H1_RE.findall(t))
         if h1 != 1:
             errors.append(f"{md}: expected exactly one H1, got {h1}")
-        for sec in CHAPTER_REQUIRED:
-            if not has_heading(t, sec):
-                warnings.append(f"{md}: missing chapter section {sec}")
+        if not has_heading(t, "Concrete Problem"):
+            warnings.append(f"{md}: missing chapter section Concrete Problem")
+        if not has_heading(t, "Red Thread (Single Project)"):
+            warnings.append(f"{md}: missing chapter section Red Thread (Single Project)")
+        if not has_heading(t, "For what"):
+            warnings.append(f"{md}: missing chapter section For what")
+        if not has_heading(t, "What you are going to do"):
+            warnings.append(f"{md}: missing chapter section What you are going to do")
+        if not has_any_heading(t, ["Minimal example", "Coherent example"]):
+            warnings.append(f"{md}: missing chapter section Minimal example or Coherent example")
+        if not has_heading(t, "Global explanation"):
+            warnings.append(f"{md}: missing chapter section Global explanation")
+        if not has_heading(t, "Common pitfalls"):
+            warnings.append(f"{md}: missing chapter section Common pitfalls")
+        if not has_heading(t, "Short exercise"):
+            warnings.append(f"{md}: missing chapter section Short exercise")
+        if not has_heading(t, "Summary in 5 points"):
+            warnings.append(f"{md}: missing chapter section Summary in 5 points")
+        lower_scan = scan.lower()
+        if "reading line by line" in lower_scan or "<h2>line by line" in lower_scan or "<h3>line by line" in lower_scan:
+            warnings.append(f"{md}: avoid line-by-line explanations; prefer global reading")
+        if "step-by-step explanation" in lower_scan:
+            warnings.append(f"{md}: replace step-by-step explanation with global explanation")
         if "Prerequisites:" not in scan:
             warnings.append(f"{md}: missing 'Prerequisites:'")
         if "See also:" not in scan:
@@ -108,6 +121,11 @@ def main() -> int:
         for sec in KEYWORD_REQUIRED:
             if not has_heading(t, sec):
                 warnings.append(f"{md}: missing keyword section {sec}")
+        lower_scan = scan.lower()
+        if "reading line by line" in lower_scan or "<h2>line by line" in lower_scan or "<h3>line by line" in lower_scan:
+            warnings.append(f"{md}: avoid line-by-line commentary in keyword pages")
+        if "example in c" not in lower_scan and "comparison with c" not in lower_scan:
+            warnings.append(f"{md}: add a short C comparison for keyword context")
         if has_heading(t, "Nearby keyword") and has_heading(t, "Neighbor keyword"):
             warnings.append(f"{md}: redundant near-keyword naming")
 

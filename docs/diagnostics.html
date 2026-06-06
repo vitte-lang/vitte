@@ -49,6 +49,12 @@
 
 
 
+
+
+
+
+
+
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; font-src 'self'; connect-src 'self';">
 </head>
 <body class="classic-doc">
@@ -77,33 +83,54 @@
 <a href="suggestions.html"><img src="svg/suggestions.svg" alt="" width="14" height="14">Suggestions</a>
 </div>
 <h2>Source of truth</h2>
-<p>Start with the first code, then read the corresponding stable file in <code>docs/book/errors.html</code>. To confirm the meaning of the message, go through <code>docs/book/cli.html</code> and the order <code>vitte explain &lt;code&gt;</code>.</p>
+<p>The active diagnostics surface is the Vitte compiler itself. For implementation details, start from <code>src/vitte/compiler/diagnostics/diagnostic.vit</code> and the technical note <code>docs/compiler/diagnostics.md</code>. The bootstrap seed diagnostics described in <code>docs/seed_diagnostics.md</code> are a narrower stage0 contract, not the full compiler surface.</p>
 <h2>Official sequence</h2>
 <ul>
-<li><code>vitte explain &lt;code&gt;</code></li>
-<li><code>vitte check --diag-code-only</code></li>
-<li><code>vitte mod doctor --fix</code></li>
-<li><code>vitte check --diag-json-pretty</code></li>
+<li><code>vitte check &lt;file&gt;</code></li>
+<li><code>vitte check --diagnostics-json &lt;file&gt;</code></li>
+<li><code>vitte --dump-ast-json &lt;file&gt;</code></li>
+<li><code>vitte --dump-hir-json &lt;file&gt;</code></li>
+<li><code>vitte --dump-mir-json &lt;file&gt;</code></li>
+</ul>
+<h2>Stable JSON surface</h2>
+<ul>
+<li><code>schema = "vitte.compiler.surface"</code></li>
+<li><code>surface = "diagnostics"</code></li>
+<li><code>valid</code> tells whether the request succeeded</li>
+<li><code>pipeline_failed_at</code> identifies the first failing stage</li>
+<li><code>primary_report.diagnostics[]</code> contains the flattened report</li>
+<li><code>phase_reports.*</code> keeps per-phase diagnostics</li>
+</ul>
+<h2>Phase map</h2>
+<ul>
+<li><b>frontend</b> : <code>lexer</code>, <code>parser</code>, <code>ast_validation</code></li>
+<li><b>resolution</b> : <code>module_resolution</code>, <code>symbol_resolution</code>, <code>sema</code></li>
+<li><b>middle-end</b> : <code>hir</code>, <code>typeck</code>, <code>borrowck</code>, <code>mir</code>, <code>mir_lowering</code>, <code>mir_verification</code>, <code>ir</code></li>
+<li><b>backend</b> : <code>backend</code>, <code>linker</code>, <code>runtime_execution</code></li>
+<li><b>driver</b> : CLI/input/configuration failures before or around the pipeline</li>
 </ul>
 <h2>Frequent codes</h2>
 <ul>
-<li><a href="book/errors.html#e0001">E0001 - expected identifier</a></li>
-<li><a href="book/errors.html#e0013">E0013 - unknown identifier</a></li>
-<li><a href="book/errors.html#e0019">E0019 - proc requires a body</a></li>
-<li><a href="book/errors.html#e0024">E0024 - select requires at least one when branch</a></li>
+<li><code>PARSE_E_UNCLOSED_BLOCK</code> - parser reached EOF before a closing delimiter</li>
+<li><code>E1005</code> - unknown identifier</li>
+<li><code>TYPECK_E_ASSIGN_MISMATCH</code> - assignment type mismatch</li>
+<li><code>BORROWCK_E_USE_AFTER_MOVE</code> - moved value used later</li>
+<li><code>LIMIT_FILE_SIZE_MAX</code> - source exceeds hard input-size policy</li>
 </ul>
 <h2>What to do first</h2>
 <ul>
-<li>Read the first code, not the whole waterfall.</li>
-<li>Open the corresponding file in <code>docs/book/errors.html</code>.</li>
-<li>Throw <code>vitte explain &lt;code&gt;</code> to confirm the official meaning.</li>
-<li>Correct locally, then restart on a minimal case.</li>
+<li>Read the first failing phase and code, not the whole waterfall.</li>
+<li>Reduce the repro to the smallest file that still fails.</li>
+<li>Re-run with <code>--diagnostics-json</code> when you need machine-readable detail.</li>
+<li>Use AST/HIR/MIR JSON dumps only after the frontend phase is clean enough to progress.</li>
 </ul>
 <h2>Quick index</h2>
 <ul>
-<li><b>parse</b> : E0001 to E0008.</li>
-<li><b>resolve</b> : E0009 to E0025.</li>
-<li><b>IR</b> : E0015 to E0028.</li>
+<li><b>parse</b> : malformed syntax, recovery diagnostics, unclosed delimiters.</li>
+<li><b>resolve</b> : missing modules, symbols, visibility and name binding issues.</li>
+<li><b>typeck</b> : incompatible assignments, call arity/type mismatches, non-exhaustive matches.</li>
+<li><b>borrowck</b> : use-after-move, borrow conflicts, lifetime failures.</li>
+<li><b>driver</b> : invalid CLI input, path/policy issues, hardening limits.</li>
 </ul>
 <h2>Example</h2>
 <pre><code class="language-vit">space sample
@@ -115,16 +142,16 @@ proc main() -> void {
 </code></pre>
 <p>This minimal example is useful for understanding diagnostics: the compiler can parse the code, but it will fail later with a type mismatch because <code>int + string</code> is invalid. Reduce the repro to this smallest form when you triage a failure.</p>
 <h2>Practical reading</h2>
-<p>Diagnostics should be read as a contract, not as a wall of text. The code says what failed, the book says what the code means, and the CLI explains how to inspect it. If those three disagree, the first place to trust is the current source, then the dedicated chapter, then the command output.</p>
+<p>Diagnostics should be read as a contract, not as a wall of text. The phase tells you where the pipeline stopped, the code names the stable failure class, and the JSON envelope lets you inspect the same event without scraping text output.</p>
 <p>For a fast triage, use this order:</p>
 <ol>
-<li>Identify the code.</li>
-<li>Open the matching entry in <code>docs/book/errors.html</code>.</li>
-<li>Run <code>vitte explain &lt;code&gt;</code> to confirm the current text.</li>
+<li>Identify <code>pipeline_failed_at</code> or the first human-visible phase.</li>
+<li>Read the primary code, message, label, note, and help.</li>
 <li>Reduce the repro to the smallest snippet that still fails.</li>
-<li>Check whether the issue belongs to parsing, resolution, lowering, or a post-parse rule.</li>
+<li>Re-run with <code>--diagnostics-json</code> if you need exact fields or per-phase separation.</li>
+<li>Only then move to AST/HIR/MIR dumps if the failing phase is past parsing.</li>
 </ol>
-<p>That sequence helps contributors stay precise. It also keeps bug reports useful, because the report names the code, the layer, the smallest repro, and the expected behavior instead of only describing the symptom.</p>
+<p>That sequence keeps bug reports useful: the report should name the phase, the code, the smallest repro, and the expected behavior instead of only describing the symptom.</p>
 <p>If you need a broader starting point, read <a href="doc.html">Documentation</a> for the compiler surface and <a href="source.html">Source</a> for the implementation path.</p>
 <nav class="doc-pagination"><a href="community.html">← Previous</a><a href="doc.html">Next →</a></nav></article>
 </main>
@@ -133,6 +160,6 @@ proc main() -> void {
 <p><a href="index.html">Back to home</a> · <a href="status-public.html">Public status</a></p>
 </footer>
 </div>
-<script type="module" src="js/main.js"></script>
+<script type="module" src="js/main.js?v=f72c813232"></script>
 </body>
 </html>

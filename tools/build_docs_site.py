@@ -8,6 +8,7 @@ from pathlib import Path
 DOCS=Path('docs')
 LANGS=[]
 PAGES=sorted([p for p in DOCS.glob('*.html') if p.name!='status.html'])
+ALL_HTML=sorted([p for p in DOCS.rglob('*.html') if p.name != 'status.html'])
 HEADER_RE=re.compile(r'<header class="site-header">[\s\S]*?</header>')
 FOOTER_RE=re.compile(r'<footer class="site-footer">[\s\S]*?</footer>')
 SCRIPT_RE=re.compile(r'<script[^>]*site-interactions\.js[^>]*></script>\n?', re.I)
@@ -38,6 +39,11 @@ CACHE={}
 
 def text(x): return re.sub(r'\s+',' ',TAG_RE.sub(' ',x)).strip()
 def sha(path): return hashlib.sha256(path.read_bytes()).hexdigest()[:10]
+def relpath(p): return p.relative_to(DOCS).as_posix()
+def infer_section(rel: str) -> str:
+  if rel.startswith('grammar/'): return 'grammar'
+  if rel.startswith('book/'): return 'book'
+  return 'docs'
 
 def tr(txt: str, dst: str) -> str:
   k=(txt,dst)
@@ -97,6 +103,9 @@ hash_css=sha(DOCS/'css/site.css') if (DOCS/'css/site.css').exists() else 'dev'
 hash_js=sha(DOCS/'js/main.js') if (DOCS/'js/main.js').exists() else 'dev'
 
 search=[]
+search_docs=[]
+search_book=[]
+search_grammar=[]
 for idx,p in enumerate(PAGES):
   s=p.read_text(encoding='utf-8')
   s=HEADER_RE.sub(header('en'),s)
@@ -119,17 +128,23 @@ for idx,p in enumerate(PAGES):
   pag='<nav class="doc-pagination">'+(f'<a href="{prevp}">← Previous</a>' if prevp else '<span></span>')+(f'<a href="{nextp}">Next →</a>' if nextp else '')+'</nav>'
   if 'doc-pagination' not in s: s=s.replace('</article>', pag+'</article>')
   p.write_text(s,encoding='utf-8')
+
+for p in ALL_HTML:
+  rel=relpath(p)
+  s=p.read_text(encoding='utf-8')
+  title=(TITLE_RE.search(s).group(1) if TITLE_RE.search(s) else p.stem)
   b=ARTICLE_RE.search(s)
-  if b:
-    search.append({
-      'title':title,
-      'path':p.name,
-      'content':text(b.group(1))[:5000],
-      'lang':'en',
-      'section':'docs'
-    })
+  body=text(b.group(1))[:5000] if b else text(s)[:5000]
+  item={'title':title,'path':rel,'content':body,'lang':'en','section':infer_section(rel)}
+  search.append(item)
+  if item['section']=='docs': search_docs.append(item)
+  elif item['section']=='book': search_book.append(item)
+  elif item['section']=='grammar': search_grammar.append(item)
 
 (DOCS/'search-index.json').write_text(json.dumps({'version':'v4','pages':search},ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+(DOCS/'search-index.docs.json').write_text(json.dumps({'version':'v4','pages':search_docs},ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+(DOCS/'search-index.book.json').write_text(json.dumps({'version':'v4','pages':search_book},ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+(DOCS/'search-index.grammar.json').write_text(json.dumps({'version':'v4','pages':search_grammar},ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
 status={'version':'v4','build_utc':datetime.now(timezone.utc).isoformat(),'pages':len(PAGES),'css_hash':hash_css,'js_hash':hash_js,'languages':[],'browser_support':['modern evergreen browsers']}
 (DOCS/'status.json').write_text(json.dumps(status,indent=2)+'\n',encoding='utf-8')
 checks=[]

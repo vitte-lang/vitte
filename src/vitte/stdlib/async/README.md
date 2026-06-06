@@ -4,13 +4,32 @@ Path: `src/vitte/stdlib/async`
 
 ## Purpose
 
-Vitte standard library modules and runtime-facing surfaces.
+Future, channel, executor, and task orchestration helpers.
 
-## Notes
+## Architecture Role
 
-- Keep module APIs stable and documented.
-- Maintain ABI expectations for runtime/interop layers.
-- Add compatibility notes when changing behavior.
-- The current stdlib implementation is portable and synchronous-first:
-  `async`, `future_map`, `future_chain`, channels, and executor state are
-  coherent and smoke-tested, but they do not yet rely on a preemptive runtime.
+Use `async` when work should be coordinated as tasks rather than as direct thread ownership.
+
+## Main Responsibilities
+
+- Own task orchestration and message-passing surfaces.
+- Clarify the difference between asynchronous coordination and thread control.
+- Keep scheduling concepts visible in the docs.
+
+## Module Inventory
+
+- `async.vitl`
+- `channel.vitl`
+- `executor.vitl`
+- `future.vitl`
+
+## Complete Integration Story
+
+- A pipeline can spawn tasks, exchange messages through channels, and join through the executor boundary.
+
+## Documentation Rule
+
+- Explain this family by responsibility first.
+- Use complete scenarios, not only tiny snippets.
+- Separate pure transformation, host interaction, and runtime boundaries.
+- Keep failure paths explicit in examples and contracts.

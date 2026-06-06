@@ -7,42 +7,8 @@
 <link rel="icon" href="../../svg/logo.svg" type="image/svg+xml">
 <link rel="stylesheet" href="../../css/site.css">
 <link rel="stylesheet" href="../../css/print.css" media="print">
-
 <link rel="alternate" hreflang="en" href="https://vitte-lang.org/02-philosophie.html">
 <link rel="alternate" hreflang="x-default" href="https://vitte-lang.org/02-philosophie.html">
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; font-src 'self'; connect-src 'self';">
 </head>
 <body class="classic-doc">
@@ -58,322 +24,91 @@
 <article class="doc-content">
 <p class="book-progress"></p>
 <h1>2. Philosophy of language</h1>
-<p class="chapter-meta" data-chapter-meta="1">Level: <strong>beginner</strong> · Reading time: <strong>8 min</strong> · Prerequisite: <code>book/chapters/01-starting.html</code> · Last review: <strong>2026-05-09</strong></p><section class="chapter-tldr"><h2>TL;DR (5 lines)</h2><ul><li>Read the core idea first.</li><li>Understand one concept at a time.</li><li>Run small examples.</li><li>Fix errors early.</li><li>Move to next chapter only when clear.</li></ul></section><section class="chapter-errors"><h2>Frequent mistakes</h2><ul><li>Skipping prerequisites.</li><li>Reading without trying examples.</li><li>Fixing too many errors at once.</li></ul></section>
-<p>Level: Advanced Foundations</p>
-<p>Prerequisites: <code>docs/book/chapters/01-starting.html</code>, <code>docs/book/glossary.html</code>. See also: <code>docs/book/chapters/03-project.html</code>.</p>
+<p class="chapter-meta" data-chapter-meta="1">Level: <strong>beginner</strong> · Reading time: <strong>8 min</strong> · Prerequisite: <a href="../../book/chapters/01-starting.html"><code>book/chapters/01-starting.html</code></a> · Track: <strong>essential</strong> · Maturity: <strong>reviewed</strong> · Last review: <strong>2026-05-09</strong></p>
+<section class="chapter-tldr"><h2>TL;DR (5 lines)</h2><ul>
+<li>Vitte favors explicit contracts over implicit convention.</li>
+<li>A philosophy chapter still needs code, not only prose.</li>
+<li>The smallest useful example already separates domain and transport.</li>
+<li>Invalid paths are part of the design contract.</li>
+<li>Readable structure is a technical property, not decoration.</li>
+</ul></section>
+<section class="chapter-errors"><h2>Frequent mistakes</h2><ul>
+<li>Talking about beauty or simplicity without showing a concrete contract boundary.</li>
+<li>Using philosophy chapters as prose-only pages with no executable anchor.</li>
+<li>Describing intent without showing what the compiler can actually enforce.</li>
+</ul></section>
+<p>Prerequisites: <a href="../../book/chapters/01-starting.html"><code>book/chapters/01-starting.html</code></a>. See also: <a href="../../book/chapters/01-starting.html"><code>book/chapters/01-starting.html</code></a>, <a href="../../book/chapters/27-grammar.html"><code>book/chapters/27-grammar.html</code></a>, <a href="../../book/chapters/31-build-errors.html"><code>book/chapters/31-build-errors.html</code></a>.</p>
 <h2>Concrete Problem</h2>
-<p>A language becomes useful when it allows ambiguities to be avoided. Here, we're not talking about theory: we're looking at how to write clear, verifiable and maintainable code.</p>
+<p>Readers often learn syntax before learning the design contract of the language. That creates code that compiles but is hard to maintain, review, or debug.</p>
 <h2>Red Thread (Single Project)</h2>
-<p>We keep the same mini-program to compare the writing choices. You will see what changes in practice when the code is explicit.</p>
-<h2>Goal</h2>
-<p>Vitte works well when we make visible:</p>
-<ol>
-<li>error handling</li>
-<li>business state</li>
-<li>the separation between launch and logic</li>
-</ol>
-<h2>2.1 Handle error before sensitive operation</h2>
-<pre><code class="language-vit">proc safe_div(num: int, den: int) -&gt; int {
+<p>One tiny service module evolves from a vague script into a deliberate Vitte design with explicit contracts, stable names, and visible failure boundaries.</p>
+<h2>For what</h2>
+<p>This chapter helps the reader understand what Vitte optimizes for before touching advanced syntax.</p>
+<h2>What you are going to do</h2>
+<p>You will read one small module, identify the design choices that make it readable, then compare that with a weaker variant.</p>
+<h2>Coherent example</h2>
+<pre><code class="language-vit">space demo/philosophy
 
-  if den == 0 { give 0 }
-
-  give num / den
-}</code></pre>
-<p>Direct reading:</p>
-<ol>
-<li>the program reads <code>num</code> and <code>den</code>.</li>
-<li>it tests <code>den == 0</code>.</li>
-<li>if it's true, it returns <code>0</code> right away.</li>
-<li>otherwise, it does <code>num / den</code>.</li>
-</ol>
-<p>Why it's useful:</p>
-<ul>
-<li>you avoid an impossible division.</li>
-<li>the rule is readable from the first lines.</li>
-</ul>
-<p>Example:</p>
-<ul>
-<li><code>safe_div(10, 2)</code> -> <code>5</code></li>
-<li><code>safe_div(10, 0)</code> -> <code>0</code></li>
-</ul>
-<h2>2.2 Represent business state with a clear type</h2>
-<pre><code class="language-vit">pick Auth {
-  case Granted(user: int)
-  case Denied(code: int)
+form BuildRequest {
+  name: string
+  retries: int
 }
 
-proc can_access(a: Auth) -&gt; bool {
+pick Decision {
+  case Accepted(name: string)
+  case Rejected(code: int)
+}
 
-  match a {
-    case Granted(_) { give true }
-    case Denied(_) { give false }
-    otherwise { give false }
-  }
+proc decide(req: BuildRequest) -&gt; Decision {
+  if req.name == &quot;&quot; { give Decision.Rejected(11) }
+  if req.retries &lt; 0 { give Decision.Rejected(12) }
+  give Decision.Accepted(req.name)
+}
+
+entry main at core/app {
+  return 0
 }</code></pre>
-<p>Direct reading:</p>
-<ol>
-<li><code>Auth</code> can be <code>Granted</code> or <code>Denied</code>.</li>
-<li><code>can_access</code> reads the received value.</li>
-<li>if it is <code>Granted</code>, output <code>true</code>.</li>
-<li>if it is <code>Denied</code>, output <code>false</code>.</li>
-</ol>
-<p>Why it's useful:</p>
-<ul>
-<li>we immediately understand the possible states.</li>
-<li>we avoid fuzzy numerical codes (<code>0</code>, <code>1</code>, <code>2</code>) which are confusing.</li>
-</ul>
-<h2>2.3 Separate launch and logic</h2>
-<pre><code class="language-vit">// Exécute un cas de test et retourne un résultat typé
-proc run() -&gt; int {
+<h2>Global explanation</h2>
+<p>The chapter is not about one token. It is about explicit contracts, clear boundaries, and stable failure surfaces. The example is small, but it already separates domain data, decision logic, and process entry.</p>
+<h2>Invalid case</h2>
+<pre><code class="language-vit">proc vague(x: int) -&gt; int {
+  if x { give 1 }
   give 0
-}
-
-// Point d&#x27;entree du scenario
-entry main at core/app {
-  return run()
 }</code></pre>
-<p>Direct reading:</p>
-<ol>
-<li><code>run</code> contains the processing logic.</li>
-<li><code>main</code> launches <code>run</code> then returns its value.</li>
+<p>This invalid case is intentionally small. It exists to isolate the contract failure that the chapter is trying to teach.</p>
+<h2>Common pitfalls</h2><ul>
+<li>Talking about beauty or simplicity without showing a concrete contract boundary.</li>
+<li>Using philosophy chapters as prose-only pages with no executable anchor.</li>
+<li>Describing intent without showing what the compiler can actually enforce.</li>
+</ul>
+<h2>Short exercise</h2>
+<p>Take one vague helper in your own code and rewrite it so that the domain input, the branch conditions, and the result boundary are explicit.</p>
+<h2>Summary in 5 points</h2><ol>
+<li>Vitte favors explicit contracts over implicit convention.</li>
+<li>A philosophy chapter still needs code, not only prose.</li>
+<li>The smallest useful example already separates domain and transport.</li>
+<li>Invalid paths are part of the design contract.</li>
+<li>Readable structure is a technical property, not decoration.</li>
 </ol>
-<p>Why it's useful:</p>
-<ul>
-<li>you test <code>run</code> easily.</li>
-<li>you change the program input without breaking the business logic.</li>
-</ul>
-<h2>2.4 Common errors</h2>
-<ol>
-<li>test for errors too late</li>
-<li>use numbers instead of explicit business types</li>
-<li>put all logic in <code>entry main</code></li>
-</ol>
-<h2>Local audit checklist</h2>
-<ol>
-<li>Are the entrance tests at the start of the function?</li>
-<li>are the business states clearly named?</li>
-<li><code>entry</code> is it used to launch, and not to do everything?</li>
-<li>can we explain the behavior in 30 seconds?</li>
-</ol>
-<h2>Keywords to review</h2>
-<ul>
-<li><code>docs/book/chapters/keywords/if.html</code></li>
-<li><code>docs/book/chapters/keywords/pick.html</code></li>
-<li><code>docs/book/chapters/keywords/match.html</code></li>
-<li><code>docs/book/chapters/keywords/case.html</code></li>
-<li><code>docs/book/chapters/keywords/entry.html</code></li>
-</ul>
-<h2>Extended Example</h2>
-<pre><code class="language-vit">// Scenario philosophie: execution complete et verifiable
-space demo/philosophie
-
-form Input { id: int value: int quota: int }
-pick Eval { case Accepted(score: int) case Rejected(code: int) }
-
-proc validate(x: Input) -&gt; Eval {
-
-  if x.id &lt;= 0 { give Eval.Rejected(21) }
-
-  if x.quota &lt; 0 { give Eval.Rejected(22) }
-
-  if x.value &lt; 0 { give Eval.Rejected(23) }
-
-  give Eval.Accepted(x.value)
-}
-
-proc transform(score: int, quota: int) -&gt; int {
-  let capped: int = score
-  if capped &gt; quota { set capped = quota }
-
-  if capped &lt; 0 { give 0 }
-
-  give capped * 2
-}
-
-proc decide(r: Eval, quota: int) -&gt; Eval {
-
-  match r {
-    case Accepted(s) {
-      let out: int = transform(s, quota)
-
-      if out &gt;= 10 { give Eval.Accepted(out) }
-
-      give Eval.Rejected(31)
-    }
-    case Rejected(c) { give Eval.Rejected(c) }
-    otherwise { give Eval.Rejected(70) }
-  }
-}
-
-// Conversion finale vers un code de sortie
-proc to_exit(r: Eval) -&gt; int {
-
-  match r {
-    case Accepted(_) { give 0 }
-    case Rejected(code) { give code }
-    otherwise { give 70 }
-  }
-}
-
-// Point d&#x27;entree du scenario
-entry main at core/app {
-  let x: Input = Input(1, 8, 9)
-  let v: Eval = validate(x)
-  let d: Eval = decide(v, x.quota)
-
-  return to_exit(d)
-}</code></pre>
-<h2>Detailed explanation of the big block</h2>
-<p>Here the goal is to understand the actual path of the program, line by line, to the exit code.</p>
-<h3>1. Role of each party</h3>
-<ul>
-<li>Starting point: <code>entry main at core/app</code>.</li>
-<li><code>validate</code>: reads <code>x: Input</code> and returns <code>Eval</code>.</li>
-<li><code>transform</code>: reads <code>score: int, quota: int</code> and returns <code>int</code>.</li>
-<li><code>decide</code>: reads <code>r: Eval, quota: int</code> and returns <code>Eval</code>.</li>
-<li><code>to_exit</code>: reads <code>r: Eval</code> and returns <code>int</code>.</li>
-</ul>
-<h3>2. Actual execution order</h3>
-<ol>
-<li>The program enters <code>main</code>.</li>
-<li><code>validate</code> is called to process the next step.</li>
-<li><code>decide</code> is called to process the next step.</li>
-<li><code>to_exit</code> is called to process the next step.</li>
-<li>The final value is converted to process output (<code>return ...</code>).</li>
-</ol>
-<h3>3. Tests that change the path</h3>
-<ul>
-<li>Test evaluated: <code>x.id &lt;= 0</code>.</li>
-<li>Test evaluated: <code>x.quota &lt; 0</code>.</li>
-<li>Test evaluated: <code>x.value &lt; 0</code>.</li>
-<li>Test evaluated: <code>capped &gt; quota</code>.</li>
-<li>Test evaluated: <code>capped &lt; 0</code>.</li>
-<li>Test evaluated: <code>out &gt;= 10</code>.</li>
-<li>Selection by <code>match r</code>: the path depends on the state received.</li>
-<li>Selection by <code>match r</code>: the path depends on the state received.</li>
-</ul>
-<h3>4. Quick trace with values</h3>
-<ul>
-<li>Nominal example: <code>entrée valide -&gt; validate -&gt; decide -&gt; to_exit -&gt; sortie 0</code>.</li>
-<li>Example error: <code>entrée invalide -&gt; validate renvoie un code d&#x27;erreur -&gt; sortie non nulle</code>.</li>
-</ul>
-<h3>5. Why this division is useful</h3>
-<ul>
-<li>You test each function on its own, then the entire flow.</li>
-<li>You know where to change a rule without breaking the entire program.</li>
-<li>You can explain the output by simply following the calls.</li>
-</ul>
-<h3>6. Quick Check</h3>
-<ol>
-<li>Retry with a normal entry and note the exit.</li>
-<li>Restart with invalid input and check the error code.</li>
-<li>Confirm that the same input always gives the same output.</li>
-</ol>
-<h2>Play full stream</h2>
-<p>Order of execution:</p>
-<ol>
-<li><code>main</code> creates <code>x</code>.</li>
-<li><code>validate(x)</code> checks the data.</li>
-<li><code>decide(...)</code> calculates the final decision.</li>
-<li><code>to_exit(...)</code> transforms the result into an exit code.</li>
-</ol>
-<p>Normal execution:</p>
-<ul>
-<li>entry: <code>Input(1, 8, 9)</code></li>
-<li>final output: <code>0</code></li>
-</ul>
-<p>Execution in error:</p>
-<ul>
-<li>entry: <code>Input(0, 8, 9)</code></li>
-<li><code>validate</code> returns <code>Rejected(21)</code></li>
-<li>final output: <code>21</code></li>
-</ul>
-<h3>7. Line by line (variables + values)</h3>
-<p>Convenient reading: Follow the variables in the actual order of execution, then check the observed output.</p>
-<ul>
-<li>Entry point:</li>
-<li><code>entry main at core/app</code> launches the complete scenario.</li>
-</ul>
-<ul>
-<li>Block functions:</li>
-<li><code>validate</code> reads <code>x: Input</code> then returns <code>Eval</code>.</li>
-<li><code>transform</code> reads <code>score: int, quota: int</code> then returns <code>int</code>.</li>
-<li><code>decide</code> reads <code>r: Eval, quota: int</code> then returns <code>Eval</code>.</li>
-<li><code>to_exit</code> reads <code>r: Eval</code> then returns <code>int</code>.</li>
-</ul>
-<ul>
-<li>Variables created (initial value):</li>
-<li><code>capped: int</code> starts with <code>score</code>.</li>
-<li><code>out: int</code> starts with <code>transform(s, quota)</code>.</li>
-<li><code>x: Input</code> starts with <code>Input(1, 8, 9)</code>.</li>
-<li><code>v: Eval</code> starts with <code>validate(x)</code>.</li>
-<li><code>d: Eval</code> starts with <code>decide(v, x.quota)</code>.</li>
-</ul>
-<ul>
-<li>Variables changed during processing:</li>
-<li><code>capped</code> is updated with <code>quota</code>.</li>
-</ul>
-<ul>
-<li>Conditions that change the path:</li>
-<li>if <code>x.id &lt;= 0</code> is true: early exit or dedicated branch; otherwise: the flow continues.</li>
-<li>if <code>x.quota &lt; 0</code> is true: early exit or dedicated branch; otherwise: the flow continues.</li>
-<li>if <code>x.value &lt; 0</code> is true: early exit or dedicated branch; otherwise: the flow continues.</li>
-<li>if <code>capped &gt; quota</code> is true: early exit or dedicated branch; otherwise: the flow continues.</li>
-<li>if <code>capped &lt; 0</code> is true: early exit or dedicated branch; otherwise: the flow continues.</li>
-<li>if <code>out &gt;= 10</code> is true: early exit or dedicated branch; otherwise: the flow continues.</li>
-</ul>
-<ul>
-<li>Nominal trace (example values):</li>
-<li>initialization: capped=score -> out=transform(s, quota) -> x=Input(1, 8, 9) -> v=validate(x)</li>
-<li>sequence: validate -> decide -> to_exit</li>
-<li>final output on this path: <code>to_exit(d)</code>.</li>
-</ul>
-<ul>
-<li>Error trace (example values):</li>
-<li>if <code>x.id &lt;= 0</code> becomes true, the function returns <code>Eval.Rejected(21)</code>.</li>
-</ul>
-<ul>
-<li>Quick check:</li>
-<li>restart with normal input and note the output,</li>
-<li>restart with an invalid entry and note the error code,</li>
-<li>confirm that the same input always produces the same output.</li>
-</ul>
-<h2>Trade-offs</h2>
-<table border="1" cellpadding="6" cellspacing="0">
-<tr><th>Need</th><th>Option 1</th><th>Option 2</th><th>Recommended choice</th></tr>
-<tr><td>Quick understanding</td><td>Explicit types</td><td>Numerical codes</td><td>Option 1</td></tr>
-<tr><td>Simple debugging</td><td>Short functions</td><td>Large single block</td><td>Option 1</td></tr>
-<tr><td>Safe evolution</td><td>Pipeline in stages</td><td>Mixed logic</td><td>Option 1</td></tr>
-</table>
-<h2>Rapid Diagnosis</h2>
-<table border="1" cellpadding="6" cellspacing="0">
-<tr><th>Problem observed</th><th>Probable cause</th><th>How to check</th><th>Correction</th></tr>
-<tr><td>Unexpected result</td><td>test placed too late</td><td>replay with single input</td><td>move the test up</td></tr>
-<tr><td>Confused state</td><td>scattered digital codes</td><td>plot intermediate values</td><td>use a clear <code>pick</code> type</td></tr>
-<tr><td>Difficult to test code</td><td>logic in <code>entry</code></td><td>isolate each function</td><td>move logic into <code>proc</code></td></tr>
-</table>
-<h2>Checkpoint</h2>
-<p>At this point you should know:</p>
-<ul>
-<li>read a processing flow from top to bottom,</li>
-<li>explain the role of each function,</li>
-<li>plan the exit according to the entrance.</li>
-</ul>
-<h2>What I would do in code review</h2>
-<ol>
-<li>check that entrance tests are done early</li>
-<li>check that the business states are readable (<code>pick</code>)</li>
-<li>check a normal scenario + an error scenario</li>
-</ol>
-<section class="chapter-quiz"><h2>Mini quiz</h2><ol><li>What is the main goal of this chapter?</li><li>Which concept is most important?</li><li>What will you try right now?</li></ol><button class="quiz-save" type="button">Mark as reviewed</button></section><section class="chapter-see-also"><h2>See also</h2><ul><li><a href="../../book/chapters/01-starting.html">01-starting</a></li><li><a href="../../book/chapters/02-philosophy.html">02-philosophy</a></li><li><a href="../../book/chapters/03-project.html">03-project</a></li></ul></section><section class="chapter-cta"><h2>Next best action</h2><p>Apply one idea from this chapter in a tiny example, then continue.</p></section></article>
+<section class="chapter-quiz"><h2>Mini quiz</h2><ol>
+<li>What contract is the coherent example trying to make explicit?</li>
+<li>Why does the invalid example fail?</li>
+<li>What boundary should remain visible if you extend the example?</li>
+</ol><button class="quiz-save" type="button">Mark as reviewed</button></section>
+<section class="chapter-see-also"><h2>See also</h2><ul>
+<li><a href="../../book/chapters/01-starting.html"><code>book/chapters/01-starting.html</code></a></li>
+<li><a href="../../book/chapters/27-grammar.html"><code>book/chapters/27-grammar.html</code></a></li>
+<li><a href="../../book/chapters/31-build-errors.html"><code>book/chapters/31-build-errors.html</code></a></li>
+</ul></section>
+<section class="chapter-cta"><h2>Next best action</h2><p>Extend the coherent example by one small, justified step and keep the same contract visible from input to output.</p></section>
+</article>
 </main>
 <footer class="site-footer">
-<p class="site-footer-path">book/chapters/02-philosophy.html</p>
+<p class="site-footer-path">book/chapters/02-philosophie.html</p>
 <p><a href="../../index.html">Back to home</a></p>
 </footer>
 </div>
 <script type="module" src="../../js/book-learning.js"></script>
 <script type="module" src="../../js/main.js"></script>
-<script type="module" src="js/main.js"></script>
 </body>
 </html>

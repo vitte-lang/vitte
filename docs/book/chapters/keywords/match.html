@@ -7,42 +7,8 @@
 <link rel="icon" href="../../../svg/logo.svg" type="image/svg+xml">
 <link rel="stylesheet" href="../../../css/site.css">
 <link rel="stylesheet" href="../../../css/print.css" media="print">
-
 <link rel="alternate" hreflang="en" href="https://vitte-lang.org/match.html">
 <link rel="alternate" hreflang="x-default" href="https://vitte-lang.org/match.html">
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; font-src 'self'; connect-src 'self';">
 </head>
 <body class="classic-doc">
@@ -56,105 +22,232 @@
 </header>
 <main id="main-content" class="site-main">
 <article class="doc-content">
-<p class="book-progress"></p>
 <h1>Keyword <code>match</code></h1>
-<p>Level: Intermediate.</p>
-<h2>Quick reading</h2>
-<p>Concrete reference: <code>match</code> is used to decide an execution path in a readable and verifiable manner. Use <code>match</code> when it is used to drive a control decision; avoid it if it makes no observable difference on the branch or output.</p>
-<h2>Why (job)</h2>
-<p>In practice, <code>match</code> should make the rule clearer, not noisier. If removing it changes neither the meaning nor the outcome, prefer the simpler form.</p>
-<h2>Definition</h2>
-<p><code>match</code> is a keyword in the Vitte language. This sheet provides operational use with a readable and testable rule.</p>
-<h2>Syntax</h2>
-<p>Canonical form: <code>match v { case A { ... } otherwise { ... } }</code>.</p>
-<h2>Algorithmic reading</h2>
-<p>Read it in context: find where <code>match</code> appears, then confirm the constraint it adds.</p>
-<h2>Nominal example</h2>
-<p>Input:</p>
+<p><code>match</code> is documented here as a full reference entry: grammatical role, semantics, canonical form, valid example, counter-example, diagnostics, interactions, and design notes.</p>
+<section class="keyword-hero lead-panel">
+<figure class="keyword-portrait">
+<img src="portraits/match.svg" alt="Visual portrait of keyword match" width="320" height="320">
+<figcaption>Syntax portrait: a code vignette centered on <code>match</code>.</figcaption>
+</figure>
+<div class="keyword-hero-copy">
+<p><strong>Visual anchor:</strong> each page now has its own wiki-style profile image. It shows a small code excerpt where <code>match</code> appears in its most recognizable form.</p>
+<p><strong>Quick navigation:</strong> use the <em>previous</em>, <em>summary</em>, and <em>next</em> links to move through the full keyword series without manually returning to the index.</p>
+</div>
+</section>
+<nav class="doc-pagination keyword-doc-pagination">
+<a href="make.html">← make</a>
+<a href="index.html">Summary</a>
+<a href="not.html">not →</a>
+</nav>
+<section class="lead-panel">
+<h2>Summary</h2>
 <ul>
-<li>Nominal case: <code>match</code> is used in the correct context and the expected branch is executed.</li>
+<li><a href="#overview">Overview</a></li>
+<li><a href="#definition">Definition</a></li>
+<li><a href="#grammatical-role">Grammatical role</a></li>
+<li><a href="#syntax">Canonical syntax</a></li>
+<li><a href="#semantics">Detailed semantics</a></li>
+<li><a href="#specific-profile">Specific profile</a></li>
+<li><a href="#execution-effect">Effect on execution</a></li>
+<li><a href="#variants">Valid variants</a></li>
+<li><a href="#vitte-example">Vitte example</a></li>
+<li><a href="#reading">Guided reading of the example</a></li>
+<li><a href="#c-comparison">Comparison with C</a></li>
+<li><a href="#usage">Recommended uses</a></li>
+<li><a href="#invalid">Invalid example and diagnostic</a></li>
+<li><a href="#errors">Common errors</a></li>
+<li><a href="#neighbors">Neighbor keywords</a></li>
+<li><a href="#misreadings">Common misreadings</a></li>
+<li><a href="#implementation">Implementation notes</a></li>
+<li><a href="#chapters">Presence in the book</a></li>
 </ul>
-<pre><code class="language-vit">// Exemple concret: cas nominal puis cas invalide
+</section>
+<section class="lead-panel" id="overview">
+<h2>Overview</h2>
+<table border="1" cellpadding="6" cellspacing="0">
+<tr><th>Field</th><th>Value</th></tr>
+<tr><td>Keyword</td><td><code>match</code></td></tr>
+<tr><td>Family</td><td>Control flow</td></tr>
+<tr><td>Suggested level</td><td>Beginner</td></tr>
+<tr><td>Main neighbor</td><td><a href="if.html"><code>if</code></a></td></tr>
+<tr><td>Short role</td><td><code>match</code> is a control-flow keyword that changes the program's execution path.</td></tr>
+<tr><td>Main effect</td><td><code>match</code> immediately changes the execution path, whether by choosing a branch, repeating, interrupting, or terminating a flow.</td></tr>
+</table>
+<p>The keyword <code>match</code> structures execution. It determines when a block opens, when a branch is chosen, when a loop continues or stops, or when an exit becomes observable.</p>
+<p>A useful encyclopedic reading should answer three questions: where can <code>match</code> appear, what does it change in the block contract, and how does the compiler signal misuse?</p>
+</section>
+<section id="definition">
+<h2>Definition</h2>
+<p><code>match</code> is a control-flow keyword that changes the program's execution path.</p>
+<p>The keyword <code>match</code> structures execution. It determines when a block opens, when a branch is chosen, when a loop continues or stops, or when an exit becomes observable.</p>
+</section>
+<section id="grammatical-role">
+<h2>Grammatical role</h2>
+<p>Opens a pattern or variant analysis, distributing execution across multiple branch forms.</p>
+<p>This grammatical role is essential: if a reader understands the structural place of <code>match</code>, they already understand much of the diagnostics that will appear when it is moved or truncated.</p>
+</section>
+<section id="syntax">
+<h2>Canonical syntax</h2>
+<p>Canonical form: `match value { case ... }`.</p>
+<p>The canonical form matters because it gives the compiler and the reader the same reference structure. A large share of diagnostics related to <code>match</code> come from an abbreviated, displaced, or incomplete form.</p>
+</section>
+<section id="semantics">
+<h2>Detailed semantics</h2>
+<p>Semantically, <code>match</code> reorganizes the execution path. The right question is not only 'where is it placed?' but 'which path becomes possible, impossible, or preferred from this point onward?'</p>
+<p>In an encyclopedic reading, <code>match</code> should not be reduced to a dictionary definition. Its effect on scope, block shape, value visibility, control progression, and the diagnostic family it activates when misused must also be considered.</p>
+</section>
+<section id="specific-profile">
+<h2>Specific profile</h2>
+<p>Shape-analysis keyword. It expresses a decision governed by the structure of values, not merely by a sequence of boolean tests.</p>
+<h3>Design notes</h3>
+<ul>
+<li>The strength of `match` is to make the space of expected forms explicit.</li>
+<li>Where `if` answers a boolean question, `match` answers a question about variants, patterns, or observable structure.</li>
+</ul>
+<h3>Reading questions</h3>
+<ul>
+<li>Which value shapes are explicitly covered?</li>
+<li>Is the fallback branch intentional or merely defensive?</li>
+<li>Can the reader visually verify that the important cases are present?</li>
+</ul>
+<h3>Targeted anti-patterns</h3>
+<ul>
+<li>Using `match` as a mere equality cascade without a clear structural benefit.</li>
+<li>Mixing responsibilities across branches so heavily that the pattern is no longer the real reading center.</li>
+</ul>
+</section>
+<section id="execution-effect">
+<h2>Effect on execution</h2>
+<p><code>match</code> immediately changes the execution path, whether by choosing a branch, repeating, interrupting, or terminating a flow.</p>
+<p>In other words, the presence of <code>match</code> is not merely syntactic: it helps the reader predict what will be executed, produced, exposed, or forbidden from this point in the program.</p>
+</section>
+<section id="variants">
+<h2>Valid variants</h2>
+<ul>
+<li>`match value { case ... }`</li>
+<li>`match value { case ... otherwise { ... } }`</li>
+</ul>
+<p>These variants are not free synonyms. They indicate the legitimate forms from which one can reason about diagnostics, scope differences, or contract readability.</p>
+</section>
+<section id="vitte-example">
+<h2>Vitte example</h2>
+<pre><code class="language-vit">pick Resp {
+  case Ok(value: int)
+  case Err(code: int)
+}
 
-pick R { case Ok case Err }
-
-proc code(r: R) -&gt; int {
-  // Match: choix explicite selon l&#x27;etat
+proc to_code(r: Resp) -&gt; int {
   match r {
-    case Ok { give 0 }
-    otherwise { give 1 }
+    case Ok(value) { give value }
+    case Err(code) { give code }
+    otherwise { give 70 }
   }
 }</code></pre>
-<p>Observed result:</p>
+<p>This example shows <code>match</code> in a nominal context. It should be read globally: where the contract begins, which values are constrained, which output becomes observable, and why the presence of the keyword is justified.</p>
+</section>
+<section id="reading">
+<h2>Guided reading of the example</h2>
+<ol>
+<li>First locate the full construction that contains <code>match</code>, not the isolated word.</li>
+<li>Then identify which contract becomes visible because of <code>match</code>: type, branch, binding, module, exit, or advanced boundary.</li>
+<li>Finish by checking the observable effect produced by the construction that contains <code>match</code>.</li>
+<li>For a control keyword, mentally reconstruct the possible paths and the ones that become impossible.</li>
+</ol>
+<p>This guided reading is intentionally closer to a reference page than to a tutorial: it helps reconstruct the exact role of <code>match</code> in a complete block.</p>
+</section>
+<section id="c-comparison">
+<h2>Comparison with C</h2>
+<pre><code class="language-c">/* C comparison: this is usually expressed with enum tags plus switch/case. */</code></pre>
+<p>For this keyword, the parallel with C remains approximate. The comparison mainly indicates that in C the same idea is often spread across file conventions, operators, or less explicit control structures.</p>
+<p>The source of truth remains Vitte grammar and semantics. The comparison with C should be read as a cultural marker, not as a parallel specification.</p>
+</section>
+<section id="usage">
+<h2>Recommended uses</h2>
+<p><code>match</code> deserves to appear when it simplifies the reading of the block's global contract, not when it merely adds one more surface form.</p>
+<h3>When to use it</h3>
 <ul>
-<li>For nominal input, the expected branch is taken and the output matches the expected calculation.</li>
+<li>When <code>match</code> makes the block contract more explicit at first reading.</li>
+<li>When it reduces the number of implicit assumptions the reader must reconstruct mentally.</li>
+<li>When a branch choice, repetition, or flow exit must be made visible.</li>
 </ul>
-<h2>Invalid example</h2>
-<p>Input:</p>
+<h3>When to avoid it</h3>
 <ul>
-<li>Error case: invalid use of <code>match</code>; validation must reject the snippet with an actionable diagnosis.</li>
+<li>Avoid <code>match</code> when another, more precise keyword already carries the block's intent.</li>
+<li>Avoid <code>match</code> when it adds only surface noise without clarifying the contract.</li>
+<li>Avoid reading or teaching it as an isolated token with no relation to the full structure.</li>
 </ul>
-<pre><code class="language-vit">// Exemple concret: cas nominal puis cas invalide
-// Match: choix explicite selon l&#x27;etat
-match r {
-  case Ok { give 0 }
-}
-# invalide: branche `otherwise` manquante pour couverture complete.</code></pre>
-<p>Observed result:</p>
+<h3>Common pitfalls</h3>
 <ul>
-<li>For invalid input, validation should fail with an actionable message to correct the code.</li>
+<li>Using <code>match</code> in a grammatical layer where it does not belong.</li>
+<li>Confusing the role of the keyword with the role of the full surrounding block.</li>
+<li>Showing only the nominal form and never how the contract fails.</li>
 </ul>
-<p>Expected diagnosis:</p>
-<ul>
-<li>Code: <code>VITTE-XXXX</code> (or corresponding <code>E000X</code> compiler code).</li>
-<li>Position: <code>ligne 1, colonne 1</code> (adjust according to actual snippet).</li>
-<li>Message: stable, actionable correction.</li>
-</ul>
-<h2>Quick refactor</h2>
-<p>Before:</p>
-<pre><code class="language-vit">// Exemple concret: cas nominal puis cas invalide
-# usage fragile à corriger</code></pre>
-<p>After:</p>
-<pre><code class="language-vit">// Exemple concret: cas nominal puis cas invalide
-# usage clair et testable</code></pre>
-<h2>Pitfalls</h2>
-<ul>
-<li>Using <code>match</code> out of habit instead of justifying its role in the flow.</li>
-<li>Mix business logic and control logic without an explicit boundary.</li>
-<li>Forgetting to test a dedicated invalid case.</li>
-</ul>
-<h2>When to use it / When to avoid it</h2>
-<ul>
-<li>When to use it: when <code>match</code> makes the contract clearer.</li>
-<li>When to avoid it: when its use hides the rule or duplicates logic already carried elsewhere.</li>
-</ul>
-<h2>Common compiler errors</h2>
+</section>
+<section id="invalid">
+<h2>Invalid example and diagnostic</h2>
+<pre><code class="language-vit">proc bad_match(r: int) -&gt; int {
+  match r
+    case 0 { give 0 }
+  }
+}</code></pre>
+<p>The pattern surface is broken because the branch form is not structurally complete.</p>
+<p>The counter-example is not merely wrong: it is wrong in an instructive way. It shows which grammar or execution-contract assumption is no longer accepted when <code>match</code> is moved, truncated, or combined with the wrong context. Concretely, the pattern-analysis structure is incomplete or badly closed.</p>
+<p>A good encyclopedic counter-example does not show arbitrarily broken code: it isolates the precise reason why <code>match</code> can no longer support the expected contract. Its teaching value is diagnostic before it is syntactic.</p>
+</section>
+<section id="errors">
+<h2>Common compilation errors</h2>
 <table border="1" cellpadding="6" cellspacing="0">
-<tr><th>Typical message</th><th>Cause</th><th>Correction</th></tr>
-<tr><td><code>unexpected token near match</code></td><td>Incomplete or misplaced syntactic form.</td><td>Return to canonical form and check the delimiters.</td></tr>
-<tr><td><code>type mismatch</code></td><td>Inconsistent input/output rule around <code>match</code>.</td><td>Align expected types before execution.</td></tr>
-<tr><td><code>unreachable or incomplete branch</code></td><td>Incomplete case coverage or dead branch.</td><td>Add the missing branch (<code>otherwise</code>) or simplify the flow.</td></tr>
+<tr><th>Typical message</th><th>Usual cause</th><th>Fix</th></tr>
+<tr><td><code>unexpected token near match</code></td><td>The keyword appears in an invalid form or grammatical layer.</td><td>Return to the canonical form and verify placement and delimiters.</td></tr>
+<tr><td><code>type mismatch</code></td><td>The keyword participates in a block whose value contract is incoherent.</td><td>Realign the surrounding types, branches, or produced values.</td></tr>
+<tr><td><code>invalid construct</code></td><td>The keyword is present but the surrounding construction is incomplete.</td><td>Restore the missing branch, declarative part, or operands.</td></tr>
 </table>
-<h2>Neighbor keyword</h2>
+<p>This table does not replace the compiler's exact diagnostics. It serves as a mental map: when <code>match</code> fails, the problem usually comes from an invalid grammatical form, an incoherent type contract, or an incomplete construction.</p>
+</section>
+<section id="neighbors">
+<h2>Neighbor keywords</h2>
 <table border="1" cellpadding="6" cellspacing="0">
 <tr><th>Keyword</th><th>Operational difference</th></tr>
-<tr><td><code>if</code></td><td><code>match</code> and <code>if</code> complement each other, but do not have the same control/feedback responsibility.</td></tr>
+<tr><td><a href="if.html"><code>if</code></a></td><td>Direct neighboring keyword: it helps explain what <code>match</code> does, either by contrast or by complement.</td></tr>
+<tr><td><a href="case.html"><code>case</code></a></td><td>Provides the specialized branches analyzed by <code>match</code>.</td></tr>
+<tr><td><a href="otherwise.html"><code>otherwise</code></a></td><td>Provides the fallback path when the previous cases do not match.</td></tr>
 </table>
-<h2>Used in chapters</h2>
+<p>Comparison with neighboring keywords is essential on a wiki-style page: <code>match</code> is better understood when one knows precisely what it does not do.</p>
+</section>
+<section id="misreadings">
+<h2>Common misreadings</h2>
 <ul>
-<li><code>docs/book/chapters/07-control.html</code>.</li>
-<li><code>docs/book/chapters/27-grammar.html</code>.</li>
-<li><code>docs/book/chapters/31-build-errors.html</code>.</li>
+<li>Reading it as a repeated `if`, when the branching logic may be governed by variants or patterns instead.</li>
 </ul>
+</section>
+<section id="implementation">
+<h2>Implementation and diagnostic notes</h2>
+<ul>
+<li>Useful diagnostics for this family usually signal an incomplete branch shape, a mistyped condition, or an illegal placement in control flow.</li>
+<li>In a compiler, these keywords directly influence control-flow graph construction or intermediate representation building.</li>
+</ul>
+</section>
+<section id="chapters">
+<h2>Presence in the book</h2>
+<ul>
+<li><a href="../../../book/chapters/07-control.html"><code>docs/book/chapters/07-control.html</code></a></li>
+<li><a href="../../../book/chapters/27-grammar.html"><code>docs/book/chapters/27-grammar.html</code></a></li>
+<li><a href="../../../book/chapters/31-build-errors.html"><code>docs/book/chapters/31-build-errors.html</code></a></li>
+</ul>
+</section>
+<section>
 <h2>See also</h2>
 <ul>
-<li><code>docs/book/chapters/keywords/erreurs-compilateur.html</code>.</li>
-<li><code>docs/book/chapters/keywords/if.html</code>.</li>
-<li><code>docs/book/glossary.html</code>.</li>
-<li><code>docs/book/chapters/06-procedures.html</code>.</li>
+<li><a href="../../../book/chapters/keywords/erreurs-compilateur.html"><code>docs/book/chapters/keywords/erreurs-compilateur.html</code></a></li>
+<li><a href="../../../book/chapters/keywords/if.html"><code>docs/book/chapters/keywords/if.html</code></a></li>
+<li><a href="../../../book/glossary.html"><code>docs/book/glossary.html</code></a></li>
 </ul>
-<h2>Completeness score</h2>
-<p>coverage: syntax/examples/invalids/diagnostics/links = 4/5</p>
+</section>
+<nav class="doc-pagination keyword-doc-pagination">
+<a href="make.html">← make</a>
+<a href="index.html">Summary</a>
+<a href="not.html">not →</a>
+</nav>
 </article>
 </main>
 <footer class="site-footer">
@@ -164,6 +257,5 @@ match r {
 </div>
 <script type="module" src="../../../js/book-learning.js"></script>
 <script type="module" src="../../../js/main.js"></script>
-<script type="module" src="js/main.js"></script>
 </body>
 </html>

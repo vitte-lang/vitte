@@ -6,6 +6,20 @@ DOCS=Path('docs')
 BOOK=DOCS/'book'
 CHAPTERS=sorted(list((BOOK/'chapters').glob('*.html'))+list((BOOK/'poche').glob('*.html')))
 
+
+def relative_prefix(path: Path) -> str:
+    rel = path.relative_to(DOCS)
+    return "../" * (len(rel.parts) - 1)
+
+
+def doc_ref_link(ref: str, prefix: str) -> str:
+    if not ref:
+        return "<code>none</code>"
+    target = ref.replace("\\", "/")
+    if target.startswith("docs/"):
+        target = target[len("docs/"):]
+    return f'<a href="{prefix}{target}"><code>{target}</code></a>'
+
 def level_from_name(name:str)->str:
     m=re.match(r'(\d+)', name)
     if not m: return 'intermediate'
@@ -55,11 +69,12 @@ for i,p in enumerate(CHAPTERS):
     m=next(x for x in meta if x['path']==rel)
     if 'data-chapter-meta=' in s:
         continue
+    prefix=relative_prefix(p)
     tldr='''<section class="chapter-tldr"><h2>TL;DR (5 lines)</h2><ul><li>Read the core idea first.</li><li>Understand one concept at a time.</li><li>Run small examples.</li><li>Fix errors early.</li><li>Move to next chapter only when clear.</li></ul></section>'''
     errors='''<section class="chapter-errors"><h2>Frequent mistakes</h2><ul><li>Skipping prerequisites.</li><li>Reading without trying examples.</li><li>Fixing too many errors at once.</li></ul></section>'''
     quiz='''<section class="chapter-quiz"><h2>Mini quiz</h2><ol><li>What is the main goal of this chapter?</li><li>Which concept is most important?</li><li>What will you try right now?</li></ol><button class="quiz-save" type="button">Mark as reviewed</button></section>'''
     cta='''<section class="chapter-cta"><h2>Next best action</h2><p>Apply one idea from this chapter in a tiny example, then continue.</p></section>'''
-    badge=f'<p class="chapter-meta" data-chapter-meta="1">Level: <strong>{m["level"]}</strong> · Reading time: <strong>{m["minutes"]} min</strong> · Prerequisite: <code>{m["prereq"] or "none"}</code> · Last review: <strong>{m["last_review"]}</strong></p>'
+    badge=f'<p class="chapter-meta" data-chapter-meta="1">Level: <strong>{m["level"]}</strong> · Reading time: <strong>{m["minutes"]} min</strong> · Prerequisite: {doc_ref_link(m["prereq"], prefix)} · Last review: <strong>{m["last_review"]}</strong></p>'
     # insert after first h1
     s=re.sub(r'(</h1>)', r'\1\n'+badge+tldr+errors, s, count=1)
     # add see also from nearby chapters
@@ -67,7 +82,7 @@ for i,p in enumerate(CHAPTERS):
     for j in [i-1,i+1,i+2]:
         if 0<=j<len(meta):
             also.append(meta[j])
-    also_html=''.join([f'<li><a href="/{a["path"]}">{a["title"]}</a></li>' for a in also[:3]])
+    also_html=''.join([f'<li><a href="{prefix}{a["path"]}">{a["title"]}</a></li>' for a in also[:3]])
     see=f'<section class="chapter-see-also"><h2>See also</h2><ul>{also_html}</ul></section>'
     s=s.replace('</article>', quiz+see+cta+'</article>')
     p.write_text(s,encoding='utf-8')

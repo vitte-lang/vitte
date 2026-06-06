@@ -3,46 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>08. Data structures (pocket version)</title>
+<title>8. Data Structures (pocket version)</title>
 <link rel="icon" href="../../../svg/logo.svg" type="image/svg+xml">
 <link rel="stylesheet" href="../../../css/site.css">
 <link rel="stylesheet" href="../../../css/print.css" media="print">
-
 <link rel="alternate" hreflang="en" href="https://vitte-lang.org/08-structures.html">
 <link rel="alternate" hreflang="x-default" href="https://vitte-lang.org/08-structures.html">
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; font-src 'self'; connect-src 'self';">
 </head>
 <body class="classic-doc">
@@ -57,381 +23,38 @@
 <main id="main-content" class="site-main">
 <article class="doc-content">
 <p class="book-progress"></p>
-<h1>08. Data structures (pocket version)</h1>
-<p>Level: Beginner</p>
-<p>Prerequisites: previous chapter <code>docs/book/chapters/07-control.html</code> and <code>docs/book/glossary.html</code>. See also: <code>docs/book/chapters/07-control.html</code>, <code>docs/book/chapters/09-modules.html</code>, <code>docs/book/glossary.html</code>.</p>
+<h1>8. Data Structures (pocket version)</h1>
+<section class="chapter-tldr"><h2>TL;DR (5 lines)</h2><ul>
+<li>Data structures are architectural choices.</li>
+<li>Use cases matter more than names.</li>
+<li>Aggregation flows are better teaching units than isolated declarations.</li>
+<li>Broken examples should show a mismatched shape.</li>
+<li>Container choice should remain visible in the code story.</li>
+</ul></section>
 <h2>Concrete Problem</h2>
-<p>Real situation: for Data Structures, the question is not 'which rule to write' but 'which path the code actually takes'. This reading by execution avoids vague interpretations. Guiding question: Which condition is evaluated first, and what output does this decision impose?</p>
-<h2>Red Thread (Single Project)</h2>
-<p>Common thread: you find the same pipeline to observe what really changes when you modify a branch. Educational objective: move from passive reading to proof: same input, same branch, same expected output.</p>
-<h2>Goal</h2>
-<p>You need to be able to reread a snippet, predict its outcome, and then verify that prediction with simple execution.</p>
-<h2>Why it matters</h2>
-<p>This chapter gives you a clear understanding of <strong>Data Structures</strong>. You will find the framework, the invariants and the reading decisions useful in practice.</p>
-<h2>What you're actually going to do</h2>
-<p>You'll read the snippets in actual execution order, then validate the expected outputs on a nominal case and an error case.</p>
-<h2>Minimal example</h2>
-<p>Recommended first reflex: read the entries and conditions first, then only the syntactic form.</p>
-<h2>Reading method</h2>
-<ol>
-<li>Identify the intent of the block.</li>
-<li>Check the main condition or test.</li>
-<li>Confirm the observable output.</li>
-<li>Note how this block serves <strong>Data Structures</strong> throughout the chapter.</li>
-</ol>
-<h2>Common pitfalls</h2>
-<ul>
-<li>Read the syntax without checking the behavior.</li>
-<li>Mix general rule and error cases in the same explanation.</li>
-<li>Introduce an optimization before having stabilized the flow of <strong>Data Structures</strong>.</li>
-</ul>
+<p>Readers often see containers as names only, not as data-shape decisions embedded in a complete flow.</p>
+<h2>Coherent example</h2>
+<pre><code class="language-vit">space demo/collections
+
+form Metrics {
+  count: int
+  total: int
+}
+
+proc absorb(values: list[int]) -&gt; Metrics {
+  let count: int = 0
+  let total: int = 0
+  for value in values {
+    set count = count + 1
+    set total = total + value
+  }
+  give Metrics(count, total)
+}</code></pre>
+<h2>Global explanation</h2>
+<p>Collections pages are useful only when they explain why a shape exists. The example shows aggregation as a real need for a container-like surface instead of presenting structures as vocabulary alone.</p>
 <h2>Short exercise</h2>
-<p>Take an example from the chapter on <strong>Data Structures</strong>. Change a condition or input value, then check if the result remains as expected.</p>
-<h2>Summary in 5 points</h2>
-<ol>
-<li>You know the objective of the chapter on <strong>Data Structures</strong>.</li>
-<li>You know how to read an example of the chapter in a structured way.</li>
-<li>You distinguish nominal case and error case.</li>
-<li>You avoid the most common pitfalls.</li>
-<li>You can reuse these rules in the next chapter.</li>
-</ol>
-<h2>8.1 Ticket structure</h2>
-<pre><code class="language-vit">form Ticket {
-  id: int
-  priority: int
-  assignee: string
-}</code></pre>
-<p>Guided algorithmic reading:</p>
-<ol>
-<li>Input read: first identify the parameters and their type, these are the starting data for the calculation.</li>
-<li>No critical branching here: the flow is sequential, line by line.</li>
-<li>Processing: Apply the operations in the written order, without skipping any implicit steps.</li>
-<li>Output produced: This block prepares a state, the output is calculated further in the pipeline.</li>
-<li>Beginner concept: a variable is a named memory box which contains a value of a declared type.</li>
-<li>Beginner concept: a Boolean condition is worth <code>vrai</code> or <code>faux</code>; it is this which determines the branch executed.</li>
-</ol>
-<p>Quick check: Keep the same entry before/after modification to prove that the expected behavior is preserved.</p>
-<p>The intent of this step is straightforward: to describe an explicit business entity with named fields, rather than manipulating anonymous values.</p>
-<p>In practice, this choice simplifies reading: we immediately see what a ticket is and what information it must contain.</p>
-<p>At runtime, structure checking is done at compilation:</p>
-<ul>
-<li>a <code>Ticket</code> must always have <code>id</code>, <code>priority</code> and <code>assignee</code>.</li>
-<li>a missing or wrong type field is rejected before execution.</li>
-</ul>
-<p>Classic mistakes to avoid:</p>
-<ul>
-<li>encoding implicit conventions instead of carrying them by type.</li>
-<li>mix different business cases in the same representation.</li>
-<li>add variants without updating treatment points.</li>
-</ul>
-<h2>8.2 Lifecycle status</h2>
-<pre><code class="language-vit">pick TicketState {
-  case Open
-  case Assigned(user: string)
-  case Closed(code: int)
-}</code></pre>
-<p>Guided algorithmic reading:</p>
-<ol>
-<li>Input read: first identify the parameters and their type, these are the starting data for the calculation.</li>
-<li>No critical branching here: the flow is sequential, line by line.</li>
-<li>Processing: Apply the operations in the written order, without skipping any implicit steps.</li>
-<li>Output produced: This block prepares a state, the output is calculated further in the pipeline.</li>
-<li>Beginner concept: a variable is a named memory box which contains a value of a declared type.</li>
-<li>Beginner concept: a Boolean condition is worth <code>vrai</code> or <code>faux</code>; it is this which determines the branch executed.</li>
-</ol>
-<p>Quick check: Trace an execution with concrete values ​​(<code>x=...</code>, <code>i=...</code>) to confirm the branch actually taken.</p>
-<p>The intention of this step is straightforward: to model a life cycle by exclusive states, with payload only when it is useful.</p>
-<p>This model prevents inconsistent combinations: a ticket cannot be "Open and Closed" at the same time.</p>
-<p>At runtime, any value is exactly a variant:</p>
-<ul>
-<li><code>Open</code>.</li>
-<li><code>Assigned(user)</code>.</li>
-<li><code>Closed(code)</code>.</li>
-</ul>
-<p>Classic mistakes to avoid:</p>
-<ul>
-<li>accumulating special cases without clarifying intent.</li>
-<li>introduce complexity before stabilizing the behavior.</li>
-<li>leave implicit decisions that slow down rereading.</li>
-</ul>
-<h2>8.3 Rule composition</h2>
-<pre><code class="language-vit">proc is_critical(t: Ticket) -&gt; bool {
-  give t.priority &gt;= 9
-}
-proc route(t: Ticket, s: TicketState) -&gt; int {
-  if is_critical(t) and not (match s { case Closed(_) { give true } otherwise { give false } }) {
-    give 1
-  }
-
-  give 0
-}</code></pre>
-<p>Guided algorithmic reading:</p>
-<ol>
-<li>Input read: first identify the parameters and their type, these are the starting data for the calculation.</li>
-<li>Condition evaluated first: <code>is_critical(t) and not (match s</code>. If true, the test path is executed immediately.</li>
-<li>Processing: Apply the operations in the written order, without skipping any implicit steps.</li>
-<li>Output produced: current path returns <code>t.priority &gt;= 9</code>.</li>
-<li>Beginner concept: a variable is a named memory box which contains a value of a declared type.</li>
-<li>Beginner concept: a Boolean condition is worth <code>vrai</code> or <code>faux</code>; it is this which determines the branch executed.</li>
-</ol>
-<p>Quick check: Keep the same entry before/after modification to prove that the expected behavior is preserved.</p>
-<p>The intention of this step is direct: to compose a business rule from two explicit axes, the structure (<code>Ticket</code>) and the state (<code>TicketState</code>).</p>
-<p>Logic of the <code>route</code> function:</p>
-<ul>
-<li>a ticket is critical if <code>priority &gt;= 9</code>.</li>
-<li>a closed ticket should not be routed as critical.</li>
-<li>the code returns <code>1</code> only if both conditions are met.</li>
-</ul>
-<p>At runtime:</p>
-<ul>
-<li>high priority + unclosed state -> <code>1</code>.</li>
-<li>closed ticket, even priority -> <code>0</code>.</li>
-<li>low priority -> <code>0</code>.</li>
-</ul>
-<p>Classic mistakes to avoid:</p>
-<ul>
-<li>accumulating special cases without clarifying intent.</li>
-<li>introduce complexity before stabilizing the behavior.</li>
-<li>leave implicit decisions that slow down rereading.</li>
-</ul>
-<h2>Keep in mind</h2>
-<p>Separate data and state, short rules, reusable predicates. This chapter should leave you with a stable reading grid: visible intention, explicit rule, and observable behavior from start to finish.</p>
-<p>Practical quality criterion for this chapter:</p>
-<ul>
-<li>you know how to clearly distinguish structure, state and business rules.</li>
-<li>you know how to add a new rule without breaking the old ones.</li>
-<li>you know how to reread logic without guessing what a piece of data “means”.</li>
-</ul>
-<h2>Quick check</h2>
-<p>Question: What happens if the entry is invalid? Benchmark: An explicit test or stable fallback path must apply.</p>
-<h2>Try this</h2>
-<ol>
-<li>Take an example from the chapter and modify a test condition to observe different behavior.</li>
-<li>Write a mini mental test on an invalid entry in the chapter, then predict the executed branch.</li>
-</ol>
-<h2>If you're stuck</h2>
-<ul>
-<li>identify the modified line and explain in one sentence the new expected output.</li>
-<li>Name the test or fallback branch actually used.</li>
-</ul>
-<h2>EBNF compliant</h2>
-<<< quick check >>>
-- Top-level: only module declarations (`space`, `pull`, `use`, `share`, `const`, `type`, `form`, `pick`, `proc`, `entry`, `macro`) appear outside the block.
-- Statements: instructions (`let`, `make`, `set`, `give`, `emit`, `if`, `loop`, `for`, `match`, `select`, `return`) remain in a `block`.
-- Primary types: `bool`, `string`, `int`, `i32`, `i64`, `i128`, `u32`, `u64`, `u128` are accepted in `type_primary`.
-<h2>Keywords to review</h2>
-<ul>
-<li><code>docs/book/chapters/keywords/and.html</code>.</li>
-<li><code>docs/book/chapters/keywords/bool.html</code>.</li>
-<li><code>docs/book/chapters/keywords/break.html</code>.</li>
-<li><code>docs/book/chapters/keywords/case.html</code>.</li>
-<li><code>docs/book/chapters/keywords/continue.html</code>.</li>
-</ul>
-<h2>Extended Example</h2>
-<pre><code class="language-vit">// Scenario structures: execution complete et verifiable
-space demo/structures
-
-form Input { id: int value: int quota: int }
-pick Eval { case Accepted(score: int) case Rejected(code: int) }
-
-proc validate(x: Input) -&gt; Eval {
-
-  if x.id &lt;= 0 { give Eval.Rejected(21) }
-
-  if x.quota &lt; 0 { give Eval.Rejected(22) }
-
-  if x.value &lt; 0 { give Eval.Rejected(23) }
-
-  give Eval.Accepted(x.value)
-}
-
-proc transform(score: int, quota: int) -&gt; int {
-  let capped: int = score
-  if capped &gt; quota { set capped = quota }
-
-  if capped &lt; 0 { give 0 }
-
-  give capped * 2
-}
-
-proc decide(r: Eval, quota: int) -&gt; Eval {
-
-  match r {
-    case Accepted(s) {
-      let out: int = transform(s, quota)
-
-      if out &gt;= 10 { give Eval.Accepted(out) }
-
-      give Eval.Rejected(31)
-    }
-    case Rejected(c) { give Eval.Rejected(c) }
-    otherwise { give Eval.Rejected(70) }
-  }
-}
-
-// Conversion finale vers un code de sortie
-proc to_exit(r: Eval) -&gt; int {
-
-  match r {
-    case Accepted(_) { give 0 }
-    case Rejected(code) { give code }
-    otherwise { give 70 }
-  }
-}
-
-// Point d&#x27;entree du scenario
-entry main at core/app {
-  let x: Input = Input(1, 8, 9)
-  let v: Eval = validate(x)
-  let d: Eval = decide(v, x.quota)
-
-  return to_exit(d)
-}</code></pre>
-<h2>Detailed explanation of the big block</h2>
-<p>This large block shows an entire program, not an isolated extract: we follow the flow from start to finish.</p>
-<h3>1. Role of each party</h3>
-<ul>
-<li>Starting point: <code>entry main at core/app</code>.</li>
-<li><code>validate</code>: reads <code>x: Input</code> and returns <code>Eval</code>.</li>
-<li><code>transform</code>: reads <code>score: int, quota: int</code> and returns <code>int</code>.</li>
-<li><code>decide</code>: reads <code>r: Eval, quota: int</code> and returns <code>Eval</code>.</li>
-<li><code>to_exit</code>: reads <code>r: Eval</code> and returns <code>int</code>.</li>
-</ul>
-<h3>2. Actual execution order</h3>
-<ol>
-<li>The program enters <code>main</code>.</li>
-<li><code>validate</code> is called to process the next step.</li>
-<li><code>decide</code> is called to process the next step.</li>
-<li><code>to_exit</code> is called to process the next step.</li>
-<li>The final value is converted to process output (<code>return ...</code>).</li>
-</ol>
-<h3>3. Tests that change the path</h3>
-<ul>
-<li>Test evaluated: <code>x.id &lt;= 0</code>.</li>
-<li>Test evaluated: <code>x.quota &lt; 0</code>.</li>
-<li>Test evaluated: <code>x.value &lt; 0</code>.</li>
-<li>Test evaluated: <code>capped &gt; quota</code>.</li>
-<li>Test evaluated: <code>capped &lt; 0</code>.</li>
-<li>Test evaluated: <code>out &gt;= 10</code>.</li>
-<li>Selection by <code>match r</code>: the path depends on the state received.</li>
-<li>Selection by <code>match r</code>: the path depends on the state received.</li>
-</ul>
-<h3>4. Quick trace with values</h3>
-<ul>
-<li>Nominal example: <code>entrée valide -&gt; validate -&gt; decide -&gt; to_exit -&gt; sortie 0</code>.</li>
-<li>Example error: <code>entrée invalide -&gt; validate renvoie un code d&#x27;erreur -&gt; sortie non nulle</code>.</li>
-</ul>
-<h3>5. Why this division is useful</h3>
-<ul>
-<li>You test each function on its own, then the entire flow.</li>
-<li>You know where to change a rule without breaking the entire program.</li>
-<li>You can explain the output by simply following the calls.</li>
-</ul>
-<h3>6. Quick Check</h3>
-<ol>
-<li>Retry with a normal entry and note the exit.</li>
-<li>Restart with invalid input and check the error code.</li>
-<li>Confirm that the same input always gives the same output.</li>
-</ol>
-<h2>Design Notes</h2>
-<ul>
-<li>The snippet favors explicit boundaries rather than minimalist code.</li>
-<li>Tests are placed early to reduce the cost of diagnosis.</li>
-<li>The output is projected at the end of the flow to keep the business independent of transport.</li>
-</ul>
-<p>Actual error case:</p>
-<ul>
-<li>Degraded or incomplete input: the test must cut the flow early with an explicit exit.</li>
-</ul>
-<p>To test:</p>
-<ul>
-<li>Nominal case -> output 0.</li>
-<li>Strict quota case -> stable behavior.</li>
-<li>Invalid case id<=0 -> output 21.</li>
-</ul>
-<h3>7. Line by line (variables + values)</h3>
-<p>Convenient reading: Follow the variables in the actual order of execution, then check the observed output.</p>
-<ul>
-<li>Entry point:</li>
-<li><code>entry main at core/app</code> launches the complete scenario.</li>
-</ul>
-<ul>
-<li>Block functions:</li>
-<li><code>validate</code> reads <code>x: Input</code> then returns <code>Eval</code>.</li>
-<li><code>transform</code> reads <code>score: int, quota: int</code> then returns <code>int</code>.</li>
-<li><code>decide</code> reads <code>r: Eval, quota: int</code> then returns <code>Eval</code>.</li>
-<li><code>to_exit</code> reads <code>r: Eval</code> then returns <code>int</code>.</li>
-</ul>
-<ul>
-<li>Variables created (initial value):</li>
-<li><code>capped: int</code> starts with <code>score</code>.</li>
-<li><code>out: int</code> starts with <code>transform(s, quota)</code>.</li>
-<li><code>x: Input</code> starts with <code>Input(1, 8, 9)</code>.</li>
-<li><code>v: Eval</code> starts with <code>validate(x)</code>.</li>
-<li><code>d: Eval</code> starts with <code>decide(v, x.quota)</code>.</li>
-</ul>
-<ul>
-<li>Variables changed during processing:</li>
-<li><code>capped</code> is updated with <code>quota</code>.</li>
-</ul>
-<ul>
-<li>Conditions that change the path:</li>
-<li>if <code>x.id &lt;= 0</code> is true: early exit or dedicated branch; otherwise: the flow continues.</li>
-<li>if <code>x.quota &lt; 0</code> is true: early exit or dedicated branch; otherwise: the flow continues.</li>
-<li>if <code>x.value &lt; 0</code> is true: early exit or dedicated branch; otherwise: the flow continues.</li>
-<li>if <code>capped &gt; quota</code> is true: early exit or dedicated branch; otherwise: the flow continues.</li>
-<li>if <code>capped &lt; 0</code> is true: early exit or dedicated branch; otherwise: the flow continues.</li>
-<li>if <code>out &gt;= 10</code> is true: early exit or dedicated branch; otherwise: the flow continues.</li>
-</ul>
-<ul>
-<li>Nominal trace (example values):</li>
-<li>initialization: capped=score -> out=transform(s, quota) -> x=Input(1, 8, 9) -> v=validate(x)</li>
-<li>sequence: validate -> decide -> to_exit</li>
-<li>final output on this path: <code>to_exit(d)</code>.</li>
-</ul>
-<ul>
-<li>Error trace (example values):</li>
-<li>if <code>x.id &lt;= 0</code> becomes true, the function returns <code>Eval.Rejected(21)</code>.</li>
-</ul>
-<ul>
-<li>Quick check:</li>
-<li>restart with normal input and note the output,</li>
-<li>restart with an invalid entry and note the error code,</li>
-<li>confirm that the same input always produces the same output.</li>
-</ul>
-<h2>Trade-offs</h2>
-<table border="1" cellpadding="6" cellspacing="0">
-<tr><th>Constraint</th><th>Option A</th><th>Option B</th><th>Recommended decision</th></tr>
-<tr><td>Priority readability</td><td>Explicit branches</td><td>Compact code</td><td>If the team maintains the code for a long time</td></tr>
-<tr><td>Critical performance</td><td>Targeted specialization</td><td>Generalization</td><td>A if profiling confirms the gain</td></tr>
-<tr><td>Rapid evolution</td><td>Strict contracts</td><td>Implicit conventions</td><td>A to reduce regressions</td></tr>
-</table>
-<h2>Decision According to Constraint</h2>
-<ul>
-<li>If the dominant constraint is safety: validate early, fail explicitly.</li>
-<li>If the dominant constraint is latency: measure first, optimize later.</li>
-<li>If the dominant constraint is scalability: isolate orchestration, decisions and output conversion.</li>
-</ul>
-<h2>Rapid Diagnosis</h2>
-<table border="1" cellpadding="6" cellspacing="0">
-<tr><th>Symptom</th><th>Probable cause</th><th>Verification</th><th>Correction</th></tr>
-<tr><td>Unexpected exit</td><td>Test missing or poorly ordered</td><td>Replay with error case</td><td>Reassemble the test before the sensitive area</td></tr>
-<tr><td>Branch not taken</td><td>Condition too broad/too strict</td><td>Trace the effective entry</td><td>Make the condition explicit and tested</td></tr>
-<tr><td>Silent regression</td><td>Implicit rule</td><td>Compare nominal vs. limit</td><td>Formalize the rule in code</td></tr>
-</table>
-<h2>Checkpoint</h2>
-<p>At this point you should know:</p>
-<ul>
-<li>explain the input -> decision -> output flow without ambiguity,</li>
-<li>isolate a real error case and predict its exit,</li>
-<li>identify where to add a test without breaking the nominal.</li>
-</ul>
-<h2>What I would do in code review</h2>
-<ol>
-<li>Verify that input tests are placed before sensitive operations.</li>
-<li>Verify that the business decision is separated from the output projection.</li>
-<li>Verify a nominal test and a limit test that are actually executable.</li>
-</ol>
+<p>Replace the single summary form with two grouped buckets and explain why the new shape is justified.</p>
+<section class="chapter-cta"><h2>Next best action</h2><p>Keep the example small, reproduce it locally, then continue to the full chapter if you need the broader context.</p></section>
 </article>
 </main>
 <footer class="site-footer">
@@ -441,6 +64,5 @@ entry main at core/app {
 </div>
 <script type="module" src="../../../js/book-learning.js"></script>
 <script type="module" src="../../../js/main.js"></script>
-<script type="module" src="js/main.js"></script>
 </body>
 </html>

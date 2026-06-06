@@ -7,42 +7,8 @@
 <link rel="icon" href="../../../svg/logo.svg" type="image/svg+xml">
 <link rel="stylesheet" href="../../../css/site.css">
 <link rel="stylesheet" href="../../../css/print.css" media="print">
-
 <link rel="alternate" hreflang="en" href="https://vitte-lang.org/pick.html">
 <link rel="alternate" hreflang="x-default" href="https://vitte-lang.org/pick.html">
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; font-src 'self'; connect-src 'self';">
 </head>
 <body class="classic-doc">
@@ -56,102 +22,200 @@
 </header>
 <main id="main-content" class="site-main">
 <article class="doc-content">
-<p class="book-progress"></p>
 <h1>Keyword <code>pick</code></h1>
-<p>Level: Intermediate.</p>
-<h2>Quick reading</h2>
-<p>Concrete reference: <code>pick</code> is used to decide an execution path in a readable and verifiable manner. Use <code>pick</code> when used to define a data model; avoid it if it makes no observable difference on the branch or output.</p>
-<h2>Why (job)</h2>
-<p>In practice, <code>pick</code> should make the rule clearer, not noisier. If removing it changes neither the meaning nor the outcome, prefer the simpler form.</p>
-<h2>Definition</h2>
-<p><code>pick</code> is a keyword in the Vitte language. This sheet provides operational use with a readable and testable rule.</p>
-<h2>Syntax</h2>
-<p>Canonical form: <code>pick Result { case Ok case Err }</code>.</p>
-<h2>Algorithmic reading</h2>
-<p>Read it in context: find where <code>pick</code> appears, then confirm the constraint it adds.</p>
-<h2>Nominal example</h2>
-<p>Input:</p>
+<p><code>pick</code> is documented here as a full reference entry: grammatical role, semantics, canonical form, valid example, counter-example, diagnostics, interactions, and design notes.</p>
+<section class="keyword-hero lead-panel">
+<figure class="keyword-portrait">
+<img src="portraits/pick.svg" alt="Visual portrait of keyword pick" width="320" height="320">
+<figcaption>Syntax portrait: a code vignette centered on <code>pick</code>.</figcaption>
+</figure>
+<div class="keyword-hero-copy">
+<p><strong>Visual anchor:</strong> each page now has its own wiki-style profile image. It shows a small code excerpt where <code>pick</code> appears in its most recognizable form.</p>
+<p><strong>Quick navigation:</strong> use the <em>previous</em>, <em>summary</em>, and <em>next</em> links to move through the full keyword series without manually returning to the index.</p>
+</div>
+</section>
+<nav class="doc-pagination keyword-doc-pagination">
+<a href="otherwise.html">← otherwise</a>
+<a href="index.html">Summary</a>
+<a href="proc.html">proc →</a>
+</nav>
+<section class="lead-panel">
+<h2>Summary</h2>
 <ul>
-<li>Nominal case: <code>pick</code> is used in the correct context and the expected branch is executed.</li>
-</ul>
-<pre><code class="language-vit">// Exemple concret: cas nominal puis cas invalide
+<li><a href="#overview">Overview</a></li>
+<li><a href="#definition">Definition</a></li>
+<li><a href="#grammatical-role">Grammatical role</a></li>
+<li><a href="#syntax">Canonical syntax</a></li>
+<li><a href="#semantics">Detailed semantics</a></li>
 
-pick Result {
-  case Ok
-  case Err
-}</code></pre>
-<p>Observed result:</p>
-<ul>
-<li>For nominal input, the expected branch is taken and the output matches the expected calculation.</li>
+<li><a href="#execution-effect">Effect on execution</a></li>
+<li><a href="#variants">Valid variants</a></li>
+<li><a href="#vitte-example">Vitte example</a></li>
+<li><a href="#reading">Guided reading of the example</a></li>
+<li><a href="#c-comparison">Comparison with C</a></li>
+<li><a href="#usage">Recommended uses</a></li>
+<li><a href="#invalid">Invalid example and diagnostic</a></li>
+<li><a href="#errors">Common errors</a></li>
+<li><a href="#neighbors">Neighbor keywords</a></li>
+<li><a href="#misreadings">Common misreadings</a></li>
+<li><a href="#implementation">Implementation notes</a></li>
+<li><a href="#chapters">Presence in the book</a></li>
 </ul>
-<h2>Invalid example</h2>
-<p>Input:</p>
-<ul>
-<li>Error case: invalid use of <code>pick</code>; validation must reject the snippet with an actionable diagnosis.</li>
-</ul>
-<pre><code class="language-vit">// Exemple concret: cas nominal puis cas invalide
-
-proc bad_pick() -&gt; int {
-  pick
-  // Valeur retournee par cette branche
-  give 0
-}
-# invalide: usage hors grammaire attendue pour `pick`.</code></pre>
-<p>Observed result:</p>
-<ul>
-<li>For invalid input, validation should fail with an actionable message to correct the code.</li>
-</ul>
-<p>Expected diagnosis:</p>
-<ul>
-<li>Code: <code>VITTE-XXXX</code> (or corresponding <code>E000X</code> compiler code).</li>
-<li>Position: <code>ligne 1, colonne 1</code> (adjust according to actual snippet).</li>
-<li>Message: stable, actionable correction.</li>
-</ul>
-<h2>Quick refactor</h2>
-<p>Before:</p>
-<pre><code class="language-vit">// Exemple concret: cas nominal puis cas invalide
-# usage fragile à corriger</code></pre>
-<p>After:</p>
-<pre><code class="language-vit">// Exemple concret: cas nominal puis cas invalide
-# usage clair et testable</code></pre>
-<h2>Pitfalls</h2>
-<ul>
-<li>Using <code>pick</code> out of habit instead of justifying its role in the flow.</li>
-<li>Mix business logic and control logic without an explicit boundary.</li>
-<li>Forgetting to test a dedicated invalid case.</li>
-</ul>
-<h2>When to use it / When to avoid it</h2>
-<ul>
-<li>When to use it: when <code>pick</code> makes the contract clearer.</li>
-<li>When to avoid it: when its use hides the rule or duplicates logic already carried elsewhere.</li>
-</ul>
-<h2>Common compiler errors</h2>
+</section>
+<section class="lead-panel" id="overview">
+<h2>Overview</h2>
 <table border="1" cellpadding="6" cellspacing="0">
-<tr><th>Typical message</th><th>Cause</th><th>Correction</th></tr>
-<tr><td><code>unexpected token near pick</code></td><td>Incomplete or misplaced syntactic form.</td><td>Return to canonical form and check the delimiters.</td></tr>
-<tr><td><code>type mismatch</code></td><td>Inconsistent input/output rule around <code>pick</code>.</td><td>Align expected types before execution.</td></tr>
-<tr><td><code>unreachable or incomplete branch</code></td><td>Incomplete case coverage or dead branch.</td><td>Add the missing branch (<code>otherwise</code>) or simplify the flow.</td></tr>
+<tr><th>Field</th><th>Value</th></tr>
+<tr><td>Keyword</td><td><code>pick</code></td></tr>
+<tr><td>Family</td><td>Declaration</td></tr>
+<tr><td>Suggested level</td><td>Intermediate</td></tr>
+<tr><td>Main neighbor</td><td><a href="form.html"><code>form</code></a></td></tr>
+<tr><td>Short role</td><td><code>pick</code> is a declaration keyword that changes the shape of a module, type, or executable contract.</td></tr>
+<tr><td>Main effect</td><td><code>pick</code> acts first on the shape of the program. Its main effect appears in the entities it makes callable, instantiable, or visible during execution.</td></tr>
 </table>
-<h2>Neighbor keyword</h2>
+<p>The keyword <code>pick</code> defines a program shape: procedure, type, variant, entry point, namespace, or another structural boundary. It should therefore be read architecturally before it is read locally.</p>
+<p>A useful encyclopedic reading should answer three questions: where can <code>pick</code> appear, what does it change in the block contract, and how does the compiler signal misuse?</p>
+</section>
+<section id="definition">
+<h2>Definition</h2>
+<p><code>pick</code> is a declaration keyword that changes the shape of a module, type, or executable contract.</p>
+<p>The keyword <code>pick</code> defines a program shape: procedure, type, variant, entry point, namespace, or another structural boundary. It should therefore be read architecturally before it is read locally.</p>
+</section>
+<section id="grammatical-role">
+<h2>Grammatical role</h2>
+<p>Introduces a sum type or a closed family of identified variants.</p>
+<p>This grammatical role is essential: if a reader understands the structural place of <code>pick</code>, they already understand much of the diagnostics that will appear when it is moved or truncated.</p>
+</section>
+<section id="syntax">
+<h2>Canonical syntax</h2>
+<p>Canonical form: `pick Name { case ... }`.</p>
+<p>The canonical form matters because it gives the compiler and the reader the same reference structure. A large share of diagnostics related to <code>pick</code> come from an abbreviated, displaced, or incomplete form.</p>
+</section>
+<section id="semantics">
+<h2>Detailed semantics</h2>
+<p>Semantically, <code>pick</code> changes the shape of the program before execution even begins. It introduces an entity that other blocks will name, call, instantiate, or reference.</p>
+<p>In an encyclopedic reading, <code>pick</code> should not be reduced to a dictionary definition. Its effect on scope, block shape, value visibility, control progression, and the diagnostic family it activates when misused must also be considered.</p>
+</section>
+<section id="execution-effect">
+<h2>Effect on execution</h2>
+<p><code>pick</code> acts first on the shape of the program. Its main effect appears in the entities it makes callable, instantiable, or visible during execution.</p>
+<p>In other words, the presence of <code>pick</code> is not merely syntactic: it helps the reader predict what will be executed, produced, exposed, or forbidden from this point in the program.</p>
+</section>
+<section id="variants">
+<h2>Valid variants</h2>
+<ul>
+<li>`pick Name { case ... }`</li>
+</ul>
+<p>These variants are not free synonyms. They indicate the legitimate forms from which one can reason about diagnostics, scope differences, or contract readability.</p>
+</section>
+<section id="vitte-example">
+<h2>Vitte example</h2>
+<pre><code class="language-vit">pick Result {
+  case Ok(value: int)
+  case Err(code: int)
+}</code></pre>
+<p>This example shows <code>pick</code> in a nominal context. It should be read globally: where the contract begins, which values are constrained, which output becomes observable, and why the presence of the keyword is justified.</p>
+</section>
+<section id="reading">
+<h2>Guided reading of the example</h2>
+<ol>
+<li>First locate the full construction that contains <code>pick</code>, not the isolated word.</li>
+<li>Then identify which contract becomes visible because of <code>pick</code>: type, branch, binding, module, exit, or advanced boundary.</li>
+<li>Finish by checking the observable effect produced by the construction that contains <code>pick</code>.</li>
+<li>For a declaration keyword, verify which stable entity is created and how it will be referenced later.</li>
+</ol>
+<p>This guided reading is intentionally closer to a reference page than to a tutorial: it helps reconstruct the exact role of <code>pick</code> in a complete block.</p>
+</section>
+<section id="c-comparison">
+<h2>Comparison with C</h2>
+<pre><code class="language-c">enum ResultTag { OK, ERR };</code></pre>
+<p>This C comparison is structural: it aligns the role of the keyword with a familiar surface without claiming that the two languages carry exactly the same contracts.</p>
+<p>The source of truth remains Vitte grammar and semantics. The comparison with C should be read as a cultural marker, not as a parallel specification.</p>
+</section>
+<section id="usage">
+<h2>Recommended uses</h2>
+<p><code>pick</code> deserves to appear when it simplifies the reading of the block's global contract, not when it merely adds one more surface form.</p>
+<h3>When to use it</h3>
+<ul>
+<li>When <code>pick</code> makes the block contract more explicit at first reading.</li>
+<li>When it reduces the number of implicit assumptions the reader must reconstruct mentally.</li>
+<li>When the program must introduce a stable entity that will be reused elsewhere.</li>
+</ul>
+<h3>When to avoid it</h3>
+<ul>
+<li>Avoid <code>pick</code> when another, more precise keyword already carries the block's intent.</li>
+<li>Avoid <code>pick</code> when it adds only surface noise without clarifying the contract.</li>
+<li>Avoid reading or teaching it as an isolated token with no relation to the full structure.</li>
+</ul>
+<h3>Common pitfalls</h3>
+<ul>
+<li>Using <code>pick</code> in a grammatical layer where it does not belong.</li>
+<li>Confusing the role of the keyword with the role of the full surrounding block.</li>
+<li>Showing only the nominal form and never how the contract fails.</li>
+</ul>
+</section>
+<section id="invalid">
+<h2>Invalid example and diagnostic</h2>
+<pre><code class="language-vit">pick Result {
+  Ok(value: int)
+}</code></pre>
+<p>The variant declaration is missing the expected case surface.</p>
+<p>The counter-example is not merely wrong: it is wrong in an instructive way. It shows which grammar or execution-contract assumption is no longer accepted when <code>pick</code> is moved, truncated, or combined with the wrong context. Concretely, the variant declaration is incomplete or malformed.</p>
+<p>A good encyclopedic counter-example does not show arbitrarily broken code: it isolates the precise reason why <code>pick</code> can no longer support the expected contract. Its teaching value is diagnostic before it is syntactic.</p>
+</section>
+<section id="errors">
+<h2>Common compilation errors</h2>
+<table border="1" cellpadding="6" cellspacing="0">
+<tr><th>Typical message</th><th>Usual cause</th><th>Fix</th></tr>
+<tr><td><code>unexpected token near pick</code></td><td>The keyword appears in an invalid form or grammatical layer.</td><td>Return to the canonical form and verify placement and delimiters.</td></tr>
+<tr><td><code>type mismatch</code></td><td>The keyword participates in a block whose value contract is incoherent.</td><td>Realign the surrounding types, branches, or produced values.</td></tr>
+<tr><td><code>invalid construct</code></td><td>The keyword is present but the surrounding construction is incomplete.</td><td>Restore the missing branch, declarative part, or operands.</td></tr>
+</table>
+<p>This table does not replace the compiler's exact diagnostics. It serves as a mental map: when <code>pick</code> fails, the problem usually comes from an invalid grammatical form, an incoherent type contract, or an incomplete construction.</p>
+</section>
+<section id="neighbors">
+<h2>Neighbor keywords</h2>
 <table border="1" cellpadding="6" cellspacing="0">
 <tr><th>Keyword</th><th>Operational difference</th></tr>
-<tr><td><code>form</code></td><td><code>pick</code> and <code>form</code> complement each other, but do not have the same control/feedback responsibility.</td></tr>
+<tr><td><a href="form.html"><code>form</code></a></td><td>Direct neighboring keyword: it helps explain what <code>pick</code> does, either by contrast or by complement.</td></tr>
 </table>
-<h2>Used in chapters</h2>
+<p>Comparison with neighboring keywords is essential on a wiki-style page: <code>pick</code> is better understood when one knows precisely what it does not do.</p>
+</section>
+<section id="misreadings">
+<h2>Common misreadings</h2>
 <ul>
-<li><code>docs/book/chapters/07-control.html</code>.</li>
-<li><code>docs/book/chapters/27-grammar.html</code>.</li>
-<li><code>docs/book/chapters/31-build-errors.html</code>.</li>
+<li>Reducing <code>pick</code> to a local token instead of reading it as part of a full construction.</li>
+<li>Explaining only the syntax and forgetting the reading or diagnostic contract it imposes.</li>
 </ul>
+</section>
+<section id="implementation">
+<h2>Implementation and diagnostic notes</h2>
+<ul>
+<li>Useful diagnostics for this family often concern incomplete signatures, constituent ordering, or declarative scope.</li>
+<li>In a compiler, these keywords primarily feed symbol tables and the structural representation of the program.</li>
+</ul>
+</section>
+<section id="chapters">
+<h2>Presence in the book</h2>
+<ul>
+<li><a href="../../../book/chapters/06-procedures.html"><code>docs/book/chapters/06-procedures.html</code></a></li>
+<li><a href="../../../book/chapters/09-modules.html"><code>docs/book/chapters/09-modules.html</code></a></li>
+<li><a href="../../../book/chapters/27-grammar.html"><code>docs/book/chapters/27-grammar.html</code></a></li>
+</ul>
+</section>
+<section>
 <h2>See also</h2>
 <ul>
-<li><code>docs/book/chapters/keywords/erreurs-compilateur.html</code>.</li>
-<li><code>docs/book/chapters/keywords/form.html</code>.</li>
-<li><code>docs/book/glossary.html</code>.</li>
-<li><code>docs/book/chapters/06-procedures.html</code>.</li>
+<li><a href="../../../book/chapters/keywords/erreurs-compilateur.html"><code>docs/book/chapters/keywords/erreurs-compilateur.html</code></a></li>
+<li><a href="../../../book/chapters/keywords/form.html"><code>docs/book/chapters/keywords/form.html</code></a></li>
+<li><a href="../../../book/glossary.html"><code>docs/book/glossary.html</code></a></li>
 </ul>
-<h2>Completeness score</h2>
-<p>coverage: syntax/examples/invalids/diagnostics/links = 4/5</p>
+</section>
+<nav class="doc-pagination keyword-doc-pagination">
+<a href="otherwise.html">← otherwise</a>
+<a href="index.html">Summary</a>
+<a href="proc.html">proc →</a>
+</nav>
 </article>
 </main>
 <footer class="site-footer">
@@ -161,6 +225,5 @@ proc bad_pick() -&gt; int {
 </div>
 <script type="module" src="../../../js/book-learning.js"></script>
 <script type="module" src="../../../js/main.js"></script>
-<script type="module" src="js/main.js"></script>
 </body>
 </html>

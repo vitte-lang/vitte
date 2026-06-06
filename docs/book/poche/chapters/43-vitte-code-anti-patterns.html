@@ -7,42 +7,8 @@
 <link rel="icon" href="../../../svg/logo.svg" type="image/svg+xml">
 <link rel="stylesheet" href="../../../css/site.css">
 <link rel="stylesheet" href="../../../css/print.css" media="print">
-
 <link rel="alternate" hreflang="en" href="https://vitte-lang.org/43-vitte-code-anti-patterns.html">
 <link rel="alternate" hreflang="x-default" href="https://vitte-lang.org/43-vitte-code-anti-patterns.html">
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; font-src 'self'; connect-src 'self';">
 </head>
 <body class="classic-doc">
@@ -58,327 +24,27 @@
 <article class="doc-content">
 <p class="book-progress"></p>
 <h1>43. Frequent anti-patterns in Vitte code (pocket version)</h1>
-<p>Level: Intermediate</p>
-<p>Prerequisites: <code>docs/book/chapters/28-conventions.html</code>, <code>docs/book/chapters/42-robust-procedure-patterns.html</code>. See also: to be defined.</p>
+<section class="chapter-tldr"><h2>TL;DR (5 lines)</h2><ul>
+<li>Every chapter needs one concrete engineering story.</li>
+<li>The contract matters more than the token list.</li>
+<li>An invalid example should isolate the chapter&#x27;s real lesson.</li>
+<li>Global explanation beats line-by-line commentary.</li>
+<li>The page should leave one reusable rule behind.</li>
+</ul></section>
 <h2>Concrete Problem</h2>
-<p>Real situation: in this chapter on Anti-frequent patterns in Vitte code, failure often comes from a poorly ordered decision rather than a syntax error. So we follow the exact flow: input, test, branch, output. Guiding question: Which condition is evaluated first, and what output does this decision impose?</p>
-<h2>Red Thread (Single Project)</h2>
-<p>Common thread: each section uses the same scenario to isolate a single technical decision at a time. Educational objective: move from passive reading to proof: same input, same branch, same expected output.</p>
-<h2>Goal</h2>
-<p>Quickly identify forms of code that increase technical debt, bugs and maintenance costs.</p>
-<h2>Frequent anti-patterns</h2>
-<ol>
-<li>Procedures too long with mixed responsibilities.</li>
-<li>Validation missing in error cases.</li>
-<li>Implicit types where an explicit signature is required.</li>
-<li>Excessive imports instead of stable interfaces.</li>
-<li>Unactionable error messages.</li>
-</ol>
-<h2>Minimal fix</h2>
-<ol>
-<li>Extract liability by procedure.</li>
-<li>Add tests at the top.</li>
-<li>Make signatures explicit.</li>
-<li>Reduce the imported area.</li>
-</ol>
-<h2>Progressive examples (N1 -> N3)</h2>
-<h3>N1 (base): anti-pattern detected</h3>
-<pre><code class="language-vit">proc process(x: int, y: int, z: int) -&gt; int {
+<p>Generic chapters without a stable scenario produce repetition and weak retention.</p>
+<h2>Coherent example</h2>
+<pre><code class="language-vit">space demo/generic
 
-  if x &lt; 0 { give -1 }
-
-  if y &lt; 0 { give -1 }
-
-  if z &lt; 0 { give -1 }
-
-  give x + y + z
+proc run(value: int) -&gt; int {
+  if value &lt; 0 { give 11 }
+  give value
 }</code></pre>
-<h3>N2 (intermediate): extraction</h3>
-<pre><code class="language-vit">proc is_valid(x: int) -&gt; bool { give x &gt;= 0 }
-proc process3(x: int, y: int, z: int) -&gt; int {
-
-  if not is_valid(x) { give -1 }
-
-  if not is_valid(y) { give -1 }
-
-  if not is_valid(z) { give -1 }
-
-  give x + y + z
-}</code></pre>
-<h3>N3 (advance): separate responsibilities</h3>
-<pre><code class="language-vit">proc validate3(x: int, y: int, z: int) -&gt; bool { give x&gt;=0 and y&gt;=0 and z&gt;=0 }
-proc sum3(x: int, y: int, z: int) -&gt; int { give x+y+z }</code></pre>
-<h3>Anti-example</h3>
-<pre><code class="language-vit">proc mega(a:int,b:int,c:int,d:int,e:int) -&gt; int { give a+b+c+d+e }</code></pre>
-<h2>Quick validation</h2>
-<ol>
-<li>Detect function too broad.</li>
-<li>Extract responsibilities.</li>
-<li>Add non-regression test.</li>
-</ol>
-<h2>Why it matters</h2>
-<p>This section explains the practical value: reducing errors, accelerating diagnosis and stabilizing developments.</p>
-<h2>Quick check</h2>
-<p>Control question: If you change a key assumption, what outcome should change and why?</p>
-<h2>Try this</h2>
-<ol>
-<li>Run the nominal example.</li>
-<li>Introduce an error case.</li>
-<li>Check the output and document the deviation.</li>
-</ol>
-<h2>If you're stuck</h2>
-<p>Fixed: keep the simplest version that respects the rule, then add a non-regression test.</p>
-<p><!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 START --></p>
-<h2>Representative examples based on chapter code</h2>
-<p>Theme: <strong>frequent anti-patterns in fast code</strong>. This section avoids generalizations and starts from a real extract.</p>
-<h3>Example A: Executable reading of the main snippet</h3>
-<pre><code class="language-vit">proc process(x: int, y: int, z: int) -&gt; int {
-
-  if x &lt; 0 { give -1 }
-
-  if y &lt; 0 { give -1 }
-
-  if z &lt; 0 { give -1 }
-
-  give x + y + z
-}</code></pre>
-<p>Reading line by line:</p>
-<ol>
-<li><code>proc process(x: int, y: int, z: int) -&gt; int {</code> -> sets a clear function rule.</li>
-<li><code>if x &lt; 0 { give -1 }</code> -> separates nominal and error cases.</li>
-<li><code>if y &lt; 0 { give -1 }</code> -> separates nominal and error cases.</li>
-<li><code>if z &lt; 0 { give -1 }</code> -> separates nominal and error cases.</li>
-<li><code>give x + y + z</code> -> returns verifiable output.</li>
-<li><code>}</code> -> participates in the processing process.</li>
-</ol>
-<h3>Example B: error case variant (same intention, safe behavior)</h3>
-<p>Goal: keep the business logic while adding an explicit test.</p>
-<p>Steps:</p>
-<ol>
-<li>Identify the line that decides the exit.</li>
-<li>Add a test before this line.</li>
-<li>Check the new output on a limit input.</li>
-</ol>
-<h3>Example C: reproducible bug then local correction</h3>
-<p>Procedure:</p>
-<ol>
-<li>Introduce a type mismatch on a call.</li>
-<li>Compile and read the first diagnosis.</li>
-<li>Fix a single line (no global refactor).</li>
-<li>Recompile and check the nominal return.</li>
-</ol>
-<h3>Expected result</h3>
-<ul>
-<li>The reader understands what the code does without unnecessary abstraction.</li>
-<li>Each example is linked to a concrete action.</li>
-<li>The correction is reproducible and testable.</li>
-</ul>
-<p><!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 END --></p>
-<h2>Extended Example</h2>
-<pre><code class="language-vit">// Scenario anti patterns code vitte: execution complete et verifiable
-space demo/anti-patterns-code-vitte
-
-form Input { id: int value: int quota: int }
-pick Eval { case Accepted(score: int) case Rejected(code: int) }
-
-proc validate(x: Input) -&gt; Eval {
-
-  if x.id &lt;= 0 { give Eval.Rejected(21) }
-
-  if x.quota &lt; 0 { give Eval.Rejected(22) }
-
-  if x.value &lt; 0 { give Eval.Rejected(23) }
-
-  give Eval.Accepted(x.value)
-}
-
-proc transform(score: int, quota: int) -&gt; int {
-  let capped: int = score
-  if capped &gt; quota { set capped = quota }
-
-  if capped &lt; 0 { give 0 }
-
-  give capped * 2
-}
-
-proc decide(r: Eval, quota: int) -&gt; Eval {
-
-  match r {
-    case Accepted(s) {
-      let out: int = transform(s, quota)
-
-      if out &gt;= 10 { give Eval.Accepted(out) }
-
-      give Eval.Rejected(31)
-    }
-    case Rejected(c) { give Eval.Rejected(c) }
-    otherwise { give Eval.Rejected(70) }
-  }
-}
-
-// Conversion finale vers un code de sortie
-proc to_exit(r: Eval) -&gt; int {
-
-  match r {
-    case Accepted(_) { give 0 }
-    case Rejected(code) { give code }
-    otherwise { give 70 }
-  }
-}
-
-// Point d&#x27;entree du scenario
-entry main at core/app {
-  let x: Input = Input(1, 8, 9)
-  let v: Eval = validate(x)
-  let d: Eval = decide(v, x.quota)
-
-  return to_exit(d)
-}</code></pre>
-<h2>Detailed explanation of the big block</h2>
-<p>You read this big block as a complete scenario: data preparation, processing, then final output.</p>
-<h3>1. Role of each party</h3>
-<ul>
-<li>Starting point: <code>entry main at core/app</code>.</li>
-<li><code>validate</code>: reads <code>x: Input</code> and returns <code>Eval</code>.</li>
-<li><code>transform</code>: reads <code>score: int, quota: int</code> and returns <code>int</code>.</li>
-<li><code>decide</code>: reads <code>r: Eval, quota: int</code> and returns <code>Eval</code>.</li>
-<li><code>to_exit</code>: reads <code>r: Eval</code> and returns <code>int</code>.</li>
-</ul>
-<h3>2. Actual execution order</h3>
-<ol>
-<li>The program enters <code>main</code>.</li>
-<li><code>validate</code> is called to process the next step.</li>
-<li><code>decide</code> is called to process the next step.</li>
-<li><code>to_exit</code> is called to process the next step.</li>
-<li>The final value is converted to process output (<code>return ...</code>).</li>
-</ol>
-<h3>3. Tests that change the path</h3>
-<ul>
-<li>Test evaluated: <code>x.id &lt;= 0</code>.</li>
-<li>Test evaluated: <code>x.quota &lt; 0</code>.</li>
-<li>Test evaluated: <code>x.value &lt; 0</code>.</li>
-<li>Test evaluated: <code>capped &gt; quota</code>.</li>
-<li>Test evaluated: <code>capped &lt; 0</code>.</li>
-<li>Test evaluated: <code>out &gt;= 10</code>.</li>
-<li>Selection by <code>match r</code>: the path depends on the state received.</li>
-<li>Selection by <code>match r</code>: the path depends on the state received.</li>
-</ul>
-<h3>4. Quick trace with values</h3>
-<ul>
-<li>Nominal example: <code>entrée valide -&gt; validate -&gt; decide -&gt; to_exit -&gt; sortie 0</code>.</li>
-<li>Example error: <code>entrée invalide -&gt; validate renvoie un code d&#x27;erreur -&gt; sortie non nulle</code>.</li>
-</ul>
-<h3>5. Why this division is useful</h3>
-<ul>
-<li>You test each function on its own, then the entire flow.</li>
-<li>You know where to change a rule without breaking the entire program.</li>
-<li>You can explain the output by simply following the calls.</li>
-</ul>
-<h3>6. Quick Check</h3>
-<ol>
-<li>Retry with a normal entry and note the exit.</li>
-<li>Restart with invalid input and check the error code.</li>
-<li>Confirm that the same input always gives the same output.</li>
-</ol>
-<h2>Design Notes</h2>
-<ul>
-<li>The snippet favors explicit boundaries rather than minimalist code.</li>
-<li>Tests are placed early to reduce the cost of diagnosis.</li>
-<li>The output is projected at the end of the flow to keep the business independent of transport.</li>
-</ul>
-<p>Actual error case:</p>
-<ul>
-<li>Degraded or incomplete input: the test must cut the flow early with an explicit exit.</li>
-</ul>
-<p>To test:</p>
-<ul>
-<li>Nominal case -> output 0.</li>
-<li>Strict quota case -> stable behavior.</li>
-<li>Invalid case id<=0 -> output 21.</li>
-</ul>
-<h3>7. Line by line (variables + values)</h3>
-<p>Convenient reading: Follow the variables in the actual order of execution, then check the observed output.</p>
-<ul>
-<li>Entry point:</li>
-<li><code>entry main at core/app</code> launches the complete scenario.</li>
-</ul>
-<ul>
-<li>Block functions:</li>
-<li><code>validate</code> reads <code>x: Input</code> then returns <code>Eval</code>.</li>
-<li><code>transform</code> reads <code>score: int, quota: int</code> then returns <code>int</code>.</li>
-<li><code>decide</code> reads <code>r: Eval, quota: int</code> then returns <code>Eval</code>.</li>
-<li><code>to_exit</code> reads <code>r: Eval</code> then returns <code>int</code>.</li>
-</ul>
-<ul>
-<li>Variables created (initial value):</li>
-<li><code>capped: int</code> starts with <code>score</code>.</li>
-<li><code>out: int</code> starts with <code>transform(s, quota)</code>.</li>
-<li><code>x: Input</code> starts with <code>Input(1, 8, 9)</code>.</li>
-<li><code>v: Eval</code> starts with <code>validate(x)</code>.</li>
-<li><code>d: Eval</code> starts with <code>decide(v, x.quota)</code>.</li>
-</ul>
-<ul>
-<li>Variables changed during processing:</li>
-<li><code>capped</code> is updated with <code>quota</code>.</li>
-</ul>
-<ul>
-<li>Conditions that change the path:</li>
-<li>if <code>x.id &lt;= 0</code> is true: early exit or dedicated branch; otherwise: the flow continues.</li>
-<li>if <code>x.quota &lt; 0</code> is true: early exit or dedicated branch; otherwise: the flow continues.</li>
-<li>if <code>x.value &lt; 0</code> is true: early exit or dedicated branch; otherwise: the flow continues.</li>
-<li>if <code>capped &gt; quota</code> is true: early exit or dedicated branch; otherwise: the flow continues.</li>
-<li>if <code>capped &lt; 0</code> is true: early exit or dedicated branch; otherwise: the flow continues.</li>
-<li>if <code>out &gt;= 10</code> is true: early exit or dedicated branch; otherwise: the flow continues.</li>
-</ul>
-<ul>
-<li>Nominal trace (example values):</li>
-<li>initialization: capped=score -> out=transform(s, quota) -> x=Input(1, 8, 9) -> v=validate(x)</li>
-<li>sequence: validate -> decide -> to_exit</li>
-<li>final output on this path: <code>to_exit(d)</code>.</li>
-</ul>
-<ul>
-<li>Error trace (example values):</li>
-<li>if <code>x.id &lt;= 0</code> becomes true, the function returns <code>Eval.Rejected(21)</code>.</li>
-</ul>
-<ul>
-<li>Quick check:</li>
-<li>restart with normal input and note the output,</li>
-<li>restart with an invalid entry and note the error code,</li>
-<li>confirm that the same input always produces the same output.</li>
-</ul>
-<h2>Trade-offs</h2>
-<table border="1" cellpadding="6" cellspacing="0">
-<tr><th>Constraint</th><th>Option A</th><th>Option B</th><th>Recommended decision</th></tr>
-<tr><td>Priority readability</td><td>Explicit branches</td><td>Compact code</td><td>If the team maintains the code for a long time</td></tr>
-<tr><td>Critical performance</td><td>Targeted specialization</td><td>Generalization</td><td>A if profiling confirms the gain</td></tr>
-<tr><td>Rapid evolution</td><td>Strict contracts</td><td>Implicit conventions</td><td>A to reduce regressions</td></tr>
-</table>
-<h2>Decision According to Constraint</h2>
-<ul>
-<li>If the dominant constraint is safety: validate early, fail explicitly.</li>
-<li>If the dominant constraint is latency: measure first, optimize later.</li>
-<li>If the dominant constraint is scalability: isolate orchestration, decisions and output conversion.</li>
-</ul>
-<h2>Rapid Diagnosis</h2>
-<table border="1" cellpadding="6" cellspacing="0">
-<tr><th>Symptom</th><th>Probable cause</th><th>Verification</th><th>Correction</th></tr>
-<tr><td>Unexpected exit</td><td>Test missing or poorly ordered</td><td>Replay with error case</td><td>Reassemble the test before the sensitive area</td></tr>
-<tr><td>Branch not taken</td><td>Condition too broad/too strict</td><td>Trace the effective entry</td><td>Make the condition explicit and tested</td></tr>
-<tr><td>Silent regression</td><td>Implicit rule</td><td>Compare nominal vs. limit</td><td>Formalize the rule in code</td></tr>
-</table>
-<h2>Checkpoint</h2>
-<p>At this point you should know:</p>
-<ul>
-<li>explain the input -> decision -> output flow without ambiguity,</li>
-<li>isolate a real error case and predict its exit,</li>
-<li>identify where to add a test without breaking the nominal.</li>
-</ul>
-<h2>What I would do in code review</h2>
-<ol>
-<li>Verify that input tests are placed before sensitive operations.</li>
-<li>Verify that the business decision is separated from the output projection.</li>
-<li>Verify a nominal test and a limit test that are actually executable.</li>
-</ol>
+<h2>Global explanation</h2>
+<p>The chapter should always return to the same core question: what contract does this construct give to the full block? That is the reason every page still needs one complete, testable example.</p>
+<h2>Short exercise</h2>
+<p>Take the coherent example and rewrite one line so that the chapter&#x27;s central contract becomes even more explicit.</p>
+<section class="chapter-cta"><h2>Next best action</h2><p>Keep the example small, reproduce it locally, then continue to the full chapter if you need the broader context.</p></section>
 </article>
 </main>
 <footer class="site-footer">
@@ -388,6 +54,5 @@ entry main at core/app {
 </div>
 <script type="module" src="../../../js/book-learning.js"></script>
 <script type="module" src="../../../js/main.js"></script>
-<script type="module" src="js/main.js"></script>
 </body>
 </html>
