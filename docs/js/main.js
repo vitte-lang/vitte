@@ -38,6 +38,12 @@
     nav.addEventListener("click", function (e) { if (!(e.target instanceof Element) || !e.target.closest("a") || !window.matchMedia("(max-width: 768px)").matches) return; btn.setAttribute("aria-expanded", "false"); nav.classList.remove("is-open"); });
   }
 
+  function syncHeaderOffset() {
+    var header = q(".site-header");
+    if (!header) return;
+    document.documentElement.style.setProperty("--site-header-offset", header.offsetHeight + "px");
+  }
+
   function wrapTables() { qa(".doc-content table").forEach(function (t) { if (t.parentElement && t.parentElement.classList.contains("table-scroll")) return; var d = document.createElement("div"); d.className = "table-scroll"; t.parentNode.insertBefore(d, t); d.appendChild(t); }); }
 
   function addFloatingToc() {
@@ -108,7 +114,9 @@
     });
   }
 
-  function setupContrastToggle() { var KEY = "docs-contrast", header = q(".site-header"); if (!header) return; var btn = document.createElement("button"); btn.className = "contrast-toggle"; btn.type = "button"; btn.textContent = "Contraste"; if (localStorage.getItem(KEY) === "high") document.body.classList.add("high-contrast"); btn.addEventListener("click", function () { document.body.classList.toggle("high-contrast"); localStorage.setItem(KEY, document.body.classList.contains("high-contrast") ? "high" : "normal"); }); header.appendChild(btn); }
+  function removeSkipLink() {
+    qa(".skip-link").forEach(function (link) { link.remove(); });
+  }
 
   function tokenize(s) { return (s || "").toLowerCase().trim().replace(/\s+/g, " "); }
   function dedupePages(pages) {
@@ -205,7 +213,7 @@
     controls.appendChild(sectionSel); controls.appendChild(langSel);
     var results = document.createElement("div"); results.className = "doc-search-results"; results.hidden = true;
     var footer = document.createElement("div"); footer.className = "doc-search-footer"; footer.hidden = true;
-    form.appendChild(input); form.appendChild(controls); form.appendChild(results); form.appendChild(footer); header.appendChild(form);
+    form.appendChild(input); form.appendChild(controls); form.appendChild(results); form.appendChild(footer); header.appendChild(form); syncHeaderOffset();
 
     var pages = [], active = -1;
     function syncURL(qv, section, lang) {
@@ -250,7 +258,7 @@
       active = -1;
     }
 
-    loadSearchPages().then(function (loaded) { pages = loaded; applyFromURL(); render(); }).catch(function () { pages = []; });
+    loadSearchPages().then(function (loaded) { pages = loaded; applyFromURL(); render(); syncHeaderOffset(); }).catch(function () { pages = []; });
 
     function focusMove(delta) {
       var items = qa(".doc-search-item", results); if (!items.length) return;
@@ -407,6 +415,7 @@
   }
 
   document.addEventListener("DOMContentLoaded", function () {
-    registerServiceWorker(); addBreadcrumbs(); linkifyDocReferences(); setupContrastToggle(); setupGlobalSearch(); setupSearchPage(); setupLanguageSwitcher(); setupTextSizeToggle(); setupMobileMenu(); wrapTables(); addFloatingToc(); addBackToTop(); lazyLoadDecorativeSvg(); addSmartPagination();
+    removeSkipLink(); registerServiceWorker(); addBreadcrumbs(); linkifyDocReferences(); setupGlobalSearch(); setupSearchPage(); setupLanguageSwitcher(); setupTextSizeToggle(); setupMobileMenu(); wrapTables(); addFloatingToc(); addBackToTop(); lazyLoadDecorativeSvg(); addSmartPagination(); syncHeaderOffset();
+    window.addEventListener("resize", syncHeaderOffset);
   });
 })();
