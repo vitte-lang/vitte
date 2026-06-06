@@ -7,9 +7,12 @@ import sys
 
 ROOT = Path(__file__).resolve().parent.parent
 DOCS = [
-    ROOT / "ARCHITECTURE_COMPLETE.md",
-    ROOT / "ARCHITECTURE_INDEX.md",
-    ROOT / "DELIVERY_SUMMARY.md",
+    ROOT / "docs" / "compiler" / "architecture.md",
+    ROOT / "docs" / "compiler" / "pipeline.md",
+    ROOT / "docs" / "COMPILER_DRIVER_MIGRATION.md",
+    ROOT / "docs" / "bootstrap_contracts.md",
+    ROOT / "docs" / "bootstrap_migration_checklist.md",
+    ROOT / "docs" / "MAKE_TARGETS.md",
 ]
 
 FORBIDDEN = [
@@ -27,11 +30,10 @@ FORBIDDEN = [
 ]
 
 REQUIRED = [
-    "src/vitte/compiler/frontend/parse/parser.vit",
-    "src/vitte/compiler/frontend/ast/",
-    "src/vitte/compiler/ir/ast.vit",
-    "make grammar-alignment-test",
-    "make roadmap-ecosystem-gate",
+    "toolchain/seed/vittec0.seed",
+    "make bootstrap-native-contract",
+    "make bootstrap-verify",
+    "make build",
 ]
 
 
@@ -39,6 +41,10 @@ def main() -> int:
     failed = False
     combined = ""
     for doc in DOCS:
+        if not doc.is_file():
+            print(f"[architecture-docs][error] missing documentation file `{doc.relative_to(ROOT)}`", file=sys.stderr)
+            failed = True
+            continue
         text = doc.read_text(encoding="utf-8")
         combined += text + "\n"
         for forbidden in FORBIDDEN:
