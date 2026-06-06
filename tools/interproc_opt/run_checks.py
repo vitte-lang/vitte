@@ -6,9 +6,14 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-MOD = ROOT / 'src' / 'vitte' / 'compiler' / 'optimizations' / 'interproc' / 'mod.vit'
-SMOKE = ROOT / 'src' / 'vitte' / 'compiler' / 'optimizations' / 'interproc' / 'tests' / 'smoke.vit'
 FIXTURES = ROOT / 'tests' / 'interproc'
+
+CONTRACT_FILES = {
+    'codegen': ROOT / 'src' / 'vitte' / 'compiler' / 'backend' / 'codegen' / 'mod.vit',
+    'backend_pipeline': ROOT / 'src' / 'vitte' / 'compiler' / 'backend' / 'pipeline.vit',
+    'verified_pipeline': ROOT / 'src' / 'vitte' / 'compiler' / 'backend' / 'verified_pipeline.vit',
+    'driver_compile': ROOT / 'src' / 'vitte' / 'compiler' / 'driver' / 'compile.vit',
+}
 
 METRIC_RE = re.compile(
     r"metrics:\s*devirt_sites=(\d+)\s+specialized_functions=(\d+)\s+cross_module_rewrites=(\d+)\s+lto_internalized=(\d+)"
@@ -22,20 +27,33 @@ REQUIRED_FIXTURES = {
     'edge_recursive_chain.vit',
 }
 
-REQUIRED_SYMBOLS = [
-    'baseline_metrics',
-    'devirtualization',
-    'function_specialization',
-    'whole_program_optimization',
-    'link_time_optimization',
-    'run_all_interproc_passes',
-]
-
-REQUIRED_SMOKE_SYMBOLS = [
-    'smoke_all_interproc_passes_present',
-    'smoke_interproc_passes_changed',
-    'smoke_interproc_metric_thresholds',
-]
+REQUIRED_SYMBOLS = {
+    'codegen': [
+        'run_codegen_x86_64',
+        'run_codegen_llvm_with_profile',
+        'enterprise-lto',
+        'instruction_selected',
+        'registers_allocated',
+    ],
+    'backend_pipeline': [
+        'compile_to_valid_ir_with_profile_and_packaging',
+        'run_codegen_llvm_with_profile',
+        'run_codegen_x86_64',
+        'artifact_is_valid',
+    ],
+    'verified_pipeline': [
+        'verify_backend_pipeline',
+        'check_mir_backend_invariants',
+        'check_object_validation',
+        'artifact_is_valid',
+    ],
+    'driver_compile': [
+        'profile_lto_enabled',
+        'enterprise-lto',
+        'config.lto.inert',
+        'compile_to_valid_ir_with_profile_and_packaging',
+    ],
+}
 
 
 def fail(msg: str) -> int:
@@ -44,8 +62,9 @@ def fail(msg: str) -> int:
 
 
 def main() -> int:
-    if not MOD.exists() or not SMOKE.exists():
-        return fail('missing interproc optimization files')
+    missing_contract_files = [name for name, path in CONTRACT_FILES.items() if not path.exists()]
+    if missing_contract_files:
+        return fail(f'missing interproc optimization files: {", ".join(sorted(missing_contract_files))}')
     if not FIXTURES.exists():
         return fail('missing tests/interproc fixtures')
 
@@ -54,15 +73,16 @@ def main() -> int:
     if missing:
         return fail(f'missing fixtures: {", ".join(missing)}')
 
-    text = MOD.read_text(encoding='utf-8')
-    for sym in REQUIRED_SYMBOLS:
-        if sym not in text:
-            return fail(f'missing symbol in mod.vit: {sym}')
+    for name, path in CONTRACT_FILES.items():
+        text = path.read_text(encoding='utf-8')
+        for sym in REQUIRED_SYMBOLS[name]:
+            if sym not in text:
+                return fail(f'missing symbol in {path.relative_to(ROOT)}: {sym}')
 
-    smoke_text = SMOKE.read_text(encoding='utf-8')
-    for sym in REQUIRED_SMOKE_SYMBOLS:
-        if sym not in smoke_text:
-            return fail(f'missing symbol in smoke.vit: {sym}')
+    if 'enterprise-lto' not in CONTRACT_FILES['codegen'].read_text(encoding='utf-8'):
+        return fail('missing LTO codegen profile coverage')
+    if 'profile_lto_enabled' not in CONTRACT_FILES['driver_compile'].read_text(encoding='utf-8'):
+        return fail('missing driver LTO profile coverage')
 
     fixtures = sorted(FIXTURES.glob('*.vit'))
     if len(fixtures) < 5:
