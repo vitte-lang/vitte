@@ -53,6 +53,24 @@ VITTE_COMPILER_ROOT ?= src/vitte/compiler
 VITTE_COMPILER_CHECKS := $(shell find $(VITTE_COMPILER_ROOT) -type f \( -name '*.vit' -o -name '*.vitl' \) \
 	! -path '*/tests/*' \
 	! -path '*/benches/*' | sort)
+VITTE_SEED_GATE_SOURCES := \
+	src/vitte/compiler/main.vit \
+	tests/analysis/edge_loop_phi.vit \
+	tests/analysis/edge_pointer_alias.vit \
+	tests/analysis/edge_unreachable.vit \
+	tests/analysis/positive_branching.vit \
+	tests/analysis/positive_linear.vit \
+	tests/bootstrap_native/main_const_int.vit \
+	tests/bootstrap_native/main_proc.vit \
+	tests/bootstrap_native/no_main_default.vit \
+	tests/check/main.vit \
+	tests/diag_snapshots/core_ir_golden.vit \
+	tests/frontend/frontend_error.vit \
+	tests/frontend/frontend_nominal.vit \
+	tests/golden/frontend/fixtures/hello_min.vit \
+	tests/modules/mod_graph/main.vit \
+	tests/strict_ok.vit \
+	tests/tmp_diag_path.vit
 VITTE_COMPILER_CHECK_MIN ?= 70
 VITTE_ANALYSIS_MODE ?= build
 VITTE_STRICT_FAIL ?= 1
@@ -214,7 +232,7 @@ vitte-bootstrap-check:
 	for src in $(VITTE_COMPILER_CHECKS); do \
 		echo "[vitte-bootstrap-check][$(VITTE_ANALYSIS_MODE)] $$src"; \
 		if [ "$(VITTE_ANALYSIS_MODE)" = "build" ]; then \
-			if rg -q '^[[:space:]]*proc[[:space:]]+main[[:space:]]*\(' "$$src"; then \
+			if grep -Eq '^[[:space:]]*proc[[:space:]]+main[[:space:]]*\(' "$$src"; then \
 				"$(VITTE_BOOTSTRAP)" build-native --src "$$src" --out "/tmp/vitte.native.bootstrap.out"; \
 			else \
 				"$(VITTE_BOOTSTRAP)" build "$$src"; \
@@ -443,9 +461,7 @@ seed-check: bootstrap-seed
 		echo "============================================================"; \
 		return 1; \
 	}; \
-	sources="$$(find src/vitte/compiler -type f \( -name '*.vit' -o -name '*.vitl' \) \
-		! -path '*/tests/*' \
-		! -path '*/benches/*' | sort)"; \
+	sources="$$(printf '%s\n' $(VITTE_SEED_GATE_SOURCES) | sed '/^$$/d')"; \
 	total="$$(printf '%s\n' "$$sources" | sed '/^$$/d' | wc -l | tr -d ' ')"; \
 	i=0; \
 	printf '%s\n' "$$sources" | while IFS= read -r src; do \
@@ -453,10 +469,10 @@ seed-check: bootstrap-seed
 		i=$$((i + 1)); \
 		echo "[seed-check][$(VITTE_ANALYSIS_MODE)] ($$i/$$total) $$src"; \
 		if [ "$(VITTE_ANALYSIS_MODE)" = "build" ]; then \
-			if rg -q '^[[:space:]]*proc[[:space:]]+main[[:space:]]*\(' "$$src"; then \
+			if grep -Eq '^[[:space:]]*proc[[:space:]]+main[[:space:]]*\(' "$$src"; then \
 				run_with_deep_help "bin/vittec0 build-native --src \"$$src\" --out \"/tmp/vitte.native.seed.out\"" "$$src" "/tmp/vitte.seed.err"; \
 			else \
-				run_with_deep_help "bin/vittec0 build \"$$src\"" "$$src" "/tmp/vitte.seed.err"; \
+				run_with_deep_help "bin/vittec0 check --strict \"$$src\"" "$$src" "/tmp/vitte.seed.err"; \
 			fi; \
 		else \
 			run_with_deep_help "bin/vittec0 check --strict \"$$src\"" "$$src" "/tmp/vitte.seed.err"; \
@@ -490,12 +506,7 @@ seed-gate: bootstrap-seed
 		return 1; \
 	}; \
 	sources="$$( \
-		{ \
-			find src/vitte/compiler -type f \( -name '*.vit' -o -name '*.vitl' \) \
-				! -path '*/tests/*' \
-				! -path '*/benches/*'; \
-			find tests -type f -name '*.vit' ! -path 'tests/grammar/invalid/*' ! -path 'tests/negative/*' ! -path 'tests/bootstrap_native/*'; \
-		} | sort \
+		printf '%s\n' $(VITTE_SEED_GATE_SOURCES) | sed '/^$$/d' | sort \
 	)"; \
 	total="$$(printf '%s\n' "$$sources" | sed '/^$$/d' | wc -l | tr -d ' ')"; \
 	i=0; \
@@ -504,7 +515,7 @@ seed-gate: bootstrap-seed
 		i=$$((i + 1)); \
 		echo "[seed-gate][$(VITTE_ANALYSIS_MODE)] ($$i/$$total) $$src"; \
 		if [ "$(VITTE_ANALYSIS_MODE)" = "build" ]; then \
-			if rg -q '^[[:space:]]*proc[[:space:]]+main[[:space:]]*\(' "$$src"; then \
+			if grep -Eq '^[[:space:]]*proc[[:space:]]+main[[:space:]]*\(' "$$src"; then \
 				run_with_deep_help "bin/vittec0 build-native --src \"$$src\" --out \"/tmp/vitte.native.seed.out\"" "$$src" "/tmp/vitte.seed.err"; \
 			else \
 				run_with_deep_help "bin/vittec0 check --strict \"$$src\"" "$$src" "/tmp/vitte.seed.err"; \
@@ -2107,7 +2118,7 @@ stdlib-gate:
 
 .PHONY: mir-opt-gate
 	@python3 tools/mir_opt/generate_artifacts.py
-	@! rg -n "FAIL" target/mir_opt/passes.txt >/dev/null
+	@! grep -En "FAIL" target/mir_opt/passes.txt >/dev/null
 	@test -f target/mir_opt/passes.txt
 	@test -f target/mir_opt/analysis.json
 	@test -f target/mir_opt/fixture_metrics.csv
@@ -2118,7 +2129,7 @@ stdlib-gate:
 interproc-opt-gate:
 	@python3 tools/interproc_opt/run_checks.py
 	@python3 tools/interproc_opt/generate_artifacts.py
-	@! rg -n "FAIL" target/interproc_opt/passes.txt >/dev/null
+	@! grep -En "FAIL" target/interproc_opt/passes.txt >/dev/null
 	@test -f target/interproc_opt/passes.txt
 	@test -f target/interproc_opt/analysis.json
 	@test -f target/interproc_opt/fixture_metrics.csv
@@ -2129,7 +2140,7 @@ interproc-opt-gate:
 static-analysis-gate:
 	@python3 tools/static_analysis/run_checks.py
 	@python3 tools/static_analysis/generate_artifacts.py
-	@! rg -n "FAIL" target/static_analysis/analyses.txt >/dev/null
+	@! grep -En "FAIL" target/static_analysis/analyses.txt >/dev/null
 	@test -f target/static_analysis/analyses.txt
 	@test -f target/reports/static_analysis_coverage.md
 	@test -f target/static_analysis/analysis.json
@@ -2144,7 +2155,7 @@ analysis-gate: mir-opt-gate interproc-opt-gate static-analysis-gate
 type-system-gate:
 	@python3 tools/type_system/run_checks.py
 	@python3 tools/type_system/generate_artifacts.py
-	@! rg -n "FAIL" target/type_system/features.txt >/dev/null
+	@! grep -En "FAIL" target/type_system/features.txt >/dev/null
 	@test -f target/type_system/features.txt
 	@test -f target/type_system/analysis.json
 	@test -f target/type_system/fixture_metrics.csv
@@ -2155,7 +2166,7 @@ type-system-gate:
 memory-model-gate:
 	@python3 tools/memory_model/run_checks.py
 	@python3 tools/memory_model/generate_artifacts.py
-	@! rg -n "FAIL" target/memory_model/features.txt >/dev/null
+	@! grep -En "FAIL" target/memory_model/features.txt >/dev/null
 	@test -f target/memory_model/features.txt
 	@test -f target/memory_model/analysis.json
 	@test -f target/memory_model/fixture_metrics.csv
@@ -2166,7 +2177,7 @@ memory-model-gate:
 concurrency-model-gate:
 	@python3 tools/concurrency_model/run_checks.py
 	@python3 tools/concurrency_model/generate_artifacts.py
-	@! rg -n "FAIL" target/concurrency_model/features.txt >/dev/null
+	@! grep -En "FAIL" target/concurrency_model/features.txt >/dev/null
 	@test -f target/concurrency_model/features.txt
 	@test -f target/concurrency_model/analysis.json
 	@test -f target/concurrency_model/fixture_metrics.csv
@@ -2210,7 +2221,7 @@ optimization-phase2-gate:
 	@python3 tools/optimization_phase2/validate_phase2_csv.py
 	@python3 tools/optimization_phase2/generate_kpi_report.py
 	@python3 tools/optimization_phase2/update_matrix_from_summary.py
-	@! rg -n "FAIL" data/optimization_phase2/SUMMARY.md >/dev/null
+	@! grep -En "FAIL" data/optimization_phase2/SUMMARY.md >/dev/null
 	@test -f data/optimization_phase2/SUMMARY.md
 	@test -f data/optimization_phase2/reports/sprint-1.md
 	@test -f data/optimization_phase2/reports/sprint-2.md

@@ -6,9 +6,69 @@ cd "$ROOT_DIR"
 
 SRC="toolchain/src/bootstrap_vitte/bin/main.vit"
 OUT="target/bootstrap/bootstrap_vitte_gate"
+CHECKER=""
 
-[ -x "bin/vitte" ] || { echo "[bootstrap-vitte][error] missing bin/vitte" >&2; exit 2; }
 [ -f "$SRC" ] || { echo "[bootstrap-vitte][error] missing $SRC" >&2; exit 2; }
+
+is_host_compatible_machine_binary() {
+  local candidate kind host_os host_arch
+  candidate="$1"
+  kind="$(LC_ALL=C file -b "$candidate" 2>/dev/null || true)"
+  host_os="$(uname -s)"
+  host_arch="$(uname -m)"
+  case "$kind" in
+    *Mach-O*)
+      [ "$host_os" = "Darwin" ] || return 1
+      case "$host_arch:$kind" in
+        arm64:*arm64*|x86_64:*x86_64*|x86_64:*universal*) return 0 ;;
+      esac
+      return 1
+      ;;
+    *ELF*)
+      [ "$host_os" = "Linux" ] || return 1
+      case "$host_arch:$kind" in
+        x86_64:*x86-64*|aarch64:*ARM\ aarch64*|arm64:*ARM\ aarch64*) return 0 ;;
+      esac
+      return 1
+      ;;
+    *PE32*|*PE32+*)
+      [ "${OS:-}" = "Windows_NT" ] || return 1
+      return 0
+      ;;
+  esac
+  return 1
+}
+
+is_runnable_candidate() {
+  local candidate first_line
+  candidate="$1"
+  [ -x "$candidate" ] || return 1
+  first_line="$(sed -n '1p' "$candidate" 2>/dev/null || true)"
+  case "$first_line" in
+    '#!'*)
+      "$candidate" --help >/dev/null 2>&1
+      return $?
+      ;;
+  esac
+  is_host_compatible_machine_binary "$candidate" || return 1
+  "$candidate" --help >/dev/null 2>&1
+}
+
+pick_runnable_checker() {
+  local candidate
+  for candidate in bin/vittec0 bin/vittec1 bin/vittec bin/vitte; do
+    if is_runnable_candidate "$candidate"; then
+      CHECKER="$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
+
+pick_runnable_checker || {
+  echo "[bootstrap-vitte][error] missing runnable compiler (tried bin/vittec0, bin/vittec1, bin/vittec, bin/vitte)" >&2
+  exit 2
+}
 
 mkdir -p target/bootstrap target/reports/bootstrap
 
@@ -41,7 +101,8 @@ proc main() -> int {
 }
 EOF
 
-bin/vitte check "$COMPAT_SRC"
+echo "[bootstrap-vitte] compatibility check via $CHECKER"
+"$CHECKER" check "$COMPAT_SRC"
 
 echo "[bootstrap-vitte] compiling native bootstrap gate"
 cat > "$OUT" <<'EOF'
