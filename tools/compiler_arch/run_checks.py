@@ -13,6 +13,19 @@ def fail(msg: str) -> int:
     return 1
 
 
+def pick_checker() -> Path | None:
+    for rel in ("bin/vitte", "bin/vittec", "bin/vittec1", "bin/vittec0"):
+        candidate = ROOT / rel
+        if not candidate.exists():
+            continue
+        try:
+            subprocess.run([str(candidate), "--help"], check=True, cwd=ROOT, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except (OSError, subprocess.CalledProcessError):
+            continue
+        return candidate
+    return None
+
+
 def main() -> int:
     required = [
         ROOT / "src" / "vitte" / "compiler" / "middle" / "mod.vit",
@@ -29,18 +42,30 @@ def main() -> int:
         ROOT / "src" / "vitte" / "compiler" / "middle" / "dataflow" / "cfg.vit",
         ROOT / "src" / "vitte" / "compiler" / "middle" / "dataflow" / "liveness.vit",
         ROOT / "src" / "vitte" / "compiler" / "middle" / "tests" / "smoke.vit",
-        ROOT / "src" / "vitte" / "compiler" / "codegen" / "mod.vit",
-        ROOT / "src" / "vitte" / "compiler" / "codegen" / "vitte" / "mod.vit",
-        ROOT / "src" / "vitte" / "compiler" / "codegen" / "vitte" / "lowering.vit",
-        ROOT / "src" / "vitte" / "compiler" / "codegen" / "vitte" / "emitter.vit",
-        ROOT / "src" / "vitte" / "compiler" / "codegen" / "vitte" / "metadata.vit",
-        ROOT / "src" / "vitte" / "compiler" / "codegen" / "llvm" / "mod.vit",
-        ROOT / "src" / "vitte" / "compiler" / "codegen" / "llvm" / "pipeline.vit",
-        ROOT / "src" / "vitte" / "compiler" / "codegen" / "llvm" / "targets.vit",
-        ROOT / "src" / "vitte" / "compiler" / "codegen" / "wasm" / "mod.vit",
-        ROOT / "src" / "vitte" / "compiler" / "codegen" / "wasm" / "pipeline.vit",
-        ROOT / "src" / "vitte" / "compiler" / "codegen" / "wasm" / "wasi.vit",
-        ROOT / "src" / "vitte" / "compiler" / "codegen" / "tests" / "smoke.vit",
+        ROOT / "src" / "vitte" / "compiler" / "backend" / "mod.vit",
+        ROOT / "src" / "vitte" / "compiler" / "backend" / "pipeline.vit",
+        ROOT / "src" / "vitte" / "compiler" / "backend" / "native_bridge.vit",
+        ROOT / "src" / "vitte" / "compiler" / "backend" / "verified_pipeline.vit",
+        ROOT / "src" / "vitte" / "compiler" / "backend" / "codegen" / "mod.vit",
+        ROOT / "src" / "vitte" / "compiler" / "backend" / "codegen" / "emitter.vit",
+        ROOT / "src" / "vitte" / "compiler" / "backend" / "codegen" / "instruction_select.vit",
+        ROOT / "src" / "vitte" / "compiler" / "backend" / "codegen" / "machine.vit",
+        ROOT / "src" / "vitte" / "compiler" / "backend" / "codegen" / "object.vit",
+        ROOT / "src" / "vitte" / "compiler" / "backend" / "codegen" / "register_alloc.vit",
+        ROOT / "src" / "vitte" / "compiler" / "backend" / "ir" / "mod.vit",
+        ROOT / "src" / "vitte" / "compiler" / "backend" / "ir" / "ir.vit",
+        ROOT / "src" / "vitte" / "compiler" / "backend" / "ir" / "verify.vit",
+        ROOT / "src" / "vitte" / "compiler" / "backend" / "link" / "mod.vit",
+        ROOT / "src" / "vitte" / "compiler" / "backend" / "link" / "artifact.vit",
+        ROOT / "src" / "vitte" / "compiler" / "backend" / "link" / "linker.vit",
+        ROOT / "src" / "vitte" / "compiler" / "backend" / "link" / "symbols.vit",
+        ROOT / "src" / "vitte" / "compiler" / "backend" / "target" / "mod.vit",
+        ROOT / "src" / "vitte" / "compiler" / "backend" / "target" / "config.vit",
+        ROOT / "src" / "vitte" / "compiler" / "backend" / "target" / "features.vit",
+        ROOT / "src" / "vitte" / "compiler" / "backend" / "target" / "layout.vit",
+        ROOT / "src" / "vitte" / "compiler" / "backend" / "target" / "triple.vit",
+        ROOT / "src" / "vitte" / "compiler" / "backend" / "target" / "x86_64.vit",
+        ROOT / "src" / "vitte" / "compiler" / "backend" / "target" / "riscv64.vit",
     ]
     for p in required:
         if not p.exists():
@@ -53,9 +78,9 @@ def main() -> int:
         if "rustc" in txt:
             return fail(f"forbidden token `rustc` in {p.relative_to(ROOT)}")
 
-    checker = ROOT / "bin" / "vitte"
-    if not checker.exists():
-        return fail("missing checker: bin/vitte")
+    checker = pick_checker()
+    if checker is None:
+        return fail("missing runnable checker: tried bin/vitte, bin/vittec, bin/vittec1, bin/vittec0")
 
     for p in required:
         subprocess.run([str(checker), "check", str(p)], check=True, cwd=ROOT)

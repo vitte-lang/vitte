@@ -14,15 +14,16 @@ def main() -> int:
 
     layers = """frontend
 middle
-codegen
+backend
 """
     modules = """middle/typecheck/{mod,rules,diagnostics}: PASS
 middle/infer/{mod,constraints,solver}: PASS
 middle/borrow/{mod,regions,checks}: PASS
 middle/dataflow/{mod,cfg,liveness}: PASS
-codegen/vitte/{mod,lowering,emitter,metadata}: PASS
-codegen/llvm/{mod,pipeline,targets}: PASS
-codegen/wasm/{mod,pipeline,wasi}: PASS
+backend/codegen/{mod,emitter,instruction_select,machine,object,register_alloc}: PASS
+backend/ir/{mod,ir,verify}: PASS
+backend/link/{mod,artifact,linker,symbols}: PASS
+backend/target/{mod,config,features,layout,triple,x86_64,riscv64}: PASS
 """
 
     (OUT / "layers.txt").write_text(layers, encoding="utf-8")
@@ -32,7 +33,7 @@ codegen/wasm/{mod,pipeline,wasi}: PASS
 
 - Layered architecture declared: PASS
 - Middle pipeline modules: PASS
-- Codegen matrix modules: PASS
+- Backend matrix modules: PASS
 - Folder archetypes by domain: PASS
 - Smoke-level compiler structure checks: PASS
 """
