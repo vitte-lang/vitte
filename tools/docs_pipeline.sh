@@ -5,6 +5,7 @@ PHASE="${1:-phase1}"
 
 echo "[docs] build core"
 python3 tools/build_docs_site.py
+python3 tools/generate_stdlib_reference_pages.py
 
 echo "[docs] build grammar extras"
 python3 tools/build_grammar_extras.py
