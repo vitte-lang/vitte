@@ -1,0 +1,101 @@
+space vitte/compiler/tests/const_eval_tests
+
+use vitte/compiler/analysis/const_eval.{ ConstEvalRunResult, run_const_eval, run_const_eval_ast }
+use vitte/compiler/frontend/pipeline.{ FrontendOutput, frontend_run }
+
+const VERSION_TEXT: string = "analysis const_eval tests 0.2.0"
+const BANNER_TEXT: string = "analysis const_eval tests"
+
+proc has_code(result: ConstEvalRunResult, code: string) -> bool {
+  let i: u64 = 0;
+  while i < len(result.diagnostics) {
+    if result.diagnostics[i].code == code {
+      give true;
+    }
+    set i = i + 1;
+  }
+  give false;
+}
+
+proc test_valid_arithmetic_chain() -> bool {
+  let source: string = "const A = 2;\nconst B = A + 3;\nconst C = B * 4;\nstatic_assert(C == 20);\n";
+  let result: ConstEvalRunResult = run_const_eval("const_eval_valid_chain.vit", source);
+  give result.valid and len(result.bindings) == 3 and result.assert_count == 1;
+}
+
+proc test_division_by_zero() -> bool {
+  let source: string = "const X = 8 / 0;\n";
+  let result: ConstEvalRunResult = run_const_eval("const_eval_div_zero.vit", source);
+  give has_code(result, "CONST_EVAL_E_DIVISION_BY_ZERO");
+}
+
+proc test_unknown_name() -> bool {
+  let source: string = "const X = Y + 1;\n";
+  let result: ConstEvalRunResult = run_const_eval("const_eval_unknown_name.vit", source);
+  give has_code(result, "CONST_EVAL_E_UNKNOWN_NAME");
+}
+
+proc test_non_const_call() -> bool {
+  let source: string = "const X = make_value();\n";
+  let result: ConstEvalRunResult = run_const_eval("const_eval_non_const_call.vit", source);
+  give has_code(result, "CONST_EVAL_E_NON_CONST_CALL");
+}
+
+proc test_static_assert_failure() -> bool {
+  let source: string = "const A = 1 + 1;\nstatic_assert(A == 3, \"bad math\");\n";
+  let result: ConstEvalRunResult = run_const_eval("const_eval_assert_fail.vit", source);
+  give has_code(result, "CONST_EVAL_E_STATIC_ASSERT_FAILED");
+}
+
+proc test_cycle_detection() -> bool {
+  let source: string = "const A = B + 1;\nconst B = A + 1;\n";
+  let result: ConstEvalRunResult = run_const_eval("const_eval_cycle.vit", source);
+  give has_code(result, "CONST_EVAL_E_CYCLE");
+}
+
+proc test_ast_const_eval_path() -> bool {
+  let source: string = "const A = 2;\nconst B = A + 3;\nstatic_assert(B == 5);\n";
+  let fe: FrontendOutput = frontend_run("const_eval_ast.vit", source);
+  let result: ConstEvalRunResult = run_const_eval_ast("const_eval_ast.vit", fe.ast_root);
+  give fe.valid and result.valid and len(result.bindings) == 2 and result.assert_count == 1;
+}
+
+proc run_all_tests() -> int {
+  let failures: int = 0;
+  if not test_valid_arithmetic_chain() {
+    set failures = failures + 1;
+  }
+  if not test_division_by_zero() {
+    set failures = failures + 1;
+  }
+  if not test_unknown_name() {
+    set failures = failures + 1;
+  }
+  if not test_non_const_call() {
+    set failures = failures + 1;
+  }
+  if not test_static_assert_failure() {
+    set failures = failures + 1;
+  }
+  if not test_cycle_detection() {
+    set failures = failures + 1;
+  }
+  if not test_ast_const_eval_path() {
+    set failures = failures + 1;
+  }
+  give failures;
+}
+
+proc version_text() -> string {
+  give VERSION_TEXT
+}
+
+proc banner_text() -> string {
+  give BANNER_TEXT
+}
+
+proc main(args: list[string]) -> int {
+  give run_all_tests()
+}
+
+export *

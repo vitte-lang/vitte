@@ -1,0 +1,761 @@
+space vitte/compiler/backend/ir
+
+use vitte/compiler/frontend/ast/node.{ AstSpan, ast_span_empty }
+use vitte/compiler/backend/target/triple.{ TargetTriple, triple_matches, triple_text, triple_aarch64_linux, triple_i386_linux, triple_riscv64_linux, triple_x86_64_linux }
+use vitte/compiler/backend/target/layout.{ data_layout_for_triple, pointer_width_for_arch }
+use vitte/compiler/backend/target/features.{ default_feature_set }
+
+pick IrUnitState {
+  Invalid,
+  Empty,
+  Lowered,
+  Verified,
+  Emitted,
+  Linked,
+}
+
+pick IrModuleKind {
+  Binary,
+  Library,
+  Object,
+}
+
+pick IrLinkage {
+  Internal,
+  Private,
+  Exported,
+  Imported,
+  External,
+}
+
+pick IrVisibility {
+  Private,
+  Package,
+  Public,
+}
+
+pick IrValueKind {
+  Invalid,
+  Place,
+  Constant,
+  Temporary,
+  FunctionRef,
+  BlockRef,
+}
+
+pick IrInstructionKind {
+  Invalid,
+  Assign,
+  Binary,
+  Call,
+  BorrowShared,
+  BorrowMut,
+  Assert,
+  ReturnValue,
+  Jump,
+  Branch,
+  Switch,
+  Return,
+  Unreachable,
+}
+
+form IrTarget {
+  triple: TargetTriple
+  data_layout: string
+  pointer_width: u64
+  little_endian: bool
+  feature_set: [string]
+  valid: bool
+}
+
+form IrValue {
+  id: u64
+  kind: IrValueKind
+  text: string
+  name: string
+  type_name: string
+  place: string
+  constant: string
+  external: bool
+  valid: bool
+}
+
+form IrInstruction {
+  id: u64
+  kind: IrInstructionKind
+  text: string
+  operator: string
+  dest: IrValue
+  args: [IrValue]
+  target_block: u64
+  else_block: u64
+  switch_values: [string]
+  switch_targets: [u64]
+  span: AstSpan
+  valid: bool
+}
+
+form IrBlock {
+  id: u64
+  label: string
+  instructions: [IrInstruction]
+  terminator: IrInstruction
+  valid: bool
+}
+
+form IrFunction {
+  id: u64
+  name: string
+  module_name: string
+  linkage: IrLinkage
+  visibility: IrVisibility
+  is_entry: bool
+  span: AstSpan
+  blocks: [IrBlock]
+  valid: bool
+}
+
+form IrModule {
+  id: u64
+  name: string
+  source_path: string
+  kind: IrModuleKind
+  target: IrTarget
+  functions: [IrFunction]
+  imports: [string]
+  external_symbols: [string]
+  exports: [string]
+  valid: bool
+}
+
+form IrUnit {
+  source_path: string
+  target: IrTarget
+  modules: [IrModule]
+  entry_function_id: u64
+  state: IrUnitState
+  valid: bool
+}
+
+proc span_empty() -> AstSpan {
+  give ast_span_empty();
+}
+
+proc target_native_x86_64_linux() -> IrTarget {
+  let triple: TargetTriple = triple_x86_64_linux();
+  give IrTarget {
+    triple: triple,
+    data_layout: data_layout_for_triple(triple),
+    pointer_width: pointer_width_for_arch(triple.arch),
+    little_endian: true,
+    feature_set: default_feature_set(triple),
+    valid: true
+  };
+}
+
+proc target_native_aarch64_linux() -> IrTarget {
+  let triple: TargetTriple = triple_aarch64_linux();
+  give IrTarget {
+    triple: triple,
+    data_layout: data_layout_for_triple(triple),
+    pointer_width: pointer_width_for_arch(triple.arch),
+    little_endian: true,
+    feature_set: default_feature_set(triple),
+    valid: true
+  };
+}
+
+proc target_native_riscv64_linux() -> IrTarget {
+  let triple: TargetTriple = triple_riscv64_linux();
+  give IrTarget {
+    triple: triple,
+    data_layout: data_layout_for_triple(triple),
+    pointer_width: pointer_width_for_arch(triple.arch),
+    little_endian: true,
+    feature_set: default_feature_set(triple),
+    valid: true
+  };
+}
+
+proc target_native_i386_linux() -> IrTarget {
+  let triple: TargetTriple = triple_i386_linux();
+  give IrTarget {
+    triple: triple,
+    data_layout: data_layout_for_triple(triple),
+    pointer_width: pointer_width_for_arch(triple.arch),
+    little_endian: true,
+    feature_set: default_feature_set(triple),
+    valid: true
+  };
+}
+
+proc target_from_name(target_name: string) -> IrTarget {
+  if target_name == "x86_64-linux" {
+    give target_native_x86_64_linux();
+  }
+  if target_name == "aarch64-linux" {
+    give target_native_aarch64_linux();
+  }
+  if target_name == "riscv64-linux" {
+    give target_native_riscv64_linux();
+  }
+  if target_name == "i386-linux" {
+    give target_native_i386_linux();
+  }
+  give IrTarget {
+    triple: triple_x86_64_linux(),
+    data_layout: "",
+    pointer_width: 0,
+    little_endian: true,
+    feature_set: [],
+    valid: false
+  };
+}
+
+proc target_name(target: IrTarget) -> string {
+  give target.triple.arch + "-" + target.triple.os;
+}
+
+proc ir_value_invalid() -> IrValue {
+  give IrValue {
+    id: 0,
+    kind: IrValueKind.Invalid,
+    text: "",
+    name: "",
+    type_name: "unknown",
+    place: "",
+    constant: "",
+    external: false,
+    valid: false
+  };
+}
+
+proc value_place(id: u64, name: string, place: string, type_name: string) -> IrValue {
+  give IrValue {
+    id: id,
+    kind: IrValueKind.Place,
+    text: place,
+    name: name,
+    type_name: type_name,
+    place: place,
+    constant: "",
+    external: false,
+    valid: place != ""
+  };
+}
+
+proc value_constant(id: u64, text: string, type_name: string) -> IrValue {
+  give IrValue {
+    id: id,
+    kind: IrValueKind.Constant,
+    text: text,
+    name: "",
+    type_name: type_name,
+    place: "",
+    constant: text,
+    external: false,
+    valid: text != ""
+  };
+}
+
+proc value_function_ref(id: u64, name: string, external: bool) -> IrValue {
+  give IrValue {
+    id: id,
+    kind: IrValueKind.FunctionRef,
+    text: name,
+    name: name,
+    type_name: "fn",
+    place: "",
+    constant: "",
+    external: external,
+    valid: name != ""
+  };
+}
+
+proc instruction_invalid() -> IrInstruction {
+  give IrInstruction {
+    id: 0,
+    kind: IrInstructionKind.Invalid,
+    text: "",
+    operator: "",
+    dest: ir_value_invalid(),
+    args: [],
+    target_block: 0,
+    else_block: 0,
+    switch_values: [],
+    switch_targets: [],
+    span: span_empty(),
+    valid: false
+  };
+}
+
+proc instruction_create(id: u64, kind: IrInstructionKind, text: string, operator: string, dest: IrValue, args: [IrValue], span: AstSpan) -> IrInstruction {
+  give IrInstruction {
+    id: id,
+    kind: kind,
+    text: text,
+    operator: operator,
+    dest: dest,
+    args: args,
+    target_block: 0,
+    else_block: 0,
+    switch_values: [],
+    switch_targets: [],
+    span: span,
+    valid: id > 0 and kind != IrInstructionKind.Invalid
+  };
+}
+
+proc terminator_jump(target_block: u64) -> IrInstruction {
+  let term: IrInstruction = instruction_create(0, IrInstructionKind.Jump, "", "", ir_value_invalid(), [], span_empty());
+  give IrInstruction {
+    id: term.id,
+    kind: term.kind,
+    text: term.text,
+    operator: term.operator,
+    dest: term.dest,
+    args: term.args,
+    target_block: target_block,
+    else_block: 0,
+    switch_values: [],
+    switch_targets: [],
+    span: term.span,
+    valid: target_block > 0
+  };
+}
+
+proc terminator_branch(condition: IrValue, target_block: u64, else_block: u64) -> IrInstruction {
+  let term: IrInstruction = instruction_create(0, IrInstructionKind.Branch, condition.text, "", ir_value_invalid(), [condition], span_empty());
+  give IrInstruction {
+    id: term.id,
+    kind: term.kind,
+    text: term.text,
+    operator: term.operator,
+    dest: term.dest,
+    args: term.args,
+    target_block: target_block,
+    else_block: else_block,
+    switch_values: [],
+    switch_targets: [],
+    span: term.span,
+    valid: condition.valid and target_block > 0 and else_block > 0
+  };
+}
+
+proc terminator_switch(condition: IrValue, switch_values: [string], switch_targets: [u64], else_block: u64) -> IrInstruction {
+  let term: IrInstruction = instruction_create(0, IrInstructionKind.Switch, condition.text, "", ir_value_invalid(), [condition], span_empty());
+  give IrInstruction {
+    id: term.id,
+    kind: term.kind,
+    text: term.text,
+    operator: term.operator,
+    dest: term.dest,
+    args: term.args,
+    target_block: 0,
+    else_block: else_block,
+    switch_values: switch_values,
+    switch_targets: switch_targets,
+    span: term.span,
+    valid: condition.valid and len(switch_values) == len(switch_targets) and else_block > 0
+  };
+}
+
+proc terminator_return() -> IrInstruction {
+  let term: IrInstruction = instruction_create(0, IrInstructionKind.Return, "", "", ir_value_invalid(), [], span_empty());
+  give IrInstruction {
+    id: term.id,
+    kind: term.kind,
+    text: term.text,
+    operator: term.operator,
+    dest: term.dest,
+    args: term.args,
+    target_block: 0,
+    else_block: 0,
+    switch_values: [],
+    switch_targets: [],
+    span: term.span,
+    valid: true
+  };
+}
+
+proc block_create(id: u64, label: string) -> IrBlock {
+  give IrBlock {
+    id: id,
+    label: label,
+    instructions: [],
+    terminator: terminator_return(),
+    valid: id > 0 and label != ""
+  };
+}
+
+proc block_add_instruction(block: IrBlock, instruction: IrInstruction) -> IrBlock {
+  give IrBlock {
+    id: block.id,
+    label: block.label,
+    instructions: block.instructions + [instruction],
+    terminator: block.terminator,
+    valid: block.valid and instruction.valid
+  };
+}
+
+proc block_set_terminator(block: IrBlock, terminator: IrInstruction) -> IrBlock {
+  give IrBlock {
+    id: block.id,
+    label: block.label,
+    instructions: block.instructions,
+    terminator: terminator,
+    valid: block.valid and terminator.valid
+  };
+}
+
+proc function_ref_create(id: u64, name: string, module_name: string, linkage: IrLinkage, visibility: IrVisibility, is_entry: bool, span: AstSpan) -> IrFunction {
+  give IrFunction {
+    id: id,
+    name: name,
+    module_name: module_name,
+    linkage: linkage,
+    visibility: visibility,
+    is_entry: is_entry,
+    span: span,
+    blocks: [],
+    valid: id > 0 and name != "" and module_name != ""
+  };
+}
+
+proc function_add_block(fn0: IrFunction, block: IrBlock) -> IrFunction {
+  give IrFunction {
+    id: fn0.id,
+    name: fn0.name,
+    module_name: fn0.module_name,
+    linkage: fn0.linkage,
+    visibility: fn0.visibility,
+    is_entry: fn0.is_entry,
+    span: fn0.span,
+    blocks: fn0.blocks + [block],
+    valid: fn0.valid and block.valid
+  };
+}
+
+proc module_create(id: u64, name: string, source_path: string, kind: IrModuleKind, target: IrTarget) -> IrModule {
+  give IrModule {
+    id: id,
+    name: name,
+    source_path: source_path,
+    kind: kind,
+    target: target,
+    functions: [],
+    imports: [],
+    external_symbols: [],
+    exports: [],
+    valid: id > 0 and name != "" and target.valid
+  };
+}
+
+proc module_add_function(module0: IrModule, fn0: IrFunction) -> IrModule {
+  let exports: [string] = module0.exports;
+  if fn0.linkage == IrLinkage.Exported {
+    set exports = exports + [fn0.name];
+  }
+  give IrModule {
+    id: module0.id,
+    name: module0.name,
+    source_path: module0.source_path,
+    kind: module0.kind,
+    target: module0.target,
+    functions: module0.functions + [fn0],
+    imports: module0.imports,
+    external_symbols: module0.external_symbols,
+    exports: exports,
+    valid: module0.valid and fn0.valid
+  };
+}
+
+proc module_add_import(module0: IrModule, name: string) -> IrModule {
+  give IrModule {
+    id: module0.id,
+    name: module0.name,
+    source_path: module0.source_path,
+    kind: module0.kind,
+    target: module0.target,
+    functions: module0.functions,
+    imports: module0.imports + [name],
+    external_symbols: module0.external_symbols,
+    exports: module0.exports,
+    valid: module0.valid and name != ""
+  };
+}
+
+proc module_add_export(module0: IrModule, name: string) -> IrModule {
+  give IrModule {
+    id: module0.id,
+    name: module0.name,
+    source_path: module0.source_path,
+    kind: module0.kind,
+    target: module0.target,
+    functions: module0.functions,
+    imports: module0.imports,
+    external_symbols: module0.external_symbols,
+    exports: module0.exports + [name],
+    valid: module0.valid and name != ""
+  };
+}
+
+proc module_add_external_symbol(module0: IrModule, name: string) -> IrModule {
+  give IrModule {
+    id: module0.id,
+    name: module0.name,
+    source_path: module0.source_path,
+    kind: module0.kind,
+    target: module0.target,
+    functions: module0.functions,
+    imports: module0.imports,
+    external_symbols: module0.external_symbols + [name],
+    exports: module0.exports,
+    valid: module0.valid and name != ""
+  };
+}
+
+proc unit_empty(target: IrTarget) -> IrUnit {
+  give IrUnit {
+    source_path: "",
+    target: target,
+    modules: [],
+    entry_function_id: 0,
+    state: IrUnitState.Empty,
+    valid: target.valid
+  };
+}
+
+proc unit_with_source_path(unit: IrUnit, source_path: string) -> IrUnit {
+  give IrUnit {
+    source_path: source_path,
+    target: unit.target,
+    modules: unit.modules,
+    entry_function_id: unit.entry_function_id,
+    state: unit.state,
+    valid: unit.valid
+  };
+}
+
+proc unit_add_module(unit: IrUnit, module0: IrModule) -> IrUnit {
+  give IrUnit {
+    source_path: unit.source_path,
+    target: unit.target,
+    modules: unit.modules + [module0],
+    entry_function_id: unit.entry_function_id,
+    state: unit.state,
+    valid: unit.valid and module0.valid
+  };
+}
+
+proc unit_set_entry(unit: IrUnit, entry_function_id: u64) -> IrUnit {
+  give IrUnit {
+    source_path: unit.source_path,
+    target: unit.target,
+    modules: unit.modules,
+    entry_function_id: entry_function_id,
+    state: unit.state,
+    valid: unit.valid and entry_function_id > 0
+  };
+}
+
+proc unit_with_state(unit: IrUnit, state: IrUnitState) -> IrUnit {
+  give IrUnit {
+    source_path: unit.source_path,
+    target: unit.target,
+    modules: unit.modules,
+    entry_function_id: unit.entry_function_id,
+    state: state,
+    valid: unit.valid and state != IrUnitState.Invalid
+  };
+}
+
+proc unit_module_count(unit: IrUnit) -> u64 {
+  give len(unit.modules);
+}
+
+proc unit_is_valid(unit: IrUnit) -> bool {
+  give unit.valid and unit.state != IrUnitState.Invalid and unit.target.valid and len(unit.modules) > 0 and unit.entry_function_id > 0;
+}
+
+proc instruction_is_terminator(kind: IrInstructionKind) -> bool {
+  give kind == IrInstructionKind.Jump or
+    kind == IrInstructionKind.Branch or
+    kind == IrInstructionKind.Switch or
+    kind == IrInstructionKind.Return or
+    kind == IrInstructionKind.Unreachable;
+}
+
+proc block_exists(blocks: [IrBlock], block_id: u64) -> bool {
+  let i: u64 = 0;
+  while i < len(blocks) {
+    if blocks[i].id == block_id {
+      give true;
+    }
+    set i = i + 1;
+  }
+  give false;
+}
+
+proc function_exists(unit: IrUnit, function_id: u64) -> bool {
+  let i: u64 = 0;
+  while i < len(unit.modules) {
+    let j: u64 = 0;
+    while j < len(unit.modules[i].functions) {
+      if unit.modules[i].functions[j].id == function_id {
+        give true;
+      }
+      set j = j + 1;
+    }
+    set i = i + 1;
+  }
+  give false;
+}
+
+proc function_name_by_id(unit: IrUnit, function_id: u64) -> string {
+  let i: u64 = 0;
+  while i < len(unit.modules) {
+    let j: u64 = 0;
+    while j < len(unit.modules[i].functions) {
+      if unit.modules[i].functions[j].id == function_id {
+        give unit.modules[i].functions[j].name;
+      }
+      set j = j + 1;
+    }
+    set i = i + 1;
+  }
+  give "";
+}
+
+proc verify_instruction(instruction: IrInstruction) -> bool {
+  if not instruction.valid {
+    give false;
+  }
+  if instruction.kind == IrInstructionKind.Invalid {
+    give false;
+  }
+  if instruction.kind == IrInstructionKind.Assign or instruction.kind == IrInstructionKind.Binary or instruction.kind == IrInstructionKind.BorrowShared or instruction.kind == IrInstructionKind.BorrowMut {
+    give instruction.dest.valid and len(instruction.args) > 0;
+  }
+  if instruction.kind == IrInstructionKind.Call {
+    give len(instruction.args) > 0;
+  }
+  if instruction.kind == IrInstructionKind.Assert or instruction.kind == IrInstructionKind.ReturnValue {
+    give len(instruction.args) > 0;
+  }
+  give true;
+}
+
+proc verify_terminator(blocks: [IrBlock], terminator: IrInstruction) -> bool {
+  if not terminator.valid or not instruction_is_terminator(terminator.kind) {
+    give false;
+  }
+  if terminator.kind == IrInstructionKind.Jump {
+    give block_exists(blocks, terminator.target_block);
+  }
+  if terminator.kind == IrInstructionKind.Branch {
+    give len(terminator.args) == 1 and terminator.args[0].valid and block_exists(blocks, terminator.target_block) and block_exists(blocks, terminator.else_block);
+  }
+  if terminator.kind == IrInstructionKind.Switch {
+    if len(terminator.args) != 1 or len(terminator.switch_values) != len(terminator.switch_targets) or not block_exists(blocks, terminator.else_block) {
+      give false;
+    }
+    let i: u64 = 0;
+    while i < len(terminator.switch_targets) {
+      if not block_exists(blocks, terminator.switch_targets[i]) {
+        give false;
+      }
+      set i = i + 1;
+    }
+    give true;
+  }
+  give true;
+}
+
+proc verify_block(blocks: [IrBlock], block: IrBlock) -> bool {
+  if not block.valid or block.id == 0 or block.label == "" {
+    give false;
+  }
+  let i: u64 = 0;
+  while i < len(block.instructions) {
+    if not verify_instruction(block.instructions[i]) {
+      give false;
+    }
+    if instruction_is_terminator(block.instructions[i].kind) {
+      give false;
+    }
+    set i = i + 1;
+  }
+  give verify_terminator(blocks, block.terminator);
+}
+
+proc verify_function(fn0: IrFunction) -> bool {
+  if not fn0.valid or fn0.id == 0 or fn0.name == "" or len(fn0.blocks) == 0 {
+    give false;
+  }
+  let i: u64 = 0;
+  while i < len(fn0.blocks) {
+    if not verify_block(fn0.blocks, fn0.blocks[i]) {
+      give false;
+    }
+    set i = i + 1;
+  }
+  give true;
+}
+
+proc verify_module(module0: IrModule, unit_target: IrTarget) -> bool {
+  if not module0.valid or module0.id == 0 or module0.name == "" or not module0.target.valid or not triple_matches(module0.target.triple, unit_target.triple) {
+    give false;
+  }
+  let i: u64 = 0;
+  while i < len(module0.functions) {
+    if not verify_function(module0.functions[i]) {
+      give false;
+    }
+    set i = i + 1;
+  }
+  give len(module0.functions) > 0;
+}
+
+proc unit_invalid_like(unit: IrUnit) -> IrUnit {
+  give IrUnit {
+    source_path: unit.source_path,
+    target: unit.target,
+    modules: unit.modules,
+    entry_function_id: unit.entry_function_id,
+    state: IrUnitState.Invalid,
+    valid: false
+  };
+}
+
+proc ir_eq() -> string {
+  give slice("a=b", 1, 2);
+}
+
+proc verify_unit(unit: IrUnit) -> IrUnit {
+  if not unit.target.valid or len(unit.modules) == 0 or not function_exists(unit, unit.entry_function_id) {
+    give unit_invalid_like(unit);
+  }
+  let i: u64 = 0;
+  while i < len(unit.modules) {
+    if not verify_module(unit.modules[i], unit.target) {
+      give unit_invalid_like(unit);
+    }
+    set i = i + 1;
+  }
+  give IrUnit {
+    source_path: unit.source_path,
+    target: unit.target,
+    modules: unit.modules,
+    entry_function_id: unit.entry_function_id,
+    state: IrUnitState.Verified,
+    valid: true
+  };
+}
+
+proc unit_summary(unit: IrUnit) -> string {
+  let eq_text: string = ir_eq();
+  let module_count: string = len(unit.modules) as string;
+  let entry_id: string = unit.entry_function_id as string;
+  give "ir unit target" + eq_text + triple_text(unit.target.triple) + " modules" + eq_text + module_count + " entry" + eq_text + entry_id;
+}

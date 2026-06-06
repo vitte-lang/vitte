@@ -1,0 +1,535 @@
+space vitte/compiler/analysis/typeck
+
+use vitte/compiler/diagnostics/diagnostic.{
+    Diagnostic,
+    DiagnosticReport,
+    DiagnosticSeverity,
+    DiagnosticPhase,
+    SourceSpan,
+    diagnostic_error,
+    diagnostic_warning,
+    diagnostic_fatal,
+    diagnostic_with_note,
+    diagnostic_with_help,
+    diagnostic_with_label,
+    diagnostic_with_rule,
+    diagnostic_with_explanation,
+    diagnostic_with_technical_note,
+    diagnostic_with_documentation,
+    diagnostic_with_root_cause,
+    diagnostic_add_cause,
+    diagnostic_add_pipeline_context,
+    diagnostic_add_related_error,
+    diagnostic_with_probable_fix,
+    diagnostic_with_subject_symbol,
+    diagnostic_with_subject_type,
+    secondary_label,
+    add_unique_diagnostic,
+    merge_diagnostics,
+    diagnostic_report
+}
+
+use vitte/compiler/diagnostics/catalog.{
+    diagnostic_message,
+    diagnostic_default_help,
+    diagnostic_default_note
+}
+
+use vitte/compiler/frontend/ast/node.{
+    AstSpan,
+    ast_span_empty
+}
+
+use vitte/compiler/middle/hir/hir.{
+    HirUnit
+}
+
+pick TypeckErrorKind {
+    InvalidHir
+    UnknownName
+    InvalidExpr
+    TypeMismatch
+    InvalidDeref
+    InvalidIndex
+    InvalidMember
+    InvalidCall
+    InvalidUnary
+    InvalidBinary
+    InvalidAssignment
+    ConditionType
+    UseBeforeInit
+    UseAfterMove
+    Internal
+    Unknown
+}
+
+form TypeckResult {
+    report: DiagnosticReport
+    hir: HirUnit
+    valid: bool
+}
+
+form ExprTypeResult {
+    ty: string
+    diagnostics: [Diagnostic]
+    valid: bool
+    known: bool
+    opaque: bool
+}
+
+proc ast_span_to_source_span(span: AstSpan) -> SourceSpan {
+    let length: u64 = 1;
+
+    if span.end_line == span.start_line and span.end_column > span.start_column {
+        set length = span.end_column - span.start_column;
+    }
+
+    give SourceSpan {
+        file: span.file,
+        start_line: span.start_line,
+        start_column: span.start_column,
+        end_line: span.end_line,
+        end_column: span.end_column,
+        length: length,
+        valid: span.start_line > 0 and span.start_column > 0
+    };
+}
+
+proc typeck_message(code: string, fallback: string) -> string {
+    let msg: string = diagnostic_message(code);
+
+    if msg != "" {
+        give msg;
+    }
+
+    give fallback;
+}
+
+proc typeck_help(code: string, fallback: string) -> string {
+    let help: string = diagnostic_default_help(code);
+
+    if help != "" {
+        give help;
+    }
+
+    give fallback;
+}
+
+proc typeck_note(code: string, fallback: string) -> string {
+    let note: string = diagnostic_default_note(code);
+
+    if note != "" {
+        give note;
+    }
+
+    give fallback;
+}
+
+proc typeck_diagnostic_from_severity(code: string, severity: DiagnosticSeverity, message: string, span: SourceSpan) -> Diagnostic {
+    if severity == DiagnosticSeverity.Fatal {
+        give diagnostic_fatal(code, DiagnosticPhase.Typeck, message, span);
+    }
+
+    if severity == DiagnosticSeverity.Warning {
+        give diagnostic_warning(code, DiagnosticPhase.Typeck, message, span);
+    }
+
+    give diagnostic_error(code, DiagnosticPhase.Typeck, message, span);
+}
+
+proc typeck_kind_name(kind: TypeckErrorKind) -> string {
+    if kind == TypeckErrorKind.InvalidHir {
+        give "invalid_hir";
+    }
+    if kind == TypeckErrorKind.UnknownName {
+        give "unknown_name";
+    }
+    if kind == TypeckErrorKind.InvalidExpr {
+        give "invalid_expr";
+    }
+    if kind == TypeckErrorKind.TypeMismatch {
+        give "type_mismatch";
+    }
+    if kind == TypeckErrorKind.InvalidDeref {
+        give "invalid_deref";
+    }
+    if kind == TypeckErrorKind.InvalidIndex {
+        give "invalid_index";
+    }
+    if kind == TypeckErrorKind.InvalidMember {
+        give "invalid_member";
+    }
+    if kind == TypeckErrorKind.InvalidCall {
+        give "invalid_call";
+    }
+    if kind == TypeckErrorKind.InvalidUnary {
+        give "invalid_unary";
+    }
+    if kind == TypeckErrorKind.InvalidBinary {
+        give "invalid_binary";
+    }
+    if kind == TypeckErrorKind.InvalidAssignment {
+        give "invalid_assignment";
+    }
+    if kind == TypeckErrorKind.ConditionType {
+        give "condition_type";
+    }
+    if kind == TypeckErrorKind.UseBeforeInit {
+        give "use_before_init";
+    }
+    if kind == TypeckErrorKind.UseAfterMove {
+        give "use_after_move";
+    }
+    if kind == TypeckErrorKind.Internal {
+        give "internal";
+    }
+    give "unknown";
+}
+
+proc attach_typeck_context(diagnostic: Diagnostic, code: string, kind: TypeckErrorKind) -> Diagnostic {
+    let diag: Diagnostic = diagnostic;
+
+    set diag = diagnostic_with_note(diag, "typeck kind: " + typeck_kind_name(kind));
+
+    let note: string = diagnostic_default_note(code);
+
+    if note != "" {
+        set diag = diagnostic_with_note(diag, note);
+    }
+
+    set diag = diagnostic_add_pipeline_context(diag, "phase=typeck");
+    set diag = diagnostic_add_pipeline_context(diag, "step=type inference and assignment compatibility");
+
+    give diag;
+}
+
+proc attach_assignment_mismatch_details(diagnostic: Diagnostic, binding_name: string, expected: string, found: string) -> Diagnostic {
+    let diag0: Diagnostic = diagnostic_with_rule(diagnostic, "assignment type compatibility");
+    let diag1: Diagnostic = diagnostic_with_explanation(diag0, "The left side of this assignment expects `" + expected + "`, but the right side produces `" + found + "`. Vitte does not perform implicit conversion here.");
+    let diag2: Diagnostic = diagnostic_with_technical_note(diag1, "The type checker compares the inferred expression type against the declared or inferred target binding type during assignment validation.");
+    let diag3: Diagnostic = diagnostic_with_documentation(diag2, "docs://language/type-system/assignment-compatibility");
+    let diag4: Diagnostic = diagnostic_with_root_cause(diag3, "assignment target type and expression type are incompatible");
+    let diag5: Diagnostic = diagnostic_add_cause(diag4, "binding `" + binding_name + "` expects `" + expected + "`");
+    let diag6: Diagnostic = diagnostic_add_cause(diag5, "assigned expression produced `" + found + "`");
+    let diag7: Diagnostic = diagnostic_add_related_error(diag6, "TYPECK_E_BINARY_MISMATCH");
+    let diag8: Diagnostic = diagnostic_with_probable_fix(diag7, "change the variable type to `" + found + "` or assign a value of type `" + expected + "`");
+    let diag9: Diagnostic = diagnostic_with_subject_symbol(diag8, binding_name);
+    let diag10: Diagnostic = diagnostic_with_subject_type(diag9, expected);
+    give diagnostic_with_help(
+        diag10,
+        "change the variable type to `" + found + "` or assign a `" + expected + "` value"
+    );
+}
+
+proc attach_expected_found_details(diagnostic: Diagnostic, rule_name: string, expected: string, found: string, expected_origin: string, found_origin: string, probable_fix: string) -> Diagnostic {
+    let diag0: Diagnostic = diagnostic_with_rule(diagnostic, rule_name);
+    let diag1: Diagnostic = diagnostic_with_explanation(diag0, "expected `" + expected + "` but got `" + found + "`");
+    let diag2: Diagnostic = diagnostic_with_root_cause(diag1, "type compatibility rule was violated");
+    let diag3: Diagnostic = diagnostic_add_cause(diag2, "expected type origin: " + expected_origin);
+    let diag4: Diagnostic = diagnostic_add_cause(diag3, "found type origin: " + found_origin);
+    let diag5: Diagnostic = diagnostic_with_subject_type(diag4, expected);
+
+    if probable_fix != "" {
+        give diagnostic_with_probable_fix(
+            diag5,
+            probable_fix
+        );
+    }
+
+    give diag5;
+}
+
+proc attach_typeck_labels_and_help(diagnostic: Diagnostic, labels: [string], suggestion: string, span: SourceSpan) -> Diagnostic {
+    let diag: Diagnostic = diagnostic;
+    let i: u64 = 0;
+
+    while i < len(labels) {
+        if labels[i] != "" {
+            set diag = diagnostic_with_label(diag, secondary_label(labels[i], span));
+        }
+
+        set i = i + 1;
+    }
+
+    if suggestion != "" {
+        set diag = diagnostic_with_help(diag, suggestion);
+    }
+
+    give diag;
+}
+
+proc typeck_diag(code: string, message: string, labels: [string], suggestion: string, span: AstSpan, fatal: bool) -> Diagnostic {
+    let source_span: SourceSpan = ast_span_to_source_span(span);
+    let severity: DiagnosticSeverity = if fatal { DiagnosticSeverity.Fatal } else { DiagnosticSeverity.Error };
+    let resolved_message: string = typeck_message(code, message);
+    let resolved_help: string = typeck_help(code, suggestion);
+    let diag: Diagnostic = typeck_diagnostic_from_severity(code, severity, resolved_message, source_span);
+    give attach_typeck_labels_and_help(diag, labels, resolved_help, source_span);
+}
+
+proc typed_typeck_diag(code: string, message: string, labels: [string], suggestion: string, span: AstSpan, severity: DiagnosticSeverity, phase: DiagnosticPhase, kind: TypeckErrorKind) -> Diagnostic {
+    let source_span: SourceSpan = ast_span_to_source_span(span);
+    let resolved_message: string = typeck_message(code, message);
+    let resolved_help: string = typeck_help(code, suggestion);
+    let diag: Diagnostic = if severity == DiagnosticSeverity.Fatal {
+        diagnostic_fatal(code, phase, resolved_message, source_span)
+    } elif severity == DiagnosticSeverity.Warning {
+        diagnostic_warning(code, phase, resolved_message, source_span)
+    } else {
+        diagnostic_error(code, phase, resolved_message, source_span)
+    };
+    set diag = attach_typeck_context(diag, code, kind);
+    give attach_typeck_labels_and_help(diag, labels, resolved_help, source_span);
+}
+
+proc diag_with_note(diagnostic: Diagnostic, note: string) -> Diagnostic {
+    give diagnostic_with_note(diagnostic, note);
+}
+
+proc add_unique_diag(diagnostics: [Diagnostic], diagnostic: Diagnostic) -> [Diagnostic] {
+    give add_unique_diagnostic(diagnostics, diagnostic);
+}
+
+proc merge_typeck_diagnostics(left: [Diagnostic], right: [Diagnostic]) -> [Diagnostic] {
+    give merge_diagnostics(left, right);
+}
+
+proc expr_result(ty: string, diagnostics: [Diagnostic], valid: bool) -> ExprTypeResult {
+    give ExprTypeResult {
+        ty: ty,
+        diagnostics: diagnostics,
+        valid: valid,
+        known: ty != "" and ty != "unknown",
+        opaque: ty == "opaque"
+    };
+}
+
+proc expr_ok(ty: string) -> ExprTypeResult {
+    give expr_result(ty, [], true);
+}
+
+proc expr_error(ty: string, diagnostic: Diagnostic) -> ExprTypeResult {
+    give expr_result(ty, [diagnostic], false);
+}
+
+proc expr_merge(ty: string, left: ExprTypeResult, right: ExprTypeResult) -> ExprTypeResult {
+    give ExprTypeResult {
+        ty: ty,
+        diagnostics: merge_typeck_diagnostics(left.diagnostics, right.diagnostics),
+        valid: left.valid and right.valid,
+        known: ty != "" and ty != "unknown",
+        opaque: ty == "opaque"
+    };
+}
+
+proc typeck_result(hir: HirUnit, diagnostics: [Diagnostic]) -> TypeckResult {
+    let report: DiagnosticReport = diagnostic_report(diagnostics);
+
+    give TypeckResult {
+        report: report,
+        hir: hir,
+        valid: report.valid
+    };
+}
+
+proc typeck_valid_result(hir: HirUnit) -> TypeckResult {
+    give typeck_result(hir, []);
+}
+
+proc typeck_invalid_result(hir: HirUnit, diagnostics: [Diagnostic]) -> TypeckResult {
+    let report: DiagnosticReport = diagnostic_report(diagnostics);
+
+    give TypeckResult {
+        report: report,
+        hir: hir,
+        valid: false
+    };
+}
+
+proc typeck_invalid_hir_result(hir: HirUnit) -> TypeckResult {
+    let code: string = "TYPECK_E_INVALID_HIR";
+    let diag: Diagnostic = typed_typeck_diag(code, "type checking requires valid HIR", ["hir"], "fix HIR validation errors before type checking", ast_span_empty(), DiagnosticSeverity.Fatal, DiagnosticPhase.Typeck, TypeckErrorKind.InvalidHir);
+    give typeck_invalid_result(hir, [diag]);
+}
+
+proc typeck_internal_error(hir: HirUnit, message: string) -> TypeckResult {
+    let code: string = "TYPECK_E_INTERNAL";
+    let diag: Diagnostic = typed_typeck_diag(code, message, ["internal"], "report this compiler error with a minimal reproduction", ast_span_empty(), DiagnosticSeverity.Fatal, DiagnosticPhase.Typeck, TypeckErrorKind.Internal);
+    set diag = diagnostic_with_note(diag, typeck_note(code, "internal compiler error in type checking"));
+
+    give typeck_invalid_result(hir, [diag]);
+}
+
+proc typeck_unknown_name(name: string, span: AstSpan) -> Diagnostic {
+    give typed_typeck_diag("TYPECK_E_UNKNOWN_NAME", "unknown identifier in expression", [name], "declare the binding before use or import it from another module", span, DiagnosticSeverity.Error, DiagnosticPhase.Typeck, TypeckErrorKind.UnknownName);
+}
+
+proc typeck_invalid_expr(span: AstSpan) -> Diagnostic {
+    give typed_typeck_diag("TYPECK_E_INVALID_EXPR", "invalid expression in type checking", ["expr"], "fix the expression before type checking", span, DiagnosticSeverity.Error, DiagnosticPhase.Typeck, TypeckErrorKind.InvalidExpr);
+}
+
+proc typeck_invalid_deref(ty: string, span: AstSpan) -> Diagnostic {
+    give typed_typeck_diag("TYPECK_E_INVALID_DEREF", "cannot dereference value of this type", [ty], "dereference only references or pointer-like values", span, DiagnosticSeverity.Error, DiagnosticPhase.Typeck, TypeckErrorKind.InvalidDeref);
+}
+
+proc typeck_binary_mismatch(left: string, right: string, op: string, span: AstSpan) -> Diagnostic {
+    let diag0: Diagnostic = typed_typeck_diag("TYPECK_E_BINARY_MISMATCH", "binary operator type mismatch", [left, right, op], "make both operands compatible or add an explicit conversion", span, DiagnosticSeverity.Error, DiagnosticPhase.Typeck, TypeckErrorKind.InvalidBinary);
+    give attach_expected_found_details(diag0, "binary operator operand compatibility", left, right, "left operand of `" + op + "`", "right operand of `" + op + "`", "convert one operand or use an operator supported by both operand types");
+}
+
+proc typeck_assignment_mismatch(binding_name: string, expected: string, found: string, span: AstSpan) -> Diagnostic {
+    let diag0: Diagnostic = typed_typeck_diag("TYPECK_E_ASSIGN_MISMATCH", "assignment type mismatch", [binding_name, expected, found], "change the assigned value or add an explicit conversion", span, DiagnosticSeverity.Error, DiagnosticPhase.Typeck, TypeckErrorKind.InvalidAssignment);
+    give attach_assignment_mismatch_details(diag0, binding_name, expected, found);
+}
+
+proc typeck_condition_type(found: string, span: AstSpan) -> Diagnostic {
+    let diag0: Diagnostic = typed_typeck_diag("TYPECK_E_CONDITION_TYPE", "condition requires a truthy expression", [found], "use bool, int, pointer, reference, or an explicitly typed condition", span, DiagnosticSeverity.Error, DiagnosticPhase.Typeck, TypeckErrorKind.ConditionType);
+    give attach_expected_found_details(diag0, "condition truthiness", "truthy", found, "language rule for `if`, `while`, and assertions", "inferred condition expression type", "use a `bool` condition or convert the expression explicitly");
+}
+
+proc typeck_unknown_member(member: string, owner_ty: string, span: AstSpan) -> Diagnostic {
+    let diag0: Diagnostic = typed_typeck_diag("TYPECK_E_UNKNOWN_MEMBER", "unknown member on type", [owner_ty, member], "verify the field name and visibility", span, DiagnosticSeverity.Error, DiagnosticPhase.Typeck, TypeckErrorKind.InvalidMember);
+    let diag1: Diagnostic = diagnostic_with_rule(diag0, "member lookup");
+    let diag2: Diagnostic = diagnostic_with_explanation(diag1, "type `" + owner_ty + "` does not provide member `" + member + "`");
+    let diag3: Diagnostic = diagnostic_add_cause(diag2, "expected member origin: fields or visible members declared on `" + owner_ty + "`");
+    let diag4: Diagnostic = diagnostic_add_cause(diag3, "found member origin: source expression requested `" + member + "`");
+    give diagnostic_with_probable_fix(diag4, "rename the field access, expose the member, or change the receiver type");
+}
+
+proc typeck_index_type(index_ty: string, span: AstSpan) -> Diagnostic {
+    let diag0: Diagnostic = typed_typeck_diag("TYPECK_E_INDEX_TYPE", "index expression requires a numeric index", [index_ty], "use an integer-like index value", span, DiagnosticSeverity.Error, DiagnosticPhase.Typeck, TypeckErrorKind.InvalidIndex);
+    give attach_expected_found_details(diag0, "index operand compatibility", "integer-like index", index_ty, "indexing rule for arrays, slices, and tuple-like structures", "inferred index expression type", "convert the index to an integer-compatible type");
+}
+
+proc typeck_invalid_index_target(container_ty: string, span: AstSpan) -> Diagnostic {
+    let diag0: Diagnostic = typed_typeck_diag("TYPECK_E_INVALID_INDEX_TARGET", "expression is not indexable", [container_ty], "index only arrays, strings, slices, vectors, or list-like values", span, DiagnosticSeverity.Error, DiagnosticPhase.Typeck, TypeckErrorKind.InvalidIndex);
+    give attach_expected_found_details(diag0, "index target capability", "indexable container", container_ty, "indexing rule for arrays, slices, strings, and vector-like types", "inferred base expression type", "change the base value to an indexable container or remove the indexing operation");
+}
+
+proc typeck_if_branch_mismatch(then_ty: string, else_ty: string, span: AstSpan) -> Diagnostic {
+    let diag0: Diagnostic = typed_typeck_diag("TYPECK_E_IF_BRANCH_MISMATCH", "if branches produce incompatible types", [then_ty, else_ty], "make both branches evaluate to the same type", span, DiagnosticSeverity.Error, DiagnosticPhase.Typeck, TypeckErrorKind.TypeMismatch);
+    give attach_expected_found_details(diag0, "if expression branch unification", then_ty, else_ty, "then branch result type", "else branch result type", "normalize both branches to a single result type or cast explicitly");
+}
+
+proc typeck_compare_mismatch(left_ty: string, right_ty: string, span: AstSpan) -> Diagnostic {
+    let diag0: Diagnostic = typed_typeck_diag("TYPECK_E_COMPARE_MISMATCH", "comparison operands are not compatible", [left_ty, right_ty], "compare values of compatible types", span, DiagnosticSeverity.Error, DiagnosticPhase.Typeck, TypeckErrorKind.InvalidBinary);
+    give attach_expected_found_details(diag0, "comparison operand compatibility", left_ty, right_ty, "left comparison operand", "right comparison operand", "convert one side or compare values that share a common comparable type");
+}
+
+proc typeck_invalid_cast(source_ty: string, target_ty: string, span: AstSpan) -> Diagnostic {
+    let diag0: Diagnostic = typed_typeck_diag("TYPECK_E_INVALID_CAST", "explicit cast is not allowed between these types", [source_ty, target_ty], "cast only between compatible scalar or explicitly supported representation types", span, DiagnosticSeverity.Error, DiagnosticPhase.Typeck, TypeckErrorKind.TypeMismatch);
+    give attach_expected_found_details(diag0, "explicit cast validity", target_ty, source_ty, "target type written in the cast", "source expression type before cast", "use a supported conversion path or change either the source or target type");
+}
+
+proc typeck_non_exhaustive_match(missing_case: string, span: AstSpan) -> Diagnostic {
+    let diag0: Diagnostic = typed_typeck_diag("TYPECK_E_MATCH_NON_EXHAUSTIVE", "match expression is not exhaustive", [missing_case], "add the missing arm or a wildcard arm", span, DiagnosticSeverity.Error, DiagnosticPhase.Typeck, TypeckErrorKind.TypeMismatch);
+    let diag1: Diagnostic = diagnostic_with_rule(diag0, "pattern coverage completeness");
+    let diag2: Diagnostic = diagnostic_with_explanation(diag1, "the current match does not cover every remaining case");
+    let diag3: Diagnostic = diagnostic_add_cause(diag2, "missing case: `" + missing_case + "`");
+    give diagnostic_with_probable_fix(diag3, "add the missing arm explicitly or use `_`/`else` as a fallback branch");
+}
+
+proc typeck_invalid_call(callee: string, span: AstSpan) -> Diagnostic {
+    let diag0: Diagnostic = typed_typeck_diag("TYPECK_E_INVALID_CALL_TARGET", "expression is not callable", [callee], "call only procedures, functions, closures, or callable values", span, DiagnosticSeverity.Error, DiagnosticPhase.Typeck, TypeckErrorKind.InvalidCall);
+    let diag1: Diagnostic = diagnostic_with_rule(diag0, "call target must be callable");
+    let diag2: Diagnostic = diagnostic_with_explanation(diag1, "the expression resolved to `" + callee + "`, which is not a callable value");
+    let diag3: Diagnostic = diagnostic_add_cause(diag2, "expected target origin: proc, function item, closure, or callable value");
+    let diag4: Diagnostic = diagnostic_add_cause(diag3, "found target origin: expression `" + callee + "`");
+    give diagnostic_with_probable_fix(diag4, "call a procedure value, or remove the call syntax if this is a plain value");
+}
+
+proc typeck_argument_mismatch(callee: string, position: u64, expected: string, found: string, span: AstSpan) -> Diagnostic {
+    let position_text: string = position as string;
+    let diag0: Diagnostic = typed_typeck_diag("TYPECK_E_ARGUMENT_MISMATCH", "call argument type mismatch", [callee, expected, found], "pass a `" + expected + "` value or change the callee signature", span, DiagnosticSeverity.Error, DiagnosticPhase.Typeck, TypeckErrorKind.InvalidCall);
+    let diag1: Diagnostic = diagnostic_with_rule(diag0, "function argument compatibility");
+    let diag2: Diagnostic = diagnostic_with_explanation(diag1, "argument " + position_text + " of `" + callee + "` expects `" + expected + "`, but this call passes `" + found + "`");
+    let diag3: Diagnostic = diagnostic_add_cause(diag2, "expected type comes from parameter " + position_text + " of `" + callee + "`");
+    let diag4: Diagnostic = diagnostic_add_cause(diag3, "found type comes from argument " + position_text + " at the call site");
+    give diagnostic_with_probable_fix(diag4, "align argument " + position_text + " with `" + expected + "` or widen the callee signature");
+}
+
+proc typeck_invalid_call_arity(callee: string, expected_arity: u64, found_arity: u64, span: AstSpan) -> Diagnostic {
+    let expected_text: string = expected_arity as string;
+    let found_text: string = found_arity as string;
+    let diag0: Diagnostic = typed_typeck_diag("TYPECK_E_CALL_ARITY", "wrong number of call arguments", [callee, expected_text, found_text], "pass the expected number of arguments or change the callee signature", span, DiagnosticSeverity.Error, DiagnosticPhase.Typeck, TypeckErrorKind.InvalidCall);
+    let diag1: Diagnostic = diagnostic_with_rule(diag0, "function call arity");
+    let diag2: Diagnostic = diagnostic_with_explanation(diag1, "`" + callee + "` expects " + expected_text + " argument(s), but this call provides " + found_text);
+    let diag3: Diagnostic = diagnostic_add_cause(diag2, "expected arity comes from the callee signature");
+    let diag4: Diagnostic = diagnostic_add_cause(diag3, "found arity comes from the call-site argument list");
+    give diagnostic_with_probable_fix(diag4, "add or remove arguments so the call matches the declared signature");
+}
+
+proc typeck_use_before_init(name: string, span: AstSpan) -> Diagnostic {
+    give typed_typeck_diag("TYPECK_E_USE_BEFORE_INIT", "binding is used before initialization", [name], "initialize the binding before reading it", span, DiagnosticSeverity.Error, DiagnosticPhase.Typeck, TypeckErrorKind.UseBeforeInit);
+}
+
+proc typeck_use_after_move(name: string, span: AstSpan) -> Diagnostic {
+    give typed_typeck_diag("TYPECK_E_USE_AFTER_MOVE", "binding was moved before this use", [name], "borrow the value or clone it before moving", span, DiagnosticSeverity.Error, DiagnosticPhase.Typeck, TypeckErrorKind.UseAfterMove);
+}
+
+proc diagnostic_summary(diagnostic: Diagnostic) -> string {
+    give diagnostic.code + ": " + diagnostic.message;
+}
+
+proc result_summary(result: TypeckResult) -> string {
+    if result.valid {
+        give "typeck ok";
+    }
+
+    let error_count: string = result.report.error_count as string;
+    let fatal_count: string = result.report.fatal_count as string;
+    give "typeck failed: " + error_count + " error(s), " + fatal_count + " fatal(s)";
+}
+
+share TypeckErrorKind
+share TypeckResult
+share ExprTypeResult
+
+share ast_span_to_source_span
+
+share typeck_message
+share typeck_help
+share typeck_note
+share typeck_diagnostic_from_severity
+share typeck_kind_name
+share attach_typeck_context
+share attach_typeck_labels_and_help
+
+share typeck_diag
+share typed_typeck_diag
+share diag_with_note
+share add_unique_diag
+share merge_typeck_diagnostics
+
+share expr_result
+share expr_ok
+share expr_error
+share expr_merge
+
+share typeck_result
+share typeck_valid_result
+share typeck_invalid_result
+share typeck_invalid_hir_result
+share typeck_internal_error
+
+share typeck_unknown_name
+share typeck_invalid_expr
+share typeck_invalid_deref
+share typeck_binary_mismatch
+share typeck_assignment_mismatch
+share typeck_condition_type
+share typeck_unknown_member
+share typeck_index_type
+share typeck_invalid_index_target
+share typeck_if_branch_mismatch
+share typeck_compare_mismatch
+share typeck_invalid_cast
+share typeck_non_exhaustive_match
+share typeck_invalid_call
+share typeck_argument_mismatch
+share typeck_invalid_call_arity
+share typeck_use_before_init
+share typeck_use_after_move
+
+share diagnostic_summary
+share result_summary

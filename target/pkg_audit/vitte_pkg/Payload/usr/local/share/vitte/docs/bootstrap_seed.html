@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bootstrap Seed Contract</title>
+<link rel="icon" href="svg/logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="css/site.css?v=34fa1e8389">
+<link rel="stylesheet" href="css/print.css" media="print">
+<link rel="canonical" href="https://vitte-lang.org/bootstrap_seed.html">
+<meta property="og:title" content="Bootstrap Seed Contract">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://vitte-lang.org/bootstrap_seed.html">
+<meta name="twitter:card" content="summary">
+
+<link rel="preload" as="style" href="css/site.css?v=34fa1e8389">
+<link rel="alternate" hreflang="en" href="https://vitte-lang.org/bootstrap_seed.html">
+<link rel="alternate" hreflang="x-default" href="https://vitte-lang.org/bootstrap_seed.html">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; font-src 'self'; connect-src 'self';">
+</head>
+<body class="classic-doc">
+<a class="skip-link" href="#main-content">Skip to content</a>
+<div class="site-shell">
+<header class="site-header">
+<a class="site-brand" href="index.html"><img class="site-brand-mark" src="svg/logo.svg" alt="" width="32" height="32"><span>Vitte</span></a>
+<nav class="site-nav" aria-label="Primary"><ul class="nav-band"><li><a class="nav-chip" href="index.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="svg/sprite.svg#i-home"></use></svg><span>Welcome</span></a></li><li><a class="nav-chip" href="doc.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="svg/sprite.svg#i-docs"></use></svg><span>Documentation</span></a></li><li><a class="nav-chip" href="download.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="svg/sprite.svg#i-docs"></use></svg><span>Download</span></a></li><li><a class="nav-chip" href="source.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="svg/sprite.svg#i-docs"></use></svg><span>Source</span></a></li><li><a class="nav-chip" href="community.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="svg/sprite.svg#i-docs"></use></svg><span>Community</span></a></li><li><a class="nav-chip" href="news.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="svg/sprite.svg#i-news"></use></svg><span>News</span></a></li><li><a class="nav-chip" href="diagnostics.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="svg/sprite.svg#i-docs"></use></svg><span>Diagnostics</span></a></li><li><a class="nav-chip" href="suggestions.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="svg/sprite.svg#i-docs"></use></svg><span>Suggestions</span></a></li></ul></nav>
+</header>
+<main id="main-content" class="site-main">
+<article class="doc-content">
+<center>
+<h1>Bootstrap Seed Contract</h1>
+<p>HTML reading page generated from the source Markdown document.</p>
+</center>
+<div class="page-band">
+<a href="doc.html"><img src="svg/docs.svg" alt="" width="14" height="14">Documentation</a>
+<a href="source.html"><img src="svg/source.svg" alt="" width="14" height="14">Source</a>
+<a href="sitemap.html"><img src="svg/summary.svg" alt="" width="14" height="14">Sitemap</a>
+<a href="bootstrap_seed.md"><img src="svg/diagnostics.svg" alt="" width="14" height="14">Source Markdown</a>
+</div>
+<div class="lead-panel">
+<h2>Reading mode</h2>
+<p>This page is the static HTML reader for <code>bootstrap_seed.md</code>. Internal Markdown links are rewritten to HTML when a matching reading page exists.</p>
+<p>Example: when this site page is updated, the source Markdown remains the canonical text but the HTML reader is the page most users will see. To improve the site, edit <code>docs/bootstrap_seed.html</code> or the origin Markdown and then refresh the page in your browser.</p>
+</div>
+<h1>Bootstrap Seed Contract</h1>
+<p>The bootstrap seed is the trusted stage0 entry point for rebuilding the Vitte toolchain without repo-hosted host-language sources.</p>
+<h2>Files</h2>
+<ul>
+<li>Canonical readable source: <code>toolchain/seed/src/main.vit</code></li>
+<li>Audited executable artifact: <code>toolchain/seed/vittec0.seed</code></li>
+<li>Pinning manifest: <code>toolchain/seed/manifest.txt</code></li>
+</ul>
+<p><code>toolchain/seed/manifest.txt</code> records the seed source path, artifact path, artifact SHA-256, and expected <code>--version</code> output. <code>make seed-verify</code> checks the manifest hash against the artifact and validates the version string.</p>
+<p>The readable source is the canonical intent for review. The executable artifact is the stage0 trust root actually run by bootstrap scripts. <code>make seed-verify</code> keeps the two tied at the identity boundary by checking that source <code>VERSION_TEXT</code>, manifest <code>version=...</code>, and <code>vittec0.seed --version</code> match.</p>
+<h2>Change Rule</h2>
+<p>Any intentional seed rotation must update these contracts together:</p>
+<ul>
+<li><code>toolchain/seed/src/main.vit</code> when the readable seed behavior changes.</li>
+<li><code>toolchain/seed/vittec0.seed</code> when the executable seed artifact changes.</li>
+<li><code>toolchain/seed/manifest.txt</code> when the artifact bytes or version change.</li>
+<li><code>tests/bootstrap_native/*</code> snapshots when generated native output changes.</li>
+<li>CI must pass, including <code>make seed-verify</code> and <code>make bootstrap-native-snapshots</code>.</li>
+</ul>
+<p>The seed artifact must not change on its own. A change to <code>toolchain/seed/vittec0.seed</code> without a matching <code>toolchain/seed/manifest.txt</code> change is treated as seed drift and fails <code>make seed-contract-check</code>.</p>
+<h2>Rotation Checklist</h2>
+<ol>
+<li>Modify <code>toolchain/seed/src/main.vit</code>.</li>
+<li>Regenerate or edit <code>toolchain/seed/vittec0.seed</code>.</li>
+<li>Run <code>make seed-rotation-report</code> to inspect the current artifact hash and version.</li>
+<li>Run <code>make seed-manifest-update</code> to rewrite <code>toolchain/seed/manifest.txt</code> from the audited artifact and source <code>VERSION_TEXT</code>.</li>
+<li>Run <code>make bootstrap-native-snapshots</code>.</li>
+<li>Run <code>make bootstrap-verify</code>.</li>
+<li>Run <code>make seed-contract-check</code>.</li>
+</ol>
+<h2>Local Checks</h2>
+<pre><code class="language-sh">make seed-verify
+make seed-rotation-report
+make posix-seed-shell-check
+make bootstrap-native-snapshots
+make seed-contract-check
+make bootstrap-native-drift-check
+make bootstrap-posix-smoke</code></pre>
+<h2>Bootstrap example</h2>
+<pre><code class="language-sh">make stage0
+make stage1
+make stage2</code></pre>
+<p>Run this sequence in one workspace only. <code>stage0</code> builds the trusted seed, <code>stage1</code> rebuilds the compiler from that seed, and <code>stage2</code> reconfirms the output by rebuilding it again.</p>
+<h2>Local Parallelism</h2>
+<p>CI jobs run in isolated workspaces, so their bootstrap artifacts do not collide. In one local worktree, bootstrap targets that rebuild the stage chain are not parallel-safe because they rewrite shared <code>bin/vittec0</code>, <code>bin/vittec1</code>, <code>bin/vittec</code>, and <code>bin/vitte</code> artifacts.</p>
+<p>The single-workspace runner rule is:</p>
+<ul>
+<li><code>make bootstrap-native-snapshots</code> installs the seed and mutates <code>bin/vittec0</code>.</li>
+<li><code>make bootstrap-verify</code> rebuilds <code>bin/vittec1</code>, <code>bin/vittec</code>, and <code>bin/vitte</code>.</li>
+<li><code>make bootstrap-posix-smoke</code> depends on <code>bootstrap-all</code>, so it also rebuilds the stage artifacts before running POSIX checks.</li>
+<li><code>make bootstrap-native-contract</code> composes those flows and should be treated as an exclusive bootstrap runner in a local worktree.</li>
+</ul>
+<p><code>tools/bootstrap_native_snapshots.sh</code> and <code>tools/bootstrap_posix_smoke.sh</code> use per-run temporary directories under <code>target/</code> and clean them on exit, but the shared <code>bin/vittec*</code> artifacts are intentionally not isolated. Avoid running bootstrap targets concurrently in the same worktree.</p>
+<h2>Source Coverage</h2>
+<p>The readable seed and stage sources should exercise the current bootstrap-native forms they rely on:</p>
+<ul>
+<li><code>toolchain/seed/src/main.vit</code> must include named string constants, named int constants, <code>proc main(args: list[string]) -&amp;gt; int</code>, and a named constant return.</li>
+<li><code>toolchain/stage2/src/main.vit</code> must include named <code>VERSION_TEXT</code> and <code>BANNER_TEXT</code> string constants, use a named string constant in <code>version_text()</code>, and define <code>main</code>.</li>
+</ul>
+<p>This is checked by <code>make bootstrap-source-coverage-check</code> and is included in the bootstrap-native contract targets.</p>
+<p>For CI or release checks, <code>SEED_CONTRACT_BASE</code> may be set to the base commit or branch used for the diff:</p>
+<pre><code class="language-sh">SEED_CONTRACT_BASE=origin/main make seed-contract-check</code></pre>
+<h2>AWK Native Parser Contract</h2>
+<p><code>toolchain/seed/vittec0.seed</code> contains a small AWK parser inside <code>compile_native_ir()</code>. This parser is not a general Vitte parser. Its contract is to recognize only the bootstrap-native subset documented in <code>docs/bootstrap_native_ir.md</code>, emit deterministic <code>native_ir_v1</code> text, and fail closed on anything outside that subset.</p>
+<p>Review rules for the AWK block:</p>
+<ul>
+<li>Keep accepted forms explicit and line-oriented.</li>
+<li>Prefer adding a fixture before widening a regular expression.</li>
+<li>Preserve source declaration order for <code>const.<em>&lt;/code&gt; and &lt;code&gt;proc.int.</em></code> records.</li>
+<li>Set diagnostic columns from the original raw line, not from the trimmed line.</li>
+<li>Any parser change must update at least one <code>.ir.must</code> or <code>.err.must</code> snapshot.</li>
+<li>Any generated binary behavior change must update <code>emission.sha256.must</code>.</li>
+</ul>
+<p>Coverage can be inspected with:</p>
+<pre><code class="language-sh">tools/bootstrap_native_fixture_matrix.sh</code></pre>
+<nav class="doc-pagination"><a href="bootstrap_native_ir.html">← Previous</a><a href="changelog.html">Next →</a></nav></article>
+</main>
+<footer class="site-footer">
+<p class="site-footer-path">bootstrap_seed.html</p>
+<p><a href="index.html">Back to home</a> · <a href="status-public.html">Public status</a></p>
+</footer>
+</div>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

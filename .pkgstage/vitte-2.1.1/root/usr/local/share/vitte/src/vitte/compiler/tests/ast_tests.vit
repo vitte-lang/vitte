@@ -1,0 +1,220 @@
+space vitte/compiler/tests/ast_tests
+
+use vitte/compiler/frontend/pipeline.{ FrontendOutput, frontend_run }
+use vitte/compiler/frontend/ast/node.{ ast_span }
+use vitte/compiler/frontend/ast/expr.{ AstExprKind, ast_expr_leaf, ast_expr_node, ast_expr_unknown }
+use vitte/compiler/frontend/ast/item.{ AstItemKind, ast_item_create, ast_module }
+use vitte/compiler/frontend/ast/pattern.{ AstPatternKind, ast_pattern_empty }
+use vitte/compiler/frontend/ast/stmt.{ AstStmtKind, ast_stmt_create }
+use vitte/compiler/frontend/ast/type_expr.{ AstTypeKind, ast_type_empty }
+use vitte/compiler/frontend/ast/validate.{ AstValidation, validate_ast_root }
+use vitte/compiler/frontend/ast/pretty.{ ast_pretty_module }
+use vitte/compiler/frontend/ast/visitor.{ AstVisitSummary, visit_ast_module }
+use vitte/compiler/frontend/source_map.{ SourceSpan, source_span_from_ast }
+use vitte/compiler/tests/frontend_fixtures/valid/ast.{ control_flow_source, rich_surface_source, structured_expr_source }
+use vitte/compiler/tests/frontend_fixtures/invalid/ast.{ broken_stmt_source }
+
+const VERSION_TEXT: string = "frontend ast tests 0.3.0"
+const BANNER_TEXT: string = "frontend ast tests"
+
+proc test_ast_structures_postfix_exprs_and_spans() -> bool {
+  let fe: FrontendOutput = frontend_run("ast_structured.vit", structured_expr_source());
+  if not fe.valid or len(fe.ast_root.items) != 1 {
+    give false;
+  }
+  let validation: AstValidation = validate_ast_root(fe.ast_root);
+  if not validation.valid {
+    give false;
+  }
+  let proc_item = fe.ast_root.items[0];
+  if proc_item.kind != AstItemKind.Proc or not proc_item.annotation.valid or proc_item.annotation.text != "i64" {
+    give false;
+  }
+  if len(proc_item.stmts) != 3 {
+    give false;
+  }
+
+  let let_stmt = proc_item.stmts[0];
+  if let_stmt.kind != AstStmtKind.Let or let_stmt.expr.kind != AstExprKind.Call {
+    give false;
+  }
+  if let_stmt.expr.span.start_line != 2 or let_stmt.expr.span.start_column != 15 or let_stmt.expr.span.end_column != 32 {
+    give false;
+  }
+  if let_stmt.expr.callee_index != 0 {
+    give false;
+  }
+  if len(let_stmt.expr.children) != 2 {
+    give false;
+  }
+  let callee = let_stmt.expr.children[0];
+  let arg0 = let_stmt.expr.children[1];
+  if callee.kind != AstExprKind.Index or arg0.kind != AstExprKind.Binary {
+    give false;
+  }
+  if callee.span.start_column != 15 or callee.span.end_column != 25 {
+    give false;
+  }
+  if callee.index_index != 1 {
+    give false;
+  }
+  if len(callee.children) != 2 or callee.children[0].kind != AstExprKind.Member {
+    give false;
+  }
+  if callee.children[0].member_name != "bar" {
+    give false;
+  }
+  if callee.children[0].span.start_column != 15 or callee.children[0].span.end_column != 22 {
+    give false;
+  }
+
+  let set_stmt = proc_item.stmts[1];
+  if set_stmt.kind != AstStmtKind.Set or not set_stmt.target_expr.valid or set_stmt.target_expr.kind != AstExprKind.Index {
+    give false;
+  }
+  give set_stmt.target_expr.span.start_line == 3 and set_stmt.target_expr.span.start_column == 7 and set_stmt.target_expr.span.end_column == 17;
+}
+
+proc test_ast_control_flow_and_invalid_fixture() -> bool {
+  let fe: FrontendOutput = frontend_run("ast_control.vit", control_flow_source());
+  if not fe.valid or len(fe.ast_root.items) != 1 {
+    give false;
+  }
+  let proc_item = fe.ast_root.items[0];
+  if len(proc_item.stmts) != 1 or proc_item.stmts[0].kind != AstStmtKind.If {
+    give false;
+  }
+  if len(proc_item.stmts[0].else_stmts) != 1 or proc_item.stmts[0].else_stmts[0].kind != AstStmtKind.While {
+    give false;
+  }
+  let validation: AstValidation = validate_ast_root(fe.ast_root);
+  if not validation.valid {
+    give false;
+  }
+
+  let bad: FrontendOutput = frontend_run("ast_broken.vit", broken_stmt_source());
+  give not bad.valid and bad.diagnostics_total > 0;
+}
+
+proc test_ast_rich_types_patterns_and_toplevel_items() -> bool {
+  let fe: FrontendOutput = frontend_run("ast_rich.vit", rich_surface_source());
+  if not fe.valid or len(fe.ast_root.items) < 9 {
+    give false;
+  }
+  let validation: AstValidation = validate_ast_root(fe.ast_root);
+  if not validation.valid {
+    give false;
+  }
+  let proc_item = fe.ast_root.items[0];
+  if proc_item.kind != AstItemKind.Proc or proc_item.visibility != "public" or len(proc_item.attributes) == 0 {
+    give false;
+  }
+  if len(proc_item.modifiers) < 4 or len(proc_item.generic_params) == 0 or proc_item.generic_params[0].name != "T" or not proc_item.signature.valid {
+    give false;
+  }
+  if proc_item.annotation.kind != AstTypeKind.Optional or len(proc_item.annotation.children) != 1 or proc_item.signature.abi != "C" {
+    give false;
+  }
+  if len(proc_item.signature.params) != 1 or proc_item.signature.params[0].annotation.kind != AstTypeKind.Reference {
+    give false;
+  }
+  if proc_item.signature.params[0].pattern.name != "value" {
+    give false;
+  }
+  let let_stmt = proc_item.stmts[0];
+  if let_stmt.pattern.kind != AstPatternKind.Tuple or len(let_stmt.pattern.children) != 2 {
+    give false;
+  }
+  if let_stmt.annotation.kind != AstTypeKind.Tuple or len(let_stmt.annotation.children) != 2 {
+    give false;
+  }
+  if proc_item.stmts[1].kind != AstStmtKind.For or proc_item.stmts[1].pattern.kind != AstPatternKind.Tuple {
+    give false;
+  }
+  if proc_item.stmts[2].kind != AstStmtKind.Match or len(proc_item.stmts[2].then_stmts) != 2 {
+    give false;
+  }
+  if proc_item.stmts[2].then_stmts[0].pattern.kind != AstPatternKind.Struct or proc_item.stmts[2].then_stmts[1].pattern.kind != AstPatternKind.Wildcard {
+    give false;
+  }
+  if proc_item.stmts[3].kind != AstStmtKind.Unsafe or proc_item.stmts[4].kind != AstStmtKind.With or proc_item.stmts[5].kind != AstStmtKind.Select {
+    give false;
+  }
+  if len(proc_item.stmts[5].then_stmts) != 1 or len(proc_item.stmts[5].else_stmts) != 1 {
+    give false;
+  }
+
+  let type_item = fe.ast_root.items[1];
+  let opaque_item = fe.ast_root.items[2];
+  let extern_item = fe.ast_root.items[3];
+  let impl_item = fe.ast_root.items[4];
+  if type_item.kind != AstItemKind.Type or type_item.annotation.kind != AstTypeKind.Optional {
+    give false;
+  }
+  if opaque_item.kind != AstItemKind.Opaque or opaque_item.type_params[0].name != "T" {
+    give false;
+  }
+  if extern_item.kind != AstItemKind.Extern or extern_item.name == "" or extern_item.abi != "extern" {
+    give false;
+  }
+  if impl_item.kind != AstItemKind.Impl or not impl_item.target_type.valid {
+    give false;
+  }
+  if fe.ast_root.items[5].kind != AstItemKind.Compiler or fe.ast_root.items[6].kind != AstItemKind.Pass or fe.ast_root.items[7].kind != AstItemKind.Backend or fe.ast_root.items[8].kind != AstItemKind.Diagnostic {
+    give false;
+  }
+  if fe.ast_root.items[9].kind != AstItemKind.Macro or len(fe.ast_root.items[9].meta_args) != 1 or fe.ast_root.items[10].kind != AstItemKind.Entry {
+    give false;
+  }
+  let pretty: string = ast_pretty_module(fe.ast_root);
+  let visited: AstVisitSummary = visit_ast_module(fe.ast_root);
+  let source_span: SourceSpan = source_span_from_ast(proc_item.signature.span);
+  give find(pretty, "signature main abi=C") >= 0 and visited.signature_count > 0 and visited.param_count > 0 and source_span.file == "ast_rich.vit";
+}
+
+proc test_validator_rejects_malformed_manual_ast() -> bool {
+  let bad_expr = ast_expr_node(
+    11,
+    ast_span("manual_bad.vit", 1, 10, 1, 5),
+    AstExprKind.Binary,
+    "x +",
+    "",
+    "+",
+    [ast_expr_leaf(12, ast_span("manual_bad.vit", 1, 10, 1, 11), AstExprKind.Name, "x", "x")]
+  );
+  let bad_stmt = ast_stmt_create(21, ast_span("manual_bad.vit", 1, 3, 1, 12), AstStmtKind.ExprStmt, ast_pattern_empty(), "", bad_expr, ast_type_empty(), "", [], []);
+  let bad_item = ast_item_create(31, ast_span("manual_bad.vit", 1, 1, 1, 12), AstItemKind.Proc, "main", ast_expr_unknown(0, ast_span("manual_bad.vit", 1, 1, 1, 1), ""), [bad_stmt], ast_type_empty(), "");
+  let validation: AstValidation = validate_ast_root(ast_module(41, ast_span("manual_bad.vit", 1, 1, 1, 12), [bad_item]));
+  give not validation.valid;
+}
+
+proc run_all_tests() -> int {
+  let failures: int = 0;
+  if not test_ast_structures_postfix_exprs_and_spans() {
+    set failures = failures + 1;
+  }
+  if not test_ast_control_flow_and_invalid_fixture() {
+    set failures = failures + 1;
+  }
+  if not test_ast_rich_types_patterns_and_toplevel_items() {
+    set failures = failures + 1;
+  }
+  if not test_validator_rejects_malformed_manual_ast() {
+    set failures = failures + 1;
+  }
+  give failures;
+}
+
+proc version_text() -> string {
+  give VERSION_TEXT
+}
+
+proc banner_text() -> string {
+  give BANNER_TEXT
+}
+
+proc main(args: list[string]) -> int {
+  give run_all_tests()
+}
+
+export *

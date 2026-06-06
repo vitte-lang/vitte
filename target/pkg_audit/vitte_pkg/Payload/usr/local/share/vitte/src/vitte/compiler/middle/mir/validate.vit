@@ -1,0 +1,98 @@
+space vitte/compiler/middle/mir/validate
+
+use vitte/compiler/middle/mir/mir.{ MirBlock, MirFunction, MirStatementKind, MirTerminatorKind, MirUnit, mir_module_empty }
+
+proc block_exists(blocks: [MirBlock], block_id: u64) -> bool {
+  let i: u64 = 0;
+  while i < len(blocks) {
+    if blocks[i].id == block_id {
+      give true;
+    }
+    set i = i + 1;
+  }
+  give false;
+}
+
+proc terminator_valid_for_blocks(blocks: [MirBlock], block: MirBlock) -> bool {
+  let term = block.terminator;
+  if not term.valid {
+    give false;
+  }
+  if term.kind == MirTerminatorKind.Goto {
+    give block_exists(blocks, term.target_block);
+  }
+  if term.kind == MirTerminatorKind.Branch {
+    give term.condition.valid and block_exists(blocks, term.target_block) and block_exists(blocks, term.else_block);
+  }
+  if term.kind == MirTerminatorKind.Switch {
+    if not term.condition.valid or not block_exists(blocks, term.else_block) or len(term.switch_values) != len(term.switch_targets) {
+      give false;
+    }
+    let i: u64 = 0;
+    while i < len(term.switch_targets) {
+      if not block_exists(blocks, term.switch_targets[i]) {
+        give false;
+      }
+      set i = i + 1;
+    }
+    give true;
+  }
+  give true;
+}
+
+proc block_valid_for_function(blocks: [MirBlock], block: MirBlock) -> bool {
+  if not block.valid {
+    give false;
+  }
+  if len(block.statements) == 0 and block.terminator.kind == MirTerminatorKind.Goto {
+    give false;
+  }
+  if len(block.statements) > 0 and block.statements[len(block.statements) - 1].kind == MirStatementKind.Return and block.terminator.kind != MirTerminatorKind.Return {
+    give false;
+  }
+  give terminator_valid_for_blocks(blocks, block);
+}
+
+proc function_valid(fn0: MirFunction) -> bool {
+  if not fn0.valid or len(fn0.blocks) == 0 {
+    give false;
+  }
+  if not block_exists(fn0.blocks, fn0.entry_block) {
+    give false;
+  }
+  let i: u64 = 0;
+  while i < len(fn0.blocks) {
+    if not block_valid_for_function(fn0.blocks, fn0.blocks[i]) {
+      give false;
+    }
+    set i = i + 1;
+  }
+  give true;
+}
+
+proc validate_mir(mir: MirUnit) -> MirUnit {
+  if not mir.module.valid or mir.block_count == 0 or len(mir.module.functions) == 0 {
+    give MirUnit {
+      source_path: mir.source_path,
+      module: mir_module_empty(),
+      block_count: mir.block_count,
+      instruction_count: mir.instruction_count,
+      valid: false
+    };
+  }
+
+  let i: u64 = 0;
+  while i < len(mir.module.functions) {
+    if not function_valid(mir.module.functions[i]) {
+      give MirUnit {
+        source_path: mir.source_path,
+        module: mir_module_empty(),
+        block_count: mir.block_count,
+        instruction_count: mir.instruction_count,
+        valid: false
+      };
+    }
+    set i = i + 1;
+  }
+  give mir;
+}

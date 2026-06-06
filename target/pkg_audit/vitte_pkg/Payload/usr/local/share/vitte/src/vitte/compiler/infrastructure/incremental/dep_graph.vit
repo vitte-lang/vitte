@@ -1,0 +1,200 @@
+space vitte/compiler/infrastructure/incremental
+
+pick IncrementalNodeKind {
+  Frontend,
+  Hir,
+  ResolvedHir,
+  TypedHir,
+  Mir,
+  Ir,
+  Borrowck,
+  Lint,
+  ConstEval,
+  Analysis,
+  Codegen,
+  Link,
+}
+
+form IncrementalNode {
+  key: string
+  kind: IncrementalNodeKind
+  dependencies: [string]
+  dependents: [string]
+  generation: u64
+  valid: bool
+}
+
+form IncrementalGraph {
+  source_path: string
+  nodes: [IncrementalNode]
+  valid: bool
+}
+
+proc incremental_node(key: string, kind: IncrementalNodeKind, dependencies: [string], dependents: [string], generation: u64, valid: bool) -> IncrementalNode {
+  give IncrementalNode {
+    key: key,
+    kind: kind,
+    dependencies: dependencies,
+    dependents: dependents,
+    generation: generation,
+    valid: valid
+  };
+}
+
+proc incremental_graph_empty(source_path: string) -> IncrementalGraph {
+  give IncrementalGraph {
+    source_path: source_path,
+    nodes: [],
+    valid: true
+  };
+}
+
+proc analysis_node_key(source_path: string, phase: string) -> string {
+  give source_path + "::" + phase;
+}
+
+proc node_index(graph: IncrementalGraph, key: string) -> int {
+  let i: int = 0;
+  while i < len(graph.nodes) {
+    if graph.nodes[i].key == key {
+      give i;
+    }
+    set i = i + 1;
+  }
+  give -1;
+}
+
+proc add_node(graph: IncrementalGraph, key: string, kind: IncrementalNodeKind, dependencies: [string]) -> IncrementalGraph {
+  if node_index(graph, key) >= 0 {
+    give graph;
+  }
+  give IncrementalGraph {
+    source_path: graph.source_path,
+    nodes: graph.nodes + [incremental_node(key, kind, dependencies, [], 0, true)],
+    valid: graph.valid
+  };
+}
+
+proc set_node_dependencies(graph: IncrementalGraph, key: string, dependencies: [string]) -> IncrementalGraph {
+  let nodes: [IncrementalNode] = [];
+  let i: u64 = 0;
+  while i < len(graph.nodes) {
+    let node: IncrementalNode = graph.nodes[i];
+    if node.key == key {
+      set nodes = nodes + [IncrementalNode {
+        key: node.key,
+        kind: node.kind,
+        dependencies: dependencies,
+        dependents: node.dependents,
+        generation: node.generation,
+        valid: node.valid
+      }];
+    } else {
+      set nodes = nodes + [node];
+    }
+    set i = i + 1;
+  }
+  give IncrementalGraph {
+    source_path: graph.source_path,
+    nodes: nodes,
+    valid: graph.valid
+  };
+}
+
+proc add_dependent_key(keys: [string], key: string) -> [string] {
+  let i: u64 = 0;
+  while i < len(keys) {
+    if keys[i] == key {
+      give keys;
+    }
+    set i = i + 1;
+  }
+  give keys + [key];
+}
+
+proc rebuild_dependents(graph: IncrementalGraph) -> IncrementalGraph {
+  let cleared: [IncrementalNode] = [];
+  let i: u64 = 0;
+  while i < len(graph.nodes) {
+    let node: IncrementalNode = graph.nodes[i];
+    set cleared = cleared + [IncrementalNode {
+      key: node.key,
+      kind: node.kind,
+      dependencies: node.dependencies,
+      dependents: [],
+      generation: node.generation,
+      valid: node.valid
+    }];
+    set i = i + 1;
+  }
+
+  let current: [IncrementalNode] = cleared;
+  i = 0;
+  while i < len(cleared) {
+    let node: IncrementalNode = cleared[i];
+    let j: u64 = 0;
+    while j < len(node.dependencies) {
+      let dep_key: string = node.dependencies[j];
+      let dep_index: int = node_index(IncrementalGraph { source_path: graph.source_path, nodes: current, valid: graph.valid }, dep_key);
+      if dep_index >= 0 {
+        let updated: [IncrementalNode] = [];
+        let k: u64 = 0;
+        while k < len(current) {
+          let candidate: IncrementalNode = current[k];
+          if k as int == dep_index {
+            set updated = updated + [IncrementalNode {
+              key: candidate.key,
+              kind: candidate.kind,
+              dependencies: candidate.dependencies,
+              dependents: add_dependent_key(candidate.dependents, node.key),
+              generation: candidate.generation,
+              valid: candidate.valid
+            }];
+          } else {
+            set updated = updated + [candidate];
+          }
+          set k = k + 1;
+        }
+        set current = updated;
+      }
+      set j = j + 1;
+    }
+    set i = i + 1;
+  }
+
+  give IncrementalGraph {
+    source_path: graph.source_path,
+    nodes: current,
+    valid: graph.valid
+  };
+}
+
+proc build_analysis_graph(source_path: string) -> IncrementalGraph {
+  let frontend_key: string = analysis_node_key(source_path, "frontend");
+  let hir_key: string = analysis_node_key(source_path, "hir");
+  let resolved_key: string = analysis_node_key(source_path, "resolved_hir");
+  let typed_key: string = analysis_node_key(source_path, "typed_hir");
+  let mir_key: string = analysis_node_key(source_path, "mir");
+  let ir_key: string = analysis_node_key(source_path, "ir");
+  let borrowck_key: string = analysis_node_key(source_path, "borrowck");
+  let lint_key: string = analysis_node_key(source_path, "lint");
+  let const_key: string = analysis_node_key(source_path, "const_eval");
+  let analysis_key: string = analysis_node_key(source_path, "analysis");
+  let codegen_key: string = analysis_node_key(source_path, "codegen");
+  let link_key: string = analysis_node_key(source_path, "link");
+
+  let graph0: IncrementalGraph = incremental_graph_empty(source_path);
+  let graph1: IncrementalGraph = add_node(graph0, frontend_key, IncrementalNodeKind.Frontend, []);
+  let graph2: IncrementalGraph = add_node(graph1, hir_key, IncrementalNodeKind.Hir, [frontend_key]);
+  let graph3: IncrementalGraph = add_node(graph2, resolved_key, IncrementalNodeKind.ResolvedHir, [hir_key]);
+  let graph4: IncrementalGraph = add_node(graph3, typed_key, IncrementalNodeKind.TypedHir, [resolved_key]);
+  let graph5: IncrementalGraph = add_node(graph4, mir_key, IncrementalNodeKind.Mir, [typed_key]);
+  let graph6: IncrementalGraph = add_node(graph5, ir_key, IncrementalNodeKind.Ir, [mir_key, typed_key]);
+  let graph7: IncrementalGraph = add_node(graph6, borrowck_key, IncrementalNodeKind.Borrowck, [typed_key, mir_key]);
+  let graph8: IncrementalGraph = add_node(graph7, lint_key, IncrementalNodeKind.Lint, [typed_key]);
+  let graph9: IncrementalGraph = add_node(graph8, const_key, IncrementalNodeKind.ConstEval, [frontend_key]);
+  let graph10: IncrementalGraph = add_node(graph9, analysis_key, IncrementalNodeKind.Analysis, [borrowck_key, lint_key, const_key]);
+  let graph11: IncrementalGraph = add_node(graph10, codegen_key, IncrementalNodeKind.Codegen, [ir_key, analysis_key]);
+  let graph12: IncrementalGraph = add_node(graph11, link_key, IncrementalNodeKind.Link, [codegen_key, ir_key]);
+  give rebuild_dependents(graph12);
+}

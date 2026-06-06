@@ -1,0 +1,174 @@
+space compiler/driver/private/tokenized_parse
+
+proc is_help_token(token: string) -> bool {
+  give token == "--help" or token == "-h" or token == "help"
+}
+
+proc normalized_command(token: string) -> string {
+  if token == "parse" { give "parse" }
+  if token == "check" { give "check" }
+  if token == "emit" { give "emit" }
+  if token == "build" { give "build" }
+  if token == "reduce" { give "reduce" }
+  if token == "profile" { give "profile" }
+  if token == "init" { give "init" }
+  if token == "grammar" { give "grammar" }
+  if token == "doctor" { give "doctor" }
+  if token == "explain" { give "explain" }
+  if token == "clean-cache" { give "clean-cache" }
+  if token == "mod" { give "mod" }
+  if is_help_token(token) { give "help" }
+  give ""
+}
+
+proc command_stage(command: string) -> string {
+  if command == "parse" { give "parse" }
+  if command == "check" { give "ir" }
+  if command == "emit" { give "backend" }
+  if command == "build" { give "backend" }
+  if command == "reduce" { give "backend" }
+  if command == "profile" { give "backend" }
+  if command == "doctor" { give "host-check" }
+  if command == "grammar" { give "grammar" }
+  if command == "mod" { give "module-graph" }
+  if command == "init" { give "scaffold" }
+  if command == "explain" { give "diagnostics" }
+  if command == "clean-cache" { give "cache" }
+  if command == "help" { give "help" }
+  give "unknown"
+}
+
+proc parse_mode(command: string) -> string {
+  if command == "parse" { give "parse-only" }
+  if command == "check" { give "mir-only" }
+  if command == "emit" { give "emit-vitte" }
+  if command == "build" { give "build-vitte" }
+  if command == "reduce" { give "reduce-reproducer" }
+  if command == "profile" { give "profile-mode" }
+  give "none"
+}
+
+proc first_command(args: [string]) -> string {
+  let i: int = 0
+  while i < args.len {
+    let cmd: string = normalized_command(args[i])
+    if cmd != "" {
+      give cmd
+    }
+    set i = i + 1
+  }
+  give ""
+}
+
+proc normalized_stage(args: [string]) -> string {
+  let cmd: string = first_command(args)
+  give command_stage(cmd)
+}
+
+proc normalized_parse_mode(args: [string]) -> string {
+  let cmd: string = first_command(args)
+  give parse_mode(cmd)
+}
+
+proc wants_help(args: [string]) -> bool {
+  let i: int = 0
+  while i < args.len {
+    if is_help_token(args[i]) {
+      give true
+    }
+    set i = i + 1
+  }
+  give false
+}
+
+proc read_flag_value(args: [string], flag: string, fallback: string) -> string {
+  let i: int = 0
+  while i + 1 < args.len {
+    if args[i] == flag {
+      give args[i + 1]
+    }
+    let inline_prefix: string = flag + "="
+    if starts_with(args[i], inline_prefix) {
+      give suffix_after(args[i], inline_prefix.len)
+    }
+    set i = i + 1
+  }
+  if i < args.len {
+    let inline_prefix: string = flag + "="
+    if starts_with(args[i], inline_prefix) {
+      give suffix_after(args[i], inline_prefix.len)
+    }
+  }
+  give fallback
+}
+
+proc starts_with(text: string, prefix: string) -> bool {
+  if prefix.len > text.len { give false }
+  let i: int = 0
+  while i < prefix.len {
+    if text[i] != prefix[i] {
+      give false
+    }
+    set i = i + 1
+  }
+  give true
+}
+
+proc suffix_after(text: string, start: int) -> string {
+  let result: string = ""
+  let i: int = start
+  while i < text.len {
+    set result = result + (text[i] as string)
+    set i = i + 1
+  }
+  give result
+}
+
+proc read_output(args: [string]) -> string {
+  let short_value: string = read_flag_value(args, "-o", "")
+  if short_value != "" { give short_value }
+  let long_value: string = read_flag_value(args, "--output", "")
+  if long_value != "" { give long_value }
+  give "a.out"
+}
+
+proc read_template(args: [string]) -> string {
+  let short_value: string = read_flag_value(args, "-t", "")
+  if short_value != "" { give short_value }
+  let long_value: string = read_flag_value(args, "--template", "")
+  if long_value != "" { give long_value }
+  give "cli"
+}
+
+proc read_lang(args: [string]) -> string {
+  give read_flag_value(args, "--lang", "")
+}
+
+proc read_target(args: [string]) -> string {
+  give read_flag_value(args, "--target", "")
+}
+
+proc read_stage_override(args: [string]) -> string {
+  let value: string = read_flag_value(args, "--stage", "")
+  if value == "" { give "backend" }
+  give value
+}
+
+proc read_stdlib_profile(args: [string]) -> string {
+  let value: string = read_flag_value(args, "--stdlib-profile", "")
+  if value == "" {
+    set value = read_flag_value(args, "--runtime-profile", "")
+  }
+  if value == "" { give "full" }
+  if value == "core" { give "minimal" }
+  give value
+}
+
+proc read_syntax_profile(args: [string]) -> string {
+  let value: string = read_flag_value(args, "--syntax-profile", "")
+  if value == "" {
+    set value = read_flag_value(args, "--syntax-version", "")
+  }
+  if value == "" { give "stable-v1" }
+  give value
+}

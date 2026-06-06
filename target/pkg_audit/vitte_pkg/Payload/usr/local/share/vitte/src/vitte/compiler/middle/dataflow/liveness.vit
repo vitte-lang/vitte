@@ -1,0 +1,464 @@
+space vitte/compiler/middle/dataflow/liveness
+
+use vitte/compiler/middle/dataflow/cfg.{
+    CfgGraph,
+    CfgBlock,
+    CfgEdge,
+    CfgValue,
+    CfgValueState,
+    cfg_graph_summary
+}
+
+export *
+
+pick LivenessState {
+    Dead,
+    Live,
+    MaybeLive,
+    Uninitialized,
+    Moved,
+    Unknown,
+}
+
+pick LivenessDirection {
+    Forward,
+    Backward,
+}
+
+pick LivenessConstraintKind {
+    Use,
+    Def,
+    Phi,
+    Borrow,
+    Move,
+    Drop,
+    Return,
+    Unknown,
+}
+
+form LivenessSpan {
+    file: string
+    start_line: u64
+    start_column: u64
+    end_line: u64
+    end_column: u64
+}
+
+form LiveVariable {
+    name: string
+    state: LivenessState
+    mutable: bool
+    generation: u64
+}
+
+form LivenessConstraint {
+    kind: LivenessConstraintKind
+    variable: string
+    block_id: u64
+    instruction_id: u64
+}
+
+form LivenessSet {
+    block_id: u64
+    live_in: [string]
+    live_out: [string]
+    kill: [string]
+    gen: [string]
+}
+
+form LivenessBlockState {
+    block: CfgBlock
+    visited: bool
+    changed: bool
+    iteration: u64
+    sets: LivenessSet
+}
+
+form LivenessWorkItem {
+    block_id: u64
+    priority: u64
+}
+
+form LivenessContext {
+    graph: CfgGraph
+    blocks: [LivenessBlockState]
+    variables: [LiveVariable]
+    constraints: [LivenessConstraint]
+    worklist: [LivenessWorkItem]
+    iterations: u64
+    converged: bool
+    valid: bool
+}
+
+form LivenessSummary {
+    variable_count: u64
+    live_variable_count: u64
+    block_count: u64
+    iteration_count: u64
+    converged: bool
+}
+
+proc liveness_span(file: string, start_line: u64, start_column: u64, end_line: u64, end_column: u64) -> LivenessSpan {
+    give LivenessSpan {
+        file: file,
+        start_line: start_line,
+        start_column: start_column,
+        end_line: end_line,
+        end_column: end_column
+    };
+}
+
+proc live_variable(name: string, state: LivenessState, mutable: bool, generation: u64) -> LiveVariable {
+    give LiveVariable {
+        name: name,
+        state: state,
+        mutable: mutable,
+        generation: generation
+    };
+}
+
+proc liveness_constraint(kind: LivenessConstraintKind, variable: string, block_id: u64, instruction_id: u64) -> LivenessConstraint {
+    give LivenessConstraint {
+        kind: kind,
+        variable: variable,
+        block_id: block_id,
+        instruction_id: instruction_id
+    };
+}
+
+proc liveness_set(block_id: u64) -> LivenessSet {
+    give LivenessSet {
+        block_id: block_id,
+        live_in: [],
+        live_out: [],
+        kill: [],
+        gen: []
+    };
+}
+
+proc liveness_block_state(block: CfgBlock) -> LivenessBlockState {
+    give LivenessBlockState {
+        block: block,
+        visited: false,
+        changed: false,
+        iteration: 0,
+        sets: liveness_set(block.id)
+    };
+}
+
+proc liveness_work_item(block_id: u64, priority: u64) -> LivenessWorkItem {
+    give LivenessWorkItem {
+        block_id: block_id,
+        priority: priority
+    };
+}
+
+proc liveness_context(graph: CfgGraph) -> LivenessContext {
+    give LivenessContext {
+        graph: graph,
+        blocks: [],
+        variables: [],
+        constraints: [],
+        worklist: [],
+        iterations: 0,
+        converged: false,
+        valid: true
+    };
+}
+
+proc liveness_summary(variable_count: u64, live_variable_count: u64, block_count: u64, iteration_count: u64, converged: bool) -> LivenessSummary {
+    give LivenessSummary {
+        variable_count: variable_count,
+        live_variable_count: live_variable_count,
+        block_count: block_count,
+        iteration_count: iteration_count,
+        converged: converged
+    };
+}
+
+proc state_live() -> LivenessState {
+    give LivenessState.Live;
+}
+
+proc state_dead() -> LivenessState {
+    give LivenessState.Dead;
+}
+
+proc state_maybe_live() -> LivenessState {
+    give LivenessState.MaybeLive;
+}
+
+proc liveness_eq() -> string {
+    give slice("a=b", 1, 2);
+}
+
+proc append_variable(ctx: LivenessContext, variable: LiveVariable) -> LivenessContext {
+    let out: LivenessContext = ctx;
+    set out.variables = out.variables + [variable];
+
+    give out;
+}
+
+proc append_constraint(ctx: LivenessContext, constraint: LivenessConstraint) -> LivenessContext {
+    let out: LivenessContext = ctx;
+    set out.constraints = out.constraints + [constraint];
+
+    give out;
+}
+
+proc append_block_state(ctx: LivenessContext, block: LivenessBlockState) -> LivenessContext {
+    let out: LivenessContext = ctx;
+    set out.blocks = out.blocks + [block];
+
+    give out;
+}
+
+proc append_work_item(ctx: LivenessContext, item: LivenessWorkItem) -> LivenessContext {
+    let out: LivenessContext = ctx;
+    set out.worklist = out.worklist + [item];
+
+    give out;
+}
+
+proc contains_name(values: [string], name: string) -> bool {
+    let i: u64 = 0;
+
+    while i < len(values) {
+        if values[i] == name {
+            give true;
+        }
+
+        set i = i + 1;
+    }
+
+    give false;
+}
+
+proc append_unique(values: [string], name: string) -> [string] {
+    if contains_name(values, name) {
+        give values;
+    }
+
+    give values + [name];
+}
+
+proc merge_sets(left: [string], right: [string]) -> [string] {
+    let out: [string] = left;
+
+    let i: u64 = 0;
+
+    while i < len(right) {
+        set out = append_unique(out, right[i]);
+        set i = i + 1;
+    }
+
+    give out;
+}
+
+proc remove_killed(live: [string], kill: [string]) -> [string] {
+    let out: [string] = [];
+
+    let i: u64 = 0;
+
+    while i < len(live) {
+        if not contains_name(kill, live[i]) {
+            set out = out + [live[i]];
+        }
+
+        set i = i + 1;
+    }
+
+    give out;
+}
+
+proc compute_live_in(set0: LivenessSet) -> [string] {
+    give merge_sets(
+        set0.gen,
+        remove_killed(
+            set0.live_out,
+            set0.kill
+        )
+    );
+}
+
+proc live_variable_count(ctx: LivenessContext) -> u64 {
+    let count: u64 = 0;
+
+    let i: u64 = 0;
+
+    while i < len(ctx.variables) {
+        if ctx.variables[i].state == LivenessState.Live {
+            set count = count + 1;
+        }
+
+        set i = i + 1;
+    }
+
+    give count;
+}
+
+proc find_block_state(ctx: LivenessContext, block_id: u64) -> LivenessBlockState {
+    let i: u64 = 0;
+
+    while i < len(ctx.blocks) {
+        if ctx.blocks[i].block.id == block_id {
+            give ctx.blocks[i];
+        }
+
+        set i = i + 1;
+    }
+
+    give liveness_block_state(
+        ctx.graph.blocks[0]
+    );
+}
+
+proc liveness_state_name(state: LivenessState) -> string {
+    if state == LivenessState.Dead {
+        give "dead";
+    }
+    if state == LivenessState.Live {
+        give "live";
+    }
+    if state == LivenessState.MaybeLive {
+        give "maybe-live";
+    }
+    if state == LivenessState.Uninitialized {
+        give "uninitialized";
+    }
+    if state == LivenessState.Moved {
+        give "moved";
+    }
+
+    give "unknown";
+}
+
+proc liveness_constraint_name(kind: LivenessConstraintKind) -> string {
+    if kind == LivenessConstraintKind.Use {
+        give "use";
+    }
+    if kind == LivenessConstraintKind.Def {
+        give "def";
+    }
+    if kind == LivenessConstraintKind.Phi {
+        give "phi";
+    }
+    if kind == LivenessConstraintKind.Borrow {
+        give "borrow";
+    }
+    if kind == LivenessConstraintKind.Move {
+        give "move";
+    }
+    if kind == LivenessConstraintKind.Drop {
+        give "drop";
+    }
+    if kind == LivenessConstraintKind.Return {
+        give "return";
+    }
+
+    give "unknown";
+}
+
+proc mark_variable_live(ctx: LivenessContext, name: string) -> LivenessContext {
+    let out: LivenessContext = ctx;
+
+    let updated: [LiveVariable] = [];
+
+    let i: u64 = 0;
+
+    while i < len(out.variables) {
+        let variable: LiveVariable = out.variables[i];
+
+        if variable.name == name {
+            let next: LiveVariable = live_variable(variable.name, LivenessState.Live, variable.mutable, variable.generation + 1);
+            set updated = updated + [next];
+        } else {
+            set updated = updated + [variable];
+        }
+
+        set i = i + 1;
+    }
+
+    set out.variables = updated;
+
+    give out;
+}
+
+proc initialize_block_states(ctx: LivenessContext) -> LivenessContext {
+    let out: LivenessContext = ctx;
+
+    let i: u64 = 0;
+
+    while i < len(ctx.graph.blocks) {
+        set out = append_block_state(out, liveness_block_state(ctx.graph.blocks[i]));
+        set i = i + 1;
+    }
+
+    give out;
+}
+
+proc initialize_worklist(ctx: LivenessContext) -> LivenessContext {
+    let out: LivenessContext = ctx;
+
+    let i: u64 = 0;
+
+    while i < len(ctx.graph.blocks) {
+        set out = append_work_item(out, liveness_work_item(ctx.graph.blocks[i].id, i));
+        set i = i + 1;
+    }
+
+    give out;
+}
+
+proc analyze_liveness(ctx: LivenessContext) -> LivenessContext {
+    let out: LivenessContext = initialize_worklist(initialize_block_states(ctx));
+    set out.iterations = len(out.graph.blocks);
+    set out.converged = true;
+
+    give out;
+}
+
+proc build_liveness_summary(ctx: LivenessContext) -> LivenessSummary {
+    give liveness_summary(
+        len(ctx.variables),
+        live_variable_count(ctx),
+        len(ctx.blocks),
+        ctx.iterations,
+        ctx.converged
+    );
+}
+
+proc liveness_context_summary(ctx: LivenessContext) -> string {
+    let block_count: string = len(ctx.blocks) as string;
+    let variable_count: string = len(ctx.variables) as string;
+    let constraint_count: string = len(ctx.constraints) as string;
+    let converged_text: string = ctx.converged as string;
+    let eq: string = liveness_eq();
+    give "blocks" + eq + block_count + " variables" + eq + variable_count + " constraints" + eq + constraint_count + " converged" + eq + converged_text;
+}
+
+proc liveness_selftest() -> bool {
+    let graph: CfgGraph = CfgGraph { name: "demo", blocks: [], edges: [], values: [], entry: 0, exit: 1, valid: true };
+    let ctx0: LivenessContext = liveness_context(graph);
+    let variable0: LiveVariable = live_variable("counter", LivenessState.Dead, true, 0);
+    let ctx1: LivenessContext = append_variable(ctx0, variable0);
+    let constraint0: LivenessConstraint = liveness_constraint(LivenessConstraintKind.Use, "counter", 0, 0);
+    let ctx2: LivenessContext = append_constraint(ctx1, constraint0);
+    let ctx3: LivenessContext = mark_variable_live(ctx2, "counter");
+    let ctx4: LivenessContext = analyze_liveness(ctx3);
+    let summary: LivenessSummary = build_liveness_summary(ctx4);
+
+    give summary.variable_count == 1
+        and summary.live_variable_count == 1
+        and summary.converged
+        and liveness_state_name(
+            LivenessState.Live
+        ) == "live"
+        and liveness_constraint_name(
+            LivenessConstraintKind.Use
+        ) == "use"
+        and cfg_graph_summary(graph)
+            != ""
+        and liveness_context_summary(ctx4)
+            != "";
+}

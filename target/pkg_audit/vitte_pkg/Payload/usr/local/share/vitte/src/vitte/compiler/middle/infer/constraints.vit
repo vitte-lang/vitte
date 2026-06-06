@@ -1,0 +1,464 @@
+space vitte/compiler/middle/infer/constraints
+
+use vitte/compiler/frontend/ast.node.{ AstSpan, ast_span_empty }
+
+export *
+
+pick InferConstraintKind {
+  Equal,
+  Subtype,
+  Assignable,
+  Callable,
+  Indexable,
+  FieldAccess,
+  Deref,
+  BorrowShared,
+  BorrowMut,
+  Move,
+  Copy,
+  Cast,
+  Match,
+  Return,
+  Yield,
+  Await,
+  TraitBound,
+  GenericBound,
+  Lifetime,
+  Sized,
+  Align,
+  ConstExpr,
+  Unknown,
+}
+
+pick InferConstraintState {
+  Pending,
+  Solving,
+  Solved,
+  Failed,
+}
+
+pick InferTypeKind {
+  Unknown,
+  Primitive,
+  Integer,
+  Float,
+  Bool,
+  Char,
+  String,
+  Array,
+  Slice,
+  Tuple,
+  Struct,
+  Enum,
+  Proc,
+  Pointer,
+  Reference,
+  Generic,
+  Trait,
+  Dynamic,
+}
+
+pick InferVariance {
+  Invariant,
+  Covariant,
+  Contravariant,
+  Bivariant,
+}
+
+form InferType {
+  id: u64
+  kind: InferTypeKind
+  name: string
+  generic_count: u64
+  nullable: bool
+  sized: bool
+  copyable: bool
+}
+
+form InferConstraint {
+  id: u64
+  kind: InferConstraintKind
+  left: InferType
+  right: InferType
+  operator: string
+  state: InferConstraintState
+  variance: InferVariance
+  source_node: u64
+  message: string
+  span: AstSpan
+  valid: bool
+}
+
+form InferConstraintSet {
+  constraints: [InferConstraint]
+  solved_count: u64
+  failed_count: u64
+  pending_count: u64
+  valid: bool
+}
+
+form InferSubstitution {
+  generic_name: string
+  resolved_type: InferType
+}
+
+form InferSolution {
+  substitutions: [InferSubstitution]
+  diagnostics: [string]
+  solved: bool
+}
+
+proc infer_type(id: u64, kind: InferTypeKind, name: string, generic_count: u64, nullable: bool, sized: bool, copyable: bool) -> InferType {
+  give InferType {
+    id: id,
+    kind: kind,
+    name: name,
+    generic_count: generic_count,
+    nullable: nullable,
+    sized: sized,
+    copyable: copyable
+  }
+}
+
+proc infer_constraint(id: u64, kind: InferConstraintKind, left: InferType, right: InferType, operator: string, state: InferConstraintState, variance: InferVariance, source_node: u64, message: string, span: AstSpan, valid: bool) -> InferConstraint {
+  give InferConstraint {
+    id: id,
+    kind: kind,
+    left: left,
+    right: right,
+    operator: operator,
+    state: state,
+    variance: variance,
+    source_node: source_node,
+    message: message,
+    span: span,
+    valid: valid
+  }
+}
+
+proc infer_constraint_set() -> InferConstraintSet {
+  give InferConstraintSet {
+    constraints: [],
+    solved_count: 0,
+    failed_count: 0,
+    pending_count: 0,
+    valid: true
+  }
+}
+
+proc infer_substitution(generic_name: string, resolved_type: InferType) -> InferSubstitution {
+  give InferSubstitution {
+    generic_name: generic_name,
+    resolved_type: resolved_type
+  }
+}
+
+proc infer_solution(substitutions: [InferSubstitution], diagnostics: [string], solved: bool) -> InferSolution {
+  give InferSolution {
+    substitutions: substitutions,
+    diagnostics: diagnostics,
+    solved: solved
+  }
+}
+
+proc unknown_type() -> InferType {
+  give infer_type(
+    0,
+    InferTypeKind.Unknown,
+    "unknown",
+    0,
+    false,
+    false,
+    false
+  )
+}
+
+proc bool_type() -> InferType {
+  give infer_type(
+    1,
+    InferTypeKind.Bool,
+    "bool",
+    0,
+    false,
+    true,
+    true
+  )
+}
+
+proc i32_type() -> InferType {
+  give infer_type(
+    2,
+    InferTypeKind.Integer,
+    "i32",
+    0,
+    false,
+    true,
+    true
+  )
+}
+
+proc f64_type() -> InferType {
+  give infer_type(
+    3,
+    InferTypeKind.Float,
+    "f64",
+    0,
+    false,
+    true,
+    true
+  )
+}
+
+proc string_type() -> InferType {
+  give infer_type(
+    4,
+    InferTypeKind.String,
+    "string",
+    0,
+    false,
+    true,
+    false
+  )
+}
+
+proc infer_eq() -> string {
+  give slice("a=b", 1, 2)
+}
+
+proc constraint_kind_name(kind: InferConstraintKind) -> string {
+  if kind == InferConstraintKind.Equal {
+    give "equal"
+  } elif kind == InferConstraintKind.Subtype {
+    give "subtype"
+  } elif kind == InferConstraintKind.Assignable {
+    give "assignable"
+  } elif kind == InferConstraintKind.Callable {
+    give "callable"
+  } elif kind == InferConstraintKind.Indexable {
+    give "indexable"
+  } elif kind == InferConstraintKind.FieldAccess {
+    give "field-access"
+  } elif kind == InferConstraintKind.Deref {
+    give "deref"
+  } elif kind == InferConstraintKind.BorrowShared {
+    give "borrow-shared"
+  } elif kind == InferConstraintKind.BorrowMut {
+    give "borrow-mut"
+  } elif kind == InferConstraintKind.Move {
+    give "move"
+  } elif kind == InferConstraintKind.Copy {
+    give "copy"
+  } elif kind == InferConstraintKind.Cast {
+    give "cast"
+  } elif kind == InferConstraintKind.Match {
+    give "match"
+  } elif kind == InferConstraintKind.Return {
+    give "return"
+  } elif kind == InferConstraintKind.Yield {
+    give "yield"
+  } elif kind == InferConstraintKind.Await {
+    give "await"
+  } elif kind == InferConstraintKind.TraitBound {
+    give "trait-bound"
+  } elif kind == InferConstraintKind.GenericBound {
+    give "generic-bound"
+  } elif kind == InferConstraintKind.Lifetime {
+    give "lifetime"
+  } elif kind == InferConstraintKind.Sized {
+    give "sized"
+  } elif kind == InferConstraintKind.Align {
+    give "align"
+  } elif kind == InferConstraintKind.ConstExpr {
+    give "const-expr"
+  }
+
+  give "unknown"
+}
+
+proc constraint_state_name(state: InferConstraintState) -> string {
+  if state == InferConstraintState.Pending {
+    give "pending"
+  } elif state == InferConstraintState.Solving {
+    give "solving"
+  } elif state == InferConstraintState.Solved {
+    give "solved"
+  } elif state == InferConstraintState.Failed {
+    give "failed"
+  }
+
+  give "unknown"
+}
+
+proc infer_type_name(kind: InferTypeKind) -> string {
+  if kind == InferTypeKind.Unknown {
+    give "unknown"
+  } elif kind == InferTypeKind.Primitive {
+    give "primitive"
+  } elif kind == InferTypeKind.Integer {
+    give "integer"
+  } elif kind == InferTypeKind.Float {
+    give "float"
+  } elif kind == InferTypeKind.Bool {
+    give "bool"
+  } elif kind == InferTypeKind.Char {
+    give "char"
+  } elif kind == InferTypeKind.String {
+    give "string"
+  } elif kind == InferTypeKind.Array {
+    give "array"
+  } elif kind == InferTypeKind.Slice {
+    give "slice"
+  } elif kind == InferTypeKind.Tuple {
+    give "tuple"
+  } elif kind == InferTypeKind.Struct {
+    give "struct"
+  } elif kind == InferTypeKind.Enum {
+    give "enum"
+  } elif kind == InferTypeKind.Proc {
+    give "proc"
+  } elif kind == InferTypeKind.Pointer {
+    give "pointer"
+  } elif kind == InferTypeKind.Reference {
+    give "reference"
+  } elif kind == InferTypeKind.Generic {
+    give "generic"
+  } elif kind == InferTypeKind.Trait {
+    give "trait"
+  } elif kind == InferTypeKind.Dynamic {
+    give "dynamic"
+  }
+
+  give "unknown"
+}
+
+proc append_constraint(set0: InferConstraintSet, constraint: InferConstraint) -> InferConstraintSet {
+  let out: InferConstraintSet = set0
+  set out.constraints = out.constraints + [constraint]
+
+  if constraint.state == InferConstraintState.Solved {
+    set out.solved_count = out.solved_count + 1
+  }
+  elif constraint.state == InferConstraintState.Failed {
+    set out.failed_count = out.failed_count + 1
+  }
+  else {
+    set out.pending_count = out.pending_count + 1
+  }
+
+  give out
+}
+
+proc append_substitution(solution: InferSolution, substitution: InferSubstitution) -> InferSolution {
+  let out: InferSolution = solution
+  set out.substitutions = out.substitutions + [substitution]
+
+  give out
+}
+
+proc infer_types_equal(left: InferType, right: InferType) -> bool {
+  give left.name == right.name and left.kind == right.kind
+}
+
+proc infer_type_assignable(left: InferType, right: InferType) -> bool {
+  if infer_types_equal(left, right) {
+    give true
+  }
+
+  if left.kind == InferTypeKind.Float and right.kind == InferTypeKind.Integer {
+    give true
+  }
+
+  if left.nullable and right.name == "null" {
+    give true
+  }
+
+  give false
+}
+
+proc constraint_solved(constraint: InferConstraint) -> bool {
+  give constraint.state == InferConstraintState.Solved
+}
+
+proc constraint_failed(constraint: InferConstraint) -> bool {
+  give constraint.state == InferConstraintState.Failed
+}
+
+proc validate_constraint(constraint: InferConstraint) -> bool {
+  if not constraint.valid {
+    give false
+  }
+
+  if constraint.kind == InferConstraintKind.Equal {
+    give infer_types_equal(constraint.left, constraint.right)
+  }
+
+  if constraint.kind == InferConstraintKind.Assignable {
+    give infer_type_assignable(constraint.left, constraint.right)
+  }
+
+  give true
+}
+
+proc solve_constraint(constraint: InferConstraint) -> InferConstraint {
+  let valid: bool = validate_constraint(constraint)
+  let state: InferConstraintState = InferConstraintState.Failed
+  if valid {
+    set state = InferConstraintState.Solved
+  }
+
+  give InferConstraint {
+    id: constraint.id,
+    kind: constraint.kind,
+    left: constraint.left,
+    right: constraint.right,
+    operator: constraint.operator,
+    state: state,
+    variance: constraint.variance,
+    source_node: constraint.source_node,
+    message: constraint.message,
+    span: constraint.span,
+    valid: valid
+  }
+}
+
+proc solve_constraint_set(set0: InferConstraintSet) -> InferConstraintSet {
+  let out: InferConstraintSet = infer_constraint_set()
+
+  let i: u64 = 0
+
+  while i < len(set0.constraints) {
+    let solved: InferConstraint = solve_constraint(set0.constraints[i])
+    set out = append_constraint(out, solved)
+    set i = i + 1
+  }
+
+  set out.valid = out.failed_count == 0
+
+  give out
+}
+
+proc constraint_summary(set0: InferConstraintSet) -> string {
+  let constraint_count: string = len(set0.constraints) as string
+  let solved_count: string = set0.solved_count as string
+  let failed_count: string = set0.failed_count as string
+  let pending_count: string = set0.pending_count as string
+  let valid_text: string = set0.valid as string
+  let eq: string = infer_eq()
+  give "constraints" + eq + constraint_count + " solved" + eq + solved_count + " failed" + eq + failed_count + " pending" + eq + pending_count + " valid" + eq + valid_text
+}
+
+proc infer_constraints_selftest() -> bool {
+  let left: InferType = i32_type()
+  let right: InferType = i32_type()
+  let constraint: InferConstraint = infer_constraint(1, InferConstraintKind.Equal, left, right, "eq", InferConstraintState.Pending, InferVariance.Invariant, 0, "integer equality", ast_span_empty(), true)
+  let set0: InferConstraintSet = append_constraint(infer_constraint_set(), constraint)
+  let solved: InferConstraintSet = solve_constraint_set(set0)
+
+  give solved.valid
+    and solved.solved_count == 1
+    and solved.failed_count == 0
+    and constraint_kind_name(InferConstraintKind.Equal) == "equal"
+    and constraint_state_name(InferConstraintState.Solved) == "solved"
+    and infer_type_name(InferTypeKind.Integer) == "integer"
+    and constraint_summary(solved) != ""
+}

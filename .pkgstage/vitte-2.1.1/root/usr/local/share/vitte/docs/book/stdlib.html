@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stdlib (Selection)</title>
+<link rel="icon" href="../svg/logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../css/site.css">
+<link rel="stylesheet" href="../css/print.css" media="print">
+
+<link rel="alternate" hreflang="en" href="https://vitte-lang.org/stdlib.html">
+<link rel="alternate" hreflang="x-default" href="https://vitte-lang.org/stdlib.html">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; font-src 'self'; connect-src 'self';">
+</head>
+<body class="classic-doc">
+<a class="skip-link" href="#main-content">Skip to content</a>
+<div class="site-shell">
+<header class="site-header">
+<a class="site-brand" href="../index.html"><img class="site-brand-mark" src="../svg/logo.svg" alt="" width="32" height="32"><span>Vitte</span></a>
+<nav class="site-nav" aria-label="Primary">
+<ul class="nav-band"><li><a class="nav-chip" href="../index.html"><img src="../svg/home.svg" alt="" width="14" height="14" aria-hidden="true"><span>Welcome</span></a></li><li><a class="nav-chip" href="../doc.html"><img src="../svg/docs.svg" alt="" width="14" height="14" aria-hidden="true"><span>Documentation</span></a></li><li><a class="nav-chip" href="../download.html"><img src="../svg/download.svg" alt="" width="14" height="14" aria-hidden="true"><span>Download</span></a></li><li><a class="nav-chip" href="../source.html"><img src="../svg/source.svg" alt="" width="14" height="14" aria-hidden="true"><span>Source</span></a></li><li><a class="nav-chip" href="../community.html"><img src="../svg/community.svg" alt="" width="14" height="14" aria-hidden="true"><span>Community</span></a></li><li><a class="nav-chip" href="../news.html"><img src="../svg/news.svg" alt="" width="14" height="14" aria-hidden="true"><span>News</span></a></li><li><a class="nav-chip" href="../diagnostics.html"><img src="../svg/diagnostics.svg" alt="" width="14" height="14" aria-hidden="true"><span>Diagnostics</span></a></li><li><a class="nav-chip" href="../suggestions.html"><img src="../svg/suggestions.svg" alt="" width="14" height="14" aria-hidden="true"><span>Suggestions</span></a></li></ul>
+</nav>
+</header>
+<main id="main-content" class="site-main">
+<article class="doc-content">
+<p class="book-progress"></p>
+<h1>Stdlib (Selection)</h1>
+<<<
+stdlib.html
+Selected Stdlib Modules
+>>>
+<h2>Module <code>process</code></h2>
+<p>Run a command and capture the output.</p>
+<p>Notes:</p>
+<ul>
+<li><code>out</code> captures <code>stdout</code> and <code>err</code> captures <code>stderr</code>.</li>
+</ul>
+<pre><code class="language-vitte">use std/bridge/process
+
+entry main at core/app {
+  let res = run_shell(&quot;echo hello&quot;)
+  when res is Result.Ok {
+    let out = res.value.out
+    let err = res.value.err
+  }
+  return 0
+}</code></pre>
+<h2>Module <code>bridge</code></h2>
+<p>Vitte connection facade with Vitte names. Sub-modules:</p>
+<ul>
+<li><code>std/bridge/io</code></li>
+<li><code>std/bridge/memory</code></li>
+<li><code>std/bridge/system</code></li>
+<li><code>std/bridge/time</code></li>
+<li><code>std/bridge/net</code></li>
+</ul>
+<p>Direct business modules:</p>
+<ul>
+<li><code>std/bridge/print</code></li>
+<li><code>std/bridge/read</code></li>
+<li><code>std/bridge/path</code></li>
+<li><code>std/bridge/env</code></li>
+<li><code>std/bridge/bytes</code></li>
+<li><code>std/bridge/alloc</code></li>
+<li><code>std/bridge/process</code></li>
+</ul>
+<pre><code class="language-vitte">use std/bridge/system
+use std/bridge/io
+
+entry main at core/app {
+  let home = get(&quot;HOME&quot;)   # std/env via bridge/system
+  let p = cwd()            # std/path via bridge/system
+  let _ = print_line(&quot;ok&quot;) # std/io/print via bridge/io
+  return 0
+}</code></pre>
+<h2>Module <code>system</code> (via bridge)</h2>
+<p>Platform wizards.</p>
+<pre><code class="language-vitte">use std/bridge/system
+
+entry main at core/app {
+  let p = platform()    // &quot;linux&quot;, &quot;macos&quot;, &quot;windows&quot;, &quot;freebsd&quot;, &quot;unknown&quot;
+  let home = home_dir() // Option[string]
+  return 0
+}</code></pre>
+<h2>Module <code>regex</code></h2>
+<p>Compiling and matching regex.</p>
+<pre><code class="language-vitte">use std/regex
+
+entry main at core/app {
+  let re = compile(&quot;h.llo&quot;)
+  when re is Result.Ok {
+    let ok = is_match(re.value, &quot;hello&quot;)
+    let m = find(re.value, &quot;hello&quot;)
+  }
+  return 0
+}</code></pre>
+<h2>Module <code>fswatch</code></h2>
+<p>Simple file monitoring (polling, last writing time).</p>
+<pre><code class="language-vitte">use std/fswatch
+
+entry main at core/app {
+  let w = watch(&quot;config.toml&quot;)
+  when w is Result.Ok {
+    let ev = poll(&amp;w.value)
+  }
+  return 0
+}</code></pre>
+<h2>Module <code>metrics</code></h2>
+<p>Counters, gauges and timers in memory.</p>
+<pre><code class="language-vitte">use std/metrics
+
+entry main at core/app {
+  let c = counter(&quot;requests&quot;)
+  inc(&amp;c, 1)
+  let g = gauge(&quot;load&quot;)
+  set_value(&amp;g, 0.75)
+  let t = timer(&quot;latency_ms&quot;)
+  record_ms(&amp;t, 12)
+  return 0
+}</code></pre>
+<h2>Module <code>async</code></h2>
+<p>Helpers for synchronous tasks (<code>spawn</code> runs immediately for now).</p>
+<pre><code class="language-vitte">use std/async
+use std/core/types.i32
+
+proc one() -&gt; i32 {
+  give 1
+}
+
+entry main at core/app {
+  let task = spawn(one)
+  let _ = poll(&amp;task)
+  return 0
+}</code></pre>
+<h2>Module <code>db</code></h2>
+<p>Simple key/value basis (backed by a file).</p>
+<pre><code class="language-vitte">use std/db
+
+entry main at core/app {
+  let db = open(&quot;db.kv&quot;)
+  when db is Result.Ok {
+    let _ = begin(&amp;db.value)
+    let _ = put(&amp;db.value, &quot;hello&quot;, &quot;world&quot;)
+    let _ = commit(&amp;db.value)
+    let ns = namespace(&amp;db.value, &quot;app&quot;)
+    let _ = put(ns, &quot;key&quot;, &quot;value&quot;)
+  }
+  return 0
+}</code></pre>
+</article>
+</main>
+<footer class="site-footer">
+<p class="site-footer-path">book/stdlib.html</p>
+<p><a href="../index.html">Back to home</a></p>
+</footer>
+</div>
+<script type="module" src="../js/book-learning.js"></script>
+<script type="module" src="../js/main.js"></script>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

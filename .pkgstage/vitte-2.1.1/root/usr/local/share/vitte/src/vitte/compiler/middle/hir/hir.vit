@@ -1,0 +1,588 @@
+space vitte/compiler/middle/hir/hir
+
+use vitte/compiler/frontend/ast/node.{ AstSpan, ast_span, ast_span_empty }
+
+export *
+
+pick SemanticSeverity {
+  Info,
+  Warning,
+  Error,
+  Fatal,
+}
+
+pick HirValueMode {
+  Value,
+  Place,
+  Move,
+  Copy,
+  BorrowShared,
+  BorrowMut,
+  Const,
+  Invalid,
+}
+
+pick HirPlaceCategory {
+  Value,
+  Local,
+  Global,
+  Field,
+  Index,
+  Deref,
+  Static,
+  Temporary,
+  Invalid,
+}
+
+pick HirBindingKind {
+  Unknown,
+  Local,
+  Parameter,
+  Capture,
+  Global,
+  Static,
+  Proc,
+  Type,
+  Field,
+  Variant,
+  Module,
+  Trait,
+  Impl,
+}
+
+pick HirExprKind {
+  Unknown,
+  Name,
+  Int,
+  Float,
+  Bool,
+  String,
+  Char,
+  Binary,
+  Unary,
+  Call,
+  Index,
+  Member,
+  BorrowShared,
+  BorrowMut,
+  Deref,
+  If,
+  Match,
+  Block,
+  Lambda,
+  Struct,
+  Array,
+  Tuple,
+  Range,
+  Cast,
+  Is,
+  Try,
+  Sizeof,
+  Alignof,
+  Offsetof,
+  Typeof,
+  Nameof,
+}
+
+pick HirStmtKind {
+  Unknown,
+  Const,
+  Let,
+  Set,
+  Give,
+  If,
+  While,
+  For,
+  Loop,
+  Match,
+  When,
+  With,
+  Try,
+  Defer,
+  Unsafe,
+  Asm,
+  Emit,
+  Panic,
+  Assert,
+  Break,
+  Continue,
+  Unreachable,
+  Select,
+  Critical,
+  StaticAssert,
+  ExprStmt,
+}
+
+pick HirItemKind {
+  Unknown,
+  Space,
+  Use,
+  Export,
+  Const,
+  Static,
+  Global,
+  Type,
+  Opaque,
+  Extern,
+  Form,
+  Class,
+  Union,
+  Bits,
+  Pick,
+  Flags,
+  Trait,
+  Impl,
+  Proc,
+  Intrinsic,
+  Query,
+  Compiler,
+  Pass,
+  Backend,
+  Diagnostic,
+  Macro,
+  Entry,
+  Test,
+  Bench,
+  Comptime,
+  StaticAssert,
+}
+
+form SemanticDiagnostic {
+  code: string
+  severity: SemanticSeverity
+  message: string
+  span: AstSpan
+  related_symbol: string
+  note: string
+}
+
+form HirBinding {
+  id: u64
+  name: string
+  kind: HirBindingKind
+  mutable: bool
+  used: bool
+  moved: bool
+  borrowed: bool
+  inferred_type: string
+}
+
+form HirTypeInfo {
+  name: string
+  sized: bool
+  copyable: bool
+  move_only: bool
+  nullable: bool
+}
+
+form HirExpr {
+  id: u64
+  span: AstSpan
+  kind: HirExprKind
+  text: string
+  name: string
+  operator: string
+  binding: string
+  resolved_id: u64
+  resolved_kind: string
+  external: bool
+  value_mode: HirValueMode
+  inferred_type: string
+  place_category: HirPlaceCategory
+  copyable: bool
+  constant: bool
+  assignable: bool
+  temporary: bool
+  diagnostics: [SemanticDiagnostic]
+  children: [HirExpr]
+  valid: bool
+}
+
+form HirStmt {
+  id: u64
+  span: AstSpan
+  kind: HirStmtKind
+  name: string
+  target: string
+  target_binding: string
+  target_resolved_id: u64
+  target_resolved_kind: string
+  expr: HirExpr
+  message: string
+  mutable: bool
+  terminated: bool
+  unreachable: bool
+  scope_depth: u64
+  then_stmts: [HirStmt]
+  else_stmts: [HirStmt]
+  catch_stmts: [HirStmt]
+  diagnostics: [SemanticDiagnostic]
+  valid: bool
+}
+
+form HirItem {
+  id: u64
+  span: AstSpan
+  kind: HirItemKind
+  name: string
+  resolved_id: u64
+  namespace: string
+  visibility: string
+  exported: bool
+  generic_count: u64
+  expr: HirExpr
+  stmts: [HirStmt]
+  message: string
+  scope_depth: u64
+  diagnostics: [SemanticDiagnostic]
+  valid: bool
+}
+
+form HirModule {
+  name: string
+  items: [HirItem]
+  diagnostics: [SemanticDiagnostic]
+  dependency_count: u64
+  symbol_count: u64
+  valid: bool
+}
+
+form HirUnit {
+  source_path: string
+  module: HirModule
+  node_count: u64
+  symbol_count: u64
+  scope_count: u64
+  expr_count: u64
+  stmt_count: u64
+  item_count: u64
+  lowered: bool
+  analyzed: bool
+  valid: bool
+}
+
+proc semantic_diagnostic(code: string, severity: SemanticSeverity, message: string, span: AstSpan, related_symbol: string, note: string) -> SemanticDiagnostic {
+  give SemanticDiagnostic {
+    code: code,
+    severity: severity,
+    message: message,
+    span: span,
+    related_symbol: related_symbol,
+    note: note
+  };
+}
+
+proc hir_binding(id: u64, name: string, kind: HirBindingKind, mutable: bool, used: bool, moved: bool, borrowed: bool, inferred_type: string) -> HirBinding {
+  give HirBinding {
+    id: id,
+    name: name,
+    kind: kind,
+    mutable: mutable,
+    used: used,
+    moved: moved,
+    borrowed: borrowed,
+    inferred_type: inferred_type
+  };
+}
+
+proc hir_type_info(name: string, sized: bool, copyable: bool, move_only: bool, nullable: bool) -> HirTypeInfo {
+  give HirTypeInfo {
+    name: name,
+    sized: sized,
+    copyable: copyable,
+    move_only: move_only,
+    nullable: nullable
+  };
+}
+
+proc hir_expr(id: u64, span: AstSpan, kind: HirExprKind, text: string, name: string, operator: string, binding: string, resolved_id: u64, resolved_kind: string, external: bool, value_mode: HirValueMode, inferred_type: string, place_category: HirPlaceCategory, copyable: bool, constant: bool, assignable: bool, temporary: bool, diagnostics: [SemanticDiagnostic], children: [HirExpr], valid: bool) -> HirExpr {
+  give HirExpr {
+    id: id,
+    span: span,
+    kind: kind,
+    text: text,
+    name: name,
+    operator: operator,
+    binding: binding,
+    resolved_id: resolved_id,
+    resolved_kind: resolved_kind,
+    external: external,
+    value_mode: value_mode,
+    inferred_type: inferred_type,
+    place_category: place_category,
+    copyable: copyable,
+    constant: constant,
+    assignable: assignable,
+    temporary: temporary,
+    diagnostics: diagnostics,
+    children: children,
+    valid: valid
+  };
+}
+
+proc hir_stmt(id: u64, span: AstSpan, kind: HirStmtKind, name: string, target: string, target_binding: string, target_resolved_id: u64, target_resolved_kind: string, expr: HirExpr, message: string, mutable: bool, terminated: bool, unreachable: bool, scope_depth: u64, then_stmts: [HirStmt], else_stmts: [HirStmt], catch_stmts: [HirStmt], diagnostics: [SemanticDiagnostic], valid: bool) -> HirStmt {
+  give HirStmt {
+    id: id,
+    span: span,
+    kind: kind,
+    name: name,
+    target: target,
+    target_binding: target_binding,
+    target_resolved_id: target_resolved_id,
+    target_resolved_kind: target_resolved_kind,
+    expr: expr,
+    message: message,
+    mutable: mutable,
+    terminated: terminated,
+    unreachable: unreachable,
+    scope_depth: scope_depth,
+    then_stmts: then_stmts,
+    else_stmts: else_stmts,
+    catch_stmts: catch_stmts,
+    diagnostics: diagnostics,
+    valid: valid
+  };
+}
+
+proc hir_item(id: u64, span: AstSpan, kind: HirItemKind, name: string, resolved_id: u64, namespace: string, visibility: string, exported: bool, generic_count: u64, expr: HirExpr, stmts: [HirStmt], message: string, scope_depth: u64, diagnostics: [SemanticDiagnostic], valid: bool) -> HirItem {
+  give HirItem {
+    id: id,
+    span: span,
+    kind: kind,
+    name: name,
+    resolved_id: resolved_id,
+    namespace: namespace,
+    visibility: visibility,
+    exported: exported,
+    generic_count: generic_count,
+    expr: expr,
+    stmts: stmts,
+    message: message,
+    scope_depth: scope_depth,
+    diagnostics: diagnostics,
+    valid: valid
+  };
+}
+
+proc hir_module(name: string, items: [HirItem], diagnostics: [SemanticDiagnostic], dependency_count: u64, symbol_count: u64, valid: bool) -> HirModule {
+  give HirModule {
+    name: name,
+    items: items,
+    diagnostics: diagnostics,
+    dependency_count: dependency_count,
+    symbol_count: symbol_count,
+    valid: valid
+  };
+}
+
+proc hir_unit(source_path: string, module: HirModule, node_count: u64, symbol_count: u64, scope_count: u64, expr_count: u64, stmt_count: u64, item_count: u64, lowered: bool, analyzed: bool, valid: bool) -> HirUnit {
+  give HirUnit {
+    source_path: source_path,
+    module: module,
+    node_count: node_count,
+    symbol_count: symbol_count,
+    scope_count: scope_count,
+    expr_count: expr_count,
+    stmt_count: stmt_count,
+    item_count: item_count,
+    lowered: lowered,
+    analyzed: analyzed,
+    valid: valid
+  };
+}
+
+proc hir_module_empty() -> HirModule {
+  give HirModule {
+    name: "",
+    items: [],
+    diagnostics: [],
+    dependency_count: 0,
+    symbol_count: 0,
+    valid: false
+  };
+}
+
+proc hir_expr_empty() -> HirExpr {
+  give HirExpr {
+    id: 0,
+    span: ast_span_empty(),
+    kind: HirExprKind.Unknown,
+    text: "",
+    name: "",
+    operator: "",
+    binding: "",
+    resolved_id: 0,
+    resolved_kind: "",
+    external: false,
+    value_mode: HirValueMode.Invalid,
+    inferred_type: "unknown",
+    place_category: HirPlaceCategory.Invalid,
+    copyable: false,
+    constant: false,
+    assignable: false,
+    temporary: false,
+    diagnostics: [],
+    children: [],
+    valid: false
+  };
+}
+
+proc hir_stmt_empty() -> HirStmt {
+  give HirStmt {
+    id: 0,
+    span: ast_span_empty(),
+    kind: HirStmtKind.Unknown,
+    name: "",
+    target: "",
+    target_binding: "",
+    target_resolved_id: 0,
+    target_resolved_kind: "",
+    expr: hir_expr_empty(),
+    message: "",
+    mutable: false,
+    terminated: false,
+    unreachable: false,
+    scope_depth: 0,
+    then_stmts: [],
+    else_stmts: [],
+    catch_stmts: [],
+    diagnostics: [],
+    valid: false
+  };
+}
+
+proc semantic_error(code: string, message: string) -> SemanticDiagnostic {
+  give semantic_diagnostic(
+    code,
+    SemanticSeverity.Error,
+    message,
+    ast_span_empty(),
+    "",
+    ""
+  );
+}
+
+proc semantic_warning(code: string, message: string) -> SemanticDiagnostic {
+  give semantic_diagnostic(
+    code,
+    SemanticSeverity.Warning,
+    message,
+    ast_span_empty(),
+    "",
+    ""
+  );
+}
+
+proc hir_eq() -> string {
+  give slice("a=b", 1, 2);
+}
+
+proc hir_value_mode_name(mode: HirValueMode) -> string {
+  if mode == HirValueMode.Value {
+    give "value";
+  }
+  if mode == HirValueMode.Place {
+    give "place";
+  }
+  if mode == HirValueMode.Move {
+    give "move";
+  }
+  if mode == HirValueMode.Copy {
+    give "copy";
+  }
+  if mode == HirValueMode.BorrowShared {
+    give "borrow-shared";
+  }
+  if mode == HirValueMode.BorrowMut {
+    give "borrow-mut";
+  }
+  if mode == HirValueMode.Const {
+    give "const";
+  }
+
+  give "invalid";
+}
+
+proc hir_place_category_name(category: HirPlaceCategory) -> string {
+  if category == HirPlaceCategory.Value {
+    give "value";
+  }
+  if category == HirPlaceCategory.Local {
+    give "local";
+  }
+  if category == HirPlaceCategory.Global {
+    give "global";
+  }
+  if category == HirPlaceCategory.Field {
+    give "field";
+  }
+  if category == HirPlaceCategory.Index {
+    give "index";
+  }
+  if category == HirPlaceCategory.Deref {
+    give "deref";
+  }
+  if category == HirPlaceCategory.Static {
+    give "static";
+  }
+  if category == HirPlaceCategory.Temporary {
+    give "temporary";
+  }
+
+  give "invalid";
+}
+
+proc hir_expr_is_place(expr: HirExpr) -> bool {
+  give expr.place_category != HirPlaceCategory.Value and expr.place_category != HirPlaceCategory.Invalid;
+}
+
+proc hir_expr_is_move(expr: HirExpr) -> bool {
+  give expr.value_mode == HirValueMode.Move;
+}
+
+proc hir_expr_is_borrow(expr: HirExpr) -> bool {
+  give expr.kind == HirExprKind.BorrowShared or expr.kind == HirExprKind.BorrowMut;
+}
+
+proc hir_expr_child_count(expr: HirExpr) -> u64 {
+  give len(expr.children);
+}
+
+proc hir_stmt_terminated(stmt: HirStmt) -> bool {
+  give stmt.terminated or stmt.kind == HirStmtKind.Give or stmt.kind == HirStmtKind.Panic or stmt.kind == HirStmtKind.Unreachable;
+}
+
+proc hir_item_stmt_count(item: HirItem) -> u64 {
+  give len(item.stmts);
+}
+
+proc hir_module_item_count(module: HirModule) -> u64 {
+  give len(module.items);
+}
+
+proc hir_unit_summary(unit: HirUnit) -> string {
+  let item_count: string = unit.item_count as string;
+  let expr_count: string = unit.expr_count as string;
+  let stmt_count: string = unit.stmt_count as string;
+  let scope_count: string = unit.scope_count as string;
+  let valid_text: string = unit.valid as string;
+  let eq: string = hir_eq();
+  give "items" + eq + item_count + " exprs" + eq + expr_count + " stmts" + eq + stmt_count + " scopes" + eq + scope_count + " valid" + eq + valid_text;
+}
+
+proc hir_selftest() -> bool {
+  let expr: HirExpr = hir_expr(1, ast_span_empty(), HirExprKind.Int, "42", "", "", "", 0, "", false, HirValueMode.Copy, "i32", HirPlaceCategory.Value, true, true, false, false, [], [], true);
+  let stmt: HirStmt = hir_stmt(2, ast_span_empty(), HirStmtKind.ExprStmt, "", "", "", 0, "", expr, "", false, false, false, 0, [], [], [], [], true);
+  let item: HirItem = hir_item(3, ast_span_empty(), HirItemKind.Proc, "main", 0, "demo", "public", true, 0, expr, [stmt], "", 0, [], true);
+  let module: HirModule = hir_module("demo", [item], [], 0, 1, true);
+  let unit: HirUnit = hir_unit("demo.vit", module, 3, 1, 1, 1, 1, 1, true, true, true);
+
+  give hir_expr_is_borrow(expr) == false
+    and hir_expr_child_count(expr) == 0
+    and hir_item_stmt_count(item) == 1
+    and hir_module_item_count(module) == 1
+    and hir_stmt_terminated(stmt) == false
+    and hir_value_mode_name(HirValueMode.Copy) == "copy"
+    and hir_place_category_name(HirPlaceCategory.Value) == "value"
+    and hir_unit_summary(unit) != "";
+}

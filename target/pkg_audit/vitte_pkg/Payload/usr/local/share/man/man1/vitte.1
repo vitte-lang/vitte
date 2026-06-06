@@ -1,0 +1,187 @@
+.TH VITTE 1 "May 2026" "vitte 2.1.1" "User Commands"
+.SH NAME
+vitte \- main CLI for the Vitte compiler and tools
+.SH SYNOPSIS
+.B vitte
+[\fIcommand\fR] [\fIoptions\fR] \fI<input>\fR
+.SH DESCRIPTION
+.B vitte
+is the main command for the Vitte compiler.
+It can parse source, check it, lower it through IR, emit output, and run build-related helpers.
+
+The current repository keeps the compiler surface in Vitte.
+The goal is to keep the bootstrap path small, easy to read, and easy to test.
+.SH COMMANDS
+.TP
+.B help
+Show help and common tasks.
+.TP
+.B init [dir]
+Create a small project in the given directory.
+.TP
+.B explain <code>
+Explain a diagnostic code such as \fBE0001\fR or \fBW1001\fR.
+.TP
+.B doctor
+Check toolchain and host setup.
+.TP
+.B parse
+Parse only.
+.TP
+.B check
+Parse, resolve, and lower to IR without backend output.
+.TP
+.B emit
+Emit a compiler artifact for inspection.
+.TP
+.B build
+Run the full build path.
+.TP
+.B profile
+Run the build with timing and profile data.
+.TP
+.B reduce
+Shrink a failing input to a small reproducer.
+.TP
+.B clean-cache
+Remove cached compiler state.
+.TP
+.B mod graph
+Show the module graph and cycle report.
+.TP
+.B mod doctor
+Check imports, aliases, and collisions.
+.TP
+.B mod contract-diff
+Compare exported module contracts between two inputs.
+.SH OPTIONS
+.TP
+.B \-h, \-\-help
+Show help.
+.TP
+.BI \-o " <file>"
+Set the output file name.
+.TP
+.BI \-\-lang " <code>"
+Set the diagnostics language, for example \fBen\fR or \fBfr\fR.
+.TP
+.BI \-\-explain " <code>"
+Explain one diagnostic code.
+.TP
+.BI \-\-runtime-include " <path>"
+Add a runtime include directory.
+.TP
+.BI \-\-target " <name>"
+Select the output target, for example \fBvitte\fR or \fBarduino-uno\fR.
+.TP
+.B \-\-upload
+Upload to Arduino after build.
+.TP
+.BI \-\-port " <path>"
+Arduino serial port.
+.TP
+.BI \-\-fqbn " <name>"
+Arduino fully qualified board name.
+.TP
+.B \-\-parse-only
+Parse only.
+.TP
+.B \-\-resolve-only
+Resolve only.
+.TP
+.B \-\-hir-only
+Lower to HIR only.
+.TP
+.B \-\-mir-only
+Lower to MIR only.
+.TP
+.B \-\-dump-ast
+Print AST after parsing.
+.TP
+.B \-\-dump-hir
+Print HIR after lowering.
+.TP
+.B \-\-dump-mir
+Print MIR after lowering.
+.TP
+.B \-\-emit-vitte
+Emit a Vitte artifact only.
+.TP
+.B \-\-diag-json
+Print diagnostics as JSON.
+.TP
+.B \-\-diag-code-only
+Print compact diagnostics.
+.TP
+.B \-\-deterministic
+Keep output ordering stable.
+.TP
+.BI \-\-runtime-profile " <name>"
+Select the runtime profile: \fBcore\fR, \fBsystem\fR, \fBdesktop\fR, or \fBarduino\fR.
+.TP
+.B \-\-allow-experimental
+Allow experimental imports.
+.TP
+.B \-\-deny-internal
+Keep internal module privacy enabled.
+.TP
+.B \-\-allow-internal
+Disable internal privacy checks.
+.TP
+.B \-\-strict-types
+Enforce canonical type names.
+.TP
+.B \-\-strict-modules
+Require explicit module imports.
+.TP
+.B \-\-strict-imports
+Require explicit imports and reject unused aliases.
+.TP
+.B \-\-fail-on-warning
+Treat warnings as errors.
+.TP
+.BI \-\-stage " <name>"
+Stop at a stage: \fBparse\fR, \fBresolve\fR, \fBir\fR, or \fBbackend\fR.
+.TP
+.B \-\-freestanding
+Enable freestanding mode.
+.TP
+.B \-\-stdout
+Write output to stdout.
+.TP
+.B \-\-repro
+Enable reproducible output.
+.TP
+.B \-\-repro-strict
+Enforce strict deterministic lowering.
+.TP
+.B \-\-debug
+Include debug symbols.
+.TP
+.B \-O0 .. \-O3
+Set optimization level.
+.SH STAGES
+.TP
+.B parse
+Read syntax and top-level structure.
+.TP
+.B resolve
+Check modules, imports, and symbols.
+.TP
+.B ir
+Lower to HIR and MIR.
+.TP
+.B backend
+Emit target output.
+.SH FILES
+.TP
+.B src/vitte/compiler
+Main Vitte compiler source tree.
+.TP
+.B docs
+Project docs and site pages.
+.TP
+.B man/vittec.1
+Compatibility manual page.
+.SH SEE ALSO
+.BR vittec (1)

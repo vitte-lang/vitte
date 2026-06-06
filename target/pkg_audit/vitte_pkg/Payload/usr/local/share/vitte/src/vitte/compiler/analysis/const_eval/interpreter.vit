@@ -1,0 +1,801 @@
+space vitte/compiler/analysis/const_eval/interpreter
+
+use vitte/compiler/analysis/const_eval/errors.{
+  ConstEvalDiagnostic,
+  ConstEvalErrorKind,
+  diagnostic_create,
+  diagnostics_has_fatal
+}
+use vitte/compiler/frontend/ast/expr.{ AstExpr, AstExprKind }
+
+pick ConstValueKind {
+  Unknown,
+  Int,
+  Bool,
+  String,
+  Unit,
+}
+
+pick ConstTokenKind {
+  Eof,
+  Int,
+  Bool,
+  String,
+  Ident,
+  Symbol,
+}
+
+form ConstValue {
+  kind: ConstValueKind
+  int_value: int
+  bool_value: bool
+  string_value: string
+  valid: bool
+}
+
+form ConstBinding {
+  name: string
+  value: ConstValue
+  valid: bool
+}
+
+form ConstEnv {
+  bindings: [ConstBinding]
+  valid: bool
+}
+
+form ConstToken {
+  kind: ConstTokenKind
+  text: string
+  valid: bool
+}
+
+form ConstParseState {
+  tokens: [ConstToken]
+  index: int
+  env: ConstEnv
+  file: string
+  line: u64
+  diagnostics: [ConstEvalDiagnostic]
+  valid: bool
+}
+
+form ConstStep {
+  state: ConstParseState
+  value: ConstValue
+}
+
+form ConstEvalResult {
+  value: ConstValue
+  diagnostics: [ConstEvalDiagnostic]
+  valid: bool
+}
+
+proc const_unknown() -> ConstValue {
+  give ConstValue {
+    kind: ConstValueKind.Unknown,
+    int_value: 0,
+    bool_value: false,
+    string_value: "",
+    valid: false
+  };
+}
+
+proc const_int(value: int) -> ConstValue {
+  give ConstValue {
+    kind: ConstValueKind.Int,
+    int_value: value,
+    bool_value: false,
+    string_value: "",
+    valid: true
+  };
+}
+
+proc const_bool(value: bool) -> ConstValue {
+  give ConstValue {
+    kind: ConstValueKind.Bool,
+    int_value: 0,
+    bool_value: value,
+    string_value: "",
+    valid: true
+  };
+}
+
+proc const_string(value: string) -> ConstValue {
+  give ConstValue {
+    kind: ConstValueKind.String,
+    int_value: 0,
+    bool_value: false,
+    string_value: value,
+    valid: true
+  };
+}
+
+proc const_unit() -> ConstValue {
+  give ConstValue {
+    kind: ConstValueKind.Unit,
+    int_value: 0,
+    bool_value: false,
+    string_value: "",
+    valid: true
+  };
+}
+
+proc env_empty() -> ConstEnv {
+  give ConstEnv {
+    bindings: [],
+    valid: true
+  };
+}
+
+proc env_index_of(env: ConstEnv, name: string) -> int {
+  let i: int = 0;
+  while i < len(env.bindings) {
+    if env.bindings[i].name == name {
+      give i;
+    }
+    set i = i + 1;
+  }
+  give -1;
+}
+
+proc env_has(env: ConstEnv, name: string) -> bool {
+  give env_index_of(env, name) >= 0;
+}
+
+proc env_get(env: ConstEnv, name: string) -> ConstValue {
+  let index: int = env_index_of(env, name);
+  if index < 0 {
+    give const_unknown();
+  }
+  give env.bindings[index].value;
+}
+
+proc env_set(env: ConstEnv, name: string, value: ConstValue) -> ConstEnv {
+  let bindings: [ConstBinding] = [];
+  let i: int = 0;
+  let replaced: bool = false;
+
+  while i < len(env.bindings) {
+    if env.bindings[i].name == name {
+      set bindings = bindings + [ConstBinding { name: name, value: value, valid: value.valid }];
+      set replaced = true;
+    } else {
+      set bindings = bindings + [env.bindings[i]];
+    }
+    set i = i + 1;
+  }
+
+  if not replaced {
+    set bindings = bindings + [ConstBinding { name: name, value: value, valid: value.valid }];
+  }
+
+  give ConstEnv {
+    bindings: bindings,
+    valid: env.valid and value.valid
+  };
+}
+
+proc value_to_text(value: ConstValue) -> string {
+  if value.kind == ConstValueKind.Int {
+    give to_string(value.int_value);
+  }
+  if value.kind == ConstValueKind.Bool {
+    if value.bool_value {
+      give "true";
+    }
+    give "false";
+  }
+  if value.kind == ConstValueKind.String {
+    give "\"" + value.string_value + "\"";
+  }
+  if value.kind == ConstValueKind.Unit {
+    give "()";
+  }
+  give "unknown";
+}
+
+proc is_space_char(ch: string) -> bool {
+  give ch == " " or ch == "\t" or ch == "\n" or ch == "\r";
+}
+
+proc is_letter_char(ch: string) -> bool {
+  let is_lower_alpha: bool = ch >= "a" and ch <= "z";
+  let is_upper_alpha: bool = ch >= "A" and ch <= "Z";
+  give is_lower_alpha or is_upper_alpha or ch == "_";
+}
+
+proc is_digit_char(ch: string) -> bool {
+  give ch >= "0" and ch <= "9";
+}
+
+proc token_create(kind: ConstTokenKind, text: string) -> ConstToken {
+  give ConstToken {
+    kind: kind,
+    text: text,
+    valid: true
+  };
+}
+
+proc op_eqeq() -> string {
+  give slice("a==b", 1, 3);
+}
+
+proc op_neq() -> string {
+  give slice("a!=b", 1, 3);
+}
+
+proc op_lte() -> string {
+  give slice("a<=b", 1, 3);
+}
+
+proc op_gte() -> string {
+  give slice("a>=b", 1, 3);
+}
+
+proc sym_lparen() -> string {
+  give slice("(", 0, 1);
+}
+
+proc sym_rparen() -> string {
+  give slice(")", 0, 1);
+}
+
+proc tokenize_const_expr(expr: string) -> [ConstToken] {
+  let tokens: [ConstToken] = [];
+  let i: int = 0;
+
+  while i < len(expr) {
+    let ch: string = slice(expr, i, i + 1);
+    if is_space_char(ch) {
+      set i = i + 1;
+      continue;
+    }
+
+    let is_negative_int_start: bool = ch == "-" and i + 1 < len(expr) and is_digit_char(slice(expr, i + 1, i + 2));
+    if is_digit_char(ch) or is_negative_int_start {
+      let start: int = i;
+      if ch == "-" {
+        set i = i + 1;
+      }
+      while i < len(expr) and is_digit_char(slice(expr, i, i + 1)) {
+        set i = i + 1;
+      }
+      set tokens = tokens + [token_create(ConstTokenKind.Int, slice(expr, start, i))];
+      continue;
+    }
+
+    if ch == "\"" {
+      let start: int = i + 1;
+      set i = i + 1;
+      while i < len(expr) and slice(expr, i, i + 1) != "\"" {
+        if slice(expr, i, i + 1) == "\\" and i + 1 < len(expr) {
+          set i = i + 2;
+        } else {
+          set i = i + 1;
+        }
+      }
+      let value: string = slice(expr, start, i);
+      if i < len(expr) {
+        set i = i + 1;
+      }
+      set tokens = tokens + [token_create(ConstTokenKind.String, value)];
+      continue;
+    }
+
+    if is_letter_char(ch) {
+      let start: int = i;
+      set i = i + 1;
+      while i < len(expr) {
+        let current: string = slice(expr, i, i + 1);
+        if is_letter_char(current) or is_digit_char(current) {
+          set i = i + 1;
+        } else {
+          break;
+        }
+      }
+      let text: string = slice(expr, start, i);
+      if text == "true" or text == "false" {
+        set tokens = tokens + [token_create(ConstTokenKind.Bool, text)];
+      } else {
+        set tokens = tokens + [token_create(ConstTokenKind.Ident, text)];
+      }
+      continue;
+    }
+
+    if i + 1 < len(expr) {
+      let two: string = slice(expr, i, i + 2);
+      if two == op_eqeq() or two == op_neq() or two == op_lte() or two == op_gte() {
+        set tokens = tokens + [token_create(ConstTokenKind.Symbol, two)];
+        set i = i + 2;
+        continue;
+      }
+    }
+
+    set tokens = tokens + [token_create(ConstTokenKind.Symbol, ch)];
+    set i = i + 1;
+  }
+
+  give tokens + [token_create(ConstTokenKind.Eof, "")];
+}
+
+proc current_token(state: ConstParseState) -> ConstToken {
+  if state.index < len(state.tokens) {
+    give state.tokens[state.index];
+  }
+  give token_create(ConstTokenKind.Eof, "");
+}
+
+proc next_token(state: ConstParseState) -> ConstToken {
+  if state.index + 1 < len(state.tokens) {
+    give state.tokens[state.index + 1];
+  }
+  give token_create(ConstTokenKind.Eof, "");
+}
+
+proc advance(state: ConstParseState) -> ConstParseState {
+  give ConstParseState {
+    tokens: state.tokens,
+    index: state.index + 1,
+    env: state.env,
+    file: state.file,
+    line: state.line,
+    diagnostics: state.diagnostics,
+    valid: state.valid
+  };
+}
+
+proc add_diag(state: ConstParseState, kind: ConstEvalErrorKind, message: string, labels: [string], suggestion: string) -> ConstParseState {
+  give ConstParseState {
+    tokens: state.tokens,
+    index: state.index,
+    env: state.env,
+    file: state.file,
+    line: state.line,
+    diagnostics: state.diagnostics + [diagnostic_create(kind, state.file, state.line, message, labels, suggestion, true)],
+    valid: false
+  };
+}
+
+proc step(state: ConstParseState, value: ConstValue) -> ConstStep {
+  give ConstStep {
+    state: state,
+    value: value
+  };
+}
+
+proc eval_binary_int(left: ConstValue, right: ConstValue, op: string, state: ConstParseState) -> ConstStep {
+  if left.kind != ConstValueKind.Int or right.kind != ConstValueKind.Int {
+    give step(add_diag(state, ConstEvalErrorKind.UnsupportedExpr, "integer operator `" + op + "` requires integer operands", [op], "use integer constant operands"), const_unknown());
+  }
+
+  if op == "+" {
+    let value: int = left.int_value + right.int_value;
+    give step(state, const_int(value));
+  }
+  if op == "-" {
+    let value: int = left.int_value - right.int_value;
+    give step(state, const_int(value));
+  }
+  if op == "*" {
+    let value: int = left.int_value * right.int_value;
+    give step(state, const_int(value));
+  }
+  if op == "/" {
+    if right.int_value == 0 {
+      give step(add_diag(state, ConstEvalErrorKind.DivisionByZero, "division by zero in constant expression", ["/"], "guard the denominator or defer to runtime"), const_unknown());
+    }
+    let value: int = left.int_value / right.int_value;
+    give step(state, const_int(value));
+  }
+  if op == "%" {
+    if right.int_value == 0 {
+      give step(add_diag(state, ConstEvalErrorKind.DivisionByZero, "modulo by zero in constant expression", ["%"], "guard the denominator or defer to runtime"), const_unknown());
+    }
+    let value: int = left.int_value % right.int_value;
+    give step(state, const_int(value));
+  }
+  if op == "<" {
+    let value: bool = left.int_value < right.int_value;
+    give step(state, const_bool(value));
+  }
+  if op == op_lte() {
+    let value: bool = left.int_value <= right.int_value;
+    give step(state, const_bool(value));
+  }
+  if op == ">" {
+    let value: bool = left.int_value > right.int_value;
+    give step(state, const_bool(value));
+  }
+  if op == op_gte() {
+    let value: bool = left.int_value >= right.int_value;
+    give step(state, const_bool(value));
+  }
+  if op == op_eqeq() {
+    let value: bool = left.int_value == right.int_value;
+    give step(state, const_bool(value));
+  }
+  if op == op_neq() {
+    let value: bool = left.int_value != right.int_value;
+    give step(state, const_bool(value));
+  }
+
+  give step(add_diag(state, ConstEvalErrorKind.UnsupportedExpr, "unsupported integer operator `" + op + "`", [op], "simplify the constant expression"), const_unknown());
+}
+
+proc eval_binary_bool(left: ConstValue, right: ConstValue, op: string, state: ConstParseState) -> ConstStep {
+  if left.kind != ConstValueKind.Bool or right.kind != ConstValueKind.Bool {
+    give step(add_diag(state, ConstEvalErrorKind.UnsupportedExpr, "boolean operator `" + op + "` requires boolean operands", [op], "use boolean constant operands"), const_unknown());
+  }
+
+  if op == "and" {
+    let value: bool = left.bool_value and right.bool_value;
+    give step(state, const_bool(value));
+  }
+  if op == "or" {
+    let value: bool = left.bool_value or right.bool_value;
+    give step(state, const_bool(value));
+  }
+  if op == op_eqeq() {
+    let value: bool = left.bool_value == right.bool_value;
+    give step(state, const_bool(value));
+  }
+  if op == op_neq() {
+    let value: bool = left.bool_value != right.bool_value;
+    give step(state, const_bool(value));
+  }
+
+  give step(add_diag(state, ConstEvalErrorKind.UnsupportedExpr, "unsupported boolean operator `" + op + "`", [op], "simplify the constant expression"), const_unknown());
+}
+
+proc eval_binary_string(left: ConstValue, right: ConstValue, op: string, state: ConstParseState) -> ConstStep {
+  if left.kind != ConstValueKind.String or right.kind != ConstValueKind.String {
+    give step(add_diag(state, ConstEvalErrorKind.UnsupportedExpr, "string operator `" + op + "` requires string operands", [op], "use string constant operands"), const_unknown());
+  }
+
+  if op == "+" {
+    let value: string = left.string_value + right.string_value;
+    give step(state, const_string(value));
+  }
+  if op == op_eqeq() {
+    let value: bool = left.string_value == right.string_value;
+    give step(state, const_bool(value));
+  }
+  if op == op_neq() {
+    let value: bool = left.string_value != right.string_value;
+    give step(state, const_bool(value));
+  }
+
+  give step(add_diag(state, ConstEvalErrorKind.UnsupportedExpr, "unsupported string operator `" + op + "`", [op], "simplify the constant expression"), const_unknown());
+}
+
+proc parse_expr(state: ConstParseState) -> ConstStep {
+  give parse_or(state);
+}
+
+proc parse_or(state: ConstParseState) -> ConstStep {
+  let left: ConstStep = parse_and(state);
+  let current: ConstStep = left;
+
+  while current_token(current.state).text == "or" {
+    let walk: ConstParseState = advance(current.state);
+    let right: ConstStep = parse_and(walk);
+    set current = eval_binary_bool(current.value, right.value, "or", right.state);
+  }
+
+  give current;
+}
+
+proc parse_and(state: ConstParseState) -> ConstStep {
+  let left: ConstStep = parse_equality(state);
+  let current: ConstStep = left;
+
+  while current_token(current.state).text == "and" {
+    let walk: ConstParseState = advance(current.state);
+    let right: ConstStep = parse_equality(walk);
+    set current = eval_binary_bool(current.value, right.value, "and", right.state);
+  }
+
+  give current;
+}
+
+proc parse_equality(state: ConstParseState) -> ConstStep {
+  let left: ConstStep = parse_compare(state);
+  let current: ConstStep = left;
+
+  while current_token(current.state).text == op_eqeq() or current_token(current.state).text == op_neq() {
+    let op: string = current_token(current.state).text;
+    let walk: ConstParseState = advance(current.state);
+    let right: ConstStep = parse_compare(walk);
+
+    if current.value.kind == ConstValueKind.Int and right.value.kind == ConstValueKind.Int {
+      set current = eval_binary_int(current.value, right.value, op, right.state);
+    } elif current.value.kind == ConstValueKind.Bool and right.value.kind == ConstValueKind.Bool {
+      set current = eval_binary_bool(current.value, right.value, op, right.state);
+    } elif current.value.kind == ConstValueKind.String and right.value.kind == ConstValueKind.String {
+      set current = eval_binary_string(current.value, right.value, op, right.state);
+    } else {
+      set current = step(add_diag(right.state, ConstEvalErrorKind.UnsupportedExpr, "equality requires matching constant operand types", [op], "compare values of the same constant type"), const_unknown());
+    }
+  }
+
+  give current;
+}
+
+proc parse_compare(state: ConstParseState) -> ConstStep {
+  let left: ConstStep = parse_add(state);
+  let current: ConstStep = left;
+
+  while current_token(current.state).text == "<" or current_token(current.state).text == op_lte() or current_token(current.state).text == ">" or current_token(current.state).text == op_gte() {
+    let op: string = current_token(current.state).text;
+    let walk: ConstParseState = advance(current.state);
+    let right: ConstStep = parse_add(walk);
+    set current = eval_binary_int(current.value, right.value, op, right.state);
+  }
+
+  give current;
+}
+
+proc parse_add(state: ConstParseState) -> ConstStep {
+  let left: ConstStep = parse_mul(state);
+  let current: ConstStep = left;
+
+  while current_token(current.state).text == "+" or current_token(current.state).text == "-" {
+    let op: string = current_token(current.state).text;
+    let walk: ConstParseState = advance(current.state);
+    let right: ConstStep = parse_mul(walk);
+    if op == "+" and current.value.kind == ConstValueKind.String and right.value.kind == ConstValueKind.String {
+      set current = eval_binary_string(current.value, right.value, op, right.state);
+    } else {
+      set current = eval_binary_int(current.value, right.value, op, right.state);
+    }
+  }
+
+  give current;
+}
+
+proc parse_mul(state: ConstParseState) -> ConstStep {
+  let left: ConstStep = parse_unary(state);
+  let current: ConstStep = left;
+
+  while current_token(current.state).text == "*" or current_token(current.state).text == "/" or current_token(current.state).text == "%" {
+    let op: string = current_token(current.state).text;
+    let walk: ConstParseState = advance(current.state);
+    let right: ConstStep = parse_unary(walk);
+    set current = eval_binary_int(current.value, right.value, op, right.state);
+  }
+
+  give current;
+}
+
+proc parse_unary(state: ConstParseState) -> ConstStep {
+  let tok: ConstToken = current_token(state);
+  if tok.text == "-" {
+    let inner: ConstStep = parse_unary(advance(state));
+    if inner.value.kind != ConstValueKind.Int {
+      give step(add_diag(inner.state, ConstEvalErrorKind.UnsupportedExpr, "unary `-` requires an integer operand", ["-"], "use an integer constant operand"), const_unknown());
+    }
+    let value: int = 0 - inner.value.int_value;
+    give step(inner.state, const_int(value));
+  }
+  if tok.text == "not" {
+    let inner: ConstStep = parse_unary(advance(state));
+    if inner.value.kind != ConstValueKind.Bool {
+      give step(add_diag(inner.state, ConstEvalErrorKind.UnsupportedExpr, "`not` requires a boolean operand", ["not"], "use a boolean constant operand"), const_unknown());
+    }
+    let value: bool = not inner.value.bool_value;
+    give step(inner.state, const_bool(value));
+  }
+  give parse_primary(state);
+}
+
+proc parse_primary(state: ConstParseState) -> ConstStep {
+  let tok: ConstToken = current_token(state);
+  if tok.kind == ConstTokenKind.Int {
+    let value: int = parse_int(tok.text);
+    let next_state: ConstParseState = advance(state);
+    give step(next_state, const_int(value));
+  }
+  if tok.kind == ConstTokenKind.Bool {
+    let value: bool = tok.text == "true";
+    let next_state: ConstParseState = advance(state);
+    give step(next_state, const_bool(value));
+  }
+  if tok.kind == ConstTokenKind.String {
+    let next_state: ConstParseState = advance(state);
+    give step(next_state, const_string(tok.text));
+  }
+  if tok.text == sym_lparen() {
+    let inner: ConstStep = parse_expr(advance(state));
+    if current_token(inner.state).text != sym_rparen() {
+      give step(add_diag(inner.state, ConstEvalErrorKind.ParseError, "expected closing `)` in constant expression", [sym_rparen()], "close the parenthesized expression"), const_unknown());
+    }
+    give step(advance(inner.state), inner.value);
+  }
+  if tok.kind == ConstTokenKind.Ident {
+    if next_token(state).text == sym_lparen() {
+      give step(add_diag(state, ConstEvalErrorKind.NonConstCall, "function calls are not supported in constant evaluation", [tok.text], "inline a pure constant expression or evaluate at runtime"), const_unknown());
+    }
+    if not env_has(state.env, tok.text) {
+      give step(add_diag(state, ConstEvalErrorKind.UnknownName, "unknown constant `" + tok.text + "`", [tok.text], "declare the constant before using it"), const_unknown());
+    }
+    give step(advance(state), env_get(state.env, tok.text));
+  }
+
+  give step(add_diag(state, ConstEvalErrorKind.UnsupportedExpr, "unsupported constant expression token `" + tok.text + "`", [tok.text], "simplify the expression to literals, names and operators"), const_unknown());
+}
+
+proc eval_const_expr(env: ConstEnv, file: string, expr: string, line: u64) -> ConstEvalResult {
+  let state: ConstParseState = ConstParseState {
+    tokens: tokenize_const_expr(expr),
+    index: 0,
+    env: env,
+    file: file,
+    line: line,
+    diagnostics: [],
+    valid: true
+  };
+
+  let parsed: ConstStep = parse_expr(state);
+  let final_state: ConstParseState = parsed.state;
+  if current_token(final_state).kind != ConstTokenKind.Eof {
+    let with_diag: ConstParseState = add_diag(final_state, ConstEvalErrorKind.ParseError, "unexpected trailing tokens in constant expression", [current_token(final_state).text], "remove trailing syntax from the constant expression");
+    give ConstEvalResult {
+      value: const_unknown(),
+      diagnostics: with_diag.diagnostics,
+      valid: false
+    };
+  }
+
+  give ConstEvalResult {
+    value: parsed.value,
+    diagnostics: final_state.diagnostics,
+    valid: parsed.value.valid and not diagnostics_has_fatal(final_state.diagnostics)
+  };
+}
+
+proc expr_references(expr: string) -> [string] {
+  let tokens: [ConstToken] = tokenize_const_expr(expr);
+  let refs: [string] = [];
+  let i: int = 0;
+  while i < len(tokens) {
+    if tokens[i].kind == ConstTokenKind.Ident and tokens[i].text != "and" and tokens[i].text != "or" and tokens[i].text != "not" {
+      let found: bool = false;
+      let j: int = 0;
+      while j < len(refs) {
+        if refs[j] == tokens[i].text {
+          set found = true;
+        }
+        set j = j + 1;
+      }
+      if not found {
+        set refs = refs + [tokens[i].text];
+      }
+    }
+    set i = i + 1;
+  }
+  give refs;
+}
+
+proc ast_expr_references(expr: AstExpr) -> [string] {
+  let refs: [string] = [];
+  if expr.kind == AstExprKind.Name and expr.name != "" {
+    give [expr.name];
+  }
+  let i: u64 = 0;
+  while i < len(expr.children) {
+    let child_refs: [string] = ast_expr_references(expr.children[i]);
+    let j: u64 = 0;
+    while j < len(child_refs) {
+      let found: bool = false;
+      let k: u64 = 0;
+      while k < len(refs) {
+        if refs[k] == child_refs[j] {
+          set found = true;
+        }
+        set k = k + 1;
+      }
+      if not found {
+        set refs = refs + [child_refs[j]];
+      }
+      set j = j + 1;
+    }
+    set i = i + 1;
+  }
+  give refs;
+}
+
+proc eval_const_ast_expr(env: ConstEnv, file: string, expr: AstExpr) -> ConstEvalResult {
+  let line: u64 = expr.span.start_line;
+  if expr.kind == AstExprKind.Int {
+    let value: int = parse_int(expr.text);
+    give ConstEvalResult { value: const_int(value), diagnostics: [], valid: true };
+  }
+  if expr.kind == AstExprKind.Bool {
+    let value: bool = expr.text == "true";
+    give ConstEvalResult { value: const_bool(value), diagnostics: [], valid: true };
+  }
+  if expr.kind == AstExprKind.String {
+    let text: string = expr.text;
+    let value: string = text;
+    if len(text) >= 2 {
+      set value = slice(text, 1, len(text) - 1);
+    }
+    give ConstEvalResult { value: const_string(value), diagnostics: [], valid: true };
+  }
+  if expr.kind == AstExprKind.Char {
+    give ConstEvalResult {
+      value: const_string(expr.text),
+      diagnostics: [diagnostic_create(ConstEvalErrorKind.UnsupportedExpr, file, line, "char constants are not yet supported in constant evaluation", [expr.text], "use an integer, boolean or string constant instead", true)],
+      valid: false
+    };
+  }
+  if expr.kind == AstExprKind.Float {
+    give ConstEvalResult {
+      value: const_unknown(),
+      diagnostics: [diagnostic_create(ConstEvalErrorKind.UnsupportedExpr, file, line, "float constants are not yet supported in constant evaluation", [expr.text], "use an integer, boolean or string constant instead", true)],
+      valid: false
+    };
+  }
+  if expr.kind == AstExprKind.Name {
+    if env_has(env, expr.name) {
+      give ConstEvalResult { value: env_get(env, expr.name), diagnostics: [], valid: true };
+    }
+    give ConstEvalResult {
+      value: const_unknown(),
+      diagnostics: [diagnostic_create(ConstEvalErrorKind.UnknownName, file, line, "unknown constant `" + expr.name + "`", [expr.name], "declare the constant before using it", true)],
+      valid: false
+    };
+  }
+  if expr.kind == AstExprKind.Call {
+    give ConstEvalResult {
+      value: const_unknown(),
+      diagnostics: [diagnostic_create(ConstEvalErrorKind.NonConstCall, file, line, "function calls are not supported in constant evaluation", [expr.name], "inline a pure constant expression or evaluate at runtime", true)],
+      valid: false
+    };
+  }
+  if expr.kind == AstExprKind.BorrowShared or expr.kind == AstExprKind.BorrowMut {
+    give ConstEvalResult {
+      value: const_unknown(),
+      diagnostics: [diagnostic_create(ConstEvalErrorKind.UnsupportedExpr, file, line, "borrow expressions are not supported in constant evaluation", [expr.text], "remove the borrow or defer the expression to runtime", true)],
+      valid: false
+    };
+  }
+  if expr.kind == AstExprKind.Binary and len(expr.children) == 2 {
+    let left: ConstEvalResult = eval_const_ast_expr(env, file, expr.children[0]);
+    let right: ConstEvalResult = eval_const_ast_expr(env, file, expr.children[1]);
+    let merged: [ConstEvalDiagnostic] = left.diagnostics + right.diagnostics;
+    if not left.valid or not right.valid {
+      give ConstEvalResult { value: const_unknown(), diagnostics: merged, valid: false };
+    }
+    let state: ConstParseState = ConstParseState {
+      tokens: [],
+      index: 0,
+      env: env,
+      file: file,
+      line: line,
+      diagnostics: merged,
+      valid: len(merged) == 0
+    };
+    let stepped: ConstStep = step(state, const_unknown());
+    if left.value.kind == ConstValueKind.Int and right.value.kind == ConstValueKind.Int {
+      set stepped = eval_binary_int(left.value, right.value, expr.operator, state);
+    } elif left.value.kind == ConstValueKind.Bool and right.value.kind == ConstValueKind.Bool {
+      set stepped = eval_binary_bool(left.value, right.value, expr.operator, state);
+    } elif left.value.kind == ConstValueKind.String and right.value.kind == ConstValueKind.String {
+      set stepped = eval_binary_string(left.value, right.value, expr.operator, state);
+    } else {
+      set stepped = step(add_diag(state, ConstEvalErrorKind.UnsupportedExpr, "binary constant operator `" + expr.operator + "` requires matching operand kinds", [expr.operator], "use operands of the same constant kind"), const_unknown());
+    }
+    give ConstEvalResult {
+      value: stepped.value,
+      diagnostics: stepped.state.diagnostics,
+      valid: stepped.value.valid and not diagnostics_has_fatal(stepped.state.diagnostics)
+    };
+  }
+  give ConstEvalResult {
+    value: const_unknown(),
+    diagnostics: [diagnostic_create(ConstEvalErrorKind.UnsupportedExpr, file, line, "unsupported constant expression `" + expr.text + "`", [expr.text], "simplify the expression to literals, names, calls-free binary operations and parentheses", true)],
+    valid: false
+  };
+}

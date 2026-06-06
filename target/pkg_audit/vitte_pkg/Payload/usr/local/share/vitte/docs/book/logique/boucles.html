@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vitte Loops</title>
+<link rel="icon" href="../../svg/logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../css/site.css">
+<link rel="stylesheet" href="../../css/print.css" media="print">
+
+<link rel="alternate" hreflang="en" href="https://vitte-lang.org/boucles.html">
+<link rel="alternate" hreflang="x-default" href="https://vitte-lang.org/boucles.html">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; font-src 'self'; connect-src 'self';">
+</head>
+<body class="classic-doc">
+<a class="skip-link" href="#main-content">Skip to content</a>
+<div class="site-shell">
+<header class="site-header">
+<a class="site-brand" href="../../index.html"><img class="site-brand-mark" src="../../svg/logo.svg" alt="" width="32" height="32"><span>Vitte</span></a>
+<nav class="site-nav" aria-label="Primary">
+<ul class="nav-band"><li><a class="nav-chip" href="../../index.html"><img src="../../svg/home.svg" alt="" width="14" height="14" aria-hidden="true"><span>Welcome</span></a></li><li><a class="nav-chip" href="../../doc.html"><img src="../../svg/docs.svg" alt="" width="14" height="14" aria-hidden="true"><span>Documentation</span></a></li><li><a class="nav-chip" href="../../download.html"><img src="../../svg/download.svg" alt="" width="14" height="14" aria-hidden="true"><span>Download</span></a></li><li><a class="nav-chip" href="../../source.html"><img src="../../svg/source.svg" alt="" width="14" height="14" aria-hidden="true"><span>Source</span></a></li><li><a class="nav-chip" href="../../community.html"><img src="../../svg/community.svg" alt="" width="14" height="14" aria-hidden="true"><span>Community</span></a></li><li><a class="nav-chip" href="../../news.html"><img src="../../svg/news.svg" alt="" width="14" height="14" aria-hidden="true"><span>News</span></a></li><li><a class="nav-chip" href="../../diagnostics.html"><img src="../../svg/diagnostics.svg" alt="" width="14" height="14" aria-hidden="true"><span>Diagnostics</span></a></li><li><a class="nav-chip" href="../../suggestions.html"><img src="../../svg/suggestions.svg" alt="" width="14" height="14" aria-hidden="true"><span>Suggestions</span></a></li></ul>
+</nav>
+</header>
+<main id="main-content" class="site-main">
+<article class="doc-content">
+<p class="book-progress"></p>
+<h1>Vitte Loops</h1>
+<p>This page treats Vitte logic as an executable mechanism: each rule is linked to a concrete consequence in the program flow. A Vitte loop is correct when its state, progress, and exit are visible in the text without external inference.</p>
+<pre><code class="language-vit">proc sum_to(limit: int) -&gt; int {
+  let i: int = 0
+  let acc: int = 0
+  loop {
+    if i &gt; limit { break }
+    set acc = acc + i
+    set i = i + 1
+  }
+  give acc
+}</code></pre>
+<p>Why this step is solid. Main invariant: before each output test, <code>acc</code> contains the sum of integers already scanned. The loop ends by explicit condition and monotonic mutation of <code>i</code>.</p>
+<p>What happens at runtime. <code>sum_to(3)</code> produces the sequence <code>acc=0,1,3,6</code> then returns <code>6</code>.</p>
+<pre><code class="language-vit">proc sum_to_while(limit: int) -&gt; int {
+  let i: int = 0
+  let acc: int = 0
+  while i &lt;= limit {
+    set acc = acc + i
+    set i = i + 1
+  }
+  give acc
+}</code></pre>
+<p>Why this step is solid. <code>while</code> makes the continuation condition front-end without changing the Vitte execution model. This is the most direct writing when the invariant depends on a single Boolean test.</p>
+<pre><code class="language-vit">proc positive_sum(values: int[]) -&gt; int {
+  let acc: int = 0
+  for x in values {
+    if x &lt; 0 { continue }
+    set acc = acc + x
+  }
+  give acc
+}</code></pre>
+<p>Why this step is solid. The <code>for</code> route relieves index management, <code>continue</code> removes values ​​outside the local contract. The state change remains unique.</p>
+<p>What happens at runtime. <code>[5,-3,4]</code> leads to <code>acc=0-&gt;5-&gt;5-&gt;9</code>, exit <code>9</code>.</p>
+<pre><code class="language-vit">proc find_first_positive(values: int[]) -&gt; int {
+  for x in values {
+    if x &gt; 0 { give x }
+  }
+  give 0
+}</code></pre>
+<p>Why this step is solid. Early exit <code>give</code> in the loop. The first match closes the course; otherwise the function returns the neutral ending value.</p>
+<p>What happens at runtime. <code>[-2,-1,7,8]</code> returns <code>7</code> to the third element. <code>[-2,-1]</code> returns <code>0</code>.</p>
+<p>This page extends <code>docs/book/chapters/07-control.html</code> and refers to the keywords <code>loop</code>, <code>for</code>, <code>break</code>, <code>continue</code> in <code>docs/book/chapters/keywords/loop.html</code>, <code>docs/book/chapters/keywords/for.html</code>, <code>docs/book/chapters/keywords/break.html</code>, <code>docs/book/chapters/keywords/continue.html</code>.</p>
+</article>
+</main>
+<footer class="site-footer">
+<p class="site-footer-path">book/logique/boucles.html</p>
+<p><a href="../../index.html">Back to home</a></p>
+</footer>
+</div>
+<script type="module" src="../../js/book-learning.js"></script>
+<script type="module" src="../../js/main.js"></script>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

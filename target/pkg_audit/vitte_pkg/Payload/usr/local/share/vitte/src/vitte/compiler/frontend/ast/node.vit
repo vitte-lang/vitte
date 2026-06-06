@@ -1,0 +1,244 @@
+space vitte/compiler/frontend/ast/node
+
+export *
+
+form AstLoc {
+  offset: u64
+  line: u64
+  column: u64
+}
+
+form AstSpan {
+  file: string
+
+  start_offset: u64
+  end_offset: u64
+
+  start_line: u64
+  start_column: u64
+
+  end_line: u64
+  end_column: u64
+
+  width: u64
+  valid: bool
+}
+
+form AstId {
+  value: u64
+}
+
+form AstNodeInfo {
+  id: AstId
+  span: AstSpan
+  kind: string
+  valid: bool
+}
+
+proc ast_loc(offset: u64, line: u64, column: u64) -> AstLoc {
+  give AstLoc {
+    offset: offset,
+    line: line,
+    column: column
+  };
+}
+
+proc ast_loc_empty() -> AstLoc {
+  give ast_loc(0, 1, 1);
+}
+
+proc ast_id(value: u64) -> AstId {
+  give AstId {
+    value: value
+  };
+}
+
+proc ast_id_empty() -> AstId {
+  give ast_id(0);
+}
+
+proc ast_span(file: string, start_line: u64, start_column: u64, end_line: u64, end_column: u64) -> AstSpan {
+  let safe_end_column: u64 = if end_column < start_column { start_column } else { end_column };
+  let width: u64 = if safe_end_column > start_column { safe_end_column - start_column } else { 1 };
+
+  give AstSpan {
+    file: file,
+
+    start_offset: 0,
+    end_offset: 0,
+
+    start_line: start_line,
+    start_column: start_column,
+
+    end_line: end_line,
+    end_column: safe_end_column,
+
+    width: width,
+
+    valid: start_line > 0
+      and start_column > 0
+      and end_line >= start_line
+  };
+}
+
+proc ast_span_offsets(file: string, start_offset: u64, end_offset: u64, start_line: u64, start_column: u64, end_line: u64, end_column: u64) -> AstSpan {
+  let safe_end_offset: u64 = if end_offset < start_offset { start_offset } else { end_offset };
+  let width: u64 = if safe_end_offset > start_offset { safe_end_offset - start_offset } else { 1 };
+
+  give AstSpan {
+    file: file,
+
+    start_offset: start_offset,
+    end_offset: safe_end_offset,
+
+    start_line: start_line,
+    start_column: start_column,
+
+    end_line: end_line,
+    end_column: end_column,
+
+    width: width,
+
+    valid: start_line > 0
+      and start_column > 0
+      and end_line >= start_line
+  };
+}
+
+proc ast_span_from_locs(file: string, start: AstLoc, end0: AstLoc) -> AstSpan {
+  give ast_span_offsets(file, start.offset, end0.offset, start.line, start.column, end0.line, end0.column);
+}
+
+proc ast_span_empty() -> AstSpan {
+  give ast_span("", 1, 1, 1, 1);
+}
+
+proc ast_node_info(id: AstId, span: AstSpan, kind: string, valid: bool) -> AstNodeInfo {
+  give AstNodeInfo {
+    id: id,
+    span: span,
+    kind: kind,
+    valid: valid
+  };
+}
+
+proc ast_node_info_empty() -> AstNodeInfo {
+  give ast_node_info(
+    ast_id_empty(),
+    ast_span_empty(),
+    "",
+    false
+  );
+}
+
+proc span_is_empty(span: AstSpan) -> bool {
+  give span.file == ""
+    and span.start_line == 1
+    and span.start_column == 1
+    and span.end_line == 1
+    and span.end_column == 1;
+}
+
+proc span_is_single_line(span: AstSpan) -> bool {
+  give span.start_line == span.end_line;
+}
+
+proc span_contains(span: AstSpan, line: u64, column: u64) -> bool {
+  if line < span.start_line or line > span.end_line {
+    give false;
+  }
+
+  if line == span.start_line and column < span.start_column {
+    give false;
+  }
+
+  if line == span.end_line and column > span.end_column {
+    give false;
+  }
+
+  give true;
+}
+
+proc span_overlaps(a: AstSpan, b: AstSpan) -> bool {
+  if a.end_line < b.start_line {
+    give false;
+  }
+
+  if b.end_line < a.start_line {
+    give false;
+  }
+
+  if a.end_line == b.start_line and a.end_column < b.start_column {
+    give false;
+  }
+
+  if b.end_line == a.start_line and b.end_column < a.start_column {
+    give false;
+  }
+
+  give true;
+}
+
+proc merge_spans(a: AstSpan, b: AstSpan) -> AstSpan {
+  let start_line: u64 = if a.start_line < b.start_line { a.start_line } else { b.start_line };
+  let start_column: u64 = if a.start_line < b.start_line { a.start_column } elif b.start_line < a.start_line { b.start_column } elif a.start_column < b.start_column { a.start_column } else { b.start_column };
+  let end_line: u64 = if a.end_line > b.end_line { a.end_line } else { b.end_line };
+  let end_column: u64 = if a.end_line > b.end_line { a.end_column } elif b.end_line > a.end_line { b.end_column } elif a.end_column > b.end_column { a.end_column } else { b.end_column };
+  let file: string = if a.file != "" { a.file } else { b.file };
+  give ast_span(file, start_line, start_column, end_line, end_column);
+}
+
+proc span_width(span: AstSpan) -> u64 {
+  give span.width;
+}
+
+proc span_height(span: AstSpan) -> u64 {
+  if span.end_line < span.start_line {
+    give 0;
+  }
+
+  let line_span: u64 = span.end_line - span.start_line;
+  give line_span + 1;
+}
+
+proc span_location(span: AstSpan) -> string {
+  let start_line: string = span.start_line as string;
+  let start_column: string = span.start_column as string;
+  give span.file + ":" + start_line + ":" + start_column;
+}
+
+proc span_range(span: AstSpan) -> string {
+  let start_line: string = span.start_line as string;
+  let start_column: string = span.start_column as string;
+  let end_line: string = span.end_line as string;
+  let end_column: string = span.end_column as string;
+  give start_line + ":" + start_column + "-" + end_line + ":" + end_column;
+}
+
+proc span_summary(span: AstSpan) -> string {
+  let width: string = span.width as string;
+  let valid_text: string = span.valid as string;
+  give "file " + span.file + " range " + span_range(span) + " width " + width + " valid " + valid_text;
+}
+
+proc ast_node_summary(node: AstNodeInfo) -> string {
+  let id: string = node.id.value as string;
+  let valid_text: string = node.valid as string;
+  give "id " + id + " kind " + node.kind + " location " + span_location(node.span) + " valid " + valid_text;
+}
+
+proc ast_node_selftest() -> bool {
+  let s0: AstSpan = ast_span("main.vit", 1, 1, 1, 10);
+  let s1: AstSpan = ast_span("main.vit", 1, 5, 2, 4);
+  let merged: AstSpan = merge_spans(s0, s1);
+  let node: AstNodeInfo = ast_node_info(ast_id(1), merged, "proc", true);
+
+  give s0.valid
+    and span_is_single_line(s0)
+    and span_contains(s0, 1, 4)
+    and span_overlaps(s0, s1)
+    and span_width(merged) > 0
+    and span_height(merged) > 0
+    and span_summary(merged) != ""
+    and ast_node_summary(node) != "";
+}

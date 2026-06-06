@@ -1,0 +1,16 @@
+#!/usr/bin/env sh
+set -eu
+repo_root='.'
+source_path='/Users/vincent/Documents/Github/vitte/src/vitte/compiler/tests/ast_tests.vit'
+compiler_bin=${VITTE_BOOTSTRAP_COMPILER:-'./bin/vitte'}
+if [ ! -x "$compiler_bin" ]; then
+    if [ -x "$repo_root/bin/vitte" ]; then
+        compiler_bin="$repo_root/bin/vitte"
+    elif [ -x "./bin/vitte" ]; then
+        compiler_bin="./bin/vitte"
+    else
+        echo "[vitte][error] E_BOOTSTRAP_COMPILER_TEST_BRIDGE: missing compiler binary for compiler test suite bridge" >&2
+        exit 127
+    fi
+fi
+exec "$compiler_bin" check "$source_path"

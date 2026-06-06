@@ -1,0 +1,172 @@
+space vitte/compiler/diagnostics/advanced
+
+use vitte/compiler/diagnostics/diagnostic.{
+    Diagnostic,
+    DiagnosticHelp,
+    DiagnosticLabel,
+    DiagnosticLabelKind,
+    DiagnosticNote,
+    DiagnosticSuggestion,
+    DiagnosticSuggestionKind,
+    SourceSpan,
+    diagnostic_help,
+    diagnostic_label,
+    diagnostic_note,
+    diagnostic_suggestion
+}
+
+export *
+
+proc add_secondary_label(diagnostic: Diagnostic, message: string, span: SourceSpan) -> Diagnostic {
+    let label: DiagnosticLabel = diagnostic_label(DiagnosticLabelKind.Secondary, message, span);
+    give Diagnostic {
+        code: diagnostic.code,
+        phase: diagnostic.phase,
+        severity: diagnostic.severity,
+        rule: diagnostic.rule,
+        message: diagnostic.message,
+        explanation: diagnostic.explanation,
+        technical_note: diagnostic.technical_note,
+        labels: diagnostic.labels + [label],
+        notes: diagnostic.notes,
+        helps: diagnostic.helps,
+        suggestions: diagnostic.suggestions,
+        documentation_url: diagnostic.documentation_url,
+        root_cause: diagnostic.root_cause,
+        cause_chain: diagnostic.cause_chain,
+        pipeline_context: diagnostic.pipeline_context,
+        related_errors: diagnostic.related_errors,
+        probable_fix: diagnostic.probable_fix,
+        subject_symbol: diagnostic.subject_symbol,
+        subject_type: diagnostic.subject_type,
+        subject_borrow: diagnostic.subject_borrow,
+        span: diagnostic.span,
+        deprecated: diagnostic.deprecated,
+        unnecessary: diagnostic.unnecessary,
+        fatal: diagnostic.fatal,
+        valid: diagnostic.valid and span.valid
+    };
+}
+
+proc add_typo_suggestion(diagnostic: Diagnostic, wrong: string, expected: string, span: SourceSpan) -> Diagnostic {
+    let suggestion: DiagnosticSuggestion = diagnostic_suggestion(DiagnosticSuggestionKind.Replace, "did you mean `" + expected + "` instead of `" + wrong + "`?", expected, span, true);
+    give Diagnostic {
+        code: diagnostic.code,
+        phase: diagnostic.phase,
+        severity: diagnostic.severity,
+        rule: diagnostic.rule,
+        message: diagnostic.message,
+        explanation: diagnostic.explanation,
+        technical_note: diagnostic.technical_note,
+        labels: diagnostic.labels,
+        notes: diagnostic.notes,
+        helps: diagnostic.helps,
+        suggestions: diagnostic.suggestions + [suggestion],
+        documentation_url: diagnostic.documentation_url,
+        root_cause: diagnostic.root_cause,
+        cause_chain: diagnostic.cause_chain,
+        pipeline_context: diagnostic.pipeline_context,
+        related_errors: diagnostic.related_errors,
+        probable_fix: diagnostic.probable_fix,
+        subject_symbol: diagnostic.subject_symbol,
+        subject_type: diagnostic.subject_type,
+        subject_borrow: diagnostic.subject_borrow,
+        span: diagnostic.span,
+        deprecated: diagnostic.deprecated,
+        unnecessary: diagnostic.unnecessary,
+        fatal: diagnostic.fatal,
+        valid: diagnostic.valid
+    };
+}
+
+proc add_import_suggestion(diagnostic: Diagnostic, symbol: string, module_name: string) -> Diagnostic {
+    let help_message: string = "import suggestion: use `" + module_name + " { " + symbol + " }`";
+    let help0: DiagnosticHelp = diagnostic_help(help_message);
+    give Diagnostic {
+        code: diagnostic.code,
+        phase: diagnostic.phase,
+        severity: diagnostic.severity,
+        rule: diagnostic.rule,
+        message: diagnostic.message,
+        explanation: diagnostic.explanation,
+        technical_note: diagnostic.technical_note,
+        labels: diagnostic.labels,
+        notes: diagnostic.notes,
+        helps: diagnostic.helps + [help0],
+        suggestions: diagnostic.suggestions,
+        documentation_url: diagnostic.documentation_url,
+        root_cause: diagnostic.root_cause,
+        cause_chain: diagnostic.cause_chain,
+        pipeline_context: diagnostic.pipeline_context,
+        related_errors: diagnostic.related_errors,
+        probable_fix: diagnostic.probable_fix,
+        subject_symbol: diagnostic.subject_symbol,
+        subject_type: diagnostic.subject_type,
+        subject_borrow: diagnostic.subject_borrow,
+        span: diagnostic.span,
+        deprecated: diagnostic.deprecated,
+        unnecessary: diagnostic.unnecessary,
+        fatal: diagnostic.fatal,
+        valid: diagnostic.valid
+    };
+}
+
+proc add_lifetime_explanation(diagnostic: Diagnostic, owner: string, borrower: string) -> Diagnostic {
+    let note_message: string = "lifetime: `" + borrower + "` borrows from `" + owner + "` and cannot outlive it";
+    let note0: DiagnosticNote = diagnostic_note(note_message);
+    give Diagnostic {
+        code: diagnostic.code,
+        phase: diagnostic.phase,
+        severity: diagnostic.severity,
+        rule: diagnostic.rule,
+        message: diagnostic.message,
+        explanation: diagnostic.explanation,
+        technical_note: diagnostic.technical_note,
+        labels: diagnostic.labels,
+        notes: diagnostic.notes + [note0],
+        helps: diagnostic.helps,
+        suggestions: diagnostic.suggestions,
+        documentation_url: diagnostic.documentation_url,
+        root_cause: diagnostic.root_cause,
+        cause_chain: diagnostic.cause_chain,
+        pipeline_context: diagnostic.pipeline_context,
+        related_errors: diagnostic.related_errors,
+        probable_fix: diagnostic.probable_fix,
+        subject_symbol: diagnostic.subject_symbol,
+        subject_type: diagnostic.subject_type,
+        subject_borrow: diagnostic.subject_borrow,
+        span: diagnostic.span,
+        deprecated: diagnostic.deprecated,
+        unnecessary: diagnostic.unnecessary,
+        fatal: diagnostic.fatal,
+        valid: diagnostic.valid
+    };
+}
+
+proc borrow_trace_visualization(path: [string]) -> string {
+    if len(path) == 0 {
+        give "borrow-trace: <empty>";
+    }
+    let out: string = "borrow-trace: " + path[0];
+    let i: u64 = 1;
+    while i < len(path) {
+        set out = out + " -> " + path[i];
+        set i = i + 1;
+    }
+    give out;
+}
+
+proc unicode_safe_render(text: string) -> string {
+    let out: string = "";
+    let i: u64 = 0;
+    while i < len(text) {
+        let ch: string = slice(text, i, i + 1);
+        if ch == "\r" {
+            set out = out + "?";
+        } else {
+            set out = out + ch;
+        }
+        set i = i + 1;
+    }
+    give out;
+}

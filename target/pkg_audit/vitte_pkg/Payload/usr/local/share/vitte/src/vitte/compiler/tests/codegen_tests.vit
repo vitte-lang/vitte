@@ -1,0 +1,221 @@
+space vitte/compiler/tests/codegen_tests
+
+use vitte/compiler/backend/codegen.{ CodegenResult, run_codegen_x86_64 }
+use vitte/compiler/backend/ir/ir.{ IrInstructionKind, IrUnit, IrUnitState, unit_is_valid, verify_unit }
+use vitte/compiler/backend/link/artifact.{ LinkArtifact, artifact_is_valid }
+use vitte/compiler/backend/link/linker.{ link_ir_unit }
+use vitte/compiler/backend/pipeline.{ BackendPipelineResult, compile_to_valid_ir, compile_to_valid_ir_with_backend }
+use vitte/compiler/backends/llvm_bindings.{ LlvmBindingResult, LlvmObjectResult, default_llvm_build_options, emit_llvm_ir_from_ir, emit_llvm_object_from_ir }
+use vitte/compiler/driver/cli.{ run_compile_set_manifest_report_cli }
+use vitte/compiler/driver/compile.{ DriverBackendModuleSetResult, DriverCompileResult, compile_source_set, compile_source_set_with_config, compile_source_with_config, driver_compile_config, driver_module_input }
+use vitte/compiler/driver/exit_status.{ DriverExitStatus }
+use vitte/compiler/driver/pipeline.{ CompileReport, ModuleSetCompileReport, compile_report_json, module_set_compile_report_json, run_and_report_with_config, run_set_and_report, run_set_and_report_with_config }
+use vitte/compiler/driver/result.{ CliReportResult }
+use vitte/compiler/frontend/pipeline.{ FrontendOutput, frontend_run }
+use vitte/compiler/middle/hir/lower_ast.{ lower_ast_to_hir }
+use vitte/compiler/middle/lower/hir_to_mir.{ lower_hir_to_mir }
+use vitte/compiler/middle/lower/mir_to_ir.{ lower_mir_to_ir }
+use vitte/compiler/middle/mir/validate.{ validate_mir }
+use vitte/compiler/middle/pipeline.{ MiddleOutput, middle_run }
+
+const VERSION_TEXT: string = "backend codegen tests 0.1.0"
+const BANNER_TEXT: string = "backend codegen tests"
+
+proc build_verified_ir(source_name: string, source_text: string) -> IrUnit {
+  let fe: FrontendOutput = frontend_run(source_name, source_text);
+  let middle: MiddleOutput = middle_run(fe);
+  let lowered: IrUnit = lower_mir_to_ir(middle.mir, middle.analysis);
+  give verify_unit(lowered);
+}
+
+proc test_ir_verifier_accepts_lowered_unit() -> bool {
+  let ir: IrUnit = build_verified_ir("backend_ir_ok.vit", "proc main() -> int { give 0; }\n");
+  give unit_is_valid(ir) and ir.state == IrUnitState.Verified and len(ir.modules) == 1 and ir.entry_function_id > 0;
+}
+
+proc test_mir_to_ir_preserves_cfg_terminators() -> bool {
+  let source: string = "proc main() { let x = 1; if x { set x = x + 1; } else { set x = x + 2; } give x; }\n";
+  let fe: FrontendOutput = frontend_run("backend_cfg.vit", source);
+  let hir = lower_ast_to_hir(fe);
+  let mir = validate_mir(lower_hir_to_mir(hir));
+  let middle: MiddleOutput = middle_run(fe);
+  let ir: IrUnit = verify_unit(lower_mir_to_ir(mir, middle.analysis));
+  if not unit_is_valid(ir) {
+    give false;
+  }
+  let blocks = ir.modules[0].functions[0].blocks;
+  if len(blocks) < 4 {
+    give false;
+  }
+  let saw_branch: bool = false;
+  let saw_return: bool = false;
+  let i: u64 = 0;
+  while i < len(blocks) {
+    if blocks[i].terminator.kind == IrInstructionKind.Branch {
+      set saw_branch = true;
+    }
+    if blocks[i].terminator.kind == IrInstructionKind.Return {
+      set saw_return = true;
+    }
+    set i = i + 1;
+  }
+  give saw_branch and saw_return;
+}
+
+proc test_codegen_x86_64_emits_entry_label() -> bool {
+  let ir: IrUnit = build_verified_ir("backend_codegen_ok.vit", "proc main() -> int { give 0; }\n");
+  let result: CodegenResult = run_codegen_x86_64(ir);
+  give result.valid and result.section_count == 5 and find(result.assembly, ".globl main") >= 0 and find(result.assembly, "main:") >= 0 and find(result.assembly, ".L_main_return:") >= 0 and find(result.object_text, "vitte-object-model") >= 0 and find(result.object_text, "[.symtab]") >= 0 and find(result.object_text, "[.debug_info]") >= 0 and find(result.object_text, "entry_symbol=main") >= 0;
+}
+
+proc test_linker_finalizes_entry_metadata() -> bool {
+  let ir: IrUnit = build_verified_ir("backend_link_ok.vit", "proc main() -> int { give 0; }\n");
+  let artifact: LinkArtifact = link_ir_unit(ir, "build/backend_link_ok.out");
+  give artifact_is_valid(artifact) and artifact.metadata.entry_present and artifact.metadata.symbol_count >= 1 and artifact.metadata.section_count >= 4 and artifact.metadata.text_section_size > 0 and artifact.metadata.relocation_count == 0 and artifact.entry_symbol == "main";
+}
+
+proc test_backend_pipeline_end_to_end() -> bool {
+  let result: BackendPipelineResult = compile_to_valid_ir("backend_pipeline_ok.vit", "proc main() -> int { give 0; }\n");
+  give result.valid and result.failure_stage == "" and result.codegen.object_ready and result.artifact.metadata.entry_present;
+}
+
+proc test_llvm_backend_pipeline_end_to_end() -> bool {
+  let result: BackendPipelineResult = compile_to_valid_ir_with_backend("backend_pipeline_llvm_ok.vit", "proc main() -> int { give 0; }\n", "llvm");
+  give result.valid and find(result.codegen.assembly, "define i64 @main()") >= 0 and result.codegen.target == "llvm-object" and result.codegen.object_format == "llvm-object" and result.codegen.section_count >= 5;
+}
+
+proc test_backend_multi_module_compile_path() -> bool {
+  let dep: string = "space demo/math;\nexport *;\nproc sum() -> int { give 0; }\n";
+  let root: string = "space demo/app;\nuse demo/math { * };\nproc main() -> int { give sum(); }\n";
+  let result: DriverBackendModuleSetResult = compile_source_set([
+    driver_module_input("demo_math.vit", dep),
+    driver_module_input("demo_app.vit", root)
+  ]);
+  if not result.valid {
+    give false;
+  }
+  if len(result.ir_unit.modules) != 2 {
+    give false;
+  }
+  let root_module = result.ir_unit.modules[1];
+  if len(result.artifact.relocations) == 0 {
+    give false;
+  }
+  if len(result.artifact.resolutions) == 0 {
+    give false;
+  }
+  let relocation = result.artifact.relocations[0];
+  let resolution = result.artifact.resolutions[0];
+  give result.entry_symbol == "main" and len(root_module.imports) == 1 and root_module.imports[0] == "demo/math" and len(root_module.external_symbols) >= 1 and result.codegen.section_count == 5 and find(result.codegen.object_text, "extern:demo/math::sum") >= 0 and find(result.codegen.object_text, "demo/app -> demo/math::sum section=.text") >= 0 and result.artifact.metadata.relocation_count >= 1 and result.artifact.metadata.resolution_count >= 1 and result.artifact.metadata.resolved_import_count >= 1 and result.artifact.metadata.unresolved_import_count == 0 and result.artifact.metadata.resolved_symbol_count >= 1 and result.artifact.metadata.section_count >= 5 and relocation.source_module == "demo/app" and relocation.source_section_index == 4 and relocation.target_module == "demo/math" and relocation.target_symbol == "sum" and relocation.resolved and resolution.source_symbol_id > 0 and resolution.source_section_index == 4 and resolution.target_symbol_id > 0 and resolution.target_section_index == 1 and artifact_is_valid(result.artifact);
+}
+
+proc test_backend_multi_module_report_json() -> bool {
+  let dep: string = "space demo/math;\nexport *;\nproc sum() -> int { give 0; }\n";
+  let root: string = "space demo/app;\nuse demo/math { * };\nproc main() -> int { give sum(); }\n";
+  let report: ModuleSetCompileReport = run_set_and_report("compile-set", [
+    driver_module_input("demo_math.vit", dep),
+    driver_module_input("demo_app.vit", root)
+  ]);
+  let json: string = module_set_compile_report_json(report);
+  give report.exit_code == 0 and find(json, "\"relocation_count\":") >= 0 and find(json, "\"entry_symbol\":\"main\"") >= 0;
+}
+
+proc test_driver_compile_with_enterprise_config() -> bool {
+  let config = driver_compile_config("llvm", "aarch64-linux", "enterprise-release", true, false);
+  let result: DriverCompileResult = compile_source_with_config("backend_driver_llvm_ok.vit", "proc main() -> int { give 0; }\n", config);
+  give result.status == DriverExitStatus.Ok and result.backend_name == "llvm" and result.target_name == "aarch64-linux" and result.profile_name == "enterprise-release" and result.deterministic and not result.debug_enabled;
+}
+
+proc test_driver_compile_report_json_includes_config() -> bool {
+  let config = driver_compile_config("llvm", "aarch64-linux", "enterprise-release", true, false);
+  let report: CompileReport = run_and_report_with_config("compile", "backend_report_llvm_ok.vit", "proc main() -> int { give 0; }\n", config);
+  let json: string = compile_report_json(report);
+  give report.exit_code == 0 and find(json, "\"backend_name\":\"llvm\"") >= 0 and find(json, "\"target_name\":\"aarch64-linux\"") >= 0 and find(json, "\"profile_name\":\"enterprise-release\"") >= 0 and find(json, "\"opt_level\":\"O3\"") >= 0 and find(json, "\"codegen_object_format\":\"llvm-object\"") >= 0 and find(json, "\"prefer_native_toolchain\":false") >= 0 and find(json, "\"llvm_toolchain_summary\":") >= 0 and find(json, "\"debug_enabled\":false") >= 0;
+}
+
+proc test_backend_multi_module_report_json_includes_resolution_and_config() -> bool {
+  let dep: string = "space demo/math;\nexport *;\nproc sum() -> int { give 0; }\n";
+  let root: string = "space demo/app;\nuse demo/math { * };\nproc main() -> int { give sum(); }\n";
+  let config = driver_compile_config("llvm", "aarch64-linux", "enterprise-cross", true, true);
+  let report: ModuleSetCompileReport = run_set_and_report_with_config("compile-set", [
+    driver_module_input("demo_math.vit", dep),
+    driver_module_input("demo_app.vit", root)
+  ], config);
+  let json: string = module_set_compile_report_json(report);
+  give report.exit_code == 0 and report.target_name == "aarch64-linux" and report.section_count >= 5 and find(json, "\"resolution_count\":") >= 0 and find(json, "\"section_count\":") >= 0 and find(json, "\"backend_name\":\"llvm\"") >= 0 and find(json, "\"target_name\":\"aarch64-linux\"") >= 0;
+}
+
+proc test_compile_set_manifest_report_cli_parses_enterprise_directives() -> bool {
+  let manifest: string =
+    "@backend=llvm\n" +
+    "@target=aarch64-linux\n" +
+    "@profile=enterprise-manifest\n" +
+    "@packaging=shared-library\n" +
+    "@native-llvm=true\n" +
+    "@clang=/usr/bin/clang\n" +
+    "@lld=/opt/homebrew/bin/ld.lld\n" +
+    "@lto=true\n" +
+    "@deterministic=true\n" +
+    "@debug=false\n" +
+    "demo_math.vit=space demo/math;\\nexport *;\\nproc sum() -> int { give 0; }\\n\n" +
+    "demo_app.vit=space demo/app;\\nuse demo/math { * };\\nproc main() -> int { give sum(); }\\n\n";
+  let report: CliReportResult = run_compile_set_manifest_report_cli(manifest);
+  give report.code == 0 and find(report.report_json, "\"backend_name\":\"llvm\"") >= 0 and find(report.report_json, "\"target_name\":\"aarch64-linux\"") >= 0 and find(report.report_json, "\"profile_name\":\"enterprise-manifest\"") >= 0 and find(report.report_json, "\"packaging\":\"shared-library\"") >= 0 and find(report.report_json, "\"prefer_native_toolchain\":true") >= 0 and find(report.report_json, "\"llvm_toolchain_summary\":\"native llvm toolchain ready\"") >= 0 and find(report.report_json, "\"lto_enabled\":true") >= 0 and find(report.report_json, "\"opt_level\":\"O2\"") >= 0 and find(report.report_json, "\"debug_enabled\":false") >= 0;
+}
+
+proc test_compile_set_with_unsupported_backend_target_rejected() -> bool {
+  let config = driver_compile_config("x86_64", "aarch64-linux", "enterprise-invalid", true, true);
+  let dep: string = "space demo/math;\nexport *;\nproc sum() -> int { give 0; }\n";
+  let root: string = "space demo/app;\nuse demo/math { * };\nproc main() -> int { give sum(); }\n";
+  let result: DriverBackendModuleSetResult = compile_source_set_with_config([
+    driver_module_input("demo_math.vit", dep),
+    driver_module_input("demo_app.vit", root)
+  ], config);
+  give not result.valid and find(result.message, "unsupported backend/target combination") >= 0;
+}
+
+proc test_llvm_bindings_emit_ir_from_canonical_ir() -> bool {
+  let ir: IrUnit = build_verified_ir("backend_llvm_binding_ok.vit", "proc main() -> int { give 0; }\n");
+  let result: LlvmBindingResult = emit_llvm_ir_from_ir(ir);
+  give result.valid and result.function_count >= 1 and find(result.ir_text, "target triple =") >= 0 and find(result.ir_text, "define i64 @main()") >= 0;
+}
+
+proc test_llvm_bindings_emit_object_from_canonical_ir() -> bool {
+  let ir: IrUnit = build_verified_ir("backend_llvm_object_ok.vit", "proc main() -> int { give 0; }\n");
+  let result: LlvmObjectResult = emit_llvm_object_from_ir(ir, default_llvm_build_options("x86_64-linux"));
+  give result.valid and len(result.sections) >= 5 and len(result.symbols) >= 1 and find(result.object_text, "llvm-object-bundle") >= 0 and find(result.object_text, "section_count=") >= 0;
+}
+
+proc run_all_tests() -> int {
+  let failures: int = 0;
+  if not test_ir_verifier_accepts_lowered_unit() { set failures = failures + 1; }
+  if not test_mir_to_ir_preserves_cfg_terminators() { set failures = failures + 1; }
+  if not test_codegen_x86_64_emits_entry_label() { set failures = failures + 1; }
+  if not test_linker_finalizes_entry_metadata() { set failures = failures + 1; }
+  if not test_backend_pipeline_end_to_end() { set failures = failures + 1; }
+  if not test_llvm_backend_pipeline_end_to_end() { set failures = failures + 1; }
+  if not test_backend_multi_module_compile_path() { set failures = failures + 1; }
+  if not test_backend_multi_module_report_json() { set failures = failures + 1; }
+  if not test_driver_compile_with_enterprise_config() { set failures = failures + 1; }
+  if not test_driver_compile_report_json_includes_config() { set failures = failures + 1; }
+  if not test_backend_multi_module_report_json_includes_resolution_and_config() { set failures = failures + 1; }
+  if not test_compile_set_manifest_report_cli_parses_enterprise_directives() { set failures = failures + 1; }
+  if not test_compile_set_with_unsupported_backend_target_rejected() { set failures = failures + 1; }
+  if not test_llvm_bindings_emit_ir_from_canonical_ir() { set failures = failures + 1; }
+  if not test_llvm_bindings_emit_object_from_canonical_ir() { set failures = failures + 1; }
+  give failures;
+}
+
+proc version_text() -> string {
+  give VERSION_TEXT
+}
+
+proc banner_text() -> string {
+  give BANNER_TEXT
+}
+
+proc main(args: list[string]) -> int {
+  give run_all_tests()
+}
+
+export *

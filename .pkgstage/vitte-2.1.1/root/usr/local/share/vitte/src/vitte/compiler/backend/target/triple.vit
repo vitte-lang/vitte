@@ -1,0 +1,193 @@
+space vitte/compiler/backend/target/triple
+
+export *
+
+form TargetTriple {
+  arch: string
+  vendor: string
+  os: string
+  abi: string
+  environment: string
+  object_format: string
+  pointer_width: u64
+  little_endian: bool
+  family: string
+  mobile: bool
+  desktop: bool
+  embedded: bool
+  retro: bool
+  valid: bool
+}
+
+proc infer_object_format(os: string) -> string {
+  if os == "linux" or os == "freebsd" or os == "openbsd" or os == "netbsd" or os == "none" {
+    give "elf";
+  }
+  if os == "windows" {
+    give "coff";
+  }
+  if os == "macos" or os == "darwin" or os == "ios" {
+    give "macho";
+  }
+  if os == "wasm" {
+    give "wasm";
+  }
+  give "unknown";
+}
+
+proc infer_pointer_width(arch: string) -> u64 {
+  if arch == "x86_64" or arch == "aarch64" or arch == "riscv64" or arch == "powerpc64" or arch == "mips64" or arch == "sparc64" or arch == "wasm64" or arch == "apple-m1" or arch == "apple-m2" or arch == "apple-m3" or arch == "apple-m4" or arch == "apple-intel-i5" or arch == "apple-intel-i7" {
+    give 64;
+  }
+  if arch == "i386" or arch == "i486" or arch == "i586" or arch == "i686" or arch == "arm" or arch == "armv6" or arch == "armv7" or arch == "armv8" or arch == "m68k" or arch == "powerpc" or arch == "mips" or arch == "sparc" or arch == "wasm32" {
+    give 32;
+  }
+  if arch == "avr" or arch == "mos6502" or arch == "z80" {
+    give 16;
+  }
+  give 0;
+}
+
+proc infer_little_endian(arch: string) -> bool {
+  if arch == "m68k" or arch == "powerpc" or arch == "powerpc64" or arch == "mips" or arch == "mips64" or arch == "sparc" or arch == "sparc64" {
+    give false;
+  }
+  give true;
+}
+
+proc infer_family(arch: string) -> string {
+  if arch == "x86_64" or arch == "i386" or arch == "i486" or arch == "i586" or arch == "i686" or arch == "apple-intel-i5" or arch == "apple-intel-i7" {
+    give "x86";
+  }
+  if arch == "aarch64" or arch == "arm" or arch == "armv6" or arch == "armv7" or arch == "armv8" or arch == "apple-m1" or arch == "apple-m2" or arch == "apple-m3" or arch == "apple-m4" {
+    give "arm";
+  }
+  if arch == "riscv64" or arch == "riscv32" {
+    give "riscv";
+  }
+  if arch == "powerpc" or arch == "powerpc64" {
+    give "powerpc";
+  }
+  if arch == "wasm32" or arch == "wasm64" {
+    give "wasm";
+  }
+  if arch == "m68k" {
+    give "m68k";
+  }
+  if arch == "mos6502" {
+    give "6502";
+  }
+  if arch == "z80" {
+    give "zilog";
+  }
+  give arch;
+}
+
+proc infer_mobile(os: string) -> bool {
+  give os == "ios" or os == "android";
+}
+
+proc infer_desktop(os: string) -> bool {
+  give os == "linux" or os == "windows" or os == "macos" or os == "darwin";
+}
+
+proc infer_embedded(os: string) -> bool {
+  give os == "none" or os == "embedded" or os == "freestanding";
+}
+
+proc infer_retro(arch: string) -> bool {
+  give arch == "m68k" or arch == "mos6502" or arch == "z80" or arch == "powerpc-g3" or arch == "powerpc-g4" or arch == "powerpc-g5";
+}
+
+proc target_triple(arch: string, vendor: string, os: string, abi: string) -> TargetTriple {
+  give target_triple_extended(arch, vendor, os, abi, abi, infer_object_format(os), infer_pointer_width(arch), infer_little_endian(arch), infer_family(arch), infer_mobile(os), infer_desktop(os), infer_embedded(os), infer_retro(arch));
+}
+
+proc target_triple_extended(arch: string, vendor: string, os: string, abi: string, environment: string, object_format: string, pointer_width: u64, little_endian: bool, family: string, mobile: bool, desktop: bool, embedded: bool, retro: bool) -> TargetTriple {
+  give TargetTriple {
+    arch: arch,
+    vendor: vendor,
+    os: os,
+    abi: abi,
+    environment: environment,
+    object_format: object_format,
+    pointer_width: pointer_width,
+    little_endian: little_endian,
+    family: family,
+    mobile: mobile,
+    desktop: desktop,
+    embedded: embedded,
+    retro: retro,
+    valid: arch != "" and vendor != "" and os != "" and abi != "",
+  };
+}
+
+proc triple_x86_64_linux() -> TargetTriple { give target_triple("x86_64", "vitte", "linux", "gnu"); }
+proc triple_aarch64_linux() -> TargetTriple { give target_triple("aarch64", "vitte", "linux", "gnu"); }
+proc triple_riscv64_linux() -> TargetTriple { give target_triple("riscv64", "vitte", "linux", "gnu"); }
+proc triple_i386_linux() -> TargetTriple { give target_triple("i386", "vitte", "linux", "gnu"); }
+proc triple_macos_apple_silicon() -> TargetTriple { give target_triple("apple-m4", "apple", "macos", "macho"); }
+proc triple_windows_x86_64() -> TargetTriple { give target_triple("x86_64", "pc", "windows", "msvc"); }
+proc triple_wasm32() -> TargetTriple { give target_triple("wasm32", "web", "wasm", "unknown"); }
+
+proc triple_matches(left: TargetTriple, right: TargetTriple) -> bool { give left.arch == right.arch and left.vendor == right.vendor and left.os == right.os and left.abi == right.abi; }
+proc triple_arch_matches(left: TargetTriple, right: TargetTriple) -> bool { give left.arch == right.arch; }
+proc triple_os_matches(left: TargetTriple, right: TargetTriple) -> bool { give left.os == right.os; }
+proc triple_family_matches(left: TargetTriple, right: TargetTriple) -> bool { give left.family == right.family; }
+proc triple_is_unix(triple: TargetTriple) -> bool { give triple.os == "linux" or triple.os == "macos" or triple.os == "darwin" or triple.os == "freebsd" or triple.os == "openbsd" or triple.os == "netbsd"; }
+proc triple_is_windows(triple: TargetTriple) -> bool { give triple.os == "windows"; }
+proc triple_is_apple(triple: TargetTriple) -> bool { give triple.vendor == "apple"; }
+proc triple_is_wasm(triple: TargetTriple) -> bool { give triple.family == "wasm"; }
+proc triple_is_retro(triple: TargetTriple) -> bool { give triple.retro; }
+proc triple_pointer_size(triple: TargetTriple) -> u64 { give triple.pointer_width; }
+
+proc triple_endian_text(triple: TargetTriple) -> string {
+  if triple.little_endian {
+    give "little";
+  }
+  give "big";
+}
+
+proc triple_text(triple: TargetTriple) -> string {
+  if triple.arch == "x86_64" and triple.os == "linux" {
+    give "x86_64-linux";
+  }
+  if triple.arch == "x86_64" and triple.os == "windows" {
+    give "x86_64-windows";
+  }
+  if triple.arch == "apple-m4" and triple.os == "macos" {
+    give "apple-silicon-macos";
+  }
+  if triple.arch == "aarch64" and triple.os == "linux" {
+    give "aarch64-linux";
+  }
+  if triple.arch == "riscv64" and triple.os == "linux" {
+    give "riscv64-linux";
+  }
+  if triple.arch == "i386" and triple.os == "linux" {
+    give "i386-linux";
+  }
+  if triple.arch == "wasm32" {
+    give "wasm32";
+  }
+  give triple.arch;
+}
+
+proc triple_extended_text(triple: TargetTriple) -> string {
+  give triple_text(triple);
+}
+
+proc triple_summary(triple: TargetTriple) -> string {
+  give triple_text(triple);
+}
+
+proc triple_selftest() -> bool {
+  let linux: TargetTriple = triple_x86_64_linux();
+  let macos: TargetTriple = triple_macos_apple_silicon();
+  give linux.valid
+    and macos.valid
+    and triple_is_unix(linux)
+    and triple_is_apple(macos)
+    and triple_pointer_size(linux) == 64
+    and triple_summary(linux) != "";
+}

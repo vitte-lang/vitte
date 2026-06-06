@@ -1,0 +1,152 @@
+{
+  "cli_entry": {
+    "runtime_cli_dispatch": "wired",
+    "source_entry_declared": "vitte/compiler/main",
+    "stage2_entry_point": "src/vitte/compiler/main.vit",
+    "stage2_source_root": "src/vitte/compiler",
+    "status": "ok"
+  },
+  "expected_flow": [
+    "source .vit",
+    "lexer",
+    "parser",
+    "AST",
+    "HIR",
+    "sema",
+    "typeck",
+    "borrowck",
+    "MIR",
+    "MIR validation/optimisation",
+    "IR",
+    "backend codegen",
+    "object file",
+    "linker",
+    "native binary"
+  ],
+  "failures": [],
+  "forbidden_surfaces": [],
+  "informational_markers": [
+    {
+      "file": "toolchain/seed/vittec0.seed",
+      "pattern": "build-native output remains the v1-compatible shell artifact",
+      "reason": "bootstrap seed still documents the bridge-era native wrapper behavior"
+    },
+    {
+      "file": "toolchain/seed/vittec0.seed",
+      "pattern": "vitte-bootstrap-native-bridge",
+      "reason": "bootstrap seed still contains bridge marker support for stage artifacts"
+    },
+    {
+      "file": "target/bootstrap/stage2/vittec.bootstrap-bridge",
+      "pattern": "vitte-bootstrap-native-bridge",
+      "reason": "native stage artifact is still a bootstrap bridge wrapper for /Users/vincent/Documents/Github/vitte/src/vitte/compiler/main.vit"
+    }
+  ],
+  "pipeline_steps": [
+    {
+      "name": "source",
+      "needle": "source_text",
+      "owner": "driver/compile",
+      "status": "present"
+    },
+    {
+      "name": "lexer",
+      "needle": "frontend_run",
+      "owner": "frontend pipeline",
+      "status": "present"
+    },
+    {
+      "name": "parser",
+      "needle": "frontend_run",
+      "owner": "frontend pipeline",
+      "status": "present"
+    },
+    {
+      "name": "ast",
+      "needle": "FrontendOutput",
+      "owner": "frontend output",
+      "status": "present"
+    },
+    {
+      "name": "hir",
+      "needle": "lower_ast_to_hir",
+      "owner": "AST to HIR lowering",
+      "status": "present"
+    },
+    {
+      "name": "hir_validate",
+      "needle": "validate_hir",
+      "owner": "HIR validation",
+      "status": "present"
+    },
+    {
+      "name": "sema",
+      "needle": "run_sema_hir",
+      "owner": "semantic analysis",
+      "status": "present"
+    },
+    {
+      "name": "typeck",
+      "needle": "run_typeck_hir",
+      "owner": "type checking",
+      "status": "present"
+    },
+    {
+      "name": "borrowck",
+      "needle": "borrowck_ok",
+      "owner": "analysis result",
+      "status": "present"
+    },
+    {
+      "name": "mir",
+      "needle": "lower_hir_to_mir",
+      "owner": "HIR to MIR lowering",
+      "status": "present"
+    },
+    {
+      "name": "mir_validate",
+      "needle": "validate_mir",
+      "owner": "MIR validation",
+      "status": "present"
+    },
+    {
+      "name": "ir",
+      "needle": "lower_mir_as_ir_module",
+      "owner": "MIR to IR lowering",
+      "status": "present"
+    },
+    {
+      "name": "backend_pipeline",
+      "needle": "compile_to_valid_ir_with_profile_and_packaging",
+      "owner": "backend pipeline",
+      "status": "present"
+    },
+    {
+      "name": "codegen",
+      "needle": "run_codegen_x86_64",
+      "owner": "code generation",
+      "status": "present"
+    },
+    {
+      "name": "object",
+      "needle": "object_text",
+      "owner": "object emission",
+      "status": "present"
+    },
+    {
+      "name": "linker",
+      "needle": "link_ir_unit_with_kind",
+      "owner": "linker",
+      "status": "present"
+    },
+    {
+      "name": "binary_output",
+      "needle": "output_create",
+      "owner": "link artifact output",
+      "status": "present"
+    }
+  ],
+  "schema": "vitte.compiler.real_pipeline_audit",
+  "schema_version": "1.0.0",
+  "status": "pass"
+}

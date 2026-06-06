@@ -1,0 +1,140 @@
+<<<
+mod.vit
+package vitte/compiler/driver
+>>>
+
+space vitte/compiler/driver
+
+use src/vitte/compiler/bootstrap as bootstrap
+
+<<< ROLE-CONTRACT
+package: vitte/compiler/driver
+role: facade
+input_contract: command names and migration metadata for the future self-hosted compiler driver
+output_contract: stable command catalog records and package metadata helpers
+boundary: no command execution, no side effects, no host process access
+versioning: additive-only during migration bootstrap
+api_surface_stable: false
+diagnostics: compiler/driver namespace reserved for future parity work
+compat_policy: additive-only
+internal_exports: forbidden
+api_version: 0
+>>>
+
+form DriverCommand {
+  name: string,
+  stage: string,
+  parity_status: string
+}
+
+proc command_parse() -> DriverCommand {
+  give DriverCommand("parse", "parse", "planned")
+}
+
+proc command_check() -> DriverCommand {
+  give DriverCommand("check", "ir", "planned")
+}
+
+proc command_emit() -> DriverCommand {
+  give DriverCommand("emit", "backend", "planned")
+}
+
+proc command_build() -> DriverCommand {
+  give DriverCommand("build", "backend", "planned")
+}
+
+proc command_reduce() -> DriverCommand {
+  give DriverCommand("reduce", "backend", "planned")
+}
+
+proc command_doctor() -> DriverCommand {
+  give DriverCommand("doctor", "host-check", "planned")
+}
+
+proc command_count() -> int {
+  give 6
+}
+
+proc top_level_command_count() -> int {
+  give 12
+}
+
+proc grammar_subcommand_count() -> int {
+  give 2
+}
+
+proc mod_subcommand_count() -> int {
+  give 5
+}
+
+proc known_flag_count() -> int {
+  give 80
+}
+
+proc bootstrap_status() -> string {
+  give bootstrap.bootstrap_stage()
+}
+
+proc migration_stage() -> string {
+  give bootstrap.bootstrap_stage()
+}
+
+proc catalog_version() -> string {
+  give "driver-surface-v1"
+}
+
+proc source_of_truth() -> string {
+  give bootstrap.source_of_truth("src/vitte/compiler/driver")
+}
+
+proc normalization_scope() -> string {
+  give "command aliases, help aliases, command stages, selected flag aliases, --flag=value support, positional capture, default values, profile aliases, non-negative integer normalization, and normalized options state"
+}
+
+proc package_meta() -> string {
+  give "package=vitte/compiler/driver;stage=self-hosted-bootstrap;catalog=driver-surface-v1"
+}
+
+proc ready() -> bool {
+  give false
+}
+
+proc smoke_test() -> bool {
+  if command_count() != 6 {
+    give false
+  }
+  if top_level_command_count() != 12 {
+    give false
+  }
+  if grammar_subcommand_count() != 2 {
+    give false
+  }
+  if mod_subcommand_count() != 5 {
+    give false
+  }
+  if known_flag_count() != 80 {
+    give false
+  }
+  if bootstrap_status() != "self-hosted-bootstrap" {
+    give false
+  }
+  if migration_stage() != bootstrap.bootstrap_stage() {
+    give false
+  }
+  if catalog_version() != "driver-surface-v1" {
+    give false
+  }
+  if source_of_truth() != "src/vitte/compiler/driver" {
+    give false
+  }
+  if normalization_scope() == "" {
+    give false
+  }
+  if package_meta() == "" {
+    give false
+  }
+  if ready() {
+    give false
+  }
+  give true
+}

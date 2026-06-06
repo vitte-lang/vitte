@@ -1,0 +1,63 @@
+space vitte/compiler/middle
+
+use vitte/compiler/frontend/pipeline.{ FrontendOutput }
+use vitte/compiler/analysis/sema.{ SemaResult, run_sema_hir }
+use vitte/compiler/analysis/typeck/checker.{ run_typeck_hir }
+use vitte/compiler/analysis/typeck/errors.{ TypeckResult }
+use vitte/compiler/middle/hir/hir.{ HirUnit }
+use vitte/compiler/middle/hir/lower_ast.{ lower_ast_to_hir }
+use vitte/compiler/middle/hir/validate.{ validate_hir }
+use vitte/compiler/middle/mir/mir.{ MirUnit }
+use vitte/compiler/middle/lower/hir_to_mir.{ lower_hir_to_mir }
+use vitte/compiler/middle/mir/validate.{ validate_mir }
+use vitte/compiler/middle/passes/pass_manager.{ run_passes }
+use vitte/compiler/middle/passes/pass_result.{ PassRunResult }
+use vitte/compiler/middle/passes/schedule.{ pass_schedule_version }
+use vitte/compiler/backend/ir/ir.{ IrTarget, IrUnit, target_native_x86_64_linux, verify_unit, unit_is_valid }
+use vitte/compiler/middle/lower/mir_to_ir.{ lower_mir_to_ir_for_target }
+use vitte/compiler/analysis/pipeline.{ AnalysisOutput, analysis_run_prechecked }
+
+form MiddleOutput {
+  analysis: AnalysisOutput
+  hir: HirUnit
+  resolved_hir: HirUnit
+  typed_hir: HirUnit
+  mir: MirUnit
+  passes: PassRunResult
+  ir: IrUnit
+  valid: bool
+}
+
+proc middle_run(frontend: FrontendOutput) -> MiddleOutput {
+  give middle_run_for_target(frontend, target_native_x86_64_linux());
+}
+
+proc middle_run_for_target(frontend: FrontendOutput, target: IrTarget) -> MiddleOutput {
+  let hir0: HirUnit = lower_ast_to_hir(frontend);
+  let hir1: HirUnit = validate_hir(hir0);
+  let sema_result: SemaResult = run_sema_hir(hir1);
+  let resolved_hir: HirUnit = sema_result.hir;
+  let typeck_result: TypeckResult = run_typeck_hir(resolved_hir);
+  let typed_hir: HirUnit = typeck_result.hir;
+  let mir0: MirUnit = lower_hir_to_mir(typed_hir);
+  let mir1: MirUnit = validate_mir(mir0);
+  let analysis: AnalysisOutput = analysis_run_prechecked(frontend, sema_result, typeck_result, mir1);
+  let p: PassRunResult = if analysis.valid and hir1.valid and mir1.valid {
+    run_passes(mir1);
+  } else {
+    PassRunResult { version: pass_schedule_version(), stats: [] };
+  }
+  let ir0: IrUnit = lower_mir_to_ir_for_target(mir1, analysis, target);
+  let ir1: IrUnit = verify_unit(ir0);
+
+  give MiddleOutput {
+    analysis: analysis,
+    hir: hir1,
+    resolved_hir: resolved_hir,
+    typed_hir: typed_hir,
+    mir: mir1,
+    passes: p,
+    ir: ir1,
+    valid: analysis.valid and hir1.valid and mir1.valid and unit_is_valid(ir1)
+  };
+}

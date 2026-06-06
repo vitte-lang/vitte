@@ -1,0 +1,196 @@
+space vitte/compiler/infrastructure/session
+
+use vitte/compiler/infrastructure/session/files.{ SourceManager, SourceSpan, source_span, source_manager_file_id, line_col_lookup, offset_lookup }
+
+pick SessionDiagnosticSeverity {
+  Note,
+  Warning,
+  Error,
+  Fatal,
+}
+
+form SessionDiagnostic {
+  severity: SessionDiagnosticSeverity,
+  code: string,
+  message: string,
+  span: SourceSpan,
+  valid: bool,
+}
+
+form DiagnosticSession {
+  diagnostics: [SessionDiagnostic],
+  fatal_count: u64,
+  error_count: u64,
+  warning_count: u64,
+  note_count: u64,
+  valid: bool,
+}
+
+proc diagnostic_session() -> DiagnosticSession {
+  give DiagnosticSession {
+    diagnostics: [],
+    fatal_count: 0,
+    error_count: 0,
+    warning_count: 0,
+    note_count: 0,
+    valid: true,
+  }
+}
+
+proc session_diagnostic(severity: SessionDiagnosticSeverity, code: string, message: string, span0: SourceSpan) -> SessionDiagnostic {
+  give SessionDiagnostic {
+    severity: severity,
+    code: code,
+    message: message,
+    span: span0,
+    valid: code != "" and message != "" and span0.valid,
+  }
+}
+
+proc diagnostic_session_add(session0: DiagnosticSession, diagnostic0: SessionDiagnostic) -> DiagnosticSession {
+  let out: DiagnosticSession = session0;
+  set out.diagnostics = out.diagnostics + [diagnostic0];
+  if diagnostic0.severity == SessionDiagnosticSeverity.Fatal {
+    set out.fatal_count = out.fatal_count + 1;
+  } else {
+    if diagnostic0.severity == SessionDiagnosticSeverity.Error {
+    set out.error_count = out.error_count + 1;
+    } else {
+      if diagnostic0.severity == SessionDiagnosticSeverity.Warning {
+    set out.warning_count = out.warning_count + 1;
+      } else {
+    set out.note_count = out.note_count + 1;
+      }
+    }
+  }
+  set out.valid = out.valid and diagnostic0.valid;
+  give out;
+}
+
+proc emit_note(session0: DiagnosticSession, code: string, message: string, span0: SourceSpan) -> DiagnosticSession {
+  give diagnostic_session_add(session0, session_diagnostic(SessionDiagnosticSeverity.Note, code, message, span0));
+}
+
+proc emit_warning(session0: DiagnosticSession, code: string, message: string, span0: SourceSpan) -> DiagnosticSession {
+  give diagnostic_session_add(session0, session_diagnostic(SessionDiagnosticSeverity.Warning, code, message, span0));
+}
+
+proc emit_error(session0: DiagnosticSession, code: string, message: string, span0: SourceSpan) -> DiagnosticSession {
+  give diagnostic_session_add(session0, session_diagnostic(SessionDiagnosticSeverity.Error, code, message, span0));
+}
+
+proc emit_fatal(session0: DiagnosticSession, code: string, message: string, span0: SourceSpan) -> DiagnosticSession {
+  give diagnostic_session_add(session0, session_diagnostic(SessionDiagnosticSeverity.Fatal, code, message, span0));
+}
+
+proc has_errors(session0: DiagnosticSession) -> bool {
+  give session0.error_count > 0 or session0.fatal_count > 0;
+}
+
+proc severity_text(severity: SessionDiagnosticSeverity) -> string {
+  if severity == SessionDiagnosticSeverity.Note {
+    give "note";
+  }
+  if severity == SessionDiagnosticSeverity.Warning {
+    give "warning";
+  }
+  if severity == SessionDiagnosticSeverity.Fatal {
+    give "fatal";
+  }
+  give "error";
+}
+
+proc render_text(session0: DiagnosticSession, manager: SourceManager) -> string {
+  let out: string = "";
+  let i: u64 = 0;
+  while i < len(session0.diagnostics) {
+    let d: SessionDiagnostic = session0.diagnostics[i];
+    let loc = line_col_lookup(manager, d.span.file_id, d.span.start);
+    let file_name: string = "<unknown>";
+    let j: u64 = 0;
+    while j < len(manager.files) {
+      if manager.files[j].file_id == d.span.file_id {
+        set file_name = manager.files[j].path;
+      }
+      set j = j + 1;
+    }
+    let file_id_text: string = d.span.file_id as string;
+    let span_start_text: string = d.span.start as string;
+    let span_end_text: string = d.span.end as string;
+    let line_no_text: string = loc.line as string;
+    let column_text: string = loc.column as string;
+    let line_text: string = severity_text(d.severity)
+      + " " + d.code
+      + " file_id " + file_id_text
+      + " span " + span_start_text + "-" + span_end_text
+      + " at " + file_name + ":" + line_no_text + ":" + column_text
+      + " message " + d.message;
+    if i == 0 {
+      set out = line_text;
+    } else {
+      set out = out + "\n" + line_text;
+    }
+    set i = i + 1;
+  }
+  give out;
+}
+
+proc render_json(session0: DiagnosticSession) -> string {
+  let out: string = "{";
+  let fatal_count_text: string = session0.fatal_count as string;
+  let error_count_text: string = session0.error_count as string;
+  let warning_count_text: string = session0.warning_count as string;
+  let note_count_text: string = session0.note_count as string;
+  set out = out + "\"fatal_count\":" + fatal_count_text + ",";
+  set out = out + "\"error_count\":" + error_count_text + ",";
+  set out = out + "\"warning_count\":" + warning_count_text + ",";
+  set out = out + "\"note_count\":" + note_count_text + ",";
+  set out = out + "\"diagnostics\":[";
+  let i: u64 = 0;
+  while i < len(session0.diagnostics) {
+    let d: SessionDiagnostic = session0.diagnostics[i];
+    let file_id_text: string = d.span.file_id as string;
+    let start_text: string = d.span.start as string;
+    let end_text: string = d.span.end as string;
+    if i > 0 {
+      set out = out + ",";
+    }
+    set out = out
+      + "{"
+      + "\"severity\":\"" + severity_text(d.severity) + "\"," 
+      + "\"code\":\"" + d.code + "\"," 
+      + "\"message\":\"" + d.message + "\"," 
+      + "\"file_id\":" + file_id_text + ","
+      + "\"start\":" + start_text + ","
+      + "\"end\":" + end_text
+      + "}";
+    set i = i + 1;
+  }
+  set out = out + "]}";
+  give out;
+}
+
+proc manager_span_from_location(manager: SourceManager, path: string, line: u64, column: u64) -> SourceSpan {
+  let file_id: u64 = source_manager_file_id(manager, path);
+  if file_id == 0 {
+    give source_span(0, 0, 0);
+  }
+  let start: u64 = offset_lookup(manager, file_id, line, column);
+  give source_span(file_id, start, start + 1);
+}
+
+share SessionDiagnosticSeverity
+share SessionDiagnostic
+share DiagnosticSession
+share diagnostic_session
+share session_diagnostic
+share diagnostic_session_add
+share emit_note
+share emit_warning
+share emit_error
+share emit_fatal
+share has_errors
+share severity_text
+share render_text
+share render_json
+share manager_span_from_location

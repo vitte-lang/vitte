@@ -1,0 +1,338 @@
+space vitte/compiler/infrastructure/diagnostics/emitter
+
+use vitte/compiler/infrastructure/diagnostics/colors.{
+    ColorStyle,
+    apply_error,
+    apply_help,
+    apply_info,
+    apply_note,
+    apply_warning,
+    strip_ansi
+}
+
+export *
+
+pick DiagnosticLevel {
+    Error
+    Warning
+    Note
+    Help
+    Info
+}
+
+form DiagnosticLocation {
+    file: string
+    line: u64
+    column: u64
+}
+
+form DiagnosticLabel {
+    message: string
+    location: DiagnosticLocation
+}
+
+form DiagnosticMessage {
+    level: DiagnosticLevel
+    code: string
+    message: string
+    labels: [DiagnosticLabel]
+    notes: [string]
+    fatal: bool
+}
+
+form EmitterOptions {
+    use_colors: bool
+    show_notes: bool
+    show_location: bool
+}
+
+form EmitResult {
+    rendered: string
+    line_count: u64
+    has_colors: bool
+}
+
+proc diagnostic_location(file: string, line: u64, column: u64) -> DiagnosticLocation {
+    give DiagnosticLocation {
+        file: file,
+        line: line,
+        column: column
+    };
+}
+
+proc diagnostic_label(message: string, location: DiagnosticLocation) -> DiagnosticLabel {
+    give DiagnosticLabel {
+        message: message,
+        location: location
+    };
+}
+
+proc diagnostic_message(level: DiagnosticLevel, code: string, message: string, fatal: bool) -> DiagnosticMessage {
+    give DiagnosticMessage {
+        level: level,
+        code: code,
+        message: message,
+        labels: [],
+        notes: [],
+        fatal: fatal
+    };
+}
+
+proc emitter_options(use_colors: bool, show_notes: bool, show_location: bool) -> EmitterOptions {
+    give EmitterOptions {
+        use_colors: use_colors,
+        show_notes: show_notes,
+        show_location: show_location
+    };
+}
+
+proc emit_result(rendered: string, line_count: u64, has_colors: bool) -> EmitResult {
+    give EmitResult {
+        rendered: rendered,
+        line_count: line_count,
+        has_colors: has_colors
+    };
+}
+
+proc default_emitter_options() -> EmitterOptions {
+    give emitter_options(
+        true,
+        true,
+        true
+    );
+}
+
+proc diagnostic_level_name(level: DiagnosticLevel) -> string {
+    if level == DiagnosticLevel.Error {
+        give "error";
+    }
+
+    if level == DiagnosticLevel.Warning {
+        give "warning";
+    }
+
+    if level == DiagnosticLevel.Note {
+        give "note";
+    }
+
+    if level == DiagnosticLevel.Help {
+        give "help";
+    }
+
+    give "info";
+}
+
+proc render_location(location: DiagnosticLocation) -> string {
+    let line_text: string = location.line as string;
+    let column_text: string = location.column as string;
+    give location.file
+        + ":"
+        + line_text
+        + ":"
+        + column_text;
+}
+
+proc render_label(label: DiagnosticLabel) -> string {
+    give render_location(label.location)
+        + ": "
+        + label.message;
+}
+
+proc render_header(diag: DiagnosticMessage) -> string {
+    let prefix: string = diagnostic_level_name(diag.level);
+
+    give prefix
+        + "["
+        + diag.code
+        + "]"
+        + ": "
+        + diag.message;
+}
+
+proc render_header_colored(diag: DiagnosticMessage) -> string {
+    let header: string = render_header(diag);
+
+    if diag.level == DiagnosticLevel.Error {
+        give apply_error(header);
+    }
+
+    if diag.level == DiagnosticLevel.Warning {
+        give apply_warning(header);
+    }
+
+    if diag.level == DiagnosticLevel.Note {
+        give apply_note(header);
+    }
+
+    if diag.level == DiagnosticLevel.Help {
+        give apply_help(header);
+    }
+
+    give apply_info(header);
+}
+
+proc add_label(diag: DiagnosticMessage, label: DiagnosticLabel) -> DiagnosticMessage {
+    let out: DiagnosticMessage = diag;
+
+    set out.labels = out.labels + [label];
+
+    give out;
+}
+
+proc add_note(diag: DiagnosticMessage, note: string) -> DiagnosticMessage {
+    let out: DiagnosticMessage = diag;
+
+    set out.notes = out.notes + [note];
+
+    give out;
+}
+
+proc render_notes(notes: [string]) -> string {
+    let out: string = "";
+
+    let i: u64 = 0;
+
+    while i < len(notes) {
+        set out = out + "note: " + notes[i];
+
+        if i + 1 < len(notes) {
+            set out = out + "\n";
+        }
+
+        set i = i + 1;
+    }
+
+    give out;
+}
+
+proc render_labels(labels: [DiagnosticLabel]) -> string {
+    let out: string = "";
+
+    let i: u64 = 0;
+
+    while i < len(labels) {
+        set out = out + render_label(labels[i]);
+
+        if i + 1 < len(labels) {
+            set out = out + "\n";
+        }
+
+        set i = i + 1;
+    }
+
+    give out;
+}
+
+proc emit(diag: DiagnosticMessage, options: EmitterOptions) -> EmitResult {
+    let rendered: string = "";
+
+    if options.use_colors {
+        set rendered = render_header_colored(diag);
+    } else {
+        set rendered = render_header(diag);
+    }
+
+    if options.show_location and len(diag.labels) > 0 {
+        set rendered = rendered + "\n" + render_labels(diag.labels);
+    }
+
+    if options.show_notes and len(diag.notes) > 0 {
+        set rendered = rendered + "\n" + render_notes(diag.notes);
+    }
+
+    give emit_result(
+        rendered,
+        count_lines(rendered),
+        options.use_colors
+    );
+}
+
+proc count_lines(text: string) -> u64 {
+    if text == "" {
+        give 0;
+    }
+
+    let count: u64 = 1;
+
+    let i: u64 = 0;
+
+    while i < len(text) {
+        let ch: string = slice(text, i, i + 1);
+        if ch == "\n" {
+            set count = count + 1;
+        }
+
+        set i = i + 1;
+    }
+
+    give count;
+}
+
+proc diagnostic_error(code: string, message: string) -> DiagnosticMessage {
+    give diagnostic_message(
+        DiagnosticLevel.Error,
+        code,
+        message,
+        true
+    );
+}
+
+proc diagnostic_warning(code: string, message: string) -> DiagnosticMessage {
+    give diagnostic_message(
+        DiagnosticLevel.Warning,
+        code,
+        message,
+        false
+    );
+}
+
+proc diagnostic_note(code: string, message: string) -> DiagnosticMessage {
+    give diagnostic_message(
+        DiagnosticLevel.Note,
+        code,
+        message,
+        false
+    );
+}
+
+proc diagnostic_help(code: string, message: string) -> DiagnosticMessage {
+    give diagnostic_message(
+        DiagnosticLevel.Help,
+        code,
+        message,
+        false
+    );
+}
+
+proc diagnostic_info(code: string, message: string) -> DiagnosticMessage {
+    give diagnostic_message(
+        DiagnosticLevel.Info,
+        code,
+        message,
+        false
+    );
+}
+
+proc emit_plain(diag: DiagnosticMessage) -> string {
+    let result: EmitResult = emit(diag, emitter_options(false, true, true));
+
+    give result.rendered;
+}
+
+proc emit_colored(diag: DiagnosticMessage) -> string {
+    let result: EmitResult = emit(diag, default_emitter_options());
+
+    give result.rendered;
+}
+
+proc emitter_selftest() -> bool {
+    let diag: DiagnosticMessage = add_note(add_label(diagnostic_error("E0001", "unexpected token"), diagnostic_label("expected expression", diagnostic_location("main.vit", 10, 5))), "parser recovery applied");
+    let result: EmitResult = emit(diag, default_emitter_options());
+    let location_text: string = render_location(diagnostic_location("main.vit", 1, 1));
+
+    give result.line_count >= 2
+        and result.has_colors
+        and strip_ansi(result.rendered) != ""
+        and location_text == "main.vit:1:1"
+        and diagnostic_level_name(DiagnosticLevel.Error) == "error";
+}

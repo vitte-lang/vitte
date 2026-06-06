@@ -1,0 +1,108 @@
+space vitte/compiler/infrastructure/session
+
+pick CompilerLogLevel {
+  Trace,
+  Debug,
+  Info,
+  Warn,
+  Error,
+}
+
+form CompilerLogEntry {
+  level: CompilerLogLevel,
+  message: string,
+  valid: bool,
+}
+
+form CompilerLogger {
+  verbose: bool,
+  trace_pipeline: bool,
+  entries: [CompilerLogEntry],
+  valid: bool,
+}
+
+proc compiler_log_entry(level: CompilerLogLevel, message: string) -> CompilerLogEntry {
+  give CompilerLogEntry {
+    level: level,
+    message: message,
+    valid: message != "",
+  };
+}
+
+proc compiler_logger(verbose: bool, trace_pipeline: bool) -> CompilerLogger {
+  give CompilerLogger {
+    verbose: verbose,
+    trace_pipeline: trace_pipeline,
+    entries: [],
+    valid: true,
+  };
+}
+
+proc level_text(level: CompilerLogLevel) -> string {
+  if level == CompilerLogLevel.Trace {
+    give "trace";
+  }
+  if level == CompilerLogLevel.Debug {
+    give "debug";
+  }
+  if level == CompilerLogLevel.Info {
+    give "info";
+  }
+  if level == CompilerLogLevel.Warn {
+    give "warn";
+  }
+  give "error";
+}
+
+proc should_emit(logger0: CompilerLogger, level: CompilerLogLevel) -> bool {
+  if level == CompilerLogLevel.Trace {
+    give logger0.trace_pipeline;
+  }
+  if level == CompilerLogLevel.Debug {
+    give logger0.verbose;
+  }
+  give logger0.verbose or logger0.trace_pipeline;
+}
+
+proc log(logger0: CompilerLogger, level: CompilerLogLevel, message: string) -> CompilerLogger {
+  let out: CompilerLogger = logger0;
+  let entry0: CompilerLogEntry = compiler_log_entry(level, message);
+  set out.entries = out.entries + [entry0];
+  if should_emit(logger0, level) {
+    print("[" + level_text(level) + "] " + message + "\n");
+  }
+  give out;
+}
+
+proc trace(logger0: CompilerLogger, message: string) -> CompilerLogger {
+  give log(logger0, CompilerLogLevel.Trace, message);
+}
+
+proc debug(logger0: CompilerLogger, message: string) -> CompilerLogger {
+  give log(logger0, CompilerLogLevel.Debug, message);
+}
+
+proc info(logger0: CompilerLogger, message: string) -> CompilerLogger {
+  give log(logger0, CompilerLogLevel.Info, message);
+}
+
+proc warn(logger0: CompilerLogger, message: string) -> CompilerLogger {
+  give log(logger0, CompilerLogLevel.Warn, message);
+}
+
+proc error(logger0: CompilerLogger, message: string) -> CompilerLogger {
+  give log(logger0, CompilerLogLevel.Error, message);
+}
+
+share CompilerLogLevel
+share CompilerLogEntry
+share CompilerLogger
+share compiler_log_entry
+share compiler_logger
+share level_text
+share log
+share trace
+share debug
+share info
+share warn
+share error

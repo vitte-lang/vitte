@@ -1,0 +1,126 @@
+space vitte/compiler/backend
+
+use vitte/compiler/frontend/pipeline.{ FrontendOutput, frontend_run }
+use vitte/compiler/analysis/pipeline.{ AnalysisOutput }
+use vitte/compiler/middle/pipeline.{ MiddleOutput, middle_run, middle_run_for_target }
+use vitte/compiler/backend/ir/ir.{ IrUnit, target_from_name, verify_unit, unit_is_valid }
+use vitte/compiler/backend/codegen.{ CodegenResult, run_codegen_llvm_with_profile, run_codegen_x86_64 }
+use vitte/compiler/backends/llvm_bindings.{ LlvmToolchainPaths, default_llvm_toolchain_paths }
+use vitte/compiler/backend/link/artifact.{ LinkArtifact, LinkArtifactKind, artifact_add_output, artifact_create, artifact_is_valid, link_target_from_name, output_invalid, target_x86_64_linux }
+use vitte/compiler/backend/link/linker.{ link_ir_unit_with_kind }
+
+form BackendPipelineResult {
+  frontend: FrontendOutput
+  analysis: AnalysisOutput
+  ir_unit: IrUnit
+  codegen: CodegenResult
+  artifact: LinkArtifact
+  failure_stage: string
+  message: string
+  valid: bool
+}
+
+proc compile_to_valid_ir(source_path: string, source_text: string) -> BackendPipelineResult {
+  give compile_to_valid_ir_with_backend(source_path, source_text, "x86_64");
+}
+
+proc compile_to_valid_ir_with_backend(source_path: string, source_text: string, backend_name: string) -> BackendPipelineResult {
+  give compile_to_valid_ir_with_options(source_path, source_text, backend_name, "x86_64-linux");
+}
+
+proc compile_to_valid_ir_with_options(source_path: string, source_text: string, backend_name: string, target_name: string) -> BackendPipelineResult {
+  give compile_to_valid_ir_with_profile(source_path, source_text, backend_name, target_name, "enterprise-default", true, true);
+}
+
+proc artifact_kind_from_packaging(packaging: string) -> LinkArtifactKind {
+  if packaging == "static-library" {
+    give LinkArtifactKind.StaticLibrary;
+  }
+  if packaging == "shared-library" {
+    give LinkArtifactKind.SharedLibrary;
+  }
+  if packaging == "object" {
+    give LinkArtifactKind.ObjectFile;
+  }
+  give LinkArtifactKind.Executable;
+}
+
+proc compile_to_valid_ir_with_profile(source_path: string, source_text: string, backend_name: string, target_name: string, profile_name: string, deterministic: bool, debug_enabled: bool) -> BackendPipelineResult {
+  give compile_to_valid_ir_with_profile_and_packaging(source_path, source_text, backend_name, target_name, profile_name, deterministic, debug_enabled, "executable", false, default_llvm_toolchain_paths());
+}
+
+proc compile_to_valid_ir_with_profile_and_packaging(source_path: string, source_text: string, backend_name: string, target_name: string, profile_name: string, deterministic: bool, debug_enabled: bool, packaging: string, prefer_native_toolchain: bool, llvm_toolchain: LlvmToolchainPaths) -> BackendPipelineResult {
+  let fe: FrontendOutput = frontend_run(source_path, source_text);
+  let target = target_from_name(target_name);
+  let middle: MiddleOutput = if target.valid {
+    middle_run_for_target(fe, target);
+  } else {
+    middle_run(fe);
+  };
+
+  let ir1: IrUnit = verify_unit(middle.ir);
+  let should_codegen: bool = target.valid and fe.valid and middle.analysis.valid and middle.valid and unit_is_valid(ir1);
+  let cg: CodegenResult = if should_codegen {
+    if backend_name == "llvm" or backend_name == "llvm-ir" {
+      run_codegen_llvm_with_profile(ir1, profile_name, packaging, deterministic, debug_enabled, prefer_native_toolchain, llvm_toolchain);
+    } else {
+      run_codegen_x86_64(ir1);
+    }
+  } else {
+    CodegenResult {
+      target: backend_name,
+      assembly: "",
+      object_text: "",
+      object_format: "",
+      profile_name: profile_name,
+      section_count: 0,
+      diagnostic_count: 0,
+      native_toolchain_ready: false,
+      native_toolchain_summary: "",
+      instruction_selected: false,
+      registers_allocated: false,
+      object_ready: false,
+      errors: [],
+      diagnostics: [],
+      valid: false
+    }
+  };
+
+  let invalid_target = link_target_from_name(target_name);
+  let artifact_target = if invalid_target.valid { invalid_target } else { target_x86_64_linux() };
+  let invalid_artifact: LinkArtifact = artifact_add_output(
+    artifact_create(1, "vitte-invalid-artifact", artifact_target),
+    output_invalid()
+  );
+  let artifact: LinkArtifact = if should_codegen {
+    link_ir_unit_with_kind(ir1, "build/a.out", artifact_kind_from_packaging(packaging));
+  } else {
+    invalid_artifact
+  };
+  let failure_stage: string = "";
+  let message: string = "backend pipeline completed";
+  if not target.valid {
+    set failure_stage = "ir";
+    set message = "unsupported target " + target_name;
+  } elif not unit_is_valid(ir1) {
+    set failure_stage = "ir";
+    set message = "IR verification failed";
+  } elif not cg.valid {
+    set failure_stage = "codegen";
+    set message = "backend code generation failed for " + backend_name;
+  } elif not artifact_is_valid(artifact) {
+    set failure_stage = "link";
+    set message = "link artifact finalization failed";
+  }
+
+  give BackendPipelineResult {
+    frontend: fe,
+    analysis: middle.analysis,
+    ir_unit: ir1,
+    codegen: cg,
+    artifact: artifact,
+    failure_stage: failure_stage,
+    message: message,
+    valid: target.valid and unit_is_valid(ir1) and cg.valid and artifact_is_valid(artifact)
+  };
+}

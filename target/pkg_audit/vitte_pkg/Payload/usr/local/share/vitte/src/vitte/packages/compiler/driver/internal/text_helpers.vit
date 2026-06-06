@@ -1,0 +1,176 @@
+space compiler/driver/private/text_helpers
+
+proc is_space(ch: string) -> bool {
+  if ch == " " { give true }
+  if ch == "\t" { give true }
+  if ch == "\n" { give true }
+  if ch == "\r" { give true }
+  give false
+}
+
+proc trim_left(text: string) -> string {
+  let i: int = 0
+  while i < text.len and is_space(text[i] as string) {
+    set i = i + 1
+  }
+  let out: string = ""
+  while i < text.len {
+    set out = out + (text[i] as string)
+    set i = i + 1
+  }
+  give out
+}
+
+proc trim_right(text: string) -> string {
+  if text.len == 0 { give text }
+  let end: int = text.len - 1
+  while end >= 0 and is_space(text[end] as string) {
+    set end = end - 1
+  }
+  if end < 0 { give "" }
+  let out: string = ""
+  let i: int = 0
+  while i <= end {
+    set out = out + (text[i] as string)
+    set i = i + 1
+  }
+  give out
+}
+
+proc trim(text: string) -> string {
+  give trim_right(trim_left(text))
+}
+
+proc starts_with(text: string, prefix: string) -> bool {
+  if prefix.len > text.len { give false }
+  let i: int = 0
+  while i < prefix.len {
+    if (text[i] as string) != (prefix[i] as string) {
+      give false
+    }
+    set i = i + 1
+  }
+  give true
+}
+
+proc contains(text: string, needle: string) -> bool {
+  if needle == "" { give true }
+  if needle.len > text.len { give false }
+  let i: int = 0
+  while i + needle.len <= text.len {
+    let j: int = 0
+    let matched: bool = true
+    while j < needle.len {
+      if (text[i + j] as string) != (needle[j] as string) {
+        set matched = false
+      }
+      set j = j + 1
+    }
+    if matched { give true }
+    set i = i + 1
+  }
+  give false
+}
+
+proc find(text: string, needle: string) -> int {
+  if needle == "" { give 0 }
+  if needle.len > text.len { give -1 }
+  let i: int = 0
+  while i + needle.len <= text.len {
+    let j: int = 0
+    let matched: bool = true
+    while j < needle.len {
+      if (text[i + j] as string) != (needle[j] as string) {
+        set matched = false
+      }
+      set j = j + 1
+    }
+    if matched { give i }
+    set i = i + 1
+  }
+  give -1
+}
+
+proc slice(text: string, start: int, end: int) -> string {
+  let out: string = ""
+  let i: int = start
+  while i < end and i < text.len {
+    set out = out + (text[i] as string)
+    set i = i + 1
+  }
+  give out
+}
+
+proc trim_after_prefix(text: string, prefix: string) -> string {
+  give trim(slice(text, prefix.len, text.len))
+}
+
+proc first_word(text: string) -> string {
+  let trimmed: string = trim(text)
+  let i: int = 0
+  while i < trimmed.len and not is_space(trimmed[i] as string) and (trimmed[i] as string) != ":" and (trimmed[i] as string) != "=" and (trimmed[i] as string) != "(" {
+    set i = i + 1
+  }
+  give slice(trimmed, 0, i)
+}
+
+proc split_lines(text: string) -> [string] {
+  let lines: [string] = []
+  let current: string = ""
+  let i: int = 0
+  while i < text.len {
+    let ch: string = text[i] as string
+    if ch == "\n" {
+      set lines = lines + [current]
+      set current = ""
+      set i = i + 1
+      continue
+    }
+    if ch == "\r" {
+      set i = i + 1
+      continue
+    }
+    set current = current + ch
+    set i = i + 1
+  }
+  set lines = lines + [current]
+  give lines
+}
+
+proc split_args(text: string) -> [string] {
+  let trimmed: string = trim(text)
+  if trimmed == "" { give [] }
+  let parts: [string] = []
+  let current: string = ""
+  let depth: int = 0
+  let i: int = 0
+  while i < trimmed.len {
+    let ch: string = trimmed[i] as string
+    if ch == "(" {
+      set depth = depth + 1
+      set current = current + ch
+      set i = i + 1
+      continue
+    }
+    if ch == ")" {
+      set depth = depth - 1
+      set current = current + ch
+      set i = i + 1
+      continue
+    }
+    if ch == "," and depth == 0 {
+      set parts = parts + [trim(current)]
+      set current = ""
+      set i = i + 1
+      continue
+    }
+    set current = current + ch
+    set i = i + 1
+  }
+  if trim(current) != "" {
+    set parts = parts + [trim(current)]
+  }
+  give parts
+}
+
+export *

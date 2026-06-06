@@ -1,0 +1,576 @@
+space vitte/compiler/middle/mir/pretty
+
+use vitte/compiler/middle/mir.mir.{
+  MirBinaryOperator,
+  MirBlock,
+  MirBorrowKind,
+  MirFunction,
+  MirModule,
+  MirOperand,
+  MirPlace,
+  MirRvalue,
+  MirRvalueKind,
+  MirStatement,
+  MirStatementKind,
+  MirTerminator,
+  MirTerminatorKind,
+  MirUnaryOperator,
+  MirUnit,
+  mir_binary_operator_name,
+  mir_statement_kind_name,
+  mir_terminator_kind_name,
+  mir_unary_operator_name
+}
+
+export *
+
+proc indent(depth: u64) -> string {
+  let out: string = ""
+  let i: u64 = 0
+
+  while i < depth {
+    set out = out + "  "
+    set i = i + 1
+  }
+
+  give out
+}
+
+proc bool_text(value: bool) -> string {
+  if value {
+    give "true"
+  }
+
+  give "false"
+}
+
+proc join_lines(lines: [string]) -> string {
+  let out: string = ""
+  let i: u64 = 0
+
+  while i < len(lines) {
+    set out = out + lines[i]
+
+    if i + 1 < len(lines) {
+      set out = out + "\n"
+    }
+
+    set i = i + 1
+  }
+
+  give out
+}
+
+proc pretty_place(place: MirPlace) -> string {
+  if not place.valid {
+    give "<invalid-place>"
+  }
+
+  let out: string = ""
+
+  if place.mutable {
+    set out = out + "mut "
+  }
+
+  if place.deref_depth > 0 {
+    let i: u64 = 0
+
+    while i < place.deref_depth {
+      set out = out + "*"
+      set i = i + 1
+    }
+  }
+
+  set out = out + place.local
+
+  if place.projection != "" {
+    set out = out + place.projection
+  }
+
+  if place.moved {
+    set out = out + " [moved]"
+  }
+
+  give out
+}
+
+proc pretty_operand(operand: MirOperand) -> string {
+  if not operand.valid {
+    give "<invalid-operand>"
+  }
+
+  if operand.place.valid {
+    give pretty_place(
+      operand.place
+    )
+  }
+
+  if operand.constant {
+    let rendered: string = "const(" + operand.text
+    give rendered + ")"
+  }
+
+  give operand.text
+}
+
+proc pretty_borrow_kind(kind: MirBorrowKind) -> string {
+  if kind == MirBorrowKind.Shared {
+    give "shared"
+  }
+
+  if kind == MirBorrowKind.Mut {
+    give "mut"
+  }
+
+  if kind == MirBorrowKind.Unique {
+    give "unique"
+  }
+
+  give "unknown"
+}
+
+proc pretty_operands(operands: [MirOperand]) -> string {
+  let out: string = ""
+  let i: u64 = 0
+
+  while i < len(operands) {
+    set out = out + pretty_operand(operands[i])
+
+    if i + 1 < len(operands) {
+      set out = out + ", "
+    }
+
+    set i = i + 1
+  }
+
+  give out
+}
+
+proc pretty_rvalue_kind(kind: MirRvalueKind) -> string {
+  if kind == MirRvalueKind.Use {
+    give "use"
+  } elif kind == MirRvalueKind.Binary {
+    give "binary"
+  } elif kind == MirRvalueKind.Unary {
+    give "unary"
+  } elif kind == MirRvalueKind.BorrowShared {
+    give "borrow-shared"
+  } elif kind == MirRvalueKind.BorrowMut {
+    give "borrow-mut"
+  } elif kind == MirRvalueKind.AddressOf {
+    give "address-of"
+  } elif kind == MirRvalueKind.Cast {
+    give "cast"
+  } elif kind == MirRvalueKind.Call {
+    give "call"
+  } elif kind == MirRvalueKind.Aggregate {
+    give "aggregate"
+  } elif kind == MirRvalueKind.Tuple {
+    give "tuple"
+  } elif kind == MirRvalueKind.Array {
+    give "array"
+  } elif kind == MirRvalueKind.Struct {
+    give "struct"
+  } elif kind == MirRvalueKind.Len {
+    give "len"
+  } elif kind == MirRvalueKind.Discriminant {
+    give "discriminant"
+  } elif kind == MirRvalueKind.Move {
+    give "move"
+  } elif kind == MirRvalueKind.Copy {
+    give "copy"
+  }
+
+  give "unknown"
+}
+
+proc pretty_rvalue(rvalue: MirRvalue) -> string {
+  if not rvalue.valid {
+    give "<invalid-rvalue>"
+  }
+
+  if rvalue.kind == MirRvalueKind.Use {
+    give pretty_operands(
+      rvalue.operands
+    )
+  }
+
+  if rvalue.kind == MirRvalueKind.Binary {
+    if len(rvalue.operands) >= 2 {
+      give pretty_operand(rvalue.operands[0])
+        + " "
+        + mir_binary_operator_name(rvalue.binary_operator)
+        + " "
+        + pretty_operand(rvalue.operands[1])
+    }
+  }
+
+  if rvalue.kind == MirRvalueKind.Unary {
+    if len(rvalue.operands) > 0 {
+      give mir_unary_operator_name(rvalue.unary_operator)
+        + " "
+        + pretty_operand(rvalue.operands[0])
+    }
+  }
+
+  if rvalue.kind == MirRvalueKind.BorrowShared or rvalue.kind == MirRvalueKind.BorrowMut {
+    give "&"
+      + pretty_borrow_kind(rvalue.borrow_kind)
+      + " "
+      + pretty_operands(rvalue.operands)
+  }
+
+  if rvalue.kind == MirRvalueKind.Call {
+    give "call("
+      + pretty_operands(rvalue.operands)
+      + ")"
+  }
+
+  if rvalue.kind == MirRvalueKind.Cast {
+    give "cast("
+      + pretty_operands(rvalue.operands)
+      + " as "
+      + rvalue.ty
+      + ")"
+  }
+
+  give pretty_rvalue_kind(rvalue.kind)
+    + "("
+    + pretty_operands(rvalue.operands)
+    + ")"
+}
+
+proc pretty_statement(stmt: MirStatement, depth: u64) -> string {
+  let prefix: string = indent(depth)
+  let stmt_id_text: string = stmt.id as string
+  let out: string = prefix + "#" + stmt_id_text + " "
+
+  set out = out + mir_statement_kind_name(stmt.kind)
+
+  if stmt.kind == MirStatementKind.Assign {
+    let place_text: string = pretty_place(stmt.place)
+    let rvalue_text: string = pretty_rvalue(stmt.rvalue)
+    let with_place: string = out + " " + place_text
+    let with_eq: string = with_place + " -> "
+    set out = with_eq + rvalue_text
+  } elif stmt.kind == MirStatementKind.Drop {
+    let place_text: string = pretty_place(stmt.place)
+    set out = out + " " + place_text
+  } elif stmt.kind == MirStatementKind.Call {
+    let rvalue_text: string = pretty_rvalue(stmt.rvalue)
+    set out = out + " " + rvalue_text
+  } elif stmt.kind == MirStatementKind.Assert {
+    let rvalue_text: string = pretty_rvalue(stmt.rvalue)
+    set out = out + " " + rvalue_text
+  }
+
+  if not stmt.reachable {
+    set out = out + " [unreachable]"
+  }
+
+  if not stmt.valid {
+    set out = out + " [invalid]"
+  }
+
+  give out
+}
+
+proc pretty_switch_pairs(values: [string], targets: [u64]) -> string {
+  let out: string = ""
+  let i: u64 = 0
+
+  while i < len(values) and i < len(targets) {
+    let target_text: string = targets[i] as string
+    set out = out + values[i] + " -> bb" + target_text
+
+    if i + 1 < len(values) and i + 1 < len(targets) {
+      set out = out + ", "
+    }
+
+    set i = i + 1
+  }
+
+  give out
+}
+
+proc pretty_terminator(term: MirTerminator, depth: u64) -> string {
+  let prefix: string = indent(depth)
+  let out: string = prefix + "terminator " + mir_terminator_kind_name(term.kind)
+
+  if term.kind == MirTerminatorKind.Goto {
+    let target_text: string = term.target_block as string
+    set out = out + " -> bb" + target_text
+  } elif term.kind == MirTerminatorKind.Branch {
+    let target_text: string = term.target_block as string
+    let else_text: string = term.else_block as string
+    set out = out + " " + pretty_operand(term.condition) + " ? bb" + target_text + " : bb" + else_text
+  } elif term.kind == MirTerminatorKind.Switch {
+    let else_text: string = term.else_block as string
+    let pairs: string = pretty_switch_pairs(term.switch_values, term.switch_targets)
+    set out = out + " " + pretty_operand(term.condition) + " { " + pairs + " } else bb" + else_text
+  }
+
+  if term.unwind_block > 0 {
+    let unwind_text: string = term.unwind_block as string
+    set out = out + " unwind bb" + unwind_text
+  }
+
+  if not term.reachable {
+    set out = out + " [unreachable]"
+  }
+
+  if not term.valid {
+    set out = out + " [invalid]"
+  }
+
+  give out
+}
+
+proc pretty_block(block: MirBlock, depth: u64) -> string {
+  let lines: [string] = []
+  let child_depth: u64 = depth + 1
+  let block_id_text: string = block.id as string
+  let header: string = indent(depth) + "bb" + block_id_text + " {"
+
+  set lines = lines + [header]
+
+  if block.label != "" {
+    let label_prefix: string = indent(child_depth)
+    let label_line: string = label_prefix + "label: " + block.label
+    set lines = lines + [label_line]
+  }
+
+  if len(block.predecessors) > 0 {
+    let pred: string = indent(child_depth) + "preds: "
+
+    let i: u64 = 0
+    let out: string = pred
+
+    while i < len(block.predecessors) {
+      let pred_text: string = block.predecessors[i] as string
+      set out = out + "bb" + pred_text
+
+      if i + 1 < len(block.predecessors) {
+        set out = out + ", "
+      }
+
+      set i = i + 1
+    }
+
+    set lines = lines + [out]
+  }
+
+  let i: u64 = 0
+
+  while i < len(block.statements) {
+    set lines = lines + [pretty_statement(block.statements[i], child_depth)]
+    set i = i + 1
+  }
+
+  set lines = lines + [pretty_terminator(block.terminator, child_depth)]
+
+  if block.sealed {
+    let sealed_line: string = indent(child_depth) + "[sealed]"
+    set lines = lines + [sealed_line]
+  }
+
+  if not block.reachable {
+    let unreachable_line: string = indent(child_depth) + "[unreachable]"
+    set lines = lines + [unreachable_line]
+  }
+
+  if not block.valid {
+    let invalid_line: string = indent(child_depth) + "[invalid]"
+    set lines = lines + [invalid_line]
+  }
+
+  let closing_line: string = indent(depth) + "}"
+  set lines = lines + [closing_line]
+
+  give join_lines(lines)
+}
+
+proc pretty_function(function0: MirFunction, depth: u64) -> string {
+  let lines: [string] = []
+  let child_depth: u64 = depth + 1
+  let entry_text: string = function0.entry_block as string
+  let local_count_text: string = function0.local_count as string
+  let temporary_count_text: string = function0.temporary_count as string
+  let header: string = indent(depth) + "fn " + function0.name + " -> " + function0.return_type + " {"
+
+  let entry_line: string = indent(child_depth) + "entry: bb" + entry_text
+  let locals_line: string = indent(child_depth) + "locals: " + local_count_text
+  let temporaries_line: string = indent(child_depth) + "temporaries: " + temporary_count_text
+  set lines = lines + [header]
+  set lines = lines + [entry_line]
+  set lines = lines + [locals_line]
+  set lines = lines + [temporaries_line]
+
+  let i: u64 = 0
+
+  while i < len(function0.blocks) {
+    set lines = lines + [pretty_block(function0.blocks[i], child_depth)]
+    set i = i + 1
+  }
+
+  if not function0.valid {
+    let invalid_function_line: string = indent(child_depth) + "[invalid-function]"
+    set lines = lines + [invalid_function_line]
+  }
+
+  let function_closing_line: string = indent(depth) + "}"
+  set lines = lines + [function_closing_line]
+
+  give join_lines(lines)
+}
+
+proc pretty_module(module0: MirModule) -> string {
+  let lines: [string] = []
+  let header: string = "module "
+
+  if module0.name != "" {
+    set header = header + module0.name
+  } else {
+    set header = header + "<anonymous>"
+  }
+
+  set lines = lines + [header]
+
+  let i: u64 = 0
+
+  while i < len(module0.functions) {
+    set lines = lines + [pretty_function(module0.functions[i], 0)]
+    set i = i + 1
+  }
+
+  if not module0.valid {
+    set lines = lines + ["[invalid-module]"]
+  }
+
+  give join_lines(lines)
+}
+
+proc pretty_unit(unit: MirUnit) -> string {
+  let lines: [string] = []
+  let function_count_text: string = unit.function_count as string
+  let block_count_text: string = unit.block_count as string
+  let instruction_count_text: string = unit.instruction_count as string
+
+  set lines = lines + ["source: " + unit.source_path]
+  set lines = lines + ["functions: " + function_count_text]
+  set lines = lines + ["blocks: " + block_count_text]
+  set lines = lines + ["instructions: " + instruction_count_text]
+  set lines = lines + ["lowered: " + bool_text(unit.lowered)]
+  set lines = lines + [pretty_module(unit.module)]
+
+  if not unit.valid {
+    set lines = lines + ["[invalid-unit]"]
+  }
+
+  give join_lines(lines)
+}
+
+proc mir_pretty_selftest() -> bool {
+  let place: MirPlace = MirPlace {
+    local: "x",
+    projection: ".field",
+    deref_depth: 1,
+    mutable: true,
+    moved: false,
+    valid: true
+  }
+
+  let operand: MirOperand = MirOperand {
+    text: "x",
+    place: place,
+    ty: "i32",
+    constant: false,
+    move: false,
+    valid: true
+  }
+
+  let rvalue: MirRvalue = MirRvalue {
+    kind: MirRvalueKind.Use,
+    text: "x",
+    operator: "",
+    binary_operator: MirBinaryOperator.Add,
+    unary_operator: MirUnaryOperator.Not,
+    borrow_kind: MirBorrowKind.Shared,
+    operands: [operand],
+    ty: "i32",
+    temporary: false,
+    valid: true
+  }
+
+  let stmt: MirStatement = MirStatement {
+    id: 1,
+    span: ast_span_empty(),
+    kind: MirStatementKind.Assign,
+    place: place,
+    rvalue: rvalue,
+    reachable: true,
+    valid: true
+  }
+
+  let term: MirTerminator = MirTerminator {
+    kind: MirTerminatorKind.Return,
+    target_block: 0,
+    else_block: 0,
+    unwind_block: 0,
+    condition: operand,
+    switch_values: [],
+    switch_targets: [],
+    reachable: true,
+    valid: true
+  }
+
+  let block: MirBlock = MirBlock {
+    id: 1,
+    label: "entry",
+    predecessors: [],
+    statements: [stmt],
+    terminator: term,
+    sealed: true,
+    reachable: true,
+    valid: true
+  }
+
+  let function0: MirFunction = MirFunction {
+    id: 1,
+    name: "main",
+    entry_block: 1,
+    return_type: "void",
+    local_count: 1,
+    temporary_count: 0,
+    blocks: [block],
+    valid: true
+  }
+
+  let module0: MirModule = MirModule {
+    name: "demo",
+    functions: [function0],
+    valid: true
+  }
+
+  let unit0: MirUnit = MirUnit {
+    source_path: "demo.vit",
+    module: module0,
+    function_count: 1,
+    block_count: 1,
+    instruction_count: 1,
+    lowered: true,
+    valid: true
+  }
+
+  let rendered: string = pretty_unit(unit0)
+
+  give rendered != ""
+    and pretty_place(place) != ""
+    and pretty_operand(operand) != ""
+    and pretty_rvalue(rvalue) != ""
+    and pretty_statement(stmt, 0) != ""
+    and pretty_terminator(term, 0) != ""
+    and pretty_block(block, 0) != ""
+    and pretty_function(function0, 0) != ""
+    and pretty_module(module0) != ""
+}

@@ -1,0 +1,87 @@
+space vitte/compiler/analysis/typeck/soundness_roadmap
+
+form TypingJudgment {
+  env: string
+  expression: string
+  ty: string
+  valid: bool
+}
+
+form OwnershipSemanticsRule {
+  name: string
+  statement: string
+  valid: bool
+}
+
+form SoundnessCheckpoint {
+  typing_judgments: bool
+  ownership_semantics: bool
+  progress_preservation_groundwork: bool
+  mir_semantic_mapping: bool
+  unsafe_escape_analysis: bool
+  valid: bool
+}
+
+proc typing_judgment(env: string, expression: string, ty: string) -> TypingJudgment {
+  give TypingJudgment {
+    env: env,
+    expression: expression,
+    ty: ty,
+    valid: env != "" and expression != "" and ty != ""
+  };
+}
+
+proc ownership_semantics_rule(name: string, statement: string) -> OwnershipSemanticsRule {
+  give OwnershipSemanticsRule {
+    name: name,
+    statement: statement,
+    valid: name != "" and statement != ""
+  };
+}
+
+proc mir_semantic_mapping_ready(mir_summary: string) -> bool {
+  give mir_summary != "" and find(mir_summary, "function") >= 0;
+}
+
+proc unsafe_escape_detected(text: string) -> bool {
+  if find(text, "reinterpret") >= 0 {
+    give true;
+  }
+  if find(text, "raw_ptr") >= 0 {
+    give true;
+  }
+  if find(text, "unsafe") >= 0 and find(text, "deref") >= 0 {
+    give true;
+  }
+  give false;
+}
+
+proc soundness_checkpoint(judgments: [TypingJudgment], ownership_rules: [OwnershipSemanticsRule], mir_summary: string, unsafe_samples: [string]) -> SoundnessCheckpoint {
+  let judgments_ok: bool = len(judgments) > 0;
+  let ownership_ok: bool = len(ownership_rules) > 0;
+  let progress_preservation_ok: bool = judgments_ok and ownership_ok;
+  let mapping_ok: bool = mir_semantic_mapping_ready(mir_summary);
+  let unsafe_ok: bool = true;
+  let i: u64 = 0;
+  while i < len(unsafe_samples) {
+    if unsafe_escape_detected(unsafe_samples[i]) {
+      set unsafe_ok = false;
+    }
+    set i = i + 1;
+  }
+
+  give SoundnessCheckpoint {
+    typing_judgments: judgments_ok,
+    ownership_semantics: ownership_ok,
+    progress_preservation_groundwork: progress_preservation_ok,
+    mir_semantic_mapping: mapping_ok,
+    unsafe_escape_analysis: unsafe_ok,
+    valid: judgments_ok and ownership_ok and progress_preservation_ok and mapping_ok and unsafe_ok
+  };
+}
+
+proc formal_type_soundness_roadmap_status() -> string {
+  give "typing-judgments+ownership+progress-preservation+mir-mapping+unsafe-escape";
+}
+
+export *

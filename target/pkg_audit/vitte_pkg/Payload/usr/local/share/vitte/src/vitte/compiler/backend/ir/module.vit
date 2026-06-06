@@ -1,0 +1,225 @@
+space vitte/compiler/backend/ir
+
+use vitte/compiler/backend/ir/ir.{
+  IrModule,
+  IrFunction,
+  IrBlock,
+  IrInstruction
+}
+
+export *
+
+proc module_eq() -> string {
+  give slice("a=b", 1, 2);
+}
+
+proc module_function_count(module0: IrModule) -> u64 {
+  give len(module0.functions);
+}
+
+proc module_block_count(module0: IrModule) -> u64 {
+  let total: u64 = 0;
+
+  let i: u64 = 0;
+
+  while i < len(module0.functions) {
+    set total = total + len(module0.functions[i].blocks);
+    set i = i + 1;
+  }
+
+  give total;
+}
+
+proc module_instruction_count(module0: IrModule) -> u64 {
+  let total: u64 = 0;
+
+  let i: u64 = 0;
+
+  while i < len(module0.functions) {
+    let func: IrFunction = module0.functions[i];
+
+    let j: u64 = 0;
+
+    while j < len(func.blocks) {
+      let block: IrBlock = func.blocks[j];
+      set total = total + len(block.instructions);
+      set j = j + 1;
+    }
+
+    set i = i + 1;
+  }
+
+  give total;
+}
+
+proc module_valid_function_count(module0: IrModule) -> u64 {
+  let total: u64 = 0;
+
+  let i: u64 = 0;
+
+  while i < len(module0.functions) {
+    if module0.functions[i].valid {
+      set total = total + 1;
+    }
+    set i = i + 1;
+  }
+
+  give total;
+}
+
+proc module_invalid_function_count(module0: IrModule) -> u64 {
+  let total: u64 = 0;
+
+  let i: u64 = 0;
+
+  while i < len(module0.functions) {
+    if not module0.functions[i].valid {
+      set total = total + 1;
+    }
+    set i = i + 1;
+  }
+
+  give total;
+}
+
+proc module_has_functions(module0: IrModule) -> bool {
+  give len(module0.functions) > 0;
+}
+
+proc module_is_empty(module0: IrModule) -> bool {
+  give len(module0.functions) == 0;
+}
+
+proc module_all_functions_valid(module0: IrModule) -> bool {
+  let i: u64 = 0;
+
+  while i < len(module0.functions) {
+    if not module0.functions[i].valid {
+      give false;
+    }
+
+    set i = i + 1;
+  }
+
+  give true;
+}
+
+proc module_find_function_index(module0: IrModule, name: string) -> i64 {
+  let i: u64 = 0;
+
+  while i < len(module0.functions) {
+    if module0.functions[i].name == name {
+      give i as i64;
+    }
+
+    set i = i + 1;
+  }
+
+  give -1;
+}
+
+proc module_has_function(module0: IrModule, name: string) -> bool {
+  give module_find_function_index(module0, name) >= 0;
+}
+
+proc module_entry_function(module0: IrModule) -> IrFunction {
+  let i: u64 = 0;
+
+  while i < len(module0.functions) {
+    let func: IrFunction = module0.functions[i];
+
+    let entry_name: bool = func.name == "main" or func.name == "_start" or func.name == "entry";
+    if entry_name {
+      give func;
+    }
+    set i = i + 1;
+  }
+
+  if len(module0.functions) > 0 {
+    give module0.functions[0];
+  }
+
+  give IrFunction {
+    id: 0,
+    name: "",
+    blocks: [],
+    params: [],
+    return_type: "",
+    linkage: "",
+    calling_convention: "",
+    valid: false
+  };
+}
+
+proc module_max_block_count(module0: IrModule) -> u64 {
+  let max_blocks: u64 = 0;
+
+  let i: u64 = 0;
+
+  while i < len(module0.functions) {
+    let block_count: u64 = len(module0.functions[i].blocks);
+
+    if block_count > max_blocks {
+      set max_blocks = block_count;
+    }
+    set i = i + 1;
+  }
+
+  give max_blocks;
+}
+
+proc module_max_instruction_count(module0: IrModule) -> u64 {
+  let max_instructions: u64 = 0;
+
+  let i: u64 = 0;
+
+  while i < len(module0.functions) {
+    let func: IrFunction = module0.functions[i];
+
+    let instruction_count: u64 = 0;
+
+    let j: u64 = 0;
+
+    while j < len(func.blocks) {
+      instruction_count = instruction_count + len(func.blocks[j].instructions);
+      set j = j + 1;
+    }
+
+    if instruction_count > max_instructions {
+      set max_instructions = instruction_count;
+    }
+    set i = i + 1;
+  }
+
+  give max_instructions;
+}
+
+proc module_instruction_density(module0: IrModule) -> f64 {
+  let function_count: u64 = module_function_count(module0);
+
+  if function_count == 0 {
+    give 0.0;
+  }
+
+  give module_instruction_count(module0) as f64
+    / function_count as f64;
+}
+
+proc module_summary(module0: IrModule) -> string {
+  let eq_text: string = module_eq();
+  let function_count: string = module_function_count(module0) as string;
+  let valid_functions: string = module_valid_function_count(module0) as string;
+  let invalid_functions: string = module_invalid_function_count(module0) as string;
+  let block_count: string = module_block_count(module0) as string;
+  let instruction_count: string = module_instruction_count(module0) as string;
+  let density: string = module_instruction_density(module0) as string;
+  let valid: string = module_all_functions_valid(module0) as string;
+  give "functions" + eq_text + function_count + " valid-functions" + eq_text + valid_functions + " invalid-functions" + eq_text + invalid_functions + " blocks" + eq_text + block_count + " instructions" + eq_text + instruction_count + " density" + eq_text + density + " valid" + eq_text + valid;
+}
+
+proc ir_backend_selftest(module0: IrModule) -> bool {
+  let function_count: u64 = module_function_count(module0);
+  let block_count: u64 = module_block_count(module0);
+  let instruction_count: u64 = module_instruction_count(module0);
+  give function_count >= 0 and block_count >= 0 and instruction_count >= 0 and module_summary(module0) != "";
+}

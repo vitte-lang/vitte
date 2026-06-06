@@ -1,0 +1,460 @@
+space vitte/compiler/middle/mir/builder
+
+use vitte/compiler/frontend/ast.node.{ AstSpan, ast_span_empty }
+
+use vitte/compiler/middle/mir.mir.{
+  MirBlock,
+  MirFunction,
+  MirModule,
+  MirOperand,
+  MirPlace,
+  MirRvalue,
+  MirRvalueKind,
+  MirStatement,
+  MirStatementKind,
+  MirTerminator,
+  MirTerminatorKind,
+  MirUnit,
+  mir_module_empty,
+  mir_place_empty,
+  mir_rvalue_use,
+  mir_statement_assign,
+  mir_terminator_branch,
+  mir_terminator_goto,
+  mir_terminator_return
+}
+
+export *
+
+pick MirBuilderPhase {
+  Init,
+  Function,
+  Block,
+  Statement,
+  Terminator,
+  Finalize,
+  Failed,
+}
+
+pick MirBuilderValueKind {
+  Temporary,
+  Local,
+  Argument,
+  Constant,
+  Projection,
+  Phi,
+}
+
+form MirBuilderValue {
+  id: u64
+  kind: MirBuilderValueKind
+  name: string
+  ty: string
+  mutable: bool
+  moved: bool
+  valid: bool
+}
+
+form MirBuilderBlock {
+  id: u64
+  label: string
+  predecessor_count: u64
+  statement_count: u64
+  terminated: bool
+  sealed: bool
+  valid: bool
+}
+
+form MirBuilderContext {
+  source_path: string
+
+  phase: MirBuilderPhase
+
+  next_block_id: u64
+  next_statement_id: u64
+  next_value_id: u64
+  next_function_id: u64
+
+  current_function: string
+  current_block: u64
+
+  blocks: [MirBuilderBlock]
+  values: [MirBuilderValue]
+
+  statement_count: u64
+  terminator_count: u64
+  branch_count: u64
+  call_count: u64
+
+  diagnostics: [string]
+
+  valid: bool
+}
+
+proc builder_value(id: u64, kind: MirBuilderValueKind, name: string, ty: string, mutable: bool, moved: bool, valid: bool) -> MirBuilderValue {
+  give MirBuilderValue {
+    id: id,
+    kind: kind,
+    name: name,
+    ty: ty,
+    mutable: mutable,
+    moved: moved,
+    valid: valid
+  }
+}
+
+proc builder_block(id: u64, label: string, predecessor_count: u64, statement_count: u64, terminated: bool, sealed: bool, valid: bool) -> MirBuilderBlock {
+  give MirBuilderBlock {
+    id: id,
+    label: label,
+    predecessor_count: predecessor_count,
+    statement_count: statement_count,
+    terminated: terminated,
+    sealed: sealed,
+    valid: valid
+  }
+}
+
+proc mir_builder_context(source_path: string) -> MirBuilderContext {
+  give MirBuilderContext {
+    source_path: source_path,
+
+    phase: MirBuilderPhase.Init,
+
+    next_block_id: 1,
+    next_statement_id: 1,
+    next_value_id: 0,
+    next_function_id: 0,
+
+    current_function: "",
+    current_block: 1,
+
+    blocks: [
+      builder_block(
+        1,
+        "entry",
+        0,
+        0,
+        false,
+        false,
+        true
+      )
+    ],
+
+    values: [],
+
+    statement_count: 0,
+    terminator_count: 0,
+    branch_count: 0,
+    call_count: 0,
+
+    diagnostics: [],
+
+    valid: true
+  }
+}
+
+proc mir_builder_eq() -> string {
+  give slice("a=b", 1, 2)
+}
+
+proc builder_phase_name(phase: MirBuilderPhase) -> string {
+  if phase == MirBuilderPhase.Init {
+    give "init"
+  } elif phase == MirBuilderPhase.Function {
+    give "function"
+  } elif phase == MirBuilderPhase.Block {
+    give "block"
+  } elif phase == MirBuilderPhase.Statement {
+    give "statement"
+  } elif phase == MirBuilderPhase.Terminator {
+    give "terminator"
+  } elif phase == MirBuilderPhase.Finalize {
+    give "finalize"
+  } elif phase == MirBuilderPhase.Failed {
+    give "failed"
+  }
+
+  give "unknown"
+}
+
+proc builder_value_kind_name(kind: MirBuilderValueKind) -> string {
+  if kind == MirBuilderValueKind.Temporary {
+    give "temporary"
+  } elif kind == MirBuilderValueKind.Local {
+    give "local"
+  } elif kind == MirBuilderValueKind.Argument {
+    give "argument"
+  } elif kind == MirBuilderValueKind.Constant {
+    give "constant"
+  } elif kind == MirBuilderValueKind.Projection {
+    give "projection"
+  } elif kind == MirBuilderValueKind.Phi {
+    give "phi"
+  }
+
+  give "unknown"
+}
+
+proc append_diagnostic(ctx: MirBuilderContext, diagnostic: string) -> MirBuilderContext {
+  let out: MirBuilderContext = ctx
+  set out.diagnostics = out.diagnostics + [diagnostic]
+
+  give out
+}
+
+proc set_phase(ctx: MirBuilderContext, phase: MirBuilderPhase) -> MirBuilderContext {
+  let out: MirBuilderContext = ctx
+  set out.phase = phase
+
+  give out
+}
+
+proc allocate_block(ctx: MirBuilderContext, label: string) -> MirBuilderContext {
+  let out: MirBuilderContext = ctx
+  let id: u64 = out.next_block_id + 1
+  set out.blocks = out.blocks + [builder_block(id, label, 0, 0, false, false, true)]
+  set out.next_block_id = id
+
+  give out
+}
+
+proc allocate_value(ctx: MirBuilderContext, kind: MirBuilderValueKind, ty: string) -> MirBuilderContext {
+  let out: MirBuilderContext = ctx
+  let id: u64 = out.next_value_id + 1
+
+  let prefix: string = "_v"
+
+  if kind == MirBuilderValueKind.Temporary {
+    set prefix = "_t"
+  }
+  elif kind == MirBuilderValueKind.Argument {
+    set prefix = "_arg"
+  }
+  elif kind == MirBuilderValueKind.Phi {
+    set prefix = "_phi"
+  }
+
+  let id_text: string = id as string
+  set out.values = out.values + [builder_value(id, kind, prefix + id_text, ty, false, false, true)]
+  set out.next_value_id = id
+
+  give out
+}
+
+proc current_block_state(ctx: MirBuilderContext) -> MirBuilderBlock {
+  let i: u64 = 0
+
+  while i < len(ctx.blocks) {
+    if ctx.blocks[i].id == ctx.current_block {
+      give ctx.blocks[i]
+    }
+
+    set i = i + 1
+  }
+
+  give builder_block(
+    0,
+    "",
+    0,
+    0,
+    false,
+    false,
+    false
+  )
+}
+
+proc update_block(ctx: MirBuilderContext, updated: MirBuilderBlock) -> MirBuilderContext {
+  let out: MirBuilderContext = ctx
+
+  let blocks: [MirBuilderBlock] = []
+
+  let i: u64 = 0
+
+  while i < len(out.blocks) {
+    if out.blocks[i].id == updated.id {
+      set blocks = blocks + [updated]
+    } else {
+      set blocks = blocks + [out.blocks[i]]
+    }
+
+    set i = i + 1
+  }
+
+  set out.blocks = blocks
+
+  give out
+}
+
+proc increment_statement_count(ctx: MirBuilderContext) -> MirBuilderContext {
+  let out: MirBuilderContext = ctx
+  let block: MirBuilderBlock = current_block_state(out)
+  set out = update_block(out, builder_block(block.id, block.label, block.predecessor_count, block.statement_count + 1, block.terminated, block.sealed, block.valid))
+  set out.statement_count = out.statement_count + 1
+
+  give out
+}
+
+proc mark_terminated(ctx: MirBuilderContext) -> MirBuilderContext {
+  let out: MirBuilderContext = ctx
+  let block: MirBuilderBlock = current_block_state(out)
+  set out = update_block(out, builder_block(block.id, block.label, block.predecessor_count, block.statement_count, true, true, block.valid))
+  set out.terminator_count = out.terminator_count + 1
+
+  give out
+}
+
+proc enter_function(ctx: MirBuilderContext, name: string) -> MirBuilderContext {
+  let out: MirBuilderContext = ctx
+  set out.phase = MirBuilderPhase.Function
+  set out.current_function = name
+  set out.next_function_id = out.next_function_id + 1
+
+  give out
+}
+
+proc enter_block(ctx: MirBuilderContext, block_id: u64) -> MirBuilderContext {
+  let out: MirBuilderContext = ctx
+  set out.phase = MirBuilderPhase.Block
+  set out.current_block = block_id
+
+  give out
+}
+
+proc mir_operand(text: string) -> MirOperand {
+  give MirOperand {
+    text: text,
+    place: mir_place_empty(),
+    valid: text != ""
+  }
+}
+
+proc mir_place(name: string) -> MirPlace {
+  if name == "" {
+    give mir_place_empty()
+  }
+
+  give MirPlace {
+    local: name,
+    projection: "",
+    valid: true
+  }
+}
+
+proc assign_statement(id: u64, target: string, value: string) -> MirStatement {
+  give mir_statement_assign(
+    id,
+    ast_span_empty(),
+    mir_place(target),
+    mir_rvalue_use(
+      value
+    )
+  )
+}
+
+proc branch_terminator(condition: string, then_block: u64, else_block: u64) -> MirTerminator {
+  give mir_terminator_branch(
+    mir_operand(condition),
+    then_block,
+    else_block
+  )
+}
+
+proc goto_terminator(target: u64) -> MirTerminator {
+  give mir_terminator_goto(
+    target
+  )
+}
+
+proc return_terminator() -> MirTerminator {
+  give mir_terminator_return()
+}
+
+proc basic_block(id: u64, statements: [MirStatement], terminator: MirTerminator) -> MirBlock {
+  give MirBlock {
+    id: id,
+    statements: statements,
+    terminator: terminator,
+    valid: terminator.valid
+  }
+}
+
+proc function(name: string, blocks: [MirBlock], entry_block: u64) -> MirFunction {
+  give MirFunction {
+    id: 0,
+    name: name,
+    entry_block: entry_block,
+    blocks: blocks,
+    valid: name != "" and len(blocks) > 0
+  }
+}
+
+proc module(functions: [MirFunction]) -> MirModule {
+  give MirModule {
+    functions: functions,
+    valid: len(functions) > 0
+  }
+}
+
+proc unit(source_path: string, module0: MirModule, block_count: u64, instruction_count: u64, valid: bool) -> MirUnit {
+  give MirUnit {
+    source_path: source_path,
+    module: module0,
+    block_count: block_count,
+    instruction_count: instruction_count,
+    valid: valid
+  }
+}
+
+proc block_is_terminated(block: MirBuilderBlock) -> bool {
+  give block.terminated
+}
+
+proc block_is_open(block: MirBuilderBlock) -> bool {
+  give not block.sealed
+}
+
+proc builder_valid(ctx: MirBuilderContext) -> bool {
+  give ctx.valid and len(ctx.blocks) > 0
+}
+
+proc builder_summary(ctx: MirBuilderContext) -> string {
+  let block_count: string = len(ctx.blocks) as string
+  let value_count: string = len(ctx.values) as string
+  let statement_count: string = ctx.statement_count as string
+  let terminator_count: string = ctx.terminator_count as string
+  let branch_count: string = ctx.branch_count as string
+  let call_count: string = ctx.call_count as string
+  let valid_text: string = ctx.valid as string
+  let eq: string = mir_builder_eq()
+  give "phase" + eq + builder_phase_name(ctx.phase) + " blocks" + eq + block_count + " values" + eq + value_count + " statements" + eq + statement_count + " terminators" + eq + terminator_count + " branches" + eq + branch_count + " calls" + eq + call_count + " valid" + eq + valid_text
+}
+
+proc mir_builder_selftest() -> bool {
+  let ctx0: MirBuilderContext = mir_builder_context("demo.vit")
+  let ctx1: MirBuilderContext = allocate_block(ctx0, "loop")
+  let ctx2: MirBuilderContext = allocate_value(ctx1, MirBuilderValueKind.Temporary, "i32")
+  let ctx3: MirBuilderContext = increment_statement_count(ctx2)
+  let ctx4: MirBuilderContext = mark_terminated(ctx3)
+  let stmt: MirStatement = assign_statement(1, "x", "42")
+  let block: MirBlock = basic_block(1, [stmt], return_terminator())
+  let fn0: MirFunction = function("main", [block], 1)
+  let module0: MirModule = module([fn0])
+  let unit0: MirUnit = unit("demo.vit", module0, 1, 1, true)
+
+  give builder_valid(ctx4)
+    and len(ctx4.blocks) == 2
+    and len(ctx4.values) == 1
+    and ctx4.statement_count == 1
+    and ctx4.terminator_count == 1
+    and block_is_terminated(
+      current_block_state(ctx4)
+    )
+    and not block_is_open(
+      current_block_state(ctx4)
+    )
+    and unit0.valid
+    and builder_phase_name(MirBuilderPhase.Block) == "block"
+    and builder_value_kind_name(MirBuilderValueKind.Phi) == "phi"
+    and builder_summary(ctx4) != ""
+}

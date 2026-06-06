@@ -1,0 +1,909 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>23. System Project (pocket version)</title>
+<link rel="icon" href="../../../svg/logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../../css/site.css">
+<link rel="stylesheet" href="../../../css/print.css" media="print">
+
+<link rel="alternate" hreflang="en" href="https://vitte-lang.org/23-system-project.html">
+<link rel="alternate" hreflang="x-default" href="https://vitte-lang.org/23-system-project.html">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; font-src 'self'; connect-src 'self';">
+</head>
+<body class="classic-doc">
+<a class="skip-link" href="#main-content">Skip to content</a>
+<div class="site-shell">
+<header class="site-header">
+<a class="site-brand" href="../../../index.html"><img class="site-brand-mark" src="../../../svg/logo.svg" alt="" width="32" height="32"><span>Vitte</span></a>
+<nav class="site-nav" aria-label="Primary">
+<ul class="nav-band"><li><a class="nav-chip" href="../../../index.html"><img src="../../../svg/home.svg" alt="" width="14" height="14" aria-hidden="true"><span>Welcome</span></a></li><li><a class="nav-chip" href="../../../doc.html"><img src="../../../svg/docs.svg" alt="" width="14" height="14" aria-hidden="true"><span>Documentation</span></a></li><li><a class="nav-chip" href="../../../download.html"><img src="../../../svg/download.svg" alt="" width="14" height="14" aria-hidden="true"><span>Download</span></a></li><li><a class="nav-chip" href="../../../source.html"><img src="../../../svg/source.svg" alt="" width="14" height="14" aria-hidden="true"><span>Source</span></a></li><li><a class="nav-chip" href="../../../community.html"><img src="../../../svg/community.svg" alt="" width="14" height="14" aria-hidden="true"><span>Community</span></a></li><li><a class="nav-chip" href="../../../news.html"><img src="../../../svg/news.svg" alt="" width="14" height="14" aria-hidden="true"><span>News</span></a></li><li><a class="nav-chip" href="../../../diagnostics.html"><img src="../../../svg/diagnostics.svg" alt="" width="14" height="14" aria-hidden="true"><span>Diagnostics</span></a></li><li><a class="nav-chip" href="../../../suggestions.html"><img src="../../../svg/suggestions.svg" alt="" width="14" height="14" aria-hidden="true"><span>Suggestions</span></a></li></ul>
+</nav>
+</header>
+<main id="main-content" class="site-main">
+<article class="doc-content">
+<p class="book-progress"></p>
+<h1>23. System Project (pocket version)</h1>
+<p>Level: Advanced</p>
+<p>Prerequisites: previous chapter <code>docs/book/chapters/22-http-project.html</code> and <code>docs/book/glossary.html</code>. See also: <code>docs/book/chapters/22-http-project.html</code>, <code>docs/book/chapters/24-kv-project.html</code>, <code>docs/book/glossary.html</code>.</p>
+<h2>Concrete Problem</h2>
+<p>Real situation: System Project is best understood by replaying the program as an executable algorithm. You read the incoming data, the condition evaluated, and then the returned value. Guiding question: Which condition is evaluated first, and what output does this decision impose?</p>
+<h2>Red Thread (Single Project)</h2>
+<p>Common thread: each section uses the same scenario to isolate a single technical decision at a time. Educational objective: understand why a line exists and what it changes in the trajectory of the program.</p>
+<h2>Why it matters</h2>
+<p>This chapter gives you a clear understanding of <strong>System Project</strong>. You will find the framework, the invariants and the reading decisions useful in practice.</p>
+<h2>What you will do</h2>
+<p>You'll read the snippets in actual execution order, then validate the expected outputs on a nominal case and an error case.</p>
+<h2>Minimal example</h2>
+<p>Recommended first reflex: read the entries and conditions first, then only the syntactic form.</p>
+<h2>Step-by-step explanation</h2>
+<ol>
+<li>Identify the intent of the block.</li>
+<li>Check the main condition or test.</li>
+<li>Confirm the observable output.</li>
+<li>Note how this block serves <strong>System Project</strong> throughout the chapter.</li>
+</ol>
+<h2>Common pitfalls</h2>
+<ul>
+<li>Read the syntax without checking the behavior.</li>
+<li>Mix general rule and error cases in the same explanation.</li>
+<li>Introduce an optimization before having stabilized the flow of <strong>System Project</strong>.</li>
+</ul>
+<h2>Short exercise</h2>
+<p>Take an example from the chapter on <strong>System Project</strong>. Change a condition or input value, then check if the result remains as expected.</p>
+<h2>Summary in 5 points</h2>
+<ol>
+<li>You know the objective of the chapter on <strong>System Project</strong>.</li>
+<li>You know how to read an example of the chapter in a structured way.</li>
+<li>You distinguish nominal case and error case.</li>
+<li>You avoid the most common pitfalls.</li>
+<li>You can reuse these rules in the next chapter.</li>
+</ol>
+<h2>Local level</h2>
+<ul>
+<li>Local core section level: Advanced.</li>
+<li>Local level guided examples: Intermediate.</li>
+<li>Local level diagnostic exercises: Advanced.</li>
+</ul>
+<p>This chapter pursues a clear objective: to build a Vitte system core which remains auditable under real constraints. We will go beyond the simple memory example to pose a complete architecture: region model, bounded access, minimum <code>unsafe</code> points, composition of operations and test plan.</p>
+<p>The challenge is not to “make” a machine instruction work, but to maintain readable invariants throughout the flow. In system code, readability is not a luxury: it is a security measure.</p>
+<p>Reference: see the <code>Vitte Glossary</code> in <code>docs/book/glossary.html</code> and the <code>Editorial Checklist</code> in <code>docs/book/checklist.html</code>. Complement: <code>docs/book/classic-mistakes.html</code>.</p>
+<p>Chapter pipeline diagram:</p>
+<ul>
+<li>Input: initial data or query.</li>
+<li>Processing: validation, business logic, transformations.</li>
+<li>Output: business result or status code.</li>
+<li>Invariant: property that must remain true at each step.</li>
+</ul>
+<!-- VITTE_PROJECT_SNAPSHOT_V1 -->
+<h2>Vitte Project Snapshot</h2>
+<p>Concrete code from <code>docs/book/code/project-kernel-network-fabric.vit</code>, kept short but tied to the real Vitte project.</p>
+<pre><code class="language-vit">space demo/project_kernel_network_fabric
+
+pub proc project_name() -&gt; string {
+  give &quot;Kernel Network Fabric&quot;
+}
+
+pub proc load_boot_config() -&gt; BootConfig {
+  give BootConfig(&quot;node-a&quot;, &quot;production&quot;, &quot;desktop&quot;, &quot;eu-west&quot;)
+}
+
+pub proc plan_state(c: BootConfig, devices: [Device], tasks: [Task]) -&gt; KernelState {
+  if !validate_boot(c) { give KernelState.Panic(&quot;invalid boot config&quot;) }
+  if devices.len == 0 { give KernelState.Degraded(&quot;no devices discovered&quot;) }
+  give KernelState.Ready(&quot;steady&quot;)
+}</code></pre>
+<p>This snapshot shows the same shapes as the public project sources: a dedicated <code>space</code>, a contract surface with <code>trait</code> / <code>impl</code> when relevant, and a public entry point for the chapter flow.</p>
+
+<h2>23.1 Set system state and result rule</h2>
+<pre><code class="language-vit">form Region {
+  base: int
+  size: int
+}
+form SysMem {
+  region: Region
+  cells: int[]
+}
+pick SysResult {
+  case Ok
+  case ErrBounds
+  case ErrState
+}</code></pre>
+<p>Reading line by line (beginner):</p>
+<ol>
+<li><code>form Region {</code>: this line opens the <code>Region</code> structure which groups coherent data under the same business name, useful for keeping a stable vocabulary.</li>
+<li><code>base: int</code>: this line declares the field <code>base</code> with the type <code>int</code>, which documents its role and limits handling errors.</li>
+<li><code>size: int</code>: this line declares the field <code>size</code> with the type <code>int</code>, which documents its role and limits handling errors.</li>
+<li><code>}</code>: this brace closes the block.</li>
+<li><code>form SysMem {</code>: this line opens the <code>SysMem</code> structure which groups coherent data under the same business name, useful for keeping a stable vocabulary.</li>
+<li><code>region: Region</code>: this line declares the field <code>region</code> with the type <code>Region</code>, which documents its role and limits handling errors.</li>
+<li><code>cells: int[]</code>: this line declares the field <code>cells</code> with the type <code>int[]</code>, which documents its role and limits handling errors.</li>
+<li><code>}</code>: this brace closes the block.</li>
+<li><code>pick SysResult {</code>: This line opens the closed type <code>SysResult</code> to force a finite set of possible cases and remove implicit states.</li>
+<li><code>case Ok</code>: this case describes <code>Ok</code> and explains the associated business decision, which reduces reading ambiguities.</li>
+<li><code>case ErrBounds</code>: this case describes <code>ErrBounds</code> and explains the associated business decision, which reduces reading ambiguities.</li>
+<li><code>case ErrState</code>: this case describes <code>ErrState</code> and explains the associated business decision, which reduces reading ambiguities.</li>
+<li><code>}</code>: this brace closes the block.</li>
+</ol>
+<p>Input -> output (to be checked):</p>
+<ul>
+<li>Error case: an explicit test of the block handles out-of-rule entries before the nominal path.</li>
+<li>Nominal case: the flow follows the main branch and produces a stable output.</li>
+<li>Testable observation: forcing the case <code>Ok</code> confirms the expected branch.</li>
+</ul>
+<p>Quick check: invalid input should trigger a clear validation or fallback path.</p>
+<p>This base imposes two rules:</p>
+<ul>
+<li>every memory operation works in a <code>Region</code>.</li>
+<li>any outcome is explained by <code>SysResult</code>.</li>
+</ul>
+<p>At runtime, no critical operation returns arbitrary code. Everything goes through <code>Ok</code> / <code>ErrBounds</code> / <code>ErrState</code>.</p>
+<p>Common mistakes to avoid:</p>
+<ul>
+<li>let “magic” integers circulate as error codes.</li>
+<li>mix terminal error and state error in the same branch.</li>
+<li>expose raw memory without region rule.</li>
+</ul>
+<h2>23.2 Centralize terminal preconditions</h2>
+<pre><code class="language-vit">pub proc contains(r: Region, addr: int) -&gt; bool {
+
+  if addr &lt; r.base { give false }
+
+  if addr &gt;= r.base + r.size { give false }
+
+  give true
+}
+pub proc to_index(r: Region, addr: int) -&gt; int {
+  give addr - r.base
+}</code></pre>
+<p>Reading line by line (beginner):</p>
+<ol>
+<li><code>pub proc contains(r: Region, addr: int) -&gt; bool {</code>: the rule is defined for <code>contains</code>: inputs <code>r: Region, addr: int</code> and output <code>bool</code>, it clarifies the intention before detailed reading of the body.</li>
+<li><code>if addr &lt; r.base { give false }</code>: this test handles the invalid case before the main path.</li>
+<li><code>if addr &gt;= r.base + r.size { give false }</code>: this test handles the invalid case before the main path.</li>
+<li><code>give true</code>: the branch returns <code>true</code> for the current branch, the output is explicit and easy to verify.</li>
+<li><code>}</code>: this brace closes the block.</li>
+<li><code>pub proc to_index(r: Region, addr: int) -&gt; int {</code>: the rule is set for <code>to_index</code>: inputs <code>r: Region, addr: int</code> and output <code>int</code>, it clarifies the intention before detailed reading of the body.</li>
+<li><code>give addr - r.base</code>: the branch returns <code>addr - r.base</code> for the current branch, the output is explicit and easy to verify.</li>
+<li><code>}</code>: this brace closes the block.</li>
+</ol>
+<p>Input -> output (to be checked):</p>
+<ul>
+<li>Error case: if <code>addr &lt; r.base</code> is true, the output becomes <code>false</code>.</li>
+<li>Nominal case: without blocking test, the main branch returns <code>true</code>.</li>
+<li>Testable observation: repeating the same input should reproduce exactly the same output.</li>
+</ul>
+<p>Quick check: invalid input should trigger a clear validation or fallback path.</p>
+<p><code>contains</code> becomes the gateway to all reading/writing. <code>to_index</code> isolates the address -> local index projection.</p>
+<p>Step by step reading:</p>
+<ul>
+<li>address outside the region => immediate refusal.</li>
+<li>address in region => controlled index conversion.</li>
+</ul>
+<p>Common mistakes to avoid:</p>
+<ul>
+<li>recalculate the limits differently depending on the functions.</li>
+<li>convert to index before validating the region.</li>
+<li>manipulate a physical address as a logical index.</li>
+</ul>
+<h2>23.3 Implement bounded read and write</h2>
+<pre><code class="language-vit">pub proc read_cell(m: SysMem, addr: int) -&gt; int {
+
+  if not contains(m.region, addr) { give 0 }
+  let i: int = to_index(m.region, addr)
+
+  give m.cells[i]
+}
+pub proc write_cell(m: SysMem, addr: int, v: int) -&gt; SysResult {
+
+  if not contains(m.region, addr) { give ErrBounds }
+  let i: int = to_index(m.region, addr)
+  m.cells[i] = v
+
+  give Ok
+}</code></pre>
+<p>Reading line by line (beginner):</p>
+<ol>
+<li><code>pub proc read_cell(m: SysMem, addr: int) -&gt; int {</code>: the rule is set for <code>read_cell</code>: inputs <code>m: SysMem, addr: int</code> and output <code>int</code>, it clarifies the intention before detailed reading of the body.</li>
+<li><code>if not contains(m.region, addr) { give 0 }</code>: this test handles the invalid case before the main path.</li>
+<li><code>let i: int = to_index(m.region, addr)</code>: this line creates the variable <code>i</code> of type <code>int</code> to explicitly name an intermediate step of the reasoning.</li>
+<li><code>give m.cells[i]</code>: returns <code>m.cells[i]</code> for the current branch, the output is explicit and easy to verify.</li>
+<li><code>}</code>: this brace closes the block.</li>
+<li><code>pub proc write_cell(m: SysMem, addr: int, v: int) -&gt; SysResult {</code>: the rule is defined for <code>write_cell</code>: inputs <code>m: SysMem, addr: int, v: int</code> and output <code>SysResult</code>, it clarifies the intention before detailed reading of the body.</li>
+<li><code>if not contains(m.region, addr) { give ErrBounds }</code>: this test handles the invalid case before the main path.</li>
+<li><code>let i: int = to_index(m.region, addr)</code>: this line creates the variable <code>i</code> of type <code>int</code> to explicitly name an intermediate step of the reasoning.</li>
+<li><code>m.cells[i] = v</code>: This line marks a clear step in the flow.</li>
+<li><code>give Ok</code>: the branch returns <code>Ok</code> for the current branch, the output is explicit and easy to verify.</li>
+<li><code>}</code>: this brace closes the block.</li>
+</ol>
+<p>Input -> output (to be checked):</p>
+<ul>
+<li>Error case: if <code>not contains(m.region, addr)</code> is true, the output becomes <code>0</code>.</li>
+<li>Nominal case: without blocking test, the main branch returns <code>m.cells[i]</code>.</li>
+<li>Testable observation: repeating the same input should reproduce exactly the same output.</li>
+</ul>
+<p>Quick check: invalid input should trigger a clear validation or fallback path.</p>
+<p>The rule is deliberately explicit:</p>
+<ul>
+<li>invalid read -> sentinel <code>0</code>.</li>
+<li>invalid write -> <code>ErrBounds</code>.</li>
+</ul>
+<p>At runtime:</p>
+<ul>
+<li><code>write_cell</code> never mutates out-of-region memory.</li>
+<li><code>read_cell</code> never dereferences out of bounds.</li>
+</ul>
+<p>Common mistakes to avoid:</p>
+<ul>
+<li>return <code>Ok</code> even when the address is invalid.</li>
+<li>mutate before validating <code>contains</code>.</li>
+<li>confuse reading sentinel with writing error.</li>
+</ul>
+<h2>23.4 Frame points <code>unsafe</code></h2>
+<pre><code class="language-vit">pub proc cpu_pause() {
+  unsafe { asm(&quot;pause&quot;) }
+}
+pub proc cpu_halt_if(flag: bool) -&gt; SysResult {
+
+  if not flag { give ErrState }
+  unsafe { asm(&quot;hlt&quot;) }
+
+  give Ok
+}</code></pre>
+<p>Reading line by line (beginner):</p>
+<ol>
+<li><code>pub proc cpu_pause() {</code>: This line marks a clear step in the flow.</li>
+<li><code>unsafe { asm(&quot;pause&quot;) }</code>: this line marks a sensitive area which must remain short, justified and easy to audit in a system context.</li>
+<li><code>}</code>: this brace closes the block.</li>
+<li><code>pub proc cpu_halt_if(flag: bool) -&gt; SysResult {</code>: the rule is set for <code>cpu_halt_if</code>: inputs <code>flag: bool</code> and output <code>SysResult</code>, it clarifies the intention before detailed reading of the body.</li>
+<li><code>if not flag { give ErrState }</code>: this test handles the invalid case before the main path.</li>
+<li><code>unsafe { asm(&quot;hlt&quot;) }</code>: this line marks a sensitive area which must remain short, justified and easy to audit in a system context.</li>
+<li><code>give Ok</code>: the branch returns <code>Ok</code> for the current branch, the output is explicit and easy to verify.</li>
+<li><code>}</code>: this brace closes the block.</li>
+</ol>
+<p>Input -> output (to be checked):</p>
+<ul>
+<li>Error case: if <code>not flag</code> is true, the output becomes <code>ErrState</code>.</li>
+<li>Nominal case: without blocking test, the main branch returns <code>Ok</code>.</li>
+<li>Testable observation: repeating the same input should reproduce exactly the same output.</li>
+</ul>
+<p>Quick check: invalid input should trigger a clear validation or fallback path.</p>
+<p>System golden rule: the <code>unsafe</code> must be short, local, justified.</p>
+<p>At runtime:</p>
+<ul>
+<li><code>cpu_halt_if(false)</code> returns <code>ErrState</code>.</li>
+<li><code>cpu_halt_if(true)</code> executes <code>hlt</code>.</li>
+</ul>
+<p>Common mistakes to avoid:</p>
+<ul>
+<li>extend <code>unsafe</code> to code that can remain secure.</li>
+<li>place validations <em>in</em> the <code>unsafe</code> block.</li>
+<li>hide state precondition before <code>hlt</code>.</li>
+</ul>
+<h2>23.5 Compose an atomic memory + synchronization operation</h2>
+<pre><code class="language-vit">pub proc write_then_pause(m: SysMem, addr: int, v: int) -&gt; SysResult {
+  let w: SysResult = write_cell(m, addr, v)
+
+  match w {
+    case Ok {
+      cpu_pause()
+
+      give Ok
+    }
+    case ErrBounds { give ErrBounds }
+    otherwise { give ErrState }
+  }
+}</code></pre>
+<p>Reading line by line (beginner):</p>
+<ol>
+<li><code>pub proc write_then_pause(m: SysMem, addr: int, v: int) -&gt; SysResult {</code>: the rule is set for <code>write_then_pause</code>: inputs <code>m: SysMem, addr: int, v: int</code> and output <code>SysResult</code>, it clarifies the intention before detailed reading of the body.</li>
+<li><code>let w: SysResult = write_cell(m, addr, v)</code>: this line creates the variable <code>w</code> of type <code>SysResult</code> to explicitly name an intermediate step of the reasoning.</li>
+<li><code>match w {</code>: this line starts a stable dispatch on <code>w</code>: a single branch will be chosen according to the form of the analyzed value.</li>
+<li><code>case Ok {</code>: this case describes <code>Ok</code> and explains the associated business decision, which reduces reading ambiguities.</li>
+<li><code>cpu_pause()</code>: This line marks a clear step in the flow.</li>
+<li><code>give Ok</code>: returns <code>Ok</code> for the current branch, the output is explicit and easy to verify.</li>
+<li><code>}</code>: this brace closes the block.</li>
+<li><code>case ErrBounds { give ErrBounds }</code>: this case describes <code>ErrBounds</code> and explains the associated business decision, which reduces reading ambiguities.</li>
+<li><code>otherwise { give ErrState }</code>: This line marks the fallback path clearly.</li>
+<li><code>}</code>: this brace closes the block.</li>
+<li><code>}</code>: this brace closes the block.</li>
+</ol>
+<p>Input -> output (to be checked):</p>
+<ul>
+<li>Error case: an explicit test of the block handles out-of-rule entries before the nominal path.</li>
+<li>Nominal case: without blocking test, the main branch returns <code>Ok</code>.</li>
+<li>Testable observation: forcing the case <code>Ok</code> confirms the expected branch.</li>
+</ul>
+<p>Quick check: invalid input should trigger a clear validation or fallback path.</p>
+<p>This composition maintains a clear flow:</p>
+<ul>
+<li>validate and write.</li>
+<li>synchronize if successful.</li>
+<li>otherwise propagate the error.</li>
+</ul>
+<p>At runtime:</p>
+<ul>
+<li>success: <code>write_cell</code> then <code>cpu_pause</code>.</li>
+<li>terminal failure: immediate exit <code>ErrBounds</code>.</li>
+</ul>
+<p>Common mistakes to avoid:</p>
+<ul>
+<li>synchronize even after write failure.</li>
+<li>convert a terminal error to a generic status error.</li>
+<li>duplicate this flow in multiple functions instead of unifying.</li>
+</ul>
+<h2>23.6 Add context safe initialization</h2>
+<pre><code class="language-vit">pub proc init_mem(base: int, size: int) -&gt; SysMem {
+  let cells: int[] = []
+  let i: int = 0
+
+  // Boucle: progression controlee jusqu&#x27;a la borne
+  loop {
+    // Borne d&#x27;arret: stoppe la boucle de maniere explicite
+    if i &gt;= size { break }
+    cells.push(0)
+    set i = i + 1
+  }
+
+  give SysMem(Region(base, size), cells)
+}</code></pre>
+<p>Reading line by line (beginner):</p>
+<ol>
+<li><code>pub proc init_mem(base: int, size: int) -&gt; SysMem {</code>: the rule is defined for <code>init_mem</code>: inputs <code>base: int, size: int</code> and output <code>SysMem</code>, it clarifies the intention before detailed reading of the body.</li>
+<li><code>let cells: int[] = []</code>: this line creates the variable <code>cells</code> of type <code>int[]</code> to explicitly name an intermediate step of the reasoning.</li>
+<li><code>let i: int = 0</code>: this line creates the variable <code>i</code> of type <code>int</code> to explicitly name an intermediate step of the reasoning.</li>
+<li><code>loop {</code>: This line opens a controlled loop that repeats the same steps until a clear stopping condition (<code>break</code> or <code>give</code>).</li>
+<li><code>if i &gt;= size { break }</code>: this test handles the invalid case before the main path.</li>
+<li><code>cells.push(0)</code>: This line marks a clear step in the flow.</li>
+<li><code>set i = i + 1</code>: this line carries out a voluntary and visible mutation: the state <code>i</code> changes here, at this precise location in the flow.</li>
+<li><code>}</code>: this brace closes the block.</li>
+<li><code>give SysMem(Region(base, size), cells)</code>: the branch returns <code>SysMem(Region(base, size), cells)</code> for the current branch, the output is explicit and easy to verify.</li>
+<li><code>}</code>: this brace closes the block.</li>
+</ol>
+<p>Input -> output (to be checked):</p>
+<ul>
+<li>Error case: an explicit test of the block handles out-of-rule entries before the nominal path.</li>
+<li>Nominal case: without blocking test, the main branch returns <code>SysMem(Region(base, size), cells)</code>.</li>
+<li>Testable observation: repeating the same input should reproduce exactly the same output.</li>
+</ul>
+<p>Quick check: invalid input should trigger a clear validation or fallback path.</p>
+<p>Explicit initialization avoids implicit states and facilitates reproducible testing.</p>
+<p>Common mistakes to avoid:</p>
+<ul>
+<li>assume that the memory is initialized elsewhere.</li>
+<li>create a region without allocating consistent <code>cells</code>.</li>
+<li>mix bootstrap and business logic.</li>
+</ul>
+<h2>23.7 Complete reproducible scenario</h2>
+<pre><code class="language-vit">entry main at sys/core {
+  let mem: SysMem = init_mem(100, 8)
+  let r1: SysResult = write_then_pause(mem, 103, 42)
+  let v1: int = read_cell(mem, 103)
+  if v1 == 42 { return 0 }
+
+  return 70
+}</code></pre>
+<p>Reading line by line (beginner):</p>
+<ol>
+<li><code>entry main at sys/core {</code>: This line sets the entry point <code>main</code> into <code>sys/core</code> and serves as an end-to-end executable scenario for the chapter.</li>
+<li><code>let mem: SysMem = init_mem(100, 8)</code>: this line creates the variable <code>mem</code> of type <code>SysMem</code> to explicitly name an intermediate step of the reasoning.</li>
+<li><code>let r1: SysResult = write_then_pause(mem, 103, 42)</code>: this line creates the variable <code>r1</code> of type <code>SysResult</code> to explicitly name an intermediate step of the reasoning.</li>
+<li><code>let v1: int = read_cell(mem, 103)</code>: this line creates the variable <code>v1</code> of type <code>int</code> to explicitly name an intermediate step of the reasoning.</li>
+<li><code>if v1 == 42 { return 0 }</code>: this test handles the invalid case before the main path.</li>
+<li><code>return 70</code>: this line ends the execution of the current block with the code <code>70</code>, useful for observing the overall result of the scenario.</li>
+<li><code>}</code>: this brace closes the block.</li>
+</ol>
+<p>Input -> output (to be checked):</p>
+<ul>
+<li>Error case: an explicit test of the block handles out-of-rule entries before the nominal path.</li>
+<li>Nominal case: the main scenario ends with <code>return 70</code>.</li>
+<li>Testable observation: Running the scenario verifies the exit code <code>70</code>.</li>
+</ul>
+<p>Quick check: invalid input should trigger a clear validation or fallback path.</p>
+<p>This scenario provides minimal end-to-end testing:</p>
+<ul>
+<li>init.</li>
+<li>secure write.</li>
+<li>read bounded.</li>
+<li>output assertion.</li>
+</ul>
+<p>Common mistakes to avoid:</p>
+<ul>
+<li>validate the flow without rereading the actually written value.</li>
+<li>test only <code>Ok</code> without case <code>ErrBounds</code>.</li>
+<li>link success to an unstable external effect.</li>
+</ul>
+<h2>23.8 Project test plan</h2>
+<p>Minimum clearance to cover:</p>
+<ol>
+<li>Lower terminal: address <code>base - 1</code> => rejection.</li>
+<li>Upper limit: address <code>base + size</code> => rejection.</li>
+<li>Nominal case: internal address => consistent write/read.</li>
+<li><code>cpu_halt_if(false)</code>: This line marks a clear step in the flow.</li>
+<li>Reproducibility: same sequence => same final state.</li>
+</ol>
+<p>Common mistakes to avoid:</p>
+<ul>
+<li>ignore both region boundaries.</li>
+<li>test <code>unsafe</code> only for success.</li>
+<li>do not check the absence of mutation in case of error.</li>
+</ul>
+<h2>23.9 Minimum system rule</h2>
+<p>Minimum CLI entry:</p>
+<ul>
+<li><code>--op</code> (<code>read</code> or <code>write</code>).</li>
+<li><code>--addr</code> logical address.</li>
+<li><code>--value</code> mandatory if <code>--op=write</code>.</li>
+<li><code>--trace-id</code> optional for log correlation.</li>
+</ul>
+<p>Rights required:</p>
+<ul>
+<li>read-only for <code>read</code>.</li>
+<li>minimal writing to the targeted region for <code>write</code>.</li>
+<li>no global privileges if the region can be isolated.</li>
+</ul>
+<p>Outputs and error codes:</p>
+<ul>
+<li><code>0</code>: success.</li>
+<li><code>2</code>: invalid entry.</li>
+<li><code>13</code>: permission denied.</li>
+<li><code>44</code>: resource not found.</li>
+<li><code>70</code>: inconsistent internal state.</li>
+</ul>
+<h2>23.10 Security invariants</h2>
+<p>Non-negotiable invariants:</p>
+<ul>
+<li>any input path is canonicalized before use (<code>path canonicalisé</code>).</li>
+<li>no dynamic shell execution from input (<code>no shell injection</code>).</li>
+<li>application of the principle of least privilege (<code>droits minimaux</code>).</li>
+<li>all memory terminals are validated before index conversion.</li>
+</ul>
+<h2>23.11 Complete traceable scenario</h2>
+<p>Concrete pipeline:</p>
+<ol>
+<li>Raw input: <code>--op=write --addr=103 --value=42 --trace-id=t-001</code>.</li>
+<li>Validation: check presence of fields, address range and rights.</li>
+<li>Syscall/mutation: write the targeted cell, then sync.</li>
+<li>Mapping result: <code>Ok -&gt; code 0</code>, <code>ErrBounds -&gt; code 2</code>, <code>ErrState -&gt; code 70</code>.</li>
+</ol>
+<p>Expected output:</p>
+<ul>
+<li>stable return code.</li>
+<li>log correlated by <code>trace-id</code>.</li>
+<li>no mutation if validation fails.</li>
+</ul>
+<h2>23.12 System integration tests</h2>
+<ol>
+<li>Nominal.</li>
+<li>Entry: <code>write</code> valid in authorized region.</li>
+<li>Expected: code <code>0</code>, immediately readable value, success log.</li>
+</ol>
+<ol>
+<li>Permission denied.</li>
+<li>Entry: <code>write</code> without sufficient rights.</li>
+<li>Expected: code <code>13</code>, no memory mutation, log <code>denied</code>.</li>
+</ol>
+<ol>
+<li>Resource not found.</li>
+<li>Input: target missing or unresolved region.</li>
+<li>Expected: code <code>44</code>, unchanged state, explicit diagnosis.</li>
+</ol>
+<h2>23.13 Portability box</h2>
+<p>What changes depending on OS:</p>
+<ul>
+<li>permissions model and rights checking API.</li>
+<li>forms Vitte calls for pause/sync.</li>
+<li>system return code conventions and error messages.</li>
+</ul>
+<p>What remains stable:</p>
+<ul>
+<li>CLI entry rule.</li>
+<li>bound and atomicity invariants.</li>
+<li>business mapping <code>SysResult -&gt; code de sortie</code>.</li>
+</ul>
+<h2>23.14 Box Observability</h2>
+<p>Minimum requirements:</p>
+<ul>
+<li>structured logs (<code>ts</code>, <code>level</code>, <code>trace_id</code>, <code>op</code>, <code>addr</code>, <code>result</code>).</li>
+<li>return code always consistent with the business result.</li>
+<li><code>trace_id</code> propagated from input to output.</li>
+</ul>
+<p>Recommended log format:</p>
+<ul>
+<li><code>ts=&lt;unix_ms&gt; trace_id=&lt;id&gt; op=&lt;read|write&gt; addr=&lt;n&gt; result=&lt;Ok|Err..&gt; code=&lt;n&gt;</code>.</li>
+</ul>
+<h2>23.15 Costs</h2>
+<p>I/O:</p>
+<ul>
+<li>dominant cost when the operation affects disk, device or IPC.</li>
+</ul>
+<p>Memory:</p>
+<ul>
+<li>Low local cost on the nominal path, but sensitive to unnecessary copies.</li>
+</ul>
+<p>Blocking system calls:</p>
+<ul>
+<li>risk of latency and chain domino effect.</li>
+<li>impose explicit timeout and recovery strategy.</li>
+</ul>
+<h2>23.16 Classic system project errors</h2>
+<ul>
+<li>TOCTOU: check then use a resource without a consistent lock.</li>
+<li>Path traversal: accept a non-canonicalized path.</li>
+<li>Forgotten Timeouts: Let a call hang indefinitely.</li>
+<li>Implied permissions: assume an unverified right.</li>
+<li>Late mapping: convert too late to observable exit codes.</li>
+</ul>
+<h2>Error table -> diagnosis -> correction</h2>
+<table border="1" cellpadding="6" cellspacing="0">
+<tr><th>OS error</th><th>Symptom</th><th>Diagnosis</th><th>Correction</th></tr>
+<tr><td><code>EACCES</code> / permission denied</td><td>writing refused.</td><td>Insufficient rights to the target.</td><td>Lower the scope or explicitly request the minimum fee required.</td></tr>
+<tr><td><code>ENOENT</code> / resource not found</td><td>resource not found.</td><td>Path/region does not exist or resolved too late.</td><td>Validate existence and resolution before mutation.</td></tr>
+<tr><td><code>EINVAL</code> / invalid argument</td><td>immediate refusal of the operation.</td><td>CLI entry incomplete or out of order.</td><td>Reject early with specific message and code <code>2</code>.</td></tr>
+<tr><td><code>ETIMEDOUT</code> / timeout</td><td>call blocked then failed.</td><td>Timeout missing or too long.</td><td>Define bounded timeout and stable recovery path.</td></tr>
+<tr><td><code>EIO</code> / I/O error</td><td>Intermittent access failure.</td><td>Unstable I/O layer or degraded device.</td><td>Go back to diagnosis, preserve atomicity, avoid partial mutation.</td></tr>
+</table>
+<h2>Final micro challenge</h2>
+<p>Add a mode <code>dry-run</code> without breaking the invariants.</p>
+<p>Constraints:</p>
+<ul>
+<li><code>dry-run</code> validates and logs, but never mutates state.</li>
+<li>the output mapping remains identical to the real mode for validation errors.</li>
+<li>nominal/permission/not-found tests must pass in both modes.</li>
+</ul>
+<h2>Keep in mind</h2>
+<p>A robust system core is built by readable layers: centralized preconditions, bounded access, minimal <code>unsafe</code>, stable composition. The lower level the code, the more highly explicit the rule must be.</p>
+<p>Practical quality criterion for this chapter:</p>
+<ul>
+<li>you can prove that no out-of-bound write is possible.</li>
+<li>you can point each zone <code>unsafe</code> in seconds.</li>
+<li>you know how to replay a complete system scenario in a stable manner.</li>
+</ul>
+<h2>Quick check</h2>
+<p>Question: What happens if the entry is invalid? Expected response: An explicit test or stable fallback path should apply.</p>
+<h2>Try this</h2>
+<ol>
+<li>Take an example from the chapter and modify a test condition to observe different behavior.</li>
+<li>Write a mini mental test on an invalid entry in the chapter, then predict the executed branch.</li>
+</ol>
+<h2>If you're stuck</h2>
+<ul>
+<li>identify the modified line and explain in one sentence the new expected output.</li>
+<li>Name the test or fallback branch actually used.</li>
+</ul>
+<h2>ABI/runtime checklist (common)</h2>
+<ul>
+<li>Consistent ABI signatures between Vitte and Vitte borders.</li>
+<li>runtime symbols actually exported and linked.</li>
+<li>headers/runtime available on the target.</li>
+<li>freestanding constraints explained for kernel targets.</li>
+<li>Vitte call validation before optimization.</li>
+</ul>
+<h2>EBNF compliant</h2>
+<<< quick check >>>
+- Top-level: only module declarations (`space`, `pull`, `use`, `share`, `const`, `type`, `form`, `pick`, `proc`, `entry`, `macro`) appear outside the block.
+- Statements: instructions (`let`, `make`, `set`, `give`, `emit`, `if`, `loop`, `for`, `match`, `select`, `return`) remain in a `block`.
+- Primary types: `bool`, `string`, `int`, `i32`, `i64`, `i128`, `u32`, `u64`, `u128` are accepted in `type_primary`.
+<h2>Keywords to review</h2>
+<ul>
+<li><code>docs/book/chapters/keywords/asm.html</code>.</li>
+<li><code>docs/book/chapters/keywords/at.html</code>.</li>
+<li><code>docs/book/chapters/keywords/bool.html</code>.</li>
+<li><code>docs/book/chapters/keywords/break.html</code>.</li>
+<li><code>docs/book/chapters/keywords/case.html</code>.</li>
+</ul>
+<h2>Goal</h2>
+<p>This chapter sets a clear and verifiable operational objective for the concept studied.</p>
+<h2>Example</h2>
+<p>Concrete example: starting from a simple input, applying a transformation, then observing the expected output.</p>
+<h2>Why it matters</h2>
+<p>This block exists to connect syntax to business intent, reduce ambiguity, and prepare for testing.</p>
+<p><!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 START --></p>
+<h2>Representative examples based on chapter code</h2>
+<p>Theme: <strong>system project</strong>. This section avoids generalizations and starts from a real extract.</p>
+<h3>Example A: Executable reading of the main snippet</h3>
+<pre><code class="language-vit">form Region {
+  base: int
+  size: int
+}
+form SysMem {
+  region: Region
+  cells: int[]
+}
+pick SysResult {
+  case Ok
+  case ErrBounds
+  case ErrState
+}</code></pre>
+<p>Reading line by line:</p>
+<ol>
+<li><code>form Region {</code> -> participates in the processing process.</li>
+<li><code>base: int</code> -> participates in the processing process.</li>
+<li><code>size: int</code> -> participates in the processing process.</li>
+<li><code>}</code> -> participates in the processing process.</li>
+<li><code>form SysMem {</code> -> participates in the processing process.</li>
+<li><code>region: Region</code> -> participates in the processing process.</li>
+<li><code>cells: int[]</code> -> participates in the processing process.</li>
+<li><code>}</code> -> participates in the processing process.</li>
+<li><code>pick SysResult {</code> -> participates in the processing process.</li>
+<li><code>case Ok</code> -> participates in the processing process.</li>
+</ol>
+<h3>Example B: error case variant (same intention, safe behavior)</h3>
+<p>Goal: keep the business logic while adding an explicit test.</p>
+<p>Steps:</p>
+<ol>
+<li>Identify the line that decides the exit.</li>
+<li>Add a test before this line.</li>
+<li>Check the new output on a limit input.</li>
+</ol>
+<h3>Example C: reproducible bug then local correction</h3>
+<p>Procedure:</p>
+<ol>
+<li>Introduce a type mismatch on a call.</li>
+<li>Compile and read the first diagnosis.</li>
+<li>Fix a single line (no global refactor).</li>
+<li>Recompile and check the nominal return.</li>
+</ol>
+<h3>Expected result</h3>
+<ul>
+<li>The reader understands what the code does without unnecessary abstraction.</li>
+<li>Each example is linked to a concrete action.</li>
+<li>The correction is reproducible and testable.</li>
+</ul>
+<p><!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 END --></p>
+<h2>Extended Example</h2>
+<pre><code class="language-vit">// Scenario projet sys: execution complete et verifiable
+space demo/projet-sys
+
+form Request { id: int amount: int quota: int }
+pick Result { case Accepted(total: int) case Rejected(code: int) }
+
+// Entrée applicative: validation des invariants de requête
+pub proc parse_request(r: Request) -&gt; Result {
+
+  if r.id &lt;= 0 { give Result.Rejected(91) }
+
+  if r.quota &lt; 0 { give Result.Rejected(92) }
+
+  if r.amount &lt; 0 { give Result.Rejected(93) }
+
+  give Result.Accepted(r.amount)
+}
+
+// Politique métier: applique les règles de décision
+pub proc apply_policy(total: int, quota: int) -&gt; Result {
+  let capped: int = total
+  if capped &gt; quota { set capped = quota }
+
+  if capped &lt; 5 { give Result.Rejected(94) }
+
+  give Result.Accepted(capped)
+}
+
+// Persistance simulée: matérialise un résultat sans I/O réel
+pub proc persist_sim(x: Result) -&gt; Result {
+
+  match x {
+    case Accepted(v) {
+      if v % 13 == 0 { give Result.Rejected(95) }
+
+      give Result.Accepted(v)
+    }
+    case Rejected(c) { give Result.Rejected(c) }
+    otherwise { give Result.Rejected(70) }
+  }
+}
+
+// Conversion finale vers un code de sortie
+pub proc to_exit(x: Result) -&gt; int {
+
+  match x {
+    case Accepted(_) { give 0 }
+    case Rejected(c) { give c }
+    otherwise { give 70 }
+  }
+}
+
+// Point d&#x27;entree du scenario
+entry main at core/app {
+  let req: Request = Request(7, 12, 15)
+  let p: Result = parse_request(req)
+  let d: Result = apply_policy(12, req.quota)
+  let s: Result = persist_sim(d)
+  let _probe: int = to_exit(p)
+
+  return to_exit(s)
+}</code></pre>
+<h2>Detailed explanation of the big block</h2>
+<p>Here the goal is to understand the actual path of the program, line by line, to the exit code.</p>
+<h3>1. Role of each party</h3>
+<ul>
+<li>Starting point: <code>entry main at core/app</code>.</li>
+<li><code>parse_request</code>: reads <code>r: Request</code> and returns <code>Result</code>.</li>
+<li><code>apply_policy</code>: reads <code>total: int, quota: int</code> and returns <code>Result</code>.</li>
+<li><code>persist_sim</code>: reads <code>x: Result</code> and returns <code>Result</code>.</li>
+<li><code>to_exit</code>: reads <code>x: Result</code> and returns <code>int</code>.</li>
+</ul>
+<h3>2. Actual execution order</h3>
+<ol>
+<li>The program enters <code>main</code>.</li>
+<li><code>parse_request</code> is called to process the next step.</li>
+<li><code>apply_policy</code> is called to process the next step.</li>
+<li><code>persist_sim</code> is called to process the next step.</li>
+<li><code>to_exit</code> is called to process the next step.</li>
+<li>The final value is converted to process output (<code>return ...</code>).</li>
+</ol>
+<h3>3. Tests that change the path</h3>
+<ul>
+<li>Test evaluated: <code>r.id &lt;= 0</code>.</li>
+<li>Test evaluated: <code>r.quota &lt; 0</code>.</li>
+<li>Test evaluated: <code>r.amount &lt; 0</code>.</li>
+<li>Test evaluated: <code>capped &gt; quota</code>.</li>
+<li>Test evaluated: <code>capped &lt; 5</code>.</li>
+<li>Test evaluated: <code>v % 13 == 0</code>.</li>
+<li>Selection by <code>match x</code>: the path depends on the state received.</li>
+<li>Selection by <code>match x</code>: the path depends on the state received.</li>
+</ul>
+<h3>4. Quick trace with values</h3>
+<ul>
+<li>Nominal example: <code>entrée valide -&gt; parse_request -&gt; apply_policy -&gt; persist_sim -&gt; to_exit -&gt; sortie 0</code>.</li>
+<li>Example error: <code>entrée invalide -&gt; parse_request renvoie un code d&#x27;erreur -&gt; sortie non nulle</code>.</li>
+</ul>
+<h3>5. Why this division is useful</h3>
+<ul>
+<li>You test each function on its own, then the entire flow.</li>
+<li>You know where to change a rule without breaking the entire program.</li>
+<li>You can explain the output by simply following the calls.</li>
+</ul>
+<h3>6. Quick Check</h3>
+<ol>
+<li>Retry with a normal entry and note the exit.</li>
+<li>Restart with invalid input and check the error code.</li>
+<li>Confirm that the same input always gives the same output.</li>
+</ol>
+<h2>Design Notes</h2>
+<ul>
+<li>The snippet favors explicit boundaries rather than minimalist code.</li>
+<li>Tests are placed early to reduce the cost of diagnosis.</li>
+<li>The output is projected at the end of the flow to keep the business independent of transport.</li>
+</ul>
+<p>Actual error case:</p>
+<ul>
+<li>Degraded or incomplete input: the test must cut the flow early with an explicit exit.</li>
+</ul>
+<p>To test:</p>
+<ul>
+<li>Nominal request -> output 0.</li>
+<li>Invalid input id<=0 -> output 91.</li>
+<li>Business refusal value<5 -> exit 94.</li>
+</ul>
+<h3>7. Line by line (variables + values)</h3>
+<p>Convenient reading: Follow the variables in the actual order of execution, then check the observed output.</p>
+<ul>
+<li>Entry point:</li>
+<li><code>entry main at core/app</code> launches the complete scenario.</li>
+</ul>
+<ul>
+<li>Block functions:</li>
+<li><code>parse_request</code> reads <code>r: Request</code> then returns <code>Result</code>.</li>
+<li><code>apply_policy</code> reads <code>total: int, quota: int</code> then returns <code>Result</code>.</li>
+<li><code>persist_sim</code> reads <code>x: Result</code> then returns <code>Result</code>.</li>
+<li><code>to_exit</code> reads <code>x: Result</code> then returns <code>int</code>.</li>
+</ul>
+<ul>
+<li>Variables created (initial value):</li>
+<li><code>capped: int</code> starts with <code>total</code>.</li>
+<li><code>req: Request</code> starts with <code>Request(7, 12, 15)</code>.</li>
+<li><code>p: Result</code> starts with <code>parse_request(req)</code>.</li>
+<li><code>d: Result</code> starts with <code>apply_policy(12, req.quota)</code>.</li>
+<li><code>s: Result</code> starts with <code>persist_sim(d)</code>.</li>
+<li><code>_probe: int</code> starts with <code>to_exit(p)</code>.</li>
+</ul>
+<ul>
+<li>Variables changed during processing:</li>
+<li><code>capped</code> is updated with <code>quota</code>.</li>
+</ul>
+<ul>
+<li>Conditions that change the path:</li>
+<li>if <code>r.id &lt;= 0</code> is true: early exit or dedicated branch; otherwise: the flow continues.</li>
+<li>if <code>r.quota &lt; 0</code> is true: early exit or dedicated branch; otherwise: the flow continues.</li>
+<li>if <code>r.amount &lt; 0</code> is true: early exit or dedicated branch; otherwise: the flow continues.</li>
+<li>if <code>capped &gt; quota</code> is true: early exit or dedicated branch; otherwise: the flow continues.</li>
+<li>if <code>capped &lt; 5</code> is true: early exit or dedicated branch; otherwise: the flow continues.</li>
+<li>if <code>v % 13 == 0</code> is true: early exit or dedicated branch; otherwise: the flow continues.</li>
+</ul>
+<ul>
+<li>Nominal trace (example values):</li>
+<li>initialization: capped=total -> req=Request(7, 12, 15) -> p=parse_request(req) -> d=apply_policy(12, req.quota)</li>
+<li>sequence: parse_request -> apply_policy -> persist_sim -> to_exit</li>
+<li>final output on this path: <code>to_exit(s)</code>.</li>
+</ul>
+<ul>
+<li>Error trace (example values):</li>
+<li>if <code>r.id &lt;= 0</code> becomes true, the function returns <code>Result.Rejected(91)</code>.</li>
+</ul>
+<ul>
+<li>Quick check:</li>
+<li>restart with normal input and note the output,</li>
+<li>restart with an invalid entry and note the error code,</li>
+<li>confirm that the same input always produces the same output.</li>
+</ul>
+<h2>Trade-offs</h2>
+<table border="1" cellpadding="6" cellspacing="0">
+<tr><th>Constraint</th><th>Option A</th><th>Option B</th><th>Recommended decision</th></tr>
+<tr><td>Priority readability</td><td>Explicit branches</td><td>Compact code</td><td>If the team maintains the code for a long time</td></tr>
+<tr><td>Critical performance</td><td>Targeted specialization</td><td>Generalization</td><td>A if profiling confirms the gain</td></tr>
+<tr><td>Rapid evolution</td><td>Strict contracts</td><td>Implicit conventions</td><td>A to reduce regressions</td></tr>
+</table>
+<h2>Decision According to Constraint</h2>
+<ul>
+<li>If the dominant constraint is safety: validate early, fail explicitly.</li>
+<li>If the dominant constraint is latency: measure first, optimize later.</li>
+<li>If the dominant constraint is scalability: isolate orchestration, decisions and output conversion.</li>
+</ul>
+<h2>Rapid Diagnosis</h2>
+<table border="1" cellpadding="6" cellspacing="0">
+<tr><th>Symptom</th><th>Probable cause</th><th>Verification</th><th>Correction</th></tr>
+<tr><td>Unexpected exit</td><td>Test missing or poorly ordered</td><td>Replay with error case</td><td>Reassemble the test before the sensitive area</td></tr>
+<tr><td>Branch not taken</td><td>Condition too broad/too strict</td><td>Trace the effective entry</td><td>Make the condition explicit and tested</td></tr>
+<tr><td>Silent regression</td><td>Implicit rule</td><td>Compare nominal vs. limit</td><td>Formalize the rule in code</td></tr>
+</table>
+<h2>Checkpoint</h2>
+<p>At this point you should know:</p>
+<ul>
+<li>explain the input -> decision -> output flow without ambiguity,</li>
+<li>isolate a real error case and predict its exit,</li>
+<li>identify where to add a test without breaking the nominal.</li>
+</ul>
+<h2>What I would do in code review</h2>
+<ol>
+<li>Verify that input tests are placed before sensitive operations.</li>
+<li>Verify that the business decision is separated from the output projection.</li>
+<li>Verify a nominal test and a limit test that are actually executable.</li>
+</ol>
+</article>
+</main>
+<footer class="site-footer">
+<p class="site-footer-path">book/poche/chapters/23-system-project.html</p>
+<p><a href="../../../index.html">Back to home</a></p>
+</footer>
+</div>
+<script type="module" src="../../../js/book-learning.js"></script>
+<script type="module" src="../../../js/main.js"></script>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

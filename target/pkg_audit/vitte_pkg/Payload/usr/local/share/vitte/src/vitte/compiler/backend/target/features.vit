@@ -1,0 +1,51 @@
+space vitte/compiler/backend/target
+
+use vitte/compiler/backend/target/triple.{ TargetTriple }
+
+proc default_feature_set(triple: TargetTriple) -> [string] {
+  if triple.arch == "x86_64" or triple.arch == "apple-intel-i5" or triple.arch == "apple-intel-i7" {
+    give ["x86_64", "sse", "sse2", "sse3", "ssse3", "sse4.1", "sse4.2", "avx", "little-endian", "int64"];
+  }
+  if triple.arch == "aarch64" or triple.arch == "apple-m1" or triple.arch == "apple-m2" or triple.arch == "apple-m3" or triple.arch == "apple-m4" {
+    give ["aarch64", "fp", "neon", "asimd", "aes", "sha2", "little-endian", "atomic64", "modern-arm64"];
+  }
+  if triple.arch == "riscv64" {
+    give ["riscv64", "m", "a", "f", "d", "c", "little-endian", "atomic64"];
+  }
+  if triple.arch == "i386" or triple.arch == "i486" or triple.arch == "i586" or triple.arch == "i686" {
+    give ["i386", "x87", "mmx", "sse", "sse2", "little-endian", "int32"];
+  }
+  if triple.family == "wasm" {
+    give ["wasm", "sandboxed", "little-endian"];
+  }
+  if triple.retro {
+    give [triple.arch, "retro-compatible"];
+  }
+  give [triple.arch];
+}
+
+proc feature_count(features: [string]) -> u64 {
+  give len(features);
+}
+
+proc feature_summary(triple: TargetTriple) -> string {
+  let features: [string] = default_feature_set(triple);
+  let count: u64 = feature_count(features);
+  if count == 0 {
+    give "none";
+  }
+  let text: string = "";
+  let i: u64 = 0;
+  while i < count {
+    if i > 0 {
+      set text = text + ",";
+    }
+    set text = text + features[i];
+    set i = i + 1;
+  }
+  give text;
+}
+
+share default_feature_set
+share feature_count
+share feature_summary

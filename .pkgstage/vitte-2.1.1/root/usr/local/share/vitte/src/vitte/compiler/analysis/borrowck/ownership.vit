@@ -1,0 +1,438 @@
+space vitte/compiler/analysis/borrowck/ownership
+
+pick PlaceKind {
+  Local,
+  Field,
+  Deref,
+  Index,
+  Temporary,
+}
+
+pick LocalStateKind {
+  Uninitialized,
+  Available,
+  Moved,
+  Invalid,
+}
+
+pick OwnershipStateKind {
+  Declared,
+  Reinitialized,
+  Moved,
+  BorrowedShared,
+  BorrowedMutable,
+}
+
+form Place {
+  root: string
+  projection: [string]
+  kind: PlaceKind
+  mutable: bool
+  valid: bool
+}
+
+form LocalState {
+  name: string
+  place: Place
+  state: LocalStateKind
+  shared_borrows: u64
+  mutable_borrowed: bool
+  last_line: u64
+  valid: bool
+}
+
+form OwnershipFact {
+  owner: string
+  place: Place
+  state: OwnershipStateKind
+  line: u64
+  detail: string
+  valid: bool
+}
+
+form OwnershipTable {
+  locals: [LocalState]
+  facts: [OwnershipFact]
+  valid: bool
+}
+
+proc is_ident_start(ch: string) -> bool {
+  let is_lower_alpha: bool = ch >= "a" and ch <= "z";
+  let is_upper_alpha: bool = ch >= "A" and ch <= "Z";
+  give is_lower_alpha or is_upper_alpha or ch == "_";
+}
+
+proc is_ident_continue(ch: string) -> bool {
+  let is_digit: bool = ch >= "0" and ch <= "9";
+  give is_ident_start(ch) or is_digit;
+}
+
+proc place_local(name: string) -> Place {
+  give Place {
+    root: name,
+    projection: [],
+    kind: PlaceKind.Local,
+    mutable: true,
+    valid: name != ""
+  };
+}
+
+proc place_named(name: string) -> Place {
+  let trimmed: string = trim(name);
+  if trimmed == "" {
+    give place_local("");
+  }
+
+  let projection: [string] = [];
+  let kind: PlaceKind = PlaceKind.Local;
+  let i: u64 = 0;
+  while i < len(trimmed) and slice(trimmed, i, i + 1) == "*" {
+    set projection = projection + ["*"];
+    set kind = PlaceKind.Deref;
+    set i = i + 1;
+  }
+
+  let root: string = "";
+  let start: u64 = i;
+  while i < len(trimmed) and is_ident_continue(slice(trimmed, i, i + 1)) {
+    set i = i + 1;
+  }
+  if i > start {
+    set root = slice(trimmed, start, i);
+  }
+  if root == "" {
+    give place_local("");
+  }
+
+  while i < len(trimmed) {
+    let ch: string = slice(trimmed, i, i + 1);
+    if ch == "." {
+      let member_start: u64 = i + 1;
+      let member_end: u64 = member_start;
+      while member_end < len(trimmed) and is_ident_continue(slice(trimmed, member_end, member_end + 1)) {
+        set member_end = member_end + 1;
+      }
+      if member_end == member_start {
+        break;
+      }
+      set projection = projection + [slice(trimmed, member_start, member_end)];
+      if kind == PlaceKind.Local {
+        set kind = PlaceKind.Field;
+      }
+      set i = member_end;
+      continue;
+    }
+    if ch == "[" {
+      let end_index: u64 = i + 1;
+      while end_index < len(trimmed) and slice(trimmed, end_index, end_index + 1) != "]" {
+        set end_index = end_index + 1;
+      }
+      if end_index >= len(trimmed) {
+        break;
+      }
+      set projection = projection + [slice(trimmed, i, end_index + 1)];
+      if kind == PlaceKind.Local {
+        set kind = PlaceKind.Index;
+      }
+      set i = end_index + 1;
+      continue;
+    }
+    break;
+  }
+
+  give Place {
+    root: root,
+    projection: projection,
+    kind: kind,
+    mutable: true,
+    valid: root != ""
+  };
+}
+
+proc place_key(place: Place) -> string {
+  if not place.valid {
+    give "";
+  }
+
+  let prefix: string = "";
+  let name: string = place.root;
+  let i: u64 = 0;
+  while i < len(place.projection) {
+    let segment: string = place.projection[i];
+    if segment == "*" {
+      set prefix = prefix + "*";
+    } elif starts_with(segment, "[") {
+      set name = name + segment;
+    } else {
+      set name = name + "." + segment;
+    }
+    set i = i + 1;
+  }
+  give prefix + name;
+}
+
+proc place_prefix(prefix: Place, target: Place) -> bool {
+  if not prefix.valid or not target.valid or prefix.root != target.root {
+    give false;
+  }
+  if len(prefix.projection) > len(target.projection) {
+    give false;
+  }
+  let i: u64 = 0;
+  while i < len(prefix.projection) {
+    if prefix.projection[i] != target.projection[i] {
+      give false;
+    }
+    set i = i + 1;
+  }
+  give true;
+}
+
+proc place_overlap(left: Place, right: Place) -> bool {
+  if not left.valid or not right.valid {
+    give false;
+  }
+  if left.root != right.root {
+    give false;
+  }
+  give place_prefix(left, right) or place_prefix(right, left);
+}
+
+proc local_state_create(name: string, line: u64) -> LocalState {
+  let place: Place = place_named(name);
+  let key: string = place_key(place);
+  give LocalState {
+    name: key,
+    place: place,
+    state: LocalStateKind.Available,
+    shared_borrows: 0,
+    mutable_borrowed: false,
+    last_line: line,
+    valid: key != ""
+  };
+}
+
+proc local_state_uninitialized(name: string, line: u64) -> LocalState {
+  let state: LocalState = local_state_create(name, line);
+  give LocalState {
+    name: state.name,
+    place: state.place,
+    state: LocalStateKind.Uninitialized,
+    shared_borrows: 0,
+    mutable_borrowed: false,
+    last_line: line,
+    valid: state.valid
+  };
+}
+
+proc ownership_fact(owner: string, state: OwnershipStateKind, line: u64, detail: string) -> OwnershipFact {
+  let place: Place = place_named(owner);
+  give OwnershipFact {
+    owner: place_key(place),
+    place: place,
+    state: state,
+    line: line,
+    detail: detail,
+    valid: place.valid
+  };
+}
+
+proc ownership_table_empty() -> OwnershipTable {
+  give OwnershipTable {
+    locals: [],
+    facts: [],
+    valid: true
+  };
+}
+
+proc index_of_local(table: OwnershipTable, name: string) -> int {
+  let key: string = place_key(place_named(name));
+  let i: int = 0;
+  while i < len(table.locals) {
+    if table.locals[i].name == key {
+      give i;
+    }
+    set i = i + 1;
+  }
+  give -1;
+}
+
+proc has_local(table: OwnershipTable, name: string) -> bool {
+  give index_of_local(table, name) >= 0;
+}
+
+proc local_invalid() -> LocalState {
+  give LocalState {
+    name: "",
+    place: place_local(""),
+    state: LocalStateKind.Invalid,
+    shared_borrows: 0,
+    mutable_borrowed: false,
+    last_line: 0,
+    valid: false
+  };
+}
+
+proc find_local(table: OwnershipTable, name: string) -> LocalState {
+  let index: int = index_of_local(table, name);
+  if index < 0 {
+    give local_invalid();
+  }
+  give table.locals[index];
+}
+
+proc replace_local(table: OwnershipTable, updated: LocalState) -> OwnershipTable {
+  let locals: [LocalState] = [];
+  let i: int = 0;
+  let replaced: bool = false;
+
+  while i < len(table.locals) {
+    if table.locals[i].name == updated.name {
+      set locals = locals + [updated];
+      set replaced = true;
+    } else {
+      set locals = locals + [table.locals[i]];
+    }
+    set i = i + 1;
+  }
+
+  if not replaced {
+    set locals = locals + [updated];
+  }
+
+  give OwnershipTable {
+    locals: locals,
+    facts: table.facts,
+    valid: table.valid
+  };
+}
+
+proc add_fact(table: OwnershipTable, fact: OwnershipFact) -> OwnershipTable {
+  give OwnershipTable {
+    locals: table.locals,
+    facts: table.facts + [fact],
+    valid: table.valid and fact.valid
+  };
+}
+
+proc declare_local(table: OwnershipTable, name: string, line: u64, initialized: bool) -> OwnershipTable {
+  let state: LocalState = local_state_create(name, line);
+  if not state.valid {
+    give table;
+  }
+  if not initialized {
+    set state = local_state_uninitialized(name, line);
+  }
+  let current: OwnershipTable = replace_local(table, state);
+  give add_fact(current, ownership_fact(state.name, OwnershipStateKind.Declared, line, "declare local"));
+}
+
+proc mark_moved(table: OwnershipTable, name: string, line: u64) -> OwnershipTable {
+  let local: LocalState = find_local(table, name);
+  if not local.valid {
+    give table;
+  }
+  let updated = LocalState {
+    name: local.name,
+    place: local.place,
+    state: LocalStateKind.Moved,
+    shared_borrows: local.shared_borrows,
+    mutable_borrowed: local.mutable_borrowed,
+    last_line: line,
+    valid: local.valid
+  };
+  let current: OwnershipTable = replace_local(table, updated);
+  give add_fact(current, ownership_fact(name, OwnershipStateKind.Moved, line, "move local"));
+}
+
+proc mark_reinitialized(table: OwnershipTable, name: string, line: u64) -> OwnershipTable {
+  let local: LocalState = find_local(table, name);
+  if not local.valid {
+    give declare_local(table, name, line, true);
+  }
+  let updated = LocalState {
+    name: local.name,
+    place: local.place,
+    state: LocalStateKind.Available,
+    shared_borrows: local.shared_borrows,
+    mutable_borrowed: local.mutable_borrowed,
+    last_line: line,
+    valid: local.valid
+  };
+  let current: OwnershipTable = replace_local(table, updated);
+  give add_fact(current, ownership_fact(name, OwnershipStateKind.Reinitialized, line, "reinitialize local"));
+}
+
+proc add_shared_borrow(table: OwnershipTable, name: string, line: u64) -> OwnershipTable {
+  let local: LocalState = find_local(table, name);
+  if not local.valid {
+    give table;
+  }
+  let updated = LocalState {
+    name: local.name,
+    place: local.place,
+    state: local.state,
+    shared_borrows: local.shared_borrows + 1,
+    mutable_borrowed: local.mutable_borrowed,
+    last_line: line,
+    valid: local.valid
+  };
+  let current: OwnershipTable = replace_local(table, updated);
+  give add_fact(current, ownership_fact(name, OwnershipStateKind.BorrowedShared, line, "shared borrow"));
+}
+
+proc release_shared_borrow(table: OwnershipTable, name: string, line: u64) -> OwnershipTable {
+  let local: LocalState = find_local(table, name);
+  if not local.valid or local.shared_borrows == 0 {
+    give table;
+  }
+  let updated = LocalState {
+    name: local.name,
+    place: local.place,
+    state: local.state,
+    shared_borrows: local.shared_borrows - 1,
+    mutable_borrowed: local.mutable_borrowed,
+    last_line: line,
+    valid: local.valid
+  };
+  give replace_local(table, updated);
+}
+
+proc set_mutable_borrow(table: OwnershipTable, name: string, active: bool, line: u64) -> OwnershipTable {
+  let local: LocalState = find_local(table, name);
+  if not local.valid {
+    give table;
+  }
+  let updated = LocalState {
+    name: local.name,
+    place: local.place,
+    state: local.state,
+    shared_borrows: local.shared_borrows,
+    mutable_borrowed: active,
+    last_line: line,
+    valid: local.valid
+  };
+  let current: OwnershipTable = replace_local(table, updated);
+  if active {
+    give add_fact(current, ownership_fact(name, OwnershipStateKind.BorrowedMutable, line, "mutable borrow"));
+  }
+  give current;
+}
+
+proc is_moved(table: OwnershipTable, name: string) -> bool {
+  let local: LocalState = find_local(table, name);
+  give local.valid and local.state == LocalStateKind.Moved;
+}
+
+proc shared_borrow_count(table: OwnershipTable, name: string) -> u64 {
+  let local: LocalState = find_local(table, name);
+  if not local.valid {
+    give 0;
+  }
+  give local.shared_borrows;
+}
+
+proc is_mutably_borrowed(table: OwnershipTable, name: string) -> bool {
+  let local: LocalState = find_local(table, name);
+  give local.valid and local.mutable_borrowed;
+}

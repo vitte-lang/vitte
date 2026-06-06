@@ -1,0 +1,612 @@
+space vitte/compiler/analysis/borrowck/moves
+
+pick MoveEventKind {
+    Move
+    Copy
+    BorrowShared
+    BorrowMutable
+    Reinitialize
+    Use
+    Return
+    Drop
+    StorageDead
+    Unknown
+}
+
+pick MoveState {
+    Available
+    Moved
+    MaybeMoved
+    Reinitialized
+    Dropped
+    Dead
+    Unknown
+}
+
+pick MoveConflictKind {
+    None
+    MoveAfterMove
+    UseAfterMove
+    BorrowAfterMove
+    ReturnAfterMove
+    DropAfterMove
+    UseAfterDrop
+    UseAfterStorageDead
+    InvalidMoveSource
+}
+
+form MoveEvent {
+    local: string
+    kind: MoveEventKind
+    line: u64
+    detail: string
+    valid: bool
+}
+
+form MoveConflict {
+    local: string
+    kind: MoveConflictKind
+    previous: MoveEvent
+    current: MoveEvent
+    line: u64
+    message: string
+    valid: bool
+}
+
+form MoveTracker {
+    events: [MoveEvent]
+    conflicts: [MoveConflict]
+    valid: bool
+}
+
+proc move_event(local: string, kind: MoveEventKind, line: u64, detail: string) -> MoveEvent {
+    give MoveEvent {
+        local: local,
+        kind: kind,
+        line: line,
+        detail: detail,
+        valid: local != ""
+    };
+}
+
+proc invalid_move_event() -> MoveEvent {
+    give MoveEvent {
+        local: "",
+        kind: MoveEventKind.Unknown,
+        line: 0,
+        detail: "",
+        valid: false
+    };
+}
+
+proc move_conflict(local: string, kind: MoveConflictKind, previous: MoveEvent, current: MoveEvent, message: string) -> MoveConflict {
+    give MoveConflict {
+        local: local,
+        kind: kind,
+        previous: previous,
+        current: current,
+        line: current.line,
+        message: message,
+        valid: kind != MoveConflictKind.None
+    };
+}
+
+proc move_tracker_empty() -> MoveTracker {
+    give MoveTracker {
+        events: [],
+        conflicts: [],
+        valid: true
+    };
+}
+
+proc move_kind_name(kind: MoveEventKind) -> string {
+    if kind == MoveEventKind.Move {
+        give "move";
+    }
+
+    if kind == MoveEventKind.Copy {
+        give "copy";
+    }
+
+    if kind == MoveEventKind.BorrowShared {
+        give "borrow_shared";
+    }
+
+    if kind == MoveEventKind.BorrowMutable {
+        give "borrow_mutable";
+    }
+
+    if kind == MoveEventKind.Reinitialize {
+        give "reinitialize";
+    }
+
+    if kind == MoveEventKind.Use {
+        give "use";
+    }
+
+    if kind == MoveEventKind.Return {
+        give "return";
+    }
+
+    if kind == MoveEventKind.Drop {
+        give "drop";
+    }
+
+    if kind == MoveEventKind.StorageDead {
+        give "storage_dead";
+    }
+
+    give "unknown";
+}
+
+proc move_state_name(state: MoveState) -> string {
+    if state == MoveState.Available {
+        give "available";
+    }
+
+    if state == MoveState.Moved {
+        give "moved";
+    }
+
+    if state == MoveState.MaybeMoved {
+        give "maybe_moved";
+    }
+
+    if state == MoveState.Reinitialized {
+        give "reinitialized";
+    }
+
+    if state == MoveState.Dropped {
+        give "dropped";
+    }
+
+    if state == MoveState.Dead {
+        give "dead";
+    }
+
+    give "unknown";
+}
+
+proc move_conflict_name(kind: MoveConflictKind) -> string {
+    if kind == MoveConflictKind.MoveAfterMove {
+        give "move_after_move";
+    }
+
+    if kind == MoveConflictKind.UseAfterMove {
+        give "use_after_move";
+    }
+
+    if kind == MoveConflictKind.BorrowAfterMove {
+        give "borrow_after_move";
+    }
+
+    if kind == MoveConflictKind.ReturnAfterMove {
+        give "return_after_move";
+    }
+
+    if kind == MoveConflictKind.DropAfterMove {
+        give "drop_after_move";
+    }
+
+    if kind == MoveConflictKind.UseAfterDrop {
+        give "use_after_drop";
+    }
+
+    if kind == MoveConflictKind.UseAfterStorageDead {
+        give "use_after_storage_dead";
+    }
+
+    if kind == MoveConflictKind.InvalidMoveSource {
+        give "invalid_move_source";
+    }
+
+    give "none";
+}
+
+proc tracker_add_event(tracker: MoveTracker, event: MoveEvent) -> MoveTracker {
+    let next: MoveTracker = tracker;
+
+    set next.events = next.events + [event];
+    set next.valid = next.valid and event.valid;
+
+    give next;
+}
+
+proc tracker_add_conflict(tracker: MoveTracker, conflict: MoveConflict) -> MoveTracker {
+    if !conflict.valid {
+        give tracker;
+    }
+
+    let next: MoveTracker = tracker;
+
+    set next.conflicts = next.conflicts + [conflict];
+    set next.valid = false;
+
+    give next;
+}
+
+proc tracker_record_event_checked(tracker: MoveTracker, event: MoveEvent) -> MoveTracker {
+    let previous: MoveEvent = last_event_for(tracker, event.local);
+    let conflict: MoveConflict = move_conflict_for(previous, event);
+    let next: MoveTracker = tracker_add_event(tracker, event);
+
+    give tracker_add_conflict(next, conflict);
+}
+
+proc tracker_record_move(tracker: MoveTracker, local: string, line: u64) -> MoveTracker {
+    give tracker_record_event_checked(tracker, move_event(local, MoveEventKind.Move, line, "move value"));
+}
+
+proc tracker_record_copy(tracker: MoveTracker, local: string, line: u64) -> MoveTracker {
+    give tracker_record_event_checked(tracker, move_event(local, MoveEventKind.Copy, line, "copy value"));
+}
+
+proc tracker_record_reinit(tracker: MoveTracker, local: string, line: u64) -> MoveTracker {
+    give tracker_record_event_checked(tracker, move_event(local, MoveEventKind.Reinitialize, line, "reinitialize value"));
+}
+
+proc tracker_record_use(tracker: MoveTracker, local: string, line: u64) -> MoveTracker {
+    give tracker_record_event_checked(tracker, move_event(local, MoveEventKind.Use, line, "use value"));
+}
+
+proc tracker_record_return(tracker: MoveTracker, local: string, line: u64) -> MoveTracker {
+    give tracker_record_event_checked(tracker, move_event(local, MoveEventKind.Return, line, "return value"));
+}
+
+proc tracker_record_drop(tracker: MoveTracker, local: string, line: u64) -> MoveTracker {
+    give tracker_record_event_checked(tracker, move_event(local, MoveEventKind.Drop, line, "drop value"));
+}
+
+proc tracker_record_storage_dead(tracker: MoveTracker, local: string, line: u64) -> MoveTracker {
+    give tracker_record_event_checked(tracker, move_event(local, MoveEventKind.StorageDead, line, "storage dead"));
+}
+
+proc tracker_record_shared_borrow(tracker: MoveTracker, local: string, line: u64) -> MoveTracker {
+    give tracker_record_event_checked(tracker, move_event(local, MoveEventKind.BorrowShared, line, "shared borrow"));
+}
+
+proc tracker_record_mut_borrow(tracker: MoveTracker, local: string, line: u64) -> MoveTracker {
+    give tracker_record_event_checked(tracker, move_event(local, MoveEventKind.BorrowMutable, line, "mutable borrow"));
+}
+
+proc last_event_for(tracker: MoveTracker, local: string) -> MoveEvent {
+    let i: int = len(tracker.events) as int - 1;
+
+    while i >= 0 {
+        if tracker.events[i as u64].local == local {
+            give tracker.events[i as u64];
+        }
+
+        set i = i - 1;
+    }
+
+    give invalid_move_event();
+}
+
+proc last_state_for(tracker: MoveTracker, local: string) -> MoveState {
+    let event: MoveEvent = last_event_for(tracker, local);
+
+    if !event.valid {
+        give MoveState.Unknown;
+    }
+
+    give state_after_event(event);
+}
+
+proc state_after_event(event: MoveEvent) -> MoveState {
+    if event.kind == MoveEventKind.Move {
+        give MoveState.Moved;
+    }
+
+    if event.kind == MoveEventKind.Reinitialize {
+        give MoveState.Reinitialized;
+    }
+
+    if event.kind == MoveEventKind.Drop {
+        give MoveState.Dropped;
+    }
+
+    if event.kind == MoveEventKind.StorageDead {
+        give MoveState.Dead;
+    }
+
+    if event.kind == MoveEventKind.Copy or event.kind == MoveEventKind.Use or event.kind == MoveEventKind.Return or event.kind == MoveEventKind.BorrowShared or event.kind == MoveEventKind.BorrowMutable {
+        give MoveState.Available;
+    }
+
+    give MoveState.Unknown;
+}
+
+proc event_consumes_value(kind: MoveEventKind) -> bool {
+    give kind == MoveEventKind.Move or kind == MoveEventKind.Return or kind == MoveEventKind.Drop;
+}
+
+proc event_reads_value(kind: MoveEventKind) -> bool {
+    give kind == MoveEventKind.Use or kind == MoveEventKind.Copy or kind == MoveEventKind.Return or kind == MoveEventKind.BorrowShared or kind == MoveEventKind.BorrowMutable;
+}
+
+proc move_conflict_message(kind: MoveConflictKind) -> string {
+    if kind == MoveConflictKind.MoveAfterMove {
+        give "value moved more than once";
+    }
+
+    if kind == MoveConflictKind.UseAfterMove {
+        give "value used after move";
+    }
+
+    if kind == MoveConflictKind.BorrowAfterMove {
+        give "value borrowed after move";
+    }
+
+    if kind == MoveConflictKind.ReturnAfterMove {
+        give "value returned after move";
+    }
+
+    if kind == MoveConflictKind.DropAfterMove {
+        give "value dropped after move";
+    }
+
+    if kind == MoveConflictKind.UseAfterDrop {
+        give "value used after drop";
+    }
+
+    if kind == MoveConflictKind.UseAfterStorageDead {
+        give "value used after storage became dead";
+    }
+
+    if kind == MoveConflictKind.InvalidMoveSource {
+        give "invalid move source";
+    }
+
+    give "";
+}
+
+proc move_conflict_for(previous: MoveEvent, current: MoveEvent) -> MoveConflict {
+    if !current.valid {
+        give move_conflict(
+            current.local,
+            MoveConflictKind.InvalidMoveSource,
+            previous,
+            current,
+            move_conflict_message(MoveConflictKind.InvalidMoveSource)
+        );
+    }
+
+    if !previous.valid {
+        give move_conflict(
+            current.local,
+            MoveConflictKind.None,
+            previous,
+            current,
+            ""
+        );
+    }
+
+    if previous.kind == MoveEventKind.Reinitialize {
+        give move_conflict(
+            current.local,
+            MoveConflictKind.None,
+            previous,
+            current,
+            ""
+        );
+    }
+
+    if previous.kind == MoveEventKind.Move {
+        if current.kind == MoveEventKind.Move {
+            give move_conflict(
+                current.local,
+                MoveConflictKind.MoveAfterMove,
+                previous,
+                current,
+                move_conflict_message(MoveConflictKind.MoveAfterMove)
+            );
+        }
+
+        if current.kind == MoveEventKind.Use or current.kind == MoveEventKind.Copy {
+            give move_conflict(
+                current.local,
+                MoveConflictKind.UseAfterMove,
+                previous,
+                current,
+                move_conflict_message(MoveConflictKind.UseAfterMove)
+            );
+        }
+
+        if current.kind == MoveEventKind.BorrowShared or current.kind == MoveEventKind.BorrowMutable {
+            give move_conflict(
+                current.local,
+                MoveConflictKind.BorrowAfterMove,
+                previous,
+                current,
+                move_conflict_message(MoveConflictKind.BorrowAfterMove)
+            );
+        }
+
+        if current.kind == MoveEventKind.Return {
+            give move_conflict(
+                current.local,
+                MoveConflictKind.ReturnAfterMove,
+                previous,
+                current,
+                move_conflict_message(MoveConflictKind.ReturnAfterMove)
+            );
+        }
+
+        if current.kind == MoveEventKind.Drop {
+            give move_conflict(
+                current.local,
+                MoveConflictKind.DropAfterMove,
+                previous,
+                current,
+                move_conflict_message(MoveConflictKind.DropAfterMove)
+            );
+        }
+    }
+
+    if previous.kind == MoveEventKind.Drop {
+        if event_reads_value(current.kind) or event_consumes_value(current.kind) {
+            give move_conflict(
+                current.local,
+                MoveConflictKind.UseAfterDrop,
+                previous,
+                current,
+                move_conflict_message(MoveConflictKind.UseAfterDrop)
+            );
+        }
+    }
+
+    if previous.kind == MoveEventKind.StorageDead {
+        if current.kind != MoveEventKind.Reinitialize {
+            give move_conflict(
+                current.local,
+                MoveConflictKind.UseAfterStorageDead,
+                previous,
+                current,
+                move_conflict_message(MoveConflictKind.UseAfterStorageDead)
+            );
+        }
+    }
+
+    give move_conflict(
+        current.local,
+        MoveConflictKind.None,
+        previous,
+        current,
+        ""
+    );
+}
+
+proc first_identifier(text: string) -> string {
+    let trimmed: string = trim(text);
+
+    if trimmed == "" {
+        give "";
+    }
+
+    let i: u64 = 0;
+
+    while i < len(trimmed) {
+        let ch: string = slice(trimmed, i, i + 1);
+        let is_lower_alpha: bool = ch >= "a" and ch <= "z";
+        let is_upper_alpha: bool = ch >= "A" and ch <= "Z";
+        let is_alpha: bool = is_lower_alpha or is_upper_alpha or ch == "_";
+        let is_digit: bool = ch >= "0" and ch <= "9";
+
+        if i == 0 {
+            if !is_alpha {
+                give "";
+            }
+        } elif !is_alpha and !is_digit {
+            give slice(trimmed, 0, i);
+        }
+
+        set i = i + 1;
+    }
+
+    give trimmed;
+}
+
+proc move_source_from_expr(expr: string) -> string {
+    let trimmed: string = trim(expr);
+
+    if trimmed == "" {
+        give "";
+    }
+
+    if starts_with(trimmed, "&") {
+        give "";
+    }
+
+    if starts_with(trimmed, "copy ") {
+        give "";
+    }
+
+    if starts_with(trimmed, "clone ") {
+        give "";
+    }
+
+    if starts_with(trimmed, "move ") {
+        give first_identifier(slice(trimmed, 5, len(trimmed)));
+    }
+
+    give first_identifier(trimmed);
+}
+
+proc move_event_from_expr(expr: string, line: u64) -> MoveEvent {
+    let source: string = move_source_from_expr(expr);
+
+    if source == "" {
+        give invalid_move_event();
+    }
+
+    give move_event(source, MoveEventKind.Move, line, "move from expression");
+}
+
+proc tracker_apply_expr_move(tracker: MoveTracker, expr: string, line: u64) -> MoveTracker {
+    let event: MoveEvent = move_event_from_expr(expr, line);
+
+    if !event.valid {
+        give tracker;
+    }
+
+    give tracker_record_event_checked(tracker, event);
+}
+
+proc tracker_has_conflicts(tracker: MoveTracker) -> bool {
+    give len(tracker.conflicts) > 0;
+}
+
+proc tracker_conflict_count(tracker: MoveTracker) -> u64 {
+    give len(tracker.conflicts) as u64;
+}
+
+proc tracker_is_valid(tracker: MoveTracker) -> bool {
+    give tracker.valid and !tracker_has_conflicts(tracker);
+}
+
+share MoveEventKind
+share MoveState
+share MoveConflictKind
+share MoveEvent
+share MoveConflict
+share MoveTracker
+
+share move_event
+share invalid_move_event
+share move_conflict
+share move_tracker_empty
+
+share move_kind_name
+share move_state_name
+share move_conflict_name
+share tracker_add_event
+share tracker_add_conflict
+share tracker_record_event_checked
+
+share tracker_record_move
+share tracker_record_copy
+share tracker_record_reinit
+share tracker_record_use
+share tracker_record_return
+share tracker_record_drop
+share tracker_record_storage_dead
+share tracker_record_shared_borrow
+share tracker_record_mut_borrow
+
+share last_event_for
+share last_state_for
+share state_after_event
+share event_consumes_value
+share event_reads_value
+share move_conflict_message
+share move_conflict_for
+
+share first_identifier
+share move_source_from_expr
+share move_event_from_expr
+share tracker_apply_expr_move
+
+share tracker_has_conflicts
+share tracker_conflict_count
+share tracker_is_valid

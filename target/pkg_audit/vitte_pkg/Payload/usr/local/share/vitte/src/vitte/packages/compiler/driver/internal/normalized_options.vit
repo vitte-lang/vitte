@@ -1,0 +1,483 @@
+space compiler/driver/private/normalized_options
+
+form NormalizedOptions {
+  command: string,
+  command_stage: string,
+  parse_mode: string,
+  input: string,
+  positionals: [string],
+  init_template: string,
+  crash_dir: string,
+  output: string,
+  stdlib_profile: string,
+  syntax_profile: string,
+  stage: string,
+  lang: string,
+  target: string,
+  runtime_include: string,
+  mod_graph_from: string,
+  api_diff_old: string,
+  api_diff_new: string,
+  arduino_port: string,
+  arduino_fqbn: string,
+  panic_budget: int,
+  panic_budget_notes: int,
+  strict_recovery_limit: int,
+  max_imports: int,
+  opt_level: int,
+  show_help: bool
+}
+
+proc build_options(
+  command: string,
+  command_stage: string,
+  parse_mode: string,
+  input: string,
+  positionals: [string],
+  init_template: string,
+  crash_dir: string,
+  output: string,
+  stdlib_profile: string,
+  syntax_profile: string,
+  stage: string,
+  lang: string,
+  target: string,
+  runtime_include: string,
+  mod_graph_from: string,
+  api_diff_old: string,
+  api_diff_new: string,
+  arduino_port: string,
+  arduino_fqbn: string,
+  panic_budget: int,
+  panic_budget_notes: int,
+  strict_recovery_limit: int,
+  max_imports: int,
+  opt_level: int,
+  show_help: bool
+) -> NormalizedOptions {
+  give NormalizedOptions(
+    command,
+    command_stage,
+    parse_mode,
+    input,
+    positionals,
+    init_template,
+    crash_dir,
+    output,
+    stdlib_profile,
+    syntax_profile,
+    stage,
+    lang,
+    target,
+    runtime_include,
+    mod_graph_from,
+    api_diff_old,
+    api_diff_new,
+    arduino_port,
+    arduino_fqbn,
+    panic_budget,
+    panic_budget_notes,
+    strict_recovery_limit,
+    max_imports,
+    opt_level,
+    show_help
+  )
+}
+
+proc defaults() -> NormalizedOptions {
+  give build_options(
+    "",
+    "unknown",
+    "none",
+    "",
+    [],
+    "cli",
+    ".vitte-crash",
+    "a.out",
+    "full",
+    "stable-v1",
+    "backend",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    0,
+    0,
+    -1,
+    0,
+    2,
+    false
+  )
+}
+
+proc make_for_command(command: string, command_stage: string, parse_mode: string) -> NormalizedOptions {
+  give build_options(
+    command,
+    command_stage,
+    parse_mode,
+    "",
+    [],
+    "cli",
+    ".vitte-crash",
+    "a.out",
+    "full",
+    "stable-v1",
+    "backend",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    0,
+    0,
+    -1,
+    0,
+    2,
+    false
+  )
+}
+
+proc is_default_output(opts: NormalizedOptions) -> bool {
+  give opts.output == "a.out"
+}
+
+proc is_default_template(opts: NormalizedOptions) -> bool {
+  give opts.init_template == "cli"
+}
+
+proc uses_default_profiles(opts: NormalizedOptions) -> bool {
+  give opts.stdlib_profile == "full" and opts.syntax_profile == "stable-v1"
+}
+
+proc has_explicit_target(opts: NormalizedOptions) -> bool {
+  give opts.target != ""
+}
+
+proc is_help_token(token: string) -> bool {
+  give token == "--help" or token == "-h" or token == "help"
+}
+
+proc normalized_command(token: string) -> string {
+  if token == "parse" { give "parse" }
+  if token == "check" { give "check" }
+  if token == "emit" { give "emit" }
+  if token == "build" { give "build" }
+  if token == "reduce" { give "reduce" }
+  if token == "profile" { give "profile" }
+  if token == "init" { give "init" }
+  if token == "grammar" { give "grammar" }
+  if token == "doctor" { give "doctor" }
+  if token == "explain" { give "explain" }
+  if token == "clean-cache" { give "clean-cache" }
+  if token == "mod" { give "mod" }
+  if is_help_token(token) { give "help" }
+  give ""
+}
+
+proc stage_for_command(command: string) -> string {
+  if command == "parse" { give "parse" }
+  if command == "check" { give "ir" }
+  if command == "emit" { give "backend" }
+  if command == "build" { give "backend" }
+  if command == "reduce" { give "backend" }
+  if command == "profile" { give "backend" }
+  if command == "doctor" { give "host-check" }
+  if command == "grammar" { give "grammar" }
+  if command == "mod" { give "module-graph" }
+  if command == "init" { give "scaffold" }
+  if command == "explain" { give "diagnostics" }
+  if command == "clean-cache" { give "cache" }
+  if command == "help" { give "help" }
+  give "unknown"
+}
+
+proc parse_mode_for_command(command: string) -> string {
+  if command == "parse" { give "parse-only" }
+  if command == "check" { give "mir-only" }
+  if command == "emit" { give "emit-vitte" }
+  if command == "build" { give "build-vitte" }
+  if command == "reduce" { give "reduce-reproducer" }
+  if command == "profile" { give "profile-mode" }
+  give "none"
+}
+
+proc first_command(args: [string]) -> string {
+  let i: int = 0
+  while i < args.len {
+    let cmd: string = normalized_command(args[i])
+    if cmd != "" {
+      give cmd
+    }
+    set i = i + 1
+  }
+  give ""
+}
+
+proc wants_help(args: [string]) -> bool {
+  let i: int = 0
+  while i < args.len {
+    if is_help_token(args[i]) {
+      give true
+    }
+    set i = i + 1
+  }
+  give false
+}
+
+proc read_flag_value(args: [string], flag: string, fallback: string) -> string {
+  let i: int = 0
+  while i + 1 < args.len {
+    if args[i] == flag {
+      give args[i + 1]
+    }
+    let inline_prefix: string = flag + "="
+    if starts_with(args[i], inline_prefix) {
+      give suffix_after(args[i], inline_prefix.len)
+    }
+    set i = i + 1
+  }
+  if i < args.len {
+    let inline_prefix: string = flag + "="
+    if starts_with(args[i], inline_prefix) {
+      give suffix_after(args[i], inline_prefix.len)
+    }
+  }
+  give fallback
+}
+
+proc starts_with(text: string, prefix: string) -> bool {
+  if prefix.len > text.len { give false }
+  let i: int = 0
+  while i < prefix.len {
+    if text[i] != prefix[i] {
+      give false
+    }
+    set i = i + 1
+  }
+  give true
+}
+
+proc suffix_after(text: string, start: int) -> string {
+  let result: string = ""
+  let i: int = start
+  while i < text.len {
+    set result = result + (text[i] as string)
+    set i = i + 1
+  }
+  give result
+}
+
+proc is_value_flag(token: string) -> bool {
+  give token == "--crash-dir" or token == "--diag-filter" or token == "--explain" or token == "--fqbn" or token == "--from" or token == "--lang" or token == "--max-imports" or token == "--new" or token == "--old" or token == "--output" or token == "--panic-budget" or token == "--panic-budget-notes" or token == "--port" or token == "--roots" or token == "--runtime-include" or token == "--runtime-profile" or token == "--stage" or token == "--stdlib-profile" or token == "--strict-recovery" or token == "--syntax-profile" or token == "--syntax-version" or token == "--target" or token == "--template" or token == "-o" or token == "-t"
+}
+
+proc is_option_token(token: string) -> bool {
+  if token.len == 0 { give false }
+  give token[0] == '-'
+}
+
+proc collect_positionals(args: [string]) -> [string] {
+  let result: [string] = []
+  let i: int = 0
+  while i < args.len {
+    let token: string = args[i]
+    if normalized_command(token) != "" {
+      set i = i + 1
+    } else if is_value_flag(token) {
+      if i + 1 < args.len {
+        set i = i + 2
+      } else {
+        set i = i + 1
+      }
+    } else if is_option_token(token) {
+      set i = i + 1
+    } else {
+      set result = result + [token]
+      set i = i + 1
+    }
+  }
+  give result
+}
+
+proc read_output(args: [string]) -> string {
+  let short_value: string = read_flag_value(args, "-o", "")
+  if short_value != "" { give short_value }
+  let long_value: string = read_flag_value(args, "--output", "")
+  if long_value != "" { give long_value }
+  give "a.out"
+}
+
+proc read_template(args: [string]) -> string {
+  let short_value: string = read_flag_value(args, "-t", "")
+  if short_value != "" { give short_value }
+  let long_value: string = read_flag_value(args, "--template", "")
+  if long_value != "" { give long_value }
+  give "cli"
+}
+
+proc read_lang(args: [string]) -> string {
+  give read_flag_value(args, "--lang", "")
+}
+
+proc read_target(args: [string]) -> string {
+  give read_flag_value(args, "--target", "")
+}
+
+proc read_runtime_include(args: [string]) -> string {
+  give read_flag_value(args, "--runtime-include", "")
+}
+
+proc read_stage_override(args: [string]) -> string {
+  let value: string = read_flag_value(args, "--stage", "")
+  if value == "" { give "backend" }
+  give value
+}
+
+proc read_stdlib_profile(args: [string]) -> string {
+  let value: string = read_flag_value(args, "--stdlib-profile", "")
+  if value == "" {
+    set value = read_flag_value(args, "--runtime-profile", "")
+  }
+  if value == "" { give "full" }
+  if value == "core" { give "minimal" }
+  give value
+}
+
+proc read_syntax_profile(args: [string]) -> string {
+  let value: string = read_flag_value(args, "--syntax-profile", "")
+  if value == "" {
+    set value = read_flag_value(args, "--syntax-version", "")
+  }
+  if value == "" { give "stable-v1" }
+  give value
+}
+
+proc read_mod_graph_from(args: [string]) -> string {
+  give read_flag_value(args, "--from", "")
+}
+
+proc read_api_diff_old(args: [string]) -> string {
+  give read_flag_value(args, "--old", "")
+}
+
+proc read_api_diff_new(args: [string]) -> string {
+  give read_flag_value(args, "--new", "")
+}
+
+proc read_arduino_port(args: [string]) -> string {
+  give read_flag_value(args, "--port", "")
+}
+
+proc read_arduino_fqbn(args: [string]) -> string {
+  give read_flag_value(args, "--fqbn", "")
+}
+
+proc parse_decimal_prefix(text: string) -> int {
+  let result: int = 0
+  let i: int = 0
+  let negative: bool = false
+
+  while i < text.len {
+    if i == 0 and text[i] == '-' {
+      set negative = true
+      set i = i + 1
+    } else if i == 0 and text[i] == '+' {
+      set i = i + 1
+    } else {
+      let c: int = text[i] as i32
+      if c < 48 or c > 57 {
+        if negative { give -result }
+        give result
+      }
+      set result = result * 10 + (c - 48)
+      set i = i + 1
+    }
+  }
+
+  if negative { give -result }
+  give result
+}
+
+proc clamp_non_negative(value: int) -> int {
+  if value < 0 { give 0 }
+  give value
+}
+
+proc read_panic_budget(args: [string]) -> int {
+  let value: string = read_flag_value(args, "--panic-budget", "")
+  if value == "" { give 0 }
+  give clamp_non_negative(parse_decimal_prefix(value))
+}
+
+proc read_panic_budget_notes(args: [string]) -> int {
+  let value: string = read_flag_value(args, "--panic-budget-notes", "")
+  if value == "" { give 0 }
+  give clamp_non_negative(parse_decimal_prefix(value))
+}
+
+proc read_strict_recovery_limit(args: [string]) -> int {
+  let value: string = read_flag_value(args, "--strict-recovery", "")
+  if value == "" { give -1 }
+  give clamp_non_negative(parse_decimal_prefix(value))
+}
+
+proc read_max_imports(args: [string]) -> int {
+  let value: string = read_flag_value(args, "--max-imports", "")
+  if value == "" { give 0 }
+  give parse_decimal_prefix(value)
+}
+
+proc read_opt_level(args: [string]) -> int {
+  let i: int = 0
+  while i < args.len {
+    if args[i] == "-O0" { give 0 }
+    if args[i] == "-O1" { give 1 }
+    if args[i] == "-O2" { give 2 }
+    if args[i] == "-O3" { give 3 }
+    set i = i + 1
+  }
+  give 2
+}
+
+proc from_args(args: [string]) -> NormalizedOptions {
+  let command: string = first_command(args)
+  let positionals: [string] = collect_positionals(args)
+  let input: string = ""
+  if positionals.len > 0 {
+    set input = positionals[positionals.len - 1]
+  }
+  give build_options(
+    command,
+    stage_for_command(command),
+    parse_mode_for_command(command),
+    input,
+    positionals,
+    read_template(args),
+    ".vitte-crash",
+    read_output(args),
+    read_stdlib_profile(args),
+    read_syntax_profile(args),
+    read_stage_override(args),
+    read_lang(args),
+    read_target(args),
+    read_runtime_include(args),
+    read_mod_graph_from(args),
+    read_api_diff_old(args),
+    read_api_diff_new(args),
+    read_arduino_port(args),
+    read_arduino_fqbn(args),
+    read_panic_budget(args),
+    read_panic_budget_notes(args),
+    read_strict_recovery_limit(args),
+    read_max_imports(args),
+    read_opt_level(args),
+    wants_help(args)
+  )
+}

@@ -1,0 +1,243 @@
+space compiler/driver/private/compiler_parser
+
+use compiler_ast
+use text_helpers
+
+form ParsedModule {
+  module_value: compiler_ast.Module
+}
+
+proc _parse_expr(text: string) -> compiler_ast.Expr {
+  let trimmed: string = text_helpers.trim(text)
+  if trimmed == "" {
+    give compiler_ast.Expr {
+      kind: compiler_ast.ExprKind.Empty,
+      text: "",
+      callee: "",
+      args: []
+    }
+  }
+  let open_paren: int = text_helpers.find(trimmed, "(")
+  let close_paren: int = text_helpers.find(trimmed, ")")
+  if open_paren > 0 and close_paren == trimmed.len - 1 {
+    let callee: string = text_helpers.trim(text_helpers.slice(trimmed, 0, open_paren))
+    let raw_args: [string] = text_helpers.split_args(text_helpers.slice(trimmed, open_paren + 1, close_paren))
+    let args: [compiler_ast.Expr] = []
+    let i: int = 0
+    while i < raw_args.len {
+      set args = args + [_parse_expr(raw_args[i])]
+      set i = i + 1
+    }
+    give compiler_ast.Expr {
+      kind: compiler_ast.ExprKind.Call,
+      text: trimmed,
+      callee: callee,
+      args: args
+    }
+  }
+  if trimmed == "true" or trimmed == "false" {
+    give compiler_ast.Expr {
+      kind: compiler_ast.ExprKind.Literal,
+      text: trimmed,
+      callee: "",
+      args: []
+    }
+  }
+  give compiler_ast.Expr {
+    kind: compiler_ast.ExprKind.Variable,
+    text: trimmed,
+    callee: "",
+    args: []
+  }
+}
+
+proc _parse_stmt(line_text: string) -> compiler_ast.Stmt {
+  let trimmed: string = text_helpers.trim(line_text)
+  if text_helpers.starts_with(trimmed, "give") {
+    give compiler_ast.Stmt {
+      kind: compiler_ast.StmtKind.Give,
+      name: "",
+      type_name: "",
+      expr: _parse_expr(text_helpers.trim_after_prefix(trimmed, "give")),
+      raw_text: trimmed
+    }
+  }
+  if text_helpers.starts_with(trimmed, "let ") {
+    let rest: string = text_helpers.trim_after_prefix(trimmed, "let")
+    let eq: int = text_helpers.find(rest, "=")
+    let binding_text: string = rest
+    let init_text: string = ""
+    if eq >= 0 {
+      set binding_text = text_helpers.trim(text_helpers.slice(rest, 0, eq))
+      set init_text = text_helpers.trim(text_helpers.slice(rest, eq + 1, rest.len))
+    }
+    let colon: int = text_helpers.find(binding_text, ":")
+    let binding_name: string = text_helpers.trim(binding_text)
+    let binding_type: string = ""
+    if colon >= 0 {
+      set binding_name = text_helpers.trim(text_helpers.slice(binding_text, 0, colon))
+      set binding_type = text_helpers.trim(text_helpers.slice(binding_text, colon + 1, binding_text.len))
+    }
+    give compiler_ast.Stmt {
+      kind: compiler_ast.StmtKind.Let,
+      name: binding_name,
+      type_name: binding_type,
+      expr: _parse_expr(init_text),
+      raw_text: trimmed
+    }
+  }
+  if text_helpers.starts_with(trimmed, "set ") {
+    let rest: string = text_helpers.trim_after_prefix(trimmed, "set")
+    let eq: int = text_helpers.find(rest, "=")
+    let set_name: string = text_helpers.trim(rest)
+    let set_expr: compiler_ast.Expr = _parse_expr("")
+    if eq >= 0 {
+      set set_name = text_helpers.trim(text_helpers.slice(rest, 0, eq))
+      set set_expr = _parse_expr(text_helpers.slice(rest, eq + 1, rest.len))
+    }
+    give compiler_ast.Stmt {
+      kind: compiler_ast.StmtKind.Set,
+      name: set_name,
+      type_name: "",
+      expr: set_expr,
+      raw_text: trimmed
+    }
+  }
+  give compiler_ast.Stmt {
+    kind: compiler_ast.StmtKind.Expr,
+    name: "",
+    type_name: "",
+    expr: _parse_expr(trimmed),
+    raw_text: trimmed
+  }
+}
+
+proc _parse_proc(lines: [string], start_index: int) -> compiler_ast.ProcDecl {
+  let signature_line: string = text_helpers.trim(lines[start_index])
+  let rest: string = text_helpers.trim_after_prefix(signature_line, "proc")
+  let open_paren: int = text_helpers.find(rest, "(")
+  let close_paren: int = text_helpers.find(rest, ")")
+  let name: string = text_helpers.first_word(rest)
+  if open_paren >= 0 {
+    set name = text_helpers.trim(text_helpers.slice(rest, 0, open_paren))
+  }
+  let params: [compiler_ast.Param] = []
+  if open_paren >= 0 and close_paren > open_paren {
+    let raw_params: [string] = text_helpers.split_args(text_helpers.slice(rest, open_paren + 1, close_paren))
+    let i: int = 0
+    while i < raw_params.len {
+      let part: string = raw_params[i]
+      let colon: int = text_helpers.find(part, ":")
+      if colon >= 0 {
+        set params = params + [compiler_ast.Param {
+          name: text_helpers.trim(text_helpers.slice(part, 0, colon)),
+          type_name: text_helpers.trim(text_helpers.slice(part, colon + 1, part.len))
+        }]
+      } else {
+        set params = params + [compiler_ast.Param { name: text_helpers.trim(part), type_name: "" }]
+      }
+      set i = i + 1
+    }
+  }
+  let return_type_name: string = "void"
+  if text_helpers.contains(rest, "->") {
+    set return_type_name = text_helpers.trim(text_helpers.slice(rest, text_helpers.find(rest, "->") + 2, rest.len))
+  }
+  let body_stmts: [compiler_ast.Stmt] = []
+  let cursor: int = start_index + 1
+  while cursor < lines.len {
+    let body_line: string = text_helpers.trim(lines[cursor])
+    if body_line == "}" {
+      give compiler_ast.ProcDecl {
+        name: name,
+        return_type_name: return_type_name,
+        params: params,
+        body_stmts: body_stmts,
+        has_body: true
+      }
+    }
+    if body_line != "" and body_line != "{" {
+      set body_stmts = body_stmts + [_parse_stmt(body_line)]
+    }
+    set cursor = cursor + 1
+  }
+  give compiler_ast.ProcDecl {
+    name: name,
+    return_type_name: return_type_name,
+    params: params,
+    body_stmts: body_stmts,
+    has_body: false
+  }
+}
+
+proc parse_source(source_name: string, source_text: string) -> ParsedModule {
+  let module_value: compiler_ast.Module = compiler_ast.empty_module(source_name)
+  let lines: [string] = text_helpers.split_lines(source_text)
+  let i: int = 0
+  while i < lines.len {
+    let line_text: string = text_helpers.trim(lines[i])
+    if line_text == "" {
+      set i = i + 1
+      continue
+    }
+    if text_helpers.starts_with(line_text, "space ") {
+      set module_value.space_name = text_helpers.trim_after_prefix(line_text, "space")
+      set module_value.decls = module_value.decls + [compiler_ast.Decl {
+        kind: compiler_ast.DeclKind.Space,
+        name: module_value.space_name,
+        value_text: module_value.space_name,
+        proc_decl: compiler_ast.empty_proc_decl()
+      }]
+      set i = i + 1
+      continue
+    }
+    if text_helpers.starts_with(line_text, "use ") {
+      let use_path: string = text_helpers.trim_after_prefix(line_text, "use")
+      set module_value.uses = module_value.uses + [use_path]
+      set module_value.decls = module_value.decls + [compiler_ast.Decl {
+        kind: compiler_ast.DeclKind.Use,
+        name: use_path,
+        value_text: use_path,
+        proc_decl: compiler_ast.empty_proc_decl()
+      }]
+      set i = i + 1
+      continue
+    }
+    if text_helpers.starts_with(line_text, "const ") {
+      let rest: string = text_helpers.trim_after_prefix(line_text, "const")
+      set module_value.decls = module_value.decls + [compiler_ast.Decl {
+        kind: compiler_ast.DeclKind.Const,
+        name: text_helpers.first_word(rest),
+        value_text: rest,
+        proc_decl: compiler_ast.empty_proc_decl()
+      }]
+      set i = i + 1
+      continue
+    }
+    if text_helpers.starts_with(line_text, "proc ") {
+      let proc_decl: compiler_ast.ProcDecl = _parse_proc(lines, i)
+      set module_value.decls = module_value.decls + [compiler_ast.Decl {
+        kind: compiler_ast.DeclKind.Proc,
+        name: proc_decl.name,
+        value_text: line_text,
+        proc_decl: proc_decl
+      }]
+      set i = i + 1
+      while i < lines.len and text_helpers.trim(lines[i]) != "}" {
+        set i = i + 1
+      }
+      set i = i + 1
+      continue
+    }
+    set module_value.decls = module_value.decls + [compiler_ast.Decl {
+      kind: compiler_ast.DeclKind.Unknown,
+      name: "",
+      value_text: line_text,
+      proc_decl: compiler_ast.empty_proc_decl()
+    }]
+    set i = i + 1
+  }
+  give ParsedModule { module_value: module_value }
+}
+
+export *

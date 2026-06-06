@@ -1,0 +1,294 @@
+space vitte/compiler/driver
+
+const DRIVER_ERROR_CODE_CONTRACT_VERSION: string = "driver-e-codes-v1"
+
+pick DriverExitStatus {
+    Ok,
+
+    <<< input / cli >>>
+    InvalidInput,
+    InvalidArguments,
+    InvalidConfiguration,
+    MissingInput,
+    UnsupportedTarget,
+    UnsupportedFeature,
+
+    <<< frontend >>>
+    LexFailure,
+    ParseFailure,
+    AstFailure,
+    HirFailure,
+    FrontendFailure,
+
+    <<< semantic / analysis >>>
+    ResolveFailure,
+    TypeFailure,
+    BorrowckFailure,
+    LifetimeFailure,
+    ConstEvalFailure,
+    AnalysisFailure,
+
+    <<< middle-end >>>
+    MirBuildFailure,
+    MirValidationFailure,
+    MirOptimizationFailure,
+    IrLoweringFailure,
+    IrValidationFailure,
+    IrFailure,
+
+    <<< backend >>>
+    BackendSelectionFailure,
+    CodegenFailure,
+    ObjectEmissionFailure,
+    AssemblyEmissionFailure,
+
+    <<< linking >>>
+    LinkFailure,
+    ArchiveFailure,
+    RuntimeFailure,
+
+    <<< system >>>
+    IoFailure,
+    FilesystemFailure,
+    PermissionFailure,
+    DependencyFailure,
+
+    <<< infrastructure >>>
+    BootstrapFailure,
+    PipelineFailure,
+    InternalError,
+}
+
+form DriverStatusInfo {
+    status: DriverExitStatus
+    code: u64
+    name: string
+    description: string
+    fatal: bool
+}
+
+proc exit_code(status: DriverExitStatus) -> u64 {
+    if status == DriverExitStatus.Ok {
+        give 0;
+    }
+    if status == DriverExitStatus.InternalError or status == DriverExitStatus.BootstrapFailure or status == DriverExitStatus.PipelineFailure {
+        give 2;
+    }
+
+    if status == DriverExitStatus.BackendSelectionFailure or status == DriverExitStatus.CodegenFailure or status == DriverExitStatus.ObjectEmissionFailure or status == DriverExitStatus.AssemblyEmissionFailure {
+        give 3;
+    }
+
+    if status == DriverExitStatus.LinkFailure or status == DriverExitStatus.ArchiveFailure {
+        give 4;
+    }
+
+    give 1;
+}
+
+proc status_name(status: DriverExitStatus) -> string {
+    if status == DriverExitStatus.Ok {
+        give "ok";
+    }
+
+    if status == DriverExitStatus.InvalidInput {
+        give "invalid_input";
+    }
+
+    if status == DriverExitStatus.InvalidArguments {
+        give "invalid_arguments";
+    }
+
+    if status == DriverExitStatus.InvalidConfiguration {
+        give "invalid_configuration";
+    }
+
+    if status == DriverExitStatus.MissingInput {
+        give "missing_input";
+    }
+
+    if status == DriverExitStatus.UnsupportedTarget {
+        give "unsupported_target";
+    }
+
+    if status == DriverExitStatus.UnsupportedFeature {
+        give "unsupported_feature";
+    }
+
+    if status == DriverExitStatus.LexFailure {
+        give "lex_failure";
+    }
+
+    if status == DriverExitStatus.ParseFailure {
+        give "parse_failure";
+    }
+
+    if status == DriverExitStatus.AstFailure {
+        give "ast_failure";
+    }
+
+    if status == DriverExitStatus.HirFailure {
+        give "hir_failure";
+    }
+
+    if status == DriverExitStatus.FrontendFailure {
+        give "frontend_failure";
+    }
+
+    if status == DriverExitStatus.ResolveFailure {
+        give "resolve_failure";
+    }
+
+    if status == DriverExitStatus.TypeFailure {
+        give "type_failure";
+    }
+
+    if status == DriverExitStatus.BorrowckFailure {
+        give "borrowck_failure";
+    }
+
+    if status == DriverExitStatus.LifetimeFailure {
+        give "lifetime_failure";
+    }
+
+    if status == DriverExitStatus.ConstEvalFailure {
+        give "const_eval_failure";
+    }
+
+    if status == DriverExitStatus.AnalysisFailure {
+        give "analysis_failure";
+    }
+
+    if status == DriverExitStatus.MirBuildFailure {
+        give "mir_build_failure";
+    }
+
+    if status == DriverExitStatus.MirValidationFailure {
+        give "mir_validation_failure";
+    }
+
+    if status == DriverExitStatus.MirOptimizationFailure {
+        give "mir_optimization_failure";
+    }
+
+    if status == DriverExitStatus.IrLoweringFailure {
+        give "ir_lowering_failure";
+    }
+
+    if status == DriverExitStatus.IrValidationFailure {
+        give "ir_validation_failure";
+    }
+
+    if status == DriverExitStatus.IrFailure {
+        give "ir_failure";
+    }
+
+    if status == DriverExitStatus.BackendSelectionFailure {
+        give "backend_selection_failure";
+    }
+
+    if status == DriverExitStatus.CodegenFailure {
+        give "codegen_failure";
+    }
+
+    if status == DriverExitStatus.ObjectEmissionFailure {
+        give "object_emission_failure";
+    }
+
+    if status == DriverExitStatus.AssemblyEmissionFailure {
+        give "assembly_emission_failure";
+    }
+
+    if status == DriverExitStatus.LinkFailure {
+        give "link_failure";
+    }
+
+    if status == DriverExitStatus.ArchiveFailure {
+        give "archive_failure";
+    }
+
+    if status == DriverExitStatus.RuntimeFailure {
+        give "runtime_failure";
+    }
+
+    if status == DriverExitStatus.IoFailure {
+        give "io_failure";
+    }
+
+    if status == DriverExitStatus.FilesystemFailure {
+        give "filesystem_failure";
+    }
+
+    if status == DriverExitStatus.PermissionFailure {
+        give "permission_failure";
+    }
+
+    if status == DriverExitStatus.DependencyFailure {
+        give "dependency_failure";
+    }
+
+    if status == DriverExitStatus.BootstrapFailure {
+        give "bootstrap_failure";
+    }
+
+    if status == DriverExitStatus.PipelineFailure {
+        give "pipeline_failure";
+    }
+
+    give "internal_error";
+}
+
+proc is_fatal(status: DriverExitStatus) -> bool {
+    if status == DriverExitStatus.Ok {
+        give false;
+    }
+
+    give true;
+}
+
+proc make_status_info(status: DriverExitStatus, description: string) -> DriverStatusInfo {
+    give DriverStatusInfo {
+        status: status,
+        code: exit_code(status),
+        name: status_name(status),
+        description: description,
+        fatal: is_fatal(status)
+    };
+}
+
+proc driver_error_code_contract_version() -> string {
+    give DRIVER_ERROR_CODE_CONTRACT_VERSION;
+}
+
+proc driver_error_code_contract_text() -> string {
+    give "DRIVER_E_MISSING_TARGET,"
+        + "DRIVER_E_MISSING_OUTPUT_DIR,"
+        + "DRIVER_E_NO_INPUT,"
+        + "DRIVER_E_INVALID_LINK_TARGET,"
+        + "DRIVER_E_INVALID_LINK_PROFILE,"
+        + "DRIVER_E_FRONTEND_INPUT_NOT_LOADED,"
+        + "DRIVER_E_PARSE_EMPTY_SOURCE,"
+        + "DRIVER_E_FRONTEND_INVALID,"
+        + "DRIVER_E_ANALYSIS_FRONTEND_INCOMPLETE,"
+        + "DRIVER_E_ANALYSIS_INVALID,"
+        + "DRIVER_E_MIR_ANALYSIS_INCOMPLETE,"
+        + "DRIVER_E_MIR_ANALYSIS_INVALID,"
+        + "DRIVER_E_MIR_INVALID,"
+        + "DRIVER_E_IR_MIR_INCOMPLETE,"
+        + "DRIVER_E_IR_INVALID,"
+        + "DRIVER_E_CODEGEN_IR_INCOMPLETE,"
+        + "DRIVER_E_CODEGEN_INVALID,"
+        + "DRIVER_E_LINK_CODEGEN_INCOMPLETE,"
+        + "DRIVER_E_LINK_INVALID,"
+        + "DRIVER_E_RUN_LINK_INCOMPLETE";
+}
+
+share DriverExitStatus
+share DriverStatusInfo
+
+share exit_code
+share status_name
+share is_fatal
+share make_status_info
+share driver_error_code_contract_version
+share driver_error_code_contract_text

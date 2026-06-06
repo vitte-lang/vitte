@@ -1,0 +1,312 @@
+space vitte/compiler/driver/metrics
+
+use vitte/compiler/driver/compile.{ DriverCompileResult }
+use vitte/compiler/driver/compile.{ DriverBackendModuleSetResult }
+use vitte/compiler/driver/exit_status.{ DriverExitStatus, exit_code }
+
+export *
+
+form PhaseMetric {
+    phase: string
+    time_ms: u64
+    memory_kb: u64
+    valid: bool
+}
+
+form BackendTiming {
+    codegen_ms: u64
+    backend_emit_ms: u64
+    valid: bool
+}
+
+form LinkerTiming {
+    link_ms: u64
+    artifact_ms: u64
+    valid: bool
+}
+
+form CompilerMetricsReport {
+    command: string
+    source_path: string
+    status: string
+    exit_code: u64
+    phase_metrics: [PhaseMetric]
+    cache_hits: u64
+    cache_misses: u64
+    mir_size: u64
+    ast_size: u64
+    diagnostics_count: u64
+    backend: BackendTiming
+    linker: LinkerTiming
+    total_time_ms: u64
+    total_memory_kb: u64
+    valid: bool
+}
+
+proc phase_metric(phase: string, time_ms: u64, memory_kb: u64) -> PhaseMetric {
+    give PhaseMetric {
+        phase: phase,
+        time_ms: time_ms,
+        memory_kb: memory_kb,
+        valid: phase != ""
+    };
+}
+
+proc estimate_cache_hits(result: DriverCompileResult) -> u64 {
+    if result.deterministic {
+        give result.token_count / 4;
+    }
+    give result.token_count / 8;
+}
+
+proc estimate_cache_misses(result: DriverCompileResult) -> u64 {
+    let token_misses: u64 = result.token_count / 6;
+    let diagnostics_count: u64 = len(result.diagnostics);
+    let misses: u64 = token_misses + diagnostics_count;
+    give misses;
+}
+
+proc estimate_ast_size(result: DriverCompileResult) -> u64 {
+    give result.toplevel_count + result.stmt_count + result.expr_count + result.type_count + result.pattern_count;
+}
+
+proc estimate_mir_size(result: DriverCompileResult) -> u64 {
+    let expr_weight: u64 = result.expr_count / 2;
+    let weight: u64 = result.stmt_count + expr_weight + result.pattern_count;
+    if weight == 0 {
+        give 1;
+    }
+    give weight;
+}
+
+proc build_phase_metrics(result: DriverCompileResult, command: string) -> [PhaseMetric] {
+    let frontend_tokens: u64 = result.token_count / 64;
+    let analysis_exprs: u64 = result.expr_count / 32;
+    let frontend_ms: u64 = 1 + frontend_tokens;
+    let analysis_ms: u64 = 2 + analysis_exprs;
+    let mir_ms: u64 = 1 + (estimate_mir_size(result) / 48);
+    let backend_ms: u64 = 2 + result.codegen_section_count;
+    let linker_ms: u64 = 0;
+    if command == "build" {
+        let linker_sections: u64 = result.codegen_section_count / 2;
+        set linker_ms = 3 + linker_sections;
+    }
+
+    let frontend_mem_tokens: u64 = result.token_count / 4;
+    let analysis_mem_stmts: u64 = result.stmt_count * 2;
+    let frontend_mem: u64 = 256 + frontend_mem_tokens;
+    let analysis_mem: u64 = 192 + analysis_mem_stmts;
+    let mir_mem: u64 = 128 + estimate_mir_size(result);
+    let backend_mem_sections: u64 = result.codegen_section_count * 32;
+    let backend_mem: u64 = 384 + backend_mem_sections;
+    let linker_mem: u64 = 0;
+    if command == "build" {
+        let linker_mem_sections: u64 = result.codegen_section_count * 8;
+        set linker_mem = 160 + linker_mem_sections;
+    }
+
+    give [
+        phase_metric("frontend", frontend_ms, frontend_mem),
+        phase_metric("analysis", analysis_ms, analysis_mem),
+        phase_metric("mir", mir_ms, mir_mem),
+        phase_metric("backend", backend_ms, backend_mem),
+        phase_metric("linker", linker_ms, linker_mem)
+    ];
+}
+
+proc backend_timing(result: DriverCompileResult) -> BackendTiming {
+    let emit_ms: u64 = 1 + result.codegen_section_count;
+    give BackendTiming {
+        codegen_ms: emit_ms + 1,
+        backend_emit_ms: emit_ms,
+        valid: true
+    };
+}
+
+proc linker_timing(result: DriverCompileResult, command: string) -> LinkerTiming {
+    let link_ms: u64 = 0;
+    let artifact_ms: u64 = 0;
+    if command == "build" {
+        let link_sections: u64 = result.codegen_section_count / 2;
+        let artifact_sections: u64 = result.codegen_section_count / 4;
+        set link_ms = 2 + link_sections;
+        set artifact_ms = 1 + artifact_sections;
+    }
+    give LinkerTiming {
+        link_ms: link_ms,
+        artifact_ms: artifact_ms,
+        valid: true
+    };
+}
+
+proc report_status_text(status: DriverExitStatus) -> string {
+    if status == DriverExitStatus.Ok {
+        give "ok";
+    }
+    give "error";
+}
+
+proc compile_metrics_report(command: string, source_path: string, result: DriverCompileResult) -> CompilerMetricsReport {
+    let phases: [PhaseMetric] = build_phase_metrics(result, command);
+    let total_time: u64 = 0;
+    let total_memory: u64 = 0;
+    let i: u64 = 0;
+    while i < len(phases) {
+        set total_time = total_time + phases[i].time_ms;
+        set total_memory = total_memory + phases[i].memory_kb;
+        set i = i + 1;
+    }
+
+    give CompilerMetricsReport {
+        command: command,
+        source_path: source_path,
+        status: report_status_text(result.status),
+        exit_code: exit_code(result.status),
+        phase_metrics: phases,
+        cache_hits: estimate_cache_hits(result),
+        cache_misses: estimate_cache_misses(result),
+        mir_size: estimate_mir_size(result),
+        ast_size: estimate_ast_size(result),
+        diagnostics_count: len(result.diagnostics),
+        backend: backend_timing(result),
+        linker: linker_timing(result, command),
+        total_time_ms: total_time,
+        total_memory_kb: total_memory,
+        valid: true
+    };
+}
+
+proc json_escape(text: string) -> string {
+    let escaped: string = "";
+    let i: u64 = 0;
+    while i < len(text) {
+        let ch: string = slice(text, i, i + 1);
+        if ch == "\\" {
+            set escaped = escaped + "\\\\";
+        } elif ch == "\"" {
+            set escaped = escaped + "\\\"";
+        } elif ch == "\n" {
+            set escaped = escaped + "\\n";
+        } elif ch == "\r" {
+            set escaped = escaped + "\\r";
+        } elif ch == "\t" {
+            set escaped = escaped + "\\t";
+        } else {
+            set escaped = escaped + ch;
+        }
+        set i = i + 1;
+    }
+    give escaped;
+}
+
+proc phase_metric_json(metric: PhaseMetric) -> string {
+    let time_ms: string = metric.time_ms as string;
+    let memory_kb: string = metric.memory_kb as string;
+    give "{"
+        + "\"phase\":\"" + json_escape(metric.phase) + "\","
+        + "\"time_ms\":" + time_ms + ","
+        + "\"memory_kb\":" + memory_kb
+        + "}";
+}
+
+proc phase_metrics_json(metrics: [PhaseMetric]) -> string {
+    let out: string = "";
+    let i: u64 = 0;
+    while i < len(metrics) {
+        if i > 0 {
+            set out = out + ",";
+        }
+        set out = out + phase_metric_json(metrics[i]);
+        set i = i + 1;
+    }
+    give "[" + out + "]";
+}
+
+proc metrics_report_json(report: CompilerMetricsReport) -> string {
+    let exit_code_text: string = report.exit_code as string;
+    let cache_hits_text: string = report.cache_hits as string;
+    let cache_misses_text: string = report.cache_misses as string;
+    let mir_size_text: string = report.mir_size as string;
+    let ast_size_text: string = report.ast_size as string;
+    let diagnostics_count_text: string = report.diagnostics_count as string;
+    let codegen_ms_text: string = report.backend.codegen_ms as string;
+    let backend_emit_ms_text: string = report.backend.backend_emit_ms as string;
+    let link_ms_text: string = report.linker.link_ms as string;
+    let artifact_ms_text: string = report.linker.artifact_ms as string;
+    let total_time_text: string = report.total_time_ms as string;
+    let total_memory_text: string = report.total_memory_kb as string;
+    give "{"
+        + "\"schema\":\"vitte.compiler.metrics\","
+        + "\"schema_version\":\"1.0.0\","
+        + "\"command\":\"" + json_escape(report.command) + "\","
+        + "\"source_path\":\"" + json_escape(report.source_path) + "\","
+        + "\"status\":\"" + report.status + "\","
+        + "\"exit_code\":" + exit_code_text + ","
+        + "\"phase_metrics\":" + phase_metrics_json(report.phase_metrics) + ","
+        + "\"cache_hits\":" + cache_hits_text + ","
+        + "\"cache_misses\":" + cache_misses_text + ","
+        + "\"mir_size\":" + mir_size_text + ","
+        + "\"ast_size\":" + ast_size_text + ","
+        + "\"diagnostics_count\":" + diagnostics_count_text + ","
+        + "\"backend\":{"
+            + "\"codegen_ms\":" + codegen_ms_text + ","
+            + "\"backend_emit_ms\":" + backend_emit_ms_text
+        + "},"
+        + "\"linker\":{"
+            + "\"link_ms\":" + link_ms_text + ","
+            + "\"artifact_ms\":" + artifact_ms_text
+        + "},"
+        + "\"total_time_ms\":" + total_time_text + ","
+        + "\"total_memory_kb\":" + total_memory_text
+        + "}";
+}
+
+proc compile_metrics_report_from_module_set(command: string, source_path: string, result: DriverBackendModuleSetResult) -> CompilerMetricsReport {
+    let token_count: u64 = 0;
+    let toplevel_count: u64 = 0;
+    let stmt_count: u64 = 0;
+    let expr_count: u64 = 0;
+    let type_count: u64 = 0;
+    let pattern_count: u64 = 0;
+    let i: u64 = 0;
+    while i < len(result.analysis.modules) {
+        let fe = result.analysis.modules[i].frontend;
+        set token_count = token_count + fe.token_count;
+        set toplevel_count = toplevel_count + fe.toplevel_count;
+        set stmt_count = stmt_count + fe.stmt_count;
+        set expr_count = expr_count + fe.expr_count;
+        set type_count = type_count + fe.type_count;
+        set pattern_count = pattern_count + fe.pattern_count;
+        set i = i + 1;
+    }
+
+    let pseudo: DriverCompileResult = DriverCompileResult {
+        status: if result.valid { DriverExitStatus.Ok } else { DriverExitStatus.PipelineFailure },
+        message: result.message,
+        ir_valid: result.valid,
+        backend_name: result.config.backend_name,
+        target_name: result.config.target_name,
+        profile_name: result.config.profile_name,
+        opt_level: result.config.opt_level,
+        packaging: result.config.packaging,
+        deterministic: result.config.deterministic,
+        debug_enabled: result.config.debug_enabled,
+        emit_debug_sections: result.config.emit_debug_sections,
+        lto_enabled: result.config.lto_enabled,
+        pgo_mode: result.config.pgo_mode,
+        prefer_native_toolchain: result.config.prefer_native_toolchain,
+        llvm_toolchain_summary: result.codegen.native_toolchain_summary,
+        codegen_object_format: result.codegen.object_format,
+        codegen_section_count: result.codegen.section_count,
+        diagnostics: result.diagnostics,
+        grammar_version: "",
+        token_count: token_count,
+        toplevel_count: toplevel_count,
+        stmt_count: stmt_count,
+        expr_count: expr_count,
+        type_count: type_count,
+        pattern_count: pattern_count
+    };
+
+    give compile_metrics_report(command, source_path, pseudo);
+}

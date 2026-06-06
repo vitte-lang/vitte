@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Expressions and Priorities</title>
+<link rel="icon" href="../../svg/logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../css/site.css">
+<link rel="stylesheet" href="../../css/print.css" media="print">
+
+<link rel="alternate" hreflang="en" href="https://vitte-lang.org/expressions.html">
+<link rel="alternate" hreflang="x-default" href="https://vitte-lang.org/expressions.html">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; font-src 'self'; connect-src 'self';">
+</head>
+<body class="classic-doc">
+<a class="skip-link" href="#main-content">Skip to content</a>
+<div class="site-shell">
+<header class="site-header">
+<a class="site-brand" href="../../index.html"><img class="site-brand-mark" src="../../svg/logo.svg" alt="" width="32" height="32"><span>Vitte</span></a>
+<nav class="site-nav" aria-label="Primary">
+<ul class="nav-band"><li><a class="nav-chip" href="../../index.html"><img src="../../svg/home.svg" alt="" width="14" height="14" aria-hidden="true"><span>Welcome</span></a></li><li><a class="nav-chip" href="../../doc.html"><img src="../../svg/docs.svg" alt="" width="14" height="14" aria-hidden="true"><span>Documentation</span></a></li><li><a class="nav-chip" href="../../download.html"><img src="../../svg/download.svg" alt="" width="14" height="14" aria-hidden="true"><span>Download</span></a></li><li><a class="nav-chip" href="../../source.html"><img src="../../svg/source.svg" alt="" width="14" height="14" aria-hidden="true"><span>Source</span></a></li><li><a class="nav-chip" href="../../community.html"><img src="../../svg/community.svg" alt="" width="14" height="14" aria-hidden="true"><span>Community</span></a></li><li><a class="nav-chip" href="../../news.html"><img src="../../svg/news.svg" alt="" width="14" height="14" aria-hidden="true"><span>News</span></a></li><li><a class="nav-chip" href="../../diagnostics.html"><img src="../../svg/diagnostics.svg" alt="" width="14" height="14" aria-hidden="true"><span>Diagnostics</span></a></li><li><a class="nav-chip" href="../../suggestions.html"><img src="../../svg/suggestions.svg" alt="" width="14" height="14" aria-hidden="true"><span>Suggestions</span></a></li></ul>
+</nav>
+</header>
+<main id="main-content" class="site-main">
+<article class="doc-content">
+<p class="book-progress"></p>
+<h1>Expressions and Priorities</h1>
+<p>This page treats Vitte logic as an executable mechanism: each rule is linked to a concrete consequence in the program flow. A Vitte expression must remain locally evaluable. If the operator precedence makes the reading uncertain, the expression must be decomposed.</p>
+<pre><code class="language-vit">proc expr_a(a: int) -&gt; int {
+  let v: int = (a + 1) * 2
+  give v
+}</code></pre>
+<p>Why this step is solid. Parentheses impose the order of calculation and eliminate the ambiguity of precedence. The result is then named to keep local track of the subcalculation.</p>
+<p>What happens at runtime. <code>expr_a(4)</code> calculates <code>(4+1)=5</code>, then <code>5*2=10</code>, then returns <code>10</code>.</p>
+<pre><code class="language-vit">proc expr_b(ready: bool, blocked: bool) -&gt; bool {
+  let ok: bool = ready and not blocked
+  give ok
+}</code></pre>
+<p>Why this step is solid. <code>not</code> applies to the predicate <code>blocked</code> before the conjunction. The evaluation is short-circuited: if <code>ready</code> is false, the second part can be ignored.</p>
+<p>What happens at runtime. <code>(true,false)-&gt;true</code>, <code>(true,true)-&gt;false</code>, <code>(false,false)-&gt;false</code>.</p>
+<pre><code class="language-vit">proc expr_c(value: int) -&gt; int {
+  make n as int = value as int
+  give n
+}</code></pre>
+<p>Why this step is solid. Explicit <code>as</code> conversion kept visible even when the types appear compatible. This choice is useful at the module boundary where conversions need to be audited.</p>
+<p>What happens at runtime. <code>expr_c(9)</code> returns <code>9</code>; the conversion trace remains present at the source level.</p>
+<p>The Vitte rule on expressions is strict. Implicit priority acceptable for trivial cases, obligatory decomposition as soon as the density of operators harms the verification.</p>
+</article>
+</main>
+<footer class="site-footer">
+<p class="site-footer-path">book/logique/expressions.html</p>
+<p><a href="../../index.html">Back to home</a></p>
+</footer>
+</div>
+<script type="module" src="../../js/book-learning.js"></script>
+<script type="module" src="../../js/main.js"></script>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

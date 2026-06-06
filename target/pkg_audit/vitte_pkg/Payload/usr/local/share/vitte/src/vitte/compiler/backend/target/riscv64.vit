@@ -1,0 +1,216 @@
+space vitte/compiler/backend/target/riscv64
+
+use vitte/compiler/backend/target/triple.{ TargetTriple, target_triple }
+
+export *
+
+form Riscv64Target {
+  triple: TargetTriple
+  cpu: string
+  vendor_name: string
+  pointer_width: u64
+  register_width: u64
+  little_endian: bool
+  stack_alignment: u64
+  function_alignment: u64
+  supports_m: bool
+  supports_a: bool
+  supports_f: bool
+  supports_d: bool
+  supports_c: bool
+  supports_v: bool
+  supports_zicsr: bool
+  supports_zifencei: bool
+  supports_atomic64: bool
+  abi_name: string
+  object_format: string
+  calling_convention: string
+  executable_extension: string
+  static_library_extension: string
+  dynamic_library_extension: string
+  compressed_instruction_size: u64
+  valid: bool
+}
+
+proc riscv64_target(vendor: string, os: string, abi: string) -> Riscv64Target {
+  let triple: TargetTriple = target_triple("riscv64", vendor, os, abi);
+  let object_format: string = if os == "windows" { "coff" } elif os == "wasm" { "wasm" } else { "elf" };
+  let executable_extension: string = if os == "windows" { ".exe" } else { "" };
+  let static_extension: string = if os == "windows" { ".lib" } else { ".a" };
+  let dynamic_extension: string = if os == "windows" { ".dll" } elif os == "macos" { ".dylib" } else { ".so" };
+  give Riscv64Target {
+    triple: triple,
+    cpu: "generic-rv64",
+    vendor_name: vendor,
+    pointer_width: 64,
+    register_width: 64,
+    little_endian: true,
+    stack_alignment: 16,
+    function_alignment: 4,
+    supports_m: true,
+    supports_a: true,
+    supports_f: true,
+    supports_d: true,
+    supports_c: true,
+    supports_v: false,
+    supports_zicsr: true,
+    supports_zifencei: true,
+    supports_atomic64: true,
+    abi_name: "lp64d",
+    object_format: object_format,
+    calling_convention: "riscv64-sysv",
+    executable_extension: executable_extension,
+    static_library_extension: static_extension,
+    dynamic_library_extension: dynamic_extension,
+    compressed_instruction_size: 2,
+    valid: true,
+  };
+}
+
+proc target_riscv64_linux() -> Riscv64Target { give riscv64_target("vitte", "linux", "gnu"); }
+
+proc target_riscv64_embedded() -> Riscv64Target {
+  let base: Riscv64Target = riscv64_target("embedded", "none", "elf");
+  give Riscv64Target {
+    triple: base.triple,
+    cpu: "embedded-rv64",
+    vendor_name: base.vendor_name,
+    pointer_width: base.pointer_width,
+    register_width: base.register_width,
+    little_endian: true,
+    stack_alignment: 16,
+    function_alignment: 4,
+    supports_m: true,
+    supports_a: false,
+    supports_f: false,
+    supports_d: false,
+    supports_c: true,
+    supports_v: false,
+    supports_zicsr: true,
+    supports_zifencei: true,
+    supports_atomic64: false,
+    abi_name: "lp64",
+    object_format: "elf",
+    calling_convention: "riscv64-embedded",
+    executable_extension: "",
+    static_library_extension: ".a",
+    dynamic_library_extension: "",
+    compressed_instruction_size: 2,
+    valid: true,
+  };
+}
+
+proc target_riscv64_vector() -> Riscv64Target {
+  let base: Riscv64Target = target_riscv64_linux();
+  give Riscv64Target {
+    triple: base.triple,
+    cpu: "rv64gv",
+    vendor_name: base.vendor_name,
+    pointer_width: base.pointer_width,
+    register_width: base.register_width,
+    little_endian: true,
+    stack_alignment: 32,
+    function_alignment: 8,
+    supports_m: true,
+    supports_a: true,
+    supports_f: true,
+    supports_d: true,
+    supports_c: true,
+    supports_v: true,
+    supports_zicsr: true,
+    supports_zifencei: true,
+    supports_atomic64: true,
+    abi_name: "lp64dv",
+    object_format: base.object_format,
+    calling_convention: base.calling_convention,
+    executable_extension: base.executable_extension,
+    static_library_extension: base.static_library_extension,
+    dynamic_library_extension: base.dynamic_library_extension,
+    compressed_instruction_size: 2,
+    valid: true,
+  };
+}
+
+proc target_riscv64_retro() -> Riscv64Target {
+  let base: Riscv64Target = target_riscv64_linux();
+  give Riscv64Target {
+    triple: base.triple,
+    cpu: "rv64im",
+    vendor_name: base.vendor_name,
+    pointer_width: base.pointer_width,
+    register_width: base.register_width,
+    little_endian: true,
+    stack_alignment: 16,
+    function_alignment: 4,
+    supports_m: true,
+    supports_a: false,
+    supports_f: false,
+    supports_d: false,
+    supports_c: false,
+    supports_v: false,
+    supports_zicsr: false,
+    supports_zifencei: false,
+    supports_atomic64: false,
+    abi_name: "lp64",
+    object_format: base.object_format,
+    calling_convention: base.calling_convention,
+    executable_extension: base.executable_extension,
+    static_library_extension: base.static_library_extension,
+    dynamic_library_extension: base.dynamic_library_extension,
+    compressed_instruction_size: 4,
+    valid: true,
+  };
+}
+
+proc target_supports_float(target: Riscv64Target) -> bool { give target.supports_f or target.supports_d; }
+proc target_supports_vectors(target: Riscv64Target) -> bool { give target.supports_v; }
+proc target_supports_compressed(target: Riscv64Target) -> bool { give target.supports_c; }
+proc target_supports_full_atomics(target: Riscv64Target) -> bool { give target.supports_a and target.supports_atomic64; }
+proc target_is_embedded(target: Riscv64Target) -> bool { give target.triple.os == "none"; }
+proc target_is_linux(target: Riscv64Target) -> bool { give target.triple.os == "linux"; }
+
+proc target_instruction_alignment(target: Riscv64Target) -> u64 {
+  if target.supports_c {
+    give 2;
+  }
+  give 4;
+}
+
+proc target_extension_text(target: Riscv64Target) -> string {
+  let text: string = "rv64";
+  if target.supports_m {
+    set text = text + "m";
+  }
+  if target.supports_a {
+    set text = text + "a";
+  }
+  if target.supports_f {
+    set text = text + "f";
+  }
+  if target.supports_d {
+    set text = text + "d";
+  }
+  if target.supports_c {
+    set text = text + "c";
+  }
+  if target.supports_v {
+    set text = text + "v";
+  }
+  give text;
+}
+
+proc target_summary(target: Riscv64Target) -> string {
+  give target.cpu;
+}
+
+proc target_selftest() -> bool {
+  let linux: Riscv64Target = target_riscv64_linux();
+  let embedded: Riscv64Target = target_riscv64_embedded();
+  let vector: Riscv64Target = target_riscv64_vector();
+  give linux.valid
+    and embedded.valid
+    and vector.valid
+    and target_supports_vectors(vector)
+    and target_is_embedded(embedded)
+    and target_summary(linux) != "";
+}

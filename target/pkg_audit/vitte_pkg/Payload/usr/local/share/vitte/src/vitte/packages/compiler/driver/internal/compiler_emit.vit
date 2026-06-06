@@ -1,0 +1,597 @@
+space compiler/driver/private/compiler_emit
+
+use compiler_ast
+use compiler_ir
+
+export *
+
+<<< ========================================================= >>>
+<<< Driver IR emitter                                         >>>
+<<< IR -> C-like backend surface emitter                      >>>
+<<< ========================================================= >>>
+
+const DEFAULT_RETURN_TYPE: string = "i32"
+
+proc default_type_name(
+  type_name: string
+) -> string {
+
+  if type_name == "" {
+    give DEFAULT_RETURN_TYPE;
+  }
+
+  give type_name;
+}
+
+proc indent(
+  depth: int
+) -> string {
+
+  let out: string = "";
+
+  let i: int = 0;
+
+  while i < depth {
+    set out = out + "  ";
+    set i = i + 1;
+  }
+
+  give out;
+}
+
+<<< ========================================================= >>>
+<<< Expression emission                                       >>>
+<<< ========================================================= >>>
+
+proc emit_expr(
+  expr: compiler_ast.Expr
+) -> string {
+
+  if expr.kind == compiler_ast.ExprKind.Empty {
+    give "";
+  }
+
+  if expr.kind == compiler_ast.ExprKind.Literal {
+    give expr.text;
+  }
+
+  if expr.kind == compiler_ast.ExprKind.Variable {
+    give expr.text;
+  }
+
+  if expr.kind == compiler_ast.ExprKind.Path {
+    give expr.text;
+  }
+
+  if expr.kind == compiler_ast.ExprKind.Member {
+
+    if expr.children.len < 2 {
+      give expr.text;
+    }
+
+    give emit_expr(expr.children[0])
+      + "."
+      + emit_expr(expr.children[1]);
+  }
+
+  if expr.kind == compiler_ast.ExprKind.Index {
+
+    if expr.children.len < 2 {
+      give expr.text;
+    }
+
+    give emit_expr(expr.children[0])
+      + "["
+      + emit_expr(expr.children[1])
+      + "]";
+  }
+
+  if expr.kind == compiler_ast.ExprKind.Unary {
+
+    if expr.children.len == 0 {
+      give expr.operator + expr.text;
+    }
+
+    give expr.operator
+      + emit_expr(expr.children[0]);
+  }
+
+  if expr.kind == compiler_ast.ExprKind.Binary {
+
+    if expr.children.len < 2 {
+      give expr.text;
+    }
+
+    give "("
+      + emit_expr(expr.children[0])
+      + " "
+      + expr.operator
+      + " "
+      + emit_expr(expr.children[1])
+      + ")";
+  }
+
+  if expr.kind == compiler_ast.ExprKind.Cast {
+
+    if expr.children.len == 0 {
+      give expr.text;
+    }
+
+    give "(("
+      + default_type_name(expr.type_name)
+      + ") "
+      + emit_expr(expr.children[0])
+      + ")";
+  }
+
+  if expr.kind == compiler_ast.ExprKind.Call {
+
+    let out: string =
+      expr.callee + "(";
+
+    let i: int = 0;
+
+    while i < expr.args.len {
+
+      if i > 0 {
+        set out =
+          out + ", ";
+      }
+
+      set out =
+        out + emit_expr(expr.args[i]);
+
+      set i =
+        i + 1;
+    }
+
+    set out =
+      out + ")";
+
+    give out;
+  }
+
+  if expr.kind == compiler_ast.ExprKind.TupleLiteral {
+
+    let out: string = "{";
+
+    let i: int = 0;
+
+    while i < expr.children.len {
+
+      if i > 0 {
+        set out =
+          out + ", ";
+      }
+
+      set out =
+        out + emit_expr(expr.children[i]);
+
+      set i =
+        i + 1;
+    }
+
+    give out + "}";
+  }
+
+  if expr.kind == compiler_ast.ExprKind.ArrayLiteral {
+
+    let out: string = "{";
+
+    let i: int = 0;
+
+    while i < expr.children.len {
+
+      if i > 0 {
+        set out =
+          out + ", ";
+      }
+
+      set out =
+        out + emit_expr(expr.children[i]);
+
+      set i =
+        i + 1;
+    }
+
+    give out + "}";
+  }
+
+  if expr.kind == compiler_ast.ExprKind.If {
+
+    if expr.children.len < 3 {
+      give expr.text;
+    }
+
+    give "("
+      + emit_expr(expr.children[0])
+      + " ? "
+      + emit_expr(expr.children[1])
+      + " : "
+      + emit_expr(expr.children[2])
+      + ")";
+  }
+
+  if expr.kind == compiler_ast.ExprKind.Raw {
+    give expr.text;
+  }
+
+  give expr.text;
+}
+
+<<< ========================================================= >>>
+<<< Statement emission                                        >>>
+<<< ========================================================= >>>
+
+proc emit_stmt(
+  stmt: compiler_ir.IrStmt
+) -> string {
+
+  give emit_stmt_indented(
+    stmt,
+    1
+  );
+}
+
+proc emit_stmt_indented(
+  stmt: compiler_ir.IrStmt,
+  depth: int
+) -> string {
+
+  let prefix: string =
+    indent(depth);
+
+  if stmt.kind == "give" {
+
+    if stmt.expr.kind
+      == compiler_ast.ExprKind.Empty {
+
+      give prefix
+        + "return;\n";
+    }
+
+    give prefix
+      + "return "
+      + emit_expr(stmt.expr)
+      + ";\n";
+  }
+
+  if stmt.kind == "let" {
+
+    let type_name: string =
+      default_type_name(
+        stmt.type_name
+      );
+
+    let out: string =
+      prefix
+      + type_name
+      + " "
+      + stmt.name;
+
+    if stmt.expr.kind
+      != compiler_ast.ExprKind.Empty {
+
+      set out =
+        out
+        + " = "
+        + emit_expr(stmt.expr);
+    }
+
+    give out + ";\n";
+  }
+
+  if stmt.kind == "set" {
+
+    give prefix
+      + stmt.name
+      + " = "
+      + emit_expr(stmt.expr)
+      + ";\n";
+  }
+
+  if stmt.kind == "if" {
+
+    let out: string =
+      prefix
+      + "if ("
+      + emit_expr(stmt.expr)
+      + ") {\n";
+
+    let i: int = 0;
+
+    while i < stmt.child_stmts.len {
+
+      set out =
+        out
+        + emit_stmt_indented(
+            stmt.child_stmts[i],
+            depth + 1
+          );
+
+      set i =
+        i + 1;
+    }
+
+    set out =
+      out + prefix + "}";
+
+    give out + "\n";
+  }
+
+  if stmt.kind == "while" {
+
+    let out: string =
+      prefix
+      + "while ("
+      + emit_expr(stmt.expr)
+      + ") {\n";
+
+    let i: int = 0;
+
+    while i < stmt.child_stmts.len {
+
+      set out =
+        out
+        + emit_stmt_indented(
+            stmt.child_stmts[i],
+            depth + 1
+          );
+
+      set i =
+        i + 1;
+    }
+
+    set out =
+      out + prefix + "}";
+
+    give out + "\n";
+  }
+
+  if stmt.kind == "break" {
+    give prefix + "break;\n";
+  }
+
+  if stmt.kind == "continue" {
+    give prefix + "continue;\n";
+  }
+
+  if stmt.kind == "panic" {
+
+    give prefix
+      + "panic("
+      + emit_expr(stmt.expr)
+      + ");\n";
+  }
+
+  if stmt.kind == "assert" {
+
+    give prefix
+      + "assert("
+      + emit_expr(stmt.expr)
+      + ");\n";
+  }
+
+  if stmt.kind == "emit" {
+
+    give prefix
+      + "emit("
+      + emit_expr(stmt.expr)
+      + ");\n";
+  }
+
+  if stmt.expr.kind
+    == compiler_ast.ExprKind.Empty {
+
+    give "";
+  }
+
+  give prefix
+    + emit_expr(stmt.expr)
+    + ";\n";
+}
+
+<<< ========================================================= >>>
+<<< Function emission                                         >>>
+<<< ========================================================= >>>
+
+proc emit_param(
+  param: compiler_ir.IrParam
+) -> string {
+
+  let param_type: string =
+    default_type_name(
+      param.type_name
+    );
+
+  give param_type
+    + " "
+    + param.name;
+}
+
+proc emit_function_signature(
+  fn: compiler_ir.IrFunction
+) -> string {
+
+  let out: string =
+    default_type_name(fn.return_type_name)
+    + " "
+    + fn.name
+    + "(";
+
+  let i: int = 0;
+
+  while i < fn.params.len {
+
+    if i > 0 {
+      set out =
+        out + ", ";
+    }
+
+    set out =
+      out
+      + emit_param(
+          fn.params[i]
+        );
+
+    set i =
+      i + 1;
+  }
+
+  give out + ")";
+}
+
+proc emit_function(
+  fn: compiler_ir.IrFunction
+) -> string {
+
+  let out: string =
+    emit_function_signature(fn)
+    + " {\n";
+
+  let i: int = 0;
+
+  while i < fn.body_stmts.len {
+
+    set out =
+      out
+      + emit_stmt(
+          fn.body_stmts[i]
+        );
+
+    set i =
+      i + 1;
+  }
+
+  set out =
+    out + "}";
+
+  give out + "\n";
+}
+
+<<< ========================================================= >>>
+<<< Module emission                                           >>>
+<<< ========================================================= >>>
+
+proc emit_module_header(
+  module_value: compiler_ir.IrModule
+) -> string {
+
+  let out: string =
+    "/* ======================================== */\n";
+
+  set out =
+    out
+    + "/* Generated by Vitte compiler driver      */\n";
+
+  set out =
+    out
+    + "/* Module: "
+    + module_value.module_name
+    + " */\n";
+
+  set out =
+    out
+    + "/* ======================================== */\n\n";
+
+  give out;
+}
+
+proc emit_module(
+  module_value: compiler_ir.IrModule
+) -> string {
+
+  let out: string =
+    emit_module_header(
+      module_value
+    );
+
+  let i: int = 0;
+
+  while i < module_value.functions.len {
+
+    set out =
+      out
+      + emit_function(
+          module_value.functions[i]
+        );
+
+    if i + 1
+      < module_value.functions.len {
+
+      set out =
+        out + "\n";
+    }
+
+    set i =
+      i + 1;
+  }
+
+  give out;
+}
+
+<<< ========================================================= >>>
+<<< Statistics                                                >>>
+<<< ========================================================= >>>
+
+proc emitted_line_count(
+  text: string
+) -> int {
+
+  if text == "" {
+    give 0;
+  }
+
+  let count: int = 1;
+
+  let i: int = 0;
+
+  while i < text.len {
+
+    if text[i] == "\n" {
+      set count =
+        count + 1;
+    }
+
+    set i =
+      i + 1;
+  }
+
+  give count;
+}
+
+proc emitted_byte_count(
+  text: string
+) -> int {
+
+  give text.len;
+}
+
+proc emit_summary(
+  module_value: compiler_ir.IrModule
+) -> string {
+
+  let emitted: string =
+    emit_module(module_value);
+
+  give "module="
+    + module_value.module_name
+    + " functions="
+    + (module_value.functions.len as string)
+    + " bytes="
+    + (emitted_byte_count(emitted) as string)
+    + " lines="
+    + (emitted_line_count(emitted) as string);
+}
+
+proc emit_selftest() -> bool {
+
+  let module_value: compiler_ir.IrModule =
+    compiler_ir.empty_module();
+
+  let emitted: string =
+    emit_module(module_value);
+
+  give emitted != ""
+    and emit_summary(module_value) != "";
+}

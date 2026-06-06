@@ -1,0 +1,33 @@
+space vitte/compiler/analysis/const_eval/folding
+
+use vitte/compiler/analysis/const_eval/errors.{ ConstEvalDiagnostic }
+use vitte/compiler/analysis/const_eval/interpreter.{
+  ConstEnv,
+  ConstValue,
+  eval_const_expr,
+  value_to_text
+}
+
+form ConstFoldResult {
+  original: string
+  folded: string
+  value: ConstValue
+  diagnostics: [ConstEvalDiagnostic]
+  valid: bool
+}
+
+proc fold_const_expr(env: ConstEnv, file: string, expr: string, line: u64) -> ConstFoldResult {
+  let evaluated = eval_const_expr(env, file, expr, line);
+  let folded: string = expr;
+  if evaluated.valid {
+    set folded = value_to_text(evaluated.value);
+  }
+
+  give ConstFoldResult {
+    original: expr,
+    folded: folded,
+    value: evaluated.value,
+    diagnostics: evaluated.diagnostics,
+    valid: evaluated.valid
+  };
+}

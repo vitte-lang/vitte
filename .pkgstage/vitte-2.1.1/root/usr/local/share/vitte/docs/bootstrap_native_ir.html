@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bootstrap Native IR v1</title>
+<link rel="icon" href="svg/logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="css/site.css?v=34fa1e8389">
+<link rel="stylesheet" href="css/print.css" media="print">
+<link rel="canonical" href="https://vitte-lang.org/bootstrap_native_ir.html">
+<meta property="og:title" content="Bootstrap Native IR v1">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://vitte-lang.org/bootstrap_native_ir.html">
+<meta name="twitter:card" content="summary">
+
+<link rel="preload" as="style" href="css/site.css?v=34fa1e8389">
+<link rel="alternate" hreflang="en" href="https://vitte-lang.org/bootstrap_native_ir.html">
+<link rel="alternate" hreflang="x-default" href="https://vitte-lang.org/bootstrap_native_ir.html">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; font-src 'self'; connect-src 'self';">
+</head>
+<body class="classic-doc">
+<a class="skip-link" href="#main-content">Skip to content</a>
+<div class="site-shell">
+<header class="site-header">
+<a class="site-brand" href="index.html"><img class="site-brand-mark" src="svg/logo.svg" alt="" width="32" height="32"><span>Vitte</span></a>
+<nav class="site-nav" aria-label="Primary"><ul class="nav-band"><li><a class="nav-chip" href="index.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="svg/sprite.svg#i-home"></use></svg><span>Welcome</span></a></li><li><a class="nav-chip" href="doc.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="svg/sprite.svg#i-docs"></use></svg><span>Documentation</span></a></li><li><a class="nav-chip" href="download.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="svg/sprite.svg#i-docs"></use></svg><span>Download</span></a></li><li><a class="nav-chip" href="source.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="svg/sprite.svg#i-docs"></use></svg><span>Source</span></a></li><li><a class="nav-chip" href="community.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="svg/sprite.svg#i-docs"></use></svg><span>Community</span></a></li><li><a class="nav-chip" href="news.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="svg/sprite.svg#i-news"></use></svg><span>News</span></a></li><li><a class="nav-chip" href="diagnostics.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="svg/sprite.svg#i-docs"></use></svg><span>Diagnostics</span></a></li><li><a class="nav-chip" href="suggestions.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="svg/sprite.svg#i-docs"></use></svg><span>Suggestions</span></a></li></ul></nav>
+</header>
+<main id="main-content" class="site-main">
+<article class="doc-content">
+<center>
+<h1>Bootstrap Native IR v1</h1>
+<p>HTML reading page generated from the source Markdown document.</p>
+</center>
+<div class="page-band">
+<a href="doc.html"><img src="svg/docs.svg" alt="" width="14" height="14">Documentation</a>
+<a href="source.html"><img src="svg/source.svg" alt="" width="14" height="14">Source</a>
+<a href="sitemap.html"><img src="svg/summary.svg" alt="" width="14" height="14">Sitemap</a>
+<a href="bootstrap_native_ir.md"><img src="svg/diagnostics.svg" alt="" width="14" height="14">Source Markdown</a>
+</div>
+<div class="lead-panel">
+<h2>Reading mode</h2>
+<p>This page is the static HTML reader for <code>bootstrap_native_ir.md</code>. Internal Markdown links are rewritten to HTML when a matching reading page exists.</p>
+</div>
+<h1>Bootstrap Native IR v1</h1>
+<p><code>native_ir_v1</code> is the textual intermediate representation used by the bootstrap-native seed compiler for the early <code>build-native</code> path. It is small by design: the format describes only the compiler identity strings, optional named string constants, and the native process exit code needed by stage1/stage2.</p>
+<p>The canonical implementation is <code>toolchain/seed/vittec0.seed</code>. Golden coverage lives in <code>tests/bootstrap_native</code>.</p>
+<p><code>native_ir_v1</code> is the stable bootstrap contract. The shell emitted by <code>build-native</code> is the current POSIX bootstrap backend, not the IR contract itself. The backend may be replaced later as long as <code>native_ir_v1</code> snapshots and documented command behavior remain stable.</p>
+<h2>Versioning</h2>
+<p><code>native_ir_v1</code> is additive-only. New records or accepted source forms may be added when older v1 readers can ignore or reject them safely under the existing fail-closed rules.</p>
+<p>Any breaking format change must use a new first-line tag, starting with <code>native_ir_v2</code>. Breaking changes include changing the meaning of an existing record, removing a required record, changing record order requirements, or changing diagnostics in a way that v1 snapshots can no longer defend.</p>
+<p><code>native_ir_v1</code> snapshots remain authoritative as long as stage0 seed artifacts read or emit v1. Introducing a future v2 must keep v1 snapshots and drift checks until the stage0 trust root no longer depends on v1.</p>
+<h2>Format</h2>
+<p>The IR is UTF-8 text with LF line endings. The first line is the version tag:</p>
+<pre><code class="language-text">native_ir_v1</code></pre>
+<p>Remaining lines are key/value records:</p>
+<pre><code class="language-text">const.string.&lt;NAME&gt;=&lt;string value&gt;
+const.int.&lt;NAME&gt;=&lt;integer&gt;
+proc.int.&lt;name&gt;=&lt;integer&gt;
+version_text=&lt;string value&gt;
+banner_text=&lt;string value&gt;
+main.return=&lt;integer&gt;</code></pre>
+<p>Rules:</p>
+<ul>
+<li><code>const.string.&amp;lt;NAME&amp;gt;</code> records are optional and appear in source declaration order.</li>
+<li><code>const.int.&amp;lt;NAME&amp;gt;</code> records are optional and appear in source declaration order with string constants.</li>
+<li><code>proc.int.&amp;lt;name&amp;gt;</code> records are optional and appear in source declaration order. In v1 they are record-only: generated shell compilers do not expose these procedures as callable commands yet.</li>
+<li><code>NAME</code> is an uppercase bootstrap constant identifier: <code>[A-Z_][A-Z0-9_]*</code>.</li>
+<li><code>version_text</code>, <code>banner_text</code>, and <code>main.return</code> appear exactly once.</li>
+<li>String values are the decoded contents of bootstrap string literals. The v1 subset does not support escapes or embedded double quotes.</li>
+<li>Integer values are signed decimal integers.</li>
+<li><code>main.return</code> is a signed decimal integer. If no supported <code>main</code> procedure is present, it defaults to <code>0</code>.</li>
+</ul>
+<p>Example:</p>
+<pre><code class="language-text">native_ir_v1
+const.string.VERSION_TEXT=vittec stage2-vitte 0.1.0
+const.string.BANNER_TEXT=vittec stage2 native bootstrap
+const.int.EXIT_CODE=0
+version_text=vittec stage2-vitte 0.1.0
+banner_text=vittec stage2 native bootstrap
+main.return=0</code></pre>
+<h2>Source Subset</h2>
+<p><code>native_ir_v1</code> is emitted only for the bootstrap-native subset:</p>
+<ul>
+<li><code>space &amp;lt;path&amp;gt;</code></li>
+<li><code>const NAME: string = &amp;quot;...&amp;quot;</code></li>
+<li><code>const NAME: int = 123</code></li>
+<li><code>proc name() -&amp;gt; string { give &amp;quot;...&amp;quot; }</code></li>
+<li><code>proc name() -&amp;gt; string { give NAME }</code></li>
+<li><code>proc name() -&amp;gt; int { give 123 }</code></li>
+<li><code>proc name() -&amp;gt; int { give NAME }</code></li>
+<li><code>proc main(args: list[string]) -&amp;gt; int { give &amp;lt;integer&amp;gt; }</code></li>
+<li><code>proc main(args: list[string]) -&amp;gt; int { give NAME }</code></li>
+<li><code>export *</code></li>
+</ul>
+<p>Only <code>version_text()</code> and <code>banner_text()</code> are currently materialized as compiler identity procedures. Other string procedures are rejected until the native bootstrap surface grows intentionally.</p>
+<p>Integer procedures are accepted and emitted as <code>proc.int.*</code> records to pin the lowering shape, but they are record-only in v1. They are not callable from the generated shell compiler and do not affect process behavior unless their value is used through <code>main.return</code>.</p>
+<h2>Non-Goals v1</h2>
+<p>The v1 subset intentionally does not support:</p>
+<ul>
+<li>string escapes or embedded double quotes,</li>
+<li>multi-line declarations or multi-line procedure signatures,</li>
+<li><code>bool</code>, list, map, user-defined, or composite constants,</li>
+<li>procedure calls or expression evaluation,</li>
+<li>statements other than a single supported <code>give</code> inside each procedure,</li>
+<li>general-purpose Vitte parsing or semantic analysis.</li>
+</ul>
+<h2>Invariants</h2>
+<ul>
+<li>The output must be deterministic for a fixed source file and seed artifact.</li>
+<li>Constants are emitted before derived procedure records.</li>
+<li><code>proc.int.*</code> records are emitted for snapshot stability only in v1; emission must not imply a public callable shell command.</li>
+<li>Procedure references to named constants are resolved before IR emission.</li>
+<li>Missing <code>banner_text()</code> or <code>version_text()</code> is an error.</li>
+<li><code>export *</code> is required so bootstrap sources keep an explicit public surface.</li>
+<li>Unsupported top-level items and unsupported procedure bodies must fail closed.</li>
+<li>Stage1 and stage2 binaries generated from this IR must preserve <code>--version</code> output, generated <code>--help</code> output, and default command exit behavior.</li>
+</ul>
+<h2>Generated Command Surface</h2>
+<p>The current backend emits POSIX shell compilers with this command surface:</p>
+<ul>
+<li><code>--version</code>: takes no input, prints the generated compiler version text, exits <code>0</code>.</li>
+<li><code>--help</code>, <code>-h</code>, <code>help</code>: takes no input, prints the generated banner, version line, and command list, exits <code>0</code>.</li>
+<li><code>parse</code>: accepts <code>--src &amp;lt;file&amp;gt;</code> or the first positional file argument. It validates the file with the bootstrap-native parser, prints <code>parse ok: &amp;lt;file&amp;gt;</code> on success, exits non-zero on diagnostics or missing input.</li>
+<li><code>check</code>: accepts one positional file path. It currently checks that the file exists and, for sources under <code>space vitte/bootstrap/...</code>, validates the file with the bootstrap-native parser. Missing input, unreadable files, or bootstrap-native diagnostics fail.</li>
+<li><code>build-native</code>: requires <code>--src &amp;lt;file&amp;gt;</code> and <code>--out &amp;lt;file&amp;gt;</code>. It emits the current POSIX shell backend for the source IR and marks the output executable.</li>
+<li><code>dump-native-ir</code>: requires <code>--src &amp;lt;file&amp;gt;</code>. It prints <code>native_ir_v1</code> text to stdout or fails with diagnostics.</li>
+<li><code>dump-native-shell</code>: requires <code>--src &amp;lt;file&amp;gt;</code>. It prints the generated POSIX shell backend to stdout. This is a review aid for backend snapshots, not a separate IR contract.</li>
+<li><code>build</code>: requires <code>--stage stage1</code>, <code>--src &amp;lt;dir&amp;gt;</code>, and <code>--out &amp;lt;dir&amp;gt;</code>. It emits <code>&amp;lt;out&amp;gt;/vittec1</code> from <code>&amp;lt;src&amp;gt;/main.vit</code>; other stages fail.</li>
+<li>default command: with no command, prints the generated banner and exits with <code>main.return</code>.</li>
+<li>unknown command: prints <code>[&amp;lt;tool&amp;gt;][error] unknown command: &amp;lt;cmd&amp;gt;</code> to stderr and exits <code>2</code>. <code>&amp;lt;tool&amp;gt;</code> is generated from the first word of <code>version_text()</code>, so stage0 reports <code>[vittec0][error]</code>, stage1 reports <code>[vittec1][error]</code>, and stage2 reports <code>[vittec][error]</code>.</li>
+</ul>
+<h2>Diagnostics</h2>
+<p>Diagnostics are line-oriented stderr records:</p>
+<pre><code class="language-text">&lt;file&gt;:&lt;line&gt;:&lt;column&gt;: &lt;CODE&gt;: &lt;message&gt;</code></pre>
+<p>Current bootstrap-native diagnostic codes include:</p>
+<ul>
+<li><code>E_BOOTSTRAP_CONST_SIGNATURE</code>: constant declaration is outside <code>const NAME: string = &amp;quot;...&amp;quot;</code> or <code>const NAME: int = 123</code>.</li>
+<li><code>E_BOOTSTRAP_CONST_TYPE</code>: a procedure references a constant with the wrong bootstrap type.</li>
+<li><code>E_BOOTSTRAP_PROC_SIGNATURE</code>: non-<code>main</code> procedure signature is outside <code>proc name() -&amp;gt; string {</code>.</li>
+<li><code>E_BOOTSTRAP_MAIN_SIGNATURE</code>: <code>main</code> signature is outside <code>proc main(args: list[string]) -&amp;gt; int {</code>.</li>
+<li><code>E_BOOTSTRAP_UNKNOWN_CONST</code>: a procedure gives an unknown string constant.</li>
+<li><code>E_BOOTSTRAP_UNKNOWN_PROC</code>: a string procedure is not supported by v1.</li>
+<li><code>E_BOOTSTRAP_PROC_BODY</code>: procedure body is not one supported <code>give</code>.</li>
+<li><code>E_BOOTSTRAP_MAIN_BODY</code>: <code>main</code> does not give an integer.</li>
+<li><code>E_BOOTSTRAP_UNCLOSED_PROC</code>: a procedure body is missing its closing brace.</li>
+<li><code>E_BOOTSTRAP_TOP_LEVEL</code>: unsupported top-level item.</li>
+<li><code>E_BOOTSTRAP_EXPORT</code>: missing <code>export *</code>.</li>
+<li><code>E_BOOTSTRAP_VERSION</code>: missing <code>version_text()</code>.</li>
+<li><code>E_BOOTSTRAP_BANNER</code>: missing <code>banner_text()</code>.</li>
+</ul>
+<p>Bad-input snapshots in <code>tests/bootstrap_native/*.err.must</code> pin the user-visible diagnostic contract.</p>
+<h2>Hash Stability</h2>
+<p><code>tests/bootstrap_native/emission.sha256.must</code> pins SHA-256 hashes of emitted bootstrap-native executables. A hash change is acceptable only when one of these contracts intentionally changes:</p>
+<ul>
+<li>the <code>native_ir_v1</code> source subset,</li>
+<li>IR-to-shell emission,</li>
+<li>command behavior of generated binaries,</li>
+<li>seed artifact bytes copied into generated binaries,</li>
+<li>canonical stage1/stage2 bootstrap source.</li>
+</ul>
+<p>When a hash changes intentionally, update the relevant IR snapshot, diagnostic snapshot, and emission hash in the same change. The verification command is:</p>
+<pre><code class="language-sh">tools/bootstrap_native_snapshots.sh</code></pre>
+<p><code>make bootstrap-native-drift-check</code> enforces that sensitive seed/stage/native build changes carry the matching emission and IR/diagnostic snapshots.</p>
+<nav class="doc-pagination"><a href="bootstrap_migration_checklist.html">← Previous</a><a href="bootstrap_seed.html">Next →</a></nav></article>
+</main>
+<footer class="site-footer">
+<p class="site-footer-path">bootstrap_native_ir.html</p>
+<p><a href="index.html">Back to home</a> · <a href="status-public.html">Public status</a></p>
+</footer>
+</div>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

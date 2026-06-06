@@ -1,0 +1,519 @@
+space vitte/compiler/middle/mir/transform
+
+use vitte/compiler/middle/mir.mir.{
+  MirBlock,
+  MirFunction,
+  MirModule,
+  MirOperand,
+  MirPlace,
+  MirRvalue,
+  MirRvalueKind,
+  MirStatement,
+  MirStatementKind,
+  MirTerminator,
+  MirTerminatorKind,
+  MirUnit,
+  mir_statement_kind_name,
+  mir_terminator_kind_name
+}
+
+export *
+
+pick MirTransformKind {
+  SimplifyCfg,
+  RemoveUnreachable,
+  FoldConstants,
+  EliminateCopies,
+  EliminateNop,
+  MergeBlocks,
+  NormalizeBranches,
+  Validate,
+}
+
+pick MirTransformResultKind {
+  Unchanged,
+  Changed,
+  Invalid,
+}
+
+form MirTransformStep {
+  kind: MirTransformKind
+  result: MirTransformResultKind
+  changed_blocks: u64
+  changed_statements: u64
+  valid: bool
+}
+
+form MirTransformStats {
+  removed_blocks: u64
+  removed_statements: u64
+  folded_constants: u64
+  merged_blocks: u64
+  simplified_branches: u64
+  valid: bool
+}
+
+form MirTransformReport {
+  function_name: string
+  steps: [MirTransformStep]
+  stats: MirTransformStats
+  changed: bool
+  valid: bool
+}
+
+proc transform_step(kind: MirTransformKind, result: MirTransformResultKind, changed_blocks: u64, changed_statements: u64, valid: bool) -> MirTransformStep {
+  give MirTransformStep {
+    kind: kind,
+    result: result,
+    changed_blocks: changed_blocks,
+    changed_statements: changed_statements,
+    valid: valid
+  }
+}
+
+proc transform_stats() -> MirTransformStats {
+  give MirTransformStats {
+    removed_blocks: 0,
+    removed_statements: 0,
+    folded_constants: 0,
+    merged_blocks: 0,
+    simplified_branches: 0,
+    valid: true
+  }
+}
+
+proc transform_report(function_name: string) -> MirTransformReport {
+  give MirTransformReport {
+    function_name: function_name,
+    steps: [],
+    stats: transform_stats(),
+    changed: false,
+    valid: true
+  }
+}
+
+proc transform_kind_name(kind: MirTransformKind) -> string {
+  if kind == MirTransformKind.SimplifyCfg {
+    give "simplify-cfg"
+  } elif kind == MirTransformKind.RemoveUnreachable {
+    give "remove-unreachable"
+  } elif kind == MirTransformKind.FoldConstants {
+    give "fold-constants"
+  } elif kind == MirTransformKind.EliminateCopies {
+    give "eliminate-copies"
+  } elif kind == MirTransformKind.EliminateNop {
+    give "eliminate-nop"
+  } elif kind == MirTransformKind.MergeBlocks {
+    give "merge-blocks"
+  } elif kind == MirTransformKind.NormalizeBranches {
+    give "normalize-branches"
+  } elif kind == MirTransformKind.Validate {
+    give "validate"
+  }
+
+  give "unknown"
+}
+
+proc transform_result_name(kind: MirTransformResultKind) -> string {
+  if kind == MirTransformResultKind.Unchanged {
+    give "unchanged"
+  } elif kind == MirTransformResultKind.Changed {
+    give "changed"
+  } elif kind == MirTransformResultKind.Invalid {
+    give "invalid"
+  }
+
+  give "unknown"
+}
+
+proc append_step(report: MirTransformReport, step: MirTransformStep) -> MirTransformReport {
+  give MirTransformReport {
+    function_name: report.function_name,
+    steps: report.steps + [step],
+    stats: report.stats,
+    changed: report.changed or step.result == MirTransformResultKind.Changed,
+    valid: report.valid and step.valid
+  }
+}
+
+proc constant_operand(operand: MirOperand) -> bool {
+  give operand.constant
+}
+
+proc constant_rvalue(rvalue: MirRvalue) -> bool {
+  if rvalue.kind != MirRvalueKind.Binary {
+    give false
+  }
+
+  if len(rvalue.operands) != 2 {
+    give false
+  }
+
+  give constant_operand(rvalue.operands[0])
+    and constant_operand(rvalue.operands[1])
+}
+
+proc nop_statement(stmt: MirStatement) -> bool {
+  give stmt.kind == MirStatementKind.Nop
+}
+
+proc unreachable_block(block: MirBlock) -> bool {
+  give not block.reachable
+}
+
+proc trivial_goto(block: MirBlock) -> bool {
+  give len(block.statements) == 0
+    and block.terminator.kind == MirTerminatorKind.Goto
+}
+
+proc filter_nop_statements(statements: [MirStatement]) -> [MirStatement] {
+  let out: [MirStatement] = []
+
+  let i: u64 = 0
+
+  while i < len(statements) {
+    if not nop_statement(statements[i]) {
+      set out = out + [statements[i]]
+    }
+
+    set i = i + 1
+  }
+
+  give out
+}
+
+proc remove_unreachable_blocks(blocks: [MirBlock]) -> [MirBlock] {
+  let out: [MirBlock] = []
+
+  let i: u64 = 0
+
+  while i < len(blocks) {
+    if not unreachable_block(blocks[i]) {
+      set out = out + [blocks[i]]
+    }
+
+    set i = i + 1
+  }
+
+  give out
+}
+
+proc normalize_block(block: MirBlock) -> MirBlock {
+  give MirBlock {
+    id: block.id,
+    label: block.label,
+    predecessors: block.predecessors,
+    statements: filter_nop_statements(
+      block.statements
+    ),
+    terminator: block.terminator,
+    sealed: block.sealed,
+    reachable: block.reachable,
+    valid: block.valid
+  }
+}
+
+proc normalize_blocks(blocks: [MirBlock]) -> [MirBlock] {
+  let out: [MirBlock] = []
+
+  let i: u64 = 0
+
+  while i < len(blocks) {
+    set out = out + [normalize_block(blocks[i])]
+
+    set i = i + 1
+  }
+
+  give out
+}
+
+proc validate_block(block: MirBlock) -> bool {
+  if not block.valid {
+    give false
+  }
+
+  if block.id == 0 {
+    give false
+  }
+
+  if not block.terminator.valid {
+    give false
+  }
+
+  give true
+}
+
+proc validate_function(function0: MirFunction) -> bool {
+  if not function0.valid {
+    give false
+  }
+
+  if function0.entry_block == 0 {
+    give false
+  }
+
+  if len(function0.blocks) == 0 {
+    give false
+  }
+
+  let i: u64 = 0
+
+  while i < len(function0.blocks) {
+    if not validate_block(function0.blocks[i]) {
+      give false
+    }
+
+    set i = i + 1
+  }
+
+  give true
+}
+
+proc count_removed_blocks(before: [MirBlock], after: [MirBlock]) -> u64 {
+  if len(before) < len(after) {
+    give 0
+  }
+
+  give len(before) - len(after)
+}
+
+proc count_removed_statements(before: [MirBlock], after: [MirBlock]) -> u64 {
+  let before_count: u64 = 0
+  let after_count: u64 = 0
+
+  let i: u64 = 0
+
+  while i < len(before) {
+    set before_count = before_count + len(before[i].statements)
+
+    set i = i + 1
+  }
+
+  set i = 0
+
+  while i < len(after) {
+    set after_count = after_count + len(after[i].statements)
+
+    set i = i + 1
+  }
+
+  if before_count < after_count {
+    give 0
+  }
+
+  give before_count - after_count
+}
+
+proc simplify_cfg(function0: MirFunction) -> MirFunction {
+  give MirFunction {
+    id: function0.id,
+    name: function0.name,
+    entry_block: function0.entry_block,
+    return_type: function0.return_type,
+    local_count: function0.local_count,
+    temporary_count: function0.temporary_count,
+    blocks: normalize_blocks(
+      remove_unreachable_blocks(
+        function0.blocks
+      )
+    ),
+    valid: function0.valid
+  }
+}
+
+proc build_cfg_step(before: MirFunction, after: MirFunction) -> MirTransformStep {
+  let removed_blocks: u64 = count_removed_blocks(before.blocks, after.blocks)
+  let removed_statements: u64 = count_removed_statements(before.blocks, after.blocks)
+  let result_kind: MirTransformResultKind = if removed_blocks > 0 or removed_statements > 0 {
+    MirTransformResultKind.Changed
+  } else {
+    MirTransformResultKind.Unchanged
+  }
+
+  give transform_step(
+    MirTransformKind.SimplifyCfg,
+    result_kind,
+    removed_blocks,
+    removed_statements,
+    after.valid
+  )
+}
+
+proc build_validate_step(function0: MirFunction) -> MirTransformStep {
+  let validated: bool = validate_function(function0)
+  let result_kind: MirTransformResultKind = if validated {
+    MirTransformResultKind.Unchanged
+  } else {
+    MirTransformResultKind.Invalid
+  }
+  give transform_step(
+    MirTransformKind.Validate,
+    result_kind,
+    0,
+    0,
+    validated
+  )
+}
+
+proc transform_function(function0: MirFunction) -> MirFunction {
+  give simplify_cfg(function0)
+}
+
+proc optimize_function(function0: MirFunction) -> MirFunction {
+  let simplified: MirFunction = simplify_cfg(function0)
+
+  give MirFunction {
+    id: simplified.id,
+    name: simplified.name,
+    entry_block: simplified.entry_block,
+    return_type: simplified.return_type,
+    local_count: simplified.local_count,
+    temporary_count: simplified.temporary_count,
+    blocks: simplified.blocks,
+    valid: validate_function(simplified)
+  }
+}
+
+proc transform_report_for(before: MirFunction, after: MirFunction) -> MirTransformReport {
+  let report0: MirTransformReport = transform_report(after.name)
+  let report1: MirTransformReport = append_step(report0, build_cfg_step(before, after))
+  let report2: MirTransformReport = append_step(report1, build_validate_step(after))
+  let cfg_step: MirTransformStep = report2.steps[0]
+
+  give MirTransformReport {
+    function_name: report2.function_name,
+    steps: report2.steps,
+    stats: MirTransformStats {
+      removed_blocks: cfg_step.changed_blocks,
+      removed_statements: cfg_step.changed_statements,
+      folded_constants: 0,
+      merged_blocks: 0,
+      simplified_branches: 0,
+      valid: report2.valid
+    },
+    changed: report2.changed,
+    valid: report2.valid
+  }
+}
+
+proc optimize_module(module0: MirModule) -> MirModule {
+  let functions: [MirFunction] = []
+
+  let i: u64 = 0
+
+  while i < len(module0.functions) {
+    set functions = functions + [optimize_function(module0.functions[i])]
+
+    set i = i + 1
+  }
+
+  give MirModule {
+    name: module0.name,
+    functions: functions,
+    valid: module0.valid
+  }
+}
+
+proc optimize_unit(unit: MirUnit) -> MirUnit {
+  let optimized: MirModule = optimize_module(unit.module)
+
+  give MirUnit {
+    source_path: unit.source_path,
+    module: optimized,
+    function_count: unit.function_count,
+    block_count: unit.block_count,
+    instruction_count: unit.instruction_count,
+    lowered: unit.lowered,
+    valid: optimized.valid and unit.valid
+  }
+}
+
+proc report_summary(report: MirTransformReport) -> string {
+  let step_count_text: string = len(report.steps) as string
+  let removed_blocks_text: string = report.stats.removed_blocks as string
+  let removed_statements_text: string = report.stats.removed_statements as string
+  let changed_text: string = report.changed as string
+  let valid_text: string = report.valid as string
+  let out: string = "function " + report.function_name
+  let with_steps: string = out + " steps " + step_count_text
+  let with_blocks: string = with_steps + " removed-blocks " + removed_blocks_text
+  let with_statements: string = with_blocks + " removed-statements " + removed_statements_text
+  let with_changed: string = with_statements + " changed " + changed_text
+  give with_changed + " valid " + valid_text
+}
+
+proc mir_transform_selftest() -> bool {
+  let nop_stmt: MirStatement = MirStatement {
+    id: 1,
+    span: ast_span_empty(),
+    kind: MirStatementKind.Nop,
+    place: MirPlace {
+      local: "",
+      projection: "",
+      deref_depth: 0,
+      mutable: false,
+      moved: false,
+      valid: false
+    },
+    rvalue: MirRvalue {
+      kind: MirRvalueKind.Use,
+      text: "",
+      operator: "",
+      binary_operator: MirBinaryOperator.Add,
+      unary_operator: MirUnaryOperator.Not,
+      borrow_kind: MirBorrowKind.Shared,
+      operands: [],
+      ty: "void",
+      temporary: false,
+      valid: true
+    },
+    reachable: true,
+    valid: true
+  }
+
+  let block0: MirBlock = MirBlock {
+    id: 1,
+    label: "entry",
+    predecessors: [],
+    statements: [nop_stmt],
+    terminator: mir_terminator_return(),
+    sealed: true,
+    reachable: true,
+    valid: true
+  }
+
+  let block1: MirBlock = MirBlock {
+    id: 2,
+    label: "dead",
+    predecessors: [],
+    statements: [],
+    terminator: mir_terminator_return(),
+    sealed: true,
+    reachable: false,
+    valid: true
+  }
+
+  let function0: MirFunction = MirFunction {
+    id: 1,
+    name: "main",
+    entry_block: 1,
+    return_type: "void",
+    local_count: 0,
+    temporary_count: 0,
+    blocks: [block0, block1],
+    valid: true
+  }
+
+  let optimized: MirFunction = optimize_function(function0)
+  let report: MirTransformReport = transform_report_for(function0, optimized)
+
+  give optimized.valid
+    and len(optimized.blocks) == 1
+    and len(optimized.blocks[0].statements) == 0
+    and report.changed
+    and report.stats.removed_blocks == 1
+    and report.stats.removed_statements == 1
+    and transform_kind_name(MirTransformKind.SimplifyCfg) == "simplify-cfg"
+    and transform_result_name(MirTransformResultKind.Changed) == "changed"
+    and report_summary(report) != ""
+}

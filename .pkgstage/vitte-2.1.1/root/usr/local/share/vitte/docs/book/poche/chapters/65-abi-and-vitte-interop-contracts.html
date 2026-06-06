@@ -1,0 +1,355 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>65. ABI and Vitte interop contracts (pocket version)</title>
+<link rel="icon" href="../../../svg/logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../../css/site.css">
+<link rel="stylesheet" href="../../../css/print.css" media="print">
+
+<link rel="alternate" hreflang="en" href="https://vitte-lang.org/65-abi-and-vitte-interop-contracts.html">
+<link rel="alternate" hreflang="x-default" href="https://vitte-lang.org/65-abi-and-vitte-interop-contracts.html">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; font-src 'self'; connect-src 'self';">
+</head>
+<body class="classic-doc">
+<a class="skip-link" href="#main-content">Skip to content</a>
+<div class="site-shell">
+<header class="site-header">
+<a class="site-brand" href="../../../index.html"><img class="site-brand-mark" src="../../../svg/logo.svg" alt="" width="32" height="32"><span>Vitte</span></a>
+<nav class="site-nav" aria-label="Primary">
+<ul class="nav-band"><li><a class="nav-chip" href="../../../index.html"><img src="../../../svg/home.svg" alt="" width="14" height="14" aria-hidden="true"><span>Welcome</span></a></li><li><a class="nav-chip" href="../../../doc.html"><img src="../../../svg/docs.svg" alt="" width="14" height="14" aria-hidden="true"><span>Documentation</span></a></li><li><a class="nav-chip" href="../../../download.html"><img src="../../../svg/download.svg" alt="" width="14" height="14" aria-hidden="true"><span>Download</span></a></li><li><a class="nav-chip" href="../../../source.html"><img src="../../../svg/source.svg" alt="" width="14" height="14" aria-hidden="true"><span>Source</span></a></li><li><a class="nav-chip" href="../../../community.html"><img src="../../../svg/community.svg" alt="" width="14" height="14" aria-hidden="true"><span>Community</span></a></li><li><a class="nav-chip" href="../../../news.html"><img src="../../../svg/news.svg" alt="" width="14" height="14" aria-hidden="true"><span>News</span></a></li><li><a class="nav-chip" href="../../../diagnostics.html"><img src="../../../svg/diagnostics.svg" alt="" width="14" height="14" aria-hidden="true"><span>Diagnostics</span></a></li><li><a class="nav-chip" href="../../../suggestions.html"><img src="../../../svg/suggestions.svg" alt="" width="14" height="14" aria-hidden="true"><span>Suggestions</span></a></li></ul>
+</nav>
+</header>
+<main id="main-content" class="site-main">
+<article class="doc-content">
+<p class="book-progress"></p>
+<h1>65. ABI and Vitte interop contracts (pocket version)</h1>
+<p>Level: Advanced</p>
+<p>Prerequisites: <code>docs/book/chapters/16-interop.html</code>, <code>docs/book/chapters/55-memory-safety-invariants.html</code>. See also: to be defined.</p>
+<h2>Concrete Problem</h2>
+<p>Real situation: ABI contracts and Vitte interop are best understood by replaying the program as an executable algorithm. You read the incoming data, the condition evaluated, and then the returned value. Guiding question: Which condition is evaluated first, and what output does this decision impose?</p>
+<h2>Red Thread (Single Project)</h2>
+<p>Common thread: we keep the same mini-program to compare the effects of a modification without changing the entire context. Educational objective: Reread a block, predict the output, then confirm the prediction with a simple, repeatable execution.</p>
+<h2>Goal</h2>
+<p>Stabilize the Vitte/Vitte border with explicit ABI rules.</p>
+<h2>Critical points</h2>
+<ol>
+<li>Consistent signatures between worlds.</li>
+<li>Sizes/type alignments checked.</li>
+<li>Documented calling convention.</li>
+<li>Clear management of shared memory.</li>
+</ol>
+<h2>Checklist</h2>
+<ol>
+<li>Automatic interop tests.</li>
+<li>Valid cross-platform compatibility.</li>
+<li>ABI release strategy defined.</li>
+</ol>
+<h2>Progressive examples (N1 -> N3)</h2>
+<h3>N1 (base): simple border</h3>
+<p>Snippet Vitte:</p>
+<pre><code class="language-vit">proc host_add(a:int,b:int)-&gt;int { give a+b }</code></pre>
+<p>Order:</p>
+<pre><code class="language-bash">make grammar-check</code></pre>
+<h3>N2 (intermediate): type consistency</h3>
+<p>Snippet Vitte:</p>
+<pre><code class="language-vit">proc host_add64(a:i64,b:i64)-&gt;i64 { give a+b }</code></pre>
+<p>Commands:</p>
+<pre><code class="language-bash">make grammar-test</code></pre>
+<h3>N3 (advanced): versioned + runbook compatibility</h3>
+<p>Snippet Vitte:</p>
+<pre><code class="language-vit">proc host_add_v1(a:int,b:int)-&gt;int { give a+b }
+proc host_add_v2(a:i64,b:i64)-&gt;i64 { give a+b }</code></pre>
+<p>Runbook:</p>
+<pre><code class="language-bash"># 1. verifier signatures Vitte/natif
+# 2. verifier tailles/alignements
+# 3. valider CI multi-cible
+make grammar-gate</code></pre>
+<h3>Anti-example</h3>
+<pre><code class="language-text">Changer ABI natif sans version ni plan de migration.</code></pre>
+<h2>Quick validation</h2>
+<ol>
+<li>Align signatures.</li>
+<li>Check memory layout.</li>
+<li>Check interop tests.</li>
+</ol>
+<h2>Why it matters</h2>
+<p>This section explains the practical value: reducing errors, accelerating diagnosis and stabilizing developments.</p>
+<h2>Quick check</h2>
+<p>Control question: If you change a key assumption, what outcome should change and why?</p>
+<h2>Try this</h2>
+<ol>
+<li>Run the nominal example.</li>
+<li>Introduce an error case.</li>
+<li>Check the output and document the deviation.</li>
+</ol>
+<h2>If you're stuck</h2>
+<p>Fixed: keep the simplest version that respects the rule, then add a non-regression test.</p>
+<p><!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 START --></p>
+<h2>Representative examples based on chapter code</h2>
+<p>Theme: <strong>Vitte ABI and interop rules</strong>. This section avoids generalizations and starts from a real extract.</p>
+<h3>Example A: Executable reading of the main snippet</h3>
+<pre><code class="language-vit">proc host_add(a:int,b:int)-&gt;int { give a+b }</code></pre>
+<p>Reading line by line:</p>
+<ol>
+<li><code>proc host_add(a:int,b:int)-&gt;int { give a+b }</code> -> sets a clear function rule.</li>
+</ol>
+<h3>Example B: error case variant (same intention, safe behavior)</h3>
+<p>Goal: keep the business logic while adding an explicit test.</p>
+<p>Steps:</p>
+<ol>
+<li>Identify the line that decides the exit.</li>
+<li>Add a test before this line.</li>
+<li>Check the new output on a limit input.</li>
+</ol>
+<h3>Example C: reproducible bug then local correction</h3>
+<p>Procedure:</p>
+<ol>
+<li>Introduce a type mismatch on a call.</li>
+<li>Compile and read the first diagnosis.</li>
+<li>Fix a single line (no global refactor).</li>
+<li>Recompile and check the nominal return.</li>
+</ol>
+<h3>Expected result</h3>
+<ul>
+<li>The reader understands what the code does without unnecessary abstraction.</li>
+<li>Each example is linked to a concrete action.</li>
+<li>The correction is reproducible and testable.</li>
+</ul>
+<p><!-- AUTO_REPRESENTATIVE_EXAMPLES_V1 END --></p>
+<h2>Extended Example</h2>
+<pre><code class="language-vit">// Scenario règles abi interop Vitte: execution complete et verifiable
+space demo/règles-abi-interop-vitte
+
+form AbiEnvelope { version: int payload_size: int flags: int }
+pick VitteCall { case Ok(code: int) case Err(code: int) }
+
+proc abi_version() -&gt; int { give 3 }
+
+// Validation ABI: refuse toute incompatibilité avant appel natif
+proc validate_abi(e: AbiEnvelope) -&gt; int {
+
+  if e.version != abi_version() { give 51 }
+
+  if e.payload_size &lt;= 0 { give 52 }
+
+  if e.payload_size &gt; 4096 { give 53 }
+
+  if e.flags &lt; 0 { give 54 }
+
+  give 0
+}
+
+// Appel natif simulé: exécution seulement si la règle est valide
+proc call_vitte(e: AbiEnvelope) -&gt; VitteCall {
+  let v: int = validate_abi(e)
+
+  if v != 0 { give VitteCall.Err(v) }
+
+  if e.payload_size % 2 == 0 { give VitteCall.Ok(0) }
+
+  give VitteCall.Err(55)
+}
+
+// Conversion finale vers un code de sortie
+proc to_exit(r: VitteCall) -&gt; int {
+
+  match r {
+    case Ok(c) { give c }
+    case Err(c) { give c }
+    otherwise { give 70 }
+  }
+}
+
+// Point d&#x27;entree du scenario
+entry main at core/app {
+  let e: AbiEnvelope = AbiEnvelope(3, 128, 1)
+  let r: VitteCall = call_vitte(e)
+
+  return to_exit(r)
+}</code></pre>
+<h2>Detailed explanation of the big block</h2>
+<p>Here the goal is to understand the actual path of the program, line by line, to the exit code.</p>
+<h3>1. Role of each party</h3>
+<ul>
+<li>Starting point: <code>entry main at core/app</code>.</li>
+<li><code>abi_version</code>: reads <code>aucun paramètre</code> and returns <code>int</code>.</li>
+<li><code>validate_abi</code>: reads <code>e: AbiEnvelope</code> and returns <code>int</code>.</li>
+<li><code>call_vitte</code>: reads <code>e: AbiEnvelope</code> and returns <code>VitteCall</code>.</li>
+<li><code>to_exit</code>: reads <code>r: VitteCall</code> and returns <code>int</code>.</li>
+</ul>
+<h3>2. Actual execution order</h3>
+<ol>
+<li>The program enters <code>main</code>.</li>
+<li><code>call_vitte</code> is called to process the next step.</li>
+<li><code>to_exit</code> is called to process the next step.</li>
+<li>The final value is converted to process output (<code>return ...</code>).</li>
+</ol>
+<h3>3. Tests that change the path</h3>
+<ul>
+<li>Test evaluated: <code>e.version != abi_version()</code>.</li>
+<li>Test evaluated: <code>e.payload_size &lt;= 0</code>.</li>
+<li>Test evaluated: <code>e.payload_size &gt; 4096</code>.</li>
+<li>Test evaluated: <code>e.flags &lt; 0</code>.</li>
+<li>Test evaluated: <code>v != 0</code>.</li>
+<li>Test evaluated: <code>e.payload_size % 2 == 0</code>.</li>
+<li>Selection by <code>match r</code>: the path depends on the state received.</li>
+</ul>
+<h3>4. Quick trace with values</h3>
+<ul>
+<li>Nominal example: <code>entrée valide -&gt; call_vitte -&gt; to_exit -&gt; sortie 0</code>.</li>
+<li>Example error: <code>entrée invalide -&gt; call_vitte renvoie un code d&#x27;erreur -&gt; sortie non nulle</code>.</li>
+</ul>
+<h3>5. Why this division is useful</h3>
+<ul>
+<li>You test each function on its own, then the entire flow.</li>
+<li>You know where to change a rule without breaking the entire program.</li>
+<li>You can explain the output by simply following the calls.</li>
+</ul>
+<h3>6. Quick Check</h3>
+<ol>
+<li>Retry with a normal entry and note the exit.</li>
+<li>Restart with invalid input and check the error code.</li>
+<li>Confirm that the same input always gives the same output.</li>
+</ol>
+<h2>Design Notes</h2>
+<ul>
+<li>The snippet favors explicit boundaries rather than minimalist code.</li>
+<li>Tests are placed early to reduce the cost of diagnosis.</li>
+<li>The output is projected at the end of the flow to keep the business independent of transport.</li>
+</ul>
+<p>Actual error case:</p>
+<ul>
+<li>Degraded or incomplete input: the test must cut the flow early with an explicit exit.</li>
+</ul>
+<p>To test:</p>
+<ul>
+<li>Valid ABI -> output 0.</li>
+<li>Incompatible version -> exit 51.</li>
+<li>Payload out of order -> exit 52 or 53.</li>
+</ul>
+<h3>7. Line by line (variables + values)</h3>
+<p>Convenient reading: Follow the variables in the actual order of execution, then check the observed output.</p>
+<ul>
+<li>Entry point:</li>
+<li><code>entry main at core/app</code> launches the complete scenario.</li>
+</ul>
+<ul>
+<li>Block functions:</li>
+<li><code>abi_version</code> reads <code>aucun paramètre</code> then returns <code>int</code>.</li>
+<li><code>validate_abi</code> reads <code>e: AbiEnvelope</code> then returns <code>int</code>.</li>
+<li><code>call_vitte</code> reads <code>e: AbiEnvelope</code> then returns <code>VitteCall</code>.</li>
+<li><code>to_exit</code> reads <code>r: VitteCall</code> then returns <code>int</code>.</li>
+</ul>
+<ul>
+<li>Variables created (initial value):</li>
+<li><code>v: int</code> starts with <code>validate_abi(e)</code>.</li>
+<li><code>e: AbiEnvelope</code> starts with <code>AbiEnvelope(3, 128, 1)</code>.</li>
+<li><code>r: VitteCall</code> starts with <code>call_vitte(e)</code>.</li>
+</ul>
+<ul>
+<li>Conditions that change the path:</li>
+<li>if <code>e.version != abi_version()</code> is true: early exit or dedicated branch; otherwise: the flow continues.</li>
+<li>if <code>e.payload_size &lt;= 0</code> is true: early exit or dedicated branch; otherwise: the flow continues.</li>
+<li>if <code>e.payload_size &gt; 4096</code> is true: early exit or dedicated branch; otherwise: the flow continues.</li>
+<li>if <code>e.flags &lt; 0</code> is true: early exit or dedicated branch; otherwise: the flow continues.</li>
+<li>if <code>v != 0</code> is true: early exit or dedicated branch; otherwise: the flow continues.</li>
+<li>if <code>e.payload_size % 2 == 0</code> is true: early exit or dedicated branch; otherwise: the flow continues.</li>
+</ul>
+<ul>
+<li>Nominal trace (example values):</li>
+<li>initialization: v=validate_abi(e) -> e=AbiEnvelope(3, 128, 1) -> r=call_vitte(e)</li>
+<li>sequence: call_vitte -> to_exit</li>
+<li>final output on this path: <code>to_exit(r)</code>.</li>
+</ul>
+<ul>
+<li>Error trace (example values):</li>
+<li>if <code>e.version != abi_version()</code> becomes true, the function returns <code>51</code>.</li>
+</ul>
+<ul>
+<li>Quick check:</li>
+<li>restart with normal input and note the output,</li>
+<li>restart with an invalid entry and note the error code,</li>
+<li>confirm that the same input always produces the same output.</li>
+</ul>
+<h2>Trade-offs</h2>
+<table border="1" cellpadding="6" cellspacing="0">
+<tr><th>Constraint</th><th>Option A</th><th>Option B</th><th>Recommended decision</th></tr>
+<tr><td>Priority readability</td><td>Explicit branches</td><td>Compact code</td><td>If the team maintains the code for a long time</td></tr>
+<tr><td>Critical performance</td><td>Targeted specialization</td><td>Generalization</td><td>A if profiling confirms the gain</td></tr>
+<tr><td>Rapid evolution</td><td>Strict contracts</td><td>Implicit conventions</td><td>A to reduce regressions</td></tr>
+</table>
+<h2>Decision According to Constraint</h2>
+<ul>
+<li>If the dominant constraint is safety: validate early, fail explicitly.</li>
+<li>If the dominant constraint is latency: measure first, optimize later.</li>
+<li>If the dominant constraint is scalability: isolate orchestration, decisions and output conversion.</li>
+</ul>
+<h2>Rapid Diagnosis</h2>
+<table border="1" cellpadding="6" cellspacing="0">
+<tr><th>Symptom</th><th>Probable cause</th><th>Verification</th><th>Correction</th></tr>
+<tr><td>Unexpected exit</td><td>Test missing or poorly ordered</td><td>Replay with error case</td><td>Reassemble the test before the sensitive area</td></tr>
+<tr><td>Branch not taken</td><td>Condition too broad/too strict</td><td>Trace the effective entry</td><td>Make the condition explicit and tested</td></tr>
+<tr><td>Silent regression</td><td>Implicit rule</td><td>Compare nominal vs. limit</td><td>Formalize the rule in code</td></tr>
+</table>
+<h2>Checkpoint</h2>
+<p>At this point you should know:</p>
+<ul>
+<li>explain the input -> decision -> output flow without ambiguity,</li>
+<li>isolate a real error case and predict its exit,</li>
+<li>identify where to add a test without breaking the nominal.</li>
+</ul>
+<h2>Why This Error Happens In Prod</h2>
+<p>Common cause: partially valid input, implicit assumption in a branch, then projecting output too late. Symptom: correct behavior in nominal but unstable under load or incomplete data. Useful action: trace the actual input, replay the error case, lock the test at the correct level.</p>
+<h2>What I would do in code review</h2>
+<ol>
+<li>Verify that input tests are placed before sensitive operations.</li>
+<li>Verify that the business decision is separated from the output projection.</li>
+<li>Verify a nominal test and a limit test that are actually executable.</li>
+</ol>
+</article>
+</main>
+<footer class="site-footer">
+<p class="site-footer-path">book/poche/chapters/65-abi-and-vitte-interop-contracts.html</p>
+<p><a href="../../../index.html">Back to home</a></p>
+</footer>
+</div>
+<script type="module" src="../../../js/book-learning.js"></script>
+<script type="module" src="../../../js/main.js"></script>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,554 @@
+space vitte/compiler/tests/typeck_tests
+
+use vitte/compiler/analysis/typeck/checker.{ run_typeck_hir }
+use vitte/compiler/analysis/typeck/errors.{ ExprTypeResult, TypeckResult }
+use vitte/compiler/analysis/typeck/infer.{ infer_call_type, type_binding }
+use vitte/compiler/diagnostics/diagnostic.{ Diagnostic, DiagnosticPhase, DiagnosticSeverity, SourceSpan }
+use vitte/compiler/analysis/sema.{ SemaResult, run_sema_hir }
+use vitte/compiler/frontend/pipeline.{ FrontendOutput, frontend_run }
+use vitte/compiler/frontend/ast/node.{ ast_span }
+use vitte/compiler/middle/hir/hir.{ HirExpr, HirExprKind, HirPlaceCategory, HirValueMode, hir_expr }
+use vitte/compiler/middle/hir/lower_ast.{ lower_ast_to_hir }
+
+const VERSION_TEXT: string = "analysis typeck tests 0.2.0"
+const BANNER_TEXT: string = "analysis typeck tests"
+
+proc has_code(result: TypeckResult, code: string) -> bool {
+  let i: u64 = 0;
+  while i < len(result.diagnostics) {
+    if result.diagnostics[i].code == code {
+      give true;
+    }
+    set i = i + 1;
+  }
+  give false;
+}
+
+proc diagnostic_by_code(result: TypeckResult, code: string) -> Diagnostic {
+  let i: u64 = 0;
+  while i < len(result.diagnostics) {
+    if result.diagnostics[i].code == code {
+      give result.diagnostics[i];
+    }
+    set i = i + 1;
+  }
+  give Diagnostic {
+    code: "",
+    phase: DiagnosticPhase.Unknown,
+    severity: DiagnosticSeverity.Error,
+    rule: "",
+    message: "",
+    explanation: "",
+    technical_note: "",
+    labels: [],
+    notes: [],
+    helps: [],
+    suggestions: [],
+    documentation_url: "",
+    root_cause: "",
+    cause_chain: [],
+    pipeline_context: [],
+    related_errors: [],
+    probable_fix: "",
+    subject_symbol: "",
+    subject_type: "",
+    subject_borrow: "",
+    span: SourceSpan { file: "", start_line: 0, start_column: 0, end_line: 0, end_column: 0, length: 0, valid: false },
+    deprecated: false,
+    unnecessary: false,
+    fatal: false,
+    valid: false
+  };
+}
+
+proc expr_diagnostic_by_code(result: ExprTypeResult, code: string) -> Diagnostic {
+  let i: u64 = 0;
+  while i < len(result.diagnostics) {
+    if result.diagnostics[i].code == code {
+      give result.diagnostics[i];
+    }
+    set i = i + 1;
+  }
+  give Diagnostic {
+    code: "",
+    phase: DiagnosticPhase.Unknown,
+    severity: DiagnosticSeverity.Error,
+    rule: "",
+    message: "",
+    explanation: "",
+    technical_note: "",
+    labels: [],
+    notes: [],
+    helps: [],
+    suggestions: [],
+    documentation_url: "",
+    root_cause: "",
+    cause_chain: [],
+    pipeline_context: [],
+    related_errors: [],
+    probable_fix: "",
+    subject_symbol: "",
+    subject_type: "",
+    subject_borrow: "",
+    span: SourceSpan { file: "", start_line: 0, start_column: 0, end_line: 0, end_column: 0, length: 0, valid: false },
+    deprecated: false,
+    unnecessary: false,
+    fatal: false,
+    valid: false
+  };
+}
+
+proc expr_name(id: u64, text: string) -> HirExpr {
+  give hir_expr(
+    id,
+    ast_span("typeck_call_manual.vit", 1, 1, 1, 1),
+    HirExprKind.Name,
+    text,
+    text,
+    "",
+    text,
+    0,
+    "",
+    false,
+    HirValueMode.Value,
+    "unknown",
+    HirPlaceCategory.Value,
+    false,
+    false,
+    false,
+    false,
+    [],
+    [],
+    true
+  );
+}
+
+proc expr_int(id: u64, text: string) -> HirExpr {
+  give hir_expr(
+    id,
+    ast_span("typeck_call_manual.vit", 1, 1, 1, 1),
+    HirExprKind.Int,
+    text,
+    "",
+    "",
+    "",
+    0,
+    "",
+    false,
+    HirValueMode.Value,
+    "unknown",
+    HirPlaceCategory.Value,
+    true,
+    true,
+    false,
+    false,
+    [],
+    [],
+    true
+  );
+}
+
+proc expr_bool(id: u64, text: string) -> HirExpr {
+  give hir_expr(
+    id,
+    ast_span("typeck_call_manual.vit", 1, 1, 1, 1),
+    HirExprKind.Bool,
+    text,
+    "",
+    "",
+    "",
+    0,
+    "",
+    false,
+    HirValueMode.Value,
+    "unknown",
+    HirPlaceCategory.Value,
+    true,
+    true,
+    false,
+    false,
+    [],
+    [],
+    true
+  );
+}
+
+proc expr_string(id: u64, text: string) -> HirExpr {
+  give hir_expr(
+    id,
+    ast_span("typeck_call_manual.vit", 1, 1, 1, 1),
+    HirExprKind.String,
+    text,
+    "",
+    "",
+    "",
+    0,
+    "",
+    false,
+    HirValueMode.Value,
+    "unknown",
+    HirPlaceCategory.Value,
+    true,
+    true,
+    false,
+    false,
+    [],
+    [],
+    true
+  );
+}
+
+proc test_valid_numeric_flow() -> bool {
+  let source: string = "proc main() { let x = 1; set x = x + 1; give x; }\n";
+  let fe: FrontendOutput = frontend_run("typeck_valid_numeric.vit", source);
+  let hir = lower_ast_to_hir(fe);
+  let result: TypeckResult = run_typeck_hir(hir);
+  give fe.valid and result.valid and len(result.diagnostics) == 0;
+}
+
+proc test_assign_mismatch() -> bool {
+  let source: string = "proc main() { let x = 1; set x = \"oops\"; give x; }\n";
+  let fe: FrontendOutput = frontend_run("typeck_assign_mismatch.vit", source);
+  let hir = lower_ast_to_hir(fe);
+  let result: TypeckResult = run_typeck_hir(hir);
+  give has_code(result, "TYPECK_E_ASSIGN_MISMATCH");
+}
+
+proc test_assign_mismatch_carries_rich_diagnostic_context() -> bool {
+  let source: string = "proc main() { let x = 1; set x = \"oops\"; give x; }\n";
+  let fe: FrontendOutput = frontend_run("typeck_assign_mismatch_rich.vit", source);
+  let hir = lower_ast_to_hir(fe);
+  let result: TypeckResult = run_typeck_hir(hir);
+  if len(result.diagnostics) == 0 {
+    give false;
+  }
+  let diag = result.diagnostics[0];
+  give diag.code == "TYPECK_E_ASSIGN_MISMATCH"
+    and diag.rule == "assignment type compatibility"
+    and find(diag.explanation, "expects `int`") >= 0
+    and find(diag.explanation, "produces `string`") >= 0
+    and diag.documentation_url == "docs://language/type-system/assignment-compatibility"
+    and diag.root_cause == "assignment target type and expression type are incompatible"
+    and len(diag.cause_chain) >= 2
+    and len(diag.pipeline_context) >= 2
+    and diag.subject_symbol == "x"
+    and diag.subject_type == "int"
+    and find(diag.probable_fix, "`int`") >= 0;
+}
+
+proc test_binary_mismatch() -> bool {
+  let source: string = "proc main() { let x = 1 + \"oops\"; give x; }\n";
+  let fe: FrontendOutput = frontend_run("typeck_binary_mismatch.vit", source);
+  let hir = lower_ast_to_hir(fe);
+  let result: TypeckResult = run_typeck_hir(hir);
+  give has_code(result, "TYPECK_E_BINARY_MISMATCH");
+}
+
+proc test_binary_mismatch_carries_expected_found_context() -> bool {
+  let source: string = "proc main() { let x = 1 + \"oops\"; give x; }\n";
+  let fe: FrontendOutput = frontend_run("typeck_binary_mismatch_rich.vit", source);
+  let hir = lower_ast_to_hir(fe);
+  let result: TypeckResult = run_typeck_hir(hir);
+  let diag = diagnostic_by_code(result, "TYPECK_E_BINARY_MISMATCH");
+  give diag.valid
+    and diag.rule == "binary operator operand compatibility"
+    and find(diag.explanation, "expected `int`") >= 0
+    and find(diag.explanation, "got `string`") >= 0
+    and len(diag.cause_chain) >= 2
+    and find(diag.probable_fix, "operator") >= 0;
+}
+
+proc test_invalid_deref() -> bool {
+  let source: string = "proc main() { let x = 1; let y = *x; give y; }\n";
+  let fe: FrontendOutput = frontend_run("typeck_invalid_deref.vit", source);
+  let hir = lower_ast_to_hir(fe);
+  let result: TypeckResult = run_typeck_hir(hir);
+  give has_code(result, "TYPECK_E_INVALID_DEREF");
+}
+
+proc test_condition_type_carries_rule_and_fix() -> bool {
+  let source: string = "proc main() { if \"oops\" { give 1; } give 0; }\n";
+  let fe: FrontendOutput = frontend_run("typeck_condition_type_rich.vit", source);
+  let hir = lower_ast_to_hir(fe);
+  let result: TypeckResult = run_typeck_hir(hir);
+  let diag = diagnostic_by_code(result, "TYPECK_E_CONDITION_TYPE");
+  give diag.valid
+    and diag.rule == "condition truthiness"
+    and find(diag.explanation, "expected `truthy`") >= 0
+    and find(diag.explanation, "got `string`") >= 0
+    and find(diag.probable_fix, "`bool`") >= 0;
+}
+
+proc test_invalid_call_target_carries_callable_rule() -> bool {
+  let source: string = "proc main() { let x = 1; let y = x(); give y; }\n";
+  let fe: FrontendOutput = frontend_run("typeck_invalid_call_target.vit", source);
+  let hir = lower_ast_to_hir(fe);
+  let result: TypeckResult = run_typeck_hir(hir);
+  let diag = diagnostic_by_code(result, "TYPECK_E_INVALID_CALL_TARGET");
+  give diag.valid
+    and diag.rule == "call target must be callable"
+    and len(diag.cause_chain) >= 2
+    and find(diag.probable_fix, "call syntax") >= 0;
+}
+
+proc test_call_arity_carries_signature_context() -> bool {
+  let env = [type_binding("f", "fn(int) -> int")];
+  let call_expr: HirExpr = hir_expr(
+    10,
+    ast_span("typeck_call_arity.vit", 1, 1, 1, 10),
+    HirExprKind.Call,
+    "f(1, 2)",
+    "",
+    "",
+    "",
+    0,
+    "",
+    false,
+    HirValueMode.Value,
+    "unknown",
+    HirPlaceCategory.Value,
+    false,
+    false,
+    false,
+    false,
+    [],
+    [expr_name(1, "f"), expr_int(2, "1"), expr_int(3, "2")],
+    true
+  );
+  let result: ExprTypeResult = infer_call_type(env, call_expr);
+  let diag = expr_diagnostic_by_code(result, "TYPECK_E_CALL_ARITY");
+  give diag.valid
+    and diag.rule == "function call arity"
+    and find(diag.explanation, "expects 1 argument") >= 0
+    and find(diag.explanation, "provides 2") >= 0
+    and find(diag.probable_fix, "matches the declared signature") >= 0;
+}
+
+proc test_argument_mismatch_carries_expected_found_context() -> bool {
+  let env = [type_binding("f", "fn(int, bool) -> int")];
+  let call_expr: HirExpr = hir_expr(
+    11,
+    ast_span("typeck_argument_mismatch.vit", 1, 1, 1, 14),
+    HirExprKind.Call,
+    "f(1, \"oops\")",
+    "",
+    "",
+    "",
+    0,
+    "",
+    false,
+    HirValueMode.Value,
+    "unknown",
+    HirPlaceCategory.Value,
+    false,
+    false,
+    false,
+    false,
+    [],
+    [expr_name(1, "f"), expr_int(2, "1"), expr_string(3, "\"oops\"")],
+    true
+  );
+  let result: ExprTypeResult = infer_call_type(env, call_expr);
+  let diag = expr_diagnostic_by_code(result, "TYPECK_E_ARGUMENT_MISMATCH");
+  give diag.valid
+    and diag.rule == "function argument compatibility"
+    and find(diag.explanation, "expects `bool`") >= 0
+    and find(diag.explanation, "passes `string`") >= 0
+    and len(diag.cause_chain) >= 2
+    and find(diag.probable_fix, "widen the callee signature") >= 0;
+}
+
+proc test_typed_call_returns_signature_result_type() -> bool {
+  let env = [type_binding("f", "fn(int, bool) -> string")];
+  let call_expr: HirExpr = hir_expr(
+    12,
+    ast_span("typeck_call_result.vit", 1, 1, 1, 11),
+    HirExprKind.Call,
+    "f(1, true)",
+    "",
+    "",
+    "",
+    0,
+    "",
+    false,
+    HirValueMode.Value,
+    "unknown",
+    HirPlaceCategory.Value,
+    false,
+    false,
+    false,
+    false,
+    [],
+    [expr_name(1, "f"), expr_int(2, "1"), expr_bool(3, "true")],
+    true
+  );
+  let result: ExprTypeResult = infer_call_type(env, call_expr);
+  give result.valid and result.ty == "string" and len(result.diagnostics) == 0;
+}
+
+proc test_if_branch_mismatch_carries_unification_rule() -> bool {
+  let source: string = "proc main() { let x = if true { 1 } else { \"oops\" }; give x; }\n";
+  let fe: FrontendOutput = frontend_run("typeck_if_branch_mismatch.vit", source);
+  let hir = lower_ast_to_hir(fe);
+  let result: TypeckResult = run_typeck_hir(hir);
+  let diag = diagnostic_by_code(result, "TYPECK_E_IF_BRANCH_MISMATCH");
+  give diag.valid
+    and diag.rule == "if expression branch unification"
+    and find(diag.explanation, "expected `int`") >= 0
+    and find(diag.explanation, "got `string`") >= 0
+    and find(diag.probable_fix, "branches") >= 0;
+}
+
+proc test_invalid_index_target_carries_container_rule() -> bool {
+  let source: string = "proc main() { let x = 1[0]; give x; }\n";
+  let fe: FrontendOutput = frontend_run("typeck_invalid_index_target.vit", source);
+  let hir = lower_ast_to_hir(fe);
+  let result: TypeckResult = run_typeck_hir(hir);
+  let diag = diagnostic_by_code(result, "TYPECK_E_INVALID_INDEX_TARGET");
+  give diag.valid
+    and diag.rule == "index target capability"
+    and find(diag.explanation, "expected `indexable container`") >= 0
+    and find(diag.explanation, "got `int`") >= 0
+    and find(diag.probable_fix, "indexable") >= 0;
+}
+
+proc test_compare_mismatch_carries_operand_rule() -> bool {
+  let source: string = "proc main() { let x = 1 == \"oops\"; give x; }\n";
+  let fe: FrontendOutput = frontend_run("typeck_compare_mismatch.vit", source);
+  let hir = lower_ast_to_hir(fe);
+  let result: TypeckResult = run_typeck_hir(hir);
+  let diag = diagnostic_by_code(result, "TYPECK_E_COMPARE_MISMATCH");
+  give diag.valid
+    and diag.rule == "comparison operand compatibility"
+    and find(diag.explanation, "expected `int`") >= 0
+    and find(diag.explanation, "got `string`") >= 0
+    and find(diag.probable_fix, "compare") >= 0;
+}
+
+proc test_invalid_cast_carries_cast_rule() -> bool {
+  let source: string = "proc main() { let x = \"oops\" as int; give x; }\n";
+  let fe: FrontendOutput = frontend_run("typeck_invalid_cast.vit", source);
+  let hir = lower_ast_to_hir(fe);
+  let result: TypeckResult = run_typeck_hir(hir);
+  let diag = diagnostic_by_code(result, "TYPECK_E_INVALID_CAST");
+  give diag.valid
+    and diag.rule == "explicit cast validity"
+    and find(diag.explanation, "expected `int`") >= 0
+    and find(diag.explanation, "got `string`") >= 0
+    and find(diag.probable_fix, "conversion") >= 0;
+}
+
+proc test_match_non_exhaustive_requires_fallback_arm() -> bool {
+  let source: string = "proc main() { match value { 1 => { give 1; } } }\n";
+  let fe: FrontendOutput = frontend_run("typeck_match_non_exhaustive.vit", source);
+  let hir = lower_ast_to_hir(fe);
+  let result: TypeckResult = run_typeck_hir(hir);
+  let diag = diagnostic_by_code(result, "TYPECK_E_MATCH_NON_EXHAUSTIVE");
+  give diag.valid
+    and diag.rule == "pattern coverage completeness"
+    and find(diag.probable_fix, "fallback") >= 0;
+}
+
+proc test_match_with_fallback_arm_is_not_reported_non_exhaustive() -> bool {
+  let source: string = "proc main() { match value { 1 => { give 1; } else => { give 0; } } }\n";
+  let fe: FrontendOutput = frontend_run("typeck_match_exhaustive.vit", source);
+  let hir = lower_ast_to_hir(fe);
+  let result: TypeckResult = run_typeck_hir(hir);
+  give has_code(result, "TYPECK_E_MATCH_NON_EXHAUSTIVE") == false;
+}
+
+proc test_reference_assignment_mismatch() -> bool {
+  let source: string = "proc main() { let x = 1; let r = &x; set r = 1; give r; }\n";
+  let fe: FrontendOutput = frontend_run("typeck_ref_assign_mismatch.vit", source);
+  let hir = lower_ast_to_hir(fe);
+  let sema: SemaResult = run_sema_hir(hir);
+  let result: TypeckResult = run_typeck_hir(sema.hir);
+  give has_code(result, "TYPECK_E_ASSIGN_MISMATCH");
+}
+
+proc test_typeck_annotates_hir_expr_type_and_copyable() -> bool {
+  let source: string = "proc main() { let x = 1; let r = &x; give r; }\n";
+  let fe: FrontendOutput = frontend_run("typeck_hir_annotation.vit", source);
+  let hir = lower_ast_to_hir(fe);
+  let sema: SemaResult = run_sema_hir(hir);
+  let result: TypeckResult = run_typeck_hir(sema.hir);
+  let binding_expr = result.hir.module.items[0].stmts[1].expr;
+  let return_expr = result.hir.module.items[0].stmts[2].expr;
+  give has_code(result, "TYPECK_E_ASSIGN_MISMATCH") == false and binding_expr.inferred_type == "&int" and binding_expr.copyable and return_expr.inferred_type == "&int" and return_expr.copyable;
+}
+
+proc run_all_tests() -> int {
+  let failures: int = 0;
+  if not test_valid_numeric_flow() {
+    set failures = failures + 1;
+  }
+  if not test_assign_mismatch() {
+    set failures = failures + 1;
+  }
+  if not test_assign_mismatch_carries_rich_diagnostic_context() {
+    set failures = failures + 1;
+  }
+  if not test_binary_mismatch() {
+    set failures = failures + 1;
+  }
+  if not test_binary_mismatch_carries_expected_found_context() {
+    set failures = failures + 1;
+  }
+  if not test_invalid_deref() {
+    set failures = failures + 1;
+  }
+  if not test_condition_type_carries_rule_and_fix() {
+    set failures = failures + 1;
+  }
+  if not test_invalid_call_target_carries_callable_rule() {
+    set failures = failures + 1;
+  }
+  if not test_call_arity_carries_signature_context() {
+    set failures = failures + 1;
+  }
+  if not test_argument_mismatch_carries_expected_found_context() {
+    set failures = failures + 1;
+  }
+  if not test_typed_call_returns_signature_result_type() {
+    set failures = failures + 1;
+  }
+  if not test_if_branch_mismatch_carries_unification_rule() {
+    set failures = failures + 1;
+  }
+  if not test_invalid_index_target_carries_container_rule() {
+    set failures = failures + 1;
+  }
+  if not test_compare_mismatch_carries_operand_rule() {
+    set failures = failures + 1;
+  }
+  if not test_invalid_cast_carries_cast_rule() {
+    set failures = failures + 1;
+  }
+  if not test_match_non_exhaustive_requires_fallback_arm() {
+    set failures = failures + 1;
+  }
+  if not test_match_with_fallback_arm_is_not_reported_non_exhaustive() {
+    set failures = failures + 1;
+  }
+  if not test_reference_assignment_mismatch() {
+    set failures = failures + 1;
+  }
+  if not test_typeck_annotates_hir_expr_type_and_copyable() {
+    set failures = failures + 1;
+  }
+  give failures;
+}
+
+proc version_text() -> string {
+  give VERSION_TEXT
+}
+
+proc banner_text() -> string {
+  give BANNER_TEXT
+}
+
+proc main(args: list[string]) -> int {
+  give run_all_tests()
+}
+
+export *

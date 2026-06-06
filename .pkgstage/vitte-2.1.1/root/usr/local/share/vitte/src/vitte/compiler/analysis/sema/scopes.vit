@@ -1,0 +1,500 @@
+space vitte/compiler/analysis/sema
+
+pick SemaSymbolKind {
+    Item
+    Function
+    Type
+    Form
+    Pick
+    Const
+    Global
+    Module
+    Imported
+    Local
+    Parameter
+    Field
+    Variant
+    Builtin
+    External
+    Unknown
+}
+
+pick SemaVisibility {
+    Private
+    Public
+    Package
+    Internal
+    External
+}
+
+pick SemaSymbolState {
+    Declared
+    Defined
+    Imported
+    Shadowed
+    Unresolved
+    Invalid
+}
+
+form SemaSymbol {
+    id: u64
+    name: string
+    qualified_name: string
+    kind: SemaSymbolKind
+    state: SemaSymbolState
+    scope_depth: u64
+    mutable: bool
+    visibility: string
+    visibility_kind: SemaVisibility
+    module_path: string
+    ty: string
+    line: u64
+    column: u64
+    valid: bool
+}
+
+form SemaSymbolTable {
+    symbols: [SemaSymbol]
+    next_id: u64
+    scope_depth: u64
+    module_path: string
+}
+
+proc sema_visibility_name(visibility: SemaVisibility) -> string {
+    if visibility == SemaVisibility.Public {
+        give "public";
+    }
+
+    if visibility == SemaVisibility.Package {
+        give "package";
+    }
+
+    if visibility == SemaVisibility.Internal {
+        give "internal";
+    }
+
+    if visibility == SemaVisibility.External {
+        give "external";
+    }
+
+    give "private";
+}
+
+proc sema_visibility_from_text(text: string) -> SemaVisibility {
+    if text == "pub" or text == "public" {
+        give SemaVisibility.Public;
+    }
+
+    if text == "package" {
+        give SemaVisibility.Package;
+    }
+
+    if text == "internal" {
+        give SemaVisibility.Internal;
+    }
+
+    if text == "external" {
+        give SemaVisibility.External;
+    }
+
+    give SemaVisibility.Private;
+}
+
+proc sema_symbol(id: u64, name: string, kind: SemaSymbolKind, scope_depth: u64, mutable: bool, visibility: string, line: u64) -> SemaSymbol {
+    let visibility_kind: SemaVisibility = sema_visibility_from_text(visibility);
+
+    give SemaSymbol {
+        id: id,
+        name: name,
+        qualified_name: name,
+        kind: kind,
+        state: SemaSymbolState.Declared,
+        scope_depth: scope_depth,
+        mutable: mutable,
+        visibility: visibility,
+        visibility_kind: visibility_kind,
+        module_path: "",
+        ty: "",
+        line: line,
+        column: 0,
+        valid: id > 0 and name != ""
+    };
+}
+
+proc sema_symbol_full(id: u64, name: string, qualified_name: string, kind: SemaSymbolKind, state: SemaSymbolState, scope_depth: u64, mutable: bool, visibility: SemaVisibility, module_path: string, ty: string, line: u64, column: u64) -> SemaSymbol {
+    give SemaSymbol {
+        id: id,
+        name: name,
+        qualified_name: qualified_name,
+        kind: kind,
+        state: state,
+        scope_depth: scope_depth,
+        mutable: mutable,
+        visibility: sema_visibility_name(visibility),
+        visibility_kind: visibility,
+        module_path: module_path,
+        ty: ty,
+        line: line,
+        column: column,
+        valid: id > 0 and name != ""
+    };
+}
+
+proc sema_invalid_symbol() -> SemaSymbol {
+    give SemaSymbol {
+        id: 0,
+        name: "",
+        qualified_name: "",
+        kind: SemaSymbolKind.Unknown,
+        state: SemaSymbolState.Invalid,
+        scope_depth: 0,
+        mutable: false,
+        visibility: "",
+        visibility_kind: SemaVisibility.Private,
+        module_path: "",
+        ty: "",
+        line: 0,
+        column: 0,
+        valid: false
+    };
+}
+
+proc sema_symbol_table(module_path: string) -> SemaSymbolTable {
+    give SemaSymbolTable {
+        symbols: [],
+        next_id: 1,
+        scope_depth: 0,
+        module_path: module_path
+    };
+}
+
+proc symbol_index(symbols: [SemaSymbol], name: string) -> int {
+    let i: int = 0;
+
+    while i < len(symbols) {
+        if symbols[i].name == name {
+            give i;
+        }
+
+        set i = i + 1;
+    }
+
+    give -1;
+}
+
+proc symbol_index_in_scope(symbols: [SemaSymbol], name: string, scope_depth: u64) -> int {
+    let i: int = 0;
+
+    while i < len(symbols) {
+        if symbols[i].name == name and symbols[i].scope_depth == scope_depth {
+            give i;
+        }
+
+        set i = i + 1;
+    }
+
+    give -1;
+}
+
+proc symbol_index_qualified(symbols: [SemaSymbol], qualified_name: string) -> int {
+    let i: int = 0;
+
+    while i < len(symbols) {
+        if symbols[i].qualified_name == qualified_name {
+            give i;
+        }
+
+        set i = i + 1;
+    }
+
+    give -1;
+}
+
+proc symbol_visible(symbols: [SemaSymbol], name: string) -> bool {
+    give symbol_index(symbols, name) >= 0;
+}
+
+proc symbol_is_public(symbol: SemaSymbol) -> bool {
+    give symbol.visibility_kind == SemaVisibility.Public
+        or symbol.visibility_kind == SemaVisibility.External;
+}
+
+proc symbol_is_local(symbol: SemaSymbol) -> bool {
+    give symbol.kind == SemaSymbolKind.Local
+        or symbol.kind == SemaSymbolKind.Parameter;
+}
+
+proc symbol_is_type_level(symbol: SemaSymbol) -> bool {
+    give symbol.kind == SemaSymbolKind.Type
+        or symbol.kind == SemaSymbolKind.Form
+        or symbol.kind == SemaSymbolKind.Pick;
+}
+
+proc symbol_is_value_level(symbol: SemaSymbol) -> bool {
+    give symbol.kind == SemaSymbolKind.Function
+        or symbol.kind == SemaSymbolKind.Const
+        or symbol.kind == SemaSymbolKind.Global
+        or symbol.kind == SemaSymbolKind.Local
+        or symbol.kind == SemaSymbolKind.Parameter
+        or symbol.kind == SemaSymbolKind.Builtin
+        or symbol.kind == SemaSymbolKind.External;
+}
+
+proc symbol_find_visible(symbols: [SemaSymbol], name: string, scope_depth: u64) -> SemaSymbol {
+    let i: int = len(symbols) as int - 1;
+
+    while i >= 0 {
+        let symbol: SemaSymbol = symbols[i as u64];
+
+        let local_visible: bool = !symbol_is_local(symbol) or symbol.scope_depth <= scope_depth;
+        if symbol.name == name and symbol.valid and symbol.state != SemaSymbolState.Invalid and local_visible {
+            give symbol;
+        }
+
+        set i = i - 1;
+    }
+
+    give sema_invalid_symbol();
+}
+
+proc symbol_find_qualified(symbols: [SemaSymbol], qualified_name: string) -> SemaSymbol {
+    let index: int = symbol_index_qualified(symbols, qualified_name);
+
+    if index < 0 {
+        give sema_invalid_symbol();
+    }
+
+    give symbols[index as u64];
+}
+
+proc symbol_kind_name(kind: SemaSymbolKind) -> string {
+    if kind == SemaSymbolKind.Item {
+        give "item";
+    }
+
+    if kind == SemaSymbolKind.Function {
+        give "function";
+    }
+
+    if kind == SemaSymbolKind.Type {
+        give "type";
+    }
+
+    if kind == SemaSymbolKind.Form {
+        give "form";
+    }
+
+    if kind == SemaSymbolKind.Pick {
+        give "pick";
+    }
+
+    if kind == SemaSymbolKind.Const {
+        give "const";
+    }
+
+    if kind == SemaSymbolKind.Global {
+        give "global";
+    }
+
+    if kind == SemaSymbolKind.Module {
+        give "module";
+    }
+
+    if kind == SemaSymbolKind.Imported {
+        give "import";
+    }
+
+    if kind == SemaSymbolKind.Local {
+        give "local";
+    }
+
+    if kind == SemaSymbolKind.Parameter {
+        give "parameter";
+    }
+
+    if kind == SemaSymbolKind.Field {
+        give "field";
+    }
+
+    if kind == SemaSymbolKind.Variant {
+        give "variant";
+    }
+
+    if kind == SemaSymbolKind.Builtin {
+        give "builtin";
+    }
+
+    if kind == SemaSymbolKind.External {
+        give "external";
+    }
+
+    give "unknown";
+}
+
+proc symbol_state_name(state: SemaSymbolState) -> string {
+    if state == SemaSymbolState.Declared {
+        give "declared";
+    }
+
+    if state == SemaSymbolState.Defined {
+        give "defined";
+    }
+
+    if state == SemaSymbolState.Imported {
+        give "imported";
+    }
+
+    if state == SemaSymbolState.Shadowed {
+        give "shadowed";
+    }
+
+    if state == SemaSymbolState.Unresolved {
+        give "unresolved";
+    }
+
+    give "invalid";
+}
+
+proc symbol_qualified_name(module_path: string, name: string) -> string {
+    if module_path == "" {
+        give name;
+    }
+
+    if name == "" {
+        give module_path;
+    }
+
+    give module_path + "::" + name;
+}
+
+proc symbol_table_enter_scope(table: SemaSymbolTable) -> SemaSymbolTable {
+    set table.scope_depth = table.scope_depth + 1;
+    give table;
+}
+
+proc symbol_table_leave_scope(table: SemaSymbolTable) -> SemaSymbolTable {
+    let out: [SemaSymbol] = [];
+    let i: u64 = 0;
+
+    while i < len(table.symbols) {
+        if table.symbols[i].scope_depth < table.scope_depth {
+            set out = out + [table.symbols[i]];
+        }
+
+        set i = i + 1;
+    }
+
+    set table.symbols = out;
+
+    if table.scope_depth > 0 {
+        set table.scope_depth = table.scope_depth - 1;
+    }
+
+    give table;
+}
+
+proc symbol_table_insert(table: SemaSymbolTable, name: string, kind: SemaSymbolKind, mutable: bool, visibility: SemaVisibility, ty: string, line: u64, column: u64) -> SemaSymbolTable {
+    let qualified: string = symbol_qualified_name(table.module_path, name);
+    let symbol: SemaSymbol = sema_symbol_full(table.next_id, name, qualified, kind, SemaSymbolState.Declared, table.scope_depth, mutable, visibility, table.module_path, ty, line, column);
+
+    set table.symbols = table.symbols + [symbol];
+    set table.next_id = table.next_id + 1;
+
+    give table;
+}
+
+proc symbol_table_define(table: SemaSymbolTable, name: string) -> SemaSymbolTable {
+    let index: int = symbol_index_in_scope(table.symbols, name, table.scope_depth);
+
+    if index < 0 {
+        give table;
+    }
+
+    set table.symbols[index as u64].state = SemaSymbolState.Defined;
+
+    give table;
+}
+
+proc symbol_table_import(table: SemaSymbolTable, name: string, module_path: string, ty: string, line: u64) -> SemaSymbolTable {
+    let qualified: string = symbol_qualified_name(module_path, name);
+    let symbol: SemaSymbol = sema_symbol_full(table.next_id, name, qualified, SemaSymbolKind.Imported, SemaSymbolState.Imported, 0, false, SemaVisibility.Public, module_path, ty, line, 0);
+
+    set table.symbols = table.symbols + [symbol];
+    set table.next_id = table.next_id + 1;
+
+    give table;
+}
+
+proc symbol_table_add_builtin(table: SemaSymbolTable, name: string, ty: string) -> SemaSymbolTable {
+    let symbol: SemaSymbol = sema_symbol_full(table.next_id, name, name, SemaSymbolKind.Builtin, SemaSymbolState.Defined, 0, false, SemaVisibility.Public, "builtin", ty, 0, 0);
+
+    set table.symbols = table.symbols + [symbol];
+    set table.next_id = table.next_id + 1;
+
+    give table;
+}
+
+proc symbol_table_resolve(table: SemaSymbolTable, name: string) -> SemaSymbol {
+    if find(name, "::") >= 0 {
+        give symbol_find_qualified(table.symbols, name);
+    }
+
+    give symbol_find_visible(table.symbols, name, table.scope_depth);
+}
+
+proc symbol_table_has_duplicate_in_current_scope(table: SemaSymbolTable, name: string) -> bool {
+    give symbol_index_in_scope(table.symbols, name, table.scope_depth) >= 0;
+}
+
+proc symbol_table_count_kind(table: SemaSymbolTable, kind: SemaSymbolKind) -> u64 {
+    let count: u64 = 0;
+    let i: u64 = 0;
+
+    while i < len(table.symbols) {
+        if table.symbols[i].kind == kind {
+            set count = count + 1;
+        }
+
+        set i = i + 1;
+    }
+
+    give count;
+}
+
+share SemaSymbolKind
+share SemaVisibility
+share SemaSymbolState
+share SemaSymbol
+share SemaSymbolTable
+
+share sema_visibility_name
+share sema_visibility_from_text
+share sema_symbol
+share sema_symbol_full
+share sema_invalid_symbol
+share sema_symbol_table
+
+share symbol_index
+share symbol_index_in_scope
+share symbol_index_qualified
+share symbol_visible
+share symbol_is_public
+share symbol_is_local
+share symbol_is_type_level
+share symbol_is_value_level
+share symbol_find_visible
+share symbol_find_qualified
+
+share symbol_kind_name
+share symbol_state_name
+share symbol_qualified_name
+
+share symbol_table_enter_scope
+share symbol_table_leave_scope
+share symbol_table_insert
+share symbol_table_define
+share symbol_table_import
+share symbol_table_add_builtin
+share symbol_table_resolve
+share symbol_table_has_duplicate_in_current_scope
+share symbol_table_count_kind

@@ -1,0 +1,447 @@
+space vitte/compiler/backend/codegen
+
+pick MachineAbi {
+    SystemV
+    WindowsX64
+    Freestanding
+}
+
+pick MachineLabelKind {
+    Function
+    Block
+    Return
+    LandingPad
+    Cold
+    Trap
+}
+
+form MachineTextConfig {
+    abi: MachineAbi
+    local_prefix: string
+    block_prefix: string
+    return_suffix: string
+    indent: string
+    sanitize_symbols: bool
+    emit_frame_pointer: bool
+    stack_alignment: u64
+}
+
+proc default_machine_text_config() -> MachineTextConfig {
+    give MachineTextConfig {
+        abi: MachineAbi::SystemV,
+        local_prefix: ".L_",
+        block_prefix: "block_",
+        return_suffix: "_return",
+        indent: "  ",
+        sanitize_symbols: true,
+        emit_frame_pointer: true,
+        stack_alignment: 16
+    };
+}
+
+proc token_lparen() -> string {
+    give slice("a(b", 1, 2);
+}
+
+proc token_quote() -> string {
+    give slice("a\"b", 1, 2);
+}
+
+proc sanitize_machine_symbol(name: string) -> string {
+    if name == "" {
+        give "__anonymous";
+    }
+
+    let out: string = "";
+    let i: u64 = 0;
+
+    while i < len(name) {
+        let ch: string = slice(name, i, i + 1);
+
+        if ch == "/" || ch == "." || ch == ":" || ch == "-" || ch == " " {
+            set out = out + "_";
+        } else {
+            set out = out + ch;
+        }
+
+        set i = i + 1;
+    }
+
+    give out;
+}
+
+proc machine_symbol(config: MachineTextConfig, name: string) -> string {
+    if config.sanitize_symbols {
+        give sanitize_machine_symbol(name);
+    }
+
+    if name == "" {
+        give "__anonymous";
+    }
+
+    give name;
+}
+
+proc machine_label_text(config: MachineTextConfig, function_name: string, kind: MachineLabelKind, block_id: u64) -> string {
+    let fn_name = machine_symbol(config, function_name);
+    let block_text: string = block_id as string;
+
+    if kind == MachineLabelKind::Function {
+        give fn_name;
+    }
+
+    if kind == MachineLabelKind::Return {
+        give config.local_prefix + fn_name + config.return_suffix;
+    }
+
+    if kind == MachineLabelKind::Block {
+        give config.local_prefix + fn_name + "_" + config.block_prefix + block_text;
+    }
+
+    if kind == MachineLabelKind::LandingPad {
+        give config.local_prefix + fn_name + "_landingpad_" + block_text;
+    }
+
+    if kind == MachineLabelKind::Cold {
+        give config.local_prefix + fn_name + "_cold_" + block_text;
+    }
+
+    if kind == MachineLabelKind::Trap {
+        give config.local_prefix + fn_name + "_trap_" + block_text;
+    }
+
+    give config.local_prefix + fn_name + "_label_" + block_text;
+}
+
+proc machine_label_def(text: string) -> string {
+    give text + ":";
+}
+
+proc machine_function_label(name: string) -> string {
+    let config = default_machine_text_config();
+    give machine_label_def(
+        machine_label_text(config, name, MachineLabelKind::Function, 0)
+    );
+}
+
+proc machine_block_label(function_name: string, block_id: u64) -> string {
+    let config = default_machine_text_config();
+    give machine_label_def(
+        machine_label_text(config, function_name, MachineLabelKind::Block, block_id)
+    );
+}
+
+proc machine_branch_label(function_name: string, block_id: u64) -> string {
+    let config = default_machine_text_config();
+    give machine_label_text(config, function_name, MachineLabelKind::Block, block_id);
+}
+
+proc machine_return_label(function_name: string) -> string {
+    let config = default_machine_text_config();
+    give machine_label_text(config, function_name, MachineLabelKind::Return, 0);
+}
+
+proc machine_landingpad_label(function_name: string, block_id: u64) -> string {
+    let config = default_machine_text_config();
+    give machine_label_def(
+        machine_label_text(config, function_name, MachineLabelKind::LandingPad, block_id)
+    );
+}
+
+proc machine_trap_label(function_name: string, block_id: u64) -> string {
+    let config = default_machine_text_config();
+    give machine_label_def(
+        machine_label_text(config, function_name, MachineLabelKind::Trap, block_id)
+    );
+}
+
+proc machine_prologue_x86_64() -> [string] {
+    let config = default_machine_text_config();
+
+    if !config.emit_frame_pointer {
+        give [];
+    }
+
+    give [
+        config.indent + "push %rbp",
+        config.indent + "mov %rsp, %rbp"
+    ];
+}
+
+proc machine_prologue_x86_64_with_stack(stack_size: u64) -> [string] {
+    let config = default_machine_text_config();
+    let lines: [string] = [];
+    let stack_text: string = stack_size as string;
+
+    if config.emit_frame_pointer {
+        set lines = list.push(lines, config.indent + "push %rbp");
+        set lines = list.push(lines, config.indent + "mov %rsp, %rbp");
+    }
+
+    if stack_size > 0 {
+        set lines = list.push(lines, config.indent + "sub $" + stack_text + ", %rsp");
+    }
+
+    give lines;
+}
+
+proc machine_epilogue_x86_64() -> [string] {
+    let config = default_machine_text_config();
+
+    if !config.emit_frame_pointer {
+        give [
+            config.indent + "ret"
+        ];
+    }
+
+    give [
+        config.indent + "pop %rbp",
+        config.indent + "ret"
+    ];
+}
+
+proc machine_epilogue_x86_64_with_stack(stack_size: u64) -> [string] {
+    let config = default_machine_text_config();
+    let lines: [string] = [];
+    let stack_text: string = stack_size as string;
+
+    if stack_size > 0 {
+        set lines = list.push(lines, config.indent + "add $" + stack_text + ", %rsp");
+    }
+
+    if config.emit_frame_pointer {
+        set lines = list.push(lines, config.indent + "pop %rbp");
+    }
+
+    set lines = list.push(lines, config.indent + "ret");
+
+    give lines;
+}
+
+proc machine_align_stack_size(size: u64, alignment: u64) -> u64 {
+    if alignment == 0 {
+        give size;
+    }
+
+    let rem = size % alignment;
+
+    if rem == 0 {
+        give size;
+    }
+
+    give size + alignment - rem;
+}
+
+proc machine_stack_slot_offset(slot: u64) -> string {
+    let slot_index: u64 = slot + 1;
+    let offset: u64 = slot_index * 8;
+    let offset_text: string = offset as string;
+    give "-" + offset_text + token_lparen() + "%rbp)";
+}
+
+proc machine_arg_register_x86_64(index: u64) -> string {
+    if index == 0 {
+        give "%rdi";
+    }
+    if index == 1 {
+        give "%rsi";
+    }
+    if index == 2 {
+        give "%rdx";
+    }
+    if index == 3 {
+        give "%rcx";
+    }
+    if index == 4 {
+        give "%r8";
+    }
+    if index == 5 {
+        give "%r9";
+    }
+    give "";
+}
+
+proc machine_return_register_x86_64() -> string {
+    give "%rax";
+}
+
+proc machine_bool_immediate(text: string) -> string {
+    if text == "true" {
+        give "$1";
+    }
+
+    if text == "false" {
+        give "$0";
+    }
+
+    give "";
+}
+
+proc machine_string_literal_immediate(text: string) -> string {
+    if starts_with(text, token_quote()) {
+        give "$0";
+    }
+
+    give "";
+}
+
+proc machine_operand_immediate_text(text: string) -> string {
+    let bool_value = machine_bool_immediate(text);
+
+    if bool_value != "" {
+        give bool_value;
+    }
+
+    if text == "" {
+        give "$0";
+    }
+
+    let string_value = machine_string_literal_immediate(text);
+
+    if string_value != "" {
+        give string_value;
+    }
+
+    give "$" + trim(text);
+}
+
+proc machine_operand_debug_name(name: string, place: string, fallback: string) -> string {
+    if trim(place) != "" {
+        give trim(place);
+    }
+
+    if trim(name) != "" {
+        give trim(name);
+    }
+
+    if trim(fallback) != "" {
+        give trim(fallback);
+    }
+
+    give "<unnamed>";
+}
+
+proc machine_call_target_text(text: string) -> string {
+    let trimmed = trim(text);
+
+    if trimmed == "" {
+        give "__indirect_call";
+    }
+
+    let marker: int = find(trimmed, token_lparen());
+
+    if marker > 0 {
+        give trim(slice(trimmed, 0, marker));
+    }
+
+    if starts_with(trimmed, "*") {
+        give trimmed;
+    }
+
+    give trimmed;
+}
+
+proc machine_comment(text: string) -> string {
+    let config = default_machine_text_config();
+
+    if trim(text) == "" {
+        give "";
+    }
+
+    give config.indent + "# " + text;
+}
+
+proc machine_mov_x86_64(src: string, dst: string) -> string {
+    let config = default_machine_text_config();
+    give config.indent + "mov " + src + ", " + dst;
+}
+
+proc machine_load_immediate_x86_64(text: string, dst: string) -> string {
+    give machine_mov_x86_64(machine_operand_immediate_text(text), dst);
+}
+
+proc machine_jump_x86_64(label: string) -> string {
+    let config = default_machine_text_config();
+    give config.indent + "jmp " + label;
+}
+
+proc machine_cond_jump_x86_64(cond: string, label: string) -> string {
+    let config = default_machine_text_config();
+
+    if cond == "eq" {
+        give config.indent + "je " + label;
+    }
+
+    if cond == "ne" {
+        give config.indent + "jne " + label;
+    }
+
+    if cond == "lt" {
+        give config.indent + "jl " + label;
+    }
+
+    if cond == "le" {
+        give config.indent + "jle " + label;
+    }
+
+    if cond == "gt" {
+        give config.indent + "jg " + label;
+    }
+
+    if cond == "ge" {
+        give config.indent + "jge " + label;
+    }
+
+    give config.indent + "jne " + label;
+}
+
+proc machine_call_x86_64(target: string) -> string {
+    let config = default_machine_text_config();
+    give config.indent + "call " + machine_call_target_text(target);
+}
+
+proc machine_ret_x86_64() -> string {
+    let config = default_machine_text_config();
+    give config.indent + "ret";
+}
+
+share MachineAbi
+share MachineLabelKind
+share MachineTextConfig
+
+share default_machine_text_config
+share sanitize_machine_symbol
+share machine_symbol
+share machine_label_text
+share machine_label_def
+
+share machine_function_label
+share machine_block_label
+share machine_branch_label
+share machine_return_label
+share machine_landingpad_label
+share machine_trap_label
+
+share machine_prologue_x86_64
+share machine_prologue_x86_64_with_stack
+share machine_epilogue_x86_64
+share machine_epilogue_x86_64_with_stack
+
+share machine_align_stack_size
+share machine_stack_slot_offset
+share machine_arg_register_x86_64
+share machine_return_register_x86_64
+
+share machine_bool_immediate
+share machine_string_literal_immediate
+share machine_operand_immediate_text
+share machine_operand_debug_name
+share machine_call_target_text
+
+share machine_comment
+share machine_mov_x86_64
+share machine_load_immediate_x86_64
+share machine_jump_x86_64
+share machine_cond_jump_x86_64
+share machine_call_x86_64
+share machine_ret_x86_64

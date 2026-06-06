@@ -1,0 +1,662 @@
+space vitte/compiler/ir
+
+export *
+
+const AST_VERSION: string = "full-grammar-ast-v2";
+
+pick AstDeclKind {
+    Space,
+    Use,
+    Export,
+    Const,
+    Static,
+    Global,
+    TypeAlias,
+    OpaqueType,
+    ExternType,
+    ExternBlock,
+    Form,
+    Class,
+    Union,
+    Bits,
+    Pick,
+    Flags,
+    Trait,
+    Impl,
+    Proc,
+    Intrinsic,
+    Compiler,
+    Query,
+    Pass,
+    Backend,
+    Diagnostic,
+    Macro,
+    Comptime,
+    StaticAssert,
+    Test,
+    Bench,
+    Entry,
+    Unknown,
+}
+
+pick AstStmtKind {
+    LocalConst,
+    Let,
+    Set,
+    Give,
+    Try,
+    Defer,
+    Asm,
+    Unsafe,
+    Emit,
+    Assert,
+    Panic,
+    Unreachable,
+    If,
+    While,
+    Loop,
+    For,
+    Break,
+    Continue,
+    Select,
+    Match,
+    WhenMatch,
+    With,
+    Critical,
+    Expr,
+    Unknown,
+}
+
+pick AstExprKind {
+    Empty,
+    Literal,
+    Variable,
+    Path,
+    Call,
+    Member,
+    Index,
+    Unary,
+    Binary,
+    Assign,
+    Cast,
+    Is,
+    Range,
+    Ternary,
+    StructLiteral,
+    ListLiteral,
+    TupleLiteral,
+    SetLiteral,
+    MapLiteral,
+    BytesLiteral,
+    ResourceLiteral,
+    IfExpr,
+    MatchExpr,
+    Lambda,
+    ProcExpr,
+    UnsafeExpr,
+    BlockExpr,
+    Builtin,
+    Raw,
+    Unknown,
+}
+
+pick AstTypeKind {
+    Named,
+    Primitive,
+    Qualified,
+    Reference,
+    Pointer,
+    Optional,
+    FixedArray,
+    Slice,
+    Tuple,
+    Proc,
+    Dyn,
+    ImplTrait,
+    Generic,
+    Union,
+    Lifetime,
+    Raw,
+    Unknown,
+}
+
+pick AstPatternKind {
+    Bind,
+    Constructor,
+    Struct,
+    Tuple,
+    List,
+    Range,
+    Or,
+    Mut,
+    Ref,
+    Wildcard,
+    Literal,
+    Raw,
+    Unknown,
+}
+
+pick AstVisibility {
+    Default,
+    Public,
+    Private,
+    Internal,
+}
+
+pick AstMutability {
+    Immutable,
+    Mutable,
+}
+
+pick AstNodeKind {
+    Module,
+    Decl,
+    Stmt,
+    Expr,
+    Type,
+    Pattern,
+}
+
+form AstSpan {
+    file: string
+    line: u64
+    column: u64
+    end_line: u64
+    end_column: u64
+}
+
+form AstAttribute {
+    name: string
+    value: string
+}
+
+form AstPath {
+    text: string
+    segment_count: u64
+}
+
+form AstDecl {
+    kind: AstDeclKind
+    name: string
+    visibility: AstVisibility
+    attribute_count: u64
+    child_count: u64
+    span: AstSpan
+}
+
+form AstStmt {
+    kind: AstStmtKind
+    expr_count: u64
+    child_count: u64
+    span: AstSpan
+}
+
+form AstExpr {
+    kind: AstExprKind
+    text: string
+    child_count: u64
+    span: AstSpan
+}
+
+form AstType {
+    kind: AstTypeKind
+    text: string
+    child_count: u64
+    span: AstSpan
+}
+
+form AstPattern {
+    kind: AstPatternKind
+    text: string
+    child_count: u64
+    span: AstSpan
+}
+
+form AstNodeStats {
+    decl_count: u64
+    stmt_count: u64
+    expr_count: u64
+    type_count: u64
+    pattern_count: u64
+    total_count: u64
+}
+
+form AstModule {
+    name: string
+    decl_count: u64
+    stmt_count: u64
+    expr_count: u64
+    type_count: u64
+    pattern_count: u64
+    valid: bool
+}
+
+proc ast() -> string {
+    give AST_VERSION;
+}
+
+proc ast_version() -> string {
+    give AST_VERSION;
+}
+
+proc empty_span() -> AstSpan {
+    give AstSpan {
+        file: "",
+        line: 1,
+        column: 1,
+        end_line: 1,
+        end_column: 1
+    };
+}
+
+proc ast_span(file: string, line: u64, column: u64, end_line: u64, end_column: u64) -> AstSpan {
+    give AstSpan {
+        file: file,
+        line: line,
+        column: column,
+        end_line: end_line,
+        end_column: end_column
+    };
+}
+
+proc ast_attribute(name: string, value: string) -> AstAttribute {
+    give AstAttribute {
+        name: name,
+        value: value
+    };
+}
+
+proc ast_path(text: string, segment_count: u64) -> AstPath {
+    give AstPath {
+        text: text,
+        segment_count: segment_count
+    };
+}
+
+proc ast_decl(kind: AstDeclKind, name: string, visibility: AstVisibility, attribute_count: u64, child_count: u64, span: AstSpan) -> AstDecl {
+    give AstDecl {
+        kind: kind,
+        name: name,
+        visibility: visibility,
+        attribute_count: attribute_count,
+        child_count: child_count,
+        span: span
+    };
+}
+
+proc ast_stmt(kind: AstStmtKind, expr_count: u64, child_count: u64, span: AstSpan) -> AstStmt {
+    give AstStmt {
+        kind: kind,
+        expr_count: expr_count,
+        child_count: child_count,
+        span: span
+    };
+}
+
+proc ast_expr(kind: AstExprKind, text: string, child_count: u64, span: AstSpan) -> AstExpr {
+    give AstExpr {
+        kind: kind,
+        text: text,
+        child_count: child_count,
+        span: span
+    };
+}
+
+proc ast_type(kind: AstTypeKind, text: string, child_count: u64, span: AstSpan) -> AstType {
+    give AstType {
+        kind: kind,
+        text: text,
+        child_count: child_count,
+        span: span
+    };
+}
+
+proc ast_pattern(kind: AstPatternKind, text: string, child_count: u64, span: AstSpan) -> AstPattern {
+    give AstPattern {
+        kind: kind,
+        text: text,
+        child_count: child_count,
+        span: span
+    };
+}
+
+proc ast_module(name: string, decl_count: u64, stmt_count: u64, expr_count: u64, type_count: u64, pattern_count: u64, valid: bool) -> AstModule {
+    give AstModule {
+        name: name,
+        decl_count: decl_count,
+        stmt_count: stmt_count,
+        expr_count: expr_count,
+        type_count: type_count,
+        pattern_count: pattern_count,
+        valid: valid
+    };
+}
+
+proc ast_node_stats(decl_count: u64, stmt_count: u64, expr_count: u64, type_count: u64, pattern_count: u64) -> AstNodeStats {
+    give AstNodeStats {
+        decl_count: decl_count,
+        stmt_count: stmt_count,
+        expr_count: expr_count,
+        type_count: type_count,
+        pattern_count: pattern_count,
+        total_count: decl_count + stmt_count + expr_count + type_count + pattern_count
+    };
+}
+
+proc empty_module(name: string) -> AstModule {
+    give ast_module(name, 0, 0, 0, 0, 0, true);
+}
+
+proc public_visibility() -> AstVisibility {
+    give AstVisibility.Public;
+}
+
+proc private_visibility() -> AstVisibility {
+    give AstVisibility.Private;
+}
+
+proc mutable() -> AstMutability {
+    give AstMutability.Mutable;
+}
+
+proc immutable() -> AstMutability {
+    give AstMutability.Immutable;
+}
+
+proc decl_kind_count() -> u64 {
+    give 32;
+}
+
+proc stmt_kind_count() -> u64 {
+    give 25;
+}
+
+proc expr_kind_count() -> u64 {
+    give 30;
+}
+
+proc type_kind_count() -> u64 {
+    give 17;
+}
+
+proc pattern_kind_count() -> u64 {
+    give 13;
+}
+
+proc ast_total_kind_count() -> u64 {
+    give decl_kind_count() + stmt_kind_count() + expr_kind_count() + type_kind_count() + pattern_kind_count();
+}
+
+proc decl_kind_name(kind: AstDeclKind) -> string {
+    if kind == AstDeclKind.Space {
+        give "space";
+    }
+    if kind == AstDeclKind.Use {
+        give "use";
+    }
+    if kind == AstDeclKind.Export {
+        give "export";
+    }
+    if kind == AstDeclKind.Const {
+        give "const";
+    }
+    if kind == AstDeclKind.Static {
+        give "static";
+    }
+    if kind == AstDeclKind.Global {
+        give "global";
+    }
+    if kind == AstDeclKind.TypeAlias {
+        give "type-alias";
+    }
+    if kind == AstDeclKind.OpaqueType {
+        give "opaque-type";
+    }
+    if kind == AstDeclKind.ExternType {
+        give "extern-type";
+    }
+    if kind == AstDeclKind.ExternBlock {
+        give "extern-block";
+    }
+    if kind == AstDeclKind.Form {
+        give "form";
+    }
+    if kind == AstDeclKind.Class {
+        give "class";
+    }
+    if kind == AstDeclKind.Union {
+        give "union";
+    }
+    if kind == AstDeclKind.Bits {
+        give "bits";
+    }
+    if kind == AstDeclKind.Pick {
+        give "pick";
+    }
+    if kind == AstDeclKind.Flags {
+        give "flags";
+    }
+    if kind == AstDeclKind.Trait {
+        give "trait";
+    }
+    if kind == AstDeclKind.Impl {
+        give "impl";
+    }
+    if kind == AstDeclKind.Proc {
+        give "proc";
+    }
+    if kind == AstDeclKind.Intrinsic {
+        give "intrinsic";
+    }
+    if kind == AstDeclKind.Compiler {
+        give "compiler";
+    }
+    if kind == AstDeclKind.Query {
+        give "query";
+    }
+    if kind == AstDeclKind.Pass {
+        give "pass";
+    }
+    if kind == AstDeclKind.Backend {
+        give "backend";
+    }
+    if kind == AstDeclKind.Diagnostic {
+        give "diagnostic";
+    }
+    if kind == AstDeclKind.Macro {
+        give "macro";
+    }
+    if kind == AstDeclKind.Comptime {
+        give "comptime";
+    }
+    if kind == AstDeclKind.StaticAssert {
+        give "static-assert";
+    }
+    if kind == AstDeclKind.Test {
+        give "test";
+    }
+    if kind == AstDeclKind.Bench {
+        give "bench";
+    }
+    if kind == AstDeclKind.Entry {
+        give "entry";
+    }
+
+    give "unknown";
+}
+
+proc stmt_kind_name(kind: AstStmtKind) -> string {
+    if kind == AstStmtKind.LocalConst {
+        give "local-const";
+    }
+    if kind == AstStmtKind.Let {
+        give "let";
+    }
+    if kind == AstStmtKind.Set {
+        give "set";
+    }
+    if kind == AstStmtKind.Give {
+        give "give";
+    }
+    if kind == AstStmtKind.Try {
+        give "try";
+    }
+    if kind == AstStmtKind.Defer {
+        give "defer";
+    }
+    if kind == AstStmtKind.Asm {
+        give "asm";
+    }
+    if kind == AstStmtKind.Unsafe {
+        give "unsafe";
+    }
+    if kind == AstStmtKind.Emit {
+        give "emit";
+    }
+    if kind == AstStmtKind.Assert {
+        give "assert";
+    }
+    if kind == AstStmtKind.Panic {
+        give "panic";
+    }
+    if kind == AstStmtKind.Unreachable {
+        give "unreachable";
+    }
+    if kind == AstStmtKind.If {
+        give "if";
+    }
+    if kind == AstStmtKind.While {
+        give "while";
+    }
+    if kind == AstStmtKind.Loop {
+        give "loop";
+    }
+    if kind == AstStmtKind.For {
+        give "for";
+    }
+    if kind == AstStmtKind.Break {
+        give "break";
+    }
+    if kind == AstStmtKind.Continue {
+        give "continue";
+    }
+    if kind == AstStmtKind.Select {
+        give "select";
+    }
+    if kind == AstStmtKind.Match {
+        give "match";
+    }
+    if kind == AstStmtKind.WhenMatch {
+        give "when-match";
+    }
+    if kind == AstStmtKind.With {
+        give "with";
+    }
+    if kind == AstStmtKind.Critical {
+        give "critical";
+    }
+    if kind == AstStmtKind.Expr {
+        give "expr";
+    }
+
+    give "unknown";
+}
+
+proc expr_kind_name(kind: AstExprKind) -> string {
+    if kind == AstExprKind.Literal {
+        give "literal";
+    }
+    if kind == AstExprKind.Variable {
+        give "variable";
+    }
+    if kind == AstExprKind.Path {
+        give "path";
+    }
+    if kind == AstExprKind.Call {
+        give "call";
+    }
+    if kind == AstExprKind.Member {
+        give "member";
+    }
+    if kind == AstExprKind.Index {
+        give "index";
+    }
+    if kind == AstExprKind.Unary {
+        give "unary";
+    }
+    if kind == AstExprKind.Binary {
+        give "binary";
+    }
+    if kind == AstExprKind.Assign {
+        give "assign";
+    }
+    if kind == AstExprKind.Cast {
+        give "cast";
+    }
+    if kind == AstExprKind.Is {
+        give "is";
+    }
+    if kind == AstExprKind.Range {
+        give "range";
+    }
+    if kind == AstExprKind.IfExpr {
+        give "if-expr";
+    }
+    if kind == AstExprKind.MatchExpr {
+        give "match-expr";
+    }
+    if kind == AstExprKind.BlockExpr {
+        give "block-expr";
+    }
+
+    give "unknown";
+}
+
+proc ast_surface_summary() -> string {
+    let out: string = "";
+    set out = out + slice("decls=x", 0, 6);
+    set out = out + (decl_kind_count() as string);
+    set out = out + slice(" stmts=x", 0, 7);
+    set out = out + (stmt_kind_count() as string);
+    set out = out + slice(" exprs=x", 0, 7);
+    set out = out + (expr_kind_count() as string);
+    set out = out + slice(" types=x", 0, 7);
+    set out = out + (type_kind_count() as string);
+    set out = out + slice(" patterns=x", 0, 10);
+    set out = out + (pattern_kind_count() as string);
+    give out;
+}
+
+proc ast_summary(module: AstModule) -> string {
+    let out: string = module.name;
+    let decl_count_text: string = module.decl_count as string;
+    let stmt_count_text: string = module.stmt_count as string;
+    let expr_count_text: string = module.expr_count as string;
+    set out = out + slice(" decls=x", 0, 7);
+    set out = out + decl_count_text;
+    set out = out + slice(" stmts=x", 0, 7);
+    set out = out + stmt_count_text;
+    set out = out + slice(" exprs=x", 0, 7);
+    set out = out + expr_count_text;
+    give out;
+}
+
+proc ast_selftest() -> bool {
+    let span: AstSpan = ast_span("main.vit", 1, 1, 1, 10);
+
+    let decl: AstDecl = ast_decl(AstDeclKind.Proc, "main", public_visibility(), 0, 1, span);
+
+    let expr: AstExpr = ast_expr(AstExprKind.Call, "print()", 1, span);
+
+    let module: AstModule = ast_module("demo", 1, 2, 3, 1, 0, true);
+
+    let stats: AstNodeStats = ast_node_stats(1, 2, 3, 1, 0);
+
+    give ast_version() == "full-grammar-ast-v2"
+        and decl_kind_name(decl.kind) == "proc"
+        and expr_kind_name(expr.kind) == "call"
+        and stats.total_count == 7
+        and module.valid
+        and ast_total_kind_count() == 117
+        and ast_summary(module) != "";
+}

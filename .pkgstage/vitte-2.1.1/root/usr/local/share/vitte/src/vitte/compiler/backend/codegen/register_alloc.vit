@@ -1,0 +1,319 @@
+space vitte/compiler/backend/codegen
+
+pick VirtualLocationKind {
+    None
+    Register
+    StackSlot
+    SpillSlot
+    ArgumentSlot
+    ReturnSlot
+    Constant
+    Unknown
+}
+
+form VirtualLocation {
+    kind: VirtualLocationKind
+    index: u64
+    name: string
+    text: string
+}
+
+form VirtualAllocationConfig {
+    stack_slot_prefix: string
+    spill_slot_prefix: string
+    argument_slot_prefix: string
+    return_slot_name: string
+    annotate_comments: bool
+    annotate_virtuals: bool
+    preserve_empty_lines: bool
+}
+
+proc default_virtual_allocation_config() -> VirtualAllocationConfig {
+    give VirtualAllocationConfig {
+        stack_slot_prefix: "stack",
+        spill_slot_prefix: "spill",
+        argument_slot_prefix: "arg",
+        return_slot_name: "ret",
+        annotate_comments: true,
+        annotate_virtuals: true,
+        preserve_empty_lines: true
+    };
+}
+
+proc virtual_location_kind_text(kind: VirtualLocationKind) -> string {
+    if kind == VirtualLocationKind.Register {
+        give "register";
+    }
+
+    if kind == VirtualLocationKind.StackSlot {
+        give "stack-slot";
+    }
+
+    if kind == VirtualLocationKind.SpillSlot {
+        give "spill-slot";
+    }
+
+    if kind == VirtualLocationKind.ArgumentSlot {
+        give "argument-slot";
+    }
+
+    if kind == VirtualLocationKind.ReturnSlot {
+        give "return-slot";
+    }
+
+    if kind == VirtualLocationKind.Constant {
+        give "constant";
+    }
+
+    if kind == VirtualLocationKind.Unknown {
+        give "unknown";
+    }
+
+    give "none";
+}
+
+proc make_virtual_location(kind: VirtualLocationKind, index: u64, name: string, text: string) -> VirtualLocation {
+    give VirtualLocation {
+        kind: kind,
+        index: index,
+        name: name,
+        text: text
+    };
+}
+
+proc make_stack_slot(index: u64) -> VirtualLocation {
+    let index_text: string = index as string;
+    give make_virtual_location(VirtualLocationKind.StackSlot, index, "stack_" + index_text, "[stack-slot:" + index_text + "]");
+}
+
+proc make_spill_slot(index: u64) -> VirtualLocation {
+    let index_text: string = index as string;
+    give make_virtual_location(VirtualLocationKind.SpillSlot, index, "spill_" + index_text, "[spill-slot:" + index_text + "]");
+}
+
+proc make_argument_slot(index: u64) -> VirtualLocation {
+    let index_text: string = index as string;
+    give make_virtual_location(VirtualLocationKind.ArgumentSlot, index, "arg_" + index_text, "[arg-slot:" + index_text + "]");
+}
+
+proc make_return_slot() -> VirtualLocation {
+    give make_virtual_location(
+        VirtualLocationKind.ReturnSlot,
+        0,
+        "ret",
+        "[return-slot]"
+    );
+}
+
+proc line_has_comment(line: string) -> bool {
+    give find(line, "#") >= 0;
+}
+
+proc line_is_empty(line: string) -> bool {
+    give trim(line) == "";
+}
+
+proc line_mentions_virtual(line: string) -> bool {
+    if find(line, "%v") >= 0 {
+        give true;
+    }
+
+    if find(line, "vreg") >= 0 {
+        give true;
+    }
+
+    if find(line, "virtual") >= 0 {
+        give true;
+    }
+
+    give false;
+}
+
+proc classify_virtual_line(line: string) -> VirtualLocationKind {
+    if line_is_empty(line) {
+        give VirtualLocationKind.None;
+    }
+
+    if find(line, "spill") >= 0 {
+        give VirtualLocationKind.SpillSlot;
+    }
+
+    if find(line, "arg") >= 0 {
+        give VirtualLocationKind.ArgumentSlot;
+    }
+
+    if find(line, "return") >= 0 || find(line, "ret") >= 0 {
+        give VirtualLocationKind.ReturnSlot;
+    }
+
+    if line_mentions_virtual(line) {
+        give VirtualLocationKind.StackSlot;
+    }
+
+    if line_has_comment(line) {
+        give VirtualLocationKind.StackSlot;
+    }
+
+    give VirtualLocationKind.None;
+}
+
+proc annotation_for_location(config: VirtualAllocationConfig, location: VirtualLocation) -> string {
+    if location.kind == VirtualLocationKind.None {
+        give "";
+    }
+
+    if location.kind == VirtualLocationKind.StackSlot {
+        let index_text: string = location.index as string;
+        give "[" + config.stack_slot_prefix + "-slot:" + index_text + "]";
+    }
+
+    if location.kind == VirtualLocationKind.SpillSlot {
+        let index_text: string = location.index as string;
+        give "[" + config.spill_slot_prefix + "-slot:" + index_text + "]";
+    }
+
+    if location.kind == VirtualLocationKind.ArgumentSlot {
+        let index_text: string = location.index as string;
+        give "[" + config.argument_slot_prefix + "-slot:" + index_text + "]";
+    }
+
+    if location.kind == VirtualLocationKind.ReturnSlot {
+        give "[" + config.return_slot_name + "-slot]";
+    }
+
+    let index_text: string = location.index as string;
+    give "[" + virtual_location_kind_text(location.kind) + ":" + index_text + "]";
+}
+
+proc append_virtual_annotation(line: string, annotation: string) -> string {
+    if annotation == "" {
+        give line;
+    }
+
+    if trim(line) == "" {
+        give line;
+    }
+
+    if find(line, "[stack-slot") >= 0 {
+        give line;
+    }
+
+    if find(line, "[spill-slot") >= 0 {
+        give line;
+    }
+
+    if find(line, "[arg-slot") >= 0 {
+        give line;
+    }
+
+    if find(line, "[return-slot") >= 0 {
+        give line;
+    }
+
+    give line + " " + annotation;
+}
+
+proc allocate_virtual_line(config: VirtualAllocationConfig, line: string, slot_index: u64) -> string {
+    if line_is_empty(line) && config.preserve_empty_lines {
+        give line;
+    }
+
+    let kind = classify_virtual_line(line);
+
+    if kind == VirtualLocationKind.None {
+        give line;
+    }
+
+    if kind == VirtualLocationKind.StackSlot && !config.annotate_comments && line_has_comment(line) {
+        give line;
+    }
+
+    if !config.annotate_virtuals && line_mentions_virtual(line) {
+        give line;
+    }
+
+    let slot_text: string = slot_index as string;
+    let location = make_virtual_location(kind, slot_index, virtual_location_kind_text(kind) + "_" + slot_text, "");
+    let annotation = annotation_for_location(config, location);
+
+    give append_virtual_annotation(line, annotation);
+}
+
+proc next_virtual_slot_index(line: string, current: u64) -> u64 {
+    let kind = classify_virtual_line(line);
+
+    if kind == VirtualLocationKind.None {
+        give current;
+    }
+
+    give current + 1;
+}
+
+proc allocate_virtual_locations_with_config(config: VirtualAllocationConfig, lines: [string]) -> [string] {
+    let allocated: [string] = [];
+    let i: u64 = 0;
+    let slot_index: u64 = 0;
+
+    while i < len(lines) {
+        let line: string = lines[i];
+
+        let emitted = allocate_virtual_line(config, line, slot_index);
+
+        set allocated = allocated + [emitted];
+        set slot_index = next_virtual_slot_index(line, slot_index);
+        set i = i + 1;
+    }
+
+    give allocated;
+}
+
+proc allocate_virtual_locations(lines: [string]) -> [string] {
+    give allocate_virtual_locations_with_config(
+        default_virtual_allocation_config(),
+        lines
+    );
+}
+
+proc count_virtual_locations(lines: [string]) -> u64 {
+    let count: u64 = 0;
+    let i: u64 = 0;
+
+    while i < len(lines) {
+        if classify_virtual_line(lines[i]) != VirtualLocationKind.None {
+            set count = count + 1;
+        }
+
+        set i = i + 1;
+    }
+
+    give count;
+}
+
+proc has_virtual_locations(lines: [string]) -> bool {
+    give count_virtual_locations(lines) > 0;
+}
+
+share VirtualLocationKind
+share VirtualLocation
+share VirtualAllocationConfig
+
+share default_virtual_allocation_config
+share virtual_location_kind_text
+share make_virtual_location
+share make_stack_slot
+share make_spill_slot
+share make_argument_slot
+share make_return_slot
+
+share line_has_comment
+share line_is_empty
+share line_mentions_virtual
+share classify_virtual_line
+share annotation_for_location
+share append_virtual_annotation
+
+share allocate_virtual_line
+share allocate_virtual_locations_with_config
+share allocate_virtual_locations
+share count_virtual_locations
+share has_virtual_locations

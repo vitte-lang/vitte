@@ -1,0 +1,651 @@
+space vitte/compiler/middle/hir/builder
+
+export *
+
+pick HirNodeKind {
+    Module,
+    Decl,
+    Stmt,
+    Expr,
+    Type,
+    Pattern,
+    Block,
+    Parameter,
+    Field,
+    Variant,
+    Arm,
+    Unknown,
+}
+
+pick HirDeclKind {
+    Space,
+    Use,
+    Export,
+    Const,
+    Global,
+    Form,
+    Pick,
+    Proc,
+    Trait,
+    Impl,
+    Entry,
+    Unknown,
+}
+
+pick HirStmtKind {
+    Let,
+    Set,
+    Give,
+    Emit,
+    If,
+    While,
+    Loop,
+    Match,
+    Expr,
+    Return,
+    Unknown,
+}
+
+pick HirExprKind {
+    Literal,
+    Variable,
+    Path,
+    Call,
+    Binary,
+    Unary,
+    Assign,
+    Index,
+    Member,
+    Cast,
+    Match,
+    Block,
+    Unknown,
+}
+
+pick HirTypeKind {
+    Primitive,
+    Named,
+    Pointer,
+    Reference,
+    Slice,
+    Tuple,
+    Proc,
+    Generic,
+    Unknown,
+}
+
+pick HirVisibility {
+    Default,
+    Public,
+    Private,
+    Internal,
+}
+
+pick HirMutability {
+    Immutable,
+    Mutable,
+}
+
+form HirSpan {
+    file: string
+    start_line: u64
+    start_column: u64
+    end_line: u64
+    end_column: u64
+}
+
+form HirId {
+    value: u64
+}
+
+form HirAttribute {
+    name: string
+    value: string
+}
+
+form HirPath {
+    text: string
+    segment_count: u64
+}
+
+form HirType {
+    id: HirId
+    kind: HirTypeKind
+    text: string
+    generic_count: u64
+    span: HirSpan
+}
+
+form HirExpr {
+    id: HirId
+    kind: HirExprKind
+    text: string
+    ty: HirType
+    mutable: bool
+    child_count: u64
+    span: HirSpan
+}
+
+form HirStmt {
+    id: HirId
+    kind: HirStmtKind
+    expr_count: u64
+    child_count: u64
+    span: HirSpan
+}
+
+form HirDecl {
+    id: HirId
+    kind: HirDeclKind
+    name: string
+    visibility: HirVisibility
+    attribute_count: u64
+    child_count: u64
+    span: HirSpan
+}
+
+form HirBlock {
+    id: HirId
+    stmt_count: u64
+    expr_count: u64
+    terminated: bool
+    span: HirSpan
+}
+
+form HirFunction {
+    id: HirId
+    name: string
+    visibility: HirVisibility
+    parameter_count: u64
+    stmt_count: u64
+    return_type: HirType
+    async_fn: bool
+    unsafe_fn: bool
+    const_fn: bool
+    span: HirSpan
+}
+
+form HirModule {
+    name: string
+    decl_count: u64
+    stmt_count: u64
+    expr_count: u64
+    type_count: u64
+    block_count: u64
+    function_count: u64
+    valid: bool
+}
+
+form HirBuilderContext {
+    next_id: u64
+    decls: [HirDecl]
+    stmts: [HirStmt]
+    exprs: [HirExpr]
+    types: [HirType]
+    blocks: [HirBlock]
+    functions: [HirFunction]
+    valid: bool
+}
+
+form HirBuildStats {
+    decl_count: u64
+    stmt_count: u64
+    expr_count: u64
+    type_count: u64
+    block_count: u64
+    function_count: u64
+    total_nodes: u64
+}
+
+proc hir_span(file: string, start_line: u64, start_column: u64, end_line: u64, end_column: u64) -> HirSpan {
+    give HirSpan {
+        file: file,
+        start_line: start_line,
+        start_column: start_column,
+        end_line: end_line,
+        end_column: end_column
+    };
+}
+
+proc hir_id(value: u64) -> HirId {
+    give HirId {
+        value: value
+    };
+}
+
+proc hir_attribute(name: string, value: string) -> HirAttribute {
+    give HirAttribute {
+        name: name,
+        value: value
+    };
+}
+
+proc hir_path(text: string, segment_count: u64) -> HirPath {
+    give HirPath {
+        text: text,
+        segment_count: segment_count
+    };
+}
+
+proc hir_type(id: HirId, kind: HirTypeKind, text: string, generic_count: u64, span: HirSpan) -> HirType {
+    give HirType {
+        id: id,
+        kind: kind,
+        text: text,
+        generic_count: generic_count,
+        span: span
+    };
+}
+
+proc hir_expr(id: HirId, kind: HirExprKind, text: string, ty: HirType, mutable: bool, child_count: u64, span: HirSpan) -> HirExpr {
+    give HirExpr {
+        id: id,
+        kind: kind,
+        text: text,
+        ty: ty,
+        mutable: mutable,
+        child_count: child_count,
+        span: span
+    };
+}
+
+proc hir_stmt(id: HirId, kind: HirStmtKind, expr_count: u64, child_count: u64, span: HirSpan) -> HirStmt {
+    give HirStmt {
+        id: id,
+        kind: kind,
+        expr_count: expr_count,
+        child_count: child_count,
+        span: span
+    };
+}
+
+proc hir_decl(id: HirId, kind: HirDeclKind, name: string, visibility: HirVisibility, attribute_count: u64, child_count: u64, span: HirSpan) -> HirDecl {
+    give HirDecl {
+        id: id,
+        kind: kind,
+        name: name,
+        visibility: visibility,
+        attribute_count: attribute_count,
+        child_count: child_count,
+        span: span
+    };
+}
+
+proc hir_block(id: HirId, stmt_count: u64, expr_count: u64, terminated: bool, span: HirSpan) -> HirBlock {
+    give HirBlock {
+        id: id,
+        stmt_count: stmt_count,
+        expr_count: expr_count,
+        terminated: terminated,
+        span: span
+    };
+}
+
+proc hir_function(id: HirId, name: string, visibility: HirVisibility, parameter_count: u64, stmt_count: u64, return_type: HirType, async_fn: bool, unsafe_fn: bool, const_fn: bool, span: HirSpan) -> HirFunction {
+    give HirFunction {
+        id: id,
+        name: name,
+        visibility: visibility,
+        parameter_count: parameter_count,
+        stmt_count: stmt_count,
+        return_type: return_type,
+        async_fn: async_fn,
+        unsafe_fn: unsafe_fn,
+        const_fn: const_fn,
+        span: span
+    };
+}
+
+proc hir_module(name: string, decl_count: u64, stmt_count: u64, expr_count: u64, type_count: u64, block_count: u64, function_count: u64, valid: bool) -> HirModule {
+    give HirModule {
+        name: name,
+        decl_count: decl_count,
+        stmt_count: stmt_count,
+        expr_count: expr_count,
+        type_count: type_count,
+        block_count: block_count,
+        function_count: function_count,
+        valid: valid
+    };
+}
+
+proc hir_builder_context() -> HirBuilderContext {
+    give HirBuilderContext {
+        next_id: 1,
+        decls: [],
+        stmts: [],
+        exprs: [],
+        types: [],
+        blocks: [],
+        functions: [],
+        valid: true
+    };
+}
+
+proc hir_build_stats(decl_count: u64, stmt_count: u64, expr_count: u64, type_count: u64, block_count: u64, function_count: u64) -> HirBuildStats {
+    let total_nodes: u64 = decl_count + stmt_count + expr_count + type_count + block_count + function_count;
+    give HirBuildStats {
+        decl_count: decl_count,
+        stmt_count: stmt_count,
+        expr_count: expr_count,
+        type_count: type_count,
+        block_count: block_count,
+        function_count: function_count,
+        total_nodes: total_nodes
+    };
+}
+
+proc empty_span() -> HirSpan {
+    give hir_span(
+        "",
+        1,
+        1,
+        1,
+        1
+    );
+}
+
+proc primitive_type(name: string) -> HirType {
+    give hir_type(
+        hir_id(0),
+        HirTypeKind.Primitive,
+        name,
+        0,
+        empty_span()
+    );
+}
+
+proc unit_type() -> HirType {
+    give primitive_type("unit");
+}
+
+proc bool_type() -> HirType {
+    give primitive_type("bool");
+}
+
+proc i32_type() -> HirType {
+    give primitive_type("i32");
+}
+
+proc string_type() -> HirType {
+    give primitive_type("string");
+}
+
+proc public_visibility() -> HirVisibility {
+    give HirVisibility.Public;
+}
+
+proc mutable() -> HirMutability {
+    give HirMutability.Mutable;
+}
+
+proc immutable() -> HirMutability {
+    give HirMutability.Immutable;
+}
+
+proc hir_builder_eq() -> string {
+    give slice("a=b", 1, 2);
+}
+
+proc next_hir_id(ctx: HirBuilderContext) -> HirId {
+    give hir_id(ctx.next_id);
+}
+
+proc append_decl(ctx: HirBuilderContext, decl: HirDecl) -> HirBuilderContext {
+    let out: HirBuilderContext = ctx;
+    set out.decls = out.decls + [decl];
+    set out.next_id = out.next_id + 1;
+
+    give out;
+}
+
+proc append_stmt(ctx: HirBuilderContext, stmt: HirStmt) -> HirBuilderContext {
+    let out: HirBuilderContext = ctx;
+    set out.stmts = out.stmts + [stmt];
+    set out.next_id = out.next_id + 1;
+
+    give out;
+}
+
+proc append_expr(ctx: HirBuilderContext, expr: HirExpr) -> HirBuilderContext {
+    let out: HirBuilderContext = ctx;
+    set out.exprs = out.exprs + [expr];
+    set out.next_id = out.next_id + 1;
+
+    give out;
+}
+
+proc append_type(ctx: HirBuilderContext, ty: HirType) -> HirBuilderContext {
+    let out: HirBuilderContext = ctx;
+    set out.types = out.types + [ty];
+    set out.next_id = out.next_id + 1;
+
+    give out;
+}
+
+proc append_block(ctx: HirBuilderContext, block: HirBlock) -> HirBuilderContext {
+    let out: HirBuilderContext = ctx;
+    set out.blocks = out.blocks + [block];
+    set out.next_id = out.next_id + 1;
+
+    give out;
+}
+
+proc append_function(ctx: HirBuilderContext, function0: HirFunction) -> HirBuilderContext {
+    let out: HirBuilderContext = ctx;
+    set out.functions = out.functions + [function0];
+    set out.next_id = out.next_id + 1;
+
+    give out;
+}
+
+proc hir_decl_kind_name(kind: HirDeclKind) -> string {
+    if kind == HirDeclKind.Space {
+        give "space";
+    }
+    if kind == HirDeclKind.Use {
+        give "use";
+    }
+    if kind == HirDeclKind.Export {
+        give "export";
+    }
+    if kind == HirDeclKind.Const {
+        give "const";
+    }
+    if kind == HirDeclKind.Global {
+        give "global";
+    }
+    if kind == HirDeclKind.Form {
+        give "form";
+    }
+    if kind == HirDeclKind.Pick {
+        give "pick";
+    }
+    if kind == HirDeclKind.Proc {
+        give "proc";
+    }
+    if kind == HirDeclKind.Trait {
+        give "trait";
+    }
+    if kind == HirDeclKind.Impl {
+        give "impl";
+    }
+    if kind == HirDeclKind.Entry {
+        give "entry";
+    }
+
+    give "unknown";
+}
+
+proc hir_stmt_kind_name(kind: HirStmtKind) -> string {
+    if kind == HirStmtKind.Let {
+        give "let";
+    }
+    if kind == HirStmtKind.Set {
+        give "set";
+    }
+    if kind == HirStmtKind.Give {
+        give "give";
+    }
+    if kind == HirStmtKind.Emit {
+        give "emit";
+    }
+    if kind == HirStmtKind.If {
+        give "if";
+    }
+    if kind == HirStmtKind.While {
+        give "while";
+    }
+    if kind == HirStmtKind.Loop {
+        give "loop";
+    }
+    if kind == HirStmtKind.Match {
+        give "match";
+    }
+    if kind == HirStmtKind.Expr {
+        give "expr";
+    }
+    if kind == HirStmtKind.Return {
+        give "return";
+    }
+
+    give "unknown";
+}
+
+proc hir_expr_kind_name(kind: HirExprKind) -> string {
+    if kind == HirExprKind.Literal {
+        give "literal";
+    }
+    if kind == HirExprKind.Variable {
+        give "variable";
+    }
+    if kind == HirExprKind.Path {
+        give "path";
+    }
+    if kind == HirExprKind.Call {
+        give "call";
+    }
+    if kind == HirExprKind.Binary {
+        give "binary";
+    }
+    if kind == HirExprKind.Unary {
+        give "unary";
+    }
+    if kind == HirExprKind.Assign {
+        give "assign";
+    }
+    if kind == HirExprKind.Index {
+        give "index";
+    }
+    if kind == HirExprKind.Member {
+        give "member";
+    }
+    if kind == HirExprKind.Cast {
+        give "cast";
+    }
+    if kind == HirExprKind.Match {
+        give "match";
+    }
+    if kind == HirExprKind.Block {
+        give "block";
+    }
+
+    give "unknown";
+}
+
+proc hir_type_kind_name(kind: HirTypeKind) -> string {
+    if kind == HirTypeKind.Primitive {
+        give "primitive";
+    }
+    if kind == HirTypeKind.Named {
+        give "named";
+    }
+    if kind == HirTypeKind.Pointer {
+        give "pointer";
+    }
+    if kind == HirTypeKind.Reference {
+        give "reference";
+    }
+    if kind == HirTypeKind.Slice {
+        give "slice";
+    }
+    if kind == HirTypeKind.Tuple {
+        give "tuple";
+    }
+    if kind == HirTypeKind.Proc {
+        give "proc";
+    }
+    if kind == HirTypeKind.Generic {
+        give "generic";
+    }
+
+    give "unknown";
+}
+
+proc build_empty_module(name: string) -> HirModule {
+    give hir_module(
+        name,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        true
+    );
+}
+
+proc build_stats(ctx: HirBuilderContext) -> HirBuildStats {
+    give hir_build_stats(
+        len(ctx.decls),
+        len(ctx.stmts),
+        len(ctx.exprs),
+        len(ctx.types),
+        len(ctx.blocks),
+        len(ctx.functions)
+    );
+}
+
+proc builder_summary(ctx: HirBuilderContext) -> string {
+    let decl_count: string = len(ctx.decls) as string;
+    let stmt_count: string = len(ctx.stmts) as string;
+    let expr_count: string = len(ctx.exprs) as string;
+    let type_count: string = len(ctx.types) as string;
+    let function_count: string = len(ctx.functions) as string;
+    let valid_text: string = ctx.valid as string;
+    let eq: string = hir_builder_eq();
+    give "decls" + eq + decl_count + " stmts" + eq + stmt_count + " exprs" + eq + expr_count + " types" + eq + type_count + " functions" + eq + function_count + " valid" + eq + valid_text;
+}
+
+proc hir_builder_selftest() -> bool {
+    let ctx0: HirBuilderContext = hir_builder_context();
+    let ty0: HirType = primitive_type("i32");
+    let ctx1: HirBuilderContext = append_type(ctx0, ty0);
+    let expr0: HirExpr = hir_expr(next_hir_id(ctx1), HirExprKind.Literal, "123", ty0, false, 0, empty_span());
+    let ctx2: HirBuilderContext = append_expr(ctx1, expr0);
+    let stmt0: HirStmt = hir_stmt(next_hir_id(ctx2), HirStmtKind.Let, 1, 0, empty_span());
+    let ctx3: HirBuilderContext = append_stmt(ctx2, stmt0);
+    let fn0: HirFunction = hir_function(next_hir_id(ctx3), "main", public_visibility(), 0, 1, unit_type(), false, false, false, empty_span());
+    let ctx4: HirBuilderContext = append_function(ctx3, fn0);
+    let stats: HirBuildStats = build_stats(ctx4);
+
+    give stats.type_count == 1
+        and stats.expr_count == 1
+        and stats.stmt_count == 1
+        and stats.function_count == 1
+        and stats.total_nodes == 4
+        and hir_decl_kind_name(
+            HirDeclKind.Proc
+        ) == "proc"
+        and hir_stmt_kind_name(
+            HirStmtKind.Let
+        ) == "let"
+        and hir_expr_kind_name(
+            HirExprKind.Literal
+        ) == "literal"
+        and hir_type_kind_name(
+            HirTypeKind.Primitive
+        ) == "primitive"
+        and builder_summary(ctx4)
+            != "";
+}

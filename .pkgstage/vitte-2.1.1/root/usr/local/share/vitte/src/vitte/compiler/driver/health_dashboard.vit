@@ -1,0 +1,94 @@
+space vitte/compiler/driver/health_dashboard
+
+use vitte/compiler/driver/metrics.{ CompilerMetricsReport, json_escape }
+
+export *
+
+form HealthDashboard {
+    tests_status: string
+    fuzz_status: string
+    stress_status: string
+    self_host_status: string
+    deterministic_builds: string
+    benchmark_trends: string
+    regression_alerts: [string]
+    score: u64
+    valid: bool
+}
+
+proc health_dashboard_from_metrics(metrics: CompilerMetricsReport) -> HealthDashboard {
+    let alerts: [string] = [];
+    let score: u64 = 100;
+    let next_alerts: [string] = alerts;
+    let next_score: u64 = score;
+
+    if metrics.status != "ok" {
+        set next_alerts = next_alerts + ["build_failed"];
+        set next_score = next_score - 35;
+    }
+    if metrics.diagnostics_count > 0 {
+        set next_alerts = next_alerts + ["diagnostics_present"];
+        if next_score > 10 {
+            set next_score = next_score - 10;
+        } else {
+            set next_score = 0;
+        }
+    }
+    if metrics.cache_misses > metrics.cache_hits {
+        set next_alerts = next_alerts + ["cache_regression"];
+        if next_score > 8 {
+            set next_score = next_score - 8;
+        } else {
+            set next_score = 0;
+        }
+    }
+    if metrics.total_time_ms > 120 {
+        set next_alerts = next_alerts + ["perf_regression"];
+        if next_score > 12 {
+            set next_score = next_score - 12;
+        } else {
+            set next_score = 0;
+        }
+    }
+
+    give HealthDashboard {
+        tests_status: if metrics.status == "ok" { "pass" } else { "fail" },
+        fuzz_status: if metrics.status == "ok" { "green" } else { "red" },
+        stress_status: if metrics.total_memory_kb < 8192 { "stable" } else { "pressure" },
+        self_host_status: if metrics.status == "ok" { "ready" } else { "blocked" },
+        deterministic_builds: if metrics.cache_hits >= metrics.cache_misses { "stable" } else { "drift-risk" },
+        benchmark_trends: if metrics.total_time_ms < 80 { "improving" } else { "flat" },
+        regression_alerts: next_alerts,
+        score: next_score,
+        valid: true
+    };
+}
+
+proc string_array_json(items: [string]) -> string {
+    let out: string = "";
+    let i: u64 = 0;
+    while i < len(items) {
+        if i > 0 {
+            set out = out + ",";
+        }
+        set out = out + "\"" + json_escape(items[i]) + "\"";
+        set i = i + 1;
+    }
+    give "[" + out + "]";
+}
+
+proc health_dashboard_json(dashboard: HealthDashboard) -> string {
+    let score_text: string = dashboard.score as string;
+    give "{"
+        + "\"schema\":\"vitte.compiler.health\","
+        + "\"schema_version\":\"1.0.0\","
+        + "\"tests_pass_fail\":\"" + dashboard.tests_status + "\","
+        + "\"fuzz_status\":\"" + dashboard.fuzz_status + "\","
+        + "\"stress_status\":\"" + dashboard.stress_status + "\","
+        + "\"self_host_status\":\"" + dashboard.self_host_status + "\","
+        + "\"deterministic_builds\":\"" + dashboard.deterministic_builds + "\","
+        + "\"benchmark_trends\":\"" + dashboard.benchmark_trends + "\","
+        + "\"regression_alerts\":" + string_array_json(dashboard.regression_alerts) + ","
+        + "\"score\":" + score_text
+        + "}";
+}

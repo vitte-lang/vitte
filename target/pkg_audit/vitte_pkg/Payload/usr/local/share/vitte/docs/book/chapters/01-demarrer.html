@@ -1,0 +1,385 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>1. Get started with Vitte</title>
+<link rel="icon" href="../../svg/logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../css/site.css">
+<link rel="stylesheet" href="../../css/print.css" media="print">
+
+<link rel="alternate" hreflang="en" href="https://vitte-lang.org/01-demarrer.html">
+<link rel="alternate" hreflang="x-default" href="https://vitte-lang.org/01-demarrer.html">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; font-src 'self'; connect-src 'self';">
+</head>
+<body class="classic-doc">
+<a class="skip-link" href="#main-content">Skip to content</a>
+<div class="site-shell">
+<header class="site-header">
+<a class="site-brand" href="../../index.html"><img class="site-brand-mark" src="../../svg/logo.svg" alt="" width="32" height="32"><span>Vitte</span></a>
+<nav class="site-nav" aria-label="Primary">
+<ul class="nav-band"><li><a class="nav-chip" href="../../index.html"><img src="../../svg/home.svg" alt="" width="14" height="14" aria-hidden="true"><span>Welcome</span></a></li><li><a class="nav-chip" href="../../doc.html"><img src="../../svg/docs.svg" alt="" width="14" height="14" aria-hidden="true"><span>Documentation</span></a></li><li><a class="nav-chip" href="../../download.html"><img src="../../svg/download.svg" alt="" width="14" height="14" aria-hidden="true"><span>Download</span></a></li><li><a class="nav-chip" href="../../source.html"><img src="../../svg/source.svg" alt="" width="14" height="14" aria-hidden="true"><span>Source</span></a></li><li><a class="nav-chip" href="../../community.html"><img src="../../svg/community.svg" alt="" width="14" height="14" aria-hidden="true"><span>Community</span></a></li><li><a class="nav-chip" href="../../news.html"><img src="../../svg/news.svg" alt="" width="14" height="14" aria-hidden="true"><span>News</span></a></li><li><a class="nav-chip" href="../../diagnostics.html"><img src="../../svg/diagnostics.svg" alt="" width="14" height="14" aria-hidden="true"><span>Diagnostics</span></a></li><li><a class="nav-chip" href="../../suggestions.html"><img src="../../svg/suggestions.svg" alt="" width="14" height="14" aria-hidden="true"><span>Suggestions</span></a></li></ul>
+</nav>
+</header>
+<main id="main-content" class="site-main">
+<article class="doc-content">
+<p class="book-progress"></p>
+<h1>1. Get started with Vitte</h1>
+<p class="chapter-meta" data-chapter-meta="1">Level: <strong>beginner</strong> · Reading time: <strong>8 min</strong> · Prerequisite: <code>book/chapters/00-preface.html</code> · Last review: <strong>2026-05-09</strong></p><section class="chapter-tldr"><h2>TL;DR (5 lines)</h2><ul><li>Read the core idea first.</li><li>Understand one concept at a time.</li><li>Run small examples.</li><li>Fix errors early.</li><li>Move to next chapter only when clear.</li></ul></section><section class="chapter-errors"><h2>Frequent mistakes</h2><ul><li>Skipping prerequisites.</li><li>Reading without trying examples.</li><li>Fixing too many errors at once.</li></ul></section>
+<p>Level: Foundations</p>
+<p>Prerequisites: <code>docs/book/chapters/00-foreword.html</code>, <code>docs/book/glossary.html</code>. See also: <code>docs/book/chapters/02-philosophy.html</code>.</p>
+<h2>Concrete Problem</h2>
+<p>When a program starts poorly, everything else becomes unclear. In this chapter, you will read the code as a sequence of actions: input, test, action, output.</p>
+<h2>Red Thread (Single Project)</h2>
+<p>We keep the same mini-program to avoid changing context in each section. The goal is simple: understand why each line exists and what it produces.</p>
+<h2>Goal</h2>
+<p>By the end of this chapter, you should know:</p>
+<ol>
+<li>where does the program start</li>
+<li>where is the calculation done</li>
+<li>where the final output is decided</li>
+</ol>
+<h2>1.1 Entry point</h2>
+<pre><code class="language-vit">// Point d&#x27;entree du scenario
+entry main at core/app {
+  return 0
+}</code></pre>
+<p>Direct reading:</p>
+<ol>
+<li><code>main</code> is the gateway to the program.</li>
+<li><code>return 0</code> stops execution immediately.</li>
+<li>the end result is <code>0</code>.</li>
+</ol>
+<p>This block serves as a clean base: it shows the simplest possible start.</p>
+<h2>1.2 Separate calculation and orchestration</h2>
+<pre><code class="language-vit">proc add(a: int, b: int) -&gt; int {
+  give a + b
+}
+
+// Point d&#x27;entree du scenario
+entry main at core/app {
+  let r: int = add(20, 22)
+
+  return r
+}</code></pre>
+<p>Direct reading:</p>
+<ol>
+<li><code>add</code> does one thing: add two integers.</li>
+<li><code>main</code> calls <code>add(20, 22)</code> then retrieves the result into <code>r</code>.</li>
+<li><code>main</code> returns <code>r</code>.</li>
+</ol>
+<p>Why it's good:</p>
+<ul>
+<li>the calculation function is easy to test on its own.</li>
+<li>the entry point remains short and readable.</li>
+</ul>
+<p>Quick test:</p>
+<ul>
+<li>entry from <code>add</code>: <code>20</code> and <code>22</code></li>
+<li>expected output: <code>42</code></li>
+</ul>
+<h2>1.3 Loop with clear stop</h2>
+<pre><code class="language-vit">proc sum_to(n: int) -&gt; int {
+  let i: int = 0
+  let s: int = 0
+
+  // Boucle: progression controlee jusqu&#x27;a la borne
+
+  loop {
+    // Borne d&#x27;arret: stoppe la boucle de maniere explicite
+    if i &gt; n { break }
+    set s = s + i
+    set i = i + 1
+  }
+
+  give s
+}</code></pre>
+<p>Direct reading:</p>
+<ol>
+<li>departure: <code>i = 0</code>, <code>s = 0</code>.</li>
+<li>as <code>i &lt;= n</code>, we add <code>i</code> in <code>s</code>.</li>
+<li>we advance <code>i</code> by <code>1</code> each turn.</li>
+<li>when <code>i &gt; n</code>, we stop.</li>
+<li>we return <code>s</code>.</li>
+</ol>
+<p>Concrete example with <code>n = 3</code>:</p>
+<ul>
+<li>round 1: <code>i=0</code>, <code>s=0</code></li>
+<li>round 2: <code>i=1</code>, <code>s=1</code></li>
+<li>round 3: <code>i=2</code>, <code>s=3</code></li>
+<li>round 4: <code>i=3</code>, <code>s=6</code></li>
+<li>stop when <code>i=4</code>, exit <code>6</code></li>
+</ul>
+<h2>1.4 Common errors</h2>
+<ol>
+<li>put all logic in <code>entry main</code></li>
+<li>forget the stopping condition of a loop</li>
+<li>mix business calculation and system exit code</li>
+</ol>
+<h2>End of chapter checklist</h2>
+<ol>
+<li>Is the entry point unique and visible?</li>
+<li>does each function have a simple role?</li>
+<li>does each loop have a clear stopping condition?</li>
+<li>can we predict the output without guessing?</li>
+</ol>
+<h2>Keywords to review</h2>
+<ul>
+<li><code>docs/book/chapters/keywords/entry.html</code></li>
+<li><code>docs/book/chapters/keywords/proc.html</code></li>
+<li><code>docs/book/chapters/keywords/loop.html</code></li>
+<li><code>docs/book/chapters/keywords/give.html</code></li>
+<li><code>docs/book/chapters/keywords/return.html</code></li>
+</ul>
+<h2>Extended Example</h2>
+<pre><code class="language-vit">// Scenario demarrer: execution complete et verifiable
+space demo/demarrer
+
+form Input { id: int value: int quota: int }
+pick Eval { case Accepted(score: int) case Rejected(code: int) }
+
+proc validate(x: Input) -&gt; Eval {
+
+  if x.id &lt;= 0 { give Eval.Rejected(21) }
+
+  if x.quota &lt; 0 { give Eval.Rejected(22) }
+
+  if x.value &lt; 0 { give Eval.Rejected(23) }
+
+  give Eval.Accepted(x.value)
+}
+
+proc transform(score: int, quota: int) -&gt; int {
+  let capped: int = score
+  if capped &gt; quota { set capped = quota }
+
+  if capped &lt; 0 { give 0 }
+
+  give capped * 2
+}
+
+proc decide(r: Eval, quota: int) -&gt; Eval {
+
+  match r {
+    case Accepted(s) {
+      let out: int = transform(s, quota)
+
+      if out &gt;= 10 { give Eval.Accepted(out) }
+
+      give Eval.Rejected(31)
+    }
+    case Rejected(c) { give Eval.Rejected(c) }
+    otherwise { give Eval.Rejected(70) }
+  }
+}
+
+// Conversion finale vers un code de sortie
+proc to_exit(r: Eval) -&gt; int {
+
+  match r {
+    case Accepted(_) { give 0 }
+    case Rejected(code) { give code }
+    otherwise { give 70 }
+  }
+}
+
+// Point d&#x27;entree du scenario
+entry main at core/app {
+  let x: Input = Input(1, 8, 9)
+  let v: Eval = validate(x)
+  let d: Eval = decide(v, x.quota)
+
+  return to_exit(d)
+}</code></pre>
+<h2>Detailed explanation of the big block</h2>
+<p>Here the goal is to understand the actual path of the program, line by line, to the exit code.</p>
+<h3>1. Role of each party</h3>
+<ul>
+<li>Starting point: <code>entry main at core/app</code>.</li>
+<li><code>validate</code>: reads <code>x: Input</code> and returns <code>Eval</code>.</li>
+<li><code>transform</code>: reads <code>score: int, quota: int</code> and returns <code>int</code>.</li>
+<li><code>decide</code>: reads <code>r: Eval, quota: int</code> and returns <code>Eval</code>.</li>
+<li><code>to_exit</code>: reads <code>r: Eval</code> and returns <code>int</code>.</li>
+</ul>
+<h3>2. Actual execution order</h3>
+<ol>
+<li>The program enters <code>main</code>.</li>
+<li><code>validate</code> is called to process the next step.</li>
+<li><code>decide</code> is called to process the next step.</li>
+<li><code>to_exit</code> is called to process the next step.</li>
+<li>The final value is converted to process output (<code>return ...</code>).</li>
+</ol>
+<h3>3. Tests that change the path</h3>
+<ul>
+<li>Test evaluated: <code>x.id &lt;= 0</code>.</li>
+<li>Test evaluated: <code>x.quota &lt; 0</code>.</li>
+<li>Test evaluated: <code>x.value &lt; 0</code>.</li>
+<li>Test evaluated: <code>capped &gt; quota</code>.</li>
+<li>Test evaluated: <code>capped &lt; 0</code>.</li>
+<li>Test evaluated: <code>out &gt;= 10</code>.</li>
+<li>Selection by <code>match r</code>: the path depends on the state received.</li>
+<li>Selection by <code>match r</code>: the path depends on the state received.</li>
+</ul>
+<h3>4. Quick trace with values</h3>
+<ul>
+<li>Nominal example: <code>entrée valide -&gt; validate -&gt; decide -&gt; to_exit -&gt; sortie 0</code>.</li>
+<li>Example error: <code>entrée invalide -&gt; validate renvoie un code d&#x27;erreur -&gt; sortie non nulle</code>.</li>
+</ul>
+<h3>5. Why this division is useful</h3>
+<ul>
+<li>You test each function on its own, then the entire flow.</li>
+<li>You know where to change a rule without breaking the entire program.</li>
+<li>You can explain the output by simply following the calls.</li>
+</ul>
+<h3>6. Quick Check</h3>
+<ol>
+<li>Retry with a normal entry and note the exit.</li>
+<li>Restart with invalid input and check the error code.</li>
+<li>Confirm that the same input always gives the same output.</li>
+</ol>
+<h2>Play full stream</h2>
+<p>Actual execution order:</p>
+<ol>
+<li><code>main</code> creates <code>x</code>.</li>
+<li><code>validate(x)</code> checks the input values.</li>
+<li>if the data is correct, we obtain <code>Accepted(...)</code>; otherwise <code>Rejected(code)</code>.</li>
+<li><code>decide(...)</code> transforms the score then decides pass/fail.</li>
+<li><code>to_exit(...)</code> converts the business result into an exit code.</li>
+</ol>
+<p>Typical execution:</p>
+<ul>
+<li>entry: <code>Input(1, 8, 9)</code></li>
+<li><code>validate</code> -> <code>Accepted(8)</code></li>
+<li><code>transform(8,9)</code> -> <code>16</code></li>
+<li><code>decide</code> -> <code>Accepted(16)</code></li>
+<li><code>to_exit</code> -> <code>0</code></li>
+</ul>
+<p>Running Error:</p>
+<ul>
+<li>entry: <code>Input(0, 8, 9)</code></li>
+<li><code>validate</code> -> <code>Rejected(21)</code></li>
+<li><code>decide</code> leaves <code>Rejected(21)</code></li>
+<li><code>to_exit</code> -> <code>21</code></li>
+</ul>
+<h3>7. Line by line (variables + values)</h3>
+<p>Convenient reading: Follow the variables in the actual order of execution, then check the observed output.</p>
+<ul>
+<li>Entry point:</li>
+<li><code>entry main at core/app</code> launches the complete scenario.</li>
+</ul>
+<ul>
+<li>Block functions:</li>
+<li><code>validate</code> reads <code>x: Input</code> then returns <code>Eval</code>.</li>
+<li><code>transform</code> reads <code>score: int, quota: int</code> then returns <code>int</code>.</li>
+<li><code>decide</code> reads <code>r: Eval, quota: int</code> then returns <code>Eval</code>.</li>
+<li><code>to_exit</code> reads <code>r: Eval</code> then returns <code>int</code>.</li>
+</ul>
+<ul>
+<li>Variables created (initial value):</li>
+<li><code>capped: int</code> starts with <code>score</code>.</li>
+<li><code>out: int</code> starts with <code>transform(s, quota)</code>.</li>
+<li><code>x: Input</code> starts with <code>Input(1, 8, 9)</code>.</li>
+<li><code>v: Eval</code> starts with <code>validate(x)</code>.</li>
+<li><code>d: Eval</code> starts with <code>decide(v, x.quota)</code>.</li>
+</ul>
+<ul>
+<li>Variables changed during processing:</li>
+<li><code>capped</code> is updated with <code>quota</code>.</li>
+</ul>
+<ul>
+<li>Conditions that change the path:</li>
+<li>if <code>x.id &lt;= 0</code> is true: early exit or dedicated branch; otherwise: the flow continues.</li>
+<li>if <code>x.quota &lt; 0</code> is true: early exit or dedicated branch; otherwise: the flow continues.</li>
+<li>if <code>x.value &lt; 0</code> is true: early exit or dedicated branch; otherwise: the flow continues.</li>
+<li>if <code>capped &gt; quota</code> is true: early exit or dedicated branch; otherwise: the flow continues.</li>
+<li>if <code>capped &lt; 0</code> is true: early exit or dedicated branch; otherwise: the flow continues.</li>
+<li>if <code>out &gt;= 10</code> is true: early exit or dedicated branch; otherwise: the flow continues.</li>
+</ul>
+<ul>
+<li>Nominal trace (example values):</li>
+<li>initialization: capped=score -> out=transform(s, quota) -> x=Input(1, 8, 9) -> v=validate(x)</li>
+<li>sequence: validate -> decide -> to_exit</li>
+<li>final output on this path: <code>to_exit(d)</code>.</li>
+</ul>
+<ul>
+<li>Error trace (example values):</li>
+<li>if <code>x.id &lt;= 0</code> becomes true, the function returns <code>Eval.Rejected(21)</code>.</li>
+</ul>
+<ul>
+<li>Quick check:</li>
+<li>restart with normal input and note the output,</li>
+<li>restart with an invalid entry and note the error code,</li>
+<li>confirm that the same input always produces the same output.</li>
+</ul>
+<h2>Trade-offs</h2>
+<table border="1" cellpadding="6" cellspacing="0">
+<tr><th>Need</th><th>Option 1</th><th>Option 2</th><th>Recommended choice</th></tr>
+<tr><td>Easy reading</td><td>Short functions</td><td>Large single block</td><td>Option 1</td></tr>
+<tr><td>Quick debug</td><td>Explicit error codes</td><td>Implicit message</td><td>Option 1</td></tr>
+<tr><td>Code evolution</td><td>Staged pipeline</td><td>Mixed logic</td><td>Option 1</td></tr>
+</table>
+<h2>Rapid Diagnosis</h2>
+<table border="1" cellpadding="6" cellspacing="0">
+<tr><th>Problem observed</th><th>Probable cause</th><th>How to check</th><th>Correction</th></tr>
+<tr><td>Unexpected exit</td><td>wrong test order</td><td>replay with single input</td><td>review the entrance tests</td></tr>
+<tr><td>Bad return code</td><td>forgotten final conversion</td><td>trace <code>to_exit</code></td><td>centralize the conversion</td></tr>
+<tr><td>Inconsistent result</td><td>function too busy</td><td>reread the role of each function</td><td>cut into short steps</td></tr>
+</table>
+<h2>Checkpoint</h2>
+<p>At this point you should know:</p>
+<ul>
+<li>follow the execution from start to finish,</li>
+<li>explain why a branch is taken,</li>
+<li>link each function to a clear responsibility.</li>
+</ul>
+<h2>What I would do in code review</h2>
+<ol>
+<li>check that <code>main</code> orchestrates without doing all the math</li>
+<li>verify that each function has a single responsibility</li>
+<li>check a normal scenario + an executable error scenario</li>
+</ol>
+<section class="chapter-quiz"><h2>Mini quiz</h2><ol><li>What is the main goal of this chapter?</li><li>Which concept is most important?</li><li>What will you try right now?</li></ol><button class="quiz-save" type="button">Mark as reviewed</button></section><section class="chapter-see-also"><h2>See also</h2><ul><li><a href="../../book/chapters/00-preface.html">0. Preface</a></li><li><a href="../../book/chapters/01-starting.html">01-starting</a></li><li><a href="../../book/chapters/02-philosophie.html">2. Philosophy of language</a></li></ul></section><section class="chapter-cta"><h2>Next best action</h2><p>Apply one idea from this chapter in a tiny example, then continue.</p></section></article>
+</main>
+<footer class="site-footer">
+<p class="site-footer-path">book/chapters/01-starting.html</p>
+<p><a href="../../index.html">Back to home</a></p>
+</footer>
+</div>
+<script type="module" src="../../js/book-learning.js"></script>
+<script type="module" src="../../js/main.js"></script>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

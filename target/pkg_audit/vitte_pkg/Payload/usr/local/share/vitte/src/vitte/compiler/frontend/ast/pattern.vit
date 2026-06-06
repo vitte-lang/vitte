@@ -1,0 +1,446 @@
+space vitte/compiler/frontend/ast/pattern
+
+use vitte/compiler/frontend/ast/node.{
+  AstId,
+  AstSpan,
+  ast_id,
+  ast_span_empty,
+  merge_spans
+}
+
+export *
+
+pick AstPatternKind {
+  Unknown,
+  Name,
+  Literal,
+  Wildcard,
+  Ref,
+  MutableRef,
+  Struct,
+  Enum,
+  Tuple,
+  Array,
+  Slice,
+  Range,
+  Or,
+  Rest,
+  Path,
+  Variant,
+  Typed,
+  Binding,
+  Invalid,
+}
+
+form AstPattern {
+  id: AstId
+  span: AstSpan
+
+  kind: AstPatternKind
+
+  text: string
+  name: string
+
+  mutable: bool
+  borrowed: bool
+  variadic: bool
+
+  binding_name: string
+  variant_name: string
+
+  type_name: string
+
+  range_start: string
+  range_end: string
+
+  children: [AstPattern]
+
+  child_count: u64
+  depth: u64
+
+  valid: bool
+}
+
+proc ast_pattern_kind_name(kind: AstPatternKind) -> string {
+  if kind == AstPatternKind.Unknown {
+    give "unknown";
+  } elif kind == AstPatternKind.Name {
+    give "name";
+  } elif kind == AstPatternKind.Literal {
+    give "literal";
+  } elif kind == AstPatternKind.Wildcard {
+    give "wildcard";
+  } elif kind == AstPatternKind.Ref {
+    give "ref";
+  } elif kind == AstPatternKind.MutableRef {
+    give "mutable-ref";
+  } elif kind == AstPatternKind.Struct {
+    give "struct";
+  } elif kind == AstPatternKind.Enum {
+    give "enum";
+  } elif kind == AstPatternKind.Tuple {
+    give "tuple";
+  } elif kind == AstPatternKind.Array {
+    give "array";
+  } elif kind == AstPatternKind.Slice {
+    give "slice";
+  } elif kind == AstPatternKind.Range {
+    give "range";
+  } elif kind == AstPatternKind.Or {
+    give "or";
+  } elif kind == AstPatternKind.Rest {
+    give "rest";
+  } elif kind == AstPatternKind.Path {
+    give "path";
+  } elif kind == AstPatternKind.Variant {
+    give "variant";
+  } elif kind == AstPatternKind.Typed {
+    give "typed";
+  } elif kind == AstPatternKind.Binding {
+    give "binding";
+  } elif kind == AstPatternKind.Invalid {
+    give "invalid";
+  }
+
+  give "pattern";
+}
+
+proc pattern_depth(children: [AstPattern]) -> u64 {
+  let depth: u64 = 1;
+
+  let i: u64 = 0;
+
+  while i < len(children) {
+    let child_depth: u64 = 1 + children[i].depth;
+
+    if child_depth > depth {
+      set depth = child_depth;
+    }
+
+    set i = i + 1;
+  }
+
+  give depth;
+}
+
+proc ast_pattern_node(id: u64, span: AstSpan, kind: AstPatternKind, text: string, name: string, mutable: bool, children: [AstPattern]) -> AstPattern {
+  let binding_kind: bool = kind == AstPatternKind.Name or kind == AstPatternKind.Binding;
+  let binding_name: string = if binding_kind { name } else { "" };
+
+  give AstPattern {
+    id: ast_id(id),
+    span: span,
+
+    kind: kind,
+
+    text: text,
+    name: name,
+
+    mutable: mutable,
+    borrowed: false,
+    variadic: false,
+
+    binding_name: binding_name,
+    variant_name: "",
+
+    type_name: "",
+
+    range_start: "",
+    range_end: "",
+
+    children: children,
+
+    child_count: len(children),
+    depth: pattern_depth(children),
+
+    valid: kind != AstPatternKind.Unknown
+  };
+}
+
+proc ast_pattern(id: u64, span: AstSpan, name: string, mutable: bool) -> AstPattern {
+  let kind: AstPatternKind = if name == "_" { AstPatternKind.Wildcard } elif name != "" { AstPatternKind.Name } else { AstPatternKind.Unknown };
+
+  give AstPattern {
+    id: ast_id(id),
+    span: span,
+
+    kind: kind,
+
+    text: name,
+    name: name,
+
+    mutable: mutable,
+    borrowed: false,
+    variadic: false,
+
+    binding_name: name,
+    variant_name: "",
+
+    type_name: "",
+
+    range_start: "",
+    range_end: "",
+
+    children: [],
+
+    child_count: 0,
+    depth: 1,
+
+    valid: name != ""
+  };
+}
+
+proc ast_pattern_literal(id: u64, span: AstSpan, text: string) -> AstPattern {
+  give AstPattern {
+    id: ast_id(id),
+    span: span,
+
+    kind: AstPatternKind.Literal,
+
+    text: text,
+    name: "",
+
+    mutable: false,
+    borrowed: false,
+    variadic: false,
+
+    binding_name: "",
+    variant_name: "",
+
+    type_name: "",
+
+    range_start: "",
+    range_end: "",
+
+    children: [],
+
+    child_count: 0,
+    depth: 1,
+
+    valid: text != ""
+  };
+}
+
+proc ast_pattern_range(id: u64, span: AstSpan, start0: string, end0: string) -> AstPattern {
+  give AstPattern {
+    id: ast_id(id),
+    span: span,
+
+    kind: AstPatternKind.Range,
+
+    text: start0 + ".." + end0,
+    name: "",
+
+    mutable: false,
+    borrowed: false,
+    variadic: false,
+
+    binding_name: "",
+    variant_name: "",
+
+    type_name: "",
+
+    range_start: start0,
+    range_end: end0,
+
+    children: [],
+
+    child_count: 0,
+    depth: 1,
+
+    valid: start0 != "" and end0 != ""
+  };
+}
+
+proc ast_pattern_binding(id: u64, span: AstSpan, binding_name: string, mutable: bool, borrowed: bool) -> AstPattern {
+  give AstPattern {
+    id: ast_id(id),
+    span: span,
+
+    kind: AstPatternKind.Binding,
+
+    text: binding_name,
+    name: binding_name,
+
+    mutable: mutable,
+    borrowed: borrowed,
+    variadic: false,
+
+    binding_name: binding_name,
+    variant_name: "",
+
+    type_name: "",
+
+    range_start: "",
+    range_end: "",
+
+    children: [],
+
+    child_count: 0,
+    depth: 1,
+
+    valid: binding_name != ""
+  };
+}
+
+proc ast_pattern_variant(id: u64, span: AstSpan, variant_name: string, children: [AstPattern]) -> AstPattern {
+  give AstPattern {
+    id: ast_id(id),
+    span: span,
+
+    kind: AstPatternKind.Variant,
+
+    text: variant_name,
+    name: "",
+
+    mutable: false,
+    borrowed: false,
+    variadic: false,
+
+    binding_name: "",
+    variant_name: variant_name,
+
+    type_name: "",
+
+    range_start: "",
+    range_end: "",
+
+    children: children,
+
+    child_count: len(children),
+    depth: pattern_depth(children),
+
+    valid: variant_name != ""
+  };
+}
+
+proc ast_pattern_merge(left: AstPattern, right: AstPattern) -> AstPattern {
+  let merged_depth: u64 = if left.depth > right.depth { left.depth + 1 } else { right.depth + 1 };
+  give AstPattern {
+    id: left.id,
+    span: merge_spans(left.span, right.span),
+
+    kind: AstPatternKind.Or,
+
+    text: left.text + " | " + right.text,
+    name: "",
+
+    mutable: left.mutable or right.mutable,
+    borrowed: left.borrowed or right.borrowed,
+    variadic: left.variadic or right.variadic,
+
+    binding_name: "",
+    variant_name: "",
+
+    type_name: "",
+
+    range_start: "",
+    range_end: "",
+
+    children: [left, right],
+
+    child_count: 2,
+    depth: merged_depth,
+
+    valid: left.valid and right.valid
+  };
+}
+
+proc ast_pattern_empty() -> AstPattern {
+  give AstPattern {
+    id: ast_id(0),
+    span: ast_span_empty(),
+
+    kind: AstPatternKind.Unknown,
+
+    text: "",
+    name: "",
+
+    mutable: false,
+    borrowed: false,
+    variadic: false,
+
+    binding_name: "",
+    variant_name: "",
+
+    type_name: "",
+
+    range_start: "",
+    range_end: "",
+
+    children: [],
+
+    child_count: 0,
+    depth: 0,
+
+    valid: false
+  };
+}
+
+proc pattern_child(pattern: AstPattern, index: u64) -> AstPattern {
+  if index >= len(pattern.children) {
+    give ast_pattern_empty();
+  }
+
+  give pattern.children[index];
+}
+
+proc pattern_has_children(pattern: AstPattern) -> bool {
+  give len(pattern.children) > 0;
+}
+
+proc pattern_is_leaf(pattern: AstPattern) -> bool {
+  give len(pattern.children) == 0;
+}
+
+proc pattern_is_binding(pattern: AstPattern) -> bool {
+  give pattern.kind == AstPatternKind.Name
+    or pattern.kind == AstPatternKind.Binding;
+}
+
+proc pattern_is_destructuring(pattern: AstPattern) -> bool {
+  give pattern.kind == AstPatternKind.Struct
+    or pattern.kind == AstPatternKind.Tuple
+    or pattern.kind == AstPatternKind.Array
+    or pattern.kind == AstPatternKind.Slice;
+}
+
+proc pattern_is_ref(pattern: AstPattern) -> bool {
+  give pattern.kind == AstPatternKind.Ref
+    or pattern.kind == AstPatternKind.MutableRef;
+}
+
+proc count_patterns(pattern: AstPattern) -> u64 {
+  let total: u64 = 1;
+
+  let i: u64 = 0;
+
+  while i < len(pattern.children) {
+    set total = total + count_patterns(pattern.children[i]);
+    set i = i + 1;
+  }
+
+  give total;
+}
+
+proc pattern_summary(pattern: AstPattern) -> string {
+  let child_count: string = pattern.child_count as string;
+  let depth: string = pattern.depth as string;
+  let mutable_text: string = pattern.mutable as string;
+  let borrowed_text: string = pattern.borrowed as string;
+  let valid_text: string = pattern.valid as string;
+  give "kind " + ast_pattern_kind_name(pattern.kind) + " name " + pattern.name + " children " + child_count + " depth " + depth + " mutable " + mutable_text + " borrowed " + borrowed_text + " valid " + valid_text;
+}
+
+proc ast_pattern_selftest() -> bool {
+  let left: AstPattern = ast_pattern(1, ast_span_empty(), "left", false);
+  let right: AstPattern = ast_pattern(2, ast_span_empty(), "right", true);
+  let merged: AstPattern = ast_pattern_merge(left, right);
+
+  give left.valid
+    and right.valid
+    and merged.valid
+    and pattern_has_children(merged)
+    and count_patterns(merged) == 3
+    and pattern_summary(merged) != "";
+}

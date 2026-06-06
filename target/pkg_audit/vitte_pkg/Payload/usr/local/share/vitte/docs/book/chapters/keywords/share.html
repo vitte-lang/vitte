@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Keyword `share`</title>
+<link rel="icon" href="../../../svg/logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../../css/site.css">
+<link rel="stylesheet" href="../../../css/print.css" media="print">
+
+<link rel="alternate" hreflang="en" href="https://vitte-lang.org/share.html">
+<link rel="alternate" hreflang="x-default" href="https://vitte-lang.org/share.html">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; font-src 'self'; connect-src 'self';">
+</head>
+<body class="classic-doc">
+<a class="skip-link" href="#main-content">Skip to content</a>
+<div class="site-shell">
+<header class="site-header">
+<a class="site-brand" href="../../../index.html"><img class="site-brand-mark" src="../../../svg/logo.svg" alt="" width="32" height="32"><span>Vitte</span></a>
+<nav class="site-nav" aria-label="Primary">
+<ul class="nav-band"><li><a class="nav-chip" href="../../../index.html"><img src="../../../svg/home.svg" alt="" width="14" height="14" aria-hidden="true"><span>Welcome</span></a></li><li><a class="nav-chip" href="../../../doc.html"><img src="../../../svg/docs.svg" alt="" width="14" height="14" aria-hidden="true"><span>Documentation</span></a></li><li><a class="nav-chip" href="../../../download.html"><img src="../../../svg/download.svg" alt="" width="14" height="14" aria-hidden="true"><span>Download</span></a></li><li><a class="nav-chip" href="../../../source.html"><img src="../../../svg/source.svg" alt="" width="14" height="14" aria-hidden="true"><span>Source</span></a></li><li><a class="nav-chip" href="../../../community.html"><img src="../../../svg/community.svg" alt="" width="14" height="14" aria-hidden="true"><span>Community</span></a></li><li><a class="nav-chip" href="../../../news.html"><img src="../../../svg/news.svg" alt="" width="14" height="14" aria-hidden="true"><span>News</span></a></li><li><a class="nav-chip" href="../../../diagnostics.html"><img src="../../../svg/diagnostics.svg" alt="" width="14" height="14" aria-hidden="true"><span>Diagnostics</span></a></li><li><a class="nav-chip" href="../../../suggestions.html"><img src="../../../svg/suggestions.svg" alt="" width="14" height="14" aria-hidden="true"><span>Suggestions</span></a></li></ul>
+</nav>
+</header>
+<main id="main-content" class="site-main">
+<article class="doc-content">
+<p class="book-progress"></p>
+<h1>Keyword <code>share</code></h1>
+<p>Level: Advanced.</p>
+<h2>Quick reading</h2>
+<p>Concrete reference: <code>share</code> is used to decide an execution path in a readable and verifiable manner. Use <code>share</code> when used to organize modules and symbols; avoid it if it makes no observable difference on the branch or output.</p>
+<h2>Why (job)</h2>
+<p>In practice, <code>share</code> should make the rule clearer, not noisier. If removing it changes neither the meaning nor the outcome, prefer the simpler form.</p>
+<h2>Definition</h2>
+<p><code>share</code> explicitly exports top-level symbols (<code>all</code> or list of identifiers).</p>
+<h2>Syntax</h2>
+<p>Canonical form: <code>share all</code> or <code>share id1, id2</code>.</p>
+<h2>Algorithmic reading</h2>
+<p>Read it in context: find where <code>share</code> appears, then confirm the constraint it adds.</p>
+<h2>Nominal example</h2>
+<p>Input:</p>
+<ul>
+<li>Explicit export of symbols.</li>
+</ul>
+<pre><code class="language-vit">// Exemple concret: cas nominal puis cas invalide
+
+space core/math
+
+proc add(a: int, b: int) -&gt; int { give a + b }
+
+proc sub(a: int, b: int) -&gt; int { give a - b }
+share add, sub</code></pre>
+<p>Observed result:</p>
+<ul>
+<li>Only <code>add</code> and <code>sub</code> are exported.</li>
+</ul>
+<h2>Invalid example</h2>
+<p>Input:</p>
+<ul>
+<li>Non-grammar export form.</li>
+</ul>
+<pre><code class="language-vit">// Exemple concret: cas nominal puis cas invalide
+share proc add(a: int, b: int) -&gt; int { give a + b }
+# invalide: `share` n’exporte pas une déclaration inline.</code></pre>
+<p>Observed result:</p>
+<ul>
+<li>The parser rejects the shape.</li>
+</ul>
+<p>Expected diagnosis:</p>
+<ul>
+<li>Code: <code>VITTE-XXXX</code> (or corresponding <code>E000X</code> compiler code).</li>
+<li>Position: <code>ligne 1, colonne 1</code> (adjust according to actual snippet).</li>
+<li>Message: stable, actionable correction.</li>
+</ul>
+<h2>Quick refactor</h2>
+<p>Before:</p>
+<pre><code class="language-vit">// Exemple concret: cas nominal puis cas invalide
+# usage fragile à corriger</code></pre>
+<p>After:</p>
+<pre><code class="language-vit">// Exemple concret: cas nominal puis cas invalide
+# usage clair et testable</code></pre>
+<h2>Pitfalls</h2>
+<ul>
+<li>Export too wide with <code>all</code> without need.</li>
+<li>Export unstable internal symbol.</li>
+<li>Forgetting to align <code>share</code> with the module documentation.</li>
+</ul>
+<h2>When to use it / When to avoid it</h2>
+<ul>
+<li>When to use it: To control a module's public API.</li>
+<li>When to avoid it: to implicitly export unstabilized elements.</li>
+</ul>
+<h2>Common compiler errors</h2>
+<table border="1" cellpadding="6" cellspacing="0">
+<tr><th>Typical message</th><th>Cause</th><th>Correction</th></tr>
+<tr><td><code>unexpected token near share</code></td><td>Form other than <code>all</code> or <code>ident_list</code>.</td><td>Use <code>share all</code> or <code>share a, b</code>.</td></tr>
+<tr><td><code>unknown symbol in share list</code></td><td>Symbol not declared in the module.</td><td>Declare the symbol before <code>share</code>.</td></tr>
+<tr><td><code>duplicate export</code></td><td>Repeated symbol.</td><td>Clean the export list.</td></tr>
+</table>
+<h2>Neighbor keyword</h2>
+<table border="1" cellpadding="6" cellspacing="0">
+<tr><th>Keyword</th><th>Operational difference</th></tr>
+<tr><td><code>pull</code></td><td><code>share</code> defines what we export; <code>pull</code> defines what we import.</td></tr>
+</table>
+<h2>Used in chapters</h2>
+<ul>
+<li><code>docs/book/chapters/07-control.html</code>.</li>
+<li><code>docs/book/chapters/27-grammar.html</code>.</li>
+<li><code>docs/book/chapters/31-build-errors.html</code>.</li>
+</ul>
+<h2>See also</h2>
+<ul>
+<li><code>docs/book/chapters/keywords/erreurs-compilateur.html</code>.</li>
+<li><code>docs/book/chapters/keywords/pull.html</code>.</li>
+<li><code>docs/book/chapters/keywords/space.html</code>.</li>
+<li><code>docs/book/chapters/09-modules.html</code>.</li>
+</ul>
+<h2>Completeness score</h2>
+<p>coverage: syntax/examples/invalids/diagnostics/links = 3/5</p>
+</article>
+</main>
+<footer class="site-footer">
+<p class="site-footer-path">book/chapters/keywords/share.html</p>
+<p><a href="../../../index.html">Back to home</a></p>
+</footer>
+</div>
+<script type="module" src="../../../js/book-learning.js"></script>
+<script type="module" src="../../../js/main.js"></script>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

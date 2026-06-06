@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Keyword `field`</title>
+<link rel="icon" href="../../../svg/logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../../css/site.css">
+<link rel="stylesheet" href="../../../css/print.css" media="print">
+
+<link rel="alternate" hreflang="en" href="https://vitte-lang.org/field.html">
+<link rel="alternate" hreflang="x-default" href="https://vitte-lang.org/field.html">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; font-src 'self'; connect-src 'self';">
+</head>
+<body class="classic-doc">
+<a class="skip-link" href="#main-content">Skip to content</a>
+<div class="site-shell">
+<header class="site-header">
+<a class="site-brand" href="../../../index.html"><img class="site-brand-mark" src="../../../svg/logo.svg" alt="" width="32" height="32"><span>Vitte</span></a>
+<nav class="site-nav" aria-label="Primary">
+<ul class="nav-band"><li><a class="nav-chip" href="../../../index.html"><img src="../../../svg/home.svg" alt="" width="14" height="14" aria-hidden="true"><span>Welcome</span></a></li><li><a class="nav-chip" href="../../../doc.html"><img src="../../../svg/docs.svg" alt="" width="14" height="14" aria-hidden="true"><span>Documentation</span></a></li><li><a class="nav-chip" href="../../../download.html"><img src="../../../svg/download.svg" alt="" width="14" height="14" aria-hidden="true"><span>Download</span></a></li><li><a class="nav-chip" href="../../../source.html"><img src="../../../svg/source.svg" alt="" width="14" height="14" aria-hidden="true"><span>Source</span></a></li><li><a class="nav-chip" href="../../../community.html"><img src="../../../svg/community.svg" alt="" width="14" height="14" aria-hidden="true"><span>Community</span></a></li><li><a class="nav-chip" href="../../../news.html"><img src="../../../svg/news.svg" alt="" width="14" height="14" aria-hidden="true"><span>News</span></a></li><li><a class="nav-chip" href="../../../diagnostics.html"><img src="../../../svg/diagnostics.svg" alt="" width="14" height="14" aria-hidden="true"><span>Diagnostics</span></a></li><li><a class="nav-chip" href="../../../suggestions.html"><img src="../../../svg/suggestions.svg" alt="" width="14" height="14" aria-hidden="true"><span>Suggestions</span></a></li></ul>
+</nav>
+</header>
+<main id="main-content" class="site-main">
+<article class="doc-content">
+<p class="book-progress"></p>
+<h1>Keyword <code>field</code></h1>
+<p>Level: Intermediate.</p>
+<h2>Quick reading</h2>
+<p>Concrete reference: <code>field</code> is used to decide an execution path in a readable and verifiable manner. Use <code>field</code> when used to define a data model; avoid it if it makes no observable difference on the branch or output.</p>
+<h2>Why (job)</h2>
+<p>In practice, <code>field</code> should make the rule clearer, not noisier. If removing it changes neither the meaning nor the outcome, prefer the simpler form.</p>
+<h2>Definition</h2>
+<p><code>field</code> is used in the legacy form of <code>form</code> with the syntax <code>as</code>.</p>
+<h2>Syntax</h2>
+<p>Canonical form: <code>field nom as type</code> (in <code>legacy_form</code>).</p>
+<h2>Algorithmic reading</h2>
+<p>Read it in context: find where <code>field</code> appears, then confirm the constraint it adds.</p>
+<h2>Nominal example</h2>
+<p>Input:</p>
+<ul>
+<li>Valid legacy declaration.</li>
+</ul>
+<pre><code class="language-vit">// Exemple concret: cas nominal puis cas invalide
+
+form User
+field id as int
+field name as string
+.end</code></pre>
+<p>Observed result:</p>
+<ul>
+<li>The structure is accepted with two typed fields.</li>
+</ul>
+<h2>Invalid example</h2>
+<p>Input:</p>
+<ul>
+<li>Form mixing syntaxes.</li>
+</ul>
+<pre><code class="language-vit">// Exemple concret: cas nominal puis cas invalide
+
+form User
+field id: int
+.end
+# invalide: en mode legacy, `field` utilise `as`.</code></pre>
+<p>Observed result:</p>
+<ul>
+<li>The parser rejects the field line.</li>
+</ul>
+<p>Expected diagnosis:</p>
+<ul>
+<li>Code: <code>VITTE-XXXX</code> (or corresponding <code>E000X</code> compiler code).</li>
+<li>Position: <code>ligne 1, colonne 1</code> (adjust according to actual snippet).</li>
+<li>Message: stable, actionable correction.</li>
+</ul>
+<h2>Quick refactor</h2>
+<p>Before:</p>
+<pre><code class="language-vit">// Exemple concret: cas nominal puis cas invalide
+# usage fragile à corriger</code></pre>
+<p>After:</p>
+<pre><code class="language-vit">// Exemple concret: cas nominal puis cas invalide
+# usage clair et testable</code></pre>
+<h2>Pitfalls</h2>
+<ul>
+<li>Use <code>field</code> with <code>:</code>.</li>
+<li>Mix <code>.end</code> and <code>{ ... }</code>.</li>
+<li>Forget the migration to the modern form.</li>
+</ul>
+<h2>When to use it / When to avoid it</h2>
+<ul>
+<li>When to use it: to maintain legacy code <code>.end</code>.</li>
+<li>When to avoid it: in the modern brace form (<code>name: type</code>).</li>
+</ul>
+<h2>Common compiler errors</h2>
+<table border="1" cellpadding="6" cellspacing="0">
+<tr><th>Typical message</th><th>Cause</th><th>Correction</th></tr>
+<tr><td><code>unexpected token near field</code></td><td>Field out of legacy context.</td><td>Use <code>field ... as ...</code> in <code>.end</code>.</td></tr>
+<tr><td><code>missing type after as</code></td><td>Type absent.</td><td>Add <code>as type_expr</code>.</td></tr>
+<tr><td><code>mixed form styles</code></td><td>Brace/legacy mix.</td><td>Choose a unique style by statement.</td></tr>
+</table>
+<h2>Neighbor keyword</h2>
+<table border="1" cellpadding="6" cellspacing="0">
+<tr><th>Keyword</th><th>Operational difference</th></tr>
+<tr><td><code>form</code></td><td><code>form</code> declares the container; <code>field</code> declares a legacy field of <code>form</code>.</td></tr>
+</table>
+<h2>Used in chapters</h2>
+<ul>
+<li><code>docs/book/chapters/07-control.html</code>.</li>
+<li><code>docs/book/chapters/27-grammar.html</code>.</li>
+<li><code>docs/book/chapters/31-build-errors.html</code>.</li>
+</ul>
+<h2>See also</h2>
+<ul>
+<li><code>docs/book/chapters/keywords/erreurs-compilateur.html</code>.</li>
+<li><code>docs/book/chapters/keywords/form.html</code>.</li>
+<li><code>docs/book/chapters/keywords/trait.html</code>.</li>
+<li><code>docs/book/chapters/27-grammar.html</code>.</li>
+</ul>
+<h2>Completeness score</h2>
+<p>coverage: syntax/examples/invalids/diagnostics/links = 4/5</p>
+</article>
+</main>
+<footer class="site-footer">
+<p class="site-footer-path">book/chapters/keywords/field.html</p>
+<p><a href="../../../index.html">Back to home</a></p>
+</footer>
+</div>
+<script type="module" src="../../../js/book-learning.js"></script>
+<script type="module" src="../../../js/main.js"></script>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
