@@ -9,7 +9,6 @@
 <link rel="stylesheet" href="../../../css/print.css" media="print">
 <link rel="alternate" hreflang="en" href="https://vitte-lang.org/book/stdlib-reference/modules/sysinfo.vitl.html">
 <link rel="alternate" hreflang="x-default" href="https://vitte-lang.org/book/stdlib-reference/modules/sysinfo.vitl.html">
-
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; font-src 'self'; connect-src 'self';">
 </head>
 <body class="classic-doc">
@@ -53,10 +52,22 @@
 <ul>
 <li><a href="#overview">Overview</a></li>
 <li><a href="#purpose">Purpose</a></li>
+<li><a href="#taxonomy">Taxonomy</a></li>
+<li><a href="#profile">Implementation profile</a></li>
 <li><a href="#inventory">Top-level API inventory</a></li>
+<li><a href="#position">Position in family</a></li>
+<li><a href="#declarations">Declaration map</a></li>
+<li><a href="#signatures">Representative signatures</a></li>
 <li><a href="#usage">How to use this module</a></li>
+<li><a href="#user-example">User example</a></li>
+<li><a href="#keyword-coverage">Keyword coverage</a></li>
 <li><a href="#source-shape">Source shape</a></li>
+<li><a href="#landmarks">Source landmarks</a></li>
+<li><a href="#organization">Source organization</a></li>
+<li><a href="#catalog">Complete API catalog</a></li>
 <li><a href="#boundaries">Integration boundaries</a></li>
+<li><a href="#composition">Composition guidance</a></li>
+<li><a href="#relationships">Relationship table</a></li>
 <li><a href="#neighbors">Neighbor modules</a></li>
 </ul>
 </section>
@@ -78,6 +89,26 @@
 <p>This file should be chosen because of responsibility, not because its name “sounds close enough”. Inside the <code>stdlib</code> family, it carries one focused part of the contract and keeps that responsibility separate from neighboring concerns.</p>
 <ul><li>Domain values start in `core` and `strings`.</li><li>Grouped data moves through `collections` or `data`.</li><li>Structured export goes through `json` and `encoding`.</li><li>Filesystem or process interaction goes through `path`, `io`, `os`, or `sysinfo`.</li><li>Explicit runtime coordination goes through `async`, `threading`, `kernel`, or `ffi`.</li></ul>
 </section>
+<section id="taxonomy">
+<h2>Taxonomy</h2>
+<p>Think of this page as a generated encyclopedia entry rather than a hand-written tutorial. The goal is to show what kind of module this is, how dense it is, and what reading strategy makes sense before depending on it.</p>
+<ul><li>Large algorithm surface: this file exposes many procedures and likely acts as a domain toolkit rather than a single thin wrapper.</li><li>Owns domain vocabulary: the module declares data shapes in addition to executable helpers, so its types are part of the contract.</li><li>Minimal top-level dependencies: the module reads as mostly self-contained from its opening declarations.</li><li>Explicit export surface: the file ends with visible export declarations instead of relying only on implicit namespace discovery.</li></ul>
+</section>
+<section id="profile">
+<h2>Implementation profile</h2>
+<p>This profile is inferred directly from the source text. It does not replace reading the file, but it tells you quickly whether the module is mostly declarative, loop-heavy, branch-heavy, or organized around many small exits.</p>
+<div class="table-scroll">
+<table border="1" cellpadding="6" cellspacing="0">
+<tr><th>Signal</th><th>Count</th><th>What it suggests</th></tr>
+<tr><td><code>if</code></td><td>0</td><td>Branching density and local decision-making.</td></tr>
+<tr><td><code>while</code></td><td>0</td><td>Loop-heavy or iterative implementation style.</td></tr>
+<tr><td><code>for</code></td><td>1</td><td>Collection-style traversal at source level.</td></tr>
+<tr><td><code>match</code></td><td>0</td><td>Variant-driven branching or grammar-style decoding.</td></tr>
+<tr><td><code>let</code></td><td>3</td><td>Local state and intermediate value density.</td></tr>
+<tr><td><code>give</code></td><td>63</td><td>Number of explicit exit points and result shaping.</td></tr>
+</table>
+</div>
+</section>
 <section id="inventory">
 <h2>Top-level API inventory</h2>
 <table border="1" cellpadding="6" cellspacing="0">
@@ -86,32 +117,187 @@
 <tr><td>Forms</td><td><code>OSInfo</code>, <code>CPUInfo</code>, <code>MemoryInfo</code>, <code>DiskStat</code>, <code>ProcessInfo</code>, <code>NetworkStat</code>, <code>BatteryInfo</code>, <code>SystemLoad</code>, <code>SysInfoManifest</code>, <code>SystemSummary</code>, <code>SystemSnapshot</code>, <code>SystemHealthReport</code></td></tr>
 <tr><td>Picks</td><td>none declared at top level</td></tr>
 <tr><td>Constants</td><td>none declared at top level</td></tr>
+<tr><td>Exports</td><td><code>*</code></td></tr>
 </table>
 <h3>Imported surfaces</h3>
 <p>This file does not advertise a top-level `use` surface in its opening declarations. That often means it is either self-contained or an aggregation layer.</p>
 </section>
+<section id="position">
+<h2>Position in family</h2>
+<p>This file is module 11 of 11 in the <code>stdlib</code> family when ordered by path. By procedure count it ranks 6, and by line count it ranks 7. Those ranks are useful as rough signals of breadth, not as quality judgments.</p>
+</section>
+<section id="declarations">
+<h2>Declaration map</h2>
+<p>The declaration map turns raw source into a scan-friendly catalog. It is useful when the file is large enough that a reader wants to orient by kinds of surfaces first.</p>
+<div class="table-scroll">
+<table border="1" cellpadding="6" cellspacing="0">
+<tr><th>Line</th><th>Name</th><th>Kind</th><th>Role</th></tr>
+<tr><td>1</td><td><code>vitte/sysinfo</code></td><td>space</td><td>Declares the namespace that anchors this file in the stdlib tree.</td></tr>
+<tr><td>11</td><td><code>OSInfo</code></td><td>form</td><td>Introduces a structured data shape that other procedures can exchange.</td></tr>
+<tr><td>18</td><td><code>CPUInfo</code></td><td>form</td><td>Introduces a structured data shape that other procedures can exchange.</td></tr>
+<tr><td>26</td><td><code>MemoryInfo</code></td><td>form</td><td>Introduces a structured data shape that other procedures can exchange.</td></tr>
+<tr><td>35</td><td><code>DiskStat</code></td><td>form</td><td>Introduces a structured data shape that other procedures can exchange.</td></tr>
+<tr><td>44</td><td><code>ProcessInfo</code></td><td>form</td><td>Introduces a structured data shape that other procedures can exchange.</td></tr>
+<tr><td>53</td><td><code>NetworkStat</code></td><td>form</td><td>Introduces a structured data shape that other procedures can exchange.</td></tr>
+<tr><td>63</td><td><code>BatteryInfo</code></td><td>form</td><td>Introduces a structured data shape that other procedures can exchange.</td></tr>
+<tr><td>70</td><td><code>SystemLoad</code></td><td>form</td><td>Introduces a structured data shape that other procedures can exchange.</td></tr>
+<tr><td>76</td><td><code>SysInfoManifest</code></td><td>form</td><td>Introduces a structured data shape that other procedures can exchange.</td></tr>
+<tr><td>82</td><td><code>SystemSummary</code></td><td>form</td><td>Introduces a structured data shape that other procedures can exchange.</td></tr>
+<tr><td>89</td><td><code>SystemSnapshot</code></td><td>form</td><td>Introduces a structured data shape that other procedures can exchange.</td></tr>
+<tr><td>100</td><td><code>SystemHealthReport</code></td><td>form</td><td>Introduces a structured data shape that other procedures can exchange.</td></tr>
+<tr><td>112</td><td><code>SysInfoReport</code></td><td>form</td><td>Introduces a structured data shape that other procedures can exchange.</td></tr>
+<tr><td>119</td><td><code>sysinfo_version</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>123</td><td><code>sysinfo_name</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>127</td><td><code>sysinfo_module_count</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>131</td><td><code>sysinfo_modules</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>143</td><td><code>sysinfo_manifest</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>151</td><td><code>sysinfo_ready</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>155</td><td><code>sysinfo_modules_detail</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>167</td><td><code>sysinfo_collection_count</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>171</td><td><code>get_os_info</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>180</td><td><code>get_os_name</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>184</td><td><code>get_os_version</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>188</td><td><code>get_architecture</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>192</td><td><code>is_windows</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>196</td><td><code>is_linux</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>200</td><td><code>is_macos</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>204</td><td><code>is_unix</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>208</td><td><code>get_cpu_info</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>218</td><td><code>get_cpu_count</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>222</td><td><code>get_cpu_count_physical</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>226</td><td><code>get_cpu_frequency</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>230</td><td><code>get_cpu_usage</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>234</td><td><code>get_process_cpu_usage</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>238</td><td><code>get_memory_info</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>249</td><td><code>get_total_memory</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>253</td><td><code>get_available_memory</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>257</td><td><code>get_used_memory</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>261</td><td><code>get_free_memory</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>265</td><td><code>get_memory_percent</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>269</td><td><code>get_process_memory_mb</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>273</td><td><code>get_disk_usage</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>284</td><td><code>get_disk_usage_all</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>288</td><td><code>get_total_disk_space</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>292</td><td><code>get_used_disk_space</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>296</td><td><code>get_free_disk_space</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>300</td><td><code>get_process_info</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>311</td><td><code>get_current_process_id</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>315</td><td><code>get_parent_process_id</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>319</td><td><code>get_running_processes</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>323</td><td><code>get_process_count</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>327</td><td><code>get_thread_count</code></td><td>proc</td><td>Owns coordination, scheduling, or concurrency behavior.</td></tr>
+<tr><td>331</td><td><code>get_network_interfaces</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>335</td><td><code>get_network_interface</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>347</td><td><code>get_hostname</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>351</td><td><code>get_local_ip</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>355</td><td><code>get_mac_address</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>359</td><td><code>get_uptime_seconds</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>363</td><td><code>get_boot_time</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>367</td><td><code>get_system_load_average</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>371</td><td><code>get_battery_percent</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>375</td><td><code>get_battery_time_remaining</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>379</td><td><code>is_on_battery</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>383</td><td><code>is_charging</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>387</td><td><code>get_battery_info</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>396</td><td><code>get_system_health_report</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>410</td><td><code>get_current_process_info</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>414</td><td><code>get_system_load</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>422</td><td><code>get_primary_disk_usage</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>426</td><td><code>get_primary_network_stat</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>430</td><td><code>get_system_snapshot</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>443</td><td><code>get_system_summary</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>452</td><td><code>get_sysinfo_report</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>461</td><td><code>sysinfo_health</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>476</td><td><code>sysinfo_selftest</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+</table>
+</div>
+<p>The table is exhaustive for top-level declarations of the selected kinds. This file declares 77 matching surfaces.</p>
+</section>
+<section id="signatures">
+<h2>Representative signatures</h2>
+<p>These signatures are shown in source order so the page keeps the feel of a reference manual, not just a keyword cloud.</p>
+<ul><li><code>form OSInfo {</code> (line 11)</li><li><code>form CPUInfo {</code> (line 18)</li><li><code>form MemoryInfo {</code> (line 26)</li><li><code>form DiskStat {</code> (line 35)</li><li><code>form ProcessInfo {</code> (line 44)</li><li><code>form NetworkStat {</code> (line 53)</li><li><code>form BatteryInfo {</code> (line 63)</li><li><code>form SystemLoad {</code> (line 70)</li><li><code>form SysInfoManifest {</code> (line 76)</li><li><code>form SystemSummary {</code> (line 82)</li><li><code>form SystemSnapshot {</code> (line 89)</li><li><code>form SystemHealthReport {</code> (line 100)</li><li><code>form SysInfoReport {</code> (line 112)</li><li><code>proc sysinfo_version() -&gt; string {</code> (line 119)</li><li><code>proc sysinfo_name() -&gt; string {</code> (line 123)</li><li><code>proc sysinfo_module_count() -&gt; i32 {</code> (line 127)</li><li><code>proc sysinfo_modules() -&gt; [string] {</code> (line 131)</li><li><code>proc sysinfo_manifest() -&gt; SysInfoManifest {</code> (line 143)</li></ul>
+<p>The list is intentionally capped here; the source file declares 76 matching signatures in total.</p>
+</section>
 <section id="usage">
 <h2>How to use this module</h2>
 <p>Start by reading the file as an ownership boundary. Ask three questions: what enters this module, what stable types or procedures it exports, and what adjacent module should stay outside of it.</p>
-<ol>
-<li>Open the family page first to understand why this area of the stdlib exists.</li>
-<li>Read the source excerpt below to see the namespace, imports, and first declared surfaces.</li>
-<li>Check the neighbor list to avoid coupling this module with an adjacent responsibility by habit.</li>
-</ol>
+<ol><li>Read <code>space</code> and top-level imports first so the ownership boundary of <code>sysinfo.vitl</code> is explicit.</li><li>Read declared forms and picks before algorithms so the data vocabulary is stable in your head.</li><li>Traverse procedures in source order; the early helpers usually explain the naming and numeric conventions used later.</li><li>Use the source landmarks section below as a table of contents when the file is large.</li><li>Only after that compare neighbor modules, because the right boundary choice matters more than memorizing one helper name.</li></ol>
+</section>
+<section id="user-example">
+<h2>User example</h2>
+<p>This example is generated from the actual stdlib module surface. Its job is not to be the smallest snippet possible; its job is to show a realistic consumer-shaped file that exercises the module and mirrors the language keywords the module itself relies on.</p>
+<pre><code class="language-vitl">space demo/sysinfo
+form DemoState {
+  ready: bool,
+  note: string
+}
+proc run_example() -&gt; DemoState {
+  let ready: bool = sysinfo_ready()
+  give DemoState { ready: ready, note: &quot;ok&quot; }
+}
+export run_example</code></pre>
+</section>
+<section id="keyword-coverage">
+<h2>Keyword coverage</h2>
+<p>This table makes the “all keywords of the module” requirement auditable. It compares the detected Vitte keywords in the source file with the generated consumer example above.</p>
+<div class="table-scroll">
+<table border="1" cellpadding="6" cellspacing="0">
+<tr><th>Keyword</th><th>Present in module source</th><th>Used in generated user example</th></tr>
+<tr><td><code>space</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>form</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>proc</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>let</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>for</code></td><td>yes</td><td>no</td></tr>
+<tr><td><code>give</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>export</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>true</code></td><td>yes</td><td>no</td></tr>
+<tr><td><code>false</code></td><td>yes</td><td>no</td></tr>
+<tr><td><code>and</code></td><td>yes</td><td>no</td></tr>
+</table>
+</div>
+<p>Keywords still not exercised directly in the generated snippet: <code>for</code>, <code>true</code>, <code>false</code>, <code>and</code>. The page still lists them here so the gap is visible.</p>
 </section>
 <section id="source-shape">
 <h2>Source shape</h2>
 <pre><code class="language-vitl">space vitte/sysinfo
-   System Information Library
-   Self-contained facade for OS, CPU, memory, disks,
-   processes, network, battery, uptime, and system load.
-   ========================================================= &gt;&gt;&gt;
 export *
 form OSInfo {
   name: string,
   version: string,
-  architecture: string,</code></pre>
+  architecture: string,
+  platform: string
+}
+form CPUInfo {
+  cores: i32,</code></pre>
 <p>The excerpt is not meant to replace the file. It exists to make the module recognizable at first glance, the same way a Wikipedia infobox helps the reader orient before reading the whole article.</p>
+</section>
+<section id="landmarks">
+<h2>Source landmarks</h2>
+<p>Large files are easier to retain when they have visible landmarks. When the source contains explicit section banners, they are surfaced here; otherwise the first major declarations are used as anchors.</p>
+<ul><li>System Information Library / Self-contained facade for OS, CPU, memory, disks, / processes, network, battery, uptime, and system load</li></ul>
+</section>
+<section id="organization">
+<h2>Source organization</h2>
+<p>When a file carries its own internal chaptering, those chapters usually reveal the intended reading order better than a flat symbol list. This section reconstructs that organization from the source itself.</p>
+
+<section class="lead-panel">
+<h3>Opening declarations</h3>
+<p><strong>Top-level items:</strong> 1. <strong>Procedures:</strong> 0. <strong>Data surfaces:</strong> 0. <strong>Constants:</strong> 0.</p>
+<p><strong>First visible names:</strong> <code>vitte/sysinfo</code></p>
+</section>
+
+<section class="lead-panel">
+<h3>System Information Library / Self-contained facade for OS, CPU, memory, disks, / processes, network, battery, uptime, and system load</h3>
+<p><strong>Top-level items:</strong> 77. <strong>Procedures:</strong> 63. <strong>Data surfaces:</strong> 13. <strong>Constants:</strong> 0.</p>
+<p><strong>First visible names:</strong> <code>*</code>, <code>OSInfo</code>, <code>CPUInfo</code>, <code>MemoryInfo</code>, <code>DiskStat</code>, <code>ProcessInfo</code>, <code>NetworkStat</code>, <code>BatteryInfo</code>, <code>SystemLoad</code>, <code>SysInfoManifest</code></p>
+</section>
+
+</section>
+<section id="catalog">
+<h2>Complete API catalog</h2>
+<p>This catalog is the exhaustive file-level index for the module. It is intentionally closer to a generated encyclopedia appendix than to a tutorial summary.</p>
+<h3>Data surfaces</h3><div class="table-scroll"><table border="1" cellpadding="6" cellspacing="0"><tr><th>Line</th><th>Name</th><th>Signature</th><th>Role</th></tr><tr><td>11</td><td><code>OSInfo</code></td><td><code>form OSInfo {</code></td><td>Introduces a structured data shape that other procedures can exchange.</td></tr><tr><td>18</td><td><code>CPUInfo</code></td><td><code>form CPUInfo {</code></td><td>Introduces a structured data shape that other procedures can exchange.</td></tr><tr><td>26</td><td><code>MemoryInfo</code></td><td><code>form MemoryInfo {</code></td><td>Introduces a structured data shape that other procedures can exchange.</td></tr><tr><td>35</td><td><code>DiskStat</code></td><td><code>form DiskStat {</code></td><td>Introduces a structured data shape that other procedures can exchange.</td></tr><tr><td>44</td><td><code>ProcessInfo</code></td><td><code>form ProcessInfo {</code></td><td>Introduces a structured data shape that other procedures can exchange.</td></tr><tr><td>53</td><td><code>NetworkStat</code></td><td><code>form NetworkStat {</code></td><td>Introduces a structured data shape that other procedures can exchange.</td></tr><tr><td>63</td><td><code>BatteryInfo</code></td><td><code>form BatteryInfo {</code></td><td>Introduces a structured data shape that other procedures can exchange.</td></tr><tr><td>70</td><td><code>SystemLoad</code></td><td><code>form SystemLoad {</code></td><td>Introduces a structured data shape that other procedures can exchange.</td></tr><tr><td>76</td><td><code>SysInfoManifest</code></td><td><code>form SysInfoManifest {</code></td><td>Introduces a structured data shape that other procedures can exchange.</td></tr><tr><td>82</td><td><code>SystemSummary</code></td><td><code>form SystemSummary {</code></td><td>Introduces a structured data shape that other procedures can exchange.</td></tr><tr><td>89</td><td><code>SystemSnapshot</code></td><td><code>form SystemSnapshot {</code></td><td>Introduces a structured data shape that other procedures can exchange.</td></tr><tr><td>100</td><td><code>SystemHealthReport</code></td><td><code>form SystemHealthReport {</code></td><td>Introduces a structured data shape that other procedures can exchange.</td></tr><tr><td>112</td><td><code>SysInfoReport</code></td><td><code>form SysInfoReport {</code></td><td>Introduces a structured data shape that other procedures can exchange.</td></tr></table></div><h3>Procedures</h3><div class="table-scroll"><table border="1" cellpadding="6" cellspacing="0"><tr><th>Line</th><th>Name</th><th>Signature</th><th>Role</th></tr><tr><td>119</td><td><code>sysinfo_version</code></td><td><code>proc sysinfo_version() -&gt; string {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>123</td><td><code>sysinfo_name</code></td><td><code>proc sysinfo_name() -&gt; string {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>127</td><td><code>sysinfo_module_count</code></td><td><code>proc sysinfo_module_count() -&gt; i32 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>131</td><td><code>sysinfo_modules</code></td><td><code>proc sysinfo_modules() -&gt; [string] {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>143</td><td><code>sysinfo_manifest</code></td><td><code>proc sysinfo_manifest() -&gt; SysInfoManifest {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>151</td><td><code>sysinfo_ready</code></td><td><code>proc sysinfo_ready() -&gt; bool {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>155</td><td><code>sysinfo_modules_detail</code></td><td><code>proc sysinfo_modules_detail() -&gt; [string] {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>167</td><td><code>sysinfo_collection_count</code></td><td><code>proc sysinfo_collection_count() -&gt; i32 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>171</td><td><code>get_os_info</code></td><td><code>proc get_os_info() -&gt; OSInfo {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>180</td><td><code>get_os_name</code></td><td><code>proc get_os_name() -&gt; string {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>184</td><td><code>get_os_version</code></td><td><code>proc get_os_version() -&gt; string {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>188</td><td><code>get_architecture</code></td><td><code>proc get_architecture() -&gt; string {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>192</td><td><code>is_windows</code></td><td><code>proc is_windows() -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>196</td><td><code>is_linux</code></td><td><code>proc is_linux() -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>200</td><td><code>is_macos</code></td><td><code>proc is_macos() -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>204</td><td><code>is_unix</code></td><td><code>proc is_unix() -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>208</td><td><code>get_cpu_info</code></td><td><code>proc get_cpu_info() -&gt; CPUInfo {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>218</td><td><code>get_cpu_count</code></td><td><code>proc get_cpu_count() -&gt; i32 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>222</td><td><code>get_cpu_count_physical</code></td><td><code>proc get_cpu_count_physical() -&gt; i32 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>226</td><td><code>get_cpu_frequency</code></td><td><code>proc get_cpu_frequency() -&gt; f64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>230</td><td><code>get_cpu_usage</code></td><td><code>proc get_cpu_usage() -&gt; f64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>234</td><td><code>get_process_cpu_usage</code></td><td><code>proc get_process_cpu_usage() -&gt; f64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>238</td><td><code>get_memory_info</code></td><td><code>proc get_memory_info() -&gt; MemoryInfo {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>249</td><td><code>get_total_memory</code></td><td><code>proc get_total_memory() -&gt; i64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>253</td><td><code>get_available_memory</code></td><td><code>proc get_available_memory() -&gt; i64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>257</td><td><code>get_used_memory</code></td><td><code>proc get_used_memory() -&gt; i64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>261</td><td><code>get_free_memory</code></td><td><code>proc get_free_memory() -&gt; i64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>265</td><td><code>get_memory_percent</code></td><td><code>proc get_memory_percent() -&gt; f64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>269</td><td><code>get_process_memory_mb</code></td><td><code>proc get_process_memory_mb() -&gt; i32 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>273</td><td><code>get_disk_usage</code></td><td><code>proc get_disk_usage(path: string) -&gt; DiskStat {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>284</td><td><code>get_disk_usage_all</code></td><td><code>proc get_disk_usage_all() -&gt; [DiskStat] {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>288</td><td><code>get_total_disk_space</code></td><td><code>proc get_total_disk_space(path: string) -&gt; i64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>292</td><td><code>get_used_disk_space</code></td><td><code>proc get_used_disk_space(path: string) -&gt; i64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>296</td><td><code>get_free_disk_space</code></td><td><code>proc get_free_disk_space(path: string) -&gt; i64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>300</td><td><code>get_process_info</code></td><td><code>proc get_process_info(pid: i32) -&gt; ProcessInfo {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>311</td><td><code>get_current_process_id</code></td><td><code>proc get_current_process_id() -&gt; i32 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>315</td><td><code>get_parent_process_id</code></td><td><code>proc get_parent_process_id() -&gt; i32 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>319</td><td><code>get_running_processes</code></td><td><code>proc get_running_processes() -&gt; [ProcessInfo] {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>323</td><td><code>get_process_count</code></td><td><code>proc get_process_count() -&gt; i32 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>327</td><td><code>get_thread_count</code></td><td><code>proc get_thread_count() -&gt; i32 {</code></td><td>Owns coordination, scheduling, or concurrency behavior.</td></tr><tr><td>331</td><td><code>get_network_interfaces</code></td><td><code>proc get_network_interfaces() -&gt; [NetworkStat] {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>335</td><td><code>get_network_interface</code></td><td><code>proc get_network_interface(name: string) -&gt; NetworkStat {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>347</td><td><code>get_hostname</code></td><td><code>proc get_hostname() -&gt; string {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>351</td><td><code>get_local_ip</code></td><td><code>proc get_local_ip() -&gt; string {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>355</td><td><code>get_mac_address</code></td><td><code>proc get_mac_address(interface: string) -&gt; string {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>359</td><td><code>get_uptime_seconds</code></td><td><code>proc get_uptime_seconds() -&gt; i64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>363</td><td><code>get_boot_time</code></td><td><code>proc get_boot_time() -&gt; i64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>367</td><td><code>get_system_load_average</code></td><td><code>proc get_system_load_average() -&gt; [f64] {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>371</td><td><code>get_battery_percent</code></td><td><code>proc get_battery_percent() -&gt; i32 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>375</td><td><code>get_battery_time_remaining</code></td><td><code>proc get_battery_time_remaining() -&gt; i32 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>379</td><td><code>is_on_battery</code></td><td><code>proc is_on_battery() -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>383</td><td><code>is_charging</code></td><td><code>proc is_charging() -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>387</td><td><code>get_battery_info</code></td><td><code>proc get_battery_info() -&gt; BatteryInfo {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>396</td><td><code>get_system_health_report</code></td><td><code>proc get_system_health_report() -&gt; SystemHealthReport {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>410</td><td><code>get_current_process_info</code></td><td><code>proc get_current_process_info() -&gt; ProcessInfo {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>414</td><td><code>get_system_load</code></td><td><code>proc get_system_load() -&gt; SystemLoad {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>422</td><td><code>get_primary_disk_usage</code></td><td><code>proc get_primary_disk_usage() -&gt; DiskStat {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>426</td><td><code>get_primary_network_stat</code></td><td><code>proc get_primary_network_stat() -&gt; NetworkStat {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>430</td><td><code>get_system_snapshot</code></td><td><code>proc get_system_snapshot() -&gt; SystemSnapshot {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>443</td><td><code>get_system_summary</code></td><td><code>proc get_system_summary() -&gt; SystemSummary {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>452</td><td><code>get_sysinfo_report</code></td><td><code>proc get_sysinfo_report() -&gt; SysInfoReport {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>461</td><td><code>sysinfo_health</code></td><td><code>proc sysinfo_health() -&gt; bool {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>476</td><td><code>sysinfo_selftest</code></td><td><code>proc sysinfo_selftest() -&gt; bool {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr></table></div><h3>Exports</h3><div class="table-scroll"><table border="1" cellpadding="6" cellspacing="0"><tr><th>Line</th><th>Name</th><th>Signature</th><th>Role</th></tr><tr><td>9</td><td><code>*</code></td><td><code>export *</code></td><td>Re-exports surfaces that the module wants to expose as part of its public boundary.</td></tr></table></div>
 </section>
 <section id="boundaries">
 <h2>Integration boundaries</h2>
@@ -120,6 +306,30 @@ form OSInfo {
 <li>Family responsibility: Top-level map of the Vitte standard library and the responsibilities owned by each family.</li>
 <li>Family architecture role: A realistic Vitte program usually starts in `core`, grows through `collections` or `data`, crosses textual boundaries with `json` or `encoding`, touches the host with `path` or `io`, and only then reaches system-facing families like `kernel`, `ffi`, `async`, or `threading`.</li>
 </ul>
+</section>
+<section id="composition">
+<h2>Composition guidance</h2>
+<h3>Choose this module when</h3>
+<ul><li>Choose <code>sysinfo.vitl</code> when the main question is owned by this module rather than by transport, storage, orchestration, or user-interface code.</li><li>Domain values start in `core` and `strings`.</li><li>Grouped data moves through `collections` or `data`.</li><li>Structured export goes through `json` and `encoding`.</li><li>Filesystem or process interaction goes through `path`, `io`, `os`, or `sysinfo`.</li><li>Explicit runtime coordination goes through `async`, `threading`, `kernel`, or `ffi`.</li></ul>
+<h3>Pause before extending it when</h3>
+<ul><li>Avoid extending this file when the new helper mostly changes the boundary to host I/O, runtime coordination, or foreign integration instead of staying inside <code>stdlib</code>.</li><li>Check nearby modules such as <code>GETTING_STARTED.vitl</code>, <code>core_alias.vitl</code>, <code>datetime.vitl</code> before adding convenience wrappers here.</li></ul>
+</section>
+<section id="relationships">
+<h2>Relationship table</h2>
+<p>This table keeps the page closer to a real encyclopedia entry: a module is easier to understand when compared with its nearest alternatives in the same family.</p>
+<div class="table-scroll">
+<table border="1" cellpadding="6" cellspacing="0">
+<tr><th>Neighbor</th><th>Procedures</th><th>Data surfaces</th><th>Why compare it</th></tr>
+<tr><td><a href="GETTING_STARTED.vitl.html"><code>GETTING_STARTED.vitl</code></a></td><td>26</td><td>0</td><td>Shares the same family boundary but carries a distinct slice of responsibility.</td></tr>
+<tr><td><a href="core_alias.vitl.html"><code>core_alias.vitl</code></a></td><td>0</td><td>0</td><td>Shares the same family boundary but carries a distinct slice of responsibility.</td></tr>
+<tr><td><a href="datetime.vitl.html"><code>datetime.vitl</code></a></td><td>138</td><td>16</td><td>Shares the same family boundary but carries a distinct slice of responsibility.</td></tr>
+<tr><td><a href="graphics.vitl.html"><code>graphics.vitl</code></a></td><td>5</td><td>0</td><td>Shares the same family boundary but carries a distinct slice of responsibility.</td></tr>
+<tr><td><a href="memory.vitl.html"><code>memory.vitl</code></a></td><td>137</td><td>16</td><td>Shares the same family boundary but carries a distinct slice of responsibility.</td></tr>
+<tr><td><a href="mod.vit.html"><code>mod.vit</code></a></td><td>16</td><td>2</td><td>Shares the same family boundary but carries a distinct slice of responsibility.</td></tr>
+<tr><td><a href="os.vitl.html"><code>os.vitl</code></a></td><td>167</td><td>30</td><td>Shares the same family boundary but carries a distinct slice of responsibility.</td></tr>
+<tr><td><a href="regex.vitl.html"><code>regex.vitl</code></a></td><td>44</td><td>9</td><td>Shares the same family boundary but carries a distinct slice of responsibility.</td></tr>
+</table>
+</div>
 </section>
 <section id="neighbors">
 <h2>Neighbor modules</h2>

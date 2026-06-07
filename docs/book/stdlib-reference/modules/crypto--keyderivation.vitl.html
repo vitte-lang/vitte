@@ -9,7 +9,6 @@
 <link rel="stylesheet" href="../../../css/print.css" media="print">
 <link rel="alternate" hreflang="en" href="https://vitte-lang.org/book/stdlib-reference/modules/crypto--keyderivation.vitl.html">
 <link rel="alternate" hreflang="x-default" href="https://vitte-lang.org/book/stdlib-reference/modules/crypto--keyderivation.vitl.html">
-
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; font-src 'self'; connect-src 'self';">
 </head>
 <body class="classic-doc">
@@ -53,10 +52,22 @@
 <ul>
 <li><a href="#overview">Overview</a></li>
 <li><a href="#purpose">Purpose</a></li>
+<li><a href="#taxonomy">Taxonomy</a></li>
+<li><a href="#profile">Implementation profile</a></li>
 <li><a href="#inventory">Top-level API inventory</a></li>
+<li><a href="#position">Position in family</a></li>
+<li><a href="#declarations">Declaration map</a></li>
+<li><a href="#signatures">Representative signatures</a></li>
 <li><a href="#usage">How to use this module</a></li>
+<li><a href="#user-example">User example</a></li>
+<li><a href="#keyword-coverage">Keyword coverage</a></li>
 <li><a href="#source-shape">Source shape</a></li>
+<li><a href="#landmarks">Source landmarks</a></li>
+<li><a href="#organization">Source organization</a></li>
+<li><a href="#catalog">Complete API catalog</a></li>
 <li><a href="#boundaries">Integration boundaries</a></li>
+<li><a href="#composition">Composition guidance</a></li>
+<li><a href="#relationships">Relationship table</a></li>
 <li><a href="#neighbors">Neighbor modules</a></li>
 </ul>
 </section>
@@ -78,6 +89,26 @@
 <p>This file should be chosen because of responsibility, not because its name “sounds close enough”. Inside the <code>crypto</code> family, it carries one focused part of the contract and keeps that responsibility separate from neighboring concerns.</p>
 <ul><li>A package manifest can be serialized first, then hashed, then optionally signed.</li><li>A token flow can derive a key in one boundary and use it in another without mixing concerns.</li></ul>
 </section>
+<section id="taxonomy">
+<h2>Taxonomy</h2>
+<p>Think of this page as a generated encyclopedia entry rather than a hand-written tutorial. The goal is to show what kind of module this is, how dense it is, and what reading strategy makes sense before depending on it.</p>
+<ul><li>Compact procedure surface: this file is small enough to read end-to-end before depending on it.</li><li>Owns domain vocabulary: the module declares data shapes in addition to executable helpers, so its types are part of the contract.</li><li>Minimal top-level dependencies: the module reads as mostly self-contained from its opening declarations.</li><li>Explicit export surface: the file ends with visible export declarations instead of relying only on implicit namespace discovery.</li></ul>
+</section>
+<section id="profile">
+<h2>Implementation profile</h2>
+<p>This profile is inferred directly from the source text. It does not replace reading the file, but it tells you quickly whether the module is mostly declarative, loop-heavy, branch-heavy, or organized around many small exits.</p>
+<div class="table-scroll">
+<table border="1" cellpadding="6" cellspacing="0">
+<tr><th>Signal</th><th>Count</th><th>What it suggests</th></tr>
+<tr><td><code>if</code></td><td>0</td><td>Branching density and local decision-making.</td></tr>
+<tr><td><code>while</code></td><td>0</td><td>Loop-heavy or iterative implementation style.</td></tr>
+<tr><td><code>for</code></td><td>0</td><td>Collection-style traversal at source level.</td></tr>
+<tr><td><code>match</code></td><td>0</td><td>Variant-driven branching or grammar-style decoding.</td></tr>
+<tr><td><code>let</code></td><td>1</td><td>Local state and intermediate value density.</td></tr>
+<tr><td><code>give</code></td><td>7</td><td>Number of explicit exit points and result shaping.</td></tr>
+</table>
+</div>
+</section>
 <section id="inventory">
 <h2>Top-level API inventory</h2>
 <table border="1" cellpadding="6" cellspacing="0">
@@ -86,32 +117,118 @@
 <tr><td>Forms</td><td><code>KeyDerivationManifest</code></td></tr>
 <tr><td>Picks</td><td>none declared at top level</td></tr>
 <tr><td>Constants</td><td>none declared at top level</td></tr>
+<tr><td>Exports</td><td><code>*</code></td></tr>
 </table>
 <h3>Imported surfaces</h3>
 <p>This file does not advertise a top-level `use` surface in its opening declarations. That often means it is either self-contained or an aggregation layer.</p>
 </section>
+<section id="position">
+<h2>Position in family</h2>
+<p>This file is module 6 of 9 in the <code>crypto</code> family when ordered by path. By procedure count it ranks 9, and by line count it ranks 6. Those ranks are useful as rough signals of breadth, not as quality judgments.</p>
+</section>
+<section id="declarations">
+<h2>Declaration map</h2>
+<p>The declaration map turns raw source into a scan-friendly catalog. It is useful when the file is large enough that a reader wants to orient by kinds of surfaces first.</p>
+<div class="table-scroll">
+<table border="1" cellpadding="6" cellspacing="0">
+<tr><th>Line</th><th>Name</th><th>Kind</th><th>Role</th></tr>
+<tr><td>1</td><td><code>vitte/crypto/keyderivation</code></td><td>space</td><td>Declares the namespace that anchors this file in the stdlib tree.</td></tr>
+<tr><td>7</td><td><code>KeyDerivationManifest</code></td><td>form</td><td>Introduces a structured data shape that other procedures can exchange.</td></tr>
+<tr><td>14</td><td><code>pbkdf2</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>18</td><td><code>bcrypt_hash</code></td><td>proc</td><td>Implements a security-sensitive transformation in the crypto boundary.</td></tr>
+<tr><td>22</td><td><code>bcrypt_verify</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>26</td><td><code>keyderivation_version</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>30</td><td><code>keyderivation_ready</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>34</td><td><code>keyderivation_manifest</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>42</td><td><code>keyderivation_selftest</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+</table>
+</div>
+<p>The table is exhaustive for top-level declarations of the selected kinds. This file declares 9 matching surfaces.</p>
+</section>
+<section id="signatures">
+<h2>Representative signatures</h2>
+<p>These signatures are shown in source order so the page keeps the feel of a reference manual, not just a keyword cloud.</p>
+<ul><li><code>form KeyDerivationManifest {</code> (line 7)</li><li><code>proc pbkdf2(password: string, salt: string, iterations: i32, length: i32) -&gt; string {</code> (line 14)</li><li><code>proc bcrypt_hash(password: string, rounds: i32) -&gt; string {</code> (line 18)</li><li><code>proc bcrypt_verify(password: string, hash: string) -&gt; int {</code> (line 22)</li><li><code>proc keyderivation_version() -&gt; string {</code> (line 26)</li><li><code>proc keyderivation_ready() -&gt; bool {</code> (line 30)</li><li><code>proc keyderivation_manifest() -&gt; KeyDerivationManifest {</code> (line 34)</li><li><code>proc keyderivation_selftest() -&gt; bool {</code> (line 42)</li></ul>
+</section>
 <section id="usage">
 <h2>How to use this module</h2>
 <p>Start by reading the file as an ownership boundary. Ask three questions: what enters this module, what stable types or procedures it exports, and what adjacent module should stay outside of it.</p>
-<ol>
-<li>Open the family page first to understand why this area of the stdlib exists.</li>
-<li>Read the source excerpt below to see the namespace, imports, and first declared surfaces.</li>
-<li>Check the neighbor list to avoid coupling this module with an adjacent responsibility by habit.</li>
-</ol>
+<ol><li>Read <code>space</code> and top-level imports first so the ownership boundary of <code>crypto/keyderivation.vitl</code> is explicit.</li><li>Read declared forms and picks before algorithms so the data vocabulary is stable in your head.</li><li>Traverse procedures in source order; the early helpers usually explain the naming and numeric conventions used later.</li><li>Use the source landmarks section below as a table of contents when the file is large.</li><li>Only after that compare neighbor modules, because the right boundary choice matters more than memorizing one helper name.</li></ol>
+</section>
+<section id="user-example">
+<h2>User example</h2>
+<p>This example is generated from the actual stdlib module surface. Its job is not to be the smallest snippet possible; its job is to show a realistic consumer-shaped file that exercises the module and mirrors the language keywords the module itself relies on.</p>
+<pre><code class="language-vitl">space demo/crypto_keyderivation
+form UserReport {
+  label: string,
+  ready: bool
+}
+proc run_example() -&gt; UserReport {
+  let result = pbkdf2(&quot;sample&quot;, &quot;sample&quot;, 1, 1)
+  let ready: bool = keyderivation_ready()
+  let stable: bool = ready and true
+    give UserReport { label: &quot;ok&quot;, ready: true }
+}
+export run_example</code></pre>
+</section>
+<section id="keyword-coverage">
+<h2>Keyword coverage</h2>
+<p>This table makes the “all keywords of the module” requirement auditable. It compares the detected Vitte keywords in the source file with the generated consumer example above.</p>
+<div class="table-scroll">
+<table border="1" cellpadding="6" cellspacing="0">
+<tr><th>Keyword</th><th>Present in module source</th><th>Used in generated user example</th></tr>
+<tr><td><code>space</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>form</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>proc</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>let</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>give</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>export</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>true</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>and</code></td><td>yes</td><td>yes</td></tr>
+</table>
+</div>
+<p>The generated snippet exercises every detected Vitte keyword used by this module.</p>
 </section>
 <section id="source-shape">
 <h2>Source shape</h2>
 <pre><code class="language-vitl">space vitte/crypto/keyderivation
-   Key Derivation Module
-   ========================================================= &gt;&gt;&gt;
 form KeyDerivationManifest {
   name: string,
   version: string,
   ready: bool
 }
 // Key derivation
-proc pbkdf2(password: string, salt: string, iterations: i32, length: i32) -&gt; string {</code></pre>
+proc pbkdf2(password: string, salt: string, iterations: i32, length: i32) -&gt; string {
+  give &quot;&quot;
+}</code></pre>
 <p>The excerpt is not meant to replace the file. It exists to make the module recognizable at first glance, the same way a Wikipedia infobox helps the reader orient before reading the whole article.</p>
+</section>
+<section id="landmarks">
+<h2>Source landmarks</h2>
+<p>Large files are easier to retain when they have visible landmarks. When the source contains explicit section banners, they are surfaced here; otherwise the first major declarations are used as anchors.</p>
+<ul><li>Key Derivation Module</li></ul>
+</section>
+<section id="organization">
+<h2>Source organization</h2>
+<p>When a file carries its own internal chaptering, those chapters usually reveal the intended reading order better than a flat symbol list. This section reconstructs that organization from the source itself.</p>
+
+<section class="lead-panel">
+<h3>Opening declarations</h3>
+<p><strong>Top-level items:</strong> 1. <strong>Procedures:</strong> 0. <strong>Data surfaces:</strong> 0. <strong>Constants:</strong> 0.</p>
+<p><strong>First visible names:</strong> <code>vitte/crypto/keyderivation</code></p>
+</section>
+
+<section class="lead-panel">
+<h3>Key Derivation Module</h3>
+<p><strong>Top-level items:</strong> 9. <strong>Procedures:</strong> 7. <strong>Data surfaces:</strong> 1. <strong>Constants:</strong> 0.</p>
+<p><strong>First visible names:</strong> <code>KeyDerivationManifest</code>, <code>pbkdf2</code>, <code>bcrypt_hash</code>, <code>bcrypt_verify</code>, <code>keyderivation_version</code>, <code>keyderivation_ready</code>, <code>keyderivation_manifest</code>, <code>keyderivation_selftest</code>, <code>*</code></p>
+</section>
+
+</section>
+<section id="catalog">
+<h2>Complete API catalog</h2>
+<p>This catalog is the exhaustive file-level index for the module. It is intentionally closer to a generated encyclopedia appendix than to a tutorial summary.</p>
+<h3>Data surfaces</h3><div class="table-scroll"><table border="1" cellpadding="6" cellspacing="0"><tr><th>Line</th><th>Name</th><th>Signature</th><th>Role</th></tr><tr><td>7</td><td><code>KeyDerivationManifest</code></td><td><code>form KeyDerivationManifest {</code></td><td>Introduces a structured data shape that other procedures can exchange.</td></tr></table></div><h3>Procedures</h3><div class="table-scroll"><table border="1" cellpadding="6" cellspacing="0"><tr><th>Line</th><th>Name</th><th>Signature</th><th>Role</th></tr><tr><td>14</td><td><code>pbkdf2</code></td><td><code>proc pbkdf2(password: string, salt: string, iterations: i32, length: i32) -&gt; string {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>18</td><td><code>bcrypt_hash</code></td><td><code>proc bcrypt_hash(password: string, rounds: i32) -&gt; string {</code></td><td>Implements a security-sensitive transformation in the crypto boundary.</td></tr><tr><td>22</td><td><code>bcrypt_verify</code></td><td><code>proc bcrypt_verify(password: string, hash: string) -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>26</td><td><code>keyderivation_version</code></td><td><code>proc keyderivation_version() -&gt; string {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>30</td><td><code>keyderivation_ready</code></td><td><code>proc keyderivation_ready() -&gt; bool {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>34</td><td><code>keyderivation_manifest</code></td><td><code>proc keyderivation_manifest() -&gt; KeyDerivationManifest {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>42</td><td><code>keyderivation_selftest</code></td><td><code>proc keyderivation_selftest() -&gt; bool {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr></table></div><h3>Exports</h3><div class="table-scroll"><table border="1" cellpadding="6" cellspacing="0"><tr><th>Line</th><th>Name</th><th>Signature</th><th>Role</th></tr><tr><td>48</td><td><code>*</code></td><td><code>export *</code></td><td>Re-exports surfaces that the module wants to expose as part of its public boundary.</td></tr></table></div>
 </section>
 <section id="boundaries">
 <h2>Integration boundaries</h2>
@@ -120,6 +237,30 @@ proc pbkdf2(password: string, salt: string, iterations: i32, length: i32) -&gt; 
 <li>Family responsibility: Hashing, HMAC, randomness, key derivation, symmetric primitives, and asymmetric primitives.</li>
 <li>Family architecture role: Use `crypto` when integrity, secrecy, or key management is the feature. This family should never be presented as generic formatting or utility code.</li>
 </ul>
+</section>
+<section id="composition">
+<h2>Composition guidance</h2>
+<h3>Choose this module when</h3>
+<ul><li>Choose <code>crypto/keyderivation.vitl</code> when the main question is owned by this module rather than by transport, storage, orchestration, or user-interface code.</li><li>A package manifest can be serialized first, then hashed, then optionally signed.</li><li>A token flow can derive a key in one boundary and use it in another without mixing concerns.</li></ul>
+<h3>Pause before extending it when</h3>
+<ul><li>Avoid extending this file when the new helper mostly changes the boundary to host I/O, runtime coordination, or foreign integration instead of staying inside <code>crypto</code>.</li><li>Check nearby modules such as <code>crypto/asymmetric.vitl</code>, <code>crypto/hash.vitl</code>, <code>crypto/hashing.vitl</code> before adding convenience wrappers here.</li></ul>
+</section>
+<section id="relationships">
+<h2>Relationship table</h2>
+<p>This table keeps the page closer to a real encyclopedia entry: a module is easier to understand when compared with its nearest alternatives in the same family.</p>
+<div class="table-scroll">
+<table border="1" cellpadding="6" cellspacing="0">
+<tr><th>Neighbor</th><th>Procedures</th><th>Data surfaces</th><th>Why compare it</th></tr>
+<tr><td><a href="crypto--asymmetric.vitl.html"><code>crypto/asymmetric.vitl</code></a></td><td>10</td><td>0</td><td>Shares the same family boundary but carries a distinct slice of responsibility.</td></tr>
+<tr><td><a href="crypto--hash.vitl.html"><code>crypto/hash.vitl</code></a></td><td>22</td><td>2</td><td>Shares the same family boundary but carries a distinct slice of responsibility.</td></tr>
+<tr><td><a href="crypto--hashing.vitl.html"><code>crypto/hashing.vitl</code></a></td><td>10</td><td>0</td><td>Shares the same family boundary but carries a distinct slice of responsibility.</td></tr>
+<tr><td><a href="crypto--hmac.vitl.html"><code>crypto/hmac.vitl</code></a></td><td>8</td><td>2</td><td>Shares the same family boundary but carries a distinct slice of responsibility.</td></tr>
+<tr><td><a href="crypto--random.vitl.html"><code>crypto/random.vitl</code></a></td><td>13</td><td>1</td><td>Shares the same family boundary but carries a distinct slice of responsibility.</td></tr>
+<tr><td><a href="crypto--symmetric.vitl.html"><code>crypto/symmetric.vitl</code></a></td><td>10</td><td>0</td><td>Shares the same family boundary but carries a distinct slice of responsibility.</td></tr>
+<tr><td><a href="crypto--utils.vitl.html"><code>crypto/utils.vitl</code></a></td><td>11</td><td>1</td><td>Shares the same family boundary but carries a distinct slice of responsibility.</td></tr>
+<tr><td><a href="crypto.vitl.html"><code>crypto.vitl</code></a></td><td>44</td><td>6</td><td>Shares the same family boundary but carries a distinct slice of responsibility.</td></tr>
+</table>
+</div>
 </section>
 <section id="neighbors">
 <h2>Neighbor modules</h2>

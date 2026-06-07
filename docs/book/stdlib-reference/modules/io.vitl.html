@@ -9,7 +9,6 @@
 <link rel="stylesheet" href="../../../css/print.css" media="print">
 <link rel="alternate" hreflang="en" href="https://vitte-lang.org/book/stdlib-reference/modules/io.vitl.html">
 <link rel="alternate" hreflang="x-default" href="https://vitte-lang.org/book/stdlib-reference/modules/io.vitl.html">
-
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; font-src 'self'; connect-src 'self';">
 </head>
 <body class="classic-doc">
@@ -53,10 +52,22 @@
 <ul>
 <li><a href="#overview">Overview</a></li>
 <li><a href="#purpose">Purpose</a></li>
+<li><a href="#taxonomy">Taxonomy</a></li>
+<li><a href="#profile">Implementation profile</a></li>
 <li><a href="#inventory">Top-level API inventory</a></li>
+<li><a href="#position">Position in family</a></li>
+<li><a href="#declarations">Declaration map</a></li>
+<li><a href="#signatures">Representative signatures</a></li>
 <li><a href="#usage">How to use this module</a></li>
+<li><a href="#user-example">User example</a></li>
+<li><a href="#keyword-coverage">Keyword coverage</a></li>
 <li><a href="#source-shape">Source shape</a></li>
+<li><a href="#landmarks">Source landmarks</a></li>
+<li><a href="#organization">Source organization</a></li>
+<li><a href="#catalog">Complete API catalog</a></li>
 <li><a href="#boundaries">Integration boundaries</a></li>
+<li><a href="#composition">Composition guidance</a></li>
+<li><a href="#relationships">Relationship table</a></li>
 <li><a href="#neighbors">Neighbor modules</a></li>
 </ul>
 </section>
@@ -78,6 +89,26 @@
 <p>This file should be chosen because of responsibility, not because its name “sounds close enough”. Inside the <code>io</code> family, it carries one focused part of the contract and keeps that responsibility separate from neighboring concerns.</p>
 <ul><li>A manifest is loaded through `io`, parsed elsewhere, validated elsewhere, and only then emitted back through `io`.</li><li>A stdio helper should explain where user-facing text enters the flow.</li></ul>
 </section>
+<section id="taxonomy">
+<h2>Taxonomy</h2>
+<p>Think of this page as a generated encyclopedia entry rather than a hand-written tutorial. The goal is to show what kind of module this is, how dense it is, and what reading strategy makes sense before depending on it.</p>
+<ul><li>Large algorithm surface: this file exposes many procedures and likely acts as a domain toolkit rather than a single thin wrapper.</li><li>Owns domain vocabulary: the module declares data shapes in addition to executable helpers, so its types are part of the contract.</li><li>Has tuning constants: part of the module behavior is controlled by named constants that document default precision, limits, or policy.</li><li>Minimal top-level dependencies: the module reads as mostly self-contained from its opening declarations.</li><li>Explicit export surface: the file ends with visible export declarations instead of relying only on implicit namespace discovery.</li></ul>
+</section>
+<section id="profile">
+<h2>Implementation profile</h2>
+<p>This profile is inferred directly from the source text. It does not replace reading the file, but it tells you quickly whether the module is mostly declarative, loop-heavy, branch-heavy, or organized around many small exits.</p>
+<div class="table-scroll">
+<table border="1" cellpadding="6" cellspacing="0">
+<tr><th>Signal</th><th>Count</th><th>What it suggests</th></tr>
+<tr><td><code>if</code></td><td>66</td><td>Branching density and local decision-making.</td></tr>
+<tr><td><code>while</code></td><td>2</td><td>Loop-heavy or iterative implementation style.</td></tr>
+<tr><td><code>for</code></td><td>0</td><td>Collection-style traversal at source level.</td></tr>
+<tr><td><code>match</code></td><td>0</td><td>Variant-driven branching or grammar-style decoding.</td></tr>
+<tr><td><code>let</code></td><td>37</td><td>Local state and intermediate value density.</td></tr>
+<tr><td><code>give</code></td><td>182</td><td>Number of explicit exit points and result shaping.</td></tr>
+</table>
+</div>
+</section>
 <section id="inventory">
 <h2>Top-level API inventory</h2>
 <table border="1" cellpadding="6" cellspacing="0">
@@ -86,32 +117,312 @@
 <tr><td>Forms</td><td><code>IoResult</code>, <code>File</code>, <code>FileStat</code>, <code>DirEntry</code>, <code>Buffer</code>, <code>TextReader</code>, <code>TextWriter</code>, <code>PathInfo</code>, <code>IOLibraryManifest</code>, <code>IOLibraryHealth</code>, <code>IOLibrarySummary</code></td></tr>
 <tr><td>Picks</td><td><code>IoStatus</code></td></tr>
 <tr><td>Constants</td><td><code>IO_VERSION</code>, <code>EOF</code>, <code>NULL_FD</code>, <code>SEEK_SET</code>, <code>SEEK_CUR</code>, <code>SEEK_END</code>, <code>IO_READ</code>, <code>IO_WRITE</code>, <code>IO_APPEND</code>, <code>IO_CREATE</code>, <code>IO_TRUNC</code>, <code>IO_BINARY</code></td></tr>
+<tr><td>Exports</td><td><code>*</code></td></tr>
 </table>
 <h3>Imported surfaces</h3>
 <p>This file does not advertise a top-level `use` surface in its opening declarations. That often means it is either self-contained or an aggregation layer.</p>
 </section>
+<section id="position">
+<h2>Position in family</h2>
+<p>This file is module 1 of 8 in the <code>io</code> family when ordered by path. By procedure count it ranks 1, and by line count it ranks 1. Those ranks are useful as rough signals of breadth, not as quality judgments.</p>
+</section>
+<section id="declarations">
+<h2>Declaration map</h2>
+<p>The declaration map turns raw source into a scan-friendly catalog. It is useful when the file is large enough that a reader wants to orient by kinds of surfaces first.</p>
+<div class="table-scroll">
+<table border="1" cellpadding="6" cellspacing="0">
+<tr><th>Line</th><th>Name</th><th>Kind</th><th>Role</th></tr>
+<tr><td>1</td><td><code>vitte/stdlib/io</code></td><td>space</td><td>Declares the namespace that anchors this file in the stdlib tree.</td></tr>
+<tr><td>11</td><td><code>IO_VERSION</code></td><td>const</td><td>Defines a named constant reused across the module.</td></tr>
+<tr><td>13</td><td><code>EOF</code></td><td>const</td><td>Defines a named constant reused across the module.</td></tr>
+<tr><td>14</td><td><code>NULL_FD</code></td><td>const</td><td>Defines a named constant reused across the module.</td></tr>
+<tr><td>16</td><td><code>SEEK_SET</code></td><td>const</td><td>Defines a named constant reused across the module.</td></tr>
+<tr><td>17</td><td><code>SEEK_CUR</code></td><td>const</td><td>Defines a named constant reused across the module.</td></tr>
+<tr><td>18</td><td><code>SEEK_END</code></td><td>const</td><td>Defines a named constant reused across the module.</td></tr>
+<tr><td>20</td><td><code>IO_READ</code></td><td>const</td><td>Defines a named constant reused across the module.</td></tr>
+<tr><td>21</td><td><code>IO_WRITE</code></td><td>const</td><td>Defines a named constant reused across the module.</td></tr>
+<tr><td>22</td><td><code>IO_APPEND</code></td><td>const</td><td>Defines a named constant reused across the module.</td></tr>
+<tr><td>23</td><td><code>IO_CREATE</code></td><td>const</td><td>Defines a named constant reused across the module.</td></tr>
+<tr><td>24</td><td><code>IO_TRUNC</code></td><td>const</td><td>Defines a named constant reused across the module.</td></tr>
+<tr><td>25</td><td><code>IO_BINARY</code></td><td>const</td><td>Defines a named constant reused across the module.</td></tr>
+<tr><td>26</td><td><code>IO_TEXT</code></td><td>const</td><td>Defines a named constant reused across the module.</td></tr>
+<tr><td>28</td><td><code>READ</code></td><td>const</td><td>Defines a named constant reused across the module.</td></tr>
+<tr><td>29</td><td><code>WRITE</code></td><td>const</td><td>Defines a named constant reused across the module.</td></tr>
+<tr><td>30</td><td><code>APPEND</code></td><td>const</td><td>Defines a named constant reused across the module.</td></tr>
+<tr><td>31</td><td><code>READ_WRITE</code></td><td>const</td><td>Defines a named constant reused across the module.</td></tr>
+<tr><td>32</td><td><code>WRITE_READ</code></td><td>const</td><td>Defines a named constant reused across the module.</td></tr>
+<tr><td>33</td><td><code>APPEND_READ</code></td><td>const</td><td>Defines a named constant reused across the module.</td></tr>
+<tr><td>34</td><td><code>READ_BINARY</code></td><td>const</td><td>Defines a named constant reused across the module.</td></tr>
+<tr><td>35</td><td><code>WRITE_BINARY</code></td><td>const</td><td>Defines a named constant reused across the module.</td></tr>
+<tr><td>36</td><td><code>APPEND_BINARY</code></td><td>const</td><td>Defines a named constant reused across the module.</td></tr>
+<tr><td>38</td><td><code>_IOFBF</code></td><td>const</td><td>Defines a named constant reused across the module.</td></tr>
+<tr><td>39</td><td><code>_IOLBF</code></td><td>const</td><td>Defines a named constant reused across the module.</td></tr>
+<tr><td>40</td><td><code>_IONBF</code></td><td>const</td><td>Defines a named constant reused across the module.</td></tr>
+<tr><td>42</td><td><code>PATH_SEP</code></td><td>const</td><td>Defines a named constant reused across the module.</td></tr>
+<tr><td>43</td><td><code>EXT_SEP</code></td><td>const</td><td>Defines a named constant reused across the module.</td></tr>
+<tr><td>44</td><td><code>MAX_PATH</code></td><td>const</td><td>Defines a bound or precision constant that shapes runtime behavior.</td></tr>
+<tr><td>46</td><td><code>IoStatus</code></td><td>pick</td><td>Introduces a tagged variant type used to model distinct outcomes.</td></tr>
+<tr><td>59</td><td><code>IoResult</code></td><td>form</td><td>Introduces a structured data shape that other procedures can exchange.</td></tr>
+<tr><td>65</td><td><code>File</code></td><td>form</td><td>Introduces a structured data shape that other procedures can exchange.</td></tr>
+<tr><td>78</td><td><code>FileStat</code></td><td>form</td><td>Introduces a structured data shape that other procedures can exchange.</td></tr>
+<tr><td>91</td><td><code>DirEntry</code></td><td>form</td><td>Introduces a structured data shape that other procedures can exchange.</td></tr>
+<tr><td>100</td><td><code>Buffer</code></td><td>form</td><td>Introduces a structured data shape that other procedures can exchange.</td></tr>
+<tr><td>107</td><td><code>TextReader</code></td><td>form</td><td>Introduces a structured data shape that other procedures can exchange.</td></tr>
+<tr><td>113</td><td><code>TextWriter</code></td><td>form</td><td>Introduces a structured data shape that other procedures can exchange.</td></tr>
+<tr><td>118</td><td><code>PathInfo</code></td><td>form</td><td>Introduces a structured data shape that other procedures can exchange.</td></tr>
+<tr><td>126</td><td><code>IOLibraryManifest</code></td><td>form</td><td>Introduces a structured data shape that other procedures can exchange.</td></tr>
+<tr><td>133</td><td><code>IOLibraryHealth</code></td><td>form</td><td>Introduces a structured data shape that other procedures can exchange.</td></tr>
+<tr><td>142</td><td><code>IOLibrarySummary</code></td><td>form</td><td>Introduces a structured data shape that other procedures can exchange.</td></tr>
+<tr><td>147</td><td><code>io_ok</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>155</td><td><code>io_name</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>159</td><td><code>io_version</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>163</td><td><code>io_modules</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>175</td><td><code>io_module_count</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>179</td><td><code>io_manifest</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>188</td><td><code>io_health</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>199</td><td><code>io_summary</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>206</td><td><code>io_failed</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>214</td><td><code>null_file</code></td><td>proc</td><td>Owns byte movement or host I/O interaction.</td></tr>
+<tr><td>229</td><td><code>stdin_file</code></td><td>proc</td><td>Owns byte movement or host I/O interaction.</td></tr>
+<tr><td>244</td><td><code>stdout_file</code></td><td>proc</td><td>Owns byte movement or host I/O interaction.</td></tr>
+<tr><td>259</td><td><code>stderr_file</code></td><td>proc</td><td>Owns byte movement or host I/O interaction.</td></tr>
+<tr><td>274</td><td><code>file_is_open</code></td><td>proc</td><td>Owns byte movement or host I/O interaction.</td></tr>
+<tr><td>278</td><td><code>file_can_read</code></td><td>proc</td><td>Owns byte movement or host I/O interaction.</td></tr>
+<tr><td>282</td><td><code>file_can_write</code></td><td>proc</td><td>Owns byte movement or host I/O interaction.</td></tr>
+<tr><td>286</td><td><code>mode_readable</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>308</td><td><code>mode_writable</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>333</td><td><code>mode_append</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>346</td><td><code>mode_binary</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>350</td><td><code>fopen</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>369</td><td><code>freopen</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>374</td><td><code>fclose</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>382</td><td><code>fflush</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>390</td><td><code>ferror</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>398</td><td><code>feof</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>402</td><td><code>clearerr</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>409</td><td><code>rewind</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>417</td><td><code>fseek</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>439</td><td><code>ftell</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>443</td><td><code>fgetpos</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>447</td><td><code>fsetpos</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>453</td><td><code>fread</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>461</td><td><code>fwrite</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>469</td><td><code>fgetc</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>477</td><td><code>getc</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>481</td><td><code>getchar</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>485</td><td><code>fputc</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>493</td><td><code>putc</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>497</td><td><code>putchar</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>501</td><td><code>ungetc</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>509</td><td><code>fgets</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>521</td><td><code>gets</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>525</td><td><code>fputs</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>533</td><td><code>puts</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>539</td><td><code>print</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>543</td><td><code>println</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>547</td><td><code>eprint</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>551</td><td><code>eprintln</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>556</td><td><code>emit_string</code></td><td>proc</td><td>Turns internal values into a transport or textual representation.</td></tr>
+<tr><td>560</td><td><code>print_int</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>564</td><td><code>println_int</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>569</td><td><code>print_float</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>573</td><td><code>println_float</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>578</td><td><code>print_bool</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>586</td><td><code>println_bool</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>591</td><td><code>printf</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>597</td><td><code>fprintf</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>603</td><td><code>sprintf</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>607</td><td><code>snprintf</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>617</td><td><code>scanf</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>621</td><td><code>fscanf</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>629</td><td><code>sscanf</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>637</td><td><code>read_line</code></td><td>proc</td><td>Owns byte movement or host I/O interaction.</td></tr>
+<tr><td>641</td><td><code>read_string</code></td><td>proc</td><td>Owns byte movement or host I/O interaction.</td></tr>
+<tr><td>645</td><td><code>read_int</code></td><td>proc</td><td>Owns byte movement or host I/O interaction.</td></tr>
+<tr><td>649</td><td><code>read_float</code></td><td>proc</td><td>Owns byte movement or host I/O interaction.</td></tr>
+<tr><td>653</td><td><code>read_bool</code></td><td>proc</td><td>Owns byte movement or host I/O interaction.</td></tr>
+<tr><td>663</td><td><code>read_all_stdin</code></td><td>proc</td><td>Owns byte movement or host I/O interaction.</td></tr>
+<tr><td>667</td><td><code>read_file</code></td><td>proc</td><td>Owns byte movement or host I/O interaction.</td></tr>
+<tr><td>678</td><td><code>read_file_bytes</code></td><td>proc</td><td>Owns byte movement or host I/O interaction.</td></tr>
+<tr><td>682</td><td><code>read_lines</code></td><td>proc</td><td>Owns byte movement or host I/O interaction.</td></tr>
+<tr><td>687</td><td><code>write_file</code></td><td>proc</td><td>Owns byte movement or host I/O interaction.</td></tr>
+<tr><td>699</td><td><code>write_file_bytes</code></td><td>proc</td><td>Owns byte movement or host I/O interaction.</td></tr>
+<tr><td>711</td><td><code>append_file</code></td><td>proc</td><td>Owns byte movement or host I/O interaction.</td></tr>
+<tr><td>723</td><td><code>copy_file</code></td><td>proc</td><td>Owns byte movement or host I/O interaction.</td></tr>
+<tr><td>728</td><td><code>move_file</code></td><td>proc</td><td>Owns byte movement or host I/O interaction.</td></tr>
+<tr><td>738</td><td><code>remove</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>746</td><td><code>rename</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>754</td><td><code>file_exists</code></td><td>proc</td><td>Owns byte movement or host I/O interaction.</td></tr>
+<tr><td>758</td><td><code>is_file</code></td><td>proc</td><td>Owns byte movement or host I/O interaction.</td></tr>
+<tr><td>762</td><td><code>is_dir</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>766</td><td><code>is_symlink</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>770</td><td><code>file_size</code></td><td>proc</td><td>Owns byte movement or host I/O interaction.</td></tr>
+<tr><td>774</td><td><code>stat</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>789</td><td><code>mkdir</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>797</td><td><code>mkdir_all</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>805</td><td><code>rmdir</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>813</td><td><code>list_dir</code></td><td>proc</td><td>Owns a concrete data shape or the operations that maintain it.</td></tr>
+<tr><td>817</td><td><code>read_dir_names</code></td><td>proc</td><td>Owns byte movement or host I/O interaction.</td></tr>
+<tr><td>830</td><td><code>touch</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>838</td><td><code>tmpfile</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>842</td><td><code>tmpnam</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>850</td><td><code>basename</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>855</td><td><code>dirname</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>860</td><td><code>extension</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>865</td><td><code>stem</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>870</td><td><code>path_join</code></td><td>proc</td><td>Owns path semantics, traversal, or normalization.</td></tr>
+<tr><td>886</td><td><code>path_join3</code></td><td>proc</td><td>Owns path semantics, traversal, or normalization.</td></tr>
+<tr><td>890</td><td><code>path_normalize</code></td><td>proc</td><td>Owns path semantics, traversal, or normalization.</td></tr>
+<tr><td>894</td><td><code>path_is_absolute</code></td><td>proc</td><td>Owns path semantics, traversal, or normalization.</td></tr>
+<tr><td>898</td><td><code>path_is_relative</code></td><td>proc</td><td>Owns path semantics, traversal, or normalization.</td></tr>
+<tr><td>902</td><td><code>path_parse</code></td><td>proc</td><td>Transforms an input representation into a structured internal value.</td></tr>
+<tr><td>917</td><td><code>buffer_new</code></td><td>proc</td><td>Owns byte movement or host I/O interaction.</td></tr>
+<tr><td>926</td><td><code>buffer_from_bytes</code></td><td>proc</td><td>Owns byte movement or host I/O interaction.</td></tr>
+<tr><td>935</td><td><code>buffer_clear</code></td><td>proc</td><td>Owns byte movement or host I/O interaction.</td></tr>
+<tr><td>943</td><td><code>buffer_remaining</code></td><td>proc</td><td>Owns byte movement or host I/O interaction.</td></tr>
+<tr><td>951</td><td><code>buffer_is_empty</code></td><td>proc</td><td>Owns byte movement or host I/O interaction.</td></tr>
+<tr><td>955</td><td><code>reader_new</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>963</td><td><code>writer_new</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>970</td><td><code>reader_read_line</code></td><td>proc</td><td>Owns byte movement or host I/O interaction.</td></tr>
+<tr><td>974</td><td><code>writer_write</code></td><td>proc</td><td>Owns byte movement or host I/O interaction.</td></tr>
+<tr><td>985</td><td><code>writer_writeln</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>990</td><td><code>perror</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>994</td><td><code>strerror</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>1006</td><td><code>setbuf</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>1014</td><td><code>setvbuf</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>1026</td><td><code>format_apply</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>1048</td><td><code>to_string_i64</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>1052</td><td><code>to_string_f64</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>1056</td><td><code>parse_i64</code></td><td>proc</td><td>Transforms an input representation into a structured internal value.</td></tr>
+<tr><td>1060</td><td><code>parse_f64</code></td><td>proc</td><td>Transforms an input representation into a structured internal value.</td></tr>
+<tr><td>1064</td><td><code>split_lines</code></td><td>proc</td><td>Owns path semantics, traversal, or normalization.</td></tr>
+<tr><td>1068</td><td><code>string_contains</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>1072</td><td><code>string_starts_with</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>1076</td><td><code>string_ends_with</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>1080</td><td><code>string_slice</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>1084</td><td><code>string_char_at</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>1088</td><td><code>io_ready</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>1092</td><td><code>io_domains</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>1105</td><td><code>library_meta</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>1109</td><td><code>io_selftest</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+</table>
+</div>
+<p>The table is exhaustive for top-level declarations of the selected kinds. This file declares 173 matching surfaces.</p>
+</section>
+<section id="signatures">
+<h2>Representative signatures</h2>
+<p>These signatures are shown in source order so the page keeps the feel of a reference manual, not just a keyword cloud.</p>
+<ul><li><code>const IO_VERSION: string = &quot;1.0.0&quot;</code> (line 11)</li><li><code>const EOF: int = -1</code> (line 13)</li><li><code>const NULL_FD: int = -1</code> (line 14)</li><li><code>const SEEK_SET: int = 0</code> (line 16)</li><li><code>const SEEK_CUR: int = 1</code> (line 17)</li><li><code>const SEEK_END: int = 2</code> (line 18)</li><li><code>const IO_READ: int = 1</code> (line 20)</li><li><code>const IO_WRITE: int = 2</code> (line 21)</li><li><code>const IO_APPEND: int = 4</code> (line 22)</li><li><code>const IO_CREATE: int = 8</code> (line 23)</li><li><code>const IO_TRUNC: int = 16</code> (line 24)</li><li><code>const IO_BINARY: int = 32</code> (line 25)</li><li><code>const IO_TEXT: int = 64</code> (line 26)</li><li><code>const READ: string = &quot;r&quot;</code> (line 28)</li><li><code>const WRITE: string = &quot;w&quot;</code> (line 29)</li><li><code>const APPEND: string = &quot;a&quot;</code> (line 30)</li><li><code>const READ_WRITE: string = &quot;r+&quot;</code> (line 31)</li><li><code>const WRITE_READ: string = &quot;w+&quot;</code> (line 32)</li></ul>
+<p>The list is intentionally capped here; the source file declares 172 matching signatures in total.</p>
+</section>
 <section id="usage">
 <h2>How to use this module</h2>
 <p>Start by reading the file as an ownership boundary. Ask three questions: what enters this module, what stable types or procedures it exports, and what adjacent module should stay outside of it.</p>
-<ol>
-<li>Open the family page first to understand why this area of the stdlib exists.</li>
-<li>Read the source excerpt below to see the namespace, imports, and first declared surfaces.</li>
-<li>Check the neighbor list to avoid coupling this module with an adjacent responsibility by habit.</li>
-</ol>
+<ol><li>Read <code>space</code> and top-level imports first so the ownership boundary of <code>io.vitl</code> is explicit.</li><li>Scan constants before procedures; they often encode precision, limits, or policy assumptions that explain later behavior.</li><li>Read declared forms and picks before algorithms so the data vocabulary is stable in your head.</li><li>Traverse procedures in source order; the early helpers usually explain the naming and numeric conventions used later.</li><li>Use the source landmarks section below as a table of contents when the file is large.</li></ol>
+</section>
+<section id="user-example">
+<h2>User example</h2>
+<p>This example is generated from the actual stdlib module surface. Its job is not to be the smallest snippet possible; its job is to show a realistic consumer-shaped file that exercises the module and mirrors the language keywords the module itself relies on.</p>
+<pre><code class="language-vitl">space demo/io
+const SAMPLE_LABEL: string = &quot;demo&quot;
+form UserReport {
+  label: string,
+  ready: bool
+}
+pick UserOutcome {
+  case Ready(message: string)
+  case Empty(reason: string)
+}
+proc run_example() -&gt; UserOutcome {
+  let entries = io_modules()
+  let ready: bool = file_is_open(File())
+  let failed: bool = false
+  let stable: bool = ready and true
+  let fallback: bool = ready or false
+  let idx: int = 0
+  let count: int = 0
+  while idx &lt; entries.len {
+    set count = count + 1
+    set idx = idx + 1
+  }
+  if not ready {
+    give UserOutcome.Empty(&quot;module not ready&quot;)
+  } else {
+    give UserOutcome.Ready(&quot;ok&quot;)
+  }
+  let copies: f64 = 1 as f64
+}
+export run_example</code></pre>
+</section>
+<section id="keyword-coverage">
+<h2>Keyword coverage</h2>
+<p>This table makes the “all keywords of the module” requirement auditable. It compares the detected Vitte keywords in the source file with the generated consumer example above.</p>
+<div class="table-scroll">
+<table border="1" cellpadding="6" cellspacing="0">
+<tr><th>Keyword</th><th>Present in module source</th><th>Used in generated user example</th></tr>
+<tr><td><code>space</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>const</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>form</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>pick</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>case</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>proc</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>let</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>set</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>if</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>else</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>while</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>give</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>export</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>true</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>false</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>and</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>or</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>not</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>as</code></td><td>yes</td><td>yes</td></tr>
+</table>
+</div>
+<p>The generated snippet exercises every detected Vitte keyword used by this module.</p>
 </section>
 <section id="source-shape">
 <h2>Source shape</h2>
 <pre><code class="language-vitl">space vitte/stdlib/io
 export *
-   Vitte I/O Library
-   C-like stdio + POSIX-like file/path utilities
-   current Vitte syntax: { }
-   ========================================================= &gt;&gt;&gt;
 const IO_VERSION: string = &quot;1.0.0&quot;
 const EOF: int = -1
 const NULL_FD: int = -1
-const SEEK_SET: int = 0</code></pre>
+const SEEK_SET: int = 0
+const SEEK_CUR: int = 1
+const SEEK_END: int = 2
+const IO_READ: int = 1
+const IO_WRITE: int = 2</code></pre>
 <p>The excerpt is not meant to replace the file. It exists to make the module recognizable at first glance, the same way a Wikipedia infobox helps the reader orient before reading the whole article.</p>
+</section>
+<section id="landmarks">
+<h2>Source landmarks</h2>
+<p>Large files are easier to retain when they have visible landmarks. When the source contains explicit section banners, they are surfaced here; otherwise the first major declarations are used as anchors.</p>
+<ul><li>Vitte I/O Library / C-like stdio + POSIX-like file/path utilities / current Vitte syntax: { }</li></ul>
+</section>
+<section id="organization">
+<h2>Source organization</h2>
+<p>When a file carries its own internal chaptering, those chapters usually reveal the intended reading order better than a flat symbol list. This section reconstructs that organization from the source itself.</p>
+
+<section class="lead-panel">
+<h3>Opening declarations</h3>
+<p><strong>Top-level items:</strong> 2. <strong>Procedures:</strong> 0. <strong>Data surfaces:</strong> 0. <strong>Constants:</strong> 0.</p>
+<p><strong>First visible names:</strong> <code>vitte/stdlib/io</code>, <code>*</code></p>
+</section>
+
+<section class="lead-panel">
+<h3>Vitte I/O Library / C-like stdio + POSIX-like file/path utilities / current Vitte syntax: { }</h3>
+<p><strong>Top-level items:</strong> 172. <strong>Procedures:</strong> 132. <strong>Data surfaces:</strong> 12. <strong>Constants:</strong> 28.</p>
+<p><strong>First visible names:</strong> <code>IO_VERSION</code>, <code>EOF</code>, <code>NULL_FD</code>, <code>SEEK_SET</code>, <code>SEEK_CUR</code>, <code>SEEK_END</code>, <code>IO_READ</code>, <code>IO_WRITE</code>, <code>IO_APPEND</code>, <code>IO_CREATE</code></p>
+</section>
+
+</section>
+<section id="catalog">
+<h2>Complete API catalog</h2>
+<p>This catalog is the exhaustive file-level index for the module. It is intentionally closer to a generated encyclopedia appendix than to a tutorial summary.</p>
+<h3>Constants</h3><div class="table-scroll"><table border="1" cellpadding="6" cellspacing="0"><tr><th>Line</th><th>Name</th><th>Signature</th><th>Role</th></tr><tr><td>11</td><td><code>IO_VERSION</code></td><td><code>const IO_VERSION: string = &quot;1.0.0&quot;</code></td><td>Defines a named constant reused across the module.</td></tr><tr><td>13</td><td><code>EOF</code></td><td><code>const EOF: int = -1</code></td><td>Defines a named constant reused across the module.</td></tr><tr><td>14</td><td><code>NULL_FD</code></td><td><code>const NULL_FD: int = -1</code></td><td>Defines a named constant reused across the module.</td></tr><tr><td>16</td><td><code>SEEK_SET</code></td><td><code>const SEEK_SET: int = 0</code></td><td>Defines a named constant reused across the module.</td></tr><tr><td>17</td><td><code>SEEK_CUR</code></td><td><code>const SEEK_CUR: int = 1</code></td><td>Defines a named constant reused across the module.</td></tr><tr><td>18</td><td><code>SEEK_END</code></td><td><code>const SEEK_END: int = 2</code></td><td>Defines a named constant reused across the module.</td></tr><tr><td>20</td><td><code>IO_READ</code></td><td><code>const IO_READ: int = 1</code></td><td>Defines a named constant reused across the module.</td></tr><tr><td>21</td><td><code>IO_WRITE</code></td><td><code>const IO_WRITE: int = 2</code></td><td>Defines a named constant reused across the module.</td></tr><tr><td>22</td><td><code>IO_APPEND</code></td><td><code>const IO_APPEND: int = 4</code></td><td>Defines a named constant reused across the module.</td></tr><tr><td>23</td><td><code>IO_CREATE</code></td><td><code>const IO_CREATE: int = 8</code></td><td>Defines a named constant reused across the module.</td></tr><tr><td>24</td><td><code>IO_TRUNC</code></td><td><code>const IO_TRUNC: int = 16</code></td><td>Defines a named constant reused across the module.</td></tr><tr><td>25</td><td><code>IO_BINARY</code></td><td><code>const IO_BINARY: int = 32</code></td><td>Defines a named constant reused across the module.</td></tr><tr><td>26</td><td><code>IO_TEXT</code></td><td><code>const IO_TEXT: int = 64</code></td><td>Defines a named constant reused across the module.</td></tr><tr><td>28</td><td><code>READ</code></td><td><code>const READ: string = &quot;r&quot;</code></td><td>Defines a named constant reused across the module.</td></tr><tr><td>29</td><td><code>WRITE</code></td><td><code>const WRITE: string = &quot;w&quot;</code></td><td>Defines a named constant reused across the module.</td></tr><tr><td>30</td><td><code>APPEND</code></td><td><code>const APPEND: string = &quot;a&quot;</code></td><td>Defines a named constant reused across the module.</td></tr><tr><td>31</td><td><code>READ_WRITE</code></td><td><code>const READ_WRITE: string = &quot;r+&quot;</code></td><td>Defines a named constant reused across the module.</td></tr><tr><td>32</td><td><code>WRITE_READ</code></td><td><code>const WRITE_READ: string = &quot;w+&quot;</code></td><td>Defines a named constant reused across the module.</td></tr><tr><td>33</td><td><code>APPEND_READ</code></td><td><code>const APPEND_READ: string = &quot;a+&quot;</code></td><td>Defines a named constant reused across the module.</td></tr><tr><td>34</td><td><code>READ_BINARY</code></td><td><code>const READ_BINARY: string = &quot;rb&quot;</code></td><td>Defines a named constant reused across the module.</td></tr><tr><td>35</td><td><code>WRITE_BINARY</code></td><td><code>const WRITE_BINARY: string = &quot;wb&quot;</code></td><td>Defines a named constant reused across the module.</td></tr><tr><td>36</td><td><code>APPEND_BINARY</code></td><td><code>const APPEND_BINARY: string = &quot;ab&quot;</code></td><td>Defines a named constant reused across the module.</td></tr><tr><td>38</td><td><code>_IOFBF</code></td><td><code>const _IOFBF: i32 = 0</code></td><td>Defines a named constant reused across the module.</td></tr><tr><td>39</td><td><code>_IOLBF</code></td><td><code>const _IOLBF: i32 = 1</code></td><td>Defines a named constant reused across the module.</td></tr><tr><td>40</td><td><code>_IONBF</code></td><td><code>const _IONBF: i32 = 2</code></td><td>Defines a named constant reused across the module.</td></tr><tr><td>42</td><td><code>PATH_SEP</code></td><td><code>const PATH_SEP: string = &quot;/&quot;</code></td><td>Defines a named constant reused across the module.</td></tr><tr><td>43</td><td><code>EXT_SEP</code></td><td><code>const EXT_SEP: string = &quot;.&quot;</code></td><td>Defines a named constant reused across the module.</td></tr><tr><td>44</td><td><code>MAX_PATH</code></td><td><code>const MAX_PATH: int = 4096</code></td><td>Defines a bound or precision constant that shapes runtime behavior.</td></tr></table></div><h3>Data surfaces</h3><div class="table-scroll"><table border="1" cellpadding="6" cellspacing="0"><tr><th>Line</th><th>Name</th><th>Signature</th><th>Role</th></tr><tr><td>46</td><td><code>IoStatus</code></td><td><code>pick IoStatus {</code></td><td>Introduces a tagged variant type used to model distinct outcomes.</td></tr><tr><td>59</td><td><code>IoResult</code></td><td><code>form IoResult {</code></td><td>Introduces a structured data shape that other procedures can exchange.</td></tr><tr><td>65</td><td><code>File</code></td><td><code>form File {</code></td><td>Introduces a structured data shape that other procedures can exchange.</td></tr><tr><td>78</td><td><code>FileStat</code></td><td><code>form FileStat {</code></td><td>Introduces a structured data shape that other procedures can exchange.</td></tr><tr><td>91</td><td><code>DirEntry</code></td><td><code>form DirEntry {</code></td><td>Introduces a structured data shape that other procedures can exchange.</td></tr><tr><td>100</td><td><code>Buffer</code></td><td><code>form Buffer {</code></td><td>Introduces a structured data shape that other procedures can exchange.</td></tr><tr><td>107</td><td><code>TextReader</code></td><td><code>form TextReader {</code></td><td>Introduces a structured data shape that other procedures can exchange.</td></tr><tr><td>113</td><td><code>TextWriter</code></td><td><code>form TextWriter {</code></td><td>Introduces a structured data shape that other procedures can exchange.</td></tr><tr><td>118</td><td><code>PathInfo</code></td><td><code>form PathInfo {</code></td><td>Introduces a structured data shape that other procedures can exchange.</td></tr><tr><td>126</td><td><code>IOLibraryManifest</code></td><td><code>form IOLibraryManifest {</code></td><td>Introduces a structured data shape that other procedures can exchange.</td></tr><tr><td>133</td><td><code>IOLibraryHealth</code></td><td><code>form IOLibraryHealth {</code></td><td>Introduces a structured data shape that other procedures can exchange.</td></tr><tr><td>142</td><td><code>IOLibrarySummary</code></td><td><code>form IOLibrarySummary {</code></td><td>Introduces a structured data shape that other procedures can exchange.</td></tr></table></div><h3>Procedures</h3><div class="table-scroll"><table border="1" cellpadding="6" cellspacing="0"><tr><th>Line</th><th>Name</th><th>Signature</th><th>Role</th></tr><tr><td>147</td><td><code>io_ok</code></td><td><code>proc io_ok(message: string) -&gt; IoResult {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>155</td><td><code>io_name</code></td><td><code>proc io_name() -&gt; string {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>159</td><td><code>io_version</code></td><td><code>proc io_version() -&gt; string {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>163</td><td><code>io_modules</code></td><td><code>proc io_modules() -&gt; [string] {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>175</td><td><code>io_module_count</code></td><td><code>proc io_module_count() -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>179</td><td><code>io_manifest</code></td><td><code>proc io_manifest() -&gt; IOLibraryManifest {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>188</td><td><code>io_health</code></td><td><code>proc io_health() -&gt; IOLibraryHealth {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>199</td><td><code>io_summary</code></td><td><code>proc io_summary() -&gt; IOLibrarySummary {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>206</td><td><code>io_failed</code></td><td><code>proc io_failed(code: int, message: string) -&gt; IoResult {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>214</td><td><code>null_file</code></td><td><code>proc null_file() -&gt; File {</code></td><td>Owns byte movement or host I/O interaction.</td></tr><tr><td>229</td><td><code>stdin_file</code></td><td><code>proc stdin_file() -&gt; File {</code></td><td>Owns byte movement or host I/O interaction.</td></tr><tr><td>244</td><td><code>stdout_file</code></td><td><code>proc stdout_file() -&gt; File {</code></td><td>Owns byte movement or host I/O interaction.</td></tr><tr><td>259</td><td><code>stderr_file</code></td><td><code>proc stderr_file() -&gt; File {</code></td><td>Owns byte movement or host I/O interaction.</td></tr><tr><td>274</td><td><code>file_is_open</code></td><td><code>proc file_is_open(f: File) -&gt; bool {</code></td><td>Owns byte movement or host I/O interaction.</td></tr><tr><td>278</td><td><code>file_can_read</code></td><td><code>proc file_can_read(f: File) -&gt; bool {</code></td><td>Owns byte movement or host I/O interaction.</td></tr><tr><td>282</td><td><code>file_can_write</code></td><td><code>proc file_can_write(f: File) -&gt; bool {</code></td><td>Owns byte movement or host I/O interaction.</td></tr><tr><td>286</td><td><code>mode_readable</code></td><td><code>proc mode_readable(mode: string) -&gt; bool {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>308</td><td><code>mode_writable</code></td><td><code>proc mode_writable(mode: string) -&gt; bool {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>333</td><td><code>mode_append</code></td><td><code>proc mode_append(mode: string) -&gt; bool {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>346</td><td><code>mode_binary</code></td><td><code>proc mode_binary(mode: string) -&gt; bool {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>350</td><td><code>fopen</code></td><td><code>proc fopen(path: string, mode: string) -&gt; File {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>369</td><td><code>freopen</code></td><td><code>proc freopen(path: string, mode: string, stream: File) -&gt; File {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>374</td><td><code>fclose</code></td><td><code>proc fclose(f: File) -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>382</td><td><code>fflush</code></td><td><code>proc fflush(f: File) -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>390</td><td><code>ferror</code></td><td><code>proc ferror(f: File) -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>398</td><td><code>feof</code></td><td><code>proc feof(f: File) -&gt; bool {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>402</td><td><code>clearerr</code></td><td><code>proc clearerr(f: File) -&gt; File {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>409</td><td><code>rewind</code></td><td><code>proc rewind(f: File) -&gt; File {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>417</td><td><code>fseek</code></td><td><code>proc fseek(f: File, offset: i64, whence: int) -&gt; File {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>439</td><td><code>ftell</code></td><td><code>proc ftell(f: File) -&gt; i64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>443</td><td><code>fgetpos</code></td><td><code>proc fgetpos(f: File) -&gt; i64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>447</td><td><code>fsetpos</code></td><td><code>proc fsetpos(f: File, pos: i64) -&gt; File {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>453</td><td><code>fread</code></td><td><code>proc fread(buffer: bytes, size: usize, count: usize, f: File) -&gt; usize {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>461</td><td><code>fwrite</code></td><td><code>proc fwrite(buffer: bytes, size: usize, count: usize, f: File) -&gt; usize {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>469</td><td><code>fgetc</code></td><td><code>proc fgetc(f: File) -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>477</td><td><code>getc</code></td><td><code>proc getc(f: File) -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>481</td><td><code>getchar</code></td><td><code>proc getchar() -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>485</td><td><code>fputc</code></td><td><code>proc fputc(c: int, f: File) -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>493</td><td><code>putc</code></td><td><code>proc putc(c: int, f: File) -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>497</td><td><code>putchar</code></td><td><code>proc putchar(c: int) -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>501</td><td><code>ungetc</code></td><td><code>proc ungetc(c: int, f: File) -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>509</td><td><code>fgets</code></td><td><code>proc fgets(size: int, f: File) -&gt; string {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>521</td><td><code>gets</code></td><td><code>proc gets() -&gt; string {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>525</td><td><code>fputs</code></td><td><code>proc fputs(s: string, f: File) -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>533</td><td><code>puts</code></td><td><code>proc puts(s: string) -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>539</td><td><code>print</code></td><td><code>proc print(s: string) -&gt; void {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>543</td><td><code>println</code></td><td><code>proc println(s: string) -&gt; void {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>547</td><td><code>eprint</code></td><td><code>proc eprint(s: string) -&gt; void {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>551</td><td><code>eprintln</code></td><td><code>proc eprintln(s: string) -&gt; void {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>556</td><td><code>emit_string</code></td><td><code>proc emit_string(s: string) -&gt; void {</code></td><td>Turns internal values into a transport or textual representation.</td></tr><tr><td>560</td><td><code>print_int</code></td><td><code>proc print_int(value: i64) -&gt; void {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>564</td><td><code>println_int</code></td><td><code>proc println_int(value: i64) -&gt; void {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>569</td><td><code>print_float</code></td><td><code>proc print_float(value: f64) -&gt; void {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>573</td><td><code>println_float</code></td><td><code>proc println_float(value: f64) -&gt; void {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>578</td><td><code>print_bool</code></td><td><code>proc print_bool(value: bool) -&gt; void {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>586</td><td><code>println_bool</code></td><td><code>proc println_bool(value: bool) -&gt; void {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>591</td><td><code>printf</code></td><td><code>proc printf(format: string, args: [string]) -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>597</td><td><code>fprintf</code></td><td><code>proc fprintf(f: File, format: string, args: [string]) -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>603</td><td><code>sprintf</code></td><td><code>proc sprintf(format: string, args: [string]) -&gt; string {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>607</td><td><code>snprintf</code></td><td><code>proc snprintf(size: usize, format: string, args: [string]) -&gt; string {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>617</td><td><code>scanf</code></td><td><code>proc scanf(format: string) -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>621</td><td><code>fscanf</code></td><td><code>proc fscanf(f: File, format: string) -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>629</td><td><code>sscanf</code></td><td><code>proc sscanf(input: string, format: string) -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>637</td><td><code>read_line</code></td><td><code>proc read_line() -&gt; string {</code></td><td>Owns byte movement or host I/O interaction.</td></tr><tr><td>641</td><td><code>read_string</code></td><td><code>proc read_string() -&gt; string {</code></td><td>Owns byte movement or host I/O interaction.</td></tr><tr><td>645</td><td><code>read_int</code></td><td><code>proc read_int() -&gt; i64 {</code></td><td>Owns byte movement or host I/O interaction.</td></tr><tr><td>649</td><td><code>read_float</code></td><td><code>proc read_float() -&gt; f64 {</code></td><td>Owns byte movement or host I/O interaction.</td></tr><tr><td>653</td><td><code>read_bool</code></td><td><code>proc read_bool() -&gt; bool {</code></td><td>Owns byte movement or host I/O interaction.</td></tr><tr><td>663</td><td><code>read_all_stdin</code></td><td><code>proc read_all_stdin() -&gt; string {</code></td><td>Owns byte movement or host I/O interaction.</td></tr><tr><td>667</td><td><code>read_file</code></td><td><code>proc read_file(path: string) -&gt; string {</code></td><td>Owns byte movement or host I/O interaction.</td></tr><tr><td>678</td><td><code>read_file_bytes</code></td><td><code>proc read_file_bytes(path: string) -&gt; bytes {</code></td><td>Owns byte movement or host I/O interaction.</td></tr><tr><td>682</td><td><code>read_lines</code></td><td><code>proc read_lines(path: string) -&gt; [string] {</code></td><td>Owns byte movement or host I/O interaction.</td></tr><tr><td>687</td><td><code>write_file</code></td><td><code>proc write_file(path: string, content: string) -&gt; int {</code></td><td>Owns byte movement or host I/O interaction.</td></tr><tr><td>699</td><td><code>write_file_bytes</code></td><td><code>proc write_file_bytes(path: string, content: bytes) -&gt; int {</code></td><td>Owns byte movement or host I/O interaction.</td></tr><tr><td>711</td><td><code>append_file</code></td><td><code>proc append_file(path: string, content: string) -&gt; int {</code></td><td>Owns byte movement or host I/O interaction.</td></tr><tr><td>723</td><td><code>copy_file</code></td><td><code>proc copy_file(src: string, dst: string) -&gt; int {</code></td><td>Owns byte movement or host I/O interaction.</td></tr><tr><td>728</td><td><code>move_file</code></td><td><code>proc move_file(src: string, dst: string) -&gt; int {</code></td><td>Owns byte movement or host I/O interaction.</td></tr><tr><td>738</td><td><code>remove</code></td><td><code>proc remove(path: string) -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>746</td><td><code>rename</code></td><td><code>proc rename(old_path: string, new_path: string) -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>754</td><td><code>file_exists</code></td><td><code>proc file_exists(path: string) -&gt; bool {</code></td><td>Owns byte movement or host I/O interaction.</td></tr><tr><td>758</td><td><code>is_file</code></td><td><code>proc is_file(path: string) -&gt; bool {</code></td><td>Owns byte movement or host I/O interaction.</td></tr><tr><td>762</td><td><code>is_dir</code></td><td><code>proc is_dir(path: string) -&gt; bool {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>766</td><td><code>is_symlink</code></td><td><code>proc is_symlink(path: string) -&gt; bool {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>770</td><td><code>file_size</code></td><td><code>proc file_size(path: string) -&gt; i64 {</code></td><td>Owns byte movement or host I/O interaction.</td></tr><tr><td>774</td><td><code>stat</code></td><td><code>proc stat(path: string) -&gt; FileStat {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>789</td><td><code>mkdir</code></td><td><code>proc mkdir(path: string) -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>797</td><td><code>mkdir_all</code></td><td><code>proc mkdir_all(path: string) -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>805</td><td><code>rmdir</code></td><td><code>proc rmdir(path: string) -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>813</td><td><code>list_dir</code></td><td><code>proc list_dir(path: string) -&gt; [DirEntry] {</code></td><td>Owns a concrete data shape or the operations that maintain it.</td></tr><tr><td>817</td><td><code>read_dir_names</code></td><td><code>proc read_dir_names(path: string) -&gt; [string] {</code></td><td>Owns byte movement or host I/O interaction.</td></tr><tr><td>830</td><td><code>touch</code></td><td><code>proc touch(path: string) -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>838</td><td><code>tmpfile</code></td><td><code>proc tmpfile() -&gt; File {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>842</td><td><code>tmpnam</code></td><td><code>proc tmpnam(prefix: string) -&gt; string {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>850</td><td><code>basename</code></td><td><code>proc basename(path: string) -&gt; string {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>855</td><td><code>dirname</code></td><td><code>proc dirname(path: string) -&gt; string {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>860</td><td><code>extension</code></td><td><code>proc extension(path: string) -&gt; string {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>865</td><td><code>stem</code></td><td><code>proc stem(path: string) -&gt; string {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>870</td><td><code>path_join</code></td><td><code>proc path_join(a: string, b: string) -&gt; string {</code></td><td>Owns path semantics, traversal, or normalization.</td></tr><tr><td>886</td><td><code>path_join3</code></td><td><code>proc path_join3(a: string, b: string, c: string) -&gt; string {</code></td><td>Owns path semantics, traversal, or normalization.</td></tr><tr><td>890</td><td><code>path_normalize</code></td><td><code>proc path_normalize(path: string) -&gt; string {</code></td><td>Owns path semantics, traversal, or normalization.</td></tr><tr><td>894</td><td><code>path_is_absolute</code></td><td><code>proc path_is_absolute(path: string) -&gt; bool {</code></td><td>Owns path semantics, traversal, or normalization.</td></tr><tr><td>898</td><td><code>path_is_relative</code></td><td><code>proc path_is_relative(path: string) -&gt; bool {</code></td><td>Owns path semantics, traversal, or normalization.</td></tr><tr><td>902</td><td><code>path_parse</code></td><td><code>proc path_parse(path: string) -&gt; PathInfo {</code></td><td>Transforms an input representation into a structured internal value.</td></tr><tr><td>917</td><td><code>buffer_new</code></td><td><code>proc buffer_new(capacity: usize) -&gt; Buffer {</code></td><td>Owns byte movement or host I/O interaction.</td></tr><tr><td>926</td><td><code>buffer_from_bytes</code></td><td><code>proc buffer_from_bytes(data: bytes) -&gt; Buffer {</code></td><td>Owns byte movement or host I/O interaction.</td></tr><tr><td>935</td><td><code>buffer_clear</code></td><td><code>proc buffer_clear(buf: Buffer) -&gt; Buffer {</code></td><td>Owns byte movement or host I/O interaction.</td></tr><tr><td>943</td><td><code>buffer_remaining</code></td><td><code>proc buffer_remaining(buf: Buffer) -&gt; usize {</code></td><td>Owns byte movement or host I/O interaction.</td></tr><tr><td>951</td><td><code>buffer_is_empty</code></td><td><code>proc buffer_is_empty(buf: Buffer) -&gt; bool {</code></td><td>Owns byte movement or host I/O interaction.</td></tr><tr><td>955</td><td><code>reader_new</code></td><td><code>proc reader_new(f: File) -&gt; TextReader {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>963</td><td><code>writer_new</code></td><td><code>proc writer_new(f: File) -&gt; TextWriter {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>970</td><td><code>reader_read_line</code></td><td><code>proc reader_read_line(r: TextReader) -&gt; string {</code></td><td>Owns byte movement or host I/O interaction.</td></tr><tr><td>974</td><td><code>writer_write</code></td><td><code>proc writer_write(w: TextWriter, s: string) -&gt; TextWriter {</code></td><td>Owns byte movement or host I/O interaction.</td></tr><tr><td>985</td><td><code>writer_writeln</code></td><td><code>proc writer_writeln(w: TextWriter, s: string) -&gt; TextWriter {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>990</td><td><code>perror</code></td><td><code>proc perror(message: string) -&gt; void {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>994</td><td><code>strerror</code></td><td><code>proc strerror(code: int) -&gt; string {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>1006</td><td><code>setbuf</code></td><td><code>proc setbuf(f: File, buffer: bytes) -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>1014</td><td><code>setvbuf</code></td><td><code>proc setvbuf(f: File, buffer: bytes, mode: i32, size: i64) -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>1026</td><td><code>format_apply</code></td><td><code>proc format_apply(format: string, args: [string]) -&gt; string {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>1048</td><td><code>to_string_i64</code></td><td><code>proc to_string_i64(value: i64) -&gt; string {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>1052</td><td><code>to_string_f64</code></td><td><code>proc to_string_f64(value: f64) -&gt; string {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>1056</td><td><code>parse_i64</code></td><td><code>proc parse_i64(s: string) -&gt; i64 {</code></td><td>Transforms an input representation into a structured internal value.</td></tr><tr><td>1060</td><td><code>parse_f64</code></td><td><code>proc parse_f64(s: string) -&gt; f64 {</code></td><td>Transforms an input representation into a structured internal value.</td></tr><tr><td>1064</td><td><code>split_lines</code></td><td><code>proc split_lines(s: string) -&gt; [string] {</code></td><td>Owns path semantics, traversal, or normalization.</td></tr><tr><td>1068</td><td><code>string_contains</code></td><td><code>proc string_contains(s: string, needle: string) -&gt; bool {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>1072</td><td><code>string_starts_with</code></td><td><code>proc string_starts_with(s: string, prefix: string) -&gt; bool {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>1076</td><td><code>string_ends_with</code></td><td><code>proc string_ends_with(s: string, suffix: string) -&gt; bool {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>1080</td><td><code>string_slice</code></td><td><code>proc string_slice(s: string, start: int, end: int) -&gt; string {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>1084</td><td><code>string_char_at</code></td><td><code>proc string_char_at(s: string, index: int) -&gt; string {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>1088</td><td><code>io_ready</code></td><td><code>proc io_ready() -&gt; bool {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>1092</td><td><code>io_domains</code></td><td><code>proc io_domains() -&gt; [string] {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>1105</td><td><code>library_meta</code></td><td><code>proc library_meta() -&gt; string {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>1109</td><td><code>io_selftest</code></td><td><code>proc io_selftest() -&gt; bool {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr></table></div><h3>Exports</h3><div class="table-scroll"><table border="1" cellpadding="6" cellspacing="0"><tr><th>Line</th><th>Name</th><th>Signature</th><th>Role</th></tr><tr><td>3</td><td><code>*</code></td><td><code>export *</code></td><td>Re-exports surfaces that the module wants to expose as part of its public boundary.</td></tr></table></div>
 </section>
 <section id="boundaries">
 <h2>Integration boundaries</h2>
@@ -120,6 +431,29 @@ const SEEK_SET: int = 0</code></pre>
 <li>Family responsibility: File, buffer, stream, stdio, and host-runtime access helpers.</li>
 <li>Family architecture role: Use `io` when the program must read or write bytes, files, or streams. Keep it separate from validation, parsing, or business decisions.</li>
 </ul>
+</section>
+<section id="composition">
+<h2>Composition guidance</h2>
+<h3>Choose this module when</h3>
+<ul><li>Choose <code>io.vitl</code> when the main question is owned by this module rather than by transport, storage, orchestration, or user-interface code.</li><li>A manifest is loaded through `io`, parsed elsewhere, validated elsewhere, and only then emitted back through `io`.</li><li>A stdio helper should explain where user-facing text enters the flow.</li></ul>
+<h3>Pause before extending it when</h3>
+<ul><li>Avoid extending this file when the new helper mostly changes the boundary to host I/O, runtime coordination, or foreign integration instead of staying inside <code>io</code>.</li><li>Check nearby modules such as <code>io/buffer.vitl</code>, <code>io/file.vitl</code>, <code>io/fileops.vitl</code> before adding convenience wrappers here.</li></ul>
+</section>
+<section id="relationships">
+<h2>Relationship table</h2>
+<p>This table keeps the page closer to a real encyclopedia entry: a module is easier to understand when compared with its nearest alternatives in the same family.</p>
+<div class="table-scroll">
+<table border="1" cellpadding="6" cellspacing="0">
+<tr><th>Neighbor</th><th>Procedures</th><th>Data surfaces</th><th>Why compare it</th></tr>
+<tr><td><a href="io--buffer.vitl.html"><code>io/buffer.vitl</code></a></td><td>13</td><td>4</td><td>Shares the same family boundary but carries a distinct slice of responsibility.</td></tr>
+<tr><td><a href="io--file.vitl.html"><code>io/file.vitl</code></a></td><td>23</td><td>4</td><td>Shares the same family boundary but carries a distinct slice of responsibility.</td></tr>
+<tr><td><a href="io--fileops.vitl.html"><code>io/fileops.vitl</code></a></td><td>19</td><td>3</td><td>Shares the same family boundary but carries a distinct slice of responsibility.</td></tr>
+<tr><td><a href="io--host_runtime.vitl.html"><code>io/host_runtime.vitl</code></a></td><td>17</td><td>0</td><td>Shares the same family boundary but carries a distinct slice of responsibility.</td></tr>
+<tr><td><a href="io--io.vitl.html"><code>io/io.vitl</code></a></td><td>41</td><td>0</td><td>Shares the same family boundary but carries a distinct slice of responsibility.</td></tr>
+<tr><td><a href="io--stdio.vitl.html"><code>io/stdio.vitl</code></a></td><td>35</td><td>4</td><td>Shares the same family boundary but carries a distinct slice of responsibility.</td></tr>
+<tr><td><a href="io--stream.vitl.html"><code>io/stream.vitl</code></a></td><td>13</td><td>4</td><td>Shares the same family boundary but carries a distinct slice of responsibility.</td></tr>
+</table>
+</div>
 </section>
 <section id="neighbors">
 <h2>Neighbor modules</h2>

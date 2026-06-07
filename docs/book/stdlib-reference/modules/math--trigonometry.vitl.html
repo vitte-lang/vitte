@@ -9,7 +9,6 @@
 <link rel="stylesheet" href="../../../css/print.css" media="print">
 <link rel="alternate" hreflang="en" href="https://vitte-lang.org/book/stdlib-reference/modules/math--trigonometry.vitl.html">
 <link rel="alternate" hreflang="x-default" href="https://vitte-lang.org/book/stdlib-reference/modules/math--trigonometry.vitl.html">
-
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; font-src 'self'; connect-src 'self';">
 </head>
 <body class="classic-doc">
@@ -53,10 +52,22 @@
 <ul>
 <li><a href="#overview">Overview</a></li>
 <li><a href="#purpose">Purpose</a></li>
+<li><a href="#taxonomy">Taxonomy</a></li>
+<li><a href="#profile">Implementation profile</a></li>
 <li><a href="#inventory">Top-level API inventory</a></li>
+<li><a href="#position">Position in family</a></li>
+<li><a href="#declarations">Declaration map</a></li>
+<li><a href="#signatures">Representative signatures</a></li>
 <li><a href="#usage">How to use this module</a></li>
+<li><a href="#user-example">User example</a></li>
+<li><a href="#keyword-coverage">Keyword coverage</a></li>
 <li><a href="#source-shape">Source shape</a></li>
+<li><a href="#landmarks">Source landmarks</a></li>
+<li><a href="#organization">Source organization</a></li>
+<li><a href="#catalog">Complete API catalog</a></li>
 <li><a href="#boundaries">Integration boundaries</a></li>
+<li><a href="#composition">Composition guidance</a></li>
+<li><a href="#relationships">Relationship table</a></li>
 <li><a href="#neighbors">Neighbor modules</a></li>
 </ul>
 </section>
@@ -78,6 +89,26 @@
 <p>This file should be chosen because of responsibility, not because its name “sounds close enough”. Inside the <code>math</code> family, it carries one focused part of the contract and keeps that responsibility separate from neighboring concerns.</p>
 <ul><li>A scoring engine can compute aggregates in `math` while keeping I/O and transport elsewhere.</li><li>A statistics or matrix chapter should explain the workflow around the computation, not just a single formula.</li></ul>
 </section>
+<section id="taxonomy">
+<h2>Taxonomy</h2>
+<p>Think of this page as a generated encyclopedia entry rather than a hand-written tutorial. The goal is to show what kind of module this is, how dense it is, and what reading strategy makes sense before depending on it.</p>
+<ul><li>Large algorithm surface: this file exposes many procedures and likely acts as a domain toolkit rather than a single thin wrapper.</li><li>Has tuning constants: part of the module behavior is controlled by named constants that document default precision, limits, or policy.</li><li>Minimal top-level dependencies: the module reads as mostly self-contained from its opening declarations.</li><li>Explicit export surface: the file ends with visible export declarations instead of relying only on implicit namespace discovery.</li></ul>
+</section>
+<section id="profile">
+<h2>Implementation profile</h2>
+<p>This profile is inferred directly from the source text. It does not replace reading the file, but it tells you quickly whether the module is mostly declarative, loop-heavy, branch-heavy, or organized around many small exits.</p>
+<div class="table-scroll">
+<table border="1" cellpadding="6" cellspacing="0">
+<tr><th>Signal</th><th>Count</th><th>What it suggests</th></tr>
+<tr><td><code>if</code></td><td>55</td><td>Branching density and local decision-making.</td></tr>
+<tr><td><code>while</code></td><td>6</td><td>Loop-heavy or iterative implementation style.</td></tr>
+<tr><td><code>for</code></td><td>0</td><td>Collection-style traversal at source level.</td></tr>
+<tr><td><code>match</code></td><td>0</td><td>Variant-driven branching or grammar-style decoding.</td></tr>
+<tr><td><code>let</code></td><td>145</td><td>Local state and intermediate value density.</td></tr>
+<tr><td><code>give</code></td><td>138</td><td>Number of explicit exit points and result shaping.</td></tr>
+</table>
+</div>
+</section>
 <section id="inventory">
 <h2>Top-level API inventory</h2>
 <table border="1" cellpadding="6" cellspacing="0">
@@ -86,32 +117,219 @@
 <tr><td>Forms</td><td>none declared at top level</td></tr>
 <tr><td>Picks</td><td>none declared at top level</td></tr>
 <tr><td>Constants</td><td><code>PI</code>, <code>HALF_PI</code>, <code>QUARTER_PI</code>, <code>TWO_PI</code>, <code>THREE_HALF_PI</code>, <code>DEG_TO_RAD</code>, <code>RAD_TO_DEG</code>, <code>EPSILON</code>, <code>SERIES_STEPS</code></td></tr>
+<tr><td>Exports</td><td><code>*</code></td></tr>
 </table>
 <h3>Imported surfaces</h3>
 <p>This file does not advertise a top-level `use` surface in its opening declarations. That often means it is either self-contained or an aggregation layer.</p>
 </section>
+<section id="position">
+<h2>Position in family</h2>
+<p>This file is module 20 of 21 in the <code>math</code> family when ordered by path. By procedure count it ranks 2, and by line count it ranks 3. Those ranks are useful as rough signals of breadth, not as quality judgments.</p>
+</section>
+<section id="declarations">
+<h2>Declaration map</h2>
+<p>The declaration map turns raw source into a scan-friendly catalog. It is useful when the file is large enough that a reader wants to orient by kinds of surfaces first.</p>
+<div class="table-scroll">
+<table border="1" cellpadding="6" cellspacing="0">
+<tr><th>Line</th><th>Name</th><th>Kind</th><th>Role</th></tr>
+<tr><td>1</td><td><code>vitte/stdlib/math/trigonometry</code></td><td>space</td><td>Declares the namespace that anchors this file in the stdlib tree.</td></tr>
+<tr><td>7</td><td><code>PI</code></td><td>const</td><td>Defines a named constant reused across the module.</td></tr>
+<tr><td>8</td><td><code>HALF_PI</code></td><td>const</td><td>Defines a named constant reused across the module.</td></tr>
+<tr><td>9</td><td><code>QUARTER_PI</code></td><td>const</td><td>Defines a named constant reused across the module.</td></tr>
+<tr><td>10</td><td><code>TWO_PI</code></td><td>const</td><td>Defines a named constant reused across the module.</td></tr>
+<tr><td>11</td><td><code>THREE_HALF_PI</code></td><td>const</td><td>Defines a named constant reused across the module.</td></tr>
+<tr><td>12</td><td><code>DEG_TO_RAD</code></td><td>const</td><td>Defines a named constant reused across the module.</td></tr>
+<tr><td>13</td><td><code>RAD_TO_DEG</code></td><td>const</td><td>Defines a named constant reused across the module.</td></tr>
+<tr><td>14</td><td><code>EPSILON</code></td><td>const</td><td>Defines a bound or precision constant that shapes runtime behavior.</td></tr>
+<tr><td>15</td><td><code>SERIES_STEPS</code></td><td>const</td><td>Defines a named constant reused across the module.</td></tr>
+<tr><td>17</td><td><code>abs_f64</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>25</td><td><code>min_f64</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>33</td><td><code>max_f64</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>41</td><td><code>clamp_f64</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>51</td><td><code>sign_f64</code></td><td>proc</td><td>Implements a security-sensitive transformation in the crypto boundary.</td></tr>
+<tr><td>61</td><td><code>is_near_zero</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>65</td><td><code>normalize_degrees</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>78</td><td><code>normalize_radians</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>91</td><td><code>wrap_radians</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>99</td><td><code>degrees_to_radians</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>103</td><td><code>radians_to_degrees</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>107</td><td><code>opposite_angle</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>112</td><td><code>complement_angle</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>116</td><td><code>supplement_angle</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>120</td><td><code>angle_delta_degrees</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>133</td><td><code>angle_distance_degrees</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>137</td><td><code>angle_delta_radians</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>150</td><td><code>angle_distance_radians</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>154</td><td><code>quadrant</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>168</td><td><code>is_axis_angle</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>177</td><td><code>is_right_angle</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>186</td><td><code>is_straight_angle</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>192</td><td><code>is_full_turn_degrees</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>197</td><td><code>turns_to_radians</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>201</td><td><code>radians_to_turns</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>205</td><td><code>square_f64</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>209</td><td><code>cube_f64</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>213</td><td><code>reduce_to_half_pi</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>224</td><td><code>factorial_f64</code></td><td>proc</td><td>Implements a counting or probability helper inside the math boundary.</td></tr>
+<tr><td>234</td><td><code>sin_series_core</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>253</td><td><code>cos_series_core</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>272</td><td><code>sin</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>276</td><td><code>cos</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>280</td><td><code>tan</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>288</td><td><code>sec</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>296</td><td><code>csc</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>304</td><td><code>cot</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>312</td><td><code>sin_degrees</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>316</td><td><code>cos_degrees</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>320</td><td><code>tan_degrees</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>324</td><td><code>sec_degrees</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>328</td><td><code>csc_degrees</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>332</td><td><code>cot_degrees</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>336</td><td><code>atan_series</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>346</td><td><code>atan</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>360</td><td><code>sqrt_f64_local</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>375</td><td><code>asin_series</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>384</td><td><code>asin_atan_identity</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>402</td><td><code>asin</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>411</td><td><code>acos</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>415</td><td><code>atan2</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>439</td><td><code>asec</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>447</td><td><code>acsc</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>455</td><td><code>acot</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>463</td><td><code>atan_degrees</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>467</td><td><code>atan2_degrees</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>471</td><td><code>asin_degrees</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>475</td><td><code>acos_degrees</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>479</td><td><code>exp_f64_local</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>491</td><td><code>log_f64_local</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>501</td><td><code>sinh</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>509</td><td><code>cosh</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>517</td><td><code>tanh</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>525</td><td><code>sech</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>533</td><td><code>csch</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>541</td><td><code>coth</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>549</td><td><code>asinh</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>557</td><td><code>acosh</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>568</td><td><code>atanh</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>579</td><td><code>haversin</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>585</td><td><code>ahaversin</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>591</td><td><code>versin</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>595</td><td><code>coversin</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>599</td><td><code>exsec</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>603</td><td><code>chord</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>608</td><td><code>sinc</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>615</td><td><code>normalized_sinc</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>623</td><td><code>polar_x</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>627</td><td><code>polar_y</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>631</td><td><code>polar_x_degrees</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>636</td><td><code>polar_y_degrees</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>641</td><td><code>pow_f64_local</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>661</td><td><code>round_f64_local</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>673</td><td><code>trigonometry_version</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>677</td><td><code>trigonometry_ready</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>681</td><td><code>trigonometry_selftest</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+</table>
+</div>
+<p>The table is exhaustive for top-level declarations of the selected kinds. This file declares 96 matching surfaces.</p>
+</section>
+<section id="signatures">
+<h2>Representative signatures</h2>
+<p>These signatures are shown in source order so the page keeps the feel of a reference manual, not just a keyword cloud.</p>
+<ul><li><code>const PI: f64 = 3.141592653589793</code> (line 7)</li><li><code>const HALF_PI: f64 = 1.5707963267948966</code> (line 8)</li><li><code>const QUARTER_PI: f64 = 0.7853981633974483</code> (line 9)</li><li><code>const TWO_PI: f64 = 6.283185307179586</code> (line 10)</li><li><code>const THREE_HALF_PI: f64 = 4.71238898038469</code> (line 11)</li><li><code>const DEG_TO_RAD: f64 = 0.017453292519943295</code> (line 12)</li><li><code>const RAD_TO_DEG: f64 = 57.29577951308232</code> (line 13)</li><li><code>const EPSILON: f64 = 0.000001</code> (line 14)</li><li><code>const SERIES_STEPS: i64 = 8</code> (line 15)</li><li><code>proc abs_f64(value: f64) -&gt; f64 {</code> (line 17)</li><li><code>proc min_f64(a: f64, b: f64) -&gt; f64 {</code> (line 25)</li><li><code>proc max_f64(a: f64, b: f64) -&gt; f64 {</code> (line 33)</li><li><code>proc clamp_f64(value: f64, low: f64, high: f64) -&gt; f64 {</code> (line 41)</li><li><code>proc sign_f64(value: f64) -&gt; f64 {</code> (line 51)</li><li><code>proc is_near_zero(value: f64) -&gt; bool {</code> (line 61)</li><li><code>proc normalize_degrees(value: f64) -&gt; f64 {</code> (line 65)</li><li><code>proc normalize_radians(value: f64) -&gt; f64 {</code> (line 78)</li><li><code>proc wrap_radians(value: f64) -&gt; f64 {</code> (line 91)</li></ul>
+<p>The list is intentionally capped here; the source file declares 95 matching signatures in total.</p>
+</section>
 <section id="usage">
 <h2>How to use this module</h2>
 <p>Start by reading the file as an ownership boundary. Ask three questions: what enters this module, what stable types or procedures it exports, and what adjacent module should stay outside of it.</p>
-<ol>
-<li>Open the family page first to understand why this area of the stdlib exists.</li>
-<li>Read the source excerpt below to see the namespace, imports, and first declared surfaces.</li>
-<li>Check the neighbor list to avoid coupling this module with an adjacent responsibility by habit.</li>
-</ol>
+<ol><li>Read <code>space</code> and top-level imports first so the ownership boundary of <code>math/trigonometry.vitl</code> is explicit.</li><li>Scan constants before procedures; they often encode precision, limits, or policy assumptions that explain later behavior.</li><li>Traverse procedures in source order; the early helpers usually explain the naming and numeric conventions used later.</li><li>Use the source landmarks section below as a table of contents when the file is large.</li><li>Only after that compare neighbor modules, because the right boundary choice matters more than memorizing one helper name.</li></ol>
+</section>
+<section id="user-example">
+<h2>User example</h2>
+<p>This example is generated from the actual stdlib module surface. Its job is not to be the smallest snippet possible; its job is to show a realistic consumer-shaped file that exercises the module and mirrors the language keywords the module itself relies on.</p>
+<pre><code class="language-vitl">space demo/math_trigonometry
+const SAMPLE_LABEL: string = &quot;demo&quot;
+proc run_example() -&gt; string {
+  let result = abs_f64(1.0)
+  let ready: bool = is_near_zero(1.0)
+  let stable: bool = ready and true
+  let fallback: bool = ready or false
+  let idx: int = 0
+  while idx &lt; 1 {
+    set idx = idx + 1
+  }
+  if ready {
+    give &quot;not-ready&quot;
+  } else {
+    give &quot;ok&quot;
+  }
+  let copies: f64 = 1 as f64
+}
+export run_example</code></pre>
+</section>
+<section id="keyword-coverage">
+<h2>Keyword coverage</h2>
+<p>This table makes the “all keywords of the module” requirement auditable. It compares the detected Vitte keywords in the source file with the generated consumer example above.</p>
+<div class="table-scroll">
+<table border="1" cellpadding="6" cellspacing="0">
+<tr><th>Keyword</th><th>Present in module source</th><th>Used in generated user example</th></tr>
+<tr><td><code>space</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>const</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>proc</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>let</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>set</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>if</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>else</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>while</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>give</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>export</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>true</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>and</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>or</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>as</code></td><td>yes</td><td>yes</td></tr>
+</table>
+</div>
+<p>The generated snippet exercises every detected Vitte keyword used by this module.</p>
 </section>
 <section id="source-shape">
 <h2>Source shape</h2>
 <pre><code class="language-vitl">space vitte/stdlib/math/trigonometry
-   Trigonometry — angle normalization and trig approximations
-   ========================================================= &gt;&gt;&gt;
 const PI: f64 = 3.141592653589793
 const HALF_PI: f64 = 1.5707963267948966
 const QUARTER_PI: f64 = 0.7853981633974483
 const TWO_PI: f64 = 6.283185307179586
 const THREE_HALF_PI: f64 = 4.71238898038469
 const DEG_TO_RAD: f64 = 0.017453292519943295
-const RAD_TO_DEG: f64 = 57.29577951308232</code></pre>
+const RAD_TO_DEG: f64 = 57.29577951308232
+const EPSILON: f64 = 0.000001
+const SERIES_STEPS: i64 = 8</code></pre>
 <p>The excerpt is not meant to replace the file. It exists to make the module recognizable at first glance, the same way a Wikipedia infobox helps the reader orient before reading the whole article.</p>
+</section>
+<section id="landmarks">
+<h2>Source landmarks</h2>
+<p>Large files are easier to retain when they have visible landmarks. When the source contains explicit section banners, they are surfaced here; otherwise the first major declarations are used as anchors.</p>
+<ul><li>Trigonometry — angle normalization and trig approximations</li></ul>
+</section>
+<section id="organization">
+<h2>Source organization</h2>
+<p>When a file carries its own internal chaptering, those chapters usually reveal the intended reading order better than a flat symbol list. This section reconstructs that organization from the source itself.</p>
+
+<section class="lead-panel">
+<h3>Opening declarations</h3>
+<p><strong>Top-level items:</strong> 1. <strong>Procedures:</strong> 0. <strong>Data surfaces:</strong> 0. <strong>Constants:</strong> 0.</p>
+<p><strong>First visible names:</strong> <code>vitte/stdlib/math/trigonometry</code></p>
+</section>
+
+<section class="lead-panel">
+<h3>Trigonometry — angle normalization and trig approximations</h3>
+<p><strong>Top-level items:</strong> 96. <strong>Procedures:</strong> 86. <strong>Data surfaces:</strong> 0. <strong>Constants:</strong> 9.</p>
+<p><strong>First visible names:</strong> <code>PI</code>, <code>HALF_PI</code>, <code>QUARTER_PI</code>, <code>TWO_PI</code>, <code>THREE_HALF_PI</code>, <code>DEG_TO_RAD</code>, <code>RAD_TO_DEG</code>, <code>EPSILON</code>, <code>SERIES_STEPS</code>, <code>abs_f64</code></p>
+</section>
+
+</section>
+<section id="catalog">
+<h2>Complete API catalog</h2>
+<p>This catalog is the exhaustive file-level index for the module. It is intentionally closer to a generated encyclopedia appendix than to a tutorial summary.</p>
+<h3>Constants</h3><div class="table-scroll"><table border="1" cellpadding="6" cellspacing="0"><tr><th>Line</th><th>Name</th><th>Signature</th><th>Role</th></tr><tr><td>7</td><td><code>PI</code></td><td><code>const PI: f64 = 3.141592653589793</code></td><td>Defines a named constant reused across the module.</td></tr><tr><td>8</td><td><code>HALF_PI</code></td><td><code>const HALF_PI: f64 = 1.5707963267948966</code></td><td>Defines a named constant reused across the module.</td></tr><tr><td>9</td><td><code>QUARTER_PI</code></td><td><code>const QUARTER_PI: f64 = 0.7853981633974483</code></td><td>Defines a named constant reused across the module.</td></tr><tr><td>10</td><td><code>TWO_PI</code></td><td><code>const TWO_PI: f64 = 6.283185307179586</code></td><td>Defines a named constant reused across the module.</td></tr><tr><td>11</td><td><code>THREE_HALF_PI</code></td><td><code>const THREE_HALF_PI: f64 = 4.71238898038469</code></td><td>Defines a named constant reused across the module.</td></tr><tr><td>12</td><td><code>DEG_TO_RAD</code></td><td><code>const DEG_TO_RAD: f64 = 0.017453292519943295</code></td><td>Defines a named constant reused across the module.</td></tr><tr><td>13</td><td><code>RAD_TO_DEG</code></td><td><code>const RAD_TO_DEG: f64 = 57.29577951308232</code></td><td>Defines a named constant reused across the module.</td></tr><tr><td>14</td><td><code>EPSILON</code></td><td><code>const EPSILON: f64 = 0.000001</code></td><td>Defines a bound or precision constant that shapes runtime behavior.</td></tr><tr><td>15</td><td><code>SERIES_STEPS</code></td><td><code>const SERIES_STEPS: i64 = 8</code></td><td>Defines a named constant reused across the module.</td></tr></table></div><h3>Procedures</h3><div class="table-scroll"><table border="1" cellpadding="6" cellspacing="0"><tr><th>Line</th><th>Name</th><th>Signature</th><th>Role</th></tr><tr><td>17</td><td><code>abs_f64</code></td><td><code>proc abs_f64(value: f64) -&gt; f64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>25</td><td><code>min_f64</code></td><td><code>proc min_f64(a: f64, b: f64) -&gt; f64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>33</td><td><code>max_f64</code></td><td><code>proc max_f64(a: f64, b: f64) -&gt; f64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>41</td><td><code>clamp_f64</code></td><td><code>proc clamp_f64(value: f64, low: f64, high: f64) -&gt; f64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>51</td><td><code>sign_f64</code></td><td><code>proc sign_f64(value: f64) -&gt; f64 {</code></td><td>Implements a security-sensitive transformation in the crypto boundary.</td></tr><tr><td>61</td><td><code>is_near_zero</code></td><td><code>proc is_near_zero(value: f64) -&gt; bool {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>65</td><td><code>normalize_degrees</code></td><td><code>proc normalize_degrees(value: f64) -&gt; f64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>78</td><td><code>normalize_radians</code></td><td><code>proc normalize_radians(value: f64) -&gt; f64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>91</td><td><code>wrap_radians</code></td><td><code>proc wrap_radians(value: f64) -&gt; f64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>99</td><td><code>degrees_to_radians</code></td><td><code>proc degrees_to_radians(value: f64) -&gt; f64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>103</td><td><code>radians_to_degrees</code></td><td><code>proc radians_to_degrees(value: f64) -&gt; f64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>107</td><td><code>opposite_angle</code></td><td><code>proc opposite_angle(value: f64) -&gt; f64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>112</td><td><code>complement_angle</code></td><td><code>proc complement_angle(value: f64) -&gt; f64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>116</td><td><code>supplement_angle</code></td><td><code>proc supplement_angle(value: f64) -&gt; f64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>120</td><td><code>angle_delta_degrees</code></td><td><code>proc angle_delta_degrees(from_value: f64, to_value: f64) -&gt; f64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>133</td><td><code>angle_distance_degrees</code></td><td><code>proc angle_distance_degrees(a: f64, b: f64) -&gt; f64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>137</td><td><code>angle_delta_radians</code></td><td><code>proc angle_delta_radians(from_value: f64, to_value: f64) -&gt; f64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>150</td><td><code>angle_distance_radians</code></td><td><code>proc angle_distance_radians(a: f64, b: f64) -&gt; f64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>154</td><td><code>quadrant</code></td><td><code>proc quadrant(value: f64) -&gt; i64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>168</td><td><code>is_axis_angle</code></td><td><code>proc is_axis_angle(value: f64) -&gt; bool {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>177</td><td><code>is_right_angle</code></td><td><code>proc is_right_angle(value: f64) -&gt; bool {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>186</td><td><code>is_straight_angle</code></td><td><code>proc is_straight_angle(value: f64) -&gt; bool {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>192</td><td><code>is_full_turn_degrees</code></td><td><code>proc is_full_turn_degrees(value: f64) -&gt; bool {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>197</td><td><code>turns_to_radians</code></td><td><code>proc turns_to_radians(turns: f64) -&gt; f64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>201</td><td><code>radians_to_turns</code></td><td><code>proc radians_to_turns(value: f64) -&gt; f64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>205</td><td><code>square_f64</code></td><td><code>proc square_f64(value: f64) -&gt; f64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>209</td><td><code>cube_f64</code></td><td><code>proc cube_f64(value: f64) -&gt; f64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>213</td><td><code>reduce_to_half_pi</code></td><td><code>proc reduce_to_half_pi(value: f64) -&gt; f64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>224</td><td><code>factorial_f64</code></td><td><code>proc factorial_f64(value: i64) -&gt; f64 {</code></td><td>Implements a counting or probability helper inside the math boundary.</td></tr><tr><td>234</td><td><code>sin_series_core</code></td><td><code>proc sin_series_core(value: f64) -&gt; f64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>253</td><td><code>cos_series_core</code></td><td><code>proc cos_series_core(value: f64) -&gt; f64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>272</td><td><code>sin</code></td><td><code>proc sin(value: f64) -&gt; f64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>276</td><td><code>cos</code></td><td><code>proc cos(value: f64) -&gt; f64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>280</td><td><code>tan</code></td><td><code>proc tan(value: f64) -&gt; f64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>288</td><td><code>sec</code></td><td><code>proc sec(value: f64) -&gt; f64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>296</td><td><code>csc</code></td><td><code>proc csc(value: f64) -&gt; f64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>304</td><td><code>cot</code></td><td><code>proc cot(value: f64) -&gt; f64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>312</td><td><code>sin_degrees</code></td><td><code>proc sin_degrees(value: f64) -&gt; f64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>316</td><td><code>cos_degrees</code></td><td><code>proc cos_degrees(value: f64) -&gt; f64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>320</td><td><code>tan_degrees</code></td><td><code>proc tan_degrees(value: f64) -&gt; f64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>324</td><td><code>sec_degrees</code></td><td><code>proc sec_degrees(value: f64) -&gt; f64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>328</td><td><code>csc_degrees</code></td><td><code>proc csc_degrees(value: f64) -&gt; f64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>332</td><td><code>cot_degrees</code></td><td><code>proc cot_degrees(value: f64) -&gt; f64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>336</td><td><code>atan_series</code></td><td><code>proc atan_series(value: f64) -&gt; f64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>346</td><td><code>atan</code></td><td><code>proc atan(value: f64) -&gt; f64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>360</td><td><code>sqrt_f64_local</code></td><td><code>proc sqrt_f64_local(value: f64) -&gt; f64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>375</td><td><code>asin_series</code></td><td><code>proc asin_series(value: f64) -&gt; f64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>384</td><td><code>asin_atan_identity</code></td><td><code>proc asin_atan_identity(value: f64) -&gt; f64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>402</td><td><code>asin</code></td><td><code>proc asin(value: f64) -&gt; f64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>411</td><td><code>acos</code></td><td><code>proc acos(value: f64) -&gt; f64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>415</td><td><code>atan2</code></td><td><code>proc atan2(y: f64, x: f64) -&gt; f64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>439</td><td><code>asec</code></td><td><code>proc asec(value: f64) -&gt; f64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>447</td><td><code>acsc</code></td><td><code>proc acsc(value: f64) -&gt; f64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>455</td><td><code>acot</code></td><td><code>proc acot(value: f64) -&gt; f64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>463</td><td><code>atan_degrees</code></td><td><code>proc atan_degrees(value: f64) -&gt; f64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>467</td><td><code>atan2_degrees</code></td><td><code>proc atan2_degrees(y: f64, x: f64) -&gt; f64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>471</td><td><code>asin_degrees</code></td><td><code>proc asin_degrees(value: f64) -&gt; f64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>475</td><td><code>acos_degrees</code></td><td><code>proc acos_degrees(value: f64) -&gt; f64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>479</td><td><code>exp_f64_local</code></td><td><code>proc exp_f64_local(value: f64) -&gt; f64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>491</td><td><code>log_f64_local</code></td><td><code>proc log_f64_local(value: f64) -&gt; f64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>501</td><td><code>sinh</code></td><td><code>proc sinh(value: f64) -&gt; f64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>509</td><td><code>cosh</code></td><td><code>proc cosh(value: f64) -&gt; f64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>517</td><td><code>tanh</code></td><td><code>proc tanh(value: f64) -&gt; f64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>525</td><td><code>sech</code></td><td><code>proc sech(value: f64) -&gt; f64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>533</td><td><code>csch</code></td><td><code>proc csch(value: f64) -&gt; f64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>541</td><td><code>coth</code></td><td><code>proc coth(value: f64) -&gt; f64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>549</td><td><code>asinh</code></td><td><code>proc asinh(value: f64) -&gt; f64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>557</td><td><code>acosh</code></td><td><code>proc acosh(value: f64) -&gt; f64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>568</td><td><code>atanh</code></td><td><code>proc atanh(value: f64) -&gt; f64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>579</td><td><code>haversin</code></td><td><code>proc haversin(value: f64) -&gt; f64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>585</td><td><code>ahaversin</code></td><td><code>proc ahaversin(value: f64) -&gt; f64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>591</td><td><code>versin</code></td><td><code>proc versin(value: f64) -&gt; f64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>595</td><td><code>coversin</code></td><td><code>proc coversin(value: f64) -&gt; f64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>599</td><td><code>exsec</code></td><td><code>proc exsec(value: f64) -&gt; f64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>603</td><td><code>chord</code></td><td><code>proc chord(value: f64) -&gt; f64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>608</td><td><code>sinc</code></td><td><code>proc sinc(value: f64) -&gt; f64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>615</td><td><code>normalized_sinc</code></td><td><code>proc normalized_sinc(value: f64) -&gt; f64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>623</td><td><code>polar_x</code></td><td><code>proc polar_x(radius: f64, angle_radians: f64) -&gt; f64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>627</td><td><code>polar_y</code></td><td><code>proc polar_y(radius: f64, angle_radians: f64) -&gt; f64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>631</td><td><code>polar_x_degrees</code></td><td><code>proc polar_x_degrees(radius: f64, angle_degrees: f64) -&gt; f64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>636</td><td><code>polar_y_degrees</code></td><td><code>proc polar_y_degrees(radius: f64, angle_degrees: f64) -&gt; f64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>641</td><td><code>pow_f64_local</code></td><td><code>proc pow_f64_local(base: f64, exponent: i64) -&gt; f64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>661</td><td><code>round_f64_local</code></td><td><code>proc round_f64_local(value: f64) -&gt; i64 {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>673</td><td><code>trigonometry_version</code></td><td><code>proc trigonometry_version() -&gt; string {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>677</td><td><code>trigonometry_ready</code></td><td><code>proc trigonometry_ready() -&gt; bool {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>681</td><td><code>trigonometry_selftest</code></td><td><code>proc trigonometry_selftest() -&gt; bool {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr></table></div><h3>Exports</h3><div class="table-scroll"><table border="1" cellpadding="6" cellspacing="0"><tr><th>Line</th><th>Name</th><th>Signature</th><th>Role</th></tr><tr><td>721</td><td><code>*</code></td><td><code>export *</code></td><td>Re-exports surfaces that the module wants to expose as part of its public boundary.</td></tr></table></div>
 </section>
 <section id="boundaries">
 <h2>Integration boundaries</h2>
@@ -120,6 +338,30 @@ const RAD_TO_DEG: f64 = 57.29577951308232</code></pre>
 <li>Family responsibility: Arithmetic, algebra, comparison, calculus, geometry, modular arithmetic, number theory, probability, statistics, matrix, and vector helpers.</li>
 <li>Family architecture role: Use `math` when the transformation itself is the feature. This family exists so algorithmic intent stays visible and testable.</li>
 </ul>
+</section>
+<section id="composition">
+<h2>Composition guidance</h2>
+<h3>Choose this module when</h3>
+<ul><li>Choose <code>math/trigonometry.vitl</code> when the main question is owned by this module rather than by transport, storage, orchestration, or user-interface code.</li><li>A scoring engine can compute aggregates in `math` while keeping I/O and transport elsewhere.</li><li>A statistics or matrix chapter should explain the workflow around the computation, not just a single formula.</li></ul>
+<h3>Pause before extending it when</h3>
+<ul><li>Avoid extending this file when the new helper mostly changes the boundary to host I/O, runtime coordination, or foreign integration instead of staying inside <code>math</code>.</li><li>Check nearby modules such as <code>math/algebra.vitl</code>, <code>math/arithmetic.vitl</code>, <code>math/arrays.vitl</code> before adding convenience wrappers here.</li></ul>
+</section>
+<section id="relationships">
+<h2>Relationship table</h2>
+<p>This table keeps the page closer to a real encyclopedia entry: a module is easier to understand when compared with its nearest alternatives in the same family.</p>
+<div class="table-scroll">
+<table border="1" cellpadding="6" cellspacing="0">
+<tr><th>Neighbor</th><th>Procedures</th><th>Data surfaces</th><th>Why compare it</th></tr>
+<tr><td><a href="math--algebra.vitl.html"><code>math/algebra.vitl</code></a></td><td>14</td><td>0</td><td>Shares the same family boundary but carries a distinct slice of responsibility.</td></tr>
+<tr><td><a href="math--arithmetic.vitl.html"><code>math/arithmetic.vitl</code></a></td><td>72</td><td>2</td><td>Shares the same family boundary but carries a distinct slice of responsibility.</td></tr>
+<tr><td><a href="math--arrays.vitl.html"><code>math/arrays.vitl</code></a></td><td>83</td><td>2</td><td>Shares the same family boundary but carries a distinct slice of responsibility.</td></tr>
+<tr><td><a href="math--calculus.vitl.html"><code>math/calculus.vitl</code></a></td><td>56</td><td>3</td><td>Shares the same family boundary but carries a distinct slice of responsibility.</td></tr>
+<tr><td><a href="math--comparison.vitl.html"><code>math/comparison.vitl</code></a></td><td>47</td><td>0</td><td>Shares the same family boundary but carries a distinct slice of responsibility.</td></tr>
+<tr><td><a href="math--complex.vitl.html"><code>math/complex.vitl</code></a></td><td>49</td><td>0</td><td>Shares the same family boundary but carries a distinct slice of responsibility.</td></tr>
+<tr><td><a href="math--geometry.vitl.html"><code>math/geometry.vitl</code></a></td><td>72</td><td>0</td><td>Shares the same family boundary but carries a distinct slice of responsibility.</td></tr>
+<tr><td><a href="math--logic.vitl.html"><code>math/logic.vitl</code></a></td><td>20</td><td>0</td><td>Shares the same family boundary but carries a distinct slice of responsibility.</td></tr>
+</table>
+</div>
 </section>
 <section id="neighbors">
 <h2>Neighbor modules</h2>

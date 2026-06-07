@@ -9,7 +9,6 @@
 <link rel="stylesheet" href="../../../css/print.css" media="print">
 <link rel="alternate" hreflang="en" href="https://vitte-lang.org/book/stdlib-reference/modules/math--geometry.vitl.html">
 <link rel="alternate" hreflang="x-default" href="https://vitte-lang.org/book/stdlib-reference/modules/math--geometry.vitl.html">
-
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; font-src 'self'; connect-src 'self';">
 </head>
 <body class="classic-doc">
@@ -53,10 +52,22 @@
 <ul>
 <li><a href="#overview">Overview</a></li>
 <li><a href="#purpose">Purpose</a></li>
+<li><a href="#taxonomy">Taxonomy</a></li>
+<li><a href="#profile">Implementation profile</a></li>
 <li><a href="#inventory">Top-level API inventory</a></li>
+<li><a href="#position">Position in family</a></li>
+<li><a href="#declarations">Declaration map</a></li>
+<li><a href="#signatures">Representative signatures</a></li>
 <li><a href="#usage">How to use this module</a></li>
+<li><a href="#user-example">User example</a></li>
+<li><a href="#keyword-coverage">Keyword coverage</a></li>
 <li><a href="#source-shape">Source shape</a></li>
+<li><a href="#landmarks">Source landmarks</a></li>
+<li><a href="#organization">Source organization</a></li>
+<li><a href="#catalog">Complete API catalog</a></li>
 <li><a href="#boundaries">Integration boundaries</a></li>
+<li><a href="#composition">Composition guidance</a></li>
+<li><a href="#relationships">Relationship table</a></li>
 <li><a href="#neighbors">Neighbor modules</a></li>
 </ul>
 </section>
@@ -78,6 +89,26 @@
 <p>This file should be chosen because of responsibility, not because its name “sounds close enough”. Inside the <code>math</code> family, it carries one focused part of the contract and keeps that responsibility separate from neighboring concerns.</p>
 <ul><li>A scoring engine can compute aggregates in `math` while keeping I/O and transport elsewhere.</li><li>A statistics or matrix chapter should explain the workflow around the computation, not just a single formula.</li></ul>
 </section>
+<section id="taxonomy">
+<h2>Taxonomy</h2>
+<p>Think of this page as a generated encyclopedia entry rather than a hand-written tutorial. The goal is to show what kind of module this is, how dense it is, and what reading strategy makes sense before depending on it.</p>
+<ul><li>Large algorithm surface: this file exposes many procedures and likely acts as a domain toolkit rather than a single thin wrapper.</li><li>Has tuning constants: part of the module behavior is controlled by named constants that document default precision, limits, or policy.</li><li>Minimal top-level dependencies: the module reads as mostly self-contained from its opening declarations.</li><li>Explicit export surface: the file ends with visible export declarations instead of relying only on implicit namespace discovery.</li></ul>
+</section>
+<section id="profile">
+<h2>Implementation profile</h2>
+<p>This profile is inferred directly from the source text. It does not replace reading the file, but it tells you quickly whether the module is mostly declarative, loop-heavy, branch-heavy, or organized around many small exits.</p>
+<div class="table-scroll">
+<table border="1" cellpadding="6" cellspacing="0">
+<tr><th>Signal</th><th>Count</th><th>What it suggests</th></tr>
+<tr><td><code>if</code></td><td>49</td><td>Branching density and local decision-making.</td></tr>
+<tr><td><code>while</code></td><td>1</td><td>Loop-heavy or iterative implementation style.</td></tr>
+<tr><td><code>for</code></td><td>0</td><td>Collection-style traversal at source level.</td></tr>
+<tr><td><code>match</code></td><td>0</td><td>Variant-driven branching or grammar-style decoding.</td></tr>
+<tr><td><code>let</code></td><td>61</td><td>Local state and intermediate value density.</td></tr>
+<tr><td><code>give</code></td><td>120</td><td>Number of explicit exit points and result shaping.</td></tr>
+</table>
+</div>
+</section>
 <section id="inventory">
 <h2>Top-level API inventory</h2>
 <table border="1" cellpadding="6" cellspacing="0">
@@ -86,32 +117,260 @@
 <tr><td>Forms</td><td>none declared at top level</td></tr>
 <tr><td>Picks</td><td>none declared at top level</td></tr>
 <tr><td>Constants</td><td><code>PI_TIMES_1000000</code></td></tr>
+<tr><td>Exports</td><td><code>*</code></td></tr>
 </table>
 <h3>Imported surfaces</h3>
 <p>This file does not advertise a top-level `use` surface in its opening declarations. That often means it is either self-contained or an aggregation layer.</p>
 </section>
+<section id="position">
+<h2>Position in family</h2>
+<p>This file is module 8 of 21 in the <code>math</code> family when ordered by path. By procedure count it ranks 5, and by line count it ranks 9. Those ranks are useful as rough signals of breadth, not as quality judgments.</p>
+</section>
+<section id="declarations">
+<h2>Declaration map</h2>
+<p>The declaration map turns raw source into a scan-friendly catalog. It is useful when the file is large enough that a reader wants to orient by kinds of surfaces first.</p>
+<div class="table-scroll">
+<table border="1" cellpadding="6" cellspacing="0">
+<tr><th>Line</th><th>Name</th><th>Kind</th><th>Role</th></tr>
+<tr><td>1</td><td><code>vitte/stdlib/math/geometry</code></td><td>space</td><td>Declares the namespace that anchors this file in the stdlib tree.</td></tr>
+<tr><td>7</td><td><code>PI_TIMES_1000000</code></td><td>const</td><td>Defines a named constant reused across the module.</td></tr>
+<tr><td>13</td><td><code>abs_int</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>21</td><td><code>min_int</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>29</td><td><code>max_int</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>37</td><td><code>clamp_int</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>49</td><td><code>sign_int</code></td><td>proc</td><td>Implements a security-sensitive transformation in the crypto boundary.</td></tr>
+<tr><td>61</td><td><code>sqrt_floor</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>89</td><td><code>point2</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>93</td><td><code>vec2</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>97</td><td><code>point2_zero</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>101</td><td><code>point2_is_valid</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>105</td><td><code>point2_x</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>113</td><td><code>point2_y</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>121</td><td><code>vec2_add</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>129</td><td><code>vec2_sub</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>137</td><td><code>vec2_neg</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>145</td><td><code>vec2_scale</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>153</td><td><code>vec2_equal</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>161</td><td><code>vec2_dot</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>169</td><td><code>vec2_cross</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>177</td><td><code>vec2_length_sq</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>185</td><td><code>vec2_manhattan</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>193</td><td><code>vec2_chebyshev</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>201</td><td><code>vec2_perp_left</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>209</td><td><code>vec2_perp_right</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>217</td><td><code>midpoint</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>225</td><td><code>midpoint_points</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>237</td><td><code>rect_area</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>245</td><td><code>rect_perimeter</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>254</td><td><code>rect_is_valid</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>258</td><td><code>rect_contains</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>266</td><td><code>rect_intersects</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>290</td><td><code>rect_intersection_area</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>309</td><td><code>rect_union_area</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>321</td><td><code>triangle_area2</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>329</td><td><code>triangle_area</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>337</td><td><code>triangle_area2_points</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>346</td><td><code>triangle_area_points</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>352</td><td><code>triangle_perimeter_manhattan</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>363</td><td><code>distance_sq</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>370</td><td><code>distance</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>374</td><td><code>manhattan_distance</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>383</td><td><code>chebyshev_distance</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>392</td><td><code>norm1</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>398</td><td><code>norm2_sq</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>402</td><td><code>norm2</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>406</td><td><code>norm_inf</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>412</td><td><code>point_to_origin_distance_sq</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>416</td><td><code>point_to_origin_distance</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>424</td><td><code>cross2</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>428</td><td><code>dot2</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>432</td><td><code>orientation</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>443</td><td><code>collinear</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>447</td><td><code>left_turn</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>451</td><td><code>right_turn</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>459</td><td><code>on_segment</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>467</td><td><code>segments_intersect</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>496</td><td><code>segment_length_sq</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>500</td><td><code>segment_length</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>508</td><td><code>circle_area_times_1000000</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>516</td><td><code>circle_perimeter_times_1000000</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>524</td><td><code>point_in_circle</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>536</td><td><code>bbox2</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>545</td><td><code>bbox_contains</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>553</td><td><code>bbox_width</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>561</td><td><code>bbox_height</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>569</td><td><code>bbox_area</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>581</td><td><code>l1_distance</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>585</td><td><code>l2_distance_sq</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>589</td><td><code>linf_distance</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>593</td><td><code>geometry_version</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>597</td><td><code>geometry_ready</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>601</td><td><code>geometry_selftest</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+</table>
+</div>
+<p>The table is exhaustive for top-level declarations of the selected kinds. This file declares 74 matching surfaces.</p>
+</section>
+<section id="signatures">
+<h2>Representative signatures</h2>
+<p>These signatures are shown in source order so the page keeps the feel of a reference manual, not just a keyword cloud.</p>
+<ul><li><code>const PI_TIMES_1000000: int = 3141592</code> (line 7)</li><li><code>proc abs_int(value: int) -&gt; int {</code> (line 13)</li><li><code>proc min_int(a: int, b: int) -&gt; int {</code> (line 21)</li><li><code>proc max_int(a: int, b: int) -&gt; int {</code> (line 29)</li><li><code>proc clamp_int(value: int, low: int, high: int) -&gt; int {</code> (line 37)</li><li><code>proc sign_int(value: int) -&gt; int {</code> (line 49)</li><li><code>proc sqrt_floor(value: int) -&gt; int {</code> (line 61)</li><li><code>proc point2(x: int, y: int) -&gt; [int] {</code> (line 89)</li><li><code>proc vec2(x: int, y: int) -&gt; [int] {</code> (line 93)</li><li><code>proc point2_zero() -&gt; [int] {</code> (line 97)</li><li><code>proc point2_is_valid(p: [int]) -&gt; bool {</code> (line 101)</li><li><code>proc point2_x(p: [int]) -&gt; int {</code> (line 105)</li><li><code>proc point2_y(p: [int]) -&gt; int {</code> (line 113)</li><li><code>proc vec2_add(a: [int], b: [int]) -&gt; [int] {</code> (line 121)</li><li><code>proc vec2_sub(a: [int], b: [int]) -&gt; [int] {</code> (line 129)</li><li><code>proc vec2_neg(v: [int]) -&gt; [int] {</code> (line 137)</li><li><code>proc vec2_scale(v: [int], k: int) -&gt; [int] {</code> (line 145)</li><li><code>proc vec2_equal(a: [int], b: [int]) -&gt; bool {</code> (line 153)</li></ul>
+<p>The list is intentionally capped here; the source file declares 73 matching signatures in total.</p>
+</section>
 <section id="usage">
 <h2>How to use this module</h2>
 <p>Start by reading the file as an ownership boundary. Ask three questions: what enters this module, what stable types or procedures it exports, and what adjacent module should stay outside of it.</p>
-<ol>
-<li>Open the family page first to understand why this area of the stdlib exists.</li>
-<li>Read the source excerpt below to see the namespace, imports, and first declared surfaces.</li>
-<li>Check the neighbor list to avoid coupling this module with an adjacent responsibility by habit.</li>
-</ol>
+<ol><li>Read <code>space</code> and top-level imports first so the ownership boundary of <code>math/geometry.vitl</code> is explicit.</li><li>Scan constants before procedures; they often encode precision, limits, or policy assumptions that explain later behavior.</li><li>Traverse procedures in source order; the early helpers usually explain the naming and numeric conventions used later.</li><li>Use the source landmarks section below as a table of contents when the file is large.</li><li>Only after that compare neighbor modules, because the right boundary choice matters more than memorizing one helper name.</li></ol>
+</section>
+<section id="user-example">
+<h2>User example</h2>
+<p>This example is generated from the actual stdlib module surface. Its job is not to be the smallest snippet possible; its job is to show a realistic consumer-shaped file that exercises the module and mirrors the language keywords the module itself relies on.</p>
+<pre><code class="language-vitl">space demo/math_geometry
+const SAMPLE_LABEL: string = &quot;demo&quot;
+proc run_example() -&gt; string {
+  let entries = point2(1, 1)
+  let ready: bool = point2_is_valid([1, 2, 3])
+  let failed: bool = false
+  let stable: bool = ready and true
+  let fallback: bool = ready or false
+  let idx: int = 0
+  let count: int = 0
+  while idx &lt; entries.len {
+    set count = count + 1
+    set idx = idx + 1
+  }
+  if not ready {
+    give &quot;not-ready&quot;
+  } else {
+    give &quot;ok&quot;
+  }
+}
+export run_example</code></pre>
+</section>
+<section id="keyword-coverage">
+<h2>Keyword coverage</h2>
+<p>This table makes the “all keywords of the module” requirement auditable. It compares the detected Vitte keywords in the source file with the generated consumer example above.</p>
+<div class="table-scroll">
+<table border="1" cellpadding="6" cellspacing="0">
+<tr><th>Keyword</th><th>Present in module source</th><th>Used in generated user example</th></tr>
+<tr><td><code>space</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>const</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>proc</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>let</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>set</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>if</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>else</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>while</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>give</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>export</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>true</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>false</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>and</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>or</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>not</code></td><td>yes</td><td>yes</td></tr>
+</table>
+</div>
+<p>The generated snippet exercises every detected Vitte keyword used by this module.</p>
 </section>
 <section id="source-shape">
 <h2>Source shape</h2>
 <pre><code class="language-vitl">space vitte/stdlib/math/geometry
-   Geometry — 2D integer geometry helpers
-   ========================================================= &gt;&gt;&gt;
 const PI_TIMES_1000000: int = 3141592
-   Internal helpers
-   --------------------------------------------------------- &gt;&gt;&gt;
 proc abs_int(value: int) -&gt; int {
   if value &lt; 0 {
     give 0 - value
-  } else {</code></pre>
+  } else {
+    give value
+  }
+}
+proc min_int(a: int, b: int) -&gt; int {</code></pre>
 <p>The excerpt is not meant to replace the file. It exists to make the module recognizable at first glance, the same way a Wikipedia infobox helps the reader orient before reading the whole article.</p>
+</section>
+<section id="landmarks">
+<h2>Source landmarks</h2>
+<p>Large files are easier to retain when they have visible landmarks. When the source contains explicit section banners, they are surfaced here; otherwise the first major declarations are used as anchors.</p>
+<ul><li>Geometry — 2D integer geometry helpers</li><li>Internal helpers</li><li>Points / vectors</li><li>Rectangles</li><li>Triangles</li><li>Distances and norms</li><li>Orientation / products</li><li>Segments</li><li>Circles</li><li>Bounding boxes</li></ul>
+</section>
+<section id="organization">
+<h2>Source organization</h2>
+<p>When a file carries its own internal chaptering, those chapters usually reveal the intended reading order better than a flat symbol list. This section reconstructs that organization from the source itself.</p>
+
+<section class="lead-panel">
+<h3>Opening declarations</h3>
+<p><strong>Top-level items:</strong> 1. <strong>Procedures:</strong> 0. <strong>Data surfaces:</strong> 0. <strong>Constants:</strong> 0.</p>
+<p><strong>First visible names:</strong> <code>vitte/stdlib/math/geometry</code></p>
+</section>
+
+<section class="lead-panel">
+<h3>Geometry — 2D integer geometry helpers</h3>
+<p><strong>Top-level items:</strong> 1. <strong>Procedures:</strong> 0. <strong>Data surfaces:</strong> 0. <strong>Constants:</strong> 1.</p>
+<p><strong>First visible names:</strong> <code>PI_TIMES_1000000</code></p>
+</section>
+
+<section class="lead-panel">
+<h3>Internal helpers</h3>
+<p><strong>Top-level items:</strong> 6. <strong>Procedures:</strong> 6. <strong>Data surfaces:</strong> 0. <strong>Constants:</strong> 0.</p>
+<p><strong>First visible names:</strong> <code>abs_int</code>, <code>min_int</code>, <code>max_int</code>, <code>clamp_int</code>, <code>sign_int</code>, <code>sqrt_floor</code></p>
+</section>
+
+<section class="lead-panel">
+<h3>Points / vectors</h3>
+<p><strong>Top-level items:</strong> 20. <strong>Procedures:</strong> 20. <strong>Data surfaces:</strong> 0. <strong>Constants:</strong> 0.</p>
+<p><strong>First visible names:</strong> <code>point2</code>, <code>vec2</code>, <code>point2_zero</code>, <code>point2_is_valid</code>, <code>point2_x</code>, <code>point2_y</code>, <code>vec2_add</code>, <code>vec2_sub</code>, <code>vec2_neg</code>, <code>vec2_scale</code></p>
+</section>
+
+<section class="lead-panel">
+<h3>Rectangles</h3>
+<p><strong>Top-level items:</strong> 7. <strong>Procedures:</strong> 7. <strong>Data surfaces:</strong> 0. <strong>Constants:</strong> 0.</p>
+<p><strong>First visible names:</strong> <code>rect_area</code>, <code>rect_perimeter</code>, <code>rect_is_valid</code>, <code>rect_contains</code>, <code>rect_intersects</code>, <code>rect_intersection_area</code>, <code>rect_union_area</code></p>
+</section>
+
+<section class="lead-panel">
+<h3>Triangles</h3>
+<p><strong>Top-level items:</strong> 5. <strong>Procedures:</strong> 5. <strong>Data surfaces:</strong> 0. <strong>Constants:</strong> 0.</p>
+<p><strong>First visible names:</strong> <code>triangle_area2</code>, <code>triangle_area</code>, <code>triangle_area2_points</code>, <code>triangle_area_points</code>, <code>triangle_perimeter_manhattan</code></p>
+</section>
+
+<section class="lead-panel">
+<h3>Distances and norms</h3>
+<p><strong>Top-level items:</strong> 10. <strong>Procedures:</strong> 10. <strong>Data surfaces:</strong> 0. <strong>Constants:</strong> 0.</p>
+<p><strong>First visible names:</strong> <code>distance_sq</code>, <code>distance</code>, <code>manhattan_distance</code>, <code>chebyshev_distance</code>, <code>norm1</code>, <code>norm2_sq</code>, <code>norm2</code>, <code>norm_inf</code>, <code>point_to_origin_distance_sq</code>, <code>point_to_origin_distance</code></p>
+</section>
+
+<section class="lead-panel">
+<h3>Orientation / products</h3>
+<p><strong>Top-level items:</strong> 6. <strong>Procedures:</strong> 6. <strong>Data surfaces:</strong> 0. <strong>Constants:</strong> 0.</p>
+<p><strong>First visible names:</strong> <code>cross2</code>, <code>dot2</code>, <code>orientation</code>, <code>collinear</code>, <code>left_turn</code>, <code>right_turn</code></p>
+</section>
+
+<section class="lead-panel">
+<h3>Segments</h3>
+<p><strong>Top-level items:</strong> 4. <strong>Procedures:</strong> 4. <strong>Data surfaces:</strong> 0. <strong>Constants:</strong> 0.</p>
+<p><strong>First visible names:</strong> <code>on_segment</code>, <code>segments_intersect</code>, <code>segment_length_sq</code>, <code>segment_length</code></p>
+</section>
+
+<section class="lead-panel">
+<h3>Circles</h3>
+<p><strong>Top-level items:</strong> 3. <strong>Procedures:</strong> 3. <strong>Data surfaces:</strong> 0. <strong>Constants:</strong> 0.</p>
+<p><strong>First visible names:</strong> <code>circle_area_times_1000000</code>, <code>circle_perimeter_times_1000000</code>, <code>point_in_circle</code></p>
+</section>
+
+<section class="lead-panel">
+<h3>Bounding boxes</h3>
+<p><strong>Top-level items:</strong> 5. <strong>Procedures:</strong> 5. <strong>Data surfaces:</strong> 0. <strong>Constants:</strong> 0.</p>
+<p><strong>First visible names:</strong> <code>bbox2</code>, <code>bbox_contains</code>, <code>bbox_width</code>, <code>bbox_height</code>, <code>bbox_area</code></p>
+</section>
+
+<section class="lead-panel">
+<h3>Aliases</h3>
+<p><strong>Top-level items:</strong> 7. <strong>Procedures:</strong> 6. <strong>Data surfaces:</strong> 0. <strong>Constants:</strong> 0.</p>
+<p><strong>First visible names:</strong> <code>l1_distance</code>, <code>l2_distance_sq</code>, <code>linf_distance</code>, <code>geometry_version</code>, <code>geometry_ready</code>, <code>geometry_selftest</code>, <code>*</code></p>
+</section>
+
+</section>
+<section id="catalog">
+<h2>Complete API catalog</h2>
+<p>This catalog is the exhaustive file-level index for the module. It is intentionally closer to a generated encyclopedia appendix than to a tutorial summary.</p>
+<h3>Constants</h3><div class="table-scroll"><table border="1" cellpadding="6" cellspacing="0"><tr><th>Line</th><th>Name</th><th>Signature</th><th>Role</th></tr><tr><td>7</td><td><code>PI_TIMES_1000000</code></td><td><code>const PI_TIMES_1000000: int = 3141592</code></td><td>Defines a named constant reused across the module.</td></tr></table></div><h3>Procedures</h3><div class="table-scroll"><table border="1" cellpadding="6" cellspacing="0"><tr><th>Line</th><th>Name</th><th>Signature</th><th>Role</th></tr><tr><td>13</td><td><code>abs_int</code></td><td><code>proc abs_int(value: int) -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>21</td><td><code>min_int</code></td><td><code>proc min_int(a: int, b: int) -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>29</td><td><code>max_int</code></td><td><code>proc max_int(a: int, b: int) -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>37</td><td><code>clamp_int</code></td><td><code>proc clamp_int(value: int, low: int, high: int) -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>49</td><td><code>sign_int</code></td><td><code>proc sign_int(value: int) -&gt; int {</code></td><td>Implements a security-sensitive transformation in the crypto boundary.</td></tr><tr><td>61</td><td><code>sqrt_floor</code></td><td><code>proc sqrt_floor(value: int) -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>89</td><td><code>point2</code></td><td><code>proc point2(x: int, y: int) -&gt; [int] {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>93</td><td><code>vec2</code></td><td><code>proc vec2(x: int, y: int) -&gt; [int] {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>97</td><td><code>point2_zero</code></td><td><code>proc point2_zero() -&gt; [int] {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>101</td><td><code>point2_is_valid</code></td><td><code>proc point2_is_valid(p: [int]) -&gt; bool {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>105</td><td><code>point2_x</code></td><td><code>proc point2_x(p: [int]) -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>113</td><td><code>point2_y</code></td><td><code>proc point2_y(p: [int]) -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>121</td><td><code>vec2_add</code></td><td><code>proc vec2_add(a: [int], b: [int]) -&gt; [int] {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>129</td><td><code>vec2_sub</code></td><td><code>proc vec2_sub(a: [int], b: [int]) -&gt; [int] {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>137</td><td><code>vec2_neg</code></td><td><code>proc vec2_neg(v: [int]) -&gt; [int] {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>145</td><td><code>vec2_scale</code></td><td><code>proc vec2_scale(v: [int], k: int) -&gt; [int] {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>153</td><td><code>vec2_equal</code></td><td><code>proc vec2_equal(a: [int], b: [int]) -&gt; bool {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>161</td><td><code>vec2_dot</code></td><td><code>proc vec2_dot(a: [int], b: [int]) -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>169</td><td><code>vec2_cross</code></td><td><code>proc vec2_cross(a: [int], b: [int]) -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>177</td><td><code>vec2_length_sq</code></td><td><code>proc vec2_length_sq(v: [int]) -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>185</td><td><code>vec2_manhattan</code></td><td><code>proc vec2_manhattan(v: [int]) -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>193</td><td><code>vec2_chebyshev</code></td><td><code>proc vec2_chebyshev(v: [int]) -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>201</td><td><code>vec2_perp_left</code></td><td><code>proc vec2_perp_left(v: [int]) -&gt; [int] {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>209</td><td><code>vec2_perp_right</code></td><td><code>proc vec2_perp_right(v: [int]) -&gt; [int] {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>217</td><td><code>midpoint</code></td><td><code>proc midpoint(ax: int, ay: int, bx: int, by: int) -&gt; [int] {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>225</td><td><code>midpoint_points</code></td><td><code>proc midpoint_points(a: [int], b: [int]) -&gt; [int] {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>237</td><td><code>rect_area</code></td><td><code>proc rect_area(width: int, height: int) -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>245</td><td><code>rect_perimeter</code></td><td><code>proc rect_perimeter(width: int, height: int) -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>254</td><td><code>rect_is_valid</code></td><td><code>proc rect_is_valid(width: int, height: int) -&gt; bool {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>258</td><td><code>rect_contains</code></td><td><code>proc rect_contains(px: int, py: int, x: int, y: int, width: int, height: int) -&gt; bool {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>266</td><td><code>rect_intersects</code></td><td><code>proc rect_intersects(ax: int, ay: int, aw: int, ah: int, bx: int, by: int, bw: int, bh: int) -&gt; bool {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>290</td><td><code>rect_intersection_area</code></td><td><code>proc rect_intersection_area(ax: int, ay: int, aw: int, ah: int, bx: int, by: int, bw: int, bh: int) -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>309</td><td><code>rect_union_area</code></td><td><code>proc rect_union_area(ax: int, ay: int, aw: int, ah: int, bx: int, by: int, bw: int, bh: int) -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>321</td><td><code>triangle_area2</code></td><td><code>proc triangle_area2(base: int, height: int) -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>329</td><td><code>triangle_area</code></td><td><code>proc triangle_area(base: int, height: int) -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>337</td><td><code>triangle_area2_points</code></td><td><code>proc triangle_area2_points(ax: int, ay: int, bx: int, by: int, cx: int, cy: int) -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>346</td><td><code>triangle_area_points</code></td><td><code>proc triangle_area_points(ax: int, ay: int, bx: int, by: int, cx: int, cy: int) -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>352</td><td><code>triangle_perimeter_manhattan</code></td><td><code>proc triangle_perimeter_manhattan(ax: int, ay: int, bx: int, by: int, cx: int, cy: int) -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>363</td><td><code>distance_sq</code></td><td><code>proc distance_sq(ax: int, ay: int, bx: int, by: int) -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>370</td><td><code>distance</code></td><td><code>proc distance(ax: int, ay: int, bx: int, by: int) -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>374</td><td><code>manhattan_distance</code></td><td><code>proc manhattan_distance(ax: int, ay: int, bx: int, by: int) -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>383</td><td><code>chebyshev_distance</code></td><td><code>proc chebyshev_distance(ax: int, ay: int, bx: int, by: int) -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>392</td><td><code>norm1</code></td><td><code>proc norm1(x: int, y: int) -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>398</td><td><code>norm2_sq</code></td><td><code>proc norm2_sq(x: int, y: int) -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>402</td><td><code>norm2</code></td><td><code>proc norm2(x: int, y: int) -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>406</td><td><code>norm_inf</code></td><td><code>proc norm_inf(x: int, y: int) -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>412</td><td><code>point_to_origin_distance_sq</code></td><td><code>proc point_to_origin_distance_sq(x: int, y: int) -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>416</td><td><code>point_to_origin_distance</code></td><td><code>proc point_to_origin_distance(x: int, y: int) -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>424</td><td><code>cross2</code></td><td><code>proc cross2(ax: int, ay: int, bx: int, by: int) -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>428</td><td><code>dot2</code></td><td><code>proc dot2(ax: int, ay: int, bx: int, by: int) -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>432</td><td><code>orientation</code></td><td><code>proc orientation(ax: int, ay: int, bx: int, by: int, cx: int, cy: int) -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>443</td><td><code>collinear</code></td><td><code>proc collinear(ax: int, ay: int, bx: int, by: int, cx: int, cy: int) -&gt; bool {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>447</td><td><code>left_turn</code></td><td><code>proc left_turn(ax: int, ay: int, bx: int, by: int, cx: int, cy: int) -&gt; bool {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>451</td><td><code>right_turn</code></td><td><code>proc right_turn(ax: int, ay: int, bx: int, by: int, cx: int, cy: int) -&gt; bool {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>459</td><td><code>on_segment</code></td><td><code>proc on_segment(ax: int, ay: int, bx: int, by: int, px: int, py: int) -&gt; bool {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>467</td><td><code>segments_intersect</code></td><td><code>proc segments_intersect(ax: int, ay: int, bx: int, by: int, cx: int, cy: int, dx: int, dy: int) -&gt; bool {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>496</td><td><code>segment_length_sq</code></td><td><code>proc segment_length_sq(ax: int, ay: int, bx: int, by: int) -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>500</td><td><code>segment_length</code></td><td><code>proc segment_length(ax: int, ay: int, bx: int, by: int) -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>508</td><td><code>circle_area_times_1000000</code></td><td><code>proc circle_area_times_1000000(radius: int) -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>516</td><td><code>circle_perimeter_times_1000000</code></td><td><code>proc circle_perimeter_times_1000000(radius: int) -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>524</td><td><code>point_in_circle</code></td><td><code>proc point_in_circle(px: int, py: int, cx: int, cy: int, radius: int) -&gt; bool {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>536</td><td><code>bbox2</code></td><td><code>proc bbox2(ax: int, ay: int, bx: int, by: int) -&gt; [int] {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>545</td><td><code>bbox_contains</code></td><td><code>proc bbox_contains(box: [int], px: int, py: int) -&gt; bool {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>553</td><td><code>bbox_width</code></td><td><code>proc bbox_width(box: [int]) -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>561</td><td><code>bbox_height</code></td><td><code>proc bbox_height(box: [int]) -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>569</td><td><code>bbox_area</code></td><td><code>proc bbox_area(box: [int]) -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>581</td><td><code>l1_distance</code></td><td><code>proc l1_distance(ax: int, ay: int, bx: int, by: int) -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>585</td><td><code>l2_distance_sq</code></td><td><code>proc l2_distance_sq(ax: int, ay: int, bx: int, by: int) -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>589</td><td><code>linf_distance</code></td><td><code>proc linf_distance(ax: int, ay: int, bx: int, by: int) -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>593</td><td><code>geometry_version</code></td><td><code>proc geometry_version() -&gt; string {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>597</td><td><code>geometry_ready</code></td><td><code>proc geometry_ready() -&gt; bool {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>601</td><td><code>geometry_selftest</code></td><td><code>proc geometry_selftest() -&gt; bool {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr></table></div><h3>Exports</h3><div class="table-scroll"><table border="1" cellpadding="6" cellspacing="0"><tr><th>Line</th><th>Name</th><th>Signature</th><th>Role</th></tr><tr><td>618</td><td><code>*</code></td><td><code>export *</code></td><td>Re-exports surfaces that the module wants to expose as part of its public boundary.</td></tr></table></div>
 </section>
 <section id="boundaries">
 <h2>Integration boundaries</h2>
@@ -120,6 +379,30 @@ proc abs_int(value: int) -&gt; int {
 <li>Family responsibility: Arithmetic, algebra, comparison, calculus, geometry, modular arithmetic, number theory, probability, statistics, matrix, and vector helpers.</li>
 <li>Family architecture role: Use `math` when the transformation itself is the feature. This family exists so algorithmic intent stays visible and testable.</li>
 </ul>
+</section>
+<section id="composition">
+<h2>Composition guidance</h2>
+<h3>Choose this module when</h3>
+<ul><li>Choose <code>math/geometry.vitl</code> when the main question is owned by this module rather than by transport, storage, orchestration, or user-interface code.</li><li>A scoring engine can compute aggregates in `math` while keeping I/O and transport elsewhere.</li><li>A statistics or matrix chapter should explain the workflow around the computation, not just a single formula.</li></ul>
+<h3>Pause before extending it when</h3>
+<ul><li>Avoid extending this file when the new helper mostly changes the boundary to host I/O, runtime coordination, or foreign integration instead of staying inside <code>math</code>.</li><li>Check nearby modules such as <code>math/algebra.vitl</code>, <code>math/arithmetic.vitl</code>, <code>math/arrays.vitl</code> before adding convenience wrappers here.</li></ul>
+</section>
+<section id="relationships">
+<h2>Relationship table</h2>
+<p>This table keeps the page closer to a real encyclopedia entry: a module is easier to understand when compared with its nearest alternatives in the same family.</p>
+<div class="table-scroll">
+<table border="1" cellpadding="6" cellspacing="0">
+<tr><th>Neighbor</th><th>Procedures</th><th>Data surfaces</th><th>Why compare it</th></tr>
+<tr><td><a href="math--algebra.vitl.html"><code>math/algebra.vitl</code></a></td><td>14</td><td>0</td><td>Shares the same family boundary but carries a distinct slice of responsibility.</td></tr>
+<tr><td><a href="math--arithmetic.vitl.html"><code>math/arithmetic.vitl</code></a></td><td>72</td><td>2</td><td>Shares the same family boundary but carries a distinct slice of responsibility.</td></tr>
+<tr><td><a href="math--arrays.vitl.html"><code>math/arrays.vitl</code></a></td><td>83</td><td>2</td><td>Shares the same family boundary but carries a distinct slice of responsibility.</td></tr>
+<tr><td><a href="math--calculus.vitl.html"><code>math/calculus.vitl</code></a></td><td>56</td><td>3</td><td>Shares the same family boundary but carries a distinct slice of responsibility.</td></tr>
+<tr><td><a href="math--comparison.vitl.html"><code>math/comparison.vitl</code></a></td><td>47</td><td>0</td><td>Shares the same family boundary but carries a distinct slice of responsibility.</td></tr>
+<tr><td><a href="math--complex.vitl.html"><code>math/complex.vitl</code></a></td><td>49</td><td>0</td><td>Shares the same family boundary but carries a distinct slice of responsibility.</td></tr>
+<tr><td><a href="math--logic.vitl.html"><code>math/logic.vitl</code></a></td><td>20</td><td>0</td><td>Shares the same family boundary but carries a distinct slice of responsibility.</td></tr>
+<tr><td><a href="math--matrix.vitl.html"><code>math/matrix.vitl</code></a></td><td>53</td><td>0</td><td>Shares the same family boundary but carries a distinct slice of responsibility.</td></tr>
+</table>
+</div>
 </section>
 <section id="neighbors">
 <h2>Neighbor modules</h2>

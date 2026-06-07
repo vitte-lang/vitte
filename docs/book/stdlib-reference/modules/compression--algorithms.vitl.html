@@ -9,7 +9,6 @@
 <link rel="stylesheet" href="../../../css/print.css" media="print">
 <link rel="alternate" hreflang="en" href="https://vitte-lang.org/book/stdlib-reference/modules/compression--algorithms.vitl.html">
 <link rel="alternate" hreflang="x-default" href="https://vitte-lang.org/book/stdlib-reference/modules/compression--algorithms.vitl.html">
-
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; font-src 'self'; connect-src 'self';">
 </head>
 <body class="classic-doc">
@@ -53,10 +52,22 @@
 <ul>
 <li><a href="#overview">Overview</a></li>
 <li><a href="#purpose">Purpose</a></li>
+<li><a href="#taxonomy">Taxonomy</a></li>
+<li><a href="#profile">Implementation profile</a></li>
 <li><a href="#inventory">Top-level API inventory</a></li>
+<li><a href="#position">Position in family</a></li>
+<li><a href="#declarations">Declaration map</a></li>
+<li><a href="#signatures">Representative signatures</a></li>
 <li><a href="#usage">How to use this module</a></li>
+<li><a href="#user-example">User example</a></li>
+<li><a href="#keyword-coverage">Keyword coverage</a></li>
 <li><a href="#source-shape">Source shape</a></li>
+<li><a href="#landmarks">Source landmarks</a></li>
+<li><a href="#organization">Source organization</a></li>
+<li><a href="#catalog">Complete API catalog</a></li>
 <li><a href="#boundaries">Integration boundaries</a></li>
+<li><a href="#composition">Composition guidance</a></li>
+<li><a href="#relationships">Relationship table</a></li>
 <li><a href="#neighbors">Neighbor modules</a></li>
 </ul>
 </section>
@@ -78,6 +89,26 @@
 <p>This file should be chosen because of responsibility, not because its name “sounds close enough”. Inside the <code>compression</code> family, it carries one focused part of the contract and keeps that responsibility separate from neighboring concerns.</p>
 <ul><li>A report archive can be built in memory, then compressed before emission.</li><li>A transport layer can separate serialization from compression instead of mixing both in one procedure.</li></ul>
 </section>
+<section id="taxonomy">
+<h2>Taxonomy</h2>
+<p>Think of this page as a generated encyclopedia entry rather than a hand-written tutorial. The goal is to show what kind of module this is, how dense it is, and what reading strategy makes sense before depending on it.</p>
+<ul><li>Medium procedure surface: this file groups several related operations behind one namespace.</li><li>Owns domain vocabulary: the module declares data shapes in addition to executable helpers, so its types are part of the contract.</li><li>Has tuning constants: part of the module behavior is controlled by named constants that document default precision, limits, or policy.</li><li>Minimal top-level dependencies: the module reads as mostly self-contained from its opening declarations.</li><li>Explicit export surface: the file ends with visible export declarations instead of relying only on implicit namespace discovery.</li></ul>
+</section>
+<section id="profile">
+<h2>Implementation profile</h2>
+<p>This profile is inferred directly from the source text. It does not replace reading the file, but it tells you quickly whether the module is mostly declarative, loop-heavy, branch-heavy, or organized around many small exits.</p>
+<div class="table-scroll">
+<table border="1" cellpadding="6" cellspacing="0">
+<tr><th>Signal</th><th>Count</th><th>What it suggests</th></tr>
+<tr><td><code>if</code></td><td>4</td><td>Branching density and local decision-making.</td></tr>
+<tr><td><code>while</code></td><td>6</td><td>Loop-heavy or iterative implementation style.</td></tr>
+<tr><td><code>for</code></td><td>0</td><td>Collection-style traversal at source level.</td></tr>
+<tr><td><code>match</code></td><td>0</td><td>Variant-driven branching or grammar-style decoding.</td></tr>
+<tr><td><code>let</code></td><td>20</td><td>Local state and intermediate value density.</td></tr>
+<tr><td><code>give</code></td><td>13</td><td>Number of explicit exit points and result shaping.</td></tr>
+</table>
+</div>
+</section>
 <section id="inventory">
 <h2>Top-level API inventory</h2>
 <table border="1" cellpadding="6" cellspacing="0">
@@ -86,18 +117,105 @@
 <tr><td>Forms</td><td><code>LZToken</code>, <code>CompressionAlgorithmsManifest</code>, <code>CompressionAlgorithmsHealth</code>, <code>CompressionAlgorithmsSummary</code></td></tr>
 <tr><td>Picks</td><td>none declared at top level</td></tr>
 <tr><td>Constants</td><td><code>RLE_MARK</code>, <code>LZ_WINDOW</code>, <code>LZ_LOOKAHEAD</code></td></tr>
+<tr><td>Exports</td><td><code>*</code></td></tr>
 </table>
 <h3>Imported surfaces</h3>
 <p>This file does not advertise a top-level `use` surface in its opening declarations. That often means it is either self-contained or an aggregation layer.</p>
 </section>
+<section id="position">
+<h2>Position in family</h2>
+<p>This file is module 2 of 9 in the <code>compression</code> family when ordered by path. By procedure count it ranks 8, and by line count it ranks 5. Those ranks are useful as rough signals of breadth, not as quality judgments.</p>
+</section>
+<section id="declarations">
+<h2>Declaration map</h2>
+<p>The declaration map turns raw source into a scan-friendly catalog. It is useful when the file is large enough that a reader wants to orient by kinds of surfaces first.</p>
+<div class="table-scroll">
+<table border="1" cellpadding="6" cellspacing="0">
+<tr><th>Line</th><th>Name</th><th>Kind</th><th>Role</th></tr>
+<tr><td>1</td><td><code>vitte/stdlib/compression/algorithms</code></td><td>space</td><td>Declares the namespace that anchors this file in the stdlib tree.</td></tr>
+<tr><td>5</td><td><code>RLE_MARK</code></td><td>const</td><td>Defines a named constant reused across the module.</td></tr>
+<tr><td>6</td><td><code>LZ_WINDOW</code></td><td>const</td><td>Defines a named constant reused across the module.</td></tr>
+<tr><td>7</td><td><code>LZ_LOOKAHEAD</code></td><td>const</td><td>Defines a named constant reused across the module.</td></tr>
+<tr><td>9</td><td><code>LZToken</code></td><td>form</td><td>Introduces a structured data shape that other procedures can exchange.</td></tr>
+<tr><td>16</td><td><code>CompressionAlgorithmsManifest</code></td><td>form</td><td>Introduces a structured data shape that other procedures can exchange.</td></tr>
+<tr><td>22</td><td><code>CompressionAlgorithmsHealth</code></td><td>form</td><td>Introduces a structured data shape that other procedures can exchange.</td></tr>
+<tr><td>29</td><td><code>CompressionAlgorithmsSummary</code></td><td>form</td><td>Introduces a structured data shape that other procedures can exchange.</td></tr>
+<tr><td>34</td><td><code>compress_rle</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>60</td><td><code>decompress_rle</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>90</td><td><code>compress_lz77</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>107</td><td><code>decompress_lz77</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>122</td><td><code>compress_huffman</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>126</td><td><code>decompress_huffman</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>130</td><td><code>compression_algorithms_version</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>134</td><td><code>compression_algorithms_ready</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>138</td><td><code>compression_algorithms_manifest</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>146</td><td><code>compression_algorithms_health</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>155</td><td><code>compression_algorithms_summary</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>162</td><td><code>compression_algorithms_selftest</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+</table>
+</div>
+<p>The table is exhaustive for top-level declarations of the selected kinds. This file declares 20 matching surfaces.</p>
+</section>
+<section id="signatures">
+<h2>Representative signatures</h2>
+<p>These signatures are shown in source order so the page keeps the feel of a reference manual, not just a keyword cloud.</p>
+<ul><li><code>const RLE_MARK: i32 = -2147483648</code> (line 5)</li><li><code>const LZ_WINDOW: i32 = 32</code> (line 6)</li><li><code>const LZ_LOOKAHEAD: i32 = 16</code> (line 7)</li><li><code>form LZToken {</code> (line 9)</li><li><code>form CompressionAlgorithmsManifest {</code> (line 16)</li><li><code>form CompressionAlgorithmsHealth {</code> (line 22)</li><li><code>form CompressionAlgorithmsSummary {</code> (line 29)</li><li><code>proc compress_rle(data: [i32]) -&gt; [i32] {</code> (line 34)</li><li><code>proc decompress_rle(data: [i32]) -&gt; [i32] {</code> (line 60)</li><li><code>proc compress_lz77(data: [i32]) -&gt; [LZToken] {</code> (line 90)</li><li><code>proc decompress_lz77(tokens: [LZToken]) -&gt; [i32] {</code> (line 107)</li><li><code>proc compress_huffman(data: [i32]) -&gt; [i32] {</code> (line 122)</li><li><code>proc decompress_huffman(data: [i32]) -&gt; [i32] {</code> (line 126)</li><li><code>proc compression_algorithms_version() -&gt; string {</code> (line 130)</li><li><code>proc compression_algorithms_ready() -&gt; bool {</code> (line 134)</li><li><code>proc compression_algorithms_manifest() -&gt; CompressionAlgorithmsManifest {</code> (line 138)</li><li><code>proc compression_algorithms_health() -&gt; CompressionAlgorithmsHealth {</code> (line 146)</li><li><code>proc compression_algorithms_summary() -&gt; CompressionAlgorithmsSummary {</code> (line 155)</li></ul>
+<p>The list is intentionally capped here; the source file declares 19 matching signatures in total.</p>
+</section>
 <section id="usage">
 <h2>How to use this module</h2>
 <p>Start by reading the file as an ownership boundary. Ask three questions: what enters this module, what stable types or procedures it exports, and what adjacent module should stay outside of it.</p>
-<ol>
-<li>Open the family page first to understand why this area of the stdlib exists.</li>
-<li>Read the source excerpt below to see the namespace, imports, and first declared surfaces.</li>
-<li>Check the neighbor list to avoid coupling this module with an adjacent responsibility by habit.</li>
-</ol>
+<ol><li>Read <code>space</code> and top-level imports first so the ownership boundary of <code>compression/algorithms.vitl</code> is explicit.</li><li>Scan constants before procedures; they often encode precision, limits, or policy assumptions that explain later behavior.</li><li>Read declared forms and picks before algorithms so the data vocabulary is stable in your head.</li><li>Traverse procedures in source order; the early helpers usually explain the naming and numeric conventions used later.</li><li>Only after that compare neighbor modules, because the right boundary choice matters more than memorizing one helper name.</li></ol>
+</section>
+<section id="user-example">
+<h2>User example</h2>
+<p>This example is generated from the actual stdlib module surface. Its job is not to be the smallest snippet possible; its job is to show a realistic consumer-shaped file that exercises the module and mirrors the language keywords the module itself relies on.</p>
+<pre><code class="language-vitl">space demo/compression_algorithms
+const SAMPLE_LABEL: string = &quot;demo&quot;
+form UserReport {
+  label: string,
+  ready: bool
+}
+proc run_example() -&gt; UserReport {
+  let entries = compress_rle([])
+  let ready: bool = compression_algorithms_ready()
+  let stable: bool = ready and true
+  let idx: int = 0
+  let count: int = 0
+  while idx &lt; entries.len {
+    set count = count + 1
+    set idx = idx + 1
+  }
+  if ready {
+    give UserReport { label: &quot;not-ready&quot;, ready: false }
+  } else {
+    give UserReport { label: &quot;ok&quot;, ready: true }
+  }
+}
+export run_example</code></pre>
+</section>
+<section id="keyword-coverage">
+<h2>Keyword coverage</h2>
+<p>This table makes the “all keywords of the module” requirement auditable. It compares the detected Vitte keywords in the source file with the generated consumer example above.</p>
+<div class="table-scroll">
+<table border="1" cellpadding="6" cellspacing="0">
+<tr><th>Keyword</th><th>Present in module source</th><th>Used in generated user example</th></tr>
+<tr><td><code>space</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>const</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>form</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>proc</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>let</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>set</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>if</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>else</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>while</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>give</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>export</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>true</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>and</code></td><td>yes</td><td>yes</td></tr>
+</table>
+</div>
+<p>The generated snippet exercises every detected Vitte keyword used by this module.</p>
 </section>
 <section id="source-shape">
 <h2>Source shape</h2>
@@ -113,6 +231,27 @@ form LZToken {
   has_next: i32</code></pre>
 <p>The excerpt is not meant to replace the file. It exists to make the module recognizable at first glance, the same way a Wikipedia infobox helps the reader orient before reading the whole article.</p>
 </section>
+<section id="landmarks">
+<h2>Source landmarks</h2>
+<p>Large files are easier to retain when they have visible landmarks. When the source contains explicit section banners, they are surfaced here; otherwise the first major declarations are used as anchors.</p>
+<ul><li>Line 1: <code>space vitte/stdlib/compression/algorithms</code></li><li>Line 3: <code>export *</code></li><li>Line 5: <code>const RLE_MARK: i32 = -2147483648</code></li><li>Line 6: <code>const LZ_WINDOW: i32 = 32</code></li><li>Line 7: <code>const LZ_LOOKAHEAD: i32 = 16</code></li><li>Line 9: <code>form LZToken {</code></li><li>Line 16: <code>form CompressionAlgorithmsManifest {</code></li><li>Line 22: <code>form CompressionAlgorithmsHealth {</code></li></ul>
+</section>
+<section id="organization">
+<h2>Source organization</h2>
+<p>When a file carries its own internal chaptering, those chapters usually reveal the intended reading order better than a flat symbol list. This section reconstructs that organization from the source itself.</p>
+
+<section class="lead-panel">
+<h3>File surfaces</h3>
+<p><strong>Top-level items:</strong> 21. <strong>Procedures:</strong> 12. <strong>Data surfaces:</strong> 4. <strong>Constants:</strong> 3.</p>
+<p><strong>First visible names:</strong> <code>vitte/stdlib/compression/algorithms</code>, <code>*</code>, <code>RLE_MARK</code>, <code>LZ_WINDOW</code>, <code>LZ_LOOKAHEAD</code>, <code>LZToken</code>, <code>CompressionAlgorithmsManifest</code>, <code>CompressionAlgorithmsHealth</code>, <code>CompressionAlgorithmsSummary</code>, <code>compress_rle</code></p>
+</section>
+
+</section>
+<section id="catalog">
+<h2>Complete API catalog</h2>
+<p>This catalog is the exhaustive file-level index for the module. It is intentionally closer to a generated encyclopedia appendix than to a tutorial summary.</p>
+<h3>Constants</h3><div class="table-scroll"><table border="1" cellpadding="6" cellspacing="0"><tr><th>Line</th><th>Name</th><th>Signature</th><th>Role</th></tr><tr><td>5</td><td><code>RLE_MARK</code></td><td><code>const RLE_MARK: i32 = -2147483648</code></td><td>Defines a named constant reused across the module.</td></tr><tr><td>6</td><td><code>LZ_WINDOW</code></td><td><code>const LZ_WINDOW: i32 = 32</code></td><td>Defines a named constant reused across the module.</td></tr><tr><td>7</td><td><code>LZ_LOOKAHEAD</code></td><td><code>const LZ_LOOKAHEAD: i32 = 16</code></td><td>Defines a named constant reused across the module.</td></tr></table></div><h3>Data surfaces</h3><div class="table-scroll"><table border="1" cellpadding="6" cellspacing="0"><tr><th>Line</th><th>Name</th><th>Signature</th><th>Role</th></tr><tr><td>9</td><td><code>LZToken</code></td><td><code>form LZToken {</code></td><td>Introduces a structured data shape that other procedures can exchange.</td></tr><tr><td>16</td><td><code>CompressionAlgorithmsManifest</code></td><td><code>form CompressionAlgorithmsManifest {</code></td><td>Introduces a structured data shape that other procedures can exchange.</td></tr><tr><td>22</td><td><code>CompressionAlgorithmsHealth</code></td><td><code>form CompressionAlgorithmsHealth {</code></td><td>Introduces a structured data shape that other procedures can exchange.</td></tr><tr><td>29</td><td><code>CompressionAlgorithmsSummary</code></td><td><code>form CompressionAlgorithmsSummary {</code></td><td>Introduces a structured data shape that other procedures can exchange.</td></tr></table></div><h3>Procedures</h3><div class="table-scroll"><table border="1" cellpadding="6" cellspacing="0"><tr><th>Line</th><th>Name</th><th>Signature</th><th>Role</th></tr><tr><td>34</td><td><code>compress_rle</code></td><td><code>proc compress_rle(data: [i32]) -&gt; [i32] {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>60</td><td><code>decompress_rle</code></td><td><code>proc decompress_rle(data: [i32]) -&gt; [i32] {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>90</td><td><code>compress_lz77</code></td><td><code>proc compress_lz77(data: [i32]) -&gt; [LZToken] {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>107</td><td><code>decompress_lz77</code></td><td><code>proc decompress_lz77(tokens: [LZToken]) -&gt; [i32] {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>122</td><td><code>compress_huffman</code></td><td><code>proc compress_huffman(data: [i32]) -&gt; [i32] {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>126</td><td><code>decompress_huffman</code></td><td><code>proc decompress_huffman(data: [i32]) -&gt; [i32] {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>130</td><td><code>compression_algorithms_version</code></td><td><code>proc compression_algorithms_version() -&gt; string {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>134</td><td><code>compression_algorithms_ready</code></td><td><code>proc compression_algorithms_ready() -&gt; bool {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>138</td><td><code>compression_algorithms_manifest</code></td><td><code>proc compression_algorithms_manifest() -&gt; CompressionAlgorithmsManifest {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>146</td><td><code>compression_algorithms_health</code></td><td><code>proc compression_algorithms_health() -&gt; CompressionAlgorithmsHealth {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>155</td><td><code>compression_algorithms_summary</code></td><td><code>proc compression_algorithms_summary() -&gt; CompressionAlgorithmsSummary {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>162</td><td><code>compression_algorithms_selftest</code></td><td><code>proc compression_algorithms_selftest() -&gt; bool {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr></table></div><h3>Exports</h3><div class="table-scroll"><table border="1" cellpadding="6" cellspacing="0"><tr><th>Line</th><th>Name</th><th>Signature</th><th>Role</th></tr><tr><td>3</td><td><code>*</code></td><td><code>export *</code></td><td>Re-exports surfaces that the module wants to expose as part of its public boundary.</td></tr></table></div>
+</section>
 <section id="boundaries">
 <h2>Integration boundaries</h2>
 <p>Within <code>compression</code>, this file should remain focused. If a future helper changes the host boundary, scheduling boundary, or data-shape boundary, it probably belongs in a neighbor module instead of being added here by convenience.</p>
@@ -120,6 +259,30 @@ form LZToken {
 <li>Family responsibility: Algorithms and interfaces for compacting data: huffman, lz, deflate, brotli, stats, and shared compression interfaces.</li>
 <li>Family architecture role: Use `compression` when compactness is a first-class requirement and the program must explain which algorithmic boundary owns that transformation.</li>
 </ul>
+</section>
+<section id="composition">
+<h2>Composition guidance</h2>
+<h3>Choose this module when</h3>
+<ul><li>Choose <code>compression/algorithms.vitl</code> when the main question is owned by this module rather than by transport, storage, orchestration, or user-interface code.</li><li>A report archive can be built in memory, then compressed before emission.</li><li>A transport layer can separate serialization from compression instead of mixing both in one procedure.</li></ul>
+<h3>Pause before extending it when</h3>
+<ul><li>Avoid extending this file when the new helper mostly changes the boundary to host I/O, runtime coordination, or foreign integration instead of staying inside <code>compression</code>.</li><li>Check nearby modules such as <code>compression/brotli.vitl</code>, <code>compression/deflate.vitl</code>, <code>compression/huffman.vitl</code> before adding convenience wrappers here.</li></ul>
+</section>
+<section id="relationships">
+<h2>Relationship table</h2>
+<p>This table keeps the page closer to a real encyclopedia entry: a module is easier to understand when compared with its nearest alternatives in the same family.</p>
+<div class="table-scroll">
+<table border="1" cellpadding="6" cellspacing="0">
+<tr><th>Neighbor</th><th>Procedures</th><th>Data surfaces</th><th>Why compare it</th></tr>
+<tr><td><a href="compression--brotli.vitl.html"><code>compression/brotli.vitl</code></a></td><td>17</td><td>3</td><td>Shares the same family boundary but carries a distinct slice of responsibility.</td></tr>
+<tr><td><a href="compression--deflate.vitl.html"><code>compression/deflate.vitl</code></a></td><td>13</td><td>4</td><td>Shares the same family boundary but carries a distinct slice of responsibility.</td></tr>
+<tr><td><a href="compression--huffman.vitl.html"><code>compression/huffman.vitl</code></a></td><td>15</td><td>4</td><td>Shares the same family boundary but carries a distinct slice of responsibility.</td></tr>
+<tr><td><a href="compression--interface.vitl.html"><code>compression/interface.vitl</code></a></td><td>20</td><td>5</td><td>Shares the same family boundary but carries a distinct slice of responsibility.</td></tr>
+<tr><td><a href="compression--lz.vitl.html"><code>compression/lz.vitl</code></a></td><td>15</td><td>3</td><td>Shares the same family boundary but carries a distinct slice of responsibility.</td></tr>
+<tr><td><a href="compression--stats.vitl.html"><code>compression/stats.vitl</code></a></td><td>17</td><td>4</td><td>Shares the same family boundary but carries a distinct slice of responsibility.</td></tr>
+<tr><td><a href="compression--tests--smoke.vitl.html"><code>compression/tests/smoke.vitl</code></a></td><td>1</td><td>0</td><td>Shares the same family boundary but carries a distinct slice of responsibility.</td></tr>
+<tr><td><a href="compression.vitl.html"><code>compression.vitl</code></a></td><td>47</td><td>7</td><td>Shares the same family boundary but carries a distinct slice of responsibility.</td></tr>
+</table>
+</div>
 </section>
 <section id="neighbors">
 <h2>Neighbor modules</h2>

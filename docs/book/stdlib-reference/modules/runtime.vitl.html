@@ -9,7 +9,6 @@
 <link rel="stylesheet" href="../../../css/print.css" media="print">
 <link rel="alternate" hreflang="en" href="https://vitte-lang.org/book/stdlib-reference/modules/runtime.vitl.html">
 <link rel="alternate" hreflang="x-default" href="https://vitte-lang.org/book/stdlib-reference/modules/runtime.vitl.html">
-
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; font-src 'self'; connect-src 'self';">
 </head>
 <body class="classic-doc">
@@ -53,10 +52,22 @@
 <ul>
 <li><a href="#overview">Overview</a></li>
 <li><a href="#purpose">Purpose</a></li>
+<li><a href="#taxonomy">Taxonomy</a></li>
+<li><a href="#profile">Implementation profile</a></li>
 <li><a href="#inventory">Top-level API inventory</a></li>
+<li><a href="#position">Position in family</a></li>
+<li><a href="#declarations">Declaration map</a></li>
+<li><a href="#signatures">Representative signatures</a></li>
 <li><a href="#usage">How to use this module</a></li>
+<li><a href="#user-example">User example</a></li>
+<li><a href="#keyword-coverage">Keyword coverage</a></li>
 <li><a href="#source-shape">Source shape</a></li>
+<li><a href="#landmarks">Source landmarks</a></li>
+<li><a href="#organization">Source organization</a></li>
+<li><a href="#catalog">Complete API catalog</a></li>
 <li><a href="#boundaries">Integration boundaries</a></li>
+<li><a href="#composition">Composition guidance</a></li>
+<li><a href="#relationships">Relationship table</a></li>
 <li><a href="#neighbors">Neighbor modules</a></li>
 </ul>
 </section>
@@ -78,6 +89,26 @@
 <p>This file should be chosen because of responsibility, not because its name “sounds close enough”. Inside the <code>stdlib</code> family, it carries one focused part of the contract and keeps that responsibility separate from neighboring concerns.</p>
 <ul><li>Domain values start in `core` and `strings`.</li><li>Grouped data moves through `collections` or `data`.</li><li>Structured export goes through `json` and `encoding`.</li><li>Filesystem or process interaction goes through `path`, `io`, `os`, or `sysinfo`.</li><li>Explicit runtime coordination goes through `async`, `threading`, `kernel`, or `ffi`.</li></ul>
 </section>
+<section id="taxonomy">
+<h2>Taxonomy</h2>
+<p>Think of this page as a generated encyclopedia entry rather than a hand-written tutorial. The goal is to show what kind of module this is, how dense it is, and what reading strategy makes sense before depending on it.</p>
+<ul><li>Large algorithm surface: this file exposes many procedures and likely acts as a domain toolkit rather than a single thin wrapper.</li><li>Owns domain vocabulary: the module declares data shapes in addition to executable helpers, so its types are part of the contract.</li><li>Minimal top-level dependencies: the module reads as mostly self-contained from its opening declarations.</li><li>Explicit export surface: the file ends with visible export declarations instead of relying only on implicit namespace discovery.</li></ul>
+</section>
+<section id="profile">
+<h2>Implementation profile</h2>
+<p>This profile is inferred directly from the source text. It does not replace reading the file, but it tells you quickly whether the module is mostly declarative, loop-heavy, branch-heavy, or organized around many small exits.</p>
+<div class="table-scroll">
+<table border="1" cellpadding="6" cellspacing="0">
+<tr><th>Signal</th><th>Count</th><th>What it suggests</th></tr>
+<tr><td><code>if</code></td><td>0</td><td>Branching density and local decision-making.</td></tr>
+<tr><td><code>while</code></td><td>0</td><td>Loop-heavy or iterative implementation style.</td></tr>
+<tr><td><code>for</code></td><td>0</td><td>Collection-style traversal at source level.</td></tr>
+<tr><td><code>match</code></td><td>0</td><td>Variant-driven branching or grammar-style decoding.</td></tr>
+<tr><td><code>let</code></td><td>5</td><td>Local state and intermediate value density.</td></tr>
+<tr><td><code>give</code></td><td>92</td><td>Number of explicit exit points and result shaping.</td></tr>
+</table>
+</div>
+</section>
 <section id="inventory">
 <h2>Top-level API inventory</h2>
 <table border="1" cellpadding="6" cellspacing="0">
@@ -86,18 +117,198 @@
 <tr><td>Forms</td><td><code>String</code>, <code>Slice</code>, <code>Pair</code>, <code>IoError</code>, <code>IpV4</code>, <code>IpV6</code>, <code>SocketAddr</code>, <code>TcpStream</code>, <code>TcpListener</code>, <code>UdpSocket</code>, <code>UdpRecv</code>, <code>JsonMember</code></td></tr>
 <tr><td>Picks</td><td><code>OptionString</code>, <code>IoErrorKind</code>, <code>ResultIo</code>, <code>Result</code>, <code>IpAddr</code>, <code>JsonValue</code>, <code>RegexMatch</code>, <code>OptionRegexMatch</code>, <code>FswatchEventKind</code>, <code>HttpMethod</code></td></tr>
 <tr><td>Constants</td><td>none declared at top level</td></tr>
+<tr><td>Exports</td><td><code>*</code></td></tr>
 </table>
 <h3>Imported surfaces</h3>
 <p>This file does not advertise a top-level `use` surface in its opening declarations. That often means it is either self-contained or an aggregation layer.</p>
 </section>
+<section id="position">
+<h2>Position in family</h2>
+<p>This file is module 9 of 11 in the <code>stdlib</code> family when ordered by path. By procedure count it ranks 5, and by line count it ranks 6. Those ranks are useful as rough signals of breadth, not as quality judgments.</p>
+</section>
+<section id="declarations">
+<h2>Declaration map</h2>
+<p>The declaration map turns raw source into a scan-friendly catalog. It is useful when the file is large enough that a reader wants to orient by kinds of surfaces first.</p>
+<div class="table-scroll">
+<table border="1" cellpadding="6" cellspacing="0">
+<tr><th>Line</th><th>Name</th><th>Kind</th><th>Role</th></tr>
+<tr><td>1</td><td><code>vitte/stdlib_checked/runtime</code></td><td>space</td><td>Declares the namespace that anchors this file in the stdlib tree.</td></tr>
+<tr><td>9</td><td><code>String</code></td><td>form</td><td>Introduces a structured data shape that other procedures can exchange.</td></tr>
+<tr><td>13</td><td><code>Slice</code></td><td>form</td><td>Introduces a structured data shape that other procedures can exchange.</td></tr>
+<tr><td>17</td><td><code>Pair</code></td><td>form</td><td>Introduces a structured data shape that other procedures can exchange.</td></tr>
+<tr><td>21</td><td><code>OptionString</code></td><td>pick</td><td>Introduces a tagged variant type used to model distinct outcomes.</td></tr>
+<tr><td>25</td><td><code>IoErrorKind</code></td><td>pick</td><td>Introduces a tagged variant type used to model distinct outcomes.</td></tr>
+<tr><td>29</td><td><code>IoError</code></td><td>form</td><td>Introduces a structured data shape that other procedures can exchange.</td></tr>
+<tr><td>33</td><td><code>ResultIo</code></td><td>pick</td><td>Introduces a tagged variant type used to model distinct outcomes.</td></tr>
+<tr><td>37</td><td><code>Result</code></td><td>pick</td><td>Introduces a tagged variant type used to model distinct outcomes.</td></tr>
+<tr><td>41</td><td><code>IpV4</code></td><td>form</td><td>Introduces a structured data shape that other procedures can exchange.</td></tr>
+<tr><td>45</td><td><code>IpV6</code></td><td>form</td><td>Introduces a structured data shape that other procedures can exchange.</td></tr>
+<tr><td>49</td><td><code>IpAddr</code></td><td>pick</td><td>Introduces a tagged variant type used to model distinct outcomes.</td></tr>
+<tr><td>53</td><td><code>SocketAddr</code></td><td>form</td><td>Introduces a structured data shape that other procedures can exchange.</td></tr>
+<tr><td>57</td><td><code>TcpStream</code></td><td>form</td><td>Introduces a structured data shape that other procedures can exchange.</td></tr>
+<tr><td>61</td><td><code>TcpListener</code></td><td>form</td><td>Introduces a structured data shape that other procedures can exchange.</td></tr>
+<tr><td>65</td><td><code>UdpSocket</code></td><td>form</td><td>Introduces a structured data shape that other procedures can exchange.</td></tr>
+<tr><td>69</td><td><code>UdpRecv</code></td><td>form</td><td>Introduces a structured data shape that other procedures can exchange.</td></tr>
+<tr><td>73</td><td><code>JsonValue</code></td><td>pick</td><td>Introduces a tagged variant type used to model distinct outcomes.</td></tr>
+<tr><td>77</td><td><code>JsonMember</code></td><td>form</td><td>Introduces a structured data shape that other procedures can exchange.</td></tr>
+<tr><td>81</td><td><code>RegexMatch</code></td><td>pick</td><td>Introduces a tagged variant type used to model distinct outcomes.</td></tr>
+<tr><td>85</td><td><code>OptionRegexMatch</code></td><td>pick</td><td>Introduces a tagged variant type used to model distinct outcomes.</td></tr>
+<tr><td>89</td><td><code>Regex</code></td><td>form</td><td>Introduces a structured data shape that other procedures can exchange.</td></tr>
+<tr><td>93</td><td><code>ProcessResult</code></td><td>form</td><td>Introduces a structured data shape that other procedures can exchange.</td></tr>
+<tr><td>97</td><td><code>ExitStatus</code></td><td>form</td><td>Introduces a structured data shape that other procedures can exchange.</td></tr>
+<tr><td>101</td><td><code>ProcessChild</code></td><td>form</td><td>Introduces a structured data shape that other procedures can exchange.</td></tr>
+<tr><td>105</td><td><code>FswatchWatcher</code></td><td>form</td><td>Introduces a structured data shape that other procedures can exchange.</td></tr>
+<tr><td>109</td><td><code>FswatchEventKind</code></td><td>pick</td><td>Introduces a tagged variant type used to model distinct outcomes.</td></tr>
+<tr><td>113</td><td><code>FswatchEvent</code></td><td>form</td><td>Introduces a structured data shape that other procedures can exchange.</td></tr>
+<tr><td>117</td><td><code>DbHandle</code></td><td>form</td><td>Introduces a structured data shape that other procedures can exchange.</td></tr>
+<tr><td>121</td><td><code>DbEntry</code></td><td>form</td><td>Introduces a structured data shape that other procedures can exchange.</td></tr>
+<tr><td>125</td><td><code>HttpMethod</code></td><td>pick</td><td>Introduces a tagged variant type used to model distinct outcomes.</td></tr>
+<tr><td>129</td><td><code>HttpHeader</code></td><td>form</td><td>Introduces a structured data shape that other procedures can exchange.</td></tr>
+<tr><td>133</td><td><code>HttpRequest</code></td><td>form</td><td>Introduces a structured data shape that other procedures can exchange.</td></tr>
+<tr><td>137</td><td><code>HttpResponse</code></td><td>form</td><td>Introduces a structured data shape that other procedures can exchange.</td></tr>
+<tr><td>141</td><td><code>Unit</code></td><td>form</td><td>Introduces a structured data shape that other procedures can exchange.</td></tr>
+<tr><td>145</td><td><code>alloc</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>149</td><td><code>dealloc</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>153</td><td><code>runtime_panic</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>157</td><td><code>runtime_panic_boundary_begin</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>161</td><td><code>runtime_panic_boundary_end</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>165</td><td><code>runtime_panic_boundary_triggered</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>169</td><td><code>runtime_panic_boundary_code</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>173</td><td><code>runtime_panic_boundary_reset</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>177</td><td><code>assert_true</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>181</td><td><code>print_i32</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>185</td><td><code>runtime_unreachable</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>189</td><td><code>terminate</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>193</td><td><code>vitte_c_abi_version</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>197</td><td><code>empty_string</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>201</td><td><code>make_string</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>205</td><td><code>char_to_string</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>209</td><td><code>i32_to_string</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>213</td><td><code>string_concat</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>217</td><td><code>empty_slice_i32</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>221</td><td><code>empty_slice_string</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>225</td><td><code>slice_push_i32</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>229</td><td><code>slice_push_string</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>233</td><td><code>list_i32</code></td><td>proc</td><td>Owns a concrete data shape or the operations that maintain it.</td></tr>
+<tr><td>237</td><td><code>list_string</code></td><td>proc</td><td>Owns a concrete data shape or the operations that maintain it.</td></tr>
+<tr><td>241</td><td><code>time_now_ms</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>245</td><td><code>time_sleep_ms</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>249</td><td><code>env_get</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>253</td><td><code>env_set</code></td><td>proc</td><td>Owns a concrete data shape or the operations that maintain it.</td></tr>
+<tr><td>257</td><td><code>os_platform</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>261</td><td><code>os_arch</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>265</td><td><code>os_home_dir</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>269</td><td><code>os_temp_dir</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>273</td><td><code>os_current_dir</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>277</td><td><code>os_set_current_dir</code></td><td>proc</td><td>Owns a concrete data shape or the operations that maintain it.</td></tr>
+<tr><td>281</td><td><code>os_exe_path</code></td><td>proc</td><td>Owns path semantics, traversal, or normalization.</td></tr>
+<tr><td>285</td><td><code>os_path_sep</code></td><td>proc</td><td>Owns path semantics, traversal, or normalization.</td></tr>
+<tr><td>289</td><td><code>process_run</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>293</td><td><code>process_run_args</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>297</td><td><code>process_run_shell</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>301</td><td><code>process_spawn</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>305</td><td><code>process_wait</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>309</td><td><code>process_kill</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>313</td><td><code>process_stdout</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>317</td><td><code>process_stderr</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>321</td><td><code>json_parse</code></td><td>proc</td><td>Transforms an input representation into a structured internal value.</td></tr>
+<tr><td>325</td><td><code>json_stringify</code></td><td>proc</td><td>Turns internal values into a transport or textual representation.</td></tr>
+<tr><td>329</td><td><code>http_request</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>333</td><td><code>crypto_sha256</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>337</td><td><code>crypto_sha1</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>341</td><td><code>crypto_hmac_sha256</code></td><td>proc</td><td>Implements a security-sensitive transformation in the crypto boundary.</td></tr>
+<tr><td>345</td><td><code>crypto_rand_bytes</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>349</td><td><code>tcp_connect</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>353</td><td><code>tcp_bind</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>357</td><td><code>tcp_accept</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>361</td><td><code>tcp_read</code></td><td>proc</td><td>Owns byte movement or host I/O interaction.</td></tr>
+<tr><td>365</td><td><code>tcp_write</code></td><td>proc</td><td>Owns byte movement or host I/O interaction.</td></tr>
+<tr><td>369</td><td><code>tcp_close</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>373</td><td><code>udp_bind</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>377</td><td><code>udp_recv_from</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>381</td><td><code>udp_send_to</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>385</td><td><code>udp_close</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>389</td><td><code>udp_set_nonblocking</code></td><td>proc</td><td>Owns a concrete data shape or the operations that maintain it.</td></tr>
+<tr><td>393</td><td><code>udp_set_read_timeout</code></td><td>proc</td><td>Owns byte movement or host I/O interaction.</td></tr>
+<tr><td>397</td><td><code>udp_set_write_timeout</code></td><td>proc</td><td>Owns byte movement or host I/O interaction.</td></tr>
+<tr><td>401</td><td><code>tcp_set_nonblocking</code></td><td>proc</td><td>Owns a concrete data shape or the operations that maintain it.</td></tr>
+<tr><td>405</td><td><code>tcp_set_read_timeout</code></td><td>proc</td><td>Owns byte movement or host I/O interaction.</td></tr>
+<tr><td>409</td><td><code>tcp_set_write_timeout</code></td><td>proc</td><td>Owns byte movement or host I/O interaction.</td></tr>
+<tr><td>413</td><td><code>regex_compile</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>417</td><td><code>regex_is_match</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>421</td><td><code>regex_find</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>425</td><td><code>regex_replace</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>429</td><td><code>regex_split</code></td><td>proc</td><td>Owns path semantics, traversal, or normalization.</td></tr>
+<tr><td>433</td><td><code>fswatch_watch</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>437</td><td><code>fswatch_poll</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>441</td><td><code>fswatch_close</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>445</td><td><code>db_open</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>449</td><td><code>db_close</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>453</td><td><code>db_set</code></td><td>proc</td><td>Owns a concrete data shape or the operations that maintain it.</td></tr>
+<tr><td>457</td><td><code>db_get</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>461</td><td><code>db_delete</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>465</td><td><code>db_keys</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>469</td><td><code>db_keys_prefix</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>473</td><td><code>db_batch_put</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>477</td><td><code>db_begin</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>481</td><td><code>db_commit</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>485</td><td><code>db_rollback</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>489</td><td><code>RuntimeManifest</code></td><td>form</td><td>Introduces a structured data shape that other procedures can exchange.</td></tr>
+<tr><td>495</td><td><code>RuntimeHealth</code></td><td>form</td><td>Introduces a structured data shape that other procedures can exchange.</td></tr>
+<tr><td>503</td><td><code>RuntimeSummary</code></td><td>form</td><td>Introduces a structured data shape that other procedures can exchange.</td></tr>
+<tr><td>508</td><td><code>runtime_version</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>512</td><td><code>runtime_ready</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>516</td><td><code>runtime_manifest</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>524</td><td><code>runtime_health</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>538</td><td><code>runtime_summary</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>545</td><td><code>runtime_selftest</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+</table>
+</div>
+<p>The table is exhaustive for top-level declarations of the selected kinds. This file declares 130 matching surfaces.</p>
+</section>
+<section id="signatures">
+<h2>Representative signatures</h2>
+<p>These signatures are shown in source order so the page keeps the feel of a reference manual, not just a keyword cloud.</p>
+<ul><li><code>form String {</code> (line 9)</li><li><code>form Slice {</code> (line 13)</li><li><code>form Pair {</code> (line 17)</li><li><code>pick OptionString {</code> (line 21)</li><li><code>pick IoErrorKind {</code> (line 25)</li><li><code>form IoError {</code> (line 29)</li><li><code>pick ResultIo {</code> (line 33)</li><li><code>pick Result {</code> (line 37)</li><li><code>form IpV4 {</code> (line 41)</li><li><code>form IpV6 {</code> (line 45)</li><li><code>pick IpAddr {</code> (line 49)</li><li><code>form SocketAddr {</code> (line 53)</li><li><code>form TcpStream {</code> (line 57)</li><li><code>form TcpListener {</code> (line 61)</li><li><code>form UdpSocket {</code> (line 65)</li><li><code>form UdpRecv {</code> (line 69)</li><li><code>pick JsonValue {</code> (line 73)</li><li><code>form JsonMember {</code> (line 77)</li></ul>
+<p>The list is intentionally capped here; the source file declares 129 matching signatures in total.</p>
+</section>
 <section id="usage">
 <h2>How to use this module</h2>
 <p>Start by reading the file as an ownership boundary. Ask three questions: what enters this module, what stable types or procedures it exports, and what adjacent module should stay outside of it.</p>
-<ol>
-<li>Open the family page first to understand why this area of the stdlib exists.</li>
-<li>Read the source excerpt below to see the namespace, imports, and first declared surfaces.</li>
-<li>Check the neighbor list to avoid coupling this module with an adjacent responsibility by habit.</li>
-</ol>
+<ol><li>Read <code>space</code> and top-level imports first so the ownership boundary of <code>runtime.vitl</code> is explicit.</li><li>Read declared forms and picks before algorithms so the data vocabulary is stable in your head.</li><li>Traverse procedures in source order; the early helpers usually explain the naming and numeric conventions used later.</li><li>Only after that compare neighbor modules, because the right boundary choice matters more than memorizing one helper name.</li></ol>
+</section>
+<section id="user-example">
+<h2>User example</h2>
+<p>This example is generated from the actual stdlib module surface. Its job is not to be the smallest snippet possible; its job is to show a realistic consumer-shaped file that exercises the module and mirrors the language keywords the module itself relies on.</p>
+<pre><code class="language-vitl">space demo/runtime
+form DemoState {
+  ready: bool,
+  note: string
+}
+proc run_example() -&gt; DemoState {
+  let ready: bool = runtime_ready()
+  give DemoState { ready: ready, note: &quot;ok&quot; }
+}
+export run_example</code></pre>
+</section>
+<section id="keyword-coverage">
+<h2>Keyword coverage</h2>
+<p>This table makes the “all keywords of the module” requirement auditable. It compares the detected Vitte keywords in the source file with the generated consumer example above.</p>
+<div class="table-scroll">
+<table border="1" cellpadding="6" cellspacing="0">
+<tr><th>Keyword</th><th>Present in module source</th><th>Used in generated user example</th></tr>
+<tr><td><code>space</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>form</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>pick</code></td><td>yes</td><td>no</td></tr>
+<tr><td><code>proc</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>let</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>give</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>export</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>true</code></td><td>yes</td><td>no</td></tr>
+<tr><td><code>and</code></td><td>yes</td><td>no</td></tr>
+</table>
+</div>
+<p>Keywords still not exercised directly in the generated snippet: <code>pick</code>, <code>true</code>, <code>and</code>. The page still lists them here so the gap is visible.</p>
 </section>
 <section id="source-shape">
 <h2>Source shape</h2>
@@ -113,6 +324,27 @@ form Pair {
 }</code></pre>
 <p>The excerpt is not meant to replace the file. It exists to make the module recognizable at first glance, the same way a Wikipedia infobox helps the reader orient before reading the whole article.</p>
 </section>
+<section id="landmarks">
+<h2>Source landmarks</h2>
+<p>Large files are easier to retain when they have visible landmarks. When the source contains explicit section banners, they are surfaced here; otherwise the first major declarations are used as anchors.</p>
+<ul><li>Line 1: <code>space vitte/stdlib_checked/runtime</code></li><li>Line 9: <code>form String {</code></li><li>Line 13: <code>form Slice {</code></li><li>Line 17: <code>form Pair {</code></li><li>Line 21: <code>pick OptionString {</code></li><li>Line 25: <code>pick IoErrorKind {</code></li><li>Line 29: <code>form IoError {</code></li><li>Line 33: <code>pick ResultIo {</code></li></ul>
+</section>
+<section id="organization">
+<h2>Source organization</h2>
+<p>When a file carries its own internal chaptering, those chapters usually reveal the intended reading order better than a flat symbol list. This section reconstructs that organization from the source itself.</p>
+
+<section class="lead-panel">
+<h3>File surfaces</h3>
+<p><strong>Top-level items:</strong> 131. <strong>Procedures:</strong> 92. <strong>Data surfaces:</strong> 37. <strong>Constants:</strong> 0.</p>
+<p><strong>First visible names:</strong> <code>vitte/stdlib_checked/runtime</code>, <code>String</code>, <code>Slice</code>, <code>Pair</code>, <code>OptionString</code>, <code>IoErrorKind</code>, <code>IoError</code>, <code>ResultIo</code>, <code>Result</code>, <code>IpV4</code></p>
+</section>
+
+</section>
+<section id="catalog">
+<h2>Complete API catalog</h2>
+<p>This catalog is the exhaustive file-level index for the module. It is intentionally closer to a generated encyclopedia appendix than to a tutorial summary.</p>
+<h3>Data surfaces</h3><div class="table-scroll"><table border="1" cellpadding="6" cellspacing="0"><tr><th>Line</th><th>Name</th><th>Signature</th><th>Role</th></tr><tr><td>9</td><td><code>String</code></td><td><code>form String {</code></td><td>Introduces a structured data shape that other procedures can exchange.</td></tr><tr><td>13</td><td><code>Slice</code></td><td><code>form Slice {</code></td><td>Introduces a structured data shape that other procedures can exchange.</td></tr><tr><td>17</td><td><code>Pair</code></td><td><code>form Pair {</code></td><td>Introduces a structured data shape that other procedures can exchange.</td></tr><tr><td>21</td><td><code>OptionString</code></td><td><code>pick OptionString {</code></td><td>Introduces a tagged variant type used to model distinct outcomes.</td></tr><tr><td>25</td><td><code>IoErrorKind</code></td><td><code>pick IoErrorKind {</code></td><td>Introduces a tagged variant type used to model distinct outcomes.</td></tr><tr><td>29</td><td><code>IoError</code></td><td><code>form IoError {</code></td><td>Introduces a structured data shape that other procedures can exchange.</td></tr><tr><td>33</td><td><code>ResultIo</code></td><td><code>pick ResultIo {</code></td><td>Introduces a tagged variant type used to model distinct outcomes.</td></tr><tr><td>37</td><td><code>Result</code></td><td><code>pick Result {</code></td><td>Introduces a tagged variant type used to model distinct outcomes.</td></tr><tr><td>41</td><td><code>IpV4</code></td><td><code>form IpV4 {</code></td><td>Introduces a structured data shape that other procedures can exchange.</td></tr><tr><td>45</td><td><code>IpV6</code></td><td><code>form IpV6 {</code></td><td>Introduces a structured data shape that other procedures can exchange.</td></tr><tr><td>49</td><td><code>IpAddr</code></td><td><code>pick IpAddr {</code></td><td>Introduces a tagged variant type used to model distinct outcomes.</td></tr><tr><td>53</td><td><code>SocketAddr</code></td><td><code>form SocketAddr {</code></td><td>Introduces a structured data shape that other procedures can exchange.</td></tr><tr><td>57</td><td><code>TcpStream</code></td><td><code>form TcpStream {</code></td><td>Introduces a structured data shape that other procedures can exchange.</td></tr><tr><td>61</td><td><code>TcpListener</code></td><td><code>form TcpListener {</code></td><td>Introduces a structured data shape that other procedures can exchange.</td></tr><tr><td>65</td><td><code>UdpSocket</code></td><td><code>form UdpSocket {</code></td><td>Introduces a structured data shape that other procedures can exchange.</td></tr><tr><td>69</td><td><code>UdpRecv</code></td><td><code>form UdpRecv {</code></td><td>Introduces a structured data shape that other procedures can exchange.</td></tr><tr><td>73</td><td><code>JsonValue</code></td><td><code>pick JsonValue {</code></td><td>Introduces a tagged variant type used to model distinct outcomes.</td></tr><tr><td>77</td><td><code>JsonMember</code></td><td><code>form JsonMember {</code></td><td>Introduces a structured data shape that other procedures can exchange.</td></tr><tr><td>81</td><td><code>RegexMatch</code></td><td><code>pick RegexMatch {</code></td><td>Introduces a tagged variant type used to model distinct outcomes.</td></tr><tr><td>85</td><td><code>OptionRegexMatch</code></td><td><code>pick OptionRegexMatch {</code></td><td>Introduces a tagged variant type used to model distinct outcomes.</td></tr><tr><td>89</td><td><code>Regex</code></td><td><code>form Regex {</code></td><td>Introduces a structured data shape that other procedures can exchange.</td></tr><tr><td>93</td><td><code>ProcessResult</code></td><td><code>form ProcessResult {</code></td><td>Introduces a structured data shape that other procedures can exchange.</td></tr><tr><td>97</td><td><code>ExitStatus</code></td><td><code>form ExitStatus {</code></td><td>Introduces a structured data shape that other procedures can exchange.</td></tr><tr><td>101</td><td><code>ProcessChild</code></td><td><code>form ProcessChild {</code></td><td>Introduces a structured data shape that other procedures can exchange.</td></tr><tr><td>105</td><td><code>FswatchWatcher</code></td><td><code>form FswatchWatcher {</code></td><td>Introduces a structured data shape that other procedures can exchange.</td></tr><tr><td>109</td><td><code>FswatchEventKind</code></td><td><code>pick FswatchEventKind {</code></td><td>Introduces a tagged variant type used to model distinct outcomes.</td></tr><tr><td>113</td><td><code>FswatchEvent</code></td><td><code>form FswatchEvent {</code></td><td>Introduces a structured data shape that other procedures can exchange.</td></tr><tr><td>117</td><td><code>DbHandle</code></td><td><code>form DbHandle {</code></td><td>Introduces a structured data shape that other procedures can exchange.</td></tr><tr><td>121</td><td><code>DbEntry</code></td><td><code>form DbEntry {</code></td><td>Introduces a structured data shape that other procedures can exchange.</td></tr><tr><td>125</td><td><code>HttpMethod</code></td><td><code>pick HttpMethod {</code></td><td>Introduces a tagged variant type used to model distinct outcomes.</td></tr><tr><td>129</td><td><code>HttpHeader</code></td><td><code>form HttpHeader {</code></td><td>Introduces a structured data shape that other procedures can exchange.</td></tr><tr><td>133</td><td><code>HttpRequest</code></td><td><code>form HttpRequest {</code></td><td>Introduces a structured data shape that other procedures can exchange.</td></tr><tr><td>137</td><td><code>HttpResponse</code></td><td><code>form HttpResponse {</code></td><td>Introduces a structured data shape that other procedures can exchange.</td></tr><tr><td>141</td><td><code>Unit</code></td><td><code>form Unit {</code></td><td>Introduces a structured data shape that other procedures can exchange.</td></tr><tr><td>489</td><td><code>RuntimeManifest</code></td><td><code>form RuntimeManifest {</code></td><td>Introduces a structured data shape that other procedures can exchange.</td></tr><tr><td>495</td><td><code>RuntimeHealth</code></td><td><code>form RuntimeHealth {</code></td><td>Introduces a structured data shape that other procedures can exchange.</td></tr><tr><td>503</td><td><code>RuntimeSummary</code></td><td><code>form RuntimeSummary {</code></td><td>Introduces a structured data shape that other procedures can exchange.</td></tr></table></div><h3>Procedures</h3><div class="table-scroll"><table border="1" cellpadding="6" cellspacing="0"><tr><th>Line</th><th>Name</th><th>Signature</th><th>Role</th></tr><tr><td>145</td><td><code>alloc</code></td><td><code>proc alloc() -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>149</td><td><code>dealloc</code></td><td><code>proc dealloc() -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>153</td><td><code>runtime_panic</code></td><td><code>proc runtime_panic() -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>157</td><td><code>runtime_panic_boundary_begin</code></td><td><code>proc runtime_panic_boundary_begin() -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>161</td><td><code>runtime_panic_boundary_end</code></td><td><code>proc runtime_panic_boundary_end() -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>165</td><td><code>runtime_panic_boundary_triggered</code></td><td><code>proc runtime_panic_boundary_triggered() -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>169</td><td><code>runtime_panic_boundary_code</code></td><td><code>proc runtime_panic_boundary_code() -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>173</td><td><code>runtime_panic_boundary_reset</code></td><td><code>proc runtime_panic_boundary_reset() -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>177</td><td><code>assert_true</code></td><td><code>proc assert_true() -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>181</td><td><code>print_i32</code></td><td><code>proc print_i32() -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>185</td><td><code>runtime_unreachable</code></td><td><code>proc runtime_unreachable() -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>189</td><td><code>terminate</code></td><td><code>proc terminate() -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>193</td><td><code>vitte_c_abi_version</code></td><td><code>proc vitte_c_abi_version() -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>197</td><td><code>empty_string</code></td><td><code>proc empty_string() -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>201</td><td><code>make_string</code></td><td><code>proc make_string() -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>205</td><td><code>char_to_string</code></td><td><code>proc char_to_string() -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>209</td><td><code>i32_to_string</code></td><td><code>proc i32_to_string() -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>213</td><td><code>string_concat</code></td><td><code>proc string_concat() -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>217</td><td><code>empty_slice_i32</code></td><td><code>proc empty_slice_i32() -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>221</td><td><code>empty_slice_string</code></td><td><code>proc empty_slice_string() -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>225</td><td><code>slice_push_i32</code></td><td><code>proc slice_push_i32() -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>229</td><td><code>slice_push_string</code></td><td><code>proc slice_push_string() -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>233</td><td><code>list_i32</code></td><td><code>proc list_i32() -&gt; int {</code></td><td>Owns a concrete data shape or the operations that maintain it.</td></tr><tr><td>237</td><td><code>list_string</code></td><td><code>proc list_string() -&gt; int {</code></td><td>Owns a concrete data shape or the operations that maintain it.</td></tr><tr><td>241</td><td><code>time_now_ms</code></td><td><code>proc time_now_ms() -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>245</td><td><code>time_sleep_ms</code></td><td><code>proc time_sleep_ms() -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>249</td><td><code>env_get</code></td><td><code>proc env_get() -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>253</td><td><code>env_set</code></td><td><code>proc env_set() -&gt; int {</code></td><td>Owns a concrete data shape or the operations that maintain it.</td></tr><tr><td>257</td><td><code>os_platform</code></td><td><code>proc os_platform() -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>261</td><td><code>os_arch</code></td><td><code>proc os_arch() -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>265</td><td><code>os_home_dir</code></td><td><code>proc os_home_dir() -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>269</td><td><code>os_temp_dir</code></td><td><code>proc os_temp_dir() -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>273</td><td><code>os_current_dir</code></td><td><code>proc os_current_dir() -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>277</td><td><code>os_set_current_dir</code></td><td><code>proc os_set_current_dir() -&gt; int {</code></td><td>Owns a concrete data shape or the operations that maintain it.</td></tr><tr><td>281</td><td><code>os_exe_path</code></td><td><code>proc os_exe_path() -&gt; int {</code></td><td>Owns path semantics, traversal, or normalization.</td></tr><tr><td>285</td><td><code>os_path_sep</code></td><td><code>proc os_path_sep() -&gt; int {</code></td><td>Owns path semantics, traversal, or normalization.</td></tr><tr><td>289</td><td><code>process_run</code></td><td><code>proc process_run() -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>293</td><td><code>process_run_args</code></td><td><code>proc process_run_args() -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>297</td><td><code>process_run_shell</code></td><td><code>proc process_run_shell() -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>301</td><td><code>process_spawn</code></td><td><code>proc process_spawn() -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>305</td><td><code>process_wait</code></td><td><code>proc process_wait() -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>309</td><td><code>process_kill</code></td><td><code>proc process_kill() -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>313</td><td><code>process_stdout</code></td><td><code>proc process_stdout() -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>317</td><td><code>process_stderr</code></td><td><code>proc process_stderr() -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>321</td><td><code>json_parse</code></td><td><code>proc json_parse() -&gt; int {</code></td><td>Transforms an input representation into a structured internal value.</td></tr><tr><td>325</td><td><code>json_stringify</code></td><td><code>proc json_stringify() -&gt; int {</code></td><td>Turns internal values into a transport or textual representation.</td></tr><tr><td>329</td><td><code>http_request</code></td><td><code>proc http_request() -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>333</td><td><code>crypto_sha256</code></td><td><code>proc crypto_sha256() -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>337</td><td><code>crypto_sha1</code></td><td><code>proc crypto_sha1() -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>341</td><td><code>crypto_hmac_sha256</code></td><td><code>proc crypto_hmac_sha256() -&gt; int {</code></td><td>Implements a security-sensitive transformation in the crypto boundary.</td></tr><tr><td>345</td><td><code>crypto_rand_bytes</code></td><td><code>proc crypto_rand_bytes() -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>349</td><td><code>tcp_connect</code></td><td><code>proc tcp_connect() -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>353</td><td><code>tcp_bind</code></td><td><code>proc tcp_bind() -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>357</td><td><code>tcp_accept</code></td><td><code>proc tcp_accept() -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>361</td><td><code>tcp_read</code></td><td><code>proc tcp_read() -&gt; int {</code></td><td>Owns byte movement or host I/O interaction.</td></tr><tr><td>365</td><td><code>tcp_write</code></td><td><code>proc tcp_write() -&gt; int {</code></td><td>Owns byte movement or host I/O interaction.</td></tr><tr><td>369</td><td><code>tcp_close</code></td><td><code>proc tcp_close() -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>373</td><td><code>udp_bind</code></td><td><code>proc udp_bind() -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>377</td><td><code>udp_recv_from</code></td><td><code>proc udp_recv_from() -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>381</td><td><code>udp_send_to</code></td><td><code>proc udp_send_to() -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>385</td><td><code>udp_close</code></td><td><code>proc udp_close() -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>389</td><td><code>udp_set_nonblocking</code></td><td><code>proc udp_set_nonblocking() -&gt; int {</code></td><td>Owns a concrete data shape or the operations that maintain it.</td></tr><tr><td>393</td><td><code>udp_set_read_timeout</code></td><td><code>proc udp_set_read_timeout() -&gt; int {</code></td><td>Owns byte movement or host I/O interaction.</td></tr><tr><td>397</td><td><code>udp_set_write_timeout</code></td><td><code>proc udp_set_write_timeout() -&gt; int {</code></td><td>Owns byte movement or host I/O interaction.</td></tr><tr><td>401</td><td><code>tcp_set_nonblocking</code></td><td><code>proc tcp_set_nonblocking() -&gt; int {</code></td><td>Owns a concrete data shape or the operations that maintain it.</td></tr><tr><td>405</td><td><code>tcp_set_read_timeout</code></td><td><code>proc tcp_set_read_timeout() -&gt; int {</code></td><td>Owns byte movement or host I/O interaction.</td></tr><tr><td>409</td><td><code>tcp_set_write_timeout</code></td><td><code>proc tcp_set_write_timeout() -&gt; int {</code></td><td>Owns byte movement or host I/O interaction.</td></tr><tr><td>413</td><td><code>regex_compile</code></td><td><code>proc regex_compile() -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>417</td><td><code>regex_is_match</code></td><td><code>proc regex_is_match() -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>421</td><td><code>regex_find</code></td><td><code>proc regex_find() -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>425</td><td><code>regex_replace</code></td><td><code>proc regex_replace() -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>429</td><td><code>regex_split</code></td><td><code>proc regex_split() -&gt; int {</code></td><td>Owns path semantics, traversal, or normalization.</td></tr><tr><td>433</td><td><code>fswatch_watch</code></td><td><code>proc fswatch_watch() -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>437</td><td><code>fswatch_poll</code></td><td><code>proc fswatch_poll() -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>441</td><td><code>fswatch_close</code></td><td><code>proc fswatch_close() -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>445</td><td><code>db_open</code></td><td><code>proc db_open() -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>449</td><td><code>db_close</code></td><td><code>proc db_close() -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>453</td><td><code>db_set</code></td><td><code>proc db_set() -&gt; int {</code></td><td>Owns a concrete data shape or the operations that maintain it.</td></tr><tr><td>457</td><td><code>db_get</code></td><td><code>proc db_get() -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>461</td><td><code>db_delete</code></td><td><code>proc db_delete() -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>465</td><td><code>db_keys</code></td><td><code>proc db_keys() -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>469</td><td><code>db_keys_prefix</code></td><td><code>proc db_keys_prefix() -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>473</td><td><code>db_batch_put</code></td><td><code>proc db_batch_put() -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>477</td><td><code>db_begin</code></td><td><code>proc db_begin() -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>481</td><td><code>db_commit</code></td><td><code>proc db_commit() -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>485</td><td><code>db_rollback</code></td><td><code>proc db_rollback() -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>508</td><td><code>runtime_version</code></td><td><code>proc runtime_version() -&gt; string {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>512</td><td><code>runtime_ready</code></td><td><code>proc runtime_ready() -&gt; bool {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>516</td><td><code>runtime_manifest</code></td><td><code>proc runtime_manifest() -&gt; RuntimeManifest {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>524</td><td><code>runtime_health</code></td><td><code>proc runtime_health() -&gt; RuntimeHealth {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>538</td><td><code>runtime_summary</code></td><td><code>proc runtime_summary() -&gt; RuntimeSummary {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>545</td><td><code>runtime_selftest</code></td><td><code>proc runtime_selftest() -&gt; bool {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr></table></div><h3>Exports</h3><div class="table-scroll"><table border="1" cellpadding="6" cellspacing="0"><tr><th>Line</th><th>Name</th><th>Signature</th><th>Role</th></tr><tr><td>560</td><td><code>*</code></td><td><code>export *</code></td><td>Re-exports surfaces that the module wants to expose as part of its public boundary.</td></tr></table></div>
+</section>
 <section id="boundaries">
 <h2>Integration boundaries</h2>
 <p>Within <code>stdlib</code>, this file should remain focused. If a future helper changes the host boundary, scheduling boundary, or data-shape boundary, it probably belongs in a neighbor module instead of being added here by convenience.</p>
@@ -120,6 +352,30 @@ form Pair {
 <li>Family responsibility: Top-level map of the Vitte standard library and the responsibilities owned by each family.</li>
 <li>Family architecture role: A realistic Vitte program usually starts in `core`, grows through `collections` or `data`, crosses textual boundaries with `json` or `encoding`, touches the host with `path` or `io`, and only then reaches system-facing families like `kernel`, `ffi`, `async`, or `threading`.</li>
 </ul>
+</section>
+<section id="composition">
+<h2>Composition guidance</h2>
+<h3>Choose this module when</h3>
+<ul><li>Choose <code>runtime.vitl</code> when the main question is owned by this module rather than by transport, storage, orchestration, or user-interface code.</li><li>Domain values start in `core` and `strings`.</li><li>Grouped data moves through `collections` or `data`.</li><li>Structured export goes through `json` and `encoding`.</li><li>Filesystem or process interaction goes through `path`, `io`, `os`, or `sysinfo`.</li><li>Explicit runtime coordination goes through `async`, `threading`, `kernel`, or `ffi`.</li></ul>
+<h3>Pause before extending it when</h3>
+<ul><li>Avoid extending this file when the new helper mostly changes the boundary to host I/O, runtime coordination, or foreign integration instead of staying inside <code>stdlib</code>.</li><li>Check nearby modules such as <code>GETTING_STARTED.vitl</code>, <code>core_alias.vitl</code>, <code>datetime.vitl</code> before adding convenience wrappers here.</li></ul>
+</section>
+<section id="relationships">
+<h2>Relationship table</h2>
+<p>This table keeps the page closer to a real encyclopedia entry: a module is easier to understand when compared with its nearest alternatives in the same family.</p>
+<div class="table-scroll">
+<table border="1" cellpadding="6" cellspacing="0">
+<tr><th>Neighbor</th><th>Procedures</th><th>Data surfaces</th><th>Why compare it</th></tr>
+<tr><td><a href="GETTING_STARTED.vitl.html"><code>GETTING_STARTED.vitl</code></a></td><td>26</td><td>0</td><td>Shares the same family boundary but carries a distinct slice of responsibility.</td></tr>
+<tr><td><a href="core_alias.vitl.html"><code>core_alias.vitl</code></a></td><td>0</td><td>0</td><td>Shares the same family boundary but carries a distinct slice of responsibility.</td></tr>
+<tr><td><a href="datetime.vitl.html"><code>datetime.vitl</code></a></td><td>138</td><td>16</td><td>Shares the same family boundary but carries a distinct slice of responsibility.</td></tr>
+<tr><td><a href="graphics.vitl.html"><code>graphics.vitl</code></a></td><td>5</td><td>0</td><td>Shares the same family boundary but carries a distinct slice of responsibility.</td></tr>
+<tr><td><a href="memory.vitl.html"><code>memory.vitl</code></a></td><td>137</td><td>16</td><td>Shares the same family boundary but carries a distinct slice of responsibility.</td></tr>
+<tr><td><a href="mod.vit.html"><code>mod.vit</code></a></td><td>16</td><td>2</td><td>Shares the same family boundary but carries a distinct slice of responsibility.</td></tr>
+<tr><td><a href="os.vitl.html"><code>os.vitl</code></a></td><td>167</td><td>30</td><td>Shares the same family boundary but carries a distinct slice of responsibility.</td></tr>
+<tr><td><a href="regex.vitl.html"><code>regex.vitl</code></a></td><td>44</td><td>9</td><td>Shares the same family boundary but carries a distinct slice of responsibility.</td></tr>
+</table>
+</div>
 </section>
 <section id="neighbors">
 <h2>Neighbor modules</h2>

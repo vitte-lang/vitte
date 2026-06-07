@@ -9,7 +9,6 @@
 <link rel="stylesheet" href="../../../css/print.css" media="print">
 <link rel="alternate" hreflang="en" href="https://vitte-lang.org/book/stdlib-reference/modules/io--buffer.vitl.html">
 <link rel="alternate" hreflang="x-default" href="https://vitte-lang.org/book/stdlib-reference/modules/io--buffer.vitl.html">
-
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; font-src 'self'; connect-src 'self';">
 </head>
 <body class="classic-doc">
@@ -53,10 +52,22 @@
 <ul>
 <li><a href="#overview">Overview</a></li>
 <li><a href="#purpose">Purpose</a></li>
+<li><a href="#taxonomy">Taxonomy</a></li>
+<li><a href="#profile">Implementation profile</a></li>
 <li><a href="#inventory">Top-level API inventory</a></li>
+<li><a href="#position">Position in family</a></li>
+<li><a href="#declarations">Declaration map</a></li>
+<li><a href="#signatures">Representative signatures</a></li>
 <li><a href="#usage">How to use this module</a></li>
+<li><a href="#user-example">User example</a></li>
+<li><a href="#keyword-coverage">Keyword coverage</a></li>
 <li><a href="#source-shape">Source shape</a></li>
+<li><a href="#landmarks">Source landmarks</a></li>
+<li><a href="#organization">Source organization</a></li>
+<li><a href="#catalog">Complete API catalog</a></li>
 <li><a href="#boundaries">Integration boundaries</a></li>
+<li><a href="#composition">Composition guidance</a></li>
+<li><a href="#relationships">Relationship table</a></li>
 <li><a href="#neighbors">Neighbor modules</a></li>
 </ul>
 </section>
@@ -78,6 +89,26 @@
 <p>This file should be chosen because of responsibility, not because its name “sounds close enough”. Inside the <code>io</code> family, it carries one focused part of the contract and keeps that responsibility separate from neighboring concerns.</p>
 <ul><li>A manifest is loaded through `io`, parsed elsewhere, validated elsewhere, and only then emitted back through `io`.</li><li>A stdio helper should explain where user-facing text enters the flow.</li></ul>
 </section>
+<section id="taxonomy">
+<h2>Taxonomy</h2>
+<p>Think of this page as a generated encyclopedia entry rather than a hand-written tutorial. The goal is to show what kind of module this is, how dense it is, and what reading strategy makes sense before depending on it.</p>
+<ul><li>Medium procedure surface: this file groups several related operations behind one namespace.</li><li>Owns domain vocabulary: the module declares data shapes in addition to executable helpers, so its types are part of the contract.</li><li>Minimal top-level dependencies: the module reads as mostly self-contained from its opening declarations.</li></ul>
+</section>
+<section id="profile">
+<h2>Implementation profile</h2>
+<p>This profile is inferred directly from the source text. It does not replace reading the file, but it tells you quickly whether the module is mostly declarative, loop-heavy, branch-heavy, or organized around many small exits.</p>
+<div class="table-scroll">
+<table border="1" cellpadding="6" cellspacing="0">
+<tr><th>Signal</th><th>Count</th><th>What it suggests</th></tr>
+<tr><td><code>if</code></td><td>0</td><td>Branching density and local decision-making.</td></tr>
+<tr><td><code>while</code></td><td>0</td><td>Loop-heavy or iterative implementation style.</td></tr>
+<tr><td><code>for</code></td><td>0</td><td>Collection-style traversal at source level.</td></tr>
+<tr><td><code>match</code></td><td>0</td><td>Variant-driven branching or grammar-style decoding.</td></tr>
+<tr><td><code>let</code></td><td>0</td><td>Local state and intermediate value density.</td></tr>
+<tr><td><code>give</code></td><td>13</td><td>Number of explicit exit points and result shaping.</td></tr>
+</table>
+</div>
+</section>
 <section id="inventory">
 <h2>Top-level API inventory</h2>
 <table border="1" cellpadding="6" cellspacing="0">
@@ -86,18 +117,78 @@
 <tr><td>Forms</td><td><code>Buffer</code>, <code>BufferManifest</code>, <code>BufferHealth</code>, <code>BufferSummary</code></td></tr>
 <tr><td>Picks</td><td>none declared at top level</td></tr>
 <tr><td>Constants</td><td>none declared at top level</td></tr>
+<tr><td>Exports</td><td>none declared at top level</td></tr>
 </table>
 <h3>Imported surfaces</h3>
 <p>This file does not advertise a top-level `use` surface in its opening declarations. That often means it is either self-contained or an aggregation layer.</p>
 </section>
+<section id="position">
+<h2>Position in family</h2>
+<p>This file is module 2 of 8 in the <code>io</code> family when ordered by path. By procedure count it ranks 7, and by line count it ranks 7. Those ranks are useful as rough signals of breadth, not as quality judgments.</p>
+</section>
+<section id="declarations">
+<h2>Declaration map</h2>
+<p>The declaration map turns raw source into a scan-friendly catalog. It is useful when the file is large enough that a reader wants to orient by kinds of surfaces first.</p>
+<div class="table-scroll">
+<table border="1" cellpadding="6" cellspacing="0">
+<tr><th>Line</th><th>Name</th><th>Kind</th><th>Role</th></tr>
+<tr><td>1</td><td><code>vitte/stdlib_checked/io_buffer</code></td><td>space</td><td>Declares the namespace that anchors this file in the stdlib tree.</td></tr>
+<tr><td>9</td><td><code>Buffer</code></td><td>form</td><td>Introduces a structured data shape that other procedures can exchange.</td></tr>
+<tr><td>13</td><td><code>BufferManifest</code></td><td>form</td><td>Introduces a structured data shape that other procedures can exchange.</td></tr>
+<tr><td>17</td><td><code>BufferHealth</code></td><td>form</td><td>Introduces a structured data shape that other procedures can exchange.</td></tr>
+<tr><td>21</td><td><code>BufferSummary</code></td><td>form</td><td>Introduces a structured data shape that other procedures can exchange.</td></tr>
+<tr><td>25</td><td><code>buffer_create</code></td><td>proc</td><td>Owns byte movement or host I/O interaction.</td></tr>
+<tr><td>29</td><td><code>buffer_version</code></td><td>proc</td><td>Owns byte movement or host I/O interaction.</td></tr>
+<tr><td>33</td><td><code>buffer_ready</code></td><td>proc</td><td>Owns byte movement or host I/O interaction.</td></tr>
+<tr><td>37</td><td><code>buffer_manifest</code></td><td>proc</td><td>Owns byte movement or host I/O interaction.</td></tr>
+<tr><td>41</td><td><code>buffer_health</code></td><td>proc</td><td>Owns byte movement or host I/O interaction.</td></tr>
+<tr><td>45</td><td><code>buffer_summary</code></td><td>proc</td><td>Owns byte movement or host I/O interaction.</td></tr>
+<tr><td>49</td><td><code>buffer_write</code></td><td>proc</td><td>Owns byte movement or host I/O interaction.</td></tr>
+<tr><td>53</td><td><code>buffer_read</code></td><td>proc</td><td>Owns byte movement or host I/O interaction.</td></tr>
+<tr><td>57</td><td><code>buffer_peek</code></td><td>proc</td><td>Owns byte movement or host I/O interaction.</td></tr>
+<tr><td>61</td><td><code>buffer_skip</code></td><td>proc</td><td>Owns byte movement or host I/O interaction.</td></tr>
+<tr><td>65</td><td><code>buffer_clear</code></td><td>proc</td><td>Owns byte movement or host I/O interaction.</td></tr>
+<tr><td>69</td><td><code>buffer_remaining</code></td><td>proc</td><td>Owns byte movement or host I/O interaction.</td></tr>
+<tr><td>73</td><td><code>buffer_selftest</code></td><td>proc</td><td>Owns byte movement or host I/O interaction.</td></tr>
+</table>
+</div>
+<p>The table is exhaustive for top-level declarations of the selected kinds. This file declares 18 matching surfaces.</p>
+</section>
+<section id="signatures">
+<h2>Representative signatures</h2>
+<p>These signatures are shown in source order so the page keeps the feel of a reference manual, not just a keyword cloud.</p>
+<ul><li><code>form Buffer {</code> (line 9)</li><li><code>form BufferManifest {</code> (line 13)</li><li><code>form BufferHealth {</code> (line 17)</li><li><code>form BufferSummary {</code> (line 21)</li><li><code>proc buffer_create() -&gt; int {</code> (line 25)</li><li><code>proc buffer_version() -&gt; int {</code> (line 29)</li><li><code>proc buffer_ready() -&gt; int {</code> (line 33)</li><li><code>proc buffer_manifest() -&gt; int {</code> (line 37)</li><li><code>proc buffer_health() -&gt; int {</code> (line 41)</li><li><code>proc buffer_summary() -&gt; int {</code> (line 45)</li><li><code>proc buffer_write() -&gt; int {</code> (line 49)</li><li><code>proc buffer_read() -&gt; int {</code> (line 53)</li><li><code>proc buffer_peek() -&gt; int {</code> (line 57)</li><li><code>proc buffer_skip() -&gt; int {</code> (line 61)</li><li><code>proc buffer_clear() -&gt; int {</code> (line 65)</li><li><code>proc buffer_remaining() -&gt; int {</code> (line 69)</li><li><code>proc buffer_selftest() -&gt; int {</code> (line 73)</li></ul>
+</section>
 <section id="usage">
 <h2>How to use this module</h2>
 <p>Start by reading the file as an ownership boundary. Ask three questions: what enters this module, what stable types or procedures it exports, and what adjacent module should stay outside of it.</p>
-<ol>
-<li>Open the family page first to understand why this area of the stdlib exists.</li>
-<li>Read the source excerpt below to see the namespace, imports, and first declared surfaces.</li>
-<li>Check the neighbor list to avoid coupling this module with an adjacent responsibility by habit.</li>
-</ol>
+<ol><li>Read <code>space</code> and top-level imports first so the ownership boundary of <code>io/buffer.vitl</code> is explicit.</li><li>Read declared forms and picks before algorithms so the data vocabulary is stable in your head.</li><li>Traverse procedures in source order; the early helpers usually explain the naming and numeric conventions used later.</li><li>Only after that compare neighbor modules, because the right boundary choice matters more than memorizing one helper name.</li></ol>
+</section>
+<section id="user-example">
+<h2>User example</h2>
+<p>This example is generated from the actual stdlib module surface. Its job is not to be the smallest snippet possible; its job is to show a realistic consumer-shaped file that exercises the module and mirrors the language keywords the module itself relies on.</p>
+<pre><code class="language-vitl">space demo/io_buffer
+form UserReport {
+  label: string,
+  ready: bool
+}
+proc run_example() -&gt; UserReport {
+    give UserReport { label: &quot;ok&quot;, ready: ready }
+}</code></pre>
+</section>
+<section id="keyword-coverage">
+<h2>Keyword coverage</h2>
+<p>This table makes the “all keywords of the module” requirement auditable. It compares the detected Vitte keywords in the source file with the generated consumer example above.</p>
+<div class="table-scroll">
+<table border="1" cellpadding="6" cellspacing="0">
+<tr><th>Keyword</th><th>Present in module source</th><th>Used in generated user example</th></tr>
+<tr><td><code>space</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>form</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>proc</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>give</code></td><td>yes</td><td>yes</td></tr>
+</table>
+</div>
+<p>The generated snippet exercises every detected Vitte keyword used by this module.</p>
 </section>
 <section id="source-shape">
 <h2>Source shape</h2>
@@ -113,6 +204,27 @@ form BufferHealth {
 }</code></pre>
 <p>The excerpt is not meant to replace the file. It exists to make the module recognizable at first glance, the same way a Wikipedia infobox helps the reader orient before reading the whole article.</p>
 </section>
+<section id="landmarks">
+<h2>Source landmarks</h2>
+<p>Large files are easier to retain when they have visible landmarks. When the source contains explicit section banners, they are surfaced here; otherwise the first major declarations are used as anchors.</p>
+<ul><li>Line 1: <code>space vitte/stdlib_checked/io_buffer</code></li><li>Line 9: <code>form Buffer {</code></li><li>Line 13: <code>form BufferManifest {</code></li><li>Line 17: <code>form BufferHealth {</code></li><li>Line 21: <code>form BufferSummary {</code></li><li>Line 25: <code>proc buffer_create() -&gt; int {</code></li><li>Line 29: <code>proc buffer_version() -&gt; int {</code></li><li>Line 33: <code>proc buffer_ready() -&gt; int {</code></li></ul>
+</section>
+<section id="organization">
+<h2>Source organization</h2>
+<p>When a file carries its own internal chaptering, those chapters usually reveal the intended reading order better than a flat symbol list. This section reconstructs that organization from the source itself.</p>
+
+<section class="lead-panel">
+<h3>File surfaces</h3>
+<p><strong>Top-level items:</strong> 18. <strong>Procedures:</strong> 13. <strong>Data surfaces:</strong> 4. <strong>Constants:</strong> 0.</p>
+<p><strong>First visible names:</strong> <code>vitte/stdlib_checked/io_buffer</code>, <code>Buffer</code>, <code>BufferManifest</code>, <code>BufferHealth</code>, <code>BufferSummary</code>, <code>buffer_create</code>, <code>buffer_version</code>, <code>buffer_ready</code>, <code>buffer_manifest</code>, <code>buffer_health</code></p>
+</section>
+
+</section>
+<section id="catalog">
+<h2>Complete API catalog</h2>
+<p>This catalog is the exhaustive file-level index for the module. It is intentionally closer to a generated encyclopedia appendix than to a tutorial summary.</p>
+<h3>Data surfaces</h3><div class="table-scroll"><table border="1" cellpadding="6" cellspacing="0"><tr><th>Line</th><th>Name</th><th>Signature</th><th>Role</th></tr><tr><td>9</td><td><code>Buffer</code></td><td><code>form Buffer {</code></td><td>Introduces a structured data shape that other procedures can exchange.</td></tr><tr><td>13</td><td><code>BufferManifest</code></td><td><code>form BufferManifest {</code></td><td>Introduces a structured data shape that other procedures can exchange.</td></tr><tr><td>17</td><td><code>BufferHealth</code></td><td><code>form BufferHealth {</code></td><td>Introduces a structured data shape that other procedures can exchange.</td></tr><tr><td>21</td><td><code>BufferSummary</code></td><td><code>form BufferSummary {</code></td><td>Introduces a structured data shape that other procedures can exchange.</td></tr></table></div><h3>Procedures</h3><div class="table-scroll"><table border="1" cellpadding="6" cellspacing="0"><tr><th>Line</th><th>Name</th><th>Signature</th><th>Role</th></tr><tr><td>25</td><td><code>buffer_create</code></td><td><code>proc buffer_create() -&gt; int {</code></td><td>Owns byte movement or host I/O interaction.</td></tr><tr><td>29</td><td><code>buffer_version</code></td><td><code>proc buffer_version() -&gt; int {</code></td><td>Owns byte movement or host I/O interaction.</td></tr><tr><td>33</td><td><code>buffer_ready</code></td><td><code>proc buffer_ready() -&gt; int {</code></td><td>Owns byte movement or host I/O interaction.</td></tr><tr><td>37</td><td><code>buffer_manifest</code></td><td><code>proc buffer_manifest() -&gt; int {</code></td><td>Owns byte movement or host I/O interaction.</td></tr><tr><td>41</td><td><code>buffer_health</code></td><td><code>proc buffer_health() -&gt; int {</code></td><td>Owns byte movement or host I/O interaction.</td></tr><tr><td>45</td><td><code>buffer_summary</code></td><td><code>proc buffer_summary() -&gt; int {</code></td><td>Owns byte movement or host I/O interaction.</td></tr><tr><td>49</td><td><code>buffer_write</code></td><td><code>proc buffer_write() -&gt; int {</code></td><td>Owns byte movement or host I/O interaction.</td></tr><tr><td>53</td><td><code>buffer_read</code></td><td><code>proc buffer_read() -&gt; int {</code></td><td>Owns byte movement or host I/O interaction.</td></tr><tr><td>57</td><td><code>buffer_peek</code></td><td><code>proc buffer_peek() -&gt; int {</code></td><td>Owns byte movement or host I/O interaction.</td></tr><tr><td>61</td><td><code>buffer_skip</code></td><td><code>proc buffer_skip() -&gt; int {</code></td><td>Owns byte movement or host I/O interaction.</td></tr><tr><td>65</td><td><code>buffer_clear</code></td><td><code>proc buffer_clear() -&gt; int {</code></td><td>Owns byte movement or host I/O interaction.</td></tr><tr><td>69</td><td><code>buffer_remaining</code></td><td><code>proc buffer_remaining() -&gt; int {</code></td><td>Owns byte movement or host I/O interaction.</td></tr><tr><td>73</td><td><code>buffer_selftest</code></td><td><code>proc buffer_selftest() -&gt; int {</code></td><td>Owns byte movement or host I/O interaction.</td></tr></table></div>
+</section>
 <section id="boundaries">
 <h2>Integration boundaries</h2>
 <p>Within <code>io</code>, this file should remain focused. If a future helper changes the host boundary, scheduling boundary, or data-shape boundary, it probably belongs in a neighbor module instead of being added here by convenience.</p>
@@ -120,6 +232,29 @@ form BufferHealth {
 <li>Family responsibility: File, buffer, stream, stdio, and host-runtime access helpers.</li>
 <li>Family architecture role: Use `io` when the program must read or write bytes, files, or streams. Keep it separate from validation, parsing, or business decisions.</li>
 </ul>
+</section>
+<section id="composition">
+<h2>Composition guidance</h2>
+<h3>Choose this module when</h3>
+<ul><li>Choose <code>io/buffer.vitl</code> when the main question is owned by this module rather than by transport, storage, orchestration, or user-interface code.</li><li>A manifest is loaded through `io`, parsed elsewhere, validated elsewhere, and only then emitted back through `io`.</li><li>A stdio helper should explain where user-facing text enters the flow.</li></ul>
+<h3>Pause before extending it when</h3>
+<ul><li>Avoid extending this file when the new helper mostly changes the boundary to host I/O, runtime coordination, or foreign integration instead of staying inside <code>io</code>.</li><li>Check nearby modules such as <code>io/file.vitl</code>, <code>io/fileops.vitl</code>, <code>io/host_runtime.vitl</code> before adding convenience wrappers here.</li></ul>
+</section>
+<section id="relationships">
+<h2>Relationship table</h2>
+<p>This table keeps the page closer to a real encyclopedia entry: a module is easier to understand when compared with its nearest alternatives in the same family.</p>
+<div class="table-scroll">
+<table border="1" cellpadding="6" cellspacing="0">
+<tr><th>Neighbor</th><th>Procedures</th><th>Data surfaces</th><th>Why compare it</th></tr>
+<tr><td><a href="io--file.vitl.html"><code>io/file.vitl</code></a></td><td>23</td><td>4</td><td>Shares the same family boundary but carries a distinct slice of responsibility.</td></tr>
+<tr><td><a href="io--fileops.vitl.html"><code>io/fileops.vitl</code></a></td><td>19</td><td>3</td><td>Shares the same family boundary but carries a distinct slice of responsibility.</td></tr>
+<tr><td><a href="io--host_runtime.vitl.html"><code>io/host_runtime.vitl</code></a></td><td>17</td><td>0</td><td>Shares the same family boundary but carries a distinct slice of responsibility.</td></tr>
+<tr><td><a href="io--io.vitl.html"><code>io/io.vitl</code></a></td><td>41</td><td>0</td><td>Shares the same family boundary but carries a distinct slice of responsibility.</td></tr>
+<tr><td><a href="io--stdio.vitl.html"><code>io/stdio.vitl</code></a></td><td>35</td><td>4</td><td>Shares the same family boundary but carries a distinct slice of responsibility.</td></tr>
+<tr><td><a href="io--stream.vitl.html"><code>io/stream.vitl</code></a></td><td>13</td><td>4</td><td>Shares the same family boundary but carries a distinct slice of responsibility.</td></tr>
+<tr><td><a href="io.vitl.html"><code>io.vitl</code></a></td><td>132</td><td>12</td><td>Shares the same family boundary but carries a distinct slice of responsibility.</td></tr>
+</table>
+</div>
 </section>
 <section id="neighbors">
 <h2>Neighbor modules</h2>

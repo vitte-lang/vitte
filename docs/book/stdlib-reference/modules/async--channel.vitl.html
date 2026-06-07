@@ -9,7 +9,6 @@
 <link rel="stylesheet" href="../../../css/print.css" media="print">
 <link rel="alternate" hreflang="en" href="https://vitte-lang.org/book/stdlib-reference/modules/async--channel.vitl.html">
 <link rel="alternate" hreflang="x-default" href="https://vitte-lang.org/book/stdlib-reference/modules/async--channel.vitl.html">
-
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; font-src 'self'; connect-src 'self';">
 </head>
 <body class="classic-doc">
@@ -53,10 +52,22 @@
 <ul>
 <li><a href="#overview">Overview</a></li>
 <li><a href="#purpose">Purpose</a></li>
+<li><a href="#taxonomy">Taxonomy</a></li>
+<li><a href="#profile">Implementation profile</a></li>
 <li><a href="#inventory">Top-level API inventory</a></li>
+<li><a href="#position">Position in family</a></li>
+<li><a href="#declarations">Declaration map</a></li>
+<li><a href="#signatures">Representative signatures</a></li>
 <li><a href="#usage">How to use this module</a></li>
+<li><a href="#user-example">User example</a></li>
+<li><a href="#keyword-coverage">Keyword coverage</a></li>
 <li><a href="#source-shape">Source shape</a></li>
+<li><a href="#landmarks">Source landmarks</a></li>
+<li><a href="#organization">Source organization</a></li>
+<li><a href="#catalog">Complete API catalog</a></li>
 <li><a href="#boundaries">Integration boundaries</a></li>
+<li><a href="#composition">Composition guidance</a></li>
+<li><a href="#relationships">Relationship table</a></li>
 <li><a href="#neighbors">Neighbor modules</a></li>
 </ul>
 </section>
@@ -78,6 +89,26 @@
 <p>This file should be chosen because of responsibility, not because its name “sounds close enough”. Inside the <code>async</code> family, it carries one focused part of the contract and keeps that responsibility separate from neighboring concerns.</p>
 <ul><li>Use this module when coordination and scheduling are explicit parts of the design.</li><li>A pipeline can spawn tasks, exchange messages through channels, and join through the executor boundary.</li></ul>
 </section>
+<section id="taxonomy">
+<h2>Taxonomy</h2>
+<p>Think of this page as a generated encyclopedia entry rather than a hand-written tutorial. The goal is to show what kind of module this is, how dense it is, and what reading strategy makes sense before depending on it.</p>
+<ul><li>Large algorithm surface: this file exposes many procedures and likely acts as a domain toolkit rather than a single thin wrapper.</li><li>Owns domain vocabulary: the module declares data shapes in addition to executable helpers, so its types are part of the contract.</li><li>Narrow dependency fan-in: a small set of imports suggests a focused collaboration surface.</li><li>Explicit export surface: the file ends with visible export declarations instead of relying only on implicit namespace discovery.</li></ul>
+</section>
+<section id="profile">
+<h2>Implementation profile</h2>
+<p>This profile is inferred directly from the source text. It does not replace reading the file, but it tells you quickly whether the module is mostly declarative, loop-heavy, branch-heavy, or organized around many small exits.</p>
+<div class="table-scroll">
+<table border="1" cellpadding="6" cellspacing="0">
+<tr><th>Signal</th><th>Count</th><th>What it suggests</th></tr>
+<tr><td><code>if</code></td><td>9</td><td>Branching density and local decision-making.</td></tr>
+<tr><td><code>while</code></td><td>4</td><td>Loop-heavy or iterative implementation style.</td></tr>
+<tr><td><code>for</code></td><td>0</td><td>Collection-style traversal at source level.</td></tr>
+<tr><td><code>match</code></td><td>0</td><td>Variant-driven branching or grammar-style decoding.</td></tr>
+<tr><td><code>let</code></td><td>24</td><td>Local state and intermediate value density.</td></tr>
+<tr><td><code>give</code></td><td>27</td><td>Number of explicit exit points and result shaping.</td></tr>
+</table>
+</div>
+</section>
 <section id="inventory">
 <h2>Top-level API inventory</h2>
 <table border="1" cellpadding="6" cellspacing="0">
@@ -86,20 +117,116 @@
 <tr><td>Forms</td><td><code>Queue</code>, <code>Channel</code>, <code>Select</code></td></tr>
 <tr><td>Picks</td><td>none declared at top level</td></tr>
 <tr><td>Constants</td><td>none declared at top level</td></tr>
+<tr><td>Exports</td><td><code>*</code></td></tr>
 </table>
 <h3>Imported surfaces</h3>
 <ul><li><code>vitte/stdlib/core
 
 form Queue</code></li></ul>
 </section>
+<section id="position">
+<h2>Position in family</h2>
+<p>This file is module 2 of 4 in the <code>async</code> family when ordered by path. By procedure count it ranks 2, and by line count it ranks 3. Those ranks are useful as rough signals of breadth, not as quality judgments.</p>
+</section>
+<section id="declarations">
+<h2>Declaration map</h2>
+<p>The declaration map turns raw source into a scan-friendly catalog. It is useful when the file is large enough that a reader wants to orient by kinds of surfaces first.</p>
+<div class="table-scroll">
+<table border="1" cellpadding="6" cellspacing="0">
+<tr><th>Line</th><th>Name</th><th>Kind</th><th>Role</th></tr>
+<tr><td>1</td><td><code>vitte/stdlib/async/channel</code></td><td>space</td><td>Declares the namespace that anchors this file in the stdlib tree.</td></tr>
+<tr><td>3</td><td><code>vitte/stdlib/core</code></td><td>use</td><td>Imports a sibling or supporting surface used by the module.</td></tr>
+<tr><td>5</td><td><code>Queue</code></td><td>form</td><td>Introduces a structured data shape that other procedures can exchange.</td></tr>
+<tr><td>9</td><td><code>Channel</code></td><td>form</td><td>Introduces a structured data shape that other procedures can exchange.</td></tr>
+<tr><td>20</td><td><code>Select</code></td><td>form</td><td>Introduces a structured data shape that other procedures can exchange.</td></tr>
+<tr><td>25</td><td><code>channel_new</code></td><td>proc</td><td>Owns coordination, scheduling, or concurrency behavior.</td></tr>
+<tr><td>39</td><td><code>channel_send</code></td><td>proc</td><td>Owns coordination, scheduling, or concurrency behavior.</td></tr>
+<tr><td>60</td><td><code>channel_recv</code></td><td>proc</td><td>Owns coordination, scheduling, or concurrency behavior.</td></tr>
+<tr><td>79</td><td><code>channel_try_recv</code></td><td>proc</td><td>Owns coordination, scheduling, or concurrency behavior.</td></tr>
+<tr><td>95</td><td><code>channel_is_closed</code></td><td>proc</td><td>Owns coordination, scheduling, or concurrency behavior.</td></tr>
+<tr><td>99</td><td><code>channel_close_sender</code></td><td>proc</td><td>Owns coordination, scheduling, or concurrency behavior.</td></tr>
+<tr><td>112</td><td><code>channel_close_receiver</code></td><td>proc</td><td>Owns coordination, scheduling, or concurrency behavior.</td></tr>
+<tr><td>124</td><td><code>channel_len</code></td><td>proc</td><td>Owns coordination, scheduling, or concurrency behavior.</td></tr>
+<tr><td>131</td><td><code>channel_select</code></td><td>proc</td><td>Owns coordination, scheduling, or concurrency behavior.</td></tr>
+<tr><td>153</td><td><code>queue_new</code></td><td>proc</td><td>Owns a concrete data shape or the operations that maintain it.</td></tr>
+<tr><td>160</td><td><code>queue_push</code></td><td>proc</td><td>Owns a concrete data shape or the operations that maintain it.</td></tr>
+<tr><td>165</td><td><code>queue_pop</code></td><td>proc</td><td>Owns a concrete data shape or the operations that maintain it.</td></tr>
+<tr><td>177</td><td><code>queue_len</code></td><td>proc</td><td>Owns a concrete data shape or the operations that maintain it.</td></tr>
+<tr><td>181</td><td><code>queue_rest</code></td><td>proc</td><td>Owns a concrete data shape or the operations that maintain it.</td></tr>
+<tr><td>195</td><td><code>mutex_new</code></td><td>proc</td><td>Owns coordination, scheduling, or concurrency behavior.</td></tr>
+<tr><td>199</td><td><code>mutex_lock</code></td><td>proc</td><td>Owns coordination, scheduling, or concurrency behavior.</td></tr>
+<tr><td>203</td><td><code>mutex_unlock</code></td><td>proc</td><td>Owns coordination, scheduling, or concurrency behavior.</td></tr>
+<tr><td>207</td><td><code>cond_new</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>211</td><td><code>cond_wait</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>215</td><td><code>cond_signal</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>219</td><td><code>cond_broadcast</code></td><td>proc</td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr>
+<tr><td>223</td><td><code>channel_version</code></td><td>proc</td><td>Owns coordination, scheduling, or concurrency behavior.</td></tr>
+<tr><td>227</td><td><code>channel_ready</code></td><td>proc</td><td>Owns coordination, scheduling, or concurrency behavior.</td></tr>
+<tr><td>231</td><td><code>channel_selftest</code></td><td>proc</td><td>Owns coordination, scheduling, or concurrency behavior.</td></tr>
+</table>
+</div>
+<p>The table is exhaustive for top-level declarations of the selected kinds. This file declares 29 matching surfaces.</p>
+</section>
+<section id="signatures">
+<h2>Representative signatures</h2>
+<p>These signatures are shown in source order so the page keeps the feel of a reference manual, not just a keyword cloud.</p>
+<ul><li><code>form Queue&lt;T&gt; {</code> (line 5)</li><li><code>form Channel&lt;T&gt; {</code> (line 9)</li><li><code>form Select&lt;T&gt; {</code> (line 20)</li><li><code>proc channel_new&lt;T&gt;(capacity: int) -&gt; Channel&lt;T&gt; {</code> (line 25)</li><li><code>proc channel_send&lt;T&gt;(ch: Channel&lt;T&gt;, value: T) -&gt; bool {</code> (line 39)</li><li><code>proc channel_recv&lt;T&gt;(ch: Channel&lt;T&gt;) -&gt; T {</code> (line 60)</li><li><code>proc channel_try_recv&lt;T&gt;(ch: Channel&lt;T&gt;) -&gt; T {</code> (line 79)</li><li><code>proc channel_is_closed&lt;T&gt;(ch: Channel&lt;T&gt;) -&gt; bool {</code> (line 95)</li><li><code>proc channel_close_sender&lt;T&gt;(ch: Channel&lt;T&gt;) -&gt; bool {</code> (line 99)</li><li><code>proc channel_close_receiver&lt;T&gt;(ch: Channel&lt;T&gt;) -&gt; bool {</code> (line 112)</li><li><code>proc channel_len&lt;T&gt;(ch: Channel&lt;T&gt;) -&gt; int {</code> (line 124)</li><li><code>proc channel_select&lt;T&gt;(channels: [Channel&lt;T&gt;]) -&gt; Select&lt;T&gt; {</code> (line 131)</li><li><code>proc queue_new&lt;T&gt;() -&gt; Queue&lt;T&gt; {</code> (line 153)</li><li><code>proc queue_push&lt;T&gt;(q: Queue&lt;T&gt;, value: T) -&gt; bool {</code> (line 160)</li><li><code>proc queue_pop&lt;T&gt;(q: Queue&lt;T&gt;) -&gt; T {</code> (line 165)</li><li><code>proc queue_len&lt;T&gt;(q: Queue&lt;T&gt;) -&gt; int {</code> (line 177)</li><li><code>proc queue_rest&lt;T&gt;(items: [T]) -&gt; [T] {</code> (line 181)</li><li><code>proc mutex_new() -&gt; int {</code> (line 195)</li></ul>
+<p>The list is intentionally capped here; the source file declares 27 matching signatures in total.</p>
+</section>
 <section id="usage">
 <h2>How to use this module</h2>
 <p>Start by reading the file as an ownership boundary. Ask three questions: what enters this module, what stable types or procedures it exports, and what adjacent module should stay outside of it.</p>
-<ol>
-<li>Open the family page first to understand why this area of the stdlib exists.</li>
-<li>Read the source excerpt below to see the namespace, imports, and first declared surfaces.</li>
-<li>Check the neighbor list to avoid coupling this module with an adjacent responsibility by habit.</li>
-</ol>
+<ol><li>Read <code>space</code> and top-level imports first so the ownership boundary of <code>async/channel.vitl</code> is explicit.</li><li>Read declared forms and picks before algorithms so the data vocabulary is stable in your head.</li><li>Traverse procedures in source order; the early helpers usually explain the naming and numeric conventions used later.</li><li>Only after that compare neighbor modules, because the right boundary choice matters more than memorizing one helper name.</li></ol>
+</section>
+<section id="user-example">
+<h2>User example</h2>
+<p>This example is generated from the actual stdlib module surface. Its job is not to be the smallest snippet possible; its job is to show a realistic consumer-shaped file that exercises the module and mirrors the language keywords the module itself relies on.</p>
+<pre><code class="language-vitl">space demo/async_channel
+use vitte/stdlib/async/channel
+form UserReport {
+  label: string,
+  ready: bool
+}
+proc run_example() -&gt; UserReport {
+  let entries = queue_rest([])
+  let ready: bool = channel_send(Channel&lt;T&gt;(), T())
+  let failed: bool = false
+  let stable: bool = ready and true
+  let idx: int = 0
+  let count: int = 0
+  while idx &lt; entries.len {
+    set count = count + 1
+    set idx = idx + 1
+  }
+  if ready {
+    give UserReport { label: &quot;not-ready&quot;, ready: false }
+  }
+    give UserReport { label: &quot;ok&quot;, ready: true }
+}
+export run_example</code></pre>
+</section>
+<section id="keyword-coverage">
+<h2>Keyword coverage</h2>
+<p>This table makes the “all keywords of the module” requirement auditable. It compares the detected Vitte keywords in the source file with the generated consumer example above.</p>
+<div class="table-scroll">
+<table border="1" cellpadding="6" cellspacing="0">
+<tr><th>Keyword</th><th>Present in module source</th><th>Used in generated user example</th></tr>
+<tr><td><code>space</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>use</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>form</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>proc</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>let</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>set</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>if</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>while</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>give</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>export</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>true</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>false</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>and</code></td><td>yes</td><td>yes</td></tr>
+</table>
+</div>
+<p>The generated snippet exercises every detected Vitte keyword used by this module.</p>
 </section>
 <section id="source-shape">
 <h2>Source shape</h2>
@@ -115,6 +242,27 @@ form Channel&lt;T&gt; {
   mutex: int,</code></pre>
 <p>The excerpt is not meant to replace the file. It exists to make the module recognizable at first glance, the same way a Wikipedia infobox helps the reader orient before reading the whole article.</p>
 </section>
+<section id="landmarks">
+<h2>Source landmarks</h2>
+<p>Large files are easier to retain when they have visible landmarks. When the source contains explicit section banners, they are surfaced here; otherwise the first major declarations are used as anchors.</p>
+<ul><li>Line 1: <code>space vitte/stdlib/async/channel</code></li><li>Line 3: <code>use vitte/stdlib/core</code></li><li>Line 5: <code>form Queue&lt;T&gt; {</code></li><li>Line 9: <code>form Channel&lt;T&gt; {</code></li><li>Line 20: <code>form Select&lt;T&gt; {</code></li><li>Line 25: <code>proc channel_new&lt;T&gt;(capacity: int) -&gt; Channel&lt;T&gt; {</code></li><li>Line 39: <code>proc channel_send&lt;T&gt;(ch: Channel&lt;T&gt;, value: T) -&gt; bool {</code></li><li>Line 60: <code>proc channel_recv&lt;T&gt;(ch: Channel&lt;T&gt;) -&gt; T {</code></li></ul>
+</section>
+<section id="organization">
+<h2>Source organization</h2>
+<p>When a file carries its own internal chaptering, those chapters usually reveal the intended reading order better than a flat symbol list. This section reconstructs that organization from the source itself.</p>
+
+<section class="lead-panel">
+<h3>File surfaces</h3>
+<p><strong>Top-level items:</strong> 30. <strong>Procedures:</strong> 24. <strong>Data surfaces:</strong> 3. <strong>Constants:</strong> 0.</p>
+<p><strong>First visible names:</strong> <code>vitte/stdlib/async/channel</code>, <code>vitte/stdlib/core</code>, <code>Queue</code>, <code>Channel</code>, <code>Select</code>, <code>channel_new</code>, <code>channel_send</code>, <code>channel_recv</code>, <code>channel_try_recv</code>, <code>channel_is_closed</code></p>
+</section>
+
+</section>
+<section id="catalog">
+<h2>Complete API catalog</h2>
+<p>This catalog is the exhaustive file-level index for the module. It is intentionally closer to a generated encyclopedia appendix than to a tutorial summary.</p>
+<h3>Data surfaces</h3><div class="table-scroll"><table border="1" cellpadding="6" cellspacing="0"><tr><th>Line</th><th>Name</th><th>Signature</th><th>Role</th></tr><tr><td>5</td><td><code>Queue</code></td><td><code>form Queue&lt;T&gt; {</code></td><td>Introduces a structured data shape that other procedures can exchange.</td></tr><tr><td>9</td><td><code>Channel</code></td><td><code>form Channel&lt;T&gt; {</code></td><td>Introduces a structured data shape that other procedures can exchange.</td></tr><tr><td>20</td><td><code>Select</code></td><td><code>form Select&lt;T&gt; {</code></td><td>Introduces a structured data shape that other procedures can exchange.</td></tr></table></div><h3>Procedures</h3><div class="table-scroll"><table border="1" cellpadding="6" cellspacing="0"><tr><th>Line</th><th>Name</th><th>Signature</th><th>Role</th></tr><tr><td>25</td><td><code>channel_new</code></td><td><code>proc channel_new&lt;T&gt;(capacity: int) -&gt; Channel&lt;T&gt; {</code></td><td>Owns coordination, scheduling, or concurrency behavior.</td></tr><tr><td>39</td><td><code>channel_send</code></td><td><code>proc channel_send&lt;T&gt;(ch: Channel&lt;T&gt;, value: T) -&gt; bool {</code></td><td>Owns coordination, scheduling, or concurrency behavior.</td></tr><tr><td>60</td><td><code>channel_recv</code></td><td><code>proc channel_recv&lt;T&gt;(ch: Channel&lt;T&gt;) -&gt; T {</code></td><td>Owns coordination, scheduling, or concurrency behavior.</td></tr><tr><td>79</td><td><code>channel_try_recv</code></td><td><code>proc channel_try_recv&lt;T&gt;(ch: Channel&lt;T&gt;) -&gt; T {</code></td><td>Owns coordination, scheduling, or concurrency behavior.</td></tr><tr><td>95</td><td><code>channel_is_closed</code></td><td><code>proc channel_is_closed&lt;T&gt;(ch: Channel&lt;T&gt;) -&gt; bool {</code></td><td>Owns coordination, scheduling, or concurrency behavior.</td></tr><tr><td>99</td><td><code>channel_close_sender</code></td><td><code>proc channel_close_sender&lt;T&gt;(ch: Channel&lt;T&gt;) -&gt; bool {</code></td><td>Owns coordination, scheduling, or concurrency behavior.</td></tr><tr><td>112</td><td><code>channel_close_receiver</code></td><td><code>proc channel_close_receiver&lt;T&gt;(ch: Channel&lt;T&gt;) -&gt; bool {</code></td><td>Owns coordination, scheduling, or concurrency behavior.</td></tr><tr><td>124</td><td><code>channel_len</code></td><td><code>proc channel_len&lt;T&gt;(ch: Channel&lt;T&gt;) -&gt; int {</code></td><td>Owns coordination, scheduling, or concurrency behavior.</td></tr><tr><td>131</td><td><code>channel_select</code></td><td><code>proc channel_select&lt;T&gt;(channels: [Channel&lt;T&gt;]) -&gt; Select&lt;T&gt; {</code></td><td>Owns coordination, scheduling, or concurrency behavior.</td></tr><tr><td>153</td><td><code>queue_new</code></td><td><code>proc queue_new&lt;T&gt;() -&gt; Queue&lt;T&gt; {</code></td><td>Owns a concrete data shape or the operations that maintain it.</td></tr><tr><td>160</td><td><code>queue_push</code></td><td><code>proc queue_push&lt;T&gt;(q: Queue&lt;T&gt;, value: T) -&gt; bool {</code></td><td>Owns a concrete data shape or the operations that maintain it.</td></tr><tr><td>165</td><td><code>queue_pop</code></td><td><code>proc queue_pop&lt;T&gt;(q: Queue&lt;T&gt;) -&gt; T {</code></td><td>Owns a concrete data shape or the operations that maintain it.</td></tr><tr><td>177</td><td><code>queue_len</code></td><td><code>proc queue_len&lt;T&gt;(q: Queue&lt;T&gt;) -&gt; int {</code></td><td>Owns a concrete data shape or the operations that maintain it.</td></tr><tr><td>181</td><td><code>queue_rest</code></td><td><code>proc queue_rest&lt;T&gt;(items: [T]) -&gt; [T] {</code></td><td>Owns a concrete data shape or the operations that maintain it.</td></tr><tr><td>195</td><td><code>mutex_new</code></td><td><code>proc mutex_new() -&gt; int {</code></td><td>Owns coordination, scheduling, or concurrency behavior.</td></tr><tr><td>199</td><td><code>mutex_lock</code></td><td><code>proc mutex_lock(id: int) -&gt; bool {</code></td><td>Owns coordination, scheduling, or concurrency behavior.</td></tr><tr><td>203</td><td><code>mutex_unlock</code></td><td><code>proc mutex_unlock(id: int) -&gt; bool {</code></td><td>Owns coordination, scheduling, or concurrency behavior.</td></tr><tr><td>207</td><td><code>cond_new</code></td><td><code>proc cond_new() -&gt; int {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>211</td><td><code>cond_wait</code></td><td><code>proc cond_wait(cond: int, mutex: int) -&gt; bool {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>215</td><td><code>cond_signal</code></td><td><code>proc cond_signal(cond: int) -&gt; bool {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>219</td><td><code>cond_broadcast</code></td><td><code>proc cond_broadcast(cond: int) -&gt; bool {</code></td><td>Represents one top-level surface in the file contract and should be read as part of the module boundary.</td></tr><tr><td>223</td><td><code>channel_version</code></td><td><code>proc channel_version() -&gt; string {</code></td><td>Owns coordination, scheduling, or concurrency behavior.</td></tr><tr><td>227</td><td><code>channel_ready</code></td><td><code>proc channel_ready() -&gt; bool {</code></td><td>Owns coordination, scheduling, or concurrency behavior.</td></tr><tr><td>231</td><td><code>channel_selftest</code></td><td><code>proc channel_selftest() -&gt; bool {</code></td><td>Owns coordination, scheduling, or concurrency behavior.</td></tr></table></div><h3>Imports</h3><div class="table-scroll"><table border="1" cellpadding="6" cellspacing="0"><tr><th>Line</th><th>Name</th><th>Signature</th><th>Role</th></tr><tr><td>3</td><td><code>vitte/stdlib/core</code></td><td><code>use vitte/stdlib/core</code></td><td>Imports a sibling or supporting surface used by the module.</td></tr></table></div><h3>Exports</h3><div class="table-scroll"><table border="1" cellpadding="6" cellspacing="0"><tr><th>Line</th><th>Name</th><th>Signature</th><th>Role</th></tr><tr><td>253</td><td><code>*</code></td><td><code>export *</code></td><td>Re-exports surfaces that the module wants to expose as part of its public boundary.</td></tr></table></div>
+</section>
 <section id="boundaries">
 <h2>Integration boundaries</h2>
 <p>Within <code>async</code>, this file should remain focused. If a future helper changes the host boundary, scheduling boundary, or data-shape boundary, it probably belongs in a neighbor module instead of being added here by convenience.</p>
@@ -122,6 +270,25 @@ form Channel&lt;T&gt; {
 <li>Family responsibility: Future, channel, executor, and task orchestration helpers.</li>
 <li>Family architecture role: Use `async` when work should be coordinated as tasks rather than as direct thread ownership.</li>
 </ul>
+</section>
+<section id="composition">
+<h2>Composition guidance</h2>
+<h3>Choose this module when</h3>
+<ul><li>Choose <code>async/channel.vitl</code> when the main question is owned by this module rather than by transport, storage, orchestration, or user-interface code.</li><li>Use this module when coordination and scheduling are explicit parts of the design.</li><li>A pipeline can spawn tasks, exchange messages through channels, and join through the executor boundary.</li></ul>
+<h3>Pause before extending it when</h3>
+<ul><li>Avoid extending this file when the new helper mostly changes the boundary to host I/O, runtime coordination, or foreign integration instead of staying inside <code>async</code>.</li><li>Check nearby modules such as <code>async/async.vitl</code>, <code>async/executor.vitl</code>, <code>async/future.vitl</code> before adding convenience wrappers here.</li></ul>
+</section>
+<section id="relationships">
+<h2>Relationship table</h2>
+<p>This table keeps the page closer to a real encyclopedia entry: a module is easier to understand when compared with its nearest alternatives in the same family.</p>
+<div class="table-scroll">
+<table border="1" cellpadding="6" cellspacing="0">
+<tr><th>Neighbor</th><th>Procedures</th><th>Data surfaces</th><th>Why compare it</th></tr>
+<tr><td><a href="async--async.vitl.html"><code>async/async.vitl</code></a></td><td>29</td><td>3</td><td>Shares the same family boundary but carries a distinct slice of responsibility.</td></tr>
+<tr><td><a href="async--executor.vitl.html"><code>async/executor.vitl</code></a></td><td>18</td><td>3</td><td>Shares the same family boundary but carries a distinct slice of responsibility.</td></tr>
+<tr><td><a href="async--future.vitl.html"><code>async/future.vitl</code></a></td><td>24</td><td>1</td><td>Shares the same family boundary but carries a distinct slice of responsibility.</td></tr>
+</table>
+</div>
 </section>
 <section id="neighbors">
 <h2>Neighbor modules</h2>
