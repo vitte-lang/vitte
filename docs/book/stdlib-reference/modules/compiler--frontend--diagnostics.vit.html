@@ -78,9 +78,9 @@
 <tr><td>Path</td><td><code>compiler/frontend/diagnostics.vit</code></td></tr>
 <tr><td>Family</td><td><a href="../families/compiler.html"><code>compiler</code></a></td></tr>
 <tr><td>Kind</td><td>compiler-facing or orchestrator module</td></tr>
-<tr><td>Line count</td><td>49</td></tr>
-<tr><td>Declared procedures</td><td>5</td></tr>
-<tr><td>Declared forms/picks</td><td>3</td></tr>
+<tr><td>Line count</td><td>124</td></tr>
+<tr><td>Declared procedures</td><td>9</td></tr>
+<tr><td>Declared forms/picks</td><td>4</td></tr>
 </table>
 <p>`compiler/frontend/diagnostics.vit` is a compiler-facing or orchestrator module inside the `compiler` family. It should be read as one focused slice of the broader family responsibility: Compiler-owned stdlib surfaces that support self-hosted compiler and driver integration.</p>
 </section>
@@ -92,7 +92,7 @@
 <section id="taxonomy">
 <h2>Taxonomy</h2>
 <p>Think of this page as a generated encyclopedia entry rather than a hand-written tutorial. The goal is to show what kind of module this is, how dense it is, and what reading strategy makes sense before depending on it.</p>
-<ul><li>Compact procedure surface: this file is small enough to read end-to-end before depending on it.</li><li>Owns domain vocabulary: the module declares data shapes in addition to executable helpers, so its types are part of the contract.</li><li>Minimal top-level dependencies: the module reads as mostly self-contained from its opening declarations.</li><li>Explicit export surface: the file ends with visible export declarations instead of relying only on implicit namespace discovery.</li></ul>
+<ul><li>Medium procedure surface: this file groups several related operations behind one namespace.</li><li>Owns domain vocabulary: the module declares data shapes in addition to executable helpers, so its types are part of the contract.</li><li>Minimal top-level dependencies: the module reads as mostly self-contained from its opening declarations.</li><li>Explicit export surface: the file ends with visible export declarations instead of relying only on implicit namespace discovery.</li></ul>
 </section>
 <section id="profile">
 <h2>Implementation profile</h2>
@@ -100,12 +100,12 @@
 <div class="table-scroll">
 <table border="1" cellpadding="6" cellspacing="0">
 <tr><th>Signal</th><th>Count</th><th>What it suggests</th></tr>
-<tr><td><code>if</code></td><td>1</td><td>Branching density and local decision-making.</td></tr>
-<tr><td><code>while</code></td><td>1</td><td>Loop-heavy or iterative implementation style.</td></tr>
+<tr><td><code>if</code></td><td>3</td><td>Branching density and local decision-making.</td></tr>
+<tr><td><code>while</code></td><td>0</td><td>Loop-heavy or iterative implementation style.</td></tr>
 <tr><td><code>for</code></td><td>0</td><td>Collection-style traversal at source level.</td></tr>
 <tr><td><code>match</code></td><td>0</td><td>Variant-driven branching or grammar-style decoding.</td></tr>
-<tr><td><code>let</code></td><td>1</td><td>Local state and intermediate value density.</td></tr>
-<tr><td><code>give</code></td><td>6</td><td>Number of explicit exit points and result shaping.</td></tr>
+<tr><td><code>let</code></td><td>3</td><td>Local state and intermediate value density.</td></tr>
+<tr><td><code>give</code></td><td>11</td><td>Number of explicit exit points and result shaping.</td></tr>
 </table>
 </div>
 </section>
@@ -113,8 +113,8 @@
 <h2>Top-level API inventory</h2>
 <table border="1" cellpadding="6" cellspacing="0">
 <tr><th>Surface</th><th>Items</th></tr>
-<tr><td>Procedures</td><td><code>new_bag</code>, <code>add</code>, <code>add_error</code>, <code>add_warning</code>, <code>has_errors</code></td></tr>
-<tr><td>Forms</td><td><code>Diagnostic</code>, <code>DiagnosticBag</code></td></tr>
+<tr><td>Procedures</td><td><code>span_at</code>, <code>new_bag</code>, <code>add</code>, <code>add_error</code>, <code>add_warning</code>, <code>add_note</code>, <code>attach_note</code>, <code>attach_help</code>, <code>has_errors</code></td></tr>
+<tr><td>Forms</td><td><code>DiagnosticSpan</code>, <code>Diagnostic</code>, <code>DiagnosticBag</code></td></tr>
 <tr><td>Picks</td><td><code>DiagnosticLevel</code></td></tr>
 <tr><td>Constants</td><td>none declared at top level</td></tr>
 <tr><td>Exports</td><td><code>*</code></td></tr>
@@ -124,7 +124,7 @@
 </section>
 <section id="position">
 <h2>Position in family</h2>
-<p>This file is module 19 of 27 in the <code>compiler</code> family when ordered by path. By procedure count it ranks 12, and by line count it ranks 10. Those ranks are useful as rough signals of breadth, not as quality judgments.</p>
+<p>This file is module 19 of 27 in the <code>compiler</code> family when ordered by path. By procedure count it ranks 6, and by line count it ranks 1. Those ranks are useful as rough signals of breadth, not as quality judgments.</p>
 </section>
 <section id="declarations">
 <h2>Declaration map</h2>
@@ -134,21 +134,26 @@
 <tr><th>Line</th><th>Name</th><th>Kind</th><th>Role</th></tr>
 <tr><td>1</td><td><code>vitte/compiler/frontend/diagnostics</code></td><td>space</td><td>Declares the namespace that anchors this file in the stdlib tree.</td></tr>
 <tr><td>3</td><td><code>DiagnosticLevel</code></td><td>pick</td><td>Introduces a tagged variant type used to model distinct outcomes.</td></tr>
-<tr><td>9</td><td><code>Diagnostic</code></td><td>form</td><td>Introduces a structured data shape that other procedures can exchange.</td></tr>
-<tr><td>17</td><td><code>DiagnosticBag</code></td><td>form</td><td>Introduces a structured data shape that other procedures can exchange.</td></tr>
-<tr><td>21</td><td><code>new_bag</code></td><td>proc</td><td>Supports compiler-facing orchestration, lowering, diagnostics, or backend work.</td></tr>
-<tr><td>25</td><td><code>add</code></td><td>proc</td><td>Supports compiler-facing orchestration, lowering, diagnostics, or backend work.</td></tr>
-<tr><td>30</td><td><code>add_error</code></td><td>proc</td><td>Supports compiler-facing orchestration, lowering, diagnostics, or backend work.</td></tr>
-<tr><td>34</td><td><code>add_warning</code></td><td>proc</td><td>Supports compiler-facing orchestration, lowering, diagnostics, or backend work.</td></tr>
-<tr><td>38</td><td><code>has_errors</code></td><td>proc</td><td>Supports compiler-facing orchestration, lowering, diagnostics, or backend work.</td></tr>
+<tr><td>12</td><td><code>DiagnosticSpan</code></td><td>form</td><td>Introduces a structured data shape that other procedures can exchange.</td></tr>
+<tr><td>20</td><td><code>Diagnostic</code></td><td>form</td><td>Introduces a structured data shape that other procedures can exchange.</td></tr>
+<tr><td>30</td><td><code>DiagnosticBag</code></td><td>form</td><td>Introduces a structured data shape that other procedures can exchange.</td></tr>
+<tr><td>39</td><td><code>span_at</code></td><td>proc</td><td>Supports compiler-facing orchestration, lowering, diagnostics, or backend work.</td></tr>
+<tr><td>49</td><td><code>new_bag</code></td><td>proc</td><td>Supports compiler-facing orchestration, lowering, diagnostics, or backend work.</td></tr>
+<tr><td>60</td><td><code>add</code></td><td>proc</td><td>Supports compiler-facing orchestration, lowering, diagnostics, or backend work.</td></tr>
+<tr><td>88</td><td><code>add_error</code></td><td>proc</td><td>Supports compiler-facing orchestration, lowering, diagnostics, or backend work.</td></tr>
+<tr><td>92</td><td><code>add_warning</code></td><td>proc</td><td>Supports compiler-facing orchestration, lowering, diagnostics, or backend work.</td></tr>
+<tr><td>96</td><td><code>add_note</code></td><td>proc</td><td>Supports compiler-facing orchestration, lowering, diagnostics, or backend work.</td></tr>
+<tr><td>100</td><td><code>attach_note</code></td><td>proc</td><td>Supports compiler-facing orchestration, lowering, diagnostics, or backend work.</td></tr>
+<tr><td>110</td><td><code>attach_help</code></td><td>proc</td><td>Supports compiler-facing orchestration, lowering, diagnostics, or backend work.</td></tr>
+<tr><td>120</td><td><code>has_errors</code></td><td>proc</td><td>Supports compiler-facing orchestration, lowering, diagnostics, or backend work.</td></tr>
 </table>
 </div>
-<p>The table is exhaustive for top-level declarations of the selected kinds. This file declares 9 matching surfaces.</p>
+<p>The table is exhaustive for top-level declarations of the selected kinds. This file declares 14 matching surfaces.</p>
 </section>
 <section id="signatures">
 <h2>Representative signatures</h2>
 <p>These signatures are shown in source order so the page keeps the feel of a reference manual, not just a keyword cloud.</p>
-<ul><li><code>pick DiagnosticLevel {</code> (line 3)</li><li><code>form Diagnostic {</code> (line 9)</li><li><code>form DiagnosticBag {</code> (line 17)</li><li><code>proc new_bag() -&gt; DiagnosticBag {</code> (line 21)</li><li><code>proc add(bag: DiagnosticBag, level: DiagnosticLevel, code: string, message: string, line: int, column: int) -&gt; DiagnosticBag {</code> (line 25)</li><li><code>proc add_error(bag: DiagnosticBag, code: string, message: string, line: int, column: int) -&gt; DiagnosticBag {</code> (line 30)</li><li><code>proc add_warning(bag: DiagnosticBag, code: string, message: string, line: int, column: int) -&gt; DiagnosticBag {</code> (line 34)</li><li><code>proc has_errors(bag: DiagnosticBag) -&gt; bool {</code> (line 38)</li></ul>
+<ul><li><code>pick DiagnosticLevel {</code> (line 3)</li><li><code>form DiagnosticSpan {</code> (line 12)</li><li><code>form Diagnostic {</code> (line 20)</li><li><code>form DiagnosticBag {</code> (line 30)</li><li><code>proc span_at(line: int, column: int) -&gt; DiagnosticSpan {</code> (line 39)</li><li><code>proc new_bag() -&gt; DiagnosticBag {</code> (line 49)</li><li><code>proc add(bag: DiagnosticBag, level: DiagnosticLevel, code: string, message: string, line: int, column: int) -&gt; DiagnosticBag {</code> (line 60)</li><li><code>proc add_error(bag: DiagnosticBag, code: string, message: string, line: int, column: int) -&gt; DiagnosticBag {</code> (line 88)</li><li><code>proc add_warning(bag: DiagnosticBag, code: string, message: string, line: int, column: int) -&gt; DiagnosticBag {</code> (line 92)</li><li><code>proc add_note(bag: DiagnosticBag, code: string, message: string, line: int, column: int) -&gt; DiagnosticBag {</code> (line 96)</li><li><code>proc attach_note(bag: DiagnosticBag, note: string) -&gt; DiagnosticBag {</code> (line 100)</li><li><code>proc attach_help(bag: DiagnosticBag, help: string) -&gt; DiagnosticBag {</code> (line 110)</li><li><code>proc has_errors(bag: DiagnosticBag) -&gt; bool {</code> (line 120)</li></ul>
 </section>
 <section id="usage">
 <h2>How to use this module</h2>
@@ -168,17 +173,17 @@ pick UserOutcome {
   case Empty(reason: string)
 }
 proc run_example() -&gt; UserOutcome {
-  let result = new_bag()
+  let result = span_at(1, 1)
   let ready: bool = has_errors(DiagnosticBag())
-  let failed: bool = false
-  let idx: int = 0
-  while idx &lt; 1 {
-    set idx = idx + 1
-  }
+  let stable: bool = ready and true
+  let fallback: bool = ready or false
+  let retries: int = 0
+  set retries = retries + 1
   if ready {
     give UserOutcome.Empty(&quot;module not ready&quot;)
-  }
+  } else {
     give UserOutcome.Ready(&quot;ok&quot;)
+  }
 }
 export run_example</code></pre>
 </section>
@@ -195,33 +200,34 @@ export run_example</code></pre>
 <tr><td><code>let</code></td><td>yes</td><td>yes</td></tr>
 <tr><td><code>set</code></td><td>yes</td><td>yes</td></tr>
 <tr><td><code>if</code></td><td>yes</td><td>yes</td></tr>
-<tr><td><code>while</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>else</code></td><td>yes</td><td>yes</td></tr>
 <tr><td><code>give</code></td><td>yes</td><td>yes</td></tr>
 <tr><td><code>export</code></td><td>yes</td><td>yes</td></tr>
-<tr><td><code>true</code></td><td>yes</td><td>no</td></tr>
-<tr><td><code>false</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>true</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>and</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>or</code></td><td>yes</td><td>yes</td></tr>
 </table>
 </div>
-<p>Keywords still not exercised directly in the generated snippet: <code>true</code>. The page still lists them here so the gap is visible.</p>
+<p>The generated snippet exercises every detected Vitte keyword used by this module.</p>
 </section>
 <section id="source-shape">
 <h2>Source shape</h2>
 <pre><code class="language-vitl">space vitte/compiler/frontend/diagnostics
 pick DiagnosticLevel {
+  Info,
   Error,
   Warning,
-  Note
+  Note,
+  Help,
+  Fatal
 }
-form Diagnostic {
-  level: DiagnosticLevel,
-  code: string,
-  message: string,</code></pre>
+form DiagnosticSpan {</code></pre>
 <p>The excerpt is not meant to replace the file. It exists to make the module recognizable at first glance, the same way a Wikipedia infobox helps the reader orient before reading the whole article.</p>
 </section>
 <section id="landmarks">
 <h2>Source landmarks</h2>
 <p>Large files are easier to retain when they have visible landmarks. When the source contains explicit section banners, they are surfaced here; otherwise the first major declarations are used as anchors.</p>
-<ul><li>Line 1: <code>space vitte/compiler/frontend/diagnostics</code></li><li>Line 3: <code>pick DiagnosticLevel {</code></li><li>Line 9: <code>form Diagnostic {</code></li><li>Line 17: <code>form DiagnosticBag {</code></li><li>Line 21: <code>proc new_bag() -&gt; DiagnosticBag {</code></li><li>Line 25: <code>proc add(bag: DiagnosticBag, level: DiagnosticLevel, code: string, message: string, line: int, column: int) -&gt; DiagnosticBag {</code></li><li>Line 30: <code>proc add_error(bag: DiagnosticBag, code: string, message: string, line: int, column: int) -&gt; DiagnosticBag {</code></li><li>Line 34: <code>proc add_warning(bag: DiagnosticBag, code: string, message: string, line: int, column: int) -&gt; DiagnosticBag {</code></li></ul>
+<ul><li>Line 1: <code>space vitte/compiler/frontend/diagnostics</code></li><li>Line 3: <code>pick DiagnosticLevel {</code></li><li>Line 12: <code>form DiagnosticSpan {</code></li><li>Line 20: <code>form Diagnostic {</code></li><li>Line 30: <code>form DiagnosticBag {</code></li><li>Line 39: <code>proc span_at(line: int, column: int) -&gt; DiagnosticSpan {</code></li><li>Line 49: <code>proc new_bag() -&gt; DiagnosticBag {</code></li><li>Line 60: <code>proc add(bag: DiagnosticBag, level: DiagnosticLevel, code: string, message: string, line: int, column: int) -&gt; DiagnosticBag {</code></li></ul>
 </section>
 <section id="organization">
 <h2>Source organization</h2>
@@ -229,15 +235,15 @@ form Diagnostic {
 
 <section class="lead-panel">
 <h3>File surfaces</h3>
-<p><strong>Top-level items:</strong> 10. <strong>Procedures:</strong> 5. <strong>Data surfaces:</strong> 3. <strong>Constants:</strong> 0.</p>
-<p><strong>First visible names:</strong> <code>vitte/compiler/frontend/diagnostics</code>, <code>DiagnosticLevel</code>, <code>Diagnostic</code>, <code>DiagnosticBag</code>, <code>new_bag</code>, <code>add</code>, <code>add_error</code>, <code>add_warning</code>, <code>has_errors</code>, <code>*</code></p>
+<p><strong>Top-level items:</strong> 15. <strong>Procedures:</strong> 9. <strong>Data surfaces:</strong> 4. <strong>Constants:</strong> 0.</p>
+<p><strong>First visible names:</strong> <code>vitte/compiler/frontend/diagnostics</code>, <code>DiagnosticLevel</code>, <code>DiagnosticSpan</code>, <code>Diagnostic</code>, <code>DiagnosticBag</code>, <code>span_at</code>, <code>new_bag</code>, <code>add</code>, <code>add_error</code>, <code>add_warning</code></p>
 </section>
 
 </section>
 <section id="catalog">
 <h2>Complete API catalog</h2>
 <p>This catalog is the exhaustive file-level index for the module. It is intentionally closer to a generated encyclopedia appendix than to a tutorial summary.</p>
-<h3>Data surfaces</h3><div class="table-scroll"><table border="1" cellpadding="6" cellspacing="0"><tr><th>Line</th><th>Name</th><th>Signature</th><th>Role</th></tr><tr><td>3</td><td><code>DiagnosticLevel</code></td><td><code>pick DiagnosticLevel {</code></td><td>Introduces a tagged variant type used to model distinct outcomes.</td></tr><tr><td>9</td><td><code>Diagnostic</code></td><td><code>form Diagnostic {</code></td><td>Introduces a structured data shape that other procedures can exchange.</td></tr><tr><td>17</td><td><code>DiagnosticBag</code></td><td><code>form DiagnosticBag {</code></td><td>Introduces a structured data shape that other procedures can exchange.</td></tr></table></div><h3>Procedures</h3><div class="table-scroll"><table border="1" cellpadding="6" cellspacing="0"><tr><th>Line</th><th>Name</th><th>Signature</th><th>Role</th></tr><tr><td>21</td><td><code>new_bag</code></td><td><code>proc new_bag() -&gt; DiagnosticBag {</code></td><td>Supports compiler-facing orchestration, lowering, diagnostics, or backend work.</td></tr><tr><td>25</td><td><code>add</code></td><td><code>proc add(bag: DiagnosticBag, level: DiagnosticLevel, code: string, message: string, line: int, column: int) -&gt; DiagnosticBag {</code></td><td>Supports compiler-facing orchestration, lowering, diagnostics, or backend work.</td></tr><tr><td>30</td><td><code>add_error</code></td><td><code>proc add_error(bag: DiagnosticBag, code: string, message: string, line: int, column: int) -&gt; DiagnosticBag {</code></td><td>Supports compiler-facing orchestration, lowering, diagnostics, or backend work.</td></tr><tr><td>34</td><td><code>add_warning</code></td><td><code>proc add_warning(bag: DiagnosticBag, code: string, message: string, line: int, column: int) -&gt; DiagnosticBag {</code></td><td>Supports compiler-facing orchestration, lowering, diagnostics, or backend work.</td></tr><tr><td>38</td><td><code>has_errors</code></td><td><code>proc has_errors(bag: DiagnosticBag) -&gt; bool {</code></td><td>Supports compiler-facing orchestration, lowering, diagnostics, or backend work.</td></tr></table></div><h3>Exports</h3><div class="table-scroll"><table border="1" cellpadding="6" cellspacing="0"><tr><th>Line</th><th>Name</th><th>Signature</th><th>Role</th></tr><tr><td>49</td><td><code>*</code></td><td><code>export *</code></td><td>Re-exports surfaces that the module wants to expose as part of its public boundary.</td></tr></table></div>
+<h3>Data surfaces</h3><div class="table-scroll"><table border="1" cellpadding="6" cellspacing="0"><tr><th>Line</th><th>Name</th><th>Signature</th><th>Role</th></tr><tr><td>3</td><td><code>DiagnosticLevel</code></td><td><code>pick DiagnosticLevel {</code></td><td>Introduces a tagged variant type used to model distinct outcomes.</td></tr><tr><td>12</td><td><code>DiagnosticSpan</code></td><td><code>form DiagnosticSpan {</code></td><td>Introduces a structured data shape that other procedures can exchange.</td></tr><tr><td>20</td><td><code>Diagnostic</code></td><td><code>form Diagnostic {</code></td><td>Introduces a structured data shape that other procedures can exchange.</td></tr><tr><td>30</td><td><code>DiagnosticBag</code></td><td><code>form DiagnosticBag {</code></td><td>Introduces a structured data shape that other procedures can exchange.</td></tr></table></div><h3>Procedures</h3><div class="table-scroll"><table border="1" cellpadding="6" cellspacing="0"><tr><th>Line</th><th>Name</th><th>Signature</th><th>Role</th></tr><tr><td>39</td><td><code>span_at</code></td><td><code>proc span_at(line: int, column: int) -&gt; DiagnosticSpan {</code></td><td>Supports compiler-facing orchestration, lowering, diagnostics, or backend work.</td></tr><tr><td>49</td><td><code>new_bag</code></td><td><code>proc new_bag() -&gt; DiagnosticBag {</code></td><td>Supports compiler-facing orchestration, lowering, diagnostics, or backend work.</td></tr><tr><td>60</td><td><code>add</code></td><td><code>proc add(bag: DiagnosticBag, level: DiagnosticLevel, code: string, message: string, line: int, column: int) -&gt; DiagnosticBag {</code></td><td>Supports compiler-facing orchestration, lowering, diagnostics, or backend work.</td></tr><tr><td>88</td><td><code>add_error</code></td><td><code>proc add_error(bag: DiagnosticBag, code: string, message: string, line: int, column: int) -&gt; DiagnosticBag {</code></td><td>Supports compiler-facing orchestration, lowering, diagnostics, or backend work.</td></tr><tr><td>92</td><td><code>add_warning</code></td><td><code>proc add_warning(bag: DiagnosticBag, code: string, message: string, line: int, column: int) -&gt; DiagnosticBag {</code></td><td>Supports compiler-facing orchestration, lowering, diagnostics, or backend work.</td></tr><tr><td>96</td><td><code>add_note</code></td><td><code>proc add_note(bag: DiagnosticBag, code: string, message: string, line: int, column: int) -&gt; DiagnosticBag {</code></td><td>Supports compiler-facing orchestration, lowering, diagnostics, or backend work.</td></tr><tr><td>100</td><td><code>attach_note</code></td><td><code>proc attach_note(bag: DiagnosticBag, note: string) -&gt; DiagnosticBag {</code></td><td>Supports compiler-facing orchestration, lowering, diagnostics, or backend work.</td></tr><tr><td>110</td><td><code>attach_help</code></td><td><code>proc attach_help(bag: DiagnosticBag, help: string) -&gt; DiagnosticBag {</code></td><td>Supports compiler-facing orchestration, lowering, diagnostics, or backend work.</td></tr><tr><td>120</td><td><code>has_errors</code></td><td><code>proc has_errors(bag: DiagnosticBag) -&gt; bool {</code></td><td>Supports compiler-facing orchestration, lowering, diagnostics, or backend work.</td></tr></table></div><h3>Exports</h3><div class="table-scroll"><table border="1" cellpadding="6" cellspacing="0"><tr><th>Line</th><th>Name</th><th>Signature</th><th>Role</th></tr><tr><td>124</td><td><code>*</code></td><td><code>export *</code></td><td>Re-exports surfaces that the module wants to expose as part of its public boundary.</td></tr></table></div>
 </section>
 <section id="boundaries">
 <h2>Integration boundaries</h2>
