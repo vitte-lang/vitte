@@ -825,6 +825,10 @@ def generated_user_example(module: dict[str, object]) -> tuple[str, list[str]]:
             lines.append("    set idx = idx + 1")
             lines.append("  }")
             example_keywords.update({"while", "set"})
+        elif "set" in keywords:
+            lines.append("  let retries: int = 0")
+            lines.append("  set retries = retries + 1")
+            example_keywords.update({"set", "let"})
 
         if "for" in keywords:
             lines.append("  for sample in [1] {")
