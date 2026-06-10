@@ -1,0 +1,57 @@
+space vitte/compiler/infrastructure/diagnostics/labels
+
+use vitte/compiler/infrastructure/diagnostics/diagnostic.{
+    DiagnosticLabel,
+    DiagnosticLabelKind,
+    SourceSpan,
+    diagnostic_label,
+    label_kind_name,
+    span_create,
+    span_location_text,
+    span_range
+}
+
+proc primary_label(message: string, span: SourceSpan) -> DiagnosticLabel {
+    give diagnostic_label(DiagnosticLabelKind.Primary, message, span);
+}
+
+proc secondary_label(message: string, span: SourceSpan) -> DiagnosticLabel {
+    give diagnostic_label(DiagnosticLabelKind.Secondary, message, span);
+}
+
+proc context_label(message: string, span: SourceSpan) -> DiagnosticLabel {
+    give diagnostic_label(DiagnosticLabelKind.Context, message, span);
+}
+
+proc previous_label(message: string, span: SourceSpan) -> DiagnosticLabel {
+    give diagnostic_label(DiagnosticLabelKind.Previous, message, span);
+}
+
+proc related_label(message: string, span: SourceSpan) -> DiagnosticLabel {
+    give diagnostic_label(DiagnosticLabelKind.Related, message, span);
+}
+
+proc point_primary_label(message: string, file: string, line: u64, column: u64) -> DiagnosticLabel {
+    give primary_label(message, span_create(file, line, column, 1));
+}
+
+proc range_secondary_label(message: string, file: string, start_line: u64, start_column: u64, end_line: u64, end_column: u64) -> DiagnosticLabel {
+    give secondary_label(message, span_range(file, start_line, start_column, end_line, end_column));
+}
+
+proc render_label_summary(label: DiagnosticLabel) -> string {
+    give label_kind_name(label.kind)
+        + ": "
+        + span_location_text(label.span)
+        + " "
+        + label.message;
+}
+
+share primary_label
+share secondary_label
+share context_label
+share previous_label
+share related_label
+share point_primary_label
+share range_secondary_label
+share render_label_summary
