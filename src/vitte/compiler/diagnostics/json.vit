@@ -9,6 +9,7 @@ space vitte/compiler/diagnostics/json
 use vitte/compiler/diagnostics/diagnostic.{
     Diagnostic,
     DiagnosticReport,
+    DiagnosticEnvelope,
     DiagnosticSeverity,
     DiagnosticPhase,
     DiagnosticLabel,
@@ -17,11 +18,21 @@ use vitte/compiler/diagnostics/diagnostic.{
     DiagnosticHelp,
     DiagnosticSuggestion,
     DiagnosticSuggestionKind,
+    DiagnosticFixPlan,
+    DiagnosticQuality,
     SourceSpan,
     severity_name,
     phase_name,
     label_kind_name,
-    suggestion_kind_name
+    suggestion_kind_name,
+    fix_kind_name,
+    diagnostic_code_family,
+    diagnostic_correction_strategy,
+    diagnostic_recovery_scope,
+    diagnostic_confidence,
+    diagnostic_fix_plans,
+    diagnostic_quality,
+    diagnostic_schema_version
 }
 
 proc json_escape(text: string) -> string {
@@ -293,6 +304,44 @@ proc json_suggestions(suggestions: [DiagnosticSuggestion]) -> string {
     give json_array(encoded);
 }
 
+proc json_quality(quality: DiagnosticQuality) -> string {
+    give json_object([
+        json_key_value("score", quality.score as string),
+        json_key_value("span_score", quality.span_score as string),
+        json_key_value("context_score", quality.context_score as string),
+        json_key_value("fix_score", quality.fix_score as string),
+        json_key_value("stability_score", quality.stability_score as string),
+        json_key_value("cascade_score", quality.cascade_score as string),
+        json_key_value("valid", json_bool(quality.valid))
+    ]);
+}
+
+proc json_fix(plan: DiagnosticFixPlan) -> string {
+    give json_object([
+        json_key_value("id", json_quote(plan.id)),
+        json_key_value("kind", json_quote(fix_kind_name(plan.kind))),
+        json_key_value("message", json_quote(plan.message)),
+        json_key_value("replacement", json_quote(plan.replacement)),
+        json_key_value("machine_applicable", json_bool(plan.machine_applicable)),
+        json_key_value("confidence", json_quote(plan.confidence)),
+        json_key_value("reason", json_quote(plan.reason)),
+        json_key_value("span", json_source_span(plan.span)),
+        json_key_value("valid", json_bool(plan.valid))
+    ]);
+}
+
+proc json_fixes(plans: [DiagnosticFixPlan]) -> string {
+    let encoded: [string] = [];
+    let i: u64 = 0;
+
+    while i < len(plans) {
+        set encoded = encoded + [json_fix(plans[i])];
+        set i = i + 1;
+    }
+
+    give json_array(encoded);
+}
+
 proc json_diagnostic(diagnostic: Diagnostic) -> string {
     give json_object([
         json_key_value(
@@ -316,6 +365,46 @@ proc json_diagnostic(diagnostic: Diagnostic) -> string {
             json_quote(
                 phase_name(
                     diagnostic.phase
+                )
+            )
+        ),
+
+        json_key_value(
+            "family",
+            json_quote(
+                diagnostic_code_family(
+                    diagnostic.phase,
+                    diagnostic.code
+                )
+            )
+        ),
+
+        json_key_value(
+            "strategy",
+            json_quote(
+                diagnostic_correction_strategy(
+                    diagnostic.phase,
+                    diagnostic.code
+                )
+            )
+        ),
+
+        json_key_value(
+            "recovery_scope",
+            json_quote(
+                diagnostic_recovery_scope(
+                    diagnostic.phase,
+                    diagnostic.code
+                )
+            )
+        ),
+
+        json_key_value(
+            "confidence",
+            json_quote(
+                diagnostic_confidence(
+                    diagnostic.phase,
+                    diagnostic.code
                 )
             )
         ),
@@ -387,6 +476,20 @@ proc json_diagnostic(diagnostic: Diagnostic) -> string {
             "suggestions",
             json_suggestions(
                 diagnostic.suggestions
+            )
+        ),
+
+        json_key_value(
+            "fixes",
+            json_fixes(
+                diagnostic_fix_plans(diagnostic)
+            )
+        ),
+
+        json_key_value(
+            "quality",
+            json_quality(
+                diagnostic_quality(diagnostic)
             )
         ),
 
@@ -533,12 +636,69 @@ proc json_report(report: DiagnosticReport) -> string {
         ),
 
         json_key_value(
+            "root_count",
+            report.root_count as string
+        ),
+
+        json_key_value(
+            "cascade_count",
+            report.cascade_count as string
+        ),
+
+        json_key_value(
+            "quality_score",
+            report.quality_score as string
+        ),
+
+        json_key_value(
+            "causality",
+            json_object([
+                json_key_value("root_count", report.root_count as string),
+                json_key_value("cascade_count", report.cascade_count as string),
+                json_key_value("suppressed_cascade_count", report.cascade_count as string)
+            ])
+        ),
+
+        json_key_value(
             "diagnostics",
             json_diagnostics(
                 report.diagnostics
             )
         )
     ]);
+}
+
+proc json_envelope(envelope: DiagnosticEnvelope) -> string {
+    give json_object([
+        json_key_value("schema", json_quote(envelope.schema)),
+        json_key_value("schema_version", json_quote(envelope.schema_version)),
+        json_key_value("producer", json_quote(envelope.producer)),
+        json_key_value("command", json_quote(envelope.command)),
+        json_key_value("source", json_quote(envelope.source)),
+        json_key_value("quality_score", envelope.report.quality_score as string),
+        json_key_value(
+            "causality",
+            json_object([
+                json_key_value("root_count", envelope.report.root_count as string),
+                json_key_value("cascade_count", envelope.report.cascade_count as string),
+                json_key_value("suppressed_cascade_count", envelope.report.cascade_count as string)
+            ])
+        ),
+        json_key_value("report", json_report(envelope.report)),
+        json_key_value("valid", json_bool(envelope.valid))
+    ]);
+}
+
+proc json_report_envelope(report: DiagnosticReport, producer: string, command: string, source: string) -> string {
+    give json_envelope(DiagnosticEnvelope {
+        schema: "vitte.diagnostics",
+        schema_version: diagnostic_schema_version(),
+        producer: producer,
+        command: command,
+        source: source,
+        report: report,
+        valid: report.valid
+    });
 }
 
 proc json_compact_diagnostic(diagnostic: Diagnostic) -> string {
@@ -659,6 +819,8 @@ share json_suggestions
 share json_diagnostic
 share json_diagnostics
 share json_report
+share json_envelope
+share json_report_envelope
 
 share json_compact_diagnostic
 share json_compact_report

@@ -355,20 +355,269 @@ proc diagnostic_suggestion_detail(kind: DiagnosticSuggestionKind, message: strin
     give suggestion;
 }
 
+proc diagnostic_default_explanation(phase: DiagnosticPhase) -> string {
+    if phase == DiagnosticPhase.Lexer {
+        give "The lexer could not turn this source range into a stable token stream.";
+    }
+
+    if phase == DiagnosticPhase.Parser {
+        give "The parser found a syntax problem while building the syntax tree.";
+    }
+
+    if phase == DiagnosticPhase.Typeck {
+        give "Type checking found a value or expression that does not satisfy the expected type contract.";
+    }
+
+    if phase == DiagnosticPhase.Borrowck or phase == DiagnosticPhase.Lifetime {
+        give "Ownership analysis found an access pattern that cannot be proven safe with the current lifetimes.";
+    }
+
+    if phase == DiagnosticPhase.Backend or phase == DiagnosticPhase.Linker {
+        give "Artifact production failed after the compiler accepted earlier phases.";
+    }
+
+    if phase == DiagnosticPhase.Driver {
+        give "The compiler driver rejected the request before or during pipeline orchestration.";
+    }
+
+    give phase_name(phase) + " phase rejected the current compiler state.";
+}
+
+proc diagnostic_default_probable_fix(phase: DiagnosticPhase) -> string {
+    if phase == DiagnosticPhase.Lexer {
+        give "rewrite the highlighted source so it matches the lexical grammar";
+    }
+
+    if phase == DiagnosticPhase.Parser {
+        give "repair the syntax near the primary span, then re-run the check";
+    }
+
+    if phase == DiagnosticPhase.Typeck {
+        give "align the expression type with the expected type, or change the declaration to match the value";
+    }
+
+    if phase == DiagnosticPhase.Borrowck or phase == DiagnosticPhase.Lifetime {
+        give "shorten the borrow, move ownership earlier or later, clone explicitly, or keep the owner alive longer";
+    }
+
+    if phase == DiagnosticPhase.Backend {
+        give "select a supported target/backend pair or fix the codegen input";
+    }
+
+    if phase == DiagnosticPhase.Linker {
+        give "ensure required object files, libraries, and external symbols are visible to the linker";
+    }
+
+    if phase == DiagnosticPhase.Driver {
+        give "fix the command, input path, target, or compiler option reported by the driver";
+    }
+
+    give "preserve this diagnostic with a minimal reproduction and route it to the owning compiler phase";
+}
+
+proc diagnostic_default_documentation(phase: DiagnosticPhase) -> string {
+    if phase == DiagnosticPhase.Lexer {
+        give "docs://language/lexer";
+    }
+
+    if phase == DiagnosticPhase.Parser {
+        give "docs://language/parser";
+    }
+
+    if phase == DiagnosticPhase.Typeck {
+        give "docs://language/type-system";
+    }
+
+    if phase == DiagnosticPhase.Borrowck or phase == DiagnosticPhase.Lifetime {
+        give "docs://language/ownership";
+    }
+
+    if phase == DiagnosticPhase.Backend {
+        give "docs://compiler/backend";
+    }
+
+    if phase == DiagnosticPhase.Linker {
+        give "docs://compiler/linking";
+    }
+
+    if phase == DiagnosticPhase.Driver {
+        give "docs://compiler/driver";
+    }
+
+    give "docs://compiler/diagnostics";
+}
+
+proc diagnostic_default_step(phase: DiagnosticPhase) -> string {
+    if phase == DiagnosticPhase.Lexer {
+        give "tokenization";
+    }
+
+    if phase == DiagnosticPhase.Parser {
+        give "syntax parsing";
+    }
+
+    if phase == DiagnosticPhase.Typeck {
+        give "type checking";
+    }
+
+    if phase == DiagnosticPhase.Borrowck or phase == DiagnosticPhase.Lifetime {
+        give "ownership checking";
+    }
+
+    if phase == DiagnosticPhase.Backend {
+        give "backend code generation";
+    }
+
+    if phase == DiagnosticPhase.Linker {
+        give "link";
+    }
+
+    if phase == DiagnosticPhase.Driver {
+        give "driver";
+    }
+
+    give phase_name(phase);
+}
+
+proc diagnostic_code_family(phase: DiagnosticPhase, code: string) -> string {
+    if starts_with(code, "LEX_") or starts_with(code, "FLEX") {
+        give "lexical-form";
+    }
+
+    if starts_with(code, "P") or starts_with(code, "E00") {
+        give "syntax-shape";
+    }
+
+    if starts_with(code, "TYPECK_") {
+        give "type-contract";
+    }
+
+    if starts_with(code, "BORROWCK_") or starts_with(code, "BORROW_") {
+        give "ownership-flow";
+    }
+
+    if starts_with(code, "BACKEND_") or starts_with(code, "LINKER_") {
+        give "artifact-production";
+    }
+
+    give phase_name(phase);
+}
+
+proc diagnostic_correction_strategy(phase: DiagnosticPhase, code: string) -> string {
+    if code == "P000_UNBALANCED" {
+        give "close-open-construct";
+    }
+
+    if starts_with(code, "TYPECK_") {
+        give "align-contract";
+    }
+
+    if starts_with(code, "BORROWCK_") or starts_with(code, "BORROW_") {
+        give "shorten-or-reorder-access";
+    }
+
+    if phase == DiagnosticPhase.Lexer {
+        give "rewrite-token";
+    }
+
+    if phase == DiagnosticPhase.Parser {
+        give "repair-local-syntax";
+    }
+
+    give "inspect-primary-span";
+}
+
+proc diagnostic_recovery_scope(phase: DiagnosticPhase, code: string) -> string {
+    if phase == DiagnosticPhase.Lexer {
+        give "current-token";
+    }
+
+    if phase == DiagnosticPhase.Parser {
+        give "current-declaration";
+    }
+
+    if phase == DiagnosticPhase.Typeck {
+        give "current-expression";
+    }
+
+    if phase == DiagnosticPhase.Borrowck or phase == DiagnosticPhase.Lifetime {
+        give "ownership-path";
+    }
+
+    give "current-phase";
+}
+
+proc diagnostic_confidence(phase: DiagnosticPhase, code: string) -> string {
+    if starts_with(code, "LEX_") or starts_with(code, "P") or starts_with(code, "E00") {
+        give "high";
+    }
+
+    if phase == DiagnosticPhase.Internal {
+        give "low";
+    }
+
+    give "medium";
+}
+
+proc diagnostic_default_help(phase: DiagnosticPhase, code: string) -> string {
+    if phase == DiagnosticPhase.Lexer {
+        give "fix this token first; later parser errors may disappear after tokenization is stable";
+    }
+
+    if phase == DiagnosticPhase.Parser {
+        give "fix the earliest syntax error first; later syntax errors may be recovery artifacts";
+    }
+
+    if phase == DiagnosticPhase.Typeck {
+        give "trace the expected type origin and the found value origin before changing code";
+    }
+
+    if phase == DiagnosticPhase.Borrowck or phase == DiagnosticPhase.Lifetime {
+        give "look for the first move or borrow that keeps the value unavailable at the primary span";
+    }
+
+    give "start at the primary span, then use labels and cause chain to avoid fixing symptoms";
+}
+
+proc diagnostic_default_suggestion(phase: DiagnosticPhase, code: string, span: SourceSpan) -> DiagnosticSuggestion {
+    let kind: DiagnosticSuggestionKind = if phase == DiagnosticPhase.Parser { DiagnosticSuggestionKind.Insert } else { DiagnosticSuggestionKind.Help };
+    let replacement: string = if code == "P000_UNBALANCED" { "}" } else { "" };
+    let message: string = diagnostic_default_probable_fix(phase);
+    let confidence: string = diagnostic_confidence(phase, code);
+    let machine_applicable: bool = replacement != "" and confidence == "high";
+    give diagnostic_suggestion_detail(kind, message, replacement, span, machine_applicable, confidence, diagnostic_correction_strategy(phase, code));
+}
+
+proc diagnostic_eq() -> string {
+    give slice("a=b", 1, 2);
+}
+
+proc diagnostic_kv(key: string, value: string) -> string {
+    give key + diagnostic_eq() + value;
+}
+
 proc diagnostic_create(code: string, phase: DiagnosticPhase, severity: DiagnosticSeverity, message: string, span: SourceSpan) -> Diagnostic {
+    let phase_context: string = diagnostic_kv("phase", phase_name(phase));
+    let step_context: string = diagnostic_kv("step", diagnostic_default_step(phase));
+    let family_context: string = diagnostic_kv("family", diagnostic_code_family(phase, code));
+    let strategy_context: string = diagnostic_kv("correction_strategy", diagnostic_correction_strategy(phase, code));
+    let recovery_context: string = diagnostic_kv("recovery_scope", diagnostic_recovery_scope(phase, code));
+    let confidence_context: string = diagnostic_kv("confidence", diagnostic_confidence(phase, code));
+    let default_help_text: string = diagnostic_default_help(phase, code);
+    let default_suggestion: DiagnosticSuggestion = diagnostic_default_suggestion(phase, code, span);
     give Diagnostic {
         code: code,
         phase: phase,
         severity: severity,
         message: message,
-        explanation: "",
+        explanation: diagnostic_default_explanation(phase),
         labels: [],
-        notes: [],
-        helps: [],
-        suggestions: [],
-        documentation_url: "",
-        pipeline_context: [],
-        probable_fix: "",
+        notes: [diagnostic_note("clear, contextual, and correction-oriented diagnostics")],
+        helps: if default_help_text == "" { [] } else { [diagnostic_help(default_help_text)] },
+        suggestions: if default_suggestion.valid { [default_suggestion] } else { [] },
+        documentation_url: diagnostic_default_documentation(phase),
+        pipeline_context: [phase_context, step_context, family_context, strategy_context, recovery_context, confidence_context],
+        probable_fix: diagnostic_default_probable_fix(phase),
         span: span,
         fatal: severity == DiagnosticSeverity.Fatal,
         valid: code != "" and message != ""

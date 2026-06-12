@@ -1443,10 +1443,13 @@ class Parser:
         self.error("PEXTERN999", "expected extern type or extern block")
 
     def parse_decl(self) -> None:
+        prefix_start = self.i
         self.parse_attrs()
         self.parse_visibility_prefix()
         tok = self.current()
         if tok.kind == "eof":
+            if self.i > prefix_start:
+                self.error("PATTR003", "attribute block must precede a declaration")
             return
         if tok.text not in DECL_KEYWORDS and tok.text not in VISIBILITY | PROC_MODIFIERS:
             self.error("P0001", f"unexpected top-level token `{tok.text}`", tok)

@@ -30,6 +30,24 @@ def render_locale(locale: str, codes: list[str], existing: dict[str, str]) -> st
     return "\n".join(lines) + "\n"
 
 
+def missing_codes(codes: list[str], existing: dict[str, str]) -> list[str]:
+    return [code for code in codes if code not in existing]
+
+
+def append_missing_codes(current: str, missing: list[str]) -> str:
+    if not missing:
+        return current
+    body = current
+    if body and not body.endswith("\n"):
+        body += "\n"
+    if body and not body.endswith("\n\n"):
+        body += "\n"
+    body += "# Added from tests/diag_snapshots/core_diagnostic_codes.txt\n"
+    for code in missing:
+        body += f"{code} = {code}\n"
+    return body
+
+
 def sync_locale(locale: str, check: bool) -> int:
     codes = [
         line.strip()
@@ -38,14 +56,21 @@ def sync_locale(locale: str, check: bool) -> int:
     ]
     out_path = LOCALES_DIR / locale / "diagnostics.ftl"
     existing = parse_ftl(out_path)
-    rendered = render_locale(locale, codes, existing)
+    missing = missing_codes(codes, existing)
     if check:
-        if out_path.read_text(encoding="utf-8") != rendered:
+        if missing:
             print(f"[diagnostics-ftl][error] stale {out_path.relative_to(ROOT)}")
+            for code in missing:
+                print(f"- missing code key {code}")
             return 1
         return 0
-    out_path.write_text(rendered, encoding="utf-8")
-    print(f"[diagnostics-ftl] wrote {out_path.relative_to(ROOT)}")
+    current = out_path.read_text(encoding="utf-8")
+    updated = append_missing_codes(current, missing)
+    if updated != current:
+        out_path.write_text(updated, encoding="utf-8")
+        print(f"[diagnostics-ftl] wrote {out_path.relative_to(ROOT)}")
+    else:
+        print(f"[diagnostics-ftl] ok {out_path.relative_to(ROOT)}")
     return 0
 
 

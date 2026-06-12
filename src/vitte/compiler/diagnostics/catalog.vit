@@ -58,6 +58,22 @@ form DiagnosticCatalog {
   valid: bool
 }
 
+form VersionedDiagnosticCode {
+  code: string
+  schema_version: string
+  phase: string
+  family: string
+  rule: string
+  strategy: string
+  confidence: string
+  docs: string
+  aliases: [string]
+  deprecated: bool
+  invalid_example: string
+  fixed_example: string
+  valid: bool
+}
+
 proc diagnostic_label(message: string, span: AstSpan, primary: bool) -> DiagnosticLabel {
 
   give DiagnosticLabel {
@@ -116,6 +132,44 @@ proc empty_catalog() -> DiagnosticCatalog {
     version: "catalog-v1",
     valid: true
   }
+}
+
+proc diagnostic_catalog_schema_version() -> string {
+  give "1.0.0"
+}
+
+proc versioned_diagnostic_code(code: string, phase: string, family: string, rule: string, strategy: string, confidence: string, docs: string, invalid_example: string, fixed_example: string) -> VersionedDiagnosticCode {
+  give VersionedDiagnosticCode {
+    code: code,
+    schema_version: diagnostic_catalog_schema_version(),
+    phase: phase,
+    family: family,
+    rule: rule,
+    strategy: strategy,
+    confidence: confidence,
+    docs: docs,
+    aliases: [],
+    deprecated: false,
+    invalid_example: invalid_example,
+    fixed_example: fixed_example,
+    valid: code != "" and phase != "" and family != "" and rule != "" and strategy != "" and confidence != "" and docs != ""
+  }
+}
+
+proc versioned_diagnostic_lookup(code: string) -> VersionedDiagnosticCode {
+  if code == "PATTR003" {
+    give versioned_diagnostic_code(code, "parser", "attribute-target", "attribute placement", "attach-or-remove-prefix", "high", "docs://language/parser", "#![feature(x)]", "#![feature(x)]\nproc main() -> int { give 0; }")
+  }
+  if code == "P000_UNBALANCED" {
+    give versioned_diagnostic_code(code, "parser", "delimiter-balance", "delimiter balance", "close-open-construct", "high", "docs://language/parser", "proc main() -> int {", "proc main() -> int { give 0; }")
+  }
+  if code == "TYPECK_E_ASSIGN_MISMATCH" {
+    give versioned_diagnostic_code(code, "typeck", "type-contract", "assignment compatibility", "align-contract", "medium", "docs://language/type-system", "let x: int = \"s\";", "let x: int = 0;")
+  }
+  if code == "BORROWCK_E_USE_AFTER_MOVE" {
+    give versioned_diagnostic_code(code, "borrowck", "ownership-flow", "moved value access", "shorten-or-reorder-access", "medium", "docs://language/ownership", "move value; use value;", "borrow value; use value;")
+  }
+  give versioned_diagnostic_code(code, "internal", "unknown", "compiler diagnostic contract", "inspect-primary-span", "low", "docs://compiler/diagnostics", "", "")
 }
 
 proc register(catalog: DiagnosticCatalog, diagnostic: DiagnosticCode) -> DiagnosticCatalog {

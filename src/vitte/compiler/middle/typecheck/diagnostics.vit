@@ -1,6 +1,7 @@
 space vitte/compiler/middle/typecheck/diagnostics
 
 use vitte/compiler/frontend/ast.node.{ AstSpan, ast_span_empty }
+use vitte/compiler/diagnostics/diagnostic.{ Diagnostic, DiagnosticPhase, DiagnosticReport, DiagnosticSeverity, SourceSpan, diagnostic_create, diagnostic_report, diagnostic_with_help, diagnostic_with_replace, span_create }
 
 export *
 
@@ -386,4 +387,73 @@ proc typecheck_diagnostics_selftest() -> bool {
     and severity_name(TypeDiagnosticSeverity.Error) == "error"
     and diagnostic_kind_name(TypeDiagnosticKind.TypeMismatch) == "type-mismatch"
     and diagnostic_summary(bag2) != ""
+}
+
+proc type_severity_as_diagnostic(severity: TypeDiagnosticSeverity) -> DiagnosticSeverity {
+  if severity == TypeDiagnosticSeverity.Info {
+    give DiagnosticSeverity.Note
+  } elif severity == TypeDiagnosticSeverity.Warning {
+    give DiagnosticSeverity.Warning
+  } elif severity == TypeDiagnosticSeverity.Fatal {
+    give DiagnosticSeverity.Fatal
+  }
+
+  give DiagnosticSeverity.Error
+}
+
+proc type_span_as_diagnostic_span(span: AstSpan) -> SourceSpan {
+  let file_name: string = span.file
+  let line0: u64 = span.start_line
+  let column0: u64 = span.start_column
+  let length0: u64 = 1
+
+  if file_name == "" {
+    set file_name = "<typecheck>"
+  }
+  if line0 == 0 {
+    set line0 = 1
+  }
+  if column0 == 0 {
+    set column0 = 1
+  }
+  if span.end_line == span.start_line and span.end_column > span.start_column {
+    set length0 = span.end_column - span.start_column
+  }
+
+  give span_create(file_name, line0, column0, length0)
+}
+
+proc type_diagnostic_as_diagnostic(diagnostic: TypeDiagnostic) -> Diagnostic {
+  let span0: SourceSpan = type_span_as_diagnostic_span(diagnostic.span)
+  let diag0: Diagnostic = diagnostic_create(
+    diagnostic.code,
+    DiagnosticPhase.Typeck,
+    type_severity_as_diagnostic(diagnostic.severity),
+    diagnostic.message,
+    span0
+  )
+  let diag1: Diagnostic = if diagnostic.hint != "" {
+    diagnostic_with_help(diag0, diagnostic.hint)
+  } else {
+    diag0
+  }
+  if diagnostic.expected != "" or diagnostic.found != "" {
+    give diagnostic_with_replace(
+      diag1,
+      "rewrite this expression so expected and found types match",
+      diagnostic.expected,
+      span0
+    )
+  }
+  give diag1
+}
+
+proc type_diagnostic_bag_as_report(bag: TypeDiagnosticBag) -> DiagnosticReport {
+  let diagnostics: [Diagnostic] = []
+  let i: u64 = 0
+  while i < len(bag.diagnostics) {
+    set diagnostics = diagnostics + [type_diagnostic_as_diagnostic(bag.diagnostics[i])]
+    set i = i + 1
+  }
+  give diagnostic_report(diagnostics)
 }

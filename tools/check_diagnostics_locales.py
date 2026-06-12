@@ -41,3 +41,7 @@ def main() -> int:
 
     print(f"[diagnostics-locales] OK codes={len(selected_codes)}")
     return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

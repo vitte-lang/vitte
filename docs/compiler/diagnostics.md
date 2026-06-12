@@ -7,6 +7,14 @@ The active compiler diagnostics surface is Vitte-owned.
 - Structured diagnostics types and renderers live in `src/vitte/compiler/diagnostics/diagnostic.vit`.
 - The seed path documented in `docs/seed_diagnostics.md` only describes the bootstrap stage0 surface.
 - Ad-hoc diagnostics are rejected: public errors should be emitted through the shared `Diagnostic` model.
+- Locale coverage for stable public codes is listed in `tests/diag_snapshots/core_diagnostic_codes.txt`.
+
+## Public vs Internal Codes
+
+- Public codes are stable user-facing diagnostics that may appear in text, JSON, LSP, snapshots, and locale catalogs.
+- Internal codes are implementation/debugging details and should not be required in `locales/*/diagnostics.ftl`.
+- Lexer input-hardening and source-shape failures such as `LEX_E_INVALID_UTF8`, `LEX_E_TOKEN_TOO_LARGE`, and unterminated token codes are public because users can receive them directly from normal compiler commands.
+- ICE or maintainer-only failures such as `LEX_E_INTERNAL` remain internal unless they are intentionally promoted into the public diagnostics contract.
 
 ## Main commands
 

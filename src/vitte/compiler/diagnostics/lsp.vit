@@ -15,7 +15,14 @@ use vitte/compiler/diagnostics/diagnostic.{
     DiagnosticHelp,
     DiagnosticSuggestion,
     SourceSpan,
-    severity_name
+    severity_name,
+    phase_name,
+    diagnostic_code_family,
+    diagnostic_correction_strategy,
+    diagnostic_recovery_scope,
+    diagnostic_confidence,
+    diagnostic_quality_score,
+    diagnostic_fix_plans
 }
 
 pick LspDiagnosticSeverity {
@@ -214,9 +221,15 @@ proc lsp_eq() -> string {
 
 proc diagnostic_data(diagnostic: Diagnostic) -> string {
     let severity_data: string = "severity" + lsp_eq() + severity_name(diagnostic.severity);
-    let phase_data: string = "phase" + lsp_eq() + diagnostic.phase_name;
+    let phase_data: string = "phase" + lsp_eq() + phase_name(diagnostic.phase);
     let code_data: string = "code" + lsp_eq() + diagnostic.code;
-    give severity_data + ";" + phase_data + ";" + code_data;
+    let family_data: string = "family" + lsp_eq() + diagnostic_code_family(diagnostic.phase, diagnostic.code);
+    let strategy_data: string = "strategy" + lsp_eq() + diagnostic_correction_strategy(diagnostic.phase, diagnostic.code);
+    let recovery_data: string = "recovery_scope" + lsp_eq() + diagnostic_recovery_scope(diagnostic.phase, diagnostic.code);
+    let confidence_data: string = "confidence" + lsp_eq() + diagnostic_confidence(diagnostic.phase, diagnostic.code);
+    let quality_data: string = "quality" + lsp_eq() + (diagnostic_quality_score(diagnostic) as string);
+    let fixes_data: string = "fixes" + lsp_eq() + (len(diagnostic_fix_plans(diagnostic)) as string);
+    give severity_data + ";" + phase_data + ";" + code_data + ";" + family_data + ";" + strategy_data + ";" + recovery_data + ";" + confidence_data + ";" + quality_data + ";" + fixes_data;
 }
 
 proc diagnostic_related_information_list(diagnostic: Diagnostic) -> [LspDiagnosticRelatedInformation] {

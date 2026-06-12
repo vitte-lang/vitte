@@ -1,5 +1,7 @@
 space vitte/compiler/middle/borrow/checks
 
+use vitte/compiler/diagnostics/diagnostic.{ Diagnostic, DiagnosticPhase, DiagnosticReport, DiagnosticSeverity, SourceSpan, diagnostic_create, diagnostic_report, diagnostic_with_replace, diagnostic_with_subject_symbol, span_create }
+
 export *
 
 pick BorrowCheckKind {
@@ -537,4 +539,92 @@ proc borrow_selftest() -> bool {
         and severity_name(BorrowSeverity.Error) == "error"
         and borrow_summary(result)
             != "";
+}
+
+proc borrow_severity_as_diagnostic(severity: BorrowSeverity) -> DiagnosticSeverity {
+    if severity == BorrowSeverity.Info {
+        give DiagnosticSeverity.Note;
+    }
+    if severity == BorrowSeverity.Warning {
+        give DiagnosticSeverity.Warning;
+    }
+    if severity == BorrowSeverity.Fatal {
+        give DiagnosticSeverity.Fatal;
+    }
+
+    give DiagnosticSeverity.Error;
+}
+
+proc borrow_kind_code(kind: BorrowCheckKind) -> string {
+    if kind == BorrowCheckKind.MoveAfterMove {
+        give "BORROWCK_E_MOVE_AFTER_MOVE";
+    }
+    if kind == BorrowCheckKind.UseAfterMove {
+        give "BORROWCK_E_USE_AFTER_MOVE";
+    }
+    if kind == BorrowCheckKind.MutableAlias {
+        give "BORROWCK_E_MUTABLE_BORROW_CONFLICT";
+    }
+    if kind == BorrowCheckKind.ImmutableAliasViolation {
+        give "BORROWCK_E_SHARED_BORROW_CONFLICT";
+    }
+    if kind == BorrowCheckKind.InvalidDrop {
+        give "BORROWCK_E_USE_AFTER_DROP";
+    }
+    if kind == BorrowCheckKind.LifetimeEscape {
+        give "BORROWCK_E_LIFETIME_TOO_SHORT";
+    }
+    give "BORROWCK_E_UNKNOWN";
+}
+
+proc borrow_span_as_diagnostic_span(span: BorrowSpan) -> SourceSpan {
+    let file_name: string = span.file;
+    let line0: u64 = span.line;
+    let column0: u64 = span.column;
+    let length0: u64 = 1;
+
+    if file_name == "" {
+        set file_name = "<borrow>";
+    }
+    if line0 == 0 {
+        set line0 = 1;
+    }
+    if column0 == 0 {
+        set column0 = 1;
+    }
+    if span.end_line == span.line and span.end_column > span.column {
+        set length0 = span.end_column - span.column;
+    }
+
+    give span_create(file_name, line0, column0, length0);
+}
+
+proc borrow_diagnostic_as_diagnostic(diagnostic: BorrowDiagnostic) -> Diagnostic {
+    let span0: SourceSpan = borrow_span_as_diagnostic_span(diagnostic.span);
+    let diag0: Diagnostic = diagnostic_create(
+        borrow_kind_code(diagnostic.kind),
+        DiagnosticPhase.Borrowck,
+        borrow_severity_as_diagnostic(diagnostic.severity),
+        diagnostic.message,
+        span0
+    );
+    let diag1: Diagnostic = diagnostic_with_subject_symbol(diag0, diagnostic.place.name);
+    give diagnostic_with_replace(
+        diag1,
+        "rewrite the ownership path for `" + diagnostic.place.name + "`",
+        "<shorter borrow or explicit clone>",
+        span0
+    );
+}
+
+proc borrow_check_result_as_report(result: BorrowCheckResult) -> DiagnosticReport {
+    let diagnostics: [Diagnostic] = [];
+    let i: u64 = 0;
+
+    while i < len(result.diagnostics) {
+        set diagnostics = diagnostics + [borrow_diagnostic_as_diagnostic(result.diagnostics[i])];
+        set i = i + 1;
+    }
+
+    give diagnostic_report(diagnostics);
 }
