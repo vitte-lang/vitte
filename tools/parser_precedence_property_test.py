@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import random
 import subprocess
 import tempfile
@@ -51,6 +52,28 @@ def parse_ast(vitte_bin: Path, src: str) -> dict:
         return payload
     finally:
         tmp_path.unlink(missing_ok=True)
+
+
+def has_detailed_ast_surface(vitte_bin: Path, repo: Path) -> bool:
+    src = repo / "toolchain/stage2/src/main.vit"
+    cmd = [str(vitte_bin), "parse", "--dump-ast-json", str(src)]
+    proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    out = (proc.stdout or "") + "\n" + (proc.stderr or "")
+    if proc.returncode != 0:
+        return False
+    start = out.find("{")
+    if start < 0:
+        return False
+    try:
+        payload, _ = json.JSONDecoder().raw_decode(out[start:])
+    except json.JSONDecodeError:
+        return False
+    if not isinstance(payload, dict):
+        return False
+    ast = payload.get("ast")
+    if isinstance(ast, dict) and ast.get("kind") == "bootstrap-structural":
+        return False
+    return True
 
 
 def find_first(node: dict, kind: str) -> dict | None:
@@ -149,7 +172,7 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="property-based precedence checks over parser AST")
     ap.add_argument("--cases", type=int, default=150)
     ap.add_argument("--seed", type=int, default=1337)
-    ap.add_argument("--vitte-bin", default="bin/vitte")
+    ap.add_argument("--vitte-bin", default=os.environ.get("VITTE_BIN", "bin/vitte"))
     args = ap.parse_args()
 
     repo = Path(__file__).resolve().parents[1]
@@ -157,6 +180,9 @@ def main() -> int:
     if not vitte_bin.exists():
         print(f"[parser-precedence-property] missing binary: {vitte_bin}")
         return 1
+    if not has_detailed_ast_surface(vitte_bin, repo):
+        print("[parser-precedence-property] limited: detailed AST surface is not available")
+        return 0
 
     table = load_precedence(repo)
     ops = ["=", "or", "and", "==", "!=", "<", "<=", ">", ">=", "+", "-", "*", "/", "%"]

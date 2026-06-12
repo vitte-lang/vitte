@@ -31,7 +31,11 @@ has_flag_both() {
 
 hash_text() {
   file="$1"
-  sha256sum "$file" | awk '{print $1}'
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$file" | awk '{print $1}'
+  else
+    LC_ALL=C shasum -a 256 "$file" | awk '{print $1}'
+  fi
 }
 
 json_escape() {

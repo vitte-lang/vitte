@@ -30,7 +30,7 @@ version="$(
 )"
 [ -n "$version" ] || die "missing VERSION_TEXT in $SOURCE_FILE"
 
-sha="$(shasum -a 256 "$seed_path" | awk '{print $1}')"
+sha="$(LC_ALL=C shasum -a 256 "$seed_path" | awk '{print $1}')"
 tmp="$MANIFEST.tmp.$$"
 trap 'rm -f "$tmp"' EXIT HUP INT TERM
 

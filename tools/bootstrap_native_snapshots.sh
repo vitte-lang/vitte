@@ -296,11 +296,11 @@ check_emission_hashes() {
         [ "$rc" -eq 9 ] || die "main const exit code mismatch"
     fi
     {
-        printf 'vittec1 %s\n' "$(shasum -a 256 "$TMP_DIR/vittec1.a" | awk '{print $1}')"
-        printf 'vittec %s\n' "$(shasum -a 256 "$TMP_DIR/vittec.a" | awk '{print $1}')"
-        printf 'named_consts %s\n' "$(shasum -a 256 "$TMP_DIR/named_consts.bin" | awk '{print $1}')"
-        printf 'main_proc %s\n' "$(shasum -a 256 "$TMP_DIR/main_proc.bin" | awk '{print $1}')"
-        printf 'main_const_int %s\n' "$(shasum -a 256 "$TMP_DIR/main_const_int.bin" | awk '{print $1}')"
+        printf 'vittec1 %s\n' "$(LC_ALL=C shasum -a 256 "$TMP_DIR/vittec1.a" | awk '{print $1}')"
+        printf 'vittec %s\n' "$(LC_ALL=C shasum -a 256 "$TMP_DIR/vittec.a" | awk '{print $1}')"
+        printf 'named_consts %s\n' "$(LC_ALL=C shasum -a 256 "$TMP_DIR/named_consts.bin" | awk '{print $1}')"
+        printf 'main_proc %s\n' "$(LC_ALL=C shasum -a 256 "$TMP_DIR/main_proc.bin" | awk '{print $1}')"
+        printf 'main_const_int %s\n' "$(LC_ALL=C shasum -a 256 "$TMP_DIR/main_const_int.bin" | awk '{print $1}')"
     } > "$TMP_DIR/emission.sha256"
     diff -u "$SNAP_DIR/emission.sha256.must" "$TMP_DIR/emission.sha256" || die "native emission snapshot drift"
 }

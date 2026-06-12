@@ -4,6 +4,12 @@ set -euo pipefail
 ROOT_DIR="${ROOT_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
 BIN="${BIN:-$ROOT_DIR/bin/vitte}"
 MANIFEST="${MANIFEST:-}"
+
+case "$BIN" in
+  /*) ;;
+  *) BIN="$ROOT_DIR/$BIN" ;;
+esac
+
 log() { printf "[check-manifest] %s\n" "$*"; }
 die() { printf "[check-manifest][error] %s\n" "$*" >&2; exit 1; }
 

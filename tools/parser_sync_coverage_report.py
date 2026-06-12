@@ -33,7 +33,18 @@ def parser_prefixes(text: str) -> set[str]:
     prefixes = set(re.findall(r'core\.string_starts_with\([^,]+,\s*"([^"]+)"\)', text))
     prefixes.update(re.findall(r'_starts_with\([^,]+,\s*"([^"]+)"\)', text))
     prefixes.update(re.findall(r'_is_keyword_decl\([^,]+,\s*"([^"]+)"\)', text))
+    prefixes.update(re.findall(r'at_text\([^,]+,\s*"([^"]+)"\)', text))
+    prefixes.update(re.findall(r'\.lexeme\s*==\s*"([^"]+)"', text))
     return prefixes
+
+
+def first_existing(repo: Path, paths: list[str]) -> Path:
+    for rel in paths:
+        path = repo / rel
+        if path.exists():
+            return path
+    joined = ", ".join(paths)
+    raise FileNotFoundError(f"none of these parser paths exist: {joined}")
 
 
 def main() -> int:
@@ -43,8 +54,15 @@ def main() -> int:
 
     repo = Path(__file__).resolve().parents[1]
     grammar_text = (repo / "src/vitte/grammar/vitte.ebnf").read_text(encoding="utf-8")
+    parser_path = first_existing(
+        repo,
+        [
+            "src/vitte/compiler/frontend/parse/parser.vit",
+            "src/vitte/compiler/frontend/parser.vit",
+        ],
+    )
     parser_text = (
-        (repo / "src/vitte/compiler/frontend/parser.vit").read_text(encoding="utf-8")
+        parser_path.read_text(encoding="utf-8")
         + "\n"
         + (repo / "src/vitte/compiler/ir/ast.vit").read_text(encoding="utf-8")
     )
@@ -55,19 +73,19 @@ def main() -> int:
     covered_top = {
         rule: prefix
         for rule, prefix in TOPLEVEL_RULES.items()
-        if rule in rules and prefix in prefixes
+        if rule in rules and prefix.strip() in prefixes
     }
     covered_stmt = {
         rule: prefix
         for rule, prefix in STMT_RULES.items()
-        if rule in rules and prefix in prefixes
+        if rule in rules and prefix.strip() in prefixes
     }
 
-    missing_top = sorted(rule for rule, prefix in TOPLEVEL_RULES.items() if rule in rules and prefix not in prefixes)
-    missing_stmt = sorted(rule for rule, prefix in STMT_RULES.items() if rule in rules and prefix not in prefixes)
+    missing_top = sorted(rule for rule, prefix in TOPLEVEL_RULES.items() if rule in rules and prefix.strip() not in prefixes)
+    missing_stmt = sorted(rule for rule, prefix in STMT_RULES.items() if rule in rules and prefix.strip() not in prefixes)
 
     report = {
-        "source": "src/vitte/compiler/frontend/parser.vit",
+        "source": str(parser_path.relative_to(repo)),
         "grammar": "src/vitte/grammar/vitte.ebnf",
         "covered_toplevel_rules": covered_top,
         "covered_stmt_rules": covered_stmt,

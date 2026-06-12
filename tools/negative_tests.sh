@@ -5,6 +5,11 @@ ROOT_DIR="${ROOT_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
 BIN="${BIN:-$ROOT_DIR/bin/vitte}"
 TEST_DIR="$ROOT_DIR/tests/negative"
 
+case "$BIN" in
+  /*) ;;
+  *) BIN="$ROOT_DIR/$BIN" ;;
+esac
+
 log() { printf "[negative-tests] %s\n" "$*"; }
 die() { printf "[negative-tests][error] %s\n" "$*" >&2; exit 1; }
 
@@ -21,7 +26,7 @@ for file in "${files[@]}"; do
   expect="${file%.vit}.expect"
   [ -f "$expect" ] || die "missing expectation file: $expect"
 
-  tmp="$(mktemp "$ROOT_DIR/target/negative-tests.XXXXXX.log")"
+  tmp="$(mktemp "$ROOT_DIR/target/negative-tests.XXXXXX")"
   trap 'rm -f "$tmp"' RETURN
 
   log "$base"

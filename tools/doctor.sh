@@ -17,16 +17,28 @@ check_cmd() {
 echo "vitte-doctor"
 echo "root=${ROOT_DIR}"
 
-if [[ -x "bin/vitte" ]]; then
-  echo "bin/vitte=present"
-  if bin/vitte --help >/dev/null 2>&1; then
-    echo "bin/vitte=runnable"
+check_binary() {
+  local bin="$1"
+  if [[ -x "$bin" ]]; then
+    echo "$bin=present"
+    local out
+    if out="$("$bin" --help 2>&1 >/dev/null)"; then
+      echo "$bin=runnable"
+    else
+      echo "$bin=not-runnable"
+      if grep -Fq "Bad CPU type in executable" <<<"$out"; then
+        echo "$bin=bad-cpu-type"
+      fi
+    fi
   else
-    echo "bin/vitte=not-runnable"
+    echo "$bin=missing"
   fi
-else
-  echo "bin/vitte=missing"
-fi
+}
+
+check_binary "bin/vitte"
+check_binary "bin/vittec"
+check_binary "bin/vittec0"
+check_binary "bin/vittec1"
 
 check_cmd "make" "make"
 check_cmd "pkg-config" "pkg-config"

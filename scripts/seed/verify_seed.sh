@@ -28,7 +28,7 @@ source_version="$(awk '
 [ -n "$source_version" ] || { echo "[seed-verify][error] missing VERSION_TEXT in seed source" >&2; exit 1; }
 [ "$source_version" = "$expected_version" ] || { echo "[seed-verify][error] source VERSION_TEXT mismatch" >&2; echo "manifest=$expected_version" >&2; echo "source=$source_version" >&2; exit 1; }
 
-actual_sha="$(shasum -a 256 "$seed_path" | awk '{print $1}')"
+actual_sha="$(LC_ALL=C shasum -a 256 "$seed_path" | awk '{print $1}')"
 [ "$actual_sha" = "$expected_sha" ] || { echo "[seed-verify][error] checksum mismatch" >&2; echo "expected=$expected_sha" >&2; echo "actual=$actual_sha" >&2; exit 1; }
 
 chmod +x "$seed_path"

@@ -6,10 +6,15 @@ BIN="${BIN:-$ROOT_DIR/bin/vittec}"
 TEST_DIR="${TEST_DIR:-$ROOT_DIR/tests/diag_snapshots}"
 MANIFEST="${MANIFEST:-}"
 
+case "$BIN" in
+  /*) ;;
+  *) BIN="$ROOT_DIR/$BIN" ;;
+esac
+
 log() { printf "[diag-snapshots] %s\n" "$*"; }
 die() { printf "[diag-snapshots][error] %s\n" "$*" >&2; exit 1; }
 normalize_text_output() {
-  perl -pe 's/\e\[[0-9;]*m//g; s/^(error\[[^]]+\]) [a-z_]+: /$1: /; s/^(warning\[[^]]+\]) [a-z_]+: /$1: /;'
+  LC_ALL=C perl -pe 's/\e\[[0-9;]*m//g; s/^(error\[[^]]+\]) [a-z_]+: /$1: /; s/^(warning\[[^]]+\]) [a-z_]+: /$1: /;'
 }
 
 [ -x "$BIN" ] || die "missing binary: $BIN"

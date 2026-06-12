@@ -807,6 +807,24 @@ negative-tests:
 diag-snapshots:
 	@tools/diag_snapshots.sh
 
+.PHONY: diag-snapshots-portable
+diag-snapshots-portable:
+	@BIN="$(CURDIR)/bin/vittec0" tools/diag_snapshots.sh
+
+.PHONY: negative-tests-portable
+negative-tests-portable:
+	@BIN="$(CURDIR)/bin/vittec0" tools/negative_tests.sh
+
+.PHONY: diagnostics-portable diagnostics-local compiler-diagnostics-local
+diagnostics-portable diagnostics-local compiler-diagnostics-local: diagnostics-locales-lint diagnostics-ftl-check diagnostic-quality diag-snapshots-portable negative-tests-portable
+
+.PHONY: compiler-smoke-portable
+compiler-smoke-portable: diagnostics-portable
+
+.PHONY: native-binaries-doctor
+native-binaries-doctor:
+	@tools/doctor.sh | grep -E '^(bin/vitte|bin/vittec)'
+
 .PHONY: diagnostics-locales-lint
 diagnostics-locales-lint:
 	@python3 tools/check_diagnostics_locales.py
@@ -922,6 +940,11 @@ grammar-test:
 	@python3 docs/book/grammar/scripts/validate_examples.py
 	@python3 tools/parser_precedence_property_test.py
 
+.PHONY: grammar-test-portable
+grammar-test-portable:
+	@VITTE_BIN="$(CURDIR)/bin/vittec0" python3 docs/book/grammar/scripts/validate_examples.py
+	@VITTE_BIN="$(CURDIR)/bin/vittec0" python3 tools/parser_precedence_property_test.py
+
 .PHONY: grammar-alignment-test
 grammar-alignment-test:
 	@python3 tools/grammar_alignment_checker.py
@@ -945,6 +968,11 @@ core-language-test:
 	@python3 docs/book/grammar/scripts/validate_examples.py --strict-core --manifest tests/grammar/core_manifest.txt
 	@python3 tools/parser_precedence_property_test.py
 
+.PHONY: core-language-test-portable
+core-language-test-portable:
+	@VITTE_BIN="$(CURDIR)/bin/vittec0" python3 docs/book/grammar/scripts/validate_examples.py --strict-core --manifest tests/grammar/core_manifest.txt
+	@VITTE_BIN="$(CURDIR)/bin/vittec0" python3 tools/parser_precedence_property_test.py
+
 .PHONY: core-language-test-update
 core-language-test-update:
 	@python3 docs/book/grammar/scripts/validate_examples.py --strict-core --manifest tests/grammar/core_manifest.txt --update-snapshots
@@ -956,6 +984,10 @@ grammar-test-update:
 .PHONY: parser-recovery-golden
 parser-recovery-golden:
 	@python3 docs/book/grammar/scripts/validate_examples.py --strict-core --manifest tests/grammar/recovery_manifest.txt
+
+.PHONY: parser-recovery-golden-portable
+parser-recovery-golden-portable:
+	@VITTE_BIN="$(CURDIR)/bin/vittec0" python3 docs/book/grammar/scripts/validate_examples.py --strict-core --manifest tests/grammar/recovery_manifest.txt
 
 .PHONY: test-golden
 test-golden:
@@ -992,12 +1024,27 @@ core-forbidden-syntax-lint:
 strict-core-guard-test:
 	@tools/strict_core_guard_test.sh
 
+.PHONY: strict-core-guard-test-portable
+strict-core-guard-test-portable:
+	@BIN="$(CURDIR)/bin/vittec0" tools/strict_core_guard_test.sh
+
 .PHONY: parser-lexer-fuzz-smoke
 parser-lexer-fuzz-smoke:
 	@python3 tools/parser_lexer_fuzz_smoke.py --cases 80 --seed 1337
 
 .PHONY: core-language-gate
 core-language-gate: grammar-check grammar-test core-language-test parser-recovery-golden parser-sync-coverage strict-core-guard-test core-forbidden-syntax-lint core-ir-golden-snapshots core-semantic-success core-semantic-snapshots diagnostics-locales-lint
+
+.PHONY: core-semantic-success-portable
+core-semantic-success-portable:
+	@BIN="$(CURDIR)/bin/vittec0" MANIFEST=tests/core_semantic_success_manifest.txt tools/check_manifest.sh
+
+.PHONY: core-semantic-snapshots-portable
+core-semantic-snapshots-portable:
+	@BIN="$(CURDIR)/bin/vittec0" MANIFEST=tests/diag_snapshots/core_semantic_manifest.txt tools/diag_snapshots.sh
+
+.PHONY: core-language-gate-portable
+core-language-gate-portable: grammar-check grammar-test-portable core-language-test-portable parser-recovery-golden-portable parser-sync-coverage strict-core-guard-test-portable core-forbidden-syntax-lint core-ir-golden-snapshots core-semantic-success-portable core-semantic-snapshots-portable diagnostics-locales-lint
 
 .PHONY: core-release-gate
 core-release-gate: core-language-gate diagnostics-ftl-check
@@ -1055,7 +1102,7 @@ diagnostics-ftl-check:
 ci-strict: core-language-gate package-layout-lint legacy-import-path-lint negative-tests diag-snapshots geany-lint highlight-snapshots repo-hygiene-check make-targets-doc-check docs-paths-check selfhost-hard-strict
 
 .PHONY: ci-fast
-ci-fast: core-language-gate package-layout-lint legacy-import-path-lint negative-tests diag-snapshots completions-snapshots wrapper-stage-test geany-lint repo-hygiene-check make-targets-doc-check docs-paths-check
+ci-fast: core-language-gate package-layout-lint legacy-import-path-lint negative-tests diag-snapshots diagnostic-quality completions-snapshots wrapper-stage-test geany-lint repo-hygiene-check make-targets-doc-check docs-paths-check
 
 .PHONY: repo-hygiene-check
 repo-hygiene-check:
@@ -1888,6 +1935,9 @@ help:
 	@echo "  make diagnostics-locales-lint validate locale files against centralized diagnostics"
 	@echo "  make update-diagnostics-ftl synchronize diagnostics locales from the central table"
 	@echo "  make diagnostics-ftl-check fail if diagnostics locales are out of sync"
+	@echo "  make diagnostics-portable run diagnostics checks through bin/vittec0"
+	@echo "  make compiler-smoke-portable run portable compiler smoke checks through bin/vittec0"
+	@echo "  make native-binaries-doctor report local compiler binary executability"
 	@echo "  make grammar-docs regenerate railroad SVG diagrams"
 	@echo "  make grammar-gate run grammar-check + grammar-test"
 	@echo "  make core-language-gate run grammar-check + core-language-test + core semantic gates + diagnostics locales lint"
@@ -2230,3 +2280,34 @@ optimization-phase2-gate:
 	@test -f data/optimization_phase2/reports/hot_paths_success.md
 	@test -f data/optimization_phase2/reports/memory_allocations.md
 	@test -f data/optimization_phase2/reports/jit_async_loops.md
+
+
+.PHONY: diagnostic-contracts
+diagnostic-contracts:
+	@bin/vittec0 check src/vitte/compiler/diagnostics/diagnostic.vit
+	@bin/vittec0 check src/vitte/compiler/diagnostics/json.vit
+	@bin/vittec0 check src/vitte/compiler/diagnostics/lsp.vit
+	@bin/vittec0 check src/vitte/compiler/infrastructure/session/diagnostics.vit
+	@bin/vittec0 check src/vitte/compiler/analysis/report.vit
+	@bin/vittec0 check src/vitte/compiler/middle/typecheck/diagnostics.vit
+	@bin/vittec0 check src/vitte/compiler/middle/borrow/checks.vit
+	@bin/vittec0 check src/vitte/compiler/tests/diagnostic_snapshot_tests.vit
+
+
+.PHONY: diagnostic-snapshots
+diagnostic-snapshots:
+	@bin/vittec0 check src/vitte/compiler/tests/diagnostic_snapshot_tests.vit
+	@bin/vittec0 check src/vitte/compiler/tests/parser_tests.vit
+
+
+.PHONY: diagnostic-fuzz
+diagnostic-fuzz:
+	@python3 -m py_compile tools/frontend_syntax_check.py
+	@python3 tools/frontend_syntax_check.py tests/frontend_syntax/invalid/standalone_attribute.vit >/dev/null
+	@python3 -m py_compile tools/check_diagnostics_locales.py tools/update_diagnostics_ftl.py
+	@python3 tools/check_diagnostics_locales.py | grep -q '^\[diagnostics-locales\] OK codes='
+	@tools/update_diagnostics_ftl.py --check
+
+
+.PHONY: diagnostic-quality
+diagnostic-quality: diagnostic-contracts diagnostic-snapshots diagnostic-fuzz

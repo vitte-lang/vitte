@@ -24,7 +24,7 @@ seed_path="$ROOT_DIR/$seed_file"
 [ -f "$source_path" ] || die "missing source: $source_file"
 [ -f "$seed_path" ] || die "missing seed: $seed_file"
 
-actual_sha="$(shasum -a 256 "$seed_path" | awk '{print $1}')"
+actual_sha="$(LC_ALL=C shasum -a 256 "$seed_path" | awk '{print $1}')"
 actual_version="$("$seed_path" --version 2>/dev/null || true)"
 
 printf "[seed-rotation-report] source=%s\n" "$source_file"
