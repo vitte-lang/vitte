@@ -10,9 +10,9 @@
 ## Ticket -> patch mapping
 - BETA-101 -> `src/vitte/stdlib/async/executor.vitl` (ready queue behavior + scheduling path)
 - BETA-102 -> `src/vitte/stdlib/ffi/ffi.vitl` (symbol resolution and load/call guardrails)
-- BETA-103 -> `src/vitte/stdlib/reflection/reflection.vitl` (metadata/introspection path docs alignment)
-- BETA-104 -> `src/vitte/stdlib/profiling/profiler.vitl` (hotspot/stat computation consistency)
-- BETA-105 -> `src/vitte/stdlib/packages/package.vitl` (registry connection visibility)
+- BETA-103 -> planned stdlib reflection module (metadata/introspection path docs alignment)
+- BETA-104 -> `src/vitte/stdlib/math/statistics.vitl` (hotspot/stat computation consistency)
+- BETA-105 -> planned stdlib package registry module (registry connection visibility)
 
 ## Feature request policy
 - Implement top 3 requests only if no Critical/Major remains.
