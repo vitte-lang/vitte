@@ -477,10 +477,13 @@ proc test_json_surfaces_report_error_status_for_invalid_inputs() -> bool {
     and find(mir_json, "\"status\":\"error\"") >= 0
     and find(mir_json, "\"mir\":{\"kind\":\"native-lowered\"") >= 0
     and find(diag_json, "\"surface\":\"diagnostics\"") >= 0
+    and find(diag_json, "\"schema\":\"vitte.diagnostics\"") >= 0
+    and find(diag_json, "\"legacy\":") >= 0
     and find(diag_json, "\"status\":\"error\"") >= 0
     and find(diag_json, "\"pipeline_failed_at\":\"typeck\"") >= 0
     and find(diag_json, "\"summary\":{\"frontend_diagnostic_count\":0") >= 0
-    and find(diag_json, "\"primary_report\":") >= 0;
+    and find(diag_json, "\"primary_report\":") >= 0
+    and find(diag_json, "\"envelope\":") >= 0;
 }
 
 proc test_cli_json_dump_routes() -> bool {
@@ -501,6 +504,8 @@ proc test_cli_json_dump_routes() -> bool {
     and find(mir_report.report_json, "\"surface\":\"mir\"") >= 0
     and find(mir_report.report_json, "\"mir\":{\"kind\":\"native-lowered\"") >= 0
     and find(diag_report.report_json, "\"surface\":\"diagnostics\"") >= 0
+    and find(diag_report.report_json, "\"envelope\":") >= 0
+    and find(diag_report.report_json, "\"quality_score\":") >= 0
     and find(diag_report.report_json, "\"summary\":{\"frontend_diagnostic_count\":0") >= 0;
 }
 
@@ -522,10 +527,21 @@ proc test_runtime_surface_dispatch_prefers_pipeline_json() -> bool {
     and find(mir_report.report_json, "\"schema\":\"vitte.compiler.surface\"") >= 0
     and find(mir_report.report_json, "\"mir\":{\"kind\":\"native-lowered\"") >= 0
     and find(diag_report.report_json, "\"surface\":\"diagnostics\"") >= 0
-    and find(diag_report.report_json, "\"schema\":\"vitte.compiler.surface\"") >= 0
+    and find(diag_report.report_json, "\"schema\":\"vitte.diagnostics\"") >= 0
+    and find(diag_report.report_json, "\"legacy\":") >= 0
     and find(diag_report.report_json, "\"source\":{\"path\":\"pipeline_dispatch_diag.vit\",\"bytes\":") >= 0
     and unsupported_report.code == 1
     and find(unsupported_report.report_json, "\"code\":\"E_DRIVER_SURFACE_UNAVAILABLE\"") >= 0;
+}
+
+proc test_diagnostic_cli_commands() -> bool {
+  let source_text: string = "proc main() -> int { give 0; }\n";
+  let explain_ok: bool = run_cli_main(["explain", "TYPECK_E_ASSIGN_MISMATCH"]) == 0;
+  let quality_ok: bool = run_cli_main(["check", "--diagnostic-quality", "--fail-under", "1", "--source", source_text]) == 0;
+  let fix_dry_run_ok: bool = run_cli_main(["fix", "--dry-run", "--source", source_text]) == 0;
+  let fix_apply_blocked: bool = run_cli_main(["fix", "--apply", "--source", source_text]) == exit_code(DriverExitStatus.UnsupportedFeature);
+  let reduce_blocked: bool = run_cli_main(["reduce", "--source", source_text]) == exit_code(DriverExitStatus.UnsupportedFeature);
+  give explain_ok and quality_ok and fix_dry_run_ok and fix_apply_blocked and reduce_blocked;
 }
 
 proc test_runtime_surface_dispatch_from_args() -> bool {
@@ -944,6 +960,9 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if not test_runtime_surface_dispatch_rejects_unsupported_combo() {
+    set failures = failures + 1;
+  }
+  if not test_diagnostic_cli_commands() {
     set failures = failures + 1;
   }
   if not test_driver_report_includes_registry_sections() {

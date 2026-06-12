@@ -37,6 +37,11 @@ def module_area(module_name: str) -> str:
     return "other"
 
 
+def canonical_self_leaf(module_name: str) -> str:
+    leaf = module_name.rsplit("/", 1)[-1]
+    return f"{module_name}/{leaf}"
+
+
 def load_allow() -> dict[str, str]:
     out: dict[str, str] = {}
     if not ALLOW.exists():
@@ -83,6 +88,9 @@ def main() -> int:
             dep = m.group(1)
             if dep.startswith("vitte/compiler/") and dep in modules:
                 deps[mid].add(dep)
+            leaf_dep = canonical_self_leaf(dep)
+            if dep.startswith("vitte/compiler/") and leaf_dep in modules:
+                deps[mid].add(leaf_dep)
 
     seen: set[str] = set()
     q: deque[str] = deque([ENTRY])

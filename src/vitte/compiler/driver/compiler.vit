@@ -32,7 +32,7 @@ proc main(args: list[string]) -> int {
 }
 
 use vitte/compiler/driver
-use vitte/compiler/driver/compile.{ DriverBackendModuleSetResult, DriverCompileConfig, DriverCompileResult, DriverNativeBackendResult, check_source_with_config, compile_source_set_with_config, compile_source_with_config, default_compile_config, dump_ast_json, dump_hir_json, dump_mir_json, emit_native_backend_object_with_config, link_native_backend_executable_with_config }
+use vitte/compiler/driver/compile.{ DriverBackendModuleSetResult, DriverCompileConfig, DriverCompileResult, DriverNativeBackendResult, check_source_with_config, compile_source_set_with_config, compile_source_with_config, default_compile_config, diagnostics_quality_score, dump_ast_json, dump_diagnostics_json, dump_hir_json, dump_mir_json, emit_native_backend_object_with_config, link_native_backend_executable_with_config }
 use vitte/compiler/driver/metrics.{ CompilerMetricsReport, compile_metrics_report, compile_metrics_report_from_module_set, metrics_report_json }
 use vitte/compiler/driver/health_dashboard.{ HealthDashboard, health_dashboard_from_metrics, health_dashboard_json }
 use vitte/compiler/driver/pipeline_modular.{ CompilerPhase, PhaseResultKind, PhaseTiming, PipelineExecution, default_pipeline_phases, render_timings, render_trace_line, run }
@@ -40,6 +40,7 @@ use vitte/compiler/driver/config
 use vitte/compiler/driver/pipeline
 use vitte/compiler/driver/session
 use vitte/compiler/diagnostics/mod
+use vitte/compiler/diagnostics/diagnostic.{ diagnostic_explain_text }
 use vitte/compiler/diagnostics/report
 use vitte/compiler/frontend/mod
 use vitte/compiler/frontend/pipeline.{ FrontendDiagnostic, FrontendOutput, frontend_run }
@@ -261,6 +262,10 @@ form CompilerCliRequest {
     verbose: bool
     trace_pipeline: bool
     timings: bool
+    diagnostic_quality: bool
+    show_cascades: bool
+    fix_apply: bool
+    fail_under: u64
     stdlib_path: string
     stdlib_version: string
     valid: bool
@@ -333,6 +338,10 @@ proc empty_cli_request() -> CompilerCliRequest {
         verbose: false,
         trace_pipeline: false,
         timings: false,
+        diagnostic_quality: false,
+        show_cascades: false,
+        fix_apply: false,
+        fail_under: 0,
         stdlib_path: "src/vitte/stdlib",
         stdlib_version: "",
         valid: false,
@@ -378,6 +387,15 @@ proc cli_command_from_text(text: string) -> string {
     if text == "pkg" {
         give "pkg";
     }
+    if text == "explain" {
+        give "explain";
+    }
+    if text == "fix" {
+        give "fix";
+    }
+    if text == "reduce" {
+        give "reduce";
+    }
     if text == "help" or text == "--help" or text == "-h" {
         give "help";
     }
@@ -403,6 +421,11 @@ proc cli_is_known_flag(text: string) -> bool {
         or text == "--verbose"
         or text == "--trace-pipeline"
         or text == "--timings"
+        or text == "--diagnostic-quality"
+        or text == "--show-cascades"
+        or text == "--dry-run"
+        or text == "--apply"
+        or text == "--fail-under"
         or text == "--stdlib-path"
         or text == "--stdlib-version"
         or text == "--native"
@@ -614,6 +637,26 @@ proc parse_cli_request(args: list[string]) -> CompilerCliRequest {
             } elif arg == "--timings" {
                 set request.timings = true;
                 set i = i + 1;
+            } elif arg == "--diagnostic-quality" {
+                set request.diagnostic_quality = true;
+                set i = i + 1;
+            } elif arg == "--show-cascades" {
+                set request.show_cascades = true;
+                set i = i + 1;
+            } elif arg == "--dry-run" {
+                set request.fix_apply = false;
+                set i = i + 1;
+            } elif arg == "--apply" {
+                set request.fix_apply = true;
+                set i = i + 1;
+            } elif arg == "--fail-under" {
+                if i + 1 >= len(args) {
+                    set request.status = driver.DriverExitStatus::InvalidArguments;
+                    set request.message = "missing value after " + arg;
+                    give request;
+                }
+                set request.fail_under = args[i + 1] as u64;
+                set i = i + 2;
             } elif arg == "--stdlib-path" {
                 if i + 1 >= len(args) {
                     set request.status = driver.DriverExitStatus::InvalidArguments;
@@ -653,7 +696,7 @@ proc parse_cli_request(args: list[string]) -> CompilerCliRequest {
         set request.subcommand = "build";
     }
 
-    if request.command != "metrics" and request.command != "health" and request.command != "pkg" and request.input_path == "" and request.source_text == "" {
+    if request.command != "metrics" and request.command != "health" and request.command != "pkg" and request.command != "explain" and request.command != "fix" and request.command != "reduce" and request.input_path == "" and request.source_text == "" {
         if request.command == "build" or request.command == "check" or request.command == "run" or request.command == "dump-tokens" or request.command == "dump-ast" or request.command == "dump-hir" or request.command == "dump-mir" {
             set request.input_path = ".";
         } else {
@@ -661,6 +704,24 @@ proc parse_cli_request(args: list[string]) -> CompilerCliRequest {
             set request.message = "missing input file or --source text";
             give request;
         }
+    }
+
+    if request.command == "explain" and request.input_path == "" {
+        set request.status = driver.DriverExitStatus::MissingInput;
+        set request.message = "usage: vitte explain CODE";
+        give request;
+    }
+
+    if request.command == "fix" and request.input_path == "" and request.source_text == "" {
+        set request.status = driver.DriverExitStatus::MissingInput;
+        set request.message = "usage: vitte fix --dry-run FILE";
+        give request;
+    }
+
+    if request.command == "reduce" and request.input_path == "" and request.source_text == "" {
+        set request.status = driver.DriverExitStatus::MissingInput;
+        set request.message = "usage: vitte reduce --diagnostic CODE FILE";
+        give request;
     }
 
     set request.valid = true;
@@ -960,6 +1021,12 @@ proc run_cli_request(request: CompilerCliRequest) -> int {
         give cli_exit_code(driver.DriverExitStatus::UnsupportedFeature);
     }
 
+    if request.command == "explain" {
+        let explanation: string = diagnostic_explain_text(request.input_path) + "\n";
+        print(explanation);
+        give cli_exit_code(driver.DriverExitStatus::Ok);
+    }
+
     let source_path: string = cli_request_source_path(request);
     let source_text: string = cli_request_source_text(request);
     let virtual_source: bool = cli_request_is_virtual_source(request);
@@ -969,12 +1036,49 @@ proc run_cli_request(request: CompilerCliRequest) -> int {
         give cli_exit_code(driver.DriverExitStatus::IoFailure);
     }
 
+    if request.command == "fix" {
+        let report_json: string = dump_diagnostics_json(source_path, source_text);
+        if request.fix_apply {
+            let msg_apply: string = "fix --apply refused: patch application engine is not enabled yet; run fix --dry-run first\n";
+            print(msg_apply);
+            give cli_exit_code(driver.DriverExitStatus::UnsupportedFeature);
+        }
+        let msg_fix: string = "fix dry-run: inspect FixPlan entries in diagnostics envelope\n";
+        let report_json_text: string = report_json + "\n";
+        print(msg_fix);
+        print(report_json_text);
+        give cli_exit_code(driver.DriverExitStatus::Ok);
+    }
+
+    if request.command == "reduce" {
+        let msg_reduce: string = "reduce dry-run: auto-reduction engine is not enabled yet; diagnostics can be reproduced from current input\n";
+        let reduce_json_text: string = dump_diagnostics_json(source_path, source_text) + "\n";
+        print(msg_reduce);
+        print(reduce_json_text);
+        give cli_exit_code(driver.DriverExitStatus::UnsupportedFeature);
+    }
+
     let config: DriverCompileConfig = cli_compile_config(request);
     let result: DriverCompileResult;
     if not config.valid {
         let msg: string = "invalid compiler configuration\n";
         print(msg);
         give cli_exit_code(driver.DriverExitStatus::InvalidConfiguration);
+    }
+
+    if request.command == "check" and request.diagnostic_quality {
+        let report_json: string = dump_diagnostics_json(source_path, source_text) + "\n";
+        print(report_json);
+        if request.fail_under > 100 {
+            give cli_exit_code(driver.DriverExitStatus::InvalidArguments);
+        }
+        if request.fail_under > 0 {
+            let quality_score: u64 = diagnostics_quality_score(source_path, source_text);
+            if quality_score < request.fail_under {
+                give 1;
+            }
+        }
+        give cli_exit_code(driver.DriverExitStatus::Ok);
     }
 
     if request.command == "check" {

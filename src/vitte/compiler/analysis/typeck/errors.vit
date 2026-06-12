@@ -23,6 +23,7 @@ use vitte/compiler/diagnostics/diagnostic.{
     diagnostic_with_probable_fix,
     diagnostic_with_subject_symbol,
     diagnostic_with_subject_type,
+    diagnostic_with_replace,
     secondary_label,
     add_unique_diagnostic,
     merge_diagnostics,
@@ -40,7 +41,7 @@ use vitte/compiler/frontend/ast/node.{
     ast_span_empty
 }
 
-use vitte/compiler/middle/hir/hir.{
+use vitte/compiler/middle/hir.{
     HirUnit
 }
 
@@ -445,7 +446,8 @@ proc typeck_argument_mismatch(callee: string, position: u64, expected: string, f
     let diag2: Diagnostic = diagnostic_with_explanation(diag1, "argument " + position_text + " of `" + callee + "` expects `" + expected + "`, but this call passes `" + found + "`");
     let diag3: Diagnostic = diagnostic_add_cause(diag2, "expected type comes from parameter " + position_text + " of `" + callee + "`");
     let diag4: Diagnostic = diagnostic_add_cause(diag3, "found type comes from argument " + position_text + " at the call site");
-    give diagnostic_with_probable_fix(diag4, "align argument " + position_text + " with `" + expected + "` or widen the callee signature");
+    let diag5: Diagnostic = diagnostic_with_probable_fix(diag4, "align argument " + position_text + " with `" + expected + "` or widen the callee signature");
+    give diagnostic_with_replace(diag5, "wrap or replace this argument with an explicit `" + expected + "` value", "<" + expected + " value>", ast_span_to_source_span(span));
 }
 
 proc typeck_invalid_call_arity(callee: string, expected_arity: u64, found_arity: u64, span: AstSpan) -> Diagnostic {
@@ -456,7 +458,8 @@ proc typeck_invalid_call_arity(callee: string, expected_arity: u64, found_arity:
     let diag2: Diagnostic = diagnostic_with_explanation(diag1, "`" + callee + "` expects " + expected_text + " argument(s), but this call provides " + found_text);
     let diag3: Diagnostic = diagnostic_add_cause(diag2, "expected arity comes from the callee signature");
     let diag4: Diagnostic = diagnostic_add_cause(diag3, "found arity comes from the call-site argument list");
-    give diagnostic_with_probable_fix(diag4, "add or remove arguments so the call matches the declared signature");
+    let diag5: Diagnostic = diagnostic_with_probable_fix(diag4, "add or remove arguments so the call matches the declared signature");
+    give diagnostic_with_replace(diag5, "rewrite the argument list so it contains " + expected_text + " argument(s)", "(...)", ast_span_to_source_span(span));
 }
 
 proc typeck_use_before_init(name: string, span: AstSpan) -> Diagnostic {
