@@ -1,0 +1,28 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Run fast CI gate
+        run: make ci-fast
+
+      - name: Run diagnostic contracts
+        run: make diagnostic-quality
+
+      - name: Check version compatibility
+        run: make version-compatibility-gate
+
+      - name: Validate package manager artifacts
+        run: make package-manager-gate
