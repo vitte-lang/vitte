@@ -159,6 +159,13 @@ if [ -d "$TARGET_DIR/share" ]; then
   log "share synced to $SHAREDIR"
 fi
 
+# Fluent diagnostic catalogs
+if [ -d "$ROOT_DIR/locales" ]; then
+  ensure_dir "$SHAREDIR/locales"
+  run rsync -a --delete "$ROOT_DIR/locales/" "$SHAREDIR/locales/"
+  log "diagnostic locales synced to $SHAREDIR/locales"
+fi
+
 # Editor support files (for pkg/macOS and prefix installs)
 if [ -d "$ROOT_DIR/editors" ]; then
   ensure_dir "$SHAREDIR/editors"

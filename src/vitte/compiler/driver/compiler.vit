@@ -40,7 +40,7 @@ use vitte/compiler/driver/config
 use vitte/compiler/driver/pipeline
 use vitte/compiler/driver/session
 use vitte/compiler/diagnostics/mod
-use vitte/compiler/diagnostics/diagnostic.{ diagnostic_explain_text }
+use vitte/compiler/diagnostics/diagnostic.{ diagnostic_explain_text_lang }
 use vitte/compiler/diagnostics/report
 use vitte/compiler/frontend/mod
 use vitte/compiler/frontend/pipeline.{ FrontendDiagnostic, FrontendOutput, frontend_run }
@@ -268,6 +268,7 @@ form CompilerCliRequest {
     fail_under: u64
     stdlib_path: string
     stdlib_version: string
+    lang: string
     valid: bool
     status: driver.DriverExitStatus
     message: string
@@ -344,6 +345,7 @@ proc empty_cli_request() -> CompilerCliRequest {
         fail_under: 0,
         stdlib_path: "src/vitte/stdlib",
         stdlib_version: "",
+        lang: "en",
         valid: false,
         status: driver.DriverExitStatus::InvalidArguments,
         message: "missing compiler command"
@@ -428,6 +430,7 @@ proc cli_is_known_flag(text: string) -> bool {
         or text == "--fail-under"
         or text == "--stdlib-path"
         or text == "--stdlib-version"
+        or text == "--lang"
         or text == "--native"
         or text == "--no-native"
         or text == "--json";
@@ -672,6 +675,14 @@ proc parse_cli_request(args: list[string]) -> CompilerCliRequest {
                     give request;
                 }
                 set request.stdlib_version = args[i + 1];
+                set i = i + 2;
+            } elif arg == "--lang" {
+                if i + 1 >= len(args) {
+                    set request.status = driver.DriverExitStatus::InvalidArguments;
+                    set request.message = "missing value after " + arg;
+                    give request;
+                }
+                set request.lang = args[i + 1];
                 set i = i + 2;
             } else {
                 set i = i + 1;
@@ -1022,7 +1033,7 @@ proc run_cli_request(request: CompilerCliRequest) -> int {
     }
 
     if request.command == "explain" {
-        let explanation: string = diagnostic_explain_text(request.input_path) + "\n";
+        let explanation: string = diagnostic_explain_text_lang(request.input_path, request.lang) + "\n";
         print(explanation);
         give cli_exit_code(driver.DriverExitStatus::Ok);
     }

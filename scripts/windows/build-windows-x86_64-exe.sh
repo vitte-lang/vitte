@@ -106,6 +106,7 @@ mkdir -p "$STAGE_DIR/data/stdlib"
 mkdir -p "$STAGE_DIR/data/lib"
 mkdir -p "$STAGE_DIR/editors"
 mkdir -p "$STAGE_DIR/examples"
+mkdir -p "$STAGE_DIR/locales"
 
 # Copy compiled binary (with .exe extension for Windows)
 if [ -f "$BIN_DIR/vitte" ]; then
@@ -124,6 +125,12 @@ fi
 if [ -d "$ROOT_DIR/editors" ]; then
     cp -r "$ROOT_DIR/editors"/* "$STAGE_DIR/editors/" 2>/dev/null || true
     echo -e "  ${GREEN}✓${NC} Editor support copied"
+fi
+
+# Copy Fluent diagnostic catalogs
+if [ -d "$ROOT_DIR/locales" ]; then
+    cp -r "$ROOT_DIR/locales"/* "$STAGE_DIR/locales/" 2>/dev/null || true
+    echo -e "  ${GREEN}✓${NC} Diagnostic locales copied"
 fi
 
 # Copy documentation

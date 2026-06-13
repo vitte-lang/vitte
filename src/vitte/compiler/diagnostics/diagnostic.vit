@@ -11,6 +11,7 @@
 space vitte/compiler/diagnostics/diagnostic
 
 use vitte/stdlib/io/fileops.{ is_file, read_file }
+use vitte/compiler/infrastructure/diagnostics/fluent_catalog.{ fluent_catalog_lookup, fluent_catalog_normalize_locale }
 
 const DIAGNOSTIC_SCHEMA_VERSION: string = "1.0.0"
 
@@ -1264,6 +1265,78 @@ proc diagnostic_default_suggestion_message(phase: DiagnosticPhase, code: string)
     give "apply the probable fix described by this diagnostic";
 }
 
+proc diagnostic_default_step1(phase: DiagnosticPhase, code: string) -> string {
+    if code == "E0001" {
+        give "Insert or rename the identifier at the highlighted token, then re-run the same command.";
+    }
+
+    if code == "E0002" {
+        give "Complete the missing expression at the highlighted token before changing later lines.";
+    }
+
+    if code == "TYPECK_E_ASSIGN_MISMATCH" {
+        give "Compare the expected and found types, then change the smaller side of the assignment.";
+    }
+
+    if code == "TYPECK_E_ARGUMENT_MISMATCH" {
+        give "Start with the argument position named by the diagnostic and match it to the callee parameter.";
+    }
+
+    if code == "TYPECK_E_CALL_ARITY" {
+        give "Count the callee parameters and rewrite the call argument list to match that count.";
+    }
+
+    if code == "BORROWCK_E_USE_AFTER_MOVE" or code == "BORROW_E_USE_AFTER_MOVE" {
+        give "Find the earlier move, then borrow, clone, or reorder before this later use.";
+    }
+
+    if code == "BORROWCK_E_MUTABLE_BORROW_CONFLICT" or code == "BORROWCK_E_SHARED_BORROW_CONFLICT" {
+        give "Find the active borrow and shorten its scope before this access.";
+    }
+
+    if phase == DiagnosticPhase.Lexer or phase == DiagnosticPhase.Parser {
+        give "Fix the first highlighted token or delimiter before following later diagnostics.";
+    }
+
+    if phase == DiagnosticPhase.Typeck {
+        give "Read the expected/found labels and repair the first type contract mismatch.";
+    }
+
+    if phase == DiagnosticPhase.Borrowck or phase == DiagnosticPhase.Lifetime {
+        give "Trace the earliest move or borrow in the labels, then repair that access order.";
+    }
+
+    if phase == DiagnosticPhase.Backend or phase == DiagnosticPhase.Linker {
+        give "Check the first backend or linker note, then verify the selected target and native tools.";
+    }
+
+    if phase == DiagnosticPhase.Driver {
+        give "Re-run with --help and verify the command, input path, output path, target, and profile.";
+    }
+
+    give "Fix the first span reported for this diagnostic, then run the command again.";
+}
+
+proc diagnostic_default_example(phase: DiagnosticPhase, code: string) -> string {
+    if code == "E0001" or code == "E0002" {
+        give "proc main() -> int { give 0; }";
+    }
+
+    if starts_with(code, "TYPECK_") {
+        give "let count: int = 1";
+    }
+
+    if starts_with(code, "BORROWCK_") or starts_with(code, "BORROW_") {
+        give "let view = &value";
+    }
+
+    if phase == DiagnosticPhase.Driver {
+        give "vitte check src/main.vit --lang en";
+    }
+
+    give "vitte check path/to/file.vit";
+}
+
 proc diagnostic_default_suggestion(phase: DiagnosticPhase, code: string, span: SourceSpan) -> DiagnosticSuggestion {
     let kind: DiagnosticSuggestionKind = diagnostic_default_suggestion_kind(phase, code);
     let message: string = diagnostic_default_suggestion_message(phase, code);
@@ -2242,6 +2315,8 @@ proc render_diagnostic(diagnostic: Diagnostic, config: DiagnosticRenderConfig) -
             set human_out = append_line(human_out, "cause: " + diagnostic.root_cause);
         }
 
+        set human_out = append_line(human_out, "step 1: " + diagnostic_default_step1(diagnostic.phase, diagnostic.code));
+
         let cause_human: u64 = 0;
         while cause_human < len(diagnostic.cause_chain) {
                 set human_out = append_line(human_out, "cause: " + diagnostic.cause_chain[cause_human]);
@@ -2325,6 +2400,8 @@ proc render_diagnostic(diagnostic: Diagnostic, config: DiagnosticRenderConfig) -
     if diagnostic.root_cause != "" {
         set out = append_line(out, render_detail("root_cause", diagnostic.root_cause));
     }
+
+    set out = append_line(out, render_detail("step_1", diagnostic_default_step1(diagnostic.phase, diagnostic.code)));
 
     if diagnostic.probable_fix != "" {
         set out = append_line(out, render_detail("probable_fix", diagnostic.probable_fix));
@@ -2769,19 +2846,33 @@ proc diagnostic_from_catalog(code: string, message: string, span: SourceSpan) ->
 }
 
 proc diagnostic_explain_text(code: string) -> string {
+    give diagnostic_explain_text_lang(code, "en");
+}
+
+proc diagnostic_explain_text_lang(code: string, lang: string) -> string {
     let phase: DiagnosticPhase = phase_from_code(code);
     let span: SourceSpan = span_create("<explain>", 1, 1, 1);
-    let diag: Diagnostic = diagnostic_create(code, phase, severity_from_code(code), "diagnostic explanation for " + code, span);
+    let locale: string = fluent_catalog_normalize_locale(lang);
+    let localized_message: string = fluent_catalog_lookup(locale, code);
+    let title: string = "diagnostic explanation for " + code;
+    if localized_message != "" {
+        set title = localized_message;
+    }
+    let diag: Diagnostic = diagnostic_create(code, phase, severity_from_code(code), title, span);
     let out: string = "error code: " + code;
+    set out = out + "\nlang: " + locale;
     set out = out + "\nphase: " + phase_name(phase);
     set out = out + "\nfamily: " + diagnostic_code_family(phase, code);
     set out = out + "\nrule: " + diag.rule;
-    set out = out + "\nmeaning: " + diag.explanation;
-    set out = out + "\nroot cause: " + diag.root_cause;
+    set out = out + "\nmessage: " + title;
+    set out = out + "\nsummary: " + diag.explanation;
+    set out = out + "\ncause: " + diag.root_cause;
+    set out = out + "\nstep 1: " + diagnostic_default_step1(phase, code);
     set out = out + "\ncorrection strategy: " + diagnostic_correction_strategy(phase, code);
     set out = out + "\nrecovery scope: " + diagnostic_recovery_scope(phase, code);
     set out = out + "\nconfidence: " + diagnostic_confidence(phase, code);
     set out = out + "\nfix: " + diag.probable_fix;
+    set out = out + "\nexample: " + diagnostic_default_example(phase, code);
     set out = out + "\ndocs: " + diag.documentation_url;
 
     if len(diag.helps) > 0 {
@@ -3105,6 +3196,9 @@ share diagnostic_correction_strategy
 share diagnostic_recovery_scope
 share diagnostic_confidence
 share diagnostic_explain_text
+share diagnostic_explain_text_lang
+share diagnostic_default_step1
+share diagnostic_default_example
 
 share parser_expected_identifier
 share parser_expected_expression

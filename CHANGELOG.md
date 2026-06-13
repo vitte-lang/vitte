@@ -1,5 +1,59 @@
 # Changelog - Vitte Bootstrap Toolchain
 
+## [0.3.5] - 2026-06-13 - Fluent Diagnostics, Localized Explain, and Installer Language Selection
+
+### ✅ 213. Expanded Fluent diagnostic catalog
+- Expanded the public diagnostics contract to 1,388 stable diagnostic codes across syntax, lexer/parser, names/modules, type checking, generics, traits, ownership, lifetimes, const evaluation, macros, HIR/MIR/IR, backend, linker, runtime, driver, bootstrap, and resource-limit families.
+- Added centralized locale and diagnostics catalog metadata in:
+  - `tools/diagnostics_locales.py`
+  - `tools/diagnostic_catalog_data.py`
+- Regenerated `src/vitte/compiler/infrastructure/diagnostics/fluent_catalog.vit` from `locales/*/diagnostics.ftl`.
+
+### ✅ 214. Fifteen-language Fluent coverage
+- Added/validated diagnostic catalogs for:
+  - `en`, `fr`, `es`, `de`, `it`, `pt-BR`, `nl`, `pl`, `ru`, `uk`, `zh-CN`, `ja`, `ko`, `tr`, `ar`.
+- Localized Fluent diagnostic messages and generated explain summaries in each supported language instead of leaving new locale catalogs as English fallbacks.
+- Preserved Vitte language keywords and technical mode names in localized messages where translating them would make diagnostics less actionable.
+- Every public code now has:
+  - `CODE`
+  - `CODE.summary`
+  - `CODE.cause`
+  - `CODE.step1`
+  - `CODE.fix`
+  - `CODE.example`
+- Hardened `tools/check_diagnostics_locales.py` and `tools/update_diagnostics_ftl.py` so missing message or explanation keys fail validation.
+
+### ✅ 215. User-first explain output
+- Added localized `diagnostic_explain_text_lang(code, lang)` and kept `diagnostic_explain_text(code)` as the English default.
+- `vitte explain CODE --lang <locale>` now routes through the selected locale in the compiler driver.
+- Explain output now includes:
+  - language
+  - localized message
+  - summary
+  - cause
+  - step 1
+  - fix
+  - example
+  - docs and quick-fix metadata
+- Normal diagnostic rendering now includes a first action line:
+  - `step 1:` in human output
+  - `step_1` in compact text output
+
+### ✅ 216. Installer and shell integration
+- Windows NSIS installer now offers language selection for the supported locale set, installs Fluent catalogs, and writes the selected language to the user Vitte config.
+- Debian, macOS, and prefix installers now include `locales/` in the installed share tree.
+- `env.sh` now derives `VITTE_LANG` from the system locale when the user has not configured one explicitly.
+- Shell completions for `--lang` now expose the full supported locale set.
+
+### 🧪 Diagnostics regression coverage
+- Added explain snapshots under `tests/explain_snapshots/` for:
+  - `E0001`
+  - `TYPECK_E_ASSIGN_MISMATCH`
+  - `BORROWCK_E_USE_AFTER_MOVE`
+  - `E0001` in French
+- Added `tools/generate_explain_snapshots.py` with `--check` mode.
+- Strengthened `src/vitte/compiler/tests/diagnostic_snapshot_tests.vit` to require localized explain context and `step 1` rendering.
+
 ## [0.3.4] - 2026-05-23 - Compiler Health, Recovery, and Incremental Stability
 
 ### ✅ 203. Full internal metrics system

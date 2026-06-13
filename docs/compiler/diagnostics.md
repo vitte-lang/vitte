@@ -7,7 +7,16 @@ The active compiler diagnostics surface is Vitte-owned.
 - Structured diagnostics types and renderers live in `src/vitte/compiler/diagnostics/diagnostic.vit`.
 - The seed path documented in `docs/seed_diagnostics.md` only describes the bootstrap stage0 surface.
 - Ad-hoc diagnostics are rejected: public errors should be emitted through the shared `Diagnostic` model.
-- Locale coverage for stable public codes is listed in `tests/diag_snapshots/core_diagnostic_codes.txt`.
+- Locale coverage starts from `tests/diag_snapshots/core_diagnostic_codes.txt` and is expanded by `tools/diagnostic_catalog_data.py`.
+- `tools/check_diagnostics_locales.py` verifies every supported locale against the expanded public contract.
+- Each public code has Fluent keys for:
+  - `CODE` message title
+  - `CODE.summary`
+  - `CODE.cause`
+  - `CODE.step1`
+  - `CODE.fix`
+  - `CODE.example`
+- The generated public catalog is intentionally broad enough for a large compiler error surface: syntax, lexer, parser, names/modules, type checking, generics, traits, ownership, lifetimes, constants, macros, HIR/MIR/IR, backend, linker, runtime, driver, bootstrap, and resource limits.
 
 ## Public vs Internal Codes
 
@@ -15,6 +24,7 @@ The active compiler diagnostics surface is Vitte-owned.
 - Internal codes are implementation/debugging details and should not be required in `locales/*/diagnostics.ftl`.
 - Lexer input-hardening and source-shape failures such as `LEX_E_INVALID_UTF8`, `LEX_E_TOKEN_TOO_LARGE`, and unterminated token codes are public because users can receive them directly from normal compiler commands.
 - ICE or maintainer-only failures such as `LEX_E_INTERNAL` remain internal unless they are intentionally promoted into the public diagnostics contract.
+- Reserved public diagnostics may appear in the Fluent catalog before every compiler path emits them. This keeps installers, completions, docs, LSP, and future compiler phases aligned before rollout.
 
 ## Main commands
 

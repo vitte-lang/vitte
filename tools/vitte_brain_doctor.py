@@ -156,7 +156,10 @@ def main() -> int:
     logp = Path(args.log)
     src = Path(args.src) if args.src else None
     txt = logp.read_text(encoding='utf-8', errors='ignore') if logp.exists() else ''
-    code_match = re.search(r'\b(E\d{4})\b', txt)
+    code_match = re.search(
+        r'\b([A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+|E\d{4}|P[A-Z0-9_]+|TYPE\d{4})\b',
+        txt,
+    )
     code = code_match.group(1) if code_match else None
     kind = classify(txt)
 
@@ -170,6 +173,8 @@ def main() -> int:
     root_causes = root_cause_rank(err_lines)
 
     summary = FTL.get(f'{code}.summary', '') if code else ''
+    cause = FTL.get(f'{code}.cause', '') if code else ''
+    step1 = FTL.get(f'{code}.step1', '') if code else ''
     fix = FTL.get(f'{code}.fix', '') if code else ''
     example = FTL.get(f'{code}.example', '') if code else ''
 
@@ -188,6 +193,10 @@ def main() -> int:
         print(f'error_code: {code}')
     if summary:
         print(f'summary: {summary}')
+    if cause:
+        print(f'probable_cause: {cause}')
+    if step1:
+        print(f'step_1: {step1}')
     if fix:
         print(f'fluent_fix: {fix}')
     if example:
@@ -239,7 +248,7 @@ def main() -> int:
         'error_code': code,
         'position': {'line': line, 'col': col},
         'root_causes': root_causes,
-        'fluent': {'summary': summary, 'fix': fix, 'example': example},
+        'fluent': {'summary': summary, 'cause': cause, 'step1': step1, 'fix': fix, 'example': example},
         'proposals': [p.__dict__ for p in proposals],
         'validations': validations,
     }

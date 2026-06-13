@@ -13,6 +13,7 @@ use vitte/compiler/diagnostics/diagnostic.{
   diagnostic_add_pipeline_context,
   backend_command_failed,
   diagnostic_error,
+  diagnostic_explain_text_lang,
   diagnostic_report,
   diagnostic_explain_text,
   diagnostic_with_documentation,
@@ -132,6 +133,7 @@ proc rendered_has_default_context(diag: Diagnostic) -> bool {
     and find(actual, "recovery_scope") >= 0
     and find(actual, "confidence") >= 0
     and find(actual, "docs: docs://") >= 0
+    and find(actual, "step 1: ") >= 0
     and find(actual, "help: ") >= 0
     and find(actual, "suggestion:") >= 0;
 }
@@ -166,9 +168,28 @@ proc lsp_has_machine_context(diag: Diagnostic) -> bool {
 proc explain_has_actionable_context(code: string) -> bool {
   let actual: string = diagnostic_explain_text(code);
   give find(actual, "error code: ") >= 0
+    and find(actual, "lang: en") >= 0
+    and find(actual, "message: ") >= 0
+    and find(actual, "summary: ") >= 0
+    and find(actual, "cause: ") >= 0
+    and find(actual, "step 1: ") >= 0
     and find(actual, "correction strategy: ") >= 0
     and find(actual, "recovery scope: ") >= 0
+    and find(actual, "fix: ") >= 0
+    and find(actual, "example: ") >= 0
     and find(actual, "quick fix: ") >= 0;
+}
+
+proc explain_has_localized_context(code: string, lang: string) -> bool {
+  let actual: string = diagnostic_explain_text_lang(code, lang);
+  give find(actual, "error code: " + code) >= 0
+    and find(actual, "lang: ") >= 0
+    and find(actual, "message: ") >= 0
+    and find(actual, "summary: ") >= 0
+    and find(actual, "cause: ") >= 0
+    and find(actual, "step 1: ") >= 0
+    and find(actual, "fix: ") >= 0
+    and find(actual, "example: ") >= 0;
 }
 
 proc test_typeck_diagnostic_contract() -> bool {
@@ -200,8 +221,11 @@ proc test_machine_diagnostic_contract() -> bool {
   let diag: Diagnostic = sample_parser_diagnostic();
   let report: DiagnosticReport = diagnostic_report([sample_parser_diagnostic(), sample_typeck_diagnostic()]);
   give lsp_has_machine_context(diag)
+    and explain_has_actionable_context("E0001")
     and explain_has_actionable_context("P000_UNBALANCED")
     and explain_has_actionable_context("TYPECK_E_ASSIGN_MISMATCH")
+    and explain_has_actionable_context("BORROWCK_E_USE_AFTER_MOVE")
+    and explain_has_localized_context("E0001", "fr")
     and report.root_count >= 1
     and report.quality_score >= 70;
 }

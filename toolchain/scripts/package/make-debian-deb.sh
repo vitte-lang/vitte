@@ -197,10 +197,12 @@ EOF
   mkdir -p "$STAGE_ROOT/usr/local/share/vitte/src/vitte"
   mkdir -p "$STAGE_ROOT/usr/local/share/vitte/src/vitte/compiler"
   mkdir -p "$STAGE_ROOT/usr/local/share/vitte/src/compiler/backends"
+  mkdir -p "$STAGE_ROOT/usr/local/share/vitte/locales"
 
   rsync -a "${RSYNC_COMMON_EXCLUDES[@]}" "$ROOT_DIR/src/vitte/packages/" "$STAGE_ROOT/usr/local/share/vitte/src/vitte/packages/"
   rsync -a "${RSYNC_COMMON_EXCLUDES[@]}" "$ROOT_DIR/src/vitte/compiler/" "$STAGE_ROOT/usr/local/share/vitte/src/vitte/compiler/"
   rsync -a "${RSYNC_COMMON_EXCLUDES[@]}" "$ROOT_DIR/src/vitte/compiler/backends/runtime_c/" "$STAGE_ROOT/usr/local/share/vitte/src/compiler/backends/runtime/"
+  rsync -a "${RSYNC_COMMON_EXCLUDES[@]}" "$ROOT_DIR/locales/" "$STAGE_ROOT/usr/local/share/vitte/locales/"
   install -m 0644 "$PKG_VERSION_FILE" "$STAGE_ROOT/usr/local/share/vitte/version"
 
   if [ "$INCLUDE_EDITORS" = "1" ]; then
