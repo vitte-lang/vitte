@@ -816,7 +816,7 @@ negative-tests-portable:
 	@BIN="$(CURDIR)/bin/vittec0" tools/negative_tests.sh
 
 .PHONY: diagnostics-portable diagnostics-local compiler-diagnostics-local
-diagnostics-portable diagnostics-local compiler-diagnostics-local: diagnostics-locales-lint diagnostics-ftl-check diagnostic-quality diag-snapshots-portable negative-tests-portable
+diagnostics-portable diagnostics-local compiler-diagnostics-local: diagnostics-locales-lint diagnostics-ftl-check diagnostics-fluent-gate diagnostic-quality diag-snapshots-portable negative-tests-portable
 
 .PHONY: compiler-smoke-portable
 compiler-smoke-portable: diagnostics-portable
@@ -828,6 +828,10 @@ native-binaries-doctor:
 .PHONY: diagnostics-locales-lint
 diagnostics-locales-lint:
 	@python3 tools/check_diagnostics_locales.py
+
+.PHONY: diagnostics-fluent-gate
+diagnostics-fluent-gate:
+	@tools/diagnostics_fluent_gate.sh
 
 .PHONY: core-semantic-snapshots
 core-semantic-snapshots:

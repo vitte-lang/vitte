@@ -28,7 +28,7 @@ while IFS= read -r cmd_file; do
   log "$rel"
 
   set +e
-  out="$("$BIN" --lang=en $cmd 2>&1)"
+  out="$("$BIN" $cmd 2>&1)"
   rc=$?
   set -e
   [ "$rc" -eq "$expected_exit" ] || { printf "%s\n" "$out"; die "unexpected exit ($rc != $expected_exit): $cmd_file"; }

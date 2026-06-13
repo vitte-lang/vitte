@@ -1069,19 +1069,38 @@ normalize_diagnostics_lang() {
         de|de-*|de_*) printf 'de\n' ;;
         es|es-*|es_*) printf 'es\n' ;;
         it|it-*|it_*) printf 'it\n' ;;
-        pt|pt-*|pt_*) printf 'pt\n' ;;
+        pt-BR|pt_BR|pt|pt-*|pt_*) printf 'pt-BR\n' ;;
         nl|nl-*|nl_*) printf 'nl\n' ;;
         pl|pl-*|pl_*) printf 'pl\n' ;;
         ru|ru-*|ru_*) printf 'ru\n' ;;
+        uk|uk-*|uk_*) printf 'uk\n' ;;
         ja|ja-*|ja_*) printf 'ja\n' ;;
         ko|ko-*|ko_*) printf 'ko\n' ;;
-        zh|zh-*|zh_*) printf 'zh\n' ;;
+        zh-CN|zh_CN|zh|zh-*|zh_*) printf 'zh-CN\n' ;;
         ar|ar-*|ar_*) printf 'ar\n' ;;
-        hi|hi-*|hi_*) printf 'hi\n' ;;
         tr|tr-*|tr_*) printf 'tr\n' ;;
         en|en-*|en_*|'') printf 'en\n' ;;
         *) printf 'en\n' ;;
     esac
+}
+
+vitte_root_dir() {
+    CDPATH= cd -- "$(dirname -- "$0")/.." && pwd
+}
+
+ftl_lookup() {
+    file="$1"
+    key="$2"
+    [ -f "$file" ] || return 1
+    awk -v key="$key" '
+        index($0, key " =") == 1 {
+            sub(/^[^=]*= */, "")
+            print
+            found = 1
+            exit
+        }
+        END { if (!found) exit 1 }
+    ' "$file"
 }
 
 json_escape() {
@@ -2390,6 +2409,16 @@ print_explain_text() {
             example="vitte explain $code --lang $lang"
             ;;
     esac
+
+    root_dir="$(vitte_root_dir)"
+    diag_file="$root_dir/locales/$lang/diagnostics.ftl"
+    explain_file="$root_dir/locales/$lang/diagnostics_explain.ftl"
+    message="$(ftl_lookup "$diag_file" "$code" || printf '%s' "$message")"
+    summary="$(ftl_lookup "$explain_file" "$code.summary" || printf '%s' "$summary")"
+    cause="$(ftl_lookup "$explain_file" "$code.cause" || printf '%s' "$cause")"
+    step1="$(ftl_lookup "$explain_file" "$code.step1" || printf '%s' "$step1")"
+    fix="$(ftl_lookup "$explain_file" "$code.fix" || printf '%s' "$fix")"
+    example="$(ftl_lookup "$explain_file" "$code.example" || printf '%s' "$example")"
 
     printf 'error code: %s\n' "$code"
     printf 'lang: %s\n' "$lang"

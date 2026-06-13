@@ -9,13 +9,29 @@ ROOT = Path(__file__).resolve().parents[1]
 OUT_DIR = ROOT / "tests" / "explain_snapshots"
 sys.path.insert(0, str(ROOT / "tools"))
 from diagnostic_catalog_data import diagnostic_family, explanation_fields, readable_from_code
+from diagnostics_locales import SUPPORTED_DIAGNOSTIC_LOCALES, supported_locale_codes
 
-CASES = (
-    ("E0001", "en"),
-    ("TYPECK_E_ASSIGN_MISMATCH", "en"),
-    ("BORROWCK_E_USE_AFTER_MOVE", "en"),
-    ("E0001", "fr"),
+REPRESENTATIVE_CODES = (
+    "E0001",
+    "TYPECK_E_ASSIGN_MISMATCH",
+    "BORROWCK_E_USE_AFTER_MOVE",
 )
+
+FALLBACK_CASES = (
+    ("E0001", "xx-YY", "fallback_unknown_locale"),
+    ("NO_SUCH_CODE", "en", "fallback_unknown_code"),
+    ("E0001", "fr-FR", "alias_fr_FR"),
+    ("E0001", "es-MX", "alias_es_MX"),
+    ("E0001", "zh_CN", "alias_zh_CN"),
+)
+
+UNKNOWN_CODE_FIELDS = {
+    "message": "diagnostic code is known by the full catalog when available",
+    "summary": "The bootstrap compiler can explain core diagnostics and leaves other codes to the generated catalog.",
+    "cause": "This seed runtime carries a compact fallback catalog.",
+    "step1": "Run the full compiler build for the complete localized explanation.",
+    "fix": "Use bin/vitte when a host compiler exists, otherwise keep this code for support.",
+}
 
 
 def parse_ftl(path: Path) -> dict[str, str]:
@@ -31,7 +47,18 @@ def parse_ftl(path: Path) -> dict[str, str]:
     return messages
 
 
+def normalize_locale(lang: str) -> str:
+    if not lang:
+        return "en"
+    for locale in SUPPORTED_DIAGNOSTIC_LOCALES:
+        if lang == locale.code or lang in locale.aliases:
+            return locale.code
+    return "en"
+
+
 def phase_from_code(code: str) -> str:
+    if code == "NO_SUCH_CODE":
+        return "diagnostics"
     family = diagnostic_family(code)
     if family == "syntax":
         return "parser"
@@ -44,17 +71,37 @@ def phase_from_code(code: str) -> str:
     return family.replace(" ", "-")
 
 
-def render(code: str, lang: str) -> str:
-    locale_messages = parse_ftl(ROOT / "locales" / lang / "diagnostics.ftl")
+def explain_fields(code: str, locale: str) -> dict[str, str]:
+    if code == "NO_SUCH_CODE":
+        return {
+            **UNKNOWN_CODE_FIELDS,
+            "example": f"vitte explain {code} --lang {locale}",
+        }
+
+    messages = parse_ftl(ROOT / "locales" / locale / "diagnostics.ftl")
     en_messages = parse_ftl(ROOT / "locales" / "en" / "diagnostics.ftl")
-    message = locale_messages.get(code, en_messages.get(code, readable_from_code(code)))
-    fields = explanation_fields(code, message)
+    explain = parse_ftl(ROOT / "locales" / locale / "diagnostics_explain.ftl")
+    message = messages.get(code, en_messages.get(code, readable_from_code(code)))
+    fallback = explanation_fields(code, message)
+    return {
+        "message": message,
+        "summary": explain.get(f"{code}.summary", fallback["summary"]),
+        "cause": explain.get(f"{code}.cause", fallback["cause"]),
+        "step1": explain.get(f"{code}.step1", fallback["step1"]),
+        "fix": explain.get(f"{code}.fix", fallback["fix"]),
+        "example": explain.get(f"{code}.example", fallback["example"]),
+    }
+
+
+def render(code: str, lang: str) -> str:
+    locale = normalize_locale(lang)
+    fields = explain_fields(code, locale)
     return "\n".join(
         [
             f"error code: {code}",
-            f"lang: {lang}",
+            f"lang: {locale}",
             f"phase: {phase_from_code(code)}",
-            f"message: {message}",
+            f"message: {fields['message']}",
             f"summary: {fields['summary']}",
             f"cause: {fields['cause']}",
             f"step 1: {fields['step1']}",
@@ -65,22 +112,80 @@ def render(code: str, lang: str) -> str:
     )
 
 
+def snapshot_name(code: str, lang: str, label: str | None = None) -> str:
+    if label:
+        return label
+    return f"{code}.{lang.replace('-', '_')}"
+
+
+def cases() -> list[tuple[str, str, str]]:
+    out: list[tuple[str, str, str]] = []
+    for code in REPRESENTATIVE_CODES:
+        for lang in supported_locale_codes():
+            out.append((code, lang, snapshot_name(code, lang)))
+    for code, lang, label in FALLBACK_CASES:
+        out.append((code, lang, label))
+    return out
+
+
+def write_case(code: str, lang: str, name: str, check: bool) -> list[str]:
+    expected = render(code, lang)
+    cmd = f"explain {code} --lang {lang}\n"
+    must = "\n".join(
+        line
+        for line in expected.splitlines()
+        if line.startswith(("error code:", "lang:", "phase:", "message:", "step 1:", "fix:"))
+    ) + "\n"
+    paths = {
+        "txt": OUT_DIR / f"{name}.txt",
+        "cmd": OUT_DIR / f"{name}.cmd",
+        "must": OUT_DIR / f"{name}.must",
+    }
+    stale: list[str] = []
+    expected_by_kind = {"txt": expected, "cmd": cmd, "must": must}
+    for kind, path in paths.items():
+        body = expected_by_kind[kind]
+        if check:
+            current = path.read_text(encoding="utf-8") if path.exists() else ""
+            if current != body:
+                stale.append(str(path.relative_to(ROOT)))
+        else:
+            path.write_text(body, encoding="utf-8")
+            print(f"[explain-snapshots] wrote {path.relative_to(ROOT)}")
+    return stale
+
+
+def remove_obsolete(expected_names: set[str], check: bool) -> list[str]:
+    stale: list[str] = []
+    expected_files = {
+        OUT_DIR / f"{name}.{suffix}"
+        for name in expected_names
+        for suffix in ("txt", "cmd", "must")
+    }
+    for path in OUT_DIR.glob("*"):
+        if not path.is_file() or path.suffix not in {".txt", ".cmd", ".must"}:
+            continue
+        if path not in expected_files:
+            if check:
+                stale.append(str(path.relative_to(ROOT)))
+            else:
+                path.unlink()
+                print(f"[explain-snapshots] removed {path.relative_to(ROOT)}")
+    return stale
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args()
     OUT_DIR.mkdir(parents=True, exist_ok=True)
+
+    all_cases = cases()
     stale: list[str] = []
-    for code, lang in CASES:
-        path = OUT_DIR / f"{code}.{lang}.txt"
-        expected = render(code, lang)
-        if args.check:
-            current = path.read_text(encoding="utf-8") if path.exists() else ""
-            if current != expected:
-                stale.append(str(path.relative_to(ROOT)))
-        else:
-            path.write_text(expected, encoding="utf-8")
-            print(f"[explain-snapshots] wrote {path.relative_to(ROOT)}")
+    for code, lang, name in all_cases:
+        stale.extend(write_case(code, lang, name, args.check))
+    stale.extend(remove_obsolete({name for _, _, name in all_cases}, args.check))
+
     if stale:
         print("[explain-snapshots][error] stale snapshots")
         for path in stale:
