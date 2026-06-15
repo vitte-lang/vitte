@@ -1233,6 +1233,15 @@ bootstrap-selfhost-repro:
 compiler-max-gate-fast:
 	@tools/compiler_max_gate.sh fast
 
+.PHONY: compiler-power-gate
+compiler-power-gate:
+	@$(MAKE) --no-print-directory diagnostic-quality
+	@$(MAKE) --no-print-directory compiler-test-suite-check-gate
+	@$(MAKE) --no-print-directory analysis-gate
+	@$(MAKE) --no-print-directory type-system-gate
+	@$(MAKE) --no-print-directory backend-gate
+	@echo "[compiler-power-gate] PASS"
+
 .PHONY: compiler-max-gate
 compiler-max-gate:
 	@tools/compiler_max_gate.sh full
@@ -1979,6 +1988,7 @@ help:
 	@echo "  make test-golden-update regenerate frontend golden snapshots under tests/golden/frontend/snapshots"
 	@echo "  make test-golden-critical run cross-platform critical frontend golden subset"
 	@echo "  make explain-snapshots assert vitte explain outputs"
+	@echo "  make compiler-power-gate run focused compiler maturity gate (diagnostics + semantic core + MIR + backend smoke)"
 	@echo "  make same-output-hash verify deterministic emit hash stability"
 	@echo "  make completions-gen regenerate bash/zsh/fish completions from unified spec"
 	@echo "  make completions-check verify generated completions are up to date"
@@ -2291,6 +2301,9 @@ diagnostic-contracts:
 	@bin/vittec0 check src/vitte/compiler/diagnostics/diagnostic.vit
 	@bin/vittec0 check src/vitte/compiler/diagnostics/json.vit
 	@bin/vittec0 check src/vitte/compiler/diagnostics/lsp.vit
+	@bin/vittec0 check src/vitte/compiler/diagnostics/render.vit
+	@bin/vittec0 check src/vitte/compiler/diagnostics/suggestions.vit
+	@bin/vittec0 check src/vitte/compiler/diagnostics/mod.vit
 	@bin/vittec0 check src/vitte/compiler/infrastructure/session/diagnostics.vit
 	@bin/vittec0 check src/vitte/compiler/analysis/report.vit
 	@bin/vittec0 check src/vitte/compiler/middle/typecheck/diagnostics.vit
@@ -2300,6 +2313,8 @@ diagnostic-contracts:
 
 .PHONY: diagnostic-snapshots
 diagnostic-snapshots:
+	@bin/vittec0 check src/vitte/compiler/diagnostics/suggestions.vit
+	@bin/vittec0 check src/vitte/compiler/diagnostics/render.vit
 	@bin/vittec0 check src/vitte/compiler/tests/diagnostic_snapshot_tests.vit
 	@bin/vittec0 check src/vitte/compiler/tests/parser_tests.vit
 
@@ -2309,7 +2324,7 @@ diagnostic-fuzz:
 	@python3 -m py_compile tools/frontend_syntax_check.py
 	@python3 tools/frontend_syntax_check.py tests/frontend_syntax/invalid/standalone_attribute.vit >/dev/null
 	@python3 -m py_compile tools/check_diagnostics_locales.py tools/update_diagnostics_ftl.py
-	@python3 tools/check_diagnostics_locales.py | grep -q '^\[diagnostics-locales\] OK codes='
+	@python3 tools/check_diagnostics_locales.py | grep -Eq '^\[diagnostics-locales\] OK .*codes='
 	@tools/update_diagnostics_ftl.py --check
 
 

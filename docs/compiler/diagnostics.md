@@ -47,6 +47,24 @@ The active compiler diagnostics surface is Vitte-owned.
   - `primary_report.diagnostics[]` for the flattened report
   - `phase_reports.<phase>` for per-phase diagnostics
 
+## Suggestions contract
+
+- Diagnostics carry a bounded suggestion list, ordered by applicability and confidence.
+- The default public limit is 5 suggestions per diagnostic.
+- Each suggestion has:
+  - `kind`: `insert`, `replace`, `remove`, or `help`
+  - `span`: the edit or explanation location
+  - `replacement`: concrete text for edit suggestions, empty for manual help
+  - `machine_applicable`: legacy boolean for safe automatic edits
+  - `applicability`: `machine`, `maybe_machine`, or `manual`
+  - `confidence`: `high`, `medium`, or `low`
+  - `reason`: why this suggestion is attached to the diagnostic
+- `machine` suggestions may be applied by tools without extra inference.
+- `maybe_machine` suggestions are useful as IDE quick fixes but should be reviewed.
+- `manual` suggestions are explanatory and should not be applied automatically.
+- Code-specific suggestions live behind `diagnostic_catalog_suggestions`; phase defaults are only a fallback.
+- LSP integration exposes suggestions as code actions with the original diagnostic code, range, replacement text, and applicability.
+
 ## Stable phases
 
 - `lexer`

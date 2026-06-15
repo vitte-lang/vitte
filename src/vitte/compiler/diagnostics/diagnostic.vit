@@ -69,6 +69,12 @@ pick DiagnosticSuggestionKind {
     Help
 }
 
+pick DiagnosticApplicability {
+    Machine
+    MaybeMachine
+    Manual
+}
+
 pick DiagnosticFixKind {
     Insert
     Replace
@@ -115,6 +121,7 @@ form DiagnosticSuggestion {
     replacement: string
     span: SourceSpan
     machine_applicable: bool
+    applicability: DiagnosticApplicability
     confidence: string
     reason: string
     valid: bool
@@ -422,6 +429,18 @@ proc suggestion_kind_name(kind: DiagnosticSuggestionKind) -> string {
     give "help";
 }
 
+proc applicability_name(applicability: DiagnosticApplicability) -> string {
+    if applicability == DiagnosticApplicability.Machine {
+        give "machine";
+    }
+
+    if applicability == DiagnosticApplicability.MaybeMachine {
+        give "maybe_machine";
+    }
+
+    give "manual";
+}
+
 proc fix_kind_name(kind: DiagnosticFixKind) -> string {
     if kind == DiagnosticFixKind.Insert {
         give "insert";
@@ -502,10 +521,31 @@ proc diagnostic_suggestion(kind: DiagnosticSuggestionKind, message: string, repl
         replacement: replacement,
         span: span,
         machine_applicable: machine_applicable,
+        applicability: if machine_applicable { DiagnosticApplicability.Machine } else { DiagnosticApplicability.Manual },
         confidence: confidence,
         reason: message,
         valid: message != "" and span.valid
     };
+}
+
+proc diagnostic_suggestion_applicability(kind: DiagnosticSuggestionKind, message: string, replacement: string, span: SourceSpan, applicability: DiagnosticApplicability, confidence: string, reason: string) -> DiagnosticSuggestion {
+    let machine_applicable: bool = applicability == DiagnosticApplicability.Machine;
+    let suggestion: DiagnosticSuggestion = diagnostic_suggestion(kind, message, replacement, span, machine_applicable);
+    set suggestion.applicability = applicability;
+
+    if confidence != "" {
+        set suggestion.confidence = confidence;
+    } elif applicability == DiagnosticApplicability.MaybeMachine {
+        set suggestion.confidence = "medium";
+    } elif applicability == DiagnosticApplicability.Manual {
+        set suggestion.confidence = "low";
+    }
+
+    if reason != "" {
+        set suggestion.reason = reason;
+    }
+
+    give suggestion;
 }
 
 proc diagnostic_suggestion_detail(kind: DiagnosticSuggestionKind, message: string, replacement: string, span: SourceSpan, machine_applicable: bool, confidence: string, reason: string) -> DiagnosticSuggestion {
@@ -517,6 +557,14 @@ proc diagnostic_suggestion_detail(kind: DiagnosticSuggestionKind, message: strin
 
     if reason != "" {
         set suggestion.reason = reason;
+    }
+
+    if machine_applicable {
+        set suggestion.applicability = DiagnosticApplicability.Machine;
+    } elif confidence == "medium" {
+        set suggestion.applicability = DiagnosticApplicability.MaybeMachine;
+    } else {
+        set suggestion.applicability = DiagnosticApplicability.Manual;
     }
 
     give suggestion;
@@ -1347,10 +1395,145 @@ proc diagnostic_default_suggestion(phase: DiagnosticPhase, code: string, span: S
     give diagnostic_suggestion_detail(kind, message, replacement, span, machine_applicable, confidence, reason);
 }
 
+proc diagnostic_suggestion_limit() -> u64 {
+    give 5;
+}
+
+proc diagnostic_suggestion_rank(suggestion: DiagnosticSuggestion) -> u64 {
+    if suggestion.applicability == DiagnosticApplicability.Machine {
+        give 0;
+    }
+
+    if suggestion.confidence == "high" {
+        give 1;
+    }
+
+    if suggestion.applicability == DiagnosticApplicability.MaybeMachine or suggestion.confidence == "medium" {
+        give 2;
+    }
+
+    give 3;
+}
+
+proc diagnostic_suggestion_list_add(suggestions: [DiagnosticSuggestion], suggestion: DiagnosticSuggestion) -> [DiagnosticSuggestion] {
+    if not suggestion.valid {
+        give suggestions;
+    }
+
+    let out: [DiagnosticSuggestion] = [];
+    let inserted: bool = false;
+    let i: u64 = 0;
+    let rank: u64 = diagnostic_suggestion_rank(suggestion);
+
+    while i < len(suggestions) {
+        if not inserted and rank < diagnostic_suggestion_rank(suggestions[i]) {
+            set out = out + [suggestion];
+            set inserted = true;
+        }
+
+        if len(out) < diagnostic_suggestion_limit() {
+            set out = out + [suggestions[i]];
+        }
+
+        set i = i + 1;
+    }
+
+    if not inserted and len(out) < diagnostic_suggestion_limit() {
+        set out = out + [suggestion];
+    }
+
+    give out;
+}
+
+proc diagnostic_suggestion_list_extend(suggestions: [DiagnosticSuggestion], extra: [DiagnosticSuggestion]) -> [DiagnosticSuggestion] {
+    let out: [DiagnosticSuggestion] = suggestions;
+    let i: u64 = 0;
+
+    while i < len(extra) {
+        set out = diagnostic_suggestion_list_add(out, extra[i]);
+        set i = i + 1;
+    }
+
+    give out;
+}
+
+proc diagnostic_catalog_suggestions(phase: DiagnosticPhase, code: string, span: SourceSpan) -> [DiagnosticSuggestion] {
+    if code == "P000_UNBALANCED" {
+        give [
+            diagnostic_suggestion_applicability(DiagnosticSuggestionKind.Insert, "insert the missing closing delimiter", "}", span, DiagnosticApplicability.Machine, "high", "parser reported an unbalanced block"),
+            diagnostic_suggestion_applicability(DiagnosticSuggestionKind.Help, "check the nearest opened block before this span", "", span, DiagnosticApplicability.Manual, "medium", "a later parser error may be a recovery artifact")
+        ];
+    }
+
+    if code == "E0001" {
+        give [
+            diagnostic_suggestion_applicability(DiagnosticSuggestionKind.Insert, "insert a placeholder identifier", "name", span, DiagnosticApplicability.MaybeMachine, "medium", "the parser expected an identifier-like token"),
+            diagnostic_suggestion_applicability(DiagnosticSuggestionKind.Help, "rename the placeholder to the intended symbol after parsing succeeds", "", span, DiagnosticApplicability.Manual, "medium", "the compiler cannot infer the real name")
+        ];
+    }
+
+    if code == "E0002" {
+        give [
+            diagnostic_suggestion_applicability(DiagnosticSuggestionKind.Insert, "insert a placeholder expression", "todo()", span, DiagnosticApplicability.MaybeMachine, "medium", "the parser expected an expression"),
+            diagnostic_suggestion_applicability(DiagnosticSuggestionKind.Help, "replace the placeholder with the intended value before committing", "", span, DiagnosticApplicability.Manual, "medium", "placeholder expressions preserve parsing but not intent")
+        ];
+    }
+
+    if code == "PATTR003" {
+        give [
+            diagnostic_suggestion_applicability(DiagnosticSuggestionKind.Remove, "remove this standalone attribute", "", span, DiagnosticApplicability.Machine, "high", "standalone attributes are not attached to a declaration"),
+            diagnostic_suggestion_applicability(DiagnosticSuggestionKind.Help, "move the attribute directly before the declaration it describes", "", span, DiagnosticApplicability.Manual, "medium", "attributes apply to the next declaration")
+        ];
+    }
+
+    if code == "TYPECK_E_ASSIGN_MISMATCH" or code == "TYPECK_E_ARGUMENT_MISMATCH" or code == "TYPECK_E_BINARY_MISMATCH" {
+        give [
+            diagnostic_suggestion_applicability(DiagnosticSuggestionKind.Replace, "replace the expression with a value of the expected type", "", span, DiagnosticApplicability.Manual, "medium", "the expected and found types disagree"),
+            diagnostic_suggestion_applicability(DiagnosticSuggestionKind.Help, "change the annotation only if the broader API contract is wrong", "", span, DiagnosticApplicability.Manual, "medium", "type fixes should preserve the declared contract")
+        ];
+    }
+
+    if code == "TYPECK_E_CALL_ARITY" {
+        give [
+            diagnostic_suggestion_applicability(DiagnosticSuggestionKind.Replace, "rewrite the call argument list to match the callee signature", "", span, DiagnosticApplicability.Manual, "medium", "the call arity does not match the signature"),
+            diagnostic_suggestion_applicability(DiagnosticSuggestionKind.Help, "inspect the callee declaration before adding or removing arguments", "", span, DiagnosticApplicability.Manual, "medium", "the diagnostic cannot choose the semantic argument")
+        ];
+    }
+
+    if code == "BORROWCK_E_USE_AFTER_MOVE" or code == "BORROW_E_USE_AFTER_MOVE" {
+        give [
+            diagnostic_suggestion_applicability(DiagnosticSuggestionKind.Help, "borrow the value before the move when ownership is not needed", "", span, DiagnosticApplicability.Manual, "medium", "a moved value is unavailable at this use"),
+            diagnostic_suggestion_applicability(DiagnosticSuggestionKind.Help, "clone or copy only when the type and cost make that explicit", "", span, DiagnosticApplicability.Manual, "low", "ownership repairs can change performance or semantics"),
+            diagnostic_suggestion_applicability(DiagnosticSuggestionKind.Help, "reorder this use before the move if the control flow allows it", "", span, DiagnosticApplicability.Manual, "medium", "the later use depends on the earlier move")
+        ];
+    }
+
+    if code == "BORROWCK_E_MUTABLE_BORROW_CONFLICT" or code == "BORROWCK_E_SHARED_BORROW_CONFLICT" {
+        give [
+            diagnostic_suggestion_applicability(DiagnosticSuggestionKind.Help, "shorten the active borrow scope before this access", "", span, DiagnosticApplicability.Manual, "medium", "the borrow window overlaps this operation"),
+            diagnostic_suggestion_applicability(DiagnosticSuggestionKind.Help, "split the block so the borrow ends before mutation", "", span, DiagnosticApplicability.Manual, "medium", "scope boundaries determine borrow lifetime")
+        ];
+    }
+
+    if phase == DiagnosticPhase.Lexer {
+        give [
+            diagnostic_suggestion_applicability(DiagnosticSuggestionKind.Replace, "rewrite the invalid token at this span", "", span, DiagnosticApplicability.Manual, "medium", "tokenization must succeed before parsing can recover")
+        ];
+    }
+
+    give [];
+}
+
+proc diagnostic_suggestion_list(phase: DiagnosticPhase, code: string, span: SourceSpan) -> [DiagnosticSuggestion] {
+    let out: [DiagnosticSuggestion] = diagnostic_catalog_suggestions(phase, code, span);
+    let fallback: DiagnosticSuggestion = diagnostic_default_suggestion(phase, code, span);
+    give diagnostic_suggestion_list_add(out, fallback);
+}
+
 proc diagnostic_create(code: string, phase: DiagnosticPhase, severity: DiagnosticSeverity, message: string, span: SourceSpan) -> Diagnostic {
     let default_note_text: string = diagnostic_default_note(phase, code);
     let default_help_text: string = diagnostic_default_help(phase, code);
-    let default_suggestion: DiagnosticSuggestion = diagnostic_default_suggestion(phase, code, span);
+    let default_suggestions: [DiagnosticSuggestion] = diagnostic_suggestion_list(phase, code, span);
     let phase_context: string = diag_kv("phase", phase_name(phase));
     let step_context: string = diag_kv("step", diagnostic_default_step(phase));
     let family_context: string = diag_kv("family", diagnostic_code_family(phase, code));
@@ -1368,7 +1551,7 @@ proc diagnostic_create(code: string, phase: DiagnosticPhase, severity: Diagnosti
         labels: [primary_label(message, span)],
         notes: if default_note_text == "" { [] } else { [diagnostic_note(default_note_text)] },
         helps: if default_help_text == "" { [] } else { [diagnostic_help(default_help_text)] },
-        suggestions: if default_suggestion.valid { [default_suggestion] } else { [] },
+        suggestions: default_suggestions,
         documentation_url: diagnostic_default_documentation(phase, code),
         root_cause: diagnostic_default_root_cause(phase, code),
         cause_chain: [],
@@ -2255,6 +2438,7 @@ proc render_suggestion(suggestion: DiagnosticSuggestion, config: DiagnosticRende
     let prefix: string = color_wrap(config, ansi_cyan(), "suggestion");
     let kind_name: string = suggestion_kind_name(suggestion.kind);
     let location: string = span_location_text(suggestion.span);
+    let applicability: string = applicability_name(suggestion.applicability);
     let text: string = "  " + prefix + ": " + kind_name + " " + location + " " + suggestion.message;
 
     if suggestion.replacement != "" {
@@ -2263,6 +2447,10 @@ proc render_suggestion(suggestion: DiagnosticSuggestion, config: DiagnosticRende
 
     if suggestion.confidence != "" {
         set text = text + " " + diag_lparen() + suggestion.confidence + " confidence" + diag_rparen();
+    }
+
+    if applicability != "" {
+        set text = text + " [" + applicability + "]";
     }
 
     if suggestion.reason != "" and suggestion.reason != suggestion.message {
@@ -3082,6 +3270,7 @@ share DiagnosticPhase
 share DiagnosticStyle
 share DiagnosticLabelKind
 share DiagnosticSuggestionKind
+share DiagnosticApplicability
 share DiagnosticFixKind
 
 share SourceSpan
@@ -3109,6 +3298,7 @@ share severity_is_error
 share severity_is_fatal
 share label_kind_name
 share suggestion_kind_name
+share applicability_name
 share fix_kind_name
 
 share diagnostic_label
@@ -3118,7 +3308,14 @@ share previous_label
 share diagnostic_note
 share diagnostic_help
 share diagnostic_suggestion
+share diagnostic_suggestion_applicability
 share diagnostic_suggestion_detail
+share diagnostic_suggestion_limit
+share diagnostic_suggestion_rank
+share diagnostic_suggestion_list_add
+share diagnostic_suggestion_list_extend
+share diagnostic_catalog_suggestions
+share diagnostic_suggestion_list
 share diagnostic_fix_kind_from_suggestion
 share diagnostic_fix_plan_id
 share diagnostic_fix_plan_from_suggestion

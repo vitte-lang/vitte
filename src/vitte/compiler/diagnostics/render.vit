@@ -27,6 +27,7 @@ use vitte/compiler/diagnostics/diagnostic.{
     phase_name,
     label_kind_name,
     suggestion_kind_name,
+    applicability_name,
     span_location_text,
     default_render_config
 }
@@ -460,6 +461,12 @@ proc render_suggestion_line(ctx: RenderContext, suggestion: DiagnosticSuggestion
 
     if suggestion.machine_applicable {
         set text = text + " [machine-applicable]";
+    }
+
+    set text = text + " [" + applicability_name(suggestion.applicability) + "]";
+
+    if suggestion.confidence != "" {
+        set text = text + " [" + suggestion.confidence + "]";
     }
 
     give color_wrap(ctx, ansi_cyan(), text);

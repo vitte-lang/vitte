@@ -347,6 +347,33 @@ compile_native_ir() {
         }
         return n
     }
+    function strip_strings(s,    i, ch, quoted, escaped, out) {
+        quoted = 0
+        escaped = 0
+        out = ""
+        for (i = 1; i <= length(s); i++) {
+            ch = substr(s, i, 1)
+            if (escaped) {
+                escaped = 0
+                out = out " "
+            } else if (quoted && ch == "\\") {
+                escaped = 1
+                out = out " "
+            } else if (ch == "\"") {
+                if (!quoted) {
+                    out = out "S"
+                } else {
+                    out = out " "
+                }
+                quoted = !quoted
+            } else if (quoted) {
+                out = out " "
+            } else {
+                out = out ch
+            }
+        }
+        return out
+    }
     function block_delta(s) {
         return count_char(s, "{") - count_char(s, "}")
     }
@@ -1219,6 +1246,33 @@ detect_professional_diagnostic() {
         }
         return n
     }
+    function strip_strings(s,    i, ch, quoted, escaped, out) {
+        quoted = 0
+        escaped = 0
+        out = ""
+        for (i = 1; i <= length(s); i++) {
+            ch = substr(s, i, 1)
+            if (escaped) {
+                escaped = 0
+                out = out " "
+            } else if (quoted && ch == "\\") {
+                escaped = 1
+                out = out " "
+            } else if (ch == "\"") {
+                if (!quoted) {
+                    out = out "S"
+                } else {
+                    out = out " "
+                }
+                quoted = !quoted
+            } else if (quoted) {
+                out = out " "
+            } else {
+                out = out ch
+            }
+        }
+        return out
+    }
     function first_token(s,    t) {
         t = trim(s)
         sub(/[ \t\r\n].*$/, "", t)
@@ -1299,6 +1353,8 @@ detect_professional_diagnostic() {
         raw = $0
         line = trim(raw)
         if (line == "" || line ~ /^\/\//) next
+        code_line = strip_strings(raw)
+        code_trim = trim(code_line)
 
         if (skip_doc) {
             if (line ~ />>>/) skip_doc = 0
@@ -1430,8 +1486,8 @@ detect_professional_diagnostic() {
                 "split the token into smaller lexical units")
         }
 
-        if (raw ~ /\\z/) {
-            col = index(raw, "\\z")
+        if (code_line ~ /\\z/) {
+            col = index(code_line, "\\z")
             emit("LEX_E_INVALID_ESCAPE", "error", "lexer",
                 "invalid escape sequence",
                 FNR, col, col + 2, raw,
@@ -1440,8 +1496,8 @@ detect_professional_diagnostic() {
                 "replace the escape with a supported sequence")
         }
 
-        if (raw ~ /\\u([^0-9A-Fa-f]|$|[0-9A-Fa-f]($|[^0-9A-Fa-f])|[0-9A-Fa-f][0-9A-Fa-f]($|[^0-9A-Fa-f])|[0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f]($|[^0-9A-Fa-f]))/) {
-            col = index(raw, "\\u")
+        if (code_line ~ /\\u([^0-9A-Fa-f]|$|[0-9A-Fa-f]($|[^0-9A-Fa-f])|[0-9A-Fa-f][0-9A-Fa-f]($|[^0-9A-Fa-f])|[0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f]($|[^0-9A-Fa-f]))/) {
+            col = index(code_line, "\\u")
             emit("LEX_E_INVALID_UNICODE", "error", "lexer",
                 "invalid unicode escape",
                 FNR, col, col + 2, raw,
@@ -1460,7 +1516,7 @@ detect_professional_diagnostic() {
                 "remove @ or replace it with valid Vitte syntax")
         }
 
-        if (raw ~ /=[ \t]*"[^"]*$/) {
+        if (raw ~ /^[^"]*=[ \t]*"[^"]*$/) {
             col = index(raw, "\"")
             emit("LEX_E_UNTERMINATED_STRING", "error", "lexer",
                 "unterminated string literal",
@@ -1470,9 +1526,9 @@ detect_professional_diagnostic() {
                 "add the closing quote")
         }
 
-        if (index(raw, "'\''") > 0) {
-            col = index(raw, "'\''")
-            tail = substr(raw, col + 1)
+        if (index(code_line, "'\''") > 0) {
+            col = index(code_line, "'\''")
+            tail = substr(code_line, col + 1)
             close_rel = index(tail, "'\''")
             if (close_rel == 0) {
                 emit("LEX_E_INVALID_CHAR_LITERAL", "error", "lexer",
@@ -1493,9 +1549,9 @@ detect_professional_diagnostic() {
             }
         }
 
-        if (raw ~ /(^|[^A-Za-z0-9_])[0-9][0-9_]*[A-Za-z_][A-Za-z0-9_]*/) {
-            if (match(raw, /[0-9][0-9_]*[A-Za-z_][A-Za-z0-9_]*/)) {
-                number_token = substr(raw, RSTART, RLENGTH)
+        if (code_line ~ /(^|[^A-Za-z0-9_])(0[xob]_|[0-9][0-9_]*[A-Za-z_][A-Za-z0-9_]*)/) {
+            if (match(code_line, /(0[xob]_|[0-9][0-9_]*[A-Za-z_][A-Za-z0-9_]*)/)) {
+                number_token = substr(code_line, RSTART, RLENGTH)
                 emit("LEX_E_INVALID_NUMBER", "error", "lexer",
                     "invalid number literal",
                     FNR, RSTART, RSTART + RLENGTH, raw,
@@ -1544,8 +1600,10 @@ detect_professional_diagnostic() {
             }
         }
 
-        if ((line ~ /=[ \t]*$/ || line ~ /[+][ \t]*$/ || line ~ /[-][ \t]*$/ || line ~ /[*][ \t]*$/ || line ~ /\/[ \t]*$/) &&
-            line !~ /^(export|share)[ \t]+[*]([ \t;]*)?$/) {
+        if ((code_trim ~ /=[ \t]*$/ || code_trim ~ /[+][ \t]*$/ || code_trim ~ /[-][ \t]*$/ || code_trim ~ /[*][ \t]*$/ || code_trim ~ /\/[ \t]*$/) &&
+            code_trim !~ /^(export|share)[ \t]+[*]([ \t;]*)?$/ &&
+            code_trim !~ /:[ \t]*string[ \t]*=[ \t]*$/ &&
+            !(code_trim ~ /[+][ \t]*$/ && raw ~ /"/)) {
             emit("PARSE_E_INCOMPLETE_EXPR", "error", "parser",
                 "incomplete expression",
                 FNR, length(raw), length(raw) + 1, raw,
@@ -1564,8 +1622,8 @@ detect_professional_diagnostic() {
                 "add the closing parenthesis")
         }
 
-        if (line ~ /[(][^,():]+[ \t]+[^,()]+[)]/) {
-            col = index(raw, "(")
+        if (code_trim ~ /[(][A-Za-z_][A-Za-z0-9_]*[ \t]+[A-Za-z_][A-Za-z0-9_]*[)]/) {
+            col = index(code_line, "(")
             emit("PARSE_E_MISSING_COMMA", "error", "parser",
                 "missing comma",
                 FNR, col, length(raw) + 1, raw,
@@ -1594,7 +1652,7 @@ detect_professional_diagnostic() {
                 "insert a valid pattern before the arrow")
         }
 
-        if (line ~ /^(if|while|for|else)[ \t].*$/ && line !~ /[{][ \t]*$/ && line !~ /^[ \t]*else[ \t]*[{][ \t]*$/ && line !~ /^[ \t]*else[ \t]+if/) {
+        if (line ~ /^(while|for|else)[ \t].*$/ && line !~ /[{][ \t]*$/ && line !~ /^[ \t]*else[ \t]*[{][ \t]*$/ && line !~ /^[ \t]*else[ \t]+if/) {
             kw = first_token(line)
             col = index(raw, kw)
             emit("PARSE_E_BLOCK_EXPECTED", "error", "parser",

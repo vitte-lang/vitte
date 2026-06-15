@@ -2,8 +2,10 @@ space vitte/compiler/tests/diagnostic_snapshot_tests
 
 use vitte/compiler/diagnostics/diagnostic.{
   Diagnostic,
+  DiagnosticApplicability,
   DiagnosticPhase,
   DiagnosticStyle,
+  DiagnosticSuggestion,
   DiagnosticSuggestionKind,
   DiagnosticReport,
   DiagnosticRenderConfig,
@@ -30,7 +32,7 @@ use vitte/compiler/diagnostics/diagnostic.{
   lexer_unterminated_string
 }
 use vitte/compiler/diagnostics/json.{ json_diagnostic }
-use vitte/compiler/diagnostics/lsp.{ LspDiagnostic, lsp_diagnostic }
+use vitte/compiler/diagnostics/lsp.{ LspCodeAction, LspDiagnostic, lsp_code_actions, lsp_diagnostic, lsp_report_code_actions }
 
 const VERSION_TEXT: string = "diagnostic snapshot tests 0.1.0"
 const BANNER_TEXT: string = "diagnostic snapshot tests"
@@ -165,6 +167,72 @@ proc lsp_has_machine_context(diag: Diagnostic) -> bool {
     and find(actual.data, "fixes") >= 0;
 }
 
+proc diagnostic_has_suggestion_text(diag: Diagnostic, text: string) -> bool {
+  let i: u64 = 0;
+  while i < len(diag.suggestions) {
+    if find(diag.suggestions[i].message, text) >= 0 {
+      give true;
+    }
+    set i = i + 1;
+  }
+  give false;
+}
+
+proc test_parser_suggestion_list_contract() -> bool {
+  let diag: Diagnostic = sample_parser_diagnostic();
+  if len(diag.suggestions) < 2 {
+    give false;
+  }
+
+  let first: DiagnosticSuggestion = diag.suggestions[0];
+  give first.applicability == DiagnosticApplicability.Machine
+    and first.machine_applicable
+    and first.replacement == "}"
+    and diagnostic_has_suggestion_text(diag, "nearest opened block")
+    and len(diag.suggestions) <= 5;
+}
+
+proc test_json_suggestion_applicability_contract() -> bool {
+  let parser_json: string = json_diagnostic(sample_parser_diagnostic());
+  let typeck_json: string = json_diagnostic(sample_typeck_diagnostic());
+  give find(parser_json, "\"applicability\": \"machine\"") >= 0
+    and find(parser_json, "\"machine_applicable\": true") >= 0
+    and find(typeck_json, "\"applicability\": \"maybe_machine\"") >= 0
+    and find(typeck_json, "\"confidence\": \"medium\"") >= 0;
+}
+
+proc test_lsp_code_action_contract() -> bool {
+  let diag: Diagnostic = sample_parser_diagnostic();
+  let actions: [LspCodeAction] = lsp_code_actions(diag);
+  if len(actions) == 0 {
+    give false;
+  }
+
+  give actions[0].kind == "quickfix"
+    and actions[0].replacement == "}"
+    and actions[0].applicability == "machine"
+    and actions[0].diagnostic_code == "P000_UNBALANCED";
+}
+
+proc test_typeck_and_borrowck_suggestion_catalog_contract() -> bool {
+  let typeck: Diagnostic = sample_typeck_diagnostic();
+  let borrowck: Diagnostic = sample_borrowck_diagnostic();
+  let report: DiagnosticReport = diagnostic_report([typeck, borrowck]);
+  let actions: [LspCodeAction] = lsp_report_code_actions(report);
+  give diagnostic_has_suggestion_text(typeck, "expected type")
+    and diagnostic_has_suggestion_text(typeck, "broader API contract")
+    and diagnostic_has_suggestion_text(borrowck, "borrow the value before the move")
+    and diagnostic_has_suggestion_text(borrowck, "reorder this use before the move")
+    and len(actions) >= len(typeck.suggestions) + len(borrowck.suggestions);
+}
+
+proc test_rendered_suggestion_applicability_contract() -> bool {
+  let actual: string = render_report(diagnostic_report([sample_parser_diagnostic()]), human_config());
+  give find(actual, "[machine]") >= 0
+    and find(actual, "high confidence") >= 0
+    and find(actual, "suggestion: insert") >= 0;
+}
+
 proc explain_has_actionable_context(code: string) -> bool {
   let actual: string = diagnostic_explain_text(code);
   give find(actual, "error code: ") >= 0
@@ -238,6 +306,11 @@ proc run_all_tests() -> int {
   let borrowck_ok: bool = test_borrowck_diagnostic_contract();
   let backend_ok: bool = test_backend_diagnostic_contract();
   let machine_ok: bool = test_machine_diagnostic_contract();
+  let parser_suggestions_ok: bool = test_parser_suggestion_list_contract();
+  let json_suggestions_ok: bool = test_json_suggestion_applicability_contract();
+  let lsp_actions_ok: bool = test_lsp_code_action_contract();
+  let catalog_ok: bool = test_typeck_and_borrowck_suggestion_catalog_contract();
+  let rendered_suggestions_ok: bool = test_rendered_suggestion_applicability_contract();
   if typeck_ok == false {
     set failures = failures + 1;
   }
@@ -254,6 +327,21 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if machine_ok == false {
+    set failures = failures + 1;
+  }
+  if parser_suggestions_ok == false {
+    set failures = failures + 1;
+  }
+  if json_suggestions_ok == false {
+    set failures = failures + 1;
+  }
+  if lsp_actions_ok == false {
+    set failures = failures + 1;
+  }
+  if catalog_ok == false {
+    set failures = failures + 1;
+  }
+  if rendered_suggestions_ok == false {
     set failures = failures + 1;
   }
   give failures;

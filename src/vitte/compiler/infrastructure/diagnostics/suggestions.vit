@@ -49,6 +49,51 @@ proc render_suggestion_summary(suggestion: DiagnosticSuggestion) -> string {
     give summary;
 }
 
+proc empty_suggestion_list() -> [DiagnosticSuggestion] {
+    give [];
+}
+
+proc suggestion_list_add(suggestions: [DiagnosticSuggestion], suggestion: DiagnosticSuggestion) -> [DiagnosticSuggestion] {
+    if not suggestion.valid {
+        give suggestions;
+    }
+
+    give suggestions + [suggestion];
+}
+
+proc suggestion_list_extend(suggestions: [DiagnosticSuggestion], extra: [DiagnosticSuggestion]) -> [DiagnosticSuggestion] {
+    let out: [DiagnosticSuggestion] = suggestions;
+    let i: u64 = 0;
+
+    while i < len(extra) {
+        set out = suggestion_list_add(out, extra[i]);
+        set i = i + 1;
+    }
+
+    give out;
+}
+
+proc render_suggestion_list(suggestions: [DiagnosticSuggestion]) -> string {
+    let out: string = "";
+    let i: u64 = 0;
+
+    while i < len(suggestions) {
+        let suggestion: DiagnosticSuggestion = suggestions[i];
+
+        if suggestion.valid {
+            if out != "" {
+                set out = out + "\n";
+            }
+
+            set out = out + render_suggestion_summary(suggestion);
+        }
+
+        set i = i + 1;
+    }
+
+    give out;
+}
+
 share insert_suggestion
 share replace_suggestion
 share remove_suggestion
@@ -56,3 +101,7 @@ share help_suggestion
 share replace_suggestion_detail
 share point_insert_suggestion
 share render_suggestion_summary
+share empty_suggestion_list
+share suggestion_list_add
+share suggestion_list_extend
+share render_suggestion_list
