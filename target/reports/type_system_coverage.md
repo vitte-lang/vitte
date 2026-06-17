@@ -1,18 +1,18 @@
 # Type System Advanced Features Coverage
 
-- Generics/templates: PASS (10/10)
-- Traits/interfaces: PASS (6/5)
-- Sum types (enums with data): PASS (6/6)
-- Advanced pattern matching: PASS (13/10)
-- Type inference complet: PASS (30/20)
+- Generics/templates: PASS (31/10)
+- Traits/interfaces: PASS (23/5)
+- Sum types (enums with data): PASS (16/6)
+- Advanced pattern matching: PASS (34/10)
+- Type inference complet: PASS (76/20)
 
 ## Quantitative Metrics
-- Fixtures analyzed: 5
-- Generic instantiations (total): 10
-- Trait impls (total): 6
-- Sum variants (total): 6
-- Pattern arms (total): 13
-- Inference constraints (total): 30
+- Fixtures analyzed: 11
+- Generic instantiations (total): 31
+- Trait impls (total): 23
+- Sum variants (total): 16
+- Pattern arms (total): 34
+- Inference constraints (total): 76
 
 ## Machine Exports
 - target/type_system/analysis.json

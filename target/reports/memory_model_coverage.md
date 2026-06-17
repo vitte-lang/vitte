@@ -1,18 +1,18 @@
 # Memory & Performance Coverage
 
-- Garbage collection (optional): PASS (12/10)
-- Manual memory management: PASS (28/25)
-- Ownership system (Rust-like): PASS (22/20)
-- Zero-cost abstractions: PASS (19/18)
-- SIMD intrinsics: PASS (16/15)
+- Garbage collection (optional): PASS (17/10)
+- Manual memory management: PASS (59/25)
+- Ownership system (Rust-like): PASS (72/20)
+- Zero-cost abstractions: PASS (38/18)
+- SIMD intrinsics: PASS (21/15)
 
 ## Quantitative Metrics
-- Fixtures analyzed: 5
-- GC cycles modeled (total): 12
-- Manual memory ops (total): 28
-- Ownership checks (total): 22
-- Zero-cost paths (total): 19
-- SIMD kernels (total): 16
+- Fixtures analyzed: 10
+- GC cycles modeled (total): 17
+- Manual memory ops (total): 59
+- Ownership checks (total): 72
+- Zero-cost paths (total): 38
+- SIMD kernels (total): 21
 
 ## Machine Exports
 - target/memory_model/analysis.json

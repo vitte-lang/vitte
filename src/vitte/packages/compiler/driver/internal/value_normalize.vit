@@ -20,6 +20,29 @@ proc default_syntax_profile() -> string {
   give "stable-v1"
 }
 
+proc is_stable_syntax_profile(value: string) -> bool {
+  give value == "stable-v1"
+}
+
+proc normalize_stable_syntax_profile(value: string) -> string {
+  if value == "" {
+    give default_syntax_profile()
+  }
+  if value == "1" {
+    give default_syntax_profile()
+  }
+  if value == "v1" {
+    give default_syntax_profile()
+  }
+  if value == "stable" {
+    give default_syntax_profile()
+  }
+  if is_stable_syntax_profile(value) {
+    give value
+  }
+  give default_syntax_profile()
+}
+
 proc default_opt_level() -> int {
   give 2
 }
@@ -60,10 +83,7 @@ proc normalize_runtime_profile(value: string) -> string {
 }
 
 proc normalize_syntax_profile(value: string) -> string {
-  if value == "" {
-    give default_syntax_profile()
-  }
-  give value
+  give normalize_stable_syntax_profile(value)
 }
 
 proc normalize_syntax_version(value: string) -> string {

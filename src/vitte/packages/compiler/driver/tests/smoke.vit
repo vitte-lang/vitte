@@ -72,6 +72,10 @@ proc known_flag_count() -> int {
   give 80
 }
 
+proc syntax_profile_count() -> int {
+  give 1
+}
+
 proc catalog_version() -> string {
   give "driver-surface-v1"
 }
@@ -94,6 +98,7 @@ proc smoke_test() -> bool {
   if grammar_subcommand_count() != 2 { give false }
   if mod_subcommand_count() != 5 { give false }
   if known_flag_count() != 80 { give false }
+  if syntax_profile_count() != 1 { give false }
   if bootstrap_status() != "self-hosted-bootstrap" { give false }
   if migration_stage() != bootstrap.bootstrap_stage() { give false }
   if api_version() != "0" { give false }
@@ -137,16 +142,18 @@ proc smoke_case_2() -> bool {
   if grammar_subcommand_count() != 2 { give false }
   if mod_subcommand_count() != 5 { give false }
   if known_flag_count() != 80 { give false }
+  if syntax_profile_count() != 1 { give false }
   give true
 }
 
 proc smoke_case_3() -> bool {
-  if smoke_input() !=
+  let expected: string =
     "space demo/app\n" +
     "proc main(argc: i32) -> i32 {\n" +
     "  let value: i32 = ping(argc)\n" +
     "  set value = ping(argc)\n" +
     "  give value\n" +
-    "}\n" { give false }
+    "}\n"
+  if smoke_input() != expected { give false }
   give true
 }

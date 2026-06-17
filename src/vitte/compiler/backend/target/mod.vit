@@ -3,6 +3,7 @@ space vitte/compiler/backend/target/mod
 use vitte/compiler/backend/target/triple.{ TargetTriple, triple_x86_64_linux, triple_aarch64_linux, triple_riscv64_linux, triple_i386_linux, triple_windows_x86_64, triple_macos_apple_silicon, triple_wasm32, triple_text, triple_summary, triple_is_unix, triple_is_windows, triple_is_apple, triple_is_wasm, triple_is_retro }
 use vitte/compiler/backend/target/layout.{ TargetLayout, target_layout_for, pointer_size, stack_alignment, simd_alignment, is_little_endian, layout_summary }
 use vitte/compiler/backend/target/x86_64.{ X8664Target, target_x86_64_linux, target_x86_64_windows, target_x86_64_macos, target_x86_64_retro, target_x86_64_modern, target_supports_modern_isa }
+use vitte/compiler/backend/target/aarch64.{ Aarch64Target, target_aarch64_linux, target_aarch64_macos, target_aarch64_embedded, target_aarch64_apple_silicon, target_supports_modern_atomics }
 use vitte/compiler/backend/target/riscv64.{ Riscv64Target, target_riscv64_linux, target_riscv64_embedded, target_riscv64_vector, target_supports_vectors }
 use vitte/compiler/backend/target.{ default_feature_set, feature_count, feature_summary }
 
@@ -149,9 +150,24 @@ proc backend_target_riscv64_vector() -> BackendTarget {
   give backend_target(BackendTargetKind.Riscv64, target.triple, target.cpu, target.executable_extension, target.static_library_extension, target.dynamic_library_extension, true, true, true, false, false);
 }
 
+proc backend_target_aarch64_linux() -> BackendTarget {
+  let target: Aarch64Target = target_aarch64_linux();
+  give backend_target(BackendTargetKind.Aarch64, target.triple, target.cpu, target.executable_extension, target.static_library_extension, target.dynamic_library_extension, true, true, true, false, false);
+}
+
+proc backend_target_aarch64_macos() -> BackendTarget {
+  let target: Aarch64Target = target_aarch64_macos();
+  give backend_target(BackendTargetKind.Aarch64, target.triple, target.cpu, target.executable_extension, target.static_library_extension, target.dynamic_library_extension, true, true, true, false, false);
+}
+
+proc backend_target_aarch64_embedded() -> BackendTarget {
+  let target: Aarch64Target = target_aarch64_embedded();
+  give backend_target(BackendTargetKind.Embedded, target.triple, target.cpu, target.executable_extension, target.static_library_extension, target.dynamic_library_extension, false, true, true, false, true);
+}
+
 proc backend_target_apple_silicon() -> BackendTarget {
-  let triple: TargetTriple = triple_macos_apple_silicon();
-  give backend_target(BackendTargetKind.AppleSilicon, triple, "apple-m4", "", ".a", ".dylib", true, true, true, false, false);
+  let target: Aarch64Target = target_aarch64_apple_silicon();
+  give backend_target(BackendTargetKind.AppleSilicon, target.triple, target.cpu, target.executable_extension, target.static_library_extension, target.dynamic_library_extension, true, true, true, false, false);
 }
 
 proc backend_target_wasm32() -> BackendTarget {
@@ -188,6 +204,8 @@ proc backend_target_selftest() -> bool {
   let native: BackendTarget = backend_target_native();
   let retro: BackendTarget = backend_target_x86_64_retro();
   let vector: BackendTarget = backend_target_riscv64_vector();
+  let arm: BackendTarget = backend_target_aarch64_linux();
+  let arm_profile: Aarch64Target = target_aarch64_linux();
   let modern: X8664Target = target_x86_64_modern();
-  give native.valid and retro.valid and vector.valid and target_is_native(native) and target_supports_parallel_codegen(native) and target_supports_jit(native) and target_supports_shared_objects(native) and target_supports_advanced_optimizations(vector) and target_supports_modern_isa(modern) and feature_summary(native.triple) != "" and triple_summary(native.triple) != "" and layout_summary(native.layout) != "" and stack_alignment(native.layout) > 0 and simd_alignment(native.layout) > 0 and not triple_is_windows(native.triple) and not triple_is_apple(native.triple) and triple_is_unix(native.triple) and not triple_is_retro(native.triple);
+  give native.valid and retro.valid and vector.valid and arm.valid and target_supports_modern_atomics(arm_profile) and target_is_native(native) and target_supports_parallel_codegen(native) and target_supports_jit(native) and target_supports_shared_objects(native) and target_supports_advanced_optimizations(vector) and target_supports_advanced_optimizations(arm) and target_supports_modern_isa(modern) and feature_summary(native.triple) != "" and triple_summary(native.triple) != "" and layout_summary(native.layout) != "" and stack_alignment(native.layout) > 0 and simd_alignment(native.layout) > 0 and not triple_is_windows(native.triple) and not triple_is_apple(native.triple) and triple_is_unix(native.triple) and not triple_is_retro(native.triple);
 }

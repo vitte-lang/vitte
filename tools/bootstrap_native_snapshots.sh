@@ -320,6 +320,9 @@ check_native_user_build() {
         rc="$?"
         [ "$rc" -eq 7 ] || die "native user run exit code mismatch"
     fi
+    "$BIN_DIR/vittec0" build "$ROOT_DIR/tests/golden/frontend/fixtures/hello_min.vit" -o "$TMP_DIR/hello-min"
+    "$TMP_DIR/hello-min" >/dev/null 2>&1 || die "hello_min executable exit code mismatch"
+    "$BIN_DIR/vittec0" run "$ROOT_DIR/tests/golden/frontend/fixtures/hello_min.vit" >/dev/null 2>&1 || die "hello_min run exit code mismatch"
 }
 
 check_ir_contract_gate

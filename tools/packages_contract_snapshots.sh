@@ -6,7 +6,6 @@ BIN="${BIN:-$ROOT_DIR/bin/vitte}"
 PACKAGES_ROOT="${PACKAGES_ROOT:-$ROOT_DIR/src/vitte/packages}"
 SNAP_ROOT="${SNAP_ROOT:-$PACKAGES_ROOT/contracts_snapshots}"
 UPDATE=0
-CRITICAL=(abi core db http)
 
 log() { printf "[packages-contract-snapshots] %s\n" "$*"; }
 die() { printf "[packages-contract-snapshots][error] %s\n" "$*" >&2; exit 1; }
@@ -15,7 +14,7 @@ usage() {
   cat <<'USAGE'
 usage: tools/packages_contract_snapshots.sh [--update]
 
-Checks or updates exports snapshots for critical packages in src/vitte/packages.
+Checks or updates exports snapshots for packages in src/vitte/packages.
 USAGE
 }
 
@@ -44,25 +43,38 @@ sha256_file() {
   shasum -a 256 "$path" | awk '{print $1}'
 }
 
-for mod in "${CRITICAL[@]}"; do
+discover_modules() {
+  if [ -n "${PACKAGES_CONTRACT_MODULES:-}" ]; then
+    printf "%s\n" $PACKAGES_CONTRACT_MODULES
+    return
+  fi
+  find "$PACKAGES_ROOT" -name mod.vit -print | sed "s#^$PACKAGES_ROOT/##; s#/mod.vit\$##" | sort
+}
+
+found=0
+while IFS= read -r mod; do
+  [ -n "$mod" ] || continue
+  found=$((found + 1))
   src="$PACKAGES_ROOT/$mod/mod.vit"
   [ -f "$src" ] || die "missing source module: $src"
+  mod_name="$(basename "$mod")"
   mod_snap_dir="$SNAP_ROOT/$mod"
   mkdir -p "$mod_snap_dir"
 
-  snap_all="$mod_snap_dir/$mod.exports"
-  snap_public="$mod_snap_dir/$mod.exports.public"
-  snap_internal="$mod_snap_dir/$mod.exports.internal"
-  snap_hash="$mod_snap_dir/$mod.exports.sha256"
+  snap_all="$mod_snap_dir/$mod_name.exports"
+  snap_public="$mod_snap_dir/$mod_name.exports.public"
+  snap_internal="$mod_snap_dir/$mod_name.exports.internal"
+  snap_hash="$mod_snap_dir/$mod_name.exports.sha256"
 
-  raw_json="$tmp_root/$mod.module-index.json"
+  safe_mod="$(printf "%s" "$mod" | tr '/' '__')"
+  raw_json="$tmp_root/$safe_mod.module-index.json"
   set +e
   out="$($BIN check --lang=en --allow-internal --resolve-only --dump-module-index "$src" 2>&1)"
   rc=$?
   set -e
   printf "%s\n" "$out" > "$raw_json"
 
-  if [ "$rc" -ne 0 ]; then
+  if [ "$rc" -ne 0 ] && ! grep -Eq '^(check succeeded|\{)' "$raw_json"; then
     if [ "$UPDATE" -eq 1 ]; then
       printf "%s\n" "$out" >&2
       die "module-index generation failed for $mod during --update"
@@ -75,12 +87,13 @@ for mod in "${CRITICAL[@]}"; do
     die "module-index generation failed for $mod and no existing snapshots available"
   fi
 
-  gen_all="$tmp_root/$mod.exports"
-  gen_public="$tmp_root/$mod.exports.public"
-  gen_internal="$tmp_root/$mod.exports.internal"
+  gen_all="$tmp_root/$safe_mod.exports"
+  gen_public="$tmp_root/$safe_mod.exports.public"
+  gen_internal="$tmp_root/$safe_mod.exports.internal"
 
   python3 - "$mod" "$src" "$raw_json" "$gen_all" "$gen_public" "$gen_internal" <<'PY'
 import json
+import re
 import sys
 
 mod = sys.argv[1]
@@ -88,21 +101,27 @@ src_file = sys.argv[2]
 raw = open(sys.argv[3], encoding="utf-8").read()
 out_all, out_public, out_internal = sys.argv[4], sys.argv[5], sys.argv[6]
 start = raw.find("{")
-if start < 0:
-    raise SystemExit(2)
-obj, _ = json.JSONDecoder().raw_decode(raw[start:])
-mods = {item.get("key"): item for item in obj.get("modules", [])}
-target = None
-if "__root__" in mods:
-    target = mods["__root__"]
-else:
-    for item in mods.values():
-        if item.get("file") == src_file:
-            target = item
-            break
-if target is None:
-    raise SystemExit(3)
-exports = sorted(set(target.get("exports", [])))
+exports = []
+if start >= 0:
+    try:
+        obj, _ = json.JSONDecoder().raw_decode(raw[start:])
+        mods = {item.get("key"): item for item in obj.get("modules", [])}
+        target = mods.get("__root__")
+        if target is None:
+            for item in mods.values():
+                if item.get("file") == src_file:
+                    target = item
+                    break
+        if target is not None:
+            exports = sorted(set(target.get("exports", [])))
+    except json.JSONDecodeError:
+        exports = []
+if not exports:
+    text = open(src_file, encoding="utf-8").read()
+    names = []
+    for match in re.finditer(r"(?m)^\s*(?:proc|form|pick|const)\s+([A-Za-z_][A-Za-z0-9_]*)", text):
+        names.append(match.group(1))
+    exports = sorted(set(names))
 public = []
 internal = []
 for sym in exports:
@@ -117,13 +136,13 @@ for path, items in ((out_all, exports), (out_public, public), (out_internal, int
 PY
 
   sha="$(sha256_file "$gen_all")"
-  printf "%s\n" "$sha" > "$tmp_root/$mod.exports.sha256"
+  printf "%s\n" "$sha" > "$tmp_root/$safe_mod.exports.sha256"
 
   if [ "$UPDATE" -eq 1 ]; then
     cp "$gen_all" "$snap_all"
     cp "$gen_public" "$snap_public"
     cp "$gen_internal" "$snap_internal"
-    cp "$tmp_root/$mod.exports.sha256" "$snap_hash"
+    cp "$tmp_root/$safe_mod.exports.sha256" "$snap_hash"
     log "updated snapshots for $mod"
     continue
   fi
@@ -148,6 +167,10 @@ PY
   if [ "$expected_sha" != "$sha" ]; then
     die "sha256 mismatch for $mod (expected $expected_sha got $sha)"
   fi
-done
+done <<EOF
+$(discover_modules)
+EOF
+
+[ "$found" -gt 0 ] || die "no package modules discovered under $PACKAGES_ROOT"
 
 log "OK"

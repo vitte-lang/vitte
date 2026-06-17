@@ -28,33 +28,7 @@ form NormalizedOptions {
   show_help: bool
 }
 
-proc build_options(
-  command: string,
-  command_stage: string,
-  parse_mode: string,
-  input: string,
-  positionals: [string],
-  init_template: string,
-  crash_dir: string,
-  output: string,
-  stdlib_profile: string,
-  syntax_profile: string,
-  stage: string,
-  lang: string,
-  target: string,
-  runtime_include: string,
-  mod_graph_from: string,
-  api_diff_old: string,
-  api_diff_new: string,
-  arduino_port: string,
-  arduino_fqbn: string,
-  panic_budget: int,
-  panic_budget_notes: int,
-  strict_recovery_limit: int,
-  max_imports: int,
-  opt_level: int,
-  show_help: bool
-) -> NormalizedOptions {
+proc build_options(command: string, command_stage: string, parse_mode: string, input: string, positionals: [string], init_template: string, crash_dir: string, output: string, stdlib_profile: string, syntax_profile: string, stage: string, lang: string, target: string, runtime_include: string, mod_graph_from: string, api_diff_old: string, api_diff_new: string, arduino_port: string, arduino_fqbn: string, panic_budget: int, panic_budget_notes: int, strict_recovery_limit: int, max_imports: int, opt_level: int, show_help: bool) -> NormalizedOptions {
   give NormalizedOptions(
     command,
     command_stage,
@@ -355,8 +329,16 @@ proc read_syntax_profile(args: [string]) -> string {
   if value == "" {
     set value = read_flag_value(args, "--syntax-version", "")
   }
+  give normalize_syntax_profile_value(value)
+}
+
+proc normalize_syntax_profile_value(value: string) -> string {
   if value == "" { give "stable-v1" }
-  give value
+  if value == "1" { give "stable-v1" }
+  if value == "v1" { give "stable-v1" }
+  if value == "stable" { give "stable-v1" }
+  if value == "stable-v1" { give value }
+  give "stable-v1"
 }
 
 proc read_mod_graph_from(args: [string]) -> string {

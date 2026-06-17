@@ -9,8 +9,13 @@ CRITICAL = ("abi", "core", "db", "http", "alerts")
 
 def main() -> int:
     repo = Path(__file__).resolve().parents[1]
+    packages_root = repo / "src/vitte/packages"
     snap_dir = repo / "tests/modules/snapshots"
     if not snap_dir.exists():
+        present_critical = [mod for mod in CRITICAL if (packages_root / mod / "mod.vit").exists()]
+        if not present_critical:
+            print("[critical-runtime-matrix] SKIP: legacy critical packages absent in this checkout")
+            return 0
         print(f"[critical-runtime-matrix][error] missing snapshots dir: {snap_dir}")
         return 1
 

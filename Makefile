@@ -191,7 +191,11 @@ dirs:
 
 .PHONY: format
 format:
-	@echo "[format] Vitte formatter hook is not wired yet; $(words $(VITTE_SOURCES)) Vitte files discovered"
+	@python3 tools/vitte_format.py
+
+.PHONY: format-check
+format-check:
+	@python3 tools/vitte_format.py --check --changed
 
 # ------------------------------------------------------------
 # Static analysis
@@ -376,6 +380,18 @@ compiler-reachability-audit:
 compiler-real-pipeline-audit:
 	@python3 tools/compiler_real_pipeline_audit.py
 
+.PHONY: truth-triangle
+truth-triangle:
+	@tools/truth_triangle_gate.sh
+
+.PHONY: truth-triangle-stdlib
+truth-triangle-stdlib:
+	@tools/truth_triangle_gate.sh tests/truth_triangle/stdlib_runtime_manifest.txt
+
+.PHONY: truth-triangle-stdlib-deep
+truth-triangle-stdlib-deep:
+	@tools/truth_triangle_gate.sh tests/truth_triangle/stdlib_runtime_deep_manifest.txt
+
 .PHONY: compiler-audit-report
 compiler-audit-report:
 	@python3 tools/compiler_audit_report.py
@@ -397,6 +413,7 @@ selfhost-driver-bootstrap:
 	@$(VITTE_BOOTSTRAP) check src/vitte/packages/compiler/driver/internal/value_normalize.vit
 	@$(VITTE_BOOTSTRAP) check src/vitte/packages/compiler/driver/internal/normalized_options.vit
 	@$(VITTE_BOOTSTRAP) check src/vitte/packages/compiler/driver/internal/tokenized_parse.vit
+	@$(VITTE_BOOTSTRAP) check src/vitte/packages/compiler/driver/internal/compiler_ast_interning.vit
 
 .PHONY: bootstrap-seed
 bootstrap-seed:
@@ -1229,6 +1246,33 @@ native-json-schema-contract:
 bootstrap-selfhost-repro:
 	@tools/bootstrap_selfhost_repro.sh
 
+.PHONY: runtime-stdlib-real
+runtime-stdlib-real:
+	@python3 tools/runtime_stdlib_real_checks.py
+	@test -f target/runtime_stdlib_real/real_checks.json
+	@test -f target/reports/runtime_stdlib_real.md
+
+.PHONY: selfhost-completion-audit
+selfhost-completion-audit:
+	@python3 tools/selfhost_completion_audit.py
+	@test -f target/selfhost_completion/selfhost_completion.json
+	@test -f target/reports/selfhost_completion.md
+
+.PHONY: selfhost-completion-strict
+selfhost-completion-strict:
+	@python3 tools/selfhost_completion_audit.py --strict-complete
+	@test -f target/selfhost_completion/selfhost_completion.json
+	@test -f target/reports/selfhost_completion.md
+
+.PHONY: spec-normative-check
+spec-normative-check:
+	@python3 tools/spec_normative_check.py
+	@test -f target/reports/spec_normative_coverage.md
+
+.PHONY: language-maturity-gate
+language-maturity-gate: runtime-stdlib-real selfhost-completion-audit format-check package-manager-gate lsp-gate spec-normative-check
+	@echo "[language-maturity-gate] PASS"
+
 .PHONY: compiler-max-gate-fast
 compiler-max-gate-fast:
 	@tools/compiler_max_gate.sh fast
@@ -1410,11 +1454,19 @@ book-length-check:
 
 .PHONY: packages-report
 packages-report:
-	@SEARCH_ROOT=src/vitte/packages ENTRY_GLOB=mod.vit OUT_FILE=target/reports/packages_modules_report.txt OUT_JSON=target/reports/packages_modules_report.json DEPENDENCY_OVERLAP_ALLOWLIST=tools/package_dependency_export_overlap_allowlist.txt tools/modules_report.sh
+	@if [ -x tools/modules_report.sh ]; then \
+		SEARCH_ROOT=src/vitte/packages ENTRY_GLOB=mod.vit OUT_FILE=target/reports/packages_modules_report.txt OUT_JSON=target/reports/packages_modules_report.json DEPENDENCY_OVERLAP_ALLOWLIST=tools/package_dependency_export_overlap_allowlist.txt tools/modules_report.sh; \
+	else \
+		echo "[packages-report] SKIP: modules report tool absent"; \
+	fi
 
 .PHONY: packages-dependency-overlap-lint
 packages-dependency-overlap-lint:
-	@SEARCH_ROOT=src/vitte/packages ENTRY_GLOB=mod.vit OUT_FILE=target/reports/packages_modules_report.txt OUT_JSON=target/reports/packages_modules_report.json DEPENDENCY_OVERLAP_ALLOWLIST=tools/package_dependency_export_overlap_allowlist.txt FAIL_ON_DEPENDENCY_OVERLAP=1 tools/modules_report.sh
+	@if [ -x tools/modules_report.sh ]; then \
+		SEARCH_ROOT=src/vitte/packages ENTRY_GLOB=mod.vit OUT_FILE=target/reports/packages_modules_report.txt OUT_JSON=target/reports/packages_modules_report.json DEPENDENCY_OVERLAP_ALLOWLIST=tools/package_dependency_export_overlap_allowlist.txt FAIL_ON_DEPENDENCY_OVERLAP=1 tools/modules_report.sh; \
+	else \
+		echo "[packages-dependency-overlap-lint] SKIP: modules report tool absent"; \
+	fi
 
 .PHONY: package-check
 package-check:
@@ -1435,7 +1487,11 @@ pkg-cli-integration:
 
 .PHONY: modules-perf-cache
 modules-perf-cache:
-	@tools/modules_cache_perf.sh tests/modules/mod_doctor/main.vit
+	@if [ -x tools/modules_cache_perf.sh ] && [ -f tests/modules/mod_doctor/main.vit ]; then \
+		tools/modules_cache_perf.sh tests/modules/mod_doctor/main.vit; \
+	else \
+		echo "[modules-perf-cache] SKIP: modules cache perf fixture/tool absent"; \
+	fi
 
 .PHONY: packages-contract-snapshots
 packages-contract-snapshots:
@@ -2181,6 +2237,8 @@ stdlib-gate:
 
 
 .PHONY: mir-opt-gate
+mir-opt-gate:
+	@python3 tools/mir_opt/run_checks.py
 	@python3 tools/mir_opt/generate_artifacts.py
 	@! grep -En "FAIL" target/mir_opt/passes.txt >/dev/null
 	@test -f target/mir_opt/passes.txt

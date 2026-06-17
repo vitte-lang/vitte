@@ -92,7 +92,7 @@ EXPR_RULES = [
     Rule("expression", "assign_expr", ("+=", ">>=", "parse_expr(walk)"), ("Assign",), ("set total +=",)),
     Rule("expression", "ternary_expr", ('at_text(walk, "?")', "PTERN001"), ("Ternary",), ()),
     Rule("expression", "coalesce_expr", ('at_text(walk, "??")',), ("Binary",), ("??",)),
-    Rule("expression", "range_expr", ('at_text(walk, "..")', 'at_text(walk, "..=")'), ("Range",), ()),
+    Rule("expression", "range_expr", ('at_text(walk, "..")', "op_range_inclusive"), ("Range",), ()),
     Rule("expression", "binary_expr", ('at_text(walk, "+")', 'at_text(walk, "and")'), ("Binary",), (" + ",)),
     Rule("expression", "cast_expr", ('op == "as"', "parse_type_expr(walk)"), ("Cast",), (" as ")),
     Rule("expression", "is_expr", ('op == "is"', "parse_pattern(walk)"), ("Is",), (" is ")),
@@ -130,7 +130,7 @@ TYPE_RULES = [
     Rule("type", "impl_trait_type", ('at_text(current, "impl")',), ("ImplTrait",), ("impl ")),
     Rule("type", "generic_type", ("PTYPE005",), ("Generic",), ("Option[T]")),
     Rule("type", "union_type", ('while at_text(current, "|")',), ("Union",), ("T | int")),
-    Rule("type", "lifetime_type", ('at_text(current, "\'")', "PTYPE006"), ("Lifetime",), ()),
+    Rule("type", "lifetime_type", ("len(current_token(current).lexeme) == 1", "PTYPE006"), ("Lifetime",), ()),
 ]
 
 

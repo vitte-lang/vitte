@@ -1,0 +1,35 @@
+space vitte/stdlib/network/udp
+
+use vitte/stdlib/network/socket.{ SocketAddress, socket_address }
+
+export *
+
+form UdpEndpoint {
+  fd: int
+  address: SocketAddress
+  bound: bool
+}
+
+form UdpPacket {
+  peer: SocketAddress
+  bytes: u64
+}
+
+proc udp_bind(host: string, port: u64) -> UdpEndpoint {
+  give UdpEndpoint {
+    fd: 0,
+    address: socket_address(host, port),
+    bound: port > 0,
+  };
+}
+
+proc udp_packet(host: string, port: u64, bytes: u64) -> UdpPacket {
+  give UdpPacket {
+    peer: socket_address(host, port),
+    bytes: bytes,
+  };
+}
+
+proc udp_can_send(endpoint: UdpEndpoint, packet: UdpPacket) -> bool {
+  give endpoint.bound and endpoint.fd >= 0 and packet.bytes > 0 and packet.peer.port > 0;
+}

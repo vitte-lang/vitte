@@ -1,5 +1,68 @@
 # Changelog - Vitte Bootstrap Toolchain
 
+## [0.3.6] - 2026-06-16 - Truth Triangle, Bootstrap Native, and Stdlib Runtime Hardening
+
+### ✅ 217. Stable syntax profile and driver surface parity
+- Added the `stable-v1` syntax profile to the compiler driver option catalog.
+- Normalized syntax profile aliases through the driver normalization path.
+- Extended driver smoke coverage so option catalog, normalization, and tokenized parsing stay aligned.
+
+### ✅ 218. Native bootstrap vertical slices
+- Extended the bootstrap native path beyond fixed constants to build simple `main` programs from parsed/native IR return values.
+- Added native build/run coverage for a minimal frontend fixture and truth-triangle programs.
+- Regenerated native shell snapshots, emission hashes, and seed manifest after bootstrap changes.
+
+### ✅ 219. Truth triangle gates
+- Added `tools/truth_triangle_gate.sh` with manifest-driven `check -> build -> run` validation.
+- Added `make truth-triangle` for 20 stable compiler/frontend programs.
+- Promoted generics and traits fixtures to stable native run coverage, including the `generics_positive` executable returning `7`.
+
+### ✅ 220. Stdlib/runtime truth triangle
+- Added `make truth-triangle-stdlib` with 20 stable stdlib/runtime fixtures.
+- Added `make truth-triangle-stdlib-deep` with 20 additional stable stdlib/runtime programs that combine multiple public stdlib calls per executable.
+- Replaced the stdlib/runtime baseline fixtures with real stdlib calls across strings, collections, JSON, path, IO, encoding, crypto, compression, math, regex, datetime, OS, memory, async, threading, runtime/ABI, and kernel readiness surfaces.
+- Representative covered calls include:
+  - `strings.str_length("vitte")` returns `5`.
+  - `arithmetic.add_i64(4, 6)` returns `10`.
+  - `strings.str_length(io.path_join("src", "vitte"))` returns `9`.
+  - `json.json_module_count()` returns `7`.
+  - `vector.vector_push(vector.vector_new(2), 7)` returns `1`.
+  - `crypto.crypto_module_count()` returns `5`.
+- Extended the bootstrap extractor with a narrow sum evaluator for deterministic stdlib terms, allowing deep fixtures such as module-count mixes, metadata length mixes, and path/encoding/math combinations while preserving full manifest stability.
+
+### ✅ 221. MIR optimization gate restoration
+- Added the MIR optimization module contract and smoke fixture required by `tools/mir_opt/run_checks.py`.
+- Wired the MIR optimization check into `make mir-opt-gate`.
+- Verified MIR, stdlib, driver parity, bootstrap snapshots, and truth-triangle gates together.
+
+### ✅ 222. AST interning compiler flow
+- Promoted the AST interning package from a standalone package smoke to a compiler-facing flow fixture.
+- Added `tests/pkg/compiler_ast_interning_flow.vit`, which parses a mini module, interns the parsed space/proc names, and verifies duplicate handle reuse.
+- Added a truth-triangle native vertical slice for `interning.ast_intern_smoke()`, bringing the core truth triangle to 21 stable build/run programs.
+- Extended the bootstrap native extractor to allow targeted `src/vitte/packages/...` imports and deterministic AST interning smoke evaluation.
+- Added the internal driver pass `compiler_ast_interning.vit`, which converts parsed `compiler_ast.Module` names into interned handles and reports count/reuse/validity.
+- Added package and truth-triangle coverage for the internal driver AST interning pass, bringing the core truth triangle to 22 stable build/run programs.
+
+### ✅ 223. Compiler gate closure and ecosystem targets
+- Made `make compiler-gate` pass end-to-end after the project scan.
+- Aligned `compiler-topology-gate` with the active compiler tree now that legacy `src/vitte/compiler/components` is removed.
+- Completed grammar alignment coverage: declarations, statements, expressions, types, and patterns are now all complete and fixture-tested.
+- Added the AArch64 backend target profile and wired it into `vitte/compiler/backend/target/mod`.
+- Added roadmap ecosystem stdlib contracts for profiling and networking (`socket`, `udp`, `http`).
+- Removed stale bootstrap bridge markers from the seed/native payload path so the real compiler pipeline audit now reports no informational bridge markers.
+- Expanded the core truth triangle from 22 to 50 stable `check -> build -> run` programs.
+- Added 28 native-surface fixtures covering forms, picks, helper procs, generic helpers, module imports, stdlib calls, pattern metrics, async/effects/unsafe/FFI contracts, macro/comptime contracts, and backend target contracts.
+- Extended the bootstrap native extractor so deterministic `main` programs can build/run while carrying top-level form, pick, and helper procedure declarations.
+- Verified `compiler-gate`, `truth-triangle`, `truth-triangle-stdlib`, `truth-triangle-stdlib-deep`, `packages-gate`, `stdlib` checks, and the real compiler pipeline audit.
+
+### ✅ 224. Runtime, self-host, tooling, and normative spec rails
+- Added `make runtime-stdlib-real`, which runs host-backed probes for real file IO, path normalization, loopback HTTP, threading locks, memory allocation, and crypto vectors.
+- Added `make selfhost-completion-audit` to build `vittec0 -> vittec1 -> vittec2 -> vittec3`, record parity/payload status, and keep the current shell-payload transition explicit.
+- Added `make selfhost-completion-strict` as the release-grade gate that fails until byte parity and payload-free self-hosting are both true.
+- Added a deterministic Vitte formatter with changed-file checking through `make format-check`.
+- Added `docs/spec/normative.md` plus `make spec-normative-check` for the required normative sections: memory, modules/imports, ABI, unsafe, traits/generics, effects/async, macros/comptime, and version compatibility.
+- Added `make language-maturity-gate` to tie runtime, self-host audit, formatter, package manager, LSP, and normative spec checks into one maturity rail.
+
 ## [0.3.5] - 2026-06-13 - Fluent Diagnostics, Localized Explain, and Installer Language Selection
 
 ### ✅ 213. Expanded Fluent diagnostic catalog

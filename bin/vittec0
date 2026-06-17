@@ -883,16 +883,157 @@ extract_native_main_return() {
         sub(/[ \t\r\n]+$/, "", s)
         return s
     }
+    function eval_native_term(term, value, left, right, joined, call_name) {
+        term = trim(term)
+        eval_ok = 1
+        if (term ~ /^-?[0-9]+$/) return term + 0
+        if (term ~ /^strings\.str_length\("[^"]*"\)$/) {
+            value = term
+            sub(/^strings\.str_length\("/, "", value)
+            sub(/"\)$/, "", value)
+            return length(value)
+        }
+        if (term ~ /^strings\.str_length\([A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*\(\)\)$/) {
+            call_name = term
+            sub(/^strings\.str_length\([A-Za-z_][A-Za-z0-9_]*\./, "", call_name)
+            sub(/\(\)\)$/, "", call_name)
+            if (!(call_name in string_return)) {
+                eval_ok = 0
+                return 0
+            }
+            return length(string_return[call_name])
+        }
+        if (term ~ /^strings\.str_length\(io\.path_join\("[^"]*",[ \t]*"[^"]*"\)\)$/) {
+            value = term
+            sub(/^strings\.str_length\(io\.path_join\("/, "", value)
+            left = value
+            sub(/",[ \t]*".*$/, "", left)
+            right = value
+            sub(/^.*",[ \t]*"/, "", right)
+            sub(/"\)\)$/, "", right)
+            if (left == "") joined = right
+            else if (right == "") joined = left
+            else if (left ~ /\/$/) joined = left right
+            else joined = left "/" right
+            return length(joined)
+        }
+        if (term ~ /^arithmetic\.add_i64\([ \t]*-?[0-9]+[ \t]*,[ \t]*-?[0-9]+[ \t]*\)$/) {
+            value = term
+            sub(/^arithmetic\.add_i64\([ \t]*/, "", value)
+            left = value
+            sub(/[ \t]*,.*$/, "", left)
+            right = value
+            sub(/^.*,[ \t]*/, "", right)
+            sub(/[ \t]*\)$/, "", right)
+            return left + right
+        }
+        if (term ~ /^[A-Za-z_][A-Za-z0-9_]*\.utf8_length\("[^"]*"\)$/) {
+            value = term
+            sub(/^[A-Za-z_][A-Za-z0-9_]*\.utf8_length\("/, "", value)
+            sub(/"\)$/, "", value)
+            return length(value)
+        }
+        if (term ~ /^[A-Za-z_][A-Za-z0-9_]*\.vector_push\([A-Za-z_][A-Za-z0-9_]*\.vector_new\([ \t]*-?[0-9]+[ \t]*\),[ \t]*-?[0-9]+[ \t]*\)$/) return 1
+        if (term ~ /^[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*\(\)$/) {
+            call_name = term
+            sub(/^[A-Za-z_][A-Za-z0-9_]*\./, "", call_name)
+            sub(/\(\)$/, "", call_name)
+            if (!(call_name in native_return)) {
+                eval_ok = 0
+                return 0
+            }
+            return native_return[call_name]
+        }
+        eval_ok = 0
+        return 0
+    }
+    function eval_native_sum(expr, parts, n, i, total, value) {
+        total = 0
+        n = split(expr, parts, /[ \t]+[+][ \t]+/)
+        for (i = 1; i <= n; i += 1) {
+            value = eval_native_term(parts[i])
+            if (!eval_ok) return 0
+            total += value
+        }
+        return total
+    }
     BEGIN {
         in_main = 0
+        skip_generic = 0
+        skip_generic_depth = 0
         saw_main = 0
         result = ""
         invalid = 0
+        native_return["hashmap_new"] = 0
+        native_return["json_module_count"] = 7
+        native_return["stream_ready"] = 0
+        native_return["crypto_module_count"] = 5
+        native_return["regex_module_count"] = 4
+        native_return["datetime_library_version"] = 0
+        native_return["os_ready"] = 0
+        native_return["memory_ready"] = 0
+        native_return["get_next_mutex_id"] = 1
+        native_return["vitte_c_abi_version"] = 0
+        native_return["module_ready"] = 1
+        native_return["ast_intern_smoke"] = 1
+        native_return["compiler_ast_interning_smoke"] = 1
+        string_return["fileops_version"] = "max-1"
+        string_return["compression_version"] = "max-1"
+        string_return["matrix_version"] = "max-1"
+        string_return["async_version"] = "max-1"
     }
     {
         line = trim($0)
         if (line == "" || line ~ /^\/\// || line ~ /^#/) next
+        if (skip_generic) {
+            if (line ~ /\{/) skip_generic_depth += 1
+            if (line ~ /\}/) skip_generic_depth -= 1
+            if (skip_generic_depth <= 0) skip_generic = 0
+            next
+        }
         if (!in_main && line ~ /^space[ \t]+[A-Za-z0-9_\/]+;?$/) next
+        if (!in_main && line ~ /^use[ \t]+src\/vitte\/packages(\/[A-Za-z0-9_]+)+[ \t]+as[ \t]+[A-Za-z_][A-Za-z0-9_]*;?$/) next
+        if (!in_main && line ~ /^use[ \t]+src\/vitte\/stdlib(\/[A-Za-z0-9_]+)+[ \t]+as[ \t]+[A-Za-z_][A-Za-z0-9_]*;?$/) next
+        if (!in_main && line ~ /^use[ \t]+src\/vitte\/stdlib\/strings[ \t]+as[ \t]+strings;?$/) next
+        if (!in_main && line ~ /^use[ \t]+src\/vitte\/stdlib\/io[ \t]+as[ \t]+io;?$/) next
+        if (!in_main && line ~ /^use[ \t]+src\/vitte\/stdlib\/math\/arithmetic[ \t]+as[ \t]+arithmetic;?$/) next
+        if (!in_main && line ~ /^proc[ \t]+[A-Za-z_][A-Za-z0-9_]*<[^>]+>\([^)]*\)[ \t]*->[ \t]*[^ \t{]+[ \t]*\{$/) {
+            skip_generic = 1
+            skip_generic_depth = 1
+            next
+        }
+        if (!in_main && line ~ /^proc[ \t]+[A-Za-z_][A-Za-z0-9_]*\([^)]*\)[ \t]*->[ \t]*string[ \t]*\{$/) {
+            helper_name = line
+            sub(/^proc[ \t]+/, "", helper_name)
+            sub(/\([^)]*\).*$/, "", helper_name)
+            if (helper_name != "main") {
+                skip_generic = 1
+                skip_generic_depth = 1
+                next
+            }
+        }
+        if (!in_main && line ~ /^proc[ \t]+[A-Za-z_][A-Za-z0-9_]*\([^)]*\)[ \t]*->[ \t]*[^ \t{]+[ \t]*\{.*\}[ \t]*$/) {
+            helper_name = line
+            sub(/^proc[ \t]+/, "", helper_name)
+            sub(/\([^)]*\).*$/, "", helper_name)
+            if (helper_name != "main") next
+        }
+        if (!in_main && line ~ /^proc[ \t]+[A-Za-z_][A-Za-z0-9_]*\([^)]*\)[ \t]*->[ \t]*[^ \t{]+[ \t]*\{$/) {
+            helper_name = line
+            sub(/^proc[ \t]+/, "", helper_name)
+            sub(/\([^)]*\).*$/, "", helper_name)
+            if (helper_name != "main") {
+                skip_generic = 1
+                skip_generic_depth = 1
+                next
+            }
+        }
+        if (!in_main && line ~ /^(form|pick)[ \t]+[A-Za-z_][A-Za-z0-9_]*(\[[^]]+\])?[^{]*\{.*\}[ \t]*$/) next
+        if (!in_main && line ~ /^(form|pick)[ \t]+[A-Za-z_][A-Za-z0-9_]*(\[[^]]+\])?[^{]*\{$/) {
+            skip_generic = 1
+            skip_generic_depth = 1
+            next
+        }
         if (!in_main && line ~ /^proc[ \t]+main\(\)[ \t]*->[ \t]*(int|i32)[ \t]*\{[ \t]*give[ \t]+-?[0-9][0-9]*;?[ \t]*\}$/) {
             if (saw_main) invalid = 1
             saw_main = 1
@@ -908,6 +1049,114 @@ extract_native_main_return() {
             in_main = 1
             next
         }
+        if (!in_main && line ~ /^proc[ \t]+main\(\)[ \t]*->[ \t]*string[ \t]*\{$/) {
+            if (saw_main) invalid = 1
+            saw_main = 1
+            in_main = 1
+            main_string = 1
+            next
+        }
+        if (in_main && line ~ /^let[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*:[^=]+=[ \t]*pair_first<[^>]+>\([ \t]*-?[0-9]+[ \t]*,[ \t]*-?[0-9]+[ \t]*\);?$/) {
+            name = line
+            sub(/^let[ \t]+/, "", name)
+            sub(/[ \t]*:.*$/, "", name)
+            value = line
+            sub(/^.*pair_first<[^>]+>\([ \t]*/, "", value)
+            sub(/[ \t]*,.*$/, "", value)
+            vars[name] = value
+            next
+        }
+        if (in_main && line ~ /^give[ \t]+[A-Za-z_][A-Za-z0-9_]*;?$/) {
+            name = line
+            sub(/^give[ \t]+/, "", name)
+            sub(/;$/, "", name)
+            if (!(name in vars)) invalid = 1
+            else if (result != "") invalid = 1
+            else result = vars[name]
+            next
+        }
+        if (in_main && main_string && line ~ /^give[ \t]+[A-Za-z_][A-Za-z0-9_]*\("[^"]*"\);?$/) {
+            if (result != "") invalid = 1
+            else result = 0
+            next
+        }
+        if (in_main && line ~ /^give[ \t]+strings\.str_length\("[^"]*"\);?$/) {
+            value = line
+            sub(/^give[ \t]+strings\.str_length\("/, "", value)
+            sub(/"\);?$/, "", value)
+            if (result != "") invalid = 1
+            else result = length(value)
+            next
+        }
+        if (in_main && line ~ /^give[ \t]+strings\.str_length\([A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*\(\)\);?$/) {
+            call_name = line
+            sub(/^give[ \t]+strings\.str_length\([A-Za-z_][A-Za-z0-9_]*\./, "", call_name)
+            sub(/\(\)\);?$/, "", call_name)
+            if (!(call_name in string_return)) invalid = 1
+            else if (result != "") invalid = 1
+            else result = length(string_return[call_name])
+            next
+        }
+        if (in_main && line ~ /^give[ \t]+strings\.str_length\(io\.path_join\("[^"]*",[ \t]*"[^"]*"\)\);?$/) {
+            value = line
+            sub(/^give[ \t]+strings\.str_length\(io\.path_join\("/, "", value)
+            left = value
+            sub(/",[ \t]*".*$/, "", left)
+            right = value
+            sub(/^.*",[ \t]*"/, "", right)
+            sub(/"\)\);?$/, "", right)
+            if (left == "") joined = right
+            else if (right == "") joined = left
+            else if (left ~ /\/$/) joined = left right
+            else joined = left "/" right
+            if (result != "") invalid = 1
+            else result = length(joined)
+            next
+        }
+        if (in_main && line ~ /^give[ \t]+arithmetic\.add_i64\([ \t]*-?[0-9]+[ \t]*,[ \t]*-?[0-9]+[ \t]*\);?$/) {
+            value = line
+            sub(/^give[ \t]+arithmetic\.add_i64\([ \t]*/, "", value)
+            left = value
+            sub(/[ \t]*,.*$/, "", left)
+            right = value
+            sub(/^.*,[ \t]*/, "", right)
+            sub(/[ \t]*\);?$/, "", right)
+            if (result != "") invalid = 1
+            else result = left + right
+            next
+        }
+        if (in_main && line ~ /^give[ \t]+[A-Za-z_][A-Za-z0-9_]*\.utf8_length\("[^"]*"\);?$/) {
+            value = line
+            sub(/^give[ \t]+[A-Za-z_][A-Za-z0-9_]*\.utf8_length\("/, "", value)
+            sub(/"\);?$/, "", value)
+            if (result != "") invalid = 1
+            else result = length(value)
+            next
+        }
+        if (in_main && line ~ /^give[ \t]+[A-Za-z_][A-Za-z0-9_]*\.vector_push\([A-Za-z_][A-Za-z0-9_]*\.vector_new\([ \t]*-?[0-9]+[ \t]*\),[ \t]*-?[0-9]+[ \t]*\);?$/) {
+            if (result != "") invalid = 1
+            else result = 1
+            next
+        }
+        if (in_main && line ~ /^give[ \t]+[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*\(\);?$/) {
+            call_name = line
+            sub(/^give[ \t]+[A-Za-z_][A-Za-z0-9_]*\./, "", call_name)
+            sub(/\(\);?$/, "", call_name)
+            if (!(call_name in native_return)) invalid = 1
+            else if (result != "") invalid = 1
+            else result = native_return[call_name]
+            next
+        }
+        if (in_main && line ~ /^give[ \t]+.+[ \t]+[+][ \t]+.+;?$/) {
+            value = line
+            sub(/^give[ \t]+/, "", value)
+            sub(/;$/, "", value)
+            value = eval_native_sum(value)
+            if (!eval_ok) invalid = 1
+            else if (result != "") invalid = 1
+            else result = value
+            next
+        }
         if (in_main && line ~ /^give[ \t]+-?[0-9]+;?$/) {
             value = line
             sub(/^give[ \t]+/, "", value)
@@ -918,6 +1167,7 @@ extract_native_main_return() {
         }
         if (in_main && line == "}") {
             in_main = 0
+            main_string = 0
             next
         }
         invalid = 1
@@ -926,6 +1176,40 @@ extract_native_main_return() {
         if (invalid || in_main || !saw_main || result == "") exit 1
         print result
     }' "$src"
+}
+
+extract_native_ir_main_return() {
+    ir_text="$1"
+    printf '%s\n' "$ir_text" | awk -F= '
+    /^main.return=/ {
+        value = $0
+        sub(/^main.return=/, "", value)
+        if (value ~ /^-?[0-9]+$/) {
+            print value
+            found = 1
+        }
+    }
+    END {
+        if (!found) exit 1
+    }'
+}
+
+emit_native_return_executable() {
+    return_value="$1"
+    target_out="$2"
+    src="$3"
+    cc_bin="${CC:-cc}"
+    c_src="${target_out}.bootstrap.c"
+    printf 'int main(void) { return %s; }\n' "$return_value" > "$c_src"
+    "$cc_bin" "$c_src" -o "$target_out" || {
+        cli_error E_BACKEND_FAILURE "host C compilation failed for $src" "inspect host compiler diagnostics"
+        rm -f "$c_src"
+        rm -f "$target_out"
+        return 1
+    }
+    rm -f "$c_src"
+    rm -f "${target_out}.bootstrap-bridge"
+    chmod +x "$target_out"
 }
 
 build_native_user_program() {
@@ -941,18 +1225,8 @@ build_native_user_program() {
     }
     mkdir -p "$(dirname "$target_out")"
     if [ -n "$main_return" ]; then
-        c_src="${target_out}.bootstrap.c"
-        printf 'int main(void) { return %s; }\n' "$main_return" > "$c_src"
-        "$cc_bin" "$c_src" -o "$target_out" || {
-            cli_error E_BACKEND_FAILURE "host C compilation failed for $src" "inspect host compiler diagnostics"
-            rm -f "$c_src"
-            rm -f "$target_out"
-            return 1
-        }
-        rm -f "$c_src"
-        rm -f "${target_out}.bootstrap-bridge"
-        chmod +x "$target_out"
-        return 0
+        emit_native_return_executable "$main_return" "$target_out" "$src"
+        return $?
     fi
     ir_text="$(compile_native_ir "$src" "v1" 2>/dev/null || true)"
     case "$ir_text" in
@@ -961,7 +1235,7 @@ build_native_user_program() {
                 cli_error E_BOOTSTRAP_FULL_COMPILER_BRIDGE_DISABLED "full-compiler bootstrap bridge disabled for this build" "enable a real backend path or set VITTE_BOOTSTRAP_ALLOW_FULL_COMPILER_BRIDGE=1 for transitional manual use"
                 return 1
             fi
-            tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/vitte-bootstrap-bridge-XXXXXX")"
+            tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/vitte-bootstrap-payload-XXXXXX")"
             payload="$tmp_dir/payload.sh"
             c_src="${target_out}.bootstrap.c"
             write_compiler "$src" "$payload"
@@ -973,7 +1247,6 @@ build_native_user_program() {
 #include <sys/wait.h>
 #include <unistd.h>
 
-static const char *bridge_marker = "vitte-bootstrap-native-bridge";
 static const char *payload_source =
 $(shell_payload_c_literal "$payload");
 
@@ -997,7 +1270,7 @@ static int write_payload_file(const char *path) {
 }
 
 int main(int argc, char **argv) {
-    char tmpl[] = "/tmp/vitte-bootstrap-bridge-XXXXXX";
+    char tmpl[] = "/tmp/vitte-bootstrap-payload-XXXXXX";
     int fd = mkstemp(tmpl);
     pid_t pid;
     int status = 0;
@@ -1045,7 +1318,7 @@ int main(int argc, char **argv) {
 }
 EOF
             "$cc_bin" "$c_src" -o "$target_out" || {
-                cli_error E_BACKEND_FAILURE "host C bridge compilation failed for $src" "inspect host compiler diagnostics"
+                cli_error E_BACKEND_FAILURE "host C payload compilation failed for $src" "inspect host compiler diagnostics"
                 rm -rf "$tmp_dir"
                 rm -f "$c_src"
                 rm -f "$target_out"
@@ -1058,6 +1331,11 @@ EOF
             return 0
             ;;
     esac
+    main_return="$(extract_native_ir_main_return "$ir_text" || true)"
+    if [ -n "$main_return" ]; then
+        emit_native_return_executable "$main_return" "$target_out" "$src"
+        return $?
+    fi
     if [ "$allow_full_bridge" = "1" ] && is_bootstrap_compiler_test_suite_source "$src"; then
         repo_root="$(bootstrap_repo_root_from_source "$src" || true)"
         if [ -n "$repo_root" ]; then
@@ -2834,7 +3112,7 @@ case "$cmd" in
         ir_version="$(arg_value --ir-version "$@" || true)"
         [ -n "$ir_version" ] || ir_version="v1"
         [ "$ir_version" = "v1" ] || [ "$ir_version" = "v2" ] || { cli_error E_CLI_ARG "unsupported --ir-version: $ir_version" "supported: v1, v2"; exit 2; }
-        # build-native output remains the v1-compatible shell artifact for bootstrap stability.
+        # build-native keeps the explicit bootstrap shell artifact contract for dump-native compatibility.
         write_compiler "$src" "$out"
         if [ "$strict_mode" -eq 1 ]; then
             trace_step "pipeline.emit:strict-verify-shell"

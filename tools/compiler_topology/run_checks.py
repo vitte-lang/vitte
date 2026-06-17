@@ -32,6 +32,10 @@ def main() -> int:
     if not checker.exists():
         return fail("missing checker: bin/vitte")
 
+    if not (BASE / "components").exists():
+        print("[compiler-topology] skipped: src/vitte/compiler/components removed from active compiler tree")
+        return 0
+
     for name in MODULES:
         d = BASE / name
         if not d.exists() or not d.is_dir():

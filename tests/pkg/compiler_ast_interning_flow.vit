@@ -1,0 +1,36 @@
+space vitte/tests/pkg/compiler_ast_interning_flow
+
+use src/vitte/packages/compiler/ast/arena/interning/mod as interning
+use src/vitte/packages/compiler/driver/internal/compiler_parser as parser
+
+proc main(args: list[string]) -> int {
+  let parsed: parser.ParsedModule = parser.parse_source("fixture", "space demo\nproc main() -> int {\n  give 0\n}\n")
+  let pool: interning.AstInternPool = interning.ast_intern_pool_new("compiler-ast")
+  let space_result: interning.AstInternResult = interning.ast_intern_identifier(pool, parsed.module_value.space_name)
+  let proc_result: interning.AstInternResult = interning.ast_intern_identifier(space_result.pool, parsed.module_value.decls[1].proc_decl.name)
+  let duplicate_space: interning.AstInternResult = interning.ast_intern_identifier(proc_result.pool, parsed.module_value.space_name)
+
+  if not duplicate_space.reused {
+    give 1
+  }
+
+  if duplicate_space.handle.index != space_result.handle.index {
+    give 1
+  }
+
+  if interning.ast_intern_read(duplicate_space.pool, proc_result.handle) != "main" {
+    give 1
+  }
+
+  if interning.ast_intern_count(duplicate_space.pool) != 2 {
+    give 1
+  }
+
+  if interning.ast_intern_validate(duplicate_space.pool) {
+    give 0
+  }
+
+  give 1
+}
+
+export *
