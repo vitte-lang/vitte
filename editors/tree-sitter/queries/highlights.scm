@@ -7,14 +7,10 @@
 
 (line_comment) @comment
 (block_comment) @comment
-(zone_comment) @comment.block
 (contract_block) @comment.documentation
 
 ((contract_block) @comment.documentation
   (#match? @comment.documentation "^<<<\\s*ROLE-CONTRACT"))
-
-((zone_comment) @comment.warning
-  (#match? @comment.warning "^<<<\\s*(TODO|FIXME|BUG|HACK|NOTE|XXX)"))
 
 ; ============================================================
 ; Literals
@@ -53,7 +49,6 @@
 ] @keyword.storage
 
 [
-  "type"
   "form"
   "trait"
   "pick"
@@ -91,7 +86,6 @@
 ] @keyword.repeat
 
 [
-  "asm"
   "unsafe"
 ] @keyword.directive
 
@@ -139,12 +133,11 @@
 (entry_decl target: (scoped_identifier) @module)
 
 (form_decl name: (identifier) @type)
+(class_decl name: (identifier) @type)
 (trait_decl name: (identifier) @type)
 (pick_decl name: (identifier) @type)
-(type_alias name: (identifier) @type)
-
-(field_decl name: (identifier) @property)
-(case_decl name: (identifier) @constant)
+(enum_decl name: (identifier) @type)
+(union_decl name: (identifier) @type)
 
 (macro_decl name: (identifier) @function.macro)
 
@@ -153,19 +146,13 @@
 ; ============================================================
 
 (call_expr
-  function: (identifier) @function.call)
+  callee: (identifier) @function.call)
 
 (call_expr
-  function: (api_identifier) @function.special)
+  callee: (api_identifier) @function.special)
 
 (call_expr
-  function: (scoped_identifier) @function.call)
-
-(constructor_expr
-  type: (identifier) @constructor)
-
-(constructor_expr
-  type: (scoped_identifier) @constructor)
+  callee: (scoped_identifier) @function.call)
 
 ; ============================================================
 ; Modules / imports
@@ -173,11 +160,9 @@
 
 (space_decl path: (scoped_identifier) @module)
 (use_stmt path: (scoped_identifier) @module)
-(pull_stmt path: (scoped_identifier) @module)
 (share_stmt path: (scoped_identifier) @module)
 
-(use_stmt alias: (alias_pkg) @variable.special)
-(alias_pkg) @variable.special
+(use_stmt alias: (identifier) @variable.special)
 
 (scoped_identifier) @variable
 
@@ -201,8 +186,7 @@
 ; ============================================================
 
 (parameter name: (identifier) @variable.parameter)
-(let_stmt name: (identifier) @variable)
-(make_stmt name: (identifier) @variable)
+(let_stmt name: (pattern (identifier) @variable))
 (const_decl name: (identifier) @constant)
 
 (identifier) @variable
@@ -242,5 +226,4 @@
 [
   ","
   ":"
-  ";"
 ] @punctuation.delimiter

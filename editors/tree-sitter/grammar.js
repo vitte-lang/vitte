@@ -39,16 +39,33 @@ module.exports = grammar({
     /[\s\f\r\t\n]/,
     $.line_comment,
     $.block_comment,
-    $.region_comment,
   ],
 
   word: $ => $.identifier,
 
   conflicts: $ => [
-    [$.scoped_identifier, $.call_expr],
-    [$.generic_type, $.binary_expr],
+    [$.scoped_identifier],
+    [$.expression, $.scoped_identifier],
     [$.block, $.map_literal],
-    [$.identifier, $.type_identifier],
+    [$.proc_decl],
+    [$.flow_decl],
+    [$.form_decl],
+    [$.class_decl],
+    [$.pick_decl],
+    [$.enum_decl],
+    [$.union_decl],
+    [$.trait_decl],
+    [$.entry_decl],
+    [$.return_stmt],
+    [$.give_stmt],
+    [$.emit_stmt],
+    [$._stmt, $.expression],
+    [$.expression, $.closure_expr],
+    [$.match_stmt, $.match_expr],
+    [$.expression, $.if_expr],
+    [$.if_stmt, $.expression, $.if_expr],
+    [$.tuple_literal],
+    [$.match_arm, $.expression],
   ],
 
   supertypes: $ => [
@@ -56,10 +73,6 @@ module.exports = grammar({
     $._stmt,
     $.expression,
     $.literal,
-  ],
-
-  inline: $ => [
-    $._semicolon,
   ],
 
   rules: {
@@ -72,7 +85,6 @@ module.exports = grammar({
 
     _item: $ => choice(
       $.contract_block,
-      $.attribute,
       $.space_decl,
       $.use_stmt,
       $.share_stmt,
@@ -165,11 +177,11 @@ module.exports = grammar({
 
     share_stmt: $ => seq(
       choice('share', 'export'),
-      choice(
+      field('path', choice(
         'all',
         $.identifier,
         $.scoped_identifier
-      ),
+      )),
       optional($._semicolon)
     ),
 
@@ -242,7 +254,7 @@ module.exports = grammar({
 
     pick_decl: $ => seq(
       repeat($.attribute),
-      choice('pick', 'enum'),
+      'pick',
       field('name', $.identifier),
       optional($.generic_params),
       optional($.block)
@@ -294,7 +306,7 @@ module.exports = grammar({
       field('name', $.identifier),
       optional(seq(
         'at',
-        $.scoped_identifier
+        field('target', $.scoped_identifier)
       )),
       optional($.block)
     ),
@@ -395,7 +407,7 @@ module.exports = grammar({
     ),
 
     match_stmt: $ => seq(
-      choice('match', 'select'),
+      'match',
       $.expression,
       '{',
       repeat($.match_arm),
@@ -634,7 +646,9 @@ module.exports = grammar({
 
     tuple_literal: $ => seq(
       '(',
-      commaSep1($.expression),
+      $.expression,
+      ',',
+      optional(seq($.expression, repeat(seq(',', $.expression)))),
       ')'
     ),
 
@@ -664,7 +678,9 @@ module.exports = grammar({
 
     tuple_pattern: $ => seq(
       '(',
-      commaSep1($.pattern),
+      $.pattern,
+      ',',
+      optional(seq($.pattern, repeat(seq(',', $.pattern)))),
       ')'
     ),
 
@@ -703,7 +719,9 @@ module.exports = grammar({
 
     tuple_type: $ => seq(
       '(',
-      commaSep1($.type_expression),
+      $.type_expression,
+      ',',
+      optional(seq($.type_expression, repeat(seq(',', $.type_expression)))),
       ')'
     ),
 
