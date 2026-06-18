@@ -1027,8 +1027,10 @@ extract_native_main_return() {
                 next
             }
         }
-        if (!in_main && line ~ /^(form|pick)[ \t]+[A-Za-z_][A-Za-z0-9_]*(\[[^]]+\])?[^{]*\{.*\}[ \t]*$/) next
-        if (!in_main && line ~ /^(form|pick)[ \t]+[A-Za-z_][A-Za-z0-9_]*(\[[^]]+\])?[^{]*\{$/) {
+        generic_suffix = "\\[" "[^]]+" "\\]"
+        form_pick_pattern = "^(form|pick)[ \t]+[A-Za-z_][A-Za-z0-9_]*(" generic_suffix ")?[^{]*"
+        if (!in_main && line ~ (form_pick_pattern "\\{.*\\}[ \t]*$")) next
+        if (!in_main && line ~ (form_pick_pattern "\\{$")) {
             skip_generic = 1
             skip_generic_depth = 1
             next

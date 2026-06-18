@@ -77,8 +77,10 @@ do
     fi
 done
 
-if [ "$ir_sensitive_changed" -eq 1 ] && ! has_changed_match '^tests/bootstrap_native/.*\.(ir|err)\.must$'; then
-    die "bootstrap native IR/parser path changed without .ir.must or .err.must snapshot"
+if [ "$ir_sensitive_changed" -eq 1 ] &&
+    ! has_changed_match '^tests/bootstrap_native/.*\.(ir|err)\.must$' &&
+    ! has_changed_match '^tests/bootstrap_native/shell\..*\.must$'; then
+    die "bootstrap native IR/parser path changed without .ir.must, .err.must, or shell snapshot"
 fi
 
 printf "[bootstrap-native-drift] ok\n"
