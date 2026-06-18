@@ -1,0 +1,100 @@
+#! /usr/bin/env vitte
+// project-vitte.vit — fixture aligné sur Documents/Github/vitte/editors/grammar/vitte_highlight_grammar.json
+
+/* TODO FIXME NOTE XXX */
+<<<
+ROLE-CONTRACT: strict
+VITTE-H0001
+>>>
+
+space demo/project
+pull std/io as io_pkg
+use std/math/core
+share diagnostics_status, quickfix_status, doctor_status
+
+const HEX_MASK = 0xCAFE
+let BIN_MASK = 0b1010_0101
+make count = 42
+
+type Coord = i32
+form Point {
+  field x: i32
+  field y: i32
+}
+
+trait Renderable {
+  proc render(self) -> bool
+}
+
+pick Result {
+  case Ok
+  case Err
+}
+
+proc diagnostics_status(code: string) -> string {
+  if code is "VITTE-H0001" and not false {
+    give "ok"
+  } else {
+    give "ko"
+  }
+}
+
+proc quickfix_status(value: int) -> bool {
+  let n16: i16 = 12
+  let n8: i8 = -2
+  let p16: u16 = 12
+  let p32: u32 = 32
+  let p64: u64 = 64
+  let idx: usize = 1
+  let off: isize = -1
+  let ratio: f32 = 1.5
+  let precise: f64 = 2.5
+  let letter: char = 'A'
+  let is_ready: bool = true
+  let nothing = null
+  let text: string = "vitte"
+
+  loop for i in value {
+    if i > 100 {
+      break
+    } else {
+      continue
+    }
+  }
+  give true
+}
+
+macro doctor_status() -> string {
+  emit "doctor"
+  asm "nop"
+  give "done"
+}
+
+entry main at demo/project {
+  let alias_pkg = "core_pkg"
+  let diagnostics_api = diagnostics_status("VITTE-H0001")
+  let quickfix_api = quickfix_status(10)
+  let doctor_api = doctor_status()
+
+  select diagnostics_api
+    when "ok" {
+      io_pkg.println("ok")
+    }
+    otherwise {
+      io_pkg.println("ko")
+    }
+  .end
+
+  match quickfix_api {
+    case true {
+      io_pkg.println(doctor_api as string)
+    }
+    case false {
+      unsafe {
+        io_pkg.println("unsafe fallback")
+      }
+    }
+  }
+
+  return
+}

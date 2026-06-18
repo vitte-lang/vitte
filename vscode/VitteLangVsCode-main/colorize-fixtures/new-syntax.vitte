@@ -1,0 +1,85 @@
+#! /usr/bin/env vitte
+# Colorization fixture for the new Vitte grammar (.end blocks + phrase syntax)
+
+module colorize.core
+import math.geom as geom
+export all
+
+struct Vec2
+    let x: Float = 0
+    let y: Float = 0
+.end
+
+typedef Vec2 Position
+
+enum Color
+    Red
+    Green
+    Blue = 3
+.end
+
+union Payload
+    let bytes: [u8]
+    let value: i32
+.end
+
+let pi: Float = 3.14
+let active = true
+let nothing = null
+let escaped = "escapes: \\\" \\\\ \\n \\t \\r \\0"
+
+fn length(v: Vec2) -> Float
+    return (v.x * v.x + v.y * v.y) |> geom.sqrt
+.end
+
+scenario demo(msg: Str)
+    let muted = false
+    if not muted and msg != ""
+        geom.say(msg)
+    else
+        geom.say("empty")
+    .end
+.end
+
+program colorize.core/main
+    let data: [i32] = [1, 2, 3]
+    match data[1]
+        1 => geom.say("one")
+        n => geom.say(n)
+    .end
+    length(Vec2.x = 2, y = 3)
+.end
+
+# Phrase syntax ---------------------------------------------------------------
+
+mod phrase/colors
+use colorize.core as core
+
+type Point
+    field x : Float
+    field y : Float
+.end
+
+fn norm p:Point -> Float
+    set sq = p.x * p.x + p.y * p.y
+    ret geom.sqrt(sq)
+.end
+
+scn sample
+    set total = 0
+    loop i from 0 to 3 step 1
+        when i == 0
+            say "zero"
+        else when i == 1
+            say "one"
+        else
+            say i
+        .end
+        do geom.say total
+        set total += i
+    .end
+.end
+
+prog colorize.core/main
+    do sample
+.end

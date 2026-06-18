@@ -65,6 +65,7 @@ print_compiler_help() {
     printf '  build FILE -o OUT build a native executable\n'
     printf '  run FILE          build and run a source file\n'
     printf '  parse FILE        parse only\n'
+    printf '  explain CODE      explain a diagnostic code\n'
     printf '\n'
     printf 'package commands:\n'
     printf '  pkg check         validate packages under src/vitte/packages\n'
@@ -80,7 +81,7 @@ print_compiler_help() {
     printf '  selfhost-source\n'
     printf '\n'
     printf 'common flags:\n'
-    printf '  --src PATH  --out PATH  -o PATH  --trace-pipeline  --strict\n'
+    printf '  --src PATH  --out PATH  -o PATH  --lang LANG  --trace-pipeline  --strict\n'
     printf '  --dump-ast-json  --dump-hir-json  --dump-mir-json  --diagnostics-json\n'
 }
 
@@ -1353,6 +1354,57 @@ read_common_flags() {
     if has_flag --strict "$@"; then
         strict_mode=1
     fi
+    lang_value="$(arg_value --lang "$@" || true)"
+    if [ -n "$lang_value" ]; then
+        diagnostics_lang="$lang_value"
+    fi
+    for arg in "$@"; do
+        case "$arg" in
+            --lang=*)
+                diagnostics_lang="${arg#--lang=}"
+                ;;
+        esac
+    done
+}
+
+normalize_diagnostics_lang() {
+    case "${1:-en}" in
+        fr|fr-*|fr_*) printf 'fr\n' ;;
+        de|de-*|de_*) printf 'de\n' ;;
+        es|es-*|es_*) printf 'es\n' ;;
+        it|it-*|it_*) printf 'it\n' ;;
+        pt-BR|pt_BR|pt|pt-*|pt_*) printf 'pt-BR\n' ;;
+        nl|nl-*|nl_*) printf 'nl\n' ;;
+        pl|pl-*|pl_*) printf 'pl\n' ;;
+        ru|ru-*|ru_*) printf 'ru\n' ;;
+        uk|uk-*|uk_*) printf 'uk\n' ;;
+        ja|ja-*|ja_*) printf 'ja\n' ;;
+        ko|ko-*|ko_*) printf 'ko\n' ;;
+        zh-CN|zh_CN|zh|zh-*|zh_*) printf 'zh-CN\n' ;;
+        ar|ar-*|ar_*) printf 'ar\n' ;;
+        tr|tr-*|tr_*) printf 'tr\n' ;;
+        en|en-*|en_*|'') printf 'en\n' ;;
+        *) printf 'en\n' ;;
+    esac
+}
+
+vitte_root_dir() {
+    CDPATH= cd -- "$(dirname -- "$0")/.." && pwd
+}
+
+ftl_lookup() {
+    file="$1"
+    key="$2"
+    [ -f "$file" ] || return 1
+    awk -v key="$key" '
+        index($0, key " =") == 1 {
+            sub(/^[^=]*= */, "")
+            print
+            found = 1
+            exit
+        }
+        END { if (!found) exit 1 }
+    ' "$file"
 }
 
 json_escape() {
@@ -2612,6 +2664,108 @@ render_type_mismatch_surface_json() {
         "$src_json" "$source_meta" "$shape" "$report_json" "$phase_reports" "$text_output_json"
 }
 
+explain_code_from_args() {
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            explain|--trace-pipeline|--strict)
+                ;;
+            --lang)
+                shift
+                ;;
+            --lang=*)
+                ;;
+            --*)
+                ;;
+            *)
+                printf '%s\n' "$1"
+                return 0
+                ;;
+        esac
+        shift
+    done
+    return 1
+}
+
+print_explain_text() {
+    code="$1"
+    lang="$(normalize_diagnostics_lang "$diagnostics_lang")"
+    phase="parser"
+    message="expected identifier"
+    summary="The parser expected a name but did not find one."
+    cause="A declaration, binding, or reference is missing its identifier."
+    step1="Add a valid identifier at the highlighted location."
+    fix="Insert a name using letters, digits, or underscores."
+    example="let value = 1"
+
+    case "$code" in
+        E0001)
+            if [ "$lang" = "fr" ]; then
+                message="identifiant attendu"
+                summary="Le parseur attendait un nom mais n'en a pas trouve."
+                cause="Une declaration, une liaison ou une reference n'a pas d'identifiant."
+                step1="Ajoutez un identifiant valide a l'emplacement signale."
+                fix="Inserez un nom avec des lettres, des chiffres ou des underscores."
+                example="let valeur = 1"
+            fi
+            ;;
+        TYPECK_E_ASSIGN_MISMATCH)
+            phase="typeck"
+            message="cannot assign value of this type to the target variable"
+            summary="The assignment target and the assigned expression have incompatible types."
+            cause="The target binding type does not match the expression type."
+            step1="Check the variable declaration and the expression being assigned."
+            fix="Change the variable type or assign a value of the expected type."
+            example="let count: int = 1"
+            ;;
+        BORROWCK_E_USE_AFTER_MOVE)
+            phase="borrowck"
+            message="use after move"
+            summary="A value is used after ownership was moved elsewhere."
+            cause="The previous operation transferred ownership, so the original binding is no longer valid."
+            step1="Find the earlier move and decide whether the value should be borrowed, cloned, or recreated."
+            fix="Borrow the value, clone it before the move, or stop using the moved binding."
+            example="let copy = value.clone()"
+            ;;
+        P000_UNBALANCED)
+            message="unbalanced delimiter"
+            summary="The parser reached the end of input with an open delimiter."
+            cause="A parenthesis, bracket, or brace was opened without a matching close."
+            step1="Match each opening delimiter with the corresponding closing delimiter."
+            fix="Insert the missing closing delimiter."
+            example="proc main() -> int { give 0; }"
+            ;;
+        *)
+            phase="diagnostics"
+            message="diagnostic code is known by the full catalog when available"
+            summary="The bootstrap compiler can explain core diagnostics and leaves other codes to the generated catalog."
+            cause="This seed runtime carries a compact fallback catalog."
+            step1="Run the full compiler build for the complete localized explanation."
+            fix="Use bin/vitte when a host compiler exists, otherwise keep this code for support."
+            example="vitte explain $code --lang $lang"
+            ;;
+    esac
+
+    root_dir="$(vitte_root_dir)"
+    diag_file="$root_dir/locales/$lang/diagnostics.ftl"
+    explain_file="$root_dir/locales/$lang/diagnostics_explain.ftl"
+    message="$(ftl_lookup "$diag_file" "$code" || printf '%s' "$message")"
+    summary="$(ftl_lookup "$explain_file" "$code.summary" || printf '%s' "$summary")"
+    cause="$(ftl_lookup "$explain_file" "$code.cause" || printf '%s' "$cause")"
+    step1="$(ftl_lookup "$explain_file" "$code.step1" || printf '%s' "$step1")"
+    fix="$(ftl_lookup "$explain_file" "$code.fix" || printf '%s' "$fix")"
+    example="$(ftl_lookup "$explain_file" "$code.example" || printf '%s' "$example")"
+
+    printf 'error code: %s\n' "$code"
+    printf 'lang: %s\n' "$lang"
+    printf 'phase: %s\n' "$phase"
+    printf 'message: %s\n' "$message"
+    printf 'summary: %s\n' "$summary"
+    printf 'cause: %s\n' "$cause"
+    printf 'step 1: %s\n' "$step1"
+    printf 'fix: %s\n' "$fix"
+    printf 'example: %s\n' "$example"
+}
+
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --trace-pipeline)
@@ -2620,6 +2774,16 @@ while [ "$#" -gt 0 ]; do
             ;;
         --strict)
             strict_mode=1
+            shift
+            ;;
+        --lang)
+            shift
+            [ "$#" -gt 0 ] || { cli_error E_CLI_MISSING_ARG "--lang requires a value" "use --lang en"; exit 2; }
+            diagnostics_lang="$1"
+            shift
+            ;;
+        --lang=*)
+            diagnostics_lang="${1#--lang=}"
             shift
             ;;
         *)
@@ -2648,6 +2812,12 @@ case "$cmd" in
             printf '%s\n' "$banner"
             printf 'version: %s\n' "$version"
         fi
+        ;;
+    explain)
+        read_common_flags "$@"
+        code="$(explain_code_from_args "$@" || true)"
+        [ -n "$code" ] || { cli_error E_CLI_MISSING_ARG "explain requires a diagnostic code" "vitte explain E0001 --lang en"; exit 2; }
+        print_explain_text "$code"
         ;;
     pkg)
         subcmd="${2:-help}"

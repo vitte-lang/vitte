@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Build, Lint, Test, Package
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Debug revision
+        run: |
+          git rev-parse HEAD
+          node -e "const fs=require('fs'); const s=fs.readFileSync('src/test/suite/extension.test.ts','utf8'); console.log('has_old_assert=', s.includes('vitte.diagnostics.refresh non enregistrée'));"
+
+      - name: Clean build outputs
+        run: rm -rf out server/out
+
+      - name: Build
+        run: npm run build
+
+      - name: Assert compiled tests are current
+        run: |
+          node -e "const fs=require('fs'); const s=fs.readFileSync('out/test/suite/extension.test.js','utf8'); if (s.includes('\"vitte.diagnostics.refresh\",') && s.includes('const commands = await vscode.commands.getCommands(true);')) { console.error('Stale compiled tests detected in out/test/suite/extension.test.js'); process.exit(1);} console.log('Compiled tests fingerprint OK');"
+          nl -ba out/test/suite/extension.test.js | sed -n '80,105p'
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Extension tests
+        run: xvfb-run -a npm test --silent
+
+      - name: Release gate
+        run: npm run ci:release-gate
+
+      - name: Package VSIX
+        run: npm run package

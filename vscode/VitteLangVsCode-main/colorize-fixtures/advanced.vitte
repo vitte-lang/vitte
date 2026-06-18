@@ -1,0 +1,118 @@
+#! /usr/bin/env vitte
+// advanced.vitte - fixture avance aligne sur Documents/Github/vitte
+
+/* TODO FIXME NOTE XXX */
+<<<
+ROLE-CONTRACT: advanced
+VITTE-H0007
+>>>
+
+space demo/advanced
+pull std/io as io_pkg
+pull std/math as math_pkg
+use std/core/types
+share diagnostics_health, quickfix_pass, doctor_run
+
+const MAX_ITERS = 0xFF
+const BIN_FLAG = 0b1011_0010
+make retries = 3
+
+type Coord = i64
+type Ratio = f64
+
+form Vec2 {
+  field x: Coord
+  field y: Coord
+}
+
+trait Summarizable {
+  proc summarize(self) -> string
+}
+
+pick Payload {
+  case None
+  case Scalar
+  case Pair
+}
+
+proc diagnostics_health(code: string, alias_pkg: string) -> string {
+  if code is "VITTE-H0007" and alias_pkg as string != "" {
+    give "healthy"
+  } else {
+    give "degraded"
+  }
+}
+
+proc quickfix_pass(limit: int) -> bool {
+  let n8: i8 = -1
+  let n16: i16 = 16
+  let n32: i32 = 32
+  let n64: i64 = 64
+  let sn: isize = -4
+
+  let p8: u8 = 8
+  let p16: u16 = 16
+  let p32: u32 = 32
+  let p64: u64 = 64
+  let up: usize = 10
+
+  let short_ratio: f32 = 1.25
+  let ratio: f64 = 2.75
+  let letter: char = 'Z'
+  let ok: bool = true
+  let note: string = "quickfix"
+  let absent = null
+
+  loop for i in limit {
+    if i > MAX_ITERS {
+      break
+    } else {
+      continue
+    }
+  }
+  give ok
+}
+
+macro doctor_run(tag: string) -> string {
+  emit "doctor:" + tag
+  asm "nop"
+  give "done"
+}
+
+proc vector_norm(v: Vec2) -> Ratio {
+  let xx = v.x * v.x
+  let yy = v.y * v.y
+  give math_pkg.sqrt(xx + yy) as f64
+}
+
+entry main at demo/advanced {
+  let alias_pkg = "core_pkg"
+  let diagnostics_api = diagnostics_health("VITTE-H0007", alias_pkg)
+  let quickfix_api = quickfix_pass(20)
+  let doctor_api = doctor_run("check")
+
+  select diagnostics_api
+    when "healthy" {
+      io_pkg.println("health ok")
+    }
+    otherwise {
+      io_pkg.println("health degraded")
+    }
+  .end
+
+  match quickfix_api {
+    case true {
+      io_pkg.println(doctor_api as string)
+    }
+    case false {
+      unsafe {
+        io_pkg.println("fallback path")
+      }
+    }
+  }
+
+  let point = Vec2 { x: 3, y: 4 }
+  let norm = vector_norm(point)
+  io_pkg.println(norm as string)
+  return
+}

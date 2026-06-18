@@ -5,8 +5,8 @@ ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 SRC="$ROOT_DIR/src/vitte/compiler/tests/pipeline_tests.vit"
 POSITIVE_SRC="$ROOT_DIR/src/vitte/compiler/tests/ast_tests.vit"
 NEGATIVE_SRC="$ROOT_DIR/src/vitte/compiler/tests/chaos_tests.vit"
-NEGATIVE_EXTERNAL_SRC="$ROOT_DIR/tests/bootstrap_native/main_proc.vit"
 OUT_DIR="$ROOT_DIR/target/compiler-test-suite-bridge-gate"
+NEGATIVE_EXTERNAL_SRC="$OUT_DIR/external_suite_like_probe.vit"
 OUT_BIN="$OUT_DIR/pipeline-tests"
 POSITIVE_OUT="$OUT_DIR/ast-tests"
 NEGATIVE_OUT="$OUT_DIR/non-suite-neighbor"
@@ -27,6 +27,20 @@ rm -f "$OUT_BIN" "$OUT_BIN.bootstrap-bridge" \
   "$NEGATIVE_EXTERNAL_OUT" "$NEGATIVE_EXTERNAL_OUT.bootstrap-bridge" \
   "$BUILD_LOG" "$POSITIVE_LOG" "$RUN_OUT" "$RUN_ERR" "$POSITIVE_RUN_OUT" "$POSITIVE_RUN_ERR" \
   "$NEGATIVE_LOG" "$NEGATIVE_EXTERNAL_LOG"
+
+cat > "$NEGATIVE_EXTERNAL_SRC" <<'EOF'
+space vitte/compiler/tests/external_suite_like_probe
+
+proc run_all_tests() -> int {
+  give 0;
+}
+
+proc main(args: list[string]) -> int {
+  give run_all_tests();
+}
+
+export *
+EOF
 
 cd "$ROOT_DIR"
 
