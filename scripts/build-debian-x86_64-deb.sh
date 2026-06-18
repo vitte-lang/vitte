@@ -168,15 +168,8 @@ build_stdlib() {
 # Verify editors
 verify_editors() {
   log "Verifying editor support files..."
-  
-  local editors=("vim" "emacs" "nano" "geany" "tree-sitter")
-  for editor in "${editors[@]}"; do
-    if [ -d "$ROOT_DIR/editors/$editor" ]; then
-      success "Editor support: $editor"
-    else
-      warn "Editor support not found: $editor"
-    fi
-  done
+  bash "$ROOT_DIR/tools/check_editor_package_assets.sh"
+  success "Editor support files validated"
 }
 
 # Create Debian control file
@@ -201,7 +194,7 @@ Description: Vitte systems language compiler and toolchain
  This package includes:
  - Vitte compiler (vittec)
  - Standard library
- - Editor support (Vim, Emacs, Nano, Geany)
+ - Editor support (Vim, Emacs, Nano, Geany, Tree-sitter)
  - Shell completions
  - Documentation
  - Development tools
@@ -235,9 +228,9 @@ case "$1" in
 Vitte has been installed successfully!
 
 Editor Integration:
-  - Vim: Automatically installed to ~/.vim/
-  - Emacs: Add to ~/.emacs.d/init.el (see docs)
-  - Nano: Add to ~/.nanorc (see docs)
+  - Files are installed under /usr/share/vitte/editors/
+  - Use the scripts/configs there to enable Vim, Emacs, Nano, Geany
+  - Tree-sitter grammar assets are included for editor integrations
 
 Next Steps:
   1. Verify installation: vitte --version

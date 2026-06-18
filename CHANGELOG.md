@@ -1,5 +1,24 @@
 # Changelog - Vitte Bootstrap Toolchain
 
+## [0.3.7] - 2026-06-18 - Editor Integration Refresh
+
+### ✅ 225. Generated editor highlight pipeline
+- Extended `tools/generate_editor_highlights.py` so generated Nano, Vim, and Geany assets share the richer Vitte syntax surface.
+- Refreshed editor highlight snapshots and coverage reports for Nano, Vim, and Geany.
+- Added `.vitl` recognition to Nano, Vim, and Geany editor integrations alongside `.vit` and `.vitte`.
+
+### ✅ 226. Nano and Vim authoring polish
+- Improved Nano highlighting for declarations, exports, signature types, constants, constructors, numeric literals, operators, delimiters, comments, and trailing whitespace.
+- Added Nano editing hints for `//` comments and two-space tab insertion.
+- Improved Vim syntax highlighting for exports, signature types, escapes, constants, constructors, operators, delimiters, hash comments, and trailing whitespace.
+- Expanded Vim filetype support with `.vitl`, `formatprg`, compiler integration, suffix resolution, stronger indentation behavior, and a broader UltiSnips set.
+
+### ✅ 227. Geany integration upgrade
+- Expanded Geany filetype configuration with richer keyword coverage, a context check action, and a larger build menu covering file checks, project checks, formatting, parsing, symbol discovery, diagnostics, manifest inspection, file listing, and version reporting.
+- Updated Geany extension mappings and common filetype fragments for `.vit`, `.vitte`, and `.vitl`.
+- Reworked Geany snippets into complete `[vitte]` and `[Vitte]` sections covering modules, entrypoints, procedures, types, control flow, diagnostics, compiler passes, tests, comments, and role contracts.
+- Hardened Geany install/uninstall scripts with idempotent snippet markers, dual filetype-definition installs, working-directory mode rewriting, and clean removal of Vitte sections and extension mappings.
+
 ## [0.3.6] - 2026-06-16 - Truth Triangle, Bootstrap Native, and Stdlib Runtime Hardening
 
 ### ✅ 217. Stable syntax profile and driver surface parity

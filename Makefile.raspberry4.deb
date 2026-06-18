@@ -3,7 +3,7 @@
 # Target: Create complete distribution package for Raspberry Pi 4 ARM64
 # ============================================================
 
-.PHONY: help deb deb-clean deb-bundle deb-complete verify-deb install-deb check-prerequisites
+.PHONY: help deb deb-clean deb-bundle deb-complete verify-deb install-deb check-prerequisites check-editors
 
 # Configuration
 SCRIPTS_DIR := scripts
@@ -48,6 +48,7 @@ help:
 	@echo "  $(GREEN)make -f Makefile.raspberry4.deb deb$(NC)            - Build Raspberry Pi 4 ARM64 .deb package only"
 	@echo "  $(GREEN)make -f Makefile.raspberry4.deb deb-clean$(NC)      - Clean Raspberry Pi 4 package build artifacts"
 	@echo "  $(GREEN)make -f Makefile.raspberry4.deb deb-bundle$(NC)     - Create distribution bundle"
+	@echo "  $(GREEN)make -f Makefile.raspberry4.deb check-editors$(NC)  - Validate packaged editor integrations"
 	@echo ""
 	@echo "  $(GREEN)make -f Makefile.raspberry4.deb verify-deb$(NC)     - Verify package integrity"
 	@echo "  $(GREEN)make -f Makefile.raspberry4.deb install-deb$(NC)    - Install the built package"
@@ -66,7 +67,7 @@ help:
 	@echo ""
 
 # Complete workflow
-deb-complete: deb-clean
+deb-complete: deb-clean check-editors
 	@echo "$(BLUE)═══════════════════════════════════════════════════════════$(NC)"
 	@echo "$(BLUE)Building complete Vitte Raspberry Pi 4 ARM64 package$(NC)"
 	@echo "$(BLUE)═══════════════════════════════════════════════════════════$(NC)"
@@ -80,7 +81,7 @@ deb-complete: deb-clean
 	fi
 
 # Build .deb package
-deb: check-prerequisites
+deb: check-prerequisites check-editors
 	@echo "$(BLUE)Building Raspberry Pi 4 ARM64 Debian .deb package...$(NC)"
 	@chmod +x $(BUILD_SCRIPT)
 	@ARCH="$(ARCH)" TARGET_ARCH="$(TARGET_ARCH)" OPT_LEVEL="$(OPT_LEVEL)" JOBS="$(JOBS)" bash "$(BUILD_SCRIPT)"
@@ -130,6 +131,11 @@ install-deb: verify-deb
 	@echo "$(GREEN)✓ Installation complete$(NC)"
 	@echo ""
 	@echo "Verify with: vitte --version"
+
+# Validate editor integrations before packaging them
+check-editors:
+	@echo "$(BLUE)Validating editor integration assets...$(NC)"
+	@bash tools/check_editor_package_assets.sh
 
 # Check prerequisites
 check-prerequisites:

@@ -9,6 +9,13 @@ setlocal tabstop=2
 setlocal softtabstop=2
 setlocal expandtab
 setlocal commentstring=//\ %s
+setlocal comments=s1:/*,mb:*,ex:*/,://,b:#
+setlocal suffixesadd=.vit,.vitte,.vitl
 setlocal makeprg=vitte\ check\ %
+setlocal formatprg=vitte\ fmt\ -
 
-let b:undo_ftplugin = "setlocal shiftwidth< tabstop< softtabstop< expandtab< commentstring< makeprg<"
+if exists(":compiler") == 2
+  compiler vitte
+endif
+
+let b:undo_ftplugin = "setlocal shiftwidth< tabstop< softtabstop< expandtab< commentstring< comments< suffixesadd< makeprg< formatprg<"

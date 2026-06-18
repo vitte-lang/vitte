@@ -189,15 +189,8 @@ build_stdlib() {
 # Verify editors
 verify_editors() {
   log "Verifying editor support files..."
-
-  local editors=("vim" "emacs" "nano" "geany" "tree-sitter")
-  for editor in "${editors[@]}"; do
-    if [ -d "$ROOT_DIR/editors/$editor" ]; then
-      success "Editor support: $editor"
-    else
-      warn "Editor support not found: $editor"
-    fi
-  done
+  bash "$ROOT_DIR/tools/check_editor_package_assets.sh"
+  success "Editor support files validated"
 }
 
 # Safe rsync helper
@@ -266,6 +259,8 @@ case "$1" in
     cat << 'SETUP'
 
 Vitte has been installed successfully for Raspberry Pi 4 ARM64.
+
+Editor integrations are available under /usr/share/vitte/editors/.
 
 Next Steps:
   1. Verify installation: vitte --version

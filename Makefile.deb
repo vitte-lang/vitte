@@ -3,7 +3,7 @@
 # Target: Create complete distribution package for Debian x86_64
 # ============================================================
 
-.PHONY: help deb deb-clean deb-bundle deb-complete verify-deb install-deb
+.PHONY: help deb deb-clean deb-bundle deb-complete verify-deb install-deb check-editors
 
 # Configuration
 SCRIPTS_DIR := scripts
@@ -36,6 +36,7 @@ help:
 	@echo "  $(GREEN)make -f Makefile.deb deb$(NC)              - Build Debian .deb package only"
 	@echo "  $(GREEN)make -f Makefile.deb deb-clean$(NC)        - Clean package build artifacts"
 	@echo "  $(GREEN)make -f Makefile.deb deb-bundle$(NC)       - Create distribution bundle (checksums, docs)"
+	@echo "  $(GREEN)make -f Makefile.deb check-editors$(NC)    - Validate packaged editor integrations"
 	@echo ""
 	@echo "  $(GREEN)make -f Makefile.deb verify-deb$(NC)       - Verify package integrity"
 	@echo "  $(GREEN)make -f Makefile.deb install-deb$(NC)      - Install the built package"
@@ -52,7 +53,7 @@ help:
 	@echo ""
 
 # Complete workflow (recommended entry point)
-deb-complete: deb-clean
+deb-complete: deb-clean check-editors
 	@echo "$(BLUE)═══════════════════════════════════════════════════════════$(NC)"
 	@echo "$(BLUE)Building complete Vitte Debian distribution package$(NC)"
 	@echo "$(BLUE)═══════════════════════════════════════════════════════════$(NC)"
@@ -61,7 +62,7 @@ deb-complete: deb-clean
 	@bash $(COMPLETE_SCRIPT)
 
 # Build .deb package
-deb: check-prerequisites
+deb: check-prerequisites check-editors
 	@echo "$(BLUE)Building Debian .deb package...$(NC)"
 	@chmod +x $(BUILD_SCRIPT)
 	@bash $(BUILD_SCRIPT)
@@ -98,6 +99,11 @@ install-deb: verify-deb
 	@echo "$(GREEN)✓ Installation complete$(NC)"
 	@echo ""
 	@echo "Verify with: vitte --version"
+
+# Validate editor integrations before packaging them
+check-editors:
+	@echo "$(BLUE)Validating editor integration assets...$(NC)"
+	@bash tools/check_editor_package_assets.sh
 
 # Check prerequisites
 check-prerequisites:

@@ -3,7 +3,7 @@
 # Target: Create .deb package for Debian i586 (Pentium)
 # ============================================================
 
-.PHONY: help deb-i586 deb-i586-clean deb-i586-bundle deb-i586-complete verify-deb-i586 install-deb-i586
+.PHONY: help deb-i586 deb-i586-clean deb-i586-bundle deb-i586-complete verify-deb-i586 install-deb-i586 check-editors
 
 # Configuration
 SCRIPTS_DIR := scripts
@@ -36,6 +36,7 @@ help:
 	@echo "  $(GREEN)make -f Makefile.deb-i586 deb-i586$(NC)              - Build .deb package only"
 	@echo "  $(GREEN)make -f Makefile.deb-i586 deb-i586-clean$(NC)        - Clean build artifacts"
 	@echo "  $(GREEN)make -f Makefile.deb-i586 deb-i586-bundle$(NC)       - Create distribution files"
+	@echo "  $(GREEN)make -f Makefile.deb-i586 check-editors$(NC)         - Validate packaged editor integrations"
 	@echo ""
 	@echo "  $(GREEN)make -f Makefile.deb-i586 verify-deb-i586$(NC)       - Verify package integrity"
 	@echo "  $(GREEN)make -f Makefile.deb-i586 install-deb-i586$(NC)      - Install package"
@@ -55,7 +56,7 @@ help:
 	@echo ""
 
 # Complete workflow
-deb-i586-complete: deb-i586-clean
+deb-i586-complete: deb-i586-clean check-editors
 	@echo "$(BLUE)═══════════════════════════════════════════════════════════$(NC)"
 	@echo "$(BLUE)Building Vitte Debian i586 (32-bit Pentium) distribution$(NC)"
 	@echo "$(BLUE)═══════════════════════════════════════════════════════════$(NC)"
@@ -64,7 +65,7 @@ deb-i586-complete: deb-i586-clean
 	@bash $(COMPLETE_SCRIPT)
 
 # Build .deb package
-deb-i586: check-prerequisites
+deb-i586: check-prerequisites check-editors
 	@echo "$(BLUE)Building Debian i586 (32-bit Pentium) .deb package...$(NC)"
 	@chmod +x $(BUILD_SCRIPT)
 	@bash $(BUILD_SCRIPT)
@@ -101,6 +102,11 @@ install-deb-i586: verify-deb-i586
 	@echo "$(GREEN)✓ Installation complete$(NC)"
 	@echo ""
 	@echo "Verify with: vitte --version"
+
+# Validate editor integrations before packaging them
+check-editors:
+	@echo "$(BLUE)Validating editor integration assets...$(NC)"
+	@bash tools/check_editor_package_assets.sh
 
 # Check prerequisites
 check-prerequisites:

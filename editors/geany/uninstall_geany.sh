@@ -46,7 +46,10 @@ uninstall_from_geany_home() {
 
   if [[ -f "$snippets_file" ]]; then
     awk '
-      BEGIN { skip=0 }
+      BEGIN { skip=0; marker=0 }
+      /^# BEGIN Vitte snippets$/ { marker=1; next }
+      /^# END Vitte snippets$/ { marker=0; next }
+      marker==1 { next }
       /^\[(vitte|Vitte)\]$/ { skip=1; next }
       /^\[/ {
         if (skip==1) skip=0
@@ -59,6 +62,9 @@ uninstall_from_geany_home() {
   fi
 
   echo "Geany Vitte config removed from: $geany_home"
+  echo "  - removed filedefs/filetypes.vitte.conf and filetypes.Vitte.conf"
+  echo "  - removed Vitte extension mapping (*.vit, *.vitte, *.vitl)"
+  echo "  - removed snippets sections [vitte] and [Vitte]"
 }
 
 while IFS= read -r geany_home; do

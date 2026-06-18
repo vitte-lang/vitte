@@ -3,7 +3,7 @@
 # Target: Create .deb package for Debian i686 (32-bit)
 # ============================================================
 
-.PHONY: help deb-i686 deb-i686-clean deb-i686-bundle deb-i686-complete verify-deb-i686 install-deb-i686
+.PHONY: help deb-i686 deb-i686-clean deb-i686-bundle deb-i686-complete verify-deb-i686 install-deb-i686 check-editors
 
 # Configuration
 SCRIPTS_DIR := scripts
@@ -36,6 +36,7 @@ help:
 	@echo "  $(GREEN)make -f Makefile.deb-i686 deb-i686$(NC)              - Build .deb package only"
 	@echo "  $(GREEN)make -f Makefile.deb-i686 deb-i686-clean$(NC)        - Clean build artifacts"
 	@echo "  $(GREEN)make -f Makefile.deb-i686 deb-i686-bundle$(NC)       - Create distribution files"
+	@echo "  $(GREEN)make -f Makefile.deb-i686 check-editors$(NC)         - Validate packaged editor integrations"
 	@echo ""
 	@echo "  $(GREEN)make -f Makefile.deb-i686 verify-deb-i686$(NC)       - Verify package integrity"
 	@echo "  $(GREEN)make -f Makefile.deb-i686 install-deb-i686$(NC)      - Install package"
@@ -54,7 +55,7 @@ help:
 	@echo ""
 
 # Complete workflow
-deb-i686-complete: deb-i686-clean
+deb-i686-complete: deb-i686-clean check-editors
 	@echo "$(BLUE)═══════════════════════════════════════════════════════════$(NC)"
 	@echo "$(BLUE)Building Vitte Debian i686 (32-bit) distribution package$(NC)"
 	@echo "$(BLUE)═══════════════════════════════════════════════════════════$(NC)"
@@ -63,7 +64,7 @@ deb-i686-complete: deb-i686-clean
 	@bash $(COMPLETE_SCRIPT)
 
 # Build .deb package
-deb-i686: check-prerequisites
+deb-i686: check-prerequisites check-editors
 	@echo "$(BLUE)Building Debian i686 (32-bit) .deb package...$(NC)"
 	@chmod +x $(BUILD_SCRIPT)
 	@bash $(BUILD_SCRIPT)
@@ -100,6 +101,11 @@ install-deb-i686: verify-deb-i686
 	@echo "$(GREEN)✓ Installation complete$(NC)"
 	@echo ""
 	@echo "Verify with: vitte --version"
+
+# Validate editor integrations before packaging them
+check-editors:
+	@echo "$(BLUE)Validating editor integration assets...$(NC)"
+	@bash tools/check_editor_package_assets.sh
 
 # Check prerequisites
 check-prerequisites:

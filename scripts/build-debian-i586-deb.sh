@@ -74,6 +74,11 @@ fi
 echo -e "${GREEN}✓ Prerequisites OK${NC}"
 echo ""
 
+echo -e "${YELLOW}[editor-check]${NC} Validating packaged editor integrations..."
+bash "$ROOT_DIR/tools/check_editor_package_assets.sh"
+echo -e "${GREEN}✓ Editor integrations OK${NC}"
+echo ""
+
 # Step 2: Clean
 echo -e "${YELLOW}[2/6]${NC} Cleaning previous builds..."
 rm -rf "$BUILD_DIR" "$TARGET_DIR/debian-i586" .debstage-i586 2>/dev/null || true
@@ -201,6 +206,7 @@ if [ -d /etc/bash_completion.d ]; then
 fi
 
 echo "✓ $PACKAGE installed successfully (i586 Pentium)"
+echo "  Editor integrations: /usr/share/PACKAGE_NAME/editors"
 echo "  Run: vitte --version"
 
 exit 0
