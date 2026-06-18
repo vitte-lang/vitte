@@ -45,10 +45,6 @@ def render_generated(source_text: str, meta: SourceMeta) -> str:
         "# GENERATED FILE - DO NOT EDIT",
         f"# grammar_version: {GRAMMAR_VERSION}",
         f"# source: {SOURCE_REL}",
-        f"# source_commit: {meta.commit}",
-        f"# source_date: {meta.source_date}",
-        # Keep generation idempotent: this timestamp tracks source revision date.
-        f"# generated_at: {meta.source_date}",
         f"# tool: docs/book/grammar/scripts/sync_grammar.py v{TOOL_VERSION}",
         "",
     ]
