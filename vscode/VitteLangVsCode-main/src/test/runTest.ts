@@ -22,6 +22,7 @@ async function main(): Promise<void> {
     extensionDevelopmentPath,
     extensionTestsPath,
     version: "stable",
+    timeout: Number(process.env.VSCODE_TEST_DOWNLOAD_TIMEOUT_MS ?? 120_000),
     launchArgs: [workspacePath],
     extensionTestsEnv: {
       VSCODE_TESTING: "1",

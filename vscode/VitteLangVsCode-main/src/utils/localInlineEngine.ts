@@ -24,20 +24,20 @@ interface PersistedIndex {
   version: 1 | 2;
   workspaceKey: string;
   updatedAt: number;
-  files: Array<{
+  files: {
     uri: string;
     hash: string;
-    trigram: Array<[string, Array<[string, number]>]>;
-    bigram: Array<[string, Array<[string, number]>]>;
-    unigram: Array<[string, number]>;
-    patterns: Array<[string, number]>;
-    members: Array<[string, number]>;
-    calls: Array<[string, number]>;
-    blockSnippets: Array<[string, number]>;
-    enumVariants: Array<[string, number]>;
-    apiChains: Array<[string, Array<[string, number]>]>;
-  }>;
-  acceptance?: Array<[string, Array<[string, number]>]>;
+    trigram: [string, [string, number][]][];
+    bigram: [string, [string, number][]][];
+    unigram: [string, number][];
+    patterns: [string, number][];
+    members: [string, number][];
+    calls: [string, number][];
+    blockSnippets: [string, number][];
+    enumVariants: [string, number][];
+    apiChains: [string, [string, number][]][];
+  }[];
+  acceptance?: [string, [string, number][]][];
 }
 
 export interface LocalInlineEngineOptions {
@@ -203,7 +203,7 @@ export class LocalInlineEngine {
 
     const memberPrefix = /\.([A-Za-z_][A-Za-z0-9_]*)?$/.exec(left)?.[1] ?? "";
     if (left.endsWith(".") || /\.[A-Za-z_][A-Za-z0-9_]*$/.test(left)) {
-      const localMembers = topStartingWith(docContrib?.members ?? new Map(), memberPrefix, 6);
+      const localMembers = topStartingWith(docContrib?.members ?? new Map<string, number>(), memberPrefix, 6);
       const fileMembers = topStartingWith(this.globalMembers, memberPrefix, 6);
       for (const name of localMembers) addWeighted(weighted, name.slice(memberPrefix.length), 30);
       for (const name of fileMembers) addWeighted(weighted, name.slice(memberPrefix.length), 10);
@@ -225,7 +225,7 @@ export class LocalInlineEngine {
     const tailIdent = /\b([A-Za-z_][A-Za-z0-9_]*)$/.exec(left)?.[1];
     if (tailIdent && !left.endsWith("(")) {
       const partial = tailIdent;
-      const localCalls = topStartingWith(docContrib?.calls ?? new Map(), partial, 6);
+      const localCalls = topStartingWith(docContrib?.calls ?? new Map<string, number>(), partial, 6);
       const repoCalls = topStartingWith(this.globalCalls, partial, 6);
       for (const fn of localCalls) {
         addWeighted(weighted, `${fn.slice(partial.length)}(`, 28);
@@ -455,9 +455,9 @@ export class LocalInlineEngine {
           patterns: new Map(file.patterns),
           members: new Map(file.members),
           calls: new Map(file.calls),
-          blockSnippets: new Map((file as { blockSnippets?: Array<[string, number]> }).blockSnippets ?? []),
-          enumVariants: new Map((file as { enumVariants?: Array<[string, number]> }).enumVariants ?? []),
-          apiChains: deserializePairMap((file as { apiChains?: Array<[string, Array<[string, number]>]> }).apiChains ?? []),
+          blockSnippets: new Map((file as { blockSnippets?: [string, number][] }).blockSnippets ?? []),
+          enumVariants: new Map((file as { enumVariants?: [string, number][] }).enumVariants ?? []),
+          apiChains: deserializePairMap((file as { apiChains?: [string, [string, number][]][] }).apiChains ?? []),
         };
         this.addContribution(file.uri, c);
       }
@@ -471,9 +471,9 @@ export class LocalInlineEngine {
     docContrib: FileContribution | undefined,
     maxTokens: number,
     beamWidth: number,
-  ): Array<{ text: string; score: number }> {
+  ): { text: string; score: number }[] {
     const ctx = tokenize(left);
-    let beams: Array<{ p2: string; p1: string; seq: string[]; score: number }> = [{
+    let beams: { p2: string; p1: string; seq: string[]; score: number }[] = [{
       p2: ctx[ctx.length - 2] ?? "",
       p1: ctx[ctx.length - 1] ?? "",
       seq: [],
@@ -482,7 +482,7 @@ export class LocalInlineEngine {
     const steps = Math.max(2, Math.min(64, maxTokens));
     const width = Math.max(2, Math.min(16, beamWidth));
     for (let i = 0; i < steps; i += 1) {
-      const nextBeams: Array<{ p2: string; p1: string; seq: string[]; score: number }> = [];
+      const nextBeams: { p2: string; p1: string; seq: string[]; score: number }[] = [];
       for (const b of beams) {
         const candidates = this.predictTokenScores(docContrib, b.p2, b.p1, 8);
         for (const [tok, sc] of candidates) {
@@ -509,7 +509,7 @@ export class LocalInlineEngine {
     prev2: string,
     prev1: string,
     limit: number,
-  ): Array<[string, number]> {
+  ): [string, number][] {
     const weighted = new Map<string, number>();
     const addRows = (row: CounterMap | undefined, w: number): void => {
       if (!row) return;
@@ -640,7 +640,7 @@ function extractLocalScopeContext(document: vscode.TextDocument, position: vscod
     if (!nonNullLikelyVar && guard?.[1]) nonNullLikelyVar = guard[1];
   }
   const ordered = Array.from(locals.entries()).sort((a, b) => b[1] - a[1]).map(([k]) => k).slice(0, 16);
-  return { locals: ordered, nonNullLikelyVar };
+  return nonNullLikelyVar ? { locals: ordered, nonNullLikelyVar } : { locals: ordered };
 }
 
 function blockSnippetPrefix(left: string): string {
@@ -886,13 +886,13 @@ function subtractPairCounters(dst: PairCounterMap, src: PairCounterMap): void {
   }
 }
 
-function serializePairMap(map: PairCounterMap): Array<[string, Array<[string, number]>]> {
-  const out: Array<[string, Array<[string, number]>]> = [];
+function serializePairMap(map: PairCounterMap): [string, [string, number][]][] {
+  const out: [string, [string, number][]][] = [];
   for (const [k, row] of map.entries()) out.push([k, Array.from(row.entries())]);
   return out;
 }
 
-function deserializePairMap(rows: Array<[string, Array<[string, number]>]>): PairCounterMap {
+function deserializePairMap(rows: [string, [string, number][]][]): PairCounterMap {
   const out: PairCounterMap = new Map();
   for (const [k, vals] of rows) out.set(k, new Map(vals));
   return out;

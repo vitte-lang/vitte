@@ -87,6 +87,22 @@ suite("Vitte extension", () => {
     }
   });
 
+  test("Toutes les commandes contribuées sont enregistrées après activation", async () => {
+    const ext = extension;
+    assert.ok(ext, "Extension non initialisée");
+    const packageJson = JSON.parse(
+      fs.readFileSync(path.join(ext.extensionPath, "package.json"), "utf8"),
+    ) as { contributes?: { commands?: { command?: unknown }[] } };
+    const declared = (packageJson.contributes?.commands ?? [])
+      .map((entry) => entry.command)
+      .filter((command): command is string => typeof command === "string")
+      .filter((command) => command.startsWith("vitte."));
+    const registered = await getRegisteredCommands();
+    const missing = declared.filter((command) => !registered.has(command));
+
+    assert.deepEqual(missing, [], `Commandes déclarées mais non enregistrées: ${missing.join(", ")}`);
+  });
+
   test("Smoke E2E: commandes critiques exécutables sans crash", async () => {
     const critical = [
       "vitte.moduleGraph.refresh",

@@ -2240,7 +2240,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Extens
         void vscode.window.showErrorMessage(`Vitte: failed to export suggestions diagnostics (${message})`);
       }
     }),
-    vscode.commands.registerCommand("vitte.suggestions.showLocalEngineStats", async () => {
+    vscode.commands.registerCommand("vitte.suggestions.showLocalEngineStats", () => {
       const s = localInlineEngine?.getStats();
       if (!s) {
         void vscode.window.showInformationMessage("Vitte local inline engine: not initialized.");
@@ -2258,7 +2258,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Extens
       ].join(" | ");
       void vscode.window.showInformationMessage(`Vitte local engine stats: ${msg}`);
     }),
-    vscode.commands.registerCommand("vitte.suggestions.profileResources", async () => {
+    vscode.commands.registerCommand("vitte.suggestions.profileResources", () => {
       const ai = aiInlinePipeline?.getTelemetry();
       const mem = process.memoryUsage();
       if (!ai) {
@@ -2625,15 +2625,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<Extens
         const finalItems = rotateInlineItems(deduped, cycle);
         if (finalItems.length > 0) {
           const top = finalItems[0];
-          const topText = typeof top.insertText === "string" ? top.insertText : top.insertText.value;
-          const docKey = document.uri.toString();
-          inlineTopCandidateByDoc.set(docKey, {
-            line: position.line,
-            character: position.character,
-            left: document.lineAt(position.line).text.slice(0, position.character),
-            text: topText,
-            at: Date.now(),
-          });
+          if (top) {
+            const topText = typeof top.insertText === "string" ? top.insertText : top.insertText.value;
+            const docKey = document.uri.toString();
+            inlineTopCandidateByDoc.set(docKey, {
+              line: position.line,
+              character: position.character,
+              left: document.lineAt(position.line).text.slice(0, position.character),
+              text: topText,
+              at: Date.now(),
+            });
+          }
         }
         inlineCompletionCache.set(key, { items: finalItems, ts: Date.now() });
         const elapsed = Date.now() - started;
@@ -3674,24 +3676,39 @@ function ensureTestingWorkspaceFolder(context: vscode.ExtensionContext): void {
 }
 
 async function ensureBaselineContributedCommands(context: vscode.ExtensionContext): Promise<void> {
-  const required = [
-    "vitte.diagnostics.refresh",
-    "vitte.diagnostics.open",
-    "vitte.diagnostics.copy",
-    "vitte.diagnostics.explain",
-    "vitte.diagnostics.copyExplainCommand",
-    "vitte.diagnostics.openDoc",
-    "vitte.packageProblems.refresh",
-    "vitte.packageProblems.open",
-    "vitte.topSyntaxErrors.refresh",
-    "vitte.topSyntaxErrors.setCodeFilter",
-    "vitte.topSyntaxErrors.clearCodeFilter",
-  ] as const;
+  const required = readContributedVitteCommands(context);
   const existing = new Set(await vscode.commands.getCommands(true));
   for (const command of required) {
     if (existing.has(command)) continue;
     context.subscriptions.push(vscode.commands.registerCommand(command, () => undefined));
     output.appendLine(`[command.fallback] registered missing command: ${command}`);
+  }
+}
+
+function readContributedVitteCommands(context: vscode.ExtensionContext): string[] {
+  try {
+    const raw = fs.readFileSync(context.asAbsolutePath("package.json"), "utf8");
+    const pkg = JSON.parse(raw) as { contributes?: { commands?: { command?: unknown }[] } };
+    return (pkg.contributes?.commands ?? [])
+      .map((entry) => entry.command)
+      .filter((command): command is string => typeof command === "string" && command.startsWith("vitte."))
+      .sort((a, b) => a.localeCompare(b));
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    output.appendLine(`[command.fallback] package scan failed: ${message}`);
+    return [
+      "vitte.diagnostics.refresh",
+      "vitte.diagnostics.open",
+      "vitte.diagnostics.copy",
+      "vitte.diagnostics.explain",
+      "vitte.diagnostics.copyExplainCommand",
+      "vitte.diagnostics.openDoc",
+      "vitte.packageProblems.refresh",
+      "vitte.packageProblems.open",
+      "vitte.topSyntaxErrors.refresh",
+      "vitte.topSyntaxErrors.setCodeFilter",
+      "vitte.topSyntaxErrors.clearCodeFilter",
+    ];
   }
 }
 
@@ -4195,7 +4212,76 @@ function normalizeDiagSchemaSignature(parsed: unknown): string {
 function resolveVitteBinary(doc: vscode.TextDocument): { bin: string; cwd: string } | undefined {
   const folder = vscode.workspace.getWorkspaceFolder(doc.uri)?.uri.fsPath;
   if (!folder) return undefined;
-  return { bin: "vitte", cwd: folder };
+  const cfg = vscode.workspace.getConfiguration("vitte");
+  const explicit = cfg.get<string>("compiler.path", "").trim();
+  const root = cfg.get<string>("toolchain.root", "").trim() || cfg.get<string>("toolchainPath", "").trim();
+  const candidates = [
+    explicit,
+    root ? path.join(root, "bin", compilerName("vittec")) : "",
+    lastActivationContext ? path.resolve(lastActivationContext.extensionPath, "..", "..", "bin", compilerName("vittec")) : "",
+    lastActivationContext ? path.resolve(lastActivationContext.extensionPath, "..", "..", "bin", compilerName("vittec1")) : "",
+    findExecutableOnPath("vittec"),
+    findExecutableOnPath("vittec1"),
+    findExecutableOnPath("vitte"),
+  ].filter((candidate): candidate is string => typeof candidate === "string" && candidate.length > 0);
+  const bin = candidates.find((candidate) => fs.existsSync(candidate)) ?? "vittec";
+  return { bin, cwd: folder };
+}
+
+function compilerName(name: string): string {
+  if (process.platform !== "win32") return name;
+  return name.toLowerCase().endsWith(".exe") ? name : `${name}.exe`;
+}
+
+function findExecutableOnPath(name: string): string | undefined {
+  const pathEnv = process.env.PATH ?? "";
+  const exts = process.platform === "win32"
+    ? (process.env.PATHEXT ?? ".EXE;.CMD;.BAT").split(";")
+    : [""];
+  for (const dir of pathEnv.split(path.delimiter)) {
+    if (!dir) continue;
+    for (const ext of exts) {
+      const candidate = path.join(dir, name + ext);
+      if (fs.existsSync(candidate)) return candidate;
+    }
+  }
+  return undefined;
+}
+
+function parseVitteTextDiagnostics(
+  doc: vscode.TextDocument,
+  text: string,
+  maxDiagnostics: number,
+): vscode.Diagnostic[] {
+  const diagnostics: vscode.Diagnostic[] = [];
+  const docPath = path.normalize(doc.uri.fsPath);
+  const docBase = path.basename(docPath);
+  const rx = /^(.*?):(\d+):(\d+):\s+([A-Z][A-Z0-9_-]*):\s+(.*)$/gm;
+  let match: RegExpExecArray | null;
+  while ((match = rx.exec(text)) !== null && diagnostics.length < maxDiagnostics) {
+    const file = match[1] ?? "";
+    const normalizedFile = path.normalize(file);
+    if (normalizedFile !== docPath && path.basename(normalizedFile) !== docBase) continue;
+    const line = Math.max(0, Number(match[2]) - 1);
+    const character = Math.max(0, Number(match[3]) - 1);
+    const code = normalizeDiagCode(match[4]);
+    const message = (match[5] ?? "Compiler diagnostic").trim();
+    const range = new vscode.Range(line, character, line, character + 1);
+    const diag = new vscode.Diagnostic(range, message, textDiagnosticSeverity(code));
+    const parseCode = prefixedDiagCode("COMPILER", code || "UNKNOWN");
+    const target = diagnosticDocUri(code);
+    diag.code = target ? { value: parseCode, target } : parseCode;
+    diag.source = "vittec";
+    diagnostics.push(diag);
+  }
+  return diagnostics;
+}
+
+function textDiagnosticSeverity(code: string): vscode.DiagnosticSeverity {
+  if (/^(W|WARN|WARNING)[A-Z0-9_-]*/.test(code)) return vscode.DiagnosticSeverity.Warning;
+  if (/^(I|INFO|NOTE)[A-Z0-9_-]*/.test(code)) return vscode.DiagnosticSeverity.Information;
+  if (/^(H|HELP)[A-Z0-9_-]*/.test(code)) return vscode.DiagnosticSeverity.Hint;
+  return vscode.DiagnosticSeverity.Error;
 }
 
 function runLiveSyntaxDiagnosticsNow(doc: vscode.TextDocument, seq: number): void {
@@ -4207,7 +4293,7 @@ function runLiveSyntaxDiagnosticsNow(doc: vscode.TextDocument, seq: number): voi
   const lang = cfg.get<string>("lang", "en");
   const helpSource = cfg.get<DiagnosticHelpSource>("diagnostics.helpSource", "auto");
   const explainTimeoutMs = Math.max(100, Math.min(5000, cfg.get<number>("diagnostics.explainTimeoutMs", 450)));
-  const args = ["parse", "--diag-json", `--lang=${lang}`, doc.uri.fsPath];
+  const args = ["parse", "--diagnostics-json", "--lang", lang, "--src", doc.uri.fsPath];
   const key = doc.uri.toString();
   const prev = syntaxLintProcByDoc.get(key);
   if (prev && !prev.killed) {
@@ -4239,7 +4325,8 @@ function runLiveSyntaxDiagnosticsNow(doc: vscode.TextDocument, seq: number): voi
 
     const payload = extractDiagJson(stdout, stderr);
     if (!payload) {
-      syntaxLintCollection.set(doc.uri, []);
+      const diagnostics = parseVitteTextDiagnostics(doc, `${stdout}\n${stderr}`, maxDiag);
+      syntaxLintCollection.set(doc.uri, dedupeDiagnosticsBySpanCodeSource(diagnostics));
       return;
     }
     try {

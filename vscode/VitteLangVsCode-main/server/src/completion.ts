@@ -195,7 +195,7 @@ const SNIPPETS: CompletionItem[] = [
 interface ExtractedSym { name: string; kind: SymbolKind; }
 interface ScopedName { name: string; kind: SymbolKind; signature?: string; }
 interface DeclFunction { name: string; params: string; returnType?: string; }
-type InferredType = "bool" | "string" | "number" | "unknown" | string;
+type InferredType = string;
 
 function extractSymbols(doc: TextDocument): ExtractedSym[] {
   const text = doc.getText();
@@ -331,7 +331,7 @@ function detectPositionContext(doc: TextDocument, pos: Position): CompletionPosi
     }
     if (inRawString) {
       if (ch === "\"") {
-        let j = i + 1;
+        const j = i + 1;
         let ok = true;
         for (let h = 0; h < rawStringHashes; h++) {
           if (text[j + h] !== "#") {
@@ -423,11 +423,6 @@ function fuzzyScore(candidate: string, query: string): number {
     if (candidate[i].toLowerCase() === query[qi].toLowerCase()) qi++;
   }
   return 0.5 + qi / (2 * Math.max(1, query.length));
-}
-
-function isWordBoundary(ch: string | undefined): boolean {
-  if (!ch) return true;
-  return !/[A-Za-z0-9_]/.test(ch);
 }
 
 function extractScopedNames(doc: TextDocument, pos: Position): ScopedName[] {
@@ -855,6 +850,46 @@ function workspaceSymbolCompletions(
   return items;
 }
 
+function addLocalImportPathCompletions(
+  items: CompletionItem[],
+  doc: TextDocument,
+  token: string,
+  range: Range,
+): void {
+  const paths = extractDocumentModulePaths(doc);
+  for (const modulePath of paths) {
+    if (token && fuzzyScore(modulePath, token) <= 0) continue;
+    items.push({
+      label: modulePath,
+      kind: CompletionItemKind.Module,
+      detail: "Chemin du fichier courant",
+      documentation: md(`Chemin déjà déclaré ou importé: \`${modulePath}\`.`),
+      sortText: tier(1, `local-import:${modulePath}`),
+      filterText: modulePath,
+      textEdit: edit(range, modulePath),
+      commitCharacters: DEFAULT_COMMIT_CHARS,
+      labelDetails: { description: "local import" },
+      data: { source: "local-import", modulePath },
+    });
+  }
+}
+
+function extractDocumentModulePaths(doc: TextDocument): string[] {
+  const text = doc.getText();
+  const out = new Set<string>();
+  const add = (value: string | undefined) => {
+    const normalized = (value ?? "").trim().replace(/;$/, "");
+    if (normalized.length > 0) out.add(normalized);
+  };
+  for (const match of text.matchAll(/^\s*(?:space|module)\s+([A-Za-z_][\w./:-]*)/gm)) {
+    add(match[1]);
+  }
+  for (const match of text.matchAll(/^\s*(?:pull|use|import)\s+([A-Za-z_][\w./:-]*)/gm)) {
+    add(match[1]);
+  }
+  return [...out].sort((a, b) => a.localeCompare(b));
+}
+
 function isImportableKind(kind: SK): boolean {
   return kind === SK.Module || kind === SK.Namespace;
 }
@@ -1011,6 +1046,9 @@ export function provideCompletions(doc: TextDocument, position: Position): Compl
 
   // Contexte: import et autres heuristiques
   const isImportContext = /^\s*(?:import|use|pull)\s+/.test(linePrefix);
+  if (isImportContext) {
+    addLocalImportPathCompletions(items, doc, token, range);
+  }
 
   items.push(...diagnosticsCompletion(linePrefix).map(ci => ({
     ...ci,

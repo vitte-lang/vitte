@@ -11,7 +11,7 @@ interface WorkerChunk {
   id: string;
   uri: string;
   text: string;
-  tokens: Array<[string, number]>;
+  tokens: [string, number][];
 }
 
 interface WorkerResponse {

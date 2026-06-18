@@ -94,6 +94,15 @@ export class AiInlinePipeline {
 
   constructor(private readonly opts: AiInlinePipelineOptions) {}
 
+  dispose(): void {
+    for (const resolve of this.workerPending.values()) {
+      resolve({ chunks: [], symbols: new Set() });
+    }
+    this.workerPending.clear();
+    this.worker?.terminate().catch(() => undefined);
+    this.worker = undefined;
+  }
+
   async initialize(): Promise<void> {
     if (!this.opts.enabled) return;
     if (this.opts.useWorkerIndexing) this.ensureWorker();
@@ -107,6 +116,94 @@ export class AiInlinePipeline {
       }
     }
     await this.refreshWorkspaceContext();
+  }
+
+  private ensureWorker(): void {
+    if (this.worker) return;
+    const workerPath = path.join(__dirname, "aiIndexWorker.js");
+    this.worker = new Worker(workerPath);
+    this.worker.on("message", (message: {
+      id?: string;
+      chunks?: { id: string; uri: string; text: string; tokens: [string, number][] }[];
+      symbols?: string[];
+    }) => {
+      if (!message.id) return;
+      const resolve = this.workerPending.get(message.id);
+      if (!resolve) return;
+      this.workerPending.delete(message.id);
+      resolve({
+        chunks: (message.chunks ?? []).map((chunk) => ({
+          id: chunk.id,
+          uri: chunk.uri,
+          text: chunk.text,
+          tokens: new Map(chunk.tokens),
+        })),
+        symbols: new Set(message.symbols ?? []),
+      });
+    });
+    this.worker.on("error", () => {
+      this.dispose();
+    });
+    this.worker.on("exit", () => {
+      this.worker = undefined;
+      for (const resolve of this.workerPending.values()) {
+        resolve({ chunks: [], symbols: new Set() });
+      }
+      this.workerPending.clear();
+    });
+  }
+
+  private async parseWithBestPath(uri: string, text: string): Promise<{ chunks: Chunk[]; symbols: Set<string> }> {
+    const linesPerChunk = 48;
+    if (!this.opts.useWorkerIndexing) {
+      return {
+        chunks: chunkText(uri, text, linesPerChunk),
+        symbols: extractSymbols(text),
+      };
+    }
+
+    try {
+      this.ensureWorker();
+      const worker = this.worker;
+      if (!worker) throw new Error("Worker unavailable");
+      const id = crypto.randomUUID();
+      const parsed = await new Promise<{ chunks: Chunk[]; symbols: Set<string> }>((resolve) => {
+        const timeout = setTimeout(() => {
+          this.workerPending.delete(id);
+          resolve({ chunks: chunkText(uri, text, linesPerChunk), symbols: extractSymbols(text) });
+        }, 1500);
+        this.workerPending.set(id, (value) => {
+          clearTimeout(timeout);
+          resolve(value.chunks.length > 0 ? value : { chunks: chunkText(uri, text, linesPerChunk), symbols: extractSymbols(text) });
+        });
+        worker.postMessage({ id, uri, text, linesPerChunk });
+      });
+      return parsed;
+    } catch {
+      return {
+        chunks: chunkText(uri, text, linesPerChunk),
+        symbols: extractSymbols(text),
+      };
+    }
+  }
+
+  private resolveTopChunks(left: string, query: Map<string, number>): Chunk[] {
+    const key = digest(left.slice(-512));
+    const cached = this.promptCache.get(key);
+    if (cached && Date.now() - cached.ts <= Math.max(100, this.opts.promptCacheTtlMs)) {
+      return cached.chunks;
+    }
+
+    const chunks = topKChunks(query, this.chunks, Math.max(1, this.opts.ragTopK));
+    if (this.opts.promptCacheEnabled) {
+      this.promptCache.set(key, { ts: Date.now(), chunks });
+      while (this.promptCache.size > Math.max(1, this.opts.promptCacheSize)) {
+        const oldest = this.promptCache.keys().next().value;
+        if (!oldest) break;
+        this.promptCache.delete(oldest);
+      }
+    }
+    return chunks;
   }
   
   async refreshWorkspaceContext(): Promise<void> {
@@ -164,7 +261,7 @@ export class AiInlinePipeline {
     const diagHints = vscode.languages.getDiagnostics(document.uri)
       .filter((d) => d.range.start.line <= position.line && d.range.end.line >= position.line)
       .slice(0, 3)
-      .map((d) => `${d.code ?? "diag"}:${d.message}`)
+      .map((d) => `${diagnosticCodeText(d.code)}:${d.message}`)
       .join(" | ");
     const context = [
       `FILE: ${document.uri.fsPath}`,
@@ -306,6 +403,13 @@ export class AiInlinePipeline {
     if (this.stats.latencies.length > 2048) this.stats.latencies.shift();
   }
 
+  private pushCpuAndMemory(cpuMicros: number, memBytes: number): void {
+    this.statsCpuMicros.push(Math.max(0, cpuMicros));
+    this.statsMemDeltaKb.push(Math.max(0, Math.round(memBytes / 1024)));
+    if (this.statsCpuMicros.length > 2048) this.statsCpuMicros.shift();
+    if (this.statsMemDeltaKb.length > 2048) this.statsMemDeltaKb.shift();
+  }
+
   private canUseBackend(): boolean {
     if (!this.opts.cloudOptIn) return false;
     if (this.opts.localOnly) return false;
@@ -359,7 +463,7 @@ function isNoisyCandidate(text: string): boolean {
 }
 
 function relevanceScore(candidate: string, left: string): number {
-  const p = (left.match(/[A-Za-z_][A-Za-z0-9_]*$/)?.[0] ?? "").toLowerCase();
+  const p = ((/[A-Za-z_][A-Za-z0-9_]*$/.exec(left))?.[0] ?? "").toLowerCase();
   if (!p) return 0.2;
   const c = candidate.toLowerCase();
   if (c.startsWith(p)) return 1.2;
@@ -434,6 +538,12 @@ function extractImportTargets(document: vscode.TextDocument): string[] {
     if (m?.[1]) out.push(m[1]);
   }
   return out;
+}
+
+function diagnosticCodeText(code: vscode.Diagnostic["code"]): string {
+  if (code === undefined) return "diag";
+  if (typeof code === "string" || typeof code === "number") return String(code);
+  return String(code.value);
 }
 
 function collectExternalDeps(byUri: Map<string, FileDoc>): string[] {
