@@ -811,10 +811,7 @@ connection.onCodeAction((params: CodeActionParams): CodeAction[] => {
   }
 
   const lineNo = params.range.start.line;
-  const lineRange = Range.create(
-    Position.create(lineNo, 0),
-    Position.create(lineNo, Number.MAX_SAFE_INTEGER)
-  );
+  const lineRange = lineRangeAt(doc, lineNo);
   const lineText = doc.getText(lineRange);
 
   const convertedLine = convertUsePullLine(lineText);
@@ -1332,10 +1329,7 @@ function buildRoleContractTemplate(text: string): string {
 function quickFixForDiagnostic(doc: TextDocument, d: Diagnostic): CodeAction | null {
   const code = String(d.code ?? "");
   const lineNo = d.range.start.line;
-  const lineRange = Range.create(
-    Position.create(lineNo, 0),
-    Position.create(lineNo, Number.MAX_SAFE_INTEGER)
-  );
+  const lineRange = lineRangeAt(doc, lineNo);
   const lineText = doc.getText(lineRange);
 
   if (code === "format.trailingWhitespace") {
@@ -1372,6 +1366,13 @@ function quickFixForDiagnostic(doc: TextDocument, d: Diagnostic): CodeAction | n
   }
 
   return null;
+}
+
+function lineRangeAt(doc: TextDocument, lineNo: number): Range {
+  const line = Math.max(0, Math.min(lineNo, doc.lineCount - 1));
+  const text = doc.getText(Range.create(Position.create(line, 0), Position.create(line + 1, 0)));
+  const lineText = text.replace(/\r?\n$/, "");
+  return Range.create(Position.create(line, 0), Position.create(line, lineText.length));
 }
 
 function dedupeLocations(locations: Location[]): Location[] {

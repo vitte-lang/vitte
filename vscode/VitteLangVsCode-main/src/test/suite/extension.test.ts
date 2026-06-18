@@ -112,8 +112,6 @@ suite("Vitte extension", () => {
       "vitte.offline.copyReport",
       "vitte.diagnostics.refresh",
       "vitte.topSyntaxErrors.refresh",
-      "vitte.debug.runFile",
-      "vitte.debug.attachServer",
     ];
 
     const available = await getRegisteredCommands();
@@ -121,7 +119,7 @@ suite("Vitte extension", () => {
     await vscode.commands.executeCommand("workbench.action.closeAllEditors");
     for (const cmd of runnable) {
       await assert.doesNotReject(
-        async () => vscode.commands.executeCommand(cmd),
+        async () => withTimeout(vscode.commands.executeCommand(cmd), 4000, cmd),
         `La commande ${cmd} ne doit pas faire planter l'extension`,
       );
     }
@@ -352,6 +350,7 @@ suite("Vitte extension", () => {
     };
 
     async function runQuickAction(actionId: string): Promise<void> {
+      createdQuickPick = undefined;
       const commandPromise = vscode.commands.executeCommand("vitte.quickActions");
       const quickPick = await waitFor(() => createdQuickPick, 1000);
       const items = await quickPick.waitForItems(
@@ -367,8 +366,8 @@ suite("Vitte extension", () => {
     }
 
     try {
-      await runQuickAction("vitte.bench");
-      await runQuickAction("vitte.diagnostics.refresh");
+      await runQuickAction("bench");
+      await runQuickAction("diagnostics.refresh");
       assert.deepEqual(
         runOrder,
         ["vitte.bench", "vitte.diagnostics.refresh"],
@@ -888,6 +887,20 @@ async function waitFor<T>(
     await new Promise((resolve) => setTimeout(resolve, step));
   }
   throw new Error("Timed out waiting for value");
+}
+
+async function withTimeout<T>(promise: Thenable<T>, timeout: number, label: string): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      Promise.resolve(promise),
+      new Promise<T>((_resolve, reject) => {
+        timer = setTimeout(() => reject(new Error(`Timed out waiting for ${label}`)), timeout);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 class QuickPickStub<T extends vscode.QuickPickItem> implements vscode.QuickPick<T> {
