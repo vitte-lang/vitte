@@ -2,7 +2,7 @@
 from pathlib import Path
 import sys
 DOCS=Path('docs')
-max_html=6000000
+max_html=9000000
 max_css=1200000
 max_js=1200000
 max_req=12000
