@@ -28,6 +28,7 @@ TARGET_DIR="${TARGET_DIR:-$ROOT_DIR/target}"
 OUT_DIR="${OUT_DIR:-$ROOT_DIR/pkgout}"
 JOBS="${JOBS:-$(nproc 2>/dev/null || echo 4)}"
 OPT_LEVEL="${OPT_LEVEL:-2}"
+BUILD_TARGET="${BUILD_TARGET:-bootstrap-all}"
 VERSION="${VERSION:-$(cat $ROOT_DIR/toolchain/scripts/package/PACKAGE_VERSION 2>/dev/null | tr -d ' \r\n' || echo '2.1.1')}"
 
 # Windows x86_64 compilation flags
@@ -71,8 +72,9 @@ echo ""
 
 # Step 2: Clean
 echo -e "${YELLOW}[2/6]${NC} Cleaning previous builds..."
-rm -rf "$BUILD_DIR" "$TARGET_DIR/windows-x86_64" .stage-windows-x86_64 2>/dev/null || true
+rm -rf "$TARGET_DIR/windows-x86_64" .stage-windows-x86_64 2>/dev/null || true
 mkdir -p "$BUILD_DIR" "$TARGET_DIR" "$OUT_DIR"
+rm -f "$OUT_DIR/vitte-${VERSION}-x86_64-installer.exe"
 echo -e "${GREEN}✓ Clean complete${NC}"
 echo ""
 
@@ -86,7 +88,7 @@ export CC CXX CFLAGS CXXFLAGS LDFLAGS
 
 # For Windows, we typically build on Windows or use cross-compilation
 # This is a template - actual compilation depends on build system
-if make -j "$JOBS" 2>&1 | tee "$BUILD_DIR/compile.log"; then
+if make -j "$JOBS" "$BUILD_TARGET" 2>&1 | tee "$BUILD_DIR/compile.log"; then
     echo -e "${GREEN}✓ Compilation successful${NC}"
 else
     echo -e "${RED}✗ Compilation failed. See $BUILD_DIR/compile.log${NC}"
@@ -102,7 +104,9 @@ rm -rf "$STAGE_DIR"
 # Create Windows directory structure
 mkdir -p "$STAGE_DIR/bin"
 mkdir -p "$STAGE_DIR/lib"
-mkdir -p "$STAGE_DIR/data/stdlib"
+mkdir -p "$STAGE_DIR/data/src/vitte/packages"
+mkdir -p "$STAGE_DIR/data/src/vitte/stdlib"
+mkdir -p "$STAGE_DIR/data/src/vitte/compiler"
 mkdir -p "$STAGE_DIR/data/lib"
 mkdir -p "$STAGE_DIR/editors"
 mkdir -p "$STAGE_DIR/examples"
@@ -115,11 +119,17 @@ if [ -f "$BIN_DIR/vitte" ]; then
     echo -e "  ${GREEN}✓${NC} Binary copied and renamed to .exe"
 fi
 
-# Copy stdlib
-if [ -d "$ROOT_DIR/data/stdlib" ]; then
-    cp -r "$ROOT_DIR/data/stdlib"/* "$STAGE_DIR/data/stdlib/" 2>/dev/null || true
-    echo -e "  ${GREEN}✓${NC} Standard library copied"
+# Copy source packages, stdlib and compiler sources
+if [ -d "$ROOT_DIR/src/vitte/packages" ]; then
+    cp -r "$ROOT_DIR/src/vitte/packages"/* "$STAGE_DIR/data/src/vitte/packages/" 2>/dev/null || true
 fi
+if [ -d "$ROOT_DIR/src/vitte/stdlib" ]; then
+    cp -r "$ROOT_DIR/src/vitte/stdlib"/* "$STAGE_DIR/data/src/vitte/stdlib/" 2>/dev/null || true
+fi
+if [ -d "$ROOT_DIR/src/vitte/compiler" ]; then
+    cp -r "$ROOT_DIR/src/vitte/compiler"/* "$STAGE_DIR/data/src/vitte/compiler/" 2>/dev/null || true
+fi
+echo -e "  ${GREEN}✓${NC} Source packages, standard library and compiler sources copied"
 
 # Copy editors support
 if [ -d "$ROOT_DIR/editors" ]; then

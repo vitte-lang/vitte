@@ -39,6 +39,7 @@ MAINTAINER="${MAINTAINER:-Vitte Team <maintainers@vitte-lang.org>}"
 
 JOBS="${JOBS:-$(nproc 2>/dev/null || echo 4)}"
 OPT_LEVEL="${OPT_LEVEL:-2}"
+BUILD_TARGET="${BUILD_TARGET:-bootstrap-all}"
 
 # Helpers
 log() {
@@ -80,12 +81,18 @@ check_prerequisites() {
   done
   
   # Check build dependencies
-  local build_deps=("gcc" "g++" "build-essential")
-  for dep in "${build_deps[@]}"; do
-    if ! command -v "$dep" &> /dev/null; then
-      warn "Build dependency not found: $dep (some features may not compile)"
+  local build_tools=("gcc" "g++")
+  for tool in "${build_tools[@]}"; do
+    if ! command -v "$tool" &> /dev/null; then
+      warn "Build dependency not found: $tool (some features may not compile)"
     fi
   done
+
+  if command -v dpkg-query &> /dev/null; then
+    if ! dpkg-query -W -f='${Status}' build-essential 2>/dev/null | grep -q "install ok installed"; then
+      warn "Build package not installed: build-essential (some features may not compile)"
+    fi
+  fi
   
   success "Prerequisites check passed"
 }
@@ -93,21 +100,16 @@ check_prerequisites() {
 # Clean previous build artifacts
 clean() {
   log "Cleaning previous build artifacts..."
-  
-  if [ -d "$BUILD_DIR" ]; then
-    rm -rf "$BUILD_DIR"
-  fi
-  
+
   if [ -d "$DEBIAN_X86_64_DIR" ]; then
     rm -rf "$DEBIAN_X86_64_DIR"
   fi
-  
-  if [ -d "$OUT_DIR" ]; then
-    rm -rf "$OUT_DIR"
-  fi
-  
+
+  rm -rf "$ROOT_DIR/.debstage"
+
   mkdir -p "$BUILD_DIR" "$OUT_DIR"
-  success "Build directory cleaned"
+  rm -f "$OUT_DIR/${PACKAGE_NAME}_${VERSION}_${ARCH}.deb"
+  success "Debian package build artifacts cleaned"
 }
 
 # Build Vitte compiler for x86_64
@@ -127,7 +129,7 @@ build_compiler() {
     BIN_DIR="$BIN_DIR" \
     OPT_LEVEL="$OPT_LEVEL" \
     PREFIX="/usr" \
-    build
+    "$BUILD_TARGET"
   
   if [ ! -f "$BIN_DIR/vitte" ]; then
     die "Compiler build failed: $BIN_DIR/vitte not created"
@@ -309,6 +311,8 @@ WRAPPER
   log "Copying source and standard library..."
   rsync -a "$ROOT_DIR/src/vitte/packages/" \
     "$stage_root/usr/share/vitte/src/vitte/packages/"
+  rsync -a "$ROOT_DIR/src/vitte/stdlib/" \
+    "$stage_root/usr/share/vitte/src/vitte/stdlib/"
   rsync -a "$ROOT_DIR/src/vitte/compiler/" \
     "$stage_root/usr/share/vitte/src/vitte/compiler/"
   
@@ -336,7 +340,7 @@ WRAPPER
   create_prerm_script "$debian_dir/prerm"
   
   # Create md5sums
-  find "$stage_root" -type f ! -path '*/DEBIAN/*' -exec md5sum {} \; > "$debian_dir/md5sums"
+  (cd "$stage_root" && find . -type f ! -path './DEBIAN/*' -exec md5sum {} \; | sed 's#  ./#  #' > "$debian_dir/md5sums")
   
   log "Building .deb package..."
   mkdir -p "$OUT_DIR"
@@ -404,6 +408,7 @@ main() {
   log "Arch:     $ARCH"
   log "Output:   $OUT_DIR"
   log "Jobs:     $JOBS"
+  log "Build target: $BUILD_TARGET"
   log "========================================================\n"
   
   check_prerequisites

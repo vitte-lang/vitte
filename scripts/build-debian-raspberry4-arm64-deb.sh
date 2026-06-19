@@ -52,6 +52,7 @@ JOBS="${JOBS:-$(nproc 2>/dev/null || echo 4)}"
 OPT_LEVEL="${OPT_LEVEL:-2}"
 TARGET_CPU="${TARGET_CPU:-cortex-a72}"
 TARGET_PLATFORM="${TARGET_PLATFORM:-raspberrypi4-arm64}"
+BUILD_TARGET="${BUILD_TARGET:-bootstrap-all}"
 
 # Helpers
 log() {
@@ -113,10 +114,11 @@ check_prerequisites() {
 clean() {
   log "Cleaning previous Raspberry Pi 4 ARM64 build artifacts..."
 
-  rm -rf "$BUILD_DIR" "$DEBIAN_ARM64_DIR" "$OUT_DIR"
+  rm -rf "$DEBIAN_ARM64_DIR" "$ROOT_DIR/.debstage"
   mkdir -p "$BUILD_DIR" "$OUT_DIR"
+  rm -f "$OUT_DIR/${PACKAGE_NAME}_${VERSION}_${ARCH}.deb"
 
-  success "Build directory cleaned"
+  success "Debian package build artifacts cleaned"
 }
 
 # Build Vitte compiler for Raspberry Pi 4 ARM64
@@ -141,7 +143,7 @@ build_compiler() {
     PREFIX="/usr" \
     TARGET_ARCH="aarch64" \
     TARGET_CPU="$TARGET_CPU" \
-    build
+    "$BUILD_TARGET"
 
   if [ ! -f "$BIN_DIR/vitte" ]; then
     die "Compiler build failed: $BIN_DIR/vitte not created"
@@ -177,6 +179,12 @@ build_stdlib() {
     success "Standard library packages found: src/vitte/packages"
   else
     warn "Standard library packages not found: src/vitte/packages"
+  fi
+
+  if [ -d "$ROOT_DIR/src/vitte/stdlib" ]; then
+    success "Standard library found: src/vitte/stdlib"
+  else
+    warn "Standard library not found: src/vitte/stdlib"
   fi
 
   if [ -d "$ROOT_DIR/src/vitte/compiler" ]; then
@@ -314,6 +322,7 @@ create_deb_package() {
   mkdir -p "$stage_root/usr/bin" \
     "$stage_root/usr/libexec/vitte" \
     "$stage_root/usr/share/vitte/src/vitte/packages" \
+    "$stage_root/usr/share/vitte/src/vitte/stdlib" \
     "$stage_root/usr/share/vitte/src/vitte/compiler" \
     "$stage_root/usr/share/vitte/editors" \
     "$stage_root/usr/share/vitte/completions" \
@@ -334,7 +343,8 @@ WRAPPER
   chmod 0755 "$stage_root/usr/bin/vitte"
 
   log "Copying source, standard library, editors, docs and completions..."
-  copy_dir_if_exists "$ROOT_DIR/src/vitte/packages" "$stage_root/usr/share/vitte/src/vitte/packages" "standard library"
+  copy_dir_if_exists "$ROOT_DIR/src/vitte/packages" "$stage_root/usr/share/vitte/src/vitte/packages" "source packages"
+  copy_dir_if_exists "$ROOT_DIR/src/vitte/stdlib" "$stage_root/usr/share/vitte/src/vitte/stdlib" "standard library"
   copy_dir_if_exists "$ROOT_DIR/src/vitte/compiler" "$stage_root/usr/share/vitte/src/vitte/compiler" "compiler sources"
   copy_dir_if_exists "$ROOT_DIR/editors" "$stage_root/usr/share/vitte/editors" "editor support"
   copy_dir_if_exists "$ROOT_DIR/docs" "$stage_root/usr/share/vitte/docs" "documentation"
@@ -348,7 +358,7 @@ WRAPPER
   create_postinst_script "$debian_dir/postinst"
   create_prerm_script "$debian_dir/prerm"
 
-  (cd "$stage_root" && find . -type f ! -path './DEBIAN/*' -exec md5sum {} \;) > "$debian_dir/md5sums"
+  (cd "$stage_root" && find . -type f ! -path './DEBIAN/*' -exec md5sum {} \; | sed 's#  ./#  #' > "$debian_dir/md5sums")
 
   log "Building .deb package..."
   mkdir -p "$OUT_DIR"
@@ -417,6 +427,7 @@ main() {
   log "CPU:       $TARGET_CPU"
   log "Output:    $OUT_DIR"
   log "Jobs:      $JOBS"
+  log "Build target: $BUILD_TARGET"
   log "========================================================"
 
   check_prerequisites

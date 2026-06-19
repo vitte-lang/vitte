@@ -196,10 +196,12 @@ EOF
 
   mkdir -p "$STAGE_ROOT/usr/local/share/vitte/src/vitte"
   mkdir -p "$STAGE_ROOT/usr/local/share/vitte/src/vitte/compiler"
+  mkdir -p "$STAGE_ROOT/usr/local/share/vitte/src/vitte/stdlib"
   mkdir -p "$STAGE_ROOT/usr/local/share/vitte/src/compiler/backends"
   mkdir -p "$STAGE_ROOT/usr/local/share/vitte/locales"
 
   rsync -a "${RSYNC_COMMON_EXCLUDES[@]}" "$ROOT_DIR/src/vitte/packages/" "$STAGE_ROOT/usr/local/share/vitte/src/vitte/packages/"
+  rsync -a "${RSYNC_COMMON_EXCLUDES[@]}" "$ROOT_DIR/src/vitte/stdlib/" "$STAGE_ROOT/usr/local/share/vitte/src/vitte/stdlib/"
   rsync -a "${RSYNC_COMMON_EXCLUDES[@]}" "$ROOT_DIR/src/vitte/compiler/" "$STAGE_ROOT/usr/local/share/vitte/src/vitte/compiler/"
   rsync -a "${RSYNC_COMMON_EXCLUDES[@]}" "$ROOT_DIR/src/vitte/compiler/backends/runtime_c/" "$STAGE_ROOT/usr/local/share/vitte/src/compiler/backends/runtime/"
   rsync -a "${RSYNC_COMMON_EXCLUDES[@]}" "$ROOT_DIR/locales/" "$STAGE_ROOT/usr/local/share/vitte/locales/"
@@ -478,7 +480,7 @@ EOF
 [vitte deb] description: see /usr/share/doc/vitte/PROJECT_INFO
 [vitte deb] license: see /usr/share/doc/vitte/LICENSE
 [vitte deb] profile: see /usr/share/doc/vitte/PROJECT_INFO
-[vitte deb] installs: CLI, stdlib packages, runtime sources, profile extras
+[vitte deb] installs: CLI, source packages, stdlib, runtime sources, profile extras
 [vitte deb] binary: /usr/local/bin/vitte
 EOF
   cat >> "$DEBIAN_DIR/postinst" <<'EOF'

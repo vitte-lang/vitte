@@ -32,6 +32,7 @@ TARGET_DIR="${TARGET_DIR:-$ROOT_DIR/target}"
 OUT_DIR="${OUT_DIR:-$ROOT_DIR/pkgout}"
 JOBS="${JOBS:-$(sysctl -n hw.ncpu 2>/dev/null || echo 4)}"
 OPT_LEVEL="${OPT_LEVEL:-2}"
+BUILD_TARGET="${BUILD_TARGET:-bootstrap-all}"
 ARCH="${ARCH:-i686}"
 PACKAGE_NAME="${PACKAGE_NAME:-vitte}"
 VERSION="${VERSION:-$(cat $ROOT_DIR/toolchain/scripts/package/PACKAGE_VERSION 2>/dev/null | tr -d ' \r\n' || echo '2.1.1')}"
@@ -77,8 +78,9 @@ echo ""
 
 # Step 2: Clean
 echo -e "${YELLOW}[2/6]${NC} Cleaning previous builds..."
-rm -rf "$BUILD_DIR" "$TARGET_DIR/macos-i686" .pkgstage-i686 2>/dev/null || true
+rm -rf "$TARGET_DIR/macos-i686" .pkgstage-i686 2>/dev/null || true
 mkdir -p "$BUILD_DIR" "$TARGET_DIR" "$OUT_DIR"
+rm -f "$OUT_DIR/${PACKAGE_NAME}-${VERSION}-i686.pkg"
 echo -e "${GREEN}✓ Clean complete${NC}"
 echo ""
 
@@ -90,7 +92,7 @@ echo -e "  JOBS: $JOBS"
 cd "$ROOT_DIR"
 export CFLAGS CXXFLAGS LDFLAGS
 
-if make -j "$JOBS" 2>&1 | tee "$BUILD_DIR/compile.log"; then
+if make -j "$JOBS" "$BUILD_TARGET" 2>&1 | tee "$BUILD_DIR/compile.log"; then
     echo -e "${GREEN}✓ Compilation successful${NC}"
 else
     echo -e "${RED}✗ Compilation failed. See $BUILD_DIR/compile.log${NC}"
@@ -118,6 +120,9 @@ rm -rf "$STAGE_DIR"
 mkdir -p "$INSTALL_DIR/bin"
 mkdir -p "$INSTALL_DIR/lib"
 mkdir -p "$INSTALL_DIR/share"
+mkdir -p "$INSTALL_DIR/share/src/vitte/packages"
+mkdir -p "$INSTALL_DIR/share/src/vitte/stdlib"
+mkdir -p "$INSTALL_DIR/share/src/vitte/compiler"
 mkdir -p "$STAGE_DIR/usr/local/bin"
 
 # Copy compiled binary
@@ -129,11 +134,17 @@ if [ -f "$BIN_DIR/vitte" ]; then
     echo -e "  ${GREEN}✓${NC} Binary copied"
 fi
 
-# Copy stdlib
-if [ -d "$ROOT_DIR/data/stdlib" ]; then
-    cp -r "$ROOT_DIR/data/stdlib"/* "$INSTALL_DIR/lib/" 2>/dev/null || true
-    echo -e "  ${GREEN}✓${NC} Standard library copied"
+# Copy source packages, stdlib and compiler sources
+if [ -d "$ROOT_DIR/src/vitte/packages" ]; then
+    cp -r "$ROOT_DIR/src/vitte/packages"/* "$INSTALL_DIR/share/src/vitte/packages/" 2>/dev/null || true
 fi
+if [ -d "$ROOT_DIR/src/vitte/stdlib" ]; then
+    cp -r "$ROOT_DIR/src/vitte/stdlib"/* "$INSTALL_DIR/share/src/vitte/stdlib/" 2>/dev/null || true
+fi
+if [ -d "$ROOT_DIR/src/vitte/compiler" ]; then
+    cp -r "$ROOT_DIR/src/vitte/compiler"/* "$INSTALL_DIR/share/src/vitte/compiler/" 2>/dev/null || true
+fi
+echo -e "  ${GREEN}✓${NC} Source packages, standard library and compiler sources copied"
 
 # Copy editors support
 for editor_dir in "$ROOT_DIR/editors"/*; do

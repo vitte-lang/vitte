@@ -72,7 +72,8 @@ deb-i686: check-prerequisites check-editors
 # Clean build artifacts
 deb-i686-clean:
 	@echo "$(BLUE)Cleaning i686 build artifacts...$(NC)"
-	@rm -rf build target/debian-i686 .debstage-i686
+	@rm -rf target/debian-i686 .debstage-i686
+	@rm -f "$(DEB_FILE)"
 	@echo "$(GREEN)✓ Build artifacts cleaned$(NC)"
 
 # Create distribution bundle
@@ -109,11 +110,11 @@ check-editors:
 
 # Check prerequisites
 check-prerequisites:
-	@if [[ "$$OSTYPE" != "linux-gnu"* ]]; then \
+	@if [ "$$(uname -s)" != "Linux" ]; then \
 		echo "$(RED)Error: This target requires Linux$(NC)"; \
 		exit 1; \
 	fi
-	@if ! command -v dpkg-deb &>/dev/null; then \
+	@if ! command -v dpkg-deb >/dev/null 2>&1; then \
 		echo "$(RED)Error: dpkg-deb is required$(NC)"; \
 		exit 1; \
 	fi

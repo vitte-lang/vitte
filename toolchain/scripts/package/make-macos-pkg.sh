@@ -120,6 +120,7 @@ chmod 0755 "$STAGE_ROOT/usr/local/bin/vittec"
 # Share tree.
 mkdir -p "$STAGE_ROOT/usr/local/share/vitte/src/vitte"
 mkdir -p "$STAGE_ROOT/usr/local/share/vitte/src/vitte/compiler"
+mkdir -p "$STAGE_ROOT/usr/local/share/vitte/src/vitte/stdlib"
 mkdir -p "$STAGE_ROOT/usr/local/share/vitte/src/compiler/backends"
 mkdir -p "$STAGE_ROOT/usr/local/share/vitte/editors"
 mkdir -p "$STAGE_ROOT/usr/local/share/vitte/completions"
@@ -131,6 +132,7 @@ mkdir -p "$STAGE_ROOT/usr/local/share/vitte/checksums"
 mkdir -p "$STAGE_ROOT/usr/local/share/vitte/manifest"
 
 rsync -a "$ROOT_DIR/src/vitte/packages/" "$STAGE_ROOT/usr/local/share/vitte/src/vitte/packages/"
+rsync -a "$ROOT_DIR/src/vitte/stdlib/" "$STAGE_ROOT/usr/local/share/vitte/src/vitte/stdlib/"
 rsync -a "$ROOT_DIR/src/vitte/compiler/" "$STAGE_ROOT/usr/local/share/vitte/src/vitte/compiler/"
 rsync -a "$ROOT_DIR/src/vitte/compiler/backends/runtime_c/" "$STAGE_ROOT/usr/local/share/vitte/src/compiler/backends/runtime/"
 rsync -a "$ROOT_DIR/docs/" "$STAGE_ROOT/usr/local/share/vitte/docs/"
@@ -141,6 +143,8 @@ rsync -a "$ROOT_DIR/toolchain/scripts/install/templates/" "$STAGE_ROOT/usr/local
 # Normalize source payload permissions so postinstall verification can read modules.
 find "$STAGE_ROOT/usr/local/share/vitte/src/vitte/packages" -type d -exec chmod 0755 {} +
 find "$STAGE_ROOT/usr/local/share/vitte/src/vitte/packages" -type f -exec chmod 0644 {} +
+find "$STAGE_ROOT/usr/local/share/vitte/src/vitte/stdlib" -type d -exec chmod 0755 {} +
+find "$STAGE_ROOT/usr/local/share/vitte/src/vitte/stdlib" -type f -exec chmod 0644 {} +
 find "$STAGE_ROOT/usr/local/share/vitte/src/vitte/compiler" -type d -exec chmod 0755 {} +
 find "$STAGE_ROOT/usr/local/share/vitte/src/vitte/compiler" -type f -exec chmod 0644 {} +
 find "$STAGE_ROOT/usr/local/share/vitte/src/compiler/backends/runtime" -type d -exec chmod 0755 {} +

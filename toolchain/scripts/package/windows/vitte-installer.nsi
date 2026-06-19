@@ -96,6 +96,7 @@ Section "Vitte Compiler (required)" SEC_MAIN
   CreateDirectory "$INSTDIR\lib"
   CreateDirectory "$INSTDIR\include"
   CreateDirectory "$INSTDIR\docs"
+  CreateDirectory "$INSTDIR\share\vitte\src"
   CreateDirectory "$INSTDIR\share\locales"
   
   ; Copy compiler binary
@@ -106,9 +107,9 @@ Section "Vitte Compiler (required)" SEC_MAIN
   SetOutPath "$INSTDIR\lib"
   File /r "data\lib\*"
   
-  ; Copy standard library
-  SetOutPath "$INSTDIR\lib\vitte"
-  File /r "data\stdlib\*"
+  ; Copy source packages, standard library and compiler sources
+  SetOutPath "$INSTDIR\share\vitte\src"
+  File /r "data\src\*"
   
   ; Copy documentation
   SetOutPath "$INSTDIR\docs"

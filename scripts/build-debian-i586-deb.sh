@@ -32,6 +32,7 @@ TARGET_DIR="${TARGET_DIR:-$ROOT_DIR/target}"
 OUT_DIR="${OUT_DIR:-$ROOT_DIR/pkgout}"
 JOBS="${JOBS:-$(nproc 2>/dev/null || echo 4)}"
 OPT_LEVEL="${OPT_LEVEL:-2}"
+BUILD_TARGET="${BUILD_TARGET:-bootstrap-all}"
 ARCH="${ARCH:-i386}"
 PACKAGE_NAME="${PACKAGE_NAME:-vitte}"
 VERSION="${VERSION:-$(cat $ROOT_DIR/toolchain/scripts/package/PACKAGE_VERSION 2>/dev/null | tr -d ' \r\n' || echo '2.1.1')}"
@@ -81,8 +82,9 @@ echo ""
 
 # Step 2: Clean
 echo -e "${YELLOW}[2/6]${NC} Cleaning previous builds..."
-rm -rf "$BUILD_DIR" "$TARGET_DIR/debian-i586" .debstage-i586 2>/dev/null || true
+rm -rf "$TARGET_DIR/debian-i586" .debstage-i586 2>/dev/null || true
 mkdir -p "$BUILD_DIR" "$TARGET_DIR" "$OUT_DIR"
+rm -f "$OUT_DIR/${PACKAGE_NAME}_${VERSION}_${ARCH}.deb"
 echo -e "${GREEN}✓ Clean complete${NC}"
 echo ""
 
@@ -95,7 +97,7 @@ cd "$ROOT_DIR"
 export CFLAGS CXXFLAGS LDFLAGS
 
 # Run make with i586 flags
-if make -j "$JOBS" 2>&1 | tee "$BUILD_DIR/compile.log"; then
+if make -j "$JOBS" "$BUILD_TARGET" 2>&1 | tee "$BUILD_DIR/compile.log"; then
     echo -e "${GREEN}✓ Compilation successful${NC}"
 else
     echo -e "${RED}✗ Compilation failed. See $BUILD_DIR/compile.log${NC}"
@@ -123,6 +125,9 @@ rm -rf "$STAGE_DIR"
 mkdir -p "$STAGE_DIR/usr/bin"
 mkdir -p "$STAGE_DIR/usr/lib/$PACKAGE_NAME"
 mkdir -p "$STAGE_DIR/usr/share/$PACKAGE_NAME"
+mkdir -p "$STAGE_DIR/usr/share/$PACKAGE_NAME/src/vitte/packages"
+mkdir -p "$STAGE_DIR/usr/share/$PACKAGE_NAME/src/vitte/stdlib"
+mkdir -p "$STAGE_DIR/usr/share/$PACKAGE_NAME/src/vitte/compiler"
 mkdir -p "$STAGE_DIR/usr/share/doc/$PACKAGE_NAME"
 mkdir -p "$STAGE_DIR/etc/$PACKAGE_NAME"
 mkdir -p "$STAGE_DIR/etc/bash_completion.d"
@@ -135,11 +140,17 @@ if [ -f "$BIN_DIR/vitte" ]; then
     echo -e "  ${GREEN}✓${NC} Binary copied"
 fi
 
-# Copy stdlib
-if [ -d "$ROOT_DIR/data/stdlib" ]; then
-    cp -r "$ROOT_DIR/data/stdlib"/* "$STAGE_DIR/usr/lib/$PACKAGE_NAME/" 2>/dev/null || true
-    echo -e "  ${GREEN}✓${NC} Standard library copied"
+# Copy source packages, stdlib and compiler sources
+if [ -d "$ROOT_DIR/src/vitte/packages" ]; then
+    cp -r "$ROOT_DIR/src/vitte/packages"/* "$STAGE_DIR/usr/share/$PACKAGE_NAME/src/vitte/packages/" 2>/dev/null || true
 fi
+if [ -d "$ROOT_DIR/src/vitte/stdlib" ]; then
+    cp -r "$ROOT_DIR/src/vitte/stdlib"/* "$STAGE_DIR/usr/share/$PACKAGE_NAME/src/vitte/stdlib/" 2>/dev/null || true
+fi
+if [ -d "$ROOT_DIR/src/vitte/compiler" ]; then
+    cp -r "$ROOT_DIR/src/vitte/compiler"/* "$STAGE_DIR/usr/share/$PACKAGE_NAME/src/vitte/compiler/" 2>/dev/null || true
+fi
+echo -e "  ${GREEN}✓${NC} Source packages, standard library and compiler sources copied"
 
 # Copy editors support
 for editor_dir in "$ROOT_DIR/editors"/*; do

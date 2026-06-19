@@ -1,5 +1,24 @@
 # Changelog - Vitte Bootstrap Toolchain
 
+## [0.3.8] - 2026-06-19 - Installer Payload and Packaging Hardening
+
+### ✅ 228. Complete stdlib payloads in installers
+- Added the real `src/vitte/stdlib/` tree to Debian x86_64, Debian i686, Debian i586, Raspberry Pi 4 ARM64, macOS, macOS i686, Windows, and shared package-builder payloads.
+- Kept `src/vitte/packages/` as source packages and installed it alongside the standard library instead of treating it as the whole stdlib.
+- Included compiler sources with the same installed source layout where legacy installers previously copied only partial payloads.
+- Updated Windows NSIS packaging to install the source payload under `share\vitte\src` instead of relying on the removed `data\stdlib` staging path.
+
+### ✅ 229. Packaging build target and cleanup safety
+- Switched installer build scripts to use `BUILD_TARGET=bootstrap-all` by default so packaging does not fail on workspace-wide source audits triggered by vendored editor dependencies.
+- Limited package clean steps to package-specific staging and output files, preserving unrelated `build/`, `pkgout/`, and tracked release artifacts.
+- Normalized Debian `md5sums` generation to use package-relative paths.
+- Fixed Debian build-essential detection so package checks test the installed package through `dpkg-query` instead of looking for a non-existent `build-essential` executable.
+
+### ✅ 230. Makefile shell portability
+- Replaced Bash-only prerequisite checks in packaging Makefiles with POSIX-compatible `uname` and `command -v` checks.
+- Fixed `Makefile.pkg-i686` recipe indentation so `make -f Makefile.pkg-i686 help` parses and runs correctly.
+- Updated packaging manifests and distribution text to distinguish source packages from the real standard library path.
+
 ## [0.3.7] - 2026-06-18 - Editor Integration Refresh
 
 ### ✅ 225. Generated editor highlight pipeline

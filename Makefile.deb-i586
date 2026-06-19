@@ -73,7 +73,8 @@ deb-i586: check-prerequisites check-editors
 # Clean build artifacts
 deb-i586-clean:
 	@echo "$(BLUE)Cleaning i586 build artifacts...$(NC)"
-	@rm -rf build target/debian-i586 .debstage-i586
+	@rm -rf target/debian-i586 .debstage-i586
+	@rm -f "$(DEB_FILE)"
 	@echo "$(GREEN)✓ Build artifacts cleaned$(NC)"
 
 # Create distribution bundle
@@ -110,11 +111,11 @@ check-editors:
 
 # Check prerequisites
 check-prerequisites:
-	@if [[ "$$OSTYPE" != "linux-gnu"* ]]; then \
+	@if [ "$$(uname -s)" != "Linux" ]; then \
 		echo "$(RED)Error: This target requires Linux$(NC)"; \
 		exit 1; \
 	fi
-	@if ! command -v dpkg-deb &>/dev/null; then \
+	@if ! command -v dpkg-deb >/dev/null 2>&1; then \
 		echo "$(RED)Error: dpkg-deb is required$(NC)"; \
 		exit 1; \
 	fi

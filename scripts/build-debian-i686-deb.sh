@@ -39,6 +39,7 @@ MAINTAINER="${MAINTAINER:-Vitte Team <maintainers@vitte-lang.org>}"
 
 JOBS="${JOBS:-$(nproc 2>/dev/null || echo 4)}"
 OPT_LEVEL="${OPT_LEVEL:-2}"
+BUILD_TARGET="${BUILD_TARGET:-bootstrap-all}"
 
 # Helpers
 log() {
@@ -98,20 +99,15 @@ check_prerequisites() {
 clean() {
   log "Cleaning previous build artifacts..."
   
-  if [ -d "$BUILD_DIR" ]; then
-    rm -rf "$BUILD_DIR"
-  fi
-  
   if [ -d "$DEBIAN_I686_DIR" ]; then
     rm -rf "$DEBIAN_I686_DIR"
   fi
-  
-  if [ -d "$OUT_DIR" ]; then
-    rm -rf "$OUT_DIR"
-  fi
-  
+
+  rm -rf "$ROOT_DIR/.debstage-i686"
+
   mkdir -p "$BUILD_DIR" "$OUT_DIR"
-  success "Build directory cleaned"
+  rm -f "$OUT_DIR/${PACKAGE_NAME}_${VERSION}_${ARCH}.deb"
+  success "Debian package build artifacts cleaned"
 }
 
 # Build Vitte compiler for i686
@@ -131,7 +127,7 @@ build_compiler() {
     BIN_DIR="$BIN_DIR" \
     OPT_LEVEL="$OPT_LEVEL" \
     PREFIX="/usr" \
-    build
+    "$BUILD_TARGET"
   
   if [ ! -f "$BIN_DIR/vitte" ]; then
     die "Compiler build failed: $BIN_DIR/vitte not created"
@@ -309,6 +305,8 @@ WRAPPER
   log "Copying source and standard library..."
   rsync -a "$ROOT_DIR/src/vitte/packages/" \
     "$stage_root/usr/share/vitte/src/vitte/packages/"
+  rsync -a "$ROOT_DIR/src/vitte/stdlib/" \
+    "$stage_root/usr/share/vitte/src/vitte/stdlib/"
   rsync -a "$ROOT_DIR/src/vitte/compiler/" \
     "$stage_root/usr/share/vitte/src/vitte/compiler/"
   
@@ -334,7 +332,7 @@ WRAPPER
   create_postinst_script "$debian_dir/postinst"
   create_prerm_script "$debian_dir/prerm"
   
-  find "$stage_root" -type f ! -path '*/DEBIAN/*' -exec md5sum {} \; > "$debian_dir/md5sums"
+  (cd "$stage_root" && find . -type f ! -path './DEBIAN/*' -exec md5sum {} \; | sed 's#  ./#  #' > "$debian_dir/md5sums")
   
   log "Building .deb package (i686)..."
   mkdir -p "$OUT_DIR"
@@ -403,6 +401,7 @@ main() {
   log "Arch:     $ARCH (i686 32-bit)"
   log "Output:   $OUT_DIR"
   log "Jobs:     $JOBS"
+  log "Build target: $BUILD_TARGET"
   log "========================================================\n"
   
   check_prerequisites

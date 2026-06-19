@@ -66,7 +66,8 @@ pkg: check-prerequisites
 # Clean build artifacts
 pkg-clean:
 	@echo "$(BLUE)Cleaning package build artifacts...$(NC)"
-	@rm -rf build target/macos-x86_64 target/universal .pkgstage
+	@rm -rf target/macos-x86_64 target/universal .pkgstage
+	@rm -f "$(PKG_FILE)" "$(DMG_FILE)"
 	@echo "$(GREEN)✓ Build artifacts cleaned$(NC)"
 
 # Create distribution bundle (checksums, docs, quickstart)
@@ -103,11 +104,11 @@ install-pkg: verify-pkg
 
 # Check prerequisites
 check-prerequisites:
-	@if [[ "$$OSTYPE" != "darwin"* ]]; then \
+	@if [ "$$(uname -s)" != "Darwin" ]; then \
 		echo "$(RED)Error: This target requires macOS$(NC)"; \
 		exit 1; \
 	fi
-	@if ! command -v make &>/dev/null; then \
+	@if ! command -v make >/dev/null 2>&1; then \
 		echo "$(RED)Error: make is required$(NC)"; \
 		exit 1; \
 	fi

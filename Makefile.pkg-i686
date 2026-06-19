@@ -28,92 +28,93 @@ RED := \033[0;31m
 NC := \033[0m
 
 help:
-@echo "$(BLUE)Vitte macOS i686 (32-bit, iMac 2006+) Package Build Targets$(NC)"
-@echo ""
-@echo "  $(GREEN)make -f Makefile.pkg-i686 pkg-i686-complete$(NC)   - Complete build (recommended)"
-@echo "                                     Builds compiler, creates .pkg, generates docs"
-@echo ""
-@echo "  $(GREEN)make -f Makefile.pkg-i686 pkg-i686$(NC)              - Build .pkg package only"
-@echo "  $(GREEN)make -f Makefile.pkg-i686 pkg-i686-clean$(NC)        - Clean build artifacts"
-@echo "  $(GREEN)make -f Makefile.pkg-i686 pkg-i686-bundle$(NC)       - Create distribution files"
-@echo ""
-@echo "  $(GREEN)make -f Makefile.pkg-i686 verify-pkg-i686$(NC)       - Verify package integrity"
-@echo "  $(GREEN)make -f Makefile.pkg-i686 install-pkg-i686$(NC)      - Install package"
-@echo ""
-@echo "  $(GREEN)make -f Makefile.pkg-i686 help$(NC)                  - Show this help message"
-@echo ""
-@echo "$(YELLOW)Environment Variables:$(NC)"
-@echo "  OUT_DIR        - Output directory (default: $(OUT_DIR))"
-@echo "  VERSION        - Package version (default: $(VERSION))"
-@echo "  ARCH           - Architecture (default: $(ARCH) = i686)"
-@echo "  PACKAGE_NAME   - Package name (default: $(PACKAGE_NAME))"
-@echo "  JOBS           - Parallel jobs"
-@echo "  OPT_LEVEL      - Optimization level (0-3)"
-@echo ""
-@echo "$(YELLOW)Note:$(NC) This builds 32-bit (i686) macOS packages for iMac 2006+"
-@echo "       Requires: Xcode Command Line Tools, OSX 10.4-10.7.5 target"
-@echo ""
+	@echo "$(BLUE)Vitte macOS i686 (32-bit, iMac 2006+) Package Build Targets$(NC)"
+	@echo ""
+	@echo "  $(GREEN)make -f Makefile.pkg-i686 pkg-i686-complete$(NC)   - Complete build (recommended)"
+	@echo "                                     Builds compiler, creates .pkg, generates docs"
+	@echo ""
+	@echo "  $(GREEN)make -f Makefile.pkg-i686 pkg-i686$(NC)              - Build .pkg package only"
+	@echo "  $(GREEN)make -f Makefile.pkg-i686 pkg-i686-clean$(NC)        - Clean build artifacts"
+	@echo "  $(GREEN)make -f Makefile.pkg-i686 pkg-i686-bundle$(NC)       - Create distribution files"
+	@echo ""
+	@echo "  $(GREEN)make -f Makefile.pkg-i686 verify-pkg-i686$(NC)       - Verify package integrity"
+	@echo "  $(GREEN)make -f Makefile.pkg-i686 install-pkg-i686$(NC)      - Install package"
+	@echo ""
+	@echo "  $(GREEN)make -f Makefile.pkg-i686 help$(NC)                  - Show this help message"
+	@echo ""
+	@echo "$(YELLOW)Environment Variables:$(NC)"
+	@echo "  OUT_DIR        - Output directory (default: $(OUT_DIR))"
+	@echo "  VERSION        - Package version (default: $(VERSION))"
+	@echo "  ARCH           - Architecture (default: $(ARCH) = i686)"
+	@echo "  PACKAGE_NAME   - Package name (default: $(PACKAGE_NAME))"
+	@echo "  JOBS           - Parallel jobs"
+	@echo "  OPT_LEVEL      - Optimization level (0-3)"
+	@echo ""
+	@echo "$(YELLOW)Note:$(NC) This builds 32-bit (i686) macOS packages for iMac 2006+"
+	@echo "       Requires: Xcode Command Line Tools, OSX 10.4-10.7.5 target"
+	@echo ""
 
 # Complete workflow
 pkg-i686-complete: pkg-i686-clean
-@echo "$(BLUE)═══════════════════════════════════════════════════════════$(NC)"
-@echo "$(BLUE)Building Vitte macOS i686 (32-bit) distribution package$(NC)"
-@echo "$(BLUE)═══════════════════════════════════════════════════════════$(NC)"
-@echo ""
-@chmod +x $(COMPLETE_SCRIPT)
-@bash $(COMPLETE_SCRIPT)
+	@echo "$(BLUE)═══════════════════════════════════════════════════════════$(NC)"
+	@echo "$(BLUE)Building Vitte macOS i686 (32-bit) distribution package$(NC)"
+	@echo "$(BLUE)═══════════════════════════════════════════════════════════$(NC)"
+	@echo ""
+	@chmod +x $(COMPLETE_SCRIPT)
+	@bash $(COMPLETE_SCRIPT)
 
 # Build .pkg package
 pkg-i686: check-prerequisites
-@echo "$(BLUE)Building macOS i686 (32-bit) .pkg package...$(NC)"
-@chmod +x $(BUILD_SCRIPT)
-@bash $(BUILD_SCRIPT)
+	@echo "$(BLUE)Building macOS i686 (32-bit) .pkg package...$(NC)"
+	@chmod +x $(BUILD_SCRIPT)
+	@bash $(BUILD_SCRIPT)
 
 # Clean build artifacts
 pkg-i686-clean:
-@echo "$(BLUE)Cleaning i686 build artifacts...$(NC)"
-@rm -rf build target/macos-i686 .pkgstage-i686
-@echo "$(GREEN)✓ Build artifacts cleaned$(NC)"
+	@echo "$(BLUE)Cleaning i686 build artifacts...$(NC)"
+	@rm -rf target/macos-i686 .pkgstage-i686
+	@rm -f "$(PKG_FILE)"
+	@echo "$(GREEN)✓ Build artifacts cleaned$(NC)"
 
 # Create distribution bundle
 pkg-i686-bundle:
-@echo "$(BLUE)Creating i686 distribution bundle...$(NC)"
-@chmod +x $(DIST_SCRIPT)
-@bash $(DIST_SCRIPT)
+	@echo "$(BLUE)Creating i686 distribution bundle...$(NC)"
+	@chmod +x $(DIST_SCRIPT)
+	@bash $(DIST_SCRIPT)
 
 # Verify package integrity
 verify-pkg-i686:
-@if [ ! -f "$(OUT_DIR)/verify-macos-i686.sh" ]; then \
+	@if [ ! -f "$(OUT_DIR)/verify-macos-i686.sh" ]; then \
 echo "$(RED)Error: Verification script not found$(NC)"; \
 echo "Run 'make -f Makefile.pkg-i686 pkg-i686-bundle' first"; \
 exit 1; \
 fi
-@bash $(OUT_DIR)/verify-macos-i686.sh $(ARCH) $(PACKAGE_NAME) $(VERSION)
+	@bash $(OUT_DIR)/verify-macos-i686.sh $(ARCH) $(PACKAGE_NAME) $(VERSION)
 
 # Install package
 install-pkg-i686: verify-pkg-i686
-@echo "$(BLUE)Installing Vitte macOS i686 (32-bit) package...$(NC)"
-@if [ ! -f "$(PKG_FILE)" ]; then \
+	@echo "$(BLUE)Installing Vitte macOS i686 (32-bit) package...$(NC)"
+	@if [ ! -f "$(PKG_FILE)" ]; then \
 echo "$(RED)Error: Package file not found: $(PKG_FILE)$(NC)"; \
 exit 1; \
 fi
-@sudo installer -pkg $(PKG_FILE) -target /
-@echo "$(GREEN)✓ Installation complete$(NC)"
-@echo ""
-@echo "Verify with: vitte --version"
+	@sudo installer -pkg $(PKG_FILE) -target /
+	@echo "$(GREEN)✓ Installation complete$(NC)"
+	@echo ""
+	@echo "Verify with: vitte --version"
 
 # Check prerequisites
 check-prerequisites:
-@if [[ "$OSTYPE" != "darwin"* ]]; then \
-echo "$(RED)Error: This target requires macOS$(NC)"; \
-exit 1; \
+	@if [ "$$(uname -s)" != "Darwin" ]; then \
+	echo "$(RED)Error: This target requires macOS$(NC)"; \
+	exit 1; \
+	fi
+	@if ! command -v pkgbuild >/dev/null 2>&1; then \
+	echo "$(RED)Error: pkgbuild is required (Xcode Command Line Tools)$(NC)"; \
+	echo "Install: xcode-select --install"; \
+	exit 1; \
 fi
-@if ! command -v pkgbuild &>/dev/null; then \
-echo "$(RED)Error: pkgbuild is required (Xcode Command Line Tools)$(NC)"; \
-echo "Install: xcode-select --install"; \
-exit 1; \
-fi
-@echo "$(GREEN)✓ Prerequisites check passed (for i686)$(NC)"
-@echo "$(YELLOW)Note: i686 support requires macOS 10.4-10.7.5 target$(NC)"
+	@echo "$(GREEN)✓ Prerequisites check passed (for i686)$(NC)"
+	@echo "$(YELLOW)Note: i686 support requires macOS 10.4-10.7.5 target$(NC)"
 
 .DEFAULT_GOAL := help

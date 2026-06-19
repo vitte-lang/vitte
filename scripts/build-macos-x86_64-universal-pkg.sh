@@ -37,6 +37,7 @@ VERSION="${VERSION:-$(tr -d ' \r\n' < "$PKG_VERSION_FILE" 2>/dev/null || echo 2.
 
 JOBS="${JOBS:-$(sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo 4)}"
 OPT_LEVEL="${OPT_LEVEL:-2}"
+BUILD_TARGET="${BUILD_TARGET:-bootstrap-all}"
 
 # Helper functions
 log() {
@@ -89,20 +90,15 @@ check_prerequisites() {
 clean() {
   log "Cleaning previous build artifacts..."
   
-  if [ -d "$BUILD_DIR" ]; then
-    rm -rf "$BUILD_DIR"
-  fi
-  
   if [ -d "$MACOS_X86_64_DIR" ]; then
     rm -rf "$MACOS_X86_64_DIR"
   fi
-  
-  if [ -d "$OUT_DIR" ]; then
-    rm -rf "$OUT_DIR"
-  fi
-  
+
+  rm -rf "$ROOT_DIR/.pkgstage"
+
   mkdir -p "$BUILD_DIR" "$OUT_DIR"
-  success "Build directory cleaned"
+  rm -f "$OUT_DIR/vitte-$VERSION.pkg"
+  success "macOS package build artifacts cleaned"
 }
 
 # Build Vitte compiler for x86_64
@@ -123,7 +119,7 @@ build_compiler() {
     BIN_DIR="$BIN_DIR" \
     OPT_LEVEL="$OPT_LEVEL" \
     PREFIX="/usr/local" \
-    build
+    "$BUILD_TARGET"
   
   if [ ! -f "$BIN_DIR/vitte" ]; then
     die "Compiler build failed: $BIN_DIR/vitte not created"
@@ -160,6 +156,9 @@ build_stdlib() {
   # or pre-compiled bytecode is included
   if [ -d "$ROOT_DIR/src/vitte/packages" ]; then
     log "Standard library packages available in src/vitte/packages"
+  fi
+  if [ -d "$ROOT_DIR/src/vitte/stdlib" ]; then
+    log "Standard library available in src/vitte/stdlib"
   fi
   
   success "Standard library ready"
@@ -341,6 +340,7 @@ Binaries:
 
 Standard Library & Source:
   - /usr/local/share/vitte/src/vitte/packages/    (stdlib packages)
+  - /usr/local/share/vitte/src/vitte/stdlib/      (standard library)
   - /usr/local/share/vitte/src/vitte/compiler/    (compiler source)
   - /usr/local/share/vitte/src/compiler/backends/ (backend sources)
 
@@ -430,6 +430,7 @@ main() {
   log "Version:  $VERSION"
   log "Output:   $OUT_DIR"
   log "Jobs:     $JOBS"
+  log "Build target: $BUILD_TARGET"
   log "========================================================\n"
   
   check_prerequisites

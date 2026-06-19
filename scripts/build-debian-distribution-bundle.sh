@@ -530,7 +530,8 @@ Binaries:
   /usr/libexec/vitte/vitte      Compiler binary
 
 Source & Libraries:
-  /usr/share/vitte/src/vitte/packages/    Standard library
+  /usr/share/vitte/src/vitte/packages/    Source packages
+  /usr/share/vitte/src/vitte/stdlib/      Standard library
   /usr/share/vitte/src/vitte/compiler/    Compiler source
   /usr/share/vitte/src/compiler/backends/ Backend sources
 

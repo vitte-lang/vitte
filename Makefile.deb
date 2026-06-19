@@ -70,7 +70,8 @@ deb: check-prerequisites check-editors
 # Clean build artifacts
 deb-clean:
 	@echo "$(BLUE)Cleaning package build artifacts...$(NC)"
-	@rm -rf build target/debian-x86_64 .debstage
+	@rm -rf target/debian-x86_64 .debstage
+	@rm -f "$(DEB_FILE)"
 	@echo "$(GREEN)✓ Build artifacts cleaned$(NC)"
 
 # Create distribution bundle (checksums, docs, quickstart)
@@ -107,15 +108,15 @@ check-editors:
 
 # Check prerequisites
 check-prerequisites:
-	@if [[ "$$OSTYPE" != "linux-gnu"* ]]; then \
+	@if [ "$$(uname -s)" != "Linux" ]; then \
 		echo "$(RED)Error: This target requires Linux$(NC)"; \
 		exit 1; \
 	fi
-	@if ! command -v dpkg-deb &>/dev/null; then \
+	@if ! command -v dpkg-deb >/dev/null 2>&1; then \
 		echo "$(RED)Error: dpkg-deb is required$(NC)"; \
 		exit 1; \
 	fi
-	@if ! command -v make &>/dev/null; then \
+	@if ! command -v make >/dev/null 2>&1; then \
 		echo "$(RED)Error: make is required$(NC)"; \
 		exit 1; \
 	fi
