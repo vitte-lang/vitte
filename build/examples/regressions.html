@@ -1,0 +1,239 @@
+
+
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vitte Performance Regressions</title>
+<style>
+body{font-family:system-ui,sans-serif;margin:0;background:#0f1117;color:#e6edf3}
+header{padding:24px;border-bottom:1px solid #30363d}
+main{max-width:1600px;margin:auto;padding:24px}
+.card{background:#161b22;border:1px solid #30363d;border-radius:12px;padding:16px;margin-bottom:20px}
+.table{width:100%;border-collapse:collapse}
+.table th,.table td{padding:10px;border-bottom:1px solid #30363d;text-align:left}
+.bad{color:#ff6b6b;font-weight:bold}
+.warn{color:#ffd166;font-weight:bold}
+.good{color:#06d6a0;font-weight:bold}
+.metric{display:inline-block;margin-right:24px}
+pre{overflow:auto}
+input{width:100%;padding:10px;margin-bottom:16px;background:#0d1117;color:white;border:1px solid #30363d}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px}
+.kpi{background:#0d1117;border:1px solid #30363d;border-radius:10px;padding:16px}
+.kpi-value{font-size:2rem;font-weight:bold;margin-top:8px}
+.chart{height:240px;border:1px solid #30363d;border-radius:10px;padding:12px;background:#0d1117;overflow:auto}
+.timeline{font-family:monospace;white-space:pre}
+.section-title{margin-top:0}
+.small{opacity:.8;font-size:.9rem}
+</style>
+<script>
+function filterTable(){
+ const q=document.getElementById('search').value.toLowerCase();
+ const rows=document.querySelectorAll('tbody tr');
+ rows.forEach(r=>{
+   r.style.display=r.textContent.toLowerCase().includes(q)?'':'none';
+ });
+}
+</script>
+</head>
+<body>
+<header>
+<h1>Vitte Regression Dashboard</h1>
+<p>Performance regression tracking for compiler examples and benchmarks.</p>
+</header>
+<main>
+
+<div class="card">
+<h2 class="section-title">Overview</h2>
+<div class="grid">
+<div class="kpi">
+<div>Total Examples</div>
+<div class="kpi-value" id="total">407</div>
+</div>
+<div class="kpi">
+<div>Regressions</div>
+<div class="kpi-value" id="regressions">11</div>
+</div>
+<div class="kpi">
+<div>Critical</div>
+<div class="kpi-value" id="critical">3</div>
+</div>
+<div class="kpi">
+<div>Average Delta</div>
+<div class="kpi-value" id="avgdelta">14.2%</div>
+</div>
+</div>
+</div>
+
+<div class="card">
+<h2>Performance Metrics</h2>
+<div class="grid">
+<div class="kpi"><div>Average</div><div class="kpi-value">84ms</div></div>
+<div class="kpi"><div>Median</div><div class="kpi-value">73ms</div></div>
+<div class="kpi"><div>P95</div><div class="kpi-value">182ms</div></div>
+<div class="kpi"><div>P99</div><div class="kpi-value">341ms</div></div>
+</div>
+</div>
+
+<div class="card">
+<h2>Top Regressions</h2>
+<input id="search" type="text" placeholder="Filter examples..." onkeyup="filterTable()">
+<table class="table">
+<thead>
+<tr>
+<th>Example</th>
+<th>Old</th>
+<th>New</th>
+<th>Delta</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>compiler/typeck.vit</td>
+<td>51ms</td>
+<td>91ms</td>
+<td class="bad">+78%</td>
+<td class="bad">Critical</td>
+</tr>
+<tr>
+<td>async/future.vit</td>
+<td>14ms</td>
+<td>25ms</td>
+<td class="bad">+78%</td>
+<td class="bad">Critical</td>
+</tr>
+<tr>
+<td>runtime/task.vit</td>
+<td>31ms</td>
+<td>50ms</td>
+<td class="warn">+61%</td>
+<td class="warn">High</td>
+</tr>
+</tbody>
+</table>
+</div>
+
+<div class="card">
+<h2>Regression Policy</h2>
+<ul>
+<li>&lt; 5% : Stable</li>
+<li>5% - 20% : Watch</li>
+<li>20% - 50% : Warning</li>
+<li>&gt; 50% : Critical</li>
+</ul>
+</div>
+
+<div class="card">
+<h2>Compiler Pipeline Impact</h2>
+<pre>
+Lexer
+  ↓
+Parser
+  ↓
+AST
+  ↓
+HIR
+  ↓
+Sema
+  ↓
+Typeck
+  ↓
+Borrowck
+  ↓
+MIR
+  ↓
+IR
+  ↓
+Backend
+  ↓
+Linker
+</pre>
+</div>
+
+
+<div class="card">
+<h2>Historical Trend</h2>
+<div class="chart timeline">
+2026-06-17  avg=61ms
+2026-06-18  avg=64ms
+2026-06-19  avg=67ms
+2026-06-20  avg=71ms
+2026-06-21  avg=84ms
+</div>
+<p class="small">Future versions should generate this automatically from build/examples/history.</p>
+</div>
+
+<div class="card">
+<h2>Compiler Pipeline</h2>
+<table class="table">
+<thead>
+<tr><th>Stage</th><th>Status</th><th>Benchmarks</th></tr>
+</thead>
+<tbody>
+<tr><td>Lexer</td><td>✓</td><td>enabled</td></tr>
+<tr><td>Parser</td><td>✓</td><td>enabled</td></tr>
+<tr><td>AST</td><td>✓</td><td>enabled</td></tr>
+<tr><td>HIR</td><td>✓</td><td>enabled</td></tr>
+<tr><td>Sema</td><td>✓</td><td>enabled</td></tr>
+<tr><td>Typeck</td><td>✓</td><td>enabled</td></tr>
+<tr><td>Borrowck</td><td>✓</td><td>enabled</td></tr>
+<tr><td>MIR</td><td>✓</td><td>enabled</td></tr>
+<tr><td>IR</td><td>✓</td><td>enabled</td></tr>
+<tr><td>Backend</td><td>✓</td><td>enabled</td></tr>
+<tr><td>Linker</td><td>✓</td><td>enabled</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="card">
+<h2>Category Summary</h2>
+<table class="table">
+<thead>
+<tr>
+<th>Category</th>
+<th>Examples</th>
+<th>Regressions</th>
+<th>Worst Delta</th>
+</tr>
+</thead>
+<tbody>
+<tr><td>compiler</td><td>120</td><td>5</td><td>78%</td></tr>
+<tr><td>async</td><td>42</td><td>2</td><td>78%</td></tr>
+<tr><td>runtime</td><td>65</td><td>3</td><td>61%</td></tr>
+<tr><td>stdlib</td><td>180</td><td>1</td><td>12%</td></tr>
+</tbody>
+</table>
+</div>
+
+
+<div class="card">
+<h2>Roadmap</h2>
+<ul>
+<li>Parallel examples execution</li>
+<li>Historical trend analysis</li>
+<li>Automatic regression detection</li>
+<li>Interactive dashboard</li>
+<li>Compiler stage benchmarks</li>
+<li>Stdlib benchmarks</li>
+<li>Knowledge graph integration</li>
+<li>Documentation performance portal</li>
+</ul>
+</div>
+
+<div class="card">
+<h2>Artifacts</h2>
+<ul>
+<li>examples-matrix.json</li>
+<li>examples-matrix.md</li>
+<li>examples-matrix.html</li>
+<li>examples-matrix.xml</li>
+<li>regressions.json</li>
+<li>history/*.json</li>
+</ul>
+</div>
+
+</main>
+</body>
+</html>
