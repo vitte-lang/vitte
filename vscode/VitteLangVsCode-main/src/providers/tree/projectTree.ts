@@ -142,7 +142,7 @@ readonly onDidChangeTreeData: vscode.Event<Node | null | undefined> = this._onDi
 
     // Sources group
     const srcGroup = mkGroup('group:sources', 'Sources', 'source-control');
-    const modulesDirs = await findMany('{src,modules,crates}/**/*.vitte', 200);
+    const modulesDirs = await findMany('{src,modules,crates}/**/*.{vit,vitl,vitte}', 200);
     // Group by folder
     const byDir = new Map<string, vscode.Uri[]>();
     for (const uri of modulesDirs) {
@@ -160,13 +160,13 @@ readonly onDidChangeTreeData: vscode.Event<Node | null | undefined> = this._onDi
     nodes.push(srcGroup);
 
     // Tests group
-    const tests = await findMany('**/*_test.vitte', 200);
+    const tests = await findMany('**/*_test.{vit,vitl,vitte}', 200);
     const testGroup = mkGroup('group:tests', `Tests (${tests.length})`, 'beaker');
     for (const t of tests) testGroup.children.push(mkFile(t));
     nodes.push(testGroup);
 
     // Benchmarks group
-    const benches = await findMany('**/*_bench.vitte', 200);
+    const benches = await findMany('**/*_bench.{vit,vitl,vitte}', 200);
     const benchGroup = mkGroup('group:bench', `Benchmarks (${benches.length})`, 'graph');
     for (const b of benches) benchGroup.children.push(mkFile(b));
     nodes.push(benchGroup);
@@ -180,7 +180,7 @@ readonly onDidChangeTreeData: vscode.Event<Node | null | undefined> = this._onDi
       const nodes: Node[] = [];
       for (const [name, type] of entries) {
         const uri = joinPathCompat(dir, name);
-        if (type === vscode.FileType.File && /\.(vitte|vit)$/i.test(name)) nodes.push(mkFile(uri));
+        if (type === vscode.FileType.File && /\.(vit|vitl|vitte)$/i.test(name)) nodes.push(mkFile(uri));
         if (type === vscode.FileType.Directory) nodes.push(mkDir(uri));
       }
       return nodes;

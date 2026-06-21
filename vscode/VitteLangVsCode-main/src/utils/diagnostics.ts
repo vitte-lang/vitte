@@ -1,7 +1,7 @@
 import * as path from "node:path";
 import * as vscode from "vscode";
 
-export const VITTE_FILE_EXTS = new Set([".vitte", ".vit"]);
+export const VITTE_FILE_EXTS = new Set([".vit", ".vitl", ".vitte"]);
 
 type SeverityKey = 'error' | 'warning' | 'information' | 'hint';
 const VALID_SEVERITIES: readonly SeverityKey[] = ['error', 'warning', 'information', 'hint'] as const;

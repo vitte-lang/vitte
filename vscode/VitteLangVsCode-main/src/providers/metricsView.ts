@@ -174,7 +174,7 @@ class VitteMetricsProvider implements vscode.TreeDataProvider<MetricTreeNode>, v
 
     nodes.push({
       placeholder: true,
-      message: "Open a .vitte or .vit file and trigger completions/hover to record metrics.",
+      message: "Open a .vit, .vitl, or legacy .vitte file and trigger completions/hover to record metrics.",
       icon: new vscode.ThemeIcon("file-code"),
       context: "placeholder.hint",
     });

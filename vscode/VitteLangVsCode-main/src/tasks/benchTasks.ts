@@ -32,8 +32,10 @@ export function registerBenchTasks(ctx: vscode.ExtensionContext) {
 
   const provider = {
     provideTasks: async (_token?: vscode.CancellationToken): Promise<vscode.Task[]> => {
+      const bin = await benchBin();
+      if (!bin) return [];
       const definition: VitteBenchTaskDefinition = { type: 'vitte', command: 'bench' };
-      const exec = new vscode.ProcessExecution(await benchBin(), await benchArgs());
+      const exec = new vscode.ProcessExecution(bin, await benchArgs(bin));
       const task = new vscode.Task(
         definition,
         vscode.TaskScope.Workspace,
@@ -69,7 +71,7 @@ interface VitteBenchTaskDefinition extends vscode.TaskDefinition {
 // ---- Helpers ----
 async function benchBin(): Promise<string> {
   const located = await locateVitteRuntime();
-  return located.benchPath ?? 'vitte-bench';
+  return located.benchPath ?? '';
 }
 
 async function readProjectConfig(): Promise<VitteConfig | undefined> {
@@ -93,7 +95,7 @@ async function benchReportDir(): Promise<string | undefined> {
   return path.isAbsolute(reportDir) ? reportDir : path.join(root, reportDir);
 }
 
-async function benchArgs(): Promise<string[]> {
+async function benchArgs(bin?: string): Promise<string[]> {
   const cfg = vscode.workspace.getConfiguration('vitte');
   const project = await readProjectConfig();
 
@@ -102,7 +104,7 @@ async function benchArgs(): Promise<string[]> {
   const incremental = (project?.build?.incremental ?? cfg.get<boolean>('build.incremental')) ?? false;
   const reportDir = await benchReportDir();
 
-  const args: string[] = ['--profile', profile];
+  const args: string[] = path.basename(bin ?? '').startsWith('vitte-bench') ? ['--profile', profile] : ['bench', '--profile', profile];
   if (distributed) args.push('--distributed');
   if (incremental) args.push('--incremental');
   if (reportDir) args.push('--out', reportDir);
@@ -127,7 +129,7 @@ async function benchArgs(): Promise<string[]> {
 
 async function benchCommand(): Promise<{ bin: string; args: string[] }> {
   const bin = await benchBin();
-  const args = await benchArgs();
+  const args = await benchArgs(bin);
   return { bin, args };
 }
 
@@ -143,6 +145,10 @@ async function runBench(openAfter: boolean) {
   }
 
   const { bin, args } = await benchCommand();
+  if (!bin) {
+    void vscode.window.showInformationMessage('Vitte: aucun outil benchmark configuré pour ce projet.');
+    return;
+  }
   const outChan = vscode.window.createOutputChannel('Vitte Bench');
 
   await vscode.window.withProgress({

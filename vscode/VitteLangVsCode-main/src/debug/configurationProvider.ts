@@ -110,12 +110,12 @@ function sanitizeEnv(obj: unknown): Record<string, string> {
 }
 
 function resolveRuntimePath(cfg: vscode.WorkspaceConfiguration, project: VitteDebugJson): string {
-  // Priority: launch.json > vitte.debug.program (settings) > project.debug.program > toolchain.runtime > default
+  // Priority: launch.json > vitte.debug.program (settings) > project.debug.program > toolchain.runtime > unified CLI.
   const setProgram = cfg.get<string>('debug.program');
   if (setProgram?.trim()) return setProgram;
 
   const projectProg = project.debug?.program ?? project.toolchain?.runtime;
-  let candidate = projectProg ?? 'vitte-runtime';
+  let candidate = projectProg ?? cfg.get<string>('compiler.path') ?? 'vitte';
 
   // Prepend toolchain.root when relative
   const toolchainRoot = cfg.get<string>('toolchain.root') ?? project.toolchain?.root ?? cfg.get<string>('toolchainPath');
@@ -136,7 +136,7 @@ class VitteDebugConfigurationProvider implements vscode.DebugConfigurationProvid
         name: 'Vitte: Launch current file',
         type: 'vitte',
         request: 'launch',
-        program: 'vitte-runtime',
+        program: 'vitte',
         args: ['run', '${file}'],
         cwd: workspaceFolder
       },
@@ -144,7 +144,7 @@ class VitteDebugConfigurationProvider implements vscode.DebugConfigurationProvid
         name: 'Vitte: Launch project entry',
         type: 'vitte',
         request: 'launch',
-        program: 'vitte-runtime',
+        program: 'vitte',
         args: ['run'],
         cwd: workspaceFolder
       },
@@ -152,7 +152,7 @@ class VitteDebugConfigurationProvider implements vscode.DebugConfigurationProvid
         name: 'Vitte: Launch with args…',
         type: 'vitte',
         request: 'launch',
-        program: 'vitte-runtime',
+        program: 'vitte',
         args: [],
         cwd: workspaceFolder
       }

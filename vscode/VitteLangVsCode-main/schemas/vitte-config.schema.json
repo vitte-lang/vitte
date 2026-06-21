@@ -40,10 +40,10 @@
       "properties": {
         "root": { "$ref": "#/$defs/path", "default": "" },
         "lsp": { "$ref": "#/$defs/path", "default": "vitte-lsp" },
-        "fmt": { "$ref": "#/$defs/path", "default": "vitte-fmt" },
-        "build": { "$ref": "#/$defs/path", "default": "vitte-build" },
-        "bench": { "$ref": "#/$defs/path", "default": "vitte-bench" },
-        "runtime": { "$ref": "#/$defs/path", "default": "vitte-runtime" },
+        "fmt": { "$ref": "#/$defs/path", "default": "" },
+        "build": { "$ref": "#/$defs/path", "default": "vitte" },
+        "bench": { "$ref": "#/$defs/path", "default": "" },
+        "runtime": { "$ref": "#/$defs/path", "default": "vitte" },
         "codegenLlvm": { "$ref": "#/$defs/path", "default": "vitte-codegen-llvm" },
         "codegenRv": { "$ref": "#/$defs/path", "default": "vitte-codegen-rv64" }
       }
@@ -165,7 +165,7 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "patterns": { "type": "array", "items": { "type": "string" }, "default": ["**/*_test.vitte"] },
+        "patterns": { "type": "array", "items": { "type": "string" }, "default": ["**/*_test.{vit,vitl,vitte}"] },
         "timeoutMs": { "type": "integer", "minimum": 0, "default": 60000 },
         "failFast": { "$ref": "#/$defs/bool", "default": false }
       }
@@ -195,7 +195,7 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "program": { "$ref": "#/$defs/path", "default": "vitte-runtime" },
+        "program": { "$ref": "#/$defs/path", "default": "vitte" },
         "args": { "type": "array", "items": { "type": "string" }, "default": [] },
         "cwd": { "$ref": "#/$defs/path", "default": "" },
         "sourceMaps": { "$ref": "#/$defs/bool", "default": true },
@@ -217,7 +217,7 @@
   "examples": [
     {
       "version": "1.0.0",
-      "toolchain": { "root": "/opt/vitte", "lsp": "vitte-lsp", "fmt": "vitte-fmt", "build": "vitte-build", "bench": "vitte-bench", "runtime": "vitte-runtime", "codegenLlvm": "vitte-codegen-llvm", "codegenRv": "vitte-codegen-rv64" },
+      "toolchain": { "root": "/opt/vitte", "lsp": "vitte-lsp", "fmt": "", "build": "vitte", "bench": "", "runtime": "vitte", "codegenLlvm": "vitte-codegen-llvm", "codegenRv": "vitte-codegen-rv64" },
       "workspace": { "rootPatterns": ["vitte.toml"], "exclude": ["**/target/**"], "telemetry": { "enabled": false, "sampleRate": 0.05 } },
       "targets": [
         { "triple": "aarch64-apple-darwin", "cpu": "apple-m4", "features": ["neon"], "optLevel": "3" },
@@ -228,9 +228,9 @@
       "fmt": { "lineWidth": 100, "indent": 4, "trailingCommas": true, "groupImports": true, "reorderItems": true },
       "lint": { "levels": { "style": "warn", "perf": "warn", "unsafe": "deny" }, "allow": ["non_snake_case"], "deny": [] },
       "bench": { "reportDir": ".vitte/bench", "regressionThreshold": 0.05, "export": ["html","svg"], "ci": true, "baselineFile": ".vitte/bench/baseline.json" },
-      "tests": { "patterns": ["**/*_test.vitte"], "timeoutMs": 60000, "failFast": false },
+      "tests": { "patterns": ["**/*_test.{vit,vitl,vitte}"], "timeoutMs": 60000, "failFast": false },
       "lsp": { "telemetryEnabled": false, "inlayHintsEnabled": true, "semanticHighlighting": true, "maxWorkspaceBytes": 50000000, "experimental": { "liveDiagnostics": true, "astDiff": false, "costHints": false } },
-      "debug": { "program": "vitte-runtime", "args": ["--trace"], "cwd": "${workspaceFolder}", "sourceMaps": true, "trace": false },
+      "debug": { "program": "vitte", "args": ["--trace"], "cwd": "${workspaceFolder}", "sourceMaps": true, "trace": false },
       "ui": { "theme": "system", "panel": "left", "showStatusBar": true }
     }
   ]

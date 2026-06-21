@@ -7,19 +7,19 @@ import { exists } from './fs';
 /**
  * Vitte toolchain resolver
  * - Detects toolchain root from settings/env/which
- * - Resolves binaries (vitte-runtime/lsp/build/fmt/bench)
+ * - Resolves the current unified `vitte` CLI plus optional companion tools
  * - Reads versions lazily ("--version")
  * - Caches results in globalState with a short TTL to avoid costy lookups
  */
 
-export type BinKind = 'runtime' | 'lsp' | 'build' | 'fmt' | 'bench';
+export type BinKind = 'cli' | 'runtime' | 'lsp' | 'build' | 'fmt' | 'bench';
 
 export interface ToolchainInfo {
   /** Toolchain root directory, if known (folder that contains `bin/`). */
   root?: string;
   /** Map of resolved absolute binary paths. Missing keys are `undefined`. */
   bins: Partial<Record<BinKind, string>>;
-  /** Parsed versions per binary (e.g., `vitte-runtime --version`). */
+  /** Parsed versions per binary (e.g., `vitte --version`). */
   versions: Partial<Record<BinKind, string>>;
   /** True if at least the main runtime was found. */
   ok: boolean;
@@ -82,21 +82,23 @@ export async function getToolchain(ctx?: vscode.ExtensionContext, forceRefresh =
   if (!root) messages.push('Aucun "vitte.toolchain.root" configuré — recherche via PATH…');
 
   const rootOpt = root !== undefined ? { root } : undefined;
-  const runtime = await resolveBinary('vitte-runtime', { settingKeys: ['debug.program', 'runtime.path', 'runtime'], ...rootOpt });
+  const cli = await resolveBinary('vitte', { settingKeys: ['debug.program', 'runtime.path', 'runtime', 'compiler.path'], ...rootOpt });
+  const runtime = cli ?? await resolveBinary('vitte-runtime', { settingKeys: ['debug.program', 'runtime.path', 'runtime'], ...rootOpt });
   const lsp = await resolveBinary('vitte-lsp', { settingKeys: ['lsp.path'], ...rootOpt });
-  const build = await resolveBinary('vitte-build', { settingKeys: ['build.path'], ...rootOpt });
+  const build = cli ?? await resolveBinary('vitte-build', { settingKeys: ['build.path'], ...rootOpt });
   const fmt = await resolveBinary('vitte-fmt', { settingKeys: ['fmt.path'], ...rootOpt });
   const bench = await resolveBinary('vitte-bench', { settingKeys: ['bench.path'], ...rootOpt });
 
   const bins: ToolchainInfo['bins'] = {};
+  if (cli !== undefined) bins.cli = cli;
   if (runtime !== undefined) bins.runtime = runtime;
   if (lsp !== undefined) bins.lsp = lsp;
   if (build !== undefined) bins.build = build;
   if (fmt !== undefined) bins.fmt = fmt;
   if (bench !== undefined) bins.bench = bench;
 
-  const ok = !!runtime;
-  if (!ok) messages.push('vitte-runtime introuvable (paramètre vitte.debug.program ou PATH).');
+  const ok = !!cli || !!runtime;
+  if (!ok) messages.push('vitte introuvable (paramètre vitte.debug.program, vitte.compiler.path, vitte.toolchain.root ou PATH).');
 
   const info: ToolchainInfo = { bins, versions: {}, ok, messages };
   if (root !== undefined) info.root = root;
@@ -210,7 +212,7 @@ async function execCapture(cmd: string[] | string, opts?: { cwd?: string; env?: 
 
 /** Convenience: return a friendly snapshot string (for status bars, etc.). */
 export function formatToolchainStatus(info: ToolchainInfo): string {
-  const v = info.versions.runtime ?? info.versions.lsp ?? info.versions.build;
+  const v = info.versions.cli ?? info.versions.runtime ?? info.versions.lsp ?? info.versions.build;
   const ver = v ? `v${v}` : 'unknown';
   const ok = info.ok ? '✓' : '✗';
   return `Vitte ${ok} · ${ver}`;

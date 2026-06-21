@@ -91,7 +91,7 @@ const BUILTIN_ACTION_DEFS: QuickActionDefinition[] = [
   {
     id: 'testFile',
     label: '🧪 Test file',
-    description: 'Run vitte.testCurrent for *_test.vitte files',
+    description: 'Run vitte.testCurrent for *_test.vit/.vitl/.vitte files',
     command: 'vitte.testCurrent',
     isSuggested: (ctx) => ctx.activeIsTestFile,
     highlightLastRun: true,

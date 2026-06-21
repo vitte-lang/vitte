@@ -5,7 +5,7 @@ import * as path from 'path';
 
 /**
  * Vitte Debug Adapter factory.
- * Spawns `vitte-runtime` in DAP server mode when possible.
+ * Spawns the unified `vitte` CLI in DAP server mode when possible.
  * Falls back to stdio if server mode is not available.
  */
 export class VitteDebugAdapterDescriptorFactory implements vscode.DebugAdapterDescriptorFactory, vscode.Disposable {
@@ -64,12 +64,12 @@ export class VitteDebugAdapterDescriptorFactory implements vscode.DebugAdapterDe
   }
 
   private resolveRuntimePath(cfg: vscode.WorkspaceConfiguration): string {
-    // Prefer project setting `vitte.debug.program`, then `vitte.runtime` or `vitte.build.path`, then default.
+    // Prefer project setting `vitte.debug.program`, then legacy aliases, then the unified CLI.
     const direct = cfg.get<string>('debug.program');
     if (direct?.trim().length) return direct;
 
     const toolchainRoot = cfg.get<string>('toolchainPath') ?? cfg.get<string>('toolchain.root');
-    const candidate = cfg.get<string>('runtime.path') ?? cfg.get<string>('runtime') ?? 'vitte-runtime';
+    const candidate = cfg.get<string>('compiler.path') ?? cfg.get<string>('runtime.path') ?? cfg.get<string>('runtime') ?? 'vitte';
 
     if (toolchainRoot && !path.isAbsolute(candidate)) {
       return path.join(toolchainRoot, candidate);
@@ -93,13 +93,13 @@ export class VitteDebugAdapterDescriptorFactory implements vscode.DebugAdapterDe
     const attemptC = await this.spawnAndDetectPort(program, argsC, cwd);
     if (attemptC.ok) return attemptC;
 
-    return { ok: false, error: new Error('DAP server mode not detected on vitte-runtime.') };
+    return { ok: false, error: new Error('DAP server mode not detected on vitte.') };
   }
 
   private spawnAndDetectPort(program: string, args: string[], cwd: string): Promise<{ ok: true, proc: cp.ChildProcess, port: number } | { ok: false, error: Error }> {
     return new Promise((resolve) => {
       let resolved = false;
-      const cmd = this.ensureString(program, 'vitte-runtime');
+      const cmd = this.ensureString(program, 'vitte');
       const argv = this.sanitizeArgs(args);
       const proc = cp.spawn(cmd, argv, { cwd: this.ensureString(cwd, process.cwd()), env: process.env, stdio: ['ignore', 'pipe', 'pipe'] });
 

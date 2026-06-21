@@ -1,5 +1,7 @@
 import * as vscode from 'vscode';
 import * as cp from 'child_process';
+import * as path from 'path';
+import * as fs from 'fs';
 import { locateVitteRuntime } from '../debug/runtimeLocator';
 
 /**
@@ -44,7 +46,6 @@ export function registerBuildTasks(ctx: vscode.ExtensionContext) {
         { cmd: 'build', label: 'Vitte Build' },
         { cmd: 'run', label: 'Vitte Run' },
         { cmd: 'test', label: 'Vitte Test' },
-        { cmd: 'clean', label: 'Vitte Clean' },
       ];
       return Promise.all(defs.map(async ({ cmd, label }) => {
         const exec = new vscode.ProcessExecution(await buildBin(), await buildArgs(cmd));
@@ -87,43 +88,59 @@ async function readProjectConfig(): Promise<VitteBuildConfig | undefined> {
 
 async function buildBin(): Promise<string> {
   const located = await locateVitteRuntime();
-  return located.buildPath ?? 'vitte-build';
+  return located.buildPath ?? located.cliPath ?? located.runtimePath ?? 'vitte';
 }
 
 async function buildArgs(sub: SubCmd, extra?: { currentFile?: string }): Promise<string[]> {
-  const cfg = vscode.workspace.getConfiguration('vitte');
-  const project = await readProjectConfig();
-
-  const profile = project?.build?.profile ?? cfg.get<string>('build.profile') ?? 'dev';
-  const distributed = (project?.build?.distributed ?? cfg.get<boolean>('build.distributed')) ?? false;
-  const incremental = (project?.build?.incremental ?? cfg.get<boolean>('build.incremental')) ?? false;
-  const targets = collectTargets(project);
-
-  const args: string[] = [sub, '--profile', profile];
-  if (distributed) args.push('--distributed');
-  if (incremental) args.push('--incremental');
-  for (const t of targets) args.push('--target', t);
-
-  if ((sub === 'run' || sub === 'test') && extra?.currentFile) {
-    args.push('--file', extra.currentFile);
+  if (sub === 'clean') {
+    return [];
   }
 
-  return args;
+  if (sub === 'test') {
+    const input = extra?.currentFile ?? await defaultInputFile();
+    return input ? ['check', input] : ['check'];
+  }
+
+  const input = extra?.currentFile ?? await defaultInputFile();
+  if (sub === 'run') {
+    return input ? ['run', input] : ['run'];
+  }
+
+  if (input) {
+    return ['build', input, '-o', defaultOutputFor(input)];
+  }
+
+  return ['build'];
 }
 
-function collectTargets(project?: VitteBuildConfig): string[] {
-  const t = project?.targets;
-  const out: string[] = [];
-  if (Array.isArray(t)) {
-    for (const x of t) {
-      if (typeof x === 'string') out.push(x);
-      else if (x && typeof x === 'object') {
-        const triple = (x as { triple?: unknown }).triple;
-        if (typeof triple === 'string') out.push(triple);
-      }
+async function defaultInputFile(): Promise<string | undefined> {
+  const current = vscode.window.activeTextEditor?.document.uri.fsPath;
+  if (current && /\.(vit|vitl|vitte)$/i.test(current)) return current;
+
+  const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  if (!root) return undefined;
+
+  const candidates = [
+    path.join(root, 'src', 'main.vit'),
+    path.join(root, 'main.vit'),
+    path.join(root, 'src', 'vitte', 'compiler', 'main.vit'),
+  ];
+  for (const candidate of candidates) {
+    try {
+      await vscode.workspace.fs.stat(vscode.Uri.file(candidate));
+      return candidate;
+    } catch {
+      // try next candidate
     }
   }
-  return out;
+  return undefined;
+}
+
+function defaultOutputFor(input: string): string {
+  const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  const parsed = path.parse(input);
+  const outDir = root ? path.join(root, 'build') : path.join(parsed.dir, 'build');
+  return path.join(outDir, parsed.name);
 }
 
 async function buildCommand(sub: SubCmd, extra?: { currentFile?: string }): Promise<{ bin: string; args: string[] }> {
@@ -143,14 +160,27 @@ async function runBuild(sub: SubCmd, extra?: { currentFile?: string }) {
     return;
   }
 
+  if (sub === 'clean') {
+    const targets = [path.join(root, 'build'), path.join(root, 'target', 'vitte'), path.join(root, '.vitte', 'cache')];
+    for (const target of targets) {
+      await fs.promises.rm(target, { recursive: true, force: true });
+    }
+    void vscode.window.showInformationMessage('Vitte: artefacts build/cache supprimés.');
+    return;
+  }
+
   let commandExtra = extra;
-  if (sub === 'run' && !commandExtra?.currentFile) {
+  if ((sub === 'run' || sub === 'build') && !commandExtra?.currentFile) {
     const current = vscode.window.activeTextEditor?.document.uri.fsPath;
-    const isVitte = !!(current && /\.(vitte|vit)$/i.test(current));
+    const isVitte = !!(current && /\.(vit|vitl|vitte)$/i.test(current));
     commandExtra = isVitte && current ? { currentFile: current } : undefined;
   }
 
   const { bin, args } = await buildCommand(sub, commandExtra);
+  if ((sub === 'build' || sub === 'run' || sub === 'test') && args.length <= 1) {
+    void vscode.window.showErrorMessage('Vitte: aucun fichier .vit/.vitl/.vitte trouvé pour cette commande.');
+    return;
+  }
 
   const chan = vscode.window.createOutputChannel('Vitte Build');
   await vscode.window.withProgress({
@@ -177,7 +207,7 @@ async function runTestCurrentFile() {
     void vscode.window.showInformationMessage('Aucun fichier actif.');
     return;
   }
-  const isTest = /(_test\.vitte|\.(vitte|vit))$/i.test(file);
+  const isTest = /(_test\.(vit|vitte)|\.(vit|vitl|vitte))$/i.test(file);
   if (!isTest) {
     void vscode.window.showInformationMessage('Le fichier actif ne semble pas être un test.');
     return;

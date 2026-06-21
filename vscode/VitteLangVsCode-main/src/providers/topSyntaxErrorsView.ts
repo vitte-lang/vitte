@@ -126,7 +126,7 @@ class TopSyntaxErrorsProvider implements vscode.TreeDataProvider<TreeNode>, vsco
     for (const [uri, list] of vscode.languages.getDiagnostics()) {
       if (uri.scheme !== "file") continue;
       const ext = path.extname(uri.fsPath).toLowerCase();
-      if (ext !== ".vit" && ext !== ".vitte") continue;
+      if (ext !== ".vit" && ext !== ".vitl" && ext !== ".vitte") continue;
       for (const diagnostic of list) {
         const code = syntaxCodeOf(diagnostic);
         if (!code) continue;

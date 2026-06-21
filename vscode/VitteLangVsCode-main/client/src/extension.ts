@@ -10,8 +10,8 @@ import { spawn, SpawnOptionsWithoutStdio } from "child_process";
 
 // ----------------------------- Constantes ----------------------------------
 const LANGS = [
-  { id: "vit",  exts: [".vit"],  aliases: ["Vitte", "Vit"] },
-  { id: "vitte", exts: [".vitte"],aliases: ["Vitte Canonical"] },
+  { id: "vit",  exts: [".vit", ".vitl"],  aliases: ["Vitte", "Vit"] },
+  { id: "vitte", exts: [".vitte"],aliases: ["Vitte Legacy"] },
 ];
 
 const CMD = {
@@ -208,8 +208,8 @@ class VitteDebugAdapterFactory implements vscode.DebugAdapterDescriptorFactory, 
   private subs: vscode.Disposable[] = [];
 
   createDebugAdapterDescriptor(_session: vscode.DebugSession): vscode.ProviderResult<vscode.DebugAdapterDescriptor> {
-    const exe = asExecutableMaybe(toolPath("vitte-runtime"));
-    const args = ["--dap"]; // le runtime doit exposer un serveur DAP en ligne de commande
+    const exe = asExecutableMaybe(toolPath("vitte"));
+    const args = ["--dap"]; // le CLI doit exposer un serveur DAP en ligne de commande
     const cwd = workspaceFolderFor()?.uri.fsPath;
     const impl = new VitteInlineDebugAdapter(exe, args, cwd);
     impl.start();
@@ -262,8 +262,12 @@ function registerCommands(context: vscode.ExtensionContext) {
     }),
 
     vscode.commands.registerCommand(CMD.BUILD, async () => {
+      const doc = pickActiveDoc();
+      if (!doc) { vscode.window.showWarningMessage("Aucun fichier actif."); return; }
+      await doc.save();
       const exe = asExecutableMaybe(toolPath("vitte"));
-      runInTerminal(exe, ["build"], workspaceFolderFor()?.uri.fsPath);
+      const out = path.join(workspaceFolderFor(doc)?.uri.fsPath ?? path.dirname(doc.fileName), "build", path.parse(doc.fileName).name);
+      runInTerminal(exe, ["build", doc.fileName, "-o", out], workspaceFolderFor(doc)?.uri.fsPath);
     }),
 
     vscode.commands.registerCommand(CMD.FMT, async () => {
@@ -286,8 +290,8 @@ function registerCommands(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand(CMD.CREATE_SAMPLE, async () => {
       const ws = workspaceFolderFor();
       if (!ws) { vscode.window.showWarningMessage("Ouvrez un dossier."); return; }
-      const p = path.join(ws.uri.fsPath, "hello.vitte");
-      if (!(await fileExists(p))) await fs.promises.writeFile(p, "print(\"Hello, Vitte!\")\n");
+      const p = path.join(ws.uri.fsPath, "hello.vit");
+      if (!(await fileExists(p))) await fs.promises.writeFile(p, "proc main() -> int {\n  give 0;\n}\n");
       const doc = await vscode.workspace.openTextDocument(p);
       await vscode.window.showTextDocument(doc);
     }),
@@ -332,5 +336,5 @@ export function deactivate() {
 
 // ---------------------- Configuration conseillée (settings.json) ------------
 // "vitte.paths.vitte": "/usr/local/bin/vitte",
-// "vitte.paths.runtime": "/usr/local/bin/vitte-runtime",
+// "vitte.paths.vitte": "/usr/local/bin/vitte",
 // "vitte.format.useExternal": true,

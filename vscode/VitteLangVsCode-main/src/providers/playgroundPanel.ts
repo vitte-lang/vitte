@@ -6,7 +6,7 @@ import { locateVitteRuntime } from '../debug/runtimeLocator';
 
 /**
  * Vitte Playground Panel
- * - Local, offline: edit a Vitte snippet, format it, run it via vitte-runtime.
+ * - Local, offline: edit a Vitte snippet, format it, run it via vitte.
  * - Stores temp files under ${workspace}/.vitte/playground/
  *
  * Command registration is centralized in src/extension.ts to avoid duplicates.
@@ -89,10 +89,10 @@ export class PlaygroundPanel implements vscode.Disposable {
   }
 
   // ---- Tooling helpers ----
-  private async getTooling(): Promise<{ runtime: string; fmt?: string }> {
+  private async getTooling(): Promise<{ cli: string; fmt?: string }> {
     const located = await locateVitteRuntime();
-    const runtime = located.runtimePath ?? 'vitte-runtime';
-    const out: { runtime: string; fmt?: string } = { runtime };
+    const cli = located.cliPath ?? located.runtimePath ?? 'vitte';
+    const out: { cli: string; fmt?: string } = { cli };
     if (typeof located.fmtPath === 'string') out.fmt = located.fmtPath;
     return out;
   }
@@ -108,7 +108,7 @@ export class PlaygroundPanel implements vscode.Disposable {
   private async saveSnippet(text: string): Promise<string | undefined> {
     const dir = await this.ensurePlaygroundDir();
     if (!dir) return undefined;
-    const file = path.join(dir, 'main.vitte');
+    const file = path.join(dir, 'main.vit');
     await fs.promises.writeFile(file, text, 'utf8');
     this.lastFile = file;
     return file;
@@ -118,8 +118,9 @@ export class PlaygroundPanel implements vscode.Disposable {
     try {
       const { fmt } = await this.getTooling();
       if (!fmt) return undefined;
+      const fmtArgs = path.basename(fmt).startsWith('vitte-fmt') ? [] : ['fmt', '-'];
       return await new Promise<string>((resolve, reject) => {
-        const p = cp.spawn(fmt, [], { stdio: ['pipe', 'pipe', 'pipe'] });
+        const p = cp.spawn(fmt, fmtArgs, { stdio: ['pipe', 'pipe', 'pipe'] });
         let out = '';
         let err = '';
         p.stdout.on('data', (b: Buffer) => { out += b.toString(); });
@@ -127,13 +128,13 @@ export class PlaygroundPanel implements vscode.Disposable {
         p.on('error', reject);
         p.on('close', (code) => {
           if (code === 0) resolve(out);
-          else reject(new Error(err || `vitte-fmt exited with ${code}`));
+          else reject(new Error(err || `vitte fmt exited with ${code}`));
         });
         if (p.stdin) {
           p.stdin.write(text);
           p.stdin.end();
         } else {
-          reject(new Error('vitte-fmt stdin unavailable'));
+          reject(new Error('vitte fmt stdin unavailable'));
         }
       });
     } catch (e) {
@@ -150,9 +151,9 @@ export class PlaygroundPanel implements vscode.Disposable {
       return;
     }
 
-    const { runtime } = await this.getTooling();
+    const { cli } = await this.getTooling();
     const wf = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? path.dirname(file);
-    const cmd = `${runtime} run ${quote(file)}`;
+    const cmd = `${quote(cli)} run ${quote(file)}`;
 
     // Ensure terminal
     this.terminal ??= vscode.window.createTerminal({ name: 'Vitte Playground', cwd: wf });
