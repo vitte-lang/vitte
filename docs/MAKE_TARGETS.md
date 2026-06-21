@@ -13,7 +13,7 @@ make help
 ## Beginner / Local Loop
 
 - `make build`: everything
-- `make quickstart-check`: verify the beginner path against examples/first_project.vit
+- `make quickstart-check`: verify the beginner path against tests/strict_ok.vit
 - `make doctor`: print local toolchain and environment readiness
 - `make test`: run tests (std/test)
 - `make parse`: run parser-level tests

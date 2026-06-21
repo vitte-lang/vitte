@@ -30,10 +30,16 @@ The active compiler diagnostics surface is Vitte-owned.
 
 - `vitte check <file>`
 - `vitte build <file> -o <out>`
-- `vitte check --diagnostics-json <file>`
-- `vitte --dump-ast-json <file>`
-- `vitte --dump-hir-json <file>`
-- `vitte --dump-mir-json <file>`
+- `vitte run <file>`
+- `vitte parse <file>`
+- `vitte explain <code>`
+- `vitte check <file> --diagnostics-json`
+- `vitte dump-ast <file>`
+- `vitte dump-hir <file>`
+- `vitte dump-mir <file>`
+
+Use `tests/strict_ok.vit` as the tracked smoke fixture when a page or
+diagnostic needs a small known-good source file.
 
 ## Output formats
 

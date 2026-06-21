@@ -12,7 +12,7 @@
     var btn = document.createElement("button"); btn.type = "button"; btn.className = "text-size-toggle";
     function render() { var large = document.body.classList.contains("text-large"); btn.textContent = large ? "Texte: grand" : "Texte: normal"; btn.setAttribute("aria-pressed", String(large)); }
     render();
-    btn.addEventListener("click", function () { var large = document.body.classList.toggle("text-large"); localStorage.setItem(TEXT_SIZE_KEY, large ? "large" : "normal"); render(); });
+    btn.addEventListener("click", function () { var large = document.body.classList.toggle("text-large"); localStorage.setItem(TEXT_SIZE_KEY, large ? "large" : "normal"); render(); syncHeaderOffset(); });
     header.appendChild(btn);
   }
 
@@ -34,8 +34,8 @@
     var nav = q(".site-nav"), header = q(".site-header"); if (!nav || !header || !q("ul", nav)) return;
     if (!nav.id) nav.id = "primary-nav";
     var btn = document.createElement("button"); btn.type = "button"; btn.className = "menu-toggle"; btn.setAttribute("aria-expanded", "false"); btn.setAttribute("aria-controls", nav.id); btn.textContent = "Menu"; header.insertBefore(btn, nav);
-    btn.addEventListener("click", function () { var open = btn.getAttribute("aria-expanded") === "true"; btn.setAttribute("aria-expanded", String(!open)); nav.classList.toggle("is-open", !open); });
-    nav.addEventListener("click", function (e) { if (!(e.target instanceof Element) || !e.target.closest("a") || !window.matchMedia("(max-width: 768px)").matches) return; btn.setAttribute("aria-expanded", "false"); nav.classList.remove("is-open"); });
+    btn.addEventListener("click", function () { var open = btn.getAttribute("aria-expanded") === "true"; btn.setAttribute("aria-expanded", String(!open)); nav.classList.toggle("is-open", !open); syncHeaderOffset(); });
+    nav.addEventListener("click", function (e) { if (!(e.target instanceof Element) || !e.target.closest("a") || !window.matchMedia("(max-width: 768px)").matches) return; btn.setAttribute("aria-expanded", "false"); nav.classList.remove("is-open"); syncHeaderOffset(); });
   }
 
   function syncHeaderOffset() {
