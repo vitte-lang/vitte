@@ -204,18 +204,93 @@
       .slice(0, limit || 10);
   }
   function setupGlobalSearch() {
-    var header = q(".site-header"); if (!header || q(".doc-search", header)) return;
-    var form = document.createElement("form"); form.className = "doc-search"; form.setAttribute("role", "search");
-    var input = document.createElement("input"); input.className = "doc-search-input"; input.type = "search"; input.placeholder = "Search docs, book, grammar"; input.setAttribute("aria-label", "Search documentation");
-    var controls = document.createElement("div"); controls.className = "doc-search-controls";
-    var sectionSel = document.createElement("select"); sectionSel.className = "doc-search-filter"; sectionSel.innerHTML = '<option value="all">All sections</option><option value="docs">Docs</option><option value="book">Book</option><option value="grammar">Grammar</option>';
-    var langSel = document.createElement("select"); langSel.className = "doc-search-filter"; langSel.innerHTML = '<option value="all">All languages</option><option value="en">EN</option><option value="fr">FR</option>';
-    controls.appendChild(sectionSel); controls.appendChild(langSel);
-    var results = document.createElement("div"); results.className = "doc-search-results"; results.hidden = true;
-    var footer = document.createElement("div"); footer.className = "doc-search-footer"; footer.hidden = true;
-    form.appendChild(input); form.appendChild(controls); form.appendChild(results); form.appendChild(footer); header.appendChild(form); syncHeaderOffset();
+    var header = q(".site-header");
+    if (!header) return;
+
+    var form = q(".doc-search", header);
+    if (!form) {
+      form = document.createElement("form");
+      form.className = "doc-search";
+      form.setAttribute("role", "search");
+      form.setAttribute("action", searchPageURL());
+      form.setAttribute("method", "get");
+      header.appendChild(form);
+    }
+
+    form.setAttribute("role", "search");
+    form.classList.remove("is-open");
+
+    var input = q(".doc-search-input", form);
+    if (!input) {
+      input = document.createElement("input");
+      input.className = "doc-search-input";
+      form.insertBefore(input, form.firstChild);
+    }
+    input.type = "search";
+    input.name = "q";
+    input.placeholder = input.placeholder || "Search docs, book, grammar";
+    input.setAttribute("aria-label", input.getAttribute("aria-label") || "Search documentation");
+    input.setAttribute("autocomplete", "off");
+
+    var controls = q(".doc-search-controls", form);
+    if (!controls) {
+      controls = document.createElement("div");
+      controls.className = "doc-search-controls";
+      input.insertAdjacentElement("afterend", controls);
+    }
+
+    var filters = qa(".doc-search-filter", controls);
+    var sectionSel = q(".doc-search-section", controls) || filters[0];
+    if (!sectionSel) {
+      sectionSel = document.createElement("select");
+      sectionSel.className = "doc-search-filter doc-search-section";
+      controls.appendChild(sectionSel);
+    }
+    sectionSel.name = "section";
+    sectionSel.setAttribute("aria-label", "Filter by section");
+    sectionSel.innerHTML = '<option value="all">All sections</option><option value="docs">Docs</option><option value="book">Book</option><option value="grammar">Grammar</option>';
+
+    var langSel = q(".doc-search-lang", controls) || filters[1];
+    if (!langSel) {
+      langSel = document.createElement("select");
+      langSel.className = "doc-search-filter doc-search-lang";
+      controls.appendChild(langSel);
+    }
+    langSel.name = "lang";
+    langSel.setAttribute("aria-label", "Filter by language");
+    langSel.innerHTML = '<option value="all">All languages</option><option value="en">EN</option><option value="fr">FR</option>';
+
+    var results = q(".doc-search-results", form);
+    if (!results) {
+      results = document.createElement("div");
+      results.className = "doc-search-results";
+      form.appendChild(results);
+    }
+    results.hidden = true;
+
+    var footer = q(".doc-search-footer", form);
+    if (!footer) {
+      footer = document.createElement("div");
+      footer.className = "doc-search-footer";
+      form.appendChild(footer);
+    }
+    footer.hidden = true;
+
+    syncHeaderOffset();
 
     var pages = [], active = -1;
+
+    function closeSearch() {
+      results.hidden = true;
+      footer.hidden = true;
+      form.classList.remove("is-open");
+      active = -1;
+    }
+
+    function openSearch() {
+      form.classList.add("is-open");
+    }
+
     function syncURL(qv, section, lang) {
       var u = new URL(window.location.href);
       if (qv) u.searchParams.set("q", qv); else u.searchParams.delete("q");
@@ -223,14 +298,20 @@
       if (lang && lang !== "all") u.searchParams.set("lang", lang); else u.searchParams.delete("lang");
       history.replaceState({}, "", u.toString());
     }
+
     function applyFromURL() {
       var u = new URL(window.location.href);
       input.value = u.searchParams.get("q") || "";
       sectionSel.value = u.searchParams.get("section") || "all";
       langSel.value = u.searchParams.get("lang") || "all";
     }
+
     function renderFooter(qv, total) {
-      if (!qv || qv.length < 2) { footer.hidden = true; footer.innerHTML = ""; return; }
+      if (!qv || qv.length < 2) {
+        footer.hidden = true;
+        footer.innerHTML = "";
+        return;
+      }
       var u = new URL(searchPageURL());
       u.searchParams.set("q", qv);
       if (sectionSel.value !== "all") u.searchParams.set("section", sectionSel.value);
@@ -238,12 +319,20 @@
       footer.hidden = false;
       footer.innerHTML = '<a class="doc-search-more" href="' + u.href + '">Open full results</a><span class="doc-search-count">' + total + ' match(es)</span>';
     }
+
     function render() {
-      var qv = tokenize(input.value), section = sectionSel.value, lang = langSel.value;
+      var qv = tokenize(input.value), section = sectionSel.value || "all", lang = langSel.value || "all";
       syncURL(qv, section, lang);
-      if (!qv || qv.length < 2) { results.hidden = true; results.innerHTML = ""; renderFooter("", 0); return; }
+      if (!qv || qv.length < 2) {
+        results.hidden = true;
+        results.innerHTML = "";
+        renderFooter("", 0);
+        form.classList.remove("is-open");
+        return;
+      }
       var ranked = rankPages(pages, qv, section, lang, 8);
       renderFooter(qv, ranked.length);
+      openSearch();
       if (!ranked.length) {
         results.hidden = false;
         results.innerHTML = '<p class="doc-search-empty">No results. Browse the <a href="' + sitemapURL() + '">sitemap</a>.</p>';
@@ -258,15 +347,27 @@
       active = -1;
     }
 
-    loadSearchPages().then(function (loaded) { pages = loaded; applyFromURL(); render(); syncHeaderOffset(); }).catch(function () { pages = []; });
+    loadSearchPages().then(function (loaded) {
+      pages = loaded;
+      applyFromURL();
+      render();
+      syncHeaderOffset();
+    }).catch(function () {
+      pages = [];
+      applyFromURL();
+      render();
+      syncHeaderOffset();
+    });
 
     function focusMove(delta) {
-      var items = qa(".doc-search-item", results); if (!items.length) return;
+      var items = qa(".doc-search-item", results);
+      if (!items.length) return;
       active = (active + delta + items.length) % items.length;
       items.forEach(function (el, i) { el.classList.toggle("is-active", i === active); });
       items[active].focus();
     }
 
+    input.addEventListener("focus", function () { if (tokenize(input.value).length >= 2) render(); });
     input.addEventListener("input", render);
     sectionSel.addEventListener("change", render);
     langSel.addEventListener("change", render);
@@ -274,8 +375,7 @@
       e.preventDefault();
       var items = qa(".doc-search-item", results);
       if (active >= 0 && items[active]) { window.location.href = items[active].getAttribute("href"); return; }
-      var first = items[0];
-      if (first) { window.location.href = first.getAttribute("href"); return; }
+      if (items[0]) { window.location.href = items[0].getAttribute("href"); return; }
       var u = new URL(searchPageURL());
       if (input.value.trim()) u.searchParams.set("q", input.value.trim());
       if (sectionSel.value !== "all") u.searchParams.set("section", sectionSel.value);
@@ -283,15 +383,18 @@
       window.location.href = u.href;
     });
     form.addEventListener("keydown", function (e) {
+      if (e.key === "Escape") { e.preventDefault(); closeSearch(); input.blur(); return; }
       if (results.hidden) return;
       if (e.key === "ArrowDown") { e.preventDefault(); focusMove(1); }
       else if (e.key === "ArrowUp") { e.preventDefault(); focusMove(-1); }
-      else if (e.key === "Escape") { results.hidden = true; footer.hidden = true; }
       else if (e.key === "Enter" && active >= 0) {
         var items = qa(".doc-search-item", results); if (items[active]) window.location.href = items[active].getAttribute("href");
       }
     });
-    document.addEventListener("click", function (e) { if (!(e.target instanceof Element) || form.contains(e.target)) return; results.hidden = true; footer.hidden = true; });
+    document.addEventListener("click", function (e) {
+      if (!(e.target instanceof Element) || form.contains(e.target)) return;
+      closeSearch();
+    });
   }
 
 
@@ -415,7 +518,7 @@
   }
 
   document.addEventListener("DOMContentLoaded", function () {
-    removeSkipLink(); registerServiceWorker(); addBreadcrumbs(); linkifyDocReferences(); setupGlobalSearch(); setupSearchPage(); setupLanguageSwitcher(); setupTextSizeToggle(); setupMobileMenu(); wrapTables(); addFloatingToc(); addBackToTop(); lazyLoadDecorativeSvg(); addSmartPagination(); syncHeaderOffset();
+    removeSkipLink(); registerServiceWorker(); addBreadcrumbs(); linkifyDocReferences(); setupGlobalSearch(); setupSearchPage(); setupLanguageSwitcher(); setupThemeToggle(); setupTextSizeToggle(); setupMobileMenu(); wrapTables(); addFloatingToc(); addBackToTop(); lazyLoadDecorativeSvg(); addSmartPagination(); syncHeaderOffset();
     window.addEventListener("resize", syncHeaderOffset);
   });
 })();
