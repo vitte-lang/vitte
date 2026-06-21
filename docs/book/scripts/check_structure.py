@@ -37,7 +37,29 @@ KEYWORD_SKIP = {
     "erreurs-compilateur.html",
     "all.html",
     "commented-examples.html",
+    "keyword.html",
 }
+
+SPECIAL_CHAPTER_SKIP = {
+    "00-avant-propos.html",
+    "00-preface.html",
+}
+
+KEYWORD_REFERENCE_REQUIRED_ANY = [
+    ["Summary"],
+    ["Overview"],
+    ["Definition"],
+    ["Grammatical role"],
+    ["Syntax", "Canonical syntax"],
+    ["Vitte example"],
+    ["Comparison with C"],
+    ["Recommended uses"],
+    ["Invalid example and diagnostic"],
+    ["Common errors", "Common compilation errors"],
+    ["Neighbor keywords"],
+    ["Presence in the book", "Used in chapters"],
+    ["See also"],
+]
 
 
 def strip_html(text: str) -> str:
@@ -57,6 +79,10 @@ def is_redirect_page(text: str) -> bool:
     return 'http-equiv="refresh"' in text.lower() and 'rel="canonical"' in text.lower()
 
 
+def is_reference_keyword_page(text: str) -> bool:
+    return "full reference entry" in text.lower() and has_heading(text, "Overview")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Structure checks for rendered HTML book chapters/keywords")
     ap.add_argument("--book-root", default="book")
@@ -71,6 +97,8 @@ def main() -> int:
     warnings: list[str] = []
 
     for md in sorted(chapters_dir.glob("*.html")):
+        if md.name in SPECIAL_CHAPTER_SKIP:
+            continue
         t = md.read_text(encoding="utf-8", errors="ignore")
         if is_redirect_page(t):
             continue
@@ -112,15 +140,24 @@ def main() -> int:
         t = md.read_text(encoding="utf-8", errors="ignore")
         if is_redirect_page(t):
             continue
+        is_reference_page = is_reference_keyword_page(t)
         scan = strip_html(FENCE_RE.sub("", t))
         h1 = len(H1_RE.findall(t))
         if h1 != 1:
             errors.append(f"{md}: expected exactly one H1, got {h1}")
-        if not LEVEL_RE.search(scan):
-            warnings.append(f"{md}: missing/invalid level banner")
-        for sec in KEYWORD_REQUIRED:
-            if not has_heading(t, sec):
-                warnings.append(f"{md}: missing keyword section {sec}")
+        if is_reference_page:
+            if "Suggested level" not in scan:
+                warnings.append(f"{md}: missing suggested level in overview")
+            for titles in KEYWORD_REFERENCE_REQUIRED_ANY:
+                if not has_any_heading(t, titles):
+                    joined = " or ".join(titles)
+                    warnings.append(f"{md}: missing keyword reference section {joined}")
+        else:
+            if not LEVEL_RE.search(scan):
+                warnings.append(f"{md}: missing/invalid level banner")
+            for sec in KEYWORD_REQUIRED:
+                if not has_heading(t, sec):
+                    warnings.append(f"{md}: missing keyword section {sec}")
         lower_scan = scan.lower()
         if "reading line by line" in lower_scan or "<h2>line by line" in lower_scan or "<h3>line by line" in lower_scan:
             warnings.append(f"{md}: avoid line-by-line commentary in keyword pages")

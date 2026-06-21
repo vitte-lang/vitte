@@ -30,6 +30,33 @@
     select.addEventListener("change", function () { switchLang(select.value); }); wrap.appendChild(select); wrap.appendChild(autoLink); wrap.appendChild(status); header.appendChild(wrap);
   }
 
+  function setupThemeToggle() {
+    var header = q(".site-header");
+    if (!header) return;
+    if (q(".theme-toggle", header)) return;
+    var key = "docs-theme";
+    var btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "theme-toggle";
+
+    function apply(theme) {
+      var resolved = theme === "dark" ? "dark" : "light";
+      document.documentElement.setAttribute("data-theme", resolved);
+      localStorage.setItem(key, resolved);
+      btn.textContent = resolved === "dark" ? "Theme: sombre" : "Theme: clair";
+      btn.setAttribute("aria-pressed", String(resolved === "dark"));
+    }
+
+    btn.addEventListener("click", function () {
+      var current = document.documentElement.getAttribute("data-theme") || localStorage.getItem(key) || "light";
+      apply(current === "dark" ? "light" : "dark");
+      syncHeaderOffset();
+    });
+
+    apply(localStorage.getItem(key) || document.documentElement.getAttribute("data-theme") || "light");
+    header.appendChild(btn);
+  }
+
   function setupMobileMenu() {
     var nav = q(".site-nav"), header = q(".site-header"); if (!nav || !header || !q("ul", nav)) return;
     if (!nav.id) nav.id = "primary-nav";
@@ -181,6 +208,7 @@
   function loadSearchPages() {
     var base = searchBase();
     var files = [
+      "search-index.all.json",
       "search-index.json",
       "search-index.docs.json",
       "search-index.book.json",
@@ -190,7 +218,10 @@
       return fetch(new URL(name, base).href).then(function (r) { return r.ok ? r.json() : { pages: [] }; }).catch(function () { return { pages: [] }; });
     })).then(function (datasets) {
       var pages = [];
-      datasets.forEach(function (set) { (set.pages || []).forEach(function (item) { pages.push(normalizePage(item)); }); });
+      datasets.forEach(function (set) {
+        (set.pages || []).forEach(function (item) { pages.push(normalizePage(item)); });
+      });
+      if (!pages.length) return [];
       return dedupePages(pages);
     });
   }

@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Compiler Power Roadmap</title>
+<link rel="icon" href="../svg/logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../css/site.css">
+<link rel="stylesheet" href="../css/print.css" media="print">
+</head>
+<body class="classic-doc">
+<div class="site-shell">
+<header class="site-header">
+<a class="site-brand" href="../index.html"><img class="site-brand-mark" src="../svg/logo.svg" alt="" width="32" height="32"><span>Vitte</span></a>
+<nav class="site-nav" aria-label="Primary">
+<ul class="nav-band"><li><a class="nav-chip" href="../index.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="../svg/sprite.svg#i-home"></use></svg><span>Welcome</span></a></li><li><a class="nav-chip" href="../doc.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="../svg/sprite.svg#i-docs"></use></svg><span>Documentation</span></a></li><li><a class="nav-chip" href="../download.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="../svg/sprite.svg#i-docs"></use></svg><span>Download</span></a></li><li><a class="nav-chip" href="../source.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="../svg/sprite.svg#i-docs"></use></svg><span>Source</span></a></li><li><a class="nav-chip" href="../community.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="../svg/sprite.svg#i-docs"></use></svg><span>Community</span></a></li><li><a class="nav-chip" href="../news.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="../svg/sprite.svg#i-news"></use></svg><span>News</span></a></li><li><a class="nav-chip" href="../diagnostics.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="../svg/sprite.svg#i-docs"></use></svg><span>Diagnostics</span></a></li><li><a class="nav-chip" href="../suggestions.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="../svg/sprite.svg#i-docs"></use></svg><span>Suggestions</span></a></li></ul>
+</nav>
+<form class="doc-search" role="search" action="../search.html" method="get"><input class="doc-search-input" type="search" name="q" placeholder="Search docs, book, grammar" aria-label="Search documentation" autocomplete="off"><div class="doc-search-controls" aria-label="Search filters"><select class="doc-search-filter doc-search-section" name="section" aria-label="Filter by section"><option value="all">All sections</option><option value="docs">Docs</option><option value="book">Book</option><option value="grammar">Grammar</option></select><select class="doc-search-filter doc-search-lang" name="lang" aria-label="Filter by language"><option value="all">All languages</option><option value="en">EN</option><option value="fr">FR</option></select></div><div class="doc-search-results" hidden></div><div class="doc-search-footer" hidden></div></form>
+</header>
+<main id="main-content" class="site-main">
+<article class="doc-content">
+<h1>Compile Power Roadmap</h1>
+<p>This document defines the engineering path for making Vitte competitive with mature production compilers such as Rust, C#, and Java.</p>
+<p>The goal is not feature volume. The goal is a compiler whose behavior is specified, checked, diagnosed, optimized, and integrated well enough that users can trust it on large codebases.</p>
+<h2>Maturity Model</h2>
+<h3>L0: Syntax and Diagnostics</h3>
+<ul>
+<li>Deterministic lexer and parser.</li>
+<li>Structured diagnostics with stable codes.</li>
+<li>Human, JSON, and LSP output for diagnostics.</li>
+<li>Snapshot coverage for common user-facing errors.</li>
+<li>Recovery that prefers the first root cause over cascades.</li>
+</ul>
+<p>Spoiled:</p>
+<pre><code class="language-sh">make diagnostic-quality
+make compiler-test-suite-check-gate</code></pre>
+<h3>L1: Semantic Core</h3>
+<ul>
+<li>Symbol resolution with module visibility rules.</li>
+<li>Type checking with expected/found provenance.</li>
+<li>Generic and trait/interface constraints represented explicitly.</li>
+<li>Borrow, move, lifetime, and alias checks with structured explanations.</li>
+<li>Constant evaluation and lint passes integrated into the same report model.</li>
+</ul>
+<p>Spoiled:</p>
+<pre><code class="language-sh">make compiler-test-suite-check-gate
+make type-system-gate</code></pre>
+<h3>L2: Verified Middle End</h3>
+<ul>
+<li>HIR and MIR validation before and after transformations.</li>
+<li>MIR lowering with stable control-flow and place semantics.</li>
+<li>Dataflow, liveness, and ownership facts with regression tests.</li>
+<li>Optimization passes that validate input and output.</li>
+<li>Golden IR/MIR snapshots for representative programs.</li>
+</ul>
+<p>Spoiled:</p>
+<pre><code class="language-sh">make compiler-test-suite-check-gate
+make analysis-gate</code></pre>
+<h3>L3: Backend and Runtime</h3>
+<ul>
+<li>Portable backend contract for C/LLVM/native paths.</li>
+<li>ABI profiles and explicit calling convention rules.</li>
+<li>Debug-info and symbol-output policy.</li>
+<li>Linker errors mapped to structured diagnostics.</li>
+<li>Runtime object/materialization checks in the driver pipeline.</li>
+</ul>
+<p>Spoiled:</p>
+<pre><code class="language-sh">make backend-gate</code></pre>
+<h3>L4: Tooling and Developer Experience</h3>
+<ul>
+<li>LSP diagnostics and code actions.</li>
+<li>Formatter and stable style rules.</li>
+<li>Package/module checks.</li>
+<li>Test runner and benchmark runner.</li>
+<li>Documentation generator tied to compiler contracts.</li>
+</ul>
+<p>Spoiled:</p>
+<pre><code class="language-sh">make diagnostic-contracts
+make compiler-test-suite-check-gate
+make compiler-power-gate</code></pre>
+<h3>L5: Production Reliability</h3>
+<ul>
+<li>Full compiler gate in CI.</li>
+<li>Stress, chaos, fuzz, and negative tests.</li>
+<li>Incremental compilation invalidation checks.</li>
+<li>Cross-platform packaging and bootstrap reproducibility.</li>
+<li>Release gates that fail on unowned diagnostics or unchecked compiler paths.</li>
+</ul>
+<p>Spoiled:</p>
+<pre><code class="language-sh">make compiler-max-gate-fast
+make compiler-gate</code></pre>
+<h2>Current Focus</h2>
+<p>The next high-leverage track is <code>compiler-power-gate</code>: a focused, fast gate for the semantic core, diagnostics, HIR/MIR, backend smoke, and driver pipeline.</p>
+<p>It is intentionally smaller than <code>compiler-gate</code> and stricter than a single <code>bin/vitte check</code> pass. It should stay fast enough to run during normal compiler work.</p>
+<h2>Acceptance Criteria</h2>
+<ul>
+<li>Every public diagnosis has a stable code, explanation, help, and suggestion path.</li>
+<li>Type errors expose expected/found context and at least one repair path.</li>
+<li>Borrow errors expose the move/borrow timeline and a repair path.</li>
+<li>HIR/MIR tests prove lowering preserves control flow, projection, and validity.</li>
+<li>Backend tests prove MIR-to-IR/codegen contracts do not silently regress.</li>
+<li>Pipeline tests prove JSON surfaces and stop-after modes remain stable.</li>
+</ul>
+<h2>Backlog Expansion</h2>
+<ul>
+<li>Add generic constraint tests with success and failure cases.</li>
+<li>Add trait/interface resolution tests once the trait model is stable.</li>
+<li>Add lifetime-region snapshot tests for nested scopes and returns.</li>
+<li>Make <code>lexer_tests.vit</code>, <code>borrowck_tests.vit</code>, <code>const_eval_tests.vit</code>, and <code>codegen_tests.vit</code> checkable by the current parser surface.</li>
+<li>Add MIR optimization before/after validation snapshots.</li>
+<li>Add ABI conformance fixtures for exported functions and FFI calls.</li>
+<li>Add LSP code-action JSON snapshots for diagnostics with machine suggestions.</li>
+<li>Add formatter/idempotence tests when formatting is implemented.</li>
+</ul>
+<h2>Known Checkability Gaps</h2>
+<p>Some compiler test suites are intentionally not part of <code>compiler-power-gate</code> yet because they contain fixture strings that expose current parser/check limitations:</p>
+<ul>
+<li>Multi-line string concatenation after <code>=</code> or <code>+</code> is rejected as an incomplete expression.</li>
+<li>Certain fixture text inside string literals is still interpreted by early validation paths, for example numeric-looking fragments and <code>static_assert(...)</code> snippets.</li>
+<li>These are parser/check-surface issues, not reasons to weaken semantic coverage. The stable gate uses <code>compiler-test-suite-check-gate</code> until these suites are migrated or the parser accepts the fixture style.</li>
+</ul>
+</article>
+</main>
+<footer class="site-footer">
+<p class="site-footer-path">compiler/COMPILER_POWER_ROADMAP.html</p>
+<p><a href="../index.html">Back to home</a></p>
+</footer>
+</div>
+</body>
+</html>

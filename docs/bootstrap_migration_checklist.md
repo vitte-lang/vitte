@@ -2,6 +2,56 @@
 
 Goal: remove temporary host-language audit exceptions once stage1/stage2 are fully Vitte.
 
+## Overview
+
+This checklist tracks the migration from mixed bootstrap assumptions to a fully
+Vitte-owned bootstrap chain.
+
+| Phase | Focus |
+| --- | --- |
+| 0 | stable baseline and audited gates |
+| 1 | Vitte-native stage1 |
+| 2 | Vitte-native stage2 |
+| 3 | remove temporary audit exceptions |
+| 4 | remove final stage0 C exception |
+
+## Responsibilities
+
+- Keep the migration state explicit.
+- Make exit criteria reviewable.
+- Tie each completed milestone to an observable command or artifact.
+
+## Invariants
+
+- Phase completion means the corresponding exit criteria are actually true.
+- Removing host-language exceptions must not bypass bootstrap verification.
+- Each migration step should preserve reproducibility and CI visibility.
+
+## Data Flow
+
+1. Seed stage rebuilds stage1.
+2. Stage1 rebuilds stage2.
+3. Stage2 replaces the default compiler surface.
+4. Audit exceptions are removed only after the rebuilt chain is stable.
+
+## Pipeline
+
+This checklist follows the same staged bootstrap pipeline described in the
+bootstrap overview and native IR contract documents. It exists to show progress
+through that pipeline, not to redefine it.
+
+## Examples
+
+```sh
+make seed-gate
+make bootstrap-all
+make bootstrap-verify
+make build
+```
+
+Those commands map directly to the exit criteria used below and should be run in
+that order when debugging a migration regression.
+
 ## Phase 0 — Baseline (current)
 
 - [x] `make seed-gate` is stable on `driver/ir/frontend/backends` + valid tests.

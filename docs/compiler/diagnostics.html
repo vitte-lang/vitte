@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Diagnostics</title>
+<link rel="icon" href="../svg/logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../css/site.css">
+<link rel="stylesheet" href="../css/print.css" media="print">
+</head>
+<body class="classic-doc">
+<div class="site-shell">
+<header class="site-header">
+<a class="site-brand" href="../index.html"><img class="site-brand-mark" src="../svg/logo.svg" alt="" width="32" height="32"><span>Vitte</span></a>
+<nav class="site-nav" aria-label="Primary">
+<ul class="nav-band"><li><a class="nav-chip" href="../index.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="../svg/sprite.svg#i-home"></use></svg><span>Welcome</span></a></li><li><a class="nav-chip" href="../doc.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="../svg/sprite.svg#i-docs"></use></svg><span>Documentation</span></a></li><li><a class="nav-chip" href="../download.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="../svg/sprite.svg#i-docs"></use></svg><span>Download</span></a></li><li><a class="nav-chip" href="../source.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="../svg/sprite.svg#i-docs"></use></svg><span>Source</span></a></li><li><a class="nav-chip" href="../community.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="../svg/sprite.svg#i-docs"></use></svg><span>Community</span></a></li><li><a class="nav-chip" href="../news.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="../svg/sprite.svg#i-news"></use></svg><span>News</span></a></li><li><a class="nav-chip" href="../diagnostics.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="../svg/sprite.svg#i-docs"></use></svg><span>Diagnostics</span></a></li><li><a class="nav-chip" href="../suggestions.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="../svg/sprite.svg#i-docs"></use></svg><span>Suggestions</span></a></li></ul>
+</nav>
+<form class="doc-search" role="search" action="../search.html" method="get"><input class="doc-search-input" type="search" name="q" placeholder="Search docs, book, grammar" aria-label="Search documentation" autocomplete="off"><div class="doc-search-controls" aria-label="Search filters"><select class="doc-search-filter doc-search-section" name="section" aria-label="Filter by section"><option value="all">All sections</option><option value="docs">Docs</option><option value="book">Book</option><option value="grammar">Grammar</option></select><select class="doc-search-filter doc-search-lang" name="lang" aria-label="Filter by language"><option value="all">All languages</option><option value="en">EN</option><option value="fr">FR</option></select></div><div class="doc-search-results" hidden></div><div class="doc-search-footer" hidden></div></form>
+</header>
+<main id="main-content" class="site-main">
+<article class="doc-content">
+<h1>Diagnostics</h1>
+<p>The active compiler diagnostics surface is Vitte-owned.</p>
+<h2>Source of truth</h2>
+<ul>
+<li>Structured diagnostics types and renderers live in <code>src/vitte/compiler/diagnostics/diagnostic.vit</code>.</li>
+<li>The seed path documented in <code>docs/seed_diagnostics.md</code> only describes the bootstrap stage0 surface.</li>
+<li>Ad-hoc diagnostics are rejected: public errors should be emitted through the shared <code>Diagnostic</code> model.</li>
+<li>Locale coverage starts from <code>tests/diag_snapshots/core_diagnostic_codes.txt</code> and is expanded by <code>tools/diagnostic_catalog_data.py</code>.</li>
+<li><code>tools/check_diagnostics_locales.py</code> verifies every supported locale against the expanded public contract.</li>
+<li>Each public code has Fluent keys for:</li>
+<li><code>CODE</code> message title</li>
+<li><code>CODE.summary</code></li>
+<li><code>CODE.cause</code></li>
+<li><code>CODE.step1</code></li>
+<li><code>CODE.fix</code></li>
+<li><code>CODE.example</code></li>
+<li>The generated public catalog is intentionally broad enough for a large compiler error surface: syntax, lexer, parser, names/modules, type checking, generics, traits, ownership, lifetimes, constants, macros, HIR/MIR/IR, backend, linker, runtime, driver, bootstrap, and resource limits.</li>
+</ul>
+<h2>Public vs. Internal Codes</h2>
+<ul>
+<li>Public codes are stable user-facing diagnostics that may appear in text, JSON, LSP, snapshots, and local catalogs.</li>
+<li>Internal codes are implementation/debugging details and should not be required in <code>locales/*/diagnostics.ftl</code>.</li>
+<li>Lexer input-hardening and source-shape failures such as <code>LEX_E_INVALID_UTF8</code>, <code>LEX_E_TOKEN_TOO_LARGE</code>, and unterminated token codes are public because users can receive them directly from normal compiler commands.</li>
+<li>ICE or maintainer-only failures such as <code>LEX_E_INTERNAL</code> remain internal unless they are intentionally promoted into the public diagnostics contract.</li>
+<li>Reserved public diagnostics may appear in the Fluent catalog before every compiler path emits them. This keeps installers, completions, docs, LSP, and future compiler phases aligned before rollout.</li>
+</ul>
+<h2>Main commands</h2>
+<ul>
+<li><code>vitte check &lt;file&gt;</code></li>
+<li><code>vitte build &lt;file&gt; -o &lt;out&gt;</code></li>
+<li><code>vitte run &lt;file&gt;</code></li>
+<li><code>vitte parse &lt;file&gt;</code></li>
+<li><code>vitte explain &lt;code&gt;</code></li>
+<li><code>vitte check &lt;file&gt; --diagnostics-json</code></li>
+<li><code>vitte dump-ast &lt;file&gt;</code></li>
+<li><code>vitte dump-hir &lt;file&gt;</code></li>
+<li><code>vitte dump-mir &lt;file&gt;</code></li>
+</ul>
+<p>Use <code>tests/strict_ok.vit</code> as the tracked smoke fixture when a page or diagnostic needs a small known-good source file.</p>
+<h2>Output formats</h2>
+<ul>
+<li>Human text:</li>
+<li><code>error[CODE] phase: message</code></li>
+<li>labels, notes, helps, and suggestions are rendered below the primary header.</li>
+<li>JSON envelope:</li>
+<li><code>schema = &quot;vitte.compiler.surface&quot;</code></li>
+<li><code>surface = &quot;diagnostics&quot;</code></li>
+<li>top-level validity and pipeline summary fields</li>
+<li><code>primary_report.diagnostics[]</code> for the flattened report</li>
+<li><code>phase_reports.&lt;phase&gt;</code> for per-phase diagnostics</li>
+</ul>
+<h2>Contract suggestions</h2>
+<ul>
+<li>Diagnostics carry a bounded suggestion list, ordered by applicability and confidence.</li>
+<li>The default public limit is 5 suggestions per diagnosis.</li>
+<li>Each suggestion has:</li>
+<li><code>kind</code>: <code>insert</code>, <code>replace</code>, <code>remove</code>, or <code>help</code></li>
+<li><code>span</code>: the edit or explanation location</li>
+<li><code>replacement</code>: concrete text for edit suggestions, empty for manual help</li>
+<li><code>machine_applicable</code>: legacy boolean for safe automatic edits</li>
+<li><code>applicability</code>: <code>machine</code>, <code>maybe_machine</code>, or <code>manual</code></li>
+<li><code>confidence</code>: <code>high</code>, <code>medium</code>, or <code>low</code></li>
+<li><code>reason</code>: why this suggestion is attached to the diagnosis</li>
+<li><code>machine</code> suggestions may be applied by tools without extra inference.</li>
+<li><code>maybe_machine</code> suggestions are useful as IDE quick fixes but should be reviewed.</li>
+<li><code>manual</code> suggestions are explanatory and should not be applied automatically.</li>
+<li>Code-specific suggestions live behind <code>diagnostic_catalog_suggestions</code>; phase defaults are only a fallback.</li>
+<li>LSP integration exposes suggestions as code actions with the original diagnostic code, range, replacement text, and applicability.</li>
+</ul>
+<h2>Stable phases</h2>
+<ul>
+<li><code>lexer</code></li>
+<li><code>parser</code></li>
+<li><code>ast</code></li>
+<li><code>ast_validation</code></li>
+<li><code>module_resolution</code></li>
+<li><code>symbol_resolution</code></li>
+<li><code>sema</code></li>
+<li><code>hir</code></li>
+<li><code>typeck</code></li>
+<li><code>borrowck</code></li>
+<li><code>lifetime</code></li>
+<li><code>mir</code></li>
+<li><code>mir_lowering</code></li>
+<li><code>mir_verification</code></li>
+<li><code>ir</code></li>
+<li><code>backend</code></li>
+<li><code>linker</code></li>
+<li><code>runtime_execution</code></li>
+<li><code>driver</code></li>
+<li><code>internal</code></li>
+</ul>
+<h2>Operational notes</h2>
+<ul>
+<li><code>pipeline_failed_at</code> points to the first failing stage for the current request.</li>
+<li>Input-hardening failures use explicit limit codes such as:</li>
+<li><code>LIMIT_FILE_SIZE_MAX</code></li>
+<li><code>LIMIT_TOKEN_SIZE_MAX</code></li>
+<li><code>LIMIT_AST_DEPTH_MAX</code></li>
+<li><code>LIMIT_EXPR_DEPTH_MAX</code></li>
+<li><code>LIMIT_IMPORT_DEPTH_MAX</code></li>
+<li><code>LIMIT_MODULE_COUNT_MAX</code></li>
+<li><code>LIMIT_DIAGNOSTICS_MAX</code></li>
+<li><code>LIMIT_SYMBOL_COUNT_MAX</code></li>
+<li><code>LIMIT_PARSER_RECURSION_MAX</code></li>
+<li><code>LIMIT_MACRO_EXPANSION_MAX</code></li>
+<li><code>InvalidInput</code> is reserved for hostile or malformed input; ICE/internal failures should remain compiler bugs only.</li>
+</ul>
+</article>
+</main>
+<footer class="site-footer">
+<p class="site-footer-path">compiler/diagnostics.html</p>
+<p><a href="../index.html">Back to home</a></p>
+</footer>
+</div>
+</body>
+</html>
+/p>
+<p><a href="../index.html">Back to home</a></p>
+</footer>
+</div>
+</body>
+</html>
