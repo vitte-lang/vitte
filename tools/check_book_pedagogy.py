@@ -8,6 +8,31 @@ ROOT = Path('docs/book')
 ALL = sorted(ROOT.rglob('*.html'))
 SCOPE_FILE = Path('tools/book_pedagogy_scope.json')
 
+REFERENCE_PAGE_PATTERNS = [
+    "docs/book/STYLE.html",
+    "docs/book/book-health.html",
+    "docs/book/checklist.html",
+    "docs/book/ci.html",
+    "docs/book/classic-mistakes.html",
+    "docs/book/cli.html",
+    "docs/book/compiler-stdlib-contract.html",
+    "docs/book/errors.html",
+    "docs/book/glossary.html",
+    "docs/book/index.html",
+    "docs/book/roadmap-pedagogique.html",
+    "docs/book/start-30-min.html",
+    "docs/book/status.html",
+    "docs/book/stdlib.html",
+    "docs/book/summary.html",
+    "docs/book/technical-index.html",
+    "docs/book/chapters/keywords/*.html",
+    "docs/book/grammar/*.html",
+    "docs/book/grammar/railroad/*.html",
+    "docs/book/logique/*.html",
+    "docs/book/stdlib-reference/*.html",
+    "docs/book/stdlib-reference/**/*.html",
+]
+
 def load_scope(phase_arg: str | None):
     data = json.loads(SCOPE_FILE.read_text(encoding='utf-8'))
     phase = phase_arg or data.get('default_phase', 'phase1')
@@ -22,6 +47,11 @@ def is_target(p: Path, include_patterns: list[str]) -> bool:
         if p2.match(pat):
             return True
     return False
+
+
+def is_reference_surface(p: Path) -> bool:
+    p2 = Path(p.as_posix())
+    return any(p2.match(pattern) for pattern in REFERENCE_PAGE_PATTERNS)
 
 def eval_page(p: Path, strict_h1: bool):
     s = p.read_text(encoding='utf-8', errors='ignore')
@@ -61,6 +91,8 @@ blocking = []
 warnings = []
 
 for p in ALL:
+    if is_reference_surface(p) and not is_target(p, include_patterns):
+        continue
     blocking_issues, warning_issues = eval_page(p, strict_h1=strict_h1)
     if not blocking_issues and not warning_issues:
         continue

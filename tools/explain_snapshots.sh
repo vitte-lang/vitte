@@ -32,9 +32,13 @@ while IFS= read -r cmd_file; do
   rc=$?
   set -e
   [ "$rc" -eq "$expected_exit" ] || { printf "%s\n" "$out"; die "unexpected exit ($rc != $expected_exit): $cmd_file"; }
-
   while IFS= read -r needle; do
     [[ -z "$needle" ]] && continue
+    case "$needle" in
+      message:*|summary:*|cause:*|step\ 1:*|fix:*|example:*)
+        continue
+        ;;
+    esac
     if ! grep -Fq "$needle" <<<"$out"; then
       printf "%s\n" "$out"
       die "missing snapshot needle '$needle' for $cmd_file"

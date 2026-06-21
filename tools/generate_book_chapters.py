@@ -970,6 +970,7 @@ def render_page(meta: dict) -> str:
     article = render_article(meta, profile_name)
     title = meta["title"]
     rel = "../../"
+    header = f"""<header class="site-header"><a class="site-brand" href="{rel}index.html"><img class="site-brand-mark" src="{rel}svg/logo.svg" alt="" width="32" height="32"><span>Vitte</span></a><nav class="site-nav" aria-label="Primary"><ul class="nav-band"><li><a class="nav-chip" href="{rel}index.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="{rel}svg/sprite.svg#i-home"></use></svg><span>Welcome</span></a></li><li><a class="nav-chip" href="{rel}doc.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="{rel}svg/sprite.svg#i-docs"></use></svg><span>Documentation</span></a></li><li><a class="nav-chip" href="{rel}download.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="{rel}svg/sprite.svg#i-docs"></use></svg><span>Download</span></a></li><li><a class="nav-chip" href="{rel}source.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="{rel}svg/sprite.svg#i-docs"></use></svg><span>Source</span></a></li><li><a class="nav-chip" href="{rel}community.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="{rel}svg/sprite.svg#i-docs"></use></svg><span>Community</span></a></li><li><a class="nav-chip" href="{rel}news.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="{rel}svg/sprite.svg#i-news"></use></svg><span>News</span></a></li><li><a class="nav-chip" href="{rel}diagnostics.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="{rel}svg/sprite.svg#i-docs"></use></svg><span>Diagnostics</span></a></li><li><a class="nav-chip" href="{rel}suggestions.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="{rel}svg/sprite.svg#i-docs"></use></svg><span>Suggestions</span></a></li></ul></nav><form class="doc-search" role="search" action="{rel}search.html" method="get"><input class="doc-search-input" type="search" name="q" placeholder="Search docs, book, grammar" aria-label="Search documentation" autocomplete="off"><div class="doc-search-controls" aria-label="Search filters"><select class="doc-search-filter doc-search-section" name="section" aria-label="Filter by section"><option value="all">All sections</option><option value="docs">Docs</option><option value="book">Book</option><option value="grammar">Grammar</option></select><select class="doc-search-filter doc-search-lang" name="lang" aria-label="Filter by language"><option value="all">All languages</option><option value="en">EN</option><option value="fr">FR</option></select></div><div class="doc-search-results" hidden></div><div class="doc-search-footer" hidden></div></form></header>"""
     return f"""<!doctype html>
 <html lang="en">
 <head>
@@ -981,17 +982,12 @@ def render_page(meta: dict) -> str:
 <link rel="stylesheet" href="{rel}css/print.css" media="print">
 <link rel="alternate" hreflang="en" href="https://vitte-lang.org/{html.escape(Path(meta['path']).name)}">
 <link rel="alternate" hreflang="x-default" href="https://vitte-lang.org/{html.escape(Path(meta['path']).name)}">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; font-src 'self'; connect-src 'self';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none';">
 </head>
 <body class="classic-doc">
 <a class="skip-link" href="#main-content">Skip to content</a>
 <div class="site-shell">
-<header class="site-header">
-<a class="site-brand" href="{rel}index.html"><img class="site-brand-mark" src="{rel}svg/logo.svg" alt="" width="32" height="32"><span>Vitte</span></a>
-<nav class="site-nav" aria-label="Primary">
-<ul class="nav-band"><li><a class="nav-chip" href="{rel}index.html"><img src="{rel}svg/home.svg" alt="" width="14" height="14" aria-hidden="true"><span>Welcome</span></a></li><li><a class="nav-chip" href="{rel}doc.html"><img src="{rel}svg/docs.svg" alt="" width="14" height="14" aria-hidden="true"><span>Documentation</span></a></li><li><a class="nav-chip" href="{rel}download.html"><img src="{rel}svg/download.svg" alt="" width="14" height="14" aria-hidden="true"><span>Download</span></a></li><li><a class="nav-chip" href="{rel}source.html"><img src="{rel}svg/source.svg" alt="" width="14" height="14" aria-hidden="true"><span>Source</span></a></li><li><a class="nav-chip" href="{rel}community.html"><img src="{rel}svg/community.svg" alt="" width="14" height="14" aria-hidden="true"><span>Community</span></a></li><li><a class="nav-chip" href="{rel}news.html"><img src="{rel}svg/news.svg" alt="" width="14" height="14" aria-hidden="true"><span>News</span></a></li><li><a class="nav-chip" href="{rel}diagnostics.html"><img src="{rel}svg/diagnostics.svg" alt="" width="14" height="14" aria-hidden="true"><span>Diagnostics</span></a></li><li><a class="nav-chip" href="{rel}suggestions.html"><img src="{rel}svg/suggestions.svg" alt="" width="14" height="14" aria-hidden="true"><span>Suggestions</span></a></li></ul>
-</nav>
-</header>
+{header}
 <main id="main-content" class="site-main">
 <article class="doc-content">
 {article}
@@ -1014,6 +1010,7 @@ def render_pocket_page(meta: dict) -> str:
     profile = PROFILES[profile_name]
     title = meta["title"]
     rel = "../../../"
+    header = f"""<header class="site-header"><a class="site-brand" href="{rel}index.html"><img class="site-brand-mark" src="{rel}svg/logo.svg" alt="" width="32" height="32"><span>Vitte</span></a><nav class="site-nav" aria-label="Primary"><ul class="nav-band"><li><a class="nav-chip" href="{rel}index.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="{rel}svg/sprite.svg#i-home"></use></svg><span>Welcome</span></a></li><li><a class="nav-chip" href="{rel}doc.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="{rel}svg/sprite.svg#i-docs"></use></svg><span>Documentation</span></a></li><li><a class="nav-chip" href="{rel}download.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="{rel}svg/sprite.svg#i-docs"></use></svg><span>Download</span></a></li><li><a class="nav-chip" href="{rel}source.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="{rel}svg/sprite.svg#i-docs"></use></svg><span>Source</span></a></li><li><a class="nav-chip" href="{rel}community.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="{rel}svg/sprite.svg#i-docs"></use></svg><span>Community</span></a></li><li><a class="nav-chip" href="{rel}news.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="{rel}svg/sprite.svg#i-news"></use></svg><span>News</span></a></li><li><a class="nav-chip" href="{rel}diagnostics.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="{rel}svg/sprite.svg#i-docs"></use></svg><span>Diagnostics</span></a></li><li><a class="nav-chip" href="{rel}suggestions.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="{rel}svg/sprite.svg#i-docs"></use></svg><span>Suggestions</span></a></li></ul></nav><form class="doc-search" role="search" action="{rel}search.html" method="get"><input class="doc-search-input" type="search" name="q" placeholder="Search docs, book, grammar" aria-label="Search documentation" autocomplete="off"><div class="doc-search-controls" aria-label="Search filters"><select class="doc-search-filter doc-search-section" name="section" aria-label="Filter by section"><option value="all">All sections</option><option value="docs">Docs</option><option value="book">Book</option><option value="grammar">Grammar</option></select><select class="doc-search-filter doc-search-lang" name="lang" aria-label="Filter by language"><option value="all">All languages</option><option value="en">EN</option><option value="fr">FR</option></select></div><div class="doc-search-results" hidden></div><div class="doc-search-footer" hidden></div></form></header>"""
     article = [
         '<p class="book-progress"></p>',
         f"<h1>{html.escape(title)} (pocket version)</h1>",
@@ -1046,17 +1043,12 @@ def render_pocket_page(meta: dict) -> str:
 <link rel="stylesheet" href="{rel}css/print.css" media="print">
 <link rel="alternate" hreflang="en" href="https://vitte-lang.org/{html.escape(pocket_path)}">
 <link rel="alternate" hreflang="x-default" href="https://vitte-lang.org/{html.escape(pocket_path)}">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; font-src 'self'; connect-src 'self';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none';">
 </head>
 <body class="classic-doc">
 <a class="skip-link" href="#main-content">Skip to content</a>
 <div class="site-shell">
-<header class="site-header">
-<a class="site-brand" href="{rel}index.html"><img class="site-brand-mark" src="{rel}svg/logo.svg" alt="" width="32" height="32"><span>Vitte</span></a>
-<nav class="site-nav" aria-label="Primary">
-<ul class="nav-band"><li><a class="nav-chip" href="{rel}index.html"><img src="{rel}svg/home.svg" alt="" width="14" height="14" aria-hidden="true"><span>Welcome</span></a></li><li><a class="nav-chip" href="{rel}doc.html"><img src="{rel}svg/docs.svg" alt="" width="14" height="14" aria-hidden="true"><span>Documentation</span></a></li><li><a class="nav-chip" href="{rel}download.html"><img src="{rel}svg/download.svg" alt="" width="14" height="14" aria-hidden="true"><span>Download</span></a></li><li><a class="nav-chip" href="{rel}source.html"><img src="{rel}svg/source.svg" alt="" width="14" height="14" aria-hidden="true"><span>Source</span></a></li><li><a class="nav-chip" href="{rel}community.html"><img src="{rel}svg/community.svg" alt="" width="14" height="14" aria-hidden="true"><span>Community</span></a></li><li><a class="nav-chip" href="{rel}news.html"><img src="{rel}svg/news.svg" alt="" width="14" height="14" aria-hidden="true"><span>News</span></a></li><li><a class="nav-chip" href="{rel}diagnostics.html"><img src="{rel}svg/diagnostics.svg" alt="" width="14" height="14" aria-hidden="true"><span>Diagnostics</span></a></li><li><a class="nav-chip" href="{rel}suggestions.html"><img src="{rel}svg/suggestions.svg" alt="" width="14" height="14" aria-hidden="true"><span>Suggestions</span></a></li></ul>
-</nav>
-</header>
+{header}
 <main id="main-content" class="site-main">
 <article class="doc-content">
 {body}

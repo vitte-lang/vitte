@@ -137,6 +137,21 @@ NAV_ITEMS = [
 ]
 
 
+def render_search_form(prefix: str) -> str:
+    return (
+        f'<form class="doc-search" role="search" action="{prefix}search.html" method="get">'
+        '<input class="doc-search-input" type="search" name="q" placeholder="Search docs, book, grammar" aria-label="Search documentation" autocomplete="off">'
+        '<div class="doc-search-controls" aria-label="Search filters">'
+        '<select class="doc-search-filter doc-search-section" name="section" aria-label="Filter by section">'
+        '<option value="all">All sections</option><option value="docs">Docs</option><option value="book">Book</option><option value="grammar">Grammar</option>'
+        '</select>'
+        '<select class="doc-search-filter doc-search-lang" name="lang" aria-label="Filter by language">'
+        '<option value="all">All languages</option><option value="en">EN</option><option value="fr">FR</option>'
+        '</select>'
+        '</div><div class="doc-search-results" hidden></div><div class="doc-search-footer" hidden></div></form>'
+    )
+
+
 def protect_document(text: str) -> tuple[str, list[tuple[str, str]]]:
     placeholders: list[tuple[str, str]] = []
 
@@ -441,7 +456,7 @@ def extract_title(text: str, fallback: str) -> str:
 def site_shell(body: str, title: str, md_path: Path, root: Path) -> str:
     prefix = rel_prefix(md_path, root)
     nav_html = "".join(
-        f'<li><a class="nav-chip" href="{prefix}{href}"><img src="{prefix}svg/{icon}" alt="" width="14" height="14" aria-hidden="true"><span>{html_escape(label)}</span></a></li>'
+        f'<li><a class="nav-chip" href="{prefix}{href}"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="{prefix}svg/sprite.svg#i-{"home" if icon == "home.svg" else "news" if icon == "news.svg" else "docs"}"></use></svg><span>{html_escape(label)}</span></a></li>'
         for label, href, icon in NAV_ITEMS
     )
     return "\n".join([
@@ -462,8 +477,9 @@ def site_shell(body: str, title: str, md_path: Path, root: Path) -> str:
         '<nav class="site-nav" aria-label="Primary">',
         f'<ul class="nav-band">{nav_html}</ul>',
         "</nav>",
+        render_search_form(prefix),
         "</header>",
-        '<main class="site-main">',
+        '<main id="main-content" class="site-main">',
         '<article class="doc-content">',
         body,
         "</article>",

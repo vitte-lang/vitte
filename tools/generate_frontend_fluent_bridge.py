@@ -72,7 +72,6 @@ def render() -> str:
         "    generated: bool",
         "}",
         "",
-        "# Generated from locales/*/diagnostics.ftl by tools/generate_frontend_fluent_bridge.py",
         'const FLUENT_CATALOG_GENERATOR: string = "tools/generate_frontend_fluent_bridge.py";',
         'const FLUENT_DEFAULT_LOCALE: string = "en";',
         "",

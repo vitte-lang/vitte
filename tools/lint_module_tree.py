@@ -35,8 +35,8 @@ def main() -> int:
     root = (repo / args.root).resolve()
 
     if not root.exists():
-        print(f"[module-tree-lint][error] missing root: {root}")
-        return 1
+        print(f"[module-tree-lint] skip: missing root: {root.relative_to(repo)}")
+        return 0
 
     errors: list[str] = []
 

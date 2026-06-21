@@ -84,7 +84,7 @@ play_html=''.join('<details><summary><code>{}</code></summary><pre><code>{}</cod
 # toolbox
 trace=''.join('<tr><td><a href="index.html#{}"><code>{}</code></a></td><td>{}</td></tr>'.format(r['name'],r['name'],'<br>'.join(html.escape(t) for t in sorted(set(rule_to_tests[r['name']]))) or '<em>none</em>') for r in rules)
 
-toolbox=f'''<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Grammar Toolbox</title><link rel="stylesheet" href="../css/site.css"></head><body class="classic-doc"><div class="site-shell"><main class="site-main"><article class="doc-content">
+toolbox=f'''<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Grammar Toolbox</title><link rel="stylesheet" href="../css/site.css"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none';"></head><body class="classic-doc"><a class="skip-link" href="#main-content">Skip to content</a><div class="site-shell"><main id="main-content" class="site-main"><article class="doc-content">
 <h1>Grammar Toolbox</h1>
 <p>Coverage: <strong>{coverage:.2f}%</strong> ({covered}/{len(rules)})</p>
 <h2>Frequent Errors mapped to Diagnostics</h2><table><thead><tr><th>Error</th><th>Rule</th><th>Expected Diagnostic</th></tr></thead><tbody>{err_rows}</tbody></table>
@@ -98,12 +98,7 @@ toolbox=f'''<!doctype html><html lang="en"><head><meta charset="utf-8"><meta nam
 <h2>Playground examples (static)</h2>{play_html}
 <h2>Version Diff</h2><p><a href="diff.html">Open vN vs vN+1 diff</a></p>
 <h2>API and Exports</h2><ul><li><a href="rules-normalized.json">rules-normalized.json</a></li><li><a href="rules.json">rules.json</a></li><li><a href="grammar.sha256">grammar.sha256</a></li></ul>
-<script>
-fetch('rules.json').then(r=>r.json()).then(d=>{{const rs=d.rules||[];const i=document.getElementById('g-search');const o=document.getElementById('g-results');function r(q){{q=(q||'').trim().toLowerCase();if(!q){{o.innerHTML='';return;}}const m=rs.filter(x=>x.name.toLowerCase().includes(q)||x.body.toLowerCase().includes(q)).slice(0,50);o.innerHTML=m.map(x=>`<p><a href=\"index.html#${{x.name}}\"><code>${{x.name}}</code></a><br><small>${{(x.body||'').slice(0,140).replace(/</g,'&lt;')}}</small></p>`).join('')||'<p>No match.</p>';}}i.addEventListener('input',()=>r(i.value));}});
-document.addEventListener('click', async (e)=>{{const b=e.target.closest('.copy-example');if(!b)return;try{{await navigator.clipboard.writeText(b.getAttribute('data-copy')||'');b.textContent='Copied';setTimeout(()=>b.textContent='Copy',900);}}catch{{}}}});
-document.getElementById('g-lint-run').addEventListener('click', ()=>{{const s=(document.getElementById('g-lint-input').value||'').trim();const o=document.getElementById('g-lint-out');const iss=[];if(!s)iss.push('Empty snippet');if(s.includes('proc')&&!s.includes('{{'))iss.push('Procedure may miss block opening {{');if(/\bconst\b/.test(s)&&!/=/.test(s))iss.push('Const declaration may miss =');if(/\bspace\b/.test(s)&&/\bspace\b\s*$/.test(s))iss.push('Space declaration may miss module path');if(/\bentry\b/.test(s)&&!/\bat\b/.test(s))iss.push('Entry declaration may miss keyword at');o.innerHTML=iss.length?'<ul>'+iss.map(i=>'<li>'+i+'</li>').join('')+'</ul>':'<p>Heuristic lint: no obvious issue.</p>';}});
-</script>
-</article></main></div></body></html>'''
+</article></main></div><script type="module" src="../js/grammar-toolbox.js"></script></body></html>'''
 (DOCS/'toolbox.html').write_text(toolbox, encoding='utf-8')
 
 # pocket printable

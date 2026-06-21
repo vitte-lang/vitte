@@ -1,6 +1,13 @@
 #!/usr/bin/env python3
 from __future__ import annotations
-import hashlib, json, re, shutil, urllib.parse, urllib.request, html
+import hashlib
+import html
+import json
+import re
+import shutil
+import urllib.parse
+import urllib.request
+from collections import defaultdict
 from html.parser import HTMLParser
 from datetime import datetime, timezone
 from pathlib import Path
@@ -34,16 +41,136 @@ ARTICLE_RE=re.compile(r'<article class="doc-content">([\s\S]*?)</article>')
 TITLE_RE=re.compile(r'<title>(.*?)</title>')
 TAG_RE=re.compile(r'<[^>]+>')
 
+# -----------------------------------------------------------------------------
+# Build configuration
+# -----------------------------------------------------------------------------
+
+SEARCH_CONTENT_LIMIT = 5000
+SEARCH_VERSION = "v5"
+STATUS_VERSION = "v5"
+
+SECTION_DOCS = "docs"
+SECTION_BOOK = "book"
+SECTION_GRAMMAR = "grammar"
+
+PEDAGOGY_VERSION = "v1"
+CONCEPT_REPORT_VERSION = "v1"
+GLOSSARY_REPORT_VERSION = "v1"
+MAX_KEYWORDS = 25
+
+PEDAGOGY_KEYWORDS = [
+    'syntax', 'type', 'types', 'module', 'modules', 'compiler',
+    'lexer', 'parser', 'ast', 'hir', 'sema', 'typeck',
+    'borrowck', 'mir', 'ir', 'backend', 'runtime',
+    'async', 'future', 'executor', 'channel', 'task',
+    'filesystem', 'network', 'collections', 'graph'
+]
+
 NAV=[('Welcome','index.html','i-home'),('Documentation','doc.html','i-docs'),('Download','download.html','i-docs'),('Source','source.html','i-docs'),('Community','community.html','i-docs'),('News','news.html','i-news'),('Diagnostics','diagnostics.html','i-docs'),('Suggestions','suggestions.html','i-docs')]
 CACHE={}
 
-def text(x): return re.sub(r'\s+',' ',TAG_RE.sub(' ',x)).strip()
+# -----------------------------------------------------------------------------
+# Utility helpers
+# -----------------------------------------------------------------------------
+
+def clean_text(value: str) -> str:
+    value = TAG_RE.sub(' ', value)
+    value = re.sub(r'\s+', ' ', value)
+    return value.strip()
+
+
+def extract_title(html_source: str, fallback: str) -> str:
+    match = TITLE_RE.search(html_source)
+    if match:
+        return match.group(1).strip()
+    return fallback
+
+
+def extract_article_text(html_source: str) -> str:
+    match = ARTICLE_RE.search(html_source)
+    if match:
+        return clean_text(match.group(1))[:SEARCH_CONTENT_LIMIT]
+    return clean_text(html_source)[:SEARCH_CONTENT_LIMIT]
+
+
+def extract_keywords(content: str) -> list[str]:
+    lowered = content.lower()
+    found = []
+
+    for keyword in PEDAGOGY_KEYWORDS:
+        if keyword in lowered:
+            found.append(keyword)
+
+    return found[:MAX_KEYWORDS]
+
+
+def estimate_reading_minutes(content: str) -> int:
+    words = max(1, len(content.split()))
+    return max(1, round(words / 180))
+
+
+def estimate_difficulty(content: str) -> str:
+    lowered = content.lower()
+
+    advanced_hits = sum(
+        1 for token in [
+            'borrowck', 'hir', 'mir', 'ir',
+            'codegen', 'backend', 'optimizer'
+        ]
+        if token in lowered
+    )
+
+    if advanced_hits >= 3:
+        return 'advanced'
+
+    if advanced_hits >= 1:
+        return 'intermediate'
+
+    return 'beginner'
+
+
+def build_pedagogy_metadata(content: str) -> dict:
+    return {
+        'keywords': extract_keywords(content),
+        'reading_minutes': estimate_reading_minutes(content),
+        'difficulty': estimate_difficulty(content)
+    }
+
+def build_concept_index(search_entries: list[dict]) -> dict:
+    concepts = defaultdict(list)
+
+    for entry in search_entries:
+        for keyword in entry.get('keywords', []):
+            concepts[keyword].append({
+                'title': entry['title'],
+                'path': entry['path'],
+                'difficulty': entry.get('difficulty', 'beginner')
+            })
+
+    return dict(sorted(concepts.items()))
+
+
+def build_glossary(concept_index: dict) -> list[dict]:
+    out = []
+
+    for concept, refs in sorted(concept_index.items()):
+        out.append({
+            'term': concept,
+            'references': len(refs),
+            'pages': refs[:20]
+        })
+
+    return out
+
+def text(x):
+    return clean_text(x)
+
 def sha(path): return hashlib.sha256(path.read_bytes()).hexdigest()[:10]
 def relpath(p): return p.relative_to(DOCS).as_posix()
 def infer_section(rel: str) -> str:
-  if rel.startswith('grammar/'): return 'grammar'
-  if rel.startswith('book/'): return 'book'
-  return 'docs'
+  if rel.startswith('grammar/'): return SECTION_GRAMMAR
+  if rel.startswith('book/'): return SECTION_BOOK
+  return SECTION_DOCS
 
 def tr(txt: str, dst: str) -> str:
   k=(txt,dst)
@@ -86,9 +213,36 @@ def translate_fragment(fragment, lang):
   if lang=='en': return fragment
   p=Translator(lang); p.feed(fragment); return p.render()
 
+def search_form(prefix: str = '', lang: str = 'en') -> str:
+  return (
+    f'<form class="doc-search" role="search" action="{prefix}search.html" method="get">'
+    f'<input class="doc-search-input" type="search" name="q" placeholder="{tr("Search docs, book, grammar",lang)}" aria-label="{tr("Search documentation",lang)}" autocomplete="off">'
+    f'<div class="doc-search-controls" aria-label="{tr("Search filters",lang)}">'
+    f'<select class="doc-search-filter doc-search-section" name="section" aria-label="{tr("Filter by section",lang)}">'
+    f'<option value="all">{tr("All sections",lang)}</option>'
+    f'<option value="docs">Docs</option>'
+    f'<option value="book">Book</option>'
+    f'<option value="grammar">Grammar</option>'
+    f'</select>'
+    f'<select class="doc-search-filter doc-search-lang" name="lang" aria-label="{tr("Filter by language",lang)}">'
+    f'<option value="all">{tr("All languages",lang)}</option>'
+    f'<option value="en">EN</option>'
+    f'<option value="fr">FR</option>'
+    f'</select>'
+    f'</div>'
+    f'<div class="doc-search-results" hidden></div><div class="doc-search-footer" hidden></div>'
+    f'</form>'
+  )
+
 def header(lang='en'):
   items=''.join([f'<li><a class="nav-chip" href="{h}"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="svg/sprite.svg#{i}"></use></svg><span>{tr(l,lang)}</span></a></li>' for l,h,i in NAV])
-  return f'<header class="site-header">\n<a class="site-brand" href="index.html"><img class="site-brand-mark" src="svg/logo.svg" alt="" width="32" height="32"><span>Vitte</span></a>\n<nav class="site-nav" aria-label="Primary"><ul class="nav-band">{items}</ul></nav>\n</header>'
+  return (
+    '<header class="site-header">'
+    '<a class="site-brand" href="index.html"><img class="site-brand-mark" src="svg/logo.svg" alt="" width="32" height="32"><span>Vitte</span></a>'
+    f'<nav class="site-nav" aria-label="Primary"><ul class="nav-band">{items}</ul></nav>'
+    f'{search_form("", lang)}'
+    '</header>'
+  )
 
 def footer(name, lang='en'):
   return (
@@ -98,6 +252,26 @@ def footer(name, lang='en'):
     f'<a href="status-public.html">{tr("Public status",lang)}</a></p>\n'
     f'</footer>'
   )
+
+# -----------------------------------------------------------------------------
+# Search index generation
+# -----------------------------------------------------------------------------
+
+def build_search_entry(path: Path, html_source: str) -> dict:
+    rel = relpath(path)
+    content = extract_article_text(html_source)
+    pedagogy = build_pedagogy_metadata(content)
+
+    return {
+        'title': extract_title(html_source, path.stem),
+        'path': rel,
+        'content': content,
+        'lang': 'en',
+        'section': infer_section(rel),
+        'keywords': pedagogy['keywords'],
+        'reading_minutes': pedagogy['reading_minutes'],
+        'difficulty': pedagogy['difficulty']
+    }
 
 hash_css=sha(DOCS/'css/site.css') if (DOCS/'css/site.css').exists() else 'dev'
 hash_js=sha(DOCS/'js/main.js') if (DOCS/'js/main.js').exists() else 'dev'
@@ -130,23 +304,82 @@ for idx,p in enumerate(PAGES):
   p.write_text(s,encoding='utf-8')
 
 for p in ALL_HTML:
-  rel=relpath(p)
   s=p.read_text(encoding='utf-8')
-  title=(TITLE_RE.search(s).group(1) if TITLE_RE.search(s) else p.stem)
-  b=ARTICLE_RE.search(s)
-  body=text(b.group(1))[:5000] if b else text(s)[:5000]
-  item={'title':title,'path':rel,'content':body,'lang':'en','section':infer_section(rel)}
+  item = build_search_entry(p, s)
   search.append(item)
-  if item['section']=='docs': search_docs.append(item)
-  elif item['section']=='book': search_book.append(item)
-  elif item['section']=='grammar': search_grammar.append(item)
+  if item['section']==SECTION_DOCS: search_docs.append(item)
+  elif item['section']==SECTION_BOOK: search_book.append(item)
+  elif item['section']==SECTION_GRAMMAR: search_grammar.append(item)
 
-(DOCS/'search-index.json').write_text(json.dumps({'version':'v4','pages':search},ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
-(DOCS/'search-index.docs.json').write_text(json.dumps({'version':'v4','pages':search_docs},ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
-(DOCS/'search-index.book.json').write_text(json.dumps({'version':'v4','pages':search_book},ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
-(DOCS/'search-index.grammar.json').write_text(json.dumps({'version':'v4','pages':search_grammar},ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
-status={'version':'v4','build_utc':datetime.now(timezone.utc).isoformat(),'pages':len(PAGES),'css_hash':hash_css,'js_hash':hash_js,'languages':[],'browser_support':['modern evergreen browsers']}
+(DOCS/'search-index.json').write_text(json.dumps({'version':SEARCH_VERSION,'pages':search},ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+(DOCS/'search-index.docs.json').write_text(json.dumps({'version':SEARCH_VERSION,'pages':search_docs},ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+(DOCS/'search-index.book.json').write_text(json.dumps({'version':SEARCH_VERSION,'pages':search_book},ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+(DOCS/'search-index.grammar.json').write_text(json.dumps({'version':SEARCH_VERSION,'pages':search_grammar},ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+
+section_stats = defaultdict(int)
+for item in search:
+    section_stats[item['section']] += 1
+
+pedagogy_stats = {
+    'beginner': 0,
+    'intermediate': 0,
+    'advanced': 0,
+}
+
+for item in search:
+    difficulty = item.get('difficulty', 'beginner')
+    pedagogy_stats[difficulty] = pedagogy_stats.get(difficulty, 0) + 1
+
+status={
+  'version': STATUS_VERSION,
+  'build_utc': datetime.now(timezone.utc).isoformat(),
+  'pages': len(PAGES),
+  'css_hash': hash_css,
+  'js_hash': hash_js,
+  'languages': [],
+  'browser_support': ['modern evergreen browsers'],
+  'sections': dict(section_stats),
+  'total_search_entries': len(search),
+  'book_pages': len(search_book),
+  'docs_pages': len(search_docs),
+  'grammar_pages': len(search_grammar),
+  'pedagogy_version': PEDAGOGY_VERSION,
+  'difficulty_distribution': pedagogy_stats,
+  'concept_count': len(set(k for item in search for k in item.get('keywords', []))),
+  'glossary_entries': len(set(k for item in search for k in item.get('keywords', []))),
+}
+
 (DOCS/'status.json').write_text(json.dumps(status,indent=2)+'\n',encoding='utf-8')
+
+(DOCS/'pedagogy-report.json').write_text(
+    json.dumps({
+        'version': PEDAGOGY_VERSION,
+        'difficulty_distribution': pedagogy_stats,
+        'sections': dict(section_stats),
+        'pages': len(search)
+    }, indent=2) + '\n',
+    encoding='utf-8'
+)
+
+concept_index = build_concept_index(search)
+glossary = build_glossary(concept_index)
+
+(DOCS/'concept-index.json').write_text(
+    json.dumps({
+        'version': CONCEPT_REPORT_VERSION,
+        'concepts': concept_index
+    }, ensure_ascii=False, indent=2) + '\n',
+    encoding='utf-8'
+)
+
+(DOCS/'glossary.json').write_text(
+    json.dumps({
+        'version': GLOSSARY_REPORT_VERSION,
+        'entries': glossary
+    }, ensure_ascii=False, indent=2) + '\n',
+    encoding='utf-8'
+)
+
 checks=[]
 for rel in ['search-index.json','status.json','sw.js','js/main.js','css/site.css','svg/sprite.svg']:
   path=DOCS/rel
@@ -174,11 +407,23 @@ for lang in LANGS:
       lsearch.append({
         'title':tt.group(1).strip(),
         'path':p.name,
-        'content':text(bm.group(1))[:5000],
+        'content':text(bm.group(1))[:SEARCH_CONTENT_LIMIT],
         'lang':lang,
-        'section':'docs'
+        'section':SECTION_DOCS
       })
-  (ld/'search-index.json').write_text(json.dumps({'version':'v4','pages':lsearch},ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+  (ld/'search-index.json').write_text(json.dumps({'version':SEARCH_VERSION,'pages':lsearch},ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
   shutil.copy2(DOCS/'status.json', ld/'status.json'); shutil.copy2(DOCS/'checksums.txt', ld/'checksums.txt')
 
+print('----------------------------------------')
+print(f'Total HTML pages      : {len(ALL_HTML)}')
+print(f'Documentation pages   : {len(search_docs)}')
+print(f'Book pages            : {len(search_book)}')
+print(f'Grammar pages         : {len(search_grammar)}')
+print(f'Search entries        : {len(search)}')
+print(f"Beginner pages        : {pedagogy_stats['beginner']}")
+print(f"Intermediate pages    : {pedagogy_stats['intermediate']}")
+print(f"Advanced pages        : {pedagogy_stats['advanced']}")
+concept_total = len(set(k for item in search for k in item.get('keywords', [])))
+print(f'Concepts detected     : {concept_total}')
+print('----------------------------------------')
 print('docs build done')

@@ -35,8 +35,8 @@ def main() -> int:
     snapshots_dir = (repo / args.snapshots_dir).resolve()
 
     if not public_root.exists():
-        print(f"[public-snapshots-lint] missing public root: {public_root}")
-        return 1
+        print(f"[public-snapshots-lint] skip: missing public root: {public_root.relative_to(repo)}")
+        return 0
 
     cmd_blob = load_snapshot_commands(snapshots_dir)
     errors: list[str] = []

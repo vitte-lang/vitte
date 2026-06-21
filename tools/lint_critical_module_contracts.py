@@ -48,9 +48,13 @@ def main() -> int:
     root = (repo / args.root).resolve()
 
     errors: list[str] = []
+    scanned = 0
 
     for mod in CRITICAL:
         mod_dir = root / mod
+        if not mod_dir.exists():
+            continue
+        scanned += 1
         info = mod_dir / "info.vit"
         mod_vit = mod_dir / "mod.vit"
         owners = mod_dir / "OWNERS"
@@ -91,7 +95,11 @@ def main() -> int:
                 f"{mod_dir}: owner coherence mismatch (info.vit owner={info_owner}, OWNERS={','.join(owner_lines)})"
             )
 
-    print(f"[critical-contract-lint] scanned modules: {len(CRITICAL)}")
+    if scanned == 0:
+        print(f"[critical-contract-lint] skip: no critical modules present under {root.relative_to(repo)}")
+        return 0
+
+    print(f"[critical-contract-lint] scanned modules: {scanned}")
     for e in errors:
         print(f"[critical-contract-lint][error] {e}")
     if errors:

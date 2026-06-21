@@ -6,6 +6,7 @@ import pathlib
 import re
 import subprocess
 import sys
+import textwrap
 
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -30,6 +31,16 @@ SECTIONS: list[tuple[str, list[str]]] = [
             "grammar-gate",
             "core-language-gate",
             "core-release-gate",
+        ],
+    ),
+    (
+        "Documentation",
+        [
+            "docs-serve",
+            "docs-phase1-smoke",
+            "docs-maximal",
+            "site-html",
+            "book-qa-strict",
         ],
     ),
     (
@@ -98,10 +109,66 @@ def parse_help_targets(help_text: str) -> dict[str, str]:
 
 
 def render_doc(targets: dict[str, str]) -> str:
+    def render_target(name: str, description: str) -> list[str]:
+        prefix = f"- `make {name}`: "
+        width = 100
+        wrapped = textwrap.wrap(
+            description,
+            width=max(20, width - len(prefix)),
+            break_long_words=False,
+            break_on_hyphens=False,
+        )
+        if not wrapped:
+            return [prefix.rstrip()]
+        lines = [prefix + wrapped[0]]
+        for part in wrapped[1:]:
+            lines.append(f"  {part}")
+        return lines
+
     lines: list[str] = [
         "# Make Targets",
         "",
         "This page indexes the most useful `make` entrypoints.",
+        "",
+        "## Overview",
+        "",
+        "| Area | Purpose |",
+        "| --- | --- |",
+        "| Beginner / Local Loop | short local iteration and basic health checks |",
+        "| Core Language | grammar and core compiler contract gates |",
+        "| Documentation | docs generation, rendering, and validation flows |",
+        "| Modules / Stdlib | module graph, snapshots, and package governance |",
+        "| CI / Reports | consolidated repo-wide gates and reporting targets |",
+        "| VitteOS | operating-system oriented checks and CI chains |",
+        "| Packaging | installer and release packaging targets |",
+        "",
+        "## Responsibilities",
+        "",
+        "- provide a curated index of the most useful repository entrypoints",
+        "- keep target names aligned with `make help` output",
+        "- make documentation, CI, packaging, and local loop targets easy to find",
+        "",
+        "## Invariants",
+        "",
+        "- this page is generated from `make help` and should not drift from it",
+        "- the curated sections should stay stable even as descriptions evolve",
+        "- readers should be able to find the primary bootstrap and driver-related targets quickly",
+        "",
+        "## Data Flow",
+        "",
+        "1. `make help` defines the source descriptions.",
+        "2. `tools/generate_make_targets_doc.py` extracts and groups the selected targets.",
+        "3. `docs/MAKE_TARGETS.md` is regenerated from that grouped view.",
+        "",
+        "## Bootstrap",
+        "",
+        "Bootstrap-oriented targets live mostly in `make help`; this page points to the most useful",
+        "top-level documentation and validation commands around them.",
+        "",
+        "## Driver",
+        "",
+        "Driver-related targets are surfaced here when they are part of the curated local, CI, or",
+        "documentation workflow.",
         "",
         "For the full list, run:",
         "",
@@ -117,7 +184,7 @@ def render_doc(targets: dict[str, str]) -> str:
         lines.append("")
         for name in names:
             description = targets[name]
-            lines.append(f"- `make {name}`: {description}")
+            lines.extend(render_target(name, description))
         lines.append("")
     return "\n".join(lines).rstrip() + "\n"
 

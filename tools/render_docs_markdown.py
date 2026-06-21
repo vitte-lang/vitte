@@ -226,7 +226,7 @@ def render_document(source_path: Path) -> str:
 <meta property="og:type" content="article">
 <meta property="og:url" content="{canonical}">
 <meta name="twitter:card" content="summary">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; font-src 'self'; connect-src 'self';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none';">
 </head>
 <body class="classic-doc">
 <a class="skip-link" href="#main-content">Skip to content</a>

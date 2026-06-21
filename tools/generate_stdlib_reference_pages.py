@@ -32,6 +32,10 @@ MATCH_RE = re.compile(r"\bmatch\b")
 LET_RE = re.compile(r"\blet\b")
 GIVE_RE = re.compile(r"\bgive\b")
 
+
+def shared_header(rel_root: str) -> str:
+    return f"""<header class="site-header"><a class="site-brand" href="{rel_root}index.html"><img class="site-brand-mark" src="{rel_root}svg/logo.svg" alt="" width="32" height="32"><span>Vitte</span></a><nav class="site-nav" aria-label="Primary"><ul class="nav-band"><li><a class="nav-chip" href="{rel_root}index.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="{rel_root}svg/sprite.svg#i-home"></use></svg><span>Welcome</span></a></li><li><a class="nav-chip" href="{rel_root}doc.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="{rel_root}svg/sprite.svg#i-docs"></use></svg><span>Documentation</span></a></li><li><a class="nav-chip" href="{rel_root}download.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="{rel_root}svg/sprite.svg#i-docs"></use></svg><span>Download</span></a></li><li><a class="nav-chip" href="{rel_root}source.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="{rel_root}svg/sprite.svg#i-docs"></use></svg><span>Source</span></a></li><li><a class="nav-chip" href="{rel_root}community.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="{rel_root}svg/sprite.svg#i-docs"></use></svg><span>Community</span></a></li><li><a class="nav-chip" href="{rel_root}news.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="{rel_root}svg/sprite.svg#i-news"></use></svg><span>News</span></a></li><li><a class="nav-chip" href="{rel_root}diagnostics.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="{rel_root}svg/sprite.svg#i-docs"></use></svg><span>Diagnostics</span></a></li><li><a class="nav-chip" href="{rel_root}suggestions.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="{rel_root}svg/sprite.svg#i-docs"></use></svg><span>Suggestions</span></a></li></ul></nav><form class="doc-search" role="search" action="{rel_root}search.html" method="get"><input class="doc-search-input" type="search" name="q" placeholder="Search docs, book, grammar" aria-label="Search documentation" autocomplete="off"><div class="doc-search-controls" aria-label="Search filters"><select class="doc-search-filter doc-search-section" name="section" aria-label="Filter by section"><option value="all">All sections</option><option value="docs">Docs</option><option value="book">Book</option><option value="grammar">Grammar</option></select><select class="doc-search-filter doc-search-lang" name="lang" aria-label="Filter by language"><option value="all">All languages</option><option value="en">EN</option><option value="fr">FR</option></select></div><div class="doc-search-results" hidden></div><div class="doc-search-footer" hidden></div></form></header>"""
+
 VITTE_KEYWORDS = [
     "space",
     "use",
@@ -102,23 +106,12 @@ def page_shell(title: str, rel_root: str, body: str, page_path: str) -> str:
 <link rel="stylesheet" href="{rel_root}css/print.css" media="print">
 <link rel="alternate" hreflang="en" href="https://vitte-lang.org/book/stdlib-reference/{html.escape(page_path)}">
 <link rel="alternate" hreflang="x-default" href="https://vitte-lang.org/book/stdlib-reference/{html.escape(page_path)}">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; font-src 'self'; connect-src 'self';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none';">
 </head>
 <body class="classic-doc">
 <a class="skip-link" href="#main-content">Skip to content</a>
 <div class="site-shell">
-<header class="site-header">
-<a class="site-brand" href="{rel_root}index.html"><img class="site-brand-mark" src="{rel_root}svg/logo.svg" alt="" width="32" height="32"><span>Vitte</span></a>
-<nav class="site-nav" aria-label="Primary">
-<ul class="nav-band">
-<li><a class="nav-chip" href="{rel_root}index.html"><img src="{rel_root}svg/home.svg" alt="" width="14" height="14" aria-hidden="true"><span>Welcome</span></a></li>
-<li><a class="nav-chip" href="{rel_root}doc.html"><img src="{rel_root}svg/docs.svg" alt="" width="14" height="14" aria-hidden="true"><span>Documentation</span></a></li>
-<li><a class="nav-chip" href="{rel_root}book/stdlib.html"><img src="{rel_root}svg/docs.svg" alt="" width="14" height="14" aria-hidden="true"><span>Stdlib</span></a></li>
-<li><a class="nav-chip" href="{rel_root}book/compiler-stdlib-contract.html"><img src="{rel_root}svg/docs.svg" alt="" width="14" height="14" aria-hidden="true"><span>Contract</span></a></li>
-<li><a class="nav-chip" href="{rel_root}source.html"><img src="{rel_root}svg/source.svg" alt="" width="14" height="14" aria-hidden="true"><span>Source</span></a></li>
-</ul>
-</nav>
-</header>
+{shared_header(rel_root)}
 <main id="main-content" class="site-main">
 <article class="doc-content">
 {body}
