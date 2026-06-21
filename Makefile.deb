@@ -3,7 +3,7 @@
 # Target: Create complete distribution package for Debian x86_64
 # ============================================================
 
-.PHONY: help deb deb-clean deb-bundle deb-complete verify-deb install-deb check-editors
+.PHONY: help deb deb-clean deb-bundle deb-complete verify-deb install-deb check-editors check-prerequisites deb-doctor
 
 # Configuration
 SCRIPTS_DIR := scripts
@@ -37,6 +37,7 @@ help:
 	@echo "  $(GREEN)make -f Makefile.deb deb-clean$(NC)        - Clean package build artifacts"
 	@echo "  $(GREEN)make -f Makefile.deb deb-bundle$(NC)       - Create distribution bundle (checksums, docs)"
 	@echo "  $(GREEN)make -f Makefile.deb check-editors$(NC)    - Validate packaged editor integrations"
+	@echo "  $(GREEN)make -f Makefile.deb deb-doctor$(NC)       - Diagnose Debian build environment"
 	@echo ""
 	@echo "  $(GREEN)make -f Makefile.deb verify-deb$(NC)       - Verify package integrity"
 	@echo "  $(GREEN)make -f Makefile.deb install-deb$(NC)      - Install the built package"
@@ -53,7 +54,7 @@ help:
 	@echo ""
 
 # Complete workflow (recommended entry point)
-deb-complete: deb-clean check-editors
+deb-complete: check-prerequisites deb-clean check-editors
 	@echo "$(BLUE)═══════════════════════════════════════════════════════════$(NC)"
 	@echo "$(BLUE)Building complete Vitte Debian distribution package$(NC)"
 	@echo "$(BLUE)═══════════════════════════════════════════════════════════$(NC)"
@@ -114,12 +115,37 @@ check-prerequisites:
 	fi
 	@if ! command -v dpkg-deb >/dev/null 2>&1; then \
 		echo "$(RED)Error: dpkg-deb is required$(NC)"; \
+		echo "Install on Debian/Ubuntu: sudo apt install dpkg-dev"; \
 		exit 1; \
 	fi
 	@if ! command -v make >/dev/null 2>&1; then \
 		echo "$(RED)Error: make is required$(NC)"; \
 		exit 1; \
 	fi
+	@if ! command -v rsync >/dev/null 2>&1; then \
+		echo "$(RED)Error: rsync is required$(NC)"; \
+		echo "Install on Debian/Ubuntu: sudo apt install rsync"; \
+		exit 1; \
+	fi
+	@if ! command -v python3 >/dev/null 2>&1; then \
+		echo "$(RED)Error: python3 is required$(NC)"; \
+		echo "Install on Debian/Ubuntu: sudo apt install python3"; \
+		exit 1; \
+	fi
 	@echo "$(GREEN)✓ Prerequisites check passed$(NC)"
+
+# Diagnose current environment without building
+deb-doctor:
+	@echo "$(BLUE)Vitte Debian build environment$(NC)"
+	@printf "  %-12s %s\n" "System:" "$$(uname -s 2>/dev/null || echo unknown)"
+	@printf "  %-12s %s\n" "Arch:" "$$(uname -m 2>/dev/null || echo unknown)"
+	@printf "  %-12s %s\n" "dpkg-deb:" "$$(command -v dpkg-deb 2>/dev/null || echo missing)"
+	@printf "  %-12s %s\n" "make:" "$$(command -v make 2>/dev/null || echo missing)"
+	@printf "  %-12s %s\n" "rsync:" "$$(command -v rsync 2>/dev/null || echo missing)"
+	@printf "  %-12s %s\n" "python3:" "$$(command -v python3 2>/dev/null || echo missing)"
+	@printf "  %-12s %s\n" "gcc:" "$$(command -v gcc 2>/dev/null || echo missing)"
+	@if ! command -v dpkg-deb >/dev/null 2>&1; then \
+		echo "$(YELLOW)Hint: run this outside Flatpak/container on Debian/Ubuntu with dpkg-dev installed.$(NC)"; \
+	fi
 
 .DEFAULT_GOAL := help

@@ -320,6 +320,14 @@ check_native_user_build() {
         rc="$?"
         [ "$rc" -eq 7 ] || die "native user run exit code mismatch"
     fi
+    cp "$SNAP_DIR/native_user_main.vit" "$TMP_DIR/native-user-source.vit"
+    before_hash="$(LC_ALL=C shasum -a 256 "$TMP_DIR/native-user-source.vit" | awk '{print $1}')"
+    if "$BIN_DIR/vittec0" build "$TMP_DIR/native-user-source.vit" -o "$TMP_DIR/native-user-source.vit" > "$TMP_DIR/native-user-overwrite.out" 2> "$TMP_DIR/native-user-overwrite.err"; then
+        die "native user build unexpectedly overwrote source path"
+    fi
+    after_hash="$(LC_ALL=C shasum -a 256 "$TMP_DIR/native-user-source.vit" | awk '{print $1}')"
+    [ "$before_hash" = "$after_hash" ] || die "native user build modified source path"
+    grep -F "E_CLI_OUTPUT_OVERWRITES_SOURCE" "$TMP_DIR/native-user-overwrite.err" >/dev/null || die "native user build missing overwrite guard diagnostic"
     "$BIN_DIR/vittec0" build "$ROOT_DIR/tests/golden/frontend/fixtures/hello_min.vit" -o "$TMP_DIR/hello-min"
     "$TMP_DIR/hello-min" >/dev/null 2>&1 || die "hello_min executable exit code mismatch"
     "$BIN_DIR/vittec0" run "$ROOT_DIR/tests/golden/frontend/fixtures/hello_min.vit" >/dev/null 2>&1 || die "hello_min run exit code mismatch"

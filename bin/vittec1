@@ -819,6 +819,41 @@ write_compiler() {
     chmod +x "$compiler_out"
 }
 
+canonical_path_for_compare() {
+    path="$1"
+    case "$path" in
+        /*) abs_path="$path" ;;
+        *) abs_path="$PWD/$path" ;;
+    esac
+    dir_name="$(dirname "$abs_path")"
+    base_name="$(basename "$abs_path")"
+    if [ -d "$dir_name" ]; then
+        (cd "$dir_name" && printf '%s/%s\n' "$(pwd -P)" "$base_name")
+    else
+        printf '%s\n' "$abs_path"
+    fi
+}
+
+output_overwrites_source() {
+    source_path="$1"
+    output_path="$2"
+    [ -n "$source_path" ] || return 1
+    [ -n "$output_path" ] || return 1
+    [ "$source_path" = "$output_path" ] && return 0
+    source_cmp="$(canonical_path_for_compare "$source_path")"
+    output_cmp="$(canonical_path_for_compare "$output_path")"
+    [ "$source_cmp" = "$output_cmp" ]
+}
+
+guard_output_not_source() {
+    source_path="$1"
+    output_path="$2"
+    if output_overwrites_source "$source_path" "$output_path"; then
+        cli_error E_CLI_OUTPUT_OVERWRITES_SOURCE "output path would overwrite input source: $output_path" "choose a different -o/--out path, for example build/$(basename "$source_path" .vit)"
+        return 1
+    fi
+}
+
 bootstrap_repo_root_from_source() {
     src="$1"
     case "$src" in
@@ -1027,8 +1062,10 @@ extract_native_main_return() {
                 next
             }
         }
-        if (!in_main && line ~ /^(form|pick)[ \t]+[A-Za-z_][A-Za-z0-9_]*(\[[^]]+\])?[^{]*\{.*\}[ \t]*$/) next
-        if (!in_main && line ~ /^(form|pick)[ \t]+[A-Za-z_][A-Za-z0-9_]*(\[[^]]+\])?[^{]*\{$/) {
+        generic_suffix = "\\[" "[^]]+" "\\]"
+        form_pick_pattern = "^(form|pick)[ \t]+[A-Za-z_][A-Za-z0-9_]*(" generic_suffix ")?[^{]*"
+        if (!in_main && line ~ (form_pick_pattern "\\{.*\\}[ \t]*$")) next
+        if (!in_main && line ~ (form_pick_pattern "\\{$")) {
             skip_generic = 1
             skip_generic_depth = 1
             next
@@ -1218,6 +1255,7 @@ build_native_user_program() {
     cc_bin="${CC:-cc}"
     allow_full_bridge="${VITTE_BOOTSTRAP_ALLOW_FULL_COMPILER_BRIDGE:-1}"
     main_return="$(extract_native_main_return "$src" || true)"
+    guard_output_not_source "$src" "$target_out" || return 1
     command -v "$cc_bin" >/dev/null 2>&1 || {
         cli_error E_BACKEND_TOOLCHAIN "native bootstrap build requires a host C compiler" "set CC or install cc"
         return 1
@@ -3107,6 +3145,7 @@ case "$cmd" in
         out="$(arg_value --out "$@" || true)"
         [ -n "$src" ] && [ -n "$out" ] || { cli_error E_CLI_MISSING_ARG "build-native requires --src and --out" "vittec build-native --src in.vit --out out/vittec"; exit 2; }
         [ -f "$src" ] || { cli_error E_CLI_IO "cannot read $src" "check the path and permissions"; exit 1; }
+        guard_output_not_source "$src" "$out" || exit 2
         trace_step "pipeline.emit:write-shell"
         ir_version="$(arg_value --ir-version "$@" || true)"
         [ -n "$ir_version" ] || ir_version="v1"
@@ -3159,6 +3198,7 @@ case "$cmd" in
             [ -n "$src" ] || { cli_error E_CLI_MISSING_ARG "build requires input file" "vittec build main.vit -o build/main"; exit 2; }
             [ -f "$src" ] || { cli_error E_CLI_IO "cannot read $src" "check the path and permissions"; exit 1; }
             [ -n "$out" ] || { cli_error E_CLI_MISSING_ARG "build requires -o/--out output path" "vittec build main.vit -o build/main"; exit 2; }
+            guard_output_not_source "$src" "$out" || exit 2
             trace_step "pipeline.lower:begin"
             trace_step "pipeline.backend:native-bootstrap-subset"
             build_native_user_program "$src" "$out" || exit 3

@@ -1600,6 +1600,13 @@ proc add_diagnostic(compiler: Compiler, diagnostic: report.Diagnostic) -> Compil
     give compiler;
 }
 
+proc compiler_output_overwrites_source(compiler: Compiler) -> bool {
+    give compiler.input.path != ""
+        and not compiler.input.virtual
+        and compiler.options.output_path != ""
+        and compiler.input.path == compiler.options.output_path;
+}
+
 proc emit_session_diagnostic(compiler: Compiler, severity: string, code: string, file: string, line: u64, column: u64, message: string) -> Compiler {
     let path0: string = if file != "" { file } else { compiler.input.path };
     let manager0: files.SourceManager = files.cache_source(compiler.session.source_manager, path0, compiler_source_text(compiler), compiler.input.virtual);
@@ -1666,6 +1673,15 @@ proc configure_compiler(compiler: Compiler) -> Compiler {
             "fatal",
             "DRIVER_E_MISSING_OUTPUT_PATH",
             "missing compiler output path"
+        );
+        set compiler.state.ok = false;
+    }
+    if compiler_output_overwrites_source(compiler) {
+        set compiler = add_typed_diagnostic(
+            compiler,
+            "fatal",
+            "DRIVER_E_OUTPUT_OVERWRITES_SOURCE",
+            "compiler output path would overwrite input source"
         );
         set compiler.state.ok = false;
     }

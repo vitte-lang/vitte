@@ -11,6 +11,16 @@ rm -f "$OUT_BIN" "$OUT_BIN.bootstrap-bridge" "$OUT_LOG"
 
 cd "$ROOT_DIR"
 
+if ! grep -Fq "DRIVER_E_OUTPUT_OVERWRITES_SOURCE" src/vitte/compiler/driver/compiler.vit; then
+    printf "[compiler-real-native-gate][error] missing driver output/source overwrite diagnostic\n" >&2
+    exit 1
+fi
+
+if ! grep -Fq "compiler_output_overwrites_source" src/vitte/compiler/driver/compiler.vit; then
+    printf "[compiler-real-native-gate][error] missing driver output/source overwrite guard\n" >&2
+    exit 1
+fi
+
 if ! ./bin/vitte build src/vitte/compiler/main.vit -o "$OUT_BIN" >"$OUT_LOG" 2>&1; then
     cat "$OUT_LOG" >&2
     printf "[compiler-real-native-gate][error] build failed for src/vitte/compiler/main.vit\n" >&2
