@@ -1113,7 +1113,7 @@ function scheduleLint(doc: TextDocument): void {
   const key = doc.uri;
   const base = Math.max(0, globalSettings.lintDebounceMs | 0);
   const sizeKB = Buffer.byteLength(doc.getText(), "utf8") / 1024;
-  const isVit = doc.uri.endsWith(".vit");
+  const isVit = doc.uri.endsWith(".vit") || doc.uri.endsWith(".vitl");
   const sizePenalty = sizeKB > 1024 ? 900 : sizeKB > 512 ? 550 : sizeKB > 256 ? 280 : sizeKB > 128 ? 120 : 0;
   const extPenalty = isVit && sizeKB > 128 ? 120 : 0;
   const delay = Math.min(2500, base + sizePenalty + extPenalty);
@@ -1452,7 +1452,7 @@ async function collectWorkspaceRenameCandidates(primaryUri: string): Promise<Tex
       if (uri === primaryUri || out.has(uri)) continue;
       try {
         const raw = await fs.readFile(file, "utf8");
-        out.set(uri, TextDocument.create(uri, file.endsWith(".vit") ? "vit" : "vitte", 0, raw));
+        out.set(uri, TextDocument.create(uri, file.endsWith(".vitte") ? "vitte" : "vit", 0, raw));
       } catch {
         // ignore unreadable files
       }
@@ -1482,7 +1482,7 @@ async function walkVitteFiles(root: string, limit: number): Promise<string[]> {
         continue;
       }
       if (!e.isFile()) continue;
-      if (!e.name.endsWith(".vit") && !e.name.endsWith(".vitte")) continue;
+      if (!e.name.endsWith(".vit") && !e.name.endsWith(".vitl") && !e.name.endsWith(".vitte")) continue;
       out.push(path.join(dir, e.name));
     }
   }

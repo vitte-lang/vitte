@@ -492,7 +492,7 @@ async function resolveContext(
   const activePath = active?.document?.uri?.fsPath ?? '';
   const activeLanguage = active?.document?.languageId;
   const isVitteLanguage = activeLanguage ? ['vitte', 'vit'].includes(activeLanguage) : false;
-  const activeIsTestFile = Boolean(isVitteLanguage && activePath && /(_test\.vitte|\.(vitte|vit))$/i.test(activePath));
+  const activeIsTestFile = Boolean(isVitteLanguage && activePath && /(_test\.(vit|vitl|vitte)|\.(vit|vitl|vitte))$/i.test(activePath));
 
   const hasBenchConfig = await workspaceHasBenchConfig();
 

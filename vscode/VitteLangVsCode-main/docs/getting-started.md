@@ -4,9 +4,9 @@ This guide describes the prerequisites, installation workflow, and validation st
 
 ## Prerequisites
 
-- Visual Studio Code version **1.93.0** or later.
-- Vitte toolchain binaries (compiler + runtime) available on your `PATH`.
-- A workspace that includes at least one Vitte source file (`.vitte` or `.vit`).
+- Visual Studio Code version **1.105.0** or later.
+- The unified Vitte CLI (`vitte`) available on your `PATH`, or configured via `vitte.debug.program` / `vitte.compiler.path`.
+- A workspace that includes at least one Vitte source file (`.vit`, `.vitl`, or legacy `.vitte`).
 
 > ℹ️ Tip: Pin the **Vitte ▸ Diagnostics** and **Vitte ▸ Structure** views in the Activity Bar to monitor real-time diagnostics and module topology while you work.
 
@@ -51,7 +51,7 @@ You can invoke this action from the status bar menu, the startup toast, or direc
 
 Launch configurations for Vitte targets are generated automatically. To debug:
 
-1. Set a breakpoint in the active `.vitte` document.
+1. Set a breakpoint in the active `.vit`, `.vitl`, or legacy `.vitte` document.
 2. Press **F5** (Vitte: Launch current file) or select another configuration from the Run and Debug view.
 3. Step through code, inspect scopes, and review the call stack as you would in any Visual Studio Code debugging session.
 
@@ -62,18 +62,19 @@ Define reusable launch recipes in `.vscode/launch.json` when you need additional
   "type": "vitte",
   "request": "launch",
   "name": "Vitte: Launch current file",
-  "program": "${file}",
+  "program": "vitte",
+  "args": ["run", "${file}"],
   "cwd": "${workspaceFolder}",
   "stopOnEntry": true
 }
 ```
 
-Refer to the [`examples/`](../examples) directory for sample configurations.
+Use `tests/strict_ok.vit` in the main Vitte repository as a small smoke fixture when validating local toolchain behavior.
 
 ## Troubleshooting
 
-- **Language server does not start**: Run `Vitte: Show Server Log` to verify the resolved server path. Override the default via `vitte.serverPath` when bundling a custom binary.
+- **Language server does not start**: Run `Vitte: Show Server Log` to verify the bundled server and optional external `vitte.lsp.path`.
 - **Diagnostics do not appear**: Ensure the workspace is trusted and files use a supported Vitte/Vit extension.
 - **macOS blocks tests or debugger**: Clear the quarantine flag from the Visual Studio Code test host with `xattr -dr com.apple.quarantine <Visual Studio Code.app>`.
 
-If additional assistance is required, please open an issue on [GitHub](https://github.com/roussov/vittelang-vscode/issues).
+If additional assistance is required, please open an issue on [GitHub](https://github.com/vitte-lang/vitte/issues).

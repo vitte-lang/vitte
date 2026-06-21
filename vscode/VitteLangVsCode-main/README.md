@@ -4,7 +4,7 @@ Vitte Studio gives you a complete daily workflow in VS Code: edit, navigate, dia
 This README is intentionally practical.
 It focuses on what you can do right now, why each command matters, and how to troubleshoot quickly when something breaks.
 ## 1. What the extension gives you
-Vitte Studio supports both `.vitte` and `.vit` files.
+Vitte Studio treats `.vit` as the primary source extension, `.vitl` as the library/stdlib extension, and `.vitte` as a legacy compatibility extension.
 You get syntax highlighting, autocomplete, hover details, diagnostics, symbol navigation, rename, formatting, semantic tokens, debug integration, and project commands.
 In short: less manual setup, faster iteration, and better code feedback while you type.
 ## 2. Sidebar experience
@@ -22,7 +22,7 @@ Open Extensions in VS Code, search `Vitte Language Support`, then click Install.
 1. Open VS Code.
 2. Run `Extensions: Install from VSIX...`.
 3. Select your `.vsix` file.
-After installation, open a `.vitte` or `.vit` file to verify language features are active.
+After installation, open a `.vit`, `.vitl`, or legacy `.vitte` file to verify language features are active.
 ## 4. First 5-minute setup
 Step 1: Run `Vitte: Detect Toolchain`.
 This checks that the expected binaries are reachable.
@@ -38,7 +38,7 @@ Step 4: If features feel stale, run `Vitte: Restart Language Server`.
 
 ## 5. Essential commands (what they really do)
 
-`Vitte: Detect Toolchain` validates runtime/build/lsp paths and helps avoid hidden config drift.
+`Vitte: Detect Toolchain` validates the unified `vitte` CLI plus optional LSP/formatter paths and helps avoid hidden config drift.
 
 `Vitte: Open Docs` opens the official documentation quickly, useful during syntax or API checks.
 
@@ -105,9 +105,9 @@ If auto-detection is enough, keep defaults.
 If not, configure these first:
 
 - `vitte.toolchain.root`
-- `vitte.runtime.path`
+- `vitte.debug.program`
+- `vitte.compiler.path`
 - `vitte.lsp.path`
-- `vitte.build.path`
 - `vitte.fmt.path`
 
 Then tune behavior:
@@ -153,7 +153,7 @@ If extension enters offline mode:
 
 The extension provides debug type `vitte`.
 
-Typical scenarios include launching the current file, launching project entry, and attaching to a running session.
+Typical scenarios include `vitte run ${file}`, launching a project entry, and attaching to a running session.
 
 ## 11. Activation model
 
@@ -172,7 +172,7 @@ License: MIT.
 The extension now ships a powerful suggestions stack with safe defaults.
 
 - Local inline engine (default path):
-  - repo-local indexing (`.vit/.vitte/.vitl`)
+  - repo-local indexing (`.vit/.vitl/.vitte`)
   - n-gram + AST-lite patterns
   - scope-aware, flow-aware and expected-value hints
   - adaptive learning from accepted suggestions

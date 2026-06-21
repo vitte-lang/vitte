@@ -18,7 +18,7 @@ class VitlDebugConfigProvider implements vscode.DebugConfigurationProvider {
   ): vscode.ProviderResult<vscode.DebugConfiguration> {
     config.type ??= "vitl";
     config.request ??= "launch";
-    config.name ??= "Vitl: Launch current file";
+    config.name ??= "Vitte: Launch current file";
     config.program ??= "${file}";
     config.cwd ??= "${workspaceFolder}";
     config.stopOnEntry ??= true;
@@ -91,7 +91,7 @@ class VitlInlineAdapter implements vscode.DebugAdapter {
       /* ----------------- Lancement ----------------- */
       case "launch":
         this.event("process", {
-          name: "Vitl Program",
+          name: "Vitte Program",
           systemProcessId: 1234,
           isLocalProcess: true,
           startMethod: "launch"
@@ -118,7 +118,7 @@ class VitlInlineAdapter implements vscode.DebugAdapter {
 
       /* ----------------- Threads & Stack ----------------- */
       case "threads":
-        this.respond(msg, true, { threads: [{ id: 1, name: "Vitl Main Thread" }] });
+        this.respond(msg, true, { threads: [{ id: 1, name: "Vitte Main Thread" }] });
         break;
 
       case "stackTrace":
@@ -127,7 +127,7 @@ class VitlInlineAdapter implements vscode.DebugAdapter {
             id: 1,
             name: "main",
             source: {
-              name: msg?.arguments?.source?.name ?? "unknown.vitl",
+              name: msg?.arguments?.source?.name ?? "unknown.vit",
               path: msg?.arguments?.source?.path
             },
             line: 1,
@@ -200,7 +200,7 @@ class VitlInlineAdapter implements vscode.DebugAdapter {
       case "loadedSources":
         this.respond(msg, true, {
           sources: [
-            { name: "main.vitl", path: "/fake/path/main.vitl" },
+            { name: "main.vit", path: "/fake/path/main.vit" },
             { name: "lib.vitl", path: "/fake/path/lib.vitl" }
           ]
         });
@@ -209,8 +209,8 @@ class VitlInlineAdapter implements vscode.DebugAdapter {
       case "modules":
         this.respond(msg, true, {
           modules: [
-            { id: "core", name: "Vitl Core Library", path: "/fake/path/core.vitl" },
-            { id: "std", name: "Vitl Standard", path: "/fake/path/std.vitl" }
+            { id: "core", name: "Vitte Core Library", path: "/fake/path/core.vitl" },
+            { id: "std", name: "Vitte Standard", path: "/fake/path/std.vitl" }
           ]
         });
         break;

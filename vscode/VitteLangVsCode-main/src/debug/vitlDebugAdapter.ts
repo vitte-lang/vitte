@@ -5,7 +5,7 @@ import * as path from 'path';
 
 /**
  * Vitl Debug Adapter
- * Tries to start a DAP server from `vitl-runtime` first, then falls back to stdio.
+ * Tries to start a DAP server from the unified `vitte` CLI first, then falls back to stdio.
  * Understands workspace settings under `vitte.*` to keep parity with Vitte.
  */
 export function registerVitlDebugAdapter(context: vscode.ExtensionContext) {
@@ -66,10 +66,11 @@ class VitlDebugAdapterFactory implements vscode.DebugAdapterDescriptorFactory, v
 
   // ---- resolution -------------------------------------------------------------
   private resolveRuntimeAndArgs(cfg: vscode.WorkspaceConfiguration, session: vscode.DebugSession): { program: string; cwd: string; extraArgs: string[] } {
-    // Settings or default (accept vitl‑specific first, then vitte.debug.program, else 'vitl-runtime')
+    // Settings or default (accept vitl‑specific first, then vitte.debug.program, else the unified CLI)
     const explicit = cfg.get<string>('vitl.debug.program')
       ?? cfg.get<string>('debug.program')
-      ?? 'vitl-runtime';
+      ?? cfg.get<string>('compiler.path')
+      ?? 'vitte';
 
     const toolchainRoot = cfg.get<string>('toolchain.root') ?? cfg.get<string>('toolchainPath');
     const program = toolchainRoot && explicit && !path.isAbsolute(explicit)
@@ -90,7 +91,7 @@ class VitlDebugAdapterFactory implements vscode.DebugAdapterDescriptorFactory, v
     }
     const extraArgs = this.sanitizeArgs(rawArgs);
 
-    return { program: this.ensureString(program, 'vitl-runtime'), cwd: this.ensureString(cwdValue, process.cwd()), extraArgs };
+    return { program: this.ensureString(program, 'vitte'), cwd: this.ensureString(cwdValue, process.cwd()), extraArgs };
   }
 
   // ---- server probing ---------------------------------------------------------
@@ -107,13 +108,13 @@ class VitlDebugAdapterFactory implements vscode.DebugAdapterDescriptorFactory, v
     const c = await this.spawnAndDetectPort(program, ['dap', ...extraArgs], cwd);
     if (c.ok) return c;
 
-    return { ok: false, error: new Error('No DAP server mode detected for vitl runtime') };
+    return { ok: false, error: new Error('No DAP server mode detected for vitte CLI') };
   }
 
   private spawnAndDetectPort(program: string, args: string[], cwd: string): Promise<{ ok: true, proc: cp.ChildProcess, port: number } | { ok: false, error: Error }> {
     return new Promise((resolve) => {
       let resolved = false;
-      const cmd = this.ensureString(program, 'vitl-runtime');
+      const cmd = this.ensureString(program, 'vitte');
       const argv = this.sanitizeArgs(args);
       const proc = cp.spawn(cmd, argv, { cwd: this.ensureString(cwd, process.cwd()), env: process.env, stdio: ['ignore', 'pipe', 'pipe'] });
 

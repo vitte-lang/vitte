@@ -10,7 +10,7 @@ import { spawn, SpawnOptionsWithoutStdio } from "child_process";
 
 // ----------------------------- Constantes ----------------------------------
 const LANGS = [
-  { id: "vit",  exts: [".vit", ".vitl"],  aliases: ["Vitte", "Vit"] },
+  { id: "vit",  exts: [".vit", ".vitl"],  aliases: ["Vitte", "Vit", "Vitl"] },
   { id: "vitte", exts: [".vitte"],aliases: ["Vitte Legacy"] },
 ];
 

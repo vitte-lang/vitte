@@ -148,7 +148,7 @@ function debounce<T extends (...args: unknown[]) => void>(fn: T, ms: number): T 
   return debounced as T;
 }
 
-const SUPPORTED_EXTS = new Set([".vitte", ".vit"]);
+const SUPPORTED_EXTS = new Set([".vit", ".vitl", ".vitte"]);
 
 export interface DiagnosticsView {
   readonly provider: DiagnosticsTreeDataProvider;

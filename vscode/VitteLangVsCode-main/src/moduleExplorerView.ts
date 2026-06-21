@@ -220,7 +220,7 @@ async function buildModuleEntries(): Promise<ModuleEntry[]> {
 
 async function seedModulesFromWorkspace(byModule: Map<string, ModuleBucket>): Promise<void> {
   const files = await vscode.workspace.findFiles(
-    "**/*.{vit,vitte}",
+    "**/*.{vit,vitl,vitte}",
     "**/{node_modules,.git,out,dist,build}/**",
     4000,
   );
