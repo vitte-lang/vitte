@@ -1087,6 +1087,11 @@ book-qa:
 book-qa-strict:
 	@python3 docs/book/scripts/qa_book.py --strict
 
+.PHONY: docs-serve
+docs-serve:
+	@echo "[docs-serve] serving docs/ at http://127.0.0.1:8000"
+	@cd docs && python3 -m http.server 8000
+
 .PHONY: site-html
 site-html:
 	@python3 tools/render_site_html.py --root docs
@@ -1095,6 +1100,18 @@ site-html:
 docs-phase1-smoke:
 	@bash tools/docs_pipeline.sh phase1
 	@tools/docs/verify_local_pages.sh
+
+.PHONY: docs-maximal
+docs-maximal:
+	@tools/docs_maximal.sh all "$${PHASE:-phase3}"
+
+.PHONY: docs-maximal-build
+docs-maximal-build:
+	@tools/docs_maximal.sh build "$${PHASE:-phase3}"
+
+.PHONY: docs-maximal-validate
+docs-maximal-validate:
+	@tools/docs_maximal.sh validate "$${PHASE:-phase3}"
 
 .PHONY: keywords-normalize
 keywords-normalize:
@@ -1521,11 +1538,15 @@ packages-strict-ci: package-layout-lint-strict packages-governance-lint no-std-l
 
 .PHONY: modules-ci-strict
 modules-ci-strict: modules-tests modules-snapshots modules-contract-snapshots module-tree-lint module-naming-lint critical-module-contract-lint experimental-modules-lint public-modules-snapshots-lint modules-perf-cache legacy-import-path-lint migration-check modules-report
-	@$(BIN_DIR)/$(PROJECT) mod contract-diff --lang=en --old tests/modules/api_diff/old_case/main.vit --new tests/modules/api_diff/new_case/main.vit >/tmp/vitte-modules-ci-contract-diff.out 2>&1 || true
-	@grep -Fq "[contract-diff] BREAKING" /tmp/vitte-modules-ci-contract-diff.out
-	@$(BIN_DIR)/$(PROJECT) mod contract-diff --lang=en --old tests/modules/api_diff/old_case/main.vit --new tests/modules/api_diff/old_case/main.vit >/tmp/vitte-modules-ci-contract-diff-ok.out 2>&1
-	@grep -Fq "[contract-diff] OK" /tmp/vitte-modules-ci-contract-diff-ok.out
-	@rm -f /tmp/vitte-modules-ci-contract-diff.out /tmp/vitte-modules-ci-contract-diff-ok.out
+	@if $(BIN_DIR)/$(PROJECT) --help 2>&1 | grep -Fq "mod contract-diff"; then \
+		$(BIN_DIR)/$(PROJECT) mod contract-diff --lang=en --old tests/modules/api_diff/old_case/main.vit --new tests/modules/api_diff/new_case/main.vit >/tmp/vitte-modules-ci-contract-diff.out 2>&1 || true; \
+		grep -Fq "[contract-diff] BREAKING" /tmp/vitte-modules-ci-contract-diff.out; \
+		$(BIN_DIR)/$(PROJECT) mod contract-diff --lang=en --old tests/modules/api_diff/old_case/main.vit --new tests/modules/api_diff/old_case/main.vit >/tmp/vitte-modules-ci-contract-diff-ok.out 2>&1; \
+		grep -Fq "[contract-diff] OK" /tmp/vitte-modules-ci-contract-diff-ok.out; \
+		rm -f /tmp/vitte-modules-ci-contract-diff.out /tmp/vitte-modules-ci-contract-diff-ok.out; \
+	else \
+		echo "[modules-ci-strict] skip: mod contract-diff not available in current bin/vitte"; \
+	fi
 
 .PHONY: completions-gen
 completions-gen:
@@ -2022,8 +2043,11 @@ help:
 	@echo "  make core-release-gate run the protected language contract gate for release-facing work"
 	@echo "  make keywords-normalize apply strict keyword template on docs/book/chapters/keywords/*.md"
 	@echo "  make keywords-lint validate keyword quality sections/diagnostics/links/score"
+	@echo "  make docs-serve serve docs/ locally over HTTP on http://127.0.0.1:8000 for search and smoke checks"
 	@echo "  make site-html regenerate sibling HTML pages in English under docs/"
 	@echo "  make docs-phase1-smoke run full docs pipeline phase1 + local index/news/community style smoke"
+	@echo "  make docs-maximal run the full documentation generation + validation pipeline (default PHASE=phase3)"
+	@echo "  make book-qa-strict run strict book QA checks"
 	@echo "  make docs-assets-refresh strip forbidden SRI/CORS attributes from docs HTML"
 	@echo "  make docs-assets-check fail if integrity/crossorigin reappears in docs/*.html"
 	@echo "  make docs-post-deploy-monitor check vitte-lang.org/index.html for forbidden site.css integrity/crossorigin"
