@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+#
+# Render Markdown sources to raw HTML documents.
+# Shared shell normalization and asset injection are handled later by build_docs_site.py.
 from __future__ import annotations
 
 import argparse
@@ -489,6 +492,7 @@ def site_shell(body: str, title: str, md_path: Path, root: Path) -> str:
         f'<p><a href="{prefix}index.html">Back to home</a></p>',
         "</footer>",
         "</div>",
+        f'<script type="module" src="{prefix}js/main.js"></script>',
         "</body>",
         "</html>",
         "",

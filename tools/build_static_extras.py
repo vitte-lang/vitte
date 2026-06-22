@@ -2,6 +2,7 @@
 from pathlib import Path
 import hashlib, json, re, subprocess
 from datetime import datetime, timezone
+from check_broken_internal_links import collect_broken_links
 
 DOCS=Path('docs')
 BASE='https://vitte-lang.org'
@@ -161,30 +162,13 @@ total_json = len(list(DOCS.rglob('*.json')))
 stats_html = f'''<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Site Statistics</title><link rel="stylesheet" href="css/site.css"></head><body class="classic-doc"><a class="skip-link" href="#main-content">Skip to content</a><div class="site-shell"><main id="main-content" class="site-main"><article class="doc-content"><h1>Site Statistics</h1><ul><li>Total HTML pages: {total_html}</li><li>Total assets: {total_assets}</li><li>Total CSS files: {total_css}</li><li>Total JS files: {total_js}</li><li>Total SVG files: {total_svg}</li><li>Total JSON files: {total_json}</li><li>Build date (UTC): {now}</li></ul></article></main></div></body></html>'''
 (DOCS/'site-statistics.html').write_text(stats_html, encoding='utf-8')
 
-# Generate broken-links.html
-broken_links = {}
-href_re = re.compile(r'href="([^"]+)"')
-for p in html_pages:
-    content = p.read_text(encoding='utf-8', errors='ignore')
-    links = href_re.findall(content)
-    for link in links:
-        # Ignore external links and anchors
-        if link.startswith(('http://','https://','#','mailto:')):
-            continue
-        # Normalize link path relative to current page
-        link_path = (p.parent / link).resolve()
-        # Check if link_path is inside DOCS
-        try:
-            link_path.relative_to(DOCS.resolve())
-        except Exception:
-            continue  # link outside DOCS, skip
-        if not link_path.exists():
-            broken_links.setdefault(str(p.relative_to(DOCS)).replace('\\','/'), set()).add(link)
+# Generate broken-links.html from the same logic as CI validation.
+broken_links = collect_broken_links(DOCS)
 broken_rows = []
 for page, links in broken_links.items():
-    for link in sorted(links):
+    for link in links:
         broken_rows.append(f'<tr><td>{page}</td><td>{link}</td></tr>')
-broken_html = f'''<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Broken Links</title><link rel="stylesheet" href="css/site.css"></head><body class="classic-doc"><a class="skip-link" href="#main-content">Skip to content</a><div class="site-shell"><main id="main-content" class="site-main"><article class="doc-content"><h1>Broken Links</h1>{'<table><thead><tr><th>Page</th><th>Broken Link</th></tr></thead><tbody>' + ''.join(broken_rows) + '</tbody></table>' if broken_rows else '<p>No broken links found.</p>'}</article></main></div></body></html>'''
+broken_html = f'''<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Broken Links</title><link rel="stylesheet" href="css/site.css"><link rel="stylesheet" href="css/print.css" media="print"></head><body class="classic-doc"><a class="skip-link" href="#main-content">Skip to content</a><div class="site-shell">{SHARED_HEADER}<main id="main-content" class="site-main"><article class="doc-content"><h1>Broken Links</h1>{'<table><thead><tr><th>Page</th><th>Broken Link</th></tr></thead><tbody>' + ''.join(broken_rows) + '</tbody></table>' if broken_rows else '<p>No broken links found.</p>'}</article></main><footer class="site-footer"><p class="site-footer-path">broken-links.html</p><p><a href="index.html">Back to home</a></p></footer></div><script type="module" src="js/main.js"></script></body></html>'''
 (DOCS/'broken-links.html').write_text(broken_html, encoding='utf-8')
 
 # Generate accessibility-report.html

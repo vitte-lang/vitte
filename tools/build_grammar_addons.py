@@ -170,7 +170,7 @@ search_html_parts.append('</ul></nav>')
 for letter in sorted(grouped_rules.keys()):
     search_html_parts.append(f'<h2 id="{letter}">{letter}</h2><ul>')
     for rule in grouped_rules[letter]:
-        search_html_parts.append(f'<li><a href="../index.html#{rule}"><code>{html.escape(rule)}</code></a></li>')
+        search_html_parts.append(f'<li><a href="index.html#{rule}"><code>{html.escape(rule)}</code></a></li>')
     search_html_parts.append('</ul>')
 
 search_html_parts.append('</article>\n</main>\n</div>\n</body>\n</html>')
@@ -317,7 +317,7 @@ def categorize_rule(r):
 inventory_rows = []
 for r in sorted_rules:
     category = categorize_rule(r)
-    inventory_rows.append(f'<tr><td><a href="../index.html#{r}"><code>{html.escape(r)}</code></a></td><td>{category}</td></tr>')
+    inventory_rows.append(f'<tr><td><a href="index.html#{r}"><code>{html.escape(r)}</code></a></td><td>{category}</td></tr>')
 
 grammar_inventory_html = f'''<!doctype html>
 <html>

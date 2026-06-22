@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+#
+# Post-process generated docs HTML.
+# Source HTML is rendered elsewhere; this script normalizes the shared shell,
+# injects the canonical docs JS/CSS references, and regenerates search/status artifacts.
 from __future__ import annotations
 import hashlib
 import html

@@ -28,6 +28,7 @@ python3 tools/check_search_indexes.py
 python3 tools/check_docs_perf.py
 python3 tools/check_no_duplicate_scripts.py
 python3 tools/check_no_duplicate_css.py
+python3 tools/check_docs_frontend.py
 python3 tools/check_broken_internal_links.py
 python3 tools/check_html_page_sizes.py
 python3 tools/check_docs_en_only.py
