@@ -17,17 +17,6 @@
     }).catch(()=>{});
   }
 
-  document.addEventListener('click', function(e){
-    var b=e.target.closest('.quiz-save');
-    if(!b) return;
-    var seen=JSON.parse(localStorage.getItem(KEY)||'{}');
-    seen[chapterPath()]=true;
-    localStorage.setItem(KEY,JSON.stringify(seen));
-    localStorage.setItem(LAST,chapterPath());
-    b.textContent='Saved';
-    updateProgress();
-  });
-
   document.addEventListener('DOMContentLoaded', function(){
     localStorage.setItem(LAST,chapterPath());
     updateProgress();

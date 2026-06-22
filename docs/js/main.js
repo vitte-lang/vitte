@@ -1,61 +1,7 @@
 (function () {
-  var TEXT_SIZE_KEY = "docs-text-size";
-  var LANG_KEY = "docs-language";
-
   function q(sel, root) { return (root || document).querySelector(sel); }
   function qa(sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); }
   function esc(s) { return (s || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
-
-  function setupTextSizeToggle() {
-    var header = q(".site-header"); if (!header) return;
-    if (localStorage.getItem(TEXT_SIZE_KEY) === "large") document.body.classList.add("text-large");
-    var btn = document.createElement("button"); btn.type = "button"; btn.className = "text-size-toggle";
-    function render() { var large = document.body.classList.contains("text-large"); btn.textContent = large ? "Texte: grand" : "Texte: normal"; btn.setAttribute("aria-pressed", String(large)); }
-    render();
-    btn.addEventListener("click", function () { var large = document.body.classList.toggle("text-large"); localStorage.setItem(TEXT_SIZE_KEY, large ? "large" : "normal"); render(); syncHeaderOffset(); });
-    header.appendChild(btn);
-  }
-
-  function setupLanguageSwitcher() {
-    var header = q(".site-header"); if (!header) return;
-    var navLangs = ["en"], browserLang = (navigator.language || "en").slice(0, 2).toLowerCase();
-    var stored = localStorage.getItem(LANG_KEY) || "auto", path = window.location.pathname, currentLang = /\/fr\//.test(path) ? "fr" : "en";
-    var wrap = document.createElement("div"); wrap.className = "language-switcher";
-    var select = document.createElement("select"); select.className = "language-select"; select.setAttribute("aria-label", "Language");
-    select.innerHTML = '<option value="en">English</option>'; select.value = "en";
-    var autoLink = document.createElement("a"); autoLink.className = "language-auto-translate"; autoLink.target = "_blank"; autoLink.rel = "noopener noreferrer"; autoLink.textContent = "Traduire automatiquement";
-    var status = document.createElement("span"); status.className = "language-status";
-    function translateUrl(targetLang) { return "https://translate.google.com/translate?sl=auto&tl=" + encodeURIComponent(targetLang) + "&u=" + encodeURIComponent(window.location.href); }
-    function switchLang(value) { var resolved = value === "auto" ? "en" : value; autoLink.href = translateUrl(browserLang); status.textContent = navLangs.indexOf(browserLang) === -1 ? "External language: browser translation available" : ""; localStorage.setItem(LANG_KEY, resolved); document.documentElement.lang = "en"; var file = window.location.pathname.split("/").pop() || "index.html"; window.location.href = "/" + file; }
-    select.addEventListener("change", function () { switchLang(select.value); }); wrap.appendChild(select); wrap.appendChild(autoLink); wrap.appendChild(status); header.appendChild(wrap);
-  }
-
-  function setupThemeToggle() {
-    var header = q(".site-header");
-    if (!header) return;
-    if (q(".theme-toggle", header)) return;
-    var key = "docs-theme";
-    var btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "theme-toggle";
-
-    function apply(theme) {
-      var resolved = theme === "dark" ? "dark" : "light";
-      document.documentElement.setAttribute("data-theme", resolved);
-      localStorage.setItem(key, resolved);
-      btn.textContent = resolved === "dark" ? "Theme: sombre" : "Theme: clair";
-      btn.setAttribute("aria-pressed", String(resolved === "dark"));
-    }
-
-    btn.addEventListener("click", function () {
-      var current = document.documentElement.getAttribute("data-theme") || localStorage.getItem(key) || "light";
-      apply(current === "dark" ? "light" : "dark");
-      syncHeaderOffset();
-    });
-
-    apply(localStorage.getItem(key) || document.documentElement.getAttribute("data-theme") || "light");
-    header.appendChild(btn);
-  }
 
   function setupMobileMenu() {
     var nav = q(".site-nav"), header = q(".site-header"); if (!nav || !header || !q("ul", nav)) return;
@@ -549,7 +495,7 @@
   }
 
   document.addEventListener("DOMContentLoaded", function () {
-    removeSkipLink(); registerServiceWorker(); addBreadcrumbs(); linkifyDocReferences(); setupGlobalSearch(); setupSearchPage(); setupLanguageSwitcher(); setupThemeToggle(); setupTextSizeToggle(); setupMobileMenu(); wrapTables(); addFloatingToc(); addBackToTop(); lazyLoadDecorativeSvg(); addSmartPagination(); syncHeaderOffset();
+    removeSkipLink(); registerServiceWorker(); addBreadcrumbs(); linkifyDocReferences(); setupGlobalSearch(); setupSearchPage(); setupMobileMenu(); wrapTables(); addFloatingToc(); addBackToTop(); lazyLoadDecorativeSvg(); addSmartPagination(); syncHeaderOffset();
     window.addEventListener("resize", syncHeaderOffset);
   });
 })();

@@ -457,6 +457,10 @@ for i, p in enumerate(CHAPTERS):
     s = p.read_text(encoding='utf-8', errors='ignore')
     rel = str(p.relative_to(DOCS)).replace('\\', '/')
     m = next(x for x in meta if x['path'] == rel)
+    cleaned = re.sub(r'<section class="chapter-quiz">.*?</section>', '', s, flags=re.I | re.S)
+    if cleaned != s:
+        p.write_text(cleaned, encoding='utf-8')
+        s = cleaned
     if 'data-chapter-meta=' in s:
         continue
     prefix = relative_prefix(p)
@@ -485,18 +489,6 @@ for i, p in enumerate(CHAPTERS):
         '<section class="chapter-performance">'
         '<h2>Performance Tip</h2>'
         '<p>Optimize code by focusing on critical paths and avoiding premature optimization.</p>'
-        '</section>'
-    )
-
-    quiz = (
-        '<section class="chapter-quiz">'
-        '<h2>Mini quiz</h2>'
-        '<ol>'
-        '<li>What is the main goal of this chapter?</li>'
-        '<li>Which concept is most important?</li>'
-        '<li>What will you try right now?</li>'
-        '</ol>'
-        '<button class="quiz-save" type="button">Mark as reviewed</button>'
         '</section>'
     )
 
@@ -576,7 +568,6 @@ for i, p in enumerate(CHAPTERS):
         + faq_section
         + exercise_section
         + quality_section
-        + quiz
         + see
         + next_section
         + cta

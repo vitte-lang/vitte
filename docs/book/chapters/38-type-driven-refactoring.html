@@ -9,13 +9,9 @@
 <link rel="stylesheet" href="../../css/print.css" media="print">
 <link rel="alternate" hreflang="en" href="https://vitte-lang.org/38-type-driven-refactoring.html">
 <link rel="alternate" hreflang="x-default" href="https://vitte-lang.org/38-type-driven-refactoring.html">
-
-
-
-
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none';">
 </head>
-<body class="classic-doc">
+<body class="classic-doc book-chapter-doc">
 <a class="skip-link" href="#main-content">Skip to content</a>
 <div class="site-shell">
 <header class="site-header"><a class="site-brand" href="../../index.html"><img class="site-brand-mark" src="../../svg/logo.svg" alt="" width="32" height="32"><span>Vitte</span></a><nav class="site-nav" aria-label="Primary"><ul class="nav-band"><li><a class="nav-chip" href="../../index.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="../../svg/sprite.svg#i-home"></use></svg><span>Welcome</span></a></li><li><a class="nav-chip" href="../../doc.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="../../svg/sprite.svg#i-docs"></use></svg><span>Documentation</span></a></li><li><a class="nav-chip" href="../../download.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="../../svg/sprite.svg#i-docs"></use></svg><span>Download</span></a></li><li><a class="nav-chip" href="../../source.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="../../svg/sprite.svg#i-docs"></use></svg><span>Source</span></a></li><li><a class="nav-chip" href="../../community.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="../../svg/sprite.svg#i-docs"></use></svg><span>Community</span></a></li><li><a class="nav-chip" href="../../news.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="../../svg/sprite.svg#i-news"></use></svg><span>News</span></a></li><li><a class="nav-chip" href="../../diagnostics.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="../../svg/sprite.svg#i-docs"></use></svg><span>Diagnostics</span></a></li><li><a class="nav-chip" href="../../suggestions.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="../../svg/sprite.svg#i-docs"></use></svg><span>Suggestions</span></a></li></ul></nav><form class="doc-search" role="search" action="../../search.html" method="get"><input class="doc-search-input" type="search" name="q" placeholder="Search docs, book, grammar" aria-label="Search documentation" autocomplete="off"><div class="doc-search-controls" aria-label="Search filters"><select class="doc-search-filter doc-search-section" name="section" aria-label="Filter by section"><option value="all">All sections</option><option value="docs">Docs</option><option value="book">Book</option><option value="grammar">Grammar</option></select><select class="doc-search-filter doc-search-lang" name="lang" aria-label="Filter by language"><option value="all">All languages</option><option value="en">EN</option><option value="fr">FR</option></select></div><div class="doc-search-results" hidden></div><div class="doc-search-footer" hidden></div></form></header>
@@ -23,29 +19,75 @@
 <article class="doc-content">
 <p class="book-progress"></p>
 <h1>38. Refactoring guided by types</h1>
-<p class="chapter-meta" data-chapter-meta="1">Level: <strong>intermediate</strong> · Reading time: <strong>4 min</strong> · Prerequisite: <a href="../../book/chapters/37-large-scale-module-conventions.html"><code>book/chapters/37-large-scale-module-conventions.html</code></a> · Track: <strong>supplemental</strong> · Maturity: <strong>draft</strong> · Last review: <strong>2026-05-09</strong></p>
-<section class="chapter-tldr"><h2>TL;DR (5 lines)</h2><ul>
+<p class="chapter-meta" data-chapter-meta="1">Level: <strong>intermediate</strong> · Reading time: <strong>20 min</strong> · Prerequisite: <a href="../../book/chapters/37-large-scale-module-conventions.html"><code>book/chapters/37-large-scale-module-conventions.html</code></a> · Track: <strong>supplemental</strong> · Maturity: <strong>draft</strong> · Last review: <strong>2026-05-09</strong></p>
+<nav class="chapter-toc" aria-label="Chapter table of contents"><h2>Contents</h2><ol><li class="toc-level-2"><a href="#tl-dr-5-lines">TL;DR (5 lines)</a></li>
+<li class="toc-level-2"><a href="#frequent-mistakes">Frequent mistakes</a></li>
+<li class="toc-level-2"><a href="#concrete-problem">Concrete Problem</a></li>
+<li class="toc-level-2"><a href="#red-thread-single-project">Red Thread (Single Project)</a></li>
+<li class="toc-level-2"><a href="#for-what">For what</a></li>
+<li class="toc-level-2"><a href="#work-in-this-chapter">Work in this chapter</a></li>
+<li class="toc-level-2"><a href="#coherent-example">Coherent example</a></li>
+<li class="toc-level-2"><a href="#complete-examples">Complete examples</a></li>
+<li class="toc-level-3"><a href="#primary-coherent-example">Primary coherent example</a></li>
+<li class="toc-level-3"><a href="#typed-domain-form">Typed domain form</a></li>
+<li class="toc-level-3"><a href="#result-type-contract">Result type contract</a></li>
+<li class="toc-level-2"><a href="#immediate-work-for-this-chapter">Immediate work for this chapter</a></li>
+<li class="toc-level-2"><a href="#chapter-override-38-type-driven-refactoring-html">Chapter override: 38-type-driven-refactoring.html</a></li>
+<li class="toc-level-3"><a href="#dedicated-problem">Dedicated problem</a></li>
+<li class="toc-level-3"><a href="#specific-complete-examples">Specific complete examples</a></li>
+<li class="toc-level-4"><a href="#38-refactoring-guided-by-types-chapter-anchor">38. Refactoring guided by types chapter anchor</a></li>
+<li class="toc-level-4"><a href="#typed-domain-form-2">Typed domain form</a></li>
+<li class="toc-level-4"><a href="#result-type-contract-2">Result type contract</a></li>
+<li class="toc-level-3"><a href="#risks-and-diagnostics">Risks and diagnostics</a></li>
+<li class="toc-level-3"><a href="#review-checklist">Review checklist</a></li>
+<li class="toc-level-3"><a href="#production-use">Production use</a></li>
+<li class="toc-level-3"><a href="#what-to-avoid">What to avoid</a></li>
+<li class="toc-level-2"><a href="#global-explanation">Global explanation</a></li>
+<li class="toc-level-2"><a href="#invalid-case">Invalid case</a></li>
+<li class="toc-level-2"><a href="#common-pitfalls">Common pitfalls</a></li>
+<li class="toc-level-2"><a href="#short-exercise">Short exercise</a></li>
+<li class="toc-level-2"><a href="#summary-in-5-points">Summary in 5 points</a></li>
+<li class="toc-level-2"><a href="#see-also">See also</a></li>
+<li class="toc-level-2"><a href="#next-best-action">Next best action</a></li>
+<li class="toc-level-2"><a href="#chapter-deep-dive">Chapter deep dive</a></li>
+<li class="toc-level-3"><a href="#role-in-the-learning-path">Role in the learning path</a></li>
+<li class="toc-level-3"><a href="#profile-specific-deep-dive">Profile-specific deep dive</a></li>
+<li class="toc-level-4"><a href="#domain-shapes">Domain shapes</a></li>
+<li class="toc-level-4"><a href="#constructor-discipline">Constructor discipline</a></li>
+<li class="toc-level-4"><a href="#type-diagnostics">Type diagnostics</a></li>
+<li class="toc-level-3"><a href="#reading-the-valid-example">Reading the valid example</a></li>
+<li class="toc-level-3"><a href="#lesson-from-the-invalid-example">Lesson from the invalid example</a></li>
+<li class="toc-level-3"><a href="#engineering-decisions-to-preserve">Engineering decisions to preserve</a></li>
+<li class="toc-level-3"><a href="#context-specific-review-criteria">Context-specific review criteria</a></li>
+<li class="toc-level-3"><a href="#contract-matrix">Contract matrix</a></li>
+<li class="toc-level-3"><a href="#rewrite-path-for-this-chapter">Rewrite path for this chapter</a></li>
+<li class="toc-level-3"><a href="#diagnostic-anchors">Diagnostic anchors</a></li>
+<li class="toc-level-3"><a href="#when-extending-this-chapter">When extending this chapter</a></li>
+<li class="toc-level-3"><a href="#failure-modes-to-avoid">Failure modes to avoid</a></li>
+<li class="toc-level-3"><a href="#practice-scenario">Practice scenario</a></li>
+<li class="toc-level-3"><a href="#before-moving-on">Before moving on</a></li></ol></nav>
+<section class="chapter-tldr"><h2 id="tl-dr-5-lines">TL;DR (5 lines)</h2><ul>
 <li>Types are contracts, not decorations.</li>
 <li>A small form is a better teaching unit than isolated declarations.</li>
 <li>The chapter should connect type names to domain meaning.</li>
 <li>Invalid examples should show broken contracts clearly.</li>
 <li>Type clarity reduces later diagnostic work.</li>
 </ul></section>
-<section class="chapter-errors"><h2>Frequent mistakes</h2><ul>
+<section class="chapter-errors"><h2 id="frequent-mistakes">Frequent mistakes</h2><ul>
 <li>Using a type by habit instead of by domain meaning.</li>
 <li>Explaining individual fields without explaining the full contract.</li>
 <li>Forgetting that invalid examples should show a broken meaning, not just a weird token.</li>
 </ul></section>
 <p>Prerequisites: <a href="../../book/chapters/37-large-scale-module-conventions.html"><code>book/chapters/37-large-scale-module-conventions.html</code></a>. See also: <a href="../../book/chapters/37-large-scale-module-conventions.html"><code>book/chapters/37-large-scale-module-conventions.html</code></a>, <a href="../../book/chapters/27-grammar.html"><code>book/chapters/27-grammar.html</code></a>, <a href="../../book/chapters/31-build-errors.html"><code>book/chapters/31-build-errors.html</code></a>.</p>
-<h2>Concrete Problem</h2>
+<h2 id="concrete-problem">Concrete Problem</h2>
 <p>Readers often learn type names but not what type contracts buy them in a real block.</p>
-<h2>Red Thread (Single Project)</h2>
+<h2 id="red-thread-single-project">Red Thread (Single Project)</h2>
 <p>A tiny reporting example uses integers, strings, and a form to make value contracts visible.</p>
-<h2>For what</h2>
+<h2 id="for-what">For what</h2>
 <p>This chapter helps the reader choose types based on meaning, not habit.</p>
-<h2>What you are going to do</h2>
+<h2 id="work-in-this-chapter">Work in this chapter</h2>
 <p>You will inspect a typed example, identify where each type contract matters, then compare it to an invalid variant.</p>
-<h2>Coherent example</h2>
+<h2 id="coherent-example">Coherent example</h2>
 <pre><code class="language-vit">space demo/types
 
 form Report {
@@ -57,40 +99,348 @@ form Report {
 proc score(r: Report) -&gt; int {
   if not r.ok { give 0 }
   give r.retries + 1
-}</code></pre>
-<h2>Global explanation</h2>
+}
+
+export *</code></pre>
+<section class="chapter-examples">
+<h2 id="complete-examples">Complete examples</h2>
+<p>Each block below is a complete reading unit with its own boundary, data shape, and observable result.</p>
+<h3 id="primary-coherent-example">Primary coherent example</h3>
+<p>This is the compact chapter anchor used by the surrounding explanation.</p>
+<pre><code class="language-vit">space demo/types
+
+form Report {
+  name: string
+  retries: int
+  ok: bool
+}
+
+proc score(r: Report) -&gt; int {
+  if not r.ok { give 0 }
+  give r.retries + 1
+}
+
+export *</code></pre>
+<h3 id="typed-domain-form">Typed domain form</h3>
+<p>This example shows text, number, and boolean contracts in one complete flow.</p>
+<pre><code class="language-vit">space examples/types/report
+
+form ReportInput {
+  title: string
+  count: int
+  enabled: bool
+}
+
+proc readiness(input: ReportInput) -&gt; int {
+  if input.title == &quot;&quot; { give 11 }
+  if input.count &lt; 1 { give 12 }
+  if not input.enabled { give 13 }
+  give 0
+}
+
+proc main(args: list[string]) -&gt; int {
+  let input: ReportInput = ReportInput { title: &quot;daily&quot;, count: 3, enabled: true }
+  give readiness(input)
+}
+
+export *</code></pre>
+<h3 id="result-type-contract">Result type contract</h3>
+<p>This version makes success and rejection visible through a result shape.</p>
+<pre><code class="language-vit">space examples/types/result
+
+pick ParseResult {
+  case Parsed(value: int),
+  case Rejected(code: int),
+}
+
+proc parse_count(raw: int) -&gt; ParseResult {
+  if raw &lt; 0 { give ParseResult.Rejected(20) }
+  give ParseResult.Parsed(raw)
+}
+
+proc main(args: list[string]) -&gt; int {
+  let result: ParseResult = parse_count(7)
+  give 0
+}
+
+export *</code></pre>
+</section>
+<section class="chapter-now">
+<h2 id="immediate-work-for-this-chapter">Immediate work for this chapter</h2>
+<ul>
+<li>Use forms and picks to show domain meaning, not isolated type names.</li>
+<li>Prefer constructor syntax already used by Vitte docs.</li>
+<li>Show one mismatch where the type contract catches the error early.</li>
+<li>Keep the first code block complete and aligned with current Vitte docs syntax.</li>
+<li>Keep the invalid block focused on one broken contract only.</li>
+<li>Replace generic prose with one concrete rule visible in the code.</li>
+<li>Keep every example small enough to review from top to bottom.</li>
+</ul>
+</section>
+<section class="chapter-override">
+<h2 id="chapter-override-38-type-driven-refactoring-html">Chapter override: 38-type-driven-refactoring.html</h2>
+<h3 id="dedicated-problem">Dedicated problem</h3>
+<p>38. Refactoring guided by types needs a concrete production-grade anchor around field meaning, value shape, and compiler-enforced mismatch. The page should keep the examples, diagnostics, and review rules tied to that exact boundary instead of drifting back to generic tutorial prose.</p>
+<h3 id="specific-complete-examples">Specific complete examples</h3>
+<h4 id="38-refactoring-guided-by-types-chapter-anchor">38. Refactoring guided by types chapter anchor</h4>
+<p>The primary example is promoted here as the first chapter-specific production reading unit.</p>
+<pre><code class="language-vit">space demo/types
+
+form Report {
+  name: string
+  retries: int
+  ok: bool
+}
+
+proc score(r: Report) -&gt; int {
+  if not r.ok { give 0 }
+  give r.retries + 1
+}
+
+export *</code></pre>
+<h4 id="typed-domain-form-2">Typed domain form</h4>
+<p>This example shows text, number, and boolean contracts in one complete flow.</p>
+<pre><code class="language-vit">space examples/types/report
+
+form ReportInput {
+  title: string
+  count: int
+  enabled: bool
+}
+
+proc readiness(input: ReportInput) -&gt; int {
+  if input.title == &quot;&quot; { give 11 }
+  if input.count &lt; 1 { give 12 }
+  if not input.enabled { give 13 }
+  give 0
+}
+
+proc main(args: list[string]) -&gt; int {
+  let input: ReportInput = ReportInput { title: &quot;daily&quot;, count: 3, enabled: true }
+  give readiness(input)
+}
+
+export *</code></pre>
+<h4 id="result-type-contract-2">Result type contract</h4>
+<p>This version makes success and rejection visible through a result shape.</p>
+<pre><code class="language-vit">space examples/types/result
+
+pick ParseResult {
+  case Parsed(value: int),
+  case Rejected(code: int),
+}
+
+proc parse_count(raw: int) -&gt; ParseResult {
+  if raw &lt; 0 { give ParseResult.Rejected(20) }
+  give ParseResult.Parsed(raw)
+}
+
+proc main(args: list[string]) -&gt; int {
+  let result: ParseResult = parse_count(7)
+  give 0
+}
+
+export *</code></pre>
+<h3 id="risks-and-diagnostics">Risks and diagnostics</h3>
+<table>
+<thead><tr><th>Risk</th><th>Diagnostic signal</th><th>Action</th></tr></thead>
+<tbody>
+<tr><td>Boundary drift</td><td>The chapter loses sight of field meaning, value shape, and compiler-enforced mismatch.</td><td>Restate the boundary beside the first code block and every invalid case.</td></tr>
+<tr><td>Generic prose</td><td>A paragraph would still be true in another chapter.</td><td>Replace it with a code-specific rule from this page.</td></tr>
+<tr><td>Weak diagnostic</td><td>The failure does not point back to the chapter contract.</td><td>Reduce the invalid case until one failure explains the rule.</td></tr>
+</tbody>
+</table>
+<h3 id="review-checklist">Review checklist</h3>
+<ul>
+<li>The first example is complete and aligned with Vitte docs syntax.</li>
+<li>The production section names where this construct belongs in real code.</li>
+<li>The risk table connects each failure to a diagnostic or review action.</li>
+<li>The avoid list rejects broad misuse without adding quiz-like prompts.</li>
+</ul>
+<h3 id="production-use">Production use</h3>
+<ul>
+<li>Use this chapter when a code review needs to preserve field meaning, value shape, and compiler-enforced mismatch.</li>
+<li>Keep examples small enough to copy into fixtures or docs smoke tests.</li>
+<li>Treat the invalid case as regression material for future docs checks.</li>
+</ul>
+<h3 id="what-to-avoid">What to avoid</h3>
+<ul>
+<li>Do not add a second topic that hides the chapter&#x27;s main contract.</li>
+<li>Do not expand examples by adding unrelated subsystems.</li>
+<li>Do not rely on prose when a small Vitte block can show the rule.</li>
+</ul>
+</section>
+<h2 id="global-explanation">Global explanation</h2>
 <p>The value of the chapter is not the list of types. It is the way each type removes ambiguity from the block: text is text, counters are numeric, flags are boolean, and the compiler can enforce that split.</p>
-<h2>Invalid case</h2>
+<h2 id="invalid-case">Invalid case</h2>
 <pre><code class="language-vit">proc bad_report() -&gt; int {
   let name: int = &quot;demo&quot;
   give name
 }</code></pre>
 <p>This invalid case is intentionally small. It exists to isolate the contract failure that the chapter is trying to teach.</p>
-<h2>Common pitfalls</h2><ul>
+<h2 id="common-pitfalls">Common pitfalls</h2><ul>
 <li>Using a type by habit instead of by domain meaning.</li>
 <li>Explaining individual fields without explaining the full contract.</li>
 <li>Forgetting that invalid examples should show a broken meaning, not just a weird token.</li>
 </ul>
-<h2>Short exercise</h2>
+<h2 id="short-exercise">Short exercise</h2>
 <p>Take the example form and add one field whose meaning is obviously not numeric. Choose the type that makes the contract clearest.</p>
-<h2>Summary in 5 points</h2><ol>
+<h2 id="summary-in-5-points">Summary in 5 points</h2><ol>
 <li>Types are contracts, not decorations.</li>
 <li>A small form is a better teaching unit than isolated declarations.</li>
 <li>The chapter should connect type names to domain meaning.</li>
 <li>Invalid examples should show broken contracts clearly.</li>
 <li>Type clarity reduces later diagnostic work.</li>
 </ol>
-<section class="chapter-quiz"><h2>Mini quiz</h2><ol>
-<li>What contract is the coherent example trying to make explicit?</li>
-<li>Why does the invalid example fail?</li>
-<li>What boundary should remain visible if you extend the example?</li>
-</ol><button class="quiz-save" type="button">Mark as reviewed</button></section>
-<section class="chapter-see-also"><h2>See also</h2><ul>
+<section class="chapter-see-also"><h2 id="see-also">See also</h2><ul>
 <li><a href="../../book/chapters/37-large-scale-module-conventions.html"><code>book/chapters/37-large-scale-module-conventions.html</code></a></li>
 <li><a href="../../book/chapters/27-grammar.html"><code>book/chapters/27-grammar.html</code></a></li>
 <li><a href="../../book/chapters/31-build-errors.html"><code>book/chapters/31-build-errors.html</code></a></li>
 </ul></section>
-<section class="chapter-cta"><h2>Next best action</h2><p>Extend the coherent example by one small, justified step and keep the same contract visible from input to output.</p></section>
+<section class="chapter-cta"><h2 id="next-best-action">Next best action</h2><p>Extend the coherent example by one small, justified step and keep the same contract visible from input to output.</p></section>
+<section class="chapter-expansion">
+<h2 id="chapter-deep-dive">Chapter deep dive</h2>
+<p><strong>38. Refactoring guided by types</strong> connects type names to domain meaning. The chapter is written for a reader deciding which type makes a contract clearer.</p>
+<p>The practical boundary is: <strong>field meaning, value shape, and compiler-enforced mismatch</strong>. Keep that boundary in view while reading the example, the invalid case, and the exercise.</p>
+<h3 id="role-in-the-learning-path">Role in the learning path</h3>
+<p>Readers often learn type names but not what type contracts buy them in a real block.</p>
+<p>A tiny reporting example uses integers, strings, and a form to make value contracts visible.</p>
+<p>This chapter helps the reader choose types based on meaning, not habit.</p>
+<h3 id="profile-specific-deep-dive">Profile-specific deep dive</h3>
+<h4 id="domain-shapes">Domain shapes</h4>
+<ul>
+<li>`form` should group fields that move together through the program.</li>
+<li>`pick` should represent named outcomes instead of magic integers.</li>
+<li>Aliases should clarify intent rather than hide a primitive type without benefit.</li>
+</ul>
+<h4 id="constructor-discipline">Constructor discipline</h4>
+<ul>
+<li>Use `Form { field: value }` so field meaning is visible at the call site.</li>
+<li>Keep field names stable when refactoring internal logic.</li>
+<li>Prefer explicit result variants when the caller must handle several outcomes.</li>
+</ul>
+<h4 id="type-diagnostics">Type diagnostics</h4>
+<ul>
+<li>A mismatch between `string`, `int`, and `bool` should point back to domain meaning.</li>
+<li>Return type errors are contract errors, not formatting problems.</li>
+<li>Invalid examples should break one type promise at a time.</li>
+</ul>
+<h3 id="reading-the-valid-example">Reading the valid example</h3>
+<ol>
+<li><code>space demo/types</code>: names the ownership boundary before any behavior appears.</li>
+<li><code>form Report {</code>: introduces a data contract that later branches can rely on.</li>
+<li><code>name: string</code>: supports the chapter contract without adding hidden behavior.</li>
+<li><code>retries: int</code>: supports the chapter contract without adding hidden behavior.</li>
+<li><code>ok: bool</code>: supports the chapter contract without adding hidden behavior.</li>
+<li><code>}</code>: supports the chapter contract without adding hidden behavior.</li>
+<li><code>proc score(r: Report) -&gt; int {</code>: states the callable contract: inputs first, result shape last.</li>
+<li><code>if not r.ok { give 0 }</code>: guards a failure or edge case before the nominal result.</li>
+<li><code>give r.retries + 1</code>: ends the local path with an explicit result.</li>
+<li><code>}</code>: supports the chapter contract without adding hidden behavior.</li>
+<li><code>export *</code>: supports the chapter contract without adding hidden behavior.</li>
+</ol>
+<h3 id="lesson-from-the-invalid-example">Lesson from the invalid example</h3>
+<ol>
+<li><code>proc bad_report() -&gt; int {</code>: this line helps isolate the failure because it states the callable contract: inputs first, result shape last.</li>
+<li><code>let name: int = &quot;demo&quot;</code>: this line helps isolate the failure because it keeps an intermediate decision visible for review.</li>
+<li><code>give name</code>: this line helps isolate the failure because it ends the local path with an explicit result.</li>
+<li><code>}</code>: this line helps isolate the failure because it supports the chapter contract without adding hidden behavior.</li>
+</ol>
+<h3 id="engineering-decisions-to-preserve">Engineering decisions to preserve</h3>
+<ul>
+<li><strong>Name the boundary before changing code:</strong> Types are contracts, not decorations.</li>
+<li><strong>Keep the smallest example executable:</strong> A small form is a better teaching unit than isolated declarations.</li>
+<li><strong>Make the invalid path explain one failure only:</strong> The chapter should connect type names to domain meaning.</li>
+<li><strong>Prefer a visible contract over an implied convention:</strong> Invalid examples should show broken contracts clearly.</li>
+<li><strong>Leave a review anchor that another maintainer can verify:</strong> Type clarity reduces later diagnostic work.</li>
+</ul>
+<h3 id="context-specific-review-criteria">Context-specific review criteria</h3>
+<ul>
+<li>The page makes the field meaning, value shape, and compiler-enforced mismatch boundary visible before the first code block.</li>
+<li>The intended reader, a reader deciding which type makes a contract clearer, can follow the valid example through named contracts instead of memorized tokens.</li>
+<li>The invalid example fails for the same reason the prose discusses.</li>
+<li>The exercise extends the same contract instead of introducing an unrelated concept.</li>
+<li>The next chapter can reuse the vocabulary introduced here without redefining it.</li>
+<li>The chapter stays specific enough that its title materially changes the meaning of the page.</li>
+<li>Every warning connects to a concrete code shape.</li>
+<li>The summary leaves one durable engineering rule behind.</li>
+</ul>
+<h3 id="contract-matrix">Contract matrix</h3>
+<table>
+<thead><tr><th>Concern</th><th>Chapter rule</th><th>Evidence to keep</th></tr></thead>
+<tbody>
+<tr><td>Ownership</td><td>Code belongs behind the boundary named by the chapter.</td><td>The chapter keeps ownership visible through field meaning, value shape, and compiler-enforced mismatch.</td></tr>
+<tr><td>Input contract</td><td>The procedure receives a shape that is named before branching.</td><td>The valid example names the accepted shape before branching.</td></tr>
+<tr><td>Nominal path</td><td>The clean path remains readable without hidden state.</td><td>The successful result can be found without reading hidden state.</td></tr>
+<tr><td>Failure path</td><td>The invalid case isolates one failure reason.</td><td>The broken example has one main reason to fail.</td></tr>
+<tr><td>Naming</td><td>Names explain the domain rather than only the mechanism.</td><td>Names remain tied to the chapter goal.</td></tr>
+<tr><td>Types</td><td>Types remove ambiguity from values and results.</td><td>Fields and return values carry domain meaning.</td></tr>
+<tr><td>Control flow</td><td>Branches stay traceable from guard to result.</td><td>Guards appear before the result they protect.</td></tr>
+<tr><td>Module boundary</td><td>The public surface stays smaller than implementation detail.</td><td>The public surface remains smaller than the implementation detail.</td></tr>
+<tr><td>Diagnostic value</td><td>The failure path points back to the exact contract.</td><td>The invalid example points back to the exact contract.</td></tr>
+<tr><td>Test value</td><td>Regression evidence covers one passing path and one failing path.</td><td>One passing case and one failing case cover the lesson.</td></tr>
+<tr><td>Refactor value</td><td>Implementation cleanup preserves the result shape.</td><td>The result shape stays stable during local cleanup.</td></tr>
+<tr><td>Publication value</td><td>The chapter leaves one concrete engineering rule.</td><td>The chapter leaves one concrete engineering rule.</td></tr>
+</tbody>
+</table>
+<h3 id="rewrite-path-for-this-chapter">Rewrite path for this chapter</h3>
+<ol>
+<li>Rewrite the opening paragraph so it names field meaning, value shape, and compiler-enforced mismatch before naming syntax.</li>
+<li>Keep the valid example small enough that the full contract fits on screen.</li>
+<li>Move any broad claim back to a specific line in the example.</li>
+<li>Preserve one invalid case that fails for the chapter&#x27;s main reason.</li>
+<li>Add one sentence explaining why the invalid case is not a random error.</li>
+<li>Make every pitfall actionable by naming the code shape it damages.</li>
+<li>Keep the exercise inside the same domain as the example.</li>
+<li>Avoid introducing a second unrelated project just to show variety.</li>
+<li>Use the summary to restate the chapter rule, not the table of contents.</li>
+<li>Check that the next chapter can build on this vocabulary.</li>
+<li>Remove any sentence that would still be true in every other chapter.</li>
+<li>Keep the last action small, local, and testable.</li>
+</ol>
+<h3 id="diagnostic-anchors">Diagnostic anchors</h3>
+<ul>
+<li>The first inspected line is the one that declares the chapter&#x27;s main contract.</li>
+<li>The central type, field, procedure, or branch carries the chapter&#x27;s main idea.</li>
+<li>The invalid example includes a sentence-level explanation of its failure.</li>
+<li>Refactors preserve the detail that would otherwise mislead a future reader.</li>
+<li>The behavior that must stay stable is named before implementation changes begin.</li>
+<li>Vague names are replaced before they become review friction.</li>
+<li>Regression coverage protects the chapter&#x27;s main contract.</li>
+<li>Implementation details stay out of public API unless the chapter explicitly teaches that surface.</li>
+<li>Beginner-facing diagnostics point to the contract, not to a random syntax detail.</li>
+<li>The next chapter can assume one clearly named concept from this page.</li>
+</ul>
+<h3 id="when-extending-this-chapter">When extending this chapter</h3>
+<ul>
+<li>Extend toward a reader deciding which type makes a contract clearer, not toward a broader catalog of features.</li>
+<li>Add a second example only if it sharpens the same contract.</li>
+<li>Prefer a small variant over a new subsystem.</li>
+<li>Keep prose close to code; every abstract claim should point to a visible shape.</li>
+<li>Do not hide a new concept in the exercise.</li>
+<li>If a paragraph explains policy, add the concrete code boundary it protects.</li>
+<li>If a paragraph explains syntax, add the semantic reason the syntax matters.</li>
+<li>If a paragraph explains architecture, identify the owner of each boundary.</li>
+<li>If a paragraph explains failure, keep the failing line close to the explanation.</li>
+<li>Stop expanding when the chapter has one complete, testable lesson.</li>
+</ul>
+<h3 id="failure-modes-to-avoid">Failure modes to avoid</h3>
+<ul>
+<li>Using a type by habit instead of by domain meaning.</li>
+<li>Explaining individual fields without explaining the full contract.</li>
+<li>Forgetting that invalid examples should show a broken meaning, not just a weird token.</li>
+</ul>
+<h3 id="practice-scenario">Practice scenario</h3>
+<p>Start from the coherent example in <strong>38. Refactoring guided by types</strong>. Change one identifier, one guard, and one returned value. After each change, write down whether the public contract is still the same contract or a new one.</p>
+<p>If the contract changed, update the type or result shape first. If only the implementation changed, keep the external name stable and add one regression note explaining what should not change again.</p>
+<h3 id="before-moving-on">Before moving on</h3>
+<ul>
+<li>You can state the chapter role: connects type names to domain meaning.</li>
+<li>You can point to the main boundary: field meaning, value shape, and compiler-enforced mismatch.</li>
+<li>You can connect the invalid case to the problem statement: Readers often learn type names but not what type contracts buy them in a real block.</li>
+<li>You can perform the exercise: Take the example form and add one field whose meaning is obviously not numeric. Choose the type that makes the contract clearest.</li>
+</ul>
+</section>
 </article>
 </main>
 <footer class="site-footer">
