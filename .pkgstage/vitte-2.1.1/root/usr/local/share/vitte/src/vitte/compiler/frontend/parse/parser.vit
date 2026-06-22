@@ -1277,6 +1277,9 @@ proc parse_decl(state: ParserState) -> ParserState {
   }
   let tok: Token = current_token(prefixed);
   if tok.kind == TokenKind.Eof {
+    if prefixed.index > current.index {
+      give with_diag(prefixed, "PATTR003", "attribute block must precede a declaration");
+    }
     give prefixed;
   }
   if tok.lexeme == "space" {

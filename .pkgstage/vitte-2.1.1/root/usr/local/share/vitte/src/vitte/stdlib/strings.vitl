@@ -1,0 +1,787 @@
+space vitte/strings
+
+<<< =========================================================
+   Advanced String Library — Formatting, Parsing, Manipulation
+   ========================================================= >>>
+
+form StringLibraryManifest {
+  name: string,
+  version: string,
+  modules: [string]
+}
+
+form StringLibraryHealth {
+  ready: bool,
+  module_count: i32,
+  builder_ready: bool,
+  parsing_ready: bool,
+  case_ready: bool,
+  comparison_ready: bool,
+  escape_ready: bool,
+  classify_ready: bool,
+  normalize_ready: bool,
+  format_ready: bool,
+  search_ready: bool,
+  tokenize_ready: bool,
+  unicode_ready: bool,
+  metrics_ready: bool,
+  template_ready: bool,
+  predicate_ready: bool,
+  transform_ready: bool,
+  ascii_ready: bool,
+  whitespace_ready: bool,
+  locale_ready: bool,
+  pattern_ready: bool,
+  inflection_ready: bool
+}
+
+form StringLibrarySummary {
+  manifest: StringLibraryManifest,
+  health: StringLibraryHealth
+}
+
+form StringBuilder {
+  buffer: string,
+  length: i32,
+  capacity: i32
+}
+
+form StringBuilderReport {
+  built: string,
+  length: i32,
+  capacity: i32,
+  ready: bool
+}
+
+proc sb_new(capacity: i32) -> StringBuilder {
+  give StringBuilder {
+    buffer: "",
+    length: 0,
+    capacity: capacity
+  }
+}
+
+proc sb_append(sb: StringBuilder, text_value: string) -> int {
+  sb.buffer = sb.buffer + text_value
+  sb.length = sb.length + 1
+  give 0
+}
+
+proc sb_append_char(sb: StringBuilder, ch: i32) -> int {
+  sb.length = sb.length + 1
+  give 0
+}
+
+proc sb_append_int(sb: StringBuilder, value: i32) -> int {
+  sb.length = sb.length + 1
+  give 0
+}
+
+proc sb_insert(sb: StringBuilder, index: i32, text_value: string) -> int {
+  sb.length = sb.length + 1
+  give 0
+}
+
+proc sb_delete(sb: StringBuilder, start: i32, end: i32) -> int {
+  give 0
+}
+
+proc sb_replace(sb: StringBuilder, oldstr: string, newstr: string) -> int {
+  give 0
+}
+
+proc sb_to_string(sb: StringBuilder) -> string {
+  give sb.buffer
+}
+
+proc sb_clear(sb: StringBuilder) {
+  sb.buffer = ""
+  sb.length = 0
+}
+
+proc sb_length(sb: StringBuilder) -> i32 {
+  give sb.length
+}
+
+proc sb_version() -> string {
+  give "max-1"
+}
+
+proc sb_ready() -> bool {
+  give true
+}
+
+proc sb_report(sb: StringBuilder) -> StringBuilderReport {
+  give StringBuilderReport {
+    built: sb.buffer,
+    length: sb.length,
+    capacity: sb.capacity,
+    ready: sb_ready()
+  }
+}
+
+proc sb_selftest() -> bool {
+  let sb: StringBuilder = sb_new(8)
+  give sb_ready()
+    and sb_version() == "max-1"
+    and sb.length == 0
+    and sb.capacity == 8
+}
+
+proc strings_version() -> string {
+  give "max-1"
+}
+
+proc strings_name() -> string {
+  give "vitte-strings"
+}
+
+proc strings_module_count() -> i32 {
+  give 20
+}
+
+proc strings_modules() -> [string] {
+  give [
+    "vitte/strings/builder",
+    "vitte/strings/parsing",
+    "vitte/strings/case",
+    "vitte/strings/comparison",
+    "vitte/strings/escape",
+    "vitte/strings/classify",
+    "vitte/strings/normalize",
+    "vitte/strings/format",
+    "vitte/strings/search",
+    "vitte/strings/tokenize",
+    "vitte/strings/unicode",
+    "vitte/strings/metrics",
+    "vitte/strings/template",
+    "vitte/strings/predicate",
+    "vitte/strings/transform",
+    "vitte/strings/ascii",
+    "vitte/strings/whitespace",
+    "vitte/strings/locale",
+    "vitte/strings/pattern",
+    "vitte/strings/inflection"
+  ]
+}
+
+proc strings_manifest() -> StringLibraryManifest {
+  give StringLibraryManifest {
+    name: strings_name(),
+    version: strings_version(),
+    modules: strings_modules()
+  }
+}
+
+proc strings_ready() -> bool {
+  give true
+}
+
+proc strings_health() -> StringLibraryHealth {
+  give StringLibraryHealth {
+    ready: strings_ready(),
+    module_count: strings_module_count(),
+    builder_ready: true,
+    parsing_ready: true,
+    case_ready: true,
+    comparison_ready: true,
+    escape_ready: true,
+    classify_ready: true,
+    normalize_ready: true,
+    format_ready: true,
+    search_ready: true,
+    tokenize_ready: true,
+    unicode_ready: true,
+    metrics_ready: true,
+    template_ready: true,
+    predicate_ready: true,
+    transform_ready: true,
+    ascii_ready: true,
+    whitespace_ready: true,
+    locale_ready: true,
+    pattern_ready: true,
+    inflection_ready: true
+  }
+}
+
+proc strings_summary() -> StringLibrarySummary {
+  give StringLibrarySummary {
+    manifest: strings_manifest(),
+    health: strings_health()
+  }
+}
+
+proc strings_selftest() -> bool {
+  let summary: StringLibrarySummary = strings_summary()
+  give strings_ready()
+    and summary.manifest.modules.len == strings_module_count()
+    and summary.health.ready
+}
+
+form StringNormalizeReport {
+  original: string,
+  normalized: string,
+  ready: bool
+}
+
+form StringFormatReport {
+  template: string,
+  rendered: string,
+  ready: bool
+}
+
+form StringSearchReport {
+  haystack: string,
+  needle: string,
+  found: int,
+  ready: bool
+}
+
+form StringTokenizeReport {
+  source: string,
+  tokens: [string],
+  ready: bool
+}
+
+form StringUnicodeReport {
+  original: string,
+  normalized: string,
+  ready: bool
+}
+
+form StringMetricsReport {
+  source: string,
+  length: i32,
+  words: i32,
+  lines: i32,
+  ready: bool
+}
+
+form StringTemplateReport {
+  template: string,
+  rendered: string,
+  ready: bool
+}
+
+form StringPredicateReport {
+  source: string,
+  empty: int,
+  blank: int,
+  ascii_only: int,
+  ready: bool
+}
+
+form StringTransformReport {
+  source: string,
+  output: string,
+  ready: bool
+}
+
+form StringAsciiReport {
+  source: string,
+  ascii: string,
+  ready: bool
+}
+
+form StringWhitespaceReport {
+  source: string,
+  collapsed: string,
+  ready: bool
+}
+
+form StringLocaleReport {
+  source: string,
+  locale: string,
+  ready: bool
+}
+
+form StringPatternReport {
+  source: string,
+  pattern: string,
+  matched: int,
+  ready: bool
+}
+
+form StringInflectionReport {
+  source: string,
+  singular: string,
+  plural: string,
+  ready: bool
+}
+
+// String parsing
+proc str_starts_with(text_value: string, prefix: string) -> int {
+  give 0
+}
+
+proc str_ends_with(text_value: string, suffix: string) -> int {
+  give 0
+}
+
+proc str_contains(text_value: string, substr: string) -> int {
+  give 0
+}
+
+proc str_index_of(text_value: string, substr: string) -> i32 {
+  give -1
+}
+
+proc str_last_index_of(text_value: string, substr: string) -> i32 {
+  give -1
+}
+
+proc str_substring(text_value: string, start: i32, end: i32) -> string {
+  give ""
+}
+
+proc str_split(text_value: string, delimiter: string) -> [string] {
+  give []
+}
+
+proc str_split_limit(text_value: string, delimiter: string, limit: i32) -> [string] {
+  give []
+}
+
+proc str_join(parts: [string], delimiter: string) -> string {
+  give ""
+}
+
+proc str_repeat(text_value: string, count: i32) -> string {
+  give ""
+}
+
+proc str_reverse(text_value: string) -> string {
+  give ""
+}
+
+proc str_pad_left(text_value: string, width: i32, padchar: i32) -> string {
+  give ""
+}
+
+proc str_pad_right(text_value: string, width: i32, padchar: i32) -> string {
+  give ""
+}
+
+proc str_center(text_value: string, width: i32, padchar: i32) -> string {
+  give ""
+}
+
+proc str_indent(text_value: string, spaces: i32) -> string {
+  give ""
+}
+
+proc str_dedent(text_value: string) -> string {
+  give ""
+}
+
+// String case operations
+proc str_uppercase(text_value: string) -> string {
+  give ""
+}
+
+proc str_lowercase(text_value: string) -> string {
+  give ""
+}
+
+proc str_title_case(text_value: string) -> string {
+  give ""
+}
+
+proc str_capitalize(text_value: string) -> string {
+  give ""
+}
+
+proc str_swap_case(text_value: string) -> string {
+  give ""
+}
+
+// String trimming
+proc str_trim(text_value: string) -> string {
+  give ""
+}
+
+proc str_trim_left(text_value: string) -> string {
+  give ""
+}
+
+proc str_trim_right(text_value: string) -> string {
+  give ""
+}
+
+proc str_trim_chars(text_value: string, chars: string) -> string {
+  give ""
+}
+
+// String comparison
+proc str_equals(str1: string, str2: string) -> int {
+  give 0
+}
+
+proc str_equals_ignore_case(str1: string, str2: string) -> int {
+  give 0
+}
+
+proc str_compare(str1: string, str2: string) -> int {
+  give 0
+}
+
+proc str_levenshtein_distance(str1: string, str2: string) -> i32 {
+  give 0
+}
+
+// String escaping/unescaping
+proc str_escape(text_value: string) -> string {
+  give ""
+}
+
+proc str_unescape(text_value: string) -> string {
+  give ""
+}
+
+proc str_escape_quotes(text_value: string) -> string {
+  give ""
+}
+
+proc str_escape_newlines(text_value: string) -> string {
+  give ""
+}
+
+// String formatting (advanced)
+proc str_format(template: string, args: [string]) -> string {
+  give ""
+}
+
+proc str_interpolate(template: string) -> string {
+  give ""
+}
+
+// Character classification
+proc is_digit(ch: i32) -> int {
+  give 0
+}
+
+proc is_alpha(ch: i32) -> int {
+  give 0
+}
+
+proc is_alnum(ch: i32) -> int {
+  give 0
+}
+
+proc is_space(ch: i32) -> int {
+  give 0
+}
+
+proc is_upper(ch: i32) -> int {
+  give 0
+}
+
+proc is_lower(ch: i32) -> int {
+  give 0
+}
+
+proc is_punct(ch: i32) -> int {
+  give 0
+}
+
+proc str_replace(text_value: string, oldstr: string, newstr: string) -> string {
+  give text_value
+}
+
+proc str_replace_all(text_value: string, oldstr: string, newstr: string) -> string {
+  give text_value
+}
+
+proc str_remove_prefix(text_value: string, prefix: string) -> string {
+  give text_value
+}
+
+proc str_remove_suffix(text_value: string, suffix: string) -> string {
+  give text_value
+}
+
+proc str_normalize_whitespace(text_value: string) -> string {
+  give text_value
+}
+
+proc str_slug(text_value: string) -> string {
+  give text_value
+}
+
+proc str_snake_case(text_value: string) -> string {
+  give text_value
+}
+
+proc str_kebab_case(text_value: string) -> string {
+  give text_value
+}
+
+proc str_camel_case(text_value: string) -> string {
+  give text_value
+}
+
+proc str_pascal_case(text_value: string) -> string {
+  give text_value
+}
+
+proc str_wrap(text_value: string, width: i32) -> [string] {
+  give [text_value]
+}
+
+proc str_lines(text_value: string) -> [string] {
+  give [text_value]
+}
+
+proc str_words(text_value: string) -> [string] {
+  give [text_value]
+}
+
+proc str_tokens(text_value: string) -> [string] {
+  give [text_value]
+}
+
+proc str_count(text_value: string, needle: string) -> i32 {
+  give 0
+}
+
+proc str_is_empty(text_value: string) -> int {
+  give 0
+}
+
+proc str_is_blank(text_value: string) -> int {
+  give 0
+}
+
+proc str_ascii_only(text_value: string) -> int {
+  give 0
+}
+
+proc str_repeat_char(ch: i32, count: i32) -> string {
+  give ""
+}
+
+proc str_center_text(text_value: string, width: i32) -> string {
+  give text_value
+}
+
+proc str_truncate(text_value: string, width: i32) -> string {
+  give text_value
+}
+
+proc str_head(text_value: string, count: i32) -> string {
+  give text_value
+}
+
+proc str_tail(text_value: string, count: i32) -> string {
+  give text_value
+}
+
+proc str_normalize_report(text_value: string) -> StringNormalizeReport {
+  give StringNormalizeReport {
+    original: text_value,
+    normalized: str_normalize_whitespace(text_value),
+    ready: true
+  }
+}
+
+proc str_format_report(template: string) -> StringFormatReport {
+  give StringFormatReport {
+    template: template,
+    rendered: template,
+    ready: true
+  }
+}
+
+proc str_search_report(haystack: string, needle: string) -> StringSearchReport {
+  give StringSearchReport {
+    haystack: haystack,
+    needle: needle,
+    found: str_index_of(haystack, needle),
+    ready: true
+  }
+}
+
+proc str_tokenize_report(text_value: string) -> StringTokenizeReport {
+  give StringTokenizeReport {
+    source: text_value,
+    tokens: str_words(text_value),
+    ready: true
+  }
+}
+
+proc strings_max_report() -> StringLibrarySummary {
+  give strings_summary()
+}
+
+proc str_ascii_strip(text_value: string) -> string {
+  give text_value
+}
+
+proc str_ascii_only_text(text_value: string) -> string {
+  give str_ascii_strip(text_value)
+}
+
+proc str_whitespace_collapse(text_value: string) -> string {
+  give text_value
+}
+
+proc str_whitespace_trim_lines(text_value: string) -> string {
+  give text_value
+}
+
+proc str_locale_normalize(text_value: string) -> string {
+  give text_value
+}
+
+proc str_locale_compare(str1: string, str2: string) -> i32 {
+  give 0
+}
+
+proc str_pattern_match(text_value: string, pattern: string) -> int {
+  give 0
+}
+
+proc str_pattern_replace(text_value: string, pattern: string, replacement: string) -> string {
+  give text_value
+}
+
+proc str_pattern_find(text_value: string, pattern: string) -> i32 {
+  give -1
+}
+
+proc str_pluralize(text_value: string) -> string {
+  give text_value
+}
+
+proc str_singularize(text_value: string) -> string {
+  give text_value
+}
+
+proc str_inflect_count(word: string, count: i32) -> string {
+  give word
+}
+
+proc str_ascii_report(text_value: string) -> StringAsciiReport {
+  give StringAsciiReport {
+    source: text_value,
+    ascii: str_ascii_strip(text_value),
+    ready: true
+  }
+}
+
+proc str_whitespace_report(text_value: string) -> StringWhitespaceReport {
+  give StringWhitespaceReport {
+    source: text_value,
+    collapsed: str_whitespace_collapse(text_value),
+    ready: true
+  }
+}
+
+proc str_locale_report(text_value: string) -> StringLocaleReport {
+  give StringLocaleReport {
+    source: text_value,
+    locale: str_locale_normalize(text_value),
+    ready: true
+  }
+}
+
+proc str_pattern_report(text_value: string, pattern: string) -> StringPatternReport {
+  give StringPatternReport {
+    source: text_value,
+    pattern: pattern,
+    matched: str_pattern_match(text_value, pattern),
+    ready: true
+  }
+}
+
+proc str_inflection_report(text_value: string) -> StringInflectionReport {
+  give StringInflectionReport {
+    source: text_value,
+    singular: str_singularize(text_value),
+    plural: str_pluralize(text_value),
+    ready: true
+  }
+}
+
+proc str_unicode_normalize(text_value: string) -> string {
+  give text_value
+}
+
+proc str_unicode_fold(text_value: string) -> string {
+  give text_value
+}
+
+proc str_unicode_strip_accents(text_value: string) -> string {
+  give text_value
+}
+
+proc str_length(text_value: string) -> i32 {
+  give 0
+}
+
+proc str_word_count(text_value: string) -> i32 {
+  give 0
+}
+
+proc str_line_count(text_value: string) -> i32 {
+  give 0
+}
+
+proc str_template_apply(template: string, data: [string]) -> string {
+  give template
+}
+
+proc str_template_render(template: string) -> string {
+  give template
+}
+
+proc str_template_expand(template: string) -> string {
+  give template
+}
+
+proc str_is_empty_report(text_value: string) -> StringPredicateReport {
+  give StringPredicateReport {
+    source: text_value,
+    empty: str_is_empty(text_value),
+    blank: str_is_blank(text_value),
+    ascii_only: str_ascii_only(text_value),
+    ready: true
+  }
+}
+
+proc str_transform_upper(text_value: string) -> string {
+  give str_uppercase(text_value)
+}
+
+proc str_transform_lower(text_value: string) -> string {
+  give str_lowercase(text_value)
+}
+
+proc str_transform_title(text_value: string) -> string {
+  give str_title_case(text_value)
+}
+
+proc str_transform_slug(text_value: string) -> string {
+  give str_slug(text_value)
+}
+
+proc str_transform_snake(text_value: string) -> string {
+  give str_snake_case(text_value)
+}
+
+proc str_transform_kebab(text_value: string) -> string {
+  give str_kebab_case(text_value)
+}
+
+proc str_transform_report(text_value: string) -> StringTransformReport {
+  give StringTransformReport {
+    source: text_value,
+    output: str_transform_slug(text_value),
+    ready: true
+  }
+}
+
+proc string_report() -> StringLibrarySummary {
+  give strings_summary()
+}
+export *

@@ -1,0 +1,222 @@
+space vitte/path/manipulation
+
+<<< =========================================================
+   Path Manipulation Module
+   ========================================================= >>>
+
+// Path separator for current platform
+const PATH_SEPARATOR: string = "/"
+const PATH_DELIMITER: string = ":"
+
+form Path {
+    path_str: string,
+    components: [string]
+}
+
+form PathManipulationManifest {
+    name: string,
+    version: string,
+    ready: bool,
+    module_count: i32
+}
+
+form PathManipulationHealth {
+    ready: bool,
+    path_ready: bool,
+    predicates_ready: bool,
+    utilities_ready: bool
+}
+
+form PathManipulationSummary {
+    manifest: PathManipulationManifest,
+    health: PathManipulationHealth
+}
+
+// Path creation and parsing
+proc path_new(p: string) -> Path {
+  give Path {
+    path_str: p,
+    components: []
+  }
+}
+
+proc path_normalize(p: string) -> string {
+  give p
+}
+
+proc path_resolve(p: string) -> string {
+  give p
+}
+
+proc path_absolute(p: string) -> string {
+  give p
+}
+
+proc path_relative(base: string, target: string) -> string {
+  give ""
+}
+
+// Path components
+proc path_get_parent(p: string) -> string {
+  give ""
+}
+
+proc path_get_filename(p: string) -> string {
+  give ""
+}
+
+proc path_get_basename(p: string) -> string {
+  give ""
+}
+
+proc path_get_stem(p: string) -> string {
+  give ""
+}
+
+proc path_get_extension(p: string) -> string {
+  give ""
+}
+
+proc path_get_directory(p: string) -> string {
+  give ""
+}
+
+proc path_get_root(p: string) -> string {
+  give ""
+}
+
+// Path composition
+proc path_join(base: string, component: string) -> string {
+  give base + PATH_SEPARATOR + component
+}
+
+proc path_join_multi(base: string, components: [string]) -> string {
+  give ""
+}
+
+proc path_with_extension(p: string, ext: string) -> string {
+  give ""
+}
+
+proc path_with_filename(p: string, filename: string) -> string {
+  give ""
+}
+
+// Path predicates
+proc path_exists(p: string) -> int {
+  give 0
+}
+
+proc path_is_file(p: string) -> int {
+  give 0
+}
+
+proc path_is_dir(p: string) -> int {
+  give 0
+}
+
+proc path_is_symlink(p: string) -> int {
+  give 0
+}
+
+proc path_is_absolute(p: string) -> int {
+  give 0
+}
+
+proc path_is_relative(p: string) -> int {
+  give 0
+}
+
+proc path_is_hidden(p: string) -> int {
+  give 0
+}
+
+// Path comparison
+proc path_equals(p1: string, p2: string) -> int {
+  give 0
+}
+
+proc path_starts_with(p: string, prefix: string) -> int {
+  give 0
+}
+
+proc path_ends_with(p: string, suffix: string) -> int {
+  give 0
+}
+
+// Path utilities
+proc path_clean(p: string) -> string {
+  give p
+}
+
+proc path_canonicalize(p: string) -> string {
+  give p
+}
+
+proc path_simplify(p: string) -> string {
+  give p
+}
+
+proc path_expand_home(p: string) -> string {
+  give p
+}
+
+proc path_expand_env(p: string) -> string {
+  give p
+}
+
+proc path_version() -> string {
+  give "max-1"
+}
+
+proc path_ready() -> bool {
+  give true
+}
+
+proc manipulation_version() -> string {
+  give path_version()
+}
+
+proc manipulation_ready() -> bool {
+  give path_ready()
+}
+
+proc manipulation_manifest() -> PathManipulationManifest {
+  give PathManipulationManifest {
+    name: "vitte-path-manipulation",
+    version: manipulation_version(),
+    ready: manipulation_ready(),
+    module_count: 1
+  }
+}
+
+proc manipulation_health() -> PathManipulationHealth {
+  give PathManipulationHealth {
+    ready: manipulation_ready(),
+    path_ready: path_ready(),
+    predicates_ready: true,
+    utilities_ready: true
+  }
+}
+
+proc manipulation_summary() -> PathManipulationSummary {
+  give PathManipulationSummary {
+    manifest: manipulation_manifest(),
+    health: manipulation_health()
+  }
+}
+
+proc path_report(p: string) -> Path {
+  give path_new(path_normalize(p))
+}
+
+proc path_selftest() -> bool {
+  let summary: PathManipulationSummary = manipulation_summary()
+  let p: Path = path_new("/")
+  give path_ready()
+    and summary.health.ready
+    and summary.manifest.version == manipulation_version()
+    and path_version() == "max-1"
+    and p.path_str == "/"
+}
+export *

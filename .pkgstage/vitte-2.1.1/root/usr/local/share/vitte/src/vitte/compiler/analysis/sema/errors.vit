@@ -12,6 +12,7 @@ use vitte/compiler/diagnostics/diagnostic.{
     diagnostic_with_note,
     diagnostic_with_help,
     diagnostic_with_label,
+    diagnostic_with_insert,
     secondary_label,
     add_unique_diagnostic,
     merge_diagnostics,
@@ -419,6 +420,7 @@ proc sema_unknown_symbol(name: string, span: AstSpan) -> Diagnostic {
     let diag: Diagnostic = sema_typed_diagnostic(code, DiagnosticSeverity.Error, SemaPhase.NameResolution, SemaDiagnosticKind.UnknownSymbol, "unknown symbol `" + name + "`", [name], "declare the symbol before use or import it from another module", span);
 
     set diag = diagnostic_with_note(diag, sema_note(code, "no matching local, imported item, builtin, or module item was found"));
+    set diag = diagnostic_with_insert(diag, "insert an import for `" + name + "` if it is defined in another module", "use module { " + name + " }", ast_span_to_source_span(span));
 
     give diag;
 }
@@ -429,6 +431,7 @@ proc sema_invalid_import(path: string, span: AstSpan) -> Diagnostic {
     let diag: Diagnostic = sema_typed_diagnostic(code, DiagnosticSeverity.Error, SemaPhase.ImportResolution, SemaDiagnosticKind.InvalidImport, "invalid import `" + path + "`", [path], "use a canonical module path or add a valid import alias", span);
 
     set diag = diagnostic_with_note(diag, sema_note(code, "imports must resolve to an existing module or exported item"));
+    set diag = diagnostic_with_insert(diag, "replace this import with a canonical module path", "use package/module { symbol }", ast_span_to_source_span(span));
 
     give diag;
 }

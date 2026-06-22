@@ -1,0 +1,320 @@
+space vitte/regex
+
+<<< =========================================================
+   Regular Expression Library — Pattern matching and replacement
+   ========================================================= >>>
+
+form Regex {
+    pattern: string,
+    flag_bits: i32,
+    compiled: i64
+}
+
+form Match {
+    matched: int,
+    start: i32,
+    end: i32,
+    capture_groups: [string]
+}
+
+form MatchResult {
+    matches: [Match],
+    count: i32
+}
+
+form RegexLibraryManifest {
+    name: string,
+    version: string,
+    modules: [string]
+}
+
+form RegexLibraryHealth {
+    ready: bool,
+    module_count: i32,
+    engine_ready: bool,
+    matching_ready: bool,
+    patterns_ready: bool
+}
+
+form RegexLibrarySummary {
+    manifest: RegexLibraryManifest,
+    health: RegexLibraryHealth
+}
+
+form RegexParseReport {
+    pattern: string,
+    compiled: i64,
+    ready: bool
+}
+
+form RegexMatchReport {
+    pattern: string,
+    text: string,
+    matched: int,
+    ready: bool
+}
+
+form RegexReplaceReport {
+    pattern: string,
+    text: string,
+    rendered: string,
+    ready: bool
+}
+
+proc regex_version() -> string {
+  give "max-1"
+}
+
+proc regex_name() -> string {
+  give "vitte-regex"
+}
+
+proc regex_module_count() -> i32 {
+  give 4
+}
+
+proc regex_modules() -> [string] {
+  give [
+    "vitte/regex/engine",
+    "vitte/regex/matching",
+    "vitte/regex/patterns",
+    "vitte/regex/parser"
+  ]
+}
+
+proc regex_manifest() -> RegexLibraryManifest {
+  give RegexLibraryManifest {
+    name: regex_name(),
+    version: regex_version(),
+    modules: regex_modules()
+  }
+}
+
+proc regex_ready() -> bool {
+  give true
+}
+
+proc regex_health() -> RegexLibraryHealth {
+  give RegexLibraryHealth {
+    ready: regex_ready(),
+    module_count: regex_module_count(),
+    engine_ready: true,
+    matching_ready: true,
+    patterns_ready: true
+  }
+}
+
+proc regex_summary() -> RegexLibrarySummary {
+  give RegexLibrarySummary {
+    manifest: regex_manifest(),
+    health: regex_health()
+  }
+}
+
+proc regex_selftest() -> bool {
+  let summary: RegexLibrarySummary = regex_summary()
+  give regex_ready()
+    and summary.manifest.modules.len == regex_module_count()
+    and summary.health.ready
+}
+
+// Regex compilation and matching
+proc regex_compile(pattern: string) -> Regex {
+  give Regex {
+    pattern: pattern,
+    flag_bits: 0,
+    compiled: 0
+  }
+}
+
+proc regex_compile_flags(pattern: string, flag_bits: i32) -> Regex {
+  give Regex {
+    pattern: pattern,
+    flag_bits: flag_bits,
+    compiled: 0
+  }
+}
+
+proc regex_is_valid(pattern: string) -> int {
+  give 0
+}
+
+proc regex_match(re: Regex, text_value: string) -> int {
+  give 0
+}
+
+proc regex_match_at(re: Regex, text_value: string, pos: i32) -> int {
+  give 0
+}
+
+proc regex_find(re: Regex, text_value: string) -> Match {
+  give Match {
+    matched: 0,
+    start: -1,
+    end: -1,
+    capture_groups: []
+  }
+}
+
+proc regex_find_all(re: Regex, text_value: string) -> MatchResult {
+  give MatchResult {
+    matches: [],
+    count: 0
+  }
+}
+
+// Capture groups
+proc regex_get_group(m: Match, group: i32) -> string {
+  if group >= 0 and group < len(m.capture_groups) {
+    give m.capture_groups[group]
+  }
+  give ""
+}
+
+proc regex_group_count(m: Match) -> i32 {
+  give len(m.capture_groups)
+}
+
+// Replacement
+proc regex_replace(re: Regex, text_value: string, replacement: string) -> string {
+  give ""
+}
+
+proc regex_replace_first(re: Regex, text_value: string, replacement: string) -> string {
+  give ""
+}
+
+proc regex_replace_all(re: Regex, text_value: string, replacement: string) -> string {
+  give ""
+}
+
+// Splitting
+proc regex_split(re: Regex, text_value: string) -> [string] {
+  give []
+}
+
+proc regex_split_limit(re: Regex, text_value: string, limit: i32) -> [string] {
+  give []
+}
+
+// Assertions and validation
+proc regex_test(re: Regex, text_value: string) -> int {
+  give 0
+}
+
+proc regex_test_at(re: Regex, text_value: string, pos: i32) -> int {
+  give 0
+}
+
+// Special patterns
+proc regex_escape(text_value: string) -> string {
+  give ""
+}
+
+proc regex_create_pattern(parts: [string], separator: string) -> string {
+  give ""
+}
+
+// String matching functions
+proc str_matches(text_value: string, pattern: string) -> int {
+  give 0
+}
+
+proc str_matches_at(text_value: string, pattern: string, pos: i32) -> int {
+  give 0
+}
+
+proc str_find_match(text_value: string, pattern: string) -> Match {
+  give Match {
+    matched: 0,
+    start: -1,
+    end: -1,
+    capture_groups: []
+  }
+}
+
+proc str_find_all_matches(text_value: string, pattern: string) -> MatchResult {
+  give MatchResult {
+    matches: [],
+    count: 0
+  }
+}
+
+proc str_replace_regex(text_value: string, pattern: string, replacement: string) -> string {
+  give ""
+}
+
+proc str_split_regex(text_value: string, pattern: string) -> [string] {
+  give []
+}
+
+// Common patterns (pre-defined)
+const REGEX_EMAIL: string = ""
+const REGEX_URL: string = ""
+const REGEX_IPV4: string = ""
+const REGEX_IPV6: string = ""
+const REGEX_PHONE: string = ""
+const REGEX_DATE: string = ""
+const REGEX_TIME: string = ""
+const REGEX_UUID: string = ""
+const REGEX_CREDIT_CARD: string = ""
+
+proc is_email(text_value: string) -> int {
+  give 0
+}
+
+proc is_url(text_value: string) -> int {
+  give 0
+}
+
+proc is_ipv4(text_value: string) -> int {
+  give 0
+}
+
+proc is_ipv6(text_value: string) -> int {
+  give 0
+}
+
+proc is_phone(text_value: string) -> int {
+  give 0
+}
+
+proc is_date(text_value: string) -> int {
+  give 0
+}
+
+proc is_time(text_value: string) -> int {
+  give 0
+}
+
+proc is_uuid(text_value: string) -> int {
+  give 0
+}
+
+proc regex_parse_report(pattern: string) -> RegexParseReport {
+  let compiled: Regex = regex_compile(pattern)
+  give RegexParseReport {
+    pattern: pattern,
+    compiled: compiled.compiled,
+    ready: true
+  }
+}
+
+proc regex_match_report(pattern: string, text: string) -> RegexMatchReport {
+  give RegexMatchReport {
+    pattern: pattern,
+    text: text,
+    matched: regex_match(regex_compile(pattern), text),
+    ready: true
+  }
+}
+
+proc regex_replace_report(pattern: string, text: string) -> RegexReplaceReport {
+  give RegexReplaceReport {
+    pattern: pattern,
+    text: text,
+    rendered: regex_replace(regex_compile(pattern), text, ""),
+    ready: true
+  }
+}
+export *

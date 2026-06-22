@@ -25,24 +25,38 @@ def extract_first_vit_code(text: str) -> str:
     return "entry main at app/demo {\n  return 0\n}"
 
 
-def explain_code_lines(code: str) -> str:
+def global_reading_summary(code: str) -> str:
     lines = [ln.strip() for ln in code.splitlines() if ln.strip()]
-    out = []
-    for idx, ln in enumerate(lines[:10], start=1):
-        if ln.startswith("entry "):
-            why = "définit le point d'entrée du scénario."
-        elif ln.startswith("proc "):
-            why = "pose un contrat clair de fonction."
-        elif ln.startswith("let "):
-            why = "nomme une valeur intermédiaire utile."
-        elif ln.startswith(("if ", "if(")):
-            why = "sépare nominal et cas limite."
-        elif ln.startswith(("return ", "give ")):
-            why = "renvoie la sortie vérifiable."
-        else:
-            why = "participe au déroulé du traitement."
-        out.append(f"{idx}. `{ln}` -> {why}")
-    return "\n".join(out)
+    if not lines:
+        return (
+            "Le code doit être lu comme un scénario complet: entrée, transformation, "
+            "sortie vérifiable, puis cas limite explicite."
+        )
+
+    has_entry = any(ln.startswith("entry ") for ln in lines)
+    has_proc = any(ln.startswith("proc ") for ln in lines)
+    has_guard = any(ln.startswith(("if ", "if(")) for ln in lines)
+    has_return = any(ln.startswith(("return ", "give ")) for ln in lines)
+
+    parts = []
+    if has_entry:
+        parts.append("un point d'entrée exécutable")
+    if has_proc:
+        parts.append("des procédures au contrat explicite")
+    if has_guard:
+        parts.append("des gardes qui séparent nominal et cas limite")
+    if has_return:
+        parts.append("une sortie observable")
+
+    if not parts:
+        parts.append("une structure minimale à compléter")
+
+    joined = ", ".join(parts[:-1]) + (" et " + parts[-1] if len(parts) > 1 else parts[0])
+    return (
+        "Le lecteur ne doit pas commenter chaque ligne isolément. "
+        f"Il doit d'abord identifier {joined}, puis vérifier comment ces blocs coopèrent "
+        "pour produire un comportement stable."
+    )
 
 
 def strip_old_block(text: str) -> str:
@@ -59,7 +73,7 @@ def strip_old_block(text: str) -> str:
 
 def build_examples_block(topic: str, base_code: str) -> str:
     topic_l = topic.lower()
-    line_by_line = explain_code_lines(base_code)
+    global_summary = global_reading_summary(base_code)
 
     return f"""{START}
 
@@ -67,14 +81,21 @@ def build_examples_block(topic: str, base_code: str) -> str:
 
 Thème: **{topic_l}**. Cette section évite les généralités et part d'un extrait réel.
 
-### Exemple A: lecture exécutable du snippet principal
+### Exemple A: code complet du chapitre
 
 ```vit
 {base_code}
 ```
 
-Lecture ligne par ligne:
-{line_by_line}
+### Explication globale
+
+{global_summary}
+
+### Ce que ce code doit prouver
+
+- Le scénario principal reste compréhensible sans paraphrase ligne par ligne.
+- Le lecteur peut nommer l'entrée, la transformation et la sortie.
+- Le cas limite a une place visible dans le flux.
 
 ### Exemple B: variante cas limite (même intention, comportement sécurisé)
 
@@ -98,6 +119,7 @@ Procédure:
 - Le lecteur comprend ce que fait le code sans abstraction inutile.
 - Chaque exemple est relié à une action concrète.
 - La correction est reproductible et testable.
+- Le chapitre explique un flux complet, pas une succession de micro-commentaires.
 
 {END}
 """

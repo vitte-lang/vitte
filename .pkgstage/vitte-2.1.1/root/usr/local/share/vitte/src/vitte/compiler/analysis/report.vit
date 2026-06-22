@@ -1,5 +1,7 @@
 space vitte/compiler/analysis
 
+use vitte/compiler/diagnostics/diagnostic.{ Diagnostic as CanonicalDiagnostic, DiagnosticPhase, DiagnosticReport, DiagnosticSeverity, SourceSpan, diagnostic_create, diagnostic_report, diagnostic_with_help, diagnostic_with_label, diagnostic_with_suggestion_detail, secondary_label, DiagnosticSuggestionKind, span_create }
+
 pick AnalysisSeverity {
     Help
     Note
@@ -556,6 +558,137 @@ proc diagnostic_summary(diagnostic: AnalysisDiagnostic) -> string {
     give summary;
 }
 
+proc analysis_severity_as_diagnostic(severity: AnalysisSeverity) -> DiagnosticSeverity {
+    if severity == AnalysisSeverity.Help {
+        give DiagnosticSeverity.Help;
+    }
+
+    if severity == AnalysisSeverity.Note {
+        give DiagnosticSeverity.Note;
+    }
+
+    if severity == AnalysisSeverity.Warning {
+        give DiagnosticSeverity.Warning;
+    }
+
+    if severity == AnalysisSeverity.Fatal {
+        give DiagnosticSeverity.Fatal;
+    }
+
+    give DiagnosticSeverity.Error;
+}
+
+proc analysis_phase_as_diagnostic(phase: AnalysisPhase) -> DiagnosticPhase {
+    if phase == AnalysisPhase.Parse {
+        give DiagnosticPhase.Parser;
+    }
+
+    if phase == AnalysisPhase.Ast {
+        give DiagnosticPhase.AstValidation;
+    }
+
+    if phase == AnalysisPhase.Hir {
+        give DiagnosticPhase.Hir;
+    }
+
+    if phase == AnalysisPhase.Resolve {
+        give DiagnosticPhase.SymbolResolution;
+    }
+
+    if phase == AnalysisPhase.Typeck {
+        give DiagnosticPhase.Typeck;
+    }
+
+    if phase == AnalysisPhase.Borrowck {
+        give DiagnosticPhase.Borrowck;
+    }
+
+    if phase == AnalysisPhase.Lifetime {
+        give DiagnosticPhase.Lifetime;
+    }
+
+    if phase == AnalysisPhase.Mir {
+        give DiagnosticPhase.Mir;
+    }
+
+    if phase == AnalysisPhase.Ir {
+        give DiagnosticPhase.Ir;
+    }
+
+    if phase == AnalysisPhase.Codegen {
+        give DiagnosticPhase.Backend;
+    }
+
+    if phase == AnalysisPhase.Link {
+        give DiagnosticPhase.Linker;
+    }
+
+    give DiagnosticPhase.Sema;
+}
+
+proc analysis_diagnostic_span(diagnostic: AnalysisDiagnostic) -> SourceSpan {
+    let file_name: string = "<analysis>";
+    let line0: u64 = 1;
+    let column0: u64 = 1;
+    if diagnostic.file != "" {
+        set file_name = diagnostic.file;
+    }
+    if diagnostic.line > 0 {
+        set line0 = diagnostic.line;
+    }
+    if diagnostic.column > 0 {
+        set column0 = diagnostic.column;
+    }
+    give span_create(file_name, line0, column0, normalize_span_length(diagnostic.length));
+}
+
+proc analysis_diagnostic_as_diagnostic(diagnostic: AnalysisDiagnostic) -> CanonicalDiagnostic {
+    let diag0: CanonicalDiagnostic = diagnostic_create(
+        diagnostic.code,
+        analysis_phase_as_diagnostic(diagnostic.phase_kind),
+        analysis_severity_as_diagnostic(diagnostic.severity_kind),
+        diagnostic.message,
+        analysis_diagnostic_span(diagnostic)
+    );
+    let diag1: CanonicalDiagnostic = if diagnostic.help != "" {
+        diagnostic_with_help(diag0, diagnostic.help)
+    } else {
+        diag0
+    };
+    let diag2: CanonicalDiagnostic = if diagnostic.suggestion != "" {
+        diagnostic_with_suggestion_detail(diag1, DiagnosticSuggestionKind.Help, diagnostic.suggestion, "", analysis_diagnostic_span(diagnostic), false, "medium", "analysis diagnostic adapter")
+    } else {
+        diag1
+    };
+    let out: CanonicalDiagnostic = diag2;
+    let i: u64 = 0;
+    while i < len(diagnostic.related_labels) {
+        let label_file: string = "<analysis>";
+        if diagnostic.file != "" {
+            set label_file = diagnostic.file;
+        }
+        let label_span: SourceSpan = span_create(
+            label_file,
+            diagnostic.related_labels[i].line,
+            diagnostic.related_labels[i].column,
+            diagnostic.related_labels[i].length
+        );
+        set out = diagnostic_with_label(out, secondary_label(diagnostic.related_labels[i].message, label_span));
+        set i = i + 1;
+    }
+    give out;
+}
+
+proc analysis_diagnostics_as_report(diagnostics: [AnalysisDiagnostic]) -> DiagnosticReport {
+    let out: [CanonicalDiagnostic] = [];
+    let i: u64 = 0;
+    while i < len(diagnostics) {
+        set out = out + [analysis_diagnostic_as_diagnostic(diagnostics[i])];
+        set i = i + 1;
+    }
+    give diagnostic_report(out);
+}
+
 share AnalysisSeverity
 share AnalysisPhase
 share AnalysisDiagnosticKind
@@ -600,3 +733,8 @@ share ir_lowering_error
 
 share diagnostic_is_error
 share diagnostic_summary
+share analysis_severity_as_diagnostic
+share analysis_phase_as_diagnostic
+share analysis_diagnostic_span
+share analysis_diagnostic_as_diagnostic
+share analysis_diagnostics_as_report

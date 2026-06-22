@@ -1,5 +1,20 @@
 # Pipeline
 
+## Overview
+
+This page captures the observed compiler pipeline order and the specific
+foundation stages that already influence frontend and lowering behavior. It is
+meant to be read alongside the architecture page, but at a narrower operational
+level.
+
+| Layer | Checked responsibilities |
+| --- | --- |
+| Frontend | source normalization, lexer, parser, AST validation |
+| Mid pipeline | symbols, visibility, type DB, HIR validate, sema, typeck |
+| Control | control-flow checks, borrow checks |
+| Lowering | HIR -> MIR, MIR verify, const-eval |
+| Backend | backend lowering, object generation, linking |
+
 Observed order:
 1. Package/stdlib registry checks
 2. Module resolution + cycle detection + duplicate module names
@@ -15,6 +30,38 @@ Observed order:
 12. MIR verification
 13. Const eval
 14. Backend lowering + object + link
+
+## Responsibilities
+
+- Preserve the real execution order used by the current compiler.
+- Mark which new foundation work already participates in the flow.
+- Provide a compact reference for debugging stage-specific failures.
+
+## Invariants
+
+- Stage ordering must stay explicit and reviewable.
+- Macro, async, coroutine, and concurrency foundations must be documented where
+  they actually attach to the flow.
+- Later roadmap ambitions must not be described as already active pipeline
+  behavior.
+
+## Data Flow
+
+1. Input sources are normalized and tokenized.
+2. Parsing and AST validation create the first structured representation.
+3. Semantic layers progressively refine meaning and reject invalid contracts.
+4. MIR lowering and verification prepare backend-safe intermediate state.
+5. Backend lowering and link produce executable artifacts.
+
+## Bootstrap
+
+Bootstrap uses the same pipeline ideas under a narrower accepted subset, so
+pipeline regressions often surface first in seed or stage rebuild checks.
+
+## Driver
+
+Driver mode selection decides which part of the pipeline becomes observable to
+the user, whether through `check`, `build`, `dump-hir`, or `dump-mir`.
 
 ## Frontend Macro Stage (170)
 
@@ -60,4 +107,18 @@ proc main() -> void {
 ## Concurrency Memory Model Link (173)
 
 Formal foundation document:
-- [concurrency_memory_model.md](/home/vincentr/Documents/GitHub/vitte/docs/compiler/concurrency_memory_model.md)
+- [concurrency_memory_model.md](concurrency_memory_model.md)
+
+## Examples
+
+The following commands are a practical way to observe the pipeline from the
+outside:
+
+```sh
+./bin/vitte check src/app.vit
+./bin/vitte dump-hir src/app.vit
+./bin/vitte dump-mir src/app.vit
+```
+
+These are useful when a contributor needs to determine whether a regression was
+introduced during parsing, semantic checks, MIR lowering, or backend emission.

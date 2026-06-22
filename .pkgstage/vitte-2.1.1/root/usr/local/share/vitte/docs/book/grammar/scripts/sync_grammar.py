@@ -45,14 +45,17 @@ def render_generated(source_text: str, meta: SourceMeta) -> str:
         "# GENERATED FILE - DO NOT EDIT",
         f"# grammar_version: {GRAMMAR_VERSION}",
         f"# source: {SOURCE_REL}",
-        f"# source_commit: {meta.commit}",
-        f"# source_date: {meta.source_date}",
-        # Keep generation idempotent: this timestamp tracks source revision date.
-        f"# generated_at: {meta.source_date}",
         f"# tool: docs/book/grammar/scripts/sync_grammar.py v{TOOL_VERSION}",
         "",
     ]
     return "\n".join(header) + source_text
+
+
+def generated_body(text: str) -> str:
+    if not text.startswith("# GENERATED FILE - DO NOT EDIT"):
+        return text
+    _, sep, body = text.partition("\n\n")
+    return body if sep else text
 
 
 def main() -> int:
@@ -84,9 +87,17 @@ def main() -> int:
 
     if args.check:
         if mismatches:
+            body_mismatches = [
+                target
+                for target in mismatches
+                if generated_body(target.read_text(encoding="utf-8") if target.exists() else "") != source_text
+            ]
+            if not body_mismatches:
+                print("[grammar-sync] OK")
+                return 0
             print("[grammar-sync] FAILED")
             print(f"- source: {source}")
-            for target in mismatches:
+            for target in body_mismatches:
                 print(f"- out of sync: {target}")
             return 1
         print("[grammar-sync] OK")

@@ -18,21 +18,21 @@ SKIP = {
 }
 
 ORDER = [
-    "## Lecture rapide (30s)",
-    "## Pourquoi (métier)",
-    "## Définition",
-    "## Syntaxe",
-    "## Exemple nominal",
-    "## Exemple invalide",
-    "## Différences proches",
-    "## Refactor rapide",
-    "## Pièges",
-    "## Quand l’utiliser / Quand l’éviter",
-    "## Erreurs compilateur fréquentes",
-    "## Mot-clé voisin",
-    "## Utilisé dans les chapitres",
-    "## Voir aussi",
-    "## Score de complétude",
+    "## Quick read (30s)",
+    "## Why it matters",
+    "## Definition",
+    "## Syntax",
+    "## Nominal example",
+    "## Invalid example",
+    "## Nearby differences",
+    "## Quick refactor",
+    "## Pitfalls",
+    "## When to use it / When to avoid it",
+    "## Common compiler errors",
+    "## Neighbor keyword",
+    "## Used in chapters",
+    "## See also",
+    "## Completeness score",
 ]
 
 SECTION_RE = re.compile(r"^## .*$", re.MULTILINE)
@@ -41,10 +41,10 @@ SECTION_RE = re.compile(r"^## .*$", re.MULTILINE)
 def split_sections(text: str) -> tuple[str, str, dict[str, str]]:
     lines = text.splitlines()
     title = lines[0] if lines else ""
-    niveau = ""
+    level = ""
     for line in lines[1:6]:
-        if line.startswith("Niveau:"):
-            niveau = line
+        if line.startswith("Level:"):
+            level = line
             break
 
     parts = SECTION_RE.split(text)
@@ -54,7 +54,7 @@ def split_sections(text: str) -> tuple[str, str, dict[str, str]]:
         body = parts[i + 1].strip("\n")
         sections[head.strip()] = body.strip()
 
-    return title.strip(), niveau.strip(), sections
+    return title.strip(), level.strip(), sections
 
 
 def ensure_section(sections: dict[str, str], heading: str, keyword: str) -> str:
@@ -62,77 +62,77 @@ def ensure_section(sections: dict[str, str], heading: str, keyword: str) -> str:
         return sections[heading].strip()
 
     base = keyword.strip("`")
-    if heading == "## Lecture rapide (30s)":
+    if heading == "## Quick read (30s)":
         return (
-            "- Ce que c’est: ce mot-clé exprime une intention précise dans le flux Vitte.\n"
-            "- Quand l’utiliser: quand il rend la lecture du contrat plus directe.\n"
-            "- Erreur classique: l’utiliser au mauvais niveau (top-level vs bloc)."
+            "- What it is: this keyword expresses a precise intent in Vitte flow.\n"
+            "- When to use it: when it makes the contract easier to read.\n"
+            "- Common error: using it at the wrong level (top-level vs block)."
         )
-    if heading == "## Pourquoi (métier)":
+    if heading == "## Why it matters":
         return (
-            f"`{base}` réduit l’ambiguïté dans le code de production.\n\n"
-            "Vous l’utilisez pour rendre la règle métier explicite dès la lecture.\n"
-            "Cela simplifie les revues et accélère le diagnostic en cas d’erreur.\n"
-            "Le but est un comportement stable, lisible et testable."
+            f"`{base}` reduces ambiguity in production code.\n\n"
+            "Use it to make the domain rule explicit at first reading.\n"
+            "That simplifies reviews and speeds up diagnostics when errors appear.\n"
+            "The goal is stable, readable, and testable behavior."
         )
-    if heading == "## Différences proches":
+    if heading == "## Nearby differences":
         return (
-            "| Mot-clé proche | Différence clé |\n"
+            "| Nearby keyword | Key difference |\n"
             "| --- | --- |\n"
-            "| `À compléter` | Positionner la différence opérationnelle en une phrase. |"
+            "| `To complete` | State the operational difference in one sentence. |"
         )
-    if heading == "## Refactor rapide":
+    if heading == "## Quick refactor":
         return (
-            "Avant:\n"
+            "Before:\n"
             "```vit\n"
-            "# usage fragile à corriger\n"
+            "# fragile usage to fix\n"
             "```\n\n"
-            "Après:\n"
+            "After:\n"
             "```vit\n"
-            "# usage clair et testable\n"
+            "# clear and testable usage\n"
             "```"
         )
-    if heading == "## Exemple nominal":
+    if heading == "## Nominal example":
         return (
-            "Entrée:\n"
-            "- Cas nominal simple.\n\n"
+            "Input:\n"
+            "- Simple nominal case.\n\n"
             "```vit\n"
-            f"# exemple minimal avec `{base}`\n"
+            f"# minimal example with `{base}`\n"
             "```\n\n"
-            "Sortie observable:\n"
-            "- Résultat attendu stable et vérifiable."
+            "Observable output:\n"
+            "- Stable and verifiable expected result."
         )
-    if heading == "## Exemple invalide":
+    if heading == "## Invalid example":
         return (
-            "Entrée:\n"
-            "- Cas hors contrat minimal.\n\n"
+            "Input:\n"
+            "- Minimal out-of-contract case.\n\n"
             "```vit\n"
-            f"# contre-exemple avec `{base}`\n"
+            f"# counter-example with `{base}`\n"
             "```\n\n"
-            "Diagnostic attendu:\n"
-            "- Code: `VITTE-XXXX` (ou code compilateur `E000X` correspondant).\n"
-            "- Position: `ligne 1, colonne 1` (ajustez selon le snippet réel).\n"
-            "- Message: motif stable orienté correction."
+            "Expected diagnostic:\n"
+            "- Code: `VITTE-XXXX` (or matching compiler code `E000X`).\n"
+            "- Position: `line 1, column 1` (adjust to the real snippet).\n"
+            "- Message: stable, correction-oriented pattern."
         )
-    if heading == "## Score de complétude":
-        return "coverage: syntaxe/exemples/invalides/diagnostics/liens = 3/5"
-    if heading == "## Utilisé dans les chapitres":
-        return "- `docs/book/chapters/27-grammaire.md`.\n- `docs/book/chapters/31-erreurs-build.md`.\n- `docs/book/chapters/07-controle.md`."
-    if heading == "## Voir aussi":
-        return "- `docs/book/chapters/keywords/erreurs-compilateur.md`.\n- `docs/book/glossaire.md`."
-    if heading == "## Définition":
-        return f"`{base}` est un mot-clé Vitte. Cette fiche vous donne sa forme, son usage et ses erreurs courantes."
-    if heading == "## Syntaxe":
-        return "Forme canonique: `à préciser`."
-    if heading == "## Pièges":
-        return "- L’utiliser hors contexte.\n- Masquer l’intention métier.\n- Oublier un contre-exemple testable."
-    if heading == "## Quand l’utiliser / Quand l’éviter":
-        return "- Quand l’utiliser: si ce mot-clé clarifie le contrat.\n- Quand l’éviter: si une forme plus simple existe."
-    if heading == "## Erreurs compilateur fréquentes":
-        return "| Message type | Cause | Correction |\n| --- | --- | --- |\n| `VITTE-XXXX` | Cause fréquente à préciser. | Correction rapide à appliquer. |"
-    if heading == "## Mot-clé voisin":
-        return "| Mot-clé | Différence opérationnelle |\n| --- | --- |\n| `À compléter` | Différence à préciser. |"
-    return "À compléter."
+    if heading == "## Completeness score":
+        return "coverage: syntax/examples/invalid/diagnostics/links = 3/5"
+    if heading == "## Used in chapters":
+        return "- `docs/book/chapters/27-grammar.md`.\n- `docs/book/chapters/31-build-errors.md`.\n- `docs/book/chapters/07-control.md`."
+    if heading == "## See also":
+        return "- `docs/book/chapters/keywords/erreurs-compilateur.md`.\n- `docs/book/glossary.md`."
+    if heading == "## Definition":
+        return f"`{base}` is a Vitte keyword. This sheet gives its shape, usage, and common errors."
+    if heading == "## Syntax":
+        return "Canonical form: `to specify`."
+    if heading == "## Pitfalls":
+        return "- Using it out of context.\n- Hiding the domain intent.\n- Forgetting a testable counter-example."
+    if heading == "## When to use it / When to avoid it":
+        return "- When to use it: if the keyword clarifies the contract.\n- When to avoid it: if a simpler form already exists."
+    if heading == "## Common compiler errors":
+        return "| Typical message | Cause | Fix |\n| --- | --- | --- |\n| `VITTE-XXXX` | Common cause to specify. | Quick correction to apply. |"
+    if heading == "## Neighbor keyword":
+        return "| Keyword | Operational difference |\n| --- | --- |\n| `To complete` | Difference to specify. |"
+    return "To complete."
 
 
 def enrich_quick_read(body: str) -> str:
@@ -141,9 +141,9 @@ def enrich_quick_read(body: str) -> str:
     if len(bullets) >= 3:
         return body.strip()
     extra = [
-        "- Ce que c’est: ce mot-clé exprime une intention précise dans le flux Vitte.",
-        "- Quand l’utiliser: quand il rend la lecture du contrat plus directe.",
-        "- Erreur classique: l’utiliser au mauvais niveau (top-level vs bloc).",
+        "- What it is: this keyword expresses a precise intent in Vitte flow.",
+        "- When to use it: when it makes the contract easier to read.",
+        "- Common error: using it at the wrong level (top-level vs block).",
     ]
     merged = bullets + [e for e in extra if e not in bullets]
     return "\n".join(merged[:3])
@@ -153,16 +153,16 @@ def enrich_invalid_example(body: str, keyword: str) -> str:
     text = body.strip()
     if "Diagnostic attendu:" not in text:
         text += (
-            "\n\nDiagnostic attendu:\n"
-            "- Code: `VITTE-XXXX` (ou code compilateur `E000X` correspondant).\n"
-            "- Position: `ligne 1, colonne 1` (ajustez selon le snippet réel).\n"
-            "- Message: motif stable orienté correction."
+            "\n\nExpected diagnostic:\n"
+            "- Code: `VITTE-XXXX` (or matching compiler code `E000X`).\n"
+            "- Position: `line 1, column 1` (adjust to the real snippet).\n"
+            "- Message: stable, correction-oriented pattern."
         )
     if "VITTE-" not in text and "E000" not in text:
         text += "\n- Code: `VITTE-XXXX`."
     low = text.lower()
-    if "ligne" not in low or "colonne" not in low:
-        text += "\n- Position attendue: `ligne 1, colonne 1`."
+    if "line" not in low or "column" not in low:
+        text += "\n- Expected position: `line 1, column 1`."
     return text
 
 
@@ -178,9 +178,9 @@ def normalize_chapter_links(body: str) -> str:
         if path not in links:
             links.append(path)
     defaults = [
-        "docs/book/chapters/07-controle.md",
-        "docs/book/chapters/27-grammaire.md",
-        "docs/book/chapters/31-erreurs-build.md",
+        "docs/book/chapters/07-control.md",
+        "docs/book/chapters/27-grammar.md",
+        "docs/book/chapters/31-build-errors.md",
     ]
     for d in defaults:
         if len(links) >= 3:
@@ -198,49 +198,49 @@ def normalize_see_also(body: str) -> str:
     if not lines:
         lines = [
             "- `docs/book/chapters/keywords/erreurs-compilateur.md`.",
-            "- `docs/book/glossaire.md`.",
+            "- `docs/book/glossary.md`.",
         ]
     return "\n".join(lines)
 
 
 def compute_score(sections: dict[str, str]) -> str:
     checks = []
-    checks.append("## Syntaxe" in sections and "Forme canonique" in sections["## Syntaxe"])
-    checks.append("## Exemple nominal" in sections and "```vit" in sections["## Exemple nominal"])
-    checks.append("## Exemple invalide" in sections and "```vit" in sections["## Exemple invalide"])
-    inv = sections.get("## Exemple invalide", "")
+    checks.append("## Syntax" in sections and "Canonical form" in sections["## Syntax"])
+    checks.append("## Nominal example" in sections and "```vit" in sections["## Nominal example"])
+    checks.append("## Invalid example" in sections and "```vit" in sections["## Invalid example"])
+    inv = sections.get("## Invalid example", "")
     checks.append("VITTE-" in inv or "E000" in inv)
-    used = sections.get("## Utilisé dans les chapitres", "")
+    used = sections.get("## Used in chapters", "")
     checks.append(used.count("- ") >= 3)
     score = sum(1 for c in checks if c)
-    return f"coverage: syntaxe/exemples/invalides/diagnostics/liens = {score}/5"
+    return f"coverage: syntax/examples/invalid/diagnostics/links = {score}/5"
 
 
 def normalize_file(path: Path) -> bool:
     text = path.read_text(encoding="utf-8")
-    title, niveau, sections = split_sections(text)
+    title, level, sections = split_sections(text)
 
     if not title:
-        title = f"# Mot-clé `{path.stem}`"
-    if not niveau:
-        niveau = "Niveau: Intermédiaire."
+        title = f"# Keyword `{path.stem}`"
+    if not level:
+        level = "Level: Intermediate."
 
-    # Reuse existing "Mot-clé voisin" section as fallback for "Différences proches".
-    if "## Différences proches" not in sections and "## Mot-clé voisin" in sections:
-        sections["## Différences proches"] = sections["## Mot-clé voisin"]
+    # Reuse existing "Neighbor keyword" section as fallback for "Nearby differences".
+    if "## Nearby differences" not in sections and "## Neighbor keyword" in sections:
+        sections["## Nearby differences"] = sections["## Neighbor keyword"]
 
-    out = [title, "", niveau, ""]
+    out = [title, "", level, ""]
     for heading in ORDER:
         body = ensure_section(sections, heading, path.stem)
-        if heading == "## Lecture rapide (30s)":
+        if heading == "## Quick read (30s)":
             body = enrich_quick_read(body)
-        elif heading == "## Exemple invalide":
+        elif heading == "## Invalid example":
             body = enrich_invalid_example(body, path.stem)
-        elif heading == "## Utilisé dans les chapitres":
+        elif heading == "## Used in chapters":
             body = normalize_chapter_links(body)
-        elif heading == "## Voir aussi":
+        elif heading == "## See also":
             body = normalize_see_also(body)
-        if heading == "## Score de complétude":
+        if heading == "## Completeness score":
             body = compute_score({**sections, heading: body})
         out.append(heading)
         out.append("")

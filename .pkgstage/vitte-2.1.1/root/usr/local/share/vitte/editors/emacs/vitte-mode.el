@@ -2,6 +2,8 @@
 
 (defgroup vitte nil "Vitte language support." :group 'languages)
 
+(declare-function vitte-indent-line "vitte-indent")
+
 (defcustom vitte-binary
   (or (executable-find "vitte") "vitte")
   "Path to the Vitte binary used by helper commands."

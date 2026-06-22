@@ -1,0 +1,253 @@
+space vitte/stdlib/async/channel
+
+use vitte/stdlib/core
+
+form Queue<T> {
+  items: [T],
+}
+
+form Channel<T> {
+  sender_count: int,
+  receiver_count: int,
+  queue: Queue<T>,
+  mutex: int,
+  not_empty: int,
+  not_full: int,
+  capacity: int,
+  closed: bool,
+}
+
+form Select<T> {
+  index: int,
+  value: T,
+}
+
+proc channel_new<T>(capacity: int) -> Channel<T> {
+  let ch: Channel<T> = Channel<T> {
+    sender_count: 1,
+    receiver_count: 1,
+    queue: queue_new<T>(),
+    mutex: mutex_new(),
+    not_empty: cond_new(),
+    not_full: cond_new(),
+    capacity: capacity,
+    closed: false,
+  }
+  give ch
+}
+
+proc channel_send<T>(ch: Channel<T>, value: T) -> bool {
+  mutex_lock(ch.mutex)
+
+  if ch.closed {
+    mutex_unlock(ch.mutex)
+    give false
+  }
+
+  if ch.capacity > 0 {
+    while queue_len<T>(ch.queue) >= ch.capacity {
+      cond_wait(ch.not_full, ch.mutex)
+    }
+  }
+
+  queue_push<T>(ch.queue, value)
+  cond_signal(ch.not_empty)
+
+  mutex_unlock(ch.mutex)
+  give true
+}
+
+proc channel_recv<T>(ch: Channel<T>) -> T {
+  mutex_lock(ch.mutex)
+
+  while queue_len<T>(ch.queue) == 0 {
+    if ch.closed {
+      mutex_unlock(ch.mutex)
+      let message: string = "Channel received on closed channel"
+      panic(message)
+    }
+    cond_wait(ch.not_empty, ch.mutex)
+  }
+
+  let value: T = queue_pop<T>(ch.queue)
+  cond_signal(ch.not_full)
+
+  mutex_unlock(ch.mutex)
+  give value
+}
+
+proc channel_try_recv<T>(ch: Channel<T>) -> T {
+  mutex_lock(ch.mutex)
+
+  if queue_len<T>(ch.queue) == 0 {
+    mutex_unlock(ch.mutex)
+    let message: string = "Channel empty"
+    panic(message)
+  }
+
+  let value: T = queue_pop<T>(ch.queue)
+  cond_signal(ch.not_full)
+
+  mutex_unlock(ch.mutex)
+  give value
+}
+
+proc channel_is_closed<T>(ch: Channel<T>) -> bool {
+  give ch.closed
+}
+
+proc channel_close_sender<T>(ch: Channel<T>) -> bool {
+  mutex_lock(ch.mutex)
+  set ch.sender_count = ch.sender_count - 1
+
+  if ch.sender_count <= 0 {
+    set ch.closed = true
+  }
+
+  cond_broadcast(ch.not_empty)
+  mutex_unlock(ch.mutex)
+  give true
+}
+
+proc channel_close_receiver<T>(ch: Channel<T>) -> bool {
+  mutex_lock(ch.mutex)
+  set ch.receiver_count = ch.receiver_count - 1
+
+  if ch.receiver_count <= 0 {
+    set ch.closed = true
+  }
+
+  mutex_unlock(ch.mutex)
+  give true
+}
+
+proc channel_len<T>(ch: Channel<T>) -> int {
+  mutex_lock(ch.mutex)
+  let len: int = queue_len<T>(ch.queue)
+  mutex_unlock(ch.mutex)
+  give len
+}
+
+proc channel_select<T>(channels: [Channel<T>]) -> Select<T> {
+  let i: int = 0
+  while i < channels.len {
+    if queue_len<T>(channels[i].queue) > 0 {
+      let value: T = channel_recv<T>(channels[i])
+      let result: Select<T> = Select<T> {
+        index: i,
+        value: value,
+      }
+      give result
+    }
+    set i = i + 1
+  }
+
+  let value: T = channel_recv<T>(channels[0])
+  let result: Select<T> = Select<T> {
+    index: 0,
+    value: value,
+  }
+  give result
+}
+
+proc queue_new<T>() -> Queue<T> {
+  let q: Queue<T> = Queue<T> {
+    items: [],
+  }
+  give q
+}
+
+proc queue_push<T>(q: Queue<T>, value: T) -> bool {
+  set q.items = q.items + [value]
+  give true
+}
+
+proc queue_pop<T>(q: Queue<T>) -> T {
+  if q.items.len == 0 {
+    let message: string = "Queue empty"
+    panic(message)
+  }
+
+  let value: T = q.items[0]
+  let rest: [T] = queue_rest<T>(q.items)
+  set q.items = rest
+  give value
+}
+
+proc queue_len<T>(q: Queue<T>) -> int {
+  give q.items.len
+}
+
+proc queue_rest<T>(items: [T]) -> [T] {
+  if items.len <= 1 {
+    give []
+  }
+
+  let out: [T] = []
+  let i: int = 1
+  while i < items.len {
+    set out = out + [items[i]]
+    set i = i + 1
+  }
+  give out
+}
+
+proc mutex_new() -> int {
+  give 0
+}
+
+proc mutex_lock(id: int) -> bool {
+  give true
+}
+
+proc mutex_unlock(id: int) -> bool {
+  give true
+}
+
+proc cond_new() -> int {
+  give 0
+}
+
+proc cond_wait(cond: int, mutex: int) -> bool {
+  give true
+}
+
+proc cond_signal(cond: int) -> bool {
+  give true
+}
+
+proc cond_broadcast(cond: int) -> bool {
+  give true
+}
+
+proc channel_version() -> string {
+  give "max-1"
+}
+
+proc channel_ready() -> bool {
+  give true
+}
+
+proc channel_selftest() -> bool {
+  let ch: Channel<int> = channel_new<int>(2)
+  channel_send<int>(ch, 11)
+  channel_send<int>(ch, 22)
+  let first: int = channel_try_recv<int>(ch)
+  let second: int = channel_recv<int>(ch)
+  let empty_len: int = channel_len<int>(ch)
+
+  let left: Channel<int> = channel_new<int>(1)
+  let right: Channel<int> = channel_new<int>(1)
+  channel_send<int>(right, 99)
+  let picked: Select<int> = channel_select<int>([left, right])
+
+  give channel_ready()
+    and channel_version() == "max-1"
+    and first == 11
+    and second == 22
+    and empty_len == 0
+    and picked.index == 1
+    and picked.value == 99
+}
+
+export *

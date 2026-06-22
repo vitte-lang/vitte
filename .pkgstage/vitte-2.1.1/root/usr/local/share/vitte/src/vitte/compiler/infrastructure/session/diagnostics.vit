@@ -1,6 +1,8 @@
 space vitte/compiler/infrastructure/session
 
 use vitte/compiler/infrastructure/session/files.{ SourceManager, SourceSpan, source_span, source_manager_file_id, line_col_lookup, offset_lookup }
+use vitte/compiler/diagnostics/diagnostic.{ Diagnostic, DiagnosticPhase, DiagnosticReport, DiagnosticSeverity, SourceSpan as DiagnosticSourceSpan, diagnostic_error, diagnostic_fatal, diagnostic_report, diagnostic_warning, diagnostic_create, span_create }
+use vitte/compiler/diagnostics/json.{ json_report }
 
 pick SessionDiagnosticSeverity {
   Note,
@@ -100,6 +102,61 @@ proc severity_text(severity: SessionDiagnosticSeverity) -> string {
   give "error";
 }
 
+proc session_diagnostic_severity_as_canonical(severity: SessionDiagnosticSeverity) -> DiagnosticSeverity {
+  if severity == SessionDiagnosticSeverity.Note {
+    give DiagnosticSeverity.Note;
+  }
+  if severity == SessionDiagnosticSeverity.Warning {
+    give DiagnosticSeverity.Warning;
+  }
+  if severity == SessionDiagnosticSeverity.Fatal {
+    give DiagnosticSeverity.Fatal;
+  }
+  give DiagnosticSeverity.Error;
+}
+
+proc session_span_file(manager: SourceManager, span0: SourceSpan) -> string {
+  let i: u64 = 0;
+  while i < len(manager.files) {
+    if manager.files[i].file_id == span0.file_id {
+      give manager.files[i].path;
+    }
+    set i = i + 1;
+  }
+  give "<session>";
+}
+
+proc session_span_as_diagnostic_span(manager: SourceManager, span0: SourceSpan) -> DiagnosticSourceSpan {
+  let loc = line_col_lookup(manager, span0.file_id, span0.start);
+  let file_name: string = session_span_file(manager, span0);
+  let width: u64 = if span0.end > span0.start { span0.end - span0.start } else { 1 };
+  if loc.valid {
+    give span_create(file_name, loc.line, loc.column, width);
+  }
+  give span_create(file_name, 1, 1, width);
+}
+
+proc session_diagnostic_as_diagnostic(manager: SourceManager, diagnostic0: SessionDiagnostic) -> Diagnostic {
+  let span1: DiagnosticSourceSpan = session_span_as_diagnostic_span(manager, diagnostic0.span);
+  give diagnostic_create(
+    diagnostic0.code,
+    DiagnosticPhase.Driver,
+    session_diagnostic_severity_as_canonical(diagnostic0.severity),
+    diagnostic0.message,
+    span1
+  );
+}
+
+proc diagnostic_session_as_report(session0: DiagnosticSession, manager: SourceManager) -> DiagnosticReport {
+  let diagnostics: [Diagnostic] = [];
+  let i: u64 = 0;
+  while i < len(session0.diagnostics) {
+    set diagnostics = diagnostics + [session_diagnostic_as_diagnostic(manager, session0.diagnostics[i])];
+    set i = i + 1;
+  }
+  give diagnostic_report(diagnostics);
+}
+
 proc render_text(session0: DiagnosticSession, manager: SourceManager) -> string {
   let out: string = "";
   let i: u64 = 0;
@@ -170,6 +227,10 @@ proc render_json(session0: DiagnosticSession) -> string {
   give out;
 }
 
+proc render_canonical_json(session0: DiagnosticSession, manager: SourceManager) -> string {
+  give json_report(diagnostic_session_as_report(session0, manager));
+}
+
 proc manager_span_from_location(manager: SourceManager, path: string, line: u64, column: u64) -> SourceSpan {
   let file_id: u64 = source_manager_file_id(manager, path);
   if file_id == 0 {
@@ -191,6 +252,11 @@ share emit_error
 share emit_fatal
 share has_errors
 share severity_text
+share session_diagnostic_severity_as_canonical
+share session_span_as_diagnostic_span
+share session_diagnostic_as_diagnostic
+share diagnostic_session_as_report
 share render_text
 share render_json
+share render_canonical_json
 share manager_span_from_location

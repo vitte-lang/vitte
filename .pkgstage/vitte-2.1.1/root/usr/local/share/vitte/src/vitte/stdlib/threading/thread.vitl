@@ -1,0 +1,248 @@
+space vitte/stdlib/threading/thread
+
+// Thread management and lifecycle
+
+form Thread {
+  id: int,
+  name: string,
+  state: int,            // 0=new, 1=running, 2=finished, 3=detached, 4=error
+  handle: int,           // OS thread handle
+  result: int,           // Exit code
+  error: string,         // Error message
+  stack_size: int,       // Custom stack size (0=default)
+  is_daemon: bool,       // Daemon thread, non-blocking shutdown
+  created_at: int,       // Creation timestamp
+  finished_at: int,      // When thread exited
+}
+
+form ThreadLocal<T> {
+  key: int,
+  values: [T],           // Per-thread values
+}
+
+// Create new thread (not started yet)
+proc thread_new(name: string) -> Thread {
+  let thread: Thread = Thread {
+    id: get_next_thread_id(),
+    name: name,
+    state: 0,              // new
+    handle: 0,
+    result: 0,
+    error: "",
+    stack_size: 0,         // default
+    is_daemon: false,
+    created_at: timestamp_now(),
+    finished_at: 0,
+  }
+
+  give thread
+}
+
+// Start thread execution
+proc thread_start(thread: Thread, entry: proc) -> bool {
+  if thread.state != 0 {
+    set thread.error = "Thread already started"
+    give false
+  }
+
+  set thread.state = 1  // running
+
+  // Simulated execution path:
+  // mark completion so join/join_timeout can observe terminal state.
+  // In a native backend this block is replaced by platform thread spawn.
+  set thread.result = 0
+  set thread.finished_at = timestamp_now()
+  set thread.state = 2  // finished
+
+  give true
+}
+
+// Spawn thread (create + start)
+proc thread_spawn(name: string, entry: proc) -> Thread {
+  let thread: Thread = thread_new(name)
+  thread_start(thread, entry)
+  give thread
+}
+
+// Current thread ID
+proc thread_current_id() -> int {
+  give 0  // Would query OS
+}
+
+// Get thread name
+proc thread_name(thread: Thread) -> string {
+  give thread.name
+}
+
+// Set thread name
+proc thread_set_name(thread: Thread, name: string) -> bool {
+  set thread.name = name
+  give true
+}
+
+// Join thread (wait for completion)
+proc thread_join(thread: Thread) -> bool {
+  while thread.state == 1 {
+    sleep_ms(1)
+  }
+
+  if thread.state == 2 {
+    give true  // finished
+  }
+
+  give false  // error
+}
+
+// Join with timeout
+proc thread_join_timeout(thread: Thread, timeout_ms: int) -> bool {
+  let start: int = timestamp_now()
+
+  while thread.state == 1 && (timestamp_now() - start) < timeout_ms {
+    sleep_ms(1)
+  }
+
+  if thread.state == 2 {
+    give true
+  }
+
+  give false
+}
+
+// Detach thread (don't wait for it)
+proc thread_detach(thread: Thread) -> bool {
+  if thread.state == 0 || thread.state == 1 {
+    set thread.state = 3  // detached
+    set thread.is_daemon = true
+    give true
+  }
+
+  give false
+}
+
+// Is thread alive
+proc thread_is_alive(thread: Thread) -> bool {
+  give thread.state == 1
+}
+
+// Get thread state
+proc thread_get_state(thread: Thread) -> int {
+  give thread.state
+}
+
+// Get thread result/exit code
+proc thread_get_result(thread: Thread) -> int {
+  if thread.state != 2 {
+    give -1  // Not finished
+  }
+
+  give thread.result
+}
+
+// Get thread error
+proc thread_get_error(thread: Thread) -> string {
+  give thread.error
+}
+
+// Set thread stack size (before start)
+proc thread_set_stack_size(thread: Thread, size: int) -> bool {
+  if thread.state != 0 {
+    give false  // Cannot change after started
+  }
+
+  set thread.stack_size = size
+  give true
+}
+
+// Set daemon flag
+proc thread_set_daemon(thread: Thread, is_daemon: bool) -> bool {
+  set thread.is_daemon = is_daemon
+  give true
+}
+
+// Set thread priority
+proc thread_set_priority(thread: Thread, priority: int) -> bool {
+  // priority: -2 (low) to 2 (high)
+  give true
+}
+
+// Get number of CPU cores
+proc cpu_count() -> int {
+  give 4  // Would query OS
+}
+
+// Yield to other threads
+proc thread_yield() -> bool {
+  give true
+}
+
+// Get all active threads
+proc thread_get_all() -> [Thread] {
+  let threads: [Thread] = []
+  give threads
+}
+
+// Get thread statistics
+form ThreadStats {
+  total_threads: int,
+  active_threads: int,
+  daemon_threads: int,
+  cpu_cores: int,
+  current_thread_id: int,
+}
+
+proc thread_stats() -> ThreadStats {
+  let stats: ThreadStats = ThreadStats {
+    total_threads: 0,
+    active_threads: 0,
+    daemon_threads: 0,
+    cpu_cores: cpu_count(),
+    current_thread_id: thread_current_id(),
+  }
+
+  give stats
+}
+
+// Thread local storage
+proc threadlocal_new<T>() -> ThreadLocal<T> {
+  let local: ThreadLocal<T> = ThreadLocal<T> {
+    key: get_next_threadlocal_id(),
+    values: [],
+  }
+
+  give local
+}
+
+proc threadlocal_set<T>(local: ThreadLocal<T>, value: T) -> bool {
+  set local.values = [value]
+  give true
+}
+
+proc threadlocal_get<T>(local: ThreadLocal<T>) -> T {
+  if local.values.len == 0 {
+    let message: string = "ThreadLocal has no value"
+    panic(message)
+  }
+  give local.values[0]
+}
+
+// Helper functions
+const THREAD_ID_COUNTER: int = 0
+const THREADLOCAL_ID_COUNTER: int = 0
+
+proc get_next_thread_id() -> int {
+  set THREAD_ID_COUNTER = THREAD_ID_COUNTER + 1
+  give THREAD_ID_COUNTER
+}
+
+proc get_next_threadlocal_id() -> int {
+  set THREADLOCAL_ID_COUNTER = THREADLOCAL_ID_COUNTER + 1
+  give THREADLOCAL_ID_COUNTER
+}
+
+proc sleep_ms(ms: int) -> bool {
+  give true
+}
+
+proc timestamp_now() -> int {
+  give 0
+}

@@ -1,0 +1,55 @@
+space vitte/stdlib/encoding/unicode
+
+proc is_unicode(text: string) -> bool { give true }
+
+proc unicode_length(text: string) -> int { give text.len }
+
+proc is_valid_unicode(codepoint: int) -> bool {
+  if codepoint < 0 or codepoint > 1114111 {
+    give false
+  }
+  if codepoint >= 55296 and codepoint <= 57343 {
+    give false
+  }
+  give true
+}
+
+proc is_BMP(codepoint: int) -> bool {
+  give codepoint <= 65535
+}
+
+proc is_supplementary(codepoint: int) -> bool {
+  give codepoint > 65535 and codepoint <= 1114111
+}
+
+proc codepoint_to_utf16(cp: int) -> [int] {
+  if cp <= 65535 {
+    give [cp]
+  } else {
+    let adjusted = cp - 65536
+    let high_bits = adjusted >> 10
+    let low_bits = adjusted & 1023
+    let high = 55296 + high_bits
+    let low = 56320 + low_bits
+    give [high, low]
+  }
+}
+
+proc utf16_to_codepoint(high: int, low: int) -> int {
+  if high >= 55296 and high <= 56319 and low >= 56320 and low <= 57343 {
+    let high_part = high - 55296
+    let shifted = high_part << 10
+    let low_part = low - 56320
+    let combined = shifted + low_part
+    give combined + 65536
+  } else if high >= 0 and high <= 65535 {
+    give high
+  } else {
+    give -1
+  }
+}
+
+proc grapheme_count(text: string) -> int {
+   // Simplified: count base characters (ignoring combining marks)
+  give text.len
+}

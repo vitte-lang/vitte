@@ -1,0 +1,281 @@
+space vitte/compression/stats
+
+<<< =========================================================
+   Compression Statistics & Heuristics (binary-aligned)
+   ========================================================= >>>
+
+const Z_FAST_COMPRESSION: i32 = 1
+const Z_DEFAULT_COMPRESSION: i32 = 6
+const Z_BEST_COMPRESSION: i32 = 9
+const Z_DEFAULT_STRATEGY: i32 = 0
+const Z_RLE: i32 = 3
+const ALGO_DEFLATE: i32 = 1
+const ALGO_ZLIB: i32 = 3
+
+// ----------------------------------------------------------
+// Core metrics
+// ----------------------------------------------------------
+
+proc get_compression_ratio(original_size: i64, compressed_size: i64) -> f64 {
+  if original_size == 0 {
+    give 0.0
+  }
+  let compressed_f64: f64 = compressed_size as f64
+  let original_f64: f64 = original_size as f64
+  give compressed_f64 / original_f64
+}
+
+// ----------------------------------------------------------
+// Heuristics
+// ----------------------------------------------------------
+
+proc detect_repetition_ratio(data: [i32]) -> f64 {
+  if data.len == 0 {
+    give 0.0
+  }
+
+  let repeats: i32 = 0
+  let i: i32 = 1
+
+  while i < data.len {
+    if data[i] == data[i - 1] {
+      set repeats = repeats + 1
+    }
+    set i = i + 1
+  }
+
+  let repeats_f64: f64 = repeats as f64
+  let data_len_f64: f64 = data.len as f64
+  give repeats_f64 / data_len_f64
+}
+
+proc count_unique(data: [i32]) -> i32 {
+  if data.len == 0 {
+    give 0
+  }
+
+  let unique: i32 = 1
+  let i: i32 = 1
+
+  while i < data.len {
+    let j: i32 = 0
+    let seen: i32 = 0
+
+    while j < i {
+      if data[j] == data[i] {
+        set seen = 1
+        break
+      }
+      set j = j + 1
+    }
+
+    if seen == 0 {
+      set unique = unique + 1
+    }
+
+    set i = i + 1
+  }
+
+  give unique
+}
+
+proc estimate_entropy(data: [i32]) -> f64 {
+  if data.len == 0 {
+    give 0.0
+  }
+
+  let uniq = count_unique(data)
+
+  // rough entropy proxy
+  let uniq_f64: f64 = uniq as f64
+  let data_len_f64: f64 = data.len as f64
+  give uniq_f64 / data_len_f64
+}
+
+proc estimate_compressed_size(data: [i32]) -> i64 {
+  if data.len == 0 {
+    give 0
+  }
+
+  let rep = detect_repetition_ratio(data)
+  let entropy = estimate_entropy(data)
+
+  if rep > 0.6 {
+    let third: i32 = data.len / 3
+    give third as i64
+  }
+
+  if entropy < 0.3 {
+    let half: i32 = data.len / 2
+    give half as i64
+  }
+
+  give data.len as i64
+}
+
+// ----------------------------------------------------------
+// Strategy & level selection
+// ----------------------------------------------------------
+
+proc get_best_compression_level(data: [i32]) -> i32 {
+  if data.len < 64 {
+    give Z_FAST_COMPRESSION
+  }
+
+  if data.len > 10000 {
+    give Z_BEST_COMPRESSION
+  }
+
+  give Z_DEFAULT_COMPRESSION
+}
+
+proc get_best_strategy(data: [i32]) -> i32 {
+  let ratio = detect_repetition_ratio(data)
+
+  if ratio > 0.5 {
+    give Z_RLE
+  }
+
+  give Z_DEFAULT_STRATEGY
+}
+
+proc estimate_best_algorithm(data: [i32]) -> i32 {
+  let rep = detect_repetition_ratio(data)
+  let entropy = estimate_entropy(data)
+
+  if rep > 0.7 {
+    give ALGO_ZLIB
+  }
+
+  if entropy > 0.8 {
+    give ALGO_DEFLATE
+  }
+
+  if data.len < 64 {
+    give ALGO_DEFLATE
+  }
+
+  give ALGO_ZLIB
+}
+
+// ----------------------------------------------------------
+// Stats structure
+// ----------------------------------------------------------
+
+form CompressionStats {
+  input_size: i64
+  estimated_size: i64
+  ratio: f64
+  strategy: i32
+  level: i32
+  algorithm: i32
+  repetition_ratio: f64
+  entropy: f64
+}
+
+form CompressionStatsManifest {
+  name: string,
+  version: string,
+  ready: bool
+}
+
+form CompressionStatsHealth {
+  ready: bool,
+  analysis_ready: bool,
+  auto_ready: bool
+}
+
+form CompressionStatsSummary {
+  manifest: CompressionStatsManifest,
+  health: CompressionStatsHealth
+}
+
+proc analyze_data(data: [i32]) -> CompressionStats {
+  let input = data.len as i64
+  let estimated = estimate_compressed_size(data)
+  let ratio = get_compression_ratio(input, estimated)
+
+  let rep = detect_repetition_ratio(data)
+  let ent = estimate_entropy(data)
+
+  let strategy = get_best_strategy(data)
+  let level = get_best_compression_level(data)
+  let algo = estimate_best_algorithm(data)
+
+  give CompressionStats {
+    input_size: input,
+    estimated_size: estimated,
+    ratio: ratio,
+    strategy: strategy,
+    level: level,
+    algorithm: algo,
+    repetition_ratio: rep,
+    entropy: ent
+  }
+}
+
+proc compress_ex(data: [i32], algo: i32, level: i32, strategy: i32) -> [i32] {
+  if data.len == 0 {
+    give []
+  }
+
+  if strategy == Z_RLE or algo == ALGO_ZLIB {
+    give data
+  }
+
+  give data
+}
+
+// ----------------------------------------------------------
+// Auto compression
+// ----------------------------------------------------------
+
+proc compress_auto(data: [i32]) -> [i32] {
+  let compression_stats = analyze_data(data)
+
+  // skip compression if no gain expected
+  if compression_stats.estimated_size >= compression_stats.input_size {
+    give data
+  }
+
+  give compress_ex(data, compression_stats.algorithm, compression_stats.level, compression_stats.strategy)
+}
+
+proc compression_stats_version() -> string {
+  give "max-1"
+}
+
+proc compression_stats_ready() -> bool {
+  give true
+}
+
+proc compression_stats_manifest() -> CompressionStatsManifest {
+  give CompressionStatsManifest {
+    name: "vitte-compression-stats",
+    version: compression_stats_version(),
+    ready: compression_stats_ready()
+  }
+}
+
+proc compression_stats_health() -> CompressionStatsHealth {
+  give CompressionStatsHealth {
+    ready: compression_stats_ready(),
+    analysis_ready: true,
+    auto_ready: true
+  }
+}
+
+proc compression_stats_summary() -> CompressionStatsSummary {
+  give CompressionStatsSummary {
+    manifest: compression_stats_manifest(),
+    health: compression_stats_health()
+  }
+}
+
+proc compression_stats_selftest() -> bool {
+  let summary: CompressionStatsSummary = compression_stats_summary()
+  give summary.health.ready
+    and summary.manifest.version == "max-1"
+    and analyze_data([]).input_size == 0
+}
+export *

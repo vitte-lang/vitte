@@ -1,0 +1,153 @@
+space vitte/stdlib/math/algebra
+
+proc add_vectors(a: [int], b: [int]) -> [int] {
+  if a.len != b.len {
+    give []
+  }
+  let out: [int] = []
+  let i: int = 0
+  while i < a.len {
+    set out = out + [a[i] + b[i]]
+    set i = i + 1
+  }
+  give out
+}
+
+proc dot(a: [int], b: [int]) -> int {
+  if a.len != b.len {
+    give 0
+  }
+  let total: int = 0
+  let i: int = 0
+  while i < a.len {
+    set total = total + a[i] * b[i]
+    set i = i + 1
+  }
+  give total
+}
+
+proc cross_2d(a: [int], b: [int]) -> int {
+  if a.len != 2 or b.len != 2 {
+    give 0
+  }
+  give a[0] * b[1] - a[1] * b[0]
+}
+
+proc cross_3d(a: [int], b: [int]) -> [int] {
+  if a.len != 3 or b.len != 3 {
+    give []
+  }
+  give [
+    a[1] * b[2] - a[2] * b[1],
+    a[2] * b[0] - a[0] * b[2],
+    a[0] * b[1] - a[1] * b[0]
+  ]
+}
+
+proc scalar_multiply(v: [int], k: int) -> [int] {
+  let out: [int] = []
+  let i: int = 0
+  while i < v.len {
+    set out = out + [v[i] * k]
+    set i = i + 1
+  }
+  give out
+}
+
+proc vector_magnitude(v: [int]) -> int {
+  let total: int = 0
+  let i: int = 0
+  while i < v.len {
+    set total = total + v[i] * v[i]
+    set i = i + 1
+  }
+  let root: int = 0
+  while true {
+    let next_root: int = root + 1
+    let square: int = next_root * next_root
+    if square > total {
+      give root
+    }
+    set root = root + 1
+  }
+  give root
+}
+
+proc normalize_vector(v: [int]) -> [int] {
+  let mag: int = vector_magnitude(v)
+  if mag == 0 {
+    give v
+  }
+  let out: [int] = []
+  let i: int = 0
+  while i < v.len {
+    set out = out + [v[i] / mag]
+    set i = i + 1
+  }
+  give out
+}
+
+proc matrix_multiply(a: [[int]], b: [[int]]) -> [[int]] {
+  if a.len != 2 or b.len != 2 or a[0].len != 2 or a[1].len != 2 or b[0].len != 2 or b[1].len != 2 {
+    give []
+  }
+  give [[
+    a[0][0] * b[0][0] + a[0][1] * b[1][0],
+    a[0][0] * b[0][1] + a[0][1] * b[1][1]
+  ], [
+    a[1][0] * b[0][0] + a[1][1] * b[1][0],
+    a[1][0] * b[0][1] + a[1][1] * b[1][1]
+  ]]
+}
+
+proc matrix_transpose(m: [[int]]) -> [[int]] {
+  if m.len != 2 or m[0].len != 2 or m[1].len != 2 {
+    give []
+  }
+  give [[m[0][0], m[1][0]], [m[0][1], m[1][1]]]
+}
+
+proc determinant_2x2(m: [[int]]) -> int {
+  if m.len != 2 or m[0].len != 2 or m[1].len != 2 {
+    give 0
+  }
+  give m[0][0] * m[1][1] - m[0][1] * m[1][0]
+}
+
+proc solve_linear_system(a: [[int]], b: [int]) -> [int] {
+  if a.len != 2 or a[0].len != 2 or a[1].len != 2 or b.len != 2 {
+    give []
+  }
+  let det: int = determinant_2x2(a)
+  if det == 0 {
+    give []
+  }
+  let x_num: int = b[0] * a[1][1] - a[0][1] * b[1]
+  let y_num: int = a[0][0] * b[1] - b[0] * a[1][0]
+  give [x_num / det, y_num / det]
+}
+
+proc algebra_version() -> string {
+  give "max-1"
+}
+
+proc algebra_ready() -> bool {
+  give true
+}
+
+proc algebra_selftest() -> bool {
+  let cross: [int] = cross_3d([1, 0, 0], [0, 1, 0])
+  let solved: [int] = solve_linear_system([[2, 1], [1, 1]], [5, 3])
+  give algebra_ready()
+    and algebra_version() == "max-1"
+    and dot([1, 2], [3, 4]) == 11
+    and cross_2d([1, 0], [0, 1]) == 1
+    and cross.len == 3
+    and cross[2] == 1
+    and determinant_2x2([[2, 1], [1, 1]]) == 1
+    and solved.len == 2
+    and solved[0] == 2
+    and solved[1] == 1
+}
+
+export *

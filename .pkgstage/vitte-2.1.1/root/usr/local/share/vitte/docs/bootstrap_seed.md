@@ -113,7 +113,7 @@ Bootstrap and driver flows now accept a project directory as the CLI input path.
 When a command such as `./bin/vitte check .` or `./bin/vitte build . -o
 target/app` receives a directory-like path, it resolves the entry in this order:
 
-1. `src/main.vit`
+1. src/main.vit
 2. `src/vitte/compiler/main.vit`
 3. `main.vit`
 

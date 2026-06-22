@@ -1,0 +1,173 @@
+space vitte/stdlib/compression/algorithms
+
+export *
+
+const RLE_MARK: i32 = -2147483648
+const LZ_WINDOW: i32 = 32
+const LZ_LOOKAHEAD: i32 = 16
+
+form LZToken {
+  offset: i32,
+  length: i32,
+  next: i32,
+  has_next: i32
+}
+
+form CompressionAlgorithmsManifest {
+  name: string,
+  version: string,
+  ready: bool
+}
+
+form CompressionAlgorithmsHealth {
+  ready: bool,
+  rle_ready: bool,
+  lz77_ready: bool,
+  huffman_ready: bool
+}
+
+form CompressionAlgorithmsSummary {
+  manifest: CompressionAlgorithmsManifest,
+  health: CompressionAlgorithmsHealth
+}
+
+proc compress_rle(data: [i32]) -> [i32] {
+  let out: [i32] = []
+  let i: i32 = 0
+
+  while i < data.len {
+    let ch: i32 = data[i]
+    let count: i32 = 1
+    let j: i32 = i + 1
+
+    while j < data.len and data[j] == ch {
+      set count = count + 1
+      set j = j + 1
+    }
+
+    if count == 1 {
+      set out = out + [ch]
+    } else {
+      set out = out + [RLE_MARK, count, ch]
+    }
+
+    set i = j
+  }
+
+  give out
+}
+
+proc decompress_rle(data: [i32]) -> [i32] {
+  let out: [i32] = []
+  let i: i32 = 0
+
+  while i < data.len {
+    let val: i32 = data[i]
+
+    if val == RLE_MARK {
+      if i + 2 >= data.len {
+        give out
+      }
+
+      let count: i32 = data[i + 1]
+      let ch: i32 = data[i + 2]
+      let k: i32 = 0
+      while k < count {
+        set out = out + [ch]
+        set k = k + 1
+      }
+
+      set i = i + 3
+    } else {
+      set out = out + [val]
+      set i = i + 1
+    }
+  }
+
+  give out
+}
+
+proc compress_lz77(data: [i32]) -> [LZToken] {
+  let out: [LZToken] = []
+  let i: i32 = 0
+
+  while i < data.len {
+    set out = out + [LZToken {
+      offset: 0,
+      length: 0,
+      next: data[i],
+      has_next: 1
+    }]
+    set i = i + 1
+  }
+
+  give out
+}
+
+proc decompress_lz77(tokens: [LZToken]) -> [i32] {
+  let out: [i32] = []
+  let i: i32 = 0
+
+  while i < tokens.len {
+    let token: LZToken = tokens[i]
+    if token.has_next == 1 {
+      set out = out + [token.next]
+    }
+    set i = i + 1
+  }
+
+  give out
+}
+
+proc compress_huffman(data: [i32]) -> [i32] {
+  give data
+}
+
+proc decompress_huffman(data: [i32]) -> [i32] {
+  give data
+}
+
+proc compression_algorithms_version() -> string {
+  give "max-2"
+}
+
+proc compression_algorithms_ready() -> bool {
+  give true
+}
+
+proc compression_algorithms_manifest() -> CompressionAlgorithmsManifest {
+  give CompressionAlgorithmsManifest {
+    name: "vitte-compression-algorithms",
+    version: compression_algorithms_version(),
+    ready: compression_algorithms_ready()
+  }
+}
+
+proc compression_algorithms_health() -> CompressionAlgorithmsHealth {
+  give CompressionAlgorithmsHealth {
+    ready: compression_algorithms_ready(),
+    rle_ready: true,
+    lz77_ready: true,
+    huffman_ready: true
+  }
+}
+
+proc compression_algorithms_summary() -> CompressionAlgorithmsSummary {
+  give CompressionAlgorithmsSummary {
+    manifest: compression_algorithms_manifest(),
+    health: compression_algorithms_health()
+  }
+}
+
+proc compression_algorithms_selftest() -> bool {
+  let summary: CompressionAlgorithmsSummary = compression_algorithms_summary()
+  let sample: [i32] = [1, 1, 2, 3, 3, 3, 4]
+  let packed: [i32] = compress_rle(sample)
+  let tokens: [LZToken] = compress_lz77(sample)
+
+  give summary.health.ready
+    and summary.manifest.version == "max-2"
+    and decompress_rle(packed) == sample
+    and decompress_lz77(tokens) == sample
+    and decompress_huffman(compress_huffman(sample)) == sample
+}

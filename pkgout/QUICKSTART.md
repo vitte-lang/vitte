@@ -113,7 +113,8 @@ myproject/
 
 - **Documentation:** `/usr/local/share/vitte/docs/`
 - **Examples:** `/usr/local/share/vitte/tests/modules/`
-- **Standard Library:** `/usr/local/share/vitte/src/vitte/packages/`
+- **Source Packages:** `/usr/local/share/vitte/src/vitte/packages/`
+- **Standard Library:** `/usr/local/share/vitte/src/vitte/stdlib/`
 - **GitHub:** https://github.com/vitte-lang/vitte
 
 ## Environment Variables

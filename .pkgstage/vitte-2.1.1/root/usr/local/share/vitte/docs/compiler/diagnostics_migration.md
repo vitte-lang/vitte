@@ -5,7 +5,7 @@ Use canonical `diagnostics` naming everywhere while preserving temporary compati
 
 ## Phases
 1. Freeze typo spread
-- Enforce `make dignostics-migration-gate`.
+- Enforce `make diagnostics-migration-gate`.
 - Only files listed in `tools/dignostics_allowlist.txt` may still contain `dignostics`.
 
 2. Introduce canonical modules

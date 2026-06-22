@@ -1,0 +1,114 @@
+space vitte/compiler/backends/toolchain/vitte_toolchain
+
+<<< ROLE-CONTRACT
+package: vitte.compiler.backends.toolchain.vitte_toolchain
+role: bootstrap-vitte-backend-toolchain
+source_of_truth: src/vitte/compiler/backends/toolchain/vitte_toolchain.vit
+status: bootstrap-vitte
+>>>
+
+form VitteToolchainOptions {
+  std: string,
+  target: string,
+  debug: bool,
+  optimize: bool,
+  opt_level: int,
+  warnings: bool,
+  verbose: bool,
+  freestanding: bool,
+  emit_vitte: bool,
+  include_dirs: [string],
+  library_dirs: [string],
+  libraries: [string],
+  extra_sources: [string],
+  vitte_flags: [string],
+  ld_flags: [string]
+}
+
+form VitteToolchainInvocation {
+  command: string,
+  exit_code: int,
+  success: bool
+}
+
+const OK: int = 0
+
+proc system(command: string) -> int {
+  give OK
+}
+
+proc default_options() -> VitteToolchainOptions {
+  give VitteToolchainOptions {
+    std: "vitte-2026",
+    target: "",
+    debug: false,
+    optimize: false,
+    opt_level: 2,
+    warnings: true,
+    verbose: false,
+    freestanding: false,
+    emit_vitte: false,
+    include_dirs: [],
+    library_dirs: [],
+    libraries: [],
+    extra_sources: [],
+    vitte_flags: [],
+    ld_flags: []
+  }
+}
+
+proc _append_joined(cmd: string, prefix: string, values: [string]) -> string {
+  let out: string = cmd
+  let i: int = 0
+  while i < values.len {
+    set out = out + prefix + values[i] + " "
+    set i = i + 1
+  }
+  give out
+}
+
+proc build_vitte_command(input_source: string, output: string, opts: VitteToolchainOptions) -> string {
+  let cmd: string = "vitte "
+  set cmd = cmd + "-std=" + opts.std + " "
+  if opts.target != "" {
+    set cmd = cmd + "--target=" + opts.target + " "
+  }
+  if opts.debug {
+    set cmd = cmd + "-g "
+  }
+  if opts.optimize {
+    set cmd = cmd + "-O" + (opts.opt_level as string) + " "
+  }
+  if opts.warnings {
+    set cmd = cmd + "--warnings "
+  }
+  if opts.freestanding {
+    set cmd = cmd + "--freestanding "
+  }
+  if opts.emit_vitte {
+    set cmd = cmd + "--emit-vitte "
+  }
+  set cmd = _append_joined(cmd, "", opts.vitte_flags)
+  set cmd = _append_joined(cmd, "-I", opts.include_dirs)
+  set cmd = cmd + input_source + " "
+  let i: int = 0
+  while i < opts.extra_sources.len {
+    set cmd = cmd + opts.extra_sources[i] + " "
+    set i = i + 1
+  }
+  set cmd = cmd + "-o " + output + " "
+  if not opts.emit_vitte {
+    set cmd = _append_joined(cmd, "-L", opts.library_dirs)
+    set cmd = _append_joined(cmd, "-l", opts.libraries)
+    set cmd = _append_joined(cmd, "", opts.ld_flags)
+  }
+  give cmd
+}
+
+proc invoke_vitte(input_source: string, output: string, opts: VitteToolchainOptions) -> VitteToolchainInvocation {
+  let command: string = build_vitte_command(input_source, output, opts)
+  let exit_code: int = system(command)
+  give VitteToolchainInvocation { command: command, exit_code: exit_code, success: exit_code == OK }
+}
+
+export *

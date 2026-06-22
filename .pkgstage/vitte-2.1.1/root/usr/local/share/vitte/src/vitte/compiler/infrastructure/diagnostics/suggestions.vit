@@ -1,0 +1,107 @@
+space vitte/compiler/infrastructure/diagnostics/suggestions
+
+use vitte/compiler/infrastructure/diagnostics/diagnostic.{
+    DiagnosticSuggestion,
+    DiagnosticSuggestionKind,
+    SourceSpan,
+    diagnostic_suggestion,
+    diagnostic_suggestion_detail,
+    span_create,
+    span_location_text,
+    suggestion_kind_name
+}
+
+proc insert_suggestion(message: string, replacement: string, span: SourceSpan) -> DiagnosticSuggestion {
+    give diagnostic_suggestion(DiagnosticSuggestionKind.Insert, message, replacement, span, true);
+}
+
+proc replace_suggestion(message: string, replacement: string, span: SourceSpan) -> DiagnosticSuggestion {
+    give diagnostic_suggestion(DiagnosticSuggestionKind.Replace, message, replacement, span, true);
+}
+
+proc remove_suggestion(message: string, span: SourceSpan) -> DiagnosticSuggestion {
+    give diagnostic_suggestion(DiagnosticSuggestionKind.Remove, message, "", span, true);
+}
+
+proc help_suggestion(message: string, span: SourceSpan) -> DiagnosticSuggestion {
+    give diagnostic_suggestion(DiagnosticSuggestionKind.Help, message, "", span, false);
+}
+
+proc replace_suggestion_detail(message: string, replacement: string, span: SourceSpan, confidence: string, reason: string) -> DiagnosticSuggestion {
+    give diagnostic_suggestion_detail(DiagnosticSuggestionKind.Replace, message, replacement, span, true, confidence, reason);
+}
+
+proc point_insert_suggestion(message: string, replacement: string, file: string, line: u64, column: u64) -> DiagnosticSuggestion {
+    give insert_suggestion(message, replacement, span_create(file, line, column, 1));
+}
+
+proc render_suggestion_summary(suggestion: DiagnosticSuggestion) -> string {
+    let summary: string = suggestion_kind_name(suggestion.kind)
+        + " "
+        + span_location_text(suggestion.span)
+        + " "
+        + suggestion.message;
+
+    if suggestion.replacement != "" {
+        give summary + " => `" + suggestion.replacement + "`";
+    }
+
+    give summary;
+}
+
+proc empty_suggestion_list() -> [DiagnosticSuggestion] {
+    give [];
+}
+
+proc suggestion_list_add(suggestions: [DiagnosticSuggestion], suggestion: DiagnosticSuggestion) -> [DiagnosticSuggestion] {
+    if not suggestion.valid {
+        give suggestions;
+    }
+
+    give suggestions + [suggestion];
+}
+
+proc suggestion_list_extend(suggestions: [DiagnosticSuggestion], extra: [DiagnosticSuggestion]) -> [DiagnosticSuggestion] {
+    let out: [DiagnosticSuggestion] = suggestions;
+    let i: u64 = 0;
+
+    while i < len(extra) {
+        set out = suggestion_list_add(out, extra[i]);
+        set i = i + 1;
+    }
+
+    give out;
+}
+
+proc render_suggestion_list(suggestions: [DiagnosticSuggestion]) -> string {
+    let out: string = "";
+    let i: u64 = 0;
+
+    while i < len(suggestions) {
+        let suggestion: DiagnosticSuggestion = suggestions[i];
+
+        if suggestion.valid {
+            if out != "" {
+                set out = out + "\n";
+            }
+
+            set out = out + render_suggestion_summary(suggestion);
+        }
+
+        set i = i + 1;
+    }
+
+    give out;
+}
+
+share insert_suggestion
+share replace_suggestion
+share remove_suggestion
+share help_suggestion
+share replace_suggestion_detail
+share point_insert_suggestion
+share render_suggestion_summary
+share empty_suggestion_list
+share suggestion_list_add
+share suggestion_list_extend
+share render_suggestion_list

@@ -19,6 +19,7 @@ use vitte/compiler/diagnostics/diagnostic.{
     diagnostic_with_probable_fix,
     diagnostic_with_subject_symbol,
     diagnostic_with_subject_borrow,
+    diagnostic_with_replace,
     secondary_label,
     previous_label,
     add_unique_diagnostic,
@@ -441,9 +442,15 @@ proc borrow_error_temporal_story(kind: BorrowErrorKind, name: string, primary_me
         "estimated lifetime or borrow window: " + lifetime_text
     );
 
-    give diagnostic_with_probable_fix(
+    let diag11: Diagnostic = diagnostic_with_probable_fix(
         diag10,
         probable_fix
+    );
+    give diagnostic_with_replace(
+        diag11,
+        "rewrite the ownership path so the earlier event no longer conflicts with this use",
+        "<shorter borrow or explicit clone>",
+        use_span
     );
 }
 

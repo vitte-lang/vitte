@@ -1,0 +1,111 @@
+<<<
+    /home/vincentr/Documents/GitHub/vitte/src/vitte/compiler/diagnostics/suggestions.vit
+
+    Public suggestion helpers for canonical diagnostics.
+>>>
+
+space vitte/compiler/diagnostics/suggestions
+
+use vitte/compiler/diagnostics/diagnostic.{
+    DiagnosticApplicability,
+    DiagnosticPhase,
+    DiagnosticSuggestion,
+    DiagnosticSuggestionKind,
+    SourceSpan,
+    applicability_name,
+    diagnostic_catalog_suggestions,
+    diagnostic_suggestion,
+    diagnostic_suggestion_applicability,
+    diagnostic_suggestion_detail,
+    diagnostic_suggestion_limit,
+    diagnostic_suggestion_list,
+    diagnostic_suggestion_list_add,
+    diagnostic_suggestion_list_extend,
+    diagnostic_suggestion_rank,
+    span_create,
+    span_location_text,
+    suggestion_kind_name
+}
+
+proc insert_suggestion(message: string, replacement: string, span: SourceSpan) -> DiagnosticSuggestion {
+    give diagnostic_suggestion_applicability(DiagnosticSuggestionKind.Insert, message, replacement, span, DiagnosticApplicability.Machine, "high", message);
+}
+
+proc replace_suggestion(message: string, replacement: string, span: SourceSpan) -> DiagnosticSuggestion {
+    give diagnostic_suggestion_applicability(DiagnosticSuggestionKind.Replace, message, replacement, span, DiagnosticApplicability.Machine, "high", message);
+}
+
+proc remove_suggestion(message: string, span: SourceSpan) -> DiagnosticSuggestion {
+    give diagnostic_suggestion_applicability(DiagnosticSuggestionKind.Remove, message, "", span, DiagnosticApplicability.Machine, "high", message);
+}
+
+proc help_suggestion(message: string, span: SourceSpan) -> DiagnosticSuggestion {
+    give diagnostic_suggestion_applicability(DiagnosticSuggestionKind.Help, message, "", span, DiagnosticApplicability.Manual, "medium", message);
+}
+
+proc maybe_insert_suggestion(message: string, replacement: string, span: SourceSpan) -> DiagnosticSuggestion {
+    give diagnostic_suggestion_applicability(DiagnosticSuggestionKind.Insert, message, replacement, span, DiagnosticApplicability.MaybeMachine, "medium", message);
+}
+
+proc point_insert_suggestion(message: string, replacement: string, file: string, line: u64, column: u64) -> DiagnosticSuggestion {
+    give insert_suggestion(message, replacement, span_create(file, line, column, 1));
+}
+
+proc render_suggestion_summary(suggestion: DiagnosticSuggestion) -> string {
+    let summary: string = suggestion_kind_name(suggestion.kind)
+        + " "
+        + span_location_text(suggestion.span)
+        + " "
+        + suggestion.message
+        + " ["
+        + applicability_name(suggestion.applicability)
+        + "]";
+
+    if suggestion.replacement != "" {
+        give summary + " => `" + suggestion.replacement + "`";
+    }
+
+    give summary;
+}
+
+proc render_suggestion_list(suggestions: [DiagnosticSuggestion]) -> string {
+    let out: string = "";
+    let i: u64 = 0;
+
+    while i < len(suggestions) {
+        if suggestions[i].valid {
+            if out != "" {
+                set out = out + "\n";
+            }
+
+            set out = out + render_suggestion_summary(suggestions[i]);
+        }
+
+        set i = i + 1;
+    }
+
+    give out;
+}
+
+share DiagnosticApplicability
+share DiagnosticSuggestion
+share DiagnosticSuggestionKind
+
+share insert_suggestion
+share replace_suggestion
+share remove_suggestion
+share help_suggestion
+share maybe_insert_suggestion
+share point_insert_suggestion
+share render_suggestion_summary
+share render_suggestion_list
+
+share diagnostic_catalog_suggestions
+share diagnostic_suggestion
+share diagnostic_suggestion_applicability
+share diagnostic_suggestion_detail
+share diagnostic_suggestion_limit
+share diagnostic_suggestion_list
+share diagnostic_suggestion_list_add
+share diagnostic_suggestion_list_extend
+share diagnostic_suggestion_rank

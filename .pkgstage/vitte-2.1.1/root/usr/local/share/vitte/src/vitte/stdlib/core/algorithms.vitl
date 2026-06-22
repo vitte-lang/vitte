@@ -1,0 +1,387 @@
+space vitte/stdlib/core/algorithms
+
+export *
+
+pick SortOrder {
+  Ascending,
+  Descending
+}
+
+form SearchResult {
+  found: bool,
+  index: int
+}
+
+proc compare_i64(left: i64, right: i64, order: SortOrder) -> bool {
+  if order == SortOrder::Ascending {
+    give left < right
+  }
+
+  give left > right
+}
+
+proc swap_i64(values: [i64], left: int, right: int) -> [i64] {
+  let out: [i64] = values
+
+  let tmp: i64 = out[left]
+
+  set out[left] = out[right]
+  set out[right] = tmp
+
+  give out
+}
+
+proc reverse_i64(values: [i64]) -> [i64] {
+  let out: [i64] = values
+
+  if out.len <= 1 {
+    give out
+  }
+
+  let left: int = 0
+  let right: int = out.len - 1
+
+  while left < right {
+    let tmp: i64 = out[left]
+
+    set out[left] = out[right]
+    set out[right] = tmp
+
+    set left = left + 1
+    set right = right - 1
+  }
+
+  give out
+}
+
+proc bubble_sort_i64(values: [i64], order: SortOrder) -> [i64] {
+  let out: [i64] = values
+
+  if out.len <= 1 {
+    give out
+  }
+
+  let i: int = 0
+
+  while i < out.len {
+    let swapped: bool = false
+    let j: int = 0
+
+    while j + 1 < out.len - i {
+      if compare_i64(out[j + 1], out[j], order) {
+        set out = swap_i64(out, j, j + 1)
+        set swapped = true
+      }
+
+      set j = j + 1
+    }
+
+    if not swapped {
+      break
+    }
+
+    set i = i + 1
+  }
+
+  give out
+}
+
+proc insertion_sort_i64(values: [i64], order: SortOrder) -> [i64] {
+  let out: [i64] = values
+
+  if out.len <= 1 {
+    give out
+  }
+
+  let i: int = 1
+
+  while i < out.len {
+    let current: i64 = out[i]
+    let j: int = i
+
+    while j > 0 and compare_i64(current, out[j - 1], order) {
+      set out[j] = out[j - 1]
+      set j = j - 1
+    }
+
+    set out[j] = current
+
+    set i = i + 1
+  }
+
+  give out
+}
+
+proc selection_sort_i64(values: [i64], order: SortOrder) -> [i64] {
+  let out: [i64] = values
+
+  if out.len <= 1 {
+    give out
+  }
+
+  let i: int = 0
+
+  while i < out.len {
+    let selected: int = i
+    let j: int = i + 1
+
+    while j < out.len {
+      if compare_i64(out[j], out[selected], order) {
+        set selected = j
+      }
+
+      set j = j + 1
+    }
+
+    if selected != i {
+      set out = swap_i64(out, i, selected)
+    }
+
+    set i = i + 1
+  }
+
+  give out
+}
+
+proc quick_sort_range_i64(values: [i64], low: int, high: int, order: SortOrder) -> [i64] {
+  let out: [i64] = values
+
+  if high <= low {
+    give out
+  }
+
+  let pivot: i64 = out[high]
+
+  let boundary: int = low
+  let current: int = low
+
+  while current < high {
+    if compare_i64(out[current], pivot, order) {
+      set out = swap_i64(out, boundary, current)
+      set boundary = boundary + 1
+    }
+
+    set current = current + 1
+  }
+
+  set out = swap_i64(out, boundary, high)
+
+  if boundary > 0 {
+    set out = quick_sort_range_i64(
+      out,
+      low,
+      boundary - 1,
+      order
+    )
+  }
+
+  set out = quick_sort_range_i64(
+    out,
+    boundary + 1,
+    high,
+    order
+  )
+
+  give out
+}
+
+proc quick_sort_i64(values: [i64], order: SortOrder) -> [i64] {
+  if values.len <= 1 {
+    give values
+  }
+
+  give quick_sort_range_i64(
+    values,
+    0,
+    values.len - 1,
+    order
+  )
+}
+
+proc linear_search_i64(values: [i64], target: i64) -> SearchResult {
+  let i: int = 0
+
+  while i < values.len {
+    if values[i] == target {
+      give SearchResult {
+        found: true,
+        index: i
+      }
+    }
+
+    set i = i + 1
+  }
+
+  give SearchResult {
+    found: false,
+    index: -1
+  }
+}
+
+proc binary_search_i64(values: [i64], target: i64) -> SearchResult {
+  if values.len == 0 {
+    give SearchResult {
+      found: false,
+      index: -1
+    }
+  }
+
+  let left: int = 0
+  let right: int = values.len - 1
+
+  while left <= right {
+    let distance: int = right - left
+    let half: int = distance / 2
+    let middle: int = left + half
+
+    if values[middle] == target {
+      give SearchResult {
+        found: true,
+        index: middle
+      }
+    }
+
+    if values[middle] < target {
+      set left = middle + 1
+    } else {
+      if middle == 0 {
+        break
+      }
+
+      set right = middle - 1
+    }
+  }
+
+  give SearchResult {
+    found: false,
+    index: -1
+  }
+}
+
+proc contains_i64(values: [i64], target: i64) -> bool {
+  give linear_search_i64(values, target).found
+}
+
+proc sum_i64(values: [i64]) -> i64 {
+  let total: i64 = 0
+  let i: int = 0
+
+  while i < values.len {
+    set total = total + values[i]
+    set i = i + 1
+  }
+
+  give total
+}
+
+proc average_i64(values: [i64]) -> f64 {
+  if values.len == 0 {
+    give 0.0
+  }
+
+  give sum_i64(values) as f64 / values.len as f64
+}
+
+proc max_i64(values: [i64]) -> i64 {
+  if values.len == 0 {
+    give 0
+  }
+
+  let max: i64 = values[0]
+  let i: int = 1
+
+  while i < values.len {
+    if values[i] > max {
+      set max = values[i]
+    }
+
+    set i = i + 1
+  }
+
+  give max
+}
+
+proc min_i64(values: [i64]) -> i64 {
+  if values.len == 0 {
+    give 0
+  }
+
+  let min: i64 = values[0]
+  let i: int = 1
+
+  while i < values.len {
+    if values[i] < min {
+      set min = values[i]
+    }
+
+    set i = i + 1
+  }
+
+  give min
+}
+
+proc is_sorted_i64(values: [i64], order: SortOrder) -> bool {
+  if values.len <= 1 {
+    give true
+  }
+
+  let i: int = 1
+
+  while i < values.len {
+    if compare_i64(values[i], values[i - 1], order) {
+      give false
+    }
+
+    set i = i + 1
+  }
+
+  give true
+}
+
+proc unique_i64(values: [i64]) -> [i64] {
+  let out: [i64] = []
+  let i: int = 0
+
+  while i < values.len {
+    if not contains_i64(out, values[i]) {
+      set out = out + [values[i]]
+    }
+
+    set i = i + 1
+  }
+
+  give out
+}
+
+proc algorithms_selftest() -> bool {
+  let values: [i64] = [9, 4, 1, 7, 2]
+  let sorted: [i64] = quick_sort_i64(values, SortOrder::Ascending)
+  let reversed: [i64] = reverse_i64(values)
+  let bubble_desc: [i64] = bubble_sort_i64(values, SortOrder::Descending)
+  let insertion_sorted: [i64] = insertion_sort_i64(values, SortOrder::Ascending)
+  let selection_sorted: [i64] = selection_sort_i64(values, SortOrder::Ascending)
+  let linear_hit: SearchResult = linear_search_i64(values, 7)
+  let binary_hit: SearchResult = binary_search_i64(sorted, 7)
+  let uniques: [i64] = unique_i64([1, 2, 2, 3, 1])
+
+  give sorted[0] == 1
+    and sorted[4] == 9
+    and reversed[0] == 2
+    and reversed[4] == 9
+    and bubble_desc[0] == 9
+    and bubble_desc[4] == 1
+    and insertion_sorted[2] == 4
+    and selection_sorted[3] == 7
+    and linear_hit.found
+    and linear_hit.index == 3
+    and binary_hit.found
+    and binary_hit.index == 3
+    and contains_i64(sorted, 7)
+    and max_i64(sorted) == 9
+    and min_i64(sorted) == 1
+    and sum_i64(sorted) == 23
+    and average_i64(sorted) == 4.6
+    and is_sorted_i64(sorted, SortOrder::Ascending)
+    and is_sorted_i64(bubble_desc, SortOrder::Descending)
+    and uniques.len == 3
+}

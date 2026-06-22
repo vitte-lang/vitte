@@ -1,0 +1,670 @@
+space vitte/stdlib/math/sequences
+
+<<< =========================================================
+   Sequences — ultra complete module
+   ========================================================= >>>
+
+<<< ---------------------------------------------------------
+   Internal helpers
+   --------------------------------------------------------- >>>
+
+proc abs_int(x: int) -> int {
+  if x < 0 {
+    give -x
+  } else {
+    give x
+  }
+}
+
+proc max_int(a: int, b: int) -> int {
+  if a > b {
+    give a
+  } else {
+    give b
+  }
+}
+
+proc min_int(a: int, b: int) -> int {
+  if a < b {
+    give a
+  } else {
+    give b
+  }
+}
+
+proc clamp_non_negative(x: int) -> int {
+  if x < 0 {
+    give 0
+  } else {
+    give x
+  }
+}
+
+proc pow_int(base: int, exponent: int) -> int {
+  if exponent < 0 {
+    give 0
+  }
+
+  let result: int = 1
+  let b: int = base
+  let e: int = exponent
+
+  while e > 0 {
+    if e % 2 == 1 {
+      set result = result * b
+    }
+    set b = b * b
+    set e = e / 2
+  }
+
+  give result
+}
+
+proc integer_sqrt(value: int) -> int {
+  if value <= 0 {
+    give 0
+  }
+
+  let x: int = value
+  let x_plus_one: int = x + 1
+  let y: int = x_plus_one / 2
+
+  while y < x {
+    set x = y
+    let ratio: int = value / x
+    let total: int = x + ratio
+    set y = total / 2
+  }
+
+  give x
+}
+
+proc is_perfect_square(value: int) -> bool {
+  if value < 0 {
+    give false
+  }
+
+  let r: int = integer_sqrt(value)
+  give r * r == value
+}
+
+<<< ---------------------------------------------------------
+   Arithmetic progression
+   --------------------------------------------------------- >>>
+
+proc arithmetic_term(first: int, step: int, index: int) -> int {
+  if index < 0 {
+    give 0
+  }
+  give first + step * index
+}
+
+proc arithmetic_last(first: int, step: int, count: int) -> int {
+  if count <= 0 {
+    give 0
+  }
+  let index: int = count - 1
+  give arithmetic_term(first, step, index)
+}
+
+proc arithmetic_sum(first: int, step: int, count: int) -> int {
+  if count <= 0 {
+    give 0
+  }
+
+  let last: int = arithmetic_last(first, step, count)
+  let total: int = first + last
+  give count * total / 2
+}
+
+proc arithmetic_mean(first: int, step: int, count: int) -> int {
+  if count <= 0 {
+    give 0
+  }
+  give arithmetic_sum(first, step, count) / count
+}
+
+proc arithmetic_series(first: int, step: int, count: int) -> [int] {
+  let out: [int] = []
+  let i: int = 0
+  let n: int = clamp_non_negative(count)
+
+  while i < n {
+    set out = out + [arithmetic_term(first, step, i)]
+    set i = i + 1
+  }
+
+  give out
+}
+
+<<< ---------------------------------------------------------
+   Geometric progression
+   --------------------------------------------------------- >>>
+
+proc geometric_term(first: int, ratio: int, index: int) -> int {
+  if index < 0 {
+    give 0
+  }
+  give first * pow_int(ratio, index)
+}
+
+proc geometric_last(first: int, ratio: int, count: int) -> int {
+  if count <= 0 {
+    give 0
+  }
+  let index: int = count - 1
+  give geometric_term(first, ratio, index)
+}
+
+proc geometric_sum(first: int, ratio: int, count: int) -> int {
+  if count <= 0 {
+    give 0
+  }
+
+  if ratio == 1 {
+    give first * count
+  }
+
+  let power: int = pow_int(ratio, count)
+  let numer: int = power - 1
+  let denom: int = ratio - 1
+  give first * numer / denom
+}
+
+proc geometric_series(first: int, ratio: int, count: int) -> [int] {
+  let out: [int] = []
+  let i: int = 0
+  let n: int = clamp_non_negative(count)
+
+  while i < n {
+    set out = out + [geometric_term(first, ratio, i)]
+    set i = i + 1
+  }
+
+  give out
+}
+
+<<< ---------------------------------------------------------
+   Triangular / square / cube / polygonal
+   --------------------------------------------------------- >>>
+
+proc triangular_term(index: int) -> int {
+  if index < 0 {
+    give 0
+  }
+  let next: int = index + 1
+  give index * next / 2
+}
+
+proc triangular_sum(count: int) -> int {
+  let n: int = clamp_non_negative(count)
+  let n1: int = n + 1
+  let n2: int = n + 2
+  give n * n1 * n2 / 6
+}
+
+proc triangular_series(count: int) -> [int] {
+  let out: [int] = []
+  let i: int = 0
+  let n: int = clamp_non_negative(count)
+
+  while i < n {
+    set out = out + [triangular_term(i)]
+    set i = i + 1
+  }
+
+  give out
+}
+
+proc is_triangular(value: int) -> bool {
+  if value < 0 {
+    give false
+  }
+  let probe: int = 8 * value + 1
+  give is_perfect_square(probe)
+}
+
+proc square_term(index: int) -> int {
+  if index < 0 {
+    give 0
+  }
+  give index * index
+}
+
+proc square_series(count: int) -> [int] {
+  let out: [int] = []
+  let i: int = 0
+  let n: int = clamp_non_negative(count)
+
+  while i < n {
+    set out = out + [square_term(i)]
+    set i = i + 1
+  }
+
+  give out
+}
+
+proc cube_term(index: int) -> int {
+  if index < 0 {
+    give 0
+  }
+  give index * index * index
+}
+
+proc cube_series(count: int) -> [int] {
+  let out: [int] = []
+  let i: int = 0
+  let n: int = clamp_non_negative(count)
+
+  while i < n {
+    set out = out + [cube_term(i)]
+    set i = i + 1
+  }
+
+  give out
+}
+
+proc polygonal_term(sides: int, index: int) -> int {
+  if sides < 3 {
+    give 0
+  }
+
+  if index < 0 {
+    give 0
+  }
+
+  let a: int = sides - 2
+  let b: int = sides - 4
+  let square: int = index * index
+  let numer: int = a * square - b * index
+  give numer / 2
+}
+
+proc pentagonal_term(index: int) -> int {
+  give polygonal_term(5, index)
+}
+
+proc hexagonal_term(index: int) -> int {
+  give polygonal_term(6, index)
+}
+
+proc polygonal_series(sides: int, count: int) -> [int] {
+  let out: [int] = []
+  let i: int = 0
+  let n: int = clamp_non_negative(count)
+
+  while i < n {
+    set out = out + [polygonal_term(sides, i)]
+    set i = i + 1
+  }
+
+  give out
+}
+
+<<< ---------------------------------------------------------
+   Fibonacci / Lucas / Pell
+   --------------------------------------------------------- >>>
+
+proc fibonacci_term(index: int) -> int {
+  if index < 0 {
+    give 0
+  }
+
+  if index == 0 {
+    give 0
+  }
+
+  if index == 1 {
+    give 1
+  }
+
+  let prev: int = 0
+  let curr: int = 1
+  let i: int = 1
+
+  while i < index {
+    let next: int = prev + curr
+    set prev = curr
+    set curr = next
+    set i = i + 1
+  }
+
+  give curr
+}
+
+proc fibonacci_sum(count: int) -> int {
+  if count <= 0 {
+    give 0
+  }
+  let next_index: int = count + 1
+  give fibonacci_term(next_index) - 1
+}
+
+proc fibonacci_series(count: int) -> [int] {
+  let out: [int] = []
+  let i: int = 0
+  let n: int = clamp_non_negative(count)
+
+  while i < n {
+    set out = out + [fibonacci_term(i)]
+    set i = i + 1
+  }
+
+  give out
+}
+
+proc is_fibonacci(value: int) -> bool {
+  if value < 0 {
+    give false
+  }
+
+  let a: int = 5 * value * value + 4
+  let b: int = 5 * value * value - 4
+
+  give is_perfect_square(a) or is_perfect_square(b)
+}
+
+proc lucas_term(index: int) -> int {
+  if index < 0 {
+    give 0
+  }
+
+  if index == 0 {
+    give 2
+  }
+
+  if index == 1 {
+    give 1
+  }
+
+  let prev: int = 2
+  let curr: int = 1
+  let i: int = 1
+
+  while i < index {
+    let next: int = prev + curr
+    set prev = curr
+    set curr = next
+    set i = i + 1
+  }
+
+  give curr
+}
+
+proc lucas_series(count: int) -> [int] {
+  let out: [int] = []
+  let i: int = 0
+  let n: int = clamp_non_negative(count)
+
+  while i < n {
+    set out = out + [lucas_term(i)]
+    set i = i + 1
+  }
+
+  give out
+}
+
+proc pell_term(index: int) -> int {
+  if index < 0 {
+    give 0
+  }
+
+  if index == 0 {
+    give 0
+  }
+
+  if index == 1 {
+    give 1
+  }
+
+  let prev: int = 0
+  let curr: int = 1
+  let i: int = 1
+
+  while i < index {
+    let next: int = 2 * curr + prev
+    set prev = curr
+    set curr = next
+    set i = i + 1
+  }
+
+  give curr
+}
+
+proc pell_series(count: int) -> [int] {
+  let out: [int] = []
+  let i: int = 0
+  let n: int = clamp_non_negative(count)
+
+  while i < n {
+    set out = out + [pell_term(i)]
+    set i = i + 1
+  }
+
+  give out
+}
+
+<<< ---------------------------------------------------------
+   Factorial family
+   --------------------------------------------------------- >>>
+
+proc factorial(value: int) -> int {
+  if value < 0 {
+    give 0
+  }
+
+  let result: int = 1
+  let i: int = 2
+
+  while i <= value {
+    set result = result * i
+    set i = i + 1
+  }
+
+  give result
+}
+
+proc double_factorial(value: int) -> int {
+  if value < -1 {
+    give 0
+  }
+
+  if value == -1 or value == 0 {
+    give 1
+  }
+
+  let result: int = 1
+  let i: int = value
+
+  while i > 1 {
+    set result = result * i
+    set i = i - 2
+  }
+
+  give result
+}
+
+proc catalan_term(index: int) -> int {
+  if index < 0 {
+    give 0
+  }
+
+  let top_index: int = 2 * index
+  let left_index: int = index + 1
+  let numer: int = factorial(top_index)
+  let denom: int = factorial(left_index) * factorial(index)
+  give numer / denom
+}
+
+proc catalan_series(count: int) -> [int] {
+  let out: [int] = []
+  let i: int = 0
+  let n: int = clamp_non_negative(count)
+
+  while i < n {
+    set out = out + [catalan_term(i)]
+    set i = i + 1
+  }
+
+  give out
+}
+
+<<< ---------------------------------------------------------
+   Harmonic numbers
+   --------------------------------------------------------- >>>
+
+proc harmonic_numerator_term(index: int) -> int {
+  if index <= 0 {
+    give 0
+  }
+  give 1
+}
+
+proc harmonic_denominator_term(index: int) -> int {
+  if index <= 0 {
+    give 0
+  }
+  give index
+}
+
+proc harmonic_denominators(count: int) -> [int] {
+  let out: [int] = []
+  let i: int = 1
+  let n: int = clamp_non_negative(count)
+
+  while i <= n {
+    set out = out + [i]
+    set i = i + 1
+  }
+
+  give out
+}
+
+<<< ---------------------------------------------------------
+   Alternating / sign helpers
+   --------------------------------------------------------- >>>
+
+proc alternating_sign(index: int) -> int {
+  if index < 0 {
+    give 0
+  }
+
+  if index % 2 == 0 {
+    give 1
+  } else {
+    give -1
+  }
+}
+
+proc alternating_arithmetic_term(first: int, step: int, index: int) -> int {
+  if index < 0 {
+    give 0
+  }
+  give arithmetic_term(first, step, index) * alternating_sign(index)
+}
+
+proc alternating_geometric_term(first: int, ratio: int, index: int) -> int {
+  if index < 0 {
+    give 0
+  }
+  give geometric_term(first, ratio, index) * alternating_sign(index)
+}
+
+<<< ---------------------------------------------------------
+   Bounds / search helpers on sequences
+   --------------------------------------------------------- >>>
+
+proc first_arithmetic_ge(first: int, step: int, target: int) -> int {
+  if step <= 0 {
+    if first >= target {
+      give 0
+    } else {
+      give -1
+    }
+  }
+
+  let index: int = 0
+  let value: int = first
+
+  while value < target {
+    set value = value + step
+    set index = index + 1
+  }
+
+  give index
+}
+
+proc first_geometric_ge(first: int, ratio: int, target: int) -> int {
+  if first >= target {
+    give 0
+  }
+
+  if ratio <= 1 {
+    give -1
+  }
+
+  let index: int = 0
+  let value: int = first
+
+  while value < target {
+    set value = value * ratio
+    set index = index + 1
+  }
+
+  give index
+}
+
+<<< ---------------------------------------------------------
+   Public aliases
+   --------------------------------------------------------- >>>
+
+proc fib(index: int) -> int {
+  give fibonacci_term(index)
+}
+
+proc lucas(index: int) -> int {
+  give lucas_term(index)
+}
+
+proc triangular(index: int) -> int {
+  give triangular_term(index)
+}
+
+proc square(index: int) -> int {
+  give square_term(index)
+}
+
+proc cube(index: int) -> int {
+  give cube_term(index)
+}
+
+proc sequences_version() -> string {
+  give "max-1"
+}
+
+proc sequences_ready() -> bool {
+  give true
+}
+
+proc sequences_selftest() -> bool {
+  let arithmetic: [int] = arithmetic_series(2, 3, 4)
+  let geometric: [int] = geometric_series(2, 2, 4)
+  let fib_series: [int] = fibonacci_series(6)
+
+  give sequences_ready()
+    and sequences_version() == "max-1"
+    and arithmetic.len == 4
+    and arithmetic[3] == 11
+    and geometric.len == 4
+    and geometric[3] == 16
+    and triangular_term(4) == 10
+    and square_term(5) == 25
+    and cube_term(3) == 27
+    and fib(7) == 13
+    and fib_series.len == 6
+    and lucas(5) == 11
+    and is_triangular(10)
+    and first_arithmetic_ge(2, 3, 11) == 3
+    and first_geometric_ge(2, 2, 16) == 3
+}
+export *

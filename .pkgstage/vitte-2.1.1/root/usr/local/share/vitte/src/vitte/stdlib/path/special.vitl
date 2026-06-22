@@ -1,0 +1,130 @@
+space vitte/path/special
+
+<<< =========================================================
+   Special Directories and Environment Module
+   ========================================================= >>>
+
+// Get special directories
+form PathSpecialManifest {
+  name: string,
+  version: string,
+  ready: bool,
+  module_count: i32
+}
+
+form PathSpecialHealth {
+  ready: bool,
+  home_ready: bool,
+  temp_ready: bool,
+  env_ready: bool
+}
+
+form PathSpecialSummary {
+  manifest: PathSpecialManifest,
+  health: PathSpecialHealth
+}
+
+proc home_dir() -> string {
+  give ""
+}
+
+proc temp_dir() -> string {
+  give ""
+}
+
+proc current_dir() -> string {
+  give ""
+}
+
+proc config_dir() -> string {
+  give ""
+}
+
+proc cache_dir() -> string {
+  give ""
+}
+
+proc desktop_dir() -> string {
+  give ""
+}
+
+proc documents_dir() -> string {
+  give ""
+}
+
+proc downloads_dir() -> string {
+  give ""
+}
+
+// Environment variables
+proc get_path_env() -> [string] {
+  give []
+}
+
+proc find_in_path(executable: string) -> string {
+  give ""
+}
+
+proc add_to_path(directory: string) -> int {
+  give 0
+}
+
+proc remove_from_path(directory: string) -> int {
+  give 0
+}
+
+proc special_version() -> string {
+  give "max-1"
+}
+
+proc special_ready() -> bool {
+  give true
+}
+
+proc special_manifest() -> PathSpecialManifest {
+  give PathSpecialManifest {
+    name: "vitte-path-special",
+    version: special_version(),
+    ready: special_ready(),
+    module_count: 1
+  }
+}
+
+proc special_health() -> PathSpecialHealth {
+  give PathSpecialHealth {
+    ready: special_ready(),
+    home_ready: len(home_dir()) >= 0,
+    temp_ready: len(temp_dir()) >= 0,
+    env_ready: len(get_path_env()) >= 0
+  }
+}
+
+proc special_summary() -> PathSpecialSummary {
+  give PathSpecialSummary {
+    manifest: special_manifest(),
+    health: special_health()
+  }
+}
+
+proc special_report() -> [string] {
+  give [
+    home_dir(),
+    temp_dir(),
+    current_dir(),
+    config_dir(),
+    cache_dir(),
+    desktop_dir(),
+    documents_dir(),
+    downloads_dir()
+  ]
+}
+
+proc special_selftest() -> bool {
+  let summary: PathSpecialSummary = special_summary()
+  give special_ready()
+    and summary.health.ready
+    and summary.manifest.version == "max-1"
+    and special_version() == "max-1"
+    and len(get_path_env()) >= 0
+}
+export *

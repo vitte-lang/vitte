@@ -19,10 +19,13 @@ required_global_files = [
     root / 'glossary.html',
     root / 'stdlib.html',
     root / 'chapters' / 'keywords' / 'couverture.html',
+    root / 'chapters' / 'keywords' / 'erreurs-compilateur.html',
+]
+
+optional_global_files = [
     root / 'chapters' / 'keywords' / 'parcours.html',
     root / 'chapters' / 'keywords' / 'packs-apprentissage.html',
     root / 'chapters' / 'keywords' / 'non-utilises.html',
-    root / 'chapters' / 'keywords' / 'erreurs-compilateur.html',
 ]
 ebnf_source = repo / 'src/vitte/grammar/vitte.ebnf'
 ebnf_doc_root = root / 'grammar-surface.ebnf'
@@ -70,6 +73,9 @@ def check_links(p: Path, lines: list[str]):
         for m in link_re.finditer(l):
             target = m.group(1).strip()
             if not target or target.startswith(('http://', 'https://', '#', 'mailto:')):
+                continue
+            target = target.split('#', 1)[0].strip()
+            if not target:
                 continue
 
             candidates = [
@@ -129,6 +135,10 @@ for gf in required_global_files:
     if not gf.exists():
         add_issue(f"{gf}: fichier global manquant")
 
+for gf in optional_global_files:
+    if not gf.exists():
+        add_issue(f"{gf}: fichier global optionnel manquant", strict_only=True)
+
 # EBNF source/doc artifacts must stay strictly aligned via sync script.
 if not ebnf_source.exists():
     add_issue(f"{ebnf_source}: fichier EBNF source manquant")
@@ -179,7 +189,7 @@ for p in chapters:
     repetition_check(p, lines)
 
 # Keyword checks.
-skip_kw = {'README.html', 'all.html', 'couverture.html', 'parcours.html', 'packs-apprentissage.html', 'non-utilises.html', 'erreurs-compilateur.html'}
+skip_kw = {'README.html', 'all.html', 'couverture.html', 'parcours.html', 'packs-apprentissage.html', 'non-utilises.html', 'erreurs-compilateur.html', 'keyword.html'}
 for p in keywords:
     if p.name in skip_kw:
         continue

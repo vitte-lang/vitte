@@ -1,0 +1,351 @@
+space vitte/stdlib/threading/mutex
+
+use vitte/stdlib/threading/thread
+
+// Mutex - Mutual Exclusion Lock
+
+form Mutex<T> {
+  id: int,
+  data: T,
+  locked: bool,
+  owner_thread: int,
+  lock_count: int,          // For recursive mutex
+  waiters: [int],           // Waiting thread IDs
+  is_recursive: bool,
+}
+
+// Create new mutex
+proc mutex_new<T>(value: T) -> Mutex<T> {
+  let mutex: Mutex<T> = Mutex<T> {
+    id: get_next_mutex_id(),
+    data: value,
+    locked: false,
+    owner_thread: 0,
+    lock_count: 0,
+    waiters: [],
+    is_recursive: false,
+  }
+
+  give mutex
+}
+
+// Create recursive mutex
+proc mutex_recursive_new<T>(value: T) -> Mutex<T> {
+  let mutex: Mutex<T> = Mutex<T> {
+    id: get_next_mutex_id(),
+    data: value,
+    locked: false,
+    owner_thread: 0,
+    lock_count: 0,
+    waiters: [],
+    is_recursive: true,
+  }
+
+  give mutex
+}
+
+// Lock mutex (blocking)
+proc mutex_lock<T>(mutex: Mutex<T>) -> bool {
+  let current: int = thread_current_id()
+
+  // Check if recursive
+  if mutex.is_recursive && mutex.owner_thread == current {
+    set mutex.lock_count = mutex.lock_count + 1
+    give true
+  }
+
+  // Wait until available
+  while mutex.locked {
+    // Add to waiters
+    set mutex.waiters = mutex.waiters + [current]
+    sleep_ms(1)
+  }
+
+  set mutex.locked = true
+  set mutex.owner_thread = current
+  set mutex.lock_count = 1
+
+  give true
+}
+
+// Try lock without blocking
+proc mutex_try_lock<T>(mutex: Mutex<T>) -> bool {
+  if mutex.locked {
+    give false
+  }
+
+  set mutex.locked = true
+  set mutex.owner_thread = thread_current_id()
+  set mutex.lock_count = 1
+
+  give true
+}
+
+// Lock with timeout
+proc mutex_lock_timeout<T>(mutex: Mutex<T>, timeout_ms: int) -> bool {
+  let start: int = timestamp_now()
+
+  while mutex.locked && (timestamp_now() - start) < timeout_ms {
+    sleep_ms(1)
+  }
+
+  if !mutex.locked {
+    mutex_lock<T>(mutex)
+    give true
+  }
+
+  give false
+}
+
+// Unlock mutex
+proc mutex_unlock<T>(mutex: Mutex<T>) -> bool {
+  if !mutex.locked {
+    give false  // Not locked
+  }
+
+  let current: int = thread_current_id()
+
+  if mutex.owner_thread != current {
+    give false  // Not owner
+  }
+
+  set mutex.lock_count = mutex.lock_count - 1
+
+  if mutex.lock_count == 0 {
+    set mutex.locked = false
+    set mutex.owner_thread = 0
+  }
+
+  give true
+}
+
+// Get locked data (only when holding lock)
+proc mutex_get<T>(mutex: Mutex<T>) -> T {
+  give mutex.data
+}
+
+// Modify locked data (only when holding lock)
+proc mutex_set<T>(mutex: Mutex<T>, value: T) -> bool {
+  if !mutex.locked {
+    give false  // Must hold lock
+  }
+
+  set mutex.data = value
+  give true
+}
+
+// Execute closure with lock held
+proc with_lock<T>(mutex: Mutex<T>, closure: proc) -> bool {
+  mutex_lock<T>(mutex)
+  // Would execute closure here
+  mutex_unlock<T>(mutex)
+  give true
+}
+
+// RwLock - Read-Write Lock
+
+form RwLock<T> {
+  id: int,
+  data: T,
+  readers: int,
+  writer_locked: bool,
+  writer_thread: int,
+  waiting_writers: [int],
+  waiting_readers: [int],
+}
+
+// Create new RwLock
+proc rwlock_new<T>(value: T) -> RwLock<T> {
+  let rwlock: RwLock<T> = RwLock<T> {
+    id: get_next_rwlock_id(),
+    data: value,
+    readers: 0,
+    writer_locked: false,
+    writer_thread: 0,
+    waiting_writers: [],
+    waiting_readers: [],
+  }
+
+  give rwlock
+}
+
+// Read lock (multiple readers allowed)
+proc rwlock_read_lock<T>(rwlock: RwLock<T>) -> bool {
+  while rwlock.writer_locked || rwlock.waiting_writers.len > 0 {
+    sleep_ms(1)
+  }
+
+  set rwlock.readers = rwlock.readers + 1
+  give true
+}
+
+// Read unlock
+proc rwlock_read_unlock<T>(rwlock: RwLock<T>) -> bool {
+  set rwlock.readers = rwlock.readers - 1
+  give true
+}
+
+// Write lock (exclusive)
+proc rwlock_write_lock<T>(rwlock: RwLock<T>) -> bool {
+  let current: int = thread_current_id()
+  set rwlock.waiting_writers = rwlock.waiting_writers + [current]
+
+  while rwlock.writer_locked || rwlock.readers > 0 {
+    sleep_ms(1)
+  }
+
+  set rwlock.writer_locked = true
+  set rwlock.writer_thread = current
+
+  give true
+}
+
+// Write unlock
+proc rwlock_write_unlock<T>(rwlock: RwLock<T>) -> bool {
+  set rwlock.writer_locked = false
+  set rwlock.writer_thread = 0
+  give true
+}
+
+// Downgrade write lock to read lock
+proc rwlock_downgrade<T>(rwlock: RwLock<T>) -> bool {
+  if !rwlock.writer_locked {
+    give false
+  }
+
+  set rwlock.writer_locked = false
+  set rwlock.readers = rwlock.readers + 1
+
+  give true
+}
+
+// Condition Variable
+
+form Condition {
+  id: int,
+  waiting_threads: [int],
+}
+
+proc condition_new() -> Condition {
+  let cond: Condition = Condition {
+    id: get_next_condition_id(),
+    waiting_threads: [],
+  }
+
+  give cond
+}
+
+// Wait for condition (releases mutex before waiting)
+proc condition_wait<T>(cond: Condition, mutex: Mutex<T>) -> bool {
+  let thread_id: int = thread_current_id()
+
+  set cond.waiting_threads = cond.waiting_threads + [thread_id]
+  mutex_unlock<T>(mutex)
+
+  // Wait for signal
+  while true {
+    sleep_ms(1)
+    // Check if signaled
+  }
+
+  mutex_lock<T>(mutex)
+  give true
+}
+
+// Signal one waiting thread
+proc condition_signal(cond: Condition) -> bool {
+  if cond.waiting_threads.len > 0 {
+    // Wake first thread
+    set cond.waiting_threads = cond.waiting_threads[1:cond.waiting_threads.len]
+  }
+
+  give true
+}
+
+// Signal all waiting threads
+proc condition_broadcast(cond: Condition) -> bool {
+  set cond.waiting_threads = []
+  give true
+}
+
+// Semaphore
+
+form Semaphore {
+  id: int,
+  count: int,
+  waiting_threads: [int],
+}
+
+proc semaphore_new(initial_count: int) -> Semaphore {
+  let sem: Semaphore = Semaphore {
+    id: get_next_semaphore_id(),
+    count: initial_count,
+    waiting_threads: [],
+  }
+
+  give sem
+}
+
+// Acquire semaphore (P operation)
+proc semaphore_acquire(sem: Semaphore) -> bool {
+  while sem.count <= 0 {
+    sleep_ms(1)
+  }
+
+  set sem.count = sem.count - 1
+  give true
+}
+
+// Release semaphore (V operation)
+proc semaphore_release(sem: Semaphore) -> bool {
+  set sem.count = sem.count + 1
+  give true
+}
+
+// Try acquire without blocking
+proc semaphore_try_acquire(sem: Semaphore) -> bool {
+  if sem.count <= 0 {
+    give false
+  }
+
+  set sem.count = sem.count - 1
+  give true
+}
+
+// Helper IDs
+const MUTEX_ID_COUNTER: int = 0
+const RWLOCK_ID_COUNTER: int = 0
+const CONDITION_ID_COUNTER: int = 0
+const SEMAPHORE_ID_COUNTER: int = 0
+
+proc get_next_mutex_id() -> int {
+  set MUTEX_ID_COUNTER = MUTEX_ID_COUNTER + 1
+  give MUTEX_ID_COUNTER
+}
+
+proc get_next_rwlock_id() -> int {
+  set RWLOCK_ID_COUNTER = RWLOCK_ID_COUNTER + 1
+  give RWLOCK_ID_COUNTER
+}
+
+proc get_next_condition_id() -> int {
+  set CONDITION_ID_COUNTER = CONDITION_ID_COUNTER + 1
+  give CONDITION_ID_COUNTER
+}
+
+proc get_next_semaphore_id() -> int {
+  set SEMAPHORE_ID_COUNTER = SEMAPHORE_ID_COUNTER + 1
+  give SEMAPHORE_ID_COUNTER
+}
+
+proc thread_current_id() -> int {
+  give 0
+}
+
+proc sleep_ms(ms: int) -> bool {
+  give true
+}
+
+proc timestamp_now() -> int {
+  give 0
+}

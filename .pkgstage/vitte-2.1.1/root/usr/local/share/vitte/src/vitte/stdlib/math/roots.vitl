@@ -1,0 +1,737 @@
+space vitte/stdlib/math/integer
+
+<<< =========================================================
+   Integer mathematics — roots, logs, powers, digit helpers
+   ========================================================= >>>
+
+<<< ---------------------------------------------------------
+   Internal helpers
+   --------------------------------------------------------- >>>
+
+proc abs_int(value: int) -> int {
+  if value < 0 {
+    give -value
+  } else {
+    give value
+  }
+}
+
+proc max_int(a: int, b: int) -> int {
+  if a > b {
+    give a
+  } else {
+    give b
+  }
+}
+
+proc min_int(a: int, b: int) -> int {
+  if a < b {
+    give a
+  } else {
+    give b
+  }
+}
+
+proc square(value: int) -> int {
+  give value * value
+}
+
+proc cube(value: int) -> int {
+  give value * value * value
+}
+
+proc square_le(candidate: int, limit: int) -> bool {
+  if candidate < 0 {
+    give false
+  }
+
+  if candidate == 0 {
+    give true
+  }
+
+  give candidate <= limit / candidate
+}
+
+proc square_eq(candidate: int, value: int) -> bool {
+  if candidate < 0 {
+    give false
+  }
+
+  give square_le(candidate, value) and candidate == value / candidate and value % candidate == 0
+}
+
+proc cube_le_non_negative(candidate: int, limit: int) -> bool {
+  if candidate < 0 {
+    give false
+  }
+
+  if candidate == 0 {
+    give true
+  }
+
+  if candidate > limit / candidate {
+    give false
+  }
+
+  let candidate_sq: int = candidate * candidate
+  give candidate <= limit / candidate_sq
+}
+
+proc cube_eq_non_negative(candidate: int, value: int) -> bool {
+  if candidate < 0 {
+    give false
+  }
+
+  if candidate == 0 {
+    give value == 0
+  }
+
+  if value % candidate != 0 {
+    give false
+  }
+
+  let q1: int = value / candidate
+  if q1 % candidate != 0 {
+    give false
+  }
+
+  give q1 / candidate == candidate
+}
+
+proc pow_int(base: int, exponent: int) -> int {
+  if exponent < 0 {
+    give 0
+  }
+
+  let result: int = 1
+  let current_base: int = base
+  let current_exponent: int = exponent
+
+  while current_exponent > 0 {
+    if current_exponent % 2 == 1 {
+      set result = result * current_base
+    }
+    set current_base = current_base * current_base
+    set current_exponent = current_exponent / 2
+  }
+
+  give result
+}
+
+proc pow_le_non_negative(base: int, exponent: int, limit: int) -> bool {
+  if exponent < 0 {
+    give false
+  }
+
+  if exponent == 0 {
+    give 1 <= limit
+  }
+
+  if base < 0 {
+    give false
+  }
+
+  if base == 0 {
+    give true
+  }
+
+  let product: int = 1
+  let i: int = 0
+
+  while i < exponent {
+    if product > limit / base {
+      give false
+    }
+    set product = product * base
+    set i = i + 1
+  }
+
+  give true
+}
+
+proc pow_eq_non_negative(base: int, exponent: int, value: int) -> bool {
+  if exponent < 0 {
+    give false
+  }
+
+  if exponent == 0 {
+    give value == 1
+  }
+
+  if base < 0 or value < 0 {
+    give false
+  }
+
+  let product: int = 1
+  let i: int = 0
+
+  while i < exponent {
+    if base == 0 {
+      if i + 1 == exponent {
+        give value == 0
+      } else {
+        give value == 0
+      }
+    }
+
+    if product > value / base {
+      give false
+    }
+
+    set product = product * base
+    set i = i + 1
+  }
+
+  give product == value
+}
+
+<<< ---------------------------------------------------------
+   Integer square roots
+   --------------------------------------------------------- >>>
+
+proc sqrt_floor(value: int) -> int {
+  if value <= 0 {
+    give 0
+  }
+
+  let low: int = 0
+  let high: int = value
+  let best: int = 0
+
+  while low <= high {
+    let span: int = high - low
+    let half_span: int = span / 2
+    let mid: int = low + half_span
+
+    if square_le(mid, value) {
+      set best = mid
+      set low = mid + 1
+    } else {
+      set high = mid - 1
+    }
+  }
+
+  give best
+}
+
+proc sqrt_ceil(value: int) -> int {
+  if value <= 0 {
+    give 0
+  }
+
+  let root: int = sqrt_floor(value)
+  if square_eq(root, value) {
+    give root
+  } else {
+    give root + 1
+  }
+}
+
+proc sqrt_round(value: int) -> int {
+  if value <= 0 {
+    give 0
+  }
+
+  let low_root: int = sqrt_floor(value)
+  let high_root: int = low_root + 1
+  let low_diff: int = value - low_root * low_root
+  let high_diff: int = high_root * high_root - value
+
+  if high_diff < low_diff {
+    give high_root
+  } else {
+    give low_root
+  }
+}
+
+proc is_square(value: int) -> bool {
+  if value < 0 {
+    give false
+  }
+
+  let root: int = sqrt_floor(value)
+  give square_eq(root, value)
+}
+
+proc prev_square(value: int) -> int {
+  if value < 0 {
+    give 0
+  }
+
+  let root: int = sqrt_floor(value)
+  give root * root
+}
+
+proc next_square(value: int) -> int {
+  if value <= 0 {
+    give 0
+  }
+
+  let root: int = sqrt_ceil(value)
+  give root * root
+}
+
+<<< ---------------------------------------------------------
+   Integer cube roots
+   --------------------------------------------------------- >>>
+
+proc cube_root_floor_non_negative(value: int) -> int {
+  if value <= 0 {
+    give 0
+  }
+
+  let low: int = 0
+  let high: int = value
+  let best: int = 0
+
+  while low <= high {
+    let span: int = high - low
+    let half_span: int = span / 2
+    let mid: int = low + half_span
+
+    if cube_le_non_negative(mid, value) {
+      set best = mid
+      set low = mid + 1
+    } else {
+      set high = mid - 1
+    }
+  }
+
+  give best
+}
+
+proc cube_root_ceil_non_negative(value: int) -> int {
+  if value <= 0 {
+    give 0
+  }
+
+  let root: int = cube_root_floor_non_negative(value)
+  if cube_eq_non_negative(root, value) {
+    give root
+  } else {
+    give root + 1
+  }
+}
+
+proc cube_root_floor(value: int) -> int {
+  if value >= 0 {
+    give cube_root_floor_non_negative(value)
+  }
+
+  give -cube_root_ceil_non_negative(-value)
+}
+
+proc cube_root_ceil(value: int) -> int {
+  if value >= 0 {
+    give cube_root_ceil_non_negative(value)
+  }
+
+  give -cube_root_floor_non_negative(-value)
+}
+
+proc cube_root_round(value: int) -> int {
+  if value == 0 {
+    give 0
+  }
+
+  let low_root: int = cube_root_floor(value)
+  let high_root: int = cube_root_ceil(value)
+  let low_square: int = low_root * low_root
+  let low_cube: int = low_square * low_root
+  let low_delta: int = value - low_cube
+  let low_diff: int = abs_int(low_delta)
+  let high_square: int = high_root * high_root
+  let high_cube: int = high_square * high_root
+  let high_delta: int = high_cube - value
+  let high_diff: int = abs_int(high_delta)
+
+  if high_diff < low_diff {
+    give high_root
+  } else {
+    give low_root
+  }
+}
+
+proc is_cube(value: int) -> bool {
+  let root: int = cube_root_floor(value)
+  give root * root * root == value
+}
+
+proc prev_cube(value: int) -> int {
+  let root: int = cube_root_floor(value)
+  give root * root * root
+}
+
+proc next_cube(value: int) -> int {
+  let root: int = cube_root_ceil(value)
+  give root * root * root
+}
+
+<<< ---------------------------------------------------------
+   Generic integer roots
+   --------------------------------------------------------- >>>
+
+proc iroot_floor_non_negative(value: int, degree: int) -> int {
+  if value < 0 {
+    give 0
+  }
+
+  if degree <= 0 {
+    give 0
+  }
+
+  if degree == 1 {
+    give value
+  }
+
+  let low: int = 0
+  let high: int = max_int(value, 1)
+  let best: int = 0
+
+  while low <= high {
+    let span: int = high - low
+    let half_span: int = span / 2
+    let mid: int = low + half_span
+
+    if pow_le_non_negative(mid, degree, value) {
+      set best = mid
+      set low = mid + 1
+    } else {
+      set high = mid - 1
+    }
+  }
+
+  give best
+}
+
+proc iroot_floor(value: int, degree: int) -> int {
+  if degree <= 0 {
+    give 0
+  }
+
+  if degree == 1 {
+    give value
+  }
+
+  if value >= 0 {
+    give iroot_floor_non_negative(value, degree)
+  }
+
+  if degree % 2 == 0 {
+    give 0
+  }
+
+  let abs_root_floor: int = iroot_floor_non_negative(-value, degree)
+  if pow_eq_non_negative(abs_root_floor, degree, -value) {
+    give -abs_root_floor
+  } else {
+    let next_root: int = abs_root_floor + 1
+    give -next_root
+  }
+}
+
+proc iroot_ceil(value: int, degree: int) -> int {
+  if degree <= 0 {
+    give 0
+  }
+
+  let root: int = iroot_floor(value, degree)
+
+  if value >= 0 {
+    if pow_eq_non_negative(root, degree, value) {
+      give root
+    } else {
+      give root + 1
+    }
+  }
+
+  if degree % 2 == 0 {
+    give 0
+  }
+
+  if pow_int(root, degree) == value {
+    give root
+  } else {
+    give root + 1
+  }
+}
+
+proc iroot_round(value: int, degree: int) -> int {
+  if degree <= 0 {
+    give 0
+  }
+
+  let low_root: int = iroot_floor(value, degree)
+  let high_root: int = iroot_ceil(value, degree)
+  let low_diff: int = abs_int(value - pow_int(low_root, degree))
+  let high_diff: int = abs_int(pow_int(high_root, degree) - value)
+
+  if high_diff < low_diff {
+    give high_root
+  } else {
+    give low_root
+  }
+}
+
+proc is_perfect_power(value: int, degree: int) -> bool {
+  if degree <= 0 {
+    give false
+  }
+
+  let root: int = iroot_floor(value, degree)
+  give pow_int(root, degree) == value
+}
+
+<<< ---------------------------------------------------------
+   Integer logarithms
+   --------------------------------------------------------- >>>
+
+proc ilog2_floor(value: int) -> int {
+  if value <= 0 {
+    give 0
+  }
+
+  let current: int = value
+  let log_value: int = 0
+
+  while current > 1 {
+    set current = current / 2
+    set log_value = log_value + 1
+  }
+
+  give log_value
+}
+
+proc ilog2_ceil(value: int) -> int {
+  if value <= 0 {
+    give 0
+  }
+
+  let floor_value: int = ilog2_floor(value)
+  let lower_power: int = pow_int(2, floor_value)
+
+  if lower_power == value {
+    give floor_value
+  } else {
+    give floor_value + 1
+  }
+}
+
+proc ilog10_floor(value: int) -> int {
+  if value <= 0 {
+    give 0
+  }
+
+  let current: int = value
+  let digits: int = 0
+
+  while current >= 10 {
+    set current = current / 10
+    set digits = digits + 1
+  }
+
+  give digits
+}
+
+proc ilog10_ceil(value: int) -> int {
+  if value <= 0 {
+    give 0
+  }
+
+  let floor_value: int = ilog10_floor(value)
+  let lower_power: int = pow_int(10, floor_value)
+
+  if lower_power == value {
+    give floor_value
+  } else {
+    give floor_value + 1
+  }
+}
+
+proc ilog_floor(value: int, base: int) -> int {
+  if value <= 0 or base <= 1 {
+    give 0
+  }
+
+  let current: int = value
+  let result: int = 0
+
+  while current >= base {
+    set current = current / base
+    set result = result + 1
+  }
+
+  give result
+}
+
+proc ilog_ceil(value: int, base: int) -> int {
+  if value <= 0 or base <= 1 {
+    give 0
+  }
+
+  let floor_value: int = ilog_floor(value, base)
+  let lower_power: int = pow_int(base, floor_value)
+
+  if lower_power == value {
+    give floor_value
+  } else {
+    give floor_value + 1
+  }
+}
+
+<<< ---------------------------------------------------------
+   Power predicates
+   --------------------------------------------------------- >>>
+
+proc is_power_of_two(value: int) -> bool {
+  if value <= 0 {
+    give false
+  }
+
+  let current: int = value
+  while current > 1 {
+    if current % 2 != 0 {
+      give false
+    }
+    set current = current / 2
+  }
+
+  give true
+}
+
+proc is_power_of_ten(value: int) -> bool {
+  if value <= 0 {
+    give false
+  }
+
+  let current: int = value
+  while current > 1 {
+    if current % 10 != 0 {
+      give false
+    }
+    set current = current / 10
+  }
+
+  give true
+}
+
+proc is_power(value: int, base: int) -> bool {
+  if value <= 0 or base <= 1 {
+    give false
+  }
+
+  let current: int = value
+  while current > 1 {
+    if current % base != 0 {
+      give false
+    }
+    set current = current / base
+  }
+
+  give true
+}
+
+<<< ---------------------------------------------------------
+   Digit helpers
+   --------------------------------------------------------- >>>
+
+proc decimal_digits(value: int) -> int {
+  if value == 0 {
+    give 1
+  }
+
+  give ilog10_floor(abs_int(value)) + 1
+}
+
+proc binary_digits(value: int) -> int {
+  if value == 0 {
+    give 1
+  }
+
+  give ilog2_floor(abs_int(value)) + 1
+}
+
+<<< ---------------------------------------------------------
+   Distance helpers
+   --------------------------------------------------------- >>>
+
+proc distance_to_prev_square(value: int) -> int {
+  if value < 0 {
+    give 0
+  }
+
+  give value - prev_square(value)
+}
+
+proc distance_to_next_square(value: int) -> int {
+  if value < 0 {
+    give 0
+  }
+
+  give next_square(value) - value
+}
+
+proc distance_to_nearest_square(value: int) -> int {
+  if value < 0 {
+    give 0
+  }
+
+  let left: int = distance_to_prev_square(value)
+  let right: int = distance_to_next_square(value)
+
+  give min_int(left, right)
+}
+
+proc distance_to_prev_cube(value: int) -> int {
+  give abs_int(value - prev_cube(value))
+}
+
+proc distance_to_next_cube(value: int) -> int {
+  give abs_int(next_cube(value) - value)
+}
+
+proc distance_to_nearest_cube(value: int) -> int {
+  let left: int = distance_to_prev_cube(value)
+  let right: int = distance_to_next_cube(value)
+
+  give min_int(left, right)
+}
+
+<<< ---------------------------------------------------------
+   Public aliases
+   --------------------------------------------------------- >>>
+
+proc is_perfect_square(value: int) -> bool {
+  give is_square(value)
+}
+
+proc is_perfect_cube(value: int) -> bool {
+  give is_cube(value)
+}
+
+proc roots_version() -> string {
+  give "max-1"
+}
+
+proc roots_ready() -> bool {
+  give true
+}
+
+proc roots_selftest() -> bool {
+  give roots_ready()
+    and roots_version() == "max-1"
+    and sqrt_floor(17) == 4
+    and sqrt_ceil(17) == 5
+    and sqrt_round(15) == 4
+    and is_square(49)
+    and cbrt_floor(28) == 3
+    and cbrt_ceil(28) == 4
+    and is_cube(27)
+    and nth_root_floor(81, 4) == 3
+    and nth_root_ceil(82, 4) == 4
+    and is_power_of_two(32)
+    and decimal_digits(999) == 3
+    and binary_digits(8) == 4
+    and distance_to_nearest_square(15) == 1
+}
+export *

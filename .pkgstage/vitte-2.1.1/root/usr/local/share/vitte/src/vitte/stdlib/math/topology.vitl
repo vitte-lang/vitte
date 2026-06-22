@@ -1,0 +1,185 @@
+space vitte/stdlib/math/topology
+
+proc contains(values: [int], needle: int) -> bool {
+  let i: int = 0
+  while i < values.len {
+    if values[i] == needle {
+      give true
+    }
+    set i = i + 1
+  }
+  give false
+}
+
+proc unique(values: [int]) -> [int] {
+  let out: [int] = []
+  let i: int = 0
+  while i < values.len {
+    if not contains(out, values[i]) {
+      set out = out + [values[i]]
+    }
+    set i = i + 1
+  }
+  give out
+}
+
+proc union_sets(a: [int], b: [int]) -> [int] {
+  let combined: [int] = a + b
+  give unique(combined)
+}
+
+proc intersect_sets(a: [int], b: [int]) -> [int] {
+  let out: [int] = []
+  let i: int = 0
+  while i < a.len {
+    let value: int = a[i]
+    if contains(b, value) and not contains(out, value) {
+      set out = out + [value]
+    }
+    set i = i + 1
+  }
+  give out
+}
+
+proc difference_sets(a: [int], b: [int]) -> [int] {
+  let out: [int] = []
+  let i: int = 0
+  while i < a.len {
+    if not contains(b, a[i]) {
+      set out = out + [a[i]]
+    }
+    set i = i + 1
+  }
+  give out
+}
+
+proc symmetric_difference(a: [int], b: [int]) -> [int] {
+  let unioned: [int] = union_sets(a, b)
+  let common: [int] = intersect_sets(a, b)
+  give difference_sets(unioned, common)
+}
+
+proc is_subset(a: [int], b: [int]) -> bool {
+  let i: int = 0
+  while i < a.len {
+    if not contains(b, a[i]) {
+      give false
+    }
+    set i = i + 1
+  }
+  give true
+}
+
+proc cartesian_product(a: [int], b: [int]) -> [[int]] {
+  let out: [[int]] = []
+  let i: int = 0
+  while i < a.len {
+    let j: int = 0
+    while j < b.len {
+      set out = out + [[a[i], b[j]]]
+      set j = j + 1
+    }
+    set i = i + 1
+  }
+  give out
+}
+
+proc power_set(values: [int]) -> [[int]] {
+  let out: [[int]] = [[]]
+  let i: int = 0
+  while i < values.len {
+    let current_len: int = out.len
+    let j: int = 0
+    while j < current_len {
+      let extended: [int] = out[j] + [values[i]]
+      set out = out + [extended]
+      set j = j + 1
+    }
+    set i = i + 1
+  }
+  give out
+}
+
+proc adjacency_matrix_to_list(matrix: [[int]]) -> [[int]] {
+  let out: [[int]] = []
+  let i: int = 0
+  while i < matrix.len {
+    let row: [int] = []
+    let j: int = 0
+    while j < matrix[i].len {
+      if matrix[i][j] != 0 {
+        set row = row + [j]
+      }
+      set j = j + 1
+    }
+    set out = out + [row]
+    set i = i + 1
+  }
+  give out
+}
+
+proc slice_stack(values: [int], end: int) -> [int] {
+  let out: [int] = []
+  let i: int = 0
+  while i < end {
+    set out = out + [values[i]]
+    set i = i + 1
+  }
+  give out
+}
+
+proc dfs(graph: [[int]], start: int) -> [int] {
+  if start < 0 or start >= graph.len {
+    give []
+  }
+
+  let visited: [int] = []
+  let stack: [int] = [start]
+
+  while stack.len > 0 {
+    let node: int = stack[stack.len - 1]
+    set stack = slice_stack(stack, stack.len - 1)
+
+    if not contains(visited, node) {
+      set visited = visited + [node]
+      let i: int = graph[node].len - 1
+      while i >= 0 {
+        let next_node: int = graph[node][i]
+        if not contains(visited, next_node) {
+          set stack = stack + [next_node]
+        }
+        set i = i - 1
+      }
+    }
+  }
+
+  give visited
+}
+
+proc topology_version() -> string {
+  give "max-1"
+}
+
+proc topology_ready() -> bool {
+  give true
+}
+
+proc topology_selftest() -> bool {
+  let graph: [[int]] = [[1, 2], [2], []]
+  let walked: [int] = dfs(graph, 0)
+  let unioned: [int] = union_sets([1, 2], [2, 3])
+  let common: [int] = intersect_sets([1, 2], [2, 3])
+  let product: [[int]] = cartesian_product([1, 2], [3])
+  let power: [[int]] = power_set([1, 2])
+
+  give topology_ready()
+    and topology_version() == "max-1"
+    and unioned.len == 3
+    and common[0] == 2
+    and is_subset([1, 2], [2, 1, 3])
+    and product.len == 2
+    and power.len == 4
+    and walked.len == 3
+}
+
+export *

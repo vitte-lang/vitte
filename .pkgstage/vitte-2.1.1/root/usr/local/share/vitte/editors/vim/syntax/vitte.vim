@@ -9,19 +9,28 @@ syn keyword vitteType bool string int
 syn keyword vitteBuiltin true false
 syn keyword vitteTodo TODO FIXME BUG HACK NOTE XXX
 
-syn match vitteNumber "\v\b(0x[0-9A-Fa-f]+|0b[01]+|[0-9]+)\b"
-syn region vitteString start=+"+ skip=+\\"+ end=+"+
+syn match vitteNumber "\v\b(0x[0-9A-Fa-f]+|0b[01]+|[0-9]+(\.[0-9]+)?)\b"
+syn region vitteString start=+"+ skip=+\\"+ end=+"+ contains=vitteEscape
 syn match vitteChar "\v'([^'\\]|\\.)'"
+syn match vitteEscape "\v\\([nrt0\"'\\]|x[0-9A-Fa-f]{2})" contained
 syn match vitteUsePath "\v\<use\>\s+\zs[A-Za-z0-9_./:]+"
 syn match vitteModulePath "\v\<(space|pull|share|at|use)\>\s+\zs[A-Za-z0-9_./:]+"
+syn match vitteExport "\v\<export\>\s+\zs(\*|[A-Za-z0-9_./:]+)"
 syn match vitteDeclName "\v\<(proc|form|pick|trait|entry|macro|type|field|case)\>\s+\zs[A-Za-z_][A-Za-z0-9_]*"
+syn match vitteSignatureType "\v(:|->\s*)\s*\zs[A-Za-z_][A-Za-z0-9_]*(\[[A-Za-z_][A-Za-z0-9_]*\])?"
 syn match vitteUseAlias "\v\<as\>\s+\zs[A-Za-z_][A-Za-z0-9_]*(_pkg)?"
+syn match vitteConstructor "\v\<[A-Z][A-Za-z0-9_]*(\.[A-Z][A-Za-z0-9_]*)*\>"
+syn match vitteConstant "\v\<[A-Z][A-Z0-9_]+\>"
+syn match vitteOperator "\(->\|=>\|::\|:=\|==\|!=\|<=\|>=\|&&\|[+*/%=<>!&|.-]\)"
+syn match vitteDelimiter "[][(){},;:]"
+syn match vitteTrailingWhitespace "\s\+$"
 syn match vitteDiagCode "\vVITTE-[A-Z]+[0-9]{4}"
 syn match vitteAliasPkg "\v[A-Za-z_][A-Za-z0-9_]*_pkg"
 syn match vitteContractBlock "\v^\s*<<<\s+ROLE-CONTRACT"
 syn match vitteApiSurface "\v\<(diagnostics_[A-Za-z0-9_]*|quickfix_[A-Za-z0-9_]*|doctor_[A-Za-z0-9_]*)\>"
 
 syn region vitteLineComment start="//" end="$" contains=vitteTodo
+syn region vitteHashComment start="#" end="$" contains=vitteTodo
 syn region vitteBlockComment start="/\*" end="\*/" contains=vitteTodo
 syn region vitteZoneComment start="<<<" end=">>>" contains=vitteTodo,vitteContractBlock
 
@@ -32,16 +41,25 @@ hi def link vitteBuiltin Boolean
 hi def link vitteNumber Number
 hi def link vitteString String
 hi def link vitteChar Character
+hi def link vitteEscape SpecialChar
 hi def link vitteUsePath Include
 hi def link vitteModulePath Include
+hi def link vitteExport Include
 hi def link vitteDeclName Function
+hi def link vitteSignatureType Type
 hi def link vitteUseAlias Identifier
+hi def link vitteConstructor Type
+hi def link vitteConstant Constant
+hi def link vitteOperator Operator
+hi def link vitteDelimiter Delimiter
+hi def link vitteTrailingWhitespace Error
 hi def link vitteDiagCode Error
 hi def link vitteAliasPkg Identifier
 hi def link vitteContractBlock PreProc
 hi def link vitteApiSurface Function
 hi def link vitteTodo Todo
 hi def link vitteLineComment Comment
+hi def link vitteHashComment Comment
 hi def link vitteBlockComment Comment
 hi def link vitteZoneComment Comment
 

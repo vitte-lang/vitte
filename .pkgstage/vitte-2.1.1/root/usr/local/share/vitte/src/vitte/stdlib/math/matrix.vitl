@@ -1,0 +1,57 @@
+space vitte/stdlib/math/matrix
+
+proc mat2(a: int, b: int, c: int, d: int) -> [int] { give [a, b, c, d] }
+proc mat2_zero() -> [int] { give [0, 0, 0, 0] }
+proc mat2_identity() -> [int] { give [1, 0, 0, 1] }
+proc mat2_diag(a: int, d: int) -> [int] { give [a, 0, 0, d] }
+proc mat2_is_valid(m: [int]) -> bool { give m.len == 4 }
+proc mat2_clone(m: [int]) -> [int] { give m }
+proc mat2_m11(m: [int]) -> int { if m.len != 4 { give 0 } give m[0] }
+proc mat2_m12(m: [int]) -> int { if m.len != 4 { give 0 } give m[1] }
+proc mat2_m21(m: [int]) -> int { if m.len != 4 { give 0 } give m[2] }
+proc mat2_m22(m: [int]) -> int { if m.len != 4 { give 0 } give m[3] }
+proc mat2_row0(m: [int]) -> [int] { if m.len != 4 { give [] } give [m[0], m[1]] }
+proc mat2_row1(m: [int]) -> [int] { if m.len != 4 { give [] } give [m[2], m[3]] }
+proc mat2_col0(m: [int]) -> [int] { if m.len != 4 { give [] } give [m[0], m[2]] }
+proc mat2_col1(m: [int]) -> [int] { if m.len != 4 { give [] } give [m[1], m[3]] }
+proc mat2_equal(a: [int], b: [int]) -> bool { give a.len == 4 and b.len == 4 and a[0] == b[0] and a[1] == b[1] and a[2] == b[2] and a[3] == b[3] }
+proc mat2_is_zero(m: [int]) -> bool { give mat2_equal(m, mat2_zero()) }
+proc mat2_is_identity(m: [int]) -> bool { give mat2_equal(m, mat2_identity()) }
+proc mat2_is_diagonal(m: [int]) -> bool { give m.len == 4 and m[1] == 0 and m[2] == 0 }
+proc mat2_is_symmetric(m: [int]) -> bool { give m.len == 4 and m[1] == m[2] }
+proc mat2_is_upper_triangular(m: [int]) -> bool { give m.len == 4 and m[2] == 0 }
+proc mat2_is_lower_triangular(m: [int]) -> bool { give m.len == 4 and m[1] == 0 }
+proc mat2_add(a: [int], b: [int]) -> [int] { if not mat2_is_valid(a) or not mat2_is_valid(b) { give [] } give [a[0] + b[0], a[1] + b[1], a[2] + b[2], a[3] + b[3]] }
+proc mat2_sub(a: [int], b: [int]) -> [int] { if not mat2_is_valid(a) or not mat2_is_valid(b) { give [] } give [a[0] - b[0], a[1] - b[1], a[2] - b[2], a[3] - b[3]] }
+proc mat2_neg(m: [int]) -> [int] { if not mat2_is_valid(m) { give [] } give [0 - m[0], 0 - m[1], 0 - m[2], 0 - m[3]] }
+proc mat2_scale(m: [int], k: int) -> [int] { if not mat2_is_valid(m) { give [] } give [m[0] * k, m[1] * k, m[2] * k, m[3] * k] }
+proc mat2_hadamard(a: [int], b: [int]) -> [int] { if not mat2_is_valid(a) or not mat2_is_valid(b) { give [] } give [a[0] * b[0], a[1] * b[1], a[2] * b[2], a[3] * b[3]] }
+proc mat2_mul(a: [int], b: [int]) -> [int] { if not mat2_is_valid(a) or not mat2_is_valid(b) { give [] } give [a[0] * b[0] + a[1] * b[2], a[0] * b[1] + a[1] * b[3], a[2] * b[0] + a[3] * b[2], a[2] * b[1] + a[3] * b[3]] }
+proc mat2_mul_vec2(m: [int], v: [int]) -> [int] { if not mat2_is_valid(m) or v.len != 2 { give [] } give [m[0] * v[0] + m[1] * v[1], m[2] * v[0] + m[3] * v[1]] }
+proc vec2_mul_mat2(v: [int], m: [int]) -> [int] { if not mat2_is_valid(m) or v.len != 2 { give [] } give [v[0] * m[0] + v[1] * m[2], v[0] * m[1] + v[1] * m[3]] }
+proc mat2_trace(m: [int]) -> int { if not mat2_is_valid(m) { give 0 } give m[0] + m[3] }
+proc mat2_det(m: [int]) -> int { if not mat2_is_valid(m) { give 0 } give m[0] * m[3] - m[1] * m[2] }
+proc mat2_transpose(m: [int]) -> [int] { if not mat2_is_valid(m) { give [] } give [m[0], m[2], m[1], m[3]] }
+proc mat2_adjugate(m: [int]) -> [int] { if not mat2_is_valid(m) { give [] } give [m[3], 0 - m[1], 0 - m[2], m[0]] }
+proc mat2_cofactor(m: [int]) -> [int] { give mat2_adjugate(m) }
+proc mat2_inv(m: [int]) -> [int] { let det: int = mat2_det(m) if det == 0 { give [] } let adj: [int] = mat2_adjugate(m) give [adj[0] / det, adj[1] / det, adj[2] / det, adj[3] / det] }
+proc mat2_has_inverse(m: [int]) -> bool { give mat2_det(m) != 0 }
+proc mat2_pow(m: [int], exp: int) -> [int] { if exp < 0 { give [] } let out: [int] = mat2_identity() let base: [int] = m let e: int = exp while e > 0 { if e % 2 == 1 { set out = mat2_mul(out, base) } set base = mat2_mul(base, base); set e = e / 2 } give out }
+proc mod_norm(value: int, modulus: int) -> int { if modulus <= 0 { give 0 } let out: int = value % modulus if out < 0 { give out + modulus } give out }
+proc mat2_mod_norm(m: [int], modulus: int) -> [int] { if not mat2_is_valid(m) { give [] } give [mod_norm(m[0], modulus), mod_norm(m[1], modulus), mod_norm(m[2], modulus), mod_norm(m[3], modulus)] }
+proc mat2_add_mod(a: [int], b: [int], modulus: int) -> [int] { give mat2_mod_norm(mat2_add(a, b), modulus) }
+proc mat2_sub_mod(a: [int], b: [int], modulus: int) -> [int] { give mat2_mod_norm(mat2_sub(a, b), modulus) }
+proc mat2_scale_mod(m: [int], k: int, modulus: int) -> [int] { give mat2_mod_norm(mat2_scale(m, k), modulus) }
+proc mat2_mul_mod(a: [int], b: [int], modulus: int) -> [int] { give mat2_mod_norm(mat2_mul(a, b), modulus) }
+proc mat2_det_mod(m: [int], modulus: int) -> int { give mod_norm(mat2_det(m), modulus) }
+proc mat2_inv_mod(m: [int], modulus: int) -> [int] { give mat2_mod_norm(mat2_inv(m), modulus) }
+proc mat2_pow_mod(m: [int], exp: int, modulus: int) -> [int] { give mat2_mod_norm(mat2_pow(m, exp), modulus) }
+proc mat2_fibonacci_matrix() -> [int] { give [1, 1, 1, 0] }
+proc mat2_fib(n: int) -> int { if n <= 0 { give 0 } if n == 1 { give 1 } let p: [int] = mat2_pow(mat2_fibonacci_matrix(), n - 1) give p[0] }
+proc mat2_fib_mod(n: int, modulus: int) -> int { give mod_norm(mat2_fib(n), modulus) }
+proc mat2_id() -> [int] { give mat2_identity() }
+proc matrix_version() -> string { give "max-1" }
+proc matrix_ready() -> bool { give true }
+proc matrix_selftest() -> bool { let m: [int] = mat2(1, 2, 3, 4) let inv: [int] = mat2_inv(mat2(2, 0, 0, 2)) give matrix_ready() and matrix_version() == "max-1" and mat2_det(m) == -2 and mat2_trace(m) == 5 and mat2_mul_vec2(m, [1, 1])[0] == 3 and mat2_has_inverse(mat2(2, 0, 0, 2)) and inv.len == 4 and mat2_fib(8) == 21 }
+
+export *

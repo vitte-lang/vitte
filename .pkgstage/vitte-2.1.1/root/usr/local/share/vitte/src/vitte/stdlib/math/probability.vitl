@@ -1,0 +1,620 @@
+space vitte/stdlib/math/probability
+
+<<< =========================================================
+   Probability / combinatorics — ultra complete module
+   ========================================================= >>>
+
+<<< ---------------------------------------------------------
+   Internal helpers
+   --------------------------------------------------------- >>>
+
+proc abs_int(value: int) -> int {
+  if value < 0 {
+    give -value
+  } else {
+    give value
+  }
+}
+
+proc min_int(a: int, b: int) -> int {
+  if a < b {
+    give a
+  } else {
+    give b
+  }
+}
+
+proc max_int(a: int, b: int) -> int {
+  if a > b {
+    give a
+  } else {
+    give b
+  }
+}
+
+proc gcd_int(a: int, b: int) -> int {
+  let x: int = abs_int(a)
+  let y: int = abs_int(b)
+
+  while y != 0 {
+    let r: int = x % y
+    set x = y
+    set y = r
+  }
+
+  give x
+}
+
+proc valid_n_k(n: int, k: int) -> bool {
+  give n >= 0 and k >= 0 and k <= n
+}
+
+proc clamp_non_negative(value: int) -> int {
+  if value < 0 {
+    give 0
+  } else {
+    give value
+  }
+}
+
+<<< ---------------------------------------------------------
+   Factorial family
+   --------------------------------------------------------- >>>
+
+proc factorial(value: int) -> int {
+  if value < 0 {
+    give 0
+  }
+
+  if value <= 1 {
+    give 1
+  }
+
+  let result: int = 1
+  let i: int = 2
+
+  while i <= value {
+    set result = result * i
+    set i = i + 1
+  }
+
+  give result
+}
+
+proc double_factorial(value: int) -> int {
+  if value < -1 {
+    give 0
+  }
+
+  if value == -1 or value == 0 {
+    give 1
+  }
+
+  let result: int = 1
+  let i: int = value
+
+  while i > 1 {
+    set result = result * i
+    set i = i - 2
+  }
+
+  give result
+}
+
+proc falling_factorial(n: int, k: int) -> int {
+  if not valid_n_k(n, k) {
+    give 0
+  }
+
+  if k == 0 {
+    give 1
+  }
+
+  let result: int = 1
+  let i: int = 0
+
+  while i < k {
+    let factor: int = n - i
+    set result = result * factor
+    set i = i + 1
+  }
+
+  give result
+}
+
+proc rising_factorial(n: int, k: int) -> int {
+  if n < 0 or k < 0 {
+    give 0
+  }
+
+  if k == 0 {
+    give 1
+  }
+
+  let result: int = 1
+  let i: int = 0
+
+  while i < k {
+    let factor: int = n + i
+    set result = result * factor
+    set i = i + 1
+  }
+
+  give result
+}
+
+<<< ---------------------------------------------------------
+   Permutations / arrangements
+   --------------------------------------------------------- >>>
+
+proc permutations(n: int, k: int) -> int {
+  give falling_factorial(n, k)
+}
+
+proc arrangements(n: int, k: int) -> int {
+  give permutations(n, k)
+}
+
+proc permutations_with_repetition(n: int, k: int) -> int {
+  if n < 0 or k < 0 {
+    give 0
+  }
+
+  if k == 0 {
+    give 1
+  }
+
+  let result: int = 1
+  let i: int = 0
+
+  while i < k {
+    set result = result * n
+    set i = i + 1
+  }
+
+  give result
+}
+
+<<< ---------------------------------------------------------
+   Combinations
+   --------------------------------------------------------- >>>
+
+proc combinations(n: int, k: int) -> int {
+  if not valid_n_k(n, k) {
+    give 0
+  }
+
+  let remaining: int = n - k
+  let kk: int = min_int(k, remaining)
+
+  if kk == 0 {
+    give 1
+  }
+
+  let result: int = 1
+  let i: int = 1
+
+  while i <= kk {
+    let numerator: int = n - kk + i
+    let denominator: int = i
+
+    let g1: int = gcd_int(numerator, denominator)
+    let reduced_num: int = numerator / g1
+    let reduced_den: int = denominator / g1
+
+    let g2: int = gcd_int(result, reduced_den)
+    let reduced_result: int = result / g2
+    let final_den: int = reduced_den / g2
+
+    if final_den != 1 {
+      set result = reduced_result * reduced_num / final_den
+    } else {
+      set result = reduced_result * reduced_num
+    }
+
+    set i = i + 1
+  }
+
+  give result
+}
+
+proc choose(n: int, k: int) -> int {
+  give combinations(n, k)
+}
+
+proc combinations_with_repetition(n: int, k: int) -> int {
+  if n < 0 or k < 0 {
+    give 0
+  }
+
+  if n == 0 {
+    if k == 0 {
+      give 1
+    } else {
+      give 0
+    }
+  }
+
+  let top: int = n + k - 1
+  give combinations(top, k)
+}
+
+proc multiset_combinations(n: int, k: int) -> int {
+  give combinations_with_repetition(n, k)
+}
+
+<<< ---------------------------------------------------------
+   Pairings / simple counts
+   --------------------------------------------------------- >>>
+
+proc pairings(total: int) -> int {
+  if total <= 1 {
+    give 0
+  }
+
+  let prev: int = total - 1
+  give total * prev / 2
+}
+
+proc unordered_pairs(total: int) -> int {
+  give pairings(total)
+}
+
+proc ordered_pairs(total: int) -> int {
+  if total <= 1 {
+    give 0
+  }
+
+  let prev: int = total - 1
+  give total * prev
+}
+
+proc derangements(n: int) -> int {
+  if n < 0 {
+    give 0
+  }
+
+  if n == 0 {
+    give 1
+  }
+
+  if n == 1 {
+    give 0
+  }
+
+  let prev2: int = 1
+  let prev1: int = 0
+  let i: int = 2
+
+  while i <= n {
+    let factor: int = i - 1
+    let sum_prev: int = prev1 + prev2
+    let current: int = factor * sum_prev
+    set prev2 = prev1
+    set prev1 = current
+    set i = i + 1
+  }
+
+  give prev1
+}
+
+<<< ---------------------------------------------------------
+   Ratios / percentages
+   --------------------------------------------------------- >>>
+
+proc ratio_f64(part: int, total: int) -> f64 {
+  if total == 0 {
+    give 0.0
+  }
+
+  give part as f64 / total as f64
+}
+
+proc percentage_f64(part: int, total: int) -> f64 {
+  if total == 0 {
+    give 0.0
+  }
+
+  give part as f64 * 100.0 / total as f64
+}
+
+proc probability(part: int, total: int) -> f64 {
+  give ratio_f64(part, total)
+}
+
+proc probability_percent(part: int, total: int) -> int {
+  if total == 0 {
+    give 0
+  }
+
+  give part * 100 / total
+}
+
+proc probability_percent_f64(part: int, total: int) -> f64 {
+  give percentage_f64(part, total)
+}
+
+proc permille_f64(part: int, total: int) -> f64 {
+  if total == 0 {
+    give 0.0
+  }
+
+  give part as f64 * 1000.0 / total as f64
+}
+
+proc basis_points_f64(part: int, total: int) -> f64 {
+  if total == 0 {
+    give 0.0
+  }
+
+  give part as f64 * 10000.0 / total as f64
+}
+
+proc complement_probability(part: int, total: int) -> f64 {
+  if total == 0 {
+    give 0.0
+  }
+
+  let remaining: int = total - part
+  give remaining as f64 / total as f64
+}
+
+proc complement_percent(part: int, total: int) -> int {
+  if total == 0 {
+    give 0
+  }
+
+  let remaining: int = total - part
+  give remaining * 100 / total
+}
+
+proc success_rate_f64(successes: int, total: int) -> f64 {
+  give ratio_f64(successes, total)
+}
+
+proc failure_rate_f64(successes: int, total: int) -> f64 {
+  if total == 0 {
+    give 0.0
+  }
+
+  let failures: int = total - successes
+  give failures as f64 / total as f64
+}
+
+proc success_rate_percent(successes: int, total: int) -> int {
+  give probability_percent(successes, total)
+}
+
+proc failure_rate_percent(successes: int, total: int) -> int {
+  if total == 0 {
+    give 0
+  }
+
+  let failures: int = total - successes
+  give failures * 100 / total
+}
+
+<<< ---------------------------------------------------------
+   Odds / ratios
+   --------------------------------------------------------- >>>
+
+proc odds_f64(successes: int, failures: int) -> f64 {
+  if failures == 0 {
+    give 0.0
+  }
+
+  give successes as f64 / failures as f64
+}
+
+proc odds_percent(successes: int, failures: int) -> int {
+  if failures == 0 {
+    give 0
+  }
+
+  give successes * 100 / failures
+}
+
+proc odds_ratio(successes: int, failures: int) -> int {
+  give odds_percent(successes, failures)
+}
+
+proc odds_ratio_f64(successes: int, failures: int) -> f64 {
+  give odds_f64(successes, failures)
+}
+
+proc success_failure_ratio_percent(successes: int, failures: int) -> int {
+  give odds_percent(successes, failures)
+}
+
+proc relative_risk_f64(exposed_successes: int, exposed_total: int, control_successes: int, control_total: int) -> f64 {
+  let p_exposed: f64 = probability(exposed_successes, exposed_total)
+  let p_control: f64 = probability(control_successes, control_total)
+
+  if p_control == 0.0 {
+    give 0.0
+  }
+
+  give p_exposed / p_control
+}
+
+proc odds_ratio_2x2(a: int, b: int, c: int, d: int) -> f64 {
+  if b == 0 or c == 0 {
+    give 0.0
+  }
+
+  let numer: f64 = a as f64 * d as f64
+  let denom: f64 = b as f64 * c as f64
+  give numer / denom
+}
+
+<<< ---------------------------------------------------------
+   Discrete probability helpers
+   --------------------------------------------------------- >>>
+
+proc favorable_probability(favorable: int, total: int) -> f64 {
+  give probability(favorable, total)
+}
+
+proc equally_likely_probability(favorable: int, possible: int) -> f64 {
+  give probability(favorable, possible)
+}
+
+proc union_probability_disjoint(p_a: f64, p_b: f64) -> f64 {
+  give p_a + p_b
+}
+
+proc union_probability(p_a: f64, p_b: f64, p_intersection: f64) -> f64 {
+  give p_a + p_b - p_intersection
+}
+
+proc intersection_independent(p_a: f64, p_b: f64) -> f64 {
+  give p_a * p_b
+}
+
+proc complement_from_probability(p: f64) -> f64 {
+  give 1.0 - p
+}
+
+proc conditional_probability(intersection: f64, given_event: f64) -> f64 {
+  if given_event == 0.0 {
+    give 0.0
+  }
+
+  give intersection / given_event
+}
+
+proc expected_value_binary(success_probability: f64, success_value: f64, failure_value: f64) -> f64 {
+  let success_term: f64 = success_probability * success_value
+  let complement: f64 = 1.0 - success_probability
+  let failure_term: f64 = complement * failure_value
+  give success_term + failure_term
+}
+
+<<< ---------------------------------------------------------
+   Classical discrete distributions
+   --------------------------------------------------------- >>>
+
+proc binomial_pmf(trials: int, successes: int, p: f64) -> f64 {
+  if trials < 0 or successes < 0 or successes > trials {
+    give 0.0
+  }
+
+  if p < 0.0 or p > 1.0 {
+    give 0.0
+  }
+
+  let coeff: int = combinations(trials, successes)
+  let success_term: f64 = 1.0
+  let failure_term: f64 = 1.0
+  let i: int = 0
+
+  while i < successes {
+    set success_term = success_term * p
+    set i = i + 1
+  }
+
+  let j: int = 0
+  while j < trials - successes {
+    let complement: f64 = 1.0 - p
+    set failure_term = failure_term * complement
+    set j = j + 1
+  }
+
+  give coeff as f64 * success_term * failure_term
+}
+
+proc geometric_pmf(trial_index: int, p: f64) -> f64 {
+  if trial_index <= 0 {
+    give 0.0
+  }
+
+  if p < 0.0 or p > 1.0 {
+    give 0.0
+  }
+
+  let fail_term: f64 = 1.0
+  let i: int = 1
+
+  while i < trial_index {
+    let complement: f64 = 1.0 - p
+    set fail_term = fail_term * complement
+    set i = i + 1
+  }
+
+  give fail_term * p
+}
+
+proc hypergeometric_pmf(population: int, success_population: int, draws: int, observed_successes: int) -> f64 {
+  if population < 0 or success_population < 0 or draws < 0 or observed_successes < 0 {
+    give 0.0
+  }
+
+  if success_population > population or draws > population {
+    give 0.0
+  }
+
+  if observed_successes > success_population or observed_successes > draws {
+    give 0.0
+  }
+
+  let failures_population: int = population - success_population
+  let needed_failures: int = draws - observed_successes
+
+  if needed_failures < 0 or needed_failures > failures_population {
+    give 0.0
+  }
+
+  let top_left: int = combinations(success_population, observed_successes)
+  let top_right: int = combinations(failures_population, needed_failures)
+  let bottom: int = combinations(population, draws)
+
+  if bottom == 0 {
+    give 0.0
+  }
+
+  let numer: f64 = top_left as f64 * top_right as f64
+  give numer / bottom as f64
+}
+
+<<< ---------------------------------------------------------
+   Convenience aliases
+   --------------------------------------------------------- >>>
+
+proc percent(part: int, total: int) -> int {
+  give probability_percent(part, total)
+}
+
+proc percent_f64(part: int, total: int) -> f64 {
+  give probability_percent_f64(part, total)
+}
+
+proc choose_probability(favorable: int, total: int) -> f64 {
+  give probability(favorable, total)
+}
+
+proc probability_version() -> string {
+  give "max-1"
+}
+
+proc probability_ready() -> bool {
+  give true
+}
+
+proc probability_selftest() -> bool {
+  let binomial: f64 = binomial_pmf(3, 2, 0.5)
+  let geometric: f64 = geometric_pmf(3, 0.5)
+  let hyper: f64 = hypergeometric_pmf(5, 2, 2, 1)
+
+  give probability_ready()
+    and probability_version() == "max-1"
+    and factorial(5) == 120
+    and falling_factorial(5, 2) == 20
+    and combinations(5, 2) == 10
+    and combinations_with_repetition(3, 2) == 6
+    and probability(1, 4) == 0.25
+    and percent(1, 4) == 25
+    and binomial > 0.0
+    and geometric > 0.0
+    and hyper > 0.0
+}
+export *

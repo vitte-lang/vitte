@@ -1,0 +1,559 @@
+space vitte/stdlib/ffi/abi
+
+// ABI - Application Binary Interface
+// Specifies memory layout and type compatibility
+
+form TypeLayout {
+  type_name: string,
+  size_bytes: int,
+  alignment: int,
+  fields: [FieldLayout],
+}
+
+form FieldLayout {
+  name: string,
+  type_name: string,
+  offset_bytes: int,
+  size_bytes: int,
+}
+
+// C primitive type mappings
+proc c_type_sizes() -> [int] {
+  give [
+    1,
+    1,
+    1,
+    1,
+    1,
+    2,
+    2,
+    4,
+    4,
+    8,
+    8,
+    4,
+    8,
+    8,
+  ]
+}
+
+// Vitte type to C type mapping
+proc vitte_to_c_type(vitte_type: string) -> string {
+  if vitte_type == "i32" {
+    give "int"
+  }
+  if vitte_type == "i64" {
+    give "long"
+  }
+  if vitte_type == "f64" {
+    give "double"
+  }
+  if vitte_type == "string" {
+    give "char*"
+  }
+  if vitte_type == "bool" {
+    give "_Bool"
+  }
+
+  give vitte_type
+}
+
+// Get size of type in bytes
+proc type_size(type_name: string) -> int {
+  if type_name == "void" {
+    give 0
+  }
+  if type_name == "char" {
+    give 1
+  }
+  if type_name == "bool" {
+    give 1
+  }
+  if type_name == "i8" {
+    give 1
+  }
+  if type_name == "u8" {
+    give 1
+  }
+  if type_name == "i16" {
+    give 2
+  }
+  if type_name == "u16" {
+    give 2
+  }
+  if type_name == "i32" {
+    give 4
+  }
+  if type_name == "u32" {
+    give 4
+  }
+  if type_name == "i64" {
+    give 8
+  }
+  if type_name == "u64" {
+    give 8
+  }
+  if type_name == "f32" {
+    give 4
+  }
+  if type_name == "f64" {
+    give 8
+  }
+  if type_name == "pointer" {
+    give 8
+  }
+  if type_name == "string" {
+    give 8
+  }
+
+  give -1  // unknown
+}
+
+// Get alignment of type in bytes
+proc type_alignment(type_name: string) -> int {
+  // Most types align to their size, except some special cases
+  give type_size(type_name)
+}
+
+// Calculate struct layout with field offsets
+proc calculate_struct_layout(struct_name: string, field_names: [string], field_types: [string]) -> TypeLayout {
+  let offset: int = 0
+  let max_alignment: int = 1
+  let fields: [FieldLayout] = []
+
+  let i: int = 0
+  while i < field_names.len {
+    let field_type: string = field_types[i]
+    let align: int = type_alignment(field_type)
+    let size: int = type_size(field_type)
+
+    // Align current offset
+    if offset % align != 0 {
+      let remainder: int = offset % align
+      let padding: int = align - remainder
+      set offset = offset + padding
+    }
+
+    // Create field layout
+    let field: FieldLayout = FieldLayout {
+      name: field_names[i],
+      type_name: field_type,
+      offset_bytes: offset,
+      size_bytes: size,
+    }
+
+    set fields = fields + [field]
+    set offset = offset + size
+
+    if align > max_alignment {
+      set max_alignment = align
+    }
+
+    set i = i + 1
+  }
+
+  // Struct size must be multiple of max alignment
+  if offset % max_alignment != 0 {
+    let remainder: int = offset % max_alignment
+    let padding: int = max_alignment - remainder
+    set offset = offset + padding
+  }
+
+  let layout: TypeLayout = TypeLayout {
+    type_name: struct_name,
+    size_bytes: offset,
+    alignment: max_alignment,
+    fields: fields,
+  }
+
+  give layout
+}
+
+// Get field offset in struct
+proc struct_field_offset(layout: TypeLayout, field_name: string) -> int {
+  let i: int = 0
+  while i < layout.fields.len {
+    if layout.fields[i].name == field_name {
+      give layout.fields[i].offset_bytes
+    }
+    set i = i + 1
+  }
+
+  give -1  // not found
+}
+
+// Calling convention specifications
+
+form CallingConvention {
+  name: string,
+  arg_registers: [string],     // Registers used for arguments
+  return_register: string,
+  preserve_registers: [string], // Caller-saved
+  stack_cleanup: string,        // "caller" or "callee"
+}
+
+form ABIProfile {
+  target: string,             // ex: linux-x86_64
+  os_name: string,
+  arch: string,
+  pointer_size: int,
+  int_alignment: int,
+  pointer_alignment: int,
+  float_alignment: int,
+  stack_alignment: int,
+  endianness: string,
+  calling_convention: CallingConvention,
+}
+
+// x86-64 System V ABI (Linux, BSD, etc.)
+proc calling_conv_sysv_x64() -> CallingConvention {
+  let conv: CallingConvention = CallingConvention {
+    name: "sysv_x64",
+    arg_registers: ["rdi", "rsi", "rdx", "rcx", "r8", "r9"],
+    return_register: "rax",
+    preserve_registers: ["rbx", "rbp", "r12", "r13", "r14", "r15"],
+    stack_cleanup: "caller",
+  }
+
+  give conv
+}
+
+// x86-64 Microsoft x64 ABI (Windows)
+proc calling_conv_microsoft_x64() -> CallingConvention {
+  let conv: CallingConvention = CallingConvention {
+    name: "ms_x64",
+    arg_registers: ["rcx", "rdx", "r8", "r9"],
+    return_register: "rax",
+    preserve_registers: ["rbx", "rbp", "rsi", "rdi", "r12", "r13", "r14", "r15"],
+    stack_cleanup: "caller",
+  }
+
+  give conv
+}
+
+// ARM64 AAPCS
+proc calling_conv_aapcs_arm64() -> CallingConvention {
+  let conv: CallingConvention = CallingConvention {
+    name: "aapcs_arm64",
+    arg_registers: ["x0", "x1", "x2", "x3", "x4", "x5", "x6", "x7"],
+    return_register: "x0",
+    preserve_registers: ["x19", "x20", "x21", "x22", "x23", "x24", "x25", "x26", "x27", "x28"],
+    stack_cleanup: "caller",
+  }
+
+  give conv
+}
+
+// RISC-V 64 LP64D psABI
+proc calling_conv_riscv64_lp64d() -> CallingConvention {
+  let conv: CallingConvention = CallingConvention {
+    name: "riscv64_lp64d",
+    arg_registers: ["a0", "a1", "a2", "a3", "a4", "a5", "a6", "a7"],
+    return_register: "a0",
+    preserve_registers: ["s0", "s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11"],
+    stack_cleanup: "caller",
+  }
+
+  give conv
+}
+
+// Select calling convention from architecture/OS pair.
+proc calling_conv_for_platform(os_name: string, arch: string) -> CallingConvention {
+  if arch == "x86_64" {
+    if os_name == "windows" {
+      give calling_conv_microsoft_x64()
+    }
+    give calling_conv_sysv_x64()
+  }
+
+  let is_arm64: bool = arch == "arm64"
+  let is_aarch64: bool = arch == "aarch64"
+  let is_arm_family: bool = is_arm64 || is_aarch64
+  if is_arm_family {
+    give calling_conv_aapcs_arm64()
+  }
+
+  if arch == "riscv64" {
+    give calling_conv_riscv64_lp64d()
+  }
+
+  // Safe default for unknown targets.
+  give calling_conv_sysv_x64()
+}
+
+proc abi_profile_linux_x86_64() -> ABIProfile {
+  give ABIProfile {
+    target: "linux-x86_64",
+    os_name: "linux",
+    arch: "x86_64",
+    pointer_size: 8,
+    int_alignment: 4,
+    pointer_alignment: 8,
+    float_alignment: 8,
+    stack_alignment: 16,
+    endianness: "little",
+    calling_convention: calling_conv_sysv_x64(),
+  }
+}
+
+proc abi_profile_linux_arm64() -> ABIProfile {
+  give ABIProfile {
+    target: "linux-arm64",
+    os_name: "linux",
+    arch: "arm64",
+    pointer_size: 8,
+    int_alignment: 4,
+    pointer_alignment: 8,
+    float_alignment: 8,
+    stack_alignment: 16,
+    endianness: "little",
+    calling_convention: calling_conv_aapcs_arm64(),
+  }
+}
+
+proc abi_profile_linux_riscv64() -> ABIProfile {
+  give ABIProfile {
+    target: "linux-riscv64",
+    os_name: "linux",
+    arch: "riscv64",
+    pointer_size: 8,
+    int_alignment: 4,
+    pointer_alignment: 8,
+    float_alignment: 8,
+    stack_alignment: 16,
+    endianness: "little",
+    calling_convention: calling_conv_riscv64_lp64d(),
+  }
+}
+
+proc abi_profile_macos_x86_64() -> ABIProfile {
+  give ABIProfile {
+    target: "macos-x86_64",
+    os_name: "macos",
+    arch: "x86_64",
+    pointer_size: 8,
+    int_alignment: 4,
+    pointer_alignment: 8,
+    float_alignment: 8,
+    stack_alignment: 16,
+    endianness: "little",
+    calling_convention: calling_conv_sysv_x64(),
+  }
+}
+
+proc abi_profile_macos_arm64() -> ABIProfile {
+  give ABIProfile {
+    target: "macos-arm64",
+    os_name: "macos",
+    arch: "arm64",
+    pointer_size: 8,
+    int_alignment: 4,
+    pointer_alignment: 8,
+    float_alignment: 8,
+    stack_alignment: 16,
+    endianness: "little",
+    calling_convention: calling_conv_aapcs_arm64(),
+  }
+}
+
+proc abi_profile_windows_x86_64() -> ABIProfile {
+  give ABIProfile {
+    target: "windows-x86_64",
+    os_name: "windows",
+    arch: "x86_64",
+    pointer_size: 8,
+    int_alignment: 4,
+    pointer_alignment: 8,
+    float_alignment: 8,
+    stack_alignment: 16,
+    endianness: "little",
+    calling_convention: calling_conv_microsoft_x64(),
+  }
+}
+
+proc abi_profile_for(os_name: string, arch: string) -> ABIProfile {
+  if os_name == "linux" && arch == "x86_64" {
+    give abi_profile_linux_x86_64()
+  }
+  let is_linux: bool = os_name == "linux"
+  let is_arm64: bool = arch == "arm64"
+  let is_aarch64: bool = arch == "aarch64"
+  let is_arm_family: bool = is_arm64 || is_aarch64
+  if is_linux && is_arm_family {
+    give abi_profile_linux_arm64()
+  }
+  if os_name == "linux" && arch == "riscv64" {
+    give abi_profile_linux_riscv64()
+  }
+  if os_name == "macos" && arch == "x86_64" {
+    give abi_profile_macos_x86_64()
+  }
+  let is_macos: bool = os_name == "macos"
+  if is_macos && is_arm_family {
+    give abi_profile_macos_arm64()
+  }
+  if os_name == "windows" && arch == "x86_64" {
+    give abi_profile_windows_x86_64()
+  }
+  // Fallback profile keeps deterministic behavior.
+  give abi_profile_linux_x86_64()
+}
+
+proc abi_profile_current() -> ABIProfile {
+  let p: Platform = current_platform()
+  give abi_profile_for(p.os_name, p.arch)
+}
+
+proc abi_profile_valid(profile: ABIProfile) -> bool {
+  if profile.pointer_size <= 0 {
+    give false
+  }
+  if profile.int_alignment <= 0 {
+    give false
+  }
+  if profile.pointer_alignment <= 0 {
+    give false
+  }
+  if profile.float_alignment <= 0 {
+    give false
+  }
+  if profile.stack_alignment <= 0 {
+    give false
+  }
+  if profile.endianness == "" {
+    give false
+  }
+  if profile.calling_convention.arg_registers.len == 0 {
+    give false
+  }
+  if profile.calling_convention.return_register == "" {
+    give false
+  }
+  if profile.calling_convention.preserve_registers.len == 0 {
+    give false
+  }
+  give true
+}
+
+// Runtime-side coherence check for known fixture targets.
+proc abi_profiles_self_check() -> bool {
+  let targets: [ABIProfile] = [
+    abi_profile_for("linux", "x86_64"),
+    abi_profile_for("linux", "arm64"),
+    abi_profile_for("linux", "riscv64"),
+    abi_profile_for("macos", "x86_64"),
+    abi_profile_for("macos", "arm64"),
+    abi_profile_for("windows", "x86_64"),
+  ]
+  let i: int = 0
+  while i < targets.len {
+    if !abi_profile_valid(targets[i]) {
+      give false
+    }
+    set i = i + 1
+  }
+  give true
+}
+
+// Memory representations for FFI data
+
+form MemoryBlob {
+  ptr: int,
+  size: int,
+  capacity: int,
+}
+
+// Allocate native memory
+proc alloc_native(size: int) -> MemoryBlob {
+  let blob: MemoryBlob = MemoryBlob {
+    ptr: 0,  // In real impl: malloc(size)
+    size: 0,
+    capacity: size,
+  }
+
+  give blob
+}
+
+// Free native memory
+proc free_native(blob: MemoryBlob) -> bool {
+  // In real impl: free(blob.ptr)
+  give true
+}
+
+// Read integer from memory
+proc memory_read_i32(blob: MemoryBlob, offset: int) -> i32 {
+  // In real impl: would dereference pointer
+  give 0
+}
+
+// Write integer to memory
+proc memory_write_i32(blob: MemoryBlob, offset: int, value: i32) -> bool {
+  // In real impl: would set memory
+  give true
+}
+
+// Read string from memory (C string, null-terminated)
+proc memory_read_cstring(blob: MemoryBlob, offset: int) -> string {
+  // In real impl: would read until null terminator
+  give ""
+}
+
+// Write string to memory (C string)
+proc memory_write_cstring(blob: MemoryBlob, offset: int, value: string) -> bool {
+  // In real impl: would copy string and add null terminator
+  give true
+}
+
+// Platform detection
+form Platform {
+  os_name: string,
+  arch: string,
+  bits: int,
+  endianness: string,
+}
+
+proc current_platform() -> Platform {
+  // Would detect at runtime
+  let platform: Platform = Platform {
+    os_name: "linux",
+    arch: "x86_64",
+    bits: 64,
+    endianness: "little",
+  }
+
+  give platform
+}
+
+// Check if platform matches target
+proc platform_matches(target: string) -> bool {
+  // Parsing target triple like "x86_64-unknown-linux-gnu"
+  give true
+}
+
+// Version tracking for ABI compatibility
+form ABIVersion {
+  major: int,
+  minor: int,
+  patch: int,
+}
+
+proc current_abi_version() -> ABIVersion {
+  give ABIVersion {
+    major: 1,
+    minor: 0,
+    patch: 0,
+  }
+}
+
+proc abi_version_compatible(required: ABIVersion) -> bool {
+  let current: ABIVersion = current_abi_version()
+  if required.major != current.major {
+    give false
+  }
+
+  if required.minor > current.minor {
+    give false
+  }
+
+  give true
+}

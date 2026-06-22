@@ -1,0 +1,270 @@
+space vitte/collections/queue
+
+<<< =========================================================
+   Queue — ULTRA MAX (ring buffer + deque support)
+   - O(1) enqueue/dequeue
+   - dynamic resize
+   - push_front / pop_back (deque)
+   ========================================================= >>>
+
+form Queue {
+    data: [i64],
+    front: i64,
+    rear: i64,
+    size: i32,
+    capacity: i32
+}
+
+proc _repeat_i64(value: i64, count: i32) -> [i64] {
+    let out: [i64] = []
+    let i: i32 = 0
+    while i < count {
+        set out = out + [value]
+        i += 1
+    }
+    give out
+}
+
+<<< ---------------------------------------------------------
+   Constructors
+   --------------------------------------------------------- >>>
+
+proc queue_new(capacity: i32) -> Queue {
+    let cap = 8
+    if capacity > 0 {
+        set cap = capacity
+    }
+
+    give Queue {
+        data: _repeat_i64(0, cap),
+        front: 0,
+        rear: 0,
+        size: 0,
+        capacity: cap
+    }
+}
+
+proc queue_reserve(q: Queue, new_cap: i32) {
+    if new_cap <= q.capacity {
+        give
+    }
+
+    let new_data: [i64] = _repeat_i64(0, new_cap)
+
+    let i: i64 = 0
+    while i < q.size {
+        let source_offset = q.front + i
+        let source_index = source_offset % q.capacity
+        set new_data[i] = q.data[source_index]
+        i += 1
+    }
+
+    set q.data = new_data
+    set q.front = 0
+    set q.rear = q.size
+    set q.capacity = new_cap
+}
+
+<<< ---------------------------------------------------------
+   Internal resize
+   --------------------------------------------------------- >>>
+
+proc _queue_resize(q: Queue) {
+    let new_cap = q.capacity * 2
+    let new_data: [i64] = _repeat_i64(0, new_cap)
+
+    let i: i64 = 0
+    while i < q.size {
+        let source_offset = q.front + i
+        let source_index = source_offset % q.capacity
+        set new_data[i] = q.data[source_index]
+        i += 1
+    }
+
+    set q.data = new_data
+    set q.front = 0
+    set q.rear = q.size
+    set q.capacity = new_cap
+}
+
+proc _queue_shrink(q: Queue) {
+    if q.capacity > 8 and q.size * 4 < q.capacity {
+        let new_cap = q.capacity / 2
+        let new_data: [i64] = _repeat_i64(0, new_cap)
+
+        let i: i64 = 0
+        while i < q.size {
+            let source_offset = q.front + i
+            let source_index = source_offset % q.capacity
+            set new_data[i] = q.data[source_index]
+            i += 1
+        }
+
+        set q.data = new_data
+        set q.front = 0
+        set q.rear = q.size
+        set q.capacity = new_cap
+    }
+}
+
+<<< ---------------------------------------------------------
+   Enqueue / Dequeue
+   --------------------------------------------------------- >>>
+
+proc queue_enqueue(q: Queue, value: i64) -> int {
+    if q.size == q.capacity {
+        _queue_resize(q)
+    }
+
+    set q.data[q.rear] = value
+    let next_rear = q.rear + 1
+    set q.rear = next_rear % q.capacity
+    set q.size = q.size + 1
+
+    give 1
+}
+
+proc queue_dequeue(q: Queue) -> i64 {
+    if q.size == 0 {
+        give 0
+    }
+
+    let val = q.data[q.front]
+    let next_front = q.front + 1
+    set q.front = next_front % q.capacity
+    set q.size = q.size - 1
+
+    _queue_shrink(q)
+
+    give val
+}
+
+<<< ---------------------------------------------------------
+   Deque extensions
+   --------------------------------------------------------- >>>
+
+proc queue_push_front(q: Queue, value: i64) -> int {
+    if q.size == q.capacity {
+        _queue_resize(q)
+    }
+
+    let next_front = q.front - 1 + q.capacity
+    set q.front = next_front % q.capacity
+    set q.data[q.front] = value
+    set q.size = q.size + 1
+
+    give 1
+}
+
+proc queue_pop_back(q: Queue) -> i64 {
+    if q.size == 0 {
+        give 0
+    }
+
+    let next_rear = q.rear - 1 + q.capacity
+    set q.rear = next_rear % q.capacity
+    let val = q.data[q.rear]
+    set q.size = q.size - 1
+
+    _queue_shrink(q)
+
+    give val
+}
+
+<<< ---------------------------------------------------------
+   Access
+   --------------------------------------------------------- >>>
+
+proc queue_front(q: Queue) -> i64 {
+    if q.size == 0 {
+        give 0
+    }
+    give q.data[q.front]
+}
+
+proc queue_back(q: Queue) -> i64 {
+    if q.size == 0 {
+        give 0
+    }
+    let back_index = q.rear - 1 + q.capacity
+    let idx = back_index % q.capacity
+    give q.data[idx]
+}
+
+<<< ---------------------------------------------------------
+   Utilities
+   --------------------------------------------------------- >>>
+
+proc queue_empty(q: Queue) -> int {
+    if q.size == 0 {
+      give 1
+    } else {
+      give 0
+    }
+}
+
+proc queue_size(q: Queue) -> i32 {
+    give q.size
+}
+
+proc queue_clear(q: Queue) {
+    set q.front = 0
+    set q.rear = 0
+    set q.size = 0
+}
+
+proc queue_is_full(q: Queue) -> int {
+    if q.size == q.capacity {
+      give 1
+    } else {
+      give 0
+    }
+}
+
+<<< ---------------------------------------------------------
+   Index access helper
+   --------------------------------------------------------- >>>
+
+proc queue_get(q: Queue, idx: i64) -> i64 {
+    if idx < 0 or idx >= q.size {
+        give 0
+    }
+    let offset = q.front + idx
+    let slot = offset % q.capacity
+    give q.data[slot]
+}
+
+<<< ---------------------------------------------------------
+   Iteration helper
+   --------------------------------------------------------- >>>
+
+proc queue_to_array(q: Queue) -> [i64] {
+    let out: [i64] = _repeat_i64(0, q.size)
+    let i: i64 = 0
+
+    while i < q.size {
+        let source_offset = q.front + i
+        let source_index = source_offset % q.capacity
+        set out[i] = q.data[source_index]
+        i += 1
+    }
+
+    give out
+}
+
+proc __len__(q: Queue) -> int {
+    give queue_size(q)
+}
+
+proc __getitem__(q: Queue, idx: i64) -> i64 {
+    give queue_get(q, idx)
+}
+
+proc __iter__(q: Queue) -> [i64] {
+    give queue_to_array(q)
+}
+
+<<< ---------------------------------------------------------
+   End module
+   --------------------------------------------------------- >>>
+export *

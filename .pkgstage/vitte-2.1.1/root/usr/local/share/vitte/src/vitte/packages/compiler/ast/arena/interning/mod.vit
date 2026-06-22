@@ -5,32 +5,177 @@ package vitte/compiler/ast/arena/interning
 
 space vitte/compiler/ast/arena/interning
 
-use src/vitte/compiler/ast/arena/interning as intern
-
 <<< ROLE-CONTRACT
 package: vitte/compiler/ast/arena/interning
 owner: @bootstrap/stage4
 role: Package public vitte/compiler/ast/arena/interning
-input_contract: imports AST interning utilities
-output_contract: exposes a minimal interning smoke test
-boundary: explicit imports only
+input_contract: stores stable AST interned names in a package-local pool
+output_contract: exposes deterministic handles, reads, reuse checks, growth, and package smoke tests
+boundary: package-local value model only
 >>>
 
+form AstInternHandle {
+  index: int,
+  generation: int
+}
+
+form AstInternPool {
+  name: string,
+  entries: [string],
+  count: int,
+  generation: int
+}
+
+form AstInternResult {
+  pool: AstInternPool,
+  handle: AstInternHandle,
+  reused: bool
+}
+
+proc ast_intern_pool_new(name: string) -> AstInternPool {
+  give AstInternPool {
+    name: name,
+    entries: [],
+    count: 0,
+    generation: 1
+  }
+}
+
+proc ast_intern_handle_new(index: int, generation: int) -> AstInternHandle {
+  give AstInternHandle {
+    index: index,
+    generation: generation
+  }
+}
+
+proc ast_intern_handle_is_valid(handle: AstInternHandle) -> bool {
+  give handle.index > 0 and handle.generation > 0
+}
+
+proc ast_intern_find(pool: AstInternPool, value: string) -> int {
+  let i: int = 0
+  while i < pool.entries.len {
+    if pool.entries[i] == value {
+      give i + 1
+    }
+    set i = i + 1
+  }
+  give 0
+}
+
+proc ast_intern_identifier(pool: AstInternPool, value: string) -> AstInternResult {
+  let existing: int = ast_intern_find(pool, value)
+  if existing > 0 {
+    give AstInternResult {
+      pool: pool,
+      handle: ast_intern_handle_new(existing, pool.generation),
+      reused: true
+    }
+  }
+
+  set pool.entries = pool.entries + [value]
+  set pool.count = pool.entries.len
+  give AstInternResult {
+    pool: pool,
+    handle: ast_intern_handle_new(pool.count, pool.generation),
+    reused: false
+  }
+}
+
+proc ast_intern_read(pool: AstInternPool, handle: AstInternHandle) -> string {
+  if handle.generation != pool.generation {
+    give ""
+  }
+
+  if handle.index > 0 and handle.index <= pool.entries.len {
+    give pool.entries[handle.index - 1]
+  }
+
+  give ""
+}
+
+proc ast_intern_count(pool: AstInternPool) -> int {
+  give pool.count
+}
+
+proc ast_intern_validate(pool: AstInternPool) -> bool {
+  if pool.name == "" {
+    give false
+  }
+
+  if pool.generation <= 0 {
+    give false
+  }
+
+  if pool.count < 0 {
+    give false
+  }
+
+  if pool.count != pool.entries.len {
+    give false
+  }
+
+  let i: int = 0
+  while i < pool.entries.len {
+    if pool.entries[i] == "" {
+      give false
+    }
+    set i = i + 1
+  }
+
+  give true
+}
+
+proc ast_intern_smoke() -> bool {
+  let pool: AstInternPool = ast_intern_pool_new("interning-test")
+  let first: AstInternResult = ast_intern_identifier(pool, "hello")
+  let second: AstInternResult = ast_intern_identifier(first.pool, "world")
+  let third: AstInternResult = ast_intern_identifier(second.pool, "node")
+  let duplicate: AstInternResult = ast_intern_identifier(third.pool, "hello")
+
+  if not ast_intern_handle_is_valid(first.handle) {
+    give false
+  }
+
+  if not ast_intern_handle_is_valid(second.handle) {
+    give false
+  }
+
+  if not ast_intern_handle_is_valid(third.handle) {
+    give false
+  }
+
+  if first.handle.index != duplicate.handle.index {
+    give false
+  }
+
+  if ast_intern_read(duplicate.pool, first.handle) != "hello" {
+    give false
+  }
+
+  if ast_intern_read(duplicate.pool, second.handle) != "world" {
+    give false
+  }
+
+  if ast_intern_read(duplicate.pool, third.handle) != "node" {
+    give false
+  }
+
+  if not duplicate.reused {
+    give false
+  }
+
+  if ast_intern_count(duplicate.pool) != 3 {
+    give false
+  }
+
+  give ast_intern_validate(duplicate.pool)
+}
+
 proc ready() -> bool {
-  let pool: intern.AstInternPool = intern.ast_intern_pool_new("interning-test")
-  let result = intern.ast_intern_identifier(pool, "hello")
-
-  if not intern.ast_intern_handle_is_valid(result.handle) {
-    give false
-  }
-
-  if intern.ast_intern_read(pool, result.handle) != "hello" {
-    give false
-  }
-
-  give intern.ast_intern_validate(result.pool)
+  give ast_intern_smoke()
 }
 
 proc package_meta() -> string {
-  give "package=vitte/compiler/ast/arena/interning;owner=@bootstrap/stage4;surface=interning-smoke"
+  give "package=vitte/compiler/ast/arena/interning;owner=@bootstrap/stage4;surface=interning-core"
 }

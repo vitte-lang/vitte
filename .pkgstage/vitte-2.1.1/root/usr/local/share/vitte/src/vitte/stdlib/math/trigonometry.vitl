@@ -1,0 +1,721 @@
+space vitte/stdlib/math/trigonometry
+
+<<< =========================================================
+   Trigonometry — angle normalization and trig approximations
+   ========================================================= >>>
+
+const PI: f64 = 3.141592653589793
+const HALF_PI: f64 = 1.5707963267948966
+const QUARTER_PI: f64 = 0.7853981633974483
+const TWO_PI: f64 = 6.283185307179586
+const THREE_HALF_PI: f64 = 4.71238898038469
+const DEG_TO_RAD: f64 = 0.017453292519943295
+const RAD_TO_DEG: f64 = 57.29577951308232
+const EPSILON: f64 = 0.000001
+const SERIES_STEPS: i64 = 8
+
+proc abs_f64(value: f64) -> f64 {
+  if value < 0.0 {
+    give 0.0 - value
+  } else {
+    give value
+  }
+}
+
+proc min_f64(a: f64, b: f64) -> f64 {
+  if a < b {
+    give a
+  } else {
+    give b
+  }
+}
+
+proc max_f64(a: f64, b: f64) -> f64 {
+  if a > b {
+    give a
+  } else {
+    give b
+  }
+}
+
+proc clamp_f64(value: f64, low: f64, high: f64) -> f64 {
+  if value < low {
+    give low
+  }
+  if value > high {
+    give high
+  }
+  give value
+}
+
+proc sign_f64(value: f64) -> f64 {
+  if value > 0.0 {
+    give 1.0
+  }
+  if value < 0.0 {
+    give -1.0
+  }
+  give 0.0
+}
+
+proc is_near_zero(value: f64) -> bool {
+  give abs_f64(value) <= EPSILON
+}
+
+proc normalize_degrees(value: f64) -> f64 {
+  let cycle_count: f64 = value / 360.0
+  let turns: i64 = cycle_count as i64
+  let reduced: f64 = value - turns as f64 * 360.0
+  if reduced < 0.0 {
+    give reduced + 360.0
+  }
+  if reduced >= 360.0 {
+    give reduced - 360.0
+  }
+  give reduced
+}
+
+proc normalize_radians(value: f64) -> f64 {
+  let cycle_count: f64 = value / TWO_PI
+  let turns: i64 = cycle_count as i64
+  let reduced: f64 = value - turns as f64 * TWO_PI
+  if reduced < 0.0 {
+    give reduced + TWO_PI
+  }
+  if reduced >= TWO_PI {
+    give reduced - TWO_PI
+  }
+  give reduced
+}
+
+proc wrap_radians(value: f64) -> f64 {
+  let normalized: f64 = normalize_radians(value)
+  if normalized > PI {
+    give normalized - TWO_PI
+  }
+  give normalized
+}
+
+proc degrees_to_radians(value: f64) -> f64 {
+  give value * DEG_TO_RAD
+}
+
+proc radians_to_degrees(value: f64) -> f64 {
+  give value * RAD_TO_DEG
+}
+
+proc opposite_angle(value: f64) -> f64 {
+  let shifted: f64 = value + 180.0
+  give normalize_degrees(shifted)
+}
+
+proc complement_angle(value: f64) -> f64 {
+  give 90.0 - value
+}
+
+proc supplement_angle(value: f64) -> f64 {
+  give 180.0 - value
+}
+
+proc angle_delta_degrees(from_value: f64, to_value: f64) -> f64 {
+  let from_norm: f64 = normalize_degrees(from_value)
+  let to_norm: f64 = normalize_degrees(to_value)
+  let delta: f64 = to_norm - from_norm
+  if delta > 180.0 {
+    give delta - 360.0
+  }
+  if delta < -180.0 {
+    give delta + 360.0
+  }
+  give delta
+}
+
+proc angle_distance_degrees(a: f64, b: f64) -> f64 {
+  give abs_f64(angle_delta_degrees(a, b))
+}
+
+proc angle_delta_radians(from_value: f64, to_value: f64) -> f64 {
+  let from_wrap: f64 = wrap_radians(from_value)
+  let to_wrap: f64 = wrap_radians(to_value)
+  let delta: f64 = to_wrap - from_wrap
+  if delta > PI {
+    give delta - TWO_PI
+  }
+  if delta < 0.0 - PI {
+    give delta + TWO_PI
+  }
+  give delta
+}
+
+proc angle_distance_radians(a: f64, b: f64) -> f64 {
+  give abs_f64(angle_delta_radians(a, b))
+}
+
+proc quadrant(value: f64) -> i64 {
+  let normalized: f64 = normalize_degrees(value)
+  if normalized < 90.0 {
+    give 1
+  }
+  if normalized < 180.0 {
+    give 2
+  }
+  if normalized < 270.0 {
+    give 3
+  }
+  give 4
+}
+
+proc is_axis_angle(value: f64) -> bool {
+  let normalized: f64 = normalize_degrees(value)
+  let quarter_turn: f64 = normalized / 90.0
+  let nearest: i64 = round_f64_local(quarter_turn)
+  let snapped: f64 = nearest as f64 * 90.0
+  let delta: f64 = normalized - snapped
+  give abs_f64(delta) <= EPSILON
+}
+
+proc is_right_angle(value: f64) -> bool {
+  let normalized: f64 = normalize_degrees(value)
+  let delta_a: f64 = normalized - 90.0
+  let delta_b: f64 = normalized - 270.0
+  let near_a: bool = abs_f64(delta_a) <= EPSILON
+  let near_b: bool = abs_f64(delta_b) <= EPSILON
+  give near_a or near_b
+}
+
+proc is_straight_angle(value: f64) -> bool {
+  let normalized: f64 = normalize_degrees(value)
+  let delta: f64 = normalized - 180.0
+  give abs_f64(delta) <= EPSILON
+}
+
+proc is_full_turn_degrees(value: f64) -> bool {
+  let normalized: f64 = normalize_degrees(value)
+  give is_near_zero(normalized)
+}
+
+proc turns_to_radians(turns: f64) -> f64 {
+  give turns * TWO_PI
+}
+
+proc radians_to_turns(value: f64) -> f64 {
+  give value / TWO_PI
+}
+
+proc square_f64(value: f64) -> f64 {
+  give value * value
+}
+
+proc cube_f64(value: f64) -> f64 {
+  give value * value * value
+}
+
+proc reduce_to_half_pi(value: f64) -> f64 {
+  let wrapped: f64 = wrap_radians(value)
+  if wrapped > HALF_PI {
+    give PI - wrapped
+  }
+  if wrapped < 0.0 - HALF_PI {
+    give 0.0 - PI - wrapped
+  }
+  give wrapped
+}
+
+proc factorial_f64(value: i64) -> f64 {
+  let result: f64 = 1.0
+  let i: i64 = 2
+  while i <= value {
+    set result = result * i as f64
+    set i = i + 1
+  }
+  give result
+}
+
+proc sin_series_core(value: f64) -> f64 {
+  let x: f64 = reduce_to_half_pi(value)
+  let sum: f64 = 0.0
+  let n: i64 = 0
+  while n < SERIES_STEPS {
+    let exp: i64 = 2 * n + 1
+    let numerator: f64 = pow_f64_local(x, exp)
+    let denominator: f64 = factorial_f64(exp)
+    let term: f64 = numerator / denominator
+    if n % 2 == 0 {
+      set sum = sum + term
+    } else {
+      set sum = sum - term
+    }
+    set n = n + 1
+  }
+  give sum
+}
+
+proc cos_series_core(value: f64) -> f64 {
+  let x: f64 = reduce_to_half_pi(value)
+  let sum: f64 = 0.0
+  let n: i64 = 0
+  while n < SERIES_STEPS {
+    let exp: i64 = 2 * n
+    let numerator: f64 = pow_f64_local(x, exp)
+    let denominator: f64 = factorial_f64(exp)
+    let term: f64 = numerator / denominator
+    if n % 2 == 0 {
+      set sum = sum + term
+    } else {
+      set sum = sum - term
+    }
+    set n = n + 1
+  }
+  give sum
+}
+
+proc sin(value: f64) -> f64 {
+  give sin_series_core(value)
+}
+
+proc cos(value: f64) -> f64 {
+  give cos_series_core(value)
+}
+
+proc tan(value: f64) -> f64 {
+  let cosine: f64 = cos(value)
+  if is_near_zero(cosine) {
+    give 0.0
+  }
+  give sin(value) / cosine
+}
+
+proc sec(value: f64) -> f64 {
+  let cosine: f64 = cos(value)
+  if is_near_zero(cosine) {
+    give 0.0
+  }
+  give 1.0 / cosine
+}
+
+proc csc(value: f64) -> f64 {
+  let sine: f64 = sin(value)
+  if is_near_zero(sine) {
+    give 0.0
+  }
+  give 1.0 / sine
+}
+
+proc cot(value: f64) -> f64 {
+  let sine: f64 = sin(value)
+  if is_near_zero(sine) {
+    give 0.0
+  }
+  give cos(value) / sine
+}
+
+proc sin_degrees(value: f64) -> f64 {
+  give sin(degrees_to_radians(value))
+}
+
+proc cos_degrees(value: f64) -> f64 {
+  give cos(degrees_to_radians(value))
+}
+
+proc tan_degrees(value: f64) -> f64 {
+  give tan(degrees_to_radians(value))
+}
+
+proc sec_degrees(value: f64) -> f64 {
+  give sec(degrees_to_radians(value))
+}
+
+proc csc_degrees(value: f64) -> f64 {
+  give csc(degrees_to_radians(value))
+}
+
+proc cot_degrees(value: f64) -> f64 {
+  give cot(degrees_to_radians(value))
+}
+
+proc atan_series(value: f64) -> f64 {
+  let x: f64 = value
+  let x2: f64 = x * x
+  let x3: f64 = x2 * x
+  let x5: f64 = x3 * x2
+  let x7: f64 = x5 * x2
+  let x9: f64 = x7 * x2
+  give x - x3 / 3.0 + x5 / 5.0 - x7 / 7.0 + x9 / 9.0
+}
+
+proc atan(value: f64) -> f64 {
+  let abs_value: f64 = abs_f64(value)
+  if abs_value <= 1.0 {
+    give atan_series(value)
+  }
+
+  let inverse: f64 = 1.0 / value
+  let reduced: f64 = atan_series(inverse)
+  if value > 0.0 {
+    give HALF_PI - reduced
+  }
+  give 0.0 - HALF_PI - reduced
+}
+
+proc sqrt_f64_local(value: f64) -> f64 {
+  if value <= 0.0 {
+    give 0.0
+  }
+  let x: f64 = value
+  let i: i64 = 0
+  while i < 10 {
+    let ratio: f64 = value / x
+    let sum: f64 = x + ratio
+    set x = 0.5 * sum
+    set i = i + 1
+  }
+  give x
+}
+
+proc asin_series(value: f64) -> f64 {
+  let x: f64 = value
+  let x2: f64 = x * x
+  let x3: f64 = x2 * x
+  let x5: f64 = x3 * x2
+  let x7: f64 = x5 * x2
+  give x + x3 / 6.0 + 3.0 * x5 / 40.0 + 5.0 * x7 / 112.0
+}
+
+proc asin_atan_identity(value: f64) -> f64 {
+  let clamped: f64 = clamp_f64(value, -1.0, 1.0)
+  let square: f64 = clamped * clamped
+  let remainder: f64 = 1.0 - square
+  let denom: f64 = sqrt_f64_local(remainder)
+  if is_near_zero(denom) {
+    if clamped > 0.0 {
+      give HALF_PI
+    }
+    if clamped < 0.0 {
+      give 0.0 - HALF_PI
+    }
+    give 0.0
+  }
+  let ratio: f64 = clamped / denom
+  give atan(ratio)
+}
+
+proc asin(value: f64) -> f64 {
+  let clamped: f64 = clamp_f64(value, -1.0, 1.0)
+  let abs_value: f64 = abs_f64(clamped)
+  if abs_value <= 0.7 {
+    give asin_series(clamped)
+  }
+  give asin_atan_identity(clamped)
+}
+
+proc acos(value: f64) -> f64 {
+  give HALF_PI - asin(value)
+}
+
+proc atan2(y: f64, x: f64) -> f64 {
+  if x > 0.0 {
+    let ratio: f64 = y / x
+    give atan(ratio)
+  }
+  if x < 0.0 and y >= 0.0 {
+    let ratio: f64 = y / x
+    let base: f64 = atan(ratio)
+    give base + PI
+  }
+  if x < 0.0 and y < 0.0 {
+    let ratio: f64 = y / x
+    let base: f64 = atan(ratio)
+    give base - PI
+  }
+  if y > 0.0 {
+    give HALF_PI
+  }
+  if y < 0.0 {
+    give 0.0 - HALF_PI
+  }
+  give 0.0
+}
+
+proc asec(value: f64) -> f64 {
+  if is_near_zero(value) {
+    give 0.0
+  }
+  let inverse: f64 = 1.0 / value
+  give acos(inverse)
+}
+
+proc acsc(value: f64) -> f64 {
+  if is_near_zero(value) {
+    give 0.0
+  }
+  let inverse: f64 = 1.0 / value
+  give asin(inverse)
+}
+
+proc acot(value: f64) -> f64 {
+  if is_near_zero(value) {
+    give HALF_PI
+  }
+  let inverse: f64 = 1.0 / value
+  give atan(inverse)
+}
+
+proc atan_degrees(value: f64) -> f64 {
+  give radians_to_degrees(atan(value))
+}
+
+proc atan2_degrees(y: f64, x: f64) -> f64 {
+  give radians_to_degrees(atan2(y, x))
+}
+
+proc asin_degrees(value: f64) -> f64 {
+  give radians_to_degrees(asin(value))
+}
+
+proc acos_degrees(value: f64) -> f64 {
+  give radians_to_degrees(acos(value))
+}
+
+proc exp_f64_local(value: f64) -> f64 {
+  let sum: f64 = 1.0
+  let term: f64 = 1.0
+  let i: i64 = 1
+  while i < 12 {
+    set term = term * value / i as f64
+    set sum = sum + term
+    set i = i + 1
+  }
+  give sum
+}
+
+proc log_f64_local(value: f64) -> f64 {
+  if value <= 0.0 {
+    give 0.0
+  }
+  let shifted: f64 = value - 1.0
+  let shifted2: f64 = shifted * shifted
+  let shifted3: f64 = shifted2 * shifted
+  give shifted - shifted2 / 2.0 + shifted3 / 3.0
+}
+
+proc sinh(value: f64) -> f64 {
+  let positive: f64 = exp_f64_local(value)
+  let mirrored: f64 = 0.0 - value
+  let negative: f64 = exp_f64_local(mirrored)
+  let delta: f64 = positive - negative
+  give 0.5 * delta
+}
+
+proc cosh(value: f64) -> f64 {
+  let positive: f64 = exp_f64_local(value)
+  let mirrored: f64 = 0.0 - value
+  let negative: f64 = exp_f64_local(mirrored)
+  let delta: f64 = positive + negative
+  give 0.5 * delta
+}
+
+proc tanh(value: f64) -> f64 {
+  let denominator: f64 = cosh(value)
+  if is_near_zero(denominator) {
+    give 0.0
+  }
+  give sinh(value) / denominator
+}
+
+proc sech(value: f64) -> f64 {
+  let denominator: f64 = cosh(value)
+  if is_near_zero(denominator) {
+    give 0.0
+  }
+  give 1.0 / denominator
+}
+
+proc csch(value: f64) -> f64 {
+  let denominator: f64 = sinh(value)
+  if is_near_zero(denominator) {
+    give 0.0
+  }
+  give 1.0 / denominator
+}
+
+proc coth(value: f64) -> f64 {
+  let denominator: f64 = tanh(value)
+  if is_near_zero(denominator) {
+    give 0.0
+  }
+  give 1.0 / denominator
+}
+
+proc asinh(value: f64) -> f64 {
+  let square: f64 = value * value
+  let inside: f64 = square + 1.0
+  let root: f64 = sqrt_f64_local(inside)
+  let sum: f64 = value + root
+  give log_f64_local(sum)
+}
+
+proc acosh(value: f64) -> f64 {
+  if value < 1.0 {
+    give 0.0
+  }
+  let square: f64 = value * value
+  let inside: f64 = square - 1.0
+  let root: f64 = sqrt_f64_local(inside)
+  let sum: f64 = value + root
+  give log_f64_local(sum)
+}
+
+proc atanh(value: f64) -> f64 {
+  let clamped: f64 = clamp_f64(value, -0.999999, 0.999999)
+  let numerator: f64 = 1.0 + clamped
+  let denominator: f64 = 1.0 - clamped
+  if is_near_zero(denominator) {
+    give 0.0
+  }
+  let ratio: f64 = numerator / denominator
+  give 0.5 * log_f64_local(ratio)
+}
+
+proc haversin(value: f64) -> f64 {
+  let half: f64 = value / 2.0
+  let s: f64 = sin(half)
+  give s * s
+}
+
+proc ahaversin(value: f64) -> f64 {
+  let clamped: f64 = clamp_f64(value, 0.0, 1.0)
+  let root: f64 = sqrt_f64_local(clamped)
+  give 2.0 * asin(root)
+}
+
+proc versin(value: f64) -> f64 {
+  give 1.0 - cos(value)
+}
+
+proc coversin(value: f64) -> f64 {
+  give 1.0 - sin(value)
+}
+
+proc exsec(value: f64) -> f64 {
+  give sec(value) - 1.0
+}
+
+proc chord(value: f64) -> f64 {
+  let half: f64 = value / 2.0
+  give 2.0 * sin(half)
+}
+
+proc sinc(value: f64) -> f64 {
+  if is_near_zero(value) {
+    give 1.0
+  }
+  give sin(value) / value
+}
+
+proc normalized_sinc(value: f64) -> f64 {
+  let scaled: f64 = PI * value
+  if is_near_zero(scaled) {
+    give 1.0
+  }
+  give sin(scaled) / scaled
+}
+
+proc polar_x(radius: f64, angle_radians: f64) -> f64 {
+  give radius * cos(angle_radians)
+}
+
+proc polar_y(radius: f64, angle_radians: f64) -> f64 {
+  give radius * sin(angle_radians)
+}
+
+proc polar_x_degrees(radius: f64, angle_degrees: f64) -> f64 {
+  let radians: f64 = degrees_to_radians(angle_degrees)
+  give polar_x(radius, radians)
+}
+
+proc polar_y_degrees(radius: f64, angle_degrees: f64) -> f64 {
+  let radians: f64 = degrees_to_radians(angle_degrees)
+  give polar_y(radius, radians)
+}
+
+proc pow_f64_local(base: f64, exponent: i64) -> f64 {
+  if exponent < 0 {
+    if is_near_zero(base) {
+      give 0.0
+    }
+    give 1.0 / pow_f64_local(base, 0 - exponent)
+  }
+  let result: f64 = 1.0
+  let current_base: f64 = base
+  let current_exponent: i64 = exponent
+  while current_exponent > 0 {
+    if current_exponent % 2 == 1 {
+      set result = result * current_base
+    }
+    set current_base = current_base * current_base
+    set current_exponent = current_exponent / 2
+  }
+  give result
+}
+
+proc round_f64_local(value: f64) -> i64 {
+  let truncated: i64 = value as i64
+  if value >= 0.0 {
+    let shifted: f64 = value + 0.5
+    let as_int: i64 = shifted as i64
+    give as_int
+  }
+  let shifted: f64 = value - 0.5
+  let as_int: i64 = shifted as i64
+  give as_int
+}
+
+proc trigonometry_version() -> string {
+  give "max-1"
+}
+
+proc trigonometry_ready() -> bool {
+  give true
+}
+
+proc trigonometry_selftest() -> bool {
+  let s0: f64 = sin(0.0)
+  let c0: f64 = cos(0.0)
+  let s90: f64 = sin_degrees(90.0)
+  let c180: f64 = cos_degrees(180.0)
+  let t45: f64 = tan_degrees(45.0)
+  let py: f64 = polar_y_degrees(2.0, 90.0)
+  let pi_error: f64 = degrees_to_radians(180.0) - PI
+  let deg_error: f64 = radians_to_degrees(PI) - 180.0
+  let c0_error: f64 = c0 - 1.0
+  let s90_error: f64 = s90 - 1.0
+  let c180_error: f64 = c180 + 1.0
+  let t45_error: f64 = t45 - 1.0
+  let asin_error: f64 = asin(0.5) - QUARTER_PI
+  let atan_error: f64 = atan(1.0) - QUARTER_PI
+  let cosh_error: f64 = cosh(0.0) - 1.0
+  let sinc_error: f64 = normalized_sinc(0.0) - 1.0
+  let py_error: f64 = py - 2.0
+
+  give trigonometry_ready()
+    and trigonometry_version() == "max-1"
+    and normalize_degrees(450.0) == 90.0
+    and abs_f64(pi_error) < 0.0001
+    and abs_f64(deg_error) < 0.001
+    and quadrant(225.0) == 3
+    and is_right_angle(90.0)
+    and abs_f64(s0) < 0.001
+    and abs_f64(c0_error) < 0.001
+    and abs_f64(s90_error) < 0.01
+    and abs_f64(c180_error) < 0.01
+    and abs_f64(t45_error) < 0.05
+    and abs_f64(asin_error) < 0.05
+    and abs_f64(atan_error) < 0.05
+    and abs_f64(sinh(0.0)) < 0.001
+    and abs_f64(cosh_error) < 0.001
+    and abs_f64(haversin(0.0)) < 0.001
+    and abs_f64(sinc_error) < 0.001
+    and abs_f64(py_error) < 0.05
+}
+
+export *

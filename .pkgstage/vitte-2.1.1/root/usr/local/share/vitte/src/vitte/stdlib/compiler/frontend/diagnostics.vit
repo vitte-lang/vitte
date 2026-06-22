@@ -1,0 +1,124 @@
+space vitte/compiler/frontend/diagnostics
+
+pick DiagnosticLevel {
+  Info,
+  Error,
+  Warning,
+  Note,
+  Help,
+  Fatal
+}
+
+form DiagnosticSpan {
+  line: int,
+  column: int,
+  end_line: int,
+  end_column: int,
+  valid: bool
+}
+
+form Diagnostic {
+  level: DiagnosticLevel,
+  code: string,
+  message: string,
+  span: DiagnosticSpan,
+  notes: [string],
+  helps: [string],
+  valid: bool
+}
+
+form DiagnosticBag {
+  items: [Diagnostic],
+  error_count: int,
+  warning_count: int,
+  note_count: int,
+  fatal_count: int,
+  valid: bool
+}
+
+proc span_at(line: int, column: int) -> DiagnosticSpan {
+  give DiagnosticSpan {
+    line: line,
+    column: column,
+    end_line: line,
+    end_column: column + 1,
+    valid: line > 0 and column > 0
+  }
+}
+
+proc new_bag() -> DiagnosticBag {
+  give DiagnosticBag {
+    items: [],
+    error_count: 0,
+    warning_count: 0,
+    note_count: 0,
+    fatal_count: 0,
+    valid: true
+  }
+}
+
+proc add(bag: DiagnosticBag, level: DiagnosticLevel, code: string, message: string, line: int, column: int) -> DiagnosticBag {
+  let diagnostic = Diagnostic {
+    level: level,
+    code: code,
+    message: message,
+    span: span_at(line, column),
+    notes: [],
+    helps: [],
+    valid: code != "" and message != "" and line > 0 and column > 0
+  }
+
+  set bag.items = bag.items + [diagnostic]
+
+  if level == DiagnosticLevel.Warning {
+    set bag.warning_count = bag.warning_count + 1
+  } elif level == DiagnosticLevel.Note or level == DiagnosticLevel.Info or level == DiagnosticLevel.Help {
+    set bag.note_count = bag.note_count + 1
+  } elif level == DiagnosticLevel.Fatal {
+    set bag.fatal_count = bag.fatal_count + 1
+    set bag.error_count = bag.error_count + 1
+  } else {
+    set bag.error_count = bag.error_count + 1
+  }
+
+  set bag.valid = bag.fatal_count == 0 and bag.error_count == 0
+  give bag
+}
+
+proc add_error(bag: DiagnosticBag, code: string, message: string, line: int, column: int) -> DiagnosticBag {
+  give add(bag, DiagnosticLevel.Error, code, message, line, column)
+}
+
+proc add_warning(bag: DiagnosticBag, code: string, message: string, line: int, column: int) -> DiagnosticBag {
+  give add(bag, DiagnosticLevel.Warning, code, message, line, column)
+}
+
+proc add_note(bag: DiagnosticBag, code: string, message: string, line: int, column: int) -> DiagnosticBag {
+  give add(bag, DiagnosticLevel.Note, code, message, line, column)
+}
+
+proc attach_note(bag: DiagnosticBag, note: string) -> DiagnosticBag {
+  if bag.items.len == 0 or note == "" {
+    give bag
+  }
+
+  let index: int = bag.items.len - 1
+  set bag.items[index].notes = bag.items[index].notes + [note]
+  give bag
+}
+
+proc attach_help(bag: DiagnosticBag, help: string) -> DiagnosticBag {
+  if bag.items.len == 0 or help == "" {
+    give bag
+  }
+
+  let index: int = bag.items.len - 1
+  set bag.items[index].helps = bag.items[index].helps + [help]
+  give bag
+}
+
+proc has_errors(bag: DiagnosticBag) -> bool {
+  give bag.error_count > 0 or bag.fatal_count > 0
+}
+
+export *

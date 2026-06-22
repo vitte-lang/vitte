@@ -6,7 +6,7 @@ use vitte/compiler/frontend/ast/item.{ AstItemKind }
 use vitte/compiler/frontend/parse/recovery.{ recover_decl_index, recover_stmt_index }
 use vitte/compiler/frontend/grammar_alignment_checker.{ GrammarAlignmentReport, grammar_alignment_report, grammar_alignment_summary }
 use vitte/compiler/tests/frontend_fixtures/valid/parser.{ grammar_surface_source }
-use vitte/compiler/tests/frontend_fixtures/invalid/parser.{ recover_decl_source, recover_stmt_source }
+use vitte/compiler/tests/frontend_fixtures/invalid/parser.{ recover_decl_source, recover_stmt_source, standalone_attribute_source }
 use vitte/compiler/tests/frontend_fixtures/invalid/lexer.{ invalid_char_source }
 
 const VERSION_TEXT: string = "frontend parser tests 0.3.0"
@@ -76,6 +76,15 @@ proc test_frontend_accepts_intrinsic_toplevel_decl() -> bool {
     and fe.ast_root.items[1].kind == AstItemKind.Proc;
 }
 
+proc test_frontend_rejects_standalone_attribute_block() -> bool {
+  let fe: FrontendOutput = frontend_run("standalone_attribute.vit", standalone_attribute_source());
+  give not fe.valid
+    and fe.diagnostics_total > 0
+    and fe.diagnostics[0].code == "PATTR003"
+    and fe.diagnostics[0].line == 1
+    and fe.diagnostics[0].column == 1;
+}
+
 proc test_grammar_alignment_report_is_computed() -> bool {
   let report: GrammarAlignmentReport = grammar_alignment_report();
   let summary: string = grammar_alignment_summary();
@@ -100,6 +109,9 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if not test_frontend_accepts_intrinsic_toplevel_decl() {
+    set failures = failures + 1;
+  }
+  if not test_frontend_rejects_standalone_attribute_block() {
     set failures = failures + 1;
   }
   if not test_grammar_alignment_report_is_computed() {

@@ -1,0 +1,584 @@
+space vitte/stdlib
+
+// ============================================================================
+// VITTE STDLIB 2.0 - GETTING STARTED GUIDE
+// ============================================================================
+//
+// Welcome to Vitte's complete, production-grade standard library!
+//
+// This guide will help you use the new async, threading, FFI, and other
+// modules to build powerful applications with Vitte.
+
+// ============================================================================
+// QUICK START
+// ============================================================================
+
+// Import what you need:
+// use vitte/stdlib/async
+// use vitte/stdlib/threading/thread
+// use vitte/stdlib/threading/mutex
+// use vitte/stdlib/network/http_server
+
+// ============================================================================
+// ASYNC/AWAIT - Building Concurrent Applications
+// ============================================================================
+//
+// Vitte's async/await is similar to Rust's tokio or JavaScript's async.
+// It lets you write concurrent code that looks sequential.
+
+// Example 1: Simple async task
+proc async_example_1() {
+  let future = async<int> {
+    // This runs asynchronously
+    sleep_ms(100)
+    give 42
+  }
+
+  // Block and wait for result
+  let result = await<int>(future)
+  let result_text = result as string
+  let result_prefix = "Result: "
+  let message = result_prefix + result_text
+  println(message)
+}
+
+// Example 2: Multiple concurrent tasks
+proc async_example_2() {
+  let fut1 = async<int> {
+    give 10
+  }
+  let fut2 = async<int> {
+    give 20
+  }
+  let fut3 = async<int> {
+    give 30
+  }
+
+  // Wait for all to complete
+  let results = parallel_all<int>([fut1, fut2, fut3])
+
+  let total = results[0] + results[1] + results[2]
+  let total_text = total as string
+  let total_prefix = "Total: "
+  let message = total_prefix + total_text
+  println(message)
+}
+
+// Example 3: Channel-based communication
+proc async_example_3() {
+  let ch = create_channel<string>(100)
+
+  // Producer
+  spawn_task<bool>(async<bool> {
+    channel_send<string>(ch, "Hello")
+    channel_send<string>(ch, "World")
+    give true
+  })
+
+  // Consumer
+  let msg1 = channel_recv<string>(ch)
+  let msg2 = channel_recv<string>(ch)
+  let with_space = msg1 + " "
+  let message = with_space + msg2
+  println(message)
+}
+
+// Example 4: Timeout handling
+proc async_example_4() {
+  let future = async<int> {
+    give 42
+  }
+
+  let result = with_timeout<int>(future, 1000)  // 1 second timeout
+
+  if result.completed {
+    let result_text = result.value as string
+    let result_prefix = "Got result: "
+    let message = result_prefix + result_text
+    println(message)
+  } else {
+    let message = "Timed out!"
+    println(message)
+  }
+}
+
+// ============================================================================
+// THREADING - Parallel Execution
+// ============================================================================
+//
+// For true parallelism on multiple cores, use threading instead of async.
+
+// Example 1: Simple thread
+proc threading_example_1() {
+  let worker_name = "worker"
+  let thread = thread_spawn(worker_name, proc() {
+    let message = "Running on separate thread"
+    println(message)
+  })
+
+  thread_join(thread)
+  let message = "Thread finished"
+  println(message)
+}
+
+// Example 2: Shared mutable state with Mutex
+proc threading_example_2() {
+  let counter = mutex_new<int>(0)
+  let t1_name = "t1"
+  let t2_name = "t2"
+
+  // Thread 1
+  let t1 = thread_spawn(t1_name, proc() {
+    mutex_lock(counter)
+    // Safely access counter
+    mutex_unlock(counter)
+  })
+
+  // Thread 2
+  let t2 = thread_spawn(t2_name, proc() {
+    mutex_lock(counter)
+    // Safely access counter
+    mutex_unlock(counter)
+  })
+
+  thread_join(t1)
+  thread_join(t2)
+}
+
+// Example 3: Read-write lock (multiple readers, exclusive writer)
+proc threading_example_3() {
+  let initial_value = "initial value"
+  let data = rwlock_new<string>(initial_value)
+
+  // Many readers can work concurrently
+  rwlock_read_lock(data)
+  // Read data
+  rwlock_read_unlock(data)
+
+  // Exclusive writer
+  rwlock_write_lock(data)
+  // Write data
+  rwlock_write_unlock(data)
+}
+
+// Example 4: Thread pool for work distribution
+proc threading_example_4() {
+  let worker_group = "workers"
+  let pool = threadpool_new(4, worker_group)
+
+  // Submit multiple tasks
+  let i = 0
+  while i < 100 {
+    threadpool_submit(pool, proc() {
+      // Do work
+    }, 0)
+    set i = i + 1
+  }
+
+  // Wait for all to complete
+  threadpool_wait_all(pool)
+  threadpool_shutdown(pool)
+}
+
+// Example 5: Semaphore for producer-consumer
+proc threading_example_5() {
+  let empty = semaphore_new(10)     // 10 slots
+  let full = semaphore_new(0)       // 0 items
+  let producer_name = "producer"
+  let consumer_name = "consumer"
+
+  // Producer
+  let producer = thread_spawn(producer_name, proc() {
+    semaphore_acquire(empty)
+    // Add item
+    semaphore_release(full)
+  })
+
+  // Consumer
+  let consumer = thread_spawn(consumer_name, proc() {
+    semaphore_acquire(full)
+    // Remove item
+    semaphore_release(empty)
+  })
+}
+
+// ============================================================================
+// FFI - Calling C Libraries
+// ============================================================================
+//
+// Vitte can seamlessly call C libraries, giving you access to
+// vast ecosystem of native code.
+
+// Example 1: Math library
+proc ffi_example_1() {
+  let math_lib = math_lib_load()
+
+  let sin_val = ffi_call_f64(math_lib.sin, [1.57])  // ~π/2
+  let sqrt_val = ffi_call_f64(math_lib.sqrt, [16.0])
+
+  let sin_text = sin_val as string
+  let sqrt_text = sqrt_val as string
+  let sin_prefix = "sin value "
+  let sqrt_prefix = "sqrt value "
+  let sin_message = sin_prefix + sin_text
+  let sqrt_message = sqrt_prefix + sqrt_text
+  println(sin_message)
+  println(sqrt_message)
+}
+
+// Example 2: String library
+proc ffi_example_2() {
+  let strlib = strlib_load()
+
+  let len = ffi_call(strlib.strlen, [0])  // Would pass string ptr
+  let comparison = ffi_call(strlib.strcmp, [0, 0])
+}
+
+// Example 3: Custom C function binding
+proc ffi_example_3() {
+  let custom_path = "/path/to/libcustom.so"
+  let custom_lib = ffi_load_library(custom_path)
+
+  let my_func = ffi_register_function(custom_lib, "my_function", ["i32", "string"], "i32")
+
+  let result = ffi_call(my_func, [42])
+}
+
+// ============================================================================
+// REFLECTION - Runtime Type Inspection
+// ============================================================================
+//
+// Inspect types at runtime and serialize/deserialize automatically.
+
+// Example 1: Type introspection
+proc reflection_example_1() {
+  // Assuming you have a value
+  // let value = SomeStruct { field1: 42, field2: "hello" }
+  // let info = type_of(value)
+
+  // println("Type: " + info.name)
+  // println("Size: " + ((info.size_bytes) as string))
+  // println("Fields: " + ((info.fields.len) as string))
+}
+
+// Example 2: JSON serialization
+proc reflection_example_2() {
+  // let data = SomeStruct { value: 42, name: "example" }
+
+  // Serialize to JSON
+  // let json = serialize_to_string(data, SERIALIZATION_JSON)
+  // println(json)
+
+  // Deserialize from JSON
+  // let restored = deserialize_from_string<SomeStruct>(json, SERIALIZATION_JSON)
+}
+
+// Example 3: Binary serialization (for performance)
+proc reflection_example_3() {
+  // let data = SomeStruct { ... }
+
+  // Compact binary format
+  // let bytes = serialize_to_binary(data)
+
+  // Fast deserialization
+  // let restored = deserialize_from_binary<SomeStruct>(bytes)
+}
+
+// ============================================================================
+// HTTP SERVER - Web Applications
+// ============================================================================
+//
+// Build web services with routing, middleware, and session management.
+
+// Example 1: Simple HTTP server
+proc http_example_1() {
+  let host = "0.0.0.0"
+  let root_route = "/"
+  let users_route = "/api/users/:id"
+  let create_route = "/api/users"
+  let server = http_server_new(host, 8080)
+
+  // Register routes
+  server_get(server, root_route, proc() {
+    // Handle GET /
+  })
+
+  server_get(server, users_route, proc() {
+    // Handle GET /api/users/123
+    // Extract :id parameter
+  })
+
+  server_post(server, create_route, proc() {
+    // Handle POST with form data or JSON
+  })
+
+  server_start(server)
+}
+
+// Example 2: Middleware for logging and security
+proc http_example_2() {
+  let host = "0.0.0.0"
+  let server = http_server_new(host, 8080)
+
+  // Add middleware in order
+  server_use_middleware(server, middleware_logger())
+  server_use_middleware(server, middleware_hsts(31536000, true))
+  server_use_middleware(server, middleware_xss_protection())
+
+  let cors_opts = CORSOptions {
+    allowed_origins: ["http://localhost:3000"],
+    allowed_methods: ["GET", "POST", "PUT"],
+    allowed_headers: ["Content-Type"],
+    exposed_headers: [],
+    allow_credentials: true,
+    max_age: 3600,
+  }
+  server_use_middleware(server, middleware_cors(cors_opts))
+
+  server_start(server)
+}
+
+// Example 3: JSON API with request validation
+proc http_example_3() {
+  let host = "0.0.0.0"
+  let create_route = "/api/users"
+  let server = http_server_new(host, 8080)
+
+  // Parse JSON bodies automatically
+  server_use_middleware(server, middleware_json_parser(ParseOptions {
+    content_types: ["application/json"],
+    max_size: 1048576,
+  }))
+
+  server_post(server, create_route, proc() {
+    // Body is automatically parsed as JSON
+    // validate(request)
+    // send_json(response, result, 201)
+  })
+
+  server_start(server)
+}
+
+// ============================================================================
+// PROFILING - Performance Analysis
+// ============================================================================
+//
+// Measure and optimize your code with built-in profiling.
+
+// Example 1: CPU profiling
+proc profiling_example_1() {
+  let profiler = cpu_profiler_new(1000)  // 1000 samples/sec
+  profiler_start(profiler)
+
+  // ... run your code ...
+
+  profiler_stop(profiler)
+
+  let hotspots = profiler_hotspots(profiler, 10)
+  // Analyze hotspots to optimize
+}
+
+// Example 2: Memory profiling
+proc profiling_example_2() {
+  let mem_profiler = memory_profiler_new()
+  memory_profiler_start(mem_profiler)
+
+  // ... run your code that allocates memory ...
+
+  let leaks = memory_profiler_leaks(mem_profiler)
+
+  if leaks.len > 0 {
+    let message = "Memory leaks detected!"
+    println(message)
+    // Log leak info
+  }
+}
+
+// Example 3: Benchmarking
+proc profiling_example_3() {
+  let bench_name = "expensive_operation"
+  let benchmark = benchmark(bench_name, proc() {
+    // expensive_operation()
+  }, 1000)  // Run 1000 times
+
+  let average_us = benchmark.average_time_ns / 1000.0
+  let average_text = average_us as string
+  let average_prefix = "Average time: "
+  let prefix = average_prefix + average_text
+  let message = prefix + " us"
+  println(message)
+}
+
+// ============================================================================
+// PACKAGE MANAGEMENT
+// ============================================================================
+//
+// Manage dependencies and share your code.
+
+// Example 1: Installing packages
+proc packages_example_1() {
+  let package_dir = "~/.vitte/packages"
+  let package_name = "web-framework"
+  let package_version = "^2.0.0"
+  let registry = package_registry_new(package_dir)
+
+  // Install a package
+  let pkg = package_install(registry, package_name, package_version)
+
+  // Now use it
+  // use web_framework
+}
+
+// Example 2: Creating package.vit manifest
+proc packages_example_2() {
+  // In your project, create package.vit:
+  // space myproject
+  // name: "my-awesome-lib"
+  // version: "1.0.0"
+  // author: "Your Name <you@example.com>"
+  // description: "An awesome Vitte library"
+  // license: "MIT"
+  // dependencies:
+  //   - web-framework: "^2.0.0"
+  //   - data-parser: "~1.2"
+}
+
+// ============================================================================
+// BEST PRACTICES
+// ============================================================================
+//
+// Async:
+//   - Use async for I/O-bound work (network, files)
+//   - Use channels for inter-task communication
+//   - Always handle timeouts to prevent deadlocks
+//   - Profile async overhead vs threading
+//
+// Threading:
+//   - Use thread pools for CPU-bound work
+//   - Always use mutexes/rwlocks for shared state
+//   - Prefer channels to shared memory when possible
+//   - Watch out for deadlocks with multiple locks
+//
+// FFI:
+//   - Check library availability before calling
+//   - Handle NULL pointers from C functions
+//   - Don't pass Vitte objects to C (only primitives)
+//   - Use ABI compatibility checking
+//
+// HTTP Server:
+//   - Always validate input from clients
+//   - Use HTTPS in production (not covered here)
+//   - Add rate limiting to prevent abuse
+//   - Log requests for debugging
+//
+// Profiling:
+//   - Profile in production-like conditions
+//   - Don't optimize prematurely - profile first!
+//   - Memory leaks detection is priority #1
+//   - Watch for GC pauses if applicable
+
+// ============================================================================
+// COMMON PATTERNS
+// ============================================================================
+
+// Pattern 1: Producer-Consumer with channels
+proc pattern_producer_consumer() {
+  let ch = create_channel<int>(10)
+
+  // Producer
+  spawn_task<bool>(async<bool> {
+    let i = 0
+    while i < 100 {
+      channel_send<int>(ch, i)
+      set i = i + 1
+    }
+    give true
+  })
+
+  // Consumer
+  spawn_task<bool>(async<bool> {
+    let i = 0
+    while i < 100 {
+      let value = channel_recv<int>(ch)
+      // Process value
+      set i = i + 1
+    }
+    give true
+  })
+}
+
+// Pattern 2: Worker pool
+proc pattern_worker_pool() {
+  let pool = threadpool_new(4, "workers")
+
+  // Submit work
+  let i = 0
+  while i < 1000 {
+    threadpool_submit(pool, proc() {
+      // Do work
+    }, 0)
+    set i = i + 1
+  }
+
+  threadpool_wait_all(pool)
+}
+
+// Pattern 3: HTTP request with middleware
+proc pattern_http_middleware() {
+  let host = "0.0.0.0"
+  let api_route = "/api/data"
+  let report_route = "/csp-report"
+  let server = http_server_new(host, 8080)
+
+  server_use_middleware(server, middleware_logger())
+  server_use_middleware(server, middleware_csp(CSPOptions {
+    directives: ["default-src self"],
+    report_uri: report_route,
+  }))
+
+  server_get(server, api_route, proc() {
+    // Middleware will have already logged and checked CSP
+  })
+}
+
+// ============================================================================
+// TROUBLESHOOTING
+// ============================================================================
+//
+// Q: My async task is not making progress
+// A: Check if you're calling yield_cpu() or await() regularly
+//
+// Q: Threads are deadlocking
+// A: Always acquire locks in the same order; use timeout variants
+//
+// Q: FFI call returns garbage
+// A: Check type signatures match exactly (size, endianness, calling convention)
+//
+// Q: Profiler shows high CPU but not which function
+// A: Increase sampling rate or run with debug symbols
+//
+// Q: HTTP server is slow
+// A: Check for synchronous operations in handlers; use profiler
+
+// ============================================================================
+// PERFORMANCE TIPS
+// ============================================================================
+//
+// 1. Use thread pools instead of spawning threads repeatedly
+// 2. Preallocate channels with known capacity
+// 3. Use RwLock instead of Mutex when mostly reading
+// 4. Batch FFI calls to reduce overhead
+// 5. Use binary serialization for performance-critical paths
+// 6. Profile before optimizing
+// 7. Use async for I/O, threads for CPU-bound
+// 8. Enable compiler optimizations (-O2, -O3)
+
+// ============================================================================
+// FURTHER READING
+// ============================================================================
+//
+// - STDLIB_COMPLETE_2_0.vitl  - Complete module inventory
+// - STDLIB_COVERAGE_MATRIX.vitl - Detailed C stdlib comparison
+// - Each module has extensive inline documentation
+//
+// Happy coding with Vitte! 🚀

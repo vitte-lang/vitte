@@ -8,18 +8,18 @@ use vitte/compiler/analysis/sema/scopes.{ SemaSymbol }
 use vitte/compiler/analysis/typeck/checker.{ run_typeck_hir }
 use vitte/compiler/analysis/typeck/errors.{ TypeckResult }
 use vitte/compiler/diagnostics/diagnostic.{ Diagnostic, DiagnosticPhase, DiagnosticReport, DiagnosticRenderConfig, DiagnosticStyle, SourceSpan, default_render_config, diagnostic_from_surface, diagnostic_report, diagnostic_report_empty, phase_name, render_report, span_range }
-use vitte/compiler/diagnostics/json.{ json_report }
+use vitte/compiler/diagnostics/json.{ json_report, json_report_envelope }
 use vitte/compiler/infrastructure/incremental.{ IncrementalGraph, build_analysis_graph }
-use vitte/compiler/middle/hir/hir.{ HirUnit, hir_module_empty }
+use vitte/compiler/middle/hir.{ HirUnit, hir_module_empty }
 use vitte/compiler/middle/hir/lower_ast.{ lower_ast_to_hir }
 use vitte/compiler/middle/hir/validate.{ validate_hir }
 use vitte/compiler/middle/pipeline.{ MiddleOutput, middle_run_for_target }
 use vitte/compiler/middle/lower/hir_to_mir.{ lower_hir_to_mir }
 use vitte/compiler/middle/lower/mir_to_ir.{ lower_mir_as_ir_module }
-use vitte/compiler/middle/mir/mir.{ MirUnit, mir_module_empty }
+use vitte/compiler/middle/mir.{ MirUnit, mir_module_empty }
 use vitte/compiler/middle/mir/validate.{ validate_mir }
 use vitte/compiler/backend/codegen.{ CodegenResult, run_codegen_llvm_with_profile, run_codegen_x86_64 }
-use vitte/compiler/backend/ir/ir.{ IrFunction, IrModule, IrModuleKind, IrTarget, IrUnit, IrUnitState, function_name_by_id, target_from_name, unit_add_module, unit_empty, unit_is_valid, unit_set_entry, unit_with_source_path, unit_with_state, verify_unit }
+use vitte/compiler/backend/ir.{ IrFunction, IrModule, IrModuleKind, IrTarget, IrUnit, IrUnitState, function_name_by_id, target_from_name, unit_add_module, unit_empty, unit_is_valid, unit_set_entry, unit_with_source_path, unit_with_state, verify_unit }
 use vitte/compiler/backend/link/artifact.{ LinkArtifact, LinkArtifactKind, artifact_create, artifact_is_valid, link_target_from_name }
 use vitte/compiler/backend/link/linker.{ link_ir_unit_with_kind }
 use vitte/compiler/backend/native_bridge.{ NativeBridgeResult, emit_native_object_from_llvm_ir, link_native_executable }
@@ -131,11 +131,34 @@ proc json_status(valid: bool) -> string {
 }
 
 proc json_source_object(path: string, source_bytes: u64, source_lines: u64) -> string {
-    give "{\"path\":\"" + json_escape(path) + "\",\"bytes\":" + (source_bytes as string) + ",\"lines\":" + (source_lines as string) + "}";
+    let bytes_text: string = source_bytes as string;
+    let lines_text: string = source_lines as string;
+    let out: string = "{\"path\":\"" + json_escape(path) + "\"";
+    set out = out + ",\"bytes\":" + bytes_text;
+    set out = out + ",\"lines\":" + lines_text;
+    give out + "}";
 }
 
 proc json_ast_summary(fe: FrontendOutput) -> string {
-    give "{\"token_count\":" + (fe.token_count as string) + ",\"toplevel_count\":" + (fe.toplevel_count as string) + ",\"stmt_count\":" + (fe.stmt_count as string) + ",\"expr_count\":" + (fe.expr_count as string) + ",\"type_count\":" + (fe.type_count as string) + ",\"pattern_count\":" + (fe.pattern_count as string) + ",\"diagnostics_total\":" + (fe.diagnostics_total as string) + ",\"diagnostics_capped\":" + (fe.diagnostics_capped as string) + ",\"recovery_used\":" + json_bool(fe.recovery_used) + ",\"macro_expanded\":" + json_bool(fe.macros.expanded) + "}";
+    let token_count: string = fe.token_count as string;
+    let toplevel_count: string = fe.toplevel_count as string;
+    let stmt_count: string = fe.stmt_count as string;
+    let expr_count: string = fe.expr_count as string;
+    let type_count: string = fe.type_count as string;
+    let pattern_count: string = fe.pattern_count as string;
+    let diagnostics_total: string = fe.diagnostics_total as string;
+    let diagnostics_capped: string = fe.diagnostics_capped as string;
+    let out: string = "{\"token_count\":" + token_count;
+    set out = out + ",\"toplevel_count\":" + toplevel_count;
+    set out = out + ",\"stmt_count\":" + stmt_count;
+    set out = out + ",\"expr_count\":" + expr_count;
+    set out = out + ",\"type_count\":" + type_count;
+    set out = out + ",\"pattern_count\":" + pattern_count;
+    set out = out + ",\"diagnostics_total\":" + diagnostics_total;
+    set out = out + ",\"diagnostics_capped\":" + diagnostics_capped;
+    set out = out + ",\"recovery_used\":" + json_bool(fe.recovery_used);
+    set out = out + ",\"macro_expanded\":" + json_bool(fe.macros.expanded);
+    give out + "}";
 }
 
 proc first_hir_item_name(hir0: HirUnit) -> string {
@@ -146,7 +169,19 @@ proc first_hir_item_name(hir0: HirUnit) -> string {
 }
 
 proc json_hir_summary(hir0: HirUnit) -> string {
-    give "{\"node_count\":" + (hir0.node_count as string) + ",\"item_count\":" + (hir0.item_count as string) + ",\"stmt_count\":" + (hir0.stmt_count as string) + ",\"expr_count\":" + (hir0.expr_count as string) + ",\"symbol_count\":" + (hir0.symbol_count as string) + ",\"scope_count\":" + (hir0.scope_count as string) + "}";
+    let node_count: string = hir0.node_count as string;
+    let item_count: string = hir0.item_count as string;
+    let stmt_count: string = hir0.stmt_count as string;
+    let expr_count: string = hir0.expr_count as string;
+    let symbol_count: string = hir0.symbol_count as string;
+    let scope_count: string = hir0.scope_count as string;
+    let out: string = "{\"node_count\":" + node_count;
+    set out = out + ",\"item_count\":" + item_count;
+    set out = out + ",\"stmt_count\":" + stmt_count;
+    set out = out + ",\"expr_count\":" + expr_count;
+    set out = out + ",\"symbol_count\":" + symbol_count;
+    set out = out + ",\"scope_count\":" + scope_count;
+    give out + "}";
 }
 
 proc first_mir_function_name(mir0: MirUnit) -> string {
@@ -178,7 +213,14 @@ proc first_mir_temporary_count(mir0: MirUnit) -> u64 {
 }
 
 proc json_mir_summary(mir0: MirUnit) -> string {
-    give "{\"function_count\":" + (mir0.function_count as string) + ",\"block_count\":" + (mir0.block_count as string) + ",\"instruction_count\":" + (mir0.instruction_count as string) + ",\"lowered\":" + json_bool(mir0.lowered) + "}";
+    let function_count: string = mir0.function_count as string;
+    let block_count: string = mir0.block_count as string;
+    let instruction_count: string = mir0.instruction_count as string;
+    let out: string = "{\"function_count\":" + function_count;
+    set out = out + ",\"block_count\":" + block_count;
+    set out = out + ",\"instruction_count\":" + instruction_count;
+    set out = out + ",\"lowered\":" + json_bool(mir0.lowered);
+    give out + "}";
 }
 
 proc frontend_diag_source_span(diag: FrontendDiagnostic) -> SourceSpan {
@@ -1111,8 +1153,32 @@ proc dump_ast_json(source_path: string, source_text: string) -> string {
     let status_text: string = json_status(fe.valid);
     let source_json: string = json_source_object(fe.source_path, fe.statistics.source_bytes, fe.statistics.source_lines);
     let summary_json: string = json_ast_summary(fe);
-    let ast_json: string = "{\"kind\":\"native-structural\",\"grammar_version\":\"" + json_escape(fe.grammar_version) + "\",\"diagnostics_total\":" + (fe.diagnostics_total as string) + ",\"diagnostics_capped\":" + (fe.diagnostics_capped as string) + ",\"recovery_used\":" + json_bool(fe.recovery_used) + ",\"macro_trace\":\"" + json_escape(fe.macro_trace) + "\",\"macro_expanded\":" + json_bool(fe.macros.expanded) + ",\"valid\":" + valid_text + "}";
-    give "{\"schema\":\"vitte.compiler.surface\",\"schema_version\":\"1.0.0\",\"surface\":\"ast\",\"source_path\":\"" + json_escape(fe.source_path) + "\",\"valid\":" + valid_text + ",\"grammar_version\":\"" + json_escape(fe.grammar_version) + "\",\"token_count\":" + token_count + ",\"toplevel_count\":" + toplevel_count + ",\"stmt_count\":" + stmt_count + ",\"expr_count\":" + expr_count + ",\"type_count\":" + type_count + ",\"pattern_count\":" + pattern_count + ",\"producer\":\"vitte-driver-native\",\"command\":\"parse\",\"status\":\"" + status_text + "\",\"source\":" + source_json + ",\"summary\":" + summary_json + ",\"ast\":" + ast_json + "}";
+    let diagnostics_total: string = fe.diagnostics_total as string;
+    let diagnostics_capped: string = fe.diagnostics_capped as string;
+    let ast_json: string = "{\"kind\":\"native-structural\"";
+    set ast_json = ast_json + ",\"grammar_version\":\"" + json_escape(fe.grammar_version) + "\"";
+    set ast_json = ast_json + ",\"diagnostics_total\":" + diagnostics_total;
+    set ast_json = ast_json + ",\"diagnostics_capped\":" + diagnostics_capped;
+    set ast_json = ast_json + ",\"recovery_used\":" + json_bool(fe.recovery_used);
+    set ast_json = ast_json + ",\"macro_trace\":\"" + json_escape(fe.macro_trace) + "\"";
+    set ast_json = ast_json + ",\"macro_expanded\":" + json_bool(fe.macros.expanded);
+    set ast_json = ast_json + ",\"valid\":" + valid_text + "}";
+    let out: string = "{\"schema\":\"vitte.compiler.surface\",\"schema_version\":\"1.0.0\",\"surface\":\"ast\"";
+    set out = out + ",\"source_path\":\"" + json_escape(fe.source_path) + "\"";
+    set out = out + ",\"valid\":" + valid_text;
+    set out = out + ",\"grammar_version\":\"" + json_escape(fe.grammar_version) + "\"";
+    set out = out + ",\"token_count\":" + token_count;
+    set out = out + ",\"toplevel_count\":" + toplevel_count;
+    set out = out + ",\"stmt_count\":" + stmt_count;
+    set out = out + ",\"expr_count\":" + expr_count;
+    set out = out + ",\"type_count\":" + type_count;
+    set out = out + ",\"pattern_count\":" + pattern_count;
+    set out = out + ",\"producer\":\"vitte-driver-native\",\"command\":\"parse\"";
+    set out = out + ",\"status\":\"" + status_text + "\"";
+    set out = out + ",\"source\":" + source_json;
+    set out = out + ",\"summary\":" + summary_json;
+    set out = out + ",\"ast\":" + ast_json;
+    give out + "}";
 }
 
 proc dump_hir_json(source_path: string, source_text: string) -> string {
@@ -1129,8 +1195,30 @@ proc dump_hir_json(source_path: string, source_text: string) -> string {
     let status_text: string = json_status(hir0.valid);
     let source_json: string = json_source_object(hir0.source_path, fe.statistics.source_bytes, fe.statistics.source_lines);
     let summary_json: string = json_hir_summary(hir0);
-    let hir_json: string = "{\"kind\":\"native-typed\",\"module_name\":\"" + json_escape(hir0.module.name) + "\",\"dependency_count\":" + (hir0.module.dependency_count as string) + ",\"symbol_count\":" + symbol_count + ",\"lowered\":" + json_bool(hir0.lowered) + ",\"analyzed\":" + json_bool(hir0.analyzed) + ",\"first_item_name\":\"" + json_escape(first_hir_item_name(hir0)) + "\",\"valid\":" + valid_text + "}";
-    give "{\"schema\":\"vitte.compiler.surface\",\"schema_version\":\"1.0.0\",\"surface\":\"hir\",\"source_path\":\"" + json_escape(hir0.source_path) + "\",\"valid\":" + valid_text + ",\"node_count\":" + node_count + ",\"item_count\":" + item_count + ",\"stmt_count\":" + stmt_count + ",\"expr_count\":" + expr_count + ",\"symbol_count\":" + symbol_count + ",\"scope_count\":" + scope_count + ",\"producer\":\"vitte-driver-native\",\"command\":\"check\",\"status\":\"" + status_text + "\",\"source\":" + source_json + ",\"summary\":" + summary_json + ",\"hir\":" + hir_json + "}";
+    let dependency_count: string = hir0.module.dependency_count as string;
+    let hir_json: string = "{\"kind\":\"native-typed\"";
+    set hir_json = hir_json + ",\"module_name\":\"" + json_escape(hir0.module.name) + "\"";
+    set hir_json = hir_json + ",\"dependency_count\":" + dependency_count;
+    set hir_json = hir_json + ",\"symbol_count\":" + symbol_count;
+    set hir_json = hir_json + ",\"lowered\":" + json_bool(hir0.lowered);
+    set hir_json = hir_json + ",\"analyzed\":" + json_bool(hir0.analyzed);
+    set hir_json = hir_json + ",\"first_item_name\":\"" + json_escape(first_hir_item_name(hir0)) + "\"";
+    set hir_json = hir_json + ",\"valid\":" + valid_text + "}";
+    let out: string = "{\"schema\":\"vitte.compiler.surface\",\"schema_version\":\"1.0.0\",\"surface\":\"hir\"";
+    set out = out + ",\"source_path\":\"" + json_escape(hir0.source_path) + "\"";
+    set out = out + ",\"valid\":" + valid_text;
+    set out = out + ",\"node_count\":" + node_count;
+    set out = out + ",\"item_count\":" + item_count;
+    set out = out + ",\"stmt_count\":" + stmt_count;
+    set out = out + ",\"expr_count\":" + expr_count;
+    set out = out + ",\"symbol_count\":" + symbol_count;
+    set out = out + ",\"scope_count\":" + scope_count;
+    set out = out + ",\"producer\":\"vitte-driver-native\",\"command\":\"check\"";
+    set out = out + ",\"status\":\"" + status_text + "\"";
+    set out = out + ",\"source\":" + source_json;
+    set out = out + ",\"summary\":" + summary_json;
+    set out = out + ",\"hir\":" + hir_json;
+    give out + "}";
 }
 
 proc dump_mir_json(source_path: string, source_text: string) -> string {
@@ -1145,8 +1233,30 @@ proc dump_mir_json(source_path: string, source_text: string) -> string {
     let status_text: string = json_status(mir0.valid);
     let source_json: string = json_source_object(mir0.source_path, fe.statistics.source_bytes, fe.statistics.source_lines);
     let summary_json: string = json_mir_summary(mir0);
-    let mir_json: string = "{\"kind\":\"native-lowered\",\"module_name\":\"" + json_escape(mir0.module.name) + "\",\"first_function_name\":\"" + json_escape(first_mir_function_name(mir0)) + "\",\"entry_block\":" + (first_mir_entry_block(mir0) as string) + ",\"local_count\":" + (first_mir_local_count(mir0) as string) + ",\"temporary_count\":" + (first_mir_temporary_count(mir0) as string) + ",\"lowered\":" + lowered_text + ",\"valid\":" + valid_text + "}";
-    give "{\"schema\":\"vitte.compiler.surface\",\"schema_version\":\"1.0.0\",\"surface\":\"mir\",\"source_path\":\"" + json_escape(mir0.source_path) + "\",\"valid\":" + valid_text + ",\"function_count\":" + function_count + ",\"block_count\":" + block_count + ",\"instruction_count\":" + instruction_count + ",\"lowered\":" + lowered_text + ",\"producer\":\"vitte-driver-native\",\"command\":\"check\",\"status\":\"" + status_text + "\",\"source\":" + source_json + ",\"summary\":" + summary_json + ",\"mir\":" + mir_json + "}";
+    let entry_block: string = first_mir_entry_block(mir0) as string;
+    let local_count: string = first_mir_local_count(mir0) as string;
+    let temporary_count: string = first_mir_temporary_count(mir0) as string;
+    let mir_json: string = "{\"kind\":\"native-lowered\"";
+    set mir_json = mir_json + ",\"module_name\":\"" + json_escape(mir0.module.name) + "\"";
+    set mir_json = mir_json + ",\"first_function_name\":\"" + json_escape(first_mir_function_name(mir0)) + "\"";
+    set mir_json = mir_json + ",\"entry_block\":" + entry_block;
+    set mir_json = mir_json + ",\"local_count\":" + local_count;
+    set mir_json = mir_json + ",\"temporary_count\":" + temporary_count;
+    set mir_json = mir_json + ",\"lowered\":" + lowered_text;
+    set mir_json = mir_json + ",\"valid\":" + valid_text + "}";
+    let out: string = "{\"schema\":\"vitte.compiler.surface\",\"schema_version\":\"1.0.0\",\"surface\":\"mir\"";
+    set out = out + ",\"source_path\":\"" + json_escape(mir0.source_path) + "\"";
+    set out = out + ",\"valid\":" + valid_text;
+    set out = out + ",\"function_count\":" + function_count;
+    set out = out + ",\"block_count\":" + block_count;
+    set out = out + ",\"instruction_count\":" + instruction_count;
+    set out = out + ",\"lowered\":" + lowered_text;
+    set out = out + ",\"producer\":\"vitte-driver-native\",\"command\":\"check\"";
+    set out = out + ",\"status\":\"" + status_text + "\"";
+    set out = out + ",\"source\":" + source_json;
+    set out = out + ",\"summary\":" + summary_json;
+    set out = out + ",\"mir\":" + mir_json;
+    give out + "}";
 }
 
 proc dump_diagnostics_json(source_path: string, source_text: string) -> string {
@@ -1233,8 +1343,46 @@ proc dump_diagnostics_json(source_path: string, source_text: string) -> string {
     let status_text: string = json_status(artifacts.valid);
     let source_json: string = json_source_object(source_path, fe.statistics.source_bytes, fe.statistics.source_lines);
     let summary_json: string = "{\"frontend_diagnostic_count\":" + frontend_diagnostic_count + ",\"analysis_diagnostic_count\":" + analysis_diagnostic_count + ",\"sema_ok\":" + sema_ok + ",\"typeck_ok\":" + typeck_ok + ",\"borrowck_ok\":" + borrowck_ok + ",\"lint_ok\":" + lint_ok + "}";
-    let json: string = "{\"schema\":\"vitte.compiler.surface\",\"schema_version\":\"1.0.0\",\"surface\":\"diagnostics\",\"source_path\":\"" + json_escape(source_path) + "\",\"valid\":" + artifacts_valid + ",\"frontend_diagnostic_count\":" + frontend_diagnostic_count + ",\"analysis_diagnostic_count\":" + analysis_diagnostic_count + ",\"sema_ok\":" + sema_ok + ",\"typeck_ok\":" + typeck_ok + ",\"borrowck_ok\":" + borrowck_ok + ",\"lint_ok\":" + lint_ok + ",\"pipeline_failed_at\":\"" + pipeline_failed_at0 + "\",\"producer\":\"vitte-driver-native\",\"command\":\"check\",\"status\":\"" + status_text + "\",\"source\":" + source_json + ",\"summary\":" + summary_json + ",\"primary_report\":" + json_report(primary_report0) + "," + phase_reports_json + ",\"text_output\":\"" + json_escape(text_output0) + "\"}";
+    let envelope_json: string = json_report_envelope(primary_report0, "vitte-driver-native", "check", source_path);
+    let legacy_json: string = "{\"schema\":\"vitte.compiler.surface\",\"schema_version\":\"1.0.0\",\"surface\":\"diagnostics\",\"source_path\":\"" + json_escape(source_path) + "\",\"valid\":" + artifacts_valid + ",\"frontend_diagnostic_count\":" + frontend_diagnostic_count + ",\"analysis_diagnostic_count\":" + analysis_diagnostic_count + ",\"sema_ok\":" + sema_ok + ",\"typeck_ok\":" + typeck_ok + ",\"borrowck_ok\":" + borrowck_ok + ",\"lint_ok\":" + lint_ok + ",\"pipeline_failed_at\":\"" + pipeline_failed_at0 + "\",\"producer\":\"vitte-driver-native\",\"command\":\"check\",\"status\":\"" + status_text + "\",\"source\":" + source_json + ",\"summary\":" + summary_json + ",\"primary_report\":" + json_report(primary_report0) + "," + phase_reports_json + ",\"text_output\":\"" + json_escape(text_output0) + "\"}";
+    let json: string = "{\"schema\":\"vitte.diagnostics\",\"schema_version\":\"1.0.0\",\"surface\":\"diagnostics\",\"source_path\":\"" + json_escape(source_path) + "\",\"envelope\":" + envelope_json + ",\"legacy\":" + legacy_json + "}";
     give json;
+}
+
+proc diagnostics_quality_score(source_path: string, source_text: string) -> u64 {
+    let artifacts: DriverAnalysisArtifacts = analyze_source(source_path, source_text);
+    let fe: FrontendOutput = artifacts.frontend;
+    let lexer_report0: DiagnosticReport = filter_frontend_phase_report(fe.diagnostics, DiagnosticPhase.Lexer);
+    let parser_report0: DiagnosticReport = filter_frontend_phase_report(fe.diagnostics, DiagnosticPhase.Parser);
+    let ast_validation_report0: DiagnosticReport = filter_frontend_phase_report(fe.diagnostics, DiagnosticPhase.AstValidation);
+    let typeck_report0: DiagnosticReport = if artifacts.frontend.valid and artifacts.resolved_hir.valid {
+        run_typeck_hir(artifacts.resolved_hir).report
+    } else {
+        diagnostic_report_empty()
+    };
+    let borrow_report0: DiagnosticReport = if artifacts.frontend.valid and artifacts.typed_hir.valid {
+        diagnostic_report(borrow_check_hir(source_path, artifacts.typed_hir).diagnostics)
+    } else {
+        diagnostic_report_empty()
+    };
+    let primary_report0: DiagnosticReport = if len(lexer_report0.diagnostics) > 0 {
+        lexer_report0
+    } else {
+        if len(parser_report0.diagnostics) > 0 {
+            parser_report0
+        } else {
+            if len(ast_validation_report0.diagnostics) > 0 {
+                ast_validation_report0
+            } else {
+                if len(typeck_report0.diagnostics) > 0 {
+                    typeck_report0
+                } else {
+                    borrow_report0
+                }
+            }
+        }
+    };
+    give primary_report0.quality_score;
 }
 
 proc incremental_analysis_graph(source_path: string) -> IncrementalGraph {
@@ -1494,6 +1642,7 @@ share link_native_backend_executable_with_config
 share driver_module_input
 share dump_ast_json
 share dump_diagnostics_json
+share diagnostics_quality_score
 share dump_hir_json
 share dump_hir_resolved
 share dump_hir_typed

@@ -1,0 +1,48 @@
+space vitte/crypto/keyderivation
+
+<<< =========================================================
+   Key Derivation Module
+   ========================================================= >>>
+
+form KeyDerivationManifest {
+  name: string,
+  version: string,
+  ready: bool
+}
+
+// Key derivation
+proc pbkdf2(password: string, salt: string, iterations: i32, length: i32) -> string {
+  give ""
+}
+
+proc bcrypt_hash(password: string, rounds: i32) -> string {
+  give ""
+}
+
+proc bcrypt_verify(password: string, hash: string) -> int {
+  give 0
+}
+
+proc keyderivation_version() -> string {
+  give "max-1"
+}
+
+proc keyderivation_ready() -> bool {
+  give true
+}
+
+proc keyderivation_manifest() -> KeyDerivationManifest {
+  give KeyDerivationManifest {
+    name: "vitte-crypto-keyderivation",
+    version: keyderivation_version(),
+    ready: keyderivation_ready()
+  }
+}
+
+proc keyderivation_selftest() -> bool {
+  let manifest: KeyDerivationManifest = keyderivation_manifest()
+  give manifest.ready
+    and manifest.version == "max-1"
+    and bcrypt_verify("pw", "") == 0
+}
+export *

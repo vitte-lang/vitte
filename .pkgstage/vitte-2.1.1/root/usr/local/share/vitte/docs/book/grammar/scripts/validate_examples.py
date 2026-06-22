@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import subprocess
 from dataclasses import dataclass
@@ -31,7 +32,16 @@ def run_parse(vitte_bin: Path, file_path: Path, strict_core: bool = False) -> li
     if strict_core:
         cmd.append("--strict-core")
     cmd.append(str(file_path))
-    proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    except OSError as exc:
+        return [
+            {
+                "code": "GRAMMAR_TEST_RUNNER",
+                "message": f"failed to run {vitte_bin}: {exc}",
+                "start": 0,
+            }
+        ]
     out = f"{proc.stdout}\n{proc.stderr}".strip()
     if not out:
         return []
@@ -153,7 +163,7 @@ def collect_examples(repo: Path, manifest: Path | None) -> tuple[Iterable[Path],
 def main() -> int:
     parser = argparse.ArgumentParser(description="Validate grammar valid/invalid examples")
     parser.add_argument("--update-snapshots", action="store_true", help="rewrite tests/grammar/snapshots/*.json")
-    parser.add_argument("--vitte-bin", default="bin/vitte", help="path to vitte binary")
+    parser.add_argument("--vitte-bin", default=os.environ.get("VITTE_BIN", "bin/vitte"), help="path to vitte binary")
     parser.add_argument("--manifest", help="optional manifest listing tests/grammar/valid|invalid/*.vit paths")
     parser.add_argument("--strict-core", action="store_true", help="run parser in strict-core mode")
     args = parser.parse_args()

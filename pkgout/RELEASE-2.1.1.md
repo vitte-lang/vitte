@@ -1,6 +1,6 @@
 # Vitte Language Compiler v2.1.1 - Release Notes
 
-**Release Date:** 2026-06-05
+**Release Date:** 2026-06-22
 
 ## Overview
 
@@ -160,4 +160,4 @@ shasum -a 256 -c vitte-2.1.1.pkg.sha256
 - Version: 2.1.1
 - Platform: macOS
 - Architecture: x86_64
-- Built: 2026-06-05T00:18:47Z
+- Built: 2026-06-22T10:45:21Z

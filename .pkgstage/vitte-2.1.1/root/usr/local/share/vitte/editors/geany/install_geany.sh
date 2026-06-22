@@ -55,12 +55,14 @@ install_into_geany_home() {
 
   mkdir -p "$filedefs_dir"
 
-  cp "$SCRIPT_DIR/filetypes.vitte.conf" "$filedefs_dir/filetypes.vitte.conf"
-  cp "$SCRIPT_DIR/filetypes.vitte.conf" "$filedefs_dir/filetypes.Vitte.conf"
+  local generated_filetype
+  generated_filetype="$(mktemp)"
   awk -v wd="$wd_token" '
     { if ($0 ~ /^(FT|EX)_[0-9][0-9]_WD=/) { sub(/=.*/, "=" wd, $0) } print $0 }
-  ' "$filedefs_dir/filetypes.vitte.conf" >"$filedefs_dir/filetypes.vitte.conf.tmp"
-  mv "$filedefs_dir/filetypes.vitte.conf.tmp" "$filedefs_dir/filetypes.vitte.conf"
+  ' "$SCRIPT_DIR/filetypes.vitte.conf" >"$generated_filetype"
+  install -m 0644 "$generated_filetype" "$filedefs_dir/filetypes.vitte.conf"
+  install -m 0644 "$generated_filetype" "$filedefs_dir/filetypes.Vitte.conf"
+  rm -f "$generated_filetype"
 
   if [[ ! -f "$ext_file" ]]; then
     cat >"$ext_file" <<'EOT'
@@ -72,7 +74,7 @@ EOT
     BEGIN { inext=0; inserted=0 }
     /^\[Extensions\]/ {
       print $0
-      print "vitte=*.vit;*.vitte;"
+      print "vitte=*.vit;*.vitte;*.vitl;"
       inext=1
       inserted=1
       next
@@ -89,7 +91,7 @@ EOT
     END {
       if (inserted==0) {
         print "[Extensions]"
-        print "vitte=*.vit;*.vitte;"
+        print "vitte=*.vit;*.vitte;*.vitl;"
       }
     }
   ' "$ext_file" >"$ext_file.tmp"
@@ -108,7 +110,10 @@ EOT
   fi
 
   awk '
-    BEGIN { skip=0 }
+    BEGIN { skip=0; marker=0 }
+    /^# BEGIN Vitte snippets$/ { marker=1; next }
+    /^# END Vitte snippets$/ { marker=0; next }
+    marker==1 { next }
     /^\[(vitte|Vitte)\]$/ { skip=1; next }
     /^\[/ {
       if (skip==1) skip=0
@@ -120,13 +125,16 @@ EOT
   mv "$snippets_file.tmp" "$snippets_file"
   {
     echo
+    echo "# BEGIN Vitte snippets"
     cat "$SCRIPT_DIR/snippets.vitte.conf"
+    echo "# END Vitte snippets"
   } >>"$snippets_file"
 
   echo "Geany Vitte config installed:"
   echo "  - $filedefs_dir/filetypes.vitte.conf"
-  echo "  - $ext_file (mapping *.vit)"
-  echo "  - $snippets_file (section [vitte])"
+  echo "  - $filedefs_dir/filetypes.Vitte.conf"
+  echo "  - $ext_file (mapping *.vit, *.vitte, *.vitl)"
+  echo "  - $snippets_file (sections [vitte] and [Vitte])"
   echo "  - WD mode: $wd_mode ($wd_token)"
   echo
 }

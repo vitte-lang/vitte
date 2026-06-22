@@ -1,0 +1,211 @@
+space vitte/stdlib/core/memory
+
+export *
+
+pick AllocationState {
+    Free
+    Used
+    Reserved
+}
+
+form MemoryBlock {
+    address: u64
+    size: u64
+    state: AllocationState
+}
+
+form MemoryStats {
+    total: u64
+    used: u64
+    free: u64
+    allocations: u64
+    frees: u64
+}
+
+form Allocator {
+    blocks: [MemoryBlock]
+    stats: MemoryStats
+}
+
+proc empty_memory_stats() -> MemoryStats {
+    give MemoryStats {
+        total: 0,
+        used: 0,
+        free: 0,
+        allocations: 0,
+        frees: 0
+    };
+}
+
+proc empty_allocator() -> Allocator {
+    give Allocator {
+        blocks: [],
+        stats: empty_memory_stats()
+    };
+}
+
+proc memory_block(address: u64, size: u64) -> MemoryBlock {
+    give MemoryBlock {
+        address: address,
+        size: size,
+        state: AllocationState.Used
+    };
+}
+
+proc reserved_block(address: u64, size: u64) -> MemoryBlock {
+    give MemoryBlock {
+        address: address,
+        size: size,
+        state: AllocationState.Reserved
+    };
+}
+
+proc free_block(address: u64, size: u64) -> MemoryBlock {
+    give MemoryBlock {
+        address: address,
+        size: size,
+        state: AllocationState.Free
+    };
+}
+
+proc allocator(total: u64) -> Allocator {
+    give Allocator {
+        blocks: [],
+        stats: MemoryStats {
+            total: total,
+            used: 0,
+            free: total,
+            allocations: 0,
+            frees: 0
+        }
+    };
+}
+
+proc allocate(alloc: Allocator, address: u64, size: u64) -> Allocator {
+    let out: Allocator = alloc;
+    let block: MemoryBlock = memory_block(address, size);
+    set out.blocks = out.blocks + [block];
+    set out.stats.used = out.stats.used + size;
+    set out.stats.free = out.stats.free - size;
+    set out.stats.allocations = out.stats.allocations + 1;
+
+    give out;
+}
+
+proc reserve(alloc: Allocator, address: u64, size: u64) -> Allocator {
+    let out: Allocator = alloc;
+    let block: MemoryBlock = reserved_block(address, size);
+    set out.blocks = out.blocks + [block];
+
+    give out;
+}
+
+proc release(alloc: Allocator, address: u64) -> Allocator {
+    let out: Allocator = alloc;
+
+    let updated: [MemoryBlock] = [];
+
+    let i: int = 0;
+
+    while i < out.blocks.len {
+        let block: MemoryBlock = out.blocks[i];
+
+        if block.address == address {
+            set out.stats.used = out.stats.used - block.size;
+            set out.stats.free = out.stats.free + block.size;
+            set out.stats.frees = out.stats.frees + 1;
+            set updated = updated + [free_block(block.address, block.size)];
+        } else {
+            set updated = updated + [block];
+        }
+
+        set i = i + 1;
+    }
+
+    set out.blocks = updated;
+
+    give out;
+}
+
+proc find_block(alloc: Allocator, address: u64) -> MemoryBlock {
+    let i: int = 0;
+
+    while i < alloc.blocks.len {
+        if alloc.blocks[i].address == address {
+            give alloc.blocks[i];
+        }
+
+        set i = i + 1;
+    }
+
+    give free_block(0, 0);
+}
+
+proc allocated(alloc: Allocator, address: u64) -> bool {
+    let block: MemoryBlock = find_block(alloc, address);
+    give block.state == AllocationState.Used;
+}
+
+proc reserved(alloc: Allocator, address: u64) -> bool {
+    let block: MemoryBlock = find_block(alloc, address);
+    give block.state == AllocationState.Reserved;
+}
+
+proc total_used(alloc: Allocator) -> u64 {
+    give alloc.stats.used;
+}
+
+proc total_free(alloc: Allocator) -> u64 {
+    give alloc.stats.free;
+}
+
+proc allocation_count(alloc: Allocator) -> u64 {
+    give alloc.stats.allocations;
+}
+
+proc free_count(alloc: Allocator) -> u64 {
+    give alloc.stats.frees;
+}
+
+proc fragmentation_ratio(alloc: Allocator) -> f64 {
+    if alloc.stats.total == 0 {
+        give 0.0;
+    }
+
+    give alloc.blocks.len as f64
+        / alloc.stats.total as f64;
+}
+
+proc clear_allocator(alloc: Allocator) -> Allocator {
+    give Allocator {
+        blocks: [],
+        stats: MemoryStats {
+            total: alloc.stats.total,
+            used: 0,
+            free: alloc.stats.total,
+            allocations: 0,
+            frees: 0
+        }
+    };
+}
+
+proc clone_allocator(alloc: Allocator) -> Allocator {
+    give Allocator {
+        blocks: alloc.blocks,
+        stats: alloc.stats
+    };
+}
+
+proc memory_selftest() -> bool {
+    let alloc: Allocator = allocator(4096);
+    let alloc2: Allocator = allocate(alloc, 1000, 256);
+    let alloc3: Allocator = reserve(alloc2, 2000, 128);
+    let alloc4: Allocator = release(alloc3, 1000);
+
+    give total_used(alloc2) == 256
+        and total_free(alloc2) == 3840
+        and allocated(alloc2, 1000)
+        and reserved(alloc3, 2000)
+        and free_count(alloc4) == 1
+        and allocation_count(alloc2) == 1;
+}

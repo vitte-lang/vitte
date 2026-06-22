@@ -3,11 +3,35 @@
 This document tracks the Vitte-owned compiler driver surface after the host
 driver migration.
 
+## Overview
+
+The driver remains a first-class subsystem because it defines the stable command
+entrypoints that users, CI, bootstrap flows, and documentation all depend on.
+
+| Concern | Current contract |
+| --- | --- |
+| Surface ownership | `src/vitte/packages/compiler/driver/*` catalogs |
+| Runtime implementation | `src/vitte/compiler/driver/*` |
+| Audit goals | parity, normalization, stage mapping |
+| Enforcement | dedicated make targets and strict gates |
+
 Why the driver stays explicit:
 
 - it defines the user-visible command surface
 - it isolates option parsing and command dispatch from frontend/backend internals
 - it gives CI a small, deterministic place to audit command and flag parity
+
+## Responsibilities
+
+- Own the visible command and flag inventory.
+- Normalize aliases and stage names consistently.
+- Keep package metadata and runtime implementation aligned.
+
+## Invariants
+
+- Command catalogs and implementation must not drift silently.
+- Normalization rules must stay deterministic.
+- Strict gates must detect driver regressions before release-facing changes land.
 
 ## Current Surface
 
@@ -29,6 +53,14 @@ This package now owns:
 - normalization of selected command and flag aliases
 - stage mapping for normalized commands
 
+## Data Flow
+
+1. User input enters through the top-level driver command surface.
+2. Package catalogs normalize commands, aliases, and selected option values.
+3. The runtime driver maps the normalized request to compiler stages.
+4. Strict audits verify that the exposed help and command behavior still match
+   the owned catalogs.
+
 ## Driver Implementation
 
 The compiler driver implementation lives in:
@@ -43,6 +75,21 @@ The compiler driver implementation lives in:
 make driver-surface-audit
 make driver-surface-parity
 make selfhost-driver-bootstrap
+```
+
+## Pipeline
+
+The driver sits ahead of the compiler pipeline proper. Its job is to convert CLI
+surface into a precise compiler action before frontend, analysis, or backend
+work begins.
+
+## Examples
+
+```sh
+make driver-surface-audit
+make driver-surface-parity
+./bin/vitte --help
+./bin/vitte check src/app.vit
 ```
 
 ## Next Step

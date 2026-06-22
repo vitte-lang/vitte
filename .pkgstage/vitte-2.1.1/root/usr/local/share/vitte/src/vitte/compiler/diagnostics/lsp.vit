@@ -15,7 +15,15 @@ use vitte/compiler/diagnostics/diagnostic.{
     DiagnosticHelp,
     DiagnosticSuggestion,
     SourceSpan,
-    severity_name
+    severity_name,
+    phase_name,
+    applicability_name,
+    diagnostic_code_family,
+    diagnostic_correction_strategy,
+    diagnostic_recovery_scope,
+    diagnostic_confidence,
+    diagnostic_quality_score,
+    diagnostic_fix_plans
 }
 
 pick LspDiagnosticSeverity {
@@ -78,6 +86,17 @@ form LspPublishDiagnosticsParams {
     uri: string
     diagnostics: [LspDiagnostic]
     version: u64
+    valid: bool
+}
+
+form LspCodeAction {
+    title: string
+    kind: string
+    uri: string
+    range: LspRange
+    replacement: string
+    applicability: string
+    diagnostic_code: string
     valid: bool
 }
 
@@ -214,9 +233,15 @@ proc lsp_eq() -> string {
 
 proc diagnostic_data(diagnostic: Diagnostic) -> string {
     let severity_data: string = "severity" + lsp_eq() + severity_name(diagnostic.severity);
-    let phase_data: string = "phase" + lsp_eq() + diagnostic.phase_name;
+    let phase_data: string = "phase" + lsp_eq() + phase_name(diagnostic.phase);
     let code_data: string = "code" + lsp_eq() + diagnostic.code;
-    give severity_data + ";" + phase_data + ";" + code_data;
+    let family_data: string = "family" + lsp_eq() + diagnostic_code_family(diagnostic.phase, diagnostic.code);
+    let strategy_data: string = "strategy" + lsp_eq() + diagnostic_correction_strategy(diagnostic.phase, diagnostic.code);
+    let recovery_data: string = "recovery_scope" + lsp_eq() + diagnostic_recovery_scope(diagnostic.phase, diagnostic.code);
+    let confidence_data: string = "confidence" + lsp_eq() + diagnostic_confidence(diagnostic.phase, diagnostic.code);
+    let quality_data: string = "quality" + lsp_eq() + (diagnostic_quality_score(diagnostic) as string);
+    let fixes_data: string = "fixes" + lsp_eq() + (len(diagnostic_fix_plans(diagnostic)) as string);
+    give severity_data + ";" + phase_data + ";" + code_data + ";" + family_data + ";" + strategy_data + ";" + recovery_data + ";" + confidence_data + ";" + quality_data + ";" + fixes_data;
 }
 
 proc diagnostic_related_information_list(diagnostic: Diagnostic) -> [LspDiagnosticRelatedInformation] {
@@ -320,6 +345,55 @@ proc lsp_publish_report(uri: string, report: DiagnosticReport, version: u64) -> 
     give lsp_publish_diagnostics(uri, report.diagnostics, version);
 }
 
+proc lsp_code_action_from_suggestion(diagnostic: Diagnostic, suggestion: DiagnosticSuggestion) -> LspCodeAction {
+    let uri: string = span_uri(suggestion.span);
+    let range: LspRange = lsp_range_from_span(suggestion.span);
+    let kind: string = if suggestion.replacement != "" { "quickfix" } else { "refactor.rewrite" };
+    give LspCodeAction {
+        title: suggestion.message,
+        kind: kind,
+        uri: uri,
+        range: range,
+        replacement: suggestion.replacement,
+        applicability: applicability_name(suggestion.applicability),
+        diagnostic_code: diagnostic.code,
+        valid: diagnostic.valid and suggestion.valid
+    };
+}
+
+proc lsp_code_actions(diagnostic: Diagnostic) -> [LspCodeAction] {
+    let out: [LspCodeAction] = [];
+    let i: u64 = 0;
+
+    while i < len(diagnostic.suggestions) {
+        let suggestion: DiagnosticSuggestion = diagnostic.suggestions[i];
+
+        if suggestion.valid {
+            set out = out + [lsp_code_action_from_suggestion(diagnostic, suggestion)];
+        }
+
+        set i = i + 1;
+    }
+
+    give out;
+}
+
+proc lsp_report_code_actions(report: DiagnosticReport) -> [LspCodeAction] {
+    let out: [LspCodeAction] = [];
+    let i: u64 = 0;
+
+    while i < len(report.diagnostics) {
+        set out = out + lsp_code_actions(report.diagnostics[i]);
+        set i = i + 1;
+    }
+
+    give out;
+}
+
+proc lsp_code_action_summary(action: LspCodeAction) -> string {
+    give action.kind + ": " + action.title + " [" + action.applicability + "]";
+}
+
 proc lsp_severity_name(severity: LspDiagnosticSeverity) -> string {
     if severity == LspDiagnosticSeverity.Error {
         give "error";
@@ -390,6 +464,7 @@ share LspDiagnosticTag
 share LspCodeDescription
 share LspDiagnostic
 share LspPublishDiagnosticsParams
+share LspCodeAction
 
 share lsp_position
 share lsp_range
@@ -412,6 +487,10 @@ share lsp_diagnostic
 share lsp_diagnostics
 share lsp_publish_diagnostics
 share lsp_publish_report
+share lsp_code_action_from_suggestion
+share lsp_code_actions
+share lsp_report_code_actions
+share lsp_code_action_summary
 
 share lsp_severity_name
 share lsp_message_type

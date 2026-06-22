@@ -1,0 +1,383 @@
+space vitte/collections/vector
+
+<<< =========================================================
+   Vector — ULTRA MAX (runtime-grade dynamic array)
+   - O(1) amortized push
+   - dynamic resize + shrink
+   - bulk operations
+   - zero-copy friendly design
+   ========================================================= >>>
+
+form Vector {
+    data: [i64],
+    size: i32,
+    capacity: i32
+}
+
+proc _repeat_i64(value: i64, count: i32) -> [i64] {
+    let out: [i64] = []
+    let i: i32 = 0
+    while i < count {
+        set out = out + [value]
+        i += 1
+    }
+    give out
+}
+
+<<< ---------------------------------------------------------
+   Constructors
+   --------------------------------------------------------- >>>
+
+proc vector_new(capacity: i32) -> Vector {
+    let cap = 8
+    if capacity > 0 {
+        set cap = capacity
+    }
+
+    give Vector {
+        data: _repeat_i64(0, cap),
+        size: 0,
+        capacity: cap
+    }
+}
+
+<<< ---------------------------------------------------------
+   Internal resize / shrink
+   --------------------------------------------------------- >>>
+
+proc _vector_resize(v: Vector) {
+    let growth = v.capacity / 2
+    let new_cap = v.capacity + growth
+    let new_data: [i64] = _repeat_i64(0, new_cap)
+
+    let i: i32 = 0
+    while i < v.size {
+        set new_data[i] = v.data[i]
+        i += 1
+    }
+
+    set v.data = new_data
+    set v.capacity = new_cap
+}
+
+proc _vector_shrink(v: Vector) {
+    if v.capacity > 8 and v.size * 4 < v.capacity {
+        let new_cap = v.capacity / 2
+        let new_data: [i64] = _repeat_i64(0, new_cap)
+
+        let i: i32 = 0
+        while i < v.size {
+            set new_data[i] = v.data[i]
+            i += 1
+        }
+
+        set v.data = new_data
+        set v.capacity = new_cap
+    }
+}
+
+<<< ---------------------------------------------------------
+   Core operations
+   --------------------------------------------------------- >>>
+
+proc vector_push(v: Vector, value: i64) -> int {
+    if v.size == v.capacity {
+        _vector_resize(v)
+    }
+
+    set v.data[v.size] = value
+    set v.size = v.size + 1
+
+    give 1
+}
+
+proc vector_push_unchecked(v: Vector, value: i64) {
+    set v.data[v.size] = value
+    set v.size = v.size + 1
+}
+
+proc vector_insert(v: Vector, idx: i32, value: i64) -> int {
+    if idx < 0 or idx > v.size {
+        give -1
+    }
+
+    if v.size == v.capacity {
+        _vector_resize(v)
+    }
+
+    let i: i32 = v.size
+    while i > idx {
+        set v.data[i] = v.data[i - 1]
+        i -= 1
+    }
+
+    set v.data[idx] = value
+    set v.size = v.size + 1
+
+    give 1
+}
+
+proc vector_pop(v: Vector) -> i64 {
+    if v.size == 0 {
+        give 0
+    }
+
+    set v.size = v.size - 1
+    let val = v.data[v.size]
+    set v.data[v.size] = 0
+
+    _vector_shrink(v)
+
+    give val
+}
+
+proc vector_remove_at(v: Vector, idx: i32) -> i64 {
+    if idx < 0 or idx >= v.size {
+        give 0
+    }
+
+    let val = v.data[idx]
+
+    let i: i32 = idx
+    while i < v.size - 1 {
+        set v.data[i] = v.data[i + 1]
+        i += 1
+    }
+
+    set v.size = v.size - 1
+    set v.data[v.size] = 0
+
+    _vector_shrink(v)
+
+    give val
+}
+
+<<< ---------------------------------------------------------
+   Access
+   --------------------------------------------------------- >>>
+
+proc vector_at(v: Vector, index: i32) -> i64 {
+    if index < 0 or index >= v.size {
+        give 0
+    }
+    give v.data[index]
+}
+
+proc vector_get_unchecked(v: Vector, index: i32) -> i64 {
+    give v.data[index]
+}
+
+proc vector_set(v: Vector, index: i32, value: i64) -> int {
+    if index < 0 or index >= v.size {
+        give -1
+    }
+
+    set v.data[index] = value
+    give 1
+}
+
+proc vector_swap(v: Vector, i: i32, j: i32) {
+    let tmp = v.data[i]
+    set v.data[i] = v.data[j]
+    set v.data[j] = tmp
+}
+
+proc vector_reverse(v: Vector) {
+    let i: i32 = 0
+    let j: i32 = v.size - 1
+
+    while i < j {
+        vector_swap(v, i, j)
+        i += 1
+        j -= 1
+    }
+}
+
+<<< ---------------------------------------------------------
+   Capacity management
+   --------------------------------------------------------- >>>
+
+proc vector_reserve(v: Vector, new_cap: i32) {
+    if new_cap <= v.capacity {
+        give
+    }
+
+    let new_data: [i64] = _repeat_i64(0, new_cap)
+
+    let i: i32 = 0
+    while i < v.size {
+        set new_data[i] = v.data[i]
+        i += 1
+    }
+
+    set v.data = new_data
+    set v.capacity = new_cap
+}
+
+proc vector_clear(v: Vector) {
+    set v.size = 0
+}
+
+<<< ---------------------------------------------------------
+   Bulk operations
+   --------------------------------------------------------- >>>
+
+proc vector_push_many(v: Vector, values: [i64]) {
+    let needed = v.size + values.len
+
+    if needed > v.capacity {
+        vector_reserve(v, needed * 2)
+    }
+
+    let i: i32 = 0
+    while i < values.len {
+        set v.data[v.size] = values[i]
+        set v.size = v.size + 1
+        i += 1
+    }
+}
+
+proc vector_extend(v: Vector, other: Vector) {
+    let i: i32 = 0
+    let needed = v.size + other.size
+
+    if needed > v.capacity {
+        vector_reserve(v, needed * 2)
+    }
+
+    while i < other.size {
+        set v.data[v.size] = other.data[i]
+        set v.size = v.size + 1
+        i += 1
+    }
+}
+
+proc vector_slice(v: Vector, start: i32, end: i32) -> [i64] {
+    if start < 0 {
+        set start = 0
+    }
+    if end > v.size {
+        set end = v.size
+    }
+    if start >= end {
+        give []
+    }
+
+    let len = end - start
+    let out: [i64] = _repeat_i64(0, len)
+
+    let i: i32 = 0
+    while i < len {
+        set out[i] = v.data[start + i]
+        i += 1
+    }
+
+    give out
+}
+
+proc vector_find(v: Vector, value: i64) -> i32 {
+    let i: i32 = 0
+    while i < v.size {
+        if v.data[i] == value {
+            give i
+        }
+        i += 1
+    }
+    give -1
+}
+
+proc vector_equals(a: Vector, b: Vector) -> int {
+    if a.size != b.size {
+        give 0
+    }
+
+    let i: i32 = 0
+    while i < a.size {
+        if a.data[i] != b.data[i] {
+            give 0
+        }
+        i += 1
+    }
+
+    give 1
+}
+
+proc vector_truncate(v: Vector, n: i32) {
+    if n < 0 {
+        set n = 0
+    }
+    if n >= v.size {
+        give
+    }
+
+    let i: i32 = n
+    while i < v.size {
+        set v.data[i] = 0
+        i += 1
+    }
+
+    set v.size = n
+    _vector_shrink(v)
+}
+
+proc vector_clone(v: Vector) -> Vector {
+    let out = vector_new(v.capacity)
+
+    let i: i32 = 0
+    while i < v.size {
+        set out.data[i] = v.data[i]
+        i += 1
+    }
+
+    set out.size = v.size
+    give out
+}
+
+<<< ---------------------------------------------------------
+   Utilities
+   --------------------------------------------------------- >>>
+
+proc vector_size(v: Vector) -> i32 {
+    give v.size
+}
+
+proc vector_capacity(v: Vector) -> i32 {
+    give v.capacity
+}
+
+proc vector_empty(v: Vector) -> int {
+    if v.size == 0 {
+      give 1
+    } else {
+      give 0
+    }
+}
+
+proc vector_to_array(v: Vector) -> [i64] {
+    let out: [i64] = _repeat_i64(0, v.size)
+
+    let i: i32 = 0
+    while i < v.size {
+        set out[i] = v.data[i]
+        i += 1
+    }
+
+    give out
+}
+
+proc __len__(v: Vector) -> int {
+    give vector_size(v)
+}
+
+proc __getitem__(v: Vector, index: i64) -> i64 {
+    give vector_at(v, index as i32)
+}
+
+proc __iter__(v: Vector) -> [i64] {
+    give vector_slice(v, 0, vector_size(v))
+}
+
+<<< ---------------------------------------------------------
+   End module
+   --------------------------------------------------------- >>>
+export *

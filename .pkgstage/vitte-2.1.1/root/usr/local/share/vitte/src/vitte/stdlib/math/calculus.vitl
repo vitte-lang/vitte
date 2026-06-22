@@ -1,0 +1,581 @@
+space vitte/stdlib/math/calculus
+
+const EPS: f64 = 0.000001
+const MAX_ITER: i64 = 32
+
+form Complex { re: f64, im: f64 }
+form CSR { rows: [int], cols: [int], values: [f64], width: int }
+form Dual { real: f64, dual: f64 }
+
+proc poly_eval(coeffs: [f64], x: f64) -> f64 {
+  let out: f64 = 0.0
+  let i: int = 0
+  while i < coeffs.len {
+    set out = out * x + coeffs[i]
+    set i = i + 1
+  }
+  give out
+}
+
+proc deriv_forward(coeffs: [f64], x: f64, h: f64) -> f64 {
+  let right_x: f64 = x + h
+  let right: f64 = poly_eval(coeffs, right_x)
+  let center: f64 = poly_eval(coeffs, x)
+  let delta: f64 = right - center
+  give delta / h
+}
+
+proc deriv_backward(coeffs: [f64], x: f64, h: f64) -> f64 {
+  let left_x: f64 = x - h
+  let center: f64 = poly_eval(coeffs, x)
+  let left: f64 = poly_eval(coeffs, left_x)
+  let delta: f64 = center - left
+  give delta / h
+}
+
+proc deriv_central(coeffs: [f64], x: f64, h: f64) -> f64 {
+  let right_x: f64 = x + h
+  let left_x: f64 = x - h
+  let right: f64 = poly_eval(coeffs, right_x)
+  let left: f64 = poly_eval(coeffs, left_x)
+  let delta: f64 = right - left
+  let denom: f64 = 2.0 * h
+  give delta / denom
+}
+
+proc deriv2(coeffs: [f64], x: f64, h: f64) -> f64 {
+  let right_x: f64 = x + h
+  let left_x: f64 = x - h
+  let right: f64 = poly_eval(coeffs, right_x)
+  let center: f64 = poly_eval(coeffs, x)
+  let left: f64 = poly_eval(coeffs, left_x)
+  let numer: f64 = right - 2.0 * center + left
+  let denom: f64 = h * h
+  give numer / denom
+}
+
+proc gradient(coeff_x: [f64], coeff_y: [f64], x: f64, y: f64, h: f64) -> [f64] {
+  let dx: f64 = deriv_central(coeff_x, x, h)
+  let dy: f64 = deriv_central(coeff_y, y, h)
+  give [dx, dy]
+}
+
+proc integrate_trap(samples: [f64], h: f64) -> f64 {
+  if samples.len == 0 {
+    give 0.0
+  }
+  if samples.len == 1 {
+    give samples[0] * h
+  }
+  let edge_sum: f64 = samples[0] + samples[samples.len - 1]
+  let total: f64 = edge_sum / 2.0
+  let i: int = 1
+  while i + 1 < samples.len {
+    set total = total + samples[i]
+    set i = i + 1
+  }
+  give total * h
+}
+
+proc integrate_simpson(samples: [f64], h: f64) -> f64 {
+  if samples.len < 3 or samples.len % 2 == 0 {
+    give integrate_trap(samples, h)
+  }
+  let total: f64 = samples[0] + samples[samples.len - 1]
+  let i: int = 1
+  while i + 1 < samples.len {
+    if i % 2 == 1 {
+      set total = total + 4.0 * samples[i]
+    } else {
+      set total = total + 2.0 * samples[i]
+    }
+    set i = i + 1
+  }
+  let scaled: f64 = total * h
+  give scaled / 3.0
+}
+
+proc limit(left: f64, right: f64) -> f64 {
+  let total: f64 = left + right
+  give total / 2.0
+}
+
+proc deriv_coeffs(coeffs: [f64]) -> [f64] {
+  let n: int = coeffs.len
+  let out: [f64] = []
+  let i: int = 0
+  while i + 1 < n {
+    let power: int = n - i - 1
+    let value: f64 = coeffs[i] * power as f64
+    set out = out + [value]
+    set i = i + 1
+  }
+  give out
+}
+
+proc newton(coeffs: [f64], guess: f64) -> f64 {
+  let d: [f64] = deriv_coeffs(coeffs)
+  let x: f64 = guess
+  let i: int = 0
+  while i < MAX_ITER {
+    let fx: f64 = poly_eval(coeffs, x)
+    let dx: f64 = poly_eval(d, x)
+    if abs_local(dx) <= EPS {
+      give x
+    }
+    set x = x - fx / dx
+    set i = i + 1
+  }
+  give x
+}
+
+proc bisection(coeffs: [f64], low0: f64, high0: f64) -> f64 {
+  let low: f64 = low0
+  let high: f64 = high0
+  let i: int = 0
+  while i < MAX_ITER {
+    let total: f64 = low + high
+    let mid: f64 = total / 2.0
+    let fm: f64 = poly_eval(coeffs, mid)
+    if abs_local(fm) <= EPS {
+      give mid
+    }
+    let fl: f64 = poly_eval(coeffs, low)
+    if fl * fm <= 0.0 {
+      set high = mid
+    } else {
+      set low = mid
+    }
+    set i = i + 1
+  }
+  let total: f64 = low + high
+  give total / 2.0
+}
+
+proc taylor_exp(x: f64, terms: int) -> f64 {
+  let sum: f64 = 1.0
+  let term: f64 = 1.0
+  let i: int = 1
+  while i < terms {
+    set term = term * x / i as f64
+    set sum = sum + term
+    set i = i + 1
+  }
+  give sum
+}
+
+proc taylor_sin(x: f64, terms: int) -> f64 {
+  let sum: f64 = 0.0
+  let n: int = 0
+  while n < terms {
+    let exp: int = 2 * n + 1
+    let numer: f64 = pow_simple(x, exp)
+    let denom: f64 = factorial_f64(exp)
+    let term: f64 = numer / denom
+    if n % 2 == 0 {
+      set sum = sum + term
+    } else {
+      set sum = sum - term
+    }
+    set n = n + 1
+  }
+  give sum
+}
+
+proc euler(y0: f64, step: f64, slope: [f64]) -> [f64] {
+  let out: [f64] = [y0]
+  let i: int = 0
+  while i < slope.len {
+    let next_value: f64 = out[i] + step * slope[i]
+    set out = out + [next_value]
+    set i = i + 1
+  }
+  give out
+}
+
+proc rk4(y0: f64, step: f64, slopes: [[f64]]) -> [f64] {
+  let out: [f64] = [y0]
+  let i: int = 0
+  while i < slopes.len {
+    let k1: f64 = slopes[i][0]
+    let k2: f64 = slopes[i][1]
+    let k3: f64 = slopes[i][2]
+    let k4: f64 = slopes[i][3]
+    let weighted: f64 = k1 + 2.0 * k2 + 2.0 * k3 + k4
+    let scaled: f64 = step * weighted
+    let delta: f64 = scaled / 6.0
+    let next_value: f64 = out[i] + delta
+    set out = out + [next_value]
+    set i = i + 1
+  }
+  give out
+}
+
+proc gradient_descent(start: f64, grad: [f64], rate: f64) -> f64 {
+  let x: f64 = start
+  let i: int = 0
+  while i < grad.len {
+    set x = x - rate * grad[i]
+    set i = i + 1
+  }
+  give x
+}
+
+proc newton_opt(start: f64, first: [f64], second: [f64]) -> f64 {
+  let x: f64 = start
+  let i: int = 0
+  while i < first.len and i < second.len {
+    if abs_local(second[i]) > EPS {
+      set x = x - first[i] / second[i]
+    }
+    set i = i + 1
+  }
+  give x
+}
+
+proc integrate_montecarlo(samples: [f64], low: f64, high: f64) -> f64 {
+  if samples.len == 0 {
+    give 0.0
+  }
+  let avg: f64 = mean_f64(samples)
+  let width: f64 = high - low
+  give avg * width
+}
+
+proc adaptive_simpson(samples: [f64], h: f64) -> f64 {
+  give integrate_simpson(samples, h)
+}
+
+proc recurse(value: int) -> int {
+  if value <= 1 {
+    give value
+  }
+  let left_input: int = value - 1
+  let right_input: int = value - 2
+  let left: int = recurse(left_input)
+  let right: int = recurse(right_input)
+  give left + right
+}
+
+proc gradient_nd(surface: [[f64]]) -> [f64] {
+  let out: [f64] = []
+  let i: int = 0
+  while i < surface.len {
+    let row_mean: f64 = mean_f64(surface[i])
+    set out = out + [row_mean]
+    set i = i + 1
+  }
+  give out
+}
+
+proc stable_sum(values: [f64]) -> f64 {
+  let sum0: f64 = 0.0
+  let c: f64 = 0.0
+  let i: int = 0
+  while i < values.len {
+    let y: f64 = values[i] - c
+    let t: f64 = sum0 + y
+    let correction: f64 = t - sum0
+    set c = correction - y
+    set sum0 = t
+    set i = i + 1
+  }
+  give sum0
+}
+
+proc stable_mean(values: [f64]) -> f64 {
+  if values.len == 0 {
+    give 0.0
+  }
+  let total: f64 = stable_sum(values)
+  give total / values.len as f64
+}
+
+proc poly_root_quadratic(a: f64, b: f64, c: f64) -> [f64] {
+  if a == 0.0 {
+    if b == 0.0 {
+      give []
+    }
+    give [0.0 - c / b]
+  }
+  let disc: f64 = b * b - 4.0 * a * c
+  if disc < 0.0 {
+    give []
+  }
+  let root: f64 = sqrt_local(disc)
+  let denom: f64 = 2.0 * a
+  let neg_b: f64 = 0.0 - b
+  let left_num: f64 = neg_b - root
+  let right_num: f64 = neg_b + root
+  let left: f64 = left_num / denom
+  let right: f64 = right_num / denom
+  give [left, right]
+}
+
+proc dot(a: [f64], b: [f64]) -> f64 {
+  let total: f64 = 0.0
+  let i: int = 0
+  while i < a.len and i < b.len {
+    set total = total + a[i] * b[i]
+    set i = i + 1
+  }
+  give total
+}
+
+proc mat_mul(a: [[f64]], b: [[f64]]) -> [[f64]] {
+  if a.len != 2 or b.len != 2 {
+    give []
+  }
+  let r00: f64 = a[0][0] * b[0][0] + a[0][1] * b[1][0]
+  let r01: f64 = a[0][0] * b[0][1] + a[0][1] * b[1][1]
+  let r10: f64 = a[1][0] * b[0][0] + a[1][1] * b[1][0]
+  let r11: f64 = a[1][0] * b[0][1] + a[1][1] * b[1][1]
+  give [[r00, r01], [r10, r11]]
+}
+
+proc mat_vec(m: [[f64]], v: [f64]) -> [f64] {
+  if m.len != 2 or v.len != 2 {
+    give []
+  }
+  let x0: f64 = m[0][0] * v[0] + m[0][1] * v[1]
+  let x1: f64 = m[1][0] * v[0] + m[1][1] * v[1]
+  give [x0, x1]
+}
+
+proc solve_gauss(a: [[f64]], b: [f64]) -> [f64] {
+  if a.len != 2 or b.len != 2 {
+    give []
+  }
+  let det: f64 = a[0][0] * a[1][1] - a[0][1] * a[1][0]
+  if abs_local(det) <= EPS {
+    give []
+  }
+  let x0_num: f64 = b[0] * a[1][1] - a[0][1] * b[1]
+  let x1_num: f64 = a[0][0] * b[1] - b[0] * a[1][0]
+  let x0: f64 = x0_num / det
+  let x1: f64 = x1_num / det
+  give [x0, x1]
+}
+
+proc c_add(a: Complex, b: Complex) -> Complex {
+  give Complex { re: a.re + b.re, im: a.im + b.im }
+}
+
+proc c_sub(a: Complex, b: Complex) -> Complex {
+  give Complex { re: a.re - b.re, im: a.im - b.im }
+}
+
+proc c_mul(a: Complex, b: Complex) -> Complex {
+  let real: f64 = a.re * b.re - a.im * b.im
+  let imag: f64 = a.re * b.im + a.im * b.re
+  give Complex { re: real, im: imag }
+}
+
+proc fft(values: [Complex]) -> [Complex] {
+  give values
+}
+
+proc variance(values: [f64]) -> f64 {
+  if values.len == 0 {
+    give 0.0
+  }
+  let m: f64 = mean_f64(values)
+  let total: f64 = 0.0
+  let i: int = 0
+  while i < values.len {
+    let d: f64 = values[i] - m
+    set total = total + d * d
+    set i = i + 1
+  }
+  give total / values.len as f64
+}
+
+proc stddev(values: [f64]) -> f64 {
+  let var0: f64 = variance(values)
+  give sqrt_local(var0)
+}
+
+proc normal_pdf(x: f64, mean0: f64, std0: f64) -> f64 {
+  if std0 <= 0.0 {
+    give 0.0
+  }
+  let delta: f64 = x - mean0
+  let z: f64 = delta / std0
+  let exponent: f64 = 0.0 - 0.5 * z * z
+  let numer: f64 = exp_local(exponent)
+  let denom: f64 = std0 * 2.5066282746310002
+  give numer / denom
+}
+
+proc rk45(y0: f64, step: f64, slopes: [[f64]]) -> [f64] {
+  give rk4(y0, step, slopes)
+}
+
+proc eigen_power(matrix: [[f64]], vector: [f64], iters: int) -> [f64] {
+  let v: [f64] = vector
+  let i: int = 0
+  while i < iters {
+    set v = mat_vec(matrix, v)
+    set i = i + 1
+  }
+  give v
+}
+
+proc csr_matvec(m: CSR, v: [f64]) -> [f64] {
+  let out: [f64] = []
+  let row: int = 0
+  while row + 1 < m.rows.len {
+    let total: f64 = 0.0
+    let i: int = m.rows[row]
+    while i < m.rows[row + 1] {
+      let col: int = m.cols[i]
+      set total = total + m.values[i] * v[col]
+      set i = i + 1
+    }
+    set out = out + [total]
+    set row = row + 1
+  }
+  give out
+}
+
+proc d_add(a: Dual, b: Dual) -> Dual {
+  give Dual { real: a.real + b.real, dual: a.dual + b.dual }
+}
+
+proc d_mul(a: Dual, b: Dual) -> Dual {
+  let real: f64 = a.real * b.real
+  let dual: f64 = a.real * b.dual + a.dual * b.real
+  give Dual { real: real, dual: dual }
+}
+
+proc d_sin(a: Dual) -> Dual {
+  let real: f64 = taylor_sin(a.real, 6)
+  give Dual { real: real, dual: a.dual }
+}
+
+proc autodiff(a: Dual) -> Dual {
+  give d_sin(a)
+}
+
+proc gamma(value: f64) -> f64 {
+  if value == 1.0 or value == 2.0 {
+    give 1.0
+  }
+  if value == 3.0 {
+    give 2.0
+  }
+  if value == 4.0 {
+    give 6.0
+  }
+  give 0.0
+}
+
+proc erf(value: f64) -> f64 {
+  let x: f64 = value
+  let x2: f64 = x * x
+  let x3: f64 = x2 * x
+  let inner: f64 = x - x3 / 3.0
+  give 1.1283791670955126 * inner
+}
+
+proc parallel_map(values: [f64]) -> [f64] {
+  give values
+}
+
+proc parallel_reduce(values: [f64]) -> f64 {
+  give stable_sum(values)
+}
+
+proc mean_f64(values: [f64]) -> f64 {
+  if values.len == 0 {
+    give 0.0
+  }
+  let total: f64 = stable_sum(values)
+  give total / values.len as f64
+}
+
+proc abs_local(value: f64) -> f64 {
+  if value < 0.0 {
+    give 0.0 - value
+  }
+  give value
+}
+
+proc sqrt_local(value: f64) -> f64 {
+  if value <= 0.0 {
+    give 0.0
+  }
+  let x: f64 = value
+  let i: int = 0
+  while i < 10 {
+    let ratio: f64 = value / x
+    let total: f64 = x + ratio
+    set x = 0.5 * total
+    set i = i + 1
+  }
+  give x
+}
+
+proc exp_local(value: f64) -> f64 {
+  give taylor_exp(value, 10)
+}
+
+proc pow_simple(base: f64, exp: int) -> f64 {
+  let out: f64 = 1.0
+  let i: int = 0
+  while i < exp {
+    set out = out * base
+    set i = i + 1
+  }
+  give out
+}
+
+proc factorial_f64(value: int) -> f64 {
+  let out: f64 = 1.0
+  let i: int = 2
+  while i <= value {
+    set out = out * i as f64
+    set i = i + 1
+  }
+  give out
+}
+
+proc calculus_version() -> string {
+  give "max-1"
+}
+
+proc calculus_ready() -> bool {
+  give true
+}
+
+proc calculus_selftest() -> bool {
+  let coeffs: [f64] = [1.0, 0.0, 0.0]
+  let root_b: f64 = 0.0 - 3.0
+  let roots: [f64] = poly_root_quadratic(1.0, root_b, 2.0)
+  let deriv_value: f64 = deriv_central(coeffs, 2.0, 0.001)
+  let deriv_delta: f64 = deriv_value - 4.0
+  let deriv_error: f64 = abs_local(deriv_delta)
+  let trap_value: f64 = integrate_trap([0.0, 1.0, 4.0], 1.0)
+  let trap_delta: f64 = trap_value - 3.0
+  let trap_error: f64 = abs_local(trap_delta)
+  let newton_c: f64 = 0.0 - 4.0
+  let newton_value: f64 = newton([1.0, 0.0, newton_c], 3.0)
+  let newton_delta: f64 = newton_value - 2.0
+  let newton_error: f64 = abs_local(newton_delta)
+  let var_value: f64 = variance([1.0, 2.0, 3.0])
+  let var_delta: f64 = var_value - 0.666666
+  let var_error: f64 = abs_local(var_delta)
+  let pdf_value: f64 = normal_pdf(0.0, 0.0, 1.0)
+  let pdf_delta: f64 = pdf_value - 0.3989
+  let pdf_error: f64 = abs_local(pdf_delta)
+  give calculus_ready() and
+    calculus_version() == "max-1" and
+    deriv_error < 0.1 and
+    trap_error < 0.1 and
+    newton_error < 0.1 and
+    roots.len == 2 and
+    var_error < 0.1 and
+    pdf_error < 0.1
+}
+
+export *
