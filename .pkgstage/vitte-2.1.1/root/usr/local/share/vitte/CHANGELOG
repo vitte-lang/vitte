@@ -1,5 +1,11 @@
 # Changelog - Vitte Bootstrap Toolchain
 
+## [unreleased] - 2026-06-23 - Diagnostics: JSON output
+
+### ✅ 231. `--format json` for `vitte check`
+- Added native `--format json` CLI flag to produce machine-readable diagnostics JSON from `vitte check`.
+- This enables tooling to consume diagnostics without needing ANSI stripping wrappers.
+
 ## [0.3.8] - 2026-06-19 - Installer Payload and Packaging Hardening
 
 ### ✅ 228. Complete stdlib payloads in installers

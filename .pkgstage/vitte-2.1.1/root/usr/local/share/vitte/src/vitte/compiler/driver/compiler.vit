@@ -270,6 +270,7 @@ form CompilerCliRequest {
     stdlib_path: string
     stdlib_version: string
     lang: string
+    format: string
     valid: bool
     status: driver.DriverExitStatus
     message: string
@@ -347,6 +348,7 @@ proc empty_cli_request() -> CompilerCliRequest {
         stdlib_path: "src/vitte/stdlib",
         stdlib_version: "",
         lang: "en",
+        format: "",
         valid: false,
         status: driver.DriverExitStatus::InvalidArguments,
         message: "missing compiler command"
@@ -685,6 +687,14 @@ proc parse_cli_request(args: list[string]) -> CompilerCliRequest {
                 }
                 set request.lang = args[i + 1];
                 set i = i + 2;
+            } elif arg == "--format" {
+                if i + 1 >= len(args) {
+                    set request.status = driver.DriverExitStatus::InvalidArguments;
+                    set request.message = "missing value after " + arg;
+                    give request;
+                }
+                set request.format = args[i + 1];
+                set i = i + 2;
             } else {
                 set i = i + 1;
             }
@@ -1014,6 +1024,11 @@ proc run_cli_request(request: CompilerCliRequest) -> int {
         let msg: string = request.message + "\n";
         print(msg);
         give cli_exit_code(driver.DriverExitStatus::Ok);
+        if request.format == "json" {
+            let report_json: string = dump_diagnostics_json(source_path, source_text) + "\n";
+            print(report_json);
+            give cli_exit_code(r0.status);
+        }
     }
 
     if request.command == "pkg" {
@@ -1792,27 +1807,27 @@ proc typed_diag_text(severity: string, code: string, file: string, line: u64, co
 }
 
 proc cli_ansi_reset() -> string {
-    give "";
+    give "\u001b[0m";
 }
 
 proc cli_ansi_bold() -> string {
-    give "";
+    give "\u001b[1m";
 }
 
 proc cli_ansi_bright_red() -> string {
-    give "";
+    give "\u001b[91m";
 }
 
 proc cli_ansi_yellow() -> string {
-    give "";
+    give "\u001b[33m";
 }
 
 proc cli_ansi_blue() -> string {
-    give "";
+    give "\u001b[34m";
 }
 
 proc cli_ansi_cyan() -> string {
-    give "";
+    give "\u001b[36m";
 }
 
 proc cli_colored_severity(severity: string) -> string {

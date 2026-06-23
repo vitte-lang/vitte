@@ -2184,27 +2184,27 @@ proc default_render_config() -> DiagnosticRenderConfig {
 }
 
 proc ansi_reset() -> string {
-    give "";
+    give "\u001b[0m";
 }
 
 proc ansi_bold() -> string {
-    give "";
+    give "\u001b[1m";
 }
 
 proc ansi_red() -> string {
-    give "";
+    give "\u001b[31m";
 }
 
 proc ansi_yellow() -> string {
-    give "";
+    give "\u001b[33m";
 }
 
 proc ansi_blue() -> string {
-    give "";
+    give "\u001b[34m";
 }
 
 proc ansi_cyan() -> string {
-    give "";
+    give "\u001b[36m";
 }
 
 proc diag_lparen() -> string {
@@ -2279,18 +2279,18 @@ proc diagnostic_header_text(diagnostic: Diagnostic, config: DiagnosticRenderConf
 }
 
 proc render_label(label: DiagnosticLabel, config: DiagnosticRenderConfig) -> string {
-    let prefix: string = color_wrap(config, ansi_blue(), label_kind_name(label.kind));
+    let prefix: string = color_wrap(config, ansi_bold() + ansi_blue(), label_kind_name(label.kind));
     let location: string = span_location_text(label.span);
     give "  " + prefix + ": " + location + " " + label.message;
 }
 
 proc render_note(note: DiagnosticNote, config: DiagnosticRenderConfig) -> string {
-    let prefix: string = color_wrap(config, ansi_blue(), "note");
+    let prefix: string = color_wrap(config, ansi_bold() + ansi_blue(), "note");
     give "  " + prefix + ": " + note.message;
 }
 
 proc render_help(help: DiagnosticHelp, config: DiagnosticRenderConfig) -> string {
-    let prefix: string = color_wrap(config, ansi_cyan(), "help");
+    let prefix: string = color_wrap(config, ansi_bold() + ansi_cyan(), "help");
     give "  " + prefix + ": " + help.message;
 }
 
@@ -2435,7 +2435,7 @@ proc render_string_list(prefix: string, values: [string]) -> [string] {
 }
 
 proc render_suggestion(suggestion: DiagnosticSuggestion, config: DiagnosticRenderConfig) -> string {
-    let prefix: string = color_wrap(config, ansi_cyan(), "suggestion");
+    let prefix: string = color_wrap(config, ansi_bold() + ansi_cyan(), "suggestion");
     let kind_name: string = suggestion_kind_name(suggestion.kind);
     let location: string = span_location_text(suggestion.span);
     let applicability: string = applicability_name(suggestion.applicability);

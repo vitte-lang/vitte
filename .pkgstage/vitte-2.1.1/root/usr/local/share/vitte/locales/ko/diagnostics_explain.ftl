@@ -26,7 +26,7 @@ E0004.step1 = Look at the highlighted token and complete or remove the construct
 E0004.fix = Use a built-in type (int, bool, string) or a named type (e.g., Option[T]).
 E0004.example = proc id(x: int) -> int { return x }
 
-E0005.summary = A 블록 was opened but not closed with '끝' or '.끝'.
+E0005.summary = A 블록 was opened but not closed with 'end' or '.end'.
 E0005.cause = The parser or lexer could not form the next valid source construct.
 E0005.step1 = Look at the highlighted token and complete or remove the construct around it.
 E0005.fix = Add the missing terminator for the construct you opened (for example: 'end' for procs, '.end' for form/pick blocks).
@@ -74,7 +74,7 @@ E0012.step1 = Look at the highlighted token and complete or remove the construct
 E0012.fix = Use a supported type (built-ins, named types, pointers, slices, proc types).
 E0012.example = let p: *int = &value
 
-E0013.summary = A procedure with an explicit 반환 타입 has a 경로 that reaches the 끝 without returning a 값.
+E0013.summary = A procedure with an explicit 반환 타입 has a 경로 that reaches the end without returning a 값.
 E0013.cause = The parser or lexer could not form the next valid source construct.
 E0013.step1 = Look at the highlighted token and complete or remove the construct around it.
 E0013.fix = Make every path end with 'give <value>' or 'return <value>', or remove the explicit return type.
@@ -230,7 +230,7 @@ E1022.step1 = Fix the first span reported for this diagnostic, then run the comm
 E1022.fix = Follow the primary help text and make the smallest source change that removes the first error.
 E1022.example = vitte check path/to/file.vit
 
-E1023.summary = share references 알 수 없음 심볼.
+E1023.summary = share가 알 수 없는 심볼 참조.
 E1023.cause = The general phase found code that violates this diagnostic rule.
 E1023.step1 = Fix the first span reported for this diagnostic, then run the command again.
 E1023.fix = Follow the primary help text and make the smallest source change that removes the first error.
@@ -416,7 +416,7 @@ LEX_E_UNTERMINATED_REGION_COMMENT.step1 = Look at the highlighted token and comp
 LEX_E_UNTERMINATED_REGION_COMMENT.fix = Balance delimiters, complete the missing token, or rewrite the local expression.
 LEX_E_UNTERMINATED_REGION_COMMENT.example = proc main() -> int { give 0; }
 
-LEX_E_UNEXPECTED_EOF.summary = 예상치 못한 끝 of 파일.
+LEX_E_UNEXPECTED_EOF.summary = 예상치 못한 end of 파일.
 LEX_E_UNEXPECTED_EOF.cause = The parser or lexer could not form the next valid source construct.
 LEX_E_UNEXPECTED_EOF.step1 = Look at the highlighted token and complete or remove the construct around it.
 LEX_E_UNEXPECTED_EOF.fix = Balance delimiters, complete the missing token, or rewrite the local expression.

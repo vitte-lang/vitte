@@ -24,6 +24,11 @@
   `primary_report`, and `phase_reports`, aligning with the shell seed
   diagnostics contract.
 
+## 2026-06-23 · Diagnostics JSON output
+
+- `vitte check --format json` now emits the diagnostics envelope as JSON.
+- Useful for CI, language servers, and translator tooling that consumes diagnostics.
+
 See also:
 
 - `docs/seed_diagnostics.md`
