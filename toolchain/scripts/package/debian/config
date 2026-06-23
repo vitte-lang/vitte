@@ -1,0 +1,40 @@
+#!/bin/bash
+# ============================================================
+# debconf config script for Vitte language selection
+# ============================================================
+
+set -e
+
+. /usr/share/debconf/confmodule
+
+# Map display names to language codes
+declare -A LANG_MAP=(
+  ["English (en)"]="en"
+  ["Français (fr)"]="fr"
+  ["Deutsch (de)"]="de"
+  ["Español (es)"]="es"
+  ["Italiano (it)"]="it"
+  ["日本語 (ja)"]="ja"
+  ["한국어 (ko)"]="ko"
+  ["中文 (zh-CN)"]="zh-CN"
+  ["Nederlands (nl)"]="nl"
+  ["Polski (pl)"]="pl"
+  ["Português Brasileiro (pt-BR)"]="pt-BR"
+  ["Русский (ru)"]="ru"
+  ["Türkçe (tr)"]="tr"
+  ["Українська (uk)"]="uk"
+  ["العربية (ar)"]="ar"
+)
+
+db_input high vitte/language || true
+db_go
+
+db_get vitte/language
+LANG_CHOICE="$RET"
+
+# Store in a temporary file for postinst to use
+echo "VITTE_LANGUAGE=${LANG_MAP[$LANG_CHOICE]:-en}" > /tmp/vitte-language-selection.conf
+
+db_stop
+
+exit 0

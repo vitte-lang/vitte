@@ -1,0 +1,74 @@
+#!/bin/bash
+# ============================================================
+# postinst - Debian package postinstallation script for Vitte
+# ============================================================
+
+set -e
+
+case "$1" in
+  configure)
+    # Create configuration directory
+    mkdir -p /etc/vitte
+    chmod 755 /etc/vitte
+
+    # Update alternatives for vitte
+    update-alternatives --install /usr/bin/vitte vitte /usr/libexec/vitte/vitte 100
+
+    # Install language configuration utility
+    if [ -f /usr/share/vitte/scripts/configure-language.sh ]; then
+      ln -sf /usr/share/vitte/scripts/configure-language.sh /usr/bin/vitte-configure-language || true
+      chmod +x /usr/bin/vitte-configure-language || true
+    fi
+
+    # Create symlinks for shell completions if applicable
+    if [ -d /etc/bash_completion.d ]; then
+      ln -sf /usr/share/vitte/completions/vitte.bash \
+        /etc/bash_completion.d/vitte 2>/dev/null || true
+    fi
+
+    # Handle language selection from debconf
+    if [ -f /tmp/vitte-language-selection.conf ]; then
+      . /tmp/vitte-language-selection.conf
+      VITTE_LANGUAGE="${VITTE_LANGUAGE:-en}"
+      rm -f /tmp/vitte-language-selection.conf
+    else
+      VITTE_LANGUAGE="${VITTE_LANGUAGE:-en}"
+    fi
+
+    # Create language configuration file
+    cat > /etc/vitte/language.conf << LANG_CONF
+# Vitte Language Configuration
+# Generated: $(date -u '+%Y-%m-%dT%H:%M:%SZ')
+# Modified by: Debian package postinstall
+
+LANGUAGE=$VITTE_LANGUAGE
+VITTE_LOCALE_DIR=/usr/share/vitte/locales
+LANG_CONF
+
+    chmod 644 /etc/vitte/language.conf
+
+    # Display installation information
+    cat << 'SETUP'
+
+Vitte has been installed successfully!
+
+Language Configuration:
+  Your language preference has been saved to /etc/vitte/language.conf.
+  To change it later, run: sudo vitte-configure-language
+
+Editor Integration:
+  - Files are installed under /usr/share/vitte/editors/
+  - Use the scripts/configs there to enable Vim, Emacs, Nano, Geany
+  - Tree-sitter grammar assets are included for editor integrations
+
+Next Steps:
+  1. Verify installation: vitte --version
+  2. Try a simple program: echo 'fn main() { println("Hello!") }' > test.vit && vitte test.vit
+  3. Read documentation: vitte --help
+
+Documentation: /usr/share/vitte/docs/
+SETUP
+    ;;
+esac
+
+exit 0
