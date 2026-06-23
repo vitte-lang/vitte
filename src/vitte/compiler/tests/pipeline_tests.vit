@@ -1,15 +1,18 @@
 space vitte/compiler/tests/pipeline_tests
 
-use vitte/compiler/driver/compile.{ DriverAnalysisArtifacts, DriverCompileConfig, DriverModuleSetArtifacts, DriverNativeBackendResult, analyze_source, analyze_source_set, check_source, compile_source_with_config, default_compile_config, driver_module_input, dump_ast_json, dump_diagnostics_json, dump_hir_json, dump_hir_resolved, dump_hir_typed, dump_mir_json, emit_native_backend_object_with_config, incremental_analysis_graph, link_native_backend_executable_with_config, lower_mir_source }
+use vitte/compiler/driver/compile.{ DriverAnalysisArtifacts, DriverCompileConfig, DriverModuleSetArtifacts, DriverNativeBackendResult, analyze_source, analyze_source_set, check_source, compile_source_with_config, default_compile_config, driver_module_input, dump_ast_json, dump_diagnostics_json, dump_hir_json, dump_hir_resolved, dump_hir_typed, dump_mir_json, emit_native_backend_object_with_config, frontend_diag_as_diagnostic, incremental_analysis_graph, link_native_backend_executable_with_config, lower_mir_source }
 use vitte/compiler/driver/exit_status.{ DriverExitStatus, exit_code }
 use vitte/compiler/driver/mod.{ main_driver_report_json, main_driver_surface_report_json, main_driver_surface_report_json_from_args, run_check_diagnostics_json_cli, run_check_hir_json_cli, run_check_mir_json_cli, run_parse_ast_json_cli }
 use vitte/compiler/driver/result.{ CliReportResult }
-use vitte/compiler/driver/compiler.{ CompilerCliRequest, CompilerMode, CompilerOptions, CompilerResult, CompilerStage, PhaseResult, compiler_from_source, default_options, new_compiler, parse_cli_request, record_phase_result, run_cli_main, run_compiler, structured_driver_failure_message }
+use vitte/compiler/driver/compiler.{ CompilerCliRequest, CompilerMode, CompilerOptions, CompilerResult, CompilerStage, PhaseResult, compiler_from_source, default_options, new_compiler, parse_cli_request, record_phase_result, run_cli_main, run_compiler, structured_driver_failure_message, typed_diag_text }
 use vitte/compiler/backend/pipeline.{ BackendPipelineResult, compile_to_valid_ir_with_profile_and_packaging }
 use vitte/compiler/backend/target/config
 use vitte/compiler/backends/backend_infrastructure
 use vitte/compiler/backends/llvm_bindings.{ default_llvm_toolchain_paths }
 use vitte/compiler/backend/verified_pipeline.{ BackendVerificationReport, verify_backend_pipeline }
+use vitte/compiler/diagnostics/diagnostic.{ Diagnostic, DiagnosticReport, DiagnosticRenderConfig, DiagnosticStyle, default_render_config, diagnostic_report, render_report }
+use vitte/compiler/diagnostics/report as diag_report
+use vitte/compiler/tests/frontend_fixtures/invalid/lexer.{ invalid_escape_source }
 use vitte/compiler/analysis/typeck/soundness_roadmap.{ OwnershipSemanticsRule, SoundnessCheckpoint, TypingJudgment, formal_type_soundness_roadmap_status, ownership_semantics_rule, soundness_checkpoint, typing_judgment }
 use vitte/compiler/infrastructure/distributed.{ BuildJob, DependencySnapshot, build_job, compile_unit_hash, dependency_snapshot, distributed_build_foundation_ready, export_job_graph }
 use vitte/compiler/infrastructure/session/ice
@@ -54,6 +57,45 @@ proc test_compiler_main_accepts_verbose_flag() -> bool {
 
 proc test_compiler_main_loads_file_through_host_runtime() -> bool {
   give run_cli_main(["check", "tests/golden/frontend/fixtures/hello_min.vit"]) == 0;
+}
+
+proc test_actual_invalid_source_colorized_diagnostics() -> bool {
+  let source_text: string = invalid_escape_source();
+  let result = check_source("pipeline_invalid_escape.vit", source_text);
+  if result.status == DriverExitStatus.Ok {
+    give false;
+  }
+
+  let i: u64 = 0;
+  let diagnostics: [Diagnostic] = [];
+  while i < len(result.frontend.diagnostics) {
+    set diagnostics = diagnostics + [frontend_diag_as_diagnostic(result.frontend.diagnostics[i])];
+    set i = i + 1;
+  }
+
+  let color_config: DiagnosticRenderConfig = default_render_config();
+  set color_config.style = DiagnosticStyle.Human;
+  set color_config.color = true;
+  set color_config.show_phase = false;
+  let rendered: string = render_report(diagnostic_report(diagnostics), color_config);
+  give find(rendered, "\u001b[1m") >= 0
+    and find(rendered, "\u001b[31m") >= 0
+    and find(rendered, "help: ") >= 0;
+}
+
+proc test_cli_typed_diag_text_colorizes_severity() -> bool {
+  let output: string = typed_diag_text("error", "DRIVER_E_TEST", "foo.vit", 1, 1, "message");
+  give find(output, "\u001b[1m") >= 0
+    and find(output, "\u001b[91m") >= 0
+    and find(output, "\u001b[0m") >= 0;
+}
+
+proc test_driver_report_render_text_colorizes_severity() -> bool {
+  let diag: diag_report.Diagnostic = diag_report.diagnostic("error", "DRIVER_E_TEST", "foo.vit", 1, 1, "message");
+  let rendered: string = diag_report.render_text(diag);
+  give find(rendered, "\u001b[1m") >= 0
+    and find(rendered, "\u001b[91m") >= 0
+    and find(rendered, "\u001b[0m") >= 0;
 }
 
 proc test_parse_cli_request_defaults_project_root_for_source_commands() -> bool {

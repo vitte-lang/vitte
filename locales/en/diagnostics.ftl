@@ -1453,7 +1453,7 @@ LIMIT_E_ABI_MISMATCH = abi mismatch
 LIMIT_E_LINK_FAILED = link failed
 LIMIT_E_RUNTIME_PANIC = runtime panic
 E_BOOTSTRAP_NATIVE_SUBSET = native build is limited in this bootstrap binary
-E_BOOTSTRAP_NATIVE_SUBSET.hint = supported inputs: proc main() -> int { give <integer>; }, or the official compiler entry src/vitte/compiler/main.vit
+E_BOOTSTRAP_NATIVE_SUBSET.hint = only bootstrap-native sources are supported: proc main() -> int { give <integer>; } or the full compiler entry src/vitte/compiler/main.vit; set VITTE_BOOTSTRAP_ALLOW_FULL_COMPILER_BRIDGE=1 for compiler repository test sources under src/vitte/compiler/tests
 E_BOOTSTRAP_FULL_COMPILER_BRIDGE_DISABLED = full compiler bootstrap bridge disabled for this build
 E_BOOTSTRAP_UNKNOWN_STRING_CONST = unknown string constant
 E_BOOTSTRAP_UNKNOWN_INT_CONST = unknown int constant

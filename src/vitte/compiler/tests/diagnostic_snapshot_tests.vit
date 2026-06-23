@@ -45,6 +45,14 @@ proc human_config() -> DiagnosticRenderConfig {
   give config;
 }
 
+proc color_human_config() -> DiagnosticRenderConfig {
+  let config: DiagnosticRenderConfig = default_render_config();
+  set config.style = DiagnosticStyle.Human;
+  set config.color = true;
+  set config.show_phase = false;
+  give config;
+}
+
 proc sample_typeck_diagnostic() -> Diagnostic {
   let file: string = "src/vitte/compiler/tests/diagnostics/typeck/assign_mismatch.vit";
   let diag: Diagnostic = diagnostic_error("TYPECK_E_ASSIGN_MISMATCH", DiagnosticPhase.Typeck, "cannot assign string to i32", span_range(file, 8, 9, 8, 16));
@@ -231,6 +239,14 @@ proc test_rendered_suggestion_applicability_contract() -> bool {
   give find(actual, "[machine]") >= 0
     and find(actual, "high confidence") >= 0
     and find(actual, "suggestion: insert") >= 0;
+}
+
+proc test_colored_diagnostic_output() -> bool {
+  let actual: string = render_report(diagnostic_report([sample_parser_diagnostic()]), color_human_config());
+  give find(actual, "\u001b[1m") >= 0
+    and find(actual, "\u001b[31m") >= 0
+    and find(actual, "\u001b[36m") >= 0
+    and find(actual, "help: ") >= 0;
 }
 
 proc explain_has_actionable_context(code: string) -> bool {
