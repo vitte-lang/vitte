@@ -8329,3 +8329,9 @@ LIMIT_E_RUNTIME_PANIC.cause = The input exceeded a configured compiler safety li
 LIMIT_E_RUNTIME_PANIC.step1 = Split the file, expression, import graph, token, or macro expansion named by the code.
 LIMIT_E_RUNTIME_PANIC.fix = Reduce the input size or raise the limit only in a trusted build profile.
 LIMIT_E_RUNTIME_PANIC.example = vitte check src/main.vit
+
+E_BOOTSTRAP_NATIVE_SUBSET.summary = Native build is limited in this bootstrap binary.
+E_BOOTSTRAP_NATIVE_SUBSET.cause = The bootstrap compiler can only compile a small native subset and refused this source.
+E_BOOTSTRAP_NATIVE_SUBSET.step1 = Use a supported bootstrap-native entry or compile with the full compiler entry point.
+E_BOOTSTRAP_NATIVE_SUBSET.fix = Restrict your input to a supported proc main() -> int { give <integer>; } form, or build with src/vitte/compiler/main.vit instead of the bootstrap compiler.
+E_BOOTSTRAP_NATIVE_SUBSET.example = proc main() -> int { give 0 }
