@@ -6,130 +6,238 @@ vitte \- main CLI for the Vitte compiler and tools
 [\fIcommand\fR] [\fIoptions\fR] \fI<input>\fR
 .SH DESCRIPTION
 .B vitte
-is the main command for the Vitte compiler.
-It can parse source, check it, lower it through IR, emit output, and run build-related helpers.
+is the primary command-line interface for the Vitte compiler and its associated tools. It orchestrates the entire compilation pipeline, which includes several distinct stages:
 
-The current repository keeps the compiler surface in Vitte.
-The goal is to keep the bootstrap path small, easy to read, and easy to test.
+The process begins with reading the source code, which is then passed to the lexer to tokenize the input stream. Tokens are fed into the parser to build a structured Abstract Syntax Tree (AST). The AST undergoes semantic analysis to form the High-level Intermediate Representation (HIR), which captures program semantics more explicitly. The compiler then lowers the HIR to the Mid-level Intermediate Representation (MIR), optimizing and preparing it for code generation. The backend takes the MIR and generates target-specific code, such as assembly or object files, which are then linked to produce the final executable or library.
+
+This structured pipeline ensures modularity, ease of debugging, and extensibility, enabling Vitte to support multiple targets and advanced features efficiently.
+.SH ARCHITECTURE
+The Vitte compiler architecture is composed of several well-defined components:
+
+.IP \bu 2
+The \fBfrontend\fR handles lexical analysis, parsing, and AST construction, providing a robust syntactic foundation.
+
+.IP \bu 2
+The \fBsemantic analysis\fR phase includes name resolution, module import verification, and symbol table construction.
+
+.IP \bu 2
+\fBType checking\fR verifies type correctness, enforcing canonical type names and strict module imports.
+
+.IP \bu 2
+\fBBorrow checking\fR ensures safe memory access and enforces ownership semantics, preventing data races and invalid references.
+
+.IP \bu 2
+The \fBMIR\fR (Mid-level Intermediate Representation) is a simplified, SSA-based representation used for optimizations and transformations.
+
+.IP \bu 2
+\fBIR\fR (Intermediate Representation) serves as a common format for backend code generation and analysis.
+
+.IP \bu 2
+The \fBbackend\fR generates target-specific code, supporting multiple output formats including native executables, LLVM IR, and C code.
+
+.IP \bu 2
+The \fBlinker\fR combines compiled objects and libraries into final binaries.
+
+.IP \bu 2
+\fBDiagnostics\fR provide detailed error and warning messages, supporting multiple languages and output formats.
+
+.IP \bu 2
+\fBIncremental compilation\fR improves build times by reusing cached intermediate results and artifacts.
+
+.SH PROJECT LAYOUT
+The standard Vitte repository layout is organized around compiler, runtime, standard library, tooling, tests, and documentation.
+
+.TP
+.B src/vitte/compiler
+Compiler frontend, semantic analysis, MIR, backend, linker, and diagnostics.
+.TP
+.B src/vitte/runtime
+Runtime support libraries and platform abstractions.
+.TP
+.B src/vitte/stdlib
+Official standard library modules.
+.TP
+.B tools
+Build, generation, bootstrap, formatting, and maintenance utilities.
+.TP
+.B tests
+Compiler, runtime, integration, regression, and snapshot tests.
+.TP
+.B docs
+Language reference, standard library reference, tutorials, and guides.
+
 .SH COMMANDS
 .TP
 .B help
-Show help and common tasks.
+Display detailed help information and common usage patterns for Vitte commands.
 .TP
 .B init [dir]
-Create a small project in the given directory.
+Initialize a new Vitte project in the specified directory, setting up the necessary configuration and directory structure.
 .TP
 .B explain <code>
-Explain a diagnostic code such as \fBE0001\fR or \fBW1001\fR.
+Provide detailed explanations of diagnostic codes, such as \fBE0001\fR or \fBW1001\fR, including causes and suggested fixes.
 .TP
 .B doctor
-Check toolchain and host setup.
+Perform a comprehensive check of the toolchain and host environment to ensure compatibility and correct setup.
 .TP
 .B parse
-Parse only.
+Run the lexer and parser stages only, producing an AST without further analysis or code generation.
 .TP
 .B check
-Parse, resolve, and lower to IR without backend output.
+Perform parsing, name resolution, semantic analysis, and type checking without generating backend output.
 .TP
 .B emit
-Emit a compiler artifact for inspection.
+Generate compiler artifacts for inspection, such as intermediate representations or target code.
 .TP
 .B build
-Run the full build path.
+Execute the full compilation pipeline, producing final executables or libraries for the specified target.
 .TP
 .B profile
-Run the build with timing and profile data.
+Run a build with detailed timing and profiling information to analyze performance bottlenecks.
 .TP
 .B reduce
-Shrink a failing input to a small reproducer.
+Automatically minimize a failing input source to a small, reproducible test case that triggers the issue.
 .TP
 .B clean-cache
-Remove cached compiler state.
+Remove all cached compiler state and intermediate files to force a full rebuild.
 .TP
 .B mod graph
-Show the module graph and cycle report.
+Display the module dependency graph and detect cycles or import issues.
 .TP
 .B mod doctor
-Check imports, aliases, and collisions.
+Verify module imports, aliases, and detect naming collisions or inconsistencies.
 .TP
 .B mod contract-diff
-Compare exported module contracts between two inputs.
+Compare exported module contracts between two different inputs to identify API changes.
+.TP
+.B run
+Compile and execute the specified Vitte program, optionally passing arguments to the runtime.
+.TP
+.B fmt
+Format source code files according to the Vitte style guidelines.
+.TP
+.B lint
+Analyze source code for stylistic and semantic issues without compiling.
+.TP
+.B test
+Run unit tests and integration tests defined in the project.
+.TP
+.B bench
+Execute benchmarks to measure performance characteristics of the code.
+.TP
+.B package
+Create distributable packages or archives for the Vitte project.
+.TP
+.B install
+Install compiled binaries or libraries into system or user directories.
+.TP
+.B uninstall
+Remove previously installed binaries or libraries.
+.TP
+.B version
+Display version information for the Vitte compiler and tools.
+.TP
+.B env
+Show environment variables and configuration settings affecting the compiler.
+.TP
+.B cache stats
+Display statistics about the compiler's cache usage and contents.
+.TP
+.B cache clear
+Clear cache entries selectively or entirely to free disk space or reset state.
+.TP
+.B doc
+Generate documentation from source code comments and metadata.
+.TP
+.B doc serve
+Start a local server to browse generated documentation interactively.
+.TP
+.B doc build
+Build static documentation sites for publishing.
+.TP
+.B mod list
+List all modules available in the current project and dependencies.
+.TP
+.B mod search
+Search for modules in configured repositories or registries.
+.TP
+.B mod tree
+Show hierarchical module dependencies as a tree structure.
+.TP
+.B mod verify
+Check module integrity, signatures, and compatibility.
+.TP
+.B target list
+List all supported compilation targets with their descriptions.
+.TP
+.B runtime list
+List available runtime profiles and their configurations.
 .SH OPTIONS
 .TP
+.B Diagnostics
 .B \-h, \-\-help
-Show help.
-.TP
-.BI \-o " <file>"
-Set the output file name.
+Show help message and exit.
 .TP
 .BI \-\-lang " <code>"
-Set the diagnostics language, for example \fBen\fR or \fBfr\fR.
+Set the diagnostics language, e.g., \fBen\fR for English or \fBfr\fR for French.
 .TP
 .BI \-\-explain " <code>"
-Explain one diagnostic code.
-.TP
-.BI \-\-runtime-include " <path>"
-Add a runtime include directory.
-.TP
-.BI \-\-target " <name>"
-Select the output target, for example \fBvitte\fR or \fBarduino-uno\fR.
-.TP
-.B \-\-upload
-Upload to Arduino after build.
-.TP
-.BI \-\-port " <path>"
-Arduino serial port.
-.TP
-.BI \-\-fqbn " <name>"
-Arduino fully qualified board name.
-.TP
-.B \-\-parse-only
-Parse only.
-.TP
-.B \-\-resolve-only
-Resolve only.
-.TP
-.B \-\-hir-only
-Lower to HIR only.
-.TP
-.B \-\-mir-only
-Lower to MIR only.
-.TP
-.B \-\-dump-ast
-Print AST after parsing.
-.TP
-.B \-\-dump-hir
-Print HIR after lowering.
-.TP
-.B \-\-dump-mir
-Print MIR after lowering.
-.TP
-.B \-\-emit-vitte
-Emit a Vitte artifact only.
+Explain a specific diagnostic code in detail.
 .TP
 .B \-\-diag-json
-Print diagnostics as JSON.
+Output diagnostics in JSON format for machine processing.
 .TP
 .B \-\-diag-code-only
-Print compact diagnostics.
+Print compact, code-only diagnostics for concise output.
 .TP
-.B \-\-deterministic
-Keep output ordering stable.
+.B \-\-color
+Enable colored output for diagnostics and logs.
 .TP
-.BI \-\-runtime-profile " <name>"
-Select the runtime profile: \fBcore\fR, \fBsystem\fR, \fBdesktop\fR, or \fBarduino\fR.
+.B \-\-no-color
+Disable colored output.
 .TP
-.B \-\-allow-experimental
-Allow experimental imports.
+.B \-\-verbose
+Increase verbosity of compiler messages.
 .TP
-.B \-\-deny-internal
-Keep internal module privacy enabled.
+.B \-\-quiet
+Suppress non-error messages.
 .TP
-.B \-\-allow-internal
-Disable internal privacy checks.
+.B \-\-trace
+Enable detailed tracing for debugging compiler internals.
+.TP
+.B \-\-time
+Print timing information for compilation stages.
+.TP
+.B \-\-profile-json
+Output profiling data in JSON format.
+.TP
+.B Frontend
+.TP
+.B \-\-dump-tokens
+Print tokens generated by the lexer.
+.TP
+.B \-\-dump-ast
+Print the Abstract Syntax Tree after parsing.
+.TP
+.B \-\-dump-symbols
+Print symbol tables after semantic analysis.
+.TP
+.B \-\-dump-cfg
+Print control flow graphs for functions.
+.TP
+.B Analysis
+.TP
+.B \-\-dump-hir
+Print the High-level Intermediate Representation.
+.TP
+.B \-\-dump-mir
+Print the Mid-level Intermediate Representation.
+.TP
+.B \-\-dump-borrowck
+Print borrow checker results and diagnostics.
 .TP
 .B \-\-strict-types
-Enforce canonical type names.
+Enforce strict canonical type names.
 .TP
 .B \-\-strict-modules
 Require explicit module imports.
@@ -140,48 +248,286 @@ Require explicit imports and reject unused aliases.
 .B \-\-fail-on-warning
 Treat warnings as errors.
 .TP
-.BI \-\-stage " <name>"
-Stop at a stage: \fBparse\fR, \fBresolve\fR, \fBir\fR, or \fBbackend\fR.
+.B Backend
 .TP
-.B \-\-freestanding
-Enable freestanding mode.
+.B \-\-emit-vitte
+Emit a Vitte-specific artifact only.
 .TP
-.B \-\-stdout
-Write output to stdout.
+.B \-\-emit-c
+Emit C source code.
+.TP
+.B \-\-emit-ir
+Emit intermediate representation code.
+.TP
+.B \-\-emit-llvm
+Emit LLVM IR code.
+.TP
+.B \-\-emit-object
+Emit object files.
+.TP
+.B \-\-emit-asm
+Emit assembly code.
+.TP
+.B \-\-stage " <name>"
+Stop compilation after the specified stage: \fBparse\fR, \fBresolve\fR, \fBir\fR, \fBbackend\fR, etc.
+.TP
+.B \-\-threads " <n>"
+Set the number of threads to use for parallel compilation.
+.TP
+.B \-\-jobs " <n>"
+Alias for \-\-threads.
+.TP
+.B Runtime
+.TP
+.BI \-\-runtime-include " <path>"
+Add a directory to the runtime include path.
+.TP
+.BI \-\-runtime-profile " <name>"
+Select the runtime profile: \fBcore\fR, \fBsystem\fR, \fBdesktop\fR, or \fBarduino\fR.
+.TP
+.B \-\-upload
+Upload compiled code to Arduino devices after build.
+.TP
+.BI \-\-port " <path>"
+Specify the serial port for Arduino communication.
+.TP
+.BI \-\-fqbn " <name>"
+Specify the fully qualified board name for Arduino targets.
+.TP
+.B Reproducibility
 .TP
 .B \-\-repro
-Enable reproducible output.
+Enable reproducible builds with stable output ordering.
 .TP
 .B \-\-repro-strict
-Enforce strict deterministic lowering.
+Enforce strict determinism in lowering and code generation.
+.TP
+.B \-\-incremental
+Enable incremental compilation to speed up rebuilds.
+.TP
+.BI \-\-incremental-dir " <path>"
+Specify a directory for incremental compilation cache.
+.TP
+.B Debugging
 .TP
 .B \-\-debug
-Include debug symbols.
+Include debug symbols and extra metadata.
+.TP
+.B Optimization
 .TP
 .B \-O0 .. \-O3
-Set optimization level.
-.SH STAGES
+Set optimization level, from no optimization (\-O0) to aggressive optimizations (\-O3).
 .TP
-.B parse
-Read syntax and top-level structure.
+.B Cache
+.TP
+.BI \-\-cache-dir " <path>"
+Set the directory used for compiler cache storage.
+.SH STAGES
+The compilation pipeline in Vitte consists of the following stages:
+
+.TP
+.B lexer
+Tokenizes raw source code into a stream of tokens.
+.TP
+.B parser
+Converts tokens into an Abstract Syntax Tree (AST).
+.TP
+.B ast
+Represents parsed source code structures.
 .TP
 .B resolve
-Check modules, imports, and symbols.
+Performs name resolution and module import checks.
+.TP
+.B sema
+Conducts semantic analysis, including symbol table construction.
+.TP
+.B typeck
+Checks type correctness and enforces type rules.
+.TP
+.B borrowck
+Performs borrow checking to ensure safe memory access.
+.TP
+.B hir
+Generates High-level Intermediate Representation.
+.TP
+.B mir
+Generates Mid-level Intermediate Representation for optimization.
 .TP
 .B ir
-Lower to HIR and MIR.
+Intermediate representation used for backend processing.
 .TP
 .B backend
-Emit target output.
-.SH FILES
+Generates target-specific code such as assembly or object files.
 .TP
-.B src/vitte/compiler
-Main Vitte compiler source tree.
+.B linker
+Links compiled objects into final executables or libraries.
+.SH TARGETS
+Vitte supports multiple compilation targets, including:
+
 .TP
-.B docs
-Project docs and site pages.
+.B vitte
+The default native target for the host platform.
 .TP
-.B man/vittec.1
-Compatibility manual page.
+.B native
+Alias for the host platform’s native target.
+.TP
+.B linux-x86_64
+Linux on x86_64 architecture.
+.TP
+.B linux-aarch64
+Linux on ARM 64-bit architecture.
+.TP
+.B windows-x86_64
+Windows on x86_64 architecture.
+.TP
+.B macos-aarch64
+macOS on ARM 64-bit architecture (Apple Silicon).
+.TP
+.B riscv64
+RISC-V 64-bit architecture.
+.TP
+.B arduino-uno
+Arduino Uno microcontroller board.
+.TP
+.B arduino-mega
+Arduino Mega microcontroller board.
+.TP
+.B arduino-nano
+Arduino Nano microcontroller board.
+
+.SH TARGET FAMILIES
+.TP
+.B native
+Host compilation using the current platform toolchain.
+.TP
+.B cross
+Cross compilation using target-specific runtimes and linkers.
+.TP
+.B embedded
+Microcontroller and constrained-device targets.
+.TP
+.B experimental
+Research and prototype backends under active development.
+
+.SH ENVIRONMENT
+Environment variables influencing Vitte behavior:
+
+.TP
+.B VITTE_HOME
+Base directory for Vitte installation and resources.
+.TP
+.B VITTE_CACHE_DIR
+Directory for compiler cache storage.
+.TP
+.B VITTE_RUNTIME_PATH
+Paths to runtime libraries and includes.
+.TP
+.B VITTE_TARGET_PATH
+Paths to target-specific files and configurations.
+.TP
+.B VITTE_COLOR
+Enable or disable colored output (values: \fBon\fR, \fBoff\fR).
+.TP
+.B VITTE_LANG
+Set the diagnostics language.
+
+.SH CONFIGURATION FILES
+.TP
+.B vitte.toml
+Primary project configuration file.
+.TP
+.B vitte.lock
+Dependency and reproducibility lock file.
+.TP
+.B .vitte-cache
+Compiler cache metadata.
+.TP
+.B .vitte-target
+Target-specific build metadata.
+
+.SH DIAGNOSTIC CODES
+Diagnostics are categorized by severity and subsystem.
+
+.TP
+.B E####
+Compiler errors that prevent successful compilation.
+.TP
+.B W####
+Warnings that indicate suspicious but valid code.
+.TP
+.B N####
+Informational notes attached to diagnostics.
+.TP
+.B H####
+Hints suggesting potential fixes.
+
+.SH INCREMENTAL COMPILATION
+Incremental compilation stores intermediate compiler artifacts and analysis results in a cache directory. Subsequent compilations reuse unchanged work where possible, reducing build latency and improving developer iteration speed.
+
+.SH REPRODUCIBLE BUILDS
+When reproducible mode is enabled, Vitte attempts to generate byte-for-byte identical outputs from identical inputs. This mode minimizes timestamp, path, and host-dependent variations.
+
+.SH EXIT STATUS
+The Vitte command returns the following exit codes:
+
+.TP
+.B 0
+Successful execution.
+.TP
+.B 1
+General error, such as invalid command line options or internal failure.
+.TP
+.B 2
+Compilation error, including syntax or semantic errors.
+.TP
+.B 64
+Usage error, such as missing required arguments.
+.TP
+.B 65
+Data format error, e.g., corrupted input files.
+.TP
+.B 70
+Internal software error or unexpected condition.
+.SH EXAMPLES
+.TP
+.B vitte parse source.vitte
+Tokenize and parse the source file, printing the AST.
+.TP
+.B vitte check src/
+Perform full semantic checks on all source files in the src directory.
+.TP
+.B vitte build --target linux-x86_64 -O2 main.vitte
+Build an optimized executable for Linux x86_64.
+.TP
+.B vitte run main.vitte -- arg1 arg2
+Compile and run the program, passing \fIarg1\fR and \fIarg2\fR as runtime arguments.
+.TP
+.B vitte emit --emit-llvm main.vitte
+Generate LLVM IR code for inspection.
+.TP
+.B vitte emit --emit-c main.vitte
+Generate equivalent C source code.
+.TP
+.B vitte build --target arduino-uno --upload blink.vitte
+Build and upload a program to an Arduino Uno board.
+.TP
+.B vitte check --diag-json src/ > diagnostics.json
+Run checks and output diagnostics in JSON format.
+.TP
+.B vitte build --repro -O3 src/
+Perform a reproducible build with maximum optimizations.
+.TP
+.B vitte mod graph
+Show the module dependency graph to analyze project structure.
+.SH BUGS
+Please report bugs and feature requests at the official Vitte GitHub repository: https://github.com/vincent/vitte/issues. Include detailed reproduction steps, compiler version, and platform information.
+.SH AUTHORS
+The Vitte project is developed and maintained by a community of contributors. For a full list of authors and contributors, please refer to the AUTHORS file in the source repository.
 .SH SEE ALSO
-.BR vittec (1)
+.BR vittec (1),
+.BR vittefmt (1),
+.BR vittepkg (1),
+.BR vitte-lsp (1)
+,.BR vitte-doc (1)
+,.BR vitte-check (1)
+,.BR vitte-build (1)

@@ -229,7 +229,7 @@ Homepage: https://vitte-lang.org/
 Vcs-Git: https://github.com/vitte-lang/vitte.git
 Section: devel
 Priority: optional
-Depends: bash, libc6
+Depends: bash, libc6, debconf (>= 0.5)
 Recommends: make, python3, zsh
 Description: Vitte systems language compiler and toolchain for Raspberry Pi 4
  Vitte is a structured systems programming language focused on clarity,
@@ -327,6 +327,8 @@ create_deb_package() {
     "$stage_root/usr/share/vitte/editors" \
     "$stage_root/usr/share/vitte/completions" \
     "$stage_root/usr/share/vitte/docs" \
+    "$stage_root/usr/share/vitte/locales" \
+    "$stage_root/usr/share/vitte/bin" \
     "$stage_root/usr/share/man/man1" \
     "$debian_dir"
 
