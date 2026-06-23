@@ -23,6 +23,10 @@ cli_error() {
     code="$1"
     msg="$2"
     hint="${3:-}"
+    msg="$(localized_diagnostic_message "$code" "$msg")"
+    if [ -n "$hint" ]; then
+        hint="$(localized_diagnostic_hint "$code" "$hint")"
+    fi
     if [ -n "$hint" ]; then
         echo "$error_prefix $code: $msg (hint: $hint)" >&2
     else
@@ -248,10 +252,106 @@ shell_payload_c_literal() {
 compile_native_ir() {
     src="$1"
     ir_version="${2:-v1}"
+    lang="$(normalize_diagnostics_lang "$diagnostics_lang")"
+    diag_file="$(vitte_root_dir)/locales/$lang/diagnostics.ftl"
+    loc_unknown_string_const="$(ftl_lookup "$diag_file" E_BOOTSTRAP_UNKNOWN_STRING_CONST || printf 'unknown string constant')"
+    loc_unknown_int_const="$(ftl_lookup "$diag_file" E_BOOTSTRAP_UNKNOWN_INT_CONST || printf 'unknown int constant')"
+    loc_expected_string_const="$(ftl_lookup "$diag_file" E_BOOTSTRAP_EXPECTED_STRING_CONST || printf 'expected string constant')"
+    loc_expected_int_const="$(ftl_lookup "$diag_file" E_BOOTSTRAP_EXPECTED_INT_CONST || printf 'expected int constant')"
+    loc_unknown_proc="$(ftl_lookup "$diag_file" E_BOOTSTRAP_UNKNOWN_PROC_PREFIX || printf 'unsupported bootstrap proc')"
+    loc_dup_proc="$(ftl_lookup "$diag_file" E_BOOTSTRAP_DUP_PROC_PREFIX || printf 'duplicate proc')"
+    loc_const_signature="$(ftl_lookup "$diag_file" E_BOOTSTRAP_CONST_SIGNATURE || printf 'expected const NAME: string = "..." or const NAME: int = 123')"
+    loc_main_signature="$(ftl_lookup "$diag_file" E_BOOTSTRAP_MAIN_SIGNATURE || printf 'expected proc main(args: list[string]) -> int {')"
+    loc_proc_signature_params="$(ftl_lookup "$diag_file" E_BOOTSTRAP_PROC_SIGNATURE_PARAMS || printf 'bootstrap string proc must have no parameters: proc name() -> string {')"
+    loc_proc_signature_return="$(ftl_lookup "$diag_file" E_BOOTSTRAP_PROC_SIGNATURE_RETURN || printf 'bootstrap string proc must return string: proc name() -> string {')"
+    loc_proc_signature="$(ftl_lookup "$diag_file" E_BOOTSTRAP_PROC_SIGNATURE || printf 'expected proc name() -> string { or proc main(args: list[string]) -> int {')"
+    loc_proc_body="$(ftl_lookup "$diag_file" E_BOOTSTRAP_PROC_BODY || printf 'unsupported statement in bootstrap proc')"
+    loc_proc_body_give="$(ftl_lookup "$diag_file" E_BOOTSTRAP_PROC_BODY_GIVE || printf 'expected exactly one supported give')"
+    loc_main_body="$(ftl_lookup "$diag_file" E_BOOTSTRAP_MAIN_BODY || printf 'expected main to give int')"
+    loc_proc_body_int="$(ftl_lookup "$diag_file" E_BOOTSTRAP_PROC_BODY_INT || printf 'expected int literal or int constant give')"
+    loc_proc_body_string="$(ftl_lookup "$diag_file" E_BOOTSTRAP_PROC_BODY_STRING || printf 'expected string literal or string constant give')"
+    loc_top_level="$(ftl_lookup "$diag_file" E_BOOTSTRAP_TOP_LEVEL || printf 'unsupported top-level item')"
+    loc_unclosed_proc="$(ftl_lookup "$diag_file" E_BOOTSTRAP_UNCLOSED_PROC || printf 'missing closing brace')"
+    loc_export="$(ftl_lookup "$diag_file" E_BOOTSTRAP_EXPORT || printf 'expected export *')"
+    loc_space="$(ftl_lookup "$diag_file" E_BOOTSTRAP_SPACE || printf 'missing space declaration')"
+    loc_version="$(ftl_lookup "$diag_file" E_BOOTSTRAP_VERSION || printf 'missing version_text()')"
+    loc_banner="$(ftl_lookup "$diag_file" E_BOOTSTRAP_BANNER || printf 'missing banner_text()')"
     # Keep this AWK parser intentionally small: it recognizes only the
     # bootstrap-native subset documented in docs/bootstrap_seed.md.
-    awk -v ir_version="$ir_version" '
+    awk -v ir_version="$ir_version" \
+        -v loc_unknown_string_const="$loc_unknown_string_const" \
+        -v loc_unknown_int_const="$loc_unknown_int_const" \
+        -v loc_expected_string_const="$loc_expected_string_const" \
+        -v loc_expected_int_const="$loc_expected_int_const" \
+        -v loc_unknown_proc="$loc_unknown_proc" \
+        -v loc_dup_proc="$loc_dup_proc" \
+        -v loc_const_signature="$loc_const_signature" \
+        -v loc_main_signature="$loc_main_signature" \
+        -v loc_proc_signature_params="$loc_proc_signature_params" \
+        -v loc_proc_signature_return="$loc_proc_signature_return" \
+        -v loc_proc_signature="$loc_proc_signature" \
+        -v loc_proc_body="$loc_proc_body" \
+        -v loc_proc_body_give="$loc_proc_body_give" \
+        -v loc_main_body="$loc_main_body" \
+        -v loc_proc_body_int="$loc_proc_body_int" \
+        -v loc_proc_body_string="$loc_proc_body_string" \
+        -v loc_top_level="$loc_top_level" \
+        -v loc_unclosed_proc="$loc_unclosed_proc" \
+        -v loc_export="$loc_export" \
+        -v loc_space="$loc_space" \
+        -v loc_version="$loc_version" \
+        -v loc_banner="$loc_banner" '
+    function localized_msg(code, msg, value) {
+        if (msg ~ /^unknown string constant /) {
+            value = msg
+            sub(/^unknown string constant /, "", value)
+            return loc_unknown_string_const " " value
+        }
+        if (msg ~ /^unknown int constant /) {
+            value = msg
+            sub(/^unknown int constant /, "", value)
+            return loc_unknown_int_const " " value
+        }
+        if (msg ~ /^expected string constant /) {
+            value = msg
+            sub(/^expected string constant /, "", value)
+            return loc_expected_string_const " " value
+        }
+        if (msg ~ /^expected int constant /) {
+            value = msg
+            sub(/^expected int constant /, "", value)
+            return loc_expected_int_const " " value
+        }
+        if (msg ~ /^unsupported bootstrap proc /) {
+            value = msg
+            sub(/^unsupported bootstrap proc /, "", value)
+            return loc_unknown_proc " " value
+        }
+        if (msg ~ /^duplicate proc /) {
+            value = msg
+            sub(/^duplicate proc /, "", value)
+            return loc_dup_proc " " value
+        }
+        if (code == "E_BOOTSTRAP_CONST_SIGNATURE") return loc_const_signature
+        if (code == "E_BOOTSTRAP_MAIN_SIGNATURE") return loc_main_signature
+        if (code == "E_BOOTSTRAP_PROC_SIGNATURE" && msg ~ /^bootstrap string proc must have no parameters/) return loc_proc_signature_params
+        if (code == "E_BOOTSTRAP_PROC_SIGNATURE" && msg ~ /^bootstrap string proc must return string/) return loc_proc_signature_return
+        if (code == "E_BOOTSTRAP_PROC_SIGNATURE") return loc_proc_signature
+        if (code == "E_BOOTSTRAP_PROC_BODY" && msg ~ /^expected exactly one supported give/) return loc_proc_body_give
+        if (code == "E_BOOTSTRAP_PROC_BODY" && msg ~ /^expected int literal/) return loc_proc_body_int
+        if (code == "E_BOOTSTRAP_PROC_BODY" && msg ~ /^expected string literal/) return loc_proc_body_string
+        if (code == "E_BOOTSTRAP_PROC_BODY") return loc_proc_body
+        if (code == "E_BOOTSTRAP_MAIN_BODY") return loc_main_body
+        if (code == "E_BOOTSTRAP_TOP_LEVEL") return loc_top_level
+        if (code == "E_BOOTSTRAP_UNCLOSED_PROC") return loc_unclosed_proc
+        if (code == "E_BOOTSTRAP_EXPORT") return loc_export
+        if (code == "E_BOOTSTRAP_SPACE") return loc_space
+        if (code == "E_BOOTSTRAP_VERSION") return loc_version
+        if (code == "E_BOOTSTRAP_BANNER") return loc_banner
+        return msg
+    }
     function diag(code, msg) {
+        msg = localized_msg(code, msg)
         printf "%s:%d:%d: %s: %s\n", file, line_no, col, code, msg > "/dev/stderr"
         errors++
     }
@@ -795,6 +895,7 @@ render_native_shell_from_ir() {
     printf '\n'
     printf 'trace_pipeline=0\n'
     printf 'strict_mode=0\n'
+    printf 'diagnostics_lang="${VITTE_LANG:-en}"\n'
     printf "ansi_reset=\"\$(printf '\\033[0m')\"\n"
     printf "ansi_bold=\"\$(printf '\\033[1m')\"\n"
     printf "ansi_red=\"\$(printf '\\033[31m')\"\n"
@@ -918,10 +1019,18 @@ extract_native_main_return() {
         sub(/[ \t\r\n]+$/, "", s)
         return s
     }
-    function eval_native_term(term, value, left, right, joined, call_name) {
+    function eval_native_term(term, value, left, right, joined, call_name, field_name) {
         term = trim(term)
         eval_ok = 1
         if (term ~ /^-?[0-9]+$/) return term + 0
+        if (term ~ /^[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*$/) {
+            field_name = term
+            if (!(field_name in vars)) {
+                eval_ok = 0
+                return 0
+            }
+            return vars[field_name]
+        }
         if (term ~ /^strings\.str_length\("[^"]*"\)$/) {
             value = term
             sub(/^strings\.str_length\("/, "", value)
@@ -994,6 +1103,7 @@ extract_native_main_return() {
     }
     BEGIN {
         in_main = 0
+        in_record_literal = 0
         skip_generic = 0
         skip_generic_depth = 0
         saw_main = 0
@@ -1024,6 +1134,24 @@ extract_native_main_return() {
             if (line ~ /\{/) skip_generic_depth += 1
             if (line ~ /\}/) skip_generic_depth -= 1
             if (skip_generic_depth <= 0) skip_generic = 0
+            next
+        }
+        if (in_record_literal) {
+            if (line ~ /^\};?$/) {
+                in_record_literal = 0
+                record_var = ""
+                next
+            }
+            if (line ~ /^[A-Za-z_][A-Za-z0-9_]*[ \t]*:[ \t]*-?[0-9]+,?$/) {
+                field_name = line
+                sub(/[ \t]*:.*/, "", field_name)
+                field_value = line
+                sub(/^[^:]*:[ \t]*/, "", field_value)
+                sub(/,$/, "", field_value)
+                vars[record_var "." field_name] = field_value + 0
+                next
+            }
+            invalid = 1
             next
         }
         if (!in_main && line ~ /^space[ \t]+[A-Za-z0-9_\/]+;?$/) next
@@ -1101,6 +1229,14 @@ extract_native_main_return() {
             sub(/^.*pair_first<[^>]+>\([ \t]*/, "", value)
             sub(/[ \t]*,.*$/, "", value)
             vars[name] = value
+            next
+        }
+        if (in_main && line ~ /^let[ \t]+[A-Za-z_][A-Za-z0-9_]*([ \t]*:[^=]+)?[ \t]*=[ \t]*[A-Za-z_][A-Za-z0-9_]*[ \t]*\{$/) {
+            name = line
+            sub(/^let[ \t]+/, "", name)
+            sub(/[ \t]*(:[^=]+)?[ \t]*=.*/, "", name)
+            in_record_literal = 1
+            record_var = name
             next
         }
         if (in_main && line ~ /^give[ \t]+[A-Za-z_][A-Za-z0-9_]*;?$/) {
@@ -1428,7 +1564,22 @@ normalize_diagnostics_lang() {
 }
 
 vitte_root_dir() {
-    CDPATH= cd -- "$(dirname -- "$0")/.." && pwd
+    cwd="$(pwd)"
+    if [ -d "$cwd/locales" ]; then
+        printf '%s\n' "$cwd"
+        return 0
+    fi
+    base="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
+    if [ -d "$base/locales" ]; then
+        printf '%s\n' "$base"
+        return 0
+    fi
+    parent="$(CDPATH= cd -- "$base/.." && pwd)"
+    if [ -d "$parent/locales" ]; then
+        printf '%s\n' "$parent"
+        return 0
+    fi
+    printf '%s\n' "$base"
 }
 
 ftl_lookup() {
@@ -1444,6 +1595,22 @@ ftl_lookup() {
         }
         END { if (!found) exit 1 }
     ' "$file"
+}
+
+localized_diagnostic_message() {
+    code="$1"
+    fallback="$2"
+    lang="$(normalize_diagnostics_lang "$diagnostics_lang")"
+    diag_file="$(vitte_root_dir)/locales/$lang/diagnostics.ftl"
+    ftl_lookup "$diag_file" "$code" || printf '%s\n' "$fallback"
+}
+
+localized_diagnostic_hint() {
+    code="$1"
+    fallback="$2"
+    lang="$(normalize_diagnostics_lang "$diagnostics_lang")"
+    diag_file="$(vitte_root_dir)/locales/$lang/diagnostics.ftl"
+    ftl_lookup "$diag_file" "$code.hint" || printf '%s\n' "$fallback"
 }
 
 json_escape() {

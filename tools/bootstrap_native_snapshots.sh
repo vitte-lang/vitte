@@ -76,6 +76,16 @@ check_bad_diag() {
     done < "$SNAP_DIR/$name.err.must"
 }
 
+check_bad_diag_lang() {
+    name="$1"
+    lang="$2"
+    if "$BIN_DIR/vittec0" dump-native-ir --lang "$lang" --src "$SNAP_DIR/$name.vit" > "$TMP_DIR/$name.$lang.out" 2> "$TMP_DIR/$name.$lang.err"; then
+        die "$name $lang unexpectedly compiled"
+    fi
+    sed "s|$SNAP_DIR/|tests/bootstrap_native/|g" "$TMP_DIR/$name.$lang.err" > "$TMP_DIR/$name.$lang.norm.err"
+    diff -u "$SNAP_DIR/$name.$lang.err.must" "$TMP_DIR/$name.$lang.norm.err" || die "$name $lang diagnostic snapshot drift"
+}
+
 check_cli_error() {
     name="$1"
     shift
@@ -192,6 +202,7 @@ check_bad_diag_cases() {
     check_bad_diag bad_multiline_proc
     check_bad_diag bad_multiple_give
     check_bad_diag bad_lowercase_const
+    check_bad_diag_lang bad_unknown_const fr
 }
 
 check_cli_cases() {
@@ -331,6 +342,14 @@ check_native_user_build() {
     "$BIN_DIR/vittec0" build "$ROOT_DIR/tests/golden/frontend/fixtures/hello_min.vit" -o "$TMP_DIR/hello-min"
     "$TMP_DIR/hello-min" >/dev/null 2>&1 || die "hello_min executable exit code mismatch"
     "$BIN_DIR/vittec0" run "$ROOT_DIR/tests/golden/frontend/fixtures/hello_min.vit" >/dev/null 2>&1 || die "hello_min run exit code mismatch"
+    "$BIN_DIR/vittec0" build "$SNAP_DIR/record_field_sum.vit" -o "$TMP_DIR/record-field-sum"
+    if "$TMP_DIR/record-field-sum" >/dev/null 2>&1; then
+        die "record field sum executable exit code mismatch"
+    else
+        rc="$?"
+        [ "$rc" -eq 30 ] || die "record field sum executable exit code mismatch"
+    fi
+    check_cli_error cli.build_native_subset.fr "$BIN_DIR/vittec0" build --lang fr "$SNAP_DIR/bad_bool_const.vit" -o "$TMP_DIR/bad-bool-fr"
 }
 
 check_ir_contract_gate
