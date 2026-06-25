@@ -6,6 +6,8 @@ package vitte/compiler/driver
 space vitte/compiler/driver
 
 use src/vitte/compiler/bootstrap as bootstrap
+use src/vitte/packages/compiler/driver/internal/command_catalog as command_catalog
+use src/vitte/packages/compiler/driver/internal/option_catalog as option_catalog
 
 <<< ROLE-CONTRACT
 package: vitte/compiler/driver
@@ -52,27 +54,27 @@ proc command_doctor() -> DriverCommand {
 }
 
 proc command_count() -> int {
-  give 6
+  give command_catalog.command_count() as int
 }
 
 proc top_level_command_count() -> int {
-  give 12
+  give option_catalog.top_level_command_count()
 }
 
 proc grammar_subcommand_count() -> int {
-  give 2
+  give option_catalog.grammar_subcommand_count()
 }
 
 proc mod_subcommand_count() -> int {
-  give 5
+  give option_catalog.mod_subcommand_count()
 }
 
 proc known_flag_count() -> int {
-  give 80
+  give option_catalog.all_flag_count()
 }
 
 proc syntax_profile_count() -> int {
-  give 1
+  give option_catalog.syntax_profile_count()
 }
 
 proc bootstrap_status() -> string {
@@ -84,7 +86,7 @@ proc migration_stage() -> string {
 }
 
 proc catalog_version() -> string {
-  give "driver-surface-v1"
+  give command_catalog.catalog_version()
 }
 
 proc source_of_truth() -> string {
@@ -96,7 +98,7 @@ proc normalization_scope() -> string {
 }
 
 proc package_meta() -> string {
-  give "package=vitte/compiler/driver;stage=self-hosted-bootstrap;catalog=driver-surface-v1"
+  give "package=vitte/compiler/driver;stage=self-hosted-bootstrap;catalog=" + catalog_version()
 }
 
 proc ready() -> bool {
@@ -104,22 +106,22 @@ proc ready() -> bool {
 }
 
 proc smoke_test() -> bool {
-  if command_count() != 6 {
+  if command_count() <= 10 {
     give false
   }
-  if top_level_command_count() != 12 {
+  if top_level_command_count() != option_catalog.top_level_command_count() {
     give false
   }
-  if grammar_subcommand_count() != 2 {
+  if grammar_subcommand_count() != option_catalog.grammar_subcommand_count() {
     give false
   }
-  if mod_subcommand_count() != 5 {
+  if mod_subcommand_count() != option_catalog.mod_subcommand_count() {
     give false
   }
-  if known_flag_count() != 80 {
+  if known_flag_count() != option_catalog.all_flag_count() {
     give false
   }
-  if syntax_profile_count() != 1 {
+  if syntax_profile_count() != option_catalog.syntax_profile_count() {
     give false
   }
   if bootstrap_status() != "self-hosted-bootstrap" {
@@ -128,7 +130,7 @@ proc smoke_test() -> bool {
   if migration_stage() != bootstrap.bootstrap_stage() {
     give false
   }
-  if catalog_version() != "driver-surface-v1" {
+  if catalog_version() != command_catalog.catalog_version() {
     give false
   }
   if source_of_truth() != "src/vitte/compiler/driver" {

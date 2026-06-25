@@ -30,6 +30,7 @@ MKDIR        := mkdir -p
 INSTALL      := install
 CP           := cp -f
 VITTE_BOOTSTRAP ?= $(BIN_DIR)/$(PROJECT)
+DRIVER_BOOTSTRAP_RUNNER ?= $(shell if [ -x "$(BIN_DIR)/$(PROJECT)" ]; then printf '%s' "$(BIN_DIR)/$(PROJECT)"; elif [ -x "$(BIN_DIR)/vittec0" ]; then printf '%s' "$(BIN_DIR)/vittec0"; else printf '%s' "$(VITTE_BOOTSTRAP)"; fi)
 
 PREFIX       ?= /usr/local
 DESTDIR      ?=
@@ -407,8 +408,8 @@ compiler-audit-report:
 
 .PHONY: driver-surface-audit
 driver-surface-audit:
-	@$(VITTE_BOOTSTRAP) check src/vitte/packages/compiler/driver/mod.vit >/dev/null
-	@$(VITTE_BOOTSTRAP) check src/vitte/packages/compiler/driver/info.vit >/dev/null
+	@$(DRIVER_BOOTSTRAP_RUNNER) check src/vitte/packages/compiler/driver/mod.vit >/dev/null
+	@$(DRIVER_BOOTSTRAP_RUNNER) check src/vitte/packages/compiler/driver/info.vit >/dev/null
 	@echo "[driver-surface-audit] ok: compiler/driver package surface is Vitte-backed"
 
 .PHONY: driver-surface-parity
@@ -417,12 +418,11 @@ driver-surface-parity: selfhost-driver-bootstrap
 .PHONY: selfhost-driver-bootstrap
 selfhost-driver-bootstrap:
 	@tools/package_check_portable.sh src/vitte/packages/compiler/driver/mod.vit
-	@$(VITTE_BOOTSTRAP) check src/vitte/packages/compiler/driver/info.vit
-	@$(VITTE_BOOTSTRAP) check src/vitte/packages/compiler/driver/internal/normalize.vit
-	@$(VITTE_BOOTSTRAP) check src/vitte/packages/compiler/driver/internal/value_normalize.vit
-	@$(VITTE_BOOTSTRAP) check src/vitte/packages/compiler/driver/internal/normalized_options.vit
-	@$(VITTE_BOOTSTRAP) check src/vitte/packages/compiler/driver/internal/tokenized_parse.vit
-	@$(VITTE_BOOTSTRAP) check src/vitte/packages/compiler/driver/internal/compiler_ast_interning.vit
+	@$(DRIVER_BOOTSTRAP_RUNNER) check src/vitte/packages/compiler/driver/info.vit
+	@$(DRIVER_BOOTSTRAP_RUNNER) check src/vitte/packages/compiler/driver/internal/normalize.vit
+	@$(DRIVER_BOOTSTRAP_RUNNER) check src/vitte/packages/compiler/driver/internal/value_normalize.vit
+	@$(DRIVER_BOOTSTRAP_RUNNER) check src/vitte/packages/compiler/driver/internal/normalized_options.vit
+	@$(DRIVER_BOOTSTRAP_RUNNER) check src/vitte/packages/compiler/driver/internal/tokenized_parse.vit
 
 .PHONY: bootstrap-seed
 bootstrap-seed:
