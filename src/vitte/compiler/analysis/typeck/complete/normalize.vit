@@ -1,0 +1,104 @@
+space vitte/compiler/analysis/typeck/complete/normalize
+
+use vitte/compiler/frontend/ast/type_expr.{ AstTypeExpr, AstTypeKind }
+use vitte/compiler/frontend/ast/item.{ AstGenericParam, AstParam, AstProcSignature }
+use vitte/compiler/analysis/typeck/complete/types.{ CompleteProcParam, CompleteProcSignature, complete_proc_param, complete_signature_empty }
+
+export *
+
+proc type_text_or_name(ty: AstTypeExpr) -> string {
+  if ty.text != "" {
+    give trim(ty.text);
+  }
+  if ty.qualified_name != "" {
+    give trim(ty.qualified_name);
+  }
+  give trim(ty.name);
+}
+
+proc normalize_ast_type(ty: AstTypeExpr) -> string {
+  if not ty.valid {
+    give "";
+  }
+  if ty.kind == AstTypeKind.Infer {
+    give "_";
+  }
+  if ty.kind == AstTypeKind.Never {
+    give "never";
+  }
+  if ty.kind == AstTypeKind.SelfType {
+    give "Self";
+  }
+  let text: string = type_text_or_name(ty);
+  if text != "" {
+    give text;
+  }
+  give ty.name;
+}
+
+proc base_type_name(type_name: string) -> string {
+  let value: string = trim(type_name);
+  if starts_with(value, "&mut ") {
+    give base_type_name(trim(slice(value, 5, len(value))));
+  }
+  if starts_with(value, "&") {
+    give base_type_name(trim(slice(value, 1, len(value))));
+  }
+  if starts_with(value, "*mut ") {
+    give base_type_name(trim(slice(value, 5, len(value))));
+  }
+  if starts_with(value, "*const ") {
+    give base_type_name(trim(slice(value, 7, len(value))));
+  }
+  let generic_open: int = find(value, "[");
+  if generic_open > 0 {
+    give trim(slice(value, 0, generic_open));
+  }
+  give value;
+}
+
+proc generic_param_names(params: [AstGenericParam]) -> [string] {
+  let out: [string] = [];
+  let i: u64 = 0;
+  while i < len(params) {
+    if params[i].name != "" {
+      set out = out + [params[i].name];
+    }
+    set i = i + 1;
+  }
+  give out;
+}
+
+proc normalize_ast_param(param: AstParam) -> CompleteProcParam {
+  let name: string = if param.pattern.binding_name != "" { param.pattern.binding_name } else { param.pattern.name };
+  give complete_proc_param(
+    name,
+    normalize_ast_type(param.annotation),
+    param.mode,
+    param.variadic
+  );
+}
+
+proc normalize_ast_signature(signature: AstProcSignature) -> CompleteProcSignature {
+  if not signature.valid {
+    give complete_signature_empty();
+  }
+  let params: [CompleteProcParam] = [];
+  let i: u64 = 0;
+  while i < len(signature.params) {
+    set params = params + [normalize_ast_param(signature.params[i])];
+    set i = i + 1;
+  }
+  let return_type: string = normalize_ast_type(signature.return_type);
+  give CompleteProcSignature {
+    name: signature.name,
+    generic_params: generic_param_names(signature.generic_params),
+    params: params,
+    return_type: if return_type != "" { return_type } else { "unit" },
+    where_clauses: signature.where_clauses,
+    requires: signature.requires,
+    effects: signature.effects,
+    noexcept: signature.noexcept,
+    valid: signature.name != ""
+  };
+}

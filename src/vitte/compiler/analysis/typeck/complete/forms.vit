@@ -1,0 +1,108 @@
+space vitte/compiler/analysis/typeck/complete/forms
+
+use vitte/compiler/analysis/typeck/complete/context.{ CompleteContext, context_add_symbol, symbol_exists }
+use vitte/compiler/analysis/typeck/complete/diagnostics.{ add_complete_diag, duplicate_symbol_diag, unknown_type_diag }
+use vitte/compiler/analysis/typeck/complete/normalize.{ base_type_name, generic_param_names, normalize_ast_type }
+use vitte/compiler/analysis/typeck/complete/surface.{ SurfaceItem, find_surface_item }
+use vitte/compiler/analysis/typeck/complete/types.{
+  CompleteField,
+  CompleteSymbol,
+  CompleteSymbolKind,
+  CompleteVariant,
+  complete_symbol
+}
+use vitte/compiler/frontend/ast/item.{ AstItem, AstItemKind }
+
+export *
+
+proc type_known_in_scope(ctx: CompleteContext, generics: [string], type_name: string) -> bool {
+  let base_name: string = base_type_name(type_name);
+  if base_name == "" {
+    give false;
+  }
+  let i: u64 = 0;
+  while i < len(generics) {
+    if generics[i] == base_name {
+      give true;
+    }
+    set i = i + 1;
+  }
+  if starts_with(base_name, "[") or starts_with(base_name, "(") or starts_with(base_name, "proc(") {
+    give true;
+  }
+  give symbol_exists(ctx.symbols, base_name);
+}
+
+proc validate_field_types(ctx: CompleteContext, item: AstItem, generics: [string], fields: [CompleteField]) -> CompleteContext {
+  let out: CompleteContext = ctx;
+  let i: u64 = 0;
+  while i < len(fields) {
+    if not type_known_in_scope(out, generics, fields[i].type_name) {
+      set out.diagnostics = add_complete_diag(out.diagnostics, unknown_type_diag(fields[i].type_name, item.span));
+    }
+    set i = i + 1;
+  }
+  give out;
+}
+
+proc validate_variant_payloads(ctx: CompleteContext, item: AstItem, generics: [string], variants: [CompleteVariant]) -> CompleteContext {
+  let out: CompleteContext = ctx;
+  let i: u64 = 0;
+  while i < len(variants) {
+    let j: u64 = 0;
+    while j < len(variants[i].payload_types) {
+      if not type_known_in_scope(out, generics, variants[i].payload_types[j]) {
+        set out.diagnostics = add_complete_diag(out.diagnostics, unknown_type_diag(variants[i].payload_types[j], item.span));
+      }
+      set j = j + 1;
+    }
+    set i = i + 1;
+  }
+  give out;
+}
+
+proc register_form_or_pick(ctx: CompleteContext, item: AstItem, surface: SurfaceItem) -> CompleteContext {
+  let out: CompleteContext = ctx;
+  if item.name == "" {
+    give out;
+  }
+  if symbol_exists(out.symbols, item.name) {
+    set out.diagnostics = add_complete_diag(out.diagnostics, duplicate_symbol_diag(item.name, item.span));
+    give out;
+  }
+  let generics: [string] = generic_param_names(item.generic_params);
+  let kind: CompleteSymbolKind = if item.kind == AstItemKind.Pick or item.kind == AstItemKind.Flags { CompleteSymbolKind.Pick } else { CompleteSymbolKind.Form };
+  let symbol: CompleteSymbol = CompleteSymbol {
+    kind: kind,
+    name: item.name,
+    qualified_name: item.name,
+    type_name: item.name,
+    span: item.span,
+    generic_params: generics,
+    fields: surface.fields,
+    variants: surface.variants,
+    proc_signature: complete_symbol(CompleteSymbolKind.Unknown, "", "").proc_signature,
+    trait_info: complete_symbol(CompleteSymbolKind.Unknown, "", "").trait_info,
+    impl_info: complete_symbol(CompleteSymbolKind.Unknown, "", "").impl_info,
+    valid: true
+  };
+  set out = context_add_symbol(out, symbol);
+  if kind == CompleteSymbolKind.Form {
+    give validate_field_types(out, item, generics, surface.fields);
+  }
+  give validate_variant_payloads(out, item, generics, surface.variants);
+}
+
+proc register_forms_and_picks(ctx: CompleteContext, surfaces: [SurfaceItem]) -> CompleteContext {
+  let out: CompleteContext = ctx;
+  let i: u64 = 0;
+  while i < len(out.module.items) {
+    let item: AstItem = out.module.items[i];
+    if item.kind == AstItemKind.Form or item.kind == AstItemKind.Class or item.kind == AstItemKind.Union or item.kind == AstItemKind.Bits or item.kind == AstItemKind.Pick or item.kind == AstItemKind.Flags {
+      let surface: SurfaceItem = find_surface_item(surfaces, item.kind, item.name);
+      set out = register_form_or_pick(out, item, surface);
+    }
+    set i = i + 1;
+  }
+  give out;
+}

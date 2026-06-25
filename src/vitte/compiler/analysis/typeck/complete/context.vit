@@ -1,0 +1,149 @@
+space vitte/compiler/analysis/typeck/complete/context
+
+use vitte/compiler/analysis/typeck/complete/types.{
+  CompleteBinding,
+  CompleteSymbol,
+  CompleteSymbolKind,
+  complete_binding,
+  complete_impl_info_empty,
+  complete_signature_empty,
+  complete_trait_info_empty
+}
+use vitte/compiler/diagnostics/diagnostic.{ Diagnostic }
+use vitte/compiler/frontend/ast/item.{ AstModule }
+use vitte/compiler/frontend/ast/node.{ ast_span_empty }
+
+export *
+
+form CompleteContext {
+  module: AstModule
+  symbols: [CompleteSymbol]
+  diagnostics: [Diagnostic]
+  valid: bool
+}
+
+proc complete_context(module: AstModule) -> CompleteContext {
+  give CompleteContext {
+    module: module,
+    symbols: [],
+    diagnostics: [],
+    valid: module.valid
+  };
+}
+
+proc context_with_symbols(ctx: CompleteContext, symbols: [CompleteSymbol]) -> CompleteContext {
+  give CompleteContext {
+    module: ctx.module,
+    symbols: symbols,
+    diagnostics: ctx.diagnostics,
+    valid: ctx.valid
+  };
+}
+
+proc context_with_diagnostics(ctx: CompleteContext, diagnostics: [Diagnostic]) -> CompleteContext {
+  give CompleteContext {
+    module: ctx.module,
+    symbols: ctx.symbols,
+    diagnostics: diagnostics,
+    valid: ctx.valid
+  };
+}
+
+proc context_add_symbol(ctx: CompleteContext, symbol: CompleteSymbol) -> CompleteContext {
+  give context_with_symbols(ctx, ctx.symbols + [symbol]);
+}
+
+proc symbol_index(symbols: [CompleteSymbol], name: string) -> int {
+  let i: u64 = 0;
+  while i < len(symbols) {
+    if symbols[i].name == name or symbols[i].qualified_name == name {
+      give i as int;
+    }
+    set i = i + 1;
+  }
+  give -1;
+}
+
+proc symbol_exists(symbols: [CompleteSymbol], name: string) -> bool {
+  give symbol_index(symbols, name) >= 0;
+}
+
+proc symbol_exists_of_kind(symbols: [CompleteSymbol], name: string, kind: CompleteSymbolKind) -> bool {
+  let i: u64 = 0;
+  while i < len(symbols) {
+    if symbols[i].kind == kind and (symbols[i].name == name or symbols[i].qualified_name == name) {
+      give true;
+    }
+    set i = i + 1;
+  }
+  give false;
+}
+
+proc lookup_symbol(symbols: [CompleteSymbol], name: string) -> CompleteSymbol {
+  let i: u64 = 0;
+  while i < len(symbols) {
+    if symbols[i].name == name or symbols[i].qualified_name == name {
+      give symbols[i];
+    }
+    set i = i + 1;
+  }
+  give CompleteSymbol {
+    kind: CompleteSymbolKind.Unknown,
+    name: "",
+    qualified_name: "",
+    type_name: "",
+    span: ast_span_empty(),
+    generic_params: [],
+    fields: [],
+    variants: [],
+    proc_signature: complete_signature_empty(),
+    trait_info: complete_trait_info_empty(),
+    impl_info: complete_impl_info_empty(),
+    valid: false
+  };
+}
+
+proc binding_index(env: [CompleteBinding], name: string) -> int {
+  let i: u64 = 0;
+  while i < len(env) {
+    if env[i].name == name {
+      give i as int;
+    }
+    set i = i + 1;
+  }
+  give -1;
+}
+
+proc env_has(env: [CompleteBinding], name: string) -> bool {
+  give binding_index(env, name) >= 0;
+}
+
+proc env_get(env: [CompleteBinding], name: string) -> CompleteBinding {
+  let i: u64 = 0;
+  while i < len(env) {
+    if env[i].name == name {
+      give env[i];
+    }
+    set i = i + 1;
+  }
+  give complete_binding("", "", false, false);
+}
+
+proc env_set(env: [CompleteBinding], binding: CompleteBinding) -> [CompleteBinding] {
+  let index: int = binding_index(env, binding.name);
+  if index < 0 {
+    give env + [binding];
+  }
+
+  let out: [CompleteBinding] = [];
+  let i: u64 = 0;
+  while i < len(env) {
+    if i == index as u64 {
+      set out = out + [binding];
+    } else {
+      set out = out + [env[i]];
+    }
+    set i = i + 1;
+  }
+  give out;
+}

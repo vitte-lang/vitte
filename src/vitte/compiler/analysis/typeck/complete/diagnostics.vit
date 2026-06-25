@@ -1,0 +1,86 @@
+space vitte/compiler/analysis/typeck/complete/diagnostics
+
+use vitte/compiler/diagnostics/diagnostic.{
+  Diagnostic,
+  DiagnosticPhase,
+  SourceSpan,
+  diagnostic_error,
+  diagnostic_with_help,
+  diagnostic_with_subject_symbol,
+  diagnostic_with_subject_type,
+  add_unique_diagnostic
+}
+use vitte/compiler/frontend/ast/node.{ AstSpan }
+
+export *
+
+proc complete_source_span(span: AstSpan) -> SourceSpan {
+  let width: u64 = 1;
+  if span.end_line == span.start_line and span.end_column > span.start_column {
+    set width = span.end_column - span.start_column;
+  }
+  give SourceSpan {
+    file: span.file,
+    start_line: span.start_line,
+    start_column: span.start_column,
+    end_line: span.end_line,
+    end_column: span.end_column,
+    length: width,
+    valid: span.start_line > 0 and span.start_column > 0
+  };
+}
+
+proc complete_diag(code: string, message: string, span: AstSpan, help: string) -> Diagnostic {
+  let diag0: Diagnostic = diagnostic_error(code, DiagnosticPhase.Typeck, message, complete_source_span(span));
+  if help != "" {
+    give diagnostic_with_help(diag0, help);
+  }
+  give diag0;
+}
+
+proc duplicate_symbol_diag(name: string, span: AstSpan) -> Diagnostic {
+  give diagnostic_with_subject_symbol(
+    complete_diag(
+      "TYPECK_E_DUPLICATE_SYMBOL",
+      "duplicate type-checker symbol `" + name + "`",
+      span,
+      "rename the declaration or merge the duplicate definitions"
+    ),
+    name
+  );
+}
+
+proc unknown_type_diag(name: string, span: AstSpan) -> Diagnostic {
+  give diagnostic_with_subject_type(
+    complete_diag(
+      "TYPECK_E_UNKNOWN_TYPE",
+      "unknown type `" + name + "`",
+      span,
+      "declare the type, import it, or add the missing generic parameter"
+    ),
+    name
+  );
+}
+
+proc incompatible_type_diag(expected: string, found: string, span: AstSpan) -> Diagnostic {
+  let diag0: Diagnostic = complete_diag(
+    "TYPECK_E_TYPE_MISMATCH",
+    "type mismatch: expected `" + expected + "` but found `" + found + "`",
+    span,
+    "make both sides produce the same type or add an explicit conversion"
+  );
+  give diagnostic_with_subject_type(diag0, expected);
+}
+
+proc missing_trait_method_diag(trait_name: string, method_name: string, target_type: string, span: AstSpan) -> Diagnostic {
+  give complete_diag(
+    "TYPECK_E_IMPL_MISSING_METHOD",
+    "impl for `" + target_type + "` does not satisfy trait `" + trait_name + "`: missing `" + method_name + "`",
+    span,
+    "implement the missing method or remove the trait from the impl header"
+  );
+}
+
+proc add_complete_diag(diagnostics: [Diagnostic], diagnostic: Diagnostic) -> [Diagnostic] {
+  give add_unique_diagnostic(diagnostics, diagnostic);
+}

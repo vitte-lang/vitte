@@ -1,0 +1,48 @@
+space vitte/compiler/analysis/typeck/complete/builtins
+
+use vitte/compiler/analysis/typeck/complete/context.{ CompleteContext, context_add_symbol }
+use vitte/compiler/analysis/typeck/complete/types.{ CompleteSymbol, CompleteSymbolKind, complete_symbol }
+
+export *
+
+proc primitive_symbols() -> [string] {
+  give [
+    "bool",
+    "char",
+    "string",
+    "unit",
+    "int",
+    "uint",
+    "usize",
+    "isize",
+    "i8",
+    "i16",
+    "i32",
+    "i64",
+    "i128",
+    "u8",
+    "u16",
+    "u32",
+    "u64",
+    "u128",
+    "f32",
+    "f64",
+    "float",
+    "never",
+  ];
+}
+
+proc register_builtins(ctx: CompleteContext) -> CompleteContext {
+  let out: CompleteContext = ctx;
+  let names: [string] = primitive_symbols();
+  let i: u64 = 0;
+  while i < len(names) {
+    let symbol: CompleteSymbol = complete_symbol(CompleteSymbolKind.Primitive, names[i], names[i]);
+    set out = context_add_symbol(out, symbol);
+    set i = i + 1;
+  }
+  give context_add_symbol(
+    out,
+    complete_symbol(CompleteSymbolKind.Trait, "Copy", "Copy")
+  );
+}
