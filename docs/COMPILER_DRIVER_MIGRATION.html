@@ -83,12 +83,14 @@
 </ol>
 <p>the owned catalogs.</p>
 <h2>Driver Implementation</h2>
-<p>The compiler driver implementation lives in:</p>
+<p>The compiler driver implementation is split between the public entry facade and the runtime driver core:</p>
 <ul>
+<li><code>src/vitte/compiler/main.vit</code></li>
 <li><code>src/vitte/compiler/driver/compile.vit</code></li>
 <li><code>src/vitte/compiler/driver/compiler.vit</code></li>
 <li><code>src/vitte/compiler/driver/mod.vit</code></li>
 </ul>
+<p><code>src/vitte/compiler/main.vit</code> is the real compiler entrypoint used by bootstrap and packaging flows. <code>src/vitte/compiler/driver/compiler.vit</code> remains the runtime command dispatcher and stage-mapping core behind that facade.</p>
 <h2>Audit And Bootstrap Commands</h2>
 <pre><code class="language-sh">make driver-surface-audit
 make driver-surface-parity
@@ -118,9 +120,9 @@ make driver-surface-parity
 <ul>
 <li><code>make compiler-entry-lock</code></li>
 <li>enforces <code>COMPILER_SOURCE_ROOT=src/vitte/compiler</code></li>
-<li>enforces <code>COMPILER_ENTRY_POINT=src/vitte/compiler/driver/compiler.vit</code></li>
+<li>enforces <code>COMPILER_ENTRY_POINT=src/vitte/compiler/main.vit</code></li>
 <li><code>make compiler-reachability-audit</code></li>
-<li>checks transitive module reachability from <code>driver/compiler</code></li>
+<li>checks transitive module reachability from <code>vitte/compiler/main</code></li>
 <li>allows temporary migration exceptions through a tracked allowlist</li>
 <li><code>make compiler-max-gate-strict</code></li>
 <li>compiler-focused strict gate (frontend/analysis/middle/backend checks + strict smokes)</li>

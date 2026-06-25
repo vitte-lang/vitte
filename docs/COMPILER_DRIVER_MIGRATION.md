@@ -63,11 +63,17 @@ This package now owns:
 
 ## Driver Implementation
 
-The compiler driver implementation lives in:
+The compiler driver implementation is split between the public entry facade and
+the runtime driver core:
 
+- `src/vitte/compiler/main.vit`
 - `src/vitte/compiler/driver/compile.vit`
 - `src/vitte/compiler/driver/compiler.vit`
 - `src/vitte/compiler/driver/mod.vit`
+
+`src/vitte/compiler/main.vit` is the real compiler entrypoint used by bootstrap
+and packaging flows. `src/vitte/compiler/driver/compiler.vit` remains the
+runtime command dispatcher and stage-mapping core behind that facade.
 
 ## Audit And Bootstrap Commands
 
@@ -115,9 +121,9 @@ Latest strict alignment pass added concrete enforcement around the driver path:
 
 - `make compiler-entry-lock`
   - enforces `COMPILER_SOURCE_ROOT=src/vitte/compiler`
-  - enforces `COMPILER_ENTRY_POINT=src/vitte/compiler/driver/compiler.vit`
+  - enforces `COMPILER_ENTRY_POINT=src/vitte/compiler/main.vit`
 - `make compiler-reachability-audit`
-  - checks transitive module reachability from `driver/compiler`
+  - checks transitive module reachability from `vitte/compiler/main`
   - allows temporary migration exceptions through a tracked allowlist
 - `make compiler-max-gate-strict`
   - compiler-focused strict gate (frontend/analysis/middle/backend checks + strict smokes)

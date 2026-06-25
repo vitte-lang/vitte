@@ -18,7 +18,10 @@ USE_RE = re.compile(r"^\s*use\s+([a-zA-Z0-9_/]+)")
 
 def module_id(path: Path) -> str:
     rel = path.relative_to(ROOT / "src").with_suffix("")
-    return str(rel).replace("\\", "/")
+    parts = list(rel.parts)
+    if parts and parts[-1] == "mod":
+        parts = parts[:-1]
+    return "/".join(parts)
 
 
 def module_area(module_name: str) -> str:
@@ -40,6 +43,12 @@ def module_area(module_name: str) -> str:
 def canonical_self_leaf(module_name: str) -> str:
     leaf = module_name.rsplit("/", 1)[-1]
     return f"{module_name}/{leaf}"
+
+
+def normalize_module_name(module_name: str) -> str:
+    if module_name.endswith("/mod"):
+        return module_name[:-4]
+    return module_name
 
 
 def load_allow() -> dict[str, str]:
@@ -85,7 +94,7 @@ def main() -> int:
             m = USE_RE.match(ln)
             if not m:
                 continue
-            dep = m.group(1)
+            dep = normalize_module_name(m.group(1))
             if dep.startswith("vitte/compiler/") and dep in modules:
                 deps[mid].add(dep)
             leaf_dep = canonical_self_leaf(dep)
