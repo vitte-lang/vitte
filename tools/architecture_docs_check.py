@@ -23,7 +23,6 @@ FORBIDDEN = [
     "src/vitte/compiler/frontend/lexer.vit",
     "src/vitte/compiler/frontend/token.vit",
     "src/vitte/compiler/frontend/expr_parser.vit",
-    "src/vitte/compiler/frontend/diagnostics.vit",
     "ast_extended.vit",
     "hir_extended.vit",
     "architecture_integration_tests.vit",

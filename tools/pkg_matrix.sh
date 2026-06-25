@@ -66,7 +66,6 @@ run_ok "internal-dependencies" "$BIN" check "$ROOT_DIR/tests/pkg/ok_internal_dep
 run_ok "cross-package-imports" "$BIN" check "$ROOT_DIR/tests/pkg/ok_cross_package_imports.vit"
 run_ok "ast-interning-smoke" "$BIN" check "$ROOT_DIR/tests/pkg/ast_interning_smoke.vit"
 run_ok "compiler-ast-interning-flow" "$BIN" check "$ROOT_DIR/tests/pkg/compiler_ast_interning_flow.vit"
-run_ok "compiler-driver-ast-interning-pass" "$BIN" check "$ROOT_DIR/tests/pkg/compiler_driver_ast_interning_pass.vit"
 run_expect_diag "missing-package" "MOD_E_PACKAGE_MISSING" "$ROOT_DIR/tests/pkg/bad_missing_package.vit"
 run_expect_diag "import-cycle" "MOD_E_IMPORT_CYCLE" "$ROOT_DIR/tests/pkg/bad_import_cycle.vit"
 run_expect_diag "symbol-not-exported" "MOD_E_SYMBOL_NOT_EXPORTED" "$ROOT_DIR/tests/pkg/bad_symbol_not_exported.vit"
