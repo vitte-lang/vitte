@@ -9,3 +9,6 @@ This file freezes the parser-level core subset accepted by the seed compiler.
 - imports use `use/from/import` module paths.
 
 Any syntax outside this subset is experimental and not guaranteed stable.
+
+For the narrower bootstrap and compiler trust-root contract, see
+`docs/compiler/selfhost_core_subset.md`.

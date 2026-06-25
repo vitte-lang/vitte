@@ -107,6 +107,10 @@ bootstrap-native forms they rely on:
 This is checked by `make bootstrap-source-coverage-check` and is included in the
 bootstrap-native contract targets.
 
+The stricter trust-root syntax contract is documented in
+`docs/compiler/selfhost_core_subset.md` and enforced by
+`make selfhost-subset-check`.
+
 ## Project Path Resolution
 
 Bootstrap and driver flows now accept a project directory as the CLI input path.

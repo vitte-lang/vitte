@@ -448,6 +448,10 @@ seed-contract-check:
 bootstrap-source-coverage-check:
 	@tools/check_bootstrap_source_coverage.sh
 
+.PHONY: selfhost-subset-check
+selfhost-subset-check:
+	@tools/check_selfhost_subset.sh
+
 .PHONY: bootstrap-native-drift-check
 bootstrap-native-drift-check:
 	@tools/check_bootstrap_native_drift.sh
@@ -640,10 +644,10 @@ bootstrap-verify: bootstrap-all
 	@echo "[bootstrap-verify] versions + smoke + bootstrap-subset checks ok"
 
 .PHONY: bootstrap-native-contract
-bootstrap-native-contract: seed-verify bootstrap-source-coverage-check posix-seed-shell-check bootstrap-native-snapshots bootstrap-verify bootstrap-posix-smoke
+bootstrap-native-contract: seed-verify bootstrap-source-coverage-check selfhost-subset-check posix-seed-shell-check bootstrap-native-snapshots bootstrap-verify bootstrap-posix-smoke
 
 .PHONY: bootstrap-native-fast-contract
-bootstrap-native-fast-contract: seed-verify bootstrap-source-coverage-check posix-seed-shell-check bootstrap-native-snapshots bootstrap-native-drift-check
+bootstrap-native-fast-contract: seed-verify bootstrap-source-coverage-check selfhost-subset-check posix-seed-shell-check bootstrap-native-snapshots bootstrap-native-drift-check
 
 .PHONY: bootstrap-posix-smoke
 bootstrap-posix-smoke: bootstrap-all
