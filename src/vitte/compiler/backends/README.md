@@ -4,7 +4,39 @@ Path: src/vitte/compiler/backends
 
 ## Purpose
 
-The backends directory owns target-specific compilation and final artifact generation.
+This directory currently hosts backend adapters, experimental families, and
+support surfaces that sit alongside the canonical production backend tree in
+`src/vitte/compiler/backend/*`.
+
+It is not the single production source of truth for the runtime compiler path.
+
+## Current Role
+
+`src/vitte/compiler/backends/*` currently contains:
+
+- `llvm_bindings`
+  - LLVM toolchain integration and object emission helpers used by the canonical
+    backend pipeline
+- `vitte_emit`
+  - adapter surface that explicitly declares
+    `canonical=src/vitte/compiler/backend/*`
+- `wasm`
+  - dedicated WASM-oriented backend family and docs
+- legacy or parallel emit-oriented helper modules such as `c_emit` and
+  `llvm_emit`
+
+## Contract
+
+The canonical production compiler path continues to route through
+`src/vitte/compiler/backend/*`.
+
+Anything under `src/vitte/compiler/backends/*` must therefore be treated as one
+of:
+
+- adapter
+- support layer
+- experimental family
+- migration surface not yet wired as the sole backend implementation
 
 This layer is responsible for:
 - target configuration
@@ -62,6 +94,13 @@ The backend must guarantee deterministic artifact generation for identical input
 ## Critical Rule
 
 Silent backend fallback is forbidden.
+
+Silent ownership transfer is also forbidden:
+
+- do not move the real compiler path from `backend/*` to `backends/*` without a
+  matching gate update
+- do not present adapter surfaces as canonical implementation surfaces
+- do not let support modules become runtime-critical without explicit audit
 
 Invalid:
 - switching architecture automatically

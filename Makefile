@@ -2233,6 +2233,7 @@ wasm-backend-gate:
 
 .PHONY: backend-gate
 backend-gate: vitte-emit-gate llvm-backend-gate wasm-backend-gate
+	@python3 tools/backend_surface_audit.py
 
 
 .PHONY: backend-native-gate
