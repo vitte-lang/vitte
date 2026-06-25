@@ -9,6 +9,9 @@ Path: `src/vitte/compiler/driver`
 The `driver` layer is responsible for orchestrating the high-level compiler
 execution pipeline.
 
+`src/vitte/compiler/driver/compiler.vit` is the runtime command dispatcher used
+behind the public facade in `src/vitte/compiler/main.vit`.
+
 This module owns:
 - compiler session startup
 - command parsing
@@ -26,6 +29,31 @@ This layer must NOT contain:
 - platform-specific linker logic
 
 The driver coordinates subsystems but does not implement them.
+
+## Runtime Core Contract
+
+The runtime driver core currently lives in:
+
+- `src/vitte/compiler/main.vit`
+- `src/vitte/compiler/driver/compiler.vit`
+- `src/vitte/compiler/driver/compile.vit`
+
+The contract is:
+
+- `main.vit` stays the public compiler entrypoint
+- `driver/compiler.vit` stays the CLI/runtime orchestration core
+- `driver/compile.vit` stays the lower-level compile/build execution surface
+
+The runtime core may depend on canonical compiler surfaces such as:
+
+- `frontend/*`
+- `analysis/*`
+- `middle/*`
+- `backend/*`
+- `infrastructure/session/*`
+
+It must not silently grow direct dependencies on parallel or legacy adapter
+surfaces when a canonical backend/runtime surface already exists.
 
 ---
 

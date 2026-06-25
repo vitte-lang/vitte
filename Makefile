@@ -410,6 +410,7 @@ compiler-audit-report:
 driver-surface-audit:
 	@$(DRIVER_BOOTSTRAP_RUNNER) check src/vitte/packages/compiler/driver/mod.vit >/dev/null
 	@$(DRIVER_BOOTSTRAP_RUNNER) check src/vitte/packages/compiler/driver/info.vit >/dev/null
+	@python3 tools/driver_runtime_surface_audit.py
 	@echo "[driver-surface-audit] ok: compiler/driver package surface is Vitte-backed"
 
 .PHONY: driver-surface-parity
