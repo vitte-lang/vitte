@@ -1,0 +1,83 @@
+space vitte/compiler/backend/c/diagnostics
+
+use vitte/compiler/frontend/ast/node.{ AstSpan, ast_span_empty }
+
+export *
+
+pick CBackendSeverity {
+  Info,
+  Warning,
+  Error,
+}
+
+form CBackendDiagnostic {
+  code: string
+  severity: CBackendSeverity
+  message: string
+  hint: string
+  span: AstSpan
+  valid: bool
+}
+
+proc c_diag(code: string, severity: CBackendSeverity, message: string, hint: string, span: AstSpan) -> CBackendDiagnostic {
+  give CBackendDiagnostic {
+    code: code,
+    severity: severity,
+    message: message,
+    hint: hint,
+    span: span,
+    valid: code != "" and message != ""
+  };
+}
+
+proc c_info(code: string, message: string) -> CBackendDiagnostic {
+  give c_diag(code, CBackendSeverity.Info, message, "", ast_span_empty());
+}
+
+proc c_error(code: string, message: string, hint: string, span: AstSpan) -> CBackendDiagnostic {
+  give c_diag(code, CBackendSeverity.Error, message, hint, span);
+}
+
+proc c_warning(code: string, message: string, hint: string, span: AstSpan) -> CBackendDiagnostic {
+  give c_diag(code, CBackendSeverity.Warning, message, hint, span);
+}
+
+proc c_diag_add_unique(diagnostics: [CBackendDiagnostic], diagnostic: CBackendDiagnostic) -> [CBackendDiagnostic] {
+  let i: u64 = 0;
+  while i < len(diagnostics) {
+    if diagnostics[i].code == diagnostic.code and diagnostics[i].message == diagnostic.message {
+      give diagnostics;
+    }
+    set i = i + 1;
+  }
+  give diagnostics + [diagnostic];
+}
+
+proc c_has_errors(diagnostics: [CBackendDiagnostic]) -> bool {
+  let i: u64 = 0;
+  while i < len(diagnostics) {
+    if diagnostics[i].severity == CBackendSeverity.Error {
+      give true;
+    }
+    set i = i + 1;
+  }
+  give false;
+}
+
+proc c_diag_summary(diagnostics: [CBackendDiagnostic]) -> string {
+  let info_count: u64 = 0;
+  let warning_count: u64 = 0;
+  let error_count: u64 = 0;
+  let i: u64 = 0;
+  while i < len(diagnostics) {
+    if diagnostics[i].severity == CBackendSeverity.Info {
+      set info_count = info_count + 1;
+    } elif diagnostics[i].severity == CBackendSeverity.Warning {
+      set warning_count = warning_count + 1;
+    } else {
+      set error_count = error_count + 1;
+    }
+    set i = i + 1;
+  }
+  give "info=" + string(info_count) + " warning=" + string(warning_count) + " error=" + string(error_count);
+}

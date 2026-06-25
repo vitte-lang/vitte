@@ -1,0 +1,439 @@
+space vitte/compiler/backend/c/lowering
+
+use vitte/compiler/backend/c/architecture.{ CBackendTargetProfile, c_type_for_vitte_type, c_target_x86_64_linux }
+use vitte/compiler/backend/c/diagnostics.{ CBackendDiagnostic, c_diag_add_unique, c_error, c_has_errors, c_info, c_warning }
+use vitte/compiler/middle/mir.{
+  MirBinaryOperator,
+  MirBlock,
+  MirFunction,
+  MirOperand,
+  MirRvalue,
+  MirRvalueKind,
+  MirStatement,
+  MirStatementKind,
+  MirTerminator,
+  MirTerminatorKind,
+  MirUnaryOperator,
+  MirUnit
+}
+
+export *
+
+form CLocal {
+  name: string
+  c_name: string
+  vitte_type: string
+  c_type: string
+  valid: bool
+}
+
+form CLoweredFunction {
+  name: string
+  c_name: string
+  return_type: string
+  locals: [CLocal]
+  body_text: string
+  block_count: u64
+  valid: bool
+}
+
+form CTranslationUnit {
+  module_name: string
+  profile: CBackendTargetProfile
+  functions: [CLoweredFunction]
+  diagnostics: [CBackendDiagnostic]
+  valid: bool
+}
+
+proc underscore_text() -> string {
+  give "_";
+}
+
+proc c_block_label(block_id: u64) -> string {
+  give "bb_" + string(block_id);
+}
+
+proc c_binary_operator_text(op: MirBinaryOperator) -> string {
+  if op == MirBinaryOperator.Add {
+    give "+";
+  }
+  if op == MirBinaryOperator.Sub {
+    give "-";
+  }
+  if op == MirBinaryOperator.Mul {
+    give "*";
+  }
+  if op == MirBinaryOperator.Div {
+    give "/";
+  }
+  if op == MirBinaryOperator.Rem {
+    give "%";
+  }
+  if op == MirBinaryOperator.Eq {
+    give "==";
+  }
+  if op == MirBinaryOperator.Ne {
+    give "!=";
+  }
+  if op == MirBinaryOperator.Lt {
+    give "<";
+  }
+  if op == MirBinaryOperator.Le {
+    give "<=";
+  }
+  if op == MirBinaryOperator.Gt {
+    give ">";
+  }
+  if op == MirBinaryOperator.Ge {
+    give ">=";
+  }
+  if op == MirBinaryOperator.BitAnd {
+    give "&";
+  }
+  if op == MirBinaryOperator.BitOr {
+    give "|";
+  }
+  if op == MirBinaryOperator.BitXor {
+    give "^";
+  }
+  if op == MirBinaryOperator.ShiftLeft {
+    give "<<";
+  }
+  if op == MirBinaryOperator.ShiftRight {
+    give ">>";
+  }
+  if op == MirBinaryOperator.And {
+    give "&&";
+  }
+  give "||";
+}
+
+proc c_unary_operator_text(op: MirUnaryOperator) -> string {
+  if op == MirUnaryOperator.Neg {
+    give "-";
+  }
+  if op == MirUnaryOperator.Not {
+    give "!";
+  }
+  give "*";
+}
+
+proc sanitize_c_identifier(text: string) -> string {
+  let value: string = trim(text);
+  if value == "" {
+    give "tmp";
+  }
+  let out: string = "";
+  let i: u64 = 0;
+  while i < len(value) {
+    let ch: string = slice(value, i, i + 1);
+    let ok: bool = (ch >= "a" and ch <= "z")
+      or (ch >= "A" and ch <= "Z")
+      or (ch >= "0" and ch <= "9")
+      or ch == underscore_text();
+    if ok {
+      set out = out + ch;
+    } else {
+      set out = out + underscore_text();
+    }
+    set i = i + 1;
+  }
+  if out == "" {
+    set out = "tmp";
+  }
+  let first: string = slice(out, 0, 1);
+  if first >= "0" and first <= "9" {
+    set out = "v_" + out;
+  }
+  give out;
+}
+
+proc local_create(name: string, ty: string, profile: CBackendTargetProfile) -> CLocal {
+  give CLocal {
+    name: name,
+    c_name: sanitize_c_identifier(name),
+    vitte_type: ty,
+    c_type: c_type_for_vitte_type(profile, ty),
+    valid: name != ""
+  };
+}
+
+proc locals_has(locals: [CLocal], name: string) -> bool {
+  let i: u64 = 0;
+  while i < len(locals) {
+    if locals[i].name == name {
+      give true;
+    }
+    set i = i + 1;
+  }
+  give false;
+}
+
+proc locals_get_c_name(locals: [CLocal], name: string) -> string {
+  let i: u64 = 0;
+  while i < len(locals) {
+    if locals[i].name == name {
+      give locals[i].c_name;
+    }
+    set i = i + 1;
+  }
+  give sanitize_c_identifier(name);
+}
+
+proc add_local_if_missing(locals: [CLocal], name: string, ty: string, profile: CBackendTargetProfile) -> [CLocal] {
+  if name == "" or locals_has(locals, name) {
+    give locals;
+  }
+  give locals + [local_create(name, ty, profile)];
+}
+
+proc collect_operand_locals(locals: [CLocal], operand: MirOperand, profile: CBackendTargetProfile) -> [CLocal] {
+  let out: [CLocal] = locals;
+  if operand.place.valid and operand.place.local != "" {
+    set out = add_local_if_missing(out, operand.place.local, operand.ty, profile);
+  }
+  give out;
+}
+
+proc collect_rvalue_locals(locals: [CLocal], rvalue: MirRvalue, profile: CBackendTargetProfile) -> [CLocal] {
+  let out: [CLocal] = locals;
+  let i: u64 = 0;
+  while i < len(rvalue.operands) {
+    set out = collect_operand_locals(out, rvalue.operands[i], profile);
+    set i = i + 1;
+  }
+  give out;
+}
+
+proc collect_statement_locals(locals: [CLocal], stmt: MirStatement, profile: CBackendTargetProfile) -> [CLocal] {
+  let out: [CLocal] = locals;
+  if stmt.place.valid and stmt.place.local != "" {
+    set out = add_local_if_missing(out, stmt.place.local, stmt.rvalue.ty, profile);
+  }
+  give collect_rvalue_locals(out, stmt.rvalue, profile);
+}
+
+proc collect_terminator_locals(locals: [CLocal], term: MirTerminator, profile: CBackendTargetProfile) -> [CLocal] {
+  let out: [CLocal] = locals;
+  if term.condition.valid {
+    set out = collect_operand_locals(out, term.condition, profile);
+  }
+  give out;
+}
+
+proc collect_function_locals(function0: MirFunction, profile: CBackendTargetProfile) -> [CLocal] {
+  let locals: [CLocal] = [];
+  let out: [CLocal] = locals;
+  let i: u64 = 0;
+  while i < len(function0.blocks) {
+    let block: MirBlock = function0.blocks[i];
+    let j: u64 = 0;
+    while j < len(block.statements) {
+      set out = collect_statement_locals(out, block.statements[j], profile);
+      set j = j + 1;
+    }
+    set out = collect_terminator_locals(out, block.terminator, profile);
+    set i = i + 1;
+  }
+  give out;
+}
+
+proc lower_operand_text(locals: [CLocal], operand: MirOperand) -> string {
+  if operand.place.valid and operand.place.local != "" {
+    give locals_get_c_name(locals, operand.place.local);
+  }
+  if operand.text != "" {
+    give operand.text;
+  }
+  give "0";
+}
+
+proc lower_call_text(locals: [CLocal], rvalue: MirRvalue) -> string {
+  if len(rvalue.operands) == 0 {
+    give "0";
+  }
+  let callee: string = sanitize_c_identifier(lower_operand_text(locals, rvalue.operands[0]));
+  let args: string = "";
+  let i: u64 = 1;
+  while i < len(rvalue.operands) {
+    if args != "" {
+      set args = args + ", ";
+    }
+    set args = args + lower_operand_text(locals, rvalue.operands[i]);
+    set i = i + 1;
+  }
+  give callee + "(" + args + ")";
+}
+
+proc lower_rvalue_text(locals: [CLocal], rvalue: MirRvalue, profile: CBackendTargetProfile) -> string {
+  if rvalue.kind == MirRvalueKind.Use or rvalue.kind == MirRvalueKind.Copy or rvalue.kind == MirRvalueKind.Move {
+    if len(rvalue.operands) > 0 {
+      give lower_operand_text(locals, rvalue.operands[0]);
+    }
+    give rvalue.text;
+  }
+  if rvalue.kind == MirRvalueKind.Binary and len(rvalue.operands) >= 2 {
+    give "(" + lower_operand_text(locals, rvalue.operands[0]) + " " + c_binary_operator_text(rvalue.binary_operator) + " " + lower_operand_text(locals, rvalue.operands[1]) + ")";
+  }
+  if rvalue.kind == MirRvalueKind.Unary and len(rvalue.operands) >= 1 {
+    give "(" + c_unary_operator_text(rvalue.unary_operator) + lower_operand_text(locals, rvalue.operands[0]) + ")";
+  }
+  if rvalue.kind == MirRvalueKind.BorrowShared or rvalue.kind == MirRvalueKind.BorrowMut or rvalue.kind == MirRvalueKind.AddressOf {
+    if len(rvalue.operands) >= 1 {
+      give "(&" + lower_operand_text(locals, rvalue.operands[0]) + ")";
+    }
+    give "NULL";
+  }
+  if rvalue.kind == MirRvalueKind.Cast and len(rvalue.operands) >= 1 {
+    give "((" + c_type_for_vitte_type(profile, rvalue.ty) + ")" + lower_operand_text(locals, rvalue.operands[0]) + ")";
+  }
+  if rvalue.kind == MirRvalueKind.Call {
+    give lower_call_text(locals, rvalue);
+  }
+  if rvalue.kind == MirRvalueKind.Len and len(rvalue.operands) >= 1 {
+    give "vitte_runtime_strlen(" + lower_operand_text(locals, rvalue.operands[0]) + ")";
+  }
+  if rvalue.kind == MirRvalueKind.Aggregate or rvalue.kind == MirRvalueKind.Tuple or rvalue.kind == MirRvalueKind.Array or rvalue.kind == MirRvalueKind.Struct {
+    give "{0}";
+  }
+  if rvalue.kind == MirRvalueKind.Discriminant {
+    give "0";
+  }
+  give "0";
+}
+
+proc lower_statement_text(locals: [CLocal], stmt: MirStatement, profile: CBackendTargetProfile) -> string {
+  if stmt.kind == MirStatementKind.Assign {
+    give "  " + locals_get_c_name(locals, stmt.place.local) + " = " + lower_rvalue_text(locals, stmt.rvalue, profile) + ";\n";
+  }
+  if stmt.kind == MirStatementKind.Return {
+    give "  return " + lower_rvalue_text(locals, stmt.rvalue, profile) + ";\n";
+  }
+  if stmt.kind == MirStatementKind.Assert {
+    give "  vitte_runtime_assert(" + lower_rvalue_text(locals, stmt.rvalue, profile) + ", \"MIR assert failed\");\n";
+  }
+  if stmt.kind == MirStatementKind.Call {
+    if stmt.place.valid and stmt.place.local != "" {
+      give "  " + locals_get_c_name(locals, stmt.place.local) + " = " + lower_rvalue_text(locals, stmt.rvalue, profile) + ";\n";
+    }
+    give "  " + lower_rvalue_text(locals, stmt.rvalue, profile) + ";\n";
+  }
+  if stmt.kind == MirStatementKind.Drop {
+    give "  vitte_runtime_drop_noop(&" + locals_get_c_name(locals, stmt.place.local) + ");\n";
+  }
+  if stmt.kind == MirStatementKind.StorageLive or stmt.kind == MirStatementKind.StorageDead or stmt.kind == MirStatementKind.Nop {
+    give "";
+  }
+  give "  /* unsupported MIR statement lowered as no-op */\n";
+}
+
+proc lower_terminator_text(locals: [CLocal], term: MirTerminator) -> string {
+  if term.kind == MirTerminatorKind.Return {
+    give "  return;\n";
+  }
+  if term.kind == MirTerminatorKind.Goto {
+    give "  goto " + c_block_label(term.target_block) + ";\n";
+  }
+  if term.kind == MirTerminatorKind.Branch {
+    give "  if (" + lower_operand_text(locals, term.condition) + ") goto " + c_block_label(term.target_block) + "; else goto " + c_block_label(term.else_block) + ";\n";
+  }
+  if term.kind == MirTerminatorKind.Switch {
+    let out: string = "";
+    let i: u64 = 0;
+    while i < len(term.switch_values) and i < len(term.switch_targets) {
+      if i == 0 {
+        set out = out + "  if (" + lower_operand_text(locals, term.condition) + " == " + term.switch_values[i] + ") goto " + c_block_label(term.switch_targets[i]) + ";\n";
+      } else {
+        set out = out + "  else if (" + lower_operand_text(locals, term.condition) + " == " + term.switch_values[i] + ") goto " + c_block_label(term.switch_targets[i]) + ";\n";
+      }
+      set i = i + 1;
+    }
+    set out = out + "  else goto " + c_block_label(term.else_block) + ";\n";
+    give out;
+  }
+  if term.kind == MirTerminatorKind.Unreachable or term.kind == MirTerminatorKind.Resume {
+    give "  vitte_runtime_panic(\"unreachable MIR terminator\");\n";
+  }
+  if term.kind == MirTerminatorKind.Call {
+    give "  goto " + c_block_label(term.target_block) + ";\n";
+  }
+  give "";
+}
+
+proc lower_block_text(locals: [CLocal], block: MirBlock, profile: CBackendTargetProfile) -> string {
+  let out: string = c_block_label(block.id) + ":\n";
+  let i: u64 = 0;
+  while i < len(block.statements) {
+    set out = out + lower_statement_text(locals, block.statements[i], profile);
+    set i = i + 1;
+  }
+  set out = out + lower_terminator_text(locals, block.terminator);
+  give out;
+}
+
+proc lower_function(function0: MirFunction, profile: CBackendTargetProfile) -> CLoweredFunction {
+  let locals: [CLocal] = collect_function_locals(function0, profile);
+  let body_text: string = "";
+  let i: u64 = 0;
+  while i < len(locals) {
+    if locals[i].c_type != "void" {
+      set body_text = body_text + "  " + locals[i].c_type + " " + locals[i].c_name + " = {0};\n";
+    }
+    set i = i + 1;
+  }
+  if len(locals) > 0 {
+    set body_text = body_text + "\n";
+  }
+  i = 0;
+  while i < len(function0.blocks) {
+    set body_text = body_text + lower_block_text(locals, function0.blocks[i], profile);
+    set i = i + 1;
+  }
+  give CLoweredFunction {
+    name: function0.name,
+    c_name: sanitize_c_identifier(function0.name),
+    return_type: c_type_for_vitte_type(profile, function0.return_type),
+    locals: locals,
+    body_text: body_text,
+    block_count: len(function0.blocks),
+    valid: function0.valid and function0.name != ""
+  };
+}
+
+proc lower_mir_to_c(unit: MirUnit, profile: CBackendTargetProfile) -> CTranslationUnit {
+  let functions: [CLoweredFunction] = [];
+  let diagnostics: [CBackendDiagnostic] = [];
+  let lowered: [CLoweredFunction] = functions;
+  let out_diags: [CBackendDiagnostic] = diagnostics;
+  if not unit.valid {
+    set out_diags = c_diag_add_unique(out_diags, c_error("CBACKEND_E_INVALID_MIR", "cannot lower invalid MIR unit", "run MIR validation before lowering to C", unit.module.functions[0].blocks[0].statements[0].span));
+    give CTranslationUnit {
+      module_name: unit.module.name,
+      profile: profile,
+      functions: [],
+      diagnostics: out_diags,
+      valid: false
+    };
+  }
+  let i: u64 = 0;
+  while i < len(unit.module.functions) {
+    let lowered_fn: CLoweredFunction = lower_function(unit.module.functions[i], profile);
+    if lowered_fn.return_type == "struct unknown" {
+      set out_diags = c_diag_add_unique(out_diags, c_warning("CBACKEND_W_UNKNOWN_RETURN", "lowered function `" + lowered_fn.name + "` has unknown return type, fallback applied", "provide a more precise MIR type to improve C lowering", unit.module.functions[i].blocks[0].statements[0].span));
+    }
+    set lowered = lowered + [lowered_fn];
+    set i = i + 1;
+  }
+  set out_diags = c_diag_add_unique(out_diags, c_info("CBACKEND_I_LOWERED", "lowered " + string(len(lowered)) + " MIR function(s) to C"));
+  give CTranslationUnit {
+    module_name: unit.module.name,
+    profile: profile,
+    functions: lowered,
+    diagnostics: out_diags,
+    valid: profile.valid and not c_has_errors(out_diags)
+  };
+}
+
+proc lower_mir_to_c_default(unit: MirUnit) -> CTranslationUnit {
+  give lower_mir_to_c(unit, c_target_x86_64_linux());
+}

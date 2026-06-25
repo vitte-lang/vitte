@@ -1,0 +1,95 @@
+space vitte/compiler/backend/c/pipeline
+
+use vitte/compiler/backend/c/architecture.{ CBackendTargetProfile, c_profile_summary, c_target_from_name, c_target_x86_64_linux }
+use vitte/compiler/backend/c/diagnostics.{ CBackendDiagnostic, c_diag_add_unique, c_diag_summary, c_error, c_has_errors }
+use vitte/compiler/backend/c/emitter.{ CEmitResult, emit_c_translation_unit }
+use vitte/compiler/backend/c/linker.{ CLinkPlan, create_c_link_plan }
+use vitte/compiler/backend/c/lowering.{ CTranslationUnit, lower_mir_to_c }
+use vitte/compiler/frontend/pipeline.{ FrontendOutput, frontend_run }
+use vitte/compiler/middle/pipeline.{ MiddleOutput, middle_run_for_target }
+use vitte/compiler/backend/ir.{ IrTarget, target_from_name }
+use vitte/compiler/middle/mir.{ MirUnit }
+
+export *
+
+form CBackendPipelineResult {
+  frontend: FrontendOutput
+  middle: MiddleOutput
+  lowered: CTranslationUnit
+  emitted: CEmitResult
+  link_plan: CLinkPlan
+  diagnostics: [CBackendDiagnostic]
+  message: string
+  valid: bool
+}
+
+proc invalid_pipeline_result(message: string, diagnostics: [CBackendDiagnostic]) -> CBackendPipelineResult {
+  let target: IrTarget = target_from_name("x86_64-linux");
+  let empty_frontend: FrontendOutput = frontend_run("invalid.vit", "");
+  let middle: MiddleOutput = middle_run_for_target(empty_frontend, target);
+  let lowered: CTranslationUnit = lower_mir_to_c(middle.mir, c_target_x86_64_linux());
+  let emitted: CEmitResult = emit_c_translation_unit(lowered);
+  let link_plan: CLinkPlan = create_c_link_plan(c_target_x86_64_linux(), emitted, "build/a.out", "executable", "x86_64-linux");
+  give CBackendPipelineResult {
+    frontend: empty_frontend,
+    middle: middle,
+    lowered: lowered,
+    emitted: emitted,
+    link_plan: link_plan,
+    diagnostics: diagnostics,
+    message: message,
+    valid: false
+  };
+}
+
+proc run_c_backend_mir(unit: MirUnit, target_name: string, output_path: string, packaging: string) -> CBackendPipelineResult {
+  let profile: CBackendTargetProfile = c_target_from_name(target_name);
+  if not unit.valid {
+    let diagnostics: [CBackendDiagnostic] = [c_error("CBACKEND_E_INVALID_MIR", "cannot run C backend on invalid MIR", "validate MIR before lowering", unit.module.functions[0].blocks[0].statements[0].span)];
+    give invalid_pipeline_result("invalid MIR", diagnostics);
+  }
+  if not profile.valid {
+    let diagnostics: [CBackendDiagnostic] = [c_error("CBACKEND_E_TARGET", "unsupported C backend target `" + target_name + "`", "use x86_64-linux or c11", unit.module.functions[0].blocks[0].statements[0].span)];
+    give invalid_pipeline_result("unsupported C backend target", diagnostics);
+  }
+  let lowered: CTranslationUnit = lower_mir_to_c(unit, profile);
+  let emitted: CEmitResult = emit_c_translation_unit(lowered);
+  let link_plan: CLinkPlan = create_c_link_plan(profile, emitted, output_path, packaging, target_name);
+  let diagnostics: [CBackendDiagnostic] = lowered.diagnostics;
+  let message: string = "C backend pipeline completed: " + c_profile_summary(profile) + " " + c_diag_summary(diagnostics);
+  give CBackendPipelineResult {
+    frontend: frontend_run(unit.source_path, ""),
+    middle: middle_run_for_target(frontend_run(unit.source_path, ""), target_from_name("x86_64-linux")),
+    lowered: lowered,
+    emitted: emitted,
+    link_plan: link_plan,
+    diagnostics: diagnostics,
+    message: message,
+    valid: lowered.valid and emitted.valid and link_plan.valid and not c_has_errors(diagnostics)
+  };
+}
+
+proc run_c_backend_source(source_path: string, source_text: string, target_name: string, output_path: string, packaging: string) -> CBackendPipelineResult {
+  let target: IrTarget = target_from_name(if target_name == "c" or target_name == "c11" { "x86_64-linux" } else { target_name });
+  let frontend: FrontendOutput = frontend_run(source_path, source_text);
+  let middle: MiddleOutput = middle_run_for_target(frontend, target);
+  let profile: CBackendTargetProfile = c_target_from_name(target_name);
+  let lowered: CTranslationUnit = lower_mir_to_c(middle.mir, profile);
+  let emitted: CEmitResult = emit_c_translation_unit(lowered);
+  let link_plan: CLinkPlan = create_c_link_plan(profile, emitted, output_path, packaging, if target_name == "c" or target_name == "c11" { "x86_64-linux" } else { target_name });
+  let diagnostics: [CBackendDiagnostic] = lowered.diagnostics;
+  if not profile.valid {
+    set diagnostics = c_diag_add_unique(diagnostics, c_error("CBACKEND_E_TARGET", "unsupported C backend target `" + target_name + "`", "use x86_64-linux or c11", frontend.ast_root.span));
+  }
+  let message: string = "C backend pipeline completed: " + c_diag_summary(diagnostics);
+  give CBackendPipelineResult {
+    frontend: frontend,
+    middle: middle,
+    lowered: lowered,
+    emitted: emitted,
+    link_plan: link_plan,
+    diagnostics: diagnostics,
+    message: message,
+    valid: frontend.valid and middle.mir.valid and lowered.valid and emitted.valid and link_plan.valid and not c_has_errors(diagnostics)
+  };
+}

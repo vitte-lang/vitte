@@ -1,0 +1,114 @@
+space vitte/compiler/backend/c/linker
+
+use vitte/compiler/backend/c/architecture.{ CBackendTargetProfile, c_target_x86_64_linux }
+use vitte/compiler/backend/c/emitter.{ CEmitResult }
+use vitte/compiler/backend/link/artifact.{
+  LinkArtifact,
+  LinkArtifactKind,
+  LinkSectionKind,
+  artifact_add_output,
+  artifact_add_section,
+  artifact_add_symbol,
+  artifact_create,
+  artifact_is_valid,
+  artifact_set_entry,
+  finalize_artifact,
+  link_target_from_name,
+  output_create,
+  section_create,
+  symbol_create
+}
+
+export *
+
+form CLinkPlan {
+  compiler_command: string
+  compile_flags: [string]
+  link_flags: [string]
+  generated_header_path: string
+  generated_source_path: string
+  runtime_header_path: string
+  runtime_source_path: string
+  output_path: string
+  command_line: string
+  artifact: LinkArtifact
+  valid: bool
+}
+
+proc join_flags(flags: [string]) -> string {
+  let out: string = "";
+  let i: u64 = 0;
+  while i < len(flags) {
+    if out != "" {
+      set out = out + " ";
+    }
+    set out = out + flags[i];
+    set i = i + 1;
+  }
+  give out;
+}
+
+proc c_output_kind(packaging: string) -> LinkArtifactKind {
+  if packaging == "static-library" {
+    give LinkArtifactKind.StaticLibrary;
+  }
+  if packaging == "shared-library" {
+    give LinkArtifactKind.SharedLibrary;
+  }
+  if packaging == "object" {
+    give LinkArtifactKind.ObjectFile;
+  }
+  give LinkArtifactKind.Executable;
+}
+
+proc build_c_artifact(emit: CEmitResult, output_path: string, packaging: string, target_name: string) -> LinkArtifact {
+  let link_target = link_target_from_name(target_name);
+  let target0 = if link_target.valid { link_target } else { link_target_from_name("x86_64-linux") };
+  let output0 = output_create(1, output_path, c_output_kind(packaging), target0.binary_format, true);
+  let header_section = section_create(1, ".c.header", LinkSectionKind.Metadata, 1, 0, len(emit.header_text), ["readonly"], emit.header_text);
+  let source_section = section_create(2, ".c.text", LinkSectionKind.Text, 1, len(emit.header_text), len(emit.source_text), ["readonly"], emit.source_text);
+  let runtime_header = section_create(3, ".c.runtime.header", LinkSectionKind.Metadata, 1, len(emit.header_text) + len(emit.source_text), len(emit.runtime.header_text), ["readonly"], emit.runtime.header_text);
+  let runtime_source = section_create(4, ".c.runtime.text", LinkSectionKind.Text, 1, len(emit.header_text) + len(emit.source_text) + len(emit.runtime.header_text), len(emit.runtime.source_text), ["readonly"], emit.runtime.source_text);
+  let entry_name: string = if emit.function_count > 0 { "main" } else { "vitte_generated_entry" };
+  let artifact0: LinkArtifact = artifact_create(700, "vitte-c-backend", target0);
+  let artifact1: LinkArtifact = artifact_add_output(artifact0, output0);
+  let artifact2: LinkArtifact = artifact_add_section(artifact1, header_section);
+  let artifact3: LinkArtifact = artifact_add_section(artifact2, source_section);
+  let artifact4: LinkArtifact = artifact_add_section(artifact3, runtime_header);
+  let artifact5: LinkArtifact = artifact_add_section(artifact4, runtime_source);
+  let artifact6: LinkArtifact = artifact_add_symbol(artifact5, symbol_create(1, entry_name, "vitte", 0, 0, 2, true, false, entry_name == "main"));
+  let artifact7: LinkArtifact = artifact_set_entry(artifact6, entry_name);
+  give finalize_artifact(artifact7);
+}
+
+proc create_c_link_plan(profile: CBackendTargetProfile, emit: CEmitResult, output_path: string, packaging: string, target_name: string) -> CLinkPlan {
+  let generated_source_path: string = "build/vitte_generated.c";
+  let generated_header_path: string = "build/vitte_generated.h";
+  let runtime_source_path: string = "build/" + emit.runtime.source_name;
+  let runtime_header_path: string = "build/" + emit.runtime.header_name;
+  let flags: string = join_flags(profile.compiler_flags);
+  let link_flags: string = join_flags(profile.linker_flags);
+  let command_line: string = profile.compiler_command + " " + flags + " " + generated_source_path + " " + runtime_source_path + " -o " + output_path;
+  if link_flags != "" {
+    set command_line = command_line + " " + link_flags;
+  }
+  let artifact: LinkArtifact = build_c_artifact(emit, output_path, packaging, target_name);
+  give CLinkPlan {
+    compiler_command: profile.compiler_command,
+    compile_flags: profile.compiler_flags,
+    link_flags: profile.linker_flags,
+    generated_header_path: generated_header_path,
+    generated_source_path: generated_source_path,
+    runtime_header_path: runtime_header_path,
+    runtime_source_path: runtime_source_path,
+    output_path: output_path,
+    command_line: command_line,
+    artifact: artifact,
+    valid: emit.valid and artifact_is_valid(artifact)
+  };
+}
+
+proc create_default_c_link_plan(emit: CEmitResult, output_path: string) -> CLinkPlan {
+  let profile: CBackendTargetProfile = c_target_x86_64_linux();
+  give create_c_link_plan(profile, emit, output_path, "executable", "x86_64-linux");
+}

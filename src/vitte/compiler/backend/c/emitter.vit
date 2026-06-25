@@ -1,0 +1,65 @@
+space vitte/compiler/backend/c/emitter
+
+use vitte/compiler/backend/c/architecture.{ CBackendTargetProfile, c_include_set }
+use vitte/compiler/backend/c/diagnostics.{ CBackendDiagnostic, c_has_errors }
+use vitte/compiler/backend/c/lowering.{ CLoweredFunction, CTranslationUnit }
+use vitte/compiler/backend/c/runtime.{ CRuntimeModule, default_c_runtime }
+
+export *
+
+form CEmitResult {
+  header_text: string
+  source_text: string
+  runtime: CRuntimeModule
+  diagnostics: [CBackendDiagnostic]
+  function_count: u64
+  valid: bool
+}
+
+proc emit_function_decl(function0: CLoweredFunction) -> string {
+  give function0.return_type + " " + function0.c_name + "(void)";
+}
+
+proc emit_header_text(unit: CTranslationUnit) -> string {
+  let out: string = "#ifndef VITTE_GENERATED_C_H\n#define VITTE_GENERATED_C_H\n\n";
+  let includes: [string] = c_include_set(unit.profile);
+  let i: u64 = 0;
+  while i < len(includes) {
+    set out = out + "#include <" + includes[i] + ">\n";
+    set i = i + 1;
+  }
+  set out = out + "#include \"vitte_runtime_c.h\"\n\n";
+  i = 0;
+  while i < len(unit.functions) {
+    set out = out + emit_function_decl(unit.functions[i]) + ";\n";
+    set i = i + 1;
+  }
+  set out = out + "\n#endif\n";
+  give out;
+}
+
+proc emit_source_text(unit: CTranslationUnit, runtime: CRuntimeModule) -> string {
+  let out: string = "#include \"vitte_generated.h\"\n\n";
+  let i: u64 = 0;
+  while i < len(unit.functions) {
+    set out = out + emit_function_decl(unit.functions[i]) + " {\n";
+    set out = out + unit.functions[i].body_text;
+    set out = out + "}\n\n";
+    set i = i + 1;
+  }
+  give out;
+}
+
+proc emit_c_translation_unit(unit: CTranslationUnit) -> CEmitResult {
+  let runtime: CRuntimeModule = default_c_runtime(unit.profile);
+  let header_text: string = emit_header_text(unit);
+  let source_text: string = emit_source_text(unit, runtime);
+  give CEmitResult {
+    header_text: header_text,
+    source_text: source_text,
+    runtime: runtime,
+    diagnostics: unit.diagnostics,
+    function_count: len(unit.functions),
+    valid: unit.valid and runtime.valid and header_text != "" and source_text != "" and not c_has_errors(unit.diagnostics)
+  };
+}

@@ -1,0 +1,77 @@
+space vitte/compiler/backend/c/runtime
+
+use vitte/compiler/backend/c/architecture.{ CBackendTargetProfile, c_include_set }
+
+export *
+
+form CRuntimeModule {
+  header_name: string
+  source_name: string
+  header_text: string
+  source_text: string
+  symbols: [string]
+  valid: bool
+}
+
+proc runtime_header_guard() -> string {
+  give "VITTE_RUNTIME_C_H";
+}
+
+proc runtime_header_text(profile: CBackendTargetProfile) -> string {
+  let includes: [string] = c_include_set(profile);
+  let include_lines: string = "";
+  let i: u64 = 0;
+  while i < len(includes) {
+    set include_lines = include_lines + "#include <" + includes[i] + ">\n";
+    set i = i + 1;
+  }
+  give "#ifndef " + runtime_header_guard() + "\n"
+    + "#define " + runtime_header_guard() + "\n\n"
+    + include_lines
+    + "\n"
+    + "void vitte_runtime_panic(const char* message);\n"
+    + "void vitte_runtime_assert(_Bool condition, const char* message);\n"
+    + "size_t vitte_runtime_strlen(const char* text);\n"
+    + "void vitte_runtime_drop_noop(void* value);\n"
+    + "\n#endif\n";
+}
+
+proc runtime_source_text() -> string {
+  give "#include \"vitte_runtime_c.h\"\n\n"
+    + "void vitte_runtime_panic(const char* message) {\n"
+    + "  fprintf(stderr, \"vitte runtime panic: %s\\n\", message);\n"
+    + "  abort();\n"
+    + "}\n\n"
+    + "void vitte_runtime_assert(_Bool condition, const char* message) {\n"
+    + "  if (!condition) {\n"
+    + "    vitte_runtime_panic(message);\n"
+    + "  }\n"
+    + "}\n\n"
+    + "size_t vitte_runtime_strlen(const char* text) {\n"
+    + "  if (text == NULL) {\n"
+    + "    return 0;\n"
+    + "  }\n"
+    + "  return strlen(text);\n"
+    + "}\n\n"
+    + "void vitte_runtime_drop_noop(void* value) {\n"
+    + "  (void)value;\n"
+    + "}\n";
+}
+
+proc default_c_runtime(profile: CBackendTargetProfile) -> CRuntimeModule {
+  let header_text: string = runtime_header_text(profile);
+  let source_text: string = runtime_source_text();
+  give CRuntimeModule {
+    header_name: "vitte_runtime_c.h",
+    source_name: "vitte_runtime_c.c",
+    header_text: header_text,
+    source_text: source_text,
+    symbols: [
+      "vitte_runtime_panic",
+      "vitte_runtime_assert",
+      "vitte_runtime_strlen",
+      "vitte_runtime_drop_noop"
+    ],
+    valid: profile.valid and header_text != "" and source_text != ""
+  };
+}

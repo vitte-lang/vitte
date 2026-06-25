@@ -1,0 +1,59 @@
+space vitte/compiler/tests/c_backend_tests
+
+use vitte/compiler/backend/c/pipeline.{ CBackendPipelineResult, run_c_backend_source }
+
+const VERSION_TEXT: string = "c backend tests 0.1.0"
+const BANNER_TEXT: string = "c backend tests"
+
+proc test_emit_simple_main() -> bool {
+  let source: string = "proc main() -> int { give 0; }\n";
+  let result: CBackendPipelineResult = run_c_backend_source("c_backend_main.vit", source, "c11", "build/c_backend_main", "executable");
+  give result.valid
+    and find(result.emitted.source_text, "main") >= 0
+    and find(result.link_plan.command_line, "cc") >= 0
+    and find(result.link_plan.command_line, "vitte_generated.c") >= 0;
+}
+
+proc test_emit_branching_function() -> bool {
+  let source: string = "proc main() -> int { let flag = true; if flag { give 1; } give 0; }\n";
+  let result: CBackendPipelineResult = run_c_backend_source("c_backend_branch.vit", source, "x86_64-linux", "build/c_backend_branch", "executable");
+  give result.valid
+    and find(result.emitted.source_text, "goto bb_") >= 0
+    and find(result.emitted.source_text, "if (") >= 0;
+}
+
+proc test_runtime_is_emitted() -> bool {
+  let source: string = "proc main() -> int { give 0; }\n";
+  let result: CBackendPipelineResult = run_c_backend_source("c_backend_runtime.vit", source, "c", "build/c_backend_runtime", "executable");
+  give result.valid
+    and find(result.emitted.runtime.header_text, "vitte_runtime_assert") >= 0
+    and find(result.emitted.runtime.source_text, "vitte_runtime_panic") >= 0;
+}
+
+proc run_all_tests() -> int {
+  let failures: int = 0;
+  if not test_emit_simple_main() {
+    set failures = failures + 1;
+  }
+  if not test_emit_branching_function() {
+    set failures = failures + 1;
+  }
+  if not test_runtime_is_emitted() {
+    set failures = failures + 1;
+  }
+  give failures;
+}
+
+proc version_text() -> string {
+  give VERSION_TEXT
+}
+
+proc banner_text() -> string {
+  give BANNER_TEXT
+}
+
+proc main(args: list[string]) -> int {
+  give run_all_tests()
+}
+
+export *

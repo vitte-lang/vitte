@@ -1,0 +1,175 @@
+space vitte/compiler/backend/c/architecture
+
+export *
+
+form CTypeMapping {
+  vitte_type: string
+  c_type: string
+  include: string
+  valid: bool
+}
+
+form CBackendTargetProfile {
+  name: string
+  pointer_type: string
+  size_type: string
+  string_type: string
+  bool_include: string
+  integer_include: string
+  stddef_include: string
+  compiler_command: string
+  compiler_flags: [string]
+  linker_flags: [string]
+  valid: bool
+}
+
+proc c_target_x86_64_linux() -> CBackendTargetProfile {
+  give CBackendTargetProfile {
+    name: "x86_64-linux-c11",
+    pointer_type: "void*",
+    size_type: "size_t",
+    string_type: "const char*",
+    bool_include: "stdbool.h",
+    integer_include: "stdint.h",
+    stddef_include: "stddef.h",
+    compiler_command: "cc",
+    compiler_flags: ["-std=c11", "-Wall", "-Wextra", "-Werror"],
+    linker_flags: [],
+    valid: true
+  };
+}
+
+proc c_target_from_name(name: string) -> CBackendTargetProfile {
+  if name == "" or name == "c" or name == "c11" or name == "x86_64-linux" or name == "x86_64-linux-c11" {
+    give c_target_x86_64_linux();
+  }
+  give CBackendTargetProfile {
+    name: name,
+    pointer_type: "",
+    size_type: "",
+    string_type: "",
+    bool_include: "",
+    integer_include: "",
+    stddef_include: "",
+    compiler_command: "",
+    compiler_flags: [],
+    linker_flags: [],
+    valid: false
+  };
+}
+
+proc c_type_mapping(vitte_type: string, c_type: string, include: string) -> CTypeMapping {
+  give CTypeMapping {
+    vitte_type: vitte_type,
+    c_type: c_type,
+    include: include,
+    valid: vitte_type != "" and c_type != ""
+  };
+}
+
+proc base_vitte_type(ty: string) -> string {
+  let value: string = trim(ty);
+  if starts_with(value, "&mut ") {
+    give base_vitte_type(trim(slice(value, 5, len(value))));
+  }
+  if starts_with(value, "&") {
+    give base_vitte_type(trim(slice(value, 1, len(value))));
+  }
+  if starts_with(value, "*mut ") {
+    give base_vitte_type(trim(slice(value, 5, len(value))));
+  }
+  if starts_with(value, "*const ") {
+    give base_vitte_type(trim(slice(value, 7, len(value))));
+  }
+  if starts_with(value, "*") {
+    give "pointer";
+  }
+  let generic_open: int = find(value, "[");
+  if generic_open > 0 {
+    give trim(slice(value, 0, generic_open));
+  }
+  give value;
+}
+
+proc c_type_for_vitte_type(profile: CBackendTargetProfile, ty: string) -> string {
+  let value: string = base_vitte_type(ty);
+  if value == "" or value == "unknown" {
+    give "long long";
+  }
+  if value == "unit" or value == "never" {
+    give "void";
+  }
+  if value == "bool" {
+    give "bool";
+  }
+  if value == "char" {
+    give "char";
+  }
+  if value == "string" {
+    give profile.string_type;
+  }
+  if value == "int" or value == "i64" or value == "isize" {
+    give "int64_t";
+  }
+  if value == "uint" or value == "u64" or value == "usize" {
+    give "uint64_t";
+  }
+  if value == "i8" {
+    give "int8_t";
+  }
+  if value == "i16" {
+    give "int16_t";
+  }
+  if value == "i32" {
+    give "int32_t";
+  }
+  if value == "u8" {
+    give "uint8_t";
+  }
+  if value == "u16" {
+    give "uint16_t";
+  }
+  if value == "u32" {
+    give "uint32_t";
+  }
+  if value == "f32" {
+    give "float";
+  }
+  if value == "f64" or value == "float" {
+    give "double";
+  }
+  if starts_with(ty, "&") or starts_with(ty, "*") {
+    give profile.pointer_type;
+  }
+  if starts_with(value, "proc(") {
+    give profile.pointer_type;
+  }
+  if starts_with(value, "[") or starts_with(value, "(") {
+    give profile.pointer_type;
+  }
+  give "struct " + value;
+}
+
+proc c_include_set(profile: CBackendTargetProfile) -> [string] {
+  give [
+    profile.bool_include,
+    profile.integer_include,
+    profile.stddef_include,
+    "stdio.h",
+    "stdlib.h",
+    "string.h"
+  ];
+}
+
+proc c_profile_summary(profile: CBackendTargetProfile) -> string {
+  let flags: string = "";
+  let i: u64 = 0;
+  while i < len(profile.compiler_flags) {
+    if flags != "" {
+      set flags = flags + " ";
+    }
+    set flags = flags + profile.compiler_flags[i];
+    set i = i + 1;
+  }
+  give profile.name + " compiler=" + profile.compiler_command + " flags=" + flags;
+}
