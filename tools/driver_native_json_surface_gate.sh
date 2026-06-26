@@ -5,6 +5,15 @@ ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 SRC="$ROOT_DIR/toolchain/stage2/src/main.vit"
 OUT_DIR="$ROOT_DIR/target/driver-native-json-surface"
 
+if [ -x "$ROOT_DIR/bin/vitte" ]; then
+    DRIVER_BIN="$ROOT_DIR/bin/vitte"
+elif [ -x "$ROOT_DIR/bin/vittec" ]; then
+    DRIVER_BIN="$ROOT_DIR/bin/vittec"
+else
+    printf "[driver-native-json-surface-gate][error] missing compiler driver in %s/bin\n" "$ROOT_DIR" >&2
+    exit 1
+fi
+
 mkdir -p "$OUT_DIR"
 
 check_surface() {
@@ -42,9 +51,9 @@ check_surface() {
 
 cd "$ROOT_DIR"
 
-check_surface ast "./bin/vitte parse --dump-ast-json '$SRC'" '"command":"parse".*"ast":{"kind":"bootstrap-structural".*"node_count":'
-check_surface hir "./bin/vitte check --dump-hir-json '$SRC'" '"command":"check".*"hir":{"kind":"bootstrap-structural".*"node_count":'
-check_surface mir "./bin/vitte check --dump-mir-json '$SRC'" '"command":"check".*"mir":{"kind":"bootstrap-structural".*"block_count":'
-check_surface diagnostics "./bin/vitte check --diagnostics-json '$SRC'" '"pipeline_failed_at":"none".*"phase_reports":'
+check_surface ast "'$DRIVER_BIN' parse --dump-ast-json '$SRC'" '"command":"parse".*"ast":{"kind":"bootstrap-structural".*"node_count":'
+check_surface hir "'$DRIVER_BIN' check --dump-hir-json '$SRC'" '"command":"check".*"hir":{"kind":"bootstrap-structural".*"node_count":'
+check_surface mir "'$DRIVER_BIN' check --dump-mir-json '$SRC'" '"command":"check".*"mir":{"kind":"bootstrap-structural".*"block_count":'
+check_surface diagnostics "'$DRIVER_BIN' check --diagnostics-json '$SRC'" '"pipeline_failed_at":"none".*"phase_reports":'
 
 printf "[driver-native-json-surface-gate] ok: ast/hir/mir/diagnostics JSON surfaces available\n"

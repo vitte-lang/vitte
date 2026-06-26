@@ -999,8 +999,12 @@ compiler_bin=\${VITTE_BOOTSTRAP_COMPILER:-$(printf '%s\n' "$compiler_bin" | sq)}
 if [ ! -x "\$compiler_bin" ]; then
     if [ -x "\$repo_root/bin/vitte" ]; then
         compiler_bin="\$repo_root/bin/vitte"
+    elif [ -x "\$repo_root/bin/vittec" ]; then
+        compiler_bin="\$repo_root/bin/vittec"
     elif [ -x "./bin/vitte" ]; then
         compiler_bin="./bin/vitte"
+    elif [ -x "./bin/vittec" ]; then
+        compiler_bin="./bin/vittec"
     else
         echo "[vitte][error] E_BOOTSTRAP_COMPILER_TEST_BRIDGE: missing compiler binary for compiler test suite bridge" >&2
         exit 127
@@ -1838,6 +1842,10 @@ detect_professional_diagnostic() {
         if (line == "" || line ~ /^\/\//) next
         code_line = strip_strings(raw)
         code_trim = trim(code_line)
+        if (code_trim ~ /^let[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*:[ \t]*string[ \t]*=[ \t]*S([ \t]*[+][ \t]*)?$/ ||
+            code_trim ~ /^S([ \t]*[+][ \t]*)?$/) {
+            next
+        }
 
         if (skip_doc) {
             if (line ~ />>>/) skip_doc = 0

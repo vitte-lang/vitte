@@ -1,5 +1,23 @@
 # Docs Changelog
 
+## 2026-06-26 · Strict Native Bootstrap and Compiler Surface Gates
+
+- Enforced strict native bootstrap behavior so compiler outputs for the real
+  compiler entry no longer rely on a bootstrap bridge sidecar.
+- Added and stabilized the `real-native` compiler gate for
+  `src/vitte/compiler/main.vit`, including no-sidecar verification on emitted
+  executables.
+- Promoted native JSON compiler surfaces for AST, HIR, MIR, and diagnostics as
+  required gates with richer payload content checks instead of presence-only
+  checks.
+- Expanded the stable compiler test-suite parser/check gate and hardened the
+  compiler test-suite bridge path to run through a real host compiler binary
+  without assuming `bin/vitte` only.
+- Hardened the seed bootstrap parser heuristics so embedded source snippets in
+  string literals do not trigger false diagnostics during bootstrap analysis.
+- Closed the stage2 compiler reachability audit from the real entrypoint so
+  `make build` now passes end-to-end under the stricter bootstrap rails.
+
 ## 2026-05-25 · Seed Diagnostics Surface
 
 - Stage0 seed shell `toolchain/seed/vittec0.seed` now emits phase-explicit diagnostics for:
@@ -34,4 +52,3 @@ See also:
 - `docs/seed_diagnostics.md`
 - `docs/bootstrap_seed.md`
 - `docs/compiler/diagnostics.md`
-

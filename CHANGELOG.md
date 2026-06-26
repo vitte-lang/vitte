@@ -1,5 +1,25 @@
 # Changelog - Vitte Bootstrap Toolchain
 
+## [unreleased] - 2026-06-26 - Strict Native Bootstrap, JSON Surface Gates, and Stage2 Reachability
+
+### ✅ 232. Strict no-sidecar bootstrap for the real compiler entry
+- Enforced strict bootstrap behavior so `src/vitte/compiler/main.vit` builds without a bootstrap bridge sidecar in the mandatory real-native gate.
+- Hardened bootstrap/build scripts to reject unexpected bridge artifacts when compiling the real compiler entry.
+
+### ✅ 233. Native JSON compiler surfaces promoted to required gates
+- Promoted AST, HIR, MIR, and diagnostics JSON outputs to required native compiler gates.
+- Enriched native JSON payload checks to validate content structure and command/surface metadata, not just file presence.
+- Normalized gate execution so host-driver detection works with `bin/vitte` or `bin/vittec`.
+
+### ✅ 234. Stable compiler test-suite bootstrap path
+- Expanded the stable compiler parser/check gate with additional compiler suites that now pass under bootstrap constraints.
+- Hardened compiler test-suite bridge execution so bridged suites run through a detected real host compiler binary instead of assuming a single driver path.
+- Reduced bootstrap parser false positives by ignoring embedded source snippets carried inside string-literal builders.
+
+### ✅ 235. Stage2 entrypoint reachability closure
+- Closed the stage2 compiler reachability audit from the real entrypoint by wiring the remaining compiler modules into `src/vitte/compiler/main.vit`.
+- Restored end-to-end `make build` success under the stricter bootstrap/native snapshot rails.
+
 ## [unreleased] - 2026-06-23 - Diagnostics: JSON output
 
 ### ✅ 231. `--format json` for `vitte check`

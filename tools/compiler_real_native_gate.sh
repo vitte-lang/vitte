@@ -6,6 +6,15 @@ OUT_DIR="$ROOT_DIR/target/real-native-gate"
 OUT_BIN="$OUT_DIR/vittec"
 OUT_LOG="$OUT_DIR/build.log"
 
+if [ -x "$ROOT_DIR/bin/vitte" ]; then
+    DRIVER_BIN="$ROOT_DIR/bin/vitte"
+elif [ -x "$ROOT_DIR/bin/vittec" ]; then
+    DRIVER_BIN="$ROOT_DIR/bin/vittec"
+else
+    printf "[compiler-real-native-gate][error] missing compiler driver in %s/bin\n" "$ROOT_DIR" >&2
+    exit 1
+fi
+
 mkdir -p "$OUT_DIR"
 rm -f "$OUT_BIN" "$OUT_BIN.bootstrap-bridge" "$OUT_LOG"
 
@@ -21,7 +30,7 @@ if ! grep -Fq "compiler_output_overwrites_source" src/vitte/compiler/driver/comp
     exit 1
 fi
 
-if ! ./bin/vitte build src/vitte/compiler/main.vit -o "$OUT_BIN" >"$OUT_LOG" 2>&1; then
+if ! "$DRIVER_BIN" build src/vitte/compiler/main.vit -o "$OUT_BIN" >"$OUT_LOG" 2>&1; then
     cat "$OUT_LOG" >&2
     printf "[compiler-real-native-gate][error] build failed for src/vitte/compiler/main.vit\n" >&2
     exit 1

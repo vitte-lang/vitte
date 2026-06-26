@@ -20,6 +20,15 @@ POSITIVE_RUN_ERR="$OUT_DIR/ast-tests.run.err"
 NEGATIVE_LOG="$OUT_DIR/non-suite-neighbor.log"
 NEGATIVE_EXTERNAL_LOG="$OUT_DIR/non-suite-external.log"
 
+if [ -x "$ROOT_DIR/bin/vitte" ]; then
+    DRIVER_BIN="$ROOT_DIR/bin/vitte"
+elif [ -x "$ROOT_DIR/bin/vittec" ]; then
+    DRIVER_BIN="$ROOT_DIR/bin/vittec"
+else
+    printf "[compiler-test-suite-bridge-gate][error] missing compiler driver in %s/bin\n" "$ROOT_DIR" >&2
+    exit 1
+fi
+
 mkdir -p "$OUT_DIR"
 rm -f "$OUT_BIN" "$OUT_BIN.bootstrap-bridge" \
   "$POSITIVE_OUT" "$POSITIVE_OUT.bootstrap-bridge" \
@@ -44,7 +53,7 @@ EOF
 
 cd "$ROOT_DIR"
 
-if ! ./bin/vitte build "$SRC" -o "$OUT_BIN" >"$BUILD_LOG" 2>&1; then
+if ! "$DRIVER_BIN" build "$SRC" -o "$OUT_BIN" >"$BUILD_LOG" 2>&1; then
     cat "$BUILD_LOG" >&2
     printf "[compiler-test-suite-bridge-gate][error] build failed for %s\n" "$SRC" >&2
     exit 1
@@ -55,7 +64,7 @@ if [ ! -x "$OUT_BIN" ]; then
     exit 1
 fi
 
-if ! "$OUT_BIN" >"$RUN_OUT" 2>"$RUN_ERR"; then
+if ! VITTE_BOOTSTRAP_COMPILER="$DRIVER_BIN" "$OUT_BIN" >"$RUN_OUT" 2>"$RUN_ERR"; then
     cat "$RUN_OUT" >&2 || true
     cat "$RUN_ERR" >&2 || true
     printf "[compiler-test-suite-bridge-gate][error] bridged compiler test suite execution failed\n" >&2
@@ -69,13 +78,13 @@ grep -q '^check succeeded$' "$RUN_OUT" || {
     exit 1
 }
 
-if ! ./bin/vitte build "$POSITIVE_SRC" -o "$POSITIVE_OUT" >"$POSITIVE_LOG" 2>&1; then
+if ! "$DRIVER_BIN" build "$POSITIVE_SRC" -o "$POSITIVE_OUT" >"$POSITIVE_LOG" 2>&1; then
     cat "$POSITIVE_LOG" >&2
     printf "[compiler-test-suite-bridge-gate][error] build failed for positive suite %s\n" "$POSITIVE_SRC" >&2
     exit 1
 fi
 
-if ! "$POSITIVE_OUT" >"$POSITIVE_RUN_OUT" 2>"$POSITIVE_RUN_ERR"; then
+if ! VITTE_BOOTSTRAP_COMPILER="$DRIVER_BIN" "$POSITIVE_OUT" >"$POSITIVE_RUN_OUT" 2>"$POSITIVE_RUN_ERR"; then
     cat "$POSITIVE_RUN_OUT" >&2 || true
     cat "$POSITIVE_RUN_ERR" >&2 || true
     printf "[compiler-test-suite-bridge-gate][error] positive suite bridge execution failed for %s\n" "$POSITIVE_SRC" >&2
@@ -89,7 +98,7 @@ grep -q '^check succeeded$' "$POSITIVE_RUN_OUT" || {
     exit 1
 }
 
-if VITTE_BOOTSTRAP_ALLOW_FULL_COMPILER_BRIDGE=1 ./bin/vitte build "$NEGATIVE_SRC" -o "$NEGATIVE_OUT" >"$NEGATIVE_LOG" 2>&1; then
+if VITTE_BOOTSTRAP_ALLOW_FULL_COMPILER_BRIDGE=1 "$DRIVER_BIN" build "$NEGATIVE_SRC" -o "$NEGATIVE_OUT" >"$NEGATIVE_LOG" 2>&1; then
     cat "$NEGATIVE_LOG" >&2
     printf "[compiler-test-suite-bridge-gate][error] bridge unexpectedly accepted non-suite input %s\n" "$NEGATIVE_SRC" >&2
     exit 1
@@ -101,7 +110,7 @@ if [ -e "$NEGATIVE_OUT" ] || [ -e "$NEGATIVE_OUT.bootstrap-bridge" ]; then
     exit 1
 fi
 
-if VITTE_BOOTSTRAP_ALLOW_FULL_COMPILER_BRIDGE=1 ./bin/vitte build "$NEGATIVE_EXTERNAL_SRC" -o "$NEGATIVE_EXTERNAL_OUT" >"$NEGATIVE_EXTERNAL_LOG" 2>&1; then
+if VITTE_BOOTSTRAP_ALLOW_FULL_COMPILER_BRIDGE=1 "$DRIVER_BIN" build "$NEGATIVE_EXTERNAL_SRC" -o "$NEGATIVE_EXTERNAL_OUT" >"$NEGATIVE_EXTERNAL_LOG" 2>&1; then
     cat "$NEGATIVE_EXTERNAL_LOG" >&2
     printf "[compiler-test-suite-bridge-gate][error] bridge unexpectedly accepted external non-suite input %s\n" "$NEGATIVE_EXTERNAL_SRC" >&2
     exit 1
