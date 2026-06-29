@@ -54,35 +54,7 @@ Overall progress: **42%**
 
 ```
 
-| Component | Status |
-
-|-----------|--------|
-
-| Compiler | **42%** |
-
-| Lexer | ✅ |
-
-| Parser | ✅ |
-
-| AST | ✅ |
-
-| HIR | 🟢 |
-
-| Semantic Analysis | 🟢 |
-
-| Type Checker | 🟢 |
-
-| Borrow Checker | 🟡 |
-
-| MIR | 🟡 |
-
-| IR | 🟡 |
-
-| Native Backend | 🟡 |
-
-| LLVM Backend | 🔵 |
-
-| Self Hosting | 🔴 |
+## Component | Status 
 
 ### Roadmap
 
