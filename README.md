@@ -123,19 +123,19 @@ Failures are explicit and machine-readable to aid tooling.
 Run a basic check:
 
 ```bash
-bin/vitte check src/vitte/compiler/main.vit
+vitte check main.vit
 ```
 
 Dump diagnostics in JSON:
 
 ```bash
-bin/vitte check src/vitte/compiler/main.vit --diagnostics-json
+vitte check main.vit --diagnostics-json
 ```
 
 Build a test binary:
 
 ```bash
-bin/vitte build src/vitte/compiler/tests/pipeline_tests.vit -o /tmp/vitte-pipeline-tests
+vitte build main.vit -o /example/main
 ```
 
 Run main test gates:
