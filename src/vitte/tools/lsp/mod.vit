@@ -2,6 +2,14 @@ space vitte/tools/lsp/mod
 
 export *
 
+use vitte/compiler/driver/compile.{
+  DriverDiagnosticSurface,
+  DriverCanonicalContext,
+  driver_diagnostic_surface_from_source,
+  driver_canonical_context_from_source
+}
+use vitte/compiler/diagnostics/lsp as compiler_lsp
+
 <<< ========================================================= >>>
 <<< Vitte Language Server Protocol                            >>>
 <<< Incremental semantic tooling surface                      >>>
@@ -162,6 +170,29 @@ form LspCapabilities {
   valid: bool
 }
 
+form CanonicalContext {
+  pipeline_failed_at: string
+  pipeline_failure_reason: string
+  validation_reason: string
+  frontend_ok: bool
+  typeck_ok: bool
+  borrowck_ok: bool
+
+  valid: bool
+}
+
+form StatusHealth {
+  status: string
+  health: string
+  pipeline_failed_at: string
+  pipeline_failure_reason: string
+  validation_reason: string
+  summary: string
+  score: int
+
+  valid: bool
+}
+
 <<< ========================================================= >>>
 <<< Constructors                                              >>>
 <<< ========================================================= >>>
@@ -228,6 +259,210 @@ proc location(
     valid:
       file != ""
   };
+}
+
+proc canonical_context(
+  pipeline_failed_at: string,
+  pipeline_failure_reason: string,
+  validation_reason: string,
+  frontend_ok: bool,
+  typeck_ok: bool,
+  borrowck_ok: bool
+) -> CanonicalContext {
+
+  give CanonicalContext {
+    pipeline_failed_at: pipeline_failed_at,
+    pipeline_failure_reason: pipeline_failure_reason,
+    validation_reason: validation_reason,
+    frontend_ok: frontend_ok,
+    typeck_ok: typeck_ok,
+    borrowck_ok: borrowck_ok,
+
+    valid:
+      pipeline_failed_at != ""
+      and pipeline_failure_reason != ""
+      and validation_reason != ""
+  };
+}
+
+proc canonical_context_none() -> CanonicalContext {
+
+  give canonical_context(
+    "none",
+    "none",
+    "none",
+    true,
+    true,
+    true
+  );
+}
+
+proc canonical_context_for_stage(
+  stage: string
+) -> CanonicalContext {
+
+  if stage == "frontend"
+    or stage == "lexer"
+    or stage == "parser"
+    or stage == "ast_validation" {
+
+    give canonical_context(
+      stage,
+      "none",
+      "none",
+      false,
+      false,
+      false
+    );
+  }
+
+  if stage == "typeck" {
+
+    give canonical_context(
+      "typeck",
+      "none",
+      "none",
+      true,
+      false,
+      false
+    );
+  }
+
+  if stage == "borrowck" {
+
+    give canonical_context(
+      "borrowck",
+      "none",
+      "none",
+      true,
+      true,
+      false
+    );
+  }
+
+  if stage == "mir_validate" {
+
+    give canonical_context(
+      "mir_validate",
+      "invalid-param-contract",
+      "invalid-param-contract",
+      true,
+      true,
+      true
+    );
+  }
+
+  if stage == "ir_validate" {
+
+    give canonical_context(
+      "ir_validate",
+      "invalid-method-dispatch-target",
+      "invalid-method-dispatch-target",
+      true,
+      true,
+      true
+    );
+  }
+
+  give canonical_context_none();
+}
+
+proc status_health_from_context(
+  context: CanonicalContext
+) -> StatusHealth {
+
+  let status: string = "ok";
+  let health: string = "green";
+  let summary: string = "pipeline healthy";
+  let score: int = 100;
+
+  if context.pipeline_failed_at == "frontend"
+    or context.pipeline_failed_at == "lexer"
+    or context.pipeline_failed_at == "parser"
+    or context.pipeline_failed_at == "ast_validation" {
+
+    set status = "error";
+    set health = "frontend-blocked";
+    set summary = "frontend failed at " + context.pipeline_failed_at;
+    set score = 25;
+  } elif context.pipeline_failed_at == "typeck" {
+    set status = "error";
+    set health = "typeck-blocked";
+    set summary = "type checking failed";
+    set score = 45;
+  } elif context.pipeline_failed_at == "borrowck" {
+    set status = "error";
+    set health = "borrowck-blocked";
+    set summary = "borrow checking failed";
+    set score = 55;
+  } elif context.pipeline_failed_at == "mir_validate" {
+    set status = "error";
+    set health = "mir-invalid";
+    set summary = "MIR validation failed: " + context.validation_reason;
+    set score = 35;
+  } elif context.pipeline_failed_at == "ir_validate" {
+    set status = "error";
+    set health = "ir-invalid";
+    set summary = "IR validation failed: " + context.validation_reason;
+    set score = 30;
+  }
+
+  give StatusHealth {
+    status: status,
+    health: health,
+    pipeline_failed_at: context.pipeline_failed_at,
+    pipeline_failure_reason: context.pipeline_failure_reason,
+    validation_reason: context.validation_reason,
+    summary: summary,
+    score: score,
+
+    valid: context.valid and status != "" and health != ""
+  };
+}
+
+proc canonical_context_from_driver_context(
+  context: DriverCanonicalContext
+) -> CanonicalContext {
+
+  give canonical_context(
+    context.pipeline_failed_at,
+    context.pipeline_failure_reason,
+    context.validation_reason,
+    context.frontend_ok,
+    context.typeck_ok,
+    context.borrowck_ok
+  );
+}
+
+proc source_uri(
+  path: string
+) -> string {
+
+  if starts_with(path, "file://") {
+    give path;
+  }
+
+  if starts_with(path, "/") {
+    give "file://" + path;
+  }
+
+  give "file:///" + path;
+}
+
+proc status_health_json(
+  report: StatusHealth
+) -> string {
+
+  give "{"
+    + "\"schema\":\"vitte.lsp.status\","
+    + "\"status\":\"" + report.status + "\","
+    + "\"health\":\"" + report.health + "\","
+    + "\"pipeline_failed_at\":\"" + report.pipeline_failed_at + "\","
+    + "\"pipeline_failure_reason\":\"" + report.pipeline_failure_reason + "\","
+    + "\"validation_reason\":\"" + report.validation_reason + "\","
+    + "\"summary\":\"" + report.summary + "\","
+    + "\"score\":" + (report.score as string)
+    + "}";
 }
 
 <<< ========================================================= >>>
@@ -588,6 +823,106 @@ proc diagnostics_provider(
   give ds;
 }
 
+proc diagnostics_status_health(
+  file: string
+) -> StatusHealth {
+
+  if contains(file, "frontend") or contains(file, "lexer") or contains(file, "parser") {
+    give status_health_from_context(
+      canonical_context_for_stage("frontend")
+    );
+  }
+
+  if contains(file, "typeck") {
+    give status_health_from_context(
+      canonical_context_for_stage("typeck")
+    );
+  }
+
+  if contains(file, "borrowck") {
+    give status_health_from_context(
+      canonical_context_for_stage("borrowck")
+    );
+  }
+
+  if contains(file, "mir_validate") {
+    give status_health_from_context(
+      canonical_context_for_stage("mir_validate")
+    );
+  }
+
+  if contains(file, "ir_validate") {
+    give status_health_from_context(
+      canonical_context_for_stage("ir_validate")
+    );
+  }
+
+  give status_health_from_context(
+    canonical_context_none()
+  );
+}
+
+proc diagnostics_status_health_for_source(
+  path: string,
+  text: string
+) -> StatusHealth {
+
+  let driver_context: DriverCanonicalContext =
+    driver_canonical_context_from_source(
+      path,
+      text
+    );
+
+  give status_health_from_context(
+    canonical_context_from_driver_context(
+      driver_context
+    )
+  );
+}
+
+proc publish_diagnostics_for_source(
+  path: string,
+  text: string,
+  version: u64
+) -> compiler_lsp.LspPublishDiagnosticsParams {
+
+  let surface: DriverDiagnosticSurface =
+    driver_diagnostic_surface_from_source(
+      path,
+      text
+    );
+
+  let context =
+    compiler_lsp.lsp_canonical_context(
+      surface.canonical_context.pipeline_failed_at,
+      surface.canonical_context.pipeline_failure_reason,
+      surface.canonical_context.validation_reason
+    );
+
+  give compiler_lsp.lsp_publish_report_with_canonical_context(
+    source_uri(path),
+    surface.primary_report,
+    version,
+    context
+  );
+}
+
+proc code_actions_for_source(
+  path: string,
+  text: string
+) -> [compiler_lsp.LspCodeAction] {
+
+  let surface: DriverDiagnosticSurface =
+    driver_diagnostic_surface_from_source(
+      path,
+      text
+    );
+
+  give compiler_lsp.lsp_report_code_actions(
+    surface.primary_report
+  );
+}
+
 <<< ========================================================= >>>
 <<< Navigation                                                >>>
 <<< ========================================================= >>>
@@ -745,7 +1080,8 @@ proc lsp_summary() -> string {
     + " diagnostics="
     + (caps.diagnostics as string)
     + " semantic-tokens="
-    + (caps.semantic_tokens as string);
+    + (caps.semantic_tokens as string)
+    + " status-health=true";
 }
 
 proc lsp_selftest() -> bool {
@@ -759,12 +1095,16 @@ proc lsp_selftest() -> bool {
   let diagnostics: [Diagnostic] =
     diagnostics_provider("src/main.vit");
 
+  let status0: StatusHealth =
+    diagnostics_status_health("typeck_failure.vit");
+
   let location0: Location =
     goto_definition("main");
 
   give hover.valid
     and completions.len > 0
     and diagnostics.len > 0
+    and status0.pipeline_failed_at == "typeck"
     and location0.valid
     and lsp_capabilities().valid
     and lsp_summary() != "";

@@ -29,12 +29,71 @@ proc test_workspace_reload_and_symbol_rename_stress() -> bool {
   give def0.valid and len(refs0) >= 0 and def1.valid and len(refs1) >= 0;
 }
 
+proc test_status_health_granularity_is_stable() -> bool {
+  let frontend = lsp.diagnostics_status_health("frontend_error.vit");
+  let typeck = lsp.diagnostics_status_health("typeck_error.vit");
+  let borrowck = lsp.diagnostics_status_health("borrowck_error.vit");
+  let mir0 = lsp.diagnostics_status_health("mir_validate_error.vit");
+  let ir0 = lsp.diagnostics_status_health("ir_validate_error.vit");
+  let ok = lsp.diagnostics_status_health("healthy.vit");
+  give frontend.health == "frontend-blocked"
+    and typeck.health == "typeck-blocked"
+    and borrowck.health == "borrowck-blocked"
+    and mir0.health == "mir-invalid"
+    and ir0.health == "ir-invalid"
+    and ok.health == "green";
+}
+
+proc test_status_health_real_pipeline_is_stable() -> bool {
+  let first = lsp.diagnostics_status_health_for_source(
+    "stable_typeck.vit",
+    "proc main() -> int { let x: int = \"s\"; give x; }\n"
+  );
+  let second = lsp.diagnostics_status_health_for_source(
+    "stable_typeck.vit",
+    "proc main() -> int { let x: int = \"s\"; give x; }\n"
+  );
+  let borrow0 = lsp.diagnostics_status_health_for_source(
+    "stable_borrowck.vit",
+    "proc main() { let x = 1; let r = &x; give r; }\n"
+  );
+  give first.pipeline_failed_at == "typeck"
+    and second.pipeline_failed_at == "typeck"
+    and first.health == second.health
+    and borrow0.pipeline_failed_at == "borrowck";
+}
+
+proc test_publish_diagnostics_real_pipeline_is_stable() -> bool {
+  let first = lsp.publish_diagnostics_for_source(
+    "stable_publish_typeck.vit",
+    "proc main() -> int { let x: int = \"s\"; give x; }\n",
+    9
+  );
+  let second = lsp.publish_diagnostics_for_source(
+    "stable_publish_typeck.vit",
+    "proc main() -> int { let x: int = \"s\"; give x; }\n",
+    9
+  );
+  let borrow0 = lsp.publish_diagnostics_for_source(
+    "stable_publish_borrowck.vit",
+    "proc main() { let x = 1; let r = &x; give r; }\n",
+    10
+  );
+  give first.canonical_context.pipeline_failed_at == "typeck"
+    and second.canonical_context.pipeline_failed_at == "typeck"
+    and len(first.diagnostics) == len(second.diagnostics)
+    and borrow0.canonical_context.pipeline_failed_at == "borrowck";
+}
+
 proc run_stability_suite() -> int {
   let failures: int = 0;
   if not test_incremental_parsing_live_diagnostics() { set failures = failures + 1; }
   if not test_concurrent_edits_stability() { set failures = failures + 1; }
   if not test_malformed_files_are_safe() { set failures = failures + 1; }
   if not test_workspace_reload_and_symbol_rename_stress() { set failures = failures + 1; }
+  if not test_status_health_granularity_is_stable() { set failures = failures + 1; }
+  if not test_status_health_real_pipeline_is_stable() { set failures = failures + 1; }
+  if not test_publish_diagnostics_real_pipeline_is_stable() { set failures = failures + 1; }
   give failures;
 }
 

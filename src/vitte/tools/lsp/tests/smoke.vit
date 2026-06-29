@@ -27,6 +27,80 @@ proc smoke_references() -> bool {
   give refs.len == 1 && refs[0].line == 5
 }
 
+proc smoke_status_health() -> bool {
+  let frontend = lsp.diagnostics_status_health("frontend_failure.vit")
+  let typeck = lsp.diagnostics_status_health("typeck_failure.vit")
+  let borrowck = lsp.diagnostics_status_health("borrowck_failure.vit")
+  let mir0 = lsp.diagnostics_status_health("mir_validate_failure.vit")
+  let ir0 = lsp.diagnostics_status_health("ir_validate_failure.vit")
+  let ok = lsp.diagnostics_status_health("ok_file.vit")
+  let ir_json = lsp.status_health_json(ir0)
+  give frontend.pipeline_failed_at == "frontend"
+    && typeck.pipeline_failed_at == "typeck"
+    && borrowck.pipeline_failed_at == "borrowck"
+    && mir0.validation_reason == "invalid-param-contract"
+    && ir0.validation_reason == "invalid-method-dispatch-target"
+    && ok.status == "ok"
+    && ir_json != ""
+}
+
+proc smoke_status_health_real_pipeline() -> bool {
+  let frontend = lsp.diagnostics_status_health_for_source(
+    "lsp_frontend_failure.vit",
+    "proc main() { let x = ; }\n"
+  )
+  let typeck = lsp.diagnostics_status_health_for_source(
+    "lsp_typeck_failure.vit",
+    "proc main() -> int { let x: int = \"s\"; give x; }\n"
+  )
+  let borrowck = lsp.diagnostics_status_health_for_source(
+    "lsp_borrowck_failure.vit",
+    "proc main() { let x = 1; let r = &x; give r; }\n"
+  )
+  let ok = lsp.diagnostics_status_health_for_source(
+    "lsp_ok.vit",
+    "proc main() -> int { give 0; }\n"
+  )
+  give frontend.health == "frontend-blocked"
+    && typeck.pipeline_failed_at == "typeck"
+    && borrowck.pipeline_failed_at == "borrowck"
+    && ok.pipeline_failed_at == "none"
+    && ok.status == "ok"
+}
+
+proc smoke_publish_diagnostics_real_pipeline() -> bool {
+  let frontend = lsp.publish_diagnostics_for_source(
+    "lsp_publish_frontend.vit",
+    "proc main() { let x = ; }\n",
+    1
+  )
+  let typeck = lsp.publish_diagnostics_for_source(
+    "lsp_publish_typeck.vit",
+    "proc main() -> int { let x: int = \"s\"; give x; }\n",
+    2
+  )
+  let borrowck = lsp.publish_diagnostics_for_source(
+    "lsp_publish_borrowck.vit",
+    "proc main() { let x = 1; let r = &x; give r; }\n",
+    3
+  )
+  let ok = lsp.publish_diagnostics_for_source(
+    "lsp_publish_ok.vit",
+    "proc main() -> int { give 0; }\n",
+    4
+  )
+  let frontend_failed = frontend.canonical_context.pipeline_failed_at == "lexer"
+    || frontend.canonical_context.pipeline_failed_at == "parser"
+    || frontend.canonical_context.pipeline_failed_at == "ast_validation"
+  give frontend_failed
+    && len(frontend.diagnostics) > 0
+    && typeck.canonical_context.pipeline_failed_at == "typeck"
+    && len(typeck.diagnostics) > 0
+    && borrowck.canonical_context.pipeline_failed_at == "borrowck"
+    && len(borrowck.diagnostics) > 0
+    && ok.canonical_context.pipeline_failed_at == "none"
+}
+
 proc run_smoke_suite() -> int {
   let failures: int = 0;
   if not smoke_hover() { set failures = failures + 1; }
@@ -34,6 +108,9 @@ proc run_smoke_suite() -> int {
   if not smoke_diagnostics() { set failures = failures + 1; }
   if not smoke_definition() { set failures = failures + 1; }
   if not smoke_references() { set failures = failures + 1; }
+  if not smoke_status_health() { set failures = failures + 1; }
+  if not smoke_status_health_real_pipeline() { set failures = failures + 1; }
+  if not smoke_publish_diagnostics_real_pipeline() { set failures = failures + 1; }
   give failures;
 }
 
