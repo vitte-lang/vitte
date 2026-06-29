@@ -1,6 +1,6 @@
 # Vitte
 
-![Vitte hero](docs/svg/readme-hero.svg)
+
 
 ![status](https://img.shields.io/badge/status-experimental-F97316)
 ![focus](https://img.shields.io/badge/focus-compiler%20%26%20bootstrap-0F766E)
