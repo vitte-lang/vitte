@@ -7,9 +7,6 @@
 ![surfaces](https://img.shields.io/badge/output-AST%20%7C%20HIR%20%7C%20MIR%20%7C%20IR-1D4ED8)
 ![docs](https://img.shields.io/badge/docs-generated%20site%20included-7C3AED)
 
-Mobile-friendly hero variant: [`docs/svg/readme-hero-compact.svg`](docs/svg/readme-hero-compact.svg)
-Social card variant: [`docs/svg/readme-social-card.svg`](docs/svg/readme-social-card.svg)
-Preview page: [`docs/social-preview.html`](docs/social-preview.html)
 
 Vitte is an experimental systems programming language and compiler project.
 
