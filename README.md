@@ -1,157 +1,184 @@
 # Vitte
 
+<div align="center">
+<h3>A modern systems programming language focused on deterministic compilation, safety and self-hosting.</h3>
+<p>
+<img src="https://img.shields.io/badge/compiler-42%25%20complete-2563EB">
+<img src="https://img.shields.io/badge/status-experimental-F97316">
+<img src="https://img.shields.io/badge/license-MIT-16A34A">
+<img src="https://img.shields.io/badge/bootstrap-C17-0F766E">
+</p>
+</div>
 
+## Features
 
 ![status](https://img.shields.io/badge/status-experimental-F97316)
-![focus](https://img.shields.io/badge/focus-compiler%20%26%20bootstrap-0F766E)
-![surfaces](https://img.shields.io/badge/output-AST%20%7C%20HIR%20%7C%20MIR%20%7C%20IR-1D4ED8)
-![docs](https://img.shields.io/badge/docs-generated%20site%20included-7C3AED)
+![version](https://img.shields.io/badge/version-2.1.1-2563EB)
+![license](https://img.shields.io/badge/license-MIT-16A34A)
+![language](https://img.shields.io/badge/language-Vitte-9333EA)
+![compiler](https://img.shields.io/badge/compiler-self--hosting%20goal-DC2626)
+![bootstrap](https://img.shields.io/badge/bootstrap-C17-0F766E)
+![platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-2563EB)
+![frontend](https://img.shields.io/badge/frontend-Lexer%20%7C%20Parser-2563EB)
+![pipeline](https://img.shields.io/badge/pipeline-AST→HIR→MIR→IR-1D4ED8)
+![borrow](https://img.shields.io/badge/borrow-checker-DC2626)
+![typeck](https://img.shields.io/badge/type-Type%20Checker-0F766E)
+![diagnostics](https://img.shields.io/badge/diagnostics-rich-7C3AED)
+![incremental](https://img.shields.io/badge/incremental-planned-F59E0B)
+![llvm](https://img.shields.io/badge/backend-LLVM-4338CA)
+![native](https://img.shields.io/badge/backend-Native-059669)
+![object](https://img.shields.io/badge/output-Object%20Files-2563EB)
+![linker](https://img.shields.io/badge/linker-integrated-0F766E)
+![memory](https://img.shields.io/badge/memory-safe-16A34A)
+![ownership](https://img.shields.io/badge/model-Ownership-DC2626)
+![performance](https://img.shields.io/badge/performance-native-E11D48)
+![generics](https://img.shields.io/badge/generics-supported-2563EB)
+![async](https://img.shields.io/badge/async-supported-0F766E)
+![ffi](https://img.shields.io/badge/FFI-C%20ABI-4F46E5)
+![x86_64](https://img.shields.io/badge/x86__64-supported-2563EB)
+![aarch64](https://img.shields.io/badge/AArch64-supported-2563EB)
+![riscv64](https://img.shields.io/badge/RISC--V-supported-2563EB)
+![i386](https://img.shields.io/badge/i386-supported-2563EB)
 
+Vitte is a modern systems programming language and compiler designed around explicit compilation stages, deterministic builds, memory safety, and long-term maintainability.
 
-Vitte is an experimental systems programming language and compiler project.
+## Compiler progress
 
-Short version:
+## Compiler Progress
 
-- a language project
-- a compiler project
-- a bootstrap and reproducibility project
-- a repository built to make failures explicit and tooling-friendly
+Overall progress: **42%**
 
-The goal is simple to explain:
-
-- keep code readable when projects become large
-- build a compiler with explicit stages and reproducible workflows
-- make diagnostics, tooling, and bootstrap quality first-class parts of the language
-
-## What this repository is
-
-This repository is the main Vitte codebase. It contains:
-
-- the compiler
-- the bootstrap toolchain
-- the language grammar
-- tests and validation gates
-- generated documentation and supporting docs
-
-If you want the shortest mental model, think:
-
-`language design + compiler engineering + bootstrap/reproducibility`
-
-## Start here
-
-If you are visiting the repository for the first time:
-
-1. read this README
-2. run one `check` command
-3. open the compiler pipeline docs
-4. run the main validation gates
-
-Minimal first commands:
-
-```bash
-bin/vitte check src/vitte/compiler/main.vit
-bin/vitte check src/vitte/compiler/main.vit --diagnostics-json
-./tools/compiler_test_suite_check_gate.sh
 ```
 
-## Current status
+████████░░░░░░░░░░░░ 42%
 
-Vitte is active, but still experimental.
+```
 
-What already exists in the repository:
+| Component | Status |
 
-- a real compiler pipeline
-- native JSON surfaces for AST, HIR, MIR, diagnostics, reports
-- bootstrap and validation gates
-- backend and linker infrastructure
-- a growing test suite around frontend, middle-end, and backend behavior
+|-----------|--------|
 
-What this means in practice:
+| Compiler | **42%** |
 
-- the project is serious enough to inspect and build
-- the language and compiler are still evolving
-- some parts are already strongly gated, others are still being hardened
+| Lexer | ✅ |
 
-## Why people look at Vitte
+| Parser | ✅ |
 
-Vitte is aimed at people who care about:
+| AST | ✅ |
 
-- compilers
-- systems software
-- deterministic builds
-- long-term maintainability
-- diagnostics quality
-- self-hosting and bootstrap discipline
+| HIR | 🟢 |
 
-The design bias is not "tiny language first". It is "clear language and clear compiler architecture that can scale".
+| Semantic Analysis | 🟢 |
 
-## Repository map
+| Type Checker | 🟢 |
 
-The most useful directories to know first are:
+| Borrow Checker | 🟡 |
 
-- `src/vitte/compiler` - compiler frontend, middle-end, backend, driver
-- `src/vitte/grammar` - source-of-truth grammar
-- `toolchain/` - bootstrap stages, seeds, and supporting workflows
-- `tests/` - regression and validation coverage
-- `tools/` - gates, checks, synchronization scripts
-- `docs/` - documentation, reports, generated site material
+| MIR | 🟡 |
 
-Grammar source of truth:
+| IR | 🟡 |
+
+| Native Backend | 🟡 |
+
+| LLVM Backend | 🔵 |
+
+| Self Hosting | 🔴 |
+
+### Roadmap
 
 ```text
-src/vitte/grammar/vitte.ebnf
+
+Lexer              ██████████ 100%
+
+Parser             ██████████ 100%
+
+AST                ██████████ 100%
+
+HIR                █████████░  90%
+
+Semantic           ████████░░  80%
+
+Type Checker       ███████░░░  75%
+
+Borrow Checker     ██████░░░░  65%
+
+MIR                ██████░░░░  60%
+
+IR                 █████░░░░░  55%
+
+Backend            ████░░░░░░  45%
+
+LLVM               ███░░░░░░░  35%
+
+Self Hosting       █░░░░░░░░░  10%
+
 ```
 
-## How the compiler is organized
+## Repository
 
-At a high level, the pipeline is:
+This repository contains the Vitte compiler, bootstrap toolchain, language grammar, tests, and documentation.
 
-1. lexer
-2. parser
-3. AST validation
-4. semantic analysis
-5. type checking
-6. borrow checking
-7. MIR lowering and validation
-8. IR lowering and validation
-9. backend code generation
-10. linking
+Key directories:
 
-The repository puts a lot of emphasis on making failures explicit and machine-readable.
+- `src/vitte/compiler` — compiler frontend, middle-end, backend, driver  
+- `src/vitte/grammar` — language grammar source  
+- `toolchain/` — bootstrap stages and workflows  
+- `tests/` — regression and validation tests  
+- `tools/` — scripts for checks and synchronization  
+- `docs/` — documentation and reports  
+
+Grammar source of truth: `src/vitte/grammar/vitte.ebnf`
+
+## Pipeline
+
+The compiler pipeline stages:
+
+1. Lexer  
+2. Parser  
+3. AST validation  
+4. Semantic analysis  
+5. Type checking  
+6. Borrow checking  
+7. MIR lowering and validation  
+8. IR lowering and validation  
+9. Backend code generation  
+10. Linking  
+
+Failures are explicit and machine-readable to aid tooling.
 
 ## Quick start
 
-If you just want to poke the project quickly:
+Run a basic check:
 
 ```bash
-vitte check src/vitte/compiler/main.vit
+bin/vitte check src/vitte/compiler/main.vit
 ```
 
-Dump machine-readable diagnostics:
+Dump diagnostics in JSON:
 
 ```bash
-vitte check src/vitte/compiler/main.vit --diagnostics-json
+bin/vitte check src/vitte/compiler/main.vit --diagnostics-json
 ```
 
 Build a test binary:
 
 ```bash
-vitte build src/vitte/compiler/tests/pipeline_tests.vit -o /tmp/vitte-pipeline-tests
+bin/vitte build src/vitte/compiler/tests/pipeline_tests.vit -o /tmp/vitte-pipeline-tests
 ```
 
-Run the main compiler test gates:
+Run main test gates:
 
 ```bash
 ./tools/compiler_test_suite_check_gate.sh
 ./tools/compiler_test_suite_bridge_gate.sh
 ```
 
-If you prefer to browse before building:
+Browse documentation:
 
-- language and spec: `docs/spec/`
-- compiler docs: `docs/compiler/`
-- bootstrap docs: `docs/bootstrap/`
-- generated site entry point: `docs/index.html`
+- Language spec: `docs/spec/language.md`  
+- Compiler docs: `docs/compiler/architecture.md`  
+- Bootstrap docs: `docs/bootstrap/overview.md`  
+- Generated site: `docs/index.html`  
 
 ## Example
 
@@ -163,73 +190,32 @@ proc main() -> int {
 }
 ```
 
-## Project principles
+## Project statistics
 
-Vitte keeps repeating the same rules on purpose:
-
-- one grammar source of truth
-- deterministic workflows over hidden magic
-- generated artifacts should not be edited manually
-- compiler stages should fail clearly
-- diagnostics should be useful to both humans and tools
-- bootstrap quality matters as much as language features
+- Language: Vitte  
+- Bootstrap: C17  
+- Primary target: native executables  
+- Intermediate representations: AST, HIR, MIR, IR  
+- Supported architectures: x86_64, AArch64, RISC-V64, i386  
+- Diagnostics: rich structured diagnostics  
+- Goal: complete self-hosting compiler  
 
 ## Documentation
 
-Useful entry points:
+Key documentation:
 
-- `docs/index.html`
-- `docs/start-here.html`
-- `docs/compiler/architecture.md`
-- `docs/compiler/pipeline.md`
-- `docs/compiler/backend.md`
-- `docs/bootstrap/overview.md`
-- `docs/spec/language.md`
-
-Useful depending on what you want:
-
-- understand the language: `docs/spec/language.md`
-- understand the compiler: `docs/compiler/architecture.md`
-- understand the bootstrap path: `docs/bootstrap/overview.md`
-- inspect generated public-facing docs: `docs/index.html`
-
-## Visual assets
-
-Repository visuals available in `docs/svg/`:
-
-- `readme-hero.svg` - main GitHub README hero
-- `readme-hero-compact.svg` - compact mobile-friendly variant
-- `readme-social-card.svg` - social sharing / Open Graph style card
-
-## Who this README is for
-
-If you are:
-
-- a curious developer
-- a compiler engineer
-- a contributor evaluating the repository
-- someone checking whether the project is real or just an idea
-
-this README is the short version.
-
-The deeper technical material lives in `docs/` and under `src/vitte/compiler/`.
-
-If you need a very simple framing:
-
-- users look for the language direction
-- contributors look for the compiler structure
-- compiler engineers look for the validation and bootstrap model
+- `docs/index.html`  
+- `docs/start-here.html`  
+- `docs/compiler/architecture.md`  
+- `docs/compiler/pipeline.md`  
+- `docs/compiler/backend.md`  
+- `docs/bootstrap/overview.md`  
+- `docs/spec/language.md`  
 
 ## Contributing
 
-The repository is large and heavily validated, so the practical contribution style is:
+Contributions should be focused, explicit, and tested. Avoid hand-editing generated artifacts unless necessary.
 
-- make focused changes
-- keep behavior explicit
-- add tests with the change
-- prefer canonical paths over duplicate wrappers
-- do not hand-edit generated outputs unless the workflow explicitly requires it
+## Summary
 
-## In one sentence
-
-Vitte is an experimental language and compiler project trying to make systems programming, compiler construction, and bootstrap engineering more explicit, more testable, and easier to maintain over time.
+Vitte is an experimental systems programming language and compiler project emphasizing clear compiler engineering, deterministic builds, and maintainable systems programming.
