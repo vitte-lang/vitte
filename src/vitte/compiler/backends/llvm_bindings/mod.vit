@@ -813,6 +813,36 @@ proc emit_llvm_object_from_ir_with_toolchain(unit: IrUnit, options: LlvmBuildOpt
 
   let diagnostics: [LlvmDiagnostic] = llvm_profile_diagnostics(options);
   let toolchain_status: LlvmToolchainStatus = llvm_toolchain_status(toolchain, options.packaging, options.prefer_native_toolchain);
+  if options.prefer_native_toolchain and not toolchain_status.valid {
+    let native_diagnostics: [LlvmDiagnostic] = diagnostics;
+    let object_stage: string = if options.packaging == "object" { "native object emission" } else { "native object/link emission" };
+    let built_native_diagnostics: [LlvmDiagnostic] = native_diagnostics + [
+      llvm_diagnostic(LlvmDiagnosticLevel.Error, "llvm.native.toolchain.required", object_stage + " requested but unavailable", "llvm")
+    ];
+    let final_native_diagnostics: [LlvmDiagnostic] = if not toolchain_status.native_object_ready {
+      built_native_diagnostics + [llvm_diagnostic(LlvmDiagnosticLevel.Error, "llvm.native.object.unavailable", "native object emission requested without clang path", "llvm")]
+    } else {
+      built_native_diagnostics
+    };
+    let final_link_diagnostics: [LlvmDiagnostic] = if options.packaging != "object" and not toolchain_status.native_link_ready {
+      final_native_diagnostics + [llvm_diagnostic(LlvmDiagnosticLevel.Error, "llvm.native.link.unavailable", toolchain_status.summary, "llvm")]
+    } else {
+      final_native_diagnostics
+    };
+    give LlvmObjectResult {
+      target: options.target,
+      object_format: "llvm-object",
+      ir_text: ir_result.ir_text,
+      object_text: "",
+      sections: [],
+      symbols: [],
+      relocations: [],
+      diagnostics: final_link_diagnostics,
+      module_count: len(unit.modules),
+      function_count: 0,
+      valid: false
+    };
+  }
   let built_diagnostics: [LlvmDiagnostic] = diagnostics;
   if options.prefer_native_toolchain and not toolchain_status.native_object_ready {
     set built_diagnostics = built_diagnostics + [llvm_diagnostic(LlvmDiagnosticLevel.Warning, "llvm.native.object.unavailable", "native object emission requested without clang path", "llvm")];

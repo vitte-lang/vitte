@@ -25,6 +25,9 @@ It is not the single production source of truth for the runtime compiler path.
 - legacy or parallel emit-oriented helper modules such as `c_emit` and
   `llvm_emit`
 
+`llvm_emit` is a legacy experimental surface. It is not the production LLVM
+backend and must not be presented as the canonical codegen route.
+
 ## Contract
 
 The canonical production compiler path continues to route through

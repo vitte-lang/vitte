@@ -5,9 +5,9 @@ use vitte/compiler/backend/ir.{ IrInstructionKind, IrLinkage, IrModuleKind, IrUn
 use vitte/compiler/backend/link/artifact.{ LinkArtifact, artifact_is_valid }
 use vitte/compiler/backend/link/linker.{ link_ir_unit }
 use vitte/compiler/backend/pipeline.{ BackendPipelineResult, compile_frontend_to_valid_ir_with_profile_and_packaging, compile_to_valid_ir, compile_to_valid_ir_with_backend }
-use vitte/compiler/backends/llvm_bindings.{ LlvmBindingResult, LlvmObjectResult, default_llvm_build_options, default_llvm_toolchain_paths, emit_llvm_ir_from_ir, emit_llvm_object_from_ir }
+use vitte/compiler/backends/llvm_bindings.{ LlvmBindingResult, LlvmObjectResult, default_llvm_build_options, default_llvm_toolchain_paths, emit_llvm_ir_from_ir, emit_llvm_object_from_ir, emit_llvm_object_from_ir_with_toolchain, llvm_build_options, llvm_toolchain_paths }
 use vitte/compiler/driver/cli.{ run_compile_set_manifest_report_cli }
-use vitte/compiler/driver/compile.{ DriverBackendModuleSetResult, DriverCompileResult, compile_source_set, compile_source_set_with_config, compile_source_with_config, driver_compile_config, driver_module_input }
+use vitte/compiler/driver/compile.{ DriverBackendModuleSetResult, DriverCompileResult, compile_source_set, compile_source_set_with_config, compile_source_with_config, driver_compile_config, driver_compile_config_full, driver_module_input }
 use vitte/compiler/driver/exit_status.{ DriverExitStatus }
 use vitte/compiler/driver/pipeline.{ CompileReport, ModuleSetCompileReport, compile_report_json, module_set_compile_report_json, run_and_report_with_config, run_set_and_report, run_set_and_report_with_config }
 use vitte/compiler/driver/result.{ CliReportResult }
@@ -432,6 +432,28 @@ proc test_invalid_regular_call_borrow_abi_ir_is_rejected() -> bool {
     and not unit_is_valid(verified);
 }
 
+proc llvm_object_has_diagnostic_code(result: LlvmObjectResult, code: string) -> bool {
+  let i: u64 = 0;
+  while i < len(result.diagnostics) {
+    if result.diagnostics[i].code == code {
+      give true;
+    }
+    set i = i + 1;
+  }
+  give false;
+}
+
+proc driver_result_has_diagnostic_code(result: DriverCompileResult, code: string) -> bool {
+  let i: u64 = 0;
+  while i < len(result.diagnostics) {
+    if result.diagnostics[i].code == code {
+      give true;
+    }
+    set i = i + 1;
+  }
+  give false;
+}
+
 proc test_codegen_x86_64_emits_entry_label() -> bool {
   let ir: IrUnit = build_verified_ir("backend_codegen_ok.vit", "proc main() -> int { give 0; }\n");
   let result: CodegenResult = run_codegen_x86_64(ir);
@@ -452,6 +474,38 @@ proc test_backend_pipeline_end_to_end() -> bool {
 proc test_llvm_backend_pipeline_end_to_end() -> bool {
   let result: BackendPipelineResult = compile_to_valid_ir_with_backend("backend_pipeline_llvm_ok.vit", "proc main() -> int { give 0; }\n", "llvm");
   give result.valid and find(result.codegen.assembly, "define i64 @main()") >= 0 and result.codegen.target == "llvm-object" and result.codegen.object_format == "llvm-object" and result.codegen.section_count >= 5;
+}
+
+proc test_llvm_object_emission_requires_native_clang_when_requested() -> bool {
+  let ir: IrUnit = build_verified_ir("backend_llvm_native_clang_required.vit", "proc main() -> int { give 0; }\n");
+  let options = llvm_build_options("x86_64-linux", "O2", "object", true, true, true, false, "off", true);
+  let result: LlvmObjectResult = emit_llvm_object_from_ir_with_toolchain(ir, options, default_llvm_toolchain_paths());
+  give not result.valid
+    and result.object_text == ""
+    and llvm_object_has_diagnostic_code(result, "llvm.native.toolchain.required")
+    and llvm_object_has_diagnostic_code(result, "llvm.native.object.unavailable");
+}
+
+proc test_driver_compile_fails_when_native_llvm_linker_is_missing() -> bool {
+  let config = driver_compile_config_full(
+    "llvm",
+    "aarch64-linux",
+    "enterprise-release",
+    "O3",
+    "executable",
+    true,
+    false,
+    false,
+    true,
+    "off",
+    true,
+    llvm_toolchain_paths("/usr/bin/clang", "", "", "", "", "")
+  );
+  let result: DriverCompileResult = compile_source_with_config("backend_driver_llvm_missing_lld.vit", "proc main() -> int { give 0; }\n", config);
+  give result.status == DriverExitStatus.CodegenFailure
+    and result.llvm_toolchain_summary == "missing llvm native tools: ld.lld"
+    and driver_result_has_diagnostic_code(result, "llvm.native.toolchain.required")
+    and driver_result_has_diagnostic_code(result, "llvm.native.link.unavailable");
 }
 
 proc test_backend_pipeline_wrappers_match_canonical_frontend_entry() -> bool {
@@ -606,6 +660,8 @@ proc run_all_tests() -> int {
   if not test_linker_finalizes_entry_metadata() { set failures = failures + 1; }
   if not test_backend_pipeline_end_to_end() { set failures = failures + 1; }
   if not test_llvm_backend_pipeline_end_to_end() { set failures = failures + 1; }
+  if not test_llvm_object_emission_requires_native_clang_when_requested() { set failures = failures + 1; }
+  if not test_driver_compile_fails_when_native_llvm_linker_is_missing() { set failures = failures + 1; }
   if not test_backend_pipeline_wrappers_match_canonical_frontend_entry() { set failures = failures + 1; }
   if not test_backend_multi_module_compile_path() { set failures = failures + 1; }
   if not test_backend_multi_module_report_json() { set failures = failures + 1; }
