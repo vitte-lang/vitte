@@ -43,6 +43,13 @@ Derived from: `AUDIT.md`
 - CI publishes the `grammar_coverage` report artifact and uses it as the canonical parser coverage signal
 - parser coverage can no longer report `green` from a tiny subset, and the active frontend now reaches `missing=0`
 
+### Completed recently. Active parsed frontend surface now has AST construction coverage
+
+- Status: done
+- Notes:
+- the last parsed-without-AST false negative (`postfix_expr`) is now recognized through the canonical AST construction path in `parser.vit`
+- the active parsed frontend surface no longer has rules that are `parsed` without also being `ast-built`
+
 ## P0
 
 ### 1. Align lexer with official EBNF token surface

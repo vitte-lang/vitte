@@ -4,7 +4,7 @@
 - Rule count: `253`
 - Classified rules: `253`
 - Parsed: `223`
-- AST built: `206`
+- AST built: `207`
 - Diagnosed: `243`
 - Tested: `240`
 - Missing: `0`
@@ -168,7 +168,7 @@
 | `mul_expr` | yes | yes | yes | yes | no | parsed, ast-built, diagnosed, tested |
 | `cast_expr` | yes | yes | yes | yes | no | parsed, ast-built, diagnosed, tested |
 | `unary_expr` | yes | yes | yes | yes | no | parsed, ast-built, diagnosed, tested |
-| `postfix_expr` | yes | no | yes | yes | no | parsed, diagnosed, tested |
+| `postfix_expr` | yes | yes | yes | yes | no | parsed, ast-built, diagnosed, tested |
 | `call_suffix` | yes | yes | yes | yes | no | parsed, ast-built, diagnosed, tested |
 | `member_suffix` | yes | yes | yes | yes | no | parsed, ast-built, diagnosed, tested |
 | `index_suffix` | yes | yes | yes | yes | no | parsed, ast-built, diagnosed, tested |

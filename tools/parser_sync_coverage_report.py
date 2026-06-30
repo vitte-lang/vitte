@@ -87,6 +87,7 @@ RULE_ALIASES = {
     "stmt": ["parse_stmt", "recover_stmt_index", "PSTMT"],
     "stmt_end": ['";"', "statement_boundary"],
     "expr": ["parse_expr", "AstExprKind"],
+    "postfix_expr": ["parse_postfix_expr", "parse_postfix_expr_ast", "AstExprKind.Call", "AstExprKind.Member", "AstExprKind.Index"],
     "type_expr": ["parse_type_expr", "AstTypeKind"],
     "pattern": ["parse_pattern", "AstPatternKind"],
     "assign_op": ["+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=", "<<=", ">>="],
