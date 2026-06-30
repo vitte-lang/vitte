@@ -1023,10 +1023,59 @@ extract_native_main_return() {
         sub(/[ \t\r\n]+$/, "", s)
         return s
     }
-    function eval_native_term(term, value, left, right, joined, call_name, field_name) {
+    function current_exec(i) {
+        for (i = 1; i <= exec_depth; i += 1) if (!exec_active[i]) return 0
+        return 1
+    }
+    function native_mutex_new(value, id) {
+        id = next_mutex_state_id
+        next_mutex_state_id += 1
+        mutex_value[id] = value
+        mutex_locked[id] = 0
+        mutex_owner[id] = 0
+        mutex_lock_count[id] = 0
+        return id
+    }
+    function native_mutex_lock(id) {
+        if (!(id in mutex_value)) return 0
+        if (mutex_locked[id]) return 0
+        mutex_locked[id] = 1
+        mutex_owner[id] = 0
+        mutex_lock_count[id] = 1
+        return 1
+    }
+    function native_mutex_try_lock(id) {
+        return native_mutex_lock(id)
+    }
+    function native_mutex_set(id, value) {
+        if (!(id in mutex_value)) return 0
+        if (!mutex_locked[id]) return 0
+        mutex_value[id] = value
+        return 1
+    }
+    function native_mutex_get(id) {
+        if (!(id in mutex_value)) return 0
+        return mutex_value[id]
+    }
+    function native_mutex_unlock(id) {
+        if (!(id in mutex_value)) return 0
+        if (!mutex_locked[id]) return 0
+        mutex_locked[id] = 0
+        mutex_owner[id] = 0
+        mutex_lock_count[id] = 0
+        return 1
+    }
+    function eval_native_term(term, value, left, right, joined, call_name, field_name, arg0, arg1, id) {
         term = trim(term)
         eval_ok = 1
         if (term ~ /^-?[0-9]+$/) return term + 0
+        if (term ~ /^[A-Za-z_][A-Za-z0-9_]*$/) {
+            if (!(term in vars)) {
+                eval_ok = 0
+                return 0
+            }
+            return vars[term]
+        }
         if (term ~ /^[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*$/) {
             field_name = term
             if (!(field_name in vars)) {
@@ -1081,6 +1130,49 @@ extract_native_main_return() {
             sub(/"\)$/, "", value)
             return length(value)
         }
+        if (term ~ /^[A-Za-z_][A-Za-z0-9_]*\.mutex_new<[^>]+>\([ \t]*-?[0-9]+[ \t]*\)$/) {
+            value = term
+            sub(/^[A-Za-z_][A-Za-z0-9_]*\.mutex_new<[^>]+>\([ \t]*/, "", value)
+            sub(/[ \t]*\)$/, "", value)
+            return native_mutex_new(value + 0)
+        }
+        if (term ~ /^[A-Za-z_][A-Za-z0-9_]*\.mutex_get<[^>]+>\([A-Za-z_][A-Za-z0-9_]*\)$/) {
+            arg0 = term
+            sub(/^[A-Za-z_][A-Za-z0-9_]*\.mutex_get<[^>]+>\(/, "", arg0)
+            sub(/\)$/, "", arg0)
+            if (!(arg0 in vars)) {
+                eval_ok = 0
+                return 0
+            }
+            return native_mutex_get(vars[arg0])
+        }
+        if (term ~ /^[A-Za-z_][A-Za-z0-9_]*\.mutex_set<[^>]+>\([A-Za-z_][A-Za-z0-9_]*,[ \t]*-?[0-9]+[ \t]*\)$/) {
+            value = term
+            sub(/^[A-Za-z_][A-Za-z0-9_]*\.mutex_set<[^>]+>\(/, "", value)
+            arg0 = value
+            sub(/,[ \t]*-?[0-9]+[ \t]*\)$/, "", arg0)
+            arg1 = value
+            sub(/^[A-Za-z_][A-Za-z0-9_]*,[ \t]*/, "", arg1)
+            sub(/[ \t]*\)$/, "", arg1)
+            if (!(arg0 in vars)) {
+                eval_ok = 0
+                return 0
+            }
+            return native_mutex_set(vars[arg0], arg1 + 0)
+        }
+        if (term ~ /^[A-Za-z_][A-Za-z0-9_]*\.(mutex_lock|mutex_try_lock|mutex_unlock)<[^>]+>\([A-Za-z_][A-Za-z0-9_]*\)$/) {
+            arg0 = term
+            sub(/^[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*<[^>]+>\(/, "", arg0)
+            sub(/\)$/, "", arg0)
+            if (!(arg0 in vars)) {
+                eval_ok = 0
+                return 0
+            }
+            id = vars[arg0]
+            if (term ~ /\.mutex_lock</) return native_mutex_lock(id)
+            if (term ~ /\.mutex_try_lock</) return native_mutex_try_lock(id)
+            return native_mutex_unlock(id)
+        }
         if (term ~ /^[A-Za-z_][A-Za-z0-9_]*\.vector_push\([A-Za-z_][A-Za-z0-9_]*\.vector_new\([ \t]*-?[0-9]+[ \t]*\),[ \t]*-?[0-9]+[ \t]*\)$/) return 1
         if (term ~ /^[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*\(\)$/) {
             call_name = term
@@ -1105,6 +1197,11 @@ extract_native_main_return() {
         }
         return total
     }
+    function eval_native_expr(expr) {
+        expr = trim(expr)
+        if (expr ~ /[ \t]+[+][ \t]+/) return eval_native_sum(expr)
+        return eval_native_term(expr)
+    }
     BEGIN {
         in_main = 0
         in_record_literal = 0
@@ -1113,6 +1210,8 @@ extract_native_main_return() {
         saw_main = 0
         result = ""
         invalid = 0
+        exec_depth = 0
+        next_mutex_state_id = 1
         native_return["hashmap_new"] = 0
         native_return["json_module_count"] = 7
         native_return["stream_ready"] = 0
@@ -1225,6 +1324,32 @@ extract_native_main_return() {
             main_string = 1
             next
         }
+        if (in_main && line ~ /^if[ \t]+.+[{];?$/) {
+            cond_expr = line
+            sub(/^if[ \t]+/, "", cond_expr)
+            sub(/[ \t]*[{];?$/, "", cond_expr)
+            parent_exec = current_exec()
+            exec_depth += 1
+            if (!parent_exec) {
+                exec_active[exec_depth] = 0
+            } else {
+                cond_value = eval_native_expr(cond_expr)
+                if (!eval_ok) invalid = 1
+                exec_active[exec_depth] = (cond_value != 0)
+            }
+            next
+        }
+        if (in_main && line == "}") {
+            if (exec_depth > 0) {
+                delete exec_active[exec_depth]
+                exec_depth -= 1
+                next
+            }
+            in_main = 0
+            main_string = 0
+            next
+        }
+        if (in_main && !current_exec()) next
         if (in_main && line ~ /^let[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*:[^=]+=[ \t]*pair_first<[^>]+>\([ \t]*-?[0-9]+[ \t]*,[ \t]*-?[0-9]+[ \t]*\);?$/) {
             name = line
             sub(/^let[ \t]+/, "", name)
@@ -1235,12 +1360,36 @@ extract_native_main_return() {
             vars[name] = value
             next
         }
+        if (in_main && line ~ /^let[ \t]+[A-Za-z_][A-Za-z0-9_]*([ \t]*:[^=]+)?[ \t]*=[ \t]*[^;{]+;?$/) {
+            name = line
+            sub(/^let[ \t]+/, "", name)
+            sub(/[ \t]*(:[^=]+)?[ \t]*=.*/, "", name)
+            value = line
+            sub(/^let[ \t]+[A-Za-z_][A-Za-z0-9_]*([ \t]*:[^=]+)?[ \t]*=[ \t]*/, "", value)
+            sub(/;$/, "", value)
+            value = eval_native_expr(value)
+            if (!eval_ok) invalid = 1
+            else vars[name] = value
+            next
+        }
         if (in_main && line ~ /^let[ \t]+[A-Za-z_][A-Za-z0-9_]*([ \t]*:[^=]+)?[ \t]*=[ \t]*[A-Za-z_][A-Za-z0-9_]*[ \t]*\{$/) {
             name = line
             sub(/^let[ \t]+/, "", name)
             sub(/[ \t]*(:[^=]+)?[ \t]*=.*/, "", name)
             in_record_literal = 1
             record_var = name
+            next
+        }
+        if (in_main && line ~ /^set[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*=[ \t]*.+;?$/) {
+            name = line
+            sub(/^set[ \t]+/, "", name)
+            sub(/[ \t]*=.*/, "", name)
+            value = line
+            sub(/^set[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*=[ \t]*/, "", value)
+            sub(/;$/, "", value)
+            value = eval_native_expr(value)
+            if (!eval_ok) invalid = 1
+            else vars[name] = value
             next
         }
         if (in_main && line ~ /^give[ \t]+[A-Za-z_][A-Za-z0-9_]*;?$/) {
@@ -1342,15 +1491,10 @@ extract_native_main_return() {
             result = value
             next
         }
-        if (in_main && line == "}") {
-            in_main = 0
-            main_string = 0
-            next
-        }
         invalid = 1
     }
     END {
-        if (invalid || in_main || !saw_main || result == "") exit 1
+        if (invalid || in_main || exec_depth > 0 || !saw_main || result == "") exit 1
         print result
     }' "$src"
 }
