@@ -112,17 +112,8 @@ The `vitte` command provides access to the compiler, project management utilitie
 
 The following screenshot shows the current command-line help output.
 
-<p align="center">
 
-  <img
-
-    src="assets/vitte-help.png"
-
-    alt="Vitte command-line help"
-
-    width="900">
-
-</p>
+![Vitte command-line help](assets/vitte-help.png)
 
 The CLI is organized into functional groups:
 
