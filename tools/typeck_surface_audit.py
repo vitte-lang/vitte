@@ -69,6 +69,39 @@ def main() -> int:
         if status != "present":
             failures.append(f"{rel}: missing `{needle}`")
 
+    forbidden_checks = [
+        (
+            "src/vitte/compiler/analysis/pipeline.vit",
+            "run_complete_typeck_frontend",
+            read("src/vitte/compiler/analysis/pipeline.vit"),
+            "production analysis pipeline must not call the complete AST checker directly",
+        ),
+        (
+            "src/vitte/compiler/middle/pipeline.vit",
+            "run_complete_typeck_frontend",
+            read("src/vitte/compiler/middle/pipeline.vit"),
+            "middle pipeline must not call the complete AST checker directly",
+        ),
+        (
+            "src/vitte/compiler/driver/compile.vit",
+            "run_complete_typeck_frontend",
+            read("src/vitte/compiler/driver/compile.vit"),
+            "driver compile path must not call the complete AST checker directly",
+        ),
+    ]
+    for rel, needle, text, reason in forbidden_checks:
+        status = "forbidden_present" if has(text, needle) else "absent"
+        results.append(
+            {
+                "file": rel,
+                "needle": needle,
+                "reason": reason,
+                "status": status,
+            }
+        )
+        if status != "absent":
+            failures.append(f"{rel}: forbidden `{needle}` present")
+
     payload = {
         "schema": "vitte.compiler.typeck_surface_audit",
         "schema_version": "1.0.0",

@@ -28,10 +28,15 @@ def main() -> int:
     ]
 
     forbidden_checks: list[tuple[str, str, str]] = [
+        ("src/vitte/compiler/main.vit", "use vitte/compiler/backends/c_emit", "public compiler entry must not import legacy c_emit adapter directly"),
+        ("src/vitte/compiler/main.vit", "use vitte/compiler/backends/llvm_emit", "public compiler entry must not import legacy llvm_emit adapter directly"),
+        ("src/vitte/compiler/main.vit", "use vitte/compiler/backends/vitte_emit", "public compiler entry must not import vitte_emit adapter modules directly"),
+        ("src/vitte/compiler/main.vit", "use vitte/compiler/backends/wasm", "public compiler entry must not import wasm adapter modules directly"),
         ("src/vitte/compiler/driver/compiler.vit", "use vitte/compiler/backends/c_emit", "runtime driver must not import legacy c_emit adapter directly"),
         ("src/vitte/compiler/driver/compiler.vit", "use vitte/compiler/backends/llvm_emit", "runtime driver must not import legacy llvm_emit adapter directly"),
         ("src/vitte/compiler/driver/compiler.vit", "use vitte/compiler/backends/wasm/mod", "runtime driver must not import wasm adapter mod directly"),
         ("src/vitte/compiler/driver/compiler.vit", "use vitte/compiler/backends/backend_infrastructure", "runtime driver must not import backend infrastructure adapter directly"),
+        ("src/vitte/compiler/driver/compiler.vit", "use vitte/compiler/backends/vitte_emit", "runtime driver must not import vitte_emit adapter modules directly"),
         ("src/vitte/compiler/driver/compiler.vit", "use vitte/compiler/analysis/const_eval/mod", "runtime driver must not keep dead const_eval umbrella imports"),
         ("src/vitte/compiler/driver/compiler.vit", "use vitte/compiler/analysis/static/mod", "runtime driver must not keep dead static-analysis umbrella imports"),
         ("src/vitte/compiler/driver/compiler.vit", "use vitte/compiler/infrastructure/distributed/mod", "runtime driver must not keep dead distributed umbrella imports"),

@@ -22,6 +22,12 @@ src/vitte/compiler/tests/hir_tests.vit
 src/vitte/compiler/tests/lint_tests.vit
 src/vitte/compiler/tests/mir_tests.vit
 src/vitte/compiler/tests/sema_tests.vit
+src/vitte/compiler/tests/borrowck_tests.vit
+src/vitte/compiler/tests/typeck_tests.vit
+src/vitte/compiler/tests/const_eval_tests.vit
+src/vitte/compiler/tests/diagnostic_snapshot_tests.vit
+src/vitte/compiler/tests/codegen_tests.vit
+src/vitte/compiler/tests/c_backend_tests.vit
 src/vitte/compiler/tests/chaos_tests.vit
 src/vitte/compiler/tests/pipeline_tests.vit
 "

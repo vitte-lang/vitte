@@ -44,6 +44,7 @@ ANY_MAIN_JS_LINE_RE=re.compile(
 ARTICLE_RE=re.compile(r'<article class="doc-content">([\s\S]*?)</article>')
 TITLE_RE=re.compile(r'<title>(.*?)</title>')
 TAG_RE=re.compile(r'<[^>]+>')
+DESCRIPTION_RE=re.compile(r'<meta name="description" content="([^"]*)">', re.I)
 
 # -----------------------------------------------------------------------------
 # Build configuration
@@ -70,7 +71,7 @@ PEDAGOGY_KEYWORDS = [
     'filesystem', 'network', 'collections', 'graph'
 ]
 
-NAV=[('Welcome','index.html','i-home'),('Documentation','doc.html','i-docs'),('Download','download.html','i-docs'),('Source','source.html','i-docs'),('Community','community.html','i-docs'),('News','news.html','i-news'),('Diagnostics','diagnostics.html','i-docs'),('Suggestions','suggestions.html','i-docs')]
+NAV=[('Welcome','index.html','i-home'),('Documentation','doc.html','i-docs'),('Visual Preview','social-preview.html','i-home'),('Download','download.html','i-docs'),('Source','source.html','i-docs'),('Community','community.html','i-docs'),('News','news.html','i-news'),('Diagnostics','diagnostics.html','i-docs'),('Suggestions','suggestions.html','i-docs')]
 CACHE={}
 
 # -----------------------------------------------------------------------------
@@ -87,6 +88,13 @@ def extract_title(html_source: str, fallback: str) -> str:
     match = TITLE_RE.search(html_source)
     if match:
         return match.group(1).strip()
+    return fallback
+
+
+def extract_description(html_source: str, fallback: str) -> str:
+    match = DESCRIPTION_RE.search(html_source)
+    if match:
+        return html.unescape(match.group(1).strip())
     return fallback
 
 
@@ -297,8 +305,23 @@ for idx,p in enumerate(PAGES):
   s=MAIN_JS_RE.sub('',s)
   s=ANY_MAIN_JS_RE.sub('',s)
   title=(TITLE_RE.search(s).group(1) if TITLE_RE.search(s) else p.stem)
+  description = extract_description(s, f'{title} on the Vitte documentation site.')
   canonical=f'https://vitte-lang.org/{p.name}'
-  meta=(f'<link rel="canonical" href="{canonical}">\n<meta property="og:title" content="{title}">\n<meta property="og:type" content="website">\n<meta property="og:url" content="{canonical}">\n<meta name="twitter:card" content="summary">\n')
+  meta=(
+    f'<link rel="canonical" href="{canonical}">\n'
+    f'<meta property="og:title" content="{html.escape(title, quote=True)}">\n'
+    f'<meta property="og:description" content="{html.escape(description, quote=True)}">\n'
+    f'<meta property="og:type" content="website">\n'
+    f'<meta property="og:url" content="{canonical}">\n'
+    f'<meta property="og:image" content="https://vitte-lang.org/svg/readme-social-card.svg">\n'
+    f'<meta property="og:image:type" content="image/svg+xml">\n'
+    f'<meta property="og:image:width" content="1200">\n'
+    f'<meta property="og:image:height" content="630">\n'
+    f'<meta name="twitter:card" content="summary">\n'
+    f'<meta name="twitter:title" content="{html.escape(title, quote=True)}">\n'
+    f'<meta name="twitter:description" content="{html.escape(description, quote=True)}">\n'
+    f'<meta name="twitter:image" content="https://vitte-lang.org/svg/readme-social-card.svg">\n'
+  )
   if 'rel="canonical"' not in s: s=HEAD_RE.sub(meta+'</head>',s,1)
   s=BODY_END_RE.sub(f'<script type="module" src="js/main.js?v={hash_js}"></script>\n</body>',s,1)
   s=s.replace('href="css/site.css"', f'href="css/site.css?v={hash_css}"')

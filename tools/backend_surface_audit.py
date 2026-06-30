@@ -19,9 +19,11 @@ def read(rel: str) -> str:
 
 def main() -> int:
     checks: list[tuple[str, str, str]] = [
+        ("src/vitte/compiler/main.vit", "use vitte/compiler/driver/compiler.{ run_cli_main_with_ice_boundary }", "public compiler entry must route through canonical driver runtime"),
         ("src/vitte/compiler/driver/compile.vit", "use vitte/compiler/backend/pipeline.", "driver compile path must use canonical backend pipeline"),
         ("src/vitte/compiler/driver/compile.vit", "use vitte/compiler/backend/codegen.", "driver compile path must use canonical codegen surface"),
         ("src/vitte/compiler/driver/compile.vit", "use vitte/compiler/backend/link/linker.", "driver compile path must use canonical linker surface"),
+        ("src/vitte/compiler/driver/compiler.vit", "use vitte/compiler/backend/pipeline.{ BackendPipelineResult }", "runtime driver must consume canonical backend pipeline result surface"),
         ("src/vitte/compiler/backend/pipeline.vit", "compile_to_valid_ir_with_profile_and_packaging", "canonical backend pipeline entrypoint must exist"),
         ("src/vitte/compiler/backend/c/pipeline.vit", "run_c_backend_source", "canonical C backend surface must keep its entrypoint"),
         ("src/vitte/compiler/tests/c_backend_tests.vit", "run_c_backend_source", "canonical C backend tests must stay wired"),
@@ -31,9 +33,17 @@ def main() -> int:
     ]
 
     forbidden_checks: list[tuple[str, str, str]] = [
+        ("src/vitte/compiler/main.vit", "use vitte/compiler/backends/c_emit", "public compiler entry must not depend directly on legacy c_emit adapter"),
+        ("src/vitte/compiler/main.vit", "use vitte/compiler/backends/llvm_emit", "public compiler entry must not depend directly on legacy llvm_emit adapter"),
+        ("src/vitte/compiler/main.vit", "use vitte/compiler/backends/vitte_emit", "public compiler entry must not depend directly on vitte_emit adapter modules"),
+        ("src/vitte/compiler/main.vit", "use vitte/compiler/backends/wasm", "public compiler entry must not depend directly on wasm adapter modules"),
         ("src/vitte/compiler/driver/compile.vit", "use vitte/compiler/backends/c_emit", "driver compile path must not depend directly on legacy c_emit adapter"),
         ("src/vitte/compiler/driver/compile.vit", "use vitte/compiler/backends/llvm_emit", "driver compile path must not depend directly on legacy llvm_emit adapter"),
         ("src/vitte/compiler/driver/compile.vit", "use vitte/compiler/backends/vitte_emit", "driver compile path must not depend directly on vitte_emit adapter modules"),
+        ("src/vitte/compiler/driver/compiler.vit", "use vitte/compiler/backends/vitte_emit", "runtime driver must not depend directly on vitte_emit adapter modules"),
+        ("src/vitte/compiler/driver/compiler.vit", "use vitte/compiler/backends/c_emit", "runtime driver must not depend directly on legacy c_emit adapter"),
+        ("src/vitte/compiler/driver/compiler.vit", "use vitte/compiler/backends/llvm_emit", "runtime driver must not depend directly on legacy llvm_emit adapter"),
+        ("src/vitte/compiler/driver/compiler.vit", "use vitte/compiler/backends/wasm", "runtime driver must not depend directly on wasm adapter modules"),
         ("src/vitte/compiler/backend/pipeline.vit", "use vitte/compiler/backends/c_emit", "canonical backend pipeline must not route through legacy c_emit adapter"),
         ("src/vitte/compiler/backend/pipeline.vit", "use vitte/compiler/backends/llvm_emit", "canonical backend pipeline must not route through legacy llvm_emit adapter"),
     ]

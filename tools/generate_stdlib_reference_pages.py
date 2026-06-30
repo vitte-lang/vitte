@@ -34,7 +34,7 @@ GIVE_RE = re.compile(r"\bgive\b")
 
 
 def shared_header(rel_root: str) -> str:
-    return f"""<header class="site-header"><a class="site-brand" href="{rel_root}index.html"><img class="site-brand-mark" src="{rel_root}svg/logo.svg" alt="" width="32" height="32"><span>Vitte</span></a><nav class="site-nav" aria-label="Primary"><ul class="nav-band"><li><a class="nav-chip" href="{rel_root}index.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="{rel_root}svg/sprite.svg#i-home"></use></svg><span>Welcome</span></a></li><li><a class="nav-chip" href="{rel_root}doc.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="{rel_root}svg/sprite.svg#i-docs"></use></svg><span>Documentation</span></a></li><li><a class="nav-chip" href="{rel_root}download.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="{rel_root}svg/sprite.svg#i-docs"></use></svg><span>Download</span></a></li><li><a class="nav-chip" href="{rel_root}source.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="{rel_root}svg/sprite.svg#i-docs"></use></svg><span>Source</span></a></li><li><a class="nav-chip" href="{rel_root}community.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="{rel_root}svg/sprite.svg#i-docs"></use></svg><span>Community</span></a></li><li><a class="nav-chip" href="{rel_root}news.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="{rel_root}svg/sprite.svg#i-news"></use></svg><span>News</span></a></li><li><a class="nav-chip" href="{rel_root}diagnostics.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="{rel_root}svg/sprite.svg#i-docs"></use></svg><span>Diagnostics</span></a></li><li><a class="nav-chip" href="{rel_root}suggestions.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="{rel_root}svg/sprite.svg#i-docs"></use></svg><span>Suggestions</span></a></li></ul></nav><form class="doc-search" role="search" action="{rel_root}search.html" method="get"><input class="doc-search-input" type="search" name="q" placeholder="Search docs, book, grammar" aria-label="Search documentation" autocomplete="off"><div class="doc-search-controls" aria-label="Search filters"><select class="doc-search-filter doc-search-section" name="section" aria-label="Filter by section"><option value="all">All sections</option><option value="docs">Docs</option><option value="book">Book</option><option value="grammar">Grammar</option></select><select class="doc-search-filter doc-search-lang" name="lang" aria-label="Filter by language"><option value="all">All languages</option><option value="en">EN</option><option value="fr">FR</option></select></div><div class="doc-search-results" hidden></div><div class="doc-search-footer" hidden></div></form></header>"""
+    return f"""<header class="site-header"><a class="site-brand" href="{rel_root}index.html"><img class="site-brand-mark" src="{rel_root}svg/logo.svg" alt="" width="32" height="32"><span>Vitte</span></a><nav class="site-nav" aria-label="Primary"><ul class="nav-band"><li><a class="nav-chip" href="{rel_root}index.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="{rel_root}svg/sprite.svg#i-home"></use></svg><span>Welcome</span></a></li><li><a class="nav-chip" href="{rel_root}doc.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="{rel_root}svg/sprite.svg#i-docs"></use></svg><span>Documentation</span></a></li><li><a class="nav-chip" href="{rel_root}social-preview.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="{rel_root}svg/sprite.svg#i-home"></use></svg><span>Visual Preview</span></a></li><li><a class="nav-chip" href="{rel_root}download.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="{rel_root}svg/sprite.svg#i-docs"></use></svg><span>Download</span></a></li><li><a class="nav-chip" href="{rel_root}source.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="{rel_root}svg/sprite.svg#i-docs"></use></svg><span>Source</span></a></li><li><a class="nav-chip" href="{rel_root}community.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="{rel_root}svg/sprite.svg#i-docs"></use></svg><span>Community</span></a></li><li><a class="nav-chip" href="{rel_root}news.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="{rel_root}svg/sprite.svg#i-news"></use></svg><span>News</span></a></li><li><a class="nav-chip" href="{rel_root}diagnostics.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="{rel_root}svg/sprite.svg#i-docs"></use></svg><span>Diagnostics</span></a></li><li><a class="nav-chip" href="{rel_root}suggestions.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="{rel_root}svg/sprite.svg#i-docs"></use></svg><span>Suggestions</span></a></li></ul></nav><form class="doc-search" role="search" action="{rel_root}search.html" method="get"><input class="doc-search-input" type="search" name="q" placeholder="Search docs, book, grammar" aria-label="Search documentation" autocomplete="off"><div class="doc-search-controls" aria-label="Search filters"><select class="doc-search-filter doc-search-section" name="section" aria-label="Filter by section"><option value="all">All sections</option><option value="docs">Docs</option><option value="book">Book</option><option value="grammar">Grammar</option></select><select class="doc-search-filter doc-search-lang" name="lang" aria-label="Filter by language"><option value="all">All languages</option><option value="en">EN</option><option value="fr">FR</option></select></div><div class="doc-search-results" hidden></div><div class="doc-search-footer" hidden></div></form></header>"""
 
 VITTE_KEYWORDS = [
     "space",
@@ -95,17 +95,33 @@ def module_title(path: Path) -> str:
 
 
 def page_shell(title: str, rel_root: str, body: str, page_path: str) -> str:
+    description = f"Stdlib reference page for {title} in the Vitte documentation site."
+    canonical = f"https://vitte-lang.org/book/stdlib-reference/{html.escape(page_path)}"
     return f"""<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{html.escape(title)}</title>
+<meta name="description" content="{html.escape(description)}">
 <link rel="icon" href="{rel_root}svg/logo.svg" type="image/svg+xml">
 <link rel="stylesheet" href="{rel_root}css/site.css">
 <link rel="stylesheet" href="{rel_root}css/print.css" media="print">
-<link rel="alternate" hreflang="en" href="https://vitte-lang.org/book/stdlib-reference/{html.escape(page_path)}">
-<link rel="alternate" hreflang="x-default" href="https://vitte-lang.org/book/stdlib-reference/{html.escape(page_path)}">
+<link rel="canonical" href="{canonical}">
+<link rel="alternate" hreflang="en" href="{canonical}">
+<link rel="alternate" hreflang="x-default" href="{canonical}">
+<meta property="og:title" content="{html.escape(title)}">
+<meta property="og:description" content="{html.escape(description)}">
+<meta property="og:type" content="website">
+<meta property="og:url" content="{canonical}">
+<meta property="og:image" content="https://vitte-lang.org/svg/readme-social-card.svg">
+<meta property="og:image:type" content="image/svg+xml">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="{html.escape(title)}">
+<meta name="twitter:description" content="{html.escape(description)}">
+<meta name="twitter:image" content="https://vitte-lang.org/svg/readme-social-card.svg">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none';">
 </head>
 <body class="classic-doc">
