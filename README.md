@@ -3,7 +3,7 @@
 <div align="center">
 <h3>A modern systems programming language focused on deterministic compilation, safety and self-hosting.</h3>
 <p>
-<img src="https://img.shields.io/badge/compiler-42%25%20complete-2563EB">
+<img src="https://img.shields.io/badge/compiler-46%25%20complete-2563EB">
 <img src="https://img.shields.io/badge/status-experimental-F97316">
 <img src="https://img.shields.io/badge/license-MIT-16A34A">
 <img src="https://img.shields.io/badge/bootstrap-C17-0F766E">
@@ -46,11 +46,11 @@ Vitte is a modern systems programming language and compiler designed around expl
 
 ## Compiler Progress
 
-Overall progress: **42%**
+Overall progress: **46%**
 
-```
+```text
 
-████████░░░░░░░░░░░░ 42%
+█████████░░░░░░░░░░░ 46%
 
 ```
 
@@ -60,29 +60,29 @@ Overall progress: **42%**
 
 ```text
 
-Lexer              ██████████ 100%
+Lexer              ████░░░░░░  40%
 
-Parser             ██████████ 100%
+Parser             █████░░░░░  45%
 
-AST                ██████████ 100%
+AST                █████░░░░░  50%
 
-HIR                █████████░  90%
+HIR                ██████░░░░  55%
 
-Semantic           ████████░░  80%
+Semantic           ████░░░░░░  35%
 
-Type Checker       ███████░░░  75%
+Type Checker       ████░░░░░░  35%
 
-Borrow Checker     ██████░░░░  65%
+Borrow Checker     ███████░░░  70%
 
-MIR                ██████░░░░  60%
+MIR                █████░░░░░  50%
 
-IR                 █████░░░░░  55%
+IR                 █████░░░░░  50%
 
-Backend            ████░░░░░░  45%
+Backend            █████░░░░░  45%
 
-LLVM               ███░░░░░░░  35%
+LLVM               ███░░░░░░░  30%
 
-Self Hosting       █░░░░░░░░░  10%
+Self Hosting       █████░░░░░  50%
 
 ```
 
@@ -135,7 +135,7 @@ vitte check main.vit --diagnostics-json
 Build a test binary:
 
 ```bash
-vitte build main.vit -o /example/main
+vitte build src/vitte/compiler/tests/pipeline_tests.vit -o /tmp/vitte-pipeline-tests
 ```
 
 Run main test gates:
