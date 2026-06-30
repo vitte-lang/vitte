@@ -3,10 +3,10 @@ if exists("b:current_syntax")
   finish
 endif
 
-syn keyword vitteKeyword space pull use share form field pick case trait type const macro proc entry at asm unsafe match let make set give emit if else otherwise select when is loop for in break continue return not and or as all
-syn keyword vitteDecl proc form pick trait entry macro type field case
-syn keyword vitteType bool string int
-syn keyword vitteBuiltin true false
+syn keyword vitteKeyword space module mod pull import use share export form struct class field pick enum union case trait interface impl type typedef const global static macro proc fn flow entry program prog scenario scn at asm unsafe async extern match let make set give emit if else otherwise select when is loop for each in from step while until break continue return ret defer do say not and or as all await
+syn keyword vitteDecl proc fn form struct class pick enum union trait interface entry macro type typedef field case flow program prog scenario scn
+syn keyword vitteType bool string int char i8 i16 i32 i64 i128 isize u8 u16 u32 u64 u128 usize f32 f64 Float Str
+syn keyword vitteBuiltin true false null none
 syn keyword vitteTodo TODO FIXME BUG HACK NOTE XXX
 
 syn match vitteNumber "\v\b(0x[0-9A-Fa-f]+|0b[01]+|[0-9]+(\.[0-9]+)?)\b"
@@ -14,14 +14,26 @@ syn region vitteString start=+"+ skip=+\\"+ end=+"+ contains=vitteEscape
 syn match vitteChar "\v'([^'\\]|\\.)'"
 syn match vitteEscape "\v\\([nrt0\"'\\]|x[0-9A-Fa-f]{2})" contained
 syn match vitteUsePath "\v\<use\>\s+\zs[A-Za-z0-9_./:]+"
-syn match vitteModulePath "\v\<(space|pull|share|at|use)\>\s+\zs[A-Za-z0-9_./:]+"
+syn match vitteModulePath "\v\<(space|module|mod|pull|import|share|at|use)\>\s+\zs[A-Za-z0-9_./:]+"
 syn match vitteExport "\v\<export\>\s+\zs(\*|[A-Za-z0-9_./:]+)"
-syn match vitteDeclName "\v\<(proc|form|pick|trait|entry|macro|type|field|case)\>\s+\zs[A-Za-z_][A-Za-z0-9_]*"
-syn match vitteSignatureType "\v(:|->\s*)\s*\zs[A-Za-z_][A-Za-z0-9_]*(\[[A-Za-z_][A-Za-z0-9_]*\])?"
+syn match vitteDeclName "\v\<(proc|fn|flow|macro|entry|scenario|scn)\>\s+\zs[A-Za-z_][A-Za-z0-9_]*"
+syn match vitteDeclPath "\v\<(program|prog)\>\s+\zs[A-Za-z0-9_./:]+"
+syn match vitteTypeDeclName "\v\<(form|struct|class|pick|enum|union|trait|interface|type|typedef)\>\s+\zs[A-Za-z_][A-Za-z0-9_]*"
+syn match vitteFieldName "\v\<(field|case)\>\s+\zs[A-Za-z_][A-Za-z0-9_]*"
+syn match vitteSignatureType "\v(:|->\s*|gives\s+)\s*\zs[A-Za-z_][A-Za-z0-9_]*(\[[A-Za-z_][A-Za-z0-9_]*\])?"
 syn match vitteUseAlias "\v\<as\>\s+\zs[A-Za-z_][A-Za-z0-9_]*(_pkg)?"
+syn match vitteBinding "\v\<(let|make|keep|const|global|static)\>\s+(mut\s+|move\s+|ref\s+)?\zs[A-Za-z_][A-Za-z0-9_]*"
+syn match vitteAssignmentTarget "\v\<set\>\s+\zs[A-Za-z_][A-Za-z0-9_]*"
+syn match vitteLoopVariable "\v\<(for|each)\>\s+\zs[A-Za-z_][A-Za-z0-9_]*(?=\s+(in|from)\>)"
+syn match vitteMatchBinding "\v\<(case|when)\>\s+\zs[a-z_][A-Za-z0-9_]*(?=\s*(=>|\{))"
+syn match vitteParameter "\v(\(|,)\s*\zs[A-Za-z_][A-Za-z0-9_]*(?=\s*[:,)])"
+syn match vitteFunctionCall "\v\<[A-Za-z_][A-Za-z0-9_]*(\/[A-Za-z_][A-Za-z0-9_]*)?\ze\s*\("
+syn match vitteQualifiedFunctionCall "\v\<[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)+\ze\s*\("
 syn match vitteConstructor "\v\<[A-Z][A-Za-z0-9_]*(\.[A-Z][A-Za-z0-9_]*)*\>"
+syn match vitteVariant "\v::\zs[A-Z][A-Za-z0-9_]*"
 syn match vitteConstant "\v\<[A-Z][A-Z0-9_]+\>"
-syn match vitteOperator "\(->\|=>\|::\|:=\|==\|!=\|<=\|>=\|&&\|[+*/%=<>!&|.-]\)"
+syn match vitteProperty "\v\.\zs[A-Za-z_][A-Za-z0-9_]*"
+syn match vitteOperator "\(|>\|\.\.=?\|->\|=>\|::\|:=\|==\|!=\|<=\|>=\|&&\|||\|<<\|>>\|<<=\|>>=\|+=\|-=\|\*=\|/=\|%=\|&=\||=\|\^=\|[+*/%=<>!&|^~.-]\)"
 syn match vitteDelimiter "[][(){},;:]"
 syn match vitteTrailingWhitespace "\s\+$"
 syn match vitteDiagCode "\vVITTE-[A-Z]+[0-9]{4}"
@@ -46,10 +58,22 @@ hi def link vitteUsePath Include
 hi def link vitteModulePath Include
 hi def link vitteExport Include
 hi def link vitteDeclName Function
+hi def link vitteDeclPath Function
+hi def link vitteTypeDeclName Type
+hi def link vitteFieldName Identifier
 hi def link vitteSignatureType Type
 hi def link vitteUseAlias Identifier
+hi def link vitteBinding Identifier
+hi def link vitteAssignmentTarget Identifier
+hi def link vitteLoopVariable Identifier
+hi def link vitteMatchBinding Identifier
+hi def link vitteParameter Identifier
+hi def link vitteFunctionCall Function
+hi def link vitteQualifiedFunctionCall Function
 hi def link vitteConstructor Type
+hi def link vitteVariant Constant
 hi def link vitteConstant Constant
+hi def link vitteProperty Identifier
 hi def link vitteOperator Operator
 hi def link vitteDelimiter Delimiter
 hi def link vitteTrailingWhitespace Error

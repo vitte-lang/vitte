@@ -35,14 +35,20 @@
 
 [
   "space"
+  "module"
+  "mod"
   "pull"
+  "import"
   "use"
   "share"
+  "export"
   "all"
 ] @keyword.import
 
 [
   "const"
+  "global"
+  "static"
   "let"
   "make"
   "set"
@@ -50,22 +56,36 @@
 
 [
   "form"
+  "struct"
+  "class"
   "trait"
+  "interface"
   "pick"
+  "enum"
+  "union"
   "case"
   "macro"
+  "impl"
 ] @keyword.type
 
 [
   "proc"
+  "fn"
+  "flow"
   "entry"
+  "program"
+  "prog"
+  "scenario"
+  "scn"
   "at"
 ] @keyword.function
 
 [
   "give"
   "return"
+  "ret"
   "emit"
+  "defer"
 ] @keyword.return
 
 [
@@ -80,13 +100,20 @@
 [
   "loop"
   "for"
+  "each"
   "in"
+  "from"
+  "step"
+  "while"
+  "until"
   "break"
   "continue"
 ] @keyword.repeat
 
 [
   "unsafe"
+  "async"
+  "extern"
 ] @keyword.directive
 
 [
@@ -95,7 +122,13 @@
   "or"
   "is"
   "as"
+  "await"
 ] @keyword.operator
+
+[
+  "do"
+  "say"
+] @keyword
 
 ; ============================================================
 ; Builtin types
@@ -120,6 +153,8 @@
   "usize"
   "f32"
   "f64"
+  "Float"
+  "Str"
 ] @type.builtin
 
 ; ============================================================
@@ -140,6 +175,10 @@
 (union_decl name: (identifier) @type)
 
 (macro_decl name: (identifier) @function.macro)
+(flow_decl name: (identifier) @function)
+(class_decl name: (identifier) @type)
+(trait_decl name: (identifier) @type)
+(impl_decl target: (type_expression (identifier) @type))
 
 ; ============================================================
 ; Calls / constructors
@@ -154,6 +193,9 @@
 (call_expr
   callee: (scoped_identifier) @function.call)
 
+(member_expr
+  property: (identifier) @property)
+
 ; ============================================================
 ; Modules / imports
 ; ============================================================
@@ -163,6 +205,7 @@
 (share_stmt path: (scoped_identifier) @module)
 
 (use_stmt alias: (identifier) @variable.special)
+(share_stmt path: (identifier) @variable.special)
 
 (scoped_identifier) @variable
 
@@ -181,12 +224,18 @@
 ((string_literal) @diagnostic.error
   (#match? @diagnostic.error "VITTE-[A-Z]+[0-9]{4}"))
 
+((identifier) @variable.special
+  (#match? @variable.special "_pkg$"))
+
 ; ============================================================
 ; Variables / parameters
 ; ============================================================
 
 (parameter name: (identifier) @variable.parameter)
 (let_stmt name: (pattern (identifier) @variable))
+(set_stmt target: (identifier) @variable)
+(for_stmt (pattern (identifier) @variable))
+(match_arm (pattern (identifier) @variable))
 (const_decl name: (identifier) @constant)
 
 (identifier) @variable
