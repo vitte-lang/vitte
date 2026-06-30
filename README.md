@@ -112,9 +112,19 @@ The `vitte` command provides access to the compiler, project management utilitie
 
 The following screenshot shows the current command-line help output.
 
+<h2 align="center">Vitte Command-Line Interface</h2>
 
-![Vitte command-line help](assets/vitte-help.png)
+<p align="center">
+  <img
+    src="./assets/vitte-help.png"
+    alt="Vitte --help"
+    width="900"
+  />
+</p>
 
+<p align="center">
+  <em>Output of <code>vitte --help</code></em>
+</p>
 The CLI is organized into functional groups:
 
 - **Project** — create, initialize, and manage Vitte projects.
