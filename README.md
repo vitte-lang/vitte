@@ -46,7 +46,6 @@ Vitte is a modern systems programming language and compiler designed around expl
 
 ## Compiler progress
 
-## Compiler Progress
 
 Overall progress: **46%**
 
