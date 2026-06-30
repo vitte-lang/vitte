@@ -378,6 +378,10 @@ compiler-entry-lock:
 compiler-path-typos:
 	@tools/check_compiler_path_typos.sh
 
+.PHONY: frontend-token-contract
+frontend-token-contract:
+	@tools/check_frontend_token_contract.sh
+
 .PHONY: diagnostics-migration-gate
 diagnostics-migration-gate:
 	@tools/check_diagnostics_migration.sh
