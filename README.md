@@ -13,7 +13,7 @@
 ## Features
 
 ![status](https://img.shields.io/badge/status-experimental-F97316)
-![version](https://img.shields.io/badge/version-2.1.1-2563EB)
+![version](https://img.shields.io/badge/version-0.1.0-2563EB)
 ![license](https://img.shields.io/badge/license-MIT-16A34A)
 ![language](https://img.shields.io/badge/language-Vitte-9333EA)
 ![compiler](https://img.shields.io/badge/compiler-self--hosting%20goal-DC2626)
