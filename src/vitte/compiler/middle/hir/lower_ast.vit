@@ -330,6 +330,7 @@ proc lower_expr_children(children0: [AstExpr]) -> [HirExpr] {
 proc lower_expr(expr: AstExpr) -> HirExpr {
   let children: [HirExpr] = lower_expr_children(expr.children);
   let binding: string = expr.binding_name;
+  let lowered_kind: HirExprKind = lower_expr_kind(expr.kind);
 
   if binding == "" {
     set binding = expr.name;
@@ -340,6 +341,9 @@ proc lower_expr(expr: AstExpr) -> HirExpr {
   if not expr.valid {
     set diagnostics = diagnostics + [semantic_diagnostic("HIR0001", SemanticSeverity.Error, "invalid ast expression", expr.span, expr.name, "")];
   }
+  if lowered_kind == HirExprKind.Unknown {
+    set diagnostics = diagnostics + [semantic_diagnostic("HIR0004", SemanticSeverity.Error, "unsupported ast expression in hir lowering", expr.span, expr.name, ast_expr_kind_name(expr.kind))];
+  }
 
   let copyable: bool = expr.kind == AstExprKind.Int or expr.kind == AstExprKind.Float or expr.kind == AstExprKind.Bool or expr.kind == AstExprKind.Char;
   let constant: bool = expr.kind == AstExprKind.Int or expr.kind == AstExprKind.Float or expr.kind == AstExprKind.Bool or expr.kind == AstExprKind.String or expr.kind == AstExprKind.Char;
@@ -347,7 +351,7 @@ proc lower_expr(expr: AstExpr) -> HirExpr {
   give hir_expr(
     expr.id.value,
     expr.span,
-    lower_expr_kind(expr.kind),
+    lowered_kind,
     expr.text,
     expr.name,
     expr.operator,
@@ -364,7 +368,7 @@ proc lower_expr(expr: AstExpr) -> HirExpr {
     false,
     diagnostics,
     children,
-    expr.valid
+    expr.valid and lowered_kind != HirExprKind.Unknown
   );
 }
 
@@ -427,20 +431,21 @@ proc lower_item_params(item: AstItem) -> [HirProcParam] {
 }
 
 proc lower_nominal_member(member: AstNominalMember) -> HirNominalMember {
+  let lowered_kind: HirNominalMemberKind = lower_member_kind(member.kind);
   let expr: HirExpr = if member.expr.valid { lower_expr(member.expr) } else { hir_expr_empty() };
   let params: [HirProcParam] = if member.signature.valid { lower_member_params(member.signature.params) } else { [] };
   let body_stmts: [HirStmt] = lower_stmt_list(member.body_stmts, 1);
   give hir_nominal_member(
     member.id.value,
     member.span,
-    lower_member_kind(member.kind),
+    lowered_kind,
     member.name,
     if member.signature.valid and member.signature.return_type.valid { member.signature.return_type.text } else { member.annotation.text },
     expr,
     params,
     body_stmts,
     member.message,
-    member.valid
+    member.valid and lowered_kind != HirNominalMemberKind.Unknown
   );
 }
 
@@ -456,15 +461,19 @@ proc lower_nominal_members(members0: [AstNominalMember]) -> [HirNominalMember] {
 
 proc lower_stmt(stmt: AstStmt, scope_depth: u64) -> HirStmt {
   let diagnostics: [SemanticDiagnostic] = [];
+  let lowered_kind: HirStmtKind = lower_stmt_kind(stmt.kind);
 
   if not stmt.valid {
     set diagnostics = diagnostics + [semantic_diagnostic("HIR0002", SemanticSeverity.Error, "invalid ast statement", stmt.span, stmt.pattern.name, "")];
+  }
+  if lowered_kind == HirStmtKind.Unknown {
+    set diagnostics = diagnostics + [semantic_diagnostic("HIR0005", SemanticSeverity.Error, "unsupported ast statement in hir lowering", stmt.span, stmt.pattern.name, ast_stmt_kind_name(stmt.kind))];
   }
 
   give hir_stmt(
     stmt.id.value,
     stmt.span,
-    lower_stmt_kind(stmt.kind),
+    lowered_kind,
     stmt.pattern.name,
     stmt.target,
     stmt.target,
@@ -483,7 +492,7 @@ proc lower_stmt(stmt: AstStmt, scope_depth: u64) -> HirStmt {
     lower_stmt_list(stmt.else_stmts, scope_depth + 1),
     [],
     diagnostics,
-    stmt.valid
+    stmt.valid and lowered_kind != HirStmtKind.Unknown
   );
 }
 
@@ -523,6 +532,7 @@ proc item_signature_param_count(item: AstItem) -> u64 {
 
 proc lower_item(item: AstItem) -> HirItem {
   let expr: HirExpr = hir_expr_empty();
+  let lowered_kind: HirItemKind = lower_item_kind(item.kind);
 
   if item.expr.valid {
     set expr = lower_expr(item.expr);
@@ -533,13 +543,16 @@ proc lower_item(item: AstItem) -> HirItem {
   if not item.valid {
     set diagnostics = diagnostics + [semantic_diagnostic("HIR0003", SemanticSeverity.Error, "invalid ast item", item.span, item.name, "")];
   }
+  if lowered_kind == HirItemKind.Unknown {
+    set diagnostics = diagnostics + [semantic_diagnostic("HIR0006", SemanticSeverity.Error, "unsupported ast item in hir lowering", item.span, item.name, ast_item_kind_name(item.kind))];
+  }
 
   let members: [HirNominalMember] = lower_nominal_members(item.members);
   let params: [HirProcParam] = lower_item_params(item);
   give hir_item_with_members(
     item.id.value,
     item.span,
-    lower_item_kind(item.kind),
+    lowered_kind,
     item.name,
     0,
     item.namespace,
@@ -561,7 +574,7 @@ proc lower_item(item: AstItem) -> HirItem {
     item.message,
     0,
     diagnostics,
-    item.valid
+    item.valid and lowered_kind != HirItemKind.Unknown
   );
 }
 

@@ -2,8 +2,9 @@ space vitte/compiler/tests/hir_tests
 
 use vitte/compiler/frontend/pipeline.{ FrontendOutput, frontend_run }
 use vitte/compiler/middle/hir/lower_ast.{ lower_ast_to_hir }
-use vitte/compiler/middle/hir.{ HirExprKind, HirItemKind, HirNominalMemberKind, HirStmtKind, HirUnit }
+use vitte/compiler/middle/hir.{ HirExprKind, HirItemKind, HirNominalMemberKind, HirProcParam, HirStmtKind, HirUnit, hir_expr_empty, hir_item_with_members, hir_module, hir_nominal_member, hir_proc_param, hir_unit }
 use vitte/compiler/middle/hir/validate.{ validate_hir }
+use vitte/compiler/frontend/ast.node.{ ast_span_empty }
 
 const VERSION_TEXT: string = "middle hir tests 0.2.0"
 const BANNER_TEXT: string = "middle hir tests"
@@ -161,6 +162,52 @@ proc test_hir_validation_rejects_empty_trait_and_impl() -> bool {
   give not hir.valid and len(hir.module.diagnostics) >= 2;
 }
 
+proc test_hir_validation_rejects_invalid_member_and_param_surface() -> bool {
+  let bad_param: HirProcParam = hir_proc_param("", "", "", false, false, false, false);
+  let bad_member = hir_nominal_member(
+    2,
+    ast_span_empty(),
+    HirNominalMemberKind.ImplMethod,
+    "",
+    "",
+    hir_expr_empty(),
+    [bad_param],
+    [],
+    "",
+    false
+  );
+  let item = hir_item_with_members(
+    1,
+    ast_span_empty(),
+    HirItemKind.Impl,
+    "Show",
+    0,
+    "",
+    "public",
+    true,
+    "",
+    0,
+    0,
+    0,
+    0,
+    1,
+    1,
+    [bad_param],
+    "",
+    "",
+    hir_expr_empty(),
+    [],
+    [bad_member],
+    "",
+    0,
+    [],
+    true
+  );
+  let unit: HirUnit = validate_hir(hir_unit("hir_invalid_member.vit", hir_module("hir_invalid_member.vit", [item], [], 0, 1, true), 2, 1, 1, 0, 0, 1, true, false, true));
+
+  give not unit.valid and len(unit.module.diagnostics) >= 4;
+}
+
 proc run_all_tests() -> int {
   let failures: int = 0;
   if not test_hir_lowering() {
@@ -176,6 +223,9 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if not test_hir_validation_rejects_empty_trait_and_impl() {
+    set failures = failures + 1;
+  }
+  if not test_hir_validation_rejects_invalid_member_and_param_surface() {
     set failures = failures + 1;
   }
   give failures;

@@ -50,6 +50,14 @@ Derived from: `AUDIT.md`
 - the last parsed-without-AST false negative (`postfix_expr`) is now recognized through the canonical AST construction path in `parser.vit`
 - the active parsed frontend surface no longer has rules that are `parsed` without also being `ast-built`
 
+### Completed recently. HIR trust boundary now rejects unsupported or partial lowering more explicitly
+
+- Status: done
+- Notes:
+- `lower_ast_to_hir` now emits explicit diagnostics when valid AST expr/stmt/item kinds do not map to supported HIR kinds
+- HIR validation now checks lowered proc params, nominal members, and proc signature arity consistency instead of trusting partial surfaces
+- `src/vitte/compiler/tests/hir_tests.vit` is wired into the fast core-language gate so HIR regressions are visible alongside lexer/parser guards
+
 ## P0
 
 ### 1. Align lexer with official EBNF token surface
@@ -119,6 +127,8 @@ Derived from: `AUDIT.md`
 - Priority: P1
 - Dependencies: 4, 5
 - Description: Publish and enforce the exact frontend subset that lowers cleanly through HIR and MIR.
+- Status note:
+- the HIR side is now hardened and CI-visible; the remaining closure work for this item is on MIR-side contract publication and validation parity
 - Acceptance criteria:
 - every supported AST family maps to HIR and MIR with tests
 - unsupported constructs fail with explicit diagnostics

@@ -6,6 +6,9 @@ use vitte/compiler/middle/hir.{
   HirItem,
   HirItemKind,
   HirModule,
+  HirNominalMember,
+  HirNominalMemberKind,
+  HirProcParam,
   HirStmt,
   HirStmtKind,
   HirUnit,
@@ -177,6 +180,78 @@ proc validate_stmt(stmt: HirStmt) -> [SemanticDiagnostic] {
   give diagnostics
 }
 
+proc validate_param(param: HirProcParam) -> [SemanticDiagnostic] {
+  let diagnostics: [SemanticDiagnostic] = []
+
+  if not param.valid {
+    set diagnostics = diagnostics + [validation_error("HIRV0150", "invalid hir proc parameter")]
+  }
+
+  if not param.variadic and param.name == "" {
+    set diagnostics = diagnostics + [validation_error("HIRV0151", "hir proc parameter missing name")]
+  }
+
+  if not param.variadic and param.annotation_text == "" {
+    set diagnostics = diagnostics + [validation_error("HIRV0152", "hir proc parameter missing type annotation")]
+  }
+
+  if param.variadic and param.name == "" {
+    set diagnostics = diagnostics + [validation_error("HIRV0153", "variadic hir parameter missing marker")]
+  }
+
+  give diagnostics
+}
+
+proc validate_member(member: HirNominalMember) -> [SemanticDiagnostic] {
+  let diagnostics: [SemanticDiagnostic] = []
+
+  if not member.valid {
+    set diagnostics = diagnostics + [validation_error("HIRV0170", "invalid hir nominal member")]
+  }
+
+  if member.kind == HirNominalMemberKind.Unknown {
+    set diagnostics = diagnostics + [validation_error("HIRV0171", "unknown hir nominal member kind")]
+  }
+
+  if member.name == "" {
+    set diagnostics = diagnostics + [validation_error("HIRV0172", "hir nominal member missing name")]
+  }
+
+  if (member.kind == HirNominalMemberKind.Field or member.kind == HirNominalMemberKind.Variant) and member.annotation_text == "" and not member.expr.valid {
+    set diagnostics = diagnostics + [validation_error("HIRV0173", "hir nominal member missing payload or annotation")]
+  }
+
+  if (member.kind == HirNominalMemberKind.TraitMethod or member.kind == HirNominalMemberKind.ImplMethod) and len(member.params) == 0 {
+    set diagnostics = diagnostics + [validation_error("HIRV0174", "hir method member missing parameter surface")]
+  }
+
+  if member.kind == HirNominalMemberKind.ImplMethod and len(member.body_stmts) == 0 {
+    set diagnostics = diagnostics + [validation_error("HIRV0175", "hir impl method missing body")]
+  }
+
+  if member.kind == HirNominalMemberKind.TraitMethod and member.annotation_text == "" {
+    set diagnostics = diagnostics + [validation_error("HIRV0176", "hir trait method missing return annotation")]
+  }
+
+  let i: u64 = 0
+  while i < len(member.params) {
+    set diagnostics = diagnostics + validate_param(member.params[i])
+    set i = i + 1
+  }
+
+  let j: u64 = 0
+  while j < len(member.body_stmts) {
+    set diagnostics = diagnostics + validate_stmt(member.body_stmts[j])
+    set j = j + 1
+  }
+
+  if member.expr.valid {
+    set diagnostics = diagnostics + validate_expr(member.expr)
+  }
+
+  give diagnostics
+}
+
 proc validate_item(item: HirItem) -> [SemanticDiagnostic] {
   let diagnostics: [SemanticDiagnostic] = []
   let effective_member_count: u64 = if len(item.members) > 0 { len(item.members) } else { len(item.stmts) }
@@ -217,8 +292,18 @@ proc validate_item(item: HirItem) -> [SemanticDiagnostic] {
     set diagnostics = diagnostics + [validation_error("HIRV0208", "impl item missing target type text")]
   }
 
+  if item.signature_param_count != len(item.params) {
+    set diagnostics = diagnostics + [validation_error("HIRV0209", "hir item signature parameter count does not match lowered params")]
+  }
+
   if item.expr.valid {
     set diagnostics = diagnostics + validate_expr(item.expr)
+  }
+
+  let p: u64 = 0
+  while p < len(item.params) {
+    set diagnostics = diagnostics + validate_param(item.params[p])
+    set p = p + 1
   }
 
   let i: u64 = 0
@@ -227,6 +312,12 @@ proc validate_item(item: HirItem) -> [SemanticDiagnostic] {
     set diagnostics = diagnostics + validate_stmt(item.stmts[i])
 
     set i = i + 1
+  }
+
+  let j: u64 = 0
+  while j < len(item.members) {
+    set diagnostics = diagnostics + validate_member(item.members[j])
+    set j = j + 1
   }
 
   give diagnostics
