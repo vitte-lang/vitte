@@ -13,7 +13,7 @@
 ## Features
 
 ![status](https://img.shields.io/badge/status-experimental-F97316)
-![version](https://img.shields.io/badge/version-2.1.1-2563EB)
+![version](https://img.shields.io/badge/version-0.1.0-2563EB)
 ![license](https://img.shields.io/badge/license-MIT-16A34A)
 ![language](https://img.shields.io/badge/language-Vitte-9333EA)
 ![compiler](https://img.shields.io/badge/compiler-self--hosting%20goal-DC2626)
@@ -39,6 +39,8 @@
 ![aarch64](https://img.shields.io/badge/AArch64-supported-2563EB)
 ![riscv64](https://img.shields.io/badge/RISC--V-supported-2563EB)
 ![i386](https://img.shields.io/badge/i386-supported-2563EB)
+![IA-32](https://img.shields.io/badge/Architecture-IA--32-2563EB)
+![Intel Pentium](https://img.shields.io/badge/CPU-Intel%20Pentium-2563EB)
 
 Vitte is a modern systems programming language and compiler designed around explicit compilation stages, deterministic builds, memory safety, and long-term maintainability.
 
