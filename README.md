@@ -63,7 +63,7 @@ Overall progress: **46%**
 
 Lexer              ██████████  100%
 
-Parser             █████░░░░░  45%
+Parser             ██████████  100%
 
 AST                █████░░░░░  50%
 

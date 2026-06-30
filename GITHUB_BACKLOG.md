@@ -35,6 +35,14 @@ Derived from: `AUDIT.md`
 - canonical token consumers are pinned to `frontend/lexer/token.vit`
 - fast CI now checks `src/vitte/compiler/tests/lexer_tests.vit` explicitly and runs the frontend token consistency guard
 
+### Completed recently. Parser coverage reporting is now exhaustive and is the CI source of truth
+
+- Status: done
+- Notes:
+- `tools/parser_sync_coverage_report.py` now emits an exhaustive rule matrix from `src/vitte/grammar/vitte.ebnf`
+- CI publishes the `grammar_coverage` report artifact and uses it as the canonical parser coverage signal
+- parser coverage can no longer report `green` from a tiny subset, and the active frontend now reaches `missing=0`
+
 ## P0
 
 ### 1. Align lexer with official EBNF token surface

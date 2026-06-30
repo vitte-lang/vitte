@@ -2778,6 +2778,59 @@ proc parse_surface_bits_or_flags_stmt(source_name: string, tokens: [Token], star
   );
 }
 
+proc parse_surface_bitfield_stmt(source_name: string, tokens: [Token], start: u64, end: u64) -> AstStmt {
+  give parse_surface_bits_or_flags_stmt(source_name, tokens, start, end);
+}
+
+proc parse_surface_bitfield_list(source_name: string, tokens: [Token], body_start: u64, body_end: u64) -> [AstStmt] {
+  let stmts: [AstStmt] = [];
+  let i: u64 = body_start;
+
+  while i < body_end and i < len(tokens) {
+    while i < body_end and (tokens[i].lexeme == "," or tokens[i].lexeme == ";") {
+      set i = i + 1;
+    }
+
+    if i >= body_end {
+      break;
+    }
+
+    let start: u64 = i;
+    let paren_depth: int = 0;
+    let bracket_depth: int = 0;
+    let brace_depth: int = 0;
+
+    while i < body_end and i < len(tokens) {
+      if tokens[i].lexeme == parser_lparen() {
+        set paren_depth = paren_depth + 1;
+      } elif tokens[i].lexeme == parser_rparen() {
+        set paren_depth = paren_depth - 1;
+      } elif tokens[i].lexeme == "[" {
+        set bracket_depth = bracket_depth + 1;
+      } elif tokens[i].lexeme == "]" {
+        set bracket_depth = bracket_depth - 1;
+      } elif tokens[i].lexeme == "{" {
+        set brace_depth = brace_depth + 1;
+      } elif tokens[i].lexeme == "}" {
+        set brace_depth = brace_depth - 1;
+      } elif (tokens[i].lexeme == "," or tokens[i].lexeme == ";") and paren_depth == 0 and bracket_depth == 0 and brace_depth == 0 {
+        break;
+      }
+      set i = i + 1;
+    }
+
+    if start < i {
+      set stmts = stmts + [parse_surface_bitfield_stmt(source_name, tokens, start, i)];
+    }
+
+    if i < body_end and (tokens[i].lexeme == "," or tokens[i].lexeme == ";") {
+      set i = i + 1;
+    }
+  }
+
+  give stmts;
+}
+
 proc parse_surface_pick_stmt(source_name: string, tokens: [Token], start: u64, end: u64) -> AstStmt {
   let stmt_span: AstSpan = span_from_tokens(source_name, tokens, start, end);
   let stmt_id: u64 = range_id(2, start, end);
@@ -2876,6 +2929,10 @@ proc parse_surface_member_stmt(keyword: string, source_name: string, tokens: [To
 }
 
 proc parse_surface_item_members(keyword: string, source_name: string, tokens: [Token], body_start: u64, body_end: u64) -> [AstStmt] {
+  if keyword == "bits" {
+    give parse_surface_bitfield_list(source_name, tokens, body_start, body_end);
+  }
+
   let stmts: [AstStmt] = [];
   let i: u64 = body_start;
   while i < body_end and i < len(tokens) {
