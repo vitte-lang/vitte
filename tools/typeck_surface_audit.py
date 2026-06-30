@@ -21,15 +21,22 @@ def has(text: str, needle: str) -> bool:
     return needle in text
 
 
+def scan_vit_files() -> list[Path]:
+    return sorted((ROOT / "src" / "vitte" / "compiler").rglob("*.vit"))
+
+
 def main() -> int:
     checks: list[tuple[str, str, str]] = [
-        ("src/vitte/compiler/analysis/pipeline.vit", "run_typeck_hir", "production analysis pipeline must use the HIR checker"),
-        ("src/vitte/compiler/middle/pipeline.vit", "run_typeck_hir", "middle pipeline must use the HIR checker"),
-        ("src/vitte/compiler/driver/compile.vit", "run_typeck_hir", "driver compile path must use the HIR checker"),
-        ("src/vitte/compiler/tests/typeck_tests.vit", "run_typeck_hir", "HIR checker contract tests must stay present"),
-        ("src/vitte/compiler/tests/typeck_complete_tests.vit", "run_complete_typeck_frontend", "advanced complete typeck tests must stay present"),
+        ("src/vitte/compiler/analysis/pipeline.vit", "run_production_typeck_hir", "production analysis pipeline must use the canonical production typeck API"),
+        ("src/vitte/compiler/middle/pipeline.vit", "run_production_typeck_hir", "middle pipeline must use the canonical production typeck API"),
+        ("src/vitte/compiler/driver/compile.vit", "run_production_typeck_hir", "driver compile path must use the canonical production typeck API"),
+        ("src/vitte/compiler/tests/typeck_tests.vit", "run_production_typeck_hir", "production typeck contract tests must stay present"),
+        ("src/vitte/compiler/tests/typeck_complete_tests.vit", "run_experimental_complete_typeck_frontend", "advanced complete typeck tests must stay present through the experimental API"),
         ("src/vitte/compiler/analysis/typeck/README.md", "run_complete_typeck_frontend", "README must document the advanced complete surface"),
-        ("src/vitte/compiler/analysis/typeck/README.md", "run_typeck_hir", "README must document the production HIR surface"),
+        ("src/vitte/compiler/analysis/typeck/README.md", "run_production_typeck_hir", "README must document the production typeck API surface"),
+        ("src/vitte/compiler/analysis/typeck/api.vit", "proc run_production_typeck_hir(", "typeck API must expose the production typeck entrypoint"),
+        ("src/vitte/compiler/analysis/typeck/api.vit", "proc run_experimental_complete_typeck_frontend(", "typeck API must expose the experimental complete frontend entrypoint"),
+        ("src/vitte/compiler/analysis/typeck/api.vit", "use vitte/compiler/analysis/typeck/complete.{", "typeck API must route experimental complete access through the complete module root"),
     ]
 
     results: list[dict[str, str]] = []
@@ -101,6 +108,46 @@ def main() -> int:
         )
         if status != "absent":
             failures.append(f"{rel}: forbidden `{needle}` present")
+
+    direct_complete_subpath_imports: list[str] = []
+    direct_complete_types_test_imports: list[str] = []
+    for path in scan_vit_files():
+        rel = str(path.relative_to(ROOT))
+        text = path.read_text(encoding="utf-8", errors="replace")
+        if rel.startswith("src/vitte/compiler/analysis/typeck/complete/"):
+            continue
+        if "use vitte/compiler/analysis/typeck/complete/" in text:
+            direct_complete_subpath_imports.append(rel)
+        if rel.startswith("src/vitte/compiler/tests/") and "use vitte/compiler/analysis/typeck/complete/types" in text:
+            direct_complete_types_test_imports.append(rel)
+
+    results.append(
+        {
+            "file": "src/vitte/compiler/**/*.vit",
+            "needle": "use vitte/compiler/analysis/typeck/complete/",
+            "reason": "non-experimental code should use either the public typeck API or the complete module root, not complete subpaths",
+            "status": "absent" if not direct_complete_subpath_imports else "forbidden_present",
+        }
+    )
+    if direct_complete_subpath_imports:
+        failures.append(
+            "direct complete subpath imports outside analysis/typeck/complete/: "
+            + ", ".join(sorted(direct_complete_subpath_imports))
+        )
+
+    results.append(
+        {
+            "file": "src/vitte/compiler/tests/*.vit",
+            "needle": "use vitte/compiler/analysis/typeck/complete/types",
+            "reason": "tests should consume experimental complete types through the public typeck API",
+            "status": "absent" if not direct_complete_types_test_imports else "forbidden_present",
+        }
+    )
+    if direct_complete_types_test_imports:
+        failures.append(
+            "direct complete types imports in tests: "
+            + ", ".join(sorted(direct_complete_types_test_imports))
+        )
 
     payload = {
         "schema": "vitte.compiler.typeck_surface_audit",
