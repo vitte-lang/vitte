@@ -2,6 +2,62 @@
   function q(sel, root) { return (root || document).querySelector(sel); }
   function qa(sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); }
   function esc(s) { return (s || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
+  var DEV_REFRESH_ENABLED_KEY = "vitte.docs.dev_refresh.enabled";
+  var DEV_REFRESH_INTERVAL_KEY = "vitte.docs.dev_refresh.interval";
+  var currentRefreshConfig = { enabled: false, seconds: 0 };
+
+  function parsePositiveInt(value) {
+    var n = parseInt(value, 10);
+    if (!isFinite(n) || isNaN(n) || n <= 0) return 0;
+    return n;
+  }
+
+  function devRefreshConfig() {
+    var params = new URL(window.location.href).searchParams;
+    var toggle = (params.get("dev-refresh") || "").trim().toLowerCase();
+    var interval = parsePositiveInt(params.get("refresh"));
+    var storedEnabled = (localStorage.getItem(DEV_REFRESH_ENABLED_KEY) || "").trim();
+    var storedInterval = parsePositiveInt(localStorage.getItem(DEV_REFRESH_INTERVAL_KEY) || "");
+    var enabled = storedEnabled === "1";
+    var seconds = storedInterval || 5;
+
+    if (toggle === "0" || toggle === "off" || toggle === "false") {
+      enabled = false;
+      localStorage.removeItem(DEV_REFRESH_ENABLED_KEY);
+      localStorage.removeItem(DEV_REFRESH_INTERVAL_KEY);
+    } else if (toggle === "1" || toggle === "on" || toggle === "true") {
+      enabled = true;
+      localStorage.setItem(DEV_REFRESH_ENABLED_KEY, "1");
+    }
+
+    if (interval > 0) {
+      seconds = interval;
+      enabled = true;
+      localStorage.setItem(DEV_REFRESH_ENABLED_KEY, "1");
+      localStorage.setItem(DEV_REFRESH_INTERVAL_KEY, String(interval));
+    } else if (enabled && !storedInterval) {
+      localStorage.setItem(DEV_REFRESH_INTERVAL_KEY, String(seconds));
+    }
+
+    return { enabled: enabled, seconds: Math.max(2, seconds || 5) };
+  }
+
+  function setupDevAutoRefresh() {
+    currentRefreshConfig = devRefreshConfig();
+    if (!currentRefreshConfig.enabled) return;
+
+    document.documentElement.setAttribute("data-dev-refresh", "on");
+    var badge = document.createElement("div");
+    badge.className = "dev-refresh-badge";
+    badge.setAttribute("style", "position:fixed;right:12px;bottom:12px;z-index:9999;padding:8px 10px;border-radius:999px;background:#0f172a;color:#f8fafc;font:12px/1.2 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;box-shadow:0 10px 30px rgba(15,23,42,.28)");
+    badge.textContent = "Auto refresh " + currentRefreshConfig.seconds + "s";
+    document.body.appendChild(badge);
+
+    window.setInterval(function () {
+      if (document.hidden) return;
+      window.location.reload();
+    }, currentRefreshConfig.seconds * 1000);
+  }
 
   function setupMobileMenu() {
     var nav = q(".site-nav"), header = q(".site-header"); if (!nav || !header || !q("ul", nav)) return;
@@ -42,7 +98,16 @@
     imgs.forEach(function (img) { if (img.closest(".page-band") || img.closest(".site-nav") || img.closest(".site-brand")) return; var src = img.getAttribute("src"); if (!src) return; img.setAttribute("data-src", src); img.setAttribute("src", "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=="); io.observe(img); });
   }
 
-  function registerServiceWorker() { if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(function () {}); }
+  function registerServiceWorker() {
+    if (!("serviceWorker" in navigator)) return;
+    if (currentRefreshConfig.enabled) {
+      navigator.serviceWorker.getRegistrations().then(function (regs) {
+        regs.forEach(function (reg) { reg.unregister().catch(function () {}); });
+      }).catch(function () {});
+      return;
+    }
+    navigator.serviceWorker.register("sw.js").catch(function () {});
+  }
 
   function addBreadcrumbs() {
     var content = q(".doc-content"); if (!content || q(".breadcrumbs", content)) return;
@@ -495,7 +560,7 @@
   }
 
   document.addEventListener("DOMContentLoaded", function () {
-    removeSkipLink(); registerServiceWorker(); addBreadcrumbs(); linkifyDocReferences(); setupGlobalSearch(); setupSearchPage(); setupMobileMenu(); wrapTables(); addFloatingToc(); addBackToTop(); lazyLoadDecorativeSvg(); addSmartPagination(); syncHeaderOffset();
+    setupDevAutoRefresh(); removeSkipLink(); registerServiceWorker(); addBreadcrumbs(); linkifyDocReferences(); setupGlobalSearch(); setupSearchPage(); setupMobileMenu(); wrapTables(); addFloatingToc(); addBackToTop(); lazyLoadDecorativeSvg(); addSmartPagination(); syncHeaderOffset();
     window.addEventListener("resize", syncHeaderOffset);
   });
 })();

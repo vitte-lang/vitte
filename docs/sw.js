@@ -1,10 +1,6 @@
-const CACHE = 'vitte-docs-v2';
+const CACHE = 'vitte-docs-v3';
 const CRITICAL_ASSETS = [
-  '/',
-  '/index.html',
-  '/doc.html',
   '/offline.html',
-  '/status.html',
   '/search-index.json',
   '/css/site.css',
   '/css/layout.css',
@@ -36,15 +32,11 @@ self.addEventListener('fetch', (event) => {
 
   if (isHtml) {
     event.respondWith(
-      fetch(req)
+      fetch(req, { cache: 'no-store' })
         .then((res) => {
-          const copy = res.clone();
-          caches.open(CACHE).then((cache) => cache.put(req, copy));
           return res;
         })
         .catch(async () => {
-          const cached = await caches.match(req);
-          if (cached) return cached;
           return caches.match('/offline.html');
         })
     );
