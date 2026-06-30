@@ -61,7 +61,7 @@ Overall progress: **46%**
 
 ```text
 
-Lexer              ████░░░░░░  40%
+Lexer              ██████████  100%
 
 Parser             █████░░░░░  45%
 

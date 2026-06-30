@@ -4,6 +4,7 @@ use vitte/compiler/frontend/lexer/token.{
   Token,
   TokenKind,
   token,
+  token_kind_is_literal,
   token_with_offset
 }
 
@@ -406,13 +407,6 @@ proc is_valid_single_symbol(ch: string) -> bool {
   give bracket_symbol or punctuation_symbol or operator_symbol or misc_symbol;
 }
 
-proc token_is_literal(kind: TokenKind) -> bool {
-  give kind == TokenKind.Integer
-    or kind == TokenKind.Float
-    or kind == TokenKind.String
-    or kind == TokenKind.Char;
-}
-
 proc scan_tokens(text: string) -> ScanResult {
   let tokens: [Token] = [];
   let diagnostics: [LexerDiagnostic] = [];
@@ -607,11 +601,16 @@ proc scanner_summary(result: ScanResult) -> string {
 }
 
 proc scanner_selftest() -> bool {
-  let result: ScanResult = scan_tokens("demo");
+  let result: ScanResult = scan_tokens("let x = 'a'; x <<= 1; if x && true { x = ~x; }\n");
 
   give result.valid
-    and result.metrics.token_count > 0
+    and result.metrics.token_count >= 16
     and result.metrics.keyword_count > 0
     and result.metrics.literal_count > 0
+    and token_kind_is_literal(result.tokens[3].kind)
+    and token_kind_is_literal(result.tokens[7].kind)
+    and result.tokens[5].lexeme == "<<="
+    and result.tokens[11].lexeme == "&&"
+    and result.tokens[16].lexeme == "~"
     and scanner_summary(result) != "";
 }

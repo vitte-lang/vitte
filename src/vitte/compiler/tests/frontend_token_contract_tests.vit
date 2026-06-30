@@ -1,0 +1,70 @@
+space vitte/compiler/tests/frontend_token_contract_tests
+
+use vitte/compiler/frontend/lexer/token.{
+  Token,
+  TokenKind,
+  token,
+  token_kind_is_literal,
+  token_with_offset
+}
+
+use vitte/compiler/frontend/lexer/scanner.{ ScanResult, scan_tokens }
+
+const VERSION_TEXT: string = "frontend token contract tests 0.1.0"
+const BANNER_TEXT: string = "frontend token contract tests"
+
+proc test_canonical_token_api_compiles() -> bool {
+  let eof: Token = token(TokenKind.Eof, "", 1, 1);
+  let invalid: Token = token_with_offset(TokenKind.Invalid, "@", 1, 1, 0);
+
+  give eof.kind == TokenKind.Eof
+    and invalid.kind == TokenKind.Invalid
+    and TokenKind.Ident == TokenKind.Ident
+    and TokenKind.Keyword == TokenKind.Keyword
+    and TokenKind.String == TokenKind.String
+    and TokenKind.Integer == TokenKind.Integer
+    and TokenKind.Float == TokenKind.Float
+    and TokenKind.Char == TokenKind.Char
+    and TokenKind.Symbol == TokenKind.Symbol
+    and token_kind_is_literal(TokenKind.Integer)
+    and token_kind_is_literal(TokenKind.Float)
+    and token_kind_is_literal(TokenKind.String)
+    and token_kind_is_literal(TokenKind.Char);
+}
+
+proc test_canonical_scanner_api_compiles() -> bool {
+  let result: ScanResult = scan_tokens("proc main() { let c = 'x'; give 1; }\n");
+
+  give result.valid
+    and len(result.tokens) > 0
+    and result.tokens[0].kind == TokenKind.Keyword
+    and result.tokens[6].kind == TokenKind.Char;
+}
+
+proc run_all_tests() -> int {
+  let failures: int = 0;
+
+  if not test_canonical_token_api_compiles() {
+    set failures = failures + 1;
+  }
+
+  if not test_canonical_scanner_api_compiles() {
+    set failures = failures + 1;
+  }
+
+  give failures;
+}
+
+proc version_text() -> string {
+  give VERSION_TEXT
+}
+
+proc banner_text() -> string {
+  give BANNER_TEXT
+}
+
+proc main(args: list[string]) -> int {
+  give run_all_tests()
+}
+
+export *

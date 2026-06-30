@@ -27,6 +27,14 @@ Derived from: `AUDIT.md`
 - canonical ownership and call-signature metadata now flow from frontend and HIR through MIR, IR, borrowck, C lowering, and LLVM lowering
 - backend and analysis stable gates now execute the promoted `borrowck`, `typeck`, `const_eval`, `diagnostic_snapshot`, `codegen`, and `c_backend` suites through the strict bridge path
 
+### Completed recently. Lexer EBNF surface and token contract are now on the canonical frontend path
+
+- Status: done
+- Notes:
+- the active scanner now covers the current EBNF lexer surface, including char literals, `~`, `&&`, `||`, `<<=`, and `>>=`
+- canonical token consumers are pinned to `frontend/lexer/token.vit`
+- fast CI now checks `src/vitte/compiler/tests/lexer_tests.vit` explicitly and runs the frontend token consistency guard
+
 ## P0
 
 ### 1. Align lexer with official EBNF token surface

@@ -2,10 +2,11 @@ space vitte/compiler/tests/lexer_tests
 
 use vitte/compiler/frontend/lexer/scanner.{ ScanResult, scan_tokens }
 use vitte/compiler/frontend/lexer/errors.{ LexerDiagnostic, invalid_character, invalid_char_literal, invalid_number, invalid_unicode_escape, lexer_diagnostic_as_diagnostic, token_too_large, unterminated_block_comment, unterminated_string }
+use vitte/compiler/frontend/lexer/literals.{ BINDIGIT, DIGIT, HEXDIGIT, OCTDIGIT }
 use vitte/compiler/frontend/lexer/token.{ TokenKind }
 use vitte/compiler/diagnostics/diagnostic.{ Diagnostic, DiagnosticPhase }
 use vitte/compiler/tests/frontend_fixtures/valid/lexer.{ attributes_source, number_suffix_source, positions_source }
-use vitte/compiler/tests/frontend_fixtures/invalid/lexer.{ invalid_char_literal_source, invalid_escape_source, invalid_number_source }
+use vitte/compiler/tests/frontend_fixtures/invalid/lexer.{ invalid_char_literal_source, invalid_escape_source, invalid_number_source, invalid_prefixed_numbers_source }
 
 const VERSION_TEXT: string = "frontend lexer tests 0.3.0"
 const BANNER_TEXT: string = "frontend lexer tests"
@@ -38,6 +39,20 @@ proc test_scanner_reports_precise_invalid_number() -> bool {
   }
   let diag = result.diagnostics[0];
   give diag.code == "LEX_E_INVALID_NUMBER" and diag.line == 1 and diag.column == 28 and diag.width >= 4;
+}
+
+proc test_digit_helpers_match_ebnf_classes() -> bool {
+  give DIGIT("7")
+    and not DIGIT("x")
+    and BINDIGIT("0")
+    and BINDIGIT("1")
+    and not BINDIGIT("2")
+    and OCTDIGIT("7")
+    and not OCTDIGIT("8")
+    and HEXDIGIT("9")
+    and HEXDIGIT("a")
+    and HEXDIGIT("F")
+    and not HEXDIGIT("g");
 }
 
 proc test_scanner_reports_precise_invalid_escape_and_char_literal() -> bool {
@@ -126,6 +141,17 @@ proc test_scanner_accepts_float_exponents() -> bool {
     and result.tokens[c_index as u64].kind == TokenKind.Float;
 }
 
+proc test_scanner_rejects_invalid_prefixed_numbers() -> bool {
+  let result: ScanResult = scan_tokens(invalid_prefixed_numbers_source());
+  if result.valid or len(result.diagnostics) < 3 {
+    give false;
+  }
+
+  give result.diagnostics[0].code == "LEX_E_INVALID_NUMBER"
+    and result.diagnostics[1].code == "LEX_E_INVALID_NUMBER"
+    and result.diagnostics[2].code == "LEX_E_INVALID_NUMBER";
+}
+
 proc test_scanner_accepts_raw_string_literals() -> bool {
   let result: ScanResult = scan_tokens("const a = r\"doc\"; const b = \"\"\"multi\nline\"\"\";\n");
   let raw_index: int = token_index(result, "r\"doc\"");
@@ -185,6 +211,9 @@ proc run_all_tests() -> int {
   if not test_scanner_reports_precise_invalid_number() {
     set failures = failures + 1;
   }
+  if not test_digit_helpers_match_ebnf_classes() {
+    set failures = failures + 1;
+  }
   if not test_scanner_reports_precise_invalid_char() {
     set failures = failures + 1;
   }
@@ -195,6 +224,9 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if not test_scanner_accepts_float_exponents() {
+    set failures = failures + 1;
+  }
+  if not test_scanner_rejects_invalid_prefixed_numbers() {
     set failures = failures + 1;
   }
   if not test_scanner_accepts_raw_string_literals() {
