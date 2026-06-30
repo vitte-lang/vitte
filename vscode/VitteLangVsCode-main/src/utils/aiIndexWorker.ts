@@ -30,7 +30,7 @@ function tokenMap(text: string): Map<string, number> {
 
 function extractSymbols(text: string): Set<string> {
   const out = new Set<string>();
-  for (const m of text.matchAll(/\b(?:let|const|fn|proc|test|type|enum|struct)\s+([A-Za-z_][A-Za-z0-9_]*)/g)) {
+  for (const m of text.matchAll(/\b(?:let|make|const|proc|type|form|pick|trait|field|case)\s+([A-Za-z_][A-Za-z0-9_]*)/g)) {
     if (m[1]) out.add(m[1]);
   }
   for (const m of text.matchAll(/\b([A-Z][A-Za-z0-9_]*)::([A-Z][A-Za-z0-9_]*)/g)) {
@@ -62,4 +62,3 @@ parentPort?.on("message", (req: WorkerRequest) => {
   const res: WorkerResponse = { id: req.id, uri: req.uri, chunks, symbols };
   parentPort?.postMessage(res);
 });
-

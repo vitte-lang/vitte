@@ -2,8 +2,8 @@
 // Améliorations clés:
 // - Lexer en un seul passage: collecte des plages commentaires et chaînes + masque code
 // - Émission triée et sans chevauchement pour respecter LSP SemanticTokens
-// - Coloration ciblée des noms de déclarations (module/fn/struct/enum/type/let|const)
-// - Paramètres de fonctions et propriétés de struct
+// - Coloration ciblée des noms de déclarations Vitte réelles
+// - Paramètres de fonctions et champs form/pick
 // - Mots-clés et nombres uniquement en zones de code
 // - Cache par document/version
 // - Hover concis sur mots-clés
@@ -60,30 +60,20 @@ export function getSemanticTokensLegend(): SemanticTokensLegend {
 /* --------------------------------- Hover ---------------------------------- */
 
 const HOVER_DOC: Record<string, string> = {
-  module: "Déclare le module courant.",
-  import: "Importe un chemin depuis un autre module.",
-  use: "Importe un symbole depuis un module.",
   space: "Déclare l’espace courant.",
+  pull: "Importe un package avec alias.",
+  use: "Importe un symbole depuis un package.",
   as: "Assigne un alias à un import.",
-  pub: "Rend le symbole public.",
-  struct: "Définit une structure.",
   form: "Définit une structure (form).",
-  enum: "Définit une énumération.",
-  union: "Définit une union.",
+  pick: "Définit une somme de cas.",
+  case: "Déclare un cas dans un pick ou un match.",
   type: "Déclare un alias de type.",
-  fn: "Déclare une fonction.",
   proc: "Déclare une procédure.",
-  extern: "Déclare une liaison externe.",
   let: "Déclare une variable locale.",
-  mut: "Rend un binding mutable.",
   const: "Déclare une constante.",
-  static: "Déclare un symbole statique.",
-  where: "Contraintes de type.",
   if: "Instruction conditionnelle.",
-  elif: "Branche conditionnelle intermédiaire.",
   else: "Branche alternative.",
   match: "Branches par motifs.",
-  while: "Boucle conditionnelle.",
   for: "Boucle itérative.",
   in: "Itération sur une séquence.",
   loop: "Boucle infinie interrompue par break.",
@@ -93,8 +83,6 @@ const HOVER_DOC: Record<string, string> = {
   give: "Retourne depuis une procédure.",
   true: "Booléen vrai.",
   false: "Booléen faux.",
-  nil: "Valeur nulle.",
-  null: "Valeur nulle.",
 };
 
 export function provideHover(doc: TextDocument, position: Position): Hover | null {
@@ -159,20 +147,18 @@ export function buildSemanticTokens(doc: TextDocument): SemanticTokens {
   }
 
   // 5) déclarations: colorer uniquement le nom
-  addPathDeclSpans(text, lex.mask, /\bmodule\s+([A-Za-z_][\w./:]*)/g, 1, TYPE_INDEX.namespace, spans);
   addPathDeclSpans(text, lex.mask, /\bspace\s+([A-Za-z_][\w./:]*)/g, 1, TYPE_INDEX.namespace, spans);
-  addPathDeclSpans(text, lex.mask, /\b(?:import|use|pull)\s+([A-Za-z_][\w./:]*)/g, 1, TYPE_INDEX.namespace, spans);
-  addDeclSpans(text, lex.mask, /\bstruct\s+([A-Za-z_]\w*)/g, 1, TYPE_INDEX.type, spans);
+  addPathDeclSpans(text, lex.mask, /\b(?:use|pull)\s+([A-Za-z_][\w./:]*)/g, 1, TYPE_INDEX.namespace, spans);
   addDeclSpans(text, lex.mask, /\bform\s+([A-Za-z_]\w*)/g, 1, TYPE_INDEX.type, spans);
-  addDeclSpans(text, lex.mask, /\benum\s+([A-Za-z_]\w*)/g, 1, TYPE_INDEX.type, spans);
-  addDeclSpans(text, lex.mask, /\bunion\s+([A-Za-z_]\w*)/g, 1, TYPE_INDEX.type, spans);
+  addDeclSpans(text, lex.mask, /\bpick\s+([A-Za-z_]\w*)/g, 1, TYPE_INDEX.type, spans);
+  addDeclSpans(text, lex.mask, /\btrait\s+([A-Za-z_]\w*)/g, 1, TYPE_INDEX.type, spans);
   addDeclSpans(text, lex.mask, /\btype\s+([A-Za-z_]\w*)/g, 1, TYPE_INDEX.type, spans);
-  addDeclSpans(text, lex.mask, /\b(?:fn|proc)\s+([A-Za-z_]\w*)\s*\(/g, 1, TYPE_INDEX.function, spans);
-  addDeclSpans(text, lex.mask, /\b(?:let|const|static)\s+(?:mut\s+)?([A-Za-z_]\w*)/g, 1, TYPE_INDEX.variable, spans);
+  addDeclSpans(text, lex.mask, /\bproc\s+([A-Za-z_]\w*)\s*\(/g, 1, TYPE_INDEX.function, spans);
+  addDeclSpans(text, lex.mask, /\b(?:let|make|const)\s+([A-Za-z_]\w*)/g, 1, TYPE_INDEX.variable, spans);
 
   // 6) paramètres de fonctions
-  for (const m of matchAll(/\b(?:fn|proc)\s+[A-Za-z_]\w*\s*\(([^)]*)\)/g, text)) {
-    if (!lex.mask[m.index]) continue; // début du fn
+  for (const m of matchAll(/\bproc\s+[A-Za-z_]\w*\s*\(([^)]*)\)/g, text)) {
+    if (!lex.mask[m.index]) continue;
     const params = (m[1] ?? "").split(",");
     const base = m.index + m[0].indexOf("(") + 1;
     let offset = 0;
@@ -187,12 +173,12 @@ export function buildSemanticTokens(doc: TextDocument): SemanticTokens {
     }
   }
 
-  // 7) propriétés de struct
-  for (const m of matchAll(/\b(?:struct|form)\s+[A-Za-z_]\w*\s*\{([\s\S]*?)\}/g, text)) {
+  // 7) champs nommés dans les forms
+  for (const m of matchAll(/\bform\s+[A-Za-z_]\w*\s*\{([\s\S]*?)\}/g, text)) {
     const body = m[1] ?? "";
     const bodyStart = m.index + m[0].indexOf("{") + 1;
-    for (const fm of matchAll(/(^|\s)([A-Za-z_]\w*)\s*:\n?\s*[^,\n\r\}]+/g, body)) {
-      const name = fm[2];
+    for (const fm of matchAll(/\bfield\s+([A-Za-z_]\w*)/g, body)) {
+      const name = fm[1];
       const off = bodyStart + fm.index + fm[0].lastIndexOf(name);
       if (lex.mask[off]) insertSpan(spans, off, off + name.length, TYPE_INDEX.property);
     }

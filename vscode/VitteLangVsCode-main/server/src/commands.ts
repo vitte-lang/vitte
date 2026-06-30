@@ -220,7 +220,7 @@ async function organizeImports(connection: Connection, uri?: string): Promise<Co
       [uri]: [
         TextEdit.replace(
           Range.create(Position.create(0, 0), Position.create(0, Number.MAX_SAFE_INTEGER)),
-          "import std.modules.core\n"
+          "use vitte/core\n"
         )
       ]
     }

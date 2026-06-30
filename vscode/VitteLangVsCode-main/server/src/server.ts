@@ -1398,8 +1398,8 @@ function collectOpenDocumentDefinitions(token: string, currentUri: string): Loca
     if (d.uri === currentUri) continue;
     const text = d.getText();
     const rx = pathLike
-      ? new RegExp(`\\b(?:module|space|import|use|pull|entry\\s+[A-Za-z_][A-Za-z0-9_]*\\s+at)\\s+${escapeForRegex(token)}\\b`, "g")
-      : new RegExp(`\\b(?:fn|proc|form|trait|type|struct|enum|union|const|let|static|share)\\s+${escapeForRegex(token)}\\b`, "g");
+      ? new RegExp(`\\b(?:space|use|pull|entry\\s+[A-Za-z_][A-Za-z0-9_]*\\s+at)\\s+${escapeForRegex(token)}\\b`, "g")
+      : new RegExp(`\\b(?:proc|form|pick|trait|type|const|let|make|field|case|share)\\s+${escapeForRegex(token)}\\b`, "g");
     let m: RegExpExecArray | null;
     while ((m = rx.exec(text))) {
       const idx = (m.index ?? 0) + m[0].lastIndexOf(token);

@@ -74,21 +74,18 @@ type BodyExpectation =
   | { kind: "unknown" };
 
 const DECLARATIONS = new Map<string, DeclarationInfo>([
-  ["module", { kind: SK.Namespace, expectBody: true, allowBodyless: true }],
   ["space", { kind: SK.Namespace, expectBody: true, allowBodyless: true }],
-  ["struct", { kind: SK.Struct, expectBody: true }],
   ["form", { kind: SK.Struct, expectBody: true }],
-  ["enum", { kind: SK.Enum, expectBody: true }],
-  ["union", { kind: SK.Struct, expectBody: true }],
+  ["pick", { kind: SK.Enum, expectBody: true }],
+  ["case", { kind: SK.Field, expectBody: true, allowBodyless: true }],
   ["trait", { kind: SK.Interface, expectBody: true }],
   ["type", { kind: SK.Interface, expectBody: false }],
-  ["fn", { kind: SK.Function, expectBody: true, allowBodyless: true }],
   ["proc", { kind: SK.Function, expectBody: true, allowBodyless: true }],
   ["const", { kind: SK.Constant, expectBody: false }],
-  ["static", { kind: SK.Variable, expectBody: false }],
+  ["field", { kind: SK.Field, expectBody: false }],
 ]);
 
-const MODIFIERS = new Set(["pub", "export"]);
+const MODIFIERS = new Set<string>();
 
 class SymbolParser {
   private readonly text: string;
@@ -209,23 +206,20 @@ class SymbolParser {
 
   private readSymbolName(keyword: string): string | undefined {
     switch (keyword) {
-      case "module":
       case "space":
         return this.readQualifiedName();
-      case "struct":
       case "form":
-      case "enum":
-      case "union":
+      case "pick":
+      case "case":
       case "type":
       case "trait":
+      case "field":
         this.skipTrivia();
         return this.readIdentifierToken();
-      case "fn":
       case "proc":
         this.skipTrivia();
         return this.readFunctionName();
       case "const":
-      case "static":
         return this.readConstName();
       default:
         return undefined;

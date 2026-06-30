@@ -146,21 +146,20 @@ export class VitteLanguageService {
    */
   doComplete(_params: TextDocumentPositionParams): CompletionItem[] {
     const items: CompletionItem[] = [
-      { label: 'module', kind: CompletionItemKind.Keyword, detail: 'Déclaration de module', insertTextFormat: InsertTextFormat.Snippet, insertText: 'module ${1:my.module};' },
-      { label: 'import', kind: CompletionItemKind.Keyword, detail: 'Import', insertTextFormat: InsertTextFormat.Snippet, insertText: 'import ${1:path::to::item};' },
-      { label: 'fn', kind: CompletionItemKind.Keyword, detail: 'Déclaration de fonction', insertTextFormat: InsertTextFormat.Snippet, insertText: 'fn ${1:name}(${2:args}) {\n\t$0\n}' },
-      { label: 'struct', kind: CompletionItemKind.Keyword, detail: 'Déclaration de structure', insertTextFormat: InsertTextFormat.Snippet, insertText: 'struct ${1:Name} {\n\t$0\n}' },
-      { label: 'enum', kind: CompletionItemKind.Keyword, detail: 'Déclaration d’énumération', insertTextFormat: InsertTextFormat.Snippet, insertText: 'enum ${1:Name} {\n\t${2:Variant}\n}' },
-      { label: 'union', kind: CompletionItemKind.Keyword, detail: 'Déclaration d’union', insertTextFormat: InsertTextFormat.Snippet, insertText: 'union ${1:Name} {\n\t$0\n}' },
+      { label: 'space', kind: CompletionItemKind.Keyword, detail: 'Déclaration d’espace', insertTextFormat: InsertTextFormat.Snippet, insertText: 'space ${1:org/module}' },
+      { label: 'pull', kind: CompletionItemKind.Keyword, detail: 'Import de package', insertTextFormat: InsertTextFormat.Snippet, insertText: 'pull ${1:std/io} as ${2:io_pkg}' },
       { label: 'type', kind: CompletionItemKind.Keyword, detail: 'Alias de type', insertTextFormat: InsertTextFormat.Snippet, insertText: 'type ${1:Name} = ${2:Existing};' },
-      { label: 'let', kind: CompletionItemKind.Keyword, detail: 'Binding (variable)', insertTextFormat: InsertTextFormat.Snippet, insertText: 'let ${1:name} = ${2:value};' },
-      { label: 'const', kind: CompletionItemKind.Keyword, detail: 'Constante', insertTextFormat: InsertTextFormat.Snippet, insertText: 'const ${1:NAME} = ${2:value};' },
-      { label: 'static', kind: CompletionItemKind.Keyword, detail: 'Statique', insertTextFormat: InsertTextFormat.Snippet, insertText: 'static ${1:NAME}: ${2:Type} = ${3:value};' },
-      { label: 'return', kind: CompletionItemKind.Keyword, detail: 'Retour de fonction', insertTextFormat: InsertTextFormat.Snippet, insertText: 'return ${1:value};' },
-      { label: 'match', kind: CompletionItemKind.Keyword, detail: 'Expression de correspondance', insertTextFormat: InsertTextFormat.Snippet, insertText: 'match ${1:expr} {\n\t${2:pattern} => ${3:result},\n}' },
+      { label: 'proc', kind: CompletionItemKind.Keyword, detail: 'Déclaration de procédure', insertTextFormat: InsertTextFormat.Snippet, insertText: 'proc ${1:name}(${2:args})${3: -> ${4:Type}} {\n\t$0\n}' },
+      { label: 'form', kind: CompletionItemKind.Keyword, detail: 'Déclaration de form', insertTextFormat: InsertTextFormat.Snippet, insertText: 'form ${1:Name} {\n\tfield ${2:name}: ${3:Type}\n}' },
+      { label: 'pick', kind: CompletionItemKind.Keyword, detail: 'Déclaration de pick', insertTextFormat: InsertTextFormat.Snippet, insertText: 'pick ${1:Name} {\n\tcase ${2:Variant} {\n\t\t$0\n\t}\n}' },
+      { label: 'trait', kind: CompletionItemKind.Keyword, detail: 'Déclaration de trait', insertTextFormat: InsertTextFormat.Snippet, insertText: 'trait ${1:Name} {\n\t$0\n}' },
+      { label: 'let', kind: CompletionItemKind.Keyword, detail: 'Binding (variable)', insertTextFormat: InsertTextFormat.Snippet, insertText: 'let ${1:name} = ${2:value}' },
+      { label: 'const', kind: CompletionItemKind.Keyword, detail: 'Constante', insertTextFormat: InsertTextFormat.Snippet, insertText: 'const ${1:NAME}: ${2:int} = ${3:value}' },
+      { label: 'return', kind: CompletionItemKind.Keyword, detail: 'Retour de fonction', insertTextFormat: InsertTextFormat.Snippet, insertText: 'return ${1:value}' },
+      { label: 'give', kind: CompletionItemKind.Keyword, detail: 'Retour de procédure', insertTextFormat: InsertTextFormat.Snippet, insertText: 'give ${1:value}' },
+      { label: 'match', kind: CompletionItemKind.Keyword, detail: 'Expression de correspondance', insertTextFormat: InsertTextFormat.Snippet, insertText: 'match ${1:expr} {\n\tcase ${2:pattern} {\n\t\t$0\n\t}\n\totherwise {\n\t}\n}' },
       { label: 'if', kind: CompletionItemKind.Keyword, detail: 'Condition', insertTextFormat: InsertTextFormat.Snippet, insertText: 'if ${1:cond} {\n\t$0\n}' },
       { label: 'else', kind: CompletionItemKind.Keyword, detail: 'Alternative', insertTextFormat: InsertTextFormat.Snippet, insertText: 'else {\n\t$0\n}' },
-      { label: 'while', kind: CompletionItemKind.Keyword, detail: 'Boucle while', insertTextFormat: InsertTextFormat.Snippet, insertText: 'while ${1:cond} {\n\t$0\n}' },
       { label: 'for', kind: CompletionItemKind.Keyword, detail: 'Boucle for', insertTextFormat: InsertTextFormat.Snippet, insertText: 'for ${1:item} in ${2:iter} {\n\t$0\n}' },
       { label: 'loop', kind: CompletionItemKind.Keyword, detail: 'Boucle infinie', insertTextFormat: InsertTextFormat.Snippet, insertText: 'loop {\n\t$0\n}' },
     ];
@@ -179,16 +178,15 @@ export class VitteLanguageService {
 
   private _docFor(label: string): { title: string; markdown: string } {
     switch (label) {
-      case 'module': return { title: 'Déclaration de module', markdown: '**module** — Déclare le module courant.\n\n```vitte\nmodule my.module;\n```' };
-      case 'import': return { title: 'Import', markdown: '**import** — Ajoute un symbole d’un autre module.\n\n```vitte\nimport std::core;\n```' };
-      case 'fn': return { title: 'Déclaration de fonction', markdown: '**fn** — Déclare une fonction.\n\n```vitte\nfn name(args) {\n    // corps\n}\n```' };
-      case 'struct': return { title: 'Déclaration de structure', markdown: '**struct** — Regroupe des champs.\n\n```vitte\nstruct Name {\n    field: Type\n}\n```' };
-      case 'enum': return { title: 'Déclaration d’énumération', markdown: '**enum** — Variantes nommées.\n\n```vitte\nenum Name {\n    Variant\n}\n```' };
-      case 'union': return { title: 'Déclaration d’union', markdown: '**union** — Représentation mémoire partagée.\n\n```vitte\nunion Name {\n    field: Type\n}\n```' };
+      case 'space': return { title: 'Déclaration d’espace', markdown: '**space** — Déclare l’espace courant.\n\n```vitte\nspace vitte/app\n```' };
+      case 'pull': return { title: 'Import de package', markdown: '**pull** — Importe un package avec alias.\n\n```vitte\npull std/io as io_pkg\n```' };
+      case 'proc': return { title: 'Déclaration de procédure', markdown: '**proc** — Déclare une procédure.\n\n```vitte\nproc name(args) {\n    give 0\n}\n```' };
+      case 'form': return { title: 'Déclaration de form', markdown: '**form** — Regroupe des champs nommés.\n\n```vitte\nform Name {\n    field value: int\n}\n```' };
+      case 'pick': return { title: 'Déclaration de pick', markdown: '**pick** — Définit des variantes avec `case`.\n\n```vitte\npick Result {\n    case Ok {\n    }\n}\n```' };
       case 'type': return { title: 'Alias de type', markdown: '**type** — Alias vers un autre type.\n\n```vitte\ntype Alias = Existing;\n```' };
       case 'let': return { title: 'Binding', markdown: '**let** — Nouveau binding.\n\n```vitte\nlet x = 1;\n```' };
       case 'const': return { title: 'Constante', markdown: '**const** — Valeur immuable.\n\n```vitte\nconst NAME = 1;\n```' };
-      case 'static': return { title: 'Statique', markdown: '**static** — Valeur globale statique.\n\n```vitte\nstatic NAME: Type = init();\n```' };
+      case 'give': return { title: 'Retour de procédure', markdown: '**give** — Retourne depuis une procédure.\n\n```vitte\ngive 0\n```' };
       case 'match': return { title: 'Expression de correspondance', markdown: '**match** — Branches par motif.\n\n```vitte\nmatch x {\n    0 => 1,\n}\n```' };
       default: return { title: String(label), markdown: `**${label}**` };
     }

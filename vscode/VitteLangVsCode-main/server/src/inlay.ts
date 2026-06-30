@@ -16,12 +16,11 @@ function inferTypeFromExpr(expr: string): string {
   const s = expr.trim();
   if (/^".*"$/.test(s) || /^'.*'$/.test(s)) return "string";
   if (/^(true|false)\b/.test(s)) return "bool";
-  if (/^\d+(?:\.\d+)?\b/.test(s)) return s.includes(".") ? "f64" : "i32";
-  if (/^\[.*\]$/.test(s)) return "[any]";
-  if (/^\{.*\}$/.test(s)) return "map";
-  if (/^[A-Z][A-Za-z0-9_]*\(/.test(s)) return "type";
+  if (/^\d+(?:\.\d+)?\b/.test(s)) return "int";
+  if (/^\[.*\]$/.test(s)) return "list[unknown]";
+  if (/^[A-Z][A-Za-z0-9_]*(?:\.[A-Z][A-Za-z0-9_]*)?\(/.test(s)) return "type";
   if (/^[A-Za-z_][A-Za-z0-9_]*\(/.test(s)) return "unknown";
-  return "any";
+  return "unknown";
 }
 
 function inferAlias(pathExpr: string): string {
@@ -76,7 +75,7 @@ export function provideInlayHints(doc: TextDocument, range: Range, prefs?: Parti
   for (let i = startLine; i <= endLine && out.length < maxHints; i++) {
     const line = lines[i];
 
-    const decl = /^\s*(?:let|const|static)\s+(?:mut\s+)?([A-Za-z_]\w*)\s*=\s*(.+?)\s*$/.exec(line);
+    const decl = /^\s*(?:let|const|make)\s+([A-Za-z_]\w*)\s*=\s*(.+?)\s*;?\s*$/.exec(line);
     if (decl && cfg.typeHints) {
       const name = decl[1];
       const type = inferTypeFromExpr(decl[2]);
@@ -91,7 +90,7 @@ export function provideInlayHints(doc: TextDocument, range: Range, prefs?: Parti
       }
     }
 
-    const proc = /\b(?:proc|fn)\s+([A-Za-z_]\w*)\s*\(([^)]*)\)\s*(?:->\s*([A-Za-z_][\w\[\], ]*))?/.exec(line);
+    const proc = /\bproc\s+([A-Za-z_]\w*)\s*\(([^)]*)\)\s*(?:->\s*([A-Za-z_][\w\[\], ./]*))?/.exec(line);
     if (proc && !proc[3] && cfg.returnHints) {
       const inferred = parseProcInferredReturn(lines, i);
       const closeParen = line.indexOf(")", proc.index);
@@ -105,7 +104,7 @@ export function provideInlayHints(doc: TextDocument, range: Range, prefs?: Parti
       }
     }
 
-    const alias = /\b(?:use|pull|import)\s+([A-Za-z_][\w./:]*)\b(?!\s+as\b)/.exec(line);
+    const alias = /\b(?:use|pull)\s+([A-Za-z_][\w./:]*)\b(?!\s+as\b)/.exec(line);
     if (alias && cfg.aliasHints) {
       const p = alias[1];
       const c = line.indexOf(p) + p.length;
@@ -119,7 +118,7 @@ export function provideInlayHints(doc: TextDocument, range: Range, prefs?: Parti
       }
     }
 
-    if (cfg.parameterHints && !/^\s*(proc|fn|entry|match|select|when|if|for|while)\b/.test(line)) {
+    if (cfg.parameterHints && !/^\s*(proc|entry|match|select|when|if|for|loop)\b/.test(line)) {
       const call = /\b([A-Za-z_]\w*)\s*\(([^)]*)\)/g;
       let cm: RegExpExecArray | null;
       while ((cm = call.exec(line)) && out.length < maxHints) {

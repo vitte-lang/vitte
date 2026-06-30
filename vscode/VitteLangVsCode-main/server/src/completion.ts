@@ -128,62 +128,48 @@ const SYMBOL_KIND_LABEL: Record<number, string> = {
  * ========================================================================== */
 
 const SNIPPETS: CompletionItem[] = [
-  ciSnippet("module", "Déclare un module", "Déclare le module courant.",
-    "module ${1:my.module};"),
   ciSnippet("space", "Déclare un espace", "Déclare l’espace courant.",
     "space ${1:std/os/user}"),
-  ciSnippet("import", "Importe un module", "Importe un chemin depuis un autre module.",
-    "import ${1:std::core};"),
+  ciSnippet("pull", "Importe un package", "Importe un package avec un alias explicite.",
+    "pull ${1:std/io} as ${2:io_pkg}"),
   ciSnippet("use", "Importe un symbole", "Importe un chemin depuis un module.",
     "use ${1:std/core/types.i32}"),
+  ciSnippet("export", "Exporte tout le module", "Ré-exporte la surface du module courant.",
+    "export *"),
   ciSnippet("proc", "Déclare une procédure",
     "Procédure avec paramètres et type de retour optionnel.",
     "proc ${1:name}(${2:params})${3: -> ${4:Type}} {\n\t$0\n}"),
-  ciSnippet("fn", "Déclare une fonction (alias)",
-    "Alias de style fonctionnel.",
-    "fn ${1:name}(${2:params})${3: -> ${4:Type}} {\n\t$0\n}"),
   ciSnippet("docproc", "Doc + procédure",
     "Ajoute une docstring puis une procédure.",
     "/// ${1:Summary}\n///\n/// Params:\n/// - ${2:param}: ${3:description}\n/// Returns: ${4:description}\n/// Example:\n/// ${5:example}\nproc ${6:name}(${7:params})${8: -> ${9:Type}} {\n\t$0\n}"),
-  ciSnippet("main", "Point d’entrée", "Déclare la fonction principale.",
-    "proc main() {\n\t$0\n}"),
-  ciSnippet("test", "Déclare un test", "Déclare un bloc de test.",
-    "test \"${1:name}\" {\n\t$0\n}"),
-  ciSnippet("struct", "Déclare une struct", "Structure avec des champs typés.",
-    "struct ${1:Name} {\n\t${2:field}: ${3:Type},\n}"),
   ciSnippet("form", "Déclare un form", "Structure avec des champs typés.",
-    "form ${1:Name} {\n\t${2:field}: ${3:Type},\n}"),
-  ciSnippet("docstruct", "Doc + struct", "Ajoute une docstring puis une struct.",
-    "/// ${1:Summary}\n///\n/// Fields:\n/// - ${2:field}: ${3:description}\n/// Example:\n/// ${4:example}\nstruct ${5:Name} {\n\t${6:field}: ${7:Type},\n}"),
+    "form ${1:Name} {\n\tfield ${2:name}: ${3:Type}\n}"),
   ciSnippet("docform", "Doc + form", "Ajoute une docstring puis un form.",
-    "/// ${1:Summary}\n///\n/// Fields:\n/// - ${2:field}: ${3:description}\n/// Example:\n/// ${4:example}\nform ${5:Name} {\n\t${6:field}: ${7:Type},\n}"),
-  ciSnippet("externproc", "Procédure externe",
-    "Déclare une procédure externe.",
-    "#[extern]\nproc ${1:name}(${2:params})${3: -> ${4:Type}}"),
-  ciSnippet("enum", "Déclare une enum", "Énumération avec variantes.",
-    "enum ${1:Name} {\n\t${2:Variant1},\n\t${3:Variant2}\n}"),
-  ciSnippet("union", "Déclare une union", "Union tagged simple.",
-    "union ${1:Name} {\n\t${2:field}: ${3:Type},\n}"),
+    "/// ${1:Summary}\n///\n/// Fields:\n/// - ${2:field}: ${3:description}\n/// Example:\n/// ${4:example}\nform ${5:Name} {\n\tfield ${6:name}: ${7:Type}\n}"),
+  ciSnippet("trait", "Déclare un trait", "Contrat de capacités.",
+    "trait ${1:Name} {\n\t$0\n}"),
+  ciSnippet("pick", "Déclare un pick", "Somme de variantes nommées.",
+    "pick ${1:Name} {\n\tcase ${2:Variant} {\n\t\t$0\n\t}\n}"),
   ciSnippet("type", "Alias de type", "Déclare un alias de type.",
-    "type ${1:Alias} = ${2:Existing};"),
+    "type ${1:Alias} = ${2:Existing}"),
   ciSnippet("match", "Match expression", "Expression de branchement avec motifs.",
-    "match ${1:expr} {\n\t${2:Pattern} => ${3:expr},\n\t_ => ${0:default}\n}"),
+    "match ${1:expr} {\n\tcase ${2:Pattern} {\n\t\t$0\n\t}\n\totherwise {\n\t}\n}"),
   ciSnippet("ifelse", "If / Else", "Structure conditionnelle complète.",
     "if ${1:cond} {\n\t${2}\n} else {\n\t${0}\n}"),
   ciSnippet("for", "Boucle for", "Boucle for-in sur un itérable.",
     "for ${1:pat} in ${2:iter} {\n\t$0\n}"),
-  ciSnippet("while", "Boucle while", "Boucle conditionnelle.",
-    "while ${1:cond} {\n\t$0\n}"),
   ciSnippet("loop", "Boucle infinie", "Boucle sans fin, utiliser break pour sortir.",
     "loop {\n\t$0\n}"),
   ciSnippet("let", "Binding local", "Déclare une variable locale.",
-    "let ${1:name}${2: : ${3:Type}}${4: = ${5:value}};"),
+    "let ${1:name}${2: : ${3:Type}}${4: = ${5:value}}"),
   ciSnippet("const", "Constante", "Déclare une constante globale.",
-    "const ${1:NAME}: ${2:Type} = ${3:value};"),
-  ciSnippet("static", "Statique", "Déclare un statique global.",
-    "static ${1:NAME}: ${2:Type} = ${3:value};"),
+    "const ${1:NAME}: ${2:Type} = ${3:value}"),
+  ciSnippet("make", "Binding initialisé", "Déclare et initialise un binding.",
+    "make ${1:name} = ${2:value}"),
+  ciSnippet("share", "Export explicite", "Ré-exporte un symbole du module courant.",
+    "share ${1:name}"),
   ciSnippet("print", "Affichage console", "Affiche un message sur la sortie standard.",
-    "println(\"${1:msg}\");"),
+    "println(\"${1:msg}\")"),
   ciSnippet("doc", "Doc comment", "Insert a documentation comment.",
     "/// ${1:Summary}\n///\n/// ${0:Details}")
 ];
@@ -200,16 +186,15 @@ type InferredType = string;
 function extractSymbols(doc: TextDocument): ExtractedSym[] {
   const text = doc.getText();
   const rules: { rx: RegExp; kind: SymbolKind; g: number }[] = [
-    { rx: /^\s*module\s+([A-Za-z_][\w./:]*)/gm,               kind: SymbolKind.Namespace, g: 1 },
     { rx: /^\s*space\s+([A-Za-z_][\w./:]*)/gm,                kind: SymbolKind.Namespace, g: 1 },
-    { rx: /^\s*(?:pub\s+)?(?:fn|proc)\s+([A-Za-z_]\w*)/gm,    kind: SymbolKind.Function,  g: 1 },
-    { rx: /^\s*(?:pub\s+)?struct\s+([A-Za-z_]\w*)/gm,         kind: SymbolKind.Struct,    g: 1 },
-    { rx: /^\s*(?:pub\s+)?form\s+([A-Za-z_]\w*)/gm,           kind: SymbolKind.Struct,    g: 1 },
-    { rx: /^\s*(?:pub\s+)?enum\s+([A-Za-z_]\w*)/gm,           kind: SymbolKind.Enum,      g: 1 },
-    { rx: /^\s*(?:pub\s+)?union\s+([A-Za-z_]\w*)/gm,          kind: SymbolKind.Struct,    g: 1 },
-    { rx: /^\s*(?:pub\s+)?type\s+([A-Za-z_]\w*)/gm,           kind: SymbolKind.Interface, g: 1 },
-    { rx: /^\s*(?:pub\s+)?const\s+([A-Za-z_]\w*)/gm,          kind: SymbolKind.Constant,  g: 1 },
-    { rx: /^\s*(?:pub\s+)?static\s+([A-Za-z_]\w*)/gm,         kind: SymbolKind.Variable,  g: 1 },
+    { rx: /^\s*proc\s+([A-Za-z_]\w*)/gm,                      kind: SymbolKind.Function,  g: 1 },
+    { rx: /^\s*entry\s+([A-Za-z_]\w*)\s+at\s+[A-Za-z_][\w./:]*/gm, kind: SymbolKind.Function, g: 1 },
+    { rx: /^\s*form\s+([A-Za-z_]\w*)/gm,                      kind: SymbolKind.Struct,    g: 1 },
+    { rx: /^\s*pick\s+([A-Za-z_]\w*)/gm,                      kind: SymbolKind.Enum,      g: 1 },
+    { rx: /^\s*trait\s+([A-Za-z_]\w*)/gm,                     kind: SymbolKind.Interface, g: 1 },
+    { rx: /^\s*type\s+([A-Za-z_]\w*)/gm,                      kind: SymbolKind.Interface, g: 1 },
+    { rx: /^\s*const\s+([A-Za-z_]\w*)/gm,                     kind: SymbolKind.Constant,  g: 1 },
+    { rx: /^\s*(?:let|make)\s+([A-Za-z_]\w*)/gm,              kind: SymbolKind.Variable,  g: 1 },
   ];
 
   const out: ExtractedSym[] = [];
@@ -409,9 +394,9 @@ function detectPositionContext(doc: TextDocument, pos: Position): CompletionPosi
   if (inString) return "string";
 
   const linePrefix = getLinePrefix(doc, pos);
-  if (/^\s*(?:import|use|pull)\s+/.test(linePrefix)) return "import";
+  if (/^\s*(?:use|pull)\s+/.test(linePrefix)) return "import";
   if (/:\s*[A-Za-z_0-9<>&[\]|?:.,\s]*$/.test(linePrefix)) return "type";
-  if (/\b(?:as|is|impl|dyn)\s+[A-Za-z_0-9<>&[\]|?:.,\s]*$/.test(linePrefix)) return "type";
+  if (/\b(?:as|is)\s+[A-Za-z_0-9<>&[\]|?:.,/\s]*$/.test(linePrefix)) return "type";
   return "code";
 }
 
@@ -433,7 +418,7 @@ function extractScopedNames(doc: TextDocument, pos: Position): ScopedName[] {
   const out: ScopedName[] = [];
   const seen = new Set<string>();
 
-  const letLike = /\b(?:let|const|static|share)\s+([A-Za-z_]\w*)/g;
+  const letLike = /\b(?:let|const|make|share)\s+([A-Za-z_]\w*)/g;
   let m: RegExpExecArray | null;
   while ((m = letLike.exec(head))) {
     const name = m[1];
@@ -445,7 +430,7 @@ function extractScopedNames(doc: TextDocument, pos: Position): ScopedName[] {
     });
   }
 
-  const params = /\b(?:proc|fn)\s+[A-Za-z_]\w*\s*\(([^)]*)\)/g;
+  const params = /\bproc\s+[A-Za-z_]\w*\s*\(([^)]*)\)/g;
   while ((m = params.exec(head))) {
     const plist = m[1];
     for (const raw of plist.split(",")) {
@@ -465,7 +450,7 @@ function extractScopedNames(doc: TextDocument, pos: Position): ScopedName[] {
 
 function extractDeclaredFunctions(doc: TextDocument): DeclFunction[] {
   const text = doc.getText();
-  const rx = /\b(?:pub\s+)?(?:fn|proc)\s+([A-Za-z_]\w*)\s*\(([^)]*)\)\s*(?:->\s*([A-Za-z_][\w<>\[\]|?:./]*))?/g;
+  const rx = /\bproc\s+([A-Za-z_]\w*)\s*\(([^)]*)\)\s*(?:->\s*([A-Za-z_][\w<>\[\]|?:./]*))?/g;
   const out: DeclFunction[] = [];
   const seen = new Set<string>();
   let m: RegExpExecArray | null;
@@ -525,7 +510,7 @@ function addFunctionCompletionItems(items: CompletionItem[], funcs: DeclFunction
 function inferLocalTypes(doc: TextDocument, pos: Position): Map<string, InferredType> {
   const text = doc.getText().slice(0, doc.offsetAt(pos));
   const out = new Map<string, InferredType>();
-  const rx = /\b(?:let|const|static)\s+([A-Za-z_]\w*)(?:\s*:\s*([A-Za-z_][\w<>[\]|?:./]*))?(?:\s*=\s*([^;\n]+))?/g;
+  const rx = /\b(?:let|const|make)\s+([A-Za-z_]\w*)(?:\s*:\s*([A-Za-z_][\w<>[\]|?:./]*))?(?:\s*=\s*([^;\n]+))?/g;
   let m: RegExpExecArray | null;
   while ((m = rx.exec(text))) {
     const name = m[1];
@@ -548,10 +533,7 @@ function nonNullVariablesInScope(doc: TextDocument, pos: Position): Set<string> 
   const text = doc.getText().slice(0, doc.offsetAt(pos));
   const out = new Set<string>();
   const checks = [
-    /\bif\s+([A-Za-z_]\w*)\s*!=\s*(?:null|nil)\b/g,
-    /\bif\s+(?:null|nil)\s*!=\s*([A-Za-z_]\w*)\b/g,
-    /\bif\s+([A-Za-z_]\w*)\s+is\s+not\s+null\b/g,
-    /\bif\s+([A-Za-z_]\w*)\s+is\s+not\s+nil\b/g,
+    /\bif\s+([A-Za-z_]\w*)\s+is\s+not\s+([A-Za-z_]\w*)\b/g,
   ];
   for (const rx of checks) {
     let m: RegExpExecArray | null;
@@ -566,10 +548,10 @@ function nonNullVariablesInScope(doc: TextDocument, pos: Position): Set<string> 
 function expectedTypeAtPosition(doc: TextDocument, pos: Position): InferredType {
   const prefix = getLinePrefix(doc, pos);
   if (/=\s*$/.test(prefix)) {
-    const m = /\b(?:let|const|static)\s+[A-Za-z_]\w*\s*:\s*([A-Za-z_][\w<>[\]|?:./]*)\s*=\s*$/.exec(prefix);
+    const m = /\b(?:let|const|make)\s+[A-Za-z_]\w*\s*:\s*([A-Za-z_][\w<>[\]|?:./]*)\s*=\s*$/.exec(prefix);
     if (m?.[1]) return m[1].trim();
   }
-  if (/\bif\s+[^\n]*$/.test(prefix) || /\bwhile\s+[^\n]*$/.test(prefix)) return "bool";
+  if (/\bif\s+[^\n]*$/.test(prefix)) return "bool";
   if (/:?\s*string\s*=\s*$/.test(prefix)) return "string";
   return "unknown";
 }
@@ -655,7 +637,7 @@ function addPostErrorRecoveryCompletions(items: CompletionItem[], doc: TextDocum
     });
   }
   const linePrefix = getLinePrefix(doc, pos);
-  if (/^\s*(if|for|while|match)\b[^{\n]*$/.test(linePrefix)) {
+  if (/^\s*(if|for|loop|match|when|otherwise|case)\b[^{\n]*$/.test(linePrefix)) {
     items.push({
       label: "{ ... }",
       kind: CompletionItemKind.Snippet,
@@ -692,7 +674,7 @@ function addRepoFrequentApiCompletions(items: CompletionItem[], token: string, r
 
 function hasPathImport(doc: TextDocument, pathValue: string): boolean {
   const text = doc.getText();
-  const lineRx = new RegExp(`^\\s*(?:use|pull|import)\\s+${escapeRegex(pathValue)}\\b`, "m");
+  const lineRx = new RegExp(`^\\s*(?:use|pull)\\s+${escapeRegex(pathValue)}\\b`, "m");
   return lineRx.test(text);
 }
 
@@ -702,11 +684,11 @@ function buildAutoImportEdit(doc: TextDocument, pathValue: string): LspTextEdit[
   let insertLine = 0;
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i] ?? "";
-    if (/^\s*(space|module)\b/.test(line)) {
+    if (/^\s*space\b/.test(line)) {
       insertLine = i + 1;
       continue;
     }
-    if (/^\s*(use|pull|import)\b/.test(line)) {
+    if (/^\s*(use|pull)\b/.test(line)) {
       insertLine = i + 1;
       continue;
     }
@@ -737,7 +719,7 @@ function diagnosticsCompletion(linePrefix: string): CompletionItem[] {
       sortText: tier(0)
     });
   }
-  if (/^\s*(?:import|use|pull)\s+/.test(linePrefix)) {
+  if (/^\s*(?:use|pull)\s+/.test(linePrefix)) {
     for (const imp of VITTE_PACKAGE_IMPORTS) {
       items.push({
         label: imp,
@@ -881,10 +863,10 @@ function extractDocumentModulePaths(doc: TextDocument): string[] {
     const normalized = (value ?? "").trim().replace(/;$/, "");
     if (normalized.length > 0) out.add(normalized);
   };
-  for (const match of text.matchAll(/^\s*(?:space|module)\s+([A-Za-z_][\w./:-]*)/gm)) {
+  for (const match of text.matchAll(/^\s*space\s+([A-Za-z_][\w./:-]*)/gm)) {
     add(match[1]);
   }
-  for (const match of text.matchAll(/^\s*(?:pull|use|import)\s+([A-Za-z_][\w./:-]*)/gm)) {
+  for (const match of text.matchAll(/^\s*(?:pull|use)\s+([A-Za-z_][\w./:-]*)/gm)) {
     add(match[1]);
   }
   return [...out].sort((a, b) => a.localeCompare(b));
@@ -1045,7 +1027,7 @@ export function provideCompletions(doc: TextDocument, position: Position): Compl
   }
 
   // Contexte: import et autres heuristiques
-  const isImportContext = /^\s*(?:import|use|pull)\s+/.test(linePrefix);
+  const isImportContext = /^\s*(?:use|pull)\s+/.test(linePrefix);
   if (isImportContext) {
     addLocalImportPathCompletions(items, doc, token, range);
   }

@@ -306,7 +306,7 @@ function checkSemicolonHeuristics(
     const L = lines[i];
     if (blockEnders.test(L)) continue;
     if (/{\s*$/.test(L)) continue;
-    if (/\b(if|while|for|match)\b/.test(L)) continue;
+    if (/\b(if|for|loop|match|when|otherwise|case)\b/.test(L)) continue;
 
     if (starters.test(L)) {
       if (!rxLineEndSemicolon.test(L)) {
@@ -472,10 +472,10 @@ function checkStyleConventions(
   const diags: Diagnostic[] = [];
   const lines = text.split(/\r?\n/);
 
-  const rxTypeDecl = /\b(?:struct|form|enum|union|type)\s+([A-Za-z_]\w*)/g;
-  const rxFnDecl = /\b(?:fn|proc)\s+([A-Za-z_]\w*)/g;
-  const rxConstDecl = /\b(?:const|static)\s+([A-Za-z_]\w*)/g;
-  const rxVarDecl = /\blet\s+([A-Za-z_]\w*)/g;
+  const rxTypeDecl = /\b(?:form|pick|trait|type)\s+([A-Za-z_]\w*)/g;
+  const rxFnDecl = /\bproc\s+([A-Za-z_]\w*)/g;
+  const rxConstDecl = /\bconst\s+([A-Za-z_]\w*)/g;
+  const rxVarDecl = /\b(?:let|make)\s+([A-Za-z_]\w*)/g;
 
   for (let i = 0; i < lines.length; i++) {
     const L = lines[i];
@@ -541,7 +541,6 @@ function checkModulePaths(
   const diags: Diagnostic[] = [];
   const lines = text.split(/\r?\n/);
   const rxSpace = /\bspace\s+([A-Za-z0-9_./-]+)/g;
-  const rxModule = /\bmodule\s+([A-Za-z0-9_./: -]+)/g;
 
   for (let i = 0; i < lines.length; i++) {
     const L = lines[i];
@@ -556,21 +555,12 @@ function checkModulePaths(
             DiagnosticSeverity.Hint, uri, RULES.StyleModulePath));
         }
       }
-      for (const m of L.matchAll(rxModule)) {
-        const name = m[1].trim();
-        if (!/^[a-z0-9_./:]+$/.test(name)) {
-          const idx = (m.index ?? 0) + m[0].lastIndexOf(name);
-          diags.push(diag(i, idx, i, idx + name.length,
-            "Chemin de module conseillé en minuscules.",
-            DiagnosticSeverity.Hint, uri, RULES.StyleModulePath));
-        }
-      }
     }
 
     if (!isDisabled(i, RULES.StyleFieldName, lineDisables, blockDisables)) {
-      const m = /(^|\s)([A-Za-z_]\w*)\s*:\s*[^;{},\n]+/.exec(L);
+      const m = /\bfield\s+([A-Za-z_]\w*)\s*:\s*[^;{},\n]+/.exec(L);
       if (m) {
-        const name = m[2];
+        const name = m[1];
         if (!/^[a-z][a-z0-9_]*$/.test(name)) {
           const idx = (m.index ?? 0) + m[0].lastIndexOf(name);
           diags.push(diag(i, idx, i, idx + name.length,

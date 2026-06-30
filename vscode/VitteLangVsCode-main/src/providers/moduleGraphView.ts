@@ -24,7 +24,7 @@ function rxEscape(s: string): string {
 function activeModule(): string | undefined {
   const editor = vscode.window.activeTextEditor;
   if (!editor) return undefined;
-  const m = /^\s*(?:space|module)\s+([A-Za-z_][\w./:]*)/m.exec(editor.document.getText());
+  const m = /^\s*space\s+([A-Za-z_][\w./:]*)/m.exec(editor.document.getText());
   return m?.[1];
 }
 
@@ -44,7 +44,7 @@ async function buildGraph(): Promise<GraphData> {
     } catch {
       continue;
     }
-    const from = /^\s*(?:space|module)\s+([A-Za-z_][\w./:]*)/m.exec(text)?.[1]
+    const from = /^\s*space\s+([A-Za-z_][\w./:]*)/m.exec(text)?.[1]
       ?? vscode.workspace.asRelativePath(uri, false).replace(/\\/g, "/");
     if (!nodeMap.has(from)) {
       nodeMap.set(from, {
@@ -53,7 +53,7 @@ async function buildGraph(): Promise<GraphData> {
         errors: diagMap.get(uri.toString()) ?? 0,
       });
     }
-    const depRx = /^\s*(?:import|use|pull)\s+([A-Za-z_][\w./:]*)/gm;
+    const depRx = /^\s*(?:use|pull)\s+([A-Za-z_][\w./:]*)/gm;
     let m: RegExpExecArray | null;
     while ((m = depRx.exec(text))) {
       const target = m[1] ?? "";
