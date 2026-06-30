@@ -1,395 +1,509 @@
-# AUDIT - Vitte compiler real pipeline
+# Vitte Compiler Engineering Audit
 
-Date: 2026-05-21
+Date: 2026-06-26
+Repo state: `main` @ `12ef79453`
+Source of truth grammar: `src/vitte/grammar/vitte.ebnf`
 
-## Verdict court
+## Scope and method
 
-Le depot contient beaucoup de pipeline compiler reel (frontend, HIR, sema, typeck, MIR, IR, codegen, link artifact), mais le binaire actuel n'est pas encore un compilateur natif complet au sens `source -> objet machine -> linker -> executable`.
+This audit is based only on code, tests, scripts, and generated artifacts present in the repository. If a feature is not demonstrated by code paths, tests, or wired pipeline usage, it is treated as absent or incomplete.
 
-Le point d'entree source est bien `src/vitte/compiler/driver/compiler.vit`. `main(args)` est maintenant cable cote source, mais le runtime CLI actuel vient encore du bootstrap genere tant que stage2 ne compile pas ce point d'entree en executable natif.
+The official grammar source contains 271 rules. The main compiler pipeline audited here is the source-native path around:
 
-## Executables trouves
+- `src/vitte/compiler/main.vit`
+- `src/vitte/compiler/driver/*`
+- `src/vitte/compiler/frontend/*`
+- `src/vitte/compiler/analysis/*`
+- `src/vitte/compiler/middle/*`
+- `src/vitte/compiler/backend/*`
 
-Total fichiers visibles par `find . -type f`: 7929. Fichiers hors caches/build/target/pkgout: 2096.
+## 1. Inventory
 
-```text
-bin/vitte
-bin/vittec
-bin/vittec0
-bin/vittec1
-docs/book/chapters/keywords/scripts/lint_keywords.py
-docs/book/chapters/keywords/scripts/normalize_keywords.py
-docs/book/grammar/scripts/build_railroad.py
-docs/book/grammar/scripts/sync_grammar.py
-docs/book/grammar/scripts/validate_examples.py
-docs/book/scripts/add_representative_examples.py
-docs/book/scripts/check_chapter_length.py
-docs/book/scripts/check_links.py
-docs/book/scripts/check_structure.py
-docs/book/scripts/expand_chapters_to_min_length.py
-docs/book/scripts/generate_poche_chapters.py
-docs/book/scripts/humanize_chapters.py
-docs/book/scripts/lint_keywords_style.py
-docs/book/scripts/qa_book.py
-docs/book/scripts/rewrite_11_20_human.py
-docs/book/scripts/rewrite_first10_human.py
-docs/book/scripts/sync_grammar_surface.py
-editors/geany/install_geany.sh
-editors/geany/uninstall_geany.sh
-scripts/seed/install_seed.sh
-scripts/seed/rotation_report.sh
-scripts/seed/update_manifest.sh
-scripts/seed/verify_seed.sh
-tests/docs/test_ebnf_memory_sync.py
-tests/docs/test_grammar_sync.py
-toolchain/bootstrap.sh
-toolchain/scripts/bootstrap/stage1.sh
-toolchain/scripts/bootstrap/stage2.sh
-toolchain/scripts/bootstrap/verify.sh
-toolchain/scripts/ci/artifacts.sh
-toolchain/scripts/ci/github-actions.sh
-toolchain/scripts/dev/repl.sh
-toolchain/scripts/dev/run-vittec.sh
-toolchain/scripts/install/install-local.sh
-toolchain/scripts/install/install-prefix.sh
-toolchain/scripts/package/audit-debian-deb.sh
-toolchain/scripts/package/bundle-runtime.sh
-toolchain/scripts/package/bundle-stdlib.sh
-toolchain/scripts/package/bundle-toolchain.sh
-toolchain/scripts/package/checksum.sh
-toolchain/scripts/package/make-archive.sh
-toolchain/scripts/package/make-debian-deb.sh
-toolchain/scripts/package/make-debian-uninstall-deb.sh
-toolchain/scripts/package/make-macos-pkg.sh
-toolchain/scripts/package/make-macos-uninstall-pkg.sh
-toolchain/scripts/package/make-tarball.sh
-toolchain/scripts/test/run.sh
-toolchain/scripts/test/stdlib.sh
-toolchain/seed/vittec0.seed
-toolchain/test_bootstrap_reproducibility.sh
-tools/beta_feedback/generate_kpi_report.py
-tools/beta_feedback/update_matrix_from_summary.py
-tools/beta_feedback/validate_feedback_csv.py
-tools/bootstrap_contracts_index_check.sh
-tools/bootstrap_hard_gate.py
-tools/bootstrap_native_fixture_matrix.sh
-tools/bootstrap_native_snapshots.sh
-tools/bootstrap_posix_smoke.sh
-tools/bootstrap_selfhost_repro.sh
-tools/bootstrap_vitte_hard_gate.sh
-tools/build_arduino_projects.sh
-tools/build_book_learning_layer.py
-tools/build_core_projects.sh
-tools/build_docs_site.py
-tools/build_examples_matrix.sh
-tools/build_grammar_extras.py
-tools/build_grammar_practical_page.py
-tools/check_book_pedagogy.py
-tools/check_bootstrap_native_drift.sh
-tools/check_bootstrap_source_coverage.sh
-tools/check_broken_internal_links.py
-tools/check_compiler_entry_lock.sh
-tools/check_compiler_path_typos.sh
-tools/check_diagnostics_migration.sh
-tools/check_docs_en_only.py
-tools/check_docs_perf.py
-tools/check_geany_install.sh
-tools/check_html_page_sizes.py
-tools/check_manifest.sh
-tools/check_module_shape_policy.py
-tools/check_no_duplicate_css.py
-tools/check_no_duplicate_scripts.py
-tools/check_posix_seed_shell.sh
-tools/check_seed_contract.sh
-tools/check_stage2_source_of_truth.sh
-tools/check_stdlib_abi_compat.py
-tools/check_tests.sh
-tools/ci_fast_compiler.sh
-tools/ci_surface_legacy_audit.sh
-tools/cli_diagnostics_snapshots.sh
-tools/compile_all_compiler_files.sh
-tools/compiler_effective_gate/check.py
-tools/compiler_max_gate.sh
-tools/compiler_reachability_audit.py
-tools/compiler_topology/generate_artifacts.py
-tools/compiler_topology/run_checks.py
-tools/completions_fallback_test.sh
-tools/completions_snapshots.sh
-tools/contracts_dashboard.py
-tools/crash_report_snapshots.sh
-tools/determinism_smoke.sh
-tools/diag_snapshots.sh
-tools/docs/check_assets_policy.py
-tools/docs/post_deploy_css_monitor.sh
-tools/docs/refresh_assets_policy.py
-tools/docs/verify_local_pages.sh
-tools/docs_doctor.py
-tools/docs_health_all.sh
-tools/docs_pipeline.sh
-tools/docs_sync_gate.py
-tools/doctor.sh
-tools/dx_hello_prod_bench.py
-tools/explain_snapshots.sh
-tools/ffi/generate_abi_coverage_report.py
-tools/ffi/update_matrix_abi_coverage.py
-tools/ffi/validate_abi_profiles.py
-tools/fix_broken_script_tags.py
-tools/frequent_diag_autofix_check.py
-tools/generate_editor_highlights.py
-tools/generate_legacy_migration_doc.py
-tools/generate_make_targets_doc.py
-tools/generate_vitteos_status.sh
-tools/golden_runner
-tools/highlight_snapshot_emacs.sh
-tools/highlight_snapshot_geany.sh
-tools/highlight_snapshot_nano.sh
-tools/highlight_snapshot_vim.sh
-tools/highlights_coverage.py
-tools/highlights_snapshot.py
-tools/hooks/pre-commit-modules-snapshots.sh
-tools/incremental_cache_smoke.sh
-tools/interproc_opt/generate_artifacts.py
-tools/interproc_opt/run_checks.py
-tools/lint_contract_lockfiles.py
-tools/lint_critical_module_contracts.py
-tools/lint_critical_runtime_matrix.py
-tools/lint_docs_tokens.py
-tools/lint_experimental_modules.py
-tools/lint_legacy_import_paths.py
-tools/lint_module_naming.py
-tools/lint_module_tree.py
-tools/lint_new_public_packages_have_snapshots.py
-tools/lint_no_std_imports.py
-tools/lint_package_layout.py
-tools/lint_packages_governance.py
-tools/lint_plugin_manifest.py
-tools/lint_plugin_sandbox_permissions.py
-tools/lint_public_modules_have_snapshots.py
-tools/lint_stdlib_api.py
-tools/llvm/generate_artifacts.py
-tools/llvm/run_checks.py
-tools/llvm/write_native_manifest.py
-tools/lsp_completion_bench.py
-tools/migrate_book_pedagogy_target.py
-tools/migration_fix_preview.sh
-tools/minify_assets.sh
-tools/mir_opt/generate_artifacts.py
-tools/mir_opt/run_checks.py
-tools/mod_migrate_imports.sh
-tools/modules_snapshots.sh
-tools/modules_tests.sh
-tools/native_json_schema_contract_test.sh
-tools/negative_tests.sh
-tools/new_module_starter.sh
-tools/optimization_phase2/generate_kpi_report.py
-tools/optimization_phase2/update_matrix_from_summary.py
-tools/optimization_phase2/validate_phase2_csv.py
-tools/package_check_all.sh
-tools/package_check_portable.sh
-tools/packages_contract_snapshots.sh
-tools/parse_modules_tests.sh
-tools/parse_tests.sh
-tools/parse_watch.sh
-tools/parser_bootstrap_surface_test.py
-tools/parser_lexer_fuzz_smoke.py
-tools/perf_budget_check.py
-... (35 more)
-```
+| Component | Status | Score | Why |
+| --- | --- | ---: | --- |
+| Lexer | Partial | 40% | Real scanner exists in `frontend/lexer`, but it does not cover the full grammar token set. |
+| Parser | Partial | 45% | Broad parsing surface exists, but a meaningful part of the grammar is only accepted superficially or skipped. |
+| AST | Partial | 50% | Rich AST enums exist, but many variants are not constructed reliably by the parser. |
+| HIR | Present | 55% | Real HIR exists and is used by the middle pipeline. |
+| Name resolution | Partial | 35% | Local/import resolution is real; full module/trait/generic resolution is not demonstrated. |
+| Semantic analysis | Partial | 35% | Real passes exist, but only a narrow semantic subset is proven. |
+| Type checker | Partial | 35% | Production typeck does basic checks; advanced typing is not demonstrated end-to-end. |
+| Borrow checker | Present | 70% | Ownership, moves, borrows, lifetime-like checks, canonical call-signature consumption, and targeted tests are present. |
+| Constant evaluation | Partial | 45% | Real evaluator exists for a subset, especially const/static-assert oriented flows. |
+| MIR | Present | 50% | MIR is real, validated, and used in lowering, but not yet a mature optimization IR. |
+| Optimizer | Partial | 20% | Pass pipeline exists mostly as infrastructure; optimization depth is limited. |
+| Canonical IR | Present | 50% | Backend IR exists and is part of the pipeline. |
+| Backend C | Present | 60% | Most credible backend today; real lowering/emission pipeline is present. |
+| Backend LLVM | Partial | 30% | LLVM-related surfaces exist and now consume canonical IR signature and nominal-call metadata, but the path is still not production-grade. |
+| Backend ASM/native | Partial | 30% | Native codegen machinery exists, but maturity and feature depth remain limited. |
+| Backend WASM | Absent in practice | 5% | Only stub-level support is demonstrated. |
+| Linker | Partial | 30% | Internal link artifact modeling exists, not a full demonstrated system linker replacement. |
+| Runtime | Partial | 25% | Runtime responsibilities are split across C backend runtime, stdlib, and tools. |
+| Stdlib | Partial | 35% | Broad module surface exists, but completeness is not demonstrated. |
+| LSP | Partial | 15% | LSP-shaped diagnostics exist; a full language server is not demonstrated. |
+| Formatter | Partial | 10% | Formatter exists, but it is whitespace-oriented rather than syntax-aware. |
+| Linter | Partial | 20% | A few lint rules are implemented and tested. |
+| Documentation | Partial | 50% | Large doc surface exists, but implementation alignment is uneven. |
+| Tests | Present | 68% | Large suite exists, and more analysis/backend suites now run through stable strict gates, but coverage is still stronger for selected surfaces than for full semantic completeness. |
+| Bootstrap | Present | 80% | Seed, stages, gates, and real-native checks are well developed. |
+| Self-hosting | Partial | 50% | Self-host trajectory is real, with stronger strict-gate coverage, but full parity/closure is not yet demonstrated. |
 
-## Vrai main CLI
+## 2. Code audit
 
-- Entree stage2 declaree: `src/vitte/compiler/driver/compiler.vit`.
-- `src/vitte/compiler/driver/compiler.vit::main(args)`: dispatcher source cable.
-- Commandes runtime observees par `./bin/vittec --help`:
+### Strengths
 
-```text
-vittec2 stage2 compiler driver
-version: vittec2 stage2-vitte 0.1.0
-commands: parse check build-native dump-native-ir build selfhost-source --version --help
-flags: --src PATH --out PATH --stage NAME --trace-pipeline --strict --dump-ast-json --dump-hir-json --dump-mir-json --diagnostics-json
-```
+- Real multi-stage compiler structure exists: frontend, analysis, HIR, MIR, IR, backends, bootstrap.
+- The bootstrap and real-native gating story is stronger than the average component maturity.
+- Borrow checking is one of the most substantial implemented subsystems.
+- The repository has serious testing and tooling volume.
+- Canonical ownership/signature metadata now flows through HIR, MIR, IR, borrowck, C lowering, and LLVM lowering on the proven path.
 
-## Commandes build/check/run/test
+### Technical debt and fragility
 
-- `vittec check tests/golden/frontend/fixtures/hello_min.vit`: rc=0.
-- `vittec build tests/golden/frontend/fixtures/hello_min.vit -o target/audit_hello`: rc=2.
-- `vittec run tests/golden/frontend/fixtures/hello_min.vit`: rc=2.
-- `vittec test tests/golden/frontend/fixtures/hello_min.vit`: rc=2.
+- The declared language surface is significantly larger than the reliably implemented one.
+- The frontend is architecturally split between a broad token-driven parser and a second AST reconstruction path; those paths do not fully agree.
+- Canonical backend code under `src/vitte/compiler/backend/*` still coexists with legacy/adapter surfaces under `src/vitte/compiler/backends/*`, which increases ambiguity even though the canonical path is better defined than before.
+- Some “live-looking” frontend modules appear stale or internally inconsistent.
 
-Sorties importantes:
+### Concrete inconsistencies
 
-```text
-[vittec2][error] E_CLI_STAGE: unsupported stage:  (hint: supported: stage1)
-[vittec2][error] E_CLI_COMMAND: unknown command: run (hint: use --help to list commands)
-[vittec2][error] E_CLI_COMMAND: unknown command: test (hint: use --help to list commands)
-```
+- `src/vitte/compiler/frontend/parse/lookahead.vit` imports `frontend/lex/token`, while the actual directory is `frontend/lexer`.
+- `lookahead.vit` and `frontend/grammar_alignment_checker.vit` reference token kinds such as `Newline`, `Comment`, `Identifier`, `LeftBrace`, `RightBrace` that do not exist in `frontend/lexer/token.vit`.
+- `./bin/vitte check` currently succeeds on such files, which indicates the compiler’s own internal consistency checks are still too weak.
+- `tools/parser_sync_coverage_report.py` reports parser sync success while checking only a very small subset of the grammar. It cannot support claims of full EBNF coverage.
 
-## Graphe du pipeline reel
+### Dead code / likely stale code
 
-```mermaid
-flowchart TD
-  A[source .vit] --> B[frontend_run]
-  B --> C[lexer + parser]
-  C --> D[AST / FrontendOutput]
-  D --> E[lower_ast_to_hir]
-  E --> F[validate_hir]
-  F --> G[run_sema_hir]
-  G --> H[run_typeck_hir]
-  H --> I[analysis_run_prechecked / borrowck]
-  H --> J[lower_hir_to_mir]
-  J --> K[validate_mir]
-  K --> L[lower_mir_as_ir_module]
-  L --> M[verify_unit]
-  M --> N[run_codegen_x86_64 / run_codegen_llvm_with_profile]
-  N --> O[pseudo object text today]
-  O --> P[link_ir_unit_with_kind]
-  P --> Q[LinkArtifact today]
-  Q -. missing .-> R[native binary]
-```
+- `src/vitte/compiler/frontend/parse/lookahead.vit` is a strong candidate for stale or unused code.
+- `src/vitte/compiler/frontend/grammar_alignment_checker.vit` appears semantically out of sync with the active token API.
+- Several legacy backend entry points look more like placeholder compatibility surfaces than production paths.
 
-## Modules compiler/*
+## 3. Parser audit
 
-- Modules `.vit` sous `src/vitte/compiler`: 220.
-- Modules non-test atteignables depuis `driver/compiler`: 194 / 194.
-- Modules non-test atteignables depuis les racines de pipeline reel (`driver/compile`, `driver/pipeline`, `backend/pipeline`): 61 / 194.
+### What exists
 
-## Modules morts ou non utilises par le pipeline reel
+The parser has real entry points for declarations, statements, expressions, types, and patterns:
 
-```text
-vitte/compiler/analysis/borrowck/lifetimes
-vitte/compiler/analysis/borrowck/loans
-vitte/compiler/analysis/borrowck/mod
-vitte/compiler/analysis/borrowck/moves
-vitte/compiler/analysis/borrowck/ownership
-vitte/compiler/analysis/borrowck/regions
-vitte/compiler/analysis/const_eval/evaluator
-vitte/compiler/analysis/const_eval/folding
-vitte/compiler/analysis/const_eval/interpreter
-vitte/compiler/analysis/const_eval/mod
-vitte/compiler/analysis/lint/engine
-vitte/compiler/analysis/lint/mod
-vitte/compiler/analysis/lint/report
-vitte/compiler/analysis/lint/rules
-vitte/compiler/analysis/mod
-vitte/compiler/analysis/sema/mod
-vitte/compiler/analysis/sema/modules
-vitte/compiler/analysis/sema/names
-vitte/compiler/analysis/sema/resolver
-vitte/compiler/analysis/sema/visibility
-vitte/compiler/analysis/static/mod
-vitte/compiler/analysis/typeck/mod
-vitte/compiler/backend/codegen/emitter
-vitte/compiler/backend/codegen/instruction_select
-vitte/compiler/backend/codegen/machine
-vitte/compiler/backend/codegen/mod
-vitte/compiler/backend/codegen/object
-vitte/compiler/backend/codegen/register_alloc
-vitte/compiler/backend/ir/block
-vitte/compiler/backend/ir/function
-vitte/compiler/backend/ir/instruction
-vitte/compiler/backend/ir/mod
-vitte/compiler/backend/ir/module
-vitte/compiler/backend/ir/verify
-vitte/compiler/backend/link/mod
-vitte/compiler/backend/mod
-vitte/compiler/backend/target/mod
-vitte/compiler/backend/target/riscv64
-vitte/compiler/backend/target/x86_64
-vitte/compiler/backends/backend_infrastructure
-vitte/compiler/backends/c_emit
-vitte/compiler/backends/llvm_bindings/mod
-vitte/compiler/backends/llvm_emit
-vitte/compiler/backends/vitte_emit/abi_bridge
-vitte/compiler/backends/vitte_emit/cfg
-vitte/compiler/backends/vitte_emit/config
-vitte/compiler/backends/vitte_emit/contracts
-vitte/compiler/backends/vitte_emit/emit
-vitte/compiler/backends/vitte_emit/intrinsics
-vitte/compiler/backends/vitte_emit/ir
-vitte/compiler/backends/vitte_emit/lowering
-vitte/compiler/backends/vitte_emit/mod
-vitte/compiler/backends/vitte_emit/passes
-vitte/compiler/backends/vitte_emit/pipeline
-vitte/compiler/backends/vitte_emit/types
-vitte/compiler/backends/vitte_emit/validate
-vitte/compiler/backends/wasm/mod
-vitte/compiler/diagnostics/json
-vitte/compiler/diagnostics/lsp
-vitte/compiler/diagnostics/mod
-vitte/compiler/diagnostics/render
-vitte/compiler/diagnostics/report
-vitte/compiler/driver/cli
-vitte/compiler/driver/compiler
-vitte/compiler/driver/mod
-vitte/compiler/frontend/ast/mod
-vitte/compiler/frontend/ast/pretty
-vitte/compiler/frontend/ast/visitor
-vitte/compiler/frontend/grammar_alignment_checker
-vitte/compiler/frontend/lexer/mod
-vitte/compiler/frontend/macros/errors
-vitte/compiler/frontend/macros/mod
-vitte/compiler/frontend/mod
-vitte/compiler/frontend/parse/lookahead
-vitte/compiler/frontend/parse/mod
-vitte/compiler/frontend/parse/precedence
-vitte/compiler/frontend/source_map
-vitte/compiler/infrastructure/diagnostics/colors
-vitte/compiler/infrastructure/diagnostics/diagnostic
-vitte/compiler/infrastructure/diagnostics/emitter
-vitte/compiler/infrastructure/diagnostics/labels
-vitte/compiler/infrastructure/diagnostics/mod
-vitte/compiler/infrastructure/diagnostics/suggestions
-vitte/compiler/infrastructure/errors/code
-vitte/compiler/infrastructure/errors/mod
-vitte/compiler/infrastructure/errors/registry
-vitte/compiler/infrastructure/errors/severity
-vitte/compiler/infrastructure/incremental/dep_graph
-vitte/compiler/infrastructure/incremental/fingerprint
-vitte/compiler/infrastructure/incremental/invalidation
-vitte/compiler/infrastructure/incremental/mod
-vitte/compiler/infrastructure/incremental/reuse
-vitte/compiler/infrastructure/mod
-vitte/compiler/infrastructure/session/config
-vitte/compiler/infrastructure/session/context
-vitte/compiler/infrastructure/session/files
-vitte/compiler/infrastructure/session/mod
-vitte/compiler/infrastructure/session/options
-vitte/compiler/ir/ast
-vitte/compiler/ir/hir_to_mir_lowering
-vitte/compiler/ir/mir_extended
-vitte/compiler/ir/mir_optimizations
-vitte/compiler/ir/pipeline
-vitte/compiler/middle/borrow/checks
-vitte/compiler/middle/borrow/mod
-vitte/compiler/middle/borrow/regions
-vitte/compiler/middle/dataflow/cfg
-vitte/compiler/middle/dataflow/liveness
-vitte/compiler/middle/dataflow/mod
-vitte/compiler/middle/hir/builder
-vitte/compiler/middle/hir/control_flow
-vitte/compiler/middle/hir/mod
-vitte/compiler/middle/hir/pretty
-vitte/compiler/middle/infer/constraints
-vitte/compiler/middle/infer/mod
-vitte/compiler/middle/infer/solver
-vitte/compiler/middle/lower/lowering_context
-vitte/compiler/middle/lower/mod
-vitte/compiler/middle/mir/builder
-vitte/compiler/middle/mir/dataflow
-vitte/compiler/middle/mir/mod
-vitte/compiler/middle/mir/pretty
-vitte/compiler/middle/mir/transform
-vitte/compiler/middle/mod
-vitte/compiler/middle/typecheck/diagnostics
-vitte/compiler/middle/typecheck/mod
-vitte/compiler/middle/typecheck/rules
-vitte/compiler/mod
-vitte/compiler/prelude
-vitte/compiler/version
-```
+- `parse_decl`
+- `parse_stmt`
+- `parse_expr`
+- `parse_type_expr`
+- `parse_pattern`
+- `parse_proc_decl`
+- `parse_match_expr`
 
-## Placeholders / stubs / mocks / unimplemented
+It also has AST-building helpers such as:
 
-```text
-No high-priority placeholder remains in the active compiler entry surface after the cleanup pass.
-```
+- `build_ast_module`
+- `parse_ast_expr_from_tokens`
+- `parse_stmt_from_tokens`
+- `parse_block_stmts`
+
+### What is implemented well enough to count as present
+
+- Core items: `space`, `use`, `export`, `const`, `static`, `global`, `type`, `proc`, `test`, `bench`
+- Core statements: `let`, `const`, `set`, `give`, `if`, `while`, `for`, `loop`, `match`, `unsafe`, `defer`
+- Core expressions: literals, identifiers/paths, unary/binary operators, calls, indexing, members, blocks
+
+### What is only superficially implemented
+
+Many advanced declaration families are parsed at the surface but largely skipped rather than lowered into robust typed AST structures:
+
+- `trait_decl`
+- `impl_decl`
+- `extern_block`
+- `query_decl`
+- `compiler_decl`
+- `pass_decl`
+- `backend_decl`
+- `diagnostic_decl`
+- `macro_decl`
+- parts of `opaque_type_decl`
+
+The same pattern appears for several expression and statement forms where parsing support exists but AST construction or semantics are incomplete:
+
+- `try_stmt`
+- `asm_stmt`
+- `emit_stmt`
+- `panic_stmt`
+- `assert_stmt`
+- `break_stmt`
+- `continue_stmt`
+- `unreachable_stmt`
+- `select_stmt`
+- `when_stmt`
+- `with_stmt`
+- `resource_lit`
+- `map_lit`
+- `set_lit`
+- `proc_expr`
+- `lambda_expr`
+- `await_suffix`
+- `slice_expr`
+- `builtin_expr`
+
+### Missing or incomplete EBNF coverage
+
+The repository contains the full 271-rule grammar, but the implementation does not demonstrate full rule-by-rule coverage with AST construction, diagnostics, and tests. The largest missing or incomplete areas are:
+
+- advanced top-level compiler/meta declarations
+- trait/impl/associated type semantics
+- advanced type grammar
+- advanced pattern grammar
+- several statement forms beyond the core imperative subset
+- several container/member forms
+- parts of async/resource/diagnostic/backend declaration syntax
+
+### Parser design issue
+
+There is a concrete divergence between surface parsing and AST reconstruction for control flow. For example, AST rebuilding for `if` and `while` expects a parenthesized condition in places where the surface parser does not require that shape. This is a real correctness risk.
+
+## 4. Lexer audit
+
+### Implemented
+
+The lexer recognizes:
+
+- identifiers and keywords
+- integers and floats
+- double-quoted strings
+- comments
+- single-char and selected multi-char symbols
+
+### Missing tokens relative to the grammar
+
+The following grammar-relevant tokens are not correctly demonstrated in the active scanner:
+
+- char literals using single quotes
+- `~`
+- `&&`
+- `||`
+- `<<=`
+- `>>=`
+
+### Design limitation
+
+`TokenKind` is currently too coarse for some internal consumers. Several frontend files expect finer token categories that the active token model does not provide.
+
+## 5. AST audit
+
+### Present and used
+
+The AST layer is broad and includes items, statements, expressions, types, and patterns. Core nodes are actively used:
+
+- local declarations and assignments
+- control flow
+- match
+- basic calls and operators
+- core item declarations
+
+### Incomplete or inconsistently built
+
+Many enum variants exist without strong evidence that they are reliably constructed by the parser in the production path. These include significant parts of:
+
+- `AstExprKind`
+- `AstStmtKind`
+- `AstTypeKind`
+- `AstPatternKind`
+
+### Variants with weak construction evidence
+
+Based on parser-path inspection, the following families are especially suspect:
+
+- `Await`, `Yield`, `Closure`, `Slice`, `Macro`, `Comptime`, `Resource`
+- statement kinds for `Try`, `Asm`, `Emit`, `Panic`, `Break`, `Continue`, `Unreachable`
+- advanced type forms such as trait objects, infer, self type, never type, const/variadic/future/result forms
+- advanced patterns such as slice/rest/variant/typed binding patterns
+
+## 6. HIR audit
+
+- HIR exists in `src/vitte/compiler/middle/hir/hir.vit`.
+- It is used by the active middle pipeline.
+- It carries more surface area than the proven frontend subset feeding it.
+- The main issue is not absence, but mismatch between HIR breadth and frontend/type-system completeness.
+
+Verdict: HIR is real and structurally important, but only moderately mature.
+
+## 7. Semantic analysis audit
+
+### Demonstrated
+
+- local symbol introduction
+- duplicate binding diagnostics
+- unresolved name diagnostics
+- basic import resolution
+- some projected/member/index target handling
+
+### Not demonstrated as complete
+
+- full module visibility rules
+- robust namespace layering
+- trait resolution
+- impl lookup
+- associated items
+- generic parameter and constraint solving
+- full extern/import/module semantics
+
+Verdict: sema exists, but it is still a narrow semantic core rather than a full language semantics engine.
+
+## 8. Type checker audit
+
+### Checks that are clearly present
+
+- unknown inferred type rejection for some `let` forms
+- assignment compatibility checks
+- boolean/truthy condition checks for `if`, `while`, and `static_assert`
+- some match fallback/exhaustiveness-related checking
+
+### Missing or not demonstrated
+
+- generic inference and unification
+- trait solving
+- impl selection
+- richer coercions
+- full advanced callable/signature validation semantics beyond the now-canonical param transport
+- robust algebraic type checking
+- full pattern typing
+- deep exhaustiveness
+- effect/async typing
+
+There is also an architectural split: a `complete` typeck path exists, but the production pipeline uses `run_typeck_hir`. That indicates an unfinished migration rather than a single hardened type-checker.
+
+## 9. Borrow checker audit
+
+### Demonstrated
+
+- ownership tracking
+- moves
+- mutable/immutable borrow conflict checks
+- return-of-local-reference checks
+- partial move scenarios
+- scope-sensitive borrow ending in tests
+- call handling that consumes canonical MIR function params, including impl-method-style signatures
+
+### Missing or uncertain
+
+- full language-wide integration across all advanced types and syntax
+- proof of complete lifetime semantics on the scale of Rustc
+- stronger rejection of malformed MIR/IR ownership and nominal-call forms before all backend consumers
+
+Verdict: borrow checking is one of the strongest subsystems in the repository.
+
+## 10. MIR audit
+
+### Present
+
+- MIR types and structures
+- lowering from HIR
+- MIR validation
+- MIR participation in the backend pipeline
+- canonical function/signature metadata carried into lower backend stages
+
+### Missing or not demonstrated
+
+- full SSA form
+- sophisticated CFG optimization pipeline
+- a mature pass ecosystem
+- complete hardening of validator rules for canonical params, borrow forms, and dispatch targets
+
+Verdict: MIR is real and useful, but not yet a high-end optimization IR.
+
+## 11. Backend audit
+
+### C backend
+
+- Status: present
+- Strength: strongest backend path today
+- Missing: proof of full language lowering coverage, complete runtime integration, broader platform confidence
+
+### LLVM backend
+
+- Status: partial
+- Strength: canonical IR emission exists and now consumes canonical borrow ABI and nominal-call metadata
+- Missing: evidence of a canonical, production-grade LLVM path with deep validation and target completeness
+
+### ASM/native backend
+
+- Status: partial
+- Strength: instruction selection and emitter/codegen machinery exist
+- Missing: demonstrated completeness across language surface and targets
+
+### WASM backend
+
+- Status: effectively absent
+- Missing: real codegen pipeline
+
+## 12. Runtime audit
+
+### Demonstrated
+
+- some backend C runtime hooks
+- panic/runtime support surfaces
+- stdlib-facing host/runtime assumptions
+
+### Not demonstrated as mature runtime subsystems
+
+- allocator/runtime memory model completeness
+- collections runtime guarantees
+- scheduler/threads maturity
+- async runtime maturity
+- IO runtime completeness
+
+Verdict: runtime exists as a fragmented support layer, not yet as a clearly complete standalone subsystem.
+
+## 13. Stdlib audit
+
+### Broad families present in source tree
+
+- `core`
+- `collections`
+- `io`
+- `path`
+- `network`
+- `threading`
+- `async`
+- `json`
+- `crypto`
+- `encoding`
+- `compression`
+- `data`
+- `ffi`
+- `kernel`
+- `math`
+
+### Completed modules
+
+No module is marked “complete” in this audit, because the repository does not provide enough implementation proof to justify that claim conservatively.
+
+### Incomplete modules
+
+All families above should currently be considered incomplete until a stronger implementation contract and coverage story exists.
+
+## 14. Tests audit
+
+### Stronger coverage areas
+
+- lexer
+- parser core paths
+- borrow checker
+- bootstrap/native gates
+- backend surface audits
+- strict bridge execution of promoted analysis, middle, and backend suites
+
+### Weaker coverage areas
+
+- full rule-by-rule EBNF conformance
+- semantic completeness for traits/impls/generics/modules
+- end-to-end type-system completeness
+- advanced backend correctness beyond the promoted canonical borrow/nominal-call subset
+- runtime and stdlib behavioral contracts
+
+### Overall assessment
+
+The test volume is high, but the suite is better at protecting selected surfaces and gates than at proving complete language/compiler correctness.
+
+## 15. Documentation audit
+
+### Present
+
+- language/spec docs
+- compiler architecture docs
+- backend docs
+- bootstrap/self-host docs
+- generated grammar/book/docs site
+
+### Gaps
+
+- implementation status is not always clearly separated from aspirational or declarative surface
+- grammar documentation is much broader than proven parser coverage
+- stdlib docs do not prove stdlib maturity
+
+Verdict: documentation is broad and valuable, but it currently overstates practical implementation breadth if read as a capability contract.
+
+## 16. Main grammar violations and mismatches
+
+These are the clearest mismatches between the official grammar and demonstrated implementation:
+
+- official grammar contains char literals, active lexer does not prove them
+- official grammar uses operators/tokens not recognized by the active scanner
+- official grammar contains broad trait/impl/backend/compiler declaration families with no demonstrated full AST+sema pipeline
+- official grammar contains broader pattern/type/resource/async syntax than the production parser/typeck path proves
+
+## 17. Roadmap to self-hosting
+
+### Phase 1: Frontend correctness
+
+- Goal: align lexer, parser, AST construction, diagnostics, and tests with the official EBNF
+- Dependencies: none
+- Difficulty: high
+- Estimate: 4 to 8 weeks
+- Main files: `frontend/lexer/*`, `frontend/parse/*`, `frontend/ast/*`, `grammar/vitte.ebnf`, parser/lexer tests
+- Validation: full grammar coverage matrix, zero stale frontend token consumers, no parser/AST divergence
+
+### Phase 2: Single semantic core
+
+- Goal: harden sema and converge on one production type-checking path
+- Dependencies: phase 1
+- Difficulty: high
+- Estimate: 6 to 10 weeks
+- Main files: `analysis/sema/*`, `analysis/typeck/*`, HIR typing/lowering tests
+- Validation: modules/imports/visibility/core generics/type rules tested end-to-end
+
+### Phase 3: Intermediate representation contract
+
+- Goal: define and enforce the supported AST -> HIR -> MIR subset
+- Dependencies: phases 1 and 2
+- Difficulty: medium/high
+- Estimate: 3 to 6 weeks
+- Main files: `middle/*`, HIR/MIR validators, pipeline tests
+- Validation: every supported frontend construct lowers cleanly and is validated, and invalid canonical params/borrow/dispatch forms are rejected deterministically
+
+### Phase 4: Canonical backend closure
+
+- Goal: choose one reference backend path and isolate legacy backend surfaces
+- Dependencies: phases 1 to 3
+- Difficulty: high
+- Estimate: 4 to 8 weeks
+- Main files: `backend/*`, `backends/*`, driver pipeline, emission tests
+- Validation: `bin/vitte build src/vitte/compiler/main.vit -o ...` succeeds through the canonical path only
+
+### Phase 5: Self-host parity
+
+- Goal: reach reproducible self-hosted closure without bootstrap bridge dependencies
+- Dependencies: phases 1 to 4
+- Difficulty: very high
+- Estimate: 6 to 12 weeks
+- Main files: bootstrap scripts, compiler driver, backend runtime/link path, stage gates
+- Validation: stage2/stage3 parity, reproducible outputs, mandatory real-native success gates
+
+## 18. Absolute priorities
+
+1. Fix lexer coverage to match the official grammar.
+2. Replace shallow parser sync checks with a real 271-rule coverage matrix.
+3. Unify parser surface parsing and AST construction.
+4. Harden sema/typeck so the compiler catches its own internal inconsistencies.
+5. Tighten MIR/IR validation around the canonical ownership and nominal-call model while continuing to quarantine legacy backend surfaces.
+
+## 19. Main risks
+
+- false confidence from wide surface area with shallow implementation
+- frontend drift hidden by weak internal checking
+- semantic migration split between multiple partially overlapping systems
+- backend ambiguity between canonical and legacy paths, despite recent canonicalization progress
+- self-hosting blocked by correctness debt rather than by missing infrastructure
+
+## 20. Top five strengths
+
+1. Real compiler architecture exists across all major stages.
+2. Bootstrap and real-native engineering discipline are strong.
+3. Borrow checking is significantly more mature than most other advanced subsystems.
+4. The repository already has serious testing and audit tooling.
+5. The path to self-hosting is explicit and technically plausible.
+
+## 21. Final conclusion
+
+The Vitte compiler is not a toy frontend anymore. It has a real compiler-shaped architecture, a credible bootstrap story, a meaningful HIR/MIR pipeline, and one notably solid advanced subsystem in borrow checking.
+
+The main problem is not lack of ambition or lack of code. It is the gap between declared surface and proven implementation. The official grammar, AST surface, backend surface, and documentation all describe a language/compiler that is broader than the subset the repository currently demonstrates reliably. Recent work substantially improved canonical ownership/signature flow and stable gate coverage, but the next bottleneck is now validator hardening and frontend/spec alignment rather than raw pipeline wiring.
+
+Conservative overall maturity: `46%`.
