@@ -39,7 +39,8 @@
 ![aarch64](https://img.shields.io/badge/AArch64-supported-2563EB)
 ![riscv64](https://img.shields.io/badge/RISC--V-supported-2563EB)
 ![i386](https://img.shields.io/badge/i386-supported-2563EB)
-
+![i686](https://img.shields.io/badge/i386-supported-2563EB)
+![Intel Pentium](https://img.shields.io/badge/i386-supported-2563EB)
 Vitte is a modern systems programming language and compiler designed around explicit compilation stages, deterministic builds, memory safety, and long-term maintainability.
 
 ## Compiler progress
