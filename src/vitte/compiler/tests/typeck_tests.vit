@@ -1,6 +1,6 @@
 space vitte/compiler/tests/typeck_tests
 
-use vitte/compiler/analysis/typeck/checker.{ run_typeck_hir }
+use vitte/compiler/analysis/typeck/api.{ run_production_typeck_hir }
 use vitte/compiler/analysis/typeck/errors.{ ExprTypeResult, TypeckResult }
 use vitte/compiler/analysis/typeck/infer.{ infer_call_type, type_binding }
 use vitte/compiler/diagnostics/diagnostic.{ Diagnostic, DiagnosticPhase, DiagnosticSeverity, SourceSpan }
@@ -202,7 +202,7 @@ proc test_valid_numeric_flow() -> bool {
   let source: string = "proc main() { let x = 1; set x = x + 1; give x; }\n";
   let fe: FrontendOutput = frontend_run("typeck_valid_numeric.vit", source);
   let hir = lower_ast_to_hir(fe);
-  let result: TypeckResult = run_typeck_hir(hir);
+  let result: TypeckResult = run_production_typeck_hir(hir);
   give fe.valid and result.valid and len(result.diagnostics) == 0;
 }
 
@@ -210,7 +210,7 @@ proc test_assign_mismatch() -> bool {
   let source: string = "proc main() { let x = 1; set x = \"oops\"; give x; }\n";
   let fe: FrontendOutput = frontend_run("typeck_assign_mismatch.vit", source);
   let hir = lower_ast_to_hir(fe);
-  let result: TypeckResult = run_typeck_hir(hir);
+  let result: TypeckResult = run_production_typeck_hir(hir);
   give has_code(result, "TYPECK_E_ASSIGN_MISMATCH");
 }
 
@@ -218,7 +218,7 @@ proc test_assign_mismatch_carries_rich_diagnostic_context() -> bool {
   let source: string = "proc main() { let x = 1; set x = \"oops\"; give x; }\n";
   let fe: FrontendOutput = frontend_run("typeck_assign_mismatch_rich.vit", source);
   let hir = lower_ast_to_hir(fe);
-  let result: TypeckResult = run_typeck_hir(hir);
+  let result: TypeckResult = run_production_typeck_hir(hir);
   if len(result.diagnostics) == 0 {
     give false;
   }
@@ -240,7 +240,7 @@ proc test_binary_mismatch() -> bool {
   let source: string = "proc main() { let x = 1 + \"oops\"; give x; }\n";
   let fe: FrontendOutput = frontend_run("typeck_binary_mismatch.vit", source);
   let hir = lower_ast_to_hir(fe);
-  let result: TypeckResult = run_typeck_hir(hir);
+  let result: TypeckResult = run_production_typeck_hir(hir);
   give has_code(result, "TYPECK_E_BINARY_MISMATCH");
 }
 
@@ -248,7 +248,7 @@ proc test_binary_mismatch_carries_expected_found_context() -> bool {
   let source: string = "proc main() { let x = 1 + \"oops\"; give x; }\n";
   let fe: FrontendOutput = frontend_run("typeck_binary_mismatch_rich.vit", source);
   let hir = lower_ast_to_hir(fe);
-  let result: TypeckResult = run_typeck_hir(hir);
+  let result: TypeckResult = run_production_typeck_hir(hir);
   let diag = diagnostic_by_code(result, "TYPECK_E_BINARY_MISMATCH");
   give diag.valid
     and diag.rule == "binary operator operand compatibility"
@@ -262,7 +262,7 @@ proc test_invalid_deref() -> bool {
   let source: string = "proc main() { let x = 1; let y = *x; give y; }\n";
   let fe: FrontendOutput = frontend_run("typeck_invalid_deref.vit", source);
   let hir = lower_ast_to_hir(fe);
-  let result: TypeckResult = run_typeck_hir(hir);
+  let result: TypeckResult = run_production_typeck_hir(hir);
   give has_code(result, "TYPECK_E_INVALID_DEREF");
 }
 
@@ -270,7 +270,7 @@ proc test_condition_type_carries_rule_and_fix() -> bool {
   let source: string = "proc main() { if \"oops\" { give 1; } give 0; }\n";
   let fe: FrontendOutput = frontend_run("typeck_condition_type_rich.vit", source);
   let hir = lower_ast_to_hir(fe);
-  let result: TypeckResult = run_typeck_hir(hir);
+  let result: TypeckResult = run_production_typeck_hir(hir);
   let diag = diagnostic_by_code(result, "TYPECK_E_CONDITION_TYPE");
   give diag.valid
     and diag.rule == "condition truthiness"
@@ -283,7 +283,7 @@ proc test_invalid_call_target_carries_callable_rule() -> bool {
   let source: string = "proc main() { let x = 1; let y = x(); give y; }\n";
   let fe: FrontendOutput = frontend_run("typeck_invalid_call_target.vit", source);
   let hir = lower_ast_to_hir(fe);
-  let result: TypeckResult = run_typeck_hir(hir);
+  let result: TypeckResult = run_production_typeck_hir(hir);
   let diag = diagnostic_by_code(result, "TYPECK_E_INVALID_CALL_TARGET");
   give diag.valid
     and diag.rule == "call target must be callable"
@@ -295,7 +295,7 @@ proc test_struct_literal_keeps_named_type_in_typed_hir() -> bool {
   let source: string = "form Point { x: int, y: int }\nproc main() { let point = Point { x: 1, y: 2 }; give point; }\n";
   let fe: FrontendOutput = frontend_run("typeck_struct_literal.vit", source);
   let hir = lower_ast_to_hir(fe);
-  let result: TypeckResult = run_typeck_hir(hir);
+  let result: TypeckResult = run_production_typeck_hir(hir);
   if not fe.valid or not result.valid or len(result.hir.module.items) < 2 {
     give false;
   }
@@ -314,7 +314,7 @@ proc test_nominal_field_access_resolves_from_member_table() -> bool {
   let fe: FrontendOutput = frontend_run("typeck_nominal_field_access.vit", source);
   let hir = lower_ast_to_hir(fe);
   let sema: SemaResult = run_sema_hir(hir);
-  let result: TypeckResult = run_typeck_hir(sema.hir);
+  let result: TypeckResult = run_production_typeck_hir(sema.hir);
   let value_expr = result.hir.module.items[1].stmts[1].expr;
   give result.valid
     and len(result.diagnostics) == 0
@@ -335,7 +335,7 @@ proc test_nominal_variant_and_flag_access_resolve_from_member_table() -> bool {
   let fe: FrontendOutput = frontend_run("typeck_nominal_variant_access.vit", source);
   let hir = lower_ast_to_hir(fe);
   let sema: SemaResult = run_sema_hir(hir);
-  let result: TypeckResult = run_typeck_hir(sema.hir);
+  let result: TypeckResult = run_production_typeck_hir(sema.hir);
   let mask_expr = result.hir.module.items[2].stmts[0].expr;
   let ctor_expr = result.hir.module.items[2].stmts[1].expr;
   give result.valid
@@ -356,7 +356,7 @@ proc test_impl_method_dispatch_binds_self_away_for_call_type() -> bool {
   let fe: FrontendOutput = frontend_run("typeck_impl_dispatch.vit", source);
   let hir = lower_ast_to_hir(fe);
   let sema: SemaResult = run_sema_hir(hir);
-  let result: TypeckResult = run_typeck_hir(sema.hir);
+  let result: TypeckResult = run_production_typeck_hir(sema.hir);
   let impl_body_field = result.hir.module.items[2].members[0].body_stmts[0].expr;
   let shown_expr = result.hir.module.items[3].stmts[1].expr;
   give result.valid
@@ -370,7 +370,7 @@ proc test_proc_params_typecheck_body_without_unresolved_names() -> bool {
   let fe: FrontendOutput = frontend_run("typeck_proc_params.vit", source);
   let hir = lower_ast_to_hir(fe);
   let sema: SemaResult = run_sema_hir(hir);
-  let result: TypeckResult = run_typeck_hir(sema.hir);
+  let result: TypeckResult = run_production_typeck_hir(sema.hir);
   give result.valid
     and len(result.hir.module.items[0].params) == 3
     and result.hir.module.items[0].params[0].borrowed
@@ -385,7 +385,7 @@ proc test_immutable_param_rejects_assignment() -> bool {
   let fe: FrontendOutput = frontend_run("typeck_immutable_param_assign.vit", source);
   let hir = lower_ast_to_hir(fe);
   let sema: SemaResult = run_sema_hir(hir);
-  let result: TypeckResult = run_typeck_hir(sema.hir);
+  let result: TypeckResult = run_production_typeck_hir(sema.hir);
   give has_code(result, "TYPECK_E_IMMUTABLE_ASSIGN");
 }
 
@@ -396,7 +396,7 @@ proc test_proc_call_uses_canonical_signature_modes() -> bool {
   let fe: FrontendOutput = frontend_run("typeck_proc_call_signature_modes.vit", source);
   let hir = lower_ast_to_hir(fe);
   let sema: SemaResult = run_sema_hir(hir);
-  let result: TypeckResult = run_typeck_hir(sema.hir);
+  let result: TypeckResult = run_production_typeck_hir(sema.hir);
   give result.valid
     and len(result.diagnostics) == 0
     and result.hir.module.items[1].stmts[1].expr.inferred_type == "int";
@@ -501,7 +501,7 @@ proc test_if_branch_mismatch_carries_unification_rule() -> bool {
   let source: string = "proc main() { let x = if true { 1 } else { \"oops\" }; give x; }\n";
   let fe: FrontendOutput = frontend_run("typeck_if_branch_mismatch.vit", source);
   let hir = lower_ast_to_hir(fe);
-  let result: TypeckResult = run_typeck_hir(hir);
+  let result: TypeckResult = run_production_typeck_hir(hir);
   let diag = diagnostic_by_code(result, "TYPECK_E_IF_BRANCH_MISMATCH");
   give diag.valid
     and diag.rule == "if expression branch unification"
@@ -514,7 +514,7 @@ proc test_invalid_index_target_carries_container_rule() -> bool {
   let source: string = "proc main() { let x = 1[0]; give x; }\n";
   let fe: FrontendOutput = frontend_run("typeck_invalid_index_target.vit", source);
   let hir = lower_ast_to_hir(fe);
-  let result: TypeckResult = run_typeck_hir(hir);
+  let result: TypeckResult = run_production_typeck_hir(hir);
   let diag = diagnostic_by_code(result, "TYPECK_E_INVALID_INDEX_TARGET");
   give diag.valid
     and diag.rule == "index target capability"
@@ -527,7 +527,7 @@ proc test_compare_mismatch_carries_operand_rule() -> bool {
   let source: string = "proc main() { let x = 1 == \"oops\"; give x; }\n";
   let fe: FrontendOutput = frontend_run("typeck_compare_mismatch.vit", source);
   let hir = lower_ast_to_hir(fe);
-  let result: TypeckResult = run_typeck_hir(hir);
+  let result: TypeckResult = run_production_typeck_hir(hir);
   let diag = diagnostic_by_code(result, "TYPECK_E_COMPARE_MISMATCH");
   give diag.valid
     and diag.rule == "comparison operand compatibility"
@@ -540,7 +540,7 @@ proc test_invalid_cast_carries_cast_rule() -> bool {
   let source: string = "proc main() { let x = \"oops\" as int; give x; }\n";
   let fe: FrontendOutput = frontend_run("typeck_invalid_cast.vit", source);
   let hir = lower_ast_to_hir(fe);
-  let result: TypeckResult = run_typeck_hir(hir);
+  let result: TypeckResult = run_production_typeck_hir(hir);
   let diag = diagnostic_by_code(result, "TYPECK_E_INVALID_CAST");
   give diag.valid
     and diag.rule == "explicit cast validity"
@@ -553,7 +553,7 @@ proc test_match_non_exhaustive_requires_fallback_arm() -> bool {
   let source: string = "proc main() { match value { 1 => { give 1; } } }\n";
   let fe: FrontendOutput = frontend_run("typeck_match_non_exhaustive.vit", source);
   let hir = lower_ast_to_hir(fe);
-  let result: TypeckResult = run_typeck_hir(hir);
+  let result: TypeckResult = run_production_typeck_hir(hir);
   let diag = diagnostic_by_code(result, "TYPECK_E_MATCH_NON_EXHAUSTIVE");
   give diag.valid
     and diag.rule == "pattern coverage completeness"
@@ -564,7 +564,7 @@ proc test_match_with_fallback_arm_is_not_reported_non_exhaustive() -> bool {
   let source: string = "proc main() { match value { 1 => { give 1; } else => { give 0; } } }\n";
   let fe: FrontendOutput = frontend_run("typeck_match_exhaustive.vit", source);
   let hir = lower_ast_to_hir(fe);
-  let result: TypeckResult = run_typeck_hir(hir);
+  let result: TypeckResult = run_production_typeck_hir(hir);
   give has_code(result, "TYPECK_E_MATCH_NON_EXHAUSTIVE") == false;
 }
 
@@ -573,7 +573,7 @@ proc test_reference_assignment_mismatch() -> bool {
   let fe: FrontendOutput = frontend_run("typeck_ref_assign_mismatch.vit", source);
   let hir = lower_ast_to_hir(fe);
   let sema: SemaResult = run_sema_hir(hir);
-  let result: TypeckResult = run_typeck_hir(sema.hir);
+  let result: TypeckResult = run_production_typeck_hir(sema.hir);
   give has_code(result, "TYPECK_E_ASSIGN_MISMATCH");
 }
 
@@ -582,7 +582,7 @@ proc test_typeck_annotates_hir_expr_type_and_copyable() -> bool {
   let fe: FrontendOutput = frontend_run("typeck_hir_annotation.vit", source);
   let hir = lower_ast_to_hir(fe);
   let sema: SemaResult = run_sema_hir(hir);
-  let result: TypeckResult = run_typeck_hir(sema.hir);
+  let result: TypeckResult = run_production_typeck_hir(sema.hir);
   let binding_expr = result.hir.module.items[0].stmts[1].expr;
   let return_expr = result.hir.module.items[0].stmts[2].expr;
   give has_code(result, "TYPECK_E_ASSIGN_MISMATCH") == false and binding_expr.inferred_type == "&int" and binding_expr.copyable and return_expr.inferred_type == "&int" and return_expr.copyable;
@@ -600,7 +600,7 @@ proc test_typeck_preserves_trait_impl_method_signatures_and_body_types() -> bool
   let fe: FrontendOutput = frontend_run("typeck_trait_impl_ok.vit", source);
   let hir = lower_ast_to_hir(fe);
   let sema: SemaResult = run_sema_hir(hir);
-  let result: TypeckResult = run_typeck_hir(sema.hir);
+  let result: TypeckResult = run_production_typeck_hir(sema.hir);
   let trait_member = result.hir.module.items[1].members[0];
   let impl_member = result.hir.module.items[2].members[0];
   give result.valid
@@ -627,7 +627,7 @@ proc test_typeck_reports_impl_return_signature_mismatch() -> bool {
   let fe: FrontendOutput = frontend_run("typeck_trait_impl_return_mismatch.vit", source);
   let hir = lower_ast_to_hir(fe);
   let sema: SemaResult = run_sema_hir(hir);
-  let result: TypeckResult = run_typeck_hir(sema.hir);
+  let result: TypeckResult = run_production_typeck_hir(sema.hir);
   let diag = diagnostic_by_code(result, "TYPECK_E_IMPL_SIGNATURE_MISMATCH");
   give diag.valid
     and find(diag.message, "return type") >= 0
@@ -649,7 +649,7 @@ proc test_typeck_reports_impl_parameter_signature_mismatch() -> bool {
   let fe: FrontendOutput = frontend_run("typeck_trait_impl_param_mismatch.vit", source);
   let hir = lower_ast_to_hir(fe);
   let sema: SemaResult = run_sema_hir(hir);
-  let result: TypeckResult = run_typeck_hir(sema.hir);
+  let result: TypeckResult = run_production_typeck_hir(sema.hir);
   let diag = diagnostic_by_code(result, "TYPECK_E_IMPL_SIGNATURE_MISMATCH");
   give diag.valid
     and find(diag.message, "parameter type") >= 0

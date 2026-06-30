@@ -69,7 +69,7 @@ REQUIRED_SYMBOLS = {
         'projection_member_name',
     ],
     'typeck_tests': [
-        'run_typeck_hir',
+        'run_production_typeck_hir',
         'infer_call_type',
         'test_valid_numeric_flow',
         'test_assign_mismatch',

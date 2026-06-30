@@ -5,7 +5,7 @@ use vitte/compiler/analysis/pipeline.{ AnalysisOutput, analysis_run_prechecked }
 use vitte/compiler/analysis/borrowck.{ BorrowCheckResult, borrow_check_hir_mir }
 use vitte/compiler/analysis/sema.{ SemaModuleImport, SemaModuleSummary, SemaResult, imported_symbols_from_summary, run_sema_hir, run_sema_hir_with_imports, summarize_module_hir }
 use vitte/compiler/analysis/sema/scopes.{ SemaSymbol }
-use vitte/compiler/analysis/typeck/checker.{ run_typeck_hir }
+use vitte/compiler/analysis/typeck/api.{ run_production_typeck_hir }
 use vitte/compiler/analysis/typeck/errors.{ TypeckResult }
 use vitte/compiler/diagnostics/diagnostic.{ Diagnostic, DiagnosticPhase, DiagnosticReport, DiagnosticRenderConfig, DiagnosticStyle, SourceSpan, default_render_config, diagnostic_from_surface, diagnostic_report, diagnostic_report_empty, phase_name, render_report, span_range }
 use vitte/compiler/diagnostics/json.{ json_report, json_report_envelope, json_report_envelope_with_canonical_context }
@@ -897,7 +897,7 @@ proc analyze_source_set(inputs: [DriverModuleInput]) -> DriverModuleSetArtifacts
         let summary: SemaModuleSummary = summaries[i];
         let imported: [SemaSymbol] = imported_symbols_for_summary(summary, summaries);
         let sema_result: SemaResult = run_sema_hir_with_imports(hirs[i], imported);
-        let typeck_result: TypeckResult = run_typeck_hir(sema_result.hir);
+        let typeck_result: TypeckResult = run_production_typeck_hir(sema_result.hir);
         let mir0: MirUnit = lower_hir_to_mir(typeck_result.hir);
         let mir1: MirUnit = validate_mir(mir0);
         let analysis: AnalysisOutput = analysis_run_prechecked(frontends[i], sema_result, typeck_result, mir1);
@@ -1146,7 +1146,7 @@ proc analyze_source(source_path: string, source_text: string) -> DriverAnalysisA
     let hir1: HirUnit = validate_hir(hir0);
     let sema_result: SemaResult = run_sema_hir(hir1);
     let resolved_hir: HirUnit = sema_result.hir;
-    let typeck_result: TypeckResult = run_typeck_hir(resolved_hir);
+    let typeck_result: TypeckResult = run_production_typeck_hir(resolved_hir);
     let typed_hir: HirUnit = typeck_result.hir;
     let mir0: MirUnit = lower_hir_to_mir(typed_hir);
     let mir1: MirUnit = validate_mir(mir0);
@@ -1335,7 +1335,7 @@ proc driver_canonical_context_from_artifacts(source_path: string, artifacts: Dri
     let parser_report0: DiagnosticReport = filter_frontend_phase_report(fe.diagnostics, DiagnosticPhase.Parser);
     let ast_validation_report0: DiagnosticReport = filter_frontend_phase_report(fe.diagnostics, DiagnosticPhase.AstValidation);
     let typeck_report0: DiagnosticReport = if artifacts.frontend.valid and artifacts.resolved_hir.valid {
-        run_typeck_hir(artifacts.resolved_hir).report
+        run_production_typeck_hir(artifacts.resolved_hir).report
     } else {
         diagnostic_report_empty()
     };
@@ -1432,7 +1432,7 @@ proc driver_diagnostic_phase_reports_from_artifacts(source_path: string, artifac
     let symbol_resolution_report0: DiagnosticReport = diagnostic_report_empty();
     let sema_report0: DiagnosticReport = diagnostic_report_empty();
     let typeck_report0: DiagnosticReport = if artifacts.frontend.valid and artifacts.resolved_hir.valid {
-        run_typeck_hir(artifacts.resolved_hir).report
+        run_production_typeck_hir(artifacts.resolved_hir).report
     } else {
         diagnostic_report_empty()
     };
@@ -1492,7 +1492,7 @@ proc dump_diagnostics_json(source_path: string, source_text: string) -> string {
     let symbol_resolution_report0: DiagnosticReport = diagnostic_report_empty();
     let sema_report0: DiagnosticReport = diagnostic_report_empty();
     let typeck_report0: DiagnosticReport = if artifacts.frontend.valid and artifacts.resolved_hir.valid {
-        run_typeck_hir(artifacts.resolved_hir).report
+        run_production_typeck_hir(artifacts.resolved_hir).report
     } else {
         diagnostic_report_empty()
     };
@@ -1560,7 +1560,7 @@ proc diagnostics_quality_score(source_path: string, source_text: string) -> u64 
     let parser_report0: DiagnosticReport = filter_frontend_phase_report(fe.diagnostics, DiagnosticPhase.Parser);
     let ast_validation_report0: DiagnosticReport = filter_frontend_phase_report(fe.diagnostics, DiagnosticPhase.AstValidation);
     let typeck_report0: DiagnosticReport = if artifacts.frontend.valid and artifacts.resolved_hir.valid {
-        run_typeck_hir(artifacts.resolved_hir).report
+        run_production_typeck_hir(artifacts.resolved_hir).report
     } else {
         diagnostic_report_empty()
     };

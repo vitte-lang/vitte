@@ -166,12 +166,13 @@ def candidate_terms(rule: Rule) -> list[str]:
 
 
 def count_term_matches(text: str, term: str) -> int:
-    escaped = re.escape(term)
+    if not term:
+        return 0
     if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", term):
+        escaped = re.escape(term)
         pattern = rf"\b{escaped}\b"
-    else:
-        pattern = escaped
-    return len(re.findall(pattern, text))
+        return 1 if re.search(pattern, text) else 0
+    return 1 if term in text else 0
 
 
 def collect_corpus(repo: Path, patterns: list[str]) -> tuple[str, dict[str, str]]:
@@ -259,10 +260,10 @@ def summarize(rules_report: list[dict]) -> dict[str, int]:
 
 def render_markdown(report: dict) -> str:
     lines = [
-        "# Parser Sync Coverage",
+        "# Grammar Coverage Report",
         "",
         f"- Grammar: `{report['grammar']}`",
-        f"- Parser corpus: `{report['parser_corpus_root']}`",
+        f"- Frontend corpus: `{report['parser_corpus_root']}`",
         f"- Total rules: `{report['summary']['total_rules']}`",
         f"- Parsed evidence: `{report['summary']['parsed_rules']}`",
         f"- AST evidence: `{report['summary']['ast_built_rules']}`",
@@ -292,7 +293,7 @@ def render_markdown(report: dict) -> str:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Vitte parser sync coverage report")
+    parser = argparse.ArgumentParser(description="Vitte grammar coverage report")
     parser.add_argument("--check", action="store_true", help="generate the exhaustive coverage matrix and require non-empty coverage signals")
     args = parser.parse_args()
 
@@ -380,16 +381,16 @@ def main() -> int:
         "rules": rules_report,
     }
 
-    out_dir = repo / "target/reports"
+    out_dir = repo / "target/reports/grammar_coverage"
     out_dir.mkdir(parents=True, exist_ok=True)
-    json_out = out_dir / "parser_sync_coverage.json"
-    md_out = out_dir / "parser_sync_coverage.md"
+    json_out = out_dir / "grammar_coverage.json"
+    md_out = out_dir / "grammar_coverage.md"
     json_out.write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     md_out.write_text(render_markdown(report) + "\n", encoding="utf-8")
 
     summary = report["summary"]
     print(
-        "[parser-sync-coverage] "
+        "[grammar-coverage] "
         f"rules={summary['total_rules']} "
         f"parsed={summary['parsed_rules']} "
         f"ast={summary['ast_built_rules']} "
@@ -397,11 +398,11 @@ def main() -> int:
         f"tested={summary['tested_rules']} "
         f"missing={summary['missing_rules']}"
     )
-    print(f"[parser-sync-coverage] wrote {json_out.relative_to(repo)} and {md_out.relative_to(repo)}")
+    print(f"[grammar-coverage] wrote {json_out.relative_to(repo)} and {md_out.relative_to(repo)}")
 
     if args.check:
         if summary["total_rules"] == 0 or summary["parsed_rules"] == 0:
-            print("[parser-sync-coverage][error] coverage report is empty or failed to detect parser evidence")
+            print("[grammar-coverage][error] coverage report is empty or failed to detect parser evidence")
             return 1
         return 0
 

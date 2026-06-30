@@ -10,11 +10,15 @@ Type checking surfaces for the compiler analysis pipeline.
 
 The repository currently carries two distinct type checking surfaces:
 
+- `api.vit`
+  - canonical routing layer for type checking entrypoints
+  - production entrypoint: `run_production_typeck_hir`
+  - experimental complete entrypoint: `run_experimental_complete_typeck_frontend`
 - `checker.vit`
-  - HIR-oriented type checker used by the real compiler pipeline today
+  - HIR-oriented implementation used by the production API today
   - entrypoint: `run_typeck_hir`
-  - consumed by `analysis/pipeline.vit`, `middle/pipeline.vit`, and
-    `driver/compile.vit`
+  - consumed through `api.vit` by `analysis/pipeline.vit`, `middle/pipeline.vit`,
+    and `driver/compile.vit`
 - `complete/api.vit`
   - richer AST-oriented surface for forms, picks, generics, procs, traits, and
     impls
@@ -36,7 +40,7 @@ The real compiler path still uses:
 - `src/vitte/compiler/middle/pipeline.vit`
 - `src/vitte/compiler/driver/compile.vit`
 
-All three are expected to route through `run_typeck_hir`.
+All three are expected to route through `run_production_typeck_hir`.
 
 ## Advanced Surface
 

@@ -2,7 +2,7 @@ space vitte/compiler/tests/lint_tests
 
 use vitte/compiler/analysis/lint.{ LintResult, run_lint_hir }
 use vitte/compiler/analysis/sema.{ SemaResult, run_sema_hir }
-use vitte/compiler/analysis/typeck.checker.{ run_typeck_hir }
+use vitte/compiler/analysis/typeck/api.{ run_production_typeck_hir }
 use vitte/compiler/frontend/pipeline.{ FrontendOutput, frontend_run }
 use vitte/compiler/middle/hir/lower_ast.{ lower_ast_to_hir }
 
@@ -41,7 +41,7 @@ proc test_projected_set_counts_as_mutation() -> bool {
   let fe: FrontendOutput = frontend_run("lint_projected_set.vit", source);
   let hir = lower_ast_to_hir(fe);
   let sema: SemaResult = run_sema_hir(hir);
-  let typed = run_typeck_hir(sema.hir);
+  let typed = run_production_typeck_hir(sema.hir);
   let result: LintResult = run_lint_hir("lint_projected_set.vit", typed.hir);
   give not has_code(result, "LINT_W_UNUSED_MUT");
 }

@@ -185,3 +185,174 @@ Derived from: `AUDIT.md`
 - grammar, compiler, and stdlib docs expose implementation status
 - docs do not imply support that the driver pipeline cannot prove
 - status pages are generated from code-backed inventories where possible
+
+## Suggested milestones
+
+### Milestone A. Frontend correctness closure
+
+- Scope: 1, 2, 3, 4
+- Goal: stop frontend drift and make grammar claims auditable
+- Exit condition:
+- lexer token surface matches the currently claimed core grammar subset
+- stale frontend token consumers are removed or repaired
+- grammar coverage report is generated and consumed by CI
+- parser and AST construction no longer disagree on supported control-flow forms
+
+### Milestone B. Semantic convergence
+
+- Scope: 5, 6, 7, 8
+- Goal: ensure that accepted source forms either lower cleanly or fail explicitly
+- Exit condition:
+- one production type-checking path is wired through the compiler driver
+- semantic and type support is tested end to end for the declared supported subset
+- unsupported forms are rejected before backend-facing lowering
+- internal consistency checks catch stale API drift
+
+### Milestone C. Canonical backend closure
+
+- Scope: 9, 10, 11
+- Goal: narrow the trusted compiler path and harden its invariants
+- Exit condition:
+- one canonical backend path is clearly defined
+- MIR and IR validators reject malformed canonical ownership and nominal-call forms
+- the C backend closes the supported subset without bridge-era assumptions
+
+### Milestone D. Credible self-hosting
+
+- Scope: 12, 13, 14, 15
+- Goal: move from active transition to reproducible, defensible self-host evidence
+- Exit condition:
+- strict stage parity and reproducibility gates pass
+- docs reflect proven implementation rather than aspirational breadth
+- new surface expansion follows the hardened lexer/parser/sema/backend contract
+
+## Next issue batch to open
+
+These are the most useful follow-up issues if the repository wants execution
+momentum rather than a high-level backlog only.
+
+### A1. Generate grammar implementation coverage report
+
+- Parent: 2
+- Priority: P0
+- Labels: `compiler`, `frontend`, `grammar`, `audit`
+- Description: Produce a machine-generated report that maps every rule in
+  `src/vitte/grammar/vitte.ebnf` to parser coverage, AST construction,
+  diagnostics, and tests.
+- Acceptance criteria:
+- report is written under `target/reports/grammar_coverage/`
+- every rule gets one explicit status
+- CI fails if the report is missing or stale
+
+### A2. Add strict gate for stale frontend token API usage
+
+- Parent: 3
+- Priority: P0
+- Labels: `compiler`, `frontend`, `ci`
+- Description: Add a strict check that rejects references to nonexistent token
+  kinds or stale frontend import paths.
+- Acceptance criteria:
+- stale `frontend/lex/*` imports are rejected
+- references to removed token kinds are rejected
+- the gate runs in CI and is easy to reproduce locally
+
+### A3. Reconcile `if` parsing and AST reconstruction contract
+
+- Parent: 4
+- Priority: P0
+- Labels: `compiler`, `parser`, `ast`
+- Description: Remove parser/AST disagreement for `if` forms and codify one
+  accepted syntax contract.
+- Acceptance criteria:
+- one canonical `if` condition shape is implemented
+- parser tests and AST tests cover the same accepted/rejected forms
+- no reconstruction-only `if` special cases remain in the supported path
+
+### A4. Reconcile `while` parsing and AST reconstruction contract
+
+- Parent: 4
+- Priority: P0
+- Labels: `compiler`, `parser`, `ast`
+- Description: Apply the same reconciliation to `while` forms.
+- Acceptance criteria:
+- one canonical `while` condition shape is implemented
+- parser tests and AST tests cover the same accepted/rejected forms
+- no reconstruction-only `while` special cases remain in the supported path
+
+### B1. Select and lock one production typeck entrypoint
+
+- Parent: 5
+- Priority: P1
+- Labels: `compiler`, `typeck`, `architecture`
+- Description: Decide which type-checking path is production, wire the driver
+  to it explicitly, and mark all others as compatibility or experimental.
+- Acceptance criteria:
+- compiler driver uses one canonical typeck entrypoint
+- non-canonical typeck paths are renamed, documented, or removed
+- production typeck tests execute only through the canonical path
+
+### B2. Reject unsupported advanced forms before HIR trust boundary
+
+- Parent: 7
+- Priority: P1
+- Labels: `compiler`, `sema`, `hir`
+- Description: Replace shallow acceptance of unsupported advanced syntax with
+  explicit diagnostics before trusted HIR lowering.
+- Acceptance criteria:
+- unsupported forms produce deterministic diagnostics
+- unsupported forms do not enter HIR as placeholder constructs
+- negative fixtures cover the rejected cases
+
+### C1. Validate canonical MIR function params
+
+- Parent: 11
+- Priority: P2
+- Labels: `compiler`, `mir`, `validation`
+- Description: Expand MIR validation so canonical function params are checked as
+  a structural contract before pass execution.
+- Acceptance criteria:
+- malformed canonical param lists are rejected deterministically
+- pass pipeline does not run on invalid param structures
+- regression fixtures cover valid and invalid param shapes
+
+### C2. Validate IR nominal-call and variant construction metadata
+
+- Parent: Active next step, 11
+- Priority: P2
+- Labels: `compiler`, `ir`, `validation`, `backend`
+- Description: Reject malformed canonical nominal-call and variant-construction
+  forms before backend lowering.
+- Acceptance criteria:
+- malformed `method-dispatch` and `variant-ctor` calls are rejected
+- backend consumers do not rely on unchecked nominal metadata
+- regression fixtures cover valid and invalid nominal-call forms
+
+## Ordering policy
+
+When choosing between backlog items, prefer the item that increases proof
+quality over the item that increases language surface.
+
+Recommended order:
+
+1. frontend drift elimination
+2. grammar coverage reporting
+3. parser/AST contract unification
+4. semantic and type-checking convergence
+5. validator hardening at HIR/MIR/IR boundaries
+6. canonical backend closure
+7. self-host reproducibility tightening
+8. only then, new surface expansion
+
+## Issue writing policy
+
+Each GitHub issue derived from this backlog should include:
+
+- one explicit trust boundary being improved
+- one list of unsupported cases that must fail clearly
+- one local reproduction command
+- one CI or strict-gate integration point
+- one removal condition for any temporary compatibility shim or allowlist
+
+That policy should keep the backlog aligned with the audit principle already
+used in `AUDIT.md`: claims must be backed by code paths, tests, and active
+pipeline usage rather than by declared surface alone.

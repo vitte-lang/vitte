@@ -507,3 +507,144 @@ The Vitte compiler is not a toy frontend anymore. It has a real compiler-shaped 
 The main problem is not lack of ambition or lack of code. It is the gap between declared surface and proven implementation. The official grammar, AST surface, backend surface, and documentation all describe a language/compiler that is broader than the subset the repository currently demonstrates reliably. Recent work substantially improved canonical ownership/signature flow and stable gate coverage, but the next bottleneck is now validator hardening and frontend/spec alignment rather than raw pipeline wiring.
 
 Conservative overall maturity: `46%`.
+
+## 22. Execution roadmap for the next 90 days
+
+This section translates the audit into a sequencing plan. The aim is not to
+maximize parallel workstreams. The aim is to remove the specific bottlenecks
+that currently prevent the repository from proving more than it already proves.
+
+### Days 0 to 30: stop frontend drift
+
+Primary objective: make the declared language surface auditable against the
+active frontend.
+
+Deliverables:
+
+- remove or quarantine stale frontend consumers that no longer match the active
+  token model
+- produce a grammar-to-frontend coverage matrix that is rule-based rather than
+  anecdotal
+- close obvious lexer gaps for grammar-level tokens already claimed as part of
+  the core surface
+- make parser and AST reconstruction use one consistent control-flow contract
+
+Recommended concrete outputs:
+
+- one generated coverage artifact under `target/reports/grammar_coverage/`
+- one allowlist or quarantine mechanism for intentionally unsupported grammar
+  rules
+- one strict gate that fails when stale token consumers or parser/AST shape
+  mismatches reappear
+
+Success condition:
+
+- the repository can say which grammar rules are implemented, partially
+  implemented, or intentionally unsupported, and that statement is generated
+  from code/tests rather than from prose
+
+### Days 30 to 60: converge semantics and type checking
+
+Primary objective: eliminate the split between “surface accepted by parser” and
+ “surface semantically trusted by the compiler”.
+
+Deliverables:
+
+- one production type-checking path with explicit migration status for any
+  remaining side path
+- end-to-end tests for name resolution, imports, visibility, core type rules,
+  and core pattern typing
+- explicit rejection of unsupported advanced forms instead of silent acceptance
+  or shallow placeholder lowering
+
+Recommended concrete outputs:
+
+- a support table for semantic constructs under `docs/` or `target/reports/`
+- strict negative tests for trait/impl/generic/module cases that are not yet
+  supported
+- validator checks proving that unsupported forms do not leak into HIR/MIR as
+  if they were trusted
+
+Success condition:
+
+- the compiler either handles a construct end-to-end or rejects it clearly
+  before backend-facing stages
+
+### Days 60 to 90: harden backend contract and self-host evidence
+
+Primary objective: make the canonical pipeline narrower, stricter, and more
+ provable.
+
+Deliverables:
+
+- stronger HIR/MIR/IR validator enforcement for canonical call signatures,
+  borrow shapes, and nominal-call targets
+- clearer separation between canonical backend path and compatibility/legacy
+  backend surfaces
+- reproducible strict self-host evidence that runs through the canonical path
+  with minimal exception lists
+
+Recommended concrete outputs:
+
+- validator failures for malformed canonical ownership/signature shapes
+- a documented canonical backend path contract
+- a shrinking legacy allowlist with an owner and removal condition for each
+  remaining exception
+
+Success condition:
+
+- self-hosting claims are backed by a strict path whose accepted surface is
+  smaller but trustworthy
+
+## 23. Exit criteria for “credible self-hosting”
+
+The repository should not treat “it bootstraps” as sufficient proof. Credible
+self-hosting should mean all of the following at the same time:
+
+1. The grammar surface accepted by the frontend is explicitly enumerated and
+   tested.
+2. Supported constructs lower deterministically from AST to HIR to MIR to the
+   chosen canonical backend path.
+3. Unsupported constructs fail with deterministic diagnostics before they can
+   masquerade as supported semantics.
+4. Strict gates run without hidden fallback behavior or stale compatibility
+   paths deciding success.
+5. Repeated bootstrap/self-host runs produce reproducible outputs on the
+   declared supported host/target matrix.
+
+If one of those conditions is missing, the better claim is “active self-host
+trajectory” rather than “credible self-hosted compiler”.
+
+## 24. Sequencing rules
+
+This project should optimize for proof quality, not for surface breadth.
+
+Recommended sequencing rules:
+
+1. Do not extend grammar surface until the current grammar-to-frontend coverage
+   matrix is trustworthy.
+2. Do not broaden semantic claims until parser acceptance and AST construction
+   are aligned for that surface.
+3. Do not broaden backend claims until validators reject malformed upstream IR
+   deterministically.
+4. Do not advertise stdlib breadth as maturity evidence unless behavioral
+   contracts and tests exist for the named modules.
+5. Do not count compatibility shims, adapters, or fallback layers as progress
+   unless they reduce a tracked migration risk with an explicit removal path.
+
+## 25. Claim policy
+
+The repository would benefit from a simple policy for external and internal
+claims:
+
+- “present” means wired in the production path and backed by tests or strict
+  gates
+- “partial” means real code exists, but coverage, semantics, or validation are
+  incomplete
+- “experimental” means code exists outside the trusted production path
+- “absent in practice” means names or stubs exist, but no credible end-to-end
+  path is demonstrated
+
+Applied consistently, that policy would reduce the largest current source of
+confusion: a repository with substantial real engineering work, but a language
+and compiler surface that still exceeds what the code can conservatively prove.

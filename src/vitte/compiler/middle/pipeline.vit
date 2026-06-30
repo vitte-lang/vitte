@@ -2,7 +2,7 @@ space vitte/compiler/middle
 
 use vitte/compiler/frontend/pipeline.{ FrontendOutput }
 use vitte/compiler/analysis/sema.{ SemaResult, run_sema_hir }
-use vitte/compiler/analysis/typeck/checker.{ run_typeck_hir }
+use vitte/compiler/analysis/typeck/api.{ run_production_typeck_hir }
 use vitte/compiler/analysis/typeck/errors.{ TypeckResult }
 use vitte/compiler/middle/hir.{ HirUnit }
 use vitte/compiler/middle/hir/lower_ast.{ lower_ast_to_hir }
@@ -56,7 +56,7 @@ proc middle_run_frontend_hir_mir_for_target(frontend: FrontendOutput, hir: HirUn
   let hir1: HirUnit = validate_hir(hir);
   let sema_result: SemaResult = run_sema_hir(hir1);
   let resolved_hir: HirUnit = sema_result.hir;
-  let typeck_result: TypeckResult = run_typeck_hir(resolved_hir);
+  let typeck_result: TypeckResult = run_production_typeck_hir(resolved_hir);
   let mir1: MirUnit = validate_mir(mir);
   give middle_output_from_components(frontend, hir1, sema_result, typeck_result, mir1, target);
 }
@@ -66,7 +66,7 @@ proc middle_run_frontend_for_target(frontend: FrontendOutput, target: IrTarget) 
   let hir1: HirUnit = validate_hir(hir0);
   let sema_result: SemaResult = run_sema_hir(hir1);
   let resolved_hir: HirUnit = sema_result.hir;
-  let typeck_result: TypeckResult = run_typeck_hir(resolved_hir);
+  let typeck_result: TypeckResult = run_production_typeck_hir(resolved_hir);
   let typed_hir: HirUnit = typeck_result.hir;
   let mir0: MirUnit = lower_hir_to_mir(typed_hir);
   let mir1: MirUnit = validate_mir(mir0);
