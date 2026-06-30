@@ -104,19 +104,49 @@ Grammar source of truth: `src/vitte/grammar/vitte.ebnf`
 
 ## Pipeline
 
-The compiler pipeline stages:
+## Command-line Interface
 
-1. Lexer  
-2. Parser  
-3. AST validation  
-4. Semantic analysis  
-5. Type checking  
-6. Borrow checking  
-7. MIR lowering and validation  
-8. IR lowering and validation  
-9. Backend code generation  
-10. Linking  
+The `vitte` command provides access to the compiler, project management utilities, diagnostics, formatting, documentation, and package management.
 
+### `vitte --help`
+
+The following screenshot shows the current command-line help output.
+
+<p align="center">
+
+  <img
+
+    src="assets/vitte-help.png"
+
+    alt="Vitte command-line help"
+
+    width="900">
+
+</p>
+
+The CLI is organized into functional groups:
+
+- **Project** — create, initialize, and manage Vitte projects.
+
+- **Build** — parse, check, build, and run source code.
+
+- **Diagnostics** — explain compiler diagnostics and inspect the environment.
+
+- **Formatting** — format source code consistently.
+
+- **Documentation** — access manuals and reference documentation.
+
+- **Package Manager** — manage dependencies and packages.
+
+- **Utilities** — additional development and maintenance commands.
+
+Run the help command at any time to see the latest list of available commands:
+
+```bash
+
+vitte --help
+
+```
 Failures are explicit and machine-readable to aid tooling.
 
 ## Quick start
