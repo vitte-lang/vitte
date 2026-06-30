@@ -9,7 +9,10 @@ use vitte/compiler/frontend/ast.expr.{
 
 use vitte/compiler/frontend/ast.item.{
   AstItem,
-  AstItemKind
+  AstItemKind,
+  AstNominalMember,
+  AstNominalMemberKind,
+  AstParam
 }
 
 use vitte/compiler/frontend/ast.stmt.{
@@ -23,6 +26,9 @@ use vitte/compiler/middle/hir.{
   HirItem,
   HirItemKind,
   HirModule,
+  HirNominalMember,
+  HirNominalMemberKind,
+  HirProcParam,
   HirStmt,
   HirStmtKind,
   HirUnit,
@@ -32,8 +38,10 @@ use vitte/compiler/middle/hir.{
   SemanticSeverity,
   hir_expr,
   hir_expr_empty,
+  hir_item_with_members,
+  hir_nominal_member,
+  hir_proc_param,
   hir_stmt,
-  hir_item,
   hir_module,
   hir_module_empty,
   hir_unit,
@@ -299,6 +307,10 @@ proc infer_expr_type(expr: AstExpr) -> string {
     give "tuple";
   }
 
+  if expr.kind == AstExprKind.Struct and expr.name != "" {
+    give expr.name;
+  }
+
   give "unknown";
 }
 
@@ -369,6 +381,79 @@ proc lower_stmt_list(stmts0: [AstStmt], scope_depth: u64) -> [HirStmt] {
   give out;
 }
 
+proc lower_member_kind(kind: AstNominalMemberKind) -> HirNominalMemberKind {
+  if kind == AstNominalMemberKind.Field {
+    give HirNominalMemberKind.Field;
+  }
+  if kind == AstNominalMemberKind.Variant {
+    give HirNominalMemberKind.Variant;
+  }
+  if kind == AstNominalMemberKind.TraitMethod {
+    give HirNominalMemberKind.TraitMethod;
+  }
+  if kind == AstNominalMemberKind.ImplMethod {
+    give HirNominalMemberKind.ImplMethod;
+  }
+  give HirNominalMemberKind.Unknown;
+}
+
+proc lower_member_param(param: AstParam) -> HirProcParam {
+  give hir_proc_param(
+    param.pattern.name,
+    param.annotation.text,
+    param.mode,
+    param.mutable,
+    param.borrowed,
+    param.variadic,
+    param.valid
+  );
+}
+
+proc lower_member_params(params0: [AstParam]) -> [HirProcParam] {
+  let out: [HirProcParam] = [];
+  let i: u64 = 0;
+  while i < len(params0) {
+    set out = out + [lower_member_param(params0[i])];
+    set i = i + 1;
+  }
+  give out;
+}
+
+proc lower_item_params(item: AstItem) -> [HirProcParam] {
+  if item.signature.valid {
+    give lower_member_params(item.signature.params);
+  }
+  give [];
+}
+
+proc lower_nominal_member(member: AstNominalMember) -> HirNominalMember {
+  let expr: HirExpr = if member.expr.valid { lower_expr(member.expr) } else { hir_expr_empty() };
+  let params: [HirProcParam] = if member.signature.valid { lower_member_params(member.signature.params) } else { [] };
+  let body_stmts: [HirStmt] = lower_stmt_list(member.body_stmts, 1);
+  give hir_nominal_member(
+    member.id.value,
+    member.span,
+    lower_member_kind(member.kind),
+    member.name,
+    if member.signature.valid and member.signature.return_type.valid { member.signature.return_type.text } else { member.annotation.text },
+    expr,
+    params,
+    body_stmts,
+    member.message,
+    member.valid
+  );
+}
+
+proc lower_nominal_members(members0: [AstNominalMember]) -> [HirNominalMember] {
+  let out: [HirNominalMember] = [];
+  let i: u64 = 0;
+  while i < len(members0) {
+    set out = out + [lower_nominal_member(members0[i])];
+    set i = i + 1;
+  }
+  give out;
+}
+
 proc lower_stmt(stmt: AstStmt, scope_depth: u64) -> HirStmt {
   let diagnostics: [SemanticDiagnostic] = [];
 
@@ -385,6 +470,7 @@ proc lower_stmt(stmt: AstStmt, scope_depth: u64) -> HirStmt {
     stmt.target,
     0,
     "",
+    stmt.annotation.text,
     lower_expr(stmt.expr),
     stmt.message,
     stmt.pattern.mutable,
@@ -414,6 +500,27 @@ proc lower_item_stmts(item: AstItem) -> [HirStmt] {
   give stmts;
 }
 
+proc item_abi_text(item: AstItem) -> string {
+  if item.signature.valid and item.signature.abi != "" {
+    give item.signature.abi;
+  }
+  give item.abi;
+}
+
+proc item_generic_count(item: AstItem) -> u64 {
+  if len(item.signature.generic_params) > len(item.generic_params) {
+    give len(item.signature.generic_params);
+  }
+  give len(item.generic_params);
+}
+
+proc item_signature_param_count(item: AstItem) -> u64 {
+  if item.signature.valid {
+    give len(item.signature.params);
+  }
+  give 0;
+}
+
 proc lower_item(item: AstItem) -> HirItem {
   let expr: HirExpr = hir_expr_empty();
 
@@ -427,7 +534,9 @@ proc lower_item(item: AstItem) -> HirItem {
     set diagnostics = diagnostics + [semantic_diagnostic("HIR0003", SemanticSeverity.Error, "invalid ast item", item.span, item.name, "")];
   }
 
-  give hir_item(
+  let members: [HirNominalMember] = lower_nominal_members(item.members);
+  let params: [HirProcParam] = lower_item_params(item);
+  give hir_item_with_members(
     item.id.value,
     item.span,
     lower_item_kind(item.kind),
@@ -436,9 +545,19 @@ proc lower_item(item: AstItem) -> HirItem {
     item.namespace,
     item.visibility,
     item.visibility == "public",
-    0,
+    item_abi_text(item),
+    item_generic_count(item),
+    len(item.type_params),
+    len(item.attributes),
+    len(item.modifiers),
+    if len(item.members) > 0 { len(item.members) } else { len(item.stmts) },
+    item_signature_param_count(item),
+    params,
+    item.annotation.text,
+    item.target_type.text,
     expr,
     lower_item_stmts(item),
+    members,
     item.message,
     0,
     diagnostics,

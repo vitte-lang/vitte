@@ -5,7 +5,7 @@ use vitte/compiler/frontend/parse/errors.{ ParseDiagnostic, parse_error_with_spa
 use vitte/compiler/frontend/parse/recovery.{ recover_decl_index, recover_expr_index, recover_pattern_index, recover_stmt_index, recover_type_index }
 use vitte/compiler/frontend/ast/node.{ AstSpan, ast_span }
 use vitte/compiler/frontend/ast/expr.{ AstExpr, AstExprKind, ast_expr_binary, ast_expr_call, ast_expr_index, ast_expr_leaf, ast_expr_member, ast_expr_node, ast_expr_typed, ast_expr_unary, ast_expr_unknown }
-use vitte/compiler/frontend/ast/item.{ AstGenericParam, AstItem, AstItemKind, AstModule, AstParam, AstProcSignature, ast_generic_param, ast_generic_param_empty, ast_item_create, ast_item_typed, ast_module, ast_module_empty, ast_param, ast_param_empty, ast_proc_signature, ast_proc_signature_empty, count_module_exprs, count_module_patterns, count_module_stmts, count_module_types }
+use vitte/compiler/frontend/ast/item.{ AstGenericParam, AstItem, AstItemKind, AstModule, AstNominalMember, AstNominalMemberKind, AstParam, AstProcSignature, ast_generic_param, ast_generic_param_empty, ast_item_create, ast_item_typed, ast_item_typed_with_members, ast_module, ast_module_empty, ast_nominal_member, ast_param, ast_param_empty, ast_proc_signature, ast_proc_signature_empty, count_module_exprs, count_module_patterns, count_module_stmts, count_module_types }
 use vitte/compiler/frontend/ast/pattern.{ AstPattern, AstPatternKind, ast_pattern, ast_pattern_empty, ast_pattern_node }
 use vitte/compiler/frontend/ast/stmt.{ AstStmt, AstStmtKind, ast_stmt_conditional, ast_stmt_create, ast_stmt_targeted }
 use vitte/compiler/frontend/ast/type_expr.{ AstTypeExpr, AstTypeKind, ast_type_empty, ast_type_expr, ast_type_node }
@@ -1715,6 +1715,23 @@ proc parse_expr_list(source_name: string, tokens: [Token], start: u64, end: u64)
   give exprs;
 }
 
+proc parse_struct_field_exprs(source_name: string, tokens: [Token], start: u64, end: u64) -> [AstExpr] {
+  let fields: [AstExpr] = [];
+  let parts: [TokenRange] = split_top_level_ranges(tokens, start, end, ",");
+  let i: u64 = 0;
+  while i < len(parts) {
+    let part: TokenRange = parts[i];
+    let colon: int = find_top_level_token(tokens, part.start, part.end, ":");
+    if colon >= 0 and colon as u64 + 1 < part.end {
+      set fields = fields + [parse_ast_expr_from_tokens(source_name, tokens, colon as u64 + 1, part.end)];
+    } else {
+      set fields = fields + [parse_ast_expr_from_tokens(source_name, tokens, part.start, part.end)];
+    }
+    set i = i + 1;
+  }
+  give fields;
+}
+
 
 proc prefix_abi(modifiers: [string]) -> string {
   let i: u64 = 0;
@@ -2120,6 +2137,11 @@ proc collect_item_prefix(tokens: [Token], index: u64) -> AstItemPrefix {
       set current = close as u64 + 1;
       continue;
     }
+    if tokens[current].kind == TokenKind.String and (starts_with(tokens[current].lexeme, "r\"") or starts_with(tokens[current].lexeme, "\"\"\"")) {
+      set attributes = attributes + [tokens[current].lexeme];
+      set current = current + 1;
+      continue;
+    }
     if is_visibility(tokens[current].lexeme) {
       if tokens[current].lexeme == "pub" {
         set visibility = "public";
@@ -2199,6 +2221,30 @@ proc parse_atom_expr(source_name: string, tokens: [Token], index: u64, end: u64)
 proc parse_postfix_expr_ast(source_name: string, tokens: [Token], index: u64, end: u64) -> ExprParseResult {
   let current: ExprParseResult = parse_atom_expr(source_name, tokens, index, end);
   while current.next_index < end {
+    if tokens[current.next_index].lexeme == "{" {
+      let close: int = find_matching(tokens, current.next_index, "{", "}");
+      if close < 0 or close as u64 >= end {
+        break;
+      }
+      let field_exprs: [AstExpr] = parse_struct_field_exprs(source_name, tokens, current.next_index + 1, close as u64);
+      let children: [AstExpr] = [current.expr];
+      let field_index: u64 = 0;
+      while field_index < len(field_exprs) {
+        set children = children + [field_exprs[field_index]];
+        set field_index = field_index + 1;
+      }
+      let struct_expr: AstExpr = ast_expr_node(
+        range_id(1, index, close as u64 + 1),
+        span_from_tokens(source_name, tokens, index, close as u64 + 1),
+        AstExprKind.Struct,
+        token_text(tokens, index, close as u64 + 1),
+        expr_display_name(current.expr),
+        "struct",
+        children
+      );
+      set current = ExprParseResult { expr: struct_expr, next_index: close as u64 + 1 };
+      continue;
+    }
     if tokens[current.next_index].lexeme == parser_lparen() {
       let close: int = find_matching(tokens, current.next_index, "(", ")");
       if close < 0 or close as u64 >= end {
@@ -2646,6 +2692,316 @@ proc parse_block_stmts(source_name: string, tokens: [Token], body_start: u64, bo
   give stmts;
 }
 
+proc placeholder_member_expr(member_name: string, span: AstSpan, id: u64) -> AstExpr {
+  give ast_expr_leaf(id, span, AstExprKind.String, "\"" + member_name + "\"", "");
+}
+
+proc nominal_member_kind_for_keyword(keyword: string) -> AstNominalMemberKind {
+  if keyword == "form" or keyword == "class" or keyword == "union" {
+    give AstNominalMemberKind.Field;
+  }
+  if keyword == "bits" or keyword == "pick" or keyword == "flags" {
+    give AstNominalMemberKind.Variant;
+  }
+  if keyword == "trait" {
+    give AstNominalMemberKind.TraitMethod;
+  }
+  if keyword == "impl" {
+    give AstNominalMemberKind.ImplMethod;
+  }
+  give AstNominalMemberKind.Unknown;
+}
+
+proc nominal_member_from_stmt(keyword: string, stmt: AstStmt) -> AstNominalMember {
+  give ast_nominal_member(
+    stmt.id.value,
+    stmt.span,
+    nominal_member_kind_for_keyword(keyword),
+    stmt.pattern.name,
+    stmt.annotation,
+    stmt.expr,
+    ast_proc_signature_empty(),
+    stmt.then_stmts,
+    stmt.message
+  );
+}
+
+proc parse_surface_field_stmt(source_name: string, tokens: [Token], start: u64, end: u64) -> AstStmt {
+  let stmt_span: AstSpan = span_from_tokens(source_name, tokens, start, end);
+  let stmt_id: u64 = range_id(2, start, end);
+  let colon: int = find_top_level_token(tokens, start, end, ":");
+  let name_end: u64 = if colon >= 0 { colon as u64 } else { end };
+  let name: string = trim(token_text(tokens, start, name_end));
+  let annotation: AstTypeExpr = if colon >= 0 and colon as u64 + 1 < end {
+    parse_ast_type_from_tokens(source_name, tokens, colon as u64 + 1, end)
+  } else {
+    ast_type_empty()
+  };
+  give ast_stmt_create(
+    stmt_id,
+    stmt_span,
+    AstStmtKind.ExprStmt,
+    ast_pattern(stmt_id, stmt_span, name, false),
+    "",
+    placeholder_member_expr(name, stmt_span, range_id(1, start, end)),
+    annotation,
+    token_text(tokens, start, end),
+    [],
+    []
+  );
+}
+
+proc parse_surface_bits_or_flags_stmt(source_name: string, tokens: [Token], start: u64, end: u64) -> AstStmt {
+  let stmt_span: AstSpan = span_from_tokens(source_name, tokens, start, end);
+  let stmt_id: u64 = range_id(2, start, end);
+  let colon: int = find_top_level_token(tokens, start, end, ":");
+  let eq: int = find_top_level_token(tokens, start, end, "=");
+  let split_at: int = if colon >= 0 { colon } else { eq };
+  let name_end: u64 = if split_at >= 0 { split_at as u64 } else { end };
+  let name: string = trim(token_text(tokens, start, name_end));
+  let expr: AstExpr = if split_at >= 0 and split_at as u64 + 1 < end {
+    parse_ast_expr_from_tokens(source_name, tokens, split_at as u64 + 1, end)
+  } else {
+    placeholder_member_expr(name, stmt_span, range_id(1, start, end))
+  };
+  give ast_stmt_create(
+    stmt_id,
+    stmt_span,
+    AstStmtKind.ExprStmt,
+    ast_pattern(stmt_id, stmt_span, name, false),
+    "",
+    expr,
+    ast_type_empty(),
+    token_text(tokens, start, end),
+    [],
+    []
+  );
+}
+
+proc parse_surface_pick_stmt(source_name: string, tokens: [Token], start: u64, end: u64) -> AstStmt {
+  let stmt_span: AstSpan = span_from_tokens(source_name, tokens, start, end);
+  let stmt_id: u64 = range_id(2, start, end);
+  let open: int = find_top_level_token(tokens, start, end, "(");
+  let name_end: u64 = if open >= 0 { open as u64 } else { end };
+  let name: string = trim(token_text(tokens, start, name_end));
+  let annotation: AstTypeExpr = if open >= 0 {
+    let close: int = find_matching(tokens, open as u64, "(", ")");
+    if close > open {
+      parse_ast_type_from_tokens(source_name, tokens, open as u64 + 1, close as u64)
+    } else {
+      ast_type_empty()
+    }
+  } else {
+    ast_type_empty()
+  };
+  give ast_stmt_create(
+    stmt_id,
+    stmt_span,
+    AstStmtKind.ExprStmt,
+    ast_pattern(stmt_id, stmt_span, name, false),
+    "",
+    placeholder_member_expr(name, stmt_span, range_id(1, start, end)),
+    annotation,
+    token_text(tokens, start, end),
+    [],
+    []
+  );
+}
+
+proc parse_surface_proc_member_stmt(source_name: string, tokens: [Token], start: u64, end: u64) -> AstStmt {
+  let stmt_span: AstSpan = span_from_tokens(source_name, tokens, start, end);
+  let stmt_id: u64 = range_id(2, start, end);
+  let open_body: int = find_item_body_open(tokens, start, end);
+  let close_body: int = if open_body >= 0 { find_matching(tokens, open_body as u64, "{", "}") } else { -1 };
+  let sig_end: u64 = if open_body >= 0 { open_body as u64 } else { end };
+  let signature: AstProcSignature = parse_ast_proc_signature_from_tokens(source_name, tokens, start, sig_end, "");
+  let body_stmts: [AstStmt] = if open_body >= 0 and close_body >= 0 {
+    parse_block_stmts(source_name, tokens, open_body as u64 + 1, close_body as u64)
+  } else {
+    []
+  };
+  give ast_stmt_create(
+    stmt_id,
+    stmt_span,
+    AstStmtKind.ExprStmt,
+    ast_pattern(stmt_id, stmt_span, signature.name, false),
+    "",
+    placeholder_member_expr(signature.name, stmt_span, range_id(1, start, end)),
+    signature.return_type,
+    token_text(tokens, start, end),
+    body_stmts,
+    []
+  );
+}
+
+proc parse_surface_proc_member_node(keyword: string, source_name: string, tokens: [Token], start: u64, end: u64) -> AstNominalMember {
+  let stmt_span: AstSpan = span_from_tokens(source_name, tokens, start, end);
+  let stmt_id: u64 = range_id(2, start, end);
+  let open_body: int = find_item_body_open(tokens, start, end);
+  let close_body: int = if open_body >= 0 { find_matching(tokens, open_body as u64, "{", "}") } else { -1 };
+  let sig_end: u64 = if open_body >= 0 { open_body as u64 } else { end };
+  let signature: AstProcSignature = parse_ast_proc_signature_from_tokens(source_name, tokens, start, sig_end, "");
+  let body_stmts: [AstStmt] = if open_body >= 0 and close_body >= 0 {
+    parse_block_stmts(source_name, tokens, open_body as u64 + 1, close_body as u64)
+  } else {
+    []
+  };
+  give ast_nominal_member(
+    stmt_id,
+    stmt_span,
+    nominal_member_kind_for_keyword(keyword),
+    signature.name,
+    signature.return_type,
+    placeholder_member_expr(signature.name, stmt_span, range_id(1, start, end)),
+    signature,
+    body_stmts,
+    token_text(tokens, start, end)
+  );
+}
+
+proc parse_surface_member_stmt(keyword: string, source_name: string, tokens: [Token], start: u64, end: u64) -> AstStmt {
+  if keyword == "form" or keyword == "class" or keyword == "union" {
+    give parse_surface_field_stmt(source_name, tokens, start, end);
+  }
+  if keyword == "bits" or keyword == "flags" {
+    give parse_surface_bits_or_flags_stmt(source_name, tokens, start, end);
+  }
+  if keyword == "pick" {
+    give parse_surface_pick_stmt(source_name, tokens, start, end);
+  }
+  if keyword == "trait" or keyword == "impl" {
+    give parse_surface_proc_member_stmt(source_name, tokens, start, end);
+  }
+  give parse_stmt_from_tokens(source_name, tokens, start, end);
+}
+
+proc parse_surface_item_members(keyword: string, source_name: string, tokens: [Token], body_start: u64, body_end: u64) -> [AstStmt] {
+  let stmts: [AstStmt] = [];
+  let i: u64 = body_start;
+  while i < body_end and i < len(tokens) {
+    while i < body_end and (tokens[i].lexeme == "," or tokens[i].lexeme == ";") {
+      set i = i + 1;
+    }
+    if i >= body_end {
+      break;
+    }
+    if (keyword == "trait" or keyword == "impl") and tokens[i].lexeme == "proc" {
+      let open_body: int = find_item_body_open(tokens, i, body_end);
+      let end_i: u64 = if open_body >= 0 and find_matching(tokens, open_body as u64, "{", "}") >= 0 {
+        find_matching(tokens, open_body as u64, "{", "}") as u64 + 1
+      } else {
+        if find_top_level_token(tokens, i, body_end, ";") >= 0 {
+          find_top_level_token(tokens, i, body_end, ";") as u64
+        } else {
+          body_end
+        }
+      };
+      if end_i > i {
+        set stmts = stmts + [parse_surface_member_stmt(keyword, source_name, tokens, i, end_i)];
+      }
+      if end_i < body_end and (tokens[end_i].lexeme == ";" or tokens[end_i].lexeme == ",") {
+        set i = end_i + 1;
+      } else {
+        set i = end_i;
+      }
+      continue;
+    }
+    let start: u64 = i;
+    let paren_depth: int = 0;
+    let bracket_depth: int = 0;
+    let brace_depth: int = 0;
+    while i < body_end and i < len(tokens) {
+      if tokens[i].lexeme == parser_lparen() {
+        set paren_depth = paren_depth + 1;
+      } elif tokens[i].lexeme == parser_rparen() {
+        set paren_depth = paren_depth - 1;
+      } elif tokens[i].lexeme == "[" {
+        set bracket_depth = bracket_depth + 1;
+      } elif tokens[i].lexeme == "]" {
+        set bracket_depth = bracket_depth - 1;
+      } elif tokens[i].lexeme == "{" {
+        set brace_depth = brace_depth + 1;
+      } elif tokens[i].lexeme == "}" {
+        set brace_depth = brace_depth - 1;
+      } elif (tokens[i].lexeme == "," or tokens[i].lexeme == ";") and paren_depth == 0 and bracket_depth == 0 and brace_depth == 0 {
+        break;
+      }
+      set i = i + 1;
+    }
+    if start < i {
+      set stmts = stmts + [parse_surface_member_stmt(keyword, source_name, tokens, start, i)];
+    }
+    if i < body_end and (tokens[i].lexeme == "," or tokens[i].lexeme == ";") {
+      set i = i + 1;
+    }
+  }
+  give stmts;
+}
+
+proc parse_surface_item_member_nodes(keyword: string, source_name: string, tokens: [Token], body_start: u64, body_end: u64) -> [AstNominalMember] {
+  let members: [AstNominalMember] = [];
+  let i: u64 = body_start;
+  while i < body_end and i < len(tokens) {
+    while i < body_end and (tokens[i].lexeme == "," or tokens[i].lexeme == ";") {
+      set i = i + 1;
+    }
+    if i >= body_end {
+      break;
+    }
+    if (keyword == "trait" or keyword == "impl") and tokens[i].lexeme == "proc" {
+      let open_body: int = find_item_body_open(tokens, i, body_end);
+      let end_i: u64 = if open_body >= 0 and find_matching(tokens, open_body as u64, "{", "}") >= 0 {
+        find_matching(tokens, open_body as u64, "{", "}") as u64 + 1
+      } else {
+        if find_top_level_token(tokens, i, body_end, ";") >= 0 {
+          find_top_level_token(tokens, i, body_end, ";") as u64
+        } else {
+          body_end
+        }
+      };
+      if end_i > i {
+        set members = members + [parse_surface_proc_member_node(keyword, source_name, tokens, i, end_i)];
+      }
+      if end_i < body_end and (tokens[end_i].lexeme == ";" or tokens[end_i].lexeme == ",") {
+        set i = end_i + 1;
+      } else {
+        set i = end_i;
+      }
+      continue;
+    }
+    let start: u64 = i;
+    let paren_depth: int = 0;
+    let bracket_depth: int = 0;
+    let brace_depth: int = 0;
+    while i < body_end and i < len(tokens) {
+      if tokens[i].lexeme == parser_lparen() {
+        set paren_depth = paren_depth + 1;
+      } elif tokens[i].lexeme == parser_rparen() {
+        set paren_depth = paren_depth - 1;
+      } elif tokens[i].lexeme == "[" {
+        set bracket_depth = bracket_depth + 1;
+      } elif tokens[i].lexeme == "]" {
+        set bracket_depth = bracket_depth - 1;
+      } elif tokens[i].lexeme == "{" {
+        set brace_depth = brace_depth + 1;
+      } elif tokens[i].lexeme == "}" {
+        set brace_depth = brace_depth - 1;
+      } elif (tokens[i].lexeme == "," or tokens[i].lexeme == ";") and paren_depth == 0 and bracket_depth == 0 and brace_depth == 0 {
+        break;
+      }
+      set i = i + 1;
+    }
+    if start < i {
+      let member_stmt: AstStmt = parse_surface_member_stmt(keyword, source_name, tokens, start, i);
+      set members = members + [nominal_member_from_stmt(keyword, member_stmt)];
+    }
+    if i < body_end and (tokens[i].lexeme == "," or tokens[i].lexeme == ";") {
+      set i = i + 1;
+    }
+  }
+  give members;
+}
+
 proc item_kind_for_keyword(keyword: string) -> AstItemKind {
   if keyword == "space" {
     give AstItemKind.Space;
@@ -2886,7 +3242,17 @@ proc build_ast_module(source_name: string, tokens: [Token]) -> AstModule {
           }
         }
       }
-      set items = items + [ast_item_typed(range_id(5, prefix.start, end_i), span_from_tokens(source_name, tokens, prefix.start, end_i), item_kind_for_keyword(keyword), name, prefix.attributes, "", prefix.visibility, prefix.modifiers, prefix_abi(prefix.modifiers), ast_expr_unknown(0, span_from_tokens(source_name, tokens, prefix.start, end_i), ""), [], annotation, annotation, type_params, generic_params, ast_proc_signature_empty(), [], "")];
+      let stmts: [AstStmt] = if open >= 0 and find_matching(tokens, open as u64, "{", "}") >= 0 {
+        parse_surface_item_members(keyword, source_name, tokens, open as u64 + 1, find_matching(tokens, open as u64, "{", "}") as u64)
+      } else {
+        []
+      };
+      let members: [AstNominalMember] = if open >= 0 and find_matching(tokens, open as u64, "{", "}") >= 0 {
+        parse_surface_item_member_nodes(keyword, source_name, tokens, open as u64 + 1, find_matching(tokens, open as u64, "{", "}") as u64)
+      } else {
+        []
+      };
+      set items = items + [ast_item_typed_with_members(range_id(5, prefix.start, end_i), span_from_tokens(source_name, tokens, prefix.start, end_i), item_kind_for_keyword(keyword), name, prefix.attributes, "", prefix.visibility, prefix.modifiers, prefix_abi(prefix.modifiers), ast_expr_unknown(0, span_from_tokens(source_name, tokens, prefix.start, end_i), ""), stmts, members, annotation, annotation, type_params, generic_params, ast_proc_signature_empty(), [], "")];
       set i = end_i;
       continue;
     }

@@ -1,6 +1,6 @@
 space vitte/compiler/frontend/parse/lookahead
 
-use vitte/compiler/frontend/lex/token.{ Token, TokenKind }
+use vitte/compiler/frontend/lexer/token.{ Token, TokenKind }
 use vitte/compiler/frontend/parse/grammar.{ grammar_has_rule }
 
 export *
@@ -157,23 +157,11 @@ proc consume_if(tokens: [Token], cursor: u64, kind: TokenKind) -> u64 {
 }
 
 proc skip_newlines(tokens: [Token], cursor: u64) -> u64 {
-    let current: u64 = cursor;
-
-    while current_is(tokens, current, TokenKind.Newline) {
-        set current = current + 1;
-    }
-
-    give current;
+    give cursor;
 }
 
 proc skip_comments(tokens: [Token], cursor: u64) -> u64 {
-    let current: u64 = cursor;
-
-    while current_is(tokens, current, TokenKind.Comment) {
-        set current = current + 1;
-    }
-
-    give current;
+    give cursor;
 }
 
 proc skip_trivia(tokens: [Token], cursor: u64) -> u64 {
@@ -199,90 +187,60 @@ proc expect_rule(name: string) -> bool {
 }
 
 proc expect_identifier(tokens: [Token], cursor: u64) -> bool {
-    give current_is(
-        tokens,
-        cursor,
-        TokenKind.Identifier
-    );
+    give current_is(tokens, cursor, TokenKind.Ident)
+        or current_is(tokens, cursor, TokenKind.Keyword);
 }
 
 proc expect_left_brace(tokens: [Token], cursor: u64) -> bool {
-    give current_is(
-        tokens,
-        cursor,
-        TokenKind.LeftBrace
-    );
+    give peek_lexeme(tokens, cursor) == "{";
 }
 
 proc expect_right_brace(tokens: [Token], cursor: u64) -> bool {
-    give current_is(
-        tokens,
-        cursor,
-        TokenKind.RightBrace
-    );
+    give peek_lexeme(tokens, cursor) == "}";
 }
 
 proc expect_left_paren(tokens: [Token], cursor: u64) -> bool {
-    give current_is(
-        tokens,
-        cursor,
-        TokenKind.LeftParen
-    );
+    give peek_lexeme(tokens, cursor) == "(";
 }
 
 proc expect_right_paren(tokens: [Token], cursor: u64) -> bool {
-    give current_is(
-        tokens,
-        cursor,
-        TokenKind.RightParen
-    );
+    give peek_lexeme(tokens, cursor) == ")";
 }
 
 proc expect_semicolon(tokens: [Token], cursor: u64) -> bool {
-    give current_is(
-        tokens,
-        cursor,
-        TokenKind.Semicolon
-    );
+    give peek_lexeme(tokens, cursor) == ";";
 }
 
 proc lookahead_selftest() -> bool {
     let tokens: [Token] = [
             Token {
-                kind: TokenKind.Identifier,
+                kind: TokenKind.Ident,
                 lexeme: "main",
                 line: 1,
                 column: 1
             },
 
             Token {
-                kind: TokenKind.LeftBrace,
+                kind: TokenKind.Symbol,
                 lexeme: "{",
                 line: 1,
                 column: 5
             },
 
             Token {
-                kind: TokenKind.RightBrace,
+                kind: TokenKind.Symbol,
                 lexeme: "}",
                 line: 1,
                 column: 6
             }
     ];
 
-    let result: LookaheadResult = match_kind(tokens, 0, TokenKind.Identifier);
+    let result: LookaheadResult = match_kind(tokens, 0, TokenKind.Ident);
 
     give result.matched
-        and current_is(
-            tokens,
-            1,
-            TokenKind.LeftBrace
-        )
-        and next_is(
-            tokens,
-            0,
-            TokenKind.LeftBrace
-        )
+        and peek_lexeme(tokens, 1) == "{"
+        and peek_lexeme(tokens, 2) == "}"
+        and next_is(tokens, 0, TokenKind.Symbol)
         and expect_rule("expr")
         and expect_left_brace(tokens, 1)
         and expect_right_brace(tokens, 2);

@@ -3,6 +3,8 @@ space vitte/compiler/driver/metrics
 use vitte/compiler/driver/compile.{ DriverCompileResult }
 use vitte/compiler/driver/compile.{ DriverBackendModuleSetResult }
 use vitte/compiler/driver/exit_status.{ DriverExitStatus, exit_code }
+use vitte/compiler/backend/ir.{ ir_validation_reason, unit_is_valid }
+use vitte/compiler/middle/mir/validate.{ mir_validation_reason }
 
 export *
 
@@ -30,6 +32,9 @@ form CompilerMetricsReport {
     source_path: string
     status: string
     exit_code: u64
+    pipeline_failed_at: string
+    pipeline_failure_reason: string
+    validation_reason: string
     phase_metrics: [PhaseMetric]
     cache_hits: u64
     cache_misses: u64
@@ -146,6 +151,62 @@ proc report_status_text(status: DriverExitStatus) -> string {
     give "error";
 }
 
+proc canonical_pipeline_failed_at(result: DriverCompileResult) -> string {
+    if result.status == DriverExitStatus.Ok {
+        give "none";
+    }
+    if result.status == DriverExitStatus.FrontendFailure {
+        give "lexer";
+    }
+    if result.status == DriverExitStatus.AnalysisFailure {
+        give "typeck";
+    }
+    if result.status == DriverExitStatus.MirValidationFailure {
+        give "mir_validate";
+    }
+    if result.status == DriverExitStatus.IrFailure {
+        give "ir_validate";
+    }
+    if result.status == DriverExitStatus.CodegenFailure {
+        give "codegen";
+    }
+    if result.status == DriverExitStatus.LinkFailure {
+        give "link";
+    }
+    give "none";
+}
+
+proc canonical_pipeline_failure_reason(result: DriverCompileResult) -> string {
+    if result.status == DriverExitStatus.Ok {
+        give "none";
+    }
+    if result.status == DriverExitStatus.IrFailure {
+        let marker: string = "IR verification failed: ";
+        let start0: int = find(result.message, marker);
+        if start0 >= 0 {
+            let value_start: u64 = (start0 as u64) + len(marker);
+            give trim(slice(result.message, value_start, len(result.message)));
+        }
+    }
+    if result.status == DriverExitStatus.MirValidationFailure {
+        let marker: string = "MIR validation failed: ";
+        let start0: int = find(result.message, marker);
+        if start0 >= 0 {
+            let value_start: u64 = (start0 as u64) + len(marker);
+            give trim(slice(result.message, value_start, len(result.message)));
+        }
+    }
+    give "none";
+}
+
+proc canonical_validation_reason(result: DriverCompileResult) -> string {
+    let stage0: string = canonical_pipeline_failed_at(result);
+    if stage0 == "mir_validate" or stage0 == "ir_validate" {
+        give canonical_pipeline_failure_reason(result);
+    }
+    give "none";
+}
+
 proc compile_metrics_report(command: string, source_path: string, result: DriverCompileResult) -> CompilerMetricsReport {
     let phases: [PhaseMetric] = build_phase_metrics(result, command);
     let total_time: u64 = 0;
@@ -162,6 +223,9 @@ proc compile_metrics_report(command: string, source_path: string, result: Driver
         source_path: source_path,
         status: report_status_text(result.status),
         exit_code: exit_code(result.status),
+        pipeline_failed_at: canonical_pipeline_failed_at(result),
+        pipeline_failure_reason: canonical_pipeline_failure_reason(result),
+        validation_reason: canonical_validation_reason(result),
         phase_metrics: phases,
         cache_hits: estimate_cache_hits(result),
         cache_misses: estimate_cache_misses(result),
@@ -242,6 +306,9 @@ proc metrics_report_json(report: CompilerMetricsReport) -> string {
         + "\"source_path\":\"" + json_escape(report.source_path) + "\","
         + "\"status\":\"" + report.status + "\","
         + "\"exit_code\":" + exit_code_text + ","
+        + "\"pipeline_failed_at\":\"" + json_escape(report.pipeline_failed_at) + "\","
+        + "\"pipeline_failure_reason\":\"" + json_escape(report.pipeline_failure_reason) + "\","
+        + "\"validation_reason\":\"" + json_escape(report.validation_reason) + "\","
         + "\"phase_metrics\":" + phase_metrics_json(report.phase_metrics) + ","
         + "\"cache_hits\":" + cache_hits_text + ","
         + "\"cache_misses\":" + cache_misses_text + ","
@@ -280,9 +347,35 @@ proc compile_metrics_report_from_module_set(command: string, source_path: string
         set i = i + 1;
     }
 
+    let module_mir_reason: string = "none";
+    i = 0;
+    while i < len(result.analysis.modules) {
+        let reason: string = mir_validation_reason(result.analysis.modules[i].mir);
+        if reason != "none" {
+            set module_mir_reason = reason;
+            break;
+        }
+        set i = i + 1;
+    }
+    let pseudo_status: DriverExitStatus = if result.valid {
+        DriverExitStatus.Ok
+    } elif module_mir_reason != "none" {
+        DriverExitStatus.MirValidationFailure
+    } elif not unit_is_valid(result.ir_unit) {
+        DriverExitStatus.IrFailure
+    } else {
+        DriverExitStatus.PipelineFailure
+    };
+    let pseudo_message: string = if module_mir_reason != "none" {
+        "MIR validation failed: " + module_mir_reason
+    } elif not unit_is_valid(result.ir_unit) {
+        "IR verification failed: " + ir_validation_reason(result.ir_unit)
+    } else {
+        result.message
+    };
     let pseudo: DriverCompileResult = DriverCompileResult {
-        status: if result.valid { DriverExitStatus.Ok } else { DriverExitStatus.PipelineFailure },
-        message: result.message,
+        status: pseudo_status,
+        message: pseudo_message,
         ir_valid: result.valid,
         backend_name: result.config.backend_name,
         target_name: result.config.target_name,

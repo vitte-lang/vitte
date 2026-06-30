@@ -143,10 +143,21 @@ form MirBlock {
   valid: bool
 }
 
+form MirFunctionParam {
+  name: string
+  type_name: string
+  mode: string
+  mutable: bool
+  borrowed: bool
+  variadic: bool
+  valid: bool
+}
+
 form MirFunction {
   id: u64
   name: string
   entry_block: u64
+  params: [MirFunctionParam]
   return_type: string
   local_count: u64
   temporary_count: u64
@@ -372,11 +383,24 @@ proc mir_block_empty(id: u64) -> MirBlock {
   );
 }
 
-proc mir_function(name: string, entry_block: u64, return_type: string, local_count: u64, temporary_count: u64, blocks: [MirBlock], valid: bool) -> MirFunction {
+proc mir_function_param(name: string, type_name: string, mode: string, mutable: bool, borrowed: bool, variadic: bool, valid: bool) -> MirFunctionParam {
+  give MirFunctionParam {
+    name: name,
+    type_name: type_name,
+    mode: mode,
+    mutable: mutable,
+    borrowed: borrowed,
+    variadic: variadic,
+    valid: valid
+  };
+}
+
+proc mir_function(name: string, entry_block: u64, params: [MirFunctionParam], return_type: string, local_count: u64, temporary_count: u64, blocks: [MirBlock], valid: bool) -> MirFunction {
   give MirFunction {
     id: 0,
     name: name,
     entry_block: entry_block,
+    params: params,
     return_type: return_type,
     local_count: local_count,
     temporary_count: temporary_count,

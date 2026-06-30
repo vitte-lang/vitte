@@ -1,9 +1,10 @@
 space vitte/compiler/middle/lower/hir_to_mir
 
-use vitte/compiler/middle/hir.{ HirExpr, HirExprKind, HirItemKind, HirStmt, HirStmtKind, HirUnit }
+use vitte/compiler/middle/hir.{ HirExpr, HirExprKind, HirItem, HirItemKind, HirNominalMember, HirNominalMemberKind, HirStmt, HirStmtKind, HirUnit }
 use vitte/compiler/middle/mir.{
   MirBlock,
   MirFunction,
+  MirFunctionParam,
   MirModule,
   MirOperand,
   MirPlace,
@@ -15,6 +16,7 @@ use vitte/compiler/middle/mir.{
   MirUnit,
   mir_module_empty,
   mir_place_empty,
+  mir_function_param,
   mir_terminator_branch,
   mir_terminator_goto,
   mir_terminator_return
@@ -70,15 +72,234 @@ proc mir_place_from_name(name: string) -> MirPlace {
   };
 }
 
+proc sanitize_symbol_part(text: string) -> string {
+  let value: string = trim(text);
+  if value == "" {
+    give "tmp";
+  }
+  let out: string = "";
+  let i: u64 = 0;
+  while i < len(value) {
+    let ch: string = slice(value, i, i + 1);
+    let ok: bool = (ch >= "a" and ch <= "z")
+      or (ch >= "A" and ch <= "Z")
+      or (ch >= "0" and ch <= "9")
+      or ch == "_";
+    if ok {
+      set out = out + ch;
+    } else {
+      set out = out + "_";
+    }
+    set i = i + 1;
+  }
+  if out == "" {
+    give "tmp";
+  }
+  if slice(out, 0, 1) >= "0" and slice(out, 0, 1) <= "9" {
+    give "v_" + out;
+  }
+  give out;
+}
+
+proc impl_method_symbol_name(item: HirItem, member: HirNominalMember) -> string {
+  give "vitte_impl_" + sanitize_symbol_part(item.name) + "_for_" + sanitize_symbol_part(item.target_type_text) + "_" + sanitize_symbol_part(member.name);
+}
+
+proc resolve_self_type(item: HirItem, annotation_text: string) -> string {
+  if annotation_text == "Self" and item.target_type_text != "" {
+    give item.target_type_text;
+  }
+  if annotation_text != "" {
+    give annotation_text;
+  }
+  give "opaque";
+}
+
+proc mir_params_from_member(item: HirItem, member: HirNominalMember) -> [MirFunctionParam] {
+  let out: [MirFunctionParam] = [];
+  let i: u64 = 0;
+  while i < len(member.params) {
+    set out = out + [mir_function_param(
+      member.params[i].name,
+      resolve_self_type(item, member.params[i].annotation_text),
+      member.params[i].mode,
+      member.params[i].mutable,
+      member.params[i].borrowed,
+      member.params[i].variadic,
+      member.params[i].valid
+    )];
+    set i = i + 1;
+  }
+  give out;
+}
+
+proc mir_params_from_item(item: HirItem) -> [MirFunctionParam] {
+  let out: [MirFunctionParam] = [];
+  let i: u64 = 0;
+  while i < len(item.params) {
+    set out = out + [mir_function_param(
+      item.params[i].name,
+      resolve_self_type(item, item.params[i].annotation_text),
+      item.params[i].mode,
+      item.params[i].mutable,
+      item.params[i].borrowed,
+      item.params[i].variadic,
+      item.params[i].valid
+    )];
+    set i = i + 1;
+  }
+  give out;
+}
+
 proc mir_operand_from_expr(expr: HirExpr) -> MirOperand {
   let place: MirPlace = mir_place_empty();
+  let constant: bool = expr.kind == HirExprKind.Int
+    or expr.kind == HirExprKind.Float
+    or expr.kind == HirExprKind.Bool
+    or expr.kind == HirExprKind.String
+    or expr.kind == HirExprKind.Char;
   if expr.binding != "" {
     set place = mir_place_from_name(expr.binding);
   }
-  give MirOperand { text: expr.text, place: place, valid: expr.valid };
+  give MirOperand {
+    text: expr.text,
+    place: place,
+    ty: expr.inferred_type,
+    constant: constant,
+    move: false,
+    valid: expr.valid
+  };
 }
 
-proc mir_rvalue_from_expr(expr: HirExpr) -> MirRvalue {
+proc member_name(expr: HirExpr) -> string {
+  if expr.name != "" {
+    give expr.name;
+  }
+  let dot: int = find(expr.text, ".");
+  if dot < 0 {
+    give "";
+  }
+  give trim(slice(expr.text, dot + 1, len(expr.text)));
+}
+
+proc function_return_type_text(signature: string) -> string {
+  let arrow: int = find(signature, "->");
+  if arrow < 0 {
+    give "";
+  }
+  give trim(slice(signature, arrow + 2, len(signature)));
+}
+
+proc is_variant_constructor_call(expr: HirExpr) -> bool {
+  if expr.kind != HirExprKind.Call or len(expr.children) == 0 {
+    give false;
+  }
+  let callee: HirExpr = expr.children[0];
+  if callee.kind != HirExprKind.Member or len(callee.children) == 0 {
+    give false;
+  }
+  let owner: HirExpr = callee.children[0];
+  if owner.inferred_type == "" or owner.inferred_type == "unknown" {
+    give false;
+  }
+  let callee_type: string = callee.inferred_type;
+  if not starts_with(callee_type, "fn(") {
+    give false;
+  }
+  give function_return_type_text(callee_type) == owner.inferred_type;
+}
+
+proc is_method_dispatch_call(expr: HirExpr) -> bool {
+  if expr.kind != HirExprKind.Call or len(expr.children) == 0 {
+    give false;
+  }
+  let callee: HirExpr = expr.children[0];
+  if callee.kind != HirExprKind.Member or len(callee.children) == 0 {
+    give false;
+  }
+  if is_variant_constructor_call(expr) {
+    give false;
+  }
+  give starts_with(callee.inferred_type, "fn(");
+}
+
+proc find_impl_method_symbol(items: [HirItem], owner_type: string, member: string) -> string {
+  let i: u64 = 0;
+  while i < len(items) {
+    if items[i].kind == HirItemKind.Impl and items[i].target_type_text == owner_type {
+      let j: u64 = 0;
+      while j < len(items[i].members) {
+        if items[i].members[j].kind == HirNominalMemberKind.ImplMethod and items[i].members[j].name == member {
+          give impl_method_symbol_name(items[i], items[i].members[j]);
+        }
+        set j = j + 1;
+      }
+    }
+    set i = i + 1;
+  }
+  give "";
+}
+
+proc mir_call_operands(expr: HirExpr) -> [MirOperand] {
+  let out: [MirOperand] = [];
+  if is_variant_constructor_call(expr) {
+    let i: u64 = 1;
+    while i < len(expr.children) {
+      set out = out + [mir_operand_from_expr(expr.children[i])];
+      set i = i + 1;
+    }
+    give out;
+  }
+  if is_method_dispatch_call(expr) {
+    let callee: HirExpr = expr.children[0];
+    set out = out + [mir_operand_from_expr(callee.children[0])];
+    let i: u64 = 1;
+    while i < len(expr.children) {
+      set out = out + [mir_operand_from_expr(expr.children[i])];
+      set i = i + 1;
+    }
+    give out;
+  }
+  let i: u64 = 0;
+  while i < len(expr.children) {
+    set out = out + [mir_operand_from_expr(expr.children[i])];
+    set i = i + 1;
+  }
+  give out;
+}
+
+proc mir_call_text(expr: HirExpr, items: [HirItem]) -> string {
+  if len(expr.children) == 0 {
+    give expr.text;
+  }
+  let callee: HirExpr = expr.children[0];
+  if (is_variant_constructor_call(expr) or is_method_dispatch_call(expr)) and callee.kind == HirExprKind.Member and len(callee.children) > 0 {
+    let owner: string = callee.children[0].inferred_type;
+    let member: string = member_name(callee);
+    if owner != "" and owner != "unknown" and member != "" {
+      if is_method_dispatch_call(expr) {
+        let symbol_name: string = find_impl_method_symbol(items, owner, member);
+        if symbol_name != "" {
+          give symbol_name;
+        }
+      }
+      give owner + "::" + member;
+    }
+  }
+  give expr.text;
+}
+
+proc mir_call_operator(expr: HirExpr) -> string {
+  if is_variant_constructor_call(expr) {
+    give "variant-ctor";
+  }
+  if is_method_dispatch_call(expr) {
+    give "method-dispatch";
+  }
+  give expr.operator;
+}
+
+proc mir_rvalue_from_expr(expr: HirExpr, items: [HirItem]) -> MirRvalue {
   let kind: MirRvalueKind = MirRvalueKind.Use;
   if expr.kind == HirExprKind.Binary {
     set kind = MirRvalueKind.Binary;
@@ -88,11 +309,13 @@ proc mir_rvalue_from_expr(expr: HirExpr) -> MirRvalue {
     set kind = MirRvalueKind.BorrowMut;
   } elif expr.kind == HirExprKind.Call {
     set kind = MirRvalueKind.Call;
+  } elif expr.kind == HirExprKind.Struct {
+    set kind = MirRvalueKind.Struct;
   }
 
-  let operands: [MirOperand] = [];
+  let operands: [MirOperand] = if kind == MirRvalueKind.Call { mir_call_operands(expr) } else { [] };
   let i: u64 = 0;
-  while i < len(expr.children) {
+  while kind != MirRvalueKind.Call and i < len(expr.children) {
     set operands = operands + [mir_operand_from_expr(expr.children[i])];
     set i = i + 1;
   }
@@ -102,25 +325,26 @@ proc mir_rvalue_from_expr(expr: HirExpr) -> MirRvalue {
 
   give MirRvalue {
     kind: kind,
-    text: expr.text,
-    operator: expr.operator,
+    text: if kind == MirRvalueKind.Call { mir_call_text(expr, items) } else { expr.text },
+    operator: if kind == MirRvalueKind.Call { mir_call_operator(expr) } else { expr.operator },
     operands: operands,
+    ty: expr.inferred_type,
     valid: expr.valid
   };
 }
 
-proc mir_statement_from_stmt(stmt: HirStmt) -> MirStatement {
+proc mir_statement_from_stmt(stmt: HirStmt, items: [HirItem]) -> MirStatement {
   if stmt.kind == HirStmtKind.Give {
-    give MirStatement { id: stmt.id, span: stmt.span, kind: MirStatementKind.Return, place: mir_place_empty(), rvalue: mir_rvalue_from_expr(stmt.expr), valid: stmt.valid };
+    give MirStatement { id: stmt.id, span: stmt.span, kind: MirStatementKind.Return, place: mir_place_empty(), rvalue: mir_rvalue_from_expr(stmt.expr, items), valid: stmt.valid };
   }
   if stmt.kind == HirStmtKind.StaticAssert {
-    give MirStatement { id: stmt.id, span: stmt.span, kind: MirStatementKind.Assert, place: mir_place_empty(), rvalue: mir_rvalue_from_expr(stmt.expr), valid: stmt.valid };
+    give MirStatement { id: stmt.id, span: stmt.span, kind: MirStatementKind.Assert, place: mir_place_empty(), rvalue: mir_rvalue_from_expr(stmt.expr, items), valid: stmt.valid };
   }
   let place: MirPlace = mir_place_from_name(stmt.target);
   if stmt.name != "" {
     set place = mir_place_from_name(stmt.name);
   }
-  give MirStatement { id: stmt.id, span: stmt.span, kind: MirStatementKind.Assign, place: place, rvalue: mir_rvalue_from_expr(stmt.expr), valid: stmt.valid };
+  give MirStatement { id: stmt.id, span: stmt.span, kind: MirStatementKind.Assign, place: place, rvalue: mir_rvalue_from_expr(stmt.expr, items), valid: stmt.valid };
 }
 
 proc choose_entry(primary: u64, fallback: u64) -> u64 {
@@ -139,7 +363,25 @@ proc block_single(id: u64, stmt: MirStatement, terminator: MirTerminator) -> Mir
   };
 }
 
-proc build_stmt_sequence(hir_stmts: [HirStmt], fallthrough_block: u64, next_block_id: u64) -> MirSequence {
+proc lower_stmt_sequence_as_function(function_id: u64, function_name: string, params: [MirFunctionParam], return_type: string, stmts: [HirStmt], items: [HirItem], next_block_id: u64) -> MirFunction {
+  let exit_block: MirBlock = MirBlock { id: next_block_id, statements: [], terminator: mir_terminator_return(), valid: true };
+  let sequence: MirSequence = build_stmt_sequence(stmts, items, exit_block.id, exit_block.id + 1);
+  let entry_block: u64 = choose_entry(sequence.entry_block, exit_block.id);
+  let blocks: [MirBlock] = sequence.blocks + [exit_block];
+  give MirFunction {
+    id: function_id,
+    name: function_name,
+    entry_block: entry_block,
+    params: params,
+    return_type: return_type,
+    local_count: len(stmts),
+    temporary_count: 0,
+    blocks: blocks,
+    valid: sequence.valid and entry_block > 0
+  };
+}
+
+proc build_stmt_sequence(hir_stmts: [HirStmt], items: [HirItem], fallthrough_block: u64, next_block_id: u64) -> MirSequence {
   let built: [MirBlock] = [];
   let current_entry: u64 = fallthrough_block;
   let next_id: u64 = next_block_id;
@@ -151,8 +393,8 @@ proc build_stmt_sequence(hir_stmts: [HirStmt], fallthrough_block: u64, next_bloc
     let stmt: HirStmt = hir_stmts[i as u64];
 
     if stmt.kind == HirStmtKind.If {
-      let then_seq: MirSequence = build_stmt_sequence(stmt.then_stmts, current_entry, next_id + 1);
-      let else_seq: MirSequence = build_stmt_sequence(stmt.else_stmts, current_entry, then_seq.next_block_id);
+      let then_seq: MirSequence = build_stmt_sequence(stmt.then_stmts, items, current_entry, next_id + 1);
+      let else_seq: MirSequence = build_stmt_sequence(stmt.else_stmts, items, current_entry, then_seq.next_block_id);
       let condition: MirOperand = mir_operand_from_expr(stmt.expr);
       let branch: MirBlock = MirBlock {
         id: next_id,
@@ -175,7 +417,7 @@ proc build_stmt_sequence(hir_stmts: [HirStmt], fallthrough_block: u64, next_bloc
 
     if stmt.kind == HirStmtKind.While {
       let header_id: u64 = next_id;
-      let body_seq: MirSequence = build_stmt_sequence(stmt.then_stmts, header_id, header_id + 1);
+      let body_seq: MirSequence = build_stmt_sequence(stmt.then_stmts, items, header_id, header_id + 1);
       let condition: MirOperand = mir_operand_from_expr(stmt.expr);
       let header: MirBlock = MirBlock {
         id: header_id,
@@ -196,7 +438,7 @@ proc build_stmt_sequence(hir_stmts: [HirStmt], fallthrough_block: u64, next_bloc
       continue;
     }
 
-    let mir_stmt: MirStatement = mir_statement_from_stmt(stmt);
+    let mir_stmt: MirStatement = mir_statement_from_stmt(stmt, items);
     let terminator: MirTerminator = mir_terminator_return();
     if stmt.kind != HirStmtKind.Give {
       set terminator = mir_terminator_goto(current_entry);
@@ -238,27 +480,31 @@ proc lower_hir_to_mir(hir: HirUnit) -> MirUnit {
   while i < len(hir.module.items) {
     let item = hir.module.items[i];
     if item.kind == HirItemKind.Proc {
-      let exit_block: MirBlock = MirBlock { id: next_block_id, statements: [], terminator: mir_terminator_return(), valid: true };
-      let sequence: MirSequence = build_stmt_sequence(item.stmts, exit_block.id, exit_block.id + 1);
-      let entry_block: u64 = choose_entry(sequence.entry_block, exit_block.id);
-      let blocks: [MirBlock] = sequence.blocks + [exit_block];
-      set functions = functions + [MirFunction {
-        id: item.id,
-        name: item.name,
-        entry_block: entry_block,
-        blocks: blocks,
-        valid: sequence.valid and entry_block > 0
-      }];
-      set block_count = block_count + len(blocks);
-      set instruction_count = instruction_count + sequence.instruction_count;
-      set next_block_id = sequence.next_block_id;
+      let lowered: MirFunction = lower_stmt_sequence_as_function(item.id, item.name, mir_params_from_item(item), item.annotation_text, item.stmts, hir.module.items, next_block_id);
+      set functions = functions + [lowered];
+      set block_count = block_count + len(lowered.blocks);
+      set instruction_count = instruction_count + (len(lowered.blocks) - 1);
+      set next_block_id = lowered.blocks[len(lowered.blocks) - 1].id + 1;
+    }
+    if item.kind == HirItemKind.Impl {
+      let j: u64 = 0;
+      while j < len(item.members) {
+        if item.members[j].kind == HirNominalMemberKind.ImplMethod {
+          let lowered: MirFunction = lower_stmt_sequence_as_function(item.members[j].id, impl_method_symbol_name(item, item.members[j]), mir_params_from_member(item, item.members[j]), item.members[j].annotation_text, item.members[j].body_stmts, hir.module.items, next_block_id);
+          set functions = functions + [lowered];
+          set block_count = block_count + len(lowered.blocks);
+          set instruction_count = instruction_count + (len(lowered.blocks) - 1);
+          set next_block_id = lowered.blocks[len(lowered.blocks) - 1].id + 1;
+        }
+        set j = j + 1;
+      }
     }
     set i = i + 1;
   }
 
   if len(functions) == 0 {
     let entry = MirBlock { id: 1, statements: [], terminator: mir_terminator_return(), valid: true };
-    set functions = [MirFunction { id: 1, name: "__module_init", entry_block: 1, blocks: [entry], valid: true }];
+    set functions = [MirFunction { id: 1, name: "__module_init", entry_block: 1, params: [], return_type: "unit", local_count: 0, temporary_count: 0, blocks: [entry], valid: true }];
     set block_count = 1;
   }
 

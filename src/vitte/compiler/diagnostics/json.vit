@@ -697,16 +697,32 @@ proc json_envelope(envelope: DiagnosticEnvelope) -> string {
     ]);
 }
 
+proc json_report_envelope_with_canonical_context(report: DiagnosticReport, producer: string, command: string, source: string, pipeline_failed_at: string, pipeline_failure_reason: string, validation_reason: string) -> string {
+    give json_object([
+        json_key_value("schema", json_quote("vitte.diagnostics")),
+        json_key_value("schema_version", json_quote(diagnostic_schema_version())),
+        json_key_value("producer", json_quote(producer)),
+        json_key_value("command", json_quote(command)),
+        json_key_value("source", json_quote(source)),
+        json_key_value("pipeline_failed_at", json_quote(pipeline_failed_at)),
+        json_key_value("pipeline_failure_reason", json_quote(pipeline_failure_reason)),
+        json_key_value("validation_reason", json_quote(validation_reason)),
+        json_key_value("quality_score", report.quality_score as string),
+        json_key_value(
+            "causality",
+            json_object([
+                json_key_value("root_count", report.root_count as string),
+                json_key_value("cascade_count", report.cascade_count as string),
+                json_key_value("suppressed_cascade_count", report.cascade_count as string)
+            ])
+        ),
+        json_key_value("report", json_report(report)),
+        json_key_value("valid", json_bool(report.valid))
+    ]);
+}
+
 proc json_report_envelope(report: DiagnosticReport, producer: string, command: string, source: string) -> string {
-    give json_envelope(DiagnosticEnvelope {
-        schema: "vitte.diagnostics",
-        schema_version: diagnostic_schema_version(),
-        producer: producer,
-        command: command,
-        source: source,
-        report: report,
-        valid: report.valid
-    });
+    give json_report_envelope_with_canonical_context(report, producer, command, source, "none", "none", "none");
 }
 
 proc json_compact_diagnostic(diagnostic: Diagnostic) -> string {
@@ -828,6 +844,7 @@ share json_diagnostic
 share json_diagnostics
 share json_report
 share json_envelope
+share json_report_envelope_with_canonical_context
 share json_report_envelope
 
 share json_compact_diagnostic

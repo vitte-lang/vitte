@@ -66,6 +66,19 @@ proc expr_is_constant(expr: HirExpr) -> bool {
   give expr.constant;
 }
 
+proc expr_has_struct_shape(expr: HirExpr) -> bool {
+  if expr.kind != HirExprKind.Struct {
+    give true;
+  }
+  if expr.name == "" {
+    give false;
+  }
+  if len(expr.children) == 0 {
+    give false;
+  }
+  give expr.children[0].kind == HirExprKind.Name and expr.children[0].name == expr.name;
+}
+
 proc validate_expr(expr: HirExpr) -> [SemanticDiagnostic] {
   let diagnostics: [SemanticDiagnostic] = []
 
@@ -91,6 +104,10 @@ proc validate_expr(expr: HirExpr) -> [SemanticDiagnostic] {
 
   if expr.kind == HirExprKind.Name and expr.binding == "" {
     set diagnostics = diagnostics + [validation_error("HIRV0006", "name expression missing binding")]
+  }
+
+  if not expr_has_struct_shape(expr) {
+    set diagnostics = diagnostics + [validation_error("HIRV0007", "struct expression missing constructor shape")]
   }
 
   let i: u64 = 0
@@ -162,6 +179,7 @@ proc validate_stmt(stmt: HirStmt) -> [SemanticDiagnostic] {
 
 proc validate_item(item: HirItem) -> [SemanticDiagnostic] {
   let diagnostics: [SemanticDiagnostic] = []
+  let effective_member_count: u64 = if len(item.members) > 0 { len(item.members) } else { len(item.stmts) }
 
   if not item.valid {
     set diagnostics = diagnostics + [validation_error("HIRV0200", "invalid hir item")]
@@ -177,6 +195,26 @@ proc validate_item(item: HirItem) -> [SemanticDiagnostic] {
 
   if item.kind == HirItemKind.Proc and len(item.stmts) == 0 {
     set diagnostics = diagnostics + [validation_error("HIRV0203", "procedure item missing body")]
+  }
+
+  if item.kind == HirItemKind.Trait and effective_member_count == 0 {
+    set diagnostics = diagnostics + [validation_error("HIRV0204", "trait item missing member surface")]
+  }
+
+  if item.kind == HirItemKind.Impl and effective_member_count == 0 {
+    set diagnostics = diagnostics + [validation_error("HIRV0205", "impl item missing member surface")]
+  }
+
+  if item.member_count != effective_member_count {
+    set diagnostics = diagnostics + [validation_error("HIRV0206", "hir item member count does not match lowered statements")]
+  }
+
+  if (item.kind == HirItemKind.Bits or item.kind == HirItemKind.Flags) and item.annotation_text == "" {
+    set diagnostics = diagnostics + [validation_error("HIRV0207", "bits/flags item missing underlying type text")]
+  }
+
+  if item.kind == HirItemKind.Impl and item.target_type_text == "" {
+    set diagnostics = diagnostics + [validation_error("HIRV0208", "impl item missing target type text")]
   }
 
   if item.expr.valid {

@@ -44,6 +44,7 @@ form TypeBinding {
     name: string
     ty: string
     mutable: bool
+    borrowed: bool
     initialized: bool
     moved: bool
     valid: bool
@@ -98,6 +99,7 @@ proc type_binding(name: string, ty: string) -> TypeBinding {
         name: name,
         ty: ty,
         mutable: false,
+        borrowed: false,
         initialized: true,
         moved: false,
         valid: name != "" and ty != ""
@@ -109,6 +111,19 @@ proc mutable_type_binding(name: string, ty: string) -> TypeBinding {
         name: name,
         ty: ty,
         mutable: true,
+        borrowed: false,
+        initialized: true,
+        moved: false,
+        valid: name != "" and ty != ""
+    };
+}
+
+proc param_type_binding(name: string, ty: string, mutable: bool, borrowed: bool) -> TypeBinding {
+    give TypeBinding {
+        name: name,
+        ty: ty,
+        mutable: mutable,
+        borrowed: borrowed,
         initialized: true,
         moved: false,
         valid: name != "" and ty != ""
@@ -120,6 +135,7 @@ proc uninitialized_type_binding(name: string, ty: string) -> TypeBinding {
         name: name,
         ty: ty,
         mutable: false,
+        borrowed: false,
         initialized: false,
         moved: false,
         valid: name != "" and ty != ""
@@ -198,6 +214,7 @@ proc type_env_get_binding(env: TypeEnv, name: string) -> TypeBinding {
             name: name,
             ty: "opaque",
             mutable: false,
+            borrowed: false,
             initialized: false,
             moved: false,
             valid: false
@@ -312,7 +329,8 @@ proc infer_name_type(env: [TypeBinding], expr: HirExpr) -> ExprTypeResult {
         )], false);
     }
 
-    let index: int = env_index(env, lookup);
+    let type_lookup: string = "@type:" + lookup;
+    let index: int = if env_index(env, lookup) >= 0 { env_index(env, lookup) } else { env_index(env, type_lookup) };
 
     if index < 0 {
         give expr_result("opaque", [typeck_diag(
@@ -449,6 +467,20 @@ proc infer_borrow_type(env: [TypeBinding], expr: HirExpr, mutable: bool) -> Expr
     }
 
     let inner: ExprTypeResult = infer_expr_type(env, expr.children[0]);
+    let binding_name: string = if expr.children[0].binding != "" { expr.children[0].binding } else { expr.children[0].name };
+    if mutable and binding_name != "" {
+        let binding: TypeBinding = type_env_get_binding(type_env(env), binding_name);
+        if binding.valid and not binding.mutable {
+            give expr_result("&mut " + inner.ty, add_unique_diag(inner.diagnostics, typeck_diag(
+                "TYPECK_E_MUTABLE_BORROW_IMMUTABLE",
+                "cannot take a mutable borrow of immutable binding `" + binding_name + "`",
+                [binding_name],
+                "declare the binding as `mut` before taking `&mut`",
+                expr.span,
+                true
+            )), false);
+        }
+    }
 
     if mutable {
         give expr_result("&mut " + inner.ty, inner.diagnostics, inner.valid);
@@ -469,6 +501,12 @@ proc infer_member_type(env: [TypeBinding], expr: HirExpr) -> ExprTypeResult {
     let base: ExprTypeResult = infer_expr_type(env, expr.children[0]);
     let member: string = projection_member_name(expr.text, expr.name);
     let projected: string = project_place_type(base.ty, "." + member);
+    let nominal_lookup: string = "@member:" + type_deref_target(base.ty) + "." + member;
+    let nominal_ty: string = env_get(env, nominal_lookup);
+
+    if nominal_ty != "opaque" {
+        give expr_result(nominal_ty, base.diagnostics, base.valid);
+    }
 
     if projected == "unknown" {
         give expr_result(projected, add_unique_diag(base.diagnostics, typeck_unknown_member(
@@ -695,6 +733,36 @@ proc function_param_types(ty: string) -> [string] {
     give split_function_signature_types(inner);
 }
 
+proc function_param_is_variadic(text: string) -> bool {
+    give trim(text) == "...";
+}
+
+proc normalize_function_param_type(text: string) -> string {
+    let value: string = trim(text);
+    if value == "..." {
+        give value;
+    }
+    if starts_with(value, "&mut ") {
+        give trim(slice(value, 5, len(value)));
+    }
+    if starts_with(value, "&") {
+        give trim(slice(value, 1, len(value)));
+    }
+    if starts_with(value, "borrow ") {
+        give trim(slice(value, 7, len(value)));
+    }
+    if starts_with(value, "mut ") {
+        give trim(slice(value, 4, len(value)));
+    }
+    if starts_with(value, "move ") {
+        give trim(slice(value, 5, len(value)));
+    }
+    if starts_with(value, "owned ") {
+        give trim(slice(value, 6, len(value)));
+    }
+    give value;
+}
+
 proc function_return_type(ty: string) -> string {
     let value: string = trim(ty);
     let arrow: int = find(value, "->");
@@ -732,8 +800,12 @@ proc infer_call_type(env: [TypeBinding], expr: HirExpr) -> ExprTypeResult {
     let arg_count: u64 = if len(expr.children) > 0 { len(expr.children) - 1 } else { 0 };
     let param_types: [string] = if type_is_function(callee_ty) { function_param_types(callee_ty) } else { [] };
 
-    if type_is_function(callee_ty) and len(param_types) != arg_count {
-        set diagnostics = add_unique_diag(diagnostics, typeck_invalid_call_arity(callee_text, len(param_types), arg_count, expr.span));
+    let variadic: bool = len(param_types) > 0 and function_param_is_variadic(param_types[len(param_types) - 1]);
+    let fixed_count: u64 = if variadic { len(param_types) - 1 } else { len(param_types) };
+    let arity_invalid: bool = if variadic { arg_count < fixed_count } else { len(param_types) != arg_count };
+
+    if type_is_function(callee_ty) and arity_invalid {
+        set diagnostics = add_unique_diag(diagnostics, typeck_invalid_call_arity(callee_text, fixed_count, arg_count, expr.span));
         set valid = false;
     }
 
@@ -748,8 +820,8 @@ proc infer_call_type(env: [TypeBinding], expr: HirExpr) -> ExprTypeResult {
 
         let param_index: u64 = i - 1;
 
-        if type_is_function(callee_ty) and param_index < len(param_types) {
-            let expected_ty: string = param_types[param_index];
+        if type_is_function(callee_ty) and param_index < fixed_count {
+            let expected_ty: string = normalize_function_param_type(param_types[param_index]);
 
             let arg_type_known: bool = arg.ty != "opaque" and arg.ty != "unknown";
             let arg_type_mismatch: bool = expected_ty != "opaque" and arg_type_known and !types_compatible(expected_ty, arg.ty);
@@ -821,6 +893,32 @@ proc infer_if_type(env: [TypeBinding], expr: HirExpr) -> ExprTypeResult {
     give expr_result(result_ty, diagnostics, valid);
 }
 
+proc infer_struct_type(env: [TypeBinding], expr: HirExpr) -> ExprTypeResult {
+    let diagnostics: [TypeckDiagnostic] = [];
+    let valid: bool = true;
+    let i: u64 = 0;
+
+    while i < len(expr.children) {
+        let child: ExprTypeResult = infer_expr_type(env, expr.children[i]);
+        set diagnostics = merge_diagnostics(diagnostics, child.diagnostics);
+        set valid = valid and child.valid;
+        set i = i + 1;
+    }
+
+    let struct_ty: string = expr.inferred_type;
+    if struct_ty == "" or struct_ty == "unknown" {
+        set struct_ty = expr.name;
+    }
+    if struct_ty == "" and len(expr.children) > 0 and expr.children[0].name != "" {
+        set struct_ty = expr.children[0].name;
+    }
+    if struct_ty == "" {
+        set struct_ty = "opaque";
+    }
+
+    give expr_result(struct_ty, diagnostics, valid);
+}
+
 proc infer_expr_type(env: [TypeBinding], expr: HirExpr) -> ExprTypeResult {
     if !expr.valid {
         give expr_result("unknown", [typeck_diag(
@@ -882,6 +980,10 @@ proc infer_expr_type(env: [TypeBinding], expr: HirExpr) -> ExprTypeResult {
         give infer_if_type(env, expr);
     }
 
+    if expr.kind == HirExprKind.Struct {
+        give infer_struct_type(env, expr);
+    }
+
     give expr_result("opaque", [], true);
 }
 
@@ -923,6 +1025,7 @@ share TypeInferContext
 
 share type_binding
 share mutable_type_binding
+share param_type_binding
 share uninitialized_type_binding
 share empty_type_env
 share type_env

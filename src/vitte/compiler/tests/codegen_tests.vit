@@ -1,21 +1,18 @@
 space vitte/compiler/tests/codegen_tests
 
 use vitte/compiler/backend/codegen.{ CodegenResult, run_codegen_x86_64 }
-use vitte/compiler/backend/ir.{ IrInstructionKind, IrUnit, IrUnitState, unit_is_valid, verify_unit }
+use vitte/compiler/backend/ir.{ IrInstructionKind, IrLinkage, IrModuleKind, IrUnit, IrUnitState, IrValueKind, IrVisibility, block_add_instruction, block_create, function_add_block, function_ref_create, instruction_create, instruction_with_call_abi, ir_validation_reason, module_add_function, module_add_nominal_type, module_create, nominal_type_create, span_empty, target_native_x86_64_linux, terminator_return, unit_add_module, unit_empty, unit_is_valid, unit_set_entry, unit_with_source_path, value_constant, value_place, verify_unit }
 use vitte/compiler/backend/link/artifact.{ LinkArtifact, artifact_is_valid }
 use vitte/compiler/backend/link/linker.{ link_ir_unit }
-use vitte/compiler/backend/pipeline.{ BackendPipelineResult, compile_to_valid_ir, compile_to_valid_ir_with_backend }
-use vitte/compiler/backends/llvm_bindings.{ LlvmBindingResult, LlvmObjectResult, default_llvm_build_options, emit_llvm_ir_from_ir, emit_llvm_object_from_ir }
+use vitte/compiler/backend/pipeline.{ BackendPipelineResult, compile_frontend_to_valid_ir_with_profile_and_packaging, compile_to_valid_ir, compile_to_valid_ir_with_backend }
+use vitte/compiler/backends/llvm_bindings.{ LlvmBindingResult, LlvmObjectResult, default_llvm_build_options, default_llvm_toolchain_paths, emit_llvm_ir_from_ir, emit_llvm_object_from_ir }
 use vitte/compiler/driver/cli.{ run_compile_set_manifest_report_cli }
 use vitte/compiler/driver/compile.{ DriverBackendModuleSetResult, DriverCompileResult, compile_source_set, compile_source_set_with_config, compile_source_with_config, driver_compile_config, driver_module_input }
 use vitte/compiler/driver/exit_status.{ DriverExitStatus }
 use vitte/compiler/driver/pipeline.{ CompileReport, ModuleSetCompileReport, compile_report_json, module_set_compile_report_json, run_and_report_with_config, run_set_and_report, run_set_and_report_with_config }
 use vitte/compiler/driver/result.{ CliReportResult }
 use vitte/compiler/frontend/pipeline.{ FrontendOutput, frontend_run }
-use vitte/compiler/middle/hir/lower_ast.{ lower_ast_to_hir }
-use vitte/compiler/middle/lower/hir_to_mir.{ lower_hir_to_mir }
 use vitte/compiler/middle/lower/mir_to_ir.{ lower_mir_to_ir }
-use vitte/compiler/middle/mir/validate.{ validate_mir }
 use vitte/compiler/middle/pipeline.{ MiddleOutput, middle_run }
 
 const VERSION_TEXT: string = "backend codegen tests 0.1.0"
@@ -28,6 +25,131 @@ proc build_verified_ir(source_name: string, source_text: string) -> IrUnit {
   give verify_unit(lowered);
 }
 
+proc manual_bad_nominal_ir() -> IrUnit {
+  let target = target_native_x86_64_linux();
+  let call0 = instruction_with_call_abi(
+    instruction_create(
+      1,
+      IrInstructionKind.Call,
+      "Option::Some",
+      "variant-ctor",
+      value_place(1, "opt", "opt", "Option"),
+      [value_constant(2, "1", "int"), value_constant(3, "2", "int")],
+      span_empty()
+    ),
+    0
+  );
+  let block0 = block_add_instruction(block_create(1, "bb1"), call0);
+  let fn0 = function_add_block(
+    function_ref_create(1, "main", "manual", IrLinkage.Exported, IrVisibility.Public, true, span_empty()),
+    block0
+  );
+  let module0 = module_add_function(
+    module_add_nominal_type(
+      module_add_nominal_type(
+        module_create(1, "manual", "manual_bad_nominal_ir.vit", IrModuleKind.Binary, target),
+        nominal_type_create("Option", "pick", "", "", "", 0, 2, 0, ["None", "Some"], ["variant", "variant"], ["", "int"], ["", ""], ["", ""], ["", ""], ["", ""], ["", ""], ["", ""], ["", ""], false)
+      ),
+      nominal_type_create("Show", "impl", "", "Show", "Point", 0, 1, 1, ["show"], ["impl-method"], ["string"], ["fn(Self, int) -> string"], ["self|level"], ["Self|int"], ["|"], ["false|false"], ["false|false"], ["false|false"], false)
+    ),
+    fn0
+  );
+  let unit0 = unit_set_entry(unit_add_module(unit_with_source_path(unit_empty(target), "manual_bad_nominal_ir.vit"), module0), 1);
+  give unit0;
+}
+
+proc manual_bad_dispatch_ir() -> IrUnit {
+  let target = target_native_x86_64_linux();
+  let call0 = instruction_with_call_abi(
+    instruction_create(
+      1,
+      IrInstructionKind.Call,
+      "vitte_impl_Show_for_Point_show",
+      "method-dispatch",
+      value_place(1, "shown", "shown", "string"),
+      [value_place(2, "point", "point", "Point")],
+      span_empty()
+    ),
+    0
+  );
+  let block0 = block_add_instruction(block_create(1, "bb1"), call0);
+  let fn0 = function_add_block(
+    function_ref_create(1, "main", "manual", IrLinkage.Exported, IrVisibility.Public, true, span_empty()),
+    block0
+  );
+  let impl_fn = function_add_block(
+    IrFunction {
+      id: 2,
+      name: "vitte_impl_Show_for_Point_show",
+      module_name: "manual",
+      linkage: IrLinkage.Internal,
+      visibility: IrVisibility.Private,
+      is_entry: false,
+      span: span_empty(),
+      params: [
+        ir_function_param("self", "Point", "", false, false, false, true),
+        ir_function_param("level", "int", "", false, false, false, true)
+      ],
+      return_type: "string",
+      blocks: [block_create(2, "bb2")],
+      valid: true
+    },
+    block_create(3, "bb3")
+  );
+  let module0 = module_add_function(
+    module_add_function(
+      module_add_nominal_type(
+        module_create(1, "manual", "manual_bad_dispatch_ir.vit", IrModuleKind.Binary, target),
+        nominal_type_create("Show", "impl", "", "Show", "Point", 0, 1, 1, ["show"], ["impl-method"], ["string"], ["fn(Self, int) -> string"], ["self|level"], ["Self|int"], ["|"], ["false|false"], ["false|false"], ["false|false"], false)
+      ),
+      fn0
+    ),
+    impl_fn
+  );
+  let unit0 = unit_set_entry(unit_add_module(unit_with_source_path(unit_empty(target), "manual_bad_dispatch_ir.vit"), module0), 1);
+  give unit0;
+}
+
+proc manual_bad_regular_call_abi_ir() -> IrUnit {
+  let target = target_native_x86_64_linux();
+  let call0 = instruction_with_call_abi(
+    instruction_create(
+      1,
+      IrInstructionKind.Call,
+      "keep",
+      "",
+      value_place(1, "y", "y", "int"),
+      [value_function_ref(2, "keep", false), value_place(3, "x", "x", "int")],
+      span_empty()
+    ),
+    1
+  );
+  let block0 = block_add_instruction(block_create(1, "bb1"), call0);
+  let main_fn = function_add_block(
+    function_ref_create(1, "main", "manual", IrLinkage.Exported, IrVisibility.Public, true, span_empty()),
+    block0
+  );
+  let keep_fn = function_add_block(
+    IrFunction {
+      id: 2,
+      name: "keep",
+      module_name: "manual",
+      linkage: IrLinkage.Internal,
+      visibility: IrVisibility.Private,
+      is_entry: false,
+      span: span_empty(),
+      params: [ir_function_param("value", "int", "borrow", false, true, false, true)],
+      return_type: "int",
+      blocks: [block_create(2, "bb2")],
+      valid: true
+    },
+    block_create(3, "bb3")
+  );
+  let module0 = module_add_function(module_add_function(module_create(1, "manual", "manual_bad_regular_call_abi_ir.vit", IrModuleKind.Binary, target), main_fn), keep_fn);
+  let unit0 = unit_set_entry(unit_add_module(unit_with_source_path(unit_empty(target), "manual_bad_regular_call_abi_ir.vit"), module0), 1);
+  give unit0;
+}
+
 proc test_ir_verifier_accepts_lowered_unit() -> bool {
   let ir: IrUnit = build_verified_ir("backend_ir_ok.vit", "proc main() -> int { give 0; }\n");
   give unit_is_valid(ir) and ir.state == IrUnitState.Verified and len(ir.modules) == 1 and ir.entry_function_id > 0;
@@ -36,10 +158,8 @@ proc test_ir_verifier_accepts_lowered_unit() -> bool {
 proc test_mir_to_ir_preserves_cfg_terminators() -> bool {
   let source: string = "proc main() { let x = 1; if x { set x = x + 1; } else { set x = x + 2; } give x; }\n";
   let fe: FrontendOutput = frontend_run("backend_cfg.vit", source);
-  let hir = lower_ast_to_hir(fe);
-  let mir = validate_mir(lower_hir_to_mir(hir));
   let middle: MiddleOutput = middle_run(fe);
-  let ir: IrUnit = verify_unit(lower_mir_to_ir(mir, middle.analysis));
+  let ir: IrUnit = verify_unit(lower_mir_to_ir(middle.mir, middle.analysis));
   if not unit_is_valid(ir) {
     give false;
   }
@@ -62,6 +182,256 @@ proc test_mir_to_ir_preserves_cfg_terminators() -> bool {
   give saw_branch and saw_return;
 }
 
+proc test_mir_to_ir_preserves_nominal_type_metadata() -> bool {
+  let source: string =
+    "form Point { x: int, y: int }\n" +
+    "bits Mode: u8 {\n" +
+    "  read: 0 .. 1,\n" +
+    "}\n" +
+    "pick Option[T] {\n" +
+    "  None,\n" +
+    "  Some(T),\n" +
+    "}\n" +
+    "flags Access: u8 {\n" +
+    "  read = 1,\n" +
+    "}\n" +
+    "trait Show {\n" +
+    "  proc show(self: Self) -> string;\n" +
+    "}\n" +
+    "impl Show for Point {\n" +
+    "  proc show(self: Self) -> string { give \"point\"; }\n" +
+    "}\n" +
+    "proc main() -> int { let point = Point { x: 1, y: 2 }; give 0; }\n";
+  let ir: IrUnit = build_verified_ir("backend_nominal_metadata.vit", source);
+  if not unit_is_valid(ir) or len(ir.modules) != 1 {
+    give false;
+  }
+  let module0 = ir.modules[0];
+  if len(module0.nominal_types) < 6 {
+    give false;
+  }
+  let object0: CodegenResult = run_codegen_x86_64(ir);
+  give module0.nominal_types[0].kind == "form"
+    and module0.nominal_types[1].kind == "bits"
+    and module0.nominal_types[1].underlying_type == "u8"
+    and module0.nominal_types[2].kind == "pick"
+    and module0.nominal_types[2].generic_count == 1
+    and len(module0.nominal_types[0].member_names) >= 2
+    and module0.nominal_types[0].member_names[0] == "x"
+    and module0.nominal_types[0].member_kinds[0] == "field"
+    and module0.nominal_types[4].member_annotations[0] == "string"
+    and module0.nominal_types[4].member_types[0] == "fn() -> string"
+    and module0.nominal_types[4].member_param_names[0] == "self"
+    and module0.nominal_types[4].member_param_types[0] == "Self"
+    and module0.nominal_types[4].member_param_borroweds[0] == "false"
+    and module0.nominal_types[5].kind == "impl"
+    and module0.nominal_types[5].target_type == "Point"
+    and find(object0.object_text, "[.vitte.metadata]") >= 0
+    and find(object0.object_text, "kind=form") >= 0
+    and find(object0.object_text, "kind=bits") >= 0
+    and find(object0.object_text, "target=Point") >= 0
+    and find(object0.object_text, "member_names=x,y") >= 0
+    and find(object0.object_text, "member_kinds=field,field") >= 0
+    and find(object0.object_text, "member_types=fn() -> string") >= 0;
+}
+
+proc test_mir_to_ir_preserves_explicit_nominal_call_lowering() -> bool {
+  let source: string =
+    "form Point { x: int }\n" +
+    "pick Option {\n" +
+    "  None,\n" +
+    "  Some(int),\n" +
+    "}\n" +
+    "trait Show {\n" +
+    "  proc show(self: Self, level: int) -> string;\n" +
+    "}\n" +
+    "impl Show for Point {\n" +
+    "  proc show(self: Self, level: int) -> string { give \"point\"; }\n" +
+    "}\n" +
+    "proc main() { let point = Point { x: 1 }; let opt = Option.Some(7); let shown = point.show(7); give shown; }\n";
+  let fe: FrontendOutput = frontend_run("backend_nominal_calls.vit", source);
+  let middle: MiddleOutput = middle_run(fe);
+  if not middle.valid or len(middle.ir.modules) == 0 or len(middle.ir.modules[0].functions) < 2 {
+    give false;
+  }
+  let instructions = middle.ir.modules[0].functions[0].blocks[1].instructions;
+  let impl_fn = middle.ir.modules[0].functions[1];
+  if len(instructions) < 2 {
+    give false;
+  }
+  let variant_call = instructions[0];
+  let method_call = instructions[1];
+  give variant_call.kind == IrInstructionKind.Call
+    and variant_call.operator == "variant-ctor"
+    and variant_call.text == "Option::Some"
+    and method_call.kind == IrInstructionKind.Call
+    and method_call.operator == "method-dispatch"
+    and method_call.text == "vitte_impl_Show_for_Point_show"
+    and impl_fn.name == "vitte_impl_Show_for_Point_show"
+    and len(impl_fn.params) == 2
+    and impl_fn.params[0].type_name == "Point"
+    and impl_fn.params[1].type_name == "int"
+    and impl_fn.return_type == "string";
+}
+
+proc test_x86_64_codegen_consumes_nominal_call_metadata() -> bool {
+  let source: string =
+    "form Point { x: int }\n" +
+    "pick Option {\n" +
+    "  None,\n" +
+    "  Some(int),\n" +
+    "}\n" +
+    "trait Show {\n" +
+    "  proc show(self: Self, level: int) -> string;\n" +
+    "}\n" +
+    "impl Show for Point {\n" +
+    "  proc show(self: Self, level: int) -> string { give \"point\"; }\n" +
+    "}\n" +
+    "proc main() { let point = Point { x: 1 }; let opt = Option.Some(7); let shown = point.show(7); give 0; }\n";
+  let ir: IrUnit = build_verified_ir("backend_nominal_codegen_comments.vit", source);
+  let codegen: CodegenResult = run_codegen_x86_64(ir);
+  give codegen.valid
+    and find(codegen.assembly, "# nominal-variant pick=Option variant=Some payload=int") >= 0
+    and find(codegen.assembly, "# nominal-dispatch trait=Show target=Point method=show params=Self|int return=string") >= 0
+    and find(codegen.object_text, "member_annotations=,int") >= 0
+    and find(codegen.object_text, "member_param_names=,self|level") >= 0
+    and find(codegen.object_text, "member_param_types=,Self|int") >= 0
+    and find(codegen.object_text, "member_param_borroweds=,false|false") >= 0;
+}
+
+proc test_llvm_codegen_consumes_nominal_call_metadata() -> bool {
+  let source: string =
+    "form Point { x: int }\n" +
+    "pick Option {\n" +
+    "  None,\n" +
+    "  Some(int),\n" +
+    "}\n" +
+    "trait Show {\n" +
+    "  proc show(self: Self, level: int) -> string;\n" +
+    "}\n" +
+    "impl Show for Point {\n" +
+    "  proc show(self: Self, level: int) -> string { give \"point\"; }\n" +
+    "}\n" +
+    "proc main() { let point = Point { x: 1 }; let opt = Option.Some(7); let shown = point.show(7); give 0; }\n";
+  let ir: IrUnit = build_verified_ir("backend_nominal_llvm_comments.vit", source);
+  let llvm0: LlvmBindingResult = emit_llvm_ir_from_ir(ir);
+  give llvm0.valid
+    and find(llvm0.ir_text, "; nominal name=Option kind=pick members=2") >= 0
+    and find(llvm0.ir_text, "; nominal member_annotations=,int") >= 0
+    and find(llvm0.ir_text, "; nominal member_param_names=,self|level") >= 0
+    and find(llvm0.ir_text, "; nominal member_param_types=,Self|int") >= 0
+    and find(llvm0.ir_text, "; nominal-variant pick=Option variant=Some payload=int") >= 0
+    and find(llvm0.ir_text, "; nominal-dispatch trait=Show target=Point method=show params=Self|int return=string") >= 0;
+}
+
+proc test_ir_and_llvm_preserve_regular_proc_signature() -> bool {
+  let ir: IrUnit = build_verified_ir("backend_proc_signature.vit", "proc add(borrow value: int, mut flag: bool, ...) -> int { if flag { give value; } give 0; }\n");
+  if not unit_is_valid(ir) or len(ir.modules) == 0 or len(ir.modules[0].functions) == 0 {
+    give false;
+  }
+  let fn0 = ir.modules[0].functions[0];
+  let llvm0: LlvmBindingResult = emit_llvm_ir_from_ir(ir);
+  give fn0.name == "add"
+    and len(fn0.params) == 3
+    and fn0.params[0].name == "value"
+    and fn0.params[0].type_name == "int"
+    and fn0.params[0].mode == "borrow"
+    and fn0.params[0].borrowed
+    and fn0.params[1].name == "flag"
+    and fn0.params[1].type_name == "bool"
+    and fn0.params[1].mode == "mut"
+    and fn0.params[1].mutable
+    and fn0.params[2].variadic
+    and fn0.return_type == "int"
+    and find(llvm0.ir_text, "define i64 @add(i64* %value, i1 %flag, ...)") >= 0;
+}
+
+proc test_ir_and_llvm_calls_use_borrow_abi_shape() -> bool {
+  let ir: IrUnit = build_verified_ir(
+    "backend_borrow_call_abi.vit",
+    "proc keep(borrow value: int) -> int { give value; }\n" +
+    "proc main() -> int { let x = 1; let y = keep(x); give y; }\n"
+  );
+  if not unit_is_valid(ir) or len(ir.modules) == 0 or len(ir.modules[0].functions) < 2 {
+    give false;
+  }
+  let main_fn = ir.modules[0].functions[1];
+  if len(main_fn.blocks[0].instructions) < 3 {
+    give false;
+  }
+  let borrow0 = main_fn.blocks[0].instructions[1];
+  let call0 = main_fn.blocks[0].instructions[2];
+  let llvm0: LlvmBindingResult = emit_llvm_ir_from_ir(ir);
+  give borrow0.kind == IrInstructionKind.BorrowShared
+    and borrow0.dest.kind == IrValueKind.Reference
+    and call0.kind == IrInstructionKind.Call
+    and call0.call_arg_start == 1
+    and len(call0.args) >= 2
+    and call0.args[1].kind == IrValueKind.Reference
+    and not call0.args[1].ref_passthrough
+    and find(llvm0.ir_text, "define i64 @keep(i64* %value)") >= 0
+    and find(llvm0.ir_text, "%x.ref = alloca i64") >= 0
+    and find(llvm0.ir_text, "store i64 %x, i64* %x.ref") >= 0
+    and find(llvm0.ir_text, "call i64 @keep(i64* %x.ref)") >= 0;
+}
+
+proc test_ir_and_llvm_preserve_borrow_passthrough_call_shape() -> bool {
+  let ir: IrUnit = build_verified_ir(
+    "backend_borrow_passthrough.vit",
+    "proc keep(borrow value: int) -> int { give value; }\n" +
+    "proc forward(borrow value: int) -> int { give keep(value); }\n"
+  );
+  if not unit_is_valid(ir) or len(ir.modules) == 0 or len(ir.modules[0].functions) < 2 {
+    give false;
+  }
+  let forward_fn = ir.modules[0].functions[1];
+  if len(forward_fn.blocks[0].instructions) < 1 {
+    give false;
+  }
+  let call0 = forward_fn.blocks[0].instructions[0];
+  let llvm0: LlvmBindingResult = emit_llvm_ir_from_ir(ir);
+  give call0.kind == IrInstructionKind.Call
+    and len(call0.args) >= 2
+    and call0.args[1].kind == IrValueKind.Reference
+    and call0.args[1].ref_passthrough
+    and find(llvm0.ir_text, "define i64 @forward(i64* %value)") >= 0
+    and find(llvm0.ir_text, "call i64 @keep(i64* %value)") >= 0
+    and find(llvm0.ir_text, "%value.ref = alloca i64") < 0;
+}
+
+proc test_invalid_nominal_ir_is_rejected_before_codegen() -> bool {
+  let invalid0: IrUnit = manual_bad_nominal_ir();
+  let verified: IrUnit = verify_unit(invalid0);
+  let llvm0: LlvmBindingResult = emit_llvm_ir_from_ir(verified);
+  let x860: CodegenResult = run_codegen_x86_64(verified);
+  give ir_validation_reason(invalid0) == "invalid-variant-ctor" and not unit_is_valid(verified) and not llvm0.valid and not x860.valid;
+}
+
+proc test_invalid_nominal_ir_is_rejected_before_link() -> bool {
+  let invalid0: IrUnit = manual_bad_nominal_ir();
+  let verified: IrUnit = verify_unit(invalid0);
+  let artifact: LinkArtifact = link_ir_unit(verified, "build/manual_bad_nominal_ir.out");
+  give not unit_is_valid(verified) and not artifact_is_valid(artifact);
+}
+
+proc test_invalid_method_dispatch_ir_is_rejected_before_codegen() -> bool {
+  let invalid0: IrUnit = manual_bad_dispatch_ir();
+  let verified: IrUnit = verify_unit(invalid0);
+  let llvm0: LlvmBindingResult = emit_llvm_ir_from_ir(verified);
+  let x860: CodegenResult = run_codegen_x86_64(verified);
+  give ir_validation_reason(invalid0) == "invalid-method-dispatch"
+    and not unit_is_valid(verified)
+    and not llvm0.valid
+    and not x860.valid;
+}
+
+proc test_invalid_regular_call_borrow_abi_ir_is_rejected() -> bool {
+  let invalid0: IrUnit = manual_bad_regular_call_abi_ir();
+  let verified: IrUnit = verify_unit(invalid0);
+  give ir_validation_reason(invalid0) == "invalid-call-abi"
+    and not unit_is_valid(verified);
+}
+
 proc test_codegen_x86_64_emits_entry_label() -> bool {
   let ir: IrUnit = build_verified_ir("backend_codegen_ok.vit", "proc main() -> int { give 0; }\n");
   let result: CodegenResult = run_codegen_x86_64(ir);
@@ -82,6 +452,37 @@ proc test_backend_pipeline_end_to_end() -> bool {
 proc test_llvm_backend_pipeline_end_to_end() -> bool {
   let result: BackendPipelineResult = compile_to_valid_ir_with_backend("backend_pipeline_llvm_ok.vit", "proc main() -> int { give 0; }\n", "llvm");
   give result.valid and find(result.codegen.assembly, "define i64 @main()") >= 0 and result.codegen.target == "llvm-object" and result.codegen.object_format == "llvm-object" and result.codegen.section_count >= 5;
+}
+
+proc test_backend_pipeline_wrappers_match_canonical_frontend_entry() -> bool {
+  let source_text: string = "proc main() -> int { give 0; }\n";
+  let canonical: BackendPipelineResult = compile_frontend_to_valid_ir_with_profile_and_packaging(
+    "backend_pipeline_canonical.vit",
+    source_text,
+    "x86_64",
+    "x86_64-linux",
+    "enterprise-default",
+    true,
+    true,
+    "executable",
+    false,
+    default_llvm_toolchain_paths()
+  );
+  let wrapper_default: BackendPipelineResult = compile_to_valid_ir("backend_pipeline_canonical.vit", source_text);
+  let wrapper_backend: BackendPipelineResult = compile_to_valid_ir_with_backend("backend_pipeline_canonical.vit", source_text, "x86_64");
+  give canonical.valid
+    and wrapper_default.valid
+    and wrapper_backend.valid
+    and canonical.failure_stage == wrapper_default.failure_stage
+    and canonical.failure_stage == wrapper_backend.failure_stage
+    and canonical.analysis.valid == wrapper_default.analysis.valid
+    and canonical.analysis.valid == wrapper_backend.analysis.valid
+    and canonical.codegen.object_format == wrapper_default.codegen.object_format
+    and canonical.codegen.object_format == wrapper_backend.codegen.object_format
+    and canonical.codegen.section_count == wrapper_default.codegen.section_count
+    and canonical.codegen.section_count == wrapper_backend.codegen.section_count
+    and canonical.artifact.metadata.section_count == wrapper_default.artifact.metadata.section_count
+    and canonical.artifact.metadata.section_count == wrapper_backend.artifact.metadata.section_count;
 }
 
 proc test_backend_multi_module_compile_path() -> bool {
@@ -190,10 +591,22 @@ proc run_all_tests() -> int {
   let failures: int = 0;
   if not test_ir_verifier_accepts_lowered_unit() { set failures = failures + 1; }
   if not test_mir_to_ir_preserves_cfg_terminators() { set failures = failures + 1; }
+  if not test_mir_to_ir_preserves_nominal_type_metadata() { set failures = failures + 1; }
+  if not test_mir_to_ir_preserves_explicit_nominal_call_lowering() { set failures = failures + 1; }
+  if not test_x86_64_codegen_consumes_nominal_call_metadata() { set failures = failures + 1; }
+  if not test_llvm_codegen_consumes_nominal_call_metadata() { set failures = failures + 1; }
+  if not test_ir_and_llvm_preserve_regular_proc_signature() { set failures = failures + 1; }
+  if not test_ir_and_llvm_calls_use_borrow_abi_shape() { set failures = failures + 1; }
+  if not test_ir_and_llvm_preserve_borrow_passthrough_call_shape() { set failures = failures + 1; }
+  if not test_invalid_nominal_ir_is_rejected_before_codegen() { set failures = failures + 1; }
+  if not test_invalid_nominal_ir_is_rejected_before_link() { set failures = failures + 1; }
+  if not test_invalid_method_dispatch_ir_is_rejected_before_codegen() { set failures = failures + 1; }
+  if not test_invalid_regular_call_borrow_abi_ir_is_rejected() { set failures = failures + 1; }
   if not test_codegen_x86_64_emits_entry_label() { set failures = failures + 1; }
   if not test_linker_finalizes_entry_metadata() { set failures = failures + 1; }
   if not test_backend_pipeline_end_to_end() { set failures = failures + 1; }
   if not test_llvm_backend_pipeline_end_to_end() { set failures = failures + 1; }
+  if not test_backend_pipeline_wrappers_match_canonical_frontend_entry() { set failures = failures + 1; }
   if not test_backend_multi_module_compile_path() { set failures = failures + 1; }
   if not test_backend_multi_module_report_json() { set failures = failures + 1; }
   if not test_driver_compile_with_enterprise_config() { set failures = failures + 1; }

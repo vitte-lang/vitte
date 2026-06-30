@@ -37,6 +37,7 @@ pick IrVisibility {
 pick IrValueKind {
   Invalid,
   Place,
+  Reference,
   Constant,
   Temporary,
   FunctionRef,
@@ -76,6 +77,8 @@ form IrValue {
   type_name: string
   place: string
   constant: string
+  ref_mutable: bool
+  ref_passthrough: bool
   external: bool
   valid: bool
 }
@@ -87,6 +90,7 @@ form IrInstruction {
   operator: string
   dest: IrValue
   args: [IrValue]
+  call_arg_start: u64
   target_block: u64
   else_block: u64
   switch_values: [string]
@@ -103,6 +107,16 @@ form IrBlock {
   valid: bool
 }
 
+form IrFunctionParam {
+  name: string
+  type_name: string
+  mode: string
+  mutable: bool
+  borrowed: bool
+  variadic: bool
+  valid: bool
+}
+
 form IrFunction {
   id: u64
   name: string
@@ -111,7 +125,32 @@ form IrFunction {
   visibility: IrVisibility
   is_entry: bool
   span: AstSpan
+  params: [IrFunctionParam]
+  return_type: string
   blocks: [IrBlock]
+  valid: bool
+}
+
+form IrNominalType {
+  name: string
+  kind: string
+  abi: string
+  underlying_type: string
+  target_type: string
+  generic_count: u64
+  member_count: u64
+  signature_param_count: u64
+  member_names: [string]
+  member_kinds: [string]
+  member_annotations: [string]
+  member_types: [string]
+  member_param_names: [string]
+  member_param_types: [string]
+  member_param_modes: [string]
+  member_param_mutables: [string]
+  member_param_borroweds: [string]
+  member_param_variadics: [string]
+  exported: bool
   valid: bool
 }
 
@@ -122,6 +161,7 @@ form IrModule {
   kind: IrModuleKind
   target: IrTarget
   functions: [IrFunction]
+  nominal_types: [IrNominalType]
   imports: [string]
   external_symbols: [string]
   exports: [string]
@@ -225,6 +265,8 @@ proc ir_value_invalid() -> IrValue {
     type_name: "unknown",
     place: "",
     constant: "",
+    ref_mutable: false,
+    ref_passthrough: false,
     external: false,
     valid: false
   };
@@ -239,6 +281,24 @@ proc value_place(id: u64, name: string, place: string, type_name: string) -> IrV
     type_name: type_name,
     place: place,
     constant: "",
+    ref_mutable: false,
+    ref_passthrough: false,
+    external: false,
+    valid: place != ""
+  };
+}
+
+proc value_reference(id: u64, name: string, place: string, type_name: string, ref_mutable: bool, ref_passthrough: bool) -> IrValue {
+  give IrValue {
+    id: id,
+    kind: IrValueKind.Reference,
+    text: place,
+    name: name,
+    type_name: type_name,
+    place: place,
+    constant: "",
+    ref_mutable: ref_mutable,
+    ref_passthrough: ref_passthrough,
     external: false,
     valid: place != ""
   };
@@ -253,6 +313,8 @@ proc value_constant(id: u64, text: string, type_name: string) -> IrValue {
     type_name: type_name,
     place: "",
     constant: text,
+    ref_mutable: false,
+    ref_passthrough: false,
     external: false,
     valid: text != ""
   };
@@ -267,6 +329,8 @@ proc value_function_ref(id: u64, name: string, external: bool) -> IrValue {
     type_name: "fn",
     place: "",
     constant: "",
+    ref_mutable: false,
+    ref_passthrough: false,
     external: external,
     valid: name != ""
   };
@@ -280,6 +344,7 @@ proc instruction_invalid() -> IrInstruction {
     operator: "",
     dest: ir_value_invalid(),
     args: [],
+    call_arg_start: 0,
     target_block: 0,
     else_block: 0,
     switch_values: [],
@@ -297,12 +362,31 @@ proc instruction_create(id: u64, kind: IrInstructionKind, text: string, operator
     operator: operator,
     dest: dest,
     args: args,
+    call_arg_start: 0,
     target_block: 0,
     else_block: 0,
     switch_values: [],
     switch_targets: [],
     span: span,
     valid: id > 0 and kind != IrInstructionKind.Invalid
+  };
+}
+
+proc instruction_with_call_abi(instruction: IrInstruction, call_arg_start: u64) -> IrInstruction {
+  give IrInstruction {
+    id: instruction.id,
+    kind: instruction.kind,
+    text: instruction.text,
+    operator: instruction.operator,
+    dest: instruction.dest,
+    args: instruction.args,
+    call_arg_start: call_arg_start,
+    target_block: instruction.target_block,
+    else_block: instruction.else_block,
+    switch_values: instruction.switch_values,
+    switch_targets: instruction.switch_targets,
+    span: instruction.span,
+    valid: instruction.valid
   };
 }
 
@@ -417,6 +501,8 @@ proc function_ref_create(id: u64, name: string, module_name: string, linkage: Ir
     visibility: visibility,
     is_entry: is_entry,
     span: span,
+    params: [],
+    return_type: "",
     blocks: [],
     valid: id > 0 and name != "" and module_name != ""
   };
@@ -431,8 +517,47 @@ proc function_add_block(fn0: IrFunction, block: IrBlock) -> IrFunction {
     visibility: fn0.visibility,
     is_entry: fn0.is_entry,
     span: fn0.span,
+    params: fn0.params,
+    return_type: fn0.return_type,
     blocks: fn0.blocks + [block],
     valid: fn0.valid and block.valid
+  };
+}
+
+proc ir_function_param(name: string, type_name: string, mode: string, mutable: bool, borrowed: bool, variadic: bool, valid: bool) -> IrFunctionParam {
+  give IrFunctionParam {
+    name: name,
+    type_name: type_name,
+    mode: mode,
+    mutable: mutable,
+    borrowed: borrowed,
+    variadic: variadic,
+    valid: valid
+  };
+}
+
+proc nominal_type_create(name: string, kind: string, abi: string, underlying_type: string, target_type: string, generic_count: u64, member_count: u64, signature_param_count: u64, member_names: [string], member_kinds: [string], member_annotations: [string], member_types: [string], member_param_names: [string], member_param_types: [string], member_param_modes: [string], member_param_mutables: [string], member_param_borroweds: [string], member_param_variadics: [string], exported: bool) -> IrNominalType {
+  give IrNominalType {
+    name: name,
+    kind: kind,
+    abi: abi,
+    underlying_type: underlying_type,
+    target_type: target_type,
+    generic_count: generic_count,
+    member_count: member_count,
+    signature_param_count: signature_param_count,
+    member_names: member_names,
+    member_kinds: member_kinds,
+    member_annotations: member_annotations,
+    member_types: member_types,
+    member_param_names: member_param_names,
+    member_param_types: member_param_types,
+    member_param_modes: member_param_modes,
+    member_param_mutables: member_param_mutables,
+    member_param_borroweds: member_param_borroweds,
+    member_param_variadics: member_param_variadics,
+    exported: exported,
+    valid: name != "" and kind != ""
   };
 }
 
@@ -444,6 +569,7 @@ proc module_create(id: u64, name: string, source_path: string, kind: IrModuleKin
     kind: kind,
     target: target,
     functions: [],
+    nominal_types: [],
     imports: [],
     external_symbols: [],
     exports: [],
@@ -463,6 +589,7 @@ proc module_add_function(module0: IrModule, fn0: IrFunction) -> IrModule {
     kind: module0.kind,
     target: module0.target,
     functions: module0.functions + [fn0],
+    nominal_types: module0.nominal_types,
     imports: module0.imports,
     external_symbols: module0.external_symbols,
     exports: exports,
@@ -478,6 +605,7 @@ proc module_add_import(module0: IrModule, name: string) -> IrModule {
     kind: module0.kind,
     target: module0.target,
     functions: module0.functions,
+    nominal_types: module0.nominal_types,
     imports: module0.imports + [name],
     external_symbols: module0.external_symbols,
     exports: module0.exports,
@@ -493,6 +621,7 @@ proc module_add_export(module0: IrModule, name: string) -> IrModule {
     kind: module0.kind,
     target: module0.target,
     functions: module0.functions,
+    nominal_types: module0.nominal_types,
     imports: module0.imports,
     external_symbols: module0.external_symbols,
     exports: module0.exports + [name],
@@ -508,10 +637,27 @@ proc module_add_external_symbol(module0: IrModule, name: string) -> IrModule {
     kind: module0.kind,
     target: module0.target,
     functions: module0.functions,
+    nominal_types: module0.nominal_types,
     imports: module0.imports,
     external_symbols: module0.external_symbols + [name],
     exports: module0.exports,
     valid: module0.valid and name != ""
+  };
+}
+
+proc module_add_nominal_type(module0: IrModule, nominal: IrNominalType) -> IrModule {
+  give IrModule {
+    id: module0.id,
+    name: module0.name,
+    source_path: module0.source_path,
+    kind: module0.kind,
+    target: module0.target,
+    functions: module0.functions,
+    nominal_types: module0.nominal_types + [nominal],
+    imports: module0.imports,
+    external_symbols: module0.external_symbols,
+    exports: module0.exports,
+    valid: module0.valid and nominal.valid
   };
 }
 
@@ -612,6 +758,28 @@ proc function_exists(unit: IrUnit, function_id: u64) -> bool {
   give false;
 }
 
+proc module_function_name_exists(module0: IrModule, name: string) -> bool {
+  let i: u64 = 0;
+  while i < len(module0.functions) {
+    if module0.functions[i].name == name {
+      give true;
+    }
+    set i = i + 1;
+  }
+  give false;
+}
+
+proc module_function_by_name(module0: IrModule, name: string) -> IrFunction {
+  let i: u64 = 0;
+  while i < len(module0.functions) {
+    if module0.functions[i].name == name {
+      give module0.functions[i];
+    }
+    set i = i + 1;
+  }
+  give function_ref_create(0, "", "", IrLinkage.Internal, IrVisibility.Private, false, span_empty());
+}
+
 proc function_name_by_id(unit: IrUnit, function_id: u64) -> string {
   let i: u64 = 0;
   while i < len(unit.modules) {
@@ -627,7 +795,351 @@ proc function_name_by_id(unit: IrUnit, function_id: u64) -> string {
   give "";
 }
 
-proc verify_instruction(instruction: IrInstruction) -> bool {
+proc impl_method_symbol_name(trait_name: string, target_type: string, method_name: string) -> string {
+  give "vitte_impl_" + trait_name + "_for_" + target_type + "_" + method_name;
+}
+
+proc nominal_member_index(nominal: IrNominalType, member_name: string, member_kind: string) -> int {
+  let i: int = 0;
+  while i < len(nominal.member_names) {
+    if nominal.member_names[i] == member_name and i < len(nominal.member_kinds) and nominal.member_kinds[i] == member_kind {
+      give i;
+    }
+    set i = i + 1;
+  }
+  give -1;
+}
+
+proc module_pick_nominal(module0: IrModule, name: string) -> IrNominalType {
+  let i: u64 = 0;
+  while i < len(module0.nominal_types) {
+    if module0.nominal_types[i].kind == "pick" and module0.nominal_types[i].name == name {
+      give module0.nominal_types[i];
+    }
+    set i = i + 1;
+  }
+  give IrNominalType {
+    name: "",
+    kind: "",
+    abi: "",
+    underlying_type: "",
+    target_type: "",
+    generic_count: 0,
+    member_count: 0,
+    signature_param_count: 0,
+    member_names: [],
+    member_kinds: [],
+    member_annotations: [],
+    member_types: [],
+    member_param_names: [],
+    member_param_types: [],
+    member_param_modes: [],
+    member_param_mutables: [],
+    member_param_borroweds: [],
+    member_param_variadics: [],
+    exported: false,
+    valid: false
+  };
+}
+
+proc module_impl_dispatch_nominal(module0: IrModule, symbol_name: string) -> IrNominalType {
+  let i: u64 = 0;
+  while i < len(module0.nominal_types) {
+    let nominal: IrNominalType = module0.nominal_types[i];
+    if nominal.kind == "impl" {
+      let j: u64 = 0;
+      while j < len(nominal.member_names) {
+        if j < len(nominal.member_kinds) and nominal.member_kinds[j] == "impl-method" {
+          let trait_name: string = nominal.name;
+          if trait_name == "" and nominal.underlying_type != "" {
+            set trait_name = nominal.underlying_type;
+          }
+          if impl_method_symbol_name(trait_name, nominal.target_type, nominal.member_names[j]) == symbol_name {
+            give nominal;
+          }
+        }
+        set j = j + 1;
+      }
+    }
+    set i = i + 1;
+  }
+  give IrNominalType {
+    name: "",
+    kind: "",
+    abi: "",
+    underlying_type: "",
+    target_type: "",
+    generic_count: 0,
+    member_count: 0,
+    signature_param_count: 0,
+    member_names: [],
+    member_kinds: [],
+    member_annotations: [],
+    member_types: [],
+    member_param_names: [],
+    member_param_types: [],
+    member_param_modes: [],
+    member_param_mutables: [],
+    member_param_borroweds: [],
+    member_param_variadics: [],
+    exported: false,
+    valid: false
+  };
+}
+
+proc split_variant_text(text: string) -> [string] {
+  let sep: int = find(text, "::");
+  if sep < 0 {
+    give [];
+  }
+  give [slice(text, 0, sep), slice(text, sep + 2, len(text))];
+}
+
+proc pipe_segment_count(text: string) -> u64 {
+  if text == "" {
+    give 0;
+  }
+  let count: u64 = 1;
+  let i: int = 0;
+  while i < len(text) {
+    if slice(text, i, i + 1) == "|" {
+      set count = count + 1;
+    }
+    set i = i + 1;
+  }
+  give count;
+}
+
+proc pipe_last_segment(text: string) -> string {
+  if text == "" {
+    give "";
+  }
+  let last: int = -1;
+  let i: int = 0;
+  while i < len(text) {
+    if slice(text, i, i + 1) == "|" {
+      set last = i;
+    }
+    set i = i + 1;
+  }
+  if last < 0 {
+    give text;
+  }
+  give slice(text, last + 1, len(text));
+}
+
+proc ir_function_required_param_count(fn0: IrFunction) -> u64 {
+  let count: u64 = 0;
+  let i: u64 = 0;
+  while i < len(fn0.params) {
+    if not fn0.params[i].variadic {
+      set count = count + 1;
+    }
+    set i = i + 1;
+  }
+  give count;
+}
+
+proc ir_function_has_variadic_param(fn0: IrFunction) -> bool {
+  let i: u64 = 0;
+  while i < len(fn0.params) {
+    if fn0.params[i].variadic {
+      give true;
+    }
+    set i = i + 1;
+  }
+  give false;
+}
+
+proc ir_call_arity_matches(fn0: IrFunction, arg_count: u64) -> bool {
+  let required: u64 = ir_function_required_param_count(fn0);
+  if ir_function_has_variadic_param(fn0) {
+    give arg_count + 1 >= required;
+  }
+  give arg_count == required;
+}
+
+proc ir_params_valid(fn0: IrFunction) -> bool {
+  let seen_variadic: bool = false;
+  let i: u64 = 0;
+  while i < len(fn0.params) {
+    let param: IrFunctionParam = fn0.params[i];
+    if not param.valid {
+      give false;
+    }
+    if not param.variadic and param.name == "" {
+      give false;
+    }
+    if not param.variadic and param.type_name == "" {
+      give false;
+    }
+    if param.variadic and i + 1 < len(fn0.params) {
+      give false;
+    }
+    if param.variadic and (param.borrowed or param.mutable or param.mode != "") {
+      give false;
+    }
+    if param.borrowed and param.mode != "borrow" {
+      give false;
+    }
+    if param.mode == "borrow" and not param.borrowed {
+      give false;
+    }
+    if param.mode == "mut" and not param.mutable {
+      give false;
+    }
+    if param.mode != "" and param.mode != "borrow" and param.mode != "mut" {
+      give false;
+    }
+    if param.variadic {
+      set seen_variadic = true;
+    }
+    if seen_variadic and not param.variadic {
+      give false;
+    }
+    set i = i + 1;
+  }
+  give true;
+}
+
+proc ir_value_matches_param(arg: IrValue, param: IrFunctionParam) -> bool {
+  if param.variadic {
+    give arg.valid;
+  }
+  if param.borrowed {
+    if arg.kind != IrValueKind.Reference {
+      give false;
+    }
+    if param.mutable {
+      give arg.ref_mutable;
+    }
+    give not arg.ref_mutable;
+  }
+  give arg.kind != IrValueKind.Reference;
+}
+
+proc verify_regular_call_abi(module0: IrModule, instruction: IrInstruction) -> bool {
+  if instruction.call_arg_start == 0 or instruction.call_arg_start > len(instruction.args) {
+    give false;
+  }
+  let callee: IrValue = instruction.args[0];
+  if callee.kind != IrValueKind.FunctionRef and callee.kind != IrValueKind.Place and callee.kind != IrValueKind.Constant {
+    give false;
+  }
+  let target_name: string = if callee.name != "" { callee.name } else { if callee.text != "" { callee.text } else { instruction.text } };
+  if module_function_name_exists(module0, target_name) {
+    let fn0: IrFunction = module_function_by_name(module0, target_name);
+    if not ir_params_valid(fn0) {
+      give false;
+    }
+    let arg_count: u64 = len(instruction.args) - instruction.call_arg_start;
+    if not ir_call_arity_matches(fn0, arg_count) {
+      give false;
+    }
+    let i: u64 = instruction.call_arg_start;
+    let param_index: u64 = 0;
+    while i < len(instruction.args) and param_index < len(fn0.params) {
+      if fn0.params[param_index].variadic {
+        give true;
+      }
+      if not ir_value_matches_param(instruction.args[i], fn0.params[param_index]) {
+        give false;
+      }
+      set i = i + 1;
+      set param_index = param_index + 1;
+    }
+  }
+  give true;
+}
+
+proc verify_variant_ctor_call(module0: IrModule, instruction: IrInstruction) -> bool {
+  if instruction.call_arg_start != 0 {
+    give false;
+  }
+  let parts: [string] = split_variant_text(instruction.text);
+  if len(parts) != 2 {
+    give false;
+  }
+  let nominal: IrNominalType = module_pick_nominal(module0, parts[0]);
+  if not nominal.valid {
+    give false;
+  }
+  let member_index: int = nominal_member_index(nominal, parts[1], "variant");
+  if member_index < 0 {
+    give false;
+  }
+  let payload_type: string = "";
+  if member_index < len(nominal.member_annotations) {
+    set payload_type = nominal.member_annotations[member_index];
+  }
+  let arg_count: u64 = len(instruction.args) - instruction.call_arg_start;
+  if payload_type == "" {
+    give arg_count == 0;
+  }
+  give arg_count == 1;
+}
+
+proc verify_method_dispatch_call(module0: IrModule, instruction: IrInstruction) -> bool {
+  if instruction.call_arg_start != 0 {
+    give false;
+  }
+  let nominal: IrNominalType = module_impl_dispatch_nominal(module0, instruction.text);
+  if not nominal.valid {
+    give false;
+  }
+  if not module_function_name_exists(module0, instruction.text) {
+    give false;
+  }
+  let dispatch_fn: IrFunction = module_function_by_name(module0, instruction.text);
+  if not ir_params_valid(dispatch_fn) {
+    give false;
+  }
+  let trait_name: string = nominal.name;
+  if trait_name == "" and nominal.underlying_type != "" {
+    set trait_name = nominal.underlying_type;
+  }
+  let i: int = 0;
+  while i < len(nominal.member_names) {
+    if i < len(nominal.member_kinds)
+      and nominal.member_kinds[i] == "impl-method"
+      and impl_method_symbol_name(trait_name, nominal.target_type, nominal.member_names[i]) == instruction.text {
+      let expected: u64 = 0;
+      if i < len(nominal.member_param_names) {
+        set expected = pipe_segment_count(nominal.member_param_names[i]);
+      }
+      let variadic: bool = false;
+      if i < len(nominal.member_param_variadics) {
+        set variadic = pipe_last_segment(nominal.member_param_variadics[i]) == "true";
+      }
+      let arg_count: u64 = len(instruction.args) - instruction.call_arg_start;
+      if variadic {
+        if expected == 0 {
+          give ir_call_arity_matches(dispatch_fn, arg_count);
+        }
+        if not (arg_count + 1 >= expected and ir_call_arity_matches(dispatch_fn, arg_count)) {
+          give false;
+        }
+      } elif not ir_call_arity_matches(dispatch_fn, arg_count) or arg_count != expected {
+        give false;
+      }
+      let arg_index: u64 = 0;
+      while arg_index < arg_count and arg_index < len(dispatch_fn.params) {
+        if dispatch_fn.params[arg_index].variadic {
+          give true;
+        }
+        if not ir_value_matches_param(instruction.args[instruction.call_arg_start + arg_index], dispatch_fn.params[arg_index]) {
+          give false;
+        }
+        set arg_index = arg_index + 1;
+      }
+      give true;
+    }
+    set i = i + 1;
+  }
+  give false;
+}
+
+proc verify_instruction_in_module(module0: IrModule, instruction: IrInstruction) -> bool {
   if not instruction.valid {
     give false;
   }
@@ -635,15 +1147,84 @@ proc verify_instruction(instruction: IrInstruction) -> bool {
     give false;
   }
   if instruction.kind == IrInstructionKind.Assign or instruction.kind == IrInstructionKind.Binary or instruction.kind == IrInstructionKind.BorrowShared or instruction.kind == IrInstructionKind.BorrowMut {
-    give instruction.dest.valid and len(instruction.args) > 0;
+    if not instruction.dest.valid or len(instruction.args) == 0 {
+      give false;
+    }
+    if instruction.kind == IrInstructionKind.BorrowShared or instruction.kind == IrInstructionKind.BorrowMut {
+      if instruction.dest.kind != IrValueKind.Reference or len(instruction.args) != 1 or not instruction.args[0].valid {
+        give false;
+      }
+      if instruction.kind == IrInstructionKind.BorrowShared and instruction.dest.ref_mutable {
+        give false;
+      }
+      if instruction.kind == IrInstructionKind.BorrowMut and not instruction.dest.ref_mutable {
+        give false;
+      }
+      give instruction.args[0].kind != IrValueKind.Reference;
+    }
+    give true;
   }
   if instruction.kind == IrInstructionKind.Call {
-    give len(instruction.args) > 0;
+    if len(instruction.args) == 0 or instruction.call_arg_start > len(instruction.args) {
+      give false;
+    }
+    if instruction.operator == "variant-ctor" {
+      give verify_variant_ctor_call(module0, instruction);
+    }
+    if instruction.operator == "method-dispatch" {
+      give verify_method_dispatch_call(module0, instruction);
+    }
+    give verify_regular_call_abi(module0, instruction);
   }
   if instruction.kind == IrInstructionKind.Assert or instruction.kind == IrInstructionKind.ReturnValue {
     give len(instruction.args) > 0;
   }
   give true;
+}
+
+proc instruction_reason_in_module(module0: IrModule, instruction: IrInstruction) -> string {
+  if not instruction.valid or instruction.kind == IrInstructionKind.Invalid {
+    give "invalid-instruction";
+  }
+  if instruction.kind == IrInstructionKind.Assign or instruction.kind == IrInstructionKind.Binary or instruction.kind == IrInstructionKind.BorrowShared or instruction.kind == IrInstructionKind.BorrowMut {
+    if not instruction.dest.valid or len(instruction.args) == 0 {
+      give "invalid-assign-abi";
+    }
+    if instruction.kind == IrInstructionKind.BorrowShared or instruction.kind == IrInstructionKind.BorrowMut {
+      if instruction.dest.kind != IrValueKind.Reference or len(instruction.args) != 1 or not instruction.args[0].valid {
+        give "invalid-borrow-abi";
+      }
+      if instruction.kind == IrInstructionKind.BorrowShared and instruction.dest.ref_mutable {
+        give "invalid-borrow-abi";
+      }
+      if instruction.kind == IrInstructionKind.BorrowMut and not instruction.dest.ref_mutable {
+        give "invalid-borrow-abi";
+      }
+      if instruction.args[0].kind == IrValueKind.Reference {
+        give "invalid-borrow-abi";
+      }
+    }
+    give "none";
+  }
+  if instruction.kind == IrInstructionKind.Call {
+    if len(instruction.args) == 0 or instruction.call_arg_start > len(instruction.args) {
+      give "invalid-call-abi";
+    }
+    if instruction.operator == "variant-ctor" and not verify_variant_ctor_call(module0, instruction) {
+      give "invalid-variant-ctor";
+    }
+    if instruction.operator == "method-dispatch" and not verify_method_dispatch_call(module0, instruction) {
+      give "invalid-method-dispatch";
+    }
+    if instruction.operator == "" and not verify_regular_call_abi(module0, instruction) {
+      give "invalid-call-abi";
+    }
+    give "none";
+  }
+  if (instruction.kind == IrInstructionKind.Assert or instruction.kind == IrInstructionKind.ReturnValue) and len(instruction.args) == 0 {
+    give "missing-instruction-operand";
+  }
+  give "none";
 }
 
 proc verify_terminator(blocks: [IrBlock], terminator: IrInstruction) -> bool {
@@ -672,13 +1253,13 @@ proc verify_terminator(blocks: [IrBlock], terminator: IrInstruction) -> bool {
   give true;
 }
 
-proc verify_block(blocks: [IrBlock], block: IrBlock) -> bool {
+proc verify_block(module0: IrModule, blocks: [IrBlock], block: IrBlock) -> bool {
   if not block.valid or block.id == 0 or block.label == "" {
     give false;
   }
   let i: u64 = 0;
   while i < len(block.instructions) {
-    if not verify_instruction(block.instructions[i]) {
+    if not verify_instruction_in_module(module0, block.instructions[i]) {
       give false;
     }
     if instruction_is_terminator(block.instructions[i].kind) {
@@ -689,18 +1270,64 @@ proc verify_block(blocks: [IrBlock], block: IrBlock) -> bool {
   give verify_terminator(blocks, block.terminator);
 }
 
+proc block_reason(module0: IrModule, blocks: [IrBlock], block: IrBlock) -> string {
+  if not block.valid or block.id == 0 or block.label == "" {
+    give "invalid-block";
+  }
+  let i: u64 = 0;
+  while i < len(block.instructions) {
+    let reason: string = instruction_reason_in_module(module0, block.instructions[i]);
+    if reason != "none" {
+      give reason;
+    }
+    if instruction_is_terminator(block.instructions[i].kind) {
+      give "terminator-in-body";
+    }
+    set i = i + 1;
+  }
+  if not verify_terminator(blocks, block.terminator) {
+    give "invalid-terminator";
+  }
+  give "none";
+}
+
 proc verify_function(fn0: IrFunction) -> bool {
+  give fn0.valid and fn0.id > 0 and fn0.name != "" and len(fn0.blocks) > 0;
+}
+
+proc verify_function_in_module(module0: IrModule, fn0: IrFunction) -> bool {
   if not fn0.valid or fn0.id == 0 or fn0.name == "" or len(fn0.blocks) == 0 {
+    give false;
+  }
+  if not ir_params_valid(fn0) {
     give false;
   }
   let i: u64 = 0;
   while i < len(fn0.blocks) {
-    if not verify_block(fn0.blocks, fn0.blocks[i]) {
+    if not verify_block(module0, fn0.blocks, fn0.blocks[i]) {
       give false;
     }
     set i = i + 1;
   }
   give true;
+}
+
+proc function_reason_in_module(module0: IrModule, fn0: IrFunction) -> string {
+  if not fn0.valid or fn0.id == 0 or fn0.name == "" or len(fn0.blocks) == 0 {
+    give "invalid-function";
+  }
+  if not ir_params_valid(fn0) {
+    give "invalid-param-contract";
+  }
+  let i: u64 = 0;
+  while i < len(fn0.blocks) {
+    let reason: string = block_reason(module0, fn0.blocks, fn0.blocks[i]);
+    if reason != "none" {
+      give reason;
+    }
+    set i = i + 1;
+  }
+  give "none";
 }
 
 proc verify_module(module0: IrModule, unit_target: IrTarget) -> bool {
@@ -709,12 +1336,30 @@ proc verify_module(module0: IrModule, unit_target: IrTarget) -> bool {
   }
   let i: u64 = 0;
   while i < len(module0.functions) {
-    if not verify_function(module0.functions[i]) {
+    if not verify_function_in_module(module0, module0.functions[i]) {
       give false;
     }
     set i = i + 1;
   }
   give len(module0.functions) > 0;
+}
+
+proc module_reason(module0: IrModule, unit_target: IrTarget) -> string {
+  if not module0.valid or module0.id == 0 or module0.name == "" or not module0.target.valid or not triple_matches(module0.target.triple, unit_target.triple) {
+    give "invalid-module";
+  }
+  let i: u64 = 0;
+  while i < len(module0.functions) {
+    let reason: string = function_reason_in_module(module0, module0.functions[i]);
+    if reason != "none" {
+      give reason;
+    }
+    set i = i + 1;
+  }
+  if len(module0.functions) == 0 {
+    give "missing-function";
+  }
+  give "none";
 }
 
 proc unit_invalid_like(unit: IrUnit) -> IrUnit {
@@ -732,16 +1377,24 @@ proc ir_eq() -> string {
   give slice("a=b", 1, 2);
 }
 
-proc verify_unit(unit: IrUnit) -> IrUnit {
+proc ir_validation_reason(unit: IrUnit) -> string {
   if not unit.target.valid or len(unit.modules) == 0 or not function_exists(unit, unit.entry_function_id) {
-    give unit_invalid_like(unit);
+    give "invalid-unit";
   }
   let i: u64 = 0;
   while i < len(unit.modules) {
-    if not verify_module(unit.modules[i], unit.target) {
-      give unit_invalid_like(unit);
+    let reason: string = module_reason(unit.modules[i], unit.target);
+    if reason != "none" {
+      give reason;
     }
     set i = i + 1;
+  }
+  give "none";
+}
+
+proc verify_unit(unit: IrUnit) -> IrUnit {
+  if ir_validation_reason(unit) != "none" {
+    give unit_invalid_like(unit);
   }
   give IrUnit {
     source_path: unit.source_path,

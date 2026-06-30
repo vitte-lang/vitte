@@ -1,10 +1,12 @@
 space vitte/compiler/tests/pipeline_tests
 
-use vitte/compiler/driver/compile.{ DriverAnalysisArtifacts, DriverCompileConfig, DriverModuleSetArtifacts, DriverNativeBackendResult, analyze_source, analyze_source_set, check_source, compile_source_with_config, default_compile_config, driver_module_input, dump_ast_json, dump_diagnostics_json, dump_hir_json, dump_hir_resolved, dump_hir_typed, dump_mir_json, emit_native_backend_object_with_config, frontend_diag_as_diagnostic, incremental_analysis_graph, link_native_backend_executable_with_config, lower_mir_source }
+use vitte/compiler/driver/compile.{ DriverAnalysisArtifacts, DriverCompileConfig, DriverCompileResult, DriverModuleSetArtifacts, DriverNativeBackendResult, analyze_source, analyze_source_set, check_source, compile_source_with_config, default_compile_config, diagnostics_quality_score, driver_module_input, dump_ast_json, dump_diagnostics_json, dump_hir_json, dump_hir_resolved, dump_hir_typed, dump_mir_json, emit_native_backend_object_with_config, frontend_diag_as_diagnostic, incremental_analysis_graph, link_native_backend_executable_with_config, lower_mir_source, quality_score_with_canonical_context }
 use vitte/compiler/driver/exit_status.{ DriverExitStatus, exit_code }
-use vitte/compiler/driver/mod.{ main_driver_report_json, main_driver_surface_report_json, main_driver_surface_report_json_from_args, run_check_diagnostics_json_cli, run_check_hir_json_cli, run_check_mir_json_cli, run_parse_ast_json_cli }
+use vitte/compiler/driver/metrics.{ BackendTiming, CompilerMetricsReport, LinkerTiming, compile_metrics_report, metrics_report_json }
+use vitte/compiler/driver/health_dashboard.{ HealthDashboard, health_dashboard_from_metrics, health_dashboard_json }
+use vitte/compiler/driver/mod.{ main_driver_report_json, main_driver_set_report_json, main_driver_surface_report_json, main_driver_surface_report_json_from_args, run_check_diagnostics_json_cli, run_check_hir_json_cli, run_check_mir_json_cli, run_parse_ast_json_cli }
 use vitte/compiler/driver/result.{ CliReportResult }
-use vitte/compiler/driver/compiler.{ CompilerCliRequest, CompilerMode, CompilerOptions, CompilerResult, CompilerStage, PhaseResult, compiler_from_source, default_options, new_compiler, parse_cli_request, record_phase_result, run_cli_main, run_compiler, structured_driver_failure_message, typed_diag_text }
+use vitte/compiler/driver/compiler.{ CompilerCliRequest, CompilerMode, CompilerOptions, CompilerOutput, CompilerResult, CompilerStage, PhaseResult, compiler_from_source, compiler_result_json, default_options, new_compiler, parse_cli_request, record_phase_result, run_cli_main, run_compiler, structured_driver_failure_message, structured_validation_failure_message, typed_diag_text }
 use vitte/compiler/backend/pipeline.{ BackendPipelineResult, compile_to_valid_ir_with_profile_and_packaging }
 use vitte/compiler/backend/target/config
 use vitte/compiler/backends/backend_infrastructure
@@ -101,6 +103,11 @@ proc test_driver_report_render_text_colorizes_severity() -> bool {
 proc test_parse_cli_request_defaults_project_root_for_source_commands() -> bool {
   let request: CompilerCliRequest = parse_cli_request(["check"]);
   give request.valid and request.input_path == ".";
+}
+
+proc test_parse_cli_request_accepts_json_flag() -> bool {
+  let request: CompilerCliRequest = parse_cli_request(["build", "--json", "--source", "proc main() -> int { give 0; }"]);
+  give request.valid and request.format == "json";
 }
 
 proc test_compiler_main_resolves_project_root_input_path() -> bool {
@@ -305,6 +312,170 @@ proc test_dump_hir_and_lower_mir_helpers() -> bool {
   give resolved.module.items[0].stmts[1].target_binding == "x.field" and typed.module.items[0].stmts[0].expr.inferred_type != "unknown" and mir.valid and mir.module.functions[0].blocks[0].statements[0].place.projection != "";
 }
 
+proc test_mir_and_diagnostics_json_include_validation_reason() -> bool {
+  let source_text: string = "proc main() -> int { give 0; }\n";
+  let mir_json: string = dump_mir_json("pipeline_validation_reason_mir.vit", source_text);
+  let diag_json: string = dump_diagnostics_json("pipeline_validation_reason_diag.vit", source_text);
+  give find(mir_json, "\"validation_reason\":\"none\"") >= 0
+    and find(diag_json, "\"pipeline_failure_reason\":\"none\"") >= 0
+    and find(diag_json, "\"validation_reason\":\"none\"") >= 0
+    and find(diag_json, "\"envelope\":") >= 0
+    and find(diag_json, "\"envelope\":{") >= 0
+    and find(diag_json, "\"pipeline_failed_at\":\"none\"") >= 0;
+}
+
+proc test_compiler_result_json_includes_canonical_validation_reason() -> bool {
+  let result: CompilerResult = CompilerResult {
+    status: DriverExitStatus.IrValidationFailure,
+    code: exit_code(DriverExitStatus.IrValidationFailure),
+    message: structured_validation_failure_message("IR lowering/verification failed in middle pipeline", "ir_validate", "invalid-method-dispatch-target"),
+    stage: CompilerStage.IrValidate,
+    output: CompilerOutput {
+      executable_path: "build/app",
+      object_path: "build/app.o",
+      assembly_path: "",
+      ir_path: "",
+      report_path: "",
+      program_exit_code: 0
+    },
+    diagnostics: [],
+    stage_logs: ["enter:13.backend_emit+14.object_file"],
+    phase_results: ["MIR verify=Success"]
+  };
+  let report_json: string = compiler_result_json("build", result);
+  give find(report_json, "\"command\":\"build\"") >= 0
+    and find(report_json, "\"pipeline_failed_at\":\"ir_validate\"") >= 0
+    and find(report_json, "\"pipeline_failure_reason\":\"invalid-method-dispatch-target\"") >= 0
+    and find(report_json, "\"validation_reason\":\"invalid-method-dispatch-target\"") >= 0
+    and find(report_json, "\"object_path\":\"build/app.o\"") >= 0
+    and find(report_json, "\"executable_path\":\"build/app\"") >= 0;
+}
+
+proc test_compile_and_module_set_reports_include_validation_reason() -> bool {
+  let source_text: string = "proc main() -> int { give 0; }\n";
+  let compile_json: string = main_driver_report_json("build", "pipeline_report_validation_reason.vit", source_text);
+  let module_set_json: string = main_driver_set_report_json("compile-set", [
+    driver_module_input("pipeline_module_set_validation_reason.vit", source_text)
+  ]);
+  give find(compile_json, "\"pipeline_failed_at\":\"none\"") >= 0
+    and find(compile_json, "\"pipeline_failure_reason\":\"none\"") >= 0
+    and find(compile_json, "\"validation_reason\":\"none\"") >= 0
+    and find(module_set_json, "\"pipeline_failed_at\":\"none\"") >= 0
+    and find(module_set_json, "\"pipeline_failure_reason\":\"none\"") >= 0
+    and find(module_set_json, "\"validation_reason\":\"none\"") >= 0;
+}
+
+proc test_metrics_and_health_include_canonical_validation_reason() -> bool {
+  let ok_source: string = "proc main() -> int { give 0; }\n";
+  let ok_result = compile_source_with_config("pipeline_metrics_ok.vit", ok_source, default_compile_config());
+  let ok_metrics: CompilerMetricsReport = compile_metrics_report("build", "pipeline_metrics_ok.vit", ok_result);
+  let ok_health: HealthDashboard = health_dashboard_from_metrics(ok_metrics);
+  let ok_metrics_json: string = metrics_report_json(ok_metrics);
+  let ok_health_json: string = health_dashboard_json(ok_health);
+
+  let bad_result: DriverCompileResult = DriverCompileResult {
+    status: DriverExitStatus.IrFailure,
+    message: "IR verification failed: invalid-method-dispatch-target",
+    ir_valid: false,
+    backend_name: "llvm",
+    target_name: "x86_64-linux",
+    profile_name: "enterprise-default",
+    opt_level: "O2",
+    packaging: "executable",
+    deterministic: true,
+    debug_enabled: true,
+    emit_debug_sections: true,
+    lto_enabled: false,
+    pgo_mode: "off",
+    prefer_native_toolchain: true,
+    llvm_toolchain_summary: "",
+    codegen_object_format: "",
+    codegen_section_count: 0,
+    diagnostics: [],
+    grammar_version: "",
+    token_count: 1,
+    toplevel_count: 1,
+    stmt_count: 1,
+    expr_count: 1,
+    type_count: 1,
+    pattern_count: 0
+  };
+  let bad_metrics: CompilerMetricsReport = compile_metrics_report("build", "pipeline_metrics_bad.vit", bad_result);
+  let bad_health: HealthDashboard = health_dashboard_from_metrics(bad_metrics);
+  let bad_metrics_json: string = metrics_report_json(bad_metrics);
+  let bad_health_json: string = health_dashboard_json(bad_health);
+
+  give find(ok_metrics_json, "\"pipeline_failed_at\":\"none\"") >= 0
+    and find(ok_metrics_json, "\"pipeline_failure_reason\":\"none\"") >= 0
+    and find(ok_metrics_json, "\"validation_reason\":\"none\"") >= 0
+    and find(ok_health_json, "\"pipeline_failed_at\":\"none\"") >= 0
+    and find(ok_health_json, "\"pipeline_failure_reason\":\"none\"") >= 0
+    and find(ok_health_json, "\"validation_reason\":\"none\"") >= 0
+    and find(bad_metrics_json, "\"pipeline_failed_at\":\"ir_validate\"") >= 0
+    and find(bad_metrics_json, "\"pipeline_failure_reason\":\"invalid-method-dispatch-target\"") >= 0
+    and find(bad_metrics_json, "\"validation_reason\":\"invalid-method-dispatch-target\"") >= 0
+    and find(bad_health_json, "\"pipeline_failed_at\":\"ir_validate\"") >= 0
+    and find(bad_health_json, "\"pipeline_failure_reason\":\"invalid-method-dispatch-target\"") >= 0
+    and find(bad_health_json, "\"validation_reason\":\"invalid-method-dispatch-target\"") >= 0;
+}
+
+proc test_health_and_quality_scores_distinguish_mir_vs_ir_validation() -> bool {
+  let backend0: BackendTiming = BackendTiming { codegen_ms: 1, backend_emit_ms: 1, valid: true };
+  let linker0: LinkerTiming = LinkerTiming { link_ms: 1, artifact_ms: 1, valid: true };
+  let mir_metrics: CompilerMetricsReport = CompilerMetricsReport {
+    command: "build",
+    source_path: "pipeline_health_mir.vit",
+    status: "error",
+    exit_code: exit_code(DriverExitStatus.MirValidationFailure),
+    pipeline_failed_at: "mir_validate",
+    pipeline_failure_reason: "invalid-param-contract",
+    validation_reason: "invalid-param-contract",
+    phase_metrics: [],
+    cache_hits: 10,
+    cache_misses: 2,
+    mir_size: 1,
+    ast_size: 1,
+    diagnostics_count: 0,
+    backend: backend0,
+    linker: linker0,
+    total_time_ms: 10,
+    total_memory_kb: 128,
+    valid: true
+  };
+  let ir_metrics: CompilerMetricsReport = CompilerMetricsReport {
+    command: "build",
+    source_path: "pipeline_health_ir.vit",
+    status: "error",
+    exit_code: exit_code(DriverExitStatus.IrFailure),
+    pipeline_failed_at: "ir_validate",
+    pipeline_failure_reason: "invalid-method-dispatch-target",
+    validation_reason: "invalid-method-dispatch-target",
+    phase_metrics: [],
+    cache_hits: 10,
+    cache_misses: 2,
+    mir_size: 1,
+    ast_size: 1,
+    diagnostics_count: 0,
+    backend: backend0,
+    linker: linker0,
+    total_time_ms: 10,
+    total_memory_kb: 128,
+    valid: true
+  };
+  let mir_health: HealthDashboard = health_dashboard_from_metrics(mir_metrics);
+  let ir_health: HealthDashboard = health_dashboard_from_metrics(ir_metrics);
+  let ok_quality: u64 = quality_score_with_canonical_context(80, "none", "none");
+  let mir_quality: u64 = quality_score_with_canonical_context(80, "mir_validate", "invalid-param-contract");
+  let ir_quality: u64 = quality_score_with_canonical_context(80, "ir_validate", "invalid-method-dispatch-target");
+  give mir_health.score > ir_health.score
+    and mir_health.benchmark_trends == "blocked-mir"
+    and ir_health.benchmark_trends == "blocked-ir"
+    and contains(mir_health.regression_alerts, "mir_validation_failure")
+    and contains(ir_health.regression_alerts, "ir_validation_failure")
+    and ok_quality > mir_quality
+    and mir_quality > ir_quality;
+}
+
 proc test_incremental_invalidation_targets_dependents() -> bool {
   let graph: IncrementalGraph = incremental_analysis_graph("pipeline_incremental.vit");
   let result: InvalidationResult = invalidate_graph_from_key(graph, analysis_node_key("pipeline_incremental.vit", "typed_hir"));
@@ -495,6 +666,7 @@ proc test_diagnostics_json_reports_lexer_phase() -> bool {
   let source_text: string = "proc main() { @ }\n";
   let diag_json: string = dump_diagnostics_json("pipeline_lexer_diag_json.vit", source_text);
   give find(diag_json, "\"pipeline_failed_at\":\"lexer\"") >= 0
+    and find(diag_json, "\"validation_reason\":\"none\"") >= 0
     and find(diag_json, "\"lexer\":") >= 0
     and find(diag_json, "\"phase\":\"lexer\"") >= 0
     and find(diag_json, "\"rule\":\"source character set\"") >= 0
@@ -526,6 +698,48 @@ proc test_json_surfaces_report_error_status_for_invalid_inputs() -> bool {
     and find(diag_json, "\"summary\":{\"frontend_diagnostic_count\":0") >= 0
     and find(diag_json, "\"primary_report\":") >= 0
     and find(diag_json, "\"envelope\":") >= 0;
+}
+
+proc canonical_impl_borrowck_source() -> string {
+  give "form Box { value: int }\n"
+    + "trait Keep {\n"
+    + "  proc keep(self: Self, borrow value: Box) -> int;\n"
+    + "}\n"
+    + "impl Keep for Box {\n"
+    + "  proc keep(self: Self, borrow value: Box) -> int { give 0; }\n"
+    + "}\n"
+    + "proc main() -> int {\n"
+    + "  let recv = Box { value: 1 };\n"
+    + "  let x = Box { value: 2 };\n"
+    + "  let y = recv.keep(x);\n"
+    + "  set x = Box { value: 3 };\n"
+    + "  give y;\n"
+    + "}\n";
+}
+
+proc test_diagnostics_json_uses_canonical_hir_mir_borrowck_path() -> bool {
+  let source_text: string = canonical_impl_borrowck_source();
+  let artifacts: DriverAnalysisArtifacts = analyze_source("pipeline_borrowck_hir_mir_json.vit", source_text);
+  let diag_json: string = dump_diagnostics_json("pipeline_borrowck_hir_mir_json.vit", source_text);
+  give artifacts.frontend.valid
+    and artifacts.typed_hir.valid
+    and artifacts.mir.valid
+    and not artifacts.analysis.borrowck_ok
+    and find(diag_json, "\"pipeline_failed_at\":\"borrowck\"") >= 0
+    and find(diag_json, "\"borrowck_ok\":false") >= 0
+    and find(diag_json, "\"borrowck\":") >= 0
+    and find(diag_json, "BORROWCK_E_WRITE_WHILE_BORROWED") >= 0
+    and find(diag_json, "\"subject_symbol\": \"x\"") >= 0
+    and find(diag_json, "\"phase\":\"borrowck\"") >= 0;
+}
+
+proc test_diagnostics_quality_score_uses_canonical_hir_mir_borrowck_path() -> bool {
+  let source_text: string = canonical_impl_borrowck_source();
+  let score: u64 = diagnostics_quality_score("pipeline_borrowck_quality.vit", source_text);
+  let diag_json: string = dump_diagnostics_json("pipeline_borrowck_quality.vit", source_text);
+  give score > 0
+    and find(diag_json, "\"pipeline_failed_at\":\"borrowck\"") >= 0
+    and find(diag_json, "BORROWCK_E_WRITE_WHILE_BORROWED") >= 0;
 }
 
 proc test_cli_json_dump_routes() -> bool {
@@ -808,6 +1022,25 @@ proc test_structured_driver_failure_message_contract() -> bool {
     and find(text, "expected_artifact: build/main") >= 0;
 }
 
+proc test_structured_validation_failure_message_contract() -> bool {
+  let mir_text: string = structured_validation_failure_message(
+    "MIR validation failed in middle pipeline",
+    "mir_validate",
+    "invalid-method-dispatch-target"
+  );
+  let ir_text: string = structured_validation_failure_message(
+    "IR lowering/verification failed in middle pipeline",
+    "ir_validate",
+    "invalid-variant-ctor"
+  );
+  give find(mir_text, "MIR validation failed in middle pipeline") >= 0
+    and find(mir_text, "stage: mir_validate") >= 0
+    and find(mir_text, "reason: invalid-method-dispatch-target") >= 0
+    and find(ir_text, "IR lowering/verification failed in middle pipeline") >= 0
+    and find(ir_text, "stage: ir_validate") >= 0
+    and find(ir_text, "reason: invalid-variant-ctor") >= 0;
+}
+
 proc test_compiler_logger_levels_contract() -> bool {
   let log0: logger.CompilerLogger = logger.compiler_logger(true, true);
   let log1: logger.CompilerLogger = logger.trace(log0, "trace event");
@@ -887,6 +1120,9 @@ proc run_all_tests() -> int {
   if not test_parse_cli_request_defaults_project_root_for_source_commands() {
     set failures = failures + 1;
   }
+  if not test_parse_cli_request_accepts_json_flag() {
+    set failures = failures + 1;
+  }
   if not test_compiler_main_resolves_project_root_input_path() {
     set failures = failures + 1;
   }
@@ -927,6 +1163,18 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if not test_dump_hir_and_lower_mir_helpers() {
+    set failures = failures + 1;
+  }
+  if not test_mir_and_diagnostics_json_include_validation_reason() {
+    set failures = failures + 1;
+  }
+  if not test_compiler_result_json_includes_canonical_validation_reason() {
+    set failures = failures + 1;
+  }
+  if not test_compile_and_module_set_reports_include_validation_reason() {
+    set failures = failures + 1;
+  }
+  if not test_metrics_and_health_include_canonical_validation_reason() {
     set failures = failures + 1;
   }
   if not test_stop_after_parse_exact() {
@@ -992,6 +1240,12 @@ proc run_all_tests() -> int {
   if not test_json_surfaces_report_error_status_for_invalid_inputs() {
     set failures = failures + 1;
   }
+  if not test_diagnostics_json_uses_canonical_hir_mir_borrowck_path() {
+    set failures = failures + 1;
+  }
+  if not test_diagnostics_quality_score_uses_canonical_hir_mir_borrowck_path() {
+    set failures = failures + 1;
+  }
   if not test_cli_json_dump_routes() {
     set failures = failures + 1;
   }
@@ -1044,6 +1298,9 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if not test_structured_driver_failure_message_contract() {
+    set failures = failures + 1;
+  }
+  if not test_structured_validation_failure_message_contract() {
     set failures = failures + 1;
   }
   if not test_compiler_logger_levels_contract() {

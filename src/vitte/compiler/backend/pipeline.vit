@@ -2,8 +2,8 @@ space vitte/compiler/backend
 
 use vitte/compiler/frontend/pipeline.{ FrontendOutput, frontend_run }
 use vitte/compiler/analysis/pipeline.{ AnalysisOutput }
-use vitte/compiler/middle/pipeline.{ MiddleOutput, middle_run, middle_run_for_target }
-use vitte/compiler/backend/ir.{ IrUnit, target_from_name, verify_unit, unit_is_valid }
+use vitte/compiler/middle/pipeline.{ MiddleOutput, middle_run_frontend, middle_run_frontend_for_target }
+use vitte/compiler/backend/ir.{ IrUnit, ir_validation_reason, target_from_name, verify_unit, unit_is_valid }
 use vitte/compiler/backend/codegen.{ CodegenResult, run_codegen_llvm_with_profile, run_codegen_x86_64 }
 use vitte/compiler/backends/llvm_bindings.{ LlvmToolchainPaths, default_llvm_toolchain_paths }
 use vitte/compiler/backend/link/artifact.{ LinkArtifact, LinkArtifactKind, artifact_add_output, artifact_create, artifact_is_valid, link_target_from_name, output_invalid, target_x86_64_linux }
@@ -20,42 +20,13 @@ form BackendPipelineResult {
   valid: bool
 }
 
-proc compile_to_valid_ir(source_path: string, source_text: string) -> BackendPipelineResult {
-  give compile_to_valid_ir_with_backend(source_path, source_text, "x86_64");
-}
-
-proc compile_to_valid_ir_with_backend(source_path: string, source_text: string, backend_name: string) -> BackendPipelineResult {
-  give compile_to_valid_ir_with_options(source_path, source_text, backend_name, "x86_64-linux");
-}
-
-proc compile_to_valid_ir_with_options(source_path: string, source_text: string, backend_name: string, target_name: string) -> BackendPipelineResult {
-  give compile_to_valid_ir_with_profile(source_path, source_text, backend_name, target_name, "enterprise-default", true, true);
-}
-
-proc artifact_kind_from_packaging(packaging: string) -> LinkArtifactKind {
-  if packaging == "static-library" {
-    give LinkArtifactKind.StaticLibrary;
-  }
-  if packaging == "shared-library" {
-    give LinkArtifactKind.SharedLibrary;
-  }
-  if packaging == "object" {
-    give LinkArtifactKind.ObjectFile;
-  }
-  give LinkArtifactKind.Executable;
-}
-
-proc compile_to_valid_ir_with_profile(source_path: string, source_text: string, backend_name: string, target_name: string, profile_name: string, deterministic: bool, debug_enabled: bool) -> BackendPipelineResult {
-  give compile_to_valid_ir_with_profile_and_packaging(source_path, source_text, backend_name, target_name, profile_name, deterministic, debug_enabled, "executable", false, default_llvm_toolchain_paths());
-}
-
-proc compile_to_valid_ir_with_profile_and_packaging(source_path: string, source_text: string, backend_name: string, target_name: string, profile_name: string, deterministic: bool, debug_enabled: bool, packaging: string, prefer_native_toolchain: bool, llvm_toolchain: LlvmToolchainPaths) -> BackendPipelineResult {
+proc compile_frontend_to_valid_ir_with_profile_and_packaging(source_path: string, source_text: string, backend_name: string, target_name: string, profile_name: string, deterministic: bool, debug_enabled: bool, packaging: string, prefer_native_toolchain: bool, llvm_toolchain: LlvmToolchainPaths) -> BackendPipelineResult {
   let fe: FrontendOutput = frontend_run(source_path, source_text);
   let target = target_from_name(target_name);
   let middle: MiddleOutput = if target.valid {
-    middle_run_for_target(fe, target);
+    middle_run_frontend_for_target(fe, target);
   } else {
-    middle_run(fe);
+    middle_run_frontend(fe);
   };
 
   let ir1: IrUnit = verify_unit(middle.ir);
@@ -104,7 +75,7 @@ proc compile_to_valid_ir_with_profile_and_packaging(source_path: string, source_
     set message = "unsupported target " + target_name;
   } elif not unit_is_valid(ir1) {
     set failure_stage = "ir";
-    set message = "IR verification failed";
+    set message = "IR verification failed: " + ir_validation_reason(ir1);
   } elif not cg.valid {
     set failure_stage = "codegen";
     set message = "backend code generation failed for " + backend_name;
@@ -123,4 +94,37 @@ proc compile_to_valid_ir_with_profile_and_packaging(source_path: string, source_
     message: message,
     valid: target.valid and unit_is_valid(ir1) and cg.valid and artifact_is_valid(artifact)
   };
+}
+
+proc compile_to_valid_ir(source_path: string, source_text: string) -> BackendPipelineResult {
+  give compile_to_valid_ir_with_backend(source_path, source_text, "x86_64");
+}
+
+proc compile_to_valid_ir_with_backend(source_path: string, source_text: string, backend_name: string) -> BackendPipelineResult {
+  give compile_to_valid_ir_with_options(source_path, source_text, backend_name, "x86_64-linux");
+}
+
+proc compile_to_valid_ir_with_options(source_path: string, source_text: string, backend_name: string, target_name: string) -> BackendPipelineResult {
+  give compile_to_valid_ir_with_profile(source_path, source_text, backend_name, target_name, "enterprise-default", true, true);
+}
+
+proc artifact_kind_from_packaging(packaging: string) -> LinkArtifactKind {
+  if packaging == "static-library" {
+    give LinkArtifactKind.StaticLibrary;
+  }
+  if packaging == "shared-library" {
+    give LinkArtifactKind.SharedLibrary;
+  }
+  if packaging == "object" {
+    give LinkArtifactKind.ObjectFile;
+  }
+  give LinkArtifactKind.Executable;
+}
+
+proc compile_to_valid_ir_with_profile(source_path: string, source_text: string, backend_name: string, target_name: string, profile_name: string, deterministic: bool, debug_enabled: bool) -> BackendPipelineResult {
+  give compile_to_valid_ir_with_profile_and_packaging(source_path, source_text, backend_name, target_name, profile_name, deterministic, debug_enabled, "executable", false, default_llvm_toolchain_paths());
+}
+
+proc compile_to_valid_ir_with_profile_and_packaging(source_path: string, source_text: string, backend_name: string, target_name: string, profile_name: string, deterministic: bool, debug_enabled: bool, packaging: string, prefer_native_toolchain: bool, llvm_toolchain: LlvmToolchainPaths) -> BackendPipelineResult {
+  give compile_frontend_to_valid_ir_with_profile_and_packaging(source_path, source_text, backend_name, target_name, profile_name, deterministic, debug_enabled, packaging, prefer_native_toolchain, llvm_toolchain);
 }

@@ -289,8 +289,10 @@ proc validate_number_lexeme(lexeme: string) -> LiteralValidation {
 
   let saw_digit: bool = false;
   let saw_dot: bool = false;
+  let saw_exponent: bool = false;
   let prev_underscore: bool = false;
   let digit_count: u64 = 0;
+  let exponent_digits: u64 = 0;
 
   while i < len(lexeme) {
     let ch: string = slice(lexeme, i, i + 1);
@@ -334,7 +336,7 @@ proc validate_number_lexeme(lexeme: string) -> LiteralValidation {
     }
 
     if base_mode == "" and ch == "." {
-      if saw_dot or prev_underscore or i + 1 >= len(lexeme) or not is_digit(slice(lexeme, i + 1, i + 2)) {
+      if saw_dot or saw_exponent or prev_underscore or i + 1 >= len(lexeme) or not is_digit(slice(lexeme, i + 1, i + 2)) {
         give literal_invalid(
           "LEX_E_INVALID_NUMBER",
           "malformed float literal",
@@ -346,6 +348,81 @@ proc validate_number_lexeme(lexeme: string) -> LiteralValidation {
       set saw_dot = true;
       set prev_underscore = false;
       set i = i + 1;
+      continue;
+    }
+
+    if base_mode == "" and (ch == "e" or ch == "E") {
+      if not saw_digit or prev_underscore or saw_exponent {
+        give literal_invalid(
+          "LEX_E_INVALID_NUMBER",
+          "malformed float exponent",
+          LiteralKind.Float,
+          true
+        );
+      }
+
+      let exponent_index: u64 = i + 1;
+      if exponent_index >= len(lexeme) {
+        give literal_invalid(
+          "LEX_E_INVALID_NUMBER",
+          "malformed float exponent",
+          LiteralKind.Float,
+          true
+        );
+      }
+
+      let exponent_sign: string = slice(lexeme, exponent_index, exponent_index + 1);
+      if exponent_sign == "+" or exponent_sign == "-" {
+        set i = exponent_index + 1;
+      } else {
+        set i = exponent_index;
+      }
+
+      if i >= len(lexeme) or not is_digit(slice(lexeme, i, i + 1)) {
+        give literal_invalid(
+          "LEX_E_INVALID_NUMBER",
+          "malformed float exponent",
+          LiteralKind.Float,
+          true
+        );
+      }
+
+      set saw_exponent = true;
+      set saw_dot = true;
+      set prev_underscore = false;
+
+      while i < len(lexeme) {
+        let exp_ch: string = slice(lexeme, i, i + 1);
+        if is_digit(exp_ch) {
+          set exponent_digits = exponent_digits + 1;
+          set digit_count = digit_count + 1;
+          set i = i + 1;
+          continue;
+        }
+        if exp_ch == "_" {
+          if exponent_digits == 0 or i + 1 >= len(lexeme) or not is_digit(slice(lexeme, i + 1, i + 2)) {
+            give literal_invalid(
+              "LEX_E_INVALID_NUMBER",
+              "invalid underscore placement in float exponent",
+              LiteralKind.Float,
+              true
+            );
+          }
+          set i = i + 1;
+          continue;
+        }
+        break;
+      }
+
+      if exponent_digits == 0 {
+        give literal_invalid(
+          "LEX_E_INVALID_NUMBER",
+          "malformed float exponent",
+          LiteralKind.Float,
+          true
+        );
+      }
+
       continue;
     }
 
@@ -368,6 +445,15 @@ proc validate_number_lexeme(lexeme: string) -> LiteralValidation {
       "numeric literal requires digits",
       LiteralKind.Integer,
       saw_dot
+    );
+  }
+
+  if saw_exponent and exponent_digits == 0 {
+    give literal_invalid(
+      "LEX_E_INVALID_NUMBER",
+      "malformed float exponent",
+      LiteralKind.Float,
+      true
     );
   }
 
@@ -429,6 +515,53 @@ proc validate_string_lexeme(lexeme: string) -> LiteralValidation {
     "",
     0,
     len(lexeme)
+  );
+}
+
+proc validate_raw_string_lexeme(lexeme: string) -> LiteralValidation {
+  if starts_with(lexeme, "r\"") {
+    if len(lexeme) < 3 or slice(lexeme, len(lexeme) - 1, len(lexeme)) != "\"" {
+      give literal_invalid(
+        "LEX_E_UNTERMINATED_STRING",
+        "unterminated raw string literal",
+        LiteralKind.RawString,
+        false
+      );
+    }
+    give literal_ok(
+      LiteralKind.RawString,
+      false,
+      lexeme,
+      "",
+      0,
+      len(lexeme)
+    );
+  }
+
+  if starts_with(lexeme, "\"\"\"") {
+    if len(lexeme) < 6 or slice(lexeme, len(lexeme) - 3, len(lexeme)) != "\"\"\"" {
+      give literal_invalid(
+        "LEX_E_UNTERMINATED_STRING",
+        "unterminated raw string literal",
+        LiteralKind.RawString,
+        false
+      );
+    }
+    give literal_ok(
+      LiteralKind.RawString,
+      false,
+      lexeme,
+      "",
+      0,
+      len(lexeme)
+    );
+  }
+
+  give literal_invalid(
+    "LEX_E_UNTERMINATED_STRING",
+    "invalid raw string literal",
+    LiteralKind.RawString,
+    false
   );
 }
 

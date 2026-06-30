@@ -67,6 +67,13 @@ form LspCodeDescription {
     valid: bool
 }
 
+form LspCanonicalContext {
+    pipeline_failed_at: string
+    pipeline_failure_reason: string
+    validation_reason: string
+    valid: bool
+}
+
 form LspDiagnostic {
     range: LspRange
     severity: LspDiagnosticSeverity
@@ -76,6 +83,7 @@ form LspDiagnostic {
     message: string
     related_information: [LspDiagnosticRelatedInformation]
     tags: [LspDiagnosticTag]
+    canonical_context: LspCanonicalContext
     data: string
     valid: bool
 }
@@ -84,6 +92,7 @@ form LspPublishDiagnosticsParams {
     uri: string
     diagnostics: [LspDiagnostic]
     version: u64
+    canonical_context: LspCanonicalContext
     valid: bool
 }
 
@@ -135,6 +144,19 @@ proc lsp_code_description(href: string) -> LspCodeDescription {
         href: href,
         valid: href != ""
     };
+}
+
+proc lsp_canonical_context(pipeline_failed_at: string, pipeline_failure_reason: string, validation_reason: string) -> LspCanonicalContext {
+    give LspCanonicalContext {
+        pipeline_failed_at: pipeline_failed_at,
+        pipeline_failure_reason: pipeline_failure_reason,
+        validation_reason: validation_reason,
+        valid: pipeline_failed_at != "" and pipeline_failure_reason != "" and validation_reason != ""
+    };
+}
+
+proc lsp_canonical_context_none() -> LspCanonicalContext {
+    give lsp_canonical_context("none", "none", "none");
 }
 
 proc lsp_severity(severity: DiagnosticSeverity) -> LspDiagnosticSeverity {
@@ -229,7 +251,7 @@ proc lsp_eq() -> string {
     give slice("a=b", 1, 2);
 }
 
-proc diagnostic_data(diagnostic: Diagnostic) -> string {
+proc diagnostic_data_with_canonical_context(diagnostic: Diagnostic, context: LspCanonicalContext) -> string {
     let severity_data: string = "severity" + lsp_eq() + severity_name(diagnostic.severity);
     let phase_data: string = "phase" + lsp_eq() + phase_name(diagnostic.phase);
     let code_data: string = "code" + lsp_eq() + diagnostic.code;
@@ -239,7 +261,14 @@ proc diagnostic_data(diagnostic: Diagnostic) -> string {
     let confidence_data: string = "confidence" + lsp_eq() + diagnostic_confidence(diagnostic.phase, diagnostic.code);
     let quality_data: string = "quality" + lsp_eq() + (diagnostic_quality_score(diagnostic) as string);
     let fixes_data: string = "fixes" + lsp_eq() + (len(diagnostic_fix_plans(diagnostic)) as string);
-    give severity_data + ";" + phase_data + ";" + code_data + ";" + family_data + ";" + strategy_data + ";" + recovery_data + ";" + confidence_data + ";" + quality_data + ";" + fixes_data;
+    let pipeline_data: string = "pipeline_failed_at" + lsp_eq() + context.pipeline_failed_at;
+    let failure_data: string = "pipeline_failure_reason" + lsp_eq() + context.pipeline_failure_reason;
+    let validation_data: string = "validation_reason" + lsp_eq() + context.validation_reason;
+    give severity_data + ";" + phase_data + ";" + code_data + ";" + family_data + ";" + strategy_data + ";" + recovery_data + ";" + confidence_data + ";" + quality_data + ";" + fixes_data + ";" + pipeline_data + ";" + failure_data + ";" + validation_data;
+}
+
+proc diagnostic_data(diagnostic: Diagnostic) -> string {
+    give diagnostic_data_with_canonical_context(diagnostic, lsp_canonical_context_none());
 }
 
 proc diagnostic_related_information_list(diagnostic: Diagnostic) -> [LspDiagnosticRelatedInformation] {
@@ -294,14 +323,14 @@ proc diagnostic_related_information_list(diagnostic: Diagnostic) -> [LspDiagnost
     give info;
 }
 
-proc lsp_diagnostic(diagnostic: Diagnostic) -> LspDiagnostic {
+proc lsp_diagnostic_with_canonical_context(diagnostic: Diagnostic, context: LspCanonicalContext) -> LspDiagnostic {
     let range: LspRange = lsp_range_from_span(diagnostic.span);
     let severity: LspDiagnosticSeverity = lsp_severity(diagnostic.severity);
     let code_href: string = "https://vitte.dev/errors/" + diagnostic.code;
     let code_description: LspCodeDescription = lsp_code_description(code_href);
     let related_information: [LspDiagnosticRelatedInformation] = diagnostic_related_information_list(diagnostic);
     let tags: [LspDiagnosticTag] = diagnostic_tags(diagnostic);
-    let data: string = diagnostic_data(diagnostic);
+    let data: string = diagnostic_data_with_canonical_context(diagnostic, context);
     give LspDiagnostic {
         range: range,
         severity: severity,
@@ -311,17 +340,22 @@ proc lsp_diagnostic(diagnostic: Diagnostic) -> LspDiagnostic {
         message: diagnostic.message,
         related_information: related_information,
         tags: tags,
+        canonical_context: context,
         data: data,
         valid: diagnostic.valid
     };
 }
 
-proc lsp_diagnostics(diagnostics: [Diagnostic]) -> [LspDiagnostic] {
+proc lsp_diagnostic(diagnostic: Diagnostic) -> LspDiagnostic {
+    give lsp_diagnostic_with_canonical_context(diagnostic, lsp_canonical_context_none());
+}
+
+proc lsp_diagnostics_with_canonical_context(diagnostics: [Diagnostic], context: LspCanonicalContext) -> [LspDiagnostic] {
     let out: [LspDiagnostic] = [];
     let i: u64 = 0;
 
     while i < len(diagnostics) {
-        set out = out + [lsp_diagnostic(diagnostics[i])];
+        set out = out + [lsp_diagnostic_with_canonical_context(diagnostics[i], context)];
 
         set i = i + 1;
     }
@@ -329,18 +363,31 @@ proc lsp_diagnostics(diagnostics: [Diagnostic]) -> [LspDiagnostic] {
     give out;
 }
 
-proc lsp_publish_diagnostics(uri: string, diagnostics: [Diagnostic], version: u64) -> LspPublishDiagnosticsParams {
-    let lsp_diagnostics_list: [LspDiagnostic] = lsp_diagnostics(diagnostics);
+proc lsp_diagnostics(diagnostics: [Diagnostic]) -> [LspDiagnostic] {
+    give lsp_diagnostics_with_canonical_context(diagnostics, lsp_canonical_context_none());
+}
+
+proc lsp_publish_diagnostics_with_canonical_context(uri: string, diagnostics: [Diagnostic], version: u64, context: LspCanonicalContext) -> LspPublishDiagnosticsParams {
+    let lsp_diagnostics_list: [LspDiagnostic] = lsp_diagnostics_with_canonical_context(diagnostics, context);
     give LspPublishDiagnosticsParams {
         uri: uri,
         diagnostics: lsp_diagnostics_list,
         version: version,
+        canonical_context: context,
         valid: uri != ""
     };
 }
 
+proc lsp_publish_diagnostics(uri: string, diagnostics: [Diagnostic], version: u64) -> LspPublishDiagnosticsParams {
+    give lsp_publish_diagnostics_with_canonical_context(uri, diagnostics, version, lsp_canonical_context_none());
+}
+
+proc lsp_publish_report_with_canonical_context(uri: string, report: DiagnosticReport, version: u64, context: LspCanonicalContext) -> LspPublishDiagnosticsParams {
+    give lsp_publish_diagnostics_with_canonical_context(uri, report.diagnostics, version, context);
+}
+
 proc lsp_publish_report(uri: string, report: DiagnosticReport, version: u64) -> LspPublishDiagnosticsParams {
-    give lsp_publish_diagnostics(uri, report.diagnostics, version);
+    give lsp_publish_report_with_canonical_context(uri, report, version, lsp_canonical_context_none());
 }
 
 proc lsp_code_action_from_suggestion(diagnostic: Diagnostic, suggestion: DiagnosticSuggestion) -> LspCodeAction {
@@ -450,7 +497,11 @@ proc lsp_diagnostic_summary(diagnostic: LspDiagnostic) -> string {
 
 proc lsp_publish_summary(params: LspPublishDiagnosticsParams) -> string {
     let diagnostic_count: string = len(params.diagnostics) as string;
-    give "published " + diagnostic_count + " diagnostic(s) to " + params.uri;
+    let summary: string = "published " + diagnostic_count + " diagnostic(s) to " + params.uri;
+    if params.canonical_context.pipeline_failed_at != "none" {
+        give summary + " [stage=" + params.canonical_context.pipeline_failed_at + ", reason=" + params.canonical_context.validation_reason + "]";
+    }
+    give summary;
 }
 
 share LspDiagnosticSeverity
@@ -460,6 +511,7 @@ share LspRange
 share LspDiagnosticRelatedInformation
 share LspDiagnosticTag
 share LspCodeDescription
+share LspCanonicalContext
 share LspDiagnostic
 share LspPublishDiagnosticsParams
 share LspCodeAction
@@ -469,6 +521,8 @@ share lsp_range
 share lsp_related_information
 share lsp_tag
 share lsp_code_description
+share lsp_canonical_context
+share lsp_canonical_context_none
 
 share lsp_severity
 share lsp_position_from_span_start
@@ -479,11 +533,16 @@ share span_uri
 share diagnostic_related_information
 share diagnostic_tags
 share diagnostic_data
+share diagnostic_data_with_canonical_context
 share diagnostic_related_information_list
 
+share lsp_diagnostic_with_canonical_context
 share lsp_diagnostic
+share lsp_diagnostics_with_canonical_context
 share lsp_diagnostics
+share lsp_publish_diagnostics_with_canonical_context
 share lsp_publish_diagnostics
+share lsp_publish_report_with_canonical_context
 share lsp_publish_report
 share lsp_code_action_from_suggestion
 share lsp_code_actions

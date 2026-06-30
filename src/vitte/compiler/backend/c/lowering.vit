@@ -2,11 +2,15 @@ space vitte/compiler/backend/c/lowering
 
 use vitte/compiler/backend/c/architecture.{ CBackendTargetProfile, c_type_for_vitte_type, c_target_x86_64_linux }
 use vitte/compiler/backend/c/diagnostics.{ CBackendDiagnostic, c_diag_add_unique, c_error, c_has_errors, c_info, c_warning }
+use vitte/compiler/backend/ir.{ IrBlock, IrFunction, IrInstruction, IrInstructionKind, IrLinkage, IrNominalType, IrUnit, IrUnitState, IrValue, IrValueKind, IrVisibility, ir_value_invalid, span_empty, target_native_x86_64_linux }
+use vitte/compiler/middle/hir.{ HirItem, HirItemKind, HirNominalMember, HirNominalMemberKind, HirProcParam, HirStmt }
 use vitte/compiler/middle/mir.{
   MirBinaryOperator,
   MirBlock,
   MirFunction,
+  MirFunctionParam,
   MirOperand,
+  MirPlace,
   MirRvalue,
   MirRvalueKind,
   MirStatement,
@@ -27,20 +31,68 @@ form CLocal {
   valid: bool
 }
 
+form CNominalType {
+  name: string
+  kind: string
+  abi: string
+  underlying_type: string
+  target_type: string
+  generic_count: u64
+  member_count: u64
+  signature_param_count: u64
+  members: [CNominalMember]
+  exported: bool
+  valid: bool
+}
+
+form CNominalMember {
+  kind: string
+  name: string
+  c_name: string
+  symbol_name: string
+  annotation_text: string
+  c_type: string
+  params: [CMethodParam]
+  body_stmt_count: u64
+  valid: bool
+}
+
+form CMethodParam {
+  name: string
+  c_name: string
+  annotation_text: string
+  c_type: string
+  mode: string
+  mutable: bool
+  borrowed: bool
+  variadic: bool
+  valid: bool
+}
+
 form CLoweredFunction {
   name: string
   c_name: string
   return_type: string
+  params: [CMethodParam]
   locals: [CLocal]
   body_text: string
   block_count: u64
   valid: bool
 }
 
+form CIrBorrowBinding {
+  temp_name: string
+  c_type: string
+  init_text: string
+  valid: bool
+}
+
 form CTranslationUnit {
   module_name: string
   profile: CBackendTargetProfile
+  nominal_types: [CNominalType]
   functions: [CLoweredFunction]
+  function_count: u64
   diagnostics: [CBackendDiagnostic]
   valid: bool
 }
@@ -148,6 +200,363 @@ proc sanitize_c_identifier(text: string) -> string {
   give out;
 }
 
+proc hir_item_is_nominal(item: HirItem) -> bool {
+  give item.kind == HirItemKind.Form
+    or item.kind == HirItemKind.Class
+    or item.kind == HirItemKind.Union
+    or item.kind == HirItemKind.Bits
+    or item.kind == HirItemKind.Pick
+    or item.kind == HirItemKind.Flags
+    or item.kind == HirItemKind.Trait
+    or item.kind == HirItemKind.Impl;
+}
+
+proc c_nominal_kind_name(kind: HirItemKind) -> string {
+  if kind == HirItemKind.Form {
+    give "form";
+  }
+  if kind == HirItemKind.Class {
+    give "class";
+  }
+  if kind == HirItemKind.Union {
+    give "union";
+  }
+  if kind == HirItemKind.Bits {
+    give "bits";
+  }
+  if kind == HirItemKind.Pick {
+    give "pick";
+  }
+  if kind == HirItemKind.Flags {
+    give "flags";
+  }
+  if kind == HirItemKind.Trait {
+    give "trait";
+  }
+  if kind == HirItemKind.Impl {
+    give "impl";
+  }
+  give "item";
+}
+
+proc c_nominal_member_type(profile: CBackendTargetProfile, nominal: HirItem, stmt: HirStmt) -> string {
+  if nominal.kind == HirItemKind.Pick {
+    if stmt.annotation_text == "" or nominal.generic_count > 0 {
+      give profile.pointer_type;
+    }
+    give c_type_for_vitte_type(profile, stmt.annotation_text);
+  }
+  if nominal.kind == HirItemKind.Trait or nominal.kind == HirItemKind.Impl {
+    give profile.pointer_type;
+  }
+  if stmt.annotation_text != "" {
+    give c_type_for_vitte_type(profile, stmt.annotation_text);
+  }
+  give profile.pointer_type;
+}
+
+proc c_method_param_type(profile: CBackendTargetProfile, nominal: HirItem, param: HirProcParam) -> string {
+  if param.variadic {
+    give "...";
+  }
+  let base_type: string = if param.annotation_text == "Self" {
+    if nominal.kind == HirItemKind.Impl and nominal.target_type_text != "" {
+      c_type_for_vitte_type(profile, nominal.target_type_text)
+    } else {
+      profile.pointer_type
+    }
+  } elif param.annotation_text == "" {
+    profile.pointer_type
+  } else {
+    c_type_for_vitte_type(profile, param.annotation_text)
+  };
+  if param.borrowed {
+    if param.mutable {
+      give base_type + "*";
+    }
+    give "const " + base_type + "*";
+  }
+  give base_type;
+}
+
+proc c_method_param_type_from_nominal_parts(profile: CBackendTargetProfile, nominal_kind: string, nominal_target_type: string, annotation_text: string, mutable: bool, borrowed: bool, variadic: bool) -> string {
+  if variadic {
+    give "...";
+  }
+  let base_type: string = if annotation_text == "Self" {
+    if nominal_kind == "impl" and nominal_target_type != "" {
+      c_type_for_vitte_type(profile, nominal_target_type)
+    } else {
+      profile.pointer_type
+    }
+  } elif annotation_text == "" {
+    profile.pointer_type
+  } else {
+    c_type_for_vitte_type(profile, annotation_text)
+  };
+  if borrowed {
+    if mutable {
+      give base_type + "*";
+    }
+    give "const " + base_type + "*";
+  }
+  give base_type;
+}
+
+proc c_method_param_from_hir_param(profile: CBackendTargetProfile, nominal: HirItem, param: HirProcParam) -> CMethodParam {
+  give CMethodParam {
+    name: param.name,
+    c_name: if param.variadic { "" } else { sanitize_c_identifier(param.name) },
+    annotation_text: param.annotation_text,
+    c_type: c_method_param_type(profile, nominal, param),
+    mode: param.mode,
+    mutable: param.mutable,
+    borrowed: param.borrowed,
+    variadic: param.variadic,
+    valid: param.valid and (param.name != "" or param.variadic)
+  };
+}
+
+proc c_method_params_from_hir_params(profile: CBackendTargetProfile, nominal: HirItem, params0: [HirProcParam]) -> [CMethodParam] {
+  let out: [CMethodParam] = [];
+  let i: u64 = 0;
+  while i < len(params0) {
+    set out = out + [c_method_param_from_hir_param(profile, nominal, params0[i])];
+    set i = i + 1;
+  }
+  give out;
+}
+
+proc string_to_bool(text: string) -> bool {
+  give trim(text) == "true";
+}
+
+proc split_pipe(text: string) -> [string] {
+  if text == "" {
+    give [];
+  }
+  give split(text, "|");
+}
+
+proc c_method_params_from_ir_nominal(nominal: IrNominalType, member_index: u64, profile: CBackendTargetProfile) -> [CMethodParam] {
+  if member_index >= len(nominal.member_param_names) {
+    give [];
+  }
+  let names: [string] = split_pipe(nominal.member_param_names[member_index]);
+  let types0: [string] = split_pipe(nominal.member_param_types[member_index]);
+  let modes: [string] = split_pipe(nominal.member_param_modes[member_index]);
+  let mutables: [string] = split_pipe(nominal.member_param_mutables[member_index]);
+  let borroweds: [string] = split_pipe(nominal.member_param_borroweds[member_index]);
+  let variadics: [string] = split_pipe(nominal.member_param_variadics[member_index]);
+  let out: [CMethodParam] = [];
+  let i: u64 = 0;
+  while i < len(names) {
+    let annotation_text: string = if i < len(types0) { types0[i] } else { "opaque" };
+    let mode: string = if i < len(modes) { modes[i] } else { "" };
+    let mutable: bool = i < len(mutables) and string_to_bool(mutables[i]);
+    let borrowed: bool = i < len(borroweds) and string_to_bool(borroweds[i]);
+    let variadic: bool = i < len(variadics) and string_to_bool(variadics[i]);
+    set out = out + [CMethodParam {
+      name: names[i],
+      c_name: if variadic { "" } else { sanitize_c_identifier(names[i]) },
+      annotation_text: annotation_text,
+      c_type: c_method_param_type_from_nominal_parts(profile, nominal.kind, nominal.target_type, annotation_text, mutable, borrowed, variadic),
+      mode: mode,
+      mutable: mutable,
+      borrowed: borrowed,
+      variadic: variadic,
+      valid: names[i] != "" or variadic
+    }];
+    set i = i + 1;
+  }
+  give out;
+}
+
+proc c_nominal_member_kind_name(kind: HirNominalMemberKind) -> string {
+  if kind == HirNominalMemberKind.Field {
+    give "field";
+  }
+  if kind == HirNominalMemberKind.Variant {
+    give "variant";
+  }
+  if kind == HirNominalMemberKind.TraitMethod {
+    give "trait-method";
+  }
+  if kind == HirNominalMemberKind.ImplMethod {
+    give "impl-method";
+  }
+  give "member";
+}
+
+proc c_nominal_member_type_from_hir_member(profile: CBackendTargetProfile, nominal: HirItem, member: HirNominalMember) -> string {
+  if member.kind == HirNominalMemberKind.TraitMethod or member.kind == HirNominalMemberKind.ImplMethod {
+    if member.annotation_text == "" {
+      give "void";
+    }
+    give c_type_for_vitte_type(profile, member.annotation_text);
+  }
+  if nominal.kind == HirItemKind.Pick {
+    if member.annotation_text == "" or nominal.generic_count > 0 {
+      give profile.pointer_type;
+    }
+    give c_type_for_vitte_type(profile, member.annotation_text);
+  }
+  if member.annotation_text != "" {
+    give c_type_for_vitte_type(profile, member.annotation_text);
+  }
+  give profile.pointer_type;
+}
+
+proc c_impl_method_symbol_name(trait_name: string, target_type: string, member_name: string) -> string {
+  let trait_c: string = sanitize_c_identifier(trait_name);
+  let target_c: string = sanitize_c_identifier(target_type);
+  let member_c: string = sanitize_c_identifier(member_name);
+  give "vitte_impl_" + trait_c + "_for_" + target_c + "_" + member_c;
+}
+
+proc c_nominal_member_from_hir_member(profile: CBackendTargetProfile, nominal: HirItem, member: HirNominalMember) -> CNominalMember {
+  give CNominalMember {
+    kind: c_nominal_member_kind_name(member.kind),
+    name: member.name,
+    c_name: sanitize_c_identifier(member.name),
+    symbol_name: if member.kind == HirNominalMemberKind.ImplMethod and nominal.target_type_text != "" { c_impl_method_symbol_name(nominal.name, nominal.target_type_text, member.name) } else { "" },
+    annotation_text: member.annotation_text,
+    c_type: c_nominal_member_type_from_hir_member(profile, nominal, member),
+    params: c_method_params_from_hir_params(profile, nominal, member.params),
+    body_stmt_count: len(member.body_stmts),
+    valid: member.valid and member.name != ""
+  };
+}
+
+proc c_nominal_member_from_hir_stmt(profile: CBackendTargetProfile, nominal: HirItem, stmt: HirStmt) -> CNominalMember {
+  give CNominalMember {
+    kind: "member",
+    name: stmt.name,
+    c_name: sanitize_c_identifier(stmt.name),
+    symbol_name: "",
+    annotation_text: stmt.annotation_text,
+    c_type: c_nominal_member_type(profile, nominal, stmt),
+    params: [],
+    body_stmt_count: len(stmt.then_stmts),
+    valid: stmt.valid and stmt.name != ""
+  };
+}
+
+proc c_nominal_members_from_hir_item(profile: CBackendTargetProfile, item: HirItem) -> [CNominalMember] {
+  if len(item.members) > 0 {
+    let out: [CNominalMember] = [];
+    let j: u64 = 0;
+    while j < len(item.members) {
+      if item.members[j].name != "" {
+        set out = out + [c_nominal_member_from_hir_member(profile, item, item.members[j])];
+      }
+      set j = j + 1;
+    }
+    give out;
+  }
+  let out: [CNominalMember] = [];
+  let i: u64 = 0;
+  while i < len(item.stmts) {
+    if item.stmts[i].name != "" {
+      set out = out + [c_nominal_member_from_hir_stmt(profile, item, item.stmts[i])];
+    }
+    set i = i + 1;
+  }
+  give out;
+}
+
+proc c_nominal_type_from_hir_item(profile: CBackendTargetProfile, item: HirItem) -> CNominalType {
+  let underlying_type: string = if item.kind == HirItemKind.Bits or item.kind == HirItemKind.Flags { item.annotation_text } else { "" };
+  let target_type: string = if item.kind == HirItemKind.Impl { item.target_type_text } else { "" };
+  let members: [CNominalMember] = c_nominal_members_from_hir_item(profile, item);
+  give CNominalType {
+    name: item.name,
+    kind: c_nominal_kind_name(item.kind),
+    abi: item.abi,
+    underlying_type: underlying_type,
+    target_type: target_type,
+    generic_count: item.generic_count,
+    member_count: item.member_count,
+    signature_param_count: item.signature_param_count,
+    members: members,
+    exported: item.exported,
+    valid: item.valid and item.name != ""
+  };
+}
+
+proc lower_nominal_types(items: [HirItem], profile: CBackendTargetProfile) -> [CNominalType] {
+  let out: [CNominalType] = [];
+  let i: u64 = 0;
+  while i < len(items) {
+    if hir_item_is_nominal(items[i]) {
+      set out = out + [c_nominal_type_from_hir_item(profile, items[i])];
+    }
+    set i = i + 1;
+  }
+  give out;
+}
+
+proc c_nominal_member_from_ir_nominal_member(profile: CBackendTargetProfile, nominal: IrNominalType, member_index: u64) -> CNominalMember {
+  let kind: string = if member_index < len(nominal.member_kinds) { nominal.member_kinds[member_index] } else { "member" };
+  let name: string = if member_index < len(nominal.member_names) { nominal.member_names[member_index] } else { "" };
+  let annotation_text: string = if member_index < len(nominal.member_annotations) { nominal.member_annotations[member_index] } else { "" };
+  give CNominalMember {
+    kind: kind,
+    name: name,
+    c_name: sanitize_c_identifier(name),
+    symbol_name: if kind == "impl-method" and nominal.target_type != "" { c_impl_method_symbol_name(nominal.name, nominal.target_type, name) } else { "" },
+    annotation_text: annotation_text,
+    c_type: if kind == "trait-method" or kind == "impl-method" {
+      if annotation_text != "" { c_type_for_vitte_type(profile, annotation_text) } else { "void" }
+    } elif annotation_text != "" {
+      c_type_for_vitte_type(profile, annotation_text)
+    } else {
+      profile.pointer_type
+    },
+    params: c_method_params_from_ir_nominal(nominal, member_index, profile),
+    body_stmt_count: 0,
+    valid: name != ""
+  };
+}
+
+proc c_nominal_type_from_ir_nominal(profile: CBackendTargetProfile, nominal: IrNominalType) -> CNominalType {
+  let members: [CNominalMember] = [];
+  let built: [CNominalMember] = members;
+  let i: u64 = 0;
+  while i < len(nominal.member_names) {
+    set built = built + [c_nominal_member_from_ir_nominal_member(profile, nominal, i)];
+    set i = i + 1;
+  }
+  give CNominalType {
+    name: nominal.name,
+    kind: nominal.kind,
+    abi: nominal.abi,
+    underlying_type: nominal.underlying_type,
+    target_type: nominal.target_type,
+    generic_count: nominal.generic_count,
+    member_count: nominal.member_count,
+    signature_param_count: nominal.signature_param_count,
+    members: built,
+    exported: nominal.exported,
+    valid: nominal.valid and nominal.name != ""
+  };
+}
+
+proc lower_nominal_types_from_ir(ir_unit: IrUnit, profile: CBackendTargetProfile) -> [CNominalType] {
+  let out: [CNominalType] = [];
+  let built: [CNominalType] = out;
+  let i: u64 = 0;
+  while i < len(ir_unit.modules) {
+    let j: u64 = 0;
+    while j < len(ir_unit.modules[i].nominal_types) {
+      set built = built + [c_nominal_type_from_ir_nominal(profile, ir_unit.modules[i].nominal_types[j])];
+      set j = j + 1;
+    }
+    set i = i + 1;
+  }
+  give built;
+}
+
 proc local_create(name: string, ty: string, profile: CBackendTargetProfile) -> CLocal {
   give CLocal {
     name: name,
@@ -156,6 +565,330 @@ proc local_create(name: string, ty: string, profile: CBackendTargetProfile) -> C
     c_type: c_type_for_vitte_type(profile, ty),
     valid: name != ""
   };
+}
+
+proc c_decl_type(profile: CBackendTargetProfile, ty: string) -> string {
+  if ty == "" {
+    give profile.pointer_type;
+  }
+  give c_type_for_vitte_type(profile, ty);
+}
+
+proc c_param_decl_type(profile: CBackendTargetProfile, ty: string, borrowed: bool, mutable: bool) -> string {
+  let base: string = c_decl_type(profile, ty);
+  if borrowed {
+    if mutable {
+      give base + "*";
+    }
+    give "const " + base + "*";
+  }
+  give base;
+}
+
+proc hir_expr_member_name(expr: HirExpr) -> string {
+  if expr.name != "" {
+    give expr.name;
+  }
+  let dot: int = find(expr.text, ".");
+  if dot < 0 {
+    give "";
+  }
+  give trim(slice(expr.text, dot + 1, len(expr.text)));
+}
+
+proc hir_call_is_variant_ctor(expr: HirExpr) -> bool {
+  if expr.kind != 9 or len(expr.children) == 0 {
+    give false;
+  }
+  let callee: HirExpr = expr.children[0];
+  if callee.kind != 11 or len(callee.children) == 0 {
+    give false;
+  }
+  let owner: HirExpr = callee.children[0];
+  if owner.inferred_type == "" or owner.inferred_type == "unknown" {
+    give false;
+  }
+  if not starts_with(callee.inferred_type, "fn(") {
+    give false;
+  }
+  let arrow: int = find(callee.inferred_type, "->");
+  if arrow < 0 {
+    give false;
+  }
+  give trim(slice(callee.inferred_type, arrow + 2, len(callee.inferred_type))) == owner.inferred_type;
+}
+
+proc hir_call_is_method_dispatch(expr: HirExpr) -> bool {
+  if expr.kind != 9 or len(expr.children) == 0 {
+    give false;
+  }
+  let callee: HirExpr = expr.children[0];
+  if callee.kind != 11 or len(callee.children) == 0 {
+    give false;
+  }
+  if hir_call_is_variant_ctor(expr) {
+    give false;
+  }
+  give starts_with(callee.inferred_type, "fn(");
+}
+
+proc hir_expr_to_c_text(nominal_types: [CNominalType], locals: [CLocal], expr: HirExpr, profile: CBackendTargetProfile) -> string {
+  if expr.kind == 1 {
+    if expr.binding != "" {
+      give locals_get_c_name(locals, expr.binding);
+    }
+    if expr.name != "" {
+      give sanitize_c_identifier(expr.name);
+    }
+    give expr.text;
+  }
+  if expr.kind == 2 or expr.kind == 3 or expr.kind == 4 or expr.kind == 5 or expr.kind == 6 {
+    give expr.text;
+  }
+  if expr.kind == 11 and len(expr.children) > 0 {
+    give hir_expr_to_c_text(nominal_types, locals, expr.children[0], profile) + "." + hir_expr_member_name(expr);
+  }
+  if expr.kind == 8 and len(expr.children) >= 2 {
+    give "(" + hir_expr_to_c_text(nominal_types, locals, expr.children[0], profile) + " " + expr.operator + " " + hir_expr_to_c_text(nominal_types, locals, expr.children[1], profile) + ")";
+  }
+  if expr.kind == 9 {
+    if hir_call_is_variant_ctor(expr) {
+      let callee: HirExpr = expr.children[0];
+      let nominal_name: string = callee.children[0].inferred_type;
+      let member_name: string = hir_expr_member_name(callee);
+      let nominal: CNominalType = c_nominal_find(nominal_types, nominal_name, "pick");
+      let member_index: int = c_nominal_member_index(nominal, member_name);
+      let out: string = "((" + c_nominal_c_name(nominal_name) + "){ .__vitte_tag = " + string(member_index as u64);
+      if len(expr.children) > 1 {
+        set out = out + ", .__vitte_payload." + sanitize_c_identifier(member_name) + " = " + hir_expr_to_c_text(nominal_types, locals, expr.children[1], profile);
+      }
+      give out + " })";
+    }
+    if hir_call_is_method_dispatch(expr) {
+      let callee: HirExpr = expr.children[0];
+      let receiver_type: string = callee.children[0].inferred_type;
+      let member_name: string = hir_expr_member_name(callee);
+      let impl_nominal: CNominalType = c_find_impl_dispatch_target(nominal_types, receiver_type, member_name);
+      let trait_name: string = c_nominal_c_name(impl_nominal.name);
+      let target_name: string = if impl_nominal.target_type != "" { c_nominal_c_name(impl_nominal.target_type) } else { "unknown" };
+      let out: string = trait_name + "__impl_for_" + target_name + "_descriptor." + sanitize_c_identifier(member_name) + "(";
+      let i: u64 = 0;
+      while i < len(expr.children) {
+        if i > 0 {
+          set out = out + ", ";
+        }
+        if i == 0 {
+          set out = out + hir_expr_to_c_text(nominal_types, locals, callee.children[0], profile);
+        } else {
+          set out = out + hir_expr_to_c_text(nominal_types, locals, expr.children[i], profile);
+        }
+        set i = i + 1;
+      }
+      give out + ")";
+    }
+    let args: string = "";
+    let i: u64 = 1;
+    while i < len(expr.children) {
+      if args != "" {
+        set args = args + ", ";
+      }
+      set args = args + hir_expr_to_c_text(nominal_types, locals, expr.children[i], profile);
+      set i = i + 1;
+    }
+    give hir_expr_to_c_text(nominal_types, locals, expr.children[0], profile) + "(" + args + ")";
+  }
+  give if expr.text != "" { expr.text } else { "0" };
+}
+
+proc hir_stmt_collect_locals(locals: [CLocal], stmt: HirStmt, profile: CBackendTargetProfile) -> [CLocal] {
+  let out: [CLocal] = if stmt.kind == HirStmtKind.Let and stmt.name != "" {
+    add_local_if_missing(locals, stmt.name, if stmt.annotation_text != "" { stmt.annotation_text } else { stmt.expr.inferred_type }, profile)
+  } else {
+    locals
+  };
+  let i: u64 = 0;
+  let current: [CLocal] = out;
+  while i < len(stmt.then_stmts) {
+    set current = hir_stmt_collect_locals(current, stmt.then_stmts[i], profile);
+    set i = i + 1;
+  }
+  i = 0;
+  while i < len(stmt.else_stmts) {
+    set current = hir_stmt_collect_locals(current, stmt.else_stmts[i], profile);
+    set i = i + 1;
+  }
+  give current;
+}
+
+proc hir_collect_method_locals(params: [CMethodParam], stmts: [HirStmt], profile: CBackendTargetProfile) -> [CLocal] {
+  let out: [CLocal] = [];
+  let i: u64 = 0;
+  while i < len(params) {
+    if not params[i].variadic {
+      set out = add_local_if_missing(out, params[i].name, params[i].annotation_text, profile);
+    }
+    set i = i + 1;
+  }
+  i = 0;
+  while i < len(stmts) {
+    set out = hir_stmt_collect_locals(out, stmts[i], profile);
+    set i = i + 1;
+  }
+  give out;
+}
+
+proc lower_hir_stmt_text(nominal_types: [CNominalType], locals: [CLocal], stmt: HirStmt, profile: CBackendTargetProfile) -> string {
+  if stmt.kind == HirStmtKind.Let {
+    give "  " + locals_get_c_name(locals, stmt.name) + " = " + hir_expr_to_c_text(nominal_types, locals, stmt.expr, profile) + ";\n";
+  }
+  if stmt.kind == HirStmtKind.Set {
+    let target_name: string = if stmt.target_binding != "" { stmt.target_binding } else { stmt.target };
+    give "  " + locals_get_c_name(locals, target_name) + " = " + hir_expr_to_c_text(nominal_types, locals, stmt.expr, profile) + ";\n";
+  }
+  if stmt.kind == HirStmtKind.Give {
+    give "  return " + hir_expr_to_c_text(nominal_types, locals, stmt.expr, profile) + ";\n";
+  }
+  if stmt.kind == HirStmtKind.ExprStmt {
+    give "  " + hir_expr_to_c_text(nominal_types, locals, stmt.expr, profile) + ";\n";
+  }
+  if stmt.kind == HirStmtKind.If {
+    let out: string = "  if (" + hir_expr_to_c_text(nominal_types, locals, stmt.expr, profile) + ") {\n";
+    let i: u64 = 0;
+    while i < len(stmt.then_stmts) {
+      set out = out + lower_hir_stmt_text(nominal_types, locals, stmt.then_stmts[i], profile);
+      set i = i + 1;
+    }
+    set out = out + "  }";
+    if len(stmt.else_stmts) > 0 {
+      set out = out + " else {\n";
+      i = 0;
+      while i < len(stmt.else_stmts) {
+        set out = out + lower_hir_stmt_text(nominal_types, locals, stmt.else_stmts[i], profile);
+        set i = i + 1;
+      }
+      set out = out + "  }";
+    }
+    give out + "\n";
+  }
+  if stmt.kind == HirStmtKind.While {
+    let out: string = "  while (" + hir_expr_to_c_text(nominal_types, locals, stmt.expr, profile) + ") {\n";
+    let i: u64 = 0;
+    while i < len(stmt.then_stmts) {
+      set out = out + lower_hir_stmt_text(nominal_types, locals, stmt.then_stmts[i], profile);
+      set i = i + 1;
+    }
+    give out + "  }\n";
+  }
+  give "  /* unsupported HIR stmt in impl method */\n";
+}
+
+proc params_include_name(params: [CMethodParam], name: string) -> bool {
+  let i: u64 = 0;
+  while i < len(params) {
+    if params[i].name == name {
+      give true;
+    }
+    set i = i + 1;
+  }
+  give false;
+}
+
+proc locals_without_params(locals: [CLocal], params: [CMethodParam]) -> [CLocal] {
+  let out: [CLocal] = [];
+  let i: u64 = 0;
+  while i < len(locals) {
+    if not params_include_name(params, locals[i].name) {
+      set out = out + [locals[i]];
+    }
+    set i = i + 1;
+  }
+  give out;
+}
+
+proc c_method_params_from_mir_params(profile: CBackendTargetProfile, params0: [MirFunctionParam]) -> [CMethodParam] {
+  let out: [CMethodParam] = [];
+  let i: u64 = 0;
+  while i < len(params0) {
+    set out = out + [CMethodParam {
+      name: params0[i].name,
+      c_name: if params0[i].variadic { "" } else { sanitize_c_identifier(params0[i].name) },
+      annotation_text: params0[i].type_name,
+      c_type: if params0[i].variadic { "..." } else { c_param_decl_type(profile, params0[i].type_name, params0[i].borrowed, params0[i].mutable) },
+      mode: params0[i].mode,
+      mutable: params0[i].mutable,
+      borrowed: params0[i].borrowed,
+      variadic: params0[i].variadic,
+      valid: params0[i].valid
+    }];
+    set i = i + 1;
+  }
+  give out;
+}
+
+proc c_function_params_by_name(functions: [MirFunction], function_name: string, profile: CBackendTargetProfile) -> [CMethodParam] {
+  let i: u64 = 0;
+  while i < len(functions) {
+    if functions[i].name == function_name {
+      give c_method_params_from_mir_params(profile, functions[i].params);
+    }
+    set i = i + 1;
+  }
+  give [];
+}
+
+proc c_param_index(params: [CMethodParam], name: string) -> int {
+  let i: int = 0;
+  while i < len(params) {
+    if params[i as u64].name == name {
+      give i;
+    }
+    set i = i + 1;
+  }
+  give -1;
+}
+
+proc c_call_target_name(rvalue: MirRvalue) -> string {
+  if rvalue.operator == "method-dispatch" or rvalue.operator == "variant-ctor" {
+    give rvalue.text;
+  }
+  let open0: int = find(rvalue.text, "(");
+  if open0 > 0 {
+    give trim(slice(rvalue.text, 0, open0));
+  }
+  if len(rvalue.operands) > 0 {
+    give lower_operand_text([], [], rvalue.operands[0]);
+  }
+  give rvalue.text;
+}
+
+proc c_call_arg_start_index(rvalue: MirRvalue) -> u64 {
+  if rvalue.operator == "method-dispatch" or rvalue.operator == "variant-ctor" {
+    give 0;
+  }
+  if len(rvalue.operands) > 0 {
+    give 1;
+  }
+  give 0;
+}
+
+proc c_borrow_arg_text(locals: [CLocal], params: [CMethodParam], operand: MirOperand, profile: CBackendTargetProfile) -> string {
+  let text: string = lower_operand_text(locals, params, operand);
+  if operand.place.valid and operand.place.local != "" {
+    let param_index: int = c_param_index(params, operand.place.local);
+    if param_index >= 0 and params[param_index as u64].borrowed {
+      give text;
+    }
+    give "(&" + text + ")";
+  }
+  let base: string = c_decl_type(profile, operand.ty);
+  give "(&(" + base + "){ " + text + " })";
+}
+
+proc lower_call_arg_text(locals: [CLocal], params: [CMethodParam], operand: MirOperand, param: CMethodParam, profile: CBackendTargetProfile) -> string {
+  if param.borrowed {
+    give c_borrow_arg_text(locals, params, operand, profile);
+  }
+  give lower_operand_text(locals, params, operand);
 }
 
 proc locals_has(locals: [CLocal], name: string) -> bool {
@@ -178,6 +911,235 @@ proc locals_get_c_name(locals: [CLocal], name: string) -> string {
     set i = i + 1;
   }
   give sanitize_c_identifier(name);
+}
+
+proc c_ir_borrow_temp_name(instruction: IrInstruction) -> string {
+  give "vitte_borrow_" + string(instruction.id);
+}
+
+proc c_value_source_text(locals: [CLocal], params: [CMethodParam], value: IrValue) -> string {
+  if value.kind == IrValueKind.Place and value.name != "" {
+    give lower_operand_text(locals, params, MirOperand {
+      text: value.text,
+      ty: value.type_name,
+      place: MirPlace {
+        local: value.name,
+        projection: "",
+        mutable: false,
+        deref_depth: 0,
+        moved: false,
+        valid: true
+      },
+      constant: false,
+      valid: true
+    });
+  }
+  if value.constant != "" {
+    give value.constant;
+  }
+  if value.text != "" {
+    give value.text;
+  }
+  give "0";
+}
+
+proc c_value_address_text(locals: [CLocal], params: [CMethodParam], value: IrValue, profile: CBackendTargetProfile) -> string {
+  if value.kind == IrValueKind.Place and value.name != "" {
+    let param_index: int = c_param_index(params, value.name);
+    if param_index >= 0 and params[param_index as u64].borrowed {
+      give locals_get_c_name(locals, value.name);
+    }
+    give "(&" + locals_get_c_name(locals, value.name) + ")";
+  }
+  let base: string = c_decl_type(profile, value.type_name);
+  give "(&(" + base + "){ " + c_value_source_text(locals, params, value) + " })";
+}
+
+proc c_ir_borrow_binding(locals: [CLocal], params: [CMethodParam], instruction: IrInstruction, profile: CBackendTargetProfile) -> CIrBorrowBinding {
+  let source: IrValue = instruction.args[0];
+  let borrowed_mut: bool = instruction.kind == IrInstructionKind.BorrowMut;
+  give CIrBorrowBinding {
+    temp_name: c_ir_borrow_temp_name(instruction),
+    c_type: c_param_decl_type(profile, instruction.dest.type_name, true, borrowed_mut),
+    init_text: c_value_address_text(locals, params, source, profile),
+    valid: instruction.dest.kind == IrValueKind.Reference and len(instruction.args) > 0
+  };
+}
+
+proc empty_borrow_binding() -> CIrBorrowBinding {
+  give CIrBorrowBinding {
+    temp_name: "",
+    c_type: "",
+    init_text: "",
+    valid: false
+  };
+}
+
+proc lower_ir_value_call_arg_text(locals: [CLocal], params: [CMethodParam], value: IrValue, borrow_binding: CIrBorrowBinding) -> string {
+  if value.kind == IrValueKind.Reference and borrow_binding.valid {
+    give borrow_binding.temp_name;
+  }
+  if value.kind == IrValueKind.Reference and value.name != "" {
+    let param_index: int = c_param_index(params, value.name);
+    if param_index >= 0 and params[param_index as u64].borrowed {
+      give locals_get_c_name(locals, value.name);
+    }
+  }
+  give c_value_source_text(locals, params, value);
+}
+
+proc ir_call_instruction_at(block: IrBlock, call_index: u64) -> IrInstruction {
+  let seen: u64 = 0;
+  let i: u64 = 0;
+  while i < len(block.instructions) {
+    if block.instructions[i].kind == IrInstructionKind.Call {
+      if seen == call_index {
+        give block.instructions[i];
+      }
+      set seen = seen + 1;
+    }
+    set i = i + 1;
+  }
+  give IrInstruction {
+    id: 0,
+    kind: IrInstructionKind.Invalid,
+    text: "",
+    operator: "",
+    dest: ir_value_invalid(),
+    args: [],
+    call_arg_start: 0,
+    target_block: 0,
+    else_block: 0,
+    switch_values: [],
+    switch_targets: [],
+    span: span_empty(),
+    valid: false
+  };
+}
+
+proc ir_borrow_bindings_before_call(block: IrBlock, call_index: u64, locals: [CLocal], params: [CMethodParam], profile: CBackendTargetProfile) -> [CIrBorrowBinding] {
+  let seen: u64 = 0;
+  let current: [CIrBorrowBinding] = [];
+  let i: u64 = 0;
+  while i < len(block.instructions) {
+    if block.instructions[i].kind == IrInstructionKind.BorrowShared or block.instructions[i].kind == IrInstructionKind.BorrowMut {
+      set current = current + [c_ir_borrow_binding(locals, params, block.instructions[i], profile)];
+    } elif block.instructions[i].kind == IrInstructionKind.Call {
+      if seen == call_index {
+        give current;
+      }
+      set current = [];
+      set seen = seen + 1;
+    }
+    set i = i + 1;
+  }
+  give [];
+}
+
+proc c_ir_function_by_name(unit: IrUnit, function_name: string) -> IrFunction {
+  let i: u64 = 0;
+  while i < len(unit.modules) {
+    let j: u64 = 0;
+    while j < len(unit.modules[i].functions) {
+      if unit.modules[i].functions[j].name == function_name {
+        give unit.modules[i].functions[j];
+      }
+      set j = j + 1;
+    }
+    set i = i + 1;
+  }
+  give IrFunction {
+    id: 0,
+    name: "",
+    module_name: "",
+    linkage: IrLinkage.Internal,
+    visibility: IrVisibility.Private,
+    is_entry: false,
+    span: span_empty(),
+    params: [],
+    return_type: "",
+    blocks: [],
+    valid: false
+  };
+}
+
+proc c_ir_block_by_id(function0: IrFunction, block_id: u64) -> IrBlock {
+  let i: u64 = 0;
+  while i < len(function0.blocks) {
+    if function0.blocks[i].id == block_id {
+      give function0.blocks[i];
+    }
+    set i = i + 1;
+  }
+  give IrBlock {
+    id: 0,
+    label: "",
+    instructions: [],
+    terminator: IrInstruction {
+      id: 0,
+      kind: 0,
+      text: "",
+      operator: "",
+      dest: ir_value_invalid(),
+      args: [],
+      call_arg_start: 0,
+      target_block: 0,
+      else_block: 0,
+      switch_values: [],
+      switch_targets: [],
+      span: span_empty(),
+      valid: false
+    },
+    valid: false
+  };
+}
+
+proc function_has_call_stmt(function0: MirFunction) -> bool {
+  let i: u64 = 0;
+  while i < len(function0.blocks) {
+    let j: u64 = 0;
+    while j < len(function0.blocks[i].statements) {
+      if function0.blocks[i].statements[j].rvalue.kind == MirRvalueKind.Call {
+        give true;
+      }
+      set j = j + 1;
+    }
+    set i = i + 1;
+  }
+  give false;
+}
+
+proc block_calls_match_ir(ir_block: IrBlock, block: MirBlock) -> bool {
+  let call_index: u64 = 0;
+  let i: u64 = 0;
+  while i < len(block.statements) {
+    if block.statements[i].rvalue.kind == MirRvalueKind.Call {
+      let ir_call: IrInstruction = ir_call_instruction_at(ir_block, call_index);
+      if not ir_call.valid {
+        give false;
+      }
+      set call_index = call_index + 1;
+    }
+    set i = i + 1;
+  }
+  give true;
+}
+
+proc function_calls_match_ir(function0: MirFunction, ir_function: IrFunction) -> bool {
+  if not function_has_call_stmt(function0) {
+    give true;
+  }
+  if not ir_function.valid {
+    give false;
+  }
+  let i: u64 = 0;
+  while i < len(function0.blocks) {
+    if not block_calls_match_ir(c_ir_block_by_id(ir_function, function0.blocks[i].id), function0.blocks[i]) {
+      give false;
+    }
+    set i = i + 1;
+  }
+  give true;
 }
 
 proc add_local_if_missing(locals: [CLocal], name: string, ty: string, profile: CBackendTargetProfile) -> [CLocal] {
@@ -238,9 +1200,14 @@ proc collect_function_locals(function0: MirFunction, profile: CBackendTargetProf
   give out;
 }
 
-proc lower_operand_text(locals: [CLocal], operand: MirOperand) -> string {
+proc lower_operand_text(locals: [CLocal], params: [CMethodParam], operand: MirOperand) -> string {
   if operand.place.valid and operand.place.local != "" {
-    give locals_get_c_name(locals, operand.place.local);
+    let c_name: string = locals_get_c_name(locals, operand.place.local);
+    let param_index: int = c_param_index(params, operand.place.local);
+    if param_index >= 0 and params[param_index as u64].borrowed {
+      give "(*" + c_name + ")";
+    }
+    give c_name;
   }
   if operand.text != "" {
     give operand.text;
@@ -248,50 +1215,173 @@ proc lower_operand_text(locals: [CLocal], operand: MirOperand) -> string {
   give "0";
 }
 
-proc lower_call_text(locals: [CLocal], rvalue: MirRvalue) -> string {
+proc nominal_name_prefix(text: string) -> string {
+  let sep: int = find(text, "::");
+  if sep < 0 {
+    give "";
+  }
+  give trim(slice(text, 0, sep));
+}
+
+proc nominal_name_suffix(text: string) -> string {
+  let sep: int = find(text, "::");
+  if sep < 0 {
+    give "";
+  }
+  give trim(slice(text, sep + 2, len(text)));
+}
+
+proc c_nominal_find(nominal_types: [CNominalType], name: string, kind: string) -> CNominalType {
+  let i: u64 = 0;
+  while i < len(nominal_types) {
+    if nominal_types[i].name == name and (kind == "" or nominal_types[i].kind == kind) {
+      give nominal_types[i];
+    }
+    set i = i + 1;
+  }
+  give CNominalType {
+    name: "",
+    kind: "",
+    abi: "",
+    underlying_type: "",
+    target_type: "",
+    generic_count: 0,
+    member_count: 0,
+    signature_param_count: 0,
+    members: [],
+    exported: false,
+    valid: false
+  };
+}
+
+proc c_nominal_member_index(nominal: CNominalType, member_name: string) -> int {
+  let i: int = 0;
+  while i < len(nominal.members) {
+    if nominal.members[i as u64].name == member_name {
+      give i;
+    }
+    set i = i + 1;
+  }
+  give -1;
+}
+
+proc c_find_impl_dispatch_target(nominal_types: [CNominalType], target_type: string, member_name: string) -> CNominalType {
+  let i: u64 = 0;
+  while i < len(nominal_types) {
+    if nominal_types[i].kind == "impl" and nominal_types[i].target_type == target_type and c_nominal_member_index(nominal_types[i], member_name) >= 0 {
+      give nominal_types[i];
+    }
+    set i = i + 1;
+  }
+  give c_nominal_find([], "", "");
+}
+
+proc lower_variant_ctor_text(nominal_types: [CNominalType], locals: [CLocal], params: [CMethodParam], rvalue: MirRvalue) -> string {
+  let type_name: string = nominal_name_prefix(rvalue.text);
+  let member_name: string = nominal_name_suffix(rvalue.text);
+  let nominal: CNominalType = c_nominal_find(nominal_types, type_name, "pick");
+  if not nominal.valid {
+    give "/* unresolved variant ctor */ (" + c_nominal_c_name(type_name) + "){0}";
+  }
+  let member_index: int = c_nominal_member_index(nominal, member_name);
+  if member_index < 0 {
+    give "/* unresolved variant member */ (" + c_nominal_c_name(type_name) + "){0}";
+  }
+  let c_name: string = c_nominal_c_name(nominal.name);
+  let member: CNominalMember = nominal.members[member_index as u64];
+  let out: string = "((" + c_name + "){ .__vitte_tag = " + string(member_index as u64);
+  if len(rvalue.operands) > 0 {
+    set out = out + ", .__vitte_payload." + member.c_name + " = " + lower_operand_text(locals, params, rvalue.operands[0]);
+  }
+  set out = out + " })";
+  give out;
+}
+
+proc lower_method_dispatch_text(nominal_types: [CNominalType], locals: [CLocal], params: [CMethodParam], rvalue: MirRvalue) -> string {
+  let target_type: string = nominal_name_prefix(rvalue.text);
+  let member_name: string = nominal_name_suffix(rvalue.text);
   if len(rvalue.operands) == 0 {
     give "0";
   }
-  let callee: string = sanitize_c_identifier(lower_operand_text(locals, rvalue.operands[0]));
+  let impl_nominal: CNominalType = c_find_impl_dispatch_target(nominal_types, target_type, member_name);
+  if not impl_nominal.valid {
+    give "/* unresolved method dispatch " + rvalue.text + " */ 0";
+  }
+  let trait_name: string = c_nominal_c_name(impl_nominal.name);
+  let target_name: string = if impl_nominal.target_type != "" { c_nominal_c_name(impl_nominal.target_type) } else { "unknown" };
+  let out: string = trait_name + "__impl_for_" + target_name + "_descriptor." + sanitize_c_identifier(member_name) + "(";
+  let i: u64 = 0;
+  while i < len(rvalue.operands) {
+    if i > 0 {
+      set out = out + ", ";
+    }
+    set out = out + lower_operand_text(locals, params, rvalue.operands[i]);
+    set i = i + 1;
+  }
+  set out = out + ")";
+  give out;
+}
+
+proc lower_call_text(nominal_types: [CNominalType], locals: [CLocal], params: [CMethodParam], functions: [MirFunction], ir_call: IrInstruction, borrow_bindings: [CIrBorrowBinding], rvalue: MirRvalue, profile: CBackendTargetProfile) -> string {
+  if not ir_call.valid {
+    give "0 /* invalid canonical call */";
+  }
+  if rvalue.operator == "variant-ctor" {
+    give lower_variant_ctor_text(nominal_types, locals, params, rvalue);
+  }
+  if rvalue.operator == "method-dispatch" {
+    give lower_method_dispatch_text(nominal_types, locals, params, rvalue);
+  }
+  if len(rvalue.operands) == 0 {
+    give "0";
+  }
+  let callee: string = sanitize_c_identifier(lower_operand_text(locals, params, rvalue.operands[0]));
+  let params0: [CMethodParam] = c_function_params_by_name(functions, c_call_target_name(rvalue), profile);
   let args: string = "";
-  let i: u64 = 1;
+  let i: u64 = c_call_arg_start_index(rvalue);
+  let param_index: u64 = 0;
+  if len(ir_call.args) < len(rvalue.operands) {
+    give "0 /* invalid canonical call abi */";
+  }
   while i < len(rvalue.operands) {
     if args != "" {
       set args = args + ", ";
     }
-    set args = args + lower_operand_text(locals, rvalue.operands[i]);
+    let binding: CIrBorrowBinding = if param_index < len(borrow_bindings) { borrow_bindings[param_index] } else { empty_borrow_binding() };
+    set args = args + lower_ir_value_call_arg_text(locals, params, ir_call.args[i], binding);
     set i = i + 1;
+    set param_index = param_index + 1;
   }
   give callee + "(" + args + ")";
 }
 
-proc lower_rvalue_text(locals: [CLocal], rvalue: MirRvalue, profile: CBackendTargetProfile) -> string {
+proc lower_rvalue_text(nominal_types: [CNominalType], locals: [CLocal], params: [CMethodParam], functions: [MirFunction], ir_call: IrInstruction, borrow_bindings: [CIrBorrowBinding], rvalue: MirRvalue, profile: CBackendTargetProfile) -> string {
   if rvalue.kind == MirRvalueKind.Use or rvalue.kind == MirRvalueKind.Copy or rvalue.kind == MirRvalueKind.Move {
     if len(rvalue.operands) > 0 {
-      give lower_operand_text(locals, rvalue.operands[0]);
+      give lower_operand_text(locals, params, rvalue.operands[0]);
     }
     give rvalue.text;
   }
   if rvalue.kind == MirRvalueKind.Binary and len(rvalue.operands) >= 2 {
-    give "(" + lower_operand_text(locals, rvalue.operands[0]) + " " + c_binary_operator_text(rvalue.binary_operator) + " " + lower_operand_text(locals, rvalue.operands[1]) + ")";
+    give "(" + lower_operand_text(locals, params, rvalue.operands[0]) + " " + c_binary_operator_text(rvalue.binary_operator) + " " + lower_operand_text(locals, params, rvalue.operands[1]) + ")";
   }
   if rvalue.kind == MirRvalueKind.Unary and len(rvalue.operands) >= 1 {
-    give "(" + c_unary_operator_text(rvalue.unary_operator) + lower_operand_text(locals, rvalue.operands[0]) + ")";
+    give "(" + c_unary_operator_text(rvalue.unary_operator) + lower_operand_text(locals, params, rvalue.operands[0]) + ")";
   }
   if rvalue.kind == MirRvalueKind.BorrowShared or rvalue.kind == MirRvalueKind.BorrowMut or rvalue.kind == MirRvalueKind.AddressOf {
     if len(rvalue.operands) >= 1 {
-      give "(&" + lower_operand_text(locals, rvalue.operands[0]) + ")";
+      give "(&" + lower_operand_text(locals, params, rvalue.operands[0]) + ")";
     }
     give "NULL";
   }
   if rvalue.kind == MirRvalueKind.Cast and len(rvalue.operands) >= 1 {
-    give "((" + c_type_for_vitte_type(profile, rvalue.ty) + ")" + lower_operand_text(locals, rvalue.operands[0]) + ")";
+    give "((" + c_type_for_vitte_type(profile, rvalue.ty) + ")" + lower_operand_text(locals, params, rvalue.operands[0]) + ")";
   }
   if rvalue.kind == MirRvalueKind.Call {
-    give lower_call_text(locals, rvalue);
+    give lower_call_text(nominal_types, locals, params, functions, ir_call, borrow_bindings, rvalue, profile);
   }
   if rvalue.kind == MirRvalueKind.Len and len(rvalue.operands) >= 1 {
-    give "vitte_runtime_strlen(" + lower_operand_text(locals, rvalue.operands[0]) + ")";
+    give "vitte_runtime_strlen(" + lower_operand_text(locals, params, rvalue.operands[0]) + ")";
   }
   if rvalue.kind == MirRvalueKind.Aggregate or rvalue.kind == MirRvalueKind.Tuple or rvalue.kind == MirRvalueKind.Array or rvalue.kind == MirRvalueKind.Struct {
     give "{0}";
@@ -302,21 +1392,35 @@ proc lower_rvalue_text(locals: [CLocal], rvalue: MirRvalue, profile: CBackendTar
   give "0";
 }
 
-proc lower_statement_text(locals: [CLocal], stmt: MirStatement, profile: CBackendTargetProfile) -> string {
+proc borrow_binding_lines(bindings: [CIrBorrowBinding]) -> string {
+  let out: string = "";
+  let i: u64 = 0;
+  while i < len(bindings) {
+    if bindings[i].valid {
+      set out = out + "  " + bindings[i].c_type + " " + bindings[i].temp_name + " = " + bindings[i].init_text + ";\n";
+    }
+    set i = i + 1;
+  }
+  give out;
+}
+
+proc lower_statement_text(nominal_types: [CNominalType], locals: [CLocal], params: [CMethodParam], functions: [MirFunction], ir_call: IrInstruction, borrow_bindings: [CIrBorrowBinding], stmt: MirStatement, profile: CBackendTargetProfile) -> string {
   if stmt.kind == MirStatementKind.Assign {
-    give "  " + locals_get_c_name(locals, stmt.place.local) + " = " + lower_rvalue_text(locals, stmt.rvalue, profile) + ";\n";
+    let prefix: string = if stmt.rvalue.kind == MirRvalueKind.Call { borrow_binding_lines(borrow_bindings) } else { "" };
+    give prefix + "  " + locals_get_c_name(locals, stmt.place.local) + " = " + lower_rvalue_text(nominal_types, locals, params, functions, ir_call, borrow_bindings, stmt.rvalue, profile) + ";\n";
   }
   if stmt.kind == MirStatementKind.Return {
-    give "  return " + lower_rvalue_text(locals, stmt.rvalue, profile) + ";\n";
+    give "  return " + lower_rvalue_text(nominal_types, locals, params, functions, ir_call, borrow_bindings, stmt.rvalue, profile) + ";\n";
   }
   if stmt.kind == MirStatementKind.Assert {
-    give "  vitte_runtime_assert(" + lower_rvalue_text(locals, stmt.rvalue, profile) + ", \"MIR assert failed\");\n";
+    give "  vitte_runtime_assert(" + lower_rvalue_text(nominal_types, locals, params, functions, ir_call, borrow_bindings, stmt.rvalue, profile) + ", \"MIR assert failed\");\n";
   }
   if stmt.kind == MirStatementKind.Call {
+    let prefix: string = borrow_binding_lines(borrow_bindings);
     if stmt.place.valid and stmt.place.local != "" {
-      give "  " + locals_get_c_name(locals, stmt.place.local) + " = " + lower_rvalue_text(locals, stmt.rvalue, profile) + ";\n";
+      give prefix + "  " + locals_get_c_name(locals, stmt.place.local) + " = " + lower_rvalue_text(nominal_types, locals, params, functions, ir_call, borrow_bindings, stmt.rvalue, profile) + ";\n";
     }
-    give "  " + lower_rvalue_text(locals, stmt.rvalue, profile) + ";\n";
+    give prefix + "  " + lower_rvalue_text(nominal_types, locals, params, functions, ir_call, borrow_bindings, stmt.rvalue, profile) + ";\n";
   }
   if stmt.kind == MirStatementKind.Drop {
     give "  vitte_runtime_drop_noop(&" + locals_get_c_name(locals, stmt.place.local) + ");\n";
@@ -327,7 +1431,7 @@ proc lower_statement_text(locals: [CLocal], stmt: MirStatement, profile: CBacken
   give "  /* unsupported MIR statement lowered as no-op */\n";
 }
 
-proc lower_terminator_text(locals: [CLocal], term: MirTerminator) -> string {
+proc lower_terminator_text(locals: [CLocal], params: [CMethodParam], term: MirTerminator) -> string {
   if term.kind == MirTerminatorKind.Return {
     give "  return;\n";
   }
@@ -335,16 +1439,16 @@ proc lower_terminator_text(locals: [CLocal], term: MirTerminator) -> string {
     give "  goto " + c_block_label(term.target_block) + ";\n";
   }
   if term.kind == MirTerminatorKind.Branch {
-    give "  if (" + lower_operand_text(locals, term.condition) + ") goto " + c_block_label(term.target_block) + "; else goto " + c_block_label(term.else_block) + ";\n";
+    give "  if (" + lower_operand_text(locals, params, term.condition) + ") goto " + c_block_label(term.target_block) + "; else goto " + c_block_label(term.else_block) + ";\n";
   }
   if term.kind == MirTerminatorKind.Switch {
     let out: string = "";
     let i: u64 = 0;
     while i < len(term.switch_values) and i < len(term.switch_targets) {
       if i == 0 {
-        set out = out + "  if (" + lower_operand_text(locals, term.condition) + " == " + term.switch_values[i] + ") goto " + c_block_label(term.switch_targets[i]) + ";\n";
+        set out = out + "  if (" + lower_operand_text(locals, params, term.condition) + " == " + term.switch_values[i] + ") goto " + c_block_label(term.switch_targets[i]) + ";\n";
       } else {
-        set out = out + "  else if (" + lower_operand_text(locals, term.condition) + " == " + term.switch_values[i] + ") goto " + c_block_label(term.switch_targets[i]) + ";\n";
+        set out = out + "  else if (" + lower_operand_text(locals, params, term.condition) + " == " + term.switch_values[i] + ") goto " + c_block_label(term.switch_targets[i]) + ";\n";
       }
       set i = i + 1;
     }
@@ -360,19 +1464,40 @@ proc lower_terminator_text(locals: [CLocal], term: MirTerminator) -> string {
   give "";
 }
 
-proc lower_block_text(locals: [CLocal], block: MirBlock, profile: CBackendTargetProfile) -> string {
+proc lower_block_text(nominal_types: [CNominalType], locals: [CLocal], params: [CMethodParam], functions: [MirFunction], ir_block: IrBlock, block: MirBlock, profile: CBackendTargetProfile) -> string {
   let out: string = c_block_label(block.id) + ":\n";
   let i: u64 = 0;
+  let call_index: u64 = 0;
   while i < len(block.statements) {
-    set out = out + lower_statement_text(locals, block.statements[i], profile);
+    let ir_call: IrInstruction = if block.statements[i].rvalue.kind == MirRvalueKind.Call { ir_call_instruction_at(ir_block, call_index) } else { IrInstruction {
+      id: 0,
+      kind: IrInstructionKind.Invalid,
+      text: "",
+      operator: "",
+      dest: ir_value_invalid(),
+      args: [],
+      call_arg_start: 0,
+      target_block: 0,
+      else_block: 0,
+      switch_values: [],
+      switch_targets: [],
+      span: span_empty(),
+      valid: false
+    } };
+    let borrow_bindings: [CIrBorrowBinding] = if block.statements[i].rvalue.kind == MirRvalueKind.Call { ir_borrow_bindings_before_call(ir_block, call_index, locals, params, profile) } else { [] };
+    set out = out + lower_statement_text(nominal_types, locals, params, functions, ir_call, borrow_bindings, block.statements[i], profile);
+    if block.statements[i].rvalue.kind == MirRvalueKind.Call {
+      set call_index = call_index + 1;
+    }
     set i = i + 1;
   }
-  set out = out + lower_terminator_text(locals, block.terminator);
+  set out = out + lower_terminator_text(locals, params, block.terminator);
   give out;
 }
 
-proc lower_function(function0: MirFunction, profile: CBackendTargetProfile) -> CLoweredFunction {
-  let locals: [CLocal] = collect_function_locals(function0, profile);
+proc lower_function(function0: MirFunction, ir_function: IrFunction, functions0: [MirFunction], nominal_types: [CNominalType], profile: CBackendTargetProfile) -> CLoweredFunction {
+  let params: [CMethodParam] = c_method_params_from_mir_params(profile, function0.params);
+  let locals: [CLocal] = locals_without_params(collect_function_locals(function0, profile), params);
   let body_text: string = "";
   let i: u64 = 0;
   while i < len(locals) {
@@ -386,23 +1511,25 @@ proc lower_function(function0: MirFunction, profile: CBackendTargetProfile) -> C
   }
   i = 0;
   while i < len(function0.blocks) {
-    set body_text = body_text + lower_block_text(locals, function0.blocks[i], profile);
+    set body_text = body_text + lower_block_text(nominal_types, locals, params, functions0, c_ir_block_by_id(ir_function, function0.blocks[i].id), function0.blocks[i], profile);
     set i = i + 1;
   }
   give CLoweredFunction {
     name: function0.name,
     c_name: sanitize_c_identifier(function0.name),
     return_type: c_type_for_vitte_type(profile, function0.return_type),
+    params: params,
     locals: locals,
     body_text: body_text,
     block_count: len(function0.blocks),
-    valid: function0.valid and function0.name != ""
+    valid: function0.valid and function0.name != "" and function_calls_match_ir(function0, ir_function)
   };
 }
 
-proc lower_mir_to_c(unit: MirUnit, profile: CBackendTargetProfile) -> CTranslationUnit {
+proc lower_mir_to_c_with_ir(unit: MirUnit, ir_unit: IrUnit, profile: CBackendTargetProfile) -> CTranslationUnit {
   let functions: [CLoweredFunction] = [];
   let diagnostics: [CBackendDiagnostic] = [];
+  let nominal_types: [CNominalType] = lower_nominal_types_from_ir(ir_unit, profile);
   let lowered: [CLoweredFunction] = functions;
   let out_diags: [CBackendDiagnostic] = diagnostics;
   if not unit.valid {
@@ -410,16 +1537,21 @@ proc lower_mir_to_c(unit: MirUnit, profile: CBackendTargetProfile) -> CTranslati
     give CTranslationUnit {
       module_name: unit.module.name,
       profile: profile,
+      nominal_types: nominal_types,
       functions: [],
+      function_count: 0,
       diagnostics: out_diags,
       valid: false
     };
   }
   let i: u64 = 0;
   while i < len(unit.module.functions) {
-    let lowered_fn: CLoweredFunction = lower_function(unit.module.functions[i], profile);
+    let lowered_fn: CLoweredFunction = lower_function(unit.module.functions[i], c_ir_function_by_name(ir_unit, unit.module.functions[i].name), unit.module.functions, nominal_types, profile);
     if lowered_fn.return_type == "struct unknown" {
       set out_diags = c_diag_add_unique(out_diags, c_warning("CBACKEND_W_UNKNOWN_RETURN", "lowered function `" + lowered_fn.name + "` has unknown return type, fallback applied", "provide a more precise MIR type to improve C lowering", unit.module.functions[i].blocks[0].statements[0].span));
+    }
+    if not lowered_fn.valid and function_has_call_stmt(unit.module.functions[i]) {
+      set out_diags = c_diag_add_unique(out_diags, c_error("CBACKEND_E_INVALID_IR_CALL", "cannot lower MIR call without canonical IR call metadata", "run canonical MIR->IR validation before lowering to C", unit.module.functions[i].blocks[0].statements[0].span));
     }
     set lowered = lowered + [lowered_fn];
     set i = i + 1;
@@ -428,10 +1560,66 @@ proc lower_mir_to_c(unit: MirUnit, profile: CBackendTargetProfile) -> CTranslati
   give CTranslationUnit {
     module_name: unit.module.name,
     profile: profile,
+    nominal_types: nominal_types,
     functions: lowered,
+    function_count: len(lowered),
     diagnostics: out_diags,
     valid: profile.valid and not c_has_errors(out_diags)
   };
+}
+
+proc lower_mir_to_c_with_hir_and_ir(unit: MirUnit, hir_items: [HirItem], ir_unit: IrUnit, profile: CBackendTargetProfile) -> CTranslationUnit {
+  if len(ir_unit.modules) > 0 and len(ir_unit.modules[0].nominal_types) > 0 {
+    give lower_mir_to_c_with_ir(unit, ir_unit, profile);
+  }
+  let functions: [CLoweredFunction] = [];
+  let diagnostics: [CBackendDiagnostic] = [];
+  let nominal_types: [CNominalType] = lower_nominal_types(hir_items, profile);
+  let lowered: [CLoweredFunction] = functions;
+  let out_diags: [CBackendDiagnostic] = diagnostics;
+  if not unit.valid {
+    set out_diags = c_diag_add_unique(out_diags, c_error("CBACKEND_E_INVALID_MIR", "cannot lower invalid MIR unit", "run MIR validation before lowering to C", unit.module.functions[0].blocks[0].statements[0].span));
+    give CTranslationUnit {
+      module_name: unit.module.name,
+      profile: profile,
+      nominal_types: nominal_types,
+      functions: [],
+      function_count: 0,
+      diagnostics: out_diags,
+      valid: false
+    };
+  }
+  let i: u64 = 0;
+  while i < len(unit.module.functions) {
+    let lowered_fn: CLoweredFunction = lower_function(unit.module.functions[i], c_ir_function_by_name(ir_unit, unit.module.functions[i].name), unit.module.functions, nominal_types, profile);
+    set lowered = lowered + [lowered_fn];
+    set i = i + 1;
+  }
+  set out_diags = c_diag_add_unique(out_diags, c_info("CBACKEND_I_LOWERED", "lowered " + string(len(lowered)) + " MIR function(s) to C"));
+  give CTranslationUnit {
+    module_name: unit.module.name,
+    profile: profile,
+    nominal_types: nominal_types,
+    functions: lowered,
+    function_count: len(lowered),
+    diagnostics: out_diags,
+    valid: profile.valid and not c_has_errors(out_diags)
+  };
+}
+
+proc lower_mir_to_c_with_hir(unit: MirUnit, hir_items: [HirItem], profile: CBackendTargetProfile) -> CTranslationUnit {
+  give lower_mir_to_c_with_hir_and_ir(unit, hir_items, IrUnit {
+    source_path: unit.source_path,
+    target: target_native_x86_64_linux(),
+    modules: [],
+    entry_function_id: 0,
+    state: IrUnitState.Invalid,
+    valid: false
+  }, profile);
+}
+
+proc lower_mir_to_c(unit: MirUnit, profile: CBackendTargetProfile) -> CTranslationUnit {
+  give lower_mir_to_c_with_hir(unit, [], profile);
 }
 
 proc lower_mir_to_c_default(unit: MirUnit) -> CTranslationUnit {

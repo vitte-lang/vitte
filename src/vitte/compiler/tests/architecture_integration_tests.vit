@@ -1,8 +1,12 @@
 space vitte/compiler/tests/architecture_integration_tests
 
 use vitte/compiler/frontend/pipeline.{ FrontendOutput, frontend_run }
-use vitte/compiler/middle/pipeline.{ MiddleOutput, middle_run }
-use vitte/compiler/middle/mir.{ MirTerminatorKind }
+use vitte/compiler/analysis/pipeline.{ AnalysisOutput, analysis_run, analysis_run_frontend, analysis_run_frontend_hir_mir, analysis_run_hir, analysis_run_hir_mir }
+use vitte/compiler/middle/hir.{ HirItemKind, HirNominalMemberKind }
+use vitte/compiler/middle/pipeline.{ MiddleOutput, middle_run, middle_run_for_target, middle_run_frontend, middle_run_frontend_for_target, middle_run_frontend_hir_mir_for_target }
+use vitte/compiler/middle/mir.{ MirRvalueKind, MirTerminatorKind }
+use vitte/compiler/backend/ir.{ target_native_x86_64_linux }
+use vitte/compiler/prelude.{ BackendTarget, run_frontend as prelude_run_frontend, run_middle as prelude_run_middle, run_middle_frontend as prelude_run_middle_frontend, run_middle_frontend_for_target as prelude_run_middle_frontend_for_target, run_pipeline as prelude_run_pipeline, run_pipeline_for_target as prelude_run_pipeline_for_target, run_pipeline_frontend as prelude_run_pipeline_frontend, run_pipeline_frontend_for_target as prelude_run_pipeline_frontend_for_target }
 
 const VERSION_TEXT: string = "compiler architecture integration tests 0.3.0"
 const BANNER_TEXT: string = "compiler architecture integration tests"
@@ -47,6 +51,35 @@ proc test_middle_pipeline_builds_cfg() -> bool {
   give middle.analysis.valid and fn0.entry_block == fn0.blocks[0].id and branch_count >= 2;
 }
 
+proc test_middle_pipeline_preserves_typed_bindings_into_mir() -> bool {
+  let source: string = "proc main() { let x = 1; let y = x + 2; give y; }\n";
+  let fe: FrontendOutput = frontend_run("architecture_typed_flow.vit", source);
+  let middle: MiddleOutput = middle_run(fe);
+  if not middle.valid or len(middle.typed_hir.module.items) != 1 or len(middle.mir.module.functions) != 1 {
+    give false;
+  }
+
+  let item = middle.typed_hir.module.items[0];
+  if len(item.stmts) != 3 {
+    give false;
+  }
+  if item.stmts[0].name != "x" or item.stmts[0].expr.inferred_type != "int" {
+    give false;
+  }
+  if item.stmts[1].name != "y" or item.stmts[1].expr.inferred_type != "int" {
+    give false;
+  }
+
+  let fn0 = middle.mir.module.functions[0];
+  if fn0.local_count < 2 or fn0.temporary_count == 0 {
+    give false;
+  }
+  if len(fn0.blocks) == 0 or len(fn0.blocks[0].statements) == 0 {
+    give false;
+  }
+  give fn0.blocks[0].statements[0].place.local == "x";
+}
+
 proc test_borrowck_failure_stops_pipeline() -> bool {
   let source: string = "proc main() { let x = make_box(); let a = &x; let b = &mut x; give x; }\n";
   let fe: FrontendOutput = frontend_run("architecture_borrowck_fail.vit", source);
@@ -61,6 +94,229 @@ proc test_const_eval_and_analysis_success() -> bool {
   give fe.valid and middle.analysis.const_eval_ok and middle.analysis.valid and middle.hir.valid;
 }
 
+proc test_typeck_failure_blocks_valid_middle_output() -> bool {
+  let source: string = "proc main() { let x: int = \"oops\"; give x; }\n";
+  let fe: FrontendOutput = frontend_run("architecture_typeck_fail.vit", source);
+  let middle: MiddleOutput = middle_run(fe);
+  give fe.valid
+    and middle.hir.valid
+    and middle.resolved_hir.valid
+    and not middle.analysis.typeck_ok
+    and not middle.analysis.valid
+    and not middle.valid;
+}
+
+proc analysis_codes_match(left: AnalysisOutput, right: AnalysisOutput) -> bool {
+  let i: u64 = 0;
+  while i < len(left.diagnostics) {
+    let found: bool = false;
+    let j: u64 = 0;
+    while j < len(right.diagnostics) {
+      if right.diagnostics[j].code == left.diagnostics[i].code
+        and right.diagnostics[j].message == left.diagnostics[i].message {
+        set found = true;
+      }
+      set j = j + 1;
+    }
+    if not found {
+      give false;
+    }
+    set i = i + 1;
+  }
+  i = 0;
+  while i < len(right.diagnostics) {
+    let found: bool = false;
+    let j: u64 = 0;
+    while j < len(left.diagnostics) {
+      if left.diagnostics[j].code == right.diagnostics[i].code
+        and left.diagnostics[j].message == right.diagnostics[i].message {
+        set found = true;
+      }
+      set j = j + 1;
+    }
+    if not found {
+      give false;
+    }
+    set i = i + 1;
+  }
+  give left.sema_ok == right.sema_ok
+    and left.typeck_ok == right.typeck_ok
+    and left.borrowck_ok == right.borrowck_ok
+    and left.const_eval_ok == right.const_eval_ok
+    and left.lint_ok == right.lint_ok
+    and left.valid == right.valid;
+}
+
+proc test_analysis_wrappers_match_canonical_frontend_hir_mir_path() -> bool {
+  let source: string = "proc main() { let x = make_box(); let a = &x; let b = &mut x; give x; }\n";
+  let fe: FrontendOutput = frontend_run("architecture_analysis_wrappers.vit", source);
+  let middle: MiddleOutput = middle_run(fe);
+  let canonical: AnalysisOutput = analysis_run_frontend_hir_mir(fe, middle.hir, middle.mir);
+  let wrapper_hir_mir: AnalysisOutput = analysis_run_hir_mir(fe, middle.hir, middle.mir);
+  let wrapper_hir: AnalysisOutput = analysis_run_hir(fe, middle.hir);
+  let wrapper_frontend: AnalysisOutput = analysis_run_frontend(fe);
+  let wrapper_default: AnalysisOutput = analysis_run(fe);
+  give analysis_codes_match(canonical, wrapper_hir_mir)
+    and analysis_codes_match(canonical, wrapper_hir)
+    and analysis_codes_match(canonical, wrapper_frontend)
+    and analysis_codes_match(canonical, wrapper_default)
+    and not canonical.borrowck_ok
+    and not canonical.valid;
+}
+
+proc middle_outputs_match(left: MiddleOutput, right: MiddleOutput) -> bool {
+  give analysis_codes_match(left.analysis, right.analysis)
+    and left.valid == right.valid
+    and left.hir.valid == right.hir.valid
+    and left.resolved_hir.valid == right.resolved_hir.valid
+    and left.typed_hir.valid == right.typed_hir.valid
+    and left.mir.valid == right.mir.valid
+    and left.ir.valid == right.ir.valid
+    and left.hir.node_count == right.hir.node_count
+    and left.resolved_hir.symbol_count == right.resolved_hir.symbol_count
+    and left.typed_hir.expr_count == right.typed_hir.expr_count
+    and left.mir.function_count == right.mir.function_count
+    and left.mir.block_count == right.mir.block_count
+    and left.mir.instruction_count == right.mir.instruction_count
+    and left.ir.entry_function_id == right.ir.entry_function_id;
+}
+
+proc test_middle_wrappers_match_canonical_frontend_hir_mir_target_path() -> bool {
+  let source: string = "proc main() { let x = make_box(); let a = &x; let b = &mut x; give x; }\n";
+  let fe: FrontendOutput = frontend_run("architecture_middle_wrappers.vit", source);
+  let base: MiddleOutput = middle_run_frontend(fe);
+  let target = target_native_x86_64_linux();
+  let canonical: MiddleOutput = middle_run_frontend_hir_mir_for_target(fe, base.hir, base.mir, target);
+  let wrapper_frontend_target: MiddleOutput = middle_run_frontend_for_target(fe, target);
+  let wrapper_frontend: MiddleOutput = middle_run_frontend(fe);
+  let wrapper_target: MiddleOutput = middle_run_for_target(fe, target);
+  let wrapper_default: MiddleOutput = middle_run(fe);
+  give middle_outputs_match(canonical, wrapper_frontend_target)
+    and middle_outputs_match(canonical, wrapper_frontend)
+    and middle_outputs_match(canonical, wrapper_target)
+    and middle_outputs_match(canonical, wrapper_default)
+    and not canonical.analysis.borrowck_ok
+    and not canonical.valid;
+}
+
+proc test_prelude_pipeline_wrappers_match_canonical_middle_helpers() -> bool {
+  let source: string = "proc main() { let x = make_box(); let a = &x; let b = &mut x; give x; }\n";
+  let target: BackendTarget = BackendTarget {
+    name: "x86_64-linux",
+    triple: target_native_x86_64_linux(),
+    pointer_size: 64,
+    abi: "sysv",
+    object_format: "elf",
+    executable_ext: "",
+    valid: true
+  };
+  let frontend0: FrontendOutput = prelude_run_frontend("architecture_prelude_pipeline.vit", source);
+  let canonical_middle: MiddleOutput = prelude_run_middle_frontend(frontend0);
+  let canonical_target: MiddleOutput = prelude_run_middle_frontend_for_target(frontend0, target);
+  let wrapper_middle: MiddleOutput = prelude_run_middle(frontend0);
+  let wrapper_pipeline: MiddleOutput = prelude_run_pipeline("architecture_prelude_pipeline.vit", source);
+  let wrapper_pipeline_target: MiddleOutput = prelude_run_pipeline_for_target("architecture_prelude_pipeline.vit", source, target);
+  let canonical_pipeline: MiddleOutput = prelude_run_pipeline_frontend("architecture_prelude_pipeline.vit", source);
+  let canonical_pipeline_target: MiddleOutput = prelude_run_pipeline_frontend_for_target("architecture_prelude_pipeline.vit", source, target);
+  give middle_outputs_match(canonical_middle, wrapper_middle)
+    and middle_outputs_match(canonical_middle, wrapper_pipeline)
+    and middle_outputs_match(canonical_middle, canonical_pipeline)
+    and middle_outputs_match(canonical_target, wrapper_pipeline_target)
+    and middle_outputs_match(canonical_target, canonical_pipeline_target);
+}
+
+proc test_middle_pipeline_keeps_surface_items_and_struct_lowering_consistent() -> bool {
+  let source: string =
+    "form Point { x: int, y: int }\n" +
+    "bits Mode: u8 {\n" +
+    "  read: 0 .. 1,\n" +
+    "}\n" +
+    "pick Option[T] {\n" +
+    "  None,\n" +
+    "  Some(T),\n" +
+    "}\n" +
+    "flags Access: u8 {\n" +
+    "  read = 1,\n" +
+    "}\n" +
+    "trait Show {\n" +
+    "  proc show(self: Self) -> string;\n" +
+    "}\n" +
+    "impl Show for Point {\n" +
+    "  proc show(self: Self) -> string { give \"point\"; }\n" +
+    "}\n" +
+    "proc main() -> int { let point = Point { x: 1, y: 2 }; give 0; }\n";
+  let fe: FrontendOutput = frontend_run("architecture_surface_items.vit", source);
+  let middle: MiddleOutput = middle_run(fe);
+  if not fe.valid or not middle.valid or len(middle.typed_hir.module.items) < 7 or len(middle.mir.module.functions) != 1 {
+    give false;
+  }
+  let point_stmt = middle.typed_hir.module.items[6].stmts[0];
+  if point_stmt.expr.inferred_type != "Point" {
+    give false;
+  }
+  if middle.typed_hir.module.items[1].annotation_text != "u8" or middle.typed_hir.module.items[3].annotation_text != "u8" {
+    give false;
+  }
+  if middle.typed_hir.module.items[2].generic_count != 1 or middle.typed_hir.module.items[5].target_type_text != "Point" {
+    give false;
+  }
+  if middle.typed_hir.module.items[4].member_count == 0 or middle.typed_hir.module.items[5].member_count == 0 {
+    give false;
+  }
+  if len(middle.typed_hir.module.items[0].members) < 2 or middle.typed_hir.module.items[0].members[0].kind != HirNominalMemberKind.Field {
+    give false;
+  }
+  if len(middle.typed_hir.module.items[4].members) == 0 or middle.typed_hir.module.items[4].members[0].kind != HirNominalMemberKind.TraitMethod {
+    give false;
+  }
+  if len(middle.typed_hir.module.items[5].members) == 0 or middle.typed_hir.module.items[5].members[0].kind != HirNominalMemberKind.ImplMethod {
+    give false;
+  }
+  if middle.typed_hir.module.items[0].stmts[0].name != "x" or middle.typed_hir.module.items[0].stmts[0].annotation_text != "int" {
+    give false;
+  }
+  if middle.typed_hir.module.items[2].stmts[1].name != "Some" or middle.typed_hir.module.items[2].stmts[1].annotation_text != "T" {
+    give false;
+  }
+  if middle.typed_hir.module.items[4].stmts[0].name != "show" or middle.typed_hir.module.items[4].stmts[0].annotation_text != "string" {
+    give false;
+  }
+  if len(middle.typed_hir.module.items[4].members[0].params) != 1 or middle.typed_hir.module.items[4].members[0].params[0].annotation_text != "Self" {
+    give false;
+  }
+  if len(middle.typed_hir.module.items[5].members[0].body_stmts) == 0 or middle.typed_hir.module.items[5].members[0].body_stmts[0].kind != HirStmtKind.Give {
+    give false;
+  }
+  if middle.typed_hir.module.items[6].annotation_text != "int" or middle.typed_hir.module.items[6].signature_param_count != 0 {
+    give false;
+  }
+  if middle.resolved_hir.module.items[0].resolved_kind != "form" {
+    give false;
+  }
+  if middle.resolved_hir.module.items[1].resolved_kind != "type" or middle.resolved_hir.module.items[3].resolved_kind != "type" {
+    give false;
+  }
+  if middle.resolved_hir.module.items[2].resolved_kind != "pick" {
+    give false;
+  }
+  if middle.resolved_hir.module.items[4].resolved_kind != "item" or middle.resolved_hir.module.items[5].resolved_kind != "item" {
+    give false;
+  }
+  if middle.resolved_hir.module.items[6].resolved_kind != "function" {
+    give false;
+  }
+  let fn0 = middle.mir.module.functions[0];
+  if len(fn0.blocks) == 0 or len(fn0.blocks[0].statements) == 0 {
+    give false;
+  }
+  give middle.typed_hir.module.items[1].kind == HirItemKind.Bits
+    and middle.typed_hir.module.items[2].kind == HirItemKind.Pick
+    and middle.typed_hir.module.items[3].kind == HirItemKind.Flags
+    and middle.typed_hir.module.items[4].kind == HirItemKind.Trait
+    and middle.typed_hir.module.items[5].kind == HirItemKind.Impl
+    and fn0.blocks[0].statements[0].rvalue.kind == MirRvalueKind.Struct;
+}
+
 proc run_all_tests() -> int {
   let failures: int = 0;
   if not test_frontend_to_ast_contract() {
@@ -73,6 +329,24 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if not test_const_eval_and_analysis_success() {
+    set failures = failures + 1;
+  }
+  if not test_middle_pipeline_preserves_typed_bindings_into_mir() {
+    set failures = failures + 1;
+  }
+  if not test_typeck_failure_blocks_valid_middle_output() {
+    set failures = failures + 1;
+  }
+  if not test_analysis_wrappers_match_canonical_frontend_hir_mir_path() {
+    set failures = failures + 1;
+  }
+  if not test_middle_wrappers_match_canonical_frontend_hir_mir_target_path() {
+    set failures = failures + 1;
+  }
+  if not test_prelude_pipeline_wrappers_match_canonical_middle_helpers() {
+    set failures = failures + 1;
+  }
+  if not test_middle_pipeline_keeps_surface_items_and_struct_lowering_consistent() {
     set failures = failures + 1;
   }
   give failures;

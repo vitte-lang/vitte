@@ -76,6 +76,68 @@ proc test_scanner_reports_precise_invalid_char() -> bool {
   give diag.code == "LEX_E_INVALID_CHAR" and diag.line == 1 and diag.column == 15 and diag.width == 1;
 }
 
+proc test_scanner_accepts_char_literals() -> bool {
+  let result: ScanResult = scan_tokens("const c = 'x'; const nl = '\\n';\n");
+  let plain_index: int = token_index(result, "'x'");
+  let escape_index: int = token_index(result, "'\\n'");
+  if not result.valid or plain_index < 0 or escape_index < 0 {
+    give false;
+  }
+
+  give result.tokens[plain_index as u64].kind == TokenKind.Char
+    and result.tokens[escape_index as u64].kind == TokenKind.Char;
+}
+
+proc test_scanner_accepts_ebnf_operator_surface() -> bool {
+  let result: ScanResult = scan_tokens("let x = ~a && b || c; x <<= 1; x >>= 2;\n");
+  let tilde_index: int = token_index(result, "~");
+  let and_index: int = token_index(result, "&&");
+  let or_index: int = token_index(result, "||");
+  let lshift_assign_index: int = token_index(result, "<<=");
+  let rshift_assign_index: int = token_index(result, ">>=");
+  if not result.valid
+    or tilde_index < 0
+    or and_index < 0
+    or or_index < 0
+    or lshift_assign_index < 0
+    or rshift_assign_index < 0 {
+
+    give false;
+  }
+
+  give result.tokens[tilde_index as u64].kind == TokenKind.Symbol
+    and result.tokens[and_index as u64].kind == TokenKind.Symbol
+    and result.tokens[or_index as u64].kind == TokenKind.Symbol
+    and result.tokens[lshift_assign_index as u64].kind == TokenKind.Symbol
+    and result.tokens[rshift_assign_index as u64].kind == TokenKind.Symbol;
+}
+
+proc test_scanner_accepts_float_exponents() -> bool {
+  let result: ScanResult = scan_tokens("const a = 1.5e10; const b = 2E-3; const c = 6.02e+23;\n");
+  let a_index: int = token_index(result, "1.5e10");
+  let b_index: int = token_index(result, "2E-3");
+  let c_index: int = token_index(result, "6.02e+23");
+  if not result.valid or a_index < 0 or b_index < 0 or c_index < 0 {
+    give false;
+  }
+
+  give result.tokens[a_index as u64].kind == TokenKind.Float
+    and result.tokens[b_index as u64].kind == TokenKind.Float
+    and result.tokens[c_index as u64].kind == TokenKind.Float;
+}
+
+proc test_scanner_accepts_raw_string_literals() -> bool {
+  let result: ScanResult = scan_tokens("const a = r\"doc\"; const b = \"\"\"multi\nline\"\"\";\n");
+  let raw_index: int = token_index(result, "r\"doc\"");
+  let triple_index: int = token_index(result, "\"\"\"multi\nline\"\"\"");
+  if not result.valid or raw_index < 0 or triple_index < 0 {
+    give false;
+  }
+
+  give result.tokens[raw_index as u64].kind == TokenKind.String
+    and result.tokens[triple_index as u64].kind == TokenKind.String;
+}
+
 proc test_lexer_canonical_diagnostic_declares_phase_and_fix() -> bool {
   let raw: LexerDiagnostic = invalid_character("@", 1, 15);
   let diag: Diagnostic = lexer_diagnostic_as_diagnostic("lexer_phase.vit", raw);
@@ -124,6 +186,18 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if not test_scanner_reports_precise_invalid_char() {
+    set failures = failures + 1;
+  }
+  if not test_scanner_accepts_char_literals() {
+    set failures = failures + 1;
+  }
+  if not test_scanner_accepts_ebnf_operator_surface() {
+    set failures = failures + 1;
+  }
+  if not test_scanner_accepts_float_exponents() {
+    set failures = failures + 1;
+  }
+  if not test_scanner_accepts_raw_string_literals() {
     set failures = failures + 1;
   }
   if not test_scanner_reports_precise_invalid_escape_and_char_literal() {

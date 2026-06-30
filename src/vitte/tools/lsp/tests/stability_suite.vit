@@ -85,6 +85,203 @@ proc test_publish_diagnostics_real_pipeline_is_stable() -> bool {
     and borrow0.canonical_context.pipeline_failed_at == "borrowck";
 }
 
+proc test_code_actions_real_pipeline_is_stable() -> bool {
+  let first = lsp.code_actions_for_source(
+    "stable_actions_typeck.vit",
+    "proc main() -> int { let x: int = \"s\"; give x; }\n"
+  );
+  let second = lsp.code_actions_for_source(
+    "stable_actions_typeck.vit",
+    "proc main() -> int { let x: int = \"s\"; give x; }\n"
+  );
+  let borrow0 = lsp.code_actions_for_source(
+    "stable_actions_borrowck.vit",
+    "proc main() { let x = 1; let r = &x; give r; }\n"
+  );
+  give len(first) > 0
+    and len(second) == len(first)
+    and first[0].diagnostic_code == second[0].diagnostic_code
+    and len(borrow0) > 0;
+}
+
+proc test_diagnostic_hover_real_pipeline_is_stable() -> bool {
+  let first = lsp.diagnostic_hover_for_source(
+    "stable_hover_typeck.vit",
+    "proc main() -> int { let x: int = \"s\"; give x; }\n"
+  );
+  let second = lsp.diagnostic_hover_for_source(
+    "stable_hover_typeck.vit",
+    "proc main() -> int { let x: int = \"s\"; give x; }\n"
+  );
+  let borrow0 = lsp.diagnostic_hover_for_source(
+    "stable_hover_borrowck.vit",
+    "proc main() { let x = 1; let r = &x; give r; }\n"
+  );
+  give first.valid
+    and second.valid
+    and first.symbol == second.symbol
+    and first.content == second.content
+    and borrow0.valid
+    and find(borrow0.content, "phase: borrowck") >= 0;
+}
+
+proc test_diagnostic_details_real_pipeline_is_stable() -> bool {
+  let first = lsp.diagnostic_details_by_index_for_source(
+    "stable_details_typeck.vit",
+    "proc main() -> int { let x: int = \"s\"; give x; }\n",
+    0
+  );
+  let second = lsp.diagnostic_details_by_code_for_source(
+    "stable_details_typeck.vit",
+    "proc main() -> int { let x: int = \"s\"; give x; }\n",
+    first.code
+  );
+  let borrow0 = lsp.diagnostic_details_by_span_for_source(
+    "stable_details_borrowck.vit",
+    "proc main() { let x = 1; let r = &x; give r; }\n",
+    0,
+    80
+  );
+  give first.valid
+    and second.valid
+    and first.code == second.code
+    and first.phase == second.phase
+    and first.root_cause == second.root_cause
+    and borrow0.valid
+    and borrow0.phase == "borrowck";
+}
+
+proc test_phase_diagnostic_selection_is_stable() -> bool {
+  let source = "proc main() { let x = ; }\n";
+  let first = lsp.diagnostic_details_by_phase_index_for_source(
+    "stable_phase_frontend.vit",
+    source,
+    "parser",
+    0
+  );
+  let second = lsp.diagnostic_details_by_phase_code_for_source(
+    "stable_phase_frontend.vit",
+    source,
+    "parser",
+    first.code
+  );
+  let hover0 = lsp.diagnostic_hover_for_phase_source(
+    "stable_phase_frontend.vit",
+    source,
+    "parser"
+  );
+  let actions0 = lsp.code_actions_for_phase_source(
+    "stable_phase_frontend.vit",
+    source,
+    "parser"
+  );
+  let empty_typeck = lsp.diagnostic_details_by_phase_index_for_source(
+    "stable_phase_frontend.vit",
+    source,
+    "typeck",
+    0
+  );
+  give first.valid
+    and second.valid
+    and first.code == second.code
+    and hover0.valid
+    and len(actions0) > 0
+    and !empty_typeck.valid;
+}
+
+proc phase_status_by_name(statuses: [lsp.DiagnosticPhaseStatus], name: string) -> lsp.DiagnosticPhaseStatus {
+  let i = 0;
+  while i < len(statuses) {
+    if statuses[i].phase == name {
+      give statuses[i];
+    }
+    set i = i + 1;
+  }
+  give lsp.DiagnosticPhaseStatus {
+    phase: "",
+    diagnostic_count: 0,
+    quality_score: 0,
+    has_fatal: false,
+    selected_as_primary: false,
+    valid: false
+  };
+}
+
+proc test_phase_statuses_are_stable() -> bool {
+  let first = lsp.diagnostic_phase_statuses_for_source(
+    "stable_phase_status_typeck.vit",
+    "proc main() -> int { let x: int = \"s\"; give x; }\n"
+  );
+  let second = lsp.diagnostic_phase_statuses_for_source(
+    "stable_phase_status_typeck.vit",
+    "proc main() -> int { let x: int = \"s\"; give x; }\n"
+  );
+  let borrow0 = lsp.diagnostic_phase_statuses_for_source(
+    "stable_phase_status_borrowck.vit",
+    "proc main() { let x = 1; let r = &x; give r; }\n"
+  );
+  let typeck0 = phase_status_by_name(first, "typeck");
+  let typeck1 = phase_status_by_name(second, "typeck");
+  let borrow_status = phase_status_by_name(borrow0, "borrowck");
+  give len(first) == len(second)
+    and typeck0.valid
+    and typeck1.valid
+    and typeck0.diagnostic_count == typeck1.diagnostic_count
+    and typeck0.selected_as_primary == typeck1.selected_as_primary
+    and borrow_status.valid
+    and borrow_status.selected_as_primary;
+}
+
+proc test_diagnostic_panel_is_stable() -> bool {
+  let first = lsp.diagnostic_panel_for_source(
+    "stable_panel_typeck.vit",
+    "proc main() -> int { let x: int = \"s\"; give x; }\n",
+    31
+  );
+  let second = lsp.diagnostic_panel_for_source(
+    "stable_panel_typeck.vit",
+    "proc main() -> int { let x: int = \"s\"; give x; }\n",
+    31
+  );
+  let borrow0 = lsp.diagnostic_panel_for_source(
+    "stable_panel_borrowck.vit",
+    "proc main() { let x = 1; let r = &x; give r; }\n",
+    32
+  );
+  give first.valid
+    and second.valid
+    and first.canonical_context.pipeline_failed_at == second.canonical_context.pipeline_failed_at
+    and len(first.phase_statuses) == len(second.phase_statuses)
+    and len(first.published.diagnostics) == len(second.published.diagnostics)
+    and len(first.code_actions) == len(second.code_actions)
+    and first.primary_details.code == second.primary_details.code
+    and borrow0.valid
+    and borrow0.primary_details.phase == "borrowck";
+}
+
+proc test_diagnostic_panel_json_is_stable() -> bool {
+  let first = lsp.diagnostic_panel_json_for_source(
+    "stable_panel_json_typeck.vit",
+    "proc main() -> int { let x: int = \"s\"; give x; }\n",
+    41
+  );
+  let second = lsp.diagnostic_panel_json_for_source(
+    "stable_panel_json_typeck.vit",
+    "proc main() -> int { let x: int = \"s\"; give x; }\n",
+    41
+  );
+  let borrow0 = lsp.diagnostic_panel_json_for_source(
+    "stable_panel_json_borrowck.vit",
+    "proc main() { let x = 1; let r = &x; give r; }\n",
+    42
+  );
+  give first == second
+    and find(first, "\"schema\":\"vitte.lsp.diagnostic_panel\"") >= 0
+    and find(first, "\"pipeline_failed_at\":\"typeck\"") >= 0
+    and find(borrow0, "\"pipeline_failed_at\":\"borrowck\"") >= 0
+    and find(borrow0, "\"code_actions\"") >= 0;
+}
+
 proc run_stability_suite() -> int {
   let failures: int = 0;
   if not test_incremental_parsing_live_diagnostics() { set failures = failures + 1; }
@@ -94,6 +291,13 @@ proc run_stability_suite() -> int {
   if not test_status_health_granularity_is_stable() { set failures = failures + 1; }
   if not test_status_health_real_pipeline_is_stable() { set failures = failures + 1; }
   if not test_publish_diagnostics_real_pipeline_is_stable() { set failures = failures + 1; }
+  if not test_code_actions_real_pipeline_is_stable() { set failures = failures + 1; }
+  if not test_diagnostic_hover_real_pipeline_is_stable() { set failures = failures + 1; }
+  if not test_diagnostic_details_real_pipeline_is_stable() { set failures = failures + 1; }
+  if not test_phase_diagnostic_selection_is_stable() { set failures = failures + 1; }
+  if not test_phase_statuses_are_stable() { set failures = failures + 1; }
+  if not test_diagnostic_panel_is_stable() { set failures = failures + 1; }
+  if not test_diagnostic_panel_json_is_stable() { set failures = failures + 1; }
   give failures;
 }
 

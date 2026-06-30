@@ -2,15 +2,126 @@ space vitte/compiler/analysis/typeck
 
 use vitte/compiler/analysis/typeck/coercion.{ types_compatible }
 use vitte/compiler/analysis/typeck/errors.{ TypeckDiagnostic, TypeckResult, add_unique_diag, typeck_assignment_mismatch, typeck_condition_type, typeck_diag, typeck_invalid_hir_result, typeck_non_exhaustive_match }
-use vitte/compiler/analysis/typeck/infer.{ TypeBinding, env_get, env_has, env_set, infer_expr_type }
+use vitte/compiler/analysis/typeck/infer.{ TypeBinding, env_get, env_has, env_index, env_set, infer_expr_type, param_type_binding }
 use vitte/compiler/analysis/typeck/traits.{ type_is_copy, type_is_known, type_is_truthy }
-use vitte/compiler/middle/hir.{ HirExpr, HirItem, HirItemKind, HirModule, HirStmt, HirStmtKind, HirUnit }
+use vitte/compiler/middle/hir.{ HirExpr, HirItem, HirItemKind, HirModule, HirNominalMember, HirNominalMemberKind, HirProcParam, HirStmt, HirStmtKind, HirUnit }
 
 form TypeckStmtWalk {
   stmts: [HirStmt]
   env: [TypeBinding]
   diagnostics: [TypeckDiagnostic]
   valid: bool
+}
+
+form TypeckMemberWalk {
+  members: [HirNominalMember]
+  diagnostics: [TypeckDiagnostic]
+  valid: bool
+}
+
+proc nominal_type_env_name(name: string) -> string {
+  give "@type:" + name;
+}
+
+proc nominal_member_env_name(owner: string, member: string) -> string {
+  give "@member:" + owner + "." + member;
+}
+
+proc proc_param_signature_text(param: HirProcParam, target_type_text: string) -> string {
+  let ty: string = if param.annotation_text == "Self" and target_type_text != "" { target_type_text } else { if param.annotation_text != "" { param.annotation_text } else { "opaque" } };
+  if param.variadic {
+    give "...";
+  }
+  if param.borrowed and param.mutable {
+    give "&mut " + ty;
+  }
+  if param.borrowed {
+    give "borrow " + ty;
+  }
+  if param.mutable {
+    give "mut " + ty;
+  }
+  if param.mode != "" {
+    give param.mode + " " + ty;
+  }
+  give ty;
+}
+
+proc proc_signature_type(params: [HirProcParam], return_type: string, target_type_text: string) -> string {
+  let out: [string] = [];
+  let i: u64 = 0;
+  while i < len(params) {
+    set out = out + [proc_param_signature_text(params[i], target_type_text)];
+    set i = i + 1;
+  }
+  let ret: string = if return_type != "" { return_type } else { "unit" };
+  give "fn(" + join(out, ", ") + ") -> " + ret;
+}
+
+proc bind_member_signature(item: HirItem, member: HirNominalMember) -> string {
+  let params: [string] = [];
+  let start_index: u64 = 0;
+  if len(member.params) > 0 and (member.kind == HirNominalMemberKind.TraitMethod or member.kind == HirNominalMemberKind.ImplMethod) {
+    let first: string = member.params[0].annotation_text;
+    if first == "Self" or (item.target_type_text != "" and first == item.target_type_text) {
+      set start_index = 1;
+    }
+  }
+  let i: u64 = start_index;
+  while i < len(member.params) {
+    let param_ty: string = proc_param_signature_text(member.params[i], item.target_type_text);
+    set params = params + [param_ty];
+    set i = i + 1;
+  }
+  let joined: string = join(params, ", ");
+  let ret: string = if member.annotation_text != "" { member.annotation_text } else { "unit" };
+  give "fn(" + joined + ") -> " + ret;
+}
+
+proc nominal_member_binding_type(item: HirItem, member: HirNominalMember) -> string {
+  if member.kind == HirNominalMemberKind.Field {
+    if member.annotation_text != "" {
+      give member.annotation_text;
+    }
+    give "opaque";
+  }
+  if member.kind == HirNominalMemberKind.Variant {
+    if item.kind == HirItemKind.Bits or item.kind == HirItemKind.Flags {
+      if item.annotation_text != "" {
+        give item.annotation_text;
+      }
+      give item.name;
+    }
+    if member.annotation_text != "" {
+      give "fn(" + member.annotation_text + ") -> " + item.name;
+    }
+    give item.name;
+  }
+  give bind_member_signature(item, member);
+}
+
+proc nominal_type_bindings(items: [HirItem]) -> [TypeBinding] {
+  let out: [TypeBinding] = [];
+  let i: u64 = 0;
+  while i < len(items) {
+    let item: HirItem = items[i];
+    if item.name != "" and item.kind != HirItemKind.Space and item.kind != HirItemKind.Use and item.kind != HirItemKind.Export {
+      if item.kind == HirItemKind.Proc {
+        set out = env_set(out, item.name, proc_signature_type(item.params, item.annotation_text, item.target_type_text));
+      }
+      set out = env_set(out, nominal_type_env_name(item.name), item.name);
+      let owner_name: string = if item.kind == HirItemKind.Impl and item.target_type_text != "" { item.target_type_text } else { item.name };
+      let j: u64 = 0;
+      while j < len(item.members) {
+        if item.members[j].name != "" and owner_name != "" {
+          set out = env_set(out, nominal_member_env_name(owner_name, item.members[j].name), nominal_member_binding_type(item, item.members[j]));
+        }
+        set j = j + 1;
+      }
+    }
+    set i = i + 1;
+  }
+  give out;
 }
 
 proc match_stmt_has_fallback_arm(stmt: HirStmt) -> bool {
@@ -23,6 +134,138 @@ proc match_stmt_has_fallback_arm(stmt: HirStmt) -> bool {
     set i = i + 1;
   }
   give false;
+}
+
+proc trait_item_by_name(items: [HirItem], name: string) -> HirItem {
+  let i: u64 = 0;
+  while i < len(items) {
+    if items[i].kind == HirItemKind.Trait and items[i].name == name {
+      give items[i];
+    }
+    set i = i + 1;
+  }
+  give HirItem {
+    id: 0,
+    span: items[0].span,
+    kind: HirItemKind.Unknown,
+    name: "",
+    resolved_id: 0,
+    namespace: "",
+    visibility: "",
+    exported: false,
+    abi: "",
+    generic_count: 0,
+    type_param_count: 0,
+    attribute_count: 0,
+    modifier_count: 0,
+    member_count: 0,
+    signature_param_count: 0,
+    params: [],
+    annotation_text: "",
+    target_type_text: "",
+    expr: HirExpr { id: 0, span: items[0].span, kind: 0, text: "", name: "", operator: "", binding: "", resolved_id: 0, resolved_kind: "", external: false, value_mode: 0, inferred_type: "unknown", place_category: 0, copyable: false, diagnostics: [], children: [], valid: false },
+    stmts: [],
+    members: [],
+    message: "",
+    scope_depth: 0,
+    diagnostics: [],
+    valid: false
+  };
+}
+
+proc member_env(params: [HirProcParam], target_type_text: string) -> [TypeBinding] {
+  let env: [TypeBinding] = [];
+  let i: u64 = 0;
+  while i < len(params) {
+    let ty: string = if params[i].annotation_text == "Self" and target_type_text != "" { target_type_text } else { if params[i].annotation_text != "" { params[i].annotation_text } else { "opaque" } };
+    if params[i].name != "" and not params[i].variadic {
+      set env = env + [param_type_binding(params[i].name, ty, params[i].mutable, params[i].borrowed)];
+    }
+    set i = i + 1;
+  }
+  give env;
+}
+
+proc typeck_member(module_env: [TypeBinding], item: HirItem, member: HirNominalMember) -> TypeckMemberWalk {
+  let local_env: [TypeBinding] = module_env + member_env(member.params, item.target_type_text);
+  let typed_expr: HirExpr = annotate_expr(local_env, member.expr);
+  let body_result: TypeckStmtWalk = check_stmt_tree([], local_env, member.body_stmts);
+  let diagnostics: [TypeckDiagnostic] = body_result.diagnostics;
+  give TypeckMemberWalk {
+    members: [HirNominalMember {
+      id: member.id,
+      span: member.span,
+      kind: member.kind,
+      name: member.name,
+      annotation_text: member.annotation_text,
+      expr: typed_expr,
+      params: member.params,
+      body_stmts: body_result.stmts,
+      message: member.message,
+      valid: member.valid
+    }],
+    diagnostics: diagnostics,
+    valid: len(diagnostics) == 0
+  };
+}
+
+proc typeck_members(module_env: [TypeBinding], item: HirItem) -> TypeckMemberWalk {
+  let out: [HirNominalMember] = [];
+  let diagnostics: [TypeckDiagnostic] = [];
+  let i: u64 = 0;
+  while i < len(item.members) {
+    let walk: TypeckMemberWalk = typeck_member(module_env, item, item.members[i]);
+    set out = out + walk.members;
+    set diagnostics = diagnostics + walk.diagnostics;
+    set i = i + 1;
+  }
+  give TypeckMemberWalk { members: out, diagnostics: diagnostics, valid: len(diagnostics) == 0 };
+}
+
+proc find_member(members: [HirNominalMember], name: string) -> HirNominalMember {
+  let i: u64 = 0;
+  while i < len(members) {
+    if members[i].name == name {
+      give members[i];
+    }
+    set i = i + 1;
+  }
+  give HirNominalMember { id: 0, span: members[0].span, kind: 0, name: "", annotation_text: "", expr: HirExpr { id: 0, span: members[0].span, kind: 0, text: "", name: "", operator: "", binding: "", resolved_id: 0, resolved_kind: "", external: false, value_mode: 0, inferred_type: "unknown", place_category: 0, copyable: false, diagnostics: [], children: [], valid: false }, params: [], body_stmts: [], message: "", valid: false };
+}
+
+proc check_impl_against_trait(items: [HirItem], item: HirItem) -> [TypeckDiagnostic] {
+  let out: [TypeckDiagnostic] = [];
+  if item.kind != HirItemKind.Impl or len(item.members) == 0 {
+    give out;
+  }
+  let trait_item: HirItem = trait_item_by_name(items, item.name);
+  if not trait_item.valid {
+    give out + [typeck_diag("TYPECK_E_IMPL_UNKNOWN_TRAIT", "impl target trait is not declared", [item.name], "declare the trait before implementing it", item.span, true)];
+  }
+  let i: u64 = 0;
+  while i < len(trait_item.members) {
+    let trait_member: HirNominalMember = trait_item.members[i];
+    let impl_member: HirNominalMember = find_member(item.members, trait_member.name);
+    if not impl_member.valid {
+      set out = out + [typeck_diag("TYPECK_E_IMPL_MISSING_MEMBER", "impl is missing a required trait method", [item.name, trait_member.name], "define the missing method on the impl", item.span, true)];
+    } else {
+      if len(impl_member.params) != len(trait_member.params) {
+        set out = out + [typeck_diag("TYPECK_E_IMPL_SIGNATURE_MISMATCH", "impl method parameter count does not match trait method", [trait_member.name], "align impl method arity with the trait declaration", impl_member.span, true)];
+      } elif impl_member.annotation_text != trait_member.annotation_text {
+        set out = out + [typeck_diag("TYPECK_E_IMPL_SIGNATURE_MISMATCH", "impl method return type does not match trait method", [trait_member.name, trait_member.annotation_text, impl_member.annotation_text], "align impl method return type with the trait declaration", impl_member.span, true)];
+      } else {
+        let j: u64 = 0;
+        while j < len(trait_member.params) and j < len(impl_member.params) {
+          if trait_member.params[j].annotation_text != impl_member.params[j].annotation_text {
+            set out = out + [typeck_diag("TYPECK_E_IMPL_SIGNATURE_MISMATCH", "impl method parameter type does not match trait method", [trait_member.name, trait_member.params[j].annotation_text, impl_member.params[j].annotation_text], "align impl method parameter types with the trait declaration", impl_member.span, true)];
+          }
+          set j = j + 1;
+        }
+      }
+    }
+    set i = i + 1;
+  }
+  give out;
 }
 
 proc run_typeck_hir(hir: HirUnit) -> TypeckResult {
@@ -121,13 +364,25 @@ proc check_stmt_tree(diagnostics: [TypeckDiagnostic], env: [TypeBinding], stmts:
       if target_name == "" {
         set target_name = stmt.target;
       }
-      if target_name != "" and env_has(current_env, target_name) and type_is_known(result.ty) and not types_compatible(env_get(current_env, target_name), result.ty) {
-        set out = add_unique_diag(out, typeck_assignment_mismatch(
-          target_name,
-          env_get(current_env, target_name),
-          result.ty,
-          stmt.span
-        ));
+      if target_name != "" and env_has(current_env, target_name) {
+        let binding: TypeBinding = current_env[env_index(current_env, target_name)];
+        if not binding.mutable {
+          set out = add_unique_diag(out, typeck_diag(
+            "TYPECK_E_IMMUTABLE_ASSIGN",
+            "cannot assign to immutable binding `" + target_name + "`",
+            [target_name],
+            "declare the binding as `mut` before assigning to it",
+            stmt.span,
+            true
+          ));
+        } elif type_is_known(result.ty) and not types_compatible(binding.ty, result.ty) {
+          set out = add_unique_diag(out, typeck_assignment_mismatch(
+            target_name,
+            binding.ty,
+            result.ty,
+            stmt.span
+          ));
+        }
       } elif target_name != "" and not env_has(current_env, target_name) {
         set current_env = env_set(current_env, target_name, result.ty);
       }
@@ -156,6 +411,7 @@ proc check_stmt_tree(diagnostics: [TypeckDiagnostic], env: [TypeBinding], stmts:
       target_binding: stmt.target_binding,
       target_resolved_id: stmt.target_resolved_id,
       target_resolved_kind: stmt.target_resolved_kind,
+      annotation_text: stmt.annotation_text,
       expr: typed_expr,
       message: stmt.message,
       mutable: stmt.mutable,
@@ -180,7 +436,7 @@ proc check_stmt_tree(diagnostics: [TypeckDiagnostic], env: [TypeBinding], stmts:
 proc check_module(diagnostics: [TypeckDiagnostic], env: [TypeBinding], hir: HirUnit) -> TypeckResult {
   let out: [TypeckDiagnostic] = diagnostics;
   let items: [HirItem] = [];
-  let module_env: [TypeBinding] = env;
+  let module_env: [TypeBinding] = env + nominal_type_bindings(hir.module.items);
   let i: u64 = 0;
   while i < len(hir.module.items) {
     let item: HirItem = hir.module.items[i];
@@ -202,8 +458,12 @@ proc check_module(diagnostics: [TypeckDiagnostic], env: [TypeBinding], hir: HirU
       set module_env = env_set(module_env, item.name, item_result.ty);
     }
 
-    let stmt_result: TypeckStmtWalk = check_stmt_tree([], module_env, item.stmts);
+    let item_env: [TypeBinding] = module_env + member_env(item.params, "");
+    let stmt_result: TypeckStmtWalk = check_stmt_tree([], item_env, item.stmts);
+    let member_result: TypeckMemberWalk = typeck_members(module_env, item);
     set out = out + stmt_result.diagnostics;
+    set out = out + member_result.diagnostics;
+    set out = out + check_impl_against_trait(hir.module.items, item);
     set module_env = stmt_result.env;
 
     set items = items + [HirItem {
@@ -214,8 +474,20 @@ proc check_module(diagnostics: [TypeckDiagnostic], env: [TypeBinding], hir: HirU
       resolved_id: item.resolved_id,
       namespace: item.namespace,
       visibility: item.visibility,
+      exported: item.exported,
+      abi: item.abi,
+      generic_count: item.generic_count,
+      type_param_count: item.type_param_count,
+      attribute_count: item.attribute_count,
+      modifier_count: item.modifier_count,
+      member_count: item.member_count,
+      signature_param_count: item.signature_param_count,
+      params: item.params,
+      annotation_text: item.annotation_text,
+      target_type_text: item.target_type_text,
       expr: typed_item_expr,
       stmts: stmt_result.stmts,
+      members: member_result.members,
       message: item.message,
       scope_depth: item.scope_depth,
       diagnostics: item.diagnostics,

@@ -5,6 +5,9 @@ use vitte/compiler/driver/metrics.{ CompilerMetricsReport, json_escape }
 export *
 
 form HealthDashboard {
+    pipeline_failed_at: string
+    pipeline_failure_reason: string
+    validation_reason: string
     tests_status: string
     fuzz_status: string
     stress_status: string
@@ -25,6 +28,22 @@ proc health_dashboard_from_metrics(metrics: CompilerMetricsReport) -> HealthDash
     if metrics.status != "ok" {
         set next_alerts = next_alerts + ["build_failed"];
         set next_score = next_score - 35;
+    }
+    if metrics.pipeline_failed_at == "mir_validate" {
+        set next_alerts = next_alerts + ["mir_validation_failure"];
+        if next_score > 12 {
+            set next_score = next_score - 12;
+        } else {
+            set next_score = 0;
+        }
+    }
+    if metrics.pipeline_failed_at == "ir_validate" {
+        set next_alerts = next_alerts + ["ir_validation_failure"];
+        if next_score > 18 {
+            set next_score = next_score - 18;
+        } else {
+            set next_score = 0;
+        }
     }
     if metrics.diagnostics_count > 0 {
         set next_alerts = next_alerts + ["diagnostics_present"];
@@ -52,12 +71,23 @@ proc health_dashboard_from_metrics(metrics: CompilerMetricsReport) -> HealthDash
     }
 
     give HealthDashboard {
+        pipeline_failed_at: metrics.pipeline_failed_at,
+        pipeline_failure_reason: metrics.pipeline_failure_reason,
+        validation_reason: metrics.validation_reason,
         tests_status: if metrics.status == "ok" { "pass" } else { "fail" },
         fuzz_status: if metrics.status == "ok" { "green" } else { "red" },
         stress_status: if metrics.total_memory_kb < 8192 { "stable" } else { "pressure" },
         self_host_status: if metrics.status == "ok" { "ready" } else { "blocked" },
         deterministic_builds: if metrics.cache_hits >= metrics.cache_misses { "stable" } else { "drift-risk" },
-        benchmark_trends: if metrics.total_time_ms < 80 { "improving" } else { "flat" },
+        benchmark_trends: if metrics.pipeline_failed_at == "mir_validate" {
+            "blocked-mir"
+        } else {
+            if metrics.pipeline_failed_at == "ir_validate" {
+                "blocked-ir"
+            } else {
+                if metrics.total_time_ms < 80 { "improving" } else { "flat" }
+            }
+        },
         regression_alerts: next_alerts,
         score: next_score,
         valid: true
@@ -82,6 +112,9 @@ proc health_dashboard_json(dashboard: HealthDashboard) -> string {
     give "{"
         + "\"schema\":\"vitte.compiler.health\","
         + "\"schema_version\":\"1.0.0\","
+        + "\"pipeline_failed_at\":\"" + json_escape(dashboard.pipeline_failed_at) + "\","
+        + "\"pipeline_failure_reason\":\"" + json_escape(dashboard.pipeline_failure_reason) + "\","
+        + "\"validation_reason\":\"" + json_escape(dashboard.validation_reason) + "\","
         + "\"tests_pass_fail\":\"" + dashboard.tests_status + "\","
         + "\"fuzz_status\":\"" + dashboard.fuzz_status + "\","
         + "\"stress_status\":\"" + dashboard.stress_status + "\","

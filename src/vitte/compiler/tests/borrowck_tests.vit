@@ -75,6 +75,13 @@ proc same_codes(left: BorrowCheckResult, right: BorrowCheckResult) -> bool {
   give left.valid == right.valid;
 }
 
+proc borrow_check_frontend_hir_mir(path: string, source: string) -> BorrowCheckResult {
+  let fe: FrontendOutput = frontend_run(path, source);
+  let hir = lower_ast_to_hir(fe);
+  let mir = lower_hir_to_mir(hir);
+  give borrow_check_hir_mir(path, hir, mir);
+}
+
 proc test_valid_reinit_after_move() -> bool {
   let source: string =
     "let x = make_box()\n" +
@@ -162,34 +169,31 @@ proc test_hir_borrowck_path() -> bool {
     "proc main() { let x = make_box(); let r = &x; give r; }\n";
   let fe: FrontendOutput = frontend_run("borrowck_hir_path.vit", source);
   let hir = lower_ast_to_hir(fe);
-  let result: BorrowCheckResult = borrow_check_hir("borrowck_hir_path.vit", hir);
-  give has_code(result, "BORROWCK_E_RETURN_BORROW_OF_LOCAL");
+  let mir = lower_hir_to_mir(hir);
+  let canonical: BorrowCheckResult = borrow_check_hir_mir("borrowck_hir_path.vit", hir, mir);
+  let wrapped: BorrowCheckResult = borrow_check_hir("borrowck_hir_path.vit", hir);
+  give has_code(canonical, "BORROWCK_E_RETURN_BORROW_OF_LOCAL")
+    and same_codes(canonical, wrapped);
 }
 
 proc test_branch_borrow_conflict_after_join() -> bool {
   let source: string =
     "proc main() { let x = make_box(); if flag { let a = &x; } else { let b = &x; } set x = make_box(); give x; }\n";
-  let fe: FrontendOutput = frontend_run("borrowck_branch_join_conflict.vit", source);
-  let hir = lower_ast_to_hir(fe);
-  let result: BorrowCheckResult = borrow_check_hir("borrowck_branch_join_conflict.vit", hir);
+  let result: BorrowCheckResult = borrow_check_frontend_hir_mir("borrowck_branch_join_conflict.vit", source);
   give has_code(result, "BORROWCK_E_WRITE_WHILE_BORROWED");
 }
 
 proc test_branch_move_after_join() -> bool {
   let source: string =
     "proc main() { let x = make_box(); if flag { let y = x; } else { let z = make_box(); } give x; }\n";
-  let fe: FrontendOutput = frontend_run("borrowck_branch_move_join.vit", source);
-  let hir = lower_ast_to_hir(fe);
-  let result: BorrowCheckResult = borrow_check_hir("borrowck_branch_move_join.vit", hir);
+  let result: BorrowCheckResult = borrow_check_frontend_hir_mir("borrowck_branch_move_join.vit", source);
   give has_code(result, "BORROWCK_E_USE_AFTER_MOVE");
 }
 
 proc test_use_after_move_reports_previous_move() -> bool {
   let source: string =
     "proc main() { let x = make_box(); if flag { let y = x; } else { let z = make_box(); } give x; }\n";
-  let fe: FrontendOutput = frontend_run("borrowck_use_after_move_story.vit", source);
-  let hir = lower_ast_to_hir(fe);
-  let result: BorrowCheckResult = borrow_check_hir("borrowck_use_after_move_story.vit", hir);
+  let result: BorrowCheckResult = borrow_check_frontend_hir_mir("borrowck_use_after_move_story.vit", source);
   let diag = diagnostic_by_code(result, "BORROWCK_E_USE_AFTER_MOVE");
   give diag.valid
     and diag.subject_symbol == "x"
@@ -200,45 +204,35 @@ proc test_use_after_move_reports_previous_move() -> bool {
 proc test_field_borrow_blocks_root_write() -> bool {
   let source: string =
     "proc main() { let x = make_box(); let r = &x.field; set x = make_box(); give x; }\n";
-  let fe: FrontendOutput = frontend_run("borrowck_field_borrow_write.vit", source);
-  let hir = lower_ast_to_hir(fe);
-  let result: BorrowCheckResult = borrow_check_hir("borrowck_field_borrow_write.vit", hir);
+  let result: BorrowCheckResult = borrow_check_frontend_hir_mir("borrowck_field_borrow_write.vit", source);
   give has_code(result, "BORROWCK_E_WRITE_WHILE_BORROWED");
 }
 
 proc test_binary_assignment_does_not_move_operand() -> bool {
   let source: string =
     "proc main() { let x = 1; let y = x + 1; give x; }\n";
-  let fe: FrontendOutput = frontend_run("borrowck_binary_no_move.vit", source);
-  let hir = lower_ast_to_hir(fe);
-  let result: BorrowCheckResult = borrow_check_hir("borrowck_binary_no_move.vit", hir);
+  let result: BorrowCheckResult = borrow_check_frontend_hir_mir("borrowck_binary_no_move.vit", source);
   give result.valid and len(result.diagnostics) == 0;
 }
 
 proc test_copy_binding_does_not_move_source() -> bool {
   let source: string =
     "proc main() { let x = 1; let y = x; give x; }\n";
-  let fe: FrontendOutput = frontend_run("borrowck_copy_binding.vit", source);
-  let hir = lower_ast_to_hir(fe);
-  let result: BorrowCheckResult = borrow_check_hir("borrowck_copy_binding.vit", hir);
+  let result: BorrowCheckResult = borrow_check_frontend_hir_mir("borrowck_copy_binding.vit", source);
   give result.valid and len(result.diagnostics) == 0;
 }
 
 proc test_branch_loan_expires_at_scope_end() -> bool {
   let source: string =
     "proc main() { let x = make_box(); if true { let r = &x; let keep = 0; } set x = make_box(); give x; }\n";
-  let fe: FrontendOutput = frontend_run("borrowck_branch_scope_end.vit", source);
-  let hir = lower_ast_to_hir(fe);
-  let result: BorrowCheckResult = borrow_check_hir("borrowck_branch_scope_end.vit", hir);
+  let result: BorrowCheckResult = borrow_check_frontend_hir_mir("borrowck_branch_scope_end.vit", source);
   give result.valid and len(result.diagnostics) == 0;
 }
 
 proc test_partial_move_preserves_disjoint_field() -> bool {
   let source: string =
     "proc main() { let x = make_box(); let y = x.left; give x.right; }\n";
-  let fe: FrontendOutput = frontend_run("borrowck_partial_move_field.vit", source);
-  let hir = lower_ast_to_hir(fe);
-  let result: BorrowCheckResult = borrow_check_hir("borrowck_partial_move_field.vit", hir);
+  let result: BorrowCheckResult = borrow_check_frontend_hir_mir("borrowck_partial_move_field.vit", source);
   give result.valid and len(result.diagnostics) == 0;
 }
 
@@ -251,6 +245,36 @@ proc test_hir_and_lowered_mir_agree_on_copy_and_scope() -> bool {
   let hir_result: BorrowCheckResult = borrow_check_hir("borrowck_hir_mir_agree.vit", hir);
   let mir_result: BorrowCheckResult = borrow_check_hir_mir("borrowck_hir_mir_agree.vit", hir, mir);
   give same_codes(hir_result, mir_result);
+}
+
+proc test_borrow_param_call_does_not_move_source() -> bool {
+  let source: string =
+    "proc keep(borrow value: Box) -> int { give 0; }\n" +
+    "proc main() { let x = make_box(); let y = keep(x); give x; }\n";
+  let result: BorrowCheckResult = borrow_check_frontend_hir_mir("borrowck_borrow_param_call.vit", source);
+  give result.valid and len(result.diagnostics) == 0;
+}
+
+proc test_owned_param_call_moves_source() -> bool {
+  let source: string =
+    "proc take(value: Box) -> int { give 0; }\n" +
+    "proc main() { let x = make_box(); let y = take(x); give x; }\n";
+  let result: BorrowCheckResult = borrow_check_frontend_hir_mir("borrowck_owned_param_call.vit", source);
+  give has_code(result, "BORROWCK_E_USE_AFTER_MOVE");
+}
+
+proc test_impl_borrow_param_call_uses_canonical_mir_signature() -> bool {
+  let source: string =
+    "form Box { value: int }\n" +
+    "trait Keep {\n" +
+    "  proc keep(self: Self, borrow value: Box) -> int;\n" +
+    "}\n" +
+    "impl Keep for Box {\n" +
+    "  proc keep(self: Self, borrow value: Box) -> int { give 0; }\n" +
+    "}\n" +
+    "proc main() { let recv = Box { value: 1 }; let x = Box { value: 2 }; let y = recv.keep(x); set x = Box { value: 3 }; give y; }\n";
+  let result: BorrowCheckResult = borrow_check_frontend_hir_mir("borrowck_impl_borrow_param_call.vit", source);
+  give has_code(result, "BORROWCK_E_WRITE_WHILE_BORROWED");
 }
 
 proc run_all_tests() -> int {
@@ -273,6 +297,9 @@ proc run_all_tests() -> int {
   if not test_branch_loan_expires_at_scope_end() { set failures = failures + 1; }
   if not test_partial_move_preserves_disjoint_field() { set failures = failures + 1; }
   if not test_hir_and_lowered_mir_agree_on_copy_and_scope() { set failures = failures + 1; }
+  if not test_borrow_param_call_does_not_move_source() { set failures = failures + 1; }
+  if not test_owned_param_call_moves_source() { set failures = failures + 1; }
+  if not test_impl_borrow_param_call_uses_canonical_mir_signature() { set failures = failures + 1; }
   give failures;
 }
 

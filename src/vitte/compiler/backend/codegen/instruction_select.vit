@@ -1,6 +1,6 @@
 space vitte/compiler/backend/codegen
 
-use vitte/compiler/backend/ir.{ IrFunction, IrInstruction, IrInstructionKind, IrUnit }
+use vitte/compiler/backend/ir.{ IrFunction, IrInstruction, IrInstructionKind, IrModule, IrNominalType, IrUnit, IrValueKind }
 use vitte/compiler/backend/codegen/machine.{ machine_block_label, machine_branch_label, machine_call_target_text, machine_epilogue_x86_64, machine_function_label, machine_operand_debug_name, machine_operand_immediate_text, machine_prologue_x86_64, machine_return_label }
 
 proc load_operand_lines(instruction: IrInstruction, index: u64, target_register: string) -> [string] {
@@ -23,7 +23,135 @@ proc store_result_lines(instruction: IrInstruction, source_register: string) -> 
   give ["  # store " + debug_name + " <- " + source_register];
 }
 
-proc select_instruction_line(function_name: string, instruction: IrInstruction) -> [string] {
+proc ir_impl_method_symbol_name(trait_name: string, target_type: string, member_name: string) -> string {
+  give "vitte_impl_" + trait_name + "_for_" + target_type + "_" + member_name;
+}
+
+proc nominal_member_index(nominal: IrNominalType, member_name: string) -> int {
+  let i: int = 0;
+  while i < len(nominal.member_names) {
+    if nominal.member_names[i as u64] == member_name {
+      give i;
+    }
+    set i = i + 1;
+  }
+  give -1;
+}
+
+proc module_pick_nominal(module0: IrModule, nominal_name: string) -> IrNominalType {
+  let i: u64 = 0;
+  while i < len(module0.nominal_types) {
+    if module0.nominal_types[i].kind == "pick" and module0.nominal_types[i].name == nominal_name {
+      give module0.nominal_types[i];
+    }
+    set i = i + 1;
+  }
+  give IrNominalType {
+    name: "",
+    kind: "",
+    abi: "",
+    underlying_type: "",
+    target_type: "",
+    generic_count: 0,
+    member_count: 0,
+    signature_param_count: 0,
+    member_names: [],
+    member_kinds: [],
+    member_annotations: [],
+    member_types: [],
+    member_param_names: [],
+    member_param_types: [],
+    member_param_modes: [],
+    member_param_mutables: [],
+    member_param_borroweds: [],
+    member_param_variadics: [],
+    exported: false,
+    valid: false
+  };
+}
+
+proc module_impl_dispatch_nominal(module0: IrModule, symbol_name: string) -> IrNominalType {
+  let i: u64 = 0;
+  while i < len(module0.nominal_types) {
+    let nominal = module0.nominal_types[i];
+    if nominal.kind == "impl" {
+      let j: u64 = 0;
+      while j < len(nominal.member_names) {
+        if j < len(nominal.member_kinds)
+          and nominal.member_kinds[j] == "impl-method"
+          and ir_impl_method_symbol_name(nominal.name, nominal.target_type, nominal.member_names[j]) == symbol_name {
+          give nominal;
+        }
+        set j = j + 1;
+      }
+    }
+    set i = i + 1;
+  }
+  give IrNominalType {
+    name: "",
+    kind: "",
+    abi: "",
+    underlying_type: "",
+    target_type: "",
+    generic_count: 0,
+    member_count: 0,
+    signature_param_count: 0,
+    member_names: [],
+    member_kinds: [],
+    member_annotations: [],
+    member_types: [],
+    member_param_names: [],
+    member_param_types: [],
+    member_param_modes: [],
+    member_param_mutables: [],
+    member_param_borroweds: [],
+    member_param_variadics: [],
+    exported: false,
+    valid: false
+  };
+}
+
+proc select_nominal_call_metadata(module0: IrModule, instruction: IrInstruction) -> [string] {
+  if instruction.kind != IrInstructionKind.Call {
+    give [];
+  }
+  if instruction.operator == "variant-ctor" {
+    let sep: int = find(instruction.text, "::");
+    if sep > 0 {
+      let nominal_name: string = slice(instruction.text, 0, sep);
+      let member_name: string = slice(instruction.text, sep + 2, len(instruction.text));
+      let nominal: IrNominalType = module_pick_nominal(module0, nominal_name);
+      let member_index: int = nominal_member_index(nominal, member_name);
+      if nominal.valid and member_index >= 0 {
+        let payload: string = if member_index as u64 < len(nominal.member_annotations) { nominal.member_annotations[member_index as u64] } else { "" };
+        give ["  # nominal-variant pick=" + nominal.name + " variant=" + member_name + " payload=" + payload];
+      }
+    }
+  }
+  if instruction.operator == "method-dispatch" {
+    let nominal: IrNominalType = module_impl_dispatch_nominal(module0, instruction.text);
+    if nominal.valid {
+      let i: int = 0;
+      while i < len(nominal.member_names) {
+        if i as u64 < len(nominal.member_kinds)
+          and nominal.member_kinds[i as u64] == "impl-method"
+          and ir_impl_method_symbol_name(nominal.name, nominal.target_type, nominal.member_names[i as u64]) == instruction.text {
+          let params0: string = if i as u64 < len(nominal.member_param_types) { nominal.member_param_types[i as u64] } else { "" };
+          let ret: string = if i as u64 < len(nominal.member_annotations) { nominal.member_annotations[i as u64] } else { "" };
+          give ["  # nominal-dispatch trait=" + nominal.name + " target=" + nominal.target_type + " method=" + nominal.member_names[i as u64] + " params=" + params0 + " return=" + ret];
+        }
+        set i = i + 1;
+      }
+    }
+  }
+  give [];
+}
+
+proc invalid_backend_lines(message: string) -> [string] {
+  give ["  # invalid " + message, "  ud2"];
+}
+
+proc select_instruction_line(module0: IrModule, function_name: string, instruction: IrInstruction) -> [string] {
   if instruction.kind == IrInstructionKind.Assign {
     let lines: [string] = load_operand_lines(instruction, 0, "%rax");
     give lines + store_result_lines(instruction, "%rax");
@@ -41,14 +169,26 @@ proc select_instruction_line(function_name: string, instruction: IrInstruction) 
   }
   if instruction.kind == IrInstructionKind.Call {
     let callee: string = machine_call_target_text(instruction.text);
-    let lines: [string] = ["  call " + callee];
+    let metadata: [string] = select_nominal_call_metadata(module0, instruction);
+    if (instruction.operator == "variant-ctor" or instruction.operator == "method-dispatch") and len(metadata) == 0 {
+      give invalid_backend_lines("canonical nominal call " + instruction.text);
+    }
+    let lines: [string] = metadata + ["  call " + callee];
     give lines + store_result_lines(instruction, "%rax");
   }
   if instruction.kind == IrInstructionKind.BorrowShared {
-    give ["  # borrow_shared " + instruction.text] + store_result_lines(instruction, "%rax");
+    let source_name: string = if len(instruction.args) > 0 { machine_operand_debug_name(instruction.args[0].name, instruction.args[0].place, instruction.args[0].text) } else { instruction.text };
+    if len(instruction.args) != 1 or instruction.dest.kind != IrValueKind.Reference or instruction.dest.ref_mutable {
+      give invalid_backend_lines("canonical borrow_shared " + instruction.dest.name);
+    }
+    give ["  # borrow_shared " + instruction.dest.name + " <- &" + source_name] + store_result_lines(instruction, "%rax");
   }
   if instruction.kind == IrInstructionKind.BorrowMut {
-    give ["  # borrow_mut " + instruction.text] + store_result_lines(instruction, "%rax");
+    let source_name: string = if len(instruction.args) > 0 { machine_operand_debug_name(instruction.args[0].name, instruction.args[0].place, instruction.args[0].text) } else { instruction.text };
+    if len(instruction.args) != 1 or instruction.dest.kind != IrValueKind.Reference or not instruction.dest.ref_mutable {
+      give invalid_backend_lines("canonical borrow_mut " + instruction.dest.name);
+    }
+    give ["  # borrow_mut " + instruction.dest.name + " <- &mut " + source_name] + store_result_lines(instruction, "%rax");
   }
   if instruction.kind == IrInstructionKind.Assert {
     let instruction_id: string = instruction.id as string;
@@ -82,7 +222,7 @@ proc select_instruction_line(function_name: string, instruction: IrInstruction) 
   give ["  # invalid"];
 }
 
-proc select_function_instructions_x86_64(fn0: IrFunction) -> [string] {
+proc select_function_instructions_x86_64(module0: IrModule, fn0: IrFunction) -> [string] {
   let lines: [string] = [machine_function_label(fn0.name)] + machine_prologue_x86_64();
   let i: u64 = 0;
   while i < len(fn0.blocks) {
@@ -90,10 +230,10 @@ proc select_function_instructions_x86_64(fn0: IrFunction) -> [string] {
     set lines = lines + [machine_block_label(fn0.name, block.id)];
     let j: u64 = 0;
     while j < len(block.instructions) {
-      set lines = lines + select_instruction_line(fn0.name, block.instructions[j]);
+      set lines = lines + select_instruction_line(module0, fn0.name, block.instructions[j]);
       set j = j + 1;
     }
-    set lines = lines + select_instruction_line(fn0.name, block.terminator);
+    set lines = lines + select_instruction_line(module0, fn0.name, block.terminator);
     set i = i + 1;
   }
   set lines = lines + [machine_return_label(fn0.name) + ":"] + machine_epilogue_x86_64();
@@ -111,7 +251,7 @@ proc select_ir_unit_x86_64(unit: IrUnit) -> [string] {
       if fn0.is_entry {
         set lines = lines + [".globl " + fn0.name];
       }
-      set lines = lines + select_function_instructions_x86_64(fn0);
+      set lines = lines + select_function_instructions_x86_64(module0, fn0);
       set j = j + 1;
     }
     set i = i + 1;

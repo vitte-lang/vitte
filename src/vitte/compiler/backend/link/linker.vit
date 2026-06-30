@@ -1,6 +1,6 @@
 space vitte/compiler/backend/link/linker
 
-use vitte/compiler/backend/ir.{ IrLinkage, IrUnit, function_name_by_id, unit_module_count }
+use vitte/compiler/backend/ir.{ IrLinkage, IrUnit, function_name_by_id, unit_is_valid, unit_module_count }
 use vitte/compiler/backends/backend_infrastructure.{ RuntimeLibrary, create_vitte_runtime }
 use vitte/compiler/backend/link/artifact.{
     LinkArtifact,
@@ -152,7 +152,19 @@ proc relocation_table_content(unit: IrUnit) -> string {
 }
 
 proc debug_section_content(unit: IrUnit) -> string {
-    give "debug-info for " + unit.source_path;
+    let built: string = "debug-info for " + unit.source_path;
+    let i: u64 = 0;
+    while i < len(unit.modules) {
+        let module0 = unit.modules[i];
+        let j: u64 = 0;
+        while j < len(module0.nominal_types) {
+            let nominal = module0.nominal_types[j];
+            set built = built + "\ntype " + module0.name + "::" + nominal.name + " kind=" + nominal.kind;
+            set j = j + 1;
+        }
+        set i = i + 1;
+    }
+    give built;
 }
 
 proc build_section_layout(unit: IrUnit) -> SectionLayout {
@@ -344,6 +356,9 @@ proc link_ir_unit(unit: IrUnit, output_path: string) -> LinkArtifact {
 }
 
 proc link_ir_unit_with_kind(unit: IrUnit, output_path: string, artifact_kind: LinkArtifactKind) -> LinkArtifact {
+    if not unit_is_valid(unit) {
+        give artifact_create(0, "vitte-invalid-link-artifact", link_target_from_name("x86_64-linux"));
+    }
     let target_name: string = unit.target.triple.arch + "-" + unit.target.triple.os;
     let target = link_target_from_name(target_name);
     let runtime0: RuntimeLibrary = create_vitte_runtime();

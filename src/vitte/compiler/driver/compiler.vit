@@ -47,7 +47,7 @@ use vitte/compiler/frontend/lexer/token.{ Token, TokenKind }
 use vitte/compiler/frontend/lexer/scanner.{ ScanResult, scan_tokens }
 use vitte/compiler/frontend/ast/mod
 use vitte/compiler/analysis/mod
-use vitte/compiler/analysis/pipeline.{ AnalysisOutput, analysis_run }
+use vitte/compiler/analysis/pipeline.{ AnalysisOutput, analysis_run_frontend }
 use vitte/compiler/analysis/report.{ AnalysisDiagnostic }
 use vitte/compiler/analysis/sema/mod
 use vitte/compiler/analysis/typeck/mod
@@ -57,7 +57,8 @@ use vitte/compiler/analysis/lint/engine
 use vitte/compiler/analysis/lint/report
 use vitte/compiler/analysis/lint/rules
 use vitte/compiler/middle/mod
-use vitte/compiler/middle/pipeline.{ MiddleOutput, middle_run }
+use vitte/compiler/middle/pipeline.{ MiddleOutput, middle_run_frontend }
+use vitte/compiler/middle/mir/validate.{ mir_validation_reason }
 use vitte/compiler/middle/hir/mod
 use vitte/compiler/middle/mir/mod
 use vitte/compiler/middle/borrow/mod
@@ -75,6 +76,7 @@ use vitte/compiler/backend/pipeline.{ BackendPipelineResult }
 use vitte/compiler/backend/native_bridge.{ NativeBridgeResult, run_native_executable }
 use vitte/compiler/backend/codegen/mod
 use vitte/compiler/backend/link/mod
+use vitte/compiler/backend/ir.{ ir_validation_reason }
 use vitte/compiler/backend/ir/mod
 use vitte/compiler/backend/target/mod
 use vitte/compiler/infrastructure/diagnostics/mod
@@ -82,13 +84,6 @@ use vitte/compiler/infrastructure/incremental/mod
 use vitte/compiler/infrastructure/session/mod
 use vitte/compiler/mod
 use vitte/compiler/backends/llvm_bindings.{ default_llvm_toolchain_paths }
-use vitte/compiler/backends/vitte_emit/cfg
-use vitte/compiler/backends/vitte_emit/config
-use vitte/compiler/backends/vitte_emit/emit
-use vitte/compiler/backends/vitte_emit/ir
-use vitte/compiler/backends/vitte_emit/lowering
-use vitte/compiler/backends/vitte_emit/pipeline
-use vitte/compiler/backends/vitte_emit/validate
 use vitte/compiler/infrastructure/session/config
 use vitte/compiler/infrastructure/session/context
 use vitte/compiler/infrastructure/session/diagnostics
@@ -658,6 +653,9 @@ proc parse_cli_request(args: list[string]) -> CompilerCliRequest {
                 }
                 set request.format = args[i + 1];
                 set i = i + 2;
+            } elif arg == "--json" {
+                set request.format = "json";
+                set i = i + 1;
             } else {
                 set i = i + 1;
             }
@@ -900,6 +898,7 @@ proc cli_compiler_options(request: CompilerCliRequest, mode: CompilerMode, outpu
     set opts.mode = mode;
     set opts.output_dir = cli_output_dir(output_path);
     set opts.output_path = output_path;
+    set opts.emit_json = request.format == "json";
     set opts.verbose = request.verbose;
     set opts.trace_pipeline = request.trace_pipeline;
     give opts;
@@ -1075,6 +1074,11 @@ proc run_cli_request(request: CompilerCliRequest) -> int {
         let opts: CompilerOptions = cli_compiler_options(request, CompilerMode::Check, request.output_path);
         let compiler0: Compiler = compiler_from_input(source_path, source_text, virtual_source, opts);
         let r0: CompilerResult = run_compiler(compiler0);
+        if request.format == "json" {
+            let report_json: string = compiler_result_json("check", r0) + "\n";
+            print(report_json);
+            give r0.code as int;
+        }
         if request.trace_pipeline {
             print_phase_results(r0, "check");
         }
@@ -1100,6 +1104,25 @@ proc run_cli_request(request: CompilerCliRequest) -> int {
         let opts: CompilerOptions = cli_compiler_options(request, CompilerMode::Build, request.output_path);
         let compiler0: Compiler = compiler_from_input(source_path, source_text, virtual_source, opts);
         let r0: CompilerResult = run_compiler(compiler0);
+        if request.format == "json" {
+            if r0.status == driver.DriverExitStatus::Ok and !is_file(request.output_path) {
+                let failed: CompilerResult = CompilerResult {
+                    status: driver.DriverExitStatus::FilesystemFailure,
+                    code: driver.exit_code(driver.DriverExitStatus::FilesystemFailure),
+                    message: "build failed: linker did not materialize executable: " + request.output_path,
+                    stage: CompilerStage::Link,
+                    output: r0.output,
+                    diagnostics: r0.diagnostics,
+                    stage_logs: r0.stage_logs,
+                    phase_results: r0.phase_results
+                };
+                print(compiler_result_json("build", failed) + "\n");
+                give failed.code as int;
+            }
+            let report_json: string = compiler_result_json("build", r0) + "\n";
+            print(report_json);
+            give r0.code as int;
+        }
         if request.trace_pipeline {
             print_phase_results(r0, "build");
             if r0.status == driver.DriverExitStatus::Ok {
@@ -1138,6 +1161,28 @@ proc run_cli_request(request: CompilerCliRequest) -> int {
         let opts: CompilerOptions = cli_compiler_options(request, CompilerMode::Run, temp_output);
         let compiler0: Compiler = compiler_from_input(source_path, source_text, virtual_source, opts);
         let r0: CompilerResult = run_compiler(compiler0);
+        if request.format == "json" {
+            if r0.status == driver.DriverExitStatus::Ok and !is_file(temp_output) {
+                let failed: CompilerResult = CompilerResult {
+                    status: driver.DriverExitStatus::FilesystemFailure,
+                    code: driver.exit_code(driver.DriverExitStatus::FilesystemFailure),
+                    message: "run failed: temporary executable was not materialized: " + temp_output,
+                    stage: CompilerStage::Link,
+                    output: r0.output,
+                    diagnostics: r0.diagnostics,
+                    stage_logs: r0.stage_logs,
+                    phase_results: r0.phase_results
+                };
+                print(compiler_result_json("run", failed) + "\n");
+                give failed.code as int;
+            }
+            let report_json: string = compiler_result_json("run", r0) + "\n";
+            print(report_json);
+            if r0.status == driver.DriverExitStatus::Ok {
+                give r0.output.program_exit_code;
+            }
+            give r0.code as int;
+        }
         if request.trace_pipeline {
             print_phase_results(r0, "run");
         }
@@ -1769,6 +1814,119 @@ proc typed_diag_text(severity: string, code: string, file: string, line: u64, co
     give out;
 }
 
+proc json_escape(text: string) -> string {
+    let escaped: string = "";
+    let i: u64 = 0;
+    while i < len(text) {
+        let ch: string = slice(text, i, i + 1);
+        if ch == "\\" {
+            set escaped = escaped + "\\\\";
+        } elif ch == "\"" {
+            set escaped = escaped + "\\\"";
+        } elif ch == "\n" {
+            set escaped = escaped + "\\n";
+        } elif ch == "\r" {
+            set escaped = escaped + "\\r";
+        } elif ch == "\t" {
+            set escaped = escaped + "\\t";
+        } else {
+            set escaped = escaped + ch;
+        }
+        set i = i + 1;
+    }
+    give escaped;
+}
+
+proc json_bool(value: bool) -> string {
+    if value {
+        give "true";
+    }
+    give "false";
+}
+
+proc json_array(values: [string]) -> string {
+    let out: string = "";
+    let i: u64 = 0;
+    while i < len(values) {
+        if i > 0 {
+            set out = out + ",";
+        }
+        set out = out + "\"" + json_escape(values[i]) + "\"";
+        set i = i + 1;
+    }
+    give "[" + out + "]";
+}
+
+proc structured_message_value(message: string, label: string) -> string {
+    let marker: string = "\n  " + label + ": ";
+    let start0: int = find(message, marker);
+    if start0 < 0 {
+        give "";
+    }
+    let value_start: u64 = (start0 as u64) + len(marker);
+    let next_nl: int = find(slice(message, value_start, len(message)), "\n");
+    if next_nl < 0 {
+        give trim(slice(message, value_start, len(message)));
+    }
+    give trim(slice(message, value_start, value_start + (next_nl as u64)));
+}
+
+proc compiler_result_pipeline_failed_at(result: CompilerResult) -> string {
+    if result.status == driver.DriverExitStatus::Ok {
+        give "none";
+    }
+    let structured_stage: string = structured_message_value(result.message, "stage");
+    if structured_stage != "" {
+        give structured_stage;
+    }
+    give stage_name(result.stage);
+}
+
+proc compiler_result_pipeline_failure_reason(result: CompilerResult) -> string {
+    if result.status == driver.DriverExitStatus::Ok {
+        give "none";
+    }
+    let structured_reason: string = structured_message_value(result.message, "reason");
+    if structured_reason != "" {
+        give structured_reason;
+    }
+    give "none";
+}
+
+proc compiler_result_json(command: string, result: CompilerResult) -> string {
+    let status_text: string = if result.status == driver.DriverExitStatus::Ok { "ok" } else { "error" };
+    let pipeline_failed_at0: string = compiler_result_pipeline_failed_at(result);
+    let pipeline_failure_reason0: string = compiler_result_pipeline_failure_reason(result);
+    let validation_reason0: string = if pipeline_failed_at0 == "mir_validate" or pipeline_failed_at0 == "ir_validate" {
+        pipeline_failure_reason0
+    } else {
+        "none"
+    };
+    let output_json: string = "{"
+        + "\"executable_path\":\"" + json_escape(result.output.executable_path) + "\","
+        + "\"object_path\":\"" + json_escape(result.output.object_path) + "\","
+        + "\"assembly_path\":\"" + json_escape(result.output.assembly_path) + "\","
+        + "\"ir_path\":\"" + json_escape(result.output.ir_path) + "\","
+        + "\"report_path\":\"" + json_escape(result.output.report_path) + "\","
+        + "\"program_exit_code\":" + (result.output.program_exit_code as string)
+        + "}";
+    give "{"
+        + "\"schema\":\"vitte.compiler.cli\","
+        + "\"schema_version\":\"1.0.0\","
+        + "\"command\":\"" + json_escape(command) + "\","
+        + "\"status\":\"" + status_text + "\","
+        + "\"exit_code\":" + (result.code as string) + ","
+        + "\"message\":\"" + json_escape(result.message) + "\","
+        + "\"stage\":\"" + json_escape(stage_name(result.stage)) + "\","
+        + "\"pipeline_failed_at\":\"" + json_escape(pipeline_failed_at0) + "\","
+        + "\"pipeline_failure_reason\":\"" + json_escape(pipeline_failure_reason0) + "\","
+        + "\"validation_reason\":\"" + json_escape(validation_reason0) + "\","
+        + "\"output\":" + output_json + ","
+        + "\"stage_logs\":" + json_array(result.stage_logs) + ","
+        + "\"phase_results\":" + json_array(result.phase_results)
+        + "}";
+}
+
 proc cli_ansi_reset() -> string {
     give "\u001b[0m";
 }
@@ -1872,6 +2030,21 @@ proc structured_driver_failure_message(headline: string, target_name: string, ba
     }
     if artifact0 != "" {
         set message = message + "\n  expected_artifact: " + artifact0;
+    }
+
+    give message;
+}
+
+proc structured_validation_failure_message(headline: string, stage_name: string, reason: string) -> string {
+    let message: string = headline;
+    let stage0: string = stage_name;
+    let reason0: string = reason;
+
+    if stage0 != "" {
+        set message = message + "\n  stage: " + stage0;
+    }
+    if reason0 != "" and reason0 != "none" {
+        set message = message + "\n  reason: " + reason0;
     }
 
     give message;
@@ -2031,7 +2204,7 @@ proc run_analysis(compiler: Compiler) -> Compiler {
     }
 
     let frontend_out: FrontendOutput = frontend_run(compiler.input.path, compiler_source_text(compiler));
-    let analysis_out: AnalysisOutput = analysis_run(frontend_out);
+    let analysis_out: AnalysisOutput = analysis_run_frontend(frontend_out);
     set compiler = append_frontend_diagnostics(compiler, frontend_out.diagnostics);
     set compiler = append_analysis_diagnostics(compiler, analysis_out.diagnostics);
     if not analysis_out.sema_ok {
@@ -2113,7 +2286,7 @@ proc run_mir_pipeline(compiler: Compiler) -> Compiler {
     }
 
     let frontend_out: FrontendOutput = frontend_run(compiler.input.path, compiler_source_text(compiler));
-    let middle_out: MiddleOutput = middle_run(frontend_out);
+    let middle_out: MiddleOutput = middle_run_frontend(frontend_out);
     set compiler = append_frontend_diagnostics(compiler, frontend_out.diagnostics);
     set compiler = append_analysis_diagnostics(compiler, middle_out.analysis.diagnostics);
     if compiler.diagnostic_session.fatal_count > 0 {
@@ -2137,7 +2310,11 @@ proc run_mir_pipeline(compiler: Compiler) -> Compiler {
             compiler,
             "error",
             "DRIVER_E_MIR_INVALID",
-            "MIR validation failed in middle pipeline"
+            structured_validation_failure_message(
+                "MIR validation failed in middle pipeline",
+                "mir_validate",
+                mir_validation_reason(middle_out.mir)
+            )
         );
         set compiler.state.ok = false;
         give compiler;
@@ -2180,7 +2357,7 @@ proc run_ir_pipeline(compiler: Compiler) -> Compiler {
     }
 
     let frontend_out: FrontendOutput = frontend_run(compiler.input.path, compiler_source_text(compiler));
-    let middle_out: MiddleOutput = middle_run(frontend_out);
+    let middle_out: MiddleOutput = middle_run_frontend(frontend_out);
     set compiler = append_frontend_diagnostics(compiler, frontend_out.diagnostics);
     set compiler = append_analysis_diagnostics(compiler, middle_out.analysis.diagnostics);
     if compiler.diagnostic_session.fatal_count > 0 {
@@ -2193,7 +2370,11 @@ proc run_ir_pipeline(compiler: Compiler) -> Compiler {
             compiler,
             "error",
             "DRIVER_E_IR_INVALID",
-            "IR lowering/verification failed in middle pipeline"
+            structured_validation_failure_message(
+                "IR lowering/verification failed in middle pipeline",
+                "ir_validate",
+                ir_validation_reason(middle_out.ir)
+            )
         );
         set compiler.state.ok = false;
         give compiler;
@@ -2848,7 +3029,9 @@ share run_cli_main
 share run_cli_main_with_ice_boundary
 share new_compiler
 share compiler_from_source
+share compiler_result_json
 share structured_driver_failure_message
+share structured_validation_failure_message
 
 share configure_compiler
 share validate_input

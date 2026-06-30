@@ -2,10 +2,10 @@ space vitte/compiler/tests/parser_tests
 
 use vitte/compiler/frontend/pipeline.{ FrontendOutput, frontend_run, frontend_run_with_lang }
 use vitte/compiler/frontend/lexer/scanner.{ ScanResult, scan_tokens }
-use vitte/compiler/frontend/ast/item.{ AstItemKind }
+use vitte/compiler/frontend/ast/item.{ AstItemKind, AstNominalMemberKind }
 use vitte/compiler/frontend/parse/recovery.{ recover_decl_index, recover_stmt_index }
 use vitte/compiler/frontend/grammar_alignment_checker.{ GrammarAlignmentReport, grammar_alignment_report, grammar_alignment_summary }
-use vitte/compiler/tests/frontend_fixtures/valid/parser.{ grammar_surface_source }
+use vitte/compiler/tests/frontend_fixtures/valid/parser.{ bits_surface_source, grammar_surface_source }
 use vitte/compiler/tests/frontend_fixtures/invalid/parser.{ recover_decl_source, recover_stmt_source, standalone_attribute_source }
 use vitte/compiler/tests/frontend_fixtures/invalid/lexer.{ invalid_char_source }
 
@@ -66,6 +66,22 @@ proc test_frontend_accepts_valid_surface_fixture() -> bool {
   give fe.valid and fe.toplevel_count >= 2 and fe.stmt_count >= 3 and fe.expr_count >= 4;
 }
 
+proc test_frontend_accepts_bits_decl_surface() -> bool {
+  let fe: FrontendOutput = frontend_run("bits_surface.vit", bits_surface_source());
+  give fe.valid
+    and len(fe.ast_root.items) == 1
+    and fe.ast_root.items[0].kind == AstItemKind.Bits
+    and fe.ast_root.items[0].name == "Mode"
+    and fe.ast_root.items[0].annotation.valid
+    and fe.ast_root.items[0].annotation.text == "u8"
+    and len(fe.ast_root.items[0].members) == 1
+    and fe.ast_root.items[0].members[0].kind == AstNominalMemberKind.Variant
+    and fe.ast_root.items[0].members[0].name == "read"
+    and len(fe.ast_root.items[0].stmts) == 1
+    and fe.ast_root.items[0].stmts[0].pattern.name == "read"
+    and fe.ast_root.items[0].stmts[0].message != "";
+}
+
 proc test_frontend_accepts_intrinsic_toplevel_decl() -> bool {
   let source_text: string = "intrinsic vitte_host_runtime_available() -> bool;\nproc main() -> int { give 0; }\n";
   let fe: FrontendOutput = frontend_run("intrinsic_surface.vit", source_text);
@@ -83,6 +99,16 @@ proc test_frontend_rejects_standalone_attribute_block() -> bool {
     and fe.diagnostics[0].code == "PATTR003"
     and fe.diagnostics[0].line == 1
     and fe.diagnostics[0].column == 1;
+}
+
+proc test_frontend_accepts_docstring_attr_prefix() -> bool {
+  let source_text: string = "r\"main entry\"\nproc main() -> int { give 0; }\n";
+  let fe: FrontendOutput = frontend_run("docstring_attr.vit", source_text);
+  give fe.valid
+    and len(fe.ast_root.items) == 1
+    and fe.ast_root.items[0].kind == AstItemKind.Proc
+    and len(fe.ast_root.items[0].attributes) == 1
+    and fe.ast_root.items[0].attributes[0] == "r\"main entry\"";
 }
 
 proc test_grammar_alignment_report_is_computed() -> bool {
@@ -108,10 +134,16 @@ proc run_all_tests() -> int {
   if not test_frontend_accepts_valid_surface_fixture() {
     set failures = failures + 1;
   }
+  if not test_frontend_accepts_bits_decl_surface() {
+    set failures = failures + 1;
+  }
   if not test_frontend_accepts_intrinsic_toplevel_decl() {
     set failures = failures + 1;
   }
   if not test_frontend_rejects_standalone_attribute_block() {
+    set failures = failures + 1;
+  }
+  if not test_frontend_accepts_docstring_attr_prefix() {
     set failures = failures + 1;
   }
   if not test_grammar_alignment_report_is_computed() {

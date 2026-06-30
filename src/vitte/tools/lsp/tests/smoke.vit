@@ -101,6 +101,238 @@ proc smoke_publish_diagnostics_real_pipeline() -> bool {
     && ok.canonical_context.pipeline_failed_at == "none"
 }
 
+proc smoke_code_actions_real_pipeline() -> bool {
+  let parser_actions = lsp.code_actions_for_source(
+    "lsp_actions_parser.vit",
+    "proc main() {\n"
+  )
+  let typeck_actions = lsp.code_actions_for_source(
+    "lsp_actions_typeck.vit",
+    "proc main() -> int { let x: int = \"s\"; give x; }\n"
+  )
+  let borrowck_actions = lsp.code_actions_for_source(
+    "lsp_actions_borrowck.vit",
+    "proc main() { let x = 1; let r = &x; give r; }\n"
+  )
+  let ok_actions = lsp.code_actions_for_source(
+    "lsp_actions_ok.vit",
+    "proc main() -> int { give 0; }\n"
+  )
+  give len(parser_actions) > 0
+    && len(typeck_actions) > 0
+    && len(borrowck_actions) > 0
+    && len(ok_actions) == 0
+    && parser_actions[0].diagnostic_code != ""
+    && typeck_actions[0].kind != ""
+    && borrowck_actions[0].applicability != ""
+}
+
+proc smoke_diagnostic_hover_real_pipeline() -> bool {
+  let typeck = lsp.diagnostic_hover_for_source(
+    "lsp_hover_typeck.vit",
+    "proc main() -> int { let x: int = \"s\"; give x; }\n"
+  )
+  let borrowck = lsp.diagnostic_hover_for_source(
+    "lsp_hover_borrowck.vit",
+    "proc main() { let x = 1; let r = &x; give r; }\n"
+  )
+  let ok = lsp.diagnostic_hover_for_source(
+    "lsp_hover_ok.vit",
+    "proc main() -> int { give 0; }\n"
+  )
+  give typeck.valid
+    && find(typeck.content, "phase: typeck") >= 0
+    && find(typeck.content, "summary:") >= 0
+    && find(typeck.content, "cause:") >= 0
+    && find(typeck.content, "fix:") >= 0
+    && borrowck.valid
+    && find(borrowck.content, "phase: borrowck") >= 0
+    && find(borrowck.content, "subject:") >= 0
+    && !ok.valid
+}
+
+proc smoke_diagnostic_details_real_pipeline() -> bool {
+  let typeck_by_index = lsp.diagnostic_details_by_index_for_source(
+    "lsp_details_typeck.vit",
+    "proc main() -> int { let x: int = \"s\"; give x; }\n",
+    0
+  )
+  let typeck_by_code = lsp.diagnostic_details_by_code_for_source(
+    "lsp_details_typeck.vit",
+    "proc main() -> int { let x: int = \"s\"; give x; }\n",
+    typeck_by_index.code
+  )
+  let borrowck_by_span = lsp.diagnostic_details_by_span_for_source(
+    "lsp_details_borrowck.vit",
+    "proc main() { let x = 1; let r = &x; give r; }\n",
+    0,
+    80
+  )
+  let missing = lsp.diagnostic_details_by_index_for_source(
+    "lsp_details_ok.vit",
+    "proc main() -> int { give 0; }\n",
+    0
+  )
+  give typeck_by_index.valid
+    && typeck_by_index.phase == "typeck"
+    && typeck_by_index.explanation != ""
+    && typeck_by_index.root_cause != ""
+    && typeck_by_index.probable_fix != ""
+    && typeck_by_code.valid
+    && typeck_by_code.code == typeck_by_index.code
+    && borrowck_by_span.valid
+    && borrowck_by_span.phase == "borrowck"
+    && !missing.valid
+}
+
+proc smoke_phase_diagnostic_selection_real_pipeline() -> bool {
+  let source = "proc main() { let x = ; }\n"
+  let hover_parser = lsp.diagnostic_hover_for_phase_source(
+    "lsp_phase_frontend.vit",
+    source,
+    "parser"
+  )
+  let details_parser = lsp.diagnostic_details_by_phase_index_for_source(
+    "lsp_phase_frontend.vit",
+    source,
+    "parser",
+    0
+  )
+  let actions_parser = lsp.code_actions_for_phase_source(
+    "lsp_phase_frontend.vit",
+    source,
+    "parser"
+  )
+  let missing_typeck = lsp.diagnostic_details_by_phase_index_for_source(
+    "lsp_phase_frontend.vit",
+    source,
+    "typeck",
+    0
+  )
+  give hover_parser.valid
+    && details_parser.valid
+    && details_parser.phase == "parser"
+    && len(actions_parser) > 0
+    && !missing_typeck.valid
+}
+
+proc phase_status_by_name(statuses: [lsp.DiagnosticPhaseStatus], name: string) -> lsp.DiagnosticPhaseStatus {
+  let i = 0
+  while i < len(statuses) {
+    if statuses[i].phase == name {
+      give statuses[i]
+    }
+    set i = i + 1
+  }
+  give lsp.DiagnosticPhaseStatus {
+    phase: "",
+    diagnostic_count: 0,
+    quality_score: 0,
+    has_fatal: false,
+    selected_as_primary: false,
+    valid: false
+  }
+}
+
+proc smoke_phase_statuses_real_pipeline() -> bool {
+  let frontend_statuses = lsp.diagnostic_phase_statuses_for_source(
+    "lsp_phase_status_frontend.vit",
+    "proc main() { let x = ; }\n"
+  )
+  let typeck_statuses = lsp.diagnostic_phase_statuses_for_source(
+    "lsp_phase_status_typeck.vit",
+    "proc main() -> int { let x: int = \"s\"; give x; }\n"
+  )
+  let borrowck_statuses = lsp.diagnostic_phase_statuses_for_source(
+    "lsp_phase_status_borrowck.vit",
+    "proc main() { let x = 1; let r = &x; give r; }\n"
+  )
+  let parser0 = phase_status_by_name(frontend_statuses, "parser")
+  let typeck0 = phase_status_by_name(typeck_statuses, "typeck")
+  let borrowck0 = phase_status_by_name(borrowck_statuses, "borrowck")
+  let lexer0 = phase_status_by_name(typeck_statuses, "lexer")
+  give len(frontend_statuses) >= 13
+    && parser0.valid
+    && parser0.diagnostic_count > 0
+    && parser0.selected_as_primary
+    && typeck0.valid
+    && typeck0.diagnostic_count > 0
+    && typeck0.selected_as_primary
+    && borrowck0.valid
+    && borrowck0.diagnostic_count > 0
+    && borrowck0.selected_as_primary
+    && lexer0.valid
+    && lexer0.diagnostic_count == 0
+}
+
+proc smoke_diagnostic_panel_real_pipeline() -> bool {
+  let parser_panel = lsp.diagnostic_panel_for_source(
+    "lsp_panel_frontend.vit",
+    "proc main() { let x = ; }\n",
+    21
+  )
+  let typeck_panel = lsp.diagnostic_panel_for_source(
+    "lsp_panel_typeck.vit",
+    "proc main() -> int { let x: int = \"s\"; give x; }\n",
+    22
+  )
+  let borrowck_panel = lsp.diagnostic_panel_for_source(
+    "lsp_panel_borrowck.vit",
+    "proc main() { let x = 1; let r = &x; give r; }\n",
+    23
+  )
+  let ok_panel = lsp.diagnostic_panel_for_source(
+    "lsp_panel_ok.vit",
+    "proc main() -> int { give 0; }\n",
+    24
+  )
+  let parser_phase = phase_status_by_name(parser_panel.phase_statuses, "parser")
+  let typeck_phase = phase_status_by_name(typeck_panel.phase_statuses, "typeck")
+  let borrowck_phase = phase_status_by_name(borrowck_panel.phase_statuses, "borrowck")
+  give parser_panel.valid
+    && parser_panel.canonical_context.pipeline_failed_at != "none"
+    && parser_panel.published.canonical_context.pipeline_failed_at == parser_panel.canonical_context.pipeline_failed_at
+    && parser_phase.valid
+    && parser_phase.selected_as_primary
+    && len(parser_panel.published.diagnostics) > 0
+    && len(parser_panel.code_actions) > 0
+    && parser_panel.primary_details.valid
+    && typeck_panel.valid
+    && typeck_phase.valid
+    && typeck_phase.selected_as_primary
+    && typeck_panel.primary_details.phase == "typeck"
+    && borrowck_panel.valid
+    && borrowck_phase.valid
+    && borrowck_phase.selected_as_primary
+    && borrowck_panel.primary_details.phase == "borrowck"
+    && ok_panel.valid
+    && ok_panel.canonical_context.pipeline_failed_at == "none"
+    && len(ok_panel.published.diagnostics) == 0
+}
+
+proc smoke_diagnostic_panel_json_real_pipeline() -> bool {
+  let typeck_json = lsp.diagnostic_panel_json_for_source(
+    "lsp_panel_json_typeck.vit",
+    "proc main() -> int { let x: int = \"s\"; give x; }\n",
+    51
+  )
+  let borrowck_json = lsp.diagnostic_panel_json_for_source(
+    "lsp_panel_json_borrowck.vit",
+    "proc main() { let x = 1; let r = &x; give r; }\n",
+    52
+  )
+  give find(typeck_json, "\"schema\":\"vitte.lsp.diagnostic_panel\"") >= 0
+    && find(typeck_json, "\"schema_version\":\"1.0.0\"") >= 0
+    && find(typeck_json, "\"canonical_context\"") >= 0
+    && find(typeck_json, "\"phase_statuses\"") >= 0
+    && find(typeck_json, "\"published\"") >= 0
+    && find(typeck_json, "\"code_actions\"") >= 0
+    && find(typeck_json, "\"primary_details\"") >= 0
+    && find(typeck_json, "\"pipeline_failed_at\":\"typeck\"") >= 0
+    && find(borrowck_json, "\"pipeline_failed_at\":\"borrowck\"") >= 0
+    && find(borrowck_json, "\"diagnostic_count\":") >= 0
+}
+
 proc run_smoke_suite() -> int {
   let failures: int = 0;
   if not smoke_hover() { set failures = failures + 1; }
@@ -111,6 +343,13 @@ proc run_smoke_suite() -> int {
   if not smoke_status_health() { set failures = failures + 1; }
   if not smoke_status_health_real_pipeline() { set failures = failures + 1; }
   if not smoke_publish_diagnostics_real_pipeline() { set failures = failures + 1; }
+  if not smoke_code_actions_real_pipeline() { set failures = failures + 1; }
+  if not smoke_diagnostic_hover_real_pipeline() { set failures = failures + 1; }
+  if not smoke_diagnostic_details_real_pipeline() { set failures = failures + 1; }
+  if not smoke_phase_diagnostic_selection_real_pipeline() { set failures = failures + 1; }
+  if not smoke_phase_statuses_real_pipeline() { set failures = failures + 1; }
+  if not smoke_diagnostic_panel_real_pipeline() { set failures = failures + 1; }
+  if not smoke_diagnostic_panel_json_real_pipeline() { set failures = failures + 1; }
   give failures;
 }
 

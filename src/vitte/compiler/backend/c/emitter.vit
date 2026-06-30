@@ -1,8 +1,8 @@
 space vitte/compiler/backend/c/emitter
 
-use vitte/compiler/backend/c/architecture.{ CBackendTargetProfile, c_include_set }
+use vitte/compiler/backend/c/architecture.{ CBackendTargetProfile, c_include_set, c_type_for_vitte_type }
 use vitte/compiler/backend/c/diagnostics.{ CBackendDiagnostic, c_has_errors }
-use vitte/compiler/backend/c/lowering.{ CLoweredFunction, CTranslationUnit }
+use vitte/compiler/backend/c/lowering.{ CLoweredFunction, CMethodParam, CNominalMember, CNominalType, CTranslationUnit }
 use vitte/compiler/backend/c/runtime.{ CRuntimeModule, default_c_runtime }
 
 export *
@@ -17,7 +17,315 @@ form CEmitResult {
 }
 
 proc emit_function_decl(function0: CLoweredFunction) -> string {
-  give function0.return_type + " " + function0.c_name + "(void)";
+  if len(function0.params) == 0 {
+    give function0.return_type + " " + function0.c_name + "(void)";
+  }
+  let params: string = "";
+  let i: u64 = 0;
+  while i < len(function0.params) {
+    if params != "" {
+      set params = params + ", ";
+    }
+    set params = params + emit_method_param_decl(function0.params[i]);
+    set i = i + 1;
+  }
+  give function0.return_type + " " + function0.c_name + "(" + params + ")";
+}
+
+proc emit_nominal_metadata_entry(nominal: CNominalType) -> string {
+  let exported: string = if nominal.exported { "true" } else { "false" };
+  let abi: string = if nominal.abi != "" { nominal.abi } else { "-" };
+  let underlying: string = if nominal.underlying_type != "" { nominal.underlying_type } else { "-" };
+  let target_type: string = if nominal.target_type != "" { nominal.target_type } else { "-" };
+  give "kind=" + nominal.kind
+    + " name=" + nominal.name
+    + " abi=" + abi
+    + " underlying_type=" + underlying
+    + " target_type=" + target_type
+    + " generic_count=" + string(nominal.generic_count)
+    + " member_count=" + string(nominal.member_count)
+    + " signature_param_count=" + string(nominal.signature_param_count)
+    + " exported=" + exported;
+}
+
+proc emit_nominal_member_metadata_entry(member: CNominalMember) -> string {
+  let annotation: string = if member.annotation_text != "" { member.annotation_text } else { "-" };
+  give "member=" + member.name
+    + " kind=" + member.kind
+    + " symbol=" + if member.symbol_name != "" { member.symbol_name } else { "-" }
+    + " c_type=" + member.c_type
+    + " annotation=" + annotation
+    + " params=" + string(len(member.params))
+    + " body_stmts=" + string(member.body_stmt_count);
+}
+
+proc emit_nominal_metadata_block(unit: CTranslationUnit) -> string {
+  if len(unit.nominal_types) == 0 {
+    give "";
+  }
+  let out: string = "/* vitte nominal metadata\n";
+  let i: u64 = 0;
+  while i < len(unit.nominal_types) {
+    set out = out + " * " + emit_nominal_metadata_entry(unit.nominal_types[i]) + "\n";
+    let j: u64 = 0;
+    while j < len(unit.nominal_types[i].members) {
+      set out = out + " *   " + emit_nominal_member_metadata_entry(unit.nominal_types[i].members[j]) + "\n";
+      set j = j + 1;
+    }
+    set i = i + 1;
+  }
+  set out = out + " */\n\n";
+  give out;
+}
+
+proc emit_nominal_descriptor_support() -> string {
+  give "typedef struct VitteNominalDescriptor VitteNominalDescriptor;\n"
+    + "struct VitteNominalDescriptor {\n"
+    + "  const char* name;\n"
+    + "  const char* kind;\n"
+    + "  const char* abi;\n"
+    + "  const char* underlying_type;\n"
+    + "  const char* target_type;\n"
+    + "  uint64_t generic_count;\n"
+    + "  uint64_t member_count;\n"
+    + "  uint64_t signature_param_count;\n"
+    + "  const char* member_names;\n"
+    + "  unsigned char exported;\n"
+    + "};\n\n";
+}
+
+proc c_nominal_c_name(name: string) -> string {
+  let out: string = "";
+  let i: u64 = 0;
+  while i < len(name) {
+    let ch: string = slice(name, i, i + 1);
+    let ok: bool = (ch >= "a" and ch <= "z")
+      or (ch >= "A" and ch <= "Z")
+      or (ch >= "0" and ch <= "9")
+      or ch == "_";
+    if ok {
+      set out = out + ch;
+    } else {
+      set out = out + "_";
+    }
+    set i = i + 1;
+  }
+  if out == "" {
+    give "vitte_nominal";
+  }
+  give out;
+}
+
+proc c_bool_text(value: bool) -> string {
+  if value {
+    give "1";
+  }
+  give "0";
+}
+
+proc c_string_literal_or_null(text: string) -> string {
+  if text == "" {
+    give "NULL";
+  }
+  give "\"" + text + "\"";
+}
+
+proc emit_method_typedef_name(nominal: CNominalType, member: CNominalMember) -> string {
+  let base: string = c_nominal_c_name(nominal.name) + "_" + member.c_name;
+  if nominal.kind == "impl" and nominal.target_type != "" {
+    give base + "_for_" + c_nominal_c_name(nominal.target_type) + "_fn";
+  }
+  give base + "_fn";
+}
+
+proc emit_method_param_decl(param: CMethodParam) -> string {
+  if param.variadic {
+    give "...";
+  }
+  if param.c_name == "" {
+    give param.c_type;
+  }
+  give param.c_type + " " + param.c_name;
+}
+
+proc emit_method_param_list(member: CNominalMember) -> string {
+  if len(member.params) == 0 {
+    give "void";
+  }
+  let out: string = "";
+  let i: u64 = 0;
+  while i < len(member.params) {
+    if out != "" {
+      set out = out + ", ";
+    }
+    set out = out + emit_method_param_decl(member.params[i]);
+    set i = i + 1;
+  }
+  give out;
+}
+
+proc emit_nominal_method_typedefs(nominal: CNominalType) -> string {
+  let out: string = "";
+  let i: u64 = 0;
+  while i < len(nominal.members) {
+    let member: CNominalMember = nominal.members[i];
+    if member.kind == "trait-method" or member.kind == "impl-method" {
+      set out = out + "typedef " + member.c_type + " (*" + emit_method_typedef_name(nominal, member) + ")(" + emit_method_param_list(member) + ");\n";
+    }
+    set i = i + 1;
+  }
+  if out != "" {
+    set out = out + "\n";
+  }
+  give out;
+}
+
+proc emit_nominal_declaration(unit: CTranslationUnit, nominal: CNominalType) -> string {
+  let c_name: string = c_nominal_c_name(nominal.name);
+  let method_typedefs: string = emit_nominal_method_typedefs(nominal);
+  if nominal.kind == "form" or nominal.kind == "class" {
+    let out: string = method_typedefs + "typedef struct " + c_name + " " + c_name + ";\n"
+      + "struct " + c_name + " {\n";
+    let i: u64 = 0;
+    while i < len(nominal.members) {
+      set out = out + "  " + nominal.members[i].c_type + " " + nominal.members[i].c_name + ";\n";
+      set i = i + 1;
+    }
+    if len(nominal.members) == 0 {
+      set out = out + "  unsigned char __vitte_payload[1];\n";
+    }
+    set out = out + "};\n\n";
+    give out;
+  }
+  if nominal.kind == "union" {
+    let out: string = method_typedefs + "typedef union " + c_name + " " + c_name + ";\n"
+      + "union " + c_name + " {\n";
+    let i: u64 = 0;
+    while i < len(nominal.members) {
+      set out = out + "  " + nominal.members[i].c_type + " " + nominal.members[i].c_name + ";\n";
+      set i = i + 1;
+    }
+    if len(nominal.members) == 0 {
+      set out = out + "  unsigned char __vitte_payload[1];\n";
+    }
+    set out = out + "};\n\n";
+    give out;
+  }
+  if nominal.kind == "bits" or nominal.kind == "flags" {
+    let underlying: string = c_type_for_vitte_type(unit.profile, if nominal.underlying_type != "" { nominal.underlying_type } else { "u64" });
+    give method_typedefs + "typedef " + underlying + " " + c_name + ";\n\n";
+  }
+  if nominal.kind == "pick" {
+    let out: string = method_typedefs + "typedef struct " + c_name + " " + c_name + ";\n"
+      + "struct " + c_name + " {\n"
+      + "  int32_t __vitte_tag;\n"
+      + "  union {\n";
+    let i: u64 = 0;
+    while i < len(nominal.members) {
+      set out = out + "    " + nominal.members[i].c_type + " " + nominal.members[i].c_name + ";\n";
+      set i = i + 1;
+    }
+    if len(nominal.members) == 0 {
+      set out = out + "    void* __vitte_payload;\n";
+    }
+    set out = out + "  } __vitte_payload;\n"
+      + "};\n\n";
+    give out;
+  }
+  if nominal.kind == "trait" {
+    let out: string = method_typedefs + "typedef struct " + c_name + "_vtable " + c_name + "_vtable;\n"
+      + "struct " + c_name + "_vtable {\n";
+    let i: u64 = 0;
+    while i < len(nominal.members) {
+      let member: CNominalMember = nominal.members[i];
+      let field_type: string = if member.kind == "trait-method" or member.kind == "impl-method" { emit_method_typedef_name(nominal, member) } else { "void*" };
+      set out = out + "  " + field_type + " " + member.c_name + ";\n";
+      set i = i + 1;
+    }
+    if len(nominal.members) == 0 {
+      set out = out + "  void* __vitte_slots[" + string(nominal.member_count) + "];\n";
+    }
+    set out = out + "};\n\n";
+    give out;
+  }
+  if nominal.kind == "impl" {
+    let target_name: string = if nominal.target_type != "" { c_nominal_c_name(nominal.target_type) } else { "unknown" };
+    let out: string = method_typedefs + "typedef struct " + c_name + "__impl_for_" + target_name + " " + c_name + "__impl_for_" + target_name + ";\n"
+      + "struct " + c_name + "__impl_for_" + target_name + " {\n"
+      + "  const char* __vitte_trait_name;\n"
+      + "  const char* __vitte_target_name;\n"
+      + "  unsigned char __vitte_exported;\n";
+    let i: u64 = 0;
+    while i < len(nominal.members) {
+      let member: CNominalMember = nominal.members[i];
+      let field_type: string = if member.kind == "trait-method" or member.kind == "impl-method" { emit_method_typedef_name(nominal, member) } else { "void*" };
+      set out = out + "  " + field_type + " " + member.c_name + ";\n";
+      set i = i + 1;
+    }
+    set out = out + "};\n\n";
+    give out;
+  }
+  give "";
+}
+
+proc emit_nominal_declarations(unit: CTranslationUnit) -> string {
+  let out: string = emit_nominal_descriptor_support();
+  let i: u64 = 0;
+  while i < len(unit.nominal_types) {
+    set out = out + emit_nominal_declaration(unit, unit.nominal_types[i]);
+    set i = i + 1;
+  }
+  give out;
+}
+
+proc emit_nominal_descriptor_exports() -> string {
+  give "extern const uint64_t vitte_nominal_descriptor_count;\n"
+    + "extern const VitteNominalDescriptor* vitte_nominal_descriptors;\n\n";
+}
+
+proc emit_nominal_descriptor_entry(nominal: CNominalType) -> string {
+  let member_names: string = "";
+  let member_kinds: string = "";
+  let i: u64 = 0;
+  while i < len(nominal.members) {
+    if member_names != "" {
+      set member_names = member_names + ",";
+      set member_kinds = member_kinds + ",";
+    }
+    set member_names = member_names + nominal.members[i].name;
+    set member_kinds = member_kinds + nominal.members[i].kind;
+    set i = i + 1;
+  }
+  give "  { "
+    + c_string_literal_or_null(nominal.name) + ", "
+    + c_string_literal_or_null(nominal.kind) + ", "
+    + c_string_literal_or_null(nominal.abi) + ", "
+    + c_string_literal_or_null(nominal.underlying_type) + ", "
+    + c_string_literal_or_null(nominal.target_type) + ", "
+    + string(nominal.generic_count) + ", "
+    + string(nominal.member_count) + ", "
+    + string(nominal.signature_param_count) + ", "
+    + c_string_literal_or_null(member_names + if member_kinds != "" { "|" + member_kinds } else { "" }) + ", "
+    + c_bool_text(nominal.exported)
+    + " },\n";
+}
+
+proc emit_nominal_descriptor_table(unit: CTranslationUnit) -> string {
+  let count_text: string = string(len(unit.nominal_types));
+  let out: string = "const uint64_t vitte_nominal_descriptor_count = " + count_text + ";\n";
+  if len(unit.nominal_types) == 0 {
+    set out = out + "const VitteNominalDescriptor* vitte_nominal_descriptors = NULL;\n\n";
+    give out;
+  }
+  set out = out + "static const VitteNominalDescriptor vitte_nominal_descriptors_storage[" + count_text + "] = {\n";
+  let i: u64 = 0;
+  while i < len(unit.nominal_types) {
+    set out = out + emit_nominal_descriptor_entry(unit.nominal_types[i]);
+    set i = i + 1;
+  }
+  set out = out + "};\n";
+  set out = out + "const VitteNominalDescriptor* vitte_nominal_descriptors = vitte_nominal_descriptors_storage;\n\n";
+  give out;
 }
 
 proc emit_header_text(unit: CTranslationUnit) -> string {
@@ -29,6 +337,9 @@ proc emit_header_text(unit: CTranslationUnit) -> string {
     set i = i + 1;
   }
   set out = out + "#include \"vitte_runtime_c.h\"\n\n";
+  set out = out + emit_nominal_metadata_block(unit);
+  set out = out + emit_nominal_declarations(unit);
+  set out = out + emit_nominal_descriptor_exports();
   i = 0;
   while i < len(unit.functions) {
     set out = out + emit_function_decl(unit.functions[i]) + ";\n";
@@ -40,7 +351,34 @@ proc emit_header_text(unit: CTranslationUnit) -> string {
 
 proc emit_source_text(unit: CTranslationUnit, runtime: CRuntimeModule) -> string {
   let out: string = "#include \"vitte_generated.h\"\n\n";
+  set out = out + emit_nominal_metadata_block(unit);
+  set out = out + emit_nominal_descriptor_table(unit);
   let i: u64 = 0;
+  while i < len(unit.nominal_types) {
+    let nominal: CNominalType = unit.nominal_types[i];
+    if nominal.kind == "impl" {
+      let trait_name: string = c_nominal_c_name(nominal.name);
+      let target_name: string = if nominal.target_type != "" { c_nominal_c_name(nominal.target_type) } else { "unknown" };
+      set out = out + trait_name + "__impl_for_" + target_name + " "
+        + trait_name + "__impl_for_" + target_name + "_descriptor = {\n"
+        + "  \"" + nominal.name + "\",\n"
+        + "  \"" + nominal.target_type + "\",\n"
+        + "  " + c_bool_text(nominal.exported);
+      let j: u64 = 0;
+      while j < len(nominal.members) {
+        let symbol_name: string = nominal.members[j].symbol_name;
+        if symbol_name != "" {
+          set out = out + ",\n  " + symbol_name;
+        } else {
+          set out = out + ",\n  NULL";
+        }
+        set j = j + 1;
+      }
+      set out = out + "\n};\n\n";
+    }
+    set i = i + 1;
+  }
+  i = 0;
   while i < len(unit.functions) {
     set out = out + emit_function_decl(unit.functions[i]) + " {\n";
     set out = out + unit.functions[i].body_text;

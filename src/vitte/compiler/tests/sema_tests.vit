@@ -72,6 +72,64 @@ proc test_resolves_imported_proc_from_another_module() -> bool {
   give artifacts.valid and call_expr.resolved_kind == "import" and call_expr.resolved_id > 0;
 }
 
+proc test_resolves_type_level_surface_item_kinds() -> bool {
+  let source: string =
+    "form Point { x: int, y: int }\n" +
+    "bits Mode: u8 {\n" +
+    "  read: 0 .. 1,\n" +
+    "}\n" +
+    "pick Option[T] {\n" +
+    "  None,\n" +
+    "  Some(T),\n" +
+    "}\n" +
+    "flags Access: u8 {\n" +
+    "  read = 1,\n" +
+    "}\n" +
+    "trait Show {\n" +
+    "  proc show(self: Self) -> string;\n" +
+    "}\n" +
+    "impl Show for Point {\n" +
+    "  proc show(self: Self) -> string { give \"point\"; }\n" +
+    "}\n" +
+    "proc main() -> int { give 0; }\n";
+  let fe: FrontendOutput = frontend_run("sema_surface_items.vit", source);
+  let hir = lower_ast_to_hir(fe);
+  let result: SemaResult = run_sema_hir(hir);
+  give result.valid
+    and result.hir.module.items[0].resolved_kind == "form"
+    and result.hir.module.items[1].resolved_kind == "type"
+    and result.hir.module.items[2].resolved_kind == "pick"
+    and result.hir.module.items[3].resolved_kind == "type"
+    and result.hir.module.items[6].resolved_kind == "function"
+    and result.hir.module.items[1].annotation_text == "u8"
+    and result.hir.module.items[5].target_type_text == "Point";
+}
+
+proc test_sema_preserves_member_params_without_duplicate_symbol_growth() -> bool {
+  let source: string =
+    "form Point { x: int }\n" +
+    "trait Show {\n" +
+    "  proc show(self: Self, level: int) -> string;\n" +
+    "}\n" +
+    "impl Show for Point {\n" +
+    "  proc show(self: Self, level: int) -> string { give \"point\"; }\n" +
+    "}\n";
+  let fe: FrontendOutput = frontend_run("sema_member_params.vit", source);
+  let hir = lower_ast_to_hir(fe);
+  let result: SemaResult = run_sema_hir(hir);
+  let trait_member = result.hir.module.items[1].members[0];
+  let impl_member = result.hir.module.items[2].members[0];
+  give result.valid
+    and result.symbol_count == 8
+    and len(trait_member.params) == 2
+    and trait_member.params[0].name == "self"
+    and trait_member.params[0].annotation_text == "Self"
+    and trait_member.params[1].name == "level"
+    and trait_member.params[1].annotation_text == "int"
+    and len(impl_member.params) == 2
+    and impl_member.body_stmts[0].expr.text == "\"point\"";
+}
+
 proc run_all_tests() -> int {
   let failures: int = 0;
   if not test_duplicate_binding() {
@@ -90,6 +148,12 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if not test_resolves_imported_proc_from_another_module() {
+    set failures = failures + 1;
+  }
+  if not test_resolves_type_level_surface_item_kinds() {
+    set failures = failures + 1;
+  }
+  if not test_sema_preserves_member_params_without_duplicate_symbol_growth() {
     set failures = failures + 1;
   }
   give failures;

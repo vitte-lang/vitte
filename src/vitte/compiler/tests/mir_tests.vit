@@ -1,18 +1,44 @@
 space vitte/compiler/tests/mir_tests
 
 use vitte/compiler/frontend/pipeline.{ FrontendOutput, frontend_run }
-use vitte/compiler/middle/hir/lower_ast.{ lower_ast_to_hir }
-use vitte/compiler/middle/lower/hir_to_mir.{ lower_hir_to_mir }
-use vitte/compiler/middle/mir.{ MirStatementKind, MirTerminatorKind }
+use vitte/compiler/frontend/ast/node.{ ast_span_empty }
+use vitte/compiler/middle/mir.{ MirBinaryOperator, MirBlock, MirBorrowKind, MirFunction, MirModule, MirOperand, MirPlace, MirRvalue, MirRvalueKind, MirStatement, MirStatementKind, MirTerminatorKind, MirUnaryOperator, MirUnit, mir_terminator_return }
+use vitte/compiler/middle/mir/validate.{ mir_validation_reason, validate_mir }
+use vitte/compiler/middle/pipeline.{ MiddleOutput, middle_run }
 
 const VERSION_TEXT: string = "middle mir tests 0.2.0"
 const BANNER_TEXT: string = "middle mir tests"
 
+proc int_constant_operand(text: string) -> MirOperand {
+  give MirOperand { text: text, place: MirPlace { local: "", projection: "", deref_depth: 0, mutable: false, moved: false, valid: false }, ty: "int", constant: true, move: false, valid: true };
+}
+
+proc named_operand(name: string, ty: string) -> MirOperand {
+  give MirOperand { text: name, place: MirPlace { local: name, projection: "", deref_depth: 0, mutable: false, moved: false, valid: true }, ty: ty, constant: false, move: false, valid: true };
+}
+
+proc minimal_valid_function(name: string, params: [MirFunctionParam], stmt: MirStatement) -> MirFunction {
+  let block0 = MirBlock { id: 1, label: "bb0", predecessors: [], statements: [stmt], terminator: mir_terminator_return(), sealed: true, reachable: true, valid: true };
+  give MirFunction { id: 1, name: name, entry_block: 1, params: params, return_type: "int", local_count: 1, temporary_count: 0, blocks: [block0], valid: true };
+}
+
+proc unit_with_functions(path: string, functions: [MirFunction]) -> MirUnit {
+  give MirUnit {
+    source_path: path,
+    module: MirModule { name: "manual", functions: functions, valid: true },
+    function_count: len(functions),
+    block_count: 1,
+    instruction_count: 1,
+    lowered: true,
+    valid: true
+  };
+}
+
 proc test_mir_lowering() -> bool {
   let source: string = "proc main() { let x = 1; set x = x + 1; give x; }\n";
   let fe: FrontendOutput = frontend_run("mir_test.vit", source);
-  let hir = lower_ast_to_hir(fe);
-  let mir = lower_hir_to_mir(hir);
+  let middle: MiddleOutput = middle_run(fe);
+  let mir = middle.mir;
   if not mir.valid or len(mir.module.functions) == 0 {
     give false;
   }
@@ -33,8 +59,8 @@ proc test_mir_lowering() -> bool {
 proc test_mir_cfg_if_while() -> bool {
   let source: string = "proc main() { let x = 1; if x { set x = x + 1; } else { set x = x + 2; } while x { set x = x - 1; } give x; }\n";
   let fe: FrontendOutput = frontend_run("mir_cfg_test.vit", source);
-  let hir = lower_ast_to_hir(fe);
-  let mir = lower_hir_to_mir(hir);
+  let middle: MiddleOutput = middle_run(fe);
+  let mir = middle.mir;
   if not mir.valid or len(mir.module.functions) == 0 {
     give false;
   }
@@ -69,8 +95,8 @@ proc test_mir_cfg_if_while() -> bool {
 proc test_mir_preserves_projected_place() -> bool {
   let source: string = "proc main() { set x.field = x.field; give x.field; }\n";
   let fe: FrontendOutput = frontend_run("mir_projection_test.vit", source);
-  let hir = lower_ast_to_hir(fe);
-  let mir = lower_hir_to_mir(hir);
+  let middle: MiddleOutput = middle_run(fe);
+  let mir = middle.mir;
   if not mir.valid or len(mir.module.functions) == 0 {
     give false;
   }
@@ -82,6 +108,393 @@ proc test_mir_preserves_projected_place() -> bool {
   give stmt0.place.local == "x" and stmt0.place.projection == "field";
 }
 
+proc test_mir_lowers_struct_and_surface_items() -> bool {
+  let source: string =
+    "form Point { x: int, y: int }\n" +
+    "bits Mode: u8 {\n" +
+    "  read: 0 .. 1,\n" +
+    "}\n" +
+    "pick Option[T] {\n" +
+    "  None,\n" +
+    "  Some(T),\n" +
+    "}\n" +
+    "flags Access: u8 {\n" +
+    "  read = 1,\n" +
+    "}\n" +
+    "trait Show {\n" +
+    "  proc show(self: Self) -> string;\n" +
+    "}\n" +
+    "impl Show for Point {\n" +
+    "  proc show(self: Self) -> string { give \"point\"; }\n" +
+    "}\n" +
+    "proc main() -> int { let point = Point { x: 1, y: 2 }; give 0; }\n";
+  let fe: FrontendOutput = frontend_run("mir_surface_items.vit", source);
+  let middle: MiddleOutput = middle_run(fe);
+  let mir = middle.mir;
+  if not mir.valid or len(mir.module.functions) == 0 {
+    give false;
+  }
+  let fn0 = mir.module.functions[0];
+  if len(fn0.blocks) == 0 or len(fn0.blocks[0].statements) == 0 {
+    give false;
+  }
+  let stmt0 = fn0.blocks[0].statements[0];
+  let stmt1 = fn0.blocks[1].statements[0];
+  give stmt0.place.local == "point"
+    and stmt0.rvalue.kind == MirRvalueKind.Struct
+    and stmt0.rvalue.ty == "Point"
+    and len(stmt0.rvalue.operands) >= 3
+    and stmt1.rvalue.ty == "int"
+    and stmt1.rvalue.operands[0].ty == "Point"
+    and fn0.entry_block == fn0.blocks[0].id;
+}
+
+proc test_mir_classifies_variant_ctor_and_method_dispatch_calls() -> bool {
+  let source: string =
+    "form Point { x: int }\n" +
+    "pick Option {\n" +
+    "  None,\n" +
+    "  Some(int),\n" +
+    "}\n" +
+    "trait Show {\n" +
+    "  proc show(self: Self, level: int) -> string;\n" +
+    "}\n" +
+    "impl Show for Point {\n" +
+    "  proc show(self: Self, level: int) -> string { give \"point\"; }\n" +
+    "}\n" +
+    "proc main() { let point = Point { x: 1 }; let opt = Option.Some(7); let shown = point.show(7); give shown; }\n";
+  let fe: FrontendOutput = frontend_run("mir_nominal_calls.vit", source);
+  let middle: MiddleOutput = middle_run(fe);
+  let mir = middle.mir;
+  if not mir.valid or len(mir.module.functions) < 2 or len(mir.module.functions[0].blocks) < 3 {
+    give false;
+  }
+  let fn0 = mir.module.functions[0];
+  let impl_fn = mir.module.functions[1];
+  let variant_stmt = fn0.blocks[1].statements[0];
+  let dispatch_stmt = fn0.blocks[2].statements[0];
+  give variant_stmt.rvalue.kind == MirRvalueKind.Call
+    and variant_stmt.rvalue.operator == "variant-ctor"
+    and variant_stmt.rvalue.text == "Option::Some"
+    and len(variant_stmt.rvalue.operands) == 1
+    and dispatch_stmt.rvalue.kind == MirRvalueKind.Call
+    and dispatch_stmt.rvalue.operator == "method-dispatch"
+    and dispatch_stmt.rvalue.text == "vitte_impl_Show_for_Point_show"
+    and len(dispatch_stmt.rvalue.operands) == 2
+    and impl_fn.name == "vitte_impl_Show_for_Point_show"
+    and len(impl_fn.params) == 2
+    and impl_fn.params[0].type_name == "Point"
+    and impl_fn.params[1].type_name == "int"
+    and impl_fn.return_type == "string";
+}
+
+proc test_mir_preserves_proc_params_for_regular_functions() -> bool {
+  let source: string = "proc add(borrow value: int, mut flag: bool, ...) -> int { if flag { give value; } give 0; }\n";
+  let fe: FrontendOutput = frontend_run("mir_proc_params.vit", source);
+  let middle: MiddleOutput = middle_run(fe);
+  let mir = middle.mir;
+  let fn0 = mir.module.functions[0];
+  give mir.valid
+    and fn0.name == "add"
+    and len(fn0.params) == 3
+    and fn0.params[0].name == "value"
+    and fn0.params[0].type_name == "int"
+    and fn0.params[0].mode == "borrow"
+    and fn0.params[0].borrowed
+    and fn0.params[1].name == "flag"
+    and fn0.params[1].type_name == "bool"
+    and fn0.params[1].mode == "mut"
+    and fn0.params[1].mutable
+    and fn0.params[2].variadic
+    and fn0.return_type == "int";
+}
+
+proc test_validate_mir_rejects_duplicate_blocks_and_invalid_assign_place() -> bool {
+  let bad_stmt: MirStatement = MirStatement {
+    id: 1,
+    span: ast_span_empty(),
+    kind: MirStatementKind.Assign,
+    place: MirPlace { local: "", projection: "", deref_depth: 0, mutable: false, moved: false, valid: false },
+    rvalue: MirRvalue {
+      kind: MirRvalueKind.Use,
+      text: "1",
+      operator: "",
+      binary_operator: 0 as MirBinaryOperator,
+      unary_operator: 0 as MirUnaryOperator,
+      borrow_kind: 0 as MirBorrowKind,
+      operands: [MirOperand { text: "1", place: MirPlace { local: "", projection: "", deref_depth: 0, mutable: false, moved: false, valid: false }, ty: "int", constant: true, move: false, valid: true }],
+      ty: "int",
+      temporary: false,
+      valid: true
+    },
+    reachable: true,
+    valid: true
+  };
+  let block0 = MirBlock { id: 1, label: "bb0", predecessors: [], statements: [bad_stmt], terminator: mir_terminator_return(), sealed: true, reachable: true, valid: true };
+  let block1 = MirBlock { id: 1, label: "bb1", predecessors: [], statements: [], terminator: mir_terminator_return(), sealed: true, reachable: true, valid: true };
+  let bad: MirUnit = MirUnit {
+    source_path: "manual_bad_mir.vit",
+    module: MirModule {
+      name: "manual",
+      functions: [MirFunction { id: 1, name: "main", entry_block: 1, params: [], return_type: "int", local_count: 1, temporary_count: 0, blocks: [block0, block1], valid: true }],
+      valid: true
+    },
+    function_count: 1,
+    block_count: 2,
+    instruction_count: 1,
+    lowered: true,
+    valid: true
+  };
+  give not validate_mir(bad).valid and mir_validation_reason(bad) == "duplicate-block-id";
+}
+
+proc test_validate_mir_rejects_unresolved_method_dispatch_target() -> bool {
+  let bad_stmt: MirStatement = MirStatement {
+    id: 7,
+    span: ast_span_empty(),
+    kind: MirStatementKind.Assign,
+    place: MirPlace { local: "shown", projection: "", deref_depth: 0, mutable: false, moved: false, valid: true },
+    rvalue: MirRvalue {
+      kind: MirRvalueKind.Call,
+      text: "Point::show",
+      operator: "method-dispatch",
+      binary_operator: 0 as MirBinaryOperator,
+      unary_operator: 0 as MirUnaryOperator,
+      borrow_kind: 0 as MirBorrowKind,
+      operands: [
+        MirOperand { text: "point", place: MirPlace { local: "point", projection: "", deref_depth: 0, mutable: false, moved: false, valid: true }, ty: "Point", constant: false, move: false, valid: true },
+        MirOperand { text: "7", place: MirPlace { local: "", projection: "", deref_depth: 0, mutable: false, moved: false, valid: false }, ty: "int", constant: true, move: false, valid: true }
+      ],
+      ty: "string",
+      temporary: false,
+      valid: true
+    },
+    reachable: true,
+    valid: true
+  };
+  let block0 = MirBlock { id: 1, label: "bb0", predecessors: [], statements: [bad_stmt], terminator: mir_terminator_return(), sealed: true, reachable: true, valid: true };
+  let bad: MirUnit = MirUnit {
+    source_path: "manual_bad_dispatch_mir.vit",
+    module: MirModule {
+      name: "manual",
+      functions: [MirFunction { id: 1, name: "main", entry_block: 1, params: [], return_type: "int", local_count: 1, temporary_count: 0, blocks: [block0], valid: true }],
+      valid: true
+    },
+    function_count: 1,
+    block_count: 1,
+    instruction_count: 1,
+    lowered: true,
+    valid: true
+  };
+  give not validate_mir(bad).valid and mir_validation_reason(bad) == "invalid-method-dispatch-target";
+}
+
+proc test_validate_mir_rejects_invalid_param_contract() -> bool {
+  let stmt: MirStatement = MirStatement {
+    id: 1,
+    span: ast_span_empty(),
+    kind: MirStatementKind.Return,
+    place: MirPlace { local: "", projection: "", deref_depth: 0, mutable: false, moved: false, valid: false },
+    rvalue: MirRvalue {
+      kind: MirRvalueKind.Use,
+      text: "0",
+      operator: "",
+      binary_operator: 0 as MirBinaryOperator,
+      unary_operator: 0 as MirUnaryOperator,
+      borrow_kind: 0 as MirBorrowKind,
+      operands: [int_constant_operand("0")],
+      ty: "int",
+      temporary: false,
+      valid: true
+    },
+    reachable: true,
+    valid: true
+  };
+  let bad: MirUnit = unit_with_functions(
+    "manual_bad_param_mir.vit",
+    [minimal_valid_function("main", [MirFunctionParam { name: "value", type_name: "int", mode: "borrow", mutable: false, borrowed: false, variadic: false, valid: true }], stmt)]
+  );
+  give not validate_mir(bad).valid and mir_validation_reason(bad) == "invalid-param-contract";
+}
+
+proc test_validate_mir_rejects_malformed_variant_ctor() -> bool {
+  let bad_stmt: MirStatement = MirStatement {
+    id: 9,
+    span: ast_span_empty(),
+    kind: MirStatementKind.Assign,
+    place: MirPlace { local: "opt", projection: "", deref_depth: 0, mutable: false, moved: false, valid: true },
+    rvalue: MirRvalue {
+      kind: MirRvalueKind.Call,
+      text: "Option::Some",
+      operator: "variant-ctor",
+      binary_operator: 0 as MirBinaryOperator,
+      unary_operator: 0 as MirUnaryOperator,
+      borrow_kind: 0 as MirBorrowKind,
+      operands: [int_constant_operand("1"), int_constant_operand("2")],
+      ty: "Option",
+      temporary: false,
+      valid: true
+    },
+    reachable: true,
+    valid: true
+  };
+  let bad: MirUnit = unit_with_functions("manual_bad_variant_ctor_mir.vit", [minimal_valid_function("main", [], bad_stmt)]);
+  give not validate_mir(bad).valid and mir_validation_reason(bad) == "invalid-variant-ctor-arity";
+}
+
+proc test_validate_mir_rejects_method_dispatch_arity_mismatch() -> bool {
+  let bad_stmt: MirStatement = MirStatement {
+    id: 11,
+    span: ast_span_empty(),
+    kind: MirStatementKind.Assign,
+    place: MirPlace { local: "shown", projection: "", deref_depth: 0, mutable: false, moved: false, valid: true },
+    rvalue: MirRvalue {
+      kind: MirRvalueKind.Call,
+      text: "vitte_impl_Show_for_Point_show",
+      operator: "method-dispatch",
+      binary_operator: 0 as MirBinaryOperator,
+      unary_operator: 0 as MirUnaryOperator,
+      borrow_kind: 0 as MirBorrowKind,
+      operands: [named_operand("point", "Point")],
+      ty: "string",
+      temporary: false,
+      valid: true
+    },
+    reachable: true,
+    valid: true
+  };
+  let main_fn: MirFunction = minimal_valid_function("main", [], bad_stmt);
+  let impl_fn: MirFunction = minimal_valid_function(
+    "vitte_impl_Show_for_Point_show",
+    [
+      MirFunctionParam { name: "self", type_name: "Point", mode: "", mutable: false, borrowed: false, variadic: false, valid: true },
+      MirFunctionParam { name: "level", type_name: "int", mode: "", mutable: false, borrowed: false, variadic: false, valid: true }
+    ],
+    MirStatement {
+      id: 12,
+      span: ast_span_empty(),
+      kind: MirStatementKind.Return,
+      place: MirPlace { local: "", projection: "", deref_depth: 0, mutable: false, moved: false, valid: false },
+      rvalue: MirRvalue {
+        kind: MirRvalueKind.Use,
+        text: "\"point\"",
+        operator: "",
+        binary_operator: 0 as MirBinaryOperator,
+        unary_operator: 0 as MirUnaryOperator,
+        borrow_kind: 0 as MirBorrowKind,
+        operands: [MirOperand { text: "\"point\"", place: MirPlace { local: "", projection: "", deref_depth: 0, mutable: false, moved: false, valid: false }, ty: "string", constant: true, move: false, valid: true }],
+        ty: "string",
+        temporary: false,
+        valid: true
+      },
+      reachable: true,
+      valid: true
+    }
+  );
+  let bad: MirUnit = unit_with_functions("manual_bad_dispatch_arity_mir.vit", [main_fn, impl_fn]);
+  give not validate_mir(bad).valid and mir_validation_reason(bad) == "invalid-method-dispatch-arity";
+}
+
+proc test_validate_mir_rejects_regular_call_arity_mismatch() -> bool {
+  let bad_stmt: MirStatement = MirStatement {
+    id: 13,
+    span: ast_span_empty(),
+    kind: MirStatementKind.Assign,
+    place: MirPlace { local: "y", projection: "", deref_depth: 0, mutable: false, moved: false, valid: true },
+    rvalue: MirRvalue {
+      kind: MirRvalueKind.Call,
+      text: "keep",
+      operator: "",
+      binary_operator: 0 as MirBinaryOperator,
+      unary_operator: 0 as MirUnaryOperator,
+      borrow_kind: 0 as MirBorrowKind,
+      operands: [named_operand("keep", "fn"), int_constant_operand("1"), int_constant_operand("2")],
+      ty: "int",
+      temporary: false,
+      valid: true
+    },
+    reachable: true,
+    valid: true
+  };
+  let main_fn: MirFunction = minimal_valid_function("main", [], bad_stmt);
+  let keep_fn: MirFunction = minimal_valid_function(
+    "keep",
+    [MirFunctionParam { name: "value", type_name: "int", mode: "borrow", mutable: false, borrowed: true, variadic: false, valid: true }],
+    MirStatement {
+      id: 14,
+      span: ast_span_empty(),
+      kind: MirStatementKind.Return,
+      place: MirPlace { local: "", projection: "", deref_depth: 0, mutable: false, moved: false, valid: false },
+      rvalue: MirRvalue {
+        kind: MirRvalueKind.Use,
+        text: "0",
+        operator: "",
+        binary_operator: 0 as MirBinaryOperator,
+        unary_operator: 0 as MirUnaryOperator,
+        borrow_kind: 0 as MirBorrowKind,
+        operands: [int_constant_operand("0")],
+        ty: "int",
+        temporary: false,
+        valid: true
+      },
+      reachable: true,
+      valid: true
+    }
+  );
+  let bad: MirUnit = unit_with_functions("manual_bad_regular_call_arity_mir.vit", [main_fn, keep_fn]);
+  give not validate_mir(bad).valid and mir_validation_reason(bad) == "invalid-regular-call-arity";
+}
+
+proc test_validate_mir_rejects_borrow_with_wrong_arity() -> bool {
+  let bad_stmt: MirStatement = MirStatement {
+    id: 15,
+    span: ast_span_empty(),
+    kind: MirStatementKind.Assign,
+    place: MirPlace { local: "r", projection: "", deref_depth: 0, mutable: false, moved: false, valid: true },
+    rvalue: MirRvalue {
+      kind: MirRvalueKind.BorrowShared,
+      text: "&x",
+      operator: "",
+      binary_operator: 0 as MirBinaryOperator,
+      unary_operator: 0 as MirUnaryOperator,
+      borrow_kind: 0 as MirBorrowKind,
+      operands: [],
+      ty: "int",
+      temporary: false,
+      valid: true
+    },
+    reachable: true,
+    valid: true
+  };
+  let bad: MirUnit = unit_with_functions("manual_bad_borrow_arity_mir.vit", [minimal_valid_function("main", [], bad_stmt)]);
+  give not validate_mir(bad).valid and mir_validation_reason(bad) == "invalid-borrow-arity";
+}
+
+proc test_validate_mir_rejects_borrow_of_constant() -> bool {
+  let bad_stmt: MirStatement = MirStatement {
+    id: 16,
+    span: ast_span_empty(),
+    kind: MirStatementKind.Assign,
+    place: MirPlace { local: "r", projection: "", deref_depth: 0, mutable: false, moved: false, valid: true },
+    rvalue: MirRvalue {
+      kind: MirRvalueKind.BorrowMut,
+      text: "&mut 1",
+      operator: "",
+      binary_operator: 0 as MirBinaryOperator,
+      unary_operator: 0 as MirUnaryOperator,
+      borrow_kind: 0 as MirBorrowKind,
+      operands: [int_constant_operand("1")],
+      ty: "int",
+      temporary: false,
+      valid: true
+    },
+    reachable: true,
+    valid: true
+  };
+  let bad: MirUnit = unit_with_functions("manual_bad_borrow_target_mir.vit", [minimal_valid_function("main", [], bad_stmt)]);
+  give not validate_mir(bad).valid and mir_validation_reason(bad) == "invalid-borrow-target";
+}
+
 proc run_all_tests() -> int {
   let failures: int = 0;
   if not test_mir_lowering() {
@@ -91,6 +504,39 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if not test_mir_preserves_projected_place() {
+    set failures = failures + 1;
+  }
+  if not test_mir_lowers_struct_and_surface_items() {
+    set failures = failures + 1;
+  }
+  if not test_mir_classifies_variant_ctor_and_method_dispatch_calls() {
+    set failures = failures + 1;
+  }
+  if not test_mir_preserves_proc_params_for_regular_functions() {
+    set failures = failures + 1;
+  }
+  if not test_validate_mir_rejects_duplicate_blocks_and_invalid_assign_place() {
+    set failures = failures + 1;
+  }
+  if not test_validate_mir_rejects_unresolved_method_dispatch_target() {
+    set failures = failures + 1;
+  }
+  if not test_validate_mir_rejects_invalid_param_contract() {
+    set failures = failures + 1;
+  }
+  if not test_validate_mir_rejects_malformed_variant_ctor() {
+    set failures = failures + 1;
+  }
+  if not test_validate_mir_rejects_method_dispatch_arity_mismatch() {
+    set failures = failures + 1;
+  }
+  if not test_validate_mir_rejects_regular_call_arity_mismatch() {
+    set failures = failures + 1;
+  }
+  if not test_validate_mir_rejects_borrow_with_wrong_arity() {
+    set failures = failures + 1;
+  }
+  if not test_validate_mir_rejects_borrow_of_constant() {
     set failures = failures + 1;
   }
   give failures;

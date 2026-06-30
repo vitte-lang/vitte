@@ -2,31 +2,38 @@ space vitte/compiler/middle/lower
 
 use vitte/compiler/analysis/pipeline.{ AnalysisOutput }
 use vitte/compiler/backend/ir.{
-    IrBlock,
-    IrFunction,
+  IrBlock,
+  IrFunction,
+  IrFunctionParam,
     IrInstruction,
     IrInstructionKind,
     IrLinkage,
+    IrNominalType,
     IrModule,
     IrModuleKind,
     IrTarget,
     IrUnit,
     IrUnitState,
     IrValue,
+    IrValueKind,
     IrVisibility,
     block_add_instruction,
     block_create,
     block_set_terminator,
     function_add_block,
     module_create,
+    module_add_nominal_type,
     module_add_function,
     module_add_external_symbol,
     module_add_export,
     module_add_import,
+    nominal_type_create,
     unit_empty,
     unit_add_module,
     function_ref_create,
     instruction_create,
+    instruction_with_call_abi,
+    ir_function_param,
     span_empty,
     target_native_x86_64_linux,
     terminator_branch,
@@ -38,7 +45,9 @@ use vitte/compiler/backend/ir.{
     unit_with_state,
     value_constant,
     value_place,
+    value_reference,
 }
+use vitte/compiler/middle/hir.{ HirItem, HirItemKind, HirNominalMember, HirNominalMemberKind }
 use vitte/compiler/middle/mir.{ MirBlock, MirFunction, MirOperand, MirRvalue, MirRvalueKind, MirStatement, MirStatementKind, MirTerminator, MirTerminatorKind, MirUnit }
 
 proc ir_visibility_for_function(name: string) -> IrVisibility {
@@ -83,12 +92,37 @@ proc ir_linkage_for_exports(name: string, exported_names: [string]) -> IrLinkage
 proc ir_value_from_operand(id: u64, operand: MirOperand) -> IrValue {
     if operand.place.valid {
         let place_text: string = operand.place.local + operand.place.projection;
-        give value_place(id, operand.place.local, place_text, "unknown");
+        give value_place(id, operand.place.local, place_text, operand.ty);
     }
     if operand.text != "" {
-        give value_constant(id, operand.text, "unknown");
+        give value_constant(id, operand.text, operand.ty);
     }
-    give value_constant(id, "<invalid>", "unknown");
+    give value_constant(id, "<invalid>", operand.ty);
+}
+
+proc operand_is_borrowed_param(fn0: MirFunction, operand: MirOperand) -> bool {
+    if not operand.place.valid or operand.place.local == "" {
+        give false;
+    }
+    let i: u64 = 0;
+    while i < len(fn0.params) {
+        if fn0.params[i].name == operand.place.local and fn0.params[i].borrowed {
+            give true;
+        }
+        set i = i + 1;
+    }
+    give false;
+}
+
+proc ir_call_arg_value_from_operand(id: u64, operand: MirOperand, borrowed: bool, mutable: bool, fn0: MirFunction) -> IrValue {
+    if borrowed and operand.place.valid and operand.place.local != "" {
+        let place_text: string = operand.place.local + operand.place.projection;
+        if operand_is_borrowed_param(fn0, operand) {
+            give value_reference(id, operand.place.local, place_text, operand.ty, mutable, true);
+        }
+        give value_reference(id, operand.place.local, place_text, operand.ty, mutable, false);
+    }
+    give ir_value_from_operand(id, operand);
 }
 
 proc ir_instruction_kind_from_rvalue(rvalue: MirRvalue) -> IrInstructionKind {
@@ -107,11 +141,102 @@ proc ir_instruction_kind_from_rvalue(rvalue: MirRvalue) -> IrInstructionKind {
     give IrInstructionKind.Assign;
 }
 
-proc ir_args_from_rvalue(statement_id: u64, rvalue: MirRvalue) -> [IrValue] {
+proc call_target_name(rvalue: MirRvalue) -> string {
+    if rvalue.operator == "variant-ctor" or rvalue.operator == "method-dispatch" {
+        give rvalue.text;
+    }
+    let open0: int = find(rvalue.text, "(");
+    if open0 > 0 {
+        give trim(slice(rvalue.text, 0, open0));
+    }
+    if len(rvalue.operands) > 0 and rvalue.operands[0].place.valid and rvalue.operands[0].place.local != "" {
+        give rvalue.operands[0].place.local;
+    }
+    if len(rvalue.operands) > 0 and rvalue.operands[0].text != "" {
+        give rvalue.operands[0].text;
+    }
+    give rvalue.text;
+}
+
+proc call_arg_start_index(rvalue: MirRvalue) -> u64 {
+    if rvalue.operator == "variant-ctor" or rvalue.operator == "method-dispatch" {
+        give 0;
+    }
+    if len(rvalue.operands) > 0 {
+        give 1;
+    }
+    give 0;
+}
+
+proc mir_function_params_by_name(functions: [MirFunction], name: string) -> [IrFunctionParam] {
+    let out: [IrFunctionParam] = [];
+    let i: u64 = 0;
+    while i < len(functions) {
+        if functions[i].name == name {
+            let j: u64 = 0;
+            while j < len(functions[i].params) {
+                set out = out + [ir_function_param(functions[i].params[j].name, functions[i].params[j].type_name, functions[i].params[j].mode, functions[i].params[j].mutable, functions[i].params[j].borrowed, functions[i].params[j].variadic, functions[i].params[j].valid)];
+                set j = j + 1;
+            }
+            give out;
+        }
+        set i = i + 1;
+    }
+    give out;
+}
+
+proc call_arg_start_for_rvalue(rvalue: MirRvalue) -> u64 {
+    give call_arg_start_index(rvalue);
+}
+
+proc ir_param_borrowed(params0: [IrFunctionParam], index: u64) -> bool {
+    let param_index: u64 = 0;
+    let i: u64 = 0;
+    while i < len(params0) {
+        if not params0[i].variadic {
+            if param_index == index {
+                give params0[i].borrowed;
+            }
+            set param_index = param_index + 1;
+        }
+        set i = i + 1;
+    }
+    give false;
+}
+
+proc ir_param_mutable(params0: [IrFunctionParam], index: u64) -> bool {
+    let param_index: u64 = 0;
+    let i: u64 = 0;
+    while i < len(params0) {
+        if not params0[i].variadic {
+            if param_index == index {
+                give params0[i].mutable;
+            }
+            set param_index = param_index + 1;
+        }
+        set i = i + 1;
+    }
+    give false;
+}
+
+proc call_param_borrowed_for_rvalue(rvalue: MirRvalue, functions: [MirFunction], arg_index: u64) -> bool {
+    let target: string = call_target_name(rvalue);
+    give ir_param_borrowed(mir_function_params_by_name(functions, target), arg_index);
+}
+
+proc call_param_mutable_for_rvalue(rvalue: MirRvalue, functions: [MirFunction], arg_index: u64) -> bool {
+    let target: string = call_target_name(rvalue);
+    give ir_param_mutable(mir_function_params_by_name(functions, target), arg_index);
+}
+
+proc ir_args_from_rvalue(statement_id: u64, rvalue: MirRvalue, call_arg_start: u64, functions: [MirFunction], fn0: MirFunction) -> [IrValue] {
     let args: [IrValue] = [];
     let i: u64 = 0;
     while i < len(rvalue.operands) {
-        set args = args + [ir_value_from_operand(statement_id + i + 1, rvalue.operands[i])];
+        let arg_index: u64 = if i >= call_arg_start { i - call_arg_start } else { 0 };
+        let borrowed: bool = i >= call_arg_start and call_param_borrowed_for_rvalue(rvalue, functions, arg_index);
+        let mutable: bool = i >= call_arg_start and call_param_mutable_for_rvalue(rvalue, functions, arg_index);
+        set args = args + [ir_call_arg_value_from_operand(statement_id + i + 1, rvalue.operands[i], borrowed, mutable, fn0)];
         set i = i + 1;
     }
     if len(args) == 0 and rvalue.text != "" {
@@ -120,15 +245,16 @@ proc ir_args_from_rvalue(statement_id: u64, rvalue: MirRvalue) -> [IrValue] {
     give args;
 }
 
-proc ir_instruction_from_mir(statement: MirStatement) -> IrInstruction {
-    let args: [IrValue] = ir_args_from_rvalue(statement.id, statement.rvalue);
+proc ir_instruction_from_mir(statement: MirStatement, functions: [MirFunction], fn0: MirFunction) -> IrInstruction {
+    let call_arg_start: u64 = if statement.rvalue.kind == MirRvalueKind.Call { call_arg_start_for_rvalue(statement.rvalue) } else { 0 };
+    let args: [IrValue] = ir_args_from_rvalue(statement.id, statement.rvalue, call_arg_start, functions, fn0);
     if statement.kind == MirStatementKind.Return {
         give instruction_create(
             statement.id,
             IrInstructionKind.ReturnValue,
             statement.rvalue.text,
             statement.rvalue.operator,
-            value_place(statement.id, "__return", "__return", "unknown"),
+            value_place(statement.id, "__return", "__return", statement.rvalue.ty),
             args,
             statement.span
         );
@@ -139,19 +265,41 @@ proc ir_instruction_from_mir(statement: MirStatement) -> IrInstruction {
             IrInstructionKind.Assert,
             statement.rvalue.text,
             statement.rvalue.operator,
-            value_constant(statement.id, "assert", "bool"),
+            value_constant(statement.id, "assert", statement.rvalue.ty),
             args,
             statement.span
         );
     }
     let place_text: string = statement.place.local + statement.place.projection;
-    give instruction_create(
+    let instruction0: IrInstruction = instruction_create(
         statement.id,
         ir_instruction_kind_from_rvalue(statement.rvalue),
         statement.rvalue.text,
         statement.rvalue.operator,
-        value_place(statement.id, statement.place.local, place_text, "unknown"),
+        value_place(statement.id, statement.place.local, place_text, statement.rvalue.ty),
         args,
+        statement.span
+    );
+    if statement.rvalue.kind == MirRvalueKind.Call {
+        give instruction_with_call_abi(instruction0, call_arg_start);
+    }
+    give instruction0;
+}
+
+proc borrow_instruction_id(statement_id: u64, arg_index: u64) -> u64 {
+    give statement_id * 100 + arg_index + 1;
+}
+
+proc borrow_instruction_for_call_arg(statement: MirStatement, arg_index: u64, arg_value: IrValue) -> IrInstruction {
+    let source: IrValue = ir_value_from_operand(borrow_instruction_id(statement.id, arg_index), statement.rvalue.operands[arg_index]);
+    let kind: IrInstructionKind = if arg_value.ref_mutable { IrInstructionKind.BorrowMut } else { IrInstructionKind.BorrowShared };
+    give instruction_create(
+        borrow_instruction_id(statement.id, arg_index),
+        kind,
+        source.text,
+        "",
+        arg_value,
+        [source],
         statement.span
     );
 }
@@ -169,20 +317,30 @@ proc ir_terminator_from_mir(term: MirTerminator) -> IrInstruction {
     give terminator_return();
 }
 
-proc lower_mir_block(block: MirBlock, function_name: string) -> IrBlock {
+proc lower_mir_block(block: MirBlock, fn0: MirFunction, functions: [MirFunction]) -> IrBlock {
     let block_id_text: string = block.id as string;
-    let block_name: string = function_name + "_bb" + block_id_text;
+    let block_name: string = fn0.name + "_bb" + block_id_text;
     let ir_block: IrBlock = block_create(block.id, block_name);
     let i: u64 = 0;
     let built: IrBlock = ir_block;
     while i < len(block.statements) {
-        set built = block_add_instruction(built, ir_instruction_from_mir(block.statements[i]));
+        let instruction0: IrInstruction = ir_instruction_from_mir(block.statements[i], functions, fn0);
+        if instruction0.kind == IrInstructionKind.Call {
+            let j: u64 = instruction0.call_arg_start;
+            while j < len(instruction0.args) {
+                if instruction0.args[j].kind == IrValueKind.Reference {
+                    set built = block_add_instruction(built, borrow_instruction_for_call_arg(block.statements[i], j, instruction0.args[j]));
+                }
+                set j = j + 1;
+            }
+        }
+        set built = block_add_instruction(built, instruction0);
         set i = i + 1;
     }
     give block_set_terminator(built, ir_terminator_from_mir(block.terminator));
 }
 
-proc lower_mir_function(module_name: string, fn0: MirFunction, exported_names: [string]) -> IrFunction {
+proc lower_mir_function(module_name: string, fn0: MirFunction, functions: [MirFunction], exported_names: [string]) -> IrFunction {
     let lowered: IrFunction = function_ref_create(
         fn0.id,
         fn0.name,
@@ -192,16 +350,263 @@ proc lower_mir_function(module_name: string, fn0: MirFunction, exported_names: [
         fn0.name == "main",
         span_empty()
     );
+    let params: [IrFunctionParam] = [];
+    let j: u64 = 0;
+    while j < len(fn0.params) {
+        set params = params + [ir_function_param(
+          fn0.params[j].name,
+          fn0.params[j].type_name,
+          fn0.params[j].mode,
+          fn0.params[j].mutable,
+          fn0.params[j].borrowed,
+          fn0.params[j].variadic,
+          fn0.params[j].valid
+        )];
+        set j = j + 1;
+    }
+    let with_sig: IrFunction = IrFunction {
+        id: lowered.id,
+        name: lowered.name,
+        module_name: lowered.module_name,
+        linkage: lowered.linkage,
+        visibility: lowered.visibility,
+        is_entry: lowered.is_entry,
+        span: lowered.span,
+        params: params,
+        return_type: fn0.return_type,
+        blocks: lowered.blocks,
+        valid: lowered.valid
+    };
     let i: u64 = 0;
-    let built: IrFunction = lowered;
+    let built: IrFunction = with_sig;
     while i < len(fn0.blocks) {
-        set built = function_add_block(built, lower_mir_block(fn0.blocks[i], fn0.name));
+        set built = function_add_block(built, lower_mir_block(fn0.blocks[i], fn0, functions));
         set i = i + 1;
     }
     give built;
 }
 
-proc lower_mir_as_ir_module(module_id: u64, module_name: string, source_path: string, kind: IrModuleKind, target: IrTarget, mir: MirUnit, exported_names: [string], imported_names: [string], external_symbol_names: [string]) -> IrModule {
+proc hir_item_is_nominal(item: HirItem) -> bool {
+    give item.kind == HirItemKind.Form
+        or item.kind == HirItemKind.Class
+        or item.kind == HirItemKind.Union
+        or item.kind == HirItemKind.Bits
+        or item.kind == HirItemKind.Pick
+        or item.kind == HirItemKind.Flags
+        or item.kind == HirItemKind.Trait
+        or item.kind == HirItemKind.Impl;
+}
+
+proc nominal_kind_name(kind: HirItemKind) -> string {
+    if kind == HirItemKind.Form {
+        give "form";
+    }
+    if kind == HirItemKind.Class {
+        give "class";
+    }
+    if kind == HirItemKind.Union {
+        give "union";
+    }
+    if kind == HirItemKind.Bits {
+        give "bits";
+    }
+    if kind == HirItemKind.Pick {
+        give "pick";
+    }
+    if kind == HirItemKind.Flags {
+        give "flags";
+    }
+    if kind == HirItemKind.Trait {
+        give "trait";
+    }
+    if kind == HirItemKind.Impl {
+        give "impl";
+    }
+    give "item";
+}
+
+proc nominal_member_kind_name(kind: HirNominalMemberKind) -> string {
+    if kind == HirNominalMemberKind.Field {
+        give "field";
+    }
+    if kind == HirNominalMemberKind.Variant {
+        give "variant";
+    }
+    if kind == HirNominalMemberKind.TraitMethod {
+        give "trait-method";
+    }
+    if kind == HirNominalMemberKind.ImplMethod {
+        give "impl-method";
+    }
+    give "member";
+}
+
+proc member_signature_text(params: [HirProcParam], return_type: string, drop_self: bool) -> string {
+    let parts: [string] = [];
+    let start_index: u64 = if drop_self and len(params) > 0 { 1 } else { 0 };
+    let i: u64 = start_index;
+    while i < len(params) {
+        set parts = parts + [if params[i].annotation_text != "" { params[i].annotation_text } else { "opaque" }];
+        set i = i + 1;
+    }
+    give "fn(" + join(parts, ", ") + ") -> " + if return_type != "" { return_type } else { "unit" };
+}
+
+proc nominal_member_type(item: HirItem, member: HirNominalMember) -> string {
+    if member.kind == HirNominalMemberKind.Field {
+        give if member.annotation_text != "" { member.annotation_text } else { "opaque" };
+    }
+    if member.kind == HirNominalMemberKind.Variant {
+        if item.kind == HirItemKind.Bits or item.kind == HirItemKind.Flags {
+            give if item.annotation_text != "" { item.annotation_text } else { item.name };
+        }
+        if member.annotation_text != "" {
+            give "fn(" + member.annotation_text + ") -> " + item.name;
+        }
+        give item.name;
+    }
+    give member_signature_text(member.params, member.annotation_text, true);
+}
+
+proc nominal_member_names(members: [HirNominalMember]) -> [string] {
+    let out: [string] = [];
+    let i: u64 = 0;
+    while i < len(members) {
+        set out = out + [members[i].name];
+        set i = i + 1;
+    }
+    give out;
+}
+
+proc nominal_member_kinds(members: [HirNominalMember]) -> [string] {
+    let out: [string] = [];
+    let i: u64 = 0;
+    while i < len(members) {
+        set out = out + [nominal_member_kind_name(members[i].kind)];
+        set i = i + 1;
+    }
+    give out;
+}
+
+proc nominal_member_types(item: HirItem) -> [string] {
+    let out: [string] = [];
+    let i: u64 = 0;
+    while i < len(item.members) {
+        set out = out + [nominal_member_type(item, item.members[i])];
+        set i = i + 1;
+  }
+  give out;
+}
+
+proc nominal_member_annotations(item: HirItem) -> [string] {
+    let out: [string] = [];
+    let i: u64 = 0;
+    while i < len(item.members) {
+        set out = out + [item.members[i].annotation_text];
+        set i = i + 1;
+    }
+    give out;
+}
+
+proc nominal_member_param_names(item: HirItem) -> [string] {
+    let out: [string] = [];
+    let i: u64 = 0;
+    while i < len(item.members) {
+        let names: [string] = [];
+        let j: u64 = 0;
+        while j < len(item.members[i].params) {
+            if item.members[i].params[j].name != "" {
+                set names = names + [item.members[i].params[j].name];
+            }
+            set j = j + 1;
+        }
+        set out = out + [join(names, "|")];
+        set i = i + 1;
+    }
+    give out;
+}
+
+proc nominal_member_param_types(item: HirItem) -> [string] {
+    let out: [string] = [];
+    let i: u64 = 0;
+    while i < len(item.members) {
+        let types0: [string] = [];
+        let j: u64 = 0;
+        while j < len(item.members[i].params) {
+            set types0 = types0 + [if item.members[i].params[j].annotation_text != "" { item.members[i].params[j].annotation_text } else { "opaque" }];
+            set j = j + 1;
+        }
+        set out = out + [join(types0, "|")];
+        set i = i + 1;
+    }
+    give out;
+}
+
+proc nominal_member_param_modes(item: HirItem) -> [string] {
+    let out: [string] = [];
+    let i: u64 = 0;
+    while i < len(item.members) {
+        let modes: [string] = [];
+        let j: u64 = 0;
+        while j < len(item.members[i].params) {
+            set modes = modes + [item.members[i].params[j].mode];
+            set j = j + 1;
+        }
+        set out = out + [join(modes, "|")];
+        set i = i + 1;
+    }
+    give out;
+}
+
+proc nominal_member_param_flags(item: HirItem, which: string) -> [string] {
+    let out: [string] = [];
+    let i: u64 = 0;
+    while i < len(item.members) {
+        let flags: [string] = [];
+        let j: u64 = 0;
+        while j < len(item.members[i].params) {
+            if which == "mutable" {
+                set flags = flags + [item.members[i].params[j].mutable as string];
+            } elif which == "borrowed" {
+                set flags = flags + [item.members[i].params[j].borrowed as string];
+            } else {
+                set flags = flags + [item.members[i].params[j].variadic as string];
+            }
+            set j = j + 1;
+        }
+        set out = out + [join(flags, "|")];
+        set i = i + 1;
+    }
+    give out;
+}
+
+proc nominal_type_from_hir_item(item: HirItem) -> IrNominalType {
+    let underlying_type: string = if item.kind == HirItemKind.Bits or item.kind == HirItemKind.Flags { item.annotation_text } else { "" };
+    let target_type: string = if item.kind == HirItemKind.Impl { item.target_type_text } else { "" };
+    give nominal_type_create(
+        item.name,
+        nominal_kind_name(item.kind),
+        item.abi,
+        underlying_type,
+        target_type,
+        item.generic_count,
+        item.member_count,
+        item.signature_param_count,
+        nominal_member_names(item.members),
+        nominal_member_kinds(item.members),
+        nominal_member_annotations(item),
+        nominal_member_types(item),
+        nominal_member_param_names(item),
+        nominal_member_param_types(item),
+        nominal_member_param_modes(item),
+        nominal_member_param_flags(item, "mutable"),
+        nominal_member_param_flags(item, "borrowed"),
+        nominal_member_param_flags(item, "variadic"),
+        item.exported
+    );
+}
+
+proc lower_mir_as_ir_module(module_id: u64, module_name: string, source_path: string, kind: IrModuleKind, target: IrTarget, mir: MirUnit, typed_hir_items: [HirItem], exported_names: [string], imported_names: [string], external_symbol_names: [string]) -> IrModule {
     let module0: IrModule = module_create(
         module_id,
         module_name,
@@ -216,8 +621,15 @@ proc lower_mir_as_ir_module(module_id: u64, module_name: string, source_path: st
         set i = i + 1;
     }
     set i = 0;
+    while i < len(typed_hir_items) {
+        if hir_item_is_nominal(typed_hir_items[i]) {
+            set built = module_add_nominal_type(built, nominal_type_from_hir_item(typed_hir_items[i]));
+        }
+        set i = i + 1;
+    }
+    set i = 0;
     while i < len(mir.module.functions) {
-        set built = module_add_function(built, lower_mir_function(module_name, mir.module.functions[i], exported_names));
+        set built = module_add_function(built, lower_mir_function(module_name, mir.module.functions[i], mir.module.functions, exported_names));
         set i = i + 1;
     }
     set i = 0;
@@ -247,6 +659,7 @@ proc lower_mir_to_ir_for_target(mir: MirUnit, analysis: AnalysisOutput, target: 
         IrModuleKind.Binary,
         target,
         mir,
+        analysis.typed_hir.module.items,
         [],
         [],
         []

@@ -1,6 +1,6 @@
 space vitte/compiler/backends/llvm_bindings
 
-use vitte/compiler/backend/ir.{ IrBlock, IrFunction, IrInstruction, IrInstructionKind, IrModule, IrUnit, unit_is_valid }
+use vitte/compiler/backend/ir.{ IrBlock, IrFunction, IrInstruction, IrInstructionKind, IrModule, IrModuleKind, IrNominalType, IrTarget, IrUnit, IrValue, IrValueKind, target_native_x86_64_linux, unit_is_valid }
 use vitte/compiler/backend/target/triple.{ triple_text }
 
 pick LlvmDiagnosticLevel {
@@ -256,6 +256,47 @@ proc llvm_operand_text(instruction: IrInstruction) -> string {
   give "0";
 }
 
+proc llvm_type_for_param(type_name: string, borrowed: bool) -> string {
+  let base: string = if type_name == "bool" { "i1" } elif type_name == "void" or type_name == "unit" { "void" } else { "i64" };
+  if borrowed {
+    give base + "*";
+  }
+  give base;
+}
+
+proc llvm_value_text(value: IrValue) -> string {
+  if value.constant != "" {
+    give value.constant;
+  }
+  if value.name != "" {
+    give "%" + value.name;
+  }
+  if value.text != "" {
+    give value.text;
+  }
+  give "0";
+}
+
+proc llvm_call_arg_text(instruction: IrInstruction, index: u64) -> string {
+  let value = instruction.args[index];
+  let borrowed: bool = value.kind == IrValueKind.Reference;
+  let arg_ty: string = llvm_type_for_param(value.type_name, borrowed);
+  if borrowed {
+    if value.kind == IrValueKind.Reference and value.name != "" {
+      if value.ref_passthrough {
+        give arg_ty + " %" + value.name;
+      }
+      let suffix: string = if value.ref_mutable { ".mutref" } else { ".ref" };
+      give arg_ty + " %" + value.name + suffix;
+    }
+    if value.name != "" {
+      give arg_ty + " %" + value.name;
+    }
+    give arg_ty + " null";
+  }
+  give arg_ty + " " + llvm_value_text(value);
+}
+
 proc llvm_rhs_text(instruction: IrInstruction) -> string {
   if len(instruction.args) <= 1 {
     give "0";
@@ -273,7 +314,152 @@ proc llvm_rhs_text(instruction: IrInstruction) -> string {
   give "0";
 }
 
-proc emit_llvm_instruction(instruction: IrInstruction) -> [string] {
+proc llvm_impl_method_symbol_name(trait_name: string, target_type: string, method_name: string) -> string {
+  give "vitte_impl_" + trait_name + "_for_" + target_type + "_" + method_name;
+}
+
+proc llvm_invalid_module() -> IrModule {
+  let target0: IrTarget = target_native_x86_64_linux();
+  give IrModule {
+    id: 0,
+    name: "",
+    source_path: "",
+    kind: IrModuleKind.Binary,
+    target: IrTarget {
+      triple: target0.triple,
+      data_layout: target0.data_layout,
+      pointer_width: target0.pointer_width,
+      little_endian: target0.little_endian,
+      feature_set: target0.feature_set,
+      valid: false
+    },
+    functions: [],
+    nominal_types: [],
+    imports: [],
+    external_symbols: [],
+    exports: [],
+    valid: false
+  };
+}
+
+proc llvm_invalid_nominal() -> IrNominalType {
+  give IrNominalType {
+    name: "",
+    kind: "",
+    abi: "",
+    underlying_type: "",
+    target_type: "",
+    generic_count: 0,
+    member_count: 0,
+    signature_param_count: 0,
+    member_names: [],
+    member_kinds: [],
+    member_annotations: [],
+    member_types: [],
+    member_param_names: [],
+    member_param_types: [],
+    member_param_modes: [],
+    member_param_mutables: [],
+    member_param_borroweds: [],
+    member_param_variadics: [],
+    exported: false,
+    valid: false
+  };
+}
+
+proc llvm_nominal_member_index(nominal: IrNominalType, member_name: string, member_kind: string) -> int {
+  let i: int = 0;
+  while i < len(nominal.member_names) {
+    if nominal.member_names[i] == member_name and i < len(nominal.member_kinds) and nominal.member_kinds[i] == member_kind {
+      give i;
+    }
+    set i = i + 1;
+  }
+  give -1;
+}
+
+proc llvm_module_pick_nominal(module0: IrModule, name: string) -> IrNominalType {
+  let i: u64 = 0;
+  while i < len(module0.nominal_types) {
+    if module0.nominal_types[i].kind == "pick" and module0.nominal_types[i].name == name {
+      give module0.nominal_types[i];
+    }
+    set i = i + 1;
+  }
+  give llvm_invalid_nominal();
+}
+
+proc llvm_module_impl_nominal(module0: IrModule, symbol_name: string) -> IrNominalType {
+  let i: u64 = 0;
+  while i < len(module0.nominal_types) {
+    let nominal: IrNominalType = module0.nominal_types[i];
+    if nominal.kind == "impl" {
+      let trait_name: string = nominal.name;
+      if trait_name == "" and nominal.underlying_type != "" {
+        set trait_name = nominal.underlying_type;
+      }
+      let j: u64 = 0;
+      while j < len(nominal.member_names) {
+        if j < len(nominal.member_kinds)
+          and nominal.member_kinds[j] == "impl-method"
+          and llvm_impl_method_symbol_name(trait_name, nominal.target_type, nominal.member_names[j]) == symbol_name {
+          give nominal;
+        }
+        set j = j + 1;
+      }
+    }
+    set i = i + 1;
+  }
+  give llvm_invalid_nominal();
+}
+
+proc llvm_nominal_call_metadata(module0: IrModule, instruction: IrInstruction) -> [string] {
+  if instruction.kind != IrInstructionKind.Call {
+    give [];
+  }
+  if instruction.operator == "variant-ctor" {
+    let sep: int = find(instruction.text, "::");
+    if sep > 0 {
+      let pick_name: string = slice(instruction.text, 0, sep);
+      let variant_name: string = slice(instruction.text, sep + 2, len(instruction.text));
+      let nominal: IrNominalType = llvm_module_pick_nominal(module0, pick_name);
+      if nominal.kind == "pick" {
+        let member_index: int = llvm_nominal_member_index(nominal, variant_name, "variant");
+        if member_index >= 0 {
+          let payload: string = if member_index < len(nominal.member_annotations) { nominal.member_annotations[member_index] } else { "" };
+          give ["  ; nominal-variant pick=" + pick_name + " variant=" + variant_name + " payload=" + payload];
+        }
+      }
+    }
+  }
+  if instruction.operator == "method-dispatch" {
+    let nominal: IrNominalType = llvm_module_impl_nominal(module0, instruction.text);
+    if nominal.kind == "impl" {
+      let trait_name: string = nominal.name;
+      if trait_name == "" and nominal.underlying_type != "" {
+        set trait_name = nominal.underlying_type;
+      }
+      let j: int = 0;
+      while j < len(nominal.member_names) {
+        if j < len(nominal.member_kinds)
+          and nominal.member_kinds[j] == "impl-method"
+          and llvm_impl_method_symbol_name(trait_name, nominal.target_type, nominal.member_names[j]) == instruction.text {
+          let params: string = if j < len(nominal.member_param_types) { nominal.member_param_types[j] } else { "" };
+          let return_type: string = if j < len(nominal.member_annotations) { nominal.member_annotations[j] } else { "" };
+          give ["  ; nominal-dispatch trait=" + trait_name + " target=" + nominal.target_type + " method=" + nominal.member_names[j] + " params=" + params + " return=" + return_type];
+        }
+        set j = j + 1;
+      }
+    }
+  }
+  give [];
+}
+
+proc llvm_invalid_lines(message: string) -> [string] {
+  give ["  ; invalid " + message];
+}
+
+proc emit_llvm_instruction(module0: IrModule, instruction: IrInstruction) -> [string] {
   if instruction.kind == IrInstructionKind.Assign {
     give ["  %" + instruction.dest.name + " = add i64 0, " + llvm_operand_text(instruction)];
   }
@@ -281,7 +467,20 @@ proc emit_llvm_instruction(instruction: IrInstruction) -> [string] {
     give ["  %" + instruction.dest.name + " = add i64 " + llvm_operand_text(instruction) + ", " + llvm_rhs_text(instruction)];
   }
   if instruction.kind == IrInstructionKind.Call {
-    give ["  %" + instruction.dest.name + " = call i64 @" + instruction.text + "()"];
+    let lines: [string] = llvm_nominal_call_metadata(module0, instruction);
+    if (instruction.operator == "variant-ctor" or instruction.operator == "method-dispatch") and len(lines) == 0 {
+      give llvm_invalid_lines("canonical nominal call " + instruction.text);
+    }
+    let args_text: string = "";
+    let i: u64 = instruction.call_arg_start;
+    while i < len(instruction.args) {
+      if args_text != "" {
+        set args_text = args_text + ", ";
+      }
+      set args_text = args_text + llvm_call_arg_text(instruction, i);
+      set i = i + 1;
+    }
+    give lines + ["  %" + instruction.dest.name + " = call i64 @" + instruction.text + "(" + args_text + ")"];
   }
   if instruction.kind == IrInstructionKind.Assert {
     give ["  ; assert " + instruction.text];
@@ -290,7 +489,23 @@ proc emit_llvm_instruction(instruction: IrInstruction) -> [string] {
     give ["  ret i64 " + llvm_operand_text(instruction)];
   }
   if instruction.kind == IrInstructionKind.BorrowShared or instruction.kind == IrInstructionKind.BorrowMut {
-    give ["  ; borrow " + instruction.text];
+    if len(instruction.args) != 1 or instruction.dest.kind != IrValueKind.Reference {
+      give llvm_invalid_lines("canonical borrow " + instruction.dest.name);
+    }
+    let source = instruction.args[0];
+    if instruction.kind == IrInstructionKind.BorrowShared and instruction.dest.ref_mutable {
+      give llvm_invalid_lines("canonical borrow_shared " + instruction.dest.name);
+    }
+    if instruction.kind == IrInstructionKind.BorrowMut and not instruction.dest.ref_mutable {
+      give llvm_invalid_lines("canonical borrow_mut " + instruction.dest.name);
+    }
+    let base_ty: string = llvm_type_for_param(source.type_name, false);
+    let ref_name: string = "%" + instruction.dest.name + if instruction.dest.ref_mutable { ".mutref" } else { ".ref" };
+    let value_name: string = if source.name != "" { "%" + source.name } else { source.constant };
+    give [
+      "  " + ref_name + " = alloca " + base_ty,
+      "  store " + base_ty + " " + value_name + ", " + base_ty + "* " + ref_name
+    ];
   }
   give ["  ; unsupported " + instruction.text];
 }
@@ -321,17 +536,57 @@ proc emit_llvm_block(block: IrBlock) -> [string] {
   let lines: [string] = ["bb" + block_id + ":"];
   let i: u64 = 0;
   while i < len(block.instructions) {
-    set lines = lines + emit_llvm_instruction(block.instructions[i]);
+    let instruction: IrInstruction = block.instructions[i];
+    if instruction.kind == IrInstructionKind.Call {
+      let args_text: string = "";
+      let j: u64 = instruction.call_arg_start;
+      while j < len(instruction.args) {
+        if args_text != "" {
+          set args_text = args_text + ", ";
+        }
+        set args_text = args_text + llvm_call_arg_text(instruction, j);
+        set j = j + 1;
+      }
+      set lines = lines + ["  %" + instruction.dest.name + " = call i64 @" + instruction.text + "(" + args_text + ")"];
+    } else {
+      set lines = lines + emit_llvm_instruction(llvm_invalid_module(), instruction);
+    }
     set i = i + 1;
   }
   give lines + emit_llvm_terminator(block);
 }
 
-proc emit_llvm_function(fn0: IrFunction) -> [string] {
-  let lines: [string] = ["define i64 @" + fn0.name + "() {"];
+proc emit_llvm_block_in_module(module0: IrModule, block: IrBlock) -> [string] {
+  let block_id: string = block.id as string;
+  let lines: [string] = ["bb" + block_id + ":"];
+  let i: u64 = 0;
+  while i < len(block.instructions) {
+    set lines = lines + emit_llvm_instruction(module0, block.instructions[i]);
+    set i = i + 1;
+  }
+  give lines + emit_llvm_terminator(block);
+}
+
+proc emit_llvm_function(module0: IrModule, fn0: IrFunction) -> [string] {
+  let return_ty: string = llvm_type_for_param(fn0.return_type, false);
+  let params_text: string = "";
+  let i0: u64 = 0;
+  while i0 < len(fn0.params) {
+    if params_text != "" {
+      set params_text = params_text + ", ";
+    }
+    if fn0.params[i0].variadic {
+      set params_text = params_text + "...";
+    } else {
+      let param_ty: string = llvm_type_for_param(fn0.params[i0].type_name, fn0.params[i0].borrowed);
+      set params_text = params_text + param_ty + " %" + if fn0.params[i0].name != "" { fn0.params[i0].name } else { "arg" + string(i0) };
+    }
+    set i0 = i0 + 1;
+  }
+  let lines: [string] = ["define " + return_ty + " @" + fn0.name + "(" + params_text + ") {"];
   let i: u64 = 0;
   while i < len(fn0.blocks) {
-    set lines = lines + emit_llvm_block(fn0.blocks[i]);
+    set lines = lines + emit_llvm_block_in_module(module0, fn0.blocks[i]);
     set i = i + 1;
   }
   give lines + ["}", ""];
@@ -344,9 +599,23 @@ proc emit_llvm_module(module0: IrModule) -> [string] {
     "target datalayout = \"" + module0.target.data_layout + "\"",
     ""
   ];
+  let n: u64 = 0;
+  while n < len(module0.nominal_types) {
+    let nominal = module0.nominal_types[n];
+    set lines = lines + [
+      "; nominal name=" + nominal.name + " kind=" + nominal.kind + " members=" + nominal.member_count as string,
+      "; nominal member_annotations=" + join(nominal.member_annotations, ","),
+      "; nominal member_param_names=" + join(nominal.member_param_names, ","),
+      "; nominal member_param_types=" + join(nominal.member_param_types, ",")
+    ];
+    set n = n + 1;
+  }
+  if len(module0.nominal_types) > 0 {
+    set lines = lines + [""];
+  }
   let i: u64 = 0;
   while i < len(module0.functions) {
-    set lines = lines + emit_llvm_function(module0.functions[i]);
+    set lines = lines + emit_llvm_function(module0, module0.functions[i]);
     set i = i + 1;
   }
   give lines;

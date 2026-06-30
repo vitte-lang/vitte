@@ -32,7 +32,7 @@ use vitte/compiler/diagnostics/diagnostic.{
   lexer_unterminated_string
 }
 use vitte/compiler/diagnostics/json.{ json_diagnostic }
-use vitte/compiler/diagnostics/lsp.{ LspCodeAction, LspDiagnostic, lsp_code_actions, lsp_diagnostic, lsp_report_code_actions }
+use vitte/compiler/diagnostics/lsp.{ LspCanonicalContext, LspCodeAction, LspDiagnostic, LspPublishDiagnosticsParams, lsp_canonical_context, lsp_code_actions, lsp_diagnostic, lsp_diagnostic_with_canonical_context, lsp_publish_report_with_canonical_context, lsp_report_code_actions }
 
 const VERSION_TEXT: string = "diagnostic snapshot tests 0.1.0"
 const BANNER_TEXT: string = "diagnostic snapshot tests"
@@ -175,6 +175,21 @@ proc lsp_has_machine_context(diag: Diagnostic) -> bool {
     and find(actual.data, "fixes") >= 0;
 }
 
+proc lsp_has_canonical_context(diag: Diagnostic) -> bool {
+  let context: LspCanonicalContext = lsp_canonical_context("ir_validate", "invalid-method-dispatch-target", "invalid-method-dispatch-target");
+  let actual: LspDiagnostic = lsp_diagnostic_with_canonical_context(diag, context);
+  let params: LspPublishDiagnosticsParams = lsp_publish_report_with_canonical_context("file:///tmp/sample.vit", diagnostic_report([diag]), 7, context);
+  give actual.canonical_context.pipeline_failed_at == "ir_validate"
+    and actual.canonical_context.pipeline_failure_reason == "invalid-method-dispatch-target"
+    and actual.canonical_context.validation_reason == "invalid-method-dispatch-target"
+    and find(actual.data, "pipeline_failed_at=ir_validate") >= 0
+    and find(actual.data, "pipeline_failure_reason=invalid-method-dispatch-target") >= 0
+    and find(actual.data, "validation_reason=invalid-method-dispatch-target") >= 0
+    and params.canonical_context.pipeline_failed_at == "ir_validate"
+    and len(params.diagnostics) == 1
+    and params.diagnostics[0].canonical_context.validation_reason == "invalid-method-dispatch-target";
+}
+
 proc diagnostic_has_suggestion_text(diag: Diagnostic, text: string) -> bool {
   let i: u64 = 0;
   while i < len(diag.suggestions) {
@@ -305,6 +320,7 @@ proc test_machine_diagnostic_contract() -> bool {
   let diag: Diagnostic = sample_parser_diagnostic();
   let report: DiagnosticReport = diagnostic_report([sample_parser_diagnostic(), sample_typeck_diagnostic()]);
   give lsp_has_machine_context(diag)
+    and lsp_has_canonical_context(diag)
     and explain_has_actionable_context("E0001")
     and explain_has_actionable_context("P000_UNBALANCED")
     and explain_has_actionable_context("TYPECK_E_ASSIGN_MISMATCH")

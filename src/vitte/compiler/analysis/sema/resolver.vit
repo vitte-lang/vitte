@@ -19,7 +19,7 @@ use vitte/compiler/analysis/sema/scopes.{
   symbol_visible
 }
 use vitte/compiler/analysis/sema/visibility.{ visibility_valid }
-use vitte/compiler/middle/hir.{ HirExpr, HirExprKind, HirItem, HirItemKind, HirModule, HirStmt, HirStmtKind, HirUnit }
+use vitte/compiler/middle/hir.{ HirExpr, HirExprKind, HirItem, HirItemKind, HirModule, HirNominalMember, HirProcParam, HirStmt, HirStmtKind, HirUnit }
 
 form SemaResult {
   diagnostics: [SemaDiagnostic]
@@ -59,6 +59,22 @@ form SemaStmtListWalk {
   valid: bool
 }
 
+form SemaMemberWalk {
+  member: HirNominalMember
+  diagnostics: [SemaDiagnostic]
+  symbols: [SemaSymbol]
+  next_symbol_id: u64
+  valid: bool
+}
+
+form SemaMemberListWalk {
+  members: [HirNominalMember]
+  diagnostics: [SemaDiagnostic]
+  symbols: [SemaSymbol]
+  next_symbol_id: u64
+  valid: bool
+}
+
 proc sema_add_diag(diagnostics: [SemaDiagnostic], diagnostic: SemaDiagnostic) -> [SemaDiagnostic] {
   let i: u64 = 0;
   while i < len(diagnostics) {
@@ -68,6 +84,28 @@ proc sema_add_diag(diagnostics: [SemaDiagnostic], diagnostic: SemaDiagnostic) ->
     set i = i + 1;
   }
   give diagnostics + [diagnostic];
+}
+
+proc item_symbol_kind(kind: HirItemKind) -> SemaSymbolKind {
+  if kind == HirItemKind.Proc or kind == HirItemKind.Query or kind == HirItemKind.Intrinsic {
+    give SemaSymbolKind.Function;
+  }
+  if kind == HirItemKind.Const {
+    give SemaSymbolKind.Const;
+  }
+  if kind == HirItemKind.Static or kind == HirItemKind.Global {
+    give SemaSymbolKind.Global;
+  }
+  if kind == HirItemKind.Type or kind == HirItemKind.Opaque or kind == HirItemKind.Bits or kind == HirItemKind.Flags {
+    give SemaSymbolKind.Type;
+  }
+  if kind == HirItemKind.Form or kind == HirItemKind.Class or kind == HirItemKind.Union {
+    give SemaSymbolKind.Form;
+  }
+  if kind == HirItemKind.Pick {
+    give SemaSymbolKind.Pick;
+  }
+  give SemaSymbolKind.Item;
 }
 
 proc sema_has_fatal(diagnostics: [SemaDiagnostic]) -> bool {
@@ -417,6 +455,7 @@ proc annotate_stmt(module_symbols: [SemaSymbol], local_symbols: [SemaSymbol], st
       target_binding: target_binding,
       target_resolved_id: target_resolved_id,
       target_resolved_kind: target_resolved_kind,
+      annotation_text: stmt.annotation_text,
       expr: expr_walk.expr,
       message: stmt.message,
       mutable: stmt.mutable,
@@ -450,6 +489,96 @@ proc annotate_stmt_list(module_symbols: [SemaSymbol], local_symbols: [SemaSymbol
   }
   give SemaStmtListWalk {
     stmts: out,
+    diagnostics: diagnostics,
+    symbols: current_symbols,
+    next_symbol_id: current_next_id,
+    valid: not sema_has_fatal(diagnostics)
+  };
+}
+
+proc member_symbol_kind(item: HirItem, member: HirNominalMember) -> SemaSymbolKind {
+  if item.kind == HirItemKind.Form or item.kind == HirItemKind.Class or item.kind == HirItemKind.Union {
+    give SemaSymbolKind.Field;
+  }
+  if item.kind == HirItemKind.Pick or item.kind == HirItemKind.Bits or item.kind == HirItemKind.Flags {
+    give SemaSymbolKind.Variant;
+  }
+  give SemaSymbolKind.Function;
+}
+
+proc member_param_symbols(params: [HirProcParam], scope_depth: u64, next_symbol_id: u64) -> SemaWalk {
+  let symbols: [SemaSymbol] = [];
+  let diagnostics: [SemaDiagnostic] = [];
+  let current_next_id: u64 = next_symbol_id;
+  let i: u64 = 0;
+  while i < len(params) {
+    if params[i].name != "" and not params[i].variadic {
+      if symbol_index(symbols, params[i].name) >= 0 {
+        set diagnostics = sema_add_diag(diagnostics, sema_diagnostic(
+          "SEMA_E_DUPLICATE_PARAM",
+          SemaSeverity.Error,
+          "duplicate member parameter `" + params[i].name + "`",
+          [params[i].name],
+          "rename one of the conflicting parameters",
+          sema_span_empty(),
+          true
+        ));
+      } else {
+        set symbols = symbols + [sema_symbol(current_next_id, params[i].name, SemaSymbolKind.Parameter, scope_depth, false, "private", 0)];
+        set current_next_id = current_next_id + 1;
+      }
+    }
+    set i = i + 1;
+  }
+  give SemaWalk {
+    diagnostics: diagnostics,
+    symbols: symbols,
+    next_symbol_id: current_next_id,
+    valid: not sema_has_fatal(diagnostics)
+  };
+}
+
+proc annotate_member(module_symbols: [SemaSymbol], item: HirItem, member: HirNominalMember, next_symbol_id: u64) -> SemaMemberWalk {
+  let param_walk: SemaWalk = member_param_symbols(member.params, 1, next_symbol_id);
+  let expr_walk: SemaExprWalk = annotate_expr(member.expr, module_symbols + param_walk.symbols, 1, param_walk.next_symbol_id);
+  let body_walk: SemaStmtListWalk = annotate_stmt_list(module_symbols, param_walk.symbols, member.body_stmts, expr_walk.next_symbol_id);
+  let all_diagnostics: [SemaDiagnostic] = param_walk.diagnostics + expr_walk.diagnostics + body_walk.diagnostics;
+  give SemaMemberWalk {
+    member: HirNominalMember {
+      id: member.id,
+      span: member.span,
+      kind: member.kind,
+      name: member.name,
+      annotation_text: member.annotation_text,
+      expr: expr_walk.expr,
+      params: member.params,
+      body_stmts: body_walk.stmts,
+      message: member.message,
+      valid: member.valid
+    },
+    diagnostics: all_diagnostics,
+    symbols: module_symbols,
+    next_symbol_id: body_walk.next_symbol_id,
+    valid: not sema_has_fatal(all_diagnostics)
+  };
+}
+
+proc annotate_member_list(module_symbols: [SemaSymbol], item: HirItem, members: [HirNominalMember], next_symbol_id: u64) -> SemaMemberListWalk {
+  let out: [HirNominalMember] = [];
+  let diagnostics: [SemaDiagnostic] = [];
+  let current_symbols: [SemaSymbol] = module_symbols;
+  let current_next_id: u64 = next_symbol_id;
+  let i: u64 = 0;
+  while i < len(members) {
+    let member_walk: SemaMemberWalk = annotate_member(current_symbols, item, members[i], current_next_id);
+    set out = out + [member_walk.member];
+    set diagnostics = diagnostics + member_walk.diagnostics;
+    set current_symbols = member_walk.symbols;
+    set current_next_id = member_walk.next_symbol_id;
+    set i = i + 1;
+  }
+  give SemaMemberListWalk {
+    members: out,
     diagnostics: diagnostics,
     symbols: current_symbols,
     next_symbol_id: current_next_id,
@@ -492,8 +621,16 @@ proc collect_module_symbols_with_imports(hir: HirUnit, imported_symbols: [SemaSy
           true
         ));
       } else {
-        set symbols = symbols + [sema_symbol(next_symbol_id, item.name, SemaSymbolKind.Item, 0, false, item.visibility, item.span.start_line)];
+        set symbols = symbols + [sema_symbol(next_symbol_id, item.name, item_symbol_kind(item.kind), 0, false, item.visibility, item.span.start_line)];
         set next_symbol_id = next_symbol_id + 1;
+        let j: u64 = 0;
+        while j < len(item.members) {
+          if item.members[j].name != "" {
+            set symbols = symbols + [sema_symbol(next_symbol_id, item.name + "::" + item.members[j].name, member_symbol_kind(item, item.members[j]), 0, false, item.visibility, item.members[j].span.start_line)];
+            set next_symbol_id = next_symbol_id + 1;
+          }
+          set j = j + 1;
+        }
       }
     }
     set i = i + 1;
@@ -522,6 +659,7 @@ proc annotate_item(module_symbols: [SemaSymbol], item: HirItem, next_symbol_id: 
       target_binding: "",
       target_resolved_id: 0,
       target_resolved_kind: "",
+      annotation_text: "",
       expr: expr_walk.expr,
       message: "",
       mutable: false,
@@ -537,6 +675,10 @@ proc annotate_item(module_symbols: [SemaSymbol], item: HirItem, next_symbol_id: 
     next_symbol_id: body_walk.next_symbol_id,
     valid: all_valid
   };
+}
+
+proc item_param_symbols(params: [HirProcParam], next_symbol_id: u64) -> SemaWalk {
+  give member_param_symbols(params, 1, next_symbol_id);
 }
 
 proc run_sema_hir_with_imports(hir: HirUnit, imported_symbols: [SemaSymbol]) -> SemaResult {
@@ -567,13 +709,15 @@ proc run_sema_hir_with_imports(hir: HirUnit, imported_symbols: [SemaSymbol]) -> 
   while i < len(hir.module.items) {
     let item: HirItem = hir.module.items[i];
     let expr_walk: SemaExprWalk = annotate_expr(item.expr, module_symbols, 0, current_next_id);
-    let body_walk: SemaStmtListWalk = annotate_stmt_list(module_symbols, [], item.stmts, expr_walk.next_symbol_id);
+    let param_walk: SemaWalk = item_param_symbols(item.params, expr_walk.next_symbol_id);
+    let body_walk: SemaStmtListWalk = annotate_stmt_list(module_symbols, param_walk.symbols, item.stmts, param_walk.next_symbol_id);
+    let member_walk: SemaMemberListWalk = annotate_member_list(module_symbols, item, item.members, body_walk.next_symbol_id);
     let resolved: SemaSymbol = if item.kind == HirItemKind.Space or item.kind == HirItemKind.Use or item.kind == HirItemKind.Export {
       sema_symbol(0, "", SemaSymbolKind.Local, 0, false, "", 0)
     } else {
       resolve_symbol(module_symbols, item.name, 0)
     };
-    set diagnostics = diagnostics + expr_walk.diagnostics + body_walk.diagnostics;
+    set diagnostics = diagnostics + expr_walk.diagnostics + param_walk.diagnostics + body_walk.diagnostics + member_walk.diagnostics;
     set items = items + [HirItem {
       id: item.id,
       span: item.span,
@@ -582,14 +726,26 @@ proc run_sema_hir_with_imports(hir: HirUnit, imported_symbols: [SemaSymbol]) -> 
       resolved_id: resolved.id,
       namespace: item.namespace,
       visibility: item.visibility,
+      exported: item.exported,
+      abi: item.abi,
+      generic_count: item.generic_count,
+      type_param_count: item.type_param_count,
+      attribute_count: item.attribute_count,
+      modifier_count: item.modifier_count,
+      member_count: item.member_count,
+      signature_param_count: item.signature_param_count,
+      params: item.params,
+      annotation_text: item.annotation_text,
+      target_type_text: item.target_type_text,
       expr: expr_walk.expr,
       stmts: body_walk.stmts,
+      members: member_walk.members,
       message: item.message,
       scope_depth: item.scope_depth,
       diagnostics: item.diagnostics,
       valid: item.valid
     }];
-    set current_next_id = body_walk.next_symbol_id;
+    set current_next_id = member_walk.next_symbol_id;
     set i = i + 1;
   }
 

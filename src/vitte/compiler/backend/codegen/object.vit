@@ -180,6 +180,17 @@ proc pseudo_symbol_table(unit: IrUnit) -> string {
             set j = j + 1;
         }
 
+        set j = 0;
+        while j < len(module0.nominal_types) {
+            let nominal = module0.nominal_types[j];
+            let line: string = pseudo_qualified_symbol(module0.name, nominal.name) + " " + pseudo_kv("kind", nominal.kind) + " " + pseudo_kv("members", nominal.member_count as string) + " " + pseudo_kv("exported", pseudo_bool_text(nominal.exported));
+            if len(nominal.member_names) > 0 {
+                set line = line + " " + pseudo_kv("member_names", join(nominal.member_names, ","));
+            }
+            set built = pseudo_append_line(built, line);
+            set j = j + 1;
+        }
+
         set i = i + 1;
     }
 
@@ -206,6 +217,16 @@ proc pseudo_string_table(unit: IrUnit) -> string {
             set built = pseudo_append_line(
                 built,
                 module0.functions[j].name
+            );
+
+            set j = j + 1;
+        }
+
+        set j = 0;
+        while j < len(module0.nominal_types) {
+            set built = pseudo_append_line(
+                built,
+                "type:" + module0.nominal_types[j].kind + ":" + module0.nominal_types[j].name
             );
 
             set j = j + 1;
@@ -262,6 +283,59 @@ proc pseudo_relocation_table(unit: IrUnit) -> string {
     give built;
 }
 
+proc pseudo_metadata_table(unit: IrUnit) -> string {
+    let built: string = "";
+    let i: u64 = 0;
+
+    while i < len(unit.modules) {
+        let module0 = unit.modules[i];
+        let j: u64 = 0;
+
+        while j < len(module0.nominal_types) {
+            let nominal = module0.nominal_types[j];
+            let line: string = module0.name
+                + " "
+                + pseudo_kv("kind", nominal.kind)
+                + " "
+                + pseudo_kv("name", nominal.name)
+                + " "
+                + pseudo_kv("underlying", nominal.underlying_type)
+                + " "
+                + pseudo_kv("target", nominal.target_type)
+                + " "
+                + pseudo_kv("generics", nominal.generic_count as string)
+                + " "
+                + pseudo_kv("members", nominal.member_count as string)
+                + " "
+                + pseudo_kv("member_names", join(nominal.member_names, ","))
+                + " "
+                + pseudo_kv("member_kinds", join(nominal.member_kinds, ","))
+                + " "
+                + pseudo_kv("member_annotations", join(nominal.member_annotations, ","))
+                + " "
+                + pseudo_kv("member_types", join(nominal.member_types, ","))
+                + " "
+                + pseudo_kv("member_param_names", join(nominal.member_param_names, ","))
+                + " "
+                + pseudo_kv("member_param_types", join(nominal.member_param_types, ","))
+                + " "
+                + pseudo_kv("member_param_modes", join(nominal.member_param_modes, ","))
+                + " "
+                + pseudo_kv("member_param_mutables", join(nominal.member_param_mutables, ","))
+                + " "
+                + pseudo_kv("member_param_borroweds", join(nominal.member_param_borroweds, ","))
+                + " "
+                + pseudo_kv("member_param_variadics", join(nominal.member_param_variadics, ","));
+            set built = pseudo_append_line(built, line);
+            set j = j + 1;
+        }
+
+        set i = i + 1;
+    }
+
+    give built;
+}
+
 proc pseudo_debug_section(unit: IrUnit) -> string {
     let entry_symbol: string = pseudo_entry_symbol(unit);
 
@@ -295,6 +369,10 @@ proc pseudo_metadata_section(unit: IrUnit, config: PseudoObjectConfig) -> string
     set built = pseudo_append_line(built, pseudo_kv("has_symtab", pseudo_bool_text(config.include_symbol_table)));
     set built = pseudo_append_line(built, pseudo_kv("has_strtab", pseudo_bool_text(config.include_string_table)));
     set built = pseudo_append_line(built, pseudo_kv("has_relocations", pseudo_bool_text(config.include_relocations)));
+    let nominal_metadata: string = pseudo_metadata_table(unit);
+    if nominal_metadata != "" {
+        set built = pseudo_append_line(built, nominal_metadata);
+    }
 
     give built;
 }

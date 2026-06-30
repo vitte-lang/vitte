@@ -1,10 +1,18 @@
 space vitte/compiler/driver
 
 use vitte/compiler/driver/commands.{ DriverCommand, command_from_text }
-use vitte/compiler/driver/compile.{ DriverBackendModuleSetResult, DriverCompileConfig, DriverCompileResult, DriverDiagnostic, DriverDiagnosticLevel, DriverModuleInput, check_source_with_config, compile_source_set_with_config, compile_source_with_config, default_compile_config, dump_ast_json, dump_diagnostics_json, dump_hir_json, dump_mir_json }
+use vitte/compiler/driver/compile.{ DriverAnalysisArtifacts, DriverBackendModuleSetResult, DriverCompileConfig, DriverCompileResult, DriverDiagnostic, DriverDiagnosticLevel, DriverModuleInput, DriverModuleSetArtifacts, analyze_source, check_source_with_config, compile_source_set_with_config, compile_source_with_config, default_compile_config, dump_ast_json, dump_diagnostics_json, dump_hir_json, dump_mir_json }
+use vitte/compiler/backend/ir.{ ir_validation_reason, unit_is_valid }
+use vitte/compiler/middle/mir/validate.{ mir_validation_reason }
 use vitte/compiler/driver/exit_status.{ exit_code }
 use vitte/compiler/driver/result.{ CliReportResult, CliRunResult }
 use vitte/compiler/driver/integration_registry.{ compiler_critical_modules, driver_integration_stamp }
+
+form PipelineFailureSummary {
+    pipeline_failed_at: string
+    pipeline_failure_reason: string
+    validation_reason: string
+}
 
 form CompileReport {
     command: string
@@ -30,6 +38,9 @@ form CompileReport {
     inactive_modules: [string]
     status: string
     message: string
+    pipeline_failed_at: string
+    pipeline_failure_reason: string
+    validation_reason: string
     grammar_version: string
     token_count: u64
     toplevel_count: u64
@@ -62,6 +73,9 @@ form ModuleSetCompileReport {
     diagnostics: [DriverDiagnostic]
     status: string
     message: string
+    pipeline_failed_at: string
+    pipeline_failure_reason: string
+    validation_reason: string
     entry_symbol: string
     section_count: u64
     import_count: u64
@@ -211,15 +225,84 @@ proc diagnostics_json(diagnostics: [DriverDiagnostic]) -> string {
     give "[" + entries + "]";
 }
 
+proc pipeline_failure_summary_none() -> PipelineFailureSummary {
+    give PipelineFailureSummary {
+        pipeline_failed_at: "none",
+        pipeline_failure_reason: "none",
+        validation_reason: "none"
+    };
+}
+
+proc pipeline_failure_summary(stage_name: string, reason: string) -> PipelineFailureSummary {
+    give PipelineFailureSummary {
+        pipeline_failed_at: stage_name,
+        pipeline_failure_reason: reason,
+        validation_reason: reason
+    };
+}
+
+proc compile_report_failure_summary(command: DriverCommand, source_path: string, source_text: string, driver_result: DriverCompileResult, config: DriverCompileConfig) -> PipelineFailureSummary {
+    if exit_code(driver_result.status) == 0 {
+        give pipeline_failure_summary_none();
+    }
+
+    let artifacts: DriverAnalysisArtifacts = analyze_source(source_path, source_text);
+    if not artifacts.mir.valid {
+        let reason: string = mir_validation_reason(artifacts.mir);
+        if reason != "none" {
+            give pipeline_failure_summary("mir_validate", reason);
+        }
+    }
+
+    if command != DriverCommand.Check {
+        let backend = compile_source_set_with_config([DriverModuleInput { source_path: source_path, source_text: source_text, valid: source_path != "" }], config);
+        if unit_is_valid(backend.ir_unit) {
+            give pipeline_failure_summary_none();
+        }
+        let ir_reason0: string = ir_validation_reason(backend.ir_unit);
+        if ir_reason0 != "none" {
+            give pipeline_failure_summary("ir_validate", ir_reason0);
+        }
+    }
+
+    give pipeline_failure_summary_none();
+}
+
+proc module_set_mir_validation_reason(artifacts: DriverModuleSetArtifacts) -> string {
+    let i: u64 = 0;
+    while i < len(artifacts.modules) {
+        let reason: string = mir_validation_reason(artifacts.modules[i].mir);
+        if reason != "none" {
+            give reason;
+        }
+        set i = i + 1;
+    }
+    give "none";
+}
+
+proc module_set_failure_summary(result: DriverBackendModuleSetResult) -> PipelineFailureSummary {
+    let mir_reason: string = module_set_mir_validation_reason(result.analysis);
+    if mir_reason != "none" {
+        give pipeline_failure_summary("mir_validate", mir_reason);
+    }
+    if not unit_is_valid(result.ir_unit) {
+        let ir_reason0: string = ir_validation_reason(result.ir_unit);
+        if ir_reason0 != "none" {
+            give pipeline_failure_summary("ir_validate", ir_reason0);
+        }
+    }
+    give pipeline_failure_summary_none();
+}
+
 proc compile_report_json(report: CompileReport) -> string {
     let active_count: string = "\"active_count\":" + to_string(len(report.active_modules));
     let inactive_count: string = "\"inactive_count\":" + to_string(len(report.inactive_modules));
-    let json: string = "{\"command\":\"" + json_escape(report.command) + "\",\"source_path\":\"" + json_escape(report.source_path) + "\",\"exit_code\":" + to_string(report.exit_code) + ",\"backend_name\":\"" + json_escape(report.backend_name) + "\",\"target_name\":\"" + json_escape(report.target_name) + "\",\"profile_name\":\"" + json_escape(report.profile_name) + "\",\"opt_level\":\"" + json_escape(report.opt_level) + "\",\"packaging\":\"" + json_escape(report.packaging) + "\",\"deterministic\":" + json_bool(report.deterministic) + ",\"debug_enabled\":" + json_bool(report.debug_enabled) + ",\"emit_debug_sections\":" + json_bool(report.emit_debug_sections) + ",\"lto_enabled\":" + json_bool(report.lto_enabled) + ",\"pgo_mode\":\"" + json_escape(report.pgo_mode) + "\",\"prefer_native_toolchain\":" + json_bool(report.prefer_native_toolchain) + ",\"llvm_toolchain_summary\":\"" + json_escape(report.llvm_toolchain_summary) + "\",\"codegen_object_format\":\"" + json_escape(report.codegen_object_format) + "\",\"codegen_section_count\":" + to_string(report.codegen_section_count) + ",\"diagnostic_count\":" + to_string(report.diagnostic_count) + ",\"status\":\"" + json_escape(report.status) + "\",\"message\":\"" + json_escape(report.message) + "\",\"grammar_version\":\"" + json_escape(report.grammar_version) + "\",\"token_count\":" + to_string(report.token_count) + ",\"toplevel_count\":" + to_string(report.toplevel_count) + ",\"stmt_count\":" + to_string(report.stmt_count) + ",\"expr_count\":" + to_string(report.expr_count) + ",\"type_count\":" + to_string(report.type_count) + ",\"pattern_count\":" + to_string(report.pattern_count) + ",\"stage_logs\":" + json_array(report.stage_logs) + ",\"diagnostics\":" + diagnostics_json(report.diagnostics) + ",\"active_modules\":" + json_array(report.active_modules) + ",\"inactive_modules\":" + json_array(report.inactive_modules) + "," + active_count + "," + inactive_count + "}";
+    let json: string = "{\"command\":\"" + json_escape(report.command) + "\",\"source_path\":\"" + json_escape(report.source_path) + "\",\"exit_code\":" + to_string(report.exit_code) + ",\"backend_name\":\"" + json_escape(report.backend_name) + "\",\"target_name\":\"" + json_escape(report.target_name) + "\",\"profile_name\":\"" + json_escape(report.profile_name) + "\",\"opt_level\":\"" + json_escape(report.opt_level) + "\",\"packaging\":\"" + json_escape(report.packaging) + "\",\"deterministic\":" + json_bool(report.deterministic) + ",\"debug_enabled\":" + json_bool(report.debug_enabled) + ",\"emit_debug_sections\":" + json_bool(report.emit_debug_sections) + ",\"lto_enabled\":" + json_bool(report.lto_enabled) + ",\"pgo_mode\":\"" + json_escape(report.pgo_mode) + "\",\"prefer_native_toolchain\":" + json_bool(report.prefer_native_toolchain) + ",\"llvm_toolchain_summary\":\"" + json_escape(report.llvm_toolchain_summary) + "\",\"codegen_object_format\":\"" + json_escape(report.codegen_object_format) + "\",\"codegen_section_count\":" + to_string(report.codegen_section_count) + ",\"diagnostic_count\":" + to_string(report.diagnostic_count) + ",\"status\":\"" + json_escape(report.status) + "\",\"message\":\"" + json_escape(report.message) + "\",\"pipeline_failed_at\":\"" + json_escape(report.pipeline_failed_at) + "\",\"pipeline_failure_reason\":\"" + json_escape(report.pipeline_failure_reason) + "\",\"validation_reason\":\"" + json_escape(report.validation_reason) + "\",\"grammar_version\":\"" + json_escape(report.grammar_version) + "\",\"token_count\":" + to_string(report.token_count) + ",\"toplevel_count\":" + to_string(report.toplevel_count) + ",\"stmt_count\":" + to_string(report.stmt_count) + ",\"expr_count\":" + to_string(report.expr_count) + ",\"type_count\":" + to_string(report.type_count) + ",\"pattern_count\":" + to_string(report.pattern_count) + ",\"stage_logs\":" + json_array(report.stage_logs) + ",\"diagnostics\":" + diagnostics_json(report.diagnostics) + ",\"active_modules\":" + json_array(report.active_modules) + ",\"inactive_modules\":" + json_array(report.inactive_modules) + "," + active_count + "," + inactive_count + "}";
     give json;
 }
 
 proc module_set_compile_report_json(report: ModuleSetCompileReport) -> string {
-    let json: string = "{\"command\":\"" + json_escape(report.command) + "\",\"module_count\":" + to_string(report.module_count) + ",\"exit_code\":" + to_string(report.exit_code) + ",\"backend_name\":\"" + json_escape(report.backend_name) + "\",\"target_name\":\"" + json_escape(report.target_name) + "\",\"profile_name\":\"" + json_escape(report.profile_name) + "\",\"opt_level\":\"" + json_escape(report.opt_level) + "\",\"packaging\":\"" + json_escape(report.packaging) + "\",\"deterministic\":" + json_bool(report.deterministic) + ",\"debug_enabled\":" + json_bool(report.debug_enabled) + ",\"emit_debug_sections\":" + json_bool(report.emit_debug_sections) + ",\"lto_enabled\":" + json_bool(report.lto_enabled) + ",\"pgo_mode\":\"" + json_escape(report.pgo_mode) + "\",\"prefer_native_toolchain\":" + json_bool(report.prefer_native_toolchain) + ",\"llvm_toolchain_summary\":\"" + json_escape(report.llvm_toolchain_summary) + "\",\"codegen_object_format\":\"" + json_escape(report.codegen_object_format) + "\",\"codegen_section_count\":" + to_string(report.codegen_section_count) + ",\"diagnostic_count\":" + to_string(report.diagnostic_count) + ",\"status\":\"" + json_escape(report.status) + "\",\"message\":\"" + json_escape(report.message) + "\",\"entry_symbol\":\"" + json_escape(report.entry_symbol) + "\",\"section_count\":" + to_string(report.section_count) + ",\"import_count\":" + to_string(report.import_count) + ",\"relocation_count\":" + to_string(report.relocation_count) + ",\"resolution_count\":" + to_string(report.resolution_count) + ",\"resolved_import_count\":" + to_string(report.resolved_import_count) + ",\"unresolved_import_count\":" + to_string(report.unresolved_import_count) + ",\"resolved_symbol_count\":" + to_string(report.resolved_symbol_count) + ",\"unresolved_symbol_count\":" + to_string(report.unresolved_symbol_count) + ",\"debug_section_count\":" + to_string(report.debug_section_count) + ",\"text_section_size\":" + to_string(report.text_section_size) + ",\"diagnostics\":" + diagnostics_json(report.diagnostics) + "}";
+    let json: string = "{\"command\":\"" + json_escape(report.command) + "\",\"module_count\":" + to_string(report.module_count) + ",\"exit_code\":" + to_string(report.exit_code) + ",\"backend_name\":\"" + json_escape(report.backend_name) + "\",\"target_name\":\"" + json_escape(report.target_name) + "\",\"profile_name\":\"" + json_escape(report.profile_name) + "\",\"opt_level\":\"" + json_escape(report.opt_level) + "\",\"packaging\":\"" + json_escape(report.packaging) + "\",\"deterministic\":" + json_bool(report.deterministic) + ",\"debug_enabled\":" + json_bool(report.debug_enabled) + ",\"emit_debug_sections\":" + json_bool(report.emit_debug_sections) + ",\"lto_enabled\":" + json_bool(report.lto_enabled) + ",\"pgo_mode\":\"" + json_escape(report.pgo_mode) + "\",\"prefer_native_toolchain\":" + json_bool(report.prefer_native_toolchain) + ",\"llvm_toolchain_summary\":\"" + json_escape(report.llvm_toolchain_summary) + "\",\"codegen_object_format\":\"" + json_escape(report.codegen_object_format) + "\",\"codegen_section_count\":" + to_string(report.codegen_section_count) + ",\"diagnostic_count\":" + to_string(report.diagnostic_count) + ",\"status\":\"" + json_escape(report.status) + "\",\"message\":\"" + json_escape(report.message) + "\",\"pipeline_failed_at\":\"" + json_escape(report.pipeline_failed_at) + "\",\"pipeline_failure_reason\":\"" + json_escape(report.pipeline_failure_reason) + "\",\"validation_reason\":\"" + json_escape(report.validation_reason) + "\",\"entry_symbol\":\"" + json_escape(report.entry_symbol) + "\",\"section_count\":" + to_string(report.section_count) + ",\"import_count\":" + to_string(report.import_count) + ",\"relocation_count\":" + to_string(report.relocation_count) + ",\"resolution_count\":" + to_string(report.resolution_count) + ",\"resolved_import_count\":" + to_string(report.resolved_import_count) + ",\"unresolved_import_count\":" + to_string(report.unresolved_import_count) + ",\"resolved_symbol_count\":" + to_string(report.resolved_symbol_count) + ",\"unresolved_symbol_count\":" + to_string(report.unresolved_symbol_count) + ",\"debug_section_count\":" + to_string(report.debug_section_count) + ",\"text_section_size\":" + to_string(report.text_section_size) + ",\"diagnostics\":" + diagnostics_json(report.diagnostics) + "}";
     give json;
 }
 
@@ -249,6 +332,7 @@ proc run_and_report_with_config(command_name: string, source_path: string, sourc
     }
     set exit = exit_code(driver_result.status);
     let ok: bool = exit == 0;
+    let failure_summary: PipelineFailureSummary = compile_report_failure_summary(command, source_path, source_text, driver_result, config);
 
     give CompileReport {
         command: command_name,
@@ -274,6 +358,9 @@ proc run_and_report_with_config(command_name: string, source_path: string, sourc
         inactive_modules: inactive_modules_table(),
         status: report_status(exit),
         message: driver_result.message,
+        pipeline_failed_at: failure_summary.pipeline_failed_at,
+        pipeline_failure_reason: failure_summary.pipeline_failure_reason,
+        validation_reason: failure_summary.validation_reason,
         grammar_version: driver_result.grammar_version,
         token_count: driver_result.token_count,
         toplevel_count: driver_result.toplevel_count,
@@ -296,6 +383,7 @@ proc run_set_and_report_with_config(command_name: string, inputs: [DriverModuleI
     if result.valid {
         set exit = 0;
     }
+    let failure_summary: PipelineFailureSummary = module_set_failure_summary(result);
     give ModuleSetCompileReport {
         command: command_name,
         module_count: len(inputs),
@@ -318,6 +406,9 @@ proc run_set_and_report_with_config(command_name: string, inputs: [DriverModuleI
         diagnostics: result.diagnostics,
         status: report_status(exit),
         message: message,
+        pipeline_failed_at: failure_summary.pipeline_failed_at,
+        pipeline_failure_reason: failure_summary.pipeline_failure_reason,
+        validation_reason: failure_summary.validation_reason,
         entry_symbol: result.entry_symbol,
         section_count: result.artifact.metadata.section_count,
         import_count: module_set_import_count(result),

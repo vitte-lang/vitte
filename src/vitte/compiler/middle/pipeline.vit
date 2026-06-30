@@ -28,19 +28,9 @@ form MiddleOutput {
   valid: bool
 }
 
-proc middle_run(frontend: FrontendOutput) -> MiddleOutput {
-  give middle_run_for_target(frontend, target_native_x86_64_linux());
-}
-
-proc middle_run_for_target(frontend: FrontendOutput, target: IrTarget) -> MiddleOutput {
-  let hir0: HirUnit = lower_ast_to_hir(frontend);
-  let hir1: HirUnit = validate_hir(hir0);
-  let sema_result: SemaResult = run_sema_hir(hir1);
+proc middle_output_from_components(frontend: FrontendOutput, hir1: HirUnit, sema_result: SemaResult, typeck_result: TypeckResult, mir1: MirUnit, target: IrTarget) -> MiddleOutput {
   let resolved_hir: HirUnit = sema_result.hir;
-  let typeck_result: TypeckResult = run_typeck_hir(resolved_hir);
   let typed_hir: HirUnit = typeck_result.hir;
-  let mir0: MirUnit = lower_hir_to_mir(typed_hir);
-  let mir1: MirUnit = validate_mir(mir0);
   let analysis: AnalysisOutput = analysis_run_prechecked(frontend, sema_result, typeck_result, mir1);
   let p: PassRunResult = if analysis.valid and hir1.valid and mir1.valid {
     run_passes(mir1);
@@ -60,4 +50,37 @@ proc middle_run_for_target(frontend: FrontendOutput, target: IrTarget) -> Middle
     ir: ir1,
     valid: analysis.valid and hir1.valid and mir1.valid and unit_is_valid(ir1)
   };
+}
+
+proc middle_run_frontend_hir_mir_for_target(frontend: FrontendOutput, hir: HirUnit, mir: MirUnit, target: IrTarget) -> MiddleOutput {
+  let hir1: HirUnit = validate_hir(hir);
+  let sema_result: SemaResult = run_sema_hir(hir1);
+  let resolved_hir: HirUnit = sema_result.hir;
+  let typeck_result: TypeckResult = run_typeck_hir(resolved_hir);
+  let mir1: MirUnit = validate_mir(mir);
+  give middle_output_from_components(frontend, hir1, sema_result, typeck_result, mir1, target);
+}
+
+proc middle_run_frontend_for_target(frontend: FrontendOutput, target: IrTarget) -> MiddleOutput {
+  let hir0: HirUnit = lower_ast_to_hir(frontend);
+  let hir1: HirUnit = validate_hir(hir0);
+  let sema_result: SemaResult = run_sema_hir(hir1);
+  let resolved_hir: HirUnit = sema_result.hir;
+  let typeck_result: TypeckResult = run_typeck_hir(resolved_hir);
+  let typed_hir: HirUnit = typeck_result.hir;
+  let mir0: MirUnit = lower_hir_to_mir(typed_hir);
+  let mir1: MirUnit = validate_mir(mir0);
+  give middle_output_from_components(frontend, hir1, sema_result, typeck_result, mir1, target);
+}
+
+proc middle_run_frontend(frontend: FrontendOutput) -> MiddleOutput {
+  give middle_run_frontend_for_target(frontend, target_native_x86_64_linux());
+}
+
+proc middle_run(frontend: FrontendOutput) -> MiddleOutput {
+  give middle_run_frontend(frontend);
+}
+
+proc middle_run_for_target(frontend: FrontendOutput, target: IrTarget) -> MiddleOutput {
+  give middle_run_frontend_for_target(frontend, target);
 }

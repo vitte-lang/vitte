@@ -1,6 +1,14 @@
 space vitte/compiler/tests/c_backend_tests
 
-use vitte/compiler/backend/c/pipeline.{ CBackendPipelineResult, run_c_backend_source }
+use vitte/compiler/backend/c/pipeline.{ CBackendPipelineResult, run_c_backend_frontend, run_c_backend_mir, run_c_backend_source }
+use vitte/compiler/backend/c/lowering.{ CTranslationUnit, lower_mir_to_c_with_hir_and_ir, lower_mir_to_c_with_ir }
+use vitte/compiler/backend/c/architecture.{ c_target_x86_64_linux }
+use vitte/compiler/backend/ir.{ IrUnit, IrUnitState, target_native_x86_64_linux }
+use vitte/compiler/frontend/ast/node.{ ast_span_empty }
+use vitte/compiler/frontend/pipeline.{ FrontendOutput, frontend_run }
+use vitte/compiler/middle/mir.{ MirBinaryOperator, MirBlock, MirBorrowKind, MirFunction, MirModule, MirOperand, MirPlace, MirRvalue, MirRvalueKind, MirStatement, MirStatementKind, MirTerminatorKind, MirUnaryOperator, MirUnit, mir_terminator_return }
+use vitte/compiler/middle/mir/validate.{ validate_mir }
+use vitte/compiler/middle/pipeline.{ MiddleOutput, middle_run_frontend }
 
 const VERSION_TEXT: string = "c backend tests 0.1.0"
 const BANNER_TEXT: string = "c backend tests"
@@ -22,12 +30,308 @@ proc test_emit_branching_function() -> bool {
     and find(result.emitted.source_text, "if (") >= 0;
 }
 
+proc test_c_backend_wrappers_match_canonical_frontend_entry() -> bool {
+  let source: string = "proc main() -> int { give 0; }\n";
+  let frontend: FrontendOutput = frontend_run("c_backend_canonical.vit", source);
+  let canonical: CBackendPipelineResult = run_c_backend_frontend(frontend, "c11", "build/c_backend_canonical", "executable");
+  let wrapper: CBackendPipelineResult = run_c_backend_source("c_backend_canonical.vit", source, "c11", "build/c_backend_canonical", "executable");
+  give canonical.valid
+    and wrapper.valid
+    and canonical.middle.valid == wrapper.middle.valid
+    and canonical.middle.mir.function_count == wrapper.middle.mir.function_count
+    and canonical.lowered.function_count == wrapper.lowered.function_count
+    and canonical.emitted.valid == wrapper.emitted.valid
+    and canonical.link_plan.valid == wrapper.link_plan.valid
+    and canonical.message == wrapper.message;
+}
+
+proc test_c_backend_emits_regular_proc_signature_from_canonical_mir() -> bool {
+  let source: string = "proc add(borrow value: int, mut flag: bool, ...) -> int { if flag { give value; } give 0; }\n";
+  let result: CBackendPipelineResult = run_c_backend_source("c_backend_proc_signature.vit", source, "c11", "build/c_backend_proc_signature", "executable");
+  give result.valid
+    and len(result.middle.mir.module.functions[0].params) == 3
+    and result.middle.mir.module.functions[0].params[0].name == "value"
+    and result.middle.mir.module.functions[0].params[0].borrowed
+    and result.middle.mir.module.functions[0].params[1].mutable
+    and result.middle.mir.module.functions[0].params[2].variadic
+    and find(result.emitted.header_text, "int64_t add(const int64_t* value, bool flag, ...);") >= 0
+    and find(result.emitted.source_text, "int64_t add(const int64_t* value, bool flag, ...) {") >= 0;
+}
+
+proc test_c_backend_calls_use_borrow_abi_shape() -> bool {
+  let source: string =
+    "proc keep(borrow value: int) -> int { give value; }\n" +
+    "proc main() -> int { let x = 1; let y = keep(x); give y; }\n";
+  let result: CBackendPipelineResult = run_c_backend_source("c_backend_borrow_call_abi.vit", source, "c11", "build/c_backend_borrow_call_abi", "executable");
+  give result.valid
+    and find(result.emitted.header_text, "int64_t keep(const int64_t* value);") >= 0
+    and find(result.emitted.source_text, "const int64_t* vitte_borrow_") >= 0
+    and find(result.emitted.source_text, " = (&x);") >= 0
+    and find(result.emitted.source_text, "y = keep(vitte_borrow_") >= 0;
+}
+
+proc test_c_backend_preserves_borrow_passthrough_call_shape() -> bool {
+  let source: string =
+    "proc keep(borrow value: int) -> int { give value; }\n" +
+    "proc forward(borrow value: int) -> int { give keep(value); }\n";
+  let result: CBackendPipelineResult = run_c_backend_source("c_backend_borrow_passthrough.vit", source, "c11", "build/c_backend_borrow_passthrough", "executable");
+  give result.valid
+    and find(result.emitted.source_text, "int64_t forward(const int64_t* value)") >= 0
+    and find(result.emitted.source_text, "return keep(value);") >= 0
+    and find(result.emitted.source_text, "vitte_borrow_") < 0;
+}
+
 proc test_runtime_is_emitted() -> bool {
   let source: string = "proc main() -> int { give 0; }\n";
   let result: CBackendPipelineResult = run_c_backend_source("c_backend_runtime.vit", source, "c", "build/c_backend_runtime", "executable");
   give result.valid
     and find(result.emitted.runtime.header_text, "vitte_runtime_assert") >= 0
+    and find(result.emitted.runtime.source_text, "vitte_runtime_panic") >= 0
+    and find(result.emitted.runtime.source_text, "vitte_host_runtime_available") >= 0;
+}
+
+proc test_c_backend_pipeline_preserves_middle_and_runtime_metadata() -> bool {
+  let source: string = "proc main() -> int { let x = 1; give x; }\n";
+  let result: CBackendPipelineResult = run_c_backend_source("c_backend_metadata.vit", source, "c11", "build/c_backend_metadata", "executable");
+  give result.valid
+    and result.frontend.valid
+    and result.middle.valid
+    and result.middle.analysis.typeck_ok
+    and result.middle.analysis.borrowck_ok
+    and result.lowered.valid
+    and result.emitted.valid
+    and result.link_plan.valid
+    and result.lowered.function_count >= 1
+    and find(result.emitted.source_text, "int main(") >= 0
+    and find(result.link_plan.command_line, "vitte_runtime") >= 0;
+}
+
+proc test_c_backend_rejects_invalid_target_with_diagnostic() -> bool {
+  let source: string = "proc main() -> int { give 0; }\n";
+  let result: CBackendPipelineResult = run_c_backend_source("c_backend_bad_target.vit", source, "bogus-target", "build/c_backend_bad_target", "executable");
+  give not result.valid
+    and len(result.diagnostics) > 0
+    and result.diagnostics[0].code == "CBACKEND_E_TARGET";
+}
+
+proc test_c_backend_accepts_struct_and_surface_items_without_lowering_regressions() -> bool {
+  let source: string =
+    "form Point { x: int, y: int }\n" +
+    "bits Mode: u8 {\n" +
+    "  read: 0 .. 1,\n" +
+    "}\n" +
+    "pick Option[T] {\n" +
+    "  None,\n" +
+    "  Some(T),\n" +
+    "}\n" +
+    "flags Access: u8 {\n" +
+    "  read = 1,\n" +
+    "}\n" +
+    "trait Show {\n" +
+    "  proc show(self: Self) -> string;\n" +
+    "}\n" +
+    "impl Show for Point {\n" +
+    "  proc show(self: Self) -> string { give \"point\"; }\n" +
+    "}\n" +
+    "proc main() -> int { let point = Point { x: 1, y: 2 }; give 0; }\n";
+  let result: CBackendPipelineResult = run_c_backend_source("c_backend_surface_items.vit", source, "c11", "build/c_backend_surface_items", "executable");
+  give result.valid
+    and result.middle.valid
+    and result.middle.analysis.typeck_ok
+    and result.middle.mir.valid
+    and result.lowered.valid
+    and len(result.lowered.nominal_types) >= 6
+    and result.lowered.nominal_types[0].kind == "form"
+    and result.lowered.nominal_types[0].name == "Point"
+    and result.lowered.nominal_types[0].member_count >= 1
+    and len(result.lowered.nominal_types[0].members) >= 2
+    and result.lowered.nominal_types[0].members[0].name == "x"
+    and result.lowered.nominal_types[0].members[0].annotation_text == "int"
+    and result.lowered.nominal_types[0].members[0].c_type == "int64_t"
+    and result.lowered.nominal_types[1].kind == "bits"
+    and result.lowered.nominal_types[1].underlying_type == "u8"
+    and result.lowered.nominal_types[2].kind == "pick"
+    and result.lowered.nominal_types[2].generic_count == 1
+    and len(result.lowered.nominal_types[2].members) >= 2
+    and result.lowered.nominal_types[2].members[1].name == "Some"
+    and result.lowered.nominal_types[2].members[1].annotation_text == "T"
+    and result.lowered.nominal_types[3].kind == "flags"
+    and result.lowered.nominal_types[3].underlying_type == "u8"
+    and result.lowered.nominal_types[4].kind == "trait"
+    and result.lowered.nominal_types[4].member_count >= 1
+    and result.lowered.nominal_types[4].members[0].name == "show"
+    and result.lowered.nominal_types[4].members[0].kind == "trait-method"
+    and result.lowered.nominal_types[4].members[0].annotation_text == "string"
+    and len(result.lowered.nominal_types[4].members[0].params) == 1
+    and result.lowered.nominal_types[4].members[0].params[0].annotation_text == "Self"
+    and result.lowered.nominal_types[5].kind == "impl"
+    and result.lowered.nominal_types[5].target_type == "Point"
+    and result.lowered.nominal_types[5].members[0].kind == "impl-method"
+    and len(result.lowered.nominal_types[5].members[0].params) == 1
+    and find(result.emitted.source_text, "int main(") >= 0
+    and find(result.emitted.header_text, "vitte nominal metadata") >= 0
+    and find(result.emitted.header_text, "typedef struct VitteNominalDescriptor VitteNominalDescriptor;") >= 0
+    and find(result.emitted.header_text, "extern const uint64_t vitte_nominal_descriptor_count;") >= 0
+    and find(result.emitted.header_text, "extern const VitteNominalDescriptor* vitte_nominal_descriptors;") >= 0
+    and find(result.emitted.header_text, "kind=form name=Point") >= 0
+    and find(result.emitted.header_text, "member=x kind=field c_type=int64_t annotation=int") >= 0
+    and find(result.emitted.header_text, "typedef struct Point Point;") >= 0
+    and find(result.emitted.header_text, "struct Point {") >= 0
+    and find(result.emitted.header_text, "int64_t x;") >= 0
+    and find(result.emitted.header_text, "int64_t y;") >= 0
+    and find(result.emitted.header_text, "kind=bits name=Mode") >= 0
+    and find(result.emitted.header_text, "underlying_type=u8") >= 0
+    and find(result.emitted.header_text, "typedef uint8_t Mode;") >= 0
+    and find(result.emitted.header_text, "kind=pick name=Option") >= 0
+    and find(result.emitted.header_text, "generic_count=1") >= 0
+    and find(result.emitted.header_text, "typedef struct Option Option;") >= 0
+    and find(result.emitted.header_text, "int32_t __vitte_tag;") >= 0
+    and find(result.emitted.header_text, "void* Some;") >= 0
+    and find(result.emitted.header_text, "kind=flags name=Access") >= 0
+    and find(result.emitted.header_text, "typedef uint8_t Access;") >= 0
+    and find(result.emitted.header_text, "kind=trait name=Show") >= 0
+    and find(result.emitted.header_text, "typedef struct Show_vtable Show_vtable;") >= 0
+    and find(result.emitted.header_text, "typedef const char* (*Show_show_fn)(void* self);") >= 0
+    and find(result.emitted.header_text, "Show_show_fn show;") >= 0
+    and find(result.emitted.header_text, "kind=impl name=Show") >= 0
+    and find(result.emitted.header_text, "target_type=Point") >= 0
+    and find(result.emitted.header_text, "typedef struct Show__impl_for_Point Show__impl_for_Point;") >= 0
+    and find(result.emitted.header_text, "typedef const char* (*Show_show_for_Point_fn)(Point self);") >= 0
+    and find(result.emitted.header_text, "Show_show_for_Point_fn show;") >= 0
+    and find(result.emitted.header_text, "const char* vitte_impl_Show_for_Point_show(Point self);") >= 0
+    and find(result.emitted.source_text, "const uint64_t vitte_nominal_descriptor_count = 6;") >= 0
+    and find(result.emitted.source_text, "static const VitteNominalDescriptor vitte_nominal_descriptors_storage[6]") >= 0
+    and find(result.emitted.source_text, "\"Point\", \"form\"") >= 0
+    and find(result.emitted.source_text, "\"Mode\", \"bits\"") >= 0
+    and find(result.emitted.source_text, "\"u8\", NULL, 0, 1") >= 0
+    and find(result.emitted.source_text, "\"Option\", \"pick\"") >= 0
+    and find(result.emitted.source_text, "\"Show\", \"impl\"") >= 0
+    and find(result.emitted.source_text, "\"Point\", 0, 1") >= 0
+    and find(result.emitted.source_text, "\"x,y|field,field\"") >= 0
+    and find(result.emitted.source_text, "\"None,Some|variant,variant\"") >= 0
+    and find(result.emitted.source_text, "const VitteNominalDescriptor* vitte_nominal_descriptors = vitte_nominal_descriptors_storage;") >= 0
+    and find(result.emitted.source_text, "Show__impl_for_Point Show__impl_for_Point_descriptor") >= 0
+    and find(result.emitted.source_text, "vitte_impl_Show_for_Point_show") >= 0
+    and find(result.emitted.source_text, ",\n  vitte_impl_Show_for_Point_show\n};") >= 0
     and find(result.emitted.runtime.source_text, "vitte_runtime_panic") >= 0;
+}
+
+proc test_c_backend_ir_nominal_lowering_matches_legacy_hir_bridge_surface() -> bool {
+  let source: string =
+    "form Point { x: int, y: int }\n" +
+    "trait Show {\n" +
+    "  proc show(self: Self) -> string;\n" +
+    "}\n" +
+    "impl Show for Point {\n" +
+    "  proc show(self: Self) -> string { give \"point\"; }\n" +
+    "}\n" +
+    "proc main() -> int { let point = Point { x: 1, y: 2 }; give 0; }\n";
+  let frontend: FrontendOutput = frontend_run("c_backend_ir_nominal_match.vit", source);
+  let middle: MiddleOutput = middle_run_frontend(frontend);
+  let canonical: CTranslationUnit = lower_mir_to_c_with_ir(middle.mir, middle.ir, c_target_x86_64_linux());
+  let legacy: CTranslationUnit = lower_mir_to_c_with_hir_and_ir(middle.mir, middle.typed_hir.module.items, middle.ir, c_target_x86_64_linux());
+  give canonical.valid
+    and legacy.valid
+    and len(canonical.nominal_types) == len(legacy.nominal_types)
+    and canonical.nominal_types[0].name == legacy.nominal_types[0].name
+    and canonical.nominal_types[0].members[0].name == legacy.nominal_types[0].members[0].name
+    and canonical.nominal_types[1].members[0].annotation_text == legacy.nominal_types[1].members[0].annotation_text
+    and len(canonical.nominal_types[1].members[0].params) == len(legacy.nominal_types[1].members[0].params)
+    and canonical.nominal_types[2].target_type == legacy.nominal_types[2].target_type
+    and canonical.nominal_types[2].members[0].symbol_name == legacy.nominal_types[2].members[0].symbol_name;
+}
+
+proc test_c_backend_lowers_variant_ctor_and_method_dispatch_explicitly() -> bool {
+  let source: string =
+    "form Point { x: int }\n" +
+    "pick Option {\n" +
+    "  None,\n" +
+    "  Some(int),\n" +
+    "}\n" +
+    "trait Show {\n" +
+    "  proc show(self: Self, level: int) -> string;\n" +
+    "}\n" +
+    "impl Show for Point {\n" +
+    "  proc show(self: Self, level: int) -> string { give \"point\"; }\n" +
+    "}\n" +
+    "proc main() { let point = Point { x: 1 }; let opt = Option.Some(7); let shown = point.show(7); give 0; }\n";
+  let result: CBackendPipelineResult = run_c_backend_source("c_backend_nominal_calls.vit", source, "c11", "build/c_backend_nominal_calls", "executable");
+  give result.valid
+    and find(result.middle.ir.modules[0].functions[0].blocks[1].instructions[0].operator, "variant-ctor") >= 0
+    and find(result.middle.ir.modules[0].functions[0].blocks[1].instructions[1].operator, "method-dispatch") >= 0
+    and find(result.emitted.source_text, ".__vitte_tag = 1") >= 0
+    and find(result.emitted.source_text, ".__vitte_payload.Some = 7") >= 0
+    and find(result.emitted.source_text, "Show__impl_for_Point_descriptor.show(point, 7)") >= 0
+    and find(result.emitted.source_text, "const char* vitte_impl_Show_for_Point_show(Point self, int64_t level)") >= 0
+    and find(result.emitted.source_text, "return \"point\";") >= 0;
+}
+
+proc test_c_backend_rejects_invalid_mir_before_lowering() -> bool {
+  let bad_stmt: MirStatement = MirStatement {
+    id: 21,
+    span: ast_span_empty(),
+    kind: MirStatementKind.Assign,
+    place: MirPlace { local: "opt", projection: "", deref_depth: 0, mutable: false, moved: false, valid: true },
+    rvalue: MirRvalue {
+      kind: MirRvalueKind.Call,
+      text: "Option::Some",
+      operator: "variant-ctor",
+      binary_operator: 0 as MirBinaryOperator,
+      unary_operator: 0 as MirUnaryOperator,
+      borrow_kind: 0 as MirBorrowKind,
+      operands: [
+        MirOperand { text: "1", place: MirPlace { local: "", projection: "", deref_depth: 0, mutable: false, moved: false, valid: false }, ty: "int", constant: true, move: false, valid: true },
+        MirOperand { text: "2", place: MirPlace { local: "", projection: "", deref_depth: 0, mutable: false, moved: false, valid: false }, ty: "int", constant: true, move: false, valid: true }
+      ],
+      ty: "Option",
+      temporary: false,
+      valid: true
+    },
+    reachable: true,
+    valid: true
+  };
+  let bad: MirUnit = MirUnit {
+    source_path: "c_backend_invalid_mir.vit",
+    module: MirModule {
+      name: "manual",
+      functions: [MirFunction { id: 1, name: "main", entry_block: 1, params: [], return_type: "int", local_count: 1, temporary_count: 0, blocks: [MirBlock { id: 1, label: "bb0", predecessors: [], statements: [bad_stmt], terminator: mir_terminator_return(), sealed: true, reachable: true, valid: true }], valid: true }],
+      valid: true
+    },
+    function_count: 1,
+    block_count: 1,
+    instruction_count: 1,
+    lowered: true,
+    valid: true
+  };
+  let invalid0: MirUnit = validate_mir(bad);
+  let result: CBackendPipelineResult = run_c_backend_mir(invalid0, "c11", "build/c_backend_invalid_mir", "executable");
+  give not invalid0.valid
+    and not result.valid
+    and len(result.diagnostics) > 0
+    and result.diagnostics[0].code == "CBACKEND_E_INVALID_MIR";
+}
+
+proc test_c_backend_rejects_missing_canonical_ir_call_metadata() -> bool {
+  let source: string =
+    "proc keep(borrow value: int) -> int { give value; }\n" +
+    "proc main() -> int { let x = 1; let y = keep(x); give y; }\n";
+  let frontend: FrontendOutput = frontend_run("c_backend_missing_ir_call.vit", source);
+  let middle: MiddleOutput = middle_run_frontend(frontend);
+  let lowered: CTranslationUnit = lower_mir_to_c_with_ir(
+    middle.mir,
+    IrUnit {
+      source_path: middle.ir.source_path,
+      target: target_native_x86_64_linux(),
+      modules: [],
+      entry_function_id: 0,
+      state: IrUnitState.Invalid,
+      valid: false
+    },
+    c_target_x86_64_linux()
+  );
+  give not lowered.valid
+    and len(lowered.diagnostics) > 0
+    and lowered.diagnostics[0].code == "CBACKEND_E_INVALID_IR_CALL";
 }
 
 proc run_all_tests() -> int {
@@ -38,7 +342,40 @@ proc run_all_tests() -> int {
   if not test_emit_branching_function() {
     set failures = failures + 1;
   }
+  if not test_c_backend_wrappers_match_canonical_frontend_entry() {
+    set failures = failures + 1;
+  }
+  if not test_c_backend_emits_regular_proc_signature_from_canonical_mir() {
+    set failures = failures + 1;
+  }
+  if not test_c_backend_calls_use_borrow_abi_shape() {
+    set failures = failures + 1;
+  }
+  if not test_c_backend_preserves_borrow_passthrough_call_shape() {
+    set failures = failures + 1;
+  }
   if not test_runtime_is_emitted() {
+    set failures = failures + 1;
+  }
+  if not test_c_backend_pipeline_preserves_middle_and_runtime_metadata() {
+    set failures = failures + 1;
+  }
+  if not test_c_backend_rejects_invalid_target_with_diagnostic() {
+    set failures = failures + 1;
+  }
+  if not test_c_backend_accepts_struct_and_surface_items_without_lowering_regressions() {
+    set failures = failures + 1;
+  }
+  if not test_c_backend_ir_nominal_lowering_matches_legacy_hir_bridge_surface() {
+    set failures = failures + 1;
+  }
+  if not test_c_backend_lowers_variant_ctor_and_method_dispatch_explicitly() {
+    set failures = failures + 1;
+  }
+  if not test_c_backend_rejects_invalid_mir_before_lowering() {
+    set failures = failures + 1;
+  }
+  if not test_c_backend_rejects_missing_canonical_ir_call_metadata() {
     set failures = failures + 1;
   }
   give failures;

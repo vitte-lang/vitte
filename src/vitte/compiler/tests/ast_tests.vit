@@ -30,7 +30,7 @@ proc test_ast_structures_postfix_exprs_and_spans() -> bool {
   if proc_item.kind != AstItemKind.Proc or not proc_item.annotation.valid or proc_item.annotation.text != "i64" {
     give false;
   }
-  if len(proc_item.stmts) != 3 {
+  if len(proc_item.stmts) != 4 {
     give false;
   }
 
@@ -68,11 +68,28 @@ proc test_ast_structures_postfix_exprs_and_spans() -> bool {
     give false;
   }
 
-  let set_stmt = proc_item.stmts[1];
+  let struct_stmt = proc_item.stmts[1];
+  if struct_stmt.kind != AstStmtKind.Let or struct_stmt.expr.kind != AstExprKind.Struct {
+    give false;
+  }
+  if len(struct_stmt.expr.children) != 3 {
+    give false;
+  }
+  if struct_stmt.expr.name != "Point" or struct_stmt.expr.children[0].name != "Point" {
+    give false;
+  }
+  if struct_stmt.expr.children[1].kind != AstExprKind.Name or struct_stmt.expr.children[1].name != "value" {
+    give false;
+  }
+  if struct_stmt.expr.children[2].kind != AstExprKind.Name or struct_stmt.expr.children[2].name != "y" {
+    give false;
+  }
+
+  let set_stmt = proc_item.stmts[2];
   if set_stmt.kind != AstStmtKind.Set or not set_stmt.target_expr.valid or set_stmt.target_expr.kind != AstExprKind.Index {
     give false;
   }
-  give set_stmt.target_expr.span.start_line == 3 and set_stmt.target_expr.span.start_column == 7 and set_stmt.target_expr.span.end_column == 17;
+  give set_stmt.target_expr.span.start_line == 4 and set_stmt.target_expr.span.start_column == 7 and set_stmt.target_expr.span.end_column == 17;
 }
 
 proc test_ast_control_flow_and_invalid_fixture() -> bool {

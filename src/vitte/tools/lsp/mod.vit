@@ -8,6 +8,11 @@ use vitte/compiler/driver/compile.{
   driver_diagnostic_surface_from_source,
   driver_canonical_context_from_source
 }
+use vitte/compiler/diagnostics/diagnostic.{
+  Diagnostic as CanonicalDiagnostic,
+  DiagnosticReport as CanonicalDiagnosticReport,
+  phase_name as canonical_phase_name
+}
 use vitte/compiler/diagnostics/lsp as compiler_lsp
 
 <<< ========================================================= >>>
@@ -190,6 +195,45 @@ form StatusHealth {
   summary: string
   score: int
 
+  valid: bool
+}
+
+form DiagnosticPhaseStatus {
+  phase: string
+  diagnostic_count: int
+  quality_score: int
+  has_fatal: bool
+  selected_as_primary: bool
+  valid: bool
+}
+
+form DiagnosticDetails {
+  code: string
+  phase: string
+  message: string
+  explanation: string
+  root_cause: string
+  probable_fix: string
+  documentation_url: string
+  subject_symbol: string
+  pipeline_failed_at: string
+  pipeline_failure_reason: string
+  validation_reason: string
+  cause_chain: [string]
+  pipeline_context: [string]
+  range: Range
+  index: int
+
+  valid: bool
+}
+
+form DiagnosticPanel {
+  canonical_context: CanonicalContext
+  status_health: StatusHealth
+  phase_statuses: [DiagnosticPhaseStatus]
+  published: compiler_lsp.LspPublishDiagnosticsParams
+  code_actions: [compiler_lsp.LspCodeAction]
+  primary_details: DiagnosticDetails
   valid: bool
 }
 
@@ -465,6 +509,385 @@ proc status_health_json(
     + "}";
 }
 
+proc json_escape(
+  text: string
+) -> string {
+
+  let out: string = "";
+  let i: int = 0;
+  while i < len(text) {
+    let ch: string = slice(text, i, i + 1);
+    if ch == "\\" {
+      set out = out + "\\\\";
+    } elif ch == "\"" {
+      set out = out + "\\\"";
+    } elif ch == "\n" {
+      set out = out + "\\n";
+    } elif ch == "\r" {
+      set out = out + "\\r";
+    } elif ch == "\t" {
+      set out = out + "\\t";
+    } else {
+      set out = out + ch;
+    }
+    set i = i + 1;
+  }
+  give out;
+}
+
+proc json_bool(
+  value: bool
+) -> string {
+
+  if value {
+    give "true";
+  }
+  give "false";
+}
+
+proc json_string(
+  value: string
+) -> string {
+
+  give "\"" + json_escape(value) + "\"";
+}
+
+proc json_range(
+  value: Range
+) -> string {
+
+  give "{"
+    + "\"start\":" + (value.start as string) + ","
+    + "\"end\":" + (value.end as string) + ","
+    + "\"valid\":" + json_bool(value.valid)
+    + "}";
+}
+
+proc canonical_context_json(
+  context: CanonicalContext
+) -> string {
+
+  give "{"
+    + "\"pipeline_failed_at\":" + json_string(context.pipeline_failed_at) + ","
+    + "\"pipeline_failure_reason\":" + json_string(context.pipeline_failure_reason) + ","
+    + "\"validation_reason\":" + json_string(context.validation_reason) + ","
+    + "\"frontend_ok\":" + json_bool(context.frontend_ok) + ","
+    + "\"typeck_ok\":" + json_bool(context.typeck_ok) + ","
+    + "\"borrowck_ok\":" + json_bool(context.borrowck_ok) + ","
+    + "\"valid\":" + json_bool(context.valid)
+    + "}";
+}
+
+proc diagnostic_phase_status_json(
+  status0: DiagnosticPhaseStatus
+) -> string {
+
+  give "{"
+    + "\"phase\":" + json_string(status0.phase) + ","
+    + "\"diagnostic_count\":" + (status0.diagnostic_count as string) + ","
+    + "\"quality_score\":" + (status0.quality_score as string) + ","
+    + "\"has_fatal\":" + json_bool(status0.has_fatal) + ","
+    + "\"selected_as_primary\":" + json_bool(status0.selected_as_primary) + ","
+    + "\"valid\":" + json_bool(status0.valid)
+    + "}";
+}
+
+proc diagnostic_phase_statuses_json(
+  statuses: [DiagnosticPhaseStatus]
+) -> string {
+
+  let out: string = "";
+  let i: int = 0;
+  while i < len(statuses) {
+    if i > 0 {
+      set out = out + ",";
+    }
+    set out = out + diagnostic_phase_status_json(statuses[i]);
+    set i = i + 1;
+  }
+  give "[" + out + "]";
+}
+
+proc string_list_json(
+  values: [string]
+) -> string {
+
+  let out: string = "";
+  let i: int = 0;
+  while i < len(values) {
+    if i > 0 {
+      set out = out + ",";
+    }
+    set out = out + json_string(values[i]);
+    set i = i + 1;
+  }
+  give "[" + out + "]";
+}
+
+proc diagnostic_details_json(
+  details: DiagnosticDetails
+) -> string {
+
+  give "{"
+    + "\"code\":" + json_string(details.code) + ","
+    + "\"phase\":" + json_string(details.phase) + ","
+    + "\"message\":" + json_string(details.message) + ","
+    + "\"explanation\":" + json_string(details.explanation) + ","
+    + "\"root_cause\":" + json_string(details.root_cause) + ","
+    + "\"probable_fix\":" + json_string(details.probable_fix) + ","
+    + "\"documentation_url\":" + json_string(details.documentation_url) + ","
+    + "\"subject_symbol\":" + json_string(details.subject_symbol) + ","
+    + "\"pipeline_failed_at\":" + json_string(details.pipeline_failed_at) + ","
+    + "\"pipeline_failure_reason\":" + json_string(details.pipeline_failure_reason) + ","
+    + "\"validation_reason\":" + json_string(details.validation_reason) + ","
+    + "\"cause_chain\":" + string_list_json(details.cause_chain) + ","
+    + "\"pipeline_context\":" + string_list_json(details.pipeline_context) + ","
+    + "\"range\":" + json_range(details.range) + ","
+    + "\"index\":" + (details.index as string) + ","
+    + "\"valid\":" + json_bool(details.valid)
+    + "}";
+}
+
+proc lsp_code_action_json(
+  action: compiler_lsp.LspCodeAction
+) -> string {
+
+  give "{"
+    + "\"title\":" + json_string(action.title) + ","
+    + "\"kind\":" + json_string(action.kind) + ","
+    + "\"uri\":" + json_string(action.uri) + ","
+    + "\"range\":" + lsp_range_json(action.range) + ","
+    + "\"replacement\":" + json_string(action.replacement) + ","
+    + "\"applicability\":" + json_string(action.applicability) + ","
+    + "\"diagnostic_code\":" + json_string(action.diagnostic_code) + ","
+    + "\"valid\":" + json_bool(action.valid)
+    + "}";
+}
+
+proc lsp_code_actions_json(
+  actions: [compiler_lsp.LspCodeAction]
+) -> string {
+
+  let out: string = "";
+  let i: int = 0;
+  while i < len(actions) {
+    if i > 0 {
+      set out = out + ",";
+    }
+    set out = out + lsp_code_action_json(actions[i]);
+    set i = i + 1;
+  }
+  give "[" + out + "]";
+}
+
+proc lsp_published_json(
+  published: compiler_lsp.LspPublishDiagnosticsParams
+) -> string {
+
+  give "{"
+    + "\"uri\":" + json_string(published.uri) + ","
+    + "\"version\":" + (published.version as string) + ","
+    + "\"diagnostic_count\":" + (len(published.diagnostics) as string) + ","
+    + "\"diagnostics\":" + lsp_diagnostics_json(published.diagnostics) + ","
+    + "\"canonical_context\":" + lsp_canonical_context_json(published.canonical_context) + ","
+    + "\"valid\":" + json_bool(published.valid)
+    + "}";
+}
+
+proc lsp_position_json(
+  position0: compiler_lsp.LspPosition
+) -> string {
+
+  give "{"
+    + "\"line\":" + (position0.line as string) + ","
+    + "\"character\":" + (position0.character as string) + ","
+    + "\"valid\":" + json_bool(position0.valid)
+    + "}";
+}
+
+proc lsp_range_json(
+  range0: compiler_lsp.LspRange
+) -> string {
+
+  give "{"
+    + "\"start\":" + lsp_position_json(range0.start) + ","
+    + "\"end\":" + lsp_position_json(range0.end) + ","
+    + "\"valid\":" + json_bool(range0.valid)
+    + "}";
+}
+
+proc lsp_canonical_context_json(
+  context: compiler_lsp.LspCanonicalContext
+) -> string {
+
+  give "{"
+    + "\"pipeline_failed_at\":" + json_string(context.pipeline_failed_at) + ","
+    + "\"pipeline_failure_reason\":" + json_string(context.pipeline_failure_reason) + ","
+    + "\"validation_reason\":" + json_string(context.validation_reason) + ","
+    + "\"valid\":" + json_bool(context.valid)
+    + "}";
+}
+
+proc lsp_related_information_json(
+  info: compiler_lsp.LspDiagnosticRelatedInformation
+) -> string {
+
+  give "{"
+    + "\"location_uri\":" + json_string(info.location_uri) + ","
+    + "\"location_range\":" + lsp_range_json(info.location_range) + ","
+    + "\"message\":" + json_string(info.message) + ","
+    + "\"valid\":" + json_bool(info.valid)
+    + "}";
+}
+
+proc lsp_related_information_list_json(
+  infos: [compiler_lsp.LspDiagnosticRelatedInformation]
+) -> string {
+
+  let out: string = "";
+  let i: int = 0;
+  while i < len(infos) {
+    if i > 0 {
+      set out = out + ",";
+    }
+    set out = out + lsp_related_information_json(infos[i]);
+    set i = i + 1;
+  }
+  give "[" + out + "]";
+}
+
+proc lsp_diagnostic_tag_json(
+  tag: compiler_lsp.LspDiagnosticTag
+) -> string {
+
+  give "{"
+    + "\"value\":" + (tag.value as string) + ","
+    + "\"valid\":" + json_bool(tag.valid)
+    + "}";
+}
+
+proc lsp_diagnostic_tags_json(
+  tags: [compiler_lsp.LspDiagnosticTag]
+) -> string {
+
+  let out: string = "";
+  let i: int = 0;
+  while i < len(tags) {
+    if i > 0 {
+      set out = out + ",";
+    }
+    set out = out + lsp_diagnostic_tag_json(tags[i]);
+    set i = i + 1;
+  }
+  give "[" + out + "]";
+}
+
+proc lsp_code_description_json(
+  code0: compiler_lsp.LspCodeDescription
+) -> string {
+
+  give "{"
+    + "\"href\":" + json_string(code0.href) + ","
+    + "\"valid\":" + json_bool(code0.valid)
+    + "}";
+}
+
+proc lsp_diagnostic_json(
+  diagnostic: compiler_lsp.LspDiagnostic
+) -> string {
+
+  give "{"
+    + "\"range\":" + lsp_range_json(diagnostic.range) + ","
+    + "\"severity\":" + json_string(diagnostic.severity as string) + ","
+    + "\"code\":" + json_string(diagnostic.code) + ","
+    + "\"code_description\":" + lsp_code_description_json(diagnostic.code_description) + ","
+    + "\"source\":" + json_string(diagnostic.source) + ","
+    + "\"message\":" + json_string(diagnostic.message) + ","
+    + "\"related_information\":" + lsp_related_information_list_json(diagnostic.related_information) + ","
+    + "\"tags\":" + lsp_diagnostic_tags_json(diagnostic.tags) + ","
+    + "\"canonical_context\":" + lsp_canonical_context_json(diagnostic.canonical_context) + ","
+    + "\"data\":" + json_string(diagnostic.data) + ","
+    + "\"valid\":" + json_bool(diagnostic.valid)
+    + "}";
+}
+
+proc lsp_diagnostics_json(
+  diagnostics: [compiler_lsp.LspDiagnostic]
+) -> string {
+
+  let out: string = "";
+  let i: int = 0;
+  while i < len(diagnostics) {
+    if i > 0 {
+      set out = out + ",";
+    }
+    set out = out + lsp_diagnostic_json(diagnostics[i]);
+    set i = i + 1;
+  }
+  give "[" + out + "]";
+}
+
+proc diagnostic_panel_json(
+  panel: DiagnosticPanel
+) -> string {
+
+  give "{"
+    + "\"schema\":\"vitte.lsp.diagnostic_panel\","
+    + "\"schema_version\":\"1.0.0\","
+    + "\"canonical_context\":" + canonical_context_json(panel.canonical_context) + ","
+    + "\"status_health\":" + status_health_json(panel.status_health) + ","
+    + "\"phase_statuses\":" + diagnostic_phase_statuses_json(panel.phase_statuses) + ","
+    + "\"published\":" + lsp_published_json(panel.published) + ","
+    + "\"code_actions\":" + lsp_code_actions_json(panel.code_actions) + ","
+    + "\"primary_details\":" + diagnostic_details_json(panel.primary_details) + ","
+    + "\"valid\":" + json_bool(panel.valid)
+    + "}";
+}
+
+proc diagnostic_panel_json_for_source(
+  path: string,
+  text: string,
+  version: u64
+) -> string {
+
+  give diagnostic_panel_json(
+    diagnostic_panel_for_source(path, text, version)
+  );
+}
+
+proc phase_status(
+  phase: string,
+  diagnostic_count: int,
+  quality_score: int,
+  has_fatal: bool,
+  selected_as_primary: bool
+) -> DiagnosticPhaseStatus {
+
+  give DiagnosticPhaseStatus {
+    phase: phase,
+    diagnostic_count: diagnostic_count,
+    quality_score: quality_score,
+    has_fatal: has_fatal,
+    selected_as_primary: selected_as_primary,
+    valid: phase != ""
+  };
+}
+
+proc phase_status_from_report(
+  phase: string,
+  report: CanonicalDiagnosticReport,
+  primary_phase: string
+) -> DiagnosticPhaseStatus {
+
+  give phase_status(
+    phase,
+    len(report.diagnostics) as int,
+    report.quality_score as int,
+    report.fatal_count > 0,
+    phase == primary_phase
+  );
+}
+
 <<< ========================================================= >>>
 <<< Symbol helpers                                            >>>
 <<< ========================================================= >>>
@@ -582,6 +1005,426 @@ proc hover_provider(
     valid:
       symbol != ""
   };
+}
+
+proc diagnostic_hover_range(
+  diagnostic: CanonicalDiagnostic
+) -> Range {
+
+  if diagnostic.span.valid {
+    let start0: int = diagnostic.span.start_column as int;
+    let end0: int = diagnostic.span.end_column as int;
+    if start0 >= 0 and end0 >= start0 {
+      give range(start0, end0);
+    }
+  }
+
+  give range(
+    0,
+    len(diagnostic.code)
+  );
+}
+
+proc diagnostic_hover_content(
+  diagnostic: CanonicalDiagnostic,
+  context: DriverCanonicalContext
+) -> string {
+
+  let content: string =
+    "code: "
+    + diagnostic.code
+    + "\nphase: "
+    + canonical_phase_name(diagnostic.phase)
+    + "\nmessage: "
+    + diagnostic.message;
+
+  if diagnostic.explanation != "" {
+    set content =
+      content
+      + "\nsummary: "
+      + diagnostic.explanation;
+  }
+
+  if diagnostic.root_cause != "" {
+    set content =
+      content
+      + "\ncause: "
+      + diagnostic.root_cause;
+  }
+
+  if diagnostic.probable_fix != "" {
+    set content =
+      content
+      + "\nfix: "
+      + diagnostic.probable_fix;
+  }
+
+  if diagnostic.documentation_url != "" {
+    set content =
+      content
+      + "\ndocs: "
+      + diagnostic.documentation_url;
+  }
+
+  if context.pipeline_failed_at != "none" {
+    set content =
+      content
+      + "\npipeline_failed_at: "
+      + context.pipeline_failed_at;
+  }
+
+  if context.validation_reason != "none" {
+    set content =
+      content
+      + "\nvalidation_reason: "
+      + context.validation_reason;
+  }
+
+  if diagnostic.subject_symbol != "" {
+    set content =
+      content
+      + "\nsubject: "
+      + diagnostic.subject_symbol;
+  }
+
+  if len(diagnostic.cause_chain) > 0 {
+    set content =
+      content
+      + "\ntrace: "
+      + diagnostic.cause_chain[0];
+  }
+
+  give content;
+}
+
+proc diagnostic_hover_from_surface(
+  surface: DriverDiagnosticSurface
+) -> HoverInfo {
+
+  if len(surface.primary_report.diagnostics) == 0 {
+    give HoverInfo {
+      content: "",
+      symbol: "",
+      kind: SymbolKind.Unknown,
+      range: empty_range(),
+      markdown: true,
+      valid: false
+    };
+  }
+
+  let diagnostic: CanonicalDiagnostic =
+    surface.primary_report.diagnostics[0];
+
+  give HoverInfo {
+    content: diagnostic_hover_content(
+      diagnostic,
+      surface.canonical_context
+    ),
+    symbol: diagnostic.code,
+    kind: SymbolKind.Keyword,
+    range: diagnostic_hover_range(diagnostic),
+    markdown: true,
+    valid: diagnostic.valid
+  };
+}
+
+proc diagnostic_details_invalid() -> DiagnosticDetails {
+
+  give DiagnosticDetails {
+    code: "",
+    phase: "",
+    message: "",
+    explanation: "",
+    root_cause: "",
+    probable_fix: "",
+    documentation_url: "",
+    subject_symbol: "",
+    pipeline_failed_at: "none",
+    pipeline_failure_reason: "none",
+    validation_reason: "none",
+    cause_chain: [],
+    pipeline_context: [],
+    range: empty_range(),
+    index: -1,
+
+    valid: false
+  };
+}
+
+proc report_for_phase(
+  surface: DriverDiagnosticSurface,
+  phase: string
+) -> CanonicalDiagnosticReport {
+
+  if phase == "lexer" {
+    give surface.phase_reports.lexer;
+  }
+  if phase == "parser" {
+    give surface.phase_reports.parser;
+  }
+  if phase == "ast_validation" {
+    give surface.phase_reports.ast_validation;
+  }
+  if phase == "module_resolution" {
+    give surface.phase_reports.module_resolution;
+  }
+  if phase == "symbol_resolution" {
+    give surface.phase_reports.symbol_resolution;
+  }
+  if phase == "sema" {
+    give surface.phase_reports.sema;
+  }
+  if phase == "typeck" {
+    give surface.phase_reports.typeck;
+  }
+  if phase == "borrowck" {
+    give surface.phase_reports.borrowck;
+  }
+  if phase == "mir_lowering" {
+    give surface.phase_reports.mir_lowering;
+  }
+  if phase == "mir_verification" {
+    give surface.phase_reports.mir_verification;
+  }
+  if phase == "backend" {
+    give surface.phase_reports.backend;
+  }
+  if phase == "linker" {
+    give surface.phase_reports.linker;
+  }
+  if phase == "runtime_execution" {
+    give surface.phase_reports.runtime_execution;
+  }
+  give surface.primary_report;
+}
+
+proc surface_with_phase_report(
+  surface: DriverDiagnosticSurface,
+  phase: string
+) -> DriverDiagnosticSurface {
+
+  let selected: CanonicalDiagnosticReport = report_for_phase(surface, phase);
+  give DriverDiagnosticSurface {
+    primary_report: selected,
+    phase_reports: surface.phase_reports,
+    canonical_context: surface.canonical_context,
+    valid: surface.valid and selected.valid
+  };
+}
+
+proc diagnostic_details_from_parts(
+  diagnostic: CanonicalDiagnostic,
+  context: DriverCanonicalContext,
+  index: int
+) -> DiagnosticDetails {
+
+  give DiagnosticDetails {
+    code: diagnostic.code,
+    phase: canonical_phase_name(diagnostic.phase),
+    message: diagnostic.message,
+    explanation: diagnostic.explanation,
+    root_cause: diagnostic.root_cause,
+    probable_fix: diagnostic.probable_fix,
+    documentation_url: diagnostic.documentation_url,
+    subject_symbol: diagnostic.subject_symbol,
+    pipeline_failed_at: context.pipeline_failed_at,
+    pipeline_failure_reason: context.pipeline_failure_reason,
+    validation_reason: context.validation_reason,
+    cause_chain: diagnostic.cause_chain,
+    pipeline_context: diagnostic.pipeline_context,
+    range: diagnostic_hover_range(diagnostic),
+    index: index,
+
+    valid: diagnostic.valid
+  };
+}
+
+proc diagnostic_details_from_surface_index(
+  surface: DriverDiagnosticSurface,
+  index: int
+) -> DiagnosticDetails {
+
+  if index < 0 {
+    give diagnostic_details_invalid();
+  }
+
+  let index0: u64 = index as u64;
+  if index0 >= len(surface.primary_report.diagnostics) {
+    give diagnostic_details_invalid();
+  }
+
+  give diagnostic_details_from_parts(
+    surface.primary_report.diagnostics[index0],
+    surface.canonical_context,
+    index
+  );
+}
+
+proc diagnostic_details_from_surface_code(
+  surface: DriverDiagnosticSurface,
+  code: string
+) -> DiagnosticDetails {
+
+  let i: u64 = 0;
+  while i < len(surface.primary_report.diagnostics) {
+    if surface.primary_report.diagnostics[i].code == code {
+      give diagnostic_details_from_parts(
+        surface.primary_report.diagnostics[i],
+        surface.canonical_context,
+        i as int
+      );
+    }
+    set i = i + 1;
+  }
+
+  give diagnostic_details_invalid();
+}
+
+proc range_contains(value: Range, point: int) -> bool {
+  give value.valid and point >= value.start and point <= value.end;
+}
+
+proc diagnostic_details_from_surface_span(
+  surface: DriverDiagnosticSurface,
+  start: int,
+  end0: int
+) -> DiagnosticDetails {
+
+  let i: u64 = 0;
+  while i < len(surface.primary_report.diagnostics) {
+    let current: CanonicalDiagnostic = surface.primary_report.diagnostics[i];
+    let current_range: Range = diagnostic_hover_range(current);
+    if current_range.valid
+      and (
+        range_contains(current_range, start)
+        or range_contains(current_range, end0)
+        or (start <= current_range.start and end0 >= current_range.end)
+      ) {
+      give diagnostic_details_from_parts(
+        current,
+        surface.canonical_context,
+        i as int
+      );
+    }
+    set i = i + 1;
+  }
+
+  give diagnostic_details_invalid();
+}
+
+proc diagnostic_hover_for_source(
+  path: string,
+  text: string
+) -> HoverInfo {
+
+  give diagnostic_hover_from_surface(
+    driver_diagnostic_surface_from_source(
+      path,
+      text
+    )
+  );
+}
+
+proc diagnostic_hover_for_phase_source(
+  path: string,
+  text: string,
+  phase: string
+) -> HoverInfo {
+
+  give diagnostic_hover_from_surface(
+    surface_with_phase_report(
+      driver_diagnostic_surface_from_source(path, text),
+      phase
+    )
+  );
+}
+
+proc diagnostic_details_by_index_for_source(
+  path: string,
+  text: string,
+  index: int
+) -> DiagnosticDetails {
+
+  give diagnostic_details_from_surface_index(
+    driver_diagnostic_surface_from_source(path, text),
+    index
+  );
+}
+
+proc diagnostic_details_by_phase_index_for_source(
+  path: string,
+  text: string,
+  phase: string,
+  index: int
+) -> DiagnosticDetails {
+
+  give diagnostic_details_from_surface_index(
+    surface_with_phase_report(
+      driver_diagnostic_surface_from_source(path, text),
+      phase
+    ),
+    index
+  );
+}
+
+proc diagnostic_details_by_code_for_source(
+  path: string,
+  text: string,
+  code: string
+) -> DiagnosticDetails {
+
+  give diagnostic_details_from_surface_code(
+    driver_diagnostic_surface_from_source(path, text),
+    code
+  );
+}
+
+proc diagnostic_details_by_phase_code_for_source(
+  path: string,
+  text: string,
+  phase: string,
+  code: string
+) -> DiagnosticDetails {
+
+  give diagnostic_details_from_surface_code(
+    surface_with_phase_report(
+      driver_diagnostic_surface_from_source(path, text),
+      phase
+    ),
+    code
+  );
+}
+
+proc diagnostic_details_by_span_for_source(
+  path: string,
+  text: string,
+  start: int,
+  end0: int
+) -> DiagnosticDetails {
+
+  give diagnostic_details_from_surface_span(
+    driver_diagnostic_surface_from_source(path, text),
+    start,
+    end0
+  );
+}
+
+proc diagnostic_details_by_phase_span_for_source(
+  path: string,
+  text: string,
+  phase: string,
+  start: int,
+  end0: int
+) -> DiagnosticDetails {
+
+  give diagnostic_details_from_surface_span(
+    surface_with_phase_report(
+      driver_diagnostic_surface_from_source(path, text),
+      phase
+    ),
+    start,
+    end0
+  );
 }
 
 <<< ========================================================= >>>
@@ -880,6 +1723,90 @@ proc diagnostics_status_health_for_source(
   );
 }
 
+proc diagnostic_phase_statuses_from_surface(
+  surface: DriverDiagnosticSurface
+) -> [DiagnosticPhaseStatus] {
+
+  let primary_phase: string = surface.canonical_context.pipeline_failed_at;
+  give [
+    phase_status_from_report("lexer", surface.phase_reports.lexer, primary_phase),
+    phase_status_from_report("parser", surface.phase_reports.parser, primary_phase),
+    phase_status_from_report("ast_validation", surface.phase_reports.ast_validation, primary_phase),
+    phase_status_from_report("module_resolution", surface.phase_reports.module_resolution, primary_phase),
+    phase_status_from_report("symbol_resolution", surface.phase_reports.symbol_resolution, primary_phase),
+    phase_status_from_report("sema", surface.phase_reports.sema, primary_phase),
+    phase_status_from_report("typeck", surface.phase_reports.typeck, primary_phase),
+    phase_status_from_report("borrowck", surface.phase_reports.borrowck, primary_phase),
+    phase_status_from_report("mir_lowering", surface.phase_reports.mir_lowering, primary_phase),
+    phase_status_from_report("mir_verification", surface.phase_reports.mir_verification, primary_phase),
+    phase_status_from_report("backend", surface.phase_reports.backend, primary_phase),
+    phase_status_from_report("linker", surface.phase_reports.linker, primary_phase),
+    phase_status_from_report("runtime_execution", surface.phase_reports.runtime_execution, primary_phase)
+  ];
+}
+
+proc diagnostic_phase_statuses_for_source(
+  path: string,
+  text: string
+) -> [DiagnosticPhaseStatus] {
+
+  give diagnostic_phase_statuses_from_surface(
+    driver_diagnostic_surface_from_source(path, text)
+  );
+}
+
+proc diagnostic_panel_for_source(
+  path: string,
+  text: string,
+  version: u64
+) -> DiagnosticPanel {
+
+  let surface: DriverDiagnosticSurface =
+    driver_diagnostic_surface_from_source(path, text);
+  let canonical_context0: CanonicalContext =
+    canonical_context_from_driver_context(
+      surface.canonical_context
+    );
+  let status_health0: StatusHealth =
+    status_health_from_context(
+      canonical_context0
+    );
+  let phase_statuses0: [DiagnosticPhaseStatus] =
+    diagnostic_phase_statuses_from_surface(surface);
+  let context0 =
+    compiler_lsp.lsp_canonical_context(
+      surface.canonical_context.pipeline_failed_at,
+      surface.canonical_context.pipeline_failure_reason,
+      surface.canonical_context.validation_reason
+    );
+  let published0: compiler_lsp.LspPublishDiagnosticsParams =
+    compiler_lsp.lsp_publish_report_with_canonical_context(
+      source_uri(path),
+      surface.primary_report,
+      version,
+      context0
+    );
+  let code_actions0: [compiler_lsp.LspCodeAction] =
+    compiler_lsp.lsp_report_code_actions(
+      surface.primary_report
+    );
+  let primary_details0: DiagnosticDetails =
+    diagnostic_details_from_surface_index(
+      surface,
+      0
+    );
+
+  give DiagnosticPanel {
+    canonical_context: canonical_context0,
+    status_health: status_health0,
+    phase_statuses: phase_statuses0,
+    published: published0,
+    code_actions: code_actions0,
+    primary_details: primary_details0,
+    valid: canonical_context0.valid and status_health0.valid and published0.valid
+  };
+}
+
 proc publish_diagnostics_for_source(
   path: string,
   text: string,
@@ -916,6 +1843,23 @@ proc code_actions_for_source(
     driver_diagnostic_surface_from_source(
       path,
       text
+    );
+
+  give compiler_lsp.lsp_report_code_actions(
+    surface.primary_report
+  );
+}
+
+proc code_actions_for_phase_source(
+  path: string,
+  text: string,
+  phase: string
+) -> [compiler_lsp.LspCodeAction] {
+
+  let surface: DriverDiagnosticSurface =
+    surface_with_phase_report(
+      driver_diagnostic_surface_from_source(path, text),
+      phase
     );
 
   give compiler_lsp.lsp_report_code_actions(

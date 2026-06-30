@@ -4,7 +4,7 @@ use vitte/compiler/frontend/pipeline.{ FrontendOutput }
 use vitte/compiler/frontend/ast/item.{ AstModule, ast_module_empty }
 use vitte/compiler/analysis/report.{ AnalysisDiagnostic, analysis_diagnostic, analysis_diagnostic_with_span, ast_span_length }
 use vitte/compiler/infrastructure/session/files.{ SourceManager, source_manager_empty, cache_source, source_manager_file_id, offset_lookup }
-use vitte/compiler/analysis/borrowck.{ BorrowCheckResult, borrow_check_hir }
+use vitte/compiler/analysis/borrowck.{ BorrowCheckResult, borrow_check_hir_mir }
 use vitte/compiler/analysis/borrowck/errors.{ BorrowDiagnostic, severity_name }
 use vitte/compiler/analysis/const_eval.{ ConstEvalRunResult, run_const_eval_ast }
 use vitte/compiler/analysis/const_eval/errors.{ ConstEvalDiagnostic, ConstEvalSeverity }
@@ -22,6 +22,8 @@ use vitte/compiler/middle/mir.{ MirUnit }
 form AnalysisOutput {
   source_path: string
   ast_root: AstModule
+  resolved_hir: HirUnit
+  typed_hir: HirUnit
   sema_ok: bool
   typeck_ok: bool
   borrowck_ok: bool
@@ -92,8 +94,8 @@ proc collect_typeck_diagnostics(frontend: FrontendOutput, checked: TypeckResult)
   give output;
 }
 
-proc collect_borrowck_diagnostics(frontend: FrontendOutput, hir: HirUnit) -> [AnalysisDiagnostic] {
-  let checked: BorrowCheckResult = borrow_check_hir(frontend.source_path, hir);
+proc collect_borrowck_diagnostics(frontend: FrontendOutput, hir: HirUnit, mir: MirUnit) -> [AnalysisDiagnostic] {
+  let checked: BorrowCheckResult = borrow_check_hir_mir(frontend.source_path, hir, mir);
   let output: [AnalysisDiagnostic] = [];
   let i: u64 = 0;
 
@@ -161,6 +163,8 @@ proc analysis_run_prechecked(frontend: FrontendOutput, sema_result: SemaResult, 
     give AnalysisOutput {
       source_path: frontend.source_path,
       ast_root: frontend.ast_root,
+      resolved_hir: resolved_hir,
+      typed_hir: typed_hir,
       sema_ok: false,
       typeck_ok: false,
       borrowck_ok: false,
@@ -175,6 +179,8 @@ proc analysis_run_prechecked(frontend: FrontendOutput, sema_result: SemaResult, 
     give AnalysisOutput {
       source_path: frontend.source_path,
       ast_root: frontend.ast_root,
+      resolved_hir: resolved_hir,
+      typed_hir: typed_hir,
       sema_ok: true,
       typeck_ok: false,
       borrowck_ok: false,
@@ -185,11 +191,13 @@ proc analysis_run_prechecked(frontend: FrontendOutput, sema_result: SemaResult, 
     };
   }
 
-  let borrowck_diags: [AnalysisDiagnostic] = collect_borrowck_diagnostics(frontend, typed_hir);
+  let borrowck_diags: [AnalysisDiagnostic] = collect_borrowck_diagnostics(frontend, typed_hir, mir);
   if has_fatal(borrowck_diags) {
     give AnalysisOutput {
       source_path: frontend.source_path,
       ast_root: frontend.ast_root,
+      resolved_hir: resolved_hir,
+      typed_hir: typed_hir,
       sema_ok: true,
       typeck_ok: true,
       borrowck_ok: false,
@@ -205,6 +213,8 @@ proc analysis_run_prechecked(frontend: FrontendOutput, sema_result: SemaResult, 
     give AnalysisOutput {
       source_path: frontend.source_path,
       ast_root: frontend.ast_root,
+      resolved_hir: resolved_hir,
+      typed_hir: typed_hir,
       sema_ok: true,
       typeck_ok: true,
       borrowck_ok: true,
@@ -220,6 +230,8 @@ proc analysis_run_prechecked(frontend: FrontendOutput, sema_result: SemaResult, 
   give AnalysisOutput {
     source_path: frontend.source_path,
     ast_root: frontend.ast_root,
+    resolved_hir: resolved_hir,
+    typed_hir: typed_hir,
     sema_ok: true,
     typeck_ok: true,
     borrowck_ok: true,
@@ -230,7 +242,7 @@ proc analysis_run_prechecked(frontend: FrontendOutput, sema_result: SemaResult, 
   };
 }
 
-proc analysis_run_hir_mir(frontend: FrontendOutput, hir: HirUnit, mir: MirUnit) -> AnalysisOutput {
+proc analysis_run_frontend_hir_mir(frontend: FrontendOutput, hir: HirUnit, mir: MirUnit) -> AnalysisOutput {
   if not frontend.valid {
     let fallback_file_id: u64 = if len(frontend.diagnostics) > 0 { frontend.diagnostics[0].file_id } else { 0 };
     let fallback_span_start: u64 = if len(frontend.diagnostics) > 0 { frontend.diagnostics[0].span_start } else { 0 };
@@ -254,6 +266,8 @@ proc analysis_run_hir_mir(frontend: FrontendOutput, hir: HirUnit, mir: MirUnit) 
     give AnalysisOutput {
       source_path: frontend.source_path,
       ast_root: ast_module_empty(),
+      resolved_hir: hir,
+      typed_hir: hir,
       sema_ok: false,
       typeck_ok: false,
       borrowck_ok: false,
@@ -270,12 +284,21 @@ proc analysis_run_hir_mir(frontend: FrontendOutput, hir: HirUnit, mir: MirUnit) 
   give analysis_run_prechecked(frontend, sema_result, typeck_result, mir);
 }
 
+proc analysis_run_hir_mir(frontend: FrontendOutput, hir: HirUnit, mir: MirUnit) -> AnalysisOutput {
+  give analysis_run_frontend_hir_mir(frontend, hir, mir);
+}
+
+proc analysis_run_frontend(frontend: FrontendOutput) -> AnalysisOutput {
+  let hir: HirUnit = lower_ast_to_hir(frontend);
+  let mir: MirUnit = lower_hir_to_mir(hir);
+  give analysis_run_frontend_hir_mir(frontend, hir, mir);
+}
+
 proc analysis_run_hir(frontend: FrontendOutput, hir: HirUnit) -> AnalysisOutput {
   let mir: MirUnit = lower_hir_to_mir(hir);
-  give analysis_run_hir_mir(frontend, hir, mir);
+  give analysis_run_frontend_hir_mir(frontend, hir, mir);
 }
 
 proc analysis_run(frontend: FrontendOutput) -> AnalysisOutput {
-  let hir: HirUnit = lower_ast_to_hir(frontend);
-  give analysis_run_hir(frontend, hir);
+  give analysis_run_frontend(frontend);
 }

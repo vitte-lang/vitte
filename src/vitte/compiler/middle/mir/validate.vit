@@ -1,6 +1,6 @@
 space vitte/compiler/middle/mir/validate
 
-use vitte/compiler/middle/mir.{ MirBlock, MirFunction, MirStatementKind, MirTerminatorKind, MirUnit, mir_module_empty }
+use vitte/compiler/middle/mir.{ MirBlock, MirFunction, MirOperand, MirPlace, MirRvalue, MirRvalueKind, MirStatementKind, MirTerminatorKind, MirUnit, mir_module_empty }
 
 proc block_exists(blocks: [MirBlock], block_id: u64) -> bool {
   let i: u64 = 0;
@@ -11,6 +11,334 @@ proc block_exists(blocks: [MirBlock], block_id: u64) -> bool {
     set i = i + 1;
   }
   give false;
+}
+
+proc duplicate_block_id(blocks: [MirBlock], block_id: u64) -> bool {
+  let seen: u64 = 0;
+  let i: u64 = 0;
+  while i < len(blocks) {
+    if blocks[i].id == block_id {
+      set seen = seen + 1;
+    }
+    set i = i + 1;
+  }
+  give seen > 1;
+}
+
+proc place_valid(place: MirPlace) -> bool {
+  give place.valid and place.local != "";
+}
+
+proc operand_valid(operand: MirOperand) -> bool {
+  if not operand.valid {
+    give false;
+  }
+  if operand.place.valid {
+    give place_valid(operand.place);
+  }
+  give operand.text != "";
+}
+
+proc rvalue_valid(rvalue: MirRvalue) -> bool {
+  if not rvalue.valid {
+    give false;
+  }
+  let i: u64 = 0;
+  while i < len(rvalue.operands) {
+    if not operand_valid(rvalue.operands[i]) {
+      give false;
+    }
+    set i = i + 1;
+  }
+  give true;
+}
+
+proc canonical_borrow_rvalue_valid(rvalue: MirRvalue) -> bool {
+  if rvalue.kind != MirRvalueKind.BorrowShared and rvalue.kind != MirRvalueKind.BorrowMut {
+    give true;
+  }
+  if len(rvalue.operands) != 1 {
+    give false;
+  }
+  if not operand_valid(rvalue.operands[0]) {
+    give false;
+  }
+  if not rvalue.operands[0].place.valid or rvalue.operands[0].place.local == "" {
+    give false;
+  }
+  if rvalue.operands[0].constant {
+    give false;
+  }
+  give true;
+}
+
+proc canonical_borrow_rvalue_reason(rvalue: MirRvalue) -> string {
+  if rvalue.kind != MirRvalueKind.BorrowShared and rvalue.kind != MirRvalueKind.BorrowMut {
+    give "none";
+  }
+  if len(rvalue.operands) != 1 {
+    give "invalid-borrow-arity";
+  }
+  if not operand_valid(rvalue.operands[0]) {
+    give "invalid-borrow-operand";
+  }
+  if not rvalue.operands[0].place.valid or rvalue.operands[0].place.local == "" {
+    give "invalid-borrow-target";
+  }
+  if rvalue.operands[0].constant {
+    give "invalid-borrow-target";
+  }
+  give "none";
+}
+
+proc function_name_exists(functions: [MirFunction], name: string) -> bool {
+  let i: u64 = 0;
+  while i < len(functions) {
+    if functions[i].name == name {
+      give true;
+    }
+    set i = i + 1;
+  }
+  give false;
+}
+
+proc function_by_name(functions: [MirFunction], name: string) -> MirFunction {
+  let i: u64 = 0;
+  while i < len(functions) {
+    if functions[i].name == name {
+      give functions[i];
+    }
+    set i = i + 1;
+  }
+  give MirFunction {
+    id: 0,
+    name: "",
+    entry_block: 0,
+    params: [],
+    return_type: "",
+    local_count: 0,
+    temporary_count: 0,
+    blocks: [],
+    valid: false
+  };
+}
+
+proc call_arg_start_index(rvalue: MirRvalue) -> u64 {
+  if rvalue.operator == "variant-ctor" or rvalue.operator == "method-dispatch" {
+    give 0;
+  }
+  if len(rvalue.operands) > 0 {
+    give 1;
+  }
+  give 0;
+}
+
+proc call_target_name(rvalue: MirRvalue) -> string {
+  if rvalue.operator == "variant-ctor" or rvalue.operator == "method-dispatch" {
+    give rvalue.text;
+  }
+  let open0: int = find(rvalue.text, "(");
+  if open0 > 0 {
+    give trim(slice(rvalue.text, 0, open0));
+  }
+  if len(rvalue.operands) > 0 and rvalue.operands[0].place.valid and rvalue.operands[0].place.local != "" {
+    give rvalue.operands[0].place.local;
+  }
+  if len(rvalue.operands) > 0 and rvalue.operands[0].text != "" {
+    give rvalue.operands[0].text;
+  }
+  give rvalue.text;
+}
+
+proc call_argument_count(rvalue: MirRvalue) -> u64 {
+  let start: u64 = call_arg_start_index(rvalue);
+  if start > len(rvalue.operands) {
+    give 0;
+  }
+  give len(rvalue.operands) - start;
+}
+
+proc function_required_param_count(fn0: MirFunction) -> u64 {
+  let count: u64 = 0;
+  let i: u64 = 0;
+  while i < len(fn0.params) {
+    if not fn0.params[i].variadic {
+      set count = count + 1;
+    }
+    set i = i + 1;
+  }
+  give count;
+}
+
+proc function_has_variadic_param(fn0: MirFunction) -> bool {
+  let i: u64 = 0;
+  while i < len(fn0.params) {
+    if fn0.params[i].variadic {
+      give true;
+    }
+    set i = i + 1;
+  }
+  give false;
+}
+
+proc call_arity_matches(fn0: MirFunction, arg_count: u64) -> bool {
+  let required: u64 = function_required_param_count(fn0);
+  if function_has_variadic_param(fn0) {
+    give arg_count + 1 >= required;
+  }
+  give arg_count == required;
+}
+
+proc params_valid(fn0: MirFunction) -> bool {
+  let seen_variadic: bool = false;
+  let i: u64 = 0;
+  while i < len(fn0.params) {
+    let param = fn0.params[i];
+    if not param.valid {
+      give false;
+    }
+    if not param.variadic and param.name == "" {
+      give false;
+    }
+    if not param.variadic and param.type_name == "" {
+      give false;
+    }
+    if param.variadic and i + 1 < len(fn0.params) {
+      give false;
+    }
+    if param.variadic and (param.borrowed or param.mutable or param.mode != "") {
+      give false;
+    }
+    if param.borrowed and param.mode != "borrow" {
+      give false;
+    }
+    if param.mode == "borrow" and not param.borrowed {
+      give false;
+    }
+    if param.mode == "mut" and not param.mutable {
+      give false;
+    }
+    if param.mode != "" and param.mode != "borrow" and param.mode != "mut" {
+      give false;
+    }
+    if param.variadic {
+      set seen_variadic = true;
+    }
+    if seen_variadic and not param.variadic {
+      give false;
+    }
+    set i = i + 1;
+  }
+  give true;
+}
+
+proc call_rvalue_valid(functions: [MirFunction], rvalue: MirRvalue) -> bool {
+  if not rvalue_valid(rvalue) {
+    give false;
+  }
+  let arg_start: u64 = call_arg_start_index(rvalue);
+  if arg_start > len(rvalue.operands) {
+    give false;
+  }
+  if rvalue.operator != "variant-ctor" and len(rvalue.operands) == 0 {
+    give false;
+  }
+  if rvalue.operator == "variant-ctor" {
+    if find(rvalue.text, "::") < 0 {
+      give false;
+    }
+    give call_argument_count(rvalue) <= 1;
+  }
+  let target_name: string = call_target_name(rvalue);
+  if rvalue.operator == "method-dispatch" {
+    if not function_name_exists(functions, target_name) {
+      give false;
+    }
+    give call_arity_matches(function_by_name(functions, target_name), call_argument_count(rvalue));
+  }
+  if function_name_exists(functions, target_name) {
+    give call_arity_matches(function_by_name(functions, target_name), call_argument_count(rvalue));
+  }
+  give true;
+}
+
+proc call_rvalue_reason(functions: [MirFunction], rvalue: MirRvalue) -> string {
+  if not rvalue_valid(rvalue) {
+    give "invalid-rvalue";
+  }
+  let arg_start: u64 = call_arg_start_index(rvalue);
+  if arg_start > len(rvalue.operands) {
+    give "invalid-call-arg-start";
+  }
+  if rvalue.operator != "variant-ctor" and len(rvalue.operands) == 0 {
+    give "missing-call-target";
+  }
+  if rvalue.operator == "variant-ctor" {
+    if find(rvalue.text, "::") < 0 {
+      give "invalid-variant-ctor-text";
+    }
+    if call_argument_count(rvalue) > 1 {
+      give "invalid-variant-ctor-arity";
+    }
+    give "none";
+  }
+  let target_name: string = call_target_name(rvalue);
+  if rvalue.operator == "method-dispatch" {
+    if not function_name_exists(functions, target_name) {
+      give "invalid-method-dispatch-target";
+    }
+    if not call_arity_matches(function_by_name(functions, target_name), call_argument_count(rvalue)) {
+      give "invalid-method-dispatch-arity";
+    }
+    give "none";
+  }
+  if function_name_exists(functions, target_name) and not call_arity_matches(function_by_name(functions, target_name), call_argument_count(rvalue)) {
+    give "invalid-regular-call-arity";
+  }
+  give "none";
+}
+
+proc statement_valid(functions: [MirFunction], stmt: MirBlock, index: u64) -> bool {
+  let current = stmt.statements[index];
+  if not current.valid {
+    give false;
+  }
+  if current.kind == MirStatementKind.Assign or current.kind == MirStatementKind.Drop or current.kind == MirStatementKind.Call {
+    if current.rvalue.kind == MirRvalueKind.Call {
+      give place_valid(current.place) and call_rvalue_valid(functions, current.rvalue);
+    }
+    give place_valid(current.place) and rvalue_valid(current.rvalue) and canonical_borrow_rvalue_valid(current.rvalue);
+  }
+  if current.kind == MirStatementKind.Return or current.kind == MirStatementKind.Assert {
+    give rvalue_valid(current.rvalue);
+  }
+  give true;
+}
+
+proc statement_reason(functions: [MirFunction], block: MirBlock, index: u64) -> string {
+  let current = block.statements[index];
+  if not current.valid {
+    give "invalid-statement";
+  }
+  if current.kind == MirStatementKind.Assign or current.kind == MirStatementKind.Drop or current.kind == MirStatementKind.Call {
+    if not place_valid(current.place) {
+      give "invalid-assign-place";
+    }
+    if current.rvalue.kind == MirRvalueKind.Call {
+      give call_rvalue_reason(functions, current.rvalue);
+    }
+    if not rvalue_valid(current.rvalue) {
+      give "invalid-rvalue";
+    }
+    let borrow_reason: string = canonical_borrow_rvalue_reason(current.rvalue);
+    if borrow_reason != "none" {
+      give borrow_reason;
+    }
+  }
+  if (current.kind == MirStatementKind.Return or current.kind == MirStatementKind.Assert) and not rvalue_valid(current.rvalue) {
+    give "invalid-rvalue";
+  }
+  give "none";
 }
 
 proc terminator_valid_for_blocks(blocks: [MirBlock], block: MirBlock) -> bool {
@@ -40,8 +368,11 @@ proc terminator_valid_for_blocks(blocks: [MirBlock], block: MirBlock) -> bool {
   give true;
 }
 
-proc block_valid_for_function(blocks: [MirBlock], block: MirBlock) -> bool {
+proc block_valid_for_function(functions: [MirFunction], blocks: [MirBlock], block: MirBlock) -> bool {
   if not block.valid {
+    give false;
+  }
+  if block.id == 0 or duplicate_block_id(blocks, block.id) {
     give false;
   }
   if len(block.statements) == 0 and block.terminator.kind == MirTerminatorKind.Goto {
@@ -50,11 +381,21 @@ proc block_valid_for_function(blocks: [MirBlock], block: MirBlock) -> bool {
   if len(block.statements) > 0 and block.statements[len(block.statements) - 1].kind == MirStatementKind.Return and block.terminator.kind != MirTerminatorKind.Return {
     give false;
   }
+  let i: u64 = 0;
+  while i < len(block.statements) {
+    if not statement_valid(functions, block, i) {
+      give false;
+    }
+    set i = i + 1;
+  }
   give terminator_valid_for_blocks(blocks, block);
 }
 
-proc function_valid(fn0: MirFunction) -> bool {
+proc function_valid(functions: [MirFunction], fn0: MirFunction) -> bool {
   if not fn0.valid or len(fn0.blocks) == 0 {
+    give false;
+  }
+  if not params_valid(fn0) {
     give false;
   }
   if not block_exists(fn0.blocks, fn0.entry_block) {
@@ -62,7 +403,7 @@ proc function_valid(fn0: MirFunction) -> bool {
   }
   let i: u64 = 0;
   while i < len(fn0.blocks) {
-    if not block_valid_for_function(fn0.blocks, fn0.blocks[i]) {
+    if not block_valid_for_function(functions, fn0.blocks, fn0.blocks[i]) {
       give false;
     }
     set i = i + 1;
@@ -70,8 +411,66 @@ proc function_valid(fn0: MirFunction) -> bool {
   give true;
 }
 
-proc validate_mir(mir: MirUnit) -> MirUnit {
+proc function_reason(functions: [MirFunction], fn0: MirFunction) -> string {
+  if not fn0.valid or len(fn0.blocks) == 0 {
+    give "invalid-function-shape";
+  }
+  if not params_valid(fn0) {
+    give "invalid-param-contract";
+  }
+  if not block_exists(fn0.blocks, fn0.entry_block) {
+    give "invalid-entry-block";
+  }
+  let i: u64 = 0;
+  while i < len(fn0.blocks) {
+    if not fn0.blocks[i].valid {
+      give "invalid-block";
+    }
+    if fn0.blocks[i].id == 0 {
+      give "invalid-block-id";
+    }
+    if duplicate_block_id(fn0.blocks, fn0.blocks[i].id) {
+      give "duplicate-block-id";
+    }
+    if len(fn0.blocks[i].statements) == 0 and fn0.blocks[i].terminator.kind == MirTerminatorKind.Goto {
+      give "empty-goto-block";
+    }
+    if len(fn0.blocks[i].statements) > 0 and fn0.blocks[i].statements[len(fn0.blocks[i].statements) - 1].kind == MirStatementKind.Return and fn0.blocks[i].terminator.kind != MirTerminatorKind.Return {
+      give "return-terminator-mismatch";
+    }
+    let j: u64 = 0;
+    while j < len(fn0.blocks[i].statements) {
+      let reason: string = statement_reason(functions, fn0.blocks[i], j);
+      if reason != "none" {
+        give reason;
+      }
+      set j = j + 1;
+    }
+    if not terminator_valid_for_blocks(fn0.blocks, fn0.blocks[i]) {
+      give "invalid-terminator";
+    }
+    set i = i + 1;
+  }
+  give "none";
+}
+
+proc mir_validation_reason(mir: MirUnit) -> string {
   if not mir.module.valid or mir.block_count == 0 or len(mir.module.functions) == 0 {
+    give "invalid-module";
+  }
+  let i: u64 = 0;
+  while i < len(mir.module.functions) {
+    let reason: string = function_reason(mir.module.functions, mir.module.functions[i]);
+    if reason != "none" {
+      give reason;
+    }
+    set i = i + 1;
+  }
+  give "none";
+}
+
+proc validate_mir(mir: MirUnit) -> MirUnit {
+  if mir_validation_reason(mir) != "none" {
     give MirUnit {
       source_path: mir.source_path,
       module: mir_module_empty(),
@@ -79,20 +478,6 @@ proc validate_mir(mir: MirUnit) -> MirUnit {
       instruction_count: mir.instruction_count,
       valid: false
     };
-  }
-
-  let i: u64 = 0;
-  while i < len(mir.module.functions) {
-    if not function_valid(mir.module.functions[i]) {
-      give MirUnit {
-        source_path: mir.source_path,
-        module: mir_module_empty(),
-        block_count: mir.block_count,
-        instruction_count: mir.instruction_count,
-        valid: false
-      };
-    }
-    set i = i + 1;
   }
   give mir;
 }

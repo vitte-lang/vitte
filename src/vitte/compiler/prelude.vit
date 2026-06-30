@@ -66,8 +66,8 @@ use vitte/compiler/frontend.{
 use vitte/compiler/middle.{
   MiddleOutput,
 
-  middle_run,
-  middle_run_for_target
+  middle_run_frontend,
+  middle_run_frontend_for_target
 }
 
 use vitte/compiler/frontend/input.{
@@ -296,22 +296,34 @@ proc run_frontend(path: string, text: string) -> FrontendOutput {
   give frontend_run(path, text);
 }
 
+proc run_middle_frontend(frontend: FrontendOutput) -> MiddleOutput {
+  give middle_run_frontend(frontend);
+}
+
+proc run_middle_frontend_for_target(frontend: FrontendOutput, target: BackendTarget) -> MiddleOutput {
+  give middle_run_frontend_for_target(frontend, target.triple);
+}
+
+proc run_pipeline_frontend(path: string, text: string) -> MiddleOutput {
+  let frontend: FrontendOutput = run_frontend(path, text);
+  give run_middle_frontend(frontend);
+}
+
+proc run_pipeline_frontend_for_target(path: string, text: string, target: BackendTarget) -> MiddleOutput {
+  let frontend: FrontendOutput = run_frontend(path, text);
+  give run_middle_frontend_for_target(frontend, target);
+}
+
 proc run_middle(frontend: FrontendOutput) -> MiddleOutput {
-  give middle_run(frontend);
+  give run_middle_frontend(frontend);
 }
 
 proc run_pipeline(path: string, text: string) -> MiddleOutput {
-  let frontend: FrontendOutput = run_frontend(path, text);
-  give run_middle(frontend);
+  give run_pipeline_frontend(path, text);
 }
 
 proc run_pipeline_for_target(path: string, text: string, target: BackendTarget) -> MiddleOutput {
-  let frontend: FrontendOutput = run_frontend(path, text);
-
-  give middle_run_for_target(
-    frontend,
-    target.triple
-  );
+  give run_pipeline_frontend_for_target(path, text, target);
 }
 
 <<< ========================================================= >>>

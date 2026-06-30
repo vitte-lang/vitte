@@ -2,7 +2,8 @@ space vitte/compiler/tests/hir_tests
 
 use vitte/compiler/frontend/pipeline.{ FrontendOutput, frontend_run }
 use vitte/compiler/middle/hir/lower_ast.{ lower_ast_to_hir }
-use vitte/compiler/middle/hir.{ HirItemKind, HirStmtKind }
+use vitte/compiler/middle/hir.{ HirExprKind, HirItemKind, HirNominalMemberKind, HirStmtKind, HirUnit }
+use vitte/compiler/middle/hir/validate.{ validate_hir }
 
 const VERSION_TEXT: string = "middle hir tests 0.2.0"
 const BANNER_TEXT: string = "middle hir tests"
@@ -45,12 +46,136 @@ proc test_hir_if_while_lowering() -> bool {
   give hir.module.items[0].stmts[0].else_stmts[0].kind == HirStmtKind.While;
 }
 
+proc test_hir_preserves_surface_items_and_struct_expr() -> bool {
+  let source: string =
+    "form Point { x: int, y: int }\n" +
+    "bits Mode: u8 {\n" +
+    "  read: 0 .. 1,\n" +
+    "}\n" +
+    "pick Option[T] {\n" +
+    "  None,\n" +
+    "  Some(T),\n" +
+    "}\n" +
+    "flags Access: u8 {\n" +
+    "  read = 1,\n" +
+    "}\n" +
+    "trait Show {\n" +
+    "  proc show(self: Self) -> string;\n" +
+    "}\n" +
+    "impl Show for Point {\n" +
+    "  proc show(self: Self) -> string { give \"point\"; }\n" +
+    "}\n" +
+    "proc main() -> int { let point = Point { x: 1, y: 2 }; give 0; }\n";
+  let fe: FrontendOutput = frontend_run("hir_surface_items.vit", source);
+  let hir = lower_ast_to_hir(fe);
+  if not hir.valid or len(hir.module.items) < 7 {
+    give false;
+  }
+  if hir.module.items[1].kind != HirItemKind.Bits or hir.module.items[2].kind != HirItemKind.Pick {
+    give false;
+  }
+  if hir.module.items[3].kind != HirItemKind.Flags or hir.module.items[4].kind != HirItemKind.Trait or hir.module.items[5].kind != HirItemKind.Impl {
+    give false;
+  }
+  if hir.module.items[1].annotation_text != "u8" or hir.module.items[3].annotation_text != "u8" {
+    give false;
+  }
+  if hir.module.items[2].generic_count != 1 or hir.module.items[5].target_type_text != "Point" {
+    give false;
+  }
+  if hir.module.items[1].member_count == 0 or hir.module.items[4].member_count == 0 or hir.module.items[5].member_count == 0 {
+    give false;
+  }
+  if len(hir.module.items[0].members) < 2 or hir.module.items[0].members[0].kind != HirNominalMemberKind.Field {
+    give false;
+  }
+  if len(hir.module.items[2].members) < 2 or hir.module.items[2].members[1].kind != HirNominalMemberKind.Variant {
+    give false;
+  }
+  if len(hir.module.items[4].members) == 0 or hir.module.items[4].members[0].kind != HirNominalMemberKind.TraitMethod {
+    give false;
+  }
+  if len(hir.module.items[5].members) == 0 or hir.module.items[5].members[0].kind != HirNominalMemberKind.ImplMethod {
+    give false;
+  }
+  if hir.module.items[0].stmts[0].name != "x" or hir.module.items[0].stmts[0].annotation_text != "int" {
+    give false;
+  }
+  if hir.module.items[2].stmts[1].name != "Some" or hir.module.items[2].stmts[1].annotation_text != "T" {
+    give false;
+  }
+  if hir.module.items[4].stmts[0].name != "show" or hir.module.items[4].stmts[0].annotation_text != "string" {
+    give false;
+  }
+  if hir.module.items[4].members[0].name != "show" or hir.module.items[4].members[0].annotation_text != "string" {
+    give false;
+  }
+  if len(hir.module.items[4].members[0].params) != 1 or hir.module.items[4].members[0].params[0].annotation_text != "Self" {
+    give false;
+  }
+  if hir.module.items[5].members[0].body_stmts[0].kind != HirStmtKind.Give {
+    give false;
+  }
+  let main_item = hir.module.items[6];
+  if main_item.kind != HirItemKind.Proc or len(main_item.stmts) < 2 {
+    give false;
+  }
+  let point_stmt = main_item.stmts[0];
+  give point_stmt.kind == HirStmtKind.Let
+    and point_stmt.name == "point"
+    and main_item.annotation_text == "int"
+    and main_item.signature_param_count == 0
+    and point_stmt.expr.kind == HirExprKind.Struct
+    and point_stmt.expr.inferred_type == "Point"
+    and len(point_stmt.expr.children) >= 3;
+}
+
+proc test_hir_preserves_proc_params() -> bool {
+  let source: string = "proc add(borrow value: int, mut flag: bool, ...) -> int { if flag { give value; } give 0; }\n";
+  let fe: FrontendOutput = frontend_run("hir_proc_params.vit", source);
+  let hir: HirUnit = lower_ast_to_hir(fe);
+  let item = hir.module.items[0];
+  give hir.valid
+    and item.kind == HirItemKind.Proc
+    and item.signature_param_count == 3
+    and len(item.params) == 3
+    and item.params[0].name == "value"
+    and item.params[0].annotation_text == "int"
+    and item.params[0].mode == "borrow"
+    and item.params[0].borrowed
+    and item.params[1].name == "flag"
+    and item.params[1].annotation_text == "bool"
+    and item.params[1].mode == "mut"
+    and item.params[1].mutable
+    and item.params[2].variadic
+    and item.params[2].name == "...";
+}
+
+proc test_hir_validation_rejects_empty_trait_and_impl() -> bool {
+  let source: string =
+    "trait Empty {}\n" +
+    "impl Empty for Point {}\n" +
+    "proc main() -> int { give 0; }\n";
+  let fe: FrontendOutput = frontend_run("hir_empty_trait_impl.vit", source);
+  let hir: HirUnit = validate_hir(lower_ast_to_hir(fe));
+  give not hir.valid and len(hir.module.diagnostics) >= 2;
+}
+
 proc run_all_tests() -> int {
   let failures: int = 0;
   if not test_hir_lowering() {
     set failures = failures + 1;
   }
   if not test_hir_if_while_lowering() {
+    set failures = failures + 1;
+  }
+  if not test_hir_preserves_surface_items_and_struct_expr() {
+    set failures = failures + 1;
+  }
+  if not test_hir_preserves_proc_params() {
+    set failures = failures + 1;
+  }
+  if not test_hir_validation_rejects_empty_trait_and_impl() {
     set failures = failures + 1;
   }
   give failures;

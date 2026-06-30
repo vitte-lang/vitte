@@ -86,12 +86,13 @@ use vitte/compiler/analysis/borrowck/regions.{
 use vitte/compiler/frontend/pipeline.{ FrontendOutput, frontend_run }
 use vitte/compiler/analysis/typeck/coercion.{ project_place_type }
 use vitte/compiler/analysis/typeck/traits.{ type_is_copy }
-use vitte/compiler/middle/hir.{ HirExpr, HirExprKind, HirItemKind, HirStmt, HirStmtKind, HirUnit }
+use vitte/compiler/middle/hir.{ HirExpr, HirExprKind, HirItemKind, HirNominalMemberKind, HirProcParam, HirStmt, HirStmtKind, HirUnit }
 use vitte/compiler/middle/hir/lower_ast.{ lower_ast_to_hir }
 use vitte/compiler/middle/lower/hir_to_mir.{ lower_hir_to_mir }
 use vitte/compiler/middle/mir.{
   MirBlock,
   MirFunction,
+  MirFunctionParam,
   MirOperand,
   MirPlace,
   MirRvalue,
@@ -123,11 +124,29 @@ form BorrowScopeInfo {
   scope_end_line: u64
   ty: string
   copyable: bool
+  mutable: bool
+  borrowed: bool
+  valid: bool
+}
+
+form BorrowFunctionParam {
+  name: string
+  type_name: string
+  mutable: bool
+  borrowed: bool
+  variadic: bool
+  valid: bool
+}
+
+form BorrowFunctionInfo {
+  name: string
+  params: [BorrowFunctionParam]
   valid: bool
 }
 
 form BorrowMetadata {
   scopes: [BorrowScopeInfo]
+  functions: [BorrowFunctionInfo]
   valid: bool
 }
 
@@ -320,12 +339,14 @@ proc estimated_scope_text(line: u64) -> string {
   give line as string;
 }
 
-proc borrow_scope_info(name: string, scope_end_line: u64, ty: string, copyable: bool) -> BorrowScopeInfo {
+proc borrow_scope_info(name: string, scope_end_line: u64, ty: string, copyable: bool, mutable: bool, borrowed: bool) -> BorrowScopeInfo {
   give BorrowScopeInfo {
     name: name,
     scope_end_line: scope_end_line,
     ty: ty,
     copyable: copyable,
+    mutable: mutable,
+    borrowed: borrowed,
     valid: name != ""
   };
 }
@@ -333,6 +354,7 @@ proc borrow_scope_info(name: string, scope_end_line: u64, ty: string, copyable: 
 proc borrow_metadata_empty() -> BorrowMetadata {
   give BorrowMetadata {
     scopes: [],
+    functions: [],
     valid: true
   };
 }
@@ -380,6 +402,105 @@ proc metadata_is_copy(metadata: BorrowMetadata, name: string) -> bool {
   give type_is_copy(metadata_type(metadata, name));
 }
 
+proc borrow_function_param(name: string, type_name: string, mutable: bool, borrowed: bool, variadic: bool) -> BorrowFunctionParam {
+  give BorrowFunctionParam {
+    name: name,
+    type_name: type_name,
+    mutable: mutable,
+    borrowed: borrowed,
+    variadic: variadic,
+    valid: name != "" or variadic
+  };
+}
+
+proc borrow_function_info(name: string, params: [BorrowFunctionParam]) -> BorrowFunctionInfo {
+  give BorrowFunctionInfo {
+    name: name,
+    params: params,
+    valid: name != ""
+  };
+}
+
+proc metadata_function_index(metadata: BorrowMetadata, name: string) -> int {
+  let i: int = 0;
+  while i < len(metadata.functions) {
+    if metadata.functions[i].name == name {
+      give i;
+    }
+    set i = i + 1;
+  }
+  give -1;
+}
+
+proc metadata_set_function(metadata: BorrowMetadata, function0: BorrowFunctionInfo) -> BorrowMetadata {
+  let out: [BorrowFunctionInfo] = [];
+  let found: bool = false;
+  let i: u64 = 0;
+  while i < len(metadata.functions) {
+    if metadata.functions[i].name == function0.name {
+      set out = out + [function0];
+      set found = true;
+    } else {
+      set out = out + [metadata.functions[i]];
+    }
+    set i = i + 1;
+  }
+  if not found {
+    set out = out + [function0];
+  }
+  give BorrowMetadata {
+    scopes: metadata.scopes,
+    functions: out,
+    valid: metadata.valid and function0.valid
+  };
+}
+
+proc metadata_find_function(metadata: BorrowMetadata, name: string) -> BorrowFunctionInfo {
+  let index: int = metadata_function_index(metadata, name);
+  if index < 0 {
+    give BorrowFunctionInfo { name: "", params: [], valid: false };
+  }
+  give metadata.functions[index];
+}
+
+proc borrow_function_params_from_hir(params0: [HirProcParam], target_type_text: string) -> [BorrowFunctionParam] {
+  let out: [BorrowFunctionParam] = [];
+  let i: u64 = 0;
+  while i < len(params0) {
+    let ty: string = if params0[i].annotation_text == "Self" and target_type_text != "" { target_type_text } else { if params0[i].annotation_text != "" { params0[i].annotation_text } else { "opaque" } };
+    set out = out + [borrow_function_param(params0[i].name, ty, params0[i].mutable, params0[i].borrowed, params0[i].variadic)];
+    set i = i + 1;
+  }
+  give out;
+}
+
+proc borrow_function_params_from_mir(params0: [MirFunctionParam]) -> [BorrowFunctionParam] {
+  let out: [BorrowFunctionParam] = [];
+  let i: u64 = 0;
+  while i < len(params0) {
+    set out = out + [borrow_function_param(
+      params0[i].name,
+      params0[i].type_name,
+      params0[i].mutable,
+      params0[i].borrowed,
+      params0[i].variadic
+    )];
+    set i = i + 1;
+  }
+  give out;
+}
+
+proc function_params_from_mir(functions: [MirFunction], name: string) -> [BorrowFunctionParam] {
+  let i: u64 = 0;
+  while i < len(functions) {
+    if functions[i].name == name {
+      give borrow_function_params_from_mir(functions[i].params);
+    }
+    set i = i + 1;
+  }
+  give [];
+}
+
 proc metadata_set_scope(metadata: BorrowMetadata, scope: BorrowScopeInfo) -> BorrowMetadata {
   let scopes: [BorrowScopeInfo] = [];
   let found: bool = false;
@@ -396,6 +517,8 @@ proc metadata_set_scope(metadata: BorrowMetadata, scope: BorrowScopeInfo) -> Bor
         scope_end_line: end_line,
         ty: scope.ty,
         copyable: scope.copyable,
+        mutable: scope.mutable,
+        borrowed: scope.borrowed,
         valid: scope.valid
       }];
       set found = true;
@@ -409,6 +532,7 @@ proc metadata_set_scope(metadata: BorrowMetadata, scope: BorrowScopeInfo) -> Bor
   }
   give BorrowMetadata {
     scopes: scopes,
+    functions: metadata.functions,
     valid: metadata.valid and scope.valid
   };
 }
@@ -466,9 +590,9 @@ proc collect_stmt_metadata(metadata: BorrowMetadata, scope_end_line: u64, stmt: 
   let current: BorrowMetadata = metadata;
   let expr_ty: string = expr_static_type(stmt.expr);
   if stmt.kind == HirStmtKind.Let and stmt.name != "" {
-    set current = metadata_set_scope(current, borrow_scope_info(stmt.name, scope_end_line, expr_ty, expr_copyable(stmt.expr)));
+    set current = metadata_set_scope(current, borrow_scope_info(stmt.name, scope_end_line, expr_ty, expr_copyable(stmt.expr), stmt.mutable, false));
   } elif stmt.kind == HirStmtKind.Const and stmt.name != "" {
-    set current = metadata_set_scope(current, borrow_scope_info(stmt.name, scope_end_line, expr_ty, expr_copyable(stmt.expr)));
+    set current = metadata_set_scope(current, borrow_scope_info(stmt.name, scope_end_line, expr_ty, expr_copyable(stmt.expr), false, false));
   }
 
   if len(stmt.then_stmts) > 0 {
@@ -499,13 +623,61 @@ proc collect_hir_metadata(hir: HirUnit) -> BorrowMetadata {
     let item = hir.module.items[i];
     if item.kind == HirItemKind.Const and item.name != "" {
       let item_ty: string = expr_static_type(item.expr);
-      set current = metadata_set_scope(current, borrow_scope_info(item.name, item.span.end_line + 1, item_ty, expr_copyable(item.expr)));
+      set current = metadata_set_scope(current, borrow_scope_info(item.name, item.span.end_line + 1, item_ty, expr_copyable(item.expr), false, false));
     }
     if item.kind == HirItemKind.Proc {
       let body_end: u64 = max_stmt_list_line(item.stmts) + 1;
+      let params0: [BorrowFunctionParam] = borrow_function_params_from_hir(item.params, item.target_type_text);
+      set current = metadata_set_function(current, borrow_function_info(item.name, params0));
+      let p: u64 = 0;
+      while p < len(params0) {
+        if not params0[p].variadic and params0[p].name != "" {
+          set current = metadata_set_scope(current, borrow_scope_info(
+            params0[p].name,
+            body_end,
+            params0[p].type_name,
+            params0[p].borrowed or type_is_copy(params0[p].type_name),
+            params0[p].mutable,
+            params0[p].borrowed
+          ));
+        }
+        set p = p + 1;
+      }
       let j: u64 = 0;
       while j < len(item.stmts) {
         set current = collect_stmt_metadata(current, body_end, item.stmts[j]);
+        set j = j + 1;
+      }
+    }
+    if item.kind == HirItemKind.Impl {
+      let j: u64 = 0;
+      while j < len(item.members) {
+        let member = item.members[j];
+        if member.kind == HirNominalMemberKind.ImplMethod and member.name != "" {
+          let symbol_name: string = "vitte_impl_" + item.name + "_for_" + item.target_type_text + "_" + member.name;
+          let body_end: u64 = max_stmt_list_line(member.body_stmts) + 1;
+          let params0: [BorrowFunctionParam] = borrow_function_params_from_hir(member.params, item.target_type_text);
+          set current = metadata_set_function(current, borrow_function_info(symbol_name, params0));
+          let p: u64 = 0;
+          while p < len(params0) {
+            if not params0[p].variadic and params0[p].name != "" {
+              set current = metadata_set_scope(current, borrow_scope_info(
+                params0[p].name,
+                body_end,
+                params0[p].type_name,
+                params0[p].borrowed or type_is_copy(params0[p].type_name),
+                params0[p].mutable,
+                params0[p].borrowed
+              ));
+            }
+            set p = p + 1;
+          }
+          let k: u64 = 0;
+          while k < len(member.body_stmts) {
+            set current = collect_stmt_metadata(current, body_end, member.body_stmts[k]);
+            set k = k + 1;
+          }
+        }
         set j = j + 1;
       }
     }
@@ -852,6 +1024,19 @@ proc borrow_result_empty() -> BorrowCheckResult {
   };
 }
 
+proc borrow_result_with_params(params0: [BorrowFunctionParam]) -> BorrowCheckResult {
+  let current: BorrowCheckResult = borrow_result_empty();
+  let ownership0: OwnershipTable = current.ownership;
+  let i: u64 = 0;
+  while i < len(params0) {
+    if not params0[i].variadic and params0[i].name != "" {
+      set ownership0 = declare_local(ownership0, params0[i].name, 0, true);
+    }
+    set i = i + 1;
+  }
+  give replace_ownership(current, ownership0);
+}
+
 proc move_event_same(a: MoveEvent, b: MoveEvent) -> bool {
   give a.local == b.local and a.kind == b.kind and a.line == b.line and a.detail == b.detail;
 }
@@ -1083,9 +1268,9 @@ proc block_has_target(block: MirBlock, target: u64) -> bool {
   give false;
 }
 
-proc merge_predecessors(entry_block: u64, blocks: [MirBlock], states: [BorrowBlockState], block_id: u64) -> BorrowCheckResult {
+proc merge_predecessors(initial: BorrowCheckResult, entry_block: u64, blocks: [MirBlock], states: [BorrowBlockState], block_id: u64) -> BorrowCheckResult {
   if block_id == entry_block {
-    give borrow_result_empty();
+    give initial;
   }
   let merged: BorrowCheckResult = borrow_result_empty();
   let found_predecessor: bool = false;
@@ -1206,10 +1391,101 @@ proc handle_use_local(result: BorrowCheckResult, source_path: string, local: str
   give replace_moves(current, tracker_record_use(current.moves, local, line));
 }
 
-proc execute_mir_statement(result: BorrowCheckResult, metadata: BorrowMetadata, source_path: string, stmt: MirStatement) -> BorrowCheckResult {
+proc call_target_name(stmt: MirStatement) -> string {
+  if stmt.rvalue.kind != MirRvalueKind.Call {
+    give "";
+  }
+  if len(stmt.rvalue.operands) > 0 and stmt.rvalue.operator != "variant-ctor" and stmt.rvalue.operator != "method-dispatch" {
+    if stmt.rvalue.operands[0].place.valid and stmt.rvalue.operands[0].place.local != "" {
+      give stmt.rvalue.operands[0].place.local;
+    }
+  }
+  let open0: int = find(stmt.rvalue.text, "(");
+  if open0 > 0 {
+    give trim(slice(stmt.rvalue.text, 0, open0));
+  }
+  give "";
+}
+
+proc call_argument_start_index(stmt: MirStatement) -> u64 {
+  if stmt.rvalue.operator == "variant-ctor" or stmt.rvalue.operator == "method-dispatch" {
+    give 0;
+  }
+  if stmt.rvalue.kind == MirRvalueKind.Call and len(stmt.rvalue.operands) > 0 {
+    give 1;
+  }
+  give 0;
+}
+
+proc apply_call_signature(result: BorrowCheckResult, metadata: BorrowMetadata, source_path: string, functions: [MirFunction], stmt: MirStatement) -> BorrowCheckResult {
+  let target_name: string = call_target_name(stmt);
+  if target_name == "" {
+    give result;
+  }
+  let fn_params: [BorrowFunctionParam] = function_params_from_mir(functions, target_name);
+  let fallback_info: BorrowFunctionInfo = if len(fn_params) == 0 { metadata_find_function(metadata, target_name) } else { BorrowFunctionInfo { name: "", params: [], valid: false } };
+  let params_for_call: [BorrowFunctionParam] = if len(fn_params) > 0 { fn_params } else { fallback_info.params };
+  if len(params_for_call) == 0 {
+    let current0: BorrowCheckResult = result;
+    let i0: u64 = call_argument_start_index(stmt);
+    while i0 < len(stmt.rvalue.operands) {
+      set current0 = handle_use_local(current0, source_path, operand_place_name(stmt.rvalue.operands[i0]), stmt.span.start_line);
+      set i0 = i0 + 1;
+    }
+    let target0: string = mir_place_name(stmt.place);
+    if target0 != "" {
+      let ownership0: OwnershipTable = mark_reinitialized(current0.ownership, target0, stmt.span.start_line);
+      let moves0: MoveTracker = tracker_record_reinit(current0.moves, target0, stmt.span.start_line);
+      let current1: BorrowCheckResult = replace_ownership(current0, ownership0);
+      give replace_moves(current1, moves0);
+    }
+    give current0;
+  }
+
+  let current: BorrowCheckResult = result;
+  let arg_start: u64 = call_argument_start_index(stmt);
+  let arg_index: u64 = arg_start;
+  let param_index: u64 = 0;
+  while arg_index < len(stmt.rvalue.operands) {
+    let local: string = operand_place_name(stmt.rvalue.operands[arg_index]);
+    if local == "" {
+      set arg_index = arg_index + 1;
+      set param_index = param_index + 1;
+      continue;
+    }
+    let effective_param_index: u64 = if param_index < len(params_for_call) { param_index } else { len(params_for_call) - 1 };
+    let param0: BorrowFunctionParam = params_for_call[effective_param_index];
+    if param0.variadic {
+      set current = handle_use_local(current, source_path, local, stmt.span.start_line);
+    } elif param0.borrowed {
+      let alias: string = "__call_borrow_" + string(stmt.id) + "_" + string(param_index);
+      set current = handle_borrow_binding(current, metadata, source_path, alias, local, param0.mutable, stmt.span.start_line);
+    } elif type_is_copy(param0.type_name) {
+      set current = handle_use_local(current, source_path, local, stmt.span.start_line);
+    } else {
+      let alias: string = "__call_move_" + string(stmt.id) + "_" + string(param_index);
+      set current = handle_move_binding(current, metadata, source_path, alias, local, stmt.span.start_line);
+    }
+    set arg_index = arg_index + 1;
+    set param_index = param_index + 1;
+  }
+  let target: string = mir_place_name(stmt.place);
+  if target != "" {
+    let ownership0: OwnershipTable = mark_reinitialized(current.ownership, target, stmt.span.start_line);
+    let moves0: MoveTracker = tracker_record_reinit(current.moves, target, stmt.span.start_line);
+    let current0: BorrowCheckResult = replace_ownership(current, ownership0);
+    give replace_moves(current0, moves0);
+  }
+  give current;
+}
+
+proc execute_mir_statement(result: BorrowCheckResult, metadata: BorrowMetadata, source_path: string, functions: [MirFunction], stmt: MirStatement) -> BorrowCheckResult {
   let line_no: u64 = stmt.span.start_line;
   let current: BorrowCheckResult = expire_loans(result, metadata, line_no);
   if stmt.kind == MirStatementKind.Assign {
+    if stmt.rvalue.kind == MirRvalueKind.Call {
+      give apply_call_signature(current, metadata, source_path, functions, stmt);
+    }
     let target: string = mir_place_name(stmt.place);
     if stmt.rvalue.kind == MirRvalueKind.BorrowShared or stmt.rvalue.kind == MirRvalueKind.BorrowMut {
       let owner: string = "";
@@ -1270,13 +1546,13 @@ proc execute_mir_statement(result: BorrowCheckResult, metadata: BorrowMetadata, 
   give current;
 }
 
-proc execute_mir_block(result: BorrowCheckResult, metadata: BorrowMetadata, source_path: string, block: MirBlock) -> BorrowCheckResult {
+proc execute_mir_block(result: BorrowCheckResult, metadata: BorrowMetadata, source_path: string, functions: [MirFunction], block: MirBlock) -> BorrowCheckResult {
   let current: BorrowCheckResult = result;
   let line_no: u64 = 0;
   let i: u64 = 0;
   while i < len(block.statements) {
     set line_no = block.statements[i].span.start_line;
-    set current = execute_mir_statement(current, metadata, source_path, block.statements[i]);
+    set current = execute_mir_statement(current, metadata, source_path, functions, block.statements[i]);
     set i = i + 1;
   }
 
@@ -1297,6 +1573,19 @@ proc block_max_line(block: MirBlock) -> u64 {
     set i = i + 1;
   }
   give line_no;
+}
+
+proc max_line_for_function(fn0: MirFunction) -> u64 {
+  let max_line: u64 = 0;
+  let i: u64 = 0;
+  while i < len(fn0.blocks) {
+    let line_no: u64 = block_max_line(fn0.blocks[i]);
+    if line_no > max_line {
+      set max_line = line_no;
+    }
+    set i = i + 1;
+  }
+  give max_line;
 }
 
 proc close_known_regions(result: BorrowCheckResult, metadata: BorrowMetadata, fn0: MirFunction) -> LifetimeResult {
@@ -1353,7 +1642,24 @@ proc close_known_regions(result: BorrowCheckResult, metadata: BorrowMetadata, fn
   give closed;
 }
 
-proc borrow_check_mir_function(source_path: string, metadata: BorrowMetadata, fn0: MirFunction) -> BorrowCheckResult {
+proc borrow_check_mir_function(source_path: string, metadata: BorrowMetadata, functions: [MirFunction], fn0: MirFunction) -> BorrowCheckResult {
+  let body_end: u64 = max_line_for_function(fn0) + 1;
+  let metadata0: BorrowMetadata = metadata;
+  let p: u64 = 0;
+  while p < len(fn0.params) {
+    if not fn0.params[p].variadic and fn0.params[p].name != "" {
+      set metadata0 = metadata_set_scope(metadata0, borrow_scope_info(
+        fn0.params[p].name,
+        body_end,
+        fn0.params[p].type_name,
+        fn0.params[p].borrowed or type_is_copy(fn0.params[p].type_name),
+        fn0.params[p].mutable,
+        fn0.params[p].borrowed
+      ));
+    }
+    set p = p + 1;
+  }
+  let initial0: BorrowCheckResult = borrow_result_with_params(function_params_from_mir(functions, fn0.name));
   let states: [BorrowBlockState] = [];
   let worklist: [u64] = [];
   let i: u64 = 0;
@@ -1370,8 +1676,8 @@ proc borrow_check_mir_function(source_path: string, metadata: BorrowMetadata, fn
       continue;
     }
 
-    let in_state: BorrowCheckResult = merge_predecessors(fn0.entry_block, fn0.blocks, states, block.id);
-    let out_state: BorrowCheckResult = execute_mir_block(in_state, metadata, source_path, block);
+    let in_state: BorrowCheckResult = merge_predecessors(initial0, fn0.entry_block, fn0.blocks, states, block.id);
+    let out_state: BorrowCheckResult = execute_mir_block(in_state, metadata0, source_path, functions, block);
     let previous: BorrowBlockState = block_state_get(states, block.id);
     if not previous.valid or result_fingerprint(previous.result) != result_fingerprint(out_state) {
       set states = block_state_set(states, BorrowBlockState { block_id: block.id, result: out_state, valid: true });
@@ -1389,7 +1695,7 @@ proc borrow_check_mir_function(source_path: string, metadata: BorrowMetadata, fn
     set i = i + 1;
   }
 
-  let lifetimes0: LifetimeResult = close_known_regions(merged, metadata, fn0);
+  let lifetimes0: LifetimeResult = close_known_regions(merged, metadata0, fn0);
   let current0: BorrowCheckResult = replace_lifetimes(merged, finalize_lifetimes(lifetimes0));
   give BorrowCheckResult {
     diagnostics: current0.diagnostics,
@@ -1416,7 +1722,7 @@ proc borrow_check_mir_with_metadata(source_path: string, mir: MirUnit, metadata:
   let current: BorrowCheckResult = borrow_result_empty();
   let i: u64 = 0;
   while i < len(mir.module.functions) {
-    let fn_result: BorrowCheckResult = borrow_check_mir_function(source_path, metadata, mir.module.functions[i]);
+    let fn_result: BorrowCheckResult = borrow_check_mir_function(source_path, metadata, mir.module.functions, mir.module.functions[i]);
     set current = merge_results(current, fn_result);
     set i = i + 1;
   }
@@ -1453,7 +1759,8 @@ proc borrow_check_source(source_path: string, source_text: string) -> BorrowChec
     ));
   }
   let hir: HirUnit = lower_ast_to_hir(frontend);
-  give borrow_check_hir(source_path, hir);
+  let mir: MirUnit = lower_hir_to_mir(hir);
+  give borrow_check_hir_mir(source_path, hir, mir);
 }
 
 proc hir_expr_owner(expr: HirExpr) -> string {
