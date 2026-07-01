@@ -1,7 +1,14 @@
 space vitte/compiler/tests/sema_tests
 
 use vitte/compiler/analysis/sema.{ SemaResult, run_sema_hir }
+use vitte/compiler/analysis/sema/errors.{ SemaDiagnosticKind, SemaPhase, sema_context_error, sema_context_result, sema_context_with_phase, sema_invalid_import, sema_kind_name, sema_phase_name, sema_result_summary, sema_summary }
+use vitte/compiler/analysis/sema/modules.{ imported_symbols_from_summary, module_import_from_use, summarize_module_hir }
+use vitte/compiler/analysis/sema/names.{ PlaceRootKind, place_root_is_builtin, place_root_is_self, place_root_kind_name, place_root_name, sema_builtin_name, sema_is_ident_char }
+use vitte/compiler/analysis/sema/scopes.{ SemaSymbolKind, SemaSymbolTable, SemaVisibility, symbol_kind_name, symbol_table_add_builtin, symbol_table_count_kind, symbol_table_enter_scope, symbol_table_import, symbol_table_insert, symbol_table_leave_scope, symbol_table_resolve }
+use vitte/compiler/analysis/sema/visibility.{ normalize_visibility, visibility_exported, visibility_externally_visible, visibility_info, visibility_is_internal_only, visibility_less_permissive, visibility_merge, visibility_more_permissive, visibility_valid }
 use vitte/compiler/driver/compile.{ DriverModuleSetArtifacts, analyze_source_set, driver_module_input }
+use vitte/compiler/diagnostics/diagnostic.{ DiagnosticPhase }
+use vitte/compiler/frontend/ast.node.{ ast_span_empty }
 use vitte/compiler/frontend/pipeline.{ FrontendOutput, frontend_run }
 use vitte/compiler/middle/hir/lower_ast.{ lower_ast_to_hir }
 
@@ -111,6 +118,136 @@ proc test_invalid_visibility_is_rejected() -> bool {
   give not result.valid and has_code(result, "SEMA_E_INVALID_VISIBILITY");
 }
 
+proc test_sema_name_helpers_cover_place_root_surface() -> bool {
+  give place_root_name("self.field") == "self"
+    and place_root_is_self("self.field")
+    and place_root_is_builtin("argc")
+    and sema_builtin_name("target")
+    and sema_is_ident_char("7")
+    and place_root_kind_name(PlaceRootKind.Builtin) == "builtin";
+}
+
+proc test_sema_visibility_helpers_cover_supported_surface() -> bool {
+  let info = visibility_info("pub");
+  give normalize_visibility("pub") == "public"
+    and visibility_valid("protected")
+    and visibility_exported("export")
+    and visibility_externally_visible("external")
+    and visibility_is_internal_only("package")
+    and visibility_merge("", "") == "private"
+    and visibility_more_permissive("internal", "public") == "public"
+    and visibility_less_permissive("public", "package") == "package"
+    and info.valid
+    and info.normalized == "public"
+    and info.exported
+    and info.externally_visible;
+}
+
+proc test_sema_scope_helpers_cover_insert_import_and_scope_exit() -> bool {
+  let table0: SemaSymbolTable = symbol_table_add_builtin(
+    symbol_table_import(
+      symbol_table_insert(
+        symbol_table_enter_scope(
+          symbol_table_insert(
+            symbol_table_insert(
+              SemaSymbolTable { symbols: [], next_id: 1, scope_depth: 0, module_path: "demo/app" },
+              "sum",
+              SemaSymbolKind.Function,
+              false,
+              SemaVisibility.Public,
+              "fn() -> int",
+              1,
+              1
+            ),
+            "Point",
+            SemaSymbolKind.Form,
+            false,
+            SemaVisibility.Public,
+            "type",
+            1,
+            1
+          )
+        ),
+        "value",
+        SemaSymbolKind.Local,
+        false,
+        SemaVisibility.Private,
+        "int",
+        2,
+        3
+      ),
+      "imported_sum",
+      "demo/math",
+      "fn() -> int",
+      1
+    ),
+    "argc",
+    "int"
+  );
+  let local0 = symbol_table_resolve(table0, "value");
+  let imported0 = symbol_table_resolve(table0, "demo/math::imported_sum");
+  let builtin0 = symbol_table_resolve(table0, "argc");
+  let table1: SemaSymbolTable = symbol_table_leave_scope(table0);
+  let dropped_local = symbol_table_resolve(table1, "value");
+  give local0.valid
+    and local0.kind == SemaSymbolKind.Local
+    and imported0.valid
+    and imported0.kind == SemaSymbolKind.Imported
+    and builtin0.valid
+    and builtin0.kind == SemaSymbolKind.Builtin
+    and symbol_table_count_kind(table0, SemaSymbolKind.Imported) == 1
+    and symbol_kind_name(SemaSymbolKind.Form) == "form"
+    and not dropped_local.valid;
+}
+
+proc test_sema_module_helpers_cover_alias_and_export_summary() -> bool {
+  let source: string =
+    "space demo/app;\n" +
+    "use demo/math as math;\n" +
+    "public proc sum() -> int { give 0; }\n" +
+    "internal proc hidden() -> int { give 0; }\n";
+  let fe: FrontendOutput = frontend_run("sema_module_helpers.vit", source);
+  let hir = lower_ast_to_hir(fe);
+  let summary = summarize_module_hir(hir, 1000);
+  let imported = module_import_from_use("demo/math as math");
+  let symbols = imported_symbols_from_summary(summary);
+  give fe.valid
+    and summary.valid
+    and summary.module_path == "demo/app"
+    and len(summary.imports) == 1
+    and summary.imports[0].module_path == "demo/math"
+    and summary.imports[0].alias == "math"
+    and not summary.imports[0].import_all
+    and imported.valid
+    and imported.alias == "math"
+    and len(summary.exports) == 1
+    and summary.exports[0].name == "sum"
+    and len(symbols) == 1
+    and symbols[0].qualified_name == "demo/app::sum"
+    and symbols[0].module_path == "demo/app";
+}
+
+proc test_sema_error_helpers_cover_context_and_summary() -> bool {
+  let diag = sema_invalid_import("demo/bad", ast_span_empty());
+  let ctx = sema_context_error(
+    sema_context_with_phase(SemaPhase.ImportResolution),
+    "SEMA_E_INVALID_IMPORT",
+    SemaDiagnosticKind.InvalidImport,
+    "invalid import `demo/bad`",
+    ["demo/bad"],
+    "use a canonical module path",
+    ast_span_empty()
+  );
+  let report = sema_context_result(ctx);
+  give diag.code == "SEMA_E_INVALID_IMPORT"
+    and diag.phase == DiagnosticPhase.ModuleResolution
+    and sema_phase_name(SemaPhase.TraitResolution) == "trait_resolution"
+    and sema_kind_name(SemaDiagnosticKind.InvalidVisibility) == "invalid_visibility"
+    and sema_summary(diag) != ""
+    and not report.valid
+    and find(sema_result_summary(report), "sema failed:") >= 0;
+}
+
 proc test_resolves_type_level_surface_item_kinds() -> bool {
   let source: string =
     "form Point { x: int, y: int }\n" +
@@ -196,6 +333,21 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if not test_invalid_visibility_is_rejected() {
+    set failures = failures + 1;
+  }
+  if not test_sema_name_helpers_cover_place_root_surface() {
+    set failures = failures + 1;
+  }
+  if not test_sema_visibility_helpers_cover_supported_surface() {
+    set failures = failures + 1;
+  }
+  if not test_sema_scope_helpers_cover_insert_import_and_scope_exit() {
+    set failures = failures + 1;
+  }
+  if not test_sema_module_helpers_cover_alias_and_export_summary() {
+    set failures = failures + 1;
+  }
+  if not test_sema_error_helpers_cover_context_and_summary() {
     set failures = failures + 1;
   }
   if not test_resolves_type_level_surface_item_kinds() {

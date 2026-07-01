@@ -1,0 +1,215 @@
+space vitte/compiler/tests/llvm_tests
+
+use vitte/compiler/backend/ir.{ IrUnit, unit_is_valid }
+use vitte/compiler/backends/llvm_bindings.{
+  LlvmBindingResult,
+  LlvmBuildOptions,
+  LlvmDiagnosticLevel,
+  LlvmObjectResult,
+  LlvmSectionKind,
+  LlvmToolchainStatus,
+  canonical_backend_surface,
+  debug_info_format,
+  default_llvm_build_options,
+  default_llvm_toolchain_paths,
+  emit_debug_info,
+  emit_llvm_ir_from_ir,
+  emit_llvm_ir_from_mir,
+  emit_llvm_object_from_ir,
+  emit_llvm_object_from_ir_with_toolchain,
+  emit_pgo_instrumentation,
+  llvm_build_options,
+  llvm_toolchain_paths,
+  llvm_toolchain_status,
+  pgo_enabled,
+  supported_opt_levels
+}
+use vitte/compiler/frontend/pipeline.{ FrontendOutput, frontend_run }
+use vitte/compiler/middle/lower/mir_to_ir.{ lower_mir_to_ir }
+use vitte/compiler/middle/pipeline.{ MiddleOutput, middle_run }
+
+const VERSION_TEXT: string = "backend llvm tests 1.0.0"
+const BANNER_TEXT: string = "backend llvm tests"
+
+proc build_verified_ir(source_name: string, source_text: string) -> IrUnit {
+  let fe: FrontendOutput = frontend_run(source_name, source_text);
+  let middle: MiddleOutput = middle_run(fe);
+  let lowered: IrUnit = lower_mir_to_ir(middle.mir, middle.analysis);
+  give lowered;
+}
+
+proc llvm_object_has_diagnostic(result: LlvmObjectResult, code: string) -> bool {
+  let i: u64 = 0;
+  while i < len(result.diagnostics) {
+    if result.diagnostics[i].code == code {
+      give true;
+    }
+    set i = i + 1;
+  }
+  give false;
+}
+
+proc llvm_object_has_diagnostic_level(result: LlvmObjectResult, level: LlvmDiagnosticLevel) -> bool {
+  let i: u64 = 0;
+  while i < len(result.diagnostics) {
+    if result.diagnostics[i].level == level {
+      give true;
+    }
+    set i = i + 1;
+  }
+  give false;
+}
+
+proc llvm_object_has_section(result: LlvmObjectResult, name: string, kind: LlvmSectionKind) -> bool {
+  let i: u64 = 0;
+  while i < len(result.sections) {
+    if result.sections[i].name == name and result.sections[i].kind == kind and result.sections[i].valid {
+      give true;
+    }
+    set i = i + 1;
+  }
+  give false;
+}
+
+proc llvm_object_has_symbol(result: LlvmObjectResult, name: string) -> bool {
+  let i: u64 = 0;
+  while i < len(result.symbols) {
+    if result.symbols[i].name == name and result.symbols[i].global and result.symbols[i].defined {
+      give true;
+    }
+    set i = i + 1;
+  }
+  give false;
+}
+
+proc llvm_object_has_relocation_target(result: LlvmObjectResult, target: string) -> bool {
+  let i: u64 = 0;
+  while i < len(result.relocations) {
+    if result.relocations[i].target_symbol == target and result.relocations[i].kind == "R_CALL64" and result.relocations[i].resolved {
+      give true;
+    }
+    set i = i + 1;
+  }
+  give false;
+}
+
+proc test_llvm_surface_helpers_describe_canonical_adapter() -> bool {
+  let levels: string = supported_opt_levels();
+  give find(levels, "O0") >= 0
+    and find(levels, "O3") >= 0
+    and find(levels, "Oz") >= 0
+    and starts_with(canonical_backend_surface(), "src/vitte/compiler/backend/")
+    and find(canonical_backend_surface(), "backend") >= 0
+    and emit_llvm_ir_from_mir() == "llvm adapter consumes canonical IR lowering"
+    and debug_info_format() == "dwarf"
+    and pgo_enabled() == "false"
+    and find(emit_debug_info(), "llvm adapter") >= 0
+    and find(emit_pgo_instrumentation(), "adapter mode") >= 0;
+}
+
+proc test_llvm_toolchain_status_covers_packaging_modes() -> bool {
+  let not_requested: LlvmToolchainStatus = llvm_toolchain_status(default_llvm_toolchain_paths(), "executable", false);
+  let object_missing: LlvmToolchainStatus = llvm_toolchain_status(default_llvm_toolchain_paths(), "object", true);
+  let shared_ready: LlvmToolchainStatus = llvm_toolchain_status(llvm_toolchain_paths("/toolchain/clang", "/toolchain/ld.lld", "", "", "", ""), "shared-library", true);
+  let static_missing_ar: LlvmToolchainStatus = llvm_toolchain_status(llvm_toolchain_paths("/toolchain/clang", "", "", "", "", ""), "static-library", true);
+  give not_requested.valid
+    and not_requested.summary == "native llvm toolchain not requested"
+    and not object_missing.valid
+    and object_missing.summary == "missing llvm native tools: clang"
+    and shared_ready.valid
+    and shared_ready.native_object_ready
+    and shared_ready.native_link_ready
+    and not static_missing_ar.valid
+    and static_missing_ar.summary == "missing llvm native tools: ar";
+}
+
+proc test_llvm_ir_emission_uses_canonical_ir() -> bool {
+  let ir: IrUnit = build_verified_ir("llvm_ir_canonical.vit", "proc main() -> int { give 0; }\n");
+  let result: LlvmBindingResult = emit_llvm_ir_from_ir(ir);
+  give unit_is_valid(ir)
+    and result.valid
+    and result.target == "llvm-ir"
+    and result.module_count == 1
+    and result.function_count >= 1
+    and find(result.ir_text, "; LLVM IR generated from canonical Vitte IR") >= 0
+    and find(result.ir_text, "target triple =") >= 0
+    and find(result.ir_text, "target datalayout =") >= 0
+    and find(result.ir_text, "define i64 @main()") >= 0;
+}
+
+proc test_llvm_object_bundle_records_sections_symbols_and_profile_diagnostics() -> bool {
+  let ir: IrUnit = build_verified_ir("llvm_object_profile.vit", "proc helper() -> int { give 1; }\nproc main() -> int { give helper(); }\n");
+  let options: LlvmBuildOptions = llvm_build_options("aarch64-linux", "Oz", "shared-library", true, false, true, true, "instrument", false);
+  let result: LlvmObjectResult = emit_llvm_object_from_ir(ir, options);
+  give result.valid
+    and result.target == "aarch64-linux"
+    and result.object_format == "llvm-object"
+    and result.module_count == 1
+    and result.function_count >= 2
+    and llvm_object_has_section(result, ".text", LlvmSectionKind.Text)
+    and llvm_object_has_section(result, ".llvm.meta", LlvmSectionKind.Metadata)
+    and llvm_object_has_section(result, ".debug_info", LlvmSectionKind.Debug)
+    and llvm_object_has_symbol(result, "main")
+    and llvm_object_has_symbol(result, "helper")
+    and llvm_object_has_relocation_target(result, "helper")
+    and llvm_object_has_diagnostic(result, "llvm.debug.mismatch")
+    and llvm_object_has_diagnostic(result, "llvm.lto.adapter")
+    and llvm_object_has_diagnostic(result, "llvm.pgo.adapter")
+    and llvm_object_has_diagnostic_level(result, LlvmDiagnosticLevel.Warning)
+    and find(result.object_text, "llvm-object-bundle") >= 0
+    and find(result.object_text, "opt_level=Oz") >= 0
+    and find(result.object_text, "pgo_mode=instrument") >= 0
+    and find(result.object_text, "lto_enabled=true") >= 0
+    and find(result.object_text, "relocation[") >= 0;
+}
+
+proc test_llvm_native_toolchain_failures_are_explicit() -> bool {
+  let ir: IrUnit = build_verified_ir("llvm_native_failures.vit", "proc main() -> int { give 0; }\n");
+  let object_options: LlvmBuildOptions = llvm_build_options("x86_64-linux", "O2", "object", true, true, true, false, "off", true);
+  let link_options: LlvmBuildOptions = llvm_build_options("x86_64-linux", "O2", "executable", true, true, true, false, "off", true);
+  let object_result: LlvmObjectResult = emit_llvm_object_from_ir_with_toolchain(ir, object_options, default_llvm_toolchain_paths());
+  let link_result: LlvmObjectResult = emit_llvm_object_from_ir_with_toolchain(ir, link_options, llvm_toolchain_paths("/toolchain/clang", "", "", "", "", ""));
+  give not object_result.valid
+    and object_result.object_text == ""
+    and llvm_object_has_diagnostic(object_result, "llvm.native.toolchain.required")
+    and llvm_object_has_diagnostic(object_result, "llvm.native.object.unavailable")
+    and not link_result.valid
+    and link_result.object_text == ""
+    and llvm_object_has_diagnostic(link_result, "llvm.native.toolchain.required")
+    and llvm_object_has_diagnostic(link_result, "llvm.native.link.unavailable");
+}
+
+proc test_llvm_invalid_inputs_are_rejected_before_object_bundle() -> bool {
+  let ir: IrUnit = build_verified_ir("llvm_invalid_options.vit", "proc main() -> int { give 0; }\n");
+  let bad_options: LlvmBuildOptions = llvm_build_options("", "", "", true, true, true, false, "off", false);
+  let result: LlvmObjectResult = emit_llvm_object_from_ir(ir, bad_options);
+  give not result.valid
+    and result.object_text == ""
+    and result.function_count == 0
+    and llvm_object_has_diagnostic(result, "llvm.object.invalid");
+}
+
+proc run_all_tests() -> int {
+  let failures: int = 0;
+  if not test_llvm_surface_helpers_describe_canonical_adapter() { set failures = failures + 1; }
+  if not test_llvm_toolchain_status_covers_packaging_modes() { set failures = failures + 1; }
+  if not test_llvm_ir_emission_uses_canonical_ir() { set failures = failures + 1; }
+  if not test_llvm_object_bundle_records_sections_symbols_and_profile_diagnostics() { set failures = failures + 1; }
+  if not test_llvm_native_toolchain_failures_are_explicit() { set failures = failures + 1; }
+  if not test_llvm_invalid_inputs_are_rejected_before_object_bundle() { set failures = failures + 1; }
+  give failures;
+}
+
+proc version_text() -> string {
+  give VERSION_TEXT
+}
+
+proc banner_text() -> string {
+  give BANNER_TEXT
+}
+
+proc main(args: list[string]) -> int {
+  give run_all_tests()
+}
+
+export *

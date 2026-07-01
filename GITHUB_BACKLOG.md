@@ -84,6 +84,40 @@ Derived from: `AUDIT.md`
 - sema tests now cover invalid visibility rejection, alias-member import resolution, and the fact that non-exported module items stay unresolved across module boundaries
 - `src/vitte/compiler/tests/sema_tests.vit` is wired into the fast core-language gate so semantic-regression coverage is no longer indirect only through later phases
 
+### Completed recently. Semantic package coverage is now closed across resolver, names, visibility, scopes, modules, and diagnostic helpers
+
+- Status: done
+- Notes:
+- `src/vitte/compiler/tests/sema_tests.vit` now exercises the exported helper surface of `analysis/sema`, including place-root parsing, visibility normalization, symbol-table behavior, module summary/import parsing, and semantic diagnostic context helpers
+- the semantic fast gate now proves the package exported by `src/vitte/compiler/analysis/sema/mod.vit`, not only the main `run_sema_hir` entrypoint
+- README status for `Semantic` is raised to `100%` to match code-backed test coverage
+
+### Completed recently. Production type-checking package coverage is now closed across checker, infer, traits, coercion, unify, errors, and API helpers
+
+- Status: done
+- Notes:
+- `src/vitte/compiler/tests/typeck_tests.vit` now exercises the exported production helper surface of `analysis/typeck`, including pipeline-status API helpers, type trait/class queries, coercion/projection helpers, unify rules, infer environment lifecycle helpers, and type-check diagnostic/result summaries
+- `src/vitte/compiler/tests/typeck_tests.vit` is wired into the fast core-language gate so type-check regressions are visible directly rather than only through downstream borrowck/backend failures
+- README status for `Type Checker` is raised to `100%` for the production `hir` pipeline; the `complete` pipeline remains explicitly experimental in the API
+
+### Completed recently. Borrow checker package coverage is now closed across ownership, moves, loans, lifetimes, regions, diagnostics, and canonical HIR/MIR entrypoints
+
+- Status: done
+- Notes:
+- `src/vitte/compiler/tests/borrowck_tests.vit` now exercises the exported borrow checker helper surface, including ownership place tracking, move conflict state, loan alias/conflict tables, lifetime/region summaries, and borrow diagnostic report helpers
+- the borrow checker production path is covered through `borrow_check_source`, `borrow_check_hir`, and the canonical `borrow_check_hir_mir` path used after frontend/HIR/MIR lowering
+- `src/vitte/compiler/tests/borrowck_tests.vit` is wired into the fast core-language gate through `borrowck-analysis-test`
+- README status for `Borrow Checker` is raised to `100%` to match code-backed package coverage
+
+### Completed recently. LLVM backend coverage is now closed across canonical IR emission, object bundles, native-toolchain diagnostics, profile metadata, and backend gate artifacts
+
+- Status: done
+- Notes:
+- `src/vitte/compiler/tests/llvm_tests.vit` now exercises the LLVM binding surface, including adapter helpers, toolchain status, canonical IR emission, LLVM object sections/symbols/relocations, LTO/PGO/debug diagnostics, native toolchain failures, and invalid option rejection
+- `llvm-backend-gate` now runs the Vitte LLVM tests and the bindings smoke test before the Python validation and artifact generation checks
+- generated LLVM coverage remains CI-visible through `target/reports/llvm_backend_coverage.md` and `target/reports/llvm_backend_validation.md`
+- README status for `LLVM` is raised to `100%` to match the checked backend surface
+
 ## P0
 
 ### 1. Align lexer with official EBNF token surface

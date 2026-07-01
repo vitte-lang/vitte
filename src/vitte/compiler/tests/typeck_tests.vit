@@ -1,12 +1,15 @@
 space vitte/compiler/tests/typeck_tests
 
-use vitte/compiler/analysis/typeck/api.{ run_production_typeck_hir }
-use vitte/compiler/analysis/typeck/errors.{ ExprTypeResult, TypeckResult }
-use vitte/compiler/analysis/typeck/infer.{ infer_call_type, type_binding }
+use vitte/compiler/analysis/typeck/api.{ experimental_typeck_pipeline_name, experimental_typeck_pipeline_status, production_typeck_pipeline_name, production_typeck_pipeline_status, run_production_typeck_hir }
+use vitte/compiler/analysis/typeck/coercion.{ projection_is_valid, projection_member_name, project_place_type, project_place_type_result, type_deref_target, type_index_element, type_member_result, types_compatible }
+use vitte/compiler/analysis/typeck/errors.{ ExprTypeResult, TypeckResult, diagnostic_summary, result_summary, typeck_internal_error, typeck_invalid_hir_result }
+use vitte/compiler/analysis/typeck/infer.{ empty_type_env, infer_call_type, infer_name_type, mutable_type_binding, type_binding, type_env_get_binding, type_env_mark_initialized, type_env_mark_moved, type_env_set, uninitialized_type_binding }
+use vitte/compiler/analysis/typeck/traits.{ type_allows_arithmetic, type_allows_bitwise, type_allows_comparison, type_can_assign_without_move, type_class, type_class_name, type_is_array, type_is_copy, type_is_function, type_is_pointer, type_is_reference, type_is_slice, type_is_tuple, type_requires_drop, type_trait_info }
+use vitte/compiler/analysis/typeck/unify.{ can_unify_types, unify_assignment_type, unify_binary_result_type, unify_or_fallback, unify_types, unify_types_result }
 use vitte/compiler/diagnostics/diagnostic.{ Diagnostic, DiagnosticPhase, DiagnosticSeverity, SourceSpan }
 use vitte/compiler/analysis/sema.{ SemaResult, run_sema_hir }
 use vitte/compiler/frontend/pipeline.{ FrontendOutput, frontend_run }
-use vitte/compiler/frontend/ast/node.{ ast_span }
+use vitte/compiler/frontend/ast/node.{ ast_span, ast_span_empty }
 use vitte/compiler/middle/hir.{ HirExpr, HirExprKind, HirNominalMemberKind, HirPlaceCategory, HirValueMode, hir_expr }
 use vitte/compiler/middle/hir/lower_ast.{ lower_ast_to_hir }
 
@@ -659,6 +662,94 @@ proc test_typeck_reports_impl_parameter_signature_mismatch() -> bool {
     and diag.labels[2] == "bool";
 }
 
+proc test_typeck_api_pipeline_helpers_report_production_status() -> bool {
+  give production_typeck_pipeline_name() == "hir"
+    and production_typeck_pipeline_status() == "production"
+    and experimental_typeck_pipeline_name() == "complete"
+    and experimental_typeck_pipeline_status() == "experimental";
+}
+
+proc test_typeck_trait_helpers_cover_core_type_surface() -> bool {
+  let info = type_trait_info("&int");
+  give type_class_name(type_class("u64")) == "unsigned_integer"
+    and type_is_reference("&int")
+    and type_is_pointer("*const int")
+    and type_is_slice("[int]")
+    and type_is_array("[int; 4]")
+    and type_is_tuple("(int, bool)")
+    and type_is_function("fn(int) -> bool")
+    and type_is_copy("&int")
+    and type_allows_arithmetic("u32")
+    and type_allows_bitwise("bool")
+    and type_allows_comparison("*const int")
+    and type_can_assign_without_move("&int")
+    and type_requires_drop("string")
+    and info.reference
+    and info.copy
+    and info.truthy;
+}
+
+proc test_typeck_coercion_helpers_cover_projection_surface() -> bool {
+  let projection = project_place_type_result("&int", "*value");
+  give type_deref_target("&mut int") == "int"
+    and type_index_element("[int; 4]") == "int"
+    and type_member_result("string", "len") == "int"
+    and types_compatible("u8", "int")
+    and projection_member_name("point.x", "") == "x"
+    and projection.valid
+    and projection.ty == "int"
+    and project_place_type("string", "value.len") == "int"
+    and projection_is_valid("string", "value.len");
+}
+
+proc test_typeck_unify_helpers_cover_numeric_and_reference_surface() -> bool {
+  let assign = unify_assignment_type("i32", "u8");
+  let binary = unify_binary_result_type("int", "==", "u8");
+  let refs = unify_types_result("&mut int", "&int");
+  give unify_types("i32", "u8") == "i32"
+    and can_unify_types("&int", "&mut int")
+    and unify_or_fallback("string", "bool", "fallback") == "fallback"
+    and assign.success
+    and assign.ty == "i32"
+    and binary.success
+    and binary.ty == "bool"
+    and refs.success
+    and refs.ty == "&int"
+    and refs.lossy;
+}
+
+proc test_typeck_infer_env_helpers_cover_binding_lifecycle() -> bool {
+  let env0 = type_env_set(empty_type_env(), uninitialized_type_binding("x", "int"));
+  let before = type_env_get_binding(env0, "x");
+  let env1 = type_env_mark_initialized(env0, "x");
+  let env2 = type_env_mark_moved(env1, "x");
+  let after = type_env_get_binding(env2, "x");
+  let mutable0 = mutable_type_binding("y", "int");
+  let infer_before = infer_name_type(env0.bindings, expr_name(20, "x"));
+  let infer_after = infer_name_type(env2.bindings, expr_name(21, "x"));
+  let before_diag = expr_diagnostic_by_code(infer_before, "TYPECK_E_USE_BEFORE_INIT");
+  let after_diag = expr_diagnostic_by_code(infer_after, "TYPECK_E_USE_AFTER_MOVE");
+  give before.valid
+    and not before.initialized
+    and mutable0.mutable
+    and before_diag.valid
+    and after.moved
+    and after_diag.valid;
+}
+
+proc test_typeck_error_helpers_cover_result_and_summary_surface() -> bool {
+  let source: string = "proc main() { give 0; }\n";
+  let fe: FrontendOutput = frontend_run("typeck_error_helpers.vit", source);
+  let hir = lower_ast_to_hir(fe);
+  let invalid0: TypeckResult = typeck_invalid_hir_result(hir);
+  let internal0: TypeckResult = typeck_internal_error(hir, "boom");
+  let diag = internal0.report.diagnostics[0];
+  give not invalid0.valid
+    and not internal0.valid
+    and diagnostic_summary(diag) != ""
+    and find(result_summary(invalid0), "typeck failed:") >= 0;
+}
+
 proc run_all_tests() -> int {
   let failures: int = 0;
   if not test_valid_numeric_flow() {
@@ -746,6 +837,24 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if not test_typeck_reports_impl_parameter_signature_mismatch() {
+    set failures = failures + 1;
+  }
+  if not test_typeck_api_pipeline_helpers_report_production_status() {
+    set failures = failures + 1;
+  }
+  if not test_typeck_trait_helpers_cover_core_type_surface() {
+    set failures = failures + 1;
+  }
+  if not test_typeck_coercion_helpers_cover_projection_surface() {
+    set failures = failures + 1;
+  }
+  if not test_typeck_unify_helpers_cover_numeric_and_reference_surface() {
+    set failures = failures + 1;
+  }
+  if not test_typeck_infer_env_helpers_cover_binding_lifecycle() {
+    set failures = failures + 1;
+  }
+  if not test_typeck_error_helpers_cover_result_and_summary_surface() {
     set failures = failures + 1;
   }
   give failures;

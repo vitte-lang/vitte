@@ -1,7 +1,7 @@
 space vitte/compiler/tests/codegen_tests
 
 use vitte/compiler/backend/codegen.{ CodegenResult, run_codegen_x86_64 }
-use vitte/compiler/backend/ir.{ IrInstructionKind, IrLinkage, IrModuleKind, IrUnit, IrUnitState, IrValueKind, IrVisibility, block_add_instruction, block_create, function_add_block, function_ref_create, instruction_create, instruction_with_call_abi, ir_validation_reason, module_add_function, module_add_nominal_type, module_create, nominal_type_create, span_empty, target_native_x86_64_linux, terminator_return, unit_add_module, unit_empty, unit_is_valid, unit_set_entry, unit_with_source_path, value_constant, value_place, verify_unit }
+use vitte/compiler/backend/ir.{ IrBlock, IrFunction, IrInstructionKind, IrLinkage, IrModuleKind, IrUnit, IrUnitState, IrValue, IrValueKind, IrVisibility, block_add_instruction, block_create, function_add_block, function_ref_create, instruction_create, instruction_with_call_abi, ir_validation_reason, module_add_function, module_add_nominal_type, module_create, nominal_type_create, span_empty, target_native_x86_64_linux, terminator_return, unit_add_module, unit_empty, unit_is_valid, unit_set_entry, unit_with_source_path, value_constant, value_place, verify_unit }
 use vitte/compiler/backend/link/artifact.{ LinkArtifact, artifact_is_valid }
 use vitte/compiler/backend/link/linker.{ link_ir_unit }
 use vitte/compiler/backend/pipeline.{ BackendPipelineResult, compile_frontend_to_valid_ir_with_profile_and_packaging, compile_to_valid_ir, compile_to_valid_ir_with_backend }
@@ -153,6 +153,92 @@ proc manual_bad_regular_call_abi_ir() -> IrUnit {
 proc test_ir_verifier_accepts_lowered_unit() -> bool {
   let ir: IrUnit = build_verified_ir("backend_ir_ok.vit", "proc main() -> int { give 0; }\n");
   give unit_is_valid(ir) and ir.state == IrUnitState.Verified and len(ir.modules) == 1 and ir.entry_function_id > 0;
+}
+
+proc test_ir_validator_rejects_units_without_entry_function() -> bool {
+  let target = target_native_x86_64_linux();
+  let unit0 = unit_with_source_path(unit_empty(target), "missing_entry.vit");
+  let verified: IrUnit = verify_unit(unit0);
+  give ir_validation_reason(unit0) == "invalid-unit" and not unit_is_valid(verified);
+}
+
+proc test_ir_validator_rejects_invalid_blocks() -> bool {
+  let target = target_native_x86_64_linux();
+  let invalid_block = IrBlock { id: 0, label: "", instructions: [], terminator: terminator_return(), valid: false };
+  let fn0 = function_add_block(
+    function_ref_create(1, "main", "manual", IrLinkage.Exported, IrVisibility.Public, true, span_empty()),
+    invalid_block
+  );
+  let module0 = module_add_function(module_create(1, "manual", "invalid_block.vit", IrModuleKind.Binary, target), fn0);
+  let unit0 = unit_set_entry(unit_add_module(unit_with_source_path(unit_empty(target), "invalid_block.vit"), module0), 1);
+  let verified: IrUnit = verify_unit(unit0);
+  give ir_validation_reason(unit0) == "invalid-block" and not unit_is_valid(verified);
+}
+
+proc test_ir_validator_rejects_functions_without_blocks() -> bool {
+  let target = target_native_x86_64_linux();
+  let fn0 = IrFunction {
+    id: 1,
+    name: "broken",
+    module_name: "manual",
+    linkage: IrLinkage.Exported,
+    visibility: IrVisibility.Public,
+    is_entry: true,
+    span: span_empty(),
+    params: [],
+    return_type: "int",
+    blocks: [],
+    valid: true
+  };
+  let module0 = module_add_function(module_create(1, "manual", "invalid_function.vit", IrModuleKind.Binary, target), fn0);
+  let unit0 = unit_set_entry(unit_add_module(unit_with_source_path(unit_empty(target), "invalid_function.vit"), module0), 1);
+  let verified: IrUnit = verify_unit(unit0);
+  give ir_validation_reason(unit0) == "invalid-function" and not unit_is_valid(verified);
+}
+
+proc test_ir_validator_rejects_invalid_instructions() -> bool {
+  let target = target_native_x86_64_linux();
+  let invalid_instruction = instruction_create(1, IrInstructionKind.Invalid, "", "", value_place(1, "bad", "bad", "int"), [], span_empty());
+  let block0 = block_add_instruction(block_create(1, "bb1"), invalid_instruction);
+  let fn0 = function_add_block(function_ref_create(1, "main", "manual", IrLinkage.Exported, IrVisibility.Public, true, span_empty()), block0);
+  let module0 = module_add_function(module_create(1, "manual", "invalid_instruction.vit", IrModuleKind.Binary, target), fn0);
+  let unit0 = unit_set_entry(unit_add_module(unit_with_source_path(unit_empty(target), "invalid_instruction.vit"), module0), 1);
+  let verified: IrUnit = verify_unit(unit0);
+  give ir_validation_reason(unit0) == "invalid-instruction" and not unit_is_valid(verified);
+}
+
+proc test_ir_validator_rejects_invalid_borrow_abi() -> bool {
+  let target = target_native_x86_64_linux();
+  let borrow0 = instruction_create(1, IrInstructionKind.BorrowShared, "", "", value_place(1, "out", "out", "int"), [value_place(2, "value", "value", "int")], span_empty());
+  let block0 = block_add_instruction(block_create(1, "bb1"), borrow0);
+  let fn0 = function_add_block(function_ref_create(1, "main", "manual", IrLinkage.Exported, IrVisibility.Public, true, span_empty()), block0);
+  let module0 = module_add_function(module_create(1, "manual", "invalid_borrow.vit", IrModuleKind.Binary, target), fn0);
+  let unit0 = unit_set_entry(unit_add_module(unit_with_source_path(unit_empty(target), "invalid_borrow.vit"), module0), 1);
+  let verified: IrUnit = verify_unit(unit0);
+  give ir_validation_reason(unit0) == "invalid-borrow-abi" and not unit_is_valid(verified);
+}
+
+proc test_ir_validator_rejects_invalid_instruction_operands() -> bool {
+  let target = target_native_x86_64_linux();
+  let invalid_arg = IrValue { id: 2, kind: IrValueKind.Invalid, text: "", name: "", type_name: "", place: "", constant: "", ref_mutable: false, ref_passthrough: false, external: false, valid: false };
+  let assert0 = instruction_create(1, IrInstructionKind.Assert, "", "", value_place(1, "ok", "ok", "bool"), [invalid_arg], span_empty());
+  let block0 = block_add_instruction(block_create(1, "bb1"), assert0);
+  let fn0 = function_add_block(function_ref_create(1, "main", "manual", IrLinkage.Exported, IrVisibility.Public, true, span_empty()), block0);
+  let module0 = module_add_function(module_create(1, "manual", "invalid_operand.vit", IrModuleKind.Binary, target), fn0);
+  let unit0 = unit_set_entry(unit_add_module(unit_with_source_path(unit_empty(target), "invalid_operand.vit"), module0), 1);
+  let verified: IrUnit = verify_unit(unit0);
+  give ir_validation_reason(unit0) == "invalid-instruction-operand" and not unit_is_valid(verified);
+}
+
+proc test_ir_validator_rejects_invalid_switch_terminator() -> bool {
+  let target = target_native_x86_64_linux();
+  let terminator = instruction_create(1, IrInstructionKind.Switch, "", "", value_place(1, "cond", "cond", "int"), [], span_empty());
+  let block0 = block_add_instruction(block_create(1, "bb1"), terminator);
+  let fn0 = function_add_block(function_ref_create(1, "main", "manual", IrLinkage.Exported, IrVisibility.Public, true, span_empty()), block0);
+  let module0 = module_add_function(module_create(1, "manual", "invalid_switch.vit", IrModuleKind.Binary, target), fn0);
+  let unit0 = unit_set_entry(unit_add_module(unit_with_source_path(unit_empty(target), "invalid_switch.vit"), module0), 1);
+  let verified: IrUnit = verify_unit(unit0);
+  give ir_validation_reason(unit0) == "invalid-terminator" and not unit_is_valid(verified);
 }
 
 proc test_mir_to_ir_preserves_cfg_terminators() -> bool {

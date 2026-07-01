@@ -1,7 +1,103 @@
 space vitte/compiler/tests/borrowck_tests
 
-use vitte/compiler/analysis/borrowck.{ BorrowCheckResult, borrow_check_hir, borrow_check_hir_mir, borrow_check_source }
-use vitte/compiler/diagnostics/diagnostic.{ Diagnostic, DiagnosticPhase, DiagnosticSeverity, SourceSpan }
+use vitte/compiler/analysis/borrowck.{
+  BorrowCheckResult,
+  RegionSolution,
+  close_region,
+  merge_region_solutions,
+  region_solution_empty,
+  borrow_check_hir,
+  borrow_check_hir_mir,
+  borrow_check_source
+}
+use vitte/compiler/analysis/borrowck/errors.{
+  BorrowErrorKind,
+  BorrowPhase,
+  borrow_diagnostic_result,
+  borrow_error_internal,
+  borrow_error_lifetime_too_short_story,
+  borrow_report_add,
+  borrow_report_empty,
+  diagnostic_summary,
+  diagnostics_have_errors,
+  diagnostics_valid,
+  error_code,
+  report_summary,
+  span_create,
+  span_with_length
+}
+use vitte/compiler/analysis/borrowck/lifetimes.{
+  LifetimeEscapeKind,
+  LifetimeFactKind,
+  LifetimeResult,
+  add_borrow_fact,
+  add_return_fact,
+  escape_kind_name,
+  fact_is_escape,
+  fact_kind_name,
+  finalize_lifetimes,
+  lifetime_fact_full,
+  lifetime_fact_summary,
+  lifetime_result_empty,
+  lifetime_result_summary
+}
+use vitte/compiler/analysis/borrowck/loans.{
+  LoanKind,
+  LoanTable,
+  active_loan_count,
+  add_loan_auto,
+  add_loan_checked,
+  alias_is_active,
+  conflict_count,
+  deactivate_alias,
+  deactivate_expired_loans,
+  kind_for_alias,
+  loan_create,
+  loan_kind_name,
+  loan_table_has_conflicts,
+  loan_table_is_valid,
+  owner_for_alias,
+  owner_has_active_mutable,
+  owner_has_conflict
+}
+use vitte/compiler/analysis/borrowck/moves.{
+  MoveEventKind,
+  MoveState,
+  MoveTracker,
+  event_consumes_value,
+  event_reads_value,
+  last_state_for,
+  move_kind_name,
+  move_source_from_expr,
+  move_state_name,
+  move_tracker_empty,
+  tracker_conflict_count,
+  tracker_has_conflicts,
+  tracker_is_valid,
+  tracker_record_move,
+  tracker_record_reinit,
+  tracker_record_shared_borrow,
+  tracker_record_storage_dead,
+  tracker_record_use
+}
+use vitte/compiler/analysis/borrowck/ownership.{
+  OwnershipTable,
+  add_shared_borrow,
+  declare_local,
+  is_moved,
+  is_mutably_borrowed,
+  mark_moved,
+  mark_reinitialized,
+  ownership_table_empty,
+  place_key,
+  place_named,
+  place_overlap,
+  place_prefix,
+  release_shared_borrow,
+  set_mutable_borrow,
+  shared_borrow_count
+}
+use vitte/compiler/diagnostics/diagnostic.{ Diagnostic, DiagnosticPhase, DiagnosticReport, DiagnosticSeverity, SourceSpan }
 use vitte/compiler/frontend/pipeline.{ FrontendOutput, frontend_run }
 use vitte/compiler/middle/hir/lower_ast.{ lower_ast_to_hir }
 use vitte/compiler/middle/lower/hir_to_mir.{ lower_hir_to_mir }
@@ -277,6 +373,96 @@ proc test_impl_borrow_param_call_uses_canonical_mir_signature() -> bool {
   give has_code(result, "BORROWCK_E_WRITE_WHILE_BORROWED");
 }
 
+proc test_ownership_helpers_track_places_and_borrows() -> bool {
+  let table0: OwnershipTable = ownership_table_empty();
+  let table1: OwnershipTable = declare_local(table0, "value.field", 1, true);
+  let table2: OwnershipTable = add_shared_borrow(table1, "value.field", 2);
+  let table3: OwnershipTable = set_mutable_borrow(table2, "value.field", true, 3);
+  let table4: OwnershipTable = release_shared_borrow(table3, "value.field", 4);
+  let table5: OwnershipTable = mark_moved(table4, "value.field", 5);
+  let table6: OwnershipTable = mark_reinitialized(table5, "value.field", 6);
+  give place_key(place_named("*value.field[0]")) == "*value.field[0]"
+    and place_prefix(place_named("value"), place_named("value.field"))
+    and place_overlap(place_named("value.field"), place_named("value.field.inner"))
+    and shared_borrow_count(table3, "value.field") == 1
+    and shared_borrow_count(table4, "value.field") == 0
+    and is_mutably_borrowed(table3, "value.field")
+    and is_moved(table5, "value.field")
+    and not is_moved(table6, "value.field");
+}
+
+proc test_move_tracker_helpers_report_state_and_conflicts() -> bool {
+  let tracker0: MoveTracker = move_tracker_empty();
+  let tracker1: MoveTracker = tracker_record_move(tracker0, "value", 1);
+  let tracker2: MoveTracker = tracker_record_use(tracker1, "value", 2);
+  let tracker3: MoveTracker = tracker_record_reinit(tracker2, "value", 3);
+  let tracker4: MoveTracker = tracker_record_shared_borrow(tracker3, "value", 4);
+  let tracker5: MoveTracker = tracker_record_storage_dead(tracker4, "value", 5);
+  give move_kind_name(MoveEventKind.BorrowShared) == "borrow_shared"
+    and move_state_name(MoveState.Dead) == "dead"
+    and event_consumes_value(MoveEventKind.Move)
+    and event_reads_value(MoveEventKind.BorrowShared)
+    and move_source_from_expr("value.field + 1") == "value.field"
+    and tracker_has_conflicts(tracker2)
+    and tracker_conflict_count(tracker2) == 1
+    and tracker_is_valid(tracker3) == false
+    and last_state_for(tracker5, "value") == MoveState.Dead;
+}
+
+proc test_loan_table_helpers_track_aliases_and_conflicts() -> bool {
+  let table0: LoanTable = add_loan_auto(loan_table_empty(), "shared_ref", "value", LoanKind.Shared, 1, 10);
+  let table1: LoanTable = add_loan_checked(table0, loan_create(9, "mut_ref", "value", LoanKind.Mutable, 2));
+  let table2: LoanTable = deactivate_alias(table0, "shared_ref", 3);
+  let table3: LoanTable = add_loan_auto(loan_table_empty(), "short_ref", "value", LoanKind.Shared, 1, 2);
+  let table4: LoanTable = deactivate_expired_loans(table3, 5);
+  give loan_kind_name(LoanKind.Mutable) == "mutable"
+    and alias_is_active(table0, "shared_ref")
+    and owner_for_alias(table0, "shared_ref") == "value"
+    and kind_for_alias(table0, "shared_ref") == LoanKind.Shared
+    and owner_has_conflict(table0, "value", LoanKind.Mutable)
+    and not owner_has_active_mutable(table0, "value")
+    and loan_table_has_conflicts(table1)
+    and conflict_count(table1) == 1
+    and not loan_table_is_valid(table1)
+    and active_loan_count(table2) == 0
+    and active_loan_count(table4) == 0;
+}
+
+proc test_lifetime_and_region_helpers_summarize_failures() -> bool {
+  let regions0: RegionSolution = region_solution_empty();
+  let regions1: RegionSolution = close_region(close_region(regions0, "missing", 2), "also_missing", 3);
+  let lifetimes0: LifetimeResult = lifetime_result_empty(regions1);
+  let lifetimes1: LifetimeResult = add_borrow_fact(lifetimes0, "alias", "owner", "alias_region", "owner_region", 4);
+  let lifetimes2: LifetimeResult = add_return_fact(lifetimes1, "alias", "owner", "local_region", "return_region", 5);
+  let lifetimes3: LifetimeResult = finalize_lifetimes(lifetimes2);
+  let fact = lifetime_fact_full("alias", "owner", "escaped_region", "owner_region", 6, LifetimeFactKind.Escape, LifetimeEscapeKind.Return);
+  let merged: RegionSolution = merge_region_solutions(lifetimes1.regions, lifetimes2.regions);
+  give fact_kind_name(LifetimeFactKind.Borrow) == "borrow"
+    and escape_kind_name(LifetimeEscapeKind.Return) == "return"
+    and fact_is_escape(fact)
+    and find(lifetime_fact_summary(fact), "escape return") >= 0
+    and len(merged.regions) >= len(lifetimes1.regions)
+    and not lifetimes3.valid
+    and find(lifetime_result_summary(lifetimes3), "lifetimes failed") >= 0;
+}
+
+proc test_borrow_diagnostic_helpers_build_reports() -> bool {
+  let span: SourceSpan = span_with_length(span_create("borrowck_helpers.vit", 3, 5, 0), 7);
+  let diag: Diagnostic = borrow_error_lifetime_too_short_story("borrowck_helpers.vit", "value", 3, 4, "alias outlives owner", 42);
+  let internal: Diagnostic = borrow_error_internal("borrowck_helpers.vit", 9, "broken borrowck invariant");
+  let wrapped = borrow_diagnostic_result(diag, BorrowErrorKind.LifetimeTooShort, BorrowPhase.RegionCheck, 42);
+  let report0: DiagnosticReport = borrow_report_empty();
+  let report1: DiagnosticReport = borrow_report_add(report0, diag);
+  let report2: DiagnosticReport = borrow_report_add(report1, internal);
+  give span.length == 7
+    and error_code(BorrowErrorKind.LifetimeTooShort) == "BORROWCK_E_LIFETIME_TOO_SHORT"
+    and wrapped.valid
+    and diagnostics_have_errors(report2.diagnostics)
+    and not diagnostics_valid(report2.diagnostics)
+    and find(diagnostic_summary(diag), "BORROWCK_E_LIFETIME_TOO_SHORT") >= 0
+    and find(report_summary(report2), "borrowck failed") >= 0;
+}
+
 proc run_all_tests() -> int {
   let failures: int = 0;
   if not test_valid_reinit_after_move() { set failures = failures + 1; }
@@ -300,6 +486,11 @@ proc run_all_tests() -> int {
   if not test_borrow_param_call_does_not_move_source() { set failures = failures + 1; }
   if not test_owned_param_call_moves_source() { set failures = failures + 1; }
   if not test_impl_borrow_param_call_uses_canonical_mir_signature() { set failures = failures + 1; }
+  if not test_ownership_helpers_track_places_and_borrows() { set failures = failures + 1; }
+  if not test_move_tracker_helpers_report_state_and_conflicts() { set failures = failures + 1; }
+  if not test_loan_table_helpers_track_aliases_and_conflicts() { set failures = failures + 1; }
+  if not test_lifetime_and_region_helpers_summarize_failures() { set failures = failures + 1; }
+  if not test_borrow_diagnostic_helpers_build_reports() { set failures = failures + 1; }
   give failures;
 }
 

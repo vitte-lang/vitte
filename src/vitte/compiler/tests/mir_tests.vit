@@ -639,6 +639,128 @@ proc test_validate_mir_rejects_borrow_of_constant() -> bool {
   give not validate_mir(bad).valid and mir_validation_reason(bad) == "invalid-borrow-target";
 }
 
+proc test_validate_mir_rejects_invalid_borrow_operand() -> bool {
+  let bad_stmt: MirStatement = MirStatement {
+    id: 22,
+    span: ast_span_empty(),
+    kind: MirStatementKind.Assign,
+    place: MirPlace { local: "r", projection: "", deref_depth: 0, mutable: false, moved: false, valid: true },
+    rvalue: MirRvalue {
+      kind: MirRvalueKind.BorrowShared,
+      text: "&x",
+      operator: "",
+      binary_operator: 0 as MirBinaryOperator,
+      unary_operator: 0 as MirUnaryOperator,
+      borrow_kind: 0 as MirBorrowKind,
+      operands: [MirOperand { text: "x", place: MirPlace { local: "", projection: "", deref_depth: 0, mutable: false, moved: false, valid: false }, ty: "int", constant: false, move: false, valid: false }],
+      ty: "int",
+      temporary: false,
+      valid: true
+    },
+    reachable: true,
+    valid: true
+  };
+  let bad: MirUnit = unit_with_functions("manual_bad_borrow_operand_mir.vit", [minimal_valid_function("main", [], bad_stmt)]);
+  give not validate_mir(bad).valid and mir_validation_reason(bad) == "invalid-borrow-operand";
+}
+
+proc test_validate_mir_rejects_regular_call_param_type_mismatch() -> bool {
+  let bad_stmt: MirStatement = MirStatement {
+    id: 23,
+    span: ast_span_empty(),
+    kind: MirStatementKind.Assign,
+    place: MirPlace { local: "y", projection: "", deref_depth: 0, mutable: false, moved: false, valid: true },
+    rvalue: MirRvalue {
+      kind: MirRvalueKind.Call,
+      text: "keep",
+      operator: "",
+      binary_operator: 0 as MirBinaryOperator,
+      unary_operator: 0 as MirUnaryOperator,
+      borrow_kind: 0 as MirBorrowKind,
+      operands: [named_operand("keep", "fn"), named_operand("flag", "bool")],
+      ty: "int",
+      temporary: false,
+      valid: true
+    },
+    reachable: true,
+    valid: true
+  };
+  let main_fn: MirFunction = minimal_valid_function("main", [], bad_stmt);
+  let keep_fn: MirFunction = minimal_valid_function(
+    "keep",
+    [MirFunctionParam { name: "value", type_name: "int", mode: "", mutable: false, borrowed: false, variadic: false, valid: true }],
+    MirStatement {
+      id: 24,
+      span: ast_span_empty(),
+      kind: MirStatementKind.Return,
+      place: MirPlace { local: "", projection: "", deref_depth: 0, mutable: false, moved: false, valid: false },
+      rvalue: MirRvalue {
+        kind: MirRvalueKind.Use,
+        text: "0",
+        operator: "",
+        binary_operator: 0 as MirBinaryOperator,
+        unary_operator: 0 as MirUnaryOperator,
+        borrow_kind: 0 as MirBorrowKind,
+        operands: [int_constant_operand("0")],
+        ty: "int",
+        temporary: false,
+        valid: true
+      },
+      reachable: true,
+      valid: true
+    }
+  );
+  let bad: MirUnit = unit_with_functions("manual_bad_regular_call_param_mir.vit", [main_fn, keep_fn]);
+  give not validate_mir(bad).valid and mir_validation_reason(bad) == "invalid-regular-call-param-type";
+}
+
+proc test_validate_mir_rejects_empty_goto_block() -> bool {
+  let goto_block = MirBlock { id: 2, label: "bb1", predecessors: [], statements: [], terminator: MirTerminator { kind: MirTerminatorKind.Goto, target_block: 3, else_block: 0, condition: MirOperand { text: "", place: MirPlace { local: "", projection: "", deref_depth: 0, mutable: false, moved: false, valid: false }, ty: "", constant: false, move: false, valid: false }, switch_values: [], switch_targets: [], valid: true }, sealed: true, reachable: true, valid: true };
+  let entry_block = MirBlock { id: 1, label: "bb0", predecessors: [], statements: [], terminator: mir_terminator_return(), sealed: true, reachable: true, valid: true };
+  let bad: MirUnit = unit_with_functions("manual_bad_empty_goto_mir.vit", [MirFunction { id: 1, name: "main", entry_block: 1, params: [], return_type: "int", local_count: 1, temporary_count: 0, blocks: [entry_block, goto_block], valid: true }]);
+  give not validate_mir(bad).valid and mir_validation_reason(bad) == "empty-goto-block";
+}
+
+proc test_validate_mir_rejects_return_terminator_mismatch() -> bool {
+  let stmt: MirStatement = MirStatement {
+    id: 25,
+    span: ast_span_empty(),
+    kind: MirStatementKind.Return,
+    place: MirPlace { local: "", projection: "", deref_depth: 0, mutable: false, moved: false, valid: false },
+    rvalue: MirRvalue {
+      kind: MirRvalueKind.Use,
+      text: "0",
+      operator: "",
+      binary_operator: 0 as MirBinaryOperator,
+      unary_operator: 0 as MirUnaryOperator,
+      borrow_kind: 0 as MirBorrowKind,
+      operands: [int_constant_operand("0")],
+      ty: "int",
+      temporary: false,
+      valid: true
+    },
+    reachable: true,
+    valid: true
+  };
+  let bad_block = MirBlock {
+    id: 1,
+    label: "bb0",
+    predecessors: [],
+    statements: [stmt],
+    terminator: MirTerminator { kind: MirTerminatorKind.Goto, target_block: 2, else_block: 0, condition: MirOperand { text: "", place: MirPlace { local: "", projection: "", deref_depth: 0, mutable: false, moved: false, valid: false }, ty: "", constant: false, move: false, valid: false }, switch_values: [], switch_targets: [], valid: true },
+    sealed: true,
+    reachable: true,
+    valid: true
+  };
+  let bad: MirUnit = unit_with_functions("manual_bad_return_terminator_mir.vit", [MirFunction { id: 1, name: "main", entry_block: 1, params: [], return_type: "int", local_count: 1, temporary_count: 0, blocks: [bad_block], valid: true }]);
+  give not validate_mir(bad).valid and mir_validation_reason(bad) == "return-terminator-mismatch";
+}
+
+proc test_validate_mir_rejects_invalid_entry_block() -> bool {
+  let bad: MirUnit = unit_with_functions("manual_bad_entry_block_mir.vit", [MirFunction { id: 1, name: "main", entry_block: 99, params: [], return_type: "int", local_count: 1, temporary_count: 0, blocks: [MirBlock { id: 1, label: "bb0", predecessors: [], statements: [], terminator: mir_terminator_return(), sealed: true, reachable: true, valid: true }], valid: true }]);
+  give not validate_mir(bad).valid and mir_validation_reason(bad) == "invalid-entry-block";
+}
+
 proc run_all_tests() -> int {
   let failures: int = 0;
   if not test_mir_lowering() {
@@ -693,6 +815,21 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if not test_validate_mir_rejects_borrow_of_constant() {
+    set failures = failures + 1;
+  }
+  if not test_validate_mir_rejects_invalid_borrow_operand() {
+    set failures = failures + 1;
+  }
+  if not test_validate_mir_rejects_regular_call_param_type_mismatch() {
+    set failures = failures + 1;
+  }
+  if not test_validate_mir_rejects_empty_goto_block() {
+    set failures = failures + 1;
+  }
+  if not test_validate_mir_rejects_return_terminator_mismatch() {
+    set failures = failures + 1;
+  }
+  if not test_validate_mir_rejects_invalid_entry_block() {
     set failures = failures + 1;
   }
   give failures;

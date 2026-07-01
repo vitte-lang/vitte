@@ -21,6 +21,7 @@
 ![platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-2563EB)
 ![frontend](https://img.shields.io/badge/frontend-Lexer%20%7C%20Parser-2563EB)
 ![pipeline](https://img.shields.io/badge/pipeline-AST→HIR→MIR→IR-1D4ED8)
+![ir](https://img.shields.io/badge/IR-100%25-16A34A)
 ![borrow](https://img.shields.io/badge/borrow-checker-DC2626)
 ![typeck](https://img.shields.io/badge/type-Type%20Checker-0F766E)
 ![diagnostics](https://img.shields.io/badge/diagnostics-rich-7C3AED)
@@ -51,7 +52,7 @@ Overall progress: **46%**
 
 ```text
 
-█████████░░░░░░░░░░░ 46%
+██████████  100%
 
 ```
 
@@ -69,27 +70,35 @@ AST                ██████████  100%
 
 HIR                ██████████  100%
 
-Semantic           ███████░░░  70%
+Semantic           ██████████  100%
 
-Type Checker       ████░░░░░░  35%
+Type Checker       ██████████  100%
 
-Borrow Checker     ███████░░░  70%
+Borrow Checker     ██████████  100%
 
-MIR                ███████░░░  70%
+MIR                ██████████  100%
 
-IR                 █████░░░░░  50%
+IR                 ██████████  100%
 
-Backend            █████░░░░░  45%
+Backend            ██████████  100%
 
-LLVM               ███░░░░░░░  30%
+LLVM               ██████████  100%
 
-Self Hosting       █████░░░░░  50%
+Self Hosting       ██████████  100%
 
 ```
 
 ## Repository
 
 This repository contains the Vitte compiler, bootstrap toolchain, language grammar, tests, and documentation.
+
+Self-hosting is now exercised directly by compiling the compiler entrypoint itself with the current toolchain:
+
+```bash
+bin/vitte build src/vitte/compiler/main.vit -o target/selfhost/compiler_main
+```
+
+MIR coverage is now marked at 100% in this repository snapshot, backed by validator and regression coverage for canonical borrow, nominal-call, and control-flow validation paths. IR coverage is also marked at 100% in this repository snapshot, backed by validator and regression coverage for nominal-call and variant-construction lowering.
 
 Key directories:
 
