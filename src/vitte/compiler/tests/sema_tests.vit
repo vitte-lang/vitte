@@ -72,6 +72,45 @@ proc test_resolves_imported_proc_from_another_module() -> bool {
   give artifacts.valid and call_expr.resolved_kind == "import" and call_expr.resolved_id > 0;
 }
 
+proc test_resolves_imported_proc_through_module_alias_member_call() -> bool {
+  let dep: string = "space demo/math;\nexport *;\nproc sum() -> int { give 0; }\n";
+  let root: string = "space demo/app;\nuse demo/math as math;\nproc main() -> int { give math.sum(); }\n";
+  let artifacts: DriverModuleSetArtifacts = analyze_source_set([
+    driver_module_input("demo_math_alias.vit", dep),
+    driver_module_input("demo_app_alias.vit", root)
+  ]);
+  let call_expr = artifacts.modules[1].resolved_hir.module.items[2].stmts[0].expr;
+  let callee = call_expr.children[0];
+  give artifacts.valid
+    and callee.binding == "sum"
+    and callee.resolved_kind == "import"
+    and callee.resolved_id > 0
+    and not callee.external;
+}
+
+proc test_non_exported_proc_stays_unresolved_across_modules() -> bool {
+  let dep: string = "space demo/math;\nproc hidden() -> int { give 0; }\n";
+  let root: string = "space demo/app;\nuse demo/math as math;\nproc main() -> int { give math.hidden(); }\n";
+  let artifacts: DriverModuleSetArtifacts = analyze_source_set([
+    driver_module_input("demo_math_hidden.vit", dep),
+    driver_module_input("demo_app_hidden.vit", root)
+  ]);
+  let call_expr = artifacts.modules[1].resolved_hir.module.items[2].stmts[0].expr;
+  let callee = call_expr.children[0];
+  give artifacts.modules[1].analysis.sema_ok
+    and not artifacts.modules[1].valid
+    and callee.binding == "hidden"
+    and callee.external;
+}
+
+proc test_invalid_visibility_is_rejected() -> bool {
+  let source: string = "weird proc main() -> int { give 0; }\n";
+  let fe: FrontendOutput = frontend_run("sema_invalid_visibility.vit", source);
+  let hir = lower_ast_to_hir(fe);
+  let result: SemaResult = run_sema_hir(hir);
+  give not result.valid and has_code(result, "SEMA_E_INVALID_VISIBILITY");
+}
+
 proc test_resolves_type_level_surface_item_kinds() -> bool {
   let source: string =
     "form Point { x: int, y: int }\n" +
@@ -148,6 +187,15 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if not test_resolves_imported_proc_from_another_module() {
+    set failures = failures + 1;
+  }
+  if not test_resolves_imported_proc_through_module_alias_member_call() {
+    set failures = failures + 1;
+  }
+  if not test_non_exported_proc_stays_unresolved_across_modules() {
+    set failures = failures + 1;
+  }
+  if not test_invalid_visibility_is_rejected() {
     set failures = failures + 1;
   }
   if not test_resolves_type_level_surface_item_kinds() {

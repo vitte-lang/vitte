@@ -12,6 +12,7 @@ use vitte/compiler/analysis/sema/scopes.{
   SemaSymbol,
   SemaSymbolKind,
   sema_symbol,
+  symbol_find_qualified,
   symbol_find_visible,
   symbol_index,
   symbol_index_in_scope,
@@ -256,18 +257,46 @@ proc annotate_expr(expr: HirExpr, symbols: [SemaSymbol], scope_depth: u64, next_
     let base: HirExpr = children[0];
     let member: string = expr_member_name(expr);
     let suffix: string = expr_place_suffix(base.text, expr.text);
-    set binding = base.binding;
-    if member != "" and binding != "" {
-      if suffix != "" {
-        set binding = base.binding + suffix;
+    let base_lookup: string = if base.name != "" { base.name } else { base.binding };
+    let base_symbol: SemaSymbol = resolve_symbol(current_symbols, base_lookup, scope_depth);
+    if base_symbol.valid and base_symbol.kind == SemaSymbolKind.Module and member != "" and base_symbol.module_path != "" {
+      let qualified_name: string = base_symbol.module_path + "::" + member;
+      let resolved_member: SemaSymbol = symbol_find_qualified(current_symbols, qualified_name);
+      if resolved_member.valid {
+        set binding = resolved_member.name;
+        set resolved_id = resolved_member.id;
+        set resolved_kind = symbol_kind_name(resolved_member.kind);
+        set external = false;
+        set place_category = "value";
       } else {
-        set binding = base.binding + "." + member;
+        set binding = member;
+        set resolved_kind = "external";
+        set external = true;
+        set place_category = "value";
+        set diagnostics = sema_add_diag(diagnostics, sema_diagnostic(
+          "SEMA_W_UNRESOLVED_MEMBER",
+          SemaSeverity.Warning,
+          "unresolved imported member `" + expr.text + "` treated as external",
+          [expr.text],
+          "export the member from the imported module or use a valid exported item",
+          expr.span,
+          false
+        ));
       }
+    } else {
+      set binding = base.binding;
+      if member != "" and binding != "" {
+        if suffix != "" {
+          set binding = base.binding + suffix;
+        } else {
+          set binding = base.binding + "." + member;
+        }
+      }
+      set resolved_id = base.resolved_id;
+      set resolved_kind = "member";
+      set external = base.external;
+      set place_category = "field";
     }
-    set resolved_id = base.resolved_id;
-    set resolved_kind = "member";
-    set external = base.external;
-    set place_category = "field";
   } elif expr.kind == HirExprKind.Index and len(children) > 0 {
     let base: HirExpr = children[0];
     let suffix: string = expr_place_suffix(base.text, expr.text);

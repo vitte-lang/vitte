@@ -4,7 +4,7 @@ use vitte/compiler/frontend/pipeline.{ FrontendDiagnostic, FrontendOutput, front
 use vitte/compiler/analysis/pipeline.{ AnalysisOutput, analysis_run_prechecked }
 use vitte/compiler/analysis/borrowck.{ BorrowCheckResult, borrow_check_hir_mir }
 use vitte/compiler/analysis/sema.{ SemaModuleImport, SemaModuleSummary, SemaResult, imported_symbols_from_summary, run_sema_hir, run_sema_hir_with_imports, summarize_module_hir }
-use vitte/compiler/analysis/sema/scopes.{ SemaSymbol }
+use vitte/compiler/analysis/sema/scopes.{ SemaSymbol, SemaSymbolKind, SemaSymbolState, SemaVisibility, sema_symbol_full }
 use vitte/compiler/analysis/typeck/api.{ run_production_typeck_hir }
 use vitte/compiler/analysis/typeck/errors.{ TypeckResult }
 use vitte/compiler/diagnostics/diagnostic.{ Diagnostic, DiagnosticPhase, DiagnosticReport, DiagnosticRenderConfig, DiagnosticStyle, SourceSpan, default_render_config, diagnostic_from_surface, diagnostic_report, diagnostic_report_empty, phase_name, render_report, span_range }
@@ -864,7 +864,26 @@ proc imported_symbols_for_summary(summary: SemaModuleSummary, summaries: [SemaMo
         let index: int = module_summary_index(summaries, dependency.module_path);
         if index >= 0 {
             let summary_index: u64 = index as u64;
-            set imported = imported + imported_symbols_from_summary(summaries[summary_index]);
+            let dependency_summary: SemaModuleSummary = summaries[summary_index];
+            if dependency.alias != "" {
+                set imported = imported + [sema_symbol_full(
+                    9000000 + summary_index,
+                    dependency.alias,
+                    dependency_summary.module_path,
+                    SemaSymbolKind.Module,
+                    SemaSymbolState.Imported,
+                    0,
+                    false,
+                    SemaVisibility.Public,
+                    dependency_summary.module_path,
+                    "",
+                    0,
+                    0
+                )];
+            }
+            if dependency.import_all or dependency.alias == "" {
+                set imported = imported + imported_symbols_from_summary(dependency_summary);
+            }
         }
         set i = i + 1;
     }

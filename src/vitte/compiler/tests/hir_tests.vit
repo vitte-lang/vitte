@@ -3,6 +3,9 @@ space vitte/compiler/tests/hir_tests
 use vitte/compiler/frontend/pipeline.{ FrontendOutput, frontend_run }
 use vitte/compiler/middle/hir/lower_ast.{ lower_ast_to_hir }
 use vitte/compiler/middle/hir.{ HirExprKind, HirItemKind, HirNominalMemberKind, HirProcParam, HirStmtKind, HirUnit, hir_expr_empty, hir_item_with_members, hir_module, hir_nominal_member, hir_proc_param, hir_unit }
+use vitte/compiler/middle/hir/builder.{ hir_builder_selftest }
+use vitte/compiler/middle/hir/control_flow.{ control_flow_selftest }
+use vitte/compiler/middle/hir/pretty.{ pretty_selftest }
 use vitte/compiler/middle/hir/validate.{ validate_hir }
 use vitte/compiler/frontend/ast.node.{ ast_span_empty }
 
@@ -208,6 +211,18 @@ proc test_hir_validation_rejects_invalid_member_and_param_surface() -> bool {
   give not unit.valid and len(unit.module.diagnostics) >= 4;
 }
 
+proc test_hir_builder_helpers_selftest() -> bool {
+  give hir_builder_selftest();
+}
+
+proc test_hir_control_flow_helpers_selftest() -> bool {
+  give control_flow_selftest();
+}
+
+proc test_hir_pretty_surface_selftest() -> bool {
+  give pretty_selftest();
+}
+
 proc run_all_tests() -> int {
   let failures: int = 0;
   if not test_hir_lowering() {
@@ -226,6 +241,15 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if not test_hir_validation_rejects_invalid_member_and_param_surface() {
+    set failures = failures + 1;
+  }
+  if not test_hir_builder_helpers_selftest() {
+    set failures = failures + 1;
+  }
+  if not test_hir_control_flow_helpers_selftest() {
+    set failures = failures + 1;
+  }
+  if not test_hir_pretty_surface_selftest() {
     set failures = failures + 1;
   }
   give failures;

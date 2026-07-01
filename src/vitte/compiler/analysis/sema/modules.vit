@@ -1,6 +1,6 @@
 space vitte/compiler/analysis/sema
 
-use vitte/compiler/analysis/sema/scopes.{ SemaSymbol, SemaSymbolKind, sema_symbol }
+use vitte/compiler/analysis/sema/scopes.{ SemaSymbol, SemaSymbolKind, SemaSymbolState, SemaVisibility, sema_symbol, sema_symbol_full }
 use vitte/compiler/middle/hir.{ HirItem, HirItemKind, HirUnit }
 
 form SemaModuleImport {
@@ -165,7 +165,20 @@ proc imported_symbols_from_summary(summary: SemaModuleSummary) -> [SemaSymbol] {
   let i: u64 = 0;
   while i < len(summary.exports) {
     let exported: SemaModuleExportSymbol = summary.exports[i];
-    set symbols = symbols + [sema_symbol(exported.id, exported.name, SemaSymbolKind.Imported, 0, false, exported.visibility, 0)];
+    set symbols = symbols + [sema_symbol_full(
+      exported.id,
+      exported.name,
+      summary.module_path + "::" + exported.name,
+      SemaSymbolKind.Imported,
+      SemaSymbolState.Imported,
+      0,
+      false,
+      SemaVisibility.Public,
+      summary.module_path,
+      "",
+      0,
+      0
+    )];
     set i = i + 1;
   }
   give symbols;

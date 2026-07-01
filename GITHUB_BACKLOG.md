@@ -68,6 +68,22 @@ Derived from: `AUDIT.md`
 - regular calls and `method-dispatch` calls now validate argument type and borrow compatibility against the resolved MIR function signature, not only arity
 - `src/vitte/compiler/tests/mir_tests.vit` is wired into the fast core-language gate so canonical MIR contract regressions fail early
 
+### Completed recently. HIR package coverage is now closed across lowering, validation, builder, CFG, and pretty helpers
+
+- Status: done
+- Notes:
+- `src/vitte/compiler/tests/hir_tests.vit` now exercises not only AST->HIR lowering and validation but also the `builder`, `control_flow`, and `pretty` helper surfaces through active selftests
+- the fast HIR gate now covers the full `middle/hir` package surface that is still exported through `mod.vit`
+- README status for HIR is raised to `100%` to match code-backed test coverage rather than aspirational progress
+
+### Completed recently. Semantic resolution now covers alias imports, visibility rejection, and cross-module export boundaries more explicitly
+
+- Status: done
+- Notes:
+- sema multi-module resolution now supports `use demo/math as math; math.sum()` through an explicit imported module alias symbol and member lookup against exported items
+- sema tests now cover invalid visibility rejection, alias-member import resolution, and the fact that non-exported module items stay unresolved across module boundaries
+- `src/vitte/compiler/tests/sema_tests.vit` is wired into the fast core-language gate so semantic-regression coverage is no longer indirect only through later phases
+
 ## P0
 
 ### 1. Align lexer with official EBNF token surface
