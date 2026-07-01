@@ -6,7 +6,7 @@ use vitte/compiler/driver/metrics.{ BackendTiming, CompilerMetricsReport, Linker
 use vitte/compiler/driver/health_dashboard.{ HealthDashboard, health_dashboard_from_metrics, health_dashboard_json }
 use vitte/compiler/driver/mod.{ main_driver_report_json, main_driver_set_report_json, main_driver_surface_report_json, main_driver_surface_report_json_from_args, run_check_diagnostics_json_cli, run_check_hir_json_cli, run_check_mir_json_cli, run_parse_ast_json_cli }
 use vitte/compiler/driver/result.{ CliReportResult }
-use vitte/compiler/driver/compiler.{ CompilerCliRequest, CompilerMode, CompilerOptions, CompilerOutput, CompilerResult, CompilerStage, PhaseResult, compiler_from_source, compiler_result_json, default_options, new_compiler, parse_cli_request, record_phase_result, run_cli_main, run_compiler, structured_driver_failure_message, structured_validation_failure_message, typed_diag_text }
+use vitte/compiler/driver/compiler.{ CompilerCliRequest, CompilerMode, CompilerOptions, CompilerOutput, CompilerResult, CompilerStage, PhaseResult, build_validation_banner, compiler_from_source, compiler_result_json, default_options, new_compiler, parse_cli_request, record_phase_result, run_cli_main, run_compiler, structured_driver_failure_message, structured_validation_failure_message, typed_diag_text }
 use vitte/compiler/backend/pipeline.{ BackendPipelineResult, compile_to_valid_ir_with_profile_and_packaging }
 use vitte/compiler/backend/target/config
 use vitte/compiler/backends/backend_infrastructure
@@ -47,6 +47,10 @@ proc test_compiler_main_dispatches_inline_check() -> bool {
 
 proc test_compiler_main_builds_native_output() -> bool {
   give run_cli_main(["build", "--source", "proc main() -> int { give 0; }", "-o", "target/pipeline_cli_hello"]) == 0;
+}
+
+proc test_build_validation_banner_is_explicit() -> bool {
+  give build_validation_banner() == "validation passed; building\n";
 }
 
 proc test_compiler_main_runs_native_output() -> bool {

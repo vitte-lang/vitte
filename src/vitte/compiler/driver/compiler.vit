@@ -714,6 +714,10 @@ proc parse_cli_request(args: list[string]) -> CompilerCliRequest {
     give request;
 }
 
+proc build_validation_banner() -> string {
+    give "validation passed; building\n";
+}
+
 proc cli_compile_config(request: CompilerCliRequest) -> DriverCompileConfig {
     let config: DriverCompileConfig = default_compile_config();
     let stdlib = resolve_stdlib(request.stdlib_path, request.stdlib_version);
@@ -1101,6 +1105,35 @@ proc run_cli_request(request: CompilerCliRequest) -> int {
     }
 
     if request.command == "build" {
+        let validate_opts: CompilerOptions = cli_compiler_options(request, CompilerMode::Check, request.output_path);
+        let validate_compiler: Compiler = compiler_from_input(source_path, source_text, virtual_source, validate_opts);
+        let validation_result: CompilerResult = run_compiler(validate_compiler);
+        if validation_result.status != driver.DriverExitStatus::Ok {
+            if request.format == "json" {
+                let report_json: string = compiler_result_json("build", validation_result) + "\n";
+                print(report_json);
+                give validation_result.code as int;
+            }
+            if request.trace_pipeline {
+                print_phase_results(validation_result, "check");
+            }
+            if request.timings {
+                print(build_pipeline_timings_text("check", validation_result.status));
+                let msg: string = "\n";
+                print(msg);
+            }
+            print_result_diagnostics(validation_result);
+            if list.len(validation_result.diagnostics) == 0 and validation_result.message != "" {
+                let msg: string = validation_result.message + "\n";
+                print(msg);
+            }
+            give validation_result.code as int;
+        }
+        if request.format != "json" {
+            let msg: string = build_validation_banner();
+            print(msg);
+        }
+
         let opts: CompilerOptions = cli_compiler_options(request, CompilerMode::Build, request.output_path);
         let compiler0: Compiler = compiler_from_input(source_path, source_text, virtual_source, opts);
         let r0: CompilerResult = run_compiler(compiler0);
