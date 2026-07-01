@@ -15,6 +15,8 @@ Derived from: `AUDIT.md`
 - IR validation rejects malformed `variant-ctor` and `method-dispatch` calls against canonical nominal metadata
 - backend consumers use canonical MIR/IR borrow and nominal-call forms without unchecked fallback paths
 - regression tests cover valid and invalid regular proc calls, impl method calls, borrow passthrough, and nominal dispatch/variant construction
+- Status note:
+- MIR-side param and call-shape validation is now materially tighter and CI-visible; the remaining closure on this active step is primarily IR-side nominal metadata verification and backend-consumer cleanup
 
 ### Completed recently. Canonical entrypoints split from compatibility wrappers across analysis/middle/prelude/backend
 
@@ -57,6 +59,14 @@ Derived from: `AUDIT.md`
 - `lower_ast_to_hir` now emits explicit diagnostics when valid AST expr/stmt/item kinds do not map to supported HIR kinds
 - HIR validation now checks lowered proc params, nominal members, and proc signature arity consistency instead of trusting partial surfaces
 - `src/vitte/compiler/tests/hir_tests.vit` is wired into the fast core-language gate so HIR regressions are visible alongside lexer/parser guards
+
+### Completed recently. MIR call and param validation now enforces more of the canonical contract
+
+- Status: done
+- Notes:
+- MIR validation now rejects duplicate param names, malformed variadic param surface, and inconsistent borrow/mut param flags deterministically
+- regular calls and `method-dispatch` calls now validate argument type and borrow compatibility against the resolved MIR function signature, not only arity
+- `src/vitte/compiler/tests/mir_tests.vit` is wired into the fast core-language gate so canonical MIR contract regressions fail early
 
 ## P0
 

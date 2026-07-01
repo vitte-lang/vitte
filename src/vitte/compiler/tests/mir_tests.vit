@@ -209,6 +209,16 @@ proc test_mir_preserves_proc_params_for_regular_functions() -> bool {
     and fn0.return_type == "int";
 }
 
+proc test_mir_accepts_borrow_passthrough_call_contract() -> bool {
+  let source: string =
+    "proc keep(borrow value: int) -> int { give value; }\n" +
+    "proc main() -> int { let value = 1; give keep(value); }\n";
+  let fe: FrontendOutput = frontend_run("mir_borrow_passthrough.vit", source);
+  let middle: MiddleOutput = middle_run(fe);
+  let mir: MirUnit = middle.mir;
+  give mir.valid and len(mir.module.functions) == 2 and validate_mir(mir).valid;
+}
+
 proc test_validate_mir_rejects_duplicate_blocks_and_invalid_assign_place() -> bool {
   let bad_stmt: MirStatement = MirStatement {
     id: 1,
@@ -313,6 +323,37 @@ proc test_validate_mir_rejects_invalid_param_contract() -> bool {
   let bad: MirUnit = unit_with_functions(
     "manual_bad_param_mir.vit",
     [minimal_valid_function("main", [MirFunctionParam { name: "value", type_name: "int", mode: "borrow", mutable: false, borrowed: false, variadic: false, valid: true }], stmt)]
+  );
+  give not validate_mir(bad).valid and mir_validation_reason(bad) == "invalid-param-contract";
+}
+
+proc test_validate_mir_rejects_duplicate_param_name_contract() -> bool {
+  let stmt: MirStatement = MirStatement {
+    id: 17,
+    span: ast_span_empty(),
+    kind: MirStatementKind.Return,
+    place: MirPlace { local: "", projection: "", deref_depth: 0, mutable: false, moved: false, valid: false },
+    rvalue: MirRvalue {
+      kind: MirRvalueKind.Use,
+      text: "0",
+      operator: "",
+      binary_operator: 0 as MirBinaryOperator,
+      unary_operator: 0 as MirUnaryOperator,
+      borrow_kind: 0 as MirBorrowKind,
+      operands: [int_constant_operand("0")],
+      ty: "int",
+      temporary: false,
+      valid: true
+    },
+    reachable: true,
+    valid: true
+  };
+  let bad: MirUnit = unit_with_functions(
+    "manual_bad_duplicate_param_mir.vit",
+    [minimal_valid_function("main", [
+      MirFunctionParam { name: "value", type_name: "int", mode: "", mutable: false, borrowed: false, variadic: false, valid: true },
+      MirFunctionParam { name: "value", type_name: "int", mode: "", mutable: false, borrowed: false, variadic: false, valid: true }
+    ], stmt)]
   );
   give not validate_mir(bad).valid and mir_validation_reason(bad) == "invalid-param-contract";
 }
@@ -445,6 +486,109 @@ proc test_validate_mir_rejects_regular_call_arity_mismatch() -> bool {
   give not validate_mir(bad).valid and mir_validation_reason(bad) == "invalid-regular-call-arity";
 }
 
+proc test_validate_mir_rejects_regular_call_borrow_contract() -> bool {
+  let bad_stmt: MirStatement = MirStatement {
+    id: 18,
+    span: ast_span_empty(),
+    kind: MirStatementKind.Assign,
+    place: MirPlace { local: "y", projection: "", deref_depth: 0, mutable: false, moved: false, valid: true },
+    rvalue: MirRvalue {
+      kind: MirRvalueKind.Call,
+      text: "keep",
+      operator: "",
+      binary_operator: 0 as MirBinaryOperator,
+      unary_operator: 0 as MirUnaryOperator,
+      borrow_kind: 0 as MirBorrowKind,
+      operands: [named_operand("keep", "fn"), int_constant_operand("1")],
+      ty: "int",
+      temporary: false,
+      valid: true
+    },
+    reachable: true,
+    valid: true
+  };
+  let main_fn: MirFunction = minimal_valid_function("main", [], bad_stmt);
+  let keep_fn: MirFunction = minimal_valid_function(
+    "keep",
+    [MirFunctionParam { name: "value", type_name: "int", mode: "borrow", mutable: false, borrowed: true, variadic: false, valid: true }],
+    MirStatement {
+      id: 19,
+      span: ast_span_empty(),
+      kind: MirStatementKind.Return,
+      place: MirPlace { local: "", projection: "", deref_depth: 0, mutable: false, moved: false, valid: false },
+      rvalue: MirRvalue {
+        kind: MirRvalueKind.Use,
+        text: "0",
+        operator: "",
+        binary_operator: 0 as MirBinaryOperator,
+        unary_operator: 0 as MirUnaryOperator,
+        borrow_kind: 0 as MirBorrowKind,
+        operands: [int_constant_operand("0")],
+        ty: "int",
+        temporary: false,
+        valid: true
+      },
+      reachable: true,
+      valid: true
+    }
+  );
+  let bad: MirUnit = unit_with_functions("manual_bad_regular_call_borrow_mir.vit", [main_fn, keep_fn]);
+  give not validate_mir(bad).valid and mir_validation_reason(bad) == "invalid-regular-call-borrow-arg";
+}
+
+proc test_validate_mir_rejects_method_dispatch_param_type_mismatch() -> bool {
+  let bad_stmt: MirStatement = MirStatement {
+    id: 20,
+    span: ast_span_empty(),
+    kind: MirStatementKind.Assign,
+    place: MirPlace { local: "shown", projection: "", deref_depth: 0, mutable: false, moved: false, valid: true },
+    rvalue: MirRvalue {
+      kind: MirRvalueKind.Call,
+      text: "vitte_impl_Show_for_Point_show",
+      operator: "method-dispatch",
+      binary_operator: 0 as MirBinaryOperator,
+      unary_operator: 0 as MirUnaryOperator,
+      borrow_kind: 0 as MirBorrowKind,
+      operands: [named_operand("point", "Point"), named_operand("flag", "bool")],
+      ty: "string",
+      temporary: false,
+      valid: true
+    },
+    reachable: true,
+    valid: true
+  };
+  let main_fn: MirFunction = minimal_valid_function("main", [], bad_stmt);
+  let impl_fn: MirFunction = minimal_valid_function(
+    "vitte_impl_Show_for_Point_show",
+    [
+      MirFunctionParam { name: "self", type_name: "Point", mode: "", mutable: false, borrowed: false, variadic: false, valid: true },
+      MirFunctionParam { name: "level", type_name: "int", mode: "", mutable: false, borrowed: false, variadic: false, valid: true }
+    ],
+    MirStatement {
+      id: 21,
+      span: ast_span_empty(),
+      kind: MirStatementKind.Return,
+      place: MirPlace { local: "", projection: "", deref_depth: 0, mutable: false, moved: false, valid: false },
+      rvalue: MirRvalue {
+        kind: MirRvalueKind.Use,
+        text: "\"point\"",
+        operator: "",
+        binary_operator: 0 as MirBinaryOperator,
+        unary_operator: 0 as MirUnaryOperator,
+        borrow_kind: 0 as MirBorrowKind,
+        operands: [MirOperand { text: "\"point\"", place: MirPlace { local: "", projection: "", deref_depth: 0, mutable: false, moved: false, valid: false }, ty: "string", constant: true, move: false, valid: true }],
+        ty: "string",
+        temporary: false,
+        valid: true
+      },
+      reachable: true,
+      valid: true
+    }
+  );
+  let bad: MirUnit = unit_with_functions("manual_bad_dispatch_type_mir.vit", [main_fn, impl_fn]);
+  give not validate_mir(bad).valid and mir_validation_reason(bad) == "invalid-method-dispatch-param-type";
+}
+
 proc test_validate_mir_rejects_borrow_with_wrong_arity() -> bool {
   let bad_stmt: MirStatement = MirStatement {
     id: 15,
@@ -515,6 +659,9 @@ proc run_all_tests() -> int {
   if not test_mir_preserves_proc_params_for_regular_functions() {
     set failures = failures + 1;
   }
+  if not test_mir_accepts_borrow_passthrough_call_contract() {
+    set failures = failures + 1;
+  }
   if not test_validate_mir_rejects_duplicate_blocks_and_invalid_assign_place() {
     set failures = failures + 1;
   }
@@ -524,6 +671,9 @@ proc run_all_tests() -> int {
   if not test_validate_mir_rejects_invalid_param_contract() {
     set failures = failures + 1;
   }
+  if not test_validate_mir_rejects_duplicate_param_name_contract() {
+    set failures = failures + 1;
+  }
   if not test_validate_mir_rejects_malformed_variant_ctor() {
     set failures = failures + 1;
   }
@@ -531,6 +681,12 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if not test_validate_mir_rejects_regular_call_arity_mismatch() {
+    set failures = failures + 1;
+  }
+  if not test_validate_mir_rejects_regular_call_borrow_contract() {
+    set failures = failures + 1;
+  }
+  if not test_validate_mir_rejects_method_dispatch_param_type_mismatch() {
     set failures = failures + 1;
   }
   if not test_validate_mir_rejects_borrow_with_wrong_arity() {

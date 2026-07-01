@@ -181,12 +181,39 @@ proc function_has_variadic_param(fn0: MirFunction) -> bool {
   give false;
 }
 
+proc function_fixed_param_count(fn0: MirFunction) -> u64 {
+  let count: u64 = 0;
+  let i: u64 = 0;
+  while i < len(fn0.params) {
+    if fn0.params[i].variadic {
+      give count;
+    }
+    set count = count + 1;
+    set i = i + 1;
+  }
+  give count;
+}
+
 proc call_arity_matches(fn0: MirFunction, arg_count: u64) -> bool {
   let required: u64 = function_required_param_count(fn0);
   if function_has_variadic_param(fn0) {
     give arg_count + 1 >= required;
   }
   give arg_count == required;
+}
+
+proc param_duplicate_name_exists(fn0: MirFunction, name: string, skip_index: u64) -> bool {
+  if name == "" {
+    give false;
+  }
+  let i: u64 = 0;
+  while i < len(fn0.params) {
+    if i != skip_index and not fn0.params[i].variadic and fn0.params[i].name == name {
+      give true;
+    }
+    set i = i + 1;
+  }
+  give false;
 }
 
 proc params_valid(fn0: MirFunction) -> bool {
@@ -203,10 +230,25 @@ proc params_valid(fn0: MirFunction) -> bool {
     if not param.variadic and param.type_name == "" {
       give false;
     }
+    if param_duplicate_name_exists(fn0, param.name, i) {
+      give false;
+    }
     if param.variadic and i + 1 < len(fn0.params) {
       give false;
     }
+    if param.variadic and param.name == "" {
+      give false;
+    }
+    if param.variadic and param.type_name != "" {
+      give false;
+    }
     if param.variadic and (param.borrowed or param.mutable or param.mode != "") {
+      give false;
+    }
+    if param.borrowed and param.mutable {
+      give false;
+    }
+    if param.mutable and param.mode != "mut" {
       give false;
     }
     if param.borrowed and param.mode != "borrow" {
@@ -225,6 +267,40 @@ proc params_valid(fn0: MirFunction) -> bool {
       set seen_variadic = true;
     }
     if seen_variadic and not param.variadic {
+      give false;
+    }
+    set i = i + 1;
+  }
+  give true;
+}
+
+proc call_target_fn(functions: [MirFunction], rvalue: MirRvalue) -> MirFunction {
+  give function_by_name(functions, call_target_name(rvalue));
+}
+
+proc call_operand_matches_param(operand: MirOperand, param: MirFunctionParam) -> bool {
+  if param.type_name != "" and operand.ty != param.type_name {
+    give false;
+  }
+  if param.borrowed and (operand.constant or not operand.place.valid or operand.place.local == "") {
+    give false;
+  }
+  give true;
+}
+
+proc call_param_contract_valid(functions: [MirFunction], rvalue: MirRvalue) -> bool {
+  if rvalue.operator == "variant-ctor" {
+    give true;
+  }
+  let target: MirFunction = call_target_fn(functions, rvalue);
+  if not target.valid {
+    give true;
+  }
+  let start: u64 = call_arg_start_index(rvalue);
+  let fixed_count: u64 = function_fixed_param_count(target);
+  let i: u64 = 0;
+  while i < fixed_count and start + i < len(rvalue.operands) {
+    if not call_operand_matches_param(rvalue.operands[start + i], target.params[i]) {
       give false;
     }
     set i = i + 1;
@@ -254,10 +330,16 @@ proc call_rvalue_valid(functions: [MirFunction], rvalue: MirRvalue) -> bool {
     if not function_name_exists(functions, target_name) {
       give false;
     }
-    give call_arity_matches(function_by_name(functions, target_name), call_argument_count(rvalue));
+    if not call_arity_matches(function_by_name(functions, target_name), call_argument_count(rvalue)) {
+      give false;
+    }
+    give call_param_contract_valid(functions, rvalue);
   }
   if function_name_exists(functions, target_name) {
-    give call_arity_matches(function_by_name(functions, target_name), call_argument_count(rvalue));
+    if not call_arity_matches(function_by_name(functions, target_name), call_argument_count(rvalue)) {
+      give false;
+    }
+    give call_param_contract_valid(functions, rvalue);
   }
   give true;
 }
@@ -290,10 +372,40 @@ proc call_rvalue_reason(functions: [MirFunction], rvalue: MirRvalue) -> string {
     if not call_arity_matches(function_by_name(functions, target_name), call_argument_count(rvalue)) {
       give "invalid-method-dispatch-arity";
     }
+    if not call_param_contract_valid(functions, rvalue) {
+      let target: MirFunction = function_by_name(functions, target_name);
+      let start: u64 = call_arg_start_index(rvalue);
+      let i: u64 = 0;
+      while i < function_fixed_param_count(target) and start + i < len(rvalue.operands) {
+        if target.params[i].borrowed and (rvalue.operands[start + i].constant or not rvalue.operands[start + i].place.valid or rvalue.operands[start + i].place.local == "") {
+          give "invalid-method-dispatch-borrow-arg";
+        }
+        if target.params[i].type_name != "" and rvalue.operands[start + i].ty != target.params[i].type_name {
+          give "invalid-method-dispatch-param-type";
+        }
+        set i = i + 1;
+      }
+    }
     give "none";
   }
-  if function_name_exists(functions, target_name) and not call_arity_matches(function_by_name(functions, target_name), call_argument_count(rvalue)) {
-    give "invalid-regular-call-arity";
+  if function_name_exists(functions, target_name) {
+    if not call_arity_matches(function_by_name(functions, target_name), call_argument_count(rvalue)) {
+      give "invalid-regular-call-arity";
+    }
+    if not call_param_contract_valid(functions, rvalue) {
+      let target: MirFunction = function_by_name(functions, target_name);
+      let start: u64 = call_arg_start_index(rvalue);
+      let i: u64 = 0;
+      while i < function_fixed_param_count(target) and start + i < len(rvalue.operands) {
+        if target.params[i].borrowed and (rvalue.operands[start + i].constant or not rvalue.operands[start + i].place.valid or rvalue.operands[start + i].place.local == "") {
+          give "invalid-regular-call-borrow-arg";
+        }
+        if target.params[i].type_name != "" and rvalue.operands[start + i].ty != target.params[i].type_name {
+          give "invalid-regular-call-param-type";
+        }
+        set i = i + 1;
+      }
+    }
   }
   give "none";
 }
