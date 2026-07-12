@@ -9,6 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SCHEMA = ROOT / "schemas/diagnostics/v1.schema.json"
 SEVERITIES = ROOT / "schemas/diagnostics/severities.json"
+PHASES = ROOT / "schemas/diagnostics/phases.json"
 FIXTURES = ROOT / "tests/diagnostics/schema"
 REQUIRED = {
     "schema", "schema_version", "code", "severity", "phase", "message",
@@ -52,6 +53,19 @@ def main() -> int:
     ranks = [entry.get("rank") for entry in severities["severities"] if isinstance(entry, dict)]
     if ranks != sorted(ranks, reverse=True) or len(set(ranks)) != len(ranks):
         raise ValueError(f"{SEVERITIES}: severity ranks must be unique and descending")
+    phases = load(PHASES)
+    if not isinstance(phases, dict) or not isinstance(phases.get("phases"), list):
+        raise ValueError(f"{PHASES}: invalid phase registry")
+    phase_names = [entry.get("name") for entry in phases["phases"] if isinstance(entry, dict)]
+    expected_phases = ["lexer", "parser", "sema", "typeck", "borrowck", "mir", "backend", "linker", "runtime"]
+    if phase_names != expected_phases:
+        raise ValueError(f"{PHASES}: phase order must be {expected_phases}")
+    schema_phases = schema.get("properties", {}).get("phase", {}).get("enum", [])
+    if schema_phases != expected_phases:
+        raise ValueError(f"{SCHEMA}: phase enum differs from registry")
+    phase_order = [entry.get("order") for entry in phases["phases"] if isinstance(entry, dict)]
+    if phase_order != sorted(phase_order) or len(set(phase_order)) != len(phase_order):
+        raise ValueError(f"{PHASES}: phase order values must be unique and ascending")
     fixtures = sorted(FIXTURES.glob("*.json"))
     if not fixtures:
         raise ValueError(f"{FIXTURES}: no diagnostic fixtures")
