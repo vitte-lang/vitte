@@ -71,6 +71,16 @@ def validate_fixture(value: object, path: Path) -> None:
         primary_labels += label["kind"] == "primary"
     if primary_labels != 1:
         raise ValueError(f"{path}: exactly one primary label is required")
+    if not isinstance(value["suggestions"], list):
+        raise ValueError(f"{path}: suggestions must be an array")
+    for index, suggestion in enumerate(value["suggestions"]):
+        if not isinstance(suggestion, dict):
+            raise ValueError(f"{path}: suggestions[{index}] must be an object")
+        if suggestion.get("applicability") not in {"machine-applicable", "maybe-incorrect", "has-placeholders", "unspecified"}:
+            raise ValueError(f"{path}: suggestions[{index}] has invalid applicability")
+        if not isinstance(suggestion.get("message"), str) or not isinstance(suggestion.get("replacement"), str):
+            raise ValueError(f"{path}: suggestions[{index}] requires message and replacement")
+        validate_span(suggestion.get("span"), path, f"suggestions[{index}].span")
 
 
 def main() -> int:
@@ -126,6 +136,8 @@ def main() -> int:
         raise ValueError(f"{FIXTURES}: a multi-line span fixture is required")
     if not any(isinstance(value := load(fixture), dict) and len(value.get("labels", [])) > 1 for fixture in fixtures):
         raise ValueError(f"{FIXTURES}: a multiple-label fixture is required")
+    if not any(isinstance(value := load(fixture), dict) and value.get("suggestions") for fixture in fixtures):
+        raise ValueError(f"{FIXTURES}: a replacement suggestion fixture is required")
     invalid_fixtures = sorted(INVALID_FIXTURES.glob("*.json"))
     for fixture in invalid_fixtures:
         try:
