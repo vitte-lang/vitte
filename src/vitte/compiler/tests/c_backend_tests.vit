@@ -3,6 +3,7 @@ space vitte/compiler/tests/c_backend_tests
 use vitte/compiler/backend/c/pipeline.{ CBackendPipelineResult, run_c_backend_frontend, run_c_backend_mir, run_c_backend_source }
 use vitte/compiler/backend/c/lowering.{ CTranslationUnit, lower_mir_to_c_with_hir_and_ir, lower_mir_to_c_with_ir }
 use vitte/compiler/backend/c/architecture.{ c_target_x86_64_linux }
+use vitte/compiler/backend/c/abi.{ C_ABI_NAME, C_ABI_SCHEMA_VERSION, CAbiPassMode, c_abi_contract, c_abi_function, c_abi_header_prelude, c_abi_param_value }
 use vitte/compiler/backend/ir.{ IrUnit, target_native_x86_64_linux, unit_empty, unit_with_source_path }
 use vitte/compiler/frontend/ast/node.{ ast_span_empty }
 use vitte/compiler/frontend/pipeline.{ FrontendOutput, frontend_run }
@@ -54,8 +55,47 @@ proc test_c_backend_emits_regular_proc_signature_from_canonical_mir() -> bool {
     and result.middle.mir.module.functions[0].params[0].borrowed
     and result.middle.mir.module.functions[0].params[1].mutable
     and result.middle.mir.module.functions[0].params[2].variadic
-    and find(result.emitted.header_text, "int64_t add(const int64_t* value, bool flag, ...);") >= 0
-    and find(result.emitted.source_text, "int64_t add(const int64_t* value, bool flag, ...) {") >= 0;
+    and find(result.emitted.header_text, "VITTE_ABI_VITTE int64_t add(const int64_t* value, bool flag, ...);") >= 0
+    and find(result.emitted.source_text, "VITTE_ABI_VITTE int64_t add(const int64_t* value, bool flag, ...) {") >= 0;
+}
+
+proc test_c_abi_v1_contract_is_explicit_and_checked() -> bool {
+  let profile = c_target_x86_64_linux();
+  let contract = c_abi_contract(profile);
+  let borrowed = c_abi_param_value("int", "const int64_t*", true, false, false);
+  let mutable_borrow = c_abi_param_value("int", "int64_t*", true, true, false);
+  let direct = c_abi_param_value("bool", "bool", false, false, false);
+  let variadic = c_abi_param_value("...", "...", false, false, true);
+  let c_signature = c_abi_function(profile, "C", "int", "int64_t", [borrowed, direct, variadic], false);
+  let wrong_target_signature = c_abi_function(profile, "win64", "int", "int64_t", [direct], false);
+  give contract.valid
+    and contract.name == C_ABI_NAME
+    and contract.schema_version == C_ABI_SCHEMA_VERSION
+    and contract.calling_convention == "sysv64"
+    and contract.pointer_width == 64
+    and borrowed.pass_mode == CAbiPassMode.Indirect and borrowed.readonly
+    and mutable_borrow.pass_mode == CAbiPassMode.Indirect and not mutable_borrow.readonly
+    and direct.pass_mode == CAbiPassMode.Direct
+    and variadic.pass_mode == CAbiPassMode.Variadic
+    and c_signature.valid and c_signature.canonical_abi == "c" and c_signature.declaration_macro == "VITTE_ABI_C" and c_signature.variadic
+    and not wrong_target_signature.valid
+    and find(c_abi_header_prelude(), "#define VITTE_ABI_VITTE VITTE_ABI_C") >= 0;
+}
+
+proc test_c_abi_is_preserved_from_hir_to_canonical_ir() -> bool {
+  let source: string =
+    "extern C proc host_add(left: int, right: int) -> int;\n" +
+    "proc main() -> int { give 0; }\n";
+  let frontend: FrontendOutput = frontend_run("c_abi_propagation.vit", source);
+  let middle: MiddleOutput = middle_run_frontend(frontend);
+  give frontend.valid
+    and middle.valid
+    and len(middle.ir.modules) == 1
+    and len(middle.ir.modules[0].functions) >= 2
+    and middle.ir.modules[0].functions[0].name == "host_add"
+    and middle.ir.modules[0].functions[0].abi == "C"
+    and middle.ir.modules[0].functions[1].name == "main"
+    and middle.ir.modules[0].functions[1].abi == "Vitte";
 }
 
 proc test_c_backend_calls_use_borrow_abi_shape() -> bool {
@@ -64,7 +104,7 @@ proc test_c_backend_calls_use_borrow_abi_shape() -> bool {
     "proc main() -> int { let x = 1; let y = keep(x); give y; }\n";
   let result: CBackendPipelineResult = run_c_backend_source("c_backend_borrow_call_abi.vit", source, "c11", "build/c_backend_borrow_call_abi", "executable");
   give result.valid
-    and find(result.emitted.header_text, "int64_t keep(const int64_t* value);") >= 0
+    and find(result.emitted.header_text, "VITTE_ABI_VITTE int64_t keep(const int64_t* value);") >= 0
     and find(result.emitted.source_text, "const int64_t* vitte_borrow_") >= 0
     and find(result.emitted.source_text, " = (&x);") >= 0
     and find(result.emitted.source_text, "y = keep(vitte_borrow_") >= 0;
@@ -76,7 +116,7 @@ proc test_c_backend_preserves_borrow_passthrough_call_shape() -> bool {
     "proc forward(borrow value: int) -> int { give keep(value); }\n";
   let result: CBackendPipelineResult = run_c_backend_source("c_backend_borrow_passthrough.vit", source, "c11", "build/c_backend_borrow_passthrough", "executable");
   give result.valid
-    and find(result.emitted.source_text, "int64_t forward(const int64_t* value)") >= 0
+    and find(result.emitted.source_text, "VITTE_ABI_VITTE int64_t forward(const int64_t* value)") >= 0
     and find(result.emitted.source_text, "return keep(value);") >= 0
     and find(result.emitted.source_text, "vitte_borrow_") < 0;
 }
@@ -102,7 +142,7 @@ proc test_c_backend_pipeline_preserves_middle_and_runtime_metadata() -> bool {
     and result.emitted.valid
     and result.link_plan.valid
     and result.lowered.function_count >= 1
-    and find(result.emitted.source_text, "int main(") >= 0
+    and find(result.emitted.source_text, "VITTE_ABI_VITTE int main(") >= 0
     and find(result.link_plan.command_line, "vitte_runtime") >= 0;
 }
 
@@ -168,7 +208,7 @@ proc test_c_backend_accepts_struct_and_surface_items_without_lowering_regression
     and result.lowered.nominal_types[5].target_type == "Point"
     and result.lowered.nominal_types[5].members[0].kind == "impl-method"
     and len(result.lowered.nominal_types[5].members[0].params) == 1
-    and find(result.emitted.source_text, "int main(") >= 0
+    and find(result.emitted.source_text, "VITTE_ABI_VITTE int main(") >= 0
     and find(result.emitted.header_text, "vitte nominal metadata") >= 0
     and find(result.emitted.header_text, "typedef struct VitteNominalDescriptor VitteNominalDescriptor;") >= 0
     and find(result.emitted.header_text, "extern const uint64_t vitte_nominal_descriptor_count;") >= 0
@@ -191,14 +231,14 @@ proc test_c_backend_accepts_struct_and_surface_items_without_lowering_regression
     and find(result.emitted.header_text, "typedef uint8_t Access;") >= 0
     and find(result.emitted.header_text, "kind=trait name=Show") >= 0
     and find(result.emitted.header_text, "typedef struct Show_vtable Show_vtable;") >= 0
-    and find(result.emitted.header_text, "typedef const char* (*Show_show_fn)(void* self);") >= 0
+    and find(result.emitted.header_text, "typedef const char* VITTE_ABI_VITTE (*Show_show_fn)(void* self);") >= 0
     and find(result.emitted.header_text, "Show_show_fn show;") >= 0
     and find(result.emitted.header_text, "kind=impl name=Show") >= 0
     and find(result.emitted.header_text, "target_type=Point") >= 0
     and find(result.emitted.header_text, "typedef struct Show__impl_for_Point Show__impl_for_Point;") >= 0
-    and find(result.emitted.header_text, "typedef const char* (*Show_show_for_Point_fn)(Point self);") >= 0
+    and find(result.emitted.header_text, "typedef const char* VITTE_ABI_VITTE (*Show_show_for_Point_fn)(Point self);") >= 0
     and find(result.emitted.header_text, "Show_show_for_Point_fn show;") >= 0
-    and find(result.emitted.header_text, "const char* vitte_impl_Show_for_Point_show(Point self);") >= 0
+    and find(result.emitted.header_text, "VITTE_ABI_VITTE const char* vitte_impl_Show_for_Point_show(Point self);") >= 0
     and find(result.emitted.source_text, "const uint64_t vitte_nominal_descriptor_count = 6;") >= 0
     and find(result.emitted.source_text, "static const VitteNominalDescriptor vitte_nominal_descriptors_storage[6]") >= 0
     and find(result.emitted.source_text, "\"Point\", \"form\"") >= 0
@@ -262,7 +302,7 @@ proc test_c_backend_lowers_variant_ctor_and_method_dispatch_explicitly() -> bool
     and find(result.emitted.source_text, ".__vitte_tag = 1") >= 0
     and find(result.emitted.source_text, ".__vitte_payload.Some = 7") >= 0
     and find(result.emitted.source_text, "Show__impl_for_Point_descriptor.show(point, 7)") >= 0
-    and find(result.emitted.source_text, "const char* vitte_impl_Show_for_Point_show(Point self, int64_t level)") >= 0
+    and find(result.emitted.source_text, "VITTE_ABI_VITTE const char* vitte_impl_Show_for_Point_show(Point self, int64_t level)") >= 0
     and find(result.emitted.source_text, "return \"point\";") >= 0;
 }
 
@@ -340,6 +380,12 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if not test_c_backend_emits_regular_proc_signature_from_canonical_mir() {
+    set failures = failures + 1;
+  }
+  if not test_c_abi_v1_contract_is_explicit_and_checked() {
+    set failures = failures + 1;
+  }
+  if not test_c_abi_is_preserved_from_hir_to_canonical_ir() {
     set failures = failures + 1;
   }
   if not test_c_backend_calls_use_borrow_abi_shape() {

@@ -1,6 +1,7 @@
 space vitte/compiler/backend/c/lowering
 
 use vitte/compiler/backend/c/architecture.{ CBackendTargetProfile, c_type_for_vitte_type, c_target_x86_64_linux }
+use vitte/compiler/backend/c/abi.{ CAbiContract, CAbiFunction, CAbiValue, c_abi_contract, c_abi_function, c_abi_param_value }
 use vitte/compiler/backend/c/diagnostics.{ CBackendDiagnostic, c_diag_add_unique, c_error, c_has_errors, c_info, c_warning }
 use vitte/compiler/backend/ir.{ IrBlock, IrFunction, IrInstruction, IrInstructionKind, IrLinkage, IrNominalType, IrUnit, IrValue, IrValueKind, IrVisibility, ir_value_invalid, span_empty, target_native_x86_64_linux, unit_empty, unit_with_source_path }
 use vitte/compiler/middle/hir.{ HirItem, HirItemKind, HirNominalMember, HirNominalMemberKind, HirProcParam, HirStmt }
@@ -72,6 +73,7 @@ form CMethodParam {
 form CLoweredFunction {
   name: string
   c_name: string
+  abi: CAbiFunction
   return_type: string
   params: [CMethodParam]
   locals: [CLocal]
@@ -90,6 +92,7 @@ form CIrBorrowBinding {
 form CTranslationUnit {
   module_name: string
   profile: CBackendTargetProfile
+  abi_contract: CAbiContract
   nominal_types: [CNominalType]
   functions: [CLoweredFunction]
   function_count: u64
@@ -585,6 +588,16 @@ proc c_param_decl_type(profile: CBackendTargetProfile, ty: string, borrowed: boo
   give base;
 }
 
+proc c_abi_values_from_params(params: [CMethodParam]) -> [CAbiValue] {
+  let out: [CAbiValue] = [];
+  let i: u64 = 0;
+  while i < len(params) {
+    set out = out + [c_abi_param_value(params[i].annotation_text, params[i].c_type, params[i].borrowed, params[i].mutable, params[i].variadic)];
+    set i = i + 1;
+  }
+  give out;
+}
+
 proc hir_expr_member_name(expr: HirExpr) -> string {
   if expr.name != "" {
     give expr.name;
@@ -1055,6 +1068,7 @@ proc c_ir_function_by_name(unit: IrUnit, function_name: string) -> IrFunction {
     linkage: IrLinkage.Internal,
     visibility: IrVisibility.Private,
     is_entry: false,
+    abi: "Vitte",
     span: span_empty(),
     params: [],
     return_type: "",
@@ -1497,6 +1511,14 @@ proc lower_block_text(nominal_types: [CNominalType], locals: [CLocal], params: [
 
 proc lower_function(function0: MirFunction, ir_function: IrFunction, functions0: [MirFunction], nominal_types: [CNominalType], profile: CBackendTargetProfile) -> CLoweredFunction {
   let params: [CMethodParam] = c_method_params_from_mir_params(profile, function0.params);
+  let function_abi: CAbiFunction = c_abi_function(
+    profile,
+    if ir_function.valid { ir_function.abi } else { "Vitte" },
+    function0.return_type,
+    c_type_for_vitte_type(profile, function0.return_type),
+    c_abi_values_from_params(params),
+    function0.name == "main"
+  );
   let locals: [CLocal] = locals_without_params(collect_function_locals(function0, profile), params);
   let body_text: string = "";
   let i: u64 = 0;
@@ -1517,13 +1539,25 @@ proc lower_function(function0: MirFunction, ir_function: IrFunction, functions0:
   give CLoweredFunction {
     name: function0.name,
     c_name: sanitize_c_identifier(function0.name),
-    return_type: c_type_for_vitte_type(profile, function0.return_type),
+    abi: function_abi,
+    return_type: function_abi.return_value.c_type,
     params: params,
     locals: locals,
     body_text: body_text,
     block_count: len(function0.blocks),
-    valid: function0.valid and function0.name != "" and function_calls_match_ir(function0, ir_function)
+    valid: function0.valid and function0.name != "" and function_abi.valid and function_calls_match_ir(function0, ir_function)
   };
+}
+
+proc c_lowered_functions_valid(functions: [CLoweredFunction]) -> bool {
+  let i: u64 = 0;
+  while i < len(functions) {
+    if not functions[i].valid or not functions[i].abi.valid {
+      give false;
+    }
+    set i = i + 1;
+  }
+  give true;
 }
 
 proc lower_mir_to_c_with_ir(unit: MirUnit, ir_unit: IrUnit, profile: CBackendTargetProfile) -> CTranslationUnit {
@@ -1537,6 +1571,7 @@ proc lower_mir_to_c_with_ir(unit: MirUnit, ir_unit: IrUnit, profile: CBackendTar
     give CTranslationUnit {
       module_name: unit.module.name,
       profile: profile,
+      abi_contract: c_abi_contract(profile),
       nominal_types: nominal_types,
       functions: [],
       function_count: 0,
@@ -1550,6 +1585,9 @@ proc lower_mir_to_c_with_ir(unit: MirUnit, ir_unit: IrUnit, profile: CBackendTar
     if lowered_fn.return_type == "struct unknown" {
       set out_diags = c_diag_add_unique(out_diags, c_warning("CBACKEND_W_UNKNOWN_RETURN", "lowered function `" + lowered_fn.name + "` has unknown return type, fallback applied", "provide a more precise MIR type to improve C lowering", unit.module.functions[i].blocks[0].statements[0].span));
     }
+    if not lowered_fn.abi.valid {
+      set out_diags = c_diag_add_unique(out_diags, c_error("CBACKEND_E_ABI", "cannot lower function `" + unit.module.functions[i].name + "` with ABI `" + lowered_fn.abi.source_abi + "` for target `" + profile.name + "`", "use Vitte, C, or the target calling convention", span_empty()));
+    }
     if not lowered_fn.valid and function_has_call_stmt(unit.module.functions[i]) {
       set out_diags = c_diag_add_unique(out_diags, c_error("CBACKEND_E_INVALID_IR_CALL", "cannot lower MIR call without canonical IR call metadata", "run canonical MIR->IR validation before lowering to C", unit.module.functions[i].blocks[0].statements[0].span));
     }
@@ -1560,11 +1598,12 @@ proc lower_mir_to_c_with_ir(unit: MirUnit, ir_unit: IrUnit, profile: CBackendTar
   give CTranslationUnit {
     module_name: unit.module.name,
     profile: profile,
+    abi_contract: c_abi_contract(profile),
     nominal_types: nominal_types,
     functions: lowered,
     function_count: len(lowered),
     diagnostics: out_diags,
-    valid: profile.valid and not c_has_errors(out_diags)
+    valid: profile.valid and c_abi_contract(profile).valid and c_lowered_functions_valid(lowered) and not c_has_errors(out_diags)
   };
 }
 
@@ -1582,6 +1621,7 @@ proc lower_mir_to_c_with_hir_and_ir(unit: MirUnit, hir_items: [HirItem], ir_unit
     give CTranslationUnit {
       module_name: unit.module.name,
       profile: profile,
+      abi_contract: c_abi_contract(profile),
       nominal_types: nominal_types,
       functions: [],
       function_count: 0,
@@ -1592,6 +1632,9 @@ proc lower_mir_to_c_with_hir_and_ir(unit: MirUnit, hir_items: [HirItem], ir_unit
   let i: u64 = 0;
   while i < len(unit.module.functions) {
     let lowered_fn: CLoweredFunction = lower_function(unit.module.functions[i], c_ir_function_by_name(ir_unit, unit.module.functions[i].name), unit.module.functions, nominal_types, profile);
+    if not lowered_fn.abi.valid {
+      set out_diags = c_diag_add_unique(out_diags, c_error("CBACKEND_E_ABI", "cannot lower function `" + unit.module.functions[i].name + "` with ABI `" + lowered_fn.abi.source_abi + "` for target `" + profile.name + "`", "use Vitte, C, or the target calling convention", span_empty()));
+    }
     set lowered = lowered + [lowered_fn];
     set i = i + 1;
   }
@@ -1599,11 +1642,12 @@ proc lower_mir_to_c_with_hir_and_ir(unit: MirUnit, hir_items: [HirItem], ir_unit
   give CTranslationUnit {
     module_name: unit.module.name,
     profile: profile,
+    abi_contract: c_abi_contract(profile),
     nominal_types: nominal_types,
     functions: lowered,
     function_count: len(lowered),
     diagnostics: out_diags,
-    valid: profile.valid and not c_has_errors(out_diags)
+    valid: profile.valid and c_abi_contract(profile).valid and c_lowered_functions_valid(lowered) and not c_has_errors(out_diags)
   };
 }
 

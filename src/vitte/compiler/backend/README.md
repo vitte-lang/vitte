@@ -18,6 +18,9 @@ The runtime driver and backend pipeline are expected to route through modules in
 - `backend/target/*`
 - `backend/c/*`
 
+The canonical C boundary is versioned as `vitte-c-abi-v1`; see
+`backend/c/README.md` and `backend/c/abi.vit`.
+
 ## Relationship To `backends/*`
 
 The repository also contains `src/vitte/compiler/backends/*`.

@@ -11,6 +11,9 @@ form CTypeMapping {
 
 form CBackendTargetProfile {
   name: string
+  abi_name: string
+  calling_convention: string
+  pointer_width: u64
   pointer_type: string
   size_type: string
   string_type: string
@@ -26,6 +29,9 @@ form CBackendTargetProfile {
 proc c_target_x86_64_linux() -> CBackendTargetProfile {
   give CBackendTargetProfile {
     name: "x86_64-linux-c11",
+    abi_name: "vitte-c-abi-v1",
+    calling_convention: "sysv64",
+    pointer_width: 64,
     pointer_type: "void*",
     size_type: "size_t",
     string_type: "const char*",
@@ -45,6 +51,9 @@ proc c_target_from_name(name: string) -> CBackendTargetProfile {
   }
   give CBackendTargetProfile {
     name: name,
+    abi_name: "",
+    calling_convention: "",
+    pointer_width: 0,
     pointer_type: "",
     size_type: "",
     string_type: "",
@@ -171,5 +180,5 @@ proc c_profile_summary(profile: CBackendTargetProfile) -> string {
     set flags = flags + profile.compiler_flags[i];
     set i = i + 1;
   }
-  give profile.name + " compiler=" + profile.compiler_command + " flags=" + flags;
+  give profile.name + " abi=" + profile.abi_name + " calling-convention=" + profile.calling_convention + " compiler=" + profile.compiler_command + " flags=" + flags;
 }

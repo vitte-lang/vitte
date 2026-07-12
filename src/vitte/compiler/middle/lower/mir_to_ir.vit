@@ -21,6 +21,7 @@ use vitte/compiler/backend/ir.{
     block_create,
     block_set_terminator,
     function_add_block,
+    function_with_abi,
     module_create,
     module_add_nominal_type,
     module_add_function,
@@ -87,6 +88,45 @@ proc ir_linkage_for_exports(name: string, exported_names: [string]) -> IrLinkage
         give IrLinkage.Exported;
     }
     give IrLinkage.Internal;
+}
+
+proc ir_abi_symbol_part(text: string) -> string {
+    let out: string = "";
+    let i: u64 = 0;
+    while i < len(text) {
+        let ch: string = slice(text, i, i + 1);
+        let valid: bool = (ch >= "a" and ch <= "z")
+            or (ch >= "A" and ch <= "Z")
+            or (ch >= "0" and ch <= "9")
+            or ch == "_";
+        set out = out + if valid { ch } else { "_" };
+        set i = i + 1;
+    }
+    give if out != "" { out } else { "unknown" };
+}
+
+proc ir_impl_method_name(item: HirItem, member: HirNominalMember) -> string {
+    give "vitte_impl_" + ir_abi_symbol_part(item.name) + "_for_" + ir_abi_symbol_part(item.target_type_text) + "_" + ir_abi_symbol_part(member.name);
+}
+
+proc ir_function_abi_from_hir(items: [HirItem], function_name: string) -> string {
+    let i: u64 = 0;
+    while i < len(items) {
+        if items[i].kind == HirItemKind.Proc and items[i].name == function_name {
+            give items[i].abi;
+        }
+        if items[i].kind == HirItemKind.Impl {
+            let j: u64 = 0;
+            while j < len(items[i].members) {
+                if items[i].members[j].kind == HirNominalMemberKind.ImplMethod and ir_impl_method_name(items[i], items[i].members[j]) == function_name {
+                    give items[i].abi;
+                }
+                set j = j + 1;
+            }
+        }
+        set i = i + 1;
+    }
+    give "Vitte";
 }
 
 proc ir_value_from_operand(id: u64, operand: MirOperand) -> IrValue {
@@ -340,8 +380,8 @@ proc lower_mir_block(block: MirBlock, fn0: MirFunction, functions: [MirFunction]
     give block_set_terminator(built, ir_terminator_from_mir(block.terminator));
 }
 
-proc lower_mir_function(module_name: string, fn0: MirFunction, functions: [MirFunction], exported_names: [string]) -> IrFunction {
-    let lowered: IrFunction = function_ref_create(
+proc lower_mir_function(module_name: string, fn0: MirFunction, functions: [MirFunction], typed_hir_items: [HirItem], exported_names: [string]) -> IrFunction {
+    let lowered: IrFunction = function_with_abi(function_ref_create(
         fn0.id,
         fn0.name,
         module_name,
@@ -349,7 +389,7 @@ proc lower_mir_function(module_name: string, fn0: MirFunction, functions: [MirFu
         ir_visibility_for_exports(fn0.name, exported_names),
         fn0.name == "main",
         span_empty()
-    );
+    ), ir_function_abi_from_hir(typed_hir_items, fn0.name));
     let params: [IrFunctionParam] = [];
     let j: u64 = 0;
     while j < len(fn0.params) {
@@ -371,6 +411,7 @@ proc lower_mir_function(module_name: string, fn0: MirFunction, functions: [MirFu
         linkage: lowered.linkage,
         visibility: lowered.visibility,
         is_entry: lowered.is_entry,
+        abi: lowered.abi,
         span: lowered.span,
         params: params,
         return_type: fn0.return_type,
@@ -629,7 +670,7 @@ proc lower_mir_as_ir_module(module_id: u64, module_name: string, source_path: st
     }
     set i = 0;
     while i < len(mir.module.functions) {
-        set built = module_add_function(built, lower_mir_function(module_name, mir.module.functions[i], mir.module.functions, exported_names));
+        set built = module_add_function(built, lower_mir_function(module_name, mir.module.functions[i], mir.module.functions, typed_hir_items, exported_names));
         set i = i + 1;
     }
     set i = 0;

@@ -1,6 +1,7 @@
 space vitte/compiler/backend/c/emitter
 
 use vitte/compiler/backend/c/architecture.{ CBackendTargetProfile, c_include_set, c_type_for_vitte_type }
+use vitte/compiler/backend/c/abi.{ c_abi_contract_summary, c_abi_header_prelude, c_abi_macro_for_name }
 use vitte/compiler/backend/c/diagnostics.{ CBackendDiagnostic, c_has_errors }
 use vitte/compiler/backend/c/lowering.{ CLoweredFunction, CMethodParam, CNominalMember, CNominalType, CTranslationUnit }
 use vitte/compiler/backend/c/runtime.{ CRuntimeModule, default_c_runtime }
@@ -17,8 +18,9 @@ form CEmitResult {
 }
 
 proc emit_function_decl(function0: CLoweredFunction) -> string {
+  let prefix: string = if function0.abi.declaration_macro != "" { function0.abi.declaration_macro + " " } else { "" };
   if len(function0.params) == 0 {
-    give function0.return_type + " " + function0.c_name + "(void)";
+    give prefix + function0.return_type + " " + function0.c_name + "(void)";
   }
   let params: string = "";
   let i: u64 = 0;
@@ -29,7 +31,7 @@ proc emit_function_decl(function0: CLoweredFunction) -> string {
     set params = params + emit_method_param_decl(function0.params[i]);
     set i = i + 1;
   }
-  give function0.return_type + " " + function0.c_name + "(" + params + ")";
+  give prefix + function0.return_type + " " + function0.c_name + "(" + params + ")";
 }
 
 proc emit_nominal_metadata_entry(nominal: CNominalType) -> string {
@@ -166,11 +168,12 @@ proc emit_method_param_list(member: CNominalMember) -> string {
 
 proc emit_nominal_method_typedefs(nominal: CNominalType) -> string {
   let out: string = "";
+  let abi_macro: string = c_abi_macro_for_name(nominal.abi);
   let i: u64 = 0;
   while i < len(nominal.members) {
     let member: CNominalMember = nominal.members[i];
     if member.kind == "trait-method" or member.kind == "impl-method" {
-      set out = out + "typedef " + member.c_type + " (*" + emit_method_typedef_name(nominal, member) + ")(" + emit_method_param_list(member) + ");\n";
+      set out = out + "typedef " + member.c_type + " " + abi_macro + " (*" + emit_method_typedef_name(nominal, member) + ")(" + emit_method_param_list(member) + ");\n";
     }
     set i = i + 1;
   }
@@ -337,6 +340,8 @@ proc emit_header_text(unit: CTranslationUnit) -> string {
     set i = i + 1;
   }
   set out = out + "#include \"vitte_runtime_c.h\"\n\n";
+  set out = out + "/* " + c_abi_contract_summary(unit.abi_contract) + " */\n";
+  set out = out + c_abi_header_prelude();
   set out = out + emit_nominal_metadata_block(unit);
   set out = out + emit_nominal_declarations(unit);
   set out = out + emit_nominal_descriptor_exports();

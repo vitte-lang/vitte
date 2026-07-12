@@ -1,0 +1,209 @@
+space vitte/compiler/backend/c/abi
+
+use vitte/compiler/backend/c/architecture.{ CBackendTargetProfile }
+
+export *
+
+const C_ABI_NAME: string = "vitte-c-abi-v1"
+const C_ABI_SCHEMA_VERSION: u64 = 1
+
+pick CAbiPassMode {
+  Invalid,
+  Ignore,
+  Direct,
+  Indirect,
+  Variadic,
+}
+
+form CAbiContract {
+  name: string
+  schema_version: u64
+  target_profile: string
+  calling_convention: string
+  pointer_width: u64
+  bool_representation: string
+  string_representation: string
+  immutable_borrow_representation: string
+  mutable_borrow_representation: string
+  aggregate_return_representation: string
+  valid: bool
+}
+
+form CAbiValue {
+  vitte_type: string
+  c_type: string
+  pass_mode: CAbiPassMode
+  readonly: bool
+  valid: bool
+}
+
+form CAbiFunction {
+  source_abi: string
+  canonical_abi: string
+  declaration_macro: string
+  return_value: CAbiValue
+  variadic: bool
+  valid: bool
+}
+
+proc c_abi_contract(profile: CBackendTargetProfile) -> CAbiContract {
+  give CAbiContract {
+    name: profile.abi_name,
+    schema_version: C_ABI_SCHEMA_VERSION,
+    target_profile: profile.name,
+    calling_convention: profile.calling_convention,
+    pointer_width: profile.pointer_width,
+    bool_representation: "stdbool.bool:u8",
+    string_representation: "nul-terminated:const-char-pointer",
+    immutable_borrow_representation: "const-pointer",
+    mutable_borrow_representation: "pointer",
+    aggregate_return_representation: "c-direct",
+    valid: profile.valid
+      and profile.abi_name == C_ABI_NAME
+      and profile.calling_convention != ""
+      and profile.pointer_width > 0
+  };
+}
+
+proc c_abi_normalize_name(source_abi: string) -> string {
+  let value: string = trim(source_abi);
+  if value == "" or value == "Vitte" or value == "vitte" {
+    give "vitte";
+  }
+  if value == "C" or value == "c" or value == "\"C\"" or value == "extern" or value == "cdecl" {
+    give "c";
+  }
+  if value == "sysv64" {
+    give "sysv64";
+  }
+  if value == "win64" {
+    give "win64";
+  }
+  give "invalid";
+}
+
+proc c_abi_name_supported(profile: CBackendTargetProfile, source_abi: string) -> bool {
+  let abi: string = c_abi_normalize_name(source_abi);
+  if abi == "vitte" or abi == "c" {
+    give true;
+  }
+  if abi == "sysv64" {
+    give profile.calling_convention == "sysv64";
+  }
+  if abi == "win64" {
+    give profile.calling_convention == "win64";
+  }
+  give false;
+}
+
+proc c_abi_macro_for_name(source_abi: string) -> string {
+  let abi: string = c_abi_normalize_name(source_abi);
+  if abi == "c" {
+    give "VITTE_ABI_C";
+  }
+  if abi == "sysv64" {
+    give "VITTE_ABI_SYSV64";
+  }
+  if abi == "win64" {
+    give "VITTE_ABI_WIN64";
+  }
+  give "VITTE_ABI_VITTE";
+}
+
+proc c_abi_param_value(vitte_type: string, c_type: string, borrowed: bool, mutable: bool, variadic: bool) -> CAbiValue {
+  if variadic {
+    give CAbiValue {
+      vitte_type: vitte_type,
+      c_type: "...",
+      pass_mode: CAbiPassMode.Variadic,
+      readonly: false,
+      valid: not borrowed and not mutable
+    };
+  }
+  give CAbiValue {
+    vitte_type: vitte_type,
+    c_type: c_type,
+    pass_mode: if borrowed { CAbiPassMode.Indirect } else { CAbiPassMode.Direct },
+    readonly: borrowed and not mutable,
+    valid: vitte_type != "" and c_type != "" and c_type != "void"
+  };
+}
+
+proc c_abi_return_value(vitte_type: string, c_type: string, is_entry: bool) -> CAbiValue {
+  if vitte_type == "" or vitte_type == "unit" or vitte_type == "never" {
+    give CAbiValue {
+      vitte_type: if vitte_type != "" { vitte_type } else { "unit" },
+      c_type: "void",
+      pass_mode: CAbiPassMode.Ignore,
+      readonly: false,
+      valid: not is_entry
+    };
+  }
+  give CAbiValue {
+    vitte_type: vitte_type,
+    c_type: if is_entry { "int" } else { c_type },
+    pass_mode: CAbiPassMode.Direct,
+    readonly: false,
+    valid: c_type != "" and c_type != "void"
+  };
+}
+
+proc c_abi_params_valid(params: [CAbiValue]) -> bool {
+  let i: u64 = 0;
+  while i < len(params) {
+    if not params[i].valid or params[i].pass_mode == CAbiPassMode.Invalid or params[i].pass_mode == CAbiPassMode.Ignore {
+      give false;
+    }
+    if params[i].pass_mode == CAbiPassMode.Variadic and (i == 0 or i + 1 != len(params)) {
+      give false;
+    }
+    set i = i + 1;
+  }
+  give true;
+}
+
+proc c_abi_params_variadic(params: [CAbiValue]) -> bool {
+  give len(params) > 0 and params[len(params) - 1].pass_mode == CAbiPassMode.Variadic;
+}
+
+proc c_abi_function(profile: CBackendTargetProfile, source_abi: string, return_type: string, return_c_type: string, params: [CAbiValue], is_entry: bool) -> CAbiFunction {
+  let normalized: string = c_abi_normalize_name(source_abi);
+  let return_value: CAbiValue = c_abi_return_value(return_type, return_c_type, is_entry);
+  give CAbiFunction {
+    source_abi: if trim(source_abi) != "" { source_abi } else { "Vitte" },
+    canonical_abi: normalized,
+    declaration_macro: c_abi_macro_for_name(source_abi),
+    return_value: return_value,
+    variadic: c_abi_params_variadic(params),
+    valid: c_abi_contract(profile).valid
+      and c_abi_name_supported(profile, source_abi)
+      and return_value.valid
+      and c_abi_params_valid(params)
+  };
+}
+
+proc c_abi_header_prelude() -> string {
+  give "#if defined(_MSC_VER)\n"
+    + "#define VITTE_ABI_C __cdecl\n"
+    + "#define VITTE_ABI_SYSV64\n"
+    + "#define VITTE_ABI_WIN64 __cdecl\n"
+    + "#elif defined(__GNUC__) || defined(__clang__)\n"
+    + "#define VITTE_ABI_C\n"
+    + "#if defined(__x86_64__)\n"
+    + "#define VITTE_ABI_SYSV64 __attribute__((sysv_abi))\n"
+    + "#define VITTE_ABI_WIN64 __attribute__((ms_abi))\n"
+    + "#else\n"
+    + "#define VITTE_ABI_SYSV64\n"
+    + "#define VITTE_ABI_WIN64\n"
+    + "#endif\n"
+    + "#else\n"
+    + "#define VITTE_ABI_C\n"
+    + "#define VITTE_ABI_SYSV64\n"
+    + "#define VITTE_ABI_WIN64\n"
+    + "#endif\n"
+    + "#define VITTE_ABI_VITTE VITTE_ABI_C\n\n";
+}
+
+proc c_abi_contract_summary(contract: CAbiContract) -> string {
+  give contract.name + " schema=" + string(contract.schema_version) + " target=" + contract.target_profile + " cc=" + contract.calling_convention + " pointer-width=" + string(contract.pointer_width);
+}

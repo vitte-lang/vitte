@@ -127,6 +127,7 @@ form IrFunction {
   linkage: IrLinkage
   visibility: IrVisibility
   is_entry: bool
+  abi: string
   span: AstSpan
   params: [IrFunctionParam]
   return_type: string
@@ -505,11 +506,41 @@ proc function_ref_create(id: u64, name: string, module_name: string, linkage: Ir
     linkage: linkage,
     visibility: visibility,
     is_entry: is_entry,
+    abi: "Vitte",
     span: span,
     params: [],
     return_type: "",
     blocks: [],
     valid: id > 0 and name != "" and module_name != ""
+  };
+}
+
+proc ir_function_abi_name(source_abi: string) -> string {
+  let value: string = trim(source_abi);
+  if value == "" or value == "Vitte" or value == "vitte" {
+    give "Vitte";
+  }
+  if value == "C" or value == "c" or value == "\"C\"" or value == "extern" or value == "cdecl" {
+    give "C";
+  }
+  give value;
+}
+
+proc function_with_abi(fn0: IrFunction, source_abi: string) -> IrFunction {
+  let abi: string = ir_function_abi_name(source_abi);
+  give IrFunction {
+    id: fn0.id,
+    name: fn0.name,
+    module_name: fn0.module_name,
+    linkage: fn0.linkage,
+    visibility: fn0.visibility,
+    is_entry: fn0.is_entry,
+    abi: abi,
+    span: fn0.span,
+    params: fn0.params,
+    return_type: fn0.return_type,
+    blocks: fn0.blocks,
+    valid: fn0.valid and abi != ""
   };
 }
 
@@ -521,6 +552,7 @@ proc function_add_block(fn0: IrFunction, block: IrBlock) -> IrFunction {
     linkage: fn0.linkage,
     visibility: fn0.visibility,
     is_entry: fn0.is_entry,
+    abi: fn0.abi,
     span: fn0.span,
     params: fn0.params,
     return_type: fn0.return_type,
@@ -1365,11 +1397,11 @@ proc block_reason(module0: IrModule, blocks: [IrBlock], block: IrBlock) -> strin
 }
 
 proc verify_function(fn0: IrFunction) -> bool {
-  give fn0.valid and fn0.id > 0 and fn0.name != "" and len(fn0.blocks) > 0;
+  give fn0.valid and fn0.id > 0 and fn0.name != "" and fn0.abi != "" and len(fn0.blocks) > 0;
 }
 
 proc verify_function_in_module(module0: IrModule, fn0: IrFunction) -> bool {
-  if not fn0.valid or fn0.id == 0 or fn0.name == "" or len(fn0.blocks) == 0 {
+  if not fn0.valid or fn0.id == 0 or fn0.name == "" or fn0.abi == "" or len(fn0.blocks) == 0 {
     give false;
   }
   if not ir_params_valid(fn0) {
@@ -1386,7 +1418,7 @@ proc verify_function_in_module(module0: IrModule, fn0: IrFunction) -> bool {
 }
 
 proc function_reason_in_module(module0: IrModule, fn0: IrFunction) -> string {
-  if not fn0.valid or fn0.id == 0 or fn0.name == "" or len(fn0.blocks) == 0 {
+  if not fn0.valid or fn0.id == 0 or fn0.name == "" or fn0.abi == "" or len(fn0.blocks) == 0 {
     give "invalid-function";
   }
   if not ir_params_valid(fn0) {
