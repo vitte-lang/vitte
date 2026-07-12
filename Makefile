@@ -2314,8 +2314,18 @@ backend-layout-abi-audit:
 	@python3 tools/backend_layout_abi_audit.py
 
 
+.PHONY: native-object-determinism-gate
+native-object-determinism-gate:
+	@python3 tools/native_object_determinism_test.py
+
+
+.PHONY: backend-native-object-audit
+backend-native-object-audit: native-object-determinism-gate
+	@python3 tools/backend_native_object_audit.py
+
+
 .PHONY: backend-gate
-backend-gate: vitte-emit-gate llvm-backend-gate wasm-backend-gate backend-ir-contract-audit c-abi-contract-audit backend-value-lowering-audit backend-layout-abi-audit
+backend-gate: vitte-emit-gate llvm-backend-gate wasm-backend-gate backend-ir-contract-audit c-abi-contract-audit backend-value-lowering-audit backend-layout-abi-audit backend-native-object-audit
 	@python3 tools/backend_surface_audit.py
 
 

@@ -23,7 +23,7 @@ use vitte/compiler/backend/codegen.{ CodegenResult, run_codegen_llvm_with_profil
 use vitte/compiler/backend/ir.{ IrFunction, IrModule, IrModuleKind, IrTarget, IrUnit, IrUnitState, function_name_by_id, ir_validation_reason, target_from_name, unit_add_module, unit_empty, unit_is_valid, unit_set_entry, unit_with_source_path, unit_with_state, verify_unit }
 use vitte/compiler/backend/link/artifact.{ LinkArtifact, LinkArtifactKind, artifact_create, artifact_is_valid, link_target_from_name }
 use vitte/compiler/backend/link/linker.{ link_ir_unit_with_kind }
-use vitte/compiler/backend/native_bridge.{ NativeBridgeResult, emit_native_object_from_llvm_ir, link_native_executable, native_bridge_command_result }
+use vitte/compiler/backend/native_bridge.{ NativeBridgeResult, emit_native_object_from_assembly, emit_native_object_from_llvm_ir, link_native_executable, native_bridge_command_result }
 use vitte/compiler/backend/pipeline.{ BackendPipelineResult, compile_to_valid_ir_with_profile_and_packaging }
 use vitte/compiler/backends/llvm_bindings.{ LlvmDiagnosticLevel, LlvmToolchainPaths, default_llvm_toolchain_paths }
 use vitte/compiler/driver/exit_status.{ DriverExitStatus }
@@ -1849,7 +1849,11 @@ proc emit_native_backend_object_with_config(source_path: string, source_text: st
         set object0 = native_bridge_command_result(object_path0, "", "output path would overwrite the source file", "DRIVER_E_OUTPUT_WRITE_FAILED", "driver", "", "source and output paths are identical", "", -1, false);
     } elif compile0.status == DriverExitStatus.Ok and backend0.valid {
         let object_output_dir: string = output_dir_from_path(object_path0);
-        set object0 = emit_native_object_from_llvm_ir(backend0.codegen.assembly, object_output_dir, object_path0);
+        if config.backend_name == "llvm" or config.backend_name == "llvm-ir" {
+            set object0 = emit_native_object_from_llvm_ir(backend0.codegen.assembly, object_output_dir, object_path0);
+        } else {
+            set object0 = emit_native_object_from_assembly(backend0.codegen.assembly, config.target_name, object_output_dir, object_path0);
+        }
     }
     let compile1: DriverCompileResult = if native_output_overwrites_source(source_path, object_path0) {
         compile_result_with_native_failure(compile0, object0, DriverExitStatus.PermissionFailure, "driver")

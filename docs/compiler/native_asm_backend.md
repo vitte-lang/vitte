@@ -12,6 +12,8 @@ Objectif: backend assembleur natif traçable avec ABI et layout explicites.
 - registres d'arguments/retours, arguments de pile et retours `sret`
 - prologue/epilogue validation signal
 - object text packaging
+- matérialisation `.o` réelle par l'intrinsic hôte
+  `vitte_host_emit_assembly_object`
 
 ## Modes d’intégration
 
@@ -25,5 +27,9 @@ Objectif: backend assembleur natif traçable avec ABI et layout explicites.
 - `registers_allocated` doit couvrir toutes instructions sélectionnées,
 - `prologue/epilogue` attendus pour marquer le résultat `valid`.
 
-Le format objet reste un modèle relogeable textuel. La matérialisation d'un
-objet natif déterministe est un gate séparé du contrat ABI machine.
+`codegen.object_text` reste un manifeste lisible pour les diagnostics. Le
+fichier de sortie est un vrai objet natif produit sans shell par
+`clang -target ... -x assembler -c`. L'environnement enfant fixe
+`SOURCE_DATE_EPOCH=0` et `ZERO_AR_DATE=1`, et le gate
+`native-object-determinism-gate` exige deux sorties ELF octet pour octet
+identiques.

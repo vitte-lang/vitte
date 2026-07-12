@@ -1,3 +1,5 @@
+#define _POSIX_C_SOURCE 200809L
+
 #include "vitte_runtime.h"
 
 #include <dirent.h>
@@ -342,6 +344,8 @@ static int32_t vitte_run_argv(char *const argv[]) {
     return -1;
   }
   if (pid == 0) {
+    setenv("SOURCE_DATE_EPOCH", "0", 1);
+    setenv("ZERO_AR_DATE", "1", 1);
     execvp(argv[0], argv);
     _exit(127);
   }
@@ -370,6 +374,7 @@ int32_t vitte_host_emit_llvm_object(VitteString ir_text, VitteString object_path
   }
   strcpy(ir_path, object_c);
   strcat(ir_path, ".ll");
+  remove(object_c);
   stream = fopen(ir_path, "wb");
   if (stream != NULL &&
       (ir_text.len == 0 || fwrite(ir_text.data, 1, ir_text.len, stream) == ir_text.len) &&
@@ -388,6 +393,54 @@ int32_t vitte_host_emit_llvm_object(VitteString ir_text, VitteString object_path
     fclose(stream);
   }
   free(ir_path);
+  free(object_c);
+  return result;
+}
+
+int32_t vitte_host_emit_assembly_object(VitteString assembly_text, VitteString target_triple, VitteString object_path) {
+  char *object_c = vitte_string_to_c(object_path);
+  char *target_c = vitte_string_to_c(target_triple);
+  char *assembly_path = NULL;
+  FILE *stream = NULL;
+  char *argv[10];
+  int32_t result = -1;
+  if (object_c == NULL || target_c == NULL || target_c[0] == '\0') {
+    free(object_c);
+    free(target_c);
+    return -1;
+  }
+  assembly_path = (char *)malloc(strlen(object_c) + sizeof(".s"));
+  if (assembly_path == NULL) {
+    free(object_c);
+    free(target_c);
+    return -1;
+  }
+  strcpy(assembly_path, object_c);
+  strcat(assembly_path, ".s");
+  remove(object_c);
+  stream = fopen(assembly_path, "wb");
+  if (stream != NULL &&
+      (assembly_text.len == 0 || fwrite(assembly_text.data, 1, assembly_text.len, stream) == assembly_text.len) &&
+      fclose(stream) == 0) {
+    stream = NULL;
+    argv[0] = "clang";
+    argv[1] = "-target";
+    argv[2] = target_c;
+    argv[3] = "-x";
+    argv[4] = "assembler";
+    argv[5] = "-c";
+    argv[6] = assembly_path;
+    argv[7] = "-o";
+    argv[8] = object_c;
+    argv[9] = NULL;
+    result = vitte_run_argv(argv);
+  }
+  if (stream != NULL) {
+    fclose(stream);
+  }
+  remove(assembly_path);
+  free(assembly_path);
+  free(target_c);
   free(object_c);
   return result;
 }

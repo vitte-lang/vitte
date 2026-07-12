@@ -5,6 +5,7 @@ use vitte/compiler/backend/diagnostics.{ backend_missing_c_compiler, backend_nat
 use vitte/compiler/backend/ir.{ BACKEND_IR_DIALECT, BACKEND_IR_SCHEMA_VERSION, IrBlock, IrFunction, IrInstructionKind, IrLinkage, IrModuleKind, IrUnit, IrUnitState, IrValue, IrValueKind, IrVisibility, block_add_instruction, block_create, function_add_block, function_ref_create, instruction_create, instruction_with_call_abi, ir_validation_reason, module_add_function, module_add_nominal_type, module_create, nominal_type_create, span_empty, target_native_x86_64_linux, terminator_return, unit_add_module, unit_contract_is_supported, unit_empty, unit_is_valid, unit_set_entry, unit_summary, unit_with_contract, unit_with_source_path, value_constant, value_place, verify_unit }
 use vitte/compiler/backend/link/artifact.{ LinkArtifact, artifact_is_valid }
 use vitte/compiler/backend/link/linker.{ link_ir_unit }
+use vitte/compiler/backend/native_bridge.{ native_assembly_object_command, native_assembly_target }
 use vitte/compiler/backend/pipeline.{ BackendPipelineResult, compile_frontend_to_valid_ir_with_profile_and_packaging, compile_to_valid_ir, compile_to_valid_ir_with_backend }
 use vitte/compiler/backend/target/calling_convention.{ AbiLocationKind, AbiValueLocation, CallingConvention, abi_argument_locations, abi_argument_locations_for_return, abi_outgoing_stack_size, abi_return_location, calling_convention_aapcs64, calling_convention_x86_64_sysv, calling_convention_x86_64_windows }
 use vitte/compiler/backend/target/layout.{ AggregateLayout, TargetLayout, TypeLayout, aggregate_size, data_layout_for_triple, target_layout_for, type_layout, type_layout_for_name }
@@ -405,7 +406,18 @@ proc test_x86_64_codegen_consumes_nominal_call_metadata() -> bool {
     and find(codegen.object_text, "member_annotations=,int") >= 0
     and find(codegen.object_text, "member_param_names=,self|level") >= 0
     and find(codegen.object_text, "member_param_types=,Self|int") >= 0
-    and find(codegen.object_text, "member_param_borroweds=,false|false") >= 0;
+    and find(codegen.object_text, "member_param_borroweds=,false|false") >= 0
+    and find(codegen.assembly, "call Option::Some") < 0
+    and find(codegen.assembly, ".section .note.GNU-stack") >= 0;
+}
+
+proc test_native_assembly_object_bridge_is_targeted() -> bool {
+  let command: string = native_assembly_object_command("x86_64-linux", "build/main.o");
+  give native_assembly_target("x86_64-linux") == "x86_64-unknown-linux-gnu"
+    and native_assembly_target("aarch64-linux") == "aarch64-unknown-linux-gnu"
+    and native_assembly_target("unsupported-target") == ""
+    and find(command, "clang -target x86_64-unknown-linux-gnu") == 0
+    and find(command, "-x assembler -c build/main.o.s -o build/main.o") >= 0;
 }
 
 proc test_llvm_codegen_consumes_nominal_call_metadata() -> bool {
@@ -975,6 +987,7 @@ proc run_all_tests() -> int {
   if not test_mir_to_ir_preserves_nominal_type_metadata() { set failures = failures + 1; }
   if not test_mir_to_ir_preserves_explicit_nominal_call_lowering() { set failures = failures + 1; }
   if not test_x86_64_codegen_consumes_nominal_call_metadata() { set failures = failures + 1; }
+  if not test_native_assembly_object_bridge_is_targeted() { set failures = failures + 1; }
   if not test_llvm_codegen_consumes_nominal_call_metadata() { set failures = failures + 1; }
   if not test_backend_lowers_calls_returns_and_aggregates_concretely() { set failures = failures + 1; }
   if not test_target_layout_has_canonical_field_offsets() { set failures = failures + 1; }

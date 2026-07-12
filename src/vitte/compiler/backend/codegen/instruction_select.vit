@@ -465,6 +465,51 @@ proc select_nominal_call_metadata(module0: IrModule, instruction: IrInstruction)
   give [];
 }
 
+proc select_variant_constructor_lines(module0: IrModule, target_layout: TargetLayout, frame: X86FrameLayout, instruction: IrInstruction) -> [string] {
+  let sep: int = find(instruction.text, "::");
+  if sep <= 0 {
+    give invalid_backend_lines("variant constructor " + instruction.text);
+  }
+  let nominal_name: string = slice(instruction.text, 0, sep);
+  let member_name: string = slice(instruction.text, sep + 2, len(instruction.text));
+  let nominal: IrNominalType = module_pick_nominal(module0, nominal_name);
+  let member_index: int = nominal_member_index(nominal, member_name);
+  let destination: X86FrameSlot = frame_slot_by_name(frame, instruction.dest.name);
+  if not nominal.valid or member_index < 0 or not destination.valid {
+    give invalid_backend_lines("variant constructor " + instruction.text);
+  }
+  let payload_name: string = if member_index as u64 < len(nominal.member_annotations) { nominal.member_annotations[member_index as u64] } else { "" };
+  let resolved_payload_layout: TypeLayout = if payload_name != "" {
+    module_type_layout(module0, target_layout, payload_name)
+  } else {
+    type_layout("unit", 0, 1, false, false, false, false)
+  };
+  let payload_layout: TypeLayout = if resolved_payload_layout.valid {
+    resolved_payload_layout
+  } else {
+    type_layout(payload_name, target_layout.pointer_size, target_layout.pointer_alignment, true, false, false, false)
+  };
+  let aggregate: AggregateLayout = aggregate_size([4, payload_layout.size], [4, payload_layout.alignment], false);
+  let lines: [string] = select_nominal_call_metadata(module0, instruction)
+    + ["  movl $" + string(member_index) + ", " + frame_slot_part_address(destination, aggregate.field_offsets[0])];
+  if payload_layout.size == 0 or instruction.call_arg_start >= len(instruction.args) {
+    give lines;
+  }
+  let payload: IrValue = instruction.args[instruction.call_arg_start];
+  if payload_layout.size <= target_layout.pointer_size {
+    set lines = lines + load_value_lines(frame, payload, "%rax");
+    set lines = lines + [store_rax_width_line(frame_slot_part_address(destination, aggregate.field_offsets[1]), payload_layout.size)];
+    give lines;
+  }
+  let part: u64 = 0;
+  while part < payload_layout.size {
+    set lines = lines + load_value_part_lines(frame, payload, part, "%rax");
+    set lines = lines + ["  mov %rax, " + frame_slot_part_address(destination, aggregate.field_offsets[1] + part)];
+    set part = part + target_layout.pointer_size;
+  }
+  give lines;
+}
+
 proc invalid_backend_lines(message: string) -> [string] {
   give ["  # invalid " + message, "  ud2"];
 }
@@ -716,6 +761,9 @@ proc select_instruction_line(module0: IrModule, function_name: string, frame: X8
     if (instruction.operator == "variant-ctor" or instruction.operator == "method-dispatch") and len(metadata) == 0 {
       give invalid_backend_lines("canonical nominal call " + instruction.text);
     }
+    if instruction.operator == "variant-ctor" {
+      give select_variant_constructor_lines(module0, target_layout, frame, instruction);
+    }
     let convention: CallingConvention = calling_convention_for_abi(module0.target.triple, module_function_abi(module0, callee));
     let layouts: [TypeLayout] = call_argument_layouts(module0, target_layout, instruction);
     let return_layout: TypeLayout = module_type_layout(module0, target_layout, module_function_return_type(module0, callee, instruction.dest.type_name));
@@ -782,8 +830,15 @@ proc select_instruction_line(module0: IrModule, function_name: string, frame: X8
     give lines;
   }
   if instruction.kind == IrInstructionKind.Discriminant {
-    let lines: [string] = load_operand_lines(frame, instruction, 0, "%rax");
-    give lines + ["  mov 0(%rax), %eax"] + store_result_lines(frame, instruction, "%rax");
+    if len(instruction.args) == 0 {
+      give invalid_backend_lines("missing discriminant operand");
+    }
+    let source: X86FrameSlot = frame_slot_by_name(frame, instruction.args[0].name);
+    if not source.valid {
+      give invalid_backend_lines("missing discriminant frame slot");
+    }
+    let lines: [string] = ["  movl " + machine_frame_offset(source.offset) + ", %eax"];
+    give lines + store_result_lines(frame, instruction, "%rax");
   }
   if instruction.kind == IrInstructionKind.BorrowShared {
     let source_name: string = if len(instruction.args) > 0 { machine_operand_debug_name(instruction.args[0].name, instruction.args[0].place, instruction.args[0].text) } else { instruction.text };
@@ -800,8 +855,7 @@ proc select_instruction_line(module0: IrModule, function_name: string, frame: X8
     give ["  # borrow_mut " + instruction.dest.name + " <- &mut " + source_name];
   }
   if instruction.kind == IrInstructionKind.Assert {
-    let instruction_id: string = instruction.id as string;
-    let assert_label: string = ".L_assert_ok_" + instruction_id;
+    let assert_label: string = machine_branch_label(function_name, instruction.id) + "_assert_ok";
     let lines: [string] = load_operand_lines(frame, instruction, 0, "%rax");
     let tail: [string] = ["  cmp $0, %rax", "  jne " + assert_label, "  ud2", assert_label + ":"];
     give lines + tail;
@@ -902,6 +956,9 @@ proc select_ir_unit_x86_64(unit: IrUnit) -> [string] {
       set j = j + 1;
     }
     set i = i + 1;
+  }
+  if unit.target.triple.object_format == "elf" {
+    set lines = lines + [".section .note.GNU-stack,\"\",@progbits"];
   }
   give lines;
 }

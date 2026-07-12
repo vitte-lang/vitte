@@ -1,6 +1,6 @@
 space vitte/compiler/backend/native_bridge
 
-use vitte/stdlib/io/host_runtime.{ host_emit_llvm_object, host_is_file, host_link_executable, host_mkdir_all, host_run_executable, host_runtime_available }
+use vitte/stdlib/io/host_runtime.{ host_emit_assembly_object, host_emit_llvm_object, host_is_file, host_link_executable, host_mkdir_all, host_run_executable, host_runtime_available }
 
 form NativeBridgeResult {
   object_path: string
@@ -49,6 +49,27 @@ proc native_object_command(object_path: string) -> string {
   give "clang -Wno-override-module -c " + object_path + ".ll -o " + object_path;
 }
 
+proc native_assembly_target(target_name: string) -> string {
+  if target_name == "x86_64-linux" or target_name == "x86_64-unknown-linux-gnu" {
+    give "x86_64-unknown-linux-gnu";
+  }
+  if target_name == "aarch64-linux" or target_name == "aarch64-unknown-linux-gnu" {
+    give "aarch64-unknown-linux-gnu";
+  }
+  if target_name == "x86_64-windows" or target_name == "x86_64-pc-windows-msvc" {
+    give "x86_64-pc-windows-msvc";
+  }
+  if target_name == "apple-silicon-macos" or target_name == "arm64-apple-macos" {
+    give "arm64-apple-macos";
+  }
+  give "";
+}
+
+proc native_assembly_object_command(target_name: string, object_path: string) -> string {
+  let target: string = native_assembly_target(target_name);
+  give "clang -target " + target + " -x assembler -c " + object_path + ".s -o " + object_path;
+}
+
 proc native_link_command(object_path: string, executable_path: string) -> string {
   give "cc " + object_path + " src/vitte/compiler/backends/runtime_c/vitte_runtime.c -I src/vitte/compiler/backends/runtime_c -o " + executable_path;
 }
@@ -80,6 +101,31 @@ proc emit_native_object_from_llvm_ir(ir_text: string, output_dir: string, object
     give native_bridge_command_result(object_path, "", "native compiler did not write the object file", "BACKEND_E_OBJECT_WRITE_FAILED", "clang", command_text, "expected object file is absent", "", code, false)
   }
   give native_bridge_command_result(object_path, "", "clang object emission failed", "BACKEND_E_CODEGEN_FAILED", "clang", command_text, "native host runtime does not capture stderr", "", code, false)
+}
+
+proc emit_native_object_from_assembly(assembly_text: string, target_name: string, output_dir: string, object_path: string) -> NativeBridgeResult {
+  let target: string = native_assembly_target(target_name);
+  let command_text: string = native_assembly_object_command(target_name, object_path);
+  if not host_runtime_available() {
+    give native_bridge_command_result(object_path, "", "required native assembler `clang` is unavailable", "BACKEND_E_NATIVE_TOOL_MISSING", "clang", command_text, "native host runtime unavailable", "", -1, false)
+  }
+  if assembly_text == "" or target == "" or not safe_shell_path(output_dir) or not safe_shell_path(object_path) {
+    give native_bridge_command_result(object_path, "", "invalid native assembly object input", "BACKEND_E_CODEGEN_FAILED", "clang", command_text, "invalid assembly, target, or output path", "", -1, false)
+  }
+  if host_mkdir_all(output_dir) != 0 {
+    give native_bridge_command_result(object_path, "", "permission denied while creating native output directory", "BACKEND_E_OBJECT_WRITE_FAILED", "clang", command_text, "output directory is not writable", "", -1, false)
+  }
+  let code: int = host_emit_assembly_object(assembly_text, target, object_path)
+  if code == 0 and host_is_file(object_path) {
+    give native_bridge_command_result(object_path, "", "deterministic native assembly object materialized", "", "clang", command_text, "", "", code, true)
+  }
+  if code == 127 {
+    give native_bridge_command_result(object_path, "", "required native assembler `clang` was not found", "BACKEND_E_NATIVE_TOOL_MISSING", "clang", command_text, "clang command was not found", "", code, false)
+  }
+  if code == 0 {
+    give native_bridge_command_result(object_path, "", "native assembler did not write the object file", "BACKEND_E_OBJECT_WRITE_FAILED", "clang", command_text, "expected object file is absent", "", code, false)
+  }
+  give native_bridge_command_result(object_path, "", "native assembly object emission failed", "BACKEND_E_CODEGEN_FAILED", "clang", command_text, "native host runtime does not capture stderr", "", code, false)
 }
 
 proc link_native_executable(object_path: string, executable_path: string) -> NativeBridgeResult {
@@ -118,7 +164,10 @@ share NativeBridgeResult
 share native_bridge_result
 share native_bridge_command_result
 share native_object_command
+share native_assembly_target
+share native_assembly_object_command
 share native_link_command
 share emit_native_object_from_llvm_ir
+share emit_native_object_from_assembly
 share link_native_executable
 share run_native_executable
