@@ -74,6 +74,17 @@ form LifetimeResult {
     valid: bool
 }
 
+form TemporalOwnershipWindow {
+    owner: string
+    alias: string
+    owner_start_line: u64
+    owner_end_line: u64
+    alias_start_line: u64
+    alias_end_line: u64
+    mutable: bool
+    valid: bool
+}
+
 proc lifetime_fact(alias: string, owner: string, region_name: string, line: u64, kind: LifetimeFactKind) -> LifetimeFact {
     give LifetimeFact {
         alias: alias,
@@ -118,6 +129,63 @@ proc lifetime_result_empty(regions: RegionSolution) -> LifetimeResult {
         regions: regions,
         valid: true
     };
+}
+
+proc temporal_ownership_window(owner: string, alias: string, owner_start_line: u64, owner_end_line: u64, alias_start_line: u64, alias_end_line: u64, mutable: bool) -> TemporalOwnershipWindow {
+    give TemporalOwnershipWindow {
+        owner: owner,
+        alias: alias,
+        owner_start_line: owner_start_line,
+        owner_end_line: owner_end_line,
+        alias_start_line: alias_start_line,
+        alias_end_line: alias_end_line,
+        mutable: mutable,
+        valid: owner != "" and alias != "" and owner_start_line <= alias_start_line and alias_end_line <= owner_end_line
+    };
+}
+
+proc temporal_window_valid(window: TemporalOwnershipWindow) -> bool {
+    give window.valid
+        and window.owner_start_line <= window.alias_start_line
+        and window.alias_end_line <= window.owner_end_line;
+}
+
+proc temporal_window_summary(window: TemporalOwnershipWindow) -> string {
+    let mode: string = if window.mutable { "mutable" } else { "shared" };
+    let summary: string = "temporal ownership " + mode;
+    set summary = summary + " alias " + window.alias;
+    set summary = summary + " owner " + window.owner;
+    set summary = summary + " owner_window " + window.owner_start_line as string + ".." + window.owner_end_line as string;
+    set summary = summary + " alias_window " + window.alias_start_line as string + ".." + window.alias_end_line as string;
+    if temporal_window_valid(window) {
+        set summary = summary + " valid";
+    } else {
+        set summary = summary + " invalid";
+    }
+    give summary;
+}
+
+proc add_temporal_ownership_fact(result: LifetimeResult, window: TemporalOwnershipWindow) -> LifetimeResult {
+    let owner_region: string = "owner:" + window.owner;
+    let alias_region: string = "alias:" + window.alias;
+    let regions0: RegionSolution = ensure_region(result.regions, owner_region, window.owner_start_line);
+    let regions1: RegionSolution = close_region(regions0, owner_region, window.owner_end_line);
+    let regions2: RegionSolution = ensure_region(regions1, alias_region, window.alias_start_line);
+    let regions3: RegionSolution = close_region(regions2, alias_region, window.alias_end_line);
+    let result0: LifetimeResult = lifetime_result_with_region(result, regions3);
+    let result1: LifetimeResult = add_borrow_fact(result0, window.alias, window.owner, alias_region, owner_region, window.alias_start_line);
+
+    if temporal_window_valid(window) {
+        give result1;
+    }
+
+    give add_lifetime_too_short_diagnostic(
+        result1,
+        "<temporal-ownership>",
+        window.alias_end_line,
+        alias_region,
+        owner_region
+    );
 }
 
 proc lifetime_result_with_diag(result: LifetimeResult, diagnostic: BorrowDiagnostic) -> LifetimeResult {
@@ -428,6 +496,7 @@ share LifetimeEscapeKind
 share LifetimeFact
 share LifetimeEdge
 share LifetimeResult
+share TemporalOwnershipWindow
 
 share lifetime_fact
 share lifetime_fact_full
@@ -435,6 +504,9 @@ share lifetime_edge
 share lifetime_result_empty
 share lifetime_result_with_diag
 share lifetime_result_with_region
+share temporal_ownership_window
+share temporal_window_valid
+share temporal_window_summary
 
 share add_fact
 share add_lifetime_edge
@@ -447,6 +519,7 @@ share add_escape_constraint
 share add_borrow_fact
 share add_return_fact
 share add_reborrow_fact
+share add_temporal_ownership_fact
 
 share add_returned_local_diagnostic
 share add_lifetime_too_short_diagnostic

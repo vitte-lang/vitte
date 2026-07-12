@@ -299,7 +299,7 @@ proc is_toplevel_keyword(lex: string) -> bool {
   if lex == "space" or lex == "use" or lex == "export" or lex == "const" or lex == "static" or lex == "global" {
     give true;
   }
-  if lex == "type" or lex == "opaque" or lex == "extern" or lex == "form" or lex == "class" or lex == "union" {
+  if lex == "region" or lex == "type" or lex == "opaque" or lex == "extern" or lex == "form" or lex == "class" or lex == "union" {
     give true;
   }
   if lex == "bits" or lex == "pick" or lex == "flags" or lex == "trait" or lex == "impl" or lex == "proc" {
@@ -3075,6 +3075,9 @@ proc item_kind_for_keyword(keyword: string) -> AstItemKind {
   if keyword == "static" {
     give AstItemKind.Static;
   }
+  if keyword == "region" {
+    give AstItemKind.Region;
+  }
   if keyword == "type" {
     give AstItemKind.Type;
   }
@@ -3216,6 +3219,28 @@ proc build_ast_module(source_name: string, tokens: [Token]) -> AstModule {
       let stmt: AstStmt = parse_stmt_from_tokens(source_name, tokens, actual, end_i);
       set items = items + [ast_item_typed(range_id(5, prefix.start, end_i), span_from_tokens(source_name, tokens, prefix.start, end_i), AstItemKind.StaticAssert, "", prefix.attributes, "", prefix.visibility, prefix.modifiers, prefix_abi(prefix.modifiers), stmt.expr, [], ast_type_empty(), ast_type_empty(), [], [], ast_proc_signature_empty(), [], stmt.message)];
       set i = end_i + 1;
+      continue;
+    }
+
+    if keyword == "region" {
+      let open: int = find_item_body_open(tokens, actual, len(tokens));
+      let has_block: bool = open >= 0 and find_matching(tokens, open as u64, "{", "}") >= 0;
+      let end_i: u64 = len(tokens);
+      if has_block {
+        set end_i = find_matching(tokens, open as u64, "{", "}") as u64 + 1;
+      } else {
+        let end_token_index: int = find_top_level_token(tokens, actual, len(tokens), ";");
+        if end_token_index >= 0 {
+          set end_i = end_token_index as u64;
+        }
+      }
+      let name: string = if actual + 1 < end_i { tokens[actual + 1].lexeme } else { "" };
+      set items = items + [ast_item_typed(range_id(5, prefix.start, end_i), span_from_tokens(source_name, tokens, prefix.start, end_i), AstItemKind.Region, name, prefix.attributes, "", prefix.visibility, prefix.modifiers, prefix_abi(prefix.modifiers), ast_expr_unknown(0, span_from_tokens(source_name, tokens, prefix.start, end_i), ""), [], ast_type_empty(), ast_type_empty(), [], [], ast_proc_signature_empty(), parse_item_meta_args(tokens, actual + 1, end_i), token_text(tokens, actual, end_i))];
+      if has_block {
+        set i = end_i;
+      } else {
+        set i = end_i + 1;
+      }
       continue;
     }
 

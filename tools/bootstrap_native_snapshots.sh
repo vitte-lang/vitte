@@ -339,9 +339,113 @@ check_native_user_build() {
     after_hash="$(LC_ALL=C shasum -a 256 "$TMP_DIR/native-user-source.vit" | awk '{print $1}')"
     [ "$before_hash" = "$after_hash" ] || die "native user build modified source path"
     grep -F "E_CLI_OUTPUT_OVERWRITES_SOURCE" "$TMP_DIR/native-user-overwrite.err" >/dev/null || die "native user build missing overwrite guard diagnostic"
+    "$BIN_DIR/vittec0" build "$SNAP_DIR/native_user_let_return.vit" -o "$TMP_DIR/native-user-let-return"
+    if "$TMP_DIR/native-user-let-return" >/dev/null 2>&1; then
+        die "native user let-return executable exit code mismatch"
+    else
+        rc="$?"
+        [ "$rc" -eq 1 ] || die "native user let-return executable exit code mismatch"
+    fi
+    "$BIN_DIR/vittec0" build "$SNAP_DIR/native_user_signature_int.vit" -o "$TMP_DIR/native-user-signature-int"
+    if "$TMP_DIR/native-user-signature-int" >/dev/null 2>&1; then
+        die "native user signature-int executable exit code mismatch"
+    else
+        rc="$?"
+        [ "$rc" -eq 1 ] || die "native user signature-int executable exit code mismatch"
+    fi
     "$BIN_DIR/vittec0" build "$ROOT_DIR/tests/golden/frontend/fixtures/hello_min.vit" -o "$TMP_DIR/hello-min"
     "$TMP_DIR/hello-min" >/dev/null 2>&1 || die "hello_min executable exit code mismatch"
     "$BIN_DIR/vittec0" run "$ROOT_DIR/tests/golden/frontend/fixtures/hello_min.vit" >/dev/null 2>&1 || die "hello_min run exit code mismatch"
+    if "$BIN_DIR/vittec0" build "$SNAP_DIR/native_user_type_mismatch.vit" -o "$TMP_DIR/type-mismatch" > "$TMP_DIR/type-mismatch.out" 2> "$TMP_DIR/type-mismatch.err"; then
+        die "native user type mismatch build unexpectedly succeeded"
+    fi
+    grep -F "TYPECK_E_ASSIGN_MISMATCH" "$TMP_DIR/type-mismatch.err" >/dev/null || die "native user type mismatch missing typeck diagnostic"
+    old_subset_diag="E_BOOTSTRAP_NATIVE""_SUBSET"
+    if grep -F "$old_subset_diag" "$TMP_DIR/type-mismatch.err" >/dev/null; then
+        die "native user type mismatch was masked by bootstrap subset diagnostic"
+    fi
+    "$BIN_DIR/vittec0" build "$SNAP_DIR/native_user_if_else.vit" -o "$TMP_DIR/native-user-if-else"
+    if "$TMP_DIR/native-user-if-else" >/dev/null 2>&1; then
+        die "native user if/else executable exit code mismatch"
+    else
+        rc="$?"
+        [ "$rc" -eq 9 ] || die "native user if/else executable exit code mismatch"
+    fi
+    "$BIN_DIR/vittec0" build "$SNAP_DIR/native_user_if_true.vit" -o "$TMP_DIR/native-user-if-true"
+    if "$TMP_DIR/native-user-if-true" >/dev/null 2>&1; then
+        die "native user if-true executable exit code mismatch"
+    else
+        rc="$?"
+        [ "$rc" -eq 5 ] || die "native user if-true executable exit code mismatch"
+    fi
+    "$BIN_DIR/vittec0" build "$SNAP_DIR/native_user_while_sum.vit" -o "$TMP_DIR/native-user-while-sum"
+    if "$TMP_DIR/native-user-while-sum" >/dev/null 2>&1; then
+        die "native user while sum executable exit code mismatch"
+    else
+        rc="$?"
+        [ "$rc" -eq 6 ] || die "native user while sum executable exit code mismatch"
+    fi
+    cat > "$TMP_DIR/mock-generic-backend" <<'EOF'
+#!/usr/bin/env sh
+set -eu
+cmd="${1:-}"
+shift || true
+case "$cmd" in
+    build)
+        src=""
+        out=""
+        while [ "$#" -gt 0 ]; do
+            case "$1" in
+                -o|--out)
+                    shift
+                    out="${1:-}"
+                    ;;
+                --lang|--trace-pipeline|--strict)
+                    [ "$1" = "--lang" ] && shift || true
+                    ;;
+                *)
+                    if [ -z "$src" ] && [ -f "$1" ]; then
+                        src="$1"
+                    fi
+                    ;;
+            esac
+            shift || true
+        done
+        [ -n "$src" ] && [ -n "$out" ] || exit 64
+        mkdir -p "$(dirname "$out")"
+        cat > "$out" <<'SH'
+#!/usr/bin/env sh
+exit 7
+SH
+        chmod +x "$out"
+        printf 'build succeeded\n'
+        ;;
+    run)
+        exit 7
+        ;;
+    *)
+        exit 64
+        ;;
+esac
+EOF
+    chmod +x "$TMP_DIR/mock-generic-backend"
+    "$BIN_DIR/vittec0" build-native --src "$STAGE2_SRC" --out "$TMP_DIR/bootstrap-vitte"
+    if "$TMP_DIR/bootstrap-vitte" build "$SNAP_DIR/native_user_helper_call.vit" -o "$TMP_DIR/native-user-helper-call.fail" > "$TMP_DIR/native-user-helper-call.fail.out" 2> "$TMP_DIR/native-user-helper-call.fail.err"; then
+        die "bootstrap native helper-call build unexpectedly succeeded without generic backend"
+    fi
+    grep -F "E_BACKEND_FAILURE" "$TMP_DIR/native-user-helper-call.fail.err" >/dev/null || die "bootstrap native helper-call build missing backend failure code"
+    grep -F 'unsupported bootstrap native `give` form: give helper();' "$TMP_DIR/native-user-helper-call.fail.err" >/dev/null || die "bootstrap native helper-call build missing precise unsupported-form diagnostic"
+    old_subset_diag="E_BOOTSTRAP_NATIVE""_SUBSET"
+    if grep -F "$old_subset_diag" "$TMP_DIR/native-user-helper-call.fail.err" >/dev/null; then
+        die "bootstrap native helper-call build regressed to legacy subset diagnostic"
+    fi
+    VITTE_BOOTSTRAP_COMPILER="$TMP_DIR/mock-generic-backend" "$TMP_DIR/bootstrap-vitte" build "$SNAP_DIR/native_user_helper_call.vit" -o "$TMP_DIR/native-user-helper-call"
+    if "$TMP_DIR/native-user-helper-call" >/dev/null 2>&1; then
+        die "delegated generic backend executable exit code mismatch"
+    else
+        rc="$?"
+        [ "$rc" -eq 7 ] || die "delegated generic backend executable exit code mismatch"
+    fi
     "$BIN_DIR/vittec0" build "$SNAP_DIR/record_field_sum.vit" -o "$TMP_DIR/record-field-sum"
     if "$TMP_DIR/record-field-sum" >/dev/null 2>&1; then
         die "record field sum executable exit code mismatch"

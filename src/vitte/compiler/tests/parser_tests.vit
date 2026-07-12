@@ -92,6 +92,17 @@ proc test_frontend_accepts_intrinsic_toplevel_decl() -> bool {
     and fe.ast_root.items[1].kind == AstItemKind.Proc;
 }
 
+proc test_frontend_accepts_first_class_region_decl() -> bool {
+  let source_text: string = "region heap: arena;\nproc main() -> int { give 0; }\n";
+  let fe: FrontendOutput = frontend_run("region_surface.vit", source_text);
+  give fe.valid
+    and len(fe.ast_root.items) >= 2
+    and fe.ast_root.items[0].kind == AstItemKind.Region
+    and fe.ast_root.items[0].name == "heap"
+    and find(fe.ast_root.items[0].message, "arena") >= 0
+    and fe.ast_root.items[1].kind == AstItemKind.Proc;
+}
+
 proc test_frontend_rejects_standalone_attribute_block() -> bool {
   let fe: FrontendOutput = frontend_run("standalone_attribute.vit", standalone_attribute_source());
   give not fe.valid
@@ -138,6 +149,9 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if not test_frontend_accepts_intrinsic_toplevel_decl() {
+    set failures = failures + 1;
+  }
+  if not test_frontend_accepts_first_class_region_decl() {
     set failures = failures + 1;
   }
   if not test_frontend_rejects_standalone_attribute_block() {

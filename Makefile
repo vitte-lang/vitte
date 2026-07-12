@@ -221,6 +221,8 @@ vitte-source-audit:
 		-path './editors/tree-sitter/src/tree_sitter/alloc.h' -prune -o \
 		-path './editors/tree-sitter/src/tree_sitter/array.h' -prune -o \
 		-path './editors/tree-sitter/src/tree_sitter/parser.h' -prune -o \
+		-path './vscode/VitteLangVsCode-main/.vscode-test' -prune -o \
+		-path './vscode/VitteLangVsCode-main/node_modules' -prune -o \
 		-path './vscode/VitteLangVsCode-main/vitte_out.cpp' -prune -o \
 		-type f \( -name '*.'c -o -name '*.'cc -o -name '*.'c'pp' -o -name '*.'cxx -o -name '*.'h -o -name '*.'h'pp' -o -name '*.'hxx \) -print | sort)"; \
 	if [ -n "$$bad" ]; then \
@@ -598,7 +600,7 @@ stage0-gate: seed-gate
 bootstrap-all-legacy:
 	@scripts/seed/install_seed.sh
 	@toolchain/scripts/bootstrap/stage1.sh
-	@VITTE_SELF_CHECK=0 toolchain/scripts/bootstrap/stage2.sh
+	@VITTE_SELF_CHECK=0 VITTE_STAGE2_ALLOW_BRIDGE_ARTIFACT=1 toolchain/scripts/bootstrap/stage2.sh
 	@cp bin/vittec bin/vitte
 	@chmod +x bin/vitte
 	@echo "[bootstrap-all-legacy] installed bin/vitte from stage2"
@@ -1051,6 +1053,12 @@ grammar-coverage:
 .PHONY: frontend-lexer-test
 frontend-lexer-test:
 	@bin/vitte check src/vitte/compiler/tests/lexer_tests.vit
+	@python3 tools/lexer_ebnf_surface_check.py
+
+.PHONY: frontend-ast-test
+frontend-ast-test:
+	@bin/vitte check src/vitte/compiler/tests/ast_tests.vit
+	@python3 tools/ast_coverage_gate.py
 
 .PHONY: hir-lowering-test
 hir-lowering-test:
@@ -1063,6 +1071,10 @@ mir-lowering-test:
 .PHONY: sema-analysis-test
 sema-analysis-test:
 	@bin/vitte check src/vitte/compiler/tests/sema_tests.vit
+
+.PHONY: const-eval-analysis-test
+const-eval-analysis-test:
+	@bin/vitte check src/vitte/compiler/tests/const_eval_tests.vit
 
 .PHONY: typeck-analysis-test
 typeck-analysis-test:
@@ -1104,7 +1116,7 @@ parser-lexer-fuzz-smoke:
 	@python3 tools/parser_lexer_fuzz_smoke.py --cases 80 --seed 1337
 
 .PHONY: core-language-gate
-core-language-gate: grammar-check grammar-test core-language-test parser-recovery-golden grammar-coverage frontend-lexer-test hir-lowering-test mir-lowering-test sema-analysis-test typeck-analysis-test borrowck-analysis-test frontend-token-consistency strict-core-guard-test core-forbidden-syntax-lint core-ir-golden-snapshots core-semantic-success core-semantic-snapshots diagnostics-locales-lint
+core-language-gate: grammar-check grammar-test core-language-test parser-recovery-golden grammar-coverage frontend-lexer-test frontend-ast-test hir-lowering-test mir-lowering-test sema-analysis-test const-eval-analysis-test typeck-analysis-test borrowck-analysis-test frontend-token-consistency strict-core-guard-test core-forbidden-syntax-lint core-ir-golden-snapshots core-semantic-success core-semantic-snapshots diagnostics-locales-lint
 
 .PHONY: core-semantic-success-portable
 core-semantic-success-portable:
@@ -1115,7 +1127,7 @@ core-semantic-snapshots-portable:
 	@BIN="$(CURDIR)/bin/vittec0" MANIFEST=tests/diag_snapshots/core_semantic_manifest.txt tools/diag_snapshots.sh
 
 .PHONY: core-language-gate-portable
-core-language-gate-portable: grammar-check grammar-test-portable core-language-test-portable parser-recovery-golden-portable grammar-coverage hir-lowering-test mir-lowering-test sema-analysis-test typeck-analysis-test borrowck-analysis-test frontend-token-consistency strict-core-guard-test-portable core-forbidden-syntax-lint core-ir-golden-snapshots core-semantic-success-portable core-semantic-snapshots-portable diagnostics-locales-lint
+core-language-gate-portable: grammar-check grammar-test-portable core-language-test-portable parser-recovery-golden-portable grammar-coverage frontend-ast-test hir-lowering-test mir-lowering-test sema-analysis-test const-eval-analysis-test typeck-analysis-test borrowck-analysis-test frontend-token-consistency strict-core-guard-test-portable core-forbidden-syntax-lint core-ir-golden-snapshots core-semantic-success-portable core-semantic-snapshots-portable diagnostics-locales-lint
 
 .PHONY: core-release-gate
 core-release-gate: core-language-gate diagnostics-ftl-check
@@ -2251,12 +2263,18 @@ llvm-backend-gate:
 	@bin/vitte check src/vitte/compiler/backends/llvm_bindings/tests/smoke.vit
 	@python3 tools/llvm/run_checks.py
 	@python3 tools/llvm/generate_artifacts.py
+	@python3 tools/llvm/check_backend_reports.py
+	@$(MAKE) --no-print-directory llvm-native-final-gate
 	@test -f target/llvm/demo_module.ll
 	@test -f target/llvm/demo_module.o.meta
 	@test -f target/llvm/debug_format.txt
 	@test -f target/llvm/opt_levels.txt
 	@test -f target/llvm/pgo_status.txt
 	@test -f target/reports/llvm_backend_coverage.md
+
+.PHONY: llvm-native-final-gate
+llvm-native-final-gate:
+	@python3 tools/llvm/native_final_gate.py
 
 
 .PHONY: wasm-backend-gate

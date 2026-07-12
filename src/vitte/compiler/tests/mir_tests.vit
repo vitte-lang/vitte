@@ -3,6 +3,10 @@ space vitte/compiler/tests/mir_tests
 use vitte/compiler/frontend/pipeline.{ FrontendOutput, frontend_run }
 use vitte/compiler/frontend/ast/node.{ ast_span_empty }
 use vitte/compiler/middle/mir.{ MirBinaryOperator, MirBlock, MirBorrowKind, MirFunction, MirModule, MirOperand, MirPlace, MirRvalue, MirRvalueKind, MirStatement, MirStatementKind, MirTerminatorKind, MirUnaryOperator, MirUnit, mir_terminator_return }
+use vitte/compiler/middle/mir/builder.{ MirBuilderPhase, MirBuilderValueKind, allocate_block, allocate_value, builder_phase_name, builder_summary, builder_value_kind_name, enter_function, increment_statement_count, mark_terminated, mir_builder_context, mir_builder_selftest }
+use vitte/compiler/middle/mir/dataflow.{ DataflowDirection, DataflowFactKind, DataflowResult, DataflowSummary, DataflowStateKind, analyze_function, build_summary, dataflow_selftest, direction_name, fact_kind_name, state_name, summary_string }
+use vitte/compiler/middle/mir/pretty.{ mir_pretty_selftest, pretty_function, pretty_unit }
+use vitte/compiler/middle/mir/transform.{ MirTransformKind, MirTransformReport, MirTransformResultKind, mir_transform_selftest, optimize_function, report_summary, transform_kind_name, transform_report_for, transform_result_name }
 use vitte/compiler/middle/mir/validate.{ mir_validation_reason, validate_mir }
 use vitte/compiler/middle/pipeline.{ MiddleOutput, middle_run }
 
@@ -761,6 +765,133 @@ proc test_validate_mir_rejects_invalid_entry_block() -> bool {
   give not validate_mir(bad).valid and mir_validation_reason(bad) == "invalid-entry-block";
 }
 
+proc test_mir_builder_helpers_are_covered() -> bool {
+  let ctx0 = mir_builder_context("builder_surface.vit");
+  let ctx1 = enter_function(ctx0, "main");
+  let ctx2 = allocate_block(ctx1, "then");
+  let ctx3 = allocate_value(ctx2, MirBuilderValueKind.Temporary, "int");
+  let ctx4 = increment_statement_count(ctx3);
+  let ctx5 = mark_terminated(ctx4);
+  let summary: string = builder_summary(ctx5);
+  give mir_builder_selftest()
+    and builder_phase_name(MirBuilderPhase.Function) == "function"
+    and builder_value_kind_name(MirBuilderValueKind.Temporary) == "temporary"
+    and ctx5.current_function == "main"
+    and len(ctx5.blocks) == 2
+    and len(ctx5.values) == 1
+    and ctx5.statement_count == 1
+    and ctx5.terminator_count == 1
+    and find(summary, "phase=function") >= 0
+    and find(summary, "blocks=2") >= 0;
+}
+
+proc test_mir_dataflow_helpers_are_covered() -> bool {
+  let stmt: MirStatement = MirStatement {
+    id: 31,
+    span: ast_span_empty(),
+    kind: MirStatementKind.Assign,
+    place: MirPlace { local: "x", projection: "", deref_depth: 0, mutable: false, moved: false, valid: true },
+    rvalue: MirRvalue {
+      kind: MirRvalueKind.Use,
+      text: "1",
+      operator: "",
+      binary_operator: 0 as MirBinaryOperator,
+      unary_operator: 0 as MirUnaryOperator,
+      borrow_kind: 0 as MirBorrowKind,
+      operands: [int_constant_operand("1")],
+      ty: "int",
+      temporary: false,
+      valid: true
+    },
+    reachable: true,
+    valid: true
+  };
+  let fn0: MirFunction = minimal_valid_function("main", [], stmt);
+  let result: DataflowResult = analyze_function(fn0, DataflowDirection.Forward);
+  let summary: DataflowSummary = build_summary(result);
+  give dataflow_selftest()
+    and result.valid
+    and result.converged
+    and len(result.blocks) == 1
+    and summary.block_count == 1
+    and summary.fact_count >= 2
+    and direction_name(DataflowDirection.Forward) == "forward"
+    and state_name(DataflowStateKind.Initialized) == "initialized"
+    and fact_kind_name(DataflowFactKind.Definition) == "definition"
+    and find(summary_string(summary), "facts=") >= 0;
+}
+
+proc test_mir_transform_helpers_are_covered() -> bool {
+  let nop_stmt: MirStatement = MirStatement {
+    id: 32,
+    span: ast_span_empty(),
+    kind: MirStatementKind.Nop,
+    place: MirPlace { local: "", projection: "", deref_depth: 0, mutable: false, moved: false, valid: false },
+    rvalue: MirRvalue {
+      kind: MirRvalueKind.Use,
+      text: "",
+      operator: "",
+      binary_operator: 0 as MirBinaryOperator,
+      unary_operator: 0 as MirUnaryOperator,
+      borrow_kind: 0 as MirBorrowKind,
+      operands: [],
+      ty: "unit",
+      temporary: false,
+      valid: true
+    },
+    reachable: true,
+    valid: true
+  };
+  let block0: MirBlock = MirBlock { id: 1, label: "bb0", predecessors: [], statements: [nop_stmt], terminator: mir_terminator_return(), sealed: true, reachable: true, valid: true };
+  let block1: MirBlock = MirBlock { id: 2, label: "dead", predecessors: [], statements: [], terminator: mir_terminator_return(), sealed: true, reachable: false, valid: true };
+  let before: MirFunction = MirFunction { id: 1, name: "main", entry_block: 1, params: [], return_type: "unit", local_count: 0, temporary_count: 0, blocks: [block0, block1], valid: true };
+  let after: MirFunction = optimize_function(before);
+  let report: MirTransformReport = transform_report_for(before, after);
+  give mir_transform_selftest()
+    and after.valid
+    and len(after.blocks) == 1
+    and len(after.blocks[0].statements) == 0
+    and report.changed
+    and report.stats.removed_blocks == 1
+    and report.stats.removed_statements == 1
+    and transform_kind_name(MirTransformKind.SimplifyCfg) == "simplify-cfg"
+    and transform_result_name(MirTransformResultKind.Changed) == "changed"
+    and find(report_summary(report), "removed-blocks 1") >= 0;
+}
+
+proc test_mir_pretty_helpers_are_covered() -> bool {
+  let stmt: MirStatement = MirStatement {
+    id: 33,
+    span: ast_span_empty(),
+    kind: MirStatementKind.Assign,
+    place: MirPlace { local: "x", projection: ".field", deref_depth: 1, mutable: true, moved: false, valid: true },
+    rvalue: MirRvalue {
+      kind: MirRvalueKind.Use,
+      text: "x",
+      operator: "",
+      binary_operator: 0 as MirBinaryOperator,
+      unary_operator: 0 as MirUnaryOperator,
+      borrow_kind: 0 as MirBorrowKind,
+      operands: [named_operand("x", "int")],
+      ty: "int",
+      temporary: false,
+      valid: true
+    },
+    reachable: true,
+    valid: true
+  };
+  let fn0: MirFunction = minimal_valid_function("main", [], stmt);
+  let unit0: MirUnit = unit_with_functions("pretty_surface.vit", [fn0]);
+  let rendered_unit: string = pretty_unit(unit0);
+  let rendered_fn: string = pretty_function(fn0, 0);
+  give mir_pretty_selftest()
+    and find(rendered_unit, "source: pretty_surface.vit") >= 0
+    and find(rendered_unit, "module manual") >= 0
+    and find(rendered_fn, "fn main -> int") >= 0
+    and find(rendered_fn, "bb1") >= 0
+    and find(rendered_fn, "assign") >= 0;
+}
+
 proc run_all_tests() -> int {
   let failures: int = 0;
   if not test_mir_lowering() {
@@ -830,6 +961,18 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if not test_validate_mir_rejects_invalid_entry_block() {
+    set failures = failures + 1;
+  }
+  if not test_mir_builder_helpers_are_covered() {
+    set failures = failures + 1;
+  }
+  if not test_mir_dataflow_helpers_are_covered() {
+    set failures = failures + 1;
+  }
+  if not test_mir_transform_helpers_are_covered() {
+    set failures = failures + 1;
+  }
+  if not test_mir_pretty_helpers_are_covered() {
     set failures = failures + 1;
   }
   give failures;

@@ -133,7 +133,8 @@ build_stage2_shell_payload() {
 
 is_bootstrap_bridge_artifact() {
     file_path="$1"
-    [ -f "${file_path}.bootstrap-bridge" ]
+    [ -f "${file_path}.bootstrap-bridge" ] && return 0
+    LC_ALL=C grep -a -F "vitte-bootstrap-payload-bridge" "$file_path" >/dev/null 2>&1
 }
 
 bootstrap_bridge_source_for_artifact() {

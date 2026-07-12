@@ -1015,6 +1015,112 @@ EOF
     chmod +x "$target_out"
 }
 
+bootstrap_repo_root_from_compiler_path() {
+    path="$1"
+    case "$path" in
+        */src/vitte/compiler/main.vit)
+            printf '%s\n' "${path%/src/vitte/compiler/main.vit}"
+            return 0
+            ;;
+        src/vitte/compiler/main.vit)
+            printf '.\n'
+            return 0
+            ;;
+        */src/vitte/compiler)
+            printf '%s\n' "${path%/src/vitte/compiler}"
+            return 0
+            ;;
+        src/vitte/compiler)
+            printf '.\n'
+            return 0
+            ;;
+    esac
+    return 1
+}
+
+is_shebang_script() {
+    path="$1"
+    [ -f "$path" ] || return 1
+    prefix="$(LC_ALL=C head -c 2 "$path" 2>/dev/null || true)"
+    [ "$prefix" = "#!" ]
+}
+
+is_bootstrap_fallback_binary() {
+    path="$1"
+    [ -f "$path" ] || return 1
+    LC_ALL=C grep -a -F "bootstrap native backend could not lower this program" "$path" >/dev/null 2>&1 && return 0
+    LC_ALL=C grep -a -F "E_BOOTSTRAP_NATIVE_SUBSET" "$path" >/dev/null 2>&1 && return 0
+    return 1
+}
+
+resolve_generic_backend_compiler() {
+    current_bin="${0:-}"
+    current_cmp=""
+    if [ -n "$current_bin" ]; then
+        current_cmp="$(canonical_path_for_compare "$current_bin" 2>/dev/null || printf '%s\n' "$current_bin")"
+    fi
+    explicit_compiler="${VITTE_BOOTSTRAP_COMPILER:-}"
+    if [ -n "$explicit_compiler" ] && [ -x "$explicit_compiler" ]; then
+        candidate_cmp="$(canonical_path_for_compare "$explicit_compiler" 2>/dev/null || printf '%s\n' "$explicit_compiler")"
+        [ -z "$current_cmp" ] || [ "$candidate_cmp" != "$current_cmp" ] || return 1
+        printf '%s\n' "$explicit_compiler"
+        return 0
+    fi
+    repo_root=""
+    if [ -n "${compiler_entry_point:-}" ]; then
+        repo_root="$(bootstrap_repo_root_from_compiler_path "$compiler_entry_point" || true)"
+    fi
+    if [ -z "$repo_root" ] && [ -n "${compiler_source_root:-}" ]; then
+        repo_root="$(bootstrap_repo_root_from_compiler_path "$compiler_source_root" || true)"
+    fi
+    for candidate in \
+        "${repo_root:+$repo_root/bin/vitte}" \
+        "${repo_root:+$repo_root/bin/vittec}" \
+        "./bin/vitte" \
+        "./bin/vittec"
+    do
+        [ -n "$candidate" ] || continue
+        [ -x "$candidate" ] || continue
+        candidate_cmp="$(canonical_path_for_compare "$candidate" 2>/dev/null || printf '%s\n' "$candidate")"
+        [ -z "$current_cmp" ] || [ "$candidate_cmp" != "$current_cmp" ] || continue
+        is_bootstrap_fallback_binary "$candidate" && continue
+        is_shebang_script "$candidate" && continue
+        printf '%s\n' "$candidate"
+        return 0
+    done
+    return 1
+}
+
+run_generic_backend_compiler() {
+    compiler_bin="$1"
+    shift
+    if [ "$trace_pipeline" -eq 1 ]; then
+        set -- "$@" --trace-pipeline
+    fi
+    if [ "$strict_mode" -eq 1 ]; then
+        set -- "$@" --strict
+    fi
+    if [ -n "${diagnostics_lang:-}" ]; then
+        set -- "$@" --lang "$diagnostics_lang"
+    fi
+    "$compiler_bin" "$@"
+}
+
+delegate_generic_backend_build() {
+    src="$1"
+    out="$2"
+    compiler_bin="$(resolve_generic_backend_compiler || true)"
+    [ -n "$compiler_bin" ] || return 1
+    run_generic_backend_compiler "$compiler_bin" build "$src" -o "$out"
+}
+
+delegate_generic_backend_run() {
+    src="$1"
+    compiler_bin="$(resolve_generic_backend_compiler || true)"
+    [ -n "$compiler_bin" ] || return 1
+    run_generic_backend_compiler "$compiler_bin" run "$src"
+}
+
 extract_native_main_return() {
     src="$1"
     awk '
@@ -1197,10 +1303,330 @@ extract_native_main_return() {
         }
         return total
     }
+    function strip_outer_parens(expr, inner, changed) {
+        expr = trim(expr)
+        changed = 1
+        while (changed) {
+            changed = 0
+            if (expr ~ /^\(.*\)$/) {
+                inner = expr
+                sub(/^\(/, "", inner)
+                sub(/\)$/, "", inner)
+                expr = trim(inner)
+                changed = 1
+            }
+        }
+        return expr
+    }
+    function split_native_binary(expr, op, left, right, marker, idx) {
+        marker = "\034"
+        if (op == "==" || op == "!=" || op == "<=" || op == ">=") {
+            gsub(op, marker, expr)
+        } else {
+            gsub("\\" op, marker, expr)
+        }
+        idx = index(expr, marker)
+        if (idx <= 0) return 0
+        left = trim(substr(expr, 1, idx - 1))
+        right = trim(substr(expr, idx + 1))
+        if (right == "") return 0
+        split_left = left
+        split_right = right
+        return 1
+    }
     function eval_native_expr(expr) {
         expr = trim(expr)
+        expr = strip_outer_parens(expr)
+        if (expr == "true") return 1
+        if (expr == "false") return 0
+        if (split_native_binary(expr, "==")) return (eval_native_expr(split_left) == eval_native_expr(split_right))
+        if (split_native_binary(expr, "!=")) return (eval_native_expr(split_left) != eval_native_expr(split_right))
+        if (split_native_binary(expr, "<=")) return (eval_native_expr(split_left) <= eval_native_expr(split_right))
+        if (split_native_binary(expr, ">=")) return (eval_native_expr(split_left) >= eval_native_expr(split_right))
+        if (split_native_binary(expr, "<")) return (eval_native_expr(split_left) < eval_native_expr(split_right))
+        if (split_native_binary(expr, ">")) return (eval_native_expr(split_left) > eval_native_expr(split_right))
         if (expr ~ /[ \t]+[+][ \t]+/) return eval_native_sum(expr)
         return eval_native_term(expr)
+    }
+    function line_open_brace_count(text, tmp) {
+        tmp = text
+        return gsub(/\{/, "", tmp)
+    }
+    function line_close_brace_count(text, tmp) {
+        tmp = text
+        return gsub(/\}/, "", tmp)
+    }
+    function line_is_else_start(text) {
+        return text ~ /^(\}[ \t]*)?else[ \t]*\{$/ || text ~ /^(\}[ \t]*)?else[ \t]*if[ \t]+.+\{$/
+    }
+    function find_block_end(start_index, depth, i) {
+        depth = line_open_brace_count(main_lines[start_index]) - line_close_brace_count(main_lines[start_index])
+        if (main_lines[start_index] ~ /^\}[ \t]*else([ \t]|\{)/) depth += 1
+        if (depth <= 0) return start_index
+        for (i = start_index + 1; i <= main_line_count; i += 1) {
+            if (main_lines[i] ~ /^\}[ \t]*else([ \t]|\{)/ && depth == 1) return i
+            depth += line_open_brace_count(main_lines[i]) - line_close_brace_count(main_lines[i])
+            if (depth <= 0) return i
+        }
+        return -1
+    }
+    function inline_block_stmt(text, stmt) {
+        stmt = text
+        sub(/^.*\{[ \t]*/, "", stmt)
+        sub(/[ \t]*\}[ \t]*$/, "", stmt)
+        return trim(stmt)
+    }
+    function fail_native(reason) {
+        if (failure_reason == "") failure_reason = reason
+        invalid = 1
+    }
+    function exec_simple_stmt(line, name, value, call_name, left, right, joined) {
+        if (line ~ /^let[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*:[^=]+=[ \t]*pair_first<[^>]+>\([ \t]*-?[0-9]+[ \t]*,[ \t]*-?[0-9]+[ \t]*\);?$/) {
+            name = line
+            sub(/^let[ \t]+/, "", name)
+            sub(/[ \t]*:.*$/, "", name)
+            value = line
+            sub(/^.*pair_first<[^>]+>\([ \t]*/, "", value)
+            sub(/[ \t]*,.*$/, "", value)
+            vars[name] = value + 0
+            return 1
+        }
+        if (line ~ /^let[ \t]+[A-Za-z_][A-Za-z0-9_]*([ \t]*:[^=]+)?[ \t]*=[ \t]*[^;{]+;?$/) {
+            name = line
+            sub(/^let[ \t]+/, "", name)
+            sub(/[ \t]*(:[^=]+)?[ \t]*=.*/, "", name)
+            value = line
+            sub(/^let[ \t]+[A-Za-z_][A-Za-z0-9_]*([ \t]*:[^=]+)?[ \t]*=[ \t]*/, "", value)
+            sub(/;$/, "", value)
+            value = eval_native_expr(value)
+            if (!eval_ok) fail_native("unsupported bootstrap native expression in `let`: " line)
+            else vars[name] = value
+            return 1
+        }
+        if (line ~ /^set[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*=[ \t]*.+;?$/) {
+            name = line
+            sub(/^set[ \t]+/, "", name)
+            sub(/[ \t]*=.*/, "", name)
+            value = line
+            sub(/^set[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*=[ \t]*/, "", value)
+            sub(/;$/, "", value)
+            value = eval_native_expr(value)
+            if (!eval_ok) fail_native("unsupported bootstrap native expression in `set`: " line)
+            else vars[name] = value
+            return 1
+        }
+        if (line ~ /^give[ \t]+[A-Za-z_][A-Za-z0-9_]*;?$/) {
+            name = line
+            sub(/^give[ \t]+/, "", name)
+            sub(/;$/, "", name)
+            if (!(name in vars)) fail_native("unknown bootstrap native variable in `give`: " name)
+            else result = vars[name]
+            return 1
+        }
+        if (main_string && line ~ /^give[ \t]+[A-Za-z_][A-Za-z0-9_]*\("[^"]*"\);?$/) {
+            result = 0
+            return 1
+        }
+        if (line ~ /^give[ \t]+strings\.str_length\("[^"]*"\);?$/) {
+            value = line
+            sub(/^give[ \t]+strings\.str_length\("/, "", value)
+            sub(/"\);?$/, "", value)
+            result = length(value)
+            return 1
+        }
+        if (line ~ /^give[ \t]+strings\.str_length\([A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*\(\)\);?$/) {
+            call_name = line
+            sub(/^give[ \t]+strings\.str_length\([A-Za-z_][A-Za-z0-9_]*\./, "", call_name)
+            sub(/\(\)\);?$/, "", call_name)
+            if (!(call_name in string_return)) fail_native("unsupported bootstrap native string helper in `give`: " line)
+            else result = length(string_return[call_name])
+            return 1
+        }
+        if (line ~ /^give[ \t]+strings\.str_length\(io\.path_join\("[^"]*",[ \t]*"[^"]*"\)\);?$/) {
+            value = line
+            sub(/^give[ \t]+strings\.str_length\(io\.path_join\("/, "", value)
+            left = value
+            sub(/",[ \t]*".*$/, "", left)
+            right = value
+            sub(/^.*",[ \t]*"/, "", right)
+            sub(/"\)\);?$/, "", right)
+            if (left == "") joined = right
+            else if (right == "") joined = left
+            else if (left ~ /\/$/) joined = left right
+            else joined = left "/" right
+            result = length(joined)
+            return 1
+        }
+        if (line ~ /^give[ \t]+arithmetic\.add_i64\([ \t]*-?[0-9]+[ \t]*,[ \t]*-?[0-9]+[ \t]*\);?$/) {
+            value = line
+            sub(/^give[ \t]+arithmetic\.add_i64\([ \t]*/, "", value)
+            left = value
+            sub(/[ \t]*,.*$/, "", left)
+            right = value
+            sub(/^.*,[ \t]*/, "", right)
+            sub(/[ \t]*\);?$/, "", right)
+            result = left + right
+            return 1
+        }
+        if (line ~ /^give[ \t]+[A-Za-z_][A-Za-z0-9_]*\.utf8_length\("[^"]*"\);?$/) {
+            value = line
+            sub(/^give[ \t]+[A-Za-z_][A-Za-z0-9_]*\.utf8_length\("/, "", value)
+            sub(/"\);?$/, "", value)
+            result = length(value)
+            return 1
+        }
+        if (line ~ /^give[ \t]+[A-Za-z_][A-Za-z0-9_]*\.vector_push\([A-Za-z_][A-Za-z0-9_]*\.vector_new\([ \t]*-?[0-9]+[ \t]*\),[ \t]*-?[0-9]+[ \t]*\);?$/) {
+            result = 1
+            return 1
+        }
+        if (line ~ /^give[ \t]+[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*\(\);?$/) {
+            call_name = line
+            sub(/^give[ \t]+[A-Za-z_][A-Za-z0-9_]*\./, "", call_name)
+            sub(/\(\);?$/, "", call_name)
+            if (!(call_name in native_return)) fail_native("unsupported bootstrap native helper call in `give`: " line)
+            else result = native_return[call_name]
+            return 1
+        }
+        if (line ~ /^give[ \t]+.+[ \t]+[+][ \t]+.+;?$/) {
+            value = line
+            sub(/^give[ \t]+/, "", value)
+            sub(/;$/, "", value)
+            value = eval_native_sum(value)
+            if (!eval_ok) fail_native("unsupported bootstrap native expression in `give`: " line)
+            else result = value
+            return 1
+        }
+        if (line ~ /^give[ \t]+-?[0-9]+;?$/) {
+            value = line
+            sub(/^give[ \t]+/, "", value)
+            sub(/;$/, "", value)
+            result = value + 0
+            return 1
+        }
+        if (line ~ /^give[ \t]+/) {
+            fail_native("unsupported bootstrap native `give` form: " line)
+            return 1
+        }
+        return 0
+    }
+    function exec_inline_stmt(line) {
+        line = trim(line)
+        if (line == "") return
+        if (!exec_simple_stmt(line)) fail_native("unsupported bootstrap native inline statement in `proc main()`: " line)
+    }
+    function exec_main_range(start_index, end_index, i, line, cond_expr, block_end, else_start, else_end, body_stmt, iterations, cond_value, name, field_name, field_value, j) {
+        i = start_index
+        while (i <= end_index) {
+            if (invalid || result != "") return
+            line = trim(main_lines[i])
+            if (line == "" || line == "}") {
+                i += 1
+                continue
+            }
+            if (line ~ /^let[ \t]+[A-Za-z_][A-Za-z0-9_]*([ \t]*:[^=]+)?[ \t]*=[ \t]*[A-Za-z_][A-Za-z0-9_]*[ \t]*\{$/) {
+                name = line
+                sub(/^let[ \t]+/, "", name)
+                sub(/[ \t]*(:[^=]+)?[ \t]*=.*/, "", name)
+                block_end = find_block_end(i)
+                if (block_end < 0) {
+                    fail_native("unterminated bootstrap native record literal in `proc main()`")
+                    return
+                }
+                for (j = i + 1; j < block_end; j += 1) {
+                    field_value = trim(main_lines[j])
+                    if (field_value == "") continue
+                    if (field_value ~ /^[A-Za-z_][A-Za-z0-9_]*[ \t]*:[ \t]*-?[0-9]+,?$/) {
+                        field_name = field_value
+                        sub(/[ \t]*:.*/, "", field_name)
+                        sub(/^[^:]*:[ \t]*/, "", field_value)
+                        sub(/,$/, "", field_value)
+                        vars[name "." field_name] = field_value + 0
+                    } else {
+                        fail_native("unsupported bootstrap native record field initializer: " field_value)
+                        return
+                    }
+                }
+                i = block_end + 1
+                continue
+            }
+            if (line ~ /^if[ \t]+.+\{[ \t]*$/ || line ~ /^if[ \t]+.+\{.*\}[ \t]*$/) {
+                cond_expr = line
+                sub(/^if[ \t]+/, "", cond_expr)
+                sub(/[ \t]*\{.*$/, "", cond_expr)
+                cond_value = eval_native_expr(cond_expr)
+                if (!eval_ok) {
+                    fail_native("unsupported bootstrap native `if` condition: " cond_expr)
+                    return
+                }
+                block_end = find_block_end(i)
+                if (block_end < 0) {
+                    fail_native("unterminated bootstrap native `if` block")
+                    return
+                }
+                else_start = block_end + 1
+                else_end = -1
+                if (else_start <= end_index && line_is_else_start(trim(main_lines[else_start]))) {
+                    else_end = find_block_end(else_start)
+                    if (else_end < 0) {
+                        fail_native("unterminated bootstrap native `else` block")
+                        return
+                    }
+                }
+                if (cond_value != 0) {
+                    if (block_end == i) {
+                        exec_inline_stmt(inline_block_stmt(line))
+                    } else {
+                        exec_main_range(i + 1, block_end - 1)
+                    }
+                } else if (else_end >= 0) {
+                    if (else_end == else_start) {
+                        exec_inline_stmt(inline_block_stmt(main_lines[else_start]))
+                    } else {
+                        exec_main_range(else_start + 1, else_end - 1)
+                    }
+                }
+                if (else_end >= 0) i = else_end + 1
+                else i = block_end + 1
+                continue
+            }
+            if (line ~ /^while[ \t]+.+\{[ \t]*$/ || line ~ /^while[ \t]+.+\{.*\}[ \t]*$/) {
+                cond_expr = line
+                sub(/^while[ \t]+/, "", cond_expr)
+                sub(/[ \t]*\{.*$/, "", cond_expr)
+                block_end = find_block_end(i)
+                if (block_end < 0) {
+                    fail_native("unterminated bootstrap native `while` block")
+                    return
+                }
+                iterations = 0
+                while (1) {
+                    cond_value = eval_native_expr(cond_expr)
+                    if (!eval_ok) {
+                        fail_native("unsupported bootstrap native `while` condition: " cond_expr)
+                        return
+                    }
+                    if (cond_value == 0) break
+                    iterations += 1
+                    if (iterations > 1024) {
+                        fail_native("bootstrap native `while` simulation exceeded 1024 iterations")
+                        return
+                    }
+                    if (block_end == i) {
+                        exec_inline_stmt(inline_block_stmt(line))
+                    } else {
+                        exec_main_range(i + 1, block_end - 1)
+                    }
+                    if (invalid || result != "") return
+                }
+                i = block_end + 1
+                continue
+            }
+            if (!exec_simple_stmt(line)) {
+                fail_native("unsupported bootstrap native statement in `proc main()`: " line)
+                return
+            }
+            i += 1
+        }
     }
     BEGIN {
         in_main = 0
@@ -1208,8 +1634,11 @@ extract_native_main_return() {
         skip_generic = 0
         skip_generic_depth = 0
         saw_main = 0
+        main_capture_depth = 0
+        main_line_count = 0
         result = ""
         invalid = 0
+        failure_reason = ""
         exec_depth = 0
         next_mutex_state_id = 1
         native_return["hashmap_new"] = 0
@@ -1254,7 +1683,7 @@ extract_native_main_return() {
                 vars[record_var "." field_name] = field_value + 0
                 next
             }
-            invalid = 1
+            fail_native("unsupported bootstrap native record literal body")
             next
         }
         if (!in_main && line ~ /^space[ \t]+[A-Za-z0-9_\/]+;?$/) next
@@ -1302,8 +1731,8 @@ extract_native_main_return() {
             skip_generic_depth = 1
             next
         }
-        if (!in_main && line ~ /^proc[ \t]+main\(\)[ \t]*->[ \t]*(int|i32)[ \t]*\{[ \t]*give[ \t]+-?[0-9][0-9]*;?[ \t]*\}$/) {
-            if (saw_main) invalid = 1
+        if (!in_main && line ~ /^proc[ \t]+main\(\)[ \t]*(->[ \t]*)?(int|i32)[ \t]*\{[ \t]*give[ \t]+-?[0-9][0-9]*;?[ \t]*\}$/) {
+            if (saw_main) fail_native("duplicate bootstrap native `proc main()`")
             saw_main = 1
             value = line
             sub(/^.*give[ \t]+/, "", value)
@@ -1311,190 +1740,45 @@ extract_native_main_return() {
             result = value
             next
         }
-        if (!in_main && line ~ /^proc[ \t]+main\(\)[ \t]*->[ \t]*(int|i32)[ \t]*\{$/) {
-            if (saw_main) invalid = 1
+        if (!in_main && line ~ /^proc[ \t]+main\(\)[ \t]*(->[ \t]*)?(int|i32)[ \t]*\{$/) {
+            if (saw_main) fail_native("duplicate bootstrap native `proc main()`")
             saw_main = 1
             in_main = 1
+            main_capture_depth = 1
             next
         }
-        if (!in_main && line ~ /^proc[ \t]+main\(\)[ \t]*->[ \t]*string[ \t]*\{$/) {
-            if (saw_main) invalid = 1
+        if (!in_main && line ~ /^proc[ \t]+main\(\)[ \t]*(->[ \t]*)?string[ \t]*\{$/) {
+            if (saw_main) fail_native("duplicate bootstrap native `proc main()`")
             saw_main = 1
             in_main = 1
+            main_capture_depth = 1
             main_string = 1
             next
         }
-        if (in_main && line ~ /^if[ \t]+.+[{];?$/) {
-            cond_expr = line
-            sub(/^if[ \t]+/, "", cond_expr)
-            sub(/[ \t]*[{];?$/, "", cond_expr)
-            parent_exec = current_exec()
-            exec_depth += 1
-            if (!parent_exec) {
-                exec_active[exec_depth] = 0
-            } else {
-                cond_value = eval_native_expr(cond_expr)
-                if (!eval_ok) invalid = 1
-                exec_active[exec_depth] = (cond_value != 0)
-            }
-            next
-        }
-        if (in_main && line == "}") {
-            if (exec_depth > 0) {
-                delete exec_active[exec_depth]
-                exec_depth -= 1
+        if (in_main) {
+            if (line == "}" && main_capture_depth == 1) {
+                in_main = 0
+                main_string = 0
+                main_capture_depth = 0
                 next
             }
-            in_main = 0
-            main_string = 0
+            main_line_count += 1
+            main_lines[main_line_count] = line
+            main_capture_depth += line_open_brace_count(line) - line_close_brace_count(line)
+            if (main_capture_depth < 1) fail_native("malformed brace structure in bootstrap native `proc main()`")
             next
         }
-        if (in_main && !current_exec()) next
-        if (in_main && line ~ /^let[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*:[^=]+=[ \t]*pair_first<[^>]+>\([ \t]*-?[0-9]+[ \t]*,[ \t]*-?[0-9]+[ \t]*\);?$/) {
-            name = line
-            sub(/^let[ \t]+/, "", name)
-            sub(/[ \t]*:.*$/, "", name)
-            value = line
-            sub(/^.*pair_first<[^>]+>\([ \t]*/, "", value)
-            sub(/[ \t]*,.*$/, "", value)
-            vars[name] = value
-            next
-        }
-        if (in_main && line ~ /^let[ \t]+[A-Za-z_][A-Za-z0-9_]*([ \t]*:[^=]+)?[ \t]*=[ \t]*[^;{]+;?$/) {
-            name = line
-            sub(/^let[ \t]+/, "", name)
-            sub(/[ \t]*(:[^=]+)?[ \t]*=.*/, "", name)
-            value = line
-            sub(/^let[ \t]+[A-Za-z_][A-Za-z0-9_]*([ \t]*:[^=]+)?[ \t]*=[ \t]*/, "", value)
-            sub(/;$/, "", value)
-            value = eval_native_expr(value)
-            if (!eval_ok) invalid = 1
-            else vars[name] = value
-            next
-        }
-        if (in_main && line ~ /^let[ \t]+[A-Za-z_][A-Za-z0-9_]*([ \t]*:[^=]+)?[ \t]*=[ \t]*[A-Za-z_][A-Za-z0-9_]*[ \t]*\{$/) {
-            name = line
-            sub(/^let[ \t]+/, "", name)
-            sub(/[ \t]*(:[^=]+)?[ \t]*=.*/, "", name)
-            in_record_literal = 1
-            record_var = name
-            next
-        }
-        if (in_main && line ~ /^set[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*=[ \t]*.+;?$/) {
-            name = line
-            sub(/^set[ \t]+/, "", name)
-            sub(/[ \t]*=.*/, "", name)
-            value = line
-            sub(/^set[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*=[ \t]*/, "", value)
-            sub(/;$/, "", value)
-            value = eval_native_expr(value)
-            if (!eval_ok) invalid = 1
-            else vars[name] = value
-            next
-        }
-        if (in_main && line ~ /^give[ \t]+[A-Za-z_][A-Za-z0-9_]*;?$/) {
-            name = line
-            sub(/^give[ \t]+/, "", name)
-            sub(/;$/, "", name)
-            if (!(name in vars)) invalid = 1
-            else if (result != "") invalid = 1
-            else result = vars[name]
-            next
-        }
-        if (in_main && main_string && line ~ /^give[ \t]+[A-Za-z_][A-Za-z0-9_]*\("[^"]*"\);?$/) {
-            if (result != "") invalid = 1
-            else result = 0
-            next
-        }
-        if (in_main && line ~ /^give[ \t]+strings\.str_length\("[^"]*"\);?$/) {
-            value = line
-            sub(/^give[ \t]+strings\.str_length\("/, "", value)
-            sub(/"\);?$/, "", value)
-            if (result != "") invalid = 1
-            else result = length(value)
-            next
-        }
-        if (in_main && line ~ /^give[ \t]+strings\.str_length\([A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*\(\)\);?$/) {
-            call_name = line
-            sub(/^give[ \t]+strings\.str_length\([A-Za-z_][A-Za-z0-9_]*\./, "", call_name)
-            sub(/\(\)\);?$/, "", call_name)
-            if (!(call_name in string_return)) invalid = 1
-            else if (result != "") invalid = 1
-            else result = length(string_return[call_name])
-            next
-        }
-        if (in_main && line ~ /^give[ \t]+strings\.str_length\(io\.path_join\("[^"]*",[ \t]*"[^"]*"\)\);?$/) {
-            value = line
-            sub(/^give[ \t]+strings\.str_length\(io\.path_join\("/, "", value)
-            left = value
-            sub(/",[ \t]*".*$/, "", left)
-            right = value
-            sub(/^.*",[ \t]*"/, "", right)
-            sub(/"\)\);?$/, "", right)
-            if (left == "") joined = right
-            else if (right == "") joined = left
-            else if (left ~ /\/$/) joined = left right
-            else joined = left "/" right
-            if (result != "") invalid = 1
-            else result = length(joined)
-            next
-        }
-        if (in_main && line ~ /^give[ \t]+arithmetic\.add_i64\([ \t]*-?[0-9]+[ \t]*,[ \t]*-?[0-9]+[ \t]*\);?$/) {
-            value = line
-            sub(/^give[ \t]+arithmetic\.add_i64\([ \t]*/, "", value)
-            left = value
-            sub(/[ \t]*,.*$/, "", left)
-            right = value
-            sub(/^.*,[ \t]*/, "", right)
-            sub(/[ \t]*\);?$/, "", right)
-            if (result != "") invalid = 1
-            else result = left + right
-            next
-        }
-        if (in_main && line ~ /^give[ \t]+[A-Za-z_][A-Za-z0-9_]*\.utf8_length\("[^"]*"\);?$/) {
-            value = line
-            sub(/^give[ \t]+[A-Za-z_][A-Za-z0-9_]*\.utf8_length\("/, "", value)
-            sub(/"\);?$/, "", value)
-            if (result != "") invalid = 1
-            else result = length(value)
-            next
-        }
-        if (in_main && line ~ /^give[ \t]+[A-Za-z_][A-Za-z0-9_]*\.vector_push\([A-Za-z_][A-Za-z0-9_]*\.vector_new\([ \t]*-?[0-9]+[ \t]*\),[ \t]*-?[0-9]+[ \t]*\);?$/) {
-            if (result != "") invalid = 1
-            else result = 1
-            next
-        }
-        if (in_main && line ~ /^give[ \t]+[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*\(\);?$/) {
-            call_name = line
-            sub(/^give[ \t]+[A-Za-z_][A-Za-z0-9_]*\./, "", call_name)
-            sub(/\(\);?$/, "", call_name)
-            if (!(call_name in native_return)) invalid = 1
-            else if (result != "") invalid = 1
-            else result = native_return[call_name]
-            next
-        }
-        if (in_main && line ~ /^give[ \t]+.+[ \t]+[+][ \t]+.+;?$/) {
-            value = line
-            sub(/^give[ \t]+/, "", value)
-            sub(/;$/, "", value)
-            value = eval_native_sum(value)
-            if (!eval_ok) invalid = 1
-            else if (result != "") invalid = 1
-            else result = value
-            next
-        }
-        if (in_main && line ~ /^give[ \t]+-?[0-9]+;?$/) {
-            value = line
-            sub(/^give[ \t]+/, "", value)
-            sub(/;$/, "", value)
-            if (result != "") invalid = 1
-            result = value
-            next
-        }
-        invalid = 1
+        fail_native("unsupported bootstrap native top-level item: " line)
     }
     END {
-        if (invalid || in_main || exec_depth > 0 || !saw_main || result == "") exit 1
+        if (!invalid && saw_main && result == "" && main_line_count > 0) exec_main_range(1, main_line_count)
+        if (in_main && failure_reason == "") failure_reason = "unterminated bootstrap native `proc main()` block"
+        if (!saw_main && failure_reason == "") failure_reason = "missing bootstrap native `proc main()` entrypoint"
+        if (result == "" && failure_reason == "") failure_reason = "bootstrap native backend could not compute a `give` value for `proc main()`"
+        if (invalid || in_main || exec_depth > 0 || !saw_main || result == "") {
+            if (failure_reason != "") print failure_reason > "/dev/stderr"
+            exit 1
+        }
         print result
     }' "$src"
 }
@@ -1520,9 +1804,12 @@ emit_native_return_executable() {
     target_out="$2"
     src="$3"
     cc_bin="${CC:-cc}"
-    c_src="${target_out}.bootstrap.c"
+    c_src="$(mktemp "${TMPDIR:-/tmp}/vitte-bootstrap-c-XXXXXX")" || {
+        cli_error E_BACKEND_FAILURE "failed to allocate bootstrap C work file for $src" "check TMPDIR permissions"
+        return 1
+    }
     printf 'int main(void) { return %s; }\n' "$return_value" > "$c_src"
-    "$cc_bin" "$c_src" -o "$target_out" || {
+    "$cc_bin" -x c "$c_src" -o "$target_out" || {
         cli_error E_BACKEND_FAILURE "host C compilation failed for $src" "inspect host compiler diagnostics"
         rm -f "$c_src"
         rm -f "$target_out"
@@ -1533,14 +1820,38 @@ emit_native_return_executable() {
     chmod +x "$target_out"
 }
 
+emit_pre_backend_diagnostic() {
+    src="$1"
+    if diag_info="$(detect_professional_diagnostic "$src")"; then
+        render_professional_diagnostic_text "$src" "$diag_info" >&2
+        return 0
+    fi
+    if parser_info="$(detect_simple_unclosed_block "$src")"; then
+        render_professional_diagnostic_text "$src" "$parser_info" >&2
+        return 0
+    fi
+    return 1
+}
+
 build_native_user_program() {
     src="$1"
     out="$2"
     target_out="$2"
     cc_bin="${CC:-cc}"
     allow_full_bridge="${VITTE_BOOTSTRAP_ALLOW_FULL_COMPILER_BRIDGE:-1}"
-    main_return="$(extract_native_main_return "$src" || true)"
     guard_output_not_source "$src" "$target_out" || return 1
+    if emit_pre_backend_diagnostic "$src"; then
+        return 1
+    fi
+    native_reason_file="$(mktemp "${TMPDIR:-/tmp}/vitte-bootstrap-native-reason-XXXXXX" 2>/dev/null || true)"
+    if [ -n "$native_reason_file" ]; then
+        main_return="$(extract_native_main_return "$src" 2>"$native_reason_file" || true)"
+        native_main_reason="$(sed -n '1p' "$native_reason_file" 2>/dev/null || true)"
+        rm -f "$native_reason_file"
+    else
+        main_return="$(extract_native_main_return "$src" || true)"
+        native_main_reason=""
+    fi
     command -v "$cc_bin" >/dev/null 2>&1 || {
         cli_error E_BACKEND_TOOLCHAIN "native bootstrap build requires a host C compiler" "set CC or install cc"
         return 1
@@ -1559,7 +1870,11 @@ build_native_user_program() {
             fi
             tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/vitte-bootstrap-payload-XXXXXX")"
             payload="$tmp_dir/payload.sh"
-            c_src="${target_out}.bootstrap.c"
+            c_src="$(mktemp "${TMPDIR:-/tmp}/vitte-bootstrap-c-XXXXXX")" || {
+                rm -rf "$tmp_dir"
+                cli_error E_BACKEND_FAILURE "failed to allocate bootstrap C work file for $src" "check TMPDIR permissions"
+                return 1
+            }
             write_compiler "$src" "$payload"
             cat > "$c_src" <<EOF
 #include <stdio.h>
@@ -1571,6 +1886,7 @@ build_native_user_program() {
 
 static const char *payload_source =
 $(shell_payload_c_literal "$payload");
+static const char *bootstrap_payload_bridge_marker = "vitte-bootstrap-payload-bridge";
 
 static int write_payload_file(const char *path) {
     FILE *file = fopen(path, "wb");
@@ -1639,7 +1955,7 @@ int main(int argc, char **argv) {
     return 127;
 }
 EOF
-            "$cc_bin" "$c_src" -o "$target_out" || {
+            "$cc_bin" -x c "$c_src" -o "$target_out" || {
                 cli_error E_BACKEND_FAILURE "host C payload compilation failed for $src" "inspect host compiler diagnostics"
                 rm -rf "$tmp_dir"
                 rm -f "$c_src"
@@ -1666,7 +1982,14 @@ EOF
             return 0
         fi
     fi
-    cli_error E_BOOTSTRAP_NATIVE_SUBSET "native build is limited in this bootstrap binary" "supported inputs: proc main() -> int { give <integer>; }, or the official compiler entry src/vitte/compiler/main.vit; use VITTE_BOOTSTRAP_ALLOW_FULL_COMPILER_BRIDGE=1 for compiler repository sources under src/vitte/compiler"
+    if { [ -n "${compiler_source_root:-}" ] || [ -n "${compiler_entry_point:-}" ]; } && resolve_generic_backend_compiler >/dev/null 2>&1; then
+        return 125
+    fi
+    if [ -n "${native_main_reason:-}" ]; then
+        cli_error E_BACKEND_FAILURE "$native_main_reason" "supported today: let, set, if, while, and give on integer literals or variables"
+        return 1
+    fi
+    cli_error E_BACKEND_FAILURE "bootstrap native backend could not lower this program" "check source diagnostics or use a source shape currently supported by the bootstrap backend"
     return 1
 }
 
@@ -1761,8 +2084,30 @@ localized_diagnostic_hint() {
     ftl_lookup "$diag_file" "$code.hint" || printf '%s\n' "$fallback"
 }
 
+localized_diagnostic_explain_field() {
+    code="$1"
+    field="$2"
+    fallback="$3"
+    lang="$(normalize_diagnostics_lang "$diagnostics_lang")"
+    explain_file="$(vitte_root_dir)/locales/$lang/diagnostics_explain.ftl"
+    ftl_lookup "$explain_file" "$code.$field" || printf '%s\n' "$fallback"
+}
+
 json_escape() {
-    printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\t/\\t/g; s/\r/\\r/g; s/\n/\\n/g'
+    printf '%s' "$1" | awk '
+        BEGIN {
+            ORS = ""
+        }
+        {
+            gsub(/\\/,"\\\\")
+            gsub(/"/,"\\\"")
+            gsub(/\t/,"\\t")
+            gsub(/\r/,"\\r")
+            if (NR > 1) {
+                printf "\\n"
+            }
+            printf "%s", $0
+        }'
 }
 
 source_bytes() {
@@ -2658,12 +3003,14 @@ render_professional_diagnostic_text() {
     severity="$(diag_field "$info" 2)"
     phase="$(diag_field "$info" 3)"
     message="$(diag_field "$info" 4)"
+    message="$(localized_diagnostic_message "$code" "$message")"
     line="$(diag_field "$info" 5)"
     col="$(diag_field "$info" 6)"
     end_col="$(diag_field "$info" 7)"
     label="$(diag_field "$info" 9)"
     note="$(diag_field "$info" 10)"
     help="$(diag_field "$info" 11)"
+    help="$(localized_diagnostic_explain_field "$code" fix "$help")"
     text="$(sed -n "${line}p" "$src" 2>/dev/null || true)"
     mark_len=$((end_col - col))
     if [ "$mark_len" -lt 1 ]; then mark_len=1; fi
@@ -2698,12 +3045,14 @@ render_professional_diagnostic_json() {
     severity="$(diag_field "$info" 2)"
     phase="$(diag_field "$info" 3)"
     message="$(diag_field "$info" 4)"
+    message="$(localized_diagnostic_message "$code" "$message")"
     line="$(diag_field "$info" 5)"
     col="$(diag_field "$info" 6)"
     end_col="$(diag_field "$info" 7)"
     label="$(diag_field "$info" 9)"
     note="$(diag_field "$info" 10)"
     help="$(diag_field "$info" 11)"
+    help="$(localized_diagnostic_explain_field "$code" fix "$help")"
     src_json="$(json_escape "$src")"
     code_json="$(json_escape "$code")"
     severity_json="$(json_escape "$severity")"
@@ -2784,12 +3133,14 @@ render_professional_diagnostic_surface_json() {
     severity="$(diag_field "$info" 2)"
     phase="$(diag_field "$info" 3)"
     message="$(diag_field "$info" 4)"
+    message="$(localized_diagnostic_message "$code" "$message")"
     line="$(diag_field "$info" 5)"
     col="$(diag_field "$info" 6)"
     end_col="$(diag_field "$info" 7)"
     label="$(diag_field "$info" 9)"
     note="$(diag_field "$info" 10)"
     help="$(diag_field "$info" 11)"
+    help="$(localized_diagnostic_explain_field "$code" fix "$help")"
     source_meta="$(source_meta_json "$src")"
     shape="$(compiler_shape_json "$src")"
     src_json="$(json_escape "$src")"
@@ -2943,9 +3294,11 @@ render_professional_diagnostic_surface_json() {
 render_type_mismatch_text() {
     src="$1"
     info="$2"
+    code="TYPECK_E_ASSIGN_MISMATCH"
     name="$(diag_field "$info" 1)"
     expected="$(diag_field "$info" 2)"
     found="$(diag_field "$info" 3)"
+    message="$(localized_diagnostic_message "$code" "cannot assign value of type $found to variable of type $expected")"
     line="$(diag_field "$info" 4)"
     col="$(diag_field "$info" 5)"
     decl_line="$(diag_field "$info" 6)"
@@ -2954,19 +3307,21 @@ render_type_mismatch_text() {
     text="$(diag_field "$info" 9)"
     marker="$(repeat_char '^' "$mark_len")"
     before="$(repeat_char ' ' $((col - 1)))"
-    printf 'error[TYPECK_E_ASSIGN_MISMATCH]: cannot assign value of type %s to variable of type %s\n' "$found" "$expected"
+    help="$(localized_diagnostic_explain_field "$code" fix "change the value type or update the variable annotation")"
+    printf 'error[%s]: %s\n' "$code" "$message"
     printf '  --> %s:%s:%s\n' "$src" "$line" "$col"
     printf '   |\n'
     printf '%2s | %s\n' "$line" "$text"
     printf '   | %s%s expected %s, found %s\n' "$before" "$marker" "$expected" "$found"
     printf '   |\n'
     printf 'note: variable %s was declared here: %s:%s:%s\n' "$name" "$src" "$decl_line" "$decl_col"
-    printf 'help: change the value type or update the variable annotation\n'
+    printf 'help: %s\n' "$help"
 }
 
 render_type_mismatch_json() {
     src="$1"
     info="$2"
+    code="TYPECK_E_ASSIGN_MISMATCH"
     name="$(diag_field "$info" 1)"
     expected="$(diag_field "$info" 2)"
     found="$(diag_field "$info" 3)"
@@ -2976,11 +3331,12 @@ render_type_mismatch_json() {
     decl_col="$(diag_field "$info" 7)"
     mark_len="$(diag_field "$info" 8)"
     src_json="$(json_escape "$src")"
-    msg="cannot assign value of type $found to variable of type $expected"
+    msg="$(localized_diagnostic_message "$code" "cannot assign value of type $found to variable of type $expected")"
     msg_json="$(json_escape "$msg")"
     label_json="$(json_escape "expected $expected, found $found")"
     note_json="$(json_escape "variable $name was declared here")"
-    help_json="$(json_escape "change the value type or update the variable annotation")"
+    help="$(localized_diagnostic_explain_field "$code" fix "change the value type or update the variable annotation")"
+    help_json="$(json_escape "$help")"
     printf '{"schema":"vitte.compiler.diagnostics","schema_version":"1.0.0","status":"error","diagnostics":{"error_count":1,"warning_count":0,"items":[{"code":"TYPECK_E_ASSIGN_MISMATCH","severity":"error","phase":"typeck","file":"%s","span":{"start_line":%s,"start_column":%s,"end_line":%s,"end_column":%s},"message":"%s","labels":[{"kind":"primary","message":"%s","span":{"start_line":%s,"start_column":%s,"end_line":%s,"end_column":%s}}],"notes":[{"message":"%s","span":{"start_line":%s,"start_column":%s}}],"help":[{"message":"%s"}]}]}}\n' \
         "$src_json" "$line" "$col" "$line" "$((col + mark_len))" "$msg_json" "$label_json" "$line" "$col" "$line" "$((col + mark_len))" "$note_json" "$decl_line" "$decl_col" "$help_json"
 }
@@ -2988,6 +3344,7 @@ render_type_mismatch_json() {
 render_type_mismatch_surface_json() {
     src="$1"
     info="$2"
+    code="TYPECK_E_ASSIGN_MISMATCH"
     name="$(diag_field "$info" 1)"
     expected="$(diag_field "$info" 2)"
     found="$(diag_field "$info" 3)"
@@ -2999,11 +3356,13 @@ render_type_mismatch_surface_json() {
     source_meta="$(source_meta_json "$src")"
     shape="$(compiler_shape_json "$src")"
     src_json="$(json_escape "$src")"
-    msg_json="$(json_escape "cannot assign value of type $found to variable of type $expected")"
+    msg="$(localized_diagnostic_message "$code" "cannot assign value of type $found to variable of type $expected")"
+    msg_json="$(json_escape "$msg")"
     explanation_json="$(json_escape "The left side of this assignment expects $expected, but the right side produces $found. Vitte does not perform implicit conversion here.")"
     technical_json="$(json_escape "The type checker compares the inferred expression type against the target binding type during assignment validation.")"
     note_json="$(json_escape "variable $name was declared here")"
-    help_json="$(json_escape "change the variable type to $found or assign a $expected value")"
+    help="$(localized_diagnostic_explain_field "$code" fix "change the variable type to $found or assign a value of type $expected")"
+    help_json="$(json_escape "$help")"
     probable_fix_json="$(json_escape "change the variable type to $found or assign a value of type $expected")"
     root_json="$(json_escape "assignment target type and expression type are incompatible")"
     cause_a_json="$(json_escape "binding $name expects $expected")"
@@ -3011,7 +3370,7 @@ render_type_mismatch_surface_json() {
     label_json="$(json_escape "expected $expected, found $found")"
     decl_label_json="$(json_escape "variable $name was declared here as $expected")"
     docs_json="$(json_escape "docs://language/type-system/assignment-compatibility")"
-    text_output="$(printf 'error[TYPECK_E_ASSIGN_MISMATCH] typeck: cannot assign value of type %s to variable of type %s\n --> %s:%s:%s\n  primary: %s:%s:%s expected %s, found %s\n  secondary: %s:%s:%s variable %s was declared here as %s\n  rule: assignment type compatibility\n  symbol: %s\n  type: %s\n  explanation: The left side of this assignment expects %s, but the right side produces %s. Vitte does not perform implicit conversion here.\n  technical_note: The type checker compares the inferred expression type against the target binding type during assignment validation.\n  root_cause: assignment target type and expression type are incompatible\n  probable_fix: change the variable type to %s or assign a value of type %s\n  cause: binding %s expects %s\n  cause: assigned expression produced %s\n  pipeline: phase=typeck\n  pipeline: step=type inference and assignment compatibility\n  related: TYPECK_E_BINARY_MISMATCH\n  note: variable %s was declared here\n  help: change the variable type to %s or assign a %s value\n  docs: docs://language/type-system/assignment-compatibility' "$found" "$expected" "$src" "$line" "$col" "$src" "$line" "$col" "$expected" "$found" "$src" "$decl_line" "$decl_col" "$name" "$expected" "$name" "$expected" "$expected" "$found" "$found" "$expected" "$name" "$expected" "$found" "$name" "$found" "$expected")"
+    text_output="$(printf 'error[TYPECK_E_ASSIGN_MISMATCH] typeck: %s\n --> %s:%s:%s\n  primary: %s:%s:%s expected %s, found %s\n  secondary: %s:%s:%s variable %s was declared here as %s\n  rule: assignment type compatibility\n  symbol: %s\n  type: %s\n  explanation: The left side of this assignment expects %s, but the right side produces %s. Vitte does not perform implicit conversion here.\n  technical_note: The type checker compares the inferred expression type against the target binding type during assignment validation.\n  root_cause: assignment target type and expression type are incompatible\n  probable_fix: %s\n  cause: binding %s expects %s\n  cause: assigned expression produced %s\n  pipeline: phase=typeck\n  pipeline: step=type inference and assignment compatibility\n  related: TYPECK_E_BINARY_MISMATCH\n  note: variable %s was declared here\n  help: %s\n  docs: docs://language/type-system/assignment-compatibility' "$msg" "$src" "$line" "$col" "$src" "$line" "$col" "$expected" "$found" "$src" "$decl_line" "$decl_col" "$name" "$expected" "$name" "$expected" "$expected" "$found" "$help" "$name" "$expected" "$found" "$name" "$help")"
     text_output_json="$(json_escape "$text_output")"
     diag_json="$(printf '{"code":"TYPECK_E_ASSIGN_MISMATCH","severity":"error","phase":"typeck","rule":"assignment type compatibility","message":"%s","explanation":"%s","technical_note":"%s","span":{"file":"%s","start_line":%s,"start_column":%s,"end_line":%s,"end_column":%s,"length":%s,"valid":true},"labels":[{"kind":"primary","message":"%s","span":{"file":"%s","start_line":%s,"start_column":%s,"end_line":%s,"end_column":%s,"length":%s,"valid":true},"primary":true,"valid":true},{"kind":"secondary","message":"%s","span":{"file":"%s","start_line":%s,"start_column":%s,"end_line":%s,"end_column":%s,"length":%s,"valid":true},"primary":false,"valid":true}],"notes":[{"message":"%s","valid":true}],"helps":[{"message":"%s","valid":true}],"suggestions":[],"documentation_url":"%s","root_cause":"%s","cause_chain":["%s","%s"],"pipeline_context":["phase=typeck","step=type inference and assignment compatibility"],"related_errors":["TYPECK_E_BINARY_MISMATCH"],"probable_fix":"%s","subject_symbol":"%s","subject_type":"%s","subject_borrow":"","deprecated":false,"unnecessary":false,"fatal":false,"valid":true}' \
         "$msg_json" "$explanation_json" "$technical_json" "$src_json" "$line" "$col" "$line" "$((col + mark_len))" "$mark_len" "$label_json" "$src_json" "$line" "$col" "$line" "$((col + mark_len))" "$mark_len" "$decl_label_json" "$src_json" "$decl_line" "$decl_col" "$decl_line" "$((decl_col + ${#name}))" "${#name}" "$note_json" "$help_json" "$docs_json" "$root_json" "$cause_a_json" "$cause_b_json" "$probable_fix_json" "$(json_escape "$name")" "$(json_escape "$expected")")"
@@ -3329,7 +3688,21 @@ case "$cmd" in
         tmp_bin="$(mktemp "${TMPDIR:-/tmp}/vittec-run-XXXXXX")"
         rm -f "$tmp_bin"
         trace_step "pipeline.backend:native-bootstrap-subset"
-        build_native_user_program "$src" "$tmp_bin" || exit 3
+        set +e
+        build_native_user_program "$src" "$tmp_bin"
+        rc="$?"
+        set -e
+        if [ "$rc" -ne 0 ]; then
+            if [ "$rc" -eq 125 ]; then
+                trace_step "pipeline.backend:delegate-generic"
+                set +e
+                delegate_generic_backend_run "$src"
+                rc="$?"
+                set -e
+                exit "$rc"
+            fi
+            exit 3
+        fi
         set +e
         "$tmp_bin"
         run_rc=$?
@@ -3521,7 +3894,20 @@ case "$cmd" in
             guard_output_not_source "$src" "$out" || exit 2
             trace_step "pipeline.lower:begin"
             trace_step "pipeline.backend:native-bootstrap-subset"
-            build_native_user_program "$src" "$out" || exit 3
+            set +e
+            build_native_user_program "$src" "$out"
+            rc="$?"
+            set -e
+            if [ "$rc" -ne 0 ]; then
+                if [ "$rc" -eq 125 ]; then
+                    trace_step "pipeline.backend:delegate-generic"
+                    set +e
+                    delegate_generic_backend_build "$src" "$out"
+                    rc="$?"
+                    set -e
+                fi
+                [ "$rc" -eq 0 ] || exit "${rc:-3}"
+            fi
             [ -f "$out" ] || { cli_error E_BUILD_OUTPUT "build failed to produce output: $out"; exit 1; }
             trace_step "pipeline.emit:ok"
             printf 'build succeeded: %s\n' "$out"

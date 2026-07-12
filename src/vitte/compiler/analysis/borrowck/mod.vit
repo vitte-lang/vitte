@@ -14,13 +14,14 @@ use vitte/compiler/analysis/borrowck/errors.{
 use vitte/compiler/analysis/borrowck/lifetimes.{
   LifetimeFactKind,
   LifetimeResult,
-  add_borrow_constraint,
+  add_temporal_ownership_fact,
   add_fact,
   add_return_constraint,
   add_returned_local_diagnostic,
   finalize_lifetimes,
   lifetime_fact,
-  lifetime_result_empty
+  lifetime_result_empty,
+  temporal_ownership_window
 }
 use vitte/compiler/analysis/borrowck/loans.{
   Loan,
@@ -861,13 +862,15 @@ proc handle_borrow_binding(result: BorrowCheckResult, metadata: BorrowMetadata, 
     ));
   }
 
+  let alias_scope_end: u64 = metadata_scope_end(metadata, binding);
+  let owner_scope_end: u64 = metadata_scope_end(metadata, owner);
   let loans0: LoanTable = add_loan(current0.loans, loan_create_scoped(
     len(current0.loans.loans) as u64 + 1,
     binding,
     owner,
     requested,
     line,
-    metadata_scope_end(metadata, binding)
+    alias_scope_end
   ));
   let current1: BorrowCheckResult = replace_loans(current0, loans0);
   let ownership1: OwnershipTable = declare_local(current1.ownership, binding, line, true);
@@ -880,8 +883,10 @@ proc handle_borrow_binding(result: BorrowCheckResult, metadata: BorrowMetadata, 
     set ownership2 = add_shared_borrow(ownership2, owner, line);
   }
 
-  let lifetimes0: LifetimeResult = add_fact(current2.lifetimes, lifetime_fact(binding, owner, binding, line, LifetimeFactKind.Borrow));
-  let lifetimes1: LifetimeResult = add_borrow_constraint(lifetimes0, binding, owner, line);
+  let lifetimes1: LifetimeResult = add_temporal_ownership_fact(
+    current2.lifetimes,
+    temporal_ownership_window(owner, binding, line, owner_scope_end, line, alias_scope_end, mutable)
+  );
   let current3: BorrowCheckResult = replace_ownership(current2, ownership2);
   give replace_lifetimes(current3, lifetimes1);
 }

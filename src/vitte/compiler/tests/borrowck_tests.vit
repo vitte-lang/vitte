@@ -10,6 +10,21 @@ use vitte/compiler/analysis/borrowck.{
   borrow_check_hir_mir,
   borrow_check_source
 }
+use vitte/compiler/analysis/borrowck/regions.{
+  MemoryRegionBinding,
+  MemoryRegionDecl,
+  MemoryRegionKind,
+  MemoryRegionModel,
+  bind_place_to_memory_region,
+  declare_memory_region,
+  finalize_memory_regions,
+  memory_region_binding,
+  memory_region_decl,
+  memory_region_kind_from_text,
+  memory_region_kind_name,
+  memory_region_model_empty,
+  memory_region_summary
+}
 use vitte/compiler/analysis/borrowck/errors.{
   BorrowErrorKind,
   BorrowPhase,
@@ -30,8 +45,10 @@ use vitte/compiler/analysis/borrowck/lifetimes.{
   LifetimeEscapeKind,
   LifetimeFactKind,
   LifetimeResult,
+  TemporalOwnershipWindow,
   add_borrow_fact,
   add_return_fact,
+  add_temporal_ownership_fact,
   escape_kind_name,
   fact_is_escape,
   fact_kind_name,
@@ -39,7 +56,10 @@ use vitte/compiler/analysis/borrowck/lifetimes.{
   lifetime_fact_full,
   lifetime_fact_summary,
   lifetime_result_empty,
-  lifetime_result_summary
+  lifetime_result_summary,
+  temporal_ownership_window,
+  temporal_window_summary,
+  temporal_window_valid
 }
 use vitte/compiler/analysis/borrowck/loans.{
   LoanKind,
@@ -446,6 +466,41 @@ proc test_lifetime_and_region_helpers_summarize_failures() -> bool {
     and find(lifetime_result_summary(lifetimes3), "lifetimes failed") >= 0;
 }
 
+proc test_temporal_ownership_windows_enforce_alias_duration() -> bool {
+  let valid_window: TemporalOwnershipWindow = temporal_ownership_window("value", "alias", 1, 10, 2, 8, false);
+  let invalid_window: TemporalOwnershipWindow = temporal_ownership_window("value", "escaped_alias", 1, 5, 2, 9, false);
+  let lifetimes0: LifetimeResult = lifetime_result_empty(region_solution_empty());
+  let lifetimes1: LifetimeResult = add_temporal_ownership_fact(lifetimes0, valid_window);
+  let lifetimes2: LifetimeResult = add_temporal_ownership_fact(lifetimes1, invalid_window);
+  let finalized: LifetimeResult = finalize_lifetimes(lifetimes2);
+  give temporal_window_valid(valid_window)
+    and not temporal_window_valid(invalid_window)
+    and find(temporal_window_summary(invalid_window), "invalid") >= 0
+    and not finalized.valid
+    and len(finalized.diagnostics) > 0
+    and find(lifetime_result_summary(finalized), "lifetimes failed") >= 0;
+}
+
+proc test_first_class_memory_regions_bind_places_to_declared_regions() -> bool {
+  let heap_decl: MemoryRegionDecl = memory_region_decl("heap", MemoryRegionKind.Arena, 1, 10);
+  let valid_binding: MemoryRegionBinding = memory_region_binding("buffer", "heap", 2, 8);
+  let escaped_binding: MemoryRegionBinding = memory_region_binding("escaped", "heap", 3, 12);
+  let missing_binding: MemoryRegionBinding = memory_region_binding("ghost", "missing", 4, 5);
+  let model0: MemoryRegionModel = memory_region_model_empty();
+  let model1: MemoryRegionModel = declare_memory_region(model0, heap_decl);
+  let model2: MemoryRegionModel = bind_place_to_memory_region(model1, valid_binding);
+  let model3: MemoryRegionModel = bind_place_to_memory_region(model2, escaped_binding);
+  let model4: MemoryRegionModel = bind_place_to_memory_region(model3, missing_binding);
+  let finalized: MemoryRegionModel = finalize_memory_regions(model4);
+  give memory_region_kind_name(memory_region_kind_from_text("arena")) == "arena"
+    and model2.valid
+    and not finalized.valid
+    and len(finalized.violations) == 2
+    and find(finalized.violations[0], "outlives memory region") >= 0
+    and find(finalized.violations[1], "not declared") >= 0
+    and find(memory_region_summary(finalized), "memory regions failed") >= 0;
+}
+
 proc test_borrow_diagnostic_helpers_build_reports() -> bool {
   let span: SourceSpan = span_with_length(span_create("borrowck_helpers.vit", 3, 5, 0), 7);
   let diag: Diagnostic = borrow_error_lifetime_too_short_story("borrowck_helpers.vit", "value", 3, 4, "alias outlives owner", 42);
@@ -490,6 +545,8 @@ proc run_all_tests() -> int {
   if not test_move_tracker_helpers_report_state_and_conflicts() { set failures = failures + 1; }
   if not test_loan_table_helpers_track_aliases_and_conflicts() { set failures = failures + 1; }
   if not test_lifetime_and_region_helpers_summarize_failures() { set failures = failures + 1; }
+  if not test_temporal_ownership_windows_enforce_alias_duration() { set failures = failures + 1; }
+  if not test_first_class_memory_regions_bind_places_to_declared_regions() { set failures = failures + 1; }
   if not test_borrow_diagnostic_helpers_build_reports() { set failures = failures + 1; }
   give failures;
 }

@@ -36,6 +36,8 @@ Derived from: `AUDIT.md`
 - the active scanner now covers the current EBNF lexer surface, including char literals, `~`, `&&`, `||`, `<<=`, and `>>=`
 - canonical token consumers are pinned to `frontend/lexer/token.vit`
 - fast CI now checks `src/vitte/compiler/tests/lexer_tests.vit` explicitly and runs the frontend token consistency guard
+- `tools/lexer_ebnf_surface_check.py` now classifies every quoted terminal in `src/vitte/grammar/vitte.ebnf` against lexer support, so new lexical terminals cannot be added silently
+- README status for `Lexer` is `100%` for the active EBNF lexical surface only; parser, AST, and semantic completeness remain tracked separately
 
 ### Completed recently. Parser coverage reporting is now exhaustive and is the CI source of truth
 
@@ -44,6 +46,7 @@ Derived from: `AUDIT.md`
 - `tools/parser_sync_coverage_report.py` now emits an exhaustive rule matrix from `src/vitte/grammar/vitte.ebnf`
 - CI publishes the `grammar_coverage` report artifact and uses it as the canonical parser coverage signal
 - parser coverage can no longer report `green` from a tiny subset, and the active frontend now reaches `missing=0`
+- README status for `Parser` is `100%` for the active grammar coverage/reporting contract only; AST construction, semantic validation, and type checking remain tracked separately
 
 ### Completed recently. Active parsed frontend surface now has AST construction coverage
 
@@ -51,6 +54,8 @@ Derived from: `AUDIT.md`
 - Notes:
 - the last parsed-without-AST false negative (`postfix_expr`) is now recognized through the canonical AST construction path in `parser.vit`
 - the active parsed frontend surface no longer has rules that are `parsed` without also being `ast-built`
+- `frontend-ast-test` now runs `src/vitte/compiler/tests/ast_tests.vit` and `tools/ast_coverage_gate.py` in the fast core-language gate
+- README status for `AST` is `100%` for the active non-lexical parsed grammar surface; lexical grammar rules remain owned by the lexer gate
 
 ### Completed recently. HIR trust boundary now rejects unsupported or partial lowering more explicitly
 
@@ -68,13 +73,21 @@ Derived from: `AUDIT.md`
 - regular calls and `method-dispatch` calls now validate argument type and borrow compatibility against the resolved MIR function signature, not only arity
 - `src/vitte/compiler/tests/mir_tests.vit` is wired into the fast core-language gate so canonical MIR contract regressions fail early
 
-### Completed recently. HIR package coverage is now closed across lowering, validation, builder, CFG, and pretty helpers
+### Completed recently. MIR package coverage was expanded across lowering, validation, builder, dataflow, transform, and pretty helpers
+
+- Status: done
+- Notes:
+- `src/vitte/compiler/tests/mir_tests.vit` now exercises the exported `middle/mir` helper surface, including builder context/value accounting, dataflow summaries, transform reports, pretty rendering, canonical call validation, borrow validation, and CFG validation
+- `mir-lowering-test` remains the fast CI signal for MIR package regressions through `bin/vitte check src/vitte/compiler/tests/mir_tests.vit`
+- this improves the proven MIR surface, but MIR remains an incomplete optimization IR and should not be presented as feature-complete
+
+### Completed recently. HIR package coverage was expanded across lowering, validation, builder, CFG, and pretty helpers
 
 - Status: done
 - Notes:
 - `src/vitte/compiler/tests/hir_tests.vit` now exercises not only AST->HIR lowering and validation but also the `builder`, `control_flow`, and `pretty` helper surfaces through active selftests
 - the fast HIR gate now covers the full `middle/hir` package surface that is still exported through `mod.vit`
-- README status for HIR is raised to `100%` to match code-backed test coverage rather than aspirational progress
+- this is package-level coverage, not a claim that the complete language surface lowers through HIR
 
 ### Completed recently. Semantic resolution now covers alias imports, visibility rejection, and cross-module export boundaries more explicitly
 
@@ -84,39 +97,52 @@ Derived from: `AUDIT.md`
 - sema tests now cover invalid visibility rejection, alias-member import resolution, and the fact that non-exported module items stay unresolved across module boundaries
 - `src/vitte/compiler/tests/sema_tests.vit` is wired into the fast core-language gate so semantic-regression coverage is no longer indirect only through later phases
 
-### Completed recently. Semantic package coverage is now closed across resolver, names, visibility, scopes, modules, and diagnostic helpers
+### Completed recently. Semantic package coverage was expanded across resolver, names, visibility, scopes, modules, and diagnostic helpers
 
 - Status: done
 - Notes:
 - `src/vitte/compiler/tests/sema_tests.vit` now exercises the exported helper surface of `analysis/sema`, including place-root parsing, visibility normalization, symbol-table behavior, module summary/import parsing, and semantic diagnostic context helpers
 - the semantic fast gate now proves the package exported by `src/vitte/compiler/analysis/sema/mod.vit`, not only the main `run_sema_hir` entrypoint
-- README status for `Semantic` is raised to `100%` to match code-backed test coverage
+- semantic analysis remains partial beyond the proven subset
 
-### Completed recently. Production type-checking package coverage is now closed across checker, infer, traits, coercion, unify, errors, and API helpers
+### Completed recently. Compile-time simulation now rejects constant impossible paths
+
+- Status: done
+- Notes:
+- `analysis/const_eval` now reports `CONST_EVAL_E_IMPOSSIBLE_BRANCH` when compile-time simulation proves an `if` or `while` condition is constant false
+- `src/vitte/compiler/tests/const_eval_tests.vit` covers deterministic arithmetic, division by zero, unknown names, non-const calls, static assertions, cycles, and compile-time branch simulation
+- `const-eval-analysis-test` is wired into the fast core-language gate so const-eval and compile-time simulation regressions fail directly
+
+### Completed recently. Production type-checking package coverage was expanded across checker, infer, traits, coercion, unify, errors, and API helpers
 
 - Status: done
 - Notes:
 - `src/vitte/compiler/tests/typeck_tests.vit` now exercises the exported production helper surface of `analysis/typeck`, including pipeline-status API helpers, type trait/class queries, coercion/projection helpers, unify rules, infer environment lifecycle helpers, and type-check diagnostic/result summaries
 - `src/vitte/compiler/tests/typeck_tests.vit` is wired into the fast core-language gate so type-check regressions are visible directly rather than only through downstream borrowck/backend failures
-- README status for `Type Checker` is raised to `100%` for the production `hir` pipeline; the `complete` pipeline remains explicitly experimental in the API
+- the production `hir` pipeline is still a partial type checker; the `complete` pipeline remains explicitly experimental in the API
 
-### Completed recently. Borrow checker package coverage is now closed across ownership, moves, loans, lifetimes, regions, diagnostics, and canonical HIR/MIR entrypoints
+### Completed recently. Borrow checker package coverage was expanded across ownership, moves, loans, lifetimes, regions, diagnostics, and canonical HIR/MIR entrypoints
 
 - Status: done
 - Notes:
 - `src/vitte/compiler/tests/borrowck_tests.vit` now exercises the exported borrow checker helper surface, including ownership place tracking, move conflict state, loan alias/conflict tables, lifetime/region summaries, and borrow diagnostic report helpers
+- temporal ownership windows now make lifetime duration explicit: aliases must start after the owner exists and end before the owner dies, with a regression test for escaped aliases
+- memory regions are now first-class at the active frontend surface: `region` is tokenized, parsed as a top-level AST item, lowered through HIR, and backed by a borrowck region model that binds places to declared regions and rejects escapes after region closure
 - the borrow checker production path is covered through `borrow_check_source`, `borrow_check_hir`, and the canonical `borrow_check_hir_mir` path used after frontend/HIR/MIR lowering
 - `src/vitte/compiler/tests/borrowck_tests.vit` is wired into the fast core-language gate through `borrowck-analysis-test`
-- README status for `Borrow Checker` is raised to `100%` to match code-backed package coverage
+- borrow checking is one of the stronger subsystems, but it is not full language-complete ownership semantics
 
-### Completed recently. LLVM backend coverage is now closed across canonical IR emission, object bundles, native-toolchain diagnostics, profile metadata, and backend gate artifacts
+### Completed recently. LLVM backend coverage was expanded across canonical IR emission, object bundles, native-toolchain diagnostics, profile metadata, and backend gate artifacts
 
 - Status: done
 - Notes:
 - `src/vitte/compiler/tests/llvm_tests.vit` now exercises the LLVM binding surface, including adapter helpers, toolchain status, canonical IR emission, LLVM object sections/symbols/relocations, LTO/PGO/debug diagnostics, native toolchain failures, and invalid option rejection
 - `llvm-backend-gate` now runs the Vitte LLVM tests and the bindings smoke test before the Python validation and artifact generation checks
 - generated LLVM coverage remains CI-visible through `target/reports/llvm_backend_coverage.md` and `target/reports/llvm_backend_validation.md`
-- README status for `LLVM` is raised to `100%` to match the checked backend surface
+- `tools/llvm/check_backend_reports.py` now fails the gate if validation is not `PASS`, required LLVM adapter features are absent, or the LLVM IR artifact/hash is missing
+- `tools/llvm/native_final_gate.py` adds the conditional final native smoke path: Vitte bootstrap source -> native IR -> LLVM IR -> clang object -> linked executable -> run
+- README status for `LLVM` is `100%` for the checked adapter plus native smoke contract
+- the remaining LLVM work is deeper language/ABI coverage, not absence of an end-to-end native smoke gate
 
 ## P0
 

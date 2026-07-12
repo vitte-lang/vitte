@@ -72,6 +72,15 @@ proc test_scanner_keeps_attribute_tokens() -> bool {
   give result.valid and attr_index >= 0 and token_index(result, "entry") >= 0;
 }
 
+proc test_scanner_recognizes_region_keyword() -> bool {
+  let result: ScanResult = scan_tokens("region heap: arena;\n");
+  let region_index: int = token_index(result, "region");
+  if not result.valid or region_index < 0 {
+    give false;
+  }
+  give result.tokens[region_index as u64].kind == TokenKind.Keyword;
+}
+
 proc test_scanner_accepts_number_prefixes_and_suffixes() -> bool {
   let result: ScanResult = scan_tokens(number_suffix_source());
   let hex_index: int = token_index(result, "0xFFu32");
@@ -125,6 +134,49 @@ proc test_scanner_accepts_ebnf_operator_surface() -> bool {
     and result.tokens[or_index as u64].kind == TokenKind.Symbol
     and result.tokens[lshift_assign_index as u64].kind == TokenKind.Symbol
     and result.tokens[rshift_assign_index as u64].kind == TokenKind.Symbol;
+}
+
+proc test_scanner_accepts_full_ebnf_symbol_surface() -> bool {
+  let source: string =
+    "() [] { } , ; : :: . .. ... ..= -> => " +
+    "+ += - -= * *= / /= % %= " +
+    "& &= && | |= || ^ ^= ! != = == < <= << <<= > >= >> >>= ? ?? ~\n";
+  let result: ScanResult = scan_tokens(source);
+  let symbols: [string] = [
+    "(", ")", "[", "]", "{", "}", ",", ";", ":", "::", ".", "..", "...", "..=", "->", "=>",
+    "+", "+=", "-", "-=", "*", "*=", "/", "/=", "%", "%=",
+    "&", "&=", "&&", "|", "|=", "||", "^", "^=", "!", "!=", "=", "==", "<", "<=", "<<", "<<=", ">", ">=", ">>", ">>=", "?", "??", "~"
+  ];
+  if not result.valid {
+    give false;
+  }
+
+  let i: u64 = 0;
+  while i < len(symbols) {
+    let index: int = token_index(result, symbols[i]);
+    if index < 0 or result.tokens[index as u64].kind != TokenKind.Symbol {
+      give false;
+    }
+    set i = i + 1;
+  }
+
+  give true;
+}
+
+proc test_scanner_skips_all_ebnf_comment_forms() -> bool {
+  let result: ScanResult = scan_tokens(
+    "# hash comment\n" +
+    "// slash comment\n" +
+    "/// doc comment\n" +
+    "/* block comment */\n" +
+    "<<< region comment >>>\n" +
+    "proc main() { give 0; }\n"
+  );
+  let proc_index: int = token_index(result, "proc");
+  give result.valid
+    and result.metrics.comment_count == 5
+    and proc_index >= 0
+    and result.tokens[proc_index as u64].line == 6;
 }
 
 proc test_scanner_accepts_float_exponents() -> bool {
@@ -223,6 +275,12 @@ proc run_all_tests() -> int {
   if not test_scanner_accepts_ebnf_operator_surface() {
     set failures = failures + 1;
   }
+  if not test_scanner_accepts_full_ebnf_symbol_surface() {
+    set failures = failures + 1;
+  }
+  if not test_scanner_skips_all_ebnf_comment_forms() {
+    set failures = failures + 1;
+  }
   if not test_scanner_accepts_float_exponents() {
     set failures = failures + 1;
   }
@@ -242,6 +300,9 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if not test_scanner_keeps_attribute_tokens() {
+    set failures = failures + 1;
+  }
+  if not test_scanner_recognizes_region_keyword() {
     set failures = failures + 1;
   }
   give failures;

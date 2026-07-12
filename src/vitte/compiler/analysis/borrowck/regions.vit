@@ -5,6 +5,16 @@ pick RegionConstraintKind {
   EndsBefore,
 }
 
+pick MemoryRegionKind {
+  Unknown,
+  Stack,
+  Heap,
+  Arena,
+  Static,
+  Mmio,
+  Dma,
+}
+
 form Region {
   name: string
   start_line: u64
@@ -26,6 +36,31 @@ form RegionSolution {
   valid: bool
 }
 
+form MemoryRegionDecl {
+  name: string
+  kind: MemoryRegionKind
+  start_line: u64
+  end_line: u64
+  capabilities: [string]
+  valid: bool
+}
+
+form MemoryRegionBinding {
+  place: string
+  region_name: string
+  line: u64
+  escapes_after_line: u64
+  valid: bool
+}
+
+form MemoryRegionModel {
+  declarations: [MemoryRegionDecl]
+  bindings: [MemoryRegionBinding]
+  solution: RegionSolution
+  violations: [string]
+  valid: bool
+}
+
 proc region_create(name: string, start_line: u64, end_line: u64) -> Region {
   give Region {
     name: name,
@@ -33,6 +68,198 @@ proc region_create(name: string, start_line: u64, end_line: u64) -> Region {
     end_line: end_line,
     valid: name != ""
   };
+}
+
+proc memory_region_kind_name(kind: MemoryRegionKind) -> string {
+  if kind == MemoryRegionKind.Stack {
+    give "stack";
+  }
+  if kind == MemoryRegionKind.Heap {
+    give "heap";
+  }
+  if kind == MemoryRegionKind.Arena {
+    give "arena";
+  }
+  if kind == MemoryRegionKind.Static {
+    give "static";
+  }
+  if kind == MemoryRegionKind.Mmio {
+    give "mmio";
+  }
+  if kind == MemoryRegionKind.Dma {
+    give "dma";
+  }
+  give "unknown";
+}
+
+proc memory_region_kind_from_text(text: string) -> MemoryRegionKind {
+  if text == "stack" {
+    give MemoryRegionKind.Stack;
+  }
+  if text == "heap" {
+    give MemoryRegionKind.Heap;
+  }
+  if text == "arena" {
+    give MemoryRegionKind.Arena;
+  }
+  if text == "static" {
+    give MemoryRegionKind.Static;
+  }
+  if text == "mmio" {
+    give MemoryRegionKind.Mmio;
+  }
+  if text == "dma" {
+    give MemoryRegionKind.Dma;
+  }
+  give MemoryRegionKind.Unknown;
+}
+
+proc memory_region_decl(name: string, kind: MemoryRegionKind, start_line: u64, end_line: u64) -> MemoryRegionDecl {
+  give MemoryRegionDecl {
+    name: name,
+    kind: kind,
+    start_line: start_line,
+    end_line: end_line,
+    capabilities: [],
+    valid: name != "" and kind != MemoryRegionKind.Unknown and start_line <= end_line
+  };
+}
+
+proc memory_region_decl_with_capabilities(name: string, kind: MemoryRegionKind, start_line: u64, end_line: u64, capabilities: [string]) -> MemoryRegionDecl {
+  give MemoryRegionDecl {
+    name: name,
+    kind: kind,
+    start_line: start_line,
+    end_line: end_line,
+    capabilities: capabilities,
+    valid: name != "" and kind != MemoryRegionKind.Unknown and start_line <= end_line
+  };
+}
+
+proc memory_region_binding(place: string, region_name: string, line: u64, escapes_after_line: u64) -> MemoryRegionBinding {
+  give MemoryRegionBinding {
+    place: place,
+    region_name: region_name,
+    line: line,
+    escapes_after_line: escapes_after_line,
+    valid: place != "" and region_name != "" and line <= escapes_after_line
+  };
+}
+
+proc memory_region_model_empty() -> MemoryRegionModel {
+  give MemoryRegionModel {
+    declarations: [],
+    bindings: [],
+    solution: region_solution_empty(),
+    violations: [],
+    valid: true
+  };
+}
+
+proc memory_region_index(model: MemoryRegionModel, name: string) -> int {
+  let i: int = 0;
+  while i < len(model.declarations) {
+    if model.declarations[i].name == name {
+      give i;
+    }
+    set i = i + 1;
+  }
+  give -1;
+}
+
+proc memory_region_declared(model: MemoryRegionModel, name: string) -> bool {
+  give memory_region_index(model, name) >= 0;
+}
+
+proc memory_region_find(model: MemoryRegionModel, name: string) -> MemoryRegionDecl {
+  let index: int = memory_region_index(model, name);
+  if index < 0 {
+    give memory_region_decl("", MemoryRegionKind.Unknown, 0, 0);
+  }
+  give model.declarations[index];
+}
+
+proc memory_model_with_violation(model: MemoryRegionModel, violation: string) -> MemoryRegionModel {
+  give MemoryRegionModel {
+    declarations: model.declarations,
+    bindings: model.bindings,
+    solution: model.solution,
+    violations: model.violations + [violation],
+    valid: false
+  };
+}
+
+proc declare_memory_region(model: MemoryRegionModel, decl: MemoryRegionDecl) -> MemoryRegionModel {
+  let solution0: RegionSolution = ensure_region(model.solution, decl.name, decl.start_line);
+  let solution1: RegionSolution = close_region(solution0, decl.name, decl.end_line);
+  let model0: MemoryRegionModel = MemoryRegionModel {
+    declarations: model.declarations + [decl],
+    bindings: model.bindings,
+    solution: solution1,
+    violations: model.violations,
+    valid: model.valid and decl.valid and solution1.valid
+  };
+
+  if not decl.valid {
+    give memory_model_with_violation(model0, "invalid memory region `" + decl.name + "`");
+  }
+
+  give model0;
+}
+
+proc memory_region_contains_line(decl: MemoryRegionDecl, line: u64) -> bool {
+  give decl.valid and decl.start_line <= line and line <= decl.end_line;
+}
+
+proc bind_place_to_memory_region(model: MemoryRegionModel, binding: MemoryRegionBinding) -> MemoryRegionModel {
+  if not binding.valid {
+    give memory_model_with_violation(model, "invalid memory region binding for `" + binding.place + "`");
+  }
+  if not memory_region_declared(model, binding.region_name) {
+    give memory_model_with_violation(model, "memory region `" + binding.region_name + "` is not declared");
+  }
+
+  let decl: MemoryRegionDecl = memory_region_find(model, binding.region_name);
+  let solution0: RegionSolution = ensure_region(model.solution, binding.place, binding.line);
+  let solution1: RegionSolution = close_region(solution0, binding.place, binding.escapes_after_line);
+  let solution2: RegionSolution = add_constraint(solution1, constraint_create(binding.region_name, binding.place, RegionConstraintKind.Outlives, binding.line));
+  let model0: MemoryRegionModel = MemoryRegionModel {
+    declarations: model.declarations,
+    bindings: model.bindings + [binding],
+    solution: solution2,
+    violations: model.violations,
+    valid: model.valid and solution2.valid
+  };
+
+  if not memory_region_contains_line(decl, binding.line) {
+    give memory_model_with_violation(model0, "place `" + binding.place + "` is created outside memory region `" + binding.region_name + "`");
+  }
+  if binding.escapes_after_line > decl.end_line {
+    give memory_model_with_violation(model0, "place `" + binding.place + "` outlives memory region `" + binding.region_name + "`");
+  }
+
+  give model0;
+}
+
+proc finalize_memory_regions(model: MemoryRegionModel) -> MemoryRegionModel {
+  let solved: RegionSolution = solve_regions(model.solution);
+  give MemoryRegionModel {
+    declarations: model.declarations,
+    bindings: model.bindings,
+    solution: solved,
+    violations: model.violations,
+    valid: model.valid and solved.valid and len(model.violations) == 0
+  };
+}
+
+proc memory_region_summary(model: MemoryRegionModel) -> string {
+  let region_count: string = len(model.declarations) as string;
+  let binding_count: string = len(model.bindings) as string;
+  let violation_count: string = len(model.violations) as string;
+  if model.valid {
+    give "memory regions ok: regions " + region_count + " bindings " + binding_count;
+  }
+  give "memory regions failed: regions " + region_count + " bindings " + binding_count + " violations " + violation_count;
 }
 
 proc constraint_create(left: string, right: string, kind: RegionConstraintKind, line: u64) -> RegionConstraint {

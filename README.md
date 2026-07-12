@@ -21,7 +21,7 @@
 ![platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-2563EB)
 ![frontend](https://img.shields.io/badge/frontend-Lexer%20%7C%20Parser-2563EB)
 ![pipeline](https://img.shields.io/badge/pipeline-AST→HIR→MIR→IR-1D4ED8)
-![ir](https://img.shields.io/badge/IR-100%25-16A34A)
+![ir](https://img.shields.io/badge/IR-50%25-F59E0B)
 ![borrow](https://img.shields.io/badge/borrow-checker-DC2626)
 ![typeck](https://img.shields.io/badge/type-Type%20Checker-0F766E)
 ![diagnostics](https://img.shields.io/badge/diagnostics-rich-7C3AED)
@@ -32,6 +32,9 @@
 ![linker](https://img.shields.io/badge/linker-integrated-0F766E)
 ![memory](https://img.shields.io/badge/memory-safe-16A34A)
 ![ownership](https://img.shields.io/badge/model-Ownership-DC2626)
+![temporal](https://img.shields.io/badge/model-Temporal%20Ownership-0F766E)
+![regions](https://img.shields.io/badge/model-Memory%20Regions-2563EB)
+![simulation](https://img.shields.io/badge/compile--time-Simulation-7C3AED)
 ![performance](https://img.shields.io/badge/performance-native-E11D48)
 ![generics](https://img.shields.io/badge/generics-supported-2563EB)
 ![async](https://img.shields.io/badge/async-supported-0F766E)
@@ -45,6 +48,16 @@
 
 Vitte is a modern systems programming language and compiler designed around explicit compilation stages, deterministic builds, memory safety, and long-term maintainability.
 
+### Safety Model
+
+Vitte tracks ownership as a compile-time contract: the compiler checks which scope owns a value, how borrows flow through the program, and whether a moved value is reused incorrectly.
+
+Temporal Ownership extends that model with lifetime intent: the compiler verifies not only who owns a value, but also how long that value is allowed to remain valid. The borrow checker now exposes temporal ownership windows that reject aliases whose valid range outlives their owner; deeper full-language temporal coverage remains part of the ongoing safety work.
+
+Memory Regions are first-class at the active language surface: `region` is tokenized, parsed as a top-level declaration, preserved through AST/HIR lowering, and checked by the borrow checker region model. The current contract binds places to declared memory regions and rejects values that escape after their region closes; allocator/runtime placement remains future backend work.
+
+Compile-Time Simulation is the static execution layer for selected deterministic program fragments. The const-eval gate now simulates constant `if` and `while` conditions, rejects unreachable constant-false paths, and reports logical mistakes before code generation alongside const evaluation, diagnostics, and MIR validation.
+
 ## Compiler progress
 
 
@@ -52,7 +65,7 @@ Overall progress: **46%**
 
 ```text
 
-██████████  100%
+█████░░░░░░░░░░░░░░░ 46%
 
 ```
 
@@ -68,23 +81,23 @@ Parser             ██████████  100%
 
 AST                ██████████  100%
 
-HIR                ██████████  100%
+HIR                █████░░░░░  55%
 
-Semantic           ██████████  100%
+Semantic           ███░░░░░░░  35%
 
-Type Checker       ██████████  100%
+Type Checker       ███░░░░░░░  35%
 
-Borrow Checker     ██████████  100%
+Borrow Checker     ███████░░░  70%
 
-MIR                ██████████  100%
+MIR                █████░░░░░  50%
 
-IR                 ██████████  100%
+IR                 █████░░░░░  50%
 
-Backend            ██████████  100%
+Backend            ██████░░░░  60%
 
 LLVM               ██████████  100%
 
-Self Hosting       ██████████  100%
+Self Hosting       █████░░░░░  50%
 
 ```
 
@@ -92,13 +105,23 @@ Self Hosting       ██████████  100%
 
 This repository contains the Vitte compiler, bootstrap toolchain, language grammar, tests, and documentation.
 
-Self-hosting is now exercised directly by compiling the compiler entrypoint itself with the current toolchain:
+The percentages above are maturity estimates from the engineering audit, not claims that a component is feature-complete. A `bin/vitte check` gate or helper-level test proves a specific contract, but it does not make the full language/compiler surface complete.
+
+Lexer status is marked at 100% for the active EBNF lexical surface: `frontend-lexer-test` now checks the scanner tests and `tools/lexer_ebnf_surface_check.py`, which classifies every quoted terminal in `src/vitte/grammar/vitte.ebnf` against lexer support.
+
+Parser status is marked at 100% for active grammar coverage reporting: `grammar-coverage` runs `tools/parser_sync_coverage_report.py --check`, currently reports `missing=0`, and blocks green status when any grammar rule is unclassified or missing. This is not a claim that every rule is fully AST-built or semantically complete; those remain tracked by AST, HIR, semantic, and type-checking lines.
+
+AST status is marked at 100% for the active non-lexical parsed grammar surface: `frontend-ast-test` runs `src/vitte/compiler/tests/ast_tests.vit` and `tools/ast_coverage_gate.py`, which fails when any non-lexical EBNF rule is parsed without AST construction evidence. Lexical rules remain owned by the lexer gate.
+
+LLVM status is marked at 100% for the checked LLVM adapter and native smoke contract: `llvm-backend-gate` runs the Vitte LLVM tests, LLVM bindings smoke test, backend validation, artifact generation, report-content checks, and the conditional `llvm-native-final-gate`. The native final gate proves a bootstrap Vitte source can become LLVM IR, compile to a native object with `clang`, link, and run when the host toolchain is available.
+
+Self-hosting is exercised by compiling the compiler entrypoint with the current toolchain, but full self-hosting parity is still partial:
 
 ```bash
 bin/vitte build src/vitte/compiler/main.vit -o target/selfhost/compiler_main
 ```
 
-MIR coverage is now marked at 100% in this repository snapshot, backed by validator and regression coverage for canonical borrow, nominal-call, and control-flow validation paths. IR coverage is also marked at 100% in this repository snapshot, backed by validator and regression coverage for nominal-call and variant-construction lowering.
+MIR and IR have real lowering, validation, and regression coverage for canonical borrow, nominal-call, and control-flow paths. They are still not complete optimization or backend contract surfaces.
 
 Key directories:
 

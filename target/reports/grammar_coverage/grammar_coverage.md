@@ -1,12 +1,12 @@
 # Grammar Coverage Report
 
 - Grammar: `src/vitte/grammar/vitte.ebnf`
-- Rule count: `253`
-- Classified rules: `253`
-- Parsed: `223`
-- AST built: `207`
-- Diagnosed: `243`
-- Tested: `240`
+- Rule count: `256`
+- Classified rules: `256`
+- Parsed: `226`
+- AST built: `210`
+- Diagnosed: `246`
+- Tested: `246`
 - Missing: `0`
 - Overall status: `green`
 
@@ -25,6 +25,9 @@
 | `export_decl` | yes | yes | yes | yes | no | parsed, ast-built, diagnosed, tested |
 | `const_decl` | yes | yes | yes | yes | no | parsed, ast-built, diagnosed, tested |
 | `static_decl` | yes | yes | yes | yes | no | parsed, ast-built, diagnosed, tested |
+| `region_decl` | yes | yes | yes | yes | no | parsed, ast-built, diagnosed, tested |
+| `region_kind` | yes | yes | yes | yes | no | parsed, ast-built, diagnosed, tested |
+| `region_capabilities` | yes | yes | yes | yes | no | parsed, ast-built, diagnosed, tested |
 | `type_alias_decl` | yes | yes | yes | yes | no | parsed, ast-built, diagnosed, tested |
 | `opaque_type_decl` | yes | yes | yes | yes | no | parsed, ast-built, diagnosed, tested |
 | `extern_type_decl` | yes | yes | yes | yes | no | parsed, ast-built, diagnosed, tested |
@@ -94,7 +97,7 @@
 | `requires_clause` | yes | yes | yes | yes | no | parsed, ast-built, diagnosed, tested |
 | `capability_list` | no | no | no | yes | no | tested |
 | `capability` | no | no | no | yes | no | tested |
-| `module_path` | no | no | yes | no | no | diagnosed |
+| `module_path` | no | no | yes | yes | no | diagnosed, tested |
 | `package_path` | no | no | yes | no | no | diagnosed |
 | `relative` | no | no | yes | no | no | diagnosed |
 | `package_parts` | yes | yes | yes | yes | no | parsed, ast-built, diagnosed, tested |
@@ -158,7 +161,7 @@
 | `or_expr` | yes | yes | yes | yes | no | parsed, ast-built, diagnosed, tested |
 | `and_expr` | yes | yes | yes | yes | no | parsed, ast-built, diagnosed, tested |
 | `bit_or_expr` | yes | yes | yes | yes | no | parsed, ast-built, diagnosed, tested |
-| `bit_xor_expr` | yes | yes | yes | no | no | parsed, ast-built, diagnosed |
+| `bit_xor_expr` | yes | yes | yes | yes | no | parsed, ast-built, diagnosed, tested |
 | `bit_and_expr` | yes | yes | yes | yes | no | parsed, ast-built, diagnosed, tested |
 | `eq_expr` | yes | yes | yes | yes | no | parsed, ast-built, diagnosed, tested |
 | `rel_expr` | no | no | no | yes | no | tested |
@@ -198,7 +201,7 @@
 | `match_expr` | yes | yes | yes | yes | no | parsed, ast-built, diagnosed, tested |
 | `lambda_expr` | no | yes | yes | yes | no | ast-built, diagnosed, tested |
 | `unsafe_expr` | yes | yes | yes | yes | no | parsed, ast-built, diagnosed, tested |
-| `builtin_expr` | no | no | yes | no | no | diagnosed |
+| `builtin_expr` | no | no | yes | yes | no | diagnosed, tested |
 | `sizeof_expr` | yes | yes | yes | yes | no | parsed, ast-built, diagnosed, tested |
 | `alignof_expr` | yes | yes | yes | yes | no | parsed, ast-built, diagnosed, tested |
 | `offsetof_expr` | yes | yes | yes | yes | no | parsed, ast-built, diagnosed, tested |

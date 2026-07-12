@@ -1,13 +1,13 @@
 {
   "grammar": "src/vitte/grammar/vitte.ebnf",
   "summary": {
-    "total_rules": 253,
+    "total_rules": 256,
     "lexical_rules": 26,
-    "classified_rules": 253,
-    "parsed_rules": 223,
-    "ast_built_rules": 207,
-    "diagnosed_rules": 243,
-    "tested_rules": 240,
+    "classified_rules": 256,
+    "parsed_rules": 226,
+    "ast_built_rules": 210,
+    "diagnosed_rules": 246,
+    "tested_rules": 246,
     "missing_rules": 0
   },
   "overall_status": "green",
@@ -112,7 +112,7 @@
     },
     {
       "rule": "toplevel",
-      "definition": "inner_attribute | space_decl | use_decl | export_decl | const_decl | static_decl | type_alias_decl | opaque_type_decl | extern_type_decl | form_decl | class_decl | union_decl | bits_decl | pick_decl | flags_decl | trait_decl | impl_decl | extern_block | proc_decl | intrinsic_decl | compiler_decl | query_decl | pass_decl | backend_decl | diagnostic_decl | macro_decl | static_assert_decl | test_decl | bench_decl | entry_decl ;",
+      "definition": "inner_attribute | space_decl | use_decl | export_decl | const_decl | static_decl | region_decl | type_alias_decl | opaque_type_decl | extern_type_decl | form_decl | class_decl | union_decl | bits_decl | pick_decl | flags_decl | trait_decl | impl_decl | extern_block | proc_decl | intrinsic_decl | compiler_decl | query_decl | pass_decl | backend_decl | diagnostic_decl | macro_decl | static_assert_decl | test_decl | bench_decl | entry_decl ;",
       "candidate_terms": [
         "toplevel",
         "inner_attribute",
@@ -121,6 +121,7 @@
         "export_decl",
         "const_decl",
         "static_decl",
+        "region_decl",
         "type_alias_decl",
         "opaque_type_decl",
         "extern_type_decl",
@@ -318,7 +319,7 @@
           ]
         },
         "tests": {
-          "hits": 1,
+          "hits": 2,
           "files": [
             "src/vitte/compiler/tests/architecture_integration_tests.vit",
             "src/vitte/compiler/tests/ast_tests.vit",
@@ -330,7 +331,8 @@
             "src/vitte/compiler/tests/diagnostic_snapshot_tests.vit"
           ],
           "terms": [
-            "space"
+            "space",
+            "module_path"
           ]
         },
         "lexer": {
@@ -1124,6 +1126,7 @@
           "files": [
             "src/vitte/compiler/tests/ast_tests.vit",
             "src/vitte/compiler/tests/c_backend_tests.vit",
+            "src/vitte/compiler/tests/llvm_tests.vit",
             "tests/bootstrap_native/shell.main_const_int.must",
             "tests/bootstrap_native/shell.main_proc.must",
             "tests/bootstrap_native/shell.named_consts.must",
@@ -1141,6 +1144,289 @@
           ],
           "terms": [
             "static"
+          ]
+        }
+      }
+    },
+    {
+      "rule": "region_decl",
+      "definition": "{ attr_prefix WS? } \"region\" WS1 ident [ WS? \":\" WS? region_kind ] [ WS? region_capabilities ] WS? meta_tail ;",
+      "candidate_terms": [
+        "region_decl",
+        "region",
+        "attr_prefix",
+        "region_kind",
+        "region_capabilities",
+        "meta_tail"
+      ],
+      "status": {
+        "lexical_rule": false,
+        "parsed": true,
+        "ast_built": true,
+        "diagnosed": true,
+        "tested": true,
+        "missing": false,
+        "classifications": [
+          "parsed",
+          "ast-built",
+          "diagnosed",
+          "tested"
+        ]
+      },
+      "evidence": {
+        "parser": {
+          "hits": 1,
+          "files": [
+            "src/vitte/compiler/frontend/grammar_alignment_checker.vit",
+            "src/vitte/compiler/frontend/parse/parser.vit",
+            "src/vitte/compiler/frontend/parse/recovery.vit"
+          ],
+          "terms": [
+            "region"
+          ]
+        },
+        "ast": {
+          "hits": 1,
+          "files": [
+            "src/vitte/compiler/frontend/ast/item.vit",
+            "src/vitte/compiler/frontend/ast/pretty.vit",
+            "src/vitte/compiler/frontend/parse/parser.vit"
+          ],
+          "terms": [
+            "region"
+          ]
+        },
+        "diagnostics": {
+          "hits": 1,
+          "files": [
+            "src/vitte/compiler/diagnostics/diagnostic.vit",
+            "src/vitte/compiler/frontend/ast/item.vit",
+            "src/vitte/compiler/frontend/ast/pretty.vit",
+            "src/vitte/compiler/frontend/grammar_alignment_checker.vit",
+            "src/vitte/compiler/frontend/lexer/errors.vit",
+            "src/vitte/compiler/frontend/lexer/literals.vit",
+            "src/vitte/compiler/frontend/parse/parser.vit",
+            "src/vitte/compiler/frontend/parse/recovery.vit"
+          ],
+          "terms": [
+            "region"
+          ]
+        },
+        "tests": {
+          "hits": 1,
+          "files": [
+            "src/vitte/compiler/tests/borrowck_tests.vit",
+            "src/vitte/compiler/tests/lexer_tests.vit",
+            "src/vitte/compiler/tests/parser_tests.vit"
+          ],
+          "terms": [
+            "region"
+          ]
+        },
+        "lexer": {
+          "hits": 1,
+          "files": [
+            "src/vitte/compiler/frontend/lexer/errors.vit",
+            "src/vitte/compiler/frontend/lexer/literals.vit"
+          ],
+          "terms": [
+            "region"
+          ]
+        }
+      }
+    },
+    {
+      "rule": "region_kind",
+      "definition": "\"stack\" | \"heap\" | \"arena\" | \"static\" | \"mmio\" | \"dma\" | ident ;",
+      "candidate_terms": [
+        "region_kind",
+        "region",
+        "stack",
+        "heap",
+        "arena",
+        "static",
+        "mmio",
+        "dma"
+      ],
+      "status": {
+        "lexical_rule": false,
+        "parsed": true,
+        "ast_built": true,
+        "diagnosed": true,
+        "tested": true,
+        "missing": false,
+        "classifications": [
+          "parsed",
+          "ast-built",
+          "diagnosed",
+          "tested"
+        ]
+      },
+      "evidence": {
+        "parser": {
+          "hits": 4,
+          "files": [
+            "src/vitte/compiler/frontend/grammar_alignment_checker.vit",
+            "src/vitte/compiler/frontend/parse/parser.vit",
+            "src/vitte/compiler/frontend/parse/recovery.vit"
+          ],
+          "terms": [
+            "region",
+            "static",
+            "mmio",
+            "dma"
+          ]
+        },
+        "ast": {
+          "hits": 4,
+          "files": [
+            "src/vitte/compiler/frontend/ast/item.vit",
+            "src/vitte/compiler/frontend/ast/pretty.vit",
+            "src/vitte/compiler/frontend/ast/stmt.vit",
+            "src/vitte/compiler/frontend/parse/parser.vit"
+          ],
+          "terms": [
+            "region",
+            "static",
+            "mmio",
+            "dma"
+          ]
+        },
+        "diagnostics": {
+          "hits": 4,
+          "files": [
+            "src/vitte/compiler/diagnostics/diagnostic.vit",
+            "src/vitte/compiler/frontend/ast/item.vit",
+            "src/vitte/compiler/frontend/ast/pretty.vit",
+            "src/vitte/compiler/frontend/ast/stmt.vit",
+            "src/vitte/compiler/frontend/grammar_alignment_checker.vit",
+            "src/vitte/compiler/frontend/lexer/errors.vit",
+            "src/vitte/compiler/frontend/lexer/literals.vit",
+            "src/vitte/compiler/frontend/parse/parser.vit"
+          ],
+          "terms": [
+            "region",
+            "static",
+            "mmio",
+            "dma"
+          ]
+        },
+        "tests": {
+          "hits": 5,
+          "files": [
+            "src/vitte/compiler/tests/borrowck_tests.vit",
+            "src/vitte/compiler/tests/c_backend_tests.vit",
+            "src/vitte/compiler/tests/lexer_tests.vit",
+            "src/vitte/compiler/tests/llvm_tests.vit",
+            "src/vitte/compiler/tests/parser_tests.vit",
+            "src/vitte/compiler/tests/pipeline_tests.vit",
+            "tests/bootstrap_native/shell.main_const_int.must",
+            "tests/bootstrap_native/shell.main_proc.must"
+          ],
+          "terms": [
+            "region",
+            "stack",
+            "heap",
+            "arena",
+            "static"
+          ]
+        },
+        "lexer": {
+          "hits": 4,
+          "files": [
+            "src/vitte/compiler/frontend/lexer/errors.vit",
+            "src/vitte/compiler/frontend/lexer/literals.vit"
+          ],
+          "terms": [
+            "region",
+            "static",
+            "mmio",
+            "dma"
+          ]
+        }
+      }
+    },
+    {
+      "rule": "region_capabilities",
+      "definition": "\"(\" WS? ident_list? WS? \")\" ;",
+      "candidate_terms": [
+        "region_capabilities",
+        "region",
+        "capabilities",
+        "ident_list"
+      ],
+      "status": {
+        "lexical_rule": false,
+        "parsed": true,
+        "ast_built": true,
+        "diagnosed": true,
+        "tested": true,
+        "missing": false,
+        "classifications": [
+          "parsed",
+          "ast-built",
+          "diagnosed",
+          "tested"
+        ]
+      },
+      "evidence": {
+        "parser": {
+          "hits": 1,
+          "files": [
+            "src/vitte/compiler/frontend/grammar_alignment_checker.vit",
+            "src/vitte/compiler/frontend/parse/parser.vit",
+            "src/vitte/compiler/frontend/parse/recovery.vit"
+          ],
+          "terms": [
+            "region"
+          ]
+        },
+        "ast": {
+          "hits": 1,
+          "files": [
+            "src/vitte/compiler/frontend/ast/item.vit",
+            "src/vitte/compiler/frontend/ast/pretty.vit",
+            "src/vitte/compiler/frontend/parse/parser.vit"
+          ],
+          "terms": [
+            "region"
+          ]
+        },
+        "diagnostics": {
+          "hits": 1,
+          "files": [
+            "src/vitte/compiler/diagnostics/diagnostic.vit",
+            "src/vitte/compiler/frontend/ast/item.vit",
+            "src/vitte/compiler/frontend/ast/pretty.vit",
+            "src/vitte/compiler/frontend/grammar_alignment_checker.vit",
+            "src/vitte/compiler/frontend/lexer/errors.vit",
+            "src/vitte/compiler/frontend/lexer/literals.vit",
+            "src/vitte/compiler/frontend/parse/parser.vit",
+            "src/vitte/compiler/frontend/parse/recovery.vit"
+          ],
+          "terms": [
+            "region"
+          ]
+        },
+        "tests": {
+          "hits": 1,
+          "files": [
+            "src/vitte/compiler/tests/borrowck_tests.vit",
+            "src/vitte/compiler/tests/lexer_tests.vit",
+            "src/vitte/compiler/tests/parser_tests.vit"
+          ],
+          "terms": [
+            "region"
+          ]
+        },
+        "lexer": {
+          "hits": 1,
+          "files": [
+            "src/vitte/compiler/frontend/lexer/errors.vit",
+            "src/vitte/compiler/frontend/lexer/literals.vit"
+          ],
+          "terms": [
+            "region"
           ]
         }
       }
@@ -1228,12 +1514,12 @@
           "files": [
             "src/vitte/compiler/tests/architecture_integration_tests.vit",
             "src/vitte/compiler/tests/ast_tests.vit",
+            "src/vitte/compiler/tests/borrowck_tests.vit",
             "src/vitte/compiler/tests/diagnostic_snapshot_tests.vit",
             "src/vitte/compiler/tests/frontend_fixtures/valid/ast.vit",
+            "src/vitte/compiler/tests/mir_tests.vit",
             "src/vitte/compiler/tests/pipeline_tests.vit",
-            "src/vitte/compiler/tests/sema_tests.vit",
-            "src/vitte/compiler/tests/typeck_tests.vit",
-            "tests/analysis/edge_pointer_alias.vit"
+            "src/vitte/compiler/tests/sema_tests.vit"
           ],
           "terms": [
             "alias",
@@ -1340,10 +1626,10 @@
             "src/vitte/compiler/tests/ast_tests.vit",
             "src/vitte/compiler/tests/diagnostic_snapshot_tests.vit",
             "src/vitte/compiler/tests/frontend_fixtures/valid/ast.vit",
+            "src/vitte/compiler/tests/mir_tests.vit",
             "src/vitte/compiler/tests/pipeline_tests.vit",
             "src/vitte/compiler/tests/sema_tests.vit",
-            "src/vitte/compiler/tests/typeck_tests.vit",
-            "tests/bootstrap_native/shell.main_const_int.must"
+            "src/vitte/compiler/tests/typeck_tests.vit"
           ],
           "terms": [
             "opaque",
@@ -1447,8 +1733,8 @@
             "src/vitte/compiler/tests/codegen_tests.vit",
             "src/vitte/compiler/tests/diagnostic_snapshot_tests.vit",
             "src/vitte/compiler/tests/frontend_fixtures/valid/ast.vit",
-            "src/vitte/compiler/tests/pipeline_tests.vit",
-            "src/vitte/compiler/tests/sema_tests.vit"
+            "src/vitte/compiler/tests/mir_tests.vit",
+            "src/vitte/compiler/tests/pipeline_tests.vit"
           ],
           "terms": [
             "extern",
@@ -2581,9 +2867,9 @@
             "src/vitte/compiler/tests/codegen_tests.vit",
             "src/vitte/compiler/tests/frontend_fixtures/valid/parser.vit",
             "src/vitte/compiler/tests/hir_tests.vit",
+            "src/vitte/compiler/tests/lexer_tests.vit",
             "src/vitte/compiler/tests/mir_tests.vit",
-            "src/vitte/compiler/tests/sema_tests.vit",
-            "src/vitte/compiler/tests/typeck_tests.vit"
+            "src/vitte/compiler/tests/sema_tests.vit"
           ],
           "terms": [
             ".."
@@ -3541,10 +3827,10 @@
             "src/vitte/compiler/tests/ast_tests.vit",
             "src/vitte/compiler/tests/diagnostic_snapshot_tests.vit",
             "src/vitte/compiler/tests/frontend_fixtures/valid/ast.vit",
+            "src/vitte/compiler/tests/mir_tests.vit",
             "src/vitte/compiler/tests/pipeline_tests.vit",
             "src/vitte/compiler/tests/sema_tests.vit",
-            "src/vitte/compiler/tests/typeck_tests.vit",
-            "tests/bootstrap_native/shell.main_const_int.must"
+            "src/vitte/compiler/tests/typeck_tests.vit"
           ],
           "terms": [
             "type",
@@ -3966,11 +4252,11 @@
             "src/vitte/compiler/tests/architecture_integration_tests.vit",
             "src/vitte/compiler/tests/ast_tests.vit",
             "src/vitte/compiler/tests/borrowck_tests.vit",
+            "src/vitte/compiler/tests/bridge_diag_demo.vit",
             "src/vitte/compiler/tests/c_backend_tests.vit",
             "src/vitte/compiler/tests/chaos_tests.vit",
             "src/vitte/compiler/tests/codegen_tests.vit",
-            "src/vitte/compiler/tests/const_eval_tests.vit",
-            "src/vitte/compiler/tests/diagnostic_snapshot_tests.vit"
+            "src/vitte/compiler/tests/const_eval_tests.vit"
           ],
           "terms": [
             "signature",
@@ -4097,11 +4383,11 @@
             "src/vitte/compiler/tests/architecture_integration_tests.vit",
             "src/vitte/compiler/tests/ast_tests.vit",
             "src/vitte/compiler/tests/borrowck_tests.vit",
+            "src/vitte/compiler/tests/bridge_diag_demo.vit",
             "src/vitte/compiler/tests/c_backend_tests.vit",
             "src/vitte/compiler/tests/chaos_tests.vit",
             "src/vitte/compiler/tests/codegen_tests.vit",
-            "src/vitte/compiler/tests/const_eval_tests.vit",
-            "src/vitte/compiler/tests/diagnostic_snapshot_tests.vit"
+            "src/vitte/compiler/tests/const_eval_tests.vit"
           ],
           "terms": [
             "proc_decl",
@@ -4210,8 +4496,8 @@
             "src/vitte/compiler/tests/chaos_tests.vit",
             "src/vitte/compiler/tests/codegen_tests.vit",
             "src/vitte/compiler/tests/hir_tests.vit",
-            "src/vitte/compiler/tests/mir_tests.vit",
-            "src/vitte/compiler/tests/parser_tests.vit"
+            "src/vitte/compiler/tests/llvm_tests.vit",
+            "src/vitte/compiler/tests/mir_tests.vit"
           ],
           "terms": [
             "proc_name",
@@ -4335,11 +4621,11 @@
             "src/vitte/compiler/tests/architecture_integration_tests.vit",
             "src/vitte/compiler/tests/ast_tests.vit",
             "src/vitte/compiler/tests/borrowck_tests.vit",
+            "src/vitte/compiler/tests/bridge_diag_demo.vit",
             "src/vitte/compiler/tests/c_backend_tests.vit",
             "src/vitte/compiler/tests/chaos_tests.vit",
             "src/vitte/compiler/tests/codegen_tests.vit",
-            "src/vitte/compiler/tests/const_eval_tests.vit",
-            "src/vitte/compiler/tests/diagnostic_snapshot_tests.vit"
+            "src/vitte/compiler/tests/const_eval_tests.vit"
           ],
           "terms": [
             "operator",
@@ -4868,11 +5154,11 @@
             "src/vitte/compiler/tests/architecture_integration_tests.vit",
             "src/vitte/compiler/tests/ast_tests.vit",
             "src/vitte/compiler/tests/borrowck_tests.vit",
+            "src/vitte/compiler/tests/bridge_diag_demo.vit",
             "src/vitte/compiler/tests/c_backend_tests.vit",
             "src/vitte/compiler/tests/chaos_tests.vit",
             "src/vitte/compiler/tests/codegen_tests.vit",
-            "src/vitte/compiler/tests/const_eval_tests.vit",
-            "src/vitte/compiler/tests/diagnostic_snapshot_tests.vit"
+            "src/vitte/compiler/tests/const_eval_tests.vit"
           ],
           "terms": [
             "extern",
@@ -5308,7 +5594,7 @@
           ]
         },
         "tests": {
-          "hits": 31,
+          "hits": 32,
           "files": [
             "docs/book/grammar/diagnostics/expected/core-recovery-top-level-sync-01.json",
             "docs/book/grammar/diagnostics/expected/recovery_strict_core_unsafe.json",
@@ -5709,11 +5995,11 @@
             "docs/book/grammar/diagnostics/expected/recovery_strict_core_unsafe.json",
             "src/vitte/compiler/tests/architecture_integration_tests.vit",
             "src/vitte/compiler/tests/ast_tests.vit",
+            "src/vitte/compiler/tests/codegen_tests.vit",
             "src/vitte/compiler/tests/diagnostic_snapshot_tests.vit",
             "src/vitte/compiler/tests/frontend_fixtures/valid/ast.vit",
             "src/vitte/compiler/tests/hir_tests.vit",
-            "src/vitte/compiler/tests/mir_tests.vit",
-            "src/vitte/compiler/tests/parser_tests.vit"
+            "src/vitte/compiler/tests/lexer_tests.vit"
           ],
           "terms": [
             "macro",
@@ -5811,6 +6097,8 @@
           "hits": 3,
           "files": [
             "src/vitte/compiler/tests/c_backend_tests.vit",
+            "src/vitte/compiler/tests/const_eval_tests.vit",
+            "src/vitte/compiler/tests/llvm_tests.vit",
             "tests/bootstrap_native/shell.main_const_int.must",
             "tests/bootstrap_native/shell.main_proc.must",
             "tests/bootstrap_native/shell.named_consts.must",
@@ -6076,10 +6364,10 @@
             "src/vitte/compiler/tests/frontend_fixtures/valid/ast.vit",
             "src/vitte/compiler/tests/frontend_fixtures/valid/lexer.vit",
             "src/vitte/compiler/tests/lexer_tests.vit",
+            "src/vitte/compiler/tests/mir_tests.vit",
             "src/vitte/compiler/tests/parser_tests.vit",
             "tests/bootstrap_native/cli.build_native_subset.fr.err.must",
-            "tests/bootstrap_native/shell.main_const_int.must",
-            "tests/bootstrap_native/shell.main_proc.must"
+            "tests/bootstrap_native/shell.main_const_int.must"
           ],
           "terms": [
             "entry",
@@ -6167,6 +6455,7 @@
             "src/vitte/compiler/tests/ast_tests.vit",
             "src/vitte/compiler/tests/codegen_tests.vit",
             "src/vitte/compiler/tests/frontend_fixtures/valid/ast.vit",
+            "src/vitte/compiler/tests/sema_tests.vit",
             "tests/frontend_syntax/valid/full_grammar_surface.vit"
           ],
           "terms": [
@@ -7313,10 +7602,10 @@
             "src/vitte/compiler/tests/c_backend_tests.vit",
             "src/vitte/compiler/tests/codegen_tests.vit",
             "src/vitte/compiler/tests/hir_tests.vit",
+            "src/vitte/compiler/tests/lexer_tests.vit",
             "src/vitte/compiler/tests/mir_tests.vit",
             "src/vitte/compiler/tests/typeck_tests.vit",
-            "tests/bootstrap_native/bad_bool_const.err.must",
-            "tests/bootstrap_native/bad_const_signature.err.must"
+            "tests/bootstrap_native/bad_bool_const.err.must"
           ],
           "terms": [
             "variadic",
@@ -7719,10 +8008,11 @@
         "parsed": false,
         "ast_built": false,
         "diagnosed": true,
-        "tested": false,
+        "tested": true,
         "missing": false,
         "classifications": [
-          "diagnosed"
+          "diagnosed",
+          "tested"
         ]
       },
       "evidence": {
@@ -7746,9 +8036,13 @@
           ]
         },
         "tests": {
-          "hits": 0,
-          "files": [],
-          "terms": []
+          "hits": 1,
+          "files": [
+            "src/vitte/compiler/tests/sema_tests.vit"
+          ],
+          "terms": [
+            "module_path"
+          ]
         },
         "lexer": {
           "hits": 0,
@@ -7919,11 +8213,11 @@
             "src/vitte/compiler/tests/c_backend_tests.vit",
             "src/vitte/compiler/tests/codegen_tests.vit",
             "src/vitte/compiler/tests/frontend_fixtures/valid/ast.vit",
+            "src/vitte/compiler/tests/lexer_tests.vit",
             "src/vitte/compiler/tests/mir_tests.vit",
             "src/vitte/compiler/tests/pipeline_tests.vit",
-            "tests/bootstrap_native/shell.main_const_int.must",
-            "tests/bootstrap_native/shell.main_proc.must",
-            "tests/bootstrap_native/shell.named_consts.must"
+            "src/vitte/compiler/tests/sema_tests.vit",
+            "tests/bootstrap_native/shell.main_const_int.must"
           ],
           "terms": [
             "parts",
@@ -8080,11 +8374,11 @@
             "src/vitte/compiler/tests/architecture_integration_tests.vit",
             "src/vitte/compiler/tests/ast_tests.vit",
             "src/vitte/compiler/tests/borrowck_tests.vit",
+            "src/vitte/compiler/tests/bridge_diag_demo.vit",
             "src/vitte/compiler/tests/c_backend_tests.vit",
             "src/vitte/compiler/tests/chaos_tests.vit",
             "src/vitte/compiler/tests/codegen_tests.vit",
-            "src/vitte/compiler/tests/const_eval_tests.vit",
-            "src/vitte/compiler/tests/diagnostic_snapshot_tests.vit"
+            "src/vitte/compiler/tests/const_eval_tests.vit"
           ],
           "terms": [
             "query",
@@ -8467,7 +8761,7 @@
             "src/vitte/compiler/tests/codegen_tests.vit",
             "src/vitte/compiler/tests/diagnostic_snapshot_tests.vit",
             "src/vitte/compiler/tests/frontend_fixtures/valid/ast.vit",
-            "src/vitte/compiler/tests/pipeline_tests.vit"
+            "src/vitte/compiler/tests/llvm_tests.vit"
           ],
           "terms": [
             "backend",
@@ -8562,8 +8856,8 @@
             "src/vitte/compiler/tests/frontend_fixtures/valid/ast.vit",
             "src/vitte/compiler/tests/lexer_tests.vit",
             "src/vitte/compiler/tests/pipeline_tests.vit",
-            "src/vitte/compiler/tests/typeck_tests.vit",
-            "tests/bootstrap_native/help.vittec.must"
+            "src/vitte/compiler/tests/sema_tests.vit",
+            "src/vitte/compiler/tests/typeck_tests.vit"
           ],
           "terms": [
             "diagnostic",
@@ -8747,7 +9041,7 @@
           ]
         },
         "tests": {
-          "hits": 2,
+          "hits": 3,
           "files": [
             "src/vitte/compiler/tests/architecture_integration_tests.vit",
             "src/vitte/compiler/tests/ast_tests.vit",
@@ -8760,6 +9054,7 @@
           ],
           "terms": [
             "meta_args",
+            "meta",
             "args"
           ]
         },
@@ -8817,8 +9112,10 @@
           ]
         },
         "tests": {
-          "hits": 1,
+          "hits": 2,
           "files": [
+            "src/vitte/compiler/tests/llvm_tests.vit",
+            "src/vitte/compiler/tests/mir_tests.vit",
             "tests/bootstrap_native/bad_proc_signature.vit",
             "tests/bootstrap_native/bad_proc_signature_column.vit",
             "tests/bootstrap_native/shell.main_const_int.must",
@@ -8826,6 +9123,7 @@
             "tests/bootstrap_native/shell.named_consts.must"
           ],
           "terms": [
+            "meta",
             "arg"
           ]
         },
@@ -8883,8 +9181,10 @@
           ]
         },
         "tests": {
-          "hits": 1,
+          "hits": 2,
           "files": [
+            "src/vitte/compiler/tests/llvm_tests.vit",
+            "src/vitte/compiler/tests/mir_tests.vit",
             "tests/bootstrap_native/bad_proc_signature.vit",
             "tests/bootstrap_native/bad_proc_signature_column.vit",
             "tests/bootstrap_native/shell.main_const_int.must",
@@ -8892,6 +9192,7 @@
             "tests/bootstrap_native/shell.named_consts.must"
           ],
           "terms": [
+            "meta",
             "arg"
           ]
         },
@@ -8957,13 +9258,15 @@
           ]
         },
         "tests": {
-          "hits": 1,
+          "hits": 2,
           "files": [
+            "src/vitte/compiler/tests/llvm_tests.vit",
             "tests/bootstrap_native/shell.main_const_int.must",
             "tests/bootstrap_native/shell.main_proc.must",
             "tests/bootstrap_native/shell.named_consts.must"
           ],
           "terms": [
+            "meta",
             "tail"
           ]
         },
@@ -9120,6 +9423,7 @@
         "tests": {
           "hits": 2,
           "files": [
+            "src/vitte/compiler/tests/borrowck_tests.vit",
             "src/vitte/compiler/tests/frontend_fixtures/invalid/parser.vit",
             "src/vitte/compiler/tests/frontend_fixtures/valid/ast.vit",
             "tests/frontend_syntax/invalid/standalone_attribute.vit",
@@ -9453,6 +9757,7 @@
         "tests": {
           "hits": 1,
           "files": [
+            "src/vitte/compiler/tests/mir_tests.vit",
             "tests/bootstrap_native/bad_proc_signature.vit",
             "tests/bootstrap_native/bad_proc_signature_column.vit",
             "tests/bootstrap_native/shell.main_const_int.must",
@@ -9540,13 +9845,13 @@
           "hits": 2,
           "files": [
             "src/vitte/compiler/tests/diagnostic_snapshot_tests.vit",
+            "src/vitte/compiler/tests/mir_tests.vit",
             "tests/bootstrap_native/bad_int_proc_body.err.must",
             "tests/bootstrap_native/bad_proc_signature.vit",
             "tests/bootstrap_native/bad_proc_signature_column.vit",
             "tests/bootstrap_native/shell.main_const_int.must",
             "tests/bootstrap_native/shell.main_proc.must",
-            "tests/bootstrap_native/shell.named_consts.must",
-            "tests/diag_snapshots/unterminated_string.json.must"
+            "tests/bootstrap_native/shell.named_consts.must"
           ],
           "terms": [
             "arg",
@@ -9626,14 +9931,14 @@
         "tests": {
           "hits": 1,
           "files": [
+            "src/vitte/compiler/tests/codegen_tests.vit",
             "src/vitte/compiler/tests/diagnostic_snapshot_tests.vit",
+            "src/vitte/compiler/tests/lexer_tests.vit",
             "src/vitte/compiler/tests/mir_tests.vit",
             "src/vitte/compiler/tests/pipeline_tests.vit",
             "tests/bootstrap_native/shell.main_const_int.must",
             "tests/bootstrap_native/shell.main_proc.must",
-            "tests/bootstrap_native/shell.named_consts.must",
-            "tests/diag_snapshots/unclosed_block.json.must",
-            "tests/diag_snapshots/unclosed_block.must"
+            "tests/bootstrap_native/shell.named_consts.must"
           ],
           "terms": [
             "block"
@@ -9851,13 +10156,13 @@
           "hits": 2,
           "files": [
             "src/vitte/compiler/tests/c_backend_tests.vit",
+            "src/vitte/compiler/tests/lexer_tests.vit",
             "src/vitte/compiler/tests/parser_tests.vit",
             "tests/bootstrap_native/shell.main_const_int.must",
             "tests/bootstrap_native/shell.main_proc.must",
             "tests/bootstrap_native/shell.named_consts.must",
             "tests/diag_snapshots/unclosed_block.must",
-            "tests/diag_snapshots/unterminated_string.json.must",
-            "tests/diag_snapshots/unterminated_string.must"
+            "tests/diag_snapshots/unterminated_string.json.must"
           ],
           "terms": [
             "end",
@@ -10097,11 +10402,11 @@
             "src/vitte/compiler/tests/architecture_integration_tests.vit",
             "src/vitte/compiler/tests/ast_tests.vit",
             "src/vitte/compiler/tests/borrowck_tests.vit",
+            "src/vitte/compiler/tests/bridge_diag_demo.vit",
             "src/vitte/compiler/tests/c_backend_tests.vit",
             "src/vitte/compiler/tests/chaos_tests.vit",
             "src/vitte/compiler/tests/codegen_tests.vit",
-            "src/vitte/compiler/tests/const_eval_tests.vit",
-            "src/vitte/compiler/tests/diagnostic_snapshot_tests.vit"
+            "src/vitte/compiler/tests/const_eval_tests.vit"
           ],
           "terms": [
             "let_stmt",
@@ -10210,11 +10515,11 @@
             "src/vitte/compiler/tests/architecture_integration_tests.vit",
             "src/vitte/compiler/tests/ast_tests.vit",
             "src/vitte/compiler/tests/borrowck_tests.vit",
+            "src/vitte/compiler/tests/bridge_diag_demo.vit",
             "src/vitte/compiler/tests/c_backend_tests.vit",
             "src/vitte/compiler/tests/chaos_tests.vit",
             "src/vitte/compiler/tests/codegen_tests.vit",
-            "src/vitte/compiler/tests/const_eval_tests.vit",
-            "src/vitte/compiler/tests/diagnostic_snapshot_tests.vit"
+            "src/vitte/compiler/tests/const_eval_tests.vit"
           ],
           "terms": [
             "set_stmt",
@@ -10310,9 +10615,9 @@
             "src/vitte/compiler/tests/chaos_tests.vit",
             "src/vitte/compiler/tests/codegen_tests.vit",
             "src/vitte/compiler/tests/diagnostic_snapshot_tests.vit",
+            "src/vitte/compiler/tests/llvm_tests.vit",
             "src/vitte/compiler/tests/mir_tests.vit",
-            "src/vitte/compiler/tests/pipeline_tests.vit",
-            "src/vitte/compiler/tests/typeck_tests.vit"
+            "src/vitte/compiler/tests/pipeline_tests.vit"
           ],
           "terms": [
             "assign",
@@ -10406,11 +10711,11 @@
             "src/vitte/compiler/tests/architecture_integration_tests.vit",
             "src/vitte/compiler/tests/ast_tests.vit",
             "src/vitte/compiler/tests/borrowck_tests.vit",
+            "src/vitte/compiler/tests/bridge_diag_demo.vit",
             "src/vitte/compiler/tests/c_backend_tests.vit",
             "src/vitte/compiler/tests/chaos_tests.vit",
             "src/vitte/compiler/tests/codegen_tests.vit",
-            "src/vitte/compiler/tests/const_eval_tests.vit",
-            "src/vitte/compiler/tests/diagnostic_snapshot_tests.vit"
+            "src/vitte/compiler/tests/const_eval_tests.vit"
           ],
           "terms": [
             "give"
@@ -10719,6 +11024,7 @@
         "tests": {
           "hits": 2,
           "files": [
+            "src/vitte/compiler/tests/mir_tests.vit",
             "tests/bootstrap_native/bad_proc_signature.vit",
             "tests/bootstrap_native/bad_proc_signature_column.vit",
             "tests/bootstrap_native/shell.main_const_int.must",
@@ -10802,6 +11108,7 @@
         "tests": {
           "hits": 2,
           "files": [
+            "src/vitte/compiler/tests/mir_tests.vit",
             "tests/bootstrap_native/bad_proc_signature.vit",
             "tests/bootstrap_native/bad_proc_signature_column.vit",
             "tests/bootstrap_native/shell.main_const_int.must",
@@ -12060,13 +12367,13 @@
           "hits": 3,
           "files": [
             "src/vitte/compiler/tests/frontend_fixtures/valid/ast.vit",
+            "src/vitte/compiler/tests/lexer_tests.vit",
             "src/vitte/compiler/tests/typeck_tests.vit",
             "tests/bootstrap_native/shell.main_const_int.must",
             "tests/bootstrap_native/shell.main_proc.must",
             "tests/bootstrap_native/shell.named_consts.must",
             "tests/driver_report_runtime/check_fixture.vit",
-            "tests/frontend_syntax/invalid/bad_type_pattern.vit",
-            "tests/frontend_syntax/valid/full_grammar_surface.vit"
+            "tests/frontend_syntax/invalid/bad_type_pattern.vit"
           ],
           "terms": [
             "match",
@@ -12608,6 +12915,8 @@
           "hits": 1,
           "files": [
             "src/vitte/compiler/tests/diagnostic_snapshot_tests.vit",
+            "src/vitte/compiler/tests/mir_tests.vit",
+            "src/vitte/compiler/tests/typeck_tests.vit",
             "tests/bootstrap_native/shell.main_const_int.must",
             "tests/bootstrap_native/shell.main_proc.must",
             "tests/bootstrap_native/shell.named_consts.must",
@@ -12725,16 +13034,16 @@
           ]
         },
         "tests": {
-          "hits": 8,
+          "hits": 11,
           "files": [
             "src/vitte/compiler/tests/diagnostic_snapshot_tests.vit",
             "src/vitte/compiler/tests/lexer_tests.vit",
+            "src/vitte/compiler/tests/mir_tests.vit",
+            "src/vitte/compiler/tests/typeck_tests.vit",
             "tests/bootstrap_native/shell.main_const_int.must",
             "tests/bootstrap_native/shell.main_proc.must",
             "tests/bootstrap_native/shell.named_consts.must",
-            "tests/diag_snapshots/type_mismatch.json.must",
-            "tests/diag_snapshots/type_mismatch.must",
-            "tests/frontend_syntax/valid/full_grammar_surface.vit"
+            "tests/diag_snapshots/type_mismatch.json.must"
           ],
           "terms": [
             "assign",
@@ -12742,6 +13051,9 @@
             "-=",
             "*=",
             "/=",
+            "%=",
+            "&=",
+            "|=",
             "^=",
             "<<=",
             ">>="
@@ -12829,18 +13141,19 @@
           ]
         },
         "tests": {
-          "hits": 1,
+          "hits": 2,
           "files": [
             "src/vitte/compiler/tests/codegen_tests.vit",
+            "src/vitte/compiler/tests/lexer_tests.vit",
             "src/vitte/compiler/tests/pipeline_tests.vit",
             "tests/bootstrap_native/shell.main_const_int.must",
             "tests/bootstrap_native/shell.main_proc.must",
             "tests/bootstrap_native/shell.named_consts.must",
             "tests/bootstrap_native/strict_diag_json.parse.bad_unknown_const.err.must",
-            "tests/diag_snapshots/binary_mismatch.json.must",
-            "tests/diag_snapshots/condition_type.json.must"
+            "tests/diag_snapshots/binary_mismatch.json.must"
           ],
           "terms": [
+            "\"?\"",
             "\":\""
           ]
         },
@@ -12912,6 +13225,7 @@
         "tests": {
           "hits": 1,
           "files": [
+            "src/vitte/compiler/tests/lexer_tests.vit",
             "tests/frontend_syntax/valid/full_grammar_surface.vit"
           ],
           "terms": [
@@ -13001,19 +13315,20 @@
           ]
         },
         "tests": {
-          "hits": 1,
+          "hits": 2,
           "files": [
             "src/vitte/compiler/tests/architecture_integration_tests.vit",
             "src/vitte/compiler/tests/c_backend_tests.vit",
             "src/vitte/compiler/tests/codegen_tests.vit",
             "src/vitte/compiler/tests/frontend_fixtures/valid/parser.vit",
             "src/vitte/compiler/tests/hir_tests.vit",
+            "src/vitte/compiler/tests/lexer_tests.vit",
             "src/vitte/compiler/tests/mir_tests.vit",
-            "src/vitte/compiler/tests/sema_tests.vit",
-            "src/vitte/compiler/tests/typeck_tests.vit"
+            "src/vitte/compiler/tests/sema_tests.vit"
           ],
           "terms": [
-            ".."
+            "..",
+            "..="
           ]
         },
         "lexer": {
@@ -13359,12 +13674,13 @@
         "parsed": true,
         "ast_built": true,
         "diagnosed": true,
-        "tested": false,
+        "tested": true,
         "missing": false,
         "classifications": [
           "parsed",
           "ast-built",
-          "diagnosed"
+          "diagnosed",
+          "tested"
         ]
       },
       "evidence": {
@@ -13403,9 +13719,13 @@
           ]
         },
         "tests": {
-          "hits": 0,
-          "files": [],
-          "terms": []
+          "hits": 1,
+          "files": [
+            "src/vitte/compiler/tests/lexer_tests.vit"
+          ],
+          "terms": [
+            "\"^\""
+          ]
         },
         "lexer": {
           "hits": 1,
@@ -14037,14 +14357,17 @@
           ]
         },
         "tests": {
-          "hits": 1,
+          "hits": 3,
           "files": [
+            "src/vitte/compiler/tests/lexer_tests.vit",
             "tests/bootstrap_native/shell.main_const_int.must",
             "tests/bootstrap_native/shell.main_proc.must",
             "tests/bootstrap_native/shell.named_consts.must"
           ],
           "terms": [
-            "\"/\""
+            "\"*\"",
+            "\"/\"",
+            "\"%\""
           ]
         },
         "lexer": {
@@ -14764,6 +15087,7 @@
         "tests": {
           "hits": 2,
           "files": [
+            "src/vitte/compiler/tests/lexer_tests.vit",
             "src/vitte/compiler/tests/typeck_tests.vit",
             "tests/bootstrap_native/shell.main_const_int.must",
             "tests/bootstrap_native/shell.main_proc.must",
@@ -15024,6 +15348,7 @@
         "tests": {
           "hits": 1,
           "files": [
+            "src/vitte/compiler/tests/lexer_tests.vit",
             "src/vitte/compiler/tests/typeck_tests.vit",
             "tests/bootstrap_native/shell.main_const_int.must",
             "tests/bootstrap_native/shell.main_proc.must",
@@ -15308,10 +15633,10 @@
             "src/vitte/compiler/tests/c_backend_tests.vit",
             "src/vitte/compiler/tests/codegen_tests.vit",
             "src/vitte/compiler/tests/frontend_fixtures/valid/ast.vit",
+            "src/vitte/compiler/tests/lexer_tests.vit",
             "src/vitte/compiler/tests/mir_tests.vit",
             "src/vitte/compiler/tests/pipeline_tests.vit",
-            "tests/bootstrap_native/cli.build_native_missing_src.err.must",
-            "tests/bootstrap_native/cli.build_stage1_missing_src.err.must"
+            "src/vitte/compiler/tests/sema_tests.vit"
           ],
           "terms": [
             "path",
@@ -15366,6 +15691,7 @@
         "tests": {
           "hits": 1,
           "files": [
+            "src/vitte/compiler/tests/mir_tests.vit",
             "tests/bootstrap_native/bad_proc_signature.vit",
             "tests/bootstrap_native/bad_proc_signature_column.vit",
             "tests/bootstrap_native/shell.main_const_int.must",
@@ -15419,6 +15745,7 @@
         "tests": {
           "hits": 1,
           "files": [
+            "src/vitte/compiler/tests/mir_tests.vit",
             "tests/bootstrap_native/bad_proc_signature.vit",
             "tests/bootstrap_native/bad_proc_signature_column.vit",
             "tests/bootstrap_native/shell.main_const_int.must",
@@ -15583,11 +15910,11 @@
             "src/vitte/compiler/tests/architecture_integration_tests.vit",
             "src/vitte/compiler/tests/ast_tests.vit",
             "src/vitte/compiler/tests/borrowck_tests.vit",
+            "src/vitte/compiler/tests/bridge_diag_demo.vit",
             "src/vitte/compiler/tests/c_backend_tests.vit",
             "src/vitte/compiler/tests/chaos_tests.vit",
             "src/vitte/compiler/tests/codegen_tests.vit",
-            "src/vitte/compiler/tests/const_eval_tests.vit",
-            "src/vitte/compiler/tests/diagnostic_snapshot_tests.vit"
+            "src/vitte/compiler/tests/const_eval_tests.vit"
           ],
           "terms": [
             "set"
@@ -15916,11 +16243,11 @@
             "src/vitte/compiler/tests/frontend_token_contract_tests.vit",
             "src/vitte/compiler/tests/lexer_tests.vit",
             "src/vitte/compiler/tests/pipeline_tests.vit",
+            "src/vitte/compiler/tests/sema_tests.vit",
             "tests/bootstrap_native/shell.main_const_int.must",
             "tests/bootstrap_native/shell.main_proc.must",
             "tests/bootstrap_native/shell.named_consts.must",
-            "tests/frontend_syntax/valid/full_grammar_surface.vit",
-            "tests/truth_triangle/native_surface/pattern_result_metrics.vit"
+            "tests/frontend_syntax/valid/full_grammar_surface.vit"
           ],
           "terms": [
             "bytes",
@@ -16319,10 +16646,10 @@
             "src/vitte/compiler/tests/c_backend_tests.vit",
             "src/vitte/compiler/tests/codegen_tests.vit",
             "src/vitte/compiler/tests/frontend_fixtures/valid/ast.vit",
+            "src/vitte/compiler/tests/lexer_tests.vit",
             "src/vitte/compiler/tests/mir_tests.vit",
             "src/vitte/compiler/tests/pipeline_tests.vit",
-            "tests/bootstrap_native/cli.build_native_missing_src.err.must",
-            "tests/bootstrap_native/cli.build_stage1_missing_src.err.must"
+            "src/vitte/compiler/tests/sema_tests.vit"
           ],
           "terms": [
             "path",
@@ -16482,9 +16809,9 @@
             "src/vitte/compiler/tests/codegen_tests.vit",
             "src/vitte/compiler/tests/frontend_fixtures/valid/parser.vit",
             "src/vitte/compiler/tests/hir_tests.vit",
+            "src/vitte/compiler/tests/lexer_tests.vit",
             "src/vitte/compiler/tests/mir_tests.vit",
-            "src/vitte/compiler/tests/sema_tests.vit",
-            "src/vitte/compiler/tests/typeck_tests.vit"
+            "src/vitte/compiler/tests/sema_tests.vit"
           ],
           "terms": [
             ".."
@@ -16702,11 +17029,11 @@
             "src/vitte/compiler/tests/architecture_integration_tests.vit",
             "src/vitte/compiler/tests/ast_tests.vit",
             "src/vitte/compiler/tests/borrowck_tests.vit",
+            "src/vitte/compiler/tests/bridge_diag_demo.vit",
             "src/vitte/compiler/tests/c_backend_tests.vit",
             "src/vitte/compiler/tests/chaos_tests.vit",
             "src/vitte/compiler/tests/codegen_tests.vit",
-            "src/vitte/compiler/tests/const_eval_tests.vit",
-            "src/vitte/compiler/tests/diagnostic_snapshot_tests.vit"
+            "src/vitte/compiler/tests/const_eval_tests.vit"
           ],
           "terms": [
             "proc",
@@ -17008,10 +17335,11 @@
         "parsed": false,
         "ast_built": false,
         "diagnosed": true,
-        "tested": false,
+        "tested": true,
         "missing": false,
         "classifications": [
-          "diagnosed"
+          "diagnosed",
+          "tested"
         ]
       },
       "evidence": {
@@ -17037,9 +17365,13 @@
           ]
         },
         "tests": {
-          "hits": 0,
-          "files": [],
-          "terms": []
+          "hits": 1,
+          "files": [
+            "src/vitte/compiler/tests/sema_tests.vit"
+          ],
+          "terms": [
+            "builtin"
+          ]
         },
         "lexer": {
           "hits": 0,
@@ -17967,11 +18299,11 @@
             "src/vitte/compiler/tests/c_backend_tests.vit",
             "src/vitte/compiler/tests/codegen_tests.vit",
             "src/vitte/compiler/tests/frontend_fixtures/valid/ast.vit",
+            "src/vitte/compiler/tests/lexer_tests.vit",
             "src/vitte/compiler/tests/mir_tests.vit",
             "src/vitte/compiler/tests/pipeline_tests.vit",
-            "tests/bootstrap_native/shell.main_const_int.must",
-            "tests/bootstrap_native/shell.main_proc.must",
-            "tests/bootstrap_native/shell.named_consts.must"
+            "src/vitte/compiler/tests/sema_tests.vit",
+            "tests/bootstrap_native/shell.main_const_int.must"
           ],
           "terms": [
             "::"
@@ -18268,9 +18600,9 @@
             "src/vitte/compiler/tests/codegen_tests.vit",
             "src/vitte/compiler/tests/frontend_fixtures/valid/parser.vit",
             "src/vitte/compiler/tests/hir_tests.vit",
+            "src/vitte/compiler/tests/lexer_tests.vit",
             "src/vitte/compiler/tests/mir_tests.vit",
-            "src/vitte/compiler/tests/sema_tests.vit",
-            "src/vitte/compiler/tests/typeck_tests.vit"
+            "src/vitte/compiler/tests/sema_tests.vit"
           ],
           "terms": [
             ".."
@@ -18521,7 +18853,7 @@
           ]
         },
         "tests": {
-          "hits": 2,
+          "hits": 3,
           "files": [
             "src/vitte/compiler/tests/architecture_integration_tests.vit",
             "src/vitte/compiler/tests/c_backend_tests.vit",
@@ -18529,11 +18861,12 @@
             "src/vitte/compiler/tests/diagnostic_snapshot_tests.vit",
             "src/vitte/compiler/tests/frontend_fixtures/valid/parser.vit",
             "src/vitte/compiler/tests/hir_tests.vit",
-            "src/vitte/compiler/tests/mir_tests.vit",
-            "src/vitte/compiler/tests/sema_tests.vit"
+            "src/vitte/compiler/tests/lexer_tests.vit",
+            "src/vitte/compiler/tests/mir_tests.vit"
           ],
           "terms": [
             "..",
+            "..=",
             "literal"
           ]
         },
@@ -18636,10 +18969,10 @@
             "src/vitte/compiler/tests/ast_tests.vit",
             "src/vitte/compiler/tests/diagnostic_snapshot_tests.vit",
             "src/vitte/compiler/tests/frontend_fixtures/valid/ast.vit",
+            "src/vitte/compiler/tests/mir_tests.vit",
             "src/vitte/compiler/tests/pipeline_tests.vit",
             "src/vitte/compiler/tests/sema_tests.vit",
-            "src/vitte/compiler/tests/typeck_tests.vit",
-            "tests/bootstrap_native/shell.main_const_int.must"
+            "src/vitte/compiler/tests/typeck_tests.vit"
           ],
           "terms": [
             "type_expr",
@@ -18904,6 +19237,7 @@
         "tests": {
           "hits": 3,
           "files": [
+            "src/vitte/compiler/tests/borrowck_tests.vit",
             "src/vitte/compiler/tests/codegen_tests.vit",
             "src/vitte/compiler/tests/hir_tests.vit",
             "src/vitte/compiler/tests/mir_tests.vit",
@@ -19238,7 +19572,7 @@
       },
       "evidence": {
         "parser": {
-          "hits": 8,
+          "hits": 9,
           "files": [
             "src/vitte/compiler/frontend/grammar_alignment_checker.vit",
             "src/vitte/compiler/frontend/parse/grammar.vit",
@@ -19257,20 +19591,21 @@
             "core",
             "surface",
             "grammar",
+            "region",
             "parser"
           ]
         },
         "ast": {
-          "hits": 6,
+          "hits": 7,
           "files": [
             "src/vitte/compiler/frontend/ast/expr.vit",
             "src/vitte/compiler/frontend/ast/item.vit",
             "src/vitte/compiler/frontend/ast/node.vit",
             "src/vitte/compiler/frontend/ast/pattern.vit",
+            "src/vitte/compiler/frontend/ast/pretty.vit",
             "src/vitte/compiler/frontend/ast/stmt.vit",
             "src/vitte/compiler/frontend/ast/type_expr.vit",
-            "src/vitte/compiler/frontend/ast/validate.vit",
-            "src/vitte/compiler/frontend/parse/parser.vit"
+            "src/vitte/compiler/frontend/ast/validate.vit"
           ],
           "terms": [
             "shared",
@@ -19278,6 +19613,7 @@
             "mutable",
             "part",
             "core",
+            "region",
             "parser"
           ]
         },
@@ -19309,7 +19645,7 @@
           ]
         },
         "tests": {
-          "hits": 12,
+          "hits": 13,
           "files": [
             "src/vitte/compiler/tests/architecture_integration_tests.vit",
             "src/vitte/compiler/tests/ast_tests.vit",
@@ -19330,9 +19666,9 @@
             "the",
             "core",
             "surface",
+            "region",
             "semantic",
-            "checks",
-            "parser"
+            "checks"
           ]
         },
         "lexer": {
@@ -20005,11 +20341,11 @@
             "src/vitte/compiler/tests/architecture_integration_tests.vit",
             "src/vitte/compiler/tests/ast_tests.vit",
             "src/vitte/compiler/tests/borrowck_tests.vit",
+            "src/vitte/compiler/tests/bridge_diag_demo.vit",
             "src/vitte/compiler/tests/c_backend_tests.vit",
             "src/vitte/compiler/tests/chaos_tests.vit",
             "src/vitte/compiler/tests/codegen_tests.vit",
-            "src/vitte/compiler/tests/const_eval_tests.vit",
-            "src/vitte/compiler/tests/diagnostic_snapshot_tests.vit"
+            "src/vitte/compiler/tests/const_eval_tests.vit"
           ],
           "terms": [
             "proc",
@@ -20663,19 +20999,20 @@
           ]
         },
         "tests": {
-          "hits": 14,
+          "hits": 15,
           "files": [
             "src/vitte/compiler/tests/architecture_integration_tests.vit",
             "src/vitte/compiler/tests/ast_tests.vit",
             "src/vitte/compiler/tests/borrowck_tests.vit",
+            "src/vitte/compiler/tests/bridge_diag_demo.vit",
             "src/vitte/compiler/tests/c_backend_tests.vit",
             "src/vitte/compiler/tests/chaos_tests.vit",
             "src/vitte/compiler/tests/codegen_tests.vit",
-            "src/vitte/compiler/tests/const_eval_tests.vit",
-            "src/vitte/compiler/tests/diagnostic_snapshot_tests.vit"
+            "src/vitte/compiler/tests/const_eval_tests.vit"
           ],
           "terms": [
             "void",
+            "unit",
             "bool",
             "char",
             "rune",
@@ -20685,8 +21022,7 @@
             "int",
             "i32",
             "i64",
-            "u8",
-            "u32"
+            "u8"
           ]
         },
         "lexer": {
@@ -21248,11 +21584,11 @@
             "src/vitte/compiler/tests/architecture_integration_tests.vit",
             "src/vitte/compiler/tests/ast_tests.vit",
             "src/vitte/compiler/tests/borrowck_tests.vit",
+            "src/vitte/compiler/tests/bridge_diag_demo.vit",
             "src/vitte/compiler/tests/c_backend_tests.vit",
             "src/vitte/compiler/tests/chaos_tests.vit",
             "src/vitte/compiler/tests/codegen_tests.vit",
-            "src/vitte/compiler/tests/const_eval_tests.vit",
-            "src/vitte/compiler/tests/diagnostic_snapshot_tests.vit"
+            "src/vitte/compiler/tests/const_eval_tests.vit"
           ],
           "terms": [
             "int",
@@ -21906,6 +22242,7 @@
         "tests": {
           "hits": 8,
           "files": [
+            "src/vitte/compiler/tests/borrowck_tests.vit",
             "src/vitte/compiler/tests/codegen_tests.vit",
             "src/vitte/compiler/tests/lexer_tests.vit",
             "tests/bootstrap_native/shell.main_const_int.must",
@@ -22024,12 +22361,12 @@
           "files": [
             "docs/book/grammar/diagnostics/expected/entry-missing-module-path-01.json",
             "src/vitte/compiler/tests/ast_tests.vit",
+            "src/vitte/compiler/tests/borrowck_tests.vit",
             "src/vitte/compiler/tests/c_backend_tests.vit",
             "src/vitte/compiler/tests/codegen_tests.vit",
             "src/vitte/compiler/tests/diagnostic_snapshot_tests.vit",
             "src/vitte/compiler/tests/lexer_tests.vit",
-            "src/vitte/compiler/tests/mir_tests.vit",
-            "src/vitte/compiler/tests/parser_tests.vit"
+            "src/vitte/compiler/tests/llvm_tests.vit"
           ],
           "terms": [
             "raw",
@@ -22280,6 +22617,7 @@
         "tests": {
           "hits": 3,
           "files": [
+            "src/vitte/compiler/tests/lexer_tests.vit",
             "tests/bootstrap_native/shell.main_const_int.must",
             "tests/bootstrap_native/shell.main_proc.must",
             "tests/bootstrap_native/shell.named_consts.must"
@@ -22354,14 +22692,16 @@
           ]
         },
         "tests": {
-          "hits": 2,
+          "hits": 3,
           "files": [
+            "src/vitte/compiler/tests/lexer_tests.vit",
             "tests/bootstrap_native/shell.main_const_int.must",
             "tests/bootstrap_native/shell.main_proc.must",
             "tests/bootstrap_native/shell.named_consts.must"
           ],
           "terms": [
             "comment",
+            "<<<",
             ">>>"
           ]
         },

@@ -494,11 +494,71 @@ LEX_E_INVALID_TOKEN.step1 = Look at the highlighted token and complete or remove
 LEX_E_INVALID_TOKEN.fix = Balance delimiters, complete the missing token, or rewrite the local expression.
 LEX_E_INVALID_TOKEN.example = proc main() -> int { give 0; }
 
+LEX_E_INVALID_UNICODE.summary = 잘못된 unicode.
+LEX_E_INVALID_UNICODE.cause = The parser or lexer could not form the next valid source construct.
+LEX_E_INVALID_UNICODE.step1 = Look at the highlighted token and complete or remove the construct around it.
+LEX_E_INVALID_UNICODE.fix = Balance delimiters, complete the missing token, or rewrite the local expression.
+LEX_E_INVALID_UNICODE.example = proc main() -> int { give 0; }
+
+LEX_E_UNTERMINATED_COMMENT.summary = 종결되지 않은 comment.
+LEX_E_UNTERMINATED_COMMENT.cause = The parser or lexer could not form the next valid source construct.
+LEX_E_UNTERMINATED_COMMENT.step1 = Look at the highlighted token and complete or remove the construct around it.
+LEX_E_UNTERMINATED_COMMENT.fix = Balance delimiters, complete the missing token, or rewrite the local expression.
+LEX_E_UNTERMINATED_COMMENT.example = proc main() -> int { give 0; }
+
 PATTR003.summary = pattr003.
 PATTR003.cause = The parser or lexer could not form the next valid source construct.
 PATTR003.step1 = Look at the highlighted token and complete or remove the construct around it.
 PATTR003.fix = Balance delimiters, complete the missing token, or rewrite the local expression.
 PATTR003.example = proc main() -> int { give 0; }
+
+PARSE_E_TOPLEVEL_DECL_EXPECTED.summary = top-level 선언 expected.
+PARSE_E_TOPLEVEL_DECL_EXPECTED.cause = The parser or lexer could not form the next valid source construct.
+PARSE_E_TOPLEVEL_DECL_EXPECTED.step1 = Look at the highlighted token and complete or remove the construct around it.
+PARSE_E_TOPLEVEL_DECL_EXPECTED.fix = Balance delimiters, complete the missing token, or rewrite the local expression.
+PARSE_E_TOPLEVEL_DECL_EXPECTED.example = proc main() -> int { give 0; }
+
+PARSE_E_INCOMPLETE_EXPR.summary = incomplete 식.
+PARSE_E_INCOMPLETE_EXPR.cause = The parser or lexer could not form the next valid source construct.
+PARSE_E_INCOMPLETE_EXPR.step1 = Look at the highlighted token and complete or remove the construct around it.
+PARSE_E_INCOMPLETE_EXPR.fix = Balance delimiters, complete the missing token, or rewrite the local expression.
+PARSE_E_INCOMPLETE_EXPR.example = proc main() -> int { give 0; }
+
+PARSE_E_MISSING_RPAREN.summary = 누락된 closing parenthesis.
+PARSE_E_MISSING_RPAREN.cause = The parser or lexer could not form the next valid source construct.
+PARSE_E_MISSING_RPAREN.step1 = Look at the highlighted token and complete or remove the construct around it.
+PARSE_E_MISSING_RPAREN.fix = Balance delimiters, complete the missing token, or rewrite the local expression.
+PARSE_E_MISSING_RPAREN.example = proc main() -> int { give 0; }
+
+PARSE_E_MISSING_COMMA.summary = 누락된 comma.
+PARSE_E_MISSING_COMMA.cause = The parser or lexer could not form the next valid source construct.
+PARSE_E_MISSING_COMMA.step1 = Look at the highlighted token and complete or remove the construct around it.
+PARSE_E_MISSING_COMMA.fix = Balance delimiters, complete the missing token, or rewrite the local expression.
+PARSE_E_MISSING_COMMA.example = proc main() -> int { give 0; }
+
+PARSE_E_TYPE_EXPECTED.summary = 타입 expected.
+PARSE_E_TYPE_EXPECTED.cause = The parser or lexer could not form the next valid source construct.
+PARSE_E_TYPE_EXPECTED.step1 = Look at the highlighted token and complete or remove the construct around it.
+PARSE_E_TYPE_EXPECTED.fix = Balance delimiters, complete the missing token, or rewrite the local expression.
+PARSE_E_TYPE_EXPECTED.example = proc main() -> int { give 0; }
+
+PARSE_E_PATTERN_EXPECTED.summary = 패턴 expected.
+PARSE_E_PATTERN_EXPECTED.cause = The parser or lexer could not form the next valid source construct.
+PARSE_E_PATTERN_EXPECTED.step1 = Look at the highlighted token and complete or remove the construct around it.
+PARSE_E_PATTERN_EXPECTED.fix = Balance delimiters, complete the missing token, or rewrite the local expression.
+PARSE_E_PATTERN_EXPECTED.example = proc main() -> int { give 0; }
+
+PARSE_E_BLOCK_EXPECTED.summary = 블록 expected.
+PARSE_E_BLOCK_EXPECTED.cause = The parser or lexer could not form the next valid source construct.
+PARSE_E_BLOCK_EXPECTED.step1 = Look at the highlighted token and complete or remove the construct around it.
+PARSE_E_BLOCK_EXPECTED.fix = Balance delimiters, complete the missing token, or rewrite the local expression.
+PARSE_E_BLOCK_EXPECTED.example = proc main() -> int { give 0; }
+
+PARSE_E_UNCLOSED_BLOCK.summary = 닫히지 않은 블록.
+PARSE_E_UNCLOSED_BLOCK.cause = The parser or lexer could not form the next valid source construct.
+PARSE_E_UNCLOSED_BLOCK.step1 = Look at the highlighted token and complete or remove the construct around it.
+PARSE_E_UNCLOSED_BLOCK.fix = Balance delimiters, complete the missing token, or rewrite the local expression.
+PARSE_E_UNCLOSED_BLOCK.example = proc main() -> int { give 0; }
 
 PARSE_E_EXPECTED_TOKEN.summary = 토큰 필요.
 PARSE_E_EXPECTED_TOKEN.cause = The parser or lexer could not form the next valid source construct.
@@ -613,6 +673,42 @@ SEMA_E_DUPLICATE_SYMBOL.cause = A symbol, module path, binding, visibility rule,
 SEMA_E_DUPLICATE_SYMBOL.step1 = Check the spelling and the nearest import or declaration.
 SEMA_E_DUPLICATE_SYMBOL.fix = Declare the symbol once, import it explicitly, or use the canonical module path.
 SEMA_E_DUPLICATE_SYMBOL.example = use vitte/core
+
+SEMA_E_UNKNOWN_IDENTIFIER.summary = 알 수 없는 식별자.
+SEMA_E_UNKNOWN_IDENTIFIER.cause = A symbol, module path, binding, visibility rule, or import contract did not resolve.
+SEMA_E_UNKNOWN_IDENTIFIER.step1 = Check the spelling and the nearest import or declaration.
+SEMA_E_UNKNOWN_IDENTIFIER.fix = Declare the symbol once, import it explicitly, or use the canonical module path.
+SEMA_E_UNKNOWN_IDENTIFIER.example = use vitte/core
+
+SEMA_E_AMBIGUOUS_SYMBOL.summary = ambiguous 심볼.
+SEMA_E_AMBIGUOUS_SYMBOL.cause = A symbol, module path, binding, visibility rule, or import contract did not resolve.
+SEMA_E_AMBIGUOUS_SYMBOL.step1 = Check the spelling and the nearest import or declaration.
+SEMA_E_AMBIGUOUS_SYMBOL.fix = Declare the symbol once, import it explicitly, or use the canonical module path.
+SEMA_E_AMBIGUOUS_SYMBOL.example = use vitte/core
+
+SEMA_E_SHADOWING_FORBIDDEN.summary = shadowing is forbidden.
+SEMA_E_SHADOWING_FORBIDDEN.cause = A symbol, module path, binding, visibility rule, or import contract did not resolve.
+SEMA_E_SHADOWING_FORBIDDEN.step1 = Check the spelling and the nearest import or declaration.
+SEMA_E_SHADOWING_FORBIDDEN.fix = Declare the symbol once, import it explicitly, or use the canonical module path.
+SEMA_E_SHADOWING_FORBIDDEN.example = use vitte/core
+
+SEMA_E_UNKNOWN_FIELD.summary = 필드 does not exist.
+SEMA_E_UNKNOWN_FIELD.cause = A symbol, module path, binding, visibility rule, or import contract did not resolve.
+SEMA_E_UNKNOWN_FIELD.step1 = Check the spelling and the nearest import or declaration.
+SEMA_E_UNKNOWN_FIELD.fix = Declare the symbol once, import it explicitly, or use the canonical module path.
+SEMA_E_UNKNOWN_FIELD.example = use vitte/core
+
+SEMA_E_UNKNOWN_VARIANT.summary = variant does not exist.
+SEMA_E_UNKNOWN_VARIANT.cause = A symbol, module path, binding, visibility rule, or import contract did not resolve.
+SEMA_E_UNKNOWN_VARIANT.step1 = Check the spelling and the nearest import or declaration.
+SEMA_E_UNKNOWN_VARIANT.fix = Declare the symbol once, import it explicitly, or use the canonical module path.
+SEMA_E_UNKNOWN_VARIANT.example = use vitte/core
+
+SEMA_E_UNKNOWN_FUNCTION.summary = function does not exist.
+SEMA_E_UNKNOWN_FUNCTION.cause = A symbol, module path, binding, visibility rule, or import contract did not resolve.
+SEMA_E_UNKNOWN_FUNCTION.step1 = Check the spelling and the nearest import or declaration.
+SEMA_E_UNKNOWN_FUNCTION.fix = Declare the symbol once, import it explicitly, or use the canonical module path.
+SEMA_E_UNKNOWN_FUNCTION.example = use vitte/core
 
 SEMA_E_UNKNOWN_SYMBOL.summary = 알 수 없는 심볼.
 SEMA_E_UNKNOWN_SYMBOL.cause = A symbol, module path, binding, visibility rule, or import contract did not resolve.
@@ -1136,6 +1232,48 @@ CONST_EVAL_E_UNKNOWN.step1 = Reduce the constant expression at the reported span
 CONST_EVAL_E_UNKNOWN.fix = Use only supported const operations and guard division, overflow, or cycles.
 CONST_EVAL_E_UNKNOWN.example = const size: int = 4
 
+MOD_E_MODULE_NOT_FOUND.summary = 모듈누락.
+MOD_E_MODULE_NOT_FOUND.cause = The general phase found code that violates this diagnostic rule.
+MOD_E_MODULE_NOT_FOUND.step1 = Fix the first span reported for this diagnostic, then run the command again.
+MOD_E_MODULE_NOT_FOUND.fix = Follow the primary help text and make the smallest source change that removes the first error.
+MOD_E_MODULE_NOT_FOUND.example = vitte check path/to/file.vit
+
+MOD_E_IMPORT_CYCLE.summary = 가져오기 순환 detected.
+MOD_E_IMPORT_CYCLE.cause = The general phase found code that violates this diagnostic rule.
+MOD_E_IMPORT_CYCLE.step1 = Fix the first span reported for this diagnostic, then run the command again.
+MOD_E_IMPORT_CYCLE.fix = Follow the primary help text and make the smallest source change that removes the first error.
+MOD_E_IMPORT_CYCLE.example = vitte check path/to/file.vit
+
+MOD_E_SYMBOL_NOT_EXPORTED.summary = 심볼 is가 모듈에서 내보내지지 않음.
+MOD_E_SYMBOL_NOT_EXPORTED.cause = The general phase found code that violates this diagnostic rule.
+MOD_E_SYMBOL_NOT_EXPORTED.step1 = Fix the first span reported for this diagnostic, then run the command again.
+MOD_E_SYMBOL_NOT_EXPORTED.fix = Follow the primary help text and make the smallest source change that removes the first error.
+MOD_E_SYMBOL_NOT_EXPORTED.example = vitte check path/to/file.vit
+
+MOD_E_IMPORT_NOT_FOUND.summary = 가져오기누락.
+MOD_E_IMPORT_NOT_FOUND.cause = The general phase found code that violates this diagnostic rule.
+MOD_E_IMPORT_NOT_FOUND.step1 = Fix the first span reported for this diagnostic, then run the command again.
+MOD_E_IMPORT_NOT_FOUND.fix = Follow the primary help text and make the smallest source change that removes the first error.
+MOD_E_IMPORT_NOT_FOUND.example = vitte check path/to/file.vit
+
+MOD_E_PACKAGE_MISSING.summary = package누락.
+MOD_E_PACKAGE_MISSING.cause = The general phase found code that violates this diagnostic rule.
+MOD_E_PACKAGE_MISSING.step1 = Fix the first span reported for this diagnostic, then run the command again.
+MOD_E_PACKAGE_MISSING.fix = Follow the primary help text and make the smallest source change that removes the first error.
+MOD_E_PACKAGE_MISSING.example = vitte check path/to/file.vit
+
+MOD_E_STDLIB_MISSING.summary = stdlib누락.
+MOD_E_STDLIB_MISSING.cause = The general phase found code that violates this diagnostic rule.
+MOD_E_STDLIB_MISSING.step1 = Fix the first span reported for this diagnostic, then run the command again.
+MOD_E_STDLIB_MISSING.fix = Follow the primary help text and make the smallest source change that removes the first error.
+MOD_E_STDLIB_MISSING.example = vitte check path/to/file.vit
+
+MOD_E_AMBIGUOUS_MODULE.summary = ambiguous 모듈 경로.
+MOD_E_AMBIGUOUS_MODULE.cause = The general phase found code that violates this diagnostic rule.
+MOD_E_AMBIGUOUS_MODULE.step1 = Fix the first span reported for this diagnostic, then run the command again.
+MOD_E_AMBIGUOUS_MODULE.fix = Follow the primary help text and make the smallest source change that removes the first error.
+MOD_E_AMBIGUOUS_MODULE.example = vitte check path/to/file.vit
+
 HIR_E_INVALID_EXPR.summary = 잘못된 expr.
 HIR_E_INVALID_EXPR.cause = The compiler pipeline phase found code that violates this diagnostic rule.
 HIR_E_INVALID_EXPR.step1 = Fix the first span reported for this diagnostic, then run the command again.
@@ -1453,6 +1591,30 @@ BOOTSTRAP_E_ARTIFACT_INVALID.cause = The bootstrap phase found code that violate
 BOOTSTRAP_E_ARTIFACT_INVALID.step1 = Fix the first span reported for this diagnostic, then run the command again.
 BOOTSTRAP_E_ARTIFACT_INVALID.fix = Follow the primary help text and make the smallest source change that removes the first error.
 BOOTSTRAP_E_ARTIFACT_INVALID.example = vitte check path/to/file.vit
+
+E_BOOTSTRAP_CONST_TYPE.summary = bootstrap 상수 has wrong 타입.
+E_BOOTSTRAP_CONST_TYPE.cause = The general phase found code that violates this diagnostic rule.
+E_BOOTSTRAP_CONST_TYPE.step1 = Fix the first span reported for this diagnostic, then run the command again.
+E_BOOTSTRAP_CONST_TYPE.fix = Follow the primary help text and make the smallest source change that removes the first error.
+E_BOOTSTRAP_CONST_TYPE.example = vitte check path/to/file.vit
+
+E_BOOTSTRAP_DUP_PROC.summary = 중복된 bootstrap procedure.
+E_BOOTSTRAP_DUP_PROC.cause = The general phase found code that violates this diagnostic rule.
+E_BOOTSTRAP_DUP_PROC.step1 = Fix the first span reported for this diagnostic, then run the command again.
+E_BOOTSTRAP_DUP_PROC.fix = Follow the primary help text and make the smallest source change that removes the first error.
+E_BOOTSTRAP_DUP_PROC.example = vitte check path/to/file.vit
+
+E_BOOTSTRAP_UNKNOWN_CONST.summary = 알 수 없는 bootstrap 상수.
+E_BOOTSTRAP_UNKNOWN_CONST.cause = The general phase found code that violates this diagnostic rule.
+E_BOOTSTRAP_UNKNOWN_CONST.step1 = Fix the first span reported for this diagnostic, then run the command again.
+E_BOOTSTRAP_UNKNOWN_CONST.fix = Follow the primary help text and make the smallest source change that removes the first error.
+E_BOOTSTRAP_UNKNOWN_CONST.example = vitte check path/to/file.vit
+
+E_BOOTSTRAP_UNKNOWN_PROC.summary = 지원되지 않는 bootstrap procedure.
+E_BOOTSTRAP_UNKNOWN_PROC.cause = The general phase found code that violates this diagnostic rule.
+E_BOOTSTRAP_UNKNOWN_PROC.step1 = Fix the first span reported for this diagnostic, then run the command again.
+E_BOOTSTRAP_UNKNOWN_PROC.fix = Follow the primary help text and make the smallest source change that removes the first error.
+E_BOOTSTRAP_UNKNOWN_PROC.example = vitte check path/to/file.vit
 
 LIMIT_FILE_SIZE_MAX.summary = 파일 size max.
 LIMIT_FILE_SIZE_MAX.cause = The input exceeded a configured compiler safety limit.

@@ -17,6 +17,7 @@ toplevel ::= inner_attribute
           | export_decl
           | const_decl
           | static_decl
+          | region_decl
           | type_alias_decl
           | opaque_type_decl
           | extern_type_decl
@@ -56,6 +57,9 @@ export_decl ::= "export" WS1 ( "*" | ident_list | "{" WS? ident_list WS? "}" ) ;
 
 const_decl ::= { attr_prefix WS? } "const" WS1 ident [ WS? ":" WS? type_expr ] WS? "=" WS? expr ;
 static_decl ::= { attr_prefix WS? } "static" WS1 ident [ WS? ":" WS? type_expr ] WS? "=" WS? expr ;
+region_decl ::= { attr_prefix WS? } "region" WS1 ident [ WS? ":" WS? region_kind ] [ WS? region_capabilities ] WS? meta_tail ;
+region_kind ::= "stack" | "heap" | "arena" | "static" | "mmio" | "dma" | ident ;
+region_capabilities ::= "(" WS? ident_list? WS? ")" ;
 
 type_alias_decl ::= { attr_prefix WS? } "type" WS1 ident [ generic_params ] WS? "=" WS? type_expr ;
 opaque_type_decl ::= { attr_prefix WS? } "opaque" WS1 "type" WS1 ident [ generic_params ] [ WS? "=" WS? type_expr ] ;

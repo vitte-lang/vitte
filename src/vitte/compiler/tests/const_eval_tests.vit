@@ -47,6 +47,22 @@ proc test_static_assert_failure() -> bool {
   give has_code(result, "CONST_EVAL_E_STATIC_ASSERT_FAILED");
 }
 
+proc test_compile_time_simulation_detects_impossible_branch() -> bool {
+  let source: string = "const READY = false;\nif READY { static_assert(true); }\n";
+  let result: ConstEvalRunResult = run_const_eval("const_eval_impossible_branch.vit", source);
+  give has_code(result, "CONST_EVAL_E_IMPOSSIBLE_BRANCH")
+    and result.simulation_count == 1
+    and result.impossible_branch_count == 1;
+}
+
+proc test_compile_time_simulation_accepts_reachable_constant_branch() -> bool {
+  let source: string = "const READY = true;\nif READY { static_assert(true); }\n";
+  let result: ConstEvalRunResult = run_const_eval("const_eval_reachable_branch.vit", source);
+  give result.valid
+    and result.simulation_count == 1
+    and result.impossible_branch_count == 0;
+}
+
 proc test_cycle_detection() -> bool {
   let source: string = "const A = B + 1;\nconst B = A + 1;\n";
   let result: ConstEvalRunResult = run_const_eval("const_eval_cycle.vit", source);
@@ -58,6 +74,49 @@ proc test_ast_const_eval_path() -> bool {
   let fe: FrontendOutput = frontend_run("const_eval_ast.vit", source);
   let result: ConstEvalRunResult = run_const_eval_ast("const_eval_ast.vit", fe.ast_root);
   give fe.valid and result.valid and len(result.bindings) == 2 and result.assert_count == 1;
+}
+
+proc test_ast_compile_time_simulation_detects_proc_impossible_branch() -> bool {
+  let source: string =
+    "const READY = false;\n" +
+    "proc main() -> int {\n" +
+    "  if (READY) { give 1; }\n" +
+    "  give 0;\n" +
+    "}\n";
+  let fe: FrontendOutput = frontend_run("const_eval_proc_impossible_branch.vit", source);
+  let result: ConstEvalRunResult = run_const_eval_ast("const_eval_proc_impossible_branch.vit", fe.ast_root);
+  give fe.valid
+    and has_code(result, "CONST_EVAL_E_IMPOSSIBLE_BRANCH")
+    and result.simulation_count == 1
+    and result.impossible_branch_count == 1;
+}
+
+proc test_ast_compile_time_simulation_tracks_local_constants() -> bool {
+  let source: string =
+    "proc main() -> int {\n" +
+    "  let ready = true;\n" +
+    "  if (ready) { give 1; }\n" +
+    "  give 0;\n" +
+    "}\n";
+  let fe: FrontendOutput = frontend_run("const_eval_proc_local_const.vit", source);
+  let result: ConstEvalRunResult = run_const_eval_ast("const_eval_proc_local_const.vit", fe.ast_root);
+  give fe.valid
+    and result.valid
+    and result.simulation_count == 1
+    and result.impossible_branch_count == 0;
+}
+
+proc test_ast_compile_time_simulation_detects_constant_assert_failure() -> bool {
+  let source: string =
+    "proc main() -> int {\n" +
+    "  assert(false);\n" +
+    "  give 0;\n" +
+    "}\n";
+  let fe: FrontendOutput = frontend_run("const_eval_proc_assert_fail.vit", source);
+  let result: ConstEvalRunResult = run_const_eval_ast("const_eval_proc_assert_fail.vit", fe.ast_root);
+  give fe.valid
+    and has_code(result, "CONST_EVAL_E_STATIC_ASSERT_FAILED")
+    and result.simulation_count == 1;
 }
 
 proc run_all_tests() -> int {
@@ -77,10 +136,25 @@ proc run_all_tests() -> int {
   if not test_static_assert_failure() {
     set failures = failures + 1;
   }
+  if not test_compile_time_simulation_detects_impossible_branch() {
+    set failures = failures + 1;
+  }
+  if not test_compile_time_simulation_accepts_reachable_constant_branch() {
+    set failures = failures + 1;
+  }
   if not test_cycle_detection() {
     set failures = failures + 1;
   }
   if not test_ast_const_eval_path() {
+    set failures = failures + 1;
+  }
+  if not test_ast_compile_time_simulation_detects_proc_impossible_branch() {
+    set failures = failures + 1;
+  }
+  if not test_ast_compile_time_simulation_tracks_local_constants() {
+    set failures = failures + 1;
+  }
+  if not test_ast_compile_time_simulation_detects_constant_assert_failure() {
     set failures = failures + 1;
   }
   give failures;

@@ -8,8 +8,10 @@ use vitte/compiler/analysis/const_eval/errors.{
   diagnostics_has_fatal
 }
 use vitte/compiler/analysis/const_eval/folding.{ ConstFoldResult, fold_const_expr }
-use vitte/compiler/frontend/ast/expr.{ AstExpr }
+use vitte/compiler/frontend/ast/expr.{ AstExpr, AstExprKind, ast_expr_empty }
 use vitte/compiler/frontend/ast/item.{ AstItemKind, AstModule }
+use vitte/compiler/frontend/ast/pattern.{ AstPatternKind }
+use vitte/compiler/frontend/ast/stmt.{ AstStmt, AstStmtKind }
 use vitte/compiler/analysis/const_eval/interpreter.{
   ConstEvalResult,
   ConstBinding,
@@ -18,6 +20,7 @@ use vitte/compiler/analysis/const_eval/interpreter.{
   ast_expr_references,
   env_empty,
   env_has,
+  env_get,
   env_set,
   eval_const_ast_expr,
   expr_references,
@@ -56,6 +59,17 @@ form ConstEvalRunResult {
   bindings: [ConstBinding]
   diagnostics: [ConstEvalDiagnostic]
   assert_count: u64
+  simulation_count: u64
+  impossible_branch_count: u64
+  valid: bool
+}
+
+form SimulationWalk {
+  env: ConstEnv
+  diagnostics: [ConstEvalDiagnostic]
+  assert_count: u64
+  simulation_count: u64
+  impossible_branch_count: u64
   valid: bool
 }
 
@@ -209,6 +223,347 @@ proc collect_static_asserts(source_text: string) -> [StaticAssertDecl] {
   give asserts;
 }
 
+proc branch_condition_from_line(line_text: string, keyword: string) -> string {
+  let trimmed: string = trim(line_text);
+  let rest: string = trim(slice(trimmed, len(keyword), len(trimmed)));
+  let brace: int = find(rest, "{");
+  if brace >= 0 {
+    set rest = trim(slice(rest, 0, brace));
+  }
+  if starts_with(rest, sym_lparen()) and ends_with(rest, sym_rparen()) {
+    set rest = trim(slice(rest, 1, len(rest) - 1));
+  }
+  give rest;
+}
+
+proc run_compile_time_simulation(source_path: string, source_text: string, env: ConstEnv, diagnostics: [ConstEvalDiagnostic]) -> ConstEvalRunResult {
+  let lines: [string] = split(source_text, "\n");
+  let output: [ConstEvalDiagnostic] = diagnostics;
+  let simulated: u64 = 0;
+  let impossible: u64 = 0;
+  let i: int = 0;
+
+  while i < len(lines) {
+    let line_text: string = trim(lines[i]);
+    let keyword: string = "";
+    if starts_with(line_text, "if ") {
+      set keyword = "if";
+    } elif starts_with(line_text, "while ") {
+      set keyword = "while";
+    }
+
+    if keyword != "" {
+      let condition: string = branch_condition_from_line(line_text, keyword);
+      let evaluated: ConstFoldResult = fold_const_expr(env, source_path, condition, i as u64 + 1);
+      if evaluated.valid and evaluated.value.kind == ConstValueKind.Bool {
+        set simulated = simulated + 1;
+        if not evaluated.value.bool_value {
+          set impossible = impossible + 1;
+          set output = output + [diagnostic_create(
+            ConstEvalErrorKind.ImpossibleBranch,
+            source_path,
+            i as u64 + 1,
+            "compile-time simulation found unreachable `" + keyword + "` branch",
+            [keyword, condition],
+            "remove the branch or make the condition depend on runtime state",
+            true
+          )];
+        }
+      }
+    }
+    set i = i + 1;
+  }
+
+  give ConstEvalRunResult {
+    bindings: env.bindings,
+    diagnostics: output,
+    assert_count: 0,
+    simulation_count: simulated,
+    impossible_branch_count: impossible,
+    valid: not diagnostics_has_fatal(output)
+  };
+}
+
+proc simulation_walk(env: ConstEnv, diagnostics: [ConstEvalDiagnostic], assert_count: u64, simulation_count: u64, impossible_branch_count: u64, valid: bool) -> SimulationWalk {
+  give SimulationWalk {
+    env: env,
+    diagnostics: diagnostics,
+    assert_count: assert_count,
+    simulation_count: simulation_count,
+    impossible_branch_count: impossible_branch_count,
+    valid: valid
+  };
+}
+
+proc env_without(env: ConstEnv, name: string) -> ConstEnv {
+  if name == "" {
+    give env;
+  }
+  let bindings: [ConstBinding] = [];
+  let i: u64 = 0;
+  while i < len(env.bindings) {
+    if env.bindings[i].name != name {
+      set bindings = bindings + [env.bindings[i]];
+    }
+    set i = i + 1;
+  }
+  give ConstEnv {
+    bindings: bindings,
+    valid: env.valid
+  };
+}
+
+proc stmt_binding_name(stmt: AstStmt) -> string {
+  if stmt.pattern.kind == AstPatternKind.Name or stmt.pattern.kind == AstPatternKind.Binding {
+    give stmt.pattern.binding_name;
+  }
+  give "";
+}
+
+proc stmt_target_name(stmt: AstStmt) -> string {
+  if stmt.target != "" {
+    give stmt.target;
+  }
+  if stmt.target_expr.kind == AstExprKind.Name {
+    give stmt.target_expr.name;
+  }
+  give "";
+}
+
+proc call_callee_name(expr: AstExpr) -> string {
+  if expr.kind != AstExprKind.Call {
+    give "";
+  }
+  if expr.name != "" {
+    give expr.name;
+  }
+  if len(expr.children) > 0 and expr.children[0].kind == AstExprKind.Name {
+    give expr.children[0].name;
+  }
+  give "";
+}
+
+proc call_argument(expr: AstExpr, index: u64) -> AstExpr {
+  let child_index: u64 = index + 1;
+  if expr.kind == AstExprKind.Call and child_index < len(expr.children) {
+    give expr.children[child_index];
+  }
+  give ast_expr_empty();
+}
+
+proc add_impossible_branch_diag(diagnostics: [ConstEvalDiagnostic], source_path: string, line: u64, condition_text: string, message: string) -> [ConstEvalDiagnostic] {
+  give diagnostics + [diagnostic_create(
+    ConstEvalErrorKind.ImpossibleBranch,
+    source_path,
+    line,
+    message,
+    [condition_text],
+    "remove the dead control-flow path or make the condition depend on runtime state",
+    true
+  )];
+}
+
+proc simulate_static_assert_stmt(source_path: string, stmt: AstStmt, env: ConstEnv, current: SimulationWalk) -> SimulationWalk {
+  let evaluated: ConstEvalResult = eval_const_ast_expr(env, source_path, stmt.expr);
+  let diagnostics: [ConstEvalDiagnostic] = current.diagnostics + evaluated.diagnostics;
+  if not evaluated.valid {
+    give simulation_walk(env, diagnostics, current.assert_count + 1, current.simulation_count, current.impossible_branch_count, false);
+  }
+  if evaluated.value.kind != ConstValueKind.Bool {
+    give simulation_walk(
+      env,
+      diagnostics + [diagnostic_create(
+        ConstEvalErrorKind.UnsupportedExpr,
+        source_path,
+        stmt.span.start_line,
+        "static_assert requires a boolean constant expression",
+        ["static_assert"],
+        "compare the expression to produce a boolean result",
+        true
+      )],
+      current.assert_count + 1,
+      current.simulation_count,
+      current.impossible_branch_count,
+      false
+    );
+  }
+  if evaluated.value.bool_value {
+    give simulation_walk(env, diagnostics, current.assert_count + 1, current.simulation_count, current.impossible_branch_count, current.valid);
+  }
+  let message: string = if stmt.message != "" { "static_assert failed: " + stmt.message } else { "static_assert failed" };
+  give simulation_walk(
+    env,
+    diagnostics + [diagnostic_create(
+      ConstEvalErrorKind.StaticAssertFailed,
+      source_path,
+      stmt.span.start_line,
+      message,
+      ["static_assert", stmt.expr.text],
+      "fix the asserted condition or move it to runtime if it is not constant",
+      true
+    )],
+    current.assert_count + 1,
+    current.simulation_count,
+    current.impossible_branch_count,
+    false
+  );
+}
+
+proc simulate_assert_call_stmt(source_path: string, stmt: AstStmt, env: ConstEnv, current: SimulationWalk) -> SimulationWalk {
+  let callee_name: string = call_callee_name(stmt.expr);
+  if callee_name != "assert" {
+    give current;
+  }
+  let condition: AstExpr = call_argument(stmt.expr, 0);
+  if not condition.valid {
+    give current;
+  }
+  let evaluated: ConstEvalResult = eval_const_ast_expr(env, source_path, condition);
+  let diagnostics: [ConstEvalDiagnostic] = current.diagnostics + evaluated.diagnostics;
+  if not evaluated.valid {
+    give simulation_walk(env, diagnostics, current.assert_count, current.simulation_count + 1, current.impossible_branch_count, false);
+  }
+  if evaluated.value.kind != ConstValueKind.Bool or evaluated.value.bool_value {
+    give simulation_walk(env, diagnostics, current.assert_count, current.simulation_count + 1, current.impossible_branch_count, not diagnostics_has_fatal(diagnostics));
+  }
+  give simulation_walk(
+    env,
+    diagnostics + [diagnostic_create(
+      ConstEvalErrorKind.StaticAssertFailed,
+      source_path,
+      stmt.span.start_line,
+      "compile-time simulation reached an `assert` that always fails",
+      ["assert", condition.text],
+      "fix the assertion condition or make it depend on runtime state",
+      true
+    )],
+    current.assert_count,
+    current.simulation_count + 1,
+    current.impossible_branch_count,
+    false
+  );
+}
+
+proc simulate_stmt_list(source_path: string, stmts: [AstStmt], env: ConstEnv, diagnostics: [ConstEvalDiagnostic], assert_count: u64, simulation_count: u64, impossible_branch_count: u64) -> SimulationWalk {
+  let current0: SimulationWalk = simulation_walk(env, diagnostics, assert_count, simulation_count, impossible_branch_count, not diagnostics_has_fatal(diagnostics));
+  let current: SimulationWalk = current0;
+  let i: u64 = 0;
+  while i < len(stmts) {
+    let stmt: AstStmt = stmts[i];
+    let next_env: ConstEnv = current.env;
+    let next_diags: [ConstEvalDiagnostic] = current.diagnostics;
+    let next_asserts: u64 = current.assert_count;
+    let next_simulated: u64 = current.simulation_count;
+    let next_impossible: u64 = current.impossible_branch_count;
+
+    if stmt.kind == AstStmtKind.Const or stmt.kind == AstStmtKind.Let {
+      let binding_name: string = stmt_binding_name(stmt);
+      if binding_name != "" and stmt.expr.valid {
+        let evaluated: ConstEvalResult = eval_const_ast_expr(current.env, source_path, stmt.expr);
+        set next_diags = next_diags + evaluated.diagnostics;
+        if evaluated.valid {
+          set next_env = env_set(next_env, binding_name, evaluated.value);
+        } else {
+          set next_env = env_without(next_env, binding_name);
+        }
+      }
+    } elif stmt.kind == AstStmtKind.Set {
+      let target_name: string = stmt_target_name(stmt);
+      if target_name != "" {
+        let evaluated: ConstEvalResult = eval_const_ast_expr(current.env, source_path, stmt.expr);
+        set next_diags = next_diags + evaluated.diagnostics;
+        if evaluated.valid {
+          set next_env = env_set(next_env, target_name, evaluated.value);
+        } else {
+          set next_env = env_without(next_env, target_name);
+        }
+      }
+    } elif stmt.kind == AstStmtKind.StaticAssert {
+      let walked: SimulationWalk = simulate_static_assert_stmt(source_path, stmt, current.env, current);
+      set next_env = walked.env;
+      set next_diags = walked.diagnostics;
+      set next_asserts = walked.assert_count;
+      set next_simulated = walked.simulation_count;
+      set next_impossible = walked.impossible_branch_count;
+    } elif stmt.kind == AstStmtKind.ExprStmt {
+      let walked: SimulationWalk = simulate_assert_call_stmt(source_path, stmt, current.env, current);
+      set next_env = walked.env;
+      set next_diags = walked.diagnostics;
+      set next_asserts = walked.assert_count;
+      set next_simulated = walked.simulation_count;
+      set next_impossible = walked.impossible_branch_count;
+    } elif stmt.kind == AstStmtKind.If or stmt.kind == AstStmtKind.While {
+      let evaluated: ConstEvalResult = eval_const_ast_expr(current.env, source_path, stmt.condition);
+      if evaluated.valid and evaluated.value.kind == ConstValueKind.Bool {
+        set next_simulated = next_simulated + 1;
+        if stmt.kind == AstStmtKind.If {
+          if evaluated.value.bool_value {
+            let then_walk: SimulationWalk = simulate_stmt_list(source_path, stmt.then_stmts, current.env, next_diags, next_asserts, next_simulated, next_impossible);
+            set next_env = then_walk.env;
+            set next_diags = then_walk.diagnostics;
+            set next_asserts = then_walk.assert_count;
+            set next_simulated = then_walk.simulation_count;
+            set next_impossible = then_walk.impossible_branch_count;
+          } else {
+            set next_impossible = next_impossible + 1;
+            set next_diags = add_impossible_branch_diag(next_diags, source_path, stmt.span.start_line, stmt.condition.text, "compile-time simulation found an `if` branch that can never execute");
+            if len(stmt.else_stmts) > 0 {
+              let else_walk: SimulationWalk = simulate_stmt_list(source_path, stmt.else_stmts, current.env, next_diags, next_asserts, next_simulated, next_impossible);
+              set next_env = else_walk.env;
+              set next_diags = else_walk.diagnostics;
+              set next_asserts = else_walk.assert_count;
+              set next_simulated = else_walk.simulation_count;
+              set next_impossible = else_walk.impossible_branch_count;
+            }
+          }
+        } elif evaluated.value.bool_value {
+          let body_walk: SimulationWalk = simulate_stmt_list(source_path, stmt.then_stmts, current.env, next_diags, next_asserts, next_simulated, next_impossible);
+          set next_env = body_walk.env;
+          set next_diags = body_walk.diagnostics;
+          set next_asserts = body_walk.assert_count;
+          set next_simulated = body_walk.simulation_count;
+          set next_impossible = body_walk.impossible_branch_count;
+        } else {
+          set next_impossible = next_impossible + 1;
+          set next_diags = add_impossible_branch_diag(next_diags, source_path, stmt.span.start_line, stmt.condition.text, "compile-time simulation found a `while` loop that can never execute");
+        }
+      }
+    }
+
+    set current = simulation_walk(next_env, next_diags, next_asserts, next_simulated, next_impossible, not diagnostics_has_fatal(next_diags));
+    set i = i + 1;
+  }
+  give current;
+}
+
+proc run_compile_time_simulation_ast(source_path: string, module: AstModule, env: ConstEnv, diagnostics: [ConstEvalDiagnostic], assert_count: u64) -> ConstEvalRunResult {
+  let current0: SimulationWalk = simulation_walk(env, diagnostics, assert_count, 0, 0, not diagnostics_has_fatal(diagnostics));
+  let current: SimulationWalk = current0;
+  let i: u64 = 0;
+  while i < len(module.items) {
+    if len(module.items[i].stmts) > 0 {
+      set current = simulate_stmt_list(
+        source_path,
+        module.items[i].stmts,
+        current.env,
+        current.diagnostics,
+        current.assert_count,
+        current.simulation_count,
+        current.impossible_branch_count
+      );
+    }
+    set i = i + 1;
+  }
+  give ConstEvalRunResult {
+    bindings: current.env.bindings,
+    diagnostics: current.diagnostics,
+    assert_count: current.assert_count,
+    simulation_count: current.simulation_count,
+    impossible_branch_count: current.impossible_branch_count,
+    valid: current.valid
+  };
+}
+
 proc decl_name_exists(decls: [ConstDecl], name: string) -> bool {
   let i: int = 0;
   while i < len(decls) {
@@ -324,6 +679,8 @@ proc run_const_decls(source_path: string, decls: [ConstDecl]) -> ConstEvalRunRes
     bindings: resolved,
     diagnostics: diagnostics,
     assert_count: 0,
+    simulation_count: 0,
+    impossible_branch_count: 0,
     valid: not diagnostics_has_fatal(diagnostics)
   };
 }
@@ -402,6 +759,8 @@ proc run_const_decls_ast(source_path: string, decls: [ConstDeclAst]) -> ConstEva
     bindings: resolved,
     diagnostics: diagnostics,
     assert_count: 0,
+    simulation_count: 0,
+    impossible_branch_count: 0,
     valid: not diagnostics_has_fatal(diagnostics)
   };
 }
@@ -445,6 +804,8 @@ proc run_static_asserts_ast(source_path: string, asserts: [StaticAssertDeclAst],
     bindings: env.bindings,
     diagnostics: output,
     assert_count: len(asserts) as u64,
+    simulation_count: 0,
+    impossible_branch_count: 0,
     valid: not diagnostics_has_fatal(output)
   };
 }
@@ -489,6 +850,8 @@ proc run_static_asserts(source_path: string, asserts: [StaticAssertDecl], env: C
     bindings: env.bindings,
     diagnostics: output,
     assert_count: len(asserts) as u64,
+    simulation_count: 0,
+    impossible_branch_count: 0,
     valid: not diagnostics_has_fatal(output)
   };
 }
@@ -503,7 +866,17 @@ proc run_const_eval(source_path: string, source_text: string) -> ConstEvalRunRes
     valid: decl_result.valid
   };
 
-  give run_static_asserts(source_path, asserts, env, decl_result.diagnostics);
+  let asserted: ConstEvalRunResult = run_static_asserts(source_path, asserts, env, decl_result.diagnostics);
+  let simulated: ConstEvalRunResult = run_compile_time_simulation(source_path, source_text, env, asserted.diagnostics);
+
+  give ConstEvalRunResult {
+    bindings: asserted.bindings,
+    diagnostics: simulated.diagnostics,
+    assert_count: asserted.assert_count,
+    simulation_count: simulated.simulation_count,
+    impossible_branch_count: simulated.impossible_branch_count,
+    valid: asserted.valid and simulated.valid
+  };
 }
 
 proc run_const_eval_ast(source_path: string, module: AstModule) -> ConstEvalRunResult {
@@ -525,5 +898,10 @@ proc run_const_eval_ast(source_path: string, module: AstModule) -> ConstEvalRunR
     bindings: decl_result.bindings,
     valid: decl_result.valid
   };
-  give run_static_asserts_ast(source_path, asserts, env, decl_result.diagnostics);
+  let asserted: ConstEvalRunResult = run_static_asserts_ast(source_path, asserts, env, decl_result.diagnostics);
+  let asserted_env: ConstEnv = ConstEnv {
+    bindings: asserted.bindings,
+    valid: asserted.valid
+  };
+  give run_compile_time_simulation_ast(source_path, module, asserted_env, asserted.diagnostics, asserted.assert_count);
 }
