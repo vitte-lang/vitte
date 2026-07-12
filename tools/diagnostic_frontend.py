@@ -381,6 +381,19 @@ def analyze_parser(source: str, file: str) -> list[dict[str, Any]]:
                 "applicability": "machine-applicable",
             }],
         ))
+    for match in re.finditer(r";[ \t]*;", masked):
+        semicolon = match.end() - 1
+        diagnostics.append(diagnostic(
+            "PARSE_E_UNEXPECTED_TOKEN", "parser", file, source, semicolon, semicolon + 1,
+            "unexpected extra semicolon",
+            helps=["remove the duplicate semicolon"],
+            suggestions=[{
+                "message": "remove this semicolon",
+                "replacement": "",
+                "span": span(file, source, semicolon, semicolon + 1),
+                "applicability": "machine-applicable",
+            }],
+        ))
     return diagnostics
 
 
