@@ -111,6 +111,30 @@ def analyze_lexer(source: str, file: str) -> list[dict[str, Any]]:
                 string_start = -1
             index += 1
             continue
+        if source.startswith("//", index):
+            newline = source.find("\n", index + 2)
+            index = len(source) if newline < 0 else newline
+            continue
+        if source.startswith("/*", index):
+            comment_start = index
+            depth = 1
+            index += 2
+            while index < len(source) and depth > 0:
+                if source.startswith("/*", index):
+                    depth += 1
+                    index += 2
+                elif source.startswith("*/", index):
+                    depth -= 1
+                    index += 2
+                else:
+                    index += 1
+            if depth > 0:
+                diagnostics.append(diagnostic(
+                    "LEX_E_UNTERMINATED_COMMENT", "lexer", file, source, comment_start, len(source),
+                    "block comment is not terminated",
+                    helps=["add the missing `*/` terminator"],
+                ))
+            continue
         if character == '"':
             in_string = True
             string_start = index
