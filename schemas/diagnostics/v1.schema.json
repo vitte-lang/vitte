@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vitte-lang.org/schemas/diagnostics/v1.schema.json",
+  "title": "Vitte Diagnostic v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "schema_version", "code", "severity", "phase", "message", "primary_span", "labels", "notes", "helps", "suggestions"],
+  "properties": {
+    "schema": { "const": "vitte.diagnostic" },
+    "schema_version": { "const": "1.0.0" },
+    "code": { "type": "string", "pattern": "^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$" },
+    "severity": { "enum": ["error", "warning", "note", "help"] },
+    "phase": { "enum": ["lexer", "parser", "sema", "typeck", "borrowck", "mir", "backend", "linker", "runtime"] },
+    "message": { "type": "string", "minLength": 1 },
+    "primary_span": { "$ref": "#/$defs/span" },
+    "labels": { "type": "array", "items": { "$ref": "#/$defs/label" }, "minItems": 1 },
+    "notes": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "helps": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "suggestions": { "type": "array", "items": { "$ref": "#/$defs/suggestion" } }
+  },
+  "$defs": {
+    "position": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["line", "column", "byte"],
+      "properties": {
+        "line": { "type": "integer", "minimum": 1 },
+        "column": { "type": "integer", "minimum": 1 },
+        "byte": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "span": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["file", "start", "end"],
+      "properties": {
+        "file": { "type": "string", "minLength": 1 },
+        "start": { "$ref": "#/$defs/position" },
+        "end": { "$ref": "#/$defs/position" }
+      }
+    },
+    "label": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "message", "span"],
+      "properties": {
+        "kind": { "enum": ["primary", "secondary"] },
+        "message": { "type": "string", "minLength": 1 },
+        "span": { "$ref": "#/$defs/span" }
+      }
+    },
+    "suggestion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["message", "replacement", "span", "applicability"],
+      "properties": {
+        "message": { "type": "string", "minLength": 1 },
+        "replacement": { "type": "string" },
+        "span": { "$ref": "#/$defs/span" },
+        "applicability": { "enum": ["machine-applicable", "maybe-incorrect", "has-placeholders", "unspecified"] }
+      }
+    }
+  }
+}
