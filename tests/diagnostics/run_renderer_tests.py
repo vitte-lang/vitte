@@ -11,7 +11,10 @@ ROOT = Path(__file__).resolve().parents[2]
 
 def main() -> int:
     result = subprocess.run(
-        ["python3", "tools/render_diagnostic.py", "tests/diagnostics/schema/minimal.json"],
+        [
+            "python3", "tools/render_diagnostic.py", "tests/diagnostics/schema/minimal.json",
+            "--source-root", "tests/diagnostics/sources",
+        ],
         cwd=ROOT,
         check=True,
         text=True,
