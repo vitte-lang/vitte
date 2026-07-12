@@ -13,6 +13,7 @@ use vitte/compiler/diagnostics/diagnostic.{
     diagnostic_with_help,
     diagnostic_with_label,
     diagnostic_with_insert,
+    diagnostic_with_replace,
     secondary_label,
     add_unique_diagnostic,
     merge_diagnostics,
@@ -414,6 +415,68 @@ proc sema_duplicate_symbol(name: string, span: AstSpan) -> Diagnostic {
     give diag;
 }
 
+proc sema_string_distance(left: string, right: string) -> u64 {
+    let previous: [u64] = [];
+    let right_index: u64 = 0;
+
+    while right_index <= len(right) {
+        set previous = previous + [right_index];
+        set right_index = right_index + 1;
+    }
+
+    let left_index: u64 = 0;
+    while left_index < len(left) {
+        let current: [u64] = [left_index + 1];
+        let column: u64 = 0;
+
+        while column < len(right) {
+            let substitution_cost: u64 = if slice(left, left_index, left_index + 1) == slice(right, column, column + 1) {
+                0
+            } else {
+                1
+            };
+            let deletion: u64 = previous[column + 1] + 1;
+            let insertion: u64 = current[column] + 1;
+            let substitution: u64 = previous[column] + substitution_cost;
+            let best: u64 = if deletion < insertion { deletion } else { insertion };
+
+            set current = current + [if substitution < best { substitution } else { best }];
+            set column = column + 1;
+        }
+
+        set previous = current;
+        set left_index = left_index + 1;
+    }
+
+    give previous[len(right)];
+}
+
+proc sema_nearby_symbol(name: string, candidates: [string]) -> string {
+    let best_name: string = "";
+    let best_distance: u64 = len(name) + 1;
+    let index: u64 = 0;
+
+    while index < len(candidates) {
+        let candidate: string = candidates[index];
+        if candidate != "" and candidate != name {
+            let distance: u64 = sema_string_distance(name, candidate);
+            let preferred: bool = distance < best_distance or (distance == best_distance and (best_name == "" or candidate < best_name));
+            if preferred {
+                set best_name = candidate;
+                set best_distance = distance;
+            }
+        }
+        set index = index + 1;
+    }
+
+    let limit: u64 = if len(name) <= 4 { 1 } elif len(name) <= 8 { 2 } else { 3 };
+    if best_distance <= limit {
+        give best_name;
+    }
+
+    give "";
+}
+
 proc sema_unknown_symbol(name: string, span: AstSpan) -> Diagnostic {
     let code: string = "SEMA_E_UNKNOWN_SYMBOL";
 
@@ -421,6 +484,20 @@ proc sema_unknown_symbol(name: string, span: AstSpan) -> Diagnostic {
 
     set diag = diagnostic_with_note(diag, sema_note(code, "no matching local, imported item, builtin, or module item was found"));
     set diag = diagnostic_with_insert(diag, "insert an import for `" + name + "` if it is defined in another module", "use module { " + name + " }", ast_span_to_source_span(span));
+
+    give diag;
+}
+
+proc sema_unknown_symbol_with_candidates(name: string, candidates: [string], span: AstSpan) -> Diagnostic {
+    let diag: Diagnostic = sema_unknown_symbol(name, span);
+    let nearby: string = sema_nearby_symbol(name, candidates);
+
+    if nearby == "" {
+        give diag;
+    }
+
+    set diag = diagnostic_with_note(diag, "a visible symbol with a similar spelling was found: `" + nearby + "`");
+    set diag = diagnostic_with_replace(diag, "replace `" + name + "` with `" + nearby + "`", nearby, ast_span_to_source_span(span));
 
     give diag;
 }
@@ -569,7 +646,10 @@ share sema_warning
 share sema_internal_error
 
 share sema_duplicate_symbol
+share sema_string_distance
+share sema_nearby_symbol
 share sema_unknown_symbol
+share sema_unknown_symbol_with_candidates
 share sema_invalid_import
 share sema_invalid_export
 share sema_invalid_attribute

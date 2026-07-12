@@ -1,7 +1,7 @@
 space vitte/compiler/tests/sema_tests
 
 use vitte/compiler/analysis/sema.{ SemaResult, run_sema_hir }
-use vitte/compiler/analysis/sema/errors.{ SemaDiagnosticKind, SemaPhase, sema_context_error, sema_context_result, sema_context_with_phase, sema_invalid_import, sema_kind_name, sema_phase_name, sema_result_summary, sema_summary }
+use vitte/compiler/analysis/sema/errors.{ SemaDiagnosticKind, SemaPhase, sema_context_error, sema_context_result, sema_context_with_phase, sema_invalid_import, sema_kind_name, sema_nearby_symbol, sema_phase_name, sema_result_summary, sema_string_distance, sema_summary, sema_unknown_symbol_with_candidates }
 use vitte/compiler/analysis/sema/modules.{ imported_symbols_from_summary, module_import_from_use, summarize_module_hir }
 use vitte/compiler/analysis/sema/names.{ PlaceRootKind, place_root_is_builtin, place_root_is_self, place_root_kind_name, place_root_name, sema_builtin_name, sema_is_ident_char }
 use vitte/compiler/analysis/sema/scopes.{ SemaSymbolKind, SemaSymbolTable, SemaVisibility, symbol_kind_name, symbol_table_add_builtin, symbol_table_count_kind, symbol_table_enter_scope, symbol_table_import, symbol_table_insert, symbol_table_leave_scope, symbol_table_resolve }
@@ -248,6 +248,16 @@ proc test_sema_error_helpers_cover_context_and_summary() -> bool {
     and find(sema_result_summary(report), "sema failed:") >= 0;
 }
 
+proc test_unknown_symbol_suggests_nearby_visible_symbol() -> bool {
+  let diag = sema_unknown_symbol_with_candidates("cout", ["count", "value", "counter"], ast_span_empty());
+  give sema_string_distance("cout", "count") == 1
+    and sema_nearby_symbol("cout", ["count", "value"]) == "count"
+    and sema_nearby_symbol("unknown", ["count", "value"]) == ""
+    and diag.code == "SEMA_E_UNKNOWN_SYMBOL"
+    and len(diag.suggestions) == 2
+    and diag.suggestions[1].replacement == "count";
+}
+
 proc test_resolves_type_level_surface_item_kinds() -> bool {
   let source: string =
     "form Point { x: int, y: int }\n" +
@@ -348,6 +358,9 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if not test_sema_error_helpers_cover_context_and_summary() {
+    set failures = failures + 1;
+  }
+  if not test_unknown_symbol_suggests_nearby_visible_symbol() {
     set failures = failures + 1;
   }
   if not test_resolves_type_level_surface_item_kinds() {
