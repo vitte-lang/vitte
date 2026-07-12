@@ -57,6 +57,8 @@ def render(diagnostic: dict[str, Any], source_root: Path) -> str:
             f'{secondary_start["line"]:>{width}} | {secondary_text}',
             f'{gutter} {marker} {label["message"]}',
         ))
+    for note in diagnostic["notes"]:
+        lines.append(f"  = note: {note}")
     return "\n".join(lines) + "\n"
 
 
