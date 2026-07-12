@@ -23,6 +23,10 @@ EXPECTED = {
     "LEX_E_UNTERMINATED_COMMENT",
 }
 
+EXPECTED_TASKS = {
+    "LEX_E_INVALID_CHAR": "DIAG-0031",
+}
+
 
 def main() -> int:
     fixture_dir = ROOT / "tests/diagnostics/frontend/lexer"
@@ -35,6 +39,9 @@ def main() -> int:
         diagnostic = diagnostics[0]
         if diagnostic["schema_version"] != "1.0.0" or diagnostic["message_key"] != diagnostic["code"]:
             raise SystemExit(f"{source_path}: diagnostic schema/catalog contract failed")
+        task = EXPECTED_TASKS.get(diagnostic["code"])
+        if task is not None and expected.get("task") != task:
+            raise SystemExit(f"{source_path}: expected task {task} for {diagnostic['code']}")
         observed.add(diagnostic["code"])
     if observed != EXPECTED:
         raise SystemExit(f"lexer diagnostic coverage mismatch: missing={sorted(EXPECTED - observed)} extra={sorted(observed - EXPECTED)}")
