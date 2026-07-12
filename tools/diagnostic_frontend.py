@@ -453,6 +453,19 @@ def analyze_parser(source: str, file: str) -> list[dict[str, Any]]:
                 "applicability": "has-placeholders",
             }],
         ))
+    missing_paren_lines = {
+        value["primary_span"]["start"]["line"]
+        for value in diagnostics
+        if value["code"] == "PARSE_E_MISSING_RPAREN"
+    }
+    if missing_paren_lines:
+        diagnostics = [
+            value for value in diagnostics
+            if not (
+                value["code"] == "PARSE_E_UNCLOSED_BLOCK"
+                and value["primary_span"]["start"]["line"] in missing_paren_lines
+            )
+        ]
     return diagnostics
 
 
