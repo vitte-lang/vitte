@@ -99,6 +99,21 @@ def analyze_lexer(source: str, file: str) -> list[dict[str, Any]]:
         if character == '"':
             in_string = True
             string_start = index
+        elif character == "'":
+            line_end = source.find("\n", index + 1)
+            if line_end < 0:
+                line_end = len(source)
+            closing = source.find("'", index + 1, line_end)
+            literal_end = closing + 1 if closing >= 0 else line_end
+            content = source[index + 1:closing] if closing >= 0 else ""
+            valid = closing >= 0 and (len(content) == 1 or (len(content) == 2 and content.startswith("\\")))
+            if not valid:
+                diagnostics.append(diagnostic(
+                    "LEX_E_INVALID_CHAR_LITERAL", "lexer", file, source, index, max(index + 1, literal_end),
+                    "character literal must contain exactly one character",
+                    helps=["use one character between single quotes or use a string literal"],
+                ))
+            index = max(index, literal_end - 1)
         elif character == "@":
             diagnostics.append(diagnostic(
                 "LEX_E_INVALID_CHAR", "lexer", file, source, index, index + 1,
