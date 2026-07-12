@@ -301,6 +301,15 @@ def analyze_parser(source: str, file: str) -> list[dict[str, Any]]:
     for raw_line in source.splitlines(keepends=True):
         line = raw_line.strip()
         if line and not line.startswith(("//", "/*", "*", "*/")) and brace_depth == 0:
+            proc_name = re.match(r"proc[ \t]+([^ \t(]+)", line)
+            if proc_name and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", proc_name.group(1)) is None:
+                invalid_name = proc_name.group(1)
+                start = offset + raw_line.index(invalid_name)
+                diagnostics.append(diagnostic(
+                    "PARSE_E_EXPECTED_TOKEN", "parser", file, source, start, start + len(invalid_name),
+                    "procedure name must be an identifier",
+                    helps=["use an identifier such as `main` after `proc`"],
+                ))
             match = re.match(r"([A-Za-z_][A-Za-z0-9_]*)", line)
             if match and match.group(1) not in TOP_LEVEL_KEYWORDS:
                 token = match.group(1)
