@@ -5,8 +5,27 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import sys
 from pathlib import Path
 from typing import Any
+
+ANSI = {
+    "error": "\x1b[1;31m",
+    "warning": "\x1b[1;33m",
+    "note": "\x1b[1;34m",
+    "help": "\x1b[1;36m",
+    "suggestion": "\x1b[1;32m",
+    "reset": "\x1b[0m",
+}
+
+
+def detect_color(stream: Any, environment: dict[str, str]) -> bool:
+    return bool(stream.isatty()) and "NO_COLOR" not in environment and environment.get("TERM") != "dumb"
+
+
+def styled(text: str, role: str, color: bool) -> str:
+    return f'{ANSI[role]}{text}{ANSI["reset"]}' if color else text
 
 
 def source_line(source_root: Path, file: str, line: int) -> str | None:
@@ -20,11 +39,12 @@ def source_line(source_root: Path, file: str, line: int) -> str | None:
     return lines[line - 1] if 1 <= line <= len(lines) else None
 
 
-def render(diagnostic: dict[str, Any], source_root: Path) -> str:
+def render(diagnostic: dict[str, Any], source_root: Path, color: bool = False) -> str:
     span = diagnostic["primary_span"]
     start = span["start"]
     lines = [
-        f'{diagnostic["severity"]}[{diagnostic["code"]}] {diagnostic["phase"]}: {diagnostic["message"]}',
+        styled(f'{diagnostic["severity"]}[{diagnostic["code"]}]', diagnostic["severity"], color)
+        + f' {diagnostic["phase"]}: {diagnostic["message"]}',
         f'  --> {span["file"]}:{start["line"]}:{start["column"]}',
     ]
     text = source_line(source_root, span["file"], start["line"])
@@ -58,11 +78,12 @@ def render(diagnostic: dict[str, Any], source_root: Path) -> str:
             f'{gutter} {marker} {label["message"]}',
         ))
     for note in diagnostic["notes"]:
-        lines.append(f"  = note: {note}")
+        lines.append(f'  = {styled("note", "note", color)}: {note}')
     for help_message in diagnostic["helps"]:
-        lines.append(f"  = help: {help_message}")
+        lines.append(f'  = {styled("help", "help", color)}: {help_message}')
     for suggestion in diagnostic["suggestions"]:
-        lines.append(f'  = suggestion[{suggestion["applicability"]}]: {suggestion["message"]}')
+        prefix = styled("suggestion", "suggestion", color)
+        lines.append(f'  = {prefix}[{suggestion["applicability"]}]: {suggestion["message"]}')
     return "\n".join(lines) + "\n"
 
 
@@ -75,7 +96,7 @@ def main() -> int:
         diagnostic = json.load(stream)
     if not isinstance(diagnostic, dict):
         raise SystemExit("diagnostic must be a JSON object")
-    print(render(diagnostic, args.source_root), end="")
+    print(render(diagnostic, args.source_root, detect_color(sys.stdout, dict(os.environ))), end="")
     return 0
 
 

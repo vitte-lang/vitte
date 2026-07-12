@@ -4,12 +4,28 @@
 from __future__ import annotations
 
 import subprocess
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "tools"))
+
+from render_diagnostic import detect_color  # noqa: E402
+
+
+class FakeStream:
+    def __init__(self, tty: bool) -> None:
+        self.tty = tty
+
+    def isatty(self) -> bool:
+        return self.tty
 
 
 def main() -> int:
+    assert detect_color(FakeStream(True), {})
+    assert not detect_color(FakeStream(False), {})
+    assert not detect_color(FakeStream(True), {"NO_COLOR": "1"})
+    assert not detect_color(FakeStream(True), {"TERM": "dumb"})
     cases = (
         ("minimal.json", "location.txt"),
         ("multiple-labels.json", "labels.txt"),
