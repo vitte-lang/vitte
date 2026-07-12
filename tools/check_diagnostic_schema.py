@@ -8,6 +8,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SCHEMA = ROOT / "schemas/diagnostics/v1.schema.json"
+SEVERITIES = ROOT / "schemas/diagnostics/severities.json"
 FIXTURES = ROOT / "tests/diagnostics/schema"
 REQUIRED = {
     "schema", "schema_version", "code", "severity", "phase", "message",
@@ -38,6 +39,19 @@ def main() -> int:
         raise ValueError(f"{SCHEMA}: expected JSON Schema draft 2020-12")
     if set(schema.get("required", [])) != REQUIRED:
         raise ValueError(f"{SCHEMA}: canonical required fields drifted")
+    severities = load(SEVERITIES)
+    if not isinstance(severities, dict) or not isinstance(severities.get("severities"), list):
+        raise ValueError(f"{SEVERITIES}: invalid severity registry")
+    names = [entry.get("name") for entry in severities["severities"] if isinstance(entry, dict)]
+    expected = ["error", "warning", "note", "help"]
+    if names != expected:
+        raise ValueError(f"{SEVERITIES}: severity order must be {expected}")
+    schema_names = schema.get("properties", {}).get("severity", {}).get("enum", [])
+    if schema_names != expected:
+        raise ValueError(f"{SCHEMA}: severity enum differs from registry")
+    ranks = [entry.get("rank") for entry in severities["severities"] if isinstance(entry, dict)]
+    if ranks != sorted(ranks, reverse=True) or len(set(ranks)) != len(ranks):
+        raise ValueError(f"{SEVERITIES}: severity ranks must be unique and descending")
     fixtures = sorted(FIXTURES.glob("*.json"))
     if not fixtures:
         raise ValueError(f"{FIXTURES}: no diagnostic fixtures")
