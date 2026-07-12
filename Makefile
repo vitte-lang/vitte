@@ -1068,6 +1068,7 @@ frontend-ast-test:
 .PHONY: hir-lowering-test
 hir-lowering-test:
 	@bin/vitte check src/vitte/compiler/tests/hir_tests.vit
+	@python3 tools/ast_hir_lowering_audit.py
 
 .PHONY: mir-lowering-test
 mir-lowering-test:

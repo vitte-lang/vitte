@@ -4,7 +4,8 @@ use vitte/compiler/frontend/pipeline.{ FrontendOutput }
 
 use vitte/compiler/frontend/ast.expr.{
   AstExpr,
-  AstExprKind
+  AstExprKind,
+  ast_expr_kind_name
 }
 
 use vitte/compiler/frontend/ast.item.{
@@ -12,12 +13,24 @@ use vitte/compiler/frontend/ast.item.{
   AstItemKind,
   AstNominalMember,
   AstNominalMemberKind,
-  AstParam
+  AstParam,
+  ast_item_kind_name
+}
+
+use vitte/compiler/frontend/ast.pattern.{
+  AstPattern,
+  ast_pattern_kind_name
 }
 
 use vitte/compiler/frontend/ast.stmt.{
   AstStmt,
-  AstStmtKind
+  AstStmtKind,
+  ast_stmt_kind_name
+}
+
+use vitte/compiler/frontend/ast.type_expr.{
+  AstTypeExpr,
+  ast_type_kind_name
 }
 
 use vitte/compiler/middle/hir.{
@@ -51,7 +64,9 @@ use vitte/compiler/middle/hir.{
 export *
 
 proc lower_expr_kind(kind: AstExprKind) -> HirExprKind {
-  if kind == AstExprKind.Name {
+  if kind == AstExprKind.Unknown {
+    give HirExprKind.Unknown;
+  } elif kind == AstExprKind.Name {
     give HirExprKind.Name;
   } elif kind == AstExprKind.Int {
     give HirExprKind.Int;
@@ -79,6 +94,10 @@ proc lower_expr_kind(kind: AstExprKind) -> HirExprKind {
     give HirExprKind.BorrowMut;
   } elif kind == AstExprKind.Deref {
     give HirExprKind.Deref;
+  } elif kind == AstExprKind.Move {
+    give HirExprKind.Move;
+  } elif kind == AstExprKind.AddressOf {
+    give HirExprKind.AddressOf;
   } elif kind == AstExprKind.If {
     give HirExprKind.If;
   } elif kind == AstExprKind.Match {
@@ -101,6 +120,10 @@ proc lower_expr_kind(kind: AstExprKind) -> HirExprKind {
     give HirExprKind.Is;
   } elif kind == AstExprKind.Try {
     give HirExprKind.Try;
+  } elif kind == AstExprKind.Await {
+    give HirExprKind.Await;
+  } elif kind == AstExprKind.Yield {
+    give HirExprKind.Yield;
   } elif kind == AstExprKind.Sizeof {
     give HirExprKind.Sizeof;
   } elif kind == AstExprKind.Alignof {
@@ -111,13 +134,37 @@ proc lower_expr_kind(kind: AstExprKind) -> HirExprKind {
     give HirExprKind.Typeof;
   } elif kind == AstExprKind.Nameof {
     give HirExprKind.Nameof;
+  } elif kind == AstExprKind.Path {
+    give HirExprKind.Path;
+  } elif kind == AstExprKind.Closure {
+    give HirExprKind.Closure;
+  } elif kind == AstExprKind.Assign {
+    give HirExprKind.Assign;
+  } elif kind == AstExprKind.CompoundAssign {
+    give HirExprKind.CompoundAssign;
+  } elif kind == AstExprKind.Slice {
+    give HirExprKind.Slice;
+  } elif kind == AstExprKind.TupleIndex {
+    give HirExprKind.TupleIndex;
+  } elif kind == AstExprKind.Macro {
+    give HirExprKind.Macro;
+  } elif kind == AstExprKind.Comptime {
+    give HirExprKind.Comptime;
+  } elif kind == AstExprKind.Unsafe {
+    give HirExprKind.Unsafe;
+  } elif kind == AstExprKind.Resource {
+    give HirExprKind.Resource;
+  } elif kind == AstExprKind.Invalid {
+    give HirExprKind.Invalid;
   }
 
   give HirExprKind.Unknown;
 }
 
 proc lower_stmt_kind(kind: AstStmtKind) -> HirStmtKind {
-  if kind == AstStmtKind.Const {
+  if kind == AstStmtKind.Unknown {
+    give HirStmtKind.Unknown;
+  } elif kind == AstStmtKind.Const {
     give HirStmtKind.Const;
   } elif kind == AstStmtKind.Let {
     give HirStmtKind.Let;
@@ -173,7 +220,9 @@ proc lower_stmt_kind(kind: AstStmtKind) -> HirStmtKind {
 }
 
 proc lower_item_kind(kind: AstItemKind) -> HirItemKind {
-  if kind == AstItemKind.Space {
+  if kind == AstItemKind.Unknown {
+    give HirItemKind.Unknown;
+  } elif kind == AstItemKind.Space {
     give HirItemKind.Space;
   } elif kind == AstItemKind.Use {
     give HirItemKind.Use;
@@ -240,9 +289,55 @@ proc lower_item_kind(kind: AstItemKind) -> HirItemKind {
   give HirItemKind.Unknown;
 }
 
+proc lower_pattern_text(pattern: AstPattern) -> string {
+  let kind_name: string = ast_pattern_kind_name(pattern.kind);
+  if not pattern.valid or kind_name == "unknown" or kind_name == "invalid" {
+    give "";
+  }
+  if pattern.text != "" {
+    give pattern.text;
+  }
+  if pattern.binding_name != "" {
+    give pattern.binding_name;
+  }
+  give pattern.name;
+}
+
+proc lower_pattern_binding_name(pattern: AstPattern) -> string {
+  let pattern_text: string = lower_pattern_text(pattern);
+  if pattern_text == "" {
+    give "";
+  }
+  if pattern.binding_name != "" {
+    give pattern.binding_name;
+  }
+  if pattern.name != "" {
+    give pattern.name;
+  }
+  give pattern_text;
+}
+
+proc lower_type_text(type_expr: AstTypeExpr) -> string {
+  let kind_name: string = ast_type_kind_name(type_expr.kind);
+  if not type_expr.valid or kind_name == "unknown" or kind_name == "invalid" {
+    give "";
+  }
+  if type_expr.text != "" {
+    give type_expr.text;
+  }
+  if type_expr.qualified_name != "" {
+    give type_expr.qualified_name;
+  }
+  give type_expr.name;
+}
+
 proc infer_value_mode(expr: AstExpr) -> HirValueMode {
-  if expr.kind == AstExprKind.Name {
+  if expr.kind == AstExprKind.Name or expr.kind == AstExprKind.Path {
     give HirValueMode.Place;
+  }
+
+  if expr.kind == AstExprKind.Move {
+    give HirValueMode.Move;
   }
 
   if expr.kind == AstExprKind.BorrowShared {
@@ -253,6 +348,10 @@ proc infer_value_mode(expr: AstExpr) -> HirValueMode {
     give HirValueMode.BorrowMut;
   }
 
+  if expr.kind == AstExprKind.Comptime {
+    give HirValueMode.Const;
+  }
+
   give HirValueMode.Value;
 }
 
@@ -261,11 +360,15 @@ proc infer_place_category(expr: AstExpr) -> HirPlaceCategory {
     give HirPlaceCategory.Local;
   }
 
+  if expr.kind == AstExprKind.Path {
+    give HirPlaceCategory.Global;
+  }
+
   if expr.kind == AstExprKind.Member {
     give HirPlaceCategory.Field;
   }
 
-  if expr.kind == AstExprKind.Index {
+  if expr.kind == AstExprKind.Index or expr.kind == AstExprKind.Slice or expr.kind == AstExprKind.TupleIndex {
     give HirPlaceCategory.Index;
   }
 
@@ -277,6 +380,15 @@ proc infer_place_category(expr: AstExpr) -> HirPlaceCategory {
 }
 
 proc infer_expr_type(expr: AstExpr) -> string {
+  let annotated_type: string = lower_type_text(expr.type_annotation);
+  if annotated_type != "" {
+    give annotated_type;
+  }
+
+  if expr.inferred_type_name != "" and expr.inferred_type_name != "unknown" {
+    give expr.inferred_type_name;
+  }
+
   if expr.kind == AstExprKind.Int {
     give "i32";
   }
@@ -340,7 +452,7 @@ proc lower_expr(expr: AstExpr) -> HirExpr {
 
   let diagnostics: [SemanticDiagnostic] = [];
 
-  if not expr.valid {
+  if not expr.valid or lowered_kind == HirExprKind.Invalid {
     set diagnostics = diagnostics + [semantic_diagnostic("HIR0001", SemanticSeverity.Error, "invalid ast expression", expr.span, expr.name, "")];
   }
   if lowered_kind == HirExprKind.Unknown {
@@ -370,7 +482,7 @@ proc lower_expr(expr: AstExpr) -> HirExpr {
     false,
     diagnostics,
     children,
-    expr.valid and lowered_kind != HirExprKind.Unknown
+    expr.valid and lowered_kind != HirExprKind.Unknown and lowered_kind != HirExprKind.Invalid
   );
 }
 
@@ -388,6 +500,9 @@ proc lower_stmt_list(stmts0: [AstStmt], scope_depth: u64) -> [HirStmt] {
 }
 
 proc lower_member_kind(kind: AstNominalMemberKind) -> HirNominalMemberKind {
+  if kind == AstNominalMemberKind.Unknown {
+    give HirNominalMemberKind.Unknown;
+  }
   if kind == AstNominalMemberKind.Field {
     give HirNominalMemberKind.Field;
   }
@@ -405,8 +520,8 @@ proc lower_member_kind(kind: AstNominalMemberKind) -> HirNominalMemberKind {
 
 proc lower_member_param(param: AstParam) -> HirProcParam {
   give hir_proc_param(
-    param.pattern.name,
-    param.annotation.text,
+    lower_pattern_binding_name(param.pattern),
+    lower_type_text(param.annotation),
     param.mode,
     param.mutable,
     param.borrowed,
@@ -442,7 +557,7 @@ proc lower_nominal_member(member: AstNominalMember) -> HirNominalMember {
     member.span,
     lowered_kind,
     member.name,
-    if member.signature.valid and member.signature.return_type.valid { member.signature.return_type.text } else { member.annotation.text },
+    if member.signature.valid and member.signature.return_type.valid { lower_type_text(member.signature.return_type) } else { lower_type_text(member.annotation) },
     expr,
     params,
     body_stmts,
@@ -476,12 +591,12 @@ proc lower_stmt(stmt: AstStmt, scope_depth: u64) -> HirStmt {
     stmt.id.value,
     stmt.span,
     lowered_kind,
-    stmt.pattern.name,
+    lower_pattern_binding_name(stmt.pattern),
     stmt.target,
     stmt.target,
     0,
     "",
-    stmt.annotation.text,
+    lower_type_text(stmt.annotation),
     lower_expr(stmt.expr),
     stmt.message,
     stmt.pattern.mutable,
@@ -492,7 +607,7 @@ proc lower_stmt(stmt: AstStmt, scope_depth: u64) -> HirStmt {
     scope_depth,
     lower_stmt_list(stmt.then_stmts, scope_depth + 1),
     lower_stmt_list(stmt.else_stmts, scope_depth + 1),
-    [],
+    lower_stmt_list(stmt.catch_stmts, scope_depth + 1),
     diagnostics,
     stmt.valid and lowered_kind != HirStmtKind.Unknown
   );
@@ -568,8 +683,8 @@ proc lower_item(item: AstItem) -> HirItem {
     if len(item.members) > 0 { len(item.members) } else { len(item.stmts) },
     item_signature_param_count(item),
     params,
-    item.annotation.text,
-    item.target_type.text,
+    lower_type_text(item.annotation),
+    lower_type_text(item.target_type),
     expr,
     lower_item_stmts(item),
     members,

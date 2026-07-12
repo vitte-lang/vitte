@@ -1,7 +1,8 @@
 space vitte/compiler/tests/hir_tests
 
 use vitte/compiler/frontend/pipeline.{ FrontendOutput, frontend_run }
-use vitte/compiler/middle/hir/lower_ast.{ lower_ast_to_hir }
+use vitte/compiler/frontend/ast.expr.{ AstExprKind }
+use vitte/compiler/middle/hir/lower_ast.{ lower_ast_to_hir, lower_expr_kind }
 use vitte/compiler/middle/hir.{ HirExprKind, HirItemKind, HirNominalMemberKind, HirProcParam, HirStmtKind, HirUnit, hir_expr_empty, hir_item_with_members, hir_module, hir_nominal_member, hir_proc_param, hir_unit }
 use vitte/compiler/middle/hir/builder.{ hir_builder_selftest }
 use vitte/compiler/middle/hir/control_flow.{ control_flow_selftest }
@@ -48,6 +49,24 @@ proc test_hir_if_while_lowering() -> bool {
     give false;
   }
   give hir.module.items[0].stmts[0].else_stmts[0].kind == HirStmtKind.While;
+}
+
+proc test_hir_extended_expr_kind_lowering() -> bool {
+  give lower_expr_kind(AstExprKind.Move) == HirExprKind.Move
+    and lower_expr_kind(AstExprKind.AddressOf) == HirExprKind.AddressOf
+    and lower_expr_kind(AstExprKind.Await) == HirExprKind.Await
+    and lower_expr_kind(AstExprKind.Yield) == HirExprKind.Yield
+    and lower_expr_kind(AstExprKind.Path) == HirExprKind.Path
+    and lower_expr_kind(AstExprKind.Closure) == HirExprKind.Closure
+    and lower_expr_kind(AstExprKind.Assign) == HirExprKind.Assign
+    and lower_expr_kind(AstExprKind.CompoundAssign) == HirExprKind.CompoundAssign
+    and lower_expr_kind(AstExprKind.Slice) == HirExprKind.Slice
+    and lower_expr_kind(AstExprKind.TupleIndex) == HirExprKind.TupleIndex
+    and lower_expr_kind(AstExprKind.Macro) == HirExprKind.Macro
+    and lower_expr_kind(AstExprKind.Comptime) == HirExprKind.Comptime
+    and lower_expr_kind(AstExprKind.Unsafe) == HirExprKind.Unsafe
+    and lower_expr_kind(AstExprKind.Resource) == HirExprKind.Resource
+    and lower_expr_kind(AstExprKind.Invalid) == HirExprKind.Invalid;
 }
 
 proc test_hir_preserves_surface_items_and_struct_expr() -> bool {
@@ -229,6 +248,9 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if not test_hir_if_while_lowering() {
+    set failures = failures + 1;
+  }
+  if not test_hir_extended_expr_kind_lowering() {
     set failures = failures + 1;
   }
   if not test_hir_preserves_surface_items_and_struct_expr() {
