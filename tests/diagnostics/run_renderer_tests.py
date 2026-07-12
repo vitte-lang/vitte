@@ -10,7 +10,11 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 def main() -> int:
-    cases = (("minimal.json", "location.txt"), ("multiple-labels.json", "labels.txt"))
+    cases = (
+        ("minimal.json", "location.txt"),
+        ("multiple-labels.json", "labels.txt"),
+        ("multiline-span.json", "help.txt"),
+    )
     for fixture, snapshot in cases:
         result = subprocess.run(
             [

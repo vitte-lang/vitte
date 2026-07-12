@@ -59,6 +59,8 @@ def render(diagnostic: dict[str, Any], source_root: Path) -> str:
         ))
     for note in diagnostic["notes"]:
         lines.append(f"  = note: {note}")
+    for help_message in diagnostic["helps"]:
+        lines.append(f"  = help: {help_message}")
     return "\n".join(lines) + "\n"
 
 
