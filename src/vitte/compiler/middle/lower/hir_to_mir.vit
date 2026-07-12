@@ -311,6 +311,10 @@ proc mir_rvalue_from_expr(expr: HirExpr, items: [HirItem]) -> MirRvalue {
     set kind = MirRvalueKind.Call;
   } elif expr.kind == HirExprKind.Struct {
     set kind = MirRvalueKind.Struct;
+  } elif expr.kind == HirExprKind.Array {
+    set kind = MirRvalueKind.Array;
+  } elif expr.kind == HirExprKind.Tuple {
+    set kind = MirRvalueKind.Tuple;
   }
 
   let operands: [MirOperand] = if kind == MirRvalueKind.Call { mir_call_operands(expr) } else { [] };
@@ -325,8 +329,24 @@ proc mir_rvalue_from_expr(expr: HirExpr, items: [HirItem]) -> MirRvalue {
 
   give MirRvalue {
     kind: kind,
-    text: if kind == MirRvalueKind.Call { mir_call_text(expr, items) } else { expr.text },
-    operator: if kind == MirRvalueKind.Call { mir_call_operator(expr) } else { expr.operator },
+    text: if kind == MirRvalueKind.Call {
+      mir_call_text(expr, items)
+    } elif kind == MirRvalueKind.Struct and expr.inferred_type != "" {
+      expr.inferred_type
+    } else {
+      expr.text
+    },
+    operator: if kind == MirRvalueKind.Call {
+      mir_call_operator(expr)
+    } elif kind == MirRvalueKind.Struct {
+      "struct"
+    } elif kind == MirRvalueKind.Array {
+      "array"
+    } elif kind == MirRvalueKind.Tuple {
+      "tuple"
+    } else {
+      expr.operator
+    },
     operands: operands,
     ty: expr.inferred_type,
     valid: expr.valid

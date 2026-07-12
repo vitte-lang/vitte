@@ -1,6 +1,6 @@
 space vitte/compiler/backend/codegen
 
-use vitte/compiler/backend/ir.{ IrFunction, IrInstruction, IrInstructionKind, IrModule, IrNominalType, IrUnit, IrValueKind }
+use vitte/compiler/backend/ir.{ IrFunction, IrInstruction, IrInstructionKind, IrLinkage, IrModule, IrNominalType, IrUnit, IrValueKind }
 use vitte/compiler/backend/codegen/machine.{ machine_block_label, machine_branch_label, machine_call_target_text, machine_epilogue_x86_64, machine_function_label, machine_operand_debug_name, machine_operand_immediate_text, machine_prologue_x86_64, machine_return_label }
 
 proc load_operand_lines(instruction: IrInstruction, index: u64, target_register: string) -> [string] {
@@ -176,6 +176,14 @@ proc select_instruction_line(module0: IrModule, function_name: string, instructi
     let lines: [string] = metadata + ["  call " + callee];
     give lines + store_result_lines(instruction, "%rax");
   }
+  if instruction.kind == IrInstructionKind.Aggregate {
+    let lines: [string] = ["  # aggregate-init kind=" + instruction.operator + " type=" + instruction.dest.type_name + " fields=" + string(len(instruction.args)), "  xor %rax, %rax"];
+    give lines + store_result_lines(instruction, "%rax");
+  }
+  if instruction.kind == IrInstructionKind.Discriminant {
+    let lines: [string] = load_operand_lines(instruction, 0, "%rax");
+    give lines + ["  mov 0(%rax), %eax"] + store_result_lines(instruction, "%rax");
+  }
   if instruction.kind == IrInstructionKind.BorrowShared {
     let source_name: string = if len(instruction.args) > 0 { machine_operand_debug_name(instruction.args[0].name, instruction.args[0].place, instruction.args[0].text) } else { instruction.text };
     if len(instruction.args) != 1 or instruction.dest.kind != IrValueKind.Reference or instruction.dest.ref_mutable {
@@ -248,10 +256,14 @@ proc select_ir_unit_x86_64(unit: IrUnit) -> [string] {
     let j: u64 = 0;
     while j < len(module0.functions) {
       let fn0 = module0.functions[j];
-      if fn0.is_entry {
-        set lines = lines + [".globl " + fn0.name];
+      if fn0.linkage == IrLinkage.External or fn0.linkage == IrLinkage.Imported {
+        set lines = lines + [".extern " + machine_call_target_text(fn0.name)];
+      } else {
+        if fn0.is_entry {
+          set lines = lines + [".globl " + fn0.name];
+        }
+        set lines = lines + select_function_instructions_x86_64(module0, fn0);
       }
-      set lines = lines + select_function_instructions_x86_64(module0, fn0);
       set j = j + 1;
     }
     set i = i + 1;

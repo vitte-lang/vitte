@@ -15,3 +15,10 @@ codegen, and object/link integration.
 - Keep target contracts explicit (ABI, endianness, object format).
 - Avoid silent backend fallback in critical phases.
 - Validate runtime payload/link artifacts in tests.
+
+## Canonical values
+
+The adapter emits identified LLVM types for Vitte forms and picks, concrete
+`insertvalue` aggregate construction, typed calls and returns, and `declare`
+entries for external functions. Arrays and tuples lower through
+`%VitteAggregate = type { i64, i8* }` with block-local value storage.

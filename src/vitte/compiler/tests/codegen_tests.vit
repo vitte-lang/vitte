@@ -422,12 +422,69 @@ proc test_llvm_codegen_consumes_nominal_call_metadata() -> bool {
   let ir: IrUnit = build_verified_ir("backend_nominal_llvm_comments.vit", source);
   let llvm0: LlvmBindingResult = emit_llvm_ir_from_ir(ir);
   give llvm0.valid
+    and find(llvm0.ir_text, "%Point = type { i64 }") >= 0
+    and find(llvm0.ir_text, "%Option = type { i32, i64 }") >= 0
     and find(llvm0.ir_text, "; nominal name=Option kind=pick members=2") >= 0
     and find(llvm0.ir_text, "; nominal member_annotations=,int") >= 0
     and find(llvm0.ir_text, "; nominal member_param_names=,self|level") >= 0
     and find(llvm0.ir_text, "; nominal member_param_types=,Self|int") >= 0
     and find(llvm0.ir_text, "; nominal-variant pick=Option variant=Some payload=int") >= 0
+    and find(llvm0.ir_text, "insertvalue %Option") >= 0
     and find(llvm0.ir_text, "; nominal-dispatch trait=Show target=Point method=show params=Self|int return=string") >= 0;
+}
+
+proc test_backend_lowers_calls_returns_and_aggregates_concretely() -> bool {
+  let source: string =
+    "form Point { x: int, y: int }\n" +
+    "extern C proc host_add(left: int, right: int) -> int;\n" +
+    "proc main() -> int { let point = Point { x: 1, y: 2 }; let values = [3, 4]; give host_add(5, 6); }\n";
+  let ir: IrUnit = build_verified_ir("backend_calls_returns_aggregates.vit", source);
+  if not unit_is_valid(ir) or len(ir.modules) != 1 or len(ir.modules[0].functions) < 2 {
+    give false;
+  }
+  let module0 = ir.modules[0];
+  let main_fn = module0.functions[1];
+  let saw_struct: bool = false;
+  let saw_array: bool = false;
+  let saw_call: bool = false;
+  let saw_return: bool = false;
+  let i: u64 = 0;
+  while i < len(main_fn.blocks) {
+    let j: u64 = 0;
+    while j < len(main_fn.blocks[i].instructions) {
+      let instruction0 = main_fn.blocks[i].instructions[j];
+      if instruction0.kind == IrInstructionKind.Aggregate and instruction0.operator == "struct" {
+        set saw_struct = true;
+      }
+      if instruction0.kind == IrInstructionKind.Aggregate and instruction0.operator == "array" {
+        set saw_array = true;
+      }
+      if instruction0.kind == IrInstructionKind.Call and find(instruction0.text, "host_add") == 0 {
+        set saw_call = true;
+      }
+      if instruction0.kind == IrInstructionKind.ReturnValue and len(instruction0.args) == 1 and instruction0.args[0].name != "" {
+        set saw_return = true;
+      }
+      set j = j + 1;
+    }
+    set i = i + 1;
+  }
+  let llvm0: LlvmBindingResult = emit_llvm_ir_from_ir(ir);
+  let machine0: CodegenResult = run_codegen_x86_64(ir);
+  give module0.functions[0].linkage == IrLinkage.External
+    and len(module0.external_symbols) >= 1 and module0.external_symbols[0] == "host_add"
+    and saw_struct and saw_array and saw_call and saw_return
+    and machine0.valid
+    and find(machine0.assembly, ".extern host_add") >= 0
+    and find(machine0.assembly, "# aggregate-init kind=struct type=Point fields=2") >= 0
+    and find(machine0.assembly, "# aggregate-init kind=array type=array fields=2") >= 0
+    and llvm0.valid
+    and find(llvm0.ir_text, "%Point = type { i64, i64 }") >= 0
+    and find(llvm0.ir_text, "declare i64 @host_add(i64, i64)") >= 0
+    and find(llvm0.ir_text, "insertvalue %Point") >= 0
+    and find(llvm0.ir_text, ".values = alloca [2 x i64]") >= 0
+    and find(llvm0.ir_text, "call i64 @host_add(i64 5, i64 6)") >= 0
+    and find(llvm0.ir_text, "ret i64 %__return_value_") >= 0;
 }
 
 proc test_ir_and_llvm_preserve_regular_proc_signature() -> bool {
@@ -844,6 +901,7 @@ proc run_all_tests() -> int {
   if not test_mir_to_ir_preserves_explicit_nominal_call_lowering() { set failures = failures + 1; }
   if not test_x86_64_codegen_consumes_nominal_call_metadata() { set failures = failures + 1; }
   if not test_llvm_codegen_consumes_nominal_call_metadata() { set failures = failures + 1; }
+  if not test_backend_lowers_calls_returns_and_aggregates_concretely() { set failures = failures + 1; }
   if not test_ir_and_llvm_preserve_regular_proc_signature() { set failures = failures + 1; }
   if not test_ir_and_llvm_calls_use_borrow_abi_shape() { set failures = failures + 1; }
   if not test_ir_and_llvm_preserve_borrow_passthrough_call_shape() { set failures = failures + 1; }

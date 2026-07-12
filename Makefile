@@ -2304,8 +2304,13 @@ c-abi-contract-audit:
 	@python3 tools/c_abi_contract_audit.py
 
 
+.PHONY: backend-value-lowering-audit
+backend-value-lowering-audit:
+	@python3 tools/backend_value_lowering_audit.py
+
+
 .PHONY: backend-gate
-backend-gate: vitte-emit-gate llvm-backend-gate wasm-backend-gate backend-ir-contract-audit c-abi-contract-audit
+backend-gate: vitte-emit-gate llvm-backend-gate wasm-backend-gate backend-ir-contract-audit c-abi-contract-audit backend-value-lowering-audit
 	@python3 tools/backend_surface_audit.py
 
 

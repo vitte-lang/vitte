@@ -129,6 +129,17 @@ proc ir_function_abi_from_hir(items: [HirItem], function_name: string) -> string
     give "Vitte";
 }
 
+proc ir_function_is_external_from_hir(items: [HirItem], function_name: string) -> bool {
+    let i: u64 = 0;
+    while i < len(items) {
+        if items[i].kind == HirItemKind.Proc and items[i].name == function_name {
+            give items[i].abi != "" and items[i].abi != "Vitte" and len(items[i].stmts) == 0;
+        }
+        set i = i + 1;
+    }
+    give false;
+}
+
 proc ir_value_from_operand(id: u64, operand: MirOperand) -> IrValue {
     if operand.place.valid {
         let place_text: string = operand.place.local + operand.place.projection;
@@ -177,6 +188,12 @@ proc ir_instruction_kind_from_rvalue(rvalue: MirRvalue) -> IrInstructionKind {
     }
     if rvalue.kind == MirRvalueKind.Call {
         give IrInstructionKind.Call;
+    }
+    if rvalue.kind == MirRvalueKind.Aggregate or rvalue.kind == MirRvalueKind.Tuple or rvalue.kind == MirRvalueKind.Array or rvalue.kind == MirRvalueKind.Struct {
+        give IrInstructionKind.Aggregate;
+    }
+    if rvalue.kind == MirRvalueKind.Discriminant {
+        give IrInstructionKind.Discriminant;
     }
     give IrInstructionKind.Assign;
 }
@@ -279,7 +296,8 @@ proc ir_args_from_rvalue(statement_id: u64, rvalue: MirRvalue, call_arg_start: u
         set args = args + [ir_call_arg_value_from_operand(statement_id + i + 1, rvalue.operands[i], borrowed, mutable, fn0)];
         set i = i + 1;
     }
-    if len(args) == 0 and rvalue.text != "" {
+    let aggregate: bool = rvalue.kind == MirRvalueKind.Aggregate or rvalue.kind == MirRvalueKind.Tuple or rvalue.kind == MirRvalueKind.Array or rvalue.kind == MirRvalueKind.Struct;
+    if len(args) == 0 and rvalue.text != "" and not aggregate {
         set args = [value_constant(statement_id + 1, rvalue.text, "unknown")];
     }
     give args;
@@ -344,6 +362,41 @@ proc borrow_instruction_for_call_arg(statement: MirStatement, arg_index: u64, ar
     );
 }
 
+proc return_rvalue_requires_materialization(rvalue: MirRvalue) -> bool {
+    give rvalue.kind != MirRvalueKind.Use and rvalue.kind != MirRvalueKind.Copy and rvalue.kind != MirRvalueKind.Move;
+}
+
+proc materialized_return_instruction(statement: MirStatement, functions: [MirFunction], fn0: MirFunction) -> IrInstruction {
+    let call_arg_start: u64 = if statement.rvalue.kind == MirRvalueKind.Call { call_arg_start_for_rvalue(statement.rvalue) } else { 0 };
+    let args: [IrValue] = ir_args_from_rvalue(statement.id, statement.rvalue, call_arg_start, functions, fn0);
+    let temp_name: string = "__return_value_" + string(statement.id);
+    let instruction0: IrInstruction = instruction_create(
+        statement.id,
+        ir_instruction_kind_from_rvalue(statement.rvalue),
+        statement.rvalue.text,
+        statement.rvalue.operator,
+        value_place(statement.id, temp_name, temp_name, statement.rvalue.ty),
+        args,
+        statement.span
+    );
+    if statement.rvalue.kind == MirRvalueKind.Call {
+        give instruction_with_call_abi(instruction0, call_arg_start);
+    }
+    give instruction0;
+}
+
+proc return_instruction_from_value(statement: MirStatement, value: IrValue) -> IrInstruction {
+    give instruction_create(
+        statement.id * 1000 + 999,
+        IrInstructionKind.ReturnValue,
+        value.text,
+        "",
+        value_place(statement.id, "__return", "__return", statement.rvalue.ty),
+        [value],
+        statement.span
+    );
+}
+
 proc ir_terminator_from_mir(term: MirTerminator) -> IrInstruction {
     if term.kind == MirTerminatorKind.Goto {
         give terminator_jump(term.target_block);
@@ -364,6 +417,22 @@ proc lower_mir_block(block: MirBlock, fn0: MirFunction, functions: [MirFunction]
     let i: u64 = 0;
     let built: IrBlock = ir_block;
     while i < len(block.statements) {
+        if block.statements[i].kind == MirStatementKind.Return and return_rvalue_requires_materialization(block.statements[i].rvalue) {
+            let materialized: IrInstruction = materialized_return_instruction(block.statements[i], functions, fn0);
+            if materialized.kind == IrInstructionKind.Call {
+                let j: u64 = materialized.call_arg_start;
+                while j < len(materialized.args) {
+                    if materialized.args[j].kind == IrValueKind.Reference {
+                        set built = block_add_instruction(built, borrow_instruction_for_call_arg(block.statements[i], j, materialized.args[j]));
+                    }
+                    set j = j + 1;
+                }
+            }
+            set built = block_add_instruction(built, materialized);
+            set built = block_add_instruction(built, return_instruction_from_value(block.statements[i], materialized.dest));
+            set i = i + 1;
+            continue;
+        }
         let instruction0: IrInstruction = ir_instruction_from_mir(block.statements[i], functions, fn0);
         if instruction0.kind == IrInstructionKind.Call {
             let j: u64 = instruction0.call_arg_start;
@@ -381,13 +450,14 @@ proc lower_mir_block(block: MirBlock, fn0: MirFunction, functions: [MirFunction]
 }
 
 proc lower_mir_function(module_name: string, fn0: MirFunction, functions: [MirFunction], typed_hir_items: [HirItem], exported_names: [string]) -> IrFunction {
+    let external: bool = ir_function_is_external_from_hir(typed_hir_items, fn0.name);
     let lowered: IrFunction = function_with_abi(function_ref_create(
         fn0.id,
         fn0.name,
         module_name,
-        ir_linkage_for_exports(fn0.name, exported_names),
-        ir_visibility_for_exports(fn0.name, exported_names),
-        fn0.name == "main",
+        if external { IrLinkage.External } else { ir_linkage_for_exports(fn0.name, exported_names) },
+        if external { IrVisibility.Public } else { ir_visibility_for_exports(fn0.name, exported_names) },
+        fn0.name == "main" and not external,
         span_empty()
     ), ir_function_abi_from_hir(typed_hir_items, fn0.name));
     let params: [IrFunctionParam] = [];
@@ -670,7 +740,11 @@ proc lower_mir_as_ir_module(module_id: u64, module_name: string, source_path: st
     }
     set i = 0;
     while i < len(mir.module.functions) {
-        set built = module_add_function(built, lower_mir_function(module_name, mir.module.functions[i], mir.module.functions, typed_hir_items, exported_names));
+        let lowered_fn: IrFunction = lower_mir_function(module_name, mir.module.functions[i], mir.module.functions, typed_hir_items, exported_names);
+        set built = module_add_function(built, lowered_fn);
+        if lowered_fn.linkage == IrLinkage.External or lowered_fn.linkage == IrLinkage.Imported {
+            set built = module_add_external_symbol(built, lowered_fn.name);
+        }
         set i = i + 1;
     }
     set i = 0;

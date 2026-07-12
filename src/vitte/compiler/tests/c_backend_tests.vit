@@ -98,6 +98,34 @@ proc test_c_abi_is_preserved_from_hir_to_canonical_ir() -> bool {
     and middle.ir.modules[0].functions[1].abi == "Vitte";
 }
 
+proc test_c_backend_emits_external_calls_as_declarations_only() -> bool {
+  let source: string =
+    "extern C proc host_add(left: int, right: int) -> int;\n" +
+    "proc main() -> int { give 0; }\n";
+  let result: CBackendPipelineResult = run_c_backend_source("c_external_declaration.vit", source, "c11", "build/c_external_declaration", "executable");
+  give result.valid
+    and len(result.lowered.functions) == 2
+    and result.lowered.functions[0].name == "host_add"
+    and result.lowered.functions[0].declaration_only
+    and find(result.emitted.header_text, "VITTE_ABI_C int64_t host_add(int64_t left, int64_t right);") >= 0
+    and find(result.emitted.source_text, "host_add(int64_t left, int64_t right) {") < 0
+    and len(result.middle.ir.modules[0].external_symbols) >= 1
+    and result.middle.ir.modules[0].external_symbols[0] == "host_add";
+}
+
+proc test_c_backend_lowers_struct_tuple_and_array_values() -> bool {
+  let source: string =
+    "form Point { x: int, y: int }\n" +
+    "proc main() -> int { let point = Point { x: 1, y: 2 }; let values = [3, 4, 5]; let pair = (6, 7); give 0; }\n";
+  let result: CBackendPipelineResult = run_c_backend_source("c_aggregate_values.vit", source, "c11", "build/c_aggregate_values", "executable");
+  give result.valid
+    and find(result.emitted.header_text, "typedef struct VitteAggregate VitteAggregate;") >= 0
+    and find(result.emitted.source_text, "point = ((struct Point){ .x = 1, .y = 2 });") >= 0
+    and find(result.emitted.source_text, "values = (VitteAggregate){ .length = 3") >= 0
+    and find(result.emitted.source_text, "pair = (VitteAggregate){ .length = 2") >= 0
+    and find(result.emitted.source_text, "return 0;\n  return;") < 0;
+}
+
 proc test_c_backend_calls_use_borrow_abi_shape() -> bool {
   let source: string =
     "proc keep(borrow value: int) -> int { give value; }\n" +
@@ -208,6 +236,7 @@ proc test_c_backend_accepts_struct_and_surface_items_without_lowering_regression
     and result.lowered.nominal_types[5].target_type == "Point"
     and result.lowered.nominal_types[5].members[0].kind == "impl-method"
     and len(result.lowered.nominal_types[5].members[0].params) == 1
+    and find(result.emitted.source_text, "point = ((struct Point){ .x = 1, .y = 2 });") >= 0
     and find(result.emitted.source_text, "VITTE_ABI_VITTE int main(") >= 0
     and find(result.emitted.header_text, "vitte nominal metadata") >= 0
     and find(result.emitted.header_text, "typedef struct VitteNominalDescriptor VitteNominalDescriptor;") >= 0
@@ -386,6 +415,12 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if not test_c_abi_is_preserved_from_hir_to_canonical_ir() {
+    set failures = failures + 1;
+  }
+  if not test_c_backend_emits_external_calls_as_declarations_only() {
+    set failures = failures + 1;
+  }
+  if not test_c_backend_lowers_struct_tuple_and_array_values() {
     set failures = failures + 1;
   }
   if not test_c_backend_calls_use_borrow_abi_shape() {

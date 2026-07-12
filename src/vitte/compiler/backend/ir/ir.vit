@@ -54,6 +54,8 @@ pick IrInstructionKind {
   Call,
   BorrowShared,
   BorrowMut,
+  Aggregate,
+  Discriminant,
   Assert,
   ReturnValue,
   Jump,
@@ -906,6 +908,29 @@ proc module_pick_nominal(module0: IrModule, name: string) -> IrNominalType {
   };
 }
 
+proc module_nominal_by_name(module0: IrModule, name: string) -> IrNominalType {
+  let i: u64 = 0;
+  while i < len(module0.nominal_types) {
+    if module0.nominal_types[i].name == name {
+      give module0.nominal_types[i];
+    }
+    set i = i + 1;
+  }
+  give module_pick_nominal(module0, "");
+}
+
+proc nominal_field_count(nominal: IrNominalType) -> u64 {
+  let count: u64 = 0;
+  let i: u64 = 0;
+  while i < len(nominal.member_kinds) {
+    if nominal.member_kinds[i] == "field" {
+      set count = count + 1;
+    }
+    set i = i + 1;
+  }
+  give count;
+}
+
 proc module_impl_dispatch_nominal(module0: IrModule, symbol_name: string) -> IrNominalType {
   let i: u64 = 0;
   while i < len(module0.nominal_types) {
@@ -1214,6 +1239,23 @@ proc instruction_args_valid(instruction: IrInstruction) -> bool {
   give true;
 }
 
+proc verify_aggregate_instruction(module0: IrModule, instruction: IrInstruction) -> bool {
+  if not instruction.dest.valid or instruction.dest.type_name == "" {
+    give false;
+  }
+  if instruction.operator == "struct" {
+    let nominal: IrNominalType = module_nominal_by_name(module0, instruction.dest.type_name);
+    if not nominal.valid or not (nominal.kind == "form" or nominal.kind == "class" or nominal.kind == "union") {
+      give false;
+    }
+    if nominal.kind == "union" {
+      give len(instruction.args) == 1 and nominal_field_count(nominal) > 0;
+    }
+    give nominal_field_count(nominal) == len(instruction.args);
+  }
+  give instruction.operator == "array" or instruction.operator == "tuple" or instruction.operator == "aggregate";
+}
+
 proc verify_instruction_in_module(module0: IrModule, instruction: IrInstruction) -> bool {
   if not instruction.valid {
     give false;
@@ -1241,6 +1283,12 @@ proc verify_instruction_in_module(module0: IrModule, instruction: IrInstruction)
       give instruction.args[0].kind != IrValueKind.Reference;
     }
     give true;
+  }
+  if instruction.kind == IrInstructionKind.Aggregate {
+    give verify_aggregate_instruction(module0, instruction);
+  }
+  if instruction.kind == IrInstructionKind.Discriminant {
+    give instruction.dest.valid and len(instruction.args) == 1;
   }
   if instruction.kind == IrInstructionKind.Call {
     if len(instruction.args) == 0 or instruction.call_arg_start > len(instruction.args) {
@@ -1308,6 +1356,18 @@ proc instruction_reason_in_module(module0: IrModule, instruction: IrInstruction)
       if instruction.args[0].kind == IrValueKind.Reference {
         give "invalid-borrow-abi";
       }
+    }
+    give "none";
+  }
+  if instruction.kind == IrInstructionKind.Aggregate {
+    if not verify_aggregate_instruction(module0, instruction) {
+      give "invalid-aggregate";
+    }
+    give "none";
+  }
+  if instruction.kind == IrInstructionKind.Discriminant {
+    if not instruction.dest.valid or len(instruction.args) != 1 {
+      give "invalid-discriminant";
     }
     give "none";
   }

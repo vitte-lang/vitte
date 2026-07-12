@@ -81,7 +81,12 @@ proc emit_nominal_metadata_block(unit: CTranslationUnit) -> string {
 }
 
 proc emit_nominal_descriptor_support() -> string {
-  give "typedef struct VitteNominalDescriptor VitteNominalDescriptor;\n"
+  give "typedef struct VitteAggregate VitteAggregate;\n"
+    + "struct VitteAggregate {\n"
+    + "  size_t length;\n"
+    + "  const uintptr_t* values;\n"
+    + "};\n\n"
+    + "typedef struct VitteNominalDescriptor VitteNominalDescriptor;\n"
     + "struct VitteNominalDescriptor {\n"
     + "  const char* name;\n"
     + "  const char* kind;\n"
@@ -385,9 +390,11 @@ proc emit_source_text(unit: CTranslationUnit, runtime: CRuntimeModule) -> string
   }
   i = 0;
   while i < len(unit.functions) {
-    set out = out + emit_function_decl(unit.functions[i]) + " {\n";
-    set out = out + unit.functions[i].body_text;
-    set out = out + "}\n\n";
+    if not unit.functions[i].declaration_only {
+      set out = out + emit_function_decl(unit.functions[i]) + " {\n";
+      set out = out + unit.functions[i].body_text;
+      set out = out + "}\n\n";
+    }
     set i = i + 1;
   }
   give out;

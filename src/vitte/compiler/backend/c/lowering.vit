@@ -74,6 +74,7 @@ form CLoweredFunction {
   name: string
   c_name: string
   abi: CAbiFunction
+  declaration_only: bool
   return_type: string
   params: [CMethodParam]
   locals: [CLocal]
@@ -1336,6 +1337,52 @@ proc lower_method_dispatch_text(nominal_types: [CNominalType], locals: [CLocal],
   give out;
 }
 
+proc lower_erased_aggregate_text(locals: [CLocal], params: [CMethodParam], rvalue: MirRvalue) -> string {
+  let count: u64 = len(rvalue.operands);
+  if count == 0 {
+    give "(VitteAggregate){ .length = 0, .values = NULL }";
+  }
+  let values: string = "";
+  let i: u64 = 0;
+  while i < count {
+    if values != "" {
+      set values = values + ", ";
+    }
+    set values = values + "(uintptr_t)(" + lower_operand_text(locals, params, rvalue.operands[i]) + ")";
+    set i = i + 1;
+  }
+  give "(VitteAggregate){ .length = " + string(count) + ", .values = (const uintptr_t[]){ " + values + " } }";
+}
+
+proc lower_struct_aggregate_text(nominal_types: [CNominalType], locals: [CLocal], params: [CMethodParam], rvalue: MirRvalue) -> string {
+  let type_name: string = if rvalue.ty != "" and rvalue.ty != "unknown" { rvalue.ty } else { rvalue.text };
+  let nominal: CNominalType = c_nominal_find(nominal_types, type_name, "");
+  if not nominal.valid {
+    give "/* unresolved aggregate */ ((struct " + c_nominal_c_name(type_name) + "){0})";
+  }
+  let c_type: string = (if nominal.kind == "union" { "union " } else { "struct " }) + c_nominal_c_name(nominal.name);
+  let out: string = "((" + c_type + "){ ";
+  let operand_index: u64 = 0;
+  let member_index: u64 = 0;
+  while member_index < len(nominal.members) and operand_index < len(rvalue.operands) {
+    if nominal.members[member_index].kind == "field" {
+      if operand_index > 0 {
+        set out = out + ", ";
+      }
+      set out = out + "." + nominal.members[member_index].c_name + " = " + lower_operand_text(locals, params, rvalue.operands[operand_index]);
+      set operand_index = operand_index + 1;
+      if nominal.kind == "union" {
+        break;
+      }
+    }
+    set member_index = member_index + 1;
+  }
+  if operand_index == 0 {
+    give "((" + c_type + "){0})";
+  }
+  give out + " })";
+}
+
 proc lower_call_text(nominal_types: [CNominalType], locals: [CLocal], params: [CMethodParam], functions: [MirFunction], ir_call: IrInstruction, borrow_bindings: [CIrBorrowBinding], rvalue: MirRvalue, profile: CBackendTargetProfile) -> string {
   if not ir_call.valid {
     give "0 /* invalid canonical call */";
@@ -1398,10 +1445,13 @@ proc lower_rvalue_text(nominal_types: [CNominalType], locals: [CLocal], params: 
     give "vitte_runtime_strlen(" + lower_operand_text(locals, params, rvalue.operands[0]) + ")";
   }
   if rvalue.kind == MirRvalueKind.Aggregate or rvalue.kind == MirRvalueKind.Tuple or rvalue.kind == MirRvalueKind.Array or rvalue.kind == MirRvalueKind.Struct {
-    give "{0}";
+    if rvalue.kind == MirRvalueKind.Struct {
+      give lower_struct_aggregate_text(nominal_types, locals, params, rvalue);
+    }
+    give lower_erased_aggregate_text(locals, params, rvalue);
   }
-  if rvalue.kind == MirRvalueKind.Discriminant {
-    give "0";
+  if rvalue.kind == MirRvalueKind.Discriminant and len(rvalue.operands) > 0 {
+    give "(" + lower_operand_text(locals, params, rvalue.operands[0]) + ").__vitte_tag";
   }
   give "0";
 }
@@ -1482,6 +1532,7 @@ proc lower_block_text(nominal_types: [CNominalType], locals: [CLocal], params: [
   let out: string = c_block_label(block.id) + ":\n";
   let i: u64 = 0;
   let call_index: u64 = 0;
+  let returned: bool = false;
   while i < len(block.statements) {
     let ir_call: IrInstruction = if block.statements[i].rvalue.kind == MirRvalueKind.Call { ir_call_instruction_at(ir_block, call_index) } else { IrInstruction {
       id: 0,
@@ -1500,12 +1551,17 @@ proc lower_block_text(nominal_types: [CNominalType], locals: [CLocal], params: [
     } };
     let borrow_bindings: [CIrBorrowBinding] = if block.statements[i].rvalue.kind == MirRvalueKind.Call { ir_borrow_bindings_before_call(ir_block, call_index, locals, params, profile) } else { [] };
     set out = out + lower_statement_text(nominal_types, locals, params, functions, ir_call, borrow_bindings, block.statements[i], profile);
+    if block.statements[i].kind == MirStatementKind.Return {
+      set returned = true;
+    }
     if block.statements[i].rvalue.kind == MirRvalueKind.Call {
       set call_index = call_index + 1;
     }
     set i = i + 1;
   }
-  set out = out + lower_terminator_text(locals, params, block.terminator);
+  if not (returned and block.terminator.kind == MirTerminatorKind.Return) {
+    set out = out + lower_terminator_text(locals, params, block.terminator);
+  }
   give out;
 }
 
@@ -1519,10 +1575,11 @@ proc lower_function(function0: MirFunction, ir_function: IrFunction, functions0:
     c_abi_values_from_params(params),
     function0.name == "main"
   );
+  let declaration_only: bool = ir_function.valid and (ir_function.linkage == IrLinkage.External or ir_function.linkage == IrLinkage.Imported);
   let locals: [CLocal] = locals_without_params(collect_function_locals(function0, profile), params);
   let body_text: string = "";
   let i: u64 = 0;
-  while i < len(locals) {
+  while i < len(locals) and not declaration_only {
     if locals[i].c_type != "void" {
       set body_text = body_text + "  " + locals[i].c_type + " " + locals[i].c_name + " = {0};\n";
     }
@@ -1532,7 +1589,7 @@ proc lower_function(function0: MirFunction, ir_function: IrFunction, functions0:
     set body_text = body_text + "\n";
   }
   i = 0;
-  while i < len(function0.blocks) {
+  while i < len(function0.blocks) and not declaration_only {
     set body_text = body_text + lower_block_text(nominal_types, locals, params, functions0, c_ir_block_by_id(ir_function, function0.blocks[i].id), function0.blocks[i], profile);
     set i = i + 1;
   }
@@ -1540,6 +1597,7 @@ proc lower_function(function0: MirFunction, ir_function: IrFunction, functions0:
     name: function0.name,
     c_name: sanitize_c_identifier(function0.name),
     abi: function_abi,
+    declaration_only: declaration_only,
     return_type: function_abi.return_value.c_type,
     params: params,
     locals: locals,

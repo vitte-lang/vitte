@@ -29,6 +29,15 @@ Generated headers define `VITTE_ABI_VITTE`, `VITTE_ABI_C`,
 `VITTE_ABI_SYSV64`, and `VITTE_ABI_WIN64`. Every generated function
 declaration and definition carries exactly one of these macros.
 
+## Value lowering
+
+- `form` and `class` values use C structs with designated initializers.
+- Vitte unions use C unions and initialize one active field.
+- `pick` values use a signed 32-bit tag plus a payload union.
+- Arrays and tuples currently share the executable `VitteAggregate` boundary: a length and a block-scoped `uintptr_t` value array.
+- External procedures emit a header declaration only; no synthetic C body is generated.
+- A block that already returns a value does not receive a second bare `return`.
+
 ## Ownership
 
 - `architecture.vit`: target profile and C type mapping
