@@ -218,10 +218,37 @@ def analyze_lexer(source: str, file: str) -> list[dict[str, Any]]:
     return diagnostics
 
 
+KEYWORD_PRIORITY = (
+    "proc", "const", "form", "pick", "use", "import", "export", "share",
+    "space", "intrinsic", "query", "diagnostic", "compiler", "pass", "backend",
+)
 TOP_LEVEL_KEYWORDS = {
     "space", "proc", "const", "form", "pick", "use", "import", "export",
     "share", "intrinsic", "query", "diagnostic", "compiler", "pass", "backend",
 }
+
+
+def levenshtein(left: str, right: str) -> int:
+    previous = list(range(len(right) + 1))
+    for left_index, left_character in enumerate(left, 1):
+        current = [left_index]
+        for right_index, right_character in enumerate(right, 1):
+            current.append(min(
+                current[-1] + 1,
+                previous[right_index] + 1,
+                previous[right_index - 1] + (left_character != right_character),
+            ))
+        previous = current
+    return previous[-1]
+
+
+def nearest_keyword(token: str) -> str | None:
+    candidates = sorted(
+        (levenshtein(token, keyword), KEYWORD_PRIORITY.index(keyword), keyword)
+        for keyword in TOP_LEVEL_KEYWORDS
+    )
+    distance, _, keyword = candidates[0]
+    return keyword if distance <= 2 else None
 
 
 def analyze_parser(source: str, file: str) -> list[dict[str, Any]]:
@@ -237,14 +264,15 @@ def analyze_parser(source: str, file: str) -> list[dict[str, Any]]:
                 start = offset + raw_line.index(token)
                 suggestions: list[dict[str, Any]] = []
                 helps = ["start a valid top-level declaration"]
-                if token == "pro":
+                replacement = nearest_keyword(token)
+                if replacement is not None:
                     suggestions.append({
-                        "message": "replace `pro` with `proc`",
-                        "replacement": "proc",
+                        "message": f"replace `{token}` with `{replacement}`",
+                        "replacement": replacement,
                         "span": span(file, source, start, start + len(token)),
                         "applicability": "machine-applicable",
                     })
-                    helps = ["did you mean `proc`?"]
+                    helps = [f"did you mean `{replacement}`?"]
                 diagnostics.append(diagnostic(
                     "PARSE_E_TOPLEVEL_DECL_EXPECTED", "parser", file, source, start, start + len(token),
                     f"unexpected top-level token `{token}`",

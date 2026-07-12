@@ -10,10 +10,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools"))
 
-from diagnostic_frontend import analyze  # noqa: E402
+from diagnostic_frontend import analyze, levenshtein  # noqa: E402
 
 
 def main() -> int:
+    if levenshtein("pro", "proc") != 1 or levenshtein("prco", "proc") != 2:
+        raise SystemExit("keyword Levenshtein distance is unstable")
     fixtures = sorted((ROOT / "tests/diagnostics/frontend").glob("**/*.vit"))
     for fixture in fixtures:
         expected_path = fixture.with_suffix(".expect.json")
