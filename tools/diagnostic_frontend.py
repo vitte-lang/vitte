@@ -73,6 +73,7 @@ def diagnostic(
 def analyze_lexer(source: str, file: str) -> list[dict[str, Any]]:
     diagnostics: list[dict[str, Any]] = []
     in_string = False
+    string_start = -1
     escaped = False
     index = 0
     while index < len(source):
@@ -84,10 +85,20 @@ def analyze_lexer(source: str, file: str) -> list[dict[str, Any]]:
                 escaped = True
             elif character == '"':
                 in_string = False
+                string_start = -1
+            elif character == "\n":
+                diagnostics.append(diagnostic(
+                    "LEX_E_UNTERMINATED_STRING", "lexer", file, source, string_start, index,
+                    "string literal is not terminated",
+                    helps=["add the missing closing quote before the end of the line"],
+                ))
+                in_string = False
+                string_start = -1
             index += 1
             continue
         if character == '"':
             in_string = True
+            string_start = index
         elif character == "@":
             diagnostics.append(diagnostic(
                 "LEX_E_INVALID_CHAR", "lexer", file, source, index, index + 1,
@@ -95,6 +106,12 @@ def analyze_lexer(source: str, file: str) -> list[dict[str, Any]]:
                 helps=["remove `@` or replace it with valid Vitte syntax"],
             ))
         index += 1
+    if in_string:
+        diagnostics.append(diagnostic(
+            "LEX_E_UNTERMINATED_STRING", "lexer", file, source, string_start, len(source),
+            "string literal is not terminated",
+            helps=["add the missing closing quote at the end of the string"],
+        ))
     return diagnostics
 
 

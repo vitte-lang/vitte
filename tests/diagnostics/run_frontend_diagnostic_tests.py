@@ -28,6 +28,7 @@ def main() -> int:
             "code": actual["code"],
             "line": start["line"],
             "column": start["column"],
+            "end_line": end["line"],
             "end_column": end["column"],
         }
         if observed != expected:
