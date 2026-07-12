@@ -41,6 +41,17 @@ is_machine_executable() {
     return 1
 }
 
+checksum_file() {
+    file_path="$1"
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum "$file_path" | awk '{print $1}'
+    elif command -v shasum >/dev/null 2>&1; then
+        shasum -a 256 "$file_path" | awk '{print $1}'
+    else
+        die "no SHA-256 tool available"
+    fi
+}
+
 # ------------------------------------------------------------
 # Paths
 # ------------------------------------------------------------
@@ -55,6 +66,8 @@ COMPILER_SOURCE_ROOT="$ROOT_DIR/src/vitte/compiler"
 COMPILER_ENTRY_POINT="$COMPILER_SOURCE_ROOT/main.vit"
 BUILD_DIR="$ROOT_DIR/target/bootstrap/stage2-build"
 OUT_DIR="$ROOT_DIR/target/bootstrap/stage2"
+STAGE2_PROVENANCE="$OUT_DIR/provenance.json"
+STAGE2_SOURCE_MANIFEST="$OUT_DIR/compiler-sources.sha256"
 
 # ------------------------------------------------------------
 # Environment
@@ -105,6 +118,15 @@ log "preparing directories"
 mkdir -p "$BUILD_DIR"
 mkdir -p "$OUT_DIR"
 mkdir -p "$BIN_DIR"
+
+STAGE2_CANDIDATE_DIR="$OUT_DIR/.stage1-build"
+STAGE2_CANDIDATE="$STAGE2_CANDIDATE_DIR/vittec"
+cleanup_stage2_candidate() {
+    rm -rf "$STAGE2_CANDIDATE_DIR"
+}
+trap cleanup_stage2_candidate EXIT HUP INT TERM
+cleanup_stage2_candidate
+mkdir -p "$STAGE2_CANDIDATE_DIR"
 
 build_stage2_shell_payload() {
     requested_src="$1"
@@ -184,23 +206,23 @@ log "compiler entry      = $COMPILER_ENTRY_POINT"
 case "$VITTE_BACKEND_MODE" in
     shell)
         log "backend mode=shell"
-        build_stage2_shell_payload "$SRC_VIT" "$OUT_DIR/vittec" || die "stage2 build-native failed"
+        build_stage2_shell_payload "$SRC_VIT" "$STAGE2_CANDIDATE" || die "stage2 build-native failed"
         ;;
     native)
         log "backend mode=native (experimental)"
-        if "$STAGE1_BIN" build "$SRC_VIT" -o "$OUT_DIR/vittec" && [ -x "$OUT_DIR/vittec" ]; then
-            enforce_native_artifact_policy "$OUT_DIR/vittec" "native backend"
+        if "$STAGE1_BIN" build "$SRC_VIT" -o "$STAGE2_CANDIDATE" && [ -x "$STAGE2_CANDIDATE" ]; then
+            enforce_native_artifact_policy "$STAGE2_CANDIDATE" "native backend"
         elif [ "$STAGE2_EFFECTIVE_FALLBACK" = "1" ]; then
             log "native backend unavailable; explicit fallback -> shell"
-            build_stage2_shell_payload "$SRC_VIT" "$OUT_DIR/vittec" || die "stage2 build-native fallback failed"
+            build_stage2_shell_payload "$SRC_VIT" "$STAGE2_CANDIDATE" || die "stage2 build-native fallback failed"
         else
             die "native backend unavailable and fallback disabled (set VITTE_BACKEND_FALLBACK=1)"
         fi
         ;;
     real-native)
         log "backend mode=real-native"
-        if "$STAGE1_BIN" build "$SRC_VIT" -o "$OUT_DIR/vittec" && [ -x "$OUT_DIR/vittec" ]; then
-            enforce_native_artifact_policy "$OUT_DIR/vittec" "real native backend"
+        if "$STAGE1_BIN" build "$SRC_VIT" -o "$STAGE2_CANDIDATE" && [ -x "$STAGE2_CANDIDATE" ]; then
+            enforce_native_artifact_policy "$STAGE2_CANDIDATE" "real native backend"
         else
             die "real native backend unavailable and fallback is forbidden in real-native mode"
         fi
@@ -210,6 +232,13 @@ case "$VITTE_BACKEND_MODE" in
         ;;
 esac
 
+rm -f "$OUT_DIR/vittec" "$OUT_DIR/vittec.bootstrap-bridge"
+mv "$STAGE2_CANDIDATE" "$OUT_DIR/vittec"
+if [ -f "${STAGE2_CANDIDATE}.bootstrap-bridge" ]; then
+    mv "${STAGE2_CANDIDATE}.bootstrap-bridge" "$OUT_DIR/vittec.bootstrap-bridge"
+fi
+cleanup_stage2_candidate
+
 VITTEC_BIN="$OUT_DIR/vittec"
 [ -x "$VITTEC_BIN" ] || die "final vittec not produced"
 if [ "$STAGE2_EFFECTIVE_BACKEND_MODE" = "native" ] && [ "$STAGE2_EFFECTIVE_FALLBACK" != "1" ] && ! is_machine_executable "$VITTEC_BIN"; then
@@ -218,6 +247,46 @@ fi
 if [ "$STAGE2_EFFECTIVE_BACKEND_MODE" = "native" ]; then
     enforce_native_artifact_policy "$VITTEC_BIN" "native mode"
 fi
+
+manifest_tmp="${STAGE2_SOURCE_MANIFEST}.tmp.$$"
+find "$COMPILER_SOURCE_ROOT" -type f -name '*.vit' -print | LC_ALL=C sort | while IFS= read -r source_file; do
+    relative_file="${source_file#"$ROOT_DIR/"}"
+    printf '%s  %s\n' "$(checksum_file "$source_file")" "$relative_file"
+done > "$manifest_tmp"
+mv "$manifest_tmp" "$STAGE2_SOURCE_MANIFEST"
+
+producer_version="$($STAGE1_BIN --version)"
+producer_sha="$(checksum_file "$STAGE1_BIN")"
+entry_sha="$(checksum_file "$COMPILER_ENTRY_POINT")"
+source_manifest_sha="$(checksum_file "$STAGE2_SOURCE_MANIFEST")"
+artifact_sha="$(checksum_file "$VITTEC_BIN")"
+bridge_artifact=false
+if is_bootstrap_bridge_artifact "$VITTEC_BIN"; then
+    bridge_artifact=true
+fi
+provenance_tmp="${STAGE2_PROVENANCE}.tmp.$$"
+cat > "$provenance_tmp" <<EOF
+{
+  "schema": "vitte.bootstrap.stage-provenance",
+  "schema_version": "1.0.0",
+  "stage": 2,
+  "producer": "bin/vittec1",
+  "producer_version": "$producer_version",
+  "producer_sha256": "$producer_sha",
+  "source_root": "src/vitte/compiler",
+  "source_entry": "src/vitte/compiler/main.vit",
+  "source_entry_sha256": "$entry_sha",
+  "source_manifest": "target/bootstrap/stage2/compiler-sources.sha256",
+  "source_manifest_sha256": "$source_manifest_sha",
+  "command": "bin/vittec1 build src/vitte/compiler/main.vit -o target/bootstrap/stage2/.stage1-build/vittec",
+  "backend_mode": "$STAGE2_EFFECTIVE_BACKEND_MODE",
+  "bootstrap_bridge": $bridge_artifact,
+  "artifact": "target/bootstrap/stage2/vittec",
+  "artifact_sha256": "$artifact_sha"
+}
+EOF
+mv "$provenance_tmp" "$STAGE2_PROVENANCE"
+
 log "installing vittec → $BIN_DIR"
 cp "$VITTEC_BIN" "$BIN_DIR/vittec"
 chmod +x "$BIN_DIR/vittec"
@@ -264,4 +333,5 @@ if [ "${VITTE_SELF_CHECK:-1}" -eq 1 ]; then
     echo "$SELF_ROOT_OUT" | grep -q "^compiler_entry_point=src/vitte/compiler/main.vit$" || die "stage2 selfcheck entry point mismatch"
 fi
 
+trap - EXIT HUP INT TERM
 log "stage2 completed successfully"

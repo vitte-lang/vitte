@@ -348,6 +348,8 @@ toolchain/scripts/bootstrap/stage2.sh
 
 `python3 tools/check_bootstrap_stage_chain.py --artifacts` verifies every installed artifact and alias. Stage2 currently declares a transitional bridge policy; removing it is required before full self-hosting parity.
 
+The stage2 build also writes `target/bootstrap/stage2/provenance.json` and `compiler-sources.sha256`. They bind the stage1 producer hash, the complete compiler source set, the exact build command and the resulting stage2 hash.
+
 ## Integration with Main Build
 
 Once bootstrap completes, the compiler can be used:

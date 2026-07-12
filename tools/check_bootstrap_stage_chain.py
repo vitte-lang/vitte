@@ -125,6 +125,12 @@ def validate_contract(config: dict[str, object]) -> list[dict[str, object]]:
         raise ContractError("stage2 must remain a machine executable")
     if stage2.get("bridge_policy") not in {"transitional-allowed", "forbidden"}:
         raise ContractError("stage2 bridge_policy must be transitional-allowed or forbidden")
+    for field in ("provenance", "source_manifest", "producer_command"):
+        if field == "producer_command":
+            if not isinstance(stage2.get(field), str) or not stage2[field]:
+                raise ContractError(f"stage2 {field} must be defined")
+        else:
+            repo_path(stage2.get(field), f"stage2.{field}")
 
     require_script_markers(
         ROOT / "toolchain/scripts/bootstrap/stage1.sh",
@@ -176,6 +182,68 @@ def validate_artifact(path: Path, version: str, kind: str, label: str) -> None:
         raise ContractError(f"{label} version mismatch: expected {version!r}, found {actual!r}")
 
 
+def validate_source_manifest(path: Path, source_root: Path) -> str:
+    if not path.is_file():
+        raise ContractError(f"missing stage2 source manifest: {path.relative_to(ROOT)}")
+    entries: dict[str, str] = {}
+    for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        parts = line.split("  ", 1)
+        if len(parts) != 2 or not re.fullmatch(r"[0-9a-f]{64}", parts[0]):
+            raise ContractError(f"{path.relative_to(ROOT)}:{line_number}: malformed source hash")
+        if parts[1] in entries:
+            raise ContractError(f"{path.relative_to(ROOT)}:{line_number}: duplicate source path")
+        entries[parts[1]] = parts[0]
+    expected = {
+        source.relative_to(ROOT).as_posix()
+        for source in source_root.rglob("*.vit")
+        if source.is_file()
+    }
+    if set(entries) != expected:
+        missing = sorted(expected - set(entries))
+        extra = sorted(set(entries) - expected)
+        raise ContractError(f"stage2 source manifest drifted: missing={missing} extra={extra}")
+    for relative, expected_hash in entries.items():
+        if sha256(ROOT / relative) != expected_hash:
+            raise ContractError(f"stage2 source hash mismatch: {relative}")
+    return sha256(path)
+
+
+def validate_stage2_provenance(stage1: dict[str, object], stage2: dict[str, object], bridge_present: bool) -> None:
+    provenance_path = repo_path(stage2["provenance"], "stage2.provenance")
+    try:
+        provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ContractError(f"cannot load stage2 provenance: {exc}") from exc
+    if not isinstance(provenance, dict):
+        raise ContractError("stage2 provenance must be an object")
+    producer = repo_path(stage2["compiler"], "stage2.compiler")
+    source_entry = repo_path(stage2["sources"][0], "stage2.sources[0]")
+    source_root = ROOT / "src/vitte/compiler"
+    source_manifest = repo_path(stage2["source_manifest"], "stage2.source_manifest")
+    artifact = repo_path(stage2["artifact"], "stage2.artifact")
+    expected = {
+        "schema": "vitte.bootstrap.stage-provenance",
+        "schema_version": "1.0.0",
+        "stage": 2,
+        "producer": stage2["compiler"],
+        "producer_version": stage1["version"],
+        "producer_sha256": sha256(producer),
+        "source_root": "src/vitte/compiler",
+        "source_entry": stage2["sources"][0],
+        "source_entry_sha256": sha256(source_entry),
+        "source_manifest": stage2["source_manifest"],
+        "source_manifest_sha256": validate_source_manifest(source_manifest, source_root),
+        "command": stage2["producer_command"],
+        "backend_mode": "native",
+        "bootstrap_bridge": bridge_present,
+        "artifact": stage2["artifact"],
+        "artifact_sha256": sha256(artifact),
+    }
+    if provenance != expected:
+        differing = sorted(key for key in set(provenance) | set(expected) if provenance.get(key) != expected.get(key))
+        raise ContractError(f"stage2 provenance differs from current inputs: {differing}")
+
+
 def validate_artifacts(stages: list[dict[str, object]]) -> bool:
     stage2_bridge_present = False
     for index, stage in enumerate(stages):
@@ -199,6 +267,7 @@ def validate_artifacts(stages: list[dict[str, object]]) -> bool:
                 raise ContractError(f"stage{index} is a bootstrap bridge, not a native compiler")
             if index == 2:
                 stage2_bridge_present = bridge_present
+    validate_stage2_provenance(stages[1], stages[2], stage2_bridge_present)
     return stage2_bridge_present
 
 
