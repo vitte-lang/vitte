@@ -30,7 +30,12 @@ def render(diagnostic: dict[str, Any], source_root: Path) -> str:
     text = source_line(source_root, span["file"], start["line"])
     if text is not None:
         width = len(str(start["line"]))
-        lines.extend(("   |", f'{start["line"]:>{width}} | {text}'))
+        gutter = f'{"":>{width}} |'
+        marker_width = 1
+        if span["end"]["line"] == start["line"]:
+            marker_width = max(1, span["end"]["column"] - start["column"])
+        marker = " " * max(0, start["column"] - 1) + "^" * marker_width
+        lines.extend((gutter, f'{start["line"]:>{width}} | {text}', f"{gutter} {marker}"))
     return "\n".join(lines) + "\n"
 
 
