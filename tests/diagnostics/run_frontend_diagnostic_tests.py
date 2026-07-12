@@ -47,6 +47,13 @@ def main() -> int:
             suggestions = actual.get("suggestions", [])
             if not suggestions or not isinstance(suggestions[0].get("replacement"), str):
                 raise SystemExit(f"{fixture}: lexer diagnostic has no structured suggestion")
+    stress_fixture = ROOT / "tests/diagnostics/frontend-stress/repeated-parser.vit"
+    stress_diagnostics = analyze(stress_fixture.read_text(encoding="utf-8"), stress_fixture.name)
+    repeated = [value for value in stress_diagnostics if value["code"] == "PARSE_E_TOPLEVEL_DECL_EXPECTED"]
+    if len(repeated) != 3:
+        raise SystemExit(f"parser repetition limit is unstable: expected 3, got {len(repeated)}")
+    if len(stress_diagnostics) > 20:
+        raise SystemExit(f"parser total diagnostic limit exceeded: {len(stress_diagnostics)}")
     print(f"frontend diagnostics ok: {len(fixtures)} fixture(s)")
     return 0
 

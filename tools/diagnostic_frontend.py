@@ -294,6 +294,25 @@ def mask_non_code(source: str) -> str:
     return "".join(output)
 
 
+def limit_repetitive_diagnostics(
+    diagnostics: list[dict[str, Any]], max_per_code: int = 3, max_total: int = 20
+) -> list[dict[str, Any]]:
+    limited: list[dict[str, Any]] = []
+    counts: dict[str, int] = {}
+    seen: set[tuple[str, int, int]] = set()
+    for value in diagnostics:
+        primary = value["primary_span"]
+        key = (value["code"], primary["start"]["byte"], primary["end"]["byte"])
+        if key in seen or counts.get(value["code"], 0) >= max_per_code:
+            continue
+        seen.add(key)
+        counts[value["code"]] = counts.get(value["code"], 0) + 1
+        limited.append(value)
+        if len(limited) == max_total:
+            break
+    return limited
+
+
 def analyze_parser(source: str, file: str) -> list[dict[str, Any]]:
     diagnostics: list[dict[str, Any]] = []
     declarations: dict[str, tuple[int, int]] = {}
@@ -466,7 +485,7 @@ def analyze_parser(source: str, file: str) -> list[dict[str, Any]]:
                 and value["primary_span"]["start"]["line"] in missing_paren_lines
             )
         ]
-    return diagnostics
+    return limit_repetitive_diagnostics(diagnostics)
 
 
 def analyze(source: str, file: str) -> list[dict[str, Any]]:
