@@ -23,12 +23,12 @@ use vitte/compiler/backend/codegen.{ CodegenResult, run_codegen_llvm_with_profil
 use vitte/compiler/backend/ir.{ IrFunction, IrModule, IrModuleKind, IrTarget, IrUnit, IrUnitState, function_name_by_id, ir_validation_reason, target_from_name, unit_add_module, unit_empty, unit_is_valid, unit_set_entry, unit_with_source_path, unit_with_state, verify_unit }
 use vitte/compiler/backend/link/artifact.{ LinkArtifact, LinkArtifactKind, artifact_create, artifact_is_valid, link_target_from_name }
 use vitte/compiler/backend/link/linker.{ link_ir_unit_with_kind }
-use vitte/compiler/backend/native_bridge.{ NativeBridgeResult, emit_native_object_from_llvm_ir, link_native_executable }
+use vitte/compiler/backend/native_bridge.{ NativeBridgeResult, emit_native_object_from_llvm_ir, link_native_executable, native_bridge_command_result }
 use vitte/compiler/backend/pipeline.{ BackendPipelineResult, compile_to_valid_ir_with_profile_and_packaging }
 use vitte/compiler/backends/llvm_bindings.{ LlvmDiagnosticLevel, LlvmToolchainPaths, default_llvm_toolchain_paths }
 use vitte/compiler/driver/exit_status.{ DriverExitStatus }
 use vitte/compiler/frontend/ast/node.{ AstSpan, ast_span_empty }
-use vitte/compiler/infrastructure/session/files.{ cache_source, offset_lookup, source_manager_empty, source_manager_file_id }
+use vitte/compiler/infrastructure/session/files.{ cache_source, normalize_path, offset_lookup, source_manager_empty, source_manager_file_id }
 
 pick DriverDiagnosticLevel {
     Note,
@@ -441,6 +441,24 @@ proc config_support_message(config: DriverCompileConfig) -> string {
     give "";
 }
 
+proc config_support_diagnostic_code(message: string) -> string {
+    if find(message, "backend/target combination") >= 0 {
+        give "BACKEND_E_UNSUPPORTED_TARGET";
+    }
+    give "BACKEND_E_UNSUPPORTED_FEATURE";
+}
+
+proc unsupported_config_result(config: DriverCompileConfig, message: string) -> DriverCompileResult {
+    let result: DriverCompileResult = empty_compile_result(
+        if config_support_diagnostic_code(message) == "BACKEND_E_UNSUPPORTED_TARGET" { DriverExitStatus.UnsupportedTarget } else { DriverExitStatus.UnsupportedFeature },
+        message,
+        false,
+        config
+    );
+    set result.diagnostics = result.diagnostics + [driver_diagnostic(DriverDiagnosticLevel.Error, "backend", config_support_diagnostic_code(message), message)];
+    give result;
+}
+
 proc artifact_kind_from_packaging(packaging: string) -> LinkArtifactKind {
     if packaging == "static-library" {
         give LinkArtifactKind.StaticLibrary;
@@ -480,14 +498,54 @@ proc native_object_output_path(executable_path: string, config: DriverCompileCon
     give executable_path + ".o";
 }
 
+proc native_output_overwrites_source(source_path: string, output_path: string) -> bool {
+    give source_path != ""
+        and output_path != ""
+        and normalize_path(source_path) == normalize_path(output_path);
+}
+
 proc empty_native_bridge_result(message: string) -> NativeBridgeResult {
     give NativeBridgeResult {
         object_path: "",
         executable_path: "",
         message: message,
+        diagnostic_code: "",
+        tool: "",
+        command_text: "",
+        stderr_text: "",
+        symbol: "",
         exit_code: -1,
         valid: false
     };
+}
+
+proc native_bridge_failure_message(result: NativeBridgeResult) -> string {
+    let message: string = result.message;
+    if result.tool != "" {
+        set message = message + "\n  tool: " + result.tool;
+    }
+    if result.command_text != "" {
+        set message = message + "\n  command: " + result.command_text;
+    }
+    set message = message + "\n  exit_code: " + (result.exit_code as string);
+    if result.stderr_text != "" {
+        set message = message + "\n  stderr: " + result.stderr_text;
+    }
+    if result.symbol != "" {
+        set message = message + "\n  symbol: " + result.symbol;
+    }
+    give message;
+}
+
+proc compile_result_with_native_failure(result: DriverCompileResult, bridge: NativeBridgeResult, status: DriverExitStatus, stage: string) -> DriverCompileResult {
+    let out: DriverCompileResult = result;
+    if bridge.valid or bridge.diagnostic_code == "" {
+        give out;
+    }
+    set out.status = status;
+    set out.message = bridge.message;
+    set out.diagnostics = out.diagnostics + [driver_diagnostic(DriverDiagnosticLevel.Error, stage, bridge.diagnostic_code, native_bridge_failure_message(bridge))];
+    give out;
 }
 
 proc empty_compile_result(status: DriverExitStatus, message: string, ir_valid: bool, config: DriverCompileConfig) -> DriverCompileResult {
@@ -1182,6 +1240,9 @@ proc compile_source_set_with_config(inputs: [DriverModuleInput], config: DriverC
         "multi-module compile pipeline completed"
     };
     let diagnostics: [DriverDiagnostic] = config_diagnostics(config) + codegen_diagnostics(codegen);
+    if support_error != "" {
+        set diagnostics = diagnostics + [driver_diagnostic(DriverDiagnosticLevel.Error, "backend", config_support_diagnostic_code(support_error), support_error)];
+    }
     give DriverBackendModuleSetResult {
         analysis: analyzed,
         config: config,
@@ -1741,7 +1802,7 @@ proc check_source_with_config(source_path: string, source_text: string, config: 
     }
     let support_error: string = config_support_message(config);
     if support_error != "" {
-        give empty_compile_result(DriverExitStatus.InvalidInput, support_error, false, config);
+        give unsupported_config_result(config, support_error);
     }
 
     let fe: FrontendOutput = frontend_run(source_path, source_text);
@@ -1784,18 +1845,25 @@ proc emit_native_backend_object_with_config(source_path: string, source_text: st
     let object_path0: string = native_object_output_path(executable_path, config);
     let object_skip_message: string = "native object emission skipped";
     let object0: NativeBridgeResult = empty_native_bridge_result(object_skip_message);
-    if compile0.status == DriverExitStatus.Ok and backend0.valid {
+    if native_output_overwrites_source(source_path, object_path0) {
+        set object0 = native_bridge_command_result(object_path0, "", "output path would overwrite the source file", "DRIVER_E_OUTPUT_WRITE_FAILED", "driver", "", "source and output paths are identical", "", -1, false);
+    } elif compile0.status == DriverExitStatus.Ok and backend0.valid {
         let object_output_dir: string = output_dir_from_path(object_path0);
         set object0 = emit_native_object_from_llvm_ir(backend0.codegen.assembly, object_output_dir, object_path0);
     }
+    let compile1: DriverCompileResult = if native_output_overwrites_source(source_path, object_path0) {
+        compile_result_with_native_failure(compile0, object0, DriverExitStatus.PermissionFailure, "driver")
+    } else {
+        compile_result_with_native_failure(compile0, object0, DriverExitStatus.ObjectEmissionFailure, "backend")
+    };
     let executable_skip_message: string = "native executable not linked";
     let executable_result0: NativeBridgeResult = empty_native_bridge_result(executable_skip_message);
     give DriverNativeBackendResult {
-        compile: compile0,
+        compile: compile1,
         backend: backend0,
         object_result: object0,
         executable_result: executable_result0,
-        valid: compile0.status == DriverExitStatus.Ok and backend0.valid and object0.valid
+        valid: compile1.status == DriverExitStatus.Ok and backend0.valid and object0.valid
     };
 }
 
@@ -1803,17 +1871,24 @@ proc link_native_backend_executable_with_config(source_path: string, source_text
     let object0: DriverNativeBackendResult = emit_native_backend_object_with_config(source_path, source_text, executable_path, config);
     let executable_skip_message: string = "native executable link skipped";
     let executable0: NativeBridgeResult = empty_native_bridge_result(executable_skip_message);
-    if object0.valid and config.packaging != "object" {
+    if native_output_overwrites_source(source_path, executable_path) {
+        set executable0 = native_bridge_command_result(object0.object_result.object_path, executable_path, "output path would overwrite the source file", "DRIVER_E_OUTPUT_WRITE_FAILED", "driver", "", "source and output paths are identical", "", -1, false);
+    } elif object0.valid and config.packaging != "object" {
         set executable0 = link_native_executable(object0.object_result.object_path, executable_path);
     }
     let object_only_packaging: bool = config.packaging == "object";
     let executable_ok: bool = object_only_packaging or executable0.valid;
+    let compile1: DriverCompileResult = if native_output_overwrites_source(source_path, executable_path) {
+        compile_result_with_native_failure(object0.compile, executable0, DriverExitStatus.PermissionFailure, "driver")
+    } else {
+        compile_result_with_native_failure(object0.compile, executable0, DriverExitStatus.LinkFailure, "linker")
+    };
     give DriverNativeBackendResult {
-        compile: object0.compile,
+        compile: compile1,
         backend: object0.backend,
         object_result: object0.object_result,
         executable_result: executable0,
-        valid: object0.valid and executable_ok
+        valid: compile1.status == DriverExitStatus.Ok and object0.valid and executable_ok
     };
 }
 
@@ -1824,7 +1899,7 @@ proc compile_source_with_config(source_path: string, source_text: string, config
     }
     let support_error: string = config_support_message(config);
     if support_error != "" {
-        give empty_compile_result(DriverExitStatus.InvalidInput, support_error, false, config);
+        give unsupported_config_result(config, support_error);
     }
 
     let result = compile_to_valid_ir_with_profile_and_packaging(source_path, source_text, config.backend_name, config.target_name, config.profile_name, config.deterministic, config.debug_enabled, config.packaging, config.prefer_native_toolchain, config.llvm_toolchain);

@@ -37,7 +37,7 @@ use vitte/compiler/driver/health_dashboard.{ HealthDashboard, health_dashboard_f
 use vitte/compiler/driver/pipeline_modular.{ CompilerPhase, PhaseResultKind, PhaseTiming, PipelineExecution, default_pipeline_phases, render_timings, render_trace_line, run }
 use vitte/compiler/driver/pipeline
 use vitte/compiler/diagnostics/mod
-use vitte/compiler/diagnostics/diagnostic.{ diagnostic_explain_text_lang }
+use vitte/compiler/diagnostics/diagnostic.{ Diagnostic, SourceSpan, diagnostic_explain_text_lang, span_create, span_empty }
 use vitte/compiler/diagnostics/report
 use vitte/compiler/frontend/mod
 use vitte/compiler/frontend/pipeline.{ FrontendDiagnostic, FrontendOutput, frontend_run }
@@ -72,10 +72,12 @@ use vitte/compiler/middle/typecheck/mod
 use vitte/compiler/middle/typecheck/diagnostics
 use vitte/compiler/middle/typecheck/rules
 use vitte/compiler/backend/mod
+use vitte/compiler/backend/diagnostics.{ backend_diagnostic_severity_text, backend_diagnostic_text, backend_missing_c_compiler, backend_native_generation_failed, backend_output_overwrites_source, backend_output_permission_denied, backend_unsupported_feature, backend_unsupported_target, linker_command_failed, linker_native_symbol_not_found }
 use vitte/compiler/backend/pipeline.{ BackendPipelineResult }
 use vitte/compiler/backend/native_bridge.{ NativeBridgeResult, run_native_executable }
 use vitte/compiler/backend/codegen/mod
 use vitte/compiler/backend/link/mod
+use vitte/compiler/backend/link/artifact.{ LinkArtifact }
 use vitte/compiler/backend/ir.{ ir_validation_reason }
 use vitte/compiler/backend/ir/mod
 use vitte/compiler/backend/target/mod
@@ -1678,7 +1680,7 @@ proc compiler_output_overwrites_source(compiler: Compiler) -> bool {
     give compiler.input.path != ""
         and not compiler.input.virtual
         and compiler.options.output_path != ""
-        and compiler.input.path == compiler.options.output_path;
+        and files.normalize_path(compiler.input.path) == files.normalize_path(compiler.options.output_path);
 }
 
 proc emit_session_diagnostic(compiler: Compiler, severity: string, code: string, file: string, line: u64, column: u64, message: string) -> Compiler {
@@ -1751,11 +1753,13 @@ proc configure_compiler(compiler: Compiler) -> Compiler {
         set compiler.state.ok = false;
     }
     if compiler_output_overwrites_source(compiler) {
-        set compiler = add_typed_diagnostic(
+        set compiler = add_backend_canonical_diagnostic(
             compiler,
-            "fatal",
-            "DRIVER_E_OUTPUT_OVERWRITES_SOURCE",
-            "compiler output path would overwrite input source"
+            backend_output_overwrites_source(
+                compiler.input.path,
+                compiler.options.output_path,
+                compiler_backend_span(compiler)
+            )
         );
         set compiler.state.ok = false;
     }
@@ -1800,17 +1804,12 @@ proc validate_compiler_links(compiler: Compiler) -> Compiler {
     }
     let target0: TargetConfig = target_config_from_name(compiler.options.target);
     if !target0.valid {
-        set compiler = add_typed_diagnostic(
+        set compiler = add_backend_canonical_diagnostic(
             compiler,
-            "error",
-            "DRIVER_E_INVALID_TARGET_CONFIG",
-            structured_driver_failure_message(
-                "unsupported target config: " + compiler.options.target,
-                compiler.options.target,
+            backend_unsupported_target(
                 "llvm",
-                "",
-                "",
-                ""
+                compiler.options.target,
+                compiler_backend_span(compiler)
             )
         );
         set compiler.state.ok = false;
@@ -2057,6 +2056,71 @@ proc add_typed_diagnostic(compiler: Compiler, severity: string, code: string, me
     );
     let d = report.diagnostic(severity, code, compiler.input.path, 1, 1, message);
     give add_diagnostic(compiler, d);
+}
+
+proc compiler_backend_span(compiler: Compiler) -> SourceSpan {
+    if compiler.input.path == "" {
+        give span_empty();
+    }
+    give span_create(compiler.input.path, 1, 1, 1);
+}
+
+proc add_backend_canonical_diagnostic(compiler: Compiler, diagnostic0: Diagnostic) -> Compiler {
+    give add_typed_diagnostic(
+        compiler,
+        backend_diagnostic_severity_text(diagnostic0),
+        diagnostic0.code,
+        backend_diagnostic_text(diagnostic0)
+    );
+}
+
+proc native_object_failure_diagnostic(compiler: Compiler, result: NativeBridgeResult, backend_name: string, target_name: string) -> Diagnostic {
+    let span0: SourceSpan = compiler_backend_span(compiler);
+    if result.diagnostic_code == "BACKEND_E_NATIVE_TOOL_MISSING" {
+        give backend_missing_c_compiler(result.tool, result.command_text, target_name, span0);
+    }
+    if result.diagnostic_code == "BACKEND_E_OBJECT_WRITE_FAILED" {
+        give backend_output_permission_denied(result.object_path, "write native object", span0);
+    }
+    give backend_native_generation_failed(backend_name, target_name, result.command_text, result.exit_code, result.stderr_text, result.object_path, span0);
+}
+
+proc native_link_failure_diagnostic(compiler: Compiler, result: NativeBridgeResult, backend_name: string, target_name: string) -> Diagnostic {
+    let span0: SourceSpan = compiler_backend_span(compiler);
+    if result.diagnostic_code == "BACKEND_E_NATIVE_TOOL_MISSING" {
+        give backend_missing_c_compiler(result.tool, result.command_text, target_name, span0);
+    }
+    if result.diagnostic_code == "BACKEND_E_OBJECT_WRITE_FAILED" {
+        give backend_output_permission_denied(result.executable_path, "write native executable", span0);
+    }
+    if result.diagnostic_code == "LINK_E_UNDEFINED_SYMBOL" and result.symbol != "" {
+        give linker_native_symbol_not_found(result.symbol, backend_name, target_name, result.command_text, result.exit_code, result.stderr_text, span0);
+    }
+    give linker_command_failed(backend_name, target_name, result.command_text, result.exit_code, result.stderr_text, result.executable_path, span0);
+}
+
+proc runtime_defines_native_symbol(symbol_name: string) -> bool {
+    let runtime0: backend_infrastructure.RuntimeLibrary = backend_infrastructure.create_vitte_runtime();
+    let i: u64 = 0;
+    while i < len(runtime0.functions) {
+        if runtime0.functions[i].link_name == symbol_name {
+            give true;
+        }
+        set i = i + 1;
+    }
+    give false;
+}
+
+proc first_missing_native_symbol(artifact: LinkArtifact) -> string {
+    let i: u64 = 0;
+    while i < len(artifact.relocations) {
+        let relocation0 = artifact.relocations[i];
+        if not relocation0.resolved and not runtime_defines_native_symbol(relocation0.target_symbol) {
+            give relocation0.target_symbol;
+        }
+        set i = i + 1;
+    }
+    give "";
 }
 
 proc structured_driver_failure_message(headline: string, target_name: string, backend_name: string, command_text: string, stderr_text: string, expected_artifact: string) -> string {
@@ -2502,34 +2566,41 @@ proc run_codegen(compiler: Compiler) -> Compiler {
     }
 
     if !backend_out.codegen.valid {
-        set compiler = add_typed_diagnostic(
-            compiler,
-            "error",
-            "DRIVER_E_CODEGEN_INVALID",
-            structured_driver_failure_message(
-                "backend codegen failed",
-                native_config.target_name,
-                native_config.backend_name,
-                "",
-                backend_out.message,
-                native_out.object_result.object_path
-            )
-        );
+        if find(backend_out.codegen.native_toolchain_summary, "clang") >= 0 {
+            set compiler = add_backend_canonical_diagnostic(
+                compiler,
+                backend_missing_c_compiler(
+                    "clang",
+                    "clang -c <llvm-ir> -o " + native_out.object_result.object_path,
+                    native_config.target_name,
+                    compiler_backend_span(compiler)
+                )
+            );
+        } else {
+            set compiler = add_backend_canonical_diagnostic(
+                compiler,
+                backend_native_generation_failed(
+                    native_config.backend_name,
+                    native_config.target_name,
+                    "backend codegen pipeline",
+                    -1,
+                    backend_out.message,
+                    native_out.object_result.object_path,
+                    compiler_backend_span(compiler)
+                )
+            );
+        }
         set compiler.state.ok = false;
         give compiler;
     }
     if !backend_out.codegen.object_ready or backend_out.codegen.section_count == 0 or backend_out.codegen.object_text == "" {
-        set compiler = add_typed_diagnostic(
+        set compiler = add_backend_canonical_diagnostic(
             compiler,
-            "fatal",
-            "DRIVER_E_BACKEND_EMPTY_OUTPUT",
-            structured_driver_failure_message(
-                "backend generated an empty object output",
-                native_config.target_name,
+            backend_unsupported_feature(
+                "native object emission",
                 native_config.backend_name,
-                "host_emit_llvm_object(<llvm-ir>, " + native_out.object_result.object_path + ")",
-                "no object payload was produced by the backend pipeline",
-                native_out.object_result.object_path
+                native_config.target_name,
+                compiler_backend_span(compiler)
             )
         );
         set compiler.state.ok = false;
@@ -2537,18 +2608,9 @@ proc run_codegen(compiler: Compiler) -> Compiler {
     }
     let native_object: NativeBridgeResult = native_out.object_result;
     if not native_object.valid {
-        set compiler = add_typed_diagnostic(
+        set compiler = add_backend_canonical_diagnostic(
             compiler,
-            "fatal",
-            "DRIVER_E_BACKEND_NATIVE_OBJECT",
-            structured_driver_failure_message(
-                native_object.message,
-                native_config.target_name,
-                native_config.backend_name,
-                "host_emit_llvm_object(<llvm-ir>, " + native_object.object_path + ")",
-                "stderr unavailable from native host runtime bridge",
-                native_object.object_path
-            )
+            native_object_failure_diagnostic(compiler, native_object, native_config.backend_name, native_config.target_name)
         );
         set compiler.state.ok = false;
         give compiler;
@@ -2596,35 +2658,51 @@ proc run_linker(compiler: Compiler) -> Compiler {
         give compiler;
     }
 
-    if !backend_out.artifact.valid {
-        set compiler = add_typed_diagnostic(
+    let missing_symbol: string = first_missing_native_symbol(backend_out.artifact);
+    if missing_symbol != "" {
+        set compiler = add_backend_canonical_diagnostic(
             compiler,
-            "error",
-            "DRIVER_E_LINK_INVALID",
-            structured_driver_failure_message(
-                "backend linker artifact invalid",
-                native_config.target_name,
+            linker_native_symbol_not_found(
+                missing_symbol,
                 native_config.backend_name,
+                native_config.target_name,
                 "link_ir_unit_with_kind(<ir>, " + compiler.options.output_path + ", executable)",
+                -1,
+                "unresolved relocation in canonical link artifact",
+                compiler_backend_span(compiler)
+            )
+        );
+        set compiler.state.ok = false;
+        give compiler;
+    }
+
+    if !backend_out.artifact.valid {
+        set compiler = add_backend_canonical_diagnostic(
+            compiler,
+            linker_command_failed(
+                native_config.backend_name,
+                native_config.target_name,
+                "link_ir_unit_with_kind(<ir>, " + compiler.options.output_path + ", executable)",
+                -1,
                 backend_out.message,
-                compiler.options.output_path
+                compiler.options.output_path,
+                compiler_backend_span(compiler)
             )
         );
         set compiler.state.ok = false;
         give compiler;
     }
     if len(backend_out.artifact.outputs) == 0 {
-        set compiler = add_typed_diagnostic(
+        set compiler = add_backend_canonical_diagnostic(
             compiler,
-            "fatal",
-            "DRIVER_E_LINK_NO_OUTPUT",
-            structured_driver_failure_message(
-                "linker did not produce any output artifact",
-                native_config.target_name,
+            linker_command_failed(
                 native_config.backend_name,
+                native_config.target_name,
                 "link_ir_unit_with_kind(<ir>, " + compiler.options.output_path + ", executable)",
+                -1,
                 "artifact output list is empty",
-                compiler.options.output_path
+                compiler.options.output_path,
+                compiler_backend_span(compiler)
             )
         );
         set compiler.state.ok = false;
@@ -2632,27 +2710,9 @@ proc run_linker(compiler: Compiler) -> Compiler {
     }
     let native_link: NativeBridgeResult = native_out.executable_result;
     if not native_link.valid {
-        let native_object_path: string = native_out.object_result.object_path;
-        let link_stderr: string = "stderr unavailable from native host runtime bridge";
-
-        if native_object_path == "" {
-            set link_stderr = "object file absent before native link step";
-        } elif !is_file(native_object_path) {
-            set link_stderr = "object file missing on disk before native link step: " + native_object_path;
-        }
-
-        set compiler = add_typed_diagnostic(
+        set compiler = add_backend_canonical_diagnostic(
             compiler,
-            "fatal",
-            "DRIVER_E_LINK_NATIVE_OUTPUT",
-            structured_driver_failure_message(
-                native_link.message,
-                native_config.target_name,
-                native_config.backend_name,
-                "host_link_executable(" + native_object_path + ", " + compiler.options.output_path + ")",
-                link_stderr,
-                compiler.options.output_path
-            )
+            native_link_failure_diagnostic(compiler, native_link, native_config.backend_name, native_config.target_name)
         );
         set compiler.state.ok = false;
         give compiler;

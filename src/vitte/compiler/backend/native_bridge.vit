@@ -6,6 +6,11 @@ form NativeBridgeResult {
   object_path: string
   executable_path: string
   message: string
+  diagnostic_code: string
+  tool: string
+  command_text: string
+  stderr_text: string
+  symbol: string
   exit_code: int
   valid: bool
 }
@@ -15,9 +20,37 @@ proc native_bridge_result(object_path: string, executable_path: string, message:
     object_path: object_path,
     executable_path: executable_path,
     message: message,
+    diagnostic_code: "",
+    tool: "",
+    command_text: "",
+    stderr_text: "",
+    symbol: "",
     exit_code: exit_code,
     valid: valid
   }
+}
+
+proc native_bridge_command_result(object_path: string, executable_path: string, message: string, diagnostic_code: string, tool: string, command_text: string, stderr_text: string, symbol: string, exit_code: int, valid: bool) -> NativeBridgeResult {
+  give NativeBridgeResult {
+    object_path: object_path,
+    executable_path: executable_path,
+    message: message,
+    diagnostic_code: diagnostic_code,
+    tool: tool,
+    command_text: command_text,
+    stderr_text: stderr_text,
+    symbol: symbol,
+    exit_code: exit_code,
+    valid: valid
+  }
+}
+
+proc native_object_command(object_path: string) -> string {
+  give "clang -Wno-override-module -c " + object_path + ".ll -o " + object_path;
+}
+
+proc native_link_command(object_path: string, executable_path: string) -> string {
+  give "cc " + object_path + " src/vitte/compiler/backends/runtime_c/vitte_runtime.c -I src/vitte/compiler/backends/runtime_c -o " + executable_path;
 }
 
 proc safe_shell_path(path: string) -> bool {
@@ -25,49 +58,52 @@ proc safe_shell_path(path: string) -> bool {
 }
 
 proc emit_native_object_from_llvm_ir(ir_text: string, output_dir: string, object_path: string) -> NativeBridgeResult {
+  let command_text: string = native_object_command(object_path);
   if not host_runtime_available() {
-    give native_bridge_result(object_path, "", "native host runtime unavailable", -1, false)
+    give native_bridge_command_result(object_path, "", "required C compiler `clang` is unavailable", "BACKEND_E_NATIVE_TOOL_MISSING", "clang", command_text, "native host runtime unavailable", "", -1, false)
   }
   if ir_text == "" or not safe_shell_path(output_dir) or not safe_shell_path(object_path) {
-    give native_bridge_result(object_path, "", "invalid native object materialization input", -1, false)
+    give native_bridge_command_result(object_path, "", "invalid native object materialization input", "BACKEND_E_CODEGEN_FAILED", "clang", command_text, "invalid LLVM IR or output path", "", -1, false)
   }
   if host_mkdir_all(output_dir) != 0 {
-    give native_bridge_result(object_path, "", "cannot create native output directory", -1, false)
+    give native_bridge_command_result(object_path, "", "permission denied while creating native output directory", "BACKEND_E_OBJECT_WRITE_FAILED", "clang", command_text, "output directory is not writable", "", -1, false)
   }
   // Native mode deliberately lets clang retarget canonical IR to the host.
   let code: int = host_emit_llvm_object(ir_text, object_path)
-  let message: string = "clang object emission failed"
-  if code == 0 {
-    set message = "native object materialized"
+  if code == 0 and host_is_file(object_path) {
+    give native_bridge_command_result(object_path, "", "native object materialized", "", "clang", command_text, "", "", code, true)
   }
-  give native_bridge_result(
-    object_path,
-    "",
-    message,
-    code,
-    code == 0 and host_is_file(object_path)
-  )
+  if code == 127 {
+    give native_bridge_command_result(object_path, "", "required C compiler `clang` was not found", "BACKEND_E_NATIVE_TOOL_MISSING", "clang", command_text, "clang command was not found", "", code, false)
+  }
+  if code == 0 {
+    give native_bridge_command_result(object_path, "", "native compiler did not write the object file", "BACKEND_E_OBJECT_WRITE_FAILED", "clang", command_text, "expected object file is absent", "", code, false)
+  }
+  give native_bridge_command_result(object_path, "", "clang object emission failed", "BACKEND_E_CODEGEN_FAILED", "clang", command_text, "native host runtime does not capture stderr", "", code, false)
 }
 
 proc link_native_executable(object_path: string, executable_path: string) -> NativeBridgeResult {
+  let command_text: string = native_link_command(object_path, executable_path);
   if not host_runtime_available() {
-    give native_bridge_result(object_path, executable_path, "native host runtime unavailable", -1, false)
+    give native_bridge_command_result(object_path, executable_path, "required C compiler `cc` is unavailable", "BACKEND_E_NATIVE_TOOL_MISSING", "cc", command_text, "native host runtime unavailable", "", -1, false)
   }
-  if not safe_shell_path(object_path) or not safe_shell_path(executable_path) or not host_is_file(object_path) {
-    give native_bridge_result(object_path, executable_path, "invalid native linker input", -1, false)
+  if not safe_shell_path(object_path) or not host_is_file(object_path) {
+    give native_bridge_command_result(object_path, executable_path, "native linker input object was not found", "LINK_E_OBJECT_NOT_FOUND", "cc", command_text, "object file is absent", "", -1, false)
+  }
+  if not safe_shell_path(executable_path) {
+    give native_bridge_command_result(object_path, executable_path, "invalid native linker output path", "BACKEND_E_OBJECT_WRITE_FAILED", "cc", command_text, "output path is empty", "", -1, false)
   }
   let code: int = host_link_executable(object_path, executable_path)
-  let message: string = "native linker invocation failed"
-  if code == 0 {
-    set message = "native executable linked"
+  if code == 0 and host_is_file(executable_path) {
+    give native_bridge_command_result(object_path, executable_path, "native executable linked", "", "cc", command_text, "", "", code, true)
   }
-  give native_bridge_result(
-    object_path,
-    executable_path,
-    message,
-    code,
-    code == 0 and host_is_file(executable_path)
-  )
+  if code == 127 {
+    give native_bridge_command_result(object_path, executable_path, "required C compiler `cc` was not found", "BACKEND_E_NATIVE_TOOL_MISSING", "cc", command_text, "cc command was not found", "", code, false)
+  }
+  if code == 0 {
+    give native_bridge_command_result(object_path, executable_path, "linker did not write the executable", "BACKEND_E_OBJECT_WRITE_FAILED", "cc", command_text, "expected executable is absent", "", code, false)
+  }
+  give native_bridge_command_result(object_path, executable_path, "native linker invocation failed", "LINK_E_SYSTEM_LINKER_FAILED", "cc", command_text, "native host runtime does not capture stderr", "", code, false)
 }
 
 proc run_native_executable(executable_path: string) -> NativeBridgeResult {
@@ -79,6 +115,10 @@ proc run_native_executable(executable_path: string) -> NativeBridgeResult {
 }
 
 share NativeBridgeResult
+share native_bridge_result
+share native_bridge_command_result
+share native_object_command
+share native_link_command
 share emit_native_object_from_llvm_ir
 share link_native_executable
 share run_native_executable

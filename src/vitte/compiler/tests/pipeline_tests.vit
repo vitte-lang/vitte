@@ -6,7 +6,7 @@ use vitte/compiler/driver/metrics.{ BackendTiming, CompilerMetricsReport, Linker
 use vitte/compiler/driver/health_dashboard.{ HealthDashboard, health_dashboard_from_metrics, health_dashboard_json }
 use vitte/compiler/driver/mod.{ main_driver_report_json, main_driver_set_report_json, main_driver_surface_report_json, main_driver_surface_report_json_from_args, run_check_diagnostics_json_cli, run_check_hir_json_cli, run_check_mir_json_cli, run_parse_ast_json_cli }
 use vitte/compiler/driver/result.{ CliReportResult }
-use vitte/compiler/driver/compiler.{ CompilerCliRequest, CompilerMode, CompilerOptions, CompilerOutput, CompilerResult, CompilerStage, PhaseResult, build_validation_banner, compiler_from_source, compiler_result_json, default_options, new_compiler, parse_cli_request, record_phase_result, run_cli_main, run_compiler, structured_driver_failure_message, structured_validation_failure_message, typed_diag_text }
+use vitte/compiler/driver/compiler.{ CompilerCliRequest, CompilerInput, CompilerMode, CompilerOptions, CompilerOutput, CompilerResult, CompilerStage, PhaseResult, build_validation_banner, compiler_from_source, compiler_result_json, default_options, new_compiler, parse_cli_request, record_phase_result, run_cli_main, run_compiler, structured_driver_failure_message, structured_validation_failure_message, typed_diag_text }
 use vitte/compiler/backend/pipeline.{ BackendPipelineResult, compile_to_valid_ir_with_profile_and_packaging }
 use vitte/compiler/backend/target/config
 use vitte/compiler/backends/backend_infrastructure
@@ -1026,6 +1026,32 @@ proc test_structured_driver_failure_message_contract() -> bool {
     and find(text, "expected_artifact: build/main") >= 0;
 }
 
+proc test_compiler_routes_backend_target_and_output_diagnostics() -> bool {
+  let collision_options: CompilerOptions = default_options();
+  set collision_options.output_dir = ".";
+  set collision_options.output_path = "backend_collision.vit";
+  let collision_compiler = new_compiler(collision_options);
+  set collision_compiler.input = CompilerInput {
+    path: "./backend_collision.vit",
+    source: "proc main() -> int { give 0; }\n",
+    virtual: false
+  };
+  let collision_result: CompilerResult = run_compiler(collision_compiler);
+  let collision_json: string = compiler_result_json(collision_result);
+
+  let target_options: CompilerOptions = default_options();
+  set target_options.target = "mips64-unknown";
+  let target_result: CompilerResult = run_compiler(compiler_from_source("backend_target.vit", "proc main() -> int { give 0; }\n", target_options));
+  let target_json: string = compiler_result_json(target_result);
+
+  give collision_result.code != 0
+    and find(collision_json, "DRIVER_E_OUTPUT_WRITE_FAILED") >= 0
+    and find(collision_json, "would overwrite the source file") >= 0
+    and target_result.code != 0
+    and find(target_json, "BACKEND_E_UNSUPPORTED_TARGET") >= 0
+    and find(target_json, "mips64-unknown") >= 0;
+}
+
 proc test_structured_validation_failure_message_contract() -> bool {
   let mir_text: string = structured_validation_failure_message(
     "MIR validation failed in middle pipeline",
@@ -1302,6 +1328,9 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if not test_structured_driver_failure_message_contract() {
+    set failures = failures + 1;
+  }
+  if not test_compiler_routes_backend_target_and_output_diagnostics() {
     set failures = failures + 1;
   }
   if not test_structured_validation_failure_message_contract() {

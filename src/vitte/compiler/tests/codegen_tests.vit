@@ -1,17 +1,20 @@
 space vitte/compiler/tests/codegen_tests
 
 use vitte/compiler/backend/codegen.{ CodegenResult, run_codegen_x86_64 }
+use vitte/compiler/backend/diagnostics.{ backend_missing_c_compiler, backend_native_generation_failed, backend_output_overwrites_source, backend_output_permission_denied, backend_unsupported_feature, backend_unsupported_target, linker_command_failed, linker_native_symbol_not_found }
 use vitte/compiler/backend/ir.{ IrBlock, IrFunction, IrInstructionKind, IrLinkage, IrModuleKind, IrUnit, IrUnitState, IrValue, IrValueKind, IrVisibility, block_add_instruction, block_create, function_add_block, function_ref_create, instruction_create, instruction_with_call_abi, ir_validation_reason, module_add_function, module_add_nominal_type, module_create, nominal_type_create, span_empty, target_native_x86_64_linux, terminator_return, unit_add_module, unit_empty, unit_is_valid, unit_set_entry, unit_with_source_path, value_constant, value_place, verify_unit }
 use vitte/compiler/backend/link/artifact.{ LinkArtifact, artifact_is_valid }
 use vitte/compiler/backend/link/linker.{ link_ir_unit }
 use vitte/compiler/backend/pipeline.{ BackendPipelineResult, compile_frontend_to_valid_ir_with_profile_and_packaging, compile_to_valid_ir, compile_to_valid_ir_with_backend }
 use vitte/compiler/backends/llvm_bindings.{ LlvmBindingResult, LlvmObjectResult, default_llvm_build_options, default_llvm_toolchain_paths, emit_llvm_ir_from_ir, emit_llvm_object_from_ir, emit_llvm_object_from_ir_with_toolchain, llvm_build_options, llvm_toolchain_paths }
 use vitte/compiler/driver/cli.{ run_compile_set_manifest_report_cli }
-use vitte/compiler/driver/compile.{ DriverBackendModuleSetResult, DriverCompileResult, compile_source_set, compile_source_set_with_config, compile_source_with_config, driver_compile_config, driver_compile_config_full, driver_module_input }
-use vitte/compiler/driver/exit_status.{ DriverExitStatus }
+use vitte/compiler/driver/compile.{ DriverBackendModuleSetResult, DriverCompileResult, compile_source_set, compile_source_set_with_config, compile_source_with_config, driver_compile_config, driver_compile_config_full, driver_module_input, emit_native_backend_object_with_config }
+use vitte/compiler/driver/exit_status.{ DriverExitStatus, driver_error_code_contract_text }
 use vitte/compiler/driver/pipeline.{ CompileReport, ModuleSetCompileReport, compile_report_json, module_set_compile_report_json, run_and_report_with_config, run_set_and_report, run_set_and_report_with_config }
 use vitte/compiler/driver/result.{ CliReportResult }
 use vitte/compiler/frontend/pipeline.{ FrontendOutput, frontend_run }
+use vitte/compiler/diagnostics/catalog.{ bootstrap_catalog, find_by_code }
+use vitte/compiler/diagnostics/diagnostic.{ DiagnosticPhase, diagnostic_from_catalog, span_create }
 use vitte/compiler/middle/lower/mir_to_ir.{ lower_mir_to_ir }
 use vitte/compiler/middle/pipeline.{ MiddleOutput, middle_run }
 
@@ -712,7 +715,95 @@ proc test_compile_set_with_unsupported_backend_target_rejected() -> bool {
     driver_module_input("demo_math.vit", dep),
     driver_module_input("demo_app.vit", root)
   ], config);
-  give not result.valid and find(result.message, "unsupported backend/target combination") >= 0;
+  let has_target_diagnostic: bool = false;
+  let i: u64 = 0;
+  while i < len(result.diagnostics) {
+    if result.diagnostics[i].code == "BACKEND_E_UNSUPPORTED_TARGET" {
+      set has_target_diagnostic = true;
+    }
+    set i = i + 1;
+  }
+  give not result.valid
+    and find(result.message, "unsupported backend/target combination") >= 0
+    and has_target_diagnostic;
+}
+
+proc test_backend_diagnostics_cover_diag_0077_to_0084() -> bool {
+  let span0 = span_create("backend_diagnostics.vit", 1, 1, 1);
+  let d77 = backend_unsupported_feature("vector ABI", "llvm", "x86_64-linux", span0);
+  let d78 = backend_unsupported_target("x86_64", "aarch64-linux", span0);
+  let d79 = backend_missing_c_compiler("clang", "clang -c main.ll -o main.o", "x86_64-linux", span0);
+  let d80 = backend_native_generation_failed("llvm", "x86_64-linux", "clang -c main.ll -o main.o", 1, "invalid IR", "main.o", span0);
+  let d81 = linker_command_failed("llvm", "x86_64-linux", "cc main.o -o main", 2, "link failed", "main", span0);
+  let d82 = linker_native_symbol_not_found("vitte_missing", "llvm", "x86_64-linux", "cc main.o -o main", 1, "undefined symbol", span0);
+  let d83 = backend_output_permission_denied("/readonly/main.o", "write native object", span0);
+  let d84 = backend_output_overwrites_source("main.vit", "main.vit", span0);
+  let contract: string = driver_error_code_contract_text();
+  let catalog = bootstrap_catalog();
+  let catalog_link = diagnostic_from_catalog("LINK_E_SYSTEM_LINKER_FAILED", "link failed", span0);
+  give d77.code == "BACKEND_E_UNSUPPORTED_FEATURE" and d77.phase == DiagnosticPhase.Backend
+    and d78.code == "BACKEND_E_UNSUPPORTED_TARGET" and d78.phase == DiagnosticPhase.Backend
+    and d79.code == "BACKEND_E_NATIVE_TOOL_MISSING" and find(d79.probable_fix, "install clang") >= 0
+    and d80.code == "BACKEND_E_CODEGEN_FAILED" and len(d80.cause_chain) >= 3 and find(d80.cause_chain[1], "exit code: 1") >= 0
+    and d81.code == "LINK_E_SYSTEM_LINKER_FAILED" and d81.phase == DiagnosticPhase.Linker and find(d81.cause_chain[1], "exit code: 2") >= 0
+    and d82.code == "LINK_E_UNDEFINED_SYMBOL" and d82.subject_symbol == "vitte_missing" and d82.phase == DiagnosticPhase.Linker
+    and d83.code == "BACKEND_E_OBJECT_WRITE_FAILED" and find(d83.message, "permission denied") >= 0
+    and d84.code == "DRIVER_E_OUTPUT_WRITE_FAILED" and d84.phase == DiagnosticPhase.Driver and find(d84.message, "overwrite") >= 0
+    and find(contract, d77.code) >= 0 and find(contract, d78.code) >= 0
+    and find(contract, d79.code) >= 0 and find(contract, d80.code) >= 0
+    and find(contract, d81.code) >= 0 and find(contract, d82.code) >= 0
+    and find(contract, d83.code) >= 0 and find(contract, d84.code) >= 0
+    and find_by_code(catalog, d77.code).code == d77.code
+    and find_by_code(catalog, d78.code).code == d78.code
+    and find_by_code(catalog, d79.code).code == d79.code
+    and find_by_code(catalog, d80.code).code == d80.code
+    and find_by_code(catalog, d81.code).code == d81.code
+    and find_by_code(catalog, d82.code).code == d82.code
+    and find_by_code(catalog, d83.code).code == d83.code
+    and find_by_code(catalog, d84.code).code == d84.code
+    and catalog_link.phase == DiagnosticPhase.Linker;
+}
+
+proc test_driver_reports_unsupported_backend_feature() -> bool {
+  let config = driver_compile_config_full(
+    "llvm",
+    "x86_64-linux",
+    "enterprise-invalid-feature",
+    "O2",
+    "bundle",
+    true,
+    false,
+    false,
+    false,
+    "off",
+    false,
+    default_llvm_toolchain_paths()
+  );
+  let result: DriverCompileResult = compile_source_with_config("backend_unsupported_feature.vit", "proc main() -> int { give 0; }\n", config);
+  give result.status == DriverExitStatus.UnsupportedFeature
+    and driver_result_has_diagnostic_code(result, "BACKEND_E_UNSUPPORTED_FEATURE");
+}
+
+proc test_native_output_refuses_to_overwrite_source() -> bool {
+  let config = driver_compile_config_full(
+    "llvm",
+    "x86_64-linux",
+    "enterprise-object",
+    "O2",
+    "object",
+    true,
+    false,
+    false,
+    false,
+    "off",
+    false,
+    default_llvm_toolchain_paths()
+  );
+  let result = emit_native_backend_object_with_config("./backend_same_output.vit", "proc main() -> int { give 0; }\n", "backend_same_output.vit", config);
+  give not result.valid
+    and result.compile.status == DriverExitStatus.PermissionFailure
+    and result.object_result.diagnostic_code == "DRIVER_E_OUTPUT_WRITE_FAILED"
+    and driver_result_has_diagnostic_code(result.compile, "DRIVER_E_OUTPUT_WRITE_FAILED");
 }
 
 proc test_llvm_bindings_emit_ir_from_canonical_ir() -> bool {
@@ -756,6 +847,9 @@ proc run_all_tests() -> int {
   if not test_backend_multi_module_report_json_includes_resolution_and_config() { set failures = failures + 1; }
   if not test_compile_set_manifest_report_cli_parses_enterprise_directives() { set failures = failures + 1; }
   if not test_compile_set_with_unsupported_backend_target_rejected() { set failures = failures + 1; }
+  if not test_backend_diagnostics_cover_diag_0077_to_0084() { set failures = failures + 1; }
+  if not test_driver_reports_unsupported_backend_feature() { set failures = failures + 1; }
+  if not test_native_output_refuses_to_overwrite_source() { set failures = failures + 1; }
   if not test_llvm_bindings_emit_ir_from_canonical_ir() { set failures = failures + 1; }
   if not test_llvm_bindings_emit_object_from_canonical_ir() { set failures = failures + 1; }
   give failures;

@@ -1,0 +1,146 @@
+space vitte/compiler/backend/diagnostics
+
+use vitte/compiler/diagnostics/diagnostic.{
+  Diagnostic,
+  DiagnosticPhase,
+  DiagnosticSeverity,
+  SourceSpan,
+  diagnostic_add_cause,
+  diagnostic_add_pipeline_context,
+  diagnostic_fatal,
+  diagnostic_with_help,
+  diagnostic_with_probable_fix,
+  diagnostic_with_root_cause,
+  diagnostic_with_rule,
+  diagnostic_with_subject_symbol
+}
+
+export *
+
+proc backend_diag_context(diagnostic: Diagnostic, backend_name: string, target_name: string, output_path: string) -> Diagnostic {
+  let out: Diagnostic = diagnostic;
+  if backend_name != "" {
+    set out = diagnostic_add_pipeline_context(out, "backend=" + backend_name);
+  }
+  if target_name != "" {
+    set out = diagnostic_add_pipeline_context(out, "target=" + target_name);
+  }
+  if output_path != "" {
+    set out = diagnostic_add_pipeline_context(out, "output=" + output_path);
+  }
+  give out;
+}
+
+proc backend_diag_command(diagnostic: Diagnostic, command_text: string, exit_code: int, stderr_text: string) -> Diagnostic {
+  let out: Diagnostic = diagnostic;
+  if command_text != "" {
+    set out = diagnostic_add_cause(out, "command: " + command_text);
+  }
+  set out = diagnostic_add_cause(out, "exit code: " + (exit_code as string));
+  if stderr_text != "" {
+    set out = diagnostic_add_cause(out, "stderr: " + stderr_text);
+  }
+  give out;
+}
+
+proc backend_unsupported_feature(feature_name: string, backend_name: string, target_name: string, span: SourceSpan) -> Diagnostic {
+  let diag0: Diagnostic = diagnostic_fatal("BACKEND_E_UNSUPPORTED_FEATURE", DiagnosticPhase.Backend, "backend feature `" + feature_name + "` is not supported", span);
+  let diag1: Diagnostic = diagnostic_with_rule(diag0, "selected backend and target must implement every requested code-generation feature");
+  let diag2: Diagnostic = backend_diag_context(diag1, backend_name, target_name, "");
+  let diag3: Diagnostic = diagnostic_add_pipeline_context(diag2, "feature=" + feature_name);
+  let diag4: Diagnostic = diagnostic_with_root_cause(diag3, "the selected backend has no implementation for the requested feature");
+  give diagnostic_with_probable_fix(diag4, "select a supporting backend or remove the unsupported feature");
+}
+
+proc backend_unsupported_target(backend_name: string, target_name: string, span: SourceSpan) -> Diagnostic {
+  let diag0: Diagnostic = diagnostic_fatal("BACKEND_E_UNSUPPORTED_TARGET", DiagnosticPhase.Backend, "target architecture `" + target_name + "` is not supported by backend `" + backend_name + "`", span);
+  let diag1: Diagnostic = diagnostic_with_rule(diag0, "backend target triples must be explicitly supported");
+  let diag2: Diagnostic = backend_diag_context(diag1, backend_name, target_name, "");
+  let diag3: Diagnostic = diagnostic_with_root_cause(diag2, "the target triple has no compatible backend implementation");
+  give diagnostic_with_probable_fix(diag3, "choose a supported target or backend combination");
+}
+
+proc backend_missing_c_compiler(compiler_name: string, command_text: string, target_name: string, span: SourceSpan) -> Diagnostic {
+  let diag0: Diagnostic = diagnostic_fatal("BACKEND_E_NATIVE_TOOL_MISSING", DiagnosticPhase.Backend, "required C compiler `" + compiler_name + "` was not found", span);
+  let diag1: Diagnostic = backend_diag_context(diag0, "", target_name, "");
+  let diag2: Diagnostic = diagnostic_add_pipeline_context(diag1, "tool=" + compiler_name);
+  let diag3: Diagnostic = diagnostic_add_cause(diag2, "command: " + command_text);
+  let diag4: Diagnostic = diagnostic_with_root_cause(diag3, "the native toolchain could not resolve the requested compiler executable");
+  give diagnostic_with_probable_fix(diag4, "install " + compiler_name + " or configure an explicit compiler path");
+}
+
+proc backend_native_generation_failed(backend_name: string, target_name: string, command_text: string, exit_code: int, stderr_text: string, output_path: string, span: SourceSpan) -> Diagnostic {
+  let diag0: Diagnostic = diagnostic_fatal("BACKEND_E_CODEGEN_FAILED", DiagnosticPhase.Backend, "native object generation failed", span);
+  let diag1: Diagnostic = backend_diag_context(diag0, backend_name, target_name, output_path);
+  let diag2: Diagnostic = backend_diag_command(diag1, command_text, exit_code, stderr_text);
+  let diag3: Diagnostic = diagnostic_with_root_cause(diag2, "the native compiler did not produce the expected object file");
+  give diagnostic_with_probable_fix(diag3, "inspect the command output and verify the target toolchain");
+}
+
+proc linker_command_failed(backend_name: string, target_name: string, command_text: string, exit_code: int, stderr_text: string, output_path: string, span: SourceSpan) -> Diagnostic {
+  let diag0: Diagnostic = diagnostic_fatal("LINK_E_SYSTEM_LINKER_FAILED", DiagnosticPhase.Linker, "system linker command failed", span);
+  let diag1: Diagnostic = backend_diag_context(diag0, backend_name, target_name, output_path);
+  let diag2: Diagnostic = backend_diag_command(diag1, command_text, exit_code, stderr_text);
+  let diag3: Diagnostic = diagnostic_with_root_cause(diag2, "the linker returned a non-zero status or did not create the output");
+  give diagnostic_with_probable_fix(diag3, "fix the first linker error and rerun the displayed command");
+}
+
+proc linker_native_symbol_not_found(symbol_name: string, backend_name: string, target_name: string, command_text: string, exit_code: int, stderr_text: string, span: SourceSpan) -> Diagnostic {
+  let diag0: Diagnostic = diagnostic_fatal("LINK_E_UNDEFINED_SYMBOL", DiagnosticPhase.Linker, "native symbol `" + symbol_name + "` was not found", span);
+  let diag1: Diagnostic = diagnostic_with_subject_symbol(diag0, symbol_name);
+  let diag2: Diagnostic = backend_diag_context(diag1, backend_name, target_name, "");
+  let diag3: Diagnostic = backend_diag_command(diag2, command_text, exit_code, stderr_text);
+  let diag4: Diagnostic = diagnostic_with_root_cause(diag3, "no linked object or runtime library defines the requested symbol");
+  give diagnostic_with_probable_fix(diag4, "link the library that defines `" + symbol_name + "` or correct its native name");
+}
+
+proc backend_output_permission_denied(output_path: string, operation: string, span: SourceSpan) -> Diagnostic {
+  let diag0: Diagnostic = diagnostic_fatal("BACKEND_E_OBJECT_WRITE_FAILED", DiagnosticPhase.Backend, "permission denied while writing output `" + output_path + "`", span);
+  let diag1: Diagnostic = backend_diag_context(diag0, "", "", output_path);
+  let diag2: Diagnostic = diagnostic_add_pipeline_context(diag1, "operation=" + operation);
+  let diag3: Diagnostic = diagnostic_with_root_cause(diag2, "the output path or its parent directory is not writable");
+  give diagnostic_with_probable_fix(diag3, "choose a writable output path or update directory permissions");
+}
+
+proc backend_output_overwrites_source(source_path: string, output_path: string, span: SourceSpan) -> Diagnostic {
+  let diag0: Diagnostic = diagnostic_fatal("DRIVER_E_OUTPUT_WRITE_FAILED", DiagnosticPhase.Driver, "output path `" + output_path + "` would overwrite the source file", span);
+  let diag1: Diagnostic = backend_diag_context(diag0, "", "", output_path);
+  let diag2: Diagnostic = diagnostic_add_pipeline_context(diag1, "source=" + source_path);
+  let diag3: Diagnostic = diagnostic_with_root_cause(diag2, "the source and output paths identify the same file");
+  let diag4: Diagnostic = diagnostic_with_help(diag3, "source files are never valid compiler outputs");
+  give diagnostic_with_probable_fix(diag4, "choose an output path different from `" + source_path + "`");
+}
+
+proc backend_diagnostic_severity_text(diagnostic: Diagnostic) -> string {
+  if diagnostic.severity == DiagnosticSeverity.Fatal {
+    give "fatal";
+  }
+  if diagnostic.severity == DiagnosticSeverity.Warning {
+    give "warning";
+  }
+  if diagnostic.severity == DiagnosticSeverity.Note {
+    give "note";
+  }
+  give "error";
+}
+
+proc backend_diagnostic_text(diagnostic: Diagnostic) -> string {
+  let text: string = diagnostic.message;
+  let i: u64 = 0;
+  while i < len(diagnostic.pipeline_context) {
+    set text = text + "\n  context: " + diagnostic.pipeline_context[i];
+    set i = i + 1;
+  }
+  if diagnostic.root_cause != "" {
+    set text = text + "\n  root_cause: " + diagnostic.root_cause;
+  }
+  set i = 0;
+  while i < len(diagnostic.cause_chain) {
+    set text = text + "\n  cause: " + diagnostic.cause_chain[i];
+    set i = i + 1;
+  }
+  if diagnostic.probable_fix != "" {
+    set text = text + "\n  help: " + diagnostic.probable_fix;
+  }
+  give text;
+}
