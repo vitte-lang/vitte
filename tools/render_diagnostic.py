@@ -91,12 +91,14 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("diagnostic", type=Path)
     parser.add_argument("--source-root", type=Path, default=Path.cwd())
+    parser.add_argument("--color", choices=("auto", "always", "never"), default="auto")
     args = parser.parse_args()
     with args.diagnostic.open(encoding="utf-8") as stream:
         diagnostic = json.load(stream)
     if not isinstance(diagnostic, dict):
         raise SystemExit("diagnostic must be a JSON object")
-    print(render(diagnostic, args.source_root, detect_color(sys.stdout, dict(os.environ))), end="")
+    color = args.color == "always" or (args.color == "auto" and detect_color(sys.stdout, dict(os.environ)))
+    print(render(diagnostic, args.source_root, color), end="")
     return 0
 
 
