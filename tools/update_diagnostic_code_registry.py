@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+from collections import defaultdict
 import json
 import re
 from pathlib import Path
@@ -14,7 +15,21 @@ REGISTRY = ROOT / "schemas/diagnostics/codes.json"
 CODE = re.compile(r"^([A-Z][A-Z0-9_]*?)\s*=", re.MULTILINE)
 
 
+def reject_duplicate_codes(path: Path) -> None:
+    occurrences: dict[str, list[int]] = defaultdict(list)
+    for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        match = CODE.match(line)
+        if match:
+            occurrences[match.group(1)].append(line_number)
+    duplicates = {code: lines for code, lines in occurrences.items() if len(lines) > 1}
+    if duplicates:
+        details = ", ".join(f"{code} at lines {lines}" for code, lines in sorted(duplicates.items()))
+        raise ValueError(f"{path}: duplicate diagnostic codes: {details}")
+
+
 def render() -> str:
+    for catalog in sorted((ROOT / "locales").glob("*/diagnostics.ftl")):
+        reject_duplicate_codes(catalog)
     text = CATALOG.read_text(encoding="utf-8")
     codes = sorted(set(CODE.findall(text)))
     if not codes:

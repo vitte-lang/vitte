@@ -70,6 +70,10 @@ def main() -> int:
     codes = load(CODES)
     if not isinstance(codes, dict) or not isinstance(codes.get("codes"), list) or not codes["codes"]:
         raise ValueError(f"{CODES}: invalid or empty diagnostic code registry")
+    code_names = [entry.get("code") for entry in codes["codes"] if isinstance(entry, dict)]
+    duplicate_codes = sorted({code for code in code_names if code_names.count(code) > 1})
+    if duplicate_codes:
+        raise ValueError(f"{CODES}: duplicate diagnostic codes: {', '.join(duplicate_codes)}")
     fixtures = sorted(FIXTURES.glob("*.json"))
     if not fixtures:
         raise ValueError(f"{FIXTURES}: no diagnostic fixtures")
