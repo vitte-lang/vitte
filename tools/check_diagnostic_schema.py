@@ -26,6 +26,24 @@ def load(path: Path) -> object:
         return json.load(stream)
 
 
+def validate_span(value: object, path: Path, field: str) -> None:
+    if not isinstance(value, dict) or not isinstance(value.get("file"), str) or not value["file"]:
+        raise ValueError(f"{path}: {field} must contain a non-empty file")
+    positions: list[tuple[int, int, int]] = []
+    for name in ("start", "end"):
+        position = value.get(name)
+        if not isinstance(position, dict):
+            raise ValueError(f"{path}: {field}.{name} must be an object")
+        line, column, byte = position.get("line"), position.get("column"), position.get("byte")
+        if not isinstance(line, int) or line < 1 or not isinstance(column, int) or column < 1:
+            raise ValueError(f"{path}: {field}.{name} line and column are one-based")
+        if not isinstance(byte, int) or byte < 0:
+            raise ValueError(f"{path}: {field}.{name}.byte must be non-negative")
+        positions.append((line, column, byte))
+    if positions[1] < positions[0] or positions[1][2] < positions[0][2]:
+        raise ValueError(f"{path}: {field} end precedes start")
+
+
 def validate_fixture(value: object, path: Path) -> None:
     if not isinstance(value, dict):
         raise ValueError(f"{path}: diagnostic must be an object")
@@ -40,6 +58,7 @@ def validate_fixture(value: object, path: Path) -> None:
         raise ValueError(f"{path}: diagnostic message must reference a Fluent catalog key")
     if value["message_key"] != value["code"]:
         raise ValueError(f"{path}: message_key must equal the diagnostic code")
+    validate_span(value["primary_span"], path, "primary_span")
     if not isinstance(value["labels"], list) or not value["labels"]:
         raise ValueError(f"{path}: at least one label is required")
 
