@@ -1,65 +1,20 @@
-# typeck
+# Type checker
 
-Path: `src/vitte/compiler/analysis/typeck`
+The canonical Vitte type checker is HIR-based.
 
-## Purpose
+Production callers use `run_production_typeck_hir` from `api.vit`. The API accepts a resolved `HirUnit` and returns `TypeckResult`; analysis, middle and driver pipelines must all use this entrypoint.
 
-Type checking surfaces for the compiler analysis pipeline.
+## Ownership
 
-## Current Split
+- `checker.vit` owns HIR traversal and production checking.
+- `infer.vit`, `unify.vit`, `coercion.vit` and `traits.vit` own reusable typing rules.
+- `errors.vit` owns structured type-checking results and diagnostics.
+- `api.vit` is the only production entrypoint.
 
-The repository currently carries two distinct type checking surfaces:
+## Complete migration source
 
-- `api.vit`
-  - canonical routing layer for type checking entrypoints
-  - production entrypoint: `run_production_typeck_hir`
-  - experimental complete entrypoint: `run_experimental_complete_typeck_frontend`
-- `checker.vit`
-  - HIR-oriented implementation used by the production API today
-  - entrypoint: `run_typeck_hir`
-  - consumed through `api.vit` by `analysis/pipeline.vit`, `middle/pipeline.vit`,
-    and `driver/compile.vit`
-- `complete/api.vit`
-  - richer AST-oriented surface for forms, picks, generics, procs, traits, and
-    impls
-  - entrypoint: `run_complete_typeck_frontend`
-  - covered by dedicated tests, but not yet wired into the production pipeline
+`complete/*` is an AST-era implementation retained only while its advanced capabilities are migrated into the HIR checker. It is not exported by `typeck/mod.vit` or `typeck/api.vit`, and production code must not import it.
 
-This split is intentional during convergence, but it is also a maintenance
-risk. The contract must stay explicit:
+`src/vitte/compiler/tests/typeck_complete_tests.vit` may import the `complete` module root to preserve migration coverage. A capability is considered migrated only after it has HIR representation, production checker coverage and positive and negative tests through `run_production_typeck_hir`.
 
-- do not silently replace the production HIR checker with `complete/*`
-- do not let `complete/*` drift without dedicated coverage
-- keep the bridge point explicit when the real pipeline eventually migrates
-
-## Current Production Entry
-
-The real compiler path still uses:
-
-- `src/vitte/compiler/analysis/pipeline.vit`
-- `src/vitte/compiler/middle/pipeline.vit`
-- `src/vitte/compiler/driver/compile.vit`
-
-All three are expected to route through `run_production_typeck_hir`.
-
-## Advanced Surface
-
-The advanced surface currently lives under:
-
-- `src/vitte/compiler/analysis/typeck/complete/api.vit`
-- `src/vitte/compiler/analysis/typeck/complete/context.vit`
-- `src/vitte/compiler/analysis/typeck/complete/exprs.vit`
-- `src/vitte/compiler/analysis/typeck/complete/forms.vit`
-- `src/vitte/compiler/analysis/typeck/complete/procs.vit`
-- `src/vitte/compiler/analysis/typeck/complete/traits_impls.vit`
-
-Its dedicated contract tests live in:
-
-- `src/vitte/compiler/tests/typeck_complete_tests.vit`
-
-## Notes
-
-- Keep phase boundaries explicit and testable.
-- Emit structured diagnostics with stable codes.
-- Ensure fatal conditions stop pipeline immediately.
-- Keep the HIR checker and the advanced AST checker from drifting silently.
+The accepted decision and removal criteria are recorded in `ARCHITECTURE.md`.

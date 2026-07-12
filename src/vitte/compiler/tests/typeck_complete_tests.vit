@@ -1,10 +1,11 @@
 space vitte/compiler/tests/typeck_complete_tests
 
-use vitte/compiler/analysis/typeck/api.{ CompleteResult, CompleteSymbolKind, run_experimental_complete_typeck_frontend }
+use vitte/compiler/analysis/typeck/complete.{ CompleteResult, CompleteSymbolKind, run_complete_typeck_frontend }
 use vitte/compiler/frontend/pipeline.{ FrontendOutput, frontend_run }
 
 const VERSION_TEXT: string = "analysis typeck complete tests 0.1.0"
 const BANNER_TEXT: string = "analysis typeck complete tests"
+const TYPECK_COMPLETE_MIGRATION_ONLY: int = 1
 
 proc symbol_count_of_kind(result: CompleteResult, kind: CompleteSymbolKind) -> u64 {
   let count: u64 = 0;
@@ -21,7 +22,7 @@ proc symbol_count_of_kind(result: CompleteResult, kind: CompleteSymbolKind) -> u
 proc test_complete_surface_registration() -> bool {
   let source: string = "form Box[T] {\n  value: T,\n}\n\npick Option[T] {\n  None,\n  Some(T),\n}\n\ntrait Show {\n  proc show(self: Self) -> string;\n}\n\nimpl Show for Box[string] {\n  proc show(self: Self) -> string {\n    give \"box\";\n  }\n}\n\nproc id[T](value: T) -> T {\n  give value;\n}\n";
   let fe: FrontendOutput = frontend_run("typeck_complete_surface.vit", source);
-  let result: CompleteResult = run_experimental_complete_typeck_frontend(fe);
+  let result: CompleteResult = run_complete_typeck_frontend(fe);
   give fe.valid
     and symbol_count_of_kind(result, CompleteSymbolKind.Form) >= 1
     and symbol_count_of_kind(result, CompleteSymbolKind.Pick) >= 1
@@ -33,7 +34,7 @@ proc test_complete_surface_registration() -> bool {
 proc test_complete_proc_type_mismatch() -> bool {
   let source: string = "proc add_one(value: int) -> int {\n  let text: string = \"oops\";\n  give text;\n}\n";
   let fe: FrontendOutput = frontend_run("typeck_complete_proc_mismatch.vit", source);
-  let result: CompleteResult = run_experimental_complete_typeck_frontend(fe);
+  let result: CompleteResult = run_complete_typeck_frontend(fe);
   give fe.valid and not result.valid and result.report.error_count > 0;
 }
 

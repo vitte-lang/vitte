@@ -31,12 +31,14 @@ def main() -> int:
         ("src/vitte/compiler/middle/pipeline.vit", "run_production_typeck_hir", "middle pipeline must use the canonical production typeck API"),
         ("src/vitte/compiler/driver/compile.vit", "run_production_typeck_hir", "driver compile path must use the canonical production typeck API"),
         ("src/vitte/compiler/tests/typeck_tests.vit", "run_production_typeck_hir", "production typeck contract tests must stay present"),
-        ("src/vitte/compiler/tests/typeck_complete_tests.vit", "run_experimental_complete_typeck_frontend", "advanced complete typeck tests must stay present through the experimental API"),
-        ("src/vitte/compiler/analysis/typeck/README.md", "run_complete_typeck_frontend", "README must document the advanced complete surface"),
+        ("src/vitte/compiler/tests/typeck_complete_tests.vit", "TYPECK_COMPLETE_MIGRATION_ONLY", "complete tests must remain explicitly migration-only"),
+        ("src/vitte/compiler/tests/typeck_complete_tests.vit", "run_complete_typeck_frontend", "migration coverage must call the isolated complete module"),
+        ("src/vitte/compiler/analysis/typeck/README.md", "The canonical Vitte type checker is HIR-based", "README must name the single canonical architecture"),
         ("src/vitte/compiler/analysis/typeck/README.md", "run_production_typeck_hir", "README must document the production typeck API surface"),
+        ("src/vitte/compiler/analysis/typeck/ARCHITECTURE.md", "HIR is the sole canonical type-checker architecture", "the accepted architecture decision must remain explicit"),
         ("src/vitte/compiler/analysis/typeck/api.vit", "proc run_production_typeck_hir(", "typeck API must expose the production typeck entrypoint"),
-        ("src/vitte/compiler/analysis/typeck/api.vit", "proc run_experimental_complete_typeck_frontend(", "typeck API must expose the experimental complete frontend entrypoint"),
-        ("src/vitte/compiler/analysis/typeck/api.vit", "use vitte/compiler/analysis/typeck/complete.{", "typeck API must route experimental complete access through the complete module root"),
+        ("src/vitte/compiler/analysis/typeck/api.vit", 'give "hir"', "typeck API must identify HIR as canonical"),
+        ("src/vitte/compiler/analysis/typeck/api.vit", 'give "canonical"', "typeck API must identify the production status as canonical"),
     ]
 
     results: list[dict[str, str]] = []
@@ -95,6 +97,24 @@ def main() -> int:
             read("src/vitte/compiler/driver/compile.vit"),
             "driver compile path must not call the complete AST checker directly",
         ),
+        (
+            "src/vitte/compiler/analysis/typeck/api.vit",
+            "analysis/typeck/complete",
+            read("src/vitte/compiler/analysis/typeck/api.vit"),
+            "the public typeck API must expose only the HIR checker",
+        ),
+        (
+            "src/vitte/compiler/analysis/typeck/mod.vit",
+            "analysis/typeck/complete",
+            read("src/vitte/compiler/analysis/typeck/mod.vit"),
+            "the canonical typeck module root must not aggregate the migration checker",
+        ),
+        (
+            "src/vitte/compiler/**/*.vit",
+            "run_experimental_complete_typeck",
+            "\n".join(path.read_text(encoding="utf-8", errors="replace") for path in scan_vit_files()),
+            "the removed experimental public API must not be reintroduced",
+        ),
     ]
     for rel, needle, text, reason in forbidden_checks:
         status = "forbidden_present" if has(text, needle) else "absent"
@@ -111,6 +131,7 @@ def main() -> int:
 
     direct_complete_subpath_imports: list[str] = []
     direct_complete_types_test_imports: list[str] = []
+    complete_root_imports: list[str] = []
     for path in scan_vit_files():
         rel = str(path.relative_to(ROOT))
         text = path.read_text(encoding="utf-8", errors="replace")
@@ -120,6 +141,8 @@ def main() -> int:
             direct_complete_subpath_imports.append(rel)
         if rel.startswith("src/vitte/compiler/tests/") and "use vitte/compiler/analysis/typeck/complete/types" in text:
             direct_complete_types_test_imports.append(rel)
+        if "use vitte/compiler/analysis/typeck/complete.{" in text:
+            complete_root_imports.append(rel)
 
     results.append(
         {
@@ -139,7 +162,7 @@ def main() -> int:
         {
             "file": "src/vitte/compiler/tests/*.vit",
             "needle": "use vitte/compiler/analysis/typeck/complete/types",
-            "reason": "tests should consume experimental complete types through the public typeck API",
+            "reason": "migration tests must consume complete types through the isolated module root",
             "status": "absent" if not direct_complete_types_test_imports else "forbidden_present",
         }
     )
@@ -147,6 +170,24 @@ def main() -> int:
         failures.append(
             "direct complete types imports in tests: "
             + ", ".join(sorted(direct_complete_types_test_imports))
+        )
+
+    allowed_complete_root_imports = {"src/vitte/compiler/tests/typeck_complete_tests.vit"}
+    unexpected_complete_root_imports = sorted(set(complete_root_imports) - allowed_complete_root_imports)
+    missing_complete_root_imports = sorted(allowed_complete_root_imports - set(complete_root_imports))
+    complete_root_ok = not unexpected_complete_root_imports and not missing_complete_root_imports
+    results.append(
+        {
+            "file": "src/vitte/compiler/**/*.vit",
+            "needle": "use vitte/compiler/analysis/typeck/complete.{",
+            "reason": "only the migration-only complete test may import the isolated checker root",
+            "status": "migration_test_only" if complete_root_ok else "forbidden_present",
+        }
+    )
+    if not complete_root_ok:
+        failures.append(
+            "complete root imports differ from migration allowance: "
+            f"unexpected={unexpected_complete_root_imports} missing={missing_complete_root_imports}"
         )
 
     payload = {

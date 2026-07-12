@@ -27,20 +27,32 @@
     },
     {
       "file": "src/vitte/compiler/tests/typeck_complete_tests.vit",
-      "needle": "run_experimental_complete_typeck_frontend",
-      "reason": "advanced complete typeck tests must stay present through the experimental API",
+      "needle": "TYPECK_COMPLETE_MIGRATION_ONLY",
+      "reason": "complete tests must remain explicitly migration-only",
+      "status": "present"
+    },
+    {
+      "file": "src/vitte/compiler/tests/typeck_complete_tests.vit",
+      "needle": "run_complete_typeck_frontend",
+      "reason": "migration coverage must call the isolated complete module",
       "status": "present"
     },
     {
       "file": "src/vitte/compiler/analysis/typeck/README.md",
-      "needle": "run_complete_typeck_frontend",
-      "reason": "README must document the advanced complete surface",
+      "needle": "The canonical Vitte type checker is HIR-based",
+      "reason": "README must name the single canonical architecture",
       "status": "present"
     },
     {
       "file": "src/vitte/compiler/analysis/typeck/README.md",
       "needle": "run_production_typeck_hir",
       "reason": "README must document the production typeck API surface",
+      "status": "present"
+    },
+    {
+      "file": "src/vitte/compiler/analysis/typeck/ARCHITECTURE.md",
+      "needle": "HIR is the sole canonical type-checker architecture",
+      "reason": "the accepted architecture decision must remain explicit",
       "status": "present"
     },
     {
@@ -51,14 +63,14 @@
     },
     {
       "file": "src/vitte/compiler/analysis/typeck/api.vit",
-      "needle": "proc run_experimental_complete_typeck_frontend(",
-      "reason": "typeck API must expose the experimental complete frontend entrypoint",
+      "needle": "give \"hir\"",
+      "reason": "typeck API must identify HIR as canonical",
       "status": "present"
     },
     {
       "file": "src/vitte/compiler/analysis/typeck/api.vit",
-      "needle": "use vitte/compiler/analysis/typeck/complete.{",
-      "reason": "typeck API must route experimental complete access through the complete module root",
+      "needle": "give \"canonical\"",
+      "reason": "typeck API must identify the production status as canonical",
       "status": "present"
     },
     {
@@ -92,6 +104,24 @@
       "status": "absent"
     },
     {
+      "file": "src/vitte/compiler/analysis/typeck/api.vit",
+      "needle": "analysis/typeck/complete",
+      "reason": "the public typeck API must expose only the HIR checker",
+      "status": "absent"
+    },
+    {
+      "file": "src/vitte/compiler/analysis/typeck/mod.vit",
+      "needle": "analysis/typeck/complete",
+      "reason": "the canonical typeck module root must not aggregate the migration checker",
+      "status": "absent"
+    },
+    {
+      "file": "src/vitte/compiler/**/*.vit",
+      "needle": "run_experimental_complete_typeck",
+      "reason": "the removed experimental public API must not be reintroduced",
+      "status": "absent"
+    },
+    {
       "file": "src/vitte/compiler/**/*.vit",
       "needle": "use vitte/compiler/analysis/typeck/complete/",
       "reason": "non-experimental code should use either the public typeck API or the complete module root, not complete subpaths",
@@ -100,8 +130,14 @@
     {
       "file": "src/vitte/compiler/tests/*.vit",
       "needle": "use vitte/compiler/analysis/typeck/complete/types",
-      "reason": "tests should consume experimental complete types through the public typeck API",
+      "reason": "migration tests must consume complete types through the isolated module root",
       "status": "absent"
+    },
+    {
+      "file": "src/vitte/compiler/**/*.vit",
+      "needle": "use vitte/compiler/analysis/typeck/complete.{",
+      "reason": "only the migration-only complete test may import the isolated checker root",
+      "status": "migration_test_only"
     }
   ],
   "schema": "vitte.compiler.typeck_surface_audit",

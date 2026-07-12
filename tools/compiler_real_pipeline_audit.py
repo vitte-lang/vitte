@@ -31,7 +31,7 @@ def check_required_steps() -> list[dict[str, str]]:
         ("hir", "AST to HIR lowering", compile_vit, "lower_ast_to_hir"),
         ("hir_validate", "HIR validation", compile_vit, "validate_hir"),
         ("sema", "semantic analysis", compile_vit, "run_sema_hir"),
-        ("typeck", "type checking", compile_vit, "run_typeck_hir"),
+        ("typeck", "type checking", compile_vit, "run_production_typeck_hir"),
         ("borrowck", "analysis result", compile_vit, "borrowck_ok"),
         ("mir", "HIR to MIR lowering", compile_vit, "lower_hir_to_mir"),
         ("mir_validate", "MIR validation", compile_vit, "validate_mir"),
