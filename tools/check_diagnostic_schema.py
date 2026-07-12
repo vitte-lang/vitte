@@ -107,6 +107,13 @@ def main() -> int:
         raise ValueError(f"{FIXTURES}: no diagnostic fixtures")
     for fixture in fixtures:
         validate_fixture(load(fixture), fixture)
+    if not any(
+        isinstance(value := load(fixture), dict)
+        and isinstance(value.get("primary_span"), dict)
+        and value["primary_span"].get("start", {}).get("line") != value["primary_span"].get("end", {}).get("line")
+        for fixture in fixtures
+    ):
+        raise ValueError(f"{FIXTURES}: a multi-line span fixture is required")
     invalid_fixtures = sorted(INVALID_FIXTURES.glob("*.json"))
     for fixture in invalid_fixtures:
         try:
