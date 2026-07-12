@@ -10,6 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SCHEMA = ROOT / "schemas/diagnostics/v1.schema.json"
 SEVERITIES = ROOT / "schemas/diagnostics/severities.json"
 PHASES = ROOT / "schemas/diagnostics/phases.json"
+CODES = ROOT / "schemas/diagnostics/codes.json"
 FIXTURES = ROOT / "tests/diagnostics/schema"
 REQUIRED = {
     "schema", "schema_version", "code", "severity", "phase", "message",
@@ -66,6 +67,9 @@ def main() -> int:
     phase_order = [entry.get("order") for entry in phases["phases"] if isinstance(entry, dict)]
     if phase_order != sorted(phase_order) or len(set(phase_order)) != len(phase_order):
         raise ValueError(f"{PHASES}: phase order values must be unique and ascending")
+    codes = load(CODES)
+    if not isinstance(codes, dict) or not isinstance(codes.get("codes"), list) or not codes["codes"]:
+        raise ValueError(f"{CODES}: invalid or empty diagnostic code registry")
     fixtures = sorted(FIXTURES.glob("*.json"))
     if not fixtures:
         raise ValueError(f"{FIXTURES}: no diagnostic fixtures")
