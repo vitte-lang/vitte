@@ -350,8 +350,29 @@ def analyze_parser(source: str, file: str) -> list[dict[str, Any]]:
                 "applicability": "machine-applicable",
             }],
         ))
+    brace_stack: list[int] = []
+    for index, character in enumerate(masked):
+        if character == "{":
+            brace_stack.append(index)
+        elif character == "}" and brace_stack:
+            brace_stack.pop()
+    for opening in brace_stack:
+        diagnostics.append(diagnostic(
+            "PARSE_E_UNCLOSED_BLOCK", "parser", file, source, opening, opening + 1,
+            "block opened here is not closed",
+            helps=["add the missing closing brace"],
+            suggestions=[{
+                "message": "insert `}` at end of input",
+                "replacement": "}",
+                "span": span(file, source, len(source), len(source)),
+                "applicability": "machine-applicable",
+            }],
+        ))
     return diagnostics
 
 
 def analyze(source: str, file: str) -> list[dict[str, Any]]:
-    return analyze_lexer(source, file) + analyze_parser(source, file)
+    lexer_diagnostics = analyze_lexer(source, file)
+    if any(value["code"] in {"LEX_E_UNTERMINATED_STRING", "LEX_E_UNTERMINATED_COMMENT"} for value in lexer_diagnostics):
+        return lexer_diagnostics
+    return lexer_diagnostics + analyze_parser(source, file)
