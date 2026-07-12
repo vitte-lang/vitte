@@ -28,6 +28,7 @@ def render(diagnostic: dict[str, Any], source_root: Path) -> str:
         f'  --> {span["file"]}:{start["line"]}:{start["column"]}',
     ]
     text = source_line(source_root, span["file"], start["line"])
+    primary_label = next((label for label in diagnostic["labels"] if label["kind"] == "primary"), None)
     if text is not None:
         width = len(str(start["line"]))
         gutter = f'{"":>{width}} |'
@@ -35,7 +36,27 @@ def render(diagnostic: dict[str, Any], source_root: Path) -> str:
         if span["end"]["line"] == start["line"]:
             marker_width = max(1, span["end"]["column"] - start["column"])
         marker = " " * max(0, start["column"] - 1) + "^" * marker_width
+        if primary_label is not None:
+            marker += f' {primary_label["message"]}'
         lines.extend((gutter, f'{start["line"]:>{width}} | {text}', f"{gutter} {marker}"))
+    for label in diagnostic["labels"]:
+        if label["kind"] != "secondary":
+            continue
+        secondary = label["span"]
+        secondary_start = secondary["start"]
+        lines.append(f'  ::: {secondary["file"]}:{secondary_start["line"]}:{secondary_start["column"]}')
+        secondary_text = source_line(source_root, secondary["file"], secondary_start["line"])
+        if secondary_text is None:
+            continue
+        width = len(str(secondary_start["line"]))
+        gutter = f'{"":>{width}} |'
+        marker_width = max(1, secondary["end"]["column"] - secondary_start["column"])
+        marker = " " * max(0, secondary_start["column"] - 1) + "-" * marker_width
+        lines.extend((
+            gutter,
+            f'{secondary_start["line"]:>{width}} | {secondary_text}',
+            f'{gutter} {marker} {label["message"]}',
+        ))
     return "\n".join(lines) + "\n"
 
 
