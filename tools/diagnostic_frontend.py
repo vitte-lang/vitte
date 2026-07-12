@@ -89,6 +89,14 @@ def analyze_lexer(source: str, file: str) -> list[dict[str, Any]]:
                         f"unknown escape sequence `\\{next_character}`",
                         helps=["replace it with a supported escape such as `\\n`, `\\t`, `\\\"`, or `\\\\`"],
                     ))
+                elif next_character == "u":
+                    digits = source[index + 2:index + 6]
+                    if len(digits) != 4 or re.fullmatch(r"[0-9A-Fa-f]{4}", digits) is None:
+                        diagnostics.append(diagnostic(
+                            "LEX_E_INVALID_UNICODE", "lexer", file, source, index, min(len(source), index + 6),
+                            "unicode escape requires four hexadecimal digits",
+                            helps=["use the form `\\u0041`"],
+                        ))
                 escaped = True
             elif character == '"':
                 in_string = False
