@@ -580,12 +580,16 @@ bootstrap-help:
 	@echo "  7) parser/typing change: use --trace-pipeline on failing file"
 	@echo "  8) regression tracking: target/reports/vitte_brain_seed_check.json"
 
+.PHONY: bootstrap-stage-chain-check
+bootstrap-stage-chain-check:
+	@python3 tools/check_bootstrap_stage_chain.py
+
 .PHONY: bootstrap-hard-gate
 bootstrap-hard-gate:
 	@python3 tools/bootstrap_hard_gate.py
 
 .PHONY: bootstrap-vitte-hard-gate
-bootstrap-vitte-hard-gate:
+bootstrap-vitte-hard-gate: bootstrap-stage-chain-check
 	@echo "[bootstrap-vitte] strict native bootstrap gate"
 	@tools/bootstrap_vitte_hard_gate.sh
 
@@ -597,12 +601,13 @@ stage0-check: seed-check
 stage0-gate: seed-gate
 
 .PHONY: bootstrap-all-legacy
-bootstrap-all-legacy:
+bootstrap-all-legacy: bootstrap-stage-chain-check
 	@scripts/seed/install_seed.sh
 	@toolchain/scripts/bootstrap/stage1.sh
 	@VITTE_SELF_CHECK=0 VITTE_STAGE2_ALLOW_BRIDGE_ARTIFACT=1 toolchain/scripts/bootstrap/stage2.sh
 	@cp bin/vittec bin/vitte
 	@chmod +x bin/vitte
+	@python3 tools/check_bootstrap_stage_chain.py --artifacts
 	@echo "[bootstrap-all-legacy] installed bin/vitte from stage2"
 
 .PHONY: bootstrap-all

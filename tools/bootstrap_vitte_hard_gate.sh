@@ -124,6 +124,9 @@ make --no-print-directory seed-verify
 step_start "bootstrap-all"
 make --no-print-directory bootstrap-all-legacy
 
+step_start "stage-chain-artifacts"
+python3 tools/check_bootstrap_stage_chain.py --artifacts
+
 step_start "bootstrap-parity"
 make --no-print-directory bootstrap-parity
 
@@ -142,6 +145,7 @@ cat > target/reports/bootstrap/hard_gate_native.json <<EOF
   "steps": [
     "seed-verify",
     "bootstrap-all",
+    "stage-chain-artifacts",
     "bootstrap-parity",
     "bootstrap-native-snapshots"
   ]

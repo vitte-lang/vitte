@@ -6,29 +6,24 @@ Complete bootstrap toolchain for building the Vitte compiler from source. Implem
 
 The bootstrap toolchain handles the complete compilation pipeline:
 
-- **Stage 0 (Seed)**: Minimal bootstrap compiler compiled from native seed
-- **Stage 1**: First self-hosted compiler built using the seed
-- **Stage 2**: Second self-hosted compiler built using stage1
-- **Stage 3**: Third self-hosted compiler built using stage2 (for final verification)
+- **Stage 0 (Seed)**: Verified seed installed as `bin/vittec0`
+- **Stage 1**: Bootstrap compiler built by stage0 and installed as `bin/vittec1`
+- **Stage 2**: Full compiler entry built by stage1 and installed as `bin/vittec`
 
-This ensures the final compiler is self-hosting and reproducible, matching the sophistication of native bootstrap compiler bootstraps.
+The active contract stops at stage2. A stage3 rebuild and byte-for-byte stage2/stage3 comparison remain separate self-hosting milestones.
 
 ## Architecture
 
 ```
-Native Compiler (cc)
+Verified seed artifact
        ↓
-[Stage 0: Seed] → vittec0 (binary)
+[Stage 0: Seed] → bin/vittec0
        ↓
-[Stage 1: Self-hosted] → vittec1 (binary)
+[Stage 1: Bootstrap] → bin/vittec1
        ↓
-[Stage 2: Verification] → vittec2 (binary)
+[Stage 2: Full compiler] → bin/vittec + bin/vitte
        ↓
-[Stage 3: Final Verification] → vittec3 (binary)
-       ↓
-   Verification: vittec2 == vittec3
-       ↓
-Final Compiler Installation
+Contract, version, artifact, alias, hash, parity and snapshot checks
 ```
 
 ## Components
@@ -219,9 +214,10 @@ The bootstrap process is configured via `bootstrap-config.json`:
       {
         "stage": 0,
         "name": "seed",
-        "compiler": "cc",
+        "compiler": "toolchain/seed/vittec0.seed",
         "sources": ["toolchain/seed/src/main.vit"],
-        "output": "build/vittec0"
+        "artifact": "toolchain/seed/vittec0.seed",
+        "output": "bin/vittec0"
       },
       ...
     ]
@@ -268,24 +264,26 @@ Full production build:
 
 The bootstrap process verifies:
 
-1. **Binary Consistency**: stage1 and stage2 output identical binaries
-2. **Feature Completeness**: Compiler supports required features
-3. **Stdlib Validation**: Standard library compiles correctly
-4. **Reproducibility**: Same source produces same output
+1. **Transition Integrity**: each stage is produced by the previous installed compiler
+2. **Artifact Integrity**: each installed compiler matches its build artifact
+3. **Identity**: source `VERSION_TEXT`, configured version and executable version agree
+4. **Reproducibility**: two identical stage0-stage2 builds produce the same hashes
 
 ## Output
 
-Build artifacts are placed in `build/`:
+Build artifacts are placed in `target/bootstrap/` and installed in `bin/`:
 
 ```
-build/
-├── vittec0          # Seed compiler
-├── vittec1          # Stage 1 compiler
-├── vittec2          # Stage 2 compiler (verification)
-├── vitte.a          # Compiled standard library
-├── artifacts/       # Final installation artifacts
-├── .cache/          # Build cache
-└── logs/            # Build logs
+target/bootstrap/
+├── stage1/vittec1
+├── stage2/vittec
+└── cache/
+
+bin/
+├── vittec0
+├── vittec1
+├── vittec
+└── vitte
 ```
 
 ## Troubleshooting
@@ -306,14 +304,14 @@ Solution: Install the appropriate development tools for your platform.
 [ERROR] Insufficient disk space. Required: 2048MB, Available: 512MB
 ```
 
-Solution: Free up disk space or use `--build-dir` to build elsewhere.
+Solution: Free up disk space in the checkout containing `target/bootstrap`.
 
 ### Build Failures
 
 Check the build logs:
 
 ```bash
-cat build/logs/bootstrap.log
+cat target/reports/bootstrap/hard_gate_native.json
 ```
 
 For more details, run with verbose mode:
@@ -326,10 +324,10 @@ For more details, run with verbose mode:
 
 ### Stage 0: Seed
 
-Minimal bootstrap compiler compiled from native seed:
+The checked-in seed is verified against its manifest and installed atomically:
 
 ```bash
-cc -o build/vittec0 src/vitte/bootstrap/seed/main.vit
+make seed-verify bootstrap-seed
 ```
 
 ### Stage 1: First Self-Hosted
@@ -337,32 +335,32 @@ cc -o build/vittec0 src/vitte/bootstrap/seed/main.vit
 First compiler compiled by the seed:
 
 ```bash
-./build/vittec0 -o build/vittec1 src/vitte/bootstrap/stage1/main.vit
+toolchain/scripts/bootstrap/stage1.sh
 ```
 
 ### Stage 2: Verification
 
-Second compiler compiled by stage1 (should match stage1 output):
+The full compiler entry is compiled by stage1:
 
 ```bash
-./build/vittec1 -o build/vittec2 src/vitte/bootstrap/stage2/main.vit
+toolchain/scripts/bootstrap/stage2.sh
 ```
 
-If `vittec1 == vittec2`, the bootstrap is **verified**.
+`python3 tools/check_bootstrap_stage_chain.py --artifacts` verifies every installed artifact and alias. Stage2 currently declares a transitional bridge policy; removing it is required before full self-hosting parity.
 
 ## Integration with Main Build
 
 Once bootstrap completes, the compiler can be used:
 
 ```bash
-export VITTE_BOOTSTRAP=./build/vittec2
+export VITTE_BOOTSTRAP=./bin/vittec
 make all
 ```
 
 Or:
 
 ```bash
-make VITTE_BOOTSTRAP=./build/vittec2 all
+make VITTE_BOOTSTRAP=./bin/vittec all
 ```
 
 ## Performance
@@ -382,7 +380,7 @@ Typical build times on modern hardware:
 - Bootstrap binaries are compiled but not signed
 - For production deployments, verify checksum lists:
   ```bash
-  sha256sum build/vittec* > checksums.txt
+  shasum -a 256 bin/vittec0 bin/vittec1 bin/vittec
   ```
 - Regenerate bootstrap on clean systems for verification
 

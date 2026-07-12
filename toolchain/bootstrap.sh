@@ -10,7 +10,7 @@ set -e
 # Script configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-BUILD_DIR="${BUILD_DIR:-$PROJECT_ROOT/build}"
+BUILD_DIR="${BUILD_DIR:-$PROJECT_ROOT/target/bootstrap}"
 INSTALL_PREFIX="${INSTALL_PREFIX:-/usr/local}"
 TOOLCHAIN_CONFIG="$SCRIPT_DIR/bootstrap-config.json"
 
@@ -179,122 +179,35 @@ prepare_build_directory() {
   log_info "Preparing build directory: $BUILD_DIR"
   
   mkdir -p "$BUILD_DIR"
-  mkdir -p "$BUILD_DIR/logs"
-  mkdir -p "$BUILD_DIR/artifacts"
-  mkdir -p "$BUILD_DIR/.cache"
+  mkdir -p "$BUILD_DIR/cache"
+  mkdir -p "$PROJECT_ROOT/target/reports/bootstrap"
   
   log_success "Build directory prepared"
 }
 
-patch_generated_script() {
-  local script_path="$1"
-  if ! [ -f "$script_path" ]; then
-    return 0
-  fi
-
-  awk '
-    BEGIN {
-      normalized = 0
-      pending = 0
-      blank_count = 0
-    }
-    /^# --- shell-runtime-body ---$/ && normalized == 0 {
-      print
-      pending = 1
-      next
-    }
-    pending == 1 && $0 == "" {
-      blank_count++
-      next
-    }
-    pending == 1 {
-      for (i = 0; i < 5; i++) {
-        print ""
-      }
-      pending = 0
-      normalized = 1
-    }
-    {
-      print
-    }
-    END {
-      if (pending == 1) {
-        for (i = 0; i < 5; i++) {
-          print ""
-        }
-      }
-    }
-  ' "$script_path" > "$script_path.tmp" && mv "$script_path.tmp" "$script_path"
-  chmod +x "$script_path"
-}
-
 run_bootstrap_stages() {
   local mode="$1"
-  
+
   log_info "Starting bootstrap: $mode mode"
-  
-  # Set compilation flags based on mode
-  local cflags=""
-  local vitte_flags=""
-  
+
+  if [ "$BUILD_DIR" != "$PROJECT_ROOT/target/bootstrap" ]; then
+    log_error "The canonical bootstrap build directory is $PROJECT_ROOT/target/bootstrap"
+    return 1
+  fi
+
   case "$mode" in
-    quick)
-      cflags="-O0 -g"
-      vitte_flags="--quick"
+    quick|normal)
+      make -C "$PROJECT_ROOT" --no-print-directory bootstrap-all-legacy
       ;;
     strict)
-      cflags="-O3 -Wall -Werror"
-      vitte_flags="--strict"
+      make -C "$PROJECT_ROOT" --no-print-directory bootstrap-vitte-hard-gate
       ;;
-    normal|*)
-      cflags="-O2"
-      vitte_flags=""
+    *)
+      log_error "Unsupported bootstrap mode: $mode"
+      return 1
       ;;
   esac
-  
-  # Stage 0: Use existing compiler as seed
-  log_info "Stage 0 (Seed): Using existing compiler as seed..."
-  cp "$PROJECT_ROOT/bin/vittec" "$BUILD_DIR/vittec0"
-  
-  # Stage 1: First self-hosted compilation
-  log_info "Stage 1: First self-hosted compilation..."
-  if ! "$BUILD_DIR/vittec0" build-native --src "$PROJECT_ROOT/toolchain/stage1/src/main.vit" --out "$BUILD_DIR/vittec1" --stage stage1 $vitte_flags 2>/dev/null; then
-    log_error "Failed to generate shell script for stage1"
-    return 1
-  fi
-  patch_generated_script "$BUILD_DIR/vittec1"
-  
-  # Stage 2: Second self-hosted compilation
-  log_info "Stage 2: Second self-hosted compilation..."
-  if ! "$BUILD_DIR/vittec1" build-native --src "$PROJECT_ROOT/toolchain/stage2/src/main.vit" --out "$BUILD_DIR/vittec2" --stage stage2 $vitte_flags 2>/dev/null; then
-    log_error "Failed to generate shell script for stage2"
-    return 1
-  fi
-  patch_generated_script "$BUILD_DIR/vittec2"
-  
-  # Stage 3: Third self-hosted compilation
-  log_info "Stage 3: Third self-hosted compilation..."
-  if ! "$BUILD_DIR/vittec2" build-native --src "$PROJECT_ROOT/toolchain/stage3/src/main.vit" --out "$BUILD_DIR/vittec3" --stage stage3 $vitte_flags 2>/dev/null; then
-    log_error "Failed to generate shell script for stage3"
-    return 1
-  fi
-  patch_generated_script "$BUILD_DIR/vittec3"
 
-  # Stage 4: Fourth self-hosted compilation placeholder
-  log_info "Stage 4: Fourth self-hosted compilation..."
-  if ! "$BUILD_DIR/vittec3" build-native --src "$PROJECT_ROOT/toolchain/stage4/src/main.vit" --out "$BUILD_DIR/vittec4" --stage stage4 $vitte_flags 2>/dev/null; then
-    log_error "Failed to generate shell script for stage4"
-    return 1
-  fi
-  patch_generated_script "$BUILD_DIR/vittec4"
-  
-  # Verification: Compare stage2 and stage3
-  log_info "Verification: Comparing binary outputs..."
-  if ! cmp "$BUILD_DIR/vittec2" "$BUILD_DIR/vittec3"; then
-    log_error "Bootstrap verification failed: vittec2 != vittec3"
-    return 1
-  fi
-  
   log_success "Bootstrap completed successfully"
 }
 
@@ -304,39 +217,27 @@ run_dry_run() {
   cat <<'EOF'
 
 Bootstrap Plan:
-  Phase 1: Environment Validation
+  Phase 1: Environment validation
     - check-platform
     - check-tools
     - check-space
 
-  Phase 2: Setup
-    - create-directories
-    - prepare-sources
+  Phase 2: Stage 0
+    - verify toolchain/seed/vittec0.seed
+    - install bin/vittec0
 
-  Phase 3: Seed Bootstrap
-    - compile-seed
+  Phase 3: Stage 1
+    - compile toolchain/stage1/src/main.vit with bin/vittec0
+    - install bin/vittec1
 
-  Phase 4: Stage 1
-    - compile-stage1
+  Phase 4: Stage 2
+    - compile src/vitte/compiler/main.vit with bin/vittec1
+    - install bin/vittec and bin/vitte
 
-  Phase 5: Stage 2
-    - compile-stage2
-
-  Phase 6: Stage 3
-    - compile-stage3
-
-  Phase 7: Stage 4
-    - compile-stage4
-
-  Phase 8: Verification
-    - verify-consistency
-    - verify-features
-
-  Phase 8: Installation
-    - install-compiler
-    - install-libraries
-
-Estimated time: ~35 minutes (depends on CPU and I/O)
+  Phase 5: Verification
+    - validate versions, artifact kinds, aliases, and hashes
+    - compare stage1/stage2 command surfaces
+    - run bootstrap native snapshots in strict mode
 
 EOF
 }
