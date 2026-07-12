@@ -82,6 +82,13 @@ def analyze_lexer(source: str, file: str) -> list[dict[str, Any]]:
             if escaped:
                 escaped = False
             elif character == "\\":
+                next_character = source[index + 1] if index + 1 < len(source) else ""
+                if next_character not in {'"', "'", "\\", "0", "b", "f", "n", "r", "t", "u"}:
+                    diagnostics.append(diagnostic(
+                        "LEX_E_INVALID_ESCAPE", "lexer", file, source, index, min(len(source), index + 2),
+                        f"unknown escape sequence `\\{next_character}`",
+                        helps=["replace it with a supported escape such as `\\n`, `\\t`, `\\\"`, or `\\\\`"],
+                    ))
                 escaped = True
             elif character == '"':
                 in_string = False
