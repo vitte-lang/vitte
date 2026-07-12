@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -12,6 +13,8 @@ SEVERITIES = ROOT / "schemas/diagnostics/severities.json"
 PHASES = ROOT / "schemas/diagnostics/phases.json"
 CODES = ROOT / "schemas/diagnostics/codes.json"
 FIXTURES = ROOT / "tests/diagnostics/schema"
+INVALID_FIXTURES = ROOT / "tests/diagnostics/schema-invalid"
+CODE_PATTERN = re.compile(r"^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$")
 REQUIRED = {
     "schema", "schema_version", "code", "severity", "phase", "message",
     "primary_span", "labels", "notes", "helps", "suggestions",
@@ -31,6 +34,8 @@ def validate_fixture(value: object, path: Path) -> None:
         raise ValueError(f"{path}: missing fields: {', '.join(sorted(missing))}")
     if value["schema"] != "vitte.diagnostic" or value["schema_version"] != "1.0.0":
         raise ValueError(f"{path}: invalid schema identity")
+    if not isinstance(value["code"], str) or not CODE_PATTERN.fullmatch(value["code"]):
+        raise ValueError(f"{path}: diagnostic code is missing or malformed")
     if not isinstance(value["labels"], list) or not value["labels"]:
         raise ValueError(f"{path}: at least one label is required")
 
@@ -79,7 +84,14 @@ def main() -> int:
         raise ValueError(f"{FIXTURES}: no diagnostic fixtures")
     for fixture in fixtures:
         validate_fixture(load(fixture), fixture)
-    print(f"diagnostic schema ok: {SCHEMA.relative_to(ROOT)} ({len(fixtures)} fixture(s))")
+    invalid_fixtures = sorted(INVALID_FIXTURES.glob("*.json"))
+    for fixture in invalid_fixtures:
+        try:
+            validate_fixture(load(fixture), fixture)
+        except ValueError:
+            continue
+        raise ValueError(f"{fixture}: invalid fixture unexpectedly passed")
+    print(f"diagnostic schema ok: {SCHEMA.relative_to(ROOT)} ({len(fixtures)} valid, {len(invalid_fixtures)} invalid fixture(s))")
     return 0
 
 
