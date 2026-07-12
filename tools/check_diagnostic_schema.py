@@ -61,6 +61,16 @@ def validate_fixture(value: object, path: Path) -> None:
     validate_span(value["primary_span"], path, "primary_span")
     if not isinstance(value["labels"], list) or not value["labels"]:
         raise ValueError(f"{path}: at least one label is required")
+    primary_labels = 0
+    for index, label in enumerate(value["labels"]):
+        if not isinstance(label, dict) or label.get("kind") not in {"primary", "secondary"}:
+            raise ValueError(f"{path}: labels[{index}] has an invalid kind")
+        if not isinstance(label.get("message"), str) or not label["message"]:
+            raise ValueError(f"{path}: labels[{index}] requires a message")
+        validate_span(label.get("span"), path, f"labels[{index}].span")
+        primary_labels += label["kind"] == "primary"
+    if primary_labels != 1:
+        raise ValueError(f"{path}: exactly one primary label is required")
 
 
 def main() -> int:
@@ -114,6 +124,8 @@ def main() -> int:
         for fixture in fixtures
     ):
         raise ValueError(f"{FIXTURES}: a multi-line span fixture is required")
+    if not any(isinstance(value := load(fixture), dict) and len(value.get("labels", [])) > 1 for fixture in fixtures):
+        raise ValueError(f"{FIXTURES}: a multiple-label fixture is required")
     invalid_fixtures = sorted(INVALID_FIXTURES.glob("*.json"))
     for fixture in invalid_fixtures:
         try:
