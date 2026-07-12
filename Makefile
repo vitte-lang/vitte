@@ -2294,8 +2294,13 @@ wasm-backend-gate:
 	@test -f target/reports/wasm_backend_coverage.md
 
 
+.PHONY: backend-ir-contract-audit
+backend-ir-contract-audit:
+	@python3 tools/backend_ir_contract_audit.py
+
+
 .PHONY: backend-gate
-backend-gate: vitte-emit-gate llvm-backend-gate wasm-backend-gate
+backend-gate: vitte-emit-gate llvm-backend-gate wasm-backend-gate backend-ir-contract-audit
 	@python3 tools/backend_surface_audit.py
 
 

@@ -2,7 +2,7 @@ space vitte/compiler/tests/codegen_tests
 
 use vitte/compiler/backend/codegen.{ CodegenResult, run_codegen_x86_64 }
 use vitte/compiler/backend/diagnostics.{ backend_missing_c_compiler, backend_native_generation_failed, backend_output_overwrites_source, backend_output_permission_denied, backend_unsupported_feature, backend_unsupported_target, linker_command_failed, linker_native_symbol_not_found }
-use vitte/compiler/backend/ir.{ IrBlock, IrFunction, IrInstructionKind, IrLinkage, IrModuleKind, IrUnit, IrUnitState, IrValue, IrValueKind, IrVisibility, block_add_instruction, block_create, function_add_block, function_ref_create, instruction_create, instruction_with_call_abi, ir_validation_reason, module_add_function, module_add_nominal_type, module_create, nominal_type_create, span_empty, target_native_x86_64_linux, terminator_return, unit_add_module, unit_empty, unit_is_valid, unit_set_entry, unit_with_source_path, value_constant, value_place, verify_unit }
+use vitte/compiler/backend/ir.{ BACKEND_IR_DIALECT, BACKEND_IR_SCHEMA_VERSION, IrBlock, IrFunction, IrInstructionKind, IrLinkage, IrModuleKind, IrUnit, IrUnitState, IrValue, IrValueKind, IrVisibility, block_add_instruction, block_create, function_add_block, function_ref_create, instruction_create, instruction_with_call_abi, ir_validation_reason, module_add_function, module_add_nominal_type, module_create, nominal_type_create, span_empty, target_native_x86_64_linux, terminator_return, unit_add_module, unit_contract_is_supported, unit_empty, unit_is_valid, unit_set_entry, unit_summary, unit_with_contract, unit_with_source_path, value_constant, value_place, verify_unit }
 use vitte/compiler/backend/link/artifact.{ LinkArtifact, artifact_is_valid }
 use vitte/compiler/backend/link/linker.{ link_ir_unit }
 use vitte/compiler/backend/pipeline.{ BackendPipelineResult, compile_frontend_to_valid_ir_with_profile_and_packaging, compile_to_valid_ir, compile_to_valid_ir_with_backend }
@@ -156,6 +156,20 @@ proc manual_bad_regular_call_abi_ir() -> IrUnit {
 proc test_ir_verifier_accepts_lowered_unit() -> bool {
   let ir: IrUnit = build_verified_ir("backend_ir_ok.vit", "proc main() -> int { give 0; }\n");
   give unit_is_valid(ir) and ir.state == IrUnitState.Verified and len(ir.modules) == 1 and ir.entry_function_id > 0;
+}
+
+proc test_backend_ir_contract_is_versioned_and_enforced() -> bool {
+  let canonical: IrUnit = build_verified_ir("backend_ir_contract.vit", "proc main() -> int { give 0; }\n");
+  let bad_version: IrUnit = unit_with_contract(canonical, BACKEND_IR_DIALECT, BACKEND_IR_SCHEMA_VERSION + 1);
+  let bad_dialect: IrUnit = unit_with_contract(canonical, "legacy.backend.ir", BACKEND_IR_SCHEMA_VERSION);
+  give canonical.dialect == BACKEND_IR_DIALECT
+    and canonical.schema_version == BACKEND_IR_SCHEMA_VERSION
+    and unit_contract_is_supported(canonical)
+    and find(unit_summary(canonical), "dialect=vitte.backend.ir") >= 0
+    and ir_validation_reason(bad_version) == "unsupported-ir-contract"
+    and ir_validation_reason(bad_dialect) == "unsupported-ir-contract"
+    and not unit_is_valid(verify_unit(bad_version))
+    and not unit_is_valid(verify_unit(bad_dialect));
 }
 
 proc test_ir_validator_rejects_units_without_entry_function() -> bool {
@@ -821,6 +835,7 @@ proc test_llvm_bindings_emit_object_from_canonical_ir() -> bool {
 proc run_all_tests() -> int {
   let failures: int = 0;
   if not test_ir_verifier_accepts_lowered_unit() { set failures = failures + 1; }
+  if not test_backend_ir_contract_is_versioned_and_enforced() { set failures = failures + 1; }
   if not test_mir_to_ir_preserves_cfg_terminators() { set failures = failures + 1; }
   if not test_mir_to_ir_preserves_nominal_type_metadata() { set failures = failures + 1; }
   if not test_mir_to_ir_preserves_explicit_nominal_call_lowering() { set failures = failures + 1; }

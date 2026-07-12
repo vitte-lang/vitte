@@ -1,13 +1,14 @@
-# ir
+# Legacy bootstrap IR fixtures
 
 Path: `src/vitte/compiler/ir`
 
 ## Purpose
 
-Core project directory.
+Compatibility fixtures retained for bootstrap smoke coverage. These modules
+predate the production frontend, HIR, MIR, and backend IR trees.
 
 ## Notes
 
-- Keep this directory focused on one responsibility.
-- Add reproducible commands and examples.
-- Document invariants and contracts near code.
+- Production AST/HIR/MIR code lives under `frontend/ast` and `middle`.
+- The canonical backend contract is `backend/ir::IrUnit`.
+- Production entry points must not import this directory.

@@ -5,6 +5,9 @@ use vitte/compiler/backend/target/triple.{ TargetTriple, triple_matches, triple_
 use vitte/compiler/backend/target/layout.{ data_layout_for_triple, pointer_width_for_arch }
 use vitte/compiler/backend/target/features.{ default_feature_set }
 
+const BACKEND_IR_DIALECT: string = "vitte.backend.ir"
+const BACKEND_IR_SCHEMA_VERSION: u64 = 1
+
 pick IrUnitState {
   Invalid,
   Empty,
@@ -169,6 +172,8 @@ form IrModule {
 }
 
 form IrUnit {
+  dialect: string
+  schema_version: u64
   source_path: string
   target: IrTarget
   modules: [IrModule]
@@ -663,6 +668,8 @@ proc module_add_nominal_type(module0: IrModule, nominal: IrNominalType) -> IrMod
 
 proc unit_empty(target: IrTarget) -> IrUnit {
   give IrUnit {
+    dialect: BACKEND_IR_DIALECT,
+    schema_version: BACKEND_IR_SCHEMA_VERSION,
     source_path: "",
     target: target,
     modules: [],
@@ -674,6 +681,8 @@ proc unit_empty(target: IrTarget) -> IrUnit {
 
 proc unit_with_source_path(unit: IrUnit, source_path: string) -> IrUnit {
   give IrUnit {
+    dialect: unit.dialect,
+    schema_version: unit.schema_version,
     source_path: source_path,
     target: unit.target,
     modules: unit.modules,
@@ -685,6 +694,8 @@ proc unit_with_source_path(unit: IrUnit, source_path: string) -> IrUnit {
 
 proc unit_add_module(unit: IrUnit, module0: IrModule) -> IrUnit {
   give IrUnit {
+    dialect: unit.dialect,
+    schema_version: unit.schema_version,
     source_path: unit.source_path,
     target: unit.target,
     modules: unit.modules + [module0],
@@ -696,6 +707,8 @@ proc unit_add_module(unit: IrUnit, module0: IrModule) -> IrUnit {
 
 proc unit_set_entry(unit: IrUnit, entry_function_id: u64) -> IrUnit {
   give IrUnit {
+    dialect: unit.dialect,
+    schema_version: unit.schema_version,
     source_path: unit.source_path,
     target: unit.target,
     modules: unit.modules,
@@ -707,6 +720,8 @@ proc unit_set_entry(unit: IrUnit, entry_function_id: u64) -> IrUnit {
 
 proc unit_with_state(unit: IrUnit, state: IrUnitState) -> IrUnit {
   give IrUnit {
+    dialect: unit.dialect,
+    schema_version: unit.schema_version,
     source_path: unit.source_path,
     target: unit.target,
     modules: unit.modules,
@@ -716,12 +731,29 @@ proc unit_with_state(unit: IrUnit, state: IrUnitState) -> IrUnit {
   };
 }
 
+proc unit_with_contract(unit: IrUnit, dialect: string, schema_version: u64) -> IrUnit {
+  give IrUnit {
+    dialect: dialect,
+    schema_version: schema_version,
+    source_path: unit.source_path,
+    target: unit.target,
+    modules: unit.modules,
+    entry_function_id: unit.entry_function_id,
+    state: unit.state,
+    valid: unit.valid
+  };
+}
+
+proc unit_contract_is_supported(unit: IrUnit) -> bool {
+  give unit.dialect == BACKEND_IR_DIALECT and unit.schema_version == BACKEND_IR_SCHEMA_VERSION;
+}
+
 proc unit_module_count(unit: IrUnit) -> u64 {
   give len(unit.modules);
 }
 
 proc unit_is_valid(unit: IrUnit) -> bool {
-  give unit.valid and unit.state != IrUnitState.Invalid and unit.target.valid and len(unit.modules) > 0 and unit.entry_function_id > 0;
+  give unit_contract_is_supported(unit) and unit.valid and unit.state != IrUnitState.Invalid and unit.target.valid and len(unit.modules) > 0 and unit.entry_function_id > 0;
 }
 
 proc instruction_is_terminator(kind: IrInstructionKind) -> bool {
@@ -1405,6 +1437,8 @@ proc module_reason(module0: IrModule, unit_target: IrTarget) -> string {
 
 proc unit_invalid_like(unit: IrUnit) -> IrUnit {
   give IrUnit {
+    dialect: unit.dialect,
+    schema_version: unit.schema_version,
     source_path: unit.source_path,
     target: unit.target,
     modules: unit.modules,
@@ -1419,6 +1453,9 @@ proc ir_eq() -> string {
 }
 
 proc ir_validation_reason(unit: IrUnit) -> string {
+  if not unit_contract_is_supported(unit) {
+    give "unsupported-ir-contract";
+  }
   if not unit.target.valid or len(unit.modules) == 0 or not function_exists(unit, unit.entry_function_id) {
     give "invalid-unit";
   }
@@ -1438,6 +1475,8 @@ proc verify_unit(unit: IrUnit) -> IrUnit {
     give unit_invalid_like(unit);
   }
   give IrUnit {
+    dialect: unit.dialect,
+    schema_version: unit.schema_version,
     source_path: unit.source_path,
     target: unit.target,
     modules: unit.modules,
@@ -1449,7 +1488,8 @@ proc verify_unit(unit: IrUnit) -> IrUnit {
 
 proc unit_summary(unit: IrUnit) -> string {
   let eq_text: string = ir_eq();
+  let schema_version: string = unit.schema_version as string;
   let module_count: string = len(unit.modules) as string;
   let entry_id: string = unit.entry_function_id as string;
-  give "ir unit target" + eq_text + triple_text(unit.target.triple) + " modules" + eq_text + module_count + " entry" + eq_text + entry_id;
+  give "ir unit dialect" + eq_text + unit.dialect + " schema" + eq_text + schema_version + " target" + eq_text + triple_text(unit.target.triple) + " modules" + eq_text + module_count + " entry" + eq_text + entry_id;
 }

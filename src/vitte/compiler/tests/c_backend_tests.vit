@@ -3,7 +3,7 @@ space vitte/compiler/tests/c_backend_tests
 use vitte/compiler/backend/c/pipeline.{ CBackendPipelineResult, run_c_backend_frontend, run_c_backend_mir, run_c_backend_source }
 use vitte/compiler/backend/c/lowering.{ CTranslationUnit, lower_mir_to_c_with_hir_and_ir, lower_mir_to_c_with_ir }
 use vitte/compiler/backend/c/architecture.{ c_target_x86_64_linux }
-use vitte/compiler/backend/ir.{ IrUnit, IrUnitState, target_native_x86_64_linux }
+use vitte/compiler/backend/ir.{ IrUnit, target_native_x86_64_linux, unit_empty, unit_with_source_path }
 use vitte/compiler/frontend/ast/node.{ ast_span_empty }
 use vitte/compiler/frontend/pipeline.{ FrontendOutput, frontend_run }
 use vitte/compiler/middle/mir.{ MirBinaryOperator, MirBlock, MirBorrowKind, MirFunction, MirModule, MirOperand, MirPlace, MirRvalue, MirRvalueKind, MirStatement, MirStatementKind, MirTerminatorKind, MirUnaryOperator, MirUnit, mir_terminator_return }
@@ -317,16 +317,10 @@ proc test_c_backend_rejects_missing_canonical_ir_call_metadata() -> bool {
     "proc main() -> int { let x = 1; let y = keep(x); give y; }\n";
   let frontend: FrontendOutput = frontend_run("c_backend_missing_ir_call.vit", source);
   let middle: MiddleOutput = middle_run_frontend(frontend);
+  let empty_ir: IrUnit = unit_with_source_path(unit_empty(target_native_x86_64_linux()), middle.ir.source_path);
   let lowered: CTranslationUnit = lower_mir_to_c_with_ir(
     middle.mir,
-    IrUnit {
-      source_path: middle.ir.source_path,
-      target: target_native_x86_64_linux(),
-      modules: [],
-      entry_function_id: 0,
-      state: IrUnitState.Invalid,
-      valid: false
-    },
+    empty_ir,
     c_target_x86_64_linux()
   );
   give not lowered.valid

@@ -2,7 +2,7 @@ space vitte/compiler/backend/c/lowering
 
 use vitte/compiler/backend/c/architecture.{ CBackendTargetProfile, c_type_for_vitte_type, c_target_x86_64_linux }
 use vitte/compiler/backend/c/diagnostics.{ CBackendDiagnostic, c_diag_add_unique, c_error, c_has_errors, c_info, c_warning }
-use vitte/compiler/backend/ir.{ IrBlock, IrFunction, IrInstruction, IrInstructionKind, IrLinkage, IrNominalType, IrUnit, IrUnitState, IrValue, IrValueKind, IrVisibility, ir_value_invalid, span_empty, target_native_x86_64_linux }
+use vitte/compiler/backend/ir.{ IrBlock, IrFunction, IrInstruction, IrInstructionKind, IrLinkage, IrNominalType, IrUnit, IrValue, IrValueKind, IrVisibility, ir_value_invalid, span_empty, target_native_x86_64_linux, unit_empty, unit_with_source_path }
 use vitte/compiler/middle/hir.{ HirItem, HirItemKind, HirNominalMember, HirNominalMemberKind, HirProcParam, HirStmt }
 use vitte/compiler/middle/mir.{
   MirBinaryOperator,
@@ -1608,14 +1608,8 @@ proc lower_mir_to_c_with_hir_and_ir(unit: MirUnit, hir_items: [HirItem], ir_unit
 }
 
 proc lower_mir_to_c_with_hir(unit: MirUnit, hir_items: [HirItem], profile: CBackendTargetProfile) -> CTranslationUnit {
-  give lower_mir_to_c_with_hir_and_ir(unit, hir_items, IrUnit {
-    source_path: unit.source_path,
-    target: target_native_x86_64_linux(),
-    modules: [],
-    entry_function_id: 0,
-    state: IrUnitState.Invalid,
-    valid: false
-  }, profile);
+  let empty_ir: IrUnit = unit_with_source_path(unit_empty(target_native_x86_64_linux()), unit.source_path);
+  give lower_mir_to_c_with_hir_and_ir(unit, hir_items, empty_ir, profile);
 }
 
 proc lower_mir_to_c(unit: MirUnit, profile: CBackendTargetProfile) -> CTranslationUnit {
