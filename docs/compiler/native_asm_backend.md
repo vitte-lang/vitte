@@ -33,3 +33,13 @@ fichier de sortie est un vrai objet natif produit sans shell par
 `SOURCE_DATE_EPOCH=0` et `ZERO_AR_DATE=1`, et le gate
 `native-object-determinism-gate` exige deux sorties ELF octet pour octet
 identiques.
+
+Avant d'accepter le fichier, le runtime relit sa structure ELF64 et vérifie :
+
+- le type relogeable et la machine cible ;
+- les sections `.text`, `.symtab` et `.strtab` ;
+- le symbole d'entrée défini ;
+- une table de relocations lorsqu'un appel externe est présent dans l'IR.
+
+Un échec de cette inspection invalide l'objet avec
+`BACKEND_E_CODEGEN_FAILED` avant toute étape de linkage.

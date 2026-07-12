@@ -1,7 +1,7 @@
 space vitte/compiler/backend/codegen
 
 use vitte/compiler/backend/ir.{ IrFunction, IrFunctionParam, IrInstruction, IrInstructionKind, IrLinkage, IrModule, IrNominalType, IrUnit, IrValue, IrValueKind }
-use vitte/compiler/backend/codegen/machine.{ machine_block_label, machine_branch_label, machine_call_target_text, machine_epilogue_x86_64_with_stack, machine_frame_offset, machine_function_label, machine_incoming_stack_offset, machine_operand_debug_name, machine_operand_immediate_text, machine_outgoing_stack_offset, machine_prologue_x86_64_with_stack, machine_return_label }
+use vitte/compiler/backend/codegen/machine.{ machine_block_label, machine_branch_label, machine_call_target_text, machine_epilogue_x86_64_with_stack, machine_frame_offset, machine_incoming_stack_offset, machine_operand_debug_name, machine_operand_immediate_text, machine_outgoing_stack_offset, machine_prologue_x86_64_with_stack, machine_return_label, sanitize_machine_symbol }
 use vitte/compiler/backend/target/calling_convention.{ AbiLocationKind, AbiValueClass, AbiValueLocation, CallingConvention, abi_argument_locations_for_return, abi_outgoing_stack_size, abi_return_location, calling_convention_for_abi }
 use vitte/compiler/backend/target/layout.{ AggregateLayout, TargetLayout, TypeLayout, aggregate_size, align_to, invalid_type_layout, target_layout_for, type_layout, type_layout_for_name }
 
@@ -756,7 +756,8 @@ proc select_instruction_line(module0: IrModule, function_name: string, frame: X8
     give lines + store_result_lines(frame, instruction, "%rax");
   }
   if instruction.kind == IrInstructionKind.Call {
-    let callee: string = machine_call_target_text(instruction.text);
+    let callee_name: string = machine_call_target_text(instruction.text);
+    let callee: string = if starts_with(callee_name, "*") { callee_name } else { sanitize_machine_symbol(callee_name) };
     let metadata: [string] = select_nominal_call_metadata(module0, instruction);
     if (instruction.operator == "variant-ctor" or instruction.operator == "method-dispatch") and len(metadata) == 0 {
       give invalid_backend_lines("canonical nominal call " + instruction.text);
@@ -764,9 +765,9 @@ proc select_instruction_line(module0: IrModule, function_name: string, frame: X8
     if instruction.operator == "variant-ctor" {
       give select_variant_constructor_lines(module0, target_layout, frame, instruction);
     }
-    let convention: CallingConvention = calling_convention_for_abi(module0.target.triple, module_function_abi(module0, callee));
+    let convention: CallingConvention = calling_convention_for_abi(module0.target.triple, module_function_abi(module0, callee_name));
     let layouts: [TypeLayout] = call_argument_layouts(module0, target_layout, instruction);
-    let return_layout: TypeLayout = module_type_layout(module0, target_layout, module_function_return_type(module0, callee, instruction.dest.type_name));
+    let return_layout: TypeLayout = module_type_layout(module0, target_layout, module_function_return_type(module0, callee_name, instruction.dest.type_name));
     let return_location: AbiValueLocation = abi_return_location(convention, return_layout);
     let locations: [AbiValueLocation] = abi_argument_locations_for_return(convention, return_layout, layouts);
     let lines: [string] = metadata + emit_call_argument_lines(frame, instruction, convention, locations);
@@ -777,7 +778,7 @@ proc select_instruction_line(module0: IrModule, function_name: string, frame: X8
       }
       set lines = lines + ["  lea " + machine_frame_offset(return_slot.offset) + ", " + return_location.register_name];
     }
-    if module_function_is_variadic(module0, callee) and convention.name == "sysv64" {
+    if module_function_is_variadic(module0, callee_name) and convention.name == "sysv64" {
       set lines = lines + ["  mov $" + string(floating_register_argument_count(locations)) + ", %al"];
     }
     set lines = lines + ["  call " + callee] + restore_call_stack_lines(convention, locations);
@@ -918,7 +919,8 @@ proc select_function_instructions_x86_64(module0: IrModule, fn0: IrFunction) -> 
   let target_layout: TargetLayout = target_layout_for(module0.target.triple);
   let convention: CallingConvention = calling_convention_for_abi(module0.target.triple, fn0.abi);
   let frame: X86FrameLayout = frame_layout_for_function(module0, fn0, target_layout, convention);
-  let lines: [string] = [machine_function_label(fn0.name)]
+  let symbol: string = sanitize_machine_symbol(fn0.name);
+  let lines: [string] = [".type " + symbol + ",@function", symbol + ":"]
     + machine_prologue_x86_64_with_stack(frame.size)
     + spill_function_parameters(frame, module0, fn0, target_layout, convention);
   let i: u64 = 0;
@@ -933,7 +935,10 @@ proc select_function_instructions_x86_64(module0: IrModule, fn0: IrFunction) -> 
     set lines = lines + select_instruction_line(module0, fn0.name, frame, target_layout, convention, block.terminator);
     set i = i + 1;
   }
-  set lines = lines + [machine_return_label(fn0.name) + ":"] + machine_epilogue_x86_64_with_stack(frame.size);
+  set lines = lines
+    + [machine_return_label(fn0.name) + ":"]
+    + machine_epilogue_x86_64_with_stack(frame.size)
+    + [".size " + symbol + ", .-" + symbol];
   give lines;
 }
 
@@ -946,10 +951,10 @@ proc select_ir_unit_x86_64(unit: IrUnit) -> [string] {
     while j < len(module0.functions) {
       let fn0 = module0.functions[j];
       if fn0.linkage == IrLinkage.External or fn0.linkage == IrLinkage.Imported {
-        set lines = lines + [".extern " + machine_call_target_text(fn0.name)];
+        set lines = lines + [".extern " + sanitize_machine_symbol(machine_call_target_text(fn0.name))];
       } else {
-        if fn0.is_entry {
-          set lines = lines + [".globl " + fn0.name];
+        if fn0.is_entry or fn0.linkage == IrLinkage.Exported {
+          set lines = lines + [".globl " + sanitize_machine_symbol(fn0.name)];
         }
         set lines = lines + select_function_instructions_x86_64(module0, fn0);
       }

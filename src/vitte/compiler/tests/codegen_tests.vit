@@ -5,7 +5,7 @@ use vitte/compiler/backend/diagnostics.{ backend_missing_c_compiler, backend_nat
 use vitte/compiler/backend/ir.{ BACKEND_IR_DIALECT, BACKEND_IR_SCHEMA_VERSION, IrBlock, IrFunction, IrInstructionKind, IrLinkage, IrModuleKind, IrUnit, IrUnitState, IrValue, IrValueKind, IrVisibility, block_add_instruction, block_create, function_add_block, function_ref_create, instruction_create, instruction_with_call_abi, ir_validation_reason, module_add_function, module_add_nominal_type, module_create, nominal_type_create, span_empty, target_native_x86_64_linux, terminator_return, unit_add_module, unit_contract_is_supported, unit_empty, unit_is_valid, unit_set_entry, unit_summary, unit_with_contract, unit_with_source_path, value_constant, value_place, verify_unit }
 use vitte/compiler/backend/link/artifact.{ LinkArtifact, artifact_is_valid }
 use vitte/compiler/backend/link/linker.{ link_ir_unit }
-use vitte/compiler/backend/native_bridge.{ native_assembly_object_command, native_assembly_target }
+use vitte/compiler/backend/native_bridge.{ native_assembly_object_command, native_assembly_target, native_object_verification_message }
 use vitte/compiler/backend/pipeline.{ BackendPipelineResult, compile_frontend_to_valid_ir_with_profile_and_packaging, compile_to_valid_ir, compile_to_valid_ir_with_backend }
 use vitte/compiler/backend/target/calling_convention.{ AbiLocationKind, AbiValueLocation, CallingConvention, abi_argument_locations, abi_argument_locations_for_return, abi_outgoing_stack_size, abi_return_location, calling_convention_aapcs64, calling_convention_x86_64_sysv, calling_convention_x86_64_windows }
 use vitte/compiler/backend/target/layout.{ AggregateLayout, TargetLayout, TypeLayout, aggregate_size, data_layout_for_triple, target_layout_for, type_layout, type_layout_for_name }
@@ -420,6 +420,15 @@ proc test_native_assembly_object_bridge_is_targeted() -> bool {
     and find(command, "-x assembler -c build/main.o.s -o build/main.o") >= 0;
 }
 
+proc test_native_object_verification_errors_are_structured() -> bool {
+  give native_object_verification_message(3) == "invalid object magic"
+    and native_object_verification_message(5) == "object is not relocatable"
+    and native_object_verification_message(6) == "object machine does not match the target"
+    and native_object_verification_message(8) == "object has no executable text section"
+    and native_object_verification_message(11) == "expected entry symbol is absent or undefined"
+    and native_object_verification_message(12) == "expected object relocations are absent";
+}
+
 proc test_llvm_codegen_consumes_nominal_call_metadata() -> bool {
   let source: string =
     "form Point { x: int }\n" +
@@ -707,7 +716,17 @@ proc driver_result_has_diagnostic_code(result: DriverCompileResult, code: string
 proc test_codegen_x86_64_emits_entry_label() -> bool {
   let ir: IrUnit = build_verified_ir("backend_codegen_ok.vit", "proc main() -> int { give 0; }\n");
   let result: CodegenResult = run_codegen_x86_64(ir);
-  give result.valid and result.section_count == 5 and find(result.assembly, ".globl main") >= 0 and find(result.assembly, "main:") >= 0 and find(result.assembly, ".L_main_return:") >= 0 and find(result.object_text, "vitte-object-model") >= 0 and find(result.object_text, "[.symtab]") >= 0 and find(result.object_text, "[.debug_info]") >= 0 and find(result.object_text, "entry_symbol=main") >= 0;
+  give result.valid and result.section_count == 5
+    and result.object_format == "elf64-relocatable"
+    and find(result.assembly, ".globl main") >= 0
+    and find(result.assembly, ".type main,@function") >= 0
+    and find(result.assembly, "main:") >= 0
+    and find(result.assembly, ".L_main_return:") >= 0
+    and find(result.assembly, ".size main, .-main") >= 0
+    and find(result.object_text, "vitte-object-model") >= 0
+    and find(result.object_text, "[.symtab]") >= 0
+    and find(result.object_text, "[.debug_info]") >= 0
+    and find(result.object_text, "entry_symbol=main") >= 0;
 }
 
 proc test_linker_finalizes_entry_metadata() -> bool {
@@ -988,6 +1007,7 @@ proc run_all_tests() -> int {
   if not test_mir_to_ir_preserves_explicit_nominal_call_lowering() { set failures = failures + 1; }
   if not test_x86_64_codegen_consumes_nominal_call_metadata() { set failures = failures + 1; }
   if not test_native_assembly_object_bridge_is_targeted() { set failures = failures + 1; }
+  if not test_native_object_verification_errors_are_structured() { set failures = failures + 1; }
   if not test_llvm_codegen_consumes_nominal_call_metadata() { set failures = failures + 1; }
   if not test_backend_lowers_calls_returns_and_aggregates_concretely() { set failures = failures + 1; }
   if not test_target_layout_has_canonical_field_offsets() { set failures = failures + 1; }

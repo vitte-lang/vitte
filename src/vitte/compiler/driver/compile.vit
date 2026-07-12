@@ -20,7 +20,7 @@ use vitte/compiler/middle/lower/mir_to_ir.{ lower_mir_as_ir_module }
 use vitte/compiler/middle/mir.{ MirUnit, mir_module_empty }
 use vitte/compiler/middle/mir/validate.{ mir_validation_reason, validate_mir }
 use vitte/compiler/backend/codegen.{ CodegenResult, run_codegen_llvm_with_profile, run_codegen_x86_64 }
-use vitte/compiler/backend/ir.{ IrFunction, IrModule, IrModuleKind, IrTarget, IrUnit, IrUnitState, function_name_by_id, ir_validation_reason, target_from_name, unit_add_module, unit_empty, unit_is_valid, unit_set_entry, unit_with_source_path, unit_with_state, verify_unit }
+use vitte/compiler/backend/ir.{ IrFunction, IrInstructionKind, IrModule, IrModuleKind, IrTarget, IrUnit, IrUnitState, function_name_by_id, ir_validation_reason, target_from_name, unit_add_module, unit_empty, unit_is_valid, unit_set_entry, unit_with_source_path, unit_with_state, verify_unit }
 use vitte/compiler/backend/link/artifact.{ LinkArtifact, LinkArtifactKind, artifact_create, artifact_is_valid, link_target_from_name }
 use vitte/compiler/backend/link/linker.{ link_ir_unit_with_kind }
 use vitte/compiler/backend/native_bridge.{ NativeBridgeResult, emit_native_object_from_assembly, emit_native_object_from_llvm_ir, link_native_executable, native_bridge_command_result }
@@ -502,6 +502,42 @@ proc native_output_overwrites_source(source_path: string, output_path: string) -
     give source_path != ""
         and output_path != ""
         and normalize_path(source_path) == normalize_path(output_path);
+}
+
+proc ir_module_symbol_is_external(module0: IrModule, symbol_name: string) -> bool {
+    let i: u64 = 0;
+    while i < len(module0.external_symbols) {
+        if module0.external_symbols[i] == symbol_name or ends_with(module0.external_symbols[i], "::" + symbol_name) {
+            give true;
+        }
+        set i = i + 1;
+    }
+    give false;
+}
+
+proc ir_unit_requires_native_relocations(unit: IrUnit) -> bool {
+    let i: u64 = 0;
+    while i < len(unit.modules) {
+        let module0: IrModule = unit.modules[i];
+        let j: u64 = 0;
+        while j < len(module0.functions) {
+            let k: u64 = 0;
+            while k < len(module0.functions[j].blocks) {
+                let n: u64 = 0;
+                while n < len(module0.functions[j].blocks[k].instructions) {
+                    let instruction = module0.functions[j].blocks[k].instructions[n];
+                    if instruction.kind == IrInstructionKind.Call and ir_module_symbol_is_external(module0, instruction.text) {
+                        give true;
+                    }
+                    set n = n + 1;
+                }
+                set k = k + 1;
+            }
+            set j = j + 1;
+        }
+        set i = i + 1;
+    }
+    give false;
 }
 
 proc empty_native_bridge_result(message: string) -> NativeBridgeResult {
@@ -1852,7 +1888,9 @@ proc emit_native_backend_object_with_config(source_path: string, source_text: st
         if config.backend_name == "llvm" or config.backend_name == "llvm-ir" {
             set object0 = emit_native_object_from_llvm_ir(backend0.codegen.assembly, object_output_dir, object_path0);
         } else {
-            set object0 = emit_native_object_from_assembly(backend0.codegen.assembly, config.target_name, object_output_dir, object_path0);
+            let entry_symbol: string = function_name_by_id(backend0.ir_unit, backend0.ir_unit.entry_function_id);
+            let require_relocations: bool = ir_unit_requires_native_relocations(backend0.ir_unit);
+            set object0 = emit_native_object_from_assembly(backend0.codegen.assembly, config.target_name, entry_symbol, require_relocations, object_output_dir, object_path0);
         }
     }
     let compile1: DriverCompileResult = if native_output_overwrites_source(source_path, object_path0) {

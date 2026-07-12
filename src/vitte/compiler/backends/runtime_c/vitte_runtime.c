@@ -445,6 +445,215 @@ int32_t vitte_host_emit_assembly_object(VitteString assembly_text, VitteString t
   return result;
 }
 
+static uint16_t vitte_read_u16_le(const unsigned char *data) {
+  return (uint16_t)data[0] | ((uint16_t)data[1] << 8);
+}
+
+static uint32_t vitte_read_u32_le(const unsigned char *data) {
+  return (uint32_t)data[0] |
+         ((uint32_t)data[1] << 8) |
+         ((uint32_t)data[2] << 16) |
+         ((uint32_t)data[3] << 24);
+}
+
+static uint64_t vitte_read_u64_le(const unsigned char *data) {
+  return (uint64_t)vitte_read_u32_le(data) |
+         ((uint64_t)vitte_read_u32_le(data + 4) << 32);
+}
+
+static int vitte_binary_range_valid(size_t length, uint64_t offset, uint64_t size) {
+  return offset <= (uint64_t)length && size <= (uint64_t)length - offset;
+}
+
+static const unsigned char *vitte_elf64_section(const unsigned char *data, size_t length, uint64_t section_offset, uint16_t section_size, uint16_t section_count, uint16_t index) {
+  uint64_t offset;
+  if (index >= section_count || section_size < 64) {
+    return NULL;
+  }
+  offset = section_offset + (uint64_t)section_size * index;
+  if (!vitte_binary_range_valid(length, offset, section_size)) {
+    return NULL;
+  }
+  return data + offset;
+}
+
+static const char *vitte_elf_string(const unsigned char *table, uint64_t table_size, uint32_t offset) {
+  const unsigned char *end;
+  if ((uint64_t)offset >= table_size) {
+    return NULL;
+  }
+  end = (const unsigned char *)memchr(table + offset, '\0', (size_t)(table_size - offset));
+  if (end == NULL) {
+    return NULL;
+  }
+  return (const char *)(table + offset);
+}
+
+int32_t vitte_host_verify_native_object(VitteString object_path, VitteString target_triple, VitteString expected_symbol, int32_t require_relocations) {
+  VitteString object_data = vitte_host_read_file(object_path);
+  char *target_c = vitte_string_to_c(target_triple);
+  char *expected_c = vitte_string_to_c(expected_symbol);
+  const unsigned char *data = (const unsigned char *)object_data.data;
+  size_t length = object_data.len;
+  uint16_t expected_machine = 0;
+  uint64_t section_offset;
+  uint16_t section_size;
+  uint16_t section_count;
+  uint16_t string_section_index;
+  const unsigned char *section_names_header;
+  const unsigned char *section_names;
+  uint64_t section_names_size;
+  const unsigned char *symbol_header = NULL;
+  const unsigned char *symbol_strings_header = NULL;
+  int saw_text = 0;
+  int saw_symbol_table = 0;
+  int saw_string_table = 0;
+  int saw_expected_symbol = 0;
+  uint64_t relocation_count = 0;
+  int32_t result = 0;
+  uint16_t i;
+
+  if (data == NULL || target_c == NULL || expected_c == NULL || expected_c[0] == '\0') {
+    result = 1;
+    goto cleanup;
+  }
+  if (strstr(target_c, "x86_64") != NULL) {
+    expected_machine = 62;
+  } else if (strstr(target_c, "aarch64") != NULL || strstr(target_c, "arm64") != NULL) {
+    expected_machine = 183;
+  } else {
+    result = 2;
+    goto cleanup;
+  }
+  if (length < 64 || data[0] != 0x7f || data[1] != 'E' || data[2] != 'L' || data[3] != 'F') {
+    result = 3;
+    goto cleanup;
+  }
+  if (data[4] != 2 || data[5] != 1) {
+    result = 4;
+    goto cleanup;
+  }
+  if (vitte_read_u16_le(data + 16) != 1) {
+    result = 5;
+    goto cleanup;
+  }
+  if (vitte_read_u16_le(data + 18) != expected_machine) {
+    result = 6;
+    goto cleanup;
+  }
+  section_offset = vitte_read_u64_le(data + 40);
+  section_size = vitte_read_u16_le(data + 58);
+  section_count = vitte_read_u16_le(data + 60);
+  string_section_index = vitte_read_u16_le(data + 62);
+  if (section_count == 0 || string_section_index >= section_count ||
+      !vitte_binary_range_valid(length, section_offset, (uint64_t)section_size * section_count)) {
+    result = 7;
+    goto cleanup;
+  }
+  section_names_header = vitte_elf64_section(data, length, section_offset, section_size, section_count, string_section_index);
+  if (section_names_header == NULL) {
+    result = 7;
+    goto cleanup;
+  }
+  section_names_size = vitte_read_u64_le(section_names_header + 32);
+  if (!vitte_binary_range_valid(length, vitte_read_u64_le(section_names_header + 24), section_names_size)) {
+    result = 7;
+    goto cleanup;
+  }
+  section_names = data + vitte_read_u64_le(section_names_header + 24);
+
+  for (i = 0; i < section_count; ++i) {
+    const unsigned char *section = vitte_elf64_section(data, length, section_offset, section_size, section_count, i);
+    uint32_t type;
+    uint64_t size;
+    uint64_t entry_size;
+    const char *name;
+    if (section == NULL) {
+      result = 7;
+      goto cleanup;
+    }
+    type = vitte_read_u32_le(section + 4);
+    size = vitte_read_u64_le(section + 32);
+    entry_size = vitte_read_u64_le(section + 56);
+    name = vitte_elf_string(section_names, section_names_size, vitte_read_u32_le(section));
+    if (name != NULL && strcmp(name, ".text") == 0 && size > 0) {
+      saw_text = 1;
+    }
+    if (type == 2) {
+      saw_symbol_table = 1;
+      symbol_header = section;
+    }
+    if (name != NULL && strcmp(name, ".strtab") == 0 && type == 3) {
+      saw_string_table = 1;
+    }
+    if ((type == 4 || type == 9) && entry_size > 0 && name != NULL &&
+        (strcmp(name, ".rela.text") == 0 || strcmp(name, ".rel.text") == 0)) {
+      relocation_count += size / entry_size;
+    }
+  }
+  if (!saw_text) {
+    result = 8;
+    goto cleanup;
+  }
+  if (!saw_symbol_table || symbol_header == NULL) {
+    result = 9;
+    goto cleanup;
+  }
+  if (!saw_string_table) {
+    result = 10;
+    goto cleanup;
+  }
+  {
+    uint32_t link = vitte_read_u32_le(symbol_header + 40);
+    uint64_t symbol_offset = vitte_read_u64_le(symbol_header + 24);
+    uint64_t symbol_size = vitte_read_u64_le(symbol_header + 32);
+    uint64_t symbol_entry_size = vitte_read_u64_le(symbol_header + 56);
+    uint64_t symbol_count;
+    uint64_t symbol_index;
+    const unsigned char *symbol_strings;
+    uint64_t symbol_strings_size;
+    if (link >= section_count || symbol_entry_size < 24 ||
+        !vitte_binary_range_valid(length, symbol_offset, symbol_size)) {
+      result = 9;
+      goto cleanup;
+    }
+    symbol_strings_header = vitte_elf64_section(data, length, section_offset, section_size, section_count, (uint16_t)link);
+    if (symbol_strings_header == NULL) {
+      result = 10;
+      goto cleanup;
+    }
+    symbol_strings_size = vitte_read_u64_le(symbol_strings_header + 32);
+    if (!vitte_binary_range_valid(length, vitte_read_u64_le(symbol_strings_header + 24), symbol_strings_size)) {
+      result = 10;
+      goto cleanup;
+    }
+    symbol_strings = data + vitte_read_u64_le(symbol_strings_header + 24);
+    symbol_count = symbol_size / symbol_entry_size;
+    for (symbol_index = 0; symbol_index < symbol_count; ++symbol_index) {
+      const unsigned char *symbol = data + symbol_offset + symbol_index * symbol_entry_size;
+      const char *name = vitte_elf_string(symbol_strings, symbol_strings_size, vitte_read_u32_le(symbol));
+      if (name != NULL && strcmp(name, expected_c) == 0 && vitte_read_u16_le(symbol + 6) != 0) {
+        saw_expected_symbol = 1;
+        break;
+      }
+    }
+  }
+  if (!saw_expected_symbol) {
+    result = 11;
+    goto cleanup;
+  }
+  if (require_relocations && relocation_count == 0) {
+    result = 12;
+    goto cleanup;
+  }
+
+cleanup:
+  free((void *)object_data.data);
+  free(target_c);
+  free(expected_c);
+  return result;
+}
+
 int32_t vitte_host_link_executable(VitteString object_path, VitteString executable_path) {
   char *object_c = vitte_string_to_c(object_path);
   char *executable_c = vitte_string_to_c(executable_path);
