@@ -33,6 +33,10 @@ def main() -> int:
         }
         if observed != expected:
             raise SystemExit(f"{fixture}: expected {expected}, got {observed}")
+        if fixture.parent.name == "lexer":
+            suggestions = actual.get("suggestions", [])
+            if not suggestions or not isinstance(suggestions[0].get("replacement"), str):
+                raise SystemExit(f"{fixture}: lexer diagnostic has no structured suggestion")
     print(f"frontend diagnostics ok: {len(fixtures)} fixture(s)")
     return 0
 

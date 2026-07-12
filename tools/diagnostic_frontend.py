@@ -70,6 +70,32 @@ def diagnostic(
     }
 
 
+def automatic_lexer_suggestion(value: dict[str, Any], source: str) -> dict[str, Any]:
+    code = value["code"]
+    primary_span = value["primary_span"]
+    start_byte = primary_span["start"]["byte"]
+    end_byte = primary_span["end"]["byte"]
+    encoded = source.encode("utf-8")
+    fragment = encoded[start_byte:end_byte].decode("utf-8", errors="replace")
+    replacements = {
+        "LEX_E_INVALID_CHAR": ("remove the invalid character", "", "machine-applicable"),
+        "LEX_E_UNTERMINATED_STRING": ("terminate the string literal", fragment + '"', "machine-applicable"),
+        "LEX_E_INVALID_CHAR_LITERAL": ("replace with a one-character literal", "'a'", "maybe-incorrect"),
+        "LEX_E_INVALID_ESCAPE": ("replace with a valid newline escape", "\\n", "maybe-incorrect"),
+        "LEX_E_INVALID_UNICODE": ("replace with the Unicode replacement character", "\\uFFFD", "maybe-incorrect"),
+        "LEX_E_INVALID_NUMBER": ("separate the numeric and identifier parts", re.sub(r"(?<=\d)(?=[A-Za-z])", " ", fragment, count=1), "machine-applicable"),
+        "LEX_E_TOKEN_TOO_LARGE": ("shorten the token to the lexer limit", fragment[:128], "maybe-incorrect"),
+        "LEX_E_UNTERMINATED_COMMENT": ("terminate the block comment", fragment + "*/", "machine-applicable"),
+    }
+    message, replacement, applicability = replacements[code]
+    return {
+        "message": message,
+        "replacement": replacement,
+        "span": primary_span,
+        "applicability": applicability,
+    }
+
+
 def analyze_lexer(source: str, file: str) -> list[dict[str, Any]]:
     diagnostics: list[dict[str, Any]] = []
     in_string = False
@@ -178,6 +204,9 @@ def analyze_lexer(source: str, file: str) -> list[dict[str, Any]]:
             f"token length {len(match.group(0))} exceeds the 128-byte lexer limit",
             helps=["split or shorten the identifier"],
         ))
+    for value in diagnostics:
+        if not value["suggestions"]:
+            value["suggestions"].append(automatic_lexer_suggestion(value, source))
     return diagnostics
 
 
