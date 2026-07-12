@@ -1,6 +1,7 @@
 space vitte/compiler/backends/llvm_bindings
 
 use vitte/compiler/backend/ir.{ IrBlock, IrFunction, IrInstruction, IrInstructionKind, IrLinkage, IrModule, IrModuleKind, IrNominalType, IrTarget, IrUnit, IrValue, IrValueKind, target_native_x86_64_linux, unit_is_valid }
+use vitte/compiler/backend/target/layout.{ TargetLayout, TypeLayout, target_layout_for, type_layout_for_name }
 use vitte/compiler/backend/target/triple.{ triple_text }
 
 pick LlvmDiagnosticLevel {
@@ -237,6 +238,15 @@ proc llvm_type_for_value_text(text: string) -> string {
     give "i1";
   }
   give "i64";
+}
+
+proc llvm_alignment_for_type(module0: IrModule, type_name: string) -> u64 {
+  let target_layout: TargetLayout = target_layout_for(module0.target.triple);
+  let value_layout: TypeLayout = type_layout_for_name(target_layout, type_name);
+  if value_layout.valid {
+    give value_layout.alignment;
+  }
+  give target_layout.pointer_alignment;
 }
 
 proc llvm_operand_text(instruction: IrInstruction) -> string {
@@ -628,7 +638,8 @@ proc llvm_erased_aggregate_lines(module0: IrModule, instruction: IrInstruction) 
       "  %" + instruction.dest.name + " = insertvalue %VitteAggregate %" + instruction.dest.name + ".length, i8* null, 1"
     ];
   }
-  set lines = lines + ["  %" + instruction.dest.name + ".values = alloca [" + string(count) + " x i64], align 8"];
+  let aggregate_alignment: u64 = llvm_alignment_for_type(module0, "i64");
+  set lines = lines + ["  %" + instruction.dest.name + ".values = alloca [" + string(count) + " x i64], align " + string(aggregate_alignment)];
   let i: u64 = 0;
   while i < count {
     let source_ty: string = llvm_type_for_name(module0, instruction.args[i].type_name, false);
@@ -760,7 +771,11 @@ proc emit_llvm_instruction_in_function(module0: IrModule, fn0: IrFunction, instr
     let base_ty: string = llvm_type_for_name(module0, source.type_name, false);
     let ref_name: string = "%" + instruction.dest.name + if instruction.dest.ref_mutable { ".mutref" } else { ".ref" };
     let value_name: string = if source.name != "" { "%" + source.name } else { source.constant };
-    give ["  " + ref_name + " = alloca " + base_ty, "  store " + base_ty + " " + value_name + ", " + base_ty + "* " + ref_name];
+    let value_alignment: u64 = llvm_alignment_for_type(module0, source.type_name);
+    give [
+      "  " + ref_name + " = alloca " + base_ty + ", align " + string(value_alignment),
+      "  store " + base_ty + " " + value_name + ", " + base_ty + "* " + ref_name + ", align " + string(value_alignment)
+    ];
   }
   give ["  ; unsupported " + instruction.text];
 }

@@ -1,0 +1,435 @@
+space vitte/compiler/backend/target/calling_convention
+
+use vitte/compiler/backend/target/layout.{ TypeLayout, align_to }
+use vitte/compiler/backend/target/triple.{ TargetTriple }
+
+export *
+
+pick AbiValueClass {
+  Ignore,
+  Integer,
+  Float,
+  Aggregate,
+  Memory,
+}
+
+pick AbiLocationKind {
+  Invalid,
+  Ignore,
+  Register,
+  Stack,
+  Indirect,
+}
+
+form CallingConvention {
+  name: string
+  architecture: string
+  integer_argument_registers: [string]
+  floating_argument_registers: [string]
+  integer_return_registers: [string]
+  floating_return_registers: [string]
+  caller_saved_registers: [string]
+  callee_saved_registers: [string]
+  indirect_return_register: string
+  stack_alignment: u64
+  stack_slot_size: u64
+  shadow_space: u64
+  red_zone_size: u64
+  max_direct_aggregate_size: u64
+  shared_argument_slots: bool
+  large_aggregate_indirect: bool
+  valid: bool
+}
+
+form AbiValueLocation {
+  kind: AbiLocationKind
+  value_class: AbiValueClass
+  register_name: string
+  secondary_register_name: string
+  stack_offset: u64
+  stack_size: u64
+  register_count: u64
+  by_reference: bool
+  valid: bool
+}
+
+proc calling_convention(name: string, architecture: string, integer_argument_registers: [string], floating_argument_registers: [string], integer_return_registers: [string], floating_return_registers: [string], caller_saved_registers: [string], callee_saved_registers: [string], indirect_return_register: string, stack_alignment: u64, stack_slot_size: u64, shadow_space: u64, red_zone_size: u64, max_direct_aggregate_size: u64, shared_argument_slots: bool, large_aggregate_indirect: bool) -> CallingConvention {
+  give CallingConvention {
+    name: name,
+    architecture: architecture,
+    integer_argument_registers: integer_argument_registers,
+    floating_argument_registers: floating_argument_registers,
+    integer_return_registers: integer_return_registers,
+    floating_return_registers: floating_return_registers,
+    caller_saved_registers: caller_saved_registers,
+    callee_saved_registers: callee_saved_registers,
+    indirect_return_register: indirect_return_register,
+    stack_alignment: stack_alignment,
+    stack_slot_size: stack_slot_size,
+    shadow_space: shadow_space,
+    red_zone_size: red_zone_size,
+    max_direct_aggregate_size: max_direct_aggregate_size,
+    shared_argument_slots: shared_argument_slots,
+    large_aggregate_indirect: large_aggregate_indirect,
+    valid: name != ""
+      and architecture != ""
+      and len(integer_argument_registers) > 0
+      and len(integer_return_registers) > 0
+      and stack_alignment > 0
+      and stack_slot_size > 0
+  };
+}
+
+proc calling_convention_x86_64_sysv() -> CallingConvention {
+  give calling_convention(
+    "sysv64",
+    "x86_64",
+    ["%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"],
+    ["%xmm0", "%xmm1", "%xmm2", "%xmm3", "%xmm4", "%xmm5", "%xmm6", "%xmm7"],
+    ["%rax", "%rdx"],
+    ["%xmm0", "%xmm1"],
+    ["%rax", "%rcx", "%rdx", "%rsi", "%rdi", "%r8", "%r9", "%r10", "%r11", "%xmm0", "%xmm1", "%xmm2", "%xmm3", "%xmm4", "%xmm5", "%xmm6", "%xmm7"],
+    ["%rbx", "%rbp", "%r12", "%r13", "%r14", "%r15"],
+    "%rdi",
+    16,
+    8,
+    0,
+    128,
+    16,
+    false,
+    false
+  );
+}
+
+proc calling_convention_x86_64_windows() -> CallingConvention {
+  give calling_convention(
+    "win64",
+    "x86_64",
+    ["%rcx", "%rdx", "%r8", "%r9"],
+    ["%xmm0", "%xmm1", "%xmm2", "%xmm3"],
+    ["%rax"],
+    ["%xmm0"],
+    ["%rax", "%rcx", "%rdx", "%r8", "%r9", "%r10", "%r11", "%xmm0", "%xmm1", "%xmm2", "%xmm3", "%xmm4", "%xmm5"],
+    ["%rbx", "%rbp", "%rdi", "%rsi", "%rsp", "%r12", "%r13", "%r14", "%r15", "%xmm6", "%xmm7", "%xmm8", "%xmm9", "%xmm10", "%xmm11", "%xmm12", "%xmm13", "%xmm14", "%xmm15"],
+    "%rcx",
+    16,
+    8,
+    32,
+    0,
+    8,
+    true,
+    true
+  );
+}
+
+proc calling_convention_aapcs64(name: string) -> CallingConvention {
+  give calling_convention(
+    name,
+    "aarch64",
+    ["x0", "x1", "x2", "x3", "x4", "x5", "x6", "x7"],
+    ["v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7"],
+    ["x0", "x1"],
+    ["v0", "v1"],
+    ["x0", "x1", "x2", "x3", "x4", "x5", "x6", "x7", "x8", "x9", "x10", "x11", "x12", "x13", "x14", "x15", "x16", "x17", "x18", "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7"],
+    ["x19", "x20", "x21", "x22", "x23", "x24", "x25", "x26", "x27", "x28", "x29", "x30", "v8", "v9", "v10", "v11", "v12", "v13", "v14", "v15"],
+    "x8",
+    16,
+    8,
+    0,
+    0,
+    16,
+    false,
+    true
+  );
+}
+
+proc invalid_calling_convention(architecture: string) -> CallingConvention {
+  give CallingConvention {
+    name: "invalid",
+    architecture: architecture,
+    integer_argument_registers: [],
+    floating_argument_registers: [],
+    integer_return_registers: [],
+    floating_return_registers: [],
+    caller_saved_registers: [],
+    callee_saved_registers: [],
+    indirect_return_register: "",
+    stack_alignment: 0,
+    stack_slot_size: 0,
+    shadow_space: 0,
+    red_zone_size: 0,
+    max_direct_aggregate_size: 0,
+    shared_argument_slots: false,
+    large_aggregate_indirect: false,
+    valid: false
+  };
+}
+
+proc calling_convention_for_triple(triple: TargetTriple) -> CallingConvention {
+  if triple.arch == "x86_64" or triple.arch == "apple-intel-i5" or triple.arch == "apple-intel-i7" {
+    if triple.os == "windows" {
+      give calling_convention_x86_64_windows();
+    }
+    give calling_convention_x86_64_sysv();
+  }
+  if triple.arch == "aarch64" or triple.arch == "apple-m1" or triple.arch == "apple-m2" or triple.arch == "apple-m3" or triple.arch == "apple-m4" {
+    if triple.os == "macos" or triple.os == "darwin" {
+      give calling_convention_aapcs64("darwin-aapcs64");
+    }
+    give calling_convention_aapcs64("aapcs64");
+  }
+  give invalid_calling_convention(triple.arch);
+}
+
+proc calling_convention_for_abi(triple: TargetTriple, abi: string) -> CallingConvention {
+  let name: string = trim(abi);
+  if name == "sysv" or name == "sysv64" {
+    give calling_convention_x86_64_sysv();
+  }
+  if name == "win64" {
+    give calling_convention_x86_64_windows();
+  }
+  if name == "aapcs64" or name == "darwin-aapcs64" {
+    give calling_convention_aapcs64(name);
+  }
+  give calling_convention_for_triple(triple);
+}
+
+proc abi_value_class(layout: TypeLayout) -> AbiValueClass {
+  if not layout.valid or layout.size == 0 {
+    give AbiValueClass.Ignore;
+  }
+  if layout.floating and layout.scalar {
+    give AbiValueClass.Float;
+  }
+  if layout.aggregate {
+    give AbiValueClass.Aggregate;
+  }
+  give AbiValueClass.Integer;
+}
+
+proc abi_invalid_location() -> AbiValueLocation {
+  give AbiValueLocation {
+    kind: AbiLocationKind.Invalid,
+    value_class: AbiValueClass.Ignore,
+    register_name: "",
+    secondary_register_name: "",
+    stack_offset: 0,
+    stack_size: 0,
+    register_count: 0,
+    by_reference: false,
+    valid: false
+  };
+}
+
+proc abi_ignore_location() -> AbiValueLocation {
+  give AbiValueLocation {
+    kind: AbiLocationKind.Ignore,
+    value_class: AbiValueClass.Ignore,
+    register_name: "",
+    secondary_register_name: "",
+    stack_offset: 0,
+    stack_size: 0,
+    register_count: 0,
+    by_reference: false,
+    valid: true
+  };
+}
+
+proc abi_register_location(value_class: AbiValueClass, register_name: string, secondary_register_name: string, register_count: u64, by_reference: bool) -> AbiValueLocation {
+  give AbiValueLocation {
+    kind: if by_reference { AbiLocationKind.Indirect } else { AbiLocationKind.Register },
+    value_class: if by_reference { AbiValueClass.Memory } else { value_class },
+    register_name: register_name,
+    secondary_register_name: secondary_register_name,
+    stack_offset: 0,
+    stack_size: 0,
+    register_count: register_count,
+    by_reference: by_reference,
+    valid: register_name != "" and register_count > 0
+  };
+}
+
+proc abi_stack_location(value_class: AbiValueClass, stack_offset: u64, stack_size: u64, by_reference: bool) -> AbiValueLocation {
+  give AbiValueLocation {
+    kind: AbiLocationKind.Stack,
+    value_class: if by_reference { AbiValueClass.Memory } else { value_class },
+    register_name: "",
+    secondary_register_name: "",
+    stack_offset: stack_offset,
+    stack_size: stack_size,
+    register_count: 0,
+    by_reference: by_reference,
+    valid: stack_size > 0
+  };
+}
+
+proc abi_stack_value_alignment(convention: CallingConvention, layout: TypeLayout, by_reference: bool) -> u64 {
+  let alignment: u64 = if by_reference { convention.stack_slot_size } else { layout.alignment };
+  if alignment < convention.stack_slot_size {
+    give convention.stack_slot_size;
+  }
+  if alignment > convention.stack_alignment {
+    give convention.stack_alignment;
+  }
+  give alignment;
+}
+
+proc abi_stack_value_size(convention: CallingConvention, layout: TypeLayout, by_reference: bool) -> u64 {
+  let size: u64 = if by_reference { convention.stack_slot_size } else { layout.size };
+  if size < convention.stack_slot_size {
+    give convention.stack_slot_size;
+  }
+  give align_to(size, convention.stack_slot_size);
+}
+
+proc abi_argument_locations(convention: CallingConvention, layouts: [TypeLayout]) -> [AbiValueLocation] {
+  let locations: [AbiValueLocation] = [];
+  let integer_used: u64 = 0;
+  let floating_used: u64 = 0;
+  let shared_used: u64 = 0;
+  let stack_offset: u64 = convention.shadow_space;
+  let i: u64 = 0;
+  while i < len(layouts) {
+    let layout: TypeLayout = layouts[i];
+    let value_class: AbiValueClass = abi_value_class(layout);
+    if value_class == AbiValueClass.Ignore {
+      set locations = locations + [abi_ignore_location()];
+      set i = i + 1;
+      continue;
+    }
+
+    let by_reference: bool = value_class == AbiValueClass.Aggregate
+      and layout.size > convention.max_direct_aggregate_size
+      and convention.large_aggregate_indirect;
+    let force_stack: bool = value_class == AbiValueClass.Aggregate
+      and layout.size > convention.max_direct_aggregate_size
+      and not convention.large_aggregate_indirect;
+    let effective_class: AbiValueClass = if by_reference { AbiValueClass.Integer } else { value_class };
+    let register_count: u64 = if effective_class == AbiValueClass.Aggregate and layout.size > convention.stack_slot_size { 2 } else { 1 };
+    let register_index: u64 = if convention.shared_argument_slots {
+      shared_used
+    } elif effective_class == AbiValueClass.Float {
+      floating_used
+    } else {
+      integer_used
+    };
+    let register_limit: u64 = if effective_class == AbiValueClass.Float {
+      len(convention.floating_argument_registers)
+    } else {
+      len(convention.integer_argument_registers)
+    };
+
+    if not force_stack and register_index + register_count <= register_limit {
+      let primary: string = if effective_class == AbiValueClass.Float {
+        convention.floating_argument_registers[register_index]
+      } else {
+        convention.integer_argument_registers[register_index]
+      };
+      let secondary: string = if register_count == 2 {
+        convention.integer_argument_registers[register_index + 1]
+      } else {
+        ""
+      };
+      set locations = locations + [abi_register_location(value_class, primary, secondary, register_count, by_reference)];
+      if convention.shared_argument_slots {
+        set shared_used = shared_used + 1;
+      } elif effective_class == AbiValueClass.Float {
+        set floating_used = floating_used + register_count;
+      } else {
+        set integer_used = integer_used + register_count;
+      }
+    } else {
+      let alignment: u64 = abi_stack_value_alignment(convention, layout, by_reference);
+      let size: u64 = abi_stack_value_size(convention, layout, by_reference);
+      set stack_offset = align_to(stack_offset, alignment);
+      set locations = locations + [abi_stack_location(if force_stack { AbiValueClass.Memory } else { value_class }, stack_offset, size, by_reference)];
+      set stack_offset = stack_offset + size;
+      if convention.shared_argument_slots {
+        set shared_used = shared_used + 1;
+      }
+    }
+    set i = i + 1;
+  }
+  give locations;
+}
+
+proc abi_argument_locations_for_return(convention: CallingConvention, return_layout: TypeLayout, layouts: [TypeLayout]) -> [AbiValueLocation] {
+  let return_location: AbiValueLocation = abi_return_location(convention, return_layout);
+  if not return_location.by_reference or convention.architecture != "x86_64" {
+    give abi_argument_locations(convention, layouts);
+  }
+  let pointer_layout: TypeLayout = TypeLayout {
+    name: "__sret",
+    size: convention.stack_slot_size,
+    alignment: convention.stack_slot_size,
+    scalar: true,
+    floating: false,
+    pointer: true,
+    aggregate: false,
+    valid: true
+  };
+  let shifted: [AbiValueLocation] = abi_argument_locations(convention, [pointer_layout] + layouts);
+  let out: [AbiValueLocation] = [];
+  let i: u64 = 1;
+  while i < len(shifted) {
+    set out = out + [shifted[i]];
+    set i = i + 1;
+  }
+  give out;
+}
+
+proc abi_return_location(convention: CallingConvention, layout: TypeLayout) -> AbiValueLocation {
+  let value_class: AbiValueClass = abi_value_class(layout);
+  if value_class == AbiValueClass.Ignore {
+    give abi_ignore_location();
+  }
+  if value_class == AbiValueClass.Float {
+    give abi_register_location(value_class, convention.floating_return_registers[0], "", 1, false);
+  }
+  if value_class == AbiValueClass.Aggregate and layout.size > convention.max_direct_aggregate_size {
+    give abi_register_location(AbiValueClass.Memory, convention.indirect_return_register, "", 1, true);
+  }
+  let register_count: u64 = if value_class == AbiValueClass.Aggregate and layout.size > convention.stack_slot_size { 2 } else { 1 };
+  let secondary: string = if register_count == 2 and len(convention.integer_return_registers) > 1 { convention.integer_return_registers[1] } else { "" };
+  give abi_register_location(value_class, convention.integer_return_registers[0], secondary, register_count, false);
+}
+
+proc abi_outgoing_stack_size(convention: CallingConvention, locations: [AbiValueLocation]) -> u64 {
+  let size: u64 = convention.shadow_space;
+  let i: u64 = 0;
+  while i < len(locations) {
+    if locations[i].kind == AbiLocationKind.Stack {
+      let end: u64 = locations[i].stack_offset + locations[i].stack_size;
+      if end > size {
+        set size = end;
+      }
+    }
+    set i = i + 1;
+  }
+  give align_to(size, convention.stack_alignment);
+}
+
+proc calling_convention_summary(convention: CallingConvention) -> string {
+  give convention.name
+    + " arch=" + convention.architecture
+    + " integer-args=" + string(len(convention.integer_argument_registers))
+    + " float-args=" + string(len(convention.floating_argument_registers))
+    + " stack-align=" + string(convention.stack_alignment)
+    + " shadow-space=" + string(convention.shadow_space);
+}
+
+proc calling_convention_selftest() -> bool {
+  let sysv: CallingConvention = calling_convention_x86_64_sysv();
+  let windows: CallingConvention = calling_convention_x86_64_windows();
+  let arm: CallingConvention = calling_convention_aapcs64("aapcs64");
+  give sysv.valid
+    and windows.valid
+    and arm.valid
+    and sysv.integer_argument_registers[0] == "%rdi"
+    and windows.integer_argument_registers[0] == "%rcx"
+    and windows.shadow_space == 32
+    and arm.integer_argument_registers[7] == "x7"
+    and sysv.stack_alignment == 16
+    and arm.stack_alignment == 16;
+}

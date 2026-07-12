@@ -2309,8 +2309,13 @@ backend-value-lowering-audit:
 	@python3 tools/backend_value_lowering_audit.py
 
 
+.PHONY: backend-layout-abi-audit
+backend-layout-abi-audit:
+	@python3 tools/backend_layout_abi_audit.py
+
+
 .PHONY: backend-gate
-backend-gate: vitte-emit-gate llvm-backend-gate wasm-backend-gate backend-ir-contract-audit c-abi-contract-audit backend-value-lowering-audit
+backend-gate: vitte-emit-gate llvm-backend-gate wasm-backend-gate backend-ir-contract-audit c-abi-contract-audit backend-value-lowering-audit backend-layout-abi-audit
 	@python3 tools/backend_surface_audit.py
 
 

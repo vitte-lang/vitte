@@ -2,7 +2,7 @@ space vitte/compiler/tests/c_backend_tests
 
 use vitte/compiler/backend/c/pipeline.{ CBackendPipelineResult, run_c_backend_frontend, run_c_backend_mir, run_c_backend_source }
 use vitte/compiler/backend/c/lowering.{ CTranslationUnit, lower_mir_to_c_with_hir_and_ir, lower_mir_to_c_with_ir }
-use vitte/compiler/backend/c/architecture.{ c_target_x86_64_linux }
+use vitte/compiler/backend/c/architecture.{ c_target_x86_64_linux, c_type_for_vitte_type }
 use vitte/compiler/backend/c/abi.{ C_ABI_NAME, C_ABI_SCHEMA_VERSION, CAbiPassMode, c_abi_contract, c_abi_function, c_abi_header_prelude, c_abi_param_value }
 use vitte/compiler/backend/ir.{ IrUnit, target_native_x86_64_linux, unit_empty, unit_with_source_path }
 use vitte/compiler/frontend/ast/node.{ ast_span_empty }
@@ -73,6 +73,11 @@ proc test_c_abi_v1_contract_is_explicit_and_checked() -> bool {
     and contract.schema_version == C_ABI_SCHEMA_VERSION
     and contract.calling_convention == "sysv64"
     and contract.pointer_width == 64
+    and contract.stack_alignment == 16
+    and contract.shadow_space == 0
+    and contract.integer_argument_register_count == 6
+    and contract.floating_argument_register_count == 8
+    and c_type_for_vitte_type(profile, "char") == "uint32_t"
     and borrowed.pass_mode == CAbiPassMode.Indirect and borrowed.readonly
     and mutable_borrow.pass_mode == CAbiPassMode.Indirect and not mutable_borrow.readonly
     and direct.pass_mode == CAbiPassMode.Direct

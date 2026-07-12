@@ -1,5 +1,7 @@
 space vitte/compiler/backend/codegen
 
+use vitte/compiler/backend/target/calling_convention.{ CallingConvention, calling_convention_x86_64_sysv }
+
 pick MachineAbi {
     SystemV
     WindowsX64
@@ -171,14 +173,15 @@ proc machine_prologue_x86_64() -> [string] {
 proc machine_prologue_x86_64_with_stack(stack_size: u64) -> [string] {
     let config = default_machine_text_config();
     let lines: [string] = [];
-    let stack_text: string = stack_size as string;
+    let aligned_stack_size: u64 = machine_align_stack_size(stack_size, config.stack_alignment);
+    let stack_text: string = aligned_stack_size as string;
 
     if config.emit_frame_pointer {
         set lines = list.push(lines, config.indent + "push %rbp");
         set lines = list.push(lines, config.indent + "mov %rsp, %rbp");
     }
 
-    if stack_size > 0 {
+    if aligned_stack_size > 0 {
         set lines = list.push(lines, config.indent + "sub $" + stack_text + ", %rsp");
     }
 
@@ -203,9 +206,10 @@ proc machine_epilogue_x86_64() -> [string] {
 proc machine_epilogue_x86_64_with_stack(stack_size: u64) -> [string] {
     let config = default_machine_text_config();
     let lines: [string] = [];
-    let stack_text: string = stack_size as string;
+    let aligned_stack_size: u64 = machine_align_stack_size(stack_size, config.stack_alignment);
+    let stack_text: string = aligned_stack_size as string;
 
-    if stack_size > 0 {
+    if aligned_stack_size > 0 {
         set lines = list.push(lines, config.indent + "add $" + stack_text + ", %rsp");
     }
 
@@ -232,37 +236,42 @@ proc machine_align_stack_size(size: u64, alignment: u64) -> u64 {
     give size + alignment - rem;
 }
 
-proc machine_stack_slot_offset(slot: u64) -> string {
-    let slot_index: u64 = slot + 1;
-    let offset: u64 = slot_index * 8;
-    let offset_text: string = offset as string;
-    give "-" + offset_text + token_lparen() + "%rbp)";
+proc machine_frame_offset(offset: u64) -> string {
+    give "-" + string(offset) + token_lparen() + "%rbp)";
+}
+
+proc machine_incoming_stack_offset(offset: u64) -> string {
+    give string(16 + offset) + token_lparen() + "%rbp)";
+}
+
+proc machine_outgoing_stack_offset(offset: u64) -> string {
+    give string(offset) + token_lparen() + "%rsp)";
 }
 
 proc machine_arg_register_x86_64(index: u64) -> string {
-    if index == 0 {
-        give "%rdi";
+    let convention: CallingConvention = calling_convention_x86_64_sysv();
+    if index < len(convention.integer_argument_registers) {
+        give convention.integer_argument_registers[index];
     }
-    if index == 1 {
-        give "%rsi";
-    }
-    if index == 2 {
-        give "%rdx";
-    }
-    if index == 3 {
-        give "%rcx";
-    }
-    if index == 4 {
-        give "%r8";
-    }
-    if index == 5 {
-        give "%r9";
+    give "";
+}
+
+proc machine_float_arg_register_x86_64(index: u64) -> string {
+    let convention: CallingConvention = calling_convention_x86_64_sysv();
+    if index < len(convention.floating_argument_registers) {
+        give convention.floating_argument_registers[index];
     }
     give "";
 }
 
 proc machine_return_register_x86_64() -> string {
-    give "%rax";
+    let convention: CallingConvention = calling_convention_x86_64_sysv();
+    give convention.integer_return_registers[0];
+}
+
+proc machine_float_return_register_x86_64() -> string {
+    let convention: CallingConvention = calling_convention_x86_64_sysv();
+    give convention.floating_return_registers[0];
 }
 
 proc machine_bool_immediate(text: string) -> string {
@@ -428,9 +437,13 @@ share machine_epilogue_x86_64
 share machine_epilogue_x86_64_with_stack
 
 share machine_align_stack_size
-share machine_stack_slot_offset
+share machine_frame_offset
+share machine_incoming_stack_offset
+share machine_outgoing_stack_offset
 share machine_arg_register_x86_64
+share machine_float_arg_register_x86_64
 share machine_return_register_x86_64
+share machine_float_return_register_x86_64
 
 share machine_bool_immediate
 share machine_string_literal_immediate

@@ -13,12 +13,14 @@ The x86_64 Linux C11 profile uses:
 - C/System V AMD64 calling convention (`sysv64`)
 - 64-bit pointers
 - fixed-width `<stdint.h>` integers
+- `uint32_t` for the Unicode scalar representation of Vitte `char`
 - `stdbool.h::bool` for Vitte `bool`
 - NUL-terminated `const char*` for Vitte `string`
 - direct scalar values
 - `const T*` for immutable borrows
 - `T*` for mutable borrows
 - terminal C variadics with at least one fixed parameter
+- 16-byte stack alignment, inherited from the canonical SysV64 target profile
 
 The default Vitte convention and explicit `extern C` procedures both lower to
 portable C declarations. Explicit `sysv64` is accepted by the x86_64 Linux

@@ -26,7 +26,22 @@ form AggregateLayout {
   field_count: u64
   size: u64
   alignment: u64
+  stride: u64
+  field_offsets: [u64]
+  field_sizes: [u64]
+  field_alignments: [u64]
   packed: bool
+  valid: bool
+}
+
+form TypeLayout {
+  name: string
+  size: u64
+  alignment: u64
+  scalar: bool
+  floating: bool
+  pointer: bool
+  aggregate: bool
   valid: bool
 }
 
@@ -64,7 +79,57 @@ proc pointer_layout(pointer_size: u64, pointer_alignment: u64, address_space_bit
 }
 
 proc aggregate_layout(field_count: u64, size: u64, alignment: u64, packed: bool) -> AggregateLayout {
-  give AggregateLayout { field_count: field_count, size: size, alignment: alignment, packed: packed, valid: alignment > 0 };
+  give AggregateLayout {
+    field_count: field_count,
+    size: size,
+    alignment: alignment,
+    stride: size,
+    field_offsets: [],
+    field_sizes: [],
+    field_alignments: [],
+    packed: packed,
+    valid: alignment > 0
+  };
+}
+
+proc aggregate_layout_with_fields(field_sizes: [u64], field_alignments: [u64], field_offsets: [u64], size: u64, alignment: u64, packed: bool, valid: bool) -> AggregateLayout {
+  give AggregateLayout {
+    field_count: len(field_sizes),
+    size: size,
+    alignment: alignment,
+    stride: align_to(size, alignment),
+    field_offsets: field_offsets,
+    field_sizes: field_sizes,
+    field_alignments: field_alignments,
+    packed: packed,
+    valid: valid and len(field_sizes) == len(field_alignments) and len(field_sizes) == len(field_offsets) and alignment > 0
+  };
+}
+
+proc type_layout(name: string, size: u64, alignment: u64, scalar: bool, floating: bool, pointer: bool, aggregate: bool) -> TypeLayout {
+  give TypeLayout {
+    name: name,
+    size: size,
+    alignment: alignment,
+    scalar: scalar,
+    floating: floating,
+    pointer: pointer,
+    aggregate: aggregate,
+    valid: name != "" and alignment > 0
+  };
+}
+
+proc invalid_type_layout(name: string) -> TypeLayout {
+  give TypeLayout {
+    name: name,
+    size: 0,
+    alignment: 0,
+    scalar: false,
+    floating: false,
+    pointer: false,
+    aggregate: false,
+    valid: false
+  };
 }
 
 proc target_layout_base(triple: TargetTriple, endian: string, pointer_size: u64, pointer_alignment: u64, stack_alignment0: u64, simd_alignment0: u64, supports_unaligned_loads0: bool) -> TargetLayout {
@@ -75,7 +140,7 @@ proc target_layout_base(triple: TargetTriple, endian: string, pointer_size: u64,
     pointer_alignment: pointer_alignment,
     stack_alignment: stack_alignment0,
     bool_size: 1,
-    char_size: 1,
+    char_size: 4,
     i8_size: 1,
     i16_size: 2,
     i32_size: 4,
@@ -157,6 +222,10 @@ proc float_size(layout: TargetLayout, bits: u64) -> u64 {
 
 proc layout_supports_unaligned_loads(layout: TargetLayout) -> bool { give layout.supports_unaligned_loads; }
 
+proc is_power_of_two(value: u64) -> bool {
+  give value > 0 and (value & (value - 1)) == 0;
+}
+
 proc align_to(value: u64, alignment: u64) -> u64 {
   if alignment == 0 {
     give value;
@@ -170,20 +239,96 @@ proc align_to(value: u64, alignment: u64) -> u64 {
 }
 
 proc aggregate_size(field_sizes: [u64], field_alignments: [u64], packed: bool) -> AggregateLayout {
+  if len(field_sizes) != len(field_alignments) {
+    give aggregate_layout_with_fields(field_sizes, field_alignments, [], 0, 1, packed, false);
+  }
   let size: u64 = 0;
   let max_alignment: u64 = 1;
+  let offsets: [u64] = [];
+  let effective_alignments: [u64] = [];
+  let valid: bool = true;
   let i: u64 = 0;
   while i < len(field_sizes) {
     let field_alignment: u64 = if packed { 1 } else { field_alignments[i] };
+    if not is_power_of_two(field_alignment) {
+      set valid = false;
+    }
     if field_alignment > max_alignment {
       set max_alignment = field_alignment;
     }
     set size = align_to(size, field_alignment);
+    set offsets = offsets + [size];
+    set effective_alignments = effective_alignments + [field_alignment];
     set size = size + field_sizes[i];
     set i = i + 1;
   }
   set size = align_to(size, max_alignment);
-  give aggregate_layout(len(field_sizes), size, max_alignment, packed);
+  give aggregate_layout_with_fields(field_sizes, effective_alignments, offsets, size, max_alignment, packed, valid);
+}
+
+proc base_layout_type_name(type_name: string) -> string {
+  let value: string = trim(type_name);
+  if starts_with(value, "&mut ") {
+    give base_layout_type_name(trim(slice(value, 5, len(value))));
+  }
+  if starts_with(value, "&") {
+    give base_layout_type_name(trim(slice(value, 1, len(value))));
+  }
+  if starts_with(value, "*mut ") {
+    give base_layout_type_name(trim(slice(value, 5, len(value))));
+  }
+  if starts_with(value, "*const ") {
+    give base_layout_type_name(trim(slice(value, 7, len(value))));
+  }
+  give value;
+}
+
+proc type_layout_for_name(layout: TargetLayout, type_name: string) -> TypeLayout {
+  let value: string = trim(type_name);
+  let base: string = base_layout_type_name(value);
+  if value == "" or value == "unknown" {
+    give invalid_type_layout(value);
+  }
+  if value == "unit" or value == "never" or value == "void" {
+    give type_layout(value, 0, 1, false, false, false, false);
+  }
+  if starts_with(value, "&") or starts_with(value, "*") or starts_with(base, "proc(") or base == "fn" or base == "string" {
+    give type_layout(value, layout.pointer_size, layout.pointer_alignment, true, false, true, false);
+  }
+  if base == "bool" {
+    give type_layout(value, layout.bool_size, layout.bool_size, true, false, false, false);
+  }
+  if base == "char" {
+    give type_layout(value, layout.char_size, layout.char_size, true, false, false, false);
+  }
+  if base == "i8" or base == "u8" {
+    give type_layout(value, 1, 1, true, false, false, false);
+  }
+  if base == "i16" or base == "u16" {
+    give type_layout(value, 2, 2, true, false, false, false);
+  }
+  if base == "i32" or base == "u32" {
+    give type_layout(value, 4, 4, true, false, false, false);
+  }
+  if base == "int" or base == "uint" or base == "i64" or base == "u64" {
+    give type_layout(value, 8, 8, true, false, false, false);
+  }
+  if base == "isize" or base == "usize" {
+    give type_layout(value, layout.pointer_size, layout.pointer_alignment, true, false, false, false);
+  }
+  if base == "i128" or base == "u128" {
+    give type_layout(value, 16, 16, true, false, false, false);
+  }
+  if base == "f32" {
+    give type_layout(value, layout.f32_size, layout.f32_size, true, true, false, false);
+  }
+  if base == "f64" or base == "float" {
+    give type_layout(value, layout.f64_size, layout.f64_size, true, true, false, false);
+  }
+  if starts_with(value, "[") or starts_with(value, "(") or base == "array" or base == "tuple" or base == "aggregate" {
+    give type_layout(value, layout.pointer_size * 2, layout.pointer_alignment, false, false, false, true);
+  }
+  give invalid_type_layout(value);
 }
 
 proc layout_summary(layout: TargetLayout) -> string {
@@ -191,14 +336,26 @@ proc layout_summary(layout: TargetLayout) -> string {
 }
 
 proc data_layout_for_triple(triple: TargetTriple) -> string {
+  if triple.arch == "x86_64" or triple.arch == "apple-intel-i5" or triple.arch == "apple-intel-i7" {
+    let mangling: string = if triple.os == "windows" { "w" } elif triple.os == "macos" or triple.os == "darwin" { "o" } else { "e" };
+    give "e-m:" + mangling + "-p270:32:32-p271:32:32-p272:64:64-i64:64-f80:128-n8:16:32:64-S128";
+  }
+  if triple.arch == "aarch64" or triple.arch == "apple-m1" or triple.arch == "apple-m2" or triple.arch == "apple-m3" or triple.arch == "apple-m4" {
+    let mangling: string = if triple.os == "macos" or triple.os == "darwin" { "o" } else { "e" };
+    give "e-m:" + mangling + "-i8:8:32-i16:16:32-i64:64-i128:128-n32:64-S128";
+  }
+  if triple.arch == "i386" or triple.arch == "i486" or triple.arch == "i586" or triple.arch == "i686" {
+    give "e-m:e-p:32:32-i64:64-f80:32-n8:16:32-S128";
+  }
+  if triple.arch == "riscv64" {
+    give "e-m:e-p:64:64-i64:64-i128:128-n32:64-S128";
+  }
+  if triple.arch == "m68k" {
+    give "E-m:e-p:32:32-i8:8:16-i16:16:32-i32:32-n8:16:32-S16";
+  }
   let layout: TargetLayout = target_layout_for(triple);
-  if layout.pointer_size == 8 {
-    give "e-p:64:64-i64:64";
-  }
-  if layout.pointer_size == 4 {
-    give "e-p:32:32-i64:64";
-  }
-  give "e-p:16:16-i64:64";
+  let pointer_bits: string = string(layout.pointer_size * 8);
+  give (if layout.endian == "little" { "e" } else { "E" }) + "-p:" + pointer_bits + ":" + pointer_bits + "-i64:64";
 }
 
 proc pointer_width_for_arch(arch: string) -> u64 {
@@ -217,5 +374,17 @@ proc pointer_width_for_arch(arch: string) -> u64 {
 proc layout_selftest(triple: TargetTriple) -> bool {
   let layout: TargetLayout = target_layout_for(triple);
   let aggregate: AggregateLayout = aggregate_size([4, 8, 1], [4, 8, 1], false);
-  give layout.valid and aggregate.valid and pointer_size(layout) > 0 and align_to(17, 8) == 24 and layout_summary(layout) != "";
+  let character: TypeLayout = type_layout_for_name(layout, "char");
+  give layout.valid
+    and aggregate.valid
+    and aggregate.size == 24
+    and len(aggregate.field_offsets) == 3
+    and aggregate.field_offsets[0] == 0
+    and aggregate.field_offsets[1] == 8
+    and aggregate.field_offsets[2] == 16
+    and character.valid
+    and character.size == 4
+    and pointer_size(layout) > 0
+    and align_to(17, 8) == 24
+    and layout_summary(layout) != "";
 }

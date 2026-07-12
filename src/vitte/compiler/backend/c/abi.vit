@@ -21,6 +21,10 @@ form CAbiContract {
   target_profile: string
   calling_convention: string
   pointer_width: u64
+  stack_alignment: u64
+  shadow_space: u64
+  integer_argument_register_count: u64
+  floating_argument_register_count: u64
   bool_representation: string
   string_representation: string
   immutable_borrow_representation: string
@@ -53,6 +57,10 @@ proc c_abi_contract(profile: CBackendTargetProfile) -> CAbiContract {
     target_profile: profile.name,
     calling_convention: profile.calling_convention,
     pointer_width: profile.pointer_width,
+    stack_alignment: profile.stack_alignment,
+    shadow_space: profile.shadow_space,
+    integer_argument_register_count: profile.integer_argument_register_count,
+    floating_argument_register_count: profile.floating_argument_register_count,
     bool_representation: "stdbool.bool:u8",
     string_representation: "nul-terminated:const-char-pointer",
     immutable_borrow_representation: "const-pointer",
@@ -62,6 +70,8 @@ proc c_abi_contract(profile: CBackendTargetProfile) -> CAbiContract {
       and profile.abi_name == C_ABI_NAME
       and profile.calling_convention != ""
       and profile.pointer_width > 0
+      and profile.stack_alignment > 0
+      and profile.integer_argument_register_count > 0
   };
 }
 
@@ -205,5 +215,13 @@ proc c_abi_header_prelude() -> string {
 }
 
 proc c_abi_contract_summary(contract: CAbiContract) -> string {
-  give contract.name + " schema=" + string(contract.schema_version) + " target=" + contract.target_profile + " cc=" + contract.calling_convention + " pointer-width=" + string(contract.pointer_width);
+  give contract.name
+    + " schema=" + string(contract.schema_version)
+    + " target=" + contract.target_profile
+    + " cc=" + contract.calling_convention
+    + " pointer-width=" + string(contract.pointer_width)
+    + " stack-alignment=" + string(contract.stack_alignment)
+    + " shadow-space=" + string(contract.shadow_space)
+    + " integer-args=" + string(contract.integer_argument_register_count)
+    + " float-args=" + string(contract.floating_argument_register_count);
 }

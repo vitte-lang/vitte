@@ -2,6 +2,7 @@ space vitte/compiler/backend/target/mod
 
 use vitte/compiler/backend/target/triple.{ TargetTriple, triple_x86_64_linux, triple_aarch64_linux, triple_riscv64_linux, triple_i386_linux, triple_windows_x86_64, triple_macos_apple_silicon, triple_wasm32, triple_text, triple_summary, triple_is_unix, triple_is_windows, triple_is_apple, triple_is_wasm, triple_is_retro }
 use vitte/compiler/backend/target/layout.{ TargetLayout, target_layout_for, pointer_size, stack_alignment, simd_alignment, is_little_endian, layout_summary }
+use vitte/compiler/backend/target/calling_convention.{ CallingConvention, calling_convention_for_triple, calling_convention_summary }
 use vitte/compiler/backend/target/x86_64.{ X8664Target, target_x86_64_linux, target_x86_64_windows, target_x86_64_macos, target_x86_64_retro, target_x86_64_modern, target_supports_modern_isa }
 use vitte/compiler/backend/target/aarch64.{ Aarch64Target, target_aarch64_linux, target_aarch64_macos, target_aarch64_embedded, target_aarch64_apple_silicon, target_supports_modern_atomics }
 use vitte/compiler/backend/target/riscv64.{ Riscv64Target, target_riscv64_linux, target_riscv64_embedded, target_riscv64_vector, target_supports_vectors }
@@ -30,6 +31,7 @@ form BackendTarget {
   kind: BackendTargetKind
   triple: TargetTriple
   layout: TargetLayout
+  calling_convention: CallingConvention
   cpu: string
   features: [string]
   feature_count: u64
@@ -92,11 +94,13 @@ proc backend_target_kind_name(kind: BackendTargetKind) -> string {
 
 proc backend_target(kind: BackendTargetKind, triple: TargetTriple, cpu: string, executable_extension: string, static_library_extension: string, dynamic_library_extension: string, supports_threads: bool, supports_simd: bool, supports_vectors0: bool, retro: bool, embedded: bool) -> BackendTarget {
   let layout: TargetLayout = target_layout_for(triple);
+  let convention: CallingConvention = calling_convention_for_triple(triple);
   let features: [string] = default_feature_set(triple);
   give BackendTarget {
     kind: kind,
     triple: triple,
     layout: layout,
+    calling_convention: convention,
     cpu: cpu,
     features: features,
     feature_count: feature_count(features),
@@ -207,5 +211,5 @@ proc backend_target_selftest() -> bool {
   let arm: BackendTarget = backend_target_aarch64_linux();
   let arm_profile: Aarch64Target = target_aarch64_linux();
   let modern: X8664Target = target_x86_64_modern();
-  give native.valid and retro.valid and vector.valid and arm.valid and target_supports_modern_atomics(arm_profile) and target_is_native(native) and target_supports_parallel_codegen(native) and target_supports_jit(native) and target_supports_shared_objects(native) and target_supports_advanced_optimizations(vector) and target_supports_advanced_optimizations(arm) and target_supports_modern_isa(modern) and feature_summary(native.triple) != "" and triple_summary(native.triple) != "" and layout_summary(native.layout) != "" and stack_alignment(native.layout) > 0 and simd_alignment(native.layout) > 0 and not triple_is_windows(native.triple) and not triple_is_apple(native.triple) and triple_is_unix(native.triple) and not triple_is_retro(native.triple);
+  give native.valid and retro.valid and vector.valid and arm.valid and target_supports_modern_atomics(arm_profile) and target_is_native(native) and target_supports_parallel_codegen(native) and target_supports_jit(native) and target_supports_shared_objects(native) and target_supports_advanced_optimizations(vector) and target_supports_advanced_optimizations(arm) and target_supports_modern_isa(modern) and feature_summary(native.triple) != "" and triple_summary(native.triple) != "" and layout_summary(native.layout) != "" and calling_convention_summary(native.calling_convention) != "" and native.calling_convention.valid and arm.calling_convention.valid and stack_alignment(native.layout) > 0 and simd_alignment(native.layout) > 0 and not triple_is_windows(native.triple) and not triple_is_apple(native.triple) and triple_is_unix(native.triple) and not triple_is_retro(native.triple);
 }

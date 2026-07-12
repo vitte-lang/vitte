@@ -6,6 +6,9 @@ use vitte/compiler/backend/ir.{ BACKEND_IR_DIALECT, BACKEND_IR_SCHEMA_VERSION, I
 use vitte/compiler/backend/link/artifact.{ LinkArtifact, artifact_is_valid }
 use vitte/compiler/backend/link/linker.{ link_ir_unit }
 use vitte/compiler/backend/pipeline.{ BackendPipelineResult, compile_frontend_to_valid_ir_with_profile_and_packaging, compile_to_valid_ir, compile_to_valid_ir_with_backend }
+use vitte/compiler/backend/target/calling_convention.{ AbiLocationKind, AbiValueLocation, CallingConvention, abi_argument_locations, abi_argument_locations_for_return, abi_outgoing_stack_size, abi_return_location, calling_convention_aapcs64, calling_convention_x86_64_sysv, calling_convention_x86_64_windows }
+use vitte/compiler/backend/target/layout.{ AggregateLayout, TargetLayout, TypeLayout, aggregate_size, data_layout_for_triple, target_layout_for, type_layout, type_layout_for_name }
+use vitte/compiler/backend/target/triple.{ triple_aarch64_linux, triple_windows_x86_64, triple_x86_64_linux }
 use vitte/compiler/backends/llvm_bindings.{ LlvmBindingResult, LlvmObjectResult, default_llvm_build_options, default_llvm_toolchain_paths, emit_llvm_ir_from_ir, emit_llvm_object_from_ir, emit_llvm_object_from_ir_with_toolchain, llvm_build_options, llvm_toolchain_paths }
 use vitte/compiler/driver/cli.{ run_compile_set_manifest_report_cli }
 use vitte/compiler/driver/compile.{ DriverBackendModuleSetResult, DriverCompileResult, compile_source_set, compile_source_set_with_config, compile_source_with_config, driver_compile_config, driver_compile_config_full, driver_module_input, emit_native_backend_object_with_config }
@@ -487,6 +490,78 @@ proc test_backend_lowers_calls_returns_and_aggregates_concretely() -> bool {
     and find(llvm0.ir_text, "ret i64 %__return_value_") >= 0;
 }
 
+proc test_target_layout_has_canonical_field_offsets() -> bool {
+  let linux = triple_x86_64_linux();
+  let windows = triple_windows_x86_64();
+  let arm = triple_aarch64_linux();
+  let layout: TargetLayout = target_layout_for(linux);
+  let aggregate: AggregateLayout = aggregate_size([1, 8, 2], [1, 8, 2], false);
+  let packed: AggregateLayout = aggregate_size([1, 8, 2], [1, 8, 2], true);
+  let invalid: AggregateLayout = aggregate_size([1, 8], [1], false);
+  let character: TypeLayout = type_layout_for_name(layout, "char");
+  give layout.pointer_size == 8
+    and layout.pointer_alignment == 8
+    and layout.stack_alignment == 16
+    and character.valid and character.size == 4 and character.alignment == 4
+    and aggregate.valid and aggregate.size == 24 and aggregate.alignment == 8 and aggregate.stride == 24
+    and len(aggregate.field_offsets) == 3
+    and aggregate.field_offsets[0] == 0
+    and aggregate.field_offsets[1] == 8
+    and aggregate.field_offsets[2] == 16
+    and packed.valid and packed.size == 11 and packed.alignment == 1
+    and not invalid.valid
+    and find(data_layout_for_triple(linux), "-S128") >= 0
+    and find(data_layout_for_triple(windows), "e-m:w-") == 0
+    and find(data_layout_for_triple(arm), "-i128:128-") >= 0;
+}
+
+proc test_register_conventions_classify_arguments_and_returns() -> bool {
+  let integer: TypeLayout = type_layout("int", 8, 8, true, false, false, false);
+  let floating: TypeLayout = type_layout("f64", 8, 8, true, true, false, false);
+  let large: TypeLayout = type_layout("Large", 24, 8, false, false, false, true);
+  let sysv: CallingConvention = calling_convention_x86_64_sysv();
+  let windows: CallingConvention = calling_convention_x86_64_windows();
+  let arm: CallingConvention = calling_convention_aapcs64("aapcs64");
+  let sysv_args: [AbiValueLocation] = abi_argument_locations(sysv, [integer, integer, integer, integer, integer, integer, integer]);
+  let windows_args: [AbiValueLocation] = abi_argument_locations(windows, [integer, integer, integer, integer, integer]);
+  let arm_args: [AbiValueLocation] = abi_argument_locations(arm, [integer, integer, integer, integer, integer, integer, integer, integer, integer]);
+  let mixed_args: [AbiValueLocation] = abi_argument_locations(sysv, [floating, integer]);
+  let large_return: AbiValueLocation = abi_return_location(sysv, large);
+  let shifted: [AbiValueLocation] = abi_argument_locations_for_return(sysv, large, [integer]);
+  give sysv.valid and windows.valid and arm.valid
+    and sysv_args[0].register_name == "%rdi"
+    and sysv_args[5].register_name == "%r9"
+    and sysv_args[6].kind == AbiLocationKind.Stack and sysv_args[6].stack_offset == 0
+    and abi_outgoing_stack_size(sysv, sysv_args) == 16
+    and windows_args[0].register_name == "%rcx"
+    and windows_args[4].kind == AbiLocationKind.Stack and windows_args[4].stack_offset == 32
+    and abi_outgoing_stack_size(windows, windows_args) == 48
+    and arm_args[7].register_name == "x7"
+    and arm_args[8].kind == AbiLocationKind.Stack and arm_args[8].stack_offset == 0
+    and mixed_args[0].register_name == "%xmm0"
+    and mixed_args[1].register_name == "%rdi"
+    and large_return.by_reference and large_return.register_name == "%rdi"
+    and shifted[0].register_name == "%rsi";
+}
+
+proc test_x86_64_codegen_uses_aligned_frames_and_abi_registers() -> bool {
+  let source: string =
+    "proc sum(a: int, b: int, c: int, d: int, e: int, f: int, g: int) -> int { give a; }\n" +
+    "proc main() -> int { give sum(1, 2, 3, 4, 5, 6, 7); }\n";
+  let ir: IrUnit = build_verified_ir("backend_register_convention.vit", source);
+  let codegen: CodegenResult = run_codegen_x86_64(ir);
+  give codegen.valid
+    and find(codegen.assembly, "# abi-entry sysv64 frame=64") >= 0
+    and find(codegen.assembly, "sub $64, %rsp") >= 0
+    and find(codegen.assembly, "mov %rdi, -8(%rbp)") >= 0
+    and find(codegen.assembly, "mov 16(%rbp), %r11") >= 0
+    and find(codegen.assembly, "# abi-call sysv64 stack=16") >= 0
+    and find(codegen.assembly, "mov $1, %rdi") >= 0
+    and find(codegen.assembly, "mov $6, %r9") >= 0
+    and find(codegen.assembly, "mov %r11, 0(%rsp)") >= 0
+    and find(codegen.assembly, "add $16, %rsp") >= 0;
+}
+
 proc test_ir_and_llvm_preserve_regular_proc_signature() -> bool {
   let ir: IrUnit = build_verified_ir("backend_proc_signature.vit", "proc add(borrow value: int, mut flag: bool, ...) -> int { if flag { give value; } give 0; }\n");
   if not unit_is_valid(ir) or len(ir.modules) == 0 or len(ir.modules[0].functions) == 0 {
@@ -902,6 +977,9 @@ proc run_all_tests() -> int {
   if not test_x86_64_codegen_consumes_nominal_call_metadata() { set failures = failures + 1; }
   if not test_llvm_codegen_consumes_nominal_call_metadata() { set failures = failures + 1; }
   if not test_backend_lowers_calls_returns_and_aggregates_concretely() { set failures = failures + 1; }
+  if not test_target_layout_has_canonical_field_offsets() { set failures = failures + 1; }
+  if not test_register_conventions_classify_arguments_and_returns() { set failures = failures + 1; }
+  if not test_x86_64_codegen_uses_aligned_frames_and_abi_registers() { set failures = failures + 1; }
   if not test_ir_and_llvm_preserve_regular_proc_signature() { set failures = failures + 1; }
   if not test_ir_and_llvm_calls_use_borrow_abi_shape() { set failures = failures + 1; }
   if not test_ir_and_llvm_preserve_borrow_passthrough_call_shape() { set failures = failures + 1; }

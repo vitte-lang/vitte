@@ -1,26 +1,344 @@
 space vitte/compiler/backend/codegen
 
-use vitte/compiler/backend/ir.{ IrFunction, IrInstruction, IrInstructionKind, IrLinkage, IrModule, IrNominalType, IrUnit, IrValueKind }
-use vitte/compiler/backend/codegen/machine.{ machine_block_label, machine_branch_label, machine_call_target_text, machine_epilogue_x86_64, machine_function_label, machine_operand_debug_name, machine_operand_immediate_text, machine_prologue_x86_64, machine_return_label }
+use vitte/compiler/backend/ir.{ IrFunction, IrFunctionParam, IrInstruction, IrInstructionKind, IrLinkage, IrModule, IrNominalType, IrUnit, IrValue, IrValueKind }
+use vitte/compiler/backend/codegen/machine.{ machine_block_label, machine_branch_label, machine_call_target_text, machine_epilogue_x86_64_with_stack, machine_frame_offset, machine_function_label, machine_incoming_stack_offset, machine_operand_debug_name, machine_operand_immediate_text, machine_outgoing_stack_offset, machine_prologue_x86_64_with_stack, machine_return_label }
+use vitte/compiler/backend/target/calling_convention.{ AbiLocationKind, AbiValueClass, AbiValueLocation, CallingConvention, abi_argument_locations_for_return, abi_outgoing_stack_size, abi_return_location, calling_convention_for_abi }
+use vitte/compiler/backend/target/layout.{ AggregateLayout, TargetLayout, TypeLayout, aggregate_size, align_to, invalid_type_layout, target_layout_for, type_layout, type_layout_for_name }
 
-proc load_operand_lines(instruction: IrInstruction, index: u64, target_register: string) -> [string] {
-  if len(instruction.args) <= index {
-    give ["  mov $0, " + target_register];
+form X86FrameSlot {
+  name: string
+  type_name: string
+  offset: u64
+  size: u64
+  alignment: u64
+  indirect: bool
+  valid: bool
+}
+
+form X86FrameLayout {
+  slots: [X86FrameSlot]
+  size: u64
+  alignment: u64
+  valid: bool
+}
+
+proc invalid_frame_slot() -> X86FrameSlot {
+  give X86FrameSlot {
+    name: "",
+    type_name: "",
+    offset: 0,
+    size: 0,
+    alignment: 0,
+    indirect: false,
+    valid: false
+  };
+}
+
+proc frame_slot_by_name(frame: X86FrameLayout, name: string) -> X86FrameSlot {
+  let i: u64 = 0;
+  while i < len(frame.slots) {
+    if frame.slots[i].name == name {
+      give frame.slots[i];
+    }
+    set i = i + 1;
   }
-  let value = instruction.args[index];
+  give invalid_frame_slot();
+}
+
+proc module_type_layout_depth(module0: IrModule, target_layout: TargetLayout, type_name: string, depth: u64) -> TypeLayout {
+  let direct: TypeLayout = type_layout_for_name(target_layout, type_name);
+  if direct.valid {
+    give direct;
+  }
+  if depth >= 16 {
+    give invalid_type_layout(type_name);
+  }
+  let i: u64 = 0;
+  while i < len(module0.nominal_types) {
+    let nominal: IrNominalType = module0.nominal_types[i];
+    if nominal.name == type_name {
+      if nominal.kind == "bits" or nominal.kind == "flags" or nominal.kind == "enum" {
+        let underlying: TypeLayout = module_type_layout_depth(module0, target_layout, if nominal.underlying_type != "" { nominal.underlying_type } else { "i32" }, depth + 1);
+        if underlying.valid {
+          give underlying;
+        }
+      }
+      if nominal.kind == "form" or nominal.kind == "class" {
+        let field_sizes: [u64] = [];
+        let field_alignments: [u64] = [];
+        let j: u64 = 0;
+        while j < len(nominal.member_types) {
+          if j < len(nominal.member_kinds) and nominal.member_kinds[j] == "field" {
+            let field: TypeLayout = module_type_layout_depth(module0, target_layout, nominal.member_types[j], depth + 1);
+            set field_sizes = field_sizes + [if field.valid { field.size } else { target_layout.pointer_size }];
+            set field_alignments = field_alignments + [if field.valid { field.alignment } else { target_layout.pointer_alignment }];
+          }
+          set j = j + 1;
+        }
+        let aggregate: AggregateLayout = aggregate_size(field_sizes, field_alignments, false);
+        give type_layout(type_name, aggregate.size, aggregate.alignment, false, false, false, true);
+      }
+      if nominal.kind == "union" {
+        let size: u64 = 0;
+        let alignment: u64 = 1;
+        let j: u64 = 0;
+        while j < len(nominal.member_types) {
+          let member: TypeLayout = module_type_layout_depth(module0, target_layout, nominal.member_types[j], depth + 1);
+          if member.valid and member.size > size { set size = member.size; }
+          if member.valid and member.alignment > alignment { set alignment = member.alignment; }
+          set j = j + 1;
+        }
+        give type_layout(type_name, align_to(size, alignment), alignment, false, false, false, true);
+      }
+      if nominal.kind == "pick" {
+        let payload_size: u64 = 0;
+        let payload_alignment: u64 = 1;
+        let j: u64 = 0;
+        while j < len(nominal.member_annotations) {
+          if nominal.member_annotations[j] != "" {
+            let payload: TypeLayout = module_type_layout_depth(module0, target_layout, nominal.member_annotations[j], depth + 1);
+            if payload.valid and payload.size > payload_size { set payload_size = payload.size; }
+            if payload.valid and payload.alignment > payload_alignment { set payload_alignment = payload.alignment; }
+          }
+          set j = j + 1;
+        }
+        let aggregate: AggregateLayout = aggregate_size([4, payload_size], [4, payload_alignment], false);
+        give type_layout(type_name, aggregate.size, aggregate.alignment, false, false, false, true);
+      }
+      give type_layout(type_name, target_layout.pointer_size, target_layout.pointer_alignment, false, false, false, true);
+    }
+    set i = i + 1;
+  }
+  give invalid_type_layout(type_name);
+}
+
+proc module_type_layout(module0: IrModule, target_layout: TargetLayout, type_name: string) -> TypeLayout {
+  give module_type_layout_depth(module0, target_layout, type_name, 0);
+}
+
+proc module_nominal_aggregate_layout(module0: IrModule, target_layout: TargetLayout, type_name: string) -> AggregateLayout {
+  let i: u64 = 0;
+  while i < len(module0.nominal_types) {
+    let nominal: IrNominalType = module0.nominal_types[i];
+    if nominal.name == type_name and (nominal.kind == "form" or nominal.kind == "class") {
+      let field_sizes: [u64] = [];
+      let field_alignments: [u64] = [];
+      let j: u64 = 0;
+      while j < len(nominal.member_types) {
+        if j < len(nominal.member_kinds) and nominal.member_kinds[j] == "field" {
+          let field: TypeLayout = module_type_layout(module0, target_layout, nominal.member_types[j]);
+          set field_sizes = field_sizes + [if field.valid { field.size } else { target_layout.pointer_size }];
+          set field_alignments = field_alignments + [if field.valid { field.alignment } else { target_layout.pointer_alignment }];
+        }
+        set j = j + 1;
+      }
+      give aggregate_size(field_sizes, field_alignments, false);
+    }
+    if nominal.name == type_name and nominal.kind == "union" {
+      let field_sizes: [u64] = [];
+      let field_alignments: [u64] = [];
+      let j: u64 = 0;
+      while j < len(nominal.member_types) {
+        let field: TypeLayout = module_type_layout(module0, target_layout, nominal.member_types[j]);
+        set field_sizes = field_sizes + [if field.valid { field.size } else { target_layout.pointer_size }];
+        set field_alignments = field_alignments + [if field.valid { field.alignment } else { target_layout.pointer_alignment }];
+        set j = j + 1;
+      }
+      let largest_size: u64 = 0;
+      let largest_alignment: u64 = 1;
+      set j = 0;
+      while j < len(field_sizes) {
+        if field_sizes[j] > largest_size { set largest_size = field_sizes[j]; }
+        if field_alignments[j] > largest_alignment { set largest_alignment = field_alignments[j]; }
+        set j = j + 1;
+      }
+      give aggregate_size([largest_size], [largest_alignment], false);
+    }
+    set i = i + 1;
+  }
+  give aggregate_size([], [], false);
+}
+
+proc frame_add_slot(frame: X86FrameLayout, module0: IrModule, target_layout: TargetLayout, name: string, type_name: string, indirect: bool) -> X86FrameLayout {
+  if name == "" or name == "__return" or frame_slot_by_name(frame, name).valid {
+    give frame;
+  }
+  let value_layout: TypeLayout = if indirect {
+    type_layout(type_name, target_layout.pointer_size, target_layout.pointer_alignment, true, false, true, false)
+  } else {
+    module_type_layout(module0, target_layout, type_name)
+  };
+  let slot_size: u64 = if not value_layout.valid or value_layout.size < target_layout.pointer_size { target_layout.pointer_size } else { value_layout.size };
+  let slot_alignment: u64 = if not value_layout.valid or value_layout.alignment < target_layout.pointer_alignment { target_layout.pointer_alignment } else { value_layout.alignment };
+  let start: u64 = align_to(frame.size, slot_alignment);
+  let end: u64 = start + slot_size;
+  set frame.slots = frame.slots + [X86FrameSlot {
+    name: name,
+    type_name: type_name,
+    offset: end,
+    size: slot_size,
+    alignment: slot_alignment,
+    indirect: indirect,
+    valid: true
+  }];
+  set frame.size = end;
+  give frame;
+}
+
+proc frame_add_value(frame: X86FrameLayout, module0: IrModule, target_layout: TargetLayout, value: IrValue) -> X86FrameLayout {
+  if value.constant != "" or value.name == "" or not value.valid {
+    give frame;
+  }
+  give frame_add_slot(frame, module0, target_layout, value.name, value.type_name, false);
+}
+
+proc frame_add_instruction_values(frame: X86FrameLayout, module0: IrModule, target_layout: TargetLayout, instruction: IrInstruction) -> X86FrameLayout {
+  let built: X86FrameLayout = frame_add_value(frame, module0, target_layout, instruction.dest);
+  let i: u64 = 0;
+  while i < len(instruction.args) {
+    set built = frame_add_value(built, module0, target_layout, instruction.args[i]);
+    set i = i + 1;
+  }
+  give built;
+}
+
+proc frame_layout_for_function(module0: IrModule, fn0: IrFunction, target_layout: TargetLayout, convention: CallingConvention) -> X86FrameLayout {
+  let frame: X86FrameLayout = X86FrameLayout { slots: [], size: 0, alignment: convention.stack_alignment, valid: true };
+  let function_return_layout: TypeLayout = module_type_layout(module0, target_layout, fn0.return_type);
+  let function_return_location: AbiValueLocation = abi_return_location(convention, function_return_layout);
+  if function_return_location.by_reference {
+    set frame = frame_add_slot(frame, module0, target_layout, "__sret", fn0.return_type, true);
+  }
+  let i: u64 = 0;
+  while i < len(fn0.params) {
+    if not fn0.params[i].variadic {
+      let param_layout: TypeLayout = module_type_layout(module0, target_layout, fn0.params[i].type_name);
+      let abi_indirect: bool = param_layout.valid
+        and param_layout.aggregate
+        and param_layout.size > convention.max_direct_aggregate_size
+        and convention.large_aggregate_indirect;
+      set frame = frame_add_slot(frame, module0, target_layout, fn0.params[i].name, fn0.params[i].type_name, fn0.params[i].borrowed or abi_indirect);
+    }
+    set i = i + 1;
+  }
+  set i = 0;
+  while i < len(fn0.blocks) {
+    let j: u64 = 0;
+    while j < len(fn0.blocks[i].instructions) {
+      set frame = frame_add_instruction_values(frame, module0, target_layout, fn0.blocks[i].instructions[j]);
+      set j = j + 1;
+    }
+    set frame = frame_add_instruction_values(frame, module0, target_layout, fn0.blocks[i].terminator);
+    set i = i + 1;
+  }
+  set frame.size = align_to(frame.size, frame.alignment);
+  give frame;
+}
+
+proc frame_slot_part_address(slot: X86FrameSlot, part_offset: u64) -> string {
+  if part_offset >= slot.offset {
+    give machine_frame_offset(slot.offset);
+  }
+  give machine_frame_offset(slot.offset - part_offset);
+}
+
+proc float_move_opcode(type_name: string) -> string {
+  if type_name == "f32" {
+    give "movss";
+  }
+  give "movsd";
+}
+
+proc float_convert_opcode(type_name: string) -> string {
+  if type_name == "f32" {
+    give "cvtsi2ss";
+  }
+  give "cvtsi2sd";
+}
+
+proc float_literal_directive(type_name: string) -> string {
+  if type_name == "f32" {
+    give ".float";
+  }
+  give ".double";
+}
+
+proc zero_register_lines(target_register: string) -> [string] {
+  if starts_with(target_register, "%xmm") {
+    give ["  pxor " + target_register + ", " + target_register];
+  }
+  give ["  xor " + target_register + ", " + target_register];
+}
+
+proc store_rax_width_line(address: string, size: u64) -> string {
+  if size == 1 {
+    give "  movb %al, " + address;
+  }
+  if size == 2 {
+    give "  movw %ax, " + address;
+  }
+  if size == 4 {
+    give "  movl %eax, " + address;
+  }
+  give "  mov %rax, " + address;
+}
+
+proc load_value_lines(frame: X86FrameLayout, value: IrValue, target_register: string) -> [string] {
   if value.constant != "" {
+    if starts_with(target_register, "%xmm") {
+      let move_opcode: string = float_move_opcode(value.type_name);
+      if find(value.constant, ".") >= 0 or find(value.constant, "e") >= 0 or find(value.constant, "E") >= 0 {
+        give [
+          "  jmp 2f",
+          "1:",
+          "  " + float_literal_directive(value.type_name) + " " + value.constant,
+          "2:",
+          "  " + move_opcode + " 1b(%rip), " + target_register
+        ];
+      }
+      give ["  mov " + machine_operand_immediate_text(value.constant) + ", %r11", "  " + float_convert_opcode(value.type_name) + " %r11, " + target_register];
+    }
     give ["  mov " + machine_operand_immediate_text(value.constant) + ", " + target_register];
   }
   let debug_name: string = machine_operand_debug_name(value.name, value.place, value.text);
-  give ["  # load " + debug_name, "  mov $0, " + target_register];
+  let slot: X86FrameSlot = frame_slot_by_name(frame, value.name);
+  if not slot.valid {
+    give ["  # missing frame slot for " + debug_name] + zero_register_lines(target_register);
+  }
+  if value.kind == IrValueKind.Reference and not value.ref_passthrough {
+    give ["  # address " + debug_name, "  lea " + machine_frame_offset(slot.offset) + ", " + target_register];
+  }
+  if starts_with(target_register, "%xmm") {
+    let move_opcode: string = float_move_opcode(value.type_name);
+    if slot.indirect {
+      give ["  mov " + machine_frame_offset(slot.offset) + ", %r11", "  " + move_opcode + " (%r11), " + target_register];
+    }
+    give ["  " + move_opcode + " " + machine_frame_offset(slot.offset) + ", " + target_register];
+  }
+  if slot.indirect and value.kind != IrValueKind.Reference {
+    give ["  mov " + machine_frame_offset(slot.offset) + ", %r11", "  mov (%r11), " + target_register];
+  }
+  give ["  mov " + machine_frame_offset(slot.offset) + ", " + target_register];
 }
 
-proc store_result_lines(instruction: IrInstruction, source_register: string) -> [string] {
-  if not instruction.dest.valid {
+proc load_operand_lines(frame: X86FrameLayout, instruction: IrInstruction, index: u64, target_register: string) -> [string] {
+  if len(instruction.args) <= index {
+    give zero_register_lines(target_register);
+  }
+  give load_value_lines(frame, instruction.args[index], target_register);
+}
+
+proc store_result_lines(frame: X86FrameLayout, instruction: IrInstruction, source_register: string) -> [string] {
+  if not instruction.dest.valid or instruction.dest.name == "__return" {
     give [];
   }
   let debug_name: string = machine_operand_debug_name(instruction.dest.name, instruction.dest.place, instruction.dest.text);
-  give ["  # store " + debug_name + " <- " + source_register];
+  let slot: X86FrameSlot = frame_slot_by_name(frame, instruction.dest.name);
+  if not slot.valid {
+    give ["  # missing destination frame slot for " + debug_name];
+  }
+  let opcode: string = if starts_with(source_register, "%xmm") { float_move_opcode(instruction.dest.type_name) } else { "mov" };
+  give ["  # store " + debug_name + " <- " + source_register, "  " + opcode + " " + source_register + ", " + machine_frame_offset(slot.offset)];
 }
 
 proc ir_impl_method_symbol_name(trait_name: string, target_type: string, member_name: string) -> string {
@@ -151,13 +469,238 @@ proc invalid_backend_lines(message: string) -> [string] {
   give ["  # invalid " + message, "  ud2"];
 }
 
-proc select_instruction_line(module0: IrModule, function_name: string, instruction: IrInstruction) -> [string] {
+proc module_function_abi(module0: IrModule, function_name: string) -> string {
+  let i: u64 = 0;
+  while i < len(module0.functions) {
+    if module0.functions[i].name == function_name {
+      give module0.functions[i].abi;
+    }
+    set i = i + 1;
+  }
+  give "";
+}
+
+proc module_function_is_variadic(module0: IrModule, function_name: string) -> bool {
+  let i: u64 = 0;
+  while i < len(module0.functions) {
+    if module0.functions[i].name == function_name {
+      let j: u64 = 0;
+      while j < len(module0.functions[i].params) {
+        if module0.functions[i].params[j].variadic {
+          give true;
+        }
+        set j = j + 1;
+      }
+      give false;
+    }
+    set i = i + 1;
+  }
+  give false;
+}
+
+proc module_function_return_type(module0: IrModule, function_name: string, fallback: string) -> string {
+  let i: u64 = 0;
+  while i < len(module0.functions) {
+    if module0.functions[i].name == function_name {
+      give module0.functions[i].return_type;
+    }
+    set i = i + 1;
+  }
+  give fallback;
+}
+
+proc call_argument_layouts(module0: IrModule, target_layout: TargetLayout, instruction: IrInstruction) -> [TypeLayout] {
+  let layouts: [TypeLayout] = [];
+  let i: u64 = instruction.call_arg_start;
+  while i < len(instruction.args) {
+    let layout0: TypeLayout = if instruction.args[i].kind == IrValueKind.Reference {
+      type_layout("&" + instruction.args[i].type_name, target_layout.pointer_size, target_layout.pointer_alignment, true, false, true, false)
+    } else {
+      module_type_layout(module0, target_layout, instruction.args[i].type_name)
+    };
+    if layout0.valid {
+      set layouts = layouts + [layout0];
+    } else {
+      set layouts = layouts + [type_layout(instruction.args[i].type_name, target_layout.pointer_size, target_layout.pointer_alignment, true, false, false, false)];
+    }
+    set i = i + 1;
+  }
+  give layouts;
+}
+
+proc function_param_layouts(module0: IrModule, target_layout: TargetLayout, fn0: IrFunction) -> [TypeLayout] {
+  let layouts: [TypeLayout] = [];
+  let i: u64 = 0;
+  while i < len(fn0.params) {
+    if not fn0.params[i].variadic {
+      let layout0: TypeLayout = if fn0.params[i].borrowed {
+        type_layout("&" + fn0.params[i].type_name, target_layout.pointer_size, target_layout.pointer_alignment, true, false, true, false)
+      } else {
+        module_type_layout(module0, target_layout, fn0.params[i].type_name)
+      };
+      if layout0.valid {
+        set layouts = layouts + [layout0];
+      } else {
+        set layouts = layouts + [type_layout(fn0.params[i].type_name, target_layout.pointer_size, target_layout.pointer_alignment, true, false, false, false)];
+      }
+    }
+    set i = i + 1;
+  }
+  give layouts;
+}
+
+proc load_value_part_lines(frame: X86FrameLayout, value: IrValue, part_offset: u64, target_register: string) -> [string] {
+  if part_offset == 0 {
+    give load_value_lines(frame, value, target_register);
+  }
+  if value.constant != "" {
+    give ["  xor " + target_register + ", " + target_register];
+  }
+  let slot: X86FrameSlot = frame_slot_by_name(frame, value.name);
+  if not slot.valid or part_offset >= slot.size {
+    give ["  xor " + target_register + ", " + target_register];
+  }
+  give ["  mov " + frame_slot_part_address(slot, part_offset) + ", " + target_register];
+}
+
+proc address_value_lines(frame: X86FrameLayout, value: IrValue, target_register: string) -> [string] {
+  if value.kind == IrValueKind.Reference and value.ref_passthrough {
+    give load_value_lines(frame, value, target_register);
+  }
+  let slot: X86FrameSlot = frame_slot_by_name(frame, value.name);
+  if not slot.valid {
+    give ["  xor " + target_register + ", " + target_register];
+  }
+  give ["  lea " + machine_frame_offset(slot.offset) + ", " + target_register];
+}
+
+proc floating_register_argument_count(locations: [AbiValueLocation]) -> u64 {
+  let count: u64 = 0;
+  let i: u64 = 0;
+  while i < len(locations) {
+    if locations[i].value_class == AbiValueClass.Float and locations[i].kind == AbiLocationKind.Register {
+      set count = count + 1;
+    }
+    set i = i + 1;
+  }
+  give count;
+}
+
+proc floating_scratch_register(convention: CallingConvention) -> string {
+  if convention.name == "win64" {
+    give "%xmm4";
+  }
+  give "%xmm15";
+}
+
+proc emit_call_argument_lines(frame: X86FrameLayout, instruction: IrInstruction, convention: CallingConvention, locations: [AbiValueLocation]) -> [string] {
+  let stack_size: u64 = abi_outgoing_stack_size(convention, locations);
+  let lines: [string] = ["  # abi-call " + convention.name + " stack=" + string(stack_size)];
+  if stack_size > 0 {
+    set lines = lines + ["  sub $" + string(stack_size) + ", %rsp"];
+  }
+  let i: u64 = 0;
+  while i < len(locations) and instruction.call_arg_start + i < len(instruction.args) {
+    let value: IrValue = instruction.args[instruction.call_arg_start + i];
+    let location: AbiValueLocation = locations[i];
+    if location.kind == AbiLocationKind.Register or location.kind == AbiLocationKind.Indirect {
+      if location.by_reference {
+        set lines = lines + address_value_lines(frame, value, location.register_name);
+      } elif location.value_class == AbiValueClass.Float {
+        set lines = lines + load_value_lines(frame, value, location.register_name);
+      } else {
+        set lines = lines + load_value_part_lines(frame, value, 0, location.register_name);
+        if location.secondary_register_name != "" {
+          set lines = lines + load_value_part_lines(frame, value, convention.stack_slot_size, location.secondary_register_name);
+        }
+      }
+    } elif location.kind == AbiLocationKind.Stack {
+      if location.by_reference {
+        set lines = lines + address_value_lines(frame, value, "%r11");
+        set lines = lines + ["  mov %r11, " + machine_outgoing_stack_offset(location.stack_offset)];
+      } elif location.value_class == AbiValueClass.Float {
+        let scratch: string = floating_scratch_register(convention);
+        set lines = lines + load_value_lines(frame, value, scratch);
+        set lines = lines + ["  " + float_move_opcode(value.type_name) + " " + scratch + ", " + machine_outgoing_stack_offset(location.stack_offset)];
+      } elif location.value_class == AbiValueClass.Aggregate or location.value_class == AbiValueClass.Memory {
+        let part: u64 = 0;
+        while part < location.stack_size {
+          set lines = lines + load_value_part_lines(frame, value, part, "%r11");
+          set lines = lines + ["  mov %r11, " + machine_outgoing_stack_offset(location.stack_offset + part)];
+          set part = part + convention.stack_slot_size;
+        }
+      } else {
+        set lines = lines + load_value_lines(frame, value, "%r11");
+        set lines = lines + ["  mov %r11, " + machine_outgoing_stack_offset(location.stack_offset)];
+      }
+    }
+    set i = i + 1;
+  }
+  give lines;
+}
+
+proc restore_call_stack_lines(convention: CallingConvention, locations: [AbiValueLocation]) -> [string] {
+  let stack_size: u64 = abi_outgoing_stack_size(convention, locations);
+  if stack_size > 0 {
+    give ["  add $" + string(stack_size) + ", %rsp"];
+  }
+  give [];
+}
+
+proc spill_function_parameters(frame: X86FrameLayout, module0: IrModule, fn0: IrFunction, target_layout: TargetLayout, convention: CallingConvention) -> [string] {
+  let layouts: [TypeLayout] = function_param_layouts(module0, target_layout, fn0);
+  let return_layout: TypeLayout = module_type_layout(module0, target_layout, fn0.return_type);
+  let return_location: AbiValueLocation = abi_return_location(convention, return_layout);
+  let locations: [AbiValueLocation] = abi_argument_locations_for_return(convention, return_layout, layouts);
+  let lines: [string] = ["  # abi-entry " + convention.name + " frame=" + string(frame.size)];
+  if return_location.by_reference {
+    let sret_slot: X86FrameSlot = frame_slot_by_name(frame, "__sret");
+    if sret_slot.valid {
+      set lines = lines + ["  mov " + return_location.register_name + ", " + machine_frame_offset(sret_slot.offset)];
+    }
+  }
+  let param_index: u64 = 0;
+  let i: u64 = 0;
+  while i < len(fn0.params) and param_index < len(locations) {
+    let param: IrFunctionParam = fn0.params[i];
+    if param.variadic {
+      set i = i + 1;
+      continue;
+    }
+    let location: AbiValueLocation = locations[param_index];
+    let slot: X86FrameSlot = frame_slot_by_name(frame, param.name);
+    if slot.valid and (location.kind == AbiLocationKind.Register or location.kind == AbiLocationKind.Indirect) {
+      let opcode: string = if location.value_class == AbiValueClass.Float { float_move_opcode(param.type_name) } else { "mov" };
+      set lines = lines + ["  " + opcode + " " + location.register_name + ", " + machine_frame_offset(slot.offset)];
+      if location.secondary_register_name != "" {
+        set lines = lines + ["  mov " + location.secondary_register_name + ", " + frame_slot_part_address(slot, convention.stack_slot_size)];
+      }
+    } elif slot.valid and location.kind == AbiLocationKind.Stack {
+      if location.value_class == AbiValueClass.Float {
+        let opcode: string = float_move_opcode(param.type_name);
+        let scratch: string = floating_scratch_register(convention);
+        set lines = lines + ["  " + opcode + " " + machine_incoming_stack_offset(location.stack_offset) + ", " + scratch, "  " + opcode + " " + scratch + ", " + machine_frame_offset(slot.offset)];
+      } else {
+        let part: u64 = 0;
+        while part < location.stack_size and part < slot.size {
+          set lines = lines + ["  mov " + machine_incoming_stack_offset(location.stack_offset + part) + ", %r11", "  mov %r11, " + frame_slot_part_address(slot, part)];
+          set part = part + convention.stack_slot_size;
+        }
+      }
+    }
+    set param_index = param_index + 1;
+    set i = i + 1;
+  }
+  give lines;
+}
+
+proc select_instruction_line(module0: IrModule, function_name: string, frame: X86FrameLayout, target_layout: TargetLayout, function_convention: CallingConvention, instruction: IrInstruction) -> [string] {
   if instruction.kind == IrInstructionKind.Assign {
-    let lines: [string] = load_operand_lines(instruction, 0, "%rax");
-    give lines + store_result_lines(instruction, "%rax");
+    let lines: [string] = load_operand_lines(frame, instruction, 0, "%rax");
+    give lines + store_result_lines(frame, instruction, "%rax");
   }
   if instruction.kind == IrInstructionKind.Binary {
-    let lines: [string] = load_operand_lines(instruction, 0, "%rax") + load_operand_lines(instruction, 1, "%r10");
+    let lines: [string] = load_operand_lines(frame, instruction, 0, "%rax") + load_operand_lines(frame, instruction, 1, "%r10");
     if instruction.operator == "-" {
       set lines = lines + ["  sub %r10, %rax"];
     } elif instruction.operator == "*" {
@@ -165,7 +708,7 @@ proc select_instruction_line(module0: IrModule, function_name: string, instructi
     } else {
       set lines = lines + ["  add %r10, %rax"];
     }
-    give lines + store_result_lines(instruction, "%rax");
+    give lines + store_result_lines(frame, instruction, "%rax");
   }
   if instruction.kind == IrInstructionKind.Call {
     let callee: string = machine_call_target_text(instruction.text);
@@ -173,40 +716,127 @@ proc select_instruction_line(module0: IrModule, function_name: string, instructi
     if (instruction.operator == "variant-ctor" or instruction.operator == "method-dispatch") and len(metadata) == 0 {
       give invalid_backend_lines("canonical nominal call " + instruction.text);
     }
-    let lines: [string] = metadata + ["  call " + callee];
-    give lines + store_result_lines(instruction, "%rax");
+    let convention: CallingConvention = calling_convention_for_abi(module0.target.triple, module_function_abi(module0, callee));
+    let layouts: [TypeLayout] = call_argument_layouts(module0, target_layout, instruction);
+    let return_layout: TypeLayout = module_type_layout(module0, target_layout, module_function_return_type(module0, callee, instruction.dest.type_name));
+    let return_location: AbiValueLocation = abi_return_location(convention, return_layout);
+    let locations: [AbiValueLocation] = abi_argument_locations_for_return(convention, return_layout, layouts);
+    let lines: [string] = metadata + emit_call_argument_lines(frame, instruction, convention, locations);
+    if return_location.by_reference {
+      let return_slot: X86FrameSlot = frame_slot_by_name(frame, instruction.dest.name);
+      if not return_slot.valid {
+        give invalid_backend_lines("sret destination " + instruction.dest.name);
+      }
+      set lines = lines + ["  lea " + machine_frame_offset(return_slot.offset) + ", " + return_location.register_name];
+    }
+    if module_function_is_variadic(module0, callee) and convention.name == "sysv64" {
+      set lines = lines + ["  mov $" + string(floating_register_argument_count(locations)) + ", %al"];
+    }
+    set lines = lines + ["  call " + callee] + restore_call_stack_lines(convention, locations);
+    if return_location.by_reference or return_location.value_class == AbiValueClass.Ignore {
+      give lines;
+    }
+    set lines = lines + store_result_lines(frame, instruction, return_location.register_name);
+    if return_location.secondary_register_name != "" {
+      let return_slot: X86FrameSlot = frame_slot_by_name(frame, instruction.dest.name);
+      if return_slot.valid {
+        set lines = lines + ["  mov " + return_location.secondary_register_name + ", " + frame_slot_part_address(return_slot, convention.stack_slot_size)];
+      }
+    }
+    give lines;
   }
   if instruction.kind == IrInstructionKind.Aggregate {
-    let lines: [string] = ["  # aggregate-init kind=" + instruction.operator + " type=" + instruction.dest.type_name + " fields=" + string(len(instruction.args)), "  xor %rax, %rax"];
-    give lines + store_result_lines(instruction, "%rax");
+    let lines: [string] = ["  # aggregate-init kind=" + instruction.operator + " type=" + instruction.dest.type_name + " fields=" + string(len(instruction.args))];
+    let destination: X86FrameSlot = frame_slot_by_name(frame, instruction.dest.name);
+    if not destination.valid {
+      give invalid_backend_lines("aggregate frame slot " + instruction.dest.name);
+    }
+    if instruction.operator == "struct" {
+      let aggregate: AggregateLayout = module_nominal_aggregate_layout(module0, target_layout, instruction.dest.type_name);
+      let i: u64 = 0;
+      while i < len(instruction.args) and i < len(aggregate.field_offsets) {
+        let field_size: u64 = aggregate.field_sizes[i];
+        if field_size == 0 {
+          set i = i + 1;
+          continue;
+        }
+        if field_size <= target_layout.pointer_size {
+          set lines = lines + load_value_lines(frame, instruction.args[i], "%rax");
+          set lines = lines + [store_rax_width_line(frame_slot_part_address(destination, aggregate.field_offsets[i]), field_size)];
+        } else {
+          let part: u64 = 0;
+          while part < field_size {
+            set lines = lines + load_value_part_lines(frame, instruction.args[i], part, "%rax");
+            set lines = lines + ["  mov %rax, " + frame_slot_part_address(destination, aggregate.field_offsets[i] + part)];
+            set part = part + target_layout.pointer_size;
+          }
+        }
+        set i = i + 1;
+      }
+      give lines;
+    }
+    set lines = lines + ["  movq $" + string(len(instruction.args)) + ", " + machine_frame_offset(destination.offset)];
+    if destination.size >= target_layout.pointer_size * 2 {
+      set lines = lines + ["  movq $0, " + frame_slot_part_address(destination, target_layout.pointer_size)];
+    }
+    give lines;
   }
   if instruction.kind == IrInstructionKind.Discriminant {
-    let lines: [string] = load_operand_lines(instruction, 0, "%rax");
-    give lines + ["  mov 0(%rax), %eax"] + store_result_lines(instruction, "%rax");
+    let lines: [string] = load_operand_lines(frame, instruction, 0, "%rax");
+    give lines + ["  mov 0(%rax), %eax"] + store_result_lines(frame, instruction, "%rax");
   }
   if instruction.kind == IrInstructionKind.BorrowShared {
     let source_name: string = if len(instruction.args) > 0 { machine_operand_debug_name(instruction.args[0].name, instruction.args[0].place, instruction.args[0].text) } else { instruction.text };
     if len(instruction.args) != 1 or instruction.dest.kind != IrValueKind.Reference or instruction.dest.ref_mutable {
       give invalid_backend_lines("canonical borrow_shared " + instruction.dest.name);
     }
-    give ["  # borrow_shared " + instruction.dest.name + " <- &" + source_name] + store_result_lines(instruction, "%rax");
+    give ["  # borrow_shared " + instruction.dest.name + " <- &" + source_name];
   }
   if instruction.kind == IrInstructionKind.BorrowMut {
     let source_name: string = if len(instruction.args) > 0 { machine_operand_debug_name(instruction.args[0].name, instruction.args[0].place, instruction.args[0].text) } else { instruction.text };
     if len(instruction.args) != 1 or instruction.dest.kind != IrValueKind.Reference or not instruction.dest.ref_mutable {
       give invalid_backend_lines("canonical borrow_mut " + instruction.dest.name);
     }
-    give ["  # borrow_mut " + instruction.dest.name + " <- &mut " + source_name] + store_result_lines(instruction, "%rax");
+    give ["  # borrow_mut " + instruction.dest.name + " <- &mut " + source_name];
   }
   if instruction.kind == IrInstructionKind.Assert {
     let instruction_id: string = instruction.id as string;
     let assert_label: string = ".L_assert_ok_" + instruction_id;
-    let lines: [string] = load_operand_lines(instruction, 0, "%rax");
+    let lines: [string] = load_operand_lines(frame, instruction, 0, "%rax");
     let tail: [string] = ["  cmp $0, %rax", "  jne " + assert_label, "  ud2", assert_label + ":"];
     give lines + tail;
   }
   if instruction.kind == IrInstructionKind.ReturnValue {
-    give load_operand_lines(instruction, 0, "%rax");
+    let return_layout: TypeLayout = module_type_layout(module0, target_layout, if len(instruction.args) > 0 { instruction.args[0].type_name } else { "unit" });
+    let return_location: AbiValueLocation = abi_return_location(function_convention, return_layout);
+    if return_location.by_reference {
+      if len(instruction.args) == 0 {
+        give invalid_backend_lines("missing sret value");
+      }
+      let source_slot: X86FrameSlot = frame_slot_by_name(frame, instruction.args[0].name);
+      let sret_slot: X86FrameSlot = frame_slot_by_name(frame, "__sret");
+      if not source_slot.valid or not sret_slot.valid {
+        give invalid_backend_lines("missing sret frame slot");
+      }
+      let lines: [string] = ["  mov " + machine_frame_offset(sret_slot.offset) + ", %r11"];
+      let part: u64 = 0;
+      while part < return_layout.size {
+        set lines = lines + ["  mov " + frame_slot_part_address(source_slot, part) + ", %r10", "  mov %r10, " + string(part) + "(%r11)"];
+        set part = part + function_convention.stack_slot_size;
+      }
+      if function_convention.architecture == "x86_64" {
+        set lines = lines + ["  mov %r11, %rax"];
+      }
+      give lines;
+    }
+    if return_location.value_class == AbiValueClass.Ignore {
+      give [];
+    }
+    let lines: [string] = load_operand_lines(frame, instruction, 0, return_location.register_name);
+    if return_location.secondary_register_name != "" and len(instruction.args) > 0 {
+      set lines = lines + load_value_part_lines(frame, instruction.args[0], function_convention.stack_slot_size, return_location.secondary_register_name);
+    }
+    give lines;
   }
   if instruction.kind == IrInstructionKind.Return {
     give ["  jmp " + machine_return_label(function_name)];
@@ -215,7 +845,7 @@ proc select_instruction_line(module0: IrModule, function_name: string, instructi
     give ["  jmp " + machine_branch_label(function_name, instruction.target_block)];
   }
   if instruction.kind == IrInstructionKind.Branch {
-    let lines: [string] = load_operand_lines(instruction, 0, "%r10");
+    let lines: [string] = load_operand_lines(frame, instruction, 0, "%r10");
     let target_label: string = machine_branch_label(function_name, instruction.target_block);
     let else_label: string = machine_branch_label(function_name, instruction.else_block);
     let tail: [string] = ["  cmp $0, %r10", "  jne " + target_label, "  jmp " + else_label];
@@ -231,20 +861,25 @@ proc select_instruction_line(module0: IrModule, function_name: string, instructi
 }
 
 proc select_function_instructions_x86_64(module0: IrModule, fn0: IrFunction) -> [string] {
-  let lines: [string] = [machine_function_label(fn0.name)] + machine_prologue_x86_64();
+  let target_layout: TargetLayout = target_layout_for(module0.target.triple);
+  let convention: CallingConvention = calling_convention_for_abi(module0.target.triple, fn0.abi);
+  let frame: X86FrameLayout = frame_layout_for_function(module0, fn0, target_layout, convention);
+  let lines: [string] = [machine_function_label(fn0.name)]
+    + machine_prologue_x86_64_with_stack(frame.size)
+    + spill_function_parameters(frame, module0, fn0, target_layout, convention);
   let i: u64 = 0;
   while i < len(fn0.blocks) {
     let block = fn0.blocks[i];
     set lines = lines + [machine_block_label(fn0.name, block.id)];
     let j: u64 = 0;
     while j < len(block.instructions) {
-      set lines = lines + select_instruction_line(module0, fn0.name, block.instructions[j]);
+      set lines = lines + select_instruction_line(module0, fn0.name, frame, target_layout, convention, block.instructions[j]);
       set j = j + 1;
     }
-    set lines = lines + select_instruction_line(module0, fn0.name, block.terminator);
+    set lines = lines + select_instruction_line(module0, fn0.name, frame, target_layout, convention, block.terminator);
     set i = i + 1;
   }
-  set lines = lines + [machine_return_label(fn0.name) + ":"] + machine_epilogue_x86_64();
+  set lines = lines + [machine_return_label(fn0.name) + ":"] + machine_epilogue_x86_64_with_stack(frame.size);
   give lines;
 }
 
