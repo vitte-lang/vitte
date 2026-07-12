@@ -235,11 +235,22 @@ def analyze_parser(source: str, file: str) -> list[dict[str, Any]]:
             if match and match.group(1) not in TOP_LEVEL_KEYWORDS:
                 token = match.group(1)
                 start = offset + raw_line.index(token)
+                suggestions: list[dict[str, Any]] = []
+                helps = ["start a valid top-level declaration"]
+                if token == "pro":
+                    suggestions.append({
+                        "message": "replace `pro` with `proc`",
+                        "replacement": "proc",
+                        "span": span(file, source, start, start + len(token)),
+                        "applicability": "machine-applicable",
+                    })
+                    helps = ["did you mean `proc`?"]
                 diagnostics.append(diagnostic(
                     "PARSE_E_TOPLEVEL_DECL_EXPECTED", "parser", file, source, start, start + len(token),
                     f"unexpected top-level token `{token}`",
                     notes=["the bootstrap backend limitation must never mask this parser error"],
-                    helps=["start a valid top-level declaration"],
+                    helps=helps,
+                    suggestions=suggestions,
                 ))
         code_line = raw_line.split("//", 1)[0]
         brace_depth = max(0, brace_depth + code_line.count("{") - code_line.count("}"))

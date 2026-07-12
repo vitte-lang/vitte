@@ -34,7 +34,13 @@ def main() -> int:
             "end_column": end["column"],
         }
         if observed != expected:
-            raise SystemExit(f"{fixture}: expected {expected}, got {observed}")
+            expected_location = {key: value for key, value in expected.items() if key != "replacement"}
+            if observed != expected_location:
+                raise SystemExit(f"{fixture}: expected {expected_location}, got {observed}")
+        if "replacement" in expected:
+            replacements = [suggestion["replacement"] for suggestion in actual.get("suggestions", [])]
+            if replacements != [expected["replacement"]]:
+                raise SystemExit(f"{fixture}: expected replacement {expected['replacement']}, got {replacements}")
         if fixture.parent.name == "lexer":
             suggestions = actual.get("suggestions", [])
             if not suggestions or not isinstance(suggestions[0].get("replacement"), str):
