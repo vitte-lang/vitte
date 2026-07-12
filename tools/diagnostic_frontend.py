@@ -368,6 +368,19 @@ def analyze_parser(source: str, file: str) -> list[dict[str, Any]]:
                 "applicability": "machine-applicable",
             }],
         ))
+    for match in re.finditer(r":[ \t]*[A-Za-z_][A-Za-z0-9_<>\[\]]*[ \t]+([A-Za-z_][A-Za-z0-9_]*)[ \t]*:", masked):
+        parameter_start = match.start(1)
+        diagnostics.append(diagnostic(
+            "PARSE_E_MISSING_COMMA", "parser", file, source, parameter_start, match.end(1),
+            "missing comma before this parameter",
+            helps=["separate adjacent parameters with a comma"],
+            suggestions=[{
+                "message": "insert a comma before the parameter",
+                "replacement": ", ",
+                "span": span(file, source, parameter_start, parameter_start),
+                "applicability": "machine-applicable",
+            }],
+        ))
     return diagnostics
 
 
