@@ -265,7 +265,7 @@ def mask_non_code(source: str) -> str:
             continue
         elif state == "code" and source[index] == '"':
             state = "string"
-            output[index] = " "
+            output[index] = "S"
             index += 1
             continue
         if state == "line-comment":
@@ -392,6 +392,20 @@ def analyze_parser(source: str, file: str) -> list[dict[str, Any]]:
                 "replacement": "",
                 "span": span(file, source, semicolon, semicolon + 1),
                 "applicability": "machine-applicable",
+            }],
+        ))
+    for match in re.finditer(r"(=|[+\-*/])[ \t]*(?=;)", masked):
+        operator = match.start(1)
+        insertion = match.end()
+        diagnostics.append(diagnostic(
+            "PARSE_E_INCOMPLETE_EXPR", "parser", file, source, operator, operator + 1,
+            "operator has no right-hand operand",
+            helps=["complete the expression with the missing operand"],
+            suggestions=[{
+                "message": "insert an expression placeholder",
+                "replacement": "0",
+                "span": span(file, source, insertion, insertion),
+                "applicability": "has-placeholders",
             }],
         ))
     return diagnostics
