@@ -251,6 +251,49 @@ def nearest_keyword(token: str) -> str | None:
     return keyword if distance <= 2 else None
 
 
+def mask_non_code(source: str) -> str:
+    output = list(source)
+    index = 0
+    state = "code"
+    while index < len(source):
+        if state == "code" and source.startswith("//", index):
+            state = "line-comment"
+        elif state == "code" and source.startswith("/*", index):
+            state = "block-comment"
+            output[index:index + 2] = "  "
+            index += 2
+            continue
+        elif state == "code" and source[index] == '"':
+            state = "string"
+            output[index] = " "
+            index += 1
+            continue
+        if state == "line-comment":
+            if source[index] == "\n":
+                state = "code"
+            else:
+                output[index] = " "
+        elif state == "block-comment":
+            if source.startswith("*/", index):
+                output[index:index + 2] = "  "
+                index += 2
+                state = "code"
+                continue
+            if source[index] != "\n":
+                output[index] = " "
+        elif state == "string":
+            if source[index] == "\\" and index + 1 < len(source):
+                output[index:index + 2] = "  "
+                index += 2
+                continue
+            if source[index] == '"':
+                state = "code"
+            if source[index] != "\n":
+                output[index] = " "
+        index += 1
+    return "".join(output)
+
+
 def analyze_parser(source: str, file: str) -> list[dict[str, Any]]:
     diagnostics: list[dict[str, Any]] = []
     brace_depth = 0
@@ -283,6 +326,30 @@ def analyze_parser(source: str, file: str) -> list[dict[str, Any]]:
         code_line = raw_line.split("//", 1)[0]
         brace_depth = max(0, brace_depth + code_line.count("{") - code_line.count("}"))
         offset += len(raw_line)
+    masked = mask_non_code(source)
+    paren_stack: list[int] = []
+    for index, character in enumerate(masked):
+        if character == "(":
+            paren_stack.append(index)
+        elif character == ")" and paren_stack:
+            paren_stack.pop()
+    for opening in paren_stack:
+        line_end = masked.find("\n", opening)
+        if line_end < 0:
+            line_end = len(masked)
+        arrow = masked.find("->", opening, line_end)
+        insertion = arrow if arrow >= 0 else line_end
+        diagnostics.append(diagnostic(
+            "PARSE_E_MISSING_RPAREN", "parser", file, source, opening, opening + 1,
+            "opening parenthesis is not closed",
+            helps=["add the missing closing parenthesis"],
+            suggestions=[{
+                "message": "insert `)`",
+                "replacement": ")",
+                "span": span(file, source, insertion, insertion),
+                "applicability": "machine-applicable",
+            }],
+        ))
     return diagnostics
 
 
