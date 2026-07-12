@@ -110,6 +110,27 @@ proc test_non_exported_proc_stays_unresolved_across_modules() -> bool {
     and callee.external;
 }
 
+proc test_missing_module_reports_tested_paths() -> bool {
+  let root: string = "space demo/app;\nuse demo/missing as missing;\nproc main() -> int { give 0; }\n";
+  let artifacts: DriverModuleSetArtifacts = analyze_source_set([
+    driver_module_input("demo_app_missing.vit", root)
+  ]);
+  let diagnostics = artifacts.modules[0].analysis.diagnostics;
+  let i: u64 = 0;
+  while i < len(diagnostics) {
+    let diagnostic = diagnostics[i];
+    if diagnostic.code == "MOD_E_MODULE_NOT_FOUND" {
+      give not artifacts.valid
+        and not artifacts.modules[0].valid
+        and diagnostic.file == "demo_app_missing.vit"
+        and find(diagnostic.labels[1], "tested paths: ./demo/missing.vit") >= 0
+        and find(diagnostic.labels[1], "src/demo/missing/mod.vit") >= 0;
+    }
+    set i = i + 1;
+  }
+  give false;
+}
+
 proc test_invalid_visibility_is_rejected() -> bool {
   let source: string = "weird proc main() -> int { give 0; }\n";
   let fe: FrontendOutput = frontend_run("sema_invalid_visibility.vit", source);
@@ -340,6 +361,9 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if not test_non_exported_proc_stays_unresolved_across_modules() {
+    set failures = failures + 1;
+  }
+  if not test_missing_module_reports_tested_paths() {
     set failures = failures + 1;
   }
   if not test_invalid_visibility_is_rejected() {

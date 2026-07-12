@@ -2,15 +2,16 @@ space vitte/compiler/driver
 
 use vitte/compiler/frontend/pipeline.{ FrontendDiagnostic, FrontendOutput, frontend_run }
 use vitte/compiler/analysis/pipeline.{ AnalysisOutput, analysis_run_prechecked }
+use vitte/compiler/analysis/report.{ AnalysisDiagnostic, analysis_diagnostic_with_span, ast_span_length }
 use vitte/compiler/analysis/borrowck.{ BorrowCheckResult, borrow_check_hir_mir }
-use vitte/compiler/analysis/sema.{ SemaModuleImport, SemaModuleSummary, SemaResult, imported_symbols_from_summary, run_sema_hir, run_sema_hir_with_imports, summarize_module_hir }
+use vitte/compiler/analysis/sema.{ SemaModuleImport, SemaModuleSummary, SemaResult, imported_symbols_from_summary, module_import_from_use, run_sema_hir, run_sema_hir_with_imports, summarize_module_hir }
 use vitte/compiler/analysis/sema/scopes.{ SemaSymbol, SemaSymbolKind, SemaSymbolState, SemaVisibility, sema_symbol_full }
 use vitte/compiler/analysis/typeck/api.{ run_production_typeck_hir }
 use vitte/compiler/analysis/typeck/errors.{ TypeckResult }
 use vitte/compiler/diagnostics/diagnostic.{ Diagnostic, DiagnosticPhase, DiagnosticReport, DiagnosticRenderConfig, DiagnosticStyle, SourceSpan, default_render_config, diagnostic_from_surface, diagnostic_report, diagnostic_report_empty, phase_name, render_report, span_range }
 use vitte/compiler/diagnostics/json.{ json_report, json_report_envelope, json_report_envelope_with_canonical_context }
 use vitte/compiler/infrastructure/incremental.{ IncrementalGraph, build_analysis_graph }
-use vitte/compiler/middle/hir.{ HirUnit, hir_module_empty }
+use vitte/compiler/middle/hir.{ HirItemKind, HirUnit, hir_module_empty }
 use vitte/compiler/middle/hir/lower_ast.{ lower_ast_to_hir }
 use vitte/compiler/middle/hir/validate.{ validate_hir }
 use vitte/compiler/middle/pipeline.{ MiddleOutput, middle_run_frontend_for_target }
@@ -26,6 +27,8 @@ use vitte/compiler/backend/native_bridge.{ NativeBridgeResult, emit_native_objec
 use vitte/compiler/backend/pipeline.{ BackendPipelineResult, compile_to_valid_ir_with_profile_and_packaging }
 use vitte/compiler/backends/llvm_bindings.{ LlvmDiagnosticLevel, LlvmToolchainPaths, default_llvm_toolchain_paths }
 use vitte/compiler/driver/exit_status.{ DriverExitStatus }
+use vitte/compiler/frontend/ast/node.{ AstSpan, ast_span_empty }
+use vitte/compiler/infrastructure/session/files.{ cache_source, offset_lookup, source_manager_empty, source_manager_file_id }
 
 pick DriverDiagnosticLevel {
     Note,
@@ -890,6 +893,65 @@ proc imported_symbols_for_summary(summary: SemaModuleSummary, summaries: [SemaMo
     give imported;
 }
 
+proc module_import_span(hir: HirUnit, module_path: string) -> AstSpan {
+    let i: u64 = 0;
+    while i < len(hir.module.items) {
+        let item = hir.module.items[i];
+        if item.kind == HirItemKind.Use {
+            let import0: SemaModuleImport = module_import_from_use(item.name);
+            if import0.valid and import0.module_path == module_path {
+                give item.span;
+            }
+        }
+        set i = i + 1;
+    }
+    give ast_span_empty();
+}
+
+proc module_tested_paths(module_path: string) -> string {
+    let relative: string = replace(module_path, ".", "/");
+    give "./" + relative + ".vit, ./" + relative + "/mod.vit, src/" + relative + ".vit, src/" + relative + "/mod.vit";
+}
+
+proc missing_module_diagnostics(frontend: FrontendOutput, hir: HirUnit, summary: SemaModuleSummary, summaries: [SemaModuleSummary]) -> [AnalysisDiagnostic] {
+    let diagnostics: [AnalysisDiagnostic] = [];
+    let manager = cache_source(source_manager_empty(), frontend.source_path, frontend.source_text, true);
+    let file_id: u64 = source_manager_file_id(manager, frontend.source_path);
+    let i: u64 = 0;
+
+    while i < len(summary.imports) {
+        let import0: SemaModuleImport = summary.imports[i];
+        if module_summary_index(summaries, import0.module_path) < 0 {
+            let span: AstSpan = module_import_span(hir, import0.module_path);
+            let length: u64 = ast_span_length(span.start_column, span.end_column);
+            let span_start: u64 = offset_lookup(manager, file_id, span.start_line, span.start_column);
+            let diagnostic: AnalysisDiagnostic = analysis_diagnostic_with_span(
+                "module_resolution",
+                "MOD_E_MODULE_NOT_FOUND",
+                "error",
+                "module `" + import0.module_path + "` not found",
+                [
+                    "requested by module `" + summary.module_path + "`",
+                    "tested paths: " + module_tested_paths(import0.module_path)
+                ],
+                "check the module path or add the missing module to the source set",
+                span.start_line,
+                span.start_column,
+                length,
+                true,
+                frontend.source_path,
+                file_id,
+                span_start,
+                span_start + length
+            );
+            set diagnostics = diagnostics + [diagnostic];
+        }
+        set i = i + 1;
+    }
+
+    give diagnostics;
+}
+
 proc analyze_source_set(inputs: [DriverModuleInput]) -> DriverModuleSetArtifacts {
     let frontends: [FrontendOutput] = [];
     let hirs: [HirUnit] = [];
@@ -920,6 +982,12 @@ proc analyze_source_set(inputs: [DriverModuleInput]) -> DriverModuleSetArtifacts
         let mir0: MirUnit = lower_hir_to_mir(typeck_result.hir);
         let mir1: MirUnit = validate_mir(mir0);
         let analysis: AnalysisOutput = analysis_run_prechecked(frontends[i], sema_result, typeck_result, mir1);
+        let module_diagnostics: [AnalysisDiagnostic] = missing_module_diagnostics(frontends[i], hirs[i], summary, summaries);
+        if len(module_diagnostics) > 0 {
+            set analysis.diagnostics = analysis.diagnostics + module_diagnostics;
+            set analysis.sema_ok = false;
+            set analysis.valid = false;
+        }
         let artifact: DriverModuleArtifact = DriverModuleArtifact {
             source_path: inputs[i].source_path,
             module_path: summary.module_path,
