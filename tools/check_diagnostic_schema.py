@@ -16,7 +16,7 @@ FIXTURES = ROOT / "tests/diagnostics/schema"
 INVALID_FIXTURES = ROOT / "tests/diagnostics/schema-invalid"
 CODE_PATTERN = re.compile(r"^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$")
 REQUIRED = {
-    "schema", "schema_version", "code", "severity", "phase", "message",
+    "schema", "schema_version", "code", "severity", "phase", "message_key", "message",
     "primary_span", "labels", "notes", "helps", "suggestions",
 }
 
@@ -36,6 +36,10 @@ def validate_fixture(value: object, path: Path) -> None:
         raise ValueError(f"{path}: invalid schema identity")
     if not isinstance(value["code"], str) or not CODE_PATTERN.fullmatch(value["code"]):
         raise ValueError(f"{path}: diagnostic code is missing or malformed")
+    if not isinstance(value["message_key"], str) or not CODE_PATTERN.fullmatch(value["message_key"]):
+        raise ValueError(f"{path}: diagnostic message must reference a Fluent catalog key")
+    if value["message_key"] != value["code"]:
+        raise ValueError(f"{path}: message_key must equal the diagnostic code")
     if not isinstance(value["labels"], list) or not value["labels"]:
         raise ValueError(f"{path}: at least one label is required")
 
