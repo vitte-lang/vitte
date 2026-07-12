@@ -22,6 +22,8 @@ def main() -> int:
         if len(diagnostics) != 1:
             raise SystemExit(f"{fixture}: expected one diagnostic, got {len(diagnostics)}")
         actual = diagnostics[0]
+        if actual["code"] == "E_BOOTSTRAP_NATIVE_SUBSET":
+            raise SystemExit(f"{fixture}: source error was masked by bootstrap subset diagnostic")
         start = actual["primary_span"]["start"]
         end = actual["primary_span"]["end"]
         observed = {

@@ -218,5 +218,34 @@ def analyze_lexer(source: str, file: str) -> list[dict[str, Any]]:
     return diagnostics
 
 
+TOP_LEVEL_KEYWORDS = {
+    "space", "proc", "const", "form", "pick", "use", "import", "export",
+    "share", "intrinsic", "query", "diagnostic", "compiler", "pass", "backend",
+}
+
+
+def analyze_parser(source: str, file: str) -> list[dict[str, Any]]:
+    diagnostics: list[dict[str, Any]] = []
+    brace_depth = 0
+    offset = 0
+    for raw_line in source.splitlines(keepends=True):
+        line = raw_line.strip()
+        if line and not line.startswith(("//", "/*", "*", "*/")) and brace_depth == 0:
+            match = re.match(r"([A-Za-z_][A-Za-z0-9_]*)", line)
+            if match and match.group(1) not in TOP_LEVEL_KEYWORDS:
+                token = match.group(1)
+                start = offset + raw_line.index(token)
+                diagnostics.append(diagnostic(
+                    "PARSE_E_TOPLEVEL_DECL_EXPECTED", "parser", file, source, start, start + len(token),
+                    f"unexpected top-level token `{token}`",
+                    notes=["the bootstrap backend limitation must never mask this parser error"],
+                    helps=["start a valid top-level declaration"],
+                ))
+        code_line = raw_line.split("//", 1)[0]
+        brace_depth = max(0, brace_depth + code_line.count("{") - code_line.count("}"))
+        offset += len(raw_line)
+    return diagnostics
+
+
 def analyze(source: str, file: str) -> list[dict[str, Any]]:
-    return analyze_lexer(source, file)
+    return analyze_lexer(source, file) + analyze_parser(source, file)
