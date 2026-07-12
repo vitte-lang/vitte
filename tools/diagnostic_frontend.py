@@ -142,6 +142,12 @@ def analyze_lexer(source: str, file: str) -> list[dict[str, Any]]:
             "string literal is not terminated",
             helps=["add the missing closing quote at the end of the string"],
         ))
+    for match in re.finditer(r"\b(?:0[xob]_|[0-9][0-9_]*[A-Za-z][A-Za-z0-9_]*)\b", source):
+        diagnostics.append(diagnostic(
+            "LEX_E_INVALID_NUMBER", "lexer", file, source, match.start(), match.end(),
+            f"invalid number literal `{match.group(0)}`",
+            helps=["separate the number from the identifier or correct the numeric literal"],
+        ))
     return diagnostics
 
 
