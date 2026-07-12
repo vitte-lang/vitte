@@ -296,11 +296,32 @@ def mask_non_code(source: str) -> str:
 
 def analyze_parser(source: str, file: str) -> list[dict[str, Any]]:
     diagnostics: list[dict[str, Any]] = []
+    declarations: dict[str, tuple[int, int]] = {}
     brace_depth = 0
     offset = 0
     for raw_line in source.splitlines(keepends=True):
         line = raw_line.strip()
         if line and not line.startswith(("//", "/*", "*", "*/")) and brace_depth == 0:
+            declaration = re.match(r"(proc|const|form|pick)[ \t]+([A-Za-z_][A-Za-z0-9_]*)", line)
+            if declaration:
+                name = declaration.group(2)
+                name_start = offset + raw_line.index(name, raw_line.index(declaration.group(1)) + len(declaration.group(1)))
+                if name in declarations:
+                    first_start, first_end = declarations[name]
+                    duplicate = diagnostic(
+                        "SEMA_E_DUPLICATE_ITEM", "sema", file, source, name_start, name_start + len(name),
+                        f"duplicate declaration of `{name}`",
+                        notes=["each top-level item name must be unique in its module"],
+                        helps=["rename or remove one of the declarations"],
+                    )
+                    duplicate["labels"].append({
+                        "kind": "secondary",
+                        "message": "first declaration is here",
+                        "span": span(file, source, first_start, first_end),
+                    })
+                    diagnostics.append(duplicate)
+                else:
+                    declarations[name] = (name_start, name_start + len(name))
             proc_name = re.match(r"proc[ \t]+([^ \t(]+)", line)
             if proc_name and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", proc_name.group(1)) is None:
                 invalid_name = proc_name.group(1)
