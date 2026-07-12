@@ -148,6 +148,12 @@ def analyze_lexer(source: str, file: str) -> list[dict[str, Any]]:
             f"invalid number literal `{match.group(0)}`",
             helps=["separate the number from the identifier or correct the numeric literal"],
         ))
+    for match in re.finditer(r"\b[A-Za-z_][A-Za-z0-9_]{128,}\b", source):
+        diagnostics.append(diagnostic(
+            "LEX_E_TOKEN_TOO_LARGE", "lexer", file, source, match.start(), match.end(),
+            f"token length {len(match.group(0))} exceeds the 128-byte lexer limit",
+            helps=["split or shorten the identifier"],
+        ))
     return diagnostics
 
 
