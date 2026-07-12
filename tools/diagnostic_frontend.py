@@ -310,6 +310,21 @@ def analyze_parser(source: str, file: str) -> list[dict[str, Any]]:
                     "procedure name must be an identifier",
                     helps=["use an identifier such as `main` after `proc`"],
                 ))
+            missing_return = re.match(r"proc[ \t]+[A-Za-z_][A-Za-z0-9_]*\([^)]*\)[ \t]*(\{)", line)
+            if missing_return:
+                brace_in_raw = raw_line.index("{", raw_line.index("proc"))
+                insertion = offset + brace_in_raw
+                diagnostics.append(diagnostic(
+                    "PARSE_E_TYPE_EXPECTED", "parser", file, source, insertion, insertion + 1,
+                    "procedure return type is missing",
+                    helps=["add `->` followed by the procedure return type"],
+                    suggestions=[{
+                        "message": "insert an integer return type",
+                        "replacement": "-> int ",
+                        "span": span(file, source, insertion, insertion),
+                        "applicability": "maybe-incorrect",
+                    }],
+                ))
             match = re.match(r"([A-Za-z_][A-Za-z0-9_]*)", line)
             if match and match.group(1) not in TOP_LEVEL_KEYWORDS:
                 token = match.group(1)
