@@ -2486,6 +2486,7 @@ detect_professional_diagnostic() {
                         }
                     }
                     method_provider_arity[provider_key] = bound_param_count
+                    method_provider_return[provider_key] = return_type
                     for (i = bound_param_start; i <= param_count; i++) {
                         bound_param_index = i - bound_param_start + 1
                         method_provider_param[provider_key SUBSEP bound_param_index] = method_param_type(params[i])
@@ -3541,6 +3542,33 @@ detect_professional_diagnostic() {
                                     "argument " method_arg_index " is passed to bound method " receiver_type "." method_name,
                                     "pass a value of type " expected_arg_type " or change the method signature")
                             }
+                            resolved_method_return = method_provider_return[provider_key]
+                            method_call_start = method_call_offset + RSTART
+                            method_binding_prefix = trim(substr(source_code_line[method_call_line], 1, method_call_start - 1))
+                            if (resolved_method_return != "" && method_binding_prefix ~ /^let[ \t]+[A-Za-z_][A-Za-z0-9_]*([ \t]*:[ \t]*[A-Za-z_][A-Za-z0-9_]*)?[ \t]*=[ \t]*$/) {
+                                method_binding_name = method_binding_prefix
+                                sub(/^let[ \t]+/, "", method_binding_name)
+                                sub(/[ \t]*[:=].*$/, "", method_binding_name)
+                                method_binding_type = ""
+                                if (method_binding_prefix ~ /:/) {
+                                    method_binding_type = method_binding_prefix
+                                    sub(/^[^:]*:[ \t]*/, "", method_binding_type)
+                                    sub(/[ \t]*=.*/, "", method_binding_type)
+                                }
+                                if (method_binding_type != "" && !seed_types_compatible(method_binding_type, resolved_method_return)) {
+                                    raw = source_line[method_call_line]
+                                    col = method_call_start
+                                    emit("TYPECK_E_ASSIGN_MISMATCH", "error", "typeck",
+                                        "cannot initialize " method_binding_name " of type " method_binding_type " from method return type " resolved_method_return,
+                                        method_call_line, col, col + length(method_call_text) - 1, raw,
+                                        "expected " method_binding_type ", found " resolved_method_return,
+                                        "bound method " receiver_type "." method_name " declares return type " resolved_method_return,
+                                        "change the binding type or the method return type")
+                                }
+                                if (method_binding_type == "") {
+                                    remember_decl(method_binding_name, resolved_method_return, method_call_line, index(source_line[method_call_line], method_binding_name))
+                                }
+                            }
                         }
                     }
                     method_call_advance = RSTART + RLENGTH - 1
@@ -4112,7 +4140,15 @@ render_professional_diagnostic_surface_json() {
         docs_json="$(json_escape "docs://compiler/sema")"
         root_json="$(json_escape "semantic validation failed")"
     elif [ "$phase" = "typeck" ]; then
-        if [ "$code" = "TYPECK_E_RETURN_MISMATCH" ]; then
+        if [ "$code" = "TYPECK_E_ASSIGN_MISMATCH" ]; then
+            rule_json="$(json_escape "assignment type compatibility")"
+            explanation_json="$(json_escape "The initialized or assigned expression type does not satisfy the target binding type.")"
+            technical_json="$(json_escape "Detected after expression inference while validating a local binding contract.")"
+            docs_json="$(json_escape "docs://language/type-system/assignment-compatibility")"
+            root_json="$(json_escape "assignment target type and expression type are incompatible")"
+            cause_a_json="$(json_escape "the binding establishes the required target type")"
+            cause_b_json="$(json_escape "the assigned expression infers an incompatible type")"
+        elif [ "$code" = "TYPECK_E_RETURN_MISMATCH" ]; then
             rule_json="$(json_escape "procedure return compatibility")"
             explanation_json="$(json_escape "The returned expression type does not satisfy the procedure return type declared in its signature.")"
             technical_json="$(json_escape "Detected after expression inference while validating the active procedure return contract.")"

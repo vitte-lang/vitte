@@ -623,6 +623,60 @@ def generated_cases() -> list[Case]:
         "TYPECK_E_ARGUMENT_MISMATCH",
         "function argument compatibility",
     ))
+    cases.append(Case(
+        "bound_method_return_valid",
+        (
+            "space tests/typeck/differential/bound_method_return_valid\n\n"
+            "form Point { x: int }\n"
+            "trait Show { proc show(self: Self) -> string; }\n"
+            "impl Show for Point { proc show(self: Self) -> string { give \"point\" } }\n"
+            "proc main() -> int {\n"
+            "  let point = Point { x: 1 }\n"
+            "  let text: string = point.show()\n"
+            "  give 0\n"
+            "}\n"
+        ),
+        True,
+    ))
+    cases.append(Case(
+        "bound_method_return_mismatch",
+        (
+            "space tests/typeck/differential/bound_method_return_mismatch\n\n"
+            "form Point { x: int }\n"
+            "trait Show { proc show(self: Self) -> string; }\n"
+            "impl Show for Point { proc show(self: Self) -> string { give \"point\" } }\n"
+            "proc main() -> int {\n"
+            "  let point = Point { x: 1 }\n"
+            "  let visible: bool = point.show()\n"
+            "  give 0\n"
+            "}\n"
+        ),
+        False,
+        "TYPECK_E_ASSIGN_MISMATCH",
+        "assignment type compatibility",
+    ))
+    cases.append(Case(
+        "bound_method_return_inference",
+        (
+            "space tests/typeck/differential/bound_method_return_inference\n\n"
+            "form Point { x: int }\n"
+            "form Sink { id: int }\n"
+            "trait Show { proc show(self: Self) -> string; }\n"
+            "trait Accept { proc accept(self: Self, value: int) -> int; }\n"
+            "impl Show for Point { proc show(self: Self) -> string { give \"point\" } }\n"
+            "impl Accept for Sink { proc accept(self: Self, value: int) -> int { give value } }\n"
+            "proc main() -> int {\n"
+            "  let point = Point { x: 1 }\n"
+            "  let sink = Sink { id: 1 }\n"
+            "  let text = point.show()\n"
+            "  let result = sink.accept(text)\n"
+            "  give 0\n"
+            "}\n"
+        ),
+        False,
+        "TYPECK_E_ARGUMENT_MISMATCH",
+        "function argument compatibility",
+    ))
     return cases
 
 
@@ -791,6 +845,7 @@ def main() -> int:
             "method dispatch requires one visible impl provider for the resolved receiver type",
             "bound method arity excludes the receiver Self parameter from explicit arguments",
             "bound method arguments satisfy explicit parameter types after Self binding",
+            "bound method returns satisfy annotated bindings and propagate into inferred local bindings",
             "every rejected type-system case carries a two-step cause chain",
             "stage binaries agree on normalized typeck results",
             "repeated checks are deterministic",
