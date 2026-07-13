@@ -3129,12 +3129,13 @@ detect_professional_diagnostic() {
         if (current_proc != "" && line ~ /(^|[{;][ \t]*)give[ \t]+/) {
             returned = line
             sub(/^.*give[ \t]+/, "", returned)
+            returned_token = trim(returned)
+            sub(/[ \t;}]+$/, "", returned_token)
             returned_type = primitive_literal_type(returned)
+            if (returned_type == "" && returned_token ~ /^[A-Za-z_][A-Za-z0-9_]*$/ && (returned_token in decl_type)) returned_type = decl_type[returned_token]
             if (returned ~ /[ \t]+as[ \t]+/) returned_type = ""
-            if (returned_type != "" && !primitive_types_compatible(current_return_type, returned_type)) {
-                returned_token = trim(returned)
-                sub(/[ \t;}]+$/, "", returned_token)
-                if (returned_type == "string") {
+            if (returned_type != "" && !seed_types_compatible(current_return_type, returned_type)) {
+                if (returned_token ~ /^"/) {
                     col = index(raw, "\"")
                     returned_tail = substr(raw, col + 1)
                     returned_end = index(returned_tail, "\"")

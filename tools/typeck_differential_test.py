@@ -128,6 +128,33 @@ def generated_cases() -> list[Case]:
             "procedure return compatibility",
         ))
 
+    cases.append(Case(
+        "binding_return_string_valid",
+        (
+            "space tests/typeck/differential/binding_return_string_valid\n\n"
+            "proc value() -> string {\n"
+            "  let text = \"ready\"\n"
+            "  give text\n"
+            "}\n"
+            "proc main() -> int { give 0 }\n"
+        ),
+        True,
+    ))
+    cases.append(Case(
+        "binding_return_mismatch",
+        (
+            "space tests/typeck/differential/binding_return_mismatch\n\n"
+            "proc value() -> int {\n"
+            "  let text = \"wrong\"\n"
+            "  give text\n"
+            "}\n"
+            "proc main() -> int { give 0 }\n"
+        ),
+        False,
+        "TYPECK_E_RETURN_MISMATCH",
+        "procedure return compatibility",
+    ))
+
     for parameter_type, valid_literal in return_literals.items():
         cases.append(Case(
             f"argument_identity_{parameter_type}",
@@ -916,6 +943,7 @@ def main() -> int:
             "bound method arguments satisfy explicit parameter types after Self binding",
             "bound method returns satisfy annotated bindings and propagate into inferred local bindings",
             "local procedure and generic arguments resolve binding types before compatibility and trait-bound checks",
+            "procedure returns resolve local binding types before directional compatibility checks",
             "every rejected type-system case carries a two-step cause chain",
             "stage binaries agree on normalized typeck results",
             "repeated checks are deterministic",
