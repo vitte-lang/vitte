@@ -2425,7 +2425,7 @@ detect_professional_diagnostic() {
             "trait method " active_nominal_owner "." method_name " declared here: " file ":" trait_method_line[key],
             "add method " method_name " with the signature declared by trait " active_nominal_owner)
     }
-    function index_nominal_methods(kind, owner, target, body, start_line,    rest, offset, matched, proc_rel, signature_start, signature, method_name, open_col, close_col, params_text, param_count, return_tail, return_type, method_line, prefix, key, i, expected_type, actual_type, advance, scan_id, required_name, provider_key, provider_seen_key, bound_param_count, first_param_type, params) {
+    function index_nominal_methods(kind, owner, target, body, start_line,    rest, offset, matched, proc_rel, signature_start, signature, method_name, open_col, close_col, params_text, param_count, return_tail, return_type, method_line, prefix, key, i, expected_type, actual_type, advance, scan_id, required_name, provider_key, provider_seen_key, bound_param_count, bound_param_start, bound_param_index, first_param_type, params) {
         rest = body
         offset = 0
         scan_id = 0
@@ -2478,11 +2478,19 @@ detect_professional_diagnostic() {
                     if (method_provider_text[provider_key] != "") method_provider_text[provider_key] = method_provider_text[provider_key] ", "
                     method_provider_text[provider_key] = method_provider_text[provider_key] owner
                     bound_param_count = param_count
+                    bound_param_start = 1
                     if (param_count > 0) {
                         first_param_type = method_param_type(params[1])
-                        if (first_param_type == "Self" || first_param_type == target) bound_param_count--
+                        if (first_param_type == "Self" || first_param_type == target) {
+                            bound_param_count--
+                            bound_param_start = 2
+                        }
                     }
                     method_provider_arity[provider_key] = bound_param_count
+                    for (i = bound_param_start; i <= param_count; i++) {
+                        bound_param_index = i - bound_param_start + 1
+                        method_provider_param[provider_key SUBSEP bound_param_index] = method_param_type(params[i])
+                    }
                 }
                 if (trait_method_known[key]) {
                     if (param_count != trait_method_param_count[key]) {
@@ -3519,6 +3527,21 @@ detect_professional_diagnostic() {
                                     "the receiver binds the Self parameter before call arity is checked",
                                     "pass exactly " method_provider_arity[provider_key] " explicit arguments to " method_name)
                             }
+                            for (method_arg_index = 1; method_arg_index <= method_call_arg_count; method_arg_index++) {
+                                expected_arg_type = method_provider_param[provider_key SUBSEP method_arg_index]
+                                actual_arg = trim(method_call_arg_parts[method_arg_index])
+                                actual_arg_type = primitive_literal_type(actual_arg)
+                                if (actual_arg_type == "" && (actual_arg in decl_type)) actual_arg_type = decl_type[actual_arg]
+                                if (expected_arg_type == "" || actual_arg_type == "" || seed_types_compatible(expected_arg_type, actual_arg_type)) continue
+                                raw = source_line[method_call_line]
+                                col = method_call_offset + method_call_open + index(method_call_args, actual_arg)
+                                emit("TYPECK_E_ARGUMENT_MISMATCH", "error", "typeck",
+                                    "argument type " actual_arg_type " does not match method parameter type " expected_arg_type,
+                                    method_call_line, col, col + length(actual_arg), raw,
+                                    "expected " expected_arg_type ", found " actual_arg_type,
+                                    "argument " method_arg_index " is passed to bound method " receiver_type "." method_name,
+                                    "pass a value of type " expected_arg_type " or change the method signature")
+                            }
                         }
                     }
                     method_call_advance = RSTART + RLENGTH - 1
@@ -4100,8 +4123,8 @@ render_professional_diagnostic_surface_json() {
             cause_b_json="$(json_escape "the returned expression infers an incompatible type")"
         elif [ "$code" = "TYPECK_E_ARGUMENT_MISMATCH" ]; then
             rule_json="$(json_escape "function argument compatibility")"
-            explanation_json="$(json_escape "The argument expression type does not satisfy the corresponding parameter type in the called procedure signature.")"
-            technical_json="$(json_escape "Detected after argument inference while validating a local procedure call contract.")"
+            explanation_json="$(json_escape "The argument expression type does not satisfy the corresponding parameter type in the resolved callable signature.")"
+            technical_json="$(json_escape "Detected after argument inference while validating a local procedure or uniquely bound method call contract.")"
             docs_json="$(json_escape "docs://language/type-system/call-arguments")"
             root_json="$(json_escape "call argument type and parameter type are incompatible")"
             cause_a_json="$(json_escape "the callee signature establishes the required parameter type")"

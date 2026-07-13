@@ -606,6 +606,23 @@ def generated_cases() -> list[Case]:
         "TYPECK_E_CALL_ARITY",
         "function call arity",
     ))
+    cases.append(Case(
+        "bound_method_argument_mismatch",
+        (
+            "space tests/typeck/differential/bound_method_argument_mismatch\n\n"
+            "form Point { x: int }\n"
+            "trait Show { proc show(self: Self, level: int) -> string; }\n"
+            "impl Show for Point { proc show(self: Self, level: int) -> string { give \"point\" } }\n"
+            "proc main() -> int {\n"
+            "  let point = Point { x: 1 }\n"
+            "  let text = point.show(\"high\")\n"
+            "  give 0\n"
+            "}\n"
+        ),
+        False,
+        "TYPECK_E_ARGUMENT_MISMATCH",
+        "function argument compatibility",
+    ))
     return cases
 
 
@@ -773,6 +790,7 @@ def main() -> int:
             "local impl trait names resolve after complete source-order-independent declaration indexing",
             "method dispatch requires one visible impl provider for the resolved receiver type",
             "bound method arity excludes the receiver Self parameter from explicit arguments",
+            "bound method arguments satisfy explicit parameter types after Self binding",
             "every rejected type-system case carries a two-step cause chain",
             "stage binaries agree on normalized typeck results",
             "repeated checks are deterministic",
