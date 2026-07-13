@@ -295,6 +295,29 @@ def generated_cases() -> list[Case]:
         "TYPECK_E_CONSTRAINT_CYCLE",
         "generic constraint acyclicity",
     ))
+    cases.append(Case(
+        "numeric_cast_explicit",
+        (
+            "space tests/typeck/differential/numeric_cast_explicit\n\n"
+            "proc main() -> int {\n"
+            "  let value: i8 = 7 as i8\n"
+            "  give value as int\n"
+            "}\n"
+        ),
+        True,
+    ))
+    cases.append(Case(
+        "invalid_scalar_cast",
+        (
+            "space tests/typeck/differential/invalid_scalar_cast\n\n"
+            "proc main() -> int {\n"
+            "  give \"oops\" as int\n"
+            "}\n"
+        ),
+        False,
+        "TYPECK_E_INVALID_CAST",
+        "explicit cast validity",
+    ))
     return cases
 
 
@@ -454,6 +477,7 @@ def main() -> int:
             "locally resolved generic types satisfy declared trait bounds",
             "duplicate local trait implementations violate coherence",
             "generic parameter constraints form an acyclic dependency graph",
+            "explicit literal casts stay within supported scalar representations",
             "every rejected type-system case carries a two-step cause chain",
             "stage binaries agree on normalized typeck results",
             "repeated checks are deterministic",

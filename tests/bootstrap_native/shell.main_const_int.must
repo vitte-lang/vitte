@@ -2198,6 +2198,9 @@ detect_professional_diagnostic() {
         if ((expected == "int" || expected == "i32") && found == "int") return 1
         return expected == found
     }
+    function seed_type_is_numeric(ty) {
+        return ty ~ /^(i8|i16|i32|i64|i128|isize|int|u8|u16|u32|u64|u128|usize|f32|f64|float)$/
+    }
     function matching_call_paren(s, open_col,    i, ch, depth) {
         depth = 0
         for (i = open_col + 1; i <= length(s); i++) {
@@ -2779,6 +2782,7 @@ detect_professional_diagnostic() {
             returned = line
             sub(/^.*give[ \t]+/, "", returned)
             returned_type = primitive_literal_type(returned)
+            if (returned ~ /[ \t]+as[ \t]+/) returned_type = ""
             if (returned_type != "" && !primitive_types_compatible(current_return_type, returned_type)) {
                 returned_token = trim(returned)
                 sub(/[ \t;}]+$/, "", returned_token)
@@ -2878,6 +2882,25 @@ detect_professional_diagnostic() {
                 "control-flow construct must be followed by a block",
                 syntax_note("{", first_token(substr(raw, col + length(kw))), kw " body", "none"),
                 "add a block delimited by braces after this construct")
+        }
+
+        if (match(code_line, /(S|true|false|-?[0-9]+)[ \t]+as[ \t]+(i8|i16|i32|i64|i128|isize|int|u8|u16|u32|u64|u128|usize|f32|f64|float|string|bool)/)) {
+            cast_text = substr(code_line, RSTART, RLENGTH)
+            cast_source = cast_text
+            sub(/[ \t]+as[ \t]+.*$/, "", cast_source)
+            cast_target = cast_text
+            sub(/^.*[ \t]+as[ \t]+/, "", cast_target)
+            cast_source_type = primitive_literal_type(cast_source)
+            if (cast_source_type != "" && cast_source_type != cast_target && !(seed_type_is_numeric(cast_source_type) && seed_type_is_numeric(cast_target))) {
+                cast_as_offset = index(cast_text, " as ")
+                col = RSTART + (cast_as_offset > 0 ? cast_as_offset : 1) - 1
+                emit("TYPECK_E_INVALID_CAST", "error", "typeck",
+                    "explicit cast from " cast_source_type " to " cast_target " is not allowed",
+                    FNR, col, col + 2, raw,
+                    "target type " cast_target " is incompatible with source type " cast_source_type,
+                    "explicit casts are limited to supported scalar representation conversions",
+                    "use a conversion procedure or change the source or target type")
+            }
         }
 
         if (line ~ /^[ \t]*let[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*:[ \t]*(i32|int|string|bool)[ \t]*=/) {
@@ -3644,6 +3667,14 @@ render_professional_diagnostic_surface_json() {
             root_json="$(json_escape "generic parameter bounds form a dependency cycle")"
             cause_a_json="$(json_escape "constraint resolution starts from a generic parameter")"
             cause_b_json="$(json_escape "following direct bounds reaches that parameter again")"
+        elif [ "$code" = "TYPECK_E_INVALID_CAST" ]; then
+            rule_json="$(json_escape "explicit cast validity")"
+            explanation_json="$(json_escape "The source and target types do not form a supported explicit scalar conversion.")"
+            technical_json="$(json_escape "Detected after inferring the literal source type and resolving the written cast target.")"
+            docs_json="$(json_escape "docs://language/type-system/casts")"
+            root_json="$(json_escape "explicit cast crosses unsupported type representations")"
+            cause_a_json="$(json_escape "the cast target establishes the requested representation")"
+            cause_b_json="$(json_escape "the source literal has an incompatible representation")"
         else
             rule_json="$(json_escape "type checking")"
             explanation_json="$(json_escape "The source violates a type-system rule enforced by the compiler.")"
