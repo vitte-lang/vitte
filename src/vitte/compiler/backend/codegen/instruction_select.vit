@@ -22,6 +22,83 @@ form X86FrameLayout {
   valid: bool
 }
 
+proc debug_file_name(path: string) -> string {
+  let name: string = "";
+  let i: u64 = 0;
+  while i < len(path) {
+    let ch: string = slice(path, i, i + 1);
+    if ch == "/" or ch == "\\" {
+      set name = "";
+    } elif ch == "\"" {
+      set name = name + "_";
+    } else {
+      set name = name + ch;
+    }
+    set i = i + 1;
+  }
+  if name == "" {
+    give "source.vit";
+  }
+  give name;
+}
+
+proc debug_file_line(file_id: u64, path: string) -> string {
+  give ".file " + string(file_id) + " \"" + debug_file_name(path) + "\"";
+}
+
+proc debug_location_lines(file_id: u64, instruction: IrInstruction, debug_enabled: bool) -> [string] {
+  if not debug_enabled or not instruction.span.valid {
+    give [];
+  }
+  let line: u64 = if instruction.span.start_line > 0 { instruction.span.start_line } else { 1 };
+  let column: u64 = if instruction.span.start_column > 0 { instruction.span.start_column } else { 1 };
+  give ["  .loc " + string(file_id) + " " + string(line) + " " + string(column)];
+}
+
+proc debug_info_section_lines(source_path: string) -> [string] {
+  give [
+    ".section .debug_abbrev,\"\",@progbits",
+    ".Lvitte_debug_abbrev:",
+    "  .uleb128 1",
+    "  .uleb128 0x11",
+    "  .byte 0",
+    "  .uleb128 0x25",
+    "  .uleb128 0x0e",
+    "  .uleb128 0x13",
+    "  .uleb128 0x05",
+    "  .uleb128 0x03",
+    "  .uleb128 0x0e",
+    "  .uleb128 0x1b",
+    "  .uleb128 0x0e",
+    "  .uleb128 0x10",
+    "  .uleb128 0x17",
+    "  .byte 0",
+    "  .byte 0",
+    "  .byte 0",
+    ".section .debug_str,\"MS\",@progbits,1",
+    ".Lvitte_debug_producer:",
+    "  .asciz \"vittec\"",
+    ".Lvitte_debug_source:",
+    "  .asciz \"" + debug_file_name(source_path) + "\"",
+    ".Lvitte_debug_directory:",
+    "  .asciz \".\"",
+    ".section .debug_info,\"\",@progbits",
+    ".Lvitte_debug_cu_begin:",
+    "  .long .Lvitte_debug_cu_end-.Lvitte_debug_cu_version",
+    ".Lvitte_debug_cu_version:",
+    "  .short 4",
+    "  .long .Lvitte_debug_abbrev",
+    "  .byte 8",
+    "  .uleb128 1",
+    "  .long .Lvitte_debug_producer",
+    "  .short 0x001d",
+    "  .long .Lvitte_debug_source",
+    "  .long .Lvitte_debug_directory",
+    "  .long 0",
+    ".Lvitte_debug_cu_end:"
+  ];
+}
+
 proc invalid_frame_slot() -> X86FrameSlot {
   give X86FrameSlot {
     name: "",
@@ -915,12 +992,12 @@ proc select_instruction_line(module0: IrModule, function_name: string, frame: X8
   give ["  # invalid"];
 }
 
-proc select_function_instructions_x86_64(module0: IrModule, fn0: IrFunction) -> [string] {
+proc select_function_instructions_x86_64(module0: IrModule, fn0: IrFunction, debug_enabled: bool) -> [string] {
   let target_layout: TargetLayout = target_layout_for(module0.target.triple);
   let convention: CallingConvention = calling_convention_for_abi(module0.target.triple, fn0.abi);
   let frame: X86FrameLayout = frame_layout_for_function(module0, fn0, target_layout, convention);
   let symbol: string = sanitize_machine_symbol(fn0.name);
-  let lines: [string] = [".type " + symbol + ",@function", symbol + ":"]
+  let lines: [string] = [".type " + symbol + ",@function", symbol + ":", "  .cfi_startproc"]
     + machine_prologue_x86_64_with_stack(frame.size)
     + spill_function_parameters(frame, module0, fn0, target_layout, convention);
   let i: u64 = 0;
@@ -929,21 +1006,34 @@ proc select_function_instructions_x86_64(module0: IrModule, fn0: IrFunction) -> 
     set lines = lines + [machine_block_label(fn0.name, block.id)];
     let j: u64 = 0;
     while j < len(block.instructions) {
-      set lines = lines + select_instruction_line(module0, fn0.name, frame, target_layout, convention, block.instructions[j]);
+      set lines = lines
+        + debug_location_lines(module0.id, block.instructions[j], debug_enabled)
+        + select_instruction_line(module0, fn0.name, frame, target_layout, convention, block.instructions[j]);
       set j = j + 1;
     }
-    set lines = lines + select_instruction_line(module0, fn0.name, frame, target_layout, convention, block.terminator);
+    set lines = lines
+      + debug_location_lines(module0.id, block.terminator, debug_enabled)
+      + select_instruction_line(module0, fn0.name, frame, target_layout, convention, block.terminator);
     set i = i + 1;
   }
   set lines = lines
     + [machine_return_label(fn0.name) + ":"]
     + machine_epilogue_x86_64_with_stack(frame.size)
+    + ["  .cfi_endproc"]
     + [".size " + symbol + ", .-" + symbol];
   give lines;
 }
 
-proc select_ir_unit_x86_64(unit: IrUnit) -> [string] {
-  let lines: [string] = [".text"];
+proc select_ir_unit_x86_64_with_debug(unit: IrUnit, debug_enabled: bool) -> [string] {
+  let lines: [string] = [".cfi_sections .eh_frame"];
+  if debug_enabled {
+    let file_index: u64 = 0;
+    while file_index < len(unit.modules) {
+      set lines = lines + [debug_file_line(unit.modules[file_index].id, unit.modules[file_index].source_path)];
+      set file_index = file_index + 1;
+    }
+  }
+  set lines = lines + [".text"];
   let i: u64 = 0;
   while i < len(unit.modules) {
     let module0 = unit.modules[i];
@@ -956,7 +1046,7 @@ proc select_ir_unit_x86_64(unit: IrUnit) -> [string] {
         if fn0.is_entry or fn0.linkage == IrLinkage.Exported {
           set lines = lines + [".globl " + sanitize_machine_symbol(fn0.name)];
         }
-        set lines = lines + select_function_instructions_x86_64(module0, fn0);
+        set lines = lines + select_function_instructions_x86_64(module0, fn0, debug_enabled);
       }
       set j = j + 1;
     }
@@ -965,5 +1055,12 @@ proc select_ir_unit_x86_64(unit: IrUnit) -> [string] {
   if unit.target.triple.object_format == "elf" {
     set lines = lines + [".section .note.GNU-stack,\"\",@progbits"];
   }
+  if debug_enabled {
+    set lines = lines + debug_info_section_lines(unit.source_path);
+  }
   give lines;
+}
+
+proc select_ir_unit_x86_64(unit: IrUnit) -> [string] {
+  give select_ir_unit_x86_64_with_debug(unit, true);
 }

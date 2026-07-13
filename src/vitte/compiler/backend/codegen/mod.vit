@@ -1,6 +1,6 @@
 space vitte/compiler/backend/codegen
 
-use vitte/compiler/backend/codegen/instruction_select.{ select_ir_unit_x86_64 }
+use vitte/compiler/backend/codegen/instruction_select.{ select_ir_unit_x86_64_with_debug }
 use vitte/compiler/backend/codegen/register_alloc.{ allocate_virtual_locations }
 use vitte/compiler/backend/codegen/emitter.{ emit_x86_64_text }
 use vitte/compiler/backend/codegen/object.{ build_pseudo_object_text, pseudo_object_section_count }
@@ -45,8 +45,8 @@ proc codegen_invalid(target: string, profile_name: string, errors: [string]) -> 
   };
 }
 
-proc x86_64_codegen_result(unit: IrUnit, profile_name: string) -> CodegenResult {
-  let selected: [string] = select_ir_unit_x86_64(unit);
+proc x86_64_codegen_result(unit: IrUnit, profile_name: string, debug_enabled: bool) -> CodegenResult {
+  let selected: [string] = select_ir_unit_x86_64_with_debug(unit, debug_enabled);
   let allocated: [string] = allocate_virtual_locations(selected);
   let assembly: string = emit_x86_64_text(allocated);
   let object_text: string = build_pseudo_object_text(unit, assembly);
@@ -70,10 +70,14 @@ proc x86_64_codegen_result(unit: IrUnit, profile_name: string) -> CodegenResult 
 }
 
 proc run_codegen_x86_64(unit: IrUnit) -> CodegenResult {
+  give run_codegen_x86_64_with_profile(unit, "native-default", true);
+}
+
+proc run_codegen_x86_64_with_profile(unit: IrUnit, profile_name: string, debug_enabled: bool) -> CodegenResult {
   if not unit_is_valid(unit) {
-    give codegen_invalid("x86_64-linux", "native-default", ["invalid IR unit"]);
+    give codegen_invalid("x86_64-linux", profile_name, ["invalid IR unit"]);
   }
-  give x86_64_codegen_result(unit, "native-default");
+  give x86_64_codegen_result(unit, profile_name, debug_enabled);
 }
 
 proc llvm_options_from_profile(target: string, profile_name: string, packaging: string, deterministic: bool, debug_enabled: bool, prefer_native_toolchain: bool) -> LlvmBuildOptions {

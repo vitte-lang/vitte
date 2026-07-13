@@ -397,12 +397,13 @@ int32_t vitte_host_emit_llvm_object(VitteString ir_text, VitteString object_path
   return result;
 }
 
-int32_t vitte_host_emit_assembly_object(VitteString assembly_text, VitteString target_triple, VitteString object_path) {
+int32_t vitte_host_emit_assembly_object(VitteString assembly_text, VitteString target_triple, VitteString object_path, int32_t debug_enabled) {
   char *object_c = vitte_string_to_c(object_path);
   char *target_c = vitte_string_to_c(target_triple);
   char *assembly_path = NULL;
   FILE *stream = NULL;
-  char *argv[10];
+  char *argv[12];
+  int arg_index = 0;
   int32_t result = -1;
   if (object_c == NULL || target_c == NULL || target_c[0] == '\0') {
     free(object_c);
@@ -423,16 +424,19 @@ int32_t vitte_host_emit_assembly_object(VitteString assembly_text, VitteString t
       (assembly_text.len == 0 || fwrite(assembly_text.data, 1, assembly_text.len, stream) == assembly_text.len) &&
       fclose(stream) == 0) {
     stream = NULL;
-    argv[0] = "clang";
-    argv[1] = "-target";
-    argv[2] = target_c;
-    argv[3] = "-x";
-    argv[4] = "assembler";
-    argv[5] = "-c";
-    argv[6] = assembly_path;
-    argv[7] = "-o";
-    argv[8] = object_c;
-    argv[9] = NULL;
+    argv[arg_index++] = "clang";
+    argv[arg_index++] = "-target";
+    argv[arg_index++] = target_c;
+    if (debug_enabled) {
+      argv[arg_index++] = "-g";
+    }
+    argv[arg_index++] = "-x";
+    argv[arg_index++] = "assembler";
+    argv[arg_index++] = "-c";
+    argv[arg_index++] = assembly_path;
+    argv[arg_index++] = "-o";
+    argv[arg_index++] = object_c;
+    argv[arg_index] = NULL;
     result = vitte_run_argv(argv);
   }
   if (stream != NULL) {
@@ -489,7 +493,7 @@ static const char *vitte_elf_string(const unsigned char *table, uint64_t table_s
   return (const char *)(table + offset);
 }
 
-int32_t vitte_host_verify_native_object(VitteString object_path, VitteString target_triple, VitteString expected_symbol, int32_t require_relocations) {
+int32_t vitte_host_verify_native_object(VitteString object_path, VitteString target_triple, VitteString expected_symbol, int32_t require_relocations, int32_t require_debug) {
   VitteString object_data = vitte_host_read_file(object_path);
   char *target_c = vitte_string_to_c(target_triple);
   char *expected_c = vitte_string_to_c(expected_symbol);
@@ -508,6 +512,9 @@ int32_t vitte_host_verify_native_object(VitteString object_path, VitteString tar
   int saw_text = 0;
   int saw_symbol_table = 0;
   int saw_string_table = 0;
+  int saw_unwind = 0;
+  int saw_debug_info = 0;
+  int saw_debug_line = 0;
   int saw_expected_symbol = 0;
   uint64_t relocation_count = 0;
   int32_t result = 0;
@@ -586,6 +593,15 @@ int32_t vitte_host_verify_native_object(VitteString object_path, VitteString tar
     if (name != NULL && strcmp(name, ".strtab") == 0 && type == 3) {
       saw_string_table = 1;
     }
+    if (name != NULL && strcmp(name, ".eh_frame") == 0 && size > 0) {
+      saw_unwind = 1;
+    }
+    if (name != NULL && strcmp(name, ".debug_info") == 0 && size > 0) {
+      saw_debug_info = 1;
+    }
+    if (name != NULL && strcmp(name, ".debug_line") == 0 && size > 0) {
+      saw_debug_line = 1;
+    }
     if ((type == 4 || type == 9) && entry_size > 0 && name != NULL &&
         (strcmp(name, ".rela.text") == 0 || strcmp(name, ".rel.text") == 0)) {
       relocation_count += size / entry_size;
@@ -601,6 +617,14 @@ int32_t vitte_host_verify_native_object(VitteString object_path, VitteString tar
   }
   if (!saw_string_table) {
     result = 10;
+    goto cleanup;
+  }
+  if (!saw_unwind) {
+    result = 13;
+    goto cleanup;
+  }
+  if (require_debug && (!saw_debug_info || !saw_debug_line)) {
+    result = 14;
     goto cleanup;
   }
   {

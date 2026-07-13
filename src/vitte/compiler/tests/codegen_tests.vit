@@ -1,6 +1,6 @@
 space vitte/compiler/tests/codegen_tests
 
-use vitte/compiler/backend/codegen.{ CodegenResult, run_codegen_x86_64 }
+use vitte/compiler/backend/codegen.{ CodegenResult, run_codegen_x86_64, run_codegen_x86_64_with_profile }
 use vitte/compiler/backend/diagnostics.{ backend_missing_c_compiler, backend_native_generation_failed, backend_output_overwrites_source, backend_output_permission_denied, backend_unsupported_feature, backend_unsupported_target, linker_command_failed, linker_native_symbol_not_found }
 use vitte/compiler/backend/ir.{ BACKEND_IR_DIALECT, BACKEND_IR_SCHEMA_VERSION, IrBlock, IrFunction, IrInstructionKind, IrLinkage, IrModuleKind, IrUnit, IrUnitState, IrValue, IrValueKind, IrVisibility, block_add_instruction, block_create, function_add_block, function_ref_create, instruction_create, instruction_with_call_abi, ir_validation_reason, module_add_function, module_add_nominal_type, module_create, nominal_type_create, span_empty, target_native_x86_64_linux, terminator_return, unit_add_module, unit_contract_is_supported, unit_empty, unit_is_valid, unit_set_entry, unit_summary, unit_with_contract, unit_with_source_path, value_constant, value_place, verify_unit }
 use vitte/compiler/backend/link/artifact.{ LinkArtifact, artifact_is_valid }
@@ -412,12 +412,12 @@ proc test_x86_64_codegen_consumes_nominal_call_metadata() -> bool {
 }
 
 proc test_native_assembly_object_bridge_is_targeted() -> bool {
-  let command: string = native_assembly_object_command("x86_64-linux", "build/main.o");
+  let command: string = native_assembly_object_command("x86_64-linux", "build/main.o", true);
   give native_assembly_target("x86_64-linux") == "x86_64-unknown-linux-gnu"
     and native_assembly_target("aarch64-linux") == "aarch64-unknown-linux-gnu"
     and native_assembly_target("unsupported-target") == ""
     and find(command, "clang -target x86_64-unknown-linux-gnu") == 0
-    and find(command, "-x assembler -c build/main.o.s -o build/main.o") >= 0;
+    and find(command, "-g -x assembler -c build/main.o.s -o build/main.o") >= 0;
 }
 
 proc test_native_object_verification_errors_are_structured() -> bool {
@@ -426,7 +426,25 @@ proc test_native_object_verification_errors_are_structured() -> bool {
     and native_object_verification_message(6) == "object machine does not match the target"
     and native_object_verification_message(8) == "object has no executable text section"
     and native_object_verification_message(11) == "expected entry symbol is absent or undefined"
-    and native_object_verification_message(12) == "expected object relocations are absent";
+    and native_object_verification_message(12) == "expected object relocations are absent"
+    and native_object_verification_message(13) == "object has no stack unwind information"
+    and native_object_verification_message(14) == "object has incomplete debug information";
+}
+
+proc test_native_debug_and_unwind_emission_follow_profile() -> bool {
+  let ir: IrUnit = build_verified_ir("backend_debug_unwind.vit", "proc main() -> int { let value = 7; give value; }\n");
+  let debug: CodegenResult = run_codegen_x86_64_with_profile(ir, "enterprise-debug", true);
+  let release: CodegenResult = run_codegen_x86_64_with_profile(ir, "enterprise-release", false);
+  give debug.valid and release.valid
+    and find(debug.assembly, ".file 1 \"backend_debug_unwind.vit\"") >= 0
+    and find(debug.assembly, ".loc 1 ") >= 0
+    and find(debug.assembly, ".cfi_startproc") >= 0
+    and find(debug.assembly, ".cfi_def_cfa_register %rbp") >= 0
+    and find(debug.assembly, ".cfi_endproc") >= 0
+    and find(release.assembly, ".file 1 ") < 0
+    and find(release.assembly, ".loc 1 ") < 0
+    and find(release.assembly, ".cfi_startproc") >= 0
+    and find(release.assembly, ".cfi_endproc") >= 0;
 }
 
 proc test_llvm_codegen_consumes_nominal_call_metadata() -> bool {
@@ -1008,6 +1026,7 @@ proc run_all_tests() -> int {
   if not test_x86_64_codegen_consumes_nominal_call_metadata() { set failures = failures + 1; }
   if not test_native_assembly_object_bridge_is_targeted() { set failures = failures + 1; }
   if not test_native_object_verification_errors_are_structured() { set failures = failures + 1; }
+  if not test_native_debug_and_unwind_emission_follow_profile() { set failures = failures + 1; }
   if not test_llvm_codegen_consumes_nominal_call_metadata() { set failures = failures + 1; }
   if not test_backend_lowers_calls_returns_and_aggregates_concretely() { set failures = failures + 1; }
   if not test_target_layout_has_canonical_field_offsets() { set failures = failures + 1; }

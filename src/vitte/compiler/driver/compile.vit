@@ -19,7 +19,7 @@ use vitte/compiler/middle/lower/hir_to_mir.{ lower_hir_to_mir }
 use vitte/compiler/middle/lower/mir_to_ir.{ lower_mir_as_ir_module }
 use vitte/compiler/middle/mir.{ MirUnit, mir_module_empty }
 use vitte/compiler/middle/mir/validate.{ mir_validation_reason, validate_mir }
-use vitte/compiler/backend/codegen.{ CodegenResult, run_codegen_llvm_with_profile, run_codegen_x86_64 }
+use vitte/compiler/backend/codegen.{ CodegenResult, run_codegen_llvm_with_profile, run_codegen_x86_64_with_profile }
 use vitte/compiler/backend/ir.{ IrFunction, IrInstructionKind, IrModule, IrModuleKind, IrTarget, IrUnit, IrUnitState, function_name_by_id, ir_validation_reason, target_from_name, unit_add_module, unit_empty, unit_is_valid, unit_set_entry, unit_with_source_path, unit_with_state, verify_unit }
 use vitte/compiler/backend/link/artifact.{ LinkArtifact, LinkArtifactKind, artifact_create, artifact_is_valid, link_target_from_name }
 use vitte/compiler/backend/link/linker.{ link_ir_unit_with_kind }
@@ -1235,7 +1235,7 @@ proc compile_source_set_with_config(inputs: [DriverModuleInput], config: DriverC
         if config.backend_name == "llvm" or config.backend_name == "llvm-ir" {
             run_codegen_llvm_with_profile(ir0, config.profile_name, config.packaging, config.deterministic, config.debug_enabled, config.prefer_native_toolchain, config.llvm_toolchain)
         } else {
-            run_codegen_x86_64(ir0)
+            run_codegen_x86_64_with_profile(ir0, config.profile_name, config.emit_debug_sections)
         }
     } else {
         CodegenResult {
@@ -1890,7 +1890,7 @@ proc emit_native_backend_object_with_config(source_path: string, source_text: st
         } else {
             let entry_symbol: string = function_name_by_id(backend0.ir_unit, backend0.ir_unit.entry_function_id);
             let require_relocations: bool = ir_unit_requires_native_relocations(backend0.ir_unit);
-            set object0 = emit_native_object_from_assembly(backend0.codegen.assembly, config.target_name, entry_symbol, require_relocations, object_output_dir, object_path0);
+            set object0 = emit_native_object_from_assembly(backend0.codegen.assembly, config.target_name, entry_symbol, require_relocations, config.emit_debug_sections, object_output_dir, object_path0);
         }
     }
     let compile1: DriverCompileResult = if native_output_overwrites_source(source_path, object_path0) {

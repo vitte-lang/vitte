@@ -65,9 +65,10 @@ proc native_assembly_target(target_name: string) -> string {
   give "";
 }
 
-proc native_assembly_object_command(target_name: string, object_path: string) -> string {
+proc native_assembly_object_command(target_name: string, object_path: string, debug_enabled: bool) -> string {
   let target: string = native_assembly_target(target_name);
-  give "clang -target " + target + " -x assembler -c " + object_path + ".s -o " + object_path;
+  let debug_flag: string = if debug_enabled { " -g" } else { "" };
+  give "clang -target " + target + debug_flag + " -x assembler -c " + object_path + ".s -o " + object_path;
 }
 
 proc native_object_verification_message(code: int) -> string {
@@ -83,6 +84,8 @@ proc native_object_verification_message(code: int) -> string {
   if code == 10 { give "object has no string table"; }
   if code == 11 { give "expected entry symbol is absent or undefined"; }
   if code == 12 { give "expected object relocations are absent"; }
+  if code == 13 { give "object has no stack unwind information"; }
+  if code == 14 { give "object has incomplete debug information"; }
   give "native object verification failed";
 }
 
@@ -119,9 +122,9 @@ proc emit_native_object_from_llvm_ir(ir_text: string, output_dir: string, object
   give native_bridge_command_result(object_path, "", "clang object emission failed", "BACKEND_E_CODEGEN_FAILED", "clang", command_text, "native host runtime does not capture stderr", "", code, false)
 }
 
-proc emit_native_object_from_assembly(assembly_text: string, target_name: string, entry_symbol: string, require_relocations: bool, output_dir: string, object_path: string) -> NativeBridgeResult {
+proc emit_native_object_from_assembly(assembly_text: string, target_name: string, entry_symbol: string, require_relocations: bool, debug_enabled: bool, output_dir: string, object_path: string) -> NativeBridgeResult {
   let target: string = native_assembly_target(target_name);
-  let command_text: string = native_assembly_object_command(target_name, object_path);
+  let command_text: string = native_assembly_object_command(target_name, object_path, debug_enabled);
   if not host_runtime_available() {
     give native_bridge_command_result(object_path, "", "required native assembler `clang` is unavailable", "BACKEND_E_NATIVE_TOOL_MISSING", "clang", command_text, "native host runtime unavailable", "", -1, false)
   }
@@ -131,9 +134,9 @@ proc emit_native_object_from_assembly(assembly_text: string, target_name: string
   if host_mkdir_all(output_dir) != 0 {
     give native_bridge_command_result(object_path, "", "permission denied while creating native output directory", "BACKEND_E_OBJECT_WRITE_FAILED", "clang", command_text, "output directory is not writable", "", -1, false)
   }
-  let code: int = host_emit_assembly_object(assembly_text, target, object_path)
+  let code: int = host_emit_assembly_object(assembly_text, target, object_path, debug_enabled)
   if code == 0 and host_is_file(object_path) {
-    let verification_code: int = host_verify_native_object(object_path, target, entry_symbol, require_relocations)
+    let verification_code: int = host_verify_native_object(object_path, target, entry_symbol, require_relocations, debug_enabled)
     if verification_code == 0 {
       give native_bridge_command_result(object_path, "", "deterministic native assembly object materialized and verified", "", "clang", command_text, "", entry_symbol, code, true)
     }

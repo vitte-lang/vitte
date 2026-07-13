@@ -27,7 +27,7 @@ def main() -> int:
         ("src/vitte/compiler/backends/runtime_c/vitte_runtime.c", "saw_symbol_table", "the verifier must require a symbol table"),
         ("src/vitte/compiler/backends/runtime_c/vitte_runtime.c", "relocation_count += size / entry_size", "the verifier must count relocations"),
         ("src/vitte/compiler/backends/runtime_c/vitte_runtime.c", "strcmp(name, expected_c) == 0", "the verifier must resolve the expected entry symbol"),
-        ("src/vitte/compiler/backend/native_bridge.vit", "host_verify_native_object(object_path, target, entry_symbol, require_relocations)", "the bridge must reject unverified objects"),
+        ("src/vitte/compiler/backend/native_bridge.vit", "host_verify_native_object(object_path, target, entry_symbol, require_relocations, debug_enabled)", "the bridge must reject unverified objects"),
         ("src/vitte/compiler/backend/native_bridge.vit", "proc native_object_verification_message(", "object verification failures must be structured"),
         ("src/vitte/compiler/driver/compile.vit", "proc ir_unit_requires_native_relocations(", "the driver must derive relocation requirements from calls"),
         ("src/vitte/compiler/driver/compile.vit", "ir_module_symbol_is_external(module0, instruction.text)", "only actual external calls must require relocations"),

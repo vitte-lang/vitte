@@ -43,3 +43,15 @@ Avant d'accepter le fichier, le runtime relit sa structure ELF64 et vérifie :
 
 Un échec de cette inspection invalide l'objet avec
 `BACKEND_E_CODEGEN_FAILED` avant toute étape de linkage.
+
+## Debug et unwind
+
+Le mode debug émet les directives `.file`/`.loc`, une unité de compilation
+DWARF v4 minimale et les sections `.debug_info`, `.debug_abbrev`, `.debug_str`
+et `.debug_line`. Les chemins enregistrés sont réduits au nom du fichier pour
+préserver la reproductibilité entre checkouts.
+
+Les directives CFI décrivent le CFA, la sauvegarde de `%rbp` et sa restauration.
+Elles produisent `.eh_frame` dans tous les profils afin de conserver le
+déroulage de pile en release. Quand `emit_debug_sections` est faux, les sections
+DWARF disparaissent mais `.eh_frame` reste obligatoire.

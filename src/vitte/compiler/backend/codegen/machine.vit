@@ -178,7 +178,10 @@ proc machine_prologue_x86_64_with_stack(stack_size: u64) -> [string] {
 
     if config.emit_frame_pointer {
         set lines = list.push(lines, config.indent + "push %rbp");
+        set lines = list.push(lines, config.indent + ".cfi_def_cfa_offset 16");
+        set lines = list.push(lines, config.indent + ".cfi_offset %rbp, -16");
         set lines = list.push(lines, config.indent + "mov %rsp, %rbp");
+        set lines = list.push(lines, config.indent + ".cfi_def_cfa_register %rbp");
     }
 
     if aligned_stack_size > 0 {
@@ -215,6 +218,7 @@ proc machine_epilogue_x86_64_with_stack(stack_size: u64) -> [string] {
 
     if config.emit_frame_pointer {
         set lines = list.push(lines, config.indent + "pop %rbp");
+        set lines = list.push(lines, config.indent + ".cfi_def_cfa %rsp, 8");
     }
 
     set lines = list.push(lines, config.indent + "ret");

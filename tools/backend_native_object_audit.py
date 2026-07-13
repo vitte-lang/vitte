@@ -22,7 +22,7 @@ def main() -> int:
         ("src/vitte/stdlib/io/host_runtime.vitl", "intrinsic vitte_host_emit_assembly_object(", "the standard library must expose native assembly materialization"),
         ("src/vitte/compiler/backends/runtime_c/vitte_runtime.h", "vitte_host_emit_assembly_object", "the runtime ABI header must expose native assembly materialization"),
         ("src/vitte/compiler/backends/runtime_c/vitte_runtime.c", "int32_t vitte_host_emit_assembly_object(", "the runtime must implement native assembly materialization"),
-        ("src/vitte/compiler/backends/runtime_c/vitte_runtime.c", 'argv[4] = "assembler";', "clang must be invoked in assembler mode"),
+        ("src/vitte/compiler/backends/runtime_c/vitte_runtime.c", 'argv[arg_index++] = "assembler";', "clang must be invoked in assembler mode"),
         ("src/vitte/compiler/backends/runtime_c/vitte_runtime.c", 'setenv("SOURCE_DATE_EPOCH", "0", 1);', "child tool invocations must have a reproducible epoch"),
         ("src/vitte/compiler/backends/runtime_c/vitte_runtime.c", "remove(object_c);", "stale objects must be removed before tool invocation"),
         ("src/vitte/compiler/backends/runtime_c/vitte_runtime.c", "remove(assembly_path);", "temporary assembly files must be removed"),

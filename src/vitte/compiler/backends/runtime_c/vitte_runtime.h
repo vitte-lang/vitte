@@ -47,8 +47,8 @@ int32_t vitte_host_delete_directory(VitteString path);
 VitteSliceString vitte_host_list_directory(VitteString path);
 int32_t vitte_host_system(VitteString command);
 int32_t vitte_host_emit_llvm_object(VitteString ir_text, VitteString object_path);
-int32_t vitte_host_emit_assembly_object(VitteString assembly_text, VitteString target_triple, VitteString object_path);
-int32_t vitte_host_verify_native_object(VitteString object_path, VitteString target_triple, VitteString expected_symbol, int32_t require_relocations);
+int32_t vitte_host_emit_assembly_object(VitteString assembly_text, VitteString target_triple, VitteString object_path, int32_t debug_enabled);
+int32_t vitte_host_verify_native_object(VitteString object_path, VitteString target_triple, VitteString expected_symbol, int32_t require_relocations, int32_t require_debug);
 int32_t vitte_host_link_executable(VitteString object_path, VitteString executable_path);
 int32_t vitte_host_run_executable(VitteString executable_path);
 
