@@ -36,6 +36,11 @@ hosts:
 The real compiler path must not silently drift from `backend/*` to
 `backends/*` without an explicit migration and matching gate updates.
 
+`backend/adapters.vit` is the canonical reachability registry for these
+parallel families. The driver imports only `backend/*`; the registry keeps
+adapter modules in the compiler source graph without making them production
+entrypoints or transferring ownership to the driver.
+
 ## Notes
 
 - Keep target contracts explicit (ABI, endianness, object format).
