@@ -101,6 +101,7 @@ form MirRvalue {
   kind: MirRvalueKind
   text: string
   operator: string
+  generic_arguments: [string]
   binary_operator: MirBinaryOperator
   unary_operator: MirUnaryOperator
   borrow_kind: MirBorrowKind
@@ -156,6 +157,7 @@ form MirFunctionParam {
 form MirFunction {
   id: u64
   name: string
+  generic_params: [string]
   entry_block: u64
   params: [MirFunctionParam]
   return_type: string
@@ -224,6 +226,7 @@ proc mir_rvalue(kind: MirRvalueKind, text: string, operator: string, binary_oper
     kind: kind,
     text: text,
     operator: operator,
+    generic_arguments: [],
     binary_operator: binary_operator,
     unary_operator: unary_operator,
     borrow_kind: borrow_kind,
@@ -399,6 +402,7 @@ proc mir_function(name: string, entry_block: u64, params: [MirFunctionParam], re
   give MirFunction {
     id: 0,
     name: name,
+    generic_params: [],
     entry_block: entry_block,
     params: params,
     return_type: return_type,
@@ -407,6 +411,56 @@ proc mir_function(name: string, entry_block: u64, params: [MirFunctionParam], re
     blocks: blocks,
     valid: valid
   };
+}
+
+proc mir_type_identifier_char(ch: string) -> bool {
+  if ch == "" {
+    give false;
+  }
+  give (ch >= "a" and ch <= "z")
+    or (ch >= "A" and ch <= "Z")
+    or (ch >= "0" and ch <= "9")
+    or ch == "_";
+}
+
+proc mir_substitute_one_type(ty: string, generic_name: string, resolved_type: string) -> string {
+  let value: string = trim(ty);
+  let name: string = trim(generic_name);
+  if value == "" or name == "" or resolved_type == "" {
+    give value;
+  }
+
+  let out: string = "";
+  let i: u64 = 0;
+  while i < len(value) {
+    let matches: bool = i + len(name) <= len(value) and slice(value, i, i + len(name)) == name;
+    let left_boundary: bool = true;
+    let right_boundary: bool = true;
+    if i > 0 {
+      set left_boundary = not mir_type_identifier_char(slice(value, i - 1, i));
+    }
+    if i + len(name) < len(value) {
+      set right_boundary = not mir_type_identifier_char(slice(value, i + len(name), i + len(name) + 1));
+    }
+    if matches and left_boundary and right_boundary {
+      set out = out + resolved_type;
+      set i = i + len(name);
+    } else {
+      set out = out + slice(value, i, i + 1);
+      set i = i + 1;
+    }
+  }
+  give out;
+}
+
+proc mir_substitute_type(ty: string, generic_params: [string], generic_arguments: [string]) -> string {
+  let out: string = ty;
+  let i: u64 = 0;
+  while i < len(generic_params) and i < len(generic_arguments) {
+    set out = mir_substitute_one_type(out, generic_params[i], generic_arguments[i]);
+    set i = i + 1;
+  }
+  give out;
 }
 
 proc mir_unit(source_path: string, module: MirModule, function_count: u64, block_count: u64, instruction_count: u64, lowered: bool, valid: bool) -> MirUnit {

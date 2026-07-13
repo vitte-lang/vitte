@@ -146,6 +146,22 @@ proc pretty_operands(operands: [MirOperand]) -> string {
   give out
 }
 
+proc pretty_generic_arguments(arguments: [string]) -> string {
+  if len(arguments) == 0 {
+    give ""
+  }
+  let out: string = "["
+  let i: u64 = 0
+  while i < len(arguments) {
+    set out = out + arguments[i]
+    if i + 1 < len(arguments) {
+      set out = out + ", "
+    }
+    set i = i + 1
+  }
+  give out + "]"
+}
+
 proc pretty_rvalue_kind(kind: MirRvalueKind) -> string {
   if kind == MirRvalueKind.Use {
     give "use"
@@ -221,7 +237,9 @@ proc pretty_rvalue(rvalue: MirRvalue) -> string {
   }
 
   if rvalue.kind == MirRvalueKind.Call {
-    give "call("
+    give "call"
+      + pretty_generic_arguments(rvalue.generic_arguments)
+      + "("
       + pretty_operands(rvalue.operands)
       + ")"
   }
@@ -396,7 +414,7 @@ proc pretty_function(function0: MirFunction, depth: u64) -> string {
   let entry_text: string = function0.entry_block as string
   let local_count_text: string = function0.local_count as string
   let temporary_count_text: string = function0.temporary_count as string
-  let header: string = indent(depth) + "fn " + function0.name + " -> " + function0.return_type + " {"
+  let header: string = indent(depth) + "fn " + function0.name + pretty_generic_arguments(function0.generic_params) + " -> " + function0.return_type + " {"
 
   let entry_line: string = indent(child_depth) + "entry: bb" + entry_text
   let locals_line: string = indent(child_depth) + "locals: " + local_count_text

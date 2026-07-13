@@ -1,6 +1,6 @@
 space vitte/compiler/middle/mir/validate
 
-use vitte/compiler/middle/mir.{ MirBlock, MirFunction, MirOperand, MirPlace, MirRvalue, MirRvalueKind, MirStatementKind, MirTerminatorKind, MirUnit, mir_module_empty }
+use vitte/compiler/middle/mir.{ MirBlock, MirFunction, MirOperand, MirPlace, MirRvalue, MirRvalueKind, MirStatementKind, MirTerminatorKind, MirUnit, mir_module_empty, mir_substitute_type }
 
 proc block_exists(blocks: [MirBlock], block_id: u64) -> bool {
   let i: u64 = 0;
@@ -42,6 +42,17 @@ proc operand_valid(operand: MirOperand) -> bool {
 proc rvalue_valid(rvalue: MirRvalue) -> bool {
   if not rvalue.valid {
     give false;
+  }
+  if rvalue.kind != MirRvalueKind.Call and len(rvalue.generic_arguments) > 0 {
+    give false;
+  }
+  let generic_index: u64 = 0;
+  while generic_index < len(rvalue.generic_arguments) {
+    let generic_argument: string = trim(rvalue.generic_arguments[generic_index]);
+    if generic_argument == "" or generic_argument == "unknown" or generic_argument == "opaque" {
+      give false;
+    }
+    set generic_index = generic_index + 1;
   }
   let i: u64 = 0;
   while i < len(rvalue.operands) {
@@ -113,6 +124,7 @@ proc function_by_name(functions: [MirFunction], name: string) -> MirFunction {
   give MirFunction {
     id: 0,
     name: "",
+    generic_params: [],
     entry_block: 0,
     params: [],
     return_type: "",
@@ -217,6 +229,20 @@ proc param_duplicate_name_exists(fn0: MirFunction, name: string, skip_index: u64
 }
 
 proc params_valid(fn0: MirFunction) -> bool {
+  let generic_index: u64 = 0;
+  while generic_index < len(fn0.generic_params) {
+    if trim(fn0.generic_params[generic_index]) == "" {
+      give false;
+    }
+    let other_index: u64 = generic_index + 1;
+    while other_index < len(fn0.generic_params) {
+      if fn0.generic_params[generic_index] == fn0.generic_params[other_index] {
+        give false;
+      }
+      set other_index = other_index + 1;
+    }
+    set generic_index = generic_index + 1;
+  }
   let seen_variadic: bool = false;
   let i: u64 = 0;
   while i < len(fn0.params) {
@@ -278,8 +304,9 @@ proc call_target_fn(functions: [MirFunction], rvalue: MirRvalue) -> MirFunction 
   give function_by_name(functions, call_target_name(rvalue));
 }
 
-proc call_operand_matches_param(operand: MirOperand, param: MirFunctionParam) -> bool {
-  if param.type_name != "" and operand.ty != param.type_name {
+proc call_operand_matches_param(operand: MirOperand, param: MirFunctionParam, target: MirFunction, generic_arguments: [string]) -> bool {
+  let expected_type: string = mir_substitute_type(param.type_name, target.generic_params, generic_arguments);
+  if expected_type != "" and operand.ty != expected_type {
     give false;
   }
   if param.borrowed and (operand.constant or not operand.place.valid or operand.place.local == "") {
@@ -296,11 +323,14 @@ proc call_param_contract_valid(functions: [MirFunction], rvalue: MirRvalue) -> b
   if not target.valid {
     give true;
   }
+  if len(target.generic_params) != len(rvalue.generic_arguments) {
+    give false;
+  }
   let start: u64 = call_arg_start_index(rvalue);
   let fixed_count: u64 = function_fixed_param_count(target);
   let i: u64 = 0;
   while i < fixed_count and start + i < len(rvalue.operands) {
-    if not call_operand_matches_param(rvalue.operands[start + i], target.params[i]) {
+    if not call_operand_matches_param(rvalue.operands[start + i], target.params[i], target, rvalue.generic_arguments) {
       give false;
     }
     set i = i + 1;
@@ -369,18 +399,22 @@ proc call_rvalue_reason(functions: [MirFunction], rvalue: MirRvalue) -> string {
     if not function_name_exists(functions, target_name) {
       give "invalid-method-dispatch-target";
     }
-    if not call_arity_matches(function_by_name(functions, target_name), call_argument_count(rvalue)) {
+    let target: MirFunction = function_by_name(functions, target_name);
+    if len(target.generic_params) != len(rvalue.generic_arguments) {
+      give "invalid-method-dispatch-generic-arity";
+    }
+    if not call_arity_matches(target, call_argument_count(rvalue)) {
       give "invalid-method-dispatch-arity";
     }
     if not call_param_contract_valid(functions, rvalue) {
-      let target: MirFunction = function_by_name(functions, target_name);
       let start: u64 = call_arg_start_index(rvalue);
       let i: u64 = 0;
       while i < function_fixed_param_count(target) and start + i < len(rvalue.operands) {
         if target.params[i].borrowed and (rvalue.operands[start + i].constant or not rvalue.operands[start + i].place.valid or rvalue.operands[start + i].place.local == "") {
           give "invalid-method-dispatch-borrow-arg";
         }
-        if target.params[i].type_name != "" and rvalue.operands[start + i].ty != target.params[i].type_name {
+        let expected_type: string = mir_substitute_type(target.params[i].type_name, target.generic_params, rvalue.generic_arguments);
+        if expected_type != "" and rvalue.operands[start + i].ty != expected_type {
           give "invalid-method-dispatch-param-type";
         }
         set i = i + 1;
@@ -389,18 +423,22 @@ proc call_rvalue_reason(functions: [MirFunction], rvalue: MirRvalue) -> string {
     give "none";
   }
   if function_name_exists(functions, target_name) {
-    if not call_arity_matches(function_by_name(functions, target_name), call_argument_count(rvalue)) {
+    let target: MirFunction = function_by_name(functions, target_name);
+    if len(target.generic_params) != len(rvalue.generic_arguments) {
+      give "invalid-regular-call-generic-arity";
+    }
+    if not call_arity_matches(target, call_argument_count(rvalue)) {
       give "invalid-regular-call-arity";
     }
     if not call_param_contract_valid(functions, rvalue) {
-      let target: MirFunction = function_by_name(functions, target_name);
       let start: u64 = call_arg_start_index(rvalue);
       let i: u64 = 0;
       while i < function_fixed_param_count(target) and start + i < len(rvalue.operands) {
         if target.params[i].borrowed and (rvalue.operands[start + i].constant or not rvalue.operands[start + i].place.valid or rvalue.operands[start + i].place.local == "") {
           give "invalid-regular-call-borrow-arg";
         }
-        if target.params[i].type_name != "" and rvalue.operands[start + i].ty != target.params[i].type_name {
+        let expected_type: string = mir_substitute_type(target.params[i].type_name, target.generic_params, rvalue.generic_arguments);
+        if expected_type != "" and rvalue.operands[start + i].ty != expected_type {
           give "invalid-regular-call-param-type";
         }
         set i = i + 1;

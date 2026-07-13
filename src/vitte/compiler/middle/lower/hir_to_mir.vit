@@ -347,6 +347,7 @@ proc mir_rvalue_from_expr(expr: HirExpr, items: [HirItem]) -> MirRvalue {
     } else {
       expr.operator
     },
+    generic_arguments: if kind == MirRvalueKind.Call { expr.generic_arguments } else { [] },
     operands: operands,
     ty: expr.inferred_type,
     valid: expr.valid
@@ -383,7 +384,7 @@ proc block_single(id: u64, stmt: MirStatement, terminator: MirTerminator) -> Mir
   };
 }
 
-proc lower_stmt_sequence_as_function(function_id: u64, function_name: string, params: [MirFunctionParam], return_type: string, stmts: [HirStmt], items: [HirItem], next_block_id: u64) -> MirFunction {
+proc lower_stmt_sequence_as_function(function_id: u64, function_name: string, generic_params: [string], params: [MirFunctionParam], return_type: string, stmts: [HirStmt], items: [HirItem], next_block_id: u64) -> MirFunction {
   let exit_block: MirBlock = MirBlock { id: next_block_id, statements: [], terminator: mir_terminator_return(), valid: true };
   let sequence: MirSequence = build_stmt_sequence(stmts, items, exit_block.id, exit_block.id + 1);
   let entry_block: u64 = choose_entry(sequence.entry_block, exit_block.id);
@@ -391,6 +392,7 @@ proc lower_stmt_sequence_as_function(function_id: u64, function_name: string, pa
   give MirFunction {
     id: function_id,
     name: function_name,
+    generic_params: generic_params,
     entry_block: entry_block,
     params: params,
     return_type: return_type,
@@ -500,7 +502,7 @@ proc lower_hir_to_mir(hir: HirUnit) -> MirUnit {
   while i < len(hir.module.items) {
     let item = hir.module.items[i];
     if item.kind == HirItemKind.Proc {
-      let lowered: MirFunction = lower_stmt_sequence_as_function(item.id, item.name, mir_params_from_item(item), item.annotation_text, item.stmts, hir.module.items, next_block_id);
+      let lowered: MirFunction = lower_stmt_sequence_as_function(item.id, item.name, item.generic_params, mir_params_from_item(item), item.annotation_text, item.stmts, hir.module.items, next_block_id);
       set functions = functions + [lowered];
       set block_count = block_count + len(lowered.blocks);
       set instruction_count = instruction_count + (len(lowered.blocks) - 1);
@@ -510,7 +512,7 @@ proc lower_hir_to_mir(hir: HirUnit) -> MirUnit {
       let j: u64 = 0;
       while j < len(item.members) {
         if item.members[j].kind == HirNominalMemberKind.ImplMethod {
-          let lowered: MirFunction = lower_stmt_sequence_as_function(item.members[j].id, impl_method_symbol_name(item, item.members[j]), mir_params_from_member(item, item.members[j]), item.members[j].annotation_text, item.members[j].body_stmts, hir.module.items, next_block_id);
+          let lowered: MirFunction = lower_stmt_sequence_as_function(item.members[j].id, impl_method_symbol_name(item, item.members[j]), [], mir_params_from_member(item, item.members[j]), item.members[j].annotation_text, item.members[j].body_stmts, hir.module.items, next_block_id);
           set functions = functions + [lowered];
           set block_count = block_count + len(lowered.blocks);
           set instruction_count = instruction_count + (len(lowered.blocks) - 1);
