@@ -250,6 +250,30 @@ def generated_cases() -> list[Case]:
         "TYPECK_E_TRAIT_BOUND",
         "trait bound satisfaction",
     ))
+    cases.append(Case(
+        "trait_impls_disjoint",
+        (
+            "space tests/typeck/differential/trait_impls_disjoint\n\n"
+            "trait Show { proc show(self: Self) -> string; }\n"
+            "impl Show for int { proc show(self: Self) -> string { give \"int\" } }\n"
+            "impl Show for string { proc show(self: Self) -> string { give self } }\n"
+            "proc main() -> int { give 0 }\n"
+        ),
+        True,
+    ))
+    cases.append(Case(
+        "trait_impls_conflict",
+        (
+            "space tests/typeck/differential/trait_impls_conflict\n\n"
+            "trait Show { proc show(self: Self) -> string; }\n"
+            "impl Show for int { proc show(self: Self) -> string { give \"first\" } }\n"
+            "impl Show for int { proc show(self: Self) -> string { give \"second\" } }\n"
+            "proc main() -> int { give 0 }\n"
+        ),
+        False,
+        "TYPECK_E_CONFLICTING_IMPL",
+        "trait implementation coherence",
+    ))
     return cases
 
 
@@ -407,6 +431,7 @@ def main() -> int:
             "local calls reject missing and excess arguments",
             "generic calls accept constrained or explicit parameters and reject unconstrained parameters",
             "locally resolved generic types satisfy declared trait bounds",
+            "duplicate local trait implementations violate coherence",
             "every rejected type-system case carries a two-step cause chain",
             "stage binaries agree on normalized typeck results",
             "repeated checks are deterministic",

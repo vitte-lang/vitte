@@ -2643,7 +2643,21 @@ detect_professional_diagnostic() {
             impl_type = line
             sub(/^impl[ \t]+[^ \t]+[ \t]+for[ \t]+/, "", impl_type)
             sub(/[ \t{].*$/, "", impl_type)
-            if (impl_trait != "" && impl_type != "") trait_impl[impl_trait SUBSEP impl_type] = 1
+            if (impl_trait != "" && impl_type != "") {
+                impl_key = impl_trait SUBSEP impl_type
+                if (trait_impl[impl_key]) {
+                    col = index(raw, impl_trait)
+                    emit("TYPECK_E_CONFLICTING_IMPL", "error", "typeck",
+                        "conflicting implementation of " impl_trait " for " impl_type,
+                        FNR, col, col + length(impl_trait), raw,
+                        "duplicate implementation declared here",
+                        "first implementation: " file ":" trait_impl_line[impl_key] ":" trait_impl_col[impl_key],
+                        "remove one implementation or make the target types disjoint")
+                }
+                trait_impl[impl_key] = 1
+                trait_impl_line[impl_key] = FNR
+                trait_impl_col[impl_key] = index(raw, impl_trait)
+            }
         }
 
         if (line ~ /^proc[ \t]+[A-Za-z_][A-Za-z0-9_]*/) {
@@ -3594,6 +3608,14 @@ render_professional_diagnostic_surface_json() {
             root_json="$(json_escape "generic type lacks the required trait implementation")"
             cause_a_json="$(json_escape "the generic signature establishes the required trait bound")"
             cause_b_json="$(json_escape "no visible implementation proves the resolved type satisfies that bound")"
+        elif [ "$code" = "TYPECK_E_CONFLICTING_IMPL" ]; then
+            rule_json="$(json_escape "trait implementation coherence")"
+            explanation_json="$(json_escape "The same trait is implemented more than once for the same target type in the visible module.")"
+            technical_json="$(json_escape "Detected while indexing local trait implementation pairs before expression checking.")"
+            docs_json="$(json_escape "docs://language/type-system/trait-coherence")"
+            root_json="$(json_escape "multiple implementations target the same trait and type")"
+            cause_a_json="$(json_escape "the first visible impl establishes the trait and target pair")"
+            cause_b_json="$(json_escape "a later impl declares the identical trait and target pair")"
         else
             rule_json="$(json_escape "type checking")"
             explanation_json="$(json_escape "The source violates a type-system rule enforced by the compiler.")"
