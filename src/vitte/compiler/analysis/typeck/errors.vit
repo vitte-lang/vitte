@@ -24,6 +24,7 @@ use vitte/compiler/diagnostics/diagnostic.{
     diagnostic_with_subject_symbol,
     diagnostic_with_subject_type,
     diagnostic_with_replace,
+    primary_label,
     secondary_label,
     add_unique_diagnostic,
     merge_diagnostics,
@@ -499,6 +500,19 @@ proc typeck_trait_bound_unsatisfied(ty: string, trait_name: string, span: AstSpa
     give diagnostic_with_probable_fix(diag5, "add a matching impl or relax the trait constraint");
 }
 
+proc typeck_conflicting_impl(trait_name: string, target_type: string, first_span: AstSpan, duplicate_span: AstSpan) -> Diagnostic {
+    let diag0: Diagnostic = typed_typeck_diag("TYPECK_E_CONFLICTING_IMPL", "conflicting trait implementation", [trait_name, target_type], "remove one implementation or make their target types disjoint", duplicate_span, DiagnosticSeverity.Error, DiagnosticPhase.Typeck, TypeckErrorKind.TypeMismatch);
+    let diag1: Diagnostic = diagnostic_with_rule(diag0, "trait implementation coherence");
+    let diag2: Diagnostic = diagnostic_with_explanation(diag1, "trait `" + trait_name + "` is implemented more than once for `" + target_type + "`");
+    let diag3: Diagnostic = diagnostic_with_label(diag2, primary_label("conflicting implementation declared here", ast_span_to_source_span(duplicate_span)));
+    let diag4: Diagnostic = diagnostic_with_label(diag3, secondary_label("first implementation declared here", ast_span_to_source_span(first_span)));
+    let diag5: Diagnostic = diagnostic_add_cause(diag4, "first visible impl establishes `" + trait_name + " for " + target_type + "`");
+    let diag6: Diagnostic = diagnostic_add_cause(diag5, "this impl declares the same trait and target type");
+    let diag7: Diagnostic = diagnostic_with_subject_symbol(diag6, trait_name);
+    let diag8: Diagnostic = diagnostic_with_subject_type(diag7, target_type);
+    give diagnostic_with_probable_fix(diag8, "keep a single impl for `" + trait_name + " for " + target_type + "`");
+}
+
 proc typeck_cause_chain_missing(code: string, span: AstSpan) -> Diagnostic {
     let diag0: Diagnostic = typed_typeck_diag("TYPECK_E_CAUSE_CHAIN_MISSING", "type diagnostic is missing a cause chain", [code], "attach expected and found origins to this type diagnostic", span, DiagnosticSeverity.Fatal, DiagnosticPhase.Typeck, TypeckErrorKind.Internal);
     let diag1: Diagnostic = diagnostic_with_rule(diag0, "type diagnostic cause-chain completeness");
@@ -610,6 +624,7 @@ share typeck_argument_mismatch
 share typeck_invalid_call_arity
 share typeck_generic_inference_failed
 share typeck_trait_bound_unsatisfied
+share typeck_conflicting_impl
 share typeck_cause_chain_missing
 share typeck_code_requires_cause_chain
 share source_span_to_ast_span

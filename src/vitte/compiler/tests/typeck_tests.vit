@@ -663,6 +663,26 @@ proc test_generic_trait_bound_reports_unsatisfied_impl() -> bool {
     and find(diag.probable_fix, "impl") >= 0;
 }
 
+proc test_typeck_rejects_conflicting_trait_impls() -> bool {
+  let source: string =
+    "form Point { x: int }\n" +
+    "trait Show { proc show(self: Self) -> string; }\n" +
+    "impl Show for Point { proc show(self: Self) -> string { give \"first\"; } }\n" +
+    "impl Show for Point { proc show(self: Self) -> string { give \"second\"; } }\n";
+  let fe: FrontendOutput = frontend_run("typeck_conflicting_impls.vit", source);
+  let hir = lower_ast_to_hir(fe);
+  let result: TypeckResult = run_production_typeck_hir(hir);
+  let diag = diagnostic_by_code(result, "TYPECK_E_CONFLICTING_IMPL");
+  give fe.valid
+    and not result.valid
+    and diag.valid
+    and diag.rule == "trait implementation coherence"
+    and diag.subject_symbol == "Show"
+    and diag.subject_type == "Point"
+    and len(diag.cause_chain) >= 2
+    and len(diag.labels) >= 2;
+}
+
 proc test_if_branch_mismatch_carries_unification_rule() -> bool {
   let source: string = "proc main() { let x = if true { 1 } else { \"oops\" }; give x; }\n";
   let fe: FrontendOutput = frontend_run("typeck_if_branch_mismatch.vit", source);
@@ -1013,6 +1033,9 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if not test_generic_trait_bound_reports_unsatisfied_impl() {
+    set failures = failures + 1;
+  }
+  if not test_typeck_rejects_conflicting_trait_impls() {
     set failures = failures + 1;
   }
   if not test_if_branch_mismatch_carries_unification_rule() {

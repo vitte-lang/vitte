@@ -157,6 +157,7 @@ TYPECK_E_CALL_ARITY = wrong numero of llamada argumentos
 TYPECK_E_GENERIC_INFERENCE = generico tipo could not be inferred
 TYPECK_E_TRAIT_BOUND = trait constraint is not satisfied
 TYPECK_E_CAUSE_CHAIN_MISSING = tipo diagnostic is faltante a cause chain
+TYPECK_E_CONFLICTING_IMPL = implementación de trait en conflicto
 TYPECK_E_USE_BEFORE_INIT = use before init
 TYPECK_E_USE_AFTER_MOVE = use after movimiento
 TYPECK_E_MALFORMED_UNARY = malformed unary

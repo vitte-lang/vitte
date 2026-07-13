@@ -1,7 +1,7 @@
 space vitte/compiler/analysis/typeck
 
 use vitte/compiler/analysis/typeck/coercion.{ types_compatible }
-use vitte/compiler/analysis/typeck/errors.{ TypeckResult, add_unique_diag, typeck_assignment_mismatch, typeck_condition_type, typeck_diag, typeck_invalid_hir_result, typeck_non_exhaustive_match, typeck_result, typeck_return_mismatch }
+use vitte/compiler/analysis/typeck/errors.{ TypeckResult, add_unique_diag, typeck_assignment_mismatch, typeck_condition_type, typeck_conflicting_impl, typeck_diag, typeck_invalid_hir_result, typeck_non_exhaustive_match, typeck_result, typeck_return_mismatch }
 use vitte/compiler/analysis/typeck/infer.{ TypeBinding, constrained_generic_type_binding, env_get, env_has, env_index, env_set, infer_expr_type, param_type_binding, trait_impl_binding_name }
 use vitte/compiler/analysis/typeck/traits.{ type_is_copy, type_is_known, type_is_truthy }
 use vitte/compiler/diagnostics/diagnostic.{ Diagnostic }
@@ -328,6 +328,33 @@ proc check_impl_against_trait(items: [HirItem], item: HirItem) -> [Diagnostic] {
   give out;
 }
 
+proc check_impl_coherence(items: [HirItem], item_index: u64) -> [Diagnostic] {
+  let out: [Diagnostic] = [];
+  if item_index >= len(items) {
+    give out;
+  }
+
+  let item: HirItem = items[item_index];
+  let trait_name: string = trim(item.name);
+  let target_type: string = trim(item.target_type_text);
+  if item.kind != HirItemKind.Impl or trait_name == "" or target_type == "" {
+    give out;
+  }
+
+  let i: u64 = 0;
+  while i < item_index {
+    let previous: HirItem = items[i];
+    if previous.kind == HirItemKind.Impl
+      and trim(previous.name) == trait_name
+      and trim(previous.target_type_text) == target_type {
+      give [typeck_conflicting_impl(trait_name, target_type, previous.span, item.span)];
+    }
+    set i = i + 1;
+  }
+
+  give out;
+}
+
 proc run_typeck_hir(hir: HirUnit) -> TypeckResult {
   if not hir.valid {
     give typeck_invalid_hir_result(hir);
@@ -531,6 +558,7 @@ proc check_module(diagnostics: [Diagnostic], env: [TypeBinding], hir: HirUnit) -
     set out = out + stmt_result.diagnostics;
     set out = out + member_result.diagnostics;
     set out = out + check_impl_against_trait(hir.module.items, item);
+    set out = out + check_impl_coherence(hir.module.items, i);
     set module_env = stmt_result.env;
 
     set items = items + [HirItem {

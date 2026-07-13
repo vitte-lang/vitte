@@ -1510,3 +1510,4 @@ TYPECK_E_RETURN_MISMATCH = return type mismatch
 TYPECK_E_GENERIC_INFERENCE = generic type could not be inferred
 TYPECK_E_TRAIT_BOUND = trait constraint is not satisfied
 TYPECK_E_CAUSE_CHAIN_MISSING = type diagnostic is missing a cause chain
+TYPECK_E_CONFLICTING_IMPL = conflicting trait implementation

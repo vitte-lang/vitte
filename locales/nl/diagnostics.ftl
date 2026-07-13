@@ -157,6 +157,7 @@ TYPECK_E_CALL_ARITY = wrong nummer of aanroep argumenten
 TYPECK_E_GENERIC_INFERENCE = generiek type could not be inferred
 TYPECK_E_TRAIT_BOUND = trait constraint is not satisfied
 TYPECK_E_CAUSE_CHAIN_MISSING = type diagnostic is ontbrekend a cause chain
+TYPECK_E_CONFLICTING_IMPL = conflicterende trait-implementatie
 TYPECK_E_USE_BEFORE_INIT = use before init
 TYPECK_E_USE_AFTER_MOVE = use after verplaatsing
 TYPECK_E_MALFORMED_UNARY = malformed unary
