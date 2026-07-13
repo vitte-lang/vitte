@@ -27,11 +27,14 @@ use vitte/compiler/analysis/typeck/coercion.{
     project_place_type,
     is_ident_char,
     type_deref_target,
+    type_cast_allowed,
     type_index_element,
     types_compatible
 }
 use vitte/compiler/analysis/typeck/traits.{
     type_is_numeric,
+    type_is_float,
+    type_is_integer,
     type_is_truthy,
     type_is_known,
     type_is_copy,
@@ -635,12 +638,13 @@ proc infer_binary_type(env: [TypeBinding], expr: HirExpr) -> ExprTypeResult {
 
     if op == "+" or op == "-" or op == "*" or op == "/" or op == "%" {
         let numeric_left: bool = type_is_numeric(left.ty) or left.ty == "opaque";
-        let incompatible_numeric: bool = !types_compatible(left.ty, right.ty) or !numeric_left;
-        if incompatible_numeric {
+        let numeric_right: bool = type_is_numeric(right.ty) or right.ty == "opaque";
+        let unified = unify_binary_result_type(left.ty, op, right.ty);
+        if not numeric_left or not numeric_right or not unified.success {
             give expr_result("unknown", add_unique_diag(diagnostics, typeck_binary_mismatch(left.ty, right.ty, op, expr.span)), false);
         }
 
-        give expr_result(unify_types(left.ty, right.ty), diagnostics, valid);
+        give expr_result(unified.ty, diagnostics, valid);
     }
 
     let eq_eq: string = op_eq_eq();
@@ -648,7 +652,8 @@ proc infer_binary_type(env: [TypeBinding], expr: HirExpr) -> ExprTypeResult {
     let lt_eq: string = op_lt_eq();
     let gt_eq: string = op_gt_eq();
     if op == eq_eq or op == bang_eq or op == "<" or op == lt_eq or op == ">" or op == gt_eq {
-        if !types_compatible(left.ty, right.ty) {
+        let unified = unify_binary_result_type(left.ty, op, right.ty);
+        if not unified.success {
             give expr_result("bool", add_unique_diag(diagnostics, typeck_compare_mismatch(left.ty, right.ty, expr.span)), false);
         }
 
@@ -710,7 +715,7 @@ proc infer_cast_type(env: [TypeBinding], expr: HirExpr) -> ExprTypeResult {
         give expr_result(target_ty, diagnostics, valid);
     }
 
-    if source.ty == target_ty or (type_is_numeric(source.ty) and type_is_numeric(target_ty)) {
+    if type_cast_allowed(source.ty, target_ty) {
         give expr_result(target_ty, diagnostics, valid);
     }
 
@@ -1117,7 +1122,7 @@ proc infer_call_type(env: [TypeBinding], expr: HirExpr) -> ExprTypeResult {
 
             let arg_type_known: bool = arg.ty != "opaque" and arg.ty != "unknown";
             let unresolved_expected: bool = type_has_unresolved_generics(expected_pattern, generic_params, substitutions);
-            let arg_type_mismatch: bool = not unresolved_expected and expected_ty != "opaque" and arg_type_known and !types_compatible(expected_ty, arg.ty);
+            let arg_type_mismatch: bool = not unresolved_expected and expected_ty != "opaque" and arg_type_known and !expression_types_compatible(expected_ty, arg.ty, expr.children[i]);
             if arg_type_mismatch {
                 set diagnostics = add_unique_diag(diagnostics, typeck_argument_mismatch(callee_text, i, expected_ty, arg.ty, expr.span));
                 set valid = false;
@@ -1156,6 +1161,16 @@ proc infer_call_type(env: [TypeBinding], expr: HirExpr) -> ExprTypeResult {
     }
 
     give expr_result("opaque", diagnostics, valid);
+}
+
+proc expression_types_compatible(expected: string, actual: string, expr: HirExpr) -> bool {
+    if expr.kind == HirExprKind.Int and type_is_integer(expected) {
+        give true;
+    }
+    if expr.kind == HirExprKind.Float and type_is_float(expected) {
+        give true;
+    }
+    give types_compatible(expected, actual);
 }
 
 proc infer_if_type(env: [TypeBinding], expr: HirExpr) -> ExprTypeResult {
@@ -1387,6 +1402,7 @@ share infer_call_type
 share infer_if_type
 share infer_expr_type
 share infer_expr_type_in_env
+share expression_types_compatible
 
 share check_assignment_type
 share infer_and_store

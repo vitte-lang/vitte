@@ -84,6 +84,8 @@ REQUIRED_SYMBOLS = {
         'NumericPromotion',
     ],
     'typeck_coercion': [
+        'TypeCoercionResult',
+        'coerce_type',
         'TypeProjectionResult',
         'type_deref_target',
         'type_index_element',
@@ -99,6 +101,7 @@ REQUIRED_SYMBOLS = {
         'test_call_arity_carries_signature_context',
         'test_generic_call_infers_and_substitutes_return_type',
         'test_impl_method_dispatch_rejects_ambiguous_traits',
+        'test_numeric_coercions_are_directional_in_production',
         'test_generic_call_reports_unconstrained_parameter',
         'test_generic_substitution_replaces_identifiers_only',
         'test_generic_trait_bound_accepts_visible_impl',

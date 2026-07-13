@@ -1,5 +1,6 @@
 space vitte/compiler/analysis/typeck
 
+use vitte/compiler/analysis/typeck/coercion.{ TypeCompatibility, coerce_type }
 use vitte/compiler/analysis/typeck/traits.{
     type_is_numeric,
     type_is_integer,
@@ -404,34 +405,24 @@ proc unify_or_fallback(left: string, right: string, fallback: string) -> string 
 proc unify_assignment_type(expected: string, actual: string) -> TypeUnifyResult {
     let e: string = normalize_type_name(expected);
     let a: string = normalize_type_name(actual);
-
-    if e == a {
+    let coercion = coerce_type(e, a);
+    if coercion.success {
+        let kind: TypeUnifyKind = TypeUnifyKind.Exact;
+        if coercion.kind == TypeCompatibility.Numeric {
+            set kind = TypeUnifyKind.NumericPromotion;
+        } elif coercion.kind == TypeCompatibility.Reference {
+            set kind = TypeUnifyKind.ReferenceMatch;
+        } elif coercion.kind == TypeCompatibility.Pointer {
+            set kind = TypeUnifyKind.PointerMatch;
+        } elif coercion.kind == TypeCompatibility.Opaque {
+            set kind = TypeUnifyKind.OpaqueLeft;
+        }
         give TypeUnifyResult {
-            ty: e,
-            kind: TypeUnifyKind.Exact,
+            ty: if type_is_opaque(e) { a } else { e },
+            kind: kind,
             success: true,
-            lossy: false,
-            reason: "assignment types match"
-        };
-    }
-
-    if type_is_opaque(e) {
-        give TypeUnifyResult {
-            ty: a,
-            kind: TypeUnifyKind.OpaqueLeft,
-            success: true,
-            lossy: false,
-            reason: "expected type is opaque"
-        };
-    }
-
-    if type_is_numeric(e) and type_is_numeric(a) {
-        give TypeUnifyResult {
-            ty: e,
-            kind: TypeUnifyKind.NumericPromotion,
-            success: true,
-            lossy: integer_rank(a) > integer_rank(e),
-            reason: "numeric assignment conversion"
+            lossy: coercion.lossy,
+            reason: coercion.reason
         };
     }
 
@@ -440,7 +431,7 @@ proc unify_assignment_type(expected: string, actual: string) -> TypeUnifyResult 
         kind: TypeUnifyKind.Incompatible,
         success: false,
         lossy: false,
-        reason: "cannot assign " + a + " to " + e
+        reason: coercion.reason
     };
 }
 

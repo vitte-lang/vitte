@@ -1,6 +1,6 @@
 space vitte/compiler/analysis/typeck
 
-use vitte/compiler/analysis/typeck/traits.{ type_is_numeric }
+use vitte/compiler/analysis/typeck/traits.{ type_is_array, type_is_char, type_is_float, type_is_integer, type_is_never, type_is_numeric, type_is_opaque, type_is_pointer, type_is_reference, type_is_signed_integer, type_is_slice, type_is_unknown, type_is_unsigned_integer }
 
 pick TypeProjectionKind {
     Deref
@@ -14,9 +14,22 @@ pick TypeProjectionKind {
 pick TypeCompatibility {
     Exact
     Numeric
+    Reference
+    Pointer
+    ArrayToSlice
+    Never
     Opaque
     Unknown
     Incompatible
+}
+
+form TypeCoercionResult {
+    expected: string
+    actual: string
+    kind: TypeCompatibility
+    success: bool
+    lossy: bool
+    reason: string
 }
 
 form TypeProjection {
@@ -145,44 +158,117 @@ proc type_member_result(base_ty: string, member: string) -> string {
     give "opaque";
 }
 
-proc compatibility_kind(left: string, right: string) -> TypeCompatibility {
-    let l: string = normalize_type_name(left);
-    let r: string = normalize_type_name(right);
-
-    if l == r {
-        give TypeCompatibility.Exact;
-    }
-
-    if l == "opaque" or r == "opaque" {
-        give TypeCompatibility.Opaque;
-    }
-
-    if l == "unknown" or r == "unknown" {
-        give TypeCompatibility.Unknown;
-    }
-
-    if type_is_numeric(l) and type_is_numeric(r) {
-        give TypeCompatibility.Numeric;
-    }
-
-    give TypeCompatibility.Incompatible;
+proc numeric_type_width(ty: string) -> u64 {
+    let value: string = normalize_type_name(ty);
+    if value == "i8" or value == "u8" { give 8; }
+    if value == "i16" or value == "u16" { give 16; }
+    if value == "i32" or value == "u32" or value == "int" or value == "char" { give 32; }
+    if value == "i64" or value == "u64" or value == "isize" or value == "usize" or value == "f64" or value == "float" { give 64; }
+    if value == "i128" or value == "u128" { give 128; }
+    if value == "f32" { give 32; }
+    give 0;
 }
 
-proc types_compatible(left: string, right: string) -> bool {
-    let kind: TypeCompatibility = compatibility_kind(left, right);
+proc float_precision_bits(ty: string) -> u64 {
+    let value: string = normalize_type_name(ty);
+    if value == "f32" { give 24; }
+    if value == "f64" or value == "float" { give 53; }
+    give 0;
+}
 
-    if kind == TypeCompatibility.Exact {
-        give true;
+proc numeric_coercion_is_lossless(expected: string, actual: string) -> bool {
+    let e: string = normalize_type_name(expected);
+    let a: string = normalize_type_name(actual);
+    if type_is_integer(e) and type_is_integer(a) {
+        if type_is_signed_integer(e) and type_is_signed_integer(a) {
+            give numeric_type_width(a) <= numeric_type_width(e);
+        }
+        if type_is_unsigned_integer(e) and type_is_unsigned_integer(a) {
+            give numeric_type_width(a) <= numeric_type_width(e);
+        }
+        if type_is_signed_integer(e) and type_is_unsigned_integer(a) {
+            give numeric_type_width(a) < numeric_type_width(e);
+        }
+        give false;
     }
-
-    if kind == TypeCompatibility.Opaque {
-        give true;
+    if type_is_float(e) and type_is_float(a) {
+        give numeric_type_width(a) <= numeric_type_width(e);
     }
-
-    if kind == TypeCompatibility.Numeric {
-        give true;
+    if type_is_float(e) and type_is_integer(a) {
+        give numeric_type_width(a) <= float_precision_bits(e);
     }
+    give false;
+}
 
+proc reference_inner_type(ty: string) -> string {
+    let value: string = normalize_type_name(ty);
+    if starts_with(value, "&mut ") { give trim(slice(value, 5, len(value))); }
+    if starts_with(value, "&") { give trim(slice(value, 1, len(value))); }
+    give "";
+}
+
+proc pointer_inner_type(ty: string) -> string {
+    let value: string = normalize_type_name(ty);
+    if starts_with(value, "*const ") { give trim(slice(value, 7, len(value))); }
+    if starts_with(value, "*mut ") { give trim(slice(value, 5, len(value))); }
+    if starts_with(value, "*") { give trim(slice(value, 1, len(value))); }
+    give "";
+}
+
+proc coercion_result(expected: string, actual: string, kind: TypeCompatibility, success: bool, lossy: bool, reason: string) -> TypeCoercionResult {
+    give TypeCoercionResult { expected: expected, actual: actual, kind: kind, success: success, lossy: lossy, reason: reason };
+}
+
+proc coerce_type(expected: string, actual: string) -> TypeCoercionResult {
+    let e: string = normalize_type_name(expected);
+    let a: string = normalize_type_name(actual);
+
+    if e == a {
+        give coercion_result(e, a, TypeCompatibility.Exact, true, false, "types are identical");
+    }
+    if type_is_opaque(e) or type_is_opaque(a) {
+        give coercion_result(e, a, TypeCompatibility.Opaque, true, false, "opaque type defers compatibility");
+    }
+    if type_is_unknown(e) or type_is_unknown(a) {
+        give coercion_result(e, a, TypeCompatibility.Unknown, false, false, "unknown type cannot be coerced");
+    }
+    if type_is_never(a) {
+        give coercion_result(e, a, TypeCompatibility.Never, true, false, "never coerces to every result type");
+    }
+    if type_is_numeric(e) and type_is_numeric(a) and numeric_coercion_is_lossless(e, a) {
+        give coercion_result(e, a, TypeCompatibility.Numeric, true, false, "lossless numeric widening");
+    }
+    if type_is_reference(e) and type_is_reference(a)
+        and not starts_with(e, "&mut ") and starts_with(a, "&mut ")
+        and reference_inner_type(e) == reference_inner_type(a) {
+        give coercion_result(e, a, TypeCompatibility.Reference, true, false, "mutable reference reborrowed as shared");
+    }
+    if type_is_pointer(e) and type_is_pointer(a)
+        and starts_with(e, "*const ") and starts_with(a, "*mut ")
+        and pointer_inner_type(e) == pointer_inner_type(a) {
+        give coercion_result(e, a, TypeCompatibility.Pointer, true, false, "mutable pointer coerced to const pointer");
+    }
+    if type_is_slice(e) and type_is_array(a) and type_index_element(e) == type_index_element(a) {
+        give coercion_result(e, a, TypeCompatibility.ArrayToSlice, true, false, "array coerced to slice");
+    }
+    give coercion_result(e, a, TypeCompatibility.Incompatible, false, false, "implicit coercion would change representation or lose values");
+}
+
+proc compatibility_kind(expected: string, actual: string) -> TypeCompatibility {
+    give coerce_type(expected, actual).kind;
+}
+
+proc types_compatible(expected: string, actual: string) -> bool {
+    give coerce_type(expected, actual).success;
+}
+
+proc type_cast_allowed(source: string, target: string) -> bool {
+    let from: string = normalize_type_name(source);
+    let to: string = normalize_type_name(target);
+    if from == to { give true; }
+    if type_is_numeric(from) and type_is_numeric(to) { give true; }
+    if (type_is_char(from) and type_is_integer(to)) or (type_is_integer(from) and type_is_char(to)) { give true; }
+    if type_is_pointer(from) and type_is_pointer(to) { give true; }
     give false;
 }
 
@@ -375,10 +461,19 @@ proc projection_is_valid(base_ty: string, place_name: string) -> bool {
 
 share TypeProjectionKind
 share TypeCompatibility
+share TypeCoercionResult
 share TypeProjection
 share TypeProjectionResult
 
 share normalize_type_name
+share numeric_type_width
+share float_precision_bits
+share numeric_coercion_is_lossless
+share reference_inner_type
+share pointer_inner_type
+share coercion_result
+share coerce_type
+share type_cast_allowed
 share type_deref_target
 share type_index_element
 share type_member_result

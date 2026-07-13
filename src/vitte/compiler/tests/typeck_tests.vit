@@ -1,7 +1,7 @@
 space vitte/compiler/tests/typeck_tests
 
 use vitte/compiler/analysis/typeck/api.{ production_typeck_pipeline_name, production_typeck_pipeline_status, run_production_typeck_hir }
-use vitte/compiler/analysis/typeck/coercion.{ projection_is_valid, projection_member_name, project_place_type, project_place_type_result, type_deref_target, type_index_element, type_member_result, types_compatible }
+use vitte/compiler/analysis/typeck/coercion.{ coerce_type, projection_is_valid, projection_member_name, project_place_type, project_place_type_result, type_cast_allowed, type_deref_target, type_index_element, type_member_result, types_compatible }
 use vitte/compiler/analysis/typeck/errors.{ ExprTypeResult, TypeckResult, diagnostic_summary, result_summary, typeck_diag, typeck_internal_error, typeck_invalid_hir_result, typeck_result }
 use vitte/compiler/analysis/typeck/infer.{ empty_type_env, generic_type_binding, infer_call_type, infer_name_type, mutable_type_binding, substitute_type, type_binding, type_env_get_binding, type_env_mark_initialized, type_env_mark_moved, type_env_set, type_substitution, uninitialized_type_binding }
 use vitte/compiler/analysis/typeck/traits.{ type_allows_arithmetic, type_allows_bitwise, type_allows_comparison, type_can_assign_without_move, type_class, type_class_name, type_is_array, type_is_copy, type_is_function, type_is_pointer, type_is_reference, type_is_slice, type_is_tuple, type_requires_drop, type_trait_info }
@@ -911,15 +911,45 @@ proc test_typeck_trait_helpers_cover_core_type_surface() -> bool {
 
 proc test_typeck_coercion_helpers_cover_projection_surface() -> bool {
   let projection = project_place_type_result("&int", "*value");
+  let numeric_widening = coerce_type("i64", "u8");
+  let numeric_narrowing = coerce_type("i8", "i64");
+  let shared_reborrow = coerce_type("&int", "&mut int");
   give type_deref_target("&mut int") == "int"
     and type_index_element("[int; 4]") == "int"
     and type_member_result("string", "len") == "int"
-    and types_compatible("u8", "int")
+    and types_compatible("i64", "u8")
+    and not types_compatible("i8", "i64")
+    and numeric_widening.success
+    and not numeric_widening.lossy
+    and not numeric_narrowing.success
+    and shared_reborrow.success
+    and type_cast_allowed("i64", "i8")
+    and not type_cast_allowed("string", "i8")
     and projection_member_name("point.x", "") == "x"
     and projection.valid
     and projection.ty == "int"
     and project_place_type("string", "value.len") == "int"
     and projection_is_valid("string", "value.len");
+}
+
+proc test_numeric_coercions_are_directional_in_production() -> bool {
+  let widening_source: string = "proc widen(value: u8) -> i64 { give value; }\nproc literal() -> i8 { give 1; }\n";
+  let narrowing_source: string = "proc narrow(value: i64) -> i8 { give value; }\n";
+  let explicit_source: string = "proc narrow(value: i64) -> i8 { give value as i8; }\n";
+  let annotation_source: string = "proc main() { let value: i8 = \"oops\"; give 0; }\n";
+  let widening_fe: FrontendOutput = frontend_run("typeck_numeric_widening.vit", widening_source);
+  let narrowing_fe: FrontendOutput = frontend_run("typeck_numeric_narrowing.vit", narrowing_source);
+  let explicit_fe: FrontendOutput = frontend_run("typeck_numeric_explicit_cast.vit", explicit_source);
+  let annotation_fe: FrontendOutput = frontend_run("typeck_annotated_let_mismatch.vit", annotation_source);
+  let widening: TypeckResult = run_production_typeck_hir(lower_ast_to_hir(widening_fe));
+  let narrowing: TypeckResult = run_production_typeck_hir(lower_ast_to_hir(narrowing_fe));
+  let explicit: TypeckResult = run_production_typeck_hir(lower_ast_to_hir(explicit_fe));
+  let annotation: TypeckResult = run_production_typeck_hir(lower_ast_to_hir(annotation_fe));
+  give widening.valid
+    and not narrowing.valid
+    and has_code(narrowing, "TYPECK_E_RETURN_MISMATCH")
+    and explicit.valid
+    and has_code(annotation, "TYPECK_E_ASSIGN_MISMATCH");
 }
 
 proc test_typeck_unify_helpers_cover_numeric_and_reference_surface() -> bool {
@@ -1123,6 +1153,9 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if not test_typeck_coercion_helpers_cover_projection_surface() {
+    set failures = failures + 1;
+  }
+  if not test_numeric_coercions_are_directional_in_production() {
     set failures = failures + 1;
   }
   if not test_typeck_unify_helpers_cover_numeric_and_reference_surface() {

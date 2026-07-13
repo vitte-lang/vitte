@@ -1,8 +1,7 @@
 space vitte/compiler/analysis/typeck
 
-use vitte/compiler/analysis/typeck/coercion.{ types_compatible }
 use vitte/compiler/analysis/typeck/errors.{ TypeckResult, add_unique_diag, typeck_assignment_mismatch, typeck_condition_type, typeck_conflicting_impl, typeck_constraint_cycle, typeck_diag, typeck_invalid_hir_result, typeck_non_exhaustive_match, typeck_result, typeck_return_mismatch }
-use vitte/compiler/analysis/typeck/infer.{ TypeBinding, constrained_generic_type_binding, env_get, env_has, env_index, env_set, infer_expr_type, param_type_binding, trait_impl_binding_name, type_identifier_index }
+use vitte/compiler/analysis/typeck/infer.{ TypeBinding, constrained_generic_type_binding, env_get, env_has, env_index, env_set, expression_types_compatible, infer_expr_type, param_type_binding, trait_impl_binding_name, type_identifier_index }
 use vitte/compiler/analysis/typeck/traits.{ type_is_copy, type_is_known, type_is_truthy }
 use vitte/compiler/diagnostics/diagnostic.{ Diagnostic }
 use vitte/compiler/middle/hir.{ HirExpr, HirItem, HirItemKind, HirModule, HirNominalMember, HirNominalMemberKind, HirProcParam, HirStmt, HirStmtKind, HirUnit }
@@ -564,8 +563,12 @@ proc check_stmt_tree(diagnostics: [Diagnostic], env: [TypeBinding], stmts: [HirS
           true
         ));
       }
+      if stmt.annotation_text != "" and type_is_known(result.ty) and not expression_types_compatible(stmt.annotation_text, result.ty, stmt.expr) {
+        set out = add_unique_diag(out, typeck_assignment_mismatch(stmt.name, stmt.annotation_text, result.ty, stmt.span));
+      }
       if stmt.name != "" {
-        set current_env = env_set(current_env, stmt.name, result.ty);
+        let binding_type: string = if stmt.annotation_text != "" { stmt.annotation_text } else { result.ty };
+        set current_env = env_set(current_env, stmt.name, binding_type);
       }
     } elif stmt.kind == HirStmtKind.Set {
       let target_name: string = stmt.target_binding;
@@ -583,7 +586,7 @@ proc check_stmt_tree(diagnostics: [Diagnostic], env: [TypeBinding], stmts: [HirS
             stmt.span,
             true
           ));
-        } elif type_is_known(result.ty) and not types_compatible(binding.ty, result.ty) {
+        } elif type_is_known(result.ty) and not expression_types_compatible(binding.ty, result.ty, stmt.expr) {
           set out = add_unique_diag(out, typeck_assignment_mismatch(
             target_name,
             binding.ty,
@@ -609,7 +612,7 @@ proc check_stmt_tree(diagnostics: [Diagnostic], env: [TypeBinding], stmts: [HirS
         ));
       }
     } elif stmt.kind == HirStmtKind.Give {
-      if return_type != "" and type_is_known(result.ty) and not types_compatible(return_type, result.ty) {
+      if return_type != "" and type_is_known(result.ty) and not expression_types_compatible(return_type, result.ty, stmt.expr) {
         set out = add_unique_diag(out, typeck_return_mismatch(
           owner_name,
           return_type,
