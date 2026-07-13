@@ -515,6 +515,31 @@ def generated_cases() -> list[Case]:
         "TYPECK_E_IMPL_MISSING_MEMBER",
         "implementation completeness",
     ))
+    cases.append(Case(
+        "impl_trait_declared_later",
+        (
+            "space tests/typeck/differential/impl_trait_declared_later\n\n"
+            "form Point { x: int }\n"
+            "impl Show for Point { proc show(self: Self) -> string { give \"point\" } }\n"
+            "trait Show { proc show(self: Self) -> string; }\n"
+            "proc main() -> int { give 0 }\n"
+        ),
+        True,
+    ))
+    cases.append(Case(
+        "impl_trait_unknown",
+        (
+            "space tests/typeck/differential/impl_trait_unknown\n\n"
+            "form Point { x: int }\n"
+            "impl Missing for Point {\n"
+            "  proc show(self: Self) -> string { give \"point\" }\n"
+            "}\n"
+            "proc main() -> int { give 0 }\n"
+        ),
+        False,
+        "TYPECK_E_IMPL_UNKNOWN_TRAIT",
+        "implementation trait resolution",
+    ))
     return cases
 
 
@@ -679,6 +704,7 @@ def main() -> int:
             "finite bool and local pick matches require complete case coverage or a fallback",
             "local trait implementations preserve method arity, parameter types, and return types",
             "local trait implementations provide every required method regardless of declaration order",
+            "local impl trait names resolve after complete source-order-independent declaration indexing",
             "every rejected type-system case carries a two-step cause chain",
             "stage binaries agree on normalized typeck results",
             "repeated checks are deterministic",

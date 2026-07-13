@@ -2951,6 +2951,11 @@ detect_professional_diagnostic() {
             sub(/^impl[ \t]+[^ \t]+[ \t]+for[ \t]+/, "", impl_type)
             sub(/[ \t{].*$/, "", impl_type)
             if (impl_trait != "" && impl_type != "") {
+                impl_reference_count++
+                impl_reference_trait[impl_reference_count] = impl_trait
+                impl_reference_type[impl_reference_count] = impl_type
+                impl_reference_line[impl_reference_count] = FNR
+                impl_reference_col[impl_reference_count] = index(raw, impl_trait)
                 impl_key = impl_trait SUBSEP impl_type
                 if (trait_impl[impl_key]) {
                     col = index(raw, impl_trait)
@@ -3424,6 +3429,20 @@ detect_professional_diagnostic() {
         }
     }
     END {
+        if (!found) {
+            for (impl_reference_index = 1; impl_reference_index <= impl_reference_count; impl_reference_index++) {
+                impl_trait = impl_reference_trait[impl_reference_index]
+                if (trait_known[impl_trait]) continue
+                raw = source_line[impl_reference_line[impl_reference_index]]
+                col = impl_reference_col[impl_reference_index]
+                emit("TYPECK_E_IMPL_UNKNOWN_TRAIT", "error", "typeck",
+                    "impl references unknown trait " impl_trait,
+                    impl_reference_line[impl_reference_index], col, col + length(impl_trait), raw,
+                    "trait " impl_trait " is not declared in this module",
+                    "implementation target type: " impl_reference_type[impl_reference_index] "; trait resolution completed without a matching declaration",
+                    "declare trait " impl_trait " or correct the implemented trait name")
+            }
+        }
         if (!found) {
             for (call_line_no = 1; call_line_no <= FNR; call_line_no++) {
                 call_code = source_code_line[call_line_no]
@@ -4075,6 +4094,14 @@ render_professional_diagnostic_surface_json() {
             root_json="$(json_escape "implementation does not provide every required trait member")"
             cause_a_json="$(json_escape "the trait declaration establishes the required method set")"
             cause_b_json="$(json_escape "the completed implementation scan does not contain one required method")"
+        elif [ "$code" = "TYPECK_E_IMPL_UNKNOWN_TRAIT" ]; then
+            rule_json="$(json_escape "implementation trait resolution")"
+            explanation_json="$(json_escape "An implementation names a trait that is not declared anywhere in the local module.")"
+            technical_json="$(json_escape "Detected after scanning every top-level declaration so trait references are independent of source order.")"
+            docs_json="$(json_escape "docs://language/type-system/trait-implementations")"
+            root_json="$(json_escape "implementation trait name does not resolve to a local declaration")"
+            cause_a_json="$(json_escape "an implementation requires its trait name to resolve after module indexing")"
+            cause_b_json="$(json_escape "the complete local trait index contains no declaration with that name")"
         else
             rule_json="$(json_escape "type checking")"
             explanation_json="$(json_escape "The source violates a type-system rule enforced by the compiler.")"
