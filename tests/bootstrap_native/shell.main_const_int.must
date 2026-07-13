@@ -18,7 +18,6 @@ ansi_cyan="$(printf '[36m')"
 
 # --- shell-runtime-body ---
 
-
 cli_error() {
     code="$1"
     msg="$2"
@@ -904,7 +903,11 @@ render_native_shell_from_ir() {
     printf '\n'
     printf '# --- shell-runtime-body ---\n'
     printf '\n'
-    sed -n '/^# --- shell-runtime-body ---$/,$p' "$0" | sed '1d'
+    sed -n '/^# --- shell-runtime-body ---$/,$p' "$0" | awk '
+        NR == 1 { next }
+        !started && /^[ \t]*$/ { next }
+        { started = 1; print }
+    '
 }
 
 render_native_shell() {

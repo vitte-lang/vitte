@@ -261,6 +261,10 @@ vitte-bootstrap-check:
 bootstrap-native-snapshots:
 	@tools/bootstrap_native_snapshots.sh
 
+.PHONY: bootstrap-shell-fixed-point
+bootstrap-shell-fixed-point: bootstrap-seed
+	@tools/bootstrap_shell_fixed_point_test.sh
+
 compiler-real-native-gate:
 	@tools/compiler_real_native_gate.sh
 
@@ -656,10 +660,10 @@ bootstrap-verify: bootstrap-all
 	@echo "[bootstrap-verify] versions + smoke + bootstrap-subset checks ok"
 
 .PHONY: bootstrap-native-contract
-bootstrap-native-contract: seed-verify bootstrap-source-coverage-check selfhost-subset-check posix-seed-shell-check bootstrap-native-snapshots bootstrap-verify bootstrap-posix-smoke
+bootstrap-native-contract: seed-verify bootstrap-source-coverage-check selfhost-subset-check posix-seed-shell-check bootstrap-shell-fixed-point bootstrap-native-snapshots bootstrap-verify bootstrap-posix-smoke
 
 .PHONY: bootstrap-native-fast-contract
-bootstrap-native-fast-contract: seed-verify bootstrap-source-coverage-check selfhost-subset-check posix-seed-shell-check bootstrap-native-snapshots bootstrap-native-drift-check
+bootstrap-native-fast-contract: seed-verify bootstrap-source-coverage-check selfhost-subset-check posix-seed-shell-check bootstrap-shell-fixed-point bootstrap-native-snapshots bootstrap-native-drift-check
 
 .PHONY: bootstrap-posix-smoke
 bootstrap-posix-smoke: bootstrap-all
