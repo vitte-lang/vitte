@@ -2414,9 +2414,25 @@ detect_professional_diagnostic() {
             "trait method " active_nominal_owner "." method_name " declared here: " file ":" trait_method_line[active_nominal_owner SUBSEP method_name],
             "align the impl method " mismatch " with the trait declaration")
     }
-    function index_nominal_methods(kind, owner, body, start_line,    rest, offset, matched, proc_rel, signature_start, signature, method_name, open_col, close_col, params_text, param_count, return_tail, return_type, method_line, prefix, key, i, expected_type, actual_type, advance, params) {
+    function emit_impl_missing_member(method_name,    raw, col, key) {
+        raw = source_line[active_nominal_line]
+        col = active_nominal_col
+        key = active_nominal_owner SUBSEP method_name
+        emit("TYPECK_E_IMPL_MISSING_MEMBER", "error", "typeck",
+            "impl is missing required trait method " method_name,
+            active_nominal_line, col, col + length(active_nominal_owner), raw,
+            "required method " method_name " is absent from this impl",
+            "trait method " active_nominal_owner "." method_name " declared here: " file ":" trait_method_line[key],
+            "add method " method_name " with the signature declared by trait " active_nominal_owner)
+    }
+    function index_nominal_methods(kind, owner, body, start_line,    rest, offset, matched, proc_rel, signature_start, signature, method_name, open_col, close_col, params_text, param_count, return_tail, return_type, method_line, prefix, key, i, expected_type, actual_type, advance, scan_id, required_name, params) {
         rest = body
         offset = 0
+        scan_id = 0
+        if (kind == "impl") {
+            impl_scan_id++
+            scan_id = impl_scan_id
+        }
         while (match(rest, /(^|[^A-Za-z0-9_])proc[ \t\r\n]+[A-Za-z_][A-Za-z0-9_]*[ \t\r\n]*[(]/)) {
             matched = substr(rest, RSTART, RLENGTH)
             proc_rel = index(matched, "proc")
@@ -2452,24 +2468,33 @@ detect_professional_diagnostic() {
                         trait_method_param[key SUBSEP i] = method_param_type(params[i])
                     }
                 }
-            } else if (trait_method_known[key]) {
-                if (param_count != trait_method_param_count[key]) {
-                    emit_impl_signature_mismatch(method_name, "parameter count", trait_method_param_count[key], param_count, method_line)
-                }
-                if (return_type != trait_method_return[key]) {
-                    emit_impl_signature_mismatch(method_name, "return type", trait_method_return[key], return_type, method_line)
-                }
-                for (i = 1; i <= param_count; i++) {
-                    expected_type = trait_method_param[key SUBSEP i]
-                    actual_type = method_param_type(params[i])
-                    if (actual_type != expected_type) {
-                        emit_impl_signature_mismatch(method_name, "parameter " i " type", expected_type, actual_type, method_line)
+            } else {
+                impl_method_scan[method_name] = scan_id
+                if (trait_method_known[key]) {
+                    if (param_count != trait_method_param_count[key]) {
+                        emit_impl_signature_mismatch(method_name, "parameter count", trait_method_param_count[key], param_count, method_line)
+                    }
+                    if (return_type != trait_method_return[key]) {
+                        emit_impl_signature_mismatch(method_name, "return type", trait_method_return[key], return_type, method_line)
+                    }
+                    for (i = 1; i <= param_count; i++) {
+                        expected_type = trait_method_param[key SUBSEP i]
+                        actual_type = method_param_type(params[i])
+                        if (actual_type != expected_type) {
+                            emit_impl_signature_mismatch(method_name, "parameter " i " type", expected_type, actual_type, method_line)
+                        }
                     }
                 }
             }
             advance = signature_start + close_col - 1
             offset += advance
             rest = substr(rest, advance + 1)
+        }
+        if (kind == "impl" && trait_known[owner]) {
+            for (i = 1; i <= trait_method_count[owner]; i++) {
+                required_name = trait_method_name[owner SUBSEP i]
+                if (impl_method_scan[required_name] != scan_id) emit_impl_missing_member(required_name)
+            }
         }
     }
     function finish_nominal_definition(unused) {
@@ -4043,6 +4068,14 @@ render_professional_diagnostic_surface_json() {
             root_json="$(json_escape "implementation method signature is incompatible with its trait contract")"
             cause_a_json="$(json_escape "the trait declaration establishes the required method signature")"
             cause_b_json="$(json_escape "the implementation declares a method with a different signature component")"
+        elif [ "$code" = "TYPECK_E_IMPL_MISSING_MEMBER" ]; then
+            rule_json="$(json_escape "implementation completeness")"
+            explanation_json="$(json_escape "A local trait implementation omits a method required by the implemented trait.")"
+            technical_json="$(json_escape "Detected after indexing all methods in the implementation and comparing their names with the local trait contract.")"
+            docs_json="$(json_escape "docs://language/type-system/trait-implementations")"
+            root_json="$(json_escape "implementation does not provide every required trait member")"
+            cause_a_json="$(json_escape "the trait declaration establishes the required method set")"
+            cause_b_json="$(json_escape "the completed implementation scan does not contain one required method")"
         else
             rule_json="$(json_escape "type checking")"
             explanation_json="$(json_escape "The source violates a type-system rule enforced by the compiler.")"

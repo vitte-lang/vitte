@@ -480,6 +480,41 @@ def generated_cases() -> list[Case]:
         "TYPECK_E_IMPL_SIGNATURE_MISMATCH",
         "implementation signature compatibility",
     ))
+    cases.append(Case(
+        "impl_members_complete",
+        (
+            "space tests/typeck/differential/impl_members_complete\n\n"
+            "form Point { x: int }\n"
+            "trait Display {\n"
+            "  proc show(self: Self) -> string;\n"
+            "  proc debug(self: Self) -> string;\n"
+            "}\n"
+            "impl Display for Point {\n"
+            "  proc debug(self: Self) -> string { give \"debug\" }\n"
+            "  proc show(self: Self) -> string { give \"point\" }\n"
+            "}\n"
+            "proc main() -> int { give 0 }\n"
+        ),
+        True,
+    ))
+    cases.append(Case(
+        "impl_member_missing",
+        (
+            "space tests/typeck/differential/impl_member_missing\n\n"
+            "form Point { x: int }\n"
+            "trait Display {\n"
+            "  proc show(self: Self) -> string;\n"
+            "  proc debug(self: Self) -> string;\n"
+            "}\n"
+            "impl Display for Point {\n"
+            "  proc show(self: Self) -> string { give \"point\" }\n"
+            "}\n"
+            "proc main() -> int { give 0 }\n"
+        ),
+        False,
+        "TYPECK_E_IMPL_MISSING_MEMBER",
+        "implementation completeness",
+    ))
     return cases
 
 
@@ -643,6 +678,7 @@ def main() -> int:
             "implicit numeric coercions are directional and lossless",
             "finite bool and local pick matches require complete case coverage or a fallback",
             "local trait implementations preserve method arity, parameter types, and return types",
+            "local trait implementations provide every required method regardless of declaration order",
             "every rejected type-system case carries a two-step cause chain",
             "stage binaries agree on normalized typeck results",
             "repeated checks are deterministic",
