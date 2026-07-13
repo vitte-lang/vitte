@@ -10,7 +10,7 @@ use vitte/compiler/diagnostics/diagnostic.{ Diagnostic, DiagnosticPhase, Diagnos
 use vitte/compiler/analysis/sema.{ SemaResult, run_sema_hir }
 use vitte/compiler/frontend/pipeline.{ FrontendOutput, frontend_run }
 use vitte/compiler/frontend/ast/node.{ ast_span, ast_span_empty }
-use vitte/compiler/middle/hir.{ HirExpr, HirExprKind, HirNominalMemberKind, HirPlaceCategory, HirValueMode, hir_expr, hir_expr_with_generic_arguments }
+use vitte/compiler/middle/hir.{ HirExpr, HirExprKind, HirItemKind, HirNominalMemberKind, HirPlaceCategory, HirValueMode, hir_expr, hir_expr_with_generic_arguments }
 use vitte/compiler/middle/hir/lower_ast.{ lower_ast_to_hir }
 
 const VERSION_TEXT: string = "analysis typeck tests 0.2.0"
@@ -933,6 +933,54 @@ proc test_typeck_preserves_trait_impl_method_signatures_and_body_types() -> bool
     and impl_member.body_stmts[0].expr.inferred_type == "string";
 }
 
+proc test_canonical_hir_covers_retired_complete_surface() -> bool {
+  let source: string =
+    "form Box[T] { value: T }\n" +
+    "pick Option[T] { None, Some(T) }\n" +
+    "trait Show { proc show(self: Self) -> string; }\n" +
+    "impl Show for Box[string] { proc show(self: Self) -> string { give \"box\"; } }\n" +
+    "proc id[T](value: T) -> T { give value; }\n";
+  let fe: FrontendOutput = frontend_run("typeck_canonical_surface.vit", source);
+  let hir = lower_ast_to_hir(fe);
+  let sema: SemaResult = run_sema_hir(hir);
+  let result: TypeckResult = run_production_typeck_hir(sema.hir);
+  if not fe.valid or not sema.valid or not result.valid or len(result.hir.module.items) != 5 {
+    give false;
+  }
+  let form_item = result.hir.module.items[0];
+  let pick_item = result.hir.module.items[1];
+  let trait_item = result.hir.module.items[2];
+  let impl_item = result.hir.module.items[3];
+  let proc_item = result.hir.module.items[4];
+  give form_item.kind == HirItemKind.Form
+    and form_item.name == "Box"
+    and form_item.generic_count == 1
+    and form_item.generic_params[0] == "T"
+    and len(form_item.members) == 1
+    and form_item.members[0].kind == HirNominalMemberKind.Field
+    and form_item.members[0].annotation_text == "T"
+    and pick_item.kind == HirItemKind.Pick
+    and pick_item.name == "Option"
+    and pick_item.generic_count == 1
+    and len(pick_item.members) == 2
+    and pick_item.members[1].kind == HirNominalMemberKind.Variant
+    and trait_item.kind == HirItemKind.Trait
+    and trait_item.name == "Show"
+    and len(trait_item.members) == 1
+    and trait_item.members[0].kind == HirNominalMemberKind.TraitMethod
+    and impl_item.kind == HirItemKind.Impl
+    and impl_item.name == "Show"
+    and impl_item.target_type_text == "Box[string]"
+    and len(impl_item.members) == 1
+    and impl_item.members[0].kind == HirNominalMemberKind.ImplMethod
+    and proc_item.kind == HirItemKind.Proc
+    and proc_item.name == "id"
+    and proc_item.generic_count == 1
+    and len(proc_item.params) == 1
+    and proc_item.params[0].annotation_text == "T"
+    and proc_item.annotation_text == "T";
+}
+
 proc test_typeck_reports_impl_return_signature_mismatch() -> bool {
   let source: string =
     "form Point { x: int }\n" +
@@ -1255,6 +1303,9 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if not test_typeck_preserves_trait_impl_method_signatures_and_body_types() {
+    set failures = failures + 1;
+  }
+  if not test_canonical_hir_covers_retired_complete_surface() {
     set failures = failures + 1;
   }
   if not test_typeck_reports_impl_return_signature_mismatch() {

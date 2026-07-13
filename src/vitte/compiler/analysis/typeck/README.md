@@ -11,10 +11,8 @@ Production callers use `run_production_typeck_hir` from `api.vit`. The API accep
 - `errors.vit` owns structured type-checking results and diagnostics.
 - `api.vit` is the only production entrypoint.
 
-## Complete migration source
+## Retired architecture
 
-`complete/*` is an AST-era implementation retained only while its advanced capabilities are migrated into the HIR checker. It is not exported by `typeck/mod.vit` or `typeck/api.vit`, and production code must not import it.
+The AST-era checker was removed after its remaining surface, declaration validation and procedure checks were migrated to typed HIR. There is no fallback checker or second result model. New typing behavior must be represented in HIR and tested through `run_production_typeck_hir`.
 
-`src/vitte/compiler/tests/typeck_complete_tests.vit` may import the `complete` module root to preserve migration coverage. A capability is considered migrated only after it has HIR representation, production checker coverage and positive and negative tests through `run_production_typeck_hir`.
-
-The accepted decision and removal criteria are recorded in `ARCHITECTURE.md`.
+The accepted decision and completed migration are recorded in `ARCHITECTURE.md`.
