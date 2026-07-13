@@ -22,6 +22,7 @@ class Case:
     source: str
     valid: bool
     required_code: str = ""
+    required_rule: str = ""
 
 
 def source_for_assignment(name: str, declared_type: str, initial: str, assigned: str, padding: str = "") -> str:
@@ -93,6 +94,38 @@ def generated_cases() -> list[Case]:
                 "}\n"
             ),
             True,
+        ))
+
+    return_literals = {
+        "i32": "1",
+        "string": '"text"',
+        "bool": "true",
+    }
+    for declared_type, valid_literal in return_literals.items():
+        cases.append(Case(
+            f"return_identity_{declared_type}",
+            (
+                f"space tests/typeck/differential/return_identity_{declared_type}\n\n"
+                f"proc value() -> {declared_type} {{\n"
+                f"  give {valid_literal}\n"
+                "}\n"
+                "proc main() -> int { give 0 }\n"
+            ),
+            True,
+        ))
+        mismatched_type = next(name for name in return_literals if name != declared_type)
+        cases.append(Case(
+            f"return_mismatch_{declared_type}_{mismatched_type}",
+            (
+                f"space tests/typeck/differential/return_mismatch_{declared_type}_{mismatched_type}\n\n"
+                f"proc value() -> {declared_type} {{\n"
+                f"  give {return_literals[mismatched_type]}\n"
+                "}\n"
+                "proc main() -> int { give 0 }\n"
+            ),
+            False,
+            "TYPECK_E_RETURN_MISMATCH",
+            "procedure return compatibility",
         ))
     return cases
 
@@ -173,6 +206,10 @@ def assert_oracle(binary: Path, case: Case, exit_code: int, payload: dict[str, o
     for diagnostic in matching:
         if diagnostic.get("phase") != "typeck" or diagnostic.get("severity") != "error":
             raise AssertionError(f"{binary.name}/{case.name}: malformed diagnostic contract: {diagnostic}")
+        if case.required_rule and diagnostic.get("rule") != case.required_rule:
+            raise AssertionError(
+                f"{binary.name}/{case.name}: expected rule {case.required_rule!r}: {diagnostic}"
+            )
         causes = diagnostic.get("cause_chain")
         if not isinstance(causes, list) or not causes:
             raise AssertionError(f"{binary.name}/{case.name}: diagnostic has no cause chain")
@@ -242,6 +279,7 @@ def main() -> int:
             "alpha-renaming and whitespace preserve diagnostic codes",
             "non-truthy string conditions are rejected",
             "string equality and inequality produce boolean conditions",
+            "primitive return contracts accept matching values and reject mismatches",
             "stage binaries agree on normalized typeck results",
             "repeated checks are deterministic",
             "user programs do not terminate the compiler by signal",
