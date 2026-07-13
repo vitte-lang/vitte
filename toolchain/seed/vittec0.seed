@@ -3101,12 +3101,17 @@ detect_professional_diagnostic() {
                     proc_param_type[name SUBSEP proc_param_count[name]] = signature_param_type
                 }
             }
-            if (line ~ /->[ \t]*(i32|int|string|bool)[ \t]*[{]/) {
+            declared_proc_return = ""
+            if (line ~ /->[ \t]*[A-Za-z_][A-Za-z0-9_]*/) {
+                declared_proc_return = line
+                sub(/^.*->[ \t]*/, "", declared_proc_return)
+                sub(/[ \t{;].*$/, "", declared_proc_return)
+            }
+            proc_return_type[name] = declared_proc_return
+            if (declared_proc_return != "" && line ~ /[{]/) {
                 current_proc = name
                 current_proc_line = FNR
-                current_return_type = line
-                sub(/^.*->[ \t]*/, "", current_return_type)
-                sub(/[ \t{;].*$/, "", current_return_type)
+                current_return_type = declared_proc_return
                 current_proc_depth = brace_depth + 1
             }
         } else if (line ~ /^const[ \t]+[A-Za-z_][A-Za-z0-9_]*/) {
@@ -3611,6 +3616,7 @@ detect_professional_diagnostic() {
                     call_suffix = substr(matched_call, called_name_offset + length(called_proc))
                     call_open_offset = index(call_suffix, "(")
                     if (called_name_offset <= 0 || call_open_offset <= 0) continue
+                    call_name_col = RSTART + called_name_offset - 1
                     call_open_col = RSTART + called_name_offset + length(called_proc) + call_open_offset - 2
                     call_generic_arg_count = 0
                     call_generic_text = trim(substr(call_suffix, 1, call_open_offset - 1))
@@ -3709,6 +3715,32 @@ detect_professional_diagnostic() {
                             "expected " expected_arg_type ", found " actual_arg_type,
                             "argument " call_arg_index " is passed to procedure " called_proc,
                             "pass a value of type " expected_arg_type " or change the parameter type")
+                    }
+                    resolved_call_return = proc_return_type[called_proc]
+                    if (proc_generic_index[called_proc SUBSEP resolved_call_return] > 0) resolved_call_return = ""
+                    call_binding_prefix = trim(substr(call_code, 1, call_name_col - 1))
+                    if (resolved_call_return != "" && call_binding_prefix ~ /^let[ \t]+[A-Za-z_][A-Za-z0-9_]*([ \t]*:[ \t]*[A-Za-z_][A-Za-z0-9_]*)?[ \t]*=[ \t]*$/) {
+                        call_binding_name = call_binding_prefix
+                        sub(/^let[ \t]+/, "", call_binding_name)
+                        sub(/[ \t]*[:=].*$/, "", call_binding_name)
+                        call_binding_type = ""
+                        if (call_binding_prefix ~ /:/) {
+                            call_binding_type = call_binding_prefix
+                            sub(/^[^:]*:[ \t]*/, "", call_binding_type)
+                            sub(/[ \t]*=.*/, "", call_binding_type)
+                        }
+                        if (call_binding_type != "" && !seed_types_compatible(call_binding_type, resolved_call_return)) {
+                            raw = source_line[call_line_no]
+                            emit("TYPECK_E_ASSIGN_MISMATCH", "error", "typeck",
+                                "cannot initialize " call_binding_name " of type " call_binding_type " from procedure return type " resolved_call_return,
+                                call_line_no, call_name_col, call_close_col + 1, raw,
+                                "expected " call_binding_type ", found " resolved_call_return,
+                                "procedure " called_proc " declares return type " resolved_call_return,
+                                "change the binding type or the procedure return type")
+                        }
+                        if (call_binding_type == "") {
+                            remember_decl(call_binding_name, resolved_call_return, call_line_no, index(source_line[call_line_no], call_binding_name))
+                        }
                     }
                 }
             }

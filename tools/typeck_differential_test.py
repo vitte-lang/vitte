@@ -773,6 +773,47 @@ def generated_cases() -> list[Case]:
         "TYPECK_E_TRAIT_BOUND",
         "trait bound satisfaction",
     ))
+    cases.append(Case(
+        "local_call_return_valid",
+        (
+            "space tests/typeck/differential/local_call_return_valid\n\n"
+            "proc make_text() -> string { give \"ready\" }\n"
+            "proc main() -> int {\n"
+            "  let text: string = make_text()\n"
+            "  give 0\n"
+            "}\n"
+        ),
+        True,
+    ))
+    cases.append(Case(
+        "local_call_return_mismatch",
+        (
+            "space tests/typeck/differential/local_call_return_mismatch\n\n"
+            "proc make_text() -> string { give \"wrong\" }\n"
+            "proc main() -> int {\n"
+            "  let visible: bool = make_text()\n"
+            "  give 0\n"
+            "}\n"
+        ),
+        False,
+        "TYPECK_E_ASSIGN_MISMATCH",
+        "assignment type compatibility",
+    ))
+    cases.append(Case(
+        "local_call_return_inference",
+        (
+            "space tests/typeck/differential/local_call_return_inference\n\n"
+            "proc make_text() -> string { give \"wrong\" }\n"
+            "proc take(value: int) -> int { give value }\n"
+            "proc main() -> int {\n"
+            "  let text = make_text()\n"
+            "  give take(text)\n"
+            "}\n"
+        ),
+        False,
+        "TYPECK_E_ARGUMENT_MISMATCH",
+        "function argument compatibility",
+    ))
     return cases
 
 
@@ -944,6 +985,7 @@ def main() -> int:
             "bound method returns satisfy annotated bindings and propagate into inferred local bindings",
             "local procedure and generic arguments resolve binding types before compatibility and trait-bound checks",
             "procedure returns resolve local binding types before directional compatibility checks",
+            "local procedure return types satisfy annotated bindings and propagate into inferred bindings",
             "every rejected type-system case carries a two-step cause chain",
             "stage binaries agree on normalized typeck results",
             "repeated checks are deterministic",
