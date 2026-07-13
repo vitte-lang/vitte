@@ -740,6 +740,52 @@ proc test_typeck_rejects_cyclic_generic_constraints() -> bool {
     and find(diag.probable_fix, "acyclic") >= 0;
 }
 
+proc test_declared_types_accept_nominals_generics_and_compounds() -> bool {
+  let source: string =
+    "form Box[T] { value: T }\n" +
+    "pick Maybe[T] { None, Some(T) }\n" +
+    "proc keep[T](value: Box[T], callback: fn(T) -> T) -> Box[T] { give value; }\n";
+  let fe: FrontendOutput = frontend_run("typeck_declared_types_valid.vit", source);
+  let result: TypeckResult = run_production_typeck_hir(lower_ast_to_hir(fe));
+  give fe.valid and not has_code(result, "TYPECK_E_UNKNOWN_TYPE");
+}
+
+proc test_declared_field_reports_unknown_nested_type() -> bool {
+  let source: string = "form Box[T] { value: T }\nform Broken { value: Box[Missing] }\n";
+  let fe: FrontendOutput = frontend_run("typeck_unknown_field_type.vit", source);
+  let result: TypeckResult = run_production_typeck_hir(lower_ast_to_hir(fe));
+  let diag = diagnostic_by_code(result, "TYPECK_E_UNKNOWN_TYPE");
+  give fe.valid
+    and not result.valid
+    and diag.valid
+    and diag.rule == "declared type resolution"
+    and diag.subject_type == "Box[Missing]"
+    and find(diag.explanation, "Broken.value") >= 0
+    and len(diag.cause_chain) >= 2;
+}
+
+proc test_declared_signature_and_impl_target_report_unknown_types() -> bool {
+  let source: string =
+    "trait Show { proc show(self: Self) -> string; }\n" +
+    "impl Show for Missing { proc show(self: Self) -> string { give \"missing\"; } }\n" +
+    "proc consume(value: Unknown) -> Unknown { give value; }\n";
+  let fe: FrontendOutput = frontend_run("typeck_unknown_signature_types.vit", source);
+  let result: TypeckResult = run_production_typeck_hir(lower_ast_to_hir(fe));
+  give fe.valid and not result.valid and has_code(result, "TYPECK_E_UNKNOWN_TYPE");
+}
+
+proc test_local_annotation_reports_unknown_type() -> bool {
+  let source: string = "proc main() -> int { let value: Missing = 1; give 0; }\n";
+  let fe: FrontendOutput = frontend_run("typeck_unknown_local_annotation.vit", source);
+  let result: TypeckResult = run_production_typeck_hir(lower_ast_to_hir(fe));
+  let diag = diagnostic_by_code(result, "TYPECK_E_UNKNOWN_TYPE");
+  give fe.valid
+    and not result.valid
+    and diag.valid
+    and diag.subject_type == "Missing"
+    and find(diag.explanation, "local declaration `value`") >= 0;
+}
+
 proc test_if_branch_mismatch_carries_unification_rule() -> bool {
   let source: string = "proc main() { let x = if true { 1 } else { \"oops\" }; give x; }\n";
   let fe: FrontendOutput = frontend_run("typeck_if_branch_mismatch.vit", source);
@@ -1161,6 +1207,18 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if not test_typeck_rejects_cyclic_generic_constraints() {
+    set failures = failures + 1;
+  }
+  if not test_declared_types_accept_nominals_generics_and_compounds() {
+    set failures = failures + 1;
+  }
+  if not test_declared_field_reports_unknown_nested_type() {
+    set failures = failures + 1;
+  }
+  if not test_declared_signature_and_impl_target_report_unknown_types() {
+    set failures = failures + 1;
+  }
+  if not test_local_annotation_reports_unknown_type() {
     set failures = failures + 1;
   }
   if not test_if_branch_mismatch_carries_unification_rule() {

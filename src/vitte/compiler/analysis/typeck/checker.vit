@@ -1,9 +1,10 @@
 space vitte/compiler/analysis/typeck
 
-use vitte/compiler/analysis/typeck/errors.{ TypeckResult, add_unique_diag, typeck_assignment_mismatch, typeck_condition_type, typeck_conflicting_impl, typeck_constraint_cycle, typeck_diag, typeck_invalid_hir_result, typeck_non_exhaustive_match, typeck_result, typeck_return_mismatch }
-use vitte/compiler/analysis/typeck/infer.{ TypeBinding, constrained_generic_type_binding, env_get, env_has, env_index, env_set, expression_types_compatible, infer_expr_type, param_type_binding, resolved_call_generic_arguments, trait_impl_binding_name, type_identifier_index }
+use vitte/compiler/analysis/typeck/errors.{ TypeckResult, add_unique_diag, typeck_assignment_mismatch, typeck_condition_type, typeck_conflicting_impl, typeck_constraint_cycle, typeck_diag, typeck_invalid_hir_result, typeck_non_exhaustive_match, typeck_result, typeck_return_mismatch, typeck_unknown_type }
+use vitte/compiler/analysis/typeck/infer.{ TypeBinding, constrained_generic_type_binding, env_get, env_has, env_index, env_set, expression_types_compatible, function_param_types, function_return_type, infer_expr_type, param_type_binding, resolved_call_generic_arguments, split_function_signature_types, trait_impl_binding_name, type_identifier_index }
 use vitte/compiler/analysis/typeck/traits.{ type_is_copy, type_is_known, type_is_truthy }
 use vitte/compiler/diagnostics/diagnostic.{ Diagnostic }
+use vitte/compiler/frontend/ast/node.{ AstSpan }
 use vitte/compiler/middle/hir.{ HirExpr, HirExprKind, HirItem, HirItemKind, HirModule, HirNominalMember, HirNominalMemberKind, HirProcParam, HirStmt, HirStmtKind, HirUnit }
 
 form TypeckStmtWalk {
@@ -80,6 +81,165 @@ proc nominal_base_type(ty: string) -> string {
     give trim(slice(value, 0, bracket));
   }
   give value;
+}
+
+proc declaration_builtin_type(type_name: string) -> bool {
+  let value: string = trim(type_name);
+  give value == "bool"
+    or value == "char"
+    or value == "string"
+    or value == "str"
+    or value == "unit"
+    or value == "never"
+    or value == "int"
+    or value == "uint"
+    or value == "isize"
+    or value == "usize"
+    or value == "i8"
+    or value == "i16"
+    or value == "i32"
+    or value == "i64"
+    or value == "i128"
+    or value == "u8"
+    or value == "u16"
+    or value == "u32"
+    or value == "u64"
+    or value == "u128"
+    or value == "float"
+    or value == "f32"
+    or value == "f64";
+}
+
+proc declaration_type_known(env: [TypeBinding], type_name: string) -> bool {
+  let value: string = trim(type_name);
+  if value == "" or value == "..." {
+    give true;
+  }
+  if starts_with(value, "&mut ") or starts_with(value, "*mut ") {
+    give declaration_type_known(env, trim(slice(value, 5, len(value))));
+  }
+  if starts_with(value, "*const ") {
+    give declaration_type_known(env, trim(slice(value, 7, len(value))));
+  }
+  if starts_with(value, "&") or starts_with(value, "*") {
+    give declaration_type_known(env, trim(slice(value, 1, len(value))));
+  }
+  if starts_with(value, "fn(") {
+    let params: [string] = function_param_types(value);
+    let i: u64 = 0;
+    while i < len(params) {
+      if not declaration_type_known(env, params[i]) {
+        give false;
+      }
+      set i = i + 1;
+    }
+    give declaration_type_known(env, function_return_type(value));
+  }
+  if starts_with(value, "[") and ends_with(value, "]") {
+    let inner: string = trim(slice(value, 1, len(value) - 1));
+    let separator: int = find(inner, ";");
+    let element_type: string = if separator >= 0 { trim(slice(inner, 0, separator)) } else { inner };
+    give declaration_type_known(env, element_type);
+  }
+  if starts_with(value, "(") and ends_with(value, ")") {
+    let elements: [string] = split_function_signature_types(slice(value, 1, len(value) - 1));
+    let i: u64 = 0;
+    while i < len(elements) {
+      if not declaration_type_known(env, elements[i]) {
+        give false;
+      }
+      set i = i + 1;
+    }
+    give true;
+  }
+  let generic_open: int = find(value, "[");
+  if generic_open > 0 and ends_with(value, "]") {
+    let base: string = trim(slice(value, 0, generic_open));
+    if not declaration_type_known(env, base) {
+      give false;
+    }
+    let arguments: [string] = split_function_signature_types(slice(value, generic_open + 1, len(value) - 1));
+    let i: u64 = 0;
+    while i < len(arguments) {
+      if not declaration_type_known(env, arguments[i]) {
+        give false;
+      }
+      set i = i + 1;
+    }
+    give true;
+  }
+  if declaration_builtin_type(value) or value == "Self" {
+    give true;
+  }
+  if env_has(env, nominal_type_env_name(value)) {
+    give true;
+  }
+  give find(value, "::") >= 0 or find(value, ".") >= 0;
+}
+
+proc generic_param_type_bindings(params: [string]) -> [TypeBinding] {
+  let env: [TypeBinding] = [];
+  let i: u64 = 0;
+  while i < len(params) {
+    if params[i] != "" {
+      set env = env_set(env, nominal_type_env_name(params[i]), params[i]);
+    }
+    set i = i + 1;
+  }
+  give env;
+}
+
+proc validate_declared_type(diagnostics: [Diagnostic], env: [TypeBinding], type_name: string, declaration_context: string, span: AstSpan) -> [Diagnostic] {
+  if type_name == "" or declaration_type_known(env, type_name) {
+    give diagnostics;
+  }
+  give add_unique_diag(diagnostics, typeck_unknown_type(type_name, declaration_context, span));
+}
+
+proc validate_proc_param_types(diagnostics: [Diagnostic], env: [TypeBinding], params: [HirProcParam], owner_name: string, span: AstSpan) -> [Diagnostic] {
+  let out: [Diagnostic] = diagnostics;
+  let i: u64 = 0;
+  while i < len(params) {
+    if not params[i].variadic {
+      set out = validate_declared_type(out, env, params[i].annotation_text, "parameter `" + params[i].name + "` of `" + owner_name + "`", span);
+    }
+    set i = i + 1;
+  }
+  give out;
+}
+
+proc validate_item_declared_types(module_env: [TypeBinding], item: HirItem) -> [Diagnostic] {
+  let env: [TypeBinding] = module_env + generic_param_type_bindings(item.generic_params);
+  let out: [Diagnostic] = [];
+  set out = validate_proc_param_types(out, env, item.params, item.name, item.span);
+  if item.kind == HirItemKind.Proc {
+    set out = validate_declared_type(out, env, item.annotation_text, "return type of `" + item.name + "`", item.span);
+  } elif item.annotation_text != "" {
+    set out = validate_declared_type(out, env, item.annotation_text, "declared type of `" + item.name + "`", item.span);
+  }
+  if item.kind == HirItemKind.Impl {
+    set out = validate_declared_type(out, env, item.target_type_text, "impl target for `" + item.name + "`", item.span);
+  }
+  let generic_index: u64 = 0;
+  while generic_index < len(item.generic_param_info) {
+    set out = validate_declared_type(
+      out,
+      env,
+      item.generic_param_info[generic_index].default_type_text,
+      "default type of generic parameter `" + item.generic_param_info[generic_index].name + "`",
+      item.span
+    );
+    set generic_index = generic_index + 1;
+  }
+  let i: u64 = 0;
+  while i < len(item.members) {
+    let member = item.members[i];
+    let member_context: string = "member `" + item.name + "." + member.name + "`";
+    set out = validate_declared_type(out, env, member.annotation_text, member_context, member.span);
+    set out = validate_proc_param_types(out, env, member.params, item.name + "." + member.name, member.span);
+    set i = i + 1;
+  }
+  give out;
 }
 
 proc proc_param_signature_text(param: HirProcParam, target_type_text: string) -> string {
@@ -628,6 +788,9 @@ proc check_stmt_tree(diagnostics: [Diagnostic], env: [TypeBinding], stmts: [HirS
     let result = infer_expr_type(current_env, stmt.expr);
     let typed_expr: HirExpr = annotate_expr(current_env, stmt.expr);
     set out = out + result.diagnostics;
+    if stmt.annotation_text != "" {
+      set out = validate_declared_type(out, current_env, stmt.annotation_text, "local declaration `" + stmt.name + "`", stmt.span);
+    }
 
     let then_checked: TypeckStmtWalk = check_stmt_tree([], current_env, stmt.then_stmts, return_type, owner_name);
     let else_checked: TypeckStmtWalk = check_stmt_tree([], current_env, stmt.else_stmts, return_type, owner_name);
@@ -743,6 +906,7 @@ proc check_module(diagnostics: [Diagnostic], env: [TypeBinding], hir: HirUnit) -
   while i < len(hir.module.items) {
     let item: HirItem = hir.module.items[i];
     set out = out + check_generic_constraint_cycles(item);
+    set out = out + validate_item_declared_types(module_env, item);
     if item.kind == HirItemKind.Unknown {
       set out = add_unique_diag(out, typeck_diag(
         "TYPECK_E_UNKNOWN_ITEM",
@@ -761,7 +925,7 @@ proc check_module(diagnostics: [Diagnostic], env: [TypeBinding], hir: HirUnit) -
       set module_env = env_set(module_env, item.name, item_result.ty);
     }
 
-    let item_env: [TypeBinding] = module_env + member_env(item.params, "");
+    let item_env: [TypeBinding] = module_env + generic_param_type_bindings(item.generic_params) + member_env(item.params, "");
     let stmt_result: TypeckStmtWalk = check_stmt_tree([], item_env, item.stmts, item.annotation_text, item.name);
     let member_result: TypeckMemberWalk = typeck_members(module_env, item);
     set out = out + stmt_result.diagnostics;

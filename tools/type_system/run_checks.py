@@ -115,6 +115,10 @@ REQUIRED_SYMBOLS = {
         'test_generic_trait_bound_reports_unsatisfied_impl',
         'test_typeck_rejects_conflicting_trait_impls',
         'test_typeck_rejects_cyclic_generic_constraints',
+        'test_declared_types_accept_nominals_generics_and_compounds',
+        'test_declared_field_reports_unknown_nested_type',
+        'test_declared_signature_and_impl_target_report_unknown_types',
+        'test_local_annotation_reports_unknown_type',
         'test_typeck_result_enforces_diagnostic_cause_chains',
     ],
     'mir_monomorphize': [

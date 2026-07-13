@@ -372,6 +372,26 @@ proc typeck_unknown_name(name: string, span: AstSpan) -> Diagnostic {
     give typed_typeck_diag("TYPECK_E_UNKNOWN_NAME", "unknown identifier in expression", [name], "declare the binding before use or import it from another module", span, DiagnosticSeverity.Error, DiagnosticPhase.Typeck, TypeckErrorKind.UnknownName);
 }
 
+proc typeck_unknown_type(type_name: string, declaration_context: string, span: AstSpan) -> Diagnostic {
+    let diag0: Diagnostic = typed_typeck_diag(
+        "TYPECK_E_UNKNOWN_TYPE",
+        "unknown type",
+        [type_name, declaration_context],
+        "declare or import the type, or correct its spelling",
+        span,
+        DiagnosticSeverity.Error,
+        DiagnosticPhase.Typeck,
+        TypeckErrorKind.UnknownName
+    );
+    let diag1: Diagnostic = diagnostic_with_rule(diag0, "declared type resolution");
+    let diag2: Diagnostic = diagnostic_with_explanation(diag1, "The type `" + type_name + "` used by " + declaration_context + " does not resolve to a primitive, generic parameter, or visible nominal type.");
+    let diag3: Diagnostic = diagnostic_with_root_cause(diag2, "a declaration references a type outside the visible type environment");
+    let diag4: Diagnostic = diagnostic_add_cause(diag3, "declaration context: " + declaration_context);
+    let diag5: Diagnostic = diagnostic_add_cause(diag4, "unresolved type: `" + type_name + "`");
+    let diag6: Diagnostic = diagnostic_with_subject_type(diag5, type_name);
+    give diagnostic_with_probable_fix(diag6, "declare or import `" + type_name + "`, or replace it with a visible type");
+}
+
 proc typeck_invalid_expr(span: AstSpan) -> Diagnostic {
     give typed_typeck_diag("TYPECK_E_INVALID_EXPR", "invalid expression in type checking", ["expr"], "fix the expression before type checking", span, DiagnosticSeverity.Error, DiagnosticPhase.Typeck, TypeckErrorKind.InvalidExpr);
 }
@@ -627,6 +647,7 @@ share typeck_invalid_hir_result
 share typeck_internal_error
 
 share typeck_unknown_name
+share typeck_unknown_type
 share typeck_invalid_expr
 share typeck_invalid_deref
 share typeck_binary_mismatch
