@@ -2396,6 +2396,119 @@ detect_professional_diagnostic() {
         active_match_depth = 1
         consume_finite_match(substr(tail, open_col + 1))
     }
+    function method_param_type(param,    type_name) {
+        type_name = trim(param)
+        if (index(type_name, ":") > 0) sub(/^[^:]*:[ \t\r\n]*/, "", type_name)
+        else if (type_name == "self") type_name = "Self"
+        sub(/[ \t\r\n].*$/, "", type_name)
+        return type_name
+    }
+    function emit_impl_signature_mismatch(method_name, mismatch, expected, actual, line_no,    raw, col) {
+        raw = source_line[line_no]
+        col = index(raw, method_name)
+        if (col <= 0) col = active_nominal_col
+        emit("TYPECK_E_IMPL_SIGNATURE_MISMATCH", "error", "typeck",
+            "impl method " method_name " " mismatch " does not match trait method",
+            line_no, col, col + length(method_name), raw,
+            "expected " expected ", found " actual,
+            "trait method " active_nominal_owner "." method_name " declared here: " file ":" trait_method_line[active_nominal_owner SUBSEP method_name],
+            "align the impl method " mismatch " with the trait declaration")
+    }
+    function index_nominal_methods(kind, owner, body, start_line,    rest, offset, matched, proc_rel, signature_start, signature, method_name, open_col, close_col, params_text, param_count, return_tail, return_type, method_line, prefix, key, i, expected_type, actual_type, advance, params) {
+        rest = body
+        offset = 0
+        while (match(rest, /(^|[^A-Za-z0-9_])proc[ \t\r\n]+[A-Za-z_][A-Za-z0-9_]*[ \t\r\n]*[(]/)) {
+            matched = substr(rest, RSTART, RLENGTH)
+            proc_rel = index(matched, "proc")
+            signature_start = RSTART + proc_rel - 1
+            signature = substr(rest, signature_start)
+            method_name = signature
+            sub(/^proc[ \t\r\n]+/, "", method_name)
+            sub(/[(].*$/, "", method_name)
+            open_col = index(signature, "(")
+            close_col = matching_call_paren(signature, open_col)
+            if (method_name == "" || open_col <= 0 || close_col <= 0) break
+            params_text = substr(signature, open_col + 1, close_col - open_col - 1)
+            param_count = split_call_args(params_text, params)
+            return_tail = trim(substr(signature, close_col + 1))
+            return_type = ""
+            if (return_tail ~ /^->[ \t\r\n]*/) {
+                sub(/^->[ \t\r\n]*/, "", return_tail)
+                return_type = return_tail
+                sub(/[ \t\r\n{;].*$/, "", return_type)
+            }
+            prefix = substr(body, 1, offset + signature_start - 1)
+            method_line = start_line + count_char(prefix, "\n")
+            key = owner SUBSEP method_name
+            if (kind == "trait") {
+                if (!trait_method_known[key]) {
+                    trait_method_known[key] = 1
+                    trait_method_count[owner]++
+                    trait_method_name[owner SUBSEP trait_method_count[owner]] = method_name
+                    trait_method_param_count[key] = param_count
+                    trait_method_return[key] = return_type
+                    trait_method_line[key] = method_line
+                    for (i = 1; i <= param_count; i++) {
+                        trait_method_param[key SUBSEP i] = method_param_type(params[i])
+                    }
+                }
+            } else if (trait_method_known[key]) {
+                if (param_count != trait_method_param_count[key]) {
+                    emit_impl_signature_mismatch(method_name, "parameter count", trait_method_param_count[key], param_count, method_line)
+                }
+                if (return_type != trait_method_return[key]) {
+                    emit_impl_signature_mismatch(method_name, "return type", trait_method_return[key], return_type, method_line)
+                }
+                for (i = 1; i <= param_count; i++) {
+                    expected_type = trait_method_param[key SUBSEP i]
+                    actual_type = method_param_type(params[i])
+                    if (actual_type != expected_type) {
+                        emit_impl_signature_mismatch(method_name, "parameter " i " type", expected_type, actual_type, method_line)
+                    }
+                }
+            }
+            advance = signature_start + close_col - 1
+            offset += advance
+            rest = substr(rest, advance + 1)
+        }
+    }
+    function finish_nominal_definition(unused) {
+        index_nominal_methods(active_nominal_kind, active_nominal_owner, active_nominal_body, active_nominal_line)
+        active_nominal_kind = ""
+        active_nominal_owner = ""
+        active_nominal_body = ""
+        active_nominal_depth = 0
+    }
+    function consume_nominal_definition(code,    i, ch) {
+        for (i = 1; i <= length(code); i++) {
+            ch = substr(code, i, 1)
+            if (ch == "{") {
+                active_nominal_depth++
+                active_nominal_body = active_nominal_body ch
+            } else if (ch == "}") {
+                active_nominal_depth--
+                if (active_nominal_depth == 0) {
+                    finish_nominal_definition(0)
+                    return
+                }
+                active_nominal_body = active_nominal_body ch
+            } else {
+                active_nominal_body = active_nominal_body ch
+            }
+        }
+        active_nominal_body = active_nominal_body "\n"
+    }
+    function begin_nominal_definition(kind, owner, code, line_no, col,    open_col) {
+        open_col = index(code, "{")
+        if (open_col <= 0) return
+        active_nominal_kind = kind
+        active_nominal_owner = owner
+        active_nominal_line = line_no
+        active_nominal_col = col
+        active_nominal_body = ""
+        active_nominal_depth = 1
+        consume_nominal_definition(substr(code, open_col + 1))
+    }
     function type_pattern_mentions(pattern, param,    normalized, part_count, part_index, parts) {
         normalized = pattern
         gsub(/[^A-Za-z0-9_]/, " ", normalized)
@@ -2577,6 +2690,7 @@ detect_professional_diagnostic() {
         import_count = 0
         active_pick_name = ""
         active_match_type = ""
+        active_nominal_kind = ""
     }
     {
         raw = $0
@@ -2800,7 +2914,10 @@ detect_professional_diagnostic() {
             trait_name = line
             sub(/^trait[ \t]+/, "", trait_name)
             sub(/[ \t{(:].*$/, "", trait_name)
-            if (trait_name != "") trait_known[trait_name] = 1
+            if (trait_name != "") {
+                trait_known[trait_name] = 1
+                begin_nominal_definition("trait", trait_name, code_line, FNR, index(raw, trait_name))
+            }
         }
         if (line ~ /^impl[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]+for[ \t]+[^ \t{]+/) {
             impl_trait = line
@@ -2823,10 +2940,11 @@ detect_professional_diagnostic() {
                 trait_impl[impl_key] = 1
                 trait_impl_line[impl_key] = FNR
                 trait_impl_col[impl_key] = index(raw, impl_trait)
+                begin_nominal_definition("impl", impl_trait, code_line, FNR, index(raw, impl_trait))
             }
         }
 
-        if (line ~ /^proc[ \t]+[A-Za-z_][A-Za-z0-9_]*/) {
+        if (line ~ /^proc[ \t]+[A-Za-z_][A-Za-z0-9_]*/ && active_nominal_kind == "") {
             name = line
             sub(/^proc[ \t]+/, "", name)
             sub(/[ \t(:={].*$/, "", name)
@@ -3259,6 +3377,9 @@ detect_professional_diagnostic() {
 
         if (active_pick_name != "" && line !~ /^pick[ \t]+/) {
             consume_pick_definition(code_line)
+        }
+        if (active_nominal_kind != "" && line !~ /^(trait|impl)[ \t]+/) {
+            consume_nominal_definition(code_line)
         }
         if (active_match_type != "") {
             consume_finite_match(code_line)
@@ -3914,6 +4035,14 @@ render_professional_diagnostic_surface_json() {
             root_json="$(json_escape "finite match case coverage is incomplete")"
             cause_a_json="$(json_escape "the scrutinee type establishes a finite set of cases")"
             cause_b_json="$(json_escape "the match arms omit one case without an else or wildcard fallback")"
+        elif [ "$code" = "TYPECK_E_IMPL_SIGNATURE_MISMATCH" ]; then
+            rule_json="$(json_escape "implementation signature compatibility")"
+            explanation_json="$(json_escape "An implementation method differs from the corresponding trait method in arity, parameter types, or return type.")"
+            technical_json="$(json_escape "Detected after indexing local trait method signatures and comparing each visible implementation member.")"
+            docs_json="$(json_escape "docs://language/type-system/trait-implementations")"
+            root_json="$(json_escape "implementation method signature is incompatible with its trait contract")"
+            cause_a_json="$(json_escape "the trait declaration establishes the required method signature")"
+            cause_b_json="$(json_escape "the implementation declares a method with a different signature component")"
         else
             rule_json="$(json_escape "type checking")"
             explanation_json="$(json_escape "The source violates a type-system rule enforced by the compiler.")"

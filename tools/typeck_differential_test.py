@@ -426,6 +426,60 @@ def generated_cases() -> list[Case]:
         "TYPECK_E_MATCH_NON_EXHAUSTIVE",
         "pattern coverage completeness",
     ))
+    cases.append(Case(
+        "impl_signature_compatible",
+        (
+            "space tests/typeck/differential/impl_signature_compatible\n\n"
+            "form Point { x: int }\n"
+            "trait Show {\n"
+            "  proc show(self: Self, level: int) -> string;\n"
+            "}\n"
+            "impl Show for Point {\n"
+            "  proc show(self: Self, level: int) -> string { give \"point\" }\n"
+            "}\n"
+            "proc main() -> int { give 0 }\n"
+        ),
+        True,
+    ))
+    cases.append(Case(
+        "impl_signature_return_mismatch",
+        (
+            "space tests/typeck/differential/impl_signature_return_mismatch\n\n"
+            "form Point { x: int }\n"
+            "trait Show { proc show(self: Self) -> string; }\n"
+            "impl Show for Point { proc show(self: Self) -> int { give 0 } }\n"
+            "proc main() -> int { give 0 }\n"
+        ),
+        False,
+        "TYPECK_E_IMPL_SIGNATURE_MISMATCH",
+        "implementation signature compatibility",
+    ))
+    cases.append(Case(
+        "impl_signature_parameter_mismatch",
+        (
+            "space tests/typeck/differential/impl_signature_parameter_mismatch\n\n"
+            "form Point { x: int }\n"
+            "trait Show { proc show(self: Self, level: int) -> string; }\n"
+            "impl Show for Point { proc show(self: Self, level: bool) -> string { give \"point\" } }\n"
+            "proc main() -> int { give 0 }\n"
+        ),
+        False,
+        "TYPECK_E_IMPL_SIGNATURE_MISMATCH",
+        "implementation signature compatibility",
+    ))
+    cases.append(Case(
+        "impl_signature_arity_mismatch",
+        (
+            "space tests/typeck/differential/impl_signature_arity_mismatch\n\n"
+            "form Point { x: int }\n"
+            "trait Show { proc show(self: Self, level: int) -> string; }\n"
+            "impl Show for Point { proc show(self: Self) -> string { give \"point\" } }\n"
+            "proc main() -> int { give 0 }\n"
+        ),
+        False,
+        "TYPECK_E_IMPL_SIGNATURE_MISMATCH",
+        "implementation signature compatibility",
+    ))
     return cases
 
 
@@ -588,6 +642,7 @@ def main() -> int:
             "explicit literal casts stay within supported scalar representations",
             "implicit numeric coercions are directional and lossless",
             "finite bool and local pick matches require complete case coverage or a fallback",
+            "local trait implementations preserve method arity, parameter types, and return types",
             "every rejected type-system case carries a two-step cause chain",
             "stage binaries agree on normalized typeck results",
             "repeated checks are deterministic",
