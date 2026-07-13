@@ -60,6 +60,13 @@ REQUIRED_RECURSIVE_CALLS = (
     "lower_item_stmts(item)",
 )
 
+REQUIRED_ITEM_METADATA = (
+    ("hir.vit", "generic_params: [string]"),
+    ("lower_ast.vit", "proc item_generic_param_names(item: AstItem) -> [string]"),
+    ("lower_ast.vit", "let generic_params: [string] = item_generic_param_names(item);"),
+    ("lower_ast.vit", "len(generic_params),\n    generic_params,"),
+)
+
 
 def read(path: Path) -> str:
     if not path.is_file():
@@ -202,6 +209,14 @@ def main() -> int:
         if status != "present":
             failures.append(f"lower_ast.vit: missing recursive lowering call `{needle}`")
 
+    item_metadata = {}
+    for owner, needle in REQUIRED_ITEM_METADATA:
+        text = hir_text if owner == "hir.vit" else lowering_text
+        status = "present" if needle in text else "missing"
+        item_metadata[f"{owner}:{needle}"] = status
+        if status != "present":
+            failures.append(f"{owner}: missing item metadata contract `{needle}`")
+
     payload = {
         "schema": "vitte.compiler.ast_hir_lowering_audit",
         "schema_version": "1.0.0",
@@ -210,6 +225,7 @@ def main() -> int:
         "normalized_surfaces": normalized_results,
         "normalization_calls": normalization_calls,
         "recursive_calls": recursive_calls,
+        "item_metadata": item_metadata,
         "failures": failures,
     }
     REPORT.parent.mkdir(parents=True, exist_ok=True)

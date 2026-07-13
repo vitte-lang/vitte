@@ -633,11 +633,25 @@ proc item_abi_text(item: AstItem) -> string {
   give item.abi;
 }
 
-proc item_generic_count(item: AstItem) -> u64 {
-  if len(item.signature.generic_params) > len(item.generic_params) {
-    give len(item.signature.generic_params);
+proc item_generic_param_names(item: AstItem) -> [string] {
+  let out: [string] = [];
+  let i: u64 = 0;
+  if len(item.signature.generic_params) > 0 {
+    while i < len(item.signature.generic_params) {
+      if item.signature.generic_params[i].name != "" {
+        set out = out + [item.signature.generic_params[i].name];
+      }
+      set i = i + 1;
+    }
+    give out;
   }
-  give len(item.generic_params);
+  while i < len(item.generic_params) {
+    if item.generic_params[i].name != "" {
+      set out = out + [item.generic_params[i].name];
+    }
+    set i = i + 1;
+  }
+  give out;
 }
 
 proc item_signature_param_count(item: AstItem) -> u64 {
@@ -666,6 +680,7 @@ proc lower_item(item: AstItem) -> HirItem {
 
   let members: [HirNominalMember] = lower_nominal_members(item.members);
   let params: [HirProcParam] = lower_item_params(item);
+  let generic_params: [string] = item_generic_param_names(item);
   give hir_item_with_members(
     item.id.value,
     item.span,
@@ -676,7 +691,8 @@ proc lower_item(item: AstItem) -> HirItem {
     item.visibility,
     item.visibility == "public",
     item_abi_text(item),
-    item_generic_count(item),
+    len(generic_params),
+    generic_params,
     len(item.type_params),
     len(item.attributes),
     len(item.modifiers),

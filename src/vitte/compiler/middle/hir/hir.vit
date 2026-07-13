@@ -279,6 +279,7 @@ form HirItem {
   exported: bool
   abi: string
   generic_count: u64
+  generic_params: [string]
   type_param_count: u64
   attribute_count: u64
   modifier_count: u64
@@ -430,7 +431,7 @@ proc hir_nominal_member(id: u64, span: AstSpan, kind: HirNominalMemberKind, name
   };
 }
 
-proc hir_item_with_members(id: u64, span: AstSpan, kind: HirItemKind, name: string, resolved_id: u64, namespace: string, visibility: string, exported: bool, abi: string, generic_count: u64, type_param_count: u64, attribute_count: u64, modifier_count: u64, member_count: u64, signature_param_count: u64, params: [HirProcParam], annotation_text: string, target_type_text: string, expr: HirExpr, stmts: [HirStmt], members: [HirNominalMember], message: string, scope_depth: u64, diagnostics: [SemanticDiagnostic], valid: bool) -> HirItem {
+proc hir_item_with_members(id: u64, span: AstSpan, kind: HirItemKind, name: string, resolved_id: u64, namespace: string, visibility: string, exported: bool, abi: string, generic_count: u64, generic_params: [string], type_param_count: u64, attribute_count: u64, modifier_count: u64, member_count: u64, signature_param_count: u64, params: [HirProcParam], annotation_text: string, target_type_text: string, expr: HirExpr, stmts: [HirStmt], members: [HirNominalMember], message: string, scope_depth: u64, diagnostics: [SemanticDiagnostic], valid: bool) -> HirItem {
   give HirItem {
     id: id,
     span: span,
@@ -442,6 +443,7 @@ proc hir_item_with_members(id: u64, span: AstSpan, kind: HirItemKind, name: stri
     exported: exported,
     abi: abi,
     generic_count: generic_count,
+    generic_params: generic_params,
     type_param_count: type_param_count,
     attribute_count: attribute_count,
     modifier_count: modifier_count,
@@ -460,8 +462,8 @@ proc hir_item_with_members(id: u64, span: AstSpan, kind: HirItemKind, name: stri
   };
 }
 
-proc hir_item(id: u64, span: AstSpan, kind: HirItemKind, name: string, resolved_id: u64, namespace: string, visibility: string, exported: bool, abi: string, generic_count: u64, type_param_count: u64, attribute_count: u64, modifier_count: u64, member_count: u64, signature_param_count: u64, annotation_text: string, target_type_text: string, expr: HirExpr, stmts: [HirStmt], message: string, scope_depth: u64, diagnostics: [SemanticDiagnostic], valid: bool) -> HirItem {
-  give hir_item_with_members(id, span, kind, name, resolved_id, namespace, visibility, exported, abi, generic_count, type_param_count, attribute_count, modifier_count, member_count, signature_param_count, [], annotation_text, target_type_text, expr, stmts, [], message, scope_depth, diagnostics, valid);
+proc hir_item(id: u64, span: AstSpan, kind: HirItemKind, name: string, resolved_id: u64, namespace: string, visibility: string, exported: bool, abi: string, generic_count: u64, generic_params: [string], type_param_count: u64, attribute_count: u64, modifier_count: u64, member_count: u64, signature_param_count: u64, annotation_text: string, target_type_text: string, expr: HirExpr, stmts: [HirStmt], message: string, scope_depth: u64, diagnostics: [SemanticDiagnostic], valid: bool) -> HirItem {
+  give hir_item_with_members(id, span, kind, name, resolved_id, namespace, visibility, exported, abi, generic_count, generic_params, type_param_count, attribute_count, modifier_count, member_count, signature_param_count, [], annotation_text, target_type_text, expr, stmts, [], message, scope_depth, diagnostics, valid);
 }
 
 proc hir_module(name: string, items: [HirItem], diagnostics: [SemanticDiagnostic], dependency_count: u64, symbol_count: u64, valid: bool) -> HirModule {
@@ -674,7 +676,7 @@ proc hir_unit_summary(unit: HirUnit) -> string {
 proc hir_selftest() -> bool {
   let expr: HirExpr = hir_expr(1, ast_span_empty(), HirExprKind.Int, "42", "", "", "", 0, "", false, HirValueMode.Copy, "i32", HirPlaceCategory.Value, true, true, false, false, [], [], true);
   let stmt: HirStmt = hir_stmt(2, ast_span_empty(), HirStmtKind.ExprStmt, "", "", "", 0, "", "", expr, "", false, false, false, 0, [], [], [], [], true);
-  let item: HirItem = hir_item(3, ast_span_empty(), HirItemKind.Proc, "main", 0, "demo", "public", true, "", 0, 0, 0, 0, 1, 0, "", "", expr, [stmt], "", 0, [], true);
+  let item: HirItem = hir_item(3, ast_span_empty(), HirItemKind.Proc, "main", 0, "demo", "public", true, "", 0, [], 0, 0, 0, 1, 0, "", "", expr, [stmt], "", 0, [], true);
   let module: HirModule = hir_module("demo", [item], [], 0, 1, true);
   let unit: HirUnit = hir_unit("demo.vit", module, 3, 1, 1, 1, 1, 1, true, true, true);
 
