@@ -1,0 +1,144 @@
+space vitte/compiler/backend/native_toolchain
+
+pick NativeToolRole {
+  Compiler,
+  Assembler,
+  Linker,
+}
+
+form NativeToolchain {
+  compiler_path: string
+  assembler_path: string
+  linker_path: string
+  runtime_source_path: string
+  runtime_include_path: string
+  valid: bool
+}
+
+form NativeToolCommand {
+  role: NativeToolRole
+  tool: string
+  args: [string]
+  rendered: string
+  valid: bool
+}
+
+proc native_toolchain(compiler_path: string, assembler_path: string, linker_path: string, runtime_source_path: string, runtime_include_path: string) -> NativeToolchain {
+  give NativeToolchain {
+    compiler_path: compiler_path,
+    assembler_path: assembler_path,
+    linker_path: linker_path,
+    runtime_source_path: runtime_source_path,
+    runtime_include_path: runtime_include_path,
+    valid: compiler_path != ""
+      and assembler_path != ""
+      and linker_path != ""
+      and runtime_source_path != ""
+      and runtime_include_path != ""
+  };
+}
+
+proc default_native_toolchain() -> NativeToolchain {
+  give native_toolchain(
+    "clang",
+    "clang",
+    "cc",
+    "src/vitte/compiler/backends/runtime_c/vitte_runtime.c",
+    "src/vitte/compiler/backends/runtime_c"
+  );
+}
+
+proc native_target_triple(target_name: string) -> string {
+  if target_name == "x86_64-linux" or target_name == "x86_64-unknown-linux-gnu" {
+    give "x86_64-unknown-linux-gnu";
+  }
+  if target_name == "aarch64-linux" or target_name == "aarch64-unknown-linux-gnu" {
+    give "aarch64-unknown-linux-gnu";
+  }
+  if target_name == "x86_64-windows" or target_name == "x86_64-pc-windows-msvc" {
+    give "x86_64-pc-windows-msvc";
+  }
+  if target_name == "apple-silicon-macos" or target_name == "arm64-apple-macos" {
+    give "arm64-apple-macos";
+  }
+  give "";
+}
+
+proc render_native_tool_command(tool: string, args: [string]) -> string {
+  let rendered: string = tool;
+  let i: u64 = 0;
+  while i < len(args) {
+    set rendered = rendered + " " + args[i];
+    set i = i + 1;
+  }
+  give rendered;
+}
+
+proc native_tool_command(role: NativeToolRole, tool: string, args: [string]) -> NativeToolCommand {
+  give NativeToolCommand {
+    role: role,
+    tool: tool,
+    args: args,
+    rendered: render_native_tool_command(tool, args),
+    valid: tool != "" and len(args) > 0
+  };
+}
+
+proc plan_llvm_object_command(toolchain: NativeToolchain, object_path: string) -> NativeToolCommand {
+  let planned: NativeToolCommand = native_tool_command(
+    NativeToolRole.Compiler,
+    toolchain.compiler_path,
+    ["-Wno-override-module", "-c", object_path + ".ll", "-o", object_path]
+  );
+  give NativeToolCommand {
+    role: planned.role,
+    tool: planned.tool,
+    args: planned.args,
+    rendered: planned.rendered,
+    valid: toolchain.valid and object_path != "" and planned.valid
+  };
+}
+
+proc plan_assembly_object_command(toolchain: NativeToolchain, target_name: string, object_path: string, debug_enabled: bool) -> NativeToolCommand {
+  let target: string = native_target_triple(target_name);
+  let args: [string] = ["-target", target];
+  if debug_enabled {
+    set args = args + ["-g"];
+  }
+  set args = args + ["-x", "assembler", "-c", object_path + ".s", "-o", object_path];
+  let planned: NativeToolCommand = native_tool_command(NativeToolRole.Assembler, toolchain.assembler_path, args);
+  give NativeToolCommand {
+    role: planned.role,
+    tool: planned.tool,
+    args: planned.args,
+    rendered: planned.rendered,
+    valid: toolchain.valid and target != "" and object_path != "" and planned.valid
+  };
+}
+
+proc plan_link_executable_command(toolchain: NativeToolchain, object_path: string, executable_path: string) -> NativeToolCommand {
+  let planned: NativeToolCommand = native_tool_command(
+    NativeToolRole.Linker,
+    toolchain.linker_path,
+    [object_path, toolchain.runtime_source_path, "-I", toolchain.runtime_include_path, "-o", executable_path]
+  );
+  give NativeToolCommand {
+    role: planned.role,
+    tool: planned.tool,
+    args: planned.args,
+    rendered: planned.rendered,
+    valid: toolchain.valid and object_path != "" and executable_path != "" and planned.valid
+  };
+}
+
+share NativeToolRole
+share NativeToolchain
+share NativeToolCommand
+share native_toolchain
+share default_native_toolchain
+share native_target_triple
+share render_native_tool_command
+share native_tool_command
+share plan_llvm_object_command
+share plan_assembly_object_command
+share plan_link_executable_command

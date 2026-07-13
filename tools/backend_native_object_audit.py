@@ -27,7 +27,7 @@ def main() -> int:
         ("src/vitte/compiler/backends/runtime_c/vitte_runtime.c", "remove(object_c);", "stale objects must be removed before tool invocation"),
         ("src/vitte/compiler/backends/runtime_c/vitte_runtime.c", "remove(assembly_path);", "temporary assembly files must be removed"),
         ("src/vitte/compiler/backend/native_bridge.vit", "proc emit_native_object_from_assembly(", "the compiler bridge must materialize assembly objects"),
-        ("src/vitte/compiler/backend/native_bridge.vit", 'give "x86_64-unknown-linux-gnu";', "the x86_64 target must be canonicalized for clang"),
+        ("src/vitte/compiler/backend/native_toolchain.vit", 'give "x86_64-unknown-linux-gnu";', "the x86_64 target must be canonicalized by the native toolchain"),
         ("src/vitte/compiler/driver/compile.vit", "emit_native_object_from_assembly(backend0.codegen.assembly", "the native driver must route assembly backends to the assembler"),
         ("src/vitte/compiler/backend/codegen/mod.vit", 'object_format: "elf64-relocatable"', "codegen must advertise a real relocatable object format"),
         ("src/vitte/compiler/backend/codegen/instruction_select.vit", '.section .note.GNU-stack', "ELF assembly must mark a non-executable stack"),

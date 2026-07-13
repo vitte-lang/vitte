@@ -44,6 +44,18 @@ Avant d'accepter le fichier, le runtime relit sa structure ELF64 et vérifie :
 Un échec de cette inspection invalide l'objet avec
 `BACKEND_E_CODEGEN_FAILED` avant toute étape de linkage.
 
+## Toolchain native
+
+`NativeToolchain` constitue l'unique contrat pour le compilateur LLVM IR, le
+pilote assembleur, le pilote de linkage, la source runtime et son répertoire
+d'en-têtes. Chaque opération produit un `NativeToolCommand` avec un rôle, un
+outil, une liste d'arguments structurée et un rendu réservé aux diagnostics.
+
+Le runtime C reçoit explicitement les chemins issus de ce plan et exécute le
+tableau `argv` sans shell. Les noms par défaut `clang` et `cc` ne vivent que dans
+la construction de la toolchain par défaut ; une toolchain explicite peut les
+remplacer sans modifier le bridge ni le runtime.
+
 ## Debug et unwind
 
 Le mode debug émet les directives `.file`/`.loc`, une unité de compilation

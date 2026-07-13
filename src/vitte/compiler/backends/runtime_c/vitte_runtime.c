@@ -358,17 +358,21 @@ static int32_t vitte_run_argv(char *const argv[]) {
   return -1;
 }
 
-int32_t vitte_host_emit_llvm_object(VitteString ir_text, VitteString object_path) {
+int32_t vitte_host_emit_llvm_object(VitteString ir_text, VitteString compiler_path, VitteString object_path) {
+  char *compiler_c = vitte_string_to_c(compiler_path);
   char *object_c = vitte_string_to_c(object_path);
   char *ir_path = NULL;
   FILE *stream = NULL;
   char *argv[7];
   int32_t result = -1;
-  if (object_c == NULL) {
+  if (compiler_c == NULL || compiler_c[0] == '\0' || object_c == NULL) {
+    free(compiler_c);
+    free(object_c);
     return -1;
   }
   ir_path = (char *)malloc(strlen(object_c) + sizeof(".ll"));
   if (ir_path == NULL) {
+    free(compiler_c);
     free(object_c);
     return -1;
   }
@@ -380,7 +384,7 @@ int32_t vitte_host_emit_llvm_object(VitteString ir_text, VitteString object_path
       (ir_text.len == 0 || fwrite(ir_text.data, 1, ir_text.len, stream) == ir_text.len) &&
       fclose(stream) == 0) {
     stream = NULL;
-    argv[0] = "clang";
+    argv[0] = compiler_c;
     argv[1] = "-Wno-override-module";
     argv[2] = "-c";
     argv[3] = ir_path;
@@ -393,11 +397,13 @@ int32_t vitte_host_emit_llvm_object(VitteString ir_text, VitteString object_path
     fclose(stream);
   }
   free(ir_path);
+  free(compiler_c);
   free(object_c);
   return result;
 }
 
-int32_t vitte_host_emit_assembly_object(VitteString assembly_text, VitteString target_triple, VitteString object_path, int32_t debug_enabled) {
+int32_t vitte_host_emit_assembly_object(VitteString assembly_text, VitteString assembler_path, VitteString target_triple, VitteString object_path, int32_t debug_enabled) {
+  char *assembler_c = vitte_string_to_c(assembler_path);
   char *object_c = vitte_string_to_c(object_path);
   char *target_c = vitte_string_to_c(target_triple);
   char *assembly_path = NULL;
@@ -405,13 +411,15 @@ int32_t vitte_host_emit_assembly_object(VitteString assembly_text, VitteString t
   char *argv[12];
   int arg_index = 0;
   int32_t result = -1;
-  if (object_c == NULL || target_c == NULL || target_c[0] == '\0') {
+  if (assembler_c == NULL || assembler_c[0] == '\0' || object_c == NULL || target_c == NULL || target_c[0] == '\0') {
+    free(assembler_c);
     free(object_c);
     free(target_c);
     return -1;
   }
   assembly_path = (char *)malloc(strlen(object_c) + sizeof(".s"));
   if (assembly_path == NULL) {
+    free(assembler_c);
     free(object_c);
     free(target_c);
     return -1;
@@ -424,7 +432,7 @@ int32_t vitte_host_emit_assembly_object(VitteString assembly_text, VitteString t
       (assembly_text.len == 0 || fwrite(assembly_text.data, 1, assembly_text.len, stream) == assembly_text.len) &&
       fclose(stream) == 0) {
     stream = NULL;
-    argv[arg_index++] = "clang";
+    argv[arg_index++] = assembler_c;
     argv[arg_index++] = "-target";
     argv[arg_index++] = target_c;
     if (debug_enabled) {
@@ -444,6 +452,7 @@ int32_t vitte_host_emit_assembly_object(VitteString assembly_text, VitteString t
   }
   remove(assembly_path);
   free(assembly_path);
+  free(assembler_c);
   free(target_c);
   free(object_c);
   return result;
@@ -678,26 +687,37 @@ cleanup:
   return result;
 }
 
-int32_t vitte_host_link_executable(VitteString object_path, VitteString executable_path) {
+int32_t vitte_host_link_executable(VitteString linker_path, VitteString object_path, VitteString runtime_source_path, VitteString runtime_include_path, VitteString executable_path) {
+  char *linker_c = vitte_string_to_c(linker_path);
   char *object_c = vitte_string_to_c(object_path);
+  char *runtime_source_c = vitte_string_to_c(runtime_source_path);
+  char *runtime_include_c = vitte_string_to_c(runtime_include_path);
   char *executable_c = vitte_string_to_c(executable_path);
   char *argv[8];
   int32_t result = -1;
-  if (object_c == NULL || executable_c == NULL) {
+  if (linker_c == NULL || linker_c[0] == '\0' || object_c == NULL ||
+      runtime_source_c == NULL || runtime_source_c[0] == '\0' ||
+      runtime_include_c == NULL || runtime_include_c[0] == '\0' || executable_c == NULL) {
+    free(linker_c);
     free(object_c);
+    free(runtime_source_c);
+    free(runtime_include_c);
     free(executable_c);
     return -1;
   }
-  argv[0] = "cc";
+  argv[0] = linker_c;
   argv[1] = object_c;
-  argv[2] = "src/vitte/compiler/backends/runtime_c/vitte_runtime.c";
+  argv[2] = runtime_source_c;
   argv[3] = "-I";
-  argv[4] = "src/vitte/compiler/backends/runtime_c";
+  argv[4] = runtime_include_c;
   argv[5] = "-o";
   argv[6] = executable_c;
   argv[7] = NULL;
   result = vitte_run_argv(argv);
+  free(linker_c);
   free(object_c);
+  free(runtime_source_c);
+  free(runtime_include_c);
   free(executable_c);
   return result;
 }

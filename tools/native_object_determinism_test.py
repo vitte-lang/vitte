@@ -105,10 +105,10 @@ int main(int argc, char **argv) {
   if (argc != 4) {
     return 64;
   }
-  if (vitte_host_emit_assembly_object(text(assembly), text("x86_64-unknown-linux-gnu"), text(argv[1]), 1) != 0) {
+  if (vitte_host_emit_assembly_object(text(assembly), text("clang"), text("x86_64-unknown-linux-gnu"), text(argv[1]), 1) != 0) {
     return 65;
   }
-  if (vitte_host_emit_assembly_object(text(assembly), text("x86_64-unknown-linux-gnu"), text(argv[2]), 1) != 0) {
+  if (vitte_host_emit_assembly_object(text(assembly), text("clang"), text("x86_64-unknown-linux-gnu"), text(argv[2]), 1) != 0) {
     return 66;
   }
   {
@@ -126,7 +126,7 @@ int main(int argc, char **argv) {
   if (vitte_host_verify_native_object(text(argv[1]), text("x86_64-unknown-linux-gnu"), text("missing_symbol"), 1, 1) != 11) {
     return 70;
   }
-  if (vitte_host_emit_assembly_object(text(release_assembly), text("x86_64-unknown-linux-gnu"), text(argv[3]), 0) != 0) {
+  if (vitte_host_emit_assembly_object(text(release_assembly), text("clang"), text("x86_64-unknown-linux-gnu"), text(argv[3]), 0) != 0) {
     return 71;
   }
   if (vitte_host_verify_native_object(text(argv[3]), text("x86_64-unknown-linux-gnu"), text("vitte_release"), 0, 0) != 0) {
