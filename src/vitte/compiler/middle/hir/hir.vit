@@ -217,6 +217,7 @@ form HirExpr {
   constant: bool
   assignable: bool
   temporary: bool
+  generic_arguments: [string]
   diagnostics: [SemanticDiagnostic]
   children: [HirExpr]
   valid: bool
@@ -354,7 +355,7 @@ proc hir_type_info(name: string, sized: bool, copyable: bool, move_only: bool, n
   };
 }
 
-proc hir_expr(id: u64, span: AstSpan, kind: HirExprKind, text: string, name: string, operator: string, binding: string, resolved_id: u64, resolved_kind: string, external: bool, value_mode: HirValueMode, inferred_type: string, place_category: HirPlaceCategory, copyable: bool, constant: bool, assignable: bool, temporary: bool, diagnostics: [SemanticDiagnostic], children: [HirExpr], valid: bool) -> HirExpr {
+proc hir_expr_with_generic_arguments(id: u64, span: AstSpan, kind: HirExprKind, text: string, name: string, operator: string, binding: string, resolved_id: u64, resolved_kind: string, external: bool, value_mode: HirValueMode, inferred_type: string, place_category: HirPlaceCategory, copyable: bool, constant: bool, assignable: bool, temporary: bool, generic_arguments: [string], diagnostics: [SemanticDiagnostic], children: [HirExpr], valid: bool) -> HirExpr {
   give HirExpr {
     id: id,
     span: span,
@@ -373,10 +374,15 @@ proc hir_expr(id: u64, span: AstSpan, kind: HirExprKind, text: string, name: str
     constant: constant,
     assignable: assignable,
     temporary: temporary,
+    generic_arguments: generic_arguments,
     diagnostics: diagnostics,
     children: children,
     valid: valid
   };
+}
+
+proc hir_expr(id: u64, span: AstSpan, kind: HirExprKind, text: string, name: string, operator: string, binding: string, resolved_id: u64, resolved_kind: string, external: bool, value_mode: HirValueMode, inferred_type: string, place_category: HirPlaceCategory, copyable: bool, constant: bool, assignable: bool, temporary: bool, diagnostics: [SemanticDiagnostic], children: [HirExpr], valid: bool) -> HirExpr {
+  give hir_expr_with_generic_arguments(id, span, kind, text, name, operator, binding, resolved_id, resolved_kind, external, value_mode, inferred_type, place_category, copyable, constant, assignable, temporary, [], diagnostics, children, valid);
 }
 
 proc hir_stmt(id: u64, span: AstSpan, kind: HirStmtKind, name: string, target: string, target_binding: string, target_resolved_id: u64, target_resolved_kind: string, annotation_text: string, expr: HirExpr, message: string, mutable: bool, terminated: bool, unreachable: bool, scope_depth: u64, then_stmts: [HirStmt], else_stmts: [HirStmt], catch_stmts: [HirStmt], diagnostics: [SemanticDiagnostic], valid: bool) -> HirStmt {
@@ -523,6 +529,7 @@ proc hir_expr_empty() -> HirExpr {
     constant: false,
     assignable: false,
     temporary: false,
+    generic_arguments: [],
     diagnostics: [],
     children: [],
     valid: false

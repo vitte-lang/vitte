@@ -50,6 +50,7 @@ use vitte/compiler/middle/hir.{
   SemanticDiagnostic,
   SemanticSeverity,
   hir_expr,
+  hir_expr_with_generic_arguments,
   hir_expr_empty,
   hir_item_with_members,
   hir_nominal_member,
@@ -441,6 +442,19 @@ proc lower_expr_children(children0: [AstExpr]) -> [HirExpr] {
   give children;
 }
 
+proc lower_expr_generic_arguments(expr: AstExpr) -> [string] {
+  let out: [string] = [];
+  let i: u64 = 0;
+  while i < len(expr.generic_arguments) {
+    let type_text: string = lower_type_text(expr.generic_arguments[i]);
+    if type_text != "" {
+      set out = out + [type_text];
+    }
+    set i = i + 1;
+  }
+  give out;
+}
+
 proc lower_expr(expr: AstExpr) -> HirExpr {
   let children: [HirExpr] = lower_expr_children(expr.children);
   let binding: string = expr.binding_name;
@@ -462,7 +476,7 @@ proc lower_expr(expr: AstExpr) -> HirExpr {
   let copyable: bool = expr.kind == AstExprKind.Int or expr.kind == AstExprKind.Float or expr.kind == AstExprKind.Bool or expr.kind == AstExprKind.Char;
   let constant: bool = expr.kind == AstExprKind.Int or expr.kind == AstExprKind.Float or expr.kind == AstExprKind.Bool or expr.kind == AstExprKind.String or expr.kind == AstExprKind.Char;
 
-  give hir_expr(
+  give hir_expr_with_generic_arguments(
     expr.id.value,
     expr.span,
     lowered_kind,
@@ -480,6 +494,7 @@ proc lower_expr(expr: AstExpr) -> HirExpr {
     constant,
     infer_value_mode(expr) == HirValueMode.Place,
     false,
+    lower_expr_generic_arguments(expr),
     diagnostics,
     children,
     expr.valid and lowered_kind != HirExprKind.Unknown and lowered_kind != HirExprKind.Invalid

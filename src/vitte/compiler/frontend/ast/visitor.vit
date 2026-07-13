@@ -82,6 +82,11 @@ proc visit_expr(summary: AstVisitSummary, node: AstExpr) -> AstVisitSummary {
   if node.type_annotation.valid {
     set next = visit_type_expr(next, node.type_annotation);
   }
+  let generic_index: u64 = 0;
+  while generic_index < len(node.generic_arguments) {
+    set next = visit_type_expr(next, node.generic_arguments[generic_index]);
+    set generic_index = generic_index + 1;
+  }
   let i: u64 = 0;
   while i < len(node.children) {
     set next = visit_expr(next, node.children[i]);

@@ -1784,6 +1784,40 @@ proc parse_ast_type_list(source_name: string, tokens: [Token], start: u64, end: 
   give out;
 }
 
+proc parse_call_generic_arguments(source_name: string, tokens: [Token], start: u64, end: u64) -> [AstTypeExpr] {
+  let out: [AstTypeExpr] = [];
+  let part_start: u64 = start;
+  let i: u64 = start;
+  let angle_depth: int = 0;
+  let paren_depth: int = 0;
+  let bracket_depth: int = 0;
+  while i < end {
+    if tokens[i].lexeme == "<" {
+      set angle_depth = angle_depth + 1;
+    } elif tokens[i].lexeme == ">" and angle_depth > 0 {
+      set angle_depth = angle_depth - 1;
+    } elif tokens[i].lexeme == parser_lparen() {
+      set paren_depth = paren_depth + 1;
+    } elif tokens[i].lexeme == parser_rparen() and paren_depth > 0 {
+      set paren_depth = paren_depth - 1;
+    } elif tokens[i].lexeme == "[" {
+      set bracket_depth = bracket_depth + 1;
+    } elif tokens[i].lexeme == "]" and bracket_depth > 0 {
+      set bracket_depth = bracket_depth - 1;
+    } elif tokens[i].lexeme == "," and angle_depth == 0 and paren_depth == 0 and bracket_depth == 0 {
+      if part_start < i {
+        set out = out + [parse_ast_type_from_tokens(source_name, tokens, part_start, i)];
+      }
+      set part_start = i + 1;
+    }
+    set i = i + 1;
+  }
+  if part_start < end {
+    set out = out + [parse_ast_type_from_tokens(source_name, tokens, part_start, end)];
+  }
+  give out;
+}
+
 proc parse_ast_generic_param_list(source_name: string, tokens: [Token], start: u64, end: u64) -> [AstGenericParam] {
   let out: [AstGenericParam] = [];
   let parts: [TokenRange] = split_top_level_ranges(tokens, start, end, ",");
@@ -2220,7 +2254,17 @@ proc parse_atom_expr(source_name: string, tokens: [Token], index: u64, end: u64)
 
 proc parse_postfix_expr_ast(source_name: string, tokens: [Token], index: u64, end: u64) -> ExprParseResult {
   let current: ExprParseResult = parse_atom_expr(source_name, tokens, index, end);
+  let pending_generic_arguments: [AstTypeExpr] = [];
   while current.next_index < end {
+    if tokens[current.next_index].lexeme == "<" {
+      let generic_close: int = find_matching(tokens, current.next_index, "<", ">");
+      let generic_call: bool = generic_close >= 0 and generic_close as u64 + 1 < end and tokens[generic_close as u64 + 1].lexeme == parser_lparen();
+      if generic_call {
+        set pending_generic_arguments = parse_call_generic_arguments(source_name, tokens, current.next_index + 1, generic_close as u64);
+        set current = ExprParseResult { expr: current.expr, next_index: generic_close as u64 + 1 };
+        continue;
+      }
+    }
     if tokens[current.next_index].lexeme == "{" {
       let close: int = find_matching(tokens, current.next_index, "{", "}");
       if close < 0 or close as u64 >= end {
@@ -2263,8 +2307,10 @@ proc parse_postfix_expr_ast(source_name: string, tokens: [Token], index: u64, en
         token_text(tokens, index, close as u64 + 1),
         expr_display_name(current.expr),
         current.expr,
-        parsed_args
+        parsed_args,
+        pending_generic_arguments
       );
+      set pending_generic_arguments = [];
       set current = ExprParseResult { expr: call_expr, next_index: close as u64 + 1 };
       continue;
     }

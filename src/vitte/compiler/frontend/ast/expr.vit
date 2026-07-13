@@ -82,6 +82,7 @@ form AstExpr {
 
   argument_count: u64
   generic_argument_count: u64
+  generic_arguments: [AstTypeExpr]
 
   mutable: bool
   borrowed: bool
@@ -97,7 +98,7 @@ form AstExpr {
   valid: bool
 }
 
-proc ast_expr(id: u64, span: AstSpan, kind: AstExprKind, text: string, name: string, operator: string, binding_name: string, member_name: string, subject_index: u64, callee_index: u64, lhs_index: u64, rhs_index: u64, base_index: u64, index_index: u64, argument_count: u64, generic_argument_count: u64, mutable: bool, borrowed: bool, moved: bool, comptime: bool, inferred_type_name: string, resolved_symbol: string, children: [AstExpr], type_annotation: AstTypeExpr, valid: bool) -> AstExpr {
+proc ast_expr(id: u64, span: AstSpan, kind: AstExprKind, text: string, name: string, operator: string, binding_name: string, member_name: string, subject_index: u64, callee_index: u64, lhs_index: u64, rhs_index: u64, base_index: u64, index_index: u64, argument_count: u64, generic_argument_count: u64, generic_arguments: [AstTypeExpr], mutable: bool, borrowed: bool, moved: bool, comptime: bool, inferred_type_name: string, resolved_symbol: string, children: [AstExpr], type_annotation: AstTypeExpr, valid: bool) -> AstExpr {
   give AstExpr {
     id: ast_id(id),
     span: span,
@@ -115,6 +116,7 @@ proc ast_expr(id: u64, span: AstSpan, kind: AstExprKind, text: string, name: str
     index_index: index_index,
     argument_count: argument_count,
     generic_argument_count: generic_argument_count,
+    generic_arguments: generic_arguments,
     mutable: mutable,
     borrowed: borrowed,
     moved: moved,
@@ -145,6 +147,7 @@ proc ast_expr_empty() -> AstExpr {
     0,
     0,
     0,
+    [],
     false,
     false,
     false,
@@ -175,6 +178,7 @@ proc ast_expr_unknown(id: u64, span: AstSpan, text: string) -> AstExpr {
     0,
     0,
     0,
+    [],
     false,
     false,
     false,
@@ -207,6 +211,7 @@ proc ast_expr_leaf(id: u64, span: AstSpan, kind: AstExprKind, text: string, name
     0,
     0,
     0,
+    [],
     false,
     false,
     false,
@@ -239,6 +244,7 @@ proc ast_expr_node(id: u64, span: AstSpan, kind: AstExprKind, text: string, name
     0,
     len(children),
     0,
+    [],
     false,
     false,
     false,
@@ -271,6 +277,7 @@ proc ast_expr_typed(id: u64, span: AstSpan, kind: AstExprKind, text: string, nam
     index_index: node.index_index,
     argument_count: node.argument_count,
     generic_argument_count: node.generic_argument_count,
+    generic_arguments: node.generic_arguments,
     mutable: node.mutable,
     borrowed: node.borrowed,
     moved: node.moved,
@@ -303,6 +310,7 @@ proc ast_expr_unary(id: u64, span: AstSpan, kind: AstExprKind, text: string, ope
     index_index: 0,
     argument_count: node.argument_count,
     generic_argument_count: 0,
+    generic_arguments: [],
     mutable: false,
     borrowed: kind == AstExprKind.BorrowShared or kind == AstExprKind.BorrowMut,
     moved: kind == AstExprKind.Move,
@@ -335,6 +343,7 @@ proc ast_expr_binary(id: u64, span: AstSpan, kind: AstExprKind, text: string, op
     index_index: 0,
     argument_count: node.argument_count,
     generic_argument_count: 0,
+    generic_arguments: [],
     mutable: false,
     borrowed: false,
     moved: false,
@@ -347,7 +356,7 @@ proc ast_expr_binary(id: u64, span: AstSpan, kind: AstExprKind, text: string, op
   };
 }
 
-proc ast_expr_call(id: u64, span: AstSpan, text: string, name: string, callee: AstExpr, args: [AstExpr]) -> AstExpr {
+proc ast_expr_call(id: u64, span: AstSpan, text: string, name: string, callee: AstExpr, args: [AstExpr], generic_arguments: [AstTypeExpr]) -> AstExpr {
   let children: [AstExpr] = [callee];
 
   let i: u64 = 0;
@@ -375,7 +384,8 @@ proc ast_expr_call(id: u64, span: AstSpan, text: string, name: string, callee: A
     base_index: 0,
     index_index: 0,
     argument_count: len(args),
-    generic_argument_count: 0,
+    generic_argument_count: len(generic_arguments),
+    generic_arguments: generic_arguments,
     mutable: false,
     borrowed: false,
     moved: false,
@@ -409,6 +419,7 @@ proc ast_expr_member(id: u64, span: AstSpan, text: string, receiver: AstExpr, me
     index_index: 0,
     argument_count: 0,
     generic_argument_count: 0,
+    generic_arguments: [],
     mutable: false,
     borrowed: false,
     moved: false,
@@ -441,6 +452,7 @@ proc ast_expr_index(id: u64, span: AstSpan, text: string, base: AstExpr, index_e
     index_index: 1,
     argument_count: 1,
     generic_argument_count: 0,
+    generic_arguments: [],
     mutable: false,
     borrowed: false,
     moved: false,

@@ -282,6 +282,12 @@ proc validate_expr(node: AstExpr, context: string) -> string {
   if node.kind == AstExprKind.Call and node.callee_index >= len(node.children) {
     give context + " has invalid callee index";
   }
+  if node.generic_argument_count != len(node.generic_arguments) {
+    give context + " generic argument count does not match type arguments";
+  }
+  if node.kind != AstExprKind.Call and len(node.generic_arguments) > 0 {
+    give context + " has generic arguments outside a call";
+  }
   let invalid_binary_indexes: bool = node.lhs_index >= len(node.children) or node.rhs_index >= len(node.children) or node.lhs_index == node.rhs_index;
   let binary_expr: bool = node.kind == AstExprKind.Binary or node.kind == AstExprKind.Range or node.kind == AstExprKind.Is or node.kind == AstExprKind.Cast;
   if binary_expr and invalid_binary_indexes {
@@ -305,6 +311,17 @@ proc validate_expr(node: AstExpr, context: string) -> string {
       give context + " child span escapes parent";
     }
     set i = i + 1;
+  }
+  let generic_index: u64 = 0;
+  while generic_index < len(node.generic_arguments) {
+    let generic_error: string = validate_type_expr(node.generic_arguments[generic_index], context + " generic argument");
+    if generic_error != "" {
+      give generic_error;
+    }
+    if not span_contains(node.span, node.generic_arguments[generic_index].span) {
+      give context + " generic argument span escapes parent";
+    }
+    set generic_index = generic_index + 1;
   }
   if node.type_annotation.valid {
     let type_error: string = validate_type_expr(node.type_annotation, context + " annotation");

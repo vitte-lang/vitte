@@ -205,6 +205,25 @@ proc test_validator_rejects_malformed_manual_ast() -> bool {
   give not validation.valid;
 }
 
+proc test_ast_preserves_explicit_generic_call_arguments() -> bool {
+  let source: string =
+    "proc identity<T>(value: T) -> T { give value; }\n" +
+    "proc main() -> i32 { let value = identity<i32>(7); give value; }\n";
+  let fe: FrontendOutput = frontend_run("ast_generic_call.vit", source);
+  if not fe.valid or len(fe.ast_root.items) != 2 {
+    give false;
+  }
+  let validation: AstValidation = validate_ast_root(fe.ast_root);
+  let call = fe.ast_root.items[1].stmts[0].expr;
+  give validation.valid
+    and call.kind == AstExprKind.Call
+    and call.argument_count == 1
+    and call.generic_argument_count == 1
+    and len(call.generic_arguments) == 1
+    and call.generic_arguments[0].text == "i32"
+    and len(call.children) == 2;
+}
+
 proc run_all_tests() -> int {
   let failures: int = 0;
   if not test_ast_structures_postfix_exprs_and_spans() {
@@ -217,6 +236,9 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if not test_validator_rejects_malformed_manual_ast() {
+    set failures = failures + 1;
+  }
+  if not test_ast_preserves_explicit_generic_call_arguments() {
     set failures = failures + 1;
   }
   give failures;

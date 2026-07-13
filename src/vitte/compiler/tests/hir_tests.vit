@@ -188,6 +188,20 @@ proc test_hir_preserves_proc_generic_params() -> bool {
     and item.annotation_text == "T";
 }
 
+proc test_hir_preserves_call_generic_arguments() -> bool {
+  let source: string =
+    "proc identity<T>(value: T) -> T { give value; }\n" +
+    "proc main() -> i32 { let value = identity<i32>(7); give value; }\n";
+  let fe: FrontendOutput = frontend_run("hir_call_generics.vit", source);
+  let hir: HirUnit = lower_ast_to_hir(fe);
+  let call = hir.module.items[1].stmts[0].expr;
+  give hir.valid
+    and call.kind == HirExprKind.Call
+    and len(call.generic_arguments) == 1
+    and call.generic_arguments[0] == "i32"
+    and len(call.children) == 2;
+}
+
 proc test_hir_validation_rejects_empty_trait_and_impl() -> bool {
   let source: string =
     "trait Empty {}\n" +
@@ -275,6 +289,9 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if not test_hir_preserves_proc_generic_params() {
+    set failures = failures + 1;
+  }
+  if not test_hir_preserves_call_generic_arguments() {
     set failures = failures + 1;
   }
   if not test_hir_validation_rejects_empty_trait_and_impl() {

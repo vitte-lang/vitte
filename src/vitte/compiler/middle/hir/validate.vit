@@ -113,6 +113,20 @@ proc validate_expr(expr: HirExpr) -> [SemanticDiagnostic] {
     set diagnostics = diagnostics + [validation_error("HIRV0007", "struct expression missing constructor shape")]
   }
 
+  if expr.kind != HirExprKind.Call and len(expr.generic_arguments) > 0 {
+    set diagnostics = diagnostics + [validation_error("HIRV0008", "generic arguments require call expression")]
+  }
+
+  let generic_index: u64 = 0
+
+  while generic_index < len(expr.generic_arguments) {
+    if expr.generic_arguments[generic_index] == "" {
+      set diagnostics = diagnostics + [validation_error("HIRV0009", "generic argument type cannot be empty")]
+    }
+
+    set generic_index = generic_index + 1
+  }
+
   let i: u64 = 0
 
   while i < len(expr.children) {
