@@ -344,6 +344,88 @@ def generated_cases() -> list[Case]:
         "TYPECK_E_ASSIGN_MISMATCH",
         "assignment type compatibility",
     ))
+    cases.append(Case(
+        "match_bool_exhaustive",
+        (
+            "space tests/typeck/differential/match_bool_exhaustive\n\n"
+            "proc classify(value: bool) -> int {\n"
+            "  match value {\n"
+            "    case true => 1;\n"
+            "    case false => 0;\n"
+            "  }\n"
+            "  give 0\n"
+            "}\n"
+            "proc main() -> int { give 0 }\n"
+        ),
+        True,
+    ))
+    cases.append(Case(
+        "match_bool_missing_false",
+        (
+            "space tests/typeck/differential/match_bool_missing_false\n\n"
+            "proc classify(value: bool) -> int {\n"
+            "  match value {\n"
+            "    case true => 1;\n"
+            "  }\n"
+            "  give 0\n"
+            "}\n"
+            "proc main() -> int { give 0 }\n"
+        ),
+        False,
+        "TYPECK_E_MATCH_NON_EXHAUSTIVE",
+        "pattern coverage completeness",
+    ))
+    cases.append(Case(
+        "match_bool_fallback",
+        (
+            "space tests/typeck/differential/match_bool_fallback\n\n"
+            "proc classify(value: bool) -> int {\n"
+            "  match value {\n"
+            "    case true => 1;\n"
+            "    case _ => 0;\n"
+            "  }\n"
+            "  give 0\n"
+            "}\n"
+            "proc main() -> int { give 0 }\n"
+        ),
+        True,
+    ))
+    cases.append(Case(
+        "match_pick_exhaustive",
+        (
+            "space tests/typeck/differential/match_pick_exhaustive\n\n"
+            "pick Choice {\n"
+            "  Left,\n"
+            "  Right,\n"
+            "}\n"
+            "proc classify(value: Choice) -> int {\n"
+            "  match value {\n"
+            "    case Choice.Left => 1;\n"
+            "    case Choice.Right => 2;\n"
+            "  }\n"
+            "  give 0\n"
+            "}\n"
+            "proc main() -> int { give 0 }\n"
+        ),
+        True,
+    ))
+    cases.append(Case(
+        "match_pick_missing_variant",
+        (
+            "space tests/typeck/differential/match_pick_missing_variant\n\n"
+            "pick Choice { case Left, case Right }\n"
+            "proc classify(value: Choice) -> int {\n"
+            "  match value {\n"
+            "    case Choice::Left => 1;\n"
+            "  }\n"
+            "  give 0\n"
+            "}\n"
+            "proc main() -> int { give 0 }\n"
+        ),
+        False,
+        "TYPECK_E_MATCH_NON_EXHAUSTIVE",
+        "pattern coverage completeness",
+    ))
     return cases
 
 
@@ -505,6 +587,7 @@ def main() -> int:
             "generic parameter constraints form an acyclic dependency graph",
             "explicit literal casts stay within supported scalar representations",
             "implicit numeric coercions are directional and lossless",
+            "finite bool and local pick matches require complete case coverage or a fallback",
             "every rejected type-system case carries a two-step cause chain",
             "stage binaries agree on normalized typeck results",
             "repeated checks are deterministic",

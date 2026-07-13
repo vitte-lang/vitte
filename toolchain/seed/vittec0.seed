@@ -2262,6 +2262,140 @@ detect_professional_diagnostic() {
         parts[++count] = substr(s, start)
         return count
     }
+    function remember_pick_variants(name, body,    count, i, variant, key, parts) {
+        count = split_call_args(body, parts)
+        for (i = 1; i <= count; i++) {
+            variant = trim(parts[i])
+            sub(/^case[ \t]+/, "", variant)
+            sub(/[ \t({=].*$/, "", variant)
+            if (variant !~ /^[A-Za-z_][A-Za-z0-9_]*$/) continue
+            key = name SUBSEP variant
+            if (pick_variant_seen[key]) continue
+            pick_variant_seen[key] = 1
+            pick_variant_count[name]++
+            pick_variant[name SUBSEP pick_variant_count[name]] = variant
+        }
+    }
+    function finish_pick_definition(unused) {
+        remember_pick_variants(active_pick_name, active_pick_body)
+        active_pick_name = ""
+        active_pick_body = ""
+        active_pick_depth = 0
+    }
+    function consume_pick_definition(code,    i, ch) {
+        for (i = 1; i <= length(code); i++) {
+            ch = substr(code, i, 1)
+            if (ch == "{") {
+                active_pick_depth++
+                active_pick_body = active_pick_body ch
+            } else if (ch == "}") {
+                active_pick_depth--
+                if (active_pick_depth == 0) {
+                    finish_pick_definition(0)
+                    return
+                }
+                active_pick_body = active_pick_body ch
+            } else {
+                active_pick_body = active_pick_body ch
+            }
+        }
+        active_pick_body = active_pick_body "\n"
+    }
+    function begin_pick_definition(name, code,    open_col) {
+        pick_known[name] = 1
+        open_col = index(code, "{")
+        if (open_col <= 0) return
+        active_pick_name = name
+        active_pick_body = ""
+        active_pick_depth = 1
+        consume_pick_definition(substr(code, open_col + 1))
+    }
+    function match_keyword_col(code,    col) {
+        if (!match(code, /(^|[^A-Za-z0-9_])match[ \t]+/)) return 0
+        col = RSTART
+        if (substr(code, col, 5) != "match") col++
+        return col
+    }
+    function match_has_fallback(body,    normalized) {
+        normalized = body
+        gsub(/[ \t\r\n]+/, " ", normalized)
+        return normalized ~ /(^|[^A-Za-z0-9_])else([ ]|=>|[{])/ || normalized ~ /(^|[^A-Za-z0-9_])case[ ]+_([^A-Za-z0-9_]|$)/
+    }
+    function match_covers_case(body, type_name, case_name,    normalized, prefix, pattern) {
+        normalized = body
+        gsub(/[ \t\r\n]+/, " ", normalized)
+        prefix = "(^|[^A-Za-z0-9_])case[ ]+"
+        if (type_name == "bool") {
+            pattern = prefix case_name "([^A-Za-z0-9_]|$)"
+            return normalized ~ pattern
+        }
+        pattern = prefix "(" type_name "(::|[.]))?" case_name "([^A-Za-z0-9_]|$)"
+        return normalized ~ pattern
+    }
+    function finish_finite_match(unused,    missing, i, variant, raw) {
+        missing = ""
+        if (!match_has_fallback(active_match_body)) {
+            if (active_match_type == "bool") {
+                if (!match_covers_case(active_match_body, "bool", "true")) missing = "true"
+                else if (!match_covers_case(active_match_body, "bool", "false")) missing = "false"
+            } else {
+                for (i = 1; i <= pick_variant_count[active_match_type]; i++) {
+                    variant = pick_variant[active_match_type SUBSEP i]
+                    if (!match_covers_case(active_match_body, active_match_type, variant)) {
+                        missing = variant
+                        break
+                    }
+                }
+            }
+        }
+        if (missing != "") {
+            raw = source_line[active_match_line]
+            emit("TYPECK_E_MATCH_NON_EXHAUSTIVE", "error", "typeck",
+                "match expression is not exhaustive",
+                active_match_line, active_match_col, active_match_col + 5, raw,
+                "match does not cover " missing,
+                "matched type " active_match_type " has a finite case set; missing case: " missing,
+                "add case " missing " or add an else or case _ fallback arm")
+        }
+        active_match_type = ""
+        active_match_body = ""
+        active_match_depth = 0
+    }
+    function consume_finite_match(code,    i, ch) {
+        for (i = 1; i <= length(code); i++) {
+            ch = substr(code, i, 1)
+            if (ch == "{") {
+                active_match_depth++
+                active_match_body = active_match_body ch
+            } else if (ch == "}") {
+                active_match_depth--
+                if (active_match_depth == 0) {
+                    finish_finite_match(0)
+                    return
+                }
+                active_match_body = active_match_body ch
+            } else {
+                active_match_body = active_match_body ch
+            }
+        }
+        active_match_body = active_match_body "\n"
+    }
+    function begin_finite_match(code, line_no, col, proc_name,    tail, open_col, subject, type_name) {
+        tail = substr(code, col + 5)
+        open_col = index(tail, "{")
+        if (open_col <= 0) return
+        subject = trim(substr(tail, 1, open_col - 1))
+        type_name = proc_binding_type[proc_name SUBSEP subject]
+        if (type_name == "" && (subject in decl_type)) type_name = decl_type[subject]
+        sub(/\[.*$/, "", type_name)
+        if (type_name != "bool" && !pick_known[type_name]) return
+        active_match_type = type_name
+        active_match_line = line_no
+        active_match_col = col
+        active_match_body = ""
+        active_match_depth = 1
+        consume_finite_match(substr(tail, open_col + 1))
+    }
     function type_pattern_mentions(pattern, param,    normalized, part_count, part_index, parts) {
         normalized = pattern
         gsub(/[^A-Za-z0-9_]/, " ", normalized)
@@ -2441,6 +2575,8 @@ detect_professional_diagnostic() {
         block_comment_line = 0
         block_comment_col = 0
         import_count = 0
+        active_pick_name = ""
+        active_match_type = ""
     }
     {
         raw = $0
@@ -2765,6 +2901,11 @@ detect_professional_diagnostic() {
                     signature_param_pattern = signature_param
                     sub(/^[^:]*:[ \t]*/, "", signature_param_pattern)
                     sub(/[ \t].*$/, "", signature_param_pattern)
+                    signature_param_name = signature_param
+                    sub(/[ \t]*:.*/, "", signature_param_name)
+                    if (signature_param_name ~ /^[A-Za-z_][A-Za-z0-9_]*$/) {
+                        proc_binding_type[name SUBSEP signature_param_name] = signature_param_pattern
+                    }
                     for (generic_index = 1; generic_index <= proc_generic_count[name]; generic_index++) {
                         generic_param = proc_generic_param[name SUBSEP generic_index]
                         if (type_pattern_mentions(signature_param_pattern, generic_param)) {
@@ -2804,6 +2945,7 @@ detect_professional_diagnostic() {
             sub(/^pick[ \t]+/, "", name)
             sub(/[ \t(:={].*$/, "", name)
             seen_symbol("pick", name, FNR, index(raw, name))
+            begin_pick_definition(name, code_line)
         }
 
         if (current_proc != "" && line ~ /(^|[{;][ \t]*)give[ \t]+/) {
@@ -3113,6 +3255,16 @@ detect_professional_diagnostic() {
                     "value was moved here: " file ":" moved_line[used] ":" moved_col[used],
                     "borrow the value or clone it before moving")
             }
+        }
+
+        if (active_pick_name != "" && line !~ /^pick[ \t]+/) {
+            consume_pick_definition(code_line)
+        }
+        if (active_match_type != "") {
+            consume_finite_match(code_line)
+        } else {
+            match_col = match_keyword_col(code_line)
+            if (match_col > 0) begin_finite_match(code_line, FNR, match_col, current_proc)
         }
 
         if (open_line == 0 && outside_string_col(raw, "{") > 0) {
@@ -3754,6 +3906,14 @@ render_professional_diagnostic_surface_json() {
             root_json="$(json_escape "explicit cast crosses unsupported type representations")"
             cause_a_json="$(json_escape "the cast target establishes the requested representation")"
             cause_b_json="$(json_escape "the source literal has an incompatible representation")"
+        elif [ "$code" = "TYPECK_E_MATCH_NON_EXHAUSTIVE" ]; then
+            rule_json="$(json_escape "pattern coverage completeness")"
+            explanation_json="$(json_escape "A finite match omits at least one case and has no fallback arm.")"
+            technical_json="$(json_escape "Detected after resolving a local bool or pick scrutinee and comparing its finite cases with the parsed arms.")"
+            docs_json="$(json_escape "docs://language/type-system/match-exhaustiveness")"
+            root_json="$(json_escape "finite match case coverage is incomplete")"
+            cause_a_json="$(json_escape "the scrutinee type establishes a finite set of cases")"
+            cause_b_json="$(json_escape "the match arms omit one case without an else or wildcard fallback")"
         else
             rule_json="$(json_escape "type checking")"
             explanation_json="$(json_escape "The source violates a type-system rule enforced by the compiler.")"
