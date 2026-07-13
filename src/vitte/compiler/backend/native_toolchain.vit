@@ -15,6 +15,13 @@ form NativeToolchain {
   valid: bool
 }
 
+form NativeTargetContext {
+  target_triple: string
+  sysroot_path: string
+  cross_compile: bool
+  valid: bool
+}
+
 form NativeToolCommand {
   role: NativeToolRole
   tool: string
@@ -48,6 +55,16 @@ proc default_native_toolchain() -> NativeToolchain {
   );
 }
 
+proc default_cross_native_toolchain() -> NativeToolchain {
+  give native_toolchain(
+    "clang",
+    "clang",
+    "clang",
+    "src/vitte/compiler/backends/runtime_c/vitte_runtime.c",
+    "src/vitte/compiler/backends/runtime_c"
+  );
+}
+
 proc native_target_triple(target_name: string) -> string {
   if target_name == "x86_64-linux" or target_name == "x86_64-unknown-linux-gnu" {
     give "x86_64-unknown-linux-gnu";
@@ -62,6 +79,46 @@ proc native_target_triple(target_name: string) -> string {
     give "arm64-apple-macos";
   }
   give "";
+}
+
+proc native_host_target_context() -> NativeTargetContext {
+  give NativeTargetContext {
+    target_triple: "",
+    sysroot_path: "",
+    cross_compile: false,
+    valid: true
+  };
+}
+
+proc native_object_target_context(target_name: string) -> NativeTargetContext {
+  let target: string = native_target_triple(target_name);
+  give NativeTargetContext {
+    target_triple: target,
+    sysroot_path: "",
+    cross_compile: false,
+    valid: target != ""
+  };
+}
+
+proc native_cross_target_context(target_name: string, sysroot_path: string) -> NativeTargetContext {
+  let target: string = native_target_triple(target_name);
+  give NativeTargetContext {
+    target_triple: target,
+    sysroot_path: sysroot_path,
+    cross_compile: true,
+    valid: target != "" and sysroot_path != ""
+  };
+}
+
+proc native_target_args(context: NativeTargetContext) -> [string] {
+  let args: [string] = [];
+  if context.target_triple != "" {
+    set args = args + ["-target", context.target_triple];
+  }
+  if context.sysroot_path != "" {
+    set args = args + ["--sysroot", context.sysroot_path];
+  }
+  give args;
 }
 
 proc render_native_tool_command(tool: string, args: [string]) -> string {
@@ -84,24 +141,31 @@ proc native_tool_command(role: NativeToolRole, tool: string, args: [string]) -> 
   };
 }
 
-proc plan_llvm_object_command(toolchain: NativeToolchain, object_path: string) -> NativeToolCommand {
+proc plan_llvm_object_command_with_context(toolchain: NativeToolchain, context: NativeTargetContext, object_path: string) -> NativeToolCommand {
   let planned: NativeToolCommand = native_tool_command(
     NativeToolRole.Compiler,
     toolchain.compiler_path,
-    ["-Wno-override-module", "-c", object_path + ".ll", "-o", object_path]
+    native_target_args(context) + ["-Wno-override-module", "-c", object_path + ".ll", "-o", object_path]
   );
   give NativeToolCommand {
     role: planned.role,
     tool: planned.tool,
     args: planned.args,
     rendered: planned.rendered,
-    valid: toolchain.valid and object_path != "" and planned.valid
+    valid: toolchain.valid and context.valid and object_path != "" and planned.valid
   };
 }
 
-proc plan_assembly_object_command(toolchain: NativeToolchain, target_name: string, object_path: string, debug_enabled: bool) -> NativeToolCommand {
-  let target: string = native_target_triple(target_name);
-  let args: [string] = ["-target", target];
+proc plan_llvm_object_command(toolchain: NativeToolchain, object_path: string) -> NativeToolCommand {
+  give plan_llvm_object_command_with_context(toolchain, native_host_target_context(), object_path);
+}
+
+proc plan_cross_llvm_object_command(toolchain: NativeToolchain, target_name: string, sysroot_path: string, object_path: string) -> NativeToolCommand {
+  give plan_llvm_object_command_with_context(toolchain, native_cross_target_context(target_name, sysroot_path), object_path);
+}
+
+proc plan_assembly_object_command_with_context(toolchain: NativeToolchain, context: NativeTargetContext, object_path: string, debug_enabled: bool) -> NativeToolCommand {
+  let args: [string] = native_target_args(context);
   if debug_enabled {
     set args = args + ["-g"];
   }
@@ -112,33 +176,61 @@ proc plan_assembly_object_command(toolchain: NativeToolchain, target_name: strin
     tool: planned.tool,
     args: planned.args,
     rendered: planned.rendered,
-    valid: toolchain.valid and target != "" and object_path != "" and planned.valid
+    valid: toolchain.valid and context.valid and context.target_triple != "" and object_path != "" and planned.valid
   };
 }
 
-proc plan_link_executable_command(toolchain: NativeToolchain, object_path: string, executable_path: string) -> NativeToolCommand {
+proc plan_assembly_object_command(toolchain: NativeToolchain, target_name: string, object_path: string, debug_enabled: bool) -> NativeToolCommand {
+  give plan_assembly_object_command_with_context(toolchain, native_object_target_context(target_name), object_path, debug_enabled);
+}
+
+proc plan_cross_assembly_object_command(toolchain: NativeToolchain, target_name: string, sysroot_path: string, object_path: string, debug_enabled: bool) -> NativeToolCommand {
+  give plan_assembly_object_command_with_context(toolchain, native_cross_target_context(target_name, sysroot_path), object_path, debug_enabled);
+}
+
+proc plan_link_executable_command_with_context(toolchain: NativeToolchain, context: NativeTargetContext, object_path: string, executable_path: string) -> NativeToolCommand {
   let planned: NativeToolCommand = native_tool_command(
     NativeToolRole.Linker,
     toolchain.linker_path,
-    [object_path, toolchain.runtime_source_path, "-I", toolchain.runtime_include_path, "-o", executable_path]
+    native_target_args(context) + [object_path, toolchain.runtime_source_path, "-I", toolchain.runtime_include_path, "-o", executable_path]
   );
   give NativeToolCommand {
     role: planned.role,
     tool: planned.tool,
     args: planned.args,
     rendered: planned.rendered,
-    valid: toolchain.valid and object_path != "" and executable_path != "" and planned.valid
+    valid: toolchain.valid and context.valid and object_path != "" and executable_path != "" and planned.valid
   };
+}
+
+proc plan_link_executable_command(toolchain: NativeToolchain, object_path: string, executable_path: string) -> NativeToolCommand {
+  give plan_link_executable_command_with_context(toolchain, native_host_target_context(), object_path, executable_path);
+}
+
+proc plan_cross_link_executable_command(toolchain: NativeToolchain, target_name: string, sysroot_path: string, object_path: string, executable_path: string) -> NativeToolCommand {
+  give plan_link_executable_command_with_context(toolchain, native_cross_target_context(target_name, sysroot_path), object_path, executable_path);
 }
 
 share NativeToolRole
 share NativeToolchain
+share NativeTargetContext
 share NativeToolCommand
 share native_toolchain
 share default_native_toolchain
+share default_cross_native_toolchain
 share native_target_triple
+share native_host_target_context
+share native_object_target_context
+share native_cross_target_context
+share native_target_args
 share render_native_tool_command
 share native_tool_command
+share plan_llvm_object_command_with_context
 share plan_llvm_object_command
+share plan_cross_llvm_object_command
+share plan_assembly_object_command_with_context
 share plan_assembly_object_command
+share plan_cross_assembly_object_command
+share plan_link_executable_command_with_context
 share plan_link_executable_command
+share plan_cross_link_executable_command

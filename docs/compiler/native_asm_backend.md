@@ -64,6 +64,22 @@ identique octet pour octet. Le vérificateur runtime contrôle la machine cible,
 le symbole exporté et l'unwind ; le gate relit aussi `ET_REL`, `.text`, `.symtab`,
 `.strtab`, `.eh_frame` et `.note.GNU-stack`.
 
+## Cross-compilation et sysroots
+
+`NativeTargetContext` distingue le mode hôte, l'émission d'un objet ciblé et la
+cross-compilation. Dans ce dernier mode, un triple canonique et un chemin de
+sysroot non vide sont obligatoires ; le bridge exige en plus que le répertoire
+existe. Les plans compilateur, assembleur et linker propagent tous
+`-target <triple> --sysroot <path>` jusqu'aux argv du runtime.
+
+La toolchain cross par défaut utilise `clang` pour les trois rôles, y compris le
+linkage ; elle ne réutilise pas le pilote hôte `cc`, qui n'est pas tenu de
+comprendre `-target`.
+
+`backend-cross-sysroot-gate` utilise un outil de capture local afin de vérifier
+ces argv sans dépendre d'un SDK, d'un sysroot système ou du réseau. Il couvre
+aussi le rejet d'un sysroot fourni sans cible.
+
 ## Debug et unwind
 
 Le mode debug émet les directives `.file`/`.loc`, une unité de compilation

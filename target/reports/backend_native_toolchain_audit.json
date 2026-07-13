@@ -9,8 +9,32 @@
     },
     {
       "file": "src/vitte/compiler/backend/native_toolchain.vit",
+      "needle": "form NativeTargetContext {",
+      "reason": "target and sysroot must share one explicit context",
+      "status": "present"
+    },
+    {
+      "file": "src/vitte/compiler/backend/native_toolchain.vit",
       "needle": "form NativeToolCommand {",
       "reason": "tool invocations must have a structured command plan",
+      "status": "present"
+    },
+    {
+      "file": "src/vitte/compiler/backend/native_toolchain.vit",
+      "needle": "proc default_cross_native_toolchain(",
+      "reason": "cross linking must use a target-aware default driver",
+      "status": "present"
+    },
+    {
+      "file": "src/vitte/compiler/backend/native_toolchain.vit",
+      "needle": "proc native_cross_target_context(",
+      "reason": "cross mode must construct a validated target context",
+      "status": "present"
+    },
+    {
+      "file": "src/vitte/compiler/backend/native_toolchain.vit",
+      "needle": "valid: target != \"\" and sysroot_path != \"\"",
+      "reason": "cross mode must require an explicit sysroot",
       "status": "present"
     },
     {
@@ -29,6 +53,24 @@
       "file": "src/vitte/compiler/backend/native_toolchain.vit",
       "needle": "proc plan_link_executable_command(",
       "reason": "linking must be planned centrally",
+      "status": "present"
+    },
+    {
+      "file": "src/vitte/compiler/backend/native_toolchain.vit",
+      "needle": "proc plan_cross_llvm_object_command(",
+      "reason": "cross LLVM compilation must include its target context",
+      "status": "present"
+    },
+    {
+      "file": "src/vitte/compiler/backend/native_toolchain.vit",
+      "needle": "proc plan_cross_assembly_object_command(",
+      "reason": "cross assembly must include its target context",
+      "status": "present"
+    },
+    {
+      "file": "src/vitte/compiler/backend/native_toolchain.vit",
+      "needle": "proc plan_cross_link_executable_command(",
+      "reason": "cross linking must include its target context",
       "status": "present"
     },
     {
@@ -51,25 +93,25 @@
     },
     {
       "file": "src/vitte/compiler/backend/native_bridge.vit",
-      "needle": "host_emit_llvm_object(ir_text, command.tool, object_path)",
-      "reason": "the compiler path must cross the host ABI",
+      "needle": "host_emit_llvm_object(ir_text, command.tool, context.target_triple, context.sysroot_path, object_path)",
+      "reason": "the compiler plan must cross the host ABI",
       "status": "present"
     },
     {
       "file": "src/vitte/compiler/backend/native_bridge.vit",
-      "needle": "host_emit_assembly_object(assembly_text, command.tool, target, object_path, debug_enabled)",
-      "reason": "the assembler path must cross the host ABI",
+      "needle": "host_emit_assembly_object(assembly_text, command.tool, target, context.sysroot_path, object_path, debug_enabled)",
+      "reason": "the assembler plan must cross the host ABI",
       "status": "present"
     },
     {
       "file": "src/vitte/compiler/backend/native_bridge.vit",
-      "needle": "host_link_executable(command.tool, object_path, toolchain.runtime_source_path, toolchain.runtime_include_path, executable_path)",
+      "needle": "host_link_executable(command.tool, context.target_triple, context.sysroot_path, object_path, toolchain.runtime_source_path, toolchain.runtime_include_path, executable_path)",
       "reason": "the linker plan must cross the host ABI",
       "status": "present"
     },
     {
       "file": "src/vitte/compiler/backends/runtime_c/vitte_runtime.c",
-      "needle": "argv[0] = compiler_c;",
+      "needle": "argv[arg_index++] = compiler_c;",
       "reason": "runtime execution must use the configured compiler",
       "status": "present"
     },
@@ -81,14 +123,38 @@
     },
     {
       "file": "src/vitte/compiler/backends/runtime_c/vitte_runtime.c",
-      "needle": "argv[0] = linker_c;",
+      "needle": "argv[arg_index++] = linker_c;",
       "reason": "runtime execution must use the configured linker",
+      "status": "present"
+    },
+    {
+      "file": "src/vitte/compiler/backends/runtime_c/vitte_runtime.c",
+      "needle": "vitte_append_target_argv(argv, arg_index, target_c, sysroot_c)",
+      "reason": "all host tool invocations must append target and sysroot structurally",
       "status": "present"
     },
     {
       "file": "src/vitte/compiler/tests/codegen_tests.vit",
       "needle": "test_native_toolchain_encapsulates_compiler_assembler_and_linker",
       "reason": "custom tool paths and plans must be tested",
+      "status": "present"
+    },
+    {
+      "file": "src/vitte/compiler/tests/codegen_tests.vit",
+      "needle": "test_cross_toolchain_requires_and_propagates_explicit_sysroot",
+      "reason": "cross target and sysroot plans must be tested",
+      "status": "present"
+    },
+    {
+      "file": "src/vitte/compiler/backend/native_bridge.vit",
+      "needle": "host_is_directory(context.sysroot_path)",
+      "reason": "the bridge must reject a missing cross sysroot",
+      "status": "present"
+    },
+    {
+      "file": "target/reports/backend_cross_sysroot.json",
+      "needle": "\"status\": \"pass\"",
+      "reason": "runtime argv propagation must pass its executable gate",
       "status": "present"
     },
     {

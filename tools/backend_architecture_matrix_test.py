@@ -29,10 +29,10 @@ static VitteString text(const char *value) {
 static int emit_pair(const char *assembly, const char *assembler, const char *target,
                      const char *first, const char *second) {
   int verify;
-  if (vitte_host_emit_assembly_object(text(assembly), text(assembler), text(target), text(first), 0) != 0) {
+  if (vitte_host_emit_assembly_object(text(assembly), text(assembler), text(target), text(""), text(first), 0) != 0) {
     return 1;
   }
-  if (vitte_host_emit_assembly_object(text(assembly), text(assembler), text(target), text(second), 0) != 0) {
+  if (vitte_host_emit_assembly_object(text(assembly), text(assembler), text(target), text(""), text(second), 0) != 0) {
     return 2;
   }
   verify = vitte_host_verify_native_object(text(first), text(target), text("vitte_arch_probe"), 0, 0);

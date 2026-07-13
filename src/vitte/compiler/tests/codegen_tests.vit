@@ -6,7 +6,7 @@ use vitte/compiler/backend/ir.{ BACKEND_IR_DIALECT, BACKEND_IR_SCHEMA_VERSION, I
 use vitte/compiler/backend/link/artifact.{ LinkArtifact, artifact_is_valid }
 use vitte/compiler/backend/link/linker.{ link_ir_unit }
 use vitte/compiler/backend/native_bridge.{ native_assembly_object_command, native_assembly_target, native_object_verification_message }
-use vitte/compiler/backend/native_toolchain.{ NativeToolCommand, NativeToolRole, NativeToolchain, native_toolchain, plan_assembly_object_command, plan_link_executable_command, plan_llvm_object_command }
+use vitte/compiler/backend/native_toolchain.{ NativeTargetContext, NativeToolCommand, NativeToolRole, NativeToolchain, default_cross_native_toolchain, native_cross_target_context, native_toolchain, plan_assembly_object_command, plan_cross_assembly_object_command, plan_cross_link_executable_command, plan_cross_llvm_object_command, plan_link_executable_command, plan_llvm_object_command }
 use vitte/compiler/backend/pipeline.{ BackendPipelineResult, compile_frontend_to_valid_ir_with_profile_and_packaging, compile_to_valid_ir, compile_to_valid_ir_with_backend }
 use vitte/compiler/backend/target/calling_convention.{ AbiLocationKind, AbiValueLocation, CallingConvention, abi_argument_locations, abi_argument_locations_for_return, abi_outgoing_stack_size, abi_return_location, calling_convention_aapcs64, calling_convention_x86_64_sysv, calling_convention_x86_64_windows }
 use vitte/compiler/backend/target/layout.{ AggregateLayout, TargetLayout, TypeLayout, aggregate_size, data_layout_for_triple, target_layout_for, type_layout, type_layout_for_name }
@@ -449,6 +449,37 @@ proc test_native_toolchain_encapsulates_compiler_assembler_and_linker() -> bool 
     and linker.tool == "/opt/vitte/bin/link-driver"
     and linker.rendered == "/opt/vitte/bin/link-driver build/main.o /opt/vitte/runtime/vitte_runtime.c -I /opt/vitte/runtime/include -o build/main"
     and not invalid_target.valid;
+}
+
+proc test_cross_toolchain_requires_and_propagates_explicit_sysroot() -> bool {
+  let defaults: NativeToolchain = default_cross_native_toolchain();
+  let toolchain: NativeToolchain = native_toolchain(
+    "/opt/vitte/bin/clang",
+    "/opt/vitte/bin/clang",
+    "/opt/vitte/bin/clang",
+    "/opt/vitte/runtime/vitte_runtime.c",
+    "/opt/vitte/runtime/include"
+  );
+  let context: NativeTargetContext = native_cross_target_context("aarch64-linux", "/opt/vitte/sysroots/aarch64-linux");
+  let missing_sysroot: NativeTargetContext = native_cross_target_context("aarch64-linux", "");
+  let compiler: NativeToolCommand = plan_cross_llvm_object_command(toolchain, "aarch64-linux", context.sysroot_path, "build/main.o");
+  let assembler: NativeToolCommand = plan_cross_assembly_object_command(toolchain, "aarch64-linux", context.sysroot_path, "build/main.o", false);
+  let linker: NativeToolCommand = plan_cross_link_executable_command(toolchain, "aarch64-linux", context.sysroot_path, "build/main.o", "build/main");
+  let invalid: NativeToolCommand = plan_cross_llvm_object_command(toolchain, "aarch64-linux", "", "build/main.o");
+  give defaults.compiler_path == "clang"
+    and defaults.assembler_path == "clang"
+    and defaults.linker_path == "clang"
+    and context.valid
+    and context.cross_compile
+    and context.target_triple == "aarch64-unknown-linux-gnu"
+    and not missing_sysroot.valid
+    and compiler.valid
+    and compiler.rendered == "/opt/vitte/bin/clang -target aarch64-unknown-linux-gnu --sysroot /opt/vitte/sysroots/aarch64-linux -Wno-override-module -c build/main.o.ll -o build/main.o"
+    and assembler.valid
+    and assembler.rendered == "/opt/vitte/bin/clang -target aarch64-unknown-linux-gnu --sysroot /opt/vitte/sysroots/aarch64-linux -x assembler -c build/main.o.s -o build/main.o"
+    and linker.valid
+    and linker.rendered == "/opt/vitte/bin/clang -target aarch64-unknown-linux-gnu --sysroot /opt/vitte/sysroots/aarch64-linux build/main.o /opt/vitte/runtime/vitte_runtime.c -I /opt/vitte/runtime/include -o build/main"
+    and not invalid.valid;
 }
 
 proc test_native_object_verification_errors_are_structured() -> bool {
@@ -1057,6 +1088,7 @@ proc run_all_tests() -> int {
   if not test_x86_64_codegen_consumes_nominal_call_metadata() { set failures = failures + 1; }
   if not test_native_assembly_object_bridge_is_targeted() { set failures = failures + 1; }
   if not test_native_toolchain_encapsulates_compiler_assembler_and_linker() { set failures = failures + 1; }
+  if not test_cross_toolchain_requires_and_propagates_explicit_sysroot() { set failures = failures + 1; }
   if not test_native_object_verification_errors_are_structured() { set failures = failures + 1; }
   if not test_native_debug_and_unwind_emission_follow_profile() { set failures = failures + 1; }
   if not test_llvm_codegen_consumes_nominal_call_metadata() { set failures = failures + 1; }
