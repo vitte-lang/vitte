@@ -660,10 +660,10 @@ bootstrap-verify: bootstrap-all
 	@echo "[bootstrap-verify] versions + smoke + bootstrap-subset checks ok"
 
 .PHONY: bootstrap-native-contract
-bootstrap-native-contract: seed-verify bootstrap-source-coverage-check selfhost-subset-check posix-seed-shell-check bootstrap-shell-fixed-point bootstrap-native-snapshots bootstrap-verify bootstrap-posix-smoke
+bootstrap-native-contract: seed-verify bootstrap-source-coverage-check selfhost-subset-check posix-seed-shell-check bootstrap-shell-fixed-point bootstrap-native-snapshots selfhost-parity-gate bootstrap-verify bootstrap-posix-smoke
 
 .PHONY: bootstrap-native-fast-contract
-bootstrap-native-fast-contract: seed-verify bootstrap-source-coverage-check selfhost-subset-check posix-seed-shell-check bootstrap-shell-fixed-point bootstrap-native-snapshots bootstrap-native-drift-check
+bootstrap-native-fast-contract: seed-verify bootstrap-source-coverage-check selfhost-subset-check posix-seed-shell-check bootstrap-shell-fixed-point bootstrap-native-snapshots selfhost-parity-gate bootstrap-native-drift-check
 
 .PHONY: bootstrap-posix-smoke
 bootstrap-posix-smoke: bootstrap-all
@@ -1350,6 +1350,12 @@ selfhost-completion-audit:
 .PHONY: selfhost-completion-strict
 selfhost-completion-strict:
 	@python3 tools/selfhost_completion_audit.py --strict-complete
+	@test -f target/selfhost_completion/selfhost_completion.json
+	@test -f target/reports/selfhost_completion.md
+
+.PHONY: selfhost-parity-gate
+selfhost-parity-gate:
+	@python3 tools/selfhost_completion_audit.py --require-parity
 	@test -f target/selfhost_completion/selfhost_completion.json
 	@test -f target/reports/selfhost_completion.md
 

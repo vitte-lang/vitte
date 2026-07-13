@@ -1803,6 +1803,34 @@ extract_native_ir_main_return() {
     }'
 }
 
+compile_host_c() {
+    cc_bin="$1"
+    c_src="$2"
+    target_out="$3"
+    link_dir="$(mktemp -d "${TMPDIR:-/tmp}/vitte-bootstrap-link-XXXXXX")" || return 1
+    link_out="$link_dir/vitte-bootstrap-artifact"
+    if "$cc_bin" -x c "$c_src" -o "$link_out"; then
+        if [ -f "$link_out" ]; then
+            linked_artifact="$link_out"
+        elif [ -f "${link_out}.exe" ]; then
+            linked_artifact="${link_out}.exe"
+        else
+            rm -rf "$link_dir"
+            return 1
+        fi
+        if mv -f "$linked_artifact" "$target_out"; then
+            rm -rf "$link_dir"
+            return 0
+        else
+            rc="$?"
+        fi
+    else
+        rc="$?"
+    fi
+    rm -rf "$link_dir"
+    return "$rc"
+}
+
 emit_native_return_executable() {
     return_value="$1"
     target_out="$2"
@@ -1813,7 +1841,7 @@ emit_native_return_executable() {
         return 1
     }
     printf 'int main(void) { return %s; }\n' "$return_value" > "$c_src"
-    "$cc_bin" -x c "$c_src" -o "$target_out" || {
+    compile_host_c "$cc_bin" "$c_src" "$target_out" || {
         cli_error E_BACKEND_FAILURE "host C compilation failed for $src" "inspect host compiler diagnostics"
         rm -f "$c_src"
         rm -f "$target_out"
@@ -1959,7 +1987,7 @@ int main(int argc, char **argv) {
     return 127;
 }
 EOF
-            "$cc_bin" -x c "$c_src" -o "$target_out" || {
+            compile_host_c "$cc_bin" "$c_src" "$target_out" || {
                 cli_error E_BACKEND_FAILURE "host C payload compilation failed for $src" "inspect host compiler diagnostics"
                 rm -rf "$tmp_dir"
                 rm -f "$c_src"

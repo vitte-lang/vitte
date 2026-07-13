@@ -101,6 +101,11 @@ def main() -> int:
         action="store_true",
         help="fail unless the real compiler reaches stage2/stage3 byte parity without transition payloads",
     )
+    parser.add_argument(
+        "--require-parity",
+        action="store_true",
+        help="fail unless the real compiler reaches stage2/stage3 byte parity",
+    )
     args = parser.parse_args()
 
     OUT.mkdir(parents=True, exist_ok=True)
@@ -171,12 +176,15 @@ def main() -> int:
         json.dumps(payload, ensure_ascii=True, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
+    first_difference_text = parity["first_difference_offset"]
+    if first_difference_text is None:
+        first_difference_text = "none"
     REPORT.write_text(
         "# Self-hosting Completion Audit\n\n"
         f"- compiler source: `{payload['compiler_source']}`\n"
         f"- stage0 -> stage1 -> compiler stage2 -> compiler stage3: {'PASS' if chain_ok else 'FAIL'}\n"
         f"- stage2 == stage3 byte parity: {'PASS' if parity_equal else 'FAIL'}\n"
-        f"- first differing byte: {parity['first_difference_offset']}\n"
+        f"- first differing byte: {first_difference_text}\n"
         f"- stage2 embedded bridge: {'PRESENT' if steps[1]['artifact']['embedded_bridge'] else 'ABSENT'}\n"
         f"- stage3 embedded bridge: {'PRESENT' if steps[2]['artifact']['embedded_bridge'] else 'ABSENT'}\n"
         f"- transition payload removed: {'PASS' if not transition_remaining else 'TRANSITION'}\n"
@@ -189,6 +197,8 @@ def main() -> int:
     )
     if args.strict_complete:
         return 0 if complete else 1
+    if args.require_parity:
+        return 0 if chain_ok and parity_equal else 1
     return 0 if chain_ok else 1
 
 
