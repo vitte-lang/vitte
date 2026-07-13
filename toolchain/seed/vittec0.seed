@@ -3291,12 +3291,14 @@ detect_professional_diagnostic() {
             value = rest
             sub(/^[^=]*=[ \t]*/, "", value)
             sub(/[ \t;}]+$/, "", value)
-            if (value ~ /^[A-Za-z_][A-Za-z0-9_]*$/ && (value in decl_type) && !seed_types_compatible(ty, decl_type[value])) {
+            source_type = ""
+            if (value ~ /^[A-Za-z_][A-Za-z0-9_]*$/) source_type = binding_type(current_proc, value)
+            if (source_type != "" && !seed_types_compatible(ty, source_type)) {
                 col = index(raw, value)
                 emit("TYPECK_E_ASSIGN_MISMATCH", "error", "typeck",
-                    "cannot initialize " name " of type " ty " from " decl_type[value],
+                    "cannot initialize " name " of type " ty " from " source_type,
                     FNR, col, col + length(value), raw,
-                    "expected " ty ", found " decl_type[value],
+                    "expected " ty ", found " source_type,
                     "implicit numeric coercions must preserve every source value",
                     "use a wider target type or write an explicit cast")
             }
@@ -3329,6 +3331,25 @@ detect_professional_diagnostic() {
             ty = rest
             sub(/^[^:]*:[ \t]*/, "", ty)
             sub(/[ \t=].*$/, "", ty)
+            value = rest
+            sub(/^[^=]*=[ \t]*/, "", value)
+            sub(/[ \t;}]+$/, "", value)
+            source_type = ""
+            if (value ~ /^[A-Za-z_][A-Za-z0-9_]*$/) {
+                source_type = binding_type(current_proc, value)
+            } else if (value ~ /^[A-Z][A-Za-z0-9_]*[ \t]*[{]/) {
+                source_type = value
+                sub(/[ \t{].*$/, "", source_type)
+            }
+            if (source_type != "" && !seed_types_compatible(ty, source_type)) {
+                col = index(raw, value)
+                emit("TYPECK_E_ASSIGN_MISMATCH", "error", "typeck",
+                    "cannot initialize " name " of type " ty " from " source_type,
+                    FNR, col, col + length(value), raw,
+                    "expected " ty ", found " source_type,
+                    "nominal assignments require identical declared types",
+                    "change the annotation or initialize it with " ty)
+            }
             remember_decl(name, ty, FNR, index(raw, name))
         } else if (line ~ /^[ \t]*let[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*=[ \t]*[A-Z][A-Za-z0-9_]*[ \t]*[{]/) {
             rest = line
@@ -3348,24 +3369,35 @@ detect_professional_diagnostic() {
             sub(/[ \t]*=.*$/, "", name)
             value = rest
             sub(/^[^=]*=[ \t]*/, "", value)
+            value_token = trim(value)
+            sub(/[ \t;}]+$/, "", value_token)
+            target_type = binding_type(current_proc, name)
             found_type = primitive_literal_type(value)
-            if ((name in decl_type) && found_type != "" && !primitive_types_compatible(decl_type[name], found_type)) {
-                if (found_type == "string") {
+            if (found_type == "" && value_token ~ /^[A-Za-z_][A-Za-z0-9_]*$/) found_type = binding_type(current_proc, value_token)
+            if (found_type == "" && value_token ~ /^[A-Z][A-Za-z0-9_]*[ \t]*[{]/) {
+                found_type = value_token
+                sub(/[ \t{].*$/, "", found_type)
+            }
+            if (target_type != "" && found_type != "" && !seed_types_compatible(target_type, found_type)) {
+                if (value_token ~ /^"/) {
                     col = index(raw, "\"")
                     value_tail = substr(raw, col + 1)
                     endq = index(value_tail, "\"")
                     width = endq > 0 ? endq + 1 : 1
                 } else {
-                    value_token = value
-                    sub(/[ \t;]+$/, "", value_token)
                     col = index(raw, value_token)
                     width = length(value_token)
                 }
+                target_key = current_proc SUBSEP name
+                target_line = proc_decl_line[target_key]
+                target_col = proc_decl_col[target_key]
+                if (target_line <= 0) target_line = decl_line[name]
+                if (target_col <= 0) target_col = decl_col[name]
                 emit("TYPECK_E_ASSIGN_MISMATCH", "error", "typeck",
-                    "cannot assign value of type " found_type " to variable of type " decl_type[name],
+                    "cannot assign value of type " found_type " to variable of type " target_type,
                     FNR, col, col + width, raw,
-                    "expected " decl_type[name] ", found " found_type,
-                    "variable " name " was declared here: " file ":" decl_line[name] ":" decl_col[name],
+                    "expected " target_type ", found " found_type,
+                    "variable " name " was declared here: " file ":" target_line ":" target_col,
                     "change the value type or update the variable annotation")
             }
         }

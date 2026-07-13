@@ -966,6 +966,80 @@ def generated_cases() -> list[Case]:
         ),
         True,
     ))
+    cases.append(Case(
+        "nominal_assignment_alias_valid",
+        (
+            "space tests/typeck/differential/nominal_assignment_alias_valid\n\n"
+            "form Point { x: int }\n"
+            "proc main() -> int {\n"
+            "  let point = Point { x: 1 }\n"
+            "  let copy: Point = point\n"
+            "  give 0\n"
+            "}\n"
+        ),
+        True,
+    ))
+    cases.append(Case(
+        "nominal_assignment_alias_mismatch",
+        (
+            "space tests/typeck/differential/nominal_assignment_alias_mismatch\n\n"
+            "form Point { x: int }\n"
+            "form Label { id: int }\n"
+            "proc main() -> int {\n"
+            "  let point = Point { x: 1 }\n"
+            "  let label: Label = point\n"
+            "  give 0\n"
+            "}\n"
+        ),
+        False,
+        "TYPECK_E_ASSIGN_MISMATCH",
+        "assignment type compatibility",
+    ))
+    cases.append(Case(
+        "nominal_set_mismatch",
+        (
+            "space tests/typeck/differential/nominal_set_mismatch\n\n"
+            "form Point { x: int }\n"
+            "form Label { id: int }\n"
+            "proc main() -> int {\n"
+            "  let point = Point { x: 1 }\n"
+            "  let label = Label { id: 1 }\n"
+            "  set point = label\n"
+            "  give 0\n"
+            "}\n"
+        ),
+        False,
+        "TYPECK_E_ASSIGN_MISMATCH",
+        "assignment type compatibility",
+    ))
+    cases.append(Case(
+        "numeric_set_binding_widening",
+        (
+            "space tests/typeck/differential/numeric_set_binding_widening\n\n"
+            "proc main() -> int {\n"
+            "  let narrow: i8 = 1\n"
+            "  let wide: i64 = 1\n"
+            "  set wide = narrow\n"
+            "  give 0\n"
+            "}\n"
+        ),
+        True,
+    ))
+    cases.append(Case(
+        "numeric_set_binding_narrowing",
+        (
+            "space tests/typeck/differential/numeric_set_binding_narrowing\n\n"
+            "proc main() -> int {\n"
+            "  let narrow: i8 = 1\n"
+            "  let wide: i64 = 1\n"
+            "  set narrow = wide\n"
+            "  give 0\n"
+            "}\n"
+        ),
+        False,
+        "TYPECK_E_ASSIGN_MISMATCH",
+        "assignment type compatibility",
+    ))
     return cases
 
 
@@ -1140,6 +1214,7 @@ def main() -> int:
             "local procedure return types satisfy annotated bindings and propagate into inferred bindings",
             "generic call return types apply explicit or inferred substitutions before binding checks",
             "simple nominal procedure parameters and returns preserve per-procedure exact type identity",
+            "scoped nominal and numeric assignments preserve exact identity and directional coercions",
             "every rejected type-system case carries a two-step cause chain",
             "stage binaries agree on normalized typeck results",
             "repeated checks are deterministic",
