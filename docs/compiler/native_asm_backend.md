@@ -56,6 +56,14 @@ tableau `argv` sans shell. Les noms par défaut `clang` et `cc` ne vivent que da
 la construction de la toolchain par défaut ; une toolchain explicite peut les
 remplacer sans modifier le bridge ni le runtime.
 
+## Matrice d'architectures
+
+`backend-architecture-matrix-gate` matérialise deux fois un objet ELF64 pour
+`x86_64-unknown-linux-gnu` et `aarch64-unknown-linux-gnu`. Chaque paire doit être
+identique octet pour octet. Le vérificateur runtime contrôle la machine cible,
+le symbole exporté et l'unwind ; le gate relit aussi `ET_REL`, `.text`, `.symtab`,
+`.strtab`, `.eh_frame` et `.note.GNU-stack`.
+
 ## Debug et unwind
 
 Le mode debug émet les directives `.file`/`.loc`, une unité de compilation

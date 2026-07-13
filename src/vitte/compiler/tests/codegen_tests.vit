@@ -414,11 +414,13 @@ proc test_x86_64_codegen_consumes_nominal_call_metadata() -> bool {
 
 proc test_native_assembly_object_bridge_is_targeted() -> bool {
   let command: string = native_assembly_object_command("x86_64-linux", "build/main.o", true);
+  let arm_command: string = native_assembly_object_command("aarch64-linux", "build/main.o", false);
   give native_assembly_target("x86_64-linux") == "x86_64-unknown-linux-gnu"
     and native_assembly_target("aarch64-linux") == "aarch64-unknown-linux-gnu"
     and native_assembly_target("unsupported-target") == ""
     and find(command, "clang -target x86_64-unknown-linux-gnu") == 0
-    and find(command, "-g -x assembler -c build/main.o.s -o build/main.o") >= 0;
+    and find(command, "-g -x assembler -c build/main.o.s -o build/main.o") >= 0
+    and find(arm_command, "clang -target aarch64-unknown-linux-gnu -x assembler -c build/main.o.s -o build/main.o") == 0;
 }
 
 proc test_native_toolchain_encapsulates_compiler_assembler_and_linker() -> bool {
