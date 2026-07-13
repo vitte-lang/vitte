@@ -175,7 +175,7 @@ proc test_hir_preserves_proc_params() -> bool {
 }
 
 proc test_hir_preserves_proc_generic_params() -> bool {
-  let source: string = "proc identity<T>(value: T) -> T { give value; }\n";
+  let source: string = "proc identity[T](value: T) -> T { give value; }\n";
   let fe: FrontendOutput = frontend_run("hir_proc_generics.vit", source);
   let hir: HirUnit = lower_ast_to_hir(fe);
   let item = hir.module.items[0];
@@ -190,7 +190,7 @@ proc test_hir_preserves_proc_generic_params() -> bool {
 
 proc test_hir_preserves_call_generic_arguments() -> bool {
   let source: string =
-    "proc identity<T>(value: T) -> T { give value; }\n" +
+    "proc identity[T](value: T) -> T { give value; }\n" +
     "proc main() -> i32 { let value = identity<i32>(7); give value; }\n";
   let fe: FrontendOutput = frontend_run("hir_call_generics.vit", source);
   let hir: HirUnit = lower_ast_to_hir(fe);
