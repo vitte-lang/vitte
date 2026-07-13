@@ -3093,7 +3093,7 @@ detect_professional_diagnostic() {
                     signature_param_type = signature_param_pattern
                     if (signature_param_type !~ /^(i32|int|string|bool)$/) {
                         signature_param_type = ""
-                        proc_signature_supported[name] = 0
+                        if (proc_generic_index[name SUBSEP signature_param_pattern] <= 0) proc_signature_supported[name] = 0
                     }
                     proc_param_count[name]++
                     proc_param_pattern[name SUBSEP proc_param_count[name]] = signature_param_pattern
@@ -3629,6 +3629,10 @@ detect_professional_diagnostic() {
                     call_args = substr(call_code, call_open_col + 1, call_close_col - call_open_col - 1)
                     call_arg_count = split_call_args(call_args, call_arg_parts)
                     if (proc_generic_count[called_proc] > 0) {
+                        for (generic_index = 1; generic_index <= proc_generic_count[called_proc]; generic_index++) {
+                            generic_param = proc_generic_param[called_proc SUBSEP generic_index]
+                            delete call_generic_type[called_proc SUBSEP generic_param]
+                        }
                         if (call_generic_arg_count > proc_generic_count[called_proc]) {
                             raw = source_line[call_line_no]
                             col = index(raw, called_proc)
@@ -3654,6 +3658,7 @@ detect_professional_diagnostic() {
                                     }
                                 }
                             }
+                            if (resolved_generic_type != "") call_generic_type[called_proc SUBSEP generic_param] = resolved_generic_type
                             if (resolved_generic_type == "" && !proc_generic_constrained[called_proc SUBSEP generic_index]) {
                                 raw = source_line[call_line_no]
                                 col = index(raw, called_proc)
@@ -3691,6 +3696,10 @@ detect_professional_diagnostic() {
                     }
                     for (call_arg_index = 1; call_arg_index <= call_arg_count; call_arg_index++) {
                         expected_arg_type = proc_param_type[called_proc SUBSEP call_arg_index]
+                        expected_arg_pattern = proc_param_pattern[called_proc SUBSEP call_arg_index]
+                        if (expected_arg_type == "" && proc_generic_index[called_proc SUBSEP expected_arg_pattern] > 0) {
+                            expected_arg_type = call_generic_type[called_proc SUBSEP expected_arg_pattern]
+                        }
                         actual_arg = trim(call_arg_parts[call_arg_index])
                         actual_arg_type = primitive_literal_type(actual_arg)
                         if (actual_arg_type == "" && (actual_arg in decl_type)) actual_arg_type = decl_type[actual_arg]
@@ -3716,7 +3725,9 @@ detect_professional_diagnostic() {
                             "pass a value of type " expected_arg_type " or change the parameter type")
                     }
                     resolved_call_return = proc_return_type[called_proc]
-                    if (proc_generic_index[called_proc SUBSEP resolved_call_return] > 0) resolved_call_return = ""
+                    if (proc_generic_index[called_proc SUBSEP resolved_call_return] > 0) {
+                        resolved_call_return = call_generic_type[called_proc SUBSEP resolved_call_return]
+                    }
                     call_binding_prefix = trim(substr(call_code, 1, call_name_col - 1))
                     if (resolved_call_return != "" && call_binding_prefix ~ /^let[ \t]+[A-Za-z_][A-Za-z0-9_]*([ \t]*:[ \t]*[A-Za-z_][A-Za-z0-9_]*)?[ \t]*=[ \t]*$/) {
                         call_binding_name = call_binding_prefix

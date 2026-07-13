@@ -814,6 +814,75 @@ def generated_cases() -> list[Case]:
         "TYPECK_E_ARGUMENT_MISMATCH",
         "function argument compatibility",
     ))
+    cases.append(Case(
+        "generic_call_return_explicit_valid",
+        (
+            "space tests/typeck/differential/generic_call_return_explicit_valid\n\n"
+            "proc identity[T](value: T) -> T { give value }\n"
+            "proc main() -> int {\n"
+            "  let text: string = identity<string>(\"ready\")\n"
+            "  give 0\n"
+            "}\n"
+        ),
+        True,
+    ))
+    cases.append(Case(
+        "generic_call_return_mismatch",
+        (
+            "space tests/typeck/differential/generic_call_return_mismatch\n\n"
+            "proc identity[T](value: T) -> T { give value }\n"
+            "proc main() -> int {\n"
+            "  let count: int = identity(\"wrong\")\n"
+            "  give 0\n"
+            "}\n"
+        ),
+        False,
+        "TYPECK_E_ASSIGN_MISMATCH",
+        "assignment type compatibility",
+    ))
+    cases.append(Case(
+        "generic_call_return_inference",
+        (
+            "space tests/typeck/differential/generic_call_return_inference\n\n"
+            "proc identity[T](value: T) -> T { give value }\n"
+            "proc take(value: int) -> int { give value }\n"
+            "proc main() -> int {\n"
+            "  let text = identity(\"wrong\")\n"
+            "  give take(text)\n"
+            "}\n"
+        ),
+        False,
+        "TYPECK_E_ARGUMENT_MISMATCH",
+        "function argument compatibility",
+    ))
+    cases.append(Case(
+        "generic_argument_explicit_mismatch",
+        (
+            "space tests/typeck/differential/generic_argument_explicit_mismatch\n\n"
+            "proc identity[T](value: T) -> T { give value }\n"
+            "proc main() -> int {\n"
+            "  let value = identity<int>(\"wrong\")\n"
+            "  give 0\n"
+            "}\n"
+        ),
+        False,
+        "TYPECK_E_ARGUMENT_MISMATCH",
+        "function argument compatibility",
+    ))
+    cases.append(Case(
+        "generic_call_arity_missing",
+        (
+            "space tests/typeck/differential/generic_call_arity_missing\n\n"
+            "proc identity[T](value: T) -> T { give value }\n"
+            "proc main() -> int {\n"
+            "  let value = identity<int>()\n"
+            "  give 0\n"
+            "}\n"
+        ),
+        False,
+        "TYPECK_E_CALL_ARITY",
+        "function call arity",
+    ))
     return cases
 
 
@@ -986,6 +1055,7 @@ def main() -> int:
             "local procedure and generic arguments resolve binding types before compatibility and trait-bound checks",
             "procedure returns resolve local binding types before directional compatibility checks",
             "local procedure return types satisfy annotated bindings and propagate into inferred bindings",
+            "generic call return types apply explicit or inferred substitutions before binding checks",
             "every rejected type-system case carries a two-step cause chain",
             "stage binaries agree on normalized typeck results",
             "repeated checks are deterministic",
