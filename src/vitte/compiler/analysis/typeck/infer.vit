@@ -2,7 +2,6 @@ space vitte/compiler/analysis/typeck
 
 use vitte/compiler/analysis/typeck/errors.{
     ExprTypeResult,
-    TypeckDiagnostic,
     add_unique_diag,
     typeck_argument_mismatch,
     typeck_compare_mismatch,
@@ -21,6 +20,7 @@ use vitte/compiler/analysis/typeck/errors.{
     typeck_trait_bound_unsatisfied,
     typeck_unknown_member
 }
+use vitte/compiler/diagnostics/diagnostic.{ Diagnostic }
 use vitte/compiler/analysis/typeck/coercion.{
     projection_member_name,
     project_place_type,
@@ -70,7 +70,7 @@ form TypeEnv {
 
 form TypeInferContext {
     env: TypeEnv
-    diagnostics: [TypeckDiagnostic]
+    diagnostics: [Diagnostic]
     valid: bool
 }
 
@@ -334,8 +334,8 @@ proc type_env_mark_initialized(env: TypeEnv, name: string) -> TypeEnv {
     give type_env_set(env, binding);
 }
 
-proc merge_diagnostics(left: [TypeckDiagnostic], right: [TypeckDiagnostic]) -> [TypeckDiagnostic] {
-    let out: [TypeckDiagnostic] = left;
+proc merge_diagnostics(left: [Diagnostic], right: [Diagnostic]) -> [Diagnostic] {
+    let out: [Diagnostic] = left;
 
     let i: u64 = 0;
 
@@ -347,7 +347,7 @@ proc merge_diagnostics(left: [TypeckDiagnostic], right: [TypeckDiagnostic]) -> [
     give out;
 }
 
-proc missing_child_diag(code: string, message: string, expr: HirExpr) -> TypeckDiagnostic {
+proc missing_child_diag(code: string, message: string, expr: HirExpr) -> Diagnostic {
     give typeck_diag(code, message, [expr.text], "ensure the expression has the required operands", expr.span, true);
 }
 
@@ -569,7 +569,7 @@ proc infer_index_type(env: [TypeBinding], expr: HirExpr) -> ExprTypeResult {
     }
 
     let base: ExprTypeResult = infer_expr_type(env, expr.children[0]);
-    let diagnostics: [TypeckDiagnostic] = base.diagnostics;
+    let diagnostics: [Diagnostic] = base.diagnostics;
     let valid: bool = base.valid;
 
     if len(expr.children) > 1 {
@@ -616,7 +616,7 @@ proc infer_binary_type(env: [TypeBinding], expr: HirExpr) -> ExprTypeResult {
 
     let left: ExprTypeResult = infer_expr_type(env, expr.children[0]);
     let right: ExprTypeResult = infer_expr_type(env, expr.children[1]);
-    let diagnostics: [TypeckDiagnostic] = merge_diagnostics(left.diagnostics, right.diagnostics);
+    let diagnostics: [Diagnostic] = merge_diagnostics(left.diagnostics, right.diagnostics);
     let valid: bool = left.valid and right.valid;
     let op: string = expr.operator;
 
@@ -679,7 +679,7 @@ proc infer_cast_type(env: [TypeBinding], expr: HirExpr) -> ExprTypeResult {
     let target_expr: HirExpr = expr.children[1];
     let target_ty: string = if target_expr.inferred_type != "" and target_expr.inferred_type != "unknown" { target_expr.inferred_type } elif target_expr.name != "" { target_expr.name } else { target_expr.text };
 
-    let diagnostics: [TypeckDiagnostic] = source.diagnostics;
+    let diagnostics: [Diagnostic] = source.diagnostics;
     let valid: bool = source.valid;
 
     if target_ty == "" or target_ty == "unknown" {
@@ -1031,7 +1031,7 @@ proc function_return_type(ty: string) -> string {
 }
 
 proc infer_call_type(env: [TypeBinding], expr: HirExpr) -> ExprTypeResult {
-    let diagnostics: [TypeckDiagnostic] = [];
+    let diagnostics: [Diagnostic] = [];
     let valid: bool = true;
     let callee_ty: string = "opaque";
     let callee_text: string = expr.text;
@@ -1155,7 +1155,7 @@ proc infer_if_type(env: [TypeBinding], expr: HirExpr) -> ExprTypeResult {
     }
 
     let cond: ExprTypeResult = infer_expr_type(env, expr.children[0]);
-    let diagnostics: [TypeckDiagnostic] = cond.diagnostics;
+    let diagnostics: [Diagnostic] = cond.diagnostics;
     let valid: bool = cond.valid;
 
     if !type_is_truthy(cond.ty) {
@@ -1194,7 +1194,7 @@ proc infer_if_type(env: [TypeBinding], expr: HirExpr) -> ExprTypeResult {
 }
 
 proc infer_struct_type(env: [TypeBinding], expr: HirExpr) -> ExprTypeResult {
-    let diagnostics: [TypeckDiagnostic] = [];
+    let diagnostics: [Diagnostic] = [];
     let valid: bool = true;
     let i: u64 = 0;
 

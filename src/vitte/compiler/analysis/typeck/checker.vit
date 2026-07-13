@@ -1,21 +1,22 @@
 space vitte/compiler/analysis/typeck
 
 use vitte/compiler/analysis/typeck/coercion.{ types_compatible }
-use vitte/compiler/analysis/typeck/errors.{ TypeckDiagnostic, TypeckResult, add_unique_diag, typeck_assignment_mismatch, typeck_condition_type, typeck_diag, typeck_invalid_hir_result, typeck_non_exhaustive_match, typeck_return_mismatch }
+use vitte/compiler/analysis/typeck/errors.{ TypeckResult, add_unique_diag, typeck_assignment_mismatch, typeck_condition_type, typeck_diag, typeck_invalid_hir_result, typeck_non_exhaustive_match, typeck_result, typeck_return_mismatch }
 use vitte/compiler/analysis/typeck/infer.{ TypeBinding, constrained_generic_type_binding, env_get, env_has, env_index, env_set, infer_expr_type, param_type_binding, trait_impl_binding_name }
 use vitte/compiler/analysis/typeck/traits.{ type_is_copy, type_is_known, type_is_truthy }
+use vitte/compiler/diagnostics/diagnostic.{ Diagnostic }
 use vitte/compiler/middle/hir.{ HirExpr, HirItem, HirItemKind, HirModule, HirNominalMember, HirNominalMemberKind, HirProcParam, HirStmt, HirStmtKind, HirUnit }
 
 form TypeckStmtWalk {
   stmts: [HirStmt]
   env: [TypeBinding]
-  diagnostics: [TypeckDiagnostic]
+  diagnostics: [Diagnostic]
   valid: bool
 }
 
 form TypeckMemberWalk {
   members: [HirNominalMember]
-  diagnostics: [TypeckDiagnostic]
+  diagnostics: [Diagnostic]
   valid: bool
 }
 
@@ -249,7 +250,7 @@ proc typeck_member(module_env: [TypeBinding], item: HirItem, member: HirNominalM
   let local_env: [TypeBinding] = module_env + member_env(member.params, item.target_type_text);
   let typed_expr: HirExpr = annotate_expr(local_env, member.expr);
   let body_result: TypeckStmtWalk = check_stmt_tree([], local_env, member.body_stmts, member.annotation_text, member.name);
-  let diagnostics: [TypeckDiagnostic] = body_result.diagnostics;
+  let diagnostics: [Diagnostic] = body_result.diagnostics;
   give TypeckMemberWalk {
     members: [HirNominalMember {
       id: member.id,
@@ -270,7 +271,7 @@ proc typeck_member(module_env: [TypeBinding], item: HirItem, member: HirNominalM
 
 proc typeck_members(module_env: [TypeBinding], item: HirItem) -> TypeckMemberWalk {
   let out: [HirNominalMember] = [];
-  let diagnostics: [TypeckDiagnostic] = [];
+  let diagnostics: [Diagnostic] = [];
   let i: u64 = 0;
   while i < len(item.members) {
     let walk: TypeckMemberWalk = typeck_member(module_env, item, item.members[i]);
@@ -292,8 +293,8 @@ proc find_member(members: [HirNominalMember], name: string) -> HirNominalMember 
   give HirNominalMember { id: 0, span: members[0].span, kind: 0, name: "", annotation_text: "", expr: HirExpr { id: 0, span: members[0].span, kind: 0, text: "", name: "", operator: "", binding: "", resolved_id: 0, resolved_kind: "", external: false, value_mode: 0, inferred_type: "unknown", place_category: 0, copyable: false, diagnostics: [], children: [], valid: false }, params: [], body_stmts: [], message: "", valid: false };
 }
 
-proc check_impl_against_trait(items: [HirItem], item: HirItem) -> [TypeckDiagnostic] {
-  let out: [TypeckDiagnostic] = [];
+proc check_impl_against_trait(items: [HirItem], item: HirItem) -> [Diagnostic] {
+  let out: [Diagnostic] = [];
   if item.kind != HirItemKind.Impl or len(item.members) == 0 {
     give out;
   }
@@ -333,11 +334,7 @@ proc run_typeck_hir(hir: HirUnit) -> TypeckResult {
   }
 
   let checked: TypeckResult = check_module([], [], hir);
-  give TypeckResult {
-    diagnostics: checked.diagnostics,
-    hir: checked.hir,
-    valid: len(checked.diagnostics) == 0
-  };
+  give checked;
 }
 
 proc annotate_expr(env: [TypeBinding], expr: HirExpr) -> HirExpr {
@@ -391,8 +388,8 @@ proc annotate_expr(env: [TypeBinding], expr: HirExpr) -> HirExpr {
   };
 }
 
-proc check_stmt_tree(diagnostics: [TypeckDiagnostic], env: [TypeBinding], stmts: [HirStmt], return_type: string, owner_name: string) -> TypeckStmtWalk {
-  let out: [TypeckDiagnostic] = diagnostics;
+proc check_stmt_tree(diagnostics: [Diagnostic], env: [TypeBinding], stmts: [HirStmt], return_type: string, owner_name: string) -> TypeckStmtWalk {
+  let out: [Diagnostic] = diagnostics;
   let current_env: [TypeBinding] = env;
   let typed: [HirStmt] = [];
   let j: u64 = 0;
@@ -503,8 +500,8 @@ proc check_stmt_tree(diagnostics: [TypeckDiagnostic], env: [TypeBinding], stmts:
   };
 }
 
-proc check_module(diagnostics: [TypeckDiagnostic], env: [TypeBinding], hir: HirUnit) -> TypeckResult {
-  let out: [TypeckDiagnostic] = diagnostics;
+proc check_module(diagnostics: [Diagnostic], env: [TypeBinding], hir: HirUnit) -> TypeckResult {
+  let out: [Diagnostic] = diagnostics;
   let items: [HirItem] = [];
   let module_env: [TypeBinding] = env + nominal_type_bindings(hir.module.items);
   let i: u64 = 0;
@@ -570,9 +567,7 @@ proc check_module(diagnostics: [TypeckDiagnostic], env: [TypeBinding], hir: HirU
     set i = i + 1;
   }
 
-  give TypeckResult {
-    diagnostics: out,
-    hir: HirUnit {
+  let typed_hir: HirUnit = HirUnit {
       source_path: hir.source_path,
       module: HirModule {
         items: items,
@@ -582,7 +577,6 @@ proc check_module(diagnostics: [TypeckDiagnostic], env: [TypeBinding], hir: HirU
       symbol_count: hir.symbol_count,
       scope_count: hir.scope_count,
       valid: hir.valid
-    },
-    valid: len(out) == 0
   };
+  give typeck_result(typed_hir, out);
 }

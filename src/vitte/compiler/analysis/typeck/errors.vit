@@ -38,6 +38,7 @@ use vitte/compiler/diagnostics/catalog.{
 
 use vitte/compiler/frontend/ast/node.{
     AstSpan,
+    ast_span,
     ast_span_empty
 }
 
@@ -66,6 +67,7 @@ pick TypeckErrorKind {
 
 form TypeckResult {
     report: DiagnosticReport
+    diagnostics: [Diagnostic]
     hir: HirUnit
     valid: bool
 }
@@ -324,10 +326,12 @@ proc expr_merge(ty: string, left: ExprTypeResult, right: ExprTypeResult) -> Expr
 }
 
 proc typeck_result(hir: HirUnit, diagnostics: [Diagnostic]) -> TypeckResult {
-    let report: DiagnosticReport = diagnostic_report(diagnostics);
+    let checked_diagnostics: [Diagnostic] = enforce_typeck_cause_chains(diagnostics);
+    let report: DiagnosticReport = diagnostic_report(checked_diagnostics);
 
     give TypeckResult {
         report: report,
+        diagnostics: checked_diagnostics,
         hir: hir,
         valid: report.valid
     };
@@ -338,10 +342,12 @@ proc typeck_valid_result(hir: HirUnit) -> TypeckResult {
 }
 
 proc typeck_invalid_result(hir: HirUnit, diagnostics: [Diagnostic]) -> TypeckResult {
-    let report: DiagnosticReport = diagnostic_report(diagnostics);
+    let checked_diagnostics: [Diagnostic] = enforce_typeck_cause_chains(diagnostics);
+    let report: DiagnosticReport = diagnostic_report(checked_diagnostics);
 
     give TypeckResult {
         report: report,
+        diagnostics: checked_diagnostics,
         hir: hir,
         valid: false
     };
@@ -497,7 +503,39 @@ proc typeck_cause_chain_missing(code: string, span: AstSpan) -> Diagnostic {
     let diag0: Diagnostic = typed_typeck_diag("TYPECK_E_CAUSE_CHAIN_MISSING", "type diagnostic is missing a cause chain", [code], "attach expected and found origins to this type diagnostic", span, DiagnosticSeverity.Fatal, DiagnosticPhase.Typeck, TypeckErrorKind.Internal);
     let diag1: Diagnostic = diagnostic_with_rule(diag0, "type diagnostic cause-chain completeness");
     let diag2: Diagnostic = diagnostic_add_cause(diag1, "diagnostic `" + code + "` was emitted without enough origin context");
-    give diagnostic_with_probable_fix(diag2, "use attach_expected_found_details or add explicit diagnostic_add_cause calls before emitting the diagnostic");
+    let diag3: Diagnostic = diagnostic_add_cause(diag2, "the public type diagnostic contract requires both expected and found origins");
+    give diagnostic_with_probable_fix(diag3, "use attach_expected_found_details or add explicit diagnostic_add_cause calls before emitting the diagnostic");
+}
+
+proc typeck_code_requires_cause_chain(code: string) -> bool {
+    give code == "TYPECK_E_ASSIGN_MISMATCH"
+        or code == "TYPECK_E_RETURN_MISMATCH"
+        or code == "TYPECK_E_ARGUMENT_MISMATCH"
+        or code == "TYPECK_E_CALL_ARITY"
+        or code == "TYPECK_E_GENERIC_INFERENCE"
+        or code == "TYPECK_E_TRAIT_BOUND";
+}
+
+proc source_span_to_ast_span(span: SourceSpan) -> AstSpan {
+    give ast_span(span.file, span.start_line, span.start_column, span.end_line, span.end_column);
+}
+
+proc enforce_typeck_cause_chains(diagnostics: [Diagnostic]) -> [Diagnostic] {
+    let out: [Diagnostic] = [];
+    let i: u64 = 0;
+
+    while i < len(diagnostics) {
+        let diagnostic: Diagnostic = diagnostics[i];
+        set out = out + [diagnostic];
+
+        if typeck_code_requires_cause_chain(diagnostic.code) and len(diagnostic.cause_chain) < 2 {
+            set out = out + [typeck_cause_chain_missing(diagnostic.code, source_span_to_ast_span(diagnostic.span))];
+        }
+
+        set i = i + 1;
+    }
+
+    give out;
 }
 
 proc typeck_use_before_init(name: string, span: AstSpan) -> Diagnostic {
@@ -573,6 +611,9 @@ share typeck_invalid_call_arity
 share typeck_generic_inference_failed
 share typeck_trait_bound_unsatisfied
 share typeck_cause_chain_missing
+share typeck_code_requires_cause_chain
+share source_span_to_ast_span
+share enforce_typeck_cause_chains
 share typeck_use_before_init
 share typeck_use_after_move
 

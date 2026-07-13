@@ -11,6 +11,7 @@ FIXTURES = ROOT / 'tests' / 'type_system'
 CONTRACT_FILES = {
     'typeck_mod': ROOT / 'src' / 'vitte' / 'compiler' / 'analysis' / 'typeck' / 'mod.vit',
     'typeck_checker': ROOT / 'src' / 'vitte' / 'compiler' / 'analysis' / 'typeck' / 'checker.vit',
+    'typeck_errors': ROOT / 'src' / 'vitte' / 'compiler' / 'analysis' / 'typeck' / 'errors.vit',
     'typeck_infer': ROOT / 'src' / 'vitte' / 'compiler' / 'analysis' / 'typeck' / 'infer.vit',
     'typeck_traits': ROOT / 'src' / 'vitte' / 'compiler' / 'analysis' / 'typeck' / 'traits.vit',
     'typeck_unify': ROOT / 'src' / 'vitte' / 'compiler' / 'analysis' / 'typeck' / 'unify.vit',
@@ -43,6 +44,12 @@ REQUIRED_SYMBOLS = {
         'constrained_generic_type_binding',
         'item_generic_bounds',
         'trait_impl_binding_name',
+    ],
+    'typeck_errors': [
+        'diagnostics: [Diagnostic]',
+        'enforce_typeck_cause_chains',
+        'typeck_code_requires_cause_chain',
+        'TYPECK_E_CAUSE_CHAIN_MISSING',
     ],
     'typeck_infer': [
         'TypeInferContext',
@@ -93,6 +100,7 @@ REQUIRED_SYMBOLS = {
         'test_generic_substitution_replaces_identifiers_only',
         'test_generic_trait_bound_accepts_visible_impl',
         'test_generic_trait_bound_reports_unsatisfied_impl',
+        'test_typeck_result_enforces_diagnostic_cause_chains',
     ],
 }
 

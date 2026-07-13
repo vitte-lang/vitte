@@ -13,7 +13,8 @@ use vitte/compiler/analysis/sema/errors.{ sema_severity_name }
 use vitte/compiler/analysis/lint.{ LintDiagnostic, LintResult, run_lint_hir }
 use vitte/compiler/analysis/lint/levels.{ lint_severity_name }
 use vitte/compiler/analysis/typeck/api.{ run_production_typeck_hir }
-use vitte/compiler/analysis/typeck/errors.{ TypeckDiagnostic, TypeckResult }
+use vitte/compiler/analysis/typeck/errors.{ TypeckResult }
+use vitte/compiler/diagnostics/diagnostic.{ Diagnostic }
 use vitte/compiler/middle/hir.{ HirUnit }
 use vitte/compiler/middle/hir/lower_ast.{ lower_ast_to_hir }
 use vitte/compiler/middle/lower/hir_to_mir.{ lower_hir_to_mir }
@@ -86,7 +87,7 @@ proc collect_typeck_diagnostics(frontend: FrontendOutput, checked: TypeckResult)
   let output: [AnalysisDiagnostic] = [];
   let i: u64 = 0;
   while i < len(checked.diagnostics) {
-    let diagnostic: TypeckDiagnostic = checked.diagnostics[i];
+    let diagnostic: Diagnostic = checked.diagnostics[i];
     let out_diag: AnalysisDiagnostic = make_analysis_diag_with_source(frontend, "typeck", diagnostic.code, "error", diagnostic.message, diagnostic.labels, diagnostic.suggestion, diagnostic.span.start_line, diagnostic.span.start_column, ast_span_length(diagnostic.span.start_column, diagnostic.span.end_column), diagnostic.fatal);
     set output = output + [out_diag];
     set i = i + 1;

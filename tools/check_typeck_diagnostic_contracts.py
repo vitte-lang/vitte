@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CONTRACTS = ROOT / "schemas" / "diagnostics" / "typeck_contracts.json"
 CODES = ROOT / "schemas" / "diagnostics" / "codes.json"
 ERRORS = ROOT / "src" / "vitte" / "compiler" / "analysis" / "typeck" / "errors.vit"
+TESTS = ROOT / "src" / "vitte" / "compiler" / "tests" / "typeck_tests.vit"
 CATALOG = ROOT / "src" / "vitte" / "compiler" / "diagnostics" / "catalog.vit"
 LOCALES = ROOT / "locales"
 REPORT = ROOT / "target" / "reports" / "typeck_diagnostic_contracts.json"
@@ -71,12 +72,19 @@ def main() -> int:
         return fail(f"{CODES.relative_to(ROOT)} has an invalid code registry")
     public_codes = {entry.get("code") for entry in registry["codes"] if isinstance(entry, dict)}
     errors_text = ERRORS.read_text(encoding="utf-8")
+    tests_text = TESTS.read_text(encoding="utf-8")
     catalog_text = CATALOG.read_text(encoding="utf-8")
     locale_files = sorted(LOCALES.glob("*/diagnostics.ftl"))
     if not locale_files:
         return fail("no diagnostics locales found")
 
     failures: list[str] = []
+    if "proc enforce_typeck_cause_chains(" not in errors_text:
+        failures.append("typeck result cause-chain enforcement helper is missing")
+    if "enforce_typeck_cause_chains(diagnostics)" not in errors_text:
+        failures.append("typeck result constructor does not enforce cause-chain contracts")
+    if "test_typeck_result_enforces_diagnostic_cause_chains" not in tests_text:
+        failures.append("typeck cause-chain enforcement regression test is missing")
     results: list[dict[str, object]] = []
     for entry in contracts:
         if not isinstance(entry, dict):
