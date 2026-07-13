@@ -3515,6 +3515,8 @@ render_professional_diagnostic_surface_json() {
     note_json="$(json_escape "$note")"
     help_json="$(json_escape "$help")"
     frontend_phase="$(phase_frontend_bool "$phase")"
+    cause_a_json="$(json_escape "$phase:$code establishes the failing compiler constraint")"
+    cause_b_json="$(json_escape "$message is the observed violation")"
     if [ "$phase" = "lexer" ]; then
         rule_json="$(json_escape "lexical token formation")"
         explanation_json="$(json_escape "The lexer could not form a valid token from this part of the source.")"
@@ -3558,30 +3560,40 @@ render_professional_diagnostic_surface_json() {
             technical_json="$(json_escape "Detected after expression inference while validating the active procedure return contract.")"
             docs_json="$(json_escape "docs://language/type-system/return-compatibility")"
             root_json="$(json_escape "procedure return type and expression type are incompatible")"
+            cause_a_json="$(json_escape "the procedure signature establishes the required return type")"
+            cause_b_json="$(json_escape "the returned expression infers an incompatible type")"
         elif [ "$code" = "TYPECK_E_ARGUMENT_MISMATCH" ]; then
             rule_json="$(json_escape "function argument compatibility")"
             explanation_json="$(json_escape "The argument expression type does not satisfy the corresponding parameter type in the called procedure signature.")"
             technical_json="$(json_escape "Detected after argument inference while validating a local procedure call contract.")"
             docs_json="$(json_escape "docs://language/type-system/call-arguments")"
             root_json="$(json_escape "call argument type and parameter type are incompatible")"
+            cause_a_json="$(json_escape "the callee signature establishes the required parameter type")"
+            cause_b_json="$(json_escape "the call argument infers an incompatible type")"
         elif [ "$code" = "TYPECK_E_CALL_ARITY" ]; then
             rule_json="$(json_escape "function call arity")"
             explanation_json="$(json_escape "The number of call arguments does not match the number of parameters required by the local procedure signature.")"
             technical_json="$(json_escape "Detected after resolving a local call target and counting its arguments and fixed parameters.")"
             docs_json="$(json_escape "docs://language/type-system/call-arity")"
             root_json="$(json_escape "call argument count and procedure parameter count differ")"
+            cause_a_json="$(json_escape "the callee signature establishes the required argument count")"
+            cause_b_json="$(json_escape "the call site provides a different argument count")"
         elif [ "$code" = "TYPECK_E_GENERIC_INFERENCE" ]; then
             rule_json="$(json_escape "generic inference completeness")"
             explanation_json="$(json_escape "A generic parameter remains unconstrained by explicit generic arguments or callable parameter types.")"
             technical_json="$(json_escape "Detected after local signature indexing and before a generic call can be monomorphized.")"
             docs_json="$(json_escape "docs://language/type-system/generic-inference")"
             root_json="$(json_escape "generic parameter cannot be resolved at the call site")"
+            cause_a_json="$(json_escape "monomorphization requires every generic parameter to resolve")"
+            cause_b_json="$(json_escape "available explicit arguments and parameter constraints leave one unresolved")"
         elif [ "$code" = "TYPECK_E_TRAIT_BOUND" ]; then
             rule_json="$(json_escape "trait bound satisfaction")"
             explanation_json="$(json_escape "The resolved generic type does not have a visible implementation of the trait required by its bound.")"
             technical_json="$(json_escape "Detected after generic argument resolution against locally declared trait implementations.")"
             docs_json="$(json_escape "docs://language/type-system/trait-bounds")"
             root_json="$(json_escape "generic type lacks the required trait implementation")"
+            cause_a_json="$(json_escape "the generic signature establishes the required trait bound")"
+            cause_b_json="$(json_escape "no visible implementation proves the resolved type satisfies that bound")"
         else
             rule_json="$(json_escape "type checking")"
             explanation_json="$(json_escape "The source violates a type-system rule enforced by the compiler.")"
@@ -3634,8 +3646,8 @@ render_professional_diagnostic_surface_json() {
     fi
     text_output="$(printf '%s[%s] %s: %s\n  --> %s:%s:%s\n  note: %s\n  help: %s' "$severity" "$code" "$phase" "$message" "$src" "$line" "$col" "$note" "$help")"
     text_output_json="$(json_escape "$text_output")"
-    diag_json="$(printf '{"code":"%s","severity":"%s","phase":"%s","rule":"%s","message":"%s","explanation":"%s","technical_note":"%s","span":{"file":"%s","start_line":%s,"start_column":%s,"end_line":%s,"end_column":%s,"length":%s,"valid":true},"labels":[{"kind":"primary","message":"%s","span":{"file":"%s","start_line":%s,"start_column":%s,"end_line":%s,"end_column":%s,"length":%s,"valid":true},"primary":true,"valid":true}],"notes":[{"message":"%s","valid":true}],"helps":[{"message":"%s","valid":true}],"suggestions":[],"documentation_url":"%s","root_cause":"%s","cause_chain":["%s"],"pipeline_context":["phase=%s","step=bootstrap shell diagnostic fallback"],"related_errors":[],"probable_fix":"%s","subject_symbol":"","subject_type":"","subject_borrow":"","deprecated":false,"unnecessary":false,"fatal":false,"valid":true}' \
-        "$code_json" "$severity_json" "$phase_json" "$rule_json" "$msg_json" "$explanation_json" "$technical_json" "$src_json" "$line" "$col" "$line" "$end_col" "$((end_col - col))" "$label_json" "$src_json" "$line" "$col" "$line" "$end_col" "$((end_col - col))" "$note_json" "$help_json" "$docs_json" "$root_json" "$(json_escape "$phase:$code")" "$phase_json" "$help_json")"
+    diag_json="$(printf '{"code":"%s","severity":"%s","phase":"%s","rule":"%s","message":"%s","explanation":"%s","technical_note":"%s","span":{"file":"%s","start_line":%s,"start_column":%s,"end_line":%s,"end_column":%s,"length":%s,"valid":true},"labels":[{"kind":"primary","message":"%s","span":{"file":"%s","start_line":%s,"start_column":%s,"end_line":%s,"end_column":%s,"length":%s,"valid":true},"primary":true,"valid":true}],"notes":[{"message":"%s","valid":true}],"helps":[{"message":"%s","valid":true}],"suggestions":[],"documentation_url":"%s","root_cause":"%s","cause_chain":["%s","%s"],"pipeline_context":["phase=%s","step=bootstrap shell diagnostic fallback"],"related_errors":[],"probable_fix":"%s","subject_symbol":"","subject_type":"","subject_borrow":"","deprecated":false,"unnecessary":false,"fatal":false,"valid":true}' \
+        "$code_json" "$severity_json" "$phase_json" "$rule_json" "$msg_json" "$explanation_json" "$technical_json" "$src_json" "$line" "$col" "$line" "$end_col" "$((end_col - col))" "$label_json" "$src_json" "$line" "$col" "$line" "$end_col" "$((end_col - col))" "$note_json" "$help_json" "$docs_json" "$root_json" "$cause_a_json" "$cause_b_json" "$phase_json" "$help_json")"
     empty_report="$(empty_phase_report_json)"
     lexer_report="$empty_report"
     parser_report="$empty_report"

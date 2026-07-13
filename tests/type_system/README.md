@@ -13,4 +13,5 @@ Compiler and repository test suites with fixtures and contracts.
 - Assert phase/status contracts, not only success codes.
 - `tools/typeck_differential_test.py` generates primitive assignment, return, argument, arity, generic inference, trait-bound, alpha-renaming, whitespace and condition cases, then compares normalized diagnostics across stage0 (`bin/vittec0`), stage1 (`bin/vittec1`) and stage2 (`bin/vittec`).
 - Differential cases execute the CLI type-checking pipeline and validate JSON diagnostics; they do not rely on the compiler-suite shell bridge.
+- Every negative differential case requires a non-empty two-step type-checking cause chain.
 - `tools/typeck_fuzz_test.py` deterministically mutates seven source families and rejects crashes, timeouts, malformed JSON, fatal/internal diagnostics, non-determinism and cross-stage divergence.

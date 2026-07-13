@@ -334,8 +334,8 @@ def assert_oracle(binary: Path, case: Case, exit_code: int, payload: dict[str, o
                 f"{binary.name}/{case.name}: expected rule {case.required_rule!r}: {diagnostic}"
             )
         causes = diagnostic.get("cause_chain")
-        if not isinstance(causes, list) or not causes:
-            raise AssertionError(f"{binary.name}/{case.name}: diagnostic has no cause chain")
+        if not isinstance(causes, list) or len(causes) < 2 or any(not cause for cause in causes):
+            raise AssertionError(f"{binary.name}/{case.name}: diagnostic has no complete cause chain")
 
 
 def resolve_binaries(raw: str | None) -> list[Path]:
@@ -407,6 +407,7 @@ def main() -> int:
             "local calls reject missing and excess arguments",
             "generic calls accept constrained or explicit parameters and reject unconstrained parameters",
             "locally resolved generic types satisfy declared trait bounds",
+            "every rejected type-system case carries a two-step cause chain",
             "stage binaries agree on normalized typeck results",
             "repeated checks are deterministic",
             "user programs do not terminate the compiler by signal",
