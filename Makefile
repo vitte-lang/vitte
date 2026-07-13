@@ -2349,8 +2349,13 @@ backend-cross-sysroot-gate:
 	@python3 tools/backend_cross_sysroot_test.py
 
 
+.PHONY: backend-differential-gate
+backend-differential-gate: compiler-test-suite-check-gate
+	@python3 tools/backend_differential_test.py
+
+
 .PHONY: backend-gate
-backend-gate: vitte-emit-gate llvm-backend-gate wasm-backend-gate backend-ir-contract-audit c-abi-contract-audit backend-value-lowering-audit backend-layout-abi-audit backend-native-object-audit backend-object-structure-audit backend-debug-unwind-audit backend-native-toolchain-audit backend-architecture-matrix-gate backend-cross-sysroot-gate
+backend-gate: vitte-emit-gate llvm-backend-gate wasm-backend-gate backend-ir-contract-audit c-abi-contract-audit backend-value-lowering-audit backend-layout-abi-audit backend-native-object-audit backend-object-structure-audit backend-debug-unwind-audit backend-native-toolchain-audit backend-architecture-matrix-gate backend-cross-sysroot-gate backend-differential-gate
 	@python3 tools/backend_surface_audit.py
 
 

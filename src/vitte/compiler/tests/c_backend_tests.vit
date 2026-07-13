@@ -5,6 +5,7 @@ use vitte/compiler/backend/c/lowering.{ CTranslationUnit, lower_mir_to_c_with_hi
 use vitte/compiler/backend/c/architecture.{ c_target_x86_64_linux, c_type_for_vitte_type }
 use vitte/compiler/backend/c/abi.{ C_ABI_NAME, C_ABI_SCHEMA_VERSION, CAbiPassMode, c_abi_contract, c_abi_function, c_abi_header_prelude, c_abi_param_value }
 use vitte/compiler/backend/ir.{ IrUnit, target_native_x86_64_linux, unit_empty, unit_with_source_path }
+use vitte/compiler/backends/llvm_bindings.{ LlvmBindingResult, emit_llvm_ir_from_ir }
 use vitte/compiler/frontend/ast/node.{ ast_span_empty }
 use vitte/compiler/frontend/pipeline.{ FrontendOutput, frontend_run }
 use vitte/compiler/middle/mir.{ MirBinaryOperator, MirBlock, MirBorrowKind, MirFunction, MirModule, MirOperand, MirPlace, MirRvalue, MirRvalueKind, MirStatement, MirStatementKind, MirTerminatorKind, MirUnaryOperator, MirUnit, mir_terminator_return }
@@ -402,6 +403,57 @@ proc test_c_backend_rejects_missing_canonical_ir_call_metadata() -> bool {
     and lowered.diagnostics[0].code == "CBACKEND_E_INVALID_IR_CALL";
 }
 
+proc compare_c_and_llvm_backend_case(case_name: string, source: string, c_marker: string, llvm_marker: string) -> bool {
+  let c_result: CBackendPipelineResult = run_c_backend_source(case_name + ".vit", source, "c11", "build/backend-differential/" + case_name, "executable");
+  let llvm_result: LlvmBindingResult = emit_llvm_ir_from_ir(c_result.middle.ir);
+  give c_result.valid
+    and llvm_result.valid
+    and c_result.emitted.function_count == llvm_result.function_count
+    and c_result.middle.ir.modules[0].functions[0].valid
+    and find(c_result.emitted.source_text, c_marker) >= 0
+    and find(llvm_result.ir_text, llvm_marker) >= 0;
+}
+
+proc test_c_and_llvm_backends_consume_shared_ir_corpus() -> bool {
+  let constant_ok: bool = compare_c_and_llvm_backend_case(
+    "constant-return",
+    "proc main() -> int { give 7; }\n",
+    "return 7;",
+    "ret i64 7"
+  );
+  let arithmetic_ok: bool = compare_c_and_llvm_backend_case(
+    "nested-arithmetic",
+    "proc main() -> int { give (5 + 6) * 2 - 3; }\n",
+    " * ",
+    "mul i64"
+  );
+  let call_ok: bool = compare_c_and_llvm_backend_case(
+    "procedure-call",
+    "proc add(left: int, right: int) -> int { give left + right; }\nproc main() -> int { give add(9, 4); }\n",
+    "add(9, 4)",
+    "call i64 @add(i64 9, i64 4)"
+  );
+  let branch_ok: bool = compare_c_and_llvm_backend_case(
+    "conditional-return",
+    "proc main() -> int { if 3 < 4 { give 17; } give 3; }\n",
+    "if (",
+    "br i1"
+  );
+  let comparison_ok: bool = compare_c_and_llvm_backend_case(
+    "comparison-select",
+    "proc main() -> int { if 6 * 7 == 42 { give 23; } give 5; }\n",
+    " == ",
+    "icmp eq i64"
+  );
+  let division_ok: bool = compare_c_and_llvm_backend_case(
+    "signed-division",
+    "proc main() -> int { give 27 / 4 + 1; }\n",
+    " / ",
+    "sdiv i64"
+  );
+  give constant_ok and arithmetic_ok and call_ok and branch_ok and comparison_ok and division_ok;
+}
+
 proc run_all_tests() -> int {
   let failures: int = 0;
   if not test_emit_simple_main() {
@@ -456,6 +508,9 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if not test_c_backend_rejects_missing_canonical_ir_call_metadata() {
+    set failures = failures + 1;
+  }
+  if not test_c_and_llvm_backends_consume_shared_ir_corpus() {
     set failures = failures + 1;
   }
   give failures;

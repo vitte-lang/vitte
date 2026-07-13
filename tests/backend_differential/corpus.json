@@ -1,0 +1,117 @@
+{
+  "schema": "vitte.compiler.backend_differential_corpus",
+  "schema_version": "1.0.0",
+  "cases": [
+    {
+      "name": "constant-return",
+      "vitte_source": "proc main() -> int { give 7; }\n",
+      "expected": {"exit_code": 7, "stdout": "", "stderr": ""},
+      "program": {
+        "functions": [
+          {"name": "main", "params": [], "body": {"op": "const", "value": 7}}
+        ]
+      }
+    },
+    {
+      "name": "nested-arithmetic",
+      "vitte_source": "proc main() -> int { give (5 + 6) * 2 - 3; }\n",
+      "expected": {"exit_code": 19, "stdout": "", "stderr": ""},
+      "program": {
+        "functions": [
+          {
+            "name": "main",
+            "params": [],
+            "body": {
+              "op": "sub",
+              "left": {
+                "op": "mul",
+                "left": {"op": "add", "left": {"op": "const", "value": 5}, "right": {"op": "const", "value": 6}},
+                "right": {"op": "const", "value": 2}
+              },
+              "right": {"op": "const", "value": 3}
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "procedure-call",
+      "vitte_source": "proc add(left: int, right: int) -> int { give left + right; }\nproc main() -> int { give add(9, 4); }\n",
+      "expected": {"exit_code": 13, "stdout": "", "stderr": ""},
+      "program": {
+        "functions": [
+          {
+            "name": "add",
+            "params": ["left", "right"],
+            "body": {"op": "add", "left": {"op": "param", "name": "left"}, "right": {"op": "param", "name": "right"}}
+          },
+          {
+            "name": "main",
+            "params": [],
+            "body": {"op": "call", "function": "add", "args": [{"op": "const", "value": 9}, {"op": "const", "value": 4}]}
+          }
+        ]
+      }
+    },
+    {
+      "name": "conditional-return",
+      "vitte_source": "proc main() -> int { if 3 < 4 { give 17; } give 3; }\n",
+      "expected": {"exit_code": 17, "stdout": "", "stderr": ""},
+      "program": {
+        "functions": [
+          {
+            "name": "main",
+            "params": [],
+            "body": {
+              "op": "select",
+              "condition": {"op": "lt", "left": {"op": "const", "value": 3}, "right": {"op": "const", "value": 4}},
+              "then": {"op": "const", "value": 17},
+              "else": {"op": "const", "value": 3}
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "comparison-select",
+      "vitte_source": "proc main() -> int { if 6 * 7 == 42 { give 23; } give 5; }\n",
+      "expected": {"exit_code": 23, "stdout": "", "stderr": ""},
+      "program": {
+        "functions": [
+          {
+            "name": "main",
+            "params": [],
+            "body": {
+              "op": "select",
+              "condition": {
+                "op": "eq",
+                "left": {"op": "mul", "left": {"op": "const", "value": 6}, "right": {"op": "const", "value": 7}},
+                "right": {"op": "const", "value": 42}
+              },
+              "then": {"op": "const", "value": 23},
+              "else": {"op": "const", "value": 5}
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "signed-division",
+      "vitte_source": "proc main() -> int { give 27 / 4 + 1; }\n",
+      "expected": {"exit_code": 7, "stdout": "", "stderr": ""},
+      "program": {
+        "functions": [
+          {
+            "name": "main",
+            "params": [],
+            "body": {
+              "op": "add",
+              "left": {"op": "sdiv", "left": {"op": "const", "value": 27}, "right": {"op": "const", "value": 4}},
+              "right": {"op": "const", "value": 1}
+            }
+          }
+        ]
+      }
+    }
+  ]
+}
