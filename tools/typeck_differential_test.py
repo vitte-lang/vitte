@@ -188,6 +188,41 @@ def generated_cases() -> list[Case]:
         ),
         True,
     ))
+    cases.append(Case(
+        "generic_inference_from_argument",
+        (
+            "space tests/typeck/differential/generic_inference_from_argument\n\n"
+            "proc identity[T](value: T) -> T { give value }\n"
+            "proc main() -> int {\n"
+            "  give identity(7)\n"
+            "}\n"
+        ),
+        True,
+    ))
+    cases.append(Case(
+        "generic_inference_explicit",
+        (
+            "space tests/typeck/differential/generic_inference_explicit\n\n"
+            "proc make[T]() -> T { give 0 as T }\n"
+            "proc main() -> int {\n"
+            "  give make<int>()\n"
+            "}\n"
+        ),
+        True,
+    ))
+    cases.append(Case(
+        "generic_inference_unconstrained",
+        (
+            "space tests/typeck/differential/generic_inference_unconstrained\n\n"
+            "proc make[T]() -> T { give 0 as T }\n"
+            "proc main() -> int {\n"
+            "  give make()\n"
+            "}\n"
+        ),
+        False,
+        "TYPECK_E_GENERIC_INFERENCE",
+        "generic inference completeness",
+    ))
     return cases
 
 
@@ -343,6 +378,7 @@ def main() -> int:
             "primitive return contracts accept matching values and reject mismatches",
             "primitive argument contracts accept matching values and reject mismatches",
             "local calls reject missing and excess arguments",
+            "generic calls accept constrained or explicit parameters and reject unconstrained parameters",
             "stage binaries agree on normalized typeck results",
             "repeated checks are deterministic",
             "user programs do not terminate the compiler by signal",

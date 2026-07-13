@@ -2232,6 +2232,15 @@ detect_professional_diagnostic() {
         parts[++count] = substr(s, start)
         return count
     }
+    function type_pattern_mentions(pattern, param,    normalized, part_count, part_index, parts) {
+        normalized = pattern
+        gsub(/[^A-Za-z0-9_]/, " ", normalized)
+        part_count = split(normalized, parts, /[ \t]+/)
+        for (part_index = 1; part_index <= part_count; part_index++) {
+            if (parts[part_index] == param) return 1
+        }
+        return 0
+    }
     function count_char(s, ch,    i, n) {
         n = 0
         for (i = 1; i <= length(s); i++) {
@@ -2625,11 +2634,31 @@ detect_professional_diagnostic() {
             name = line
             sub(/^proc[ \t]+/, "", name)
             sub(/[ \t(:={].*$/, "", name)
+            sub(/\[.*$/, "", name)
             seen_symbol("proc", name, FNR, index(raw, name))
             if (!proc_known[name]) {
                 proc_order_count++
                 proc_order[proc_order_count] = name
                 proc_known[name] = 1
+            }
+            proc_generic_count[name] = 0
+            generic_open = index(line, "[")
+            if (generic_open > 0) {
+                generic_tail = substr(line, generic_open + 1)
+                generic_close = index(generic_tail, "]")
+                if (generic_close > 0) {
+                    generic_text = substr(generic_tail, 1, generic_close - 1)
+                    generic_count = split(generic_text, generic_parts, ",")
+                    for (generic_index = 1; generic_index <= generic_count; generic_index++) {
+                        generic_param = trim(generic_parts[generic_index])
+                        sub(/[ \t]*:.*/, "", generic_param)
+                        if (generic_param ~ /^[A-Za-z_][A-Za-z0-9_]*$/) {
+                            proc_generic_count[name]++
+                            proc_generic_param[name SUBSEP proc_generic_count[name]] = generic_param
+                            proc_generic_constrained[name SUBSEP proc_generic_count[name]] = 0
+                        }
+                    }
+                }
             }
             signature_params = line
             sub(/^[^(]*[(]/, "", signature_params)
@@ -2644,9 +2673,16 @@ detect_professional_diagnostic() {
                         proc_signature_supported[name] = 0
                         continue
                     }
-                    signature_param_type = signature_param
-                    sub(/^[^:]*:[ \t]*/, "", signature_param_type)
-                    sub(/[ \t].*$/, "", signature_param_type)
+                    signature_param_pattern = signature_param
+                    sub(/^[^:]*:[ \t]*/, "", signature_param_pattern)
+                    sub(/[ \t].*$/, "", signature_param_pattern)
+                    for (generic_index = 1; generic_index <= proc_generic_count[name]; generic_index++) {
+                        generic_param = proc_generic_param[name SUBSEP generic_index]
+                        if (type_pattern_mentions(signature_param_pattern, generic_param)) {
+                            proc_generic_constrained[name SUBSEP generic_index] = 1
+                        }
+                    }
+                    signature_param_type = signature_param_pattern
                     if (signature_param_type !~ /^(i32|int|string|bool)$/) {
                         signature_param_type = ""
                         proc_signature_supported[name] = 0
@@ -2976,17 +3012,50 @@ detect_professional_diagnostic() {
                 if (call_trim == "" || call_trim ~ /^proc[ \t]+/) continue
                 for (proc_order_index = 1; proc_order_index <= proc_order_count; proc_order_index++) {
                     called_proc = proc_order[proc_order_index]
-                    call_pattern = "(^|[^A-Za-z0-9_])" called_proc "[ \t]*[(]"
+                    call_pattern = "(^|[^A-Za-z0-9_])" called_proc "([ \t]*<[^>]+>)?[ \t]*[(]"
                     if (!match(call_code, call_pattern)) continue
                     matched_call = substr(call_code, RSTART, RLENGTH)
                     called_name_offset = index(matched_call, called_proc)
-                    call_open_offset = index(substr(matched_call, called_name_offset + length(called_proc)), "(")
+                    call_suffix = substr(matched_call, called_name_offset + length(called_proc))
+                    call_open_offset = index(call_suffix, "(")
                     if (called_name_offset <= 0 || call_open_offset <= 0) continue
                     call_open_col = RSTART + called_name_offset + length(called_proc) + call_open_offset - 2
+                    call_generic_arg_count = 0
+                    call_generic_text = trim(substr(call_suffix, 1, call_open_offset - 1))
+                    if (call_generic_text ~ /^<.*>$/) {
+                        sub(/^</, "", call_generic_text)
+                        sub(/>$/, "", call_generic_text)
+                        call_generic_arg_count = split_call_args(call_generic_text, call_generic_arg_parts)
+                    }
                     call_close_col = matching_call_paren(call_code, call_open_col)
                     if (call_close_col <= 0) continue
                     call_args = substr(call_code, call_open_col + 1, call_close_col - call_open_col - 1)
                     call_arg_count = split_call_args(call_args, call_arg_parts)
+                    if (proc_generic_count[called_proc] > 0) {
+                        if (call_generic_arg_count > proc_generic_count[called_proc]) {
+                            raw = source_line[call_line_no]
+                            col = index(raw, called_proc)
+                            emit("TYPECK_E_GENERIC_INFERENCE", "error", "typeck",
+                                "generic arguments do not match procedure " called_proc,
+                                call_line_no, col, col + length(called_proc), raw,
+                                "expected at most " proc_generic_count[called_proc] " generic arguments, found " call_generic_arg_count,
+                                "generic parameters must be resolved before monomorphization",
+                                "remove excess generic arguments from " called_proc)
+                        }
+                        for (generic_index = 1; generic_index <= proc_generic_count[called_proc]; generic_index++) {
+                            generic_param = proc_generic_param[called_proc SUBSEP generic_index]
+                            if (generic_index <= call_generic_arg_count && trim(call_generic_arg_parts[generic_index]) != "") continue
+                            if (proc_generic_constrained[called_proc SUBSEP generic_index]) continue
+                            raw = source_line[call_line_no]
+                            col = index(raw, called_proc)
+                            emit("TYPECK_E_GENERIC_INFERENCE", "error", "typeck",
+                                "generic type " generic_param " could not be inferred",
+                                call_line_no, col, col + length(called_proc), raw,
+                                "generic parameter " generic_param " remains unconstrained",
+                                "procedure " called_proc " requires " generic_param " before monomorphization",
+                                "call " called_proc " with an explicit generic argument such as <int>")
+                        }
+                    }
                     if (!proc_signature_supported[called_proc]) continue
                     if (call_arg_count != proc_param_count[called_proc]) {
                         raw = source_line[call_line_no]
@@ -3454,6 +3523,12 @@ render_professional_diagnostic_surface_json() {
             technical_json="$(json_escape "Detected after resolving a local call target and counting its arguments and fixed parameters.")"
             docs_json="$(json_escape "docs://language/type-system/call-arity")"
             root_json="$(json_escape "call argument count and procedure parameter count differ")"
+        elif [ "$code" = "TYPECK_E_GENERIC_INFERENCE" ]; then
+            rule_json="$(json_escape "generic inference completeness")"
+            explanation_json="$(json_escape "A generic parameter remains unconstrained by explicit generic arguments or callable parameter types.")"
+            technical_json="$(json_escape "Detected after local signature indexing and before a generic call can be monomorphized.")"
+            docs_json="$(json_escape "docs://language/type-system/generic-inference")"
+            root_json="$(json_escape "generic parameter cannot be resolved at the call site")"
         else
             rule_json="$(json_escape "type checking")"
             explanation_json="$(json_escape "The source violates a type-system rule enforced by the compiler.")"

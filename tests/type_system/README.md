@@ -11,6 +11,6 @@ Compiler and repository test suites with fixtures and contracts.
 - Add focused regression tests for each bug fix.
 - Prefer deterministic fixtures over random behavior.
 - Assert phase/status contracts, not only success codes.
-- `tools/typeck_differential_test.py` generates primitive assignment, return, argument, arity, alpha-renaming, whitespace and condition cases, then compares normalized diagnostics across stage0 (`bin/vittec0`), stage1 (`bin/vittec1`) and stage2 (`bin/vittec`).
+- `tools/typeck_differential_test.py` generates primitive assignment, return, argument, arity, generic inference, alpha-renaming, whitespace and condition cases, then compares normalized diagnostics across stage0 (`bin/vittec0`), stage1 (`bin/vittec1`) and stage2 (`bin/vittec`).
 - Differential cases execute the CLI type-checking pipeline and validate JSON diagnostics; they do not rely on the compiler-suite shell bridge.
 - `tools/typeck_fuzz_test.py` deterministically mutates seven source families and rejects crashes, timeouts, malformed JSON, fatal/internal diagnostics, non-determinism and cross-stage divergence.
