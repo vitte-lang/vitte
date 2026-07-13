@@ -540,6 +540,40 @@ def generated_cases() -> list[Case]:
         "TYPECK_E_IMPL_UNKNOWN_TRAIT",
         "implementation trait resolution",
     ))
+    cases.append(Case(
+        "method_provider_unique",
+        (
+            "space tests/typeck/differential/method_provider_unique\n\n"
+            "form Point { x: int }\n"
+            "trait Show { proc render(self: Self) -> string; }\n"
+            "impl Show for Point { proc render(self: Self) -> string { give \"point\" } }\n"
+            "proc main() -> int {\n"
+            "  let point = Point { x: 1 }\n"
+            "  let text = point.render()\n"
+            "  give 0\n"
+            "}\n"
+        ),
+        True,
+    ))
+    cases.append(Case(
+        "method_provider_ambiguous",
+        (
+            "space tests/typeck/differential/method_provider_ambiguous\n\n"
+            "form Point { x: int }\n"
+            "trait Show { proc render(self: Self) -> string; }\n"
+            "trait Debug { proc render(self: Self) -> string; }\n"
+            "impl Show for Point { proc render(self: Self) -> string { give \"show\" } }\n"
+            "impl Debug for Point { proc render(self: Self) -> string { give \"debug\" } }\n"
+            "proc main() -> int {\n"
+            "  let point = Point { x: 1 }\n"
+            "  let text = point.render()\n"
+            "  give 0\n"
+            "}\n"
+        ),
+        False,
+        "TYPECK_E_AMBIGUOUS_METHOD",
+        "unique method candidate",
+    ))
     return cases
 
 
@@ -705,6 +739,7 @@ def main() -> int:
             "local trait implementations preserve method arity, parameter types, and return types",
             "local trait implementations provide every required method regardless of declaration order",
             "local impl trait names resolve after complete source-order-independent declaration indexing",
+            "method dispatch requires one visible impl provider for the resolved receiver type",
             "every rejected type-system case carries a two-step cause chain",
             "stage binaries agree on normalized typeck results",
             "repeated checks are deterministic",

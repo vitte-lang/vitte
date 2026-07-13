@@ -2425,7 +2425,7 @@ detect_professional_diagnostic() {
             "trait method " active_nominal_owner "." method_name " declared here: " file ":" trait_method_line[key],
             "add method " method_name " with the signature declared by trait " active_nominal_owner)
     }
-    function index_nominal_methods(kind, owner, body, start_line,    rest, offset, matched, proc_rel, signature_start, signature, method_name, open_col, close_col, params_text, param_count, return_tail, return_type, method_line, prefix, key, i, expected_type, actual_type, advance, scan_id, required_name, params) {
+    function index_nominal_methods(kind, owner, target, body, start_line,    rest, offset, matched, proc_rel, signature_start, signature, method_name, open_col, close_col, params_text, param_count, return_tail, return_type, method_line, prefix, key, i, expected_type, actual_type, advance, scan_id, required_name, provider_key, provider_seen_key, params) {
         rest = body
         offset = 0
         scan_id = 0
@@ -2470,6 +2470,14 @@ detect_professional_diagnostic() {
                 }
             } else {
                 impl_method_scan[method_name] = scan_id
+                provider_key = target SUBSEP method_name
+                provider_seen_key = provider_key SUBSEP owner
+                if (target != "" && !method_provider_seen[provider_seen_key]) {
+                    method_provider_seen[provider_seen_key] = 1
+                    method_provider_count[provider_key]++
+                    if (method_provider_text[provider_key] != "") method_provider_text[provider_key] = method_provider_text[provider_key] ", "
+                    method_provider_text[provider_key] = method_provider_text[provider_key] owner
+                }
                 if (trait_method_known[key]) {
                     if (param_count != trait_method_param_count[key]) {
                         emit_impl_signature_mismatch(method_name, "parameter count", trait_method_param_count[key], param_count, method_line)
@@ -2498,9 +2506,10 @@ detect_professional_diagnostic() {
         }
     }
     function finish_nominal_definition(unused) {
-        index_nominal_methods(active_nominal_kind, active_nominal_owner, active_nominal_body, active_nominal_line)
+        index_nominal_methods(active_nominal_kind, active_nominal_owner, active_nominal_target, active_nominal_body, active_nominal_line)
         active_nominal_kind = ""
         active_nominal_owner = ""
+        active_nominal_target = ""
         active_nominal_body = ""
         active_nominal_depth = 0
     }
@@ -2523,11 +2532,12 @@ detect_professional_diagnostic() {
         }
         active_nominal_body = active_nominal_body "\n"
     }
-    function begin_nominal_definition(kind, owner, code, line_no, col,    open_col) {
+    function begin_nominal_definition(kind, owner, target, code, line_no, col,    open_col) {
         open_col = index(code, "{")
         if (open_col <= 0) return
         active_nominal_kind = kind
         active_nominal_owner = owner
+        active_nominal_target = target
         active_nominal_line = line_no
         active_nominal_col = col
         active_nominal_body = ""
@@ -2941,7 +2951,7 @@ detect_professional_diagnostic() {
             sub(/[ \t{(:].*$/, "", trait_name)
             if (trait_name != "") {
                 trait_known[trait_name] = 1
-                begin_nominal_definition("trait", trait_name, code_line, FNR, index(raw, trait_name))
+                begin_nominal_definition("trait", trait_name, "", code_line, FNR, index(raw, trait_name))
             }
         }
         if (line ~ /^impl[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]+for[ \t]+[^ \t{]+/) {
@@ -2970,7 +2980,7 @@ detect_professional_diagnostic() {
                 trait_impl[impl_key] = 1
                 trait_impl_line[impl_key] = FNR
                 trait_impl_col[impl_key] = index(raw, impl_trait)
-                begin_nominal_definition("impl", impl_trait, code_line, FNR, index(raw, impl_trait))
+                begin_nominal_definition("impl", impl_trait, impl_type, code_line, FNR, index(raw, impl_trait))
             }
         }
 
@@ -3250,6 +3260,26 @@ detect_professional_diagnostic() {
             remember_decl(name, "int", FNR, index(raw, name))
         }
 
+        if (line ~ /^[ \t]*let[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*:[ \t]*[A-Z][A-Za-z0-9_]*[ \t]*=/) {
+            rest = line
+            sub(/^[ \t]*let[ \t]+/, "", rest)
+            name = rest
+            sub(/[ \t]*:.*$/, "", name)
+            ty = rest
+            sub(/^[^:]*:[ \t]*/, "", ty)
+            sub(/[ \t=].*$/, "", ty)
+            remember_decl(name, ty, FNR, index(raw, name))
+        } else if (line ~ /^[ \t]*let[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*=[ \t]*[A-Z][A-Za-z0-9_]*[ \t]*[{]/) {
+            rest = line
+            sub(/^[ \t]*let[ \t]+/, "", rest)
+            name = rest
+            sub(/[ \t]*=.*/, "", name)
+            ty = rest
+            sub(/^[^=]*=[ \t]*/, "", ty)
+            sub(/[ \t{].*$/, "", ty)
+            remember_decl(name, ty, FNR, index(raw, name))
+        }
+
         if (line ~ /^[ \t]*set[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*=/) {
             rest = line
             sub(/^[ \t]*set[ \t]+/, "", rest)
@@ -3442,6 +3472,35 @@ detect_professional_diagnostic() {
                     "trait " impl_trait " is not declared in this module",
                     "implementation target type: " impl_reference_type[impl_reference_index] "; trait resolution completed without a matching declaration",
                     "declare trait " impl_trait " or correct the implemented trait name")
+            }
+        }
+        if (!found) {
+            for (method_call_line = 1; method_call_line <= FNR; method_call_line++) {
+                method_call_rest = source_code_line[method_call_line]
+                method_call_offset = 0
+                while (match(method_call_rest, /[A-Za-z_][A-Za-z0-9_]*[ \t]*[.][ \t]*[A-Za-z_][A-Za-z0-9_]*[ \t]*[(]/)) {
+                    method_call_text = substr(method_call_rest, RSTART, RLENGTH)
+                    receiver_name = method_call_text
+                    sub(/[ \t]*[.].*$/, "", receiver_name)
+                    method_name = method_call_text
+                    sub(/^.*[.][ \t]*/, "", method_name)
+                    sub(/[ \t]*[(].*$/, "", method_name)
+                    receiver_type = decl_type[receiver_name]
+                    provider_key = receiver_type SUBSEP method_name
+                    if (receiver_type != "" && method_provider_count[provider_key] > 1) {
+                        raw = source_line[method_call_line]
+                        col = method_call_offset + RSTART + index(method_call_text, method_name) - 1
+                        emit("TYPECK_E_AMBIGUOUS_METHOD", "error", "typeck",
+                            "ambiguous method " method_name " for type " receiver_type,
+                            method_call_line, col, col + length(method_name), raw,
+                            "multiple visible impls provide " receiver_type "." method_name,
+                            "method providers: " method_provider_text[provider_key],
+                            "remove one competing impl or use an explicitly qualified trait call")
+                    }
+                    method_call_advance = RSTART + RLENGTH - 1
+                    method_call_offset += method_call_advance
+                    method_call_rest = substr(method_call_rest, method_call_advance + 1)
+                }
             }
         }
         if (!found) {
@@ -4103,6 +4162,14 @@ render_professional_diagnostic_surface_json() {
             root_json="$(json_escape "implementation trait name does not resolve to a local declaration")"
             cause_a_json="$(json_escape "an implementation requires its trait name to resolve after module indexing")"
             cause_b_json="$(json_escape "the complete local trait index contains no declaration with that name")"
+        elif [ "$code" = "TYPECK_E_AMBIGUOUS_METHOD" ]; then
+            rule_json="$(json_escape "unique method candidate")"
+            explanation_json="$(json_escape "More than one visible trait implementation provides the requested method for the receiver type.")"
+            technical_json="$(json_escape "Detected after indexing local impl method providers and resolving the receiver binding type.")"
+            docs_json="$(json_escape "docs://language/type-system/method-resolution")"
+            root_json="$(json_escape "method lookup has multiple visible providers for the receiver type")"
+            cause_a_json="$(json_escape "method dispatch requires exactly one provider after receiver type resolution")"
+            cause_b_json="$(json_escape "the local impl index contains multiple traits providing that method")"
         else
             rule_json="$(json_escape "type checking")"
             explanation_json="$(json_escape "The source violates a type-system rule enforced by the compiler.")"
