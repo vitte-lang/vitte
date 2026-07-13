@@ -523,6 +523,17 @@ proc typeck_constraint_cycle(item_name: string, param_name: string, span: AstSpa
     give diagnostic_with_probable_fix(diag5, "replace one dependency with a concrete trait or type so the constraint graph is acyclic");
 }
 
+proc typeck_ambiguous_method(owner_type: string, method_name: string, providers: string, span: AstSpan) -> Diagnostic {
+    let diag0: Diagnostic = typed_typeck_diag("TYPECK_E_AMBIGUOUS_METHOD", "ambiguous method resolution", [owner_type, method_name, providers], "rename one method or remove one candidate from scope", span, DiagnosticSeverity.Error, DiagnosticPhase.Typeck, TypeckErrorKind.InvalidMember);
+    let diag1: Diagnostic = diagnostic_with_rule(diag0, "unique method candidate");
+    let diag2: Diagnostic = diagnostic_with_explanation(diag1, "method `" + method_name + "` on `" + owner_type + "` is provided by multiple visible traits: " + providers);
+    let diag3: Diagnostic = diagnostic_add_cause(diag2, "receiver type resolves to `" + owner_type + "`");
+    let diag4: Diagnostic = diagnostic_add_cause(diag3, "method lookup found multiple equally applicable trait impls: " + providers);
+    let diag5: Diagnostic = diagnostic_with_subject_symbol(diag4, method_name);
+    let diag6: Diagnostic = diagnostic_with_subject_type(diag5, owner_type);
+    give diagnostic_with_probable_fix(diag6, "rename one `" + method_name + "` method or remove one candidate trait from scope");
+}
+
 proc typeck_cause_chain_missing(code: string, span: AstSpan) -> Diagnostic {
     let diag0: Diagnostic = typed_typeck_diag("TYPECK_E_CAUSE_CHAIN_MISSING", "type diagnostic is missing a cause chain", [code], "attach expected and found origins to this type diagnostic", span, DiagnosticSeverity.Fatal, DiagnosticPhase.Typeck, TypeckErrorKind.Internal);
     let diag1: Diagnostic = diagnostic_with_rule(diag0, "type diagnostic cause-chain completeness");
@@ -636,6 +647,7 @@ share typeck_generic_inference_failed
 share typeck_trait_bound_unsatisfied
 share typeck_conflicting_impl
 share typeck_constraint_cycle
+share typeck_ambiguous_method
 share typeck_cause_chain_missing
 share typeck_code_requires_cause_chain
 share source_span_to_ast_span

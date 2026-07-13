@@ -1512,3 +1512,4 @@ TYPECK_E_TRAIT_BOUND = trait constraint is not satisfied
 TYPECK_E_CAUSE_CHAIN_MISSING = type diagnostic is missing a cause chain
 TYPECK_E_CONFLICTING_IMPL = conflicting trait implementation
 TYPECK_E_CONSTRAINT_CYCLE = cyclic generic constraint
+TYPECK_E_AMBIGUOUS_METHOD = ambiguous method resolution

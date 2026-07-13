@@ -4,6 +4,7 @@ use vitte/compiler/analysis/typeck/errors.{
     ExprTypeResult,
     add_unique_diag,
     typeck_argument_mismatch,
+    typeck_ambiguous_method,
     typeck_compare_mismatch,
     expr_result,
     typeck_binary_mismatch,
@@ -541,8 +542,20 @@ proc infer_member_type(env: [TypeBinding], expr: HirExpr) -> ExprTypeResult {
     let base: ExprTypeResult = infer_expr_type(env, expr.children[0]);
     let member: string = projection_member_name(expr.text, expr.name);
     let projected: string = project_place_type(base.ty, "." + member);
-    let nominal_lookup: string = "@member:" + type_deref_target(base.ty) + "." + member;
+    let deref_type: string = type_deref_target(base.ty);
+    let owner_type: string = if deref_type != "unknown" { deref_type } else { base.ty };
+    let nominal_lookup: string = "@member:" + owner_type + "." + member;
     let nominal_ty: string = env_get(env, nominal_lookup);
+
+    if nominal_ty == "@ambiguous-method" {
+        let providers: string = env_get(env, "@member-provider:" + owner_type + "." + member);
+        give expr_result("unknown", add_unique_diag(base.diagnostics, typeck_ambiguous_method(
+            owner_type,
+            member,
+            providers,
+            expr.span
+        )), false);
+    }
 
     if nominal_ty != "opaque" {
         give expr_result(nominal_ty, base.diagnostics, base.valid);

@@ -159,6 +159,7 @@ TYPECK_E_TRAIT_BOUND = trait constraint is not satisfied
 TYPECK_E_CAUSE_CHAIN_MISSING = tur diagnostic is eksik a cause chain
 TYPECK_E_CONFLICTING_IMPL = çakışan trait uygulaması
 TYPECK_E_CONSTRAINT_CYCLE = döngüsel jenerik kısıt
+TYPECK_E_AMBIGUOUS_METHOD = belirsiz yöntem çözümlemesi
 TYPECK_E_USE_BEFORE_INIT = use before init
 TYPECK_E_USE_AFTER_MOVE = use after tasima
 TYPECK_E_MALFORMED_UNARY = malformed unary

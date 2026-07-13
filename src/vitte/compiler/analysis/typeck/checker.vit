@@ -28,6 +28,36 @@ proc nominal_member_env_name(owner: string, member: string) -> string {
   give "@member:" + owner + "." + member;
 }
 
+proc nominal_member_provider_env_name(owner: string, member: string) -> string {
+  give "@member-provider:" + owner + "." + member;
+}
+
+proc ambiguous_method_binding_type() -> string {
+  give "@ambiguous-method";
+}
+
+proc provider_list_contains(providers: string, provider: string) -> bool {
+  let values: [string] = split(providers, ",");
+  let i: u64 = 0;
+  while i < len(values) {
+    if trim(values[i]) == provider {
+      give true;
+    }
+    set i = i + 1;
+  }
+  give false;
+}
+
+proc append_member_provider(providers: string, provider: string) -> string {
+  if providers == "" or providers == "opaque" {
+    give provider;
+  }
+  if provider_list_contains(providers, provider) {
+    give providers;
+  }
+  give providers + ", " + provider;
+}
+
 proc proc_param_signature_text(param: HirProcParam, target_type_text: string) -> string {
   let ty: string = if param.annotation_text == "Self" and target_type_text != "" { target_type_text } else { if param.annotation_text != "" { param.annotation_text } else { "opaque" } };
   if param.variadic {
@@ -249,7 +279,21 @@ proc nominal_type_bindings(items: [HirItem]) -> [TypeBinding] {
       let j: u64 = 0;
       while j < len(item.members) {
         if item.members[j].name != "" and owner_name != "" {
-          set out = env_set(out, nominal_member_env_name(owner_name, item.members[j].name), nominal_member_binding_type(item, item.members[j]));
+          let member_name: string = item.members[j].name;
+          let member_key: string = nominal_member_env_name(owner_name, member_name);
+          if item.kind == HirItemKind.Impl {
+            let provider_key: string = nominal_member_provider_env_name(owner_name, member_name);
+            let providers: string = env_get(out, provider_key);
+            if providers == "opaque" {
+              set out = env_set(out, member_key, nominal_member_binding_type(item, item.members[j]));
+              set out = env_set(out, provider_key, item.name);
+            } elif not provider_list_contains(providers, item.name) {
+              set out = env_set(out, member_key, ambiguous_method_binding_type());
+              set out = env_set(out, provider_key, append_member_provider(providers, item.name));
+            }
+          } else {
+            set out = env_set(out, member_key, nominal_member_binding_type(item, item.members[j]));
+          }
         }
         set j = j + 1;
       }

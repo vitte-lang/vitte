@@ -41,6 +41,7 @@ REQUIRED_SYMBOLS = {
         'soundness_roadmap',
     ],
     'typeck_checker': [
+        'ambiguous_method_binding_type',
         'constrained_generic_type_binding',
         'item_generic_bounds',
         'trait_impl_binding_name',
@@ -48,6 +49,7 @@ REQUIRED_SYMBOLS = {
     'typeck_errors': [
         'diagnostics: [Diagnostic]',
         'enforce_typeck_cause_chains',
+        'typeck_ambiguous_method',
         'typeck_code_requires_cause_chain',
         'TYPECK_E_CAUSE_CHAIN_MISSING',
     ],
@@ -96,6 +98,7 @@ REQUIRED_SYMBOLS = {
         'test_return_mismatch_carries_rich_diagnostic_context',
         'test_call_arity_carries_signature_context',
         'test_generic_call_infers_and_substitutes_return_type',
+        'test_impl_method_dispatch_rejects_ambiguous_traits',
         'test_generic_call_reports_unconstrained_parameter',
         'test_generic_substitution_replaces_identifiers_only',
         'test_generic_trait_bound_accepts_visible_impl',

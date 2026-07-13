@@ -159,6 +159,7 @@ TYPECK_E_TRAIT_BOUND = trait constraint is not satisfied
 TYPECK_E_CAUSE_CHAIN_MISSING = typ diagnostic is brakujacy a cause chain
 TYPECK_E_CONFLICTING_IMPL = sprzeczna implementacja traitu
 TYPECK_E_CONSTRAINT_CYCLE = cykliczne ograniczenie generyczne
+TYPECK_E_AMBIGUOUS_METHOD = niejednoznaczne rozstrzyganie metody
 TYPECK_E_USE_BEFORE_INIT = use before init
 TYPECK_E_USE_AFTER_MOVE = use after przeniesienie
 TYPECK_E_MALFORMED_UNARY = malformed unary
