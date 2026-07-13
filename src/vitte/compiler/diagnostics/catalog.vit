@@ -166,6 +166,24 @@ proc versioned_diagnostic_lookup(code: string) -> VersionedDiagnosticCode {
   if code == "TYPECK_E_ASSIGN_MISMATCH" {
     give versioned_diagnostic_code(code, "typeck", "type-contract", "assignment compatibility", "align-contract", "medium", "docs://language/type-system", "let x: int = \"s\";", "let x: int = 0;")
   }
+  if code == "TYPECK_E_RETURN_MISMATCH" {
+    give versioned_diagnostic_code(code, "typeck", "type-contract", "return compatibility", "align-return", "medium", "docs://language/type-system", "proc f() -> int { give \"s\"; }", "proc f() -> int { give 0; }")
+  }
+  if code == "TYPECK_E_ARGUMENT_MISMATCH" {
+    give versioned_diagnostic_code(code, "typeck", "type-contract", "argument compatibility", "align-argument", "medium", "docs://language/type-system", "takes_int(\"s\")", "takes_int(0)")
+  }
+  if code == "TYPECK_E_CALL_ARITY" {
+    give versioned_diagnostic_code(code, "typeck", "type-contract", "call arity", "align-arity", "high", "docs://language/type-system", "f(1, 2)", "f(1)")
+  }
+  if code == "TYPECK_E_GENERIC_INFERENCE" {
+    give versioned_diagnostic_code(code, "typeck", "generic-inference", "generic inference completeness", "add-type-context", "medium", "docs://language/type-system", "identity()", "identity<int>(0)")
+  }
+  if code == "TYPECK_E_TRAIT_BOUND" {
+    give versioned_diagnostic_code(code, "typeck", "trait-resolution", "trait bound satisfaction", "implement-or-relax-bound", "medium", "docs://language/type-system", "needs_display(value)", "impl Display for Value { ... }")
+  }
+  if code == "TYPECK_E_CAUSE_CHAIN_MISSING" {
+    give versioned_diagnostic_code(code, "typeck", "diagnostic-quality", "type diagnostic cause chain", "attach-cause-chain", "high", "docs://compiler/diagnostics", "emit_type_error(code)", "emit_type_error(with_causes(code))")
+  }
   if code == "BORROWCK_E_USE_AFTER_MOVE" {
     give versioned_diagnostic_code(code, "borrowck", "ownership-flow", "moved value access", "shorten-or-reorder-access", "medium", "docs://language/ownership", "move value; use value;", "borrow value; use value;")
   }
@@ -259,9 +277,21 @@ proc bootstrap_catalog() -> DiagnosticCatalog {
 
   set catalog = register(catalog, diagnostic_code("TYPECK_E_ASSIGN_MISMATCH", DiagnosticCategory.Typeck, DiagnosticSeverity.Error, "assignment type mismatch", "assigned expression type does not match target type"))
 
+  set catalog = register(catalog, diagnostic_code("TYPECK_E_RETURN_MISMATCH", DiagnosticCategory.Typeck, DiagnosticSeverity.Error, "return type mismatch", "returned expression type does not match procedure return type"))
+
   set catalog = register(catalog, diagnostic_code("TYPECK_E_UNKNOWN_TYPE", DiagnosticCategory.Typeck, DiagnosticSeverity.Error, "unknown type", "type resolution failed"))
 
   set catalog = register(catalog, diagnostic_code("TYPECK_E_INVALID_CALL", DiagnosticCategory.Typeck, DiagnosticSeverity.Error, "invalid function call", "call arguments do not match function signature"))
+
+  set catalog = register(catalog, diagnostic_code("TYPECK_E_ARGUMENT_MISMATCH", DiagnosticCategory.Typeck, DiagnosticSeverity.Error, "call argument type mismatch", "call argument type does not match the corresponding parameter"))
+
+  set catalog = register(catalog, diagnostic_code("TYPECK_E_CALL_ARITY", DiagnosticCategory.Typeck, DiagnosticSeverity.Error, "wrong number of call arguments", "call argument count does not match function signature"))
+
+  set catalog = register(catalog, diagnostic_code("TYPECK_E_GENERIC_INFERENCE", DiagnosticCategory.Typeck, DiagnosticSeverity.Error, "generic type could not be inferred", "local constraints do not determine a generic type parameter"))
+
+  set catalog = register(catalog, diagnostic_code("TYPECK_E_TRAIT_BOUND", DiagnosticCategory.Typeck, DiagnosticSeverity.Error, "trait constraint is not satisfied", "no visible implementation satisfies the required trait bound"))
+
+  set catalog = register(catalog, diagnostic_code("TYPECK_E_CAUSE_CHAIN_MISSING", DiagnosticCategory.Typeck, DiagnosticSeverity.Fatal, "type diagnostic is missing a cause chain", "internal type diagnostic contract requires expected and found origins"))
 
   <<< ===================================================== >>>
   <<< Backend diagnostics                                   >>>

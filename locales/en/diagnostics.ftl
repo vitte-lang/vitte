@@ -1504,3 +1504,9 @@ E_BOOTSTRAP_CONST_TYPE = bootstrap constant has wrong type
 E_BOOTSTRAP_DUP_PROC = duplicate bootstrap procedure
 E_BOOTSTRAP_UNKNOWN_CONST = unknown bootstrap constant
 E_BOOTSTRAP_UNKNOWN_PROC = unsupported bootstrap procedure
+
+# Added from tests/diag_snapshots/core_diagnostic_codes.txt
+TYPECK_E_RETURN_MISMATCH = return type mismatch
+TYPECK_E_GENERIC_INFERENCE = generic type could not be inferred
+TYPECK_E_TRAIT_BOUND = trait constraint is not satisfied
+TYPECK_E_CAUSE_CHAIN_MISSING = type diagnostic is missing a cause chain

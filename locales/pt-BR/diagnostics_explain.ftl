@@ -842,6 +842,12 @@ TYPECK_E_ASSIGN_MISMATCH.step1 = Compare the expected and found types in the dia
 TYPECK_E_ASSIGN_MISMATCH.fix = Change the expression, annotation, or call argument so both sides agree.
 TYPECK_E_ASSIGN_MISMATCH.example = let count: int = 1
 
+TYPECK_E_RETURN_MISMATCH.summary = retorno tipo incompatibilidade.
+TYPECK_E_RETURN_MISMATCH.cause = The inferred type does not satisfy the type required at this location.
+TYPECK_E_RETURN_MISMATCH.step1 = Compare the expected and found types in the diagnostic labels.
+TYPECK_E_RETURN_MISMATCH.fix = Change the expression, annotation, or call argument so both sides agree.
+TYPECK_E_RETURN_MISMATCH.example = let count: int = 1
+
 TYPECK_E_CONDITION_TYPE.summary = condicao tipo.
 TYPECK_E_CONDITION_TYPE.cause = The inferred type does not satisfy the type required at this location.
 TYPECK_E_CONDITION_TYPE.step1 = Compare the expected and found types in the diagnostic labels.
@@ -907,6 +913,24 @@ TYPECK_E_CALL_ARITY.cause = The inferred type does not satisfy the type required
 TYPECK_E_CALL_ARITY.step1 = Compare the expected and found types in the diagnostic labels.
 TYPECK_E_CALL_ARITY.fix = Change the expression, annotation, or call argument so both sides agree.
 TYPECK_E_CALL_ARITY.example = let count: int = 1
+
+TYPECK_E_GENERIC_INFERENCE.summary = generico tipo could not be inferred.
+TYPECK_E_GENERIC_INFERENCE.cause = The inferred type does not satisfy the type required at this location.
+TYPECK_E_GENERIC_INFERENCE.step1 = Compare the expected and found types in the diagnostic labels.
+TYPECK_E_GENERIC_INFERENCE.fix = Change the expression, annotation, or call argument so both sides agree.
+TYPECK_E_GENERIC_INFERENCE.example = let count: int = 1
+
+TYPECK_E_TRAIT_BOUND.summary = trait constraint is not satisfied.
+TYPECK_E_TRAIT_BOUND.cause = The inferred type does not satisfy the type required at this location.
+TYPECK_E_TRAIT_BOUND.step1 = Compare the expected and found types in the diagnostic labels.
+TYPECK_E_TRAIT_BOUND.fix = Change the expression, annotation, or call argument so both sides agree.
+TYPECK_E_TRAIT_BOUND.example = let count: int = 1
+
+TYPECK_E_CAUSE_CHAIN_MISSING.summary = tipo diagnostic is ausente a cause chain.
+TYPECK_E_CAUSE_CHAIN_MISSING.cause = The inferred type does not satisfy the type required at this location.
+TYPECK_E_CAUSE_CHAIN_MISSING.step1 = Compare the expected and found types in the diagnostic labels.
+TYPECK_E_CAUSE_CHAIN_MISSING.fix = Change the expression, annotation, or call argument so both sides agree.
+TYPECK_E_CAUSE_CHAIN_MISSING.example = let count: int = 1
 
 TYPECK_E_USE_BEFORE_INIT.summary = use before init.
 TYPECK_E_USE_BEFORE_INIT.cause = The inferred type does not satisfy the type required at this location.
