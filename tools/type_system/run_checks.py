@@ -18,6 +18,7 @@ CONTRACT_FILES = {
     'typeck_coercion': ROOT / 'src' / 'vitte' / 'compiler' / 'analysis' / 'typeck' / 'coercion.vit',
     'typeck_tests': ROOT / 'src' / 'vitte' / 'compiler' / 'tests' / 'typeck_tests.vit',
     'mir_monomorphize': ROOT / 'src' / 'vitte' / 'compiler' / 'middle' / 'mir' / 'monomorphize.vit',
+    'formal_rules': ROOT / 'schemas' / 'type_system' / 'rules.json',
 }
 
 METRIC_RE = re.compile(
@@ -129,6 +130,16 @@ REQUIRED_SYMBOLS = {
         'rewrite_generic_call',
         'monomorphize_mir',
         'MIR_MONOMORPHIZATION_LIMIT',
+    ],
+    'formal_rules': [
+        'vitte.type-system-rules',
+        'T-ASSIGN',
+        'T-RETURN',
+        'T-CALL',
+        'T-GENERIC-INFER',
+        'T-GENERIC-BOUND',
+        'T-COHERENCE',
+        'T-MATCH-EXHAUSTIVE',
     ],
 }
 

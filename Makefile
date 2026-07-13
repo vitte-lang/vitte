@@ -2459,6 +2459,7 @@ type-system-gate:
 	@python3 tools/type_system/run_checks.py
 	@python3 tools/typeck_surface_audit.py
 	@python3 tools/check_typeck_diagnostic_contracts.py
+	@python3 tools/check_type_system_rules.py
 	@python3 tools/type_system/generate_artifacts.py
 	@! grep -En "FAIL" target/type_system/features.txt >/dev/null
 	@test -f target/type_system/features.txt

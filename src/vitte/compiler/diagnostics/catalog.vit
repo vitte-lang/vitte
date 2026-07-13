@@ -166,6 +166,9 @@ proc versioned_diagnostic_lookup(code: string) -> VersionedDiagnosticCode {
   if code == "TYPECK_E_ASSIGN_MISMATCH" {
     give versioned_diagnostic_code(code, "typeck", "type-contract", "assignment compatibility", "align-contract", "medium", "docs://language/type-system", "let x: int = \"s\";", "let x: int = 0;")
   }
+  if code == "TYPECK_E_IMMUTABLE_ASSIGN" {
+    give versioned_diagnostic_code(code, "typeck", "type-contract", "assignment mutability", "declare-mutable-binding", "high", "docs://language/type-system", "let x = 0; set x = 1;", "let mut x = 0; set x = 1;")
+  }
   if code == "TYPECK_E_RETURN_MISMATCH" {
     give versioned_diagnostic_code(code, "typeck", "type-contract", "return compatibility", "align-return", "medium", "docs://language/type-system", "proc f() -> int { give \"s\"; }", "proc f() -> int { give 0; }")
   }
@@ -180,6 +183,15 @@ proc versioned_diagnostic_lookup(code: string) -> VersionedDiagnosticCode {
   }
   if code == "TYPECK_E_TRAIT_BOUND" {
     give versioned_diagnostic_code(code, "typeck", "trait-resolution", "trait bound satisfaction", "implement-or-relax-bound", "medium", "docs://language/type-system", "needs_display(value)", "impl Display for Value { ... }")
+  }
+  if code == "TYPECK_E_IMPL_UNKNOWN_TRAIT" {
+    give versioned_diagnostic_code(code, "typeck", "trait-resolution", "implementation trait resolution", "declare-or-correct-trait", "high", "docs://language/type-system", "impl Missing for Value { ... }", "trait Show { ... } impl Show for Value { ... }")
+  }
+  if code == "TYPECK_E_IMPL_MISSING_MEMBER" {
+    give versioned_diagnostic_code(code, "typeck", "trait-resolution", "implementation completeness", "implement-required-member", "high", "docs://language/type-system", "impl Show for Value { }", "impl Show for Value { proc show(self: Self) -> string { ... } }")
+  }
+  if code == "TYPECK_E_IMPL_SIGNATURE_MISMATCH" {
+    give versioned_diagnostic_code(code, "typeck", "trait-resolution", "implementation signature compatibility", "align-method-signature", "high", "docs://language/type-system", "trait Show { proc show(self: Self) -> string; } impl Show for Value { proc show(self: Self) -> int { ... } }", "trait Show { proc show(self: Self) -> string; } impl Show for Value { proc show(self: Self) -> string { ... } }")
   }
   if code == "TYPECK_E_CONFLICTING_IMPL" {
     give versioned_diagnostic_code(code, "typeck", "trait-resolution", "trait implementation coherence", "remove-conflicting-impl", "high", "docs://language/type-system", "impl Show for Point { ... } impl Show for Point { ... }", "impl Show for Point { ... }")
@@ -286,6 +298,8 @@ proc bootstrap_catalog() -> DiagnosticCatalog {
 
   set catalog = register(catalog, diagnostic_code("TYPECK_E_ASSIGN_MISMATCH", DiagnosticCategory.Typeck, DiagnosticSeverity.Error, "assignment type mismatch", "assigned expression type does not match target type"))
 
+  set catalog = register(catalog, diagnostic_code("TYPECK_E_IMMUTABLE_ASSIGN", DiagnosticCategory.Typeck, DiagnosticSeverity.Error, "cannot assign to immutable binding", "assignment target was not declared mutable"))
+
   set catalog = register(catalog, diagnostic_code("TYPECK_E_RETURN_MISMATCH", DiagnosticCategory.Typeck, DiagnosticSeverity.Error, "return type mismatch", "returned expression type does not match procedure return type"))
 
   set catalog = register(catalog, diagnostic_code("TYPECK_E_UNKNOWN_TYPE", DiagnosticCategory.Typeck, DiagnosticSeverity.Error, "unknown type", "type resolution failed"))
@@ -299,6 +313,12 @@ proc bootstrap_catalog() -> DiagnosticCatalog {
   set catalog = register(catalog, diagnostic_code("TYPECK_E_GENERIC_INFERENCE", DiagnosticCategory.Typeck, DiagnosticSeverity.Error, "generic type could not be inferred", "local constraints do not determine a generic type parameter"))
 
   set catalog = register(catalog, diagnostic_code("TYPECK_E_TRAIT_BOUND", DiagnosticCategory.Typeck, DiagnosticSeverity.Error, "trait constraint is not satisfied", "no visible implementation satisfies the required trait bound"))
+
+  set catalog = register(catalog, diagnostic_code("TYPECK_E_IMPL_UNKNOWN_TRAIT", DiagnosticCategory.Typeck, DiagnosticSeverity.Error, "implementation references an unknown trait", "the implemented trait is not visible"))
+
+  set catalog = register(catalog, diagnostic_code("TYPECK_E_IMPL_MISSING_MEMBER", DiagnosticCategory.Typeck, DiagnosticSeverity.Error, "implementation is missing a required trait method", "a method required by the trait is absent from the implementation"))
+
+  set catalog = register(catalog, diagnostic_code("TYPECK_E_IMPL_SIGNATURE_MISMATCH", DiagnosticCategory.Typeck, DiagnosticSeverity.Error, "implementation method signature does not match the trait", "implementation method parameters or return type differ from the trait declaration"))
 
   set catalog = register(catalog, diagnostic_code("TYPECK_E_CONFLICTING_IMPL", DiagnosticCategory.Typeck, DiagnosticSeverity.Error, "conflicting trait implementation", "more than one implementation targets the same trait and type"))
 

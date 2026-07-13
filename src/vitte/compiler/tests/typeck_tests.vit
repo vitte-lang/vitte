@@ -981,6 +981,36 @@ proc test_canonical_hir_covers_retired_complete_surface() -> bool {
     and proc_item.annotation_text == "T";
 }
 
+proc test_typeck_reports_unknown_impl_trait() -> bool {
+  let source: string =
+    "form Point { x: int }\n" +
+    "impl Missing for Point {\n" +
+    "  proc show(self: Self) -> string { give \"point\"; }\n" +
+    "}\n";
+  let fe: FrontendOutput = frontend_run("typeck_impl_unknown_trait.vit", source);
+  let hir = lower_ast_to_hir(fe);
+  let sema: SemaResult = run_sema_hir(hir);
+  let result: TypeckResult = run_production_typeck_hir(sema.hir);
+  give fe.valid and has_code(result, "TYPECK_E_IMPL_UNKNOWN_TRAIT");
+}
+
+proc test_typeck_reports_missing_impl_member() -> bool {
+  let source: string =
+    "form Point { x: int }\n" +
+    "trait Display {\n" +
+    "  proc show(self: Self) -> string;\n" +
+    "  proc debug(self: Self) -> string;\n" +
+    "}\n" +
+    "impl Display for Point {\n" +
+    "  proc show(self: Self) -> string { give \"point\"; }\n" +
+    "}\n";
+  let fe: FrontendOutput = frontend_run("typeck_impl_missing_member.vit", source);
+  let hir = lower_ast_to_hir(fe);
+  let sema: SemaResult = run_sema_hir(hir);
+  let result: TypeckResult = run_production_typeck_hir(sema.hir);
+  give fe.valid and has_code(result, "TYPECK_E_IMPL_MISSING_MEMBER");
+}
+
 proc test_typeck_reports_impl_return_signature_mismatch() -> bool {
   let source: string =
     "form Point { x: int }\n" +
@@ -1306,6 +1336,12 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if not test_canonical_hir_covers_retired_complete_surface() {
+    set failures = failures + 1;
+  }
+  if not test_typeck_reports_unknown_impl_trait() {
+    set failures = failures + 1;
+  }
+  if not test_typeck_reports_missing_impl_member() {
     set failures = failures + 1;
   }
   if not test_typeck_reports_impl_return_signature_mismatch() {
