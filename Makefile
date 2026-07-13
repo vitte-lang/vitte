@@ -2455,11 +2455,17 @@ analysis-gate: mir-opt-gate interproc-opt-gate static-analysis-gate
 
 
 .PHONY: type-system-gate
+.PHONY: typeck-differential-test
+typeck-differential-test:
+	@python3 tools/typeck_differential_test.py
+
+
 type-system-gate:
 	@python3 tools/type_system/run_checks.py
 	@python3 tools/typeck_surface_audit.py
 	@python3 tools/check_typeck_diagnostic_contracts.py
 	@python3 tools/check_type_system_rules.py
+	@$(MAKE) --no-print-directory typeck-differential-test
 	@python3 tools/type_system/generate_artifacts.py
 	@! grep -En "FAIL" target/type_system/features.txt >/dev/null
 	@test -f target/type_system/features.txt

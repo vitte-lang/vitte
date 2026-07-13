@@ -2186,6 +2186,18 @@ detect_professional_diagnostic() {
         sub(/[ \t\r\n]+$/, "", s)
         return s
     }
+    function primitive_literal_type(text,    value) {
+        value = trim(text)
+        sub(/[ \t;]+$/, "", value)
+        if (value ~ /^"/) return "string"
+        if (value == "true" || value == "false") return "bool"
+        if (value ~ /^-?[0-9]+$/) return "int"
+        return ""
+    }
+    function primitive_types_compatible(expected, found) {
+        if ((expected == "int" || expected == "i32") && found == "int") return 1
+        return expected == found
+    }
     function count_char(s, ch,    i, n) {
         n = 0
         for (i = 1; i <= length(s); i++) {
@@ -2692,20 +2704,30 @@ detect_professional_diagnostic() {
             remember_decl(name, "int", FNR, index(raw, name))
         }
 
-        if (line ~ /^[ \t]*set[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*=[ \t]*"/) {
+        if (line ~ /^[ \t]*set[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*=/) {
             rest = line
             sub(/^[ \t]*set[ \t]+/, "", rest)
             name = rest
             sub(/[ \t]*=.*$/, "", name)
-            if ((name in decl_type) && (decl_type[name] == "i32" || decl_type[name] == "int")) {
-                col = index(raw, "\"")
-                value = substr(raw, col + 1)
-                endq = index(value, "\"")
-                width = endq > 0 ? endq + 1 : 1
+            value = rest
+            sub(/^[^=]*=[ \t]*/, "", value)
+            found_type = primitive_literal_type(value)
+            if ((name in decl_type) && found_type != "" && !primitive_types_compatible(decl_type[name], found_type)) {
+                if (found_type == "string") {
+                    col = index(raw, "\"")
+                    value_tail = substr(raw, col + 1)
+                    endq = index(value_tail, "\"")
+                    width = endq > 0 ? endq + 1 : 1
+                } else {
+                    value_token = value
+                    sub(/[ \t;]+$/, "", value_token)
+                    col = index(raw, value_token)
+                    width = length(value_token)
+                }
                 emit("TYPECK_E_ASSIGN_MISMATCH", "error", "typeck",
-                    "cannot assign value of type string to variable of type " decl_type[name],
+                    "cannot assign value of type " found_type " to variable of type " decl_type[name],
                     FNR, col, col + width, raw,
-                    "expected " decl_type[name] ", found string",
+                    "expected " decl_type[name] ", found " found_type,
                     "variable " name " was declared here: " file ":" decl_line[name] ":" decl_col[name],
                     "change the value type or update the variable annotation")
             }
@@ -2729,6 +2751,19 @@ detect_professional_diagnostic() {
                 "expected bool, found string",
                 "if conditions are checked before lowering to MIR",
                 "compare the value explicitly or use a boolean expression")
+        } else if (line ~ /^[ \t]*if[ \t]+[A-Za-z_][A-Za-z0-9_]*/) {
+            condition_name = line
+            sub(/^[ \t]*if[ \t]+/, "", condition_name)
+            sub(/[^A-Za-z0-9_].*$/, "", condition_name)
+            if ((condition_name in decl_type) && decl_type[condition_name] == "string") {
+                col = index(raw, condition_name)
+                emit("TYPECK_E_CONDITION_TYPE", "error", "typeck",
+                    "condition expression must be bool",
+                    FNR, col, col + length(condition_name), raw,
+                    "expected bool, found string",
+                    "if conditions are checked before lowering to MIR",
+                    "compare the value explicitly or use a boolean expression")
+            }
         }
 
         if (line ~ /^[ \t]*give[ \t]+missing_[A-Za-z0-9_]*/) {
@@ -2859,6 +2894,17 @@ detect_type_mismatch() {
         sub(/[ \t\r\n]+$/, "", s)
         return s
     }
+    function primitive_literal_type(text,    value) {
+        value = trim(text)
+        if (value ~ /^"/) return "string"
+        if (value == "true" || value == "false") return "bool"
+        if (value ~ /^-?[0-9]+$/) return "int"
+        return ""
+    }
+    function primitive_types_compatible(expected, found) {
+        if ((expected == "int" || expected == "i32") && found == "int") return 1
+        return expected == found
+    }
     function remember_typed_let(stmt, line_no, base_col,    rest, name, ty, name_col) {
         rest = stmt
         sub(/^[ \t]*let[ \t]+/, "", rest)
@@ -2867,7 +2913,7 @@ detect_type_mismatch() {
         ty = rest
         sub(/^[^:]*:[ \t]*/, "", ty)
         sub(/[ \t=].*$/, "", ty)
-        if (name != "" && (ty == "i32" || ty == "int")) {
+        if (name != "" && (ty == "i32" || ty == "int" || ty == "string" || ty == "bool")) {
             decl_type[name] = ty
             decl_line[name] = line_no
             name_col = index(stmt, name)
@@ -2886,19 +2932,27 @@ detect_type_mismatch() {
             decl_col[name] = base_col + name_col - 1
         }
     }
-    function parse_set(stmt, raw, line_no, base_col,    rest, name, col, value, endq, len0) {
+    function parse_set(stmt, raw, line_no, base_col,    rest, name, rhs, found_type, col, value, endq, len0) {
         rest = stmt
         sub(/^[ \t]*set[ \t]+/, "", rest)
         name = rest
         sub(/[ \t]*=.*$/, "", name)
         if (!(name in decl_type)) return
-        if (stmt !~ /=[ \t]*"/) return
-        col = base_col + index(stmt, "\"") - 1
-        value = substr(raw, col + 1)
-        endq = index(value, "\"")
-        if (endq <= 0) return
-        len0 = endq + 1
-        print name "|" decl_type[name] "|string|" line_no "|" col "|" decl_line[name] "|" decl_col[name] "|" len0 "|" raw
+        rhs = rest
+        sub(/^[^=]*=[ \t]*/, "", rhs)
+        found_type = primitive_literal_type(rhs)
+        if (found_type == "" || primitive_types_compatible(decl_type[name], found_type)) return
+        if (found_type == "string") {
+            col = base_col + index(stmt, "\"") - 1
+            value = substr(raw, col + 1)
+            endq = index(value, "\"")
+            if (endq <= 0) return
+            len0 = endq + 1
+        } else {
+            col = base_col + index(stmt, rhs) - 1
+            len0 = length(rhs)
+        }
+        print name "|" decl_type[name] "|" found_type "|" line_no "|" col "|" decl_line[name] "|" decl_col[name] "|" len0 "|" raw
         found = 1
         exit
     }
@@ -2925,11 +2979,11 @@ detect_type_mismatch() {
                 sub(/^[^A-Za-z0-9_]+/, "", candidate)
             }
             candidate_col = base_col + (index(stmt, candidate) > 0 ? index(stmt, candidate) - 1 : 0)
-            if (candidate ~ /^let[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*:[ \t]*(i32|int)[ \t]*=/) {
+            if (candidate ~ /^let[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*:[ \t]*(i32|int|string|bool)[ \t]*=/) {
                 remember_typed_let(candidate, FNR, candidate_col)
             } else if (candidate ~ /^let[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*=[ \t]*-?[0-9]+$/) {
                 remember_inferred_int_let(candidate, FNR, candidate_col)
-            } else if (candidate ~ /^set[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*=[ \t]*"/) {
+            } else if (candidate ~ /^set[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*=/) {
                 parse_set(candidate, raw, FNR, candidate_col)
             }
             search_from = base_col + length(stmt) + 1

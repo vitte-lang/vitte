@@ -19,6 +19,7 @@ CONTRACT_FILES = {
     'typeck_tests': ROOT / 'src' / 'vitte' / 'compiler' / 'tests' / 'typeck_tests.vit',
     'mir_monomorphize': ROOT / 'src' / 'vitte' / 'compiler' / 'middle' / 'mir' / 'monomorphize.vit',
     'formal_rules': ROOT / 'schemas' / 'type_system' / 'rules.json',
+    'differential_tests': ROOT / 'tools' / 'typeck_differential_test.py',
 }
 
 METRIC_RE = re.compile(
@@ -140,6 +141,15 @@ REQUIRED_SYMBOLS = {
         'T-GENERIC-BOUND',
         'T-COHERENCE',
         'T-MATCH-EXHAUSTIVE',
+    ],
+    'differential_tests': [
+        'generated_cases',
+        'diagnostic_projection',
+        'assert_oracle',
+        'differential_comparisons',
+        'deterministic_replays',
+        'TYPECK_E_ASSIGN_MISMATCH',
+        'TYPECK_E_CONDITION_TYPE',
     ],
 }
 
