@@ -274,6 +274,27 @@ def generated_cases() -> list[Case]:
         "TYPECK_E_CONFLICTING_IMPL",
         "trait implementation coherence",
     ))
+    cases.append(Case(
+        "generic_constraints_acyclic",
+        (
+            "space tests/typeck/differential/generic_constraints_acyclic\n\n"
+            "trait Show { proc show(self: Self) -> string; }\n"
+            "proc keep[T: Show, U: T](value: U) -> U { give value }\n"
+            "proc main() -> int { give 0 }\n"
+        ),
+        True,
+    ))
+    cases.append(Case(
+        "generic_constraints_cycle",
+        (
+            "space tests/typeck/differential/generic_constraints_cycle\n\n"
+            "proc cycle[T: U, U: T](value: T) -> T { give value }\n"
+            "proc main() -> int { give 0 }\n"
+        ),
+        False,
+        "TYPECK_E_CONSTRAINT_CYCLE",
+        "generic constraint acyclicity",
+    ))
     return cases
 
 
@@ -432,6 +453,7 @@ def main() -> int:
             "generic calls accept constrained or explicit parameters and reject unconstrained parameters",
             "locally resolved generic types satisfy declared trait bounds",
             "duplicate local trait implementations violate coherence",
+            "generic parameter constraints form an acyclic dependency graph",
             "every rejected type-system case carries a two-step cause chain",
             "stage binaries agree on normalized typeck results",
             "repeated checks are deterministic",

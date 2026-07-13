@@ -2686,6 +2686,7 @@ detect_professional_diagnostic() {
                         if (generic_param ~ /^[A-Za-z_][A-Za-z0-9_]*$/) {
                             proc_generic_count[name]++
                             proc_generic_param[name SUBSEP proc_generic_count[name]] = generic_param
+                            proc_generic_index[name SUBSEP generic_param] = proc_generic_count[name]
                             proc_generic_constrained[name SUBSEP proc_generic_count[name]] = 0
                             generic_bound = ""
                             if (index(generic_decl, ":") > 0) {
@@ -2696,6 +2697,26 @@ detect_professional_diagnostic() {
                             proc_generic_bound[name SUBSEP proc_generic_count[name]] = generic_bound
                         }
                     }
+                }
+            }
+            for (cycle_start_index = 1; cycle_start_index <= proc_generic_count[name]; cycle_start_index++) {
+                cycle_start_param = proc_generic_param[name SUBSEP cycle_start_index]
+                cycle_current_param = cycle_start_param
+                for (cycle_step = 1; cycle_step <= proc_generic_count[name]; cycle_step++) {
+                    cycle_current_index = proc_generic_index[name SUBSEP cycle_current_param]
+                    if (cycle_current_index <= 0) break
+                    cycle_next_param = proc_generic_bound[name SUBSEP cycle_current_index]
+                    if (proc_generic_index[name SUBSEP cycle_next_param] <= 0) break
+                    if (cycle_next_param == cycle_start_param) {
+                        col = index(raw, cycle_start_param)
+                        emit("TYPECK_E_CONSTRAINT_CYCLE", "error", "typeck",
+                            "cyclic generic constraint in procedure " name,
+                            FNR, col, col + length(cycle_start_param), raw,
+                            "generic parameter " cycle_start_param " depends on itself",
+                            "following generic bounds reaches " cycle_start_param " again",
+                            "replace one dependency with a concrete trait or type")
+                    }
+                    cycle_current_param = cycle_next_param
                 }
             }
             signature_params = line
@@ -3616,6 +3637,14 @@ render_professional_diagnostic_surface_json() {
             root_json="$(json_escape "multiple implementations target the same trait and type")"
             cause_a_json="$(json_escape "the first visible impl establishes the trait and target pair")"
             cause_b_json="$(json_escape "a later impl declares the identical trait and target pair")"
+        elif [ "$code" = "TYPECK_E_CONSTRAINT_CYCLE" ]; then
+            rule_json="$(json_escape "generic constraint acyclicity")"
+            explanation_json="$(json_escape "Following dependencies between generic parameter bounds reaches the same parameter again.")"
+            technical_json="$(json_escape "Detected by a bounded walk over the local generic constraint graph.")"
+            docs_json="$(json_escape "docs://language/type-system/generic-constraints")"
+            root_json="$(json_escape "generic parameter bounds form a dependency cycle")"
+            cause_a_json="$(json_escape "constraint resolution starts from a generic parameter")"
+            cause_b_json="$(json_escape "following direct bounds reaches that parameter again")"
         else
             rule_json="$(json_escape "type checking")"
             explanation_json="$(json_escape "The source violates a type-system rule enforced by the compiler.")"
