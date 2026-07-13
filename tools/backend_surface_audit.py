@@ -20,6 +20,14 @@ def read(rel: str) -> str:
 def main() -> int:
     checks: list[tuple[str, str, str]] = [
         ("src/vitte/compiler/main.vit", "use vitte/compiler/driver/compiler.{ run_cli_main_with_ice_boundary }", "public compiler entry must route through canonical driver runtime"),
+        ("src/vitte/compiler/backend/api.vit", "proc backend_api_version()", "canonical backend facade must expose a versioned contract"),
+        ("src/vitte/compiler/backend/api.vit", 'give "v1"', "canonical backend facade version must remain v1"),
+        ("src/vitte/compiler/backend/api.vit", "proc backend_api_status()", "canonical backend facade must expose its production status"),
+        ("src/vitte/compiler/backend/api.vit", 'give "canonical"', "backend facade must remain the canonical production surface"),
+        ("src/vitte/compiler/backend/api.vit", "compile_to_valid_ir_with_profile_and_packaging", "backend facade must expose the production pipeline entrypoint"),
+        ("src/vitte/compiler/backend/api.vit", "emit_native_object_from_llvm_ir", "backend facade must expose native object emission"),
+        ("src/vitte/compiler/backend/api.vit", "link_native_executable", "backend facade must expose native executable linking"),
+        ("src/vitte/compiler/backend/mod.vit", "use vitte/compiler/backend/api", "backend module root must route through the canonical facade"),
         ("src/vitte/compiler/driver/compile.vit", "use vitte/compiler/backend/pipeline.", "driver compile path must use canonical backend pipeline"),
         ("src/vitte/compiler/driver/compile.vit", "use vitte/compiler/backend/codegen.", "driver compile path must use canonical codegen surface"),
         ("src/vitte/compiler/driver/compile.vit", "use vitte/compiler/backend/link/linker.", "driver compile path must use canonical linker surface"),

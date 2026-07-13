@@ -6,10 +6,21 @@ Path: `src/vitte/compiler/backend`
 
 Canonical production backend pipeline for the real compiler path.
 
+## Public API
+
+`backend/api.vit` is the single public backend facade for production callers.
+It owns the driver-facing contracts for target selection, IR verification,
+code generation, native object emission, linking and backend diagnostics. Its
+current contract version is `v1` and its status is `canonical`.
+
+Backend implementation modules remain independently testable, but code outside
+`backend/*` must consume backend services through `vitte/compiler/backend/api`.
+`backend/mod.vit` is a compatibility module root and routes to this facade.
+
 ## Current Role
 
 This tree is the backend surface used by the production compiler pipeline today.
-The runtime driver and backend pipeline are expected to route through modules in
+The runtime driver and backend pipeline are implemented by modules in
 `src/vitte/compiler/backend/*`, including:
 
 - `backend/pipeline.vit`
