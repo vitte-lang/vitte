@@ -2629,6 +2629,22 @@ detect_professional_diagnostic() {
             }
         }
 
+        if (line ~ /^trait[ \t]+[A-Za-z_][A-Za-z0-9_]*/) {
+            trait_name = line
+            sub(/^trait[ \t]+/, "", trait_name)
+            sub(/[ \t{(:].*$/, "", trait_name)
+            if (trait_name != "") trait_known[trait_name] = 1
+        }
+        if (line ~ /^impl[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]+for[ \t]+[^ \t{]+/) {
+            impl_trait = line
+            sub(/^impl[ \t]+/, "", impl_trait)
+            sub(/[ \t]+for[ \t]+.*$/, "", impl_trait)
+            impl_type = line
+            sub(/^impl[ \t]+[^ \t]+[ \t]+for[ \t]+/, "", impl_type)
+            sub(/[ \t{].*$/, "", impl_type)
+            if (impl_trait != "" && impl_type != "") trait_impl[impl_trait SUBSEP impl_type] = 1
+        }
+
         if (line ~ /^proc[ \t]+[A-Za-z_][A-Za-z0-9_]*/) {
             name = line
             sub(/^proc[ \t]+/, "", name)
@@ -2649,12 +2665,20 @@ detect_professional_diagnostic() {
                     generic_text = substr(generic_tail, 1, generic_close - 1)
                     generic_count = split(generic_text, generic_parts, ",")
                     for (generic_index = 1; generic_index <= generic_count; generic_index++) {
-                        generic_param = trim(generic_parts[generic_index])
+                        generic_decl = trim(generic_parts[generic_index])
+                        generic_param = generic_decl
                         sub(/[ \t]*:.*/, "", generic_param)
                         if (generic_param ~ /^[A-Za-z_][A-Za-z0-9_]*$/) {
                             proc_generic_count[name]++
                             proc_generic_param[name SUBSEP proc_generic_count[name]] = generic_param
                             proc_generic_constrained[name SUBSEP proc_generic_count[name]] = 0
+                            generic_bound = ""
+                            if (index(generic_decl, ":") > 0) {
+                                generic_bound = generic_decl
+                                sub(/^[^:]*:[ \t]*/, "", generic_bound)
+                                sub(/[ \t+].*$/, "", generic_bound)
+                            }
+                            proc_generic_bound[name SUBSEP proc_generic_count[name]] = generic_bound
                         }
                     }
                 }
@@ -2687,6 +2711,7 @@ detect_professional_diagnostic() {
                         proc_signature_supported[name] = 0
                     }
                     proc_param_count[name]++
+                    proc_param_pattern[name SUBSEP proc_param_count[name]] = signature_param_pattern
                     proc_param_type[name SUBSEP proc_param_count[name]] = signature_param_type
                 }
             }
@@ -2744,14 +2769,14 @@ detect_professional_diagnostic() {
             token = first_token(line)
             if (token != "" &&
                 token != "space" && token != "proc" && token != "const" &&
-                token != "form" && token != "pick" && token != "use" &&
+                token != "form" && token != "pick" && token != "trait" && token != "impl" && token != "use" &&
                 token != "import" && token != "export" && token != "share" &&
                 token != "intrinsic" && token != "query") {
                 col = index(raw, token)
                 emit("PARSE_E_TOPLEVEL_DECL_EXPECTED", "error", "parser",
                     "top-level declaration expected",
                     FNR, col, col + length(token), raw,
-                    "expected one of: proc, const, form, pick, use, import, export, share, intrinsic, query",
+                    "expected one of: proc, const, form, pick, trait, impl, use, import, export, share, intrinsic, query",
                     syntax_note("top-level declaration", token, "module item list", "none"),
                     "start a valid top-level declaration or move this code into a block")
             }
@@ -3043,16 +3068,38 @@ detect_professional_diagnostic() {
                         }
                         for (generic_index = 1; generic_index <= proc_generic_count[called_proc]; generic_index++) {
                             generic_param = proc_generic_param[called_proc SUBSEP generic_index]
-                            if (generic_index <= call_generic_arg_count && trim(call_generic_arg_parts[generic_index]) != "") continue
-                            if (proc_generic_constrained[called_proc SUBSEP generic_index]) continue
-                            raw = source_line[call_line_no]
-                            col = index(raw, called_proc)
-                            emit("TYPECK_E_GENERIC_INFERENCE", "error", "typeck",
-                                "generic type " generic_param " could not be inferred",
-                                call_line_no, col, col + length(called_proc), raw,
-                                "generic parameter " generic_param " remains unconstrained",
-                                "procedure " called_proc " requires " generic_param " before monomorphization",
-                                "call " called_proc " with an explicit generic argument such as <int>")
+                            resolved_generic_type = ""
+                            if (generic_index <= call_generic_arg_count) {
+                                resolved_generic_type = trim(call_generic_arg_parts[generic_index])
+                            } else {
+                                for (call_param_index = 1; call_param_index <= proc_param_count[called_proc] && call_param_index <= call_arg_count; call_param_index++) {
+                                    if (trim(proc_param_pattern[called_proc SUBSEP call_param_index]) == generic_param) {
+                                        resolved_generic_type = primitive_literal_type(call_arg_parts[call_param_index])
+                                        if (resolved_generic_type != "") break
+                                    }
+                                }
+                            }
+                            if (resolved_generic_type == "" && !proc_generic_constrained[called_proc SUBSEP generic_index]) {
+                                raw = source_line[call_line_no]
+                                col = index(raw, called_proc)
+                                emit("TYPECK_E_GENERIC_INFERENCE", "error", "typeck",
+                                    "generic type " generic_param " could not be inferred",
+                                    call_line_no, col, col + length(called_proc), raw,
+                                    "generic parameter " generic_param " remains unconstrained",
+                                    "procedure " called_proc " requires " generic_param " before monomorphization",
+                                    "call " called_proc " with an explicit generic argument such as <int>")
+                            }
+                            generic_bound = proc_generic_bound[called_proc SUBSEP generic_index]
+                            if (resolved_generic_type != "" && generic_bound != "" && trait_known[generic_bound] && !trait_impl[generic_bound SUBSEP resolved_generic_type]) {
+                                raw = source_line[call_line_no]
+                                col = index(raw, called_proc)
+                                emit("TYPECK_E_TRAIT_BOUND", "error", "typeck",
+                                    "trait constraint " generic_bound " is not satisfied for " resolved_generic_type,
+                                    call_line_no, col, col + length(called_proc), raw,
+                                    "generic argument " resolved_generic_type " must implement " generic_bound,
+                                    "no visible impl proves " resolved_generic_type ": " generic_bound,
+                                    "add impl " generic_bound " for " resolved_generic_type " or change the generic argument")
+                            }
                         }
                     }
                     if (!proc_signature_supported[called_proc]) continue
@@ -3528,6 +3575,12 @@ render_professional_diagnostic_surface_json() {
             technical_json="$(json_escape "Detected after local signature indexing and before a generic call can be monomorphized.")"
             docs_json="$(json_escape "docs://language/type-system/generic-inference")"
             root_json="$(json_escape "generic parameter cannot be resolved at the call site")"
+        elif [ "$code" = "TYPECK_E_TRAIT_BOUND" ]; then
+            rule_json="$(json_escape "trait bound satisfaction")"
+            explanation_json="$(json_escape "The resolved generic type does not have a visible implementation of the trait required by its bound.")"
+            technical_json="$(json_escape "Detected after generic argument resolution against locally declared trait implementations.")"
+            docs_json="$(json_escape "docs://language/type-system/trait-bounds")"
+            root_json="$(json_escape "generic type lacks the required trait implementation")"
         else
             rule_json="$(json_escape "type checking")"
             explanation_json="$(json_escape "The source violates a type-system rule enforced by the compiler.")"

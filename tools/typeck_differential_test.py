@@ -223,6 +223,33 @@ def generated_cases() -> list[Case]:
         "TYPECK_E_GENERIC_INFERENCE",
         "generic inference completeness",
     ))
+    cases.append(Case(
+        "trait_bound_satisfied",
+        (
+            "space tests/typeck/differential/trait_bound_satisfied\n\n"
+            "trait Show { proc show(self: Self) -> string; }\n"
+            "impl Show for int { proc show(self: Self) -> string { give \"int\" } }\n"
+            "proc keep[T: Show](value: T) -> T { give value }\n"
+            "proc main() -> int {\n"
+            "  give keep(7)\n"
+            "}\n"
+        ),
+        True,
+    ))
+    cases.append(Case(
+        "trait_bound_unsatisfied",
+        (
+            "space tests/typeck/differential/trait_bound_unsatisfied\n\n"
+            "trait Show { proc show(self: Self) -> string; }\n"
+            "proc keep[T: Show](value: T) -> T { give value }\n"
+            "proc main() -> int {\n"
+            "  give keep(7)\n"
+            "}\n"
+        ),
+        False,
+        "TYPECK_E_TRAIT_BOUND",
+        "trait bound satisfaction",
+    ))
     return cases
 
 
@@ -379,6 +406,7 @@ def main() -> int:
             "primitive argument contracts accept matching values and reject mismatches",
             "local calls reject missing and excess arguments",
             "generic calls accept constrained or explicit parameters and reject unconstrained parameters",
+            "locally resolved generic types satisfy declared trait bounds",
             "stage binaries agree on normalized typeck results",
             "repeated checks are deterministic",
             "user programs do not terminate the compiler by signal",
