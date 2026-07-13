@@ -39,7 +39,7 @@ def main() -> int:
         ("src/vitte/compiler/backends/llvm_bindings/mod.vit", "proc llvm_variant_ctor_lines(", "LLVM must construct enum variants"),
         ("src/vitte/compiler/backends/llvm_bindings/mod.vit", "proc llvm_return_value_lines(", "LLVM returns must be typed"),
         ("src/vitte/compiler/backends/llvm_bindings/mod.vit", 'give ["declare " + return_ty', "LLVM extern procedures must use declare"),
-        ("src/vitte/compiler/backend/codegen/instruction_select.vit", '".extern " + machine_call_target_text', "machine backend must preserve extern symbols"),
+        ("src/vitte/compiler/backend/codegen/instruction_select.vit", '".extern " + sanitize_machine_symbol(machine_call_target_text', "machine backend must preserve canonical extern symbols"),
         ("src/vitte/compiler/tests/codegen_tests.vit", "test_backend_lowers_calls_returns_and_aggregates_concretely", "cross-backend value lowering must be tested"),
         ("src/vitte/compiler/tests/c_backend_tests.vit", "test_c_backend_lowers_struct_tuple_and_array_values", "C aggregate lowering must be tested"),
         ("src/vitte/compiler/tests/c_backend_tests.vit", "test_c_backend_emits_external_calls_as_declarations_only", "C external declarations must be tested"),
