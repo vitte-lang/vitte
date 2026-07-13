@@ -597,6 +597,11 @@ bootstrap-clean-checkout-gate:
 	@python3 tools/bootstrap_clean_checkout.py
 	@test -f target/bootstrap/clean-checkout/report.json
 
+.PHONY: bootstrap-offline-gate
+bootstrap-offline-gate:
+	@python3 tools/bootstrap_offline.py
+	@test -f target/bootstrap/offline/report.json
+
 .PHONY: bootstrap-vitte-hard-gate
 bootstrap-vitte-hard-gate: bootstrap-stage-chain-check
 	@echo "[bootstrap-vitte] strict native bootstrap gate"
@@ -665,7 +670,7 @@ bootstrap-verify: bootstrap-all
 	@echo "[bootstrap-verify] versions + smoke + bootstrap-subset checks ok"
 
 .PHONY: bootstrap-native-contract
-bootstrap-native-contract: seed-verify bootstrap-source-coverage-check selfhost-subset-check posix-seed-shell-check bootstrap-shell-fixed-point bootstrap-native-snapshots selfhost-parity-gate bootstrap-clean-checkout-gate bootstrap-verify bootstrap-posix-smoke
+bootstrap-native-contract: seed-verify bootstrap-source-coverage-check selfhost-subset-check posix-seed-shell-check bootstrap-shell-fixed-point bootstrap-native-snapshots selfhost-parity-gate bootstrap-clean-checkout-gate bootstrap-offline-gate bootstrap-verify bootstrap-posix-smoke
 
 .PHONY: bootstrap-native-fast-contract
 bootstrap-native-fast-contract: seed-verify bootstrap-source-coverage-check selfhost-subset-check posix-seed-shell-check bootstrap-shell-fixed-point bootstrap-native-snapshots selfhost-parity-gate bootstrap-native-drift-check
