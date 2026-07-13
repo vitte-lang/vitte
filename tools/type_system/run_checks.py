@@ -20,6 +20,7 @@ CONTRACT_FILES = {
     'mir_monomorphize': ROOT / 'src' / 'vitte' / 'compiler' / 'middle' / 'mir' / 'monomorphize.vit',
     'formal_rules': ROOT / 'schemas' / 'type_system' / 'rules.json',
     'differential_tests': ROOT / 'tools' / 'typeck_differential_test.py',
+    'fuzz_tests': ROOT / 'tools' / 'typeck_fuzz_test.py',
 }
 
 METRIC_RE = re.compile(
@@ -150,6 +151,14 @@ REQUIRED_SYMBOLS = {
         'deterministic_replays',
         'TYPECK_E_ASSIGN_MISMATCH',
         'TYPECK_E_CONDITION_TYPE',
+    ],
+    'fuzz_tests': [
+        'generate_corpus',
+        'malformed_source',
+        'deterministic_replays',
+        'compiler terminated by signal',
+        'compiler failure diagnostic',
+        'TYPECK_FUZZ_CASES',
     ],
 }
 
