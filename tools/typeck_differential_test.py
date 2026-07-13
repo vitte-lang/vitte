@@ -80,6 +80,20 @@ def generated_cases() -> list[Case]:
             False,
             "TYPECK_E_CONDITION_TYPE",
         ))
+
+    for operator_name, operator in (("equal", "=="), ("not_equal", "!=")):
+        cases.append(Case(
+            f"string_{operator_name}_condition",
+            (
+                f"space tests/typeck/differential/string_{operator_name}_condition\n\n"
+                "proc main() -> int {\n"
+                '  let condition: string = "expected"\n'
+                f'  if condition {operator} "expected" {{ give 1 }}\n'
+                "  give 0\n"
+                "}\n"
+            ),
+            True,
+        ))
     return cases
 
 
@@ -227,6 +241,7 @@ def main() -> int:
             "distinct primitive assignments are rejected",
             "alpha-renaming and whitespace preserve diagnostic codes",
             "non-truthy string conditions are rejected",
+            "string equality and inequality produce boolean conditions",
             "stage binaries agree on normalized typeck results",
             "repeated checks are deterministic",
             "user programs do not terminate the compiler by signal",
