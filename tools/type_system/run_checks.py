@@ -17,6 +17,7 @@ CONTRACT_FILES = {
     'typeck_unify': ROOT / 'src' / 'vitte' / 'compiler' / 'analysis' / 'typeck' / 'unify.vit',
     'typeck_coercion': ROOT / 'src' / 'vitte' / 'compiler' / 'analysis' / 'typeck' / 'coercion.vit',
     'typeck_tests': ROOT / 'src' / 'vitte' / 'compiler' / 'tests' / 'typeck_tests.vit',
+    'mir_monomorphize': ROOT / 'src' / 'vitte' / 'compiler' / 'middle' / 'mir' / 'monomorphize.vit',
 }
 
 METRIC_RE = re.compile(
@@ -115,6 +116,14 @@ REQUIRED_SYMBOLS = {
         'test_typeck_rejects_conflicting_trait_impls',
         'test_typeck_rejects_cyclic_generic_constraints',
         'test_typeck_result_enforces_diagnostic_cause_chains',
+    ],
+    'mir_monomorphize': [
+        'MirGenericInstance',
+        'generic_instance_symbol',
+        'instantiate_function',
+        'rewrite_generic_call',
+        'monomorphize_mir',
+        'MIR_MONOMORPHIZATION_LIMIT',
     ],
 }
 

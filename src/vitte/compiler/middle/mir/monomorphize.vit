@@ -1,0 +1,533 @@
+space vitte/compiler/middle/mir/monomorphize
+
+use vitte/compiler/middle/mir.{ MirBlock, MirFunction, MirFunctionParam, MirModule, MirOperand, MirPlace, MirRvalue, MirRvalueKind, MirStatement, MirTerminator, MirUnit, mir_substitute_type, mir_terminator_return }
+
+const MIR_MONOMORPHIZATION_LIMIT: u64 = 1024
+
+form MirGenericInstance {
+  template_name: string
+  generic_arguments: [string]
+  symbol_name: string
+  valid: bool
+}
+
+form MirGenericInstanceSet {
+  instances: [MirGenericInstance]
+  valid: bool
+}
+
+proc generic_arguments_equal(left: [string], right: [string]) -> bool {
+  if len(left) != len(right) {
+    give false;
+  }
+  let i: u64 = 0;
+  while i < len(left) {
+    if left[i] != right[i] {
+      give false;
+    }
+    set i = i + 1;
+  }
+  give true;
+}
+
+proc generic_instance_index(instances: [MirGenericInstance], template_name: string, generic_arguments: [string]) -> int {
+  let i: u64 = 0;
+  while i < len(instances) {
+    if instances[i].template_name == template_name
+      and generic_arguments_equal(instances[i].generic_arguments, generic_arguments) {
+      give i as int;
+    }
+    set i = i + 1;
+  }
+  give -1;
+}
+
+proc generic_symbol_part(text: string) -> string {
+  let value: string = trim(text);
+  let out: string = "";
+  let i: u64 = 0;
+  while i < len(value) {
+    let ch: string = slice(value, i, i + 1);
+    let valid: bool = (ch >= "a" and ch <= "z")
+      or (ch >= "A" and ch <= "Z")
+      or (ch >= "0" and ch <= "9")
+      or ch == "_";
+    set out = out + if valid { ch } else { "_" };
+    set i = i + 1;
+  }
+  give if out != "" { out } else { "unknown" };
+}
+
+proc generic_symbol_exists(instances: [MirGenericInstance], symbol_name: string) -> bool {
+  let i: u64 = 0;
+  while i < len(instances) {
+    if instances[i].symbol_name == symbol_name {
+      give true;
+    }
+    set i = i + 1;
+  }
+  give false;
+}
+
+proc generic_function_symbol_exists(functions: [MirFunction], symbol_name: string) -> bool {
+  let i: u64 = 0;
+  while i < len(functions) {
+    if functions[i].name == symbol_name {
+      give true;
+    }
+    set i = i + 1;
+  }
+  give false;
+}
+
+proc generic_instance_symbol(instances: [MirGenericInstance], reserved_functions: [MirFunction], template_name: string, generic_arguments: [string]) -> string {
+  let base: string = "vitte_mono_" + generic_symbol_part(template_name);
+  let i: u64 = 0;
+  while i < len(generic_arguments) {
+    set base = base + "__" + string(len(generic_arguments[i])) + "_" + generic_symbol_part(generic_arguments[i]);
+    set i = i + 1;
+  }
+  let candidate: string = base;
+  let suffix: u64 = len(instances);
+  while generic_symbol_exists(instances, candidate) or generic_function_symbol_exists(reserved_functions, candidate) {
+    set candidate = base + "__instance_" + string(suffix);
+    set suffix = suffix + 1;
+  }
+  give candidate;
+}
+
+proc generic_template_index(functions: [MirFunction], name: string) -> int {
+  let i: u64 = 0;
+  while i < len(functions) {
+    if functions[i].name == name and len(functions[i].generic_params) > 0 {
+      give i as int;
+    }
+    set i = i + 1;
+  }
+  give -1;
+}
+
+proc call_operand_name(rvalue: MirRvalue) -> string {
+  if len(rvalue.operands) == 0 {
+    give "";
+  }
+  if rvalue.operands[0].place.valid and rvalue.operands[0].place.local != "" {
+    give rvalue.operands[0].place.local;
+  }
+  give rvalue.operands[0].text;
+}
+
+proc call_text_name(rvalue: MirRvalue) -> string {
+  let open0: int = find(rvalue.text, "(");
+  let value: string = if open0 > 0 { trim(slice(rvalue.text, 0, open0)) } else { trim(rvalue.text) };
+  let generic_open: int = find(value, "<");
+  if generic_open > 0 {
+    give trim(slice(value, 0, generic_open));
+  }
+  give value;
+}
+
+proc generic_call_template_name(templates: [MirFunction], rvalue: MirRvalue) -> string {
+  let operand_name: string = call_operand_name(rvalue);
+  if generic_template_index(templates, operand_name) >= 0 {
+    give operand_name;
+  }
+  let text_name: string = call_text_name(rvalue);
+  if generic_template_index(templates, text_name) >= 0 {
+    give text_name;
+  }
+  give "";
+}
+
+proc generic_instance_arguments_valid(arguments: [string]) -> bool {
+  let i: u64 = 0;
+  while i < len(arguments) {
+    let argument: string = trim(arguments[i]);
+    if argument == "" or argument == "unknown" or argument == "opaque" {
+      give false;
+    }
+    set i = i + 1;
+  }
+  give true;
+}
+
+proc register_generic_call(state: MirGenericInstanceSet, templates: [MirFunction], reserved_functions: [MirFunction], rvalue: MirRvalue) -> MirGenericInstanceSet {
+  if rvalue.kind != MirRvalueKind.Call {
+    give state;
+  }
+  let template_name: string = generic_call_template_name(templates, rvalue);
+  if template_name == "" {
+    give state;
+  }
+  let template_index: int = generic_template_index(templates, template_name);
+  if template_index < 0
+    or len(templates[template_index].generic_params) != len(rvalue.generic_arguments)
+    or not generic_instance_arguments_valid(rvalue.generic_arguments) {
+    give MirGenericInstanceSet { instances: state.instances, valid: false };
+  }
+  if generic_instance_index(state.instances, template_name, rvalue.generic_arguments) >= 0 {
+    give state;
+  }
+  if len(state.instances) >= MIR_MONOMORPHIZATION_LIMIT {
+    give MirGenericInstanceSet { instances: state.instances, valid: false };
+  }
+  let instance: MirGenericInstance = MirGenericInstance {
+    template_name: template_name,
+    generic_arguments: rvalue.generic_arguments,
+    symbol_name: generic_instance_symbol(state.instances, reserved_functions, template_name, rvalue.generic_arguments),
+    valid: true
+  };
+  give MirGenericInstanceSet {
+    instances: state.instances + [instance],
+    valid: state.valid
+  };
+}
+
+proc collect_function_instances(state: MirGenericInstanceSet, templates: [MirFunction], reserved_functions: [MirFunction], function0: MirFunction) -> MirGenericInstanceSet {
+  let out: MirGenericInstanceSet = state;
+  let i: u64 = 0;
+  while i < len(function0.blocks) {
+    let j: u64 = 0;
+    while j < len(function0.blocks[i].statements) {
+      set out = register_generic_call(out, templates, reserved_functions, function0.blocks[i].statements[j].rvalue);
+      set j = j + 1;
+    }
+    set i = i + 1;
+  }
+  give out;
+}
+
+proc substitute_generic_arguments(arguments: [string], generic_params: [string], generic_arguments: [string]) -> [string] {
+  let out: [string] = [];
+  let i: u64 = 0;
+  while i < len(arguments) {
+    set out = out + [mir_substitute_type(arguments[i], generic_params, generic_arguments)];
+    set i = i + 1;
+  }
+  give out;
+}
+
+proc substitute_operand(operand: MirOperand, generic_params: [string], generic_arguments: [string]) -> MirOperand {
+  give MirOperand {
+    text: operand.text,
+    place: operand.place,
+    ty: mir_substitute_type(operand.ty, generic_params, generic_arguments),
+    constant: operand.constant,
+    move: operand.move,
+    valid: operand.valid
+  };
+}
+
+proc substitute_rvalue(rvalue: MirRvalue, generic_params: [string], generic_arguments: [string]) -> MirRvalue {
+  let operands: [MirOperand] = [];
+  let i: u64 = 0;
+  while i < len(rvalue.operands) {
+    set operands = operands + [substitute_operand(rvalue.operands[i], generic_params, generic_arguments)];
+    set i = i + 1;
+  }
+  give MirRvalue {
+    kind: rvalue.kind,
+    text: rvalue.text,
+    operator: rvalue.operator,
+    generic_arguments: substitute_generic_arguments(rvalue.generic_arguments, generic_params, generic_arguments),
+    binary_operator: rvalue.binary_operator,
+    unary_operator: rvalue.unary_operator,
+    borrow_kind: rvalue.borrow_kind,
+    operands: operands,
+    ty: mir_substitute_type(rvalue.ty, generic_params, generic_arguments),
+    temporary: rvalue.temporary,
+    valid: rvalue.valid
+  };
+}
+
+proc substitute_statement(statement: MirStatement, generic_params: [string], generic_arguments: [string]) -> MirStatement {
+  give MirStatement {
+    id: statement.id,
+    span: statement.span,
+    kind: statement.kind,
+    place: statement.place,
+    rvalue: substitute_rvalue(statement.rvalue, generic_params, generic_arguments),
+    reachable: statement.reachable,
+    valid: statement.valid
+  };
+}
+
+proc substitute_terminator(terminator: MirTerminator, generic_params: [string], generic_arguments: [string]) -> MirTerminator {
+  give MirTerminator {
+    kind: terminator.kind,
+    target_block: terminator.target_block,
+    else_block: terminator.else_block,
+    unwind_block: terminator.unwind_block,
+    condition: substitute_operand(terminator.condition, generic_params, generic_arguments),
+    switch_values: terminator.switch_values,
+    switch_targets: terminator.switch_targets,
+    reachable: terminator.reachable,
+    valid: terminator.valid
+  };
+}
+
+proc substitute_block(block: MirBlock, generic_params: [string], generic_arguments: [string]) -> MirBlock {
+  let statements: [MirStatement] = [];
+  let i: u64 = 0;
+  while i < len(block.statements) {
+    set statements = statements + [substitute_statement(block.statements[i], generic_params, generic_arguments)];
+    set i = i + 1;
+  }
+  give MirBlock {
+    id: block.id,
+    label: block.label,
+    predecessors: block.predecessors,
+    statements: statements,
+    terminator: substitute_terminator(block.terminator, generic_params, generic_arguments),
+    sealed: block.sealed,
+    reachable: block.reachable,
+    valid: block.valid
+  };
+}
+
+proc instantiate_function(template: MirFunction, instance: MirGenericInstance, function_id: u64) -> MirFunction {
+  let params: [MirFunctionParam] = [];
+  let i: u64 = 0;
+  while i < len(template.params) {
+    set params = params + [MirFunctionParam {
+      name: template.params[i].name,
+      type_name: mir_substitute_type(template.params[i].type_name, template.generic_params, instance.generic_arguments),
+      mode: template.params[i].mode,
+      mutable: template.params[i].mutable,
+      borrowed: template.params[i].borrowed,
+      variadic: template.params[i].variadic,
+      valid: template.params[i].valid
+    }];
+    set i = i + 1;
+  }
+  let blocks: [MirBlock] = [];
+  set i = 0;
+  while i < len(template.blocks) {
+    set blocks = blocks + [substitute_block(template.blocks[i], template.generic_params, instance.generic_arguments)];
+    set i = i + 1;
+  }
+  give MirFunction {
+    id: function_id,
+    name: instance.symbol_name,
+    generic_params: [],
+    entry_block: template.entry_block,
+    params: params,
+    return_type: mir_substitute_type(template.return_type, template.generic_params, instance.generic_arguments),
+    local_count: template.local_count,
+    temporary_count: template.temporary_count,
+    blocks: blocks,
+    valid: template.valid and instance.valid
+  };
+}
+
+proc rewrite_callee_operand(operand: MirOperand, symbol_name: string, template: MirFunction, generic_arguments: [string]) -> MirOperand {
+  let place: MirPlace = operand.place;
+  if place.valid {
+    set place.local = symbol_name;
+  }
+  give MirOperand {
+    text: symbol_name,
+    place: place,
+    ty: mir_substitute_type(operand.ty, template.generic_params, generic_arguments),
+    constant: operand.constant,
+    move: operand.move,
+    valid: operand.valid
+  };
+}
+
+proc rewrite_generic_call(rvalue: MirRvalue, templates: [MirFunction], instances: [MirGenericInstance]) -> MirRvalue {
+  let template_name: string = generic_call_template_name(templates, rvalue);
+  if template_name == "" or len(rvalue.generic_arguments) == 0 {
+    give rvalue;
+  }
+  let instance_index: int = generic_instance_index(instances, template_name, rvalue.generic_arguments);
+  let template_index: int = generic_template_index(templates, template_name);
+  if instance_index < 0 or template_index < 0 {
+    give MirRvalue {
+      kind: rvalue.kind,
+      text: rvalue.text,
+      operator: rvalue.operator,
+      generic_arguments: rvalue.generic_arguments,
+      binary_operator: rvalue.binary_operator,
+      unary_operator: rvalue.unary_operator,
+      borrow_kind: rvalue.borrow_kind,
+      operands: rvalue.operands,
+      ty: rvalue.ty,
+      temporary: rvalue.temporary,
+      valid: false
+    };
+  }
+  let operands: [MirOperand] = rvalue.operands;
+  if len(operands) > 0 {
+    set operands[0] = rewrite_callee_operand(operands[0], instances[instance_index].symbol_name, templates[template_index], rvalue.generic_arguments);
+  }
+  give MirRvalue {
+    kind: rvalue.kind,
+    text: instances[instance_index].symbol_name,
+    operator: "monomorphized",
+    generic_arguments: [],
+    binary_operator: rvalue.binary_operator,
+    unary_operator: rvalue.unary_operator,
+    borrow_kind: rvalue.borrow_kind,
+    operands: operands,
+    ty: rvalue.ty,
+    temporary: rvalue.temporary,
+    valid: rvalue.valid
+  };
+}
+
+proc rewrite_function_calls(function0: MirFunction, templates: [MirFunction], instances: [MirGenericInstance]) -> MirFunction {
+  let blocks: [MirBlock] = function0.blocks;
+  let i: u64 = 0;
+  while i < len(blocks) {
+    let j: u64 = 0;
+    while j < len(blocks[i].statements) {
+      set blocks[i].statements[j].rvalue = rewrite_generic_call(blocks[i].statements[j].rvalue, templates, instances);
+      set j = j + 1;
+    }
+    set i = i + 1;
+  }
+  give MirFunction {
+    id: function0.id,
+    name: function0.name,
+    generic_params: function0.generic_params,
+    entry_block: function0.entry_block,
+    params: function0.params,
+    return_type: function0.return_type,
+    local_count: function0.local_count,
+    temporary_count: function0.temporary_count,
+    blocks: blocks,
+    valid: function0.valid
+  };
+}
+
+proc maximum_function_id(functions: [MirFunction]) -> u64 {
+  let maximum: u64 = 0;
+  let i: u64 = 0;
+  while i < len(functions) {
+    if functions[i].id > maximum {
+      set maximum = functions[i].id;
+    }
+    set i = i + 1;
+  }
+  give maximum;
+}
+
+proc synthetic_module_init(function_id: u64) -> MirFunction {
+  give MirFunction {
+    id: function_id,
+    name: "__module_init",
+    generic_params: [],
+    entry_block: 1,
+    params: [],
+    return_type: "unit",
+    local_count: 0,
+    temporary_count: 0,
+    blocks: [MirBlock {
+      id: 1,
+      label: "bb1",
+      predecessors: [],
+      statements: [],
+      terminator: mir_terminator_return(),
+      sealed: true,
+      reachable: true,
+      valid: true
+    }],
+    valid: true
+  };
+}
+
+proc mir_function_block_count(functions: [MirFunction]) -> u64 {
+  let count: u64 = 0;
+  let i: u64 = 0;
+  while i < len(functions) {
+    set count = count + len(functions[i].blocks);
+    set i = i + 1;
+  }
+  give count;
+}
+
+proc mir_function_instruction_count(functions: [MirFunction]) -> u64 {
+  let count: u64 = 0;
+  let i: u64 = 0;
+  while i < len(functions) {
+    let j: u64 = 0;
+    while j < len(functions[i].blocks) {
+      set count = count + len(functions[i].blocks[j].statements);
+      set j = j + 1;
+    }
+    set i = i + 1;
+  }
+  give count;
+}
+
+proc monomorphize_mir(mir: MirUnit) -> MirUnit {
+  if not mir.valid or not mir.module.valid {
+    give mir;
+  }
+  let templates: [MirFunction] = [];
+  let concrete: [MirFunction] = [];
+  let i: u64 = 0;
+  while i < len(mir.module.functions) {
+    if len(mir.module.functions[i].generic_params) > 0 {
+      set templates = templates + [mir.module.functions[i]];
+    } else {
+      set concrete = concrete + [mir.module.functions[i]];
+    }
+    set i = i + 1;
+  }
+  if len(templates) == 0 {
+    give mir;
+  }
+
+  let state: MirGenericInstanceSet = MirGenericInstanceSet { instances: [], valid: true };
+  set i = 0;
+  while i < len(concrete) {
+    set state = collect_function_instances(state, templates, mir.module.functions, concrete[i]);
+    set i = i + 1;
+  }
+
+  let next_function_id: u64 = maximum_function_id(mir.module.functions) + 1;
+  let instance_index: u64 = 0;
+  while instance_index < len(state.instances) {
+    let template_index: int = generic_template_index(templates, state.instances[instance_index].template_name);
+    if template_index < 0 {
+      set state.valid = false;
+      break;
+    }
+    let instantiated: MirFunction = instantiate_function(
+      templates[template_index],
+      state.instances[instance_index],
+      next_function_id + instance_index
+    );
+    set concrete = concrete + [instantiated];
+    set state = collect_function_instances(state, templates, mir.module.functions, instantiated);
+    set instance_index = instance_index + 1;
+  }
+
+  if len(concrete) == 0 {
+    set concrete = [synthetic_module_init(next_function_id + instance_index)];
+  }
+
+  let rewritten: [MirFunction] = [];
+  set i = 0;
+  while i < len(concrete) {
+    set rewritten = rewritten + [rewrite_function_calls(concrete[i], templates, state.instances)];
+    set i = i + 1;
+  }
+  give MirUnit {
+    source_path: mir.source_path,
+    module: MirModule {
+      name: mir.module.name,
+      functions: rewritten,
+      valid: mir.module.valid and state.valid
+    },
+    function_count: len(rewritten),
+    block_count: mir_function_block_count(rewritten),
+    instruction_count: mir_function_instruction_count(rewritten),
+    lowered: mir.lowered,
+    valid: mir.valid and state.valid
+  };
+}
+
+export *

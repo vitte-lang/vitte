@@ -21,6 +21,7 @@ use vitte/compiler/middle/mir.{
   mir_terminator_goto,
   mir_terminator_return
 }
+use vitte/compiler/middle/mir/monomorphize.{ monomorphize_mir }
 
 form MirSequence {
   blocks: [MirBlock]
@@ -483,7 +484,7 @@ proc build_stmt_sequence(hir_stmts: [HirStmt], items: [HirItem], fallthrough_blo
   };
 }
 
-proc lower_hir_to_mir(hir: HirUnit) -> MirUnit {
+proc lower_hir_to_mir_templates(hir: HirUnit) -> MirUnit {
   if not hir.valid or not hir.module.valid {
     give MirUnit {
       source_path: hir.source_path,
@@ -533,8 +534,14 @@ proc lower_hir_to_mir(hir: HirUnit) -> MirUnit {
   give MirUnit {
     source_path: hir.source_path,
     module: MirModule { functions: functions, valid: len(functions) > 0 },
+    function_count: len(functions),
     block_count: block_count,
     instruction_count: instruction_count,
+    lowered: true,
     valid: len(functions) > 0
   };
+}
+
+proc lower_hir_to_mir(hir: HirUnit) -> MirUnit {
+  give monomorphize_mir(lower_hir_to_mir_templates(hir));
 }

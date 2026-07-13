@@ -8,6 +8,7 @@ use vitte/compiler/middle/mir/dataflow.{ DataflowDirection, DataflowFactKind, Da
 use vitte/compiler/middle/mir/pretty.{ mir_pretty_selftest, pretty_function, pretty_unit }
 use vitte/compiler/middle/mir/transform.{ MirTransformKind, MirTransformReport, MirTransformResultKind, mir_transform_selftest, optimize_function, report_summary, transform_kind_name, transform_report_for, transform_result_name }
 use vitte/compiler/middle/mir/validate.{ mir_validation_reason, validate_mir }
+use vitte/compiler/middle/lower/hir_to_mir.{ lower_hir_to_mir_templates }
 use vitte/compiler/middle/pipeline.{ MiddleOutput, middle_run }
 
 const VERSION_TEXT: string = "middle mir tests 0.2.0"
@@ -229,20 +230,33 @@ proc test_mir_preserves_and_validates_generic_instances() -> bool {
     "proc main() -> int { let value = identity(7); give value; }\n";
   let fe: FrontendOutput = frontend_run("mir_generic_instance.vit", source);
   let middle: MiddleOutput = middle_run(fe);
+  let templates: MirUnit = lower_hir_to_mir_templates(middle.typed_hir);
   let mir: MirUnit = middle.mir;
-  if not mir.valid or len(mir.module.functions) != 2 {
+  if not templates.valid or not mir.valid or len(templates.module.functions) != 2 or len(mir.module.functions) != 2 {
     give false;
   }
-  let generic_fn: MirFunction = mir.module.functions[0];
-  let main_fn: MirFunction = mir.module.functions[1];
-  let call: MirRvalue = main_fn.blocks[0].statements[0].rvalue;
-  give len(generic_fn.generic_params) == 1
-    and generic_fn.generic_params[0] == "T"
-    and call.kind == MirRvalueKind.Call
-    and len(call.generic_arguments) == 1
-    and call.generic_arguments[0] == "int"
+  let generic_template: MirFunction = templates.module.functions[0];
+  let template_main: MirFunction = templates.module.functions[1];
+  let template_call: MirRvalue = template_main.blocks[0].statements[0].rvalue;
+  let concrete_main: MirFunction = mir.module.functions[0];
+  let concrete_fn: MirFunction = mir.module.functions[1];
+  let concrete_call: MirRvalue = concrete_main.blocks[0].statements[0].rvalue;
+  give middle.valid
+    and len(generic_template.generic_params) == 1
+    and generic_template.generic_params[0] == "T"
+    and template_call.kind == MirRvalueKind.Call
+    and len(template_call.generic_arguments) == 1
+    and template_call.generic_arguments[0] == "int"
+    and concrete_fn.name == "vitte_mono_identity__3_int"
+    and len(concrete_fn.generic_params) == 0
+    and concrete_fn.params[0].type_name == "int"
+    and concrete_fn.return_type == "int"
+    and concrete_call.text == concrete_fn.name
+    and concrete_call.operator == "monomorphized"
+    and len(concrete_call.generic_arguments) == 0
+    and concrete_call.operands[0].place.local == concrete_fn.name
     and validate_mir(mir).valid
-    and find(pretty_function(generic_fn, 0), "identity[T]") >= 0;
+    and find(pretty_function(generic_template, 0), "identity[T]") >= 0;
 }
 
 proc test_validate_mir_rejects_missing_generic_call_arguments() -> bool {
@@ -251,13 +265,65 @@ proc test_validate_mir_rejects_missing_generic_call_arguments() -> bool {
     "proc main() -> int { let value = identity(7); give value; }\n";
   let fe: FrontendOutput = frontend_run("mir_generic_arity_invalid.vit", source);
   let middle: MiddleOutput = middle_run(fe);
-  let bad: MirUnit = middle.mir;
+  let bad: MirUnit = lower_hir_to_mir_templates(middle.typed_hir);
   if not bad.valid or len(bad.module.functions) != 2 {
     give false;
   }
   set bad.module.functions[1].blocks[0].statements[0].rvalue.generic_arguments = [];
   give not validate_mir(bad).valid
     and mir_validation_reason(bad) == "invalid-regular-call-generic-arity";
+}
+
+proc test_mir_monomorphizes_nested_generic_calls_once() -> bool {
+  let source: string =
+    "proc identity[T](value: T) -> T { give value; }\n" +
+    "proc twice[T](value: T) -> T { give identity(value); }\n" +
+    "proc main() -> int { let first = twice(7); let second = twice(9); give first; }\n";
+  let fe: FrontendOutput = frontend_run("mir_nested_generic_instances.vit", source);
+  let middle: MiddleOutput = middle_run(fe);
+  let mir: MirUnit = middle.mir;
+  if not middle.valid or not mir.valid or len(mir.module.functions) != 3 {
+    give false;
+  }
+  let main_fn: MirFunction = mir.module.functions[0];
+  let twice_fn: MirFunction = mir.module.functions[1];
+  let identity_fn: MirFunction = mir.module.functions[2];
+  let first_call: MirRvalue = main_fn.blocks[0].statements[0].rvalue;
+  let second_call: MirRvalue = main_fn.blocks[1].statements[0].rvalue;
+  let nested_call: MirRvalue = twice_fn.blocks[0].statements[0].rvalue;
+  give twice_fn.name == "vitte_mono_twice__3_int"
+    and identity_fn.name == "vitte_mono_identity__3_int"
+    and first_call.text == twice_fn.name
+    and second_call.text == twice_fn.name
+    and nested_call.text == identity_fn.name
+    and twice_fn.params[0].type_name == "int"
+    and twice_fn.return_type == "int"
+    and identity_fn.params[0].type_name == "int"
+    and identity_fn.return_type == "int"
+    and validate_mir(mir).valid;
+}
+
+proc test_mir_deduplicates_equal_instances_and_separates_types() -> bool {
+  let source: string =
+    "proc identity[T](value: T) -> T { give value; }\n" +
+    "proc main() -> int { let first = identity(7); let second = identity(9); let text = identity<string>(\"value\"); give first; }\n";
+  let fe: FrontendOutput = frontend_run("mir_generic_instance_dedup.vit", source);
+  let middle: MiddleOutput = middle_run(fe);
+  let mir: MirUnit = middle.mir;
+  if not middle.valid or not mir.valid or len(mir.module.functions) != 3 {
+    give false;
+  }
+  let main_fn: MirFunction = mir.module.functions[0];
+  let int_fn: MirFunction = mir.module.functions[1];
+  let string_fn: MirFunction = mir.module.functions[2];
+  give int_fn.name == "vitte_mono_identity__3_int"
+    and int_fn.params[0].type_name == "int"
+    and string_fn.name == "vitte_mono_identity__6_string"
+    and string_fn.params[0].type_name == "string"
+    and main_fn.blocks[0].statements[0].rvalue.text == int_fn.name
+    and main_fn.blocks[1].statements[0].rvalue.text == int_fn.name
+    and main_fn.blocks[2].statements[0].rvalue.text == string_fn.name
+    and validate_mir(mir).valid;
 }
 
 proc test_validate_mir_rejects_duplicate_blocks_and_invalid_assign_place() -> bool {
@@ -956,6 +1022,12 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if not test_validate_mir_rejects_missing_generic_call_arguments() {
+    set failures = failures + 1;
+  }
+  if not test_mir_monomorphizes_nested_generic_calls_once() {
+    set failures = failures + 1;
+  }
+  if not test_mir_deduplicates_equal_instances_and_separates_types() {
     set failures = failures + 1;
   }
   if not test_validate_mir_rejects_duplicate_blocks_and_invalid_assign_place() {
