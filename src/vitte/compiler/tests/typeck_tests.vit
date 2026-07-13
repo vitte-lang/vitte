@@ -786,11 +786,40 @@ proc test_match_non_exhaustive_requires_fallback_arm() -> bool {
 }
 
 proc test_match_with_fallback_arm_is_not_reported_non_exhaustive() -> bool {
-  let source: string = "proc main() { match value { 1 => { give 1; } else => { give 0; } } }\n";
+  let source: string = "proc main() { match value { 1 => 1, else => 0 } }\n";
   let fe: FrontendOutput = frontend_run("typeck_match_exhaustive.vit", source);
   let hir = lower_ast_to_hir(fe);
   let result: TypeckResult = run_production_typeck_hir(hir);
   give has_code(result, "TYPECK_E_MATCH_NON_EXHAUSTIVE") == false;
+}
+
+proc test_match_pick_variants_can_be_exhaustive_without_fallback() -> bool {
+  let source: string =
+    "pick Choice { Left, Right }\n" +
+    "proc classify(value: Choice) -> int { match value { case Choice::Left => 1, case Choice::Right => 2 } give 0; }\n";
+  let fe: FrontendOutput = frontend_run("typeck_match_pick_exhaustive.vit", source);
+  let hir = lower_ast_to_hir(fe);
+  let result: TypeckResult = run_production_typeck_hir(hir);
+  give fe.valid and not has_code(result, "TYPECK_E_MATCH_NON_EXHAUSTIVE");
+}
+
+proc test_match_pick_reports_the_missing_variant() -> bool {
+  let source: string =
+    "pick Choice { Left, Right }\n" +
+    "proc classify(value: Choice) -> int { match value { case Choice::Left => 1 } give 0; }\n";
+  let fe: FrontendOutput = frontend_run("typeck_match_pick_missing.vit", source);
+  let hir = lower_ast_to_hir(fe);
+  let result: TypeckResult = run_production_typeck_hir(hir);
+  let diag = diagnostic_by_code(result, "TYPECK_E_MATCH_NON_EXHAUSTIVE");
+  give diag.valid and find(diag.explanation, "Right") >= 0;
+}
+
+proc test_match_bool_is_exhaustive_with_both_literals() -> bool {
+  let source: string = "proc classify(value: bool) -> int { match value { true => 1, false => 0 } give 0; }\n";
+  let fe: FrontendOutput = frontend_run("typeck_match_bool_exhaustive.vit", source);
+  let hir = lower_ast_to_hir(fe);
+  let result: TypeckResult = run_production_typeck_hir(hir);
+  give fe.valid and not has_code(result, "TYPECK_E_MATCH_NON_EXHAUSTIVE");
 }
 
 proc test_reference_assignment_mismatch() -> bool {
@@ -1129,6 +1158,15 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if not test_match_with_fallback_arm_is_not_reported_non_exhaustive() {
+    set failures = failures + 1;
+  }
+  if not test_match_pick_variants_can_be_exhaustive_without_fallback() {
+    set failures = failures + 1;
+  }
+  if not test_match_pick_reports_the_missing_variant() {
+    set failures = failures + 1;
+  }
+  if not test_match_bool_is_exhaustive_with_both_literals() {
     set failures = failures + 1;
   }
   if not test_reference_assignment_mismatch() {

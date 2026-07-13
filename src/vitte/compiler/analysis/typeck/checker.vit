@@ -31,6 +31,10 @@ proc nominal_member_provider_env_name(owner: string, member: string) -> string {
   give "@member-provider:" + owner + "." + member;
 }
 
+proc nominal_variants_env_name(owner: string) -> string {
+  give "@variants:" + owner;
+}
+
 proc ambiguous_method_binding_type() -> string {
   give "@ambiguous-method";
 }
@@ -55,6 +59,27 @@ proc append_member_provider(providers: string, provider: string) -> string {
     give providers;
   }
   give providers + ", " + provider;
+}
+
+proc nominal_variant_names(item: HirItem) -> [string] {
+  let variants: [string] = [];
+  let i: u64 = 0;
+  while i < len(item.members) {
+    if item.members[i].kind == HirNominalMemberKind.Variant and item.members[i].name != "" {
+      set variants = variants + [item.members[i].name];
+    }
+    set i = i + 1;
+  }
+  give variants;
+}
+
+proc nominal_base_type(ty: string) -> string {
+  let value: string = trim(ty);
+  let bracket: int = find(value, "[");
+  if bracket > 0 {
+    give trim(slice(value, 0, bracket));
+  }
+  give value;
 }
 
 proc proc_param_signature_text(param: HirProcParam, target_type_text: string) -> string {
@@ -273,6 +298,12 @@ proc nominal_type_bindings(items: [HirItem]) -> [TypeBinding] {
       if item.kind == HirItemKind.Impl and item.name != "" and item.target_type_text != "" {
         set out = env_set(out, trait_impl_binding_name(item.name, item.target_type_text), "impl");
       }
+      if item.kind == HirItemKind.Pick {
+        let variants: [string] = nominal_variant_names(item);
+        if len(variants) > 0 {
+          set out = env_set(out, nominal_variants_env_name(item.name), join(variants, ","));
+        }
+      }
       set out = env_set(out, nominal_type_env_name(item.name), item.name);
       let owner_name: string = if item.kind == HirItemKind.Impl and item.target_type_text != "" { item.target_type_text } else { item.name };
       let j: u64 = 0;
@@ -312,6 +343,51 @@ proc match_stmt_has_fallback_arm(stmt: HirStmt) -> bool {
     set i = i + 1;
   }
   give false;
+}
+
+proc match_pattern_covers(pattern: string, case_name: string) -> bool {
+  let value: string = trim(pattern);
+  if value == case_name {
+    give true;
+  }
+  give type_identifier_index(value, case_name) >= 0;
+}
+
+proc match_stmt_covers_case(stmt: HirStmt, case_name: string) -> bool {
+  let i: u64 = 0;
+  while i < len(stmt.then_stmts) {
+    if stmt.then_stmts[i].kind == HirStmtKind.When and match_pattern_covers(stmt.then_stmts[i].name, case_name) {
+      give true;
+    }
+    set i = i + 1;
+  }
+  give false;
+}
+
+proc match_missing_case(env: [TypeBinding], stmt: HirStmt, matched_type: string) -> string {
+  if match_stmt_has_fallback_arm(stmt) {
+    give "";
+  }
+  if matched_type == "bool" {
+    if not match_stmt_covers_case(stmt, "true") { give "true"; }
+    if not match_stmt_covers_case(stmt, "false") { give "false"; }
+    give "";
+  }
+
+  let variants_text: string = env_get(env, nominal_variants_env_name(nominal_base_type(matched_type)));
+  if variants_text != "opaque" and variants_text != "" {
+    let variants: [string] = split(variants_text, ",");
+    let i: u64 = 0;
+    while i < len(variants) {
+      let variant: string = trim(variants[i]);
+      if variant != "" and not match_stmt_covers_case(stmt, variant) {
+        give variant;
+      }
+      set i = i + 1;
+    }
+    give "";
+  }
+  give "_";
 }
 
 proc trait_item_by_name(items: [HirItem], name: string) -> HirItem {
@@ -605,9 +681,10 @@ proc check_stmt_tree(diagnostics: [Diagnostic], env: [TypeBinding], stmts: [HirS
         ));
       }
     } elif stmt.kind == HirStmtKind.Match {
-      if !match_stmt_has_fallback_arm(stmt) {
+      let missing_case: string = match_missing_case(current_env, stmt, result.ty);
+      if missing_case != "" {
         set out = add_unique_diag(out, typeck_non_exhaustive_match(
-          "_",
+          missing_case,
           stmt.span
         ));
       }
