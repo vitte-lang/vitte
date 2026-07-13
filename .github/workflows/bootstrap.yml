@@ -118,6 +118,8 @@ jobs:
         run: make bootstrap-source-coverage-check
       - name: Check POSIX seed shell
         run: make posix-seed-shell-check
+      - name: Check bootstrap shell fixed point
+        run: make bootstrap-shell-fixed-point
       - name: Check bootstrap contract docs index
         run: make bootstrap-contracts-index-check
       - name: Check bootstrap native snapshot drift
@@ -126,6 +128,17 @@ jobs:
         run: make bootstrap-native-drift-check
       - name: Check bootstrap native snapshots
         run: make bootstrap-native-snapshots
+      - name: Verify real compiler byte parity
+        run: make selfhost-parity-gate
+      - name: Verify tracked clean checkout rebuild
+        run: make bootstrap-clean-checkout-gate
+      - name: Upload clean checkout report
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: bootstrap-clean-checkout-report
+          path: target/bootstrap/clean-checkout/report.json
+          if-no-files-found: error
       - name: Verify bootstrap parity and smoke
         run: make bootstrap-verify
       - name: Verify POSIX bootstrap smoke
