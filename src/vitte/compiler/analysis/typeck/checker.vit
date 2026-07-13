@@ -2,7 +2,7 @@ space vitte/compiler/analysis/typeck
 
 use vitte/compiler/analysis/typeck/coercion.{ types_compatible }
 use vitte/compiler/analysis/typeck/errors.{ TypeckDiagnostic, TypeckResult, add_unique_diag, typeck_assignment_mismatch, typeck_condition_type, typeck_diag, typeck_invalid_hir_result, typeck_non_exhaustive_match, typeck_return_mismatch }
-use vitte/compiler/analysis/typeck/infer.{ TypeBinding, env_get, env_has, env_index, env_set, infer_expr_type, param_type_binding }
+use vitte/compiler/analysis/typeck/infer.{ TypeBinding, env_get, env_has, env_index, env_set, generic_type_binding, infer_expr_type, param_type_binding }
 use vitte/compiler/analysis/typeck/traits.{ type_is_copy, type_is_known, type_is_truthy }
 use vitte/compiler/middle/hir.{ HirExpr, HirItem, HirItemKind, HirModule, HirNominalMember, HirNominalMemberKind, HirProcParam, HirStmt, HirStmtKind, HirUnit }
 
@@ -107,7 +107,7 @@ proc nominal_type_bindings(items: [HirItem]) -> [TypeBinding] {
     let item: HirItem = items[i];
     if item.name != "" and item.kind != HirItemKind.Space and item.kind != HirItemKind.Use and item.kind != HirItemKind.Export {
       if item.kind == HirItemKind.Proc {
-        set out = env_set(out, item.name, proc_signature_type(item.params, item.annotation_text, item.target_type_text));
+        set out = out + [generic_type_binding(item.name, proc_signature_type(item.params, item.annotation_text, item.target_type_text), item.generic_params)];
       }
       set out = env_set(out, nominal_type_env_name(item.name), item.name);
       let owner_name: string = if item.kind == HirItemKind.Impl and item.target_type_text != "" { item.target_type_text } else { item.name };
@@ -340,8 +340,8 @@ proc check_stmt_tree(diagnostics: [TypeckDiagnostic], env: [TypeBinding], stmts:
   let j: u64 = 0;
   while j < len(stmts) {
     let stmt: HirStmt = stmts[j];
+    let result = infer_expr_type(current_env, stmt.expr);
     let typed_expr: HirExpr = annotate_expr(current_env, stmt.expr);
-    let result = infer_expr_type(current_env, typed_expr);
     set out = out + result.diagnostics;
 
     let then_checked: TypeckStmtWalk = check_stmt_tree([], current_env, stmt.then_stmts, return_type, owner_name);
@@ -463,8 +463,8 @@ proc check_module(diagnostics: [TypeckDiagnostic], env: [TypeBinding], hir: HirU
       ));
     }
 
+    let item_result = infer_expr_type(module_env, item.expr);
     let typed_item_expr: HirExpr = annotate_expr(module_env, item.expr);
-    let item_result = infer_expr_type(module_env, typed_item_expr);
     set out = out + item_result.diagnostics;
     if item.kind == HirItemKind.Const and item.name != "" {
       set module_env = env_set(module_env, item.name, item_result.ty);

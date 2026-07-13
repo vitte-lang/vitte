@@ -3,14 +3,14 @@ space vitte/compiler/tests/typeck_tests
 use vitte/compiler/analysis/typeck/api.{ production_typeck_pipeline_name, production_typeck_pipeline_status, run_production_typeck_hir }
 use vitte/compiler/analysis/typeck/coercion.{ projection_is_valid, projection_member_name, project_place_type, project_place_type_result, type_deref_target, type_index_element, type_member_result, types_compatible }
 use vitte/compiler/analysis/typeck/errors.{ ExprTypeResult, TypeckResult, diagnostic_summary, result_summary, typeck_internal_error, typeck_invalid_hir_result }
-use vitte/compiler/analysis/typeck/infer.{ empty_type_env, infer_call_type, infer_name_type, mutable_type_binding, type_binding, type_env_get_binding, type_env_mark_initialized, type_env_mark_moved, type_env_set, uninitialized_type_binding }
+use vitte/compiler/analysis/typeck/infer.{ empty_type_env, generic_type_binding, infer_call_type, infer_name_type, mutable_type_binding, substitute_type, type_binding, type_env_get_binding, type_env_mark_initialized, type_env_mark_moved, type_env_set, type_substitution, uninitialized_type_binding }
 use vitte/compiler/analysis/typeck/traits.{ type_allows_arithmetic, type_allows_bitwise, type_allows_comparison, type_can_assign_without_move, type_class, type_class_name, type_is_array, type_is_copy, type_is_function, type_is_pointer, type_is_reference, type_is_slice, type_is_tuple, type_requires_drop, type_trait_info }
 use vitte/compiler/analysis/typeck/unify.{ can_unify_types, unify_assignment_type, unify_binary_result_type, unify_or_fallback, unify_types, unify_types_result }
 use vitte/compiler/diagnostics/diagnostic.{ Diagnostic, DiagnosticPhase, DiagnosticSeverity, SourceSpan }
 use vitte/compiler/analysis/sema.{ SemaResult, run_sema_hir }
 use vitte/compiler/frontend/pipeline.{ FrontendOutput, frontend_run }
 use vitte/compiler/frontend/ast/node.{ ast_span, ast_span_empty }
-use vitte/compiler/middle/hir.{ HirExpr, HirExprKind, HirNominalMemberKind, HirPlaceCategory, HirValueMode, hir_expr }
+use vitte/compiler/middle/hir.{ HirExpr, HirExprKind, HirNominalMemberKind, HirPlaceCategory, HirValueMode, hir_expr, hir_expr_with_generic_arguments }
 use vitte/compiler/middle/hir/lower_ast.{ lower_ast_to_hir }
 
 const VERSION_TEXT: string = "analysis typeck tests 0.2.0"
@@ -516,6 +516,118 @@ proc test_typed_call_returns_signature_result_type() -> bool {
   give result.valid and result.ty == "string" and len(result.diagnostics) == 0;
 }
 
+proc test_generic_call_infers_and_substitutes_return_type() -> bool {
+  let source: string =
+    "proc identity<T>(value: T) -> T { give value; }\n" +
+    "proc main() -> int { let value = identity(7); give value; }\n";
+  let fe: FrontendOutput = frontend_run("typeck_generic_inference.vit", source);
+  let hir = lower_ast_to_hir(fe);
+  let sema: SemaResult = run_sema_hir(hir);
+  let result: TypeckResult = run_production_typeck_hir(sema.hir);
+  let call = result.hir.module.items[1].stmts[0].expr;
+  give result.valid
+    and len(result.diagnostics) == 0
+    and call.kind == HirExprKind.Call
+    and call.inferred_type == "int";
+}
+
+proc test_generic_call_honors_explicit_type_argument() -> bool {
+  let env = [generic_type_binding("identity", "fn(T) -> T", ["T"])];
+  let call_expr: HirExpr = hir_expr_with_generic_arguments(
+    13,
+    ast_span("typeck_generic_explicit.vit", 1, 1, 1, 25),
+    HirExprKind.Call,
+    "identity<string>(\"value\")",
+    "",
+    "",
+    "",
+    0,
+    "",
+    false,
+    HirValueMode.Value,
+    "unknown",
+    HirPlaceCategory.Value,
+    false,
+    false,
+    false,
+    false,
+    ["string"],
+    [],
+    [expr_name(1, "identity"), expr_string(2, "\"value\"")],
+    true
+  );
+  let result: ExprTypeResult = infer_call_type(env, call_expr);
+  give result.valid and result.ty == "string" and len(result.diagnostics) == 0;
+}
+
+proc test_generic_call_rejects_explicit_argument_mismatch() -> bool {
+  let env = [generic_type_binding("identity", "fn(T) -> T", ["T"])];
+  let call_expr: HirExpr = hir_expr_with_generic_arguments(
+    14,
+    ast_span("typeck_generic_explicit_mismatch.vit", 1, 1, 1, 20),
+    HirExprKind.Call,
+    "identity<string>(7)",
+    "",
+    "",
+    "",
+    0,
+    "",
+    false,
+    HirValueMode.Value,
+    "unknown",
+    HirPlaceCategory.Value,
+    false,
+    false,
+    false,
+    false,
+    ["string"],
+    [],
+    [expr_name(1, "identity"), expr_int(2, "7")],
+    true
+  );
+  let result: ExprTypeResult = infer_call_type(env, call_expr);
+  give not result.valid and expr_diagnostic_by_code(result, "TYPECK_E_ARGUMENT_MISMATCH").valid;
+}
+
+proc test_generic_call_reports_unconstrained_parameter() -> bool {
+  let env = [generic_type_binding("make", "fn() -> T", ["T"])];
+  let call_expr: HirExpr = hir_expr(
+    15,
+    ast_span("typeck_generic_unconstrained.vit", 1, 1, 1, 6),
+    HirExprKind.Call,
+    "make()",
+    "",
+    "",
+    "",
+    0,
+    "",
+    false,
+    HirValueMode.Value,
+    "unknown",
+    HirPlaceCategory.Value,
+    false,
+    false,
+    false,
+    false,
+    [],
+    [expr_name(1, "make")],
+    true
+  );
+  let result: ExprTypeResult = infer_call_type(env, call_expr);
+  let diag = expr_diagnostic_by_code(result, "TYPECK_E_GENERIC_INFERENCE");
+  give not result.valid
+    and result.ty == "unknown"
+    and diag.valid
+    and diag.rule == "generic inference completeness"
+    and diag.subject_symbol == "T"
+    and len(diag.cause_chain) >= 2;
+}
+
+proc test_generic_substitution_replaces_identifiers_only() -> bool {
+  let substitutions = [type_substitution("T", "int", true), type_substitution("U", "string", false)];
+  give substitute_type("fn(&T, List[U], TypeTag) -> T", substitutions) == "fn(&int, List[string], TypeTag) -> int";
+}
+
 proc test_if_branch_mismatch_carries_unification_rule() -> bool {
   let source: string = "proc main() { let x = if true { 1 } else { \"oops\" }; give x; }\n";
   let fe: FrontendOutput = frontend_run("typeck_if_branch_mismatch.vit", source);
@@ -821,6 +933,21 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if not test_typed_call_returns_signature_result_type() {
+    set failures = failures + 1;
+  }
+  if not test_generic_call_infers_and_substitutes_return_type() {
+    set failures = failures + 1;
+  }
+  if not test_generic_call_honors_explicit_type_argument() {
+    set failures = failures + 1;
+  }
+  if not test_generic_call_rejects_explicit_argument_mismatch() {
+    set failures = failures + 1;
+  }
+  if not test_generic_call_reports_unconstrained_parameter() {
+    set failures = failures + 1;
+  }
+  if not test_generic_substitution_replaces_identifiers_only() {
     set failures = failures + 1;
   }
   if not test_if_branch_mismatch_carries_unification_rule() {

@@ -40,7 +40,12 @@ REQUIRED_SYMBOLS = {
     ],
     'typeck_infer': [
         'TypeInferContext',
+        'TypeSubstitution',
+        'generic_type_binding',
         'infer_call_type',
+        'infer_pattern_substitutions',
+        'substitute_type',
+        'typeck_generic_inference_failed',
         'type_binding',
         'type_env',
         'type_is_copy',
@@ -75,6 +80,9 @@ REQUIRED_SYMBOLS = {
         'test_assign_mismatch',
         'test_return_mismatch_carries_rich_diagnostic_context',
         'test_call_arity_carries_signature_context',
+        'test_generic_call_infers_and_substitutes_return_type',
+        'test_generic_call_reports_unconstrained_parameter',
+        'test_generic_substitution_replaces_identifiers_only',
     ],
 }
 

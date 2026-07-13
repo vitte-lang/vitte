@@ -12,6 +12,7 @@ use vitte/compiler/analysis/typeck/errors.{
     typeck_diag,
     typeck_if_branch_mismatch,
     typeck_index_type,
+    typeck_generic_inference_failed,
     typeck_invalid_call_arity,
     typeck_invalid_cast,
     typeck_invalid_call,
@@ -22,6 +23,7 @@ use vitte/compiler/analysis/typeck/errors.{
 use vitte/compiler/analysis/typeck/coercion.{
     projection_member_name,
     project_place_type,
+    is_ident_char,
     type_deref_target,
     type_index_element,
     types_compatible
@@ -43,10 +45,18 @@ use vitte/compiler/middle/hir.{ HirExpr, HirExprKind }
 form TypeBinding {
     name: string
     ty: string
+    generic_params: [string]
     mutable: bool
     borrowed: bool
     initialized: bool
     moved: bool
+    valid: bool
+}
+
+form TypeSubstitution {
+    generic_name: string
+    resolved_type: string
+    explicit: bool
     valid: bool
 }
 
@@ -98,6 +108,20 @@ proc type_binding(name: string, ty: string) -> TypeBinding {
     give TypeBinding {
         name: name,
         ty: ty,
+        generic_params: [],
+        mutable: false,
+        borrowed: false,
+        initialized: true,
+        moved: false,
+        valid: name != "" and ty != ""
+    };
+}
+
+proc generic_type_binding(name: string, ty: string, generic_params: [string]) -> TypeBinding {
+    give TypeBinding {
+        name: name,
+        ty: ty,
+        generic_params: generic_params,
         mutable: false,
         borrowed: false,
         initialized: true,
@@ -110,6 +134,7 @@ proc mutable_type_binding(name: string, ty: string) -> TypeBinding {
     give TypeBinding {
         name: name,
         ty: ty,
+        generic_params: [],
         mutable: true,
         borrowed: false,
         initialized: true,
@@ -122,6 +147,7 @@ proc param_type_binding(name: string, ty: string, mutable: bool, borrowed: bool)
     give TypeBinding {
         name: name,
         ty: ty,
+        generic_params: [],
         mutable: mutable,
         borrowed: borrowed,
         initialized: true,
@@ -134,6 +160,7 @@ proc uninitialized_type_binding(name: string, ty: string) -> TypeBinding {
     give TypeBinding {
         name: name,
         ty: ty,
+        generic_params: [],
         mutable: false,
         borrowed: false,
         initialized: false,
@@ -213,6 +240,7 @@ proc type_env_get_binding(env: TypeEnv, name: string) -> TypeBinding {
         give TypeBinding {
             name: name,
             ty: "opaque",
+            generic_params: [],
             mutable: false,
             borrowed: false,
             initialized: false,
@@ -763,6 +791,174 @@ proc normalize_function_param_type(text: string) -> string {
     give value;
 }
 
+proc type_substitution(generic_name: string, resolved_type: string, explicit: bool) -> TypeSubstitution {
+    let resolved: string = trim(resolved_type);
+    give TypeSubstitution {
+        generic_name: generic_name,
+        resolved_type: resolved,
+        explicit: explicit,
+        valid: generic_name != "" and resolved != "" and resolved != "unknown" and resolved != "opaque"
+    };
+}
+
+proc substitution_index(substitutions: [TypeSubstitution], generic_name: string) -> int {
+    let i: int = 0;
+    while i < len(substitutions) {
+        if substitutions[i].generic_name == generic_name and substitutions[i].valid {
+            give i;
+        }
+        set i = i + 1;
+    }
+    give -1;
+}
+
+proc set_substitution(substitutions: [TypeSubstitution], substitution: TypeSubstitution) -> [TypeSubstitution] {
+    if not substitution.valid {
+        give substitutions;
+    }
+
+    let out: [TypeSubstitution] = [];
+    let found: bool = false;
+    let i: u64 = 0;
+    while i < len(substitutions) {
+        if substitutions[i].generic_name == substitution.generic_name {
+            set out = out + [substitution];
+            set found = true;
+        } else {
+            set out = out + [substitutions[i]];
+        }
+        set i = i + 1;
+    }
+    if not found {
+        set out = out + [substitution];
+    }
+    give out;
+}
+
+proc type_identifier_index(text: string, identifier: string) -> int {
+    if identifier == "" or len(identifier) > len(text) {
+        give -1;
+    }
+
+    let i: u64 = 0;
+    while i + len(identifier) <= len(text) {
+        if slice(text, i, i + len(identifier)) == identifier {
+            let left_boundary: bool = true;
+            let right_boundary: bool = true;
+            if i > 0 {
+                set left_boundary = not is_ident_char(slice(text, i - 1, i));
+            }
+            if i + len(identifier) < len(text) {
+                set right_boundary = not is_ident_char(slice(text, i + len(identifier), i + len(identifier) + 1));
+            }
+            if left_boundary and right_boundary {
+                give i as int;
+            }
+        }
+        set i = i + 1;
+    }
+    give -1;
+}
+
+proc substitute_type(ty: string, substitutions: [TypeSubstitution]) -> string {
+    let value: string = trim(ty);
+    let out: string = "";
+    let i: u64 = 0;
+
+    while i < len(value) {
+        let replaced: bool = false;
+        let j: u64 = 0;
+        while j < len(substitutions) and not replaced {
+            let substitution: TypeSubstitution = substitutions[j];
+            let name: string = substitution.generic_name;
+            if substitution.valid and name != "" and i + len(name) <= len(value) and slice(value, i, i + len(name)) == name {
+                let left_boundary: bool = true;
+                let right_boundary: bool = true;
+                if i > 0 {
+                    set left_boundary = not is_ident_char(slice(value, i - 1, i));
+                }
+                if i + len(name) < len(value) {
+                    set right_boundary = not is_ident_char(slice(value, i + len(name), i + len(name) + 1));
+                }
+                if left_boundary and right_boundary {
+                    set out = out + substitution.resolved_type;
+                    set i = i + len(name);
+                    set replaced = true;
+                }
+            }
+            set j = j + 1;
+        }
+        if not replaced {
+            set out = out + slice(value, i, i + 1);
+            set i = i + 1;
+        }
+    }
+
+    give out;
+}
+
+proc generic_candidate_from_pattern(pattern: string, actual: string, generic_name: string) -> string {
+    let expected: string = trim(pattern);
+    let found: string = trim(actual);
+    let position: int = type_identifier_index(expected, generic_name);
+    if position < 0 or found == "" or found == "unknown" or found == "opaque" {
+        give "";
+    }
+
+    let prefix: string = slice(expected, 0, position);
+    let suffix_start: u64 = position as u64 + len(generic_name);
+    let suffix: string = slice(expected, suffix_start, len(expected));
+    let prefix_matches: bool = prefix == "" or starts_with(found, prefix);
+    let suffix_matches: bool = suffix == "" or ends_with(found, suffix);
+    if not prefix_matches or not suffix_matches or len(found) < len(prefix) + len(suffix) {
+        give "";
+    }
+
+    let candidate: string = trim(slice(found, len(prefix), len(found) - len(suffix)));
+    if candidate == "" or candidate == "unknown" or candidate == "opaque" {
+        give "";
+    }
+    give candidate;
+}
+
+proc infer_pattern_substitutions(substitutions: [TypeSubstitution], generic_params: [string], pattern: string, actual: string) -> [TypeSubstitution] {
+    let out: [TypeSubstitution] = substitutions;
+    let i: u64 = 0;
+    while i < len(generic_params) {
+        if substitution_index(out, generic_params[i]) < 0 {
+            let candidate: string = generic_candidate_from_pattern(pattern, actual, generic_params[i]);
+            if candidate != "" {
+                set out = set_substitution(out, type_substitution(generic_params[i], candidate, false));
+            }
+        }
+        set i = i + 1;
+    }
+    give out;
+}
+
+proc type_has_unresolved_generics(ty: string, generic_params: [string], substitutions: [TypeSubstitution]) -> bool {
+    let i: u64 = 0;
+    while i < len(generic_params) {
+        if substitution_index(substitutions, generic_params[i]) < 0 and type_identifier_index(ty, generic_params[i]) >= 0 {
+            give true;
+        }
+        set i = i + 1;
+    }
+    give false;
+}
+
+proc call_generic_params(env: [TypeBinding], expr: HirExpr) -> [string] {
+    if len(expr.children) == 0 {
+        give [];
+    }
+    let callee_name: string = if expr.children[0].binding != "" { expr.children[0].binding } elif expr.children[0].name != "" { expr.children[0].name } else { expr.children[0].text };
+    let index: int = env_index(env, callee_name);
+    if index < 0 {
+        give [];
+    }
+    give env[index].generic_params;
+}
+
 proc function_return_type(ty: string) -> string {
     let value: string = trim(ty);
     let arrow: int = find(value, "->");
@@ -779,6 +975,8 @@ proc infer_call_type(env: [TypeBinding], expr: HirExpr) -> ExprTypeResult {
     let valid: bool = true;
     let callee_ty: string = "opaque";
     let callee_text: string = expr.text;
+    let generic_params: [string] = call_generic_params(env, expr);
+    let substitutions: [TypeSubstitution] = [];
 
     if len(expr.children) > 0 {
         let callee: ExprTypeResult = infer_expr_type(env, expr.children[0]);
@@ -809,6 +1007,24 @@ proc infer_call_type(env: [TypeBinding], expr: HirExpr) -> ExprTypeResult {
         set valid = false;
     }
 
+    if len(expr.generic_arguments) > len(generic_params) {
+        set diagnostics = add_unique_diag(diagnostics, typeck_generic_inference_failed(callee_text, expr.span));
+        set valid = false;
+    }
+
+    let explicit_index: u64 = 0;
+    while explicit_index < len(expr.generic_arguments) and explicit_index < len(generic_params) {
+        let explicit_type: string = trim(expr.generic_arguments[explicit_index]);
+        let substitution: TypeSubstitution = type_substitution(generic_params[explicit_index], explicit_type, true);
+        if substitution.valid {
+            set substitutions = set_substitution(substitutions, substitution);
+        } else {
+            set diagnostics = add_unique_diag(diagnostics, typeck_generic_inference_failed(generic_params[explicit_index], expr.span));
+            set valid = false;
+        }
+        set explicit_index = explicit_index + 1;
+    }
+
     let i: u64 = 1;
 
     while i < len(expr.children) {
@@ -821,10 +1037,13 @@ proc infer_call_type(env: [TypeBinding], expr: HirExpr) -> ExprTypeResult {
         let param_index: u64 = i - 1;
 
         if type_is_function(callee_ty) and param_index < fixed_count {
-            let expected_ty: string = normalize_function_param_type(param_types[param_index]);
+            let expected_pattern: string = normalize_function_param_type(param_types[param_index]);
+            set substitutions = infer_pattern_substitutions(substitutions, generic_params, expected_pattern, arg.ty);
+            let expected_ty: string = substitute_type(expected_pattern, substitutions);
 
             let arg_type_known: bool = arg.ty != "opaque" and arg.ty != "unknown";
-            let arg_type_mismatch: bool = expected_ty != "opaque" and arg_type_known and !types_compatible(expected_ty, arg.ty);
+            let unresolved_expected: bool = type_has_unresolved_generics(expected_pattern, generic_params, substitutions);
+            let arg_type_mismatch: bool = not unresolved_expected and expected_ty != "opaque" and arg_type_known and !types_compatible(expected_ty, arg.ty);
             if arg_type_mismatch {
                 set diagnostics = add_unique_diag(diagnostics, typeck_argument_mismatch(callee_text, i, expected_ty, arg.ty, expr.span));
                 set valid = false;
@@ -834,12 +1053,25 @@ proc infer_call_type(env: [TypeBinding], expr: HirExpr) -> ExprTypeResult {
         set i = i + 1;
     }
 
+    let generic_index: u64 = 0;
+    while generic_index < len(generic_params) {
+        if substitution_index(substitutions, generic_params[generic_index]) < 0 {
+            set diagnostics = add_unique_diag(diagnostics, typeck_generic_inference_failed(generic_params[generic_index], expr.span));
+            set valid = false;
+        }
+        set generic_index = generic_index + 1;
+    }
+
     if expr.inferred_type != "" and expr.inferred_type != "unknown" {
         give expr_result(expr.inferred_type, diagnostics, valid);
     }
 
     if type_is_function(callee_ty) {
-        give expr_result(function_return_type(callee_ty), diagnostics, valid);
+        let return_pattern: string = function_return_type(callee_ty);
+        if type_has_unresolved_generics(return_pattern, generic_params, substitutions) {
+            give expr_result("unknown", diagnostics, false);
+        }
+        give expr_result(substitute_type(return_pattern, substitutions), diagnostics, valid);
     }
 
     give expr_result("opaque", diagnostics, valid);
@@ -1020,10 +1252,12 @@ proc infer_and_store(env: TypeEnv, name: string, expr: HirExpr) -> TypeInferCont
 }
 
 share TypeBinding
+share TypeSubstitution
 share TypeEnv
 share TypeInferContext
 
 share type_binding
+share generic_type_binding
 share mutable_type_binding
 share param_type_binding
 share uninitialized_type_binding
@@ -1045,6 +1279,16 @@ share type_env_mark_initialized
 
 share merge_diagnostics
 share missing_child_diag
+
+share type_substitution
+share substitution_index
+share set_substitution
+share type_identifier_index
+share substitute_type
+share generic_candidate_from_pattern
+share infer_pattern_substitutions
+share type_has_unresolved_generics
+share call_generic_params
 
 share infer_name_type
 share infer_literal_type
