@@ -158,6 +158,36 @@ def generated_cases() -> list[Case]:
             "TYPECK_E_ARGUMENT_MISMATCH",
             "function argument compatibility",
         ))
+
+    for suffix, arguments in (("too_few", ""), ("too_many", "1, 2")):
+        cases.append(Case(
+            f"call_arity_{suffix}",
+            (
+                f"space tests/typeck/differential/call_arity_{suffix}\n\n"
+                "proc take(value: int) -> int {\n"
+                "  give value\n"
+                "}\n"
+                "proc main() -> int {\n"
+                f"  give take({arguments})\n"
+                "}\n"
+            ),
+            False,
+            "TYPECK_E_CALL_ARITY",
+            "function call arity",
+        ))
+    cases.append(Case(
+        "call_arity_nested_arguments",
+        (
+            "space tests/typeck/differential/call_arity_nested_arguments\n\n"
+            "proc accept(value: bool) -> int {\n"
+            "  give 0\n"
+            "}\n"
+            "proc main() -> int {\n"
+            "  give accept(find(\"x\", \"x\") >= 0 or find(\"x\", \"y\") >= 0)\n"
+            "}\n"
+        ),
+        True,
+    ))
     return cases
 
 
@@ -312,6 +342,7 @@ def main() -> int:
             "string equality and inequality produce boolean conditions",
             "primitive return contracts accept matching values and reject mismatches",
             "primitive argument contracts accept matching values and reject mismatches",
+            "local calls reject missing and excess arguments",
             "stage binaries agree on normalized typeck results",
             "repeated checks are deterministic",
             "user programs do not terminate the compiler by signal",
