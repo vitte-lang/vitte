@@ -1,7 +1,7 @@
 space vitte/compiler/analysis/typeck
 
 use vitte/compiler/analysis/typeck/coercion.{ types_compatible }
-use vitte/compiler/analysis/typeck/errors.{ TypeckDiagnostic, TypeckResult, add_unique_diag, typeck_assignment_mismatch, typeck_condition_type, typeck_diag, typeck_invalid_hir_result, typeck_non_exhaustive_match }
+use vitte/compiler/analysis/typeck/errors.{ TypeckDiagnostic, TypeckResult, add_unique_diag, typeck_assignment_mismatch, typeck_condition_type, typeck_diag, typeck_invalid_hir_result, typeck_non_exhaustive_match, typeck_return_mismatch }
 use vitte/compiler/analysis/typeck/infer.{ TypeBinding, env_get, env_has, env_index, env_set, infer_expr_type, param_type_binding }
 use vitte/compiler/analysis/typeck/traits.{ type_is_copy, type_is_known, type_is_truthy }
 use vitte/compiler/middle/hir.{ HirExpr, HirItem, HirItemKind, HirModule, HirNominalMember, HirNominalMemberKind, HirProcParam, HirStmt, HirStmtKind, HirUnit }
@@ -189,7 +189,7 @@ proc member_env(params: [HirProcParam], target_type_text: string) -> [TypeBindin
 proc typeck_member(module_env: [TypeBinding], item: HirItem, member: HirNominalMember) -> TypeckMemberWalk {
   let local_env: [TypeBinding] = module_env + member_env(member.params, item.target_type_text);
   let typed_expr: HirExpr = annotate_expr(local_env, member.expr);
-  let body_result: TypeckStmtWalk = check_stmt_tree([], local_env, member.body_stmts);
+  let body_result: TypeckStmtWalk = check_stmt_tree([], local_env, member.body_stmts, member.annotation_text, member.name);
   let diagnostics: [TypeckDiagnostic] = body_result.diagnostics;
   give TypeckMemberWalk {
     members: [HirNominalMember {
@@ -330,7 +330,7 @@ proc annotate_expr(env: [TypeBinding], expr: HirExpr) -> HirExpr {
   };
 }
 
-proc check_stmt_tree(diagnostics: [TypeckDiagnostic], env: [TypeBinding], stmts: [HirStmt]) -> TypeckStmtWalk {
+proc check_stmt_tree(diagnostics: [TypeckDiagnostic], env: [TypeBinding], stmts: [HirStmt], return_type: string, owner_name: string) -> TypeckStmtWalk {
   let out: [TypeckDiagnostic] = diagnostics;
   let current_env: [TypeBinding] = env;
   let typed: [HirStmt] = [];
@@ -341,8 +341,8 @@ proc check_stmt_tree(diagnostics: [TypeckDiagnostic], env: [TypeBinding], stmts:
     let result = infer_expr_type(current_env, typed_expr);
     set out = out + result.diagnostics;
 
-    let then_checked: TypeckStmtWalk = check_stmt_tree([], current_env, stmt.then_stmts);
-    let else_checked: TypeckStmtWalk = check_stmt_tree([], current_env, stmt.else_stmts);
+    let then_checked: TypeckStmtWalk = check_stmt_tree([], current_env, stmt.then_stmts, return_type, owner_name);
+    let else_checked: TypeckStmtWalk = check_stmt_tree([], current_env, stmt.else_stmts, return_type, owner_name);
     set out = out + then_checked.diagnostics + else_checked.diagnostics;
 
     if stmt.kind == HirStmtKind.Let {
@@ -397,6 +397,15 @@ proc check_stmt_tree(diagnostics: [TypeckDiagnostic], env: [TypeBinding], stmts:
       if !match_stmt_has_fallback_arm(stmt) {
         set out = add_unique_diag(out, typeck_non_exhaustive_match(
           "_",
+          stmt.span
+        ));
+      }
+    } elif stmt.kind == HirStmtKind.Give {
+      if return_type != "" and type_is_known(result.ty) and not types_compatible(return_type, result.ty) {
+        set out = add_unique_diag(out, typeck_return_mismatch(
+          owner_name,
+          return_type,
+          result.ty,
           stmt.span
         ));
       }
@@ -459,7 +468,7 @@ proc check_module(diagnostics: [TypeckDiagnostic], env: [TypeBinding], hir: HirU
     }
 
     let item_env: [TypeBinding] = module_env + member_env(item.params, "");
-    let stmt_result: TypeckStmtWalk = check_stmt_tree([], item_env, item.stmts);
+    let stmt_result: TypeckStmtWalk = check_stmt_tree([], item_env, item.stmts, item.annotation_text, item.name);
     let member_result: TypeckMemberWalk = typeck_members(module_env, item);
     set out = out + stmt_result.diagnostics;
     set out = out + member_result.diagnostics;

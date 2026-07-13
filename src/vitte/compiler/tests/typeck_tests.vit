@@ -239,6 +239,22 @@ proc test_assign_mismatch_carries_rich_diagnostic_context() -> bool {
     and find(diag.probable_fix, "`int`") >= 0;
 }
 
+proc test_return_mismatch_carries_rich_diagnostic_context() -> bool {
+  let source: string = "proc answer() -> int { give \"oops\"; }\n";
+  let fe: FrontendOutput = frontend_run("typeck_return_mismatch_rich.vit", source);
+  let hir = lower_ast_to_hir(fe);
+  let result: TypeckResult = run_production_typeck_hir(hir);
+  let diag = diagnostic_by_code(result, "TYPECK_E_RETURN_MISMATCH");
+  give diag.valid
+    and diag.rule == "procedure return compatibility"
+    and find(diag.explanation, "promises `int`") >= 0
+    and find(diag.explanation, "produces `string`") >= 0
+    and len(diag.cause_chain) >= 2
+    and diag.subject_symbol == "answer"
+    and diag.subject_type == "int"
+    and find(diag.probable_fix, "`int`") >= 0;
+}
+
 proc test_binary_mismatch() -> bool {
   let source: string = "proc main() { let x = 1 + \"oops\"; give x; }\n";
   let fe: FrontendOutput = frontend_run("typeck_binary_mismatch.vit", source);
@@ -757,6 +773,9 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if not test_assign_mismatch_carries_rich_diagnostic_context() {
+    set failures = failures + 1;
+  }
+  if not test_return_mismatch_carries_rich_diagnostic_context() {
     set failures = failures + 1;
   }
   if not test_binary_mismatch() {

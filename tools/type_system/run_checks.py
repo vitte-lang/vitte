@@ -73,6 +73,7 @@ REQUIRED_SYMBOLS = {
         'infer_call_type',
         'test_valid_numeric_flow',
         'test_assign_mismatch',
+        'test_return_mismatch_carries_rich_diagnostic_context',
         'test_call_arity_carries_signature_context',
     ],
 }
