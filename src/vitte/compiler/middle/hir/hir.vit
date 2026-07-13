@@ -269,6 +269,14 @@ form HirNominalMember {
   valid: bool
 }
 
+form HirGenericParam {
+  name: string
+  kind: string
+  bound_text: string
+  default_type_text: string
+  valid: bool
+}
+
 form HirItem {
   id: u64
   span: AstSpan
@@ -281,6 +289,9 @@ form HirItem {
   abi: string
   generic_count: u64
   generic_params: [string]
+  generic_param_info: [HirGenericParam]
+  where_clauses: [string]
+  requires: [string]
   type_param_count: u64
   attribute_count: u64
   modifier_count: u64
@@ -437,7 +448,17 @@ proc hir_nominal_member(id: u64, span: AstSpan, kind: HirNominalMemberKind, name
   };
 }
 
-proc hir_item_with_members(id: u64, span: AstSpan, kind: HirItemKind, name: string, resolved_id: u64, namespace: string, visibility: string, exported: bool, abi: string, generic_count: u64, generic_params: [string], type_param_count: u64, attribute_count: u64, modifier_count: u64, member_count: u64, signature_param_count: u64, params: [HirProcParam], annotation_text: string, target_type_text: string, expr: HirExpr, stmts: [HirStmt], members: [HirNominalMember], message: string, scope_depth: u64, diagnostics: [SemanticDiagnostic], valid: bool) -> HirItem {
+proc hir_generic_param(name: string, kind: string, bound_text: string, default_type_text: string, valid: bool) -> HirGenericParam {
+  give HirGenericParam {
+    name: name,
+    kind: kind,
+    bound_text: bound_text,
+    default_type_text: default_type_text,
+    valid: valid
+  };
+}
+
+proc hir_item_with_generic_contract(id: u64, span: AstSpan, kind: HirItemKind, name: string, resolved_id: u64, namespace: string, visibility: string, exported: bool, abi: string, generic_count: u64, generic_params: [string], generic_param_info: [HirGenericParam], where_clauses: [string], requires: [string], type_param_count: u64, attribute_count: u64, modifier_count: u64, member_count: u64, signature_param_count: u64, params: [HirProcParam], annotation_text: string, target_type_text: string, expr: HirExpr, stmts: [HirStmt], members: [HirNominalMember], message: string, scope_depth: u64, diagnostics: [SemanticDiagnostic], valid: bool) -> HirItem {
   give HirItem {
     id: id,
     span: span,
@@ -450,6 +471,9 @@ proc hir_item_with_members(id: u64, span: AstSpan, kind: HirItemKind, name: stri
     abi: abi,
     generic_count: generic_count,
     generic_params: generic_params,
+    generic_param_info: generic_param_info,
+    where_clauses: where_clauses,
+    requires: requires,
     type_param_count: type_param_count,
     attribute_count: attribute_count,
     modifier_count: modifier_count,
@@ -466,6 +490,10 @@ proc hir_item_with_members(id: u64, span: AstSpan, kind: HirItemKind, name: stri
     diagnostics: diagnostics,
     valid: valid
   };
+}
+
+proc hir_item_with_members(id: u64, span: AstSpan, kind: HirItemKind, name: string, resolved_id: u64, namespace: string, visibility: string, exported: bool, abi: string, generic_count: u64, generic_params: [string], type_param_count: u64, attribute_count: u64, modifier_count: u64, member_count: u64, signature_param_count: u64, params: [HirProcParam], annotation_text: string, target_type_text: string, expr: HirExpr, stmts: [HirStmt], members: [HirNominalMember], message: string, scope_depth: u64, diagnostics: [SemanticDiagnostic], valid: bool) -> HirItem {
+  give hir_item_with_generic_contract(id, span, kind, name, resolved_id, namespace, visibility, exported, abi, generic_count, generic_params, [], [], [], type_param_count, attribute_count, modifier_count, member_count, signature_param_count, params, annotation_text, target_type_text, expr, stmts, members, message, scope_depth, diagnostics, valid);
 }
 
 proc hir_item(id: u64, span: AstSpan, kind: HirItemKind, name: string, resolved_id: u64, namespace: string, visibility: string, exported: bool, abi: string, generic_count: u64, generic_params: [string], type_param_count: u64, attribute_count: u64, modifier_count: u64, member_count: u64, signature_param_count: u64, annotation_text: string, target_type_text: string, expr: HirExpr, stmts: [HirStmt], message: string, scope_depth: u64, diagnostics: [SemanticDiagnostic], valid: bool) -> HirItem {

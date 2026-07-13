@@ -62,8 +62,15 @@ REQUIRED_RECURSIVE_CALLS = (
 
 REQUIRED_ITEM_METADATA = (
     ("hir.vit", "generic_params: [string]"),
+    ("hir.vit", "generic_param_info: [HirGenericParam]"),
+    ("hir.vit", "where_clauses: [string]"),
+    ("hir.vit", "requires: [string]"),
     ("hir.vit", "generic_arguments: [string]"),
     ("lower_ast.vit", "proc item_generic_param_names(item: AstItem) -> [string]"),
+    ("lower_ast.vit", "proc item_generic_param_info(item: AstItem) -> [HirGenericParam]"),
+    ("lower_ast.vit", "item_generic_param_info(item),"),
+    ("lower_ast.vit", "item_where_clauses(item),"),
+    ("lower_ast.vit", "item_requires(item),"),
     ("lower_ast.vit", "proc lower_expr_generic_arguments(expr: AstExpr) -> [string]"),
     ("lower_ast.vit", "lower_expr_generic_arguments(expr),"),
     ("lower_ast.vit", "let generic_params: [string] = item_generic_param_names(item);"),

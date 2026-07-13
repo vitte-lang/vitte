@@ -9,6 +9,7 @@ use vitte/compiler/frontend/ast.expr.{
 }
 
 use vitte/compiler/frontend/ast.item.{
+  AstGenericParam,
   AstItem,
   AstItemKind,
   AstNominalMember,
@@ -36,6 +37,7 @@ use vitte/compiler/frontend/ast.type_expr.{
 use vitte/compiler/middle/hir.{
   HirExpr,
   HirExprKind,
+  HirGenericParam,
   HirItem,
   HirItemKind,
   HirModule,
@@ -52,7 +54,8 @@ use vitte/compiler/middle/hir.{
   hir_expr,
   hir_expr_with_generic_arguments,
   hir_expr_empty,
-  hir_item_with_members,
+  hir_generic_param,
+  hir_item_with_generic_contract,
   hir_nominal_member,
   hir_proc_param,
   hir_stmt,
@@ -669,6 +672,43 @@ proc item_generic_param_names(item: AstItem) -> [string] {
   give out;
 }
 
+proc lower_generic_param_info(params: [AstGenericParam]) -> [HirGenericParam] {
+  let out: [HirGenericParam] = [];
+  let i: u64 = 0;
+  while i < len(params) {
+    set out = out + [hir_generic_param(
+      params[i].name,
+      params[i].kind,
+      lower_type_text(params[i].bound),
+      lower_type_text(params[i].default_type),
+      params[i].valid
+    )];
+    set i = i + 1;
+  }
+  give out;
+}
+
+proc item_generic_param_info(item: AstItem) -> [HirGenericParam] {
+  if len(item.signature.generic_params) > 0 {
+    give lower_generic_param_info(item.signature.generic_params);
+  }
+  give lower_generic_param_info(item.generic_params);
+}
+
+proc item_where_clauses(item: AstItem) -> [string] {
+  if item.signature.valid {
+    give item.signature.where_clauses;
+  }
+  give [];
+}
+
+proc item_requires(item: AstItem) -> [string] {
+  if item.signature.valid {
+    give item.signature.requires;
+  }
+  give [];
+}
+
 proc item_signature_param_count(item: AstItem) -> u64 {
   if item.signature.valid {
     give len(item.signature.params);
@@ -696,7 +736,7 @@ proc lower_item(item: AstItem) -> HirItem {
   let members: [HirNominalMember] = lower_nominal_members(item.members);
   let params: [HirProcParam] = lower_item_params(item);
   let generic_params: [string] = item_generic_param_names(item);
-  give hir_item_with_members(
+  give hir_item_with_generic_contract(
     item.id.value,
     item.span,
     lowered_kind,
@@ -708,6 +748,9 @@ proc lower_item(item: AstItem) -> HirItem {
     item_abi_text(item),
     len(generic_params),
     generic_params,
+    item_generic_param_info(item),
+    item_where_clauses(item),
+    item_requires(item),
     len(item.type_params),
     len(item.attributes),
     len(item.modifiers),

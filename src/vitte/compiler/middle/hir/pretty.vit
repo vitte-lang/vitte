@@ -365,6 +365,31 @@ proc pretty_item(item: HirItem, depth: u64) -> string {
   let out3: string = out2 + "\n" + indent(next_depth) + "namespace: " + item.namespace
   let rendered: string = out3
 
+  let generic_index: u64 = 0
+  while generic_index < len(item.generic_param_info) {
+    let generic_text: string = item.generic_param_info[generic_index].name
+    if item.generic_param_info[generic_index].bound_text != "" {
+      set generic_text = generic_text + ": " + item.generic_param_info[generic_index].bound_text
+    }
+    if item.generic_param_info[generic_index].default_type_text != "" {
+      set generic_text = generic_text + " = " + item.generic_param_info[generic_index].default_type_text
+    }
+    set rendered = rendered + "\n" + indent(next_depth) + "generic: " + generic_text
+    set generic_index = generic_index + 1
+  }
+
+  let where_index: u64 = 0
+  while where_index < len(item.where_clauses) {
+    set rendered = rendered + "\n" + indent(next_depth) + "where: " + item.where_clauses[where_index]
+    set where_index = where_index + 1
+  }
+
+  let requirement_index: u64 = 0
+  while requirement_index < len(item.requires) {
+    set rendered = rendered + "\n" + indent(next_depth) + "requires: " + item.requires[requirement_index]
+    set requirement_index = requirement_index + 1
+  }
+
   if item.expr.valid {
     set rendered = rendered + "\n" + pretty_expr(item.expr, next_depth)
   }

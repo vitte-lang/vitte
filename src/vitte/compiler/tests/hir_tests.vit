@@ -175,7 +175,7 @@ proc test_hir_preserves_proc_params() -> bool {
 }
 
 proc test_hir_preserves_proc_generic_params() -> bool {
-  let source: string = "proc identity[T](value: T) -> T { give value; }\n";
+  let source: string = "proc identity[T: Display = string](value: T) -> T where T: Display requires(value) { give value; }\n";
   let fe: FrontendOutput = frontend_run("hir_proc_generics.vit", source);
   let hir: HirUnit = lower_ast_to_hir(fe);
   let item = hir.module.items[0];
@@ -184,6 +184,14 @@ proc test_hir_preserves_proc_generic_params() -> bool {
     and item.generic_count == 1
     and len(item.generic_params) == 1
     and item.generic_params[0] == "T"
+    and len(item.generic_param_info) == 1
+    and item.generic_param_info[0].name == "T"
+    and item.generic_param_info[0].bound_text == "Display"
+    and item.generic_param_info[0].default_type_text == "string"
+    and len(item.where_clauses) == 1
+    and contains(item.where_clauses[0], "Display")
+    and len(item.requires) == 1
+    and contains(item.requires[0], "value")
     and item.params[0].annotation_text == "T"
     and item.annotation_text == "T";
 }

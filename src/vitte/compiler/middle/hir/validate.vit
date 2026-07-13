@@ -314,6 +314,37 @@ proc validate_item(item: HirItem) -> [SemanticDiagnostic] {
     set diagnostics = diagnostics + [validation_error("HIRV0210", "hir item generic parameter count does not match lowered names")]
   }
 
+  if len(item.generic_param_info) > 0 and len(item.generic_param_info) != item.generic_count {
+    set diagnostics = diagnostics + [validation_error("HIRV0211", "hir item generic metadata count does not match lowered names")]
+  }
+
+  let generic_index: u64 = 0
+  while generic_index < len(item.generic_param_info) {
+    if not item.generic_param_info[generic_index].valid or item.generic_param_info[generic_index].name == "" {
+      set diagnostics = diagnostics + [validation_error("HIRV0212", "hir item contains invalid generic parameter metadata")]
+    }
+    if generic_index < len(item.generic_params) and item.generic_param_info[generic_index].name != item.generic_params[generic_index] {
+      set diagnostics = diagnostics + [validation_error("HIRV0213", "hir generic parameter metadata is not aligned with lowered names")]
+    }
+    set generic_index = generic_index + 1
+  }
+
+  let clause_index: u64 = 0
+  while clause_index < len(item.where_clauses) {
+    if trim(item.where_clauses[clause_index]) == "" {
+      set diagnostics = diagnostics + [validation_error("HIRV0214", "hir item contains empty where clause")]
+    }
+    set clause_index = clause_index + 1
+  }
+
+  let requirement_index: u64 = 0
+  while requirement_index < len(item.requires) {
+    if trim(item.requires[requirement_index]) == "" {
+      set diagnostics = diagnostics + [validation_error("HIRV0215", "hir item contains empty requirement")]
+    }
+    set requirement_index = requirement_index + 1
+  }
+
   if item.expr.valid {
     set diagnostics = diagnostics + validate_expr(item.expr)
   }
