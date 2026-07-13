@@ -2202,6 +2202,33 @@ detect_professional_diagnostic() {
     function seed_type_is_numeric(ty) {
         return ty ~ /^(i8|i16|i32|i64|i128|isize|int|u8|u16|u32|u64|u128|usize|f32|f64|float)$/
     }
+    function seed_type_is_signed_integer(ty) { return ty ~ /^(i8|i16|i32|i64|i128|isize|int)$/ }
+    function seed_type_is_unsigned_integer(ty) { return ty ~ /^(u8|u16|u32|u64|u128|usize)$/ }
+    function seed_type_is_integer(ty) { return seed_type_is_signed_integer(ty) || seed_type_is_unsigned_integer(ty) }
+    function seed_type_is_float(ty) { return ty ~ /^(f32|f64|float)$/ }
+    function seed_numeric_width(ty) {
+        if (ty == "i8" || ty == "u8") return 8
+        if (ty == "i16" || ty == "u16") return 16
+        if (ty == "i32" || ty == "u32" || ty == "int") return 32
+        if (ty == "i64" || ty == "u64" || ty == "isize" || ty == "usize" || ty == "f64" || ty == "float") return 64
+        if (ty == "i128" || ty == "u128") return 128
+        if (ty == "f32") return 32
+        return 0
+    }
+    function seed_types_compatible(expected, actual,    expected_width, actual_width, precision) {
+        if (expected == actual) return 1
+        expected_width = seed_numeric_width(expected)
+        actual_width = seed_numeric_width(actual)
+        if (seed_type_is_signed_integer(expected) && seed_type_is_signed_integer(actual)) return actual_width <= expected_width
+        if (seed_type_is_unsigned_integer(expected) && seed_type_is_unsigned_integer(actual)) return actual_width <= expected_width
+        if (seed_type_is_signed_integer(expected) && seed_type_is_unsigned_integer(actual)) return actual_width < expected_width
+        if (seed_type_is_float(expected) && seed_type_is_float(actual)) return actual_width <= expected_width
+        if (seed_type_is_float(expected) && seed_type_is_integer(actual)) {
+            precision = expected == "f32" ? 24 : 53
+            return actual_width <= precision
+        }
+        return 0
+    }
     function matching_call_paren(s, open_col,    i, ch, depth) {
         depth = 0
         for (i = open_col + 1; i <= length(s); i++) {
@@ -2904,7 +2931,7 @@ detect_professional_diagnostic() {
             }
         }
 
-        if (line ~ /^[ \t]*let[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*:[ \t]*(i32|int|string|bool)[ \t]*=/) {
+        if (line ~ /^[ \t]*let[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*:[ \t]*(i8|i16|i32|i64|i128|isize|int|u8|u16|u32|u64|u128|usize|f32|f64|float|string|bool)[ \t]*=/) {
             rest = line
             sub(/^[ \t]*let[ \t]+/, "", rest)
             name = rest
@@ -2912,6 +2939,18 @@ detect_professional_diagnostic() {
             ty = rest
             sub(/^[^:]*:[ \t]*/, "", ty)
             sub(/[ \t=].*$/, "", ty)
+            value = rest
+            sub(/^[^=]*=[ \t]*/, "", value)
+            sub(/[ \t;}]+$/, "", value)
+            if (value ~ /^[A-Za-z_][A-Za-z0-9_]*$/ && (value in decl_type) && !seed_types_compatible(ty, decl_type[value])) {
+                col = index(raw, value)
+                emit("TYPECK_E_ASSIGN_MISMATCH", "error", "typeck",
+                    "cannot initialize " name " of type " ty " from " decl_type[value],
+                    FNR, col, col + length(value), raw,
+                    "expected " ty ", found " decl_type[value],
+                    "implicit numeric coercions must preserve every source value",
+                    "use a wider target type or write an explicit cast")
+            }
             remember_decl(name, ty, FNR, index(raw, name))
         } else if (line ~ /^[ \t]*let[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*=[ \t]*-?[0-9]+[ \t;]*$/) {
             rest = line
@@ -3240,7 +3279,34 @@ detect_type_mismatch() {
         if ((expected == "int" || expected == "i32") && found == "int") return 1
         return expected == found
     }
-    function remember_typed_let(stmt, line_no, base_col,    rest, name, ty, name_col) {
+    function seed_type_is_signed_integer(ty) { return ty ~ /^(i8|i16|i32|i64|i128|isize|int)$/ }
+    function seed_type_is_unsigned_integer(ty) { return ty ~ /^(u8|u16|u32|u64|u128|usize)$/ }
+    function seed_type_is_integer(ty) { return seed_type_is_signed_integer(ty) || seed_type_is_unsigned_integer(ty) }
+    function seed_type_is_float(ty) { return ty ~ /^(f32|f64|float)$/ }
+    function seed_numeric_width(ty) {
+        if (ty == "i8" || ty == "u8") return 8
+        if (ty == "i16" || ty == "u16") return 16
+        if (ty == "i32" || ty == "u32" || ty == "int") return 32
+        if (ty == "i64" || ty == "u64" || ty == "isize" || ty == "usize" || ty == "f64" || ty == "float") return 64
+        if (ty == "i128" || ty == "u128") return 128
+        if (ty == "f32") return 32
+        return 0
+    }
+    function seed_types_compatible(expected, actual,    expected_width, actual_width, precision) {
+        if (expected == actual) return 1
+        expected_width = seed_numeric_width(expected)
+        actual_width = seed_numeric_width(actual)
+        if (seed_type_is_signed_integer(expected) && seed_type_is_signed_integer(actual)) return actual_width <= expected_width
+        if (seed_type_is_unsigned_integer(expected) && seed_type_is_unsigned_integer(actual)) return actual_width <= expected_width
+        if (seed_type_is_signed_integer(expected) && seed_type_is_unsigned_integer(actual)) return actual_width < expected_width
+        if (seed_type_is_float(expected) && seed_type_is_float(actual)) return actual_width <= expected_width
+        if (seed_type_is_float(expected) && seed_type_is_integer(actual)) {
+            precision = expected == "f32" ? 24 : 53
+            return actual_width <= precision
+        }
+        return 0
+    }
+    function remember_typed_let(stmt, raw, line_no, base_col,    rest, name, ty, rhs, found_type, name_col, col) {
         rest = stmt
         sub(/^[ \t]*let[ \t]+/, "", rest)
         name = rest
@@ -3248,7 +3314,19 @@ detect_type_mismatch() {
         ty = rest
         sub(/^[^:]*:[ \t]*/, "", ty)
         sub(/[ \t=].*$/, "", ty)
-        if (name != "" && (ty == "i32" || ty == "int" || ty == "string" || ty == "bool")) {
+        rhs = rest
+        sub(/^[^=]*=[ \t]*/, "", rhs)
+        rhs = trim(rhs)
+        if (rhs ~ /^[A-Za-z_][A-Za-z0-9_]*$/ && (rhs in decl_type)) {
+            found_type = decl_type[rhs]
+            if (!seed_types_compatible(ty, found_type)) {
+                col = base_col + index(stmt, rhs) - 1
+                print name "|" ty "|" found_type "|" line_no "|" col "|" line_no "|" (base_col + index(stmt, name) - 1) "|" length(rhs) "|" raw
+                found = 1
+                exit
+            }
+        }
+        if (name != "" && (ty ~ /^(i8|i16|i32|i64|i128|isize|int|u8|u16|u32|u64|u128|usize|f32|f64|float|string|bool)$/)) {
             decl_type[name] = ty
             decl_line[name] = line_no
             name_col = index(stmt, name)
@@ -3314,8 +3392,8 @@ detect_type_mismatch() {
                 sub(/^[^A-Za-z0-9_]+/, "", candidate)
             }
             candidate_col = base_col + (index(stmt, candidate) > 0 ? index(stmt, candidate) - 1 : 0)
-            if (candidate ~ /^let[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*:[ \t]*(i32|int|string|bool)[ \t]*=/) {
-                remember_typed_let(candidate, FNR, candidate_col)
+            if (candidate ~ /^let[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*:[ \t]*(i8|i16|i32|i64|i128|isize|int|u8|u16|u32|u64|u128|usize|f32|f64|float|string|bool)[ \t]*=/) {
+                remember_typed_let(candidate, raw, FNR, candidate_col)
             } else if (candidate ~ /^let[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*=[ \t]*-?[0-9]+$/) {
                 remember_inferred_int_let(candidate, FNR, candidate_col)
             } else if (candidate ~ /^set[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*=/) {

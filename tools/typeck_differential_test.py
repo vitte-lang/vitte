@@ -318,6 +318,32 @@ def generated_cases() -> list[Case]:
         "TYPECK_E_INVALID_CAST",
         "explicit cast validity",
     ))
+    cases.append(Case(
+        "numeric_widening_implicit",
+        (
+            "space tests/typeck/differential/numeric_widening_implicit\n\n"
+            "proc main() -> int {\n"
+            "  let small: u8 = 1\n"
+            "  let wide: i64 = small\n"
+            "  give 0\n"
+            "}\n"
+        ),
+        True,
+    ))
+    cases.append(Case(
+        "numeric_narrowing_requires_cast",
+        (
+            "space tests/typeck/differential/numeric_narrowing_requires_cast\n\n"
+            "proc main() -> int {\n"
+            "  let wide: i64 = 1\n"
+            "  let narrow: i8 = wide\n"
+            "  give 0\n"
+            "}\n"
+        ),
+        False,
+        "TYPECK_E_ASSIGN_MISMATCH",
+        "assignment type compatibility",
+    ))
     return cases
 
 
@@ -478,6 +504,7 @@ def main() -> int:
             "duplicate local trait implementations violate coherence",
             "generic parameter constraints form an acyclic dependency graph",
             "explicit literal casts stay within supported scalar representations",
+            "implicit numeric coercions are directional and lossless",
             "every rejected type-system case carries a two-step cause chain",
             "stage binaries agree on normalized typeck results",
             "repeated checks are deterministic",
