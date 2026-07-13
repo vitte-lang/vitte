@@ -2707,11 +2707,27 @@ detect_professional_diagnostic() {
     function syntax_note(expected, found, context, recovery) {
         return "expected token: " expected "; found token: " found "; syntax context: " context "; recovery: " recovery
     }
-    function remember_decl(name, ty, line, col) {
+    function remember_decl_in(proc_name, name, ty, line, col,    key) {
         if (name == "") return
         decl_type[name] = ty
         decl_line[name] = line
         decl_col[name] = col
+        if (proc_name != "") {
+            key = proc_name SUBSEP name
+            proc_decl_type[key] = ty
+            proc_decl_line[key] = line
+            proc_decl_col[key] = col
+        }
+    }
+    function remember_decl(name, ty, line, col) {
+        remember_decl_in(current_proc, name, ty, line, col)
+    }
+    function binding_type(proc_name, name,    key) {
+        key = proc_name SUBSEP name
+        if (proc_name != "" && (key in proc_decl_type)) return proc_decl_type[key]
+        if (proc_name != "" && (key in proc_binding_type)) return proc_binding_type[key]
+        if (proc_name == "" && (name in decl_type)) return decl_type[name]
+        return ""
     }
     function seen_symbol(kind, name, line, col) {
         if (name == "") return
@@ -2745,6 +2761,7 @@ detect_professional_diagnostic() {
         raw = $0
         line = trim(raw)
         source_line[FNR] = raw
+        line_proc[FNR] = current_proc
         if (line == "" || line ~ /^\/\//) next
         code_line = strip_strings(raw)
         code_trim = trim(code_line)
@@ -3009,6 +3026,7 @@ detect_professional_diagnostic() {
             sub(/^proc[ \t]+/, "", name)
             sub(/[ \t(:={].*$/, "", name)
             sub(/\[.*$/, "", name)
+            line_proc[FNR] = name
             seen_symbol("proc", name, FNR, index(raw, name))
             if (!proc_known[name]) {
                 proc_order_count++
@@ -3092,8 +3110,12 @@ detect_professional_diagnostic() {
                     }
                     signature_param_type = signature_param_pattern
                     if (signature_param_type !~ /^(i32|int|string|bool)$/) {
-                        signature_param_type = ""
-                        if (proc_generic_index[name SUBSEP signature_param_pattern] <= 0) proc_signature_supported[name] = 0
+                        if (proc_generic_index[name SUBSEP signature_param_pattern] > 0) {
+                            signature_param_type = ""
+                        } else if (signature_param_type !~ /^[A-Z][A-Za-z0-9_]*$/) {
+                            signature_param_type = ""
+                            proc_signature_supported[name] = 0
+                        }
                     }
                     proc_param_count[name]++
                     proc_param_pattern[name SUBSEP proc_param_count[name]] = signature_param_pattern
@@ -3137,7 +3159,7 @@ detect_professional_diagnostic() {
             returned_token = trim(returned)
             sub(/[ \t;}]+$/, "", returned_token)
             returned_type = primitive_literal_type(returned)
-            if (returned_type == "" && returned_token ~ /^[A-Za-z_][A-Za-z0-9_]*$/ && (returned_token in decl_type)) returned_type = decl_type[returned_token]
+            if (returned_type == "" && returned_token ~ /^[A-Za-z_][A-Za-z0-9_]*$/) returned_type = binding_type(current_proc, returned_token)
             if (returned ~ /[ \t]+as[ \t]+/) returned_type = ""
             if (returned_type != "" && !seed_types_compatible(current_return_type, returned_type)) {
                 if (returned_token ~ /^"/) {
@@ -3515,6 +3537,7 @@ detect_professional_diagnostic() {
         if (!found) {
             for (method_call_line = 1; method_call_line <= FNR; method_call_line++) {
                 method_call_rest = source_code_line[method_call_line]
+                method_call_scope = line_proc[method_call_line]
                 method_call_offset = 0
                 while (match(method_call_rest, /[A-Za-z_][A-Za-z0-9_]*[ \t]*[.][ \t]*[A-Za-z_][A-Za-z0-9_]*[ \t]*[(]/)) {
                     method_call_text = substr(method_call_rest, RSTART, RLENGTH)
@@ -3523,7 +3546,7 @@ detect_professional_diagnostic() {
                     method_name = method_call_text
                     sub(/^.*[.][ \t]*/, "", method_name)
                     sub(/[ \t]*[(].*$/, "", method_name)
-                    receiver_type = decl_type[receiver_name]
+                    receiver_type = binding_type(method_call_scope, receiver_name)
                     provider_key = receiver_type SUBSEP method_name
                     if (receiver_type != "" && method_provider_count[provider_key] > 1) {
                         raw = source_line[method_call_line]
@@ -3555,7 +3578,7 @@ detect_professional_diagnostic() {
                                 expected_arg_type = method_provider_param[provider_key SUBSEP method_arg_index]
                                 actual_arg = trim(method_call_arg_parts[method_arg_index])
                                 actual_arg_type = primitive_literal_type(actual_arg)
-                                if (actual_arg_type == "" && (actual_arg in decl_type)) actual_arg_type = decl_type[actual_arg]
+                                if (actual_arg_type == "") actual_arg_type = binding_type(method_call_scope, actual_arg)
                                 if (expected_arg_type == "" || actual_arg_type == "" || seed_types_compatible(expected_arg_type, actual_arg_type)) continue
                                 raw = source_line[method_call_line]
                                 col = method_call_offset + method_call_open + index(method_call_args, actual_arg)
@@ -3590,7 +3613,7 @@ detect_professional_diagnostic() {
                                         "change the binding type or the method return type")
                                 }
                                 if (method_binding_type == "") {
-                                    remember_decl(method_binding_name, resolved_method_return, method_call_line, index(source_line[method_call_line], method_binding_name))
+                                    remember_decl_in(method_call_scope, method_binding_name, resolved_method_return, method_call_line, index(source_line[method_call_line], method_binding_name))
                                 }
                             }
                         }
@@ -3604,6 +3627,7 @@ detect_professional_diagnostic() {
         if (!found) {
             for (call_line_no = 1; call_line_no <= FNR; call_line_no++) {
                 call_code = source_code_line[call_line_no]
+                call_scope = line_proc[call_line_no]
                 call_trim = trim(call_code)
                 if (call_trim == "" || call_trim ~ /^proc[ \t]+/) continue
                 for (proc_order_index = 1; proc_order_index <= proc_order_count; proc_order_index++) {
@@ -3653,7 +3677,7 @@ detect_professional_diagnostic() {
                                     if (trim(proc_param_pattern[called_proc SUBSEP call_param_index]) == generic_param) {
                                         generic_call_arg = trim(call_arg_parts[call_param_index])
                                         resolved_generic_type = primitive_literal_type(generic_call_arg)
-                                        if (resolved_generic_type == "" && (generic_call_arg in decl_type)) resolved_generic_type = decl_type[generic_call_arg]
+                                        if (resolved_generic_type == "") resolved_generic_type = binding_type(call_scope, generic_call_arg)
                                         if (resolved_generic_type != "") break
                                     }
                                 }
@@ -3702,7 +3726,7 @@ detect_professional_diagnostic() {
                         }
                         actual_arg = trim(call_arg_parts[call_arg_index])
                         actual_arg_type = primitive_literal_type(actual_arg)
-                        if (actual_arg_type == "" && (actual_arg in decl_type)) actual_arg_type = decl_type[actual_arg]
+                        if (actual_arg_type == "") actual_arg_type = binding_type(call_scope, actual_arg)
                         if (expected_arg_type == "" || actual_arg_type == "" || seed_types_compatible(expected_arg_type, actual_arg_type)) continue
                         raw = source_line[call_line_no]
                         if (actual_arg ~ /^"/) {
@@ -3749,7 +3773,7 @@ detect_professional_diagnostic() {
                                 "change the binding type or the procedure return type")
                         }
                         if (call_binding_type == "") {
-                            remember_decl(call_binding_name, resolved_call_return, call_line_no, index(source_line[call_line_no], call_binding_name))
+                            remember_decl_in(call_scope, call_binding_name, resolved_call_return, call_line_no, index(source_line[call_line_no], call_binding_name))
                         }
                     }
                 }

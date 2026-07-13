@@ -883,6 +883,89 @@ def generated_cases() -> list[Case]:
         "TYPECK_E_CALL_ARITY",
         "function call arity",
     ))
+    cases.append(Case(
+        "nominal_argument_valid",
+        (
+            "space tests/typeck/differential/nominal_argument_valid\n\n"
+            "form Point { x: int }\n"
+            "proc take(point: Point) -> int { give 1 }\n"
+            "proc main() -> int {\n"
+            "  let point = Point { x: 1 }\n"
+            "  give take(point)\n"
+            "}\n"
+        ),
+        True,
+    ))
+    cases.append(Case(
+        "nominal_argument_mismatch",
+        (
+            "space tests/typeck/differential/nominal_argument_mismatch\n\n"
+            "form Point { x: int }\n"
+            "form Label { id: int }\n"
+            "proc take(point: Point) -> int { give 1 }\n"
+            "proc main() -> int {\n"
+            "  let label = Label { id: 1 }\n"
+            "  give take(label)\n"
+            "}\n"
+        ),
+        False,
+        "TYPECK_E_ARGUMENT_MISMATCH",
+        "function argument compatibility",
+    ))
+    cases.append(Case(
+        "nominal_call_return_valid",
+        (
+            "space tests/typeck/differential/nominal_call_return_valid\n\n"
+            "form Point { x: int }\n"
+            "proc make_point() -> Point {\n"
+            "  let point = Point { x: 1 }\n"
+            "  give point\n"
+            "}\n"
+            "proc main() -> int {\n"
+            "  let point: Point = make_point()\n"
+            "  give 0\n"
+            "}\n"
+        ),
+        True,
+    ))
+    cases.append(Case(
+        "nominal_call_return_mismatch",
+        (
+            "space tests/typeck/differential/nominal_call_return_mismatch\n\n"
+            "form Point { x: int }\n"
+            "form Label { id: int }\n"
+            "proc make_point() -> Point {\n"
+            "  let point = Point { x: 1 }\n"
+            "  give point\n"
+            "}\n"
+            "proc main() -> int {\n"
+            "  let label: Label = make_point()\n"
+            "  give 0\n"
+            "}\n"
+        ),
+        False,
+        "TYPECK_E_ASSIGN_MISMATCH",
+        "assignment type compatibility",
+    ))
+    cases.append(Case(
+        "nominal_bindings_are_procedure_scoped",
+        (
+            "space tests/typeck/differential/nominal_bindings_are_procedure_scoped\n\n"
+            "form Point { x: int }\n"
+            "form Label { id: int }\n"
+            "proc take(point: Point) -> int { give 1 }\n"
+            "proc first() -> int {\n"
+            "  let value = Point { x: 1 }\n"
+            "  give take(value)\n"
+            "}\n"
+            "proc second() -> int {\n"
+            "  let value = Label { id: 1 }\n"
+            "  give 0\n"
+            "}\n"
+            "proc main() -> int { give first() }\n"
+        ),
+        True,
+    ))
     return cases
 
 
@@ -1056,6 +1139,7 @@ def main() -> int:
             "procedure returns resolve local binding types before directional compatibility checks",
             "local procedure return types satisfy annotated bindings and propagate into inferred bindings",
             "generic call return types apply explicit or inferred substitutions before binding checks",
+            "simple nominal procedure parameters and returns preserve per-procedure exact type identity",
             "every rejected type-system case carries a two-step cause chain",
             "stage binaries agree on normalized typeck results",
             "repeated checks are deterministic",
