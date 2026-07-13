@@ -10,6 +10,7 @@ FIXTURES = ROOT / 'tests' / 'type_system'
 
 CONTRACT_FILES = {
     'typeck_mod': ROOT / 'src' / 'vitte' / 'compiler' / 'analysis' / 'typeck' / 'mod.vit',
+    'typeck_checker': ROOT / 'src' / 'vitte' / 'compiler' / 'analysis' / 'typeck' / 'checker.vit',
     'typeck_infer': ROOT / 'src' / 'vitte' / 'compiler' / 'analysis' / 'typeck' / 'infer.vit',
     'typeck_traits': ROOT / 'src' / 'vitte' / 'compiler' / 'analysis' / 'typeck' / 'traits.vit',
     'typeck_unify': ROOT / 'src' / 'vitte' / 'compiler' / 'analysis' / 'typeck' / 'unify.vit',
@@ -38,6 +39,11 @@ REQUIRED_SYMBOLS = {
         'unify',
         'soundness_roadmap',
     ],
+    'typeck_checker': [
+        'constrained_generic_type_binding',
+        'item_generic_bounds',
+        'trait_impl_binding_name',
+    ],
     'typeck_infer': [
         'TypeInferContext',
         'TypeSubstitution',
@@ -46,6 +52,8 @@ REQUIRED_SYMBOLS = {
         'infer_pattern_substitutions',
         'substitute_type',
         'typeck_generic_inference_failed',
+        'trait_bound_satisfied',
+        'typeck_trait_bound_unsatisfied',
         'type_binding',
         'type_env',
         'type_is_copy',
@@ -83,6 +91,8 @@ REQUIRED_SYMBOLS = {
         'test_generic_call_infers_and_substitutes_return_type',
         'test_generic_call_reports_unconstrained_parameter',
         'test_generic_substitution_replaces_identifiers_only',
+        'test_generic_trait_bound_accepts_visible_impl',
+        'test_generic_trait_bound_reports_unsatisfied_impl',
     ],
 }
 

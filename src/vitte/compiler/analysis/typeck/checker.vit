@@ -2,7 +2,7 @@ space vitte/compiler/analysis/typeck
 
 use vitte/compiler/analysis/typeck/coercion.{ types_compatible }
 use vitte/compiler/analysis/typeck/errors.{ TypeckDiagnostic, TypeckResult, add_unique_diag, typeck_assignment_mismatch, typeck_condition_type, typeck_diag, typeck_invalid_hir_result, typeck_non_exhaustive_match, typeck_return_mismatch }
-use vitte/compiler/analysis/typeck/infer.{ TypeBinding, env_get, env_has, env_index, env_set, generic_type_binding, infer_expr_type, param_type_binding }
+use vitte/compiler/analysis/typeck/infer.{ TypeBinding, constrained_generic_type_binding, env_get, env_has, env_index, env_set, infer_expr_type, param_type_binding, trait_impl_binding_name }
 use vitte/compiler/analysis/typeck/traits.{ type_is_copy, type_is_known, type_is_truthy }
 use vitte/compiler/middle/hir.{ HirExpr, HirItem, HirItemKind, HirModule, HirNominalMember, HirNominalMemberKind, HirProcParam, HirStmt, HirStmtKind, HirUnit }
 
@@ -100,6 +100,58 @@ proc nominal_member_binding_type(item: HirItem, member: HirNominalMember) -> str
   give bind_member_signature(item, member);
 }
 
+proc generic_param_index(params: [string], name: string) -> int {
+  let i: int = 0;
+  while i < len(params) {
+    if params[i] == name {
+      give i;
+    }
+    set i = i + 1;
+  }
+  give -1;
+}
+
+proc replace_generic_bound(bounds: [string], index: u64, bound: string) -> [string] {
+  let out: [string] = [];
+  let i: u64 = 0;
+  while i < len(bounds) {
+    if i == index {
+      let next_bound: string = if bounds[i] == "" { trim(bound) } else { bounds[i] + " + " + trim(bound) };
+      set out = out + [next_bound];
+    } else {
+      set out = out + [bounds[i]];
+    }
+    set i = i + 1;
+  }
+  give out;
+}
+
+proc item_generic_bounds(item: HirItem) -> [string] {
+  let bounds: [string] = [];
+  let i: u64 = 0;
+  while i < len(item.generic_params) {
+    let inline_bound: string = if i < len(item.generic_param_info) { item.generic_param_info[i].bound_text } else { "" };
+    set bounds = bounds + [inline_bound];
+    set i = i + 1;
+  }
+
+  let clause_index: u64 = 0;
+  while clause_index < len(item.where_clauses) {
+    let clause: string = trim(item.where_clauses[clause_index]);
+    let colon: int = find(clause, ":");
+    if colon > 0 {
+      let param_name: string = trim(slice(clause, 0, colon));
+      let bound: string = trim(slice(clause, colon + 1, len(clause)));
+      let index: int = generic_param_index(item.generic_params, param_name);
+      if index >= 0 and bound != "" {
+        set bounds = replace_generic_bound(bounds, index as u64, bound);
+      }
+    }
+    set clause_index = clause_index + 1;
+  }
+  give bounds;
+}
+
 proc nominal_type_bindings(items: [HirItem]) -> [TypeBinding] {
   let out: [TypeBinding] = [];
   let i: u64 = 0;
@@ -107,7 +159,10 @@ proc nominal_type_bindings(items: [HirItem]) -> [TypeBinding] {
     let item: HirItem = items[i];
     if item.name != "" and item.kind != HirItemKind.Space and item.kind != HirItemKind.Use and item.kind != HirItemKind.Export {
       if item.kind == HirItemKind.Proc {
-        set out = out + [generic_type_binding(item.name, proc_signature_type(item.params, item.annotation_text, item.target_type_text), item.generic_params)];
+        set out = out + [constrained_generic_type_binding(item.name, proc_signature_type(item.params, item.annotation_text, item.target_type_text), item.generic_params, item_generic_bounds(item))];
+      }
+      if item.kind == HirItemKind.Impl and item.name != "" and item.target_type_text != "" {
+        set out = env_set(out, trait_impl_binding_name(item.name, item.target_type_text), "impl");
       }
       set out = env_set(out, nominal_type_env_name(item.name), item.name);
       let owner_name: string = if item.kind == HirItemKind.Impl and item.target_type_text != "" { item.target_type_text } else { item.name };

@@ -628,6 +628,41 @@ proc test_generic_substitution_replaces_identifiers_only() -> bool {
   give substitute_type("fn(&T, List[U], TypeTag) -> T", substitutions) == "fn(&int, List[string], TypeTag) -> int";
 }
 
+proc test_generic_trait_bound_accepts_visible_impl() -> bool {
+  let source: string =
+    "form Point { x: int }\n" +
+    "trait Show { proc show(self: Self) -> string; }\n" +
+    "impl Show for Point { proc show(self: Self) -> string { give \"point\"; } }\n" +
+    "proc keep[T: Show](value: T) -> T { give value; }\n" +
+    "proc main() -> Point { let point = Point { x: 1 }; let kept = keep(point); give kept; }\n";
+  let fe: FrontendOutput = frontend_run("typeck_generic_trait_bound_ok.vit", source);
+  let hir = lower_ast_to_hir(fe);
+  let sema: SemaResult = run_sema_hir(hir);
+  let result: TypeckResult = run_production_typeck_hir(sema.hir);
+  let call = result.hir.module.items[4].stmts[1].expr;
+  give result.valid
+    and len(result.diagnostics) == 0
+    and call.inferred_type == "Point";
+}
+
+proc test_generic_trait_bound_reports_unsatisfied_impl() -> bool {
+  let source: string =
+    "trait Show { proc show(self: Self) -> string; }\n" +
+    "proc keep[T: Show](value: T) -> T { give value; }\n" +
+    "proc main() -> int { let kept = keep(7); give kept; }\n";
+  let fe: FrontendOutput = frontend_run("typeck_generic_trait_bound_error.vit", source);
+  let hir = lower_ast_to_hir(fe);
+  let sema: SemaResult = run_sema_hir(hir);
+  let result: TypeckResult = run_production_typeck_hir(sema.hir);
+  let diag = diagnostic_by_code(result, "TYPECK_E_TRAIT_BOUND");
+  give not result.valid
+    and diag.valid
+    and diag.rule == "trait bound satisfaction"
+    and diag.subject_type == "int"
+    and len(diag.cause_chain) >= 2
+    and find(diag.probable_fix, "impl") >= 0;
+}
+
 proc test_if_branch_mismatch_carries_unification_rule() -> bool {
   let source: string = "proc main() { let x = if true { 1 } else { \"oops\" }; give x; }\n";
   let fe: FrontendOutput = frontend_run("typeck_if_branch_mismatch.vit", source);
@@ -948,6 +983,12 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if not test_generic_substitution_replaces_identifiers_only() {
+    set failures = failures + 1;
+  }
+  if not test_generic_trait_bound_accepts_visible_impl() {
+    set failures = failures + 1;
+  }
+  if not test_generic_trait_bound_reports_unsatisfied_impl() {
     set failures = failures + 1;
   }
   if not test_if_branch_mismatch_carries_unification_rule() {
