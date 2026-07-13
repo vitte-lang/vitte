@@ -1,10 +1,10 @@
 space vitte/compiler/analysis/typeck
 
 use vitte/compiler/analysis/typeck/errors.{ TypeckResult, add_unique_diag, typeck_assignment_mismatch, typeck_condition_type, typeck_conflicting_impl, typeck_constraint_cycle, typeck_diag, typeck_invalid_hir_result, typeck_non_exhaustive_match, typeck_result, typeck_return_mismatch }
-use vitte/compiler/analysis/typeck/infer.{ TypeBinding, constrained_generic_type_binding, env_get, env_has, env_index, env_set, expression_types_compatible, infer_expr_type, param_type_binding, trait_impl_binding_name, type_identifier_index }
+use vitte/compiler/analysis/typeck/infer.{ TypeBinding, constrained_generic_type_binding, env_get, env_has, env_index, env_set, expression_types_compatible, infer_expr_type, param_type_binding, resolved_call_generic_arguments, trait_impl_binding_name, type_identifier_index }
 use vitte/compiler/analysis/typeck/traits.{ type_is_copy, type_is_known, type_is_truthy }
 use vitte/compiler/diagnostics/diagnostic.{ Diagnostic }
-use vitte/compiler/middle/hir.{ HirExpr, HirItem, HirItemKind, HirModule, HirNominalMember, HirNominalMemberKind, HirProcParam, HirStmt, HirStmtKind, HirUnit }
+use vitte/compiler/middle/hir.{ HirExpr, HirExprKind, HirItem, HirItemKind, HirModule, HirNominalMember, HirNominalMemberKind, HirProcParam, HirStmt, HirStmtKind, HirUnit }
 
 form TypeckStmtWalk {
   stmts: [HirStmt]
@@ -591,6 +591,11 @@ proc annotate_expr(env: [TypeBinding], expr: HirExpr) -> HirExpr {
     valid: expr.valid
   };
   let inferred = infer_expr_type(env, base);
+  let generic_arguments: [string] = if base.kind == HirExprKind.Call and inferred.valid {
+    resolved_call_generic_arguments(env, base)
+  } else {
+    base.generic_arguments
+  };
   give HirExpr {
     id: base.id,
     span: base.span,
@@ -606,7 +611,7 @@ proc annotate_expr(env: [TypeBinding], expr: HirExpr) -> HirExpr {
     inferred_type: inferred.ty,
     place_category: base.place_category,
     copyable: type_is_copy(inferred.ty),
-    generic_arguments: base.generic_arguments,
+    generic_arguments: generic_arguments,
     diagnostics: base.diagnostics,
     children: children,
     valid: base.valid

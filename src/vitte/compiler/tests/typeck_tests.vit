@@ -552,7 +552,25 @@ proc test_generic_call_infers_and_substitutes_return_type() -> bool {
   give result.valid
     and len(result.diagnostics) == 0
     and call.kind == HirExprKind.Call
-    and call.inferred_type == "int";
+    and call.inferred_type == "int"
+    and len(call.generic_arguments) == 1
+    and call.generic_arguments[0] == "int";
+}
+
+proc test_typed_hir_preserves_explicit_generic_instance() -> bool {
+  let source: string =
+    "proc identity[T](value: T) -> T { give value; }\n" +
+    "proc main() -> string { let value = identity<string>(\"value\"); give value; }\n";
+  let fe: FrontendOutput = frontend_run("typeck_generic_explicit_hir.vit", source);
+  let hir = lower_ast_to_hir(fe);
+  let sema: SemaResult = run_sema_hir(hir);
+  let result: TypeckResult = run_production_typeck_hir(sema.hir);
+  let call = result.hir.module.items[1].stmts[0].expr;
+  give result.valid
+    and len(result.diagnostics) == 0
+    and call.inferred_type == "string"
+    and len(call.generic_arguments) == 1
+    and call.generic_arguments[0] == "string";
 }
 
 proc test_generic_call_honors_explicit_type_argument() -> bool {
@@ -1116,6 +1134,9 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if not test_generic_call_infers_and_substitutes_return_type() {
+    set failures = failures + 1;
+  }
+  if not test_typed_hir_preserves_explicit_generic_instance() {
     set failures = failures + 1;
   }
   if not test_generic_call_honors_explicit_type_argument() {

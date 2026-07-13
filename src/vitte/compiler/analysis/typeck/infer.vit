@@ -1048,6 +1048,66 @@ proc function_return_type(ty: string) -> string {
     give trim(slice(value, arrow + 2, len(value)));
 }
 
+proc infer_call_substitutions(env: [TypeBinding], expr: HirExpr) -> [TypeSubstitution] {
+    let generic_params: [string] = call_generic_params(env, expr);
+    let substitutions: [TypeSubstitution] = [];
+
+    let explicit_index: u64 = 0;
+    while explicit_index < len(expr.generic_arguments) and explicit_index < len(generic_params) {
+        let substitution: TypeSubstitution = type_substitution(
+            generic_params[explicit_index],
+            expr.generic_arguments[explicit_index],
+            true
+        );
+        if substitution.valid {
+            set substitutions = set_substitution(substitutions, substitution);
+        }
+        set explicit_index = explicit_index + 1;
+    }
+
+    if len(expr.children) == 0 {
+        give substitutions;
+    }
+
+    let callee: ExprTypeResult = infer_expr_type(env, expr.children[0]);
+    if not type_is_function(callee.ty) {
+        give substitutions;
+    }
+
+    let param_types: [string] = function_param_types(callee.ty);
+    let variadic: bool = len(param_types) > 0 and function_param_is_variadic(param_types[len(param_types) - 1]);
+    let fixed_count: u64 = if variadic { len(param_types) - 1 } else { len(param_types) };
+    let i: u64 = 1;
+    while i < len(expr.children) and i - 1 < fixed_count {
+        let arg: ExprTypeResult = infer_expr_type(env, expr.children[i]);
+        let expected_pattern: string = normalize_function_param_type(param_types[i - 1]);
+        set substitutions = infer_pattern_substitutions(substitutions, generic_params, expected_pattern, arg.ty);
+        set i = i + 1;
+    }
+
+    give substitutions;
+}
+
+proc resolved_call_generic_arguments(env: [TypeBinding], expr: HirExpr) -> [string] {
+    let generic_params: [string] = call_generic_params(env, expr);
+    if len(generic_params) == 0 or len(expr.generic_arguments) > len(generic_params) {
+        give expr.generic_arguments;
+    }
+
+    let substitutions: [TypeSubstitution] = infer_call_substitutions(env, expr);
+    let resolved: [string] = [];
+    let i: u64 = 0;
+    while i < len(generic_params) {
+        let index: int = substitution_index(substitutions, generic_params[i]);
+        if index < 0 {
+            give expr.generic_arguments;
+        }
+        set resolved = resolved + [substitutions[index].resolved_type];
+        set i = i + 1;
+    }
+    give resolved;
+}
+
 proc infer_call_type(env: [TypeBinding], expr: HirExpr) -> ExprTypeResult {
     let diagnostics: [Diagnostic] = [];
     let valid: bool = true;
@@ -1055,7 +1115,7 @@ proc infer_call_type(env: [TypeBinding], expr: HirExpr) -> ExprTypeResult {
     let callee_text: string = expr.text;
     let generic_params: [string] = call_generic_params(env, expr);
     let generic_bounds: [string] = call_generic_bounds(env, expr);
-    let substitutions: [TypeSubstitution] = [];
+    let substitutions: [TypeSubstitution] = infer_call_substitutions(env, expr);
 
     if len(expr.children) > 0 {
         let callee: ExprTypeResult = infer_expr_type(env, expr.children[0]);
@@ -1095,9 +1155,7 @@ proc infer_call_type(env: [TypeBinding], expr: HirExpr) -> ExprTypeResult {
     while explicit_index < len(expr.generic_arguments) and explicit_index < len(generic_params) {
         let explicit_type: string = trim(expr.generic_arguments[explicit_index]);
         let substitution: TypeSubstitution = type_substitution(generic_params[explicit_index], explicit_type, true);
-        if substitution.valid {
-            set substitutions = set_substitution(substitutions, substitution);
-        } else {
+        if not substitution.valid {
             set diagnostics = add_unique_diag(diagnostics, typeck_generic_inference_failed(generic_params[explicit_index], expr.span));
             set valid = false;
         }
@@ -1117,7 +1175,6 @@ proc infer_call_type(env: [TypeBinding], expr: HirExpr) -> ExprTypeResult {
 
         if type_is_function(callee_ty) and param_index < fixed_count {
             let expected_pattern: string = normalize_function_param_type(param_types[param_index]);
-            set substitutions = infer_pattern_substitutions(substitutions, generic_params, expected_pattern, arg.ty);
             let expected_ty: string = substitute_type(expected_pattern, substitutions);
 
             let arg_type_known: bool = arg.ty != "opaque" and arg.ty != "unknown";
