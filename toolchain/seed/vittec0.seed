@@ -2425,7 +2425,7 @@ detect_professional_diagnostic() {
             "trait method " active_nominal_owner "." method_name " declared here: " file ":" trait_method_line[key],
             "add method " method_name " with the signature declared by trait " active_nominal_owner)
     }
-    function index_nominal_methods(kind, owner, target, body, start_line,    rest, offset, matched, proc_rel, signature_start, signature, method_name, open_col, close_col, params_text, param_count, return_tail, return_type, method_line, prefix, key, i, expected_type, actual_type, advance, scan_id, required_name, provider_key, provider_seen_key, params) {
+    function index_nominal_methods(kind, owner, target, body, start_line,    rest, offset, matched, proc_rel, signature_start, signature, method_name, open_col, close_col, params_text, param_count, return_tail, return_type, method_line, prefix, key, i, expected_type, actual_type, advance, scan_id, required_name, provider_key, provider_seen_key, bound_param_count, first_param_type, params) {
         rest = body
         offset = 0
         scan_id = 0
@@ -2477,6 +2477,12 @@ detect_professional_diagnostic() {
                     method_provider_count[provider_key]++
                     if (method_provider_text[provider_key] != "") method_provider_text[provider_key] = method_provider_text[provider_key] ", "
                     method_provider_text[provider_key] = method_provider_text[provider_key] owner
+                    bound_param_count = param_count
+                    if (param_count > 0) {
+                        first_param_type = method_param_type(params[1])
+                        if (first_param_type == "Self" || first_param_type == target) bound_param_count--
+                    }
+                    method_provider_arity[provider_key] = bound_param_count
                 }
                 if (trait_method_known[key]) {
                     if (param_count != trait_method_param_count[key]) {
@@ -3497,6 +3503,24 @@ detect_professional_diagnostic() {
                             "method providers: " method_provider_text[provider_key],
                             "remove one competing impl or use an explicitly qualified trait call")
                     }
+                    if (receiver_type != "" && method_provider_count[provider_key] == 1) {
+                        method_call_open = RSTART + RLENGTH - 1
+                        method_call_close = matching_call_paren(method_call_rest, method_call_open)
+                        if (method_call_close > 0) {
+                            method_call_args = substr(method_call_rest, method_call_open + 1, method_call_close - method_call_open - 1)
+                            method_call_arg_count = split_call_args(method_call_args, method_call_arg_parts)
+                            if (method_call_arg_count != method_provider_arity[provider_key]) {
+                                raw = source_line[method_call_line]
+                                col = method_call_offset + RSTART + index(method_call_text, method_name) - 1
+                                emit("TYPECK_E_CALL_ARITY", "error", "typeck",
+                                    "method " receiver_type "." method_name " expects " method_provider_arity[provider_key] " arguments but received " method_call_arg_count,
+                                    method_call_line, col, col + length(method_name), raw,
+                                    "expected " method_provider_arity[provider_key] " arguments, found " method_call_arg_count,
+                                    "the receiver binds the Self parameter before call arity is checked",
+                                    "pass exactly " method_provider_arity[provider_key] " explicit arguments to " method_name)
+                            }
+                        }
+                    }
                     method_call_advance = RSTART + RLENGTH - 1
                     method_call_offset += method_call_advance
                     method_call_rest = substr(method_call_rest, method_call_advance + 1)
@@ -4084,10 +4108,10 @@ render_professional_diagnostic_surface_json() {
             cause_b_json="$(json_escape "the call argument infers an incompatible type")"
         elif [ "$code" = "TYPECK_E_CALL_ARITY" ]; then
             rule_json="$(json_escape "function call arity")"
-            explanation_json="$(json_escape "The number of call arguments does not match the number of parameters required by the local procedure signature.")"
-            technical_json="$(json_escape "Detected after resolving a local call target and counting its arguments and fixed parameters.")"
+            explanation_json="$(json_escape "The number of call arguments does not match the number of parameters required by the resolved callable signature.")"
+            technical_json="$(json_escape "Detected after resolving a local procedure or uniquely bound method and counting explicit arguments against fixed parameters.")"
             docs_json="$(json_escape "docs://language/type-system/call-arity")"
-            root_json="$(json_escape "call argument count and procedure parameter count differ")"
+            root_json="$(json_escape "call argument count and callable parameter count differ")"
             cause_a_json="$(json_escape "the callee signature establishes the required argument count")"
             cause_b_json="$(json_escape "the call site provides a different argument count")"
         elif [ "$code" = "TYPECK_E_GENERIC_INFERENCE" ]; then

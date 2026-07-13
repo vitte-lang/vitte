@@ -574,6 +574,38 @@ def generated_cases() -> list[Case]:
         "TYPECK_E_AMBIGUOUS_METHOD",
         "unique method candidate",
     ))
+    cases.append(Case(
+        "bound_method_arity_valid",
+        (
+            "space tests/typeck/differential/bound_method_arity_valid\n\n"
+            "form Point { x: int }\n"
+            "trait Show { proc show(self: Self, level: int) -> string; }\n"
+            "impl Show for Point { proc show(self: Self, level: int) -> string { give \"point\" } }\n"
+            "proc main() -> int {\n"
+            "  let point = Point { x: 1 }\n"
+            "  let text = point.show(7)\n"
+            "  give 0\n"
+            "}\n"
+        ),
+        True,
+    ))
+    cases.append(Case(
+        "bound_method_arity_missing_argument",
+        (
+            "space tests/typeck/differential/bound_method_arity_missing_argument\n\n"
+            "form Point { x: int }\n"
+            "trait Show { proc show(self: Self, level: int) -> string; }\n"
+            "impl Show for Point { proc show(self: Self, level: int) -> string { give \"point\" } }\n"
+            "proc main() -> int {\n"
+            "  let point = Point { x: 1 }\n"
+            "  let text = point.show()\n"
+            "  give 0\n"
+            "}\n"
+        ),
+        False,
+        "TYPECK_E_CALL_ARITY",
+        "function call arity",
+    ))
     return cases
 
 
@@ -740,6 +772,7 @@ def main() -> int:
             "local trait implementations provide every required method regardless of declaration order",
             "local impl trait names resolve after complete source-order-independent declaration indexing",
             "method dispatch requires one visible impl provider for the resolved receiver type",
+            "bound method arity excludes the receiver Self parameter from explicit arguments",
             "every rejected type-system case carries a two-step cause chain",
             "stage binaries agree on normalized typeck results",
             "repeated checks are deterministic",
