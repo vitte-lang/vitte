@@ -1,8 +1,8 @@
 space vitte/compiler/analysis/typeck
 
 use vitte/compiler/analysis/typeck/coercion.{ types_compatible }
-use vitte/compiler/analysis/typeck/errors.{ TypeckResult, add_unique_diag, typeck_assignment_mismatch, typeck_condition_type, typeck_conflicting_impl, typeck_diag, typeck_invalid_hir_result, typeck_non_exhaustive_match, typeck_result, typeck_return_mismatch }
-use vitte/compiler/analysis/typeck/infer.{ TypeBinding, constrained_generic_type_binding, env_get, env_has, env_index, env_set, infer_expr_type, param_type_binding, trait_impl_binding_name }
+use vitte/compiler/analysis/typeck/errors.{ TypeckResult, add_unique_diag, typeck_assignment_mismatch, typeck_condition_type, typeck_conflicting_impl, typeck_constraint_cycle, typeck_diag, typeck_invalid_hir_result, typeck_non_exhaustive_match, typeck_result, typeck_return_mismatch }
+use vitte/compiler/analysis/typeck/infer.{ TypeBinding, constrained_generic_type_binding, env_get, env_has, env_index, env_set, infer_expr_type, param_type_binding, trait_impl_binding_name, type_identifier_index }
 use vitte/compiler/analysis/typeck/traits.{ type_is_copy, type_is_known, type_is_truthy }
 use vitte/compiler/diagnostics/diagnostic.{ Diagnostic }
 use vitte/compiler/middle/hir.{ HirExpr, HirItem, HirItemKind, HirModule, HirNominalMember, HirNominalMemberKind, HirProcParam, HirStmt, HirStmtKind, HirUnit }
@@ -151,6 +151,85 @@ proc item_generic_bounds(item: HirItem) -> [string] {
     set clause_index = clause_index + 1;
   }
   give bounds;
+}
+
+proc string_list_contains(values: [string], value: string) -> bool {
+  let i: u64 = 0;
+  while i < len(values) {
+    if values[i] == value {
+      give true;
+    }
+    set i = i + 1;
+  }
+  give false;
+}
+
+proc direct_bound_references_param(bound_text: string, param_name: string) -> bool {
+  let bounds: [string] = split(bound_text, "+");
+  let i: u64 = 0;
+  while i < len(bounds) {
+    if trim(bounds[i]) == param_name {
+      give true;
+    }
+    set i = i + 1;
+  }
+  give false;
+}
+
+proc generic_constraint_references(item: HirItem, source_index: u64, target_param: string) -> bool {
+  let bounds: [string] = item_generic_bounds(item);
+  if source_index < len(bounds) and direct_bound_references_param(bounds[source_index], target_param) {
+    give true;
+  }
+  if source_index < len(item.generic_param_info) {
+    let default_type: string = item.generic_param_info[source_index].default_type_text;
+    if default_type != "" and type_identifier_index(default_type, target_param) >= 0 {
+      give true;
+    }
+  }
+  give false;
+}
+
+proc generic_constraint_reaches(item: HirItem, source_index: u64, target_param: string, visited: [string]) -> bool {
+  if source_index >= len(item.generic_params) or len(visited) > len(item.generic_params) {
+    give false;
+  }
+
+  let i: u64 = 0;
+  while i < len(item.generic_params) {
+    let dependency: string = item.generic_params[i];
+    if generic_constraint_references(item, source_index, dependency) {
+      if dependency == target_param {
+        give true;
+      }
+      if not string_list_contains(visited, dependency)
+        and generic_constraint_reaches(item, i, target_param, visited + [dependency]) {
+        give true;
+      }
+    }
+    set i = i + 1;
+  }
+  give false;
+}
+
+proc generic_constraint_cycle_start(item: HirItem) -> string {
+  let i: u64 = 0;
+  while i < len(item.generic_params) {
+    let param_name: string = item.generic_params[i];
+    if generic_constraint_reaches(item, i, param_name, [param_name]) {
+      give param_name;
+    }
+    set i = i + 1;
+  }
+  give "";
+}
+
+proc check_generic_constraint_cycles(item: HirItem) -> [Diagnostic] {
+  let cycle_start: string = generic_constraint_cycle_start(item);
+  if cycle_start == "" {
+    give [];
+  }
+  give [typeck_constraint_cycle(item.name, cycle_start, item.span)];
 }
 
 proc nominal_type_bindings(items: [HirItem]) -> [TypeBinding] {
@@ -534,6 +613,7 @@ proc check_module(diagnostics: [Diagnostic], env: [TypeBinding], hir: HirUnit) -
   let i: u64 = 0;
   while i < len(hir.module.items) {
     let item: HirItem = hir.module.items[i];
+    set out = out + check_generic_constraint_cycles(item);
     if item.kind == HirItemKind.Unknown {
       set out = add_unique_diag(out, typeck_diag(
         "TYPECK_E_UNKNOWN_ITEM",

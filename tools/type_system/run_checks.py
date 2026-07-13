@@ -101,6 +101,7 @@ REQUIRED_SYMBOLS = {
         'test_generic_trait_bound_accepts_visible_impl',
         'test_generic_trait_bound_reports_unsatisfied_impl',
         'test_typeck_rejects_conflicting_trait_impls',
+        'test_typeck_rejects_cyclic_generic_constraints',
         'test_typeck_result_enforces_diagnostic_cause_chains',
     ],
 }

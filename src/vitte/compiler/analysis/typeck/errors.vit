@@ -513,6 +513,16 @@ proc typeck_conflicting_impl(trait_name: string, target_type: string, first_span
     give diagnostic_with_probable_fix(diag8, "keep a single impl for `" + trait_name + " for " + target_type + "`");
 }
 
+proc typeck_constraint_cycle(item_name: string, param_name: string, span: AstSpan) -> Diagnostic {
+    let diag0: Diagnostic = typed_typeck_diag("TYPECK_E_CONSTRAINT_CYCLE", "cyclic generic constraint", [item_name, param_name], "remove or redirect one generic dependency in the cycle", span, DiagnosticSeverity.Error, DiagnosticPhase.Typeck, TypeckErrorKind.TypeMismatch);
+    let diag1: Diagnostic = diagnostic_with_rule(diag0, "generic constraint acyclicity");
+    let diag2: Diagnostic = diagnostic_with_explanation(diag1, "generic parameter `" + param_name + "` in `" + item_name + "` depends on itself through other generic parameters");
+    let diag3: Diagnostic = diagnostic_add_cause(diag2, "constraint resolution starts from `" + param_name + "`");
+    let diag4: Diagnostic = diagnostic_add_cause(diag3, "following direct bounds or default types reaches `" + param_name + "` again");
+    let diag5: Diagnostic = diagnostic_with_subject_symbol(diag4, param_name);
+    give diagnostic_with_probable_fix(diag5, "replace one dependency with a concrete trait or type so the constraint graph is acyclic");
+}
+
 proc typeck_cause_chain_missing(code: string, span: AstSpan) -> Diagnostic {
     let diag0: Diagnostic = typed_typeck_diag("TYPECK_E_CAUSE_CHAIN_MISSING", "type diagnostic is missing a cause chain", [code], "attach expected and found origins to this type diagnostic", span, DiagnosticSeverity.Fatal, DiagnosticPhase.Typeck, TypeckErrorKind.Internal);
     let diag1: Diagnostic = diagnostic_with_rule(diag0, "type diagnostic cause-chain completeness");
@@ -625,6 +635,7 @@ share typeck_invalid_call_arity
 share typeck_generic_inference_failed
 share typeck_trait_bound_unsatisfied
 share typeck_conflicting_impl
+share typeck_constraint_cycle
 share typeck_cause_chain_missing
 share typeck_code_requires_cause_chain
 share source_span_to_ast_span

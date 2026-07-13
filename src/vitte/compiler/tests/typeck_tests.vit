@@ -683,6 +683,21 @@ proc test_typeck_rejects_conflicting_trait_impls() -> bool {
     and len(diag.labels) >= 2;
 }
 
+proc test_typeck_rejects_cyclic_generic_constraints() -> bool {
+  let source: string = "proc cycle[T: U, U: T](value: T) -> T { give value; }\n";
+  let fe: FrontendOutput = frontend_run("typeck_constraint_cycle.vit", source);
+  let hir = lower_ast_to_hir(fe);
+  let result: TypeckResult = run_production_typeck_hir(hir);
+  let diag = diagnostic_by_code(result, "TYPECK_E_CONSTRAINT_CYCLE");
+  give fe.valid
+    and not result.valid
+    and diag.valid
+    and diag.rule == "generic constraint acyclicity"
+    and diag.subject_symbol == "T"
+    and len(diag.cause_chain) >= 2
+    and find(diag.probable_fix, "acyclic") >= 0;
+}
+
 proc test_if_branch_mismatch_carries_unification_rule() -> bool {
   let source: string = "proc main() { let x = if true { 1 } else { \"oops\" }; give x; }\n";
   let fe: FrontendOutput = frontend_run("typeck_if_branch_mismatch.vit", source);
@@ -1036,6 +1051,9 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if not test_typeck_rejects_conflicting_trait_impls() {
+    set failures = failures + 1;
+  }
+  if not test_typeck_rejects_cyclic_generic_constraints() {
     set failures = failures + 1;
   }
   if not test_if_branch_mismatch_carries_unification_rule() {

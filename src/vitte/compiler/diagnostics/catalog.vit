@@ -184,6 +184,9 @@ proc versioned_diagnostic_lookup(code: string) -> VersionedDiagnosticCode {
   if code == "TYPECK_E_CONFLICTING_IMPL" {
     give versioned_diagnostic_code(code, "typeck", "trait-resolution", "trait implementation coherence", "remove-conflicting-impl", "high", "docs://language/type-system", "impl Show for Point { ... } impl Show for Point { ... }", "impl Show for Point { ... }")
   }
+  if code == "TYPECK_E_CONSTRAINT_CYCLE" {
+    give versioned_diagnostic_code(code, "typeck", "generic-inference", "generic constraint acyclicity", "break-constraint-cycle", "high", "docs://language/type-system", "proc f[T: U, U: T]()", "proc f[T: Display, U: T]()")
+  }
   if code == "TYPECK_E_CAUSE_CHAIN_MISSING" {
     give versioned_diagnostic_code(code, "typeck", "diagnostic-quality", "type diagnostic cause chain", "attach-cause-chain", "high", "docs://compiler/diagnostics", "emit_type_error(code)", "emit_type_error(with_causes(code))")
   }
@@ -295,6 +298,8 @@ proc bootstrap_catalog() -> DiagnosticCatalog {
   set catalog = register(catalog, diagnostic_code("TYPECK_E_TRAIT_BOUND", DiagnosticCategory.Typeck, DiagnosticSeverity.Error, "trait constraint is not satisfied", "no visible implementation satisfies the required trait bound"))
 
   set catalog = register(catalog, diagnostic_code("TYPECK_E_CONFLICTING_IMPL", DiagnosticCategory.Typeck, DiagnosticSeverity.Error, "conflicting trait implementation", "more than one implementation targets the same trait and type"))
+
+  set catalog = register(catalog, diagnostic_code("TYPECK_E_CONSTRAINT_CYCLE", DiagnosticCategory.Typeck, DiagnosticSeverity.Error, "cyclic generic constraint", "generic bounds or defaults form a dependency cycle"))
 
   set catalog = register(catalog, diagnostic_code("TYPECK_E_CAUSE_CHAIN_MISSING", DiagnosticCategory.Typeck, DiagnosticSeverity.Fatal, "type diagnostic is missing a cause chain", "internal type diagnostic contract requires expected and found origins"))
 

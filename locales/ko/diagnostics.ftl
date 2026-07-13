@@ -158,6 +158,7 @@ TYPECK_E_GENERIC_INFERENCE = 제네릭 타입 could not be inferred
 TYPECK_E_TRAIT_BOUND = trait constraint is not satisfied
 TYPECK_E_CAUSE_CHAIN_MISSING = 타입 diagnostic is 누락 a cause chain
 TYPECK_E_CONFLICTING_IMPL = 충돌하는 트레이트 구현
+TYPECK_E_CONSTRAINT_CYCLE = 순환 제네릭 제약 조건
 TYPECK_E_USE_BEFORE_INIT = use before init
 TYPECK_E_USE_AFTER_MOVE = use after 이동
 TYPECK_E_MALFORMED_UNARY = malformed unary

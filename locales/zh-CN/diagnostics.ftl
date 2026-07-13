@@ -158,6 +158,7 @@ TYPECK_E_GENERIC_INFERENCE = 泛型 类型 could not be inferred
 TYPECK_E_TRAIT_BOUND = trait constraint is not satisfied
 TYPECK_E_CAUSE_CHAIN_MISSING = 类型 diagnostic is 缺失 a cause chain
 TYPECK_E_CONFLICTING_IMPL = 冲突的特征实现
+TYPECK_E_CONSTRAINT_CYCLE = 循环泛型约束
 TYPECK_E_USE_BEFORE_INIT = use before init
 TYPECK_E_USE_AFTER_MOVE = use after 移动
 TYPECK_E_MALFORMED_UNARY = malformed unary
