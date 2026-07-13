@@ -677,6 +677,75 @@ def generated_cases() -> list[Case]:
         "TYPECK_E_ARGUMENT_MISMATCH",
         "function argument compatibility",
     ))
+    cases.append(Case(
+        "local_binding_argument_valid",
+        (
+            "space tests/typeck/differential/local_binding_argument_valid\n\n"
+            "proc take(value: int) -> int { give value }\n"
+            "proc main() -> int {\n"
+            "  let count: int = 7\n"
+            "  give take(count)\n"
+            "}\n"
+        ),
+        True,
+    ))
+    cases.append(Case(
+        "local_binding_bool_argument_valid",
+        (
+            "space tests/typeck/differential/local_binding_bool_argument_valid\n\n"
+            "proc choose(value: bool) -> int { give 1 }\n"
+            "proc main() -> int {\n"
+            "  let condition = true\n"
+            "  give choose(condition)\n"
+            "}\n"
+        ),
+        True,
+    ))
+    cases.append(Case(
+        "local_binding_argument_mismatch",
+        (
+            "space tests/typeck/differential/local_binding_argument_mismatch\n\n"
+            "proc take(value: int) -> int { give value }\n"
+            "proc main() -> int {\n"
+            "  let text = \"seven\"\n"
+            "  give take(text)\n"
+            "}\n"
+        ),
+        False,
+        "TYPECK_E_ARGUMENT_MISMATCH",
+        "function argument compatibility",
+    ))
+    cases.append(Case(
+        "generic_trait_bound_binding_satisfied",
+        (
+            "space tests/typeck/differential/generic_trait_bound_binding_satisfied\n\n"
+            "trait Show { proc show(self: Self) -> string; }\n"
+            "impl Show for string { proc show(self: Self) -> string { give self } }\n"
+            "proc keep[T: Show](value: T) -> T { give value }\n"
+            "proc main() -> int {\n"
+            "  let text = \"visible\"\n"
+            "  let kept = keep(text)\n"
+            "  give 0\n"
+            "}\n"
+        ),
+        True,
+    ))
+    cases.append(Case(
+        "generic_trait_bound_binding_unsatisfied",
+        (
+            "space tests/typeck/differential/generic_trait_bound_binding_unsatisfied\n\n"
+            "trait Show { proc show(self: Self) -> string; }\n"
+            "proc keep[T: Show](value: T) -> T { give value }\n"
+            "proc main() -> int {\n"
+            "  let text = \"hidden\"\n"
+            "  let kept = keep(text)\n"
+            "  give 0\n"
+            "}\n"
+        ),
+        False,
+        "TYPECK_E_TRAIT_BOUND",
+        "trait bound satisfaction",
+    ))
     return cases
 
 
@@ -846,6 +915,7 @@ def main() -> int:
             "bound method arity excludes the receiver Self parameter from explicit arguments",
             "bound method arguments satisfy explicit parameter types after Self binding",
             "bound method returns satisfy annotated bindings and propagate into inferred local bindings",
+            "local procedure and generic arguments resolve binding types before compatibility and trait-bound checks",
             "every rejected type-system case carries a two-step cause chain",
             "stage binaries agree on normalized typeck results",
             "repeated checks are deterministic",

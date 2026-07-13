@@ -2749,8 +2749,14 @@ detect_professional_diagnostic() {
         code_line = strip_strings(raw)
         code_trim = trim(code_line)
         source_code_line[FNR] = code_line
-        if (code_trim ~ /^let[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*:[ \t]*string[ \t]*=[ \t]*S([ \t]*[+][ \t]*)?$/ ||
-            code_trim ~ /^S([ \t]*[+][ \t]*)?$/) {
+        if (code_trim ~ /^let[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*:[ \t]*string[ \t]*=[ \t]*S([ \t]*[+][ \t]*)?$/) {
+            string_binding = code_trim
+            sub(/^let[ \t]+/, "", string_binding)
+            sub(/[ \t]*:.*$/, "", string_binding)
+            remember_decl(string_binding, "string", FNR, index(raw, string_binding))
+            next
+        }
+        if (code_trim ~ /^S([ \t]*[+][ \t]*)?$/) {
             next
         }
 
@@ -3272,6 +3278,18 @@ detect_professional_diagnostic() {
             name = rest
             sub(/[ \t]*=.*/, "", name)
             remember_decl(name, "int", FNR, index(raw, name))
+        } else if (line ~ /^[ \t]*let[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*=[ \t]*(true|false)[ \t;]*$/) {
+            rest = line
+            sub(/^[ \t]*let[ \t]+/, "", rest)
+            name = rest
+            sub(/[ \t]*=.*/, "", name)
+            remember_decl(name, "bool", FNR, index(raw, name))
+        } else if (code_trim ~ /^[ \t]*let[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*=[ \t]*S[ \t;]*$/) {
+            rest = code_trim
+            sub(/^[ \t]*let[ \t]+/, "", rest)
+            name = rest
+            sub(/[ \t]*=.*/, "", name)
+            remember_decl(name, "string", FNR, index(raw, name))
         }
 
         if (line ~ /^[ \t]*let[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*:[ \t]*[A-Z][A-Za-z0-9_]*[ \t]*=/) {
@@ -3622,7 +3640,9 @@ detect_professional_diagnostic() {
                             } else {
                                 for (call_param_index = 1; call_param_index <= proc_param_count[called_proc] && call_param_index <= call_arg_count; call_param_index++) {
                                     if (trim(proc_param_pattern[called_proc SUBSEP call_param_index]) == generic_param) {
-                                        resolved_generic_type = primitive_literal_type(call_arg_parts[call_param_index])
+                                        generic_call_arg = trim(call_arg_parts[call_param_index])
+                                        resolved_generic_type = primitive_literal_type(generic_call_arg)
+                                        if (resolved_generic_type == "" && (generic_call_arg in decl_type)) resolved_generic_type = decl_type[generic_call_arg]
                                         if (resolved_generic_type != "") break
                                     }
                                 }
@@ -3666,9 +3686,10 @@ detect_professional_diagnostic() {
                         expected_arg_type = proc_param_type[called_proc SUBSEP call_arg_index]
                         actual_arg = trim(call_arg_parts[call_arg_index])
                         actual_arg_type = primitive_literal_type(actual_arg)
-                        if (expected_arg_type == "" || actual_arg_type == "" || primitive_types_compatible(expected_arg_type, actual_arg_type)) continue
+                        if (actual_arg_type == "" && (actual_arg in decl_type)) actual_arg_type = decl_type[actual_arg]
+                        if (expected_arg_type == "" || actual_arg_type == "" || seed_types_compatible(expected_arg_type, actual_arg_type)) continue
                         raw = source_line[call_line_no]
-                        if (actual_arg_type == "string") {
+                        if (actual_arg ~ /^"/) {
                             relative_col = index(substr(raw, call_open_col + 1), "\"")
                             if (relative_col > 0) col = call_open_col + relative_col
                             else col = call_open_col + 1
