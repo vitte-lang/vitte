@@ -127,6 +127,37 @@ def generated_cases() -> list[Case]:
             "TYPECK_E_RETURN_MISMATCH",
             "procedure return compatibility",
         ))
+
+    for parameter_type, valid_literal in return_literals.items():
+        cases.append(Case(
+            f"argument_identity_{parameter_type}",
+            (
+                f"space tests/typeck/differential/argument_identity_{parameter_type}\n\n"
+                f"proc take(value: {parameter_type}) -> int {{\n"
+                "  give 0\n"
+                "}\n"
+                "proc main() -> int {\n"
+                f"  give take({valid_literal})\n"
+                "}\n"
+            ),
+            True,
+        ))
+        mismatched_type = next(name for name in return_literals if name != parameter_type)
+        cases.append(Case(
+            f"argument_mismatch_{parameter_type}_{mismatched_type}",
+            (
+                f"space tests/typeck/differential/argument_mismatch_{parameter_type}_{mismatched_type}\n\n"
+                f"proc take(value: {parameter_type}) -> int {{\n"
+                "  give 0\n"
+                "}\n"
+                "proc main() -> int {\n"
+                f"  give take({return_literals[mismatched_type]})\n"
+                "}\n"
+            ),
+            False,
+            "TYPECK_E_ARGUMENT_MISMATCH",
+            "function argument compatibility",
+        ))
     return cases
 
 
@@ -280,6 +311,7 @@ def main() -> int:
             "non-truthy string conditions are rejected",
             "string equality and inequality produce boolean conditions",
             "primitive return contracts accept matching values and reject mismatches",
+            "primitive argument contracts accept matching values and reject mismatches",
             "stage binaries agree on normalized typeck results",
             "repeated checks are deterministic",
             "user programs do not terminate the compiler by signal",
