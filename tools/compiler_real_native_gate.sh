@@ -22,13 +22,18 @@ rm -f "$OUT_BIN" "$OUT_BIN.bootstrap-bridge" "$OUT_LOG" "$PROBE_BIN" "$PROBE_BIN
 
 cd "$ROOT_DIR"
 
-if ! grep -Fq "DRIVER_E_OUTPUT_OVERWRITES_SOURCE" src/vitte/compiler/driver/compiler.vit; then
-    printf "[compiler-real-native-gate][error] missing driver output/source overwrite diagnostic\n" >&2
+if ! grep -Fq 'diagnostic_fatal("DRIVER_E_OUTPUT_WRITE_FAILED"' src/vitte/compiler/backend/diagnostics.vit; then
+    printf "[compiler-real-native-gate][error] missing canonical output/source overwrite diagnostic\n" >&2
     exit 1
 fi
 
 if ! grep -Fq "compiler_output_overwrites_source" src/vitte/compiler/driver/compiler.vit; then
     printf "[compiler-real-native-gate][error] missing driver output/source overwrite guard\n" >&2
+    exit 1
+fi
+
+if ! grep -Fq "backend_output_overwrites_source(" src/vitte/compiler/driver/compiler.vit; then
+    printf "[compiler-real-native-gate][error] driver overwrite guard does not use the canonical diagnostic\n" >&2
     exit 1
 fi
 
