@@ -102,6 +102,11 @@ proc sanitize_symbol_part(text: string) -> string {
   give out;
 }
 
+proc mir_temporary_name(expr: HirExpr) -> string {
+  let id_text: string = expr.id as string;
+  give "__mir_tmp_" + id_text;
+}
+
 proc impl_method_symbol_name(item: HirItem, member: HirNominalMember) -> string {
   give "vitte_impl_" + sanitize_symbol_part(item.name) + "_for_" + sanitize_symbol_part(item.target_type_text) + "_" + sanitize_symbol_part(member.name);
 }
@@ -159,11 +164,15 @@ proc mir_operand_from_expr(expr: HirExpr) -> MirOperand {
     or expr.kind == HirExprKind.Bool
     or expr.kind == HirExprKind.String
     or expr.kind == HirExprKind.Char;
-  if expr.binding != "" {
+  let text: string = expr.text;
+  if expr.kind == HirExprKind.Call {
+    set text = mir_temporary_name(expr);
+    set place = mir_place_from_name(text);
+  } elif expr.binding != "" {
     set place = mir_place_from_name(expr.binding);
   }
   give MirOperand {
-    text: expr.text,
+    text: text,
     place: place,
     ty: expr.inferred_type,
     constant: constant,
@@ -355,6 +364,43 @@ proc mir_rvalue_from_expr(expr: HirExpr, items: [HirItem]) -> MirRvalue {
   };
 }
 
+proc mir_temporary_statement(expr: HirExpr, items: [HirItem]) -> MirStatement {
+  let rvalue: MirRvalue = mir_rvalue_from_expr(expr, items);
+  set rvalue.temporary = true;
+  give MirStatement {
+    id: expr.id,
+    span: expr.span,
+    kind: MirStatementKind.Assign,
+    place: mir_place_from_name(mir_temporary_name(expr)),
+    rvalue: rvalue,
+    valid: expr.valid and rvalue.valid
+  };
+}
+
+proc mir_call_prelude(expr: HirExpr, items: [HirItem], include_root: bool) -> [MirStatement] {
+  let out: [MirStatement] = [];
+  let i: u64 = 0;
+  while i < len(expr.children) {
+    set out = out + mir_call_prelude(expr.children[i], items, true);
+    set i = i + 1;
+  }
+  if include_root and expr.kind == HirExprKind.Call {
+    set out = out + [mir_temporary_statement(expr, items)];
+  }
+  give out;
+}
+
+proc mir_statements_valid(statements: [MirStatement]) -> bool {
+  let i: u64 = 0;
+  while i < len(statements) {
+    if not statements[i].valid {
+      give false;
+    }
+    set i = i + 1;
+  }
+  give true;
+}
+
 proc mir_statement_from_stmt(stmt: HirStmt, items: [HirItem]) -> MirStatement {
   if stmt.kind == HirStmtKind.Give {
     give MirStatement { id: stmt.id, span: stmt.span, kind: MirStatementKind.Return, place: mir_place_empty(), rvalue: mir_rvalue_from_expr(stmt.expr, items), valid: stmt.valid };
@@ -376,13 +422,39 @@ proc choose_entry(primary: u64, fallback: u64) -> u64 {
   give fallback;
 }
 
-proc block_single(id: u64, stmt: MirStatement, terminator: MirTerminator) -> MirBlock {
+proc block_from_statements(id: u64, statements: [MirStatement], terminator: MirTerminator) -> MirBlock {
   give MirBlock {
     id: id,
-    statements: [stmt],
+    statements: statements,
     terminator: terminator,
-    valid: stmt.valid and terminator.valid
+    valid: mir_statements_valid(statements) and terminator.valid
   };
+}
+
+proc mir_function_temporary_count(function0: MirFunction) -> u64 {
+  let count: u64 = 0;
+  let i: u64 = 0;
+  while i < len(function0.blocks) {
+    let j: u64 = 0;
+    while j < len(function0.blocks[i].statements) {
+      if starts_with(function0.blocks[i].statements[j].place.local, "__mir_tmp_") {
+        set count = count + 1;
+      }
+      set j = j + 1;
+    }
+    set i = i + 1;
+  }
+  give count;
+}
+
+proc mir_function_instruction_count(function0: MirFunction) -> u64 {
+  let count: u64 = 0;
+  let i: u64 = 0;
+  while i < len(function0.blocks) {
+    set count = count + len(function0.blocks[i].statements);
+    set i = i + 1;
+  }
+  give count;
 }
 
 proc lower_stmt_sequence_as_function(function_id: u64, function_name: string, generic_params: [string], params: [MirFunctionParam], return_type: string, stmts: [HirStmt], items: [HirItem], next_block_id: u64) -> MirFunction {
@@ -390,7 +462,7 @@ proc lower_stmt_sequence_as_function(function_id: u64, function_name: string, ge
   let sequence: MirSequence = build_stmt_sequence(stmts, items, exit_block.id, exit_block.id + 1);
   let entry_block: u64 = choose_entry(sequence.entry_block, exit_block.id);
   let blocks: [MirBlock] = sequence.blocks + [exit_block];
-  give MirFunction {
+  let lowered: MirFunction = MirFunction {
     id: function_id,
     name: function_name,
     generic_params: generic_params,
@@ -402,6 +474,8 @@ proc lower_stmt_sequence_as_function(function_id: u64, function_name: string, ge
     blocks: blocks,
     valid: sequence.valid and entry_block > 0
   };
+  set lowered.temporary_count = mir_function_temporary_count(lowered);
+  give lowered;
 }
 
 proc build_stmt_sequence(hir_stmts: [HirStmt], items: [HirItem], fallthrough_block: u64, next_block_id: u64) -> MirSequence {
@@ -419,20 +493,21 @@ proc build_stmt_sequence(hir_stmts: [HirStmt], items: [HirItem], fallthrough_blo
       let then_seq: MirSequence = build_stmt_sequence(stmt.then_stmts, items, current_entry, next_id + 1);
       let else_seq: MirSequence = build_stmt_sequence(stmt.else_stmts, items, current_entry, then_seq.next_block_id);
       let condition: MirOperand = mir_operand_from_expr(stmt.expr);
+      let condition_statements: [MirStatement] = mir_call_prelude(stmt.expr, items, true);
       let branch: MirBlock = MirBlock {
         id: next_id,
-        statements: [],
+        statements: condition_statements,
         terminator: mir_terminator_branch(
           condition,
           choose_entry(then_seq.entry_block, current_entry),
           choose_entry(else_seq.entry_block, current_entry)
         ),
-        valid: stmt.valid and condition.valid and then_seq.valid and else_seq.valid
+        valid: stmt.valid and condition.valid and mir_statements_valid(condition_statements) and then_seq.valid and else_seq.valid
       };
       set built = [branch] + then_seq.blocks + else_seq.blocks + built;
       set current_entry = branch.id;
       set next_id = else_seq.next_block_id;
-      set instruction_count = instruction_count + then_seq.instruction_count + else_seq.instruction_count;
+      set instruction_count = instruction_count + len(condition_statements) + then_seq.instruction_count + else_seq.instruction_count;
       set valid = valid and branch.valid and then_seq.valid and else_seq.valid;
       set i = i - 1;
       continue;
@@ -442,35 +517,36 @@ proc build_stmt_sequence(hir_stmts: [HirStmt], items: [HirItem], fallthrough_blo
       let header_id: u64 = next_id;
       let body_seq: MirSequence = build_stmt_sequence(stmt.then_stmts, items, header_id, header_id + 1);
       let condition: MirOperand = mir_operand_from_expr(stmt.expr);
+      let condition_statements: [MirStatement] = mir_call_prelude(stmt.expr, items, true);
       let header: MirBlock = MirBlock {
         id: header_id,
-        statements: [],
+        statements: condition_statements,
         terminator: mir_terminator_branch(
           condition,
           choose_entry(body_seq.entry_block, header_id),
           current_entry
         ),
-        valid: stmt.valid and condition.valid and body_seq.valid and current_entry > 0
+        valid: stmt.valid and condition.valid and mir_statements_valid(condition_statements) and body_seq.valid and current_entry > 0
       };
       set built = [header] + body_seq.blocks + built;
       set current_entry = header.id;
       set next_id = body_seq.next_block_id;
-      set instruction_count = instruction_count + body_seq.instruction_count;
+      set instruction_count = instruction_count + len(condition_statements) + body_seq.instruction_count;
       set valid = valid and header.valid and body_seq.valid;
       set i = i - 1;
       continue;
     }
 
-    let mir_stmt: MirStatement = mir_statement_from_stmt(stmt, items);
+    let mir_statements: [MirStatement] = mir_call_prelude(stmt.expr, items, false) + [mir_statement_from_stmt(stmt, items)];
     let terminator: MirTerminator = mir_terminator_return();
     if stmt.kind != HirStmtKind.Give {
       set terminator = mir_terminator_goto(current_entry);
     }
-    let block: MirBlock = block_single(next_id, mir_stmt, terminator);
+    let block: MirBlock = block_from_statements(next_id, mir_statements, terminator);
     set built = [block] + built;
     set current_entry = block.id;
     set next_id = next_id + 1;
-    set instruction_count = instruction_count + 1;
+    set instruction_count = instruction_count + len(mir_statements);
     set valid = valid and block.valid;
     set i = i - 1;
   }
@@ -506,7 +582,7 @@ proc lower_hir_to_mir_templates(hir: HirUnit) -> MirUnit {
       let lowered: MirFunction = lower_stmt_sequence_as_function(item.id, item.name, item.generic_params, mir_params_from_item(item), item.annotation_text, item.stmts, hir.module.items, next_block_id);
       set functions = functions + [lowered];
       set block_count = block_count + len(lowered.blocks);
-      set instruction_count = instruction_count + (len(lowered.blocks) - 1);
+      set instruction_count = instruction_count + mir_function_instruction_count(lowered);
       set next_block_id = lowered.blocks[len(lowered.blocks) - 1].id + 1;
     }
     if item.kind == HirItemKind.Impl {
@@ -516,7 +592,7 @@ proc lower_hir_to_mir_templates(hir: HirUnit) -> MirUnit {
           let lowered: MirFunction = lower_stmt_sequence_as_function(item.members[j].id, impl_method_symbol_name(item, item.members[j]), [], mir_params_from_member(item, item.members[j]), item.members[j].annotation_text, item.members[j].body_stmts, hir.module.items, next_block_id);
           set functions = functions + [lowered];
           set block_count = block_count + len(lowered.blocks);
-          set instruction_count = instruction_count + (len(lowered.blocks) - 1);
+          set instruction_count = instruction_count + mir_function_instruction_count(lowered);
           set next_block_id = lowered.blocks[len(lowered.blocks) - 1].id + 1;
         }
         set j = j + 1;

@@ -303,6 +303,74 @@ proc test_mir_monomorphizes_nested_generic_calls_once() -> bool {
     and validate_mir(mir).valid;
 }
 
+proc test_mir_materializes_nested_generic_call_arguments() -> bool {
+  let source: string =
+    "proc identity[T](value: T) -> T { give value; }\n" +
+    "proc add(left: int, right: int) -> int { give left + right; }\n" +
+    "proc main() -> int { give add(identity(1), identity(2)); }\n";
+  let fe: FrontendOutput = frontend_run("mir_nested_generic_arguments.vit", source);
+  let middle: MiddleOutput = middle_run(fe);
+  let templates: MirUnit = lower_hir_to_mir_templates(middle.typed_hir);
+  let mir: MirUnit = middle.mir;
+  if not middle.valid or not templates.valid or not mir.valid or len(templates.module.functions) != 3 or len(mir.module.functions) != 3 {
+    give false;
+  }
+  let template_main: MirFunction = templates.module.functions[2];
+  if len(template_main.blocks) == 0 or len(template_main.blocks[0].statements) != 3 {
+    give false;
+  }
+  let first: MirStatement = template_main.blocks[0].statements[0];
+  let second: MirStatement = template_main.blocks[0].statements[1];
+  let outer: MirStatement = template_main.blocks[0].statements[2];
+  let concrete_main: MirFunction = mir.module.functions[1];
+  let identity_fn: MirFunction = mir.module.functions[2];
+  give first.rvalue.kind == MirRvalueKind.Call
+    and second.rvalue.kind == MirRvalueKind.Call
+    and first.rvalue.temporary
+    and second.rvalue.temporary
+    and starts_with(first.place.local, "__mir_tmp_")
+    and starts_with(second.place.local, "__mir_tmp_")
+    and first.place.local != second.place.local
+    and outer.rvalue.kind == MirRvalueKind.Call
+    and outer.kind == MirStatementKind.Return
+    and len(outer.rvalue.operands) == 3
+    and outer.rvalue.operands[1].place.local == first.place.local
+    and outer.rvalue.operands[2].place.local == second.place.local
+    and template_main.temporary_count == 2
+    and templates.instruction_count == 5
+    and concrete_main.blocks[0].statements[0].rvalue.text == identity_fn.name
+    and concrete_main.blocks[0].statements[1].rvalue.text == identity_fn.name
+    and concrete_main.blocks[0].statements[2].rvalue.text == "add"
+    and validate_mir(templates).valid
+    and validate_mir(mir).valid;
+}
+
+proc test_mir_materializes_calls_in_control_flow_conditions() -> bool {
+  let source: string =
+    "proc positive(value: int) -> bool { give value > 0; }\n" +
+    "proc main() -> int { let value = 1; if positive(value) { give value; } give 0; }\n";
+  let fe: FrontendOutput = frontend_run("mir_call_condition.vit", source);
+  let middle: MiddleOutput = middle_run(fe);
+  let mir: MirUnit = middle.mir;
+  if not middle.valid or not mir.valid or len(mir.module.functions) != 2 {
+    give false;
+  }
+  let main_fn: MirFunction = mir.module.functions[1];
+  let i: u64 = 0;
+  while i < len(main_fn.blocks) {
+    if main_fn.blocks[i].terminator.kind == MirTerminatorKind.Branch {
+      give len(main_fn.blocks[i].statements) == 1
+        and main_fn.blocks[i].statements[0].rvalue.kind == MirRvalueKind.Call
+        and main_fn.blocks[i].statements[0].rvalue.temporary
+        and main_fn.blocks[i].terminator.condition.place.local == main_fn.blocks[i].statements[0].place.local
+        and main_fn.temporary_count == 1
+        and validate_mir(mir).valid;
+    }
+    set i = i + 1;
+  }
+  give false;
+}
+
 proc test_mir_deduplicates_equal_instances_and_separates_types() -> bool {
   let source: string =
     "proc identity[T](value: T) -> T { give value; }\n" +
@@ -1025,6 +1093,12 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if not test_mir_monomorphizes_nested_generic_calls_once() {
+    set failures = failures + 1;
+  }
+  if not test_mir_materializes_nested_generic_call_arguments() {
+    set failures = failures + 1;
+  }
+  if not test_mir_materializes_calls_in_control_flow_conditions() {
     set failures = failures + 1;
   }
   if not test_mir_deduplicates_equal_instances_and_separates_types() {
