@@ -1,6 +1,10 @@
 # Self-hosting Completion Audit
 
-- stage0 -> stage1 -> stage2 -> stage3: PASS
-- vittec2 == vittec3 byte parity: FAIL
-- payload shell transition removed: TRANSITION
+- compiler source: `src/vitte/compiler/main.vit`
+- stage0 -> stage1 -> compiler stage2 -> compiler stage3: PASS
+- stage2 == stage3 byte parity: FAIL
+- first differing byte: 376
+- stage2 embedded bridge: PRESENT
+- stage3 embedded bridge: PRESENT
+- transition payload removed: TRANSITION
 - status: transition
