@@ -2,6 +2,7 @@ space vitte/compiler/middle/mir/transform
 
 use vitte/compiler/middle/mir.{
   MirBlock,
+  MirBinaryOperator,
   MirFunction,
   MirModule,
   MirOperand,
@@ -59,6 +60,18 @@ form MirTransformReport {
   stats: MirTransformStats
   changed: bool
   valid: bool
+}
+
+form MirIntegerRange {
+  minimum: int
+  maximum: int
+  signed: bool
+  supported: bool
+}
+
+form MirConstantFoldResult {
+  rvalue: MirRvalue
+  folded: bool
 }
 
 proc transform_step(kind: MirTransformKind, result: MirTransformResultKind, changed_blocks: u64, changed_statements: u64, valid: bool) -> MirTransformStep {
@@ -151,6 +164,291 @@ proc constant_rvalue(rvalue: MirRvalue) -> bool {
 
   give constant_operand(rvalue.operands[0])
     and constant_operand(rvalue.operands[1])
+}
+
+proc mir_integer_range(ty: string) -> MirIntegerRange {
+  if ty == "i8" {
+    give MirIntegerRange { minimum: -128, maximum: 127, signed: true, supported: true }
+  } elif ty == "u8" {
+    give MirIntegerRange { minimum: 0, maximum: 255, signed: false, supported: true }
+  } elif ty == "i16" {
+    give MirIntegerRange { minimum: -32768, maximum: 32767, signed: true, supported: true }
+  } elif ty == "u16" {
+    give MirIntegerRange { minimum: 0, maximum: 65535, signed: false, supported: true }
+  } elif ty == "i32" {
+    give MirIntegerRange { minimum: -2147483648, maximum: 2147483647, signed: true, supported: true }
+  } elif ty == "u32" {
+    give MirIntegerRange { minimum: 0, maximum: 4294967295, signed: false, supported: true }
+  }
+  give MirIntegerRange { minimum: 0, maximum: 0, signed: false, supported: false }
+}
+
+proc decimal_integer_text(text: string) -> bool {
+  let value: string = trim(text)
+  if value == "" {
+    give false
+  }
+  let i: u64 = if slice(value, 0, 1) == "-" { 1 } else { 0 }
+  if i == len(value) {
+    give false
+  }
+  while i < len(value) {
+    let ch: string = slice(value, i, i + 1)
+    if ch < "0" or ch > "9" {
+      give false
+    }
+    set i = i + 1
+  }
+  give true
+}
+
+proc integer_in_range(value: int, range0: MirIntegerRange) -> bool {
+  give range0.supported and value >= range0.minimum and value <= range0.maximum
+}
+
+proc foldable_integer_operands(rvalue: MirRvalue) -> bool {
+  if not constant_rvalue(rvalue) or rvalue.operands[0].ty != rvalue.operands[1].ty {
+    give false
+  }
+  let range0: MirIntegerRange = mir_integer_range(rvalue.operands[0].ty)
+  if not range0.supported or not decimal_integer_text(rvalue.operands[0].text) or not decimal_integer_text(rvalue.operands[1].text) {
+    give false
+  }
+  give integer_in_range(parse_int(rvalue.operands[0].text), range0)
+    and integer_in_range(parse_int(rvalue.operands[1].text), range0)
+}
+
+proc folded_constant_rvalue(original: MirRvalue, value: string, ty: string) -> MirRvalue {
+  let operand: MirOperand = MirOperand {
+    text: value,
+    place: MirPlace { local: "", projection: "", deref_depth: 0, mutable: false, moved: false, valid: false },
+    ty: ty,
+    constant: true,
+    move: false,
+    valid: true
+  }
+  give MirRvalue {
+    kind: MirRvalueKind.Use,
+    text: value,
+    operator: "folded-constant",
+    generic_arguments: [],
+    binary_operator: original.binary_operator,
+    unary_operator: original.unary_operator,
+    borrow_kind: original.borrow_kind,
+    operands: [operand],
+    ty: ty,
+    temporary: original.temporary,
+    valid: original.valid
+  }
+}
+
+proc constant_fold_unchanged(rvalue: MirRvalue) -> MirConstantFoldResult {
+  give MirConstantFoldResult { rvalue: rvalue, folded: false }
+}
+
+proc fold_integer_arithmetic(rvalue: MirRvalue) -> MirConstantFoldResult {
+  let range0: MirIntegerRange = mir_integer_range(rvalue.ty)
+  if not range0.supported or not foldable_integer_operands(rvalue) {
+    give constant_fold_unchanged(rvalue)
+  }
+  let left: int = parse_int(rvalue.operands[0].text)
+  let right: int = parse_int(rvalue.operands[1].text)
+  let value: int = 0
+  if rvalue.binary_operator == MirBinaryOperator.Add {
+    if (right > 0 and left > range0.maximum - right) or (right < 0 and left < range0.minimum - right) {
+      give constant_fold_unchanged(rvalue)
+    }
+    set value = left + right
+  } elif rvalue.binary_operator == MirBinaryOperator.Sub {
+    if (right > 0 and left < range0.minimum + right) or (right < 0 and left > range0.maximum + right) {
+      give constant_fold_unchanged(rvalue)
+    }
+    set value = left - right
+  } elif rvalue.binary_operator == MirBinaryOperator.Mul {
+    if range0.signed {
+      if (left > 0 and right > 0 and left > range0.maximum / right)
+        or (left > 0 and right < 0 and right < range0.minimum / left)
+        or (left < 0 and right > 0 and left < range0.minimum / right)
+        or (left < 0 and right < 0 and right < range0.maximum / left) {
+        give constant_fold_unchanged(rvalue)
+      }
+    } elif right != 0 and left > range0.maximum / right {
+        give constant_fold_unchanged(rvalue)
+    }
+    set value = left * right
+  } elif rvalue.binary_operator == MirBinaryOperator.Div {
+    if right == 0 or (range0.signed and left == range0.minimum and right == -1) {
+      give constant_fold_unchanged(rvalue)
+    }
+    set value = left / right
+  } elif rvalue.binary_operator == MirBinaryOperator.Rem {
+    if right == 0 or (range0.signed and left == range0.minimum and right == -1) {
+      give constant_fold_unchanged(rvalue)
+    }
+    set value = left % right
+  } else {
+    give constant_fold_unchanged(rvalue)
+  }
+  if not integer_in_range(value, range0) {
+    give constant_fold_unchanged(rvalue)
+  }
+  give MirConstantFoldResult { rvalue: folded_constant_rvalue(rvalue, value as string, rvalue.ty), folded: true }
+}
+
+proc fold_integer_comparison(rvalue: MirRvalue) -> MirConstantFoldResult {
+  if not foldable_integer_operands(rvalue) {
+    give constant_fold_unchanged(rvalue)
+  }
+  let left: int = parse_int(rvalue.operands[0].text)
+  let right: int = parse_int(rvalue.operands[1].text)
+  let value: bool = false
+  if rvalue.binary_operator == MirBinaryOperator.Eq {
+    set value = left == right
+  } elif rvalue.binary_operator == MirBinaryOperator.Ne {
+    set value = left != right
+  } elif rvalue.binary_operator == MirBinaryOperator.Lt {
+    set value = left < right
+  } elif rvalue.binary_operator == MirBinaryOperator.Le {
+    set value = left <= right
+  } elif rvalue.binary_operator == MirBinaryOperator.Gt {
+    set value = left > right
+  } elif rvalue.binary_operator == MirBinaryOperator.Ge {
+    set value = left >= right
+  } else {
+    give constant_fold_unchanged(rvalue)
+  }
+  give MirConstantFoldResult { rvalue: folded_constant_rvalue(rvalue, value as string, "bool"), folded: true }
+}
+
+proc fold_bool_binary(rvalue: MirRvalue) -> MirConstantFoldResult {
+  if not constant_rvalue(rvalue) or rvalue.operands[0].ty != "bool" or rvalue.operands[1].ty != "bool" {
+    give constant_fold_unchanged(rvalue)
+  }
+  let left_text: string = rvalue.operands[0].text
+  let right_text: string = rvalue.operands[1].text
+  if (left_text != "true" and left_text != "false") or (right_text != "true" and right_text != "false") {
+    give constant_fold_unchanged(rvalue)
+  }
+  let left: bool = left_text == "true"
+  let right: bool = right_text == "true"
+  let value: bool = false
+  if rvalue.binary_operator == MirBinaryOperator.And {
+    set value = left and right
+  } elif rvalue.binary_operator == MirBinaryOperator.Or {
+    set value = left or right
+  } elif rvalue.binary_operator == MirBinaryOperator.Eq {
+    set value = left == right
+  } elif rvalue.binary_operator == MirBinaryOperator.Ne {
+    set value = left != right
+  } else {
+    give constant_fold_unchanged(rvalue)
+  }
+  give MirConstantFoldResult { rvalue: folded_constant_rvalue(rvalue, value as string, "bool"), folded: true }
+}
+
+proc fold_binary_constants(rvalue: MirRvalue) -> MirConstantFoldResult {
+  if not constant_rvalue(rvalue) {
+    give constant_fold_unchanged(rvalue)
+  }
+  if rvalue.operands[0].ty == "bool" and rvalue.operands[1].ty == "bool" {
+    give fold_bool_binary(rvalue)
+  }
+  let arithmetic: MirConstantFoldResult = fold_integer_arithmetic(rvalue)
+  if arithmetic.folded {
+    give arithmetic
+  }
+  give fold_integer_comparison(rvalue)
+}
+
+proc fold_constants_statement(stmt: MirStatement) -> MirStatement {
+  let folded: MirConstantFoldResult = fold_binary_constants(stmt.rvalue)
+  give MirStatement {
+    id: stmt.id,
+    span: stmt.span,
+    kind: stmt.kind,
+    place: stmt.place,
+    rvalue: folded.rvalue,
+    reachable: stmt.reachable,
+    valid: stmt.valid and folded.rvalue.valid
+  }
+}
+
+proc fold_constants_block(block: MirBlock) -> MirBlock {
+  let statements: [MirStatement] = []
+  let i: u64 = 0
+  while i < len(block.statements) {
+    set statements = statements + [fold_constants_statement(block.statements[i])]
+    set i = i + 1
+  }
+  give MirBlock {
+    id: block.id,
+    label: block.label,
+    predecessors: block.predecessors,
+    statements: statements,
+    terminator: block.terminator,
+    sealed: block.sealed,
+    reachable: block.reachable,
+    valid: block.valid
+  }
+}
+
+proc fold_constants_function(function0: MirFunction) -> MirFunction {
+  let blocks: [MirBlock] = []
+  let i: u64 = 0
+  while i < len(function0.blocks) {
+    set blocks = blocks + [fold_constants_block(function0.blocks[i])]
+    set i = i + 1
+  }
+  give MirFunction {
+    id: function0.id,
+    name: function0.name,
+    generic_params: function0.generic_params,
+    entry_block: function0.entry_block,
+    params: function0.params,
+    return_type: function0.return_type,
+    local_count: function0.local_count,
+    temporary_count: function0.temporary_count,
+    blocks: blocks,
+    valid: function0.valid
+  }
+}
+
+proc count_folded_constants(before: MirFunction, after: MirFunction) -> u64 {
+  let count: u64 = 0
+  let i: u64 = 0
+  while i < len(before.blocks) and i < len(after.blocks) {
+    let j: u64 = 0
+    while j < len(before.blocks[i].statements) and j < len(after.blocks[i].statements) {
+      if before.blocks[i].statements[j].rvalue.kind == MirRvalueKind.Binary
+        and after.blocks[i].statements[j].rvalue.kind == MirRvalueKind.Use
+        and after.blocks[i].statements[j].rvalue.operator == "folded-constant" {
+        set count = count + 1
+      }
+      set j = j + 1
+    }
+    set i = i + 1
+  }
+  give count
+}
+
+proc constant_fold_report_for(before: MirFunction, after: MirFunction) -> MirTransformReport {
+  let folded: u64 = count_folded_constants(before, after)
+  let result_kind: MirTransformResultKind = if folded > 0 { MirTransformResultKind.Changed } else { MirTransformResultKind.Unchanged }
+  let valid: bool = validate_function(after)
+  give MirTransformReport {
+    function_name: after.name,
+    steps: [transform_step(MirTransformKind.FoldConstants, result_kind, 0, folded, valid)],
+    stats: MirTransformStats {
+      removed_blocks: 0,
+      removed_statements: 0,
+      folded_constants: folded,
+      merged_blocks: 0,
+      simplified_branches: 0,
+      valid: valid
+    },
+    changed: folded > 0,
+    valid: valid
+  }
 }
 
 proc nop_statement(stmt: MirStatement) -> bool {

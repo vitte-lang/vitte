@@ -9,6 +9,8 @@ ROOT = Path(__file__).resolve().parents[2]
 MOD = ROOT / 'src' / 'vitte' / 'compiler' / 'optimizations' / 'mir' / 'mod.vit'
 SMOKE = ROOT / 'src' / 'vitte' / 'compiler' / 'optimizations' / 'mir' / 'tests' / 'smoke.vit'
 PASS_MANAGER = ROOT / 'src' / 'vitte' / 'compiler' / 'middle' / 'passes' / 'pass_manager.vit'
+PASS_SCHEDULE = ROOT / 'src' / 'vitte' / 'compiler' / 'middle' / 'passes' / 'schedule.vit'
+MIR_TRANSFORM = ROOT / 'src' / 'vitte' / 'compiler' / 'middle' / 'mir' / 'transform.vit'
 MIDDLE_PIPELINE = ROOT / 'src' / 'vitte' / 'compiler' / 'middle' / 'pipeline.vit'
 FIXTURES = ROOT / 'tests' / 'mir_opt'
 
@@ -54,6 +56,13 @@ REQUIRED_PIPELINE_SYMBOLS = [
     'lower_mir_to_ir_for_target(optimized_mir, analysis, target)',
 ]
 
+REQUIRED_CONSTANT_FOLDING_SYMBOLS = [
+    'proc fold_constants_function(function0: MirFunction) -> MirFunction',
+    'proc constant_fold_report_for(before: MirFunction, after: MirFunction) -> MirTransformReport',
+    'proc fold_integer_arithmetic(rvalue: MirRvalue) -> MirConstantFoldResult',
+    'if not integer_in_range(value, range0)',
+]
+
 
 def fail(msg: str) -> int:
     print(f'[mir-opt][error] {msg}', file=sys.stderr)
@@ -61,7 +70,7 @@ def fail(msg: str) -> int:
 
 
 def main() -> int:
-    if not MOD.exists() or not SMOKE.exists() or not PASS_MANAGER.exists() or not MIDDLE_PIPELINE.exists():
+    if not MOD.exists() or not SMOKE.exists() or not PASS_MANAGER.exists() or not PASS_SCHEDULE.exists() or not MIR_TRANSFORM.exists() or not MIDDLE_PIPELINE.exists():
         return fail('missing MIR optimization files')
     if not FIXTURES.exists():
         return fail('missing tests/mir_opt fixtures')
@@ -90,6 +99,15 @@ def main() -> int:
     for sym in REQUIRED_PIPELINE_SYMBOLS:
         if sym not in middle_pipeline_text:
             return fail(f'missing optimized MIR pipeline contract: {sym}')
+
+    schedule_text = PASS_SCHEDULE.read_text(encoding='utf-8')
+    if 'scheduled_mir_pass("fold-constants", MirTransformKind.FoldConstants, 1)' not in schedule_text:
+        return fail('constant folding must be scheduled before CFG simplification')
+
+    transform_text = MIR_TRANSFORM.read_text(encoding='utf-8')
+    for sym in REQUIRED_CONSTANT_FOLDING_SYMBOLS:
+        if sym not in transform_text:
+            return fail(f'missing typed constant folding contract: {sym}')
 
     fixtures = sorted(FIXTURES.glob('*.vit'))
     if len(fixtures) < 5:

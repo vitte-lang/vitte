@@ -101,7 +101,7 @@ proc test_mir_cfg_if_while() -> bool {
 
 proc test_mir_preserves_binary_and_unary_operators() -> bool {
   let source: string =
-    "proc main() { let value = 3; let product = 6 * 7; let difference = 8 - 3; " +
+    "proc main() { let value = 3; let product = value * 7; let difference = value - 3; " +
     "let negative = -value; let inverted = not false; give 0; }\n";
   let fe: FrontendOutput = frontend_run("mir_operators.vit", source);
   let middle: MiddleOutput = middle_run(fe);
@@ -1147,17 +1147,73 @@ proc test_mir_pass_manager_validates_each_boundary() -> bool {
   let rejected: PassRunResult = run_passes(invalid);
 
   give result.valid
-    and result.completed_passes == 1
-    and len(result.validations) == 2
+    and result.completed_passes == 2
+    and len(result.validations) == 4
     and result.validations[0].phase == PassValidationPhase.Before
     and result.validations[0].valid
-    and result.validations[1].phase == PassValidationPhase.After
-    and result.validations[1].valid
+    and result.validations[1].phase == PassValidationPhase.After and result.validations[1].valid
+    and result.validations[2].phase == PassValidationPhase.Before and result.validations[2].valid
+    and result.validations[3].phase == PassValidationPhase.After and result.validations[3].valid
     and result.mir.instruction_count == 0
     and not rejected.valid
     and rejected.completed_passes == 0
     and len(rejected.validations) == 1
     and rejected.validations[0].reason == "invalid-module";
+}
+
+proc binary_constant_statement(id: u64, left: string, right: string, ty: string, operator: MirBinaryOperator) -> MirStatement {
+  give MirStatement {
+    id: id,
+    span: ast_span_empty(),
+    kind: MirStatementKind.Assign,
+    place: MirPlace { local: "result", projection: "", deref_depth: 0, mutable: true, moved: false, valid: true },
+    rvalue: MirRvalue {
+      kind: MirRvalueKind.Binary,
+      text: left + " op " + right,
+      operator: "binary",
+      binary_operator: operator,
+      operands: [
+        MirOperand { text: left, place: MirPlace { valid: false }, ty: ty, constant: true, move: false, valid: true },
+        MirOperand { text: right, place: MirPlace { valid: false }, ty: ty, constant: true, move: false, valid: true }
+      ],
+      ty: ty,
+      temporary: false,
+      valid: true
+    },
+    reachable: true,
+    valid: true
+  };
+}
+
+proc test_mir_constant_folding_is_typed_and_checked() -> bool {
+  let foldable: MirUnit = unit_with_functions(
+    "mir_fold_constants.vit",
+    [minimal_valid_function("main", [], binary_constant_statement(50, "6", "7", "i32", MirBinaryOperator.Mul))]
+  );
+  let folded: PassRunResult = run_passes(foldable);
+  let folded_rvalue: MirRvalue = folded.mir.module.functions[0].blocks[0].statements[0].rvalue;
+  let overflow: MirUnit = unit_with_functions(
+    "mir_fold_overflow.vit",
+    [minimal_valid_function("main", [], binary_constant_statement(51, "127", "1", "i8", MirBinaryOperator.Add))]
+  );
+  let overflow_result: PassRunResult = run_passes(overflow);
+  let overflow_rvalue: MirRvalue = overflow_result.mir.module.functions[0].blocks[0].statements[0].rvalue;
+  let division_zero: MirUnit = unit_with_functions(
+    "mir_fold_div_zero.vit",
+    [minimal_valid_function("main", [], binary_constant_statement(52, "8", "0", "i32", MirBinaryOperator.Div))]
+  );
+  let division_result: PassRunResult = run_passes(division_zero);
+
+  give folded.valid
+    and folded_rvalue.kind == MirRvalueKind.Use
+    and folded_rvalue.text == "42"
+    and folded_rvalue.ty == "i32"
+    and folded.stats[0].stats.folded_constants == 1
+    and overflow_result.valid
+    and overflow_rvalue.kind == MirRvalueKind.Binary
+    and overflow_result.stats[0].stats.folded_constants == 0
+    and division_result.valid
+    and division_result.mir.module.functions[0].blocks[0].statements[0].rvalue.kind == MirRvalueKind.Binary;
 }
 
 proc run_all_tests() -> int {
@@ -1265,6 +1321,9 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if not test_mir_pass_manager_validates_each_boundary() {
+    set failures = failures + 1;
+  }
+  if not test_mir_constant_folding_is_typed_and_checked() {
     set failures = failures + 1;
   }
   give failures;
