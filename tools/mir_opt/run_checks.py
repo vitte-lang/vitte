@@ -63,6 +63,13 @@ REQUIRED_CONSTANT_FOLDING_SYMBOLS = [
     'if not integer_in_range(value, range0)',
 ]
 
+REQUIRED_DCE_SYMBOLS = [
+    'proc reachable_block_ids(function0: MirFunction) -> [u64]',
+    'proc eliminate_unreachable_function(function0: MirFunction) -> MirFunction',
+    'proc predecessors_for(block_id: u64, blocks: [MirBlock]) -> [u64]',
+    'proc dead_code_report_for(before: MirFunction, after: MirFunction) -> MirTransformReport',
+]
+
 
 def fail(msg: str) -> int:
     print(f'[mir-opt][error] {msg}', file=sys.stderr)
@@ -103,11 +110,16 @@ def main() -> int:
     schedule_text = PASS_SCHEDULE.read_text(encoding='utf-8')
     if 'scheduled_mir_pass("fold-constants", MirTransformKind.FoldConstants, 1)' not in schedule_text:
         return fail('constant folding must be scheduled before CFG simplification')
+    if 'scheduled_mir_pass("remove-unreachable", MirTransformKind.RemoveUnreachable, 2)' not in schedule_text:
+        return fail('CFG reachability DCE must be scheduled before CFG simplification')
 
     transform_text = MIR_TRANSFORM.read_text(encoding='utf-8')
     for sym in REQUIRED_CONSTANT_FOLDING_SYMBOLS:
         if sym not in transform_text:
             return fail(f'missing typed constant folding contract: {sym}')
+    for sym in REQUIRED_DCE_SYMBOLS:
+        if sym not in transform_text:
+            return fail(f'missing CFG DCE contract: {sym}')
 
     fixtures = sorted(FIXTURES.glob('*.vit'))
     if len(fixtures) < 5:

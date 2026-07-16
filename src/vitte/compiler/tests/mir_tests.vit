@@ -1147,13 +1147,15 @@ proc test_mir_pass_manager_validates_each_boundary() -> bool {
   let rejected: PassRunResult = run_passes(invalid);
 
   give result.valid
-    and result.completed_passes == 2
-    and len(result.validations) == 4
+    and result.completed_passes == 3
+    and len(result.validations) == 6
     and result.validations[0].phase == PassValidationPhase.Before
     and result.validations[0].valid
     and result.validations[1].phase == PassValidationPhase.After and result.validations[1].valid
     and result.validations[2].phase == PassValidationPhase.Before and result.validations[2].valid
     and result.validations[3].phase == PassValidationPhase.After and result.validations[3].valid
+    and result.validations[4].phase == PassValidationPhase.Before and result.validations[4].valid
+    and result.validations[5].phase == PassValidationPhase.After and result.validations[5].valid
     and result.mir.instruction_count == 0
     and not rejected.valid
     and rejected.completed_passes == 0
@@ -1214,6 +1216,59 @@ proc test_mir_constant_folding_is_typed_and_checked() -> bool {
     and overflow_result.stats[0].stats.folded_constants == 0
     and division_result.valid
     and division_result.mir.module.functions[0].blocks[0].statements[0].rvalue.kind == MirRvalueKind.Binary;
+}
+
+proc test_mir_dce_computes_cfg_reachability() -> bool {
+  let entry: MirBlock = MirBlock {
+    id: 1,
+    label: "entry",
+    predecessors: [],
+    statements: [],
+    terminator: mir_terminator_return(),
+    sealed: true,
+    reachable: true,
+    valid: true
+  };
+  let dead: MirBlock = MirBlock {
+    id: 2,
+    label: "dead-but-flagged-reachable",
+    predecessors: [1],
+    statements: [],
+    terminator: mir_terminator_return(),
+    sealed: true,
+    reachable: true,
+    valid: true
+  };
+  let fn0: MirFunction = MirFunction {
+    id: 1,
+    name: "main",
+    entry_block: 1,
+    params: [],
+    return_type: "unit",
+    local_count: 0,
+    temporary_count: 0,
+    blocks: [entry, dead],
+    valid: true
+  };
+  let unit0: MirUnit = MirUnit {
+    source_path: "mir_dce_reachability.vit",
+    module: MirModule { name: "dce", functions: [fn0], valid: true },
+    function_count: 1,
+    block_count: 2,
+    instruction_count: 0,
+    lowered: true,
+    valid: true
+  };
+  let result: PassRunResult = run_passes(unit0);
+
+  give result.valid
+    and result.completed_passes == 3
+    and result.mir.block_count == 1
+    and len(result.mir.module.functions[0].blocks) == 1
+    and result.mir.module.functions[0].blocks[0].id == 1
+    and result.mir.module.functions[0].blocks[0].reachable
+    and len(result.mir.module.functions[0].blocks[0].predecessors) == 0
+    and result.stats[1].stats.removed_blocks == 1;
 }
 
 proc run_all_tests() -> int {
@@ -1324,6 +1379,9 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if not test_mir_constant_folding_is_typed_and_checked() {
+    set failures = failures + 1;
+  }
+  if not test_mir_dce_computes_cfg_reachability() {
     set failures = failures + 1;
   }
   give failures;

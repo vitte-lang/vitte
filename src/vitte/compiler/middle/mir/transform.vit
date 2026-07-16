@@ -459,6 +459,166 @@ proc unreachable_block(block: MirBlock) -> bool {
   give not block.reachable
 }
 
+proc block_id_in(ids: [u64], id: u64) -> bool {
+  let i: u64 = 0
+  while i < len(ids) {
+    if ids[i] == id {
+      give true
+    }
+    set i = i + 1
+  }
+  give false
+}
+
+proc function_has_block(function0: MirFunction, id: u64) -> bool {
+  let i: u64 = 0
+  while i < len(function0.blocks) {
+    if function0.blocks[i].id == id {
+      give true
+    }
+    set i = i + 1
+  }
+  give false
+}
+
+proc append_successor(ids: [u64], function0: MirFunction, id: u64) -> [u64] {
+  if id == 0 or block_id_in(ids, id) or not function_has_block(function0, id) {
+    give ids
+  }
+  give ids + [id]
+}
+
+proc terminator_successors(function0: MirFunction, terminator: MirTerminator) -> [u64] {
+  let out: [u64] = []
+  if terminator.kind == MirTerminatorKind.Goto {
+    set out = append_successor(out, function0, terminator.target_block)
+  } elif terminator.kind == MirTerminatorKind.Branch {
+    set out = append_successor(out, function0, terminator.target_block)
+    set out = append_successor(out, function0, terminator.else_block)
+  } elif terminator.kind == MirTerminatorKind.Switch {
+    let i: u64 = 0
+    while i < len(terminator.switch_targets) {
+      set out = append_successor(out, function0, terminator.switch_targets[i])
+      set i = i + 1
+    }
+    set out = append_successor(out, function0, terminator.else_block)
+  } elif terminator.kind == MirTerminatorKind.Call {
+    set out = append_successor(out, function0, terminator.target_block)
+    set out = append_successor(out, function0, terminator.else_block)
+    set out = append_successor(out, function0, terminator.unwind_block)
+  }
+  give out
+}
+
+proc block_by_id(function0: MirFunction, id: u64) -> MirBlock {
+  let i: u64 = 0
+  while i < len(function0.blocks) {
+    if function0.blocks[i].id == id {
+      give function0.blocks[i]
+    }
+    set i = i + 1
+  }
+  give MirBlock { id: 0, valid: false }
+}
+
+proc reachable_block_ids(function0: MirFunction) -> [u64] {
+  let reachable: [u64] = []
+  if not function_has_block(function0, function0.entry_block) {
+    give reachable
+  }
+  set reachable = [function0.entry_block]
+  let cursor: u64 = 0
+  while cursor < len(reachable) {
+    let block: MirBlock = block_by_id(function0, reachable[cursor])
+    let successors: [u64] = terminator_successors(function0, block.terminator)
+    let i: u64 = 0
+    while i < len(successors) {
+      if not block_id_in(reachable, successors[i]) {
+        set reachable = reachable + [successors[i]]
+      }
+      set i = i + 1
+    }
+    set cursor = cursor + 1
+  }
+  give reachable
+}
+
+proc predecessors_for(block_id: u64, blocks: [MirBlock]) -> [u64] {
+  let function0: MirFunction = MirFunction { entry_block: blocks[0].id, blocks: blocks, valid: true }
+  let out: [u64] = []
+  let i: u64 = 0
+  while i < len(blocks) {
+    let successors: [u64] = terminator_successors(function0, blocks[i].terminator)
+    if block_id_in(successors, block_id) and not block_id_in(out, blocks[i].id) {
+      set out = out + [blocks[i].id]
+    }
+    set i = i + 1
+  }
+  give out
+}
+
+proc eliminate_unreachable_function(function0: MirFunction) -> MirFunction {
+  let reachable: [u64] = reachable_block_ids(function0)
+  let retained: [MirBlock] = []
+  let i: u64 = 0
+  while i < len(function0.blocks) {
+    if block_id_in(reachable, function0.blocks[i].id) {
+      set retained = retained + [function0.blocks[i]]
+    }
+    set i = i + 1
+  }
+
+  let blocks: [MirBlock] = []
+  let j: u64 = 0
+  while j < len(retained) {
+    set blocks = blocks + [MirBlock {
+      id: retained[j].id,
+      label: retained[j].label,
+      predecessors: predecessors_for(retained[j].id, retained),
+      statements: retained[j].statements,
+      terminator: retained[j].terminator,
+      sealed: retained[j].sealed,
+      reachable: true,
+      valid: retained[j].valid
+    }]
+    set j = j + 1
+  }
+
+  give MirFunction {
+    id: function0.id,
+    name: function0.name,
+    generic_params: function0.generic_params,
+    entry_block: function0.entry_block,
+    params: function0.params,
+    return_type: function0.return_type,
+    local_count: function0.local_count,
+    temporary_count: function0.temporary_count,
+    blocks: blocks,
+    valid: function0.valid and len(blocks) > 0
+  }
+}
+
+proc dead_code_report_for(before: MirFunction, after: MirFunction) -> MirTransformReport {
+  let removed_blocks: u64 = count_removed_blocks(before.blocks, after.blocks)
+  let removed_statements: u64 = count_removed_statements(before.blocks, after.blocks)
+  let changed: bool = removed_blocks > 0 or removed_statements > 0
+  let valid: bool = validate_function(after)
+  give MirTransformReport {
+    function_name: after.name,
+    steps: [transform_step(MirTransformKind.RemoveUnreachable, if changed { MirTransformResultKind.Changed } else { MirTransformResultKind.Unchanged }, removed_blocks, removed_statements, valid)],
+    stats: MirTransformStats {
+      removed_blocks: removed_blocks,
+      removed_statements: removed_statements,
+      folded_constants: 0,
+      merged_blocks: 0,
+      simplified_branches: 0,
+      valid: valid
+    },
+    changed: changed,
+    valid: valid
+  }
+}
+
 proc trivial_goto(block: MirBlock) -> bool {
   give len(block.statements) == 0
     and block.terminator.kind == MirTerminatorKind.Goto
