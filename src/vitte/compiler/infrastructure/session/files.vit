@@ -92,7 +92,7 @@ proc source_manager_file_id(manager: SourceManager, path: string) -> u64 {
     }
     set i = i + 1;
   }
-  give 0;
+  give 0 as u64;
 }
 
 proc assign_file_id(manager: SourceManager, path: string) -> u64 {
@@ -162,7 +162,7 @@ proc line_col_lookup(manager: SourceManager, file_id: u64, offset: u64) -> Sourc
         let ch: string = slice(text, j, j + 1);
         if ch == "\n" {
           set line = line + 1;
-          set column = 1;
+          set column = 1 as u64;
         } else {
           set column = column + 1;
         }
@@ -180,7 +180,7 @@ proc offset_lookup(manager: SourceManager, file_id: u64, line: u64, column: u64)
   while i < len(manager.files) {
     if manager.files[i].file_id == file_id {
       if line == 0 or column == 0 {
-        give 0;
+        give 0 as u64;
       }
       let text: string = manager.files[i].text;
       let current_line: u64 = 1;
@@ -193,7 +193,7 @@ proc offset_lookup(manager: SourceManager, file_id: u64, line: u64, column: u64)
         let ch: string = slice(text, j, j + 1);
         if ch == "\n" {
           set current_line = current_line + 1;
-          set current_column = 1;
+          set current_column = 1 as u64;
         } else {
           set current_column = current_column + 1;
         }
@@ -202,11 +202,11 @@ proc offset_lookup(manager: SourceManager, file_id: u64, line: u64, column: u64)
       if current_line == line and current_column == column {
         give len(text);
       }
-      give 0;
+      give 0 as u64;
     }
     set i = i + 1;
   }
-  give 0;
+  give 0 as u64;
 }
 
 proc include_stdlib(manager: SourceManager) -> SourceManager {
