@@ -3100,7 +3100,11 @@ detect_professional_diagnostic() {
                 proc_known[name] = 1
             }
             proc_generic_count[name] = 0
-            generic_open = index(line, "[")
+            generic_prefix = line
+            sub(/^proc[ \t]+[A-Za-z_][A-Za-z0-9_]*/, "", generic_prefix)
+            generic_prefix = trim(generic_prefix)
+            generic_open = 0
+            if (substr(generic_prefix, 1, 1) == "[") generic_open = index(line, "[")
             if (generic_open > 0) {
                 generic_tail = substr(line, generic_open + 1)
                 generic_close = index(generic_tail, "]")

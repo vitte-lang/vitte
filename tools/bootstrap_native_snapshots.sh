@@ -255,6 +255,14 @@ check_cli_cases() {
     diff -u "$SNAP_DIR/stage2.v2.ir.must" "$TMP_DIR/stage2.v2.ir" || die "stage2 IR v2 snapshot drift"
 }
 
+check_array_return_is_not_generic() {
+    log "checking non-generic array return type"
+    fixture="$ROOT_DIR/tests/type_system/array_return_non_generic.vit"
+    "$BIN_DIR/vittec0" check "$fixture" > "$TMP_DIR/array-return.check.out" 2> "$TMP_DIR/array-return.check.err"
+    diff -u "$SNAP_DIR/check.stage2.out.must" "$TMP_DIR/array-return.check.out" || die "array return check stdout drift"
+    [ ! -s "$TMP_DIR/array-return.check.err" ] || die "array return was misclassified as a generic procedure"
+}
+
 check_emission_hashes() {
     log "checking emission hashes and cross-stage reproducibility"
     "$BIN_DIR/vittec0" --help > "$TMP_DIR/help.vittec0"
@@ -461,6 +469,7 @@ check_ir_cases
 check_shell_cases
 check_bad_diag_cases
 check_cli_cases
+check_array_return_is_not_generic
 check_emission_hashes
 check_native_user_build
 
