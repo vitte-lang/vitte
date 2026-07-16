@@ -25,6 +25,7 @@ use vitte/compiler/analysis/const_eval/interpreter.{
   env_get,
   env_set,
   eval_const_binary_values,
+  eval_const_unary_value,
   eval_const_ast_expr,
   expr_references,
   value_to_text
@@ -633,6 +634,13 @@ proc eval_const_proc_stmts(env: ConstEnv, source_path: string, stmts: [AstStmt],
 }
 
 proc eval_const_ast_expr_with_procs(env: ConstEnv, source_path: string, expr: AstExpr, procs: [ConstProcAst], stack: [string], depth: u64) -> ConstEvalResult {
+  if expr.kind == AstExprKind.Unary and len(expr.children) == 1 {
+    let inner: ConstEvalResult = eval_const_ast_expr_with_procs(env, source_path, expr.children[0], procs, stack, depth);
+    if not inner.valid {
+      give inner;
+    }
+    give eval_const_unary_value(source_path, expr.span.start_line, expr.operator, inner.value, inner.diagnostics);
+  }
   if expr.kind == AstExprKind.Binary and len(expr.children) == 2 {
     let left: ConstEvalResult = eval_const_ast_expr_with_procs(env, source_path, expr.children[0], procs, stack, depth);
     let right: ConstEvalResult = eval_const_ast_expr_with_procs(env, source_path, expr.children[1], procs, stack, depth);

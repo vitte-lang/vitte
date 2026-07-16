@@ -732,6 +732,37 @@ proc eval_const_binary_values(env: ConstEnv, file: string, line: u64, operator: 
   };
 }
 
+proc eval_const_unary_value(file: string, line: u64, operator: string, value: ConstValue, diagnostics: [ConstEvalDiagnostic]) -> ConstEvalResult {
+  if operator == "-" and value.kind == ConstValueKind.Int {
+    give ConstEvalResult {
+      value: const_int(0 - value.int_value),
+      diagnostics: diagnostics,
+      valid: not diagnostics_has_fatal(diagnostics)
+    };
+  }
+  let boolean_not: bool = operator == "!" or operator == "not";
+  if boolean_not and value.kind == ConstValueKind.Bool {
+    give ConstEvalResult {
+      value: const_bool(not value.bool_value),
+      diagnostics: diagnostics,
+      valid: not diagnostics_has_fatal(diagnostics)
+    };
+  }
+  give ConstEvalResult {
+    value: const_unknown(),
+    diagnostics: diagnostics + [diagnostic_create(
+      ConstEvalErrorKind.UnsupportedExpr,
+      file,
+      line,
+      "unary constant operator `" + operator + "` does not support this operand",
+      [operator, value_to_text(value)],
+      "use unary `-` with an integer or logical negation with a boolean",
+      true
+    )],
+    valid: false
+  };
+}
+
 proc eval_const_ast_expr(env: ConstEnv, file: string, expr: AstExpr) -> ConstEvalResult {
   let line: u64 = expr.span.start_line;
   if expr.kind == AstExprKind.Int {
@@ -787,6 +818,13 @@ proc eval_const_ast_expr(env: ConstEnv, file: string, expr: AstExpr) -> ConstEva
       diagnostics: [diagnostic_create(ConstEvalErrorKind.UnsupportedExpr, file, line, "borrow expressions are not supported in constant evaluation", [expr.text], "remove the borrow or defer the expression to runtime", true)],
       valid: false
     };
+  }
+  if expr.kind == AstExprKind.Unary and len(expr.children) == 1 {
+    let inner: ConstEvalResult = eval_const_ast_expr(env, file, expr.children[0]);
+    if not inner.valid {
+      give inner;
+    }
+    give eval_const_unary_value(file, line, expr.operator, inner.value, inner.diagnostics);
   }
   if expr.kind == AstExprKind.Binary and len(expr.children) == 2 {
     let left: ConstEvalResult = eval_const_ast_expr(env, file, expr.children[0]);
