@@ -317,6 +317,14 @@ check_comment_markers_in_strings() {
     [ ! -s "$TMP_DIR/string-comment-markers.check.err" ] || die "comment marker inside a string was lexed as a block comment"
 }
 
+check_full_compiler_modern_helpers() {
+    log "checking full-compiler modern helper routing"
+    fixture="$SNAP_DIR/full_compiler_modern_helpers.vit"
+    "$BIN_DIR/vittec0" check "$fixture" > "$TMP_DIR/full-compiler-helpers.check.out" 2> "$TMP_DIR/full-compiler-helpers.check.err"
+    diff -u "$SNAP_DIR/check.stage2.out.must" "$TMP_DIR/full-compiler-helpers.check.out" || die "full-compiler helper check stdout drift"
+    [ ! -s "$TMP_DIR/full-compiler-helpers.check.err" ] || die "modern helper was parsed as bootstrap metadata"
+}
+
 check_emission_hashes() {
     log "checking emission hashes and cross-stage reproducibility"
     "$BIN_DIR/vittec0" --help > "$TMP_DIR/help.vittec0"
@@ -530,6 +538,7 @@ check_qualified_call_uses_module_arity
 check_call_result_cast_type
 check_call_result_projection_type
 check_comment_markers_in_strings
+check_full_compiler_modern_helpers
 check_emission_hashes
 check_native_user_build
 
