@@ -1,0 +1,121 @@
+space vitte/compiler/middle/passes/pass_manager
+
+use vitte/compiler/middle/mir.{ MirFunction, MirModule, MirUnit }
+use vitte/compiler/middle/mir/transform.{ MirTransformKind, MirTransformReport, transform_function, transform_report_for }
+use vitte/compiler/middle/mir/validate.{ mir_validation_reason }
+use vitte/compiler/middle/passes/pass_result.{ PassRunResult, PassValidationPhase, PassValidationRecord, pass_run_result, pass_validation_record }
+use vitte/compiler/middle/passes/schedule.{ ScheduledMirPass, default_pass_schedule, pass_schedule_version }
+
+export *
+
+form PassApplication {
+  mir: MirUnit
+  stats: [MirTransformReport]
+  valid: bool
+}
+
+proc function_block_count(functions: [MirFunction]) -> u64 {
+  let count: u64 = 0
+  let i: u64 = 0
+  while i < len(functions) {
+    set count = count + len(functions[i].blocks)
+    set i = i + 1
+  }
+  give count
+}
+
+proc function_instruction_count(functions: [MirFunction]) -> u64 {
+  let count: u64 = 0
+  let i: u64 = 0
+  while i < len(functions) {
+    let j: u64 = 0
+    while j < len(functions[i].blocks) {
+      set count = count + len(functions[i].blocks[j].statements)
+      set j = j + 1
+    }
+    set i = i + 1
+  }
+  give count
+}
+
+proc apply_simplify_cfg(mir: MirUnit) -> PassApplication {
+  let functions: [MirFunction] = []
+  let stats: [MirTransformReport] = []
+  let valid: bool = mir.valid and mir.module.valid
+  let i: u64 = 0
+  while i < len(mir.module.functions) {
+    let before: MirFunction = mir.module.functions[i]
+    let after: MirFunction = transform_function(before)
+    let report: MirTransformReport = transform_report_for(before, after)
+    set functions = functions + [after]
+    set stats = stats + [report]
+    set valid = valid and after.valid and report.valid
+    set i = i + 1
+  }
+
+  let module: MirModule = MirModule {
+    name: mir.module.name,
+    functions: functions,
+    valid: valid and len(functions) > 0
+  }
+  let optimized: MirUnit = MirUnit {
+    source_path: mir.source_path,
+    module: module,
+    function_count: len(functions),
+    block_count: function_block_count(functions),
+    instruction_count: function_instruction_count(functions),
+    lowered: mir.lowered,
+    valid: module.valid
+  }
+  give PassApplication {
+    mir: optimized,
+    stats: stats,
+    valid: optimized.valid
+  }
+}
+
+proc apply_scheduled_pass(mir: MirUnit, pass0: ScheduledMirPass) -> PassApplication {
+  if not pass0.valid or pass0.kind != MirTransformKind.SimplifyCfg {
+    give PassApplication { mir: mir, stats: [], valid: false }
+  }
+  give apply_simplify_cfg(mir)
+}
+
+proc validate_for_pass(mir: MirUnit, pass_name: string, phase: PassValidationPhase) -> PassValidationRecord {
+  give pass_validation_record(pass_name, phase, mir_validation_reason(mir))
+}
+
+proc run_passes(mir: MirUnit) -> PassRunResult {
+  let schedule: [ScheduledMirPass] = default_pass_schedule()
+  let current: MirUnit = mir
+  let stats: [MirTransformReport] = []
+  let validations: [PassValidationRecord] = []
+  let completed: u64 = 0
+  let i: u64 = 0
+
+  while i < len(schedule) {
+    let before: PassValidationRecord = validate_for_pass(current, schedule[i].name, PassValidationPhase.Before)
+    set validations = validations + [before]
+    if not before.valid {
+      give pass_run_result(pass_schedule_version(), current, stats, validations, completed, false)
+    }
+
+    let application: PassApplication = apply_scheduled_pass(current, schedule[i])
+    set stats = stats + application.stats
+    if not application.valid {
+      give pass_run_result(pass_schedule_version(), application.mir, stats, validations, completed, false)
+    }
+
+    let after: PassValidationRecord = validate_for_pass(application.mir, schedule[i].name, PassValidationPhase.After)
+    set validations = validations + [after]
+    if not after.valid {
+      give pass_run_result(pass_schedule_version(), application.mir, stats, validations, completed, false)
+    }
+
+    set current = application.mir
+    set completed = completed + 1
+    set i = i + 1
+  }
+
+  give pass_run_result(pass_schedule_version(), current, stats, validations, completed, completed == len(schedule))
+}

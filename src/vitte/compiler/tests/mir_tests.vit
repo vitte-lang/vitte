@@ -8,6 +8,8 @@ use vitte/compiler/middle/mir/dataflow.{ DataflowDirection, DataflowFactKind, Da
 use vitte/compiler/middle/mir/pretty.{ mir_pretty_selftest, pretty_function, pretty_unit }
 use vitte/compiler/middle/mir/transform.{ MirTransformKind, MirTransformReport, MirTransformResultKind, mir_transform_selftest, optimize_function, report_summary, transform_kind_name, transform_report_for, transform_result_name }
 use vitte/compiler/middle/mir/validate.{ mir_validation_reason, validate_mir }
+use vitte/compiler/middle/passes/pass_manager.{ run_passes }
+use vitte/compiler/middle/passes/pass_result.{ PassRunResult, PassValidationPhase }
 use vitte/compiler/middle/lower/hir_to_mir.{ lower_hir_to_mir_templates }
 use vitte/compiler/middle/pipeline.{ MiddleOutput, middle_run }
 
@@ -1063,6 +1065,44 @@ proc test_mir_pretty_helpers_are_covered() -> bool {
     and find(rendered_fn, "assign") >= 0;
 }
 
+proc test_mir_pass_manager_validates_each_boundary() -> bool {
+  let nop: MirStatement = MirStatement {
+    id: 40,
+    span: ast_span_empty(),
+    kind: MirStatementKind.Nop,
+    place: MirPlace { local: "", projection: "", deref_depth: 0, mutable: false, moved: false, valid: false },
+    rvalue: MirRvalue { kind: MirRvalueKind.Use, text: "", operands: [], ty: "unit", temporary: false, valid: true },
+    reachable: true,
+    valid: true
+  };
+  let fn0: MirFunction = minimal_valid_function("main", [], nop);
+  let unit0: MirUnit = unit_with_functions("mir_pass_validation.vit", [fn0]);
+  let result: PassRunResult = run_passes(unit0);
+  let invalid: MirUnit = MirUnit {
+    source_path: unit0.source_path,
+    module: unit0.module,
+    function_count: unit0.function_count,
+    block_count: 0,
+    instruction_count: unit0.instruction_count,
+    lowered: unit0.lowered,
+    valid: unit0.valid
+  };
+  let rejected: PassRunResult = run_passes(invalid);
+
+  give result.valid
+    and result.completed_passes == 1
+    and len(result.validations) == 2
+    and result.validations[0].phase == PassValidationPhase.Before
+    and result.validations[0].valid
+    and result.validations[1].phase == PassValidationPhase.After
+    and result.validations[1].valid
+    and result.mir.instruction_count == 0
+    and not rejected.valid
+    and rejected.completed_passes == 0
+    and len(rejected.validations) == 1
+    and rejected.validations[0].reason == "invalid-module";
+}
+
 proc run_all_tests() -> int {
   let failures: int = 0;
   if not test_mir_lowering() {
@@ -1162,6 +1202,9 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if not test_mir_pretty_helpers_are_covered() {
+    set failures = failures + 1;
+  }
+  if not test_mir_pass_manager_validates_each_boundary() {
     set failures = failures + 1;
   }
   give failures;

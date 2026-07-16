@@ -8,6 +8,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 MOD = ROOT / 'src' / 'vitte' / 'compiler' / 'optimizations' / 'mir' / 'mod.vit'
 SMOKE = ROOT / 'src' / 'vitte' / 'compiler' / 'optimizations' / 'mir' / 'tests' / 'smoke.vit'
+PASS_MANAGER = ROOT / 'src' / 'vitte' / 'compiler' / 'middle' / 'passes' / 'pass_manager.vit'
+MIDDLE_PIPELINE = ROOT / 'src' / 'vitte' / 'compiler' / 'middle' / 'pipeline.vit'
 FIXTURES = ROOT / 'tests' / 'mir_opt'
 
 METRIC_RE = re.compile(
@@ -39,6 +41,19 @@ REQUIRED_SMOKE_SYMBOLS = [
     'smoke_mir_metric_thresholds',
 ]
 
+REQUIRED_PASS_MANAGER_SYMBOLS = [
+    'proc run_passes(mir: MirUnit) -> PassRunResult',
+    'let before: PassValidationRecord = validate_for_pass',
+    'if not before.valid',
+    'let after: PassValidationRecord = validate_for_pass',
+    'if not after.valid',
+]
+
+REQUIRED_PIPELINE_SYMBOLS = [
+    'let optimized_mir: MirUnit = if p.valid { p.mir } else { mir1 };',
+    'lower_mir_to_ir_for_target(optimized_mir, analysis, target)',
+]
+
 
 def fail(msg: str) -> int:
     print(f'[mir-opt][error] {msg}', file=sys.stderr)
@@ -46,7 +61,7 @@ def fail(msg: str) -> int:
 
 
 def main() -> int:
-    if not MOD.exists() or not SMOKE.exists():
+    if not MOD.exists() or not SMOKE.exists() or not PASS_MANAGER.exists() or not MIDDLE_PIPELINE.exists():
         return fail('missing MIR optimization files')
     if not FIXTURES.exists():
         return fail('missing tests/mir_opt fixtures')
@@ -65,6 +80,16 @@ def main() -> int:
     for sym in REQUIRED_SMOKE_SYMBOLS:
         if sym not in smoke_text:
             return fail(f'missing symbol in smoke.vit: {sym}')
+
+    pass_manager_text = PASS_MANAGER.read_text(encoding='utf-8')
+    for sym in REQUIRED_PASS_MANAGER_SYMBOLS:
+        if sym not in pass_manager_text:
+            return fail(f'missing pass validation contract: {sym}')
+
+    middle_pipeline_text = MIDDLE_PIPELINE.read_text(encoding='utf-8')
+    for sym in REQUIRED_PIPELINE_SYMBOLS:
+        if sym not in middle_pipeline_text:
+            return fail(f'missing optimized MIR pipeline contract: {sym}')
 
     fixtures = sorted(FIXTURES.glob('*.vit'))
     if len(fixtures) < 5:

@@ -1,0 +1,33 @@
+space vitte/compiler/middle/passes/schedule
+
+use vitte/compiler/middle/mir/transform.{ MirTransformKind }
+
+export *
+
+const PASS_SCHEDULE_VERSION: string = "mir-passes-v1"
+
+form ScheduledMirPass {
+  name: string
+  kind: MirTransformKind
+  ordinal: u64
+  valid: bool
+}
+
+proc scheduled_mir_pass(name: string, kind: MirTransformKind, ordinal: u64) -> ScheduledMirPass {
+  give ScheduledMirPass {
+    name: name,
+    kind: kind,
+    ordinal: ordinal,
+    valid: name != "" and ordinal > 0
+  }
+}
+
+proc pass_schedule_version() -> string {
+  give PASS_SCHEDULE_VERSION
+}
+
+proc default_pass_schedule() -> [ScheduledMirPass] {
+  give [
+    scheduled_mir_pass("simplify-cfg", MirTransformKind.SimplifyCfg, 1)
+  ]
+}

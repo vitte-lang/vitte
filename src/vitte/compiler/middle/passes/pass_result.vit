@@ -1,0 +1,51 @@
+space vitte/compiler/middle/passes/pass_result
+
+use vitte/compiler/middle/mir.{ MirUnit }
+use vitte/compiler/middle/mir/transform.{ MirTransformReport }
+
+export *
+
+pick PassValidationPhase {
+  Before,
+  After,
+}
+
+form PassValidationRecord {
+  pass_name: string
+  phase: PassValidationPhase
+  reason: string
+  valid: bool
+}
+
+form PassRunResult {
+  version: string
+  mir: MirUnit
+  stats: [MirTransformReport]
+  validations: [PassValidationRecord]
+  completed_passes: u64
+  valid: bool
+}
+
+proc pass_validation_record(pass_name: string, phase: PassValidationPhase, reason: string) -> PassValidationRecord {
+  give PassValidationRecord {
+    pass_name: pass_name,
+    phase: phase,
+    reason: reason,
+    valid: reason == "none"
+  }
+}
+
+proc pass_run_result(version: string, mir: MirUnit, stats: [MirTransformReport], validations: [PassValidationRecord], completed_passes: u64, valid: bool) -> PassRunResult {
+  give PassRunResult {
+    version: version,
+    mir: mir,
+    stats: stats,
+    validations: validations,
+    completed_passes: completed_passes,
+    valid: valid
+  }
+}
+
+proc pass_run_result_skipped(version: string, mir: MirUnit) -> PassRunResult {
+  give pass_run_result(version, mir, [], [], 0, false)
+}
