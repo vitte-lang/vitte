@@ -3693,8 +3693,15 @@ detect_professional_diagnostic() {
                             }
                             resolved_method_return = method_provider_return[provider_key]
                             method_call_start = method_call_offset + RSTART
+                            effective_method_return = resolved_method_return
+                            method_call_suffix = trim(substr(source_code_line[method_call_line], method_call_start + length(method_call_text)))
+                            if (method_call_suffix ~ /^as[ \t]+[A-Za-z_][A-Za-z0-9_]*/) {
+                                effective_method_return = method_call_suffix
+                                sub(/^as[ \t]+/, "", effective_method_return)
+                                sub(/[^A-Za-z0-9_].*$/, "", effective_method_return)
+                            }
                             method_binding_prefix = trim(substr(source_code_line[method_call_line], 1, method_call_start - 1))
-                            if (resolved_method_return != "" && method_binding_prefix ~ /^let[ \t]+[A-Za-z_][A-Za-z0-9_]*([ \t]*:[ \t]*[A-Za-z_][A-Za-z0-9_]*)?[ \t]*=[ \t]*$/) {
+                            if (effective_method_return != "" && method_binding_prefix ~ /^let[ \t]+[A-Za-z_][A-Za-z0-9_]*([ \t]*:[ \t]*[A-Za-z_][A-Za-z0-9_]*)?[ \t]*=[ \t]*$/) {
                                 method_binding_name = method_binding_prefix
                                 sub(/^let[ \t]+/, "", method_binding_name)
                                 sub(/[ \t]*[:=].*$/, "", method_binding_name)
@@ -3704,18 +3711,18 @@ detect_professional_diagnostic() {
                                     sub(/^[^:]*:[ \t]*/, "", method_binding_type)
                                     sub(/[ \t]*=.*/, "", method_binding_type)
                                 }
-                                if (method_binding_type != "" && !seed_types_compatible(method_binding_type, resolved_method_return)) {
+                                if (method_binding_type != "" && !seed_types_compatible(method_binding_type, effective_method_return)) {
                                     raw = source_line[method_call_line]
                                     col = method_call_start
                                     emit("TYPECK_E_ASSIGN_MISMATCH", "error", "typeck",
-                                        "cannot initialize " method_binding_name " of type " method_binding_type " from method return type " resolved_method_return,
+                                        "cannot initialize " method_binding_name " of type " method_binding_type " from method result type " effective_method_return,
                                         method_call_line, col, col + length(method_call_text) - 1, raw,
-                                        "expected " method_binding_type ", found " resolved_method_return,
+                                        "expected " method_binding_type ", found " effective_method_return,
                                         "bound method " receiver_type "." method_name " declares return type " resolved_method_return,
                                         "change the binding type or the method return type")
                                 }
                                 if (method_binding_type == "") {
-                                    remember_decl_in(method_call_scope, method_binding_name, resolved_method_return, method_call_line, index(source_line[method_call_line], method_binding_name))
+                                    remember_decl_in(method_call_scope, method_binding_name, effective_method_return, method_call_line, index(source_line[method_call_line], method_binding_name))
                                 }
                             }
                         }
@@ -3856,8 +3863,15 @@ detect_professional_diagnostic() {
                     if (proc_generic_index[called_proc SUBSEP resolved_call_return] > 0) {
                         resolved_call_return = call_generic_type[called_proc SUBSEP resolved_call_return]
                     }
+                    effective_call_return = resolved_call_return
+                    call_binding_suffix = trim(substr(call_code, call_close_col + 1))
+                    if (call_binding_suffix ~ /^as[ \t]+[A-Za-z_][A-Za-z0-9_]*/) {
+                        effective_call_return = call_binding_suffix
+                        sub(/^as[ \t]+/, "", effective_call_return)
+                        sub(/[^A-Za-z0-9_].*$/, "", effective_call_return)
+                    }
                     call_binding_prefix = trim(substr(call_code, 1, call_name_col - 1))
-                    if (resolved_call_return != "" && call_binding_prefix ~ /^let[ \t]+[A-Za-z_][A-Za-z0-9_]*([ \t]*:[ \t]*[A-Za-z_][A-Za-z0-9_]*)?[ \t]*=[ \t]*$/) {
+                    if (effective_call_return != "" && call_binding_prefix ~ /^let[ \t]+[A-Za-z_][A-Za-z0-9_]*([ \t]*:[ \t]*[A-Za-z_][A-Za-z0-9_]*)?[ \t]*=[ \t]*$/) {
                         call_binding_name = call_binding_prefix
                         sub(/^let[ \t]+/, "", call_binding_name)
                         sub(/[ \t]*[:=].*$/, "", call_binding_name)
@@ -3867,17 +3881,17 @@ detect_professional_diagnostic() {
                             sub(/^[^:]*:[ \t]*/, "", call_binding_type)
                             sub(/[ \t]*=.*/, "", call_binding_type)
                         }
-                        if (call_binding_type != "" && !seed_types_compatible(call_binding_type, resolved_call_return)) {
+                        if (call_binding_type != "" && !seed_types_compatible(call_binding_type, effective_call_return)) {
                             raw = source_line[call_line_no]
                             emit("TYPECK_E_ASSIGN_MISMATCH", "error", "typeck",
-                                "cannot initialize " call_binding_name " of type " call_binding_type " from procedure return type " resolved_call_return,
+                                "cannot initialize " call_binding_name " of type " call_binding_type " from procedure result type " effective_call_return,
                                 call_line_no, call_name_col, call_close_col + 1, raw,
-                                "expected " call_binding_type ", found " resolved_call_return,
+                                "expected " call_binding_type ", found " effective_call_return,
                                 "procedure " called_proc " declares return type " resolved_call_return,
                                 "change the binding type or the procedure return type")
                         }
                         if (call_binding_type == "") {
-                            remember_decl_in(call_scope, call_binding_name, resolved_call_return, call_line_no, index(source_line[call_line_no], call_binding_name))
+                            remember_decl_in(call_scope, call_binding_name, effective_call_return, call_line_no, index(source_line[call_line_no], call_binding_name))
                         }
                     }
                 }

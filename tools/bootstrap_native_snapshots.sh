@@ -271,6 +271,20 @@ check_qualified_call_uses_module_arity() {
     [ ! -s "$TMP_DIR/qualified-call.check.err" ] || die "qualified call was matched to an unrelated local procedure"
 }
 
+check_call_result_cast_type() {
+    log "checking explicit call result cast type"
+    positive_fixture="$ROOT_DIR/tests/type_system/call_result_cast_positive.vit"
+    negative_fixture="$ROOT_DIR/tests/type_system/call_result_cast_negative.vit"
+    "$BIN_DIR/vittec0" check "$positive_fixture" > "$TMP_DIR/call-result-cast.check.out" 2> "$TMP_DIR/call-result-cast.check.err"
+    diff -u "$SNAP_DIR/check.stage2.out.must" "$TMP_DIR/call-result-cast.check.out" || die "call result cast check stdout drift"
+    [ ! -s "$TMP_DIR/call-result-cast.check.err" ] || die "call result cast retained the unconverted procedure return type"
+    if "$BIN_DIR/vittec0" check "$negative_fixture" > "$TMP_DIR/call-result-cast-negative.check.out" 2> "$TMP_DIR/call-result-cast-negative.check.err"; then
+        die "call result without a cast unexpectedly passed"
+    fi
+    grep -F "TYPECK_E_ASSIGN_MISMATCH" "$TMP_DIR/call-result-cast-negative.check.err" >/dev/null || die "call result without a cast missed its assignment diagnostic"
+    grep -F "expected string, found u64" "$TMP_DIR/call-result-cast-negative.check.err" >/dev/null || die "call result mismatch reported the wrong types"
+}
+
 check_emission_hashes() {
     log "checking emission hashes and cross-stage reproducibility"
     "$BIN_DIR/vittec0" --help > "$TMP_DIR/help.vittec0"
@@ -479,6 +493,7 @@ check_bad_diag_cases
 check_cli_cases
 check_array_return_is_not_generic
 check_qualified_call_uses_module_arity
+check_call_result_cast_type
 check_emission_hashes
 check_native_user_build
 
