@@ -246,7 +246,7 @@ proc span_create(file: string, line: u64, column: u64, length: u64) -> SourceSpa
     let normalized_length: u64 = length;
 
     if normalized_length == 0 {
-        set normalized_length = 1;
+        set normalized_length = 1 as u64;
     }
 
     give SourceSpan {
@@ -1394,23 +1394,23 @@ proc diagnostic_default_suggestion(phase: DiagnosticPhase, code: string, span: S
 }
 
 proc diagnostic_suggestion_limit() -> u64 {
-    give 5;
+    give 5 as u64;
 }
 
 proc diagnostic_suggestion_rank(suggestion: DiagnosticSuggestion) -> u64 {
     if suggestion.applicability == DiagnosticApplicability.Machine {
-        give 0;
+        give 0 as u64;
     }
 
     if suggestion.confidence == "high" {
-        give 1;
+        give 1 as u64;
     }
 
     if suggestion.applicability == DiagnosticApplicability.MaybeMachine or suggestion.confidence == "medium" {
-        give 2;
+        give 2 as u64;
     }
 
-    give 3;
+    give 3 as u64;
 }
 
 proc diagnostic_suggestion_list_add(suggestions: [DiagnosticSuggestion], suggestion: DiagnosticSuggestion) -> [DiagnosticSuggestion] {
@@ -1791,102 +1791,102 @@ proc merge_diagnostics(left: [Diagnostic], right: [Diagnostic]) -> [Diagnostic] 
 
 proc diagnostic_phase_priority(phase: DiagnosticPhase) -> u64 {
     if phase == DiagnosticPhase.Lexer {
-        give 10;
+        give 10 as u64;
     }
 
     if phase == DiagnosticPhase.Parser {
-        give 20;
+        give 20 as u64;
     }
 
     if phase == DiagnosticPhase.Ast or phase == DiagnosticPhase.AstValidation {
-        give 30;
+        give 30 as u64;
     }
 
     if phase == DiagnosticPhase.ModuleResolution {
-        give 40;
+        give 40 as u64;
     }
 
     if phase == DiagnosticPhase.SymbolResolution or phase == DiagnosticPhase.Sema {
-        give 50;
+        give 50 as u64;
     }
 
     if phase == DiagnosticPhase.Hir {
-        give 60;
+        give 60 as u64;
     }
 
     if phase == DiagnosticPhase.Typeck {
-        give 70;
+        give 70 as u64;
     }
 
     if phase == DiagnosticPhase.Borrowck or phase == DiagnosticPhase.Lifetime {
-        give 80;
+        give 80 as u64;
     }
 
     if phase == DiagnosticPhase.Mir or phase == DiagnosticPhase.MirLowering or phase == DiagnosticPhase.MirVerification {
-        give 90;
+        give 90 as u64;
     }
 
     if phase == DiagnosticPhase.Ir {
-        give 100;
+        give 100 as u64;
     }
 
     if phase == DiagnosticPhase.Backend {
-        give 110;
+        give 110 as u64;
     }
 
     if phase == DiagnosticPhase.Linker {
-        give 120;
+        give 120 as u64;
     }
 
     if phase == DiagnosticPhase.RuntimeExecution {
-        give 130;
+        give 130 as u64;
     }
 
     if phase == DiagnosticPhase.Driver {
-        give 5;
+        give 5 as u64;
     }
 
-    give 200;
+    give 200 as u64;
 }
 
 proc diagnostic_severity_priority(severity: DiagnosticSeverity) -> u64 {
     if severity == DiagnosticSeverity.Fatal {
-        give 0;
+        give 0 as u64;
     }
 
     if severity == DiagnosticSeverity.Error {
-        give 10;
+        give 10 as u64;
     }
 
     if severity == DiagnosticSeverity.Warning {
-        give 20;
+        give 20 as u64;
     }
 
     if severity == DiagnosticSeverity.Note {
-        give 30;
+        give 30 as u64;
     }
 
-    give 40;
+    give 40 as u64;
 }
 
 proc diagnostic_cascade_penalty(diagnostic: Diagnostic) -> u64 {
     if diagnostic.phase == DiagnosticPhase.Lexer or diagnostic.phase == DiagnosticPhase.Parser {
-        give 0;
+        give 0 as u64;
     }
 
     if find(diagnostic.message, "unknown") >= 0 {
-        give 1;
+        give 1 as u64;
     }
 
     if find(diagnostic.message, "invalid") >= 0 {
-        give 2;
+        give 2 as u64;
     }
 
     if find(diagnostic.message, "mismatch") >= 0 {
-        give 4;
+        give 4 as u64;
     }
 
-    give 3;
+    give 3 as u64;
 }
 
 proc diagnostic_priority(diagnostic: Diagnostic) -> u64 {
@@ -1983,7 +1983,7 @@ proc diagnostic_cascade_count(diagnostics: [Diagnostic]) -> u64 {
     let roots: u64 = diagnostic_root_count(diagnostics);
 
     if len(diagnostics) <= roots {
-        give 0;
+        give 0 as u64;
     }
 
     give len(diagnostics) - roots;
@@ -2044,9 +2044,9 @@ proc diagnostic_quality(diagnostic: Diagnostic) -> DiagnosticQuality {
     }
 
     if diagnostic_is_root(diagnostic) {
-        set cascade_score = 20;
+        set cascade_score = 20 as u64;
     } else {
-        set cascade_score = 10;
+        set cascade_score = 10 as u64;
     }
 
     give DiagnosticQuality {
@@ -2066,7 +2066,7 @@ proc diagnostic_quality_score(diagnostic: Diagnostic) -> u64 {
 
 proc diagnostic_report_quality_score(diagnostics: [Diagnostic]) -> u64 {
     if len(diagnostics) == 0 {
-        give 100;
+        give 100 as u64;
     }
 
     let total: u64 = 0;
@@ -2372,7 +2372,7 @@ proc render_source_line_block(label: DiagnosticLabel, line_width: u64) -> [strin
     let marker_width: u64 = label.span.length;
 
     if marker_width == 0 {
-        set marker_width = 1;
+        set marker_width = 1 as u64;
     }
 
     let caret_offset: u64 = if label.span.start_column > 0 { label.span.start_column - 1 } else { 0 };
@@ -2402,7 +2402,7 @@ proc render_pipeline_block(values: [string]) -> [string] {
         give [];
     }
 
-    i = 0;
+    i = 0 as u64;
     while i < len(filtered) {
         if i > 0 {
             set pipeline_text = pipeline_text + " -> ";
@@ -2594,28 +2594,28 @@ proc render_diagnostic(diagnostic: Diagnostic, config: DiagnosticRenderConfig) -
     }
 
     let extra_lines: [string] = render_string_list("cause", diagnostic.cause_chain);
-    i = 0;
+    i = 0 as u64;
     while i < len(extra_lines) {
         set out = append_line(out, extra_lines[i]);
         set i = i + 1;
     }
 
     let pipeline_lines: [string] = render_string_list("pipeline", diagnostic.pipeline_context);
-    i = 0;
+    i = 0 as u64;
     while i < len(pipeline_lines) {
         set out = append_line(out, pipeline_lines[i]);
         set i = i + 1;
     }
 
     let related_lines: [string] = render_string_list("related", diagnostic.related_errors);
-    i = 0;
+    i = 0 as u64;
     while i < len(related_lines) {
         set out = append_line(out, related_lines[i]);
         set i = i + 1;
     }
 
     if config.show_notes {
-        set i = 0;
+        set i = 0 as u64;
 
         while i < len(diagnostic.notes) {
             set out = append_line(out, render_note(diagnostic.notes[i], config));
@@ -2624,7 +2624,7 @@ proc render_diagnostic(diagnostic: Diagnostic, config: DiagnosticRenderConfig) -
     }
 
     if config.show_helps {
-        set i = 0;
+        set i = 0 as u64;
 
         while i < len(diagnostic.helps) {
             set out = append_line(out, render_help(diagnostic.helps[i], config));
@@ -2633,7 +2633,7 @@ proc render_diagnostic(diagnostic: Diagnostic, config: DiagnosticRenderConfig) -
     }
 
     if config.show_suggestions {
-        set i = 0;
+        set i = 0 as u64;
 
         while i < len(diagnostic.suggestions) {
             set out = append_line(out, render_suggestion(diagnostic.suggestions[i], config));
