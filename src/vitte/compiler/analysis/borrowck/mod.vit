@@ -374,7 +374,7 @@ proc metadata_index(metadata: BorrowMetadata, name: string) -> int {
 proc metadata_scope_end(metadata: BorrowMetadata, name: string) -> u64 {
   let index: int = metadata_index(metadata, name);
   if index < 0 {
-    give 18446744073709551615;
+    give 18446744073709551615 as u64;
   }
   give metadata.scopes[index].scope_end_line;
 }
@@ -1414,12 +1414,12 @@ proc call_target_name(stmt: MirStatement) -> string {
 
 proc call_argument_start_index(stmt: MirStatement) -> u64 {
   if stmt.rvalue.operator == "variant-ctor" or stmt.rvalue.operator == "method-dispatch" {
-    give 0;
+    give 0 as u64;
   }
   if stmt.rvalue.kind == MirRvalueKind.Call and len(stmt.rvalue.operands) > 0 {
-    give 1;
+    give 1 as u64;
   }
-  give 0;
+  give 0 as u64;
 }
 
 proc apply_call_signature(result: BorrowCheckResult, metadata: BorrowMetadata, source_path: string, functions: [MirFunction], stmt: MirStatement) -> BorrowCheckResult {
