@@ -13,7 +13,6 @@ use vitte/compiler/diagnostics/json.{ json_report, json_report_envelope, json_re
 use vitte/compiler/infrastructure/incremental.{ IncrementalGraph, build_analysis_graph }
 use vitte/compiler/middle/hir.{ HirItemKind, HirUnit, hir_module_empty }
 use vitte/compiler/middle/hir/lower_ast.{ lower_ast_to_hir }
-use vitte/compiler/middle/hir/validate.{ validate_hir }
 use vitte/compiler/middle/pipeline.{ MiddleOutput, middle_run_frontend_for_target }
 use vitte/compiler/middle/lower/hir_to_mir.{ lower_hir_to_mir }
 use vitte/compiler/middle/lower/mir_to_ir.{ lower_mir_as_ir_module }
@@ -1055,8 +1054,7 @@ proc analyze_source_set(inputs: [DriverModuleInput]) -> DriverModuleSetArtifacts
     while i < len(inputs) {
         let input: DriverModuleInput = inputs[i];
         let frontend: FrontendOutput = parse_source(input.source_path, input.source_text);
-        let hir0: HirUnit = lower_ast_to_hir(frontend);
-        let hir1: HirUnit = validate_hir(hir0);
+        let hir1: HirUnit = lower_ast_to_hir(frontend);
         let module_index: u64 = i + 1;
         let module_seed: u64 = module_index * 1000000;
         set frontends = frontends + [frontend];
@@ -1326,8 +1324,7 @@ proc analyze_source(source_path: string, source_text: string) -> DriverAnalysisA
         };
     }
 
-    let hir0: HirUnit = lower_ast_to_hir(frontend);
-    let hir1: HirUnit = validate_hir(hir0);
+    let hir1: HirUnit = lower_ast_to_hir(frontend);
     let sema_result: SemaResult = run_sema_hir(hir1);
     let resolved_hir: HirUnit = sema_result.hir;
     let typeck_result: TypeckResult = run_production_typeck_hir(resolved_hir);

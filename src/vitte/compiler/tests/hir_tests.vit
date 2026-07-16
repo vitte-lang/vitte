@@ -17,7 +17,7 @@ proc test_hir_lowering() -> bool {
   let source: string = "const ANSWER = 42;\nproc main() { let x = ANSWER; give x; }\n";
   let fe: FrontendOutput = frontend_run("hir_test.vit", source);
   let hir = lower_ast_to_hir(fe);
-  if not hir.valid or len(hir.module.items) != 2 {
+  if not hir.valid or not hir.analyzed or len(hir.module.items) != 2 {
     give false;
   }
   if hir.module.items[0].kind != HirItemKind.Const {
@@ -216,8 +216,12 @@ proc test_hir_validation_rejects_empty_trait_and_impl() -> bool {
     "impl Empty for Point {}\n" +
     "proc main() -> int { give 0; }\n";
   let fe: FrontendOutput = frontend_run("hir_empty_trait_impl.vit", source);
-  let hir: HirUnit = validate_hir(lower_ast_to_hir(fe));
-  give not hir.valid and len(hir.module.diagnostics) >= 2;
+  let hir: HirUnit = lower_ast_to_hir(fe);
+  let checked_again: HirUnit = validate_hir(hir);
+  give hir.analyzed
+    and not hir.valid
+    and len(hir.module.diagnostics) >= 2
+    and len(checked_again.module.diagnostics) == len(hir.module.diagnostics);
 }
 
 proc test_hir_validation_rejects_invalid_member_and_param_surface() -> bool {
@@ -267,6 +271,30 @@ proc test_hir_validation_rejects_invalid_member_and_param_surface() -> bool {
   give not unit.valid and len(unit.module.diagnostics) >= 5;
 }
 
+proc test_hir_validation_rejects_unit_count_mismatch() -> bool {
+  let fe: FrontendOutput = frontend_run("hir_count_mismatch.vit", "proc main() { give 0; }\n");
+  let lowered: HirUnit = lower_ast_to_hir(fe);
+  let malformed: HirUnit = HirUnit {
+    source_path: lowered.source_path,
+    module: lowered.module,
+    node_count: lowered.node_count,
+    symbol_count: lowered.symbol_count,
+    scope_count: lowered.scope_count,
+    expr_count: lowered.expr_count,
+    stmt_count: lowered.stmt_count,
+    item_count: lowered.item_count + 1,
+    lowered: lowered.lowered,
+    analyzed: false,
+    valid: lowered.valid
+  };
+  let checked: HirUnit = validate_hir(malformed);
+
+  give not checked.valid
+    and checked.analyzed
+    and len(checked.module.diagnostics) > 0
+    and checked.module.diagnostics[0].code == "HIRV0401";
+}
+
 proc test_hir_builder_helpers_selftest() -> bool {
   give hir_builder_selftest();
 }
@@ -306,6 +334,9 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if not test_hir_validation_rejects_invalid_member_and_param_surface() {
+    set failures = failures + 1;
+  }
+  if not test_hir_validation_rejects_unit_count_mismatch() {
     set failures = failures + 1;
   }
   if not test_hir_builder_helpers_selftest() {

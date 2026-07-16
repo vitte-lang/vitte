@@ -64,6 +64,7 @@ use vitte/compiler/middle/hir.{
   hir_unit,
   semantic_diagnostic
 }
+use vitte/compiler/middle/hir/validate.{ validate_hir }
 
 export *
 
@@ -782,7 +783,7 @@ proc count_item_nodes(item: HirItem) -> u64 {
   give count;
 }
 
-proc lower_ast_to_hir(frontend: FrontendOutput) -> HirUnit {
+proc lower_ast_to_hir_unvalidated(frontend: FrontendOutput) -> HirUnit {
   if not frontend.valid or not frontend.ast_root.valid {
     give hir_unit(
       frontend.source_path,
@@ -861,4 +862,8 @@ proc lower_ast_to_hir(frontend: FrontendOutput) -> HirUnit {
     false,
     module_valid
   );
+}
+
+proc lower_ast_to_hir(frontend: FrontendOutput) -> HirUnit {
+  give validate_hir(lower_ast_to_hir_unvalidated(frontend));
 }

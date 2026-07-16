@@ -16,7 +16,6 @@ use vitte/compiler/middle/hir.{
   HirPlaceCategory,
   SemanticDiagnostic,
   SemanticSeverity,
-  hir_module_empty,
   semantic_diagnostic
 }
 
@@ -405,23 +404,24 @@ proc build_validation_result(hir: HirUnit, diagnostics: [SemanticDiagnostic]) ->
 }
 
 proc validate_hir(hir: HirUnit) -> HirUnit {
-  if not hir.module.valid or hir.node_count == 0 {
-    give HirUnit {
-      source_path: hir.source_path,
-      module: hir_module_empty(),
-      node_count: hir.node_count,
-      symbol_count: hir.symbol_count,
-      scope_count: hir.scope_count,
-      expr_count: hir.expr_count,
-      stmt_count: hir.stmt_count,
-      item_count: hir.item_count,
-      lowered: hir.lowered,
-      analyzed: hir.analyzed,
-      valid: false
-    }
+  if hir.analyzed {
+    give hir
   }
 
-  let diagnostics: [SemanticDiagnostic] = validate_module(hir.module)
+  let diagnostics: [SemanticDiagnostic] = []
+  if not hir.lowered {
+    set diagnostics = diagnostics + [validation_error("HIRV0400", "hir unit was not produced by lowering")]
+  }
+  if hir.item_count != len(hir.module.items) {
+    set diagnostics = diagnostics + [validation_error("HIRV0401", "hir unit item count does not match module items")]
+  }
+  if hir.node_count < hir.item_count {
+    set diagnostics = diagnostics + [validation_error("HIRV0402", "hir unit node count is smaller than item count")]
+  }
+  if hir.symbol_count != hir.module.symbol_count {
+    set diagnostics = diagnostics + [validation_error("HIRV0403", "hir unit symbol count does not match module symbol count")]
+  }
+  set diagnostics = diagnostics + validate_module(hir.module)
   let result: HirValidationResult = build_validation_result(hir, diagnostics)
   let module: HirModule = HirModule {
     name: hir.module.name,

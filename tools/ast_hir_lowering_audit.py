@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 AST_DIR = ROOT / "src" / "vitte" / "compiler" / "frontend" / "ast"
 HIR_FILE = ROOT / "src" / "vitte" / "compiler" / "middle" / "hir" / "hir.vit"
 LOWERING_FILE = ROOT / "src" / "vitte" / "compiler" / "middle" / "hir" / "lower_ast.vit"
+COMPILER_DIR = ROOT / "src" / "vitte" / "compiler"
 REPORT = ROOT / "target" / "reports" / "ast_hir_lowering" / "audit.json"
 
 
@@ -75,6 +76,12 @@ REQUIRED_ITEM_METADATA = (
     ("lower_ast.vit", "lower_expr_generic_arguments(expr),"),
     ("lower_ast.vit", "let generic_params: [string] = item_generic_param_names(item);"),
     ("lower_ast.vit", "len(generic_params),\n    generic_params,"),
+)
+
+REQUIRED_VALIDATION_CONTRACT = (
+    "use vitte/compiler/middle/hir/validate.{ validate_hir }",
+    "proc lower_ast_to_hir_unvalidated(frontend: FrontendOutput) -> HirUnit",
+    "give validate_hir(lower_ast_to_hir_unvalidated(frontend));",
 )
 
 
@@ -227,15 +234,37 @@ def main() -> int:
         if status != "present":
             failures.append(f"{owner}: missing item metadata contract `{needle}`")
 
+    validation_contract = {
+        needle: "present" if needle in lowering_text else "missing"
+        for needle in REQUIRED_VALIDATION_CONTRACT
+    }
+    for needle, status in validation_contract.items():
+        if status != "present":
+            failures.append(f"lower_ast.vit: missing automatic HIR validation contract `{needle}`")
+
+    unchecked_consumers = []
+    for path in sorted(COMPILER_DIR.rglob("*.vit")):
+        if path == LOWERING_FILE:
+            continue
+        if "lower_ast_to_hir_unvalidated" in read(path):
+            unchecked_consumers.append(str(path.relative_to(ROOT)))
+    if unchecked_consumers:
+        failures.append(
+            "unchecked AST to HIR lowering used outside lower_ast.vit: "
+            + ", ".join(unchecked_consumers)
+        )
+
     payload = {
         "schema": "vitte.compiler.ast_hir_lowering_audit",
-        "schema_version": "1.0.0",
+        "schema_version": "1.1.0",
         "status": "fail" if failures else "pass",
         "direct_surfaces": direct_results,
         "normalized_surfaces": normalized_results,
         "normalization_calls": normalization_calls,
         "recursive_calls": recursive_calls,
         "item_metadata": item_metadata,
+        "validation_contract": validation_contract,
+        "unchecked_consumers": unchecked_consumers,
         "failures": failures,
     }
     REPORT.parent.mkdir(parents=True, exist_ok=True)
