@@ -309,6 +309,14 @@ check_call_result_projection_type() {
     [ ! -s "$TMP_DIR/call-result-projection.check.err" ] || die "projected call result retained the raw procedure return type"
 }
 
+check_comment_markers_in_strings() {
+    log "checking comment markers inside strings"
+    fixture="$SNAP_DIR/string_comment_markers.vit"
+    "$BIN_DIR/vittec0" check "$fixture" > "$TMP_DIR/string-comment-markers.check.out" 2> "$TMP_DIR/string-comment-markers.check.err"
+    diff -u "$SNAP_DIR/check.stage2.out.must" "$TMP_DIR/string-comment-markers.check.out" || die "string comment marker check stdout drift"
+    [ ! -s "$TMP_DIR/string-comment-markers.check.err" ] || die "comment marker inside a string was lexed as a block comment"
+}
+
 check_emission_hashes() {
     log "checking emission hashes and cross-stage reproducibility"
     "$BIN_DIR/vittec0" --help > "$TMP_DIR/help.vittec0"
@@ -521,6 +529,7 @@ check_branch_shadow_uses_prior_declaration
 check_qualified_call_uses_module_arity
 check_call_result_cast_type
 check_call_result_projection_type
+check_comment_markers_in_strings
 check_emission_hashes
 check_native_user_build
 

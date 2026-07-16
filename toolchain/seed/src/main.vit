@@ -476,6 +476,62 @@ proc index_of(text: string, needle: string) -> int {
   give 0
 }
 
+proc index_of_from(text: string, needle: string, start: int) -> int {
+  if needle == "" { give 0 }
+  let pos: int = start
+  while pos + needle.len <= text.len {
+    let probe: string = ""
+    let inner: int = 0
+    while inner < needle.len {
+      set probe = probe + text[pos + inner]
+      set inner = inner + 1
+    }
+    if probe == needle {
+      give pos + 1
+    }
+    set pos = pos + 1
+  }
+  give 0
+}
+
+proc index_outside_strings(text: string, needle: string) -> int {
+  if needle == "" { give 0 }
+  let pos: int = 0
+  let quoted: bool = false
+  let escaped: bool = false
+  while pos < text.len {
+    let current: string = text[pos]
+    if escaped {
+      set escaped = false
+      set pos = pos + 1
+      continue
+    }
+    if quoted and current == "\\" {
+      set escaped = true
+      set pos = pos + 1
+      continue
+    }
+    if current == "\"" {
+      set quoted = not quoted
+      set pos = pos + 1
+      continue
+    }
+    if not quoted and pos + needle.len <= text.len {
+      let probe: string = ""
+      let inner: int = 0
+      while inner < needle.len {
+        set probe = probe + text[pos + inner]
+        set inner = inner + 1
+      }
+      if probe == needle {
+        give pos + 1
+      }
+    }
+    set pos = pos + 1
+  }
+  give 0
+}
+
 proc last_char(text: string) -> string {
   if text.len == 0 { give "" }
   give text[text.len - 1]
@@ -534,10 +590,11 @@ proc detect_lexer_diagnostics(source_name: string, source: string, imports: [str
       set line_no = line_no + 1
       continue
     }
-    if contains_text(line_text, "/*") and not contains_text(line_text, "*/") {
+    let block_comment_start: int = index_outside_strings(line_text, "/*")
+    if block_comment_start > 0 and index_of_from(line_text, "*/", block_comment_start + 1) == 0 {
       set in_block_comment = true
       set comment_line = line_no + 1
-      set comment_col = index_of(line_text, "/*")
+      set comment_col = block_comment_start
     }
     if contains_text(line_text, "@") {
       give seed_add_diagnostic(

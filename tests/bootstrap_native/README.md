@@ -68,6 +68,9 @@ decoding only SHA-256 hash drift.
 - `shell.main_const_int.must` protects named int constants and `main.return`
   through a constant.
 
+`string_comment_markers.vit` ensures that `/*` and `*/` inside string literals
+never enter the block-comment lexer state.
+
 ## Emission hashes
 
 `emission.sha256.must` is intentionally strict and contains only hash records,
