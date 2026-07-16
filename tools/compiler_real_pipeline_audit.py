@@ -19,38 +19,58 @@ def has(text: str, needle: str) -> bool:
 
 def check_required_steps() -> list[dict[str, str]]:
     compile_vit = read("src/vitte/compiler/driver/compile.vit")
+    lower_ast_vit = read("src/vitte/compiler/middle/hir/lower_ast.vit")
+    typeck_api_vit = read("src/vitte/compiler/analysis/typeck/api.vit")
     backend_vit = read("src/vitte/compiler/backend/pipeline.vit")
     codegen_vit = read("src/vitte/compiler/backend/codegen/mod.vit")
     linker_vit = read("src/vitte/compiler/backend/link/linker.vit")
 
     checks = [
-        ("source", "driver/compile", compile_vit, "source_text"),
-        ("lexer", "frontend pipeline", compile_vit, "frontend_run"),
-        ("parser", "frontend pipeline", compile_vit, "frontend_run"),
-        ("ast", "frontend output", compile_vit, "FrontendOutput"),
-        ("hir", "AST to HIR lowering", compile_vit, "lower_ast_to_hir"),
-        ("hir_validate", "HIR validation", compile_vit, "validate_hir"),
-        ("sema", "semantic analysis", compile_vit, "run_sema_hir"),
-        ("typeck", "type checking", compile_vit, "run_production_typeck_hir"),
-        ("borrowck", "analysis result", compile_vit, "borrowck_ok"),
-        ("mir", "HIR to MIR lowering", compile_vit, "lower_hir_to_mir"),
-        ("mir_validate", "MIR validation", compile_vit, "validate_mir"),
-        ("ir", "MIR to IR lowering", compile_vit, "lower_mir_as_ir_module"),
-        ("backend_pipeline", "backend pipeline", backend_vit, "compile_to_valid_ir_with_profile_and_packaging"),
-        ("codegen", "code generation", codegen_vit, "run_codegen_x86_64"),
-        ("object", "object emission", codegen_vit, "object_text"),
-        ("linker", "linker", linker_vit, "link_ir_unit_with_kind"),
-        ("binary_output", "link artifact output", linker_vit, "output_create"),
+        ("source", "driver/compile", "source_text", has(compile_vit, "source_text")),
+        ("lexer", "frontend pipeline", "frontend_run", has(compile_vit, "frontend_run")),
+        ("parser", "frontend pipeline", "frontend_run", has(compile_vit, "frontend_run")),
+        ("ast", "frontend output", "FrontendOutput", has(compile_vit, "FrontendOutput")),
+        ("hir", "AST to HIR lowering", "lower_ast_to_hir", has(compile_vit, "lower_ast_to_hir")),
+        (
+            "hir_validate",
+            "validated AST to HIR lowering",
+            "lower_ast_to_hir -> validate_hir(lower_ast_to_hir_unvalidated)",
+            has(compile_vit, "lower_ast_to_hir")
+            and has(lower_ast_vit, "give validate_hir(lower_ast_to_hir_unvalidated(frontend));"),
+        ),
+        ("sema", "semantic analysis", "run_sema_hir", has(compile_vit, "run_sema_hir")),
+        (
+            "typeck",
+            "canonical HIR type checking API",
+            "run_production_typeck_hir -> run_typeck_hir",
+            has(compile_vit, "run_production_typeck_hir")
+            and has(typeck_api_vit, 'give "canonical";')
+            and has(typeck_api_vit, "give run_typeck_hir(hir);"),
+        ),
+        ("borrowck", "analysis result", "borrowck_ok", has(compile_vit, "borrowck_ok")),
+        ("mir", "HIR to MIR lowering", "lower_hir_to_mir", has(compile_vit, "lower_hir_to_mir")),
+        ("mir_validate", "MIR validation", "validate_mir", has(compile_vit, "validate_mir")),
+        ("ir", "MIR to IR lowering", "lower_mir_as_ir_module", has(compile_vit, "lower_mir_as_ir_module")),
+        (
+            "backend_pipeline",
+            "backend pipeline",
+            "compile_to_valid_ir_with_profile_and_packaging",
+            has(backend_vit, "compile_to_valid_ir_with_profile_and_packaging"),
+        ),
+        ("codegen", "code generation", "run_codegen_x86_64", has(codegen_vit, "run_codegen_x86_64")),
+        ("object", "object emission", "object_text", has(codegen_vit, "object_text")),
+        ("linker", "linker", "link_ir_unit_with_kind", has(linker_vit, "link_ir_unit_with_kind")),
+        ("binary_output", "link artifact output", "output_create", has(linker_vit, "output_create")),
     ]
 
     out: list[dict[str, str]] = []
-    for name, owner, text, needle in checks:
+    for name, owner, needle, present in checks:
         out.append(
             {
                 "name": name,
                 "owner": owner,
                 "needle": needle,
-                "status": "present" if has(text, needle) else "missing",
+                "status": "present" if present else "missing",
             }
         )
     return out
@@ -119,6 +139,40 @@ def detect_informational_markers() -> list[dict[str, str]]:
     return found
 
 
+def detect_pipeline_bypasses() -> list[dict[str, str]]:
+    compiler_root = ROOT / "src" / "vitte" / "compiler"
+    allowed_unvalidated_hir = {
+        "src/vitte/compiler/middle/hir/lower_ast.vit",
+    }
+    allowed_direct_typeck = {
+        "src/vitte/compiler/analysis/typeck/api.vit",
+        "src/vitte/compiler/analysis/typeck/checker.vit",
+    }
+    bypasses: list[dict[str, str]] = []
+
+    for path in sorted(compiler_root.rglob("*.vit")):
+        rel = path.relative_to(ROOT).as_posix()
+        text = path.read_text(encoding="utf-8", errors="replace")
+        if "lower_ast_to_hir_unvalidated" in text and rel not in allowed_unvalidated_hir:
+            bypasses.append(
+                {
+                    "file": rel,
+                    "pattern": "lower_ast_to_hir_unvalidated",
+                    "reason": "production HIR consumers must use validated lowering",
+                }
+            )
+        if "run_typeck_hir" in text and rel not in allowed_direct_typeck:
+            bypasses.append(
+                {
+                    "file": rel,
+                    "pattern": "run_typeck_hir",
+                    "reason": "production type checking must use run_production_typeck_hir",
+                }
+            )
+
+    return bypasses
+
+
 def detect_bridge_artifacts() -> tuple[list[dict[str, str]], list[dict[str, str]]]:
     candidates = [
         ROOT / "target" / "bootstrap" / "stage2" / "vittec",
@@ -159,6 +213,7 @@ def main() -> int:
     bridge_forbidden, bridge_informational = detect_bridge_artifacts()
     forbidden = detect_forbidden_surfaces() + bridge_forbidden
     informational = detect_informational_markers() + bridge_informational
+    bypasses = detect_pipeline_bypasses()
     missing_steps = [s for s in steps if s["status"] != "present"]
 
     failures: list[str] = []
@@ -168,6 +223,8 @@ def main() -> int:
         failures.append("CLI source entry has placeholder main(args) and is not the real command dispatcher")
     if forbidden:
         failures.append("non-real backend/link/stage2 surface detected")
+    if bypasses:
+        failures.append("canonical pipeline bypass detected")
 
     status = "fail" if failures else "pass"
     payload = {
@@ -177,6 +234,7 @@ def main() -> int:
         "cli_entry": cli_entry,
         "pipeline_steps": steps,
         "forbidden_surfaces": forbidden,
+        "pipeline_bypasses": bypasses,
         "informational_markers": informational,
         "failures": failures,
         "expected_flow": [
@@ -185,6 +243,7 @@ def main() -> int:
             "parser",
             "AST",
             "HIR",
+            "HIR validation",
             "sema",
             "typeck",
             "borrowck",
@@ -210,6 +269,8 @@ def main() -> int:
         print(f"[compiler-real-pipeline][step] {step['name']} {step['status']} owner={step['owner']}")
     for item in forbidden:
         print(f"[compiler-real-pipeline][forbid] {item['file']} pattern={item['pattern']} reason={item['reason']}")
+    for item in bypasses:
+        print(f"[compiler-real-pipeline][bypass] {item['file']} pattern={item['pattern']} reason={item['reason']}")
     for item in informational:
         print(f"[compiler-real-pipeline][note] {item['file']} pattern={item['pattern']} reason={item['reason']}")
     for failure in failures:
