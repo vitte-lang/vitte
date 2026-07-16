@@ -24,6 +24,7 @@ def main() -> int:
         ("src/vitte/compiler/driver/compiler.vit", "proc parse_cli_request(", "driver runtime core must keep CLI request normalization"),
         ("src/vitte/compiler/driver/compiler.vit", "proc compile_source(", "driver runtime core must keep source compilation entry"),
         ("src/vitte/compiler/driver/compiler.vit", "proc compile_file(", "driver runtime core must keep file compilation entry"),
+        ("src/vitte/compiler/driver/compiler.vit", "use vitte/compiler/backend/api.{ backend_runtime_defines_native_symbol }", "runtime symbol lookup must route through the canonical backend facade"),
         ("src/vitte/compiler/driver/README.md", "driver/compiler.vit", "driver README must document the runtime core"),
     ]
 

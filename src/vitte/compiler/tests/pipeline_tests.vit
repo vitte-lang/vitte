@@ -7,6 +7,7 @@ use vitte/compiler/driver/health_dashboard.{ HealthDashboard, health_dashboard_f
 use vitte/compiler/driver/mod.{ main_driver_report_json, main_driver_set_report_json, main_driver_surface_report_json, main_driver_surface_report_json_from_args, run_check_diagnostics_json_cli, run_check_hir_json_cli, run_check_mir_json_cli, run_parse_ast_json_cli }
 use vitte/compiler/driver/result.{ CliReportResult }
 use vitte/compiler/driver/compiler.{ CompilerCliRequest, CompilerInput, CompilerMode, CompilerOptions, CompilerOutput, CompilerResult, CompilerStage, PhaseResult, build_validation_banner, compiler_from_source, compiler_result_json, default_options, new_compiler, parse_cli_request, record_phase_result, run_cli_main, run_compiler, structured_driver_failure_message, structured_validation_failure_message, typed_diag_text }
+use vitte/compiler/backend/api.{ backend_runtime_defines_native_symbol }
 use vitte/compiler/backend/pipeline.{ BackendPipelineResult, compile_to_valid_ir_with_profile_and_packaging }
 use vitte/compiler/backend/target/config
 use vitte/compiler/backends/backend_infrastructure
@@ -994,6 +995,12 @@ proc test_runtime_c_native_contract_is_wired() -> bool {
     and saw_emit_object and saw_emit_assembly_object and saw_verify_native_object and saw_link_executable and saw_run_executable;
 }
 
+proc test_backend_runtime_symbol_facade() -> bool {
+  give backend_runtime_defines_native_symbol("vitte_alloc")
+    and backend_runtime_defines_native_symbol("vitte_runtime_panic_boundary_begin")
+    and not backend_runtime_defines_native_symbol("vitte_missing_runtime_symbol");
+}
+
 proc test_linker_auto_wires_runtime_c_payload() -> bool {
   let result: BackendPipelineResult = compile_to_valid_ir_with_profile_and_packaging(
     "tests/pipeline/hello_world.vit",
@@ -1330,6 +1337,9 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if not test_runtime_c_native_contract_is_wired() {
+    set failures = failures + 1;
+  }
+  if not test_backend_runtime_symbol_facade() {
     set failures = failures + 1;
   }
   if not test_linker_auto_wires_runtime_c_payload() {

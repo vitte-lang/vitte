@@ -72,6 +72,7 @@ use vitte/compiler/middle/typecheck/mod
 use vitte/compiler/middle/typecheck/diagnostics
 use vitte/compiler/middle/typecheck/rules
 use vitte/compiler/backend/mod
+use vitte/compiler/backend/api.{ backend_runtime_defines_native_symbol }
 use vitte/compiler/backend/diagnostics.{ backend_diagnostic_severity_text, backend_diagnostic_text, backend_missing_c_compiler, backend_native_generation_failed, backend_output_overwrites_source, backend_output_permission_denied, backend_unsupported_feature, backend_unsupported_target, linker_command_failed, linker_native_symbol_not_found }
 use vitte/compiler/backend/pipeline.{ BackendPipelineResult }
 use vitte/compiler/backend/native_bridge.{ NativeBridgeResult, run_native_executable }
@@ -87,7 +88,6 @@ use vitte/compiler/infrastructure/session/mod
 use vitte/compiler/mod
 use vitte/compiler/backends/llvm_bindings.{ default_llvm_toolchain_paths }
 use vitte/compiler/backends/llvm_bindings/mod
-use vitte/compiler/backends/backend_infrastructure
 use vitte/compiler/infrastructure/session/config
 use vitte/compiler/infrastructure/session/context
 use vitte/compiler/infrastructure/session/diagnostics
@@ -2081,23 +2081,11 @@ proc native_link_failure_diagnostic(compiler: Compiler, result: NativeBridgeResu
     give linker_command_failed(backend_name, target_name, result.command_text, result.exit_code, result.stderr_text, result.executable_path, span0);
 }
 
-proc runtime_defines_native_symbol(symbol_name: string) -> bool {
-    let runtime0: backend_infrastructure.RuntimeLibrary = backend_infrastructure.create_vitte_runtime();
-    let i: u64 = 0;
-    while i < len(runtime0.functions) {
-        if runtime0.functions[i].link_name == symbol_name {
-            give true;
-        }
-        set i = i + 1;
-    }
-    give false;
-}
-
 proc first_missing_native_symbol(artifact: LinkArtifact) -> string {
     let i: u64 = 0;
     while i < len(artifact.relocations) {
         let relocation0 = artifact.relocations[i];
-        if not relocation0.resolved and not runtime_defines_native_symbol(relocation0.target_symbol) {
+        if not relocation0.resolved and not backend_runtime_defines_native_symbol(relocation0.target_symbol) {
             give relocation0.target_symbol;
         }
         set i = i + 1;
