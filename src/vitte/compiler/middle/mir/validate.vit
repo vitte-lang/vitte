@@ -525,9 +525,6 @@ proc block_valid_for_function(functions: [MirFunction], blocks: [MirBlock], bloc
   if block.id == 0 or duplicate_block_id(blocks, block.id) {
     give false;
   }
-  if len(block.statements) == 0 and block.terminator.kind == MirTerminatorKind.Goto {
-    give false;
-  }
   if len(block.statements) > 0 and block.statements[len(block.statements) - 1].kind == MirStatementKind.Return and block.terminator.kind != MirTerminatorKind.Return {
     give false;
   }
@@ -581,9 +578,6 @@ proc function_reason(functions: [MirFunction], fn0: MirFunction) -> string {
     }
     if duplicate_block_id(fn0.blocks, fn0.blocks[i].id) {
       give "duplicate-block-id";
-    }
-    if len(fn0.blocks[i].statements) == 0 and fn0.blocks[i].terminator.kind == MirTerminatorKind.Goto {
-      give "empty-goto-block";
     }
     if len(fn0.blocks[i].statements) > 0 and fn0.blocks[i].statements[len(fn0.blocks[i].statements) - 1].kind == MirStatementKind.Return and fn0.blocks[i].terminator.kind != MirTerminatorKind.Return {
       give "return-terminator-mismatch";

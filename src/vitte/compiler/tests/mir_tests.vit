@@ -948,11 +948,12 @@ proc test_validate_mir_rejects_regular_call_param_type_mismatch() -> bool {
   give not validate_mir(bad).valid and mir_validation_reason(bad) == "invalid-regular-call-param-type";
 }
 
-proc test_validate_mir_rejects_empty_goto_block() -> bool {
+proc test_validate_mir_accepts_empty_goto_block() -> bool {
   let goto_block = MirBlock { id: 2, label: "bb1", predecessors: [], statements: [], terminator: MirTerminator { kind: MirTerminatorKind.Goto, target_block: 3, else_block: 0, condition: MirOperand { text: "", place: MirPlace { local: "", projection: "", deref_depth: 0, mutable: false, moved: false, valid: false }, ty: "", constant: false, move: false, valid: false }, switch_values: [], switch_targets: [], valid: true }, sealed: true, reachable: true, valid: true };
   let entry_block = MirBlock { id: 1, label: "bb0", predecessors: [], statements: [], terminator: mir_terminator_return(), sealed: true, reachable: true, valid: true };
-  let bad: MirUnit = unit_with_functions("manual_bad_empty_goto_mir.vit", [MirFunction { id: 1, name: "main", entry_block: 1, params: [], return_type: "int", local_count: 1, temporary_count: 0, blocks: [entry_block, goto_block], valid: true }]);
-  give not validate_mir(bad).valid and mir_validation_reason(bad) == "empty-goto-block";
+  let target_block = MirBlock { id: 3, label: "bb2", predecessors: [2], statements: [], terminator: mir_terminator_return(), sealed: true, reachable: true, valid: true };
+  let unit0: MirUnit = unit_with_functions("manual_empty_goto_mir.vit", [MirFunction { id: 1, name: "main", entry_block: 1, params: [], return_type: "int", local_count: 1, temporary_count: 0, blocks: [entry_block, goto_block, target_block], valid: true }]);
+  give validate_mir(unit0).valid and mir_validation_reason(unit0) == "none";
 }
 
 proc test_validate_mir_rejects_return_terminator_mismatch() -> bool {
@@ -1147,8 +1148,8 @@ proc test_mir_pass_manager_validates_each_boundary() -> bool {
   let rejected: PassRunResult = run_passes(invalid);
 
   give result.valid
-    and result.completed_passes == 3
-    and len(result.validations) == 6
+    and result.completed_passes == 4
+    and len(result.validations) == 8
     and result.validations[0].phase == PassValidationPhase.Before
     and result.validations[0].valid
     and result.validations[1].phase == PassValidationPhase.After and result.validations[1].valid
@@ -1156,6 +1157,8 @@ proc test_mir_pass_manager_validates_each_boundary() -> bool {
     and result.validations[3].phase == PassValidationPhase.After and result.validations[3].valid
     and result.validations[4].phase == PassValidationPhase.Before and result.validations[4].valid
     and result.validations[5].phase == PassValidationPhase.After and result.validations[5].valid
+    and result.validations[6].phase == PassValidationPhase.Before and result.validations[6].valid
+    and result.validations[7].phase == PassValidationPhase.After and result.validations[7].valid
     and result.mir.instruction_count == 0
     and not rejected.valid
     and rejected.completed_passes == 0
@@ -1262,13 +1265,73 @@ proc test_mir_dce_computes_cfg_reachability() -> bool {
   let result: PassRunResult = run_passes(unit0);
 
   give result.valid
-    and result.completed_passes == 3
+    and result.completed_passes == 4
     and result.mir.block_count == 1
     and len(result.mir.module.functions[0].blocks) == 1
     and result.mir.module.functions[0].blocks[0].id == 1
     and result.mir.module.functions[0].blocks[0].reachable
     and len(result.mir.module.functions[0].blocks[0].predecessors) == 0
-    and result.stats[1].stats.removed_blocks == 1;
+    and result.stats[2].stats.removed_blocks == 1;
+}
+
+proc test_mir_folds_constant_branches_before_dce() -> bool {
+  let condition: MirOperand = MirOperand {
+    text: "true",
+    place: MirPlace { valid: false },
+    ty: "bool",
+    constant: true,
+    move: false,
+    valid: true
+  };
+  let entry: MirBlock = MirBlock {
+    id: 1,
+    label: "entry",
+    predecessors: [],
+    statements: [],
+    terminator: MirTerminator {
+      kind: MirTerminatorKind.Branch,
+      target_block: 2,
+      else_block: 3,
+      condition: condition,
+      switch_values: [],
+      switch_targets: [],
+      valid: true
+    },
+    sealed: true,
+    reachable: true,
+    valid: true
+  };
+  let then_block: MirBlock = MirBlock { id: 2, label: "then", predecessors: [1], statements: [], terminator: mir_terminator_return(), sealed: true, reachable: true, valid: true };
+  let else_block: MirBlock = MirBlock { id: 3, label: "else", predecessors: [1], statements: [], terminator: mir_terminator_return(), sealed: true, reachable: true, valid: true };
+  let fn0: MirFunction = MirFunction {
+    id: 1,
+    name: "main",
+    entry_block: 1,
+    params: [],
+    return_type: "unit",
+    local_count: 0,
+    temporary_count: 0,
+    blocks: [entry, then_block, else_block],
+    valid: true
+  };
+  let unit0: MirUnit = MirUnit {
+    source_path: "mir_fold_branch.vit",
+    module: MirModule { name: "branch", functions: [fn0], valid: true },
+    function_count: 1,
+    block_count: 3,
+    instruction_count: 0,
+    lowered: true,
+    valid: true
+  };
+  let result: PassRunResult = run_passes(unit0);
+
+  give result.valid
+    and result.completed_passes == 4
+    and result.mir.block_count == 2
+    and result.mir.module.functions[0].blocks[0].terminator.kind == MirTerminatorKind.Goto
+    and result.mir.module.functions[0].blocks[0].terminator.target_block == 2
+    and result.stats[1].stats.simplified_branches == 1
+    and result.stats[2].stats.removed_blocks == 1;
 }
 
 proc run_all_tests() -> int {
@@ -1354,7 +1417,7 @@ proc run_all_tests() -> int {
   if not test_validate_mir_rejects_regular_call_param_type_mismatch() {
     set failures = failures + 1;
   }
-  if not test_validate_mir_rejects_empty_goto_block() {
+  if not test_validate_mir_accepts_empty_goto_block() {
     set failures = failures + 1;
   }
   if not test_validate_mir_rejects_return_terminator_mismatch() {
@@ -1382,6 +1445,9 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if not test_mir_dce_computes_cfg_reachability() {
+    set failures = failures + 1;
+  }
+  if not test_mir_folds_constant_branches_before_dce() {
     set failures = failures + 1;
   }
   give failures;

@@ -11,6 +11,7 @@ SMOKE = ROOT / 'src' / 'vitte' / 'compiler' / 'optimizations' / 'mir' / 'tests' 
 PASS_MANAGER = ROOT / 'src' / 'vitte' / 'compiler' / 'middle' / 'passes' / 'pass_manager.vit'
 PASS_SCHEDULE = ROOT / 'src' / 'vitte' / 'compiler' / 'middle' / 'passes' / 'schedule.vit'
 MIR_TRANSFORM = ROOT / 'src' / 'vitte' / 'compiler' / 'middle' / 'mir' / 'transform.vit'
+MIR_VALIDATE = ROOT / 'src' / 'vitte' / 'compiler' / 'middle' / 'mir' / 'validate.vit'
 MIDDLE_PIPELINE = ROOT / 'src' / 'vitte' / 'compiler' / 'middle' / 'pipeline.vit'
 FIXTURES = ROOT / 'tests' / 'mir_opt'
 
@@ -70,6 +71,12 @@ REQUIRED_DCE_SYMBOLS = [
     'proc dead_code_report_for(before: MirFunction, after: MirFunction) -> MirTransformReport',
 ]
 
+REQUIRED_BRANCH_FOLDING_SYMBOLS = [
+    'proc constant_branch_target(terminator: MirTerminator) -> u64',
+    'proc fold_constant_branches_function(function0: MirFunction) -> MirFunction',
+    'proc branch_fold_report_for(before: MirFunction, after: MirFunction) -> MirTransformReport',
+]
+
 
 def fail(msg: str) -> int:
     print(f'[mir-opt][error] {msg}', file=sys.stderr)
@@ -77,7 +84,7 @@ def fail(msg: str) -> int:
 
 
 def main() -> int:
-    if not MOD.exists() or not SMOKE.exists() or not PASS_MANAGER.exists() or not PASS_SCHEDULE.exists() or not MIR_TRANSFORM.exists() or not MIDDLE_PIPELINE.exists():
+    if not MOD.exists() or not SMOKE.exists() or not PASS_MANAGER.exists() or not PASS_SCHEDULE.exists() or not MIR_TRANSFORM.exists() or not MIR_VALIDATE.exists() or not MIDDLE_PIPELINE.exists():
         return fail('missing MIR optimization files')
     if not FIXTURES.exists():
         return fail('missing tests/mir_opt fixtures')
@@ -110,7 +117,9 @@ def main() -> int:
     schedule_text = PASS_SCHEDULE.read_text(encoding='utf-8')
     if 'scheduled_mir_pass("fold-constants", MirTransformKind.FoldConstants, 1)' not in schedule_text:
         return fail('constant folding must be scheduled before CFG simplification')
-    if 'scheduled_mir_pass("remove-unreachable", MirTransformKind.RemoveUnreachable, 2)' not in schedule_text:
+    if 'scheduled_mir_pass("fold-branches", MirTransformKind.NormalizeBranches, 2)' not in schedule_text:
+        return fail('constant branch folding must be scheduled before CFG reachability DCE')
+    if 'scheduled_mir_pass("remove-unreachable", MirTransformKind.RemoveUnreachable, 3)' not in schedule_text:
         return fail('CFG reachability DCE must be scheduled before CFG simplification')
 
     transform_text = MIR_TRANSFORM.read_text(encoding='utf-8')
@@ -120,6 +129,13 @@ def main() -> int:
     for sym in REQUIRED_DCE_SYMBOLS:
         if sym not in transform_text:
             return fail(f'missing CFG DCE contract: {sym}')
+    for sym in REQUIRED_BRANCH_FOLDING_SYMBOLS:
+        if sym not in transform_text:
+            return fail(f'missing constant branch folding contract: {sym}')
+
+    validate_text = MIR_VALIDATE.read_text(encoding='utf-8')
+    if '"empty-goto-block"' in validate_text:
+        return fail('valid empty goto blocks must remain available for CFG simplification')
 
     fixtures = sorted(FIXTURES.glob('*.vit'))
     if len(fixtures) < 5:

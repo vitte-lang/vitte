@@ -451,6 +451,113 @@ proc constant_fold_report_for(before: MirFunction, after: MirFunction) -> MirTra
   }
 }
 
+proc constant_branch_target(terminator: MirTerminator) -> u64 {
+  if not terminator.condition.valid or not terminator.condition.constant {
+    give 0 as u64
+  }
+  if terminator.kind == MirTerminatorKind.Branch {
+    if terminator.condition.text == "true" {
+      give terminator.target_block
+    } elif terminator.condition.text == "false" {
+      give terminator.else_block
+    }
+    give 0 as u64
+  }
+  if terminator.kind == MirTerminatorKind.Switch {
+    let i: u64 = 0
+    while i < len(terminator.switch_values) and i < len(terminator.switch_targets) {
+      if terminator.switch_values[i] == terminator.condition.text {
+        give terminator.switch_targets[i]
+      }
+      set i = i + 1
+    }
+    give terminator.else_block
+  }
+  give 0 as u64
+}
+
+proc fold_constant_terminator(terminator: MirTerminator) -> MirTerminator {
+  let target: u64 = constant_branch_target(terminator)
+  if target == 0 {
+    give terminator
+  }
+  give MirTerminator {
+    kind: MirTerminatorKind.Goto,
+    target_block: target,
+    else_block: 0,
+    unwind_block: 0,
+    condition: MirOperand { text: "", place: MirPlace { valid: false }, ty: "", constant: false, move: false, valid: false },
+    switch_values: [],
+    switch_targets: [],
+    reachable: terminator.reachable,
+    valid: true
+  }
+}
+
+proc fold_constant_branches_function(function0: MirFunction) -> MirFunction {
+  let blocks: [MirBlock] = []
+  let i: u64 = 0
+  while i < len(function0.blocks) {
+    let block: MirBlock = function0.blocks[i]
+    set blocks = blocks + [MirBlock {
+      id: block.id,
+      label: block.label,
+      predecessors: block.predecessors,
+      statements: block.statements,
+      terminator: fold_constant_terminator(block.terminator),
+      sealed: block.sealed,
+      reachable: block.reachable,
+      valid: block.valid
+    }]
+    set i = i + 1
+  }
+  give MirFunction {
+    id: function0.id,
+    name: function0.name,
+    generic_params: function0.generic_params,
+    entry_block: function0.entry_block,
+    params: function0.params,
+    return_type: function0.return_type,
+    local_count: function0.local_count,
+    temporary_count: function0.temporary_count,
+    blocks: blocks,
+    valid: function0.valid
+  }
+}
+
+proc count_simplified_branches(before: MirFunction, after: MirFunction) -> u64 {
+  let count: u64 = 0
+  let i: u64 = 0
+  while i < len(before.blocks) and i < len(after.blocks) {
+    let before_kind: MirTerminatorKind = before.blocks[i].terminator.kind
+    if (before_kind == MirTerminatorKind.Branch or before_kind == MirTerminatorKind.Switch)
+      and after.blocks[i].terminator.kind == MirTerminatorKind.Goto {
+      set count = count + 1
+    }
+    set i = i + 1
+  }
+  give count
+}
+
+proc branch_fold_report_for(before: MirFunction, after: MirFunction) -> MirTransformReport {
+  let simplified: u64 = count_simplified_branches(before, after)
+  let valid: bool = validate_function(after)
+  give MirTransformReport {
+    function_name: after.name,
+    steps: [transform_step(MirTransformKind.NormalizeBranches, if simplified > 0 { MirTransformResultKind.Changed } else { MirTransformResultKind.Unchanged }, simplified, 0, valid)],
+    stats: MirTransformStats {
+      removed_blocks: 0,
+      removed_statements: 0,
+      folded_constants: 0,
+      merged_blocks: 0,
+      simplified_branches: simplified,
+      valid: valid
+    },
+    changed: simplified > 0,
+    valid: valid
+  }
+}
+
 proc nop_statement(stmt: MirStatement) -> bool {
   give stmt.kind == MirStatementKind.Nop
 }
