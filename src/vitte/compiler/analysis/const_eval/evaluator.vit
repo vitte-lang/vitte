@@ -19,10 +19,12 @@ use vitte/compiler/analysis/const_eval/interpreter.{
   ConstValue,
   ConstValueKind,
   ast_expr_references,
+  const_unknown,
   env_empty,
   env_has,
   env_get,
   env_set,
+  eval_const_binary_values,
   eval_const_ast_expr,
   expr_references,
   value_to_text
@@ -48,6 +50,16 @@ form ConstDeclAst {
   expr: AstExpr
   target_type: string
   line: u64
+  valid: bool
+}
+
+form ConstProcAst {
+  name: string
+  param_names: [string]
+  body_expr: AstExpr
+  return_type: string
+  line: u64
+  declared_const: bool
   valid: bool
 }
 
@@ -430,6 +442,203 @@ proc call_argument(expr: AstExpr, index: u64) -> AstExpr {
   give ast_expr_empty();
 }
 
+proc const_proc_index(procs: [ConstProcAst], name: string) -> int {
+  let i: u64 = 0;
+  while i < len(procs) {
+    if procs[i].name == name {
+      give i as int;
+    }
+    set i = i + 1;
+  }
+  give -1;
+}
+
+proc text_list_contains(values: [string], expected: string) -> bool {
+  let i: u64 = 0;
+  while i < len(values) {
+    if values[i] == expected {
+      give true;
+    }
+    set i = i + 1;
+  }
+  give false;
+}
+
+proc const_call_stack_contains(stack: [string], name: string) -> bool {
+  let i: u64 = 0;
+  while i < len(stack) {
+    if stack[i] == name {
+      give true;
+    }
+    set i = i + 1;
+  }
+  give false;
+}
+
+proc const_call_chain_text(stack: [string], name: string) -> string {
+  let out: string = "";
+  let i: u64 = 0;
+  while i < len(stack) {
+    if out != "" {
+      set out = out + " -> ";
+    }
+    set out = out + stack[i];
+    set i = i + 1;
+  }
+  if out != "" {
+    set out = out + " -> ";
+  }
+  give out + name;
+}
+
+proc eval_const_ast_expr_with_procs(env: ConstEnv, source_path: string, expr: AstExpr, procs: [ConstProcAst], stack: [string], depth: u64) -> ConstEvalResult {
+  if expr.kind == AstExprKind.Binary and len(expr.children) == 2 {
+    let left: ConstEvalResult = eval_const_ast_expr_with_procs(env, source_path, expr.children[0], procs, stack, depth);
+    let right: ConstEvalResult = eval_const_ast_expr_with_procs(env, source_path, expr.children[1], procs, stack, depth);
+    let diagnostics: [ConstEvalDiagnostic] = left.diagnostics + right.diagnostics;
+    if not left.valid or not right.valid {
+      give ConstEvalResult { value: const_unknown(), diagnostics: diagnostics, valid: false };
+    }
+    give eval_const_binary_values(env, source_path, expr.span.start_line, expr.operator, left.value, right.value, diagnostics);
+  }
+
+  if expr.kind != AstExprKind.Call {
+    give eval_const_ast_expr(env, source_path, expr);
+  }
+
+  let callee_name: string = call_callee_name(expr);
+  let proc_index: int = const_proc_index(procs, callee_name);
+  if proc_index < 0 {
+    give ConstEvalResult {
+      value: const_unknown(),
+      diagnostics: [diagnostic_create(
+        ConstEvalErrorKind.NonConstCall,
+        source_path,
+        expr.span.start_line,
+        "procedure `" + callee_name + "` is not available for constant evaluation",
+        [callee_name],
+        "call a source procedure with a pure single-expression `give` body or evaluate at runtime",
+        true
+      )],
+      valid: false
+    };
+  }
+
+  let proc_decl: ConstProcAst = procs[proc_index];
+  if not proc_decl.declared_const {
+    give ConstEvalResult {
+      value: const_unknown(),
+      diagnostics: [diagnostic_create(
+        ConstEvalErrorKind.NonConstCall,
+        source_path,
+        expr.span.start_line,
+        "procedure `" + callee_name + "` is not declared `const`",
+        [callee_name],
+        "add the `const` modifier only if the procedure is pure and compile-time evaluable",
+        true
+      )],
+      valid: false
+    };
+  }
+  if not proc_decl.valid {
+    give ConstEvalResult {
+      value: const_unknown(),
+      diagnostics: [diagnostic_create(
+        ConstEvalErrorKind.NonConstCall,
+        source_path,
+        expr.span.start_line,
+        "procedure `" + callee_name + "` is not const-evaluable",
+        [callee_name],
+        "use a pure procedure body containing exactly one `give` expression",
+        true
+      )],
+      valid: false
+    };
+  }
+
+  let argument_count: u64 = if len(expr.children) > 0 { len(expr.children) - 1 } else { 0 };
+  if argument_count != len(proc_decl.param_names) {
+    give ConstEvalResult {
+      value: const_unknown(),
+      diagnostics: [diagnostic_create(
+        ConstEvalErrorKind.NonConstCall,
+        source_path,
+        expr.span.start_line,
+        "constant call to `" + callee_name + "` has the wrong number of arguments",
+        [callee_name, to_string(len(proc_decl.param_names)), to_string(argument_count)],
+        "pass exactly " + to_string(len(proc_decl.param_names)) + " constant arguments",
+        true
+      )],
+      valid: false
+    };
+  }
+
+  if const_call_stack_contains(stack, callee_name) {
+    give ConstEvalResult {
+      value: const_unknown(),
+      diagnostics: [diagnostic_create(
+        ConstEvalErrorKind.Cycle,
+        source_path,
+        expr.span.start_line,
+        "recursive constant call cycle detected",
+        [const_call_chain_text(stack, callee_name)],
+        "break the recursive cycle or move the computation to runtime",
+        true
+      )],
+      valid: false
+    };
+  }
+
+  if depth >= 64 {
+    give ConstEvalResult {
+      value: const_unknown(),
+      diagnostics: [diagnostic_create(
+        ConstEvalErrorKind.Cycle,
+        source_path,
+        expr.span.start_line,
+        "constant call recursion limit exceeded",
+        [const_call_chain_text(stack, callee_name)],
+        "reduce the constant call depth below 64",
+        true
+      )],
+      valid: false
+    };
+  }
+
+  let local_env: ConstEnv = env;
+  let diagnostics: [ConstEvalDiagnostic] = [];
+  let argument_values: [ConstValue] = [];
+  let i: u64 = 0;
+  while i < argument_count {
+    let argument_expr: AstExpr = call_argument(expr, i);
+    let argument: ConstEvalResult = eval_const_ast_expr_with_procs(env, source_path, argument_expr, procs, stack, depth);
+    set diagnostics = diagnostics + argument.diagnostics;
+    if argument.valid {
+      set argument_values = argument_values + [argument.value];
+    }
+    set i = i + 1;
+  }
+  if diagnostics_has_fatal(diagnostics) or len(argument_values) != argument_count {
+    give ConstEvalResult { value: const_unknown(), diagnostics: diagnostics, valid: false };
+  }
+
+  let binding_index: u64 = 0;
+  while binding_index < len(proc_decl.param_names) {
+    set local_env = env_set(local_env, proc_decl.param_names[binding_index], argument_values[binding_index]);
+    set binding_index = binding_index + 1;
+  }
+
+  let evaluated: ConstEvalResult = eval_const_ast_expr_with_procs(local_env, source_path, proc_decl.body_expr, procs, stack + [callee_name], depth + 1);
+  if evaluated.valid and not const_value_fits_target(evaluated.value, proc_decl.return_type) {
+    give ConstEvalResult {
+      value: const_unknown(),
+      diagnostics: evaluated.diagnostics + [overflow_diagnostic(source_path, proc_decl.line, callee_name, proc_decl.return_type, evaluated.value)],
+      valid: false
+    };
+  }
+  give evaluated;
+}
+
 proc add_impossible_branch_diag(diagnostics: [ConstEvalDiagnostic], source_path: string, line: u64, condition_text: string, message: string) -> [ConstEvalDiagnostic] {
   give diagnostics + [diagnostic_create(
     ConstEvalErrorKind.ImpossibleBranch,
@@ -790,7 +999,7 @@ proc unresolved_dep_names_ast(decls: [ConstDeclAst], env: ConstEnv, expr: AstExp
   give missing;
 }
 
-proc run_const_decls_ast(source_path: string, decls: [ConstDeclAst]) -> ConstEvalRunResult {
+proc run_const_decls_ast(source_path: string, decls: [ConstDeclAst], procs: [ConstProcAst]) -> ConstEvalRunResult {
   let env: ConstEnv = env_empty();
   let resolved: [ConstBinding] = [];
   let diagnostics: [ConstEvalDiagnostic] = [];
@@ -809,7 +1018,7 @@ proc run_const_decls_ast(source_path: string, decls: [ConstDeclAst]) -> ConstEva
         set i = i + 1;
         continue;
       }
-      let evaluated: ConstEvalResult = eval_const_ast_expr(env, source_path, decl.expr);
+      let evaluated: ConstEvalResult = eval_const_ast_expr_with_procs(env, source_path, decl.expr, procs, [], 0);
       if evaluated.valid and const_value_fits_target(evaluated.value, decl.target_type) {
         set env = env_set(env, decl.name, evaluated.value);
         set resolved = resolved + [ConstBinding { name: decl.name, value: evaluated.value, valid: true }];
@@ -848,11 +1057,11 @@ proc run_const_decls_ast(source_path: string, decls: [ConstDeclAst]) -> ConstEva
   };
 }
 
-proc run_static_asserts_ast(source_path: string, asserts: [StaticAssertDeclAst], env: ConstEnv, diagnostics: [ConstEvalDiagnostic]) -> ConstEvalRunResult {
+proc run_static_asserts_ast(source_path: string, asserts: [StaticAssertDeclAst], procs: [ConstProcAst], env: ConstEnv, diagnostics: [ConstEvalDiagnostic]) -> ConstEvalRunResult {
   let output: [ConstEvalDiagnostic] = diagnostics;
   let i: u64 = 0;
   while i < len(asserts) {
-    let evaluated: ConstEvalResult = eval_const_ast_expr(env, source_path, asserts[i].expr);
+    let evaluated: ConstEvalResult = eval_const_ast_expr_with_procs(env, source_path, asserts[i].expr, procs, [], 0);
     if not evaluated.valid {
       set output = output + evaluated.diagnostics;
     } elif evaluated.value.kind != ConstValueKind.Bool {
@@ -965,6 +1174,7 @@ proc run_const_eval(source_path: string, source_text: string) -> ConstEvalRunRes
 proc run_const_eval_ast(source_path: string, module: AstModule) -> ConstEvalRunResult {
   let decls: [ConstDeclAst] = [];
   let asserts: [StaticAssertDeclAst] = [];
+  let procs: [ConstProcAst] = [];
   let i: u64 = 0;
   while i < len(module.items) {
     let item = module.items[i];
@@ -972,16 +1182,43 @@ proc run_const_eval_ast(source_path: string, module: AstModule) -> ConstEvalRunR
       set decls = decls + [ConstDeclAst { name: item.name, expr: item.expr, target_type: item.annotation.text, line: item.span.start_line, valid: item.valid }];
     } elif item.kind == AstItemKind.StaticAssert {
       set asserts = asserts + [StaticAssertDeclAst { expr: item.expr, message: item.message, line: item.span.start_line, valid: item.valid }];
+    } elif item.kind == AstItemKind.Proc {
+      let param_names: [string] = [];
+      let params_valid: bool = true;
+      let j: u64 = 0;
+      while j < len(item.signature.params) {
+        let param_name: string = item.signature.params[j].pattern.binding_name;
+        if param_name == "" {
+          set param_name = item.signature.params[j].pattern.name;
+        }
+        if param_name == "" {
+          set params_valid = false;
+        }
+        set param_names = param_names + [param_name];
+        set j = j + 1;
+      }
+      let pure_body: bool = len(item.stmts) == 1 and item.stmts[0].kind == AstStmtKind.Give and item.stmts[0].expr.valid;
+      let declared_const: bool = text_list_contains(item.modifiers, "const");
+      let body_expr: AstExpr = if pure_body { item.stmts[0].expr } else { ast_expr_empty() };
+      set procs = procs + [ConstProcAst {
+        name: item.name,
+        param_names: param_names,
+        body_expr: body_expr,
+        return_type: item.signature.return_type.text,
+        line: item.span.start_line,
+        declared_const: declared_const,
+        valid: item.valid and declared_const and params_valid and pure_body
+      }];
     }
     set i = i + 1;
   }
 
-  let decl_result: ConstEvalRunResult = run_const_decls_ast(source_path, decls);
+  let decl_result: ConstEvalRunResult = run_const_decls_ast(source_path, decls, procs);
   let env: ConstEnv = ConstEnv {
     bindings: decl_result.bindings,
     valid: decl_result.valid
   };
-  let asserted: ConstEvalRunResult = run_static_asserts_ast(source_path, asserts, env, decl_result.diagnostics);
+  let asserted: ConstEvalRunResult = run_static_asserts_ast(source_path, asserts, procs, env, decl_result.diagnostics);
   let asserted_env: ConstEnv = ConstEnv {
     bindings: asserted.bindings,
     valid: asserted.valid

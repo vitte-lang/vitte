@@ -705,6 +705,33 @@ proc ast_expr_references(expr: AstExpr) -> [string] {
   give refs;
 }
 
+proc eval_const_binary_values(env: ConstEnv, file: string, line: u64, operator: string, left: ConstValue, right: ConstValue, diagnostics: [ConstEvalDiagnostic]) -> ConstEvalResult {
+  let state: ConstParseState = ConstParseState {
+    tokens: [],
+    index: 0,
+    env: env,
+    file: file,
+    line: line,
+    diagnostics: diagnostics,
+    valid: len(diagnostics) == 0
+  };
+  let stepped: ConstStep = step(state, const_unknown());
+  if left.kind == ConstValueKind.Int and right.kind == ConstValueKind.Int {
+    set stepped = eval_binary_int(left, right, operator, state);
+  } elif left.kind == ConstValueKind.Bool and right.kind == ConstValueKind.Bool {
+    set stepped = eval_binary_bool(left, right, operator, state);
+  } elif left.kind == ConstValueKind.String and right.kind == ConstValueKind.String {
+    set stepped = eval_binary_string(left, right, operator, state);
+  } else {
+    set stepped = step(add_diag(state, ConstEvalErrorKind.UnsupportedExpr, "binary constant operator `" + operator + "` requires matching operand kinds", [operator], "use operands of the same constant kind"), const_unknown());
+  }
+  give ConstEvalResult {
+    value: stepped.value,
+    diagnostics: stepped.state.diagnostics,
+    valid: stepped.value.valid and not diagnostics_has_fatal(stepped.state.diagnostics)
+  };
+}
+
 proc eval_const_ast_expr(env: ConstEnv, file: string, expr: AstExpr) -> ConstEvalResult {
   let line: u64 = expr.span.start_line;
   if expr.kind == AstExprKind.Int {
@@ -768,30 +795,7 @@ proc eval_const_ast_expr(env: ConstEnv, file: string, expr: AstExpr) -> ConstEva
     if not left.valid or not right.valid {
       give ConstEvalResult { value: const_unknown(), diagnostics: merged, valid: false };
     }
-    let state: ConstParseState = ConstParseState {
-      tokens: [],
-      index: 0,
-      env: env,
-      file: file,
-      line: line,
-      diagnostics: merged,
-      valid: len(merged) == 0
-    };
-    let stepped: ConstStep = step(state, const_unknown());
-    if left.value.kind == ConstValueKind.Int and right.value.kind == ConstValueKind.Int {
-      set stepped = eval_binary_int(left.value, right.value, expr.operator, state);
-    } elif left.value.kind == ConstValueKind.Bool and right.value.kind == ConstValueKind.Bool {
-      set stepped = eval_binary_bool(left.value, right.value, expr.operator, state);
-    } elif left.value.kind == ConstValueKind.String and right.value.kind == ConstValueKind.String {
-      set stepped = eval_binary_string(left.value, right.value, expr.operator, state);
-    } else {
-      set stepped = step(add_diag(state, ConstEvalErrorKind.UnsupportedExpr, "binary constant operator `" + expr.operator + "` requires matching operand kinds", [expr.operator], "use operands of the same constant kind"), const_unknown());
-    }
-    give ConstEvalResult {
-      value: stepped.value,
-      diagnostics: stepped.state.diagnostics,
-      valid: stepped.value.valid and not diagnostics_has_fatal(stepped.state.diagnostics)
-    };
+    give eval_const_binary_values(env, file, line, expr.operator, left.value, right.value, merged);
   }
   give ConstEvalResult {
     value: const_unknown(),

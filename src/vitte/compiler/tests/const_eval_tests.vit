@@ -110,6 +110,62 @@ proc test_ast_const_eval_path() -> bool {
   give fe.valid and result.valid and len(result.bindings) == 2 and result.assert_count == 1;
 }
 
+proc test_ast_const_procedure_call() -> bool {
+  let source: string =
+    "const proc add(left: int, right: int) -> int { give left + right; }\n" +
+    "const ANSWER: int = add(20, 22);\n" +
+    "static_assert(ANSWER == 42);\n";
+  let fe: FrontendOutput = frontend_run("const_eval_proc_call.vit", source);
+  let result: ConstEvalRunResult = run_const_eval_ast("const_eval_proc_call.vit", fe.ast_root);
+  give fe.valid and result.valid and len(result.bindings) == 1 and result.assert_count == 1;
+}
+
+proc test_ast_nested_const_procedure_calls() -> bool {
+  let source: string =
+    "const proc double(value: int) -> int { give value + value; }\n" +
+    "const proc answer() -> int { give double(21); }\n" +
+    "const ANSWER: int = answer();\n";
+  let fe: FrontendOutput = frontend_run("const_eval_nested_proc_call.vit", source);
+  let result: ConstEvalRunResult = run_const_eval_ast("const_eval_nested_proc_call.vit", fe.ast_root);
+  give fe.valid and result.valid and len(result.bindings) == 1;
+}
+
+proc test_ast_const_procedure_arity_mismatch() -> bool {
+  let source: string =
+    "const proc identity(value: int) -> int { give value; }\n" +
+    "const BAD: int = identity();\n";
+  let fe: FrontendOutput = frontend_run("const_eval_proc_arity.vit", source);
+  let result: ConstEvalRunResult = run_const_eval_ast("const_eval_proc_arity.vit", fe.ast_root);
+  give fe.valid and not result.valid and has_code(result, "CONST_EVAL_E_NON_CONST_CALL");
+}
+
+proc test_ast_impure_procedure_call_is_rejected() -> bool {
+  let source: string =
+    "const proc impure() -> int { let value: int = 1; give value; }\n" +
+    "const BAD: int = impure();\n";
+  let fe: FrontendOutput = frontend_run("const_eval_impure_proc.vit", source);
+  let result: ConstEvalRunResult = run_const_eval_ast("const_eval_impure_proc.vit", fe.ast_root);
+  give fe.valid and not result.valid and has_code(result, "CONST_EVAL_E_NON_CONST_CALL");
+}
+
+proc test_ast_non_const_procedure_call_is_rejected() -> bool {
+  let source: string =
+    "proc runtime_only() -> int { give 1; }\n" +
+    "const BAD: int = runtime_only();\n";
+  let fe: FrontendOutput = frontend_run("const_eval_runtime_proc.vit", source);
+  let result: ConstEvalRunResult = run_const_eval_ast("const_eval_runtime_proc.vit", fe.ast_root);
+  give fe.valid and not result.valid and has_code(result, "CONST_EVAL_E_NON_CONST_CALL");
+}
+
+proc test_ast_const_procedure_cycle() -> bool {
+  let source: string =
+    "const proc cycle(value: int) -> int { give cycle(value); }\n" +
+    "const BAD: int = cycle(1);\n";
+  let fe: FrontendOutput = frontend_run("const_eval_proc_cycle.vit", source);
+  let result: ConstEvalRunResult = run_const_eval_ast("const_eval_proc_cycle.vit", fe.ast_root);
+  give fe.valid and not result.valid and has_code(result, "CONST_EVAL_E_CYCLE");
+}
+
 proc test_ast_compile_time_simulation_detects_proc_impossible_branch() -> bool {
   let source: string =
     "const READY = false;\n" +
@@ -192,6 +248,24 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if not test_ast_const_eval_path() {
+    set failures = failures + 1;
+  }
+  if not test_ast_const_procedure_call() {
+    set failures = failures + 1;
+  }
+  if not test_ast_nested_const_procedure_calls() {
+    set failures = failures + 1;
+  }
+  if not test_ast_const_procedure_arity_mismatch() {
+    set failures = failures + 1;
+  }
+  if not test_ast_impure_procedure_call_is_rejected() {
+    set failures = failures + 1;
+  }
+  if not test_ast_non_const_procedure_call_is_rejected() {
+    set failures = failures + 1;
+  }
+  if not test_ast_const_procedure_cycle() {
     set failures = failures + 1;
   }
   if not test_ast_compile_time_simulation_detects_proc_impossible_branch() {
