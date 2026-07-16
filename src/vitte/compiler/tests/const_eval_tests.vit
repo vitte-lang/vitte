@@ -84,6 +84,13 @@ proc test_ast_invalid_unary_operand() -> bool {
   give fe.valid and not result.valid and has_code(result, "CONST_EVAL_E_UNSUPPORTED_EXPR");
 }
 
+proc test_ast_forbidden_const_reference() -> bool {
+  let source: string = "const VALUE: int = 1;\nconst BAD: &int = &VALUE;\n";
+  let fe: FrontendOutput = frontend_run("const_eval_ast_reference.vit", source);
+  let result: ConstEvalRunResult = run_const_eval_ast("const_eval_ast_reference.vit", fe.ast_root);
+  give fe.valid and not result.valid and has_code(result, "CONST_EVAL_E_UNSUPPORTED_EXPR");
+}
+
 proc test_unknown_name() -> bool {
   let source: string = "const X = Y + 1;\n";
   let result: ConstEvalRunResult = run_const_eval("const_eval_unknown_name.vit", source);
@@ -299,6 +306,9 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if not test_ast_invalid_unary_operand() {
+    set failures = failures + 1;
+  }
+  if not test_ast_forbidden_const_reference() {
     set failures = failures + 1;
   }
   if not test_unknown_name() {

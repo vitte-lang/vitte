@@ -2938,6 +2938,20 @@ detect_professional_diagnostic() {
             }
         }
 
+        if (line ~ /^const[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*:[^=]+=[ \t]*&/) {
+            const_eq_col = index(raw, "=")
+            const_rhs = substr(raw, const_eq_col + 1)
+            const_expr = trim(const_rhs)
+            sub(/[ \t;]*$/, "", const_expr)
+            const_amp_col = const_eq_col + index(const_rhs, "&")
+            emit("CONST_EVAL_E_UNSUPPORTED_EXPR", "error", "const_eval",
+                "references are not supported in constant expressions",
+                FNR, const_amp_col, const_amp_col + length(const_expr), raw,
+                "reference expression " const_expr " cannot be evaluated at compile time",
+                "constant evaluation permits immutable scalar values but not borrowed storage",
+                "replace the reference with a constant value or compute it at runtime")
+        }
+
         too_large_col = token_too_large_col(raw, 128)
         if (too_large_col > 0) {
             too_large_len = token_len_from(raw, too_large_col)
