@@ -121,12 +121,24 @@ mkdir -p "$BIN_DIR"
 
 STAGE2_CANDIDATE_DIR="$OUT_DIR/.stage1-build"
 STAGE2_CANDIDATE="$STAGE2_CANDIDATE_DIR/vittec"
+VITTEC_INSTALL_TMP="$BIN_DIR/.vittec.tmp.$$"
+VITTE_INSTALL_TMP="$BIN_DIR/.vitte.tmp.$$"
 cleanup_stage2_candidate() {
     rm -rf "$STAGE2_CANDIDATE_DIR"
+    rm -f "$VITTEC_INSTALL_TMP" "$VITTE_INSTALL_TMP"
 }
 trap cleanup_stage2_candidate EXIT HUP INT TERM
 cleanup_stage2_candidate
 mkdir -p "$STAGE2_CANDIDATE_DIR"
+
+install_executable_atomically() {
+    source_file="$1"
+    destination="$2"
+    temporary="$3"
+    cp "$source_file" "$temporary"
+    chmod +x "$temporary"
+    mv "$temporary" "$destination"
+}
 
 build_stage2_shell_payload() {
     requested_src="$1"
@@ -288,10 +300,8 @@ EOF
 mv "$provenance_tmp" "$STAGE2_PROVENANCE"
 
 log "installing vittec → $BIN_DIR"
-cp "$VITTEC_BIN" "$BIN_DIR/vittec"
-chmod +x "$BIN_DIR/vittec"
-cp "$VITTEC_BIN" "$BIN_DIR/vitte"
-chmod +x "$BIN_DIR/vitte"
+install_executable_atomically "$VITTEC_BIN" "$BIN_DIR/vittec" "$VITTEC_INSTALL_TMP"
+install_executable_atomically "$VITTEC_BIN" "$BIN_DIR/vitte" "$VITTE_INSTALL_TMP"
 
 # ------------------------------------------------------------
 # Self-check
