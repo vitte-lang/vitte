@@ -2729,7 +2729,7 @@ detect_professional_diagnostic() {
     function syntax_note(expected, found, context, recovery) {
         return "expected token: " expected "; found token: " found "; syntax context: " context "; recovery: " recovery
     }
-    function remember_decl_in(proc_name, name, ty, line, col,    key) {
+    function remember_decl_in(proc_name, name, ty, line, col,    key, history_index) {
         if (name == "") return
         decl_type[name] = ty
         decl_line[name] = line
@@ -2739,13 +2739,23 @@ detect_professional_diagnostic() {
             proc_decl_type[key] = ty
             proc_decl_line[key] = line
             proc_decl_col[key] = col
+            history_index = ++proc_decl_history_count[key]
+            proc_decl_history_type[key SUBSEP history_index] = ty
+            proc_decl_history_line[key SUBSEP history_index] = line
         }
     }
     function remember_decl(name, ty, line, col) {
         remember_decl_in(current_proc, name, ty, line, col)
     }
-    function binding_type(proc_name, name,    key) {
+    function binding_type(proc_name, name, use_line,    key, history_index) {
         key = proc_name SUBSEP name
+        if (proc_name != "" && use_line > 0) {
+            for (history_index = proc_decl_history_count[key]; history_index >= 1; history_index--) {
+                if (proc_decl_history_line[key SUBSEP history_index] <= use_line) {
+                    return proc_decl_history_type[key SUBSEP history_index]
+                }
+            }
+        }
         if (proc_name != "" && (key in proc_decl_type)) return proc_decl_type[key]
         if (proc_name != "" && (key in proc_binding_type)) return proc_binding_type[key]
         if (proc_name == "" && (name in decl_type)) return decl_type[name]
@@ -3199,7 +3209,7 @@ detect_professional_diagnostic() {
                 sub(/[ \t{;].*$/, "", declared_proc_return)
             }
             proc_return_type[name] = declared_proc_return
-            if (declared_proc_return != "" && line ~ /[{]/) {
+            if (line ~ /[{]/) {
                 current_proc = name
                 current_proc_line = FNR
                 current_return_type = declared_proc_return
@@ -3223,7 +3233,7 @@ detect_professional_diagnostic() {
             begin_pick_definition(name, code_line)
         }
 
-        if (current_proc != "" && line ~ /(^|[{;][ \t]*)give[ \t]+/) {
+        if (current_proc != "" && current_return_type != "" && line ~ /(^|[{;][ \t]*)give[ \t]+/) {
             returned = line
             sub(/^.*give[ \t]+/, "", returned)
             returned_token = trim(returned)
@@ -3680,7 +3690,7 @@ detect_professional_diagnostic() {
                                 expected_arg_type = method_provider_param[provider_key SUBSEP method_arg_index]
                                 actual_arg = trim(method_call_arg_parts[method_arg_index])
                                 actual_arg_type = primitive_literal_type(actual_arg)
-                                if (actual_arg_type == "") actual_arg_type = binding_type(method_call_scope, actual_arg)
+                                if (actual_arg_type == "") actual_arg_type = binding_type(method_call_scope, actual_arg, method_call_line)
                                 if (expected_arg_type == "" || actual_arg_type == "" || seed_types_compatible(expected_arg_type, actual_arg_type)) continue
                                 raw = source_line[method_call_line]
                                 col = method_call_offset + method_call_open + index(method_call_args, actual_arg)
@@ -3695,7 +3705,9 @@ detect_professional_diagnostic() {
                             method_call_start = method_call_offset + RSTART
                             effective_method_return = resolved_method_return
                             method_call_suffix = trim(substr(source_code_line[method_call_line], method_call_start + length(method_call_text)))
-                            if (method_call_suffix ~ /^as[ \t]+[A-Za-z_][A-Za-z0-9_]*/) {
+                            if (method_call_suffix ~ /^[.]/) {
+                                effective_method_return = ""
+                            } else if (method_call_suffix ~ /^as[ \t]+[A-Za-z_][A-Za-z0-9_]*/) {
                                 effective_method_return = method_call_suffix
                                 sub(/^as[ \t]+/, "", effective_method_return)
                                 sub(/[^A-Za-z0-9_].*$/, "", effective_method_return)
@@ -3788,7 +3800,7 @@ detect_professional_diagnostic() {
                                     if (trim(proc_param_pattern[called_proc SUBSEP call_param_index]) == generic_param) {
                                         generic_call_arg = trim(call_arg_parts[call_param_index])
                                         resolved_generic_type = primitive_literal_type(generic_call_arg)
-                                        if (resolved_generic_type == "") resolved_generic_type = binding_type(call_scope, generic_call_arg)
+                                        if (resolved_generic_type == "") resolved_generic_type = binding_type(call_scope, generic_call_arg, call_line_no)
                                         if (resolved_generic_type != "") break
                                     }
                                 }
@@ -3837,7 +3849,7 @@ detect_professional_diagnostic() {
                         }
                         actual_arg = trim(call_arg_parts[call_arg_index])
                         actual_arg_type = primitive_literal_type(actual_arg)
-                        if (actual_arg_type == "") actual_arg_type = binding_type(call_scope, actual_arg)
+                        if (actual_arg_type == "") actual_arg_type = binding_type(call_scope, actual_arg, call_line_no)
                         if (expected_arg_type == "" || actual_arg_type == "" || seed_types_compatible(expected_arg_type, actual_arg_type)) continue
                         raw = source_line[call_line_no]
                         if (actual_arg ~ /^"/) {
@@ -3865,7 +3877,9 @@ detect_professional_diagnostic() {
                     }
                     effective_call_return = resolved_call_return
                     call_binding_suffix = trim(substr(call_code, call_close_col + 1))
-                    if (call_binding_suffix ~ /^as[ \t]+[A-Za-z_][A-Za-z0-9_]*/) {
+                    if (call_binding_suffix ~ /^[.]/) {
+                        effective_call_return = ""
+                    } else if (call_binding_suffix ~ /^as[ \t]+[A-Za-z_][A-Za-z0-9_]*/) {
                         effective_call_return = call_binding_suffix
                         sub(/^as[ \t]+/, "", effective_call_return)
                         sub(/[^A-Za-z0-9_].*$/, "", effective_call_return)

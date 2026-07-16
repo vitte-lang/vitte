@@ -263,6 +263,22 @@ check_array_return_is_not_generic() {
     [ ! -s "$TMP_DIR/array-return.check.err" ] || die "array return was misclassified as a generic procedure"
 }
 
+check_array_return_owns_local_scope() {
+    log "checking array-return procedure local scope"
+    fixture="$ROOT_DIR/tests/type_system/array_return_scope_positive.vit"
+    "$BIN_DIR/vittec0" check "$fixture" > "$TMP_DIR/array-return-scope.check.out" 2> "$TMP_DIR/array-return-scope.check.err"
+    diff -u "$SNAP_DIR/check.stage2.out.must" "$TMP_DIR/array-return-scope.check.out" || die "array return scope check stdout drift"
+    [ ! -s "$TMP_DIR/array-return-scope.check.err" ] || die "array-return procedure leaked a binding into global scope"
+}
+
+check_branch_shadow_uses_prior_declaration() {
+    log "checking branch-local declaration order"
+    fixture="$ROOT_DIR/tests/type_system/branch_shadow_scope_positive.vit"
+    "$BIN_DIR/vittec0" check "$fixture" > "$TMP_DIR/branch-shadow.check.out" 2> "$TMP_DIR/branch-shadow.check.err"
+    diff -u "$SNAP_DIR/check.stage2.out.must" "$TMP_DIR/branch-shadow.check.out" || die "branch shadow check stdout drift"
+    [ ! -s "$TMP_DIR/branch-shadow.check.err" ] || die "later branch shadowing rewrote an earlier binding use"
+}
+
 check_qualified_call_uses_module_arity() {
     log "checking qualified call arity ownership"
     fixture="$ROOT_DIR/tests/type_system/qualified_call_arity_positive.vit"
@@ -283,6 +299,14 @@ check_call_result_cast_type() {
     fi
     grep -F "TYPECK_E_ASSIGN_MISMATCH" "$TMP_DIR/call-result-cast-negative.check.err" >/dev/null || die "call result without a cast missed its assignment diagnostic"
     grep -F "expected string, found u64" "$TMP_DIR/call-result-cast-negative.check.err" >/dev/null || die "call result mismatch reported the wrong types"
+}
+
+check_call_result_projection_type() {
+    log "checking projected call result type"
+    fixture="$ROOT_DIR/tests/type_system/call_result_projection_positive.vit"
+    "$BIN_DIR/vittec0" check "$fixture" > "$TMP_DIR/call-result-projection.check.out" 2> "$TMP_DIR/call-result-projection.check.err"
+    diff -u "$SNAP_DIR/check.stage2.out.must" "$TMP_DIR/call-result-projection.check.out" || die "call result projection check stdout drift"
+    [ ! -s "$TMP_DIR/call-result-projection.check.err" ] || die "projected call result retained the raw procedure return type"
 }
 
 check_emission_hashes() {
@@ -492,8 +516,11 @@ check_shell_cases
 check_bad_diag_cases
 check_cli_cases
 check_array_return_is_not_generic
+check_array_return_owns_local_scope
+check_branch_shadow_uses_prior_declaration
 check_qualified_call_uses_module_arity
 check_call_result_cast_type
+check_call_result_projection_type
 check_emission_hashes
 check_native_user_build
 
