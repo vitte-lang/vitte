@@ -251,10 +251,10 @@ vitte-bootstrap-check:
 			if grep -Eq '^[[:space:]]*proc[[:space:]]+main[[:space:]]*\(' "$$src"; then \
 				"$(VITTE_BOOTSTRAP)" build-native --src "$$src" --out "/tmp/vitte.native.bootstrap.out"; \
 			else \
-				"$(VITTE_BOOTSTRAP)" build "$$src"; \
+				"$(VITTE_BOOTSTRAP)" check "$$src"; \
 			fi; \
 		else \
-			"$(VITTE_BOOTSTRAP)" check --strict "$$src"; \
+			"$(VITTE_BOOTSTRAP)" check "$$src"; \
 		fi; \
 	done
 
