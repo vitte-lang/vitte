@@ -2951,6 +2951,16 @@ detect_professional_diagnostic() {
                 "replace the reference with a constant value or compute it at runtime")
         }
 
+        if (line ~ /^static_assert[ \t]*\([ \t]*false([ \t]*,|[ \t]*\))/) {
+            col = index(raw, "false")
+            emit("CONST_EVAL_E_STATIC_ASSERT_FAILED", "error", "const_eval",
+                "static assertion failed",
+                FNR, col, col + 5, raw,
+                "static_assert condition is always false",
+                "the assertion is evaluated during compilation and prevents code generation",
+                "fix the asserted condition or remove the invalid assertion")
+        }
+
         too_large_col = token_too_large_col(raw, 128)
         if (too_large_col > 0) {
             too_large_len = token_len_from(raw, too_large_col)

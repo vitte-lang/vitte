@@ -138,6 +138,13 @@ proc test_ast_const_eval_path() -> bool {
   give fe.valid and result.valid and len(result.bindings) == 2 and result.assert_count == 1;
 }
 
+proc test_ast_static_assert_failure() -> bool {
+  let source: string = "static_assert(false, \"compile-time contract\");\n";
+  let fe: FrontendOutput = frontend_run("const_eval_ast_assert_fail.vit", source);
+  let result: ConstEvalRunResult = run_const_eval_ast("const_eval_ast_assert_fail.vit", fe.ast_root);
+  give fe.valid and not result.valid and result.assert_count == 1 and has_code(result, "CONST_EVAL_E_STATIC_ASSERT_FAILED");
+}
+
 proc test_ast_const_procedure_call() -> bool {
   let source: string =
     "const proc add(left: int, right: int) -> int { give left + right; }\n" +
@@ -330,6 +337,9 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if not test_ast_const_eval_path() {
+    set failures = failures + 1;
+  }
+  if not test_ast_static_assert_failure() {
     set failures = failures + 1;
   }
   if not test_ast_const_procedure_call() {
