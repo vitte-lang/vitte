@@ -2215,6 +2215,27 @@ detect_professional_diagnostic() {
         if (ty == "f32") return 32
         return 0
     }
+    function bounded_const_integer_type(ty) {
+        return ty ~ /^(i8|u8|i16|u16|i32|u32)$/
+    }
+    function const_integer_min(ty) {
+        if (ty == "i8") return -128
+        if (ty == "i16") return -32768
+        if (ty == "i32") return -2147483648
+        return 0
+    }
+    function const_integer_max(ty) {
+        if (ty == "i8") return 127
+        if (ty == "u8") return 255
+        if (ty == "i16") return 32767
+        if (ty == "u16") return 65535
+        if (ty == "i32") return 2147483647
+        if (ty == "u32") return 4294967295
+        return 0
+    }
+    function const_integer_range(ty) {
+        return const_integer_min(ty) ".." const_integer_max(ty)
+    }
     function seed_types_compatible(expected, actual,    expected_width, actual_width, precision) {
         if (expected == actual) return 1
         expected_width = seed_numeric_width(expected)
@@ -2895,6 +2916,26 @@ detect_professional_diagnostic() {
                 "constant evaluation cannot divide by zero",
                 "constant expressions are evaluated during checking",
                 "change the divisor to a non-zero value or compute this at runtime")
+        }
+
+        if (line ~ /^const[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*:[ \t]*(i8|u8|i16|u16|i32|u32)[ \t]*=[ \t]*-?[0-9]+[ \t;]*$/) {
+            const_tail = line
+            sub(/^const[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*:[ \t]*/, "", const_tail)
+            const_type = const_tail
+            sub(/[ \t=].*$/, "", const_type)
+            const_value_text = const_tail
+            sub(/^[^=]*=[ \t]*/, "", const_value_text)
+            sub(/[ \t;]*$/, "", const_value_text)
+            const_value = const_value_text + 0
+            if (bounded_const_integer_type(const_type) && (const_value < const_integer_min(const_type) || const_value > const_integer_max(const_type))) {
+                col = index(raw, const_value_text)
+                emit("CONST_EVAL_E_OVERFLOW", "error", "const_eval",
+                    "constant integer is outside the range of " const_type,
+                    FNR, col, col + length(const_value_text), raw,
+                    "value " const_value_text " does not fit " const_type,
+                    "target range: " const_integer_range(const_type),
+                    "choose a value in " const_integer_range(const_type) " or widen the constant type")
+            }
         }
 
         too_large_col = token_too_large_col(raw, 128)

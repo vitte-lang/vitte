@@ -16,6 +16,7 @@ use vitte/compiler/analysis/const_eval/interpreter.{
   ConstEvalResult,
   ConstBinding,
   ConstEnv,
+  ConstValue,
   ConstValueKind,
   ast_expr_references,
   env_empty,
@@ -30,6 +31,7 @@ use vitte/compiler/analysis/const_eval/interpreter.{
 form ConstDecl {
   name: string
   expr: string
+  target_type: string
   line: u64
   valid: bool
 }
@@ -44,6 +46,7 @@ form StaticAssertDecl {
 form ConstDeclAst {
   name: string
   expr: AstExpr
+  target_type: string
   line: u64
   valid: bool
 }
@@ -104,23 +107,99 @@ proc parse_const_decl_line(line_text: string, line: u64) -> ConstDecl {
   let rest: string = trim(slice(line_text, 6, len(line_text)));
   let eq: int = find(rest, assign_separator());
   if eq < 0 {
-    give ConstDecl { name: "", expr: "", line: line, valid: false };
+    give ConstDecl { name: "", expr: "", target_type: "", line: line, valid: false };
   }
 
   let left: string = trim(slice(rest, 0, eq));
   let expr: string = trim_trailing_semicolon(slice(rest, eq + 1, len(rest)));
   let colon: int = find(left, ":");
   let name: string = left;
+  let target_type: string = "";
   if colon >= 0 {
     set name = trim(slice(left, 0, colon));
+    set target_type = trim(slice(left, colon + 1, len(left)));
   }
 
   give ConstDecl {
     name: name,
     expr: expr,
+    target_type: target_type,
     line: line,
     valid: name != "" and expr != ""
   };
+}
+
+proc bounded_integer_target(target_type: string) -> bool {
+  give target_type == "i8"
+    or target_type == "u8"
+    or target_type == "i16"
+    or target_type == "u16"
+    or target_type == "i32"
+    or target_type == "u32";
+}
+
+proc integer_value_fits_target(value: int, target_type: string) -> bool {
+  if target_type == "i8" {
+    give value >= -128 and value <= 127;
+  }
+  if target_type == "u8" {
+    give value >= 0 and value <= 255;
+  }
+  if target_type == "i16" {
+    give value >= -32768 and value <= 32767;
+  }
+  if target_type == "u16" {
+    give value >= 0 and value <= 65535;
+  }
+  if target_type == "i32" {
+    give value >= -2147483648 and value <= 2147483647;
+  }
+  if target_type == "u32" {
+    give value >= 0 and value <= 4294967295;
+  }
+  give true;
+}
+
+proc integer_target_range_text(target_type: string) -> string {
+  if target_type == "i8" {
+    give "-128..127";
+  }
+  if target_type == "u8" {
+    give "0..255";
+  }
+  if target_type == "i16" {
+    give "-32768..32767";
+  }
+  if target_type == "u16" {
+    give "0..65535";
+  }
+  if target_type == "i32" {
+    give "-2147483648..2147483647";
+  }
+  if target_type == "u32" {
+    give "0..4294967295";
+  }
+  give "";
+}
+
+proc const_value_fits_target(value: ConstValue, target_type: string) -> bool {
+  if value.kind != ConstValueKind.Int or not bounded_integer_target(target_type) {
+    give true;
+  }
+  give integer_value_fits_target(value.int_value, target_type);
+}
+
+proc overflow_diagnostic(source_path: string, line: u64, name: string, target_type: string, value: ConstValue) -> ConstEvalDiagnostic {
+  let range_text: string = integer_target_range_text(target_type);
+  give diagnostic_create(
+    ConstEvalErrorKind.Overflow,
+    source_path,
+    line,
+    "constant `" + name + "` value `" + value_to_text(value) + "` is outside the range of `" + target_type + "`",
+    [name, target_type, range_text],
+    "choose a value in `" + range_text + "` or widen the constant type",
+    true
+  );
 }
 
 proc split_assert_args(text: string) -> [string] {
@@ -621,10 +700,12 @@ proc run_const_decls(source_path: string, decls: [ConstDecl]) -> ConstEvalRunRes
       }
 
       let folded: ConstFoldResult = fold_const_expr(env, source_path, decl.expr, decl.line);
-      if folded.valid {
+      if folded.valid and const_value_fits_target(folded.value, decl.target_type) {
         set env = env_set(env, decl.name, folded.value);
         set resolved = resolved + [ConstBinding { name: decl.name, value: folded.value, valid: true }];
         set progress = true;
+      } elif folded.valid {
+        set diagnostics = diagnostics + [overflow_diagnostic(source_path, decl.line, decl.name, decl.target_type, folded.value)];
       } else {
         let j: int = 0;
         while j < len(folded.diagnostics) {
@@ -729,10 +810,12 @@ proc run_const_decls_ast(source_path: string, decls: [ConstDeclAst]) -> ConstEva
         continue;
       }
       let evaluated: ConstEvalResult = eval_const_ast_expr(env, source_path, decl.expr);
-      if evaluated.valid {
+      if evaluated.valid and const_value_fits_target(evaluated.value, decl.target_type) {
         set env = env_set(env, decl.name, evaluated.value);
         set resolved = resolved + [ConstBinding { name: decl.name, value: evaluated.value, valid: true }];
         set progress = true;
+      } elif evaluated.valid {
+        set diagnostics = diagnostics + [overflow_diagnostic(source_path, decl.line, decl.name, decl.target_type, evaluated.value)];
       } else {
         set diagnostics = diagnostics + evaluated.diagnostics;
       }
@@ -886,7 +969,7 @@ proc run_const_eval_ast(source_path: string, module: AstModule) -> ConstEvalRunR
   while i < len(module.items) {
     let item = module.items[i];
     if item.kind == AstItemKind.Const {
-      set decls = decls + [ConstDeclAst { name: item.name, expr: item.expr, line: item.span.start_line, valid: item.valid }];
+      set decls = decls + [ConstDeclAst { name: item.name, expr: item.expr, target_type: item.annotation.text, line: item.span.start_line, valid: item.valid }];
     } elif item.kind == AstItemKind.StaticAssert {
       set asserts = asserts + [StaticAssertDeclAst { expr: item.expr, message: item.message, line: item.span.start_line, valid: item.valid }];
     }

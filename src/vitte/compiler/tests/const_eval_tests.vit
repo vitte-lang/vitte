@@ -29,6 +29,40 @@ proc test_division_by_zero() -> bool {
   give has_code(result, "CONST_EVAL_E_DIVISION_BY_ZERO");
 }
 
+proc test_typed_integer_boundaries() -> bool {
+  let source: string =
+    "const I8_MIN: i8 = -128;\n" +
+    "const I8_MAX: i8 = 127;\n" +
+    "const U8_MAX: u8 = 255;\n" +
+    "const I16_MIN: i16 = -32768;\n" +
+    "const I16_MAX: i16 = 32767;\n" +
+    "const U16_MAX: u16 = 65535;\n" +
+    "const I32_MIN: i32 = -2147483648;\n" +
+    "const I32_MAX: i32 = 2147483647;\n" +
+    "const U32_MAX: u32 = 4294967295;\n";
+  let result: ConstEvalRunResult = run_const_eval("const_eval_integer_boundaries.vit", source);
+  give result.valid and len(result.bindings) == 9;
+}
+
+proc test_typed_integer_overflow() -> bool {
+  let source: string = "const TOO_LARGE: u8 = 200 + 56;\n";
+  let result: ConstEvalRunResult = run_const_eval("const_eval_u8_overflow.vit", source);
+  give not result.valid and has_code(result, "CONST_EVAL_E_OVERFLOW");
+}
+
+proc test_typed_integer_underflow() -> bool {
+  let source: string = "const NEGATIVE: u8 = -1;\n";
+  let result: ConstEvalRunResult = run_const_eval("const_eval_u8_underflow.vit", source);
+  give not result.valid and has_code(result, "CONST_EVAL_E_OVERFLOW");
+}
+
+proc test_ast_typed_integer_overflow() -> bool {
+  let source: string = "const TOO_LARGE: i16 = 30000 + 2768;\n";
+  let fe: FrontendOutput = frontend_run("const_eval_ast_i16_overflow.vit", source);
+  let result: ConstEvalRunResult = run_const_eval_ast("const_eval_ast_i16_overflow.vit", fe.ast_root);
+  give fe.valid and not result.valid and has_code(result, "CONST_EVAL_E_OVERFLOW");
+}
+
 proc test_unknown_name() -> bool {
   let source: string = "const X = Y + 1;\n";
   let result: ConstEvalRunResult = run_const_eval("const_eval_unknown_name.vit", source);
@@ -125,6 +159,18 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if not test_division_by_zero() {
+    set failures = failures + 1;
+  }
+  if not test_typed_integer_boundaries() {
+    set failures = failures + 1;
+  }
+  if not test_typed_integer_overflow() {
+    set failures = failures + 1;
+  }
+  if not test_typed_integer_underflow() {
+    set failures = failures + 1;
+  }
+  if not test_ast_typed_integer_overflow() {
     set failures = failures + 1;
   }
   if not test_unknown_name() {
