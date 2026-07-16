@@ -139,13 +139,13 @@ proc test_ast_const_procedure_arity_mismatch() -> bool {
   give fe.valid and not result.valid and has_code(result, "CONST_EVAL_E_NON_CONST_CALL");
 }
 
-proc test_ast_impure_procedure_call_is_rejected() -> bool {
+proc test_ast_const_procedure_local_binding() -> bool {
   let source: string =
-    "const proc impure() -> int { let value: int = 1; give value; }\n" +
-    "const BAD: int = impure();\n";
-  let fe: FrontendOutput = frontend_run("const_eval_impure_proc.vit", source);
-  let result: ConstEvalRunResult = run_const_eval_ast("const_eval_impure_proc.vit", fe.ast_root);
-  give fe.valid and not result.valid and has_code(result, "CONST_EVAL_E_NON_CONST_CALL");
+    "const proc increment(value: int) -> int { let next: int = value + 1; give next; }\n" +
+    "const ANSWER: int = increment(41);\n";
+  let fe: FrontendOutput = frontend_run("const_eval_proc_local.vit", source);
+  let result: ConstEvalRunResult = run_const_eval_ast("const_eval_proc_local.vit", fe.ast_root);
+  give fe.valid and result.valid and len(result.bindings) == 1;
 }
 
 proc test_ast_non_const_procedure_call_is_rejected() -> bool {
@@ -164,6 +164,37 @@ proc test_ast_const_procedure_cycle() -> bool {
   let fe: FrontendOutput = frontend_run("const_eval_proc_cycle.vit", source);
   let result: ConstEvalRunResult = run_const_eval_ast("const_eval_proc_cycle.vit", fe.ast_root);
   give fe.valid and not result.valid and has_code(result, "CONST_EVAL_E_CYCLE");
+}
+
+proc test_ast_recursive_const_procedure() -> bool {
+  let source: string =
+    "const proc factorial(value: int) -> int {\n" +
+    "  if value <= 1 { give 1; }\n" +
+    "  give value * factorial(value - 1);\n" +
+    "}\n" +
+    "const VALUE: int = factorial(5);\n" +
+    "static_assert(VALUE == 120);\n";
+  let fe: FrontendOutput = frontend_run("const_eval_recursive_proc.vit", source);
+  let result: ConstEvalRunResult = run_const_eval_ast("const_eval_recursive_proc.vit", fe.ast_root);
+  give fe.valid and result.valid and len(result.bindings) == 1 and result.assert_count == 1;
+}
+
+proc test_ast_const_procedure_mutation_is_rejected() -> bool {
+  let source: string =
+    "const proc mutate(value: int) -> int { set value = value + 1; give value; }\n" +
+    "const BAD: int = mutate(1);\n";
+  let fe: FrontendOutput = frontend_run("const_eval_proc_mutation.vit", source);
+  let result: ConstEvalRunResult = run_const_eval_ast("const_eval_proc_mutation.vit", fe.ast_root);
+  give fe.valid and not result.valid and has_code(result, "CONST_EVAL_E_MUTATION_IN_CONST");
+}
+
+proc test_ast_const_procedure_loop_is_rejected() -> bool {
+  let source: string =
+    "const proc forbidden() -> int { while true { give 1; } give 0; }\n" +
+    "const BAD: int = forbidden();\n";
+  let fe: FrontendOutput = frontend_run("const_eval_proc_loop.vit", source);
+  let result: ConstEvalRunResult = run_const_eval_ast("const_eval_proc_loop.vit", fe.ast_root);
+  give fe.valid and not result.valid and has_code(result, "CONST_EVAL_E_UNSUPPORTED_EXPR");
 }
 
 proc test_ast_compile_time_simulation_detects_proc_impossible_branch() -> bool {
@@ -259,13 +290,22 @@ proc run_all_tests() -> int {
   if not test_ast_const_procedure_arity_mismatch() {
     set failures = failures + 1;
   }
-  if not test_ast_impure_procedure_call_is_rejected() {
+  if not test_ast_const_procedure_local_binding() {
     set failures = failures + 1;
   }
   if not test_ast_non_const_procedure_call_is_rejected() {
     set failures = failures + 1;
   }
   if not test_ast_const_procedure_cycle() {
+    set failures = failures + 1;
+  }
+  if not test_ast_recursive_const_procedure() {
+    set failures = failures + 1;
+  }
+  if not test_ast_const_procedure_mutation_is_rejected() {
+    set failures = failures + 1;
+  }
+  if not test_ast_const_procedure_loop_is_rejected() {
     set failures = failures + 1;
   }
   if not test_ast_compile_time_simulation_detects_proc_impossible_branch() {
