@@ -217,12 +217,12 @@ proc call_target_name(rvalue: MirRvalue) -> string {
 
 proc call_arg_start_index(rvalue: MirRvalue) -> u64 {
     if rvalue.operator == "variant-ctor" or rvalue.operator == "method-dispatch" {
-        give 0;
+        give 0 as u64;
     }
     if len(rvalue.operands) > 0 {
-        give 1;
+        give 1 as u64;
     }
-    give 0;
+    give 0 as u64;
 }
 
 proc mir_function_params_by_name(functions: [MirFunction], name: string) -> [IrFunctionParam] {
@@ -731,14 +731,14 @@ proc lower_mir_as_ir_module(module_id: u64, module_name: string, source_path: st
         set built = module_add_import(built, imported_names[i]);
         set i = i + 1;
     }
-    set i = 0;
+    set i = 0 as u64;
     while i < len(typed_hir_items) {
         if hir_item_is_nominal(typed_hir_items[i]) {
             set built = module_add_nominal_type(built, nominal_type_from_hir_item(typed_hir_items[i]));
         }
         set i = i + 1;
     }
-    set i = 0;
+    set i = 0 as u64;
     while i < len(mir.module.functions) {
         let lowered_fn: IrFunction = lower_mir_function(module_name, mir.module.functions[i], mir.module.functions, typed_hir_items, exported_names);
         set built = module_add_function(built, lowered_fn);
@@ -747,12 +747,12 @@ proc lower_mir_as_ir_module(module_id: u64, module_name: string, source_path: st
         }
         set i = i + 1;
     }
-    set i = 0;
+    set i = 0 as u64;
     while i < len(external_symbol_names) {
         set built = module_add_external_symbol(built, external_symbol_names[i]);
         set i = i + 1;
     }
-    set i = 0;
+    set i = 0 as u64;
     while i < len(exported_names) {
         set built = module_add_export(built, exported_names[i]);
         set i = i + 1;
