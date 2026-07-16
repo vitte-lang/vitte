@@ -1,136 +1,184 @@
 #!/usr/bin/env python3
+from collections import deque
 from pathlib import Path
+import os
 import re
-import sys
+import subprocess
+from typing import Dict, List, Optional, Set, Tuple
 
 ROOT = Path(__file__).resolve().parents[2]
 ACTIVE = ROOT / "tools/compiler_effective_gate/ACTIVE_FILES.txt"
 CONTRACTS = ROOT / "tools/compiler_effective_gate/VERSIONED_CONTRACTS.txt"
+TEST_OWNERS = ROOT / "tools/compiler_effective_gate/TEST_OWNERS.txt"
+ENTRY = ROOT / "src/vitte/compiler/main.vit"
+SEED = ROOT / "toolchain/seed/vittec0.seed"
+WORKFLOW = ROOT / ".github/workflows/compiler-effective-gate.yml"
+USE_RE = re.compile(r"^\s*use\s+(vitte/compiler/[A-Za-z0-9_/-]+)", re.MULTILINE)
 
 
-def read_lines(p: Path):
-    return [l.strip() for l in p.read_text(encoding="utf-8").splitlines() if l.strip() and not l.strip().startswith("#")]
+def read_lines(path: Path) -> List[str]:
+    return [
+        line.strip()
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    ]
 
 
-def find_parent_mod(path: Path):
-    parent = path.parent
-    mod = parent / "mod.vit"
-    return mod if mod.exists() else None
+def relative(path: Path) -> str:
+    return path.relative_to(ROOT).as_posix()
 
 
-def has_use_of(mod: Path, child: Path):
-    txt = mod.read_text(encoding="utf-8", errors="ignore")
-    stem = child.stem
-    return re.search(rf"\buse\b[^\n]*\b{re.escape(stem)}\b", txt) is not None
+def resolve_module(module: str) -> Optional[Path]:
+    base = ROOT / "src" / module
+    direct = base.with_suffix(".vit")
+    facade = base / "mod.vit"
+    if direct.exists():
+        return direct
+    if facade.exists():
+        return facade
+    return None
 
 
-def referenced_in_driver(path: Path, driver_pipeline: Path):
-    txt = driver_pipeline.read_text(encoding="utf-8", errors="ignore")
-    rel = str(path).replace("\\", "/")
-    stem = path.stem
-    return (rel in txt) or (stem in txt)
+def compiler_graph() -> Dict[Path, Set[Path]]:
+    graph: Dict[Path, Set[Path]] = {}
+    for source in (ROOT / "src/vitte/compiler").rglob("*.vit"):
+        text = source.read_text(encoding="utf-8", errors="ignore")
+        graph[source] = {
+            target
+            for module in USE_RE.findall(text)
+            if (target := resolve_module(module)) is not None
+        }
+    return graph
 
 
-def has_observable_signal(path: Path):
-    txt = path.read_text(encoding="utf-8", errors="ignore")
-    patterns = ["diagnostic", "diag", "print_", "message", "trace", "metric", "error", "warning", "report"]
-    return any(p in txt for p in patterns)
-
-
-def has_test_for(path: Path):
-    tests = (ROOT / "tests")
-    if not tests.exists():
-        return False
-    stem = path.stem
-    mod = path.parent.name
-    for t in tests.rglob("*"):
-        if not t.is_file():
+def reachable_from_entry(graph: Dict[Path, Set[Path]]) -> Set[Path]:
+    reached: Set[Path] = set()
+    queue = deque([ENTRY])
+    while queue:
+        source = queue.popleft()
+        if source in reached:
             continue
-        name = t.name.lower()
-        if stem.lower() in name or mod.lower() in name:
-            return True
-    return False
+        reached.add(source)
+        queue.extend(graph.get(source, set()) - reached)
+    return reached
 
 
-def file_non_empty(path: Path):
-    return path.exists() and path.stat().st_size > 0
+def read_test_owners(path: Path) -> Dict[str, Tuple[str, str]]:
+    owners: Dict[str, Tuple[str, str]] = {}
+    for line in read_lines(path):
+        fields = [field.strip() for field in line.split("|")]
+        if len(fields) != 3:
+            raise ValueError(f"invalid test owner row: {line}")
+        source, positive, negative = fields
+        if source in owners:
+            raise ValueError(f"duplicate test owner: {source}")
+        owners[source] = (positive, negative)
+    return owners
 
 
-def main():
-    active = [ROOT / p for p in read_lines(ACTIVE)]
-    contracts = {str(ROOT / p) for p in read_lines(CONTRACTS)}
+def direct_check(source: Path) -> Optional[str]:
+    env = os.environ.copy()
+    env["VITTE_ROOT"] = str(ROOT)
+    result = subprocess.run(
+        ["sh", str(SEED), "check", relative(source)],
+        cwd=ROOT,
+        env=env,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    if result.returncode == 0:
+        return None
+    detail = result.stderr.strip() or result.stdout.strip() or f"exit {result.returncode}"
+    return f"source check failed: {relative(source)}: {detail}"
 
-    driver_pipeline = ROOT / "src/vitte/compiler/driver/pipeline.vit"
-    if not driver_pipeline.exists():
-        print("FAIL: missing driver pipeline")
-        return 1
 
-    errors = []
-    for f in active:
-        if not f.exists():
-            errors.append(f"missing file: {f}")
+def main() -> int:
+    errors: List[str] = []
+    active_names = read_lines(ACTIVE)
+    contract_names = read_lines(CONTRACTS)
+
+    if len(active_names) != len(set(active_names)):
+        errors.append("ACTIVE_FILES.txt contains duplicate paths")
+    if len(contract_names) != len(set(contract_names)):
+        errors.append("VERSIONED_CONTRACTS.txt contains duplicate paths")
+
+    active = [ROOT / name for name in active_names]
+    contracts = set(contract_names)
+    active_set = set(active_names)
+
+    if active_set != contracts:
+        for name in sorted(active_set - contracts):
+            errors.append(f"missing versioned contract registration: {name}")
+        for name in sorted(contracts - active_set):
+            errors.append(f"contract registered for non-active implementation: {name}")
+
+    try:
+        test_owners = read_test_owners(TEST_OWNERS)
+    except (OSError, ValueError) as exc:
+        errors.append(str(exc))
+        test_owners = {}
+
+    for name in sorted(active_set - set(test_owners)):
+        errors.append(f"missing test owner registration: {name}")
+    for name in sorted(set(test_owners) - active_set):
+        errors.append(f"test owner registered for non-active implementation: {name}")
+
+    if not ENTRY.exists():
+        errors.append(f"missing compiler entry: {relative(ENTRY)}")
+    if not SEED.exists():
+        errors.append(f"missing portable seed checker: {relative(SEED)}")
+    if not WORKFLOW.exists():
+        errors.append(f"missing CI workflow: {relative(WORKFLOW)}")
+
+    graph = compiler_graph()
+    reachable = reachable_from_entry(graph)
+    for source in active:
+        name = relative(source)
+        if source.name == "mod.vit":
+            errors.append(f"facade registered as active implementation: {name}")
+        if not source.exists():
+            errors.append(f"missing active implementation: {name}")
             continue
+        if source.stat().st_size == 0:
+            errors.append(f"empty active implementation: {name}")
+        if source not in reachable:
+            errors.append(f"not reachable from {relative(ENTRY)}: {name}")
 
-        # 1) exported by parent mod
-        pm = find_parent_mod(f)
-        if pm and f.name != "mod.vit":
-            if not has_use_of(pm, f):
-                errors.append(f"not exported by parent mod: {f} (parent {pm})")
+        owner = test_owners.get(name)
+        if owner is not None:
+            for kind, test_name in zip(("positive", "negative"), owner):
+                test_path = ROOT / test_name
+                if not test_path.exists() or test_path.stat().st_size == 0:
+                    errors.append(f"missing {kind} test for {name}: {test_name}")
 
-        # 2) imported by real upper layer (approx): appear in some use statement outside own dir
-        imported = False
-        stem = f.stem
-        for g in (ROOT / "src/vitte/compiler").rglob("*.vit"):
-            if g == f:
-                continue
-            txt = g.read_text(encoding="utf-8", errors="ignore")
-            if re.search(rf"\buse\b[^\n]*\b{re.escape(stem)}\b", txt):
-                imported = True
-                break
-        if not imported:
-            errors.append(f"not imported by upstream layer: {f}")
+        if SEED.exists():
+            check_error = direct_check(source)
+            if check_error is not None:
+                errors.append(check_error)
 
-        # 3) called from runtime path via driver pipeline (approx transitively)
-        if not referenced_in_driver(f, driver_pipeline) and "driver/" not in str(f).replace("\\", "/"):
-            # allow transitive modules if referenced by backend/analysis/frontend pipeline
-            pipelines = [
-                ROOT / "src/vitte/compiler/frontend/pipeline.vit",
-                ROOT / "src/vitte/compiler/analysis/pipeline.vit",
-                ROOT / "src/vitte/compiler/backend/pipeline.vit",
-            ]
-            stemref = any((p.exists() and stem in p.read_text(encoding="utf-8", errors="ignore")) for p in pipelines)
-            if not stemref:
-                errors.append(f"not on runtime path from driver pipeline: {f}")
-
-        # 4/5 tests nominal + error (heuristic: at least one test file contains mod/stem + one negative/err file exists)
-        if not has_test_for(f):
-            errors.append(f"missing nominal test mapping: {f}")
-        neg_exists = any(p.name.endswith((".err.must", ".must", ".expect")) for p in (ROOT / "tests").rglob("*") if p.is_file())
-        if not neg_exists:
-            errors.append(f"missing error-test corpus globally (required by policy): {f}")
-
-        # 6 observable signal
-        if not has_observable_signal(f):
-            errors.append(f"no observable signal (diag/log/metric/trace): {f}")
-
-        # 7 covered by CI -> enforce workflow exists in repo
-        if not (ROOT / ".github/workflows/compiler-effective-gate.yml").exists():
-            errors.append("missing CI workflow: compiler-effective-gate.yml")
-
-        # 8 contract versioned
-        if str(f) not in contracts:
-            errors.append(f"missing versioned contract registration: {f}")
-
-        if not file_non_empty(f):
-            errors.append(f"file is empty (cannot be active): {f}")
+    observable_contracts = {
+        "src/vitte/compiler/driver/compile.vit": ("diagnostics: [DriverDiagnostic]",),
+        "src/vitte/compiler/driver/pipeline.vit": ("pipeline_failed_at: string", "stage_logs: [string]"),
+    }
+    for name, needles in observable_contracts.items():
+        path = ROOT / name
+        text = path.read_text(encoding="utf-8", errors="ignore") if path.exists() else ""
+        for needle in needles:
+            if needle not in text:
+                errors.append(f"missing observable pipeline contract in {name}: {needle}")
 
     if errors:
         print("compiler-effective-gate: FAIL")
-        for e in errors:
-            print(" -", e)
+        for error in errors:
+            print(" -", error)
         return 1
 
-    print("compiler-effective-gate: PASS")
+    print(
+        "compiler-effective-gate: PASS "
+        f"active={len(active)} reachable={len(reachable)} direct_checks={len(active)}"
+    )
     return 0
 
 
