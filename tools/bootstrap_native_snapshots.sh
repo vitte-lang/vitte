@@ -431,6 +431,16 @@ check_native_user_build() {
     "$TMP_DIR/traits-string-main" >"$TMP_DIR/traits-string-main.out" 2>"$TMP_DIR/traits-string-main.err" || die "string main executable exit code mismatch"
     [ ! -s "$TMP_DIR/traits-string-main.out" ] || die "string main executable wrote unexpected stdout"
     [ ! -s "$TMP_DIR/traits-string-main.err" ] || die "string main executable wrote unexpected stderr"
+    "$BIN_DIR/vittec0" build "$ROOT_DIR/tests/truth_triangle/stdlib_runtime/threading_mutex_semantic.vit" -o "$TMP_DIR/threading-mutex-semantic"
+    [ ! -f "$TMP_DIR/threading-mutex-semantic.bootstrap-bridge" ] || die "mutex semantic build produced a bootstrap bridge sidecar"
+    if "$TMP_DIR/threading-mutex-semantic" >"$TMP_DIR/threading-mutex-semantic.out" 2>"$TMP_DIR/threading-mutex-semantic.err"; then
+        die "mutex semantic executable exit code mismatch"
+    else
+        rc="$?"
+        [ "$rc" -eq 8 ] || die "mutex semantic executable exit code mismatch"
+    fi
+    [ ! -s "$TMP_DIR/threading-mutex-semantic.out" ] || die "mutex semantic executable wrote unexpected stdout"
+    [ ! -s "$TMP_DIR/threading-mutex-semantic.err" ] || die "mutex semantic executable wrote unexpected stderr"
     if "$BIN_DIR/vittec0" build "$SNAP_DIR/native_user_type_mismatch.vit" -o "$TMP_DIR/type-mismatch" > "$TMP_DIR/type-mismatch.out" 2> "$TMP_DIR/type-mismatch.err"; then
         die "native user type mismatch build unexpectedly succeeded"
     fi
