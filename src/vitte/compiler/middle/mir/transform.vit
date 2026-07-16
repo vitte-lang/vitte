@@ -664,6 +664,97 @@ proc predecessors_for(block_id: u64, blocks: [MirBlock]) -> [u64] {
   give out
 }
 
+proc mergeable_source_id(function0: MirFunction) -> u64 {
+  let i: u64 = 0
+  while i < len(function0.blocks) {
+    let source: MirBlock = function0.blocks[i]
+    if source.terminator.kind == MirTerminatorKind.Goto {
+      let target_id: u64 = source.terminator.target_block
+      if target_id != source.id and target_id != function0.entry_block and function_has_block(function0, target_id) {
+        let predecessors: [u64] = predecessors_for(target_id, function0.blocks)
+        if len(predecessors) == 1 and predecessors[0] == source.id {
+          give source.id
+        }
+      }
+    }
+    set i = i + 1
+  }
+  give 0 as u64
+}
+
+proc merge_blocks_once(function0: MirFunction) -> MirFunction {
+  let source_id: u64 = mergeable_source_id(function0)
+  if source_id == 0 {
+    give function0
+  }
+
+  let source: MirBlock = block_by_id(function0, source_id)
+  let target: MirBlock = block_by_id(function0, source.terminator.target_block)
+  let raw: [MirBlock] = []
+  let i: u64 = 0
+  while i < len(function0.blocks) {
+    let block: MirBlock = function0.blocks[i]
+    if block.id == source_id {
+      set raw = raw + [MirBlock {
+        id: source.id,
+        label: source.label,
+        predecessors: source.predecessors,
+        statements: source.statements + target.statements,
+        terminator: target.terminator,
+        sealed: source.sealed and target.sealed,
+        reachable: source.reachable,
+        valid: source.valid and target.valid
+      }]
+    } elif block.id != target.id {
+      set raw = raw + [block]
+    }
+    set i = i + 1
+  }
+
+  let blocks: [MirBlock] = []
+  let j: u64 = 0
+  while j < len(raw) {
+    set blocks = blocks + [MirBlock {
+      id: raw[j].id,
+      label: raw[j].label,
+      predecessors: predecessors_for(raw[j].id, raw),
+      statements: raw[j].statements,
+      terminator: raw[j].terminator,
+      sealed: raw[j].sealed,
+      reachable: raw[j].reachable,
+      valid: raw[j].valid
+    }]
+    set j = j + 1
+  }
+
+  give MirFunction {
+    id: function0.id,
+    name: function0.name,
+    generic_params: function0.generic_params,
+    entry_block: function0.entry_block,
+    params: function0.params,
+    return_type: function0.return_type,
+    local_count: function0.local_count,
+    temporary_count: function0.temporary_count,
+    blocks: blocks,
+    valid: function0.valid and len(blocks) > 0
+  }
+}
+
+proc merge_blocks_function(function0: MirFunction) -> MirFunction {
+  let current: MirFunction = function0
+  let merged: u64 = 0
+  while merged < len(function0.blocks) {
+    let next: MirFunction = merge_blocks_once(current)
+    if len(next.blocks) == len(current.blocks) {
+      give current
+    }
+    set current = next
+    set merged = merged + 1
+  }
+  give current
+}
+
 proc eliminate_unreachable_function(function0: MirFunction) -> MirFunction {
   let reachable: [u64] = reachable_block_ids(function0)
   let retained: [MirBlock] = []
@@ -836,7 +927,7 @@ proc validate_function(function0: MirFunction) -> bool {
 
 proc count_removed_blocks(before: [MirBlock], after: [MirBlock]) -> u64 {
   if len(before) < len(after) {
-    give 0
+    give 0 as u64
   }
 
   give len(before) - len(after)
@@ -854,7 +945,7 @@ proc count_removed_statements(before: [MirBlock], after: [MirBlock]) -> u64 {
     set i = i + 1
   }
 
-  set i = 0
+  set i = 0 as u64
 
   while i < len(after) {
     set after_count = after_count + len(after[i].statements)
@@ -863,10 +954,29 @@ proc count_removed_statements(before: [MirBlock], after: [MirBlock]) -> u64 {
   }
 
   if before_count < after_count {
-    give 0
+    give 0 as u64
   }
 
   give before_count - after_count
+}
+
+proc merge_blocks_report_for(before: MirFunction, after: MirFunction) -> MirTransformReport {
+  let merged: u64 = count_removed_blocks(before.blocks, after.blocks)
+  let valid: bool = validate_function(after)
+  give MirTransformReport {
+    function_name: after.name,
+    steps: [transform_step(MirTransformKind.MergeBlocks, if merged > 0 { MirTransformResultKind.Changed } else { MirTransformResultKind.Unchanged }, merged, 0, valid)],
+    stats: MirTransformStats {
+      removed_blocks: 0,
+      removed_statements: 0,
+      folded_constants: 0,
+      merged_blocks: merged,
+      simplified_branches: 0,
+      valid: valid
+    },
+    changed: merged > 0,
+    valid: valid
+  }
 }
 
 proc simplify_cfg(function0: MirFunction) -> MirFunction {

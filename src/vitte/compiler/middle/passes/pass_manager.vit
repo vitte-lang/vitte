@@ -1,7 +1,7 @@
 space vitte/compiler/middle/passes/pass_manager
 
 use vitte/compiler/middle/mir.{ MirFunction, MirModule, MirUnit }
-use vitte/compiler/middle/mir/transform.{ MirTransformKind, MirTransformReport, branch_fold_report_for, constant_fold_report_for, dead_code_report_for, eliminate_unreachable_function, fold_constant_branches_function, fold_constants_function, transform_function, transform_report_for }
+use vitte/compiler/middle/mir/transform.{ MirTransformKind, MirTransformReport, branch_fold_report_for, constant_fold_report_for, dead_code_report_for, eliminate_unreachable_function, fold_constant_branches_function, fold_constants_function, merge_blocks_function, merge_blocks_report_for, transform_function, transform_report_for }
 use vitte/compiler/middle/mir/validate.{ mir_validation_reason }
 use vitte/compiler/middle/passes/pass_result.{ PassRunResult, PassValidationPhase, PassValidationRecord, pass_run_result, pass_validation_record }
 use vitte/compiler/middle/passes/schedule.{ ScheduledMirPass, default_pass_schedule, pass_schedule_version }
@@ -170,6 +170,38 @@ proc apply_fold_branches(mir: MirUnit) -> PassApplication {
   give PassApplication { mir: optimized, stats: stats, valid: optimized.valid }
 }
 
+proc apply_merge_blocks(mir: MirUnit) -> PassApplication {
+  let functions: [MirFunction] = []
+  let stats: [MirTransformReport] = []
+  let valid: bool = mir.valid and mir.module.valid
+  let i: u64 = 0
+  while i < len(mir.module.functions) {
+    let before: MirFunction = mir.module.functions[i]
+    let after: MirFunction = merge_blocks_function(before)
+    let report: MirTransformReport = merge_blocks_report_for(before, after)
+    set functions = functions + [after]
+    set stats = stats + [report]
+    set valid = valid and after.valid and report.valid
+    set i = i + 1
+  }
+
+  let module: MirModule = MirModule {
+    name: mir.module.name,
+    functions: functions,
+    valid: valid and len(functions) > 0
+  }
+  let optimized: MirUnit = MirUnit {
+    source_path: mir.source_path,
+    module: module,
+    function_count: len(functions),
+    block_count: function_block_count(functions),
+    instruction_count: function_instruction_count(functions),
+    lowered: mir.lowered,
+    valid: module.valid
+  }
+  give PassApplication { mir: optimized, stats: stats, valid: optimized.valid }
+}
+
 proc apply_scheduled_pass(mir: MirUnit, pass0: ScheduledMirPass) -> PassApplication {
   if not pass0.valid {
     give PassApplication { mir: mir, stats: [], valid: false }
@@ -180,6 +212,8 @@ proc apply_scheduled_pass(mir: MirUnit, pass0: ScheduledMirPass) -> PassApplicat
     give apply_fold_branches(mir)
   } elif pass0.kind == MirTransformKind.RemoveUnreachable {
     give apply_remove_unreachable(mir)
+  } elif pass0.kind == MirTransformKind.MergeBlocks {
+    give apply_merge_blocks(mir)
   } elif pass0.kind == MirTransformKind.SimplifyCfg {
     give apply_simplify_cfg(mir)
   }

@@ -1148,8 +1148,8 @@ proc test_mir_pass_manager_validates_each_boundary() -> bool {
   let rejected: PassRunResult = run_passes(invalid);
 
   give result.valid
-    and result.completed_passes == 4
-    and len(result.validations) == 8
+    and result.completed_passes == 5
+    and len(result.validations) == 10
     and result.validations[0].phase == PassValidationPhase.Before
     and result.validations[0].valid
     and result.validations[1].phase == PassValidationPhase.After and result.validations[1].valid
@@ -1159,6 +1159,8 @@ proc test_mir_pass_manager_validates_each_boundary() -> bool {
     and result.validations[5].phase == PassValidationPhase.After and result.validations[5].valid
     and result.validations[6].phase == PassValidationPhase.Before and result.validations[6].valid
     and result.validations[7].phase == PassValidationPhase.After and result.validations[7].valid
+    and result.validations[8].phase == PassValidationPhase.Before and result.validations[8].valid
+    and result.validations[9].phase == PassValidationPhase.After and result.validations[9].valid
     and result.mir.instruction_count == 0
     and not rejected.valid
     and rejected.completed_passes == 0
@@ -1265,7 +1267,7 @@ proc test_mir_dce_computes_cfg_reachability() -> bool {
   let result: PassRunResult = run_passes(unit0);
 
   give result.valid
-    and result.completed_passes == 4
+    and result.completed_passes == 5
     and result.mir.block_count == 1
     and len(result.mir.module.functions[0].blocks) == 1
     and result.mir.module.functions[0].blocks[0].id == 1
@@ -1326,12 +1328,122 @@ proc test_mir_folds_constant_branches_before_dce() -> bool {
   let result: PassRunResult = run_passes(unit0);
 
   give result.valid
-    and result.completed_passes == 4
-    and result.mir.block_count == 2
-    and result.mir.module.functions[0].blocks[0].terminator.kind == MirTerminatorKind.Goto
-    and result.mir.module.functions[0].blocks[0].terminator.target_block == 2
+    and result.completed_passes == 5
+    and result.mir.block_count == 1
+    and result.mir.module.functions[0].blocks[0].terminator.kind == MirTerminatorKind.Return
     and result.stats[1].stats.simplified_branches == 1
     and result.stats[2].stats.removed_blocks == 1;
+}
+
+proc test_mir_merges_single_predecessor_block_chains() -> bool {
+  let entry: MirBlock = MirBlock {
+    id: 1,
+    label: "entry",
+    predecessors: [],
+    statements: [],
+    terminator: MirTerminator { kind: MirTerminatorKind.Goto, target_block: 2, valid: true },
+    sealed: true,
+    reachable: true,
+    valid: true
+  };
+  let middle: MirBlock = MirBlock {
+    id: 2,
+    label: "middle",
+    predecessors: [1],
+    statements: [],
+    terminator: MirTerminator { kind: MirTerminatorKind.Goto, target_block: 3, valid: true },
+    sealed: true,
+    reachable: true,
+    valid: true
+  };
+  let exit: MirBlock = MirBlock {
+    id: 3,
+    label: "exit",
+    predecessors: [2],
+    statements: [],
+    terminator: mir_terminator_return(),
+    sealed: true,
+    reachable: true,
+    valid: true
+  };
+  let fn0: MirFunction = MirFunction {
+    id: 1,
+    name: "main",
+    entry_block: 1,
+    params: [],
+    return_type: "unit",
+    local_count: 0,
+    temporary_count: 0,
+    blocks: [entry, middle, exit],
+    valid: true
+  };
+  let unit0: MirUnit = MirUnit {
+    source_path: "mir_merge_blocks.vit",
+    module: MirModule { name: "merge", functions: [fn0], valid: true },
+    function_count: 1,
+    block_count: 3,
+    instruction_count: 0,
+    lowered: true,
+    valid: true
+  };
+  let result: PassRunResult = run_passes(unit0);
+
+  give result.valid
+    and result.completed_passes == 5
+    and result.mir.block_count == 1
+    and result.mir.module.functions[0].entry_block == 1
+    and result.mir.module.functions[0].blocks[0].id == 1
+    and len(result.mir.module.functions[0].blocks[0].predecessors) == 0
+    and result.mir.module.functions[0].blocks[0].terminator.kind == MirTerminatorKind.Return
+    and result.stats[3].stats.merged_blocks == 2;
+}
+
+proc test_mir_block_merging_preserves_cfg_joins() -> bool {
+  let entry: MirBlock = MirBlock {
+    id: 1,
+    label: "entry",
+    predecessors: [],
+    statements: [],
+    terminator: MirTerminator {
+      kind: MirTerminatorKind.Branch,
+      target_block: 2,
+      else_block: 3,
+      condition: named_operand("condition", "bool"),
+      valid: true
+    },
+    sealed: true,
+    reachable: true,
+    valid: true
+  };
+  let left: MirBlock = MirBlock { id: 2, label: "left", predecessors: [1], statements: [], terminator: MirTerminator { kind: MirTerminatorKind.Goto, target_block: 4, valid: true }, sealed: true, reachable: true, valid: true };
+  let right: MirBlock = MirBlock { id: 3, label: "right", predecessors: [1], statements: [], terminator: MirTerminator { kind: MirTerminatorKind.Goto, target_block: 4, valid: true }, sealed: true, reachable: true, valid: true };
+  let join: MirBlock = MirBlock { id: 4, label: "join", predecessors: [2, 3], statements: [], terminator: mir_terminator_return(), sealed: true, reachable: true, valid: true };
+  let fn0: MirFunction = MirFunction {
+    id: 1,
+    name: "main",
+    entry_block: 1,
+    params: [],
+    return_type: "unit",
+    local_count: 1,
+    temporary_count: 0,
+    blocks: [entry, left, right, join],
+    valid: true
+  };
+  let unit0: MirUnit = MirUnit {
+    source_path: "mir_preserve_join.vit",
+    module: MirModule { name: "join", functions: [fn0], valid: true },
+    function_count: 1,
+    block_count: 4,
+    instruction_count: 0,
+    lowered: true,
+    valid: true
+  };
+  let result: PassRunResult = run_passes(unit0);
+
+  give result.valid
+    and result.mir.block_count == 4
+    and result.stats[3].stats.merged_blocks == 0
+    and len(result.mir.module.functions[0].blocks[3].predecessors) == 2;
 }
 
 proc run_all_tests() -> int {
@@ -1448,6 +1560,12 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if not test_mir_folds_constant_branches_before_dce() {
+    set failures = failures + 1;
+  }
+  if not test_mir_merges_single_predecessor_block_chains() {
+    set failures = failures + 1;
+  }
+  if not test_mir_block_merging_preserves_cfg_joins() {
     set failures = failures + 1;
   }
   give failures;

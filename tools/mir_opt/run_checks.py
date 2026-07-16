@@ -46,6 +46,8 @@ REQUIRED_SMOKE_SYMBOLS = [
 
 REQUIRED_PASS_MANAGER_SYMBOLS = [
     'proc run_passes(mir: MirUnit) -> PassRunResult',
+    'proc apply_merge_blocks(mir: MirUnit) -> PassApplication',
+    'elif pass0.kind == MirTransformKind.MergeBlocks',
     'let before: PassValidationRecord = validate_for_pass',
     'if not before.valid',
     'let after: PassValidationRecord = validate_for_pass',
@@ -75,6 +77,12 @@ REQUIRED_BRANCH_FOLDING_SYMBOLS = [
     'proc constant_branch_target(terminator: MirTerminator) -> u64',
     'proc fold_constant_branches_function(function0: MirFunction) -> MirFunction',
     'proc branch_fold_report_for(before: MirFunction, after: MirFunction) -> MirTransformReport',
+]
+
+REQUIRED_BLOCK_MERGING_SYMBOLS = [
+    'proc mergeable_source_id(function0: MirFunction) -> u64',
+    'proc merge_blocks_function(function0: MirFunction) -> MirFunction',
+    'proc merge_blocks_report_for(before: MirFunction, after: MirFunction) -> MirTransformReport',
 ]
 
 
@@ -121,6 +129,10 @@ def main() -> int:
         return fail('constant branch folding must be scheduled before CFG reachability DCE')
     if 'scheduled_mir_pass("remove-unreachable", MirTransformKind.RemoveUnreachable, 3)' not in schedule_text:
         return fail('CFG reachability DCE must be scheduled before CFG simplification')
+    if 'scheduled_mir_pass("merge-blocks", MirTransformKind.MergeBlocks, 4)' not in schedule_text:
+        return fail('single-predecessor block merging must follow CFG reachability DCE')
+    if 'scheduled_mir_pass("simplify-cfg", MirTransformKind.SimplifyCfg, 5)' not in schedule_text:
+        return fail('CFG simplification must run after block merging')
 
     transform_text = MIR_TRANSFORM.read_text(encoding='utf-8')
     for sym in REQUIRED_CONSTANT_FOLDING_SYMBOLS:
@@ -132,6 +144,9 @@ def main() -> int:
     for sym in REQUIRED_BRANCH_FOLDING_SYMBOLS:
         if sym not in transform_text:
             return fail(f'missing constant branch folding contract: {sym}')
+    for sym in REQUIRED_BLOCK_MERGING_SYMBOLS:
+        if sym not in transform_text:
+            return fail(f'missing CFG block merging contract: {sym}')
 
     validate_text = MIR_VALIDATE.read_text(encoding='utf-8')
     if '"empty-goto-block"' in validate_text:
