@@ -3741,6 +3741,8 @@ detect_professional_diagnostic() {
                     call_open_offset = index(call_suffix, "(")
                     if (called_name_offset <= 0 || call_open_offset <= 0) continue
                     call_name_col = RSTART + called_name_offset - 1
+                    call_prefix = substr(call_code, 1, call_name_col - 1)
+                    if (call_prefix ~ /[.][ \t]*$/) continue
                     call_open_col = RSTART + called_name_offset + length(called_proc) + call_open_offset - 2
                     call_generic_arg_count = 0
                     call_generic_text = trim(substr(call_suffix, 1, call_open_offset - 1))

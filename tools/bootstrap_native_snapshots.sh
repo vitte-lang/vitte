@@ -263,6 +263,14 @@ check_array_return_is_not_generic() {
     [ ! -s "$TMP_DIR/array-return.check.err" ] || die "array return was misclassified as a generic procedure"
 }
 
+check_qualified_call_uses_module_arity() {
+    log "checking qualified call arity ownership"
+    fixture="$ROOT_DIR/tests/type_system/qualified_call_arity_positive.vit"
+    "$BIN_DIR/vittec0" check "$fixture" > "$TMP_DIR/qualified-call.check.out" 2> "$TMP_DIR/qualified-call.check.err"
+    diff -u "$SNAP_DIR/check.stage2.out.must" "$TMP_DIR/qualified-call.check.out" || die "qualified call check stdout drift"
+    [ ! -s "$TMP_DIR/qualified-call.check.err" ] || die "qualified call was matched to an unrelated local procedure"
+}
+
 check_emission_hashes() {
     log "checking emission hashes and cross-stage reproducibility"
     "$BIN_DIR/vittec0" --help > "$TMP_DIR/help.vittec0"
@@ -470,6 +478,7 @@ check_shell_cases
 check_bad_diag_cases
 check_cli_cases
 check_array_return_is_not_generic
+check_qualified_call_uses_module_arity
 check_emission_hashes
 check_native_user_build
 
