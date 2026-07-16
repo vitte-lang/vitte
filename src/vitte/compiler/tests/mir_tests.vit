@@ -10,7 +10,7 @@ use vitte/compiler/middle/mir/transform.{ MirTransformKind, MirTransformReport, 
 use vitte/compiler/middle/mir/validate.{ mir_validation_reason, validate_mir }
 use vitte/compiler/middle/passes/pass_manager.{ run_passes }
 use vitte/compiler/middle/passes/pass_result.{ PassRunResult, PassValidationPhase }
-use vitte/compiler/middle/lower/hir_to_mir.{ lower_hir_to_mir_templates }
+use vitte/compiler/middle/lower/hir_to_mir.{ lower_hir_to_mir_templates, mir_binary_operator_from_text, mir_binary_operator_supported, mir_unary_operator_from_text, mir_unary_operator_supported }
 use vitte/compiler/middle/pipeline.{ MiddleOutput, middle_run }
 
 const VERSION_TEXT: string = "middle mir tests 0.2.0"
@@ -97,6 +97,63 @@ proc test_mir_cfg_if_while() -> bool {
   }
 
   give branch_count >= 2 and goto_count >= 2;
+}
+
+proc test_mir_preserves_binary_and_unary_operators() -> bool {
+  let source: string =
+    "proc main() { let value = 3; let product = 6 * 7; let difference = 8 - 3; " +
+    "let negative = -value; let inverted = not false; give 0; }\n";
+  let fe: FrontendOutput = frontend_run("mir_operators.vit", source);
+  let middle: MiddleOutput = middle_run(fe);
+  if not middle.valid or len(middle.mir.module.functions) == 0 {
+    give false;
+  }
+  let product_seen: bool = false;
+  let difference_seen: bool = false;
+  let negative_seen: bool = false;
+  let inverted_seen: bool = false;
+  let i: u64 = 0;
+  while i < len(middle.mir.module.functions[0].blocks) {
+    let j: u64 = 0;
+    while j < len(middle.mir.module.functions[0].blocks[i].statements) {
+      let rvalue: MirRvalue = middle.mir.module.functions[0].blocks[i].statements[j].rvalue;
+      if rvalue.operator == "*" {
+        set product_seen = rvalue.kind == MirRvalueKind.Binary and rvalue.binary_operator == MirBinaryOperator.Mul;
+      } elif rvalue.operator == "-" and rvalue.kind == MirRvalueKind.Binary {
+        set difference_seen = rvalue.binary_operator == MirBinaryOperator.Sub;
+      } elif rvalue.operator == "-" and rvalue.kind == MirRvalueKind.Unary {
+        set negative_seen = rvalue.unary_operator == MirUnaryOperator.Neg;
+      } elif rvalue.operator == "not" {
+        set inverted_seen = rvalue.kind == MirRvalueKind.Unary and rvalue.unary_operator == MirUnaryOperator.Not;
+      }
+      set j = j + 1;
+    }
+    set i = i + 1;
+  }
+
+  give middle.valid
+    and product_seen and difference_seen and negative_seen and inverted_seen
+    and mir_binary_operator_from_text("+") == MirBinaryOperator.Add
+    and mir_binary_operator_from_text("/") == MirBinaryOperator.Div
+    and mir_binary_operator_from_text("%") == MirBinaryOperator.Rem
+    and mir_binary_operator_from_text("==") == MirBinaryOperator.Eq
+    and mir_binary_operator_from_text("!=") == MirBinaryOperator.Ne
+    and mir_binary_operator_from_text("<") == MirBinaryOperator.Lt
+    and mir_binary_operator_from_text("<=") == MirBinaryOperator.Le
+    and mir_binary_operator_from_text(">") == MirBinaryOperator.Gt
+    and mir_binary_operator_from_text(">=") == MirBinaryOperator.Ge
+    and mir_binary_operator_from_text("&") == MirBinaryOperator.BitAnd
+    and mir_binary_operator_from_text("|") == MirBinaryOperator.BitOr
+    and mir_binary_operator_from_text("^") == MirBinaryOperator.BitXor
+    and mir_binary_operator_from_text("<<") == MirBinaryOperator.ShiftLeft
+    and mir_binary_operator_from_text(">>") == MirBinaryOperator.ShiftRight
+    and mir_binary_operator_from_text("and") == MirBinaryOperator.And
+    and mir_binary_operator_from_text("||") == MirBinaryOperator.Or
+    and mir_unary_operator_from_text("*") == MirUnaryOperator.Deref
+    and mir_binary_operator_supported("or")
+    and not mir_binary_operator_supported("??")
+    and mir_unary_operator_supported("!")
+    and not mir_unary_operator_supported("~");
 }
 
 proc test_mir_preserves_projected_place() -> bool {
@@ -1109,6 +1166,9 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if not test_mir_cfg_if_while() {
+    set failures = failures + 1;
+  }
+  if not test_mir_preserves_binary_and_unary_operators() {
     set failures = failures + 1;
   }
   if not test_mir_preserves_projected_place() {

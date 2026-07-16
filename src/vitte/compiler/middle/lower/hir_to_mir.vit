@@ -3,6 +3,7 @@ space vitte/compiler/middle/lower/hir_to_mir
 use vitte/compiler/middle/hir.{ HirExpr, HirExprKind, HirItem, HirItemKind, HirNominalMember, HirNominalMemberKind, HirStmt, HirStmtKind, HirUnit }
 use vitte/compiler/middle/mir.{
   MirBlock,
+  MirBinaryOperator,
   MirFunction,
   MirFunctionParam,
   MirModule,
@@ -13,6 +14,7 @@ use vitte/compiler/middle/mir.{
   MirStatement,
   MirStatementKind,
   MirTerminator,
+  MirUnaryOperator,
   MirUnit,
   mir_module_empty,
   mir_place_empty,
@@ -29,6 +31,65 @@ form MirSequence {
   next_block_id: u64
   instruction_count: u64
   valid: bool
+}
+
+proc mir_binary_operator_supported(operator: string) -> bool {
+  give operator == "+" or operator == "-" or operator == "*" or operator == "/" or operator == "%"
+    or operator == "==" or operator == "!=" or operator == "<" or operator == "<=" or operator == ">" or operator == ">="
+    or operator == "&" or operator == "|" or operator == "^" or operator == "<<" or operator == ">>"
+    or operator == "&&" or operator == "and" or operator == "||" or operator == "or";
+}
+
+proc mir_binary_operator_from_text(operator: string) -> MirBinaryOperator {
+  if operator == "-" {
+    give MirBinaryOperator.Sub;
+  } elif operator == "*" {
+    give MirBinaryOperator.Mul;
+  } elif operator == "/" {
+    give MirBinaryOperator.Div;
+  } elif operator == "%" {
+    give MirBinaryOperator.Rem;
+  } elif operator == "==" {
+    give MirBinaryOperator.Eq;
+  } elif operator == "!=" {
+    give MirBinaryOperator.Ne;
+  } elif operator == "<" {
+    give MirBinaryOperator.Lt;
+  } elif operator == "<=" {
+    give MirBinaryOperator.Le;
+  } elif operator == ">" {
+    give MirBinaryOperator.Gt;
+  } elif operator == ">=" {
+    give MirBinaryOperator.Ge;
+  } elif operator == "&" {
+    give MirBinaryOperator.BitAnd;
+  } elif operator == "|" {
+    give MirBinaryOperator.BitOr;
+  } elif operator == "^" {
+    give MirBinaryOperator.BitXor;
+  } elif operator == "<<" {
+    give MirBinaryOperator.ShiftLeft;
+  } elif operator == ">>" {
+    give MirBinaryOperator.ShiftRight;
+  } elif operator == "&&" or operator == "and" {
+    give MirBinaryOperator.And;
+  } elif operator == "||" or operator == "or" {
+    give MirBinaryOperator.Or;
+  }
+  give MirBinaryOperator.Add;
+}
+
+proc mir_unary_operator_supported(operator: string) -> bool {
+  give operator == "-" or operator == "!" or operator == "not" or operator == "*";
+}
+
+proc mir_unary_operator_from_text(operator: string) -> MirUnaryOperator {
+  if operator == "-" {
+    give MirUnaryOperator.Neg;
+  } elif operator == "*" {
+    give MirUnaryOperator.Deref;
+  }
+  give MirUnaryOperator.Not;
 }
 
 proc mir_place_from_name(name: string) -> MirPlace {
@@ -313,6 +374,8 @@ proc mir_rvalue_from_expr(expr: HirExpr, items: [HirItem]) -> MirRvalue {
   let kind: MirRvalueKind = MirRvalueKind.Use;
   if expr.kind == HirExprKind.Binary {
     set kind = MirRvalueKind.Binary;
+  } elif expr.kind == HirExprKind.Unary or expr.kind == HirExprKind.Deref {
+    set kind = MirRvalueKind.Unary;
   } elif expr.kind == HirExprKind.BorrowShared {
     set kind = MirRvalueKind.BorrowShared;
   } elif expr.kind == HirExprKind.BorrowMut {
@@ -358,9 +421,13 @@ proc mir_rvalue_from_expr(expr: HirExpr, items: [HirItem]) -> MirRvalue {
       expr.operator
     },
     generic_arguments: if kind == MirRvalueKind.Call { expr.generic_arguments } else { [] },
+    binary_operator: mir_binary_operator_from_text(expr.operator),
+    unary_operator: mir_unary_operator_from_text(expr.operator),
     operands: operands,
     ty: expr.inferred_type,
     valid: expr.valid
+      and (kind != MirRvalueKind.Binary or mir_binary_operator_supported(expr.operator))
+      and (kind != MirRvalueKind.Unary or mir_unary_operator_supported(expr.operator))
   };
 }
 

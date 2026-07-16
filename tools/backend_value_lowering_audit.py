@@ -19,6 +19,11 @@ def read(rel: str) -> str:
 
 def main() -> int:
     required: list[tuple[str, str, str]] = [
+        ("src/vitte/compiler/middle/lower/hir_to_mir.vit", "proc mir_binary_operator_from_text(operator: string) -> MirBinaryOperator", "binary operators must be mapped explicitly into MIR"),
+        ("src/vitte/compiler/middle/lower/hir_to_mir.vit", "proc mir_unary_operator_from_text(operator: string) -> MirUnaryOperator", "unary operators must be mapped explicitly into MIR"),
+        ("src/vitte/compiler/middle/lower/hir_to_mir.vit", "set kind = MirRvalueKind.Unary;", "unary expressions must retain their MIR kind"),
+        ("src/vitte/compiler/middle/lower/hir_to_mir.vit", "binary_operator: mir_binary_operator_from_text(expr.operator)", "binary operator metadata must reach MIR rvalues"),
+        ("src/vitte/compiler/middle/lower/hir_to_mir.vit", "unary_operator: mir_unary_operator_from_text(expr.operator)", "unary operator metadata must reach MIR rvalues"),
         ("src/vitte/compiler/middle/lower/hir_to_mir.vit", "set kind = MirRvalueKind.Array;", "arrays must survive HIR to MIR"),
         ("src/vitte/compiler/middle/lower/hir_to_mir.vit", "set kind = MirRvalueKind.Tuple;", "tuples must survive HIR to MIR"),
         ("src/vitte/compiler/backend/ir/ir.vit", "Aggregate,", "backend IR must represent aggregate construction"),
@@ -43,6 +48,7 @@ def main() -> int:
         ("src/vitte/compiler/tests/codegen_tests.vit", "test_backend_lowers_calls_returns_and_aggregates_concretely", "cross-backend value lowering must be tested"),
         ("src/vitte/compiler/tests/c_backend_tests.vit", "test_c_backend_lowers_struct_tuple_and_array_values", "C aggregate lowering must be tested"),
         ("src/vitte/compiler/tests/c_backend_tests.vit", "test_c_backend_emits_external_calls_as_declarations_only", "C external declarations must be tested"),
+        ("src/vitte/compiler/tests/mir_tests.vit", "test_mir_preserves_binary_and_unary_operators", "operator transport must have a regression test"),
     ]
     forbidden: list[tuple[str, str, str]] = [
         ("src/vitte/compiler/backend/c/lowering.vit", 'give "{0}";', "C aggregate lowering must not use a zero stub"),
