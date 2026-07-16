@@ -1429,7 +1429,7 @@ extract_native_main_return() {
             else result = vars[name]
             return 1
         }
-        if (main_string && line ~ /^give[ \t]+[A-Za-z_][A-Za-z0-9_]*\("[^"]*"\);?$/) {
+        if (main_returns_string && line ~ /^give[ \t]+[A-Za-z_][A-Za-z0-9_]*\("[^"]*"\);?$/) {
             result = 0
             return 1
         }
@@ -1642,6 +1642,7 @@ extract_native_main_return() {
         saw_main = 0
         main_capture_depth = 0
         main_line_count = 0
+        main_returns_string = 0
         result = ""
         invalid = 0
         failure_reason = ""
@@ -1758,13 +1759,12 @@ extract_native_main_return() {
             saw_main = 1
             in_main = 1
             main_capture_depth = 1
-            main_string = 1
+            main_returns_string = 1
             next
         }
         if (in_main) {
             if (line == "}" && main_capture_depth == 1) {
                 in_main = 0
-                main_string = 0
                 main_capture_depth = 0
                 next
             }

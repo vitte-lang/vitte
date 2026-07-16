@@ -426,6 +426,11 @@ check_native_user_build() {
     "$BIN_DIR/vittec0" build "$ROOT_DIR/tests/golden/frontend/fixtures/hello_min.vit" -o "$TMP_DIR/hello-min"
     "$TMP_DIR/hello-min" >/dev/null 2>&1 || die "hello_min executable exit code mismatch"
     "$BIN_DIR/vittec0" run "$ROOT_DIR/tests/golden/frontend/fixtures/hello_min.vit" >/dev/null 2>&1 || die "hello_min run exit code mismatch"
+    "$BIN_DIR/vittec0" build "$ROOT_DIR/tests/type_system/traits_positive.vit" -o "$TMP_DIR/traits-string-main"
+    [ ! -f "$TMP_DIR/traits-string-main.bootstrap-bridge" ] || die "string main build produced a bootstrap bridge sidecar"
+    "$TMP_DIR/traits-string-main" >"$TMP_DIR/traits-string-main.out" 2>"$TMP_DIR/traits-string-main.err" || die "string main executable exit code mismatch"
+    [ ! -s "$TMP_DIR/traits-string-main.out" ] || die "string main executable wrote unexpected stdout"
+    [ ! -s "$TMP_DIR/traits-string-main.err" ] || die "string main executable wrote unexpected stderr"
     if "$BIN_DIR/vittec0" build "$SNAP_DIR/native_user_type_mismatch.vit" -o "$TMP_DIR/type-mismatch" > "$TMP_DIR/type-mismatch.out" 2> "$TMP_DIR/type-mismatch.err"; then
         die "native user type mismatch build unexpectedly succeeded"
     fi
