@@ -1434,6 +1434,7 @@ stdlib-profile-snapshots:
 
 .PHONY: stdlib-abi-compat
 stdlib-abi-compat:
+	@tools/lint_stdlib_api.py --surface docs/stdlib_abi_surface_v2.txt
 	@tools/check_stdlib_abi_compat.py
 
 .PHONY: modules-tests
