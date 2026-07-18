@@ -14,7 +14,7 @@ def fail(msg: str) -> int:
 
 
 def pick_checker() -> Path | None:
-    for rel in ("bin/vitte", "bin/vittec", "bin/vittec1", "bin/vittec0"):
+    for rel in ("bin/vitte", "bin/vittec", "bin/vittec0"):
         candidate = ROOT / rel
         if not candidate.exists():
             continue
@@ -80,7 +80,7 @@ def main() -> int:
 
     checker = pick_checker()
     if checker is None:
-        return fail("missing runnable checker: tried bin/vitte, bin/vittec, bin/vittec1, bin/vittec0")
+        return fail("missing runnable checker: tried bin/vitte, bin/vittec, bin/vittec0")
 
     for p in required:
         subprocess.run([str(checker), "check", str(p)], check=True, cwd=ROOT)
