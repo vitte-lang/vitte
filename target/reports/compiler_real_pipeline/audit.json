@@ -1,10 +1,10 @@
 {
   "cli_entry": {
+    "compiler_entry_point": "src/vitte/compiler/main.vit",
     "runtime_cli_dispatch": "wired",
     "source_entry_declared": "vitte/compiler/main",
-    "stage2_entry_point": "src/vitte/compiler/main.vit",
-    "stage2_source_root": "src/vitte/compiler",
-    "status": "ok"
+    "status": "ok",
+    "trust_root": "toolchain/seed/vittec0.seed"
   },
   "expected_flow": [
     "source .vit",
@@ -12,6 +12,7 @@
     "parser",
     "AST",
     "HIR",
+    "HIR validation",
     "sema",
     "typeck",
     "borrowck",
@@ -26,6 +27,7 @@
   "failures": [],
   "forbidden_surfaces": [],
   "informational_markers": [],
+  "pipeline_bypasses": [],
   "pipeline_steps": [
     {
       "name": "source",
@@ -59,8 +61,8 @@
     },
     {
       "name": "hir_validate",
-      "needle": "validate_hir",
-      "owner": "HIR validation",
+      "needle": "lower_ast_to_hir -> validate_hir(lower_ast_to_hir_unvalidated)",
+      "owner": "validated AST to HIR lowering",
       "status": "present"
     },
     {
@@ -71,8 +73,8 @@
     },
     {
       "name": "typeck",
-      "needle": "run_production_typeck_hir",
-      "owner": "type checking",
+      "needle": "run_production_typeck_hir -> run_typeck_hir",
+      "owner": "canonical HIR type checking API",
       "status": "present"
     },
     {

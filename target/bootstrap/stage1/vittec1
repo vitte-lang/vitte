@@ -18,7 +18,6 @@ ansi_cyan="$(printf '[36m')"
 
 # --- shell-runtime-body ---
 
-
 cli_error() {
     code="$1"
     msg="$2"
@@ -547,6 +546,9 @@ compile_native_ir() {
         if (line ~ /^[A-Za-z_][A-Za-z0-9_\.]*(\([^)]*\))?;?$/) return 1
         return 0
     }
+    function full_compiler_metadata_proc(line) {
+        return line ~ /^proc[ \t]+(version_text|banner_text|compiler_source_root|compiler_entry_point)\(\)[ \t]*->[ \t]*string[ \t]*[{]$/
+    }
     BEGIN {
         file = ARGV[1]
         in_proc = 0
@@ -618,7 +620,7 @@ compile_native_ir() {
             next
         }
 
-        if (!in_proc && line ~ /^proc[ \t]+[A-Za-z_][A-Za-z0-9_]*\(\)[ \t]*->[ \t]*string[ \t]*[{]$/) {
+        if (!in_proc && line ~ /^proc[ \t]+[A-Za-z_][A-Za-z0-9_]*\(\)[ \t]*->[ \t]*string[ \t]*[{]$/ && (!full_compiler || full_compiler_metadata_proc(line))) {
             in_proc = 1
             proc_name = line
             sub(/^proc[ \t]+/, "", proc_name)
@@ -640,7 +642,7 @@ compile_native_ir() {
             brace_depth = 1
             next
         }
-        if (!in_proc && line ~ /^proc[ \t]+[A-Za-z_][A-Za-z0-9_]*\(\)[ \t]*->[ \t]*int[ \t]*[{]$/) {
+        if (!full_compiler && !in_proc && line ~ /^proc[ \t]+[A-Za-z_][A-Za-z0-9_]*\(\)[ \t]*->[ \t]*int[ \t]*[{]$/) {
             in_proc = 1
             proc_name = line
             sub(/^proc[ \t]+/, "", proc_name)
@@ -904,7 +906,11 @@ render_native_shell_from_ir() {
     printf '\n'
     printf '# --- shell-runtime-body ---\n'
     printf '\n'
-    sed -n '/^# --- shell-runtime-body ---$/,$p' "$0" | sed '1d'
+    sed -n '/^# --- shell-runtime-body ---$/,$p' "$0" | awk '
+        NR == 1 { next }
+        !started && /^[ \t]*$/ { next }
+        { started = 1; print }
+    '
 }
 
 render_native_shell() {
@@ -1318,21 +1324,56 @@ extract_native_main_return() {
         }
         return expr
     }
-    function split_native_binary(expr, op, left, right, marker, idx) {
-        marker = "\034"
-        if (op == "==" || op == "!=" || op == "<=" || op == ">=") {
-            gsub(op, marker, expr)
-        } else {
-            gsub("\\" op, marker, expr)
+    function generic_close_index(expr, start, previous, depth, i, ch, j) {
+        if (start <= 1 || substr(expr, start, 1) != "<") return 0
+        previous = substr(expr, start - 1, 1)
+        if (previous !~ /[A-Za-z0-9_]/) return 0
+        depth = 0
+        for (i = start; i <= length(expr); i += 1) {
+            ch = substr(expr, i, 1)
+            if (ch == "<") depth += 1
+            else if (ch == ">") {
+                depth -= 1
+                if (depth == 0) {
+                    j = i + 1
+                    while (j <= length(expr) && substr(expr, j, 1) ~ /[ \t]/) j += 1
+                    if (substr(expr, j, 1) == "(") return i
+                    return 0
+                }
+            } else if (depth > 0 && ch ~ /[()=+*!]/) return 0
         }
-        idx = index(expr, marker)
-        if (idx <= 0) return 0
-        left = trim(substr(expr, 1, idx - 1))
-        right = trim(substr(expr, idx + 1))
-        if (right == "") return 0
-        split_left = left
-        split_right = right
-        return 1
+        return 0
+    }
+    function split_native_binary(expr, op, left, right, i, ch, paren_depth, generic_end, op_len) {
+        paren_depth = 0
+        op_len = length(op)
+        for (i = 1; i <= length(expr); i += 1) {
+            ch = substr(expr, i, 1)
+            if (ch == "<") {
+                generic_end = generic_close_index(expr, i)
+                if (generic_end > 0) {
+                    i = generic_end
+                    continue
+                }
+            }
+            if (ch == "(") {
+                paren_depth += 1
+                continue
+            }
+            if (ch == ")") {
+                paren_depth -= 1
+                continue
+            }
+            if (paren_depth == 0 && substr(expr, i, op_len) == op) {
+                left = trim(substr(expr, 1, i - 1))
+                right = trim(substr(expr, i + op_len))
+                if (left == "" || right == "") return 0
+                split_left = left
+                split_right = right
+                return 1
+            }
+        }
+        return 0
     }
     function eval_native_expr(expr) {
         expr = trim(expr)
@@ -1423,7 +1464,7 @@ extract_native_main_return() {
             else result = vars[name]
             return 1
         }
-        if (main_string && line ~ /^give[ \t]+[A-Za-z_][A-Za-z0-9_]*\("[^"]*"\);?$/) {
+        if (main_returns_string && line ~ /^give[ \t]+[A-Za-z_][A-Za-z0-9_]*\("[^"]*"\);?$/) {
             result = 0
             return 1
         }
@@ -1636,6 +1677,7 @@ extract_native_main_return() {
         saw_main = 0
         main_capture_depth = 0
         main_line_count = 0
+        main_returns_string = 0
         result = ""
         invalid = 0
         failure_reason = ""
@@ -1752,13 +1794,12 @@ extract_native_main_return() {
             saw_main = 1
             in_main = 1
             main_capture_depth = 1
-            main_string = 1
+            main_returns_string = 1
             next
         }
         if (in_main) {
             if (line == "}" && main_capture_depth == 1) {
                 in_main = 0
-                main_string = 0
                 main_capture_depth = 0
                 next
             }
@@ -1799,6 +1840,34 @@ extract_native_ir_main_return() {
     }'
 }
 
+compile_host_c() {
+    cc_bin="$1"
+    c_src="$2"
+    target_out="$3"
+    link_dir="$(mktemp -d "${TMPDIR:-/tmp}/vitte-bootstrap-link-XXXXXX")" || return 1
+    link_out="$link_dir/vitte-bootstrap-artifact"
+    if "$cc_bin" -x c "$c_src" -o "$link_out"; then
+        if [ -f "$link_out" ]; then
+            linked_artifact="$link_out"
+        elif [ -f "${link_out}.exe" ]; then
+            linked_artifact="${link_out}.exe"
+        else
+            rm -rf "$link_dir"
+            return 1
+        fi
+        if mv -f "$linked_artifact" "$target_out"; then
+            rm -rf "$link_dir"
+            return 0
+        else
+            rc="$?"
+        fi
+    else
+        rc="$?"
+    fi
+    rm -rf "$link_dir"
+    return "$rc"
+}
+
 emit_native_return_executable() {
     return_value="$1"
     target_out="$2"
@@ -1809,7 +1878,7 @@ emit_native_return_executable() {
         return 1
     }
     printf 'int main(void) { return %s; }\n' "$return_value" > "$c_src"
-    "$cc_bin" -x c "$c_src" -o "$target_out" || {
+    compile_host_c "$cc_bin" "$c_src" "$target_out" || {
         cli_error E_BACKEND_FAILURE "host C compilation failed for $src" "inspect host compiler diagnostics"
         rm -f "$c_src"
         rm -f "$target_out"
@@ -1955,7 +2024,7 @@ int main(int argc, char **argv) {
     return 127;
 }
 EOF
-            "$cc_bin" -x c "$c_src" -o "$target_out" || {
+            compile_host_c "$cc_bin" "$c_src" "$target_out" || {
                 cli_error E_BACKEND_FAILURE "host C payload compilation failed for $src" "inspect host compiler diagnostics"
                 rm -rf "$tmp_dir"
                 rm -f "$c_src"
@@ -2154,6 +2223,409 @@ detect_professional_diagnostic() {
         sub(/[ \t\r\n]+$/, "", s)
         return s
     }
+    function primitive_literal_type(text,    value) {
+        value = trim(text)
+        sub(/[ \t;}]+$/, "", value)
+        if (value ~ /^"/) return "string"
+        if (value == "S") return "string"
+        if (value == "true" || value == "false") return "bool"
+        if (value ~ /^-?[0-9]+$/) return "int"
+        return ""
+    }
+    function primitive_types_compatible(expected, found) {
+        if ((expected == "int" || expected == "i32") && found == "int") return 1
+        return expected == found
+    }
+    function seed_type_is_numeric(ty) {
+        return ty ~ /^(i8|i16|i32|i64|i128|isize|int|u8|u16|u32|u64|u128|usize|f32|f64|float)$/
+    }
+    function seed_type_is_signed_integer(ty) { return ty ~ /^(i8|i16|i32|i64|i128|isize|int)$/ }
+    function seed_type_is_unsigned_integer(ty) { return ty ~ /^(u8|u16|u32|u64|u128|usize)$/ }
+    function seed_type_is_integer(ty) { return seed_type_is_signed_integer(ty) || seed_type_is_unsigned_integer(ty) }
+    function seed_type_is_float(ty) { return ty ~ /^(f32|f64|float)$/ }
+    function seed_numeric_width(ty) {
+        if (ty == "i8" || ty == "u8") return 8
+        if (ty == "i16" || ty == "u16") return 16
+        if (ty == "i32" || ty == "u32" || ty == "int") return 32
+        if (ty == "i64" || ty == "u64" || ty == "isize" || ty == "usize" || ty == "f64" || ty == "float") return 64
+        if (ty == "i128" || ty == "u128") return 128
+        if (ty == "f32") return 32
+        return 0
+    }
+    function bounded_const_integer_type(ty) {
+        return ty ~ /^(i8|u8|i16|u16|i32|u32)$/
+    }
+    function const_integer_min(ty) {
+        if (ty == "i8") return -128
+        if (ty == "i16") return -32768
+        if (ty == "i32") return -2147483648
+        return 0
+    }
+    function const_integer_max(ty) {
+        if (ty == "i8") return 127
+        if (ty == "u8") return 255
+        if (ty == "i16") return 32767
+        if (ty == "u16") return 65535
+        if (ty == "i32") return 2147483647
+        if (ty == "u32") return 4294967295
+        return 0
+    }
+    function const_integer_range(ty) {
+        return const_integer_min(ty) ".." const_integer_max(ty)
+    }
+    function seed_types_compatible(expected, actual,    expected_width, actual_width, precision) {
+        if (expected == actual) return 1
+        expected_width = seed_numeric_width(expected)
+        actual_width = seed_numeric_width(actual)
+        if (seed_type_is_signed_integer(expected) && seed_type_is_signed_integer(actual)) return actual_width <= expected_width
+        if (seed_type_is_unsigned_integer(expected) && seed_type_is_unsigned_integer(actual)) return actual_width <= expected_width
+        if (seed_type_is_signed_integer(expected) && seed_type_is_unsigned_integer(actual)) return actual_width < expected_width
+        if (seed_type_is_float(expected) && seed_type_is_float(actual)) return actual_width <= expected_width
+        if (seed_type_is_float(expected) && seed_type_is_integer(actual)) {
+            precision = expected == "f32" ? 24 : 53
+            return actual_width <= precision
+        }
+        return 0
+    }
+    function matching_call_paren(s, open_col,    i, ch, depth) {
+        depth = 0
+        for (i = open_col + 1; i <= length(s); i++) {
+            ch = substr(s, i, 1)
+            if (ch == "(") {
+                depth++
+            } else if (ch == ")") {
+                if (depth == 0) return i
+                depth--
+            }
+        }
+        return 0
+    }
+    function split_call_args(s, parts,    key, i, ch, depth, start, count) {
+        for (key in parts) delete parts[key]
+        if (trim(s) == "") return 0
+        depth = 0
+        start = 1
+        count = 0
+        for (i = 1; i <= length(s); i++) {
+            ch = substr(s, i, 1)
+            if (ch == "(" || ch == "[" || ch == "{") {
+                depth++
+            } else if (ch == ")" || ch == "]" || ch == "}") {
+                if (depth > 0) depth--
+            } else if (ch == "," && depth == 0) {
+                parts[++count] = substr(s, start, i - start)
+                start = i + 1
+            }
+        }
+        parts[++count] = substr(s, start)
+        return count
+    }
+    function remember_pick_variants(name, body,    count, i, variant, key, parts) {
+        count = split_call_args(body, parts)
+        for (i = 1; i <= count; i++) {
+            variant = trim(parts[i])
+            sub(/^case[ \t]+/, "", variant)
+            sub(/[ \t({=].*$/, "", variant)
+            if (variant !~ /^[A-Za-z_][A-Za-z0-9_]*$/) continue
+            key = name SUBSEP variant
+            if (pick_variant_seen[key]) continue
+            pick_variant_seen[key] = 1
+            pick_variant_count[name]++
+            pick_variant[name SUBSEP pick_variant_count[name]] = variant
+        }
+    }
+    function finish_pick_definition(unused) {
+        remember_pick_variants(active_pick_name, active_pick_body)
+        active_pick_name = ""
+        active_pick_body = ""
+        active_pick_depth = 0
+    }
+    function consume_pick_definition(code,    i, ch) {
+        for (i = 1; i <= length(code); i++) {
+            ch = substr(code, i, 1)
+            if (ch == "{") {
+                active_pick_depth++
+                active_pick_body = active_pick_body ch
+            } else if (ch == "}") {
+                active_pick_depth--
+                if (active_pick_depth == 0) {
+                    finish_pick_definition(0)
+                    return
+                }
+                active_pick_body = active_pick_body ch
+            } else {
+                active_pick_body = active_pick_body ch
+            }
+        }
+        active_pick_body = active_pick_body "\n"
+    }
+    function begin_pick_definition(name, code,    open_col) {
+        pick_known[name] = 1
+        open_col = index(code, "{")
+        if (open_col <= 0) return
+        active_pick_name = name
+        active_pick_body = ""
+        active_pick_depth = 1
+        consume_pick_definition(substr(code, open_col + 1))
+    }
+    function match_keyword_col(code,    col) {
+        if (!match(code, /(^|[^A-Za-z0-9_])match[ \t]+/)) return 0
+        col = RSTART
+        if (substr(code, col, 5) != "match") col++
+        return col
+    }
+    function match_has_fallback(body,    normalized) {
+        normalized = body
+        gsub(/[ \t\r\n]+/, " ", normalized)
+        return normalized ~ /(^|[^A-Za-z0-9_])else([ ]|=>|[{])/ || normalized ~ /(^|[^A-Za-z0-9_])case[ ]+_([^A-Za-z0-9_]|$)/
+    }
+    function match_covers_case(body, type_name, case_name,    normalized, prefix, pattern) {
+        normalized = body
+        gsub(/[ \t\r\n]+/, " ", normalized)
+        prefix = "(^|[^A-Za-z0-9_])case[ ]+"
+        if (type_name == "bool") {
+            pattern = prefix case_name "([^A-Za-z0-9_]|$)"
+            return normalized ~ pattern
+        }
+        pattern = prefix "(" type_name "(::|[.]))?" case_name "([^A-Za-z0-9_]|$)"
+        return normalized ~ pattern
+    }
+    function finish_finite_match(unused,    missing, i, variant, raw) {
+        missing = ""
+        if (!match_has_fallback(active_match_body)) {
+            if (active_match_type == "bool") {
+                if (!match_covers_case(active_match_body, "bool", "true")) missing = "true"
+                else if (!match_covers_case(active_match_body, "bool", "false")) missing = "false"
+            } else {
+                for (i = 1; i <= pick_variant_count[active_match_type]; i++) {
+                    variant = pick_variant[active_match_type SUBSEP i]
+                    if (!match_covers_case(active_match_body, active_match_type, variant)) {
+                        missing = variant
+                        break
+                    }
+                }
+            }
+        }
+        if (missing != "") {
+            raw = source_line[active_match_line]
+            emit("TYPECK_E_MATCH_NON_EXHAUSTIVE", "error", "typeck",
+                "match expression is not exhaustive",
+                active_match_line, active_match_col, active_match_col + 5, raw,
+                "match does not cover " missing,
+                "matched type " active_match_type " has a finite case set; missing case: " missing,
+                "add case " missing " or add an else or case _ fallback arm")
+        }
+        active_match_type = ""
+        active_match_body = ""
+        active_match_depth = 0
+    }
+    function consume_finite_match(code,    i, ch) {
+        for (i = 1; i <= length(code); i++) {
+            ch = substr(code, i, 1)
+            if (ch == "{") {
+                active_match_depth++
+                active_match_body = active_match_body ch
+            } else if (ch == "}") {
+                active_match_depth--
+                if (active_match_depth == 0) {
+                    finish_finite_match(0)
+                    return
+                }
+                active_match_body = active_match_body ch
+            } else {
+                active_match_body = active_match_body ch
+            }
+        }
+        active_match_body = active_match_body "\n"
+    }
+    function begin_finite_match(code, line_no, col, proc_name,    tail, open_col, subject, type_name) {
+        tail = substr(code, col + 5)
+        open_col = index(tail, "{")
+        if (open_col <= 0) return
+        subject = trim(substr(tail, 1, open_col - 1))
+        type_name = proc_binding_type[proc_name SUBSEP subject]
+        if (type_name == "" && (subject in decl_type)) type_name = decl_type[subject]
+        sub(/\[.*$/, "", type_name)
+        if (type_name != "bool" && !pick_known[type_name]) return
+        active_match_type = type_name
+        active_match_line = line_no
+        active_match_col = col
+        active_match_body = ""
+        active_match_depth = 1
+        consume_finite_match(substr(tail, open_col + 1))
+    }
+    function method_param_type(param,    type_name) {
+        type_name = trim(param)
+        if (index(type_name, ":") > 0) sub(/^[^:]*:[ \t\r\n]*/, "", type_name)
+        else if (type_name == "self") type_name = "Self"
+        sub(/[ \t\r\n].*$/, "", type_name)
+        return type_name
+    }
+    function emit_impl_signature_mismatch(method_name, mismatch, expected, actual, line_no,    raw, col) {
+        raw = source_line[line_no]
+        col = index(raw, method_name)
+        if (col <= 0) col = active_nominal_col
+        emit("TYPECK_E_IMPL_SIGNATURE_MISMATCH", "error", "typeck",
+            "impl method " method_name " " mismatch " does not match trait method",
+            line_no, col, col + length(method_name), raw,
+            "expected " expected ", found " actual,
+            "trait method " active_nominal_owner "." method_name " declared here: " file ":" trait_method_line[active_nominal_owner SUBSEP method_name],
+            "align the impl method " mismatch " with the trait declaration")
+    }
+    function emit_impl_missing_member(method_name,    raw, col, key) {
+        raw = source_line[active_nominal_line]
+        col = active_nominal_col
+        key = active_nominal_owner SUBSEP method_name
+        emit("TYPECK_E_IMPL_MISSING_MEMBER", "error", "typeck",
+            "impl is missing required trait method " method_name,
+            active_nominal_line, col, col + length(active_nominal_owner), raw,
+            "required method " method_name " is absent from this impl",
+            "trait method " active_nominal_owner "." method_name " declared here: " file ":" trait_method_line[key],
+            "add method " method_name " with the signature declared by trait " active_nominal_owner)
+    }
+    function index_nominal_methods(kind, owner, target, body, start_line,    rest, offset, matched, proc_rel, signature_start, signature, method_name, open_col, close_col, params_text, param_count, return_tail, return_type, method_line, prefix, key, i, expected_type, actual_type, advance, scan_id, required_name, provider_key, provider_seen_key, bound_param_count, bound_param_start, bound_param_index, first_param_type, params) {
+        rest = body
+        offset = 0
+        scan_id = 0
+        if (kind == "impl") {
+            impl_scan_id++
+            scan_id = impl_scan_id
+        }
+        while (match(rest, /(^|[^A-Za-z0-9_])proc[ \t\r\n]+[A-Za-z_][A-Za-z0-9_]*[ \t\r\n]*[(]/)) {
+            matched = substr(rest, RSTART, RLENGTH)
+            proc_rel = index(matched, "proc")
+            signature_start = RSTART + proc_rel - 1
+            signature = substr(rest, signature_start)
+            method_name = signature
+            sub(/^proc[ \t\r\n]+/, "", method_name)
+            sub(/[(].*$/, "", method_name)
+            open_col = index(signature, "(")
+            close_col = matching_call_paren(signature, open_col)
+            if (method_name == "" || open_col <= 0 || close_col <= 0) break
+            params_text = substr(signature, open_col + 1, close_col - open_col - 1)
+            param_count = split_call_args(params_text, params)
+            return_tail = trim(substr(signature, close_col + 1))
+            return_type = ""
+            if (return_tail ~ /^->[ \t\r\n]*/) {
+                sub(/^->[ \t\r\n]*/, "", return_tail)
+                return_type = return_tail
+                sub(/[ \t\r\n{;].*$/, "", return_type)
+            }
+            prefix = substr(body, 1, offset + signature_start - 1)
+            method_line = start_line + count_char(prefix, "\n")
+            key = owner SUBSEP method_name
+            if (kind == "trait") {
+                if (!trait_method_known[key]) {
+                    trait_method_known[key] = 1
+                    trait_method_count[owner]++
+                    trait_method_name[owner SUBSEP trait_method_count[owner]] = method_name
+                    trait_method_param_count[key] = param_count
+                    trait_method_return[key] = return_type
+                    trait_method_line[key] = method_line
+                    for (i = 1; i <= param_count; i++) {
+                        trait_method_param[key SUBSEP i] = method_param_type(params[i])
+                    }
+                }
+            } else {
+                impl_method_scan[method_name] = scan_id
+                provider_key = target SUBSEP method_name
+                provider_seen_key = provider_key SUBSEP owner
+                if (target != "" && !method_provider_seen[provider_seen_key]) {
+                    method_provider_seen[provider_seen_key] = 1
+                    method_provider_count[provider_key]++
+                    if (method_provider_text[provider_key] != "") method_provider_text[provider_key] = method_provider_text[provider_key] ", "
+                    method_provider_text[provider_key] = method_provider_text[provider_key] owner
+                    bound_param_count = param_count
+                    bound_param_start = 1
+                    if (param_count > 0) {
+                        first_param_type = method_param_type(params[1])
+                        if (first_param_type == "Self" || first_param_type == target) {
+                            bound_param_count--
+                            bound_param_start = 2
+                        }
+                    }
+                    method_provider_arity[provider_key] = bound_param_count
+                    method_provider_return[provider_key] = return_type
+                    for (i = bound_param_start; i <= param_count; i++) {
+                        bound_param_index = i - bound_param_start + 1
+                        method_provider_param[provider_key SUBSEP bound_param_index] = method_param_type(params[i])
+                    }
+                }
+                if (trait_method_known[key]) {
+                    if (param_count != trait_method_param_count[key]) {
+                        emit_impl_signature_mismatch(method_name, "parameter count", trait_method_param_count[key], param_count, method_line)
+                    }
+                    if (return_type != trait_method_return[key]) {
+                        emit_impl_signature_mismatch(method_name, "return type", trait_method_return[key], return_type, method_line)
+                    }
+                    for (i = 1; i <= param_count; i++) {
+                        expected_type = trait_method_param[key SUBSEP i]
+                        actual_type = method_param_type(params[i])
+                        if (actual_type != expected_type) {
+                            emit_impl_signature_mismatch(method_name, "parameter " i " type", expected_type, actual_type, method_line)
+                        }
+                    }
+                }
+            }
+            advance = signature_start + close_col - 1
+            offset += advance
+            rest = substr(rest, advance + 1)
+        }
+        if (kind == "impl" && trait_known[owner]) {
+            for (i = 1; i <= trait_method_count[owner]; i++) {
+                required_name = trait_method_name[owner SUBSEP i]
+                if (impl_method_scan[required_name] != scan_id) emit_impl_missing_member(required_name)
+            }
+        }
+    }
+    function finish_nominal_definition(unused) {
+        index_nominal_methods(active_nominal_kind, active_nominal_owner, active_nominal_target, active_nominal_body, active_nominal_line)
+        active_nominal_kind = ""
+        active_nominal_owner = ""
+        active_nominal_target = ""
+        active_nominal_body = ""
+        active_nominal_depth = 0
+    }
+    function consume_nominal_definition(code,    i, ch) {
+        for (i = 1; i <= length(code); i++) {
+            ch = substr(code, i, 1)
+            if (ch == "{") {
+                active_nominal_depth++
+                active_nominal_body = active_nominal_body ch
+            } else if (ch == "}") {
+                active_nominal_depth--
+                if (active_nominal_depth == 0) {
+                    finish_nominal_definition(0)
+                    return
+                }
+                active_nominal_body = active_nominal_body ch
+            } else {
+                active_nominal_body = active_nominal_body ch
+            }
+        }
+        active_nominal_body = active_nominal_body "\n"
+    }
+    function begin_nominal_definition(kind, owner, target, code, line_no, col,    open_col) {
+        open_col = index(code, "{")
+        if (open_col <= 0) return
+        active_nominal_kind = kind
+        active_nominal_owner = owner
+        active_nominal_target = target
+        active_nominal_line = line_no
+        active_nominal_col = col
+        active_nominal_body = ""
+        active_nominal_depth = 1
+        consume_nominal_definition(substr(code, open_col + 1))
+    }
+    function type_pattern_mentions(pattern, param,    normalized, part_count, part_index, parts) {
+        normalized = pattern
+        gsub(/[^A-Za-z0-9_]/, " ", normalized)
+        part_count = split(normalized, parts, /[ \t]+/)
+        for (part_index = 1; part_index <= part_count; part_index++) {
+            if (parts[part_index] == param) return 1
+        }
+        return 0
+    }
     function count_char(s, ch,    i, n) {
         n = 0
         for (i = 1; i <= length(s); i++) {
@@ -2294,11 +2766,37 @@ detect_professional_diagnostic() {
     function syntax_note(expected, found, context, recovery) {
         return "expected token: " expected "; found token: " found "; syntax context: " context "; recovery: " recovery
     }
-    function remember_decl(name, ty, line, col) {
+    function remember_decl_in(proc_name, name, ty, line, col,    key, history_index) {
         if (name == "") return
         decl_type[name] = ty
         decl_line[name] = line
         decl_col[name] = col
+        if (proc_name != "") {
+            key = proc_name SUBSEP name
+            proc_decl_type[key] = ty
+            proc_decl_line[key] = line
+            proc_decl_col[key] = col
+            history_index = ++proc_decl_history_count[key]
+            proc_decl_history_type[key SUBSEP history_index] = ty
+            proc_decl_history_line[key SUBSEP history_index] = line
+        }
+    }
+    function remember_decl(name, ty, line, col) {
+        remember_decl_in(current_proc, name, ty, line, col)
+    }
+    function binding_type(proc_name, name, use_line,    key, history_index) {
+        key = proc_name SUBSEP name
+        if (proc_name != "" && use_line > 0) {
+            for (history_index = proc_decl_history_count[key]; history_index >= 1; history_index--) {
+                if (proc_decl_history_line[key SUBSEP history_index] <= use_line) {
+                    return proc_decl_history_type[key SUBSEP history_index]
+                }
+            }
+        }
+        if (proc_name != "" && (key in proc_decl_type)) return proc_decl_type[key]
+        if (proc_name != "" && (key in proc_binding_type)) return proc_binding_type[key]
+        if (proc_name == "" && (name in decl_type)) return decl_type[name]
+        return ""
     }
     function seen_symbol(kind, name, line, col) {
         if (name == "") return
@@ -2324,15 +2822,27 @@ detect_professional_diagnostic() {
         block_comment_line = 0
         block_comment_col = 0
         import_count = 0
+        active_pick_name = ""
+        active_match_type = ""
+        active_nominal_kind = ""
     }
     {
         raw = $0
         line = trim(raw)
+        source_line[FNR] = raw
+        line_proc[FNR] = current_proc
         if (line == "" || line ~ /^\/\//) next
         code_line = strip_strings(raw)
         code_trim = trim(code_line)
-        if (code_trim ~ /^let[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*:[ \t]*string[ \t]*=[ \t]*S([ \t]*[+][ \t]*)?$/ ||
-            code_trim ~ /^S([ \t]*[+][ \t]*)?$/) {
+        source_code_line[FNR] = code_line
+        if (code_trim ~ /^let[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*:[ \t]*string[ \t]*=[ \t]*S([ \t]*[+][ \t]*)?$/) {
+            string_binding = code_trim
+            sub(/^let[ \t]+/, "", string_binding)
+            sub(/[ \t]*:.*$/, "", string_binding)
+            remember_decl(string_binding, "string", FNR, index(raw, string_binding))
+            next
+        }
+        if (code_trim ~ /^S([ \t]*[+][ \t]*)?$/) {
             next
         }
 
@@ -2353,9 +2863,9 @@ detect_professional_diagnostic() {
             next
         }
 
-        if (index(raw, "/*") > 0) {
-            start_comment = index(raw, "/*")
-            end_comment = index(substr(raw, start_comment + 2), "*/")
+        if (index(code_line, "/*") > 0) {
+            start_comment = index(code_line, "/*")
+            end_comment = index(substr(code_line, start_comment + 2), "*/")
             if (end_comment == 0) {
                 in_block_comment = 1
                 block_comment_line = FNR
@@ -2455,6 +2965,50 @@ detect_professional_diagnostic() {
                 "change the divisor to a non-zero value or compute this at runtime")
         }
 
+        if (line ~ /^const[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*:[ \t]*(i8|u8|i16|u16|i32|u32)[ \t]*=[ \t]*-?[0-9]+[ \t;]*$/) {
+            const_tail = line
+            sub(/^const[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*:[ \t]*/, "", const_tail)
+            const_type = const_tail
+            sub(/[ \t=].*$/, "", const_type)
+            const_value_text = const_tail
+            sub(/^[^=]*=[ \t]*/, "", const_value_text)
+            sub(/[ \t;]*$/, "", const_value_text)
+            const_value = const_value_text + 0
+            if (bounded_const_integer_type(const_type) && (const_value < const_integer_min(const_type) || const_value > const_integer_max(const_type))) {
+                col = index(raw, const_value_text)
+                emit("CONST_EVAL_E_OVERFLOW", "error", "const_eval",
+                    "constant integer is outside the range of " const_type,
+                    FNR, col, col + length(const_value_text), raw,
+                    "value " const_value_text " does not fit " const_type,
+                    "target range: " const_integer_range(const_type),
+                    "choose a value in " const_integer_range(const_type) " or widen the constant type")
+            }
+        }
+
+        if (line ~ /^const[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*:[^=]+=[ \t]*&/) {
+            const_eq_col = index(raw, "=")
+            const_rhs = substr(raw, const_eq_col + 1)
+            const_expr = trim(const_rhs)
+            sub(/[ \t;]*$/, "", const_expr)
+            const_amp_col = const_eq_col + index(const_rhs, "&")
+            emit("CONST_EVAL_E_UNSUPPORTED_EXPR", "error", "const_eval",
+                "references are not supported in constant expressions",
+                FNR, const_amp_col, const_amp_col + length(const_expr), raw,
+                "reference expression " const_expr " cannot be evaluated at compile time",
+                "constant evaluation permits immutable scalar values but not borrowed storage",
+                "replace the reference with a constant value or compute it at runtime")
+        }
+
+        if (line ~ /^static_assert[ \t]*\([ \t]*false([ \t]*,|[ \t]*\))/) {
+            col = index(raw, "false")
+            emit("CONST_EVAL_E_STATIC_ASSERT_FAILED", "error", "const_eval",
+                "static assertion failed",
+                FNR, col, col + 5, raw,
+                "static_assert condition is always false",
+                "the assertion is evaluated during compilation and prevents code generation",
+                "fix the asserted condition or remove the invalid assertion")
+        }
+
         too_large_col = token_too_large_col(raw, 128)
         if (too_large_col > 0) {
             too_large_len = token_len_from(raw, too_large_col)
@@ -2541,11 +3095,163 @@ detect_professional_diagnostic() {
             }
         }
 
-        if (line ~ /^proc[ \t]+[A-Za-z_][A-Za-z0-9_]*/) {
+        if (line ~ /^trait[ \t]+[A-Za-z_][A-Za-z0-9_]*/) {
+            trait_name = line
+            sub(/^trait[ \t]+/, "", trait_name)
+            sub(/[ \t{(:].*$/, "", trait_name)
+            if (trait_name != "") {
+                trait_known[trait_name] = 1
+                begin_nominal_definition("trait", trait_name, "", code_line, FNR, index(raw, trait_name))
+            }
+        }
+        if (line ~ /^impl[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]+for[ \t]+[^ \t{]+/) {
+            impl_trait = line
+            sub(/^impl[ \t]+/, "", impl_trait)
+            sub(/[ \t]+for[ \t]+.*$/, "", impl_trait)
+            impl_type = line
+            sub(/^impl[ \t]+[^ \t]+[ \t]+for[ \t]+/, "", impl_type)
+            sub(/[ \t{].*$/, "", impl_type)
+            if (impl_trait != "" && impl_type != "") {
+                impl_reference_count++
+                impl_reference_trait[impl_reference_count] = impl_trait
+                impl_reference_type[impl_reference_count] = impl_type
+                impl_reference_line[impl_reference_count] = FNR
+                impl_reference_col[impl_reference_count] = index(raw, impl_trait)
+                impl_key = impl_trait SUBSEP impl_type
+                if (trait_impl[impl_key]) {
+                    col = index(raw, impl_trait)
+                    emit("TYPECK_E_CONFLICTING_IMPL", "error", "typeck",
+                        "conflicting implementation of " impl_trait " for " impl_type,
+                        FNR, col, col + length(impl_trait), raw,
+                        "duplicate implementation declared here",
+                        "first implementation: " file ":" trait_impl_line[impl_key] ":" trait_impl_col[impl_key],
+                        "remove one implementation or make the target types disjoint")
+                }
+                trait_impl[impl_key] = 1
+                trait_impl_line[impl_key] = FNR
+                trait_impl_col[impl_key] = index(raw, impl_trait)
+                begin_nominal_definition("impl", impl_trait, impl_type, code_line, FNR, index(raw, impl_trait))
+            }
+        }
+
+        if (line ~ /^proc[ \t]+[A-Za-z_][A-Za-z0-9_]*/ && active_nominal_kind == "") {
             name = line
             sub(/^proc[ \t]+/, "", name)
             sub(/[ \t(:={].*$/, "", name)
+            sub(/\[.*$/, "", name)
+            line_proc[FNR] = name
             seen_symbol("proc", name, FNR, index(raw, name))
+            if (!proc_known[name]) {
+                proc_order_count++
+                proc_order[proc_order_count] = name
+                proc_known[name] = 1
+            }
+            proc_generic_count[name] = 0
+            generic_prefix = line
+            sub(/^proc[ \t]+[A-Za-z_][A-Za-z0-9_]*/, "", generic_prefix)
+            generic_prefix = trim(generic_prefix)
+            generic_open = 0
+            if (substr(generic_prefix, 1, 1) == "[") generic_open = index(line, "[")
+            if (generic_open > 0) {
+                generic_tail = substr(line, generic_open + 1)
+                generic_close = index(generic_tail, "]")
+                if (generic_close > 0) {
+                    generic_text = substr(generic_tail, 1, generic_close - 1)
+                    generic_count = split(generic_text, generic_parts, ",")
+                    for (generic_index = 1; generic_index <= generic_count; generic_index++) {
+                        generic_decl = trim(generic_parts[generic_index])
+                        generic_param = generic_decl
+                        sub(/[ \t]*:.*/, "", generic_param)
+                        if (generic_param ~ /^[A-Za-z_][A-Za-z0-9_]*$/) {
+                            proc_generic_count[name]++
+                            proc_generic_param[name SUBSEP proc_generic_count[name]] = generic_param
+                            proc_generic_index[name SUBSEP generic_param] = proc_generic_count[name]
+                            proc_generic_constrained[name SUBSEP proc_generic_count[name]] = 0
+                            generic_bound = ""
+                            if (index(generic_decl, ":") > 0) {
+                                generic_bound = generic_decl
+                                sub(/^[^:]*:[ \t]*/, "", generic_bound)
+                                sub(/[ \t+].*$/, "", generic_bound)
+                            }
+                            proc_generic_bound[name SUBSEP proc_generic_count[name]] = generic_bound
+                        }
+                    }
+                }
+            }
+            for (cycle_start_index = 1; cycle_start_index <= proc_generic_count[name]; cycle_start_index++) {
+                cycle_start_param = proc_generic_param[name SUBSEP cycle_start_index]
+                cycle_current_param = cycle_start_param
+                for (cycle_step = 1; cycle_step <= proc_generic_count[name]; cycle_step++) {
+                    cycle_current_index = proc_generic_index[name SUBSEP cycle_current_param]
+                    if (cycle_current_index <= 0) break
+                    cycle_next_param = proc_generic_bound[name SUBSEP cycle_current_index]
+                    if (proc_generic_index[name SUBSEP cycle_next_param] <= 0) break
+                    if (cycle_next_param == cycle_start_param) {
+                        col = index(raw, cycle_start_param)
+                        emit("TYPECK_E_CONSTRAINT_CYCLE", "error", "typeck",
+                            "cyclic generic constraint in procedure " name,
+                            FNR, col, col + length(cycle_start_param), raw,
+                            "generic parameter " cycle_start_param " depends on itself",
+                            "following generic bounds reaches " cycle_start_param " again",
+                            "replace one dependency with a concrete trait or type")
+                    }
+                    cycle_current_param = cycle_next_param
+                }
+            }
+            signature_params = line
+            sub(/^[^(]*[(]/, "", signature_params)
+            sub(/[)].*$/, "", signature_params)
+            proc_param_count[name] = 0
+            proc_signature_supported[name] = 1
+            if (trim(signature_params) != "") {
+                signature_param_count = split(signature_params, signature_param_parts, ",")
+                for (signature_param_index = 1; signature_param_index <= signature_param_count; signature_param_index++) {
+                    signature_param = trim(signature_param_parts[signature_param_index])
+                    if (signature_param == "...") {
+                        proc_signature_supported[name] = 0
+                        continue
+                    }
+                    signature_param_pattern = signature_param
+                    sub(/^[^:]*:[ \t]*/, "", signature_param_pattern)
+                    sub(/[ \t].*$/, "", signature_param_pattern)
+                    signature_param_name = signature_param
+                    sub(/[ \t]*:.*/, "", signature_param_name)
+                    if (signature_param_name ~ /^[A-Za-z_][A-Za-z0-9_]*$/) {
+                        proc_binding_type[name SUBSEP signature_param_name] = signature_param_pattern
+                    }
+                    for (generic_index = 1; generic_index <= proc_generic_count[name]; generic_index++) {
+                        generic_param = proc_generic_param[name SUBSEP generic_index]
+                        if (type_pattern_mentions(signature_param_pattern, generic_param)) {
+                            proc_generic_constrained[name SUBSEP generic_index] = 1
+                        }
+                    }
+                    signature_param_type = signature_param_pattern
+                    if (signature_param_type !~ /^(i32|int|string|bool)$/) {
+                        if (proc_generic_index[name SUBSEP signature_param_pattern] > 0) {
+                            signature_param_type = ""
+                        } else if (signature_param_type !~ /^[A-Z][A-Za-z0-9_]*$/) {
+                            signature_param_type = ""
+                            proc_signature_supported[name] = 0
+                        }
+                    }
+                    proc_param_count[name]++
+                    proc_param_pattern[name SUBSEP proc_param_count[name]] = signature_param_pattern
+                    proc_param_type[name SUBSEP proc_param_count[name]] = signature_param_type
+                }
+            }
+            declared_proc_return = ""
+            if (line ~ /->[ \t]*[A-Za-z_][A-Za-z0-9_]*/) {
+                declared_proc_return = line
+                sub(/^.*->[ \t]*/, "", declared_proc_return)
+                sub(/[ \t{;].*$/, "", declared_proc_return)
+            }
+            proc_return_type[name] = declared_proc_return
+            if (line ~ /[{]/) {
+                current_proc = name
+                current_proc_line = FNR
+                current_return_type = declared_proc_return
+                current_proc_depth = brace_depth + 1
+            }
         } else if (line ~ /^const[ \t]+[A-Za-z_][A-Za-z0-9_]*/) {
             name = line
             sub(/^const[ \t]+/, "", name)
@@ -2561,20 +3267,48 @@ detect_professional_diagnostic() {
             sub(/^pick[ \t]+/, "", name)
             sub(/[ \t(:={].*$/, "", name)
             seen_symbol("pick", name, FNR, index(raw, name))
+            begin_pick_definition(name, code_line)
+        }
+
+        if (current_proc != "" && current_return_type != "" && line ~ /(^|[{;][ \t]*)give[ \t]+/) {
+            returned = line
+            sub(/^.*give[ \t]+/, "", returned)
+            returned_token = trim(returned)
+            sub(/[ \t;}]+$/, "", returned_token)
+            returned_type = primitive_literal_type(returned)
+            if (returned_type == "" && returned_token ~ /^[A-Za-z_][A-Za-z0-9_]*$/) returned_type = binding_type(current_proc, returned_token)
+            if (returned ~ /[ \t]+as[ \t]+/) returned_type = ""
+            if (returned_type != "" && !seed_types_compatible(current_return_type, returned_type)) {
+                if (returned_token ~ /^"/) {
+                    col = index(raw, "\"")
+                    returned_tail = substr(raw, col + 1)
+                    returned_end = index(returned_tail, "\"")
+                    width = returned_end > 0 ? returned_end + 1 : 1
+                } else {
+                    col = index(raw, returned_token)
+                    width = length(returned_token)
+                }
+                emit("TYPECK_E_RETURN_MISMATCH", "error", "typeck",
+                    "return type " returned_type " does not match declared type " current_return_type,
+                    FNR, col, col + width, raw,
+                    "expected " current_return_type ", found " returned_type,
+                    "procedure " current_proc " declared its return type here: " file ":" current_proc_line,
+                    "return a value of type " current_return_type " or change the procedure signature")
+            }
         }
 
         if (brace_depth == 0) {
             token = first_token(line)
             if (token != "" &&
                 token != "space" && token != "proc" && token != "const" &&
-                token != "form" && token != "pick" && token != "use" &&
+                token != "form" && token != "pick" && token != "trait" && token != "impl" && token != "use" &&
                 token != "import" && token != "export" && token != "share" &&
                 token != "intrinsic" && token != "query") {
                 col = index(raw, token)
                 emit("PARSE_E_TOPLEVEL_DECL_EXPECTED", "error", "parser",
                     "top-level declaration expected",
                     FNR, col, col + length(token), raw,
-                    "expected one of: proc, const, form, pick, use, import, export, share, intrinsic, query",
+                    "expected one of: proc, const, form, pick, trait, impl, use, import, export, share, intrinsic, query",
                     syntax_note("top-level declaration", token, "module item list", "none"),
                     "start a valid top-level declaration or move this code into a block")
             }
@@ -2643,7 +3377,26 @@ detect_professional_diagnostic() {
                 "add a block delimited by braces after this construct")
         }
 
-        if (line ~ /^[ \t]*let[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*:[ \t]*(i32|int|string|bool)[ \t]*=/) {
+        if (match(code_line, /(S|true|false|-?[0-9]+)[ \t]+as[ \t]+(i8|i16|i32|i64|i128|isize|int|u8|u16|u32|u64|u128|usize|f32|f64|float|string|bool)/)) {
+            cast_text = substr(code_line, RSTART, RLENGTH)
+            cast_source = cast_text
+            sub(/[ \t]+as[ \t]+.*$/, "", cast_source)
+            cast_target = cast_text
+            sub(/^.*[ \t]+as[ \t]+/, "", cast_target)
+            cast_source_type = primitive_literal_type(cast_source)
+            if (cast_source_type != "" && cast_source_type != cast_target && !(seed_type_is_numeric(cast_source_type) && seed_type_is_numeric(cast_target))) {
+                cast_as_offset = index(cast_text, " as ")
+                col = RSTART + (cast_as_offset > 0 ? cast_as_offset : 1) - 1
+                emit("TYPECK_E_INVALID_CAST", "error", "typeck",
+                    "explicit cast from " cast_source_type " to " cast_target " is not allowed",
+                    FNR, col, col + 2, raw,
+                    "target type " cast_target " is incompatible with source type " cast_source_type,
+                    "explicit casts are limited to supported scalar representation conversions",
+                    "use a conversion procedure or change the source or target type")
+            }
+        }
+
+        if (line ~ /^[ \t]*let[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*:[ \t]*(i8|i16|i32|i64|i128|isize|int|u8|u16|u32|u64|u128|usize|f32|f64|float|string|bool)[ \t]*=/) {
             rest = line
             sub(/^[ \t]*let[ \t]+/, "", rest)
             name = rest
@@ -2651,6 +3404,20 @@ detect_professional_diagnostic() {
             ty = rest
             sub(/^[^:]*:[ \t]*/, "", ty)
             sub(/[ \t=].*$/, "", ty)
+            value = rest
+            sub(/^[^=]*=[ \t]*/, "", value)
+            sub(/[ \t;}]+$/, "", value)
+            source_type = ""
+            if (value ~ /^[A-Za-z_][A-Za-z0-9_]*$/) source_type = binding_type(current_proc, value)
+            if (source_type != "" && !seed_types_compatible(ty, source_type)) {
+                col = index(raw, value)
+                emit("TYPECK_E_ASSIGN_MISMATCH", "error", "typeck",
+                    "cannot initialize " name " of type " ty " from " source_type,
+                    FNR, col, col + length(value), raw,
+                    "expected " ty ", found " source_type,
+                    "implicit numeric coercions must preserve every source value",
+                    "use a wider target type or write an explicit cast")
+            }
             remember_decl(name, ty, FNR, index(raw, name))
         } else if (line ~ /^[ \t]*let[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*=[ \t]*-?[0-9]+[ \t;]*$/) {
             rest = line
@@ -2658,23 +3425,95 @@ detect_professional_diagnostic() {
             name = rest
             sub(/[ \t]*=.*/, "", name)
             remember_decl(name, "int", FNR, index(raw, name))
+        } else if (line ~ /^[ \t]*let[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*=[ \t]*(true|false)[ \t;]*$/) {
+            rest = line
+            sub(/^[ \t]*let[ \t]+/, "", rest)
+            name = rest
+            sub(/[ \t]*=.*/, "", name)
+            remember_decl(name, "bool", FNR, index(raw, name))
+        } else if (code_trim ~ /^[ \t]*let[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*=[ \t]*S[ \t;]*$/) {
+            rest = code_trim
+            sub(/^[ \t]*let[ \t]+/, "", rest)
+            name = rest
+            sub(/[ \t]*=.*/, "", name)
+            remember_decl(name, "string", FNR, index(raw, name))
         }
 
-        if (line ~ /^[ \t]*set[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*=[ \t]*"/) {
+        if (line ~ /^[ \t]*let[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*:[ \t]*[A-Z][A-Za-z0-9_]*[ \t]*=/) {
+            rest = line
+            sub(/^[ \t]*let[ \t]+/, "", rest)
+            name = rest
+            sub(/[ \t]*:.*$/, "", name)
+            ty = rest
+            sub(/^[^:]*:[ \t]*/, "", ty)
+            sub(/[ \t=].*$/, "", ty)
+            value = rest
+            sub(/^[^=]*=[ \t]*/, "", value)
+            sub(/[ \t;}]+$/, "", value)
+            source_type = ""
+            if (value ~ /^[A-Za-z_][A-Za-z0-9_]*$/) {
+                source_type = binding_type(current_proc, value)
+            } else if (value ~ /^[A-Z][A-Za-z0-9_]*[ \t]*[{]/) {
+                source_type = value
+                sub(/[ \t{].*$/, "", source_type)
+            }
+            if (source_type != "" && !seed_types_compatible(ty, source_type)) {
+                col = index(raw, value)
+                emit("TYPECK_E_ASSIGN_MISMATCH", "error", "typeck",
+                    "cannot initialize " name " of type " ty " from " source_type,
+                    FNR, col, col + length(value), raw,
+                    "expected " ty ", found " source_type,
+                    "nominal assignments require identical declared types",
+                    "change the annotation or initialize it with " ty)
+            }
+            remember_decl(name, ty, FNR, index(raw, name))
+        } else if (line ~ /^[ \t]*let[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*=[ \t]*[A-Z][A-Za-z0-9_]*[ \t]*[{]/) {
+            rest = line
+            sub(/^[ \t]*let[ \t]+/, "", rest)
+            name = rest
+            sub(/[ \t]*=.*/, "", name)
+            ty = rest
+            sub(/^[^=]*=[ \t]*/, "", ty)
+            sub(/[ \t{].*$/, "", ty)
+            remember_decl(name, ty, FNR, index(raw, name))
+        }
+
+        if (line ~ /^[ \t]*set[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*=/) {
             rest = line
             sub(/^[ \t]*set[ \t]+/, "", rest)
             name = rest
             sub(/[ \t]*=.*$/, "", name)
-            if ((name in decl_type) && (decl_type[name] == "i32" || decl_type[name] == "int")) {
-                col = index(raw, "\"")
-                value = substr(raw, col + 1)
-                endq = index(value, "\"")
-                width = endq > 0 ? endq + 1 : 1
+            value = rest
+            sub(/^[^=]*=[ \t]*/, "", value)
+            value_token = trim(value)
+            sub(/[ \t;}]+$/, "", value_token)
+            target_type = binding_type(current_proc, name)
+            found_type = primitive_literal_type(value)
+            if (found_type == "" && value_token ~ /^[A-Za-z_][A-Za-z0-9_]*$/) found_type = binding_type(current_proc, value_token)
+            if (found_type == "" && value_token ~ /^[A-Z][A-Za-z0-9_]*[ \t]*[{]/) {
+                found_type = value_token
+                sub(/[ \t{].*$/, "", found_type)
+            }
+            if (target_type != "" && found_type != "" && !seed_types_compatible(target_type, found_type)) {
+                if (value_token ~ /^"/) {
+                    col = index(raw, "\"")
+                    value_tail = substr(raw, col + 1)
+                    endq = index(value_tail, "\"")
+                    width = endq > 0 ? endq + 1 : 1
+                } else {
+                    col = index(raw, value_token)
+                    width = length(value_token)
+                }
+                target_key = current_proc SUBSEP name
+                target_line = proc_decl_line[target_key]
+                target_col = proc_decl_col[target_key]
+                if (target_line <= 0) target_line = decl_line[name]
+                if (target_col <= 0) target_col = decl_col[name]
                 emit("TYPECK_E_ASSIGN_MISMATCH", "error", "typeck",
-                    "cannot assign value of type string to variable of type " decl_type[name],
+                    "cannot assign value of type " found_type " to variable of type " target_type,
                     FNR, col, col + width, raw,
-                    "expected " decl_type[name] ", found string",
-                    "variable " name " was declared here: " file ":" decl_line[name] ":" decl_col[name],
+                    "expected " target_type ", found " found_type,
+                    "variable " name " was declared here: " file ":" target_line ":" target_col,
                     "change the value type or update the variable annotation")
             }
         }
@@ -2697,6 +3536,19 @@ detect_professional_diagnostic() {
                 "expected bool, found string",
                 "if conditions are checked before lowering to MIR",
                 "compare the value explicitly or use a boolean expression")
+        } else if (line ~ /^[ \t]*if[ \t]+[A-Za-z_][A-Za-z0-9_]*([ \t]*[{]|[ \t]*$)/) {
+            condition_name = line
+            sub(/^[ \t]*if[ \t]+/, "", condition_name)
+            sub(/[^A-Za-z0-9_].*$/, "", condition_name)
+            if ((condition_name in decl_type) && decl_type[condition_name] == "string") {
+                col = index(raw, condition_name)
+                emit("TYPECK_E_CONDITION_TYPE", "error", "typeck",
+                    "condition expression must be bool",
+                    FNR, col, col + length(condition_name), raw,
+                    "expected bool, found string",
+                    "if conditions are checked before lowering to MIR",
+                    "compare the value explicitly or use a boolean expression")
+            }
         }
 
         if (line ~ /^[ \t]*give[ \t]+missing_[A-Za-z0-9_]*/) {
@@ -2792,13 +3644,310 @@ detect_professional_diagnostic() {
             }
         }
 
+        if (active_pick_name != "" && line !~ /^pick[ \t]+/) {
+            consume_pick_definition(code_line)
+        }
+        if (active_nominal_kind != "" && line !~ /^(trait|impl)[ \t]+/) {
+            consume_nominal_definition(code_line)
+        }
+        if (active_match_type != "") {
+            consume_finite_match(code_line)
+        } else {
+            match_col = match_keyword_col(code_line)
+            if (match_col > 0) begin_finite_match(code_line, FNR, match_col, current_proc)
+        }
+
         if (open_line == 0 && outside_string_col(raw, "{") > 0) {
             open_line = FNR
             open_col = outside_string_col(raw, "{")
         }
         brace_depth += count_char_outside_strings(raw, "{") - count_char_outside_strings(raw, "}")
+        if (current_proc != "" && brace_depth < current_proc_depth) {
+            current_proc = ""
+            current_return_type = ""
+            current_proc_depth = 0
+        }
     }
     END {
+        if (!found) {
+            for (impl_reference_index = 1; impl_reference_index <= impl_reference_count; impl_reference_index++) {
+                impl_trait = impl_reference_trait[impl_reference_index]
+                if (trait_known[impl_trait]) continue
+                raw = source_line[impl_reference_line[impl_reference_index]]
+                col = impl_reference_col[impl_reference_index]
+                emit("TYPECK_E_IMPL_UNKNOWN_TRAIT", "error", "typeck",
+                    "impl references unknown trait " impl_trait,
+                    impl_reference_line[impl_reference_index], col, col + length(impl_trait), raw,
+                    "trait " impl_trait " is not declared in this module",
+                    "implementation target type: " impl_reference_type[impl_reference_index] "; trait resolution completed without a matching declaration",
+                    "declare trait " impl_trait " or correct the implemented trait name")
+            }
+        }
+        if (!found) {
+            for (method_call_line = 1; method_call_line <= FNR; method_call_line++) {
+                method_call_rest = source_code_line[method_call_line]
+                method_call_scope = line_proc[method_call_line]
+                method_call_offset = 0
+                while (match(method_call_rest, /[A-Za-z_][A-Za-z0-9_]*[ \t]*[.][ \t]*[A-Za-z_][A-Za-z0-9_]*[ \t]*[(]/)) {
+                    method_call_text = substr(method_call_rest, RSTART, RLENGTH)
+                    receiver_name = method_call_text
+                    sub(/[ \t]*[.].*$/, "", receiver_name)
+                    method_name = method_call_text
+                    sub(/^.*[.][ \t]*/, "", method_name)
+                    sub(/[ \t]*[(].*$/, "", method_name)
+                    receiver_type = binding_type(method_call_scope, receiver_name)
+                    provider_key = receiver_type SUBSEP method_name
+                    if (receiver_type != "" && method_provider_count[provider_key] > 1) {
+                        raw = source_line[method_call_line]
+                        col = method_call_offset + RSTART + index(method_call_text, method_name) - 1
+                        emit("TYPECK_E_AMBIGUOUS_METHOD", "error", "typeck",
+                            "ambiguous method " method_name " for type " receiver_type,
+                            method_call_line, col, col + length(method_name), raw,
+                            "multiple visible impls provide " receiver_type "." method_name,
+                            "method providers: " method_provider_text[provider_key],
+                            "remove one competing impl or use an explicitly qualified trait call")
+                    }
+                    if (receiver_type != "" && method_provider_count[provider_key] == 1) {
+                        method_call_open = RSTART + RLENGTH - 1
+                        method_call_close = matching_call_paren(method_call_rest, method_call_open)
+                        if (method_call_close > 0) {
+                            method_call_args = substr(method_call_rest, method_call_open + 1, method_call_close - method_call_open - 1)
+                            method_call_arg_count = split_call_args(method_call_args, method_call_arg_parts)
+                            if (method_call_arg_count != method_provider_arity[provider_key]) {
+                                raw = source_line[method_call_line]
+                                col = method_call_offset + RSTART + index(method_call_text, method_name) - 1
+                                emit("TYPECK_E_CALL_ARITY", "error", "typeck",
+                                    "method " receiver_type "." method_name " expects " method_provider_arity[provider_key] " arguments but received " method_call_arg_count,
+                                    method_call_line, col, col + length(method_name), raw,
+                                    "expected " method_provider_arity[provider_key] " arguments, found " method_call_arg_count,
+                                    "the receiver binds the Self parameter before call arity is checked",
+                                    "pass exactly " method_provider_arity[provider_key] " explicit arguments to " method_name)
+                            }
+                            for (method_arg_index = 1; method_arg_index <= method_call_arg_count; method_arg_index++) {
+                                expected_arg_type = method_provider_param[provider_key SUBSEP method_arg_index]
+                                actual_arg = trim(method_call_arg_parts[method_arg_index])
+                                actual_arg_type = primitive_literal_type(actual_arg)
+                                if (actual_arg_type == "") actual_arg_type = binding_type(method_call_scope, actual_arg, method_call_line)
+                                if (expected_arg_type == "" || actual_arg_type == "" || seed_types_compatible(expected_arg_type, actual_arg_type)) continue
+                                raw = source_line[method_call_line]
+                                col = method_call_offset + method_call_open + index(method_call_args, actual_arg)
+                                emit("TYPECK_E_ARGUMENT_MISMATCH", "error", "typeck",
+                                    "argument type " actual_arg_type " does not match method parameter type " expected_arg_type,
+                                    method_call_line, col, col + length(actual_arg), raw,
+                                    "expected " expected_arg_type ", found " actual_arg_type,
+                                    "argument " method_arg_index " is passed to bound method " receiver_type "." method_name,
+                                    "pass a value of type " expected_arg_type " or change the method signature")
+                            }
+                            resolved_method_return = method_provider_return[provider_key]
+                            method_call_start = method_call_offset + RSTART
+                            effective_method_return = resolved_method_return
+                            method_call_suffix = trim(substr(source_code_line[method_call_line], method_call_start + length(method_call_text)))
+                            if (method_call_suffix ~ /^[.]/) {
+                                effective_method_return = ""
+                            } else if (method_call_suffix ~ /^as[ \t]+[A-Za-z_][A-Za-z0-9_]*/) {
+                                effective_method_return = method_call_suffix
+                                sub(/^as[ \t]+/, "", effective_method_return)
+                                sub(/[^A-Za-z0-9_].*$/, "", effective_method_return)
+                            }
+                            method_binding_prefix = trim(substr(source_code_line[method_call_line], 1, method_call_start - 1))
+                            if (effective_method_return != "" && method_binding_prefix ~ /^let[ \t]+[A-Za-z_][A-Za-z0-9_]*([ \t]*:[ \t]*[A-Za-z_][A-Za-z0-9_]*)?[ \t]*=[ \t]*$/) {
+                                method_binding_name = method_binding_prefix
+                                sub(/^let[ \t]+/, "", method_binding_name)
+                                sub(/[ \t]*[:=].*$/, "", method_binding_name)
+                                method_binding_type = ""
+                                if (method_binding_prefix ~ /:/) {
+                                    method_binding_type = method_binding_prefix
+                                    sub(/^[^:]*:[ \t]*/, "", method_binding_type)
+                                    sub(/[ \t]*=.*/, "", method_binding_type)
+                                }
+                                if (method_binding_type != "" && !seed_types_compatible(method_binding_type, effective_method_return)) {
+                                    raw = source_line[method_call_line]
+                                    col = method_call_start
+                                    emit("TYPECK_E_ASSIGN_MISMATCH", "error", "typeck",
+                                        "cannot initialize " method_binding_name " of type " method_binding_type " from method result type " effective_method_return,
+                                        method_call_line, col, col + length(method_call_text) - 1, raw,
+                                        "expected " method_binding_type ", found " effective_method_return,
+                                        "bound method " receiver_type "." method_name " declares return type " resolved_method_return,
+                                        "change the binding type or the method return type")
+                                }
+                                if (method_binding_type == "") {
+                                    remember_decl_in(method_call_scope, method_binding_name, effective_method_return, method_call_line, index(source_line[method_call_line], method_binding_name))
+                                }
+                            }
+                        }
+                    }
+                    method_call_advance = RSTART + RLENGTH - 1
+                    method_call_offset += method_call_advance
+                    method_call_rest = substr(method_call_rest, method_call_advance + 1)
+                }
+            }
+        }
+        if (!found) {
+            for (call_line_no = 1; call_line_no <= FNR; call_line_no++) {
+                call_code = source_code_line[call_line_no]
+                call_scope = line_proc[call_line_no]
+                call_trim = trim(call_code)
+                if (call_trim == "" || call_trim ~ /^proc[ \t]+/) continue
+                for (proc_order_index = 1; proc_order_index <= proc_order_count; proc_order_index++) {
+                    called_proc = proc_order[proc_order_index]
+                    call_pattern = "(^|[^A-Za-z0-9_])" called_proc "([ \t]*<[^>]+>)?[ \t]*[(]"
+                    if (!match(call_code, call_pattern)) continue
+                    matched_call = substr(call_code, RSTART, RLENGTH)
+                    called_name_offset = index(matched_call, called_proc)
+                    call_suffix = substr(matched_call, called_name_offset + length(called_proc))
+                    call_open_offset = index(call_suffix, "(")
+                    if (called_name_offset <= 0 || call_open_offset <= 0) continue
+                    call_name_col = RSTART + called_name_offset - 1
+                    call_prefix = substr(call_code, 1, call_name_col - 1)
+                    if (call_prefix ~ /[.][ \t]*$/) continue
+                    call_open_col = RSTART + called_name_offset + length(called_proc) + call_open_offset - 2
+                    call_generic_arg_count = 0
+                    call_generic_text = trim(substr(call_suffix, 1, call_open_offset - 1))
+                    if (call_generic_text ~ /^<.*>$/) {
+                        sub(/^</, "", call_generic_text)
+                        sub(/>$/, "", call_generic_text)
+                        call_generic_arg_count = split_call_args(call_generic_text, call_generic_arg_parts)
+                    }
+                    call_close_col = matching_call_paren(call_code, call_open_col)
+                    if (call_close_col <= 0) continue
+                    call_args = substr(call_code, call_open_col + 1, call_close_col - call_open_col - 1)
+                    call_arg_count = split_call_args(call_args, call_arg_parts)
+                    if (proc_generic_count[called_proc] > 0) {
+                        for (generic_index = 1; generic_index <= proc_generic_count[called_proc]; generic_index++) {
+                            generic_param = proc_generic_param[called_proc SUBSEP generic_index]
+                            delete call_generic_type[called_proc SUBSEP generic_param]
+                        }
+                        if (call_generic_arg_count > proc_generic_count[called_proc]) {
+                            raw = source_line[call_line_no]
+                            col = index(raw, called_proc)
+                            emit("TYPECK_E_GENERIC_INFERENCE", "error", "typeck",
+                                "generic arguments do not match procedure " called_proc,
+                                call_line_no, col, col + length(called_proc), raw,
+                                "expected at most " proc_generic_count[called_proc] " generic arguments, found " call_generic_arg_count,
+                                "generic parameters must be resolved before monomorphization",
+                                "remove excess generic arguments from " called_proc)
+                        }
+                        for (generic_index = 1; generic_index <= proc_generic_count[called_proc]; generic_index++) {
+                            generic_param = proc_generic_param[called_proc SUBSEP generic_index]
+                            resolved_generic_type = ""
+                            if (generic_index <= call_generic_arg_count) {
+                                resolved_generic_type = trim(call_generic_arg_parts[generic_index])
+                            } else {
+                                for (call_param_index = 1; call_param_index <= proc_param_count[called_proc] && call_param_index <= call_arg_count; call_param_index++) {
+                                    if (trim(proc_param_pattern[called_proc SUBSEP call_param_index]) == generic_param) {
+                                        generic_call_arg = trim(call_arg_parts[call_param_index])
+                                        resolved_generic_type = primitive_literal_type(generic_call_arg)
+                                        if (resolved_generic_type == "") resolved_generic_type = binding_type(call_scope, generic_call_arg, call_line_no)
+                                        if (resolved_generic_type != "") break
+                                    }
+                                }
+                            }
+                            if (resolved_generic_type != "") call_generic_type[called_proc SUBSEP generic_param] = resolved_generic_type
+                            if (resolved_generic_type == "" && !proc_generic_constrained[called_proc SUBSEP generic_index]) {
+                                raw = source_line[call_line_no]
+                                col = index(raw, called_proc)
+                                emit("TYPECK_E_GENERIC_INFERENCE", "error", "typeck",
+                                    "generic type " generic_param " could not be inferred",
+                                    call_line_no, col, col + length(called_proc), raw,
+                                    "generic parameter " generic_param " remains unconstrained",
+                                    "procedure " called_proc " requires " generic_param " before monomorphization",
+                                    "call " called_proc " with an explicit generic argument such as <int>")
+                            }
+                            generic_bound = proc_generic_bound[called_proc SUBSEP generic_index]
+                            if (resolved_generic_type != "" && generic_bound != "" && trait_known[generic_bound] && !trait_impl[generic_bound SUBSEP resolved_generic_type]) {
+                                raw = source_line[call_line_no]
+                                col = index(raw, called_proc)
+                                emit("TYPECK_E_TRAIT_BOUND", "error", "typeck",
+                                    "trait constraint " generic_bound " is not satisfied for " resolved_generic_type,
+                                    call_line_no, col, col + length(called_proc), raw,
+                                    "generic argument " resolved_generic_type " must implement " generic_bound,
+                                    "no visible impl proves " resolved_generic_type ": " generic_bound,
+                                    "add impl " generic_bound " for " resolved_generic_type " or change the generic argument")
+                            }
+                        }
+                    }
+                    if (!proc_signature_supported[called_proc]) continue
+                    if (call_arg_count != proc_param_count[called_proc]) {
+                        raw = source_line[call_line_no]
+                        col = index(raw, called_proc)
+                        if (col <= 0) col = call_open_col
+                        emit("TYPECK_E_CALL_ARITY", "error", "typeck",
+                            "procedure " called_proc " expects " proc_param_count[called_proc] " arguments but received " call_arg_count,
+                            call_line_no, col, col + length(called_proc), raw,
+                            "expected " proc_param_count[called_proc] " arguments, found " call_arg_count,
+                            "procedure signature determines the required argument count",
+                            "pass exactly " proc_param_count[called_proc] " arguments to " called_proc)
+                    }
+                    for (call_arg_index = 1; call_arg_index <= call_arg_count; call_arg_index++) {
+                        expected_arg_type = proc_param_type[called_proc SUBSEP call_arg_index]
+                        expected_arg_pattern = proc_param_pattern[called_proc SUBSEP call_arg_index]
+                        if (expected_arg_type == "" && proc_generic_index[called_proc SUBSEP expected_arg_pattern] > 0) {
+                            expected_arg_type = call_generic_type[called_proc SUBSEP expected_arg_pattern]
+                        }
+                        actual_arg = trim(call_arg_parts[call_arg_index])
+                        actual_arg_type = primitive_literal_type(actual_arg)
+                        if (actual_arg_type == "") actual_arg_type = binding_type(call_scope, actual_arg, call_line_no)
+                        if (expected_arg_type == "" || actual_arg_type == "" || seed_types_compatible(expected_arg_type, actual_arg_type)) continue
+                        raw = source_line[call_line_no]
+                        if (actual_arg ~ /^"/) {
+                            relative_col = index(substr(raw, call_open_col + 1), "\"")
+                            if (relative_col > 0) col = call_open_col + relative_col
+                            else col = call_open_col + 1
+                            actual_tail = substr(raw, col + 1)
+                            actual_end = index(actual_tail, "\"")
+                            width = actual_end > 0 ? actual_end + 1 : 1
+                        } else {
+                            relative_col = index(substr(raw, call_open_col + 1), actual_arg)
+                            col = relative_col > 0 ? call_open_col + relative_col : call_open_col + 1
+                            width = length(actual_arg)
+                        }
+                        emit("TYPECK_E_ARGUMENT_MISMATCH", "error", "typeck",
+                            "argument type " actual_arg_type " does not match parameter type " expected_arg_type,
+                            call_line_no, col, col + width, raw,
+                            "expected " expected_arg_type ", found " actual_arg_type,
+                            "argument " call_arg_index " is passed to procedure " called_proc,
+                            "pass a value of type " expected_arg_type " or change the parameter type")
+                    }
+                    resolved_call_return = proc_return_type[called_proc]
+                    if (proc_generic_index[called_proc SUBSEP resolved_call_return] > 0) {
+                        resolved_call_return = call_generic_type[called_proc SUBSEP resolved_call_return]
+                    }
+                    effective_call_return = resolved_call_return
+                    call_binding_suffix = trim(substr(call_code, call_close_col + 1))
+                    if (call_binding_suffix ~ /^[.]/) {
+                        effective_call_return = ""
+                    } else if (call_binding_suffix ~ /^as[ \t]+[A-Za-z_][A-Za-z0-9_]*/) {
+                        effective_call_return = call_binding_suffix
+                        sub(/^as[ \t]+/, "", effective_call_return)
+                        sub(/[^A-Za-z0-9_].*$/, "", effective_call_return)
+                    }
+                    call_binding_prefix = trim(substr(call_code, 1, call_name_col - 1))
+                    if (effective_call_return != "" && call_binding_prefix ~ /^let[ \t]+[A-Za-z_][A-Za-z0-9_]*([ \t]*:[ \t]*[A-Za-z_][A-Za-z0-9_]*)?[ \t]*=[ \t]*$/) {
+                        call_binding_name = call_binding_prefix
+                        sub(/^let[ \t]+/, "", call_binding_name)
+                        sub(/[ \t]*[:=].*$/, "", call_binding_name)
+                        call_binding_type = ""
+                        if (call_binding_prefix ~ /:/) {
+                            call_binding_type = call_binding_prefix
+                            sub(/^[^:]*:[ \t]*/, "", call_binding_type)
+                            sub(/[ \t]*=.*/, "", call_binding_type)
+                        }
+                        if (call_binding_type != "" && !seed_types_compatible(call_binding_type, effective_call_return)) {
+                            raw = source_line[call_line_no]
+                            emit("TYPECK_E_ASSIGN_MISMATCH", "error", "typeck",
+                                "cannot initialize " call_binding_name " of type " call_binding_type " from procedure result type " effective_call_return,
+                                call_line_no, call_name_col, call_close_col + 1, raw,
+                                "expected " call_binding_type ", found " effective_call_return,
+                                "procedure " called_proc " declares return type " resolved_call_return,
+                                "change the binding type or the procedure return type")
+                        }
+                        if (call_binding_type == "") {
+                            remember_decl_in(call_scope, call_binding_name, effective_call_return, call_line_no, index(source_line[call_line_no], call_binding_name))
+                        }
+                    }
+                }
+            }
+        }
         if (!found && in_block_comment) {
             emit("LEX_E_UNTERMINATED_COMMENT", "error", "lexer",
                 "unterminated block comment",
@@ -2827,7 +3976,45 @@ detect_type_mismatch() {
         sub(/[ \t\r\n]+$/, "", s)
         return s
     }
-    function remember_typed_let(stmt, line_no, base_col,    rest, name, ty, name_col) {
+    function primitive_literal_type(text,    value) {
+        value = trim(text)
+        if (value ~ /^"/) return "string"
+        if (value == "true" || value == "false") return "bool"
+        if (value ~ /^-?[0-9]+$/) return "int"
+        return ""
+    }
+    function primitive_types_compatible(expected, found) {
+        if ((expected == "int" || expected == "i32") && found == "int") return 1
+        return expected == found
+    }
+    function seed_type_is_signed_integer(ty) { return ty ~ /^(i8|i16|i32|i64|i128|isize|int)$/ }
+    function seed_type_is_unsigned_integer(ty) { return ty ~ /^(u8|u16|u32|u64|u128|usize)$/ }
+    function seed_type_is_integer(ty) { return seed_type_is_signed_integer(ty) || seed_type_is_unsigned_integer(ty) }
+    function seed_type_is_float(ty) { return ty ~ /^(f32|f64|float)$/ }
+    function seed_numeric_width(ty) {
+        if (ty == "i8" || ty == "u8") return 8
+        if (ty == "i16" || ty == "u16") return 16
+        if (ty == "i32" || ty == "u32" || ty == "int") return 32
+        if (ty == "i64" || ty == "u64" || ty == "isize" || ty == "usize" || ty == "f64" || ty == "float") return 64
+        if (ty == "i128" || ty == "u128") return 128
+        if (ty == "f32") return 32
+        return 0
+    }
+    function seed_types_compatible(expected, actual,    expected_width, actual_width, precision) {
+        if (expected == actual) return 1
+        expected_width = seed_numeric_width(expected)
+        actual_width = seed_numeric_width(actual)
+        if (seed_type_is_signed_integer(expected) && seed_type_is_signed_integer(actual)) return actual_width <= expected_width
+        if (seed_type_is_unsigned_integer(expected) && seed_type_is_unsigned_integer(actual)) return actual_width <= expected_width
+        if (seed_type_is_signed_integer(expected) && seed_type_is_unsigned_integer(actual)) return actual_width < expected_width
+        if (seed_type_is_float(expected) && seed_type_is_float(actual)) return actual_width <= expected_width
+        if (seed_type_is_float(expected) && seed_type_is_integer(actual)) {
+            precision = expected == "f32" ? 24 : 53
+            return actual_width <= precision
+        }
+        return 0
+    }
+    function remember_typed_let(stmt, raw, line_no, base_col,    rest, name, ty, rhs, found_type, name_col, col) {
         rest = stmt
         sub(/^[ \t]*let[ \t]+/, "", rest)
         name = rest
@@ -2835,7 +4022,19 @@ detect_type_mismatch() {
         ty = rest
         sub(/^[^:]*:[ \t]*/, "", ty)
         sub(/[ \t=].*$/, "", ty)
-        if (name != "" && (ty == "i32" || ty == "int")) {
+        rhs = rest
+        sub(/^[^=]*=[ \t]*/, "", rhs)
+        rhs = trim(rhs)
+        if (rhs ~ /^[A-Za-z_][A-Za-z0-9_]*$/ && (rhs in decl_type)) {
+            found_type = decl_type[rhs]
+            if (!seed_types_compatible(ty, found_type)) {
+                col = base_col + index(stmt, rhs) - 1
+                print name "|" ty "|" found_type "|" line_no "|" col "|" line_no "|" (base_col + index(stmt, name) - 1) "|" length(rhs) "|" raw
+                found = 1
+                exit
+            }
+        }
+        if (name != "" && (ty ~ /^(i8|i16|i32|i64|i128|isize|int|u8|u16|u32|u64|u128|usize|f32|f64|float|string|bool)$/)) {
             decl_type[name] = ty
             decl_line[name] = line_no
             name_col = index(stmt, name)
@@ -2854,19 +4053,27 @@ detect_type_mismatch() {
             decl_col[name] = base_col + name_col - 1
         }
     }
-    function parse_set(stmt, raw, line_no, base_col,    rest, name, col, value, endq, len0) {
+    function parse_set(stmt, raw, line_no, base_col,    rest, name, rhs, found_type, col, value, endq, len0) {
         rest = stmt
         sub(/^[ \t]*set[ \t]+/, "", rest)
         name = rest
         sub(/[ \t]*=.*$/, "", name)
         if (!(name in decl_type)) return
-        if (stmt !~ /=[ \t]*"/) return
-        col = base_col + index(stmt, "\"") - 1
-        value = substr(raw, col + 1)
-        endq = index(value, "\"")
-        if (endq <= 0) return
-        len0 = endq + 1
-        print name "|" decl_type[name] "|string|" line_no "|" col "|" decl_line[name] "|" decl_col[name] "|" len0 "|" raw
+        rhs = rest
+        sub(/^[^=]*=[ \t]*/, "", rhs)
+        found_type = primitive_literal_type(rhs)
+        if (found_type == "" || primitive_types_compatible(decl_type[name], found_type)) return
+        if (found_type == "string") {
+            col = base_col + index(stmt, "\"") - 1
+            value = substr(raw, col + 1)
+            endq = index(value, "\"")
+            if (endq <= 0) return
+            len0 = endq + 1
+        } else {
+            col = base_col + index(stmt, rhs) - 1
+            len0 = length(rhs)
+        }
+        print name "|" decl_type[name] "|" found_type "|" line_no "|" col "|" decl_line[name] "|" decl_col[name] "|" len0 "|" raw
         found = 1
         exit
     }
@@ -2893,11 +4100,11 @@ detect_type_mismatch() {
                 sub(/^[^A-Za-z0-9_]+/, "", candidate)
             }
             candidate_col = base_col + (index(stmt, candidate) > 0 ? index(stmt, candidate) - 1 : 0)
-            if (candidate ~ /^let[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*:[ \t]*(i32|int)[ \t]*=/) {
-                remember_typed_let(candidate, FNR, candidate_col)
+            if (candidate ~ /^let[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*:[ \t]*(i8|i16|i32|i64|i128|isize|int|u8|u16|u32|u64|u128|usize|f32|f64|float|string|bool)[ \t]*=/) {
+                remember_typed_let(candidate, raw, FNR, candidate_col)
             } else if (candidate ~ /^let[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*=[ \t]*-?[0-9]+$/) {
                 remember_inferred_int_let(candidate, FNR, candidate_col)
-            } else if (candidate ~ /^set[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*=[ \t]*"/) {
+            } else if (candidate ~ /^set[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*=/) {
                 parse_set(candidate, raw, FNR, candidate_col)
             }
             search_from = base_col + length(stmt) + 1
@@ -3152,6 +4359,8 @@ render_professional_diagnostic_surface_json() {
     note_json="$(json_escape "$note")"
     help_json="$(json_escape "$help")"
     frontend_phase="$(phase_frontend_bool "$phase")"
+    cause_a_json="$(json_escape "$phase:$code establishes the failing compiler constraint")"
+    cause_b_json="$(json_escape "$message is the observed violation")"
     if [ "$phase" = "lexer" ]; then
         rule_json="$(json_escape "lexical token formation")"
         explanation_json="$(json_escape "The lexer could not form a valid token from this part of the source.")"
@@ -3189,11 +4398,125 @@ render_professional_diagnostic_surface_json() {
         docs_json="$(json_escape "docs://compiler/sema")"
         root_json="$(json_escape "semantic validation failed")"
     elif [ "$phase" = "typeck" ]; then
-        rule_json="$(json_escape "type checking")"
-        explanation_json="$(json_escape "The source violates a type-system rule enforced by the compiler.")"
-        technical_json="$(json_escape "Detected during type inference or type compatibility checking.")"
-        docs_json="$(json_escape "docs://compiler/type-system")"
-        root_json="$(json_escape "type checking failed")"
+        if [ "$code" = "TYPECK_E_ASSIGN_MISMATCH" ]; then
+            rule_json="$(json_escape "assignment type compatibility")"
+            explanation_json="$(json_escape "The initialized or assigned expression type does not satisfy the target binding type.")"
+            technical_json="$(json_escape "Detected after expression inference while validating a local binding contract.")"
+            docs_json="$(json_escape "docs://language/type-system/assignment-compatibility")"
+            root_json="$(json_escape "assignment target type and expression type are incompatible")"
+            cause_a_json="$(json_escape "the binding establishes the required target type")"
+            cause_b_json="$(json_escape "the assigned expression infers an incompatible type")"
+        elif [ "$code" = "TYPECK_E_RETURN_MISMATCH" ]; then
+            rule_json="$(json_escape "procedure return compatibility")"
+            explanation_json="$(json_escape "The returned expression type does not satisfy the procedure return type declared in its signature.")"
+            technical_json="$(json_escape "Detected after expression inference while validating the active procedure return contract.")"
+            docs_json="$(json_escape "docs://language/type-system/return-compatibility")"
+            root_json="$(json_escape "procedure return type and expression type are incompatible")"
+            cause_a_json="$(json_escape "the procedure signature establishes the required return type")"
+            cause_b_json="$(json_escape "the returned expression infers an incompatible type")"
+        elif [ "$code" = "TYPECK_E_ARGUMENT_MISMATCH" ]; then
+            rule_json="$(json_escape "function argument compatibility")"
+            explanation_json="$(json_escape "The argument expression type does not satisfy the corresponding parameter type in the resolved callable signature.")"
+            technical_json="$(json_escape "Detected after argument inference while validating a local procedure or uniquely bound method call contract.")"
+            docs_json="$(json_escape "docs://language/type-system/call-arguments")"
+            root_json="$(json_escape "call argument type and parameter type are incompatible")"
+            cause_a_json="$(json_escape "the callee signature establishes the required parameter type")"
+            cause_b_json="$(json_escape "the call argument infers an incompatible type")"
+        elif [ "$code" = "TYPECK_E_CALL_ARITY" ]; then
+            rule_json="$(json_escape "function call arity")"
+            explanation_json="$(json_escape "The number of call arguments does not match the number of parameters required by the resolved callable signature.")"
+            technical_json="$(json_escape "Detected after resolving a local procedure or uniquely bound method and counting explicit arguments against fixed parameters.")"
+            docs_json="$(json_escape "docs://language/type-system/call-arity")"
+            root_json="$(json_escape "call argument count and callable parameter count differ")"
+            cause_a_json="$(json_escape "the callee signature establishes the required argument count")"
+            cause_b_json="$(json_escape "the call site provides a different argument count")"
+        elif [ "$code" = "TYPECK_E_GENERIC_INFERENCE" ]; then
+            rule_json="$(json_escape "generic inference completeness")"
+            explanation_json="$(json_escape "A generic parameter remains unconstrained by explicit generic arguments or callable parameter types.")"
+            technical_json="$(json_escape "Detected after local signature indexing and before a generic call can be monomorphized.")"
+            docs_json="$(json_escape "docs://language/type-system/generic-inference")"
+            root_json="$(json_escape "generic parameter cannot be resolved at the call site")"
+            cause_a_json="$(json_escape "monomorphization requires every generic parameter to resolve")"
+            cause_b_json="$(json_escape "available explicit arguments and parameter constraints leave one unresolved")"
+        elif [ "$code" = "TYPECK_E_TRAIT_BOUND" ]; then
+            rule_json="$(json_escape "trait bound satisfaction")"
+            explanation_json="$(json_escape "The resolved generic type does not have a visible implementation of the trait required by its bound.")"
+            technical_json="$(json_escape "Detected after generic argument resolution against locally declared trait implementations.")"
+            docs_json="$(json_escape "docs://language/type-system/trait-bounds")"
+            root_json="$(json_escape "generic type lacks the required trait implementation")"
+            cause_a_json="$(json_escape "the generic signature establishes the required trait bound")"
+            cause_b_json="$(json_escape "no visible implementation proves the resolved type satisfies that bound")"
+        elif [ "$code" = "TYPECK_E_CONFLICTING_IMPL" ]; then
+            rule_json="$(json_escape "trait implementation coherence")"
+            explanation_json="$(json_escape "The same trait is implemented more than once for the same target type in the visible module.")"
+            technical_json="$(json_escape "Detected while indexing local trait implementation pairs before expression checking.")"
+            docs_json="$(json_escape "docs://language/type-system/trait-coherence")"
+            root_json="$(json_escape "multiple implementations target the same trait and type")"
+            cause_a_json="$(json_escape "the first visible impl establishes the trait and target pair")"
+            cause_b_json="$(json_escape "a later impl declares the identical trait and target pair")"
+        elif [ "$code" = "TYPECK_E_CONSTRAINT_CYCLE" ]; then
+            rule_json="$(json_escape "generic constraint acyclicity")"
+            explanation_json="$(json_escape "Following dependencies between generic parameter bounds reaches the same parameter again.")"
+            technical_json="$(json_escape "Detected by a bounded walk over the local generic constraint graph.")"
+            docs_json="$(json_escape "docs://language/type-system/generic-constraints")"
+            root_json="$(json_escape "generic parameter bounds form a dependency cycle")"
+            cause_a_json="$(json_escape "constraint resolution starts from a generic parameter")"
+            cause_b_json="$(json_escape "following direct bounds reaches that parameter again")"
+        elif [ "$code" = "TYPECK_E_INVALID_CAST" ]; then
+            rule_json="$(json_escape "explicit cast validity")"
+            explanation_json="$(json_escape "The source and target types do not form a supported explicit scalar conversion.")"
+            technical_json="$(json_escape "Detected after inferring the literal source type and resolving the written cast target.")"
+            docs_json="$(json_escape "docs://language/type-system/casts")"
+            root_json="$(json_escape "explicit cast crosses unsupported type representations")"
+            cause_a_json="$(json_escape "the cast target establishes the requested representation")"
+            cause_b_json="$(json_escape "the source literal has an incompatible representation")"
+        elif [ "$code" = "TYPECK_E_MATCH_NON_EXHAUSTIVE" ]; then
+            rule_json="$(json_escape "pattern coverage completeness")"
+            explanation_json="$(json_escape "A finite match omits at least one case and has no fallback arm.")"
+            technical_json="$(json_escape "Detected after resolving a local bool or pick scrutinee and comparing its finite cases with the parsed arms.")"
+            docs_json="$(json_escape "docs://language/type-system/match-exhaustiveness")"
+            root_json="$(json_escape "finite match case coverage is incomplete")"
+            cause_a_json="$(json_escape "the scrutinee type establishes a finite set of cases")"
+            cause_b_json="$(json_escape "the match arms omit one case without an else or wildcard fallback")"
+        elif [ "$code" = "TYPECK_E_IMPL_SIGNATURE_MISMATCH" ]; then
+            rule_json="$(json_escape "implementation signature compatibility")"
+            explanation_json="$(json_escape "An implementation method differs from the corresponding trait method in arity, parameter types, or return type.")"
+            technical_json="$(json_escape "Detected after indexing local trait method signatures and comparing each visible implementation member.")"
+            docs_json="$(json_escape "docs://language/type-system/trait-implementations")"
+            root_json="$(json_escape "implementation method signature is incompatible with its trait contract")"
+            cause_a_json="$(json_escape "the trait declaration establishes the required method signature")"
+            cause_b_json="$(json_escape "the implementation declares a method with a different signature component")"
+        elif [ "$code" = "TYPECK_E_IMPL_MISSING_MEMBER" ]; then
+            rule_json="$(json_escape "implementation completeness")"
+            explanation_json="$(json_escape "A local trait implementation omits a method required by the implemented trait.")"
+            technical_json="$(json_escape "Detected after indexing all methods in the implementation and comparing their names with the local trait contract.")"
+            docs_json="$(json_escape "docs://language/type-system/trait-implementations")"
+            root_json="$(json_escape "implementation does not provide every required trait member")"
+            cause_a_json="$(json_escape "the trait declaration establishes the required method set")"
+            cause_b_json="$(json_escape "the completed implementation scan does not contain one required method")"
+        elif [ "$code" = "TYPECK_E_IMPL_UNKNOWN_TRAIT" ]; then
+            rule_json="$(json_escape "implementation trait resolution")"
+            explanation_json="$(json_escape "An implementation names a trait that is not declared anywhere in the local module.")"
+            technical_json="$(json_escape "Detected after scanning every top-level declaration so trait references are independent of source order.")"
+            docs_json="$(json_escape "docs://language/type-system/trait-implementations")"
+            root_json="$(json_escape "implementation trait name does not resolve to a local declaration")"
+            cause_a_json="$(json_escape "an implementation requires its trait name to resolve after module indexing")"
+            cause_b_json="$(json_escape "the complete local trait index contains no declaration with that name")"
+        elif [ "$code" = "TYPECK_E_AMBIGUOUS_METHOD" ]; then
+            rule_json="$(json_escape "unique method candidate")"
+            explanation_json="$(json_escape "More than one visible trait implementation provides the requested method for the receiver type.")"
+            technical_json="$(json_escape "Detected after indexing local impl method providers and resolving the receiver binding type.")"
+            docs_json="$(json_escape "docs://language/type-system/method-resolution")"
+            root_json="$(json_escape "method lookup has multiple visible providers for the receiver type")"
+            cause_a_json="$(json_escape "method dispatch requires exactly one provider after receiver type resolution")"
+            cause_b_json="$(json_escape "the local impl index contains multiple traits providing that method")"
+        else
+            rule_json="$(json_escape "type checking")"
+            explanation_json="$(json_escape "The source violates a type-system rule enforced by the compiler.")"
+            technical_json="$(json_escape "Detected during type inference or type compatibility checking.")"
+            docs_json="$(json_escape "docs://compiler/type-system")"
+            root_json="$(json_escape "type checking failed")"
+        fi
     elif [ "$phase" = "borrowck" ]; then
         rule_json="$(json_escape "ownership and borrow checking")"
         explanation_json="$(json_escape "The source violates ownership or borrow safety rules.")"
@@ -3239,8 +4562,8 @@ render_professional_diagnostic_surface_json() {
     fi
     text_output="$(printf '%s[%s] %s: %s\n  --> %s:%s:%s\n  note: %s\n  help: %s' "$severity" "$code" "$phase" "$message" "$src" "$line" "$col" "$note" "$help")"
     text_output_json="$(json_escape "$text_output")"
-    diag_json="$(printf '{"code":"%s","severity":"%s","phase":"%s","rule":"%s","message":"%s","explanation":"%s","technical_note":"%s","span":{"file":"%s","start_line":%s,"start_column":%s,"end_line":%s,"end_column":%s,"length":%s,"valid":true},"labels":[{"kind":"primary","message":"%s","span":{"file":"%s","start_line":%s,"start_column":%s,"end_line":%s,"end_column":%s,"length":%s,"valid":true},"primary":true,"valid":true}],"notes":[{"message":"%s","valid":true}],"helps":[{"message":"%s","valid":true}],"suggestions":[],"documentation_url":"%s","root_cause":"%s","cause_chain":["%s"],"pipeline_context":["phase=%s","step=bootstrap shell diagnostic fallback"],"related_errors":[],"probable_fix":"%s","subject_symbol":"","subject_type":"","subject_borrow":"","deprecated":false,"unnecessary":false,"fatal":false,"valid":true}' \
-        "$code_json" "$severity_json" "$phase_json" "$rule_json" "$msg_json" "$explanation_json" "$technical_json" "$src_json" "$line" "$col" "$line" "$end_col" "$((end_col - col))" "$label_json" "$src_json" "$line" "$col" "$line" "$end_col" "$((end_col - col))" "$note_json" "$help_json" "$docs_json" "$root_json" "$(json_escape "$phase:$code")" "$phase_json" "$help_json")"
+    diag_json="$(printf '{"code":"%s","severity":"%s","phase":"%s","rule":"%s","message":"%s","explanation":"%s","technical_note":"%s","span":{"file":"%s","start_line":%s,"start_column":%s,"end_line":%s,"end_column":%s,"length":%s,"valid":true},"labels":[{"kind":"primary","message":"%s","span":{"file":"%s","start_line":%s,"start_column":%s,"end_line":%s,"end_column":%s,"length":%s,"valid":true},"primary":true,"valid":true}],"notes":[{"message":"%s","valid":true}],"helps":[{"message":"%s","valid":true}],"suggestions":[],"documentation_url":"%s","root_cause":"%s","cause_chain":["%s","%s"],"pipeline_context":["phase=%s","step=bootstrap shell diagnostic fallback"],"related_errors":[],"probable_fix":"%s","subject_symbol":"","subject_type":"","subject_borrow":"","deprecated":false,"unnecessary":false,"fatal":false,"valid":true}' \
+        "$code_json" "$severity_json" "$phase_json" "$rule_json" "$msg_json" "$explanation_json" "$technical_json" "$src_json" "$line" "$col" "$line" "$end_col" "$((end_col - col))" "$label_json" "$src_json" "$line" "$col" "$line" "$end_col" "$((end_col - col))" "$note_json" "$help_json" "$docs_json" "$root_json" "$cause_a_json" "$cause_b_json" "$phase_json" "$help_json")"
     empty_report="$(empty_phase_report_json)"
     lexer_report="$empty_report"
     parser_report="$empty_report"
