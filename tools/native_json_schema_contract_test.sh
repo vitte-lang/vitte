@@ -2,16 +2,23 @@
 set -eu
 
 ROOT_DIR="${ROOT_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
-STAGE1_BIN="${STAGE1_BIN:-$ROOT_DIR/bin/vittec1}"
-STAGE2_BIN="${STAGE2_BIN:-$ROOT_DIR/bin/vittec}"
+DRIVER_BIN="${DRIVER_BIN:-}"
 SRC="${SRC:-$ROOT_DIR/tests/golden/frontend/fixtures/hello_min.vit}"
 ALLOW_BOOTSTRAP_SCHEMA_COMPAT="${ALLOW_BOOTSTRAP_SCHEMA_COMPAT:-0}"
 
 log() { printf '[native-json-contract] %s\n' "$1"; }
 die() { printf '[native-json-contract][error] %s\n' "$1" >&2; exit 1; }
 
-[ -x "$STAGE1_BIN" ] || die "missing stage1 binary: $STAGE1_BIN"
-[ -x "$STAGE2_BIN" ] || die "missing stage2 binary: $STAGE2_BIN"
+if [ -z "$DRIVER_BIN" ]; then
+  if [ -x "$ROOT_DIR/bin/vitte" ]; then
+    DRIVER_BIN="$ROOT_DIR/bin/vitte"
+  elif [ -x "$ROOT_DIR/bin/vittec" ]; then
+    DRIVER_BIN="$ROOT_DIR/bin/vittec"
+  elif [ -x "$ROOT_DIR/bin/vittec0" ]; then
+    DRIVER_BIN="$ROOT_DIR/bin/vittec0"
+  fi
+fi
+[ -x "$DRIVER_BIN" ] || die "missing active compiler driver (tried bin/vitte, bin/vittec, bin/vittec0)"
 [ -f "$SRC" ] || die "missing source: $SRC"
 
 assert_help_flag() {
@@ -46,7 +53,7 @@ assert_schema_v1() {
   fi
 }
 
-for bin in "$STAGE1_BIN" "$STAGE2_BIN"; do
+for bin in "$DRIVER_BIN"; do
   assert_help_flag "$bin" "--dump-ast-json"
   assert_help_flag "$bin" "--dump-hir-json"
   assert_help_flag "$bin" "--dump-mir-json"
