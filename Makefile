@@ -1291,6 +1291,10 @@ bootstrap-selfhost-repro:
 .PHONY: runtime-stdlib-real
 runtime-stdlib-real:
 	@python3 tools/runtime_stdlib_real_checks.py
+
+.PHONY: runtime-abi-contract
+runtime-abi-contract:
+	@python3 tools/runtime_abi_contract.py
 	@test -f target/runtime_stdlib_real/real_checks.json
 	@test -f target/reports/runtime_stdlib_real.md
 

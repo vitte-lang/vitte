@@ -13,7 +13,7 @@ all_targets=(
   test parse parse-modules parse-strict hir-validate check-tests stress-alloc core-projects test-examples arduino-projects negative-tests diag-snapshots resolve-tests explain-snapshots wrapper-stage-test
   grammar-check ci-fast ci-strict
   extern-abi-host extern-abi-arduino extern-abi-kernel extern-abi-kernel-uefi extern-abi-all stdlib-api-lint stdlib-profile-snapshots stdlib-abi-compat
-  std-check stdlib-integration-check runtime-matrix-modules runtime-stdlib-real stdlib-gate
+  std-check stdlib-integration-check runtime-matrix-modules runtime-abi-contract runtime-stdlib-real stdlib-gate
   modules-tests modules-snapshots modules-contract-snapshots modules-ci-strict
   packages-governance-lint critical-runtime-matrix-lint packages-check-all pkg-matrix pkg-cli-integration packages-gate
   packages-only-ci packages-strict-ci
@@ -34,7 +34,7 @@ select_targets() {
       printf "%s\n" extern-abi-host extern-abi-arduino extern-abi-kernel extern-abi-kernel-uefi extern-abi-all stdlib-api-lint stdlib-profile-snapshots stdlib-abi-compat
       ;;
     runtime-stdlib)
-      printf "%s\n" std-check stdlib-integration-check runtime-matrix-modules runtime-stdlib-real stdlib-gate
+      printf "%s\n" std-check stdlib-integration-check runtime-matrix-modules runtime-abi-contract runtime-stdlib-real stdlib-gate
       ;;
     modules)
       printf "%s\n" modules-tests modules-snapshots modules-contract-snapshots modules-ci-strict
