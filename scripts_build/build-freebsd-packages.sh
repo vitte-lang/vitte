@@ -17,34 +17,6 @@ require() {
   command -v "$1" >/dev/null 2>&1 || die "missing required tool: $1"
 }
 
-copy_tree() {
-  source=$1
-  destination=$2
-  [ -e "$source" ] || return 0
-  mkdir -p "$destination"
-  COPYFILE_DISABLE=1 tar -cf - -C "$source" . | tar -xf - -C "$destination"
-}
-
-stage_payload() {
-  data_root=$1
-  mkdir -p "$data_root/usr/local/bin" "$data_root/usr/local/libexec/vitte" "$data_root/usr/local/share/vitte"
-  for command in vitte vittec vittec0; do
-    [ -x "$ROOT_DIR/bin/$command" ] || die "missing executable payload: bin/$command"
-    install -m 0755 "$ROOT_DIR/bin/$command" "$data_root/usr/local/libexec/vitte/$command"
-    cat > "$data_root/usr/local/bin/$command" <<EOF
-#!/bin/sh
-set -eu
-export VITTE_ROOT=\${VITTE_ROOT:-/usr/local/share/vitte}
-exec /usr/local/libexec/vitte/$command "\$@"
-EOF
-    chmod 0755 "$data_root/usr/local/bin/$command"
-  done
-  copy_tree "$ROOT_DIR/src/vitte" "$data_root/usr/local/share/vitte/src/vitte"
-  copy_tree "$ROOT_DIR/toolchain/seed" "$data_root/usr/local/share/vitte/toolchain/seed"
-  copy_tree "$ROOT_DIR/locales" "$data_root/usr/local/share/vitte/locales"
-  copy_tree "$ROOT_DIR/completions" "$data_root/usr/local/share/vitte/completions"
-}
-
 build_one() {
   arch=$1
   case "$arch" in
@@ -60,7 +32,7 @@ build_one() {
 
   rm -rf "$stage"
   mkdir -p "$metadata" "$data_root" "$OUT_DIR"
-  stage_payload "$data_root"
+  VERSION=$VERSION "$ROOT_DIR/scripts_build/stage-installer-payload.sh" "$data_root" freebsd "$arch" unix
   python3 - "$data_root" "$metadata" "$PACKAGE_NAME" "$VERSION" "$abi" <<'PY'
 import hashlib
 import json

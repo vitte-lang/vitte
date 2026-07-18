@@ -17,45 +17,6 @@ require() {
   command -v "$1" >/dev/null 2>&1 || die "missing required tool: $1"
 }
 
-copy_tree() {
-  source=$1
-  destination=$2
-  [ -e "$source" ] || return 0
-  mkdir -p "$destination"
-  COPYFILE_DISABLE=1 tar -cf - -C "$source" . | tar -xf - -C "$destination"
-}
-
-write_wrappers() {
-  data_root=$1
-  mkdir -p "$data_root/usr/local/bin"
-  for command in vitte vittec vittec0; do
-    cat > "$data_root/usr/local/bin/$command" <<EOF
-#!/bin/sh
-set -eu
-export VITTE_ROOT=\${VITTE_ROOT:-/usr/local/share/vitte}
-exec /usr/local/libexec/vitte/$command "\$@"
-EOF
-    chmod 0755 "$data_root/usr/local/bin/$command"
-  done
-}
-
-stage_payload() {
-  data_root=$1
-  mkdir -p "$data_root/usr/local/libexec/vitte" "$data_root/usr/local/share/vitte"
-  for command in vitte vittec vittec0; do
-    [ -x "$ROOT_DIR/bin/$command" ] || die "missing executable payload: bin/$command"
-    install -m 0755 "$ROOT_DIR/bin/$command" "$data_root/usr/local/libexec/vitte/$command"
-  done
-  write_wrappers "$data_root"
-  copy_tree "$ROOT_DIR/src/vitte" "$data_root/usr/local/share/vitte/src/vitte"
-  copy_tree "$ROOT_DIR/toolchain/seed" "$data_root/usr/local/share/vitte/toolchain/seed"
-  copy_tree "$ROOT_DIR/locales" "$data_root/usr/local/share/vitte/locales"
-  copy_tree "$ROOT_DIR/completions" "$data_root/usr/local/share/vitte/completions"
-  if [ -d "$ROOT_DIR/man" ]; then
-    copy_tree "$ROOT_DIR/man" "$data_root/usr/local/share/man/man1"
-  fi
-}
-
 build_one() {
   arch=$1
   stage=$ROOT_DIR/target/installer-linux-$arch
@@ -65,7 +26,7 @@ build_one() {
 
   rm -rf "$stage"
   mkdir -p "$control_root" "$data_root" "$OUT_DIR"
-  stage_payload "$data_root"
+  VERSION=$VERSION "$ROOT_DIR/scripts_build/stage-installer-payload.sh" "$data_root" linux "$arch" unix
   installed_size=$(du -sk "$data_root" | awk '{print $1}')
   cat > "$control_root/control" <<EOF
 Package: $PACKAGE_NAME
@@ -78,8 +39,9 @@ Depends: bash, python3, make
 Installed-Size: $installed_size
 Homepage: https://vitte-lang.org/
 X-Vitte-Processor: $arch
-Description: Vitte systems language toolchain
- Processor-specific Debian installer generated from the canonical Vitte payload.
+Description: Complete Vitte systems language toolchain
+ Compiler, runtime, standard library, sources, documentation, examples,
+ editor support, shell completions, locales, and visual assets.
 EOF
   cat > "$control_root/postinst" <<'EOF'
 #!/bin/sh

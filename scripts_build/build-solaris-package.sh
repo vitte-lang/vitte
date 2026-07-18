@@ -25,26 +25,6 @@ copy_tree() {
   COPYFILE_DISABLE=1 tar -cf - -C "$source" . | tar -xf - -C "$destination"
 }
 
-stage_payload() {
-  data_root=$1
-  mkdir -p "$data_root/usr/local/bin" "$data_root/usr/local/libexec/vitte" "$data_root/usr/local/share/vitte"
-  for command in vitte vittec vittec0; do
-    [ -x "$ROOT_DIR/bin/$command" ] || die "missing executable payload: bin/$command"
-    install -m 0755 "$ROOT_DIR/bin/$command" "$data_root/usr/local/libexec/vitte/$command"
-    cat > "$data_root/usr/local/bin/$command" <<EOF
-#!/bin/sh
-set -eu
-export VITTE_ROOT=\${VITTE_ROOT:-/usr/local/share/vitte}
-exec /usr/local/libexec/vitte/$command "\$@"
-EOF
-    chmod 0755 "$data_root/usr/local/bin/$command"
-  done
-  copy_tree "$ROOT_DIR/src/vitte" "$data_root/usr/local/share/vitte/src/vitte"
-  copy_tree "$ROOT_DIR/toolchain/seed" "$data_root/usr/local/share/vitte/toolchain/seed"
-  copy_tree "$ROOT_DIR/locales" "$data_root/usr/local/share/vitte/locales"
-  copy_tree "$ROOT_DIR/completions" "$data_root/usr/local/share/vitte/completions"
-}
-
 case "$ARCH" in
   x86_64|amd64) ARCH=amd64 ;;
   *) die "unsupported Solaris architecture: $ARCH (only amd64 is supported)" ;;
@@ -63,7 +43,7 @@ kit_file=$OUT_DIR/${PACKAGE_NAME}-${VERSION}-solaris-${ARCH}-spool.tar.gz
 
 rm -rf "$stage"
 mkdir -p "$metadata" "$data_root" "$spool" "$OUT_DIR"
-stage_payload "$data_root"
+VERSION=$VERSION "$ROOT_DIR/scripts_build/stage-installer-payload.sh" "$data_root" solaris "$ARCH" unix
 
 cat > "$metadata/pkginfo" <<EOF
 PKG=$SVR4_PACKAGE
@@ -97,7 +77,7 @@ for path in sorted(root.rglob("*")):
         lines.append(f"d none {relative} {mode:04o} root sys")
     elif path.is_file():
         lines.append(f"f none {relative} {mode:04o} root bin")
-prototype.write_text("\n".join(lines) + "\n", encoding="ascii")
+prototype.write_text("\n".join(lines) + "\n", encoding="utf-8")
 PY
 
 cp "$metadata/pkginfo" "$spool/pkginfo"

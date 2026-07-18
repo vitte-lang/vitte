@@ -17,14 +17,6 @@ require() {
   command -v "$1" >/dev/null 2>&1 || die "missing required tool: $1"
 }
 
-copy_tree() {
-  source=$1
-  destination=$2
-  [ -e "$source" ] || return 0
-  mkdir -p "$destination"
-  COPYFILE_DISABLE=1 tar -cf - -C "$source" . | tar -xf - -C "$destination"
-}
-
 validate_pe_amd64() {
   python3 - "$1" <<'PY'
 import struct
@@ -60,10 +52,7 @@ kit_file=$OUT_DIR/${PACKAGE_NAME}-${VERSION}-windows-${ARCH}-nsis.tar.gz
 
 rm -rf "$stage"
 mkdir -p "$payload/bin" "$payload/share/vitte" "$OUT_DIR"
-copy_tree "$ROOT_DIR/src/vitte" "$payload/share/vitte/src/vitte"
-copy_tree "$ROOT_DIR/toolchain/seed" "$payload/share/vitte/toolchain/seed"
-copy_tree "$ROOT_DIR/locales" "$payload/share/vitte/locales"
-copy_tree "$ROOT_DIR/completions" "$payload/share/vitte/completions"
+VERSION=$VERSION "$ROOT_DIR/scripts_build/stage-installer-payload.sh" "$payload" windows "$ARCH" windows
 [ ! -f "$ROOT_DIR/LICENSE" ] || install -m 0644 "$ROOT_DIR/LICENSE" "$stage/LICENSE"
 [ ! -f "$ROOT_DIR/README.md" ] || install -m 0644 "$ROOT_DIR/README.md" "$stage/README.md"
 
