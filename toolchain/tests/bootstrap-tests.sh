@@ -15,14 +15,14 @@ esac
 cd "$ROOT_DIR"
 
 printf '[bootstrap-tests] mode=%s\n' "$MODE"
-python3 tools/check_bootstrap_stage_chain.py
+python3 tools/check_bootstrap_seed_root.py
 
 if [ "$MODE" = "quick" ]; then
   printf '[bootstrap-tests] ok: static seed contract\n'
   exit 0
 fi
 
-python3 tools/check_bootstrap_stage_chain.py --artifacts
+python3 tools/check_bootstrap_seed_root.py --artifacts
 
 if [ "$MODE" = "advanced" ]; then
   for source in toolchain/src/*.vit; do

@@ -57,7 +57,7 @@ def main() -> int:
     commands = [
         ("seed_verify", ["make", "--no-print-directory", "seed-verify"]),
         ("bootstrap_seed", ["make", "--no-print-directory", "bootstrap-seed"]),
-        ("seed_artifact_contract", ["python3", "tools/check_bootstrap_stage_chain.py", "--artifacts"]),
+        ("seed_artifact_contract", ["python3", "tools/check_bootstrap_seed_root.py", "--artifacts"]),
         ("bootstrap_native_snapshots", ["make", "--no-print-directory", "bootstrap-native-snapshots"]),
     ]
     steps: list[dict[str, object]] = []

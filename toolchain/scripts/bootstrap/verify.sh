@@ -20,9 +20,9 @@ die() {
 TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/vitte-bootstrap-verify.XXXXXX")"
 trap 'rm -rf "$TMP_DIR"' EXIT HUP INT TERM
 
-log "checking seed identity and chain contract"
+log "checking seed identity and trust-root contract"
 "$SEED_BIN" --version
-python3 "$ROOT_DIR/tools/check_bootstrap_stage_chain.py" --artifacts
+python3 "$ROOT_DIR/tools/check_bootstrap_seed_root.py" --artifacts
 
 log "checking deterministic native IR"
 "$SEED_BIN" dump-native-ir --src "$FIXTURE" > "$TMP_DIR/first.ir"

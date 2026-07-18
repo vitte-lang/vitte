@@ -17,13 +17,14 @@ die() {
 [ -f "$SEED" ] || die "missing toolchain/seed/vittec0.seed"
 [ -f "$SEED_SOURCE" ] || die "missing toolchain/seed/src/main.vit"
 
-python3 "$ROOT_DIR/tools/check_bootstrap_stage_chain.py" >/dev/null || die "seed chain contract failed"
+python3 "$ROOT_DIR/tools/check_bootstrap_seed_root.py" >/dev/null || die "seed trust-root contract failed"
 
-grep -F '"bootstrap_stages": 1' "$CONFIG" >/dev/null || die "bootstrap config must declare one seed stage"
+grep -F '"bootstrap_roots": 1' "$CONFIG" >/dev/null || die "bootstrap config must declare one trust root"
+grep -F '"trust_root": {' "$CONFIG" >/dev/null || die "bootstrap config must declare vittec0.seed as trust root"
 grep -F '"name": "seed"' "$CONFIG" >/dev/null || die "bootstrap config must name the trust root seed"
 grep -F '"compiler": "toolchain/seed/vittec0.seed"' "$CONFIG" >/dev/null || die "bootstrap compiler must be vittec0.seed"
 grep -F '"artifact": "toolchain/seed/vittec0.seed"' "$CONFIG" >/dev/null || die "bootstrap artifact must be vittec0.seed"
-grep -F '"output": "bin/vittec0"' "$CONFIG" >/dev/null || die "bootstrap output must be bin/vittec0"
+grep -F '"installed": "bin/vittec0"' "$CONFIG" >/dev/null || die "installed bootstrap seed must be bin/vittec0"
 
 grep -F 'source_file=toolchain/seed/src/main.vit' "$MANIFEST" >/dev/null || die "seed manifest source_file drifted"
 grep -F 'seed_file=toolchain/seed/vittec0.seed' "$MANIFEST" >/dev/null || die "seed manifest seed_file drifted"

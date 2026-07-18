@@ -584,9 +584,10 @@ bootstrap-help:
 	@echo "  7) parser/typing change: use --trace-pipeline on failing file"
 	@echo "  8) regression tracking: target/reports/vitte_brain_seed_check.json"
 
-.PHONY: bootstrap-stage-chain-check
-bootstrap-stage-chain-check:
-	@python3 tools/check_bootstrap_stage_chain.py
+.PHONY: bootstrap-seed-root-check
+bootstrap-seed-root-check:
+	@python3 tools/check_bootstrap_seed_root.py
+	@python3 tools/bootstrap_seed_root_test.py
 
 .PHONY: bootstrap-hard-gate
 bootstrap-hard-gate:
@@ -603,7 +604,7 @@ bootstrap-offline-gate:
 	@test -f target/bootstrap/offline/report.json
 
 .PHONY: bootstrap-vitte-hard-gate
-bootstrap-vitte-hard-gate: bootstrap-stage-chain-check
+bootstrap-vitte-hard-gate: bootstrap-seed-root-check
 	@echo "[bootstrap-vitte] strict native bootstrap gate"
 	@tools/bootstrap_vitte_hard_gate.sh
 
@@ -621,13 +622,13 @@ bootstrap-all:
 
 .PHONY: bootstrap-parity
 bootstrap-parity:
-	@echo "[bootstrap-parity][error] retired; use bootstrap-stage-chain-check and bootstrap-native-snapshots" >&2
+	@echo "[bootstrap-parity][error] retired; use bootstrap-seed-root-check and bootstrap-native-snapshots" >&2
 	@exit 1
 
 .PHONY: bootstrap-verify
 bootstrap-verify: bootstrap-all
 	@bin/vittec0 --version
-	@python3 tools/check_bootstrap_stage_chain.py --artifacts
+	@python3 tools/check_bootstrap_seed_root.py --artifacts
 	@bin/vittec0 check tests/bootstrap_native/main_proc.vit
 	@bin/vittec0 check tests/bootstrap_native/main_const_int.vit
 	@echo "[bootstrap-verify] seed version + artifact contract + bootstrap smoke checks ok"
@@ -683,8 +684,8 @@ bootstrap-migration-status:
 	check_ok "Phase0: seed-gate passes" $(MAKE) --no-print-directory seed-gate; \
 	check_ok "Phase0: bootstrap-all passes" $(MAKE) --no-print-directory bootstrap-all; \
 	check_ok "Phase0: bootstrap-verify passes" $(MAKE) --no-print-directory bootstrap-verify; \
-	check_ok "Phase1: seed chain contract passes" python3 tools/check_bootstrap_stage_chain.py; \
-	check_ok "Phase2: seed artifact contract passes" python3 tools/check_bootstrap_stage_chain.py --artifacts; \
+	check_ok "Seed root contract passes" python3 tools/check_bootstrap_seed_root.py; \
+	check_ok "Installed seed artifact contract passes" python3 tools/check_bootstrap_seed_root.py --artifacts; \
 	check_ok "Host-language bootstrap sources absent" $(MAKE) --no-print-directory vitte-source-audit; \
 	check_file "Tracking: migration checklist present" "docs/bootstrap_migration_checklist.md"; \
 	printf '[bootstrap-migration-status] summary ok=%s warn=%s\n' "$$ok" "$$warn"; \

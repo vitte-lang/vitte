@@ -139,7 +139,7 @@ def main() -> int:
             ),
             (
                 "verify_seed_artifact",
-                ["python3", "tools/check_bootstrap_stage_chain.py", "--artifacts"],
+                ["python3", "tools/check_bootstrap_seed_root.py", "--artifacts"],
             ),
             (
                 "verify_bootstrap_native_snapshots",

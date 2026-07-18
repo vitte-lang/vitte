@@ -121,8 +121,8 @@ make --no-print-directory seed-verify
 step_start "bootstrap-seed"
 make --no-print-directory bootstrap-seed
 
-step_start "seed-chain-artifacts"
-python3 tools/check_bootstrap_stage_chain.py --artifacts
+step_start "seed-root-artifacts"
+python3 tools/check_bootstrap_seed_root.py --artifacts
 
 step_start "bootstrap-native-snapshots"
 make --no-print-directory bootstrap-native-snapshots
@@ -139,7 +139,7 @@ cat > target/reports/bootstrap/hard_gate_native.json <<EOF
   "steps": [
     "seed-verify",
     "bootstrap-seed",
-    "seed-chain-artifacts",
+    "seed-root-artifacts",
     "bootstrap-native-snapshots"
   ]
 }

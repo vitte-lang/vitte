@@ -23,8 +23,8 @@ roots or fallbacks.
 - `toolchain/bootstrap.sh`: user-facing bootstrap dispatcher.
 - `scripts/seed/install_seed.sh`: verified seed installation.
 - `tools/bootstrap_vitte_hard_gate.sh`: strict native bootstrap gate.
-- `tools/check_bootstrap_stage_chain.py`: seed configuration and artifact
-  verifier; the historical filename is retained for command compatibility.
+- `tools/check_bootstrap_seed_root.py`: sole seed trust-root configuration and
+  installed artifact verifier.
 - `src/vitte/compiler/main.vit`: canonical compiler source entry.
 
 ## Commands

@@ -19,7 +19,7 @@
 
 - `make seed-verify`
 - `make bootstrap-source-of-truth`
-- `make bootstrap-stage-chain-check`
+- `make bootstrap-seed-root-check`
 - `make bootstrap-native-snapshots`
 - `make bootstrap-clean-checkout-gate`
 - `make bootstrap-offline-gate`

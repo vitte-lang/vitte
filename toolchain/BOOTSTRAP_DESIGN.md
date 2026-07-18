@@ -36,7 +36,7 @@ toolchain/seed/manifest.txt --pins--> toolchain/seed/vittec0.seed
 1. `seed-verify` checks the manifest hash, executable version, and readable
    source identity.
 2. `bootstrap-seed` installs an exact copy at `bin/vittec0`.
-3. `bootstrap-stage-chain-check --artifacts` verifies configuration and copy
+3. `bootstrap-seed-root-check` verifies configuration and installed copy
    hashes.
 4. `bootstrap-native-snapshots` exercises parser, diagnostics, IR, shell
    emission, type checks, and native user programs.

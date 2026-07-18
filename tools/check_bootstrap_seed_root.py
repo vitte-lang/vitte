@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate the canonical vittec0.seed bootstrap trust root."""
+"""Validate vittec0.seed as the only bootstrap trust root."""
 
 from __future__ import annotations
 
@@ -64,55 +64,53 @@ def repo_path(value: object, field: str) -> Path:
 
 
 def validate_contract(config: dict[str, object]) -> dict[str, object]:
-    if config.get("schema_version") != "1.0.0":
-        raise ContractError("bootstrap config schema_version must be 1.0.0")
+    if config.get("schema_version") != "2.0.0":
+        raise ContractError("bootstrap config schema_version must be 2.0.0")
     project = config.get("project")
     bootstrap = config.get("bootstrap")
     if not isinstance(project, dict) or not isinstance(bootstrap, dict):
         raise ContractError("bootstrap config requires project and bootstrap objects")
-    stages = bootstrap.get("stages")
-    if not isinstance(stages, list) or len(stages) != 1 or not isinstance(stages[0], dict):
-        raise ContractError("bootstrap chain must contain exactly one seed stage")
-    if project.get("bootstrap_stages") != 1:
-        raise ContractError("project.bootstrap_stages must be 1")
+    trust_root = bootstrap.get("trust_root")
+    if not isinstance(trust_root, dict):
+        raise ContractError("bootstrap.trust_root must be an object")
+    if project.get("bootstrap_roots") != 1:
+        raise ContractError("project.bootstrap_roots must be 1")
+    if "stages" in bootstrap:
+        raise ContractError("bootstrap.stages is retired; only bootstrap.trust_root is allowed")
 
-    stage = stages[0]
     manifest = load_seed_manifest()
     expected = {
-        "stage": 0,
         "name": "seed",
         "compiler": manifest["seed_file"],
         "artifact": manifest["seed_file"],
-        "output": "bin/vittec0",
+        "installed": "bin/vittec0",
         "version": manifest["version"],
         "artifact_kind": "bootstrap-script",
-        "self_hosted": False,
         "verify": True,
     }
     for key, value in expected.items():
-        if stage.get(key) != value:
-            raise ContractError(f"seed stage {key} drifted: expected {value!r}, found {stage.get(key)!r}")
+        if trust_root.get(key) != value:
+            raise ContractError(f"seed trust root {key} drifted: expected {value!r}, found {trust_root.get(key)!r}")
 
-    sources = stage.get("sources")
-    if sources != [manifest["source_file"]]:
-        raise ContractError("seed stage sources must match toolchain/seed/manifest.txt")
-    for field in ("compiler", "artifact", "output"):
-        repo_path(stage.get(field), f"bootstrap.stages[0].{field}")
-    source_path = repo_path(sources[0], "bootstrap.stages[0].sources[0]")
-    seed_path = repo_path(stage["artifact"], "bootstrap.stages[0].artifact")
+    if trust_root.get("source") != manifest["source_file"]:
+        raise ContractError("seed trust root source must match toolchain/seed/manifest.txt")
+    for field in ("compiler", "artifact", "installed", "source"):
+        repo_path(trust_root.get(field), f"bootstrap.trust_root.{field}")
+    source_path = repo_path(trust_root["source"], "bootstrap.trust_root.source")
+    seed_path = repo_path(trust_root["artifact"], "bootstrap.trust_root.artifact")
     if not source_path.is_file():
         raise ContractError(f"missing seed source: {source_path.relative_to(ROOT)}")
     if not seed_path.is_file():
         raise ContractError(f"missing seed artifact: {seed_path.relative_to(ROOT)}")
     if sha256(seed_path) != manifest["sha256"]:
         raise ContractError("seed artifact checksum differs from manifest")
-    return stage
+    return trust_root
 
 
-def validate_artifacts(stage: dict[str, object]) -> None:
-    artifact = repo_path(stage["artifact"], "seed.artifact")
-    output = repo_path(stage["output"], "seed.output")
-    version = str(stage["version"])
+def validate_artifacts(trust_root: dict[str, object]) -> None:
+    artifact = repo_path(trust_root["artifact"], "seed.artifact")
+    output = repo_path(trust_root["installed"], "seed.installed")
+    version = str(trust_root["version"])
     if not output.is_file() or not os.access(output, os.X_OK):
         raise ContractError(f"installed seed is missing or not executable: {output.relative_to(ROOT)}")
     if sha256(artifact) != sha256(output):
@@ -130,14 +128,14 @@ def main() -> int:
     args = parser.parse_args()
     config_path = args.config if args.config.is_absolute() else ROOT / args.config
     try:
-        stage = validate_contract(load_config(config_path))
+        trust_root = validate_contract(load_config(config_path))
         if args.artifacts:
-            validate_artifacts(stage)
+            validate_artifacts(trust_root)
     except ContractError as exc:
         print(f"[bootstrap-seed-chain][error] {exc}")
         return 1
     suffix = " + artifacts" if args.artifacts else ""
-    print(f"[bootstrap-seed-chain] ok: vittec0.seed trust root{suffix}")
+    print(f"[bootstrap-seed-root] ok: vittec0.seed is the only trust root{suffix}")
     return 0
 
 
