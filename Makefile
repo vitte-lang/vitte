@@ -626,43 +626,16 @@ bootstrap-all:
 
 .PHONY: bootstrap-parity
 bootstrap-parity:
-	@set -e; \
-	SAMPLE="toolchain/stage2/src/main.vit"; \
-	if bin/vittec1 check "$$SAMPLE" >/tmp/vittec1.check.out 2>&1 && bin/vitte check "$$SAMPLE" >/tmp/vittec.check.out 2>&1; then \
-		if grep -q "native bootstrap" /tmp/vittec1.check.out || grep -q "native bootstrap" /tmp/vittec.check.out; then \
-			echo "[bootstrap-parity] check parity limited to bootstrap command surface"; \
-		else \
-			diff -u /tmp/vittec1.check.out /tmp/vittec.check.out >/tmp/vitte.check.diff || (cat /tmp/vitte.check.diff; echo "[bootstrap-parity][error] vittec1/vitte check outputs diverge"; exit 1); \
-			echo "[bootstrap-parity] check output parity ok"; \
-		fi; \
-	else \
-		echo "[bootstrap-parity] check parity limited to bootstrap command surface"; \
-	fi; \
-	if bin/vittec1 parse "$$SAMPLE" >/tmp/vittec1.parse.out 2>&1 && bin/vitte parse "$$SAMPLE" >/tmp/vitte.parse.out 2>&1; then \
-		if grep -q "native bootstrap" /tmp/vittec1.parse.out || grep -q "native bootstrap" /tmp/vitte.parse.out; then \
-			echo "[bootstrap-parity] parse parity limited to bootstrap command surface"; \
-		else \
-			diff -u /tmp/vittec1.parse.out /tmp/vitte.parse.out >/tmp/vitte.parse.diff || (cat /tmp/vitte.parse.diff; echo "[bootstrap-parity][error] vittec1/vitte parse outputs diverge"; exit 1); \
-			echo "[bootstrap-parity] parse output parity ok"; \
-		fi; \
-	else \
-		echo "[bootstrap-parity] parse parity limited to bootstrap command surface"; \
-	fi
+	@echo "[bootstrap-parity][error] legacy vittec1/vitte stage parity is disabled; use bootstrap-stage-chain-check and bootstrap-native-snapshots" >&2
+	@exit 1
 
 .PHONY: bootstrap-verify
 bootstrap-verify: bootstrap-all
 	@bin/vittec0 --version
-	@bin/vittec1 --version
-	@bin/vittec --version
-	@bin/vitte --version
+	@python3 tools/check_bootstrap_stage_chain.py --artifacts
 	@bin/vittec0 check tests/bootstrap_native/main_proc.vit
 	@bin/vittec0 check tests/bootstrap_native/main_const_int.vit
-	@bin/vitte check src/vitte/compiler/tests/smoke.vit
-	@bin/vitte check src/vitte/compiler/tests/pipeline_tests.vit
-	@bin/vitte check src/vitte/compiler/ir/ast.vit
-	@bin/vitte check src/vitte/compiler/ir/pipeline.vit
-	@$(MAKE) --no-print-directory bootstrap-parity
-	@echo "[bootstrap-verify] versions + smoke + bootstrap-subset checks ok"
+	@echo "[bootstrap-verify] seed version + artifact contract + bootstrap smoke checks ok"
 
 .PHONY: bootstrap-native-contract
 bootstrap-native-contract: seed-verify bootstrap-source-coverage-check selfhost-subset-check posix-seed-shell-check bootstrap-shell-fixed-point bootstrap-native-snapshots selfhost-parity-gate bootstrap-clean-checkout-gate bootstrap-offline-gate bootstrap-verify bootstrap-posix-smoke
