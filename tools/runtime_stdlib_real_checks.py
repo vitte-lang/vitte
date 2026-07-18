@@ -68,6 +68,8 @@ int main(int argc, char **argv) {
   VitteString invalid_string = {NULL, 1};
   VitteString oversized_path = {"x", SIZE_MAX};
   VitteString oversized_content = {"x", (size_t)INT32_MAX + 1};
+  const char embedded_nul_data[3] = {'x', '\0', 'y'};
+  VitteString embedded_nul = {embedded_nul_data, 3};
   struct stat copied_info;
 
   CHECK(strcmp(vitte_c_abi_version(), VITTE_C_ABI_VERSION) == 0, 10);
@@ -175,6 +177,14 @@ int main(int argc, char **argv) {
   CHECK(vitte_runtime_panic_boundary_code() == 3, 49);
   CHECK(vitte_runtime_panic_boundary_end() == 0, 50);
   CHECK(vitte_runtime_panic_boundary_reset() == 0, 51);
+
+  CHECK(vitte_runtime_panic_boundary_begin() == 1, 69);
+  CHECK(vitte_host_file_exists(embedded_nul) == 0, 70);
+  CHECK(vitte_host_system(embedded_nul) == -1, 71);
+  CHECK(vitte_runtime_panic_boundary_triggered() == 1, 72);
+  CHECK(vitte_runtime_panic_boundary_code() == 2, 73);
+  CHECK(vitte_runtime_panic_boundary_end() == 0, 74);
+  CHECK(vitte_runtime_panic_boundary_reset() == 0, 75);
 
   vitte_slice_i32_release(numbers);
   vitte_string_release(joined);

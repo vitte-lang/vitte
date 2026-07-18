@@ -63,6 +63,10 @@ static char *vitte_string_to_c(VitteString input) {
     vitte_note_panic(3);
     return NULL;
   }
+  if (input.len > 0 && memchr(input.data, '\0', input.len) != NULL) {
+    vitte_note_panic(2);
+    return NULL;
+  }
   char *out = (char *)malloc(input.len + 1);
   if (out == NULL) {
     vitte_note_panic(3);
