@@ -463,7 +463,7 @@ bootstrap-source-coverage-check:
 selfhost-subset-check:
 	@tools/check_selfhost_subset.sh
 
-.PHONY: bootstrap-native-drift-check bootstrap-generated-code-test native-artifact-gate-test
+.PHONY: bootstrap-native-drift-check bootstrap-generated-code-test bootstrap-multifile-native-test native-artifact-gate-test
 bootstrap-native-drift-check:
 	@tools/check_bootstrap_native_drift.sh
 
@@ -472,6 +472,9 @@ native-artifact-gate-test:
 
 bootstrap-generated-code-test: bootstrap-seed
 	@tools/bootstrap_generated_code_test.sh
+
+bootstrap-multifile-native-test: bootstrap-seed
+	@tools/bootstrap_multifile_native_test.sh
 
 .PHONY: posix-seed-shell-check
 posix-seed-shell-check:
@@ -643,7 +646,7 @@ bootstrap-verify: bootstrap-all
 bootstrap-native-contract: seed-verify bootstrap-source-coverage-check selfhost-subset-check posix-seed-shell-check bootstrap-shell-fixed-point bootstrap-native-snapshots selfhost-parity-gate bootstrap-clean-checkout-gate bootstrap-offline-gate bootstrap-verify bootstrap-posix-smoke
 
 .PHONY: bootstrap-native-fast-contract
-bootstrap-native-fast-contract: seed-verify bootstrap-source-coverage-check selfhost-subset-check posix-seed-shell-check bootstrap-shell-fixed-point bootstrap-native-snapshots bootstrap-generated-code-test selfhost-parity-gate bootstrap-native-drift-check
+bootstrap-native-fast-contract: seed-verify bootstrap-source-coverage-check selfhost-subset-check posix-seed-shell-check bootstrap-shell-fixed-point bootstrap-native-snapshots bootstrap-generated-code-test bootstrap-multifile-native-test selfhost-parity-gate bootstrap-native-drift-check
 
 .PHONY: bootstrap-posix-smoke
 bootstrap-posix-smoke: bootstrap-all

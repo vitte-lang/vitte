@@ -86,6 +86,7 @@ print_compiler_help() {
     printf '\n'
     printf 'common flags:\n'
     printf '  --src PATH  --out PATH  -o PATH  --lang LANG  --trace-pipeline  --strict\n'
+    printf '  build-native accepts repeated --src PATH options for one compilation unit\n'
     printf '  --dump-ast-json  --dump-hir-json  --dump-mir-json  --diagnostics-json\n'
 }
 
@@ -100,6 +101,19 @@ arg_value() {
         shift
     done
     return 1
+}
+
+arg_values() {
+    key="$1"
+    shift
+    while [ "$#" -gt 1 ]; do
+        if [ "$1" = "$key" ]; then
+            printf '%s\n' "$2"
+            shift 2
+            continue
+        fi
+        shift
+    done
 }
 
 first_file_arg() {
@@ -4856,12 +4870,31 @@ case "$cmd" in
     build-native)
         read_common_flags "$@"
         trace_step "pipeline.lower:begin"
-        src="$(arg_value --src "$@" || true)"
+        source_list="$(arg_values --src "$@" || true)"
+        src="$(printf '%s\n' "$source_list" | sed -n '1p')"
         out="$(arg_value --out "$@" || true)"
         [ -n "$src" ] && [ -n "$out" ] || { cli_error E_CLI_MISSING_ARG "build-native requires --src and --out" "vittec build-native --src in.vit --out out/vittec"; exit 2; }
-        [ -f "$src" ] || { cli_error E_CLI_IO "cannot read $src" "check the path and permissions"; exit 1; }
-        guard_output_not_source "$src" "$out" || exit 2
-        trace_step "pipeline.emit:write-shell"
+        source_count="$(printf '%s\n' "$source_list" | sed '/^$/d' | wc -l | tr -d ' ')"
+        combined_src=""
+        while IFS= read -r source_path; do
+            [ -n "$source_path" ] || continue
+            [ -f "$source_path" ] || { cli_error E_CLI_IO "cannot read $source_path" "check the path and permissions"; exit 1; }
+            guard_output_not_source "$source_path" "$out" || exit 2
+        done <<EOF
+$source_list
+EOF
+        if [ "$source_count" -gt 1 ]; then
+            combined_src="$(mktemp "${TMPDIR:-/tmp}/vitte-bootstrap-multifile-XXXXXX.vit")"
+            : > "$combined_src"
+            while IFS= read -r source_path; do
+                [ -n "$source_path" ] || continue
+                cat "$source_path" >> "$combined_src"
+                printf '\n' >> "$combined_src"
+            done <<EOF
+$source_list
+EOF
+            src="$combined_src"
+        fi
         ir_version="$(arg_value --ir-version "$@" || true)"
         [ -n "$ir_version" ] || ir_version="v1"
         [ "$ir_version" = "v1" ] || [ "$ir_version" = "v2" ] || { cli_error E_CLI_ARG "unsupported --ir-version: $ir_version" "supported: v1, v2"; exit 2; }
@@ -4870,6 +4903,7 @@ case "$cmd" in
         build_native_user_program "$src" "$out"
         rc="$?"
         set -e
+        [ -z "$combined_src" ] || rm -f "$combined_src"
         [ "$rc" -eq 0 ] || exit "${rc:-3}"
         [ -s "$out" ] || { cli_error E_BUILD_OUTPUT "build-native produced an empty output: $out"; exit 1; }
         [ -x "$out" ] || { cli_error E_BUILD_OUTPUT "build-native output is not executable: $out"; exit 1; }
