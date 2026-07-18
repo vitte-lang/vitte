@@ -33,7 +33,7 @@ for line in text.splitlines():
 
 # Practical validation table examples (curated core)
 rows = [
-    ('space_decl', 'space vitte/bootstrap/stage2', 'space', 'Missing module path after `space`.'),
+    ('space_decl', 'space vitte/compiler/entry', 'space', 'Missing module path after `space`.'),
     ('use_decl', 'use vitte/io', 'use', 'Import path missing after `use`.'),
     ('proc_decl', 'proc main() -> int { give 0 }', 'proc main( -> int { give 0 }', 'Malformed parameter list or signature.'),
     ('const_decl', 'const VERSION: string = "1.0"', 'const = "1.0"', 'Const identifier is required.'),

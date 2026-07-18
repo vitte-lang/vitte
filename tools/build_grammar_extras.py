@@ -78,7 +78,7 @@ for key in ['proc_decl','expr','stmt','type_expr','form_decl','pick_decl','macro
     (rail/f'{key}.svg').write_text(svg, encoding='utf-8')
 
 # playground examples static
-play=[('proc_decl','proc main() -> int { give 0 }'),('const_decl','const VERSION: string = "1.0"'),('space_decl','space vitte/bootstrap/stage2'),('use_decl','use vitte/io'),('expr','a + b * c')]
+play=[('proc_decl','proc main() -> int { give 0 }'),('const_decl','const VERSION: string = "1.0"'),('space_decl','space vitte/compiler/entry'),('use_decl','use vitte/io'),('expr','a + b * c')]
 play_html=''.join('<details><summary><code>{}</code></summary><pre><code>{}</code></pre><button class="copy-example" data-copy="{}">Copy</button></details>'.format(n,html.escape(s),html.escape(s)) for n,s in play)
 
 # toolbox
