@@ -59,7 +59,7 @@ int32_t vitte_runtime_panic_boundary_reset(void) {
 }
 
 static char *vitte_string_to_c(VitteString input) {
-  if (input.data == NULL && input.len > 0) {
+  if ((input.data == NULL && input.len > 0) || input.len == SIZE_MAX) {
     vitte_note_panic(3);
     return NULL;
   }
@@ -131,7 +131,7 @@ VitteString vitte_host_read_file(VitteString path) {
 }
 
 static int32_t vitte_host_write_mode(VitteString path, VitteString content, const char *mode) {
-  if (content.data == NULL && content.len > 0) {
+  if ((content.data == NULL && content.len > 0) || content.len > INT32_MAX) {
     vitte_note_panic(3);
     return -1;
   }
