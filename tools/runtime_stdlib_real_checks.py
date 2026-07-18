@@ -32,6 +32,7 @@ def run_native_runtime_probe() -> dict[str, object]:
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #define CHECK(condition, code) do { if (!(condition)) return (code); } while (0)
@@ -67,6 +68,7 @@ int main(int argc, char **argv) {
   VitteString invalid_string = {NULL, 1};
   VitteString oversized_path = {"x", SIZE_MAX};
   VitteString oversized_content = {"x", (size_t)INT32_MAX + 1};
+  struct stat copied_info;
 
   CHECK(strcmp(vitte_c_abi_version(), VITTE_C_ABI_VERSION) == 0, 10);
   CHECK(vitte_host_runtime_available() == 1, 11);
@@ -111,7 +113,9 @@ int main(int argc, char **argv) {
   CHECK(preserved.len == 4 && memcmp(preserved.data, "keep", 4) == 0, 24);
   vitte_string_release(preserved);
   CHECK(vitte_host_write_file(source_file, replacement) == 3, 63);
+  CHECK(chmod(source_path, 0640) == 0, 67);
   CHECK(vitte_host_copy_file(source_file, destination) == 0, 64);
+  CHECK(stat(destination_path, &copied_info) == 0 && (copied_info.st_mode & 0777) == 0640, 68);
   preserved = vitte_host_read_file(destination);
   CHECK(preserved.len == 3 && memcmp(preserved.data, "new", 3) == 0, 65);
   CHECK(vitte_host_delete_file(source_file) == 0, 66);

@@ -242,6 +242,7 @@ int32_t vitte_host_copy_file(VitteString src, VitteString dst) {
   size_t read_count = 0;
   int tmp_fd = -1;
   int32_t result = -1;
+  struct stat source_info;
   if (src_path == NULL || dst_path == NULL) {
     free(src_path);
     free(dst_path);
@@ -256,6 +257,9 @@ int32_t vitte_host_copy_file(VitteString src, VitteString dst) {
   if (src_file == NULL) {
     goto cleanup_copy;
   }
+  if (fstat(fileno(src_file), &source_info) != 0) {
+    goto cleanup_copy;
+  }
   tmp_path = (char *)malloc(strlen(dst_path) + sizeof(".vitte-copy-XXXXXX"));
   if (tmp_path == NULL) {
     vitte_note_panic(3);
@@ -265,6 +269,9 @@ int32_t vitte_host_copy_file(VitteString src, VitteString dst) {
   strcat(tmp_path, ".vitte-copy-XXXXXX");
   tmp_fd = mkstemp(tmp_path);
   if (tmp_fd < 0) {
+    goto cleanup_copy;
+  }
+  if (fchmod(tmp_fd, source_info.st_mode & 0777) != 0) {
     goto cleanup_copy;
   }
   dst_file = fdopen(tmp_fd, "wb");
