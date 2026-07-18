@@ -3,7 +3,7 @@
 # Vitte Bootstrap Toolchain Entry Point
 # ============================================================
 # Main entry script for the Vitte bootstrap process.
-# Handles environment detection and delegates to Vitte modules.
+# Handles environment detection and delegates to the verified seed root.
 
 set -e
 
@@ -52,7 +52,7 @@ print_banner() {
   cat <<'EOF'
 ╔════════════════════════════════════════════════════════╗
 ║         Vitte Bootstrap Toolchain                      ║
-║  Multi-stage compiler bootstrap from C to Vitte        ║
+║  Seed-rooted compiler bootstrap from vittec0.seed      ║
 ║  Copyright 2026 - Vitte Project                        ║
 ╚════════════════════════════════════════════════════════╝
 EOF
@@ -63,9 +63,9 @@ print_usage() {
 Usage: ./bootstrap.sh [OPTIONS] [MODE]
 
 Modes:
-  normal              Standard bootstrap (default)
-  quick               Fast build for development
-  strict              Full bootstrap with all verifications
+  normal              Standard seed-rooted bootstrap (default)
+  quick               Fast seed verification for development
+  strict              Full seed-rooted hard gate
   dry-run            Show what would be done
   check              Check environment prerequisites
 
@@ -79,9 +79,9 @@ Options:
   --keep-artifacts    Keep intermediate build artifacts
 
 Examples:
-  ./bootstrap.sh                    # Standard bootstrap
-  ./bootstrap.sh quick              # Fast development build
-  ./bootstrap.sh strict             # Strict verification build
+  ./bootstrap.sh                    # Standard seed-rooted bootstrap
+  ./bootstrap.sh quick              # Fast seed verification
+  ./bootstrap.sh strict             # Strict seed-rooted verification
   ./bootstrap.sh -j 8 normal        # Use 8 parallel jobs
   ./bootstrap.sh --prefix ~/local   # Custom install prefix
 EOF
@@ -196,8 +196,12 @@ run_bootstrap_stages() {
   fi
 
   case "$mode" in
-    quick|normal)
-      make -C "$PROJECT_ROOT" --no-print-directory bootstrap-all-legacy
+    quick)
+      make -C "$PROJECT_ROOT" --no-print-directory seed-verify
+      make -C "$PROJECT_ROOT" --no-print-directory bootstrap-seed
+      ;;
+    normal)
+      make -C "$PROJECT_ROOT" --no-print-directory bootstrap-all
       ;;
     strict)
       make -C "$PROJECT_ROOT" --no-print-directory bootstrap-vitte-hard-gate
@@ -222,21 +226,12 @@ Bootstrap Plan:
     - check-tools
     - check-space
 
-  Phase 2: Stage 0
+  Phase 2: Seed trust root
     - verify toolchain/seed/vittec0.seed
     - install bin/vittec0
 
-  Phase 3: Stage 1
-    - compile toolchain/stage1/src/main.vit with bin/vittec0
-    - install bin/vittec1
-
-  Phase 4: Stage 2
-    - compile src/vitte/compiler/main.vit with bin/vittec1
-    - install bin/vittec and bin/vitte
-
-  Phase 5: Verification
-    - validate versions, artifact kinds, aliases, and hashes
-    - compare stage1/stage2 command surfaces
+  Phase 3: Verification
+    - validate seed contract and hashes
     - run bootstrap native snapshots in strict mode
 
 EOF

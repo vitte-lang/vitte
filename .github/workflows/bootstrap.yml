@@ -40,15 +40,10 @@ jobs:
         run: |
           mkdir -p target/reports
           make bootstrap-seed 2>&1 | tee target/reports/bootstrap-seed.log
-      - name: Run stage1 bootstrap
+      - name: Verify seed bootstrap contract
         run: |
           mkdir -p target/reports
-          toolchain/scripts/bootstrap/stage1.sh 2>&1 | tee target/reports/bootstrap-stage1.log
-      - name: Package stage1 artifact
-        run: |
-          mkdir -p target/artifacts/stage1/bin
-          cp bin/vittec1 target/artifacts/stage1/bin/vittec1
-          chmod +x target/artifacts/stage1/bin/vittec1
+          python3 tools/check_bootstrap_stage_chain.py --artifacts 2>&1 | tee target/reports/bootstrap-seed-contract.log
       - name: Upload bootstrap-minimal logs
         if: always()
         uses: actions/upload-artifact@v6
@@ -56,50 +51,36 @@ jobs:
           name: bootstrap-minimal-logs
           path: target/reports/bootstrap-*.log
           if-no-files-found: warn
-      - name: Upload stage1 compiler artifact
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: stage1-compiler
-          path: target/artifacts/stage1/bin/vittec1
-          if-no-files-found: error
 
   bootstrap-full:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        phase: [stage2, parity]
+        phase: [hard-gate, verify]
     needs: bootstrap-minimal
     continue-on-error: true
     name: bootstrap-full (${{ matrix.phase }})
     steps:
       - uses: actions/checkout@v5
-      - name: Download stage1 compiler artifact
-        uses: actions/download-artifact@v5
-        with:
-          name: stage1-compiler
-          path: bin
-      - name: Prepare stage1 compiler in bin
-        run: chmod +x bin/vittec1
-      - name: Run stage2 bootstrap (non-blocking)
-        if: matrix.phase == 'stage2'
+      - name: Run seed-rooted hard gate (non-blocking)
+        if: matrix.phase == 'hard-gate'
         run: |
           mkdir -p target/reports
-          VITTE_SELF_CHECK=1 toolchain/scripts/bootstrap/stage2.sh 2>&1 | tee target/reports/bootstrap-stage2.log
-      - name: Run bootstrap parity verification (non-blocking)
-        if: matrix.phase == 'parity'
+          make bootstrap-vitte-hard-gate 2>&1 | tee target/reports/bootstrap-hard-gate.log
+      - name: Run bootstrap verification (non-blocking)
+        if: matrix.phase == 'verify'
         run: |
           mkdir -p target/reports
-          make bootstrap-verify 2>&1 | tee target/reports/bootstrap-parity.log
+          make bootstrap-stage-chain-check 2>&1 | tee target/reports/bootstrap-seed-verify.log
       - name: Upload bootstrap-full logs
         if: always()
         uses: actions/upload-artifact@v6
         with:
           name: bootstrap-full-logs-${{ matrix.phase }}
           path: |
-            target/reports/bootstrap-stage2.log
-            target/reports/bootstrap-parity.log
+            target/reports/bootstrap-hard-gate.log
+            target/reports/bootstrap-seed-verify.log
           if-no-files-found: warn
 
   bootstrap-native-contract:
@@ -213,8 +194,7 @@ jobs:
         run: make build
       - name: Verify bootstrap chain
         run: make bootstrap-verify
-      - name: Verify stage2 self-check
+      - name: Verify seed trust root
         run: |
           make bootstrap-seed
-          toolchain/scripts/bootstrap/stage1.sh
-          VITTE_SELF_CHECK=1 toolchain/scripts/bootstrap/stage2.sh
+          python3 tools/check_bootstrap_stage_chain.py --artifacts

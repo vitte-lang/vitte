@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate the canonical stage0 -> stage1 -> stage2 bootstrap contract."""
+"""Validate the canonical vittec0.seed bootstrap trust root."""
 
 from __future__ import annotations
 
@@ -7,26 +7,24 @@ import argparse
 import hashlib
 import json
 import os
-import re
 import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_CONFIG = ROOT / "toolchain/bootstrap-config.json"
-VERSION_PATTERN = re.compile(r'^\s*const\s+VERSION_TEXT\s*:\s*string\s*=\s*"([^"]+)"', re.MULTILINE)
-MACHINE_MAGICS = (
-    b"\x7fELF",
-    b"MZ",
-    b"\xce\xfa\xed\xfe",
-    b"\xcf\xfa\xed\xfe",
-    b"\xfe\xed\xfa\xce",
-    b"\xfe\xed\xfa\xcf",
-    b"\xca\xfe\xba\xbe",
-)
+SEED_MANIFEST = ROOT / "toolchain/seed/manifest.txt"
 
 
 class ContractError(RuntimeError):
     pass
+
+
+def sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def load_config(path: Path) -> dict[str, object]:
@@ -39,6 +37,23 @@ def load_config(path: Path) -> dict[str, object]:
     return value
 
 
+def load_seed_manifest() -> dict[str, str]:
+    if not SEED_MANIFEST.is_file():
+        raise ContractError("missing toolchain/seed/manifest.txt")
+    result: dict[str, str] = {}
+    for line in SEED_MANIFEST.read_text(encoding="utf-8").splitlines():
+        if not line or line.startswith("#"):
+            continue
+        if "=" not in line:
+            raise ContractError(f"malformed seed manifest line: {line}")
+        key, value = line.split("=", 1)
+        result[key] = value
+    for key in ("source_file", "seed_file", "sha256", "version"):
+        if not result.get(key):
+            raise ContractError(f"seed manifest missing {key}")
+    return result
+
+
 def repo_path(value: object, field: str) -> Path:
     if not isinstance(value, str) or not value:
         raise ContractError(f"{field} must be a non-empty repository-relative path")
@@ -48,29 +63,7 @@ def repo_path(value: object, field: str) -> Path:
     return ROOT / relative
 
 
-def sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
-
-
-def source_version(path: Path) -> str:
-    match = VERSION_PATTERN.search(path.read_text(encoding="utf-8"))
-    if match is None:
-        raise ContractError(f"{path.relative_to(ROOT)}: VERSION_TEXT is missing")
-    return match.group(1)
-
-
-def require_script_markers(path: Path, markers: list[str]) -> None:
-    text = path.read_text(encoding="utf-8")
-    for marker in markers:
-        if marker not in text:
-            raise ContractError(f"{path.relative_to(ROOT)}: bootstrap marker drifted: {marker}")
-
-
-def validate_contract(config: dict[str, object]) -> list[dict[str, object]]:
+def validate_contract(config: dict[str, object]) -> dict[str, object]:
     if config.get("schema_version") != "1.0.0":
         raise ContractError("bootstrap config schema_version must be 1.0.0")
     project = config.get("project")
@@ -78,197 +71,56 @@ def validate_contract(config: dict[str, object]) -> list[dict[str, object]]:
     if not isinstance(project, dict) or not isinstance(bootstrap, dict):
         raise ContractError("bootstrap config requires project and bootstrap objects")
     stages = bootstrap.get("stages")
-    if not isinstance(stages, list) or len(stages) != 3 or not all(isinstance(stage, dict) for stage in stages):
-        raise ContractError("bootstrap chain must contain exactly stage0, stage1, and stage2")
-    typed_stages: list[dict[str, object]] = stages
-    if project.get("bootstrap_stages") != len(typed_stages):
-        raise ContractError("project.bootstrap_stages differs from the stage list")
-    if [stage.get("stage") for stage in typed_stages] != [0, 1, 2]:
-        raise ContractError("bootstrap stages must be ordered 0, 1, 2")
-    if [stage.get("name") for stage in typed_stages] != ["seed", "stage1", "stage2"]:
-        raise ContractError("bootstrap stage names must be seed, stage1, stage2")
+    if not isinstance(stages, list) or len(stages) != 1 or not isinstance(stages[0], dict):
+        raise ContractError("bootstrap chain must contain exactly one seed stage")
+    if project.get("bootstrap_stages") != 1:
+        raise ContractError("project.bootstrap_stages must be 1")
 
-    outputs: set[str] = set()
-    for index, stage in enumerate(typed_stages):
-        for field in ("compiler", "artifact", "output"):
-            repo_path(stage.get(field), f"bootstrap.stages[{index}].{field}")
-        sources = stage.get("sources")
-        if not isinstance(sources, list) or not sources:
-            raise ContractError(f"bootstrap.stages[{index}].sources must not be empty")
-        for source_index, source in enumerate(sources):
-            source_path = repo_path(source, f"bootstrap.stages[{index}].sources[{source_index}]")
-            if not source_path.is_file():
-                raise ContractError(f"missing bootstrap source: {source_path.relative_to(ROOT)}")
-        output = stage["output"]
-        if output in outputs:
-            raise ContractError(f"duplicate bootstrap output: {output}")
-        outputs.add(str(output))
-        version = stage.get("version")
-        if not isinstance(version, str) or source_version(repo_path(sources[0], "source")) != version:
-            raise ContractError(f"stage{index} VERSION_TEXT differs from bootstrap config")
-        if stage.get("artifact_kind") not in {"bootstrap-script", "machine-executable"}:
-            raise ContractError(f"stage{index} has an invalid artifact_kind")
-        if stage.get("verify") is not True:
-            raise ContractError(f"stage{index} verification must remain enabled")
-        aliases = stage.get("aliases", [])
-        if not isinstance(aliases, list) or not all(isinstance(alias, str) and alias for alias in aliases):
-            raise ContractError(f"stage{index} aliases must be an array of paths")
-        if index > 0 and stage.get("compiler") != typed_stages[index - 1].get("output"):
-            raise ContractError(f"stage{index} must be produced by stage{index - 1}")
-        if index > 0 and stage.get("self_hosted") is not True:
-            raise ContractError(f"stage{index} must remain marked as self-hosted")
+    stage = stages[0]
+    manifest = load_seed_manifest()
+    expected = {
+        "stage": 0,
+        "name": "seed",
+        "compiler": manifest["seed_file"],
+        "artifact": manifest["seed_file"],
+        "output": "bin/vittec0",
+        "version": manifest["version"],
+        "artifact_kind": "bootstrap-script",
+        "self_hosted": False,
+        "verify": True,
+    }
+    for key, value in expected.items():
+        if stage.get(key) != value:
+            raise ContractError(f"seed stage {key} drifted: expected {value!r}, found {stage.get(key)!r}")
 
-    stage0, stage1, stage2 = typed_stages
-    if stage0.get("artifact") != stage0.get("compiler"):
-        raise ContractError("stage0 compiler must be the verified seed artifact")
-    if stage2.get("artifact_kind") != "machine-executable":
-        raise ContractError("stage2 must remain a machine executable")
-    if stage2.get("bridge_policy") not in {"transitional-allowed", "forbidden"}:
-        raise ContractError("stage2 bridge_policy must be transitional-allowed or forbidden")
-    for field in ("provenance", "source_manifest", "producer_command"):
-        if field == "producer_command":
-            if not isinstance(stage2.get(field), str) or not stage2[field]:
-                raise ContractError(f"stage2 {field} must be defined")
-        else:
-            repo_path(stage2.get(field), f"stage2.{field}")
-
-    require_script_markers(
-        ROOT / "toolchain/scripts/bootstrap/stage1.sh",
-        [
-            'STAGE0_BIN="$BIN_DIR/vittec0"',
-            'STAGE1_BIN="$BIN_DIR/vittec1"',
-            'STAGE1_DIR="$ROOT_DIR/toolchain/stage1"',
-            'OUT_DIR="$ROOT_DIR/target/bootstrap/stage1"',
-        ],
-    )
-    require_script_markers(
-        ROOT / "toolchain/scripts/bootstrap/stage2.sh",
-        [
-            'STAGE1_BIN="$BIN_DIR/vittec1"',
-            'COMPILER_SOURCE_ROOT="$ROOT_DIR/src/vitte/compiler"',
-            'COMPILER_ENTRY_POINT="$COMPILER_SOURCE_ROOT/main.vit"',
-            'OUT_DIR="$ROOT_DIR/target/bootstrap/stage2"',
-            'VITTE_BACKEND_MODE="${VITTE_BACKEND_MODE:-native}"',
-            'VITTE_BACKEND_FALLBACK="${VITTE_BACKEND_FALLBACK:-0}"',
-        ],
-    )
-    bootstrap_entry = ROOT / "toolchain/bootstrap.sh"
-    require_script_markers(
-        bootstrap_entry,
-        [
-            'BUILD_DIR="${BUILD_DIR:-$PROJECT_ROOT/target/bootstrap}"',
-            'make -C "$PROJECT_ROOT" --no-print-directory bootstrap-all-legacy',
-            'make -C "$PROJECT_ROOT" --no-print-directory bootstrap-vitte-hard-gate',
-        ],
-    )
-    bootstrap_text = bootstrap_entry.read_text(encoding="utf-8")
-    for forbidden in ('cp "$PROJECT_ROOT/bin/vittec" "$BUILD_DIR/vittec0"', "toolchain/stage3", "toolchain/stage4"):
-        if forbidden in bootstrap_text:
-            raise ContractError(f"toolchain/bootstrap.sh retains legacy bootstrap path: {forbidden}")
-    return typed_stages
+    sources = stage.get("sources")
+    if sources != [manifest["source_file"]]:
+        raise ContractError("seed stage sources must match toolchain/seed/manifest.txt")
+    for field in ("compiler", "artifact", "output"):
+        repo_path(stage.get(field), f"bootstrap.stages[0].{field}")
+    source_path = repo_path(sources[0], "bootstrap.stages[0].sources[0]")
+    seed_path = repo_path(stage["artifact"], "bootstrap.stages[0].artifact")
+    if not source_path.is_file():
+        raise ContractError(f"missing seed source: {source_path.relative_to(ROOT)}")
+    if not seed_path.is_file():
+        raise ContractError(f"missing seed artifact: {seed_path.relative_to(ROOT)}")
+    if sha256(seed_path) != manifest["sha256"]:
+        raise ContractError("seed artifact checksum differs from manifest")
+    return stage
 
 
-def validate_artifact(path: Path, version: str, kind: str, label: str) -> None:
-    if not path.is_file() or not os.access(path, os.X_OK):
-        raise ContractError(f"{label} is missing or not executable: {path.relative_to(ROOT)}")
-    first = path.read_bytes()[:8]
-    if kind == "bootstrap-script" and not first.startswith(b"#!"):
-        raise ContractError(f"{label} must be a bootstrap script")
-    if kind == "machine-executable" and not any(first.startswith(magic) for magic in MACHINE_MAGICS):
-        raise ContractError(f"{label} must be a native machine executable")
-    result = subprocess.run([str(path), "--version"], cwd=ROOT, text=True, capture_output=True, check=False)
+def validate_artifacts(stage: dict[str, object]) -> None:
+    artifact = repo_path(stage["artifact"], "seed.artifact")
+    output = repo_path(stage["output"], "seed.output")
+    version = str(stage["version"])
+    if not output.is_file() or not os.access(output, os.X_OK):
+        raise ContractError(f"installed seed is missing or not executable: {output.relative_to(ROOT)}")
+    if sha256(artifact) != sha256(output):
+        raise ContractError("installed bin/vittec0 differs from toolchain/seed/vittec0.seed")
+    result = subprocess.run([str(output), "--version"], cwd=ROOT, text=True, capture_output=True, check=False)
     actual = (result.stdout + result.stderr).strip()
     if result.returncode != 0 or actual != version:
-        raise ContractError(f"{label} version mismatch: expected {version!r}, found {actual!r}")
-
-
-def validate_source_manifest(path: Path, source_root: Path) -> str:
-    if not path.is_file():
-        raise ContractError(f"missing stage2 source manifest: {path.relative_to(ROOT)}")
-    entries: dict[str, str] = {}
-    for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
-        parts = line.split("  ", 1)
-        if len(parts) != 2 or not re.fullmatch(r"[0-9a-f]{64}", parts[0]):
-            raise ContractError(f"{path.relative_to(ROOT)}:{line_number}: malformed source hash")
-        if parts[1] in entries:
-            raise ContractError(f"{path.relative_to(ROOT)}:{line_number}: duplicate source path")
-        entries[parts[1]] = parts[0]
-    expected = {
-        source.relative_to(ROOT).as_posix()
-        for source in source_root.rglob("*.vit")
-        if source.is_file()
-    }
-    if set(entries) != expected:
-        missing = sorted(expected - set(entries))
-        extra = sorted(set(entries) - expected)
-        raise ContractError(f"stage2 source manifest drifted: missing={missing} extra={extra}")
-    for relative, expected_hash in entries.items():
-        if sha256(ROOT / relative) != expected_hash:
-            raise ContractError(f"stage2 source hash mismatch: {relative}")
-    return sha256(path)
-
-
-def validate_stage2_provenance(stage1: dict[str, object], stage2: dict[str, object], bridge_present: bool) -> None:
-    provenance_path = repo_path(stage2["provenance"], "stage2.provenance")
-    try:
-        provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        raise ContractError(f"cannot load stage2 provenance: {exc}") from exc
-    if not isinstance(provenance, dict):
-        raise ContractError("stage2 provenance must be an object")
-    producer = repo_path(stage2["compiler"], "stage2.compiler")
-    source_entry = repo_path(stage2["sources"][0], "stage2.sources[0]")
-    source_root = ROOT / "src/vitte/compiler"
-    source_manifest = repo_path(stage2["source_manifest"], "stage2.source_manifest")
-    artifact = repo_path(stage2["artifact"], "stage2.artifact")
-    expected = {
-        "schema": "vitte.bootstrap.stage-provenance",
-        "schema_version": "1.0.0",
-        "stage": 2,
-        "producer": stage2["compiler"],
-        "producer_version": stage1["version"],
-        "producer_sha256": sha256(producer),
-        "source_root": "src/vitte/compiler",
-        "source_entry": stage2["sources"][0],
-        "source_entry_sha256": sha256(source_entry),
-        "source_manifest": stage2["source_manifest"],
-        "source_manifest_sha256": validate_source_manifest(source_manifest, source_root),
-        "command": stage2["producer_command"],
-        "backend_mode": "native",
-        "bootstrap_bridge": bridge_present,
-        "artifact": stage2["artifact"],
-        "artifact_sha256": sha256(artifact),
-    }
-    if provenance != expected:
-        differing = sorted(key for key in set(provenance) | set(expected) if provenance.get(key) != expected.get(key))
-        raise ContractError(f"stage2 provenance differs from current inputs: {differing}")
-
-
-def validate_artifacts(stages: list[dict[str, object]]) -> bool:
-    stage2_bridge_present = False
-    for index, stage in enumerate(stages):
-        artifact = repo_path(stage["artifact"], f"stage{index}.artifact")
-        output = repo_path(stage["output"], f"stage{index}.output")
-        version = str(stage["version"])
-        kind = str(stage["artifact_kind"])
-        validate_artifact(artifact, version, kind, f"stage{index} artifact")
-        validate_artifact(output, version, kind, f"stage{index} installed compiler")
-        if sha256(artifact) != sha256(output):
-            raise ContractError(f"stage{index} installed compiler differs from its build artifact")
-        for alias_index, alias in enumerate(stage.get("aliases", [])):
-            alias_path = repo_path(alias, f"stage{index}.aliases[{alias_index}]")
-            validate_artifact(alias_path, version, kind, f"stage{index} alias")
-            if sha256(output) != sha256(alias_path):
-                raise ContractError(f"stage{index} alias differs from the installed compiler")
-        if kind == "machine-executable":
-            sidecar = Path(str(artifact) + ".bootstrap-bridge")
-            bridge_present = sidecar.exists() or b"vitte-bootstrap-payload-bridge" in artifact.read_bytes()
-            if stage.get("bridge_policy") == "forbidden" and bridge_present:
-                raise ContractError(f"stage{index} is a bootstrap bridge, not a native compiler")
-            if index == 2:
-                stage2_bridge_present = bridge_present
-    validate_stage2_provenance(stages[1], stages[2], stage2_bridge_present)
-    return stage2_bridge_present
+        raise ContractError(f"installed seed version mismatch: expected {version!r}, found {actual!r}")
 
 
 def main() -> int:
@@ -278,17 +130,14 @@ def main() -> int:
     args = parser.parse_args()
     config_path = args.config if args.config.is_absolute() else ROOT / args.config
     try:
-        stages = validate_contract(load_config(config_path))
-        stage2_bridge_present = False
+        stage = validate_contract(load_config(config_path))
         if args.artifacts:
-            stage2_bridge_present = validate_artifacts(stages)
+            validate_artifacts(stage)
     except ContractError as exc:
-        print(f"[bootstrap-stage-chain][error] {exc}")
+        print(f"[bootstrap-seed-chain][error] {exc}")
         return 1
     suffix = " + artifacts" if args.artifacts else ""
-    if stage2_bridge_present:
-        suffix += " (stage2 transitional bridge)"
-    print(f"[bootstrap-stage-chain] ok: stage0 -> stage1 -> stage2{suffix}")
+    print(f"[bootstrap-seed-chain] ok: vittec0.seed trust root{suffix}")
     return 0
 
 

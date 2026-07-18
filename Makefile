@@ -615,14 +615,9 @@ stage0-check: seed-check
 stage0-gate: seed-gate
 
 .PHONY: bootstrap-all-legacy
-bootstrap-all-legacy: bootstrap-stage-chain-check
-	@scripts/seed/install_seed.sh
-	@toolchain/scripts/bootstrap/stage1.sh
-	@VITTE_SELF_CHECK=0 VITTE_STAGE2_ALLOW_BRIDGE_ARTIFACT=1 toolchain/scripts/bootstrap/stage2.sh
-	@cp bin/vittec bin/vitte
-	@chmod +x bin/vitte
-	@python3 tools/check_bootstrap_stage_chain.py --artifacts
-	@echo "[bootstrap-all-legacy] installed bin/vitte from stage2"
+bootstrap-all-legacy:
+	@echo "[bootstrap-all-legacy][error] legacy stage1/stage2 bootstrap is disabled; use make bootstrap-all" >&2
+	@exit 1
 
 .PHONY: bootstrap-all
 bootstrap-all:
@@ -730,11 +725,10 @@ bootstrap-migration-status:
 	check_ok "Phase0: seed-gate passes" $(MAKE) --no-print-directory seed-gate; \
 	check_ok "Phase0: bootstrap-all passes" $(MAKE) --no-print-directory bootstrap-all; \
 	check_ok "Phase0: bootstrap-verify passes" $(MAKE) --no-print-directory bootstrap-verify; \
-	check_file "Phase1: stage1 Vitte entry exists" "toolchain/stage1/src/main.vit"; \
-	check_absent "Phase1: stage1 host seed removed" "toolchain/stage1/src/main.c"; \
-	check_file "Phase2: stage2 Vitte entry exists" "toolchain/stage2/src/main.vit"; \
-	check_absent "Phase2: stage2 host source removed" "toolchain/stage2/src/main.c"; \
-	check_ok "Phase2: stage2 self-check enabled" env VITTE_SELF_CHECK=1 toolchain/scripts/bootstrap/stage2.sh; \
+	check_ok "Phase1: seed chain contract passes" python3 tools/check_bootstrap_stage_chain.py; \
+	check_ok "Phase2: seed artifact contract passes" python3 tools/check_bootstrap_stage_chain.py --artifacts; \
+	check_absent "Legacy: stage1 host seed removed" "toolchain/stage1/src/main.c"; \
+	check_absent "Legacy: stage2 host source removed" "toolchain/stage2/src/main.c"; \
 	check_file "Tracking: migration checklist present" "docs/bootstrap_migration_checklist.md"; \
 	printf '[bootstrap-migration-status] summary ok=%s warn=%s\n' "$$ok" "$$warn"; \
 	test "$$warn" -eq 0
@@ -1866,7 +1860,7 @@ macos-pkg-entry:
 macos-pkg-bin: macos-pkg-entry
 	@uname -s | grep -qx 'Darwin' || { echo "[macos-pkg-bin][error] target requires macOS"; exit 1; }
 	@command -v cc >/dev/null 2>&1 || { echo "[macos-pkg-bin][error] missing cc"; exit 1; }
-	@test -x bin/vitte || $(MAKE) --no-print-directory bootstrap-all-legacy
+	@test -x bin/vitte || $(MAKE) --no-print-directory bootstrap-all
 	@CC=cc bin/vitte build "$(MACOS_PKG_ENTRY)" -o "$(MACOS_PKG_DIR)/vitte"
 	@cp "$(MACOS_PKG_DIR)/vitte" "$(MACOS_PKG_DIR)/vittec"
 	@chmod 755 "$(MACOS_PKG_DIR)/vitte" "$(MACOS_PKG_DIR)/vittec"
@@ -1876,7 +1870,7 @@ macos-universal-bin: macos-pkg-entry
 	@uname -s | grep -qx 'Darwin' || { echo "[macos-universal-bin][error] target requires macOS"; exit 1; }
 	@command -v lipo >/dev/null 2>&1 || { echo "[macos-universal-bin][error] missing lipo"; exit 1; }
 	@command -v cc >/dev/null 2>&1 || { echo "[macos-universal-bin][error] missing cc"; exit 1; }
-	@test -x bin/vitte || $(MAKE) --no-print-directory bootstrap-all-legacy
+	@test -x bin/vitte || $(MAKE) --no-print-directory bootstrap-all
 	@test -f "$(MACOS_PKG_ENTRY)" || { echo "[macos-universal-bin][error] missing source $(MACOS_PKG_ENTRY)"; exit 1; }
 	@$(MKDIR) "$(MACOS_ARM64_DIR)" "$(MACOS_X86_64_DIR)" "$(MACOS_UNIVERSAL_DIR)" "$(MACOS_CC_WRAPPER_DIR)"
 	@printf '%s\n' '#!/usr/bin/env sh' 'exec cc -arch arm64 "$$@"' > "$(MACOS_CC_WRAPPER_DIR)/cc-arm64"
@@ -2096,11 +2090,11 @@ help:
 	@echo "  make core-semantic-share-snapshots validate share-focused semantic diagnostics"
 	@echo "  make core-semantic-entry-success validate entry-focused passing semantic examples"
 	@echo "  make core-semantic-entry-snapshots validate entry-focused semantic diagnostics"
-	@echo "  make bootstrap-all seed -> stage1 -> stage2 -> install bin/vitte"
+	@echo "  make bootstrap-all verify vittec0.seed trust root and bootstrap-native snapshots"
 	@echo "  make bootstrap-native-drift-check ensure native bootstrap changes carry matching snapshots"
 	@echo "  make bootstrap-native-contract run seed verification, native snapshots, and bootstrap verification"
 	@echo "  make bootstrap-native-fast-contract run fast bootstrap-native checks without rebuilding stage chain"
-	@echo "  make bootstrap-source-coverage-check verify seed/stage2 exercise current bootstrap-native forms"
+	@echo "  make bootstrap-source-coverage-check verify seed exercises current bootstrap-native forms"
 	@echo "  make bootstrap-contracts-index-check verify bootstrap contract docs paths and targets"
 	@echo "  make bootstrap-posix-smoke run POSIX shell syntax and env smoke checks for bootstrap artifacts"
 	@echo "  make bootstrap-parity compare vittec1/vitte check and parse output on bootstrap subset"
