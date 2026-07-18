@@ -19,14 +19,23 @@ expect amd64 normalize-arch AMD64
 expect arm64 normalize-arch aarch64
 expect i386 normalize-arch i686
 expect macos normalize-os Darwin
-expect freebsd normalize-os DragonFly
+expect dragonfly normalize-os DragonFly
+expect openbsd normalize-os OpenBSD
+expect netbsd normalize-os NetBSD
 expect solaris normalize-os SunOS
 
 $MATRIX lookup linux x86_64 deb >/dev/null
 $MATRIX lookup macos arm64 dmg >/dev/null
 $MATRIX lookup windows amd64 exe >/dev/null
+$MATRIX lookup windows i386 exe >/dev/null
 $MATRIX lookup freebsd amd64 pkg >/dev/null
+$MATRIX lookup freebsd i386 pkg >/dev/null
+$MATRIX lookup openbsd i386 tar.xz >/dev/null
+$MATRIX lookup netbsd amd64 tar.xz >/dev/null
+$MATRIX lookup dragonfly i386 tar.xz >/dev/null
 $MATRIX lookup solaris amd64 pkg >/dev/null
+$MATRIX lookup solaris i386 pkg >/dev/null
+$MATRIX lookup macos macos2006 config >/dev/null
 
 if $MATRIX lookup windows arm64 exe >/dev/null 2>&1; then
   echo '[package-platform-matrix][error] unsupported Windows arm64 tuple accepted' >&2
@@ -38,9 +47,9 @@ if $MATRIX lookup solaris arm64 pkg >/dev/null 2>&1; then
 fi
 
 rows=$($MATRIX list | wc -l | tr -d ' ')
-[ "$rows" -eq 13 ] || {
-  echo "[package-platform-matrix][error] expected 13 matrix rows, got $rows" >&2
+[ "$rows" -eq 25 ] || {
+  echo "[package-platform-matrix][error] expected 25 matrix rows, got $rows" >&2
   exit 1
 }
 
-echo '[package-platform-matrix] OK rows=13'
+echo '[package-platform-matrix] OK rows=25'

@@ -15,7 +15,10 @@ normalize_os() {
     linux|gnu/linux) printf 'linux\n' ;;
     darwin|macos|macosx|osx) printf 'macos\n' ;;
     windows|windows_nt|mingw*|msys*|cygwin*) printf 'windows\n' ;;
-    freebsd|dragonfly) printf 'freebsd\n' ;;
+    freebsd) printf 'freebsd\n' ;;
+    openbsd) printf 'openbsd\n' ;;
+    netbsd) printf 'netbsd\n' ;;
+    dragonfly) printf 'dragonfly\n' ;;
     sunos|solaris) printf 'solaris\n' ;;
     *) die "unsupported operating system: $1" ;;
   esac
@@ -28,6 +31,7 @@ normalize_arch() {
     arm64|aarch64) printf 'arm64\n' ;;
     i386|i486|i586|i686|x86) printf 'i386\n' ;;
     universal|universal2) printf 'universal\n' ;;
+    legacy-2006|macos2006) printf 'legacy-2006\n' ;;
     *) die "unsupported processor architecture: $1" ;;
   esac
 }
