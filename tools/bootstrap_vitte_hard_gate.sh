@@ -101,16 +101,12 @@ EOF
 echo "[bootstrap-vitte] compatibility check via $CHECKER"
 "$CHECKER" check "$COMPAT_SRC"
 
-echo "[bootstrap-vitte] compiling native bootstrap gate"
-cat > "$OUT" <<'EOF'
-#!/usr/bin/env sh
-exit 0
-EOF
-chmod +x "$OUT"
-[ -x "$OUT" ] || { echo "[bootstrap-vitte][error] failed to produce native gate artifact" >&2; exit 3; }
+echo "[bootstrap-vitte] compiling bootstrap entry with seed"
+"$CHECKER" build-native --src "$SRC" --out "$OUT"
+tools/require_native_artifact.sh "$OUT" compiler
 
 echo "[bootstrap-vitte] executing native hard gate invariants"
-sh "$OUT"
+"$OUT" --help >/dev/null
 
 step_start() { printf '[bootstrap-vitte][step] %s\n' "$1"; }
 t0="$(date +%s)"

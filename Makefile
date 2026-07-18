@@ -463,9 +463,12 @@ bootstrap-source-coverage-check:
 selfhost-subset-check:
 	@tools/check_selfhost_subset.sh
 
-.PHONY: bootstrap-native-drift-check
+.PHONY: bootstrap-native-drift-check native-artifact-gate-test
 bootstrap-native-drift-check:
 	@tools/check_bootstrap_native_drift.sh
+
+native-artifact-gate-test:
+	@tools/native_artifact_gate_test.sh
 
 .PHONY: posix-seed-shell-check
 posix-seed-shell-check:
