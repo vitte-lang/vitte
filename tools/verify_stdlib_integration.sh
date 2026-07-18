@@ -6,10 +6,10 @@ cd "$ROOT_DIR"
 
 if [ -x "bin/vitte" ]; then
   VITTE_BIN="bin/vitte"
-elif [ -x "bin/vittec1" ]; then
-  VITTE_BIN="bin/vittec1"
+elif [ -x "bin/vittec0" ]; then
+  VITTE_BIN="bin/vittec0"
 else
-  echo "[verify-stdlib][error] missing compiler binary (bin/vitte or bin/vittec1)" >&2
+  echo "[verify-stdlib][error] missing compiler binary (bin/vitte or bin/vittec0)" >&2
   exit 1
 fi
 
