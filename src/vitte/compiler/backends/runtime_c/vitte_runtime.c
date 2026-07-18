@@ -227,7 +227,7 @@ int32_t vitte_host_delete_file(VitteString path) {
   if (native_path == NULL) {
     return -1;
   }
-  result = remove(native_path) == 0 ? 0 : -1;
+  result = unlink(native_path) == 0 ? 0 : -1;
   free(native_path);
   return result;
 }

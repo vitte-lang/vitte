@@ -46,8 +46,10 @@ int main(int argc, char **argv) {
   VitteString panic_message = {"expected probe panic", 20};
   char missing_path[128];
   char destination_path[128];
+  char directory_path[128];
   VitteString missing;
   VitteString destination;
+  VitteString directory;
   VitteString original = {"keep", 4};
   VitteString preserved;
   VitteSliceI32 oversized_numbers = {NULL, SIZE_MAX};
@@ -71,12 +73,16 @@ int main(int argc, char **argv) {
 
   snprintf(missing_path, sizeof(missing_path), "/tmp/vitte-runtime-missing-%ld", (long)getpid());
   snprintf(destination_path, sizeof(destination_path), "/tmp/vitte-runtime-destination-%ld", (long)getpid());
+  snprintf(directory_path, sizeof(directory_path), "/tmp/vitte-runtime-directory-%ld", (long)getpid());
   missing.data = missing_path;
   missing.len = strlen(missing_path);
   destination.data = destination_path;
   destination.len = strlen(destination_path);
+  directory.data = directory_path;
+  directory.len = strlen(directory_path);
   unlink(missing_path);
   unlink(destination_path);
+  rmdir(directory_path);
   CHECK(vitte_host_write_file(destination, original) == 4, 22);
   CHECK(vitte_host_copy_file(destination, destination) == -1, 26);
   preserved = vitte_host_read_file(destination);
@@ -86,6 +92,10 @@ int main(int argc, char **argv) {
   preserved = vitte_host_read_file(destination);
   CHECK(preserved.len == 4 && memcmp(preserved.data, "keep", 4) == 0, 24);
   CHECK(vitte_host_delete_file(destination) == 0, 25);
+  CHECK(vitte_host_mkdir_all(directory) == 0, 52);
+  CHECK(vitte_host_delete_file(directory) == -1, 53);
+  CHECK(vitte_host_is_directory(directory) == 1, 54);
+  CHECK(vitte_host_delete_directory(directory) == 0, 55);
 
   vitte_set_args(argc, (const char **)argv);
   args = cli_args();
