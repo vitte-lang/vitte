@@ -18,19 +18,19 @@ const ERR: int = 1
 
 const NULL: int = 0
 
-const I8_MIN: i8 = 128
+const I8_MIN: i8 = -128
 const I8_MAX: i8 = 127
 const U8_MAX: u8 = 255
 
-const I16_MIN: i16 = 32768
+const I16_MIN: i16 = -32768
 const I16_MAX: i16 = 32767
 const U16_MAX: u16 = 65535
 
-const I32_MIN: i32 = 2147483648
+const I32_MIN: i32 = -2147483648
 const I32_MAX: i32 = 2147483647
 const U32_MAX: u32 = 4294967295
 
-const I64_MIN: i64 = 9223372036854775808
+const I64_MIN: i64 = -9223372036854775808
 const I64_MAX: i64 = 9223372036854775807
 
 const USIZE_BITS: int = 64
@@ -549,7 +549,8 @@ proc is_aligned(value: usize, align: usize) -> bool {
 }
 
 proc ptr_null() -> usize {
-  give 0
+  let null_ptr: usize = 0
+  give null_ptr
 }
 
 proc ptr_is_null(ptr: usize) -> bool {
@@ -575,11 +576,13 @@ proc ptr_diff(a: usize, b: usize) -> isize {
 }
 
 proc bit(n: int) -> usize {
+  let zero: usize = 0
   if n < 0 {
-    give 0
+    give zero
   }
 
-  give 1 << n
+  let one: usize = 1
+  give one << n
 }
 
 proc bit_is_set(value: usize, n: int) -> bool {
@@ -1256,7 +1259,8 @@ proc span_new(start: usize, end: usize) -> Span {
 
 proc span_len(s: Span) -> usize {
   if s.end <= s.start {
-    give 0
+    let empty_len: usize = 0
+    give empty_len
   }
 
   give s.end - s.start
