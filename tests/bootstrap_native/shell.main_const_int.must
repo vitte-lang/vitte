@@ -2835,17 +2835,6 @@ detect_professional_diagnostic() {
         code_line = strip_strings(raw)
         code_trim = trim(code_line)
         source_code_line[FNR] = code_line
-        if (code_trim ~ /^let[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*:[ \t]*string[ \t]*=[ \t]*S([ \t]*[+][ \t]*)?$/) {
-            string_binding = code_trim
-            sub(/^let[ \t]+/, "", string_binding)
-            sub(/[ \t]*:.*$/, "", string_binding)
-            remember_decl(string_binding, "string", FNR, index(raw, string_binding))
-            next
-        }
-        if (code_trim ~ /^S([ \t]*[+][ \t]*)?$/) {
-            next
-        }
-
         if (skip_doc) {
             if (line ~ />>>/) skip_doc = 0
             next
@@ -2871,6 +2860,27 @@ detect_professional_diagnostic() {
                 block_comment_line = FNR
                 block_comment_col = start_comment
             }
+        }
+
+        if (raw ~ /^[^"]*=[ \t]*"[^"]*$/) {
+            col = index(raw, "\"")
+            emit("LEX_E_UNTERMINATED_STRING", "error", "lexer",
+                "unterminated string literal",
+                FNR, col, length(raw) + 1, raw,
+                "string starts here but is not closed",
+                "opening quote is at byte " col "; strings must end on the same line in the bootstrap checker",
+                "add the closing quote")
+        }
+
+        if (code_trim ~ /^let[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*:[ \t]*string[ \t]*=[ \t]*S([ \t]*[+][ \t]*)?$/) {
+            string_binding = code_trim
+            sub(/^let[ \t]+/, "", string_binding)
+            sub(/[ \t]*:.*$/, "", string_binding)
+            remember_decl(string_binding, "string", FNR, index(raw, string_binding))
+            next
+        }
+        if (code_trim ~ /^S([ \t]*[+][ \t]*)?$/) {
+            next
         }
 
         if (line ~ /^(use|import)[ \t]+/) {
@@ -3048,16 +3058,6 @@ detect_professional_diagnostic() {
                 "unsupported character @",
                 "invalid character @ appears at byte " col,
                 "remove @ or replace it with valid Vitte syntax")
-        }
-
-        if (raw ~ /^[^"]*=[ \t]*"[^"]*$/) {
-            col = index(raw, "\"")
-            emit("LEX_E_UNTERMINATED_STRING", "error", "lexer",
-                "unterminated string literal",
-                FNR, col, length(raw) + 1, raw,
-                "string starts here but is not closed",
-                "opening quote is at byte " col "; strings must end on the same line in the bootstrap checker",
-                "add the closing quote")
         }
 
         if (index(code_line, "'\''") > 0) {

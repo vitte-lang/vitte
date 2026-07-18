@@ -305,6 +305,15 @@ check_bootstrap_namespace_uses_general_checker() {
     [ ! -s "$TMP_DIR/bootstrap-namespace.check.err" ] || die "bootstrap namespace was routed to the restricted seed checker"
 }
 
+check_unterminated_string_diagnostic() {
+    log "checking unterminated string diagnostic"
+    fixture="$ROOT_DIR/tests/diag_snapshots/unterminated_string.vit"
+    if "$BIN_DIR/vittec0" check "$fixture" > "$TMP_DIR/unterminated-string.check.out" 2> "$TMP_DIR/unterminated-string.check.err"; then
+        die "unterminated string unexpectedly passed"
+    fi
+    grep -F "LEX_E_UNTERMINATED_STRING" "$TMP_DIR/unterminated-string.check.err" >/dev/null || die "unterminated string missed lexer diagnostic"
+}
+
 check_comment_markers_in_strings() {
     log "checking comment markers inside strings"
     fixture="$SNAP_DIR/string_comment_markers.vit"
@@ -490,6 +499,7 @@ check_call_result_cast_type
 check_call_result_projection_type
 check_call_result_comparison_type
 check_bootstrap_namespace_uses_general_checker
+check_unterminated_string_diagnostic
 check_comment_markers_in_strings
 check_full_compiler_modern_helpers
 check_native_user_build
