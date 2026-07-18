@@ -59,6 +59,10 @@ int32_t vitte_runtime_panic_boundary_reset(void) {
 }
 
 static char *vitte_string_to_c(VitteString input) {
+  if (input.data == NULL && input.len > 0) {
+    vitte_note_panic(3);
+    return NULL;
+  }
   char *out = (char *)malloc(input.len + 1);
   if (out == NULL) {
     vitte_note_panic(3);
@@ -127,6 +131,10 @@ VitteString vitte_host_read_file(VitteString path) {
 }
 
 static int32_t vitte_host_write_mode(VitteString path, VitteString content, const char *mode) {
+  if (content.data == NULL && content.len > 0) {
+    vitte_note_panic(3);
+    return -1;
+  }
   char *native_path = vitte_string_to_c(path);
   if (native_path == NULL) {
     return -1;
@@ -835,6 +843,11 @@ VitteSliceString vitte_slice_push_string(VitteSliceString base, VitteString valu
 }
 
 VitteString vitte_string_concat(VitteString a, VitteString b) {
+  if ((a.data == NULL && a.len > 0) || (b.data == NULL && b.len > 0)) {
+    vitte_note_panic(3);
+    VitteString empty = {NULL, 0};
+    return empty;
+  }
   if (a.len > SIZE_MAX - b.len || a.len + b.len == SIZE_MAX) {
     vitte_note_panic(3);
     VitteString empty = {NULL, 0};

@@ -54,6 +54,7 @@ int main(int argc, char **argv) {
   VitteString oversized_string = {NULL, SIZE_MAX};
   VitteString empty_string = {NULL, 0};
   VitteString rejected_string;
+  VitteString invalid_string = {NULL, 1};
 
   CHECK(strcmp(vitte_c_abi_version(), "1.0.0") == 0, 10);
   CHECK(vitte_host_runtime_available() == 1, 11);
@@ -105,6 +106,17 @@ int main(int argc, char **argv) {
   CHECK(vitte_runtime_panic_boundary_code() == 3, 32);
   CHECK(vitte_runtime_panic_boundary_end() == 0, 33);
   CHECK(vitte_runtime_panic_boundary_reset() == 0, 34);
+
+  CHECK(vitte_runtime_panic_boundary_begin() == 1, 35);
+  CHECK(vitte_host_file_exists(invalid_string) == 0, 36);
+  CHECK(vitte_host_write_file(destination, invalid_string) == -1, 37);
+  rejected_string = vitte_string_concat(invalid_string, empty_string);
+  CHECK(rejected_string.data == NULL && rejected_string.len == 0, 38);
+  CHECK(vitte_host_file_exists(destination) == 0, 39);
+  CHECK(vitte_runtime_panic_boundary_triggered() == 1, 40);
+  CHECK(vitte_runtime_panic_boundary_code() == 3, 41);
+  CHECK(vitte_runtime_panic_boundary_end() == 0, 42);
+  CHECK(vitte_runtime_panic_boundary_reset() == 0, 43);
 
   free(numbers.data);
   free((void *)joined.data);
