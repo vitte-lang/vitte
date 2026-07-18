@@ -81,13 +81,13 @@ def step_result(name: str, command: list[str], output: Path) -> dict[str, object
     artifact = artifact_state(output)
     version_result = run([str(output), "--version"]) if artifact["executable"] else None
     version = "" if version_result is None else (version_result.stdout + version_result.stderr).strip()
-    version_ok = version_result is not None and version_result.returncode == 0 and version.startswith("vittec2 ")
+    version_ok = version_result is not None and version_result.returncode == 0 and version.startswith("vittec ")
     return {
         "name": name,
         "returncode": completed.returncode,
         "artifact": artifact,
         "version": version,
-        "expected_version_prefix": "vittec2 ",
+        "expected_version_prefix": "vittec ",
         "version_ok": version_ok,
         "ok": completed.returncode == 0 and artifact["executable"] and version_ok,
     }
