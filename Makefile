@@ -680,23 +680,12 @@ bootstrap-migration-status:
 			warn=$$((warn+1)); \
 		fi; \
 	}; \
-	check_absent() { \
-		label="$$1"; path="$$2"; \
-		if [ ! -e "$$path" ]; then \
-			printf '[bootstrap-migration-status] OK   %s\n' "$$label"; \
-			ok=$$((ok+1)); \
-		else \
-			printf '[bootstrap-migration-status] WARN %s\n' "$$label"; \
-			warn=$$((warn+1)); \
-		fi; \
-	}; \
 	check_ok "Phase0: seed-gate passes" $(MAKE) --no-print-directory seed-gate; \
 	check_ok "Phase0: bootstrap-all passes" $(MAKE) --no-print-directory bootstrap-all; \
 	check_ok "Phase0: bootstrap-verify passes" $(MAKE) --no-print-directory bootstrap-verify; \
 	check_ok "Phase1: seed chain contract passes" python3 tools/check_bootstrap_stage_chain.py; \
 	check_ok "Phase2: seed artifact contract passes" python3 tools/check_bootstrap_stage_chain.py --artifacts; \
-	check_absent "Legacy: stage1 host seed removed" "toolchain/stage1/src/main.c"; \
-	check_absent "Legacy: stage2 host source removed" "toolchain/stage2/src/main.c"; \
+	check_ok "Host-language bootstrap sources absent" $(MAKE) --no-print-directory vitte-source-audit; \
 	check_file "Tracking: migration checklist present" "docs/bootstrap_migration_checklist.md"; \
 	printf '[bootstrap-migration-status] summary ok=%s warn=%s\n' "$$ok" "$$warn"; \
 	test "$$warn" -eq 0

@@ -7,7 +7,7 @@ cd "$ROOT_DIR"
 expect_root='src/vitte/compiler'
 expect_entry='src/vitte/compiler/main.vit'
 
-check_stage_file() {
+check_entry_file() {
   f="$1"
   root_value=$(awk -F= '/^[[:space:]]*const[[:space:]]+COMPILER_SOURCE_ROOT[[:space:]]*:/ {gsub(/^[[:space:]]*"|"[[:space:]]*$/, "", $2); gsub(/^[[:space:]]+|[[:space:]]+$/, "", $2); print $2; exit}' "$f")
   entry_value=$(awk -F= '/^[[:space:]]*const[[:space:]]+COMPILER_ENTRY_POINT[[:space:]]*:/ {gsub(/^[[:space:]]*"|"[[:space:]]*$/, "", $2); gsub(/^[[:space:]]+|[[:space:]]+$/, "", $2); print $2; exit}' "$f")
@@ -21,14 +21,7 @@ check_stage_file() {
   }
 }
 
-check_stage_file src/vitte/compiler/main.vit
-
-legacy_entries=$(rg -n "COMPILER_ENTRY_POINT[[:space:]]*:[[:space:]]*string[[:space:]]*=" toolchain/stage1 toolchain/stage2 toolchain/stage3 toolchain/stage4 -S 2>/dev/null || true)
-if [ -n "$legacy_entries" ]; then
-  echo "[compiler-entry-lock][error] legacy stage compiler entry constants found:" >&2
-  echo "$legacy_entries" >&2
-  exit 1
-fi
+check_entry_file src/vitte/compiler/main.vit
 
 extra_entries=$(rg -n "COMPILER_ENTRY_POINT[[:space:]]*:[[:space:]]*string[[:space:]]*=" src toolchain tools -S | rg -v "src/vitte/compiler/driver/compiler.vit|src/vitte/compiler/main.vit" || true)
 if [ -n "$extra_entries" ]; then
