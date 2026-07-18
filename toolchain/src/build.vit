@@ -10,8 +10,8 @@ status: bootstrap-vitte
 # ============================================================
 # Bootstrap Toolchain Build Module
 # ============================================================
-# Orchestrates multi-stage bootstrap compilation and manages
-# build artifacts, caching, and incremental builds.
+# Describes the seed-rooted bootstrap and manages build artifacts,
+# caching, and incremental builds.
 
 form BuildStage {
   stage_number: int,
@@ -70,68 +70,12 @@ proc init_seed_stage() -> BuildStage {
   give BuildStage {
     stage_number: 0,
     stage_name: "seed",
-    description: "Initial bootstrap seed from C",
-    input_compiler: "cc",
+    description: "Verified bootstrap trust root",
+    input_compiler: "toolchain/seed/vittec0.seed",
     input_sources: ["toolchain/seed/src/main.vit"],
-    output_compiler: "build/vittec0",
+    output_compiler: "bin/vittec0",
     is_self_hosted: false,
     verification_required: true
-  }
-}
-
-# Initialize build stage for stage1
-proc init_stage1() -> BuildStage {
-  give BuildStage {
-    stage_number: 1,
-    stage_name: "stage1",
-    description: "First self-hosting compilation",
-    input_compiler: "build/vittec0",
-    input_sources: ["toolchain/stage1/src/main.vit"],
-    output_compiler: "build/vittec1",
-    is_self_hosted: true,
-    verification_required: true
-  }
-}
-
-# Initialize build stage for stage2
-proc init_stage2() -> BuildStage {
-  give BuildStage {
-    stage_number: 2,
-    stage_name: "stage2",
-    description: "Second self-hosting compilation for verification",
-    input_compiler: "build/vittec1",
-    input_sources: ["toolchain/stage2/src/main.vit"],
-    output_compiler: "build/vittec2",
-    is_self_hosted: true,
-    verification_required: true
-  }
-}
-
-# Initialize build stage for stage3
-proc init_stage3() -> BuildStage {
-  give BuildStage {
-    stage_number: 3,
-    stage_name: "stage3",
-    description: "Third self-hosting compilation for final verification",
-    input_compiler: "build/vittec2",
-    input_sources: ["toolchain/stage3/src/main.vit"],
-    output_compiler: "build/vittec3",
-    is_self_hosted: true,
-    verification_required: true
-  }
-}
-
-# Initialize build stage for stage4
-proc init_stage4() -> BuildStage {
-  give BuildStage {
-    stage_number: 4,
-    stage_name: "stage4",
-    description: "Fourth self-hosting compilation placeholder",
-    input_compiler: "build/vittec3",
-    input_sources: ["toolchain/stage4/src/main.vit"],
-    output_compiler: "build/vittec4",
-    is_self_hosted: true,
-    verification_required: false
   }
 }
 
@@ -166,17 +110,14 @@ proc init_build_cache(cache_dir: string) -> BuildCache {
 # Initialize build state
 proc init_build_state() -> BuildState {
   let stages: [BuildStage] = [
-    init_seed_stage(),
-    init_stage1(),
-    init_stage2(),
-    init_stage3()
+    init_seed_stage()
   ]
   
   let cache: BuildCache = init_build_cache("build/.cache")
   
   give BuildState {
     current_stage: 0,
-    total_stages: 4,
+    total_stages: 1,
     stages: stages,
     artifacts: [],
     cache: cache,
@@ -243,10 +184,10 @@ proc create_build_report(state: BuildState) -> BuildReport {
   }
 }
 
-# Verify bootstrap consistency (stage N == stage N-1)
+# Verify bootstrap consistency between successive generated compilers.
 proc verify_bootstrap_consistency(
-  stage1_binary: string,
-  stage2_binary: string
+  generation1_binary: string,
+  generation2_binary: string
 ) -> bool {
   # In a real implementation, this would compare checksums
   # or re-generate one from the other
@@ -295,10 +236,7 @@ proc estimate_build_time(
 
 proc all_bootstrap_stages() -> [BuildStage] {
   give [
-    init_seed_stage(),
-    init_stage1(),
-    init_stage2(),
-    init_stage3()
+    init_seed_stage()
   ]
 }
 
@@ -330,7 +268,7 @@ proc stage_source_root(stage: BuildStage) -> string {
 }
 
 proc is_final_verification_stage(stage: BuildStage) -> bool {
-  give stage.stage_number == 3 && stage.verification_required
+  give stage.stage_number == 0 && stage.verification_required
 }
 
 proc stage_requires_self_host(stage: BuildStage) -> bool {
