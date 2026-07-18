@@ -49,15 +49,26 @@ def parse_vitte() -> dict[str, tuple[str, list[str]]]:
 
 def parse_c_declarations(text: str) -> dict[str, tuple[str, list[str]]]:
     declarations: dict[str, tuple[str, list[str]]] = {}
-    pattern = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*(?:\s*\*)?)\s+(vitte_host_[A-Za-z0-9_]+)\(([^;{}]*)\)\s*[;{]$")
+    pattern = re.compile(
+        r"^((?:(?:static|const)\s+)*[A-Za-z_][A-Za-z0-9_]*)\s+(\**)[ \t]*"
+        r"([A-Za-z_][A-Za-z0-9_]*)\(([^;{}]*)\)\s*[;{]$"
+    )
     for line in text.splitlines():
         match = pattern.match(line.strip())
         if match is None:
             continue
-        return_type, name, raw_parameters = match.groups()
+        return_type, return_pointers, name, raw_parameters = match.groups()
+        if return_type == "return":
+            continue
+        return_type += return_pointers
         parameters = []
         for parameter in split_parameters(raw_parameters):
-            parameter_type, _, _ = parameter.rpartition(" ")
+            parameter_type, separator, parameter_name = parameter.rpartition(" ")
+            if not separator:
+                raise ValueError(f"invalid C ABI parameter for {name}: {parameter}")
+            while parameter_name.startswith("*"):
+                parameter_type += "*"
+                parameter_name = parameter_name[1:]
             parameters.append(parameter_type.strip())
         declarations[name] = (return_type.replace(" ", ""), parameters)
     return declarations
@@ -87,12 +98,27 @@ def parse_c_structs(header_text: str) -> dict[str, list[tuple[str, str]]]:
     return structs
 
 
+def manifest_functions(manifest: dict[str, object]) -> dict[str, tuple[str, list[str]]]:
+    functions: dict[str, tuple[str, list[str]]] = {}
+    for function in manifest["functions"]:
+        functions[function["name"]] = (
+            function["ret"],
+            [parameter["type"] for parameter in function["params"]],
+        )
+    return functions
+
+
 def main() -> int:
     manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
     header_text = HEADER.read_text(encoding="utf-8")
     vitte = parse_vitte()
-    header = parse_c_declarations(header_text)
-    implementation = parse_c_declarations(IMPLEMENTATION.read_text(encoding="utf-8"))
+    header_all = parse_c_declarations(header_text)
+    implementation_all = parse_c_declarations(IMPLEMENTATION.read_text(encoding="utf-8"))
+    header = {name: contract for name, contract in header_all.items() if name.startswith("vitte_host_")}
+    implementation = {
+        name: contract for name, contract in implementation_all.items() if name.startswith("vitte_host_")
+    }
+    manifest_abi = manifest_functions(manifest)
     header_structs = parse_c_structs(header_text)
     failures: list[str] = []
 
@@ -110,6 +136,17 @@ def main() -> int:
             failures.append(f"missing ABI type: {struct['name']}")
         elif actual_fields != expected_fields:
             failures.append(f"layout mismatch: {struct['name']}: manifest={expected_fields} C={actual_fields}")
+    for name, expected in manifest_abi.items():
+        if name not in header_all:
+            failures.append(f"manifest function missing from header: {name}")
+        elif normalized(expected) != normalized(header_all[name]):
+            failures.append(f"manifest signature mismatch: {name}: manifest={expected} C={header_all[name]}")
+        if name not in implementation_all:
+            failures.append(f"manifest function missing from implementation: {name}")
+        elif normalized(expected) != normalized(implementation_all[name]):
+            failures.append(
+                f"manifest definition mismatch: {name}: manifest={expected} C={implementation_all[name]}"
+            )
 
     for name in sorted(set(vitte) | set(header)):
         if name not in vitte:
@@ -132,6 +169,7 @@ def main() -> int:
         "abi_version": manifest["version"],
         "symbol_count": len(vitte),
         "layout_count": len(manifest["types"]),
+        "manifest_function_count": len(manifest_abi),
         "symbols": sorted(vitte),
         "failures": failures,
     }
