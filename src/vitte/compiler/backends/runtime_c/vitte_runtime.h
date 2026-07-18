@@ -4,6 +4,11 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#define VITTE_C_ABI_VERSION_MAJOR 1
+#define VITTE_C_ABI_VERSION_MINOR 0
+#define VITTE_C_ABI_VERSION_PATCH 0
+#define VITTE_C_ABI_VERSION "1.0.0"
+
 #ifdef __cplusplus
 extern "C" {
 #endif

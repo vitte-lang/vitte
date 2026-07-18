@@ -58,7 +58,7 @@ int main(int argc, char **argv) {
   VitteString oversized_path = {"x", SIZE_MAX};
   VitteString oversized_content = {"x", (size_t)INT32_MAX + 1};
 
-  CHECK(strcmp(vitte_c_abi_version(), "1.0.0") == 0, 10);
+  CHECK(strcmp(vitte_c_abi_version(), VITTE_C_ABI_VERSION) == 0, 10);
   CHECK(vitte_host_runtime_available() == 1, 11);
   numbers = vitte_slice_push_i32(numbers, 10);
   numbers = vitte_slice_push_i32(numbers, -4);

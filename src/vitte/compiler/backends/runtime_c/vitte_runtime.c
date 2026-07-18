@@ -14,7 +14,7 @@ static _Thread_local int32_t g_boundary_depth = 0;
 static _Thread_local int32_t g_panic_triggered = 0;
 static _Thread_local int32_t g_panic_code = 0;
 
-static const char *g_abi_version = "1.0.0";
+static const char *g_abi_version = VITTE_C_ABI_VERSION;
 static const char **g_argv = NULL;
 static int g_argc = 0;
 

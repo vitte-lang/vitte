@@ -11,6 +11,7 @@ VITTE_ABI = ROOT / "src" / "vitte" / "stdlib" / "io" / "host_runtime.vitl"
 RUNTIME_DIR = ROOT / "src" / "vitte" / "compiler" / "backends" / "runtime_c"
 HEADER = RUNTIME_DIR / "vitte_runtime.h"
 IMPLEMENTATION = RUNTIME_DIR / "vitte_runtime.c"
+MANIFEST = ROOT / "toolchain" / "scripts" / "interop" / "vitte_c_abi_v1.json"
 REPORT = ROOT / "target" / "reports" / "runtime_abi_contract.json"
 
 TYPE_MAP = {
@@ -67,10 +68,20 @@ def normalized(contract: tuple[str, list[str]]) -> tuple[str, list[str]]:
 
 
 def main() -> int:
+    manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
+    header_text = HEADER.read_text(encoding="utf-8")
     vitte = parse_vitte()
-    header = parse_c_declarations(HEADER.read_text(encoding="utf-8"))
+    header = parse_c_declarations(header_text)
     implementation = parse_c_declarations(IMPLEMENTATION.read_text(encoding="utf-8"))
     failures: list[str] = []
+
+    for macro in manifest["macros"]:
+        expected = f"#define {macro['name']} {macro['value']}"
+        if expected not in header_text:
+            failures.append(f"missing ABI version macro: {expected}")
+    version_define = f'#define VITTE_C_ABI_VERSION "{manifest["version"]}"'
+    if version_define not in header_text:
+        failures.append(f"missing ABI version string: {version_define}")
 
     for name in sorted(set(vitte) | set(header)):
         if name not in vitte:
@@ -90,6 +101,7 @@ def main() -> int:
         "schema": "vitte.runtime_abi_contract",
         "schema_version": "1.0.0",
         "status": "pass" if not failures else "fail",
+        "abi_version": manifest["version"],
         "symbol_count": len(vitte),
         "symbols": sorted(vitte),
         "failures": failures,
