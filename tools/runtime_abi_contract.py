@@ -47,6 +47,29 @@ def parse_vitte() -> dict[str, tuple[str, list[str]]]:
     return declarations
 
 
+def parse_vitte_public_surface() -> tuple[dict[str, tuple[str, list[str]]], set[str]]:
+    procedures: dict[str, tuple[str, list[str]]] = {}
+    shares: set[str] = set()
+    procedure_pattern = re.compile(r"^proc\s+(host_[A-Za-z0-9_]+)\((.*)\)\s*->\s*([^\s{]+)\s*\{$")
+    for line in VITTE_ABI.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if stripped.startswith("share "):
+            shares.add(stripped.removeprefix("share ").strip())
+            continue
+        match = procedure_pattern.match(stripped)
+        if match is None:
+            continue
+        name, raw_parameters, raw_return = match.groups()
+        parameters = []
+        for parameter in split_parameters(raw_parameters):
+            _, separator, value_type = parameter.partition(":")
+            if not separator:
+                raise ValueError(f"invalid public Vitte ABI parameter for {name}: {parameter}")
+            parameters.append(TYPE_MAP.get(value_type.strip(), value_type.strip()))
+        procedures[name] = (TYPE_MAP.get(raw_return, raw_return), parameters)
+    return procedures, shares
+
+
 def parse_c_declarations(text: str) -> dict[str, tuple[str, list[str]]]:
     declarations: dict[str, tuple[str, list[str]]] = {}
     pattern = re.compile(
@@ -112,6 +135,7 @@ def main() -> int:
     manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
     header_text = HEADER.read_text(encoding="utf-8")
     vitte = parse_vitte()
+    public_procedures, public_shares = parse_vitte_public_surface()
     header_all = parse_c_declarations(header_text)
     implementation_all = parse_c_declarations(IMPLEMENTATION.read_text(encoding="utf-8"))
     header = {name: contract for name, contract in header_all.items() if name.startswith("vitte_host_")}
@@ -156,6 +180,23 @@ def main() -> int:
         elif normalized(vitte[name]) != normalized(header[name]):
             failures.append(f"signature mismatch: {name}: Vitte={vitte[name]} C={header[name]}")
 
+    expected_public = {name.removeprefix("vitte_"): contract for name, contract in vitte.items()}
+    for name, expected in sorted(expected_public.items()):
+        if name not in public_procedures:
+            failures.append(f"missing public host wrapper: {name}")
+        elif normalized(expected) != normalized(public_procedures[name]):
+            failures.append(
+                f"public wrapper signature mismatch: {name}: intrinsic={expected} wrapper={public_procedures[name]}"
+            )
+        if name not in public_shares:
+            failures.append(f"public host wrapper is not shared: {name}")
+    unexpected_shares = sorted(public_shares - set(expected_public))
+    for name in unexpected_shares:
+        failures.append(f"unexpected public host ABI symbol: {name}")
+    leaked_intrinsics = sorted(name for name in public_shares if name.startswith("vitte_host_"))
+    for name in leaked_intrinsics:
+        failures.append(f"internal intrinsic leaked through public surface: {name}")
+
     for name in sorted(header):
         if name not in implementation:
             failures.append(f"missing C implementation: {name}")
@@ -170,6 +211,7 @@ def main() -> int:
         "symbol_count": len(vitte),
         "layout_count": len(manifest["types"]),
         "manifest_function_count": len(manifest_abi),
+        "public_symbol_count": len(public_shares),
         "symbols": sorted(vitte),
         "failures": failures,
     }
