@@ -47,9 +47,14 @@ int main(int argc, char **argv) {
   char missing_path[128];
   char destination_path[128];
   char directory_path[128];
+  char child_a_path[160];
+  char child_b_path[160];
   VitteString missing;
   VitteString destination;
   VitteString directory;
+  VitteString child_a;
+  VitteString child_b;
+  VitteSliceString directory_entries;
   VitteString original = {"keep", 4};
   VitteString preserved;
   VitteSliceI32 oversized_numbers = {NULL, SIZE_MAX};
@@ -80,6 +85,12 @@ int main(int argc, char **argv) {
   destination.len = strlen(destination_path);
   directory.data = directory_path;
   directory.len = strlen(directory_path);
+  snprintf(child_a_path, sizeof(child_a_path), "%s/a", directory_path);
+  snprintf(child_b_path, sizeof(child_b_path), "%s/b", directory_path);
+  child_a.data = child_a_path;
+  child_a.len = strlen(child_a_path);
+  child_b.data = child_b_path;
+  child_b.len = strlen(child_b_path);
   unlink(missing_path);
   unlink(destination_path);
   rmdir(directory_path);
@@ -95,6 +106,15 @@ int main(int argc, char **argv) {
   CHECK(vitte_host_mkdir_all(directory) == 0, 52);
   CHECK(vitte_host_delete_file(directory) == -1, 53);
   CHECK(vitte_host_is_directory(directory) == 1, 54);
+  CHECK(vitte_host_write_file(child_b, original) == 4, 56);
+  CHECK(vitte_host_write_file(child_a, original) == 4, 57);
+  directory_entries = vitte_host_list_directory(directory);
+  CHECK(directory_entries.len == 2, 58);
+  CHECK(directory_entries.data[0].len == 1 && directory_entries.data[0].data[0] == 'a', 59);
+  CHECK(directory_entries.data[1].len == 1 && directory_entries.data[1].data[0] == 'b', 60);
+  vitte_owned_slice_string_release(directory_entries);
+  CHECK(vitte_host_delete_file(child_a) == 0, 61);
+  CHECK(vitte_host_delete_file(child_b) == 0, 62);
   CHECK(vitte_host_delete_directory(directory) == 0, 55);
 
   vitte_set_args(argc, (const char **)argv);

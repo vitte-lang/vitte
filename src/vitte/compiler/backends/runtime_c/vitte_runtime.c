@@ -308,6 +308,20 @@ int32_t vitte_host_delete_directory(VitteString path) {
   return result;
 }
 
+static int vitte_compare_strings(const void *left_raw, const void *right_raw) {
+  const VitteString *left = (const VitteString *)left_raw;
+  const VitteString *right = (const VitteString *)right_raw;
+  size_t common_len = left->len < right->len ? left->len : right->len;
+  int compared = memcmp(left->data, right->data, common_len);
+  if (compared != 0) {
+    return compared;
+  }
+  if (left->len < right->len) {
+    return -1;
+  }
+  return left->len > right->len ? 1 : 0;
+}
+
 VitteSliceString vitte_host_list_directory(VitteString path) {
   VitteSliceString out = {0};
   char *native_path = vitte_string_to_c(path);
@@ -323,6 +337,7 @@ VitteSliceString vitte_host_list_directory(VitteString path) {
   }
   while ((entry = readdir(dir)) != NULL) {
     VitteString item;
+    VitteSliceString next;
     if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
       continue;
     }
@@ -331,9 +346,19 @@ VitteSliceString vitte_host_list_directory(VitteString path) {
       closedir(dir);
       return out;
     }
-    out = vitte_slice_push_string(out, item);
+    next = vitte_slice_push_string(out, item);
+    if (next.len == out.len) {
+      vitte_string_release(item);
+      vitte_owned_slice_string_release(out);
+      closedir(dir);
+      return (VitteSliceString){0};
+    }
+    out = next;
   }
   closedir(dir);
+  if (out.len > 1) {
+    qsort(out.data, out.len, sizeof(VitteString), vitte_compare_strings);
+  }
   return out;
 }
 
