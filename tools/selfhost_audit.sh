@@ -29,13 +29,13 @@ count_lines() {
   printf '%s\n' "$files" | xargs wc -l | tail -n 1 | awk '{print $1}'
 }
 
-compiler_dirs="src/vitte/compiler src/vitte/stdlib/compiler src/vitte/packages/compiler/driver"
+compiler_dirs="src/vitte/compiler src/vitte/packages/compiler/driver"
 expected_compiler_root="src/vitte/compiler"
 expected_compiler_entry="src/vitte/compiler/main.vit"
-stage_sources="toolchain/stage1/src/main.vit toolchain/stage2/src/main.vit"
+seed_manifest="toolchain/seed/manifest.txt"
+seed_artifact="toolchain/seed/vittec0.seed"
 audit_errors=0
 runtime_bridge_dir="$ROOT_DIR/src/vitte/compiler/backends/runtime_c"
-stage2_bridge_sidecar="$ROOT_DIR/target/bootstrap/stage2/vittec.bootstrap-bridge"
 
 legacy_source_files=$(
   find "$ROOT_DIR" \
@@ -44,6 +44,10 @@ legacy_source_files=$(
     -path "$ROOT_DIR/bin" -prune -o \
     -path "$ROOT_DIR/build" -prune -o \
     -path "$ROOT_DIR/target" -prune -o \
+    -path "$ROOT_DIR/editors/tree-sitter" -prune -o \
+    -path "$ROOT_DIR/vscode/VitteLangVsCode-main/.vscode-test" -prune -o \
+    -path "$ROOT_DIR/vscode/VitteLangVsCode-main/node_modules" -prune -o \
+    -path "$ROOT_DIR/vscode/VitteLangVsCode-main/vitte_out.cpp" -prune -o \
     -type f \( -name '*.'c -o -name '*.'cc -o -name '*.'c'pp' -o -name '*.'cxx -o -name '*.'h -o -name '*.'h'pp' -o -name '*.'hxx \) -print \
   | sort
 )
@@ -87,27 +91,14 @@ printf 'Vitte compiler surface: %s .vit / %s .vitl\n' \
   "$compiler_vitte_files" "$compiler_vitl_files"
 
 printf '\nCompiler source contract:\n'
-for stage_src in $stage_sources; do
-  root_value=$(awk -F= '/^[[:space:]]*const[[:space:]]+COMPILER_SOURCE_ROOT[[:space:]]*:/ {gsub(/^[[:space:]]*"|"[[:space:]]*$/, "", $2); gsub(/^[[:space:]]+|[[:space:]]+$/, "", $2); print $2; exit}' "$stage_src")
-  entry_value=$(awk -F= '/^[[:space:]]*const[[:space:]]+COMPILER_ENTRY_POINT[[:space:]]*:/ {gsub(/^[[:space:]]*"|"[[:space:]]*$/, "", $2); gsub(/^[[:space:]]+|[[:space:]]+$/, "", $2); print $2; exit}' "$stage_src")
-  printf '  %s\n' "$stage_src"
-  printf '    COMPILER_SOURCE_ROOT=%s\n' "${root_value:-<missing>}"
-  printf '    COMPILER_ENTRY_POINT=%s\n' "${entry_value:-<missing>}"
-  if [ "$root_value" != "$expected_compiler_root" ]; then
-    printf '    [error] expected COMPILER_SOURCE_ROOT=%s\n' "$expected_compiler_root"
-    audit_errors=1
-  fi
-  if [ "$entry_value" != "$expected_compiler_entry" ]; then
-    printf '    [error] expected COMPILER_ENTRY_POINT=%s\n' "$expected_compiler_entry"
-    audit_errors=1
-  fi
-done
-
-if [ -f "$stage2_bridge_sidecar" ]; then
-  bridge_src=$(awk -F= '/^src=/ { print $2; exit }' "$stage2_bridge_sidecar")
-  printf '\nActive stage2 bridge artifact:\n'
-  printf '  %s\n' "${stage2_bridge_sidecar#$ROOT_DIR/}"
-  printf '  src=%s\n' "${bridge_src:-<unknown>}"
+printf '  trust_root=%s\n' "$seed_artifact"
+printf '  compiler_entry=%s\n' "$expected_compiler_entry"
+if [ ! -f "$seed_manifest" ]; then
+  printf '    [error] missing seed manifest: %s\n' "$seed_manifest"
+  audit_errors=1
+elif ! grep -F 'seed_file=toolchain/seed/vittec0.seed' "$seed_manifest" >/dev/null; then
+  printf '    [error] seed manifest does not point at %s\n' "$seed_artifact"
+  audit_errors=1
 fi
 
 if [ ! -d "$expected_compiler_root" ]; then
@@ -124,4 +115,4 @@ if [ "$audit_errors" -ne 0 ]; then
   exit 1
 fi
 
-printf '\nStage2 entry is anchored to %s; next step is replacing bootstrap-compatible shell emission with the real compiler backend path.\n' "$expected_compiler_entry"
+printf '\nSeed trust root is anchored to %s; compiler entry is %s.\n' "$seed_artifact" "$expected_compiler_entry"
