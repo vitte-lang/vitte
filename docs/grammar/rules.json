@@ -1,7 +1,7 @@
 {
   "version": "v3",
-  "checksum": "4493876f55f9d93e4b5dd3dccc15a337693deb68955e9952648866ba8a8230f6",
-  "built_at": "2026-06-21T16:30:54.287220+00:00",
+  "checksum": "4ab4e767d61092f8b4f0c031e617d8ddaccf9515fbf6ba702a107b2bca58b7f2",
+  "built_at": "2026-07-18T06:21:22.819225+00:00",
   "source": "src/vitte/grammar/vitte.ebnf",
   "rules": [
     {
@@ -11,7 +11,7 @@
     },
     {
       "name": "toplevel",
-      "body": "inner_attribute\n          | space_decl\n          | use_decl\n          | export_decl\n          | const_decl\n          | static_decl\n          | global_decl\n          | type_alias_decl\n          | opaque_type_decl\n          | extern_type_decl\n          | form_decl\n          | class_decl\n          | union_decl\n          | bits_decl\n          | pick_decl\n          | flags_decl\n          | trait_decl\n          | impl_decl\n          | extern_block\n          | proc_decl\n          | intrinsic_decl\n          | compiler_decl\n          | query_decl\n          | pass_decl\n          | backend_decl\n          | diagnostic_decl\n          | macro_decl\n          | comptime_decl\n          | static_assert_decl\n          | test_decl\n          | bench_decl\n          | entry_decl\n          ;",
+      "body": "inner_attribute\n          | space_decl\n          | use_decl\n          | export_decl\n          | const_decl\n          | static_decl\n          | region_decl\n          | type_alias_decl\n          | opaque_type_decl\n          | extern_type_decl\n          | form_decl\n          | class_decl\n          | union_decl\n          | bits_decl\n          | pick_decl\n          | flags_decl\n          | trait_decl\n          | impl_decl\n          | extern_block\n          | proc_decl\n          | intrinsic_decl\n          | compiler_decl\n          | query_decl\n          | pass_decl\n          | backend_decl\n          | diagnostic_decl\n          | macro_decl\n          | static_assert_decl\n          | test_decl\n          | bench_decl\n          | entry_decl\n          ;",
       "tests": []
     },
     {
@@ -60,8 +60,18 @@
       "tests": []
     },
     {
-      "name": "global_decl",
-      "body": "{ attr_prefix WS? } \"global\" WS1 ident [ WS? \":\" WS? type_expr ] WS? \"=\" WS? expr ;",
+      "name": "region_decl",
+      "body": "{ attr_prefix WS? } \"region\" WS1 ident [ WS? \":\" WS? region_kind ] [ WS? region_capabilities ] WS? meta_tail ;",
+      "tests": []
+    },
+    {
+      "name": "region_kind",
+      "body": "\"stack\" | \"heap\" | \"arena\" | \"static\" | \"mmio\" | \"dma\" | ident ;",
+      "tests": []
+    },
+    {
+      "name": "region_capabilities",
+      "body": "\"(\" WS? ident_list? WS? \")\" ;",
       "tests": []
     },
     {
@@ -271,12 +281,12 @@
     },
     {
       "name": "intrinsic_decl",
-      "body": "{ attr_prefix WS? } \"intrinsic\" WS1 ident [ generic_params ]\n                   \"(\" WS? param_list? WS? \")\"\n                   [ WS? \"->\" WS? type_expr ]\n                   WS? \";\"\n                   ;",
+      "body": "{ attr_prefix WS? } \"intrinsic\" WS1 ident [ generic_params ]\n                   \"(\" WS? param_list? WS? \")\"\n                   [ WS? \"->\" WS? type_expr ]\n                   WS? \";\"\n                   ;\n\n<<< macro / compiler / pass / backend / diagnostic / entry are currently\n    preserved as top-level meta items by the frontend. They accept either a\n    trailing \";\" form or a raw \"{ ... }\" body, but the body is not yet parsed\n    into a dedicated structured AST. Keep these rules narrow and parser-aligned. >>>",
       "tests": []
     },
     {
       "name": "macro_decl",
-      "body": "{ attr_prefix WS? } \"macro\" WS1 ident \"(\" WS? macro_param_list? WS? \")\" WS? block ;",
+      "body": "{ attr_prefix WS? } \"macro\" WS1 ident [ \"(\" WS? macro_param_list? WS? \")\" ] WS? meta_tail ;",
       "tests": []
     },
     {
@@ -292,11 +302,6 @@
     {
       "name": "macro_kind",
       "body": "\"expr\" | \"stmt\" | \"type\" | \"ident\" | \"block\" | \"item\" ;",
-      "tests": []
-    },
-    {
-      "name": "comptime_decl",
-      "body": "\"comptime\" WS? block ;",
       "tests": []
     },
     {
@@ -316,7 +321,7 @@
     },
     {
       "name": "entry_decl",
-      "body": "{ attr_prefix WS? } \"entry\" WS1 ident WS1 \"at\" WS1 module_path WS? block ;",
+      "body": "{ attr_prefix WS? } \"entry\" WS1 ident_or_string [ WS? meta_args ] WS? meta_tail ;",
       "tests": []
     },
     {
@@ -436,67 +441,7 @@
     },
     {
       "name": "ident_list",
-      "body": "ident { WS? \",\" WS? ident } [ WS? \",\" ] ;\n\n<<< ================= Compiler Declarations ================= >>>",
-      "tests": []
-    },
-    {
-      "name": "compiler_decl",
-      "body": "{ attr_prefix WS? } \"compiler\" WS1 ident WS? \"{\" WS? compiler_items? WS? \"}\" ;",
-      "tests": []
-    },
-    {
-      "name": "compiler_items",
-      "body": "compiler_item { WS? compiler_item } ;",
-      "tests": []
-    },
-    {
-      "name": "compiler_item",
-      "body": "compiler_phase_decl\n                | compiler_stage_decl\n                | compiler_artifact_decl\n                | compiler_pipeline_decl\n                | compiler_cache_decl\n                | compiler_target_decl\n                ;",
-      "tests": []
-    },
-    {
-      "name": "compiler_phase_decl",
-      "body": "\"phase\" WS1 ident WS? \"{\" WS?\n                        \"input\" WS? \":\" WS? type_expr WS? \";\"\n                        \"output\" WS? \":\" WS? type_expr WS? \";\"\n                        [ \"errors\" WS? \":\" WS? type_expr WS? \";\" ]\n                        WS? \"}\" ;",
-      "tests": []
-    },
-    {
-      "name": "compiler_stage_decl",
-      "body": "\"stage\" WS1 ident WS? \":\" WS? ident_list WS? \";\" ;",
-      "tests": []
-    },
-    {
-      "name": "compiler_artifact_decl",
-      "body": "\"artifact\" WS1 ident WS? \":\" WS? type_expr WS? \";\" ;",
-      "tests": []
-    },
-    {
-      "name": "compiler_pipeline_decl",
-      "body": "\"pipeline\" WS1 ident WS? \"{\" WS? pipeline_step* WS? \"}\" ;",
-      "tests": []
-    },
-    {
-      "name": "pipeline_step",
-      "body": "\"run\" WS1 ident [ WS? \"as\" WS? ident ] WS? \";\"\n                | \"dump\" WS1 ident WS? \";\"\n                | \"verify\" WS1 ident WS? \";\"\n                ;",
-      "tests": []
-    },
-    {
-      "name": "compiler_cache_decl",
-      "body": "\"cache\" WS1 ident WS? \"{\" WS? cache_item* WS? \"}\" ;",
-      "tests": []
-    },
-    {
-      "name": "cache_item",
-      "body": "\"key\" WS? \":\" WS? type_expr WS? \";\"\n             | \"value\" WS? \":\" WS? type_expr WS? \";\"\n             | \"strategy\" WS? \":\" WS? ident WS? \";\"\n             ;",
-      "tests": []
-    },
-    {
-      "name": "compiler_target_decl",
-      "body": "\"target\" WS1 ident WS? \"{\" WS? target_item* WS? \"}\" ;",
-      "tests": []
-    },
-    {
-      "name": "target_item",
-      "body": "ident WS? \":\" WS? expr WS? \";\" ;",
+      "body": "ident { WS? \",\" WS? ident } [ WS? \",\" ] ;",
       "tests": []
     },
     {
@@ -506,72 +451,52 @@
     },
     {
       "name": "query_body",
-      "body": "block | \";\" ;",
+      "body": "block | \";\" ;\n\n<<< ================= Meta Declarations ================= >>>",
+      "tests": []
+    },
+    {
+      "name": "compiler_decl",
+      "body": "{ attr_prefix WS? } \"compiler\" WS1 ident_or_string [ WS? meta_args ] WS? meta_tail ;",
       "tests": []
     },
     {
       "name": "pass_decl",
-      "body": "{ attr_prefix WS? } \"pass\" WS1 ident WS? \"{\" WS? pass_items? WS? \"}\" ;",
-      "tests": []
-    },
-    {
-      "name": "pass_items",
-      "body": "pass_item { WS? pass_item } ;",
-      "tests": []
-    },
-    {
-      "name": "pass_item",
-      "body": "\"input\" WS? \":\" WS? type_expr WS? \";\"\n            | \"output\" WS? \":\" WS? type_expr WS? \";\"\n            | \"requires\" WS? \":\" WS? ident_list WS? \";\"\n            | \"invalidates\" WS? \":\" WS? ident_list WS? \";\"\n            | proc_decl\n            ;",
+      "body": "{ attr_prefix WS? } \"pass\" WS1 ident_or_string [ WS? meta_args ] WS? meta_tail ;",
       "tests": []
     },
     {
       "name": "backend_decl",
-      "body": "{ attr_prefix WS? } \"backend\" WS1 ident WS? \"{\" WS? backend_items? WS? \"}\" ;",
-      "tests": []
-    },
-    {
-      "name": "backend_items",
-      "body": "backend_item { WS? backend_item } ;",
-      "tests": []
-    },
-    {
-      "name": "backend_item",
-      "body": "\"target\" WS? \":\" WS? string_lit WS? \";\"\n               | \"format\" WS? \":\" WS? backend_format WS? \";\"\n               | \"emits\" WS? \":\" WS? backend_output WS? \";\"\n               | \"requires\" WS? \":\" WS? ident_list WS? \";\"\n               | proc_decl\n               ;",
-      "tests": []
-    },
-    {
-      "name": "backend_format",
-      "body": "\"c\" | \"llvm\" | \"asm\" | \"object\" | \"wasm\" | \"ir\" ;",
-      "tests": []
-    },
-    {
-      "name": "backend_output",
-      "body": "\"source\" | \"assembly\" | \"object\" | \"executable\" | \"library\" ;",
+      "body": "{ attr_prefix WS? } \"backend\" WS1 ident_or_string [ WS? meta_args ] WS? meta_tail ;",
       "tests": []
     },
     {
       "name": "diagnostic_decl",
-      "body": "{ attr_prefix WS? } \"diagnostic\" WS1 diagnostic_code WS? \"{\" WS? diagnostic_items? WS? \"}\" ;",
+      "body": "{ attr_prefix WS? } \"diagnostic\" WS1 ident_or_string [ WS? meta_args ] WS? meta_tail ;",
       "tests": []
     },
     {
-      "name": "diagnostic_code",
+      "name": "ident_or_string",
       "body": "ident | string_lit ;",
       "tests": []
     },
     {
-      "name": "diagnostic_items",
-      "body": "diagnostic_item { WS? diagnostic_item } ;",
+      "name": "meta_args",
+      "body": "\"(\" WS? meta_arg_list? WS? \")\" ;",
       "tests": []
     },
     {
-      "name": "diagnostic_item",
-      "body": "\"level\" WS? \":\" WS? diagnostic_level WS? \";\"\n                  | \"message\" WS? \":\" WS? string_lit WS? \";\"\n                  | \"label\" WS? \":\" WS? string_lit WS? \";\"\n                  | \"help\" WS? \":\" WS? string_lit WS? \";\"\n                  | \"note\" WS? \":\" WS? string_lit WS? \";\"\n                  | \"suggest\" WS? \":\" WS? string_lit WS? \";\"\n                  ;",
+      "name": "meta_arg_list",
+      "body": "meta_arg { WS? \",\" WS? meta_arg } [ WS? \",\" ] ;",
       "tests": []
     },
     {
-      "name": "diagnostic_level",
-      "body": "\"error\" | \"warning\" | \"note\" | \"help\" | \"fatal\" ;\n\n<<< ================= Attributes ================= >>>",
+      "name": "meta_arg",
+      "body": "ident_or_string ;",
+      "tests": []
+    },
+    {
+      "name": "meta_tail",
+      "body": "block | \";\" ;\n\n<<< ================= Attributes ================= >>>",
       "tests": []
     },
     {

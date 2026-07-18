@@ -1,11 +1,10 @@
 <<< =========================================================
-   Vitte — Complete Core Grammar
-   systems + application + kernel + compiler surface
+   Vitte — Active Frontend Grammar
+   parser-aligned surface for docs/tests/frontend sync
    canonical blocks: { }
-   canonical syntax source for parser/docs/tests
-   low-level capable
-   compiler-capable
-   no aliases, reduced duplicates
+   This file describes the syntax currently preserved by the
+   active frontend AST builder. Ambitious future-only surfaces
+   should not be specified here until they are actually built.
    ========================================================= >>>
 
 program ::= WS? { toplevel WS? } EOF ;
@@ -18,7 +17,7 @@ toplevel ::= inner_attribute
           | export_decl
           | const_decl
           | static_decl
-          | global_decl
+          | region_decl
           | type_alias_decl
           | opaque_type_decl
           | extern_type_decl
@@ -39,7 +38,6 @@ toplevel ::= inner_attribute
           | backend_decl
           | diagnostic_decl
           | macro_decl
-          | comptime_decl
           | static_assert_decl
           | test_decl
           | bench_decl
@@ -59,7 +57,9 @@ export_decl ::= "export" WS1 ( "*" | ident_list | "{" WS? ident_list WS? "}" ) ;
 
 const_decl ::= { attr_prefix WS? } "const" WS1 ident [ WS? ":" WS? type_expr ] WS? "=" WS? expr ;
 static_decl ::= { attr_prefix WS? } "static" WS1 ident [ WS? ":" WS? type_expr ] WS? "=" WS? expr ;
-global_decl ::= { attr_prefix WS? } "global" WS1 ident [ WS? ":" WS? type_expr ] WS? "=" WS? expr ;
+region_decl ::= { attr_prefix WS? } "region" WS1 ident [ WS? ":" WS? region_kind ] [ WS? region_capabilities ] WS? meta_tail ;
+region_kind ::= "stack" | "heap" | "arena" | "static" | "mmio" | "dma" | ident ;
+region_capabilities ::= "(" WS? ident_list? WS? ")" ;
 
 type_alias_decl ::= { attr_prefix WS? } "type" WS1 ident [ generic_params ] WS? "=" WS? type_expr ;
 opaque_type_decl ::= { attr_prefix WS? } "opaque" WS1 "type" WS1 ident [ generic_params ] [ WS? "=" WS? type_expr ] ;
@@ -155,16 +155,19 @@ intrinsic_decl ::= { attr_prefix WS? } "intrinsic" WS1 ident [ generic_params ]
                    WS? ";"
                    ;
 
-macro_decl ::= { attr_prefix WS? } "macro" WS1 ident "(" WS? macro_param_list? WS? ")" WS? block ;
+<<< macro / compiler / pass / backend / diagnostic / entry are currently
+    preserved as top-level meta items by the frontend. They accept either a
+    trailing ";" form or a raw "{ ... }" body, but the body is not yet parsed
+    into a dedicated structured AST. Keep these rules narrow and parser-aligned. >>>
+macro_decl ::= { attr_prefix WS? } "macro" WS1 ident [ "(" WS? macro_param_list? WS? ")" ] WS? meta_tail ;
 macro_param_list ::= macro_param { WS? "," WS? macro_param } [ WS? "," ] ;
 macro_param ::= ident [ WS? ":" WS? macro_kind ] ;
 macro_kind ::= "expr" | "stmt" | "type" | "ident" | "block" | "item" ;
 
-comptime_decl ::= "comptime" WS? block ;
 static_assert_decl ::= "static_assert" WS? "(" WS? expr [ WS? "," WS? expr ] WS? ")" ;
 test_decl ::= { attr_prefix WS? } "test" WS1 string_lit WS? block ;
 bench_decl ::= { attr_prefix WS? } "bench" WS1 string_lit WS? block ;
-entry_decl ::= { attr_prefix WS? } "entry" WS1 ident WS1 "at" WS1 module_path WS? block ;
+entry_decl ::= { attr_prefix WS? } "entry" WS1 ident_or_string [ WS? meta_args ] WS? meta_tail ;
 
 visibility ::= "pub" | "priv" | "pub" WS? "(" WS? visibility_scope WS? ")" ;
 visibility_scope ::= "package" | "module" | "super" ;
@@ -203,43 +206,6 @@ relative ::= { "." } ;
 package_parts ::= ident { ( "/" | "." | "::" ) ident } ;
 ident_list ::= ident { WS? "," WS? ident } [ WS? "," ] ;
 
-<<< ================= Compiler Declarations ================= >>>
-
-compiler_decl ::= { attr_prefix WS? } "compiler" WS1 ident WS? "{" WS? compiler_items? WS? "}" ;
-compiler_items ::= compiler_item { WS? compiler_item } ;
-
-compiler_item ::= compiler_phase_decl
-                | compiler_stage_decl
-                | compiler_artifact_decl
-                | compiler_pipeline_decl
-                | compiler_cache_decl
-                | compiler_target_decl
-                ;
-
-compiler_phase_decl ::= "phase" WS1 ident WS? "{" WS?
-                        "input" WS? ":" WS? type_expr WS? ";"
-                        "output" WS? ":" WS? type_expr WS? ";"
-                        [ "errors" WS? ":" WS? type_expr WS? ";" ]
-                        WS? "}" ;
-
-compiler_stage_decl ::= "stage" WS1 ident WS? ":" WS? ident_list WS? ";" ;
-compiler_artifact_decl ::= "artifact" WS1 ident WS? ":" WS? type_expr WS? ";" ;
-
-compiler_pipeline_decl ::= "pipeline" WS1 ident WS? "{" WS? pipeline_step* WS? "}" ;
-pipeline_step ::= "run" WS1 ident [ WS? "as" WS? ident ] WS? ";"
-                | "dump" WS1 ident WS? ";"
-                | "verify" WS1 ident WS? ";"
-                ;
-
-compiler_cache_decl ::= "cache" WS1 ident WS? "{" WS? cache_item* WS? "}" ;
-cache_item ::= "key" WS? ":" WS? type_expr WS? ";"
-             | "value" WS? ":" WS? type_expr WS? ";"
-             | "strategy" WS? ":" WS? ident WS? ";"
-             ;
-
-compiler_target_decl ::= "target" WS1 ident WS? "{" WS? target_item* WS? "}" ;
-target_item ::= ident WS? ":" WS? expr WS? ";" ;
-
 query_decl ::= { attr_prefix WS? } "query" WS1 ident
                "(" WS? param_list? WS? ")"
                WS? "->" WS? type_expr
@@ -247,40 +213,18 @@ query_decl ::= { attr_prefix WS? } "query" WS1 ident
 
 query_body ::= block | ";" ;
 
-pass_decl ::= { attr_prefix WS? } "pass" WS1 ident WS? "{" WS? pass_items? WS? "}" ;
-pass_items ::= pass_item { WS? pass_item } ;
-pass_item ::= "input" WS? ":" WS? type_expr WS? ";"
-            | "output" WS? ":" WS? type_expr WS? ";"
-            | "requires" WS? ":" WS? ident_list WS? ";"
-            | "invalidates" WS? ":" WS? ident_list WS? ";"
-            | proc_decl
-            ;
+<<< ================= Meta Declarations ================= >>>
 
-backend_decl ::= { attr_prefix WS? } "backend" WS1 ident WS? "{" WS? backend_items? WS? "}" ;
-backend_items ::= backend_item { WS? backend_item } ;
-backend_item ::= "target" WS? ":" WS? string_lit WS? ";"
-               | "format" WS? ":" WS? backend_format WS? ";"
-               | "emits" WS? ":" WS? backend_output WS? ";"
-               | "requires" WS? ":" WS? ident_list WS? ";"
-               | proc_decl
-               ;
+compiler_decl ::= { attr_prefix WS? } "compiler" WS1 ident_or_string [ WS? meta_args ] WS? meta_tail ;
+pass_decl ::= { attr_prefix WS? } "pass" WS1 ident_or_string [ WS? meta_args ] WS? meta_tail ;
+backend_decl ::= { attr_prefix WS? } "backend" WS1 ident_or_string [ WS? meta_args ] WS? meta_tail ;
+diagnostic_decl ::= { attr_prefix WS? } "diagnostic" WS1 ident_or_string [ WS? meta_args ] WS? meta_tail ;
 
-backend_format ::= "c" | "llvm" | "asm" | "object" | "wasm" | "ir" ;
-backend_output ::= "source" | "assembly" | "object" | "executable" | "library" ;
-
-diagnostic_decl ::= { attr_prefix WS? } "diagnostic" WS1 diagnostic_code WS? "{" WS? diagnostic_items? WS? "}" ;
-diagnostic_code ::= ident | string_lit ;
-diagnostic_items ::= diagnostic_item { WS? diagnostic_item } ;
-
-diagnostic_item ::= "level" WS? ":" WS? diagnostic_level WS? ";"
-                  | "message" WS? ":" WS? string_lit WS? ";"
-                  | "label" WS? ":" WS? string_lit WS? ";"
-                  | "help" WS? ":" WS? string_lit WS? ";"
-                  | "note" WS? ":" WS? string_lit WS? ";"
-                  | "suggest" WS? ":" WS? string_lit WS? ";"
-                  ;
-
-diagnostic_level ::= "error" | "warning" | "note" | "help" | "fatal" ;
+ident_or_string ::= ident | string_lit ;
+meta_args ::= "(" WS? meta_arg_list? WS? ")" ;
+meta_arg_list ::= meta_arg { WS? "," WS? meta_arg } [ WS? "," ] ;
+meta_arg ::= ident_or_string ;
+meta_tail ::= block | ";" ;
 
 <<< ================= Attributes ================= >>>
 

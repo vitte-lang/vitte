@@ -67,6 +67,10 @@ snap=DOCS/'snapshots'; snap.mkdir(parents=True, exist_ok=True)
 prev=snap/'vitte.ebnf.prev'; old=prev.read_text(encoding='utf-8').splitlines() if prev.exists() else []
 new=text.splitlines()
 diff='\n'.join(difflib.HtmlDiff(wrapcolumn=120).make_table(old,new,'vN','vN+1').splitlines())
+diff_ids=set(re.findall(r'\bid="([^"]+)"', diff))
+missing_diff_ids=sorted(set(re.findall(r'href="#([^"]+)"', diff)) - diff_ids)
+if missing_diff_ids:
+    diff=''.join(f'<span id="{html.escape(anchor)}"></span>' for anchor in missing_diff_ids) + diff
 (DOCS/'diff.html').write_text(f'<!doctype html><html><head><meta charset="utf-8"><title>Grammar Diff</title><link rel="stylesheet" href="../css/site.css"></head><body class="classic-doc"><div class="site-shell"><main class="site-main"><article class="doc-content"><h1>Grammar Diff (vN vs vN+1)</h1>{diff}</article></main></div></body></html>', encoding='utf-8')
 prev.write_text(text, encoding='utf-8')
 

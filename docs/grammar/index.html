@@ -5,61 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Vitte Grammar Practical Guide</title>
 <link rel="stylesheet" href="../css/site.css">
-
 <link rel="alternate" hreflang="en" href="https://vitte-lang.org/index.html">
 <link rel="alternate" hreflang="x-default" href="https://vitte-lang.org/index.html">
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none';">
 </head>
 <body class="classic-doc">
@@ -70,27 +17,6 @@
 <h1>Vitte Grammar Practical Guide</h1>
 <p>Practical usage guide generated from <code>src/vitte/grammar/vitte.ebnf</code>.</p>
 
-<h2>Two Ways to Use Grammar Docs</h2>
-<div class="grammar-two-ways">
-  <section class="grammar-way">
-    <h3>Voie 1: Comprendre</h3>
-    <p>Commence ici si tu veux apprendre calmement le sens des règles.</p>
-    <ul>
-      <li><a href="index.html">Guide pratique</a></li>
-      <li><a href="toolbox.html">Toolbox (recherche + exemples)</a></li>
-      <li><a href="precedence.html">Précédence opérateurs</a></li>
-    </ul>
-  </section>
-  <section class="grammar-way">
-    <h3>Voie 2: Référence brute</h3>
-    <p>Utilise cette voie pour audit, tooling et validation stricte.</p>
-    <ul>
-      <li><a href="rules.json">rules.json</a></li>
-      <li><a href="rules-normalized.json">rules-normalized.json</a></li>
-      <li><a href="status.html">Grammar status</a> · <a href="diff.html">Diff</a></li>
-    </ul>
-  </section>
-</div>
 <h2>Reading Paths</h2>
 <h3>Beginner</h3>
 <ul>
@@ -115,7 +41,7 @@
 <table>
 <thead><tr><th>Rule</th><th>Valid Example</th><th>Invalid Example</th><th>Expected Diagnostic</th></tr></thead>
 <tbody>
-<tr><td><a href="#space_decl"><code>space_decl</code></a></td><td><code>space vitte/bootstrap/stage2</code></td><td><code>space</code></td><td>Missing module path after `space`.</td></tr>
+<tr><td><a href="#space_decl"><code>space_decl</code></a></td><td><code>space vitte/compiler/entry</code></td><td><code>space</code></td><td>Missing module path after `space`.</td></tr>
 <tr><td><a href="#use_decl"><code>use_decl</code></a></td><td><code>use vitte/io</code></td><td><code>use</code></td><td>Import path missing after `use`.</td></tr>
 <tr><td><a href="#proc_decl"><code>proc_decl</code></a></td><td><code>proc main() -&gt; int { give 0 }</code></td><td><code>proc main( -&gt; int { give 0 }</code></td><td>Malformed parameter list or signature.</td></tr>
 <tr><td><a href="#const_decl"><code>const_decl</code></a></td><td><code>const VERSION: string = &quot;1.0&quot;</code></td><td><code>const = &quot;1.0&quot;</code></td><td>Const identifier is required.</td></tr>
@@ -137,7 +63,9 @@
 <li><a href="#export_decl"><code>export_decl</code></a></li>
 <li><a href="#const_decl"><code>const_decl</code></a></li>
 <li><a href="#static_decl"><code>static_decl</code></a></li>
-<li><a href="#global_decl"><code>global_decl</code></a></li>
+<li><a href="#region_decl"><code>region_decl</code></a></li>
+<li><a href="#region_kind"><code>region_kind</code></a></li>
+<li><a href="#region_capabilities"><code>region_capabilities</code></a></li>
 <li><a href="#type_alias_decl"><code>type_alias_decl</code></a></li>
 <li><a href="#opaque_type_decl"><code>opaque_type_decl</code></a></li>
 <li><a href="#extern_type_decl"><code>extern_type_decl</code></a></li>
@@ -184,7 +112,6 @@
 <li><a href="#macro_param_list"><code>macro_param_list</code></a></li>
 <li><a href="#macro_param"><code>macro_param</code></a></li>
 <li><a href="#macro_kind"><code>macro_kind</code></a></li>
-<li><a href="#comptime_decl"><code>comptime_decl</code></a></li>
 <li><a href="#static_assert_decl"><code>static_assert_decl</code></a></li>
 <li><a href="#test_decl"><code>test_decl</code></a></li>
 <li><a href="#bench_decl"><code>bench_decl</code></a></li>
@@ -213,55 +140,49 @@
 <li><a href="#relative"><code>relative</code></a></li>
 <li><a href="#package_parts"><code>package_parts</code></a></li>
 <li><a href="#ident_list"><code>ident_list</code></a></li>
-<li><a href="#compiler_decl"><code>compiler_decl</code></a></li>
-<li><a href="#compiler_items"><code>compiler_items</code></a></li>
-<li><a href="#compiler_item"><code>compiler_item</code></a></li>
-<li><a href="#compiler_phase_decl"><code>compiler_phase_decl</code></a></li>
-<li><a href="#compiler_stage_decl"><code>compiler_stage_decl</code></a></li>
-<li><a href="#compiler_artifact_decl"><code>compiler_artifact_decl</code></a></li>
-<li><a href="#compiler_pipeline_decl"><code>compiler_pipeline_decl</code></a></li>
-<li><a href="#pipeline_step"><code>pipeline_step</code></a></li>
-<li><a href="#compiler_cache_decl"><code>compiler_cache_decl</code></a></li>
-<li><a href="#cache_item"><code>cache_item</code></a></li>
-<li><a href="#compiler_target_decl"><code>compiler_target_decl</code></a></li>
-<li><a href="#target_item"><code>target_item</code></a></li>
 <li><a href="#query_decl"><code>query_decl</code></a></li>
 <li><a href="#query_body"><code>query_body</code></a></li>
+<li><a href="#compiler_decl"><code>compiler_decl</code></a></li>
 <li><a href="#pass_decl"><code>pass_decl</code></a></li>
-<li><a href="#pass_items"><code>pass_items</code></a></li>
-<li><a href="#pass_item"><code>pass_item</code></a></li>
 <li><a href="#backend_decl"><code>backend_decl</code></a></li>
-<li><a href="#backend_items"><code>backend_items</code></a></li>
-<li><a href="#backend_item"><code>backend_item</code></a></li>
-<li><a href="#backend_format"><code>backend_format</code></a></li>
-<li><a href="#backend_output"><code>backend_output</code></a></li>
 <li><a href="#diagnostic_decl"><code>diagnostic_decl</code></a></li>
-<li><a href="#diagnostic_code"><code>diagnostic_code</code></a></li>
-<li><a href="#diagnostic_items"><code>diagnostic_items</code></a></li>
-<li><a href="#diagnostic_item"><code>diagnostic_item</code></a></li>
-<li><a href="#diagnostic_level"><code>diagnostic_level</code></a></li>
+<li><a href="#ident_or_string"><code>ident_or_string</code></a></li>
+<li><a href="#meta_args"><code>meta_args</code></a></li>
+<li><a href="#meta_arg_list"><code>meta_arg_list</code></a></li>
+<li><a href="#meta_arg"><code>meta_arg</code></a></li>
+<li><a href="#meta_tail"><code>meta_tail</code></a></li>
 <li><a href="#attr_prefix"><code>attr_prefix</code></a></li>
 <li><a href="#inner_attribute"><code>inner_attribute</code></a></li>
 <li><a href="#outer_attribute"><code>outer_attribute</code></a></li>
 <li><a href="#doc_comment"><code>doc_comment</code></a></li>
 <li><a href="#docstring"><code>docstring</code></a></li>
 <li><a href="#attr_path"><code>attr_path</code></a></li>
+<li><a href="#attr_arg_list"><code>attr_arg_list</code></a></li>
+<li><a href="#attr_arg"><code>attr_arg</code></a></li>
+<li><a href="#block"><code>block</code></a></li>
+<li><a href="#stmt"><code>stmt</code></a></li>
+<li><a href="#stmt_end"><code>stmt_end</code></a></li>
+<li><a href="#local_const_stmt"><code>local_const_stmt</code></a></li>
+<li><a href="#let_stmt"><code>let_stmt</code></a></li>
+<li><a href="#set_stmt"><code>set_stmt</code></a></li>
+<li><a href="#assign_target"><code>assign_target</code></a></li>
+<li><a href="#give_stmt"><code>give_stmt</code></a></li>
+<li><a href="#try_stmt"><code>try_stmt</code></a></li>
+<li><a href="#defer_stmt"><code>defer_stmt</code></a></li>
+<li><a href="#asm_stmt"><code>asm_stmt</code></a></li>
+<li><a href="#asm_arg_list"><code>asm_arg_list</code></a></li>
+<li><a href="#asm_arg"><code>asm_arg</code></a></li>
 </ul>
 
-<h2>Grammar Tools</h2>
-<ul>
-<li><a href="toolbox.html">Grammar Toolbox (search, ambiguities, precedence map, snippets)</a></li>
-<li><a href="diff.html">Grammar Diff (vN vs vN+1)</a></li>
-</ul>
 <h2>Full EBNF (Anchored)</h2>
 <pre>
 <code>&lt;&lt;&lt; =========================================================</code>
-<code>   Vitte — Complete Core Grammar</code>
-<code>   systems + application + kernel + compiler surface</code>
+<code>   Vitte — Active Frontend Grammar</code>
+<code>   parser-aligned surface for docs/tests/frontend sync</code>
 <code>   canonical blocks: { }</code>
-<code>   low-level capable</code>
-<code>   compiler-capable</code>
-<code>   no aliases, reduced duplicates</code>
+<code>   This file describes the syntax currently preserved by the</code>
+<code>   active frontend AST builder. Ambitious future-only surfaces</code>
+<code>   should not be specified here until they are actually built.</code>
 <code>   ========================================================= &gt;&gt;&gt;</code>
 <code></code>
 <a id="program"></a><code><strong>program</strong> ::=  WS? { toplevel WS? } EOF ;</code>
@@ -274,7 +195,7 @@
 <code>          | export_decl</code>
 <code>          | const_decl</code>
 <code>          | static_decl</code>
-<code>          | global_decl</code>
+<code>          | region_decl</code>
 <code>          | type_alias_decl</code>
 <code>          | opaque_type_decl</code>
 <code>          | extern_type_decl</code>
@@ -295,7 +216,6 @@
 <code>          | backend_decl</code>
 <code>          | diagnostic_decl</code>
 <code>          | macro_decl</code>
-<code>          | comptime_decl</code>
 <code>          | static_assert_decl</code>
 <code>          | test_decl</code>
 <code>          | bench_decl</code>
@@ -315,7 +235,9 @@
 <code></code>
 <a id="const_decl"></a><code><strong>const_decl</strong> ::=  { attr_prefix WS? } &quot;const&quot; WS1 ident [ WS? &quot;:&quot; WS? type_expr ] WS? &quot;=&quot; WS? expr ;</code>
 <a id="static_decl"></a><code><strong>static_decl</strong> ::=  { attr_prefix WS? } &quot;static&quot; WS1 ident [ WS? &quot;:&quot; WS? type_expr ] WS? &quot;=&quot; WS? expr ;</code>
-<a id="global_decl"></a><code><strong>global_decl</strong> ::=  { attr_prefix WS? } &quot;global&quot; WS1 ident [ WS? &quot;:&quot; WS? type_expr ] WS? &quot;=&quot; WS? expr ;</code>
+<a id="region_decl"></a><code><strong>region_decl</strong> ::=  { attr_prefix WS? } &quot;region&quot; WS1 ident [ WS? &quot;:&quot; WS? region_kind ] [ WS? region_capabilities ] WS? meta_tail ;</code>
+<a id="region_kind"></a><code><strong>region_kind</strong> ::=  &quot;stack&quot; | &quot;heap&quot; | &quot;arena&quot; | &quot;static&quot; | &quot;mmio&quot; | &quot;dma&quot; | ident ;</code>
+<a id="region_capabilities"></a><code><strong>region_capabilities</strong> ::=  &quot;(&quot; WS? ident_list? WS? &quot;)&quot; ;</code>
 <code></code>
 <a id="type_alias_decl"></a><code><strong>type_alias_decl</strong> ::=  { attr_prefix WS? } &quot;type&quot; WS1 ident [ generic_params ] WS? &quot;=&quot; WS? type_expr ;</code>
 <a id="opaque_type_decl"></a><code><strong>opaque_type_decl</strong> ::=  { attr_prefix WS? } &quot;opaque&quot; WS1 &quot;type&quot; WS1 ident [ generic_params ] [ WS? &quot;=&quot; WS? type_expr ] ;</code>
@@ -411,16 +333,19 @@
 <code>                   WS? &quot;;&quot;</code>
 <code>                   ;</code>
 <code></code>
-<a id="macro_decl"></a><code><strong>macro_decl</strong> ::=  { attr_prefix WS? } &quot;macro&quot; WS1 ident &quot;(&quot; WS? macro_param_list? WS? &quot;)&quot; WS? block ;</code>
+<code>&lt;&lt;&lt; macro / compiler / pass / backend / diagnostic / entry are currently</code>
+<code>    preserved as top-level meta items by the frontend. They accept either a</code>
+<code>    trailing &quot;;&quot; form or a raw &quot;{ ... }&quot; body, but the body is not yet parsed</code>
+<code>    into a dedicated structured AST. Keep these rules narrow and parser-aligned. &gt;&gt;&gt;</code>
+<a id="macro_decl"></a><code><strong>macro_decl</strong> ::=  { attr_prefix WS? } &quot;macro&quot; WS1 ident [ &quot;(&quot; WS? macro_param_list? WS? &quot;)&quot; ] WS? meta_tail ;</code>
 <a id="macro_param_list"></a><code><strong>macro_param_list</strong> ::=  macro_param { WS? &quot;,&quot; WS? macro_param } [ WS? &quot;,&quot; ] ;</code>
 <a id="macro_param"></a><code><strong>macro_param</strong> ::=  ident [ WS? &quot;:&quot; WS? macro_kind ] ;</code>
 <a id="macro_kind"></a><code><strong>macro_kind</strong> ::=  &quot;expr&quot; | &quot;stmt&quot; | &quot;type&quot; | &quot;ident&quot; | &quot;block&quot; | &quot;item&quot; ;</code>
 <code></code>
-<a id="comptime_decl"></a><code><strong>comptime_decl</strong> ::=  &quot;comptime&quot; WS? block ;</code>
 <a id="static_assert_decl"></a><code><strong>static_assert_decl</strong> ::=  &quot;static_assert&quot; WS? &quot;(&quot; WS? expr [ WS? &quot;,&quot; WS? expr ] WS? &quot;)&quot; ;</code>
 <a id="test_decl"></a><code><strong>test_decl</strong> ::=  { attr_prefix WS? } &quot;test&quot; WS1 string_lit WS? block ;</code>
 <a id="bench_decl"></a><code><strong>bench_decl</strong> ::=  { attr_prefix WS? } &quot;bench&quot; WS1 string_lit WS? block ;</code>
-<a id="entry_decl"></a><code><strong>entry_decl</strong> ::=  { attr_prefix WS? } &quot;entry&quot; WS1 ident WS1 &quot;at&quot; WS1 module_path WS? block ;</code>
+<a id="entry_decl"></a><code><strong>entry_decl</strong> ::=  { attr_prefix WS? } &quot;entry&quot; WS1 ident_or_string [ WS? meta_args ] WS? meta_tail ;</code>
 <code></code>
 <a id="visibility"></a><code><strong>visibility</strong> ::=  &quot;pub&quot; | &quot;priv&quot; | &quot;pub&quot; WS? &quot;(&quot; WS? visibility_scope WS? &quot;)&quot; ;</code>
 <a id="visibility_scope"></a><code><strong>visibility_scope</strong> ::=  &quot;package&quot; | &quot;module&quot; | &quot;super&quot; ;</code>
@@ -459,43 +384,6 @@
 <a id="package_parts"></a><code><strong>package_parts</strong> ::=  ident { ( &quot;/&quot; | &quot;.&quot; | &quot;::&quot; ) ident } ;</code>
 <a id="ident_list"></a><code><strong>ident_list</strong> ::=  ident { WS? &quot;,&quot; WS? ident } [ WS? &quot;,&quot; ] ;</code>
 <code></code>
-<code>&lt;&lt;&lt; ================= Compiler Declarations ================= &gt;&gt;&gt;</code>
-<code></code>
-<a id="compiler_decl"></a><code><strong>compiler_decl</strong> ::=  { attr_prefix WS? } &quot;compiler&quot; WS1 ident WS? &quot;{&quot; WS? compiler_items? WS? &quot;}&quot; ;</code>
-<a id="compiler_items"></a><code><strong>compiler_items</strong> ::=  compiler_item { WS? compiler_item } ;</code>
-<code></code>
-<a id="compiler_item"></a><code><strong>compiler_item</strong> ::=  compiler_phase_decl</code>
-<code>                | compiler_stage_decl</code>
-<code>                | compiler_artifact_decl</code>
-<code>                | compiler_pipeline_decl</code>
-<code>                | compiler_cache_decl</code>
-<code>                | compiler_target_decl</code>
-<code>                ;</code>
-<code></code>
-<a id="compiler_phase_decl"></a><code><strong>compiler_phase_decl</strong> ::=  &quot;phase&quot; WS1 ident WS? &quot;{&quot; WS?</code>
-<code>                        &quot;input&quot; WS? &quot;:&quot; WS? type_expr WS? &quot;;&quot;</code>
-<code>                        &quot;output&quot; WS? &quot;:&quot; WS? type_expr WS? &quot;;&quot;</code>
-<code>                        [ &quot;errors&quot; WS? &quot;:&quot; WS? type_expr WS? &quot;;&quot; ]</code>
-<code>                        WS? &quot;}&quot; ;</code>
-<code></code>
-<a id="compiler_stage_decl"></a><code><strong>compiler_stage_decl</strong> ::=  &quot;stage&quot; WS1 ident WS? &quot;:&quot; WS? ident_list WS? &quot;;&quot; ;</code>
-<a id="compiler_artifact_decl"></a><code><strong>compiler_artifact_decl</strong> ::=  &quot;artifact&quot; WS1 ident WS? &quot;:&quot; WS? type_expr WS? &quot;;&quot; ;</code>
-<code></code>
-<a id="compiler_pipeline_decl"></a><code><strong>compiler_pipeline_decl</strong> ::=  &quot;pipeline&quot; WS1 ident WS? &quot;{&quot; WS? pipeline_step* WS? &quot;}&quot; ;</code>
-<a id="pipeline_step"></a><code><strong>pipeline_step</strong> ::=  &quot;run&quot; WS1 ident [ WS? &quot;as&quot; WS? ident ] WS? &quot;;&quot;</code>
-<code>                | &quot;dump&quot; WS1 ident WS? &quot;;&quot;</code>
-<code>                | &quot;verify&quot; WS1 ident WS? &quot;;&quot;</code>
-<code>                ;</code>
-<code></code>
-<a id="compiler_cache_decl"></a><code><strong>compiler_cache_decl</strong> ::=  &quot;cache&quot; WS1 ident WS? &quot;{&quot; WS? cache_item* WS? &quot;}&quot; ;</code>
-<a id="cache_item"></a><code><strong>cache_item</strong> ::=  &quot;key&quot; WS? &quot;:&quot; WS? type_expr WS? &quot;;&quot;</code>
-<code>             | &quot;value&quot; WS? &quot;:&quot; WS? type_expr WS? &quot;;&quot;</code>
-<code>             | &quot;strategy&quot; WS? &quot;:&quot; WS? ident WS? &quot;;&quot;</code>
-<code>             ;</code>
-<code></code>
-<a id="compiler_target_decl"></a><code><strong>compiler_target_decl</strong> ::=  &quot;target&quot; WS1 ident WS? &quot;{&quot; WS? target_item* WS? &quot;}&quot; ;</code>
-<a id="target_item"></a><code><strong>target_item</strong> ::=  ident WS? &quot;:&quot; WS? expr WS? &quot;;&quot; ;</code>
-<code></code>
 <a id="query_decl"></a><code><strong>query_decl</strong> ::=  { attr_prefix WS? } &quot;query&quot; WS1 ident</code>
 <code>               &quot;(&quot; WS? param_list? WS? &quot;)&quot;</code>
 <code>               WS? &quot;-&gt;&quot; WS? type_expr</code>
@@ -503,40 +391,18 @@
 <code></code>
 <a id="query_body"></a><code><strong>query_body</strong> ::=  block | &quot;;&quot; ;</code>
 <code></code>
-<a id="pass_decl"></a><code><strong>pass_decl</strong> ::=  { attr_prefix WS? } &quot;pass&quot; WS1 ident WS? &quot;{&quot; WS? pass_items? WS? &quot;}&quot; ;</code>
-<a id="pass_items"></a><code><strong>pass_items</strong> ::=  pass_item { WS? pass_item } ;</code>
-<a id="pass_item"></a><code><strong>pass_item</strong> ::=  &quot;input&quot; WS? &quot;:&quot; WS? type_expr WS? &quot;;&quot;</code>
-<code>            | &quot;output&quot; WS? &quot;:&quot; WS? type_expr WS? &quot;;&quot;</code>
-<code>            | &quot;requires&quot; WS? &quot;:&quot; WS? ident_list WS? &quot;;&quot;</code>
-<code>            | &quot;invalidates&quot; WS? &quot;:&quot; WS? ident_list WS? &quot;;&quot;</code>
-<code>            | proc_decl</code>
-<code>            ;</code>
+<code>&lt;&lt;&lt; ================= Meta Declarations ================= &gt;&gt;&gt;</code>
 <code></code>
-<a id="backend_decl"></a><code><strong>backend_decl</strong> ::=  { attr_prefix WS? } &quot;backend&quot; WS1 ident WS? &quot;{&quot; WS? backend_items? WS? &quot;}&quot; ;</code>
-<a id="backend_items"></a><code><strong>backend_items</strong> ::=  backend_item { WS? backend_item } ;</code>
-<a id="backend_item"></a><code><strong>backend_item</strong> ::=  &quot;target&quot; WS? &quot;:&quot; WS? string_lit WS? &quot;;&quot;</code>
-<code>               | &quot;format&quot; WS? &quot;:&quot; WS? backend_format WS? &quot;;&quot;</code>
-<code>               | &quot;emits&quot; WS? &quot;:&quot; WS? backend_output WS? &quot;;&quot;</code>
-<code>               | &quot;requires&quot; WS? &quot;:&quot; WS? ident_list WS? &quot;;&quot;</code>
-<code>               | proc_decl</code>
-<code>               ;</code>
+<a id="compiler_decl"></a><code><strong>compiler_decl</strong> ::=  { attr_prefix WS? } &quot;compiler&quot; WS1 ident_or_string [ WS? meta_args ] WS? meta_tail ;</code>
+<a id="pass_decl"></a><code><strong>pass_decl</strong> ::=  { attr_prefix WS? } &quot;pass&quot; WS1 ident_or_string [ WS? meta_args ] WS? meta_tail ;</code>
+<a id="backend_decl"></a><code><strong>backend_decl</strong> ::=  { attr_prefix WS? } &quot;backend&quot; WS1 ident_or_string [ WS? meta_args ] WS? meta_tail ;</code>
+<a id="diagnostic_decl"></a><code><strong>diagnostic_decl</strong> ::=  { attr_prefix WS? } &quot;diagnostic&quot; WS1 ident_or_string [ WS? meta_args ] WS? meta_tail ;</code>
 <code></code>
-<a id="backend_format"></a><code><strong>backend_format</strong> ::=  &quot;c&quot; | &quot;llvm&quot; | &quot;asm&quot; | &quot;object&quot; | &quot;wasm&quot; | &quot;ir&quot; ;</code>
-<a id="backend_output"></a><code><strong>backend_output</strong> ::=  &quot;source&quot; | &quot;assembly&quot; | &quot;object&quot; | &quot;executable&quot; | &quot;library&quot; ;</code>
-<code></code>
-<a id="diagnostic_decl"></a><code><strong>diagnostic_decl</strong> ::=  { attr_prefix WS? } &quot;diagnostic&quot; WS1 diagnostic_code WS? &quot;{&quot; WS? diagnostic_items? WS? &quot;}&quot; ;</code>
-<a id="diagnostic_code"></a><code><strong>diagnostic_code</strong> ::=  ident | string_lit ;</code>
-<a id="diagnostic_items"></a><code><strong>diagnostic_items</strong> ::=  diagnostic_item { WS? diagnostic_item } ;</code>
-<code></code>
-<a id="diagnostic_item"></a><code><strong>diagnostic_item</strong> ::=  &quot;level&quot; WS? &quot;:&quot; WS? diagnostic_level WS? &quot;;&quot;</code>
-<code>                  | &quot;message&quot; WS? &quot;:&quot; WS? string_lit WS? &quot;;&quot;</code>
-<code>                  | &quot;label&quot; WS? &quot;:&quot; WS? string_lit WS? &quot;;&quot;</code>
-<code>                  | &quot;help&quot; WS? &quot;:&quot; WS? string_lit WS? &quot;;&quot;</code>
-<code>                  | &quot;note&quot; WS? &quot;:&quot; WS? string_lit WS? &quot;;&quot;</code>
-<code>                  | &quot;suggest&quot; WS? &quot;:&quot; WS? string_lit WS? &quot;;&quot;</code>
-<code>                  ;</code>
-<code></code>
-<a id="diagnostic_level"></a><code><strong>diagnostic_level</strong> ::=  &quot;error&quot; | &quot;warning&quot; | &quot;note&quot; | &quot;help&quot; | &quot;fatal&quot; ;</code>
+<a id="ident_or_string"></a><code><strong>ident_or_string</strong> ::=  ident | string_lit ;</code>
+<a id="meta_args"></a><code><strong>meta_args</strong> ::=  &quot;(&quot; WS? meta_arg_list? WS? &quot;)&quot; ;</code>
+<a id="meta_arg_list"></a><code><strong>meta_arg_list</strong> ::=  meta_arg { WS? &quot;,&quot; WS? meta_arg } [ WS? &quot;,&quot; ] ;</code>
+<a id="meta_arg"></a><code><strong>meta_arg</strong> ::=  ident_or_string ;</code>
+<a id="meta_tail"></a><code><strong>meta_tail</strong> ::=  block | &quot;;&quot; ;</code>
 <code></code>
 <code>&lt;&lt;&lt; ================= Attributes ================= &gt;&gt;&gt;</code>
 <code></code>
@@ -589,6 +455,8 @@
 <code></code>
 <a id="local_const_stmt"></a><code><strong>local_const_stmt</strong> ::=  &quot;const&quot; WS1 ident [ WS? &quot;:&quot; WS? type_expr ] WS? &quot;=&quot; WS? expr ;</code>
 <a id="let_stmt"></a><code><strong>let_stmt</strong> ::=  &quot;let&quot; WS1 [ &quot;mut&quot; WS1 ] pattern [ WS? &quot;:&quot; WS? type_expr ] WS? &quot;=&quot; WS? expr ;</code>
+<code>&lt;&lt;&lt; assign_target stays intentionally syntactic here; projection validity and aliasing</code>
+<code>    are enforced later by sema/typeck/borrowck on structured HIR/MIR places. &gt;&gt;&gt;</code>
 <a id="set_stmt"></a><code><strong>set_stmt</strong> ::=  &quot;set&quot; WS1 assign_target WS? assign_op WS? expr ;</code>
 <a id="assign_target"></a><code><strong>assign_target</strong> ::=  unary_expr ;</code>
 <code></code>
@@ -664,10 +532,14 @@
 <code></code>
 <a id="cast_expr"></a><code><strong>cast_expr</strong> ::=  unary_expr { WS? ( &quot;as&quot; WS? type_expr | &quot;is&quot; WS? pattern | &quot;is&quot; WS1 &quot;not&quot; WS1 pattern ) } ;</code>
 <code></code>
+<code>&lt;&lt;&lt; unary borrow and move syntax are accepted at parse time; whether a use is</code>
+<code>    actually a copy or a move is decided later from inferred types. &gt;&gt;&gt;</code>
 <a id="unary_expr"></a><code><strong>unary_expr</strong> ::=  ( &quot;not&quot; | &quot;-&quot; | &quot;~&quot; | &quot;*&quot; | &quot;&amp;&quot; | &quot;move&quot; | &quot;await&quot; ) WS? unary_expr</code>
 <code>             | postfix_expr</code>
 <code>             ;</code>
 <code></code>
+<code>&lt;&lt;&lt; postfix chains define the full place surface used later by ownership and</code>
+<code>    borrow analysis: field projection, indexing, call, try and await suffixes. &gt;&gt;&gt;</code>
 <a id="postfix_expr"></a><code><strong>postfix_expr</strong> ::=  primary { call_suffix | member_suffix | index_suffix | try_suffix | await_suffix } ;</code>
 <a id="call_suffix"></a><code><strong>call_suffix</strong> ::=  &quot;(&quot; WS? arg_list? WS? &quot;)&quot; ;</code>
 <a id="member_suffix"></a><code><strong>member_suffix</strong> ::=  &quot;.&quot; ident ;</code>
@@ -802,6 +674,8 @@
 <code>            | type_primary</code>
 <code>            ;</code>
 <code></code>
+<code>&lt;&lt;&lt; shared and mutable references are part of the core surface grammar; lifetime,</code>
+<code>    aliasing and region closure remain semantic checks outside the parser. &gt;&gt;&gt;</code>
 <a id="reference_type"></a><code><strong>reference_type</strong> ::=  &quot;&amp;&quot; WS? [ lifetime WS? ] [ &quot;mut&quot; WS1 ] type_expr ;</code>
 <a id="pointer_type"></a><code><strong>pointer_type</strong> ::=  &quot;*&quot; WS? [ &quot;const&quot; WS1 | &quot;mut&quot; WS1 | &quot;volatile&quot; WS1 | addr_space WS1 ] type_expr ;</code>
 <a id="optional_type"></a><code><strong>optional_type</strong> ::=  &quot;?&quot; WS? type_expr ;</code>
@@ -932,6 +806,5 @@
 </article>
 </main>
 </div>
-<script type="module" src="../js/main.js"></script>
 </body>
 </html>
