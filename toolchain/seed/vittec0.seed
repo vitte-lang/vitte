@@ -127,7 +127,7 @@ first_path_arg() {
             continue
         fi
         case "$arg" in
-            --src|--out|-o|--stage|--ir-version)
+            --src|--out|-o|--ir-version)
                 skip_next=1
                 ;;
             -*)
@@ -5195,47 +5195,34 @@ case "$cmd" in
         ;;
     build)
         read_common_flags "$@"
-        stage="$(arg_value --stage "$@" || true)"
-        if [ -n "$stage" ]; then
-            trace_step "pipeline.lower:begin"
-            src_dir="$(arg_value --src "$@" || true)"
-            out_dir="$(arg_value --out "$@" || true)"
-            [ "$stage" = "stage1" ] || { cli_error E_CLI_STAGE "unsupported stage: $stage" "supported: stage1"; exit 2; }
-            [ -n "$src_dir" ] && [ -n "$out_dir" ] || { cli_error E_CLI_MISSING_ARG "build requires --stage, --src and --out" "vittec build --stage stage1 --src toolchain/stage1/src --out target/bootstrap/stage1"; exit 2; }
-            [ -f "$src_dir/main.vit" ] || { cli_error E_CLI_IO "cannot read $src_dir/main.vit" "check the path and permissions"; exit 1; }
-            trace_step "pipeline.emit:stage1"
-            write_compiler "$src_dir/main.vit" "$out_dir/vittec1"
-            trace_step "pipeline.emit:ok"
-        else
-            src="$(arg_value --src "$@" || true)"
-            if [ -z "$src" ]; then src="$(first_file_arg "$@" || true)"; fi
-            if [ -z "$src" ]; then src="$(resolve_cli_input "$(arg_value --src "$@" || first_path_arg_after_command "$@" || true)" || true)"; fi
-            out="$(arg_value --out "$@" || true)"
-            if [ -z "$out" ]; then out="$(arg_value -o "$@" || true)"; fi
-            [ -n "$src" ] || { cli_error E_CLI_MISSING_ARG "build requires input file" "vittec build main.vit -o build/main"; exit 2; }
-            [ -f "$src" ] || { cli_error E_CLI_IO "cannot read $src" "check the path and permissions"; exit 1; }
-            [ -n "$out" ] || { cli_error E_CLI_MISSING_ARG "build requires -o/--out output path" "vittec build main.vit -o build/main"; exit 2; }
-            guard_output_not_source "$src" "$out" || exit 2
-            trace_step "pipeline.lower:begin"
-            trace_step "pipeline.backend:native-bootstrap-subset"
-            set +e
-            build_native_user_program "$src" "$out"
-            rc="$?"
-            set -e
-            if [ "$rc" -ne 0 ]; then
-                if [ "$rc" -eq 125 ]; then
-                    trace_step "pipeline.backend:delegate-generic"
-                    set +e
-                    delegate_generic_backend_build "$src" "$out"
-                    rc="$?"
-                    set -e
-                fi
-                [ "$rc" -eq 0 ] || exit "${rc:-3}"
+        src="$(arg_value --src "$@" || true)"
+        if [ -z "$src" ]; then src="$(first_file_arg "$@" || true)"; fi
+        if [ -z "$src" ]; then src="$(resolve_cli_input "$(arg_value --src "$@" || first_path_arg_after_command "$@" || true)" || true)"; fi
+        out="$(arg_value --out "$@" || true)"
+        if [ -z "$out" ]; then out="$(arg_value -o "$@" || true)"; fi
+        [ -n "$src" ] || { cli_error E_CLI_MISSING_ARG "build requires input file" "vittec build main.vit -o build/main"; exit 2; }
+        [ -f "$src" ] || { cli_error E_CLI_IO "cannot read $src" "check the path and permissions"; exit 1; }
+        [ -n "$out" ] || { cli_error E_CLI_MISSING_ARG "build requires -o/--out output path" "vittec build main.vit -o build/main"; exit 2; }
+        guard_output_not_source "$src" "$out" || exit 2
+        trace_step "pipeline.lower:begin"
+        trace_step "pipeline.backend:native-bootstrap-subset"
+        set +e
+        build_native_user_program "$src" "$out"
+        rc="$?"
+        set -e
+        if [ "$rc" -ne 0 ]; then
+            if [ "$rc" -eq 125 ]; then
+                trace_step "pipeline.backend:delegate-generic"
+                set +e
+                delegate_generic_backend_build "$src" "$out"
+                rc="$?"
+                set -e
             fi
-            [ -f "$out" ] || { cli_error E_BUILD_OUTPUT "build failed to produce output: $out"; exit 1; }
-            trace_step "pipeline.emit:ok"
-            printf 'build succeeded: %s\n' "$out"
+            [ "$rc" -eq 0 ] || exit "${rc:-3}"
         fi
+        [ -f "$out" ] || { cli_error E_BUILD_OUTPUT "build failed to produce output: $out"; exit 1; }
+        trace_step "pipeline.emit:ok"
+        printf 'build succeeded: %s\n' "$out"
         ;;
     *)
         cli_error E_CLI_COMMAND "unknown command: $cmd" "use --help to list commands"

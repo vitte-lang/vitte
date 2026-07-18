@@ -61,6 +61,10 @@ check_shell() {
     name="$1"
     src="$2"
     "$BIN_DIR/vittec0" dump-native-shell --src "$src" > "$TMP_DIR/$name.shell"
+    if [ "${VITTE_UPDATE_BOOTSTRAP_SHELL_SNAPSHOTS:-0}" = "1" ]; then
+        cp "$TMP_DIR/$name.shell" "$SNAP_DIR/shell.$name.must"
+        return 0
+    fi
     diff -u "$SNAP_DIR/shell.$name.must" "$TMP_DIR/$name.shell" || die "$name native shell snapshot drift"
 }
 

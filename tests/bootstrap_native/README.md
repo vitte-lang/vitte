@@ -76,6 +76,10 @@ snapshot and document the reason in the change. Verify with:
 make bootstrap-native-snapshots
 ```
 
+After an audited seed rotation, refresh the generated shell snapshots with
+`VITTE_UPDATE_BOOTSTRAP_SHELL_SNAPSHOTS=1 make bootstrap-native-snapshots`,
+then rerun the command without that variable to verify the pinned output.
+
 ## IR version gate
 
 `tools/bootstrap_native_snapshots.sh` enforces an explicit gate:
