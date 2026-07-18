@@ -15,7 +15,7 @@
   without assuming `bin/vitte` only.
 - Hardened the seed bootstrap parser heuristics so embedded source snippets in
   string literals do not trigger false diagnostics during bootstrap analysis.
-- Closed the stage2 compiler reachability audit from the real entrypoint so
+- Closed the compiler reachability audit from the real entrypoint so
   `make build` now passes end-to-end under the stricter bootstrap rails.
 
 ## 2026-05-25 · Seed Diagnostics Surface

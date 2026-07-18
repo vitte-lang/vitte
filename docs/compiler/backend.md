@@ -13,12 +13,12 @@ executable lie (sortie par defaut de `build`).
 constantes, arithmetique imbriquee, appel de procedure, branche conditionnelle,
 comparaison et division signee. Chaque source est d'abord acceptee par la
 commande utilisateur `vitte check`. Le profil `--strict`, reserve au corpus
-self-hosting du compilateur stage2, n'est pas applique aux programmes du corpus.
+self-hosting du compilateur, n'est pas applique aux programmes du corpus.
 
 Le test de contrat
 `test_c_and_llvm_backends_consume_shared_ir_corpus` envoie la meme `IrUnit`
 canonique aux adaptateurs de production C et LLVM, puis verifie leur validite,
-leur nombre de fonctions et les operations attendues. Le bridge stage2 valide
+leur nombre de fonctions et les operations attendues. Le bridge de transition valide
 actuellement cette suite sans executer son corps.
 
 En complement, le gate materiel genere des artefacts C et LLVM de reference a
