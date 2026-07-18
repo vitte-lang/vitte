@@ -4,7 +4,7 @@ set -eu
 ROOT_DIR=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 VERSION=${VERSION:-$(tr -d ' \r\n' < "$ROOT_DIR/toolchain/scripts/package/PACKAGE_VERSION")}
 OUT_DIR=${OUT_DIR:-$ROOT_DIR/pkgout}
-ARCH=${ARCH:-amd64}
+ARCH=${ARCH:-all}
 PACKAGE_NAME=${PACKAGE_NAME:-vitte}
 SVR4_PACKAGE=${SVR4_PACKAGE:-VITTE}
 
@@ -25,15 +25,12 @@ copy_tree() {
   COPYFILE_DISABLE=1 tar -cf - -C "$source" . | tar -xf - -C "$destination"
 }
 
-case "$ARCH" in
-  x86_64|amd64) ARCH=amd64 ;;
-  *) die "unsupported Solaris architecture: $ARCH (only amd64 is supported)" ;;
-esac
-
 for tool in install python3 shasum tar; do
   require "$tool"
 done
 
+build_one() {
+ARCH=$1
 stage=$ROOT_DIR/target/installer-solaris-$ARCH
 metadata=$stage/metadata
 data_root=$stage/root
@@ -102,3 +99,11 @@ else
 fi
 
 printf '[build-solaris-package] complete version=%s arch=%s out=%s\n' "$VERSION" "$ARCH" "$OUT_DIR"
+}
+
+case "$ARCH" in
+  all) build_one amd64; build_one i386 ;;
+  x86_64|amd64) build_one amd64 ;;
+  i386|i486|i586|i686|x86) build_one i386 ;;
+  *) die "unsupported Solaris architecture: $ARCH" ;;
+esac

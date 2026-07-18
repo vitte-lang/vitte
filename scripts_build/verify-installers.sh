@@ -47,7 +47,19 @@ verify_deb amd64
 verify_deb arm64
 verify_deb i386
 verify_freebsd amd64 amd64
+verify_freebsd i386 i386
 verify_freebsd arm64 aarch64
+
+for family in freebsd openbsd netbsd dragonfly; do
+  for arch in amd64 i386; do
+    bsd_kit=$OUT_DIR/vitte-${VERSION}-${family}-${arch}-installer.tar.xz
+    verify_sum "$bsd_kit"
+    tar -xJOf "$bsd_kit" INSTALL.txt | grep -Fx "Vitte $VERSION complete installer for $family $arch" >/dev/null ||
+      die "invalid BSD installer metadata: $bsd_kit"
+    tar -tJf "$bsd_kit" | grep -Fx 'root/usr/local/share/vitte/assets/logo.png' >/dev/null ||
+      die "missing BSD installer logo: $bsd_kit"
+  done
+done
 
 if [ "$(uname -s)" = Darwin ]; then
   for arch in arm64 x86_64 universal; do
@@ -60,23 +72,28 @@ if [ "$(uname -s)" = Darwin ]; then
   done
 fi
 
-solaris_kit=$OUT_DIR/vitte-${VERSION}-solaris-amd64-spool.tar.gz
-verify_sum "$solaris_kit"
-tar -xOzf "$solaris_kit" pkginfo | grep -Fx 'ARCH=i386' >/dev/null || die "invalid Solaris ARCH"
-tar -xOzf "$solaris_kit" pkginfo | grep -Fx 'VITTE_PROCESSOR=amd64' >/dev/null || die "invalid Solaris processor"
+for arch in amd64 i386; do
+  solaris_kit=$OUT_DIR/vitte-${VERSION}-solaris-${arch}-spool.tar.gz
+  verify_sum "$solaris_kit"
+  tar -xOzf "$solaris_kit" pkginfo | grep -Fx 'ARCH=i386' >/dev/null || die "invalid Solaris ARCH"
+  tar -xOzf "$solaris_kit" pkginfo | grep -Fx "VITTE_PROCESSOR=$arch" >/dev/null || die "invalid Solaris processor"
+done
 
 windows_kit=$OUT_DIR/vitte-${VERSION}-windows-amd64-nsis.tar.gz
 verify_sum "$windows_kit"
 tar -xOzf "$windows_kit" BUILD.txt | grep -Fx 'Processor: amd64 (PE machine 0x8664)' >/dev/null ||
   die "invalid Windows processor manifest"
 
-solaris_pkg=$OUT_DIR/vitte-${VERSION}-solaris-amd64.pkg
 windows_exe=$OUT_DIR/vitte-${VERSION}-windows-amd64-installer.exe
 if [ "$STRICT_NATIVE" -eq 1 ]; then
-  verify_sum "$solaris_pkg"
+  verify_sum "$OUT_DIR/vitte-${VERSION}-solaris-amd64.pkg"
+  verify_sum "$OUT_DIR/vitte-${VERSION}-solaris-i386.pkg"
   verify_sum "$windows_exe"
 else
-  [ ! -e "$solaris_pkg" ] || verify_sum "$solaris_pkg"
+  for arch in amd64 i386; do
+    solaris_pkg=$OUT_DIR/vitte-${VERSION}-solaris-${arch}.pkg
+    [ ! -e "$solaris_pkg" ] || verify_sum "$solaris_pkg"
+  done
   [ ! -e "$windows_exe" ] || verify_sum "$windows_exe"
 fi
 

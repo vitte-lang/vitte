@@ -22,6 +22,7 @@ build_one() {
   case "$arch" in
     amd64) freebsd_arch=amd64 ;;
     arm64) freebsd_arch=aarch64 ;;
+    i386) freebsd_arch=i386 ;;
     *) die "unsupported FreeBSD architecture: $arch" ;;
   esac
   abi=FreeBSD:$FREEBSD_MAJOR:$freebsd_arch
@@ -86,9 +87,10 @@ for tool in bsdtar install python3 shasum tar; do
 done
 
 case "$ARCH" in
-  all) build_one amd64; build_one arm64 ;;
+  all) build_one amd64; build_one i386; build_one arm64 ;;
   x86_64|amd64) build_one amd64 ;;
   aarch64|arm64) build_one arm64 ;;
+  i386|i486|i586|i686|x86) build_one i386 ;;
   *) die "unsupported FreeBSD architecture: $ARCH" ;;
 esac
 
