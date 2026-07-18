@@ -24,6 +24,7 @@ fi
 
 run 'Solaris SVR4: amd64, i386' all "$ROOT_DIR/scripts_build/build-solaris-package.sh"
 run 'Windows NSIS: amd64' amd64 "$ROOT_DIR/scripts_build/build-windows-installer.sh"
+run 'Windows NSIS: i386' i386 "$ROOT_DIR/scripts_build/build-windows-installer.sh"
 VERSION=$VERSION OUT_DIR=$OUT_DIR "$ROOT_DIR/scripts_build/verify-installers.sh"
 
 printf '[build-all-installers] complete version=%s out=%s\n' "$VERSION" "$OUT_DIR"

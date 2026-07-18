@@ -79,22 +79,30 @@ for arch in amd64 i386; do
   tar -xOzf "$solaris_kit" pkginfo | grep -Fx "VITTE_PROCESSOR=$arch" >/dev/null || die "invalid Solaris processor"
 done
 
-windows_kit=$OUT_DIR/vitte-${VERSION}-windows-amd64-nsis.tar.gz
-verify_sum "$windows_kit"
-tar -xOzf "$windows_kit" BUILD.txt | grep -Fx 'Processor: amd64 (PE machine 0x8664)' >/dev/null ||
-  die "invalid Windows processor manifest"
+for arch_machine in 'amd64 0x8664' 'i386 0x014c'; do
+  set -- $arch_machine
+  windows_kit=$OUT_DIR/vitte-${VERSION}-windows-$1-nsis.tar.gz
+  verify_sum "$windows_kit"
+  tar -xOzf "$windows_kit" BUILD.txt | grep -Fx "Processor: $1 (PE machine $2)" >/dev/null ||
+    die "invalid Windows processor manifest"
+  tar -tzf "$windows_kit" | grep -Fx 'payload/share/vitte/assets/logo.png' >/dev/null ||
+    die "missing Windows installer logo"
+done
 
-windows_exe=$OUT_DIR/vitte-${VERSION}-windows-amd64-installer.exe
 if [ "$STRICT_NATIVE" -eq 1 ]; then
   verify_sum "$OUT_DIR/vitte-${VERSION}-solaris-amd64.pkg"
   verify_sum "$OUT_DIR/vitte-${VERSION}-solaris-i386.pkg"
-  verify_sum "$windows_exe"
+  verify_sum "$OUT_DIR/vitte-${VERSION}-windows-amd64-installer.exe"
+  verify_sum "$OUT_DIR/vitte-${VERSION}-windows-i386-installer.exe"
 else
   for arch in amd64 i386; do
     solaris_pkg=$OUT_DIR/vitte-${VERSION}-solaris-${arch}.pkg
     [ ! -e "$solaris_pkg" ] || verify_sum "$solaris_pkg"
   done
-  [ ! -e "$windows_exe" ] || verify_sum "$windows_exe"
+  for arch in amd64 i386; do
+    windows_exe=$OUT_DIR/vitte-${VERSION}-windows-${arch}-installer.exe
+    [ ! -e "$windows_exe" ] || verify_sum "$windows_exe"
+  done
 fi
 
 printf '[verify-installers] OK version=%s strict_native=%s\n' "$VERSION" "$STRICT_NATIVE"
