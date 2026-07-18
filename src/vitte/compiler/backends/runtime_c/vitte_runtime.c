@@ -803,6 +803,10 @@ VitteSliceString vitte_empty_slice_string(void) {
 }
 
 VitteSliceI32 vitte_slice_push_i32(VitteSliceI32 base, int32_t value) {
+  if (base.len >= SIZE_MAX / sizeof(int32_t)) {
+    vitte_note_panic(3);
+    return base;
+  }
   size_t next_len = base.len + 1;
   int32_t *next = (int32_t *)realloc(base.data, next_len * sizeof(int32_t));
   if (next == NULL) {
@@ -815,6 +819,10 @@ VitteSliceI32 vitte_slice_push_i32(VitteSliceI32 base, int32_t value) {
 }
 
 VitteSliceString vitte_slice_push_string(VitteSliceString base, VitteString value) {
+  if (base.len >= SIZE_MAX / sizeof(VitteString)) {
+    vitte_note_panic(3);
+    return base;
+  }
   size_t next_len = base.len + 1;
   VitteString *next = (VitteString *)realloc(base.data, next_len * sizeof(VitteString));
   if (next == NULL) {
@@ -827,6 +835,11 @@ VitteSliceString vitte_slice_push_string(VitteSliceString base, VitteString valu
 }
 
 VitteString vitte_string_concat(VitteString a, VitteString b) {
+  if (a.len > SIZE_MAX - b.len || a.len + b.len == SIZE_MAX) {
+    vitte_note_panic(3);
+    VitteString empty = {NULL, 0};
+    return empty;
+  }
   size_t total = a.len + b.len;
   char *buf = (char *)malloc(total + 1);
   if (buf == NULL) {

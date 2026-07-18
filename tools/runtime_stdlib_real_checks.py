@@ -50,6 +50,10 @@ int main(int argc, char **argv) {
   VitteString destination;
   VitteString original = {"keep", 4};
   VitteString preserved;
+  VitteSliceI32 oversized_numbers = {NULL, SIZE_MAX};
+  VitteString oversized_string = {NULL, SIZE_MAX};
+  VitteString empty_string = {NULL, 0};
+  VitteString rejected_string;
 
   CHECK(strcmp(vitte_c_abi_version(), "1.0.0") == 0, 10);
   CHECK(vitte_host_runtime_available() == 1, 11);
@@ -91,6 +95,16 @@ int main(int argc, char **argv) {
   CHECK(vitte_runtime_panic_boundary_code() == 2, 19);
   CHECK(vitte_runtime_panic_boundary_end() == 0, 20);
   CHECK(vitte_runtime_panic_boundary_reset() == 0, 21);
+
+  CHECK(vitte_runtime_panic_boundary_begin() == 1, 28);
+  oversized_numbers = vitte_slice_push_i32(oversized_numbers, 1);
+  CHECK(oversized_numbers.data == NULL && oversized_numbers.len == SIZE_MAX, 29);
+  rejected_string = vitte_string_concat(oversized_string, empty_string);
+  CHECK(rejected_string.data == NULL && rejected_string.len == 0, 30);
+  CHECK(vitte_runtime_panic_boundary_triggered() == 1, 31);
+  CHECK(vitte_runtime_panic_boundary_code() == 3, 32);
+  CHECK(vitte_runtime_panic_boundary_end() == 0, 33);
+  CHECK(vitte_runtime_panic_boundary_reset() == 0, 34);
 
   free(numbers.data);
   free((void *)joined.data);
