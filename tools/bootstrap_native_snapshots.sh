@@ -289,6 +289,14 @@ check_call_result_projection_type() {
     [ ! -s "$TMP_DIR/call-result-projection.check.err" ] || die "projected call result retained the raw procedure return type"
 }
 
+check_call_result_comparison_type() {
+    log "checking compared call result type"
+    fixture="$ROOT_DIR/tests/type_system/call_result_comparison_positive.vit"
+    "$BIN_DIR/vittec0" check "$fixture" > "$TMP_DIR/call-result-comparison.check.out" 2> "$TMP_DIR/call-result-comparison.check.err"
+    diff -u "$SNAP_DIR/check.compiler.out.must" "$TMP_DIR/call-result-comparison.check.out" || die "call result comparison check stdout drift"
+    [ ! -s "$TMP_DIR/call-result-comparison.check.err" ] || die "compared call result retained the raw procedure return type"
+}
+
 check_comment_markers_in_strings() {
     log "checking comment markers inside strings"
     fixture="$SNAP_DIR/string_comment_markers.vit"
@@ -472,6 +480,7 @@ check_branch_shadow_uses_prior_declaration
 check_qualified_call_uses_module_arity
 check_call_result_cast_type
 check_call_result_projection_type
+check_call_result_comparison_type
 check_comment_markers_in_strings
 check_full_compiler_modern_helpers
 check_native_user_build
