@@ -49,8 +49,7 @@ emission_sensitive_changed=0
 for path in \
     "toolchain/seed/vittec0.seed" \
     "toolchain/seed/src/main.vit" \
-    "toolchain/stage1/src/main.vit" \
-    "toolchain/stage2/src/main.vit"
+    "src/vitte/compiler/main.vit"
 do
     if has_changed "$path"; then
         emission_sensitive_changed=1
