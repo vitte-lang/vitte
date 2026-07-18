@@ -21,10 +21,16 @@ check_stage_file() {
   }
 }
 
-check_stage_file toolchain/stage1/src/main.vit
-check_stage_file toolchain/stage2/src/main.vit
+check_stage_file src/vitte/compiler/main.vit
 
-extra_entries=$(rg -n "COMPILER_ENTRY_POINT[[:space:]]*:[[:space:]]*string[[:space:]]*=" src toolchain tools -S | rg -v "toolchain/stage1/src/main.vit|toolchain/stage2/src/main.vit|src/vitte/compiler/driver/compiler.vit|src/vitte/compiler/main.vit" || true)
+legacy_entries=$(rg -n "COMPILER_ENTRY_POINT[[:space:]]*:[[:space:]]*string[[:space:]]*=" toolchain/stage1 toolchain/stage2 toolchain/stage3 toolchain/stage4 -S 2>/dev/null || true)
+if [ -n "$legacy_entries" ]; then
+  echo "[compiler-entry-lock][error] legacy stage compiler entry constants found:" >&2
+  echo "$legacy_entries" >&2
+  exit 1
+fi
+
+extra_entries=$(rg -n "COMPILER_ENTRY_POINT[[:space:]]*:[[:space:]]*string[[:space:]]*=" src toolchain tools -S | rg -v "src/vitte/compiler/driver/compiler.vit|src/vitte/compiler/main.vit" || true)
 if [ -n "$extra_entries" ]; then
   echo "[compiler-entry-lock][error] additional COMPILER_ENTRY_POINT constants found:" >&2
   echo "$extra_entries" >&2
