@@ -28,6 +28,22 @@ typedef struct {
   size_t len;
 } VitteSliceString;
 
+#if defined(__cplusplus)
+#define VITTE_ABI_STATIC_ASSERT(condition, message) static_assert(condition, message)
+#else
+#define VITTE_ABI_STATIC_ASSERT(condition, message) _Static_assert(condition, message)
+#endif
+
+VITTE_ABI_STATIC_ASSERT(offsetof(VitteString, data) == 0, "VitteString.data ABI offset");
+VITTE_ABI_STATIC_ASSERT(offsetof(VitteString, len) == sizeof(void *), "VitteString.len ABI offset");
+VITTE_ABI_STATIC_ASSERT(sizeof(VitteString) == 2 * sizeof(void *), "VitteString ABI size");
+VITTE_ABI_STATIC_ASSERT(offsetof(VitteSliceI32, len) == sizeof(void *), "VitteSliceI32.len ABI offset");
+VITTE_ABI_STATIC_ASSERT(sizeof(VitteSliceI32) == 2 * sizeof(void *), "VitteSliceI32 ABI size");
+VITTE_ABI_STATIC_ASSERT(offsetof(VitteSliceString, len) == sizeof(void *), "VitteSliceString.len ABI offset");
+VITTE_ABI_STATIC_ASSERT(sizeof(VitteSliceString) == 2 * sizeof(void *), "VitteSliceString ABI size");
+
+#undef VITTE_ABI_STATIC_ASSERT
+
 const char *vitte_c_abi_version(void);
 void vitte_builtin_trap(VitteString msg);
 

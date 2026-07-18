@@ -67,12 +67,33 @@ def normalized(contract: tuple[str, list[str]]) -> tuple[str, list[str]]:
     return contract[0].replace(" ", ""), [item.replace(" ", "") for item in contract[1]]
 
 
+def parse_c_structs(header_text: str) -> dict[str, list[tuple[str, str]]]:
+    structs: dict[str, list[tuple[str, str]]] = {}
+    pattern = re.compile(r"typedef\s+struct\s*\{(.*?)\}\s*([A-Za-z_][A-Za-z0-9_]*)\s*;", re.DOTALL)
+    for body, name in pattern.findall(header_text):
+        fields = []
+        for declaration in body.split(";"):
+            declaration = declaration.strip()
+            if not declaration:
+                continue
+            field_type, separator, field_name = declaration.rpartition(" ")
+            if not separator:
+                raise ValueError(f"invalid C ABI field for {name}: {declaration}")
+            while field_name.startswith("*"):
+                field_type += "*"
+                field_name = field_name[1:]
+            fields.append((field_type.replace(" ", ""), field_name))
+        structs[name] = fields
+    return structs
+
+
 def main() -> int:
     manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
     header_text = HEADER.read_text(encoding="utf-8")
     vitte = parse_vitte()
     header = parse_c_declarations(header_text)
     implementation = parse_c_declarations(IMPLEMENTATION.read_text(encoding="utf-8"))
+    header_structs = parse_c_structs(header_text)
     failures: list[str] = []
 
     for macro in manifest["macros"]:
@@ -82,6 +103,13 @@ def main() -> int:
     version_define = f'#define VITTE_C_ABI_VERSION "{manifest["version"]}"'
     if version_define not in header_text:
         failures.append(f"missing ABI version string: {version_define}")
+    for struct in manifest["types"]:
+        expected_fields = [(field["type"].replace(" ", ""), field["name"]) for field in struct["fields"]]
+        actual_fields = header_structs.get(struct["name"])
+        if actual_fields is None:
+            failures.append(f"missing ABI type: {struct['name']}")
+        elif actual_fields != expected_fields:
+            failures.append(f"layout mismatch: {struct['name']}: manifest={expected_fields} C={actual_fields}")
 
     for name in sorted(set(vitte) | set(header)):
         if name not in vitte:
@@ -103,6 +131,7 @@ def main() -> int:
         "status": "pass" if not failures else "fail",
         "abi_version": manifest["version"],
         "symbol_count": len(vitte),
+        "layout_count": len(manifest["types"]),
         "symbols": sorted(vitte),
         "failures": failures,
     }
