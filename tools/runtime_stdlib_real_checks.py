@@ -29,8 +29,10 @@ def run_native_runtime_probe() -> dict[str, object]:
 
     source = r'''#include "vitte_runtime.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #define CHECK(condition, code) do { if (!(condition)) return (code); } while (0)
 
@@ -42,6 +44,12 @@ int main(int argc, char **argv) {
   VitteString integer;
   VitteSliceString args;
   VitteString panic_message = {"expected probe panic", 20};
+  char missing_path[128];
+  char destination_path[128];
+  VitteString missing;
+  VitteString destination;
+  VitteString original = {"keep", 4};
+  VitteString preserved;
 
   CHECK(strcmp(vitte_c_abi_version(), "1.0.0") == 0, 10);
   CHECK(vitte_host_runtime_available() == 1, 11);
@@ -53,6 +61,20 @@ int main(int argc, char **argv) {
   CHECK(joined.len == 5 && memcmp(joined.data, "vitte", 5) == 0, 13);
   integer = vitte_i32_to_string(-42);
   CHECK(integer.len == 3 && memcmp(integer.data, "-42", 3) == 0, 14);
+
+  snprintf(missing_path, sizeof(missing_path), "/tmp/vitte-runtime-missing-%ld", (long)getpid());
+  snprintf(destination_path, sizeof(destination_path), "/tmp/vitte-runtime-destination-%ld", (long)getpid());
+  missing.data = missing_path;
+  missing.len = strlen(missing_path);
+  destination.data = destination_path;
+  destination.len = strlen(destination_path);
+  unlink(missing_path);
+  unlink(destination_path);
+  CHECK(vitte_host_write_file(destination, original) == 4, 22);
+  CHECK(vitte_host_copy_file(missing, destination) == -1, 23);
+  preserved = vitte_host_read_file(destination);
+  CHECK(preserved.len == 4 && memcmp(preserved.data, "keep", 4) == 0, 24);
+  CHECK(vitte_host_delete_file(destination) == 0, 25);
 
   vitte_set_args(argc, (const char **)argv);
   args = cli_args();
@@ -69,6 +91,7 @@ int main(int argc, char **argv) {
   free(numbers.data);
   free((void *)joined.data);
   free((void *)integer.data);
+  free((void *)preserved.data);
   free(args.data);
   return 0;
 }
