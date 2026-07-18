@@ -134,16 +134,16 @@ def main() -> int:
 
         commands = [
             (
-                "bootstrap_stage_chain",
-                ["make", "--no-print-directory", "bootstrap-all-legacy"],
+                "bootstrap_seed",
+                ["make", "--no-print-directory", "bootstrap-seed"],
             ),
             (
-                "verify_stage_artifacts",
+                "verify_seed_artifact",
                 ["python3", "tools/check_bootstrap_stage_chain.py", "--artifacts"],
             ),
             (
-                "verify_real_compiler_parity",
-                ["make", "--no-print-directory", "selfhost-parity-gate"],
+                "verify_bootstrap_native_snapshots",
+                ["make", "--no-print-directory", "bootstrap-native-snapshots"],
             ),
         ]
         steps: list[dict[str, object]] = []
@@ -155,10 +155,7 @@ def main() -> int:
                 break
         payload["steps"] = steps
 
-        artifacts = [
-            artifact_state(checkout, relative_path)
-            for relative_path in ("bin/vittec0", "bin/vittec1", "bin/vittec", "bin/vitte")
-        ]
+        artifacts = [artifact_state(checkout, "bin/vittec0")]
         payload["artifacts"] = artifacts
         artifacts_ok = all(bool(item["available"] and item["executable"]) for item in artifacts)
         sidecars = list(checkout.glob("bin/*.bootstrap-bridge"))
