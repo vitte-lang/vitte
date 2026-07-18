@@ -125,7 +125,7 @@ step_start "seed-chain-artifacts"
 python3 tools/check_bootstrap_stage_chain.py --artifacts
 
 step_start "bootstrap-native-snapshots"
-VITTE_SEED_ONLY_SNAPSHOTS=1 make --no-print-directory bootstrap-native-snapshots
+make --no-print-directory bootstrap-native-snapshots
 
 t1="$(date +%s)"
 dur="$((t1 - t0))"

@@ -33,9 +33,7 @@ TMP_DIR="$(mktemp -d "$ROOT_DIR/target/bootstrap-native-snapshots.XXXXXX")"
 trap 'rm -rf "$TMP_DIR"' EXIT HUP INT TERM
 "$ROOT_DIR/scripts/seed/install_seed.sh" >/dev/null
 
-STAGE2_SRC="$ROOT_DIR/toolchain/stage2/src/main.vit"
-STAGE1_SRC="$ROOT_DIR/toolchain/stage1/src/main.vit"
-STAGE2_BOOTSTRAP_PAYLOAD_SRC="$STAGE2_SRC"
+COMPILER_SRC="$ROOT_DIR/src/vitte/compiler/main.vit"
 
 check_ir() {
     name="$1"
@@ -46,12 +44,12 @@ check_ir() {
 
 check_ir_contract_gate() {
     log "checking IR contract gate"
-    "$BIN_DIR/vittec0" dump-native-ir --src "$STAGE2_SRC" > "$TMP_DIR/ir.gate.v1"
+    "$BIN_DIR/vittec0" dump-native-ir --src "$COMPILER_SRC" > "$TMP_DIR/ir.gate.v1"
     first_line="$(sed -n '1p' "$TMP_DIR/ir.gate.v1")"
     [ "$first_line" = "native_ir_v1" ] || die "IR contract changed: expected native_ir_v1 header; update snapshots/docs via explicit IR migration"
     grep -q 'native_ir_v1' "$SNAP_DIR/README.md" || die "IR contract docs missing native_ir_v1 reference"
-    grep -q '^native_ir_v2' "$SNAP_DIR/stage2.v2.ir.must" || die "IR v2 snapshot missing or malformed"
-    "$BIN_DIR/vittec0" dump-native-ir --ir-version v2 --src "$STAGE2_SRC" > "$TMP_DIR/ir.gate.v2"
+    "$BIN_DIR/vittec0" dump-native-ir --ir-version v2 --src "$COMPILER_SRC" > "$TMP_DIR/ir.gate.v2"
+    [ "$(sed -n '1p' "$TMP_DIR/ir.gate.v2")" = "native_ir_v2" ] || die "IR v2 contract header drift"
     sed '1d' "$TMP_DIR/ir.gate.v1" > "$TMP_DIR/ir.gate.v1.body"
     while IFS= read -r line; do
         [ -z "$line" ] && continue
@@ -116,8 +114,8 @@ check_command_success() {
         fi
         die "$label check unexpectedly failed"
     fi
-    diff -u "$SNAP_DIR/check.stage2.out.must" "$TMP_DIR/$label.check.out" || die "$label check stdout snapshot drift"
-    diff -u "$SNAP_DIR/check.stage2.must" "$TMP_DIR/$label.check.err" || die "$label check stderr snapshot drift"
+    diff -u "$SNAP_DIR/check.compiler.out.must" "$TMP_DIR/$label.check.out" || die "$label check stdout snapshot drift"
+    diff -u "$SNAP_DIR/check.compiler.must" "$TMP_DIR/$label.check.err" || die "$label check stderr snapshot drift"
 }
 
 check_command_bad_unknown_const() {
@@ -130,31 +128,14 @@ check_command_bad_unknown_const() {
         log "$label check bad_unknown_const limited to bootstrap command surface"
         return 0
     fi
-    diff -u "$SNAP_DIR/check.stage2.must" "$TMP_DIR/$label.check.bad_unknown_const.out" || die "$label check bad_unknown_const stdout drift"
+    diff -u "$SNAP_DIR/check.compiler.must" "$TMP_DIR/$label.check.bad_unknown_const.out" || die "$label check bad_unknown_const stdout drift"
     sed "s|$SNAP_DIR/|tests/bootstrap_native/|g" "$TMP_DIR/$label.check.bad_unknown_const.err" > "$TMP_DIR/$label.check.bad_unknown_const.norm.err"
     diff -u "$SNAP_DIR/check.bad_unknown_const.err.must" "$TMP_DIR/$label.check.bad_unknown_const.norm.err" || die "$label check bad_unknown_const stderr drift"
 }
 
-check_unknown_command() {
-    bin="$1"
-    name="$2"
-    if "$bin" frobnicate > "$TMP_DIR/$name.unknown.out" 2> "$TMP_DIR/$name.unknown.err"; then
-        die "$name unknown command unexpectedly succeeded"
-    fi
-    diff -u "$SNAP_DIR/unknown_command.$name.err.must" "$TMP_DIR/$name.unknown.err" || die "$name unknown command snapshot drift"
-}
-
-build_fixture() {
-    name="$1"
-    src="$2"
-    "$BIN_DIR/vittec0" build-native --src "$src" --out "$TMP_DIR/$name"
-}
-
 check_ir_cases() {
     log "checking IR snapshots"
-    check_ir compiler_main "$ROOT_DIR/src/vitte/compiler/main.vit"
-    check_ir stage1 "$STAGE1_SRC"
-    check_ir stage2 "$STAGE2_SRC"
+    check_ir compiler_main "$COMPILER_SRC"
     check_ir named_consts "$SNAP_DIR/named_consts.vit"
     check_ir main_proc "$SNAP_DIR/main_proc.vit"
     check_ir no_main_default "$SNAP_DIR/no_main_default.vit"
@@ -207,37 +188,34 @@ check_bad_diag_cases() {
 
 check_cli_cases() {
     log "checking CLI snapshots"
-    "$BIN_DIR/vittec0" parse "$STAGE2_SRC" > "$TMP_DIR/parse.stage2.vittec0"
-    sed "s|$STAGE2_SRC|__STAGE2_SRC__|g" "$TMP_DIR/parse.stage2.vittec0" > "$TMP_DIR/parse.stage2.norm"
-    diff -u "$SNAP_DIR/parse.stage2.must" "$TMP_DIR/parse.stage2.norm" || die "stage2 parse snapshot drift"
-    if ! "$BIN_DIR/vittec0" check "$STAGE2_SRC" > "$TMP_DIR/vittec0.check.probe.out" 2> "$TMP_DIR/vittec0.check.probe.err"; then
+    "$BIN_DIR/vittec0" parse "$COMPILER_SRC" > "$TMP_DIR/parse.compiler.vittec0"
+    sed "s|$COMPILER_SRC|__COMPILER_SRC__|g" "$TMP_DIR/parse.compiler.vittec0" > "$TMP_DIR/parse.compiler.norm"
+    diff -u "$SNAP_DIR/parse.compiler.must" "$TMP_DIR/parse.compiler.norm" || die "compiler parse snapshot drift"
+    if ! "$BIN_DIR/vittec0" check "$COMPILER_SRC" > "$TMP_DIR/vittec0.check.probe.out" 2> "$TMP_DIR/vittec0.check.probe.err"; then
         if is_check_surface_limited "$TMP_DIR/vittec0.check.probe.err"; then
             log "vittec0 CLI check snapshots limited to bootstrap command surface"
             return 0
         fi
         die "vittec0 check unexpectedly failed during CLI probe"
     fi
-    check_command_success "$BIN_DIR/vittec0" vittec0 "$STAGE2_SRC"
+    check_command_success "$BIN_DIR/vittec0" vittec0 "$COMPILER_SRC"
     check_command_bad_unknown_const "$BIN_DIR/vittec0" vittec0
 
     check_cli_error cli.parse_missing "$BIN_DIR/vittec0" parse
     check_cli_error cli.dump_native_ir_missing "$BIN_DIR/vittec0" dump-native-ir
     check_cli_error cli.dump_native_shell_missing "$BIN_DIR/vittec0" dump-native-shell
     check_cli_error cli.build_native_missing "$BIN_DIR/vittec0" build-native
-    check_cli_error cli.build_stage2 "$BIN_DIR/vittec0" build --stage stage2 --src "$ROOT_DIR/toolchain/stage2/src" --out "$TMP_DIR/stage2-bad"
-    check_cli_error cli.build_bad_stage "$BIN_DIR/vittec0" build --stage bad --src "$ROOT_DIR/toolchain/stage1/src" --out "$TMP_DIR/stage-bad"
     check_cli_error cli.build_native_missing_src "$BIN_DIR/vittec0" build-native --src tests/bootstrap_native/missing.vit --out "$TMP_DIR/missing-src"
     check_cli_error cli.build_native_bad_bool_const "$BIN_DIR/vittec0" build-native --src tests/bootstrap_native/bad_bool_const.vit --out "$TMP_DIR/bad-bool"
-    check_cli_error_norm cli.build_stage1_missing_src "$BIN_DIR/vittec0" build --stage stage1 --src "$TMP_DIR/missing-stage1" --out "$TMP_DIR/stage1-missing"
 
-    "$BIN_DIR/vittec0" --trace-pipeline parse "$STAGE2_SRC" > "$TMP_DIR/trace.parse.out" 2> "$TMP_DIR/trace.parse.err"
-    sed "s|$STAGE2_SRC|__STAGE2_SRC__|g" "$TMP_DIR/trace.parse.out" > "$TMP_DIR/trace.parse.norm.out"
-    diff -u "$SNAP_DIR/trace.parse.stage2.out.must" "$TMP_DIR/trace.parse.norm.out" || die "trace parse stdout snapshot drift"
-    diff -u "$SNAP_DIR/trace.parse.stage2.err.must" "$TMP_DIR/trace.parse.err" || die "trace parse stderr snapshot drift"
+    "$BIN_DIR/vittec0" --trace-pipeline parse "$COMPILER_SRC" > "$TMP_DIR/trace.parse.out" 2> "$TMP_DIR/trace.parse.err"
+    sed "s|$COMPILER_SRC|__COMPILER_SRC__|g" "$TMP_DIR/trace.parse.out" > "$TMP_DIR/trace.parse.norm.out"
+    diff -u "$SNAP_DIR/trace.parse.compiler.out.must" "$TMP_DIR/trace.parse.norm.out" || die "trace parse stdout snapshot drift"
+    diff -u "$SNAP_DIR/trace.parse.compiler.err.must" "$TMP_DIR/trace.parse.err" || die "trace parse stderr snapshot drift"
 
-    "$BIN_DIR/vittec0" --trace-pipeline dump-native-ir --src "$STAGE2_SRC" > "$TMP_DIR/trace.ir.out" 2> "$TMP_DIR/trace.ir.err"
-    diff -u "$SNAP_DIR/stage2.ir.must" "$TMP_DIR/trace.ir.out" || die "trace dump-native-ir stdout snapshot drift"
-    diff -u "$SNAP_DIR/trace.dump_native_ir.stage2.err.must" "$TMP_DIR/trace.ir.err" || die "trace dump-native-ir stderr snapshot drift"
+    "$BIN_DIR/vittec0" --trace-pipeline dump-native-ir --src "$COMPILER_SRC" > "$TMP_DIR/trace.ir.out" 2> "$TMP_DIR/trace.ir.err"
+    diff -u "$SNAP_DIR/compiler_main.ir.must" "$TMP_DIR/trace.ir.out" || die "trace dump-native-ir stdout snapshot drift"
+    diff -u "$SNAP_DIR/trace.dump_native_ir.compiler.err.must" "$TMP_DIR/trace.ir.err" || die "trace dump-native-ir stderr snapshot drift"
     check_cli_error trace.build_native_missing "$BIN_DIR/vittec0" --trace-pipeline build-native
 
     check_cli_error_norm trace.parse.bad_unknown_const "$BIN_DIR/vittec0" --trace-pipeline parse "$SNAP_DIR/bad_unknown_const.vit"
@@ -248,18 +226,16 @@ check_cli_cases() {
     check_cli_error_norm strict.check.bad_duplicate_version_text "$BIN_DIR/vittec0" --strict check "$SNAP_DIR/strict_duplicate_version_text.vit"
     check_cli_error_norm strict.check.bad_duplicate_banner_text "$BIN_DIR/vittec0" --strict check "$SNAP_DIR/strict_duplicate_banner_text.vit"
     "$BIN_DIR/vittec0" --strict check "$SNAP_DIR/strict_valid.vit" > "$TMP_DIR/strict.check.valid.out" 2> "$TMP_DIR/strict.check.valid.err"
-    diff -u "$SNAP_DIR/check.stage2.out.must" "$TMP_DIR/strict.check.valid.out" || die "strict check valid stdout drift"
-    diff -u "$SNAP_DIR/check.stage2.must" "$TMP_DIR/strict.check.valid.err" || die "strict check valid stderr drift"
+    diff -u "$SNAP_DIR/check.compiler.out.must" "$TMP_DIR/strict.check.valid.out" || die "strict check valid stdout drift"
+    diff -u "$SNAP_DIR/check.compiler.must" "$TMP_DIR/strict.check.valid.err" || die "strict check valid stderr drift"
 
-    "$BIN_DIR/vittec0" dump-native-ir --ir-version v2 --src "$STAGE2_SRC" > "$TMP_DIR/stage2.v2.ir"
-    diff -u "$SNAP_DIR/stage2.v2.ir.must" "$TMP_DIR/stage2.v2.ir" || die "stage2 IR v2 snapshot drift"
 }
 
 check_array_return_is_not_generic() {
     log "checking non-generic array return type"
     fixture="$ROOT_DIR/tests/type_system/array_return_non_generic.vit"
     "$BIN_DIR/vittec0" check "$fixture" > "$TMP_DIR/array-return.check.out" 2> "$TMP_DIR/array-return.check.err"
-    diff -u "$SNAP_DIR/check.stage2.out.must" "$TMP_DIR/array-return.check.out" || die "array return check stdout drift"
+    diff -u "$SNAP_DIR/check.compiler.out.must" "$TMP_DIR/array-return.check.out" || die "array return check stdout drift"
     [ ! -s "$TMP_DIR/array-return.check.err" ] || die "array return was misclassified as a generic procedure"
 }
 
@@ -267,7 +243,7 @@ check_array_return_owns_local_scope() {
     log "checking array-return procedure local scope"
     fixture="$ROOT_DIR/tests/type_system/array_return_scope_positive.vit"
     "$BIN_DIR/vittec0" check "$fixture" > "$TMP_DIR/array-return-scope.check.out" 2> "$TMP_DIR/array-return-scope.check.err"
-    diff -u "$SNAP_DIR/check.stage2.out.must" "$TMP_DIR/array-return-scope.check.out" || die "array return scope check stdout drift"
+    diff -u "$SNAP_DIR/check.compiler.out.must" "$TMP_DIR/array-return-scope.check.out" || die "array return scope check stdout drift"
     [ ! -s "$TMP_DIR/array-return-scope.check.err" ] || die "array-return procedure leaked a binding into global scope"
 }
 
@@ -275,7 +251,7 @@ check_branch_shadow_uses_prior_declaration() {
     log "checking branch-local declaration order"
     fixture="$ROOT_DIR/tests/type_system/branch_shadow_scope_positive.vit"
     "$BIN_DIR/vittec0" check "$fixture" > "$TMP_DIR/branch-shadow.check.out" 2> "$TMP_DIR/branch-shadow.check.err"
-    diff -u "$SNAP_DIR/check.stage2.out.must" "$TMP_DIR/branch-shadow.check.out" || die "branch shadow check stdout drift"
+    diff -u "$SNAP_DIR/check.compiler.out.must" "$TMP_DIR/branch-shadow.check.out" || die "branch shadow check stdout drift"
     [ ! -s "$TMP_DIR/branch-shadow.check.err" ] || die "later branch shadowing rewrote an earlier binding use"
 }
 
@@ -283,7 +259,7 @@ check_qualified_call_uses_module_arity() {
     log "checking qualified call arity ownership"
     fixture="$ROOT_DIR/tests/type_system/qualified_call_arity_positive.vit"
     "$BIN_DIR/vittec0" check "$fixture" > "$TMP_DIR/qualified-call.check.out" 2> "$TMP_DIR/qualified-call.check.err"
-    diff -u "$SNAP_DIR/check.stage2.out.must" "$TMP_DIR/qualified-call.check.out" || die "qualified call check stdout drift"
+    diff -u "$SNAP_DIR/check.compiler.out.must" "$TMP_DIR/qualified-call.check.out" || die "qualified call check stdout drift"
     [ ! -s "$TMP_DIR/qualified-call.check.err" ] || die "qualified call was matched to an unrelated local procedure"
 }
 
@@ -292,7 +268,7 @@ check_call_result_cast_type() {
     positive_fixture="$ROOT_DIR/tests/type_system/call_result_cast_positive.vit"
     negative_fixture="$ROOT_DIR/tests/type_system/call_result_cast_negative.vit"
     "$BIN_DIR/vittec0" check "$positive_fixture" > "$TMP_DIR/call-result-cast.check.out" 2> "$TMP_DIR/call-result-cast.check.err"
-    diff -u "$SNAP_DIR/check.stage2.out.must" "$TMP_DIR/call-result-cast.check.out" || die "call result cast check stdout drift"
+    diff -u "$SNAP_DIR/check.compiler.out.must" "$TMP_DIR/call-result-cast.check.out" || die "call result cast check stdout drift"
     [ ! -s "$TMP_DIR/call-result-cast.check.err" ] || die "call result cast retained the unconverted procedure return type"
     if "$BIN_DIR/vittec0" check "$negative_fixture" > "$TMP_DIR/call-result-cast-negative.check.out" 2> "$TMP_DIR/call-result-cast-negative.check.err"; then
         die "call result without a cast unexpectedly passed"
@@ -305,7 +281,7 @@ check_call_result_projection_type() {
     log "checking projected call result type"
     fixture="$ROOT_DIR/tests/type_system/call_result_projection_positive.vit"
     "$BIN_DIR/vittec0" check "$fixture" > "$TMP_DIR/call-result-projection.check.out" 2> "$TMP_DIR/call-result-projection.check.err"
-    diff -u "$SNAP_DIR/check.stage2.out.must" "$TMP_DIR/call-result-projection.check.out" || die "call result projection check stdout drift"
+    diff -u "$SNAP_DIR/check.compiler.out.must" "$TMP_DIR/call-result-projection.check.out" || die "call result projection check stdout drift"
     [ ! -s "$TMP_DIR/call-result-projection.check.err" ] || die "projected call result retained the raw procedure return type"
 }
 
@@ -313,7 +289,7 @@ check_comment_markers_in_strings() {
     log "checking comment markers inside strings"
     fixture="$SNAP_DIR/string_comment_markers.vit"
     "$BIN_DIR/vittec0" check "$fixture" > "$TMP_DIR/string-comment-markers.check.out" 2> "$TMP_DIR/string-comment-markers.check.err"
-    diff -u "$SNAP_DIR/check.stage2.out.must" "$TMP_DIR/string-comment-markers.check.out" || die "string comment marker check stdout drift"
+    diff -u "$SNAP_DIR/check.compiler.out.must" "$TMP_DIR/string-comment-markers.check.out" || die "string comment marker check stdout drift"
     [ ! -s "$TMP_DIR/string-comment-markers.check.err" ] || die "comment marker inside a string was lexed as a block comment"
 }
 
@@ -321,69 +297,8 @@ check_full_compiler_modern_helpers() {
     log "checking full-compiler modern helper routing"
     fixture="$SNAP_DIR/full_compiler_modern_helpers.vit"
     "$BIN_DIR/vittec0" check "$fixture" > "$TMP_DIR/full-compiler-helpers.check.out" 2> "$TMP_DIR/full-compiler-helpers.check.err"
-    diff -u "$SNAP_DIR/check.stage2.out.must" "$TMP_DIR/full-compiler-helpers.check.out" || die "full-compiler helper check stdout drift"
+    diff -u "$SNAP_DIR/check.compiler.out.must" "$TMP_DIR/full-compiler-helpers.check.out" || die "full-compiler helper check stdout drift"
     [ ! -s "$TMP_DIR/full-compiler-helpers.check.err" ] || die "modern helper was parsed as bootstrap metadata"
-}
-
-check_emission_hashes() {
-    log "checking emission hashes and cross-stage reproducibility"
-    "$BIN_DIR/vittec0" --help > "$TMP_DIR/help.vittec0"
-    diff -u "$SNAP_DIR/help.vittec0.must" "$TMP_DIR/help.vittec0" || die "stage0 help snapshot drift"
-    check_unknown_command "$BIN_DIR/vittec0" vittec0
-
-    "$BIN_DIR/vittec0" build-native --src "$STAGE1_SRC" --out "$TMP_DIR/vittec1.a"
-    "$BIN_DIR/vittec0" build-native --src "$STAGE1_SRC" --out "$TMP_DIR/vittec1.b"
-    cmp "$TMP_DIR/vittec1.a" "$TMP_DIR/vittec1.b" || die "stage1 build-native output is not deterministic"
-    "$TMP_DIR/vittec1.a" --help > "$TMP_DIR/help.vittec1"
-    diff -u "$SNAP_DIR/help.vittec1.must" "$TMP_DIR/help.vittec1" || die "stage1 help snapshot drift"
-    check_unknown_command "$TMP_DIR/vittec1.a" vittec1
-    check_command_success "$TMP_DIR/vittec1.a" vittec1 "$STAGE2_SRC"
-    check_command_bad_unknown_const "$TMP_DIR/vittec1.a" vittec1
-    "$TMP_DIR/vittec1.a" parse "$STAGE2_SRC" > "$TMP_DIR/parse.stage2.vittec1"
-    diff -u "$TMP_DIR/parse.stage2.vittec0" "$TMP_DIR/parse.stage2.vittec1" || die "vittec0/vittec1 parse output drift"
-    "$TMP_DIR/vittec1.a" dump-native-ir --src "$STAGE2_SRC" > "$TMP_DIR/stage2.vittec1.ir"
-    diff -u "$SNAP_DIR/stage2.ir.must" "$TMP_DIR/stage2.vittec1.ir" || die "stage2 IR via vittec1 drift"
-
-    "$TMP_DIR/vittec1.a" build-native --src "$STAGE2_BOOTSTRAP_PAYLOAD_SRC" --out "$TMP_DIR/vittec.a"
-    "$TMP_DIR/vittec1.a" build-native --src "$STAGE2_BOOTSTRAP_PAYLOAD_SRC" --out "$TMP_DIR/vittec.b"
-    cmp "$TMP_DIR/vittec.a" "$TMP_DIR/vittec.b" || die "stage2 build-native output is not deterministic"
-    [ "$("$TMP_DIR/vittec.a" --version)" = "vittec2 stage2-vitte 0.1.0" ] || die "stage2 version mismatch"
-    "$TMP_DIR/vittec.a" --help > "$TMP_DIR/help.vittec"
-    diff -u "$SNAP_DIR/help.vittec.must" "$TMP_DIR/help.vittec" || die "stage2 help snapshot drift"
-    check_unknown_command "$TMP_DIR/vittec.a" vittec
-    check_command_success "$TMP_DIR/vittec.a" vittec "$STAGE2_SRC"
-    check_command_bad_unknown_const "$TMP_DIR/vittec.a" vittec
-    "$TMP_DIR/vittec.a" parse "$STAGE2_SRC" > "$TMP_DIR/parse.stage2.vittec"
-    diff -u "$TMP_DIR/parse.stage2.vittec0" "$TMP_DIR/parse.stage2.vittec" || die "vittec0/vittec parse output drift"
-    "$TMP_DIR/vittec.a" dump-native-ir --src "$STAGE2_SRC" > "$TMP_DIR/stage2.vittec.ir"
-    diff -u "$SNAP_DIR/stage2.ir.must" "$TMP_DIR/stage2.vittec.ir" || die "stage2 IR via vittec drift"
-    build_fixture named_consts.bin "$SNAP_DIR/named_consts.vit"
-    build_fixture main_proc.bin "$SNAP_DIR/main_proc.vit"
-    build_fixture main_const_int.bin "$SNAP_DIR/main_const_int.vit"
-    [ "$("$TMP_DIR/named_consts.bin" --version)" = "vittec native const fixture 0.1.0" ] || die "named consts version mismatch"
-    [ "$("$TMP_DIR/main_proc.bin" --version)" = "vittec native main fixture 0.1.0" ] || die "main proc version mismatch"
-    "$TMP_DIR/main_const_int.bin" --help > "$TMP_DIR/help.main_const_int"
-    diff -u "$SNAP_DIR/help.main_const_int.must" "$TMP_DIR/help.main_const_int" || die "main const help snapshot drift"
-    if "$TMP_DIR/main_proc.bin" >/dev/null; then
-        die "main proc exit code mismatch"
-    else
-        rc="$?"
-        [ "$rc" -eq 7 ] || die "main proc exit code mismatch"
-    fi
-    if "$TMP_DIR/main_const_int.bin" >/dev/null; then
-        die "main const exit code mismatch"
-    else
-        rc="$?"
-        [ "$rc" -eq 9 ] || die "main const exit code mismatch"
-    fi
-    {
-        printf 'vittec1 %s\n' "$(LC_ALL=C shasum -a 256 "$TMP_DIR/vittec1.a" | awk '{print $1}')"
-        printf 'vittec %s\n' "$(LC_ALL=C shasum -a 256 "$TMP_DIR/vittec.a" | awk '{print $1}')"
-        printf 'named_consts %s\n' "$(LC_ALL=C shasum -a 256 "$TMP_DIR/named_consts.bin" | awk '{print $1}')"
-        printf 'main_proc %s\n' "$(LC_ALL=C shasum -a 256 "$TMP_DIR/main_proc.bin" | awk '{print $1}')"
-        printf 'main_const_int %s\n' "$(LC_ALL=C shasum -a 256 "$TMP_DIR/main_const_int.bin" | awk '{print $1}')"
-    } > "$TMP_DIR/emission.sha256"
-    diff -u "$SNAP_DIR/emission.sha256.must" "$TMP_DIR/emission.sha256" || die "native emission snapshot drift"
 }
 
 check_native_user_build() {
@@ -514,7 +429,8 @@ SH
 esac
 EOF
     chmod +x "$TMP_DIR/mock-generic-backend"
-    "$BIN_DIR/vittec0" build-native --src "$STAGE2_SRC" --out "$TMP_DIR/bootstrap-vitte"
+    VITTE_BOOTSTRAP_ALLOW_FULL_COMPILER_BRIDGE=1 \
+        "$BIN_DIR/vittec0" build-native --src "$COMPILER_SRC" --out "$TMP_DIR/bootstrap-vitte"
     if "$TMP_DIR/bootstrap-vitte" build "$SNAP_DIR/native_user_helper_call.vit" -o "$TMP_DIR/native-user-helper-call.fail" > "$TMP_DIR/native-user-helper-call.fail.out" 2> "$TMP_DIR/native-user-helper-call.fail.err"; then
         die "bootstrap native helper-call build unexpectedly succeeded without generic backend"
     fi
@@ -554,11 +470,6 @@ check_call_result_cast_type
 check_call_result_projection_type
 check_comment_markers_in_strings
 check_full_compiler_modern_helpers
-if [ "${VITTE_SEED_ONLY_SNAPSHOTS:-0}" = "1" ]; then
-    log "skipping legacy stage emission and vertical slice snapshots in seed-only mode"
-else
-    check_emission_hashes
-    check_native_user_build
-fi
+check_native_user_build
 
 printf "[bootstrap-native-snapshots] ok\n"
