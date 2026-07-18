@@ -1,13 +1,16 @@
 # Bootstrap Overview
 
-This documents the real rebuild path currently available in this repository.
-
-Stages:
-- stage0: seed shell compiler (`toolchain/seed/vittec0.seed`)
-- stage1: compiler emitted by stage0
-- stage2: compiler emitted by stage1
+Vitte installs the manifest-pinned `toolchain/seed/vittec0.seed` as
+`bin/vittec0`, validates native contracts, and checks the canonical compiler
+entry at `src/vitte/compiler/main.vit`.
 
 Primary checks:
-- `vittec self-check --strict`
-- `vittec self-host-check`
-- `vittec doctor`
+
+- `make seed-verify`
+- `make bootstrap-vitte-hard-gate`
+- `make bootstrap-verify`
+- `python3 tools/selfhost_completion_audit.py`
+
+The seed-rooted bootstrap is operational. Official autonomous self-hosting
+remains incomplete until successive generated compilers reach byte parity and
+the transition bridge is removed.

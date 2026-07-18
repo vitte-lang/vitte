@@ -1,9 +1,10 @@
-# Stage0
+# Bootstrap Seed
 
-Seed compiler source: `toolchain/seed/vittec0.seed`.
+The sole trust root is `toolchain/seed/vittec0.seed`. The historical page path
+is retained for inbound-link compatibility; there is no numbered source chain.
 
-Commands:
-- `make seed-verify`
-- `make seed-manifest-update`
-- `bin/vittec0 check <file.vit>`
-- `bin/vittec0 build <file.vit> -o <out>`
+```sh
+make seed-verify
+make bootstrap-seed
+make bootstrap-source-of-truth
+```

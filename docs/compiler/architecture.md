@@ -62,12 +62,12 @@ The real compiler flow currently looks like this:
 ## Bootstrap
 
 Bootstrap is part of the architecture contract because the compiler is audited
-through reproducible stage transitions, not just through source organization.
+through a reproducible seed trust root and explicit compiler generations, not
+just through source organization.
 
 - [Bootstrap overview](../bootstrap/overview.md)
-- [Bootstrap stage0](../bootstrap/stage0.md)
-- [Bootstrap stage1](../bootstrap/stage1.md)
-- [Bootstrap stages](../bootstrap/stages.md)
+- [Bootstrap seed](../bootstrap/stage0.md)
+- [Bootstrap generations](../bootstrap/stages.md)
 - [Bootstrap reproducibility](../bootstrap/reproducibility.md)
 - [Bootstrap self-host checks](../bootstrap/self_host.md)
 - [Bootstrap troubleshooting](../bootstrap/troubleshooting.md)

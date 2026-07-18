@@ -1,21 +1,13 @@
-# Bootstrap Stages
+# Compiler Generations
 
-- Stage0 role: trusted seed entrypoint and bootstrap contract.
-- Stage1 role: first self-produced compiler artifact.
-- Stage2 role: recompiled compiler for consistency checks.
+Bootstrap configuration contains one seed trust root. Self-hosting validation
+creates two temporary compiler generations from the canonical source entry and
+compares their artifacts.
 
-System dependencies:
-- POSIX shell
-- `cc` toolchain
-- linker (`ld`)
-- optional `clang` for strict profile
-
-## Exemple de bootstrap
-```sh
-make stage0
-make stage1
-make stage2
+```text
+vittec0.seed -> generation 1 -> generation 2
 ```
-- `make stage0` construit le compilateur seed initial (`vittec0.seed`).
-- `make stage1` produit le premier compilateur auto-hébergé et vérifie qu'il peut reconstruire le projet.
-- `make stage2` reconstruit une seconde fois pour confirmer la cohérence des artefacts.
+
+These generations are audit outputs, not bootstrap fallbacks or repository
+source trees. Run `python3 tools/selfhost_completion_audit.py` to inspect the
+current transition state.
