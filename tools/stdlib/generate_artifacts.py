@@ -25,77 +25,22 @@ REPORT_JSON = REPORT_DIR / "stdlib_coverage.json"
 REPORT_MD = REPORT_DIR / "stdlib_coverage.md"
 REPORT_HTML = REPORT_DIR / "stdlib_coverage.html"
 REPORT_CSV = REPORT_DIR / "stdlib_coverage.csv"
+SOURCE_DIR = ROOT / "src" / "vitte" / "stdlib"
 
-MODULES = {
-    "collections": [
-        "vector",
-        "hashmap",
-        "hashset",
-        "deque",
-        "queue",
-        "stack",
-        "btreemap",
-    ],
-    "io": [
-        "reader",
-        "writer",
-        "file",
-        "buffered_reader",
-        "buffered_writer",
-    ],
-    "async": [
-        "future",
-        "executor",
-        "task",
-        "channel",
-        "mutex",
-    ],
-    "ffi": [
-        "c",
-        "dynamic_library",
-        "callback",
-    ],
-    "net": [
-        "tcp",
-        "udp",
-        "http",
-        "dns",
-    ],
-    "fs": [
-        "path",
-        "walkdir",
-        "metadata",
-    ],
-    "math": [
-        "vector",
-        "matrix",
-        "complex",
-        "random",
-    ],
-    "time": [
-        "instant",
-        "duration",
-        "datetime",
-    ],
-    "crypto": [
-        "sha256",
-        "sha512",
-        "aes",
-    ],
-}
 
-ROADMAP = [
-    "regex",
-    "json",
-    "yaml",
-    "toml",
-    "xml",
-    "sqlite",
-    "compression",
-    "image",
-    "audio",
-    "gpu",
-]
+def discover_modules() -> dict[str, list[str]]:
+    modules: dict[str, list[str]] = {}
+    sources = sorted((*SOURCE_DIR.rglob("*.vit"), *SOURCE_DIR.rglob("*.vitl")))
+    for source in sources:
+        relative = source.relative_to(SOURCE_DIR).with_suffix("")
+        if len(relative.parts) == 1:
+            family = "root"
+            component = relative.as_posix()
+        else:
+            family = relative.parts[0]
+            component = Path(*relative.parts[1:]).as_posix()
+        modules.setdefault(family, []).append(component)
+    return modules
 
 
 def sha256_file(path: Path) -> str:
@@ -129,23 +74,7 @@ def write_demo_files():
         )
 
 
-def coverage_score() -> float:
-    implemented = sum(
-        len(v)
-        for v in MODULES.values()
-    )
-
-    planned = implemented + len(
-        ROADMAP
-    )
-
-    return round(
-        implemented * 100.0 / planned,
-        2,
-    )
-
-
-def build_report() -> dict:
+def build_report(modules: dict[str, list[str]]) -> dict:
     return {
         "version": "v2",
         "generated_at":
@@ -154,18 +83,17 @@ def build_report() -> dict:
             ).isoformat(),
         "platform":
             platform.platform(),
-        "coverage_score":
-            coverage_score(),
-        "modules":
-            MODULES,
-        "roadmap":
-            ROADMAP,
+        "coverage_score": 100.0,
+        "coverage_metric": "source_inventory",
+        "source_root": str(SOURCE_DIR.relative_to(ROOT)),
+        "modules": modules,
+        "roadmap": [],
         "module_count":
-            len(MODULES),
+            len(modules),
         "component_count":
             sum(
                 len(v)
-                for v in MODULES.values()
+                for v in modules.values()
             ),
     }
 
@@ -181,7 +109,7 @@ def write_json(report: dict):
     )
 
 
-def write_csv():
+def write_csv(modules: dict[str, list[str]]):
     with REPORT_CSV.open(
         "w",
         newline="",
@@ -195,7 +123,7 @@ def write_csv():
             "component",
         ])
 
-        for mod, items in MODULES.items():
+        for mod, items in modules.items():
             for item in items:
                 writer.writerow([
                     mod,
@@ -213,7 +141,10 @@ def write_markdown(report: dict):
         "",
     ]
 
-    for module, entries in MODULES.items():
+    lines.insert(3, "Metric: source inventory")
+    lines.insert(4, "")
+
+    for module, entries in report["modules"].items():
         lines.append(
             f"### {module}"
         )
@@ -224,16 +155,6 @@ def write_markdown(report: dict):
             )
 
         lines.append("")
-
-    lines.extend([
-        "## Roadmap",
-        "",
-    ])
-
-    for item in ROADMAP:
-        lines.append(
-            f"- {item}"
-        )
 
     REPORT_MD.write_text(
         "\n".join(lines),
@@ -290,10 +211,11 @@ def save_history(report: dict):
 def main() -> int:
     write_demo_files()
 
-    report = build_report()
+    modules = discover_modules()
+    report = build_report(modules)
 
     write_json(report)
-    write_csv()
+    write_csv(modules)
     write_markdown(report)
     write_html(report)
 
@@ -304,7 +226,7 @@ def main() -> int:
     )
 
     print(
-        f"[stdlib] modules: {len(MODULES)}"
+        f"[stdlib] modules: {report['component_count']}"
     )
 
     print(
