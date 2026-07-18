@@ -614,11 +614,6 @@ bootstrap-v2-hard-gate: bootstrap-vitte-hard-gate
 stage0-check: seed-check
 stage0-gate: seed-gate
 
-.PHONY: bootstrap-all-legacy
-bootstrap-all-legacy:
-	@echo "[bootstrap-all-legacy][error] legacy stage1/stage2 bootstrap is disabled; use make bootstrap-all" >&2
-	@exit 1
-
 .PHONY: bootstrap-all
 bootstrap-all:
 	@$(MAKE) --no-print-directory bootstrap-vitte-hard-gate
