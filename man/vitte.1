@@ -1,533 +1,1626 @@
-.TH VITTE 1 "May 2026" "vitte 2.1.1" "User Commands"
-.SH NAME
-vitte \- main CLI for the Vitte compiler and tools
-.SH SYNOPSIS
-.B vitte
-[\fIcommand\fR] [\fIoptions\fR] \fI<input>\fR
-.SH DESCRIPTION
-.B vitte
-is the primary command-line interface for the Vitte compiler and its associated tools. It orchestrates the entire compilation pipeline, which includes several distinct stages:
+.SH LANGUAGE SYNTAX
+Vitte source files conventionally use the
+.B .vit
+file extension.
 
-The process begins with reading the source code, which is then passed to the lexer to tokenize the input stream. Tokens are fed into the parser to build a structured Abstract Syntax Tree (AST). The AST undergoes semantic analysis to form the High-level Intermediate Representation (HIR), which captures program semantics more explicitly. The compiler then lowers the HIR to the Mid-level Intermediate Representation (MIR), optimizing and preparing it for code generation. The backend takes the MIR and generates target-specific code, such as assembly or object files, which are then linked to produce the final executable or library.
+The language uses explicit module declarations, grouped imports, immutable and mutable bindings, typed procedures, algebraic data types, ownership-aware references, pattern matching, and semicolon-terminated statements.
 
-This structured pipeline ensures modularity, ease of debugging, and extensibility, enabling Vitte to support multiple targets and advanced features efficiently.
-.SH ARCHITECTURE
-The Vitte compiler architecture is composed of several well-defined components:
+.SH LEXICAL STRUCTURE
 
-.IP \bu 2
-The \fBfrontend\fR handles lexical analysis, parsing, and AST construction, providing a robust syntactic foundation.
+.SS Identifiers
+Identifiers begin with an ASCII letter or underscore and may contain letters, digits, and underscores.
 
-.IP \bu 2
-The \fBsemantic analysis\fR phase includes name resolution, module import verification, and symbol table construction.
+.PP
+Examples:
 
-.IP \bu 2
-\fBType checking\fR verifies type correctness, enforcing canonical type names and strict module imports.
+.nf
+compiler
+type_checker
+_value
+target64
+.fi
 
-.IP \bu 2
-\fBBorrow checking\fR ensures safe memory access and enforces ownership semantics, preventing data races and invalid references.
+.SS Keywords
+The principal Vitte keywords include:
 
-.IP \bu 2
-The \fBMIR\fR (Mid-level Intermediate Representation) is a simplified, SSA-based representation used for optimizations and transformations.
+.nf
+space
+use
+share
+all
+proc
+let
+set
+form
+pick
+trait
+impl
+type
+const
+static
+extern
+unsafe
+where
+when
+match
+if
+else
+loop
+while
+for
+in
+break
+continue
+give
+defer
+move
+ref
+mut
+as
+is
+not
+and
+or
+true
+false
+none
+.fi
 
-.IP \bu 2
-\fBIR\fR (Intermediate Representation) serves as a common format for backend code generation and analysis.
+.SS Comments
+Single-line comments begin with
+.BR // .
 
-.IP \bu 2
-The \fBbackend\fR generates target-specific code, supporting multiple output formats including native executables, LLVM IR, and C code.
+.nf
+// This is a comment.
+.fi
 
-.IP \bu 2
-The \fBlinker\fR combines compiled objects and libraries into final binaries.
+Documentation comments begin with
+.BR /// .
 
-.IP \bu 2
-\fBDiagnostics\fR provide detailed error and warning messages, supporting multiple languages and output formats.
+.nf
+/// Returns the number of elements.
+proc length() -> u64 {
+give 0;
+}
+.fi
 
-.IP \bu 2
-\fBIncremental compilation\fR improves build times by reusing cached intermediate results and artifacts.
+Block comments use
+.B /*
+and
+.BR */ .
 
-.SH PROJECT LAYOUT
-The standard Vitte repository layout is organized around compiler, runtime, standard library, tooling, tests, and documentation.
+.nf
+/*
+Multi-line comment.
+*/
+.fi
 
-.TP
-.B src/vitte/compiler
-Compiler frontend, semantic analysis, MIR, backend, linker, and diagnostics.
-.TP
-.B src/vitte/runtime
-Runtime support libraries and platform abstractions.
-.TP
-.B src/vitte/stdlib
-Official standard library modules.
-.TP
-.B tools
-Build, generation, bootstrap, formatting, and maintenance utilities.
-.TP
-.B tests
-Compiler, runtime, integration, regression, and snapshot tests.
-.TP
-.B docs
-Language reference, standard library reference, tutorials, and guides.
+Nested block comments may be supported by the frontend when enabled by the active language profile.
 
-.SH COMMANDS
-.TP
-.B help
-Display detailed help information and common usage patterns for Vitte commands.
-.TP
-.B init [dir]
-Initialize a new Vitte project in the specified directory, setting up the necessary configuration and directory structure.
-.TP
-.B explain <code>
-Provide detailed explanations of diagnostic codes, such as \fBE0001\fR or \fBW1001\fR, including causes and suggested fixes.
-.TP
-.B doctor
-Perform a comprehensive check of the toolchain and host environment to ensure compatibility and correct setup.
-.TP
-.B parse
-Run the lexer and parser stages only, producing an AST without further analysis or code generation.
-.TP
-.B check
-Perform parsing, name resolution, semantic analysis, and type checking without generating backend output.
-.TP
-.B emit
-Generate compiler artifacts for inspection, such as intermediate representations or target code.
-.TP
-.B build
-Execute the full compilation pipeline, producing final executables or libraries for the specified target.
-.TP
-.B profile
-Run a build with detailed timing and profiling information to analyze performance bottlenecks.
-.TP
-.B reduce
-Automatically minimize a failing input source to a small, reproducible test case that triggers the issue.
-.TP
-.B clean-cache
-Remove all cached compiler state and intermediate files to force a full rebuild.
-.TP
-.B mod graph
-Display the module dependency graph and detect cycles or import issues.
-.TP
-.B mod doctor
-Verify module imports, aliases, and detect naming collisions or inconsistencies.
-.TP
-.B mod contract-diff
-Compare exported module contracts between two different inputs to identify API changes.
-.TP
-.B run
-Compile and execute the specified Vitte program, optionally passing arguments to the runtime.
-.TP
-.B fmt
-Format source code files according to the Vitte style guidelines.
-.TP
-.B lint
-Analyze source code for stylistic and semantic issues without compiling.
-.TP
-.B test
-Run unit tests and integration tests defined in the project.
-.TP
-.B bench
-Execute benchmarks to measure performance characteristics of the code.
-.TP
-.B package
-Create distributable packages or archives for the Vitte project.
-.TP
-.B install
-Install compiled binaries or libraries into system or user directories.
-.TP
-.B uninstall
-Remove previously installed binaries or libraries.
-.TP
-.B version
-Display version information for the Vitte compiler and tools.
-.TP
-.B env
-Show environment variables and configuration settings affecting the compiler.
-.TP
-.B cache stats
-Display statistics about the compiler's cache usage and contents.
-.TP
-.B cache clear
-Clear cache entries selectively or entirely to free disk space or reset state.
-.TP
-.B doc
-Generate documentation from source code comments and metadata.
-.TP
-.B doc serve
-Start a local server to browse generated documentation interactively.
-.TP
-.B doc build
-Build static documentation sites for publishing.
-.TP
-.B mod list
-List all modules available in the current project and dependencies.
-.TP
-.B mod search
-Search for modules in configured repositories or registries.
-.TP
-.B mod tree
-Show hierarchical module dependencies as a tree structure.
-.TP
-.B mod verify
-Check module integrity, signatures, and compatibility.
-.TP
-.B target list
-List all supported compilation targets with their descriptions.
-.TP
-.B runtime list
-List available runtime profiles and their configurations.
-.SH OPTIONS
-.TP
-.B Diagnostics
-.B \-h, \-\-help
-Show help message and exit.
-.TP
-.BI \-\-lang " <code>"
-Set the diagnostics language, e.g., \fBen\fR for English or \fBfr\fR for French.
-.TP
-.BI \-\-explain " <code>"
-Explain a specific diagnostic code in detail.
-.TP
-.B \-\-diag-json
-Output diagnostics in JSON format for machine processing.
-.TP
-.B \-\-diag-code-only
-Print compact, code-only diagnostics for concise output.
-.TP
-.B \-\-color
-Enable colored output for diagnostics and logs.
-.TP
-.B \-\-no-color
-Disable colored output.
-.TP
-.B \-\-verbose
-Increase verbosity of compiler messages.
-.TP
-.B \-\-quiet
-Suppress non-error messages.
-.TP
-.B \-\-trace
-Enable detailed tracing for debugging compiler internals.
-.TP
-.B \-\-time
-Print timing information for compilation stages.
-.TP
-.B \-\-profile-json
-Output profiling data in JSON format.
-.TP
-.B Frontend
-.TP
-.B \-\-dump-tokens
-Print tokens generated by the lexer.
-.TP
-.B \-\-dump-ast
-Print the Abstract Syntax Tree after parsing.
-.TP
-.B \-\-dump-symbols
-Print symbol tables after semantic analysis.
-.TP
-.B \-\-dump-cfg
-Print control flow graphs for functions.
-.TP
-.B Analysis
-.TP
-.B \-\-dump-hir
-Print the High-level Intermediate Representation.
-.TP
-.B \-\-dump-mir
-Print the Mid-level Intermediate Representation.
-.TP
-.B \-\-dump-borrowck
-Print borrow checker results and diagnostics.
-.TP
-.B \-\-strict-types
-Enforce strict canonical type names.
-.TP
-.B \-\-strict-modules
-Require explicit module imports.
-.TP
-.B \-\-strict-imports
-Require explicit imports and reject unused aliases.
-.TP
-.B \-\-fail-on-warning
-Treat warnings as errors.
-.TP
-.B Backend
-.TP
-.B \-\-emit-vitte
-Emit a Vitte-specific artifact only.
-.TP
-.B \-\-emit-c
-Emit C source code.
-.TP
-.B \-\-emit-ir
-Emit intermediate representation code.
-.TP
-.B \-\-emit-llvm
-Emit LLVM IR code.
-.TP
-.B \-\-emit-object
-Emit object files.
-.TP
-.B \-\-emit-asm
-Emit assembly code.
-.TP
-.B \-\-stage " <name>"
-Stop compilation after the specified stage: \fBparse\fR, \fBresolve\fR, \fBir\fR, \fBbackend\fR, etc.
-.TP
-.B \-\-threads " <n>"
-Set the number of threads to use for parallel compilation.
-.TP
-.B \-\-jobs " <n>"
-Alias for \-\-threads.
-.TP
-.B Runtime
-.TP
-.BI \-\-runtime-include " <path>"
-Add a directory to the runtime include path.
-.TP
-.BI \-\-runtime-profile " <name>"
-Select the runtime profile: \fBcore\fR, \fBsystem\fR, \fBdesktop\fR, or \fBarduino\fR.
-.TP
-.B \-\-upload
-Upload compiled code to Arduino devices after build.
-.TP
-.BI \-\-port " <path>"
-Specify the serial port for Arduino communication.
-.TP
-.BI \-\-fqbn " <name>"
-Specify the fully qualified board name for Arduino targets.
-.TP
-.B Reproducibility
-.TP
-.B \-\-repro
-Enable reproducible builds with stable output ordering.
-.TP
-.B \-\-repro-strict
-Enforce strict determinism in lowering and code generation.
-.TP
-.B \-\-incremental
-Enable incremental compilation to speed up rebuilds.
-.TP
-.BI \-\-incremental-dir " <path>"
-Specify a directory for incremental compilation cache.
-.TP
-.B Debugging
-.TP
-.B \-\-debug
-Include debug symbols and extra metadata.
-.TP
-.B Optimization
-.TP
-.B \-O0 .. \-O3
-Set optimization level, from no optimization (\-O0) to aggressive optimizations (\-O3).
-.TP
-.B Cache
-.TP
-.BI \-\-cache-dir " <path>"
-Set the directory used for compiler cache storage.
-.SH STAGES
-The compilation pipeline in Vitte consists of the following stages:
+.SS Whitespace
+Spaces, tabs, and line breaks separate tokens but are otherwise insignificant except inside literals.
 
-.TP
-.B lexer
-Tokenizes raw source code into a stream of tokens.
-.TP
-.B parser
-Converts tokens into an Abstract Syntax Tree (AST).
-.TP
-.B ast
-Represents parsed source code structures.
-.TP
-.B resolve
-Performs name resolution and module import checks.
-.TP
-.B sema
-Conducts semantic analysis, including symbol table construction.
-.TP
-.B typeck
-Checks type correctness and enforces type rules.
-.TP
-.B borrowck
-Performs borrow checking to ensure safe memory access.
-.TP
-.B hir
-Generates High-level Intermediate Representation.
-.TP
-.B mir
-Generates Mid-level Intermediate Representation for optimization.
-.TP
-.B ir
-Intermediate representation used for backend processing.
-.TP
-.B backend
-Generates target-specific code such as assembly or object files.
-.TP
-.B linker
-Links compiled objects into final executables or libraries.
-.SH TARGETS
-Vitte supports multiple compilation targets, including:
+.SS Statement termination
+Most declarations and statements are terminated by a semicolon.
 
-.TP
-.B vitte
-The default native target for the host platform.
-.TP
-.B native
-Alias for the host platform’s native target.
-.TP
-.B linux-x86_64
-Linux on x86_64 architecture.
-.TP
-.B linux-aarch64
-Linux on ARM 64-bit architecture.
-.TP
-.B windows-x86_64
-Windows on x86_64 architecture.
-.TP
-.B macos-aarch64
-macOS on ARM 64-bit architecture (Apple Silicon).
-.TP
-.B riscv64
-RISC-V 64-bit architecture.
-.TP
-.B arduino-uno
-Arduino Uno microcontroller board.
-.TP
-.B arduino-mega
-Arduino Mega microcontroller board.
-.TP
-.B arduino-nano
-Arduino Nano microcontroller board.
+.nf
+let count: int = 10;
+set index: int = 0;
+give count;
+.fi
 
-.SH TARGET FAMILIES
-.TP
-.B native
-Host compilation using the current platform toolchain.
-.TP
-.B cross
-Cross compilation using target-specific runtimes and linkers.
-.TP
-.B embedded
-Microcontroller and constrained-device targets.
-.TP
-.B experimental
-Research and prototype backends under active development.
+Blocks, procedure declarations, forms, picks, implementations, and namespaces are not followed by a semicolon unless required by their enclosing grammar.
 
-.SH ENVIRONMENT
-Environment variables influencing Vitte behavior:
+.SH MODULES AND NAMESPACES
 
-.TP
-.B VITTE_HOME
-Base directory for Vitte installation and resources.
-.TP
-.B VITTE_CACHE_DIR
-Directory for compiler cache storage.
-.TP
-.B VITTE_RUNTIME_PATH
-Paths to runtime libraries and includes.
-.TP
-.B VITTE_TARGET_PATH
-Paths to target-specific files and configurations.
-.TP
-.B VITTE_COLOR
-Enable or disable colored output (values: \fBon\fR, \fBoff\fR).
-.TP
-.B VITTE_LANG
-Set the diagnostics language.
+.SS Space declaration
+A source file may declare its namespace using
+.BR space .
 
-.SH CONFIGURATION FILES
-.TP
-.B vitte.toml
-Primary project configuration file.
-.TP
-.B vitte.lock
-Dependency and reproducibility lock file.
-.TP
-.B .vitte-cache
-Compiler cache metadata.
-.TP
-.B .vitte-target
-Target-specific build metadata.
+.nf
+space vitte.compiler.analysis;
+.fi
 
-.SH DIAGNOSTIC CODES
-Diagnostics are categorized by severity and subsystem.
+Nested namespace paths are separated with dots.
 
-.TP
-.B E####
-Compiler errors that prevent successful compilation.
-.TP
-.B W####
-Warnings that indicate suspicious but valid code.
-.TP
-.B N####
-Informational notes attached to diagnostics.
-.TP
-.B H####
-Hints suggesting potential fixes.
+.nf
+space vitte.compiler.analysis.borrowck;
+.fi
 
-.SH INCREMENTAL COMPILATION
-Incremental compilation stores intermediate compiler artifacts and analysis results in a cache directory. Subsequent compilations reuse unchanged work where possible, reducing build latency and improving developer iteration speed.
+.SS Imports
+Modules are imported using
+.BR use .
 
-.SH REPRODUCIBLE BUILDS
-When reproducible mode is enabled, Vitte attempts to generate byte-for-byte identical outputs from identical inputs. This mode minimizes timestamp, path, and host-dependent variations.
+.nf
+use core.string.String;
+use core.option.Option;
+.fi
 
-.SH EXIT STATUS
-The Vitte command returns the following exit codes:
+Grouped imports use braces.
 
-.TP
-.B 0
-Successful execution.
-.TP
-.B 1
-General error, such as invalid command line options or internal failure.
-.TP
-.B 2
-Compilation error, including syntax or semantic errors.
-.TP
-.B 64
-Usage error, such as missing required arguments.
-.TP
-.B 65
-Data format error, e.g., corrupted input files.
-.TP
-.B 70
-Internal software error or unexpected condition.
-.SH EXAMPLES
-.TP
-.B vitte parse source.vitte
-Tokenize and parse the source file, printing the AST.
-.TP
-.B vitte check src/
-Perform full semantic checks on all source files in the src directory.
-.TP
-.B vitte build --target linux-x86_64 -O2 main.vitte
-Build an optimized executable for Linux x86_64.
-.TP
-.B vitte run main.vitte -- arg1 arg2
-Compile and run the program, passing \fIarg1\fR and \fIarg2\fR as runtime arguments.
-.TP
-.B vitte emit --emit-llvm main.vitte
-Generate LLVM IR code for inspection.
-.TP
-.B vitte emit --emit-c main.vitte
-Generate equivalent C source code.
-.TP
-.B vitte build --target arduino-uno --upload blink.vitte
-Build and upload a program to an Arduino Uno board.
-.TP
-.B vitte check --diag-json src/ > diagnostics.json
-Run checks and output diagnostics in JSON format.
-.TP
-.B vitte build --repro -O3 src/
-Perform a reproducible build with maximum optimizations.
-.TP
-.B vitte mod graph
-Show the module dependency graph to analyze project structure.
-.SH BUGS
-Please report bugs and feature requests at the official Vitte GitHub repository: https://github.com/vincent/vitte/issues. Include detailed reproduction steps, compiler version, and platform information.
-.SH AUTHORS
-The Vitte project is developed and maintained by a community of contributors. For a full list of authors and contributors, please refer to the AUTHORS file in the source repository.
-.SH SEE ALSO
-.BR vittec (1),
-.BR vittefmt (1),
-.BR vittepkg (1),
-.BR vitte-lsp (1)
-,.BR vitte-doc (1)
-,.BR vitte-check (1)
-,.BR vitte-build (1)
+.nf
+use core.collections.{Vector, HashMap, HashSet};
+use vitte.compiler.ast.{Node, Expr, Stmt};
+.fi
+
+Aliases may be declared using
+.BR as .
+
+.nf
+use core.collections.HashMap as Map;
+.fi
+
+A complete module may be imported when explicitly allowed.
+
+.nf
+use core.memory.*;
+.fi
+
+Explicit imports are preferred for deterministic resolution.
+
+.SS Visibility
+Declarations are private to their module by default.
+
+The
+.B share
+keyword exposes declarations.
+
+.nf
+share proc compile(path: string) -> bool {
+give true;
+}
+.fi
+
+A module entry file may export all public declarations using:
+
+.nf
+share all;
+.fi
+
+.SH BUILT-IN TYPES
+
+.SS Boolean type
+The Boolean type is
+.BR bool .
+
+.nf
+let enabled: bool = true;
+let disabled: bool = false;
+.fi
+
+.SS Signed integer types
+Signed integer types include:
+
+.nf
+i8
+i16
+i32
+i64
+i128
+int
+isize
+.fi
+
+The
+.B int
+type is the canonical general-purpose signed integer type.
+
+.SS Unsigned integer types
+Unsigned integer types include:
+
+.nf
+u8
+u16
+u32
+u64
+u128
+usize
+.fi
+
+.SS Floating-point types
+Floating-point types include:
+
+.nf
+f16
+f32
+f64
+f128
+.fi
+
+Target support for extended floating-point formats may vary.
+
+.SS Character and string types
+The character type is
+.BR char .
+
+The owned string type is
+.BR string .
+
+.nf
+let letter: char = ‘V’;
+let name: string = “Vitte”;
+.fi
+
+String slices and borrowed text views may be represented using library types such as
+.B str
+or explicit references.
+
+.SS Unit type
+The unit type represents the absence of a meaningful value.
+
+.nf
+proc log_message(message: string) -> unit {
+print(message);
+}
+.fi
+
+Where permitted, the return type may be omitted for procedures returning unit.
+
+.SS Never type
+The never type represents a computation that does not return normally.
+
+.nf
+proc fatal(message: string) -> never {
+panic(message);
+}
+.fi
+
+.SS Arrays
+An array or homogeneous sequence type is written using brackets.
+
+.nf
+let values: [int] = [1, 2, 3, 4];
+let names: [string] = [“lexer”, “parser”, “backend”];
+.fi
+
+Fixed-size arrays may use a size expression.
+
+.nf
+let bytes: [u8; 16];
+.fi
+
+.SS Tuples
+Tuples group values of potentially different types.
+
+.nf
+let entry: (string, int, bool) = (“main”, 0, true);
+.fi
+
+A tuple field is accessed by position.
+
+.nf
+let name: string = entry.0;
+.fi
+
+.SS Function types
+Procedure values may use explicit parameter and return types.
+
+.nf
+type Predicate = proc(int) -> bool;
+.fi
+
+.SH LITERALS
+
+.SS Integer literals
+Integer literals may be decimal, binary, octal, or hexadecimal.
+
+.nf
+let decimal: int = 42;
+let binary: u8 = 0b101010;
+let octal: u16 = 0o52;
+let hexadecimal: u32 = 0x2A;
+.fi
+
+Digit separators may be written with underscores.
+
+.nf
+let million: int = 1_000_000;
+.fi
+
+.SS Floating-point literals
+
+.nf
+let ratio: f64 = 3.141592;
+let scientific: f64 = 1.5e10;
+.fi
+
+.SS Character literals
+
+.nf
+let ascii: char = ‘A’;
+let newline: char = ‘\en’;
+let unicode: char = ‘\eu{03BB}’;
+.fi
+
+.SS String literals
+
+.nf
+let simple: string = “Vitte”;
+let escaped: string = “line 1\enline 2”;
+.fi
+
+Raw strings may be used where supported.
+
+.nf
+let path: string = r”C:\eProgram Files\eVitte”;
+.fi
+
+.SS Boolean literals
+
+.nf
+true
+false
+.fi
+
+.SS Null and empty values
+Optional values use the canonical empty variant provided by the relevant option type.
+
+.nf
+let result: Option = none;
+.fi
+
+Raw null pointers are only valid in unsafe or foreign-function contexts.
+
+.SH VARIABLES AND BINDINGS
+
+.SS Immutable bindings
+Immutable bindings are declared with
+.BR let .
+
+.nf
+let count: int = 10;
+let name: string = “compiler”;
+.fi
+
+The type may be inferred when the initializer provides enough information.
+
+.nf
+let count = 10;
+.fi
+
+.SS Mutable bindings
+Mutable bindings are declared with
+.BR set .
+
+.nf
+set index: int = 0;
+index = index + 1;
+.fi
+
+.SS Destructuring
+Tuple and structured values may be destructured.
+
+.nf
+let (name, value) = (“answer”, 42);
+.fi
+
+Pattern-based destructuring may also be used with forms and picks.
+
+.SS Constants
+Compile-time constants are declared with
+.BR const .
+
+.nf
+const PAGE_SIZE: usize = 4096;
+const VERSION: string = “2.1.1”;
+.fi
+
+.SS Static storage
+Static values are declared with
+.BR static .
+
+.nf
+static BUILD_COUNT: u64 = 0;
+.fi
+
+Mutable static storage may require an unsafe context.
+
+.SH OPERATORS
+
+.SS Arithmetic operators
+
+.nf
++
+
+/
+%
+.fi
+
+.SS Assignment operators
+
+.nf
+
++=
+-=
+*=
+/=
+%=
+.fi
+
+Assignment operators may only be used with mutable bindings or writable locations.
+
+.SS Comparison operators
+
+.nf
+
+!=
+<
+<=
+
+=
+.fi
+
+.SS Logical operators
+Vitte supports keyword logical operators.
+
+.nf
+and
+or
+not
+.fi
+
+Example:
+
+.nf
+if ready and not failed {
+run();
+}
+.fi
+
+Symbolic logical operators may be accepted only if enabled by the selected grammar profile.
+
+.SS Bitwise operators
+
+.nf
+&
+|
+^
+~
+<<
+
+.fi
+
+.SS Range operators
+Ranges may be written using inclusive or exclusive bounds.
+
+.nf
+0..10
+0..=10
+.fi
+
+.SS Type operators
+The
+.B as
+operator performs an explicit conversion.
+
+.nf
+let value: i64 = small as i64;
+.fi
+
+The
+.B is
+operator tests a runtime or variant property when supported.
+
+.nf
+if value is Token.Identifier {
+process(value);
+}
+.fi
+
+.SH EXPRESSIONS
+
+.SS Block expressions
+A block contains statements and may yield a final expression or explicit
+.B give
+value depending on context.
+
+.nf
+let result: int = {
+let left: int = 20;
+let right: int = 22;
+left + right
+};
+.fi
+
+.SS Conditional expressions
+
+.nf
+if condition {
+execute();
+} else {
+recover();
+}
+.fi
+
+Conditions must have type
+.BR bool .
+
+Conditional expressions may produce values.
+
+.nf
+let mode: string = if debug {
+“debug”
+} else {
+“release”
+};
+.fi
+
+.SS Match expressions
+The
+.B match
+expression performs exhaustive pattern matching.
+
+.nf
+match token {
+Token.Identifier(name) => handle_identifier(name),
+Token.Number(value) => handle_number(value),
+Token.End => finish(),
+}
+.fi
+
+A wildcard pattern is written with an underscore.
+
+.nf
+match value {
+0 => zero(),
+1 => one(),
+_ => other(),
+}
+.fi
+
+Guards may be added using
+.BR when .
+
+.nf
+match value {
+number when number < 0 => negative(number),
+number => positive(number),
+}
+.fi
+
+.SS Procedure calls
+
+.nf
+compile(“main.vit”);
+.fi
+
+Named arguments may be supported for explicitly named parameters.
+
+.nf
+build(path: “main.vit”, optimize: true);
+.fi
+
+.SS Field access
+
+.nf
+let file_name: string = file.name;
+.fi
+
+.SS Method calls
+
+.nf
+let length: usize = values.len();
+.fi
+
+Canonical library code may also use free functions such as:
+
+.nf
+let length: usize = len(values);
+.fi
+
+.SS Index expressions
+
+.nf
+let first: int = values[0];
+.fi
+
+Index operations must be bounds checked unless an unsafe operation is explicitly requested.
+
+.SS Array append
+Immutable array extension follows the canonical Vitte update style.
+
+.nf
+let values: [int] = [1, 2];
+let extended: [int] = values + [3];
+.fi
+
+For mutable bindings:
+
+.nf
+set values: [int] = [1, 2];
+values = values + [3];
+.fi
+
+.SH CONTROL FLOW
+
+.SS If statement
+
+.nf
+if value > 0 {
+positive();
+} else if value < 0 {
+negative();
+} else {
+zero();
+}
+.fi
+
+.SS While loop
+
+.nf
+set index: usize = 0;
+
+while index < len(values) {
+process(values[index]);
+index = index + 1;
+}
+.fi
+
+.SS For loop
+
+.nf
+for value in values {
+process(value);
+}
+.fi
+
+Ranges may be iterated directly.
+
+.nf
+for index in 0..10 {
+print(index);
+}
+.fi
+
+.SS Infinite loop
+
+.nf
+loop {
+tick();
+}
+.fi
+
+.SS Break
+The
+.B break
+statement terminates the nearest loop.
+
+.nf
+loop {
+if complete {
+break;
+}
+}
+.fi
+
+A loop may optionally yield a value.
+
+.nf
+let result: int = loop {
+if ready {
+break 42;
+}
+};
+.fi
+
+.SS Continue
+The
+.B continue
+statement begins the next loop iteration.
+
+.nf
+for value in values {
+if value == 0 {
+continue;
+}
+
+process(value);
+
+}
+.fi
+
+.SS Return
+Procedures return values using
+.BR give .
+
+.nf
+proc add(left: int, right: int) -> int {
+give left + right;
+}
+.fi
+
+A unit-returning procedure may use:
+
+.nf
+give;
+.fi
+
+.SS Deferred execution
+The
+.B defer
+statement schedules cleanup when the current scope exits.
+
+.nf
+let file = open(“data.txt”);
+defer close(file);
+
+process(file);
+.fi
+
+.SH PROCEDURES
+
+.SS Procedure declaration
+Procedures are declared using
+.BR proc .
+
+.nf
+proc add(left: int, right: int) -> int {
+give left + right;
+}
+.fi
+
+.SS Public procedures
+
+.nf
+share proc compile(path: string) -> Result<Artifact, Error> {
+give compile_file(path);
+}
+.fi
+
+.SS Generic procedures
+
+.nf
+proc identity(value: T) -> T {
+give value;
+}
+.fi
+
+.SS Generic constraints
+Constraints may be introduced using
+.BR where .
+
+.nf
+proc maximum(left: T, right: T) -> T
+where T: Compare {
+if left > right {
+give left;
+}
+
+give right;
+
+}
+.fi
+
+.SS Variadic procedures
+Variadic procedures are generally restricted to foreign-function interfaces or explicitly supported runtime facilities.
+
+.SS Procedure overloading
+Procedure overloading must remain deterministic and may be restricted by the active language specification.
+
+.SH FORMS
+
+.SS Form declaration
+A
+.B form
+declares a structured product type.
+
+.nf
+form Position {
+x: f64,
+y: f64,
+}
+.fi
+
+Fields use the syntax:
+
+.nf
+name: type
+.fi
+
+.SS Public forms
+
+.nf
+share form Diagnostic {
+code: string,
+message: string,
+severity: Severity,
+}
+.fi
+
+.SS Generic forms
+
+.nf
+form Pair<A, B> {
+first: A,
+second: B,
+}
+.fi
+
+.SS Form construction
+
+.nf
+let position: Position = Position {
+x: 10.0,
+y: 20.0,
+};
+.fi
+
+.SS Field update
+Vitte favors immutable updates.
+
+.nf
+proc with_x(position: Position, x: f64) -> Position {
+give Position {
+x: x,
+y: position.y,
+};
+}
+.fi
+
+Direct mutable field assignment requires a mutable value.
+
+.nf
+set position: Position = Position {
+x: 0.0,
+y: 0.0,
+};
+
+position.x = 12.0;
+.fi
+
+.SH PICKS
+
+.SS Pick declaration
+A
+.B pick
+declares a tagged union or algebraic data type.
+
+.nf
+pick Option {
+Some(T),
+None,
+}
+.fi
+
+Variants are comma-separated.
+
+.nf
+pick Token {
+Identifier(string),
+Integer(int),
+String(string),
+LeftParen,
+RightParen,
+End,
+}
+.fi
+
+.SS Structured variants
+
+.nf
+pick Expression {
+Literal(Literal),
+Binary {
+left: ExprId,
+operator: BinaryOperator,
+right: ExprId,
+},
+Call {
+callee: ExprId,
+arguments: [ExprId],
+},
+}
+.fi
+
+.SS Variant construction
+
+.nf
+let token: Token = Token.Identifier(“main”);
+let empty: Option = Option.None;
+.fi
+
+.SS Variant matching
+
+.nf
+match option {
+Option.Some(value) => use_value(value),
+Option.None => use_default(),
+}
+.fi
+
+.SH TYPE ALIASES
+Type aliases are declared with
+.BR type .
+
+.nf
+type NodeId = u64;
+type ByteBuffer = [u8];
+type Callback = proc(Event) -> bool;
+.fi
+
+Aliases do not necessarily create distinct nominal types.
+
+.SH TRAITS AND IMPLEMENTATIONS
+
+.SS Trait declaration
+Traits define shared behavior.
+
+.nf
+trait Display {
+proc display(self: ref Self) -> string;
+}
+.fi
+
+.SS Trait with associated types
+
+.nf
+trait Iterator {
+type Item;
+
+proc next(self: mut ref Self) -> Option<Self.Item>;
+
+}
+.fi
+
+.SS Implementation block
+Implementations use
+.BR impl .
+
+.nf
+impl Display for Position {
+proc display(self: ref Position) -> string {
+give format(”({}, {})”, self.x, self.y);
+}
+}
+.fi
+
+.SS Inherent implementation
+
+.nf
+impl Position {
+proc new(x: f64, y: f64) -> Position {
+give Position {
+x: x,
+y: y,
+};
+}
+}
+.fi
+
+.SS Generic implementation
+
+.nf
+impl Container {
+proc len(self: ref Container) -> usize {
+give len(self.values);
+}
+}
+.fi
+
+.SH REFERENCES AND OWNERSHIP
+
+.SS Immutable references
+An immutable reference is written using
+.BR ref .
+
+.nf
+proc inspect(value: ref string) -> usize {
+give len(value);
+}
+.fi
+
+.SS Mutable references
+A mutable reference combines
+.B mut
+and
+.BR ref .
+
+.nf
+proc increment(value: mut ref int) {
+value = value + 1;
+}
+.fi
+
+.SS Move semantics
+Ownership may be transferred explicitly using
+.BR move .
+
+.nf
+let destination = move source;
+.fi
+
+After a move, the original binding may no longer be used unless its type implements copy semantics.
+
+.SS Borrowing
+Borrowing creates a temporary reference without transferring ownership.
+
+.nf
+let size: usize = inspect(ref name);
+.fi
+
+Mutable borrowing requires an exclusive mutable binding.
+
+.nf
+set count: int = 0;
+increment(mut ref count);
+.fi
+
+.SS Lifetimes
+Lifetime parameters may be written explicitly where inference is insufficient.
+
+.nf
+proc first<’a>(values: ref ’a [int]) -> ref ’a int {
+give ref values[0];
+}
+.fi
+
+Exact lifetime syntax depends on the active borrow-checker grammar.
+
+.SH ERROR HANDLING
+
+.SS Result values
+Recoverable errors use result-like pick types.
+
+.nf
+pick Result<T, E> {
+Ok(T),
+Error(E),
+}
+.fi
+
+.SS Explicit propagation
+Errors may be propagated using pattern matching.
+
+.nf
+proc load(path: string) -> Result<string, IoError> {
+let result = read_file(path);
+
+match result {
+    Result.Ok(content) => give Result.Ok(content),
+    Result.Error(error) => give Result.Error(error),
+}
+
+}
+.fi
+
+A propagation operator may be provided by the active language version.
+
+.nf
+let content = read_file(path)?;
+.fi
+
+.SS Panic
+Unrecoverable failures may invoke the runtime panic facility.
+
+.nf
+panic(“internal compiler invariant violated”);
+.fi
+
+Assertions include:
+
+.nf
+assert(condition);
+assert_eq(left, right);
+assert_ne(left, right);
+.fi
+
+.SH OPTIONAL VALUES
+Optional values are represented with
+.BR Option .
+
+.nf
+proc find(name: string) -> Option {
+if exists(name) {
+give Option.Some(resolve(name));
+}
+
+give Option.None;
+
+}
+.fi
+
+.SH ITERATORS
+
+.SS Iterator protocol
+Iterable collections expose an iterator consumed by
+.BR for .
+
+.nf
+for item in collection {
+process(item);
+}
+.fi
+
+A canonical iterator trait may define a
+.B next
+procedure returning an optional value.
+
+.nf
+trait Iterator {
+type Item;
+
+proc next(self: mut ref Self) -> Option<Self.Item>;
+
+}
+.fi
+
+.SS Common iterator operations
+Standard iterator operations may include:
+
+.nf
+map
+filter
+fold
+reduce
+find
+any
+all
+enumerate
+zip
+take
+skip
+collect
+.fi
+
+.SH ATTRIBUTES
+Attributes attach metadata to declarations.
+
+.nf
+@test
+proc parses_integer() {
+assert_eq(parse(“42”), 42);
+}
+.fi
+
+Attributes with parameters use parentheses.
+
+.nf
+@inline(always)
+proc fast_path() {
+}
+.fi
+
+Common compiler attributes may include:
+
+.nf
+@test
+@bench
+@inline
+@no_inline
+@deprecated
+@must_use
+@cold
+@export
+@link
+@repr
+@cfg
+@derive
+.fi
+
+Exact support depends on the compiler version and target.
+
+.SH CONDITIONAL COMPILATION
+Conditional compilation may use the
+.B cfg
+attribute.
+
+.nf
+@cfg(target_os = “linux”)
+proc platform_name() -> string {
+give “linux”;
+}
+.fi
+
+Boolean conditions may be combined.
+
+.nf
+@cfg(all(target_arch = “x86_64”, feature = “native”))
+.fi
+
+.SH FOREIGN FUNCTION INTERFACE
+
+.SS External declarations
+Foreign procedures are declared with
+.BR extern .
+
+.nf
+extern “C” {
+proc malloc(size: usize) -> ptr;
+proc free(memory: ptr);
+}
+.fi
+
+.SS Exported procedures
+A Vitte procedure may be exported with an explicit ABI.
+
+.nf
+@export
+extern “C” proc vitte_entry(argc: int, argv: ptr<ptr>) -> int {
+give 0;
+}
+.fi
+
+.SS Raw pointers
+Raw pointers are intended for runtime, operating-system, embedded, and foreign-interface code.
+
+.nf
+ptr
+const_ptr
+.fi
+
+Raw pointer dereferencing requires an unsafe context.
+
+.SH UNSAFE CODE
+Operations that bypass normal memory-safety guarantees must appear in an
+.B unsafe
+block or procedure.
+
+.nf
+unsafe {
+let value: u8 = pointer.read();
+}
+.fi
+
+An unsafe procedure is declared as:
+
+.nf
+unsafe proc read_raw(address: usize) -> u8 {
+give load_u8(address);
+}
+.fi
+
+Unsafe code remains subject to syntax, type, and ABI validation.
+
+.SH GENERICS
+
+.SS Generic types
+
+.nf
+form Box {
+value: T,
+}
+.fi
+
+.SS Multiple generic parameters
+
+.nf
+form MapEntry<K, V> {
+key: K,
+value: V,
+}
+.fi
+
+.SS Generic defaults
+
+.nf
+form Buffer<T = u8> {
+values: [T],
+}
+.fi
+
+.SS Generic constraints
+
+.nf
+proc sort(values: [T]) -> [T]
+where T: Compare + Clone {
+give sort_impl(values);
+}
+.fi
+
+.SH PATTERNS
+Patterns are used in
+.BR let ,
+.BR match ,
+and loop bindings.
+
+.SS Literal patterns
+
+.nf
+match value {
+0 => zero(),
+1 => one(),
+_ => many(),
+}
+.fi
+
+.SS Binding patterns
+
+.nf
+match option {
+Option.Some(value) => process(value),
+Option.None => ignore(),
+}
+.fi
+
+.SS Tuple patterns
+
+.nf
+let (name, value) = entry;
+.fi
+
+.SS Form patterns
+
+.nf
+let Position { x, y } = position;
+.fi
+
+.SS Alternative patterns
+
+.nf
+match token {
+Token.LeftParen | Token.LeftBracket => open_group(),
+_ => continue_parse(),
+}
+.fi
+
+.SS Guarded patterns
+
+.nf
+match value {
+number when number > 100 => large(number),
+number => normal(number),
+}
+.fi
+
+.SH STANDARD ENTRY POINT
+A native executable commonly defines:
+
+.nf
+proc main() -> int {
+give 0;
+}
+.fi
+
+An entry point accepting process arguments may use the standard runtime signature defined by the active runtime profile.
+
+.nf
+proc main(arguments: [string]) -> int {
+for argument in arguments {
+print(argument);
+}
+
+give 0;
+
+}
+.fi
+
+Embedded profiles may define target-specific entry points.
+
+.nf
+proc setup() {
+}
+
+proc loop() {
+}
+.fi
+
+.SH COMPLETE EXAMPLE
+
+.nf
+space example.application;
+
+use core.collections.{HashMap, Vector};
+use core.option.Option;
+use core.result.Result;
+use core.string.String;
+
+share all;
+
+pick Severity {
+Note,
+Warning,
+Error,
+}
+
+form Diagnostic {
+code: string,
+message: string,
+severity: Severity,
+}
+
+form Context {
+diagnostics: [Diagnostic],
+symbols: HashMap<string, int>,
+}
+
+proc context_new() -> Context {
+give Context {
+diagnostics: [],
+symbols: HashMap.new(),
+};
+}
+
+proc diagnostic_new(
+code: string,
+message: string,
+severity: Severity,
+) -> Diagnostic {
+give Diagnostic {
+code: code,
+message: message,
+severity: severity,
+};
+}
+
+proc context_add_diagnostic(
+context: Context,
+diagnostic: Diagnostic,
+) -> Context {
+give Context {
+diagnostics: context.diagnostics + [diagnostic],
+symbols: context.symbols,
+};
+}
+
+proc verify_source(
+context: Context,
+source: string,
+) -> Result<Context, Diagnostic> {
+if len(source) == 0 {
+let diagnostic: Diagnostic = diagnostic_new(
+“E0001”,
+“source file is empty”,
+Severity.Error,
+);
+
+    give Result.Error(diagnostic);
+}
+let updated: Context = context_add_diagnostic(
+    context,
+    diagnostic_new(
+        "N0001",
+        "source accepted",
+        Severity.Note,
+    ),
+);
+give Result.Ok(updated);
+
+}
+
+proc main() -> int {
+let context: Context = context_new();
+let result: Result<Context, Diagnostic> = verify_source(
+context,
+“proc main() -> int { give 0; }”,
+);
+
+match result {
+    Result.Ok(final_context) => {
+        print(len(final_context.diagnostics));
+        give 0;
+    },
+    Result.Error(diagnostic) => {
+        print(diagnostic.code);
+        print(diagnostic.message);
+        give 1;
+    },
+}
+
+}
+.fi
+
+.SH GRAMMAR SUMMARY
+The following summary is informative and does not replace the canonical Vitte EBNF grammar.
+
+.nf
+program          ::= module_decl? import_decl* item* EOF ;
+
+module_decl      ::= “space” path “;” ;
+import_decl      ::= “use” import_path “;” ;
+visibility       ::= “share” | empty ;
+
+item             ::= procedure_decl
+| form_decl
+| pick_decl
+| trait_decl
+| impl_decl
+| type_alias
+| const_decl
+| static_decl
+| extern_block ;
+
+procedure_decl   ::= visibility? attributes?
+“proc” identifier generic_params?
+“(” parameters? “)”
+return_type? where_clause?
+block ;
+
+form_decl        ::= visibility? attributes?
+“form” identifier generic_params?
+“{” form_fields? “}” ;
+
+pick_decl        ::= visibility? attributes?
+“pick” identifier generic_params?
+“{” pick_variants? “}” ;
+
+trait_decl       ::= visibility? attributes?
+“trait” identifier generic_params?
+“{” trait_items* “}” ;
+
+impl_decl        ::= attributes?
+“impl” generic_params?
+type (“for” type)?
+where_clause?
+“{” impl_items* “}” ;
+
+type_alias       ::= visibility?
+“type” identifier generic_params?
+“=” type “;” ;
+
+const_decl       ::= visibility?
+“const” identifier “:” type
+“=” expression “;” ;
+
+static_decl      ::= visibility?
+“static” identifier “:” type
+“=” expression “;” ;
+
+statement        ::= let_statement
+| set_statement
+| expression_statement
+| give_statement
+| break_statement
+| continue_statement
+| defer_statement ;
+
+let_statement    ::= “let” pattern type_annotation?
+“=” expression “;” ;
+
+set_statement    ::= “set” pattern type_annotation?
+“=” expression “;” ;
+
+give_statement   ::= “give” expression? “;” ;
+break_statement  ::= “break” expression? “;” ;
+continue_statement ::= “continue” “;” ;
+defer_statement  ::= “defer” expression “;” ;
+
+expression       ::= literal
+| identifier
+| array_expression
+| tuple_expression
+| block
+| if_expression
+| match_expression
+| loop_expression
+| while_expression
+| for_expression
+| call_expression
+| field_expression
+| index_expression
+| unary_expression
+| binary_expression
+| assignment_expression ;
+
+type             ::= primitive_type
+| path_type
+| generic_type
+| array_type
+| tuple_type
+| reference_type
+| pointer_type
+| procedure_type ;
+
+reference_type   ::= “ref” lifetime? type
+| “mut” “ref” lifetime? type ;
+
+array_type       ::= “[” type “]”
+| “[” type “;” expression “]” ;
+
+tuple_type       ::= “(” type (”,” type)* “)” ;
+.fi
+
+.SH FILE EXTENSION
+The canonical Vitte source extension is:
+
+.nf
+.vit
+.fi
+
+Older documentation or development snapshots may refer to:
+
+.nf
+.vitte
+.fi
+
+New source files, examples, commands, documentation, tests, and packages should use
+.BR .vit .
