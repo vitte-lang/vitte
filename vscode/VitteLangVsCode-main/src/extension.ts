@@ -4219,9 +4219,7 @@ function resolveVitteBinary(doc: vscode.TextDocument): { bin: string; cwd: strin
     explicit,
     root ? path.join(root, "bin", compilerName("vittec")) : "",
     lastActivationContext ? path.resolve(lastActivationContext.extensionPath, "..", "..", "bin", compilerName("vittec")) : "",
-    lastActivationContext ? path.resolve(lastActivationContext.extensionPath, "..", "..", "bin", compilerName("vittec1")) : "",
     findExecutableOnPath("vittec"),
-    findExecutableOnPath("vittec1"),
     findExecutableOnPath("vitte"),
   ].filter((candidate): candidate is string => typeof candidate === "string" && candidate.length > 0);
   const bin = candidates.find((candidate) => fs.existsSync(candidate)) ?? "vittec";
