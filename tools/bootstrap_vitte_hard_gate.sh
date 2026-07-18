@@ -5,9 +5,10 @@ ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT_DIR"
 
 SRC="src/vitte/compiler/main.vit"
-OUT="target/bootstrap/bootstrap_vitte_gate"
 EXECUTION_FIXTURE="tests/bootstrap_native/main_const_int.vit"
 EXECUTION_OUT="target/bootstrap/bootstrap_vitte_execution_probe"
+COMPILER_REJECTION_OUT="target/bootstrap/bootstrap_vitte_rejected"
+COMPILER_REJECTION_ERR="target/bootstrap/bootstrap_vitte_rejected.err"
 CHECKER=""
 
 [ -f "$SRC" ] || { echo "[bootstrap-vitte][error] missing $SRC" >&2; exit 2; }
@@ -92,25 +93,34 @@ grep -Fq 'export *' "$SRC" || {
 echo "[bootstrap-vitte] compatibility check via $CHECKER"
 "$CHECKER" check "$EXECUTION_FIXTURE"
 
-echo "[bootstrap-vitte] compiling bootstrap entry with seed"
-rm -f "$OUT" "$EXECUTION_OUT"
-"$CHECKER" build-native --src "$SRC" --out "$OUT"
-tools/require_native_artifact.sh "$OUT" compiler
+echo "[bootstrap-vitte] compiling native execution probe with seed"
+rm -f "$EXECUTION_OUT" "$COMPILER_REJECTION_OUT" "$COMPILER_REJECTION_ERR"
+"$CHECKER" build-native --src "$EXECUTION_FIXTURE" --out "$EXECUTION_OUT"
+tools/require_native_artifact.sh "$EXECUTION_OUT"
 
 echo "[bootstrap-vitte] executing native hard gate invariants"
-version_output=$("$OUT" --version)
-case "$version_output" in
-  vittec*) ;;
-  *) echo "[bootstrap-vitte][error] generated compiler returned invalid version: $version_output" >&2; exit 3 ;;
-esac
-"$OUT" build-native --src "$EXECUTION_FIXTURE" --out "$EXECUTION_OUT"
-tools/require_native_artifact.sh "$EXECUTION_OUT"
 set +e
 "$EXECUTION_OUT"
 execution_rc=$?
 set -e
 [ "$execution_rc" -eq 9 ] || {
   echo "[bootstrap-vitte][error] generated code returned $execution_rc, expected 9" >&2
+  exit 3
+}
+
+echo "[bootstrap-vitte] verifying unsupported compiler lowering fails closed"
+if "$CHECKER" build-native --src "$SRC" --out "$COMPILER_REJECTION_OUT" \
+    > /dev/null 2> "$COMPILER_REJECTION_ERR"; then
+  echo "[bootstrap-vitte][error] unsupported full compiler lowering unexpectedly succeeded" >&2
+  exit 3
+fi
+grep -Fq 'E_BOOTSTRAP_FULL_COMPILER_BRIDGE_DISABLED' "$COMPILER_REJECTION_ERR" || {
+  cat "$COMPILER_REJECTION_ERR" >&2
+  echo "[bootstrap-vitte][error] missing fail-closed compiler diagnostic" >&2
+  exit 3
+}
+[ ! -e "$COMPILER_REJECTION_OUT" ] || {
+  echo "[bootstrap-vitte][error] rejected compiler lowering left an artifact" >&2
   exit 3
 }
 
@@ -137,6 +147,7 @@ cat > target/reports/bootstrap/hard_gate_native.json <<EOF
   "bootstrap": "bootstrap_vitte",
   "strict": true,
   "status": "ok",
+  "compiler_lowering": "unsupported-fail-closed",
   "duration_sec": $dur,
   "steps": [
     "seed-verify",
