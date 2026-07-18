@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Self-Host Core Subset</title>
+<link rel="icon" href="../svg/logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../css/site.css?v=34fa1e8389">
+<link rel="stylesheet" href="../css/print.css" media="print">
+<link rel="canonical" href="https://vitte-lang.org/compiler/selfhost_core_subset.html">
+<meta property="og:title" content="Self-Host Core Subset">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://vitte-lang.org/compiler/selfhost_core_subset.html">
+<meta name="twitter:card" content="summary">
+
+<link rel="alternate" hreflang="en" href="https://vitte-lang.org/selfhost_core_subset.html">
+<link rel="alternate" hreflang="x-default" href="https://vitte-lang.org/selfhost_core_subset.html">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none';">
+</head>
+<body class="classic-doc">
+<a class="skip-link" href="#main-content">Skip to content</a>
+<div class="site-shell">
+<header class="site-header">
+<a class="site-brand" href="../index.html"><img class="site-brand-mark" src="../svg/logo.svg" alt="" width="32" height="32"><span>Vitte</span></a>
+<nav class="site-nav" aria-label="Primary"><ul class="nav-band"><li><a class="nav-chip" href="../index.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="../svg/sprite.svg#i-home"></use></svg><span>Welcome</span></a></li><li><a class="nav-chip" href="../doc.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="../svg/sprite.svg#i-docs"></use></svg><span>Documentation</span></a></li><li><a class="nav-chip" href="../source.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="../svg/sprite.svg#i-docs"></use></svg><span>Source</span></a></li><li><a class="nav-chip" href="../news.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="../svg/sprite.svg#i-news"></use></svg><span>News</span></a></li></ul></nav>
+</header>
+<main id="main-content" class="site-main">
+<article class="doc-content">
+<center>
+<h1>Self-Host Core Subset</h1>
+<p>HTML reading page generated from the source Markdown document.</p>
+</center>
+<div class="page-band">
+<a href="../doc.html"><img src="../svg/docs.svg" alt="" width="14" height="14">Documentation</a>
+<a href="../source.html"><img src="../svg/source.svg" alt="" width="14" height="14">Source</a>
+<a href="../sitemap.html"><img src="../svg/summary.svg" alt="" width="14" height="14">Sitemap</a>
+<a href="selfhost_core_subset.md"><img src="../svg/diagnostics.svg" alt="" width="14" height="14">Source Markdown</a>
+</div>
+<div class="lead-panel">
+<h2>Reading mode</h2>
+<p>This page is the static HTML reader for <code>compiler/selfhost_core_subset.md</code>. Internal Markdown links are rewritten to HTML when a matching reading page exists.</p>
+</div>
+<h1>Self-Host Core Subset</h1>
+<p>This document defines the current <strong>compiler self-host subset</strong> for Vitte.</p>
+<p>It is narrower than the broader language surface documented elsewhere. The goal is not to describe every accepted syntax form, but to define the contract that the trusted bootstrap path and compiler entrypoint may rely on while the compiler is still converging toward full self-hosting.</p>
+<h2>Scope</h2>
+<p>This contract is enforced today for:</p>
+<ul>
+<li><code>toolchain/seed/src/main.vit</code></li>
+<li><code>src/vitte/compiler/main.vit</code></li>
+</ul>
+<p>These files are the bootstrap and driver-facing trust anchors. The full compiler tree still uses a broader language surface and is not yet required to fit inside this subset.</p>
+<h2>Required top-level shape</h2>
+<p>Every self-host subset module must use only these top-level constructions:</p>
+<ul>
+<li><code>space &amp;lt;name&amp;gt;</code></li>
+<li><code>import &amp;lt;path&amp;gt;</code></li>
+<li><code>const &amp;lt;NAME&amp;gt;: &amp;lt;type&amp;gt; = &amp;lt;value&amp;gt;</code></li>
+<li><code>use &amp;lt;path&amp;gt; ...</code></li>
+<li><code>form &amp;lt;name&amp;gt; { ... }</code></li>
+<li><code>pick &amp;lt;name&amp;gt; { ... }</code></li>
+<li><code>proc &amp;lt;name&amp;gt;(...) -&amp;gt; &amp;lt;type&amp;gt; { ... }</code></li>
+<li><code>export *</code></li>
+</ul>
+<p>The bootstrap entry modules are also expected to expose:</p>
+<ul>
+<li><code>const VERSION_TEXT: string = ...</code></li>
+<li><code>const BANNER_TEXT: string = ...</code></li>
+<li><code>proc version_text() -&amp;gt; string</code></li>
+<li><code>proc banner_text() -&amp;gt; string</code></li>
+<li><code>proc main(args: list[string]) -&amp;gt; int</code></li>
+</ul>
+<h2>Allowed declaration surface</h2>
+<p>The current self-host subset allows these declaration categories:</p>
+<ul>
+<li>named string constants</li>
+<li>named integer constants</li>
+<li>forms</li>
+<li>picks</li>
+<li>procedures</li>
+<li>module imports</li>
+<li>full-module export via <code>export *</code></li>
+</ul>
+<p>The following top-level constructs are <strong>not</strong> part of the current self-host subset contract:</p>
+<ul>
+<li><code>trait</code></li>
+<li><code>impl</code></li>
+<li><code>class</code></li>
+<li><code>union</code></li>
+<li><code>bits</code></li>
+<li><code>flags</code></li>
+<li><code>macro</code></li>
+<li><code>query</code></li>
+<li><code>compiler</code></li>
+<li><code>pass</code></li>
+<li><code>backend</code></li>
+<li><code>diagnostic</code></li>
+<li><code>test</code></li>
+<li><code>bench</code></li>
+</ul>
+<h2>Allowed statement surface</h2>
+<p>Inside procedures, the currently accepted self-host contract is intentionally constrained but no longer wrapper-only. The trust root already uses:</p>
+<ul>
+<li><code>let</code></li>
+<li><code>set</code></li>
+<li><code>if</code></li>
+<li><code>elif</code></li>
+<li><code>else</code></li>
+<li><code>while</code></li>
+<li><code>give</code></li>
+</ul>
+<p>The following statement or control-flow families are currently excluded from the self-host contract:</p>
+<ul>
+<li><code>with</code></li>
+<li><code>try</code></li>
+<li><code>defer</code></li>
+<li><code>unsafe</code></li>
+<li><code>asm</code></li>
+<li><code>emit</code></li>
+<li><code>panic</code></li>
+<li><code>select</code></li>
+<li><code>critical</code></li>
+</ul>
+<h2>Allowed type surface</h2>
+<p>The subset currently relies on these type forms:</p>
+<ul>
+<li><code>int</code></li>
+<li><code>string</code></li>
+<li><code>bool</code></li>
+<li><code>list[string]</code></li>
+<li>arrays such as <code>[string]</code></li>
+<li>named compiler support types reached through <code>use</code>, such as <code>panic_boundary.PanicBoundaryState</code></li>
+</ul>
+<h2>Design rule</h2>
+<p>The self-host subset is a <strong>contract-first</strong> surface:</p>
+<ul>
+<li>keep stage entrypoints simple</li>
+<li>keep bootstrap wrappers explicit</li>
+<li>avoid using experimental syntax in trust-root files</li>
+<li>widen this subset only with matching gate updates</li>
+</ul>
+<h2>Enforcement</h2>
+<p>The executable gate is:</p>
+<pre><code class="language-sh">make selfhost-subset-check</code></pre>
+<p>Bootstrap contract runners include it transitively through:</p>
+<pre><code class="language-sh">make bootstrap-native-contract
+make bootstrap-native-fast-contract</code></pre>
+<h2>Expansion rule</h2>
+<p>Any intentional subset expansion must update all of:</p>
+<ul>
+<li>this file</li>
+<li><code>docs/spec/grammar.md</code> when the parser-level core contract changes</li>
+<li><code>tools/check_selfhost_subset.sh</code></li>
+<li>bootstrap tests or snapshots when the trusted stage surface changes</li>
+</ul>
+</article>
+</main>
+<footer class="site-footer">
+<p class="site-footer-path">compiler/selfhost_core_subset.html</p>
+<p><a href="../index.html">Back to home</a> · <a href="../status-public.html">Public status</a></p>
+</footer>
+</div>
+<script type="module" src="../js/main.js"></script>
+</body>
+</html>
