@@ -554,7 +554,11 @@ check_call_result_cast_type
 check_call_result_projection_type
 check_comment_markers_in_strings
 check_full_compiler_modern_helpers
-check_emission_hashes
-check_native_user_build
+if [ "${VITTE_SEED_ONLY_SNAPSHOTS:-0}" = "1" ]; then
+    log "skipping legacy stage emission and vertical slice snapshots in seed-only mode"
+else
+    check_emission_hashes
+    check_native_user_build
+fi
 
 printf "[bootstrap-native-snapshots] ok\n"

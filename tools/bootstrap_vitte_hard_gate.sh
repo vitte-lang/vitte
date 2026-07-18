@@ -55,18 +55,15 @@ is_runnable_candidate() {
 }
 
 pick_runnable_checker() {
-  local candidate
-  for candidate in bin/vittec0 bin/vittec1 bin/vittec bin/vitte; do
-    if is_runnable_candidate "$candidate"; then
-      CHECKER="$candidate"
-      return 0
-    fi
-  done
+  if is_runnable_candidate "bin/vittec0"; then
+    CHECKER="bin/vittec0"
+    return 0
+  fi
   return 1
 }
 
 pick_runnable_checker || {
-  echo "[bootstrap-vitte][error] missing runnable compiler (tried bin/vittec0, bin/vittec1, bin/vittec, bin/vitte)" >&2
+  echo "[bootstrap-vitte][error] missing runnable seed compiler: bin/vittec0" >&2
   exit 2
 }
 
@@ -128,7 +125,7 @@ step_start "seed-chain-artifacts"
 python3 tools/check_bootstrap_stage_chain.py --artifacts
 
 step_start "bootstrap-native-snapshots"
-make --no-print-directory bootstrap-native-snapshots
+VITTE_SEED_ONLY_SNAPSHOTS=1 make --no-print-directory bootstrap-native-snapshots
 
 t1="$(date +%s)"
 dur="$((t1 - t0))"
