@@ -4,7 +4,7 @@ from __future__ import annotations
 import re
 import stat
 import subprocess
-from collections import deque
+from collections import Counter, deque
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -101,14 +101,14 @@ def placeholder_hits(files: list[Path]) -> list[str]:
 def procs_never_called(modules: list[Path]) -> list[str]:
     texts = {path: path.read_text(encoding="utf-8", errors="replace") for path in modules if not is_test_or_fixture(path)}
     joined = "\n".join(texts.values())
+    call_counts = Counter(re.findall(r"\b([A-Za-z_][A-Za-z0-9_]*)\s*\(", joined))
     candidates: list[str] = []
     for path, text in texts.items():
         for match in PROC_RE.finditer(text):
             name = match.group(1)
             if name in {"main", "version_text", "banner_text"}:
                 continue
-            refs = len(re.findall(rf"\b{re.escape(name)}\s*\(", joined))
-            if refs <= 1:
+            if call_counts[name] <= 1:
                 candidates.append(f"{rel(path)}: {name}")
     return candidates
 
@@ -173,7 +173,7 @@ def main() -> int:
         "MIR optimisation is represented in modules/tests, but the compile path uses MIR validation before IR lowering, not a full optimisation pipeline.",
         "Object emission is pseudo text (`pseudo-object` / `elf-pseudo`), not a machine object file.",
         "Linker creates `vitte-bootstrap-artifact`, not a real native linked binary.",
-        "stage2 native mode now rejects bootstrap shell output; a real stage1 capable of compiling src/vitte/compiler/main.vit is still required.",
+        "The seed-generated compiler still carries a transition bridge; autonomous native self-hosting is not complete.",
     ]
     if not source_main_wired:
         critical_absent = ["compiler.vit main(args) does not dispatch the CLI; it still returns 0."] + critical_absent
@@ -208,7 +208,7 @@ flowchart TD
         "",
         "Le depot contient beaucoup de pipeline compiler reel (frontend, HIR, sema, typeck, MIR, IR, codegen, link artifact), mais le binaire actuel n'est pas encore un compilateur natif complet au sens `source -> objet machine -> linker -> executable`.",
         "",
-        "Le point d'entree source est bien `src/vitte/compiler/main.vit`. `main(args)` est maintenant cable cote source, mais le runtime CLI actuel vient encore du bootstrap genere tant que stage2 ne compile pas ce point d'entree en executable natif.",
+        "Le point d'entree source est bien `src/vitte/compiler/main.vit`. `main(args)` est cable cote source, mais le runtime CLI actif reste issu du payload genere par le seed tant que le bridge de transition n'est pas retire.",
         "",
         "## Executables trouves",
         "",
@@ -218,7 +218,7 @@ flowchart TD
         "",
         "## Vrai main CLI",
         "",
-        "- Entree stage2 declaree: `src/vitte/compiler/main.vit`.",
+        "- Entree compilateur canonique: `src/vitte/compiler/main.vit`.",
         f"- `src/vitte/compiler/main.vit::main(args)`: {'dispatcher source cable' if source_main_wired else 'placeholder encore detecte'}.",
         "- Commandes runtime observees par `./bin/vittec --help`:",
         "",
