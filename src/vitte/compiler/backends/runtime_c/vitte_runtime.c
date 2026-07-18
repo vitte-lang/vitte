@@ -237,6 +237,11 @@ int32_t vitte_host_copy_file(VitteString src, VitteString dst) {
     free(dst_path);
     return -1;
   }
+  if (strcmp(src_path, dst_path) == 0) {
+    free(src_path);
+    free(dst_path);
+    return -1;
+  }
   src_file = fopen(src_path, "rb");
   if (src_file == NULL) {
     goto cleanup_copy;

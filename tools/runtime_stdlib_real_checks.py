@@ -71,6 +71,10 @@ int main(int argc, char **argv) {
   unlink(missing_path);
   unlink(destination_path);
   CHECK(vitte_host_write_file(destination, original) == 4, 22);
+  CHECK(vitte_host_copy_file(destination, destination) == -1, 26);
+  preserved = vitte_host_read_file(destination);
+  CHECK(preserved.len == 4 && memcmp(preserved.data, "keep", 4) == 0, 27);
+  free((void *)preserved.data);
   CHECK(vitte_host_copy_file(missing, destination) == -1, 23);
   preserved = vitte_host_read_file(destination);
   CHECK(preserved.len == 4 && memcmp(preserved.data, "keep", 4) == 0, 24);
