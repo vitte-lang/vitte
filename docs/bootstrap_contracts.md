@@ -25,8 +25,8 @@ machine-checked surface.
 
 The bootstrap contract is intentionally split across readable docs, checked seed
 artifacts, deterministic snapshots, and visible CI steps. A change that affects
-the seed parser, generated shell backend, command behavior, or stage1/stage2
-source must carry the matching snapshots in the same change.
+the seed parser, generated shell backend, command behavior, or canonical
+compiler entry must carry the matching snapshots in the same change.
 
 ## Responsibilities
 
@@ -86,8 +86,7 @@ Before publishing a bootstrap-native change:
   is covered by snapshots.
 - If `toolchain/seed/vittec0.seed` changed, confirm
   `toolchain/seed/manifest.txt` changed with the new SHA-256.
-- If generated shell behavior changed, confirm the relevant shell snapshot under
-  `tests/bootstrap_native/` and `emission.sha256.must` snapshots changed
-  together.
+- If generated shell behavior changed, confirm the relevant `shell.*.must`
+  snapshots under `tests/bootstrap_native/` changed with it.
 - If parser or diagnostic behavior changed, confirm at least one `.ir.must` or
   `.err.must` snapshot changed with it.
