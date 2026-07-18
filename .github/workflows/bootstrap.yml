@@ -21,7 +21,7 @@ jobs:
         run: make seed-contract-check
       - name: Check bootstrap source coverage
         run: make bootstrap-source-coverage-check
-      - name: Run stage0 gate
+      - name: Run seed gate
         run: make seed-gate
       - name: Generate seed compatibility report
         run: make seed-compat-report
@@ -59,16 +59,15 @@ jobs:
       matrix:
         phase: [hard-gate, verify]
     needs: bootstrap-minimal
-    continue-on-error: true
     name: bootstrap-full (${{ matrix.phase }})
     steps:
       - uses: actions/checkout@v5
-      - name: Run seed-rooted hard gate (non-blocking)
+      - name: Run seed-rooted hard gate
         if: matrix.phase == 'hard-gate'
         run: |
           mkdir -p target/reports
           make bootstrap-vitte-hard-gate 2>&1 | tee target/reports/bootstrap-hard-gate.log
-      - name: Run bootstrap verification (non-blocking)
+      - name: Run bootstrap verification
         if: matrix.phase == 'verify'
         run: |
           mkdir -p target/reports
@@ -129,7 +128,7 @@ jobs:
           name: bootstrap-offline-report
           path: target/bootstrap/offline/report.json
           if-no-files-found: error
-      - name: Verify bootstrap parity and smoke
+      - name: Verify seed contract and smoke
         run: make bootstrap-verify
       - name: Verify POSIX bootstrap smoke
         run: make bootstrap-posix-smoke
