@@ -25,6 +25,9 @@ fi
 python3 tools/check_bootstrap_stage_chain.py --artifacts
 
 if [ "$MODE" = "advanced" ]; then
+  for source in toolchain/src/*.vit; do
+    bin/vittec check "$source"
+  done
   make --no-print-directory bootstrap-native-snapshots
   python3 tools/selfhost_completion_audit.py
 fi

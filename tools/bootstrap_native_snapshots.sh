@@ -125,7 +125,7 @@ check_command_success() {
 check_command_bad_unknown_const() {
     bin="$1"
     label="$2"
-    if "$bin" check "$SNAP_DIR/bad_unknown_const.vit" > "$TMP_DIR/$label.check.bad_unknown_const.out" 2> "$TMP_DIR/$label.check.bad_unknown_const.err"; then
+    if "$bin" --strict check "$SNAP_DIR/bad_unknown_const.vit" > "$TMP_DIR/$label.check.bad_unknown_const.out" 2> "$TMP_DIR/$label.check.bad_unknown_const.err"; then
         die "$label check bad_unknown_const unexpectedly succeeded"
     fi
     if is_check_surface_limited "$TMP_DIR/$label.check.bad_unknown_const.err"; then
@@ -223,7 +223,7 @@ check_cli_cases() {
     check_cli_error trace.build_native_missing "$BIN_DIR/vittec0" --trace-pipeline build-native
 
     check_cli_error_norm trace.parse.bad_unknown_const "$BIN_DIR/vittec0" --trace-pipeline parse "$SNAP_DIR/bad_unknown_const.vit"
-    check_cli_error_norm trace.check.bad_unknown_const "$BIN_DIR/vittec0" --trace-pipeline check "$SNAP_DIR/bad_unknown_const.vit"
+    check_cli_error_norm trace.check.bad_unknown_const "$BIN_DIR/vittec0" --trace-pipeline --strict check "$SNAP_DIR/bad_unknown_const.vit"
     check_cli_error_norm trace.dump_native_ir.bad_unknown_const "$BIN_DIR/vittec0" --trace-pipeline dump-native-ir --src "$SNAP_DIR/bad_unknown_const.vit"
 
     check_cli_error_norm strict.check.bad_missing_space "$BIN_DIR/vittec0" --strict check "$SNAP_DIR/strict_missing_space.vit"
@@ -295,6 +295,14 @@ check_call_result_comparison_type() {
     "$BIN_DIR/vittec0" check "$fixture" > "$TMP_DIR/call-result-comparison.check.out" 2> "$TMP_DIR/call-result-comparison.check.err"
     diff -u "$SNAP_DIR/check.compiler.out.must" "$TMP_DIR/call-result-comparison.check.out" || die "call result comparison check stdout drift"
     [ ! -s "$TMP_DIR/call-result-comparison.check.err" ] || die "compared call result retained the raw procedure return type"
+}
+
+check_bootstrap_namespace_uses_general_checker() {
+    log "checking general bootstrap namespace routing"
+    fixture="$ROOT_DIR/tests/type_system/bootstrap_namespace_general_source.vit"
+    "$BIN_DIR/vittec0" check "$fixture" > "$TMP_DIR/bootstrap-namespace.check.out" 2> "$TMP_DIR/bootstrap-namespace.check.err"
+    diff -u "$SNAP_DIR/check.compiler.out.must" "$TMP_DIR/bootstrap-namespace.check.out" || die "bootstrap namespace check stdout drift"
+    [ ! -s "$TMP_DIR/bootstrap-namespace.check.err" ] || die "bootstrap namespace was routed to the restricted seed checker"
 }
 
 check_comment_markers_in_strings() {
@@ -481,6 +489,7 @@ check_qualified_call_uses_module_arity
 check_call_result_cast_type
 check_call_result_projection_type
 check_call_result_comparison_type
+check_bootstrap_namespace_uses_general_checker
 check_comment_markers_in_strings
 check_full_compiler_modern_helpers
 check_native_user_build

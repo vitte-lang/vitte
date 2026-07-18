@@ -7,11 +7,11 @@ source_of_truth: toolchain/src/build.vit
 status: bootstrap-vitte
 >>>
 
-# ============================================================
-# Bootstrap Toolchain Build Module
-# ============================================================
-# Describes the seed-rooted bootstrap and manages build artifacts,
-# caching, and incremental builds.
+// ============================================================
+// Bootstrap Toolchain Build Module
+// ============================================================
+// Describes the seed-rooted bootstrap and manages build artifacts,
+// caching, and incremental builds.
 
 form BuildStage {
   stage_number: int,
@@ -65,7 +65,7 @@ form BuildReport {
   artifacts: [BuildArtifact]
 }
 
-# Initialize build stage for seed bootstrap
+// Initialize build stage for seed bootstrap
 proc init_seed_stage() -> BuildStage {
   give BuildStage {
     stage_number: 0,
@@ -79,12 +79,8 @@ proc init_seed_stage() -> BuildStage {
   }
 }
 
-# Create build artifact record
-proc create_artifact(
-  path: string,
-  artifact_type: string,
-  size_bytes: int
-) -> BuildArtifact {
+// Create build artifact record
+proc create_artifact(path: string, artifact_type: string, size_bytes: int) -> BuildArtifact {
   give BuildArtifact {
     path: path,
     artifact_type: artifact_type,
@@ -95,7 +91,7 @@ proc create_artifact(
   }
 }
 
-# Initialize build cache
+// Initialize build cache
 proc init_build_cache(cache_dir: string) -> BuildCache {
   give BuildCache {
     cache_dir: cache_dir,
@@ -107,7 +103,7 @@ proc init_build_cache(cache_dir: string) -> BuildCache {
   }
 }
 
-# Initialize build state
+// Initialize build state
 proc init_build_state() -> BuildState {
   let stages: [BuildStage] = [
     init_seed_stage()
@@ -127,7 +123,7 @@ proc init_build_state() -> BuildState {
   }
 }
 
-# Get current stage information
+// Get current stage information
 proc get_current_stage(state: BuildState) -> BuildStage {
   let stage_idx: int = state.current_stage
   if stage_idx < state.stages.len {
@@ -137,24 +133,24 @@ proc get_current_stage(state: BuildState) -> BuildStage {
   }
 }
 
-# Advance to next stage
+// Advance to next stage
 proc advance_stage(state: BuildState) -> BuildState {
   set state.current_stage = state.current_stage + 1
   give state
 }
 
-# Check if all stages completed
+// Check if all stages completed
 proc all_stages_completed(state: BuildState) -> bool {
   give state.current_stage >= state.total_stages
 }
 
-# Add artifact to build state
+// Add artifact to build state
 proc add_artifact(state: BuildState, artifact: BuildArtifact) -> BuildState {
   set state.artifacts = state.artifacts + [artifact]
   give state
 }
 
-# Create build report from state
+// Create build report from state
 proc create_build_report(state: BuildState) -> BuildReport {
   let completed: int = state.current_stage
   let artifacts_count: int = state.artifacts.len
@@ -184,36 +180,26 @@ proc create_build_report(state: BuildState) -> BuildReport {
   }
 }
 
-# Verify bootstrap consistency between successive generated compilers.
-proc verify_bootstrap_consistency(
-  generation1_binary: string,
-  generation2_binary: string
-) -> bool {
-  # In a real implementation, this would compare checksums
-  # or re-generate one from the other
+// Verify bootstrap consistency between successive generated compilers.
+proc verify_bootstrap_consistency(generation1_binary: string, generation2_binary: string) -> bool {
+  // In a real implementation, this would compare checksums
+  // or re-generate one from the other
   give true
 }
 
-# Check cache for compiled artifact
-proc check_build_cache(
-  cache: BuildCache,
-  source_hash: string
-) -> [string] {
-  # Returns cached artifact paths if found
+// Check cache for compiled artifact
+proc check_build_cache(cache: BuildCache, source_hash: string) -> [string] {
+  // Returns cached artifact paths if found
   let results: [string] = []
   give results
 }
 
-# Store build artifact in cache
-proc cache_build_artifact(
-  cache: BuildCache,
-  source_hash: string,
-  artifact_path: string
-) -> bool {
+// Store build artifact in cache
+proc cache_build_artifact(cache: BuildCache, source_hash: string, artifact_path: string) -> bool {
   give true
 }
 
-# Calculate build parallelism level
+// Calculate build parallelism level
 proc calculate_parallelism(job_count: int, stage_complexity: int) -> int {
   let parallelism: int = 1
   if job_count > stage_complexity {
@@ -224,11 +210,8 @@ proc calculate_parallelism(job_count: int, stage_complexity: int) -> int {
   give parallelism
 }
 
-# Estimate build time based on stage and resources
-proc estimate_build_time(
-  stage: BuildStage,
-  job_count: int
-) -> int {
+// Estimate build time based on stage and resources
+proc estimate_build_time(stage: BuildStage, job_count: int) -> int {
   let base_time: int = 3600
   let adjusted_time: int = base_time / job_count
   give adjusted_time
