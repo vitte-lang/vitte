@@ -3,7 +3,7 @@ set -eu
 
 ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 BIN="${BIN:-$ROOT_DIR/bin/vitte}"
-SRC="${SRC:-$ROOT_DIR/toolchain/stage2/src/main.vit}"
+SRC="${SRC:-$ROOT_DIR/src/vitte/compiler/main.vit}"
 TMP_DIR="$(mktemp -d "$ROOT_DIR/target/determinism_smoke.XXXXXX")"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
