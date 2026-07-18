@@ -2,7 +2,7 @@ ROOT_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/..)
 OUT_DIR ?= $(ROOT_DIR)/pkgout
 VERSION ?= $(shell tr -d ' \r\n' < $(ROOT_DIR)/toolchain/scripts/package/PACKAGE_VERSION)
 
-.PHONY: help matrix matrix-test freebsd-all freebsd-amd64 freebsd-arm64 linux-all linux-amd64 linux-arm64 linux-i386 macos-all macos-arm64 macos-x86_64 macos-universal solaris-amd64
+.PHONY: help matrix matrix-test freebsd-all freebsd-amd64 freebsd-arm64 linux-all linux-amd64 linux-arm64 linux-i386 macos-all macos-arm64 macos-x86_64 macos-universal solaris-amd64 windows-amd64
 
 help:
 	@echo "Vitte installer matrix"
@@ -20,6 +20,7 @@ help:
 	@echo "  make -f scripts_build/Makefile macos-x86_64"
 	@echo "  make -f scripts_build/Makefile macos-universal"
 	@echo "  make -f scripts_build/Makefile solaris-amd64"
+	@echo "  make -f scripts_build/Makefile windows-amd64"
 
 matrix:
 	@$(ROOT_DIR)/scripts_build/package-matrix.sh list
@@ -62,5 +63,8 @@ macos-universal:
 
 solaris-amd64:
 	@VERSION=$(VERSION) OUT_DIR=$(OUT_DIR) ARCH=amd64 $(ROOT_DIR)/scripts_build/build-solaris-package.sh
+
+windows-amd64:
+	@VERSION=$(VERSION) OUT_DIR=$(OUT_DIR) ARCH=amd64 $(ROOT_DIR)/scripts_build/build-windows-installer.sh
 
 .DEFAULT_GOAL := help
