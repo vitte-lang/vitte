@@ -147,11 +147,8 @@ Additional strictness landed on the same date:
 - Driver diagnostic propagation now uses typed fields end-to-end in the
   driver mapping layer (`severity/code/file/line/column/message`) instead of
   fallback text-only wrappers.
-- Structured stage parity check was added:
-  - `tools/stage_parity_structured.sh`
-  - writes machine-readable parity report and readable diff under
-    `target/reports/stage_parity/`
-  - executed by `make compiler-max-gate-strict`
+- Successive compiler generation checks are owned by
+  `tools/selfhost_completion_audit.py` and executed by the strict compiler gate.
 - Bootstrap reproducibility drift gate was added:
   - `tools/bootstrap_selfhost_repro.sh`
   - compares hashes across repeated bootstrap/selfhost runs

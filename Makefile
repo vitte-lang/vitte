@@ -1272,14 +1272,6 @@ legacy-import-allowlist-empty:
 ci-fast-compiler:
 	@tools/ci_fast_compiler.sh
 
-.PHONY: stage-parity-structured
-stage-parity-structured:
-	@tools/stage_parity_structured.sh
-
-.PHONY: stage-parity-report-check
-stage-parity-report-check:
-	@python3 tools/stage_parity_report_check.py
-
 .PHONY: compiler-intrinsic-surface-audit
 compiler-intrinsic-surface-audit:
 	@python3 tools/compiler_intrinsic_surface_audit.py
