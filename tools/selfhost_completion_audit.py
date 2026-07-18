@@ -99,12 +99,12 @@ def main() -> int:
     parser.add_argument(
         "--strict-complete",
         action="store_true",
-        help="fail unless the real compiler reaches stage2/stage3 byte parity without transition payloads",
+        help="fail unless successive compiler generations reach byte parity without transition payloads",
     )
     parser.add_argument(
         "--require-parity",
         action="store_true",
-        help="fail unless the real compiler reaches stage2/stage3 byte parity",
+        help="fail unless successive compiler generations reach byte parity",
     )
     args = parser.parse_args()
 
@@ -115,7 +115,7 @@ def main() -> int:
         tmp = Path(raw_tmp)
         stage1 = tmp / "vittec1"
         stage2 = tmp / "vittec2"
-        stage3 = tmp / "vittec3"
+        generation2 = tmp / "vittec-generation2"
         steps = [
             step_result(
                 "vittec0_builds_vittec1",
@@ -130,30 +130,30 @@ def main() -> int:
                 "vittec2 stage2-vitte 0.1.0",
             ),
             step_result(
-                "vittec2_rebuilds_real_compiler_stage3",
-                [str(stage2), "build", str(COMPILER_SOURCE), "-o", str(stage3)],
-                stage3,
+                "generated_compiler_rebuilds_generation2",
+                [str(stage2), "build", str(COMPILER_SOURCE), "-o", str(generation2)],
+                generation2,
                 "vittec2 stage2-vitte 0.1.0",
             ),
         ]
 
         stage2_state = steps[1]["artifact"]
-        stage3_state = steps[2]["artifact"]
-        parity_available = bool(stage2_state["available"] and stage3_state["available"])
-        parity_equal = bool(parity_available and stage2_state["sha256"] == stage3_state["sha256"])
+        generation2_state = steps[2]["artifact"]
+        parity_available = bool(stage2_state["available"] and generation2_state["available"])
+        parity_equal = bool(parity_available and stage2_state["sha256"] == generation2_state["sha256"])
         parity = {
             "available": parity_available,
             "hash_equal": parity_equal,
             "size_equal": bool(
-                parity_available and stage2_state["size_bytes"] == stage3_state["size_bytes"]
+                parity_available and stage2_state["size_bytes"] == generation2_state["size_bytes"]
             ),
-            "first_difference_offset": first_difference(stage2, stage3) if parity_available else None,
-            "stage2_hash": stage2_state["sha256"],
-            "stage3_hash": stage3_state["sha256"],
+            "first_difference_offset": first_difference(stage2, generation2) if parity_available else None,
+            "generation1_hash": stage2_state["sha256"],
+            "generation2_hash": generation2_state["sha256"],
         }
         transition_remaining = any(
             bool(state[key])
-            for state in (stage2_state, stage3_state)
+            for state in (stage2_state, generation2_state)
             for key in ("shell_payload", "sidecar_bridge", "embedded_bridge")
         )
         chain_ok = all(bool(step["ok"]) for step in steps)
@@ -182,11 +182,11 @@ def main() -> int:
     REPORT.write_text(
         "# Self-hosting Completion Audit\n\n"
         f"- compiler source: `{payload['compiler_source']}`\n"
-        f"- stage0 -> stage1 -> compiler stage2 -> compiler stage3: {'PASS' if chain_ok else 'FAIL'}\n"
-        f"- stage2 == stage3 byte parity: {'PASS' if parity_equal else 'FAIL'}\n"
+        f"- seed -> bootstrap compiler -> generation1 -> generation2: {'PASS' if chain_ok else 'FAIL'}\n"
+        f"- generation1 == generation2 byte parity: {'PASS' if parity_equal else 'FAIL'}\n"
         f"- first differing byte: {first_difference_text}\n"
-        f"- stage2 embedded bridge: {'PRESENT' if steps[1]['artifact']['embedded_bridge'] else 'ABSENT'}\n"
-        f"- stage3 embedded bridge: {'PRESENT' if steps[2]['artifact']['embedded_bridge'] else 'ABSENT'}\n"
+        f"- generation1 embedded bridge: {'PRESENT' if steps[1]['artifact']['embedded_bridge'] else 'ABSENT'}\n"
+        f"- generation2 embedded bridge: {'PRESENT' if steps[2]['artifact']['embedded_bridge'] else 'ABSENT'}\n"
         f"- transition payload removed: {'PASS' if not transition_remaining else 'TRANSITION'}\n"
         f"- status: {status}\n",
         encoding="utf-8",
