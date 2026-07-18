@@ -55,7 +55,7 @@ def parse_ast(vitte_bin: Path, src: str) -> dict:
 
 
 def has_detailed_ast_surface(vitte_bin: Path, repo: Path) -> bool:
-    src = repo / "toolchain/stage2/src/main.vit"
+    src = repo / "src/vitte/compiler/main.vit"
     cmd = [str(vitte_bin), "parse", "--dump-ast-json", str(src)]
     proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
     out = (proc.stdout or "") + "\n" + (proc.stderr or "")

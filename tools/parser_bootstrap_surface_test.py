@@ -35,7 +35,7 @@ def main() -> int:
         return 1
 
     expected_ok = [
-        ROOT / "toolchain/stage2/src/main.vit",
+        ROOT / "src/vitte/compiler/main.vit",
         ROOT / "tests/golden/frontend/fixtures/hello_min.vit",
     ]
     expected_fail = [
