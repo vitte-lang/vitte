@@ -52,7 +52,7 @@ VENDOR=Vitte Team
 EMAIL=maintainers@vitte-lang.org
 HOTLINE=https://vitte-lang.org/
 BASEDIR=/
-VITTE_PROCESSOR=amd64
+VITTE_PROCESSOR=$ARCH
 DESC=Processor-specific Vitte compiler, runtime, standard library, and tools.
 EOF
 
