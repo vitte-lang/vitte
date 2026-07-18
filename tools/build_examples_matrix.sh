@@ -18,12 +18,23 @@ MARKDOWN_REPORT="$REPORT_DIR/examples-matrix.md"
 HTML_REPORT="$REPORT_DIR/examples-matrix.html"
 JUNIT_REPORT="$REPORT_DIR/examples-matrix.xml"
 LOG_DIR="$REPORT_DIR/logs"
+ARTIFACT_DIR="$REPORT_DIR/artifacts"
 
 mkdir -p "$REPORT_DIR"
 mkdir -p "$LOG_DIR"
+mkdir -p "$ARTIFACT_DIR"
 
 log() { printf "[examples-matrix] %s\n" "$*"; }
 die() { printf "[examples-matrix][error] %s\n" "$*" >&2; exit 1; }
+now_ms() {
+  python3 -c 'import time; print(time.time_ns() // 1_000_000)'
+}
+expects_failure() {
+  case "$1" in
+    examples/bad_build_example.vit|examples/invalid_for_build.vit) return 0 ;;
+    *) return 1 ;;
+  esac
+}
 
 [ -x "$BIN" ] || die "missing binary: $BIN"
 if [ ! -d "$ROOT_DIR/examples" ]; then
@@ -75,22 +86,31 @@ while IFS= read -r file; do
   log "$MODE: $rel"
   log_file="$LOG_DIR/$(basename "$file").log"
 
-  start_ts=$(date +%s%3N 2>/dev/null || echo $(( $(date +%s) * 1000 )))
+  start_ts="$(now_ms)"
 
   set +e
 
+  artifact="$ARTIFACT_DIR/$(printf '%s' "$rel" | tr '/' '_')"
+  if [ "$MODE" = "build" ]; then
+    command_args=("$BIN" build "$file" -o "$artifact")
+  else
+    command_args=("$BIN" check "$file")
+  fi
+
   if command -v timeout >/dev/null 2>&1; then
-    timeout "$TIMEOUT_SECONDS" \
-      "$BIN" "$MODE" "$file" >"$log_file" 2>&1
+    timeout "$TIMEOUT_SECONDS" "${command_args[@]}" >"$log_file" 2>&1
     result=$?
   else
-    "$BIN" "$MODE" "$file" >"$log_file" 2>&1
+    "${command_args[@]}" >"$log_file" 2>&1
     result=$?
   fi
 
   set -e
 
-  end_ts=$(date +%s%3N 2>/dev/null || echo $(( $(date +%s) * 1000 )))
+  end_ts="$(now_ms)"
+
+  case "$start_ts" in ''|*[!0-9]*) die "invalid millisecond clock value: $start_ts" ;; esac
+  case "$end_ts" in ''|*[!0-9]*) die "invalid millisecond clock value: $end_ts" ;; esac
 
   if [ "$result" -eq 124 ]; then
     timeout_count=$((timeout_count + 1))
@@ -112,7 +132,13 @@ while IFS= read -r file; do
     slowest_file="$rel"
   fi
 
-  if [ "$result" -eq 0 ]; then
+  expected_failure=false
+  if expects_failure "$rel"; then
+    expected_failure=true
+  fi
+
+  if { [ "$expected_failure" = false ] && [ "$result" -eq 0 ]; } ||
+     { [ "$expected_failure" = true ] && [ "$result" -ne 0 ] && [ "$result" -ne 124 ]; }; then
     ok=$((ok + 1))
     success=true
   else
@@ -123,8 +149,8 @@ while IFS= read -r file; do
     sed -n '1,80p' "$log_file" >&2
   fi
 
-  entry=$(printf '{"file":"%s","success":%s,"elapsed_ms":%s,"log_size":%s}' \
-    "$rel" "$success" "$elapsed_ms" "$log_size")
+  entry=$(printf '{"file":"%s","success":%s,"expected_failure":%s,"elapsed_ms":%s,"log_size":%s}' \
+    "$rel" "$success" "$expected_failure" "$elapsed_ms" "$log_size")
 
   top_results="${top_results}${elapsed_ms}|${rel}|${success}\n"
 
@@ -201,11 +227,11 @@ if [ -n "$PREVIOUS_HISTORY" ] && [ -f "$PREVIOUS_HISTORY" ]; then
     REGRESSION_PERCENT=$(( ((total - PREVIOUS_TOTAL) * 100) / PREVIOUS_TOTAL ))
   fi
 
-  if [ "$PREVIOUS_TOTAL_ELAPSED_MS" -gt 0 ]; then
+  if [ "$PREVIOUS_FAILED" -eq 0 ] && [ "$PREVIOUS_TOTAL_ELAPSED_MS" -gt 0 ]; then
     PERF_REGRESSION_PERCENT=$(( ((total_elapsed_ms - PREVIOUS_TOTAL_ELAPSED_MS) * 100) / PREVIOUS_TOTAL_ELAPSED_MS ))
   fi
 
-  if [ "$PREVIOUS_AVERAGE_MS" -gt 0 ]; then
+  if [ "$PREVIOUS_FAILED" -eq 0 ] && [ "$PREVIOUS_AVERAGE_MS" -gt 0 ]; then
     AVERAGE_REGRESSION_PERCENT=$(( ((AVERAGE_MS - PREVIOUS_AVERAGE_MS) * 100) / PREVIOUS_AVERAGE_MS ))
   fi
 fi
@@ -263,9 +289,9 @@ cat > "$MARKDOWN_REPORT" <<EOF_MD
 
 ## Top Slowest Examples
 
-```text
+\`\`\`text
 $TOP_SLOWEST
-```
+\`\`\`
 
 ## Build Artifacts
 
