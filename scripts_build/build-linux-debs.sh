@@ -36,13 +36,30 @@ Priority: optional
 Architecture: $arch
 Maintainer: Vitte Team <maintainers@vitte-lang.org>
 Depends: bash, python3, make
+Recommends: git, clang | gcc
+Suggests: vim | neovim, emacs, nano, geany
+Provides: vitte-compiler, vitte-toolchain
 Installed-Size: $installed_size
 Homepage: https://vitte-lang.org/
+Vcs-Browser: https://github.com/vitte-lang/vitte
 X-Vitte-Processor: $arch
 Description: Complete Vitte systems language toolchain
  Compiler, runtime, standard library, sources, documentation, examples,
  editor support, shell completions, locales, and visual assets.
 EOF
+  python3 - "$data_root" "$control_root/md5sums" <<'PY'
+import hashlib
+import sys
+from pathlib import Path
+
+root = Path(sys.argv[1])
+output = Path(sys.argv[2])
+lines = []
+for path in sorted(root.rglob("*")):
+    if path.is_file():
+        lines.append(f"{hashlib.md5(path.read_bytes()).hexdigest()}  {path.relative_to(root).as_posix()}")
+output.write_text("\n".join(lines) + "\n", encoding="utf-8")
+PY
   cat > "$control_root/postinst" <<'EOF'
 #!/bin/sh
 set -eu

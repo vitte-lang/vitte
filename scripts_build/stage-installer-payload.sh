@@ -42,6 +42,10 @@ EOF
       chmod 0755 "$bin_dir/$command"
     done
     copy_tree "$ROOT_DIR/man" "$prefix/share/man/man1"
+    mkdir -p "$prefix/etc/bash_completion.d" "$prefix/share/zsh/site-functions" "$prefix/share/fish/vendor_completions.d"
+    install -m 0644 "$ROOT_DIR/completions/bash/vitte" "$prefix/etc/bash_completion.d/vitte"
+    install -m 0644 "$ROOT_DIR/completions/zsh/_vitte" "$prefix/share/zsh/site-functions/_vitte"
+    install -m 0644 "$ROOT_DIR/completions/fish/vitte.fish" "$prefix/share/fish/vendor_completions.d/vitte.fish"
     ;;
   windows)
     share_dir=$DEST/share/vitte
@@ -82,7 +86,7 @@ manifest = {
     "architecture": sys.argv[4],
     "version": sys.argv[5],
     "layout": sys.argv[6],
-    "components": ["compiler", "runtime", "stdlib", "sources", "documentation", "examples", "editors", "completions", "locales", "assets"],
+    "components": ["compiler", "runtime", "stdlib", "sources", "documentation", "examples", "editors", "system-completions", "locales", "assets"],
     "files": files,
 }
 manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
