@@ -2,7 +2,7 @@
 set -eu
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-SRC="$ROOT_DIR/toolchain/stage2/src/main.vit"
+SRC="$ROOT_DIR/src/vitte/compiler/main.vit"
 OUT_DIR="$ROOT_DIR/target/driver-native-json-surface"
 
 if [ -x "$ROOT_DIR/bin/vitte" ]; then
@@ -37,7 +37,7 @@ check_surface() {
         printf "[driver-native-json-surface-gate][error] wrong surface tag for %s\n" "$name" >&2
         exit 1
     }
-    grep -q '"source":{"path":"[^"]*toolchain/stage2/src/main.vit"' "$out" || {
+    grep -q '"source":{"path":"[^"]*src/vitte/compiler/main.vit"' "$out" || {
         cat "$out" >&2
         printf "[driver-native-json-surface-gate][error] missing source object for %s\n" "$name" >&2
         exit 1
