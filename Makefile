@@ -1381,7 +1381,7 @@ std-check:
 	@test -d $(STD_DIR)/core
 	@test -d $(STD_DIR)/io
 	@test -d $(STD_DIR)/math
-	@test -d $(STD_DIR)/test
+	@test -d $(STD_DIR)/tests
 	@echo "std layout OK"
 
 .PHONY: extern-abi
