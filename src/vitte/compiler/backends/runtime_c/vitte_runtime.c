@@ -842,6 +842,29 @@ VitteSliceString vitte_slice_push_string(VitteSliceString base, VitteString valu
   return out;
 }
 
+void vitte_string_release(VitteString value) {
+  free((void *)value.data);
+}
+
+void vitte_slice_i32_release(VitteSliceI32 value) {
+  free(value.data);
+}
+
+void vitte_slice_string_release(VitteSliceString value) {
+  free(value.data);
+}
+
+void vitte_owned_slice_string_release(VitteSliceString value) {
+  size_t index;
+  if (value.data == NULL) {
+    return;
+  }
+  for (index = 0; index < value.len; index += 1) {
+    free((void *)value.data[index].data);
+  }
+  free(value.data);
+}
+
 VitteString vitte_string_concat(VitteString a, VitteString b) {
   if ((a.data == NULL && a.len > 0) || (b.data == NULL && b.len > 0)) {
     vitte_note_panic(3);

@@ -139,11 +139,12 @@ int main(int argc, char **argv) {
   CHECK(vitte_runtime_panic_boundary_end() == 0, 50);
   CHECK(vitte_runtime_panic_boundary_reset() == 0, 51);
 
-  free(numbers.data);
-  free((void *)joined.data);
-  free((void *)integer.data);
-  free((void *)preserved.data);
-  free(args.data);
+  vitte_slice_i32_release(numbers);
+  vitte_string_release(joined);
+  vitte_string_release(integer);
+  vitte_string_release(preserved);
+  vitte_slice_string_release(args);
+  vitte_owned_slice_string_release(vitte_empty_slice_string());
   return 0;
 }
 '''
