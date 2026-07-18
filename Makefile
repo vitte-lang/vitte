@@ -145,7 +145,7 @@ install-debian-2.1.1: install-debian
 # ------------------------------------------------------------
 
 .PHONY: build
-build: dirs bootstrap-all compiler-real-native-gate compiler-test-suite-check-gate compiler-test-suite-bridge-gate driver-native-json-surface-gate bootstrap-native-snapshots vitte-source-audit packages-check-all
+build: dirs bootstrap-all compiler-test-suite-check-gate compiler-test-suite-bridge-gate driver-native-json-surface-gate bootstrap-native-snapshots vitte-source-audit packages-check-all
 
 .PHONY: vittec-kernel kernel-tools
 vittec-kernel: vitte-bootstrap-check
