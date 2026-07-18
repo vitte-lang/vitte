@@ -237,8 +237,10 @@ int32_t vitte_host_copy_file(VitteString src, VitteString dst) {
   char *dst_path = vitte_string_to_c(dst);
   FILE *src_file = NULL;
   FILE *dst_file = NULL;
+  char *tmp_path = NULL;
   char buffer[4096];
   size_t read_count = 0;
+  int tmp_fd = -1;
   int32_t result = -1;
   if (src_path == NULL || dst_path == NULL) {
     free(src_path);
@@ -254,10 +256,24 @@ int32_t vitte_host_copy_file(VitteString src, VitteString dst) {
   if (src_file == NULL) {
     goto cleanup_copy;
   }
-  dst_file = fopen(dst_path, "wb");
-  if (dst_file == NULL) {
+  tmp_path = (char *)malloc(strlen(dst_path) + sizeof(".vitte-copy-XXXXXX"));
+  if (tmp_path == NULL) {
+    vitte_note_panic(3);
     goto cleanup_copy;
   }
+  strcpy(tmp_path, dst_path);
+  strcat(tmp_path, ".vitte-copy-XXXXXX");
+  tmp_fd = mkstemp(tmp_path);
+  if (tmp_fd < 0) {
+    goto cleanup_copy;
+  }
+  dst_file = fdopen(tmp_fd, "wb");
+  if (dst_file == NULL) {
+    close(tmp_fd);
+    tmp_fd = -1;
+    goto cleanup_copy;
+  }
+  tmp_fd = -1;
   while ((read_count = fread(buffer, 1, sizeof(buffer), src_file)) > 0) {
     if (fwrite(buffer, 1, read_count, dst_file) != read_count) {
       goto cleanup_copy;
@@ -268,7 +284,9 @@ int32_t vitte_host_copy_file(VitteString src, VitteString dst) {
     goto cleanup_copy;
   }
   dst_file = NULL;
-  result = 0;
+  if (rename(tmp_path, dst_path) == 0) {
+    result = 0;
+  }
 
 cleanup_copy:
   if (src_file != NULL) {
@@ -276,6 +294,15 @@ cleanup_copy:
   }
   if (dst_file != NULL) {
     fclose(dst_file);
+  }
+  if (tmp_fd >= 0) {
+    close(tmp_fd);
+  }
+  if (tmp_path != NULL) {
+    if (result != 0) {
+      unlink(tmp_path);
+    }
+    free(tmp_path);
   }
   free(src_path);
   free(dst_path);
