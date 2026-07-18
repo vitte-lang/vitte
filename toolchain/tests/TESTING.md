@@ -1,56 +1,36 @@
-# Bootstrap tests
+# Bootstrap Testing
 
-The active bootstrap contract is:
+The active bootstrap test flow is:
 
 ```text
 toolchain/seed/vittec0.seed
   -> bin/vittec0
-  -> target/bootstrap/stage1/vittec1
-  -> bin/vittec1
-  -> target/bootstrap/stage2/vittec
-  -> bin/vittec + bin/vitte
+  -> manifest/configuration verification
+  -> deterministic IR and executable emission
+  -> compiler-entry and native user-program gates
 ```
 
-`toolchain/bootstrap-config.json` is the versioned contract. The checker validates stage order, producer edges, source versions, artifact kinds, installation paths, aliases and hashes.
+Run the focused checks with:
 
-## Commands
-
-Static contract only:
-
-```bash
-toolchain/tests/bootstrap-tests.sh quick
-```
-
-Static contract and existing artifacts:
-
-```bash
-toolchain/tests/bootstrap-tests.sh full
-```
-
-Artifacts plus stage1/stage2 command parity:
-
-```bash
-toolchain/tests/bootstrap-tests.sh advanced
-```
-
-Rebuild the complete chain twice and compare every stage hash:
-
-```bash
+```sh
+make seed-verify
+toolchain/scripts/bootstrap/verify.sh
 toolchain/test_bootstrap_reproducibility.sh
-```
-
-Run the strict bootstrap gate, including native snapshots:
-
-```bash
+make bootstrap-native-snapshots
 make bootstrap-vitte-hard-gate
 ```
 
-## Expected identities
+The reproducibility test installs the same pinned seed twice and compares the
+seed, manifest, installed artifact, and version hashes. Native snapshots pin
+the current seed command surface and real compiler entry.
 
-```text
-vittec0 stage0-vitte-seed 0.1.0
-vittec1 stage1-vitte 0.1.0
-vittec2 stage2-vitte 0.1.0
+For self-hosting status, run:
+
+```sh
+python3 tools/selfhost_completion_audit.py
+python3 tools/selfhost_completion_audit.py --strict-complete
 ```
 
-Stage2 is currently a machine executable with `bridge_policy` set to `transitional-allowed`. The test output reports that state explicitly. Full self-hosting requires rebuilding stage2 without the bridge and changing the policy to `forbidden`.
+The normal audit succeeds when the generation chain executes and reports
+transition state. Strict completion additionally requires byte parity and no
+transition payload; it is intentionally failing while those gaps remain.

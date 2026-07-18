@@ -156,5 +156,5 @@ Additional strictness landed on the same date:
   - `tools/bootstrap_selfhost_repro.sh`
   - compares hashes across repeated bootstrap/selfhost runs
   - exposed via `make bootstrap-selfhost-repro`
-- `toolchain/scripts/bootstrap/stage2.sh` now supports explicit backend mode
-  selection through `VITTE_BACKEND_MODE=shell|native` with controlled fallback.
+- The retired numbered-stage scripts and their controlled fallback have been
+  removed. `toolchain/seed/vittec0.seed` is now the only bootstrap trust root.

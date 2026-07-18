@@ -1,7 +1,12 @@
-# Stage1
+# Numbered Stages Retired
 
-Build command (current path):
-- `toolchain/scripts/bootstrap/stage1.sh`
+The historical stage1 bootstrap command and `bin/vittec1` artifact have been
+removed. The active bootstrap starts from `toolchain/seed/vittec0.seed`, installs
+`bin/vittec0`, and validates the real compiler entry at
+`src/vitte/compiler/main.vit`.
 
-Output:
-- `bin/vittec1`
+Use:
+
+```sh
+make bootstrap-vitte-hard-gate
+```

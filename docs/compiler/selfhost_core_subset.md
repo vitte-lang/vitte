@@ -4,7 +4,7 @@ This document defines the current **compiler self-host subset** for Vitte.
 
 It is narrower than the broader language surface documented elsewhere. The goal
 is not to describe every accepted syntax form, but to define the contract that
-the trusted bootstrap path and stage entrypoints may rely on while the compiler
+the trusted bootstrap path and compiler entrypoint may rely on while the compiler
 is still converging toward full self-hosting.
 
 ## Scope
@@ -12,8 +12,6 @@ is still converging toward full self-hosting.
 This contract is enforced today for:
 
 - `toolchain/seed/src/main.vit`
-- `toolchain/stage1/src/main.vit`
-- `toolchain/stage2/src/main.vit`
 - `src/vitte/compiler/main.vit`
 
 These files are the bootstrap and driver-facing trust anchors. The full

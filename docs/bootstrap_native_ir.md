@@ -3,7 +3,8 @@
 `native_ir_v1` is the textual intermediate representation used by the
 bootstrap-native seed compiler for the early `build-native` path. It is small by
 design: the format describes only the compiler identity strings, optional named
-string constants, and the native process exit code needed by stage1/stage2.
+string constants, and the native process exit code needed by seed-generated
+fixtures and compiler payloads.
 
 The canonical implementation is `toolchain/seed/vittec0.seed`. Golden coverage
 lives in `tests/bootstrap_native`.
@@ -24,7 +25,7 @@ Any breaking format change must use a new first-line tag, starting with
 record, removing a required record, changing record order requirements, or
 changing diagnostics in a way that v1 snapshots can no longer defend.
 
-`native_ir_v1` snapshots remain authoritative as long as stage0 seed artifacts
+`native_ir_v1` snapshots remain authoritative as long as seed artifacts
 read or emit v1. Introducing a future v2 must keep v1 snapshots and drift checks
 until the stage0 trust root no longer depends on v1.
 
@@ -69,11 +70,11 @@ Example:
 
 ```text
 native_ir_v1
-const.string.VERSION_TEXT=vittec stage2-vitte 0.1.0
-const.string.BANNER_TEXT=vittec stage2 native bootstrap
+const.string.VERSION_TEXT=vittec native fixture 0.1.0
+const.string.BANNER_TEXT=vittec native fixture
 const.int.EXIT_CODE=0
-version_text=vittec stage2-vitte 0.1.0
-banner_text=vittec stage2 native bootstrap
+version_text=vittec native fixture 0.1.0
+banner_text=vittec native fixture
 main.return=0
 ```
 
@@ -133,7 +134,7 @@ The v1 subset intentionally does not support:
 - Missing `banner_text()` or `version_text()` is an error.
 - `export *` is required so bootstrap sources keep an explicit public surface.
 - Unsupported top-level items and unsupported procedure bodies must fail closed.
-- Stage1 and stage2 binaries generated from this IR must preserve `--version`
+- Binaries generated from this IR must preserve `--version`
   output, generated `--help` output, and default command exit behavior.
 
 ## Generated Command Surface
@@ -158,14 +159,14 @@ The current backend emits POSIX shell compilers with this command surface:
 - `dump-native-shell`: requires `--src <file>`. It prints the generated POSIX
   shell backend to stdout. This is a review aid for backend snapshots, not a
   separate IR contract.
-- `build`: requires `--stage stage1`, `--src <dir>`, and `--out <dir>`. It emits
-  `<out>/vittec1` from `<src>/main.vit`; other stages fail.
+- `build`: accepts a source file and `-o`/`--out`. It compiles the native subset
+  directly and may delegate unsupported full-language forms only through the
+  explicitly configured generic backend.
 - default command: with no command, prints the generated banner and exits with
   `main.return`.
 - unknown command: prints `[<tool>][error] unknown command: <cmd>` to stderr
   and exits `2`. `<tool>` is generated from the first word of `version_text()`,
-  so stage0 reports `[vittec0][error]`, stage1 reports `[vittec1][error]`, and
-  stage2 reports `[vittec][error]`.
+  so the seed reports `[vittec0][error]`.
 
 ## Diagnostics
 
@@ -200,22 +201,21 @@ diagnostic contract.
 
 ## Hash Stability
 
-`tests/bootstrap_native/emission.sha256.must` pins SHA-256 hashes of emitted
-bootstrap-native executables. A hash change is acceptable only when one of these
-contracts intentionally changes:
+`tests/bootstrap_native/shell.*.must` pins generated bootstrap shell output. A
+change is acceptable only when one of these contracts intentionally changes:
 
 - the `native_ir_v1` source subset,
 - IR-to-shell emission,
 - command behavior of generated binaries,
 - seed artifact bytes copied into generated binaries,
-- canonical stage1/stage2 bootstrap source.
+- canonical seed behavior or compiler entry.
 
-When a hash changes intentionally, update the relevant IR snapshot, diagnostic
-snapshot, and emission hash in the same change. The verification command is:
+When generated shell changes intentionally, update the relevant IR, diagnostic,
+and shell snapshots in the same change. The verification command is:
 
 ```sh
 tools/bootstrap_native_snapshots.sh
 ```
 
-`make bootstrap-native-drift-check` enforces that sensitive seed/stage/native
+`make bootstrap-native-drift-check` enforces that sensitive seed/compiler/native
 build changes carry the matching emission and IR/diagnostic snapshots.

@@ -65,7 +65,7 @@ make bootstrap-posix-smoke
 - `driver-native-json-surface-gate`
 
 These are complementary to `make bootstrap-native-snapshots`. The snapshot suite
-locks the emitted stage artifacts and diagnostics; the integration gates verify
+locks seed output and diagnostics; the integration gates verify
 that the current driver still exposes the expected native JSON envelopes, that
 the compiler entry builds without a bridge sidecar, and that the compiler test
 suite bridge remains scoped to compiler test sources.
@@ -73,18 +73,16 @@ suite bridge remains scoped to compiler test sources.
 ## Local Parallelism
 
 CI jobs run in isolated workspaces, so their bootstrap artifacts do not collide.
-In one local worktree, bootstrap targets that rebuild the stage chain are not
-parallel-safe because they rewrite shared `bin/vittec0`, `bin/vittec1`,
-`bin/vittec`, and `bin/vitte` artifacts.
+In one local worktree, bootstrap targets that install the seed are not
+parallel-safe because they rewrite shared `bin/vittec0`.
 
 The single-workspace runner rule is:
 
 - `make bootstrap-native-snapshots` installs the seed and mutates
   `bin/vittec0`.
-- `make bootstrap-verify` rebuilds `bin/vittec1`, `bin/vittec`, and
-  `bin/vitte`.
+- `make bootstrap-verify` reinstalls and verifies `bin/vittec0`.
 - `make bootstrap-posix-smoke` depends on `bootstrap-all`, so it also rebuilds
-  the stage artifacts before running POSIX checks.
+  the seed artifact before running POSIX checks.
 - `make bootstrap-native-contract` composes those flows and should be treated as
   an exclusive bootstrap runner in a local worktree.
 
@@ -95,12 +93,12 @@ bootstrap targets concurrently in the same worktree.
 
 ## Source Coverage
 
-The readable seed and stage sources should exercise the current
+The readable seed and real compiler entry should exercise the current
 bootstrap-native forms they rely on:
 
 - `toolchain/seed/src/main.vit` must include named string constants, named int
   constants, `proc main(args: list[string]) -> int`, and a named constant return.
-- `toolchain/stage2/src/main.vit` must include named `VERSION_TEXT` and
+- `src/vitte/compiler/main.vit` must include named `VERSION_TEXT` and
   `BANNER_TEXT` string constants, use a named string constant in
   `version_text()`, and define `main`.
 
@@ -146,7 +144,7 @@ Review rules for the AWK block:
 - Preserve source declaration order for `const.*` and `proc.int.*` records.
 - Set diagnostic columns from the original raw line, not from the trimmed line.
 - Any parser change must update at least one `.ir.must` or `.err.must` snapshot.
-- Any generated binary behavior change must update `emission.sha256.must`.
+- Any generated shell behavior change must update the `shell.*.must` snapshots.
 
 Coverage can be inspected with:
 
