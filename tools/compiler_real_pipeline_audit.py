@@ -77,21 +77,21 @@ def check_required_steps() -> list[dict[str, str]]:
 
 
 def detect_cli_entry() -> dict[str, str]:
-    stage2 = read("toolchain/scripts/bootstrap/stage2.sh")
     compiler = read("src/vitte/compiler/main.vit")
-    source_root_ok = 'COMPILER_SOURCE_ROOT="$ROOT_DIR/src/vitte/compiler"' in stage2
-    entry_ok = 'COMPILER_ENTRY_POINT="$COMPILER_SOURCE_ROOT/main.vit"' in stage2
+    config = read("toolchain/bootstrap-config.json")
+    seed_root_ok = '"compiler": "toolchain/seed/vittec0.seed"' in config
+    entry_ok = 'const COMPILER_ENTRY_POINT: string = "src/vitte/compiler/main.vit"' in compiler
     main_placeholder = re.search(
         r"proc\s+main\s*\(\s*args:\s*list\[string\]\s*\)\s*->\s*int\s*\{\s*give\s+0\s*;?\s*\}",
         compiler,
         re.S,
     ) is not None
     return {
-        "stage2_source_root": "src/vitte/compiler" if source_root_ok else "unknown",
-        "stage2_entry_point": "src/vitte/compiler/main.vit" if entry_ok else "unknown",
+        "trust_root": "toolchain/seed/vittec0.seed" if seed_root_ok else "unknown",
+        "compiler_entry_point": "src/vitte/compiler/main.vit" if entry_ok else "unknown",
         "source_entry_declared": "vitte/compiler/main",
         "runtime_cli_dispatch": "placeholder" if main_placeholder else "wired",
-        "status": "real-entry-with-placeholder-main" if source_root_ok and entry_ok and main_placeholder else "ok",
+        "status": "real-entry-with-placeholder-main" if seed_root_ok and entry_ok and main_placeholder else "ok",
     }
 
 
@@ -100,7 +100,6 @@ def detect_forbidden_surfaces() -> list[dict[str, str]]:
         "src/vitte/compiler/backend/codegen/mod.vit": read("src/vitte/compiler/backend/codegen/mod.vit"),
         "src/vitte/compiler/backend/codegen/object.vit": read("src/vitte/compiler/backend/codegen/object.vit"),
         "src/vitte/compiler/backend/link/linker.vit": read("src/vitte/compiler/backend/link/linker.vit"),
-        "toolchain/scripts/bootstrap/stage2.sh": read("toolchain/scripts/bootstrap/stage2.sh"),
     }
     patterns = [
         ("pseudo-object", "pseudo object text is not a native object file"),
@@ -263,7 +262,7 @@ def main() -> int:
     print(f"[compiler-real-pipeline] status={status} report={REPORT.relative_to(ROOT)}")
     print(
         "[compiler-real-pipeline] cli_entry="
-        f"{cli_entry['stage2_entry_point']} runtime_dispatch={cli_entry['runtime_cli_dispatch']}"
+        f"{cli_entry['compiler_entry_point']} runtime_dispatch={cli_entry['runtime_cli_dispatch']}"
     )
     for step in steps:
         print(f"[compiler-real-pipeline][step] {step['name']} {step['status']} owner={step['owner']}")
