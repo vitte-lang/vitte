@@ -5,7 +5,11 @@ import hashlib
 import hmac
 import http.client
 import json
+import os
+import shlex
+import shutil
 import socket
+import subprocess
 import tempfile
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -15,6 +19,93 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "target" / "runtime_stdlib_real"
 REPORT = ROOT / "target" / "reports" / "runtime_stdlib_real.md"
+RUNTIME_DIR = ROOT / "src" / "vitte" / "compiler" / "backends" / "runtime_c"
+
+
+def run_native_runtime_probe() -> dict[str, object]:
+    compiler = shlex.split(os.environ.get("CC", "cc"))
+    if not compiler or shutil.which(compiler[0]) is None:
+        return {"ok": False, "error": "C compiler not found", "compiler": compiler}
+
+    source = r'''#include "vitte_runtime.h"
+
+#include <stdlib.h>
+#include <string.h>
+
+#define CHECK(condition, code) do { if (!(condition)) return (code); } while (0)
+
+int main(int argc, char **argv) {
+  VitteSliceI32 numbers = vitte_empty_slice_i32();
+  VitteString left = {"vit", 3};
+  VitteString right = {"te", 2};
+  VitteString joined;
+  VitteString integer;
+  VitteSliceString args;
+  VitteString panic_message = {"expected probe panic", 20};
+
+  CHECK(strcmp(vitte_c_abi_version(), "1.0.0") == 0, 10);
+  CHECK(vitte_host_runtime_available() == 1, 11);
+  numbers = vitte_slice_push_i32(numbers, 10);
+  numbers = vitte_slice_push_i32(numbers, -4);
+  CHECK(numbers.len == 2 && numbers.data[0] == 10 && numbers.data[1] == -4, 12);
+
+  joined = vitte_string_concat(left, right);
+  CHECK(joined.len == 5 && memcmp(joined.data, "vitte", 5) == 0, 13);
+  integer = vitte_i32_to_string(-42);
+  CHECK(integer.len == 3 && memcmp(integer.data, "-42", 3) == 0, 14);
+
+  vitte_set_args(argc, (const char **)argv);
+  args = cli_args();
+  CHECK(args.len == (size_t)argc && args.len > 0 && args.data[0].len > 0, 15);
+
+  CHECK(vitte_runtime_panic_boundary_reset() == 0, 16);
+  CHECK(vitte_runtime_panic_boundary_begin() == 1, 17);
+  vitte_builtin_trap(panic_message);
+  CHECK(vitte_runtime_panic_boundary_triggered() == 1, 18);
+  CHECK(vitte_runtime_panic_boundary_code() == 2, 19);
+  CHECK(vitte_runtime_panic_boundary_end() == 0, 20);
+  CHECK(vitte_runtime_panic_boundary_reset() == 0, 21);
+
+  free(numbers.data);
+  free((void *)joined.data);
+  free((void *)integer.data);
+  free(args.data);
+  return 0;
+}
+'''
+    with tempfile.TemporaryDirectory(prefix="vitte-runtime-c-") as tmp_name:
+        tmp = Path(tmp_name)
+        probe_source = tmp / "runtime_probe.c"
+        probe_binary = tmp / "runtime_probe"
+        probe_source.write_text(source, encoding="utf-8")
+        command = [
+            *compiler,
+            "-std=c11",
+            "-Wall",
+            "-Wextra",
+            "-Werror",
+            str(probe_source),
+            str(RUNTIME_DIR / "vitte_runtime.c"),
+            "-I",
+            str(RUNTIME_DIR),
+            "-o",
+            str(probe_binary),
+        ]
+        compiled = subprocess.run(command, check=False, capture_output=True, text=True, timeout=30)
+        if compiled.returncode != 0:
+            return {
+                "ok": False,
+                "phase": "compile",
+                "returncode": compiled.returncode,
+                "stderr": compiled.stderr.strip(),
+            }
+        executed = subprocess.run([str(probe_binary)], check=False, capture_output=True, text=True, timeout=10)
+        return {
+            "ok": executed.returncode == 0,
+            "phase": "execute",
+            "returncode": executed.returncode,
+            "abi_version": "1.0.0",
+        }
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -54,6 +145,8 @@ def main() -> int:
     REPORT.parent.mkdir(parents=True, exist_ok=True)
 
     results: dict[str, dict[str, object]] = {}
+
+    results["native_runtime_c"] = run_native_runtime_probe()
 
     with tempfile.TemporaryDirectory(prefix="vitte-runtime-") as tmp_name:
         tmp = Path(tmp_name)
