@@ -96,6 +96,7 @@ PARSE_E_PATTERN_EXPECTED = zrazok expected
 PARSE_E_BLOCK_EXPECTED = blok expected
 PARSE_E_UNCLOSED_BLOCK = blok ne zakryto
 PARSE_E_EXPECTED_TOKEN = ochikuietsia token
+PARSE_E_PARAMETER_COLON_EXPECTED = colon in procedure parameter vidsutnii
 PARSE_E_UNEXPECTED_TOKEN = token neochikuvanyi
 PARSE_EXPECTED_EXPR = parse expected expr
 PARSE_EXPECTED_TYPE = parse expected typ

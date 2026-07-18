@@ -318,9 +318,32 @@ def analyze_parser(source: str, file: str) -> list[dict[str, Any]]:
     declarations: dict[str, tuple[int, int]] = {}
     brace_depth = 0
     offset = 0
+    multiline_proc: tuple[str, int] | None = None
     for raw_line in source.splitlines(keepends=True):
         line = raw_line.strip()
-        if line and not line.startswith(("//", "/*", "*", "*/")) and brace_depth == 0:
+        in_multiline_signature = multiline_proc is not None
+        if in_multiline_signature and line and not line.startswith(("//", "/*", "*", "*/")):
+            proc_name, proc_line = multiline_proc
+            missing_colon = re.fullmatch(r"([A-Za-z_][A-Za-z0-9_]*)[ \t]+([A-Za-z_][A-Za-z0-9_]*),?", line)
+            if missing_colon:
+                parameter, type_name = missing_colon.groups()
+                start = offset + raw_line.index(parameter)
+                end = offset + raw_line.index(type_name) + len(type_name)
+                diagnostics.append(diagnostic(
+                    "PARSE_E_PARAMETER_COLON_EXPECTED", "parser", file, source, start, end,
+                    f"missing `:` between parameter `{parameter}` and type `{type_name}`",
+                    notes=[f"multi-line parameter list for procedure `{proc_name}` starts on line {proc_line}"],
+                    helps=[f"write `{parameter}: {type_name}`"],
+                    suggestions=[{
+                        "message": "insert the missing parameter separator",
+                        "replacement": f"{parameter}: {type_name}",
+                        "span": span(file, source, start, end),
+                        "applicability": "machine-applicable",
+                    }],
+                ))
+            if ")" in line:
+                multiline_proc = None
+        if line and not line.startswith(("//", "/*", "*", "*/")) and brace_depth == 0 and not in_multiline_signature:
             declaration = re.match(r"(proc|const|form|pick)[ \t]+([A-Za-z_][A-Za-z0-9_]*)", line)
             if declaration:
                 name = declaration.group(2)
@@ -365,6 +388,9 @@ def analyze_parser(source: str, file: str) -> list[dict[str, Any]]:
                         "applicability": "maybe-incorrect",
                     }],
                 ))
+            proc_header = re.match(r"proc[ \t]+([A-Za-z_][A-Za-z0-9_]*)\([^)]*$", line)
+            if proc_header:
+                multiline_proc = (proc_header.group(1), source.count("\n", 0, offset) + 1)
             match = re.match(r"([A-Za-z_][A-Za-z0-9_]*)", line)
             if match and match.group(1) not in TOP_LEVEL_KEYWORDS:
                 token = match.group(1)

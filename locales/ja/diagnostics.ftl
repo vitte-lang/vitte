@@ -96,6 +96,7 @@ PARSE_E_PATTERN_EXPECTED = パターン expected
 PARSE_E_BLOCK_EXPECTED = ブロック expected
 PARSE_E_UNCLOSED_BLOCK = ブロックが閉じられていません
 PARSE_E_EXPECTED_TOKEN = トークンが必要です
+PARSE_E_PARAMETER_COLON_EXPECTED = colon in procedure parameterが欠落しています
 PARSE_E_UNEXPECTED_TOKEN = 予期しないトークン
 PARSE_EXPECTED_EXPR = parse expected expr
 PARSE_EXPECTED_TYPE = parse expected 型

@@ -96,6 +96,7 @@ PARSE_E_PATTERN_EXPECTED = نمط expected
 PARSE_E_BLOCK_EXPECTED = كتلة expected
 PARSE_E_UNCLOSED_BLOCK = كتلة غير مغلق
 PARSE_E_EXPECTED_TOKEN = رمز لغوي متوقع
+PARSE_E_PARAMETER_COLON_EXPECTED = colon in procedure parameter مفقود
 PARSE_E_UNEXPECTED_TOKEN = رمز لغوي غير متوقع
 PARSE_EXPECTED_EXPR = parse expected expr
 PARSE_EXPECTED_TYPE = parse expected نوع

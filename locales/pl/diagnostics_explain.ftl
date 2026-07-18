@@ -566,6 +566,12 @@ PARSE_E_EXPECTED_TOKEN.step1 = Look at the highlighted token and complete or rem
 PARSE_E_EXPECTED_TOKEN.fix = Balance delimiters, complete the missing token, or rewrite the local expression.
 PARSE_E_EXPECTED_TOKEN.example = proc main() -> int { give 0; }
 
+PARSE_E_PARAMETER_COLON_EXPECTED.summary = parameter colon expected.
+PARSE_E_PARAMETER_COLON_EXPECTED.cause = The parser or lexer could not form the next valid source construct.
+PARSE_E_PARAMETER_COLON_EXPECTED.step1 = Look at the highlighted token and complete or remove the construct around it.
+PARSE_E_PARAMETER_COLON_EXPECTED.fix = Balance delimiters, complete the missing token, or rewrite the local expression.
+PARSE_E_PARAMETER_COLON_EXPECTED.example = proc main() -> int { give 0; }
+
 PARSE_E_UNEXPECTED_TOKEN.summary = token nieoczekiwany.
 PARSE_E_UNEXPECTED_TOKEN.cause = The parser or lexer could not form the next valid source construct.
 PARSE_E_UNEXPECTED_TOKEN.step1 = Look at the highlighted token and complete or remove the construct around it.
@@ -931,6 +937,24 @@ TYPECK_E_CAUSE_CHAIN_MISSING.cause = The inferred type does not satisfy the type
 TYPECK_E_CAUSE_CHAIN_MISSING.step1 = Compare the expected and found types in the diagnostic labels.
 TYPECK_E_CAUSE_CHAIN_MISSING.fix = Change the expression, annotation, or call argument so both sides agree.
 TYPECK_E_CAUSE_CHAIN_MISSING.example = let count: int = 1
+
+TYPECK_E_CONFLICTING_IMPL.summary = conflicting trait implementation.
+TYPECK_E_CONFLICTING_IMPL.cause = The inferred type does not satisfy the type required at this location.
+TYPECK_E_CONFLICTING_IMPL.step1 = Compare the expected and found types in the diagnostic labels.
+TYPECK_E_CONFLICTING_IMPL.fix = Change the expression, annotation, or call argument so both sides agree.
+TYPECK_E_CONFLICTING_IMPL.example = let count: int = 1
+
+TYPECK_E_CONSTRAINT_CYCLE.summary = cyclic generyczny constraint.
+TYPECK_E_CONSTRAINT_CYCLE.cause = The inferred type does not satisfy the type required at this location.
+TYPECK_E_CONSTRAINT_CYCLE.step1 = Compare the expected and found types in the diagnostic labels.
+TYPECK_E_CONSTRAINT_CYCLE.fix = Change the expression, annotation, or call argument so both sides agree.
+TYPECK_E_CONSTRAINT_CYCLE.example = let count: int = 1
+
+TYPECK_E_AMBIGUOUS_METHOD.summary = ambiguous method resolution.
+TYPECK_E_AMBIGUOUS_METHOD.cause = The inferred type does not satisfy the type required at this location.
+TYPECK_E_AMBIGUOUS_METHOD.step1 = Compare the expected and found types in the diagnostic labels.
+TYPECK_E_AMBIGUOUS_METHOD.fix = Change the expression, annotation, or call argument so both sides agree.
+TYPECK_E_AMBIGUOUS_METHOD.example = let count: int = 1
 
 TYPECK_E_USE_BEFORE_INIT.summary = use before init.
 TYPECK_E_USE_BEFORE_INIT.cause = The inferred type does not satisfy the type required at this location.

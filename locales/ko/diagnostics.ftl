@@ -96,6 +96,7 @@ PARSE_E_PATTERN_EXPECTED = 패턴 expected
 PARSE_E_BLOCK_EXPECTED = 블록 expected
 PARSE_E_UNCLOSED_BLOCK = 닫히지 않은 블록
 PARSE_E_EXPECTED_TOKEN = 토큰 필요
+PARSE_E_PARAMETER_COLON_EXPECTED = 누락된 colon in procedure parameter
 PARSE_E_UNEXPECTED_TOKEN = 예상치 못한 토큰
 PARSE_EXPECTED_EXPR = parse expected expr
 PARSE_EXPECTED_TYPE = parse expected 타입

@@ -832,8 +832,11 @@ diag-snapshots-portable:
 negative-tests-portable:
 	@BIN="$(CURDIR)/bin/vittec0" tools/negative_tests.sh
 
-.PHONY: diagnostics-portable diagnostics-local compiler-diagnostics-local
-diagnostics-portable diagnostics-local compiler-diagnostics-local: diagnostics-locales-lint diagnostics-ftl-check diagnostics-fluent-gate diagnostic-quality diag-snapshots-portable negative-tests-portable
+.PHONY: frontend-diagnostics-test diagnostics-portable diagnostics-local compiler-diagnostics-local
+frontend-diagnostics-test:
+	@python3 tests/diagnostics/run_frontend_diagnostic_tests.py
+
+diagnostics-portable diagnostics-local compiler-diagnostics-local: frontend-diagnostics-test diagnostics-locales-lint diagnostics-ftl-check diagnostics-fluent-gate diagnostic-quality diag-snapshots-portable negative-tests-portable
 
 .PHONY: compiler-smoke-portable
 compiler-smoke-portable: diagnostics-portable

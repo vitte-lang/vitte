@@ -24,6 +24,7 @@ PUBLIC_EXTRA_CODES: tuple[str, ...] = (
     "PARSE_E_BLOCK_EXPECTED",
     "PARSE_E_UNCLOSED_BLOCK",
     "PARSE_E_EXPECTED_TOKEN",
+    "PARSE_E_PARAMETER_COLON_EXPECTED",
     "PARSE_E_UNEXPECTED_TOKEN",
     "PARSE_EXPECTED_EXPR",
     "PARSE_EXPECTED_TYPE",
@@ -85,6 +86,9 @@ PUBLIC_EXTRA_CODES: tuple[str, ...] = (
     "TYPECK_E_GENERIC_INFERENCE",
     "TYPECK_E_TRAIT_BOUND",
     "TYPECK_E_CAUSE_CHAIN_MISSING",
+    "TYPECK_E_CONFLICTING_IMPL",
+    "TYPECK_E_CONSTRAINT_CYCLE",
+    "TYPECK_E_AMBIGUOUS_METHOD",
     "TYPECK_E_USE_BEFORE_INIT",
     "TYPECK_E_USE_AFTER_MOVE",
     "TYPECK_E_MALFORMED_UNARY",
@@ -337,6 +341,7 @@ MESSAGE_OVERRIDES: dict[str, str] = {
     "PARSE_E_PATTERN_EXPECTED": "pattern expected",
     "PARSE_E_BLOCK_EXPECTED": "block expected",
     "PARSE_E_UNCLOSED_BLOCK": "unclosed block",
+    "PARSE_E_PARAMETER_COLON_EXPECTED": "missing colon in procedure parameter",
     "SEMA_E_UNKNOWN_IDENTIFIER": "unknown identifier",
     "SEMA_E_AMBIGUOUS_SYMBOL": "ambiguous symbol",
     "SEMA_E_SHADOWING_FORBIDDEN": "shadowing is forbidden",
@@ -489,4 +494,19 @@ def explanation_fields(code: str, message: str | None = None) -> dict[str, str]:
         fields["step1"] = "Re-run the command with --help and verify paths and option values."
         fields["fix"] = "Provide an existing input, writable output path, and supported target/profile."
         fields["example"] = "vitte check src/main.vit --lang en"
+    if code == "PARSE_E_PARAMETER_COLON_EXPECTED":
+        fields["cause"] = "A procedure parameter name is followed by its type without the required colon separator."
+        fields["step1"] = "Inspect the highlighted parameter in the multi-line procedure signature."
+        fields["fix"] = "Insert `:` between the parameter name and its type, for example `right: f64`."
+        fields["example"] = "proc calculate(right: f64) -> f64 { give right; }"
+    elif code == "LEX_E_UNTERMINATED_STRING":
+        fields["cause"] = "A string starts with a double quote but reaches the end of the line without a matching double quote."
+        fields["step1"] = "Check that the opening and closing string delimiters are both double quotes."
+        fields["fix"] = "Add the closing `\"` on the same line; do not close a string with a single quote."
+        fields["example"] = 'print("message");'
+    elif code == "PARSE_E_UNCLOSED_BLOCK":
+        fields["cause"] = "An opening brace has no matching closing brace before the end of the file."
+        fields["step1"] = "Start at the highlighted innermost block and verify each nested brace."
+        fields["fix"] = "Add `}` to close the highlighted block, then run the checker again for its parent block."
+        fields["example"] = "while running { set running = false; }"
     return fields

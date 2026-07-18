@@ -96,6 +96,7 @@ PARSE_E_PATTERN_EXPECTED = desen expected
 PARSE_E_BLOCK_EXPECTED = blok expected
 PARSE_E_UNCLOSED_BLOCK = kapatilmamis blok
 PARSE_E_EXPECTED_TOKEN = token bekleniyor
+PARSE_E_PARAMETER_COLON_EXPECTED = eksik colon in procedure parameter
 PARSE_E_UNEXPECTED_TOKEN = beklenmeyen token
 PARSE_EXPECTED_EXPR = parse expected expr
 PARSE_EXPECTED_TYPE = parse expected tur

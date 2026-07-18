@@ -96,6 +96,7 @@ PARSE_E_PATTERN_EXPECTED = Muster expected
 PARSE_E_BLOCK_EXPECTED = Block expected
 PARSE_E_UNCLOSED_BLOCK = Block nicht geschlossen
 PARSE_E_EXPECTED_TOKEN = Token erwartet
+PARSE_E_PARAMETER_COLON_EXPECTED = colon in procedure parameter fehlt
 PARSE_E_UNEXPECTED_TOKEN = Token unerwartet
 PARSE_EXPECTED_EXPR = parse expected expr
 PARSE_EXPECTED_TYPE = parse expected Typ

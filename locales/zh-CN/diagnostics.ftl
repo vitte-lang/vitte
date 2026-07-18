@@ -96,6 +96,7 @@ PARSE_E_PATTERN_EXPECTED = 模式 expected
 PARSE_E_BLOCK_EXPECTED = 块 expected
 PARSE_E_UNCLOSED_BLOCK = 块未闭合
 PARSE_E_EXPECTED_TOKEN = 需要标记
+PARSE_E_PARAMETER_COLON_EXPECTED = 缺少colon in procedure parameter
 PARSE_E_UNEXPECTED_TOKEN = 标记意外
 PARSE_EXPECTED_EXPR = parse expected expr
 PARSE_EXPECTED_TYPE = parse expected 类型

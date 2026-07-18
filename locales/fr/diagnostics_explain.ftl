@@ -395,7 +395,7 @@ LEX_E_INVALID_IDENTIFIER.example = proc main() -> int { give 0; }
 LEX_E_UNTERMINATED_STRING.summary = string litteral non termine.
 LEX_E_UNTERMINATED_STRING.cause = The parser or lexer could not form the next valid source construct.
 LEX_E_UNTERMINATED_STRING.step1 = Look at the highlighted token and complete or remove the construct around it.
-LEX_E_UNTERMINATED_STRING.fix = Balance delimiters, complete the missing token, or rewrite the local expression.
+LEX_E_UNTERMINATED_STRING.fix = Ajoutez le guillemet fermant `"` sur la meme ligne; ne fermez pas une chaine avec une apostrophe.
 LEX_E_UNTERMINATED_STRING.example = proc main() -> int { give 0; }
 
 LEX_E_UNTERMINATED_CHAR.summary = caractere litteral non termine.
@@ -557,7 +557,7 @@ PARSE_E_BLOCK_EXPECTED.example = proc main() -> int { give 0; }
 PARSE_E_UNCLOSED_BLOCK.summary = bloc non ferme.
 PARSE_E_UNCLOSED_BLOCK.cause = The parser or lexer could not form the next valid source construct.
 PARSE_E_UNCLOSED_BLOCK.step1 = Look at the highlighted token and complete or remove the construct around it.
-PARSE_E_UNCLOSED_BLOCK.fix = Balance delimiters, complete the missing token, or rewrite the local expression.
+PARSE_E_UNCLOSED_BLOCK.fix = Ajoutez `}` pour fermer le bloc souligne, puis relancez le controle pour son bloc parent.
 PARSE_E_UNCLOSED_BLOCK.example = proc main() -> int { give 0; }
 
 PARSE_E_EXPECTED_TOKEN.summary = jeton attendu.
@@ -565,6 +565,12 @@ PARSE_E_EXPECTED_TOKEN.cause = The parser or lexer could not form the next valid
 PARSE_E_EXPECTED_TOKEN.step1 = Look at the highlighted token and complete or remove the construct around it.
 PARSE_E_EXPECTED_TOKEN.fix = Balance delimiters, complete the missing token, or rewrite the local expression.
 PARSE_E_EXPECTED_TOKEN.example = proc main() -> int { give 0; }
+
+PARSE_E_PARAMETER_COLON_EXPECTED.summary = deux-points manquant dans un parametre de procedure.
+PARSE_E_PARAMETER_COLON_EXPECTED.cause = Le nom du parametre est suivi de son type sans le separateur deux-points obligatoire.
+PARSE_E_PARAMETER_COLON_EXPECTED.step1 = Verifiez le parametre souligne dans la signature multi-ligne de la procedure.
+PARSE_E_PARAMETER_COLON_EXPECTED.fix = Inserez `:` entre le nom et le type, par exemple `right: f64`.
+PARSE_E_PARAMETER_COLON_EXPECTED.example = proc calculate(right: f64) -> f64 { give right; }
 
 PARSE_E_UNEXPECTED_TOKEN.summary = jeton inattendu.
 PARSE_E_UNEXPECTED_TOKEN.cause = The parser or lexer could not form the next valid source construct.
@@ -931,6 +937,24 @@ TYPECK_E_CAUSE_CHAIN_MISSING.cause = The inferred type does not satisfy the type
 TYPECK_E_CAUSE_CHAIN_MISSING.step1 = Compare the expected and found types in the diagnostic labels.
 TYPECK_E_CAUSE_CHAIN_MISSING.fix = Change the expression, annotation, or call argument so both sides agree.
 TYPECK_E_CAUSE_CHAIN_MISSING.example = let count: int = 1
+
+TYPECK_E_CONFLICTING_IMPL.summary = conflicting trait implementation.
+TYPECK_E_CONFLICTING_IMPL.cause = The inferred type does not satisfy the type required at this location.
+TYPECK_E_CONFLICTING_IMPL.step1 = Compare the expected and found types in the diagnostic labels.
+TYPECK_E_CONFLICTING_IMPL.fix = Change the expression, annotation, or call argument so both sides agree.
+TYPECK_E_CONFLICTING_IMPL.example = let count: int = 1
+
+TYPECK_E_CONSTRAINT_CYCLE.summary = cyclic generique constraint.
+TYPECK_E_CONSTRAINT_CYCLE.cause = The inferred type does not satisfy the type required at this location.
+TYPECK_E_CONSTRAINT_CYCLE.step1 = Compare the expected and found types in the diagnostic labels.
+TYPECK_E_CONSTRAINT_CYCLE.fix = Change the expression, annotation, or call argument so both sides agree.
+TYPECK_E_CONSTRAINT_CYCLE.example = let count: int = 1
+
+TYPECK_E_AMBIGUOUS_METHOD.summary = ambiguous method resolution.
+TYPECK_E_AMBIGUOUS_METHOD.cause = The inferred type does not satisfy the type required at this location.
+TYPECK_E_AMBIGUOUS_METHOD.step1 = Compare the expected and found types in the diagnostic labels.
+TYPECK_E_AMBIGUOUS_METHOD.fix = Change the expression, annotation, or call argument so both sides agree.
+TYPECK_E_AMBIGUOUS_METHOD.example = let count: int = 1
 
 TYPECK_E_USE_BEFORE_INIT.summary = use before init.
 TYPECK_E_USE_BEFORE_INIT.cause = The inferred type does not satisfy the type required at this location.
