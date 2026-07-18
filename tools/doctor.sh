@@ -38,7 +38,6 @@ check_binary() {
 check_binary "bin/vitte"
 check_binary "bin/vittec"
 check_binary "bin/vittec0"
-check_binary "bin/vittec1"
 
 check_cmd "make" "make"
 check_cmd "pkg-config" "pkg-config"
