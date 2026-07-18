@@ -372,9 +372,9 @@ doctor-error:
 selfhost-audit:
 	@tools/selfhost_audit.sh
 
-.PHONY: stage2-source-of-truth
-stage2-source-of-truth:
-	@tools/check_stage2_source_of_truth.sh
+.PHONY: bootstrap-source-of-truth
+bootstrap-source-of-truth:
+	@tools/check_bootstrap_source_of_truth.sh
 
 .PHONY: compiler-entry-lock
 compiler-entry-lock:
@@ -621,7 +621,7 @@ bootstrap-all:
 
 .PHONY: bootstrap-parity
 bootstrap-parity:
-	@echo "[bootstrap-parity][error] legacy vittec1/vitte stage parity is disabled; use bootstrap-stage-chain-check and bootstrap-native-snapshots" >&2
+	@echo "[bootstrap-parity][error] retired; use bootstrap-stage-chain-check and bootstrap-native-snapshots" >&2
 	@exit 1
 
 .PHONY: bootstrap-verify
@@ -1360,7 +1360,7 @@ compiler-max-gate:
 .PHONY: selfhost-hard
 selfhost-hard:
 	@$(MAKE) --no-print-directory build
-	@$(MAKE) --no-print-directory stage2-source-of-truth
+	@$(MAKE) --no-print-directory bootstrap-source-of-truth
 	@$(MAKE) --no-print-directory compiler-entry-lock
 	@$(MAKE) --no-print-directory compiler-path-typos
 	@$(MAKE) --no-print-directory selfhost-audit
@@ -1374,7 +1374,7 @@ compiler-max-gate-strict:
 .PHONY: selfhost-hard-strict
 selfhost-hard-strict:
 	@$(MAKE) --no-print-directory build
-	@$(MAKE) --no-print-directory stage2-source-of-truth
+	@$(MAKE) --no-print-directory bootstrap-source-of-truth
 	@$(MAKE) --no-print-directory compiler-entry-lock
 	@$(MAKE) --no-print-directory diagnostics-migration-gate
 	@$(MAKE) --no-print-directory compiler-reachability-audit
@@ -2065,7 +2065,7 @@ help:
 	@echo "  make bootstrap-source-coverage-check verify seed exercises current bootstrap-native forms"
 	@echo "  make bootstrap-contracts-index-check verify bootstrap contract docs paths and targets"
 	@echo "  make bootstrap-posix-smoke run POSIX shell syntax and env smoke checks for bootstrap artifacts"
-	@echo "  make bootstrap-parity compare vittec1/vitte check and parse output on bootstrap subset"
+	@echo "  make bootstrap-parity report the retired legacy parity gate and its replacements"
 	@echo "  make bootstrap-verify verify bootstrap versions, smoke, AST/IR checks"
 	@echo "  make seed-manifest-update regenerate toolchain/seed/manifest.txt from the audited seed artifact"
 	@echo "  make seed-rotation-report print seed manifest/hash/version rotation status"

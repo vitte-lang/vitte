@@ -18,7 +18,7 @@ go() {
 cd "$ROOT_DIR"
 
 # 0) Hard contract checks first
-go make stage2-source-of-truth
+go make bootstrap-source-of-truth
 go make compiler-entry-lock
 go make compiler-path-typos
 go make compiler-src-critical
