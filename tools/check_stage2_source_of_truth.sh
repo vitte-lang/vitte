@@ -2,49 +2,30 @@
 set -eu
 
 ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-STAGE2_SH="$ROOT_DIR/toolchain/scripts/bootstrap/stage2.sh"
+CONFIG="$ROOT_DIR/toolchain/bootstrap-config.json"
+MANIFEST="$ROOT_DIR/toolchain/seed/manifest.txt"
+SEED="$ROOT_DIR/toolchain/seed/vittec0.seed"
+SEED_SOURCE="$ROOT_DIR/toolchain/seed/src/main.vit"
 
-expect_root='COMPILER_SOURCE_ROOT="$ROOT_DIR/src/vitte/compiler"'
-expect_entry='COMPILER_ENTRY_POINT="$COMPILER_SOURCE_ROOT/main.vit"'
-expect_backend='VITTE_BACKEND_MODE="${VITTE_BACKEND_MODE:-native}"'
-expect_fallback='VITTE_BACKEND_FALLBACK="${VITTE_BACKEND_FALLBACK:-0}"'
-expect_bridge='VITTE_BOOTSTRAP_ALLOW_FULL_COMPILER_BRIDGE="${VITTE_BOOTSTRAP_ALLOW_FULL_COMPILER_BRIDGE:-0}"'
-
-[ -f "$STAGE2_SH" ] || {
-  echo "[stage2-source-of-truth][error] missing $STAGE2_SH" >&2
+die() {
+  echo "[seed-source-of-truth][error] $1" >&2
   exit 1
 }
 
-grep -F "$expect_root" "$STAGE2_SH" >/dev/null || {
-  echo "[stage2-source-of-truth][error] stage2.sh compiler source root drifted" >&2
-  echo "[stage2-source-of-truth][error] expected: $expect_root" >&2
-  exit 1
-}
+[ -f "$CONFIG" ] || die "missing toolchain/bootstrap-config.json"
+[ -f "$MANIFEST" ] || die "missing toolchain/seed/manifest.txt"
+[ -f "$SEED" ] || die "missing toolchain/seed/vittec0.seed"
+[ -f "$SEED_SOURCE" ] || die "missing toolchain/seed/src/main.vit"
 
-grep -F "$expect_entry" "$STAGE2_SH" >/dev/null || {
-  echo "[stage2-source-of-truth][error] stage2.sh compiler entry drifted" >&2
-  echo "[stage2-source-of-truth][error] expected: $expect_entry" >&2
-  exit 1
-}
+python3 "$ROOT_DIR/tools/check_bootstrap_stage_chain.py" >/dev/null || die "seed chain contract failed"
 
-grep -F "$expect_backend" "$STAGE2_SH" >/dev/null || {
-  echo "[stage2-source-of-truth][error] native backend must be the stage2 default" >&2
-  exit 1
-}
+grep -F '"bootstrap_stages": 1' "$CONFIG" >/dev/null || die "bootstrap config must declare one seed stage"
+grep -F '"name": "seed"' "$CONFIG" >/dev/null || die "bootstrap config must name the trust root seed"
+grep -F '"compiler": "toolchain/seed/vittec0.seed"' "$CONFIG" >/dev/null || die "bootstrap compiler must be vittec0.seed"
+grep -F '"artifact": "toolchain/seed/vittec0.seed"' "$CONFIG" >/dev/null || die "bootstrap artifact must be vittec0.seed"
+grep -F '"output": "bin/vittec0"' "$CONFIG" >/dev/null || die "bootstrap output must be bin/vittec0"
 
-grep -F "$expect_fallback" "$STAGE2_SH" >/dev/null || {
-  echo "[stage2-source-of-truth][error] native stage2 must not silently fall back to shell output" >&2
-  exit 1
-}
+grep -F 'source_file=toolchain/seed/src/main.vit' "$MANIFEST" >/dev/null || die "seed manifest source_file drifted"
+grep -F 'seed_file=toolchain/seed/vittec0.seed' "$MANIFEST" >/dev/null || die "seed manifest seed_file drifted"
 
-grep -F "$expect_bridge" "$STAGE2_SH" >/dev/null || {
-  echo "[stage2-source-of-truth][error] native stage2 must keep the bootstrap bridge disabled by default" >&2
-  exit 1
-}
-
-if grep -E 'build_native_launcher|VITTE_NATIVE_BRIDGE_COMPAT|native compat' "$STAGE2_SH" >/dev/null; then
-  echo "[stage2-source-of-truth][error] native mode must not wrap a shell bootstrap artifact as a machine compiler" >&2
-  exit 1
-fi
-
-echo "[stage2-source-of-truth] ok"
+echo "[seed-source-of-truth] ok"
