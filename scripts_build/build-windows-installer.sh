@@ -135,7 +135,7 @@ Section "Uninstall"
   RMDir /r "$INSTDIR"
 SectionEnd
 
-VIProductVersion "2.1.1.0"
+VIProductVersion "${VERSION}.0"
 VIAddVersionKey /LANG=${LANG_ENGLISH} "ProductName" "Vitte"
 VIAddVersionKey /LANG=${LANG_ENGLISH} "ProductVersion" "${VERSION}"
 VIAddVersionKey /LANG=${LANG_ENGLISH} "FileDescription" "Vitte amd64 installer"
@@ -154,14 +154,14 @@ The canonical generator validates the PE header before invoking NSIS:
 EOF
 
 COPYFILE_DISABLE=1 tar -czf "$kit_file" -C "$stage" installer.nsi BUILD.txt LICENSE README.md payload
-shasum -a 256 "$kit_file" > "$kit_file.sha256"
+(cd "$OUT_DIR" && shasum -a 256 "$(basename "$kit_file")" > "$(basename "$kit_file.sha256")")
 printf '[build-windows-installer] wrote build kit %s (%s bytes)\n' "$kit_file" "$(wc -c < "$kit_file" | tr -d ' ')"
 
 if [ "$has_pe" -eq 1 ] && command -v makensis >/dev/null 2>&1; then
   rm -f "$package_file"
   (cd "$stage" && makensis -DVERSION="$VERSION" -DOUT_FILE="$package_file" installer.nsi)
   validate_pe_amd64 "$package_file" || die "NSIS output is not a Windows amd64 executable"
-  shasum -a 256 "$package_file" > "$package_file.sha256"
+  (cd "$OUT_DIR" && shasum -a 256 "$(basename "$package_file")" > "$(basename "$package_file.sha256")")
   printf '[build-windows-installer] wrote %s (%s bytes)\n' "$package_file" "$(wc -c < "$package_file" | tr -d ' ')"
 elif [ "$has_pe" -eq 0 ]; then
   printf '[build-windows-installer] Windows amd64 PE payload unavailable; NSIS kit generated, native .exe deferred\n' >&2

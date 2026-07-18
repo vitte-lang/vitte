@@ -105,7 +105,7 @@ cp "$metadata/prototype" "$spool/prototype"
 mkdir -p "$spool/root"
 copy_tree "$data_root" "$spool/root"
 COPYFILE_DISABLE=1 tar -czf "$kit_file" -C "$spool" pkginfo prototype root
-shasum -a 256 "$kit_file" > "$kit_file.sha256"
+(cd "$OUT_DIR" && shasum -a 256 "$(basename "$kit_file")" > "$(basename "$kit_file.sha256")")
 printf '[build-solaris-package] wrote build kit %s (%s bytes)\n' "$kit_file" "$(wc -c < "$kit_file" | tr -d ' ')"
 
 if command -v pkgmk >/dev/null 2>&1 && command -v pkgtrans >/dev/null 2>&1; then
@@ -115,7 +115,7 @@ if command -v pkgmk >/dev/null 2>&1 && command -v pkgtrans >/dev/null 2>&1; then
   rm -f "$package_file"
   pkgtrans -s "$package_spool" "$package_file" "$SVR4_PACKAGE"
   [ -s "$package_file" ] || die "pkgtrans did not create $package_file"
-  shasum -a 256 "$package_file" > "$package_file.sha256"
+  (cd "$OUT_DIR" && shasum -a 256 "$(basename "$package_file")" > "$(basename "$package_file.sha256")")
   printf '[build-solaris-package] wrote %s (%s bytes)\n' "$package_file" "$(wc -c < "$package_file" | tr -d ' ')"
 else
   printf '[build-solaris-package] pkgmk/pkgtrans unavailable; portable SVR4 kit generated, native .pkg deferred\n' >&2

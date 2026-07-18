@@ -59,8 +59,8 @@ build_one() {
     "$PKG_BUILDER"
   [ -f "$package_file" ] || die "package builder did not create $package_file"
   create_dmg "$package_file" "$dmg_file" "Vitte-$VERSION-$label"
-  shasum -a 256 "$package_file" > "$package_file.sha256"
-  shasum -a 256 "$dmg_file" > "$dmg_file.sha256"
+  (cd "$OUT_DIR" && shasum -a 256 "$(basename "$package_file")" > "$(basename "$package_file.sha256")")
+  (cd "$OUT_DIR" && shasum -a 256 "$(basename "$dmg_file")" > "$(basename "$dmg_file.sha256")")
 }
 
 [ "$(uname -s)" = Darwin ] || die "macOS installers require a Darwin host"

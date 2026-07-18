@@ -97,7 +97,7 @@ EOF
 
   members=$(ar -t "$package_file" | tr '\n' ' ')
   [ "$members" = 'debian-binary control.tar.gz data.tar.gz ' ] || die "invalid Debian member order: $members"
-  shasum -a 256 "$package_file" > "$package_file.sha256"
+  (cd "$OUT_DIR" && shasum -a 256 "$(basename "$package_file")" > "$(basename "$package_file.sha256")")
   printf '[build-linux-debs] wrote %s (%s bytes)\n' "$package_file" "$(wc -c < "$package_file" | tr -d ' ')"
 }
 

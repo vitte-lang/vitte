@@ -105,7 +105,7 @@ PY
   COPYFILE_DISABLE=1 bsdtar -cJf "$package_file" -C "$metadata" +COMPACT_MANIFEST +MANIFEST -C "$data_root" .
   bsdtar -tf "$package_file" | grep -Fx '+COMPACT_MANIFEST' >/dev/null || die "missing compact manifest"
   bsdtar -tf "$package_file" | grep -Fx './usr/local/bin/vitte' >/dev/null || die "missing vitte command"
-  shasum -a 256 "$package_file" > "$package_file.sha256"
+  (cd "$OUT_DIR" && shasum -a 256 "$(basename "$package_file")" > "$(basename "$package_file.sha256")")
   printf '[build-freebsd-packages] wrote %s (%s bytes)\n' "$package_file" "$(wc -c < "$package_file" | tr -d ' ')"
 }
 
