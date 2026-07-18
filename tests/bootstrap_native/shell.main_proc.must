@@ -233,21 +233,6 @@ sq() {
     sed "s/'/'\\\\''/g; s/^/'/; s/$/'/"
 }
 
-shell_payload_c_literal() {
-    awk '
-    BEGIN {
-        printf "\""
-    }
-    {
-        gsub(/\\/,"\\\\")
-        gsub(/"/,"\\\"")
-        printf "%s\\n", $0
-    }
-    END {
-        printf "\""
-    }' "$1"
-}
-
 compile_native_ir() {
     src="$1"
     ir_version="${2:-v1}"
@@ -960,171 +945,6 @@ guard_output_not_source() {
         cli_error E_CLI_OUTPUT_OVERWRITES_SOURCE "output path would overwrite input source: $output_path" "choose a different -o/--out path, for example build/$(basename "$source_path" .vit)"
         return 1
     fi
-}
-
-bootstrap_repo_root_from_source() {
-    src="$1"
-    case "$src" in
-        */src/vitte/compiler/tests/*)
-            printf '%s\n' "${src%/src/vitte/compiler/tests/*}"
-            return 0
-            ;;
-        src/vitte/compiler/tests/*)
-            printf '.\n'
-            return 0
-            ;;
-    esac
-    return 1
-}
-
-is_bootstrap_compiler_test_suite_source() {
-    src="$1"
-    case "$src" in
-        */src/vitte/compiler/tests/*.vit|src/vitte/compiler/tests/*.vit)
-            grep -q '^proc[  \t]\+run_all_tests()[  \t]*->[  \t]*int[  \t]*{' "$src" || return 1
-            grep -q '^proc[  \t]\+main([A-Za-z_][A-Za-z0-9_]*:[  \t]*list\[string\])[  \t]*->[  \t]*int[  \t]*{' "$src" || return 1
-            return 0
-            ;;
-    esac
-    return 1
-}
-
-write_compiler_test_suite_bridge() {
-    src="$1"
-    target_out="$2"
-    repo_root="$3"
-    compiler_bin="$repo_root/bin/vitte"
-    src_abs="$(cd "$(dirname "$src")" && pwd)/$(basename "$src")"
-    mkdir -p "$(dirname "$target_out")"
-    cat > "$target_out" <<EOF
-#!/usr/bin/env sh
-set -eu
-repo_root=$(printf '%s\n' "$repo_root" | sq)
-source_path=$(printf '%s\n' "$src_abs" | sq)
-compiler_bin=\${VITTE_BOOTSTRAP_COMPILER:-$(printf '%s\n' "$compiler_bin" | sq)}
-if [ ! -x "\$compiler_bin" ]; then
-    if [ -x "\$repo_root/bin/vitte" ]; then
-        compiler_bin="\$repo_root/bin/vitte"
-    elif [ -x "\$repo_root/bin/vittec" ]; then
-        compiler_bin="\$repo_root/bin/vittec"
-    elif [ -x "./bin/vitte" ]; then
-        compiler_bin="./bin/vitte"
-    elif [ -x "./bin/vittec" ]; then
-        compiler_bin="./bin/vittec"
-    else
-        echo "[vitte][error] E_BOOTSTRAP_COMPILER_TEST_BRIDGE: missing compiler binary for compiler test suite bridge" >&2
-        exit 127
-    fi
-fi
-exec "\$compiler_bin" check "\$source_path"
-EOF
-    chmod +x "$target_out"
-}
-
-bootstrap_repo_root_from_compiler_path() {
-    path="$1"
-    case "$path" in
-        */src/vitte/compiler/main.vit)
-            printf '%s\n' "${path%/src/vitte/compiler/main.vit}"
-            return 0
-            ;;
-        src/vitte/compiler/main.vit)
-            printf '.\n'
-            return 0
-            ;;
-        */src/vitte/compiler)
-            printf '%s\n' "${path%/src/vitte/compiler}"
-            return 0
-            ;;
-        src/vitte/compiler)
-            printf '.\n'
-            return 0
-            ;;
-    esac
-    return 1
-}
-
-is_shebang_script() {
-    path="$1"
-    [ -f "$path" ] || return 1
-    prefix="$(LC_ALL=C head -c 2 "$path" 2>/dev/null || true)"
-    [ "$prefix" = "#!" ]
-}
-
-is_bootstrap_fallback_binary() {
-    path="$1"
-    [ -f "$path" ] || return 1
-    LC_ALL=C grep -a -F "bootstrap native backend could not lower this program" "$path" >/dev/null 2>&1 && return 0
-    LC_ALL=C grep -a -F "E_BOOTSTRAP_NATIVE_SUBSET" "$path" >/dev/null 2>&1 && return 0
-    return 1
-}
-
-resolve_generic_backend_compiler() {
-    current_bin="${0:-}"
-    current_cmp=""
-    if [ -n "$current_bin" ]; then
-        current_cmp="$(canonical_path_for_compare "$current_bin" 2>/dev/null || printf '%s\n' "$current_bin")"
-    fi
-    explicit_compiler="${VITTE_BOOTSTRAP_COMPILER:-}"
-    if [ -n "$explicit_compiler" ] && [ -x "$explicit_compiler" ]; then
-        candidate_cmp="$(canonical_path_for_compare "$explicit_compiler" 2>/dev/null || printf '%s\n' "$explicit_compiler")"
-        [ -z "$current_cmp" ] || [ "$candidate_cmp" != "$current_cmp" ] || return 1
-        printf '%s\n' "$explicit_compiler"
-        return 0
-    fi
-    repo_root=""
-    if [ -n "${compiler_entry_point:-}" ]; then
-        repo_root="$(bootstrap_repo_root_from_compiler_path "$compiler_entry_point" || true)"
-    fi
-    if [ -z "$repo_root" ] && [ -n "${compiler_source_root:-}" ]; then
-        repo_root="$(bootstrap_repo_root_from_compiler_path "$compiler_source_root" || true)"
-    fi
-    for candidate in \
-        "${repo_root:+$repo_root/bin/vitte}" \
-        "${repo_root:+$repo_root/bin/vittec}" \
-        "./bin/vitte" \
-        "./bin/vittec"
-    do
-        [ -n "$candidate" ] || continue
-        [ -x "$candidate" ] || continue
-        candidate_cmp="$(canonical_path_for_compare "$candidate" 2>/dev/null || printf '%s\n' "$candidate")"
-        [ -z "$current_cmp" ] || [ "$candidate_cmp" != "$current_cmp" ] || continue
-        is_bootstrap_fallback_binary "$candidate" && continue
-        is_shebang_script "$candidate" && continue
-        printf '%s\n' "$candidate"
-        return 0
-    done
-    return 1
-}
-
-run_generic_backend_compiler() {
-    compiler_bin="$1"
-    shift
-    if [ "$trace_pipeline" -eq 1 ]; then
-        set -- "$@" --trace-pipeline
-    fi
-    if [ "$strict_mode" -eq 1 ]; then
-        set -- "$@" --strict
-    fi
-    if [ -n "${diagnostics_lang:-}" ]; then
-        set -- "$@" --lang "$diagnostics_lang"
-    fi
-    "$compiler_bin" "$@"
-}
-
-delegate_generic_backend_build() {
-    src="$1"
-    out="$2"
-    compiler_bin="$(resolve_generic_backend_compiler || true)"
-    [ -n "$compiler_bin" ] || return 1
-    run_generic_backend_compiler "$compiler_bin" build "$src" -o "$out"
-}
-
-delegate_generic_backend_run() {
-    src="$1"
-    compiler_bin="$(resolve_generic_backend_compiler || true)"
-    [ -n "$compiler_bin" ] || return 1
-    run_generic_backend_compiler "$compiler_bin" run "$src"
 }
 
 extract_native_main_return() {
@@ -1907,7 +1727,6 @@ build_native_user_program() {
     out="$2"
     target_out="$2"
     cc_bin="${CC:-cc}"
-    allow_full_bridge=0
     guard_output_not_source "$src" "$target_out" || return 1
     if emit_pre_backend_diagnostic "$src"; then
         return 1
@@ -1933,126 +1752,14 @@ build_native_user_program() {
     ir_text="$(compile_native_ir "$src" "v1" 2>/dev/null || true)"
     case "$ir_text" in
         *"const.int.BOOTSTRAP_FULL_COMPILER=1"*)
-            if [ "$allow_full_bridge" != "1" ]; then
-                cli_error E_BOOTSTRAP_FULL_COMPILER_BRIDGE_DISABLED "full-compiler bootstrap bridge is forbidden" "implement native lowering for the complete compiler source"
-                return 1
-            fi
-            tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/vitte-bootstrap-payload-XXXXXX")"
-            payload="$tmp_dir/payload.sh"
-            c_src="$(mktemp "${TMPDIR:-/tmp}/vitte-bootstrap-c-XXXXXX")" || {
-                rm -rf "$tmp_dir"
-                cli_error E_BACKEND_FAILURE "failed to allocate bootstrap C work file for $src" "check TMPDIR permissions"
-                return 1
-            }
-            write_compiler "$src" "$payload"
-            cat > "$c_src" <<EOF
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/stat.h>
-#include <sys/wait.h>
-#include <unistd.h>
-
-static const char *payload_source =
-$(shell_payload_c_literal "$payload");
-static const char *bootstrap_payload_bridge_marker = "vitte-bootstrap-payload-bridge";
-
-static int write_payload_file(const char *path) {
-    FILE *file = fopen(path, "wb");
-    size_t payload_len = strlen(payload_source);
-    if (file == NULL) {
-        return 127;
-    }
-    if (payload_len > 0 && fwrite(payload_source, 1, payload_len, file) != payload_len) {
-        fclose(file);
-        return 127;
-    }
-    if (fclose(file) != 0) {
-        return 127;
-    }
-    if (chmod(path, 0700) != 0) {
-        return 127;
-    }
-    return 0;
-}
-
-int main(int argc, char **argv) {
-    char tmpl[] = "/tmp/vitte-bootstrap-payload-XXXXXX";
-    int fd = mkstemp(tmpl);
-    pid_t pid;
-    int status = 0;
-    char **child_argv;
-    if (fd < 0) {
-        return 127;
-    }
-    close(fd);
-    if (write_payload_file(tmpl) != 0) {
-        unlink(tmpl);
-        return 127;
-    }
-    child_argv = (char **)malloc(sizeof(char *) * (size_t)(argc + 2));
-    if (child_argv == NULL) {
-        unlink(tmpl);
-        return 127;
-    }
-    child_argv[0] = tmpl;
-    for (int i = 1; i < argc; i += 1) {
-        child_argv[i] = argv[i];
-    }
-    child_argv[argc] = NULL;
-    pid = fork();
-    if (pid < 0) {
-        free(child_argv);
-        unlink(tmpl);
-        return 127;
-    }
-    if (pid == 0) {
-        setenv("trace_pipeline", "0", 0);
-        setenv("strict_mode", "0", 0);
-        execv(tmpl, child_argv);
-        _exit(127);
-    }
-    free(child_argv);
-    if (waitpid(pid, &status, 0) < 0) {
-        unlink(tmpl);
-        return 127;
-    }
-    unlink(tmpl);
-    if (WIFEXITED(status)) {
-        return WEXITSTATUS(status);
-    }
-    return 127;
-}
-EOF
-            compile_host_c "$cc_bin" "$c_src" "$target_out" || {
-                cli_error E_BACKEND_FAILURE "host C payload compilation failed for $src" "inspect host compiler diagnostics"
-                rm -rf "$tmp_dir"
-                rm -f "$c_src"
-                rm -f "$target_out"
-                return 1
-            }
-            rm -rf "$tmp_dir"
-            rm -f "$c_src"
-            rm -f "${target_out}.bootstrap-bridge"
-            chmod +x "$target_out"
-            return 0
+            cli_error E_BOOTSTRAP_FULL_COMPILER_BRIDGE_DISABLED "full-compiler bootstrap bridge is forbidden" "implement native lowering for the complete compiler source"
+            return 1
             ;;
     esac
     main_return="$(extract_native_ir_main_return "$ir_text" || true)"
     if [ -n "$main_return" ]; then
         emit_native_return_executable "$main_return" "$target_out" "$src"
         return $?
-    fi
-    if [ "$allow_full_bridge" = "1" ] && is_bootstrap_compiler_test_suite_source "$src"; then
-        repo_root="$(bootstrap_repo_root_from_source "$src" || true)"
-        if [ -n "$repo_root" ]; then
-            write_compiler_test_suite_bridge "$src" "$target_out" "$repo_root"
-            rm -f "${target_out}.bootstrap-bridge"
-            return 0
-        fi
-    fi
-    if { [ -n "${compiler_source_root:-}" ] || [ -n "${compiler_entry_point:-}" ]; } && resolve_generic_backend_compiler >/dev/null 2>&1; then
-        return 125
     fi
     if [ -n "${native_main_reason:-}" ]; then
         cli_error E_BACKEND_FAILURE "$native_main_reason" "supported today: let, set, if, while, and give on integer literals or variables"
@@ -5017,17 +4724,7 @@ case "$cmd" in
         build_native_user_program "$src" "$tmp_bin"
         rc="$?"
         set -e
-        if [ "$rc" -ne 0 ]; then
-            if [ "$rc" -eq 125 ]; then
-                trace_step "pipeline.backend:delegate-generic"
-                set +e
-                delegate_generic_backend_run "$src"
-                rc="$?"
-                set -e
-                exit "$rc"
-            fi
-            exit 3
-        fi
+        [ "$rc" -eq 0 ] || exit 3
         set +e
         "$tmp_bin"
         run_rc=$?

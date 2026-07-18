@@ -46,7 +46,7 @@ execution to `src/vitte/compiler/driver/compiler.vit` and the driver pipeline.
 make compiler-architecture-check
 make compiler-real-pipeline-audit
 make compiler-test-suite-check-gate
-make compiler-test-suite-bridge-gate
+make compiler-no-fallback-gate
 ```
 
 Generated architecture reports live under `target/reports/`; they are evidence

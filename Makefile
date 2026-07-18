@@ -145,7 +145,7 @@ install-debian-2.1.1: install-debian
 # ------------------------------------------------------------
 
 .PHONY: build
-build: dirs bootstrap-all compiler-test-suite-check-gate compiler-test-suite-bridge-gate driver-native-json-surface-gate bootstrap-native-snapshots vitte-source-audit packages-check-all
+build: dirs bootstrap-all compiler-test-suite-check-gate compiler-no-fallback-gate driver-native-json-surface-gate bootstrap-native-snapshots vitte-source-audit packages-check-all
 
 .PHONY: vittec-kernel kernel-tools
 vittec-kernel: vitte-bootstrap-check
@@ -202,7 +202,7 @@ format-check:
 # Static analysis
 # ------------------------------------------------------------
 
-.PHONY: tidy vitte-source-audit vitte-legacy-text-audit vitte-bootstrap-check bootstrap-native-snapshots compiler-real-native-gate compiler-test-suite-check-gate compiler-test-suite-bridge-gate driver-native-json-surface-gate
+.PHONY: tidy vitte-source-audit vitte-legacy-text-audit vitte-bootstrap-check bootstrap-native-snapshots compiler-real-native-gate compiler-test-suite-check-gate compiler-no-fallback-gate driver-native-json-surface-gate
 tidy: vitte-source-audit vitte-legacy-text-audit
 
 vitte-source-audit:
@@ -271,8 +271,8 @@ compiler-real-native-gate:
 compiler-test-suite-check-gate:
 	@tools/compiler_test_suite_check_gate.sh
 
-compiler-test-suite-bridge-gate:
-	@tools/compiler_test_suite_bridge_gate.sh
+compiler-no-fallback-gate:
+	@tools/compiler_no_fallback_gate.sh
 
 driver-native-json-surface-gate:
 	@tools/driver_native_json_surface_gate.sh

@@ -61,7 +61,7 @@ make bootstrap-posix-smoke
 
 - `compiler-real-native-gate`
 - `compiler-test-suite-check-gate`
-- `compiler-test-suite-bridge-gate`
+- `compiler-no-fallback-gate`
 - `driver-native-json-surface-gate`
 
 These are complementary to `make bootstrap-native-snapshots`. The snapshot suite

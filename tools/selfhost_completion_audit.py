@@ -20,7 +20,6 @@ SHELL_PREFIXES = (b"#!/usr/bin/env sh", b"#!/bin/sh")
 
 def run(command: list[str]) -> subprocess.CompletedProcess[str]:
     environment = os.environ.copy()
-    environment["VITTE_BOOTSTRAP_ALLOW_FULL_COMPILER_BRIDGE"] = "1"
     try:
         return subprocess.run(
             command,
