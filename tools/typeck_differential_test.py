@@ -12,7 +12,7 @@ import tempfile
 
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_BINS = [ROOT / "bin" / "vittec0", ROOT / "bin" / "vittec1", ROOT / "bin" / "vittec"]
+DEFAULT_BINS = [ROOT / "bin" / "vittec0", ROOT / "bin" / "vittec", ROOT / "bin" / "vitte"]
 REPORT = ROOT / "target" / "reports" / "typeck_differential.json"
 
 
