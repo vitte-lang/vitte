@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import platform
+import re
 import sys
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
@@ -15,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 REPORT_DIR = ROOT / "target" / "reports"
 STDLIB_DIR = ROOT / "target" / "stdlib"
+SOURCE_STDLIB_DIR = ROOT / "src/vitte/stdlib"
 HISTORY_DIR = STDLIB_DIR / "history"
 
 REPORT_DIR.mkdir(parents=True, exist_ok=True)
@@ -61,27 +63,27 @@ OPTIONAL_SYMBOLS = [
 ]
 
 
-FEATURES = {
-    "collections": True,
-    "vector": True,
-    "hashmap": True,
-    "hashset": False,
-    "deque": False,
-    "io": True,
-    "filesystem": True,
-    "async": False,
-    "channels": False,
-    "ffi": False,
-    "network": False,
-    "http": False,
-    "json": False,
-    "yaml": False,
-    "toml": False,
-    "regex": False,
-    "crypto": False,
-    "compression": False,
-    "image": False,
-    "audio": False,
+FEATURE_MODULES = {
+    "collections": "collections.vitl",
+    "vector": "collections/vector.vitl",
+    "hashmap": "collections/hashmap.vitl",
+    "hashset": "collections/hashset.vitl",
+    "deque": "collections/deque.vitl",
+    "io": "io.vitl",
+    "filesystem": "io/file.vitl",
+    "async": "async.vitl",
+    "channels": "async/channel.vitl",
+    "ffi": "ffi/ffi.vitl",
+    "network": "network.vitl",
+    "http": "network/http.vitl",
+    "json": "json.vitl",
+    "yaml": "yaml.vitl",
+    "toml": "toml.vitl",
+    "regex": "regex.vitl",
+    "crypto": "crypto.vitl",
+    "compression": "compression.vitl",
+    "image": "image.vitl",
+    "audio": "audio.vitl",
 }
 
 
@@ -121,20 +123,22 @@ def validate_files() -> list[ValidationResult]:
     return results
 
 
-def load_stdlib_source() -> str:
-    mod = ROOT / "src/vitte/stdlib/mod.vit"
+def stdlib_symbol_index() -> dict[str, str]:
+    symbols: dict[str, str] = {}
+    declaration = re.compile(r"^\s*proc\s+([A-Za-z_][A-Za-z0-9_]*)\b")
+    sources = sorted(SOURCE_STDLIB_DIR.glob("**/*.vit*"))
 
-    if not mod.exists():
-        return ""
+    for source_path in sources:
+        for line in source_path.read_text(encoding="utf-8", errors="ignore").splitlines():
+            match = declaration.match(line)
+            if match and match.group(1) not in symbols:
+                symbols[match.group(1)] = str(source_path.relative_to(ROOT))
 
-    return mod.read_text(
-        encoding="utf-8",
-        errors="ignore",
-    )
+    return symbols
 
 
 def validate_required_symbols(
-    source: str,
+    symbols: dict[str, str],
 ) -> list[ValidationResult]:
 
     out = []
@@ -143,8 +147,8 @@ def validate_required_symbols(
         out.append(
             ValidationResult(
                 name=symbol,
-                status=symbol in source,
-                detail="required",
+                status=symbol in symbols,
+                detail=symbols.get(symbol, "missing declaration"),
             )
         )
 
@@ -152,7 +156,7 @@ def validate_required_symbols(
 
 
 def validate_optional_symbols(
-    source: str,
+    symbols: dict[str, str],
 ) -> list[ValidationResult]:
 
     out = []
@@ -161,39 +165,47 @@ def validate_optional_symbols(
         out.append(
             ValidationResult(
                 name=symbol,
-                status=symbol in source,
-                detail="optional",
+                status=symbol in symbols,
+                detail=symbols.get(symbol, "missing declaration"),
             )
         )
 
     return out
 
 
-def feature_score() -> float:
+def detected_features() -> dict[str, bool]:
+    return {
+        name: (SOURCE_STDLIB_DIR / relative_path).is_file()
+        for name, relative_path in FEATURE_MODULES.items()
+    }
+
+
+def feature_score(features: dict[str, bool]) -> float:
     enabled = sum(
         1
-        for value in FEATURES.values()
+        for value in features.values()
         if value
     )
 
     return round(
         enabled * 100.0
-        / len(FEATURES),
+        / len(features),
         2,
     )
 
 
 def build_report() -> dict:
-    source = load_stdlib_source()
+    symbols = stdlib_symbol_index()
+    features = detected_features()
 
     files = validate_files()
 
     required = validate_required_symbols(
-        source
+        symbols
     )
 
     optional = validate_optional_symbols(
-        source
+        symbols
     )
 
     missing_files = [
@@ -231,9 +243,9 @@ def build_report() -> dict:
         },
         "status": status,
         "coverage_score":
-            feature_score(),
+            feature_score(features),
         "features":
-            FEATURES,
+            features,
         "required_files": [
             asdict(item)
             for item in files
@@ -411,4 +423,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
