@@ -106,8 +106,8 @@ def detect_forbidden_surfaces() -> list[dict[str, str]]:
         ("elf-pseudo", "pseudo ELF format is not a machine object"),
         ("vitte-bootstrap-artifact", "bootstrap artifact name marks linker output as adapter-level"),
         ("build_native_wrapper", "native wrapper bridge is compatibility, not real backend emission"),
-        ("native bridge: wrapping stage artifact", "stage2 bridge wraps shell payload instead of linking backend object"),
-        ("build-native output remains the v1-compatible shell artifact", "seed compiler cannot yet build the real native stage2 driver"),
+        ("native bridge: wrapping compiler artifact", "compiler bridge wraps shell payload instead of linking backend object"),
+        ("build-native output remains the v1-compatible shell artifact", "seed compiler cannot yet build the real native compiler driver"),
     ]
 
     found: list[dict[str, str]] = []
@@ -127,7 +127,7 @@ def detect_informational_markers() -> list[dict[str, str]]:
         ),
         (
             "vitte-bootstrap-native-bridge",
-            "bootstrap seed still contains bridge marker support for stage artifacts",
+            "bootstrap seed still contains bridge marker support for generated artifacts",
         ),
     ]
 
@@ -174,7 +174,6 @@ def detect_pipeline_bypasses() -> list[dict[str, str]]:
 
 def detect_bridge_artifacts() -> tuple[list[dict[str, str]], list[dict[str, str]]]:
     candidates = [
-        ROOT / "target" / "bootstrap" / "stage2" / "vittec",
         ROOT / "bin" / "vitte",
         ROOT / "bin" / "vittec",
     ]
@@ -191,7 +190,7 @@ def detect_bridge_artifacts() -> tuple[list[dict[str, str]], list[dict[str, str]
                         break
             except OSError:
                 source = ""
-            reason = "native stage artifact is still a bootstrap bridge wrapper"
+            reason = "native compiler artifact is still a bootstrap bridge wrapper"
             if source:
                 reason = reason + f" for {source}"
             item = {
@@ -221,7 +220,7 @@ def main() -> int:
     if cli_entry["runtime_cli_dispatch"] == "placeholder":
         failures.append("CLI source entry has placeholder main(args) and is not the real command dispatcher")
     if forbidden:
-        failures.append("non-real backend/link/stage2 surface detected")
+        failures.append("non-real backend/link/compiler surface detected")
     if bypasses:
         failures.append("canonical pipeline bypass detected")
 
