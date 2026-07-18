@@ -31,6 +31,14 @@ create_dmg() {
   rm -rf "$stage"
   mkdir -p "$stage"
   cp "$package_file" "$stage/"
+  cp "$ROOT_DIR/assets/logo.png" "$stage/Vitte-logo.png"
+  cat > "$stage/INSTALL.txt" <<EOF
+Vitte $VERSION for macOS ($volume_name)
+
+Open $(basename "$package_file") to install the complete language toolchain in /usr/local.
+The package includes compiler commands, sources, stdlib, documentation, examples,
+editor integrations, completions, locales, and uninstall support.
+EOF
   hdiutil create -quiet -ov -format UDZO -fs HFS+ -volname "$volume_name" -srcfolder "$stage" "$dmg_file"
   [ -f "$dmg_file" ] || die "hdiutil did not create $dmg_file"
 }
@@ -58,9 +66,51 @@ build_one() {
     CHECKSUM_TARGET_BIN=$binary \
     "$PKG_BUILDER"
   [ -f "$package_file" ] || die "package builder did not create $package_file"
+  component_dir=$ROOT_DIR/target/macos-product-$label
+  resources=$component_dir/resources
+  component_pkg=$component_dir/vitte-component.pkg
+  mkdir -p "$resources"
+  mv "$package_file" "$component_pkg"
+  cp "$ROOT_DIR/assets/logo.png" "$resources/logo.png"
+  cat > "$component_dir/Distribution.xml" <<EOF
+<?xml version="1.0" encoding="utf-8"?>
+<installer-gui-script minSpecVersion="1">
+  <title>Vitte $VERSION</title>
+  <background file="logo.png" alignment="center" scaling="proportional"/>
+  <options customize="never" require-scripts="false" hostArchitectures="$expected_archs"/>
+  <choices-outline><line choice="vitte"/></choices-outline>
+  <choice id="vitte" visible="false"><pkg-ref id="org.vitte.toolchain"/></choice>
+  <pkg-ref id="org.vitte.toolchain" version="$VERSION" onConclusion="none">vitte-component.pkg</pkg-ref>
+</installer-gui-script>
+EOF
+  productbuild --distribution "$component_dir/Distribution.xml" --resources "$resources" \
+    --package-path "$component_dir" "$package_file"
   create_dmg "$package_file" "$dmg_file" "Vitte-$VERSION-$label"
   (cd "$OUT_DIR" && shasum -a 256 "$(basename "$package_file")" > "$(basename "$package_file.sha256")")
   (cd "$OUT_DIR" && shasum -a 256 "$(basename "$dmg_file")" > "$(basename "$dmg_file.sha256")")
+}
+
+create_macos2006_profile() {
+  stage=$ROOT_DIR/target/macos2006-profile
+  archive=$OUT_DIR/vitte-$VERSION-macos2006-config.tar.gz
+  rm -rf "$stage"
+  mkdir -p "$stage"
+  cp "$ROOT_DIR/assets/logo.png" "$stage/logo.png"
+  cat > "$stage/MacOS2006.conf" <<'EOF'
+MACOSX_DEPLOYMENT_TARGET=10.4
+VITTE_MACOS_LEGACY_SDK=MacOSX10.4u.sdk
+VITTE_MACOS_LEGACY_ARCHS=i386,ppc
+VITTE_MACOS_LEGACY_CC=gcc-4.0
+EOF
+  cat > "$stage/README.txt" <<EOF
+Vitte $VERSION historical macOS 2006 build profile
+
+This configuration targets Mac OS X 10.4-era i386/PowerPC toolchains and requires
+an original Xcode 2.x SDK. It is a reproducible configuration kit, not a claim
+that current arm64/x86_64 Vitte binaries execute on 2006 systems.
+EOF
+  COPYFILE_DISABLE=1 tar -czf "$archive" -C "$stage" .
+  (cd "$OUT_DIR" && shasum -a 256 "$(basename "$archive")" > "$(basename "$archive.sha256")")
 }
 
 [ "$(uname -s)" = Darwin ] || die "macOS installers require a Darwin host"
@@ -77,6 +127,7 @@ case "$ARCH" in
 esac
 
 make -C "$ROOT_DIR" macos-universal-bin
+create_macos2006_profile
 
 case "$ARCH" in
   all|arm64)
