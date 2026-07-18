@@ -5,14 +5,11 @@ ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 OUT_FILE="/tmp/vitte-compiler-test-suite-check.out"
 ERR_FILE="/tmp/vitte-compiler-test-suite-check.err"
 
-if [ -x "$ROOT_DIR/bin/vitte" ]; then
-    DRIVER_BIN="$ROOT_DIR/bin/vitte"
-elif [ -x "$ROOT_DIR/bin/vittec" ]; then
-    DRIVER_BIN="$ROOT_DIR/bin/vittec"
-else
-    printf "[compiler-test-suite-check-gate][error] missing compiler driver in %s/bin\n" "$ROOT_DIR" >&2
+DRIVER_BIN="$ROOT_DIR/bin/vittec0"
+[ -x "$DRIVER_BIN" ] || {
+    printf "[compiler-test-suite-check-gate][error] missing seed compiler: %s\n" "$DRIVER_BIN" >&2
     exit 1
-fi
+}
 
 SUITES="
 src/vitte/compiler/tests/architecture_integration_tests.vit

@@ -7,6 +7,11 @@ SEED_SOURCE=$ROOT_DIR/toolchain/seed/vittec0.seed
 COMPILER_SOURCE=$ROOT_DIR/src/vitte/compiler/main.vit
 UNSUPPORTED_SOURCE=$ROOT_DIR/tests/bootstrap_native/native_user_helper_call.vit
 OUT_DIR=$ROOT_DIR/target/compiler-no-fallback-gate
+CONTROL_FILES="
+$ROOT_DIR/tools/compiler_real_native_gate.sh
+$ROOT_DIR/tools/compiler_test_suite_check_gate.sh
+$ROOT_DIR/tools/driver_native_json_surface_gate.sh
+"
 
 die() {
   printf '[compiler-no-fallback-gate][error] %s\n' "$1" >&2
@@ -28,6 +33,20 @@ for marker in \
     die "seed retains forbidden fallback symbol: $marker"
   fi
 done
+
+printf '%s\n' "$CONTROL_FILES" | while IFS= read -r control_file; do
+  [ -n "$control_file" ] || continue
+  grep -F 'DRIVER_BIN="$ROOT_DIR/bin/vittec0"' "$control_file" >/dev/null ||
+    die "bootstrap control does not use the seed directly: $control_file"
+  if grep -E 'DRIVER_BIN=.*bin/(vitte|vittec)"' "$control_file" >/dev/null 2>&1; then
+    die "bootstrap control retains alternate compiler selection: $control_file"
+  fi
+done
+
+grep -F 'VITTE_BOOTSTRAP ?= $(BIN_DIR)/vittec0' "$ROOT_DIR/Makefile" >/dev/null ||
+  die "Makefile bootstrap root is not bin/vittec0"
+grep -F 'DRIVER_BOOTSTRAP_RUNNER ?= $(VITTE_BOOTSTRAP)' "$ROOT_DIR/Makefile" >/dev/null ||
+  die "Makefile driver bootstrap runner can bypass the seed root"
 
 if VITTE_BOOTSTRAP_ALLOW_FULL_COMPILER_BRIDGE=1 \
   "$SEED" build-native --src "$COMPILER_SOURCE" --out "$OUT_DIR/compiler" >"$OUT_DIR/compiler.out" 2>"$OUT_DIR/compiler.err"; then

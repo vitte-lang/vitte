@@ -8,14 +8,11 @@ OUT_LOG="$OUT_DIR/build.log"
 PROBE_SRC="$ROOT_DIR/tests/bootstrap_native/native_user_helper_call.vit"
 PROBE_BIN="$OUT_DIR/helper-call"
 
-if [ -x "$ROOT_DIR/bin/vitte" ]; then
-    DRIVER_BIN="$ROOT_DIR/bin/vitte"
-elif [ -x "$ROOT_DIR/bin/vittec" ]; then
-    DRIVER_BIN="$ROOT_DIR/bin/vittec"
-else
-    printf "[compiler-real-native-gate][error] missing compiler driver in %s/bin\n" "$ROOT_DIR" >&2
+DRIVER_BIN="$ROOT_DIR/bin/vittec0"
+[ -x "$DRIVER_BIN" ] || {
+    printf "[compiler-real-native-gate][error] missing seed compiler: %s\n" "$DRIVER_BIN" >&2
     exit 1
-fi
+}
 
 mkdir -p "$OUT_DIR"
 rm -f "$OUT_BIN" "$OUT_BIN.bootstrap-bridge" "$OUT_LOG" "$PROBE_BIN" "$PROBE_BIN.bootstrap-bridge"

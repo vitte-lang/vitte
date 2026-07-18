@@ -29,8 +29,8 @@ RM           := rm -rf
 MKDIR        := mkdir -p
 INSTALL      := install
 CP           := cp -f
-VITTE_BOOTSTRAP ?= $(BIN_DIR)/$(PROJECT)
-DRIVER_BOOTSTRAP_RUNNER ?= $(shell if [ -x "$(BIN_DIR)/$(PROJECT)" ]; then printf '%s' "$(BIN_DIR)/$(PROJECT)"; elif [ -x "$(BIN_DIR)/vittec0" ]; then printf '%s' "$(BIN_DIR)/vittec0"; else printf '%s' "$(VITTE_BOOTSTRAP)"; fi)
+VITTE_BOOTSTRAP ?= $(BIN_DIR)/vittec0
+DRIVER_BOOTSTRAP_RUNNER ?= $(VITTE_BOOTSTRAP)
 
 PREFIX       ?= /usr/local
 DESTDIR      ?=

@@ -5,14 +5,11 @@ ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 SRC="$ROOT_DIR/src/vitte/compiler/main.vit"
 OUT_DIR="$ROOT_DIR/target/driver-native-json-surface"
 
-if [ -x "$ROOT_DIR/bin/vitte" ]; then
-    DRIVER_BIN="$ROOT_DIR/bin/vitte"
-elif [ -x "$ROOT_DIR/bin/vittec" ]; then
-    DRIVER_BIN="$ROOT_DIR/bin/vittec"
-else
-    printf "[driver-native-json-surface-gate][error] missing compiler driver in %s/bin\n" "$ROOT_DIR" >&2
+DRIVER_BIN="$ROOT_DIR/bin/vittec0"
+[ -x "$DRIVER_BIN" ] || {
+    printf "[driver-native-json-surface-gate][error] missing seed compiler: %s\n" "$DRIVER_BIN" >&2
     exit 1
-fi
+}
 
 mkdir -p "$OUT_DIR"
 
