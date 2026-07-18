@@ -18,14 +18,15 @@ printf '[bootstrap-tests] mode=%s\n' "$MODE"
 python3 tools/check_bootstrap_stage_chain.py
 
 if [ "$MODE" = "quick" ]; then
-  printf '[bootstrap-tests] ok: static stage-chain contract\n'
+  printf '[bootstrap-tests] ok: static seed contract\n'
   exit 0
 fi
 
 python3 tools/check_bootstrap_stage_chain.py --artifacts
 
 if [ "$MODE" = "advanced" ]; then
-  make --no-print-directory bootstrap-parity
+  make --no-print-directory bootstrap-native-snapshots
+  python3 tools/selfhost_completion_audit.py
 fi
 
-printf '[bootstrap-tests] ok: stage0 -> stage1 -> stage2\n'
+printf '[bootstrap-tests] ok: seed trust root and generated compiler contract\n'
