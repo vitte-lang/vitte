@@ -414,68 +414,18 @@ check_native_user_build() {
         rc="$?"
         [ "$rc" -eq 6 ] || die "native user while sum executable exit code mismatch"
     fi
-    cat > "$TMP_DIR/mock-generic-backend" <<'EOF'
-#!/usr/bin/env sh
-set -eu
-cmd="${1:-}"
-shift || true
-case "$cmd" in
-    build)
-        src=""
-        out=""
-        while [ "$#" -gt 0 ]; do
-            case "$1" in
-                -o|--out)
-                    shift
-                    out="${1:-}"
-                    ;;
-                --lang|--trace-pipeline|--strict)
-                    [ "$1" = "--lang" ] && shift || true
-                    ;;
-                *)
-                    if [ -z "$src" ] && [ -f "$1" ]; then
-                        src="$1"
-                    fi
-                    ;;
-            esac
-            shift || true
-        done
-        [ -n "$src" ] && [ -n "$out" ] || exit 64
-        mkdir -p "$(dirname "$out")"
-        cat > "$out" <<'SH'
-#!/usr/bin/env sh
-exit 7
-SH
-        chmod +x "$out"
-        printf 'build succeeded\n'
-        ;;
-    run)
-        exit 7
-        ;;
-    *)
-        exit 64
-        ;;
-esac
-EOF
-    chmod +x "$TMP_DIR/mock-generic-backend"
-    VITTE_BOOTSTRAP_ALLOW_FULL_COMPILER_BRIDGE=1 \
-        "$BIN_DIR/vittec0" build-native --src "$COMPILER_SRC" --out "$TMP_DIR/bootstrap-vitte"
-    if "$TMP_DIR/bootstrap-vitte" build "$SNAP_DIR/native_user_helper_call.vit" -o "$TMP_DIR/native-user-helper-call.fail" > "$TMP_DIR/native-user-helper-call.fail.out" 2> "$TMP_DIR/native-user-helper-call.fail.err"; then
-        die "bootstrap native helper-call build unexpectedly succeeded without generic backend"
+    if VITTE_BOOTSTRAP_ALLOW_FULL_COMPILER_BRIDGE=1 \
+        "$BIN_DIR/vittec0" build-native --src "$COMPILER_SRC" --out "$TMP_DIR/bootstrap-vitte" > "$TMP_DIR/bootstrap-vitte.out" 2> "$TMP_DIR/bootstrap-vitte.err"; then
+        die "forbidden full-compiler bridge unexpectedly succeeded"
     fi
-    grep -F "E_BACKEND_FAILURE" "$TMP_DIR/native-user-helper-call.fail.err" >/dev/null || die "bootstrap native helper-call build missing backend failure code"
-    grep -F 'unsupported bootstrap native `give` form: give helper();' "$TMP_DIR/native-user-helper-call.fail.err" >/dev/null || die "bootstrap native helper-call build missing precise unsupported-form diagnostic"
-    old_subset_diag="E_BOOTSTRAP_NATIVE""_SUBSET"
-    if grep -F "$old_subset_diag" "$TMP_DIR/native-user-helper-call.fail.err" >/dev/null; then
-        die "bootstrap native helper-call build regressed to legacy subset diagnostic"
+    grep -F "E_BOOTSTRAP_FULL_COMPILER_BRIDGE_DISABLED" "$TMP_DIR/bootstrap-vitte.err" >/dev/null || die "full-compiler bridge rejection diagnostic missing"
+    [ ! -e "$TMP_DIR/bootstrap-vitte" ] || die "full-compiler bridge rejection left an artifact"
+    if VITTE_BOOTSTRAP_COMPILER=/bin/false \
+        "$BIN_DIR/vittec0" build "$SNAP_DIR/native_user_helper_call.vit" -o "$TMP_DIR/native-user-helper-call" > "$TMP_DIR/native-user-helper-call.out" 2> "$TMP_DIR/native-user-helper-call.err"; then
+        die "unsupported native build unexpectedly delegated to another compiler"
     fi
-    VITTE_BOOTSTRAP_COMPILER="$TMP_DIR/mock-generic-backend" "$TMP_DIR/bootstrap-vitte" build "$SNAP_DIR/native_user_helper_call.vit" -o "$TMP_DIR/native-user-helper-call"
-    if "$TMP_DIR/native-user-helper-call" >/dev/null 2>&1; then
-        die "delegated generic backend executable exit code mismatch"
-    else
-        rc="$?"
-        [ "$rc" -eq 7 ] || die "delegated generic backend executable exit code mismatch"
-    fi
+    grep -F "E_BACKEND_FAILURE" "$TMP_DIR/native-user-helper-call.err" >/dev/null || die "unsupported native build missing backend failure diagnostic"
+    [ ! -e "$TMP_DIR/native-user-helper-call" ] || die "failed native build left an artifact"
     "$BIN_DIR/vittec0" build "$SNAP_DIR/record_field_sum.vit" -o "$TMP_DIR/record-field-sum"
     if "$TMP_DIR/record-field-sum" >/dev/null 2>&1; then
         die "record field sum executable exit code mismatch"

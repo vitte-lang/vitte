@@ -2,16 +2,15 @@ space vitte/bootstrap/seed
 
 // ROLE-CONTRACT
 // package: vitte.bootstrap.seed
-// role: bootstrap-stage0-compiler
+// role: bootstrap-seed-compiler
 // source_of_truth: toolchain/seed/src/main.vit
 // status: bootstrap-vitte-seed
 
 // ============================================================
-// Stage 0: Bootstrap Seed Compiler (Entry Point)
+// Bootstrap Seed Compiler (Entry Point)
 // ============================================================
-// This is the minimal bootstrap compiler compiled from C.
-// It is used to compile Stage 1, the first self-hosted compiler.
-// This is the trust anchor for the entire bootstrap chain.
+// This is the manifest-pinned compiler trust root.
+// Unsupported native lowering is fatal and cannot delegate to another compiler.
 // Procedure generics start immediately after the procedure name; array types in
 // parameters and return annotations must never be indexed as generic parameters.
 // Every procedure body owns a local scope, including procedures whose return
@@ -30,7 +29,7 @@ use vitte/io.{ println, read_file }
 
 const VERSION_TEXT: string = "vittec0 stage0-vitte-seed 0.1.0"
 const BANNER_TEXT: string = "vittec0 reproducible Vitte bootstrap seed"
-const TRUST_CHAIN_TEXT: string = "seed source canonical, shell artifact pinned by manifest sha256, native record literal field sums supported"
+const TRUST_CHAIN_TEXT: string = "seed source canonical, seed artifact pinned by manifest sha256, native lowering fails closed"
 const SEED_EXIT_CODE: int = 0
 
 pick DiagnosticPhase {
@@ -1619,9 +1618,8 @@ proc check_features() -> [string] {
 }
 
 proc can_self_compile() -> bool {
-  # Seed can compile Stage 1, not itself
-  # It's the entry point, compiled from C
-  give true
+  # Full self-compilation remains false until the native backend covers this source.
+  give false
 }
 
 proc print_info() -> string {

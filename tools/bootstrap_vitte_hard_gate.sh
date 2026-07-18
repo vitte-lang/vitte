@@ -4,8 +4,10 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT_DIR"
 
-SRC="toolchain/src/bootstrap_vitte/bin/main.vit"
+SRC="src/vitte/compiler/main.vit"
 OUT="target/bootstrap/bootstrap_vitte_gate"
+EXECUTION_FIXTURE="tests/bootstrap_native/main_const_int.vit"
+EXECUTION_OUT="target/bootstrap/bootstrap_vitte_execution_probe"
 CHECKER=""
 
 [ -f "$SRC" ] || { echo "[bootstrap-vitte][error] missing $SRC" >&2; exit 2; }
@@ -69,12 +71,12 @@ pick_runnable_checker || {
 
 mkdir -p target/bootstrap target/reports/bootstrap
 
-echo "[bootstrap-vitte] validating bootstrap_vitte sources"
-grep -Fq 'const VERSION_TEXT: string = "bootstrap_vitte stage-native 0.1.0"' "$SRC" || {
+echo "[bootstrap-vitte] validating canonical compiler source"
+grep -Fq 'const VERSION_TEXT: string = "vittec vitte-compiler 0.1.0"' "$SRC" || {
   echo "[bootstrap-vitte][error] missing expected VERSION_TEXT in $SRC" >&2
   exit 2
 }
-grep -Fq 'const BANNER_TEXT: string = "bootstrap_vitte native hard gate shim"' "$SRC" || {
+grep -Fq 'const BANNER_TEXT: string = "vittec Vitte compiler driver"' "$SRC" || {
   echo "[bootstrap-vitte][error] missing expected BANNER_TEXT in $SRC" >&2
   exit 2
 }
@@ -87,26 +89,30 @@ grep -Fq 'export *' "$SRC" || {
   exit 2
 }
 
-COMPAT_SRC="$(mktemp "${TMPDIR:-/tmp}/vitte-bootstrap-gate-compat.XXXXXX.vit")"
-trap 'rm -f "$COMPAT_SRC"' EXIT
-
-cat > "$COMPAT_SRC" <<'EOF'
-space vitte/bootstrap_gate_compat
-
-proc main() -> int {
-  give 0;
-}
-EOF
-
 echo "[bootstrap-vitte] compatibility check via $CHECKER"
-"$CHECKER" check "$COMPAT_SRC"
+"$CHECKER" check "$EXECUTION_FIXTURE"
 
 echo "[bootstrap-vitte] compiling bootstrap entry with seed"
+rm -f "$OUT" "$EXECUTION_OUT"
 "$CHECKER" build-native --src "$SRC" --out "$OUT"
 tools/require_native_artifact.sh "$OUT" compiler
 
 echo "[bootstrap-vitte] executing native hard gate invariants"
-"$OUT" --help >/dev/null
+version_output=$("$OUT" --version)
+case "$version_output" in
+  vittec*) ;;
+  *) echo "[bootstrap-vitte][error] generated compiler returned invalid version: $version_output" >&2; exit 3 ;;
+esac
+"$OUT" build-native --src "$EXECUTION_FIXTURE" --out "$EXECUTION_OUT"
+tools/require_native_artifact.sh "$EXECUTION_OUT"
+set +e
+"$EXECUTION_OUT"
+execution_rc=$?
+set -e
+[ "$execution_rc" -eq 9 ] || {
+  echo "[bootstrap-vitte][error] generated code returned $execution_rc, expected 9" >&2
+  exit 3
+}
 
 step_start() { printf '[bootstrap-vitte][step] %s\n' "$1"; }
 t0="$(date +%s)"

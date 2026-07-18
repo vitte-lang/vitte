@@ -1908,7 +1908,7 @@ build_native_user_program() {
     out="$2"
     target_out="$2"
     cc_bin="${CC:-cc}"
-    allow_full_bridge="${VITTE_BOOTSTRAP_ALLOW_FULL_COMPILER_BRIDGE:-1}"
+    allow_full_bridge=0
     guard_output_not_source "$src" "$target_out" || return 1
     if emit_pre_backend_diagnostic "$src"; then
         return 1
@@ -1935,7 +1935,7 @@ build_native_user_program() {
     case "$ir_text" in
         *"const.int.BOOTSTRAP_FULL_COMPILER=1"*)
             if [ "$allow_full_bridge" != "1" ]; then
-                cli_error E_BOOTSTRAP_FULL_COMPILER_BRIDGE_DISABLED "full-compiler bootstrap bridge disabled for this build" "enable a real backend path or set VITTE_BOOTSTRAP_ALLOW_FULL_COMPILER_BRIDGE=1 for transitional manual use"
+                cli_error E_BOOTSTRAP_FULL_COMPILER_BRIDGE_DISABLED "full-compiler bootstrap bridge is forbidden" "implement native lowering for the complete compiler source"
                 return 1
             fi
             tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/vitte-bootstrap-payload-XXXXXX")"
@@ -5169,12 +5169,14 @@ case "$cmd" in
         ir_version="$(arg_value --ir-version "$@" || true)"
         [ -n "$ir_version" ] || ir_version="v1"
         [ "$ir_version" = "v1" ] || [ "$ir_version" = "v2" ] || { cli_error E_CLI_ARG "unsupported --ir-version: $ir_version" "supported: v1, v2"; exit 2; }
-        # build-native keeps the explicit bootstrap shell artifact contract for dump-native compatibility.
-        write_compiler "$src" "$out"
-        if [ "$strict_mode" -eq 1 ]; then
-            trace_step "pipeline.emit:strict-verify-shell"
-            sh -n "$out" || { cli_error E_STRICT_SHELL "strict mode shell verification failed for $out"; exit 1; }
-        fi
+        trace_step "pipeline.backend:native-bootstrap-subset"
+        set +e
+        build_native_user_program "$src" "$out"
+        rc="$?"
+        set -e
+        [ "$rc" -eq 0 ] || exit "${rc:-3}"
+        [ -s "$out" ] || { cli_error E_BUILD_OUTPUT "build-native produced an empty output: $out"; exit 1; }
+        [ -x "$out" ] || { cli_error E_BUILD_OUTPUT "build-native output is not executable: $out"; exit 1; }
         trace_step "pipeline.emit:ok"
         ;;
     dump-native-shell)
@@ -5212,16 +5214,7 @@ case "$cmd" in
         build_native_user_program "$src" "$out"
         rc="$?"
         set -e
-        if [ "$rc" -ne 0 ]; then
-            if [ "$rc" -eq 125 ]; then
-                trace_step "pipeline.backend:delegate-generic"
-                set +e
-                delegate_generic_backend_build "$src" "$out"
-                rc="$?"
-                set -e
-            fi
-            [ "$rc" -eq 0 ] || exit "${rc:-3}"
-        fi
+        [ "$rc" -eq 0 ] || exit "${rc:-3}"
         [ -f "$out" ] || { cli_error E_BUILD_OUTPUT "build failed to produce output: $out"; exit 1; }
         trace_step "pipeline.emit:ok"
         printf 'build succeeded: %s\n' "$out"
