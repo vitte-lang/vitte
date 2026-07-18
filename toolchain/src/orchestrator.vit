@@ -157,9 +157,9 @@ proc create_setup_phase() -> BootstrapPhase {
 proc create_seed_phase() -> BootstrapPhase {
   let actions: [BootstrapAction] = [
     BootstrapAction {
-      action_type: "compile",
-      action_name: "compile-seed",
-      description: "Compile seed from C",
+      action_type: "install",
+      action_name: "install-seed",
+      description: "Install the verified seed trust root",
       required: true,
       depends_on: ["prepare-sources"],
       timeout_seconds: 300,
@@ -170,90 +170,21 @@ proc create_seed_phase() -> BootstrapPhase {
   give BootstrapPhase {
     phase_number: 3,
     phase_name: "Seed Bootstrap",
-    description: "Compile initial seed compiler",
+    description: "Install the manifest-pinned seed compiler",
     actions: actions,
     parallel: false
   }
 }
 
-# Phase 4: Stage 1
-proc create_stage1_phase() -> BootstrapPhase {
-  let actions: [BootstrapAction] = [
-    BootstrapAction {
-      action_type: "compile",
-      action_name: "compile-stage1",
-      description: "First self-hosted compilation",
-      required: true,
-      depends_on: ["compile-seed"],
-      timeout_seconds: 300,
-      retry_count: 1
-    }
-  ]
-  
-  give BootstrapPhase {
-    phase_number: 4,
-    phase_name: "Stage 1",
-    description: "First self-hosting stage",
-    actions: actions,
-    parallel: false
-  }
-}
-
-# Phase 5: Stage 2
-proc create_stage2_phase() -> BootstrapPhase {
-  let actions: [BootstrapAction] = [
-    BootstrapAction {
-      action_type: "compile",
-      action_name: "compile-stage2",
-      description: "Second self-hosted compilation",
-      required: true,
-      depends_on: ["compile-stage1"],
-      timeout_seconds: 300,
-      retry_count: 1
-    }
-  ]
-  
-  give BootstrapPhase {
-    phase_number: 5,
-    phase_name: "Stage 2",
-    description: "Second self-hosting stage",
-    actions: actions,
-    parallel: false
-  }
-}
-
-# Phase 6: Stage 3
-proc create_stage3_phase() -> BootstrapPhase {
-  let actions: [BootstrapAction] = [
-    BootstrapAction {
-      action_type: "compile",
-      action_name: "compile-stage3",
-      description: "Third self-hosted compilation for verification",
-      required: true,
-      depends_on: ["compile-stage2"],
-      timeout_seconds: 300,
-      retry_count: 1
-    }
-  ]
-  
-  give BootstrapPhase {
-    phase_number: 6,
-    phase_name: "Stage 3",
-    description: "Third self-hosting stage for final verification",
-    actions: actions,
-    parallel: false
-  }
-}
-
-# Phase 7: Verification
+# Phase 4: Verification
 proc create_verification_phase() -> BootstrapPhase {
   let actions: [BootstrapAction] = [
     BootstrapAction {
       action_type: "verify",
-      action_name: "verify-consistency",
-      description: "Verify stage2 == stage3",
+      action_name: "verify-seed-contract",
+      description: "Verify seed manifest and installed artifact",
       required: true,
-      depends_on: ["compile-stage3"],
+      depends_on: ["install-seed"],
       timeout_seconds: 60,
       retry_count: 0
     },
@@ -262,14 +193,14 @@ proc create_verification_phase() -> BootstrapPhase {
       action_name: "verify-features",
       description: "Verify compiler features",
       required: true,
-      depends_on: ["verify-consistency"],
+      depends_on: ["verify-seed-contract"],
       timeout_seconds: 120,
       retry_count: 0
     }
   ]
   
   give BootstrapPhase {
-    phase_number: 7,
+    phase_number: 4,
     phase_name: "Verification",
     description: "Verify bootstrap correctness",
     actions: actions,
@@ -277,7 +208,7 @@ proc create_verification_phase() -> BootstrapPhase {
   }
 }
 
-# Phase 8: Installation
+# Phase 5: Installation
 proc create_install_phase() -> BootstrapPhase {
   let actions: [BootstrapAction] = [
     BootstrapAction {
@@ -310,7 +241,7 @@ proc create_install_phase() -> BootstrapPhase {
   ]
   
   give BootstrapPhase {
-    phase_number: 8,
+    phase_number: 5,
     phase_name: "Installation",
     description: "Install bootstrap artifacts",
     actions: actions,
@@ -324,15 +255,12 @@ proc create_bootstrap_plan() -> BootstrapPlan {
     create_validation_phase(),
     create_setup_phase(),
     create_seed_phase(),
-    create_stage1_phase(),
-    create_stage2_phase(),
-    create_stage3_phase(),
     create_verification_phase(),
     create_install_phase()
   ]
   
-  let total_actions: int = 14
-  let estimated_time: int = 2100
+  let total_actions: int = 11
+  let estimated_time: int = 900
   
   give BootstrapPlan {
     phases: phases,
