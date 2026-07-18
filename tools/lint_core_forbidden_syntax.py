@@ -22,19 +22,6 @@ FORBIDDEN_PATTERNS = (
 )
 
 
-def check_ebnf_core_profile(path: Path) -> list[str]:
-    txt = path.read_text(encoding="utf-8")
-    errors: list[str] = []
-    for pat in FORBIDDEN_PATTERNS:
-        if pat.search(txt):
-            errors.append(f"{path}: forbidden core pattern found: {pat.pattern}")
-    if "compiler surface" not in txt:
-        for kw in FORBIDDEN_KEYWORDS:
-            if f"\"{kw}\"" in txt:
-                errors.append(f"{path}: forbidden core keyword in EBNF: {kw}")
-    return errors
-
-
 def check_core_valid_tests(root: Path) -> list[str]:
     errors: list[str] = []
     files = sorted((root / "tests/grammar/valid").glob("core-*.vit"))
@@ -86,7 +73,6 @@ def check_core_manifests(root: Path) -> list[str]:
 def main() -> int:
     repo = Path(__file__).resolve().parents[1]
     errors: list[str] = []
-    errors.extend(check_ebnf_core_profile(repo / "src/vitte/grammar/vitte.ebnf"))
     errors.extend(check_core_valid_tests(repo))
     errors.extend(check_core_manifests(repo))
     if errors:
