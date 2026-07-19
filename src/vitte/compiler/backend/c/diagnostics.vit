@@ -1,6 +1,6 @@
 space vitte/compiler/backend/c/diagnostics
 
-use vitte/compiler/frontend/ast/node.{ AstSpan, ast_span_empty }
+use vitte/compiler/frontend/ast/node.{ Span, ast_span_empty }
 
 export *
 
@@ -15,11 +15,11 @@ form CBackendDiagnostic {
   severity: CBackendSeverity
   message: string
   hint: string
-  span: AstSpan
+  span: Span
   valid: bool
 }
 
-proc c_diag(code: string, severity: CBackendSeverity, message: string, hint: string, span: AstSpan) -> CBackendDiagnostic {
+proc c_diag(code: string, severity: CBackendSeverity, message: string, hint: string, span: Span) -> CBackendDiagnostic {
   give CBackendDiagnostic {
     code: code,
     severity: severity,
@@ -34,11 +34,11 @@ proc c_info(code: string, message: string) -> CBackendDiagnostic {
   give c_diag(code, CBackendSeverity.Info, message, "", ast_span_empty());
 }
 
-proc c_error(code: string, message: string, hint: string, span: AstSpan) -> CBackendDiagnostic {
+proc c_error(code: string, message: string, hint: string, span: Span) -> CBackendDiagnostic {
   give c_diag(code, CBackendSeverity.Error, message, hint, span);
 }
 
-proc c_warning(code: string, message: string, hint: string, span: AstSpan) -> CBackendDiagnostic {
+proc c_warning(code: string, message: string, hint: string, span: Span) -> CBackendDiagnostic {
   give c_diag(code, CBackendSeverity.Warning, message, hint, span);
 }
 

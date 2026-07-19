@@ -32,6 +32,39 @@ proc test_scanner_preserves_positions_after_comments() -> bool {
   give proc_token.line == 3 and proc_token.column == 1;
 }
 
+proc test_scanner_preserves_exact_token_spans() -> bool {
+  let result: ScanResult = scan_tokens("alpha \"\"\"x\ny\"\"\" omega");
+  let alpha_index: int = token_index(result, "alpha");
+  let string_index: int = token_index(result, "\"\"\"x\ny\"\"\"");
+  let omega_index: int = token_index(result, "omega");
+  if not result.valid or alpha_index < 0 or string_index < 0 or omega_index < 0 {
+    give false;
+  }
+
+  let alpha = result.tokens[alpha_index as u64].span;
+  let string_span = result.tokens[string_index as u64].span;
+  let omega = result.tokens[omega_index as u64].span;
+  give alpha.valid
+    and alpha.start_offset == 0
+    and alpha.end_offset == 5
+    and alpha.start_line == 1
+    and alpha.start_column == 1
+    and alpha.end_line == 1
+    and alpha.end_column == 6
+    and string_span.start_offset == 6
+    and string_span.end_offset == 15
+    and string_span.start_line == 1
+    and string_span.start_column == 7
+    and string_span.end_line == 2
+    and string_span.end_column == 5
+    and omega.start_offset == 16
+    and omega.end_offset == 21
+    and omega.start_line == 2
+    and omega.start_column == 6
+    and omega.end_line == 2
+    and omega.end_column == 11;
+}
+
 proc test_scanner_reports_precise_invalid_number() -> bool {
   let result: ScanResult = scan_tokens(invalid_number_source());
   if result.valid or len(result.diagnostics) == 0 {
@@ -255,6 +288,9 @@ proc test_lexer_expected_error_kinds_have_rich_diagnostics() -> bool {
 proc run_all_tests() -> int {
   let failures: int = 0;
   if not test_scanner_preserves_positions_after_comments() {
+    set failures = failures + 1;
+  }
+  if not test_scanner_preserves_exact_token_spans() {
     set failures = failures + 1;
   }
   if not test_scanner_accepts_number_prefixes_and_suffixes() {

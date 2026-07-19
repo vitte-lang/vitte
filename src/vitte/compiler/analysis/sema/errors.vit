@@ -27,7 +27,7 @@ use vitte/compiler/diagnostics/catalog.{
 }
 
 use vitte/compiler/frontend/ast/node.{
-    AstSpan,
+    Span,
     ast_span_empty
 }
 
@@ -71,7 +71,7 @@ proc sema_span_empty() -> SourceSpan {
     give ast_span_to_source_span(ast_span_empty());
 }
 
-proc ast_span_to_source_span(span: AstSpan) -> SourceSpan {
+proc ast_span_to_source_span(span: Span) -> SourceSpan {
     let length: u64 = 1;
 
     if span.end_line == span.start_line and span.end_column > span.start_column {
@@ -242,7 +242,7 @@ proc attach_sema_context(diagnostic: Diagnostic, phase: SemaPhase, kind: SemaDia
     give diag;
 }
 
-proc sema_diagnostic(code: string, severity: DiagnosticSeverity, message: string, labels: [string], suggestion: string, span: AstSpan, fatal: bool) -> Diagnostic {
+proc sema_diagnostic(code: string, severity: DiagnosticSeverity, message: string, labels: [string], suggestion: string, span: Span, fatal: bool) -> Diagnostic {
     let source_span: SourceSpan = ast_span_to_source_span(span);
     let real_severity: DiagnosticSeverity = severity;
     let resolved_message: string = sema_message(code, message);
@@ -277,7 +277,7 @@ proc sema_diagnostic(code: string, severity: DiagnosticSeverity, message: string
     give diag;
 }
 
-proc sema_typed_diagnostic(code: string, severity: DiagnosticSeverity, phase: SemaPhase, kind: SemaDiagnosticKind, message: string, labels: [string], suggestion: string, span: AstSpan) -> Diagnostic {
+proc sema_typed_diagnostic(code: string, severity: DiagnosticSeverity, phase: SemaPhase, kind: SemaDiagnosticKind, message: string, labels: [string], suggestion: string, span: Span) -> Diagnostic {
     let source_span: SourceSpan = ast_span_to_source_span(span);
     let resolved_message: string = sema_message(code, message);
     let resolved_help: string = sema_help(code, suggestion);
@@ -313,7 +313,7 @@ proc sema_with_note(diagnostic: Diagnostic, note: string) -> Diagnostic {
     give diagnostic_with_note(diagnostic, note);
 }
 
-proc sema_with_label(diagnostic: Diagnostic, message: string, span: AstSpan) -> Diagnostic {
+proc sema_with_label(diagnostic: Diagnostic, message: string, span: Span) -> Diagnostic {
     give diagnostic_with_label(diagnostic, secondary_label(message, ast_span_to_source_span(span)));
 }
 
@@ -351,13 +351,13 @@ proc sema_context_add(ctx: SemaContext, diagnostic: Diagnostic) -> SemaContext {
     give ctx;
 }
 
-proc sema_context_error(ctx: SemaContext, code: string, kind: SemaDiagnosticKind, message: string, labels: [string], suggestion: string, span: AstSpan) -> SemaContext {
+proc sema_context_error(ctx: SemaContext, code: string, kind: SemaDiagnosticKind, message: string, labels: [string], suggestion: string, span: Span) -> SemaContext {
     let diagnostic: Diagnostic = sema_typed_diagnostic(code, DiagnosticSeverity.Error, ctx.phase, kind, message, labels, suggestion, span);
 
     give sema_context_add(ctx, diagnostic);
 }
 
-proc sema_context_warning(ctx: SemaContext, code: string, kind: SemaDiagnosticKind, message: string, labels: [string], suggestion: string, span: AstSpan) -> SemaContext {
+proc sema_context_warning(ctx: SemaContext, code: string, kind: SemaDiagnosticKind, message: string, labels: [string], suggestion: string, span: Span) -> SemaContext {
     let diagnostic: Diagnostic = sema_typed_diagnostic(code, DiagnosticSeverity.Warning, ctx.phase, kind, message, labels, suggestion, span);
 
     give sema_context_add(ctx, diagnostic);
@@ -371,7 +371,7 @@ proc sema_context_result(ctx: SemaContext) -> DiagnosticReport {
     give diagnostic_report(ctx.diagnostics);
 }
 
-proc sema_error(code: string, message: string, span: AstSpan) -> Diagnostic {
+proc sema_error(code: string, message: string, span: Span) -> Diagnostic {
     give sema_typed_diagnostic(
         code,
         DiagnosticSeverity.Error,
@@ -384,7 +384,7 @@ proc sema_error(code: string, message: string, span: AstSpan) -> Diagnostic {
     );
 }
 
-proc sema_warning(code: string, message: string, span: AstSpan) -> Diagnostic {
+proc sema_warning(code: string, message: string, span: Span) -> Diagnostic {
     give sema_typed_diagnostic(
         code,
         DiagnosticSeverity.Warning,
@@ -405,7 +405,7 @@ proc sema_internal_error(message: string) -> Diagnostic {
     give diag;
 }
 
-proc sema_duplicate_symbol(name: string, span: AstSpan) -> Diagnostic {
+proc sema_duplicate_symbol(name: string, span: Span) -> Diagnostic {
     let code: string = "SEMA_E_DUPLICATE_SYMBOL";
 
     let diag: Diagnostic = sema_typed_diagnostic(code, DiagnosticSeverity.Error, SemaPhase.SymbolCollection, SemaDiagnosticKind.DuplicateSymbol, "duplicate symbol `" + name + "`", [name], "rename one declaration or remove the duplicate", span);
@@ -477,7 +477,7 @@ proc sema_nearby_symbol(name: string, candidates: [string]) -> string {
     give "";
 }
 
-proc sema_unknown_symbol(name: string, span: AstSpan) -> Diagnostic {
+proc sema_unknown_symbol(name: string, span: Span) -> Diagnostic {
     let code: string = "SEMA_E_UNKNOWN_SYMBOL";
 
     let diag: Diagnostic = sema_typed_diagnostic(code, DiagnosticSeverity.Error, SemaPhase.NameResolution, SemaDiagnosticKind.UnknownSymbol, "unknown symbol `" + name + "`", [name], "declare the symbol before use or import it from another module", span);
@@ -488,7 +488,7 @@ proc sema_unknown_symbol(name: string, span: AstSpan) -> Diagnostic {
     give diag;
 }
 
-proc sema_unknown_symbol_with_candidates(name: string, candidates: [string], span: AstSpan) -> Diagnostic {
+proc sema_unknown_symbol_with_candidates(name: string, candidates: [string], span: Span) -> Diagnostic {
     let diag: Diagnostic = sema_unknown_symbol(name, span);
     let nearby: string = sema_nearby_symbol(name, candidates);
 
@@ -502,7 +502,7 @@ proc sema_unknown_symbol_with_candidates(name: string, candidates: [string], spa
     give diag;
 }
 
-proc sema_invalid_import(path: string, span: AstSpan) -> Diagnostic {
+proc sema_invalid_import(path: string, span: Span) -> Diagnostic {
     let code: string = "SEMA_E_INVALID_IMPORT";
 
     let diag: Diagnostic = sema_typed_diagnostic(code, DiagnosticSeverity.Error, SemaPhase.ImportResolution, SemaDiagnosticKind.InvalidImport, "invalid import `" + path + "`", [path], "use a canonical module path or add a valid import alias", span);
@@ -513,7 +513,7 @@ proc sema_invalid_import(path: string, span: AstSpan) -> Diagnostic {
     give diag;
 }
 
-proc sema_invalid_export(name: string, span: AstSpan) -> Diagnostic {
+proc sema_invalid_export(name: string, span: Span) -> Diagnostic {
     give sema_typed_diagnostic(
         "SEMA_E_INVALID_EXPORT",
         DiagnosticSeverity.Error,
@@ -526,7 +526,7 @@ proc sema_invalid_export(name: string, span: AstSpan) -> Diagnostic {
     );
 }
 
-proc sema_invalid_attribute(attr: string, span: AstSpan) -> Diagnostic {
+proc sema_invalid_attribute(attr: string, span: Span) -> Diagnostic {
     give sema_typed_diagnostic(
         "SEMA_E_INVALID_ATTRIBUTE",
         DiagnosticSeverity.Error,
@@ -539,7 +539,7 @@ proc sema_invalid_attribute(attr: string, span: AstSpan) -> Diagnostic {
     );
 }
 
-proc sema_invalid_visibility(visibility: string, span: AstSpan) -> Diagnostic {
+proc sema_invalid_visibility(visibility: string, span: Span) -> Diagnostic {
     give sema_typed_diagnostic(
         "SEMA_E_INVALID_VISIBILITY",
         DiagnosticSeverity.Error,
@@ -552,7 +552,7 @@ proc sema_invalid_visibility(visibility: string, span: AstSpan) -> Diagnostic {
     );
 }
 
-proc sema_invalid_control_flow(message: string, span: AstSpan) -> Diagnostic {
+proc sema_invalid_control_flow(message: string, span: Span) -> Diagnostic {
     give sema_typed_diagnostic(
         "SEMA_E_INVALID_CONTROL_FLOW",
         DiagnosticSeverity.Error,
@@ -565,7 +565,7 @@ proc sema_invalid_control_flow(message: string, span: AstSpan) -> Diagnostic {
     );
 }
 
-proc sema_invalid_module(message: string, span: AstSpan) -> Diagnostic {
+proc sema_invalid_module(message: string, span: Span) -> Diagnostic {
     give sema_typed_diagnostic(
         "SEMA_E_INVALID_MODULE",
         DiagnosticSeverity.Error,
@@ -578,7 +578,7 @@ proc sema_invalid_module(message: string, span: AstSpan) -> Diagnostic {
     );
 }
 
-proc sema_typeck_assignment_bridge(span: AstSpan) -> Diagnostic {
+proc sema_typeck_assignment_bridge(span: Span) -> Diagnostic {
     give sema_typed_diagnostic(
         "TYPECK_E_ASSIGN_MISMATCH",
         DiagnosticSeverity.Error,

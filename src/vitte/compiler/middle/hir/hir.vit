@@ -1,6 +1,6 @@
 space vitte/compiler/middle/hir
 
-use vitte/compiler/frontend/ast/node.{ AstSpan, ast_span, ast_span_empty }
+use vitte/compiler/frontend/ast/node.{ Span, ast_span, ast_span_empty }
 
 export *
 
@@ -175,7 +175,7 @@ form SemanticDiagnostic {
   code: string
   severity: SemanticSeverity
   message: string
-  span: AstSpan
+  span: Span
   related_symbol: string
   note: string
 }
@@ -201,7 +201,7 @@ form HirTypeInfo {
 
 form HirExpr {
   id: u64
-  span: AstSpan
+  span: Span
   kind: HirExprKind
   text: string
   name: string
@@ -225,7 +225,7 @@ form HirExpr {
 
 form HirStmt {
   id: u64
-  span: AstSpan
+  span: Span
   kind: HirStmtKind
   name: string
   target: string
@@ -258,7 +258,7 @@ form HirProcParam {
 
 form HirNominalMember {
   id: u64
-  span: AstSpan
+  span: Span
   kind: HirNominalMemberKind
   name: string
   annotation_text: string
@@ -279,7 +279,7 @@ form HirGenericParam {
 
 form HirItem {
   id: u64
-  span: AstSpan
+  span: Span
   kind: HirItemKind
   name: string
   resolved_id: u64
@@ -332,7 +332,7 @@ form HirUnit {
   valid: bool
 }
 
-proc semantic_diagnostic(code: string, severity: SemanticSeverity, message: string, span: AstSpan, related_symbol: string, note: string) -> SemanticDiagnostic {
+proc semantic_diagnostic(code: string, severity: SemanticSeverity, message: string, span: Span, related_symbol: string, note: string) -> SemanticDiagnostic {
   give SemanticDiagnostic {
     code: code,
     severity: severity,
@@ -366,7 +366,7 @@ proc hir_type_info(name: string, sized: bool, copyable: bool, move_only: bool, n
   };
 }
 
-proc hir_expr_with_generic_arguments(id: u64, span: AstSpan, kind: HirExprKind, text: string, name: string, operator: string, binding: string, resolved_id: u64, resolved_kind: string, external: bool, value_mode: HirValueMode, inferred_type: string, place_category: HirPlaceCategory, copyable: bool, constant: bool, assignable: bool, temporary: bool, generic_arguments: [string], diagnostics: [SemanticDiagnostic], children: [HirExpr], valid: bool) -> HirExpr {
+proc hir_expr_with_generic_arguments(id: u64, span: Span, kind: HirExprKind, text: string, name: string, operator: string, binding: string, resolved_id: u64, resolved_kind: string, external: bool, value_mode: HirValueMode, inferred_type: string, place_category: HirPlaceCategory, copyable: bool, constant: bool, assignable: bool, temporary: bool, generic_arguments: [string], diagnostics: [SemanticDiagnostic], children: [HirExpr], valid: bool) -> HirExpr {
   give HirExpr {
     id: id,
     span: span,
@@ -392,11 +392,11 @@ proc hir_expr_with_generic_arguments(id: u64, span: AstSpan, kind: HirExprKind, 
   };
 }
 
-proc hir_expr(id: u64, span: AstSpan, kind: HirExprKind, text: string, name: string, operator: string, binding: string, resolved_id: u64, resolved_kind: string, external: bool, value_mode: HirValueMode, inferred_type: string, place_category: HirPlaceCategory, copyable: bool, constant: bool, assignable: bool, temporary: bool, diagnostics: [SemanticDiagnostic], children: [HirExpr], valid: bool) -> HirExpr {
+proc hir_expr(id: u64, span: Span, kind: HirExprKind, text: string, name: string, operator: string, binding: string, resolved_id: u64, resolved_kind: string, external: bool, value_mode: HirValueMode, inferred_type: string, place_category: HirPlaceCategory, copyable: bool, constant: bool, assignable: bool, temporary: bool, diagnostics: [SemanticDiagnostic], children: [HirExpr], valid: bool) -> HirExpr {
   give hir_expr_with_generic_arguments(id, span, kind, text, name, operator, binding, resolved_id, resolved_kind, external, value_mode, inferred_type, place_category, copyable, constant, assignable, temporary, [], diagnostics, children, valid);
 }
 
-proc hir_stmt(id: u64, span: AstSpan, kind: HirStmtKind, name: string, target: string, target_binding: string, target_resolved_id: u64, target_resolved_kind: string, annotation_text: string, expr: HirExpr, message: string, mutable: bool, terminated: bool, unreachable: bool, scope_depth: u64, then_stmts: [HirStmt], else_stmts: [HirStmt], catch_stmts: [HirStmt], diagnostics: [SemanticDiagnostic], valid: bool) -> HirStmt {
+proc hir_stmt(id: u64, span: Span, kind: HirStmtKind, name: string, target: string, target_binding: string, target_resolved_id: u64, target_resolved_kind: string, annotation_text: string, expr: HirExpr, message: string, mutable: bool, terminated: bool, unreachable: bool, scope_depth: u64, then_stmts: [HirStmt], else_stmts: [HirStmt], catch_stmts: [HirStmt], diagnostics: [SemanticDiagnostic], valid: bool) -> HirStmt {
   give HirStmt {
     id: id,
     span: span,
@@ -433,7 +433,7 @@ proc hir_proc_param(name: string, annotation_text: string, mode: string, mutable
   };
 }
 
-proc hir_nominal_member(id: u64, span: AstSpan, kind: HirNominalMemberKind, name: string, annotation_text: string, expr: HirExpr, params: [HirProcParam], body_stmts: [HirStmt], message: string, valid: bool) -> HirNominalMember {
+proc hir_nominal_member(id: u64, span: Span, kind: HirNominalMemberKind, name: string, annotation_text: string, expr: HirExpr, params: [HirProcParam], body_stmts: [HirStmt], message: string, valid: bool) -> HirNominalMember {
   give HirNominalMember {
     id: id,
     span: span,
@@ -458,7 +458,7 @@ proc hir_generic_param(name: string, kind: string, bound_text: string, default_t
   };
 }
 
-proc hir_item_with_generic_contract(id: u64, span: AstSpan, kind: HirItemKind, name: string, resolved_id: u64, namespace: string, visibility: string, exported: bool, abi: string, generic_count: u64, generic_params: [string], generic_param_info: [HirGenericParam], where_clauses: [string], requires: [string], type_param_count: u64, attribute_count: u64, modifier_count: u64, member_count: u64, signature_param_count: u64, params: [HirProcParam], annotation_text: string, target_type_text: string, expr: HirExpr, stmts: [HirStmt], members: [HirNominalMember], message: string, scope_depth: u64, diagnostics: [SemanticDiagnostic], valid: bool) -> HirItem {
+proc hir_item_with_generic_contract(id: u64, span: Span, kind: HirItemKind, name: string, resolved_id: u64, namespace: string, visibility: string, exported: bool, abi: string, generic_count: u64, generic_params: [string], generic_param_info: [HirGenericParam], where_clauses: [string], requires: [string], type_param_count: u64, attribute_count: u64, modifier_count: u64, member_count: u64, signature_param_count: u64, params: [HirProcParam], annotation_text: string, target_type_text: string, expr: HirExpr, stmts: [HirStmt], members: [HirNominalMember], message: string, scope_depth: u64, diagnostics: [SemanticDiagnostic], valid: bool) -> HirItem {
   give HirItem {
     id: id,
     span: span,
@@ -492,11 +492,11 @@ proc hir_item_with_generic_contract(id: u64, span: AstSpan, kind: HirItemKind, n
   };
 }
 
-proc hir_item_with_members(id: u64, span: AstSpan, kind: HirItemKind, name: string, resolved_id: u64, namespace: string, visibility: string, exported: bool, abi: string, generic_count: u64, generic_params: [string], type_param_count: u64, attribute_count: u64, modifier_count: u64, member_count: u64, signature_param_count: u64, params: [HirProcParam], annotation_text: string, target_type_text: string, expr: HirExpr, stmts: [HirStmt], members: [HirNominalMember], message: string, scope_depth: u64, diagnostics: [SemanticDiagnostic], valid: bool) -> HirItem {
+proc hir_item_with_members(id: u64, span: Span, kind: HirItemKind, name: string, resolved_id: u64, namespace: string, visibility: string, exported: bool, abi: string, generic_count: u64, generic_params: [string], type_param_count: u64, attribute_count: u64, modifier_count: u64, member_count: u64, signature_param_count: u64, params: [HirProcParam], annotation_text: string, target_type_text: string, expr: HirExpr, stmts: [HirStmt], members: [HirNominalMember], message: string, scope_depth: u64, diagnostics: [SemanticDiagnostic], valid: bool) -> HirItem {
   give hir_item_with_generic_contract(id, span, kind, name, resolved_id, namespace, visibility, exported, abi, generic_count, generic_params, [], [], [], type_param_count, attribute_count, modifier_count, member_count, signature_param_count, params, annotation_text, target_type_text, expr, stmts, members, message, scope_depth, diagnostics, valid);
 }
 
-proc hir_item(id: u64, span: AstSpan, kind: HirItemKind, name: string, resolved_id: u64, namespace: string, visibility: string, exported: bool, abi: string, generic_count: u64, generic_params: [string], type_param_count: u64, attribute_count: u64, modifier_count: u64, member_count: u64, signature_param_count: u64, annotation_text: string, target_type_text: string, expr: HirExpr, stmts: [HirStmt], message: string, scope_depth: u64, diagnostics: [SemanticDiagnostic], valid: bool) -> HirItem {
+proc hir_item(id: u64, span: Span, kind: HirItemKind, name: string, resolved_id: u64, namespace: string, visibility: string, exported: bool, abi: string, generic_count: u64, generic_params: [string], type_param_count: u64, attribute_count: u64, modifier_count: u64, member_count: u64, signature_param_count: u64, annotation_text: string, target_type_text: string, expr: HirExpr, stmts: [HirStmt], message: string, scope_depth: u64, diagnostics: [SemanticDiagnostic], valid: bool) -> HirItem {
   give hir_item_with_members(id, span, kind, name, resolved_id, namespace, visibility, exported, abi, generic_count, generic_params, type_param_count, attribute_count, modifier_count, member_count, signature_param_count, [], annotation_text, target_type_text, expr, stmts, [], message, scope_depth, diagnostics, valid);
 }
 

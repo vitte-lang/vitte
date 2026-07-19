@@ -1,5 +1,7 @@
 space vitte/compiler/frontend/lexer/token
 
+use vitte/compiler/source/span.{ Span, span_offsets }
+
 pick TokenKind {
   Eof,
   Ident,
@@ -18,14 +20,34 @@ form Token {
   line: u64
   column: u64
   offset: u64
+  span: Span
+}
+
+proc token_span(lexeme: string, line: u64, column: u64, offset: u64) -> Span {
+  let end_line: u64 = line;
+  let end_column: u64 = column;
+  let index: u64 = 0;
+
+  while index < len(lexeme) {
+    let ch: string = slice(lexeme, index, index + 1);
+    if ch == "\n" {
+      set end_line = end_line + 1;
+      set end_column = 1 as u64;
+    } else {
+      set end_column = end_column + 1;
+    }
+    set index = index + 1;
+  }
+
+  give span_offsets("", offset, offset + len(lexeme), line, column, end_line, end_column);
 }
 
 proc token(kind: TokenKind, lexeme: string, line: u64, column: u64) -> Token {
-  give Token { kind: kind, lexeme: lexeme, line: line, column: column, offset: 0 };
+  give Token { kind: kind, lexeme: lexeme, line: line, column: column, offset: 0, span: token_span(lexeme, line, column, 0) };
 }
 
 proc token_with_offset(kind: TokenKind, lexeme: string, line: u64, column: u64, offset: u64) -> Token {
-  give Token { kind: kind, lexeme: lexeme, line: line, column: column, offset: offset };
+  give Token { kind: kind, lexeme: lexeme, line: line, column: column, offset: offset, span: token_span(lexeme, line, column, offset) };
 }
 
 proc token_kind_is_literal(kind: TokenKind) -> bool {

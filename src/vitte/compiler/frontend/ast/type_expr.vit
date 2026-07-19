@@ -2,7 +2,7 @@ space vitte/compiler/frontend/ast/type_expr
 
 use vitte/compiler/frontend/ast/node.{
   AstId,
-  AstSpan,
+  Span,
   ast_id,
   ast_span_empty,
   merge_spans
@@ -45,7 +45,7 @@ pick AstTypeKind {
 
 form AstTypeExpr {
   id: AstId
-  span: AstSpan
+  span: Span
 
   kind: AstTypeKind
 
@@ -209,7 +209,7 @@ proc type_depth(children: [AstTypeExpr]) -> u64 {
   give depth;
 }
 
-proc ast_type_node(id: u64, span: AstSpan, kind: AstTypeKind, text: string, name: string, children: [AstTypeExpr], mutable: bool) -> AstTypeExpr {
+proc ast_type_node(id: u64, span: Span, kind: AstTypeKind, text: string, name: string, children: [AstTypeExpr], mutable: bool) -> AstTypeExpr {
   let namespace: string = "";
   let qualified_name: string = name;
   let pointer_depth: u64 = 0;
@@ -263,7 +263,7 @@ proc ast_type_node(id: u64, span: AstSpan, kind: AstTypeKind, text: string, name
   };
 }
 
-proc ast_type_expr(id: u64, span: AstSpan, text: string) -> AstTypeExpr {
+proc ast_type_expr(id: u64, span: Span, text: string) -> AstTypeExpr {
   let kind: AstTypeKind = AstTypeKind.Unknown;
   if primitive_type(text) {
     set kind = AstTypeKind.Primitive;
@@ -311,7 +311,7 @@ proc ast_type_expr(id: u64, span: AstSpan, text: string) -> AstTypeExpr {
   };
 }
 
-proc ast_type_pointer(id: u64, span: AstSpan, child: AstTypeExpr, mutable: bool) -> AstTypeExpr {
+proc ast_type_pointer(id: u64, span: Span, child: AstTypeExpr, mutable: bool) -> AstTypeExpr {
   let text: string = "*" + child.text;
   if mutable {
     set text = "*mut " + child.text;
@@ -351,7 +351,7 @@ proc ast_type_pointer(id: u64, span: AstSpan, child: AstTypeExpr, mutable: bool)
   };
 }
 
-proc ast_type_reference(id: u64, span: AstSpan, child: AstTypeExpr, mutable: bool) -> AstTypeExpr {
+proc ast_type_reference(id: u64, span: Span, child: AstTypeExpr, mutable: bool) -> AstTypeExpr {
   let kind: AstTypeKind = AstTypeKind.Reference;
   let text: string = "&" + child.text;
   if mutable {
@@ -392,7 +392,7 @@ proc ast_type_reference(id: u64, span: AstSpan, child: AstTypeExpr, mutable: boo
   };
 }
 
-proc ast_type_generic(id: u64, span: AstSpan, base: string, children: [AstTypeExpr]) -> AstTypeExpr {
+proc ast_type_generic(id: u64, span: Span, base: string, children: [AstTypeExpr]) -> AstTypeExpr {
   give AstTypeExpr {
     id: ast_id(id),
     span: span,
@@ -427,7 +427,7 @@ proc ast_type_generic(id: u64, span: AstSpan, base: string, children: [AstTypeEx
   };
 }
 
-proc ast_type_tuple(id: u64, span: AstSpan, children: [AstTypeExpr]) -> AstTypeExpr {
+proc ast_type_tuple(id: u64, span: Span, children: [AstTypeExpr]) -> AstTypeExpr {
   give AstTypeExpr {
     id: ast_id(id),
     span: span,
@@ -462,7 +462,7 @@ proc ast_type_tuple(id: u64, span: AstSpan, children: [AstTypeExpr]) -> AstTypeE
   };
 }
 
-proc ast_type_optional(id: u64, span: AstSpan, child: AstTypeExpr) -> AstTypeExpr {
+proc ast_type_optional(id: u64, span: Span, child: AstTypeExpr) -> AstTypeExpr {
   give AstTypeExpr {
     id: ast_id(id),
     span: span,

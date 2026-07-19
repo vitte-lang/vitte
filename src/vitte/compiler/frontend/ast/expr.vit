@@ -2,7 +2,7 @@ space vitte/compiler/frontend/ast/expr
 
 use vitte/compiler/frontend/ast/node.{
   AstId,
-  AstSpan,
+  Span,
   ast_id,
   ast_span_empty
 }
@@ -65,7 +65,7 @@ pick AstExprKind {
 
 form AstExpr {
   id: AstId
-  span: AstSpan
+  span: Span
   kind: AstExprKind
   text: string
   name: string
@@ -98,7 +98,7 @@ form AstExpr {
   valid: bool
 }
 
-proc ast_expr(id: u64, span: AstSpan, kind: AstExprKind, text: string, name: string, operator: string, binding_name: string, member_name: string, subject_index: u64, callee_index: u64, lhs_index: u64, rhs_index: u64, base_index: u64, index_index: u64, argument_count: u64, generic_argument_count: u64, generic_arguments: [AstTypeExpr], mutable: bool, borrowed: bool, moved: bool, comptime: bool, inferred_type_name: string, resolved_symbol: string, children: [AstExpr], type_annotation: AstTypeExpr, valid: bool) -> AstExpr {
+proc ast_expr(id: u64, span: Span, kind: AstExprKind, text: string, name: string, operator: string, binding_name: string, member_name: string, subject_index: u64, callee_index: u64, lhs_index: u64, rhs_index: u64, base_index: u64, index_index: u64, argument_count: u64, generic_argument_count: u64, generic_arguments: [AstTypeExpr], mutable: bool, borrowed: bool, moved: bool, comptime: bool, inferred_type_name: string, resolved_symbol: string, children: [AstExpr], type_annotation: AstTypeExpr, valid: bool) -> AstExpr {
   give AstExpr {
     id: ast_id(id),
     span: span,
@@ -160,7 +160,7 @@ proc ast_expr_empty() -> AstExpr {
   );
 }
 
-proc ast_expr_unknown(id: u64, span: AstSpan, text: string) -> AstExpr {
+proc ast_expr_unknown(id: u64, span: Span, text: string) -> AstExpr {
   give ast_expr(
     id,
     span,
@@ -191,7 +191,7 @@ proc ast_expr_unknown(id: u64, span: AstSpan, text: string) -> AstExpr {
   );
 }
 
-proc ast_expr_leaf(id: u64, span: AstSpan, kind: AstExprKind, text: string, name: string) -> AstExpr {
+proc ast_expr_leaf(id: u64, span: Span, kind: AstExprKind, text: string, name: string) -> AstExpr {
   let binding_name: string = if kind == AstExprKind.Name { name } else { "" };
 
   give ast_expr(
@@ -224,7 +224,7 @@ proc ast_expr_leaf(id: u64, span: AstSpan, kind: AstExprKind, text: string, name
   );
 }
 
-proc ast_expr_node(id: u64, span: AstSpan, kind: AstExprKind, text: string, name: string, operator: string, children: [AstExpr]) -> AstExpr {
+proc ast_expr_node(id: u64, span: Span, kind: AstExprKind, text: string, name: string, operator: string, children: [AstExpr]) -> AstExpr {
   let binding_name: string = if kind == AstExprKind.Name { name } else { "" };
 
   give ast_expr(
@@ -257,7 +257,7 @@ proc ast_expr_node(id: u64, span: AstSpan, kind: AstExprKind, text: string, name
   );
 }
 
-proc ast_expr_typed(id: u64, span: AstSpan, kind: AstExprKind, text: string, name: string, operator: string, children: [AstExpr], annotation: AstTypeExpr) -> AstExpr {
+proc ast_expr_typed(id: u64, span: Span, kind: AstExprKind, text: string, name: string, operator: string, children: [AstExpr], annotation: AstTypeExpr) -> AstExpr {
   let node: AstExpr = ast_expr_node(id, span, kind, text, name, operator, children);
 
   give AstExpr {
@@ -290,7 +290,7 @@ proc ast_expr_typed(id: u64, span: AstSpan, kind: AstExprKind, text: string, nam
   };
 }
 
-proc ast_expr_unary(id: u64, span: AstSpan, kind: AstExprKind, text: string, operator: string, subject: AstExpr) -> AstExpr {
+proc ast_expr_unary(id: u64, span: Span, kind: AstExprKind, text: string, operator: string, subject: AstExpr) -> AstExpr {
   let node: AstExpr = ast_expr_node(id, span, kind, text, "", operator, [subject]);
 
   give AstExpr {
@@ -323,7 +323,7 @@ proc ast_expr_unary(id: u64, span: AstSpan, kind: AstExprKind, text: string, ope
   };
 }
 
-proc ast_expr_binary(id: u64, span: AstSpan, kind: AstExprKind, text: string, operator: string, lhs: AstExpr, rhs: AstExpr) -> AstExpr {
+proc ast_expr_binary(id: u64, span: Span, kind: AstExprKind, text: string, operator: string, lhs: AstExpr, rhs: AstExpr) -> AstExpr {
   let node: AstExpr = ast_expr_node(id, span, kind, text, "", operator, [lhs, rhs]);
 
   give AstExpr {
@@ -356,7 +356,7 @@ proc ast_expr_binary(id: u64, span: AstSpan, kind: AstExprKind, text: string, op
   };
 }
 
-proc ast_expr_call(id: u64, span: AstSpan, text: string, name: string, callee: AstExpr, args: [AstExpr], generic_arguments: [AstTypeExpr]) -> AstExpr {
+proc ast_expr_call(id: u64, span: Span, text: string, name: string, callee: AstExpr, args: [AstExpr], generic_arguments: [AstTypeExpr]) -> AstExpr {
   let children: [AstExpr] = [callee];
 
   let i: u64 = 0;
@@ -398,7 +398,7 @@ proc ast_expr_call(id: u64, span: AstSpan, text: string, name: string, callee: A
   };
 }
 
-proc ast_expr_member(id: u64, span: AstSpan, text: string, receiver: AstExpr, member_name: string) -> AstExpr {
+proc ast_expr_member(id: u64, span: Span, text: string, receiver: AstExpr, member_name: string) -> AstExpr {
   let member_leaf: AstExpr = ast_expr_leaf(id + 1, span, AstExprKind.Name, member_name, member_name);
   let node: AstExpr = ast_expr_node(id, span, AstExprKind.Member, text, member_name, ".", [receiver, member_leaf]);
 
@@ -432,7 +432,7 @@ proc ast_expr_member(id: u64, span: AstSpan, text: string, receiver: AstExpr, me
   };
 }
 
-proc ast_expr_index(id: u64, span: AstSpan, text: string, base: AstExpr, index_expr: AstExpr) -> AstExpr {
+proc ast_expr_index(id: u64, span: Span, text: string, base: AstExpr, index_expr: AstExpr) -> AstExpr {
   let node: AstExpr = ast_expr_node(id, span, AstExprKind.Index, text, "", "index", [base, index_expr]);
 
   give AstExpr {

@@ -1,6 +1,6 @@
 space vitte/compiler/backend/ir
 
-use vitte/compiler/frontend/ast/node.{ AstSpan, ast_span_empty }
+use vitte/compiler/frontend/ast/node.{ Span, ast_span_empty }
 use vitte/compiler/backend/target/triple.{ TargetTriple, triple_matches, triple_text, triple_aarch64_linux, triple_i386_linux, triple_riscv64_linux, triple_x86_64_linux }
 use vitte/compiler/backend/target/layout.{ data_layout_for_triple, pointer_width_for_arch }
 use vitte/compiler/backend/target/features.{ default_feature_set }
@@ -100,7 +100,7 @@ form IrInstruction {
   else_block: u64
   switch_values: [string]
   switch_targets: [u64]
-  span: AstSpan
+  span: Span
   valid: bool
 }
 
@@ -130,7 +130,7 @@ form IrFunction {
   visibility: IrVisibility
   is_entry: bool
   abi: string
-  span: AstSpan
+  span: Span
   params: [IrFunctionParam]
   return_type: string
   blocks: [IrBlock]
@@ -185,7 +185,7 @@ form IrUnit {
   valid: bool
 }
 
-proc span_empty() -> AstSpan {
+proc span_empty() -> Span {
   give ast_span_empty();
 }
 
@@ -362,7 +362,7 @@ proc instruction_invalid() -> IrInstruction {
   };
 }
 
-proc instruction_create(id: u64, kind: IrInstructionKind, text: string, operator: string, dest: IrValue, args: [IrValue], span: AstSpan) -> IrInstruction {
+proc instruction_create(id: u64, kind: IrInstructionKind, text: string, operator: string, dest: IrValue, args: [IrValue], span: Span) -> IrInstruction {
   give IrInstruction {
     id: id,
     kind: kind,
@@ -500,7 +500,7 @@ proc block_set_terminator(block: IrBlock, terminator: IrInstruction) -> IrBlock 
   };
 }
 
-proc function_ref_create(id: u64, name: string, module_name: string, linkage: IrLinkage, visibility: IrVisibility, is_entry: bool, span: AstSpan) -> IrFunction {
+proc function_ref_create(id: u64, name: string, module_name: string, linkage: IrLinkage, visibility: IrVisibility, is_entry: bool, span: Span) -> IrFunction {
   give IrFunction {
     id: id,
     name: name,

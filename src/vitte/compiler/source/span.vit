@@ -1,0 +1,132 @@
+space vitte/compiler/source/span
+
+export *
+
+form Span {
+  file: string
+
+  start_offset: u64
+  end_offset: u64
+
+  start_line: u64
+  start_column: u64
+
+  end_line: u64
+  end_column: u64
+
+  width: u64
+  valid: bool
+}
+
+proc span_offsets(file: string, start_offset: u64, end_offset: u64, start_line: u64, start_column: u64, end_line: u64, end_column: u64) -> Span {
+  let safe_end_offset: u64 = if end_offset < start_offset { start_offset } else { end_offset };
+  let width: u64 = if safe_end_offset > start_offset { safe_end_offset - start_offset } else { 1 };
+
+  give Span {
+    file: file,
+    start_offset: start_offset,
+    end_offset: safe_end_offset,
+    start_line: start_line,
+    start_column: start_column,
+    end_line: end_line,
+    end_column: end_column,
+    width: width,
+    valid: start_line > 0
+      and start_column > 0
+      and end_line >= start_line
+      and end_column > 0
+  };
+}
+
+proc span(file: string, start_line: u64, start_column: u64, end_line: u64, end_column: u64) -> Span {
+  let safe_end_column: u64 = if end_line == start_line and end_column < start_column { start_column } else { end_column };
+  give span_offsets(file, 0, 0, start_line, start_column, end_line, safe_end_column);
+}
+
+proc span_empty() -> Span {
+  give Span {
+    file: "",
+    start_offset: 0,
+    end_offset: 0,
+    start_line: 1,
+    start_column: 1,
+    end_line: 1,
+    end_column: 1,
+    width: 1,
+    valid: false
+  };
+}
+
+proc span_is_empty(value: Span) -> bool {
+  give not value.valid;
+}
+
+proc span_is_single_line(value: Span) -> bool {
+  give value.start_line == value.end_line;
+}
+
+proc span_contains(value: Span, line: u64, column: u64) -> bool {
+  if not value.valid or line < value.start_line or line > value.end_line {
+    give false;
+  }
+  if line == value.start_line and column < value.start_column {
+    give false;
+  }
+  if line == value.end_line and column > value.end_column {
+    give false;
+  }
+  give true;
+}
+
+proc span_overlaps(a: Span, b: Span) -> bool {
+  if not a.valid or not b.valid or (a.file != "" and b.file != "" and a.file != b.file) {
+    give false;
+  }
+  if a.end_line < b.start_line or b.end_line < a.start_line {
+    give false;
+  }
+  if a.end_line == b.start_line and a.end_column < b.start_column {
+    give false;
+  }
+  if b.end_line == a.start_line and b.end_column < a.start_column {
+    give false;
+  }
+  give true;
+}
+
+proc merge_spans(a: Span, b: Span) -> Span {
+  if not a.valid { give b; }
+  if not b.valid { give a; }
+
+  let start_line: u64 = if a.start_line < b.start_line { a.start_line } else { b.start_line };
+  let start_column: u64 = if a.start_line < b.start_line { a.start_column } elif b.start_line < a.start_line { b.start_column } elif a.start_column < b.start_column { a.start_column } else { b.start_column };
+  let end_line: u64 = if a.end_line > b.end_line { a.end_line } else { b.end_line };
+  let end_column: u64 = if a.end_line > b.end_line { a.end_column } elif b.end_line > a.end_line { b.end_column } elif a.end_column > b.end_column { a.end_column } else { b.end_column };
+  let start_offset: u64 = if a.start_offset < b.start_offset { a.start_offset } else { b.start_offset };
+  let end_offset: u64 = if a.end_offset > b.end_offset { a.end_offset } else { b.end_offset };
+  let file: string = if a.file != "" { a.file } else { b.file };
+  give span_offsets(file, start_offset, end_offset, start_line, start_column, end_line, end_column);
+}
+
+proc span_width(value: Span) -> u64 {
+  give value.width;
+}
+
+proc span_height(value: Span) -> u64 {
+  if not value.valid or value.end_line < value.start_line {
+    give 0 as u64;
+  }
+  give value.end_line - value.start_line + 1;
+}
+
+proc span_location(value: Span) -> string {
+  give value.file + ":" + (value.start_line as string) + ":" + (value.start_column as string);
+}
+
+proc span_range(value: Span) -> string {
+  give (value.start_line as string) + ":" + (value.start_column as string) + "-" + (value.end_line as string) + ":" + (value.end_column as string);
+}
+
+proc span_summary(value: Span) -> string {
+  give "file " + value.file + " range " + span_range(value) + " width " + (value.width as string) + " valid " + (value.valid as string);
+}

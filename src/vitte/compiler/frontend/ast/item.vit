@@ -2,7 +2,7 @@ space vitte/compiler/frontend/ast/item
 
 use vitte/compiler/frontend/ast/node.{
   AstId,
-  AstSpan,
+  Span,
   ast_id,
   ast_span_empty
 }
@@ -72,7 +72,7 @@ pick AstItemKind {
 
 form AstGenericParam {
   id: AstId
-  span: AstSpan
+  span: Span
 
   kind: string
   name: string
@@ -88,7 +88,7 @@ form AstGenericParam {
 
 form AstParam {
   id: AstId
-  span: AstSpan
+  span: Span
 
   pattern: AstPattern
   annotation: AstTypeExpr
@@ -105,7 +105,7 @@ form AstParam {
 
 form AstProcSignature {
   id: AstId
-  span: AstSpan
+  span: Span
 
   name: string
   abi: string
@@ -138,7 +138,7 @@ pick AstNominalMemberKind {
 
 form AstNominalMember {
   id: AstId
-  span: AstSpan
+  span: Span
   kind: AstNominalMemberKind
   name: string
   annotation: AstTypeExpr
@@ -151,7 +151,7 @@ form AstNominalMember {
 
 form AstItem {
   id: AstId
-  span: AstSpan
+  span: Span
 
   kind: AstItemKind
 
@@ -201,7 +201,7 @@ form AstItem {
 
 form AstModule {
   id: AstId
-  span: AstSpan
+  span: Span
 
   kind: string
 
@@ -217,7 +217,7 @@ form AstModule {
   valid: bool
 }
 
-proc ast_generic_param(id: u64, span: AstSpan, kind: string, name: string, bound: AstTypeExpr, default_type: AstTypeExpr) -> AstGenericParam {
+proc ast_generic_param(id: u64, span: Span, kind: string, name: string, bound: AstTypeExpr, default_type: AstTypeExpr) -> AstGenericParam {
   give AstGenericParam {
     id: ast_id(id),
     span: span,
@@ -245,7 +245,7 @@ proc ast_generic_param_empty() -> AstGenericParam {
   };
 }
 
-proc ast_param(id: u64, span: AstSpan, pattern: AstPattern, annotation: AstTypeExpr, default_value: AstExpr, mode: string, variadic: bool) -> AstParam {
+proc ast_param(id: u64, span: Span, pattern: AstPattern, annotation: AstTypeExpr, default_value: AstExpr, mode: string, variadic: bool) -> AstParam {
   give AstParam {
     id: ast_id(id),
     span: span,
@@ -275,7 +275,7 @@ proc ast_param_empty() -> AstParam {
   };
 }
 
-proc ast_proc_signature(id: u64, span: AstSpan, name: string, abi: string, params: [AstParam], return_type: AstTypeExpr, generic_params: [AstGenericParam], where_clauses: [string], effects: [string], requires: [string], noexcept: bool) -> AstProcSignature {
+proc ast_proc_signature(id: u64, span: Span, name: string, abi: string, params: [AstParam], return_type: AstTypeExpr, generic_params: [AstGenericParam], where_clauses: [string], effects: [string], requires: [string], noexcept: bool) -> AstProcSignature {
   give AstProcSignature {
     id: ast_id(id),
     span: span,
@@ -317,7 +317,7 @@ proc ast_proc_signature_empty() -> AstProcSignature {
   };
 }
 
-proc ast_nominal_member(id: u64, span: AstSpan, kind: AstNominalMemberKind, name: string, annotation: AstTypeExpr, expr: AstExpr, signature: AstProcSignature, body_stmts: [AstStmt], message: string) -> AstNominalMember {
+proc ast_nominal_member(id: u64, span: Span, kind: AstNominalMemberKind, name: string, annotation: AstTypeExpr, expr: AstExpr, signature: AstProcSignature, body_stmts: [AstStmt], message: string) -> AstNominalMember {
   give AstNominalMember {
     id: ast_id(id),
     span: span,
@@ -417,7 +417,7 @@ proc ast_item_kind_name(kind: AstItemKind) -> string {
   give "item";
 }
 
-proc ast_item_typed_with_members(id: u64, span: AstSpan, kind: AstItemKind, name: string, attributes: [string], namespace: string, visibility: string, modifiers: [string], abi: string, expr: AstExpr, stmts: [AstStmt], members: [AstNominalMember], annotation: AstTypeExpr, target_type: AstTypeExpr, type_params: [AstTypeExpr], generic_params: [AstGenericParam], signature: AstProcSignature, meta_args: [string], message: string) -> AstItem {
+proc ast_item_typed_with_members(id: u64, span: Span, kind: AstItemKind, name: string, attributes: [string], namespace: string, visibility: string, modifiers: [string], abi: string, expr: AstExpr, stmts: [AstStmt], members: [AstNominalMember], annotation: AstTypeExpr, target_type: AstTypeExpr, type_params: [AstTypeExpr], generic_params: [AstGenericParam], signature: AstProcSignature, meta_args: [string], message: string) -> AstItem {
   let expr_count: u64 = if expr.valid { count_expr(expr) } else { 0 };
 
   let stmt_count: u64 = 0;
@@ -483,11 +483,11 @@ proc ast_item_typed_with_members(id: u64, span: AstSpan, kind: AstItemKind, name
   };
 }
 
-proc ast_item_typed(id: u64, span: AstSpan, kind: AstItemKind, name: string, attributes: [string], namespace: string, visibility: string, modifiers: [string], abi: string, expr: AstExpr, stmts: [AstStmt], annotation: AstTypeExpr, target_type: AstTypeExpr, type_params: [AstTypeExpr], generic_params: [AstGenericParam], signature: AstProcSignature, meta_args: [string], message: string) -> AstItem {
+proc ast_item_typed(id: u64, span: Span, kind: AstItemKind, name: string, attributes: [string], namespace: string, visibility: string, modifiers: [string], abi: string, expr: AstExpr, stmts: [AstStmt], annotation: AstTypeExpr, target_type: AstTypeExpr, type_params: [AstTypeExpr], generic_params: [AstGenericParam], signature: AstProcSignature, meta_args: [string], message: string) -> AstItem {
   give ast_item_typed_with_members(id, span, kind, name, attributes, namespace, visibility, modifiers, abi, expr, stmts, [], annotation, target_type, type_params, generic_params, signature, meta_args, message);
 }
 
-proc ast_item_create(id: u64, span: AstSpan, kind: AstItemKind, name: string, expr: AstExpr, stmts: [AstStmt], annotation: AstTypeExpr, message: string) -> AstItem {
+proc ast_item_create(id: u64, span: Span, kind: AstItemKind, name: string, expr: AstExpr, stmts: [AstStmt], annotation: AstTypeExpr, message: string) -> AstItem {
   give ast_item_typed(id, span, kind, name, [], "", "private", [], "", expr, stmts, annotation, ast_type_empty(), [], [], ast_proc_signature_empty(), [], message);
 }
 
@@ -506,7 +506,7 @@ proc ast_module_empty() -> AstModule {
   };
 }
 
-proc ast_module(id: u64, span: AstSpan, items: [AstItem]) -> AstModule {
+proc ast_module(id: u64, span: Span, items: [AstItem]) -> AstModule {
   let expr_count: u64 = 0;
   let stmt_count: u64 = 0;
   let type_count: u64 = 0;

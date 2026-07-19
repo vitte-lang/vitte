@@ -26,7 +26,7 @@ use vitte/compiler/backend/native_bridge.{ NativeBridgeResult, emit_native_objec
 use vitte/compiler/backend/pipeline.{ BackendPipelineResult, compile_to_valid_ir_with_profile_and_packaging }
 use vitte/compiler/backends/llvm_bindings.{ LlvmDiagnosticLevel, LlvmToolchainPaths, default_llvm_toolchain_paths }
 use vitte/compiler/driver/exit_status.{ DriverExitStatus }
-use vitte/compiler/frontend/ast/node.{ AstSpan, ast_span_empty }
+use vitte/compiler/frontend/ast/node.{ Span, ast_span_empty }
 use vitte/compiler/infrastructure/session/files.{ cache_source, normalize_path, offset_lookup, source_manager_empty, source_manager_file_id }
 
 pick DriverDiagnosticLevel {
@@ -986,7 +986,7 @@ proc imported_symbols_for_summary(summary: SemaModuleSummary, summaries: [SemaMo
     give imported;
 }
 
-proc module_import_span(hir: HirUnit, module_path: string) -> AstSpan {
+proc module_import_span(hir: HirUnit, module_path: string) -> Span {
     let i: u64 = 0;
     while i < len(hir.module.items) {
         let item = hir.module.items[i];
@@ -1015,7 +1015,7 @@ proc missing_module_diagnostics(frontend: FrontendOutput, hir: HirUnit, summary:
     while i < len(summary.imports) {
         let import0: SemaModuleImport = summary.imports[i];
         if module_summary_index(summaries, import0.module_path) < 0 {
-            let span: AstSpan = module_import_span(hir, import0.module_path);
+            let span: Span = module_import_span(hir, import0.module_path);
             let length: u64 = ast_span_length(span.start_column, span.end_column);
             let span_start: u64 = offset_lookup(manager, file_id, span.start_line, span.start_column);
             let diagnostic: AnalysisDiagnostic = analysis_diagnostic_with_span(

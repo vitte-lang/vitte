@@ -2,7 +2,7 @@ space vitte/compiler/frontend/ast/pattern
 
 use vitte/compiler/frontend/ast/node.{
   AstId,
-  AstSpan,
+  Span,
   ast_id,
   ast_span_empty,
   merge_spans
@@ -34,7 +34,7 @@ pick AstPatternKind {
 
 form AstPattern {
   id: AstId
-  span: AstSpan
+  span: Span
 
   kind: AstPatternKind
 
@@ -123,7 +123,7 @@ proc pattern_depth(children: [AstPattern]) -> u64 {
   give depth;
 }
 
-proc ast_pattern_node(id: u64, span: AstSpan, kind: AstPatternKind, text: string, name: string, mutable: bool, children: [AstPattern]) -> AstPattern {
+proc ast_pattern_node(id: u64, span: Span, kind: AstPatternKind, text: string, name: string, mutable: bool, children: [AstPattern]) -> AstPattern {
   let binding_kind: bool = kind == AstPatternKind.Name or kind == AstPatternKind.Binding;
   let binding_name: string = if binding_kind { name } else { "" };
 
@@ -157,7 +157,7 @@ proc ast_pattern_node(id: u64, span: AstSpan, kind: AstPatternKind, text: string
   };
 }
 
-proc ast_pattern(id: u64, span: AstSpan, name: string, mutable: bool) -> AstPattern {
+proc ast_pattern(id: u64, span: Span, name: string, mutable: bool) -> AstPattern {
   let kind: AstPatternKind = if name == "_" { AstPatternKind.Wildcard } elif name != "" { AstPatternKind.Name } else { AstPatternKind.Unknown };
 
   give AstPattern {
@@ -190,7 +190,7 @@ proc ast_pattern(id: u64, span: AstSpan, name: string, mutable: bool) -> AstPatt
   };
 }
 
-proc ast_pattern_literal(id: u64, span: AstSpan, text: string) -> AstPattern {
+proc ast_pattern_literal(id: u64, span: Span, text: string) -> AstPattern {
   give AstPattern {
     id: ast_id(id),
     span: span,
@@ -221,7 +221,7 @@ proc ast_pattern_literal(id: u64, span: AstSpan, text: string) -> AstPattern {
   };
 }
 
-proc ast_pattern_range(id: u64, span: AstSpan, start0: string, end0: string) -> AstPattern {
+proc ast_pattern_range(id: u64, span: Span, start0: string, end0: string) -> AstPattern {
   give AstPattern {
     id: ast_id(id),
     span: span,
@@ -252,7 +252,7 @@ proc ast_pattern_range(id: u64, span: AstSpan, start0: string, end0: string) -> 
   };
 }
 
-proc ast_pattern_binding(id: u64, span: AstSpan, binding_name: string, mutable: bool, borrowed: bool) -> AstPattern {
+proc ast_pattern_binding(id: u64, span: Span, binding_name: string, mutable: bool, borrowed: bool) -> AstPattern {
   give AstPattern {
     id: ast_id(id),
     span: span,
@@ -283,7 +283,7 @@ proc ast_pattern_binding(id: u64, span: AstSpan, binding_name: string, mutable: 
   };
 }
 
-proc ast_pattern_variant(id: u64, span: AstSpan, variant_name: string, children: [AstPattern]) -> AstPattern {
+proc ast_pattern_variant(id: u64, span: Span, variant_name: string, children: [AstPattern]) -> AstPattern {
   give AstPattern {
     id: ast_id(id),
     span: span,

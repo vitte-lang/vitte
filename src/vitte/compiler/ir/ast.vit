@@ -1,5 +1,7 @@
 space vitte/compiler/ir
 
+use vitte/compiler/source/span.{ Span, span, span_empty }
+
 export *
 
 const AST_VERSION: string = "full-grammar-ast-v2";
@@ -157,14 +159,6 @@ pick AstNodeKind {
     Pattern,
 }
 
-form AstSpan {
-    file: string
-    line: u64
-    column: u64
-    end_line: u64
-    end_column: u64
-}
-
 form AstAttribute {
     name: string
     value: string
@@ -181,35 +175,35 @@ form AstDecl {
     visibility: AstVisibility
     attribute_count: u64
     child_count: u64
-    span: AstSpan
+    span: Span
 }
 
 form AstStmt {
     kind: AstStmtKind
     expr_count: u64
     child_count: u64
-    span: AstSpan
+    span: Span
 }
 
 form AstExpr {
     kind: AstExprKind
     text: string
     child_count: u64
-    span: AstSpan
+    span: Span
 }
 
 form AstType {
     kind: AstTypeKind
     text: string
     child_count: u64
-    span: AstSpan
+    span: Span
 }
 
 form AstPattern {
     kind: AstPatternKind
     text: string
     child_count: u64
-    span: AstSpan
+    span: Span
 }
 
 form AstNodeStats {
@@ -239,24 +233,12 @@ proc ast_version() -> string {
     give AST_VERSION;
 }
 
-proc empty_span() -> AstSpan {
-    give AstSpan {
-        file: "",
-        line: 1,
-        column: 1,
-        end_line: 1,
-        end_column: 1
-    };
+proc empty_span() -> Span {
+    give span_empty();
 }
 
-proc ast_span(file: string, line: u64, column: u64, end_line: u64, end_column: u64) -> AstSpan {
-    give AstSpan {
-        file: file,
-        line: line,
-        column: column,
-        end_line: end_line,
-        end_column: end_column
-    };
+proc ast_span(file: string, line: u64, column: u64, end_line: u64, end_column: u64) -> Span {
+    give span(file, line, column, end_line, end_column);
 }
 
 proc ast_attribute(name: string, value: string) -> AstAttribute {
@@ -273,7 +255,7 @@ proc ast_path(text: string, segment_count: u64) -> AstPath {
     };
 }
 
-proc ast_decl(kind: AstDeclKind, name: string, visibility: AstVisibility, attribute_count: u64, child_count: u64, span: AstSpan) -> AstDecl {
+proc ast_decl(kind: AstDeclKind, name: string, visibility: AstVisibility, attribute_count: u64, child_count: u64, span: Span) -> AstDecl {
     give AstDecl {
         kind: kind,
         name: name,
@@ -284,7 +266,7 @@ proc ast_decl(kind: AstDeclKind, name: string, visibility: AstVisibility, attrib
     };
 }
 
-proc ast_stmt(kind: AstStmtKind, expr_count: u64, child_count: u64, span: AstSpan) -> AstStmt {
+proc ast_stmt(kind: AstStmtKind, expr_count: u64, child_count: u64, span: Span) -> AstStmt {
     give AstStmt {
         kind: kind,
         expr_count: expr_count,
@@ -293,7 +275,7 @@ proc ast_stmt(kind: AstStmtKind, expr_count: u64, child_count: u64, span: AstSpa
     };
 }
 
-proc ast_expr(kind: AstExprKind, text: string, child_count: u64, span: AstSpan) -> AstExpr {
+proc ast_expr(kind: AstExprKind, text: string, child_count: u64, span: Span) -> AstExpr {
     give AstExpr {
         kind: kind,
         text: text,
@@ -302,7 +284,7 @@ proc ast_expr(kind: AstExprKind, text: string, child_count: u64, span: AstSpan) 
     };
 }
 
-proc ast_type(kind: AstTypeKind, text: string, child_count: u64, span: AstSpan) -> AstType {
+proc ast_type(kind: AstTypeKind, text: string, child_count: u64, span: Span) -> AstType {
     give AstType {
         kind: kind,
         text: text,
@@ -311,7 +293,7 @@ proc ast_type(kind: AstTypeKind, text: string, child_count: u64, span: AstSpan) 
     };
 }
 
-proc ast_pattern(kind: AstPatternKind, text: string, child_count: u64, span: AstSpan) -> AstPattern {
+proc ast_pattern(kind: AstPatternKind, text: string, child_count: u64, span: Span) -> AstPattern {
     give AstPattern {
         kind: kind,
         text: text,
@@ -642,7 +624,7 @@ proc ast_summary(module: AstModule) -> string {
 }
 
 proc ast_selftest() -> bool {
-    let span: AstSpan = ast_span("main.vit", 1, 1, 1, 10);
+    let span: Span = ast_span("main.vit", 1, 1, 1, 10);
 
     let decl: AstDecl = ast_decl(AstDeclKind.Proc, "main", public_visibility(), 0, 1, span);
 

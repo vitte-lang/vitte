@@ -10,7 +10,8 @@ use vitte/compiler/analysis/lint/rules.{
   stats_mark_set,
   stats_mark_use
 }
-use vitte/compiler/frontend/ast/node.{ AstSpan }
+use vitte/compiler/frontend/ast/node.{ Span }
+use vitte/compiler/source/span.{ span }
 use vitte/compiler/middle/hir.{ HirExpr, HirExprKind, HirItemKind, HirStmt, HirStmtKind, HirUnit }
 
 form LintWalk {
@@ -69,14 +70,8 @@ proc root_binding_name(name: string) -> string {
   give slice(trimmed, 0, i);
 }
 
-proc span_for_name(source_path: string, line: u64, name: string) -> AstSpan {
-  give AstSpan {
-    file: source_path,
-    start_line: line,
-    start_column: 1,
-    end_line: line,
-    end_column: len(name) as u64 + 1
-  };
+proc span_for_name(source_path: string, line: u64, name: string) -> Span {
+  give span(source_path, line, 1, line, len(name) as u64 + 1);
 }
 
 proc collect_stmt_data(source_path: string, diagnostics: [LintDiagnostic], stats: [LintBindingStat], stmt: HirStmt) -> LintWalk {

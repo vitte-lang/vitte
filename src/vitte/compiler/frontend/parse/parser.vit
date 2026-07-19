@@ -3,7 +3,7 @@ space vitte/compiler/frontend/parse/parser
 use vitte/compiler/frontend/lexer/token.{ Token, TokenKind, token }
 use vitte/compiler/frontend/parse/errors.{ ParseDiagnostic, parse_error_with_span }
 use vitte/compiler/frontend/parse/recovery.{ recover_decl_index, recover_expr_index, recover_pattern_index, recover_stmt_index, recover_type_index }
-use vitte/compiler/frontend/ast/node.{ AstSpan, ast_span }
+use vitte/compiler/frontend/ast/node.{ Span, ast_span, ast_span_empty, ast_span_offsets }
 use vitte/compiler/frontend/ast/expr.{ AstExpr, AstExprKind, ast_expr_binary, ast_expr_call, ast_expr_index, ast_expr_leaf, ast_expr_member, ast_expr_node, ast_expr_typed, ast_expr_unary, ast_expr_unknown }
 use vitte/compiler/frontend/ast/item.{ AstGenericParam, AstItem, AstItemKind, AstModule, AstNominalMember, AstNominalMemberKind, AstParam, AstProcSignature, ast_generic_param, ast_generic_param_empty, ast_item_create, ast_item_typed, ast_item_typed_with_members, ast_module, ast_module_empty, ast_nominal_member, ast_param, ast_param_empty, ast_proc_signature, ast_proc_signature_empty, count_module_exprs, count_module_patterns, count_module_stmts, count_module_types }
 use vitte/compiler/frontend/ast/pattern.{ AstPattern, AstPatternKind, ast_pattern, ast_pattern_empty, ast_pattern_node }
@@ -1628,9 +1628,13 @@ proc range_id(tag: u64, start: u64, end: u64) -> u64 {
   give tag * 1000000 + start * 1000 + end;
 }
 
-proc span_from_tokens(source_name: string, tokens: [Token], start: u64, end: u64) -> AstSpan {
-  if len(tokens) == 0 or start >= len(tokens) or start >= end {
-    give ast_span(source_name, 1, 1, 1, 1);
+proc span_from_tokens(source_name: string, tokens: [Token], start: u64, end: u64) -> Span {
+  if len(tokens) == 0 or start >= len(tokens) {
+    give ast_span_empty();
+  }
+  if start >= end {
+    let point = tokens[start];
+    give ast_span_offsets(source_name, point.offset, point.offset, point.line, point.column, point.line, point.column);
   }
   let first = tokens[start];
   let last_index: u64 = end - 1;
@@ -1638,11 +1642,15 @@ proc span_from_tokens(source_name: string, tokens: [Token], start: u64, end: u64
     set last_index = len(tokens) - 1;
   }
   let last = tokens[last_index];
-  let end_col: u64 = last.column + len(last.lexeme);
+  let end_offset: u64 = last.span.end_offset;
+  let end_line: u64 = last.span.end_line;
+  let end_col: u64 = last.span.end_column;
   if last.kind == TokenKind.Eof {
+    set end_offset = last.offset;
+    set end_line = last.line;
     set end_col = last.column;
   }
-  give ast_span(source_name, first.line, first.column, last.line, end_col);
+  give ast_span_offsets(source_name, first.span.start_offset, end_offset, first.span.start_line, first.span.start_column, end_line, end_col);
 }
 
 proc binary_precedence(op: string) -> u64 {
@@ -1857,7 +1865,7 @@ proc parse_ast_type_from_tokens(source_name: string, tokens: [Token], start: u64
     give ast_type_empty();
   }
   let text: string = token_text(tokens, bounds.start, bounds.end);
-  let span: AstSpan = span_from_tokens(source_name, tokens, bounds.start, bounds.end);
+  let span: Span = span_from_tokens(source_name, tokens, bounds.start, bounds.end);
   if tokens[bounds.start].lexeme == "&" and bounds.start + 1 < bounds.end and tokens[bounds.start + 1].lexeme == "mut" {
     give ast_type_node(range_id(4, bounds.start, bounds.end), span, AstTypeKind.MutableRef, text, "", [parse_ast_type_from_tokens(source_name, tokens, bounds.start + 2, bounds.end)], true);
   }
@@ -1954,7 +1962,7 @@ proc parse_ast_pattern_from_tokens(source_name: string, tokens: [Token], start: 
     give ast_pattern_empty();
   }
   let text: string = token_text(tokens, bounds.start, bounds.end);
-  let span: AstSpan = span_from_tokens(source_name, tokens, bounds.start, bounds.end);
+  let span: Span = span_from_tokens(source_name, tokens, bounds.start, bounds.end);
   if tokens[bounds.start].lexeme == "&" and bounds.start + 1 < bounds.end and tokens[bounds.start + 1].lexeme == "mut" {
     give ast_pattern_node(range_id(3, bounds.start, bounds.end), span, AstPatternKind.MutableRef, text, "", true, [parse_ast_pattern_from_tokens(source_name, tokens, bounds.start + 2, bounds.end)]);
   }
@@ -2218,7 +2226,7 @@ proc collect_item_prefix(tokens: [Token], index: u64) -> AstItemPrefix {
 
 proc parse_atom_expr(source_name: string, tokens: [Token], index: u64, end: u64) -> ExprParseResult {
   if index >= end {
-    let span: AstSpan = span_from_tokens(source_name, tokens, index, index);
+    let span: Span = span_from_tokens(source_name, tokens, index, index);
     give ExprParseResult { expr: ast_expr_unknown(range_id(1, index, index), span, ""), next_index: index };
   }
 
@@ -2231,7 +2239,7 @@ proc parse_atom_expr(source_name: string, tokens: [Token], index: u64, end: u64)
   }
 
   let tok: Token = tokens[index];
-  let span: AstSpan = span_from_tokens(source_name, tokens, index, index + 1);
+  let span: Span = span_from_tokens(source_name, tokens, index, index + 1);
   if tok.kind == TokenKind.String {
     give ExprParseResult { expr: ast_expr_leaf(range_id(1, index, index + 1), span, AstExprKind.String, tok.lexeme, ""), next_index: index + 1 };
   }
@@ -2352,7 +2360,7 @@ proc parse_postfix_expr_ast(source_name: string, tokens: [Token], index: u64, en
 
 proc parse_prefix_expr(source_name: string, tokens: [Token], index: u64, end: u64) -> ExprParseResult {
   if index >= end {
-    let span: AstSpan = span_from_tokens(source_name, tokens, index, index);
+    let span: Span = span_from_tokens(source_name, tokens, index, index);
     give ExprParseResult { expr: ast_expr_unknown(range_id(1, index, index), span, ""), next_index: index };
   }
   if tokens[index].lexeme == "&" and index + 1 < end and tokens[index + 1].lexeme == "mut" {
@@ -2413,7 +2421,7 @@ proc parse_ast_expr_from_tokens(source_name: string, tokens: [Token], start: u64
 }
 
 proc parse_stmt_from_tokens(source_name: string, tokens: [Token], start: u64, end: u64) -> AstStmt {
-  let stmt_span: AstSpan = span_from_tokens(source_name, tokens, start, end);
+  let stmt_span: Span = span_from_tokens(source_name, tokens, start, end);
   let stmt_id: u64 = range_id(2, start, end);
   if start >= end {
     give ast_stmt_create(stmt_id, stmt_span, AstStmtKind.Unknown, ast_pattern_empty(), "", ast_expr_unknown(0, stmt_span, ""), ast_type_empty(), "", [], []);
@@ -2738,7 +2746,7 @@ proc parse_block_stmts(source_name: string, tokens: [Token], body_start: u64, bo
   give stmts;
 }
 
-proc placeholder_member_expr(member_name: string, span: AstSpan, id: u64) -> AstExpr {
+proc placeholder_member_expr(member_name: string, span: Span, id: u64) -> AstExpr {
   give ast_expr_leaf(id, span, AstExprKind.String, "\"" + member_name + "\"", "");
 }
 
@@ -2773,7 +2781,7 @@ proc nominal_member_from_stmt(keyword: string, stmt: AstStmt) -> AstNominalMembe
 }
 
 proc parse_surface_field_stmt(source_name: string, tokens: [Token], start: u64, end: u64) -> AstStmt {
-  let stmt_span: AstSpan = span_from_tokens(source_name, tokens, start, end);
+  let stmt_span: Span = span_from_tokens(source_name, tokens, start, end);
   let stmt_id: u64 = range_id(2, start, end);
   let colon: int = find_top_level_token(tokens, start, end, ":");
   let name_end: u64 = if colon >= 0 { colon as u64 } else { end };
@@ -2798,7 +2806,7 @@ proc parse_surface_field_stmt(source_name: string, tokens: [Token], start: u64, 
 }
 
 proc parse_surface_bits_or_flags_stmt(source_name: string, tokens: [Token], start: u64, end: u64) -> AstStmt {
-  let stmt_span: AstSpan = span_from_tokens(source_name, tokens, start, end);
+  let stmt_span: Span = span_from_tokens(source_name, tokens, start, end);
   let stmt_id: u64 = range_id(2, start, end);
   let colon: int = find_top_level_token(tokens, start, end, ":");
   let eq: int = find_top_level_token(tokens, start, end, "=");
@@ -2878,7 +2886,7 @@ proc parse_surface_bitfield_list(source_name: string, tokens: [Token], body_star
 }
 
 proc parse_surface_pick_stmt(source_name: string, tokens: [Token], start: u64, end: u64) -> AstStmt {
-  let stmt_span: AstSpan = span_from_tokens(source_name, tokens, start, end);
+  let stmt_span: Span = span_from_tokens(source_name, tokens, start, end);
   let stmt_id: u64 = range_id(2, start, end);
   let open: int = find_top_level_token(tokens, start, end, "(");
   let name_end: u64 = if open >= 0 { open as u64 } else { end };
@@ -2908,7 +2916,7 @@ proc parse_surface_pick_stmt(source_name: string, tokens: [Token], start: u64, e
 }
 
 proc parse_surface_proc_member_stmt(source_name: string, tokens: [Token], start: u64, end: u64) -> AstStmt {
-  let stmt_span: AstSpan = span_from_tokens(source_name, tokens, start, end);
+  let stmt_span: Span = span_from_tokens(source_name, tokens, start, end);
   let stmt_id: u64 = range_id(2, start, end);
   let open_body: int = find_item_body_open(tokens, start, end);
   let close_body: int = if open_body >= 0 { find_matching(tokens, open_body as u64, "{", "}") } else { -1 };
@@ -2934,7 +2942,7 @@ proc parse_surface_proc_member_stmt(source_name: string, tokens: [Token], start:
 }
 
 proc parse_surface_proc_member_node(keyword: string, source_name: string, tokens: [Token], start: u64, end: u64) -> AstNominalMember {
-  let stmt_span: AstSpan = span_from_tokens(source_name, tokens, start, end);
+  let stmt_span: Span = span_from_tokens(source_name, tokens, start, end);
   let stmt_id: u64 = range_id(2, start, end);
   let open_body: int = find_item_body_open(tokens, start, end);
   let close_body: int = if open_body >= 0 { find_matching(tokens, open_body as u64, "{", "}") } else { -1 };

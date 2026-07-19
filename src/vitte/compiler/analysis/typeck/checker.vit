@@ -4,7 +4,7 @@ use vitte/compiler/analysis/typeck/errors.{ TypeckResult, add_unique_diag, typec
 use vitte/compiler/analysis/typeck/infer.{ TypeBinding, constrained_generic_type_binding, env_get, env_has, env_index, env_set, expression_types_compatible, function_param_types, function_return_type, infer_expr_type, param_type_binding, resolved_call_generic_arguments, split_function_signature_types, trait_impl_binding_name, type_identifier_index }
 use vitte/compiler/analysis/typeck/traits.{ type_is_copy, type_is_known, type_is_truthy }
 use vitte/compiler/diagnostics/diagnostic.{ Diagnostic }
-use vitte/compiler/frontend/ast/node.{ AstSpan }
+use vitte/compiler/frontend/ast/node.{ Span }
 use vitte/compiler/middle/hir.{ HirExpr, HirExprKind, HirItem, HirItemKind, HirModule, HirNominalMember, HirNominalMemberKind, HirProcParam, HirStmt, HirStmtKind, HirUnit }
 
 form TypeckStmtWalk {
@@ -189,14 +189,14 @@ proc generic_param_type_bindings(params: [string]) -> [TypeBinding] {
   give env;
 }
 
-proc validate_declared_type(diagnostics: [Diagnostic], env: [TypeBinding], type_name: string, declaration_context: string, span: AstSpan) -> [Diagnostic] {
+proc validate_declared_type(diagnostics: [Diagnostic], env: [TypeBinding], type_name: string, declaration_context: string, span: Span) -> [Diagnostic] {
   if type_name == "" or declaration_type_known(env, type_name) {
     give diagnostics;
   }
   give add_unique_diag(diagnostics, typeck_unknown_type(type_name, declaration_context, span));
 }
 
-proc validate_proc_param_types(diagnostics: [Diagnostic], env: [TypeBinding], params: [HirProcParam], owner_name: string, span: AstSpan) -> [Diagnostic] {
+proc validate_proc_param_types(diagnostics: [Diagnostic], env: [TypeBinding], params: [HirProcParam], owner_name: string, span: Span) -> [Diagnostic] {
   let out: [Diagnostic] = diagnostics;
   let i: u64 = 0;
   while i < len(params) {

@@ -1,6 +1,6 @@
 space vitte/compiler/middle/typecheck/diagnostics
 
-use vitte/compiler/frontend/ast.node.{ AstSpan, ast_span_empty }
+use vitte/compiler/frontend/ast.node.{ Span, ast_span_empty }
 use vitte/compiler/diagnostics/diagnostic.{ Diagnostic, DiagnosticPhase, DiagnosticReport, DiagnosticSeverity, SourceSpan, diagnostic_create, diagnostic_report, diagnostic_with_help, diagnostic_with_replace, span_create }
 
 export *
@@ -48,7 +48,7 @@ form TypeDiagnostic {
   expected: string
   found: string
   hint: string
-  span: AstSpan
+  span: Span
   recoverable: bool
   valid: bool
 }
@@ -61,7 +61,7 @@ form TypeDiagnosticBag {
   valid: bool
 }
 
-proc type_diagnostic(code: string, kind: TypeDiagnosticKind, severity: TypeDiagnosticSeverity, message: string, expected: string, found: string, hint: string, span: AstSpan, recoverable: bool, valid: bool) -> TypeDiagnostic {
+proc type_diagnostic(code: string, kind: TypeDiagnosticKind, severity: TypeDiagnosticSeverity, message: string, expected: string, found: string, hint: string, span: Span, recoverable: bool, valid: bool) -> TypeDiagnostic {
   give TypeDiagnostic {
     code: code,
     kind: kind,
@@ -176,7 +176,7 @@ proc append_diagnostic(bag: TypeDiagnosticBag, diagnostic: TypeDiagnostic) -> Ty
   give out
 }
 
-proc diagnostic_error(code: string, kind: TypeDiagnosticKind, message: string, expected: string, found: string, hint: string, span: AstSpan) -> TypeDiagnostic {
+proc diagnostic_error(code: string, kind: TypeDiagnosticKind, message: string, expected: string, found: string, hint: string, span: Span) -> TypeDiagnostic {
   give type_diagnostic(
     code,
     kind,
@@ -191,7 +191,7 @@ proc diagnostic_error(code: string, kind: TypeDiagnosticKind, message: string, e
   )
 }
 
-proc diagnostic_warning(code: string, kind: TypeDiagnosticKind, message: string, hint: string, span: AstSpan) -> TypeDiagnostic {
+proc diagnostic_warning(code: string, kind: TypeDiagnosticKind, message: string, hint: string, span: Span) -> TypeDiagnostic {
   give type_diagnostic(
     code,
     kind,
@@ -206,7 +206,7 @@ proc diagnostic_warning(code: string, kind: TypeDiagnosticKind, message: string,
   )
 }
 
-proc diagnostic_fatal(code: string, kind: TypeDiagnosticKind, message: string, span: AstSpan) -> TypeDiagnostic {
+proc diagnostic_fatal(code: string, kind: TypeDiagnosticKind, message: string, span: Span) -> TypeDiagnostic {
   give type_diagnostic(
     code,
     kind,
@@ -221,7 +221,7 @@ proc diagnostic_fatal(code: string, kind: TypeDiagnosticKind, message: string, s
   )
 }
 
-proc type_mismatch(expected: string, found: string, span: AstSpan) -> TypeDiagnostic {
+proc type_mismatch(expected: string, found: string, span: Span) -> TypeDiagnostic {
   give diagnostic_error(
     "TYPE0001",
     TypeDiagnosticKind.TypeMismatch,
@@ -233,7 +233,7 @@ proc type_mismatch(expected: string, found: string, span: AstSpan) -> TypeDiagno
   )
 }
 
-proc invalid_assignment(expected: string, found: string, span: AstSpan) -> TypeDiagnostic {
+proc invalid_assignment(expected: string, found: string, span: Span) -> TypeDiagnostic {
   give diagnostic_error(
     "TYPE0002",
     TypeDiagnosticKind.InvalidAssignment,
@@ -245,7 +245,7 @@ proc invalid_assignment(expected: string, found: string, span: AstSpan) -> TypeD
   )
 }
 
-proc invalid_borrow(name: string, span: AstSpan) -> TypeDiagnostic {
+proc invalid_borrow(name: string, span: Span) -> TypeDiagnostic {
   give diagnostic_error(
     "TYPE0003",
     TypeDiagnosticKind.InvalidBorrow,
@@ -257,7 +257,7 @@ proc invalid_borrow(name: string, span: AstSpan) -> TypeDiagnostic {
   )
 }
 
-proc invalid_move(name: string, span: AstSpan) -> TypeDiagnostic {
+proc invalid_move(name: string, span: Span) -> TypeDiagnostic {
   give diagnostic_error(
     "TYPE0004",
     TypeDiagnosticKind.InvalidMove,
@@ -269,7 +269,7 @@ proc invalid_move(name: string, span: AstSpan) -> TypeDiagnostic {
   )
 }
 
-proc unknown_type(name: string, span: AstSpan) -> TypeDiagnostic {
+proc unknown_type(name: string, span: Span) -> TypeDiagnostic {
   give diagnostic_error(
     "TYPE0005",
     TypeDiagnosticKind.UnknownType,
@@ -281,7 +281,7 @@ proc unknown_type(name: string, span: AstSpan) -> TypeDiagnostic {
   )
 }
 
-proc unknown_symbol(name: string, span: AstSpan) -> TypeDiagnostic {
+proc unknown_symbol(name: string, span: Span) -> TypeDiagnostic {
   give diagnostic_error(
     "TYPE0006",
     TypeDiagnosticKind.UnknownSymbol,
@@ -293,7 +293,7 @@ proc unknown_symbol(name: string, span: AstSpan) -> TypeDiagnostic {
   )
 }
 
-proc invalid_call(name: string, expected: string, found: string, span: AstSpan) -> TypeDiagnostic {
+proc invalid_call(name: string, expected: string, found: string, span: Span) -> TypeDiagnostic {
   give diagnostic_error(
     "TYPE0007",
     TypeDiagnosticKind.InvalidCall,
@@ -305,7 +305,7 @@ proc invalid_call(name: string, expected: string, found: string, span: AstSpan) 
   )
 }
 
-proc invalid_return(expected: string, found: string, span: AstSpan) -> TypeDiagnostic {
+proc invalid_return(expected: string, found: string, span: Span) -> TypeDiagnostic {
   give diagnostic_error(
     "TYPE0008",
     TypeDiagnosticKind.InvalidReturn,
@@ -317,7 +317,7 @@ proc invalid_return(expected: string, found: string, span: AstSpan) -> TypeDiagn
   )
 }
 
-proc invalid_binary_operator(operator: string, left: string, right: string, span: AstSpan) -> TypeDiagnostic {
+proc invalid_binary_operator(operator: string, left: string, right: string, span: Span) -> TypeDiagnostic {
   give diagnostic_error(
     "TYPE0009",
     TypeDiagnosticKind.InvalidBinaryOperator,
@@ -329,7 +329,7 @@ proc invalid_binary_operator(operator: string, left: string, right: string, span
   )
 }
 
-proc unreachable_code(span: AstSpan) -> TypeDiagnostic {
+proc unreachable_code(span: Span) -> TypeDiagnostic {
   give diagnostic_warning(
     "TYPE0010",
     TypeDiagnosticKind.Unreachable,
@@ -374,7 +374,7 @@ proc diagnostic_summary(bag: TypeDiagnosticBag) -> string {
 }
 
 proc typecheck_diagnostics_selftest() -> bool {
-  let span: AstSpan = ast_span_empty()
+  let span: Span = ast_span_empty()
   let bag0: TypeDiagnosticBag = diagnostic_bag()
   let bag1: TypeDiagnosticBag = append_diagnostic(bag0, type_mismatch("i32", "string", span))
   let bag2: TypeDiagnosticBag = append_diagnostic(bag1, unreachable_code(span))
@@ -401,7 +401,7 @@ proc type_severity_as_diagnostic(severity: TypeDiagnosticSeverity) -> Diagnostic
   give DiagnosticSeverity.Error
 }
 
-proc type_span_as_diagnostic_span(span: AstSpan) -> SourceSpan {
+proc type_span_as_diagnostic_span(span: Span) -> SourceSpan {
   let file_name: string = span.file
   let line0: u64 = span.start_line
   let column0: u64 = span.start_column
