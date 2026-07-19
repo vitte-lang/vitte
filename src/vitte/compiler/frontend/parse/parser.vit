@@ -278,7 +278,7 @@ proc expect_text(state: ParserState, text: string, code: string) -> ParserState 
   if at_text(state, text) {
     give advance(state);
   }
-  give with_diag(state, code, "expected `" + text + "`");
+  give with_diag(state, code, expected_text_message(state, text));
 }
 
 proc expect_ident(state: ParserState, code: string) -> ParserState {
@@ -338,6 +338,68 @@ proc is_literal_token(tok: Token) -> bool {
   give false;
 }
 
+proc is_closing_delimiter_text(text: string) -> bool {
+  give text == ")" or text == "}" or text == "]";
+}
+
+proc delimiter_name(text: string) -> string {
+  if text == ")" or text == "(" {
+    give "parenthesis";
+  }
+  if text == "}" or text == "{" {
+    give "brace";
+  }
+  if text == "]" or text == "[" {
+    give "bracket";
+  }
+  give "delimiter";
+}
+
+proc delimiter_open_for_close(text: string) -> string {
+  if text == ")" {
+    give "(";
+  }
+  if text == "}" {
+    give "{";
+  }
+  if text == "]" {
+    give "[";
+  }
+  give "";
+}
+
+proc token_display(tok: Token) -> string {
+  if tok.kind == TokenKind.Eof {
+    give "end of file";
+  }
+  if tok.lexeme == "\n" {
+    give "line break";
+  }
+  if tok.lexeme == "" {
+    give "<empty token>";
+  }
+  give "`" + tok.lexeme + "`";
+}
+
+proc expected_text_message(state: ParserState, text: string) -> string {
+  if is_closing_delimiter_text(text) {
+    let open_text: string = delimiter_open_for_close(text);
+    let name: string = delimiter_name(text);
+    give "missing closing " + name + " `" + text + "` for `" + open_text + "` before " + token_display(current_token(state));
+  }
+  give "expected `" + text + "`";
+}
+
+proc is_expr_recovery_boundary(state: ParserState) -> bool {
+  if is_eof(state) {
+    give true;
+  }
+  if at_text(state, ";") or at_text(state, ",") {
+    give true;
+  }
+  give is_closing_delimiter_text(current_token(state).lexeme);
+}
+
 proc skip_until_boundary(state: ParserState, a: string, b: string, c: string) -> ParserState {
   let current: ParserState = state;
   while not is_eof(current) {
@@ -372,7 +434,7 @@ proc skip_balanced(state: ParserState, open_text: string, close_text: string, co
     set current = advance(current);
   }
   if depth != 0 {
-    give with_diag(current, "P000_UNBALANCED", "unclosed `" + open_text + "` block");
+    give with_diag(current, "P000_UNBALANCED", "missing closing " + delimiter_name(close_text) + " `" + close_text + "` for `" + open_text + "` before " + token_display(current_token(current)));
   }
   give current;
 }
@@ -1043,6 +1105,9 @@ proc parse_expr(state: ParserState) -> ParserState {
   }
   if len(walk.diagnostics) > start_diags and walk.index == start_index {
     let recovered: ParserState = recover_expr_state(walk);
+    if recovered.index == walk.index and is_expr_recovery_boundary(walk) {
+      give walk;
+    }
     if recovered.index == walk.index and not is_eof(walk) {
       give advance(walk);
     }

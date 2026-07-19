@@ -112,6 +112,43 @@ proc test_frontend_rejects_standalone_attribute_block() -> bool {
     and fe.diagnostics[0].column == 1;
 }
 
+proc frontend_has_message(fe: FrontendOutput, text: string) -> bool {
+  let i: u64 = 0;
+  while i < len(fe.diagnostics) {
+    if find(fe.diagnostics[i].message, text) >= 0 {
+      give true;
+    }
+    set i = i + 1;
+  }
+  give false;
+}
+
+proc test_parser_reports_missing_parenthesis() -> bool {
+  let source_text: string = "proc main() { let x = (1 + 2; give 0; }\n";
+  let fe: FrontendOutput = frontend_run("missing_paren.vit", source_text);
+  give not fe.valid
+    and fe.recovery_used
+    and frontend_has_message(fe, "missing closing parenthesis `)`")
+    and frontend_has_message(fe, "before `;`");
+}
+
+proc test_parser_reports_missing_bracket() -> bool {
+  let source_text: string = "proc main() { let xs = [1, 2; give 0; }\n";
+  let fe: FrontendOutput = frontend_run("missing_bracket.vit", source_text);
+  give not fe.valid
+    and fe.recovery_used
+    and frontend_has_message(fe, "missing closing bracket `]`")
+    and frontend_has_message(fe, "before `;`");
+}
+
+proc test_parser_reports_missing_brace() -> bool {
+  let source_text: string = "proc main() { give 0;\n";
+  let fe: FrontendOutput = frontend_run("missing_brace.vit", source_text);
+  give not fe.valid
+    and frontend_has_message(fe, "missing closing brace `}`")
+    and frontend_has_message(fe, "before end of file");
+}
+
 proc test_frontend_accepts_docstring_attr_prefix() -> bool {
   let source_text: string = "r\"main entry\"\nproc main() -> int { give 0; }\n";
   let fe: FrontendOutput = frontend_run("docstring_attr.vit", source_text);
@@ -155,6 +192,15 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if not test_frontend_rejects_standalone_attribute_block() {
+    set failures = failures + 1;
+  }
+  if not test_parser_reports_missing_parenthesis() {
+    set failures = failures + 1;
+  }
+  if not test_parser_reports_missing_bracket() {
+    set failures = failures + 1;
+  }
+  if not test_parser_reports_missing_brace() {
     set failures = failures + 1;
   }
   if not test_frontend_accepts_docstring_attr_prefix() {
