@@ -332,6 +332,7 @@ def validate_backend_linker_contract() -> list[str]:
         "LINK_E_DUPLICATE_SYMBOL",
         "LINK_E_ENTRYPOINT_MISSING",
         "LINK_E_PERMISSION_DENIED",
+        "backend_tool_crashed",
         "vitte_demangle_symbol",
         "diagnostic_with_external_stderr",
         "diagnostic_with_kind(diag0, DiagnosticKind.Linker)",
@@ -341,6 +342,9 @@ def validate_backend_linker_contract() -> list[str]:
             failures.append(f"src/vitte/compiler/backend/diagnostics.vit: missing backend/linker diagnostic fragment {fragment!r}")
     if "compilation failed" in text or "build failed" in text:
         failures.append("src/vitte/compiler/backend/diagnostics.vit: backend/linker diagnostics must not collapse to build failed")
+    driver_text = (COMPILER_ROOT / "driver" / "compiler.vit").read_text(encoding="utf-8")
+    if "build failed: linker did not materialize executable" in driver_text:
+        failures.append("src/vitte/compiler/driver/compiler.vit: linker materialization diagnostics must not collapse to build failed")
     return failures
 
 

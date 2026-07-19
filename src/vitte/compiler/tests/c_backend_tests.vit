@@ -1,7 +1,7 @@
 space vitte/compiler/tests/c_backend_tests
 
 use vitte/compiler/backend/c/pipeline.{ CBackendPipelineResult, run_c_backend_frontend, run_c_backend_mir, run_c_backend_source }
-use vitte/compiler/backend/diagnostics.{ LinkerFailureInfo, linker_command_failed, linker_failure_info, vitte_demangle_symbol }
+use vitte/compiler/backend/diagnostics.{ LinkerFailureInfo, backend_tool_crashed, linker_command_failed, linker_failure_info, vitte_demangle_symbol }
 use vitte/compiler/backend/c/lowering.{ CTranslationUnit, lower_mir_to_c_with_hir_and_ir, lower_mir_to_c_with_ir }
 use vitte/compiler/backend/c/architecture.{ c_target_x86_64_linux, c_type_for_vitte_type }
 use vitte/compiler/backend/c/abi.{ C_ABI_NAME, C_ABI_SCHEMA_VERSION, CAbiPassMode, c_abi_contract, c_abi_function, c_abi_header_prelude, c_abi_param_value }
@@ -135,6 +135,51 @@ proc test_linker_diagnostics_classify_and_demangle_stderr() -> bool {
     and diag.external_command == "cc main.o -o app"
     and diag.external_stderr == stderr_text
     and find(diag.root_cause, "main") >= 0;
+}
+
+proc test_linker_diagnostics_distinguish_precise_failures() -> bool {
+  let info0: LinkerFailureInfo = linker_failure_info("ld: undefined symbol: _vitte_missing\n");
+  if info0.code != "LINK_E_UNDEFINED_SYMBOL" or info0.vitte_symbol != "missing" {
+    give false;
+  }
+  let info1: LinkerFailureInfo = linker_failure_info("ld: library not found for -lssl\n");
+  if info1.code != "LINK_E_LIBRARY_NOT_FOUND" or info1.library_name != "-lssl" {
+    give false;
+  }
+  let info2: LinkerFailureInfo = linker_failure_info("ld: warning: ignoring file libx.a, file is incompatible with x86_64 architecture\n");
+  if info2.code != "LINK_E_ARCHITECTURE_INCOMPATIBLE" {
+    give false;
+  }
+  let info3: LinkerFailureInfo = linker_failure_info("ld: file format not recognized bad.o\n");
+  if info3.code != "LINK_E_UNSUPPORTED_FORMAT" {
+    give false;
+  }
+  let info4: LinkerFailureInfo = linker_failure_info("ld: duplicate symbol _vitte_main in a.o and b.o\n");
+  if info4.code != "LINK_E_DUPLICATE_SYMBOL" or info4.vitte_symbol != "main" {
+    give false;
+  }
+  let info5: LinkerFailureInfo = linker_failure_info("ld: entry point _main was not found\n");
+  if info5.code != "LINK_E_ENTRYPOINT_MISSING" {
+    give false;
+  }
+  let info6: LinkerFailureInfo = linker_failure_info("ld: Permission denied build/app\n");
+  if info6.code != "LINK_E_PERMISSION_DENIED" {
+    give false;
+  }
+  give true;
+}
+
+proc test_backend_crash_keeps_stderr_as_secondary_diagnostic() -> bool {
+  let stderr_text: string = "cc: internal tool crash while lowering native object\n";
+  let diag: Diagnostic = backend_tool_crashed("c", "x86_64-linux", "cc -c main.c", 139, stderr_text, "build/main.o", span_create("main.vit", 2, 1, 4));
+  give diag.code == "BACKEND_E_CODEGEN_FAILED"
+    and diag.kind == DiagnosticKind.Environment
+    and diag.phase == DiagnosticPhase.Backend
+    and diag.external_command == "cc -c main.c"
+    and diag.external_stderr == stderr_text
+    and find(diag.message, "backend tool stopped") >= 0
+    and find(diag.message, "compilation failed") < 0
+    and find(diag.root_cause, "external backend process terminated") >= 0;
 }
 
 proc test_c_backend_lowers_struct_tuple_and_array_values() -> bool {
@@ -496,6 +541,12 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if not test_linker_diagnostics_classify_and_demangle_stderr() {
+    set failures = failures + 1;
+  }
+  if not test_linker_diagnostics_distinguish_precise_failures() {
+    set failures = failures + 1;
+  }
+  if not test_backend_crash_keeps_stderr_as_secondary_diagnostic() {
     set failures = failures + 1;
   }
   if not test_c_backend_lowers_struct_tuple_and_array_values() {

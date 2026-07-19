@@ -316,6 +316,15 @@ proc backend_native_generation_failed(backend_name: string, target_name: string,
   give diagnostic_with_probable_fix(diag3, "inspect the command output and verify the target toolchain");
 }
 
+proc backend_tool_crashed(backend_name: string, target_name: string, command_text: string, exit_code: int, stderr_text: string, output_path: string, span: SourceSpan) -> Diagnostic {
+  let diag0: Diagnostic = diagnostic_fatal("BACKEND_E_CODEGEN_FAILED", DiagnosticPhase.Backend, "backend tool stopped before producing native output", span);
+  let diag0a: Diagnostic = diagnostic_with_kind(diag0, DiagnosticKind.Environment);
+  let diag1: Diagnostic = backend_diag_context(diag0a, backend_name, target_name, output_path);
+  let diag2: Diagnostic = backend_diag_command(diag1, command_text, exit_code, stderr_text);
+  let diag3: Diagnostic = diagnostic_with_root_cause(diag2, "the external backend process terminated before it wrote the expected artifact");
+  give diagnostic_with_probable_fix(diag3, "inspect the backend stderr and rerun with verbose output if command details are needed");
+}
+
 proc linker_command_failed(backend_name: string, target_name: string, command_text: string, exit_code: int, stderr_text: string, output_path: string, span: SourceSpan) -> Diagnostic {
   let info: LinkerFailureInfo = linker_failure_info(stderr_text);
   let code: string = info.code;
