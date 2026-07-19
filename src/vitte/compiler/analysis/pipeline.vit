@@ -2,7 +2,7 @@ space vitte/compiler/analysis
 
 use vitte/compiler/frontend/pipeline.{ FrontendOutput }
 use vitte/compiler/frontend/ast/item.{ AstModule, ast_module_empty }
-use vitte/compiler/analysis/report.{ AnalysisDiagnostic, analysis_diagnostic, analysis_diagnostic_with_span, ast_span_length }
+use vitte/compiler/analysis/report.{ AnalysisDiagnostic, analysis_diagnostic, analysis_diagnostic_with_span, ast_span_length, sort_analysis_diagnostics }
 use vitte/compiler/infrastructure/session/files.{ SourceManager, source_manager_empty, cache_source, source_manager_file_id, offset_lookup }
 use vitte/compiler/analysis/borrowck.{ BorrowCheckResult, borrow_check_hir_mir }
 use vitte/compiler/analysis/borrowck/errors.{ BorrowDiagnostic, severity_name }
@@ -171,7 +171,7 @@ proc analysis_run_prechecked(frontend: FrontendOutput, sema_result: SemaResult, 
       borrowck_ok: false,
       const_eval_ok: false,
       lint_ok: false,
-      diagnostics: sema_diags,
+      diagnostics: sort_analysis_diagnostics(sema_diags),
       valid: false
     };
   }
@@ -187,7 +187,7 @@ proc analysis_run_prechecked(frontend: FrontendOutput, sema_result: SemaResult, 
       borrowck_ok: false,
       const_eval_ok: false,
       lint_ok: false,
-      diagnostics: sema_diags + typeck_diags,
+      diagnostics: sort_analysis_diagnostics(sema_diags + typeck_diags),
       valid: false
     };
   }
@@ -204,7 +204,7 @@ proc analysis_run_prechecked(frontend: FrontendOutput, sema_result: SemaResult, 
       borrowck_ok: false,
       const_eval_ok: false,
       lint_ok: false,
-      diagnostics: sema_diags + typeck_diags + borrowck_diags,
+      diagnostics: sort_analysis_diagnostics(sema_diags + typeck_diags + borrowck_diags),
       valid: false
     };
   }
@@ -221,7 +221,7 @@ proc analysis_run_prechecked(frontend: FrontendOutput, sema_result: SemaResult, 
       borrowck_ok: true,
       const_eval_ok: false,
       lint_ok: false,
-      diagnostics: sema_diags + typeck_diags + borrowck_diags + const_diags,
+      diagnostics: sort_analysis_diagnostics(sema_diags + typeck_diags + borrowck_diags + const_diags),
       valid: false
     };
   }
@@ -238,7 +238,7 @@ proc analysis_run_prechecked(frontend: FrontendOutput, sema_result: SemaResult, 
     borrowck_ok: true,
     const_eval_ok: true,
     lint_ok: not has_fatal(lint_diags),
-    diagnostics: sema_diags + typeck_diags + borrowck_diags + const_diags + lint_diags,
+    diagnostics: sort_analysis_diagnostics(sema_diags + typeck_diags + borrowck_diags + const_diags + lint_diags),
     valid: not has_fatal(lint_diags)
   };
 }

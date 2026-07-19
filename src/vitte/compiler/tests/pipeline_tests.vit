@@ -16,6 +16,7 @@ use vitte/compiler/backend/verified_pipeline.{ BackendVerificationReport, verify
 use vitte/compiler/diagnostics/diagnostic.{ Diagnostic, DiagnosticReport, DiagnosticRenderConfig, DiagnosticStyle, default_render_config, diagnostic_report, render_report }
 use vitte/compiler/diagnostics/report as diag_report
 use vitte/compiler/tests/frontend_fixtures/invalid/lexer.{ invalid_escape_source }
+use vitte/compiler/analysis/report.{ AnalysisDiagnostic, AnalysisSeverity, DiagnosticPolicy, analysis_diagnostic_with_span, apply_diagnostic_policy, diagnostic_group, diagnostic_policy_default, diagnostic_policy_disable_code, diagnostic_policy_disable_group, diagnostic_policy_warnings_as_errors, severity_from_text, severity_text, sort_analysis_diagnostics }
 use vitte/compiler/analysis/typeck/soundness_roadmap.{ OwnershipSemanticsRule, SoundnessCheckpoint, TypingJudgment, formal_type_soundness_roadmap_status, ownership_semantics_rule, soundness_checkpoint, typing_judgment }
 use vitte/compiler/infrastructure/distributed.{ BuildJob, DependencySnapshot, build_job, compile_unit_hash, dependency_snapshot, distributed_build_foundation_ready, export_job_graph }
 use vitte/compiler/infrastructure/session/ice
@@ -103,6 +104,78 @@ proc test_driver_report_render_text_colorizes_severity() -> bool {
   give find(rendered, "\u001b[1m") >= 0
     and find(rendered, "\u001b[91m") >= 0
     and find(rendered, "\u001b[0m") >= 0;
+}
+
+proc sample_analysis_diag(file: string, line: u64, column: u64, code: string, severity: string) -> AnalysisDiagnostic {
+  give analysis_diagnostic_with_span("lint", code, severity, "sample diagnostic", [code], "fix sample", line, column, 1, false, file, 0, 0, 1);
+}
+
+proc test_analysis_diagnostic_levels_are_normalized() -> bool {
+  let help_diag: AnalysisDiagnostic = sample_analysis_diag("levels.vit", 1, 1, "LINT_W_HELP", "help");
+  let note_diag: AnalysisDiagnostic = sample_analysis_diag("levels.vit", 1, 2, "LINT_W_NOTE", "note");
+  let info_diag: AnalysisDiagnostic = sample_analysis_diag("levels.vit", 1, 3, "LINT_W_INFO", "info");
+  let warn_diag: AnalysisDiagnostic = sample_analysis_diag("levels.vit", 1, 4, "LINT_W_WARN", "warning");
+  let error_diag: AnalysisDiagnostic = sample_analysis_diag("levels.vit", 1, 5, "TYPECK_E_TEST", "error");
+  give severity_text(AnalysisSeverity.Help) == "help"
+    and severity_text(AnalysisSeverity.Note) == "note"
+    and severity_text(AnalysisSeverity.Info) == "info"
+    and severity_text(AnalysisSeverity.Warning) == "warning"
+    and severity_from_text("info") == AnalysisSeverity.Info
+    and help_diag.severity_kind == AnalysisSeverity.Help
+    and note_diag.severity_kind == AnalysisSeverity.Note
+    and info_diag.severity_kind == AnalysisSeverity.Info
+    and warn_diag.severity_kind == AnalysisSeverity.Warning
+    and error_diag.severity_kind == AnalysisSeverity.Error;
+}
+
+proc test_analysis_diagnostic_policy_promotes_and_disables() -> bool {
+  let policy0: DiagnosticPolicy = diagnostic_policy_default();
+  let policy1: DiagnosticPolicy = diagnostic_policy_warnings_as_errors(policy0, true);
+  let policy2: DiagnosticPolicy = diagnostic_policy_disable_code(policy1, "LINT_W_DISABLED");
+  let input: [AnalysisDiagnostic] = [
+    sample_analysis_diag("policy.vit", 3, 1, "LINT_W_ENABLED", "warning"),
+    sample_analysis_diag("policy.vit", 4, 1, "LINT_W_DISABLED", "warning")
+  ];
+  let output: [AnalysisDiagnostic] = apply_diagnostic_policy(input, policy2);
+  give len(output) == 1
+    and output[0].code == "LINT_W_ENABLED"
+    and output[0].severity == "error"
+    and output[0].severity_kind == AnalysisSeverity.Error;
+}
+
+proc test_analysis_diagnostic_policy_disables_groups() -> bool {
+  let policy0: DiagnosticPolicy = diagnostic_policy_default();
+  let policy1: DiagnosticPolicy = diagnostic_policy_disable_group(policy0, "lint");
+  let input: [AnalysisDiagnostic] = [
+    sample_analysis_diag("groups.vit", 2, 1, "LINT_W_UNUSED_LOCAL", "warning"),
+    sample_analysis_diag("groups.vit", 3, 1, "TYPECK_E_ASSIGN_MISMATCH", "error")
+  ];
+  let output: [AnalysisDiagnostic] = apply_diagnostic_policy(input, policy1);
+  give diagnostic_group("LINT_W_UNUSED_LOCAL") == "lint"
+    and diagnostic_group("BORROWCK_E_USE_AFTER_MOVE") == "borrowck"
+    and diagnostic_group("TYPECK_E_ASSIGN_MISMATCH") == "typeck"
+    and len(output) == 1
+    and output[0].code == "TYPECK_E_ASSIGN_MISMATCH";
+}
+
+proc test_analysis_diagnostics_sort_by_file_and_position() -> bool {
+  let input: [AnalysisDiagnostic] = [
+    sample_analysis_diag("b.vit", 1, 1, "LINT_W_B", "warning"),
+    sample_analysis_diag("a.vit", 5, 1, "LINT_W_A5", "warning"),
+    sample_analysis_diag("a.vit", 2, 9, "LINT_W_A2B", "warning"),
+    sample_analysis_diag("a.vit", 2, 3, "LINT_W_A2A", "warning")
+  ];
+  let output: [AnalysisDiagnostic] = sort_analysis_diagnostics(input);
+  give len(output) == 4
+    and output[0].file == "a.vit"
+    and output[0].line == 2
+    and output[0].column == 3
+    and output[1].file == "a.vit"
+    and output[1].line == 2
+    and output[1].column == 9
+    and output[2].file == "a.vit"
+    and output[2].line == 5
+    and output[3].file == "b.vit";
 }
 
 proc test_parse_cli_request_defaults_project_root_for_source_commands() -> bool {
@@ -1160,6 +1233,18 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if not test_compiler_main_loads_file_through_host_runtime() {
+    set failures = failures + 1;
+  }
+  if not test_analysis_diagnostic_levels_are_normalized() {
+    set failures = failures + 1;
+  }
+  if not test_analysis_diagnostic_policy_promotes_and_disables() {
+    set failures = failures + 1;
+  }
+  if not test_analysis_diagnostic_policy_disables_groups() {
+    set failures = failures + 1;
+  }
+  if not test_analysis_diagnostics_sort_by_file_and_position() {
     set failures = failures + 1;
   }
   if not test_parse_cli_request_defaults_project_root_for_source_commands() {

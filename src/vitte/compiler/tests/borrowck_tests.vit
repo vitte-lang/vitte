@@ -29,6 +29,7 @@ use vitte/compiler/analysis/borrowck/errors.{
   BorrowErrorKind,
   BorrowPhase,
   borrow_diagnostic_result,
+  borrow_error_dangling_reference,
   borrow_error_internal,
   borrow_error_lifetime_too_short_story,
   borrow_report_add,
@@ -505,12 +506,15 @@ proc test_borrow_diagnostic_helpers_build_reports() -> bool {
   let span: SourceSpan = span_with_length(span_create("borrowck_helpers.vit", 3, 5, 0), 7);
   let diag: Diagnostic = borrow_error_lifetime_too_short_story("borrowck_helpers.vit", "value", 3, 4, "alias outlives owner", 42);
   let internal: Diagnostic = borrow_error_internal("borrowck_helpers.vit", 9, "broken borrowck invariant");
+  let dangling: Diagnostic = borrow_error_dangling_reference("borrowck_helpers.vit", 7, 43);
   let wrapped = borrow_diagnostic_result(diag, BorrowErrorKind.LifetimeTooShort, BorrowPhase.RegionCheck, 42);
   let report0: DiagnosticReport = borrow_report_empty();
   let report1: DiagnosticReport = borrow_report_add(report0, diag);
   let report2: DiagnosticReport = borrow_report_add(report1, internal);
   give span.length == 7
     and error_code(BorrowErrorKind.LifetimeTooShort) == "BORROWCK_E_LIFETIME_TOO_SHORT"
+    and dangling.code == "BORROWCK_E_DANGLING_REFERENCE"
+    and find(dangling.message, "reference") >= 0
     and wrapped.valid
     and diagnostics_have_errors(report2.diagnostics)
     and not diagnostics_valid(report2.diagnostics)

@@ -656,6 +656,18 @@ proc borrow_error_return_borrow_of_local(file: string, line: u64, entity: u64) -
     );
 }
 
+proc borrow_error_dangling_reference(file: string, line: u64, entity: u64) -> Diagnostic {
+    give borrow_error_generic(
+        BorrowErrorKind.DanglingReference,
+        file,
+        line,
+        entity,
+        "reference may outlive the value it points to",
+        "the owner can be destroyed before the reference is used",
+        "extend the owner lifetime or return an owned value instead"
+    );
+}
+
 proc borrow_error_lifetime_too_short(file: string, line: u64, entity: u64) -> Diagnostic {
     give borrow_error_generic(
         BorrowErrorKind.LifetimeTooShort,
@@ -807,6 +819,7 @@ share borrow_error_drop_while_borrowed
 share borrow_error_assign_while_borrowed
 share borrow_error_return_ref_to_local
 share borrow_error_return_borrow_of_local
+share borrow_error_dangling_reference
 share borrow_error_lifetime_too_short
 share borrow_error_lifetime_too_short_story
 share borrow_error_use_after_drop

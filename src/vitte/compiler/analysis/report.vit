@@ -5,9 +5,17 @@ use vitte/compiler/diagnostics/diagnostic.{ Diagnostic as CanonicalDiagnostic, D
 pick AnalysisSeverity {
     Help
     Note
+    Info
     Warning
     Error
     Fatal
+}
+
+form DiagnosticPolicy {
+    warnings_as_errors: bool
+    disabled_codes: [string]
+    disabled_groups: [string]
+    valid: bool
 }
 
 pick AnalysisPhase {
@@ -124,6 +132,10 @@ proc severity_text(severity: AnalysisSeverity) -> string {
         give "note";
     }
 
+    if severity == AnalysisSeverity.Info {
+        give "info";
+    }
+
     if severity == AnalysisSeverity.Warning {
         give "warning";
     }
@@ -137,6 +149,58 @@ proc severity_text(severity: AnalysisSeverity) -> string {
     }
 
     give "error";
+}
+
+proc severity_from_text(severity: string) -> AnalysisSeverity {
+    if severity == "help" {
+        give AnalysisSeverity.Help;
+    }
+
+    if severity == "note" {
+        give AnalysisSeverity.Note;
+    }
+
+    if severity == "info" {
+        give AnalysisSeverity.Info;
+    }
+
+    if severity == "warning" {
+        give AnalysisSeverity.Warning;
+    }
+
+    if severity == "fatal" {
+        give AnalysisSeverity.Fatal;
+    }
+
+    give AnalysisSeverity.Error;
+}
+
+proc diagnostic_policy_default() -> DiagnosticPolicy {
+    give DiagnosticPolicy {
+        warnings_as_errors: false,
+        disabled_codes: [],
+        disabled_groups: [],
+        valid: true
+    };
+}
+
+proc diagnostic_policy_warnings_as_errors(policy: DiagnosticPolicy, enabled: bool) -> DiagnosticPolicy {
+    set policy.warnings_as_errors = enabled;
+    give policy;
+}
+
+proc diagnostic_policy_disable_code(policy: DiagnosticPolicy, code: string) -> DiagnosticPolicy {
+    if code != "" {
+        set policy.disabled_codes = policy.disabled_codes + [code];
+    }
+    give policy;
+}
+
+proc diagnostic_policy_disable_group(policy: DiagnosticPolicy, group: string) -> DiagnosticPolicy {
+    if group != "" {
+        set policy.disabled_groups = policy.disabled_groups + [group];
+    }
+    give policy;
 }
 
 proc phase_text(phase: AnalysisPhase) -> string {
@@ -255,6 +319,159 @@ proc is_error_severity(severity: AnalysisSeverity) -> bool {
     give false;
 }
 
+proc string_list_contains(values: [string], needle: string) -> bool {
+    let i: u64 = 0;
+    while i < len(values) {
+        if values[i] == needle {
+            give true;
+        }
+        set i = i + 1;
+    }
+    give false;
+}
+
+proc diagnostic_group(code: string) -> string {
+    if starts_with(code, "LINT_") {
+        give "lint";
+    }
+    if starts_with(code, "BORROWCK_") or starts_with(code, "BORROW_") {
+        give "borrowck";
+    }
+    if starts_with(code, "TYPECK_") {
+        give "typeck";
+    }
+    if starts_with(code, "SEMA_") {
+        give "sema";
+    }
+    if starts_with(code, "LEX_") {
+        give "lexer";
+    }
+    if starts_with(code, "PARSE_") or starts_with(code, "PARSER_") {
+        give "parser";
+    }
+    if starts_with(code, "CONST_") or starts_with(code, "CONST_EVAL_") {
+        give "const_eval";
+    }
+    if starts_with(code, "MIR_") {
+        give "mir";
+    }
+    if starts_with(code, "IR_") {
+        give "ir";
+    }
+    if starts_with(code, "BACKEND_") {
+        give "backend";
+    }
+    if starts_with(code, "LINKER_") {
+        give "linker";
+    }
+    give "general";
+}
+
+proc diagnostic_disabled_by_policy(diagnostic: AnalysisDiagnostic, policy: DiagnosticPolicy) -> bool {
+    give string_list_contains(policy.disabled_codes, diagnostic.code)
+        or string_list_contains(policy.disabled_groups, diagnostic_group(diagnostic.code));
+}
+
+proc diagnostic_with_severity(diagnostic: AnalysisDiagnostic, severity_kind: AnalysisSeverity) -> AnalysisDiagnostic {
+    give AnalysisDiagnostic {
+        phase: diagnostic.phase,
+        code: diagnostic.code,
+        severity: severity_text(severity_kind),
+        message: diagnostic.message,
+        labels: diagnostic.labels,
+        suggestion: diagnostic.suggestion,
+        line: diagnostic.line,
+        column: diagnostic.column,
+        length: diagnostic.length,
+        notes: diagnostic.notes,
+        fatal: is_fatal_severity(severity_kind),
+
+        kind: diagnostic.kind,
+        phase_kind: diagnostic.phase_kind,
+        severity_kind: severity_kind,
+        primary_label: diagnostic.primary_label,
+        related_labels: diagnostic.related_labels,
+        help: diagnostic.help,
+        file: diagnostic.file,
+        file_id: diagnostic.file_id,
+        span_start: diagnostic.span_start,
+        span_end: diagnostic.span_end,
+        source_excerpt: diagnostic.source_excerpt
+    };
+}
+
+proc apply_diagnostic_policy(diagnostics: [AnalysisDiagnostic], policy: DiagnosticPolicy) -> [AnalysisDiagnostic] {
+    let out: [AnalysisDiagnostic] = [];
+    let i: u64 = 0;
+    while i < len(diagnostics) {
+        let diagnostic: AnalysisDiagnostic = diagnostics[i];
+        if not diagnostic_disabled_by_policy(diagnostic, policy) {
+            if policy.warnings_as_errors and diagnostic.severity == "warning" {
+                set diagnostic = diagnostic_with_severity(diagnostic, AnalysisSeverity.Error);
+            }
+            set out = out + [diagnostic];
+        }
+        set i = i + 1;
+    }
+    give sort_analysis_diagnostics(out);
+}
+
+proc diagnostic_file_key(diagnostic: AnalysisDiagnostic) -> string {
+    if diagnostic.file != "" {
+        give diagnostic.file;
+    }
+    give "";
+}
+
+proc diagnostic_ordered_before(left: AnalysisDiagnostic, right: AnalysisDiagnostic) -> bool {
+    let left_file: string = diagnostic_file_key(left);
+    let right_file: string = diagnostic_file_key(right);
+    if left_file < right_file {
+        give true;
+    }
+    if left_file > right_file {
+        give false;
+    }
+    if left.line < right.line {
+        give true;
+    }
+    if left.line > right.line {
+        give false;
+    }
+    if left.column < right.column {
+        give true;
+    }
+    if left.column > right.column {
+        give false;
+    }
+    give left.code <= right.code;
+}
+
+proc sort_analysis_diagnostics(diagnostics: [AnalysisDiagnostic]) -> [AnalysisDiagnostic] {
+    let out: [AnalysisDiagnostic] = [];
+    let i: u64 = 0;
+    while i < len(diagnostics) {
+        let diagnostic: AnalysisDiagnostic = diagnostics[i];
+        let inserted: bool = false;
+        let next: [AnalysisDiagnostic] = [];
+        let j: u64 = 0;
+        while j < len(out) {
+            if not inserted and diagnostic_ordered_before(diagnostic, out[j]) {
+                set next = next + [diagnostic];
+                set inserted = true;
+            }
+            set next = next + [out[j]];
+            set j = j + 1;
+        }
+        if not inserted {
+            set next = next + [diagnostic];
+        }
+        set out = next;
+        set i = i + 1;
+    }
+    give out;
+}
+
 proc make_analysis_label(message: string, line: u64, column: u64, length: u64, primary: bool) -> AnalysisLabel {
     give AnalysisLabel {
         message: message,
@@ -321,7 +538,7 @@ proc analysis_diagnostic(phase: string, code: string, severity: string, message:
 
         kind: AnalysisDiagnosticKind.Unknown,
         phase_kind: AnalysisPhase.Unknown,
-        severity_kind: AnalysisSeverity.Error,
+        severity_kind: severity_from_text(severity),
         primary_label: make_analysis_label(message, line, column, length, true),
         related_labels: [],
         help: suggestion,
@@ -567,6 +784,10 @@ proc analysis_severity_as_diagnostic(severity: AnalysisSeverity) -> DiagnosticSe
         give DiagnosticSeverity.Note;
     }
 
+    if severity == AnalysisSeverity.Info {
+        give DiagnosticSeverity.Note;
+    }
+
     if severity == AnalysisSeverity.Warning {
         give DiagnosticSeverity.Warning;
     }
@@ -681,9 +902,10 @@ proc analysis_diagnostic_as_diagnostic(diagnostic: AnalysisDiagnostic) -> Canoni
 
 proc analysis_diagnostics_as_report(diagnostics: [AnalysisDiagnostic]) -> DiagnosticReport {
     let out: [CanonicalDiagnostic] = [];
+    let ordered: [AnalysisDiagnostic] = sort_analysis_diagnostics(diagnostics);
     let i: u64 = 0;
-    while i < len(diagnostics) {
-        set out = out + [analysis_diagnostic_as_diagnostic(diagnostics[i])];
+    while i < len(ordered) {
+        set out = out + [analysis_diagnostic_as_diagnostic(ordered[i])];
         set i = i + 1;
     }
     give diagnostic_report(out);
@@ -695,14 +917,28 @@ share AnalysisDiagnosticKind
 share AnalysisLabel
 share AnalysisDiagnostic
 share AnalysisDiagnosticBuilder
+share DiagnosticPolicy
 
 share ast_span_length
 share normalize_span_length
 share severity_text
+share severity_from_text
 share phase_text
 share kind_text
 share is_fatal_severity
 share is_error_severity
+share string_list_contains
+share diagnostic_group
+share diagnostic_policy_default
+share diagnostic_policy_warnings_as_errors
+share diagnostic_policy_disable_code
+share diagnostic_policy_disable_group
+share diagnostic_disabled_by_policy
+share diagnostic_with_severity
+share apply_diagnostic_policy
+share diagnostic_file_key
+share diagnostic_ordered_before
+share sort_analysis_diagnostics
 
 share make_analysis_label
 share empty_analysis_label
