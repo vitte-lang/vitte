@@ -302,6 +302,23 @@ proc add_escape_constraint(result: LifetimeResult, escaped_region: string, requi
     );
 }
 
+proc add_escape_fact(result: LifetimeResult, alias: string, owner: string, escaped_region: string, owner_region: string, line: u64, escape: LifetimeEscapeKind) -> LifetimeResult {
+    let real_escape: LifetimeEscapeKind = escape;
+    if real_escape == LifetimeEscapeKind.None {
+        set real_escape = LifetimeEscapeKind.Unknown;
+    }
+    let fact: LifetimeFact = lifetime_fact_full(alias, owner, escaped_region, owner_region, line, LifetimeFactKind.Escape, real_escape);
+    let result0: LifetimeResult = add_fact(result, fact);
+
+    give add_escape_constraint(
+        result0,
+        escaped_region,
+        owner_region,
+        line,
+        "escaped borrow must not outlive its owner"
+    );
+}
+
 proc add_borrow_fact(result: LifetimeResult, alias: string, owner: string, alias_region: string, owner_region: string, line: u64) -> LifetimeResult {
     let fact: LifetimeFact = lifetime_fact_full(alias, owner, alias_region, owner_region, line, LifetimeFactKind.Borrow, LifetimeEscapeKind.None);
     let result0: LifetimeResult = add_fact(result, fact);
@@ -364,6 +381,35 @@ proc add_lifetime_too_short_diagnostic(result: LifetimeResult, file: string, lin
     let diagnostic: BorrowDiagnostic = diagnostic_full(BorrowErrorKind.LifetimeTooShort, BorrowSeverity.Error, BorrowPhase.RegionCheck, "lifetime `" + region_name + "` does not live long enough", [region_name, required_region], "extend the source lifetime or avoid storing the borrow beyond its owner", span_create(file, line, 1, 1), 0);
 
     give lifetime_result_with_diag(result, diagnostic);
+}
+
+proc add_dangling_reference_diagnostic(result: LifetimeResult, file: string, fact: LifetimeFact) -> LifetimeResult {
+    let alias_text: string = if fact.alias != "" { fact.alias } else { fact.region_name };
+    let owner_text: string = if fact.owner != "" { fact.owner } else { fact.owner_region };
+    let diagnostic: BorrowDiagnostic = diagnostic_create(
+        BorrowErrorKind.DanglingReference,
+        file,
+        fact.line,
+        "reference `" + alias_text + "` may outlive `" + owner_text + "`",
+        [alias_text, owner_text, escape_kind_name(fact.escape)],
+        "keep the owner alive for the full reference lifetime or return an owned value",
+        true
+    );
+
+    give lifetime_result_with_diag(result, diagnostic);
+}
+
+proc add_dangling_escape_diagnostics(result: LifetimeResult, file: string) -> LifetimeResult {
+    let out: LifetimeResult = result;
+    let i: u64 = 0;
+    while i < len(result.facts) {
+        let fact: LifetimeFact = result.facts[i];
+        if fact.kind == LifetimeFactKind.Escape {
+            set out = add_dangling_reference_diagnostic(out, file, fact);
+        }
+        set i = i + 1;
+    }
+    give out;
 }
 
 proc fact_is_escape(fact: LifetimeFact) -> bool {
@@ -465,16 +511,17 @@ proc lifetime_has_diagnostics(result: LifetimeResult) -> bool {
 
 proc finalize_lifetimes(result: LifetimeResult) -> LifetimeResult {
     let solved: RegionSolution = solve_regions(result.regions);
+    let diagnosed: LifetimeResult = add_dangling_escape_diagnostics(result, "<lifetimes>");
 
     give LifetimeResult {
-        facts: result.facts,
-        edges: result.edges,
-        diagnostics: result.diagnostics,
+        facts: diagnosed.facts,
+        edges: diagnosed.edges,
+        diagnostics: diagnosed.diagnostics,
         regions: solved,
-        valid: result.valid
+        valid: diagnosed.valid
             and solved.valid
-            and !lifetime_has_invalid_facts(result)
-            and !lifetime_has_diagnostics(result)
+            and !lifetime_has_invalid_facts(diagnosed)
+            and !lifetime_has_diagnostics(diagnosed)
     };
 }
 
@@ -515,6 +562,7 @@ share add_borrow_constraint
 share add_reborrow_constraint
 share add_assignment_constraint
 share add_escape_constraint
+share add_escape_fact
 
 share add_borrow_fact
 share add_return_fact
@@ -523,6 +571,8 @@ share add_temporal_ownership_fact
 
 share add_returned_local_diagnostic
 share add_lifetime_too_short_diagnostic
+share add_dangling_reference_diagnostic
+share add_dangling_escape_diagnostics
 
 share fact_is_escape
 share fact_kind_name

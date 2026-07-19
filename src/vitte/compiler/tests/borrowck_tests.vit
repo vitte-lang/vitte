@@ -48,6 +48,7 @@ use vitte/compiler/analysis/borrowck/lifetimes.{
   LifetimeResult,
   TemporalOwnershipWindow,
   add_borrow_fact,
+  add_escape_fact,
   add_return_fact,
   add_temporal_ownership_fact,
   escape_kind_name,
@@ -482,6 +483,16 @@ proc test_temporal_ownership_windows_enforce_alias_duration() -> bool {
     and find(lifetime_result_summary(finalized), "lifetimes failed") >= 0;
 }
 
+proc test_lifetime_escape_detects_dangling_reference() -> bool {
+  let lifetimes0: LifetimeResult = lifetime_result_empty(region_solution_empty());
+  let lifetimes1: LifetimeResult = add_escape_fact(lifetimes0, "escaped_alias", "owner", "global_region", "owner_region", 7, LifetimeEscapeKind.StoreGlobal);
+  let finalized: LifetimeResult = finalize_lifetimes(lifetimes1);
+  give not finalized.valid
+    and len(finalized.diagnostics) > 0
+    and finalized.diagnostics[0].code == "BORROWCK_E_DANGLING_REFERENCE"
+    and find(finalized.diagnostics[0].message, "escaped_alias") >= 0;
+}
+
 proc test_first_class_memory_regions_bind_places_to_declared_regions() -> bool {
   let heap_decl: MemoryRegionDecl = memory_region_decl("heap", MemoryRegionKind.Arena, 1, 10);
   let valid_binding: MemoryRegionBinding = memory_region_binding("buffer", "heap", 2, 8);
@@ -550,6 +561,7 @@ proc run_all_tests() -> int {
   if not test_loan_table_helpers_track_aliases_and_conflicts() { set failures = failures + 1; }
   if not test_lifetime_and_region_helpers_summarize_failures() { set failures = failures + 1; }
   if not test_temporal_ownership_windows_enforce_alias_duration() { set failures = failures + 1; }
+  if not test_lifetime_escape_detects_dangling_reference() { set failures = failures + 1; }
   if not test_first_class_memory_regions_bind_places_to_declared_regions() { set failures = failures + 1; }
   if not test_borrow_diagnostic_helpers_build_reports() { set failures = failures + 1; }
   give failures;
