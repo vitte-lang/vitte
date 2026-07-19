@@ -955,6 +955,8 @@ def render_explain_locale(locale: str, codes: list[str], messages: dict[str, str
         for suffix in ("summary", "cause", "step1", "fix", "example"):
             key = f"{code}.{suffix}"
             value = existing.get(key, fallback.get(key, fields[suffix]))
+            if suffix == "fix":
+                value = fields[suffix]
             if value in (
                 "The general phase found code that violates this diagnostic rule.",
                 "Fix the first span reported for this diagnostic, then run the command again.",

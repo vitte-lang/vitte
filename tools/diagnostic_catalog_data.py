@@ -451,62 +451,112 @@ def explanation_fields(code: str, message: str | None = None) -> dict[str, str]:
         "summary": f"{title}.",
         "cause": f"The {family} phase found code that violates this diagnostic rule.",
         "step1": "Fix the first span reported for this diagnostic, then run the command again.",
-        "fix": "Follow the primary help text and make the smallest source change that removes the first error.",
+        "fix": "repair the highlighted compiler contract before checking later diagnostics",
         "example": "vitte check path/to/file.vit",
     }
     if family == "syntax":
         fields["cause"] = "The parser or lexer could not form the next valid source construct."
         fields["step1"] = "Look at the highlighted token and complete or remove the construct around it."
-        fields["fix"] = "Balance delimiters, complete the missing token, or rewrite the local expression."
+        fields["fix"] = "complete the syntax shape named by the parser label at the highlighted token"
         fields["example"] = "proc main() -> int { give 0; }"
     elif family == "type checking":
         fields["cause"] = "The inferred type does not satisfy the type required at this location."
         fields["step1"] = "Compare the expected and found types in the diagnostic labels."
-        fields["fix"] = "Change the expression, annotation, or call argument so both sides agree."
+        fields["fix"] = "make the expression type match the type contract named by the type checker"
         fields["example"] = "let count: int = 1"
     elif family == "ownership":
         fields["cause"] = "A value was moved, borrowed, assigned, or dropped in an invalid order."
         fields["step1"] = "Find the earlier move or borrow mentioned by the diagnostic."
-        fields["fix"] = "Shorten the borrow, reorder the use, or borrow/clone before moving."
+        fields["fix"] = "repair the ownership transition named by the borrow checker before the highlighted use"
         fields["example"] = "let view = &value"
     elif family == "name and module analysis":
         fields["cause"] = "A symbol, module path, binding, visibility rule, or import contract did not resolve."
         fields["step1"] = "Check the spelling and the nearest import or declaration."
-        fields["fix"] = "Declare the symbol once, import it explicitly, or use the canonical module path."
+        fields["fix"] = "resolve the exact symbol contract reported by semantic analysis"
         fields["example"] = "use vitte/core"
     elif family == "constant evaluation":
         fields["cause"] = "A compile-time expression used an operation that cannot be evaluated safely."
         fields["step1"] = "Reduce the constant expression at the reported span."
-        fields["fix"] = "Use only supported const operations and guard division, overflow, or cycles."
+        fields["fix"] = "rewrite the highlighted constant expression so const evaluation can prove it safely"
         fields["example"] = "const size: int = 4"
     elif family == "resource limit":
         fields["cause"] = "The input exceeded a configured compiler safety limit."
         fields["step1"] = "Split the file, expression, import graph, token, or macro expansion named by the code."
-        fields["fix"] = "Reduce the input size or raise the limit only in a trusted build profile."
+        fields["fix"] = "reduce the input size or raise the limit only in a trusted build profile"
         fields["example"] = "vitte check src/main.vit"
     elif family == "build output":
         fields["cause"] = "The selected target, linker, ABI, object file, or native toolchain failed."
         fields["step1"] = "Check the target triple and the first backend or linker note."
-        fields["fix"] = "Install the missing native tool, change target, or fix undefined symbols."
+        fields["fix"] = "install the missing native tool, change target, or fix undefined symbols"
         fields["example"] = "vitte build app.vit -o app"
     elif family == "command line":
         fields["cause"] = "The driver could not use the provided input, option, cache, output, or profile."
         fields["step1"] = "Re-run the command with --help and verify paths and option values."
-        fields["fix"] = "Provide an existing input, writable output path, and supported target/profile."
+        fields["fix"] = "provide an existing input, writable output path, and supported target/profile"
         fields["example"] = "vitte check src/main.vit --lang en"
     if code == "PARSE_E_PARAMETER_COLON_EXPECTED":
         fields["cause"] = "A procedure parameter name is followed by its type without the required colon separator."
         fields["step1"] = "Inspect the highlighted parameter in the multi-line procedure signature."
-        fields["fix"] = "Insert `:` between the parameter name and its type, for example `right: f64`."
+        fields["fix"] = "insert `:` between the parameter name and its type, for example `right: f64`"
         fields["example"] = "proc calculate(right: f64) -> f64 { give right; }"
     elif code == "LEX_E_UNTERMINATED_STRING":
         fields["cause"] = "A string starts with a double quote but reaches the end of the line without a matching double quote."
         fields["step1"] = "Check that the opening and closing string delimiters are both double quotes."
-        fields["fix"] = "Add the closing `\"` on the same line; do not close a string with a single quote."
+        fields["fix"] = "add the closing `\"` on the same line; do not close a string with a single quote"
         fields["example"] = 'print("message");'
     elif code == "PARSE_E_UNCLOSED_BLOCK":
         fields["cause"] = "An opening brace has no matching closing brace before the end of the file."
         fields["step1"] = "Start at the highlighted innermost block and verify each nested brace."
-        fields["fix"] = "Add `}` to close the highlighted block, then run the checker again for its parent block."
+        fields["fix"] = "add `}` to close the highlighted block, then run the checker again for its parent block"
         fields["example"] = "while running { set running = false; }"
+    elif code == "TYPECK_E_ASSIGN_MISMATCH":
+        fields["cause"] = "The assigned value does not satisfy the declared type of the target binding."
+        fields["step1"] = "Compare the binding declaration label with the highlighted assigned expression."
+        fields["fix"] = "assign a value of the declared binding type, or change the binding annotation at its declaration"
+        fields["example"] = "let count: int = 1"
+    elif code == "TYPECK_E_BINARY_MISMATCH":
+        fields["cause"] = "The binary operator received operands whose types do not share the operator contract."
+        fields["step1"] = "Inspect the left and right operand labels before changing the operator."
+        fields["fix"] = "make both operands valid for the operator before MIR lowering"
+        fields["example"] = "let total: int = left + right"
+    elif code == "TYPECK_E_CONDITION_TYPE":
+        fields["cause"] = "A control-flow condition produced a non-boolean value."
+        fields["step1"] = "Check the highlighted condition expression before lowering branches to MIR."
+        fields["fix"] = "make the condition produce bool, for example by adding an explicit comparison"
+        fields["example"] = "if count > 0 { give count; }"
+    elif code in {"SEMA_E_UNKNOWN_IDENTIFIER", "SEMA_E_UNKNOWN_SYMBOL", "SEMA_E_UNKNOWN_NAME"}:
+        fields["cause"] = "Name resolution could not find the highlighted identifier in the active scope or imports."
+        fields["step1"] = "Check the nearest symbol note and the active import list."
+        fields["fix"] = "declare the missing identifier in scope or import the module that exports it"
+        fields["example"] = "use app/math.{total}"
+    elif code in {"SEMA_E_DUPLICATE_SYMBOL", "SEMA_E_DUPLICATE_ITEM", "SEMA_E_DUPLICATE_BINDING"}:
+        fields["cause"] = "Name resolution found two declarations competing for the same symbol in one scope."
+        fields["step1"] = "Compare the highlighted duplicate with the original declaration note."
+        fields["fix"] = "rename one declaration or remove the duplicate from the same scope"
+        fields["example"] = "proc main() -> int { give 0; }"
+    elif code == "BORROWCK_E_USE_AFTER_MOVE":
+        fields["cause"] = "Ownership moved before the highlighted later use."
+        fields["step1"] = "Find the earlier move note and decide whether this site needs ownership or a borrow."
+        fields["fix"] = "borrow before the move, clone explicitly, or move the later use before ownership transfer"
+        fields["example"] = "let view = &value"
+    elif code == "CONST_EVAL_E_DIVISION_BY_ZERO":
+        fields["cause"] = "Constant evaluation reached a division whose divisor is known to be zero."
+        fields["step1"] = "Inspect the divisor in the highlighted constant expression."
+        fields["fix"] = "change the const divisor to a non-zero value or guard the expression before const evaluation"
+        fields["example"] = "const ratio: int = total / 2"
+    elif code == "CONST_EVAL_E_OVERFLOW":
+        fields["cause"] = "Constant evaluation produced a value outside the target integer range."
+        fields["step1"] = "Reduce the highlighted arithmetic expression and check the target type width."
+        fields["fix"] = "use a wider const type or reduce the arithmetic result before overflow"
+        fields["example"] = "const size: i64 = 2147483648"
+    elif code == "CONST_EVAL_E_UNSUPPORTED_EXPR":
+        fields["cause"] = "Constant evaluation found an expression form that is not allowed in const context."
+        fields["step1"] = "Inspect the highlighted expression and move runtime-only work out of the const."
+        fields["fix"] = "replace the const expression with literals, supported arithmetic, or another compile-time value"
+        fields["example"] = "const size: int = 4"
+    elif code == "CONST_EVAL_E_STATIC_ASSERT_FAILED":
+        fields["cause"] = "A static assertion evaluated to false during constant evaluation."
+        fields["step1"] = "Reduce the assertion condition and inspect the compile-time values involved."
+        fields["fix"] = "make the asserted const condition true or remove the invalid compile-time assumption"
+        fields["example"] = "const ok: bool = WIDTH > 0"
     return fields
