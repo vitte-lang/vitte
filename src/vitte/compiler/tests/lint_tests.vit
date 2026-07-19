@@ -3,7 +3,9 @@ space vitte/compiler/tests/lint_tests
 use vitte/compiler/analysis/lint.{ LintResult, run_lint_hir }
 use vitte/compiler/analysis/sema.{ SemaResult, run_sema_hir }
 use vitte/compiler/analysis/typeck/api.{ run_production_typeck_hir }
+use vitte/compiler/frontend/ast/node.{ ast_span }
 use vitte/compiler/frontend/pipeline.{ FrontendOutput, frontend_run }
+use vitte/compiler/middle/hir.{ HirExpr, HirExprKind, HirItemKind, HirPlaceCategory, HirStmt, HirStmtKind, HirUnit, HirValueMode, hir_expr, hir_item, hir_module, hir_stmt, hir_unit }
 use vitte/compiler/middle/hir/lower_ast.{ lower_ast_to_hir }
 
 const VERSION_TEXT: string = "analysis lint tests 0.1.0"
@@ -86,6 +88,51 @@ proc test_missing_return() -> bool {
   give has_code(result, "LINT_W_MISSING_RETURN");
 }
 
+proc test_obvious_infinite_loop() -> bool {
+  let source: string = "proc main() -> int { while true { let x = 1; } }\n";
+  let fe: FrontendOutput = frontend_run("lint_infinite_loop.vit", source);
+  let hir = lower_ast_to_hir(fe);
+  let result: LintResult = run_lint_hir("lint_infinite_loop.vit", hir);
+  give has_code(result, "LINT_W_OBVIOUS_INFINITE_LOOP");
+}
+
+proc test_dangerous_numeric_conversion() -> bool {
+  let source: string = "proc narrow(value: i64) -> i8 { give value as i8; }\n";
+  let fe: FrontendOutput = frontend_run("lint_dangerous_conversion.vit", source);
+  let hir = lower_ast_to_hir(fe);
+  let sema: SemaResult = run_sema_hir(hir);
+  let typed = run_production_typeck_hir(sema.hir);
+  let result: LintResult = run_lint_hir("lint_dangerous_conversion.vit", typed.hir);
+  give has_code(result, "LINT_W_DANGEROUS_CONVERSION");
+}
+
+proc test_precision_loss_conversion() -> bool {
+  let source: string = "proc main(value: f64) -> f32 { give value as f32; }\n";
+  let fe: FrontendOutput = frontend_run("lint_precision_loss.vit", source);
+  let hir = lower_ast_to_hir(fe);
+  let sema: SemaResult = run_sema_hir(hir);
+  let typed = run_production_typeck_hir(sema.hir);
+  let result: LintResult = run_lint_hir("lint_precision_loss.vit", typed.hir);
+  give has_code(result, "LINT_W_PRECISION_LOSS");
+}
+
+proc test_constant_overflow_and_division_by_zero() -> bool {
+  let source: string = "proc main() -> int { let overflow = 3000000000; let div = 1 / 0; give 0; }\n";
+  let fe: FrontendOutput = frontend_run("lint_constant_arithmetic.vit", source);
+  let hir = lower_ast_to_hir(fe);
+  let result: LintResult = run_lint_hir("lint_constant_arithmetic.vit", hir);
+  give has_code(result, "LINT_W_CONSTANT_OVERFLOW") and has_code(result, "LINT_W_CONSTANT_DIVISION_BY_ZERO");
+}
+
+proc test_invalid_constant_literal_from_hir() -> bool {
+  let file: string = "lint_invalid_constant.vit";
+  let expr: HirExpr = hir_expr(1, ast_span(file, 1, 10, 1, 13), HirExprKind.Int, "1__", "", "", "", 0, "", false, HirValueMode.Value, "i32", HirPlaceCategory.Value, true, true, false, false, [], [], true);
+  let stmt: HirStmt = hir_stmt(2, ast_span(file, 1, 1, 1, 14), HirStmtKind.Let, "x", "", "", 0, "", "", expr, "", false, false, false, 0, [], [], [], [], true);
+  let unit: HirUnit = hir_unit(file, hir_module("lint", [hir_item(3, ast_span(file, 1, 1, 1, 14), HirItemKind.Proc, "main", 0, "lint", "public", true, "", 0, [], 0, 0, 0, 1, 0, "", "", expr, [stmt], "", 0, [], true)], [], 0, 1, true), 3, 1, 1, 1, 1, 1, true, true, true);
+  let result: LintResult = run_lint_hir(file, unit);
+  give has_code(result, "LINT_W_INVALID_CONSTANT");
+}
+
 proc run_all_tests() -> int {
   let failures: int = 0;
   if not test_unused_mut_and_local() {
@@ -110,6 +157,21 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if not test_missing_return() {
+    set failures = failures + 1;
+  }
+  if not test_obvious_infinite_loop() {
+    set failures = failures + 1;
+  }
+  if not test_dangerous_numeric_conversion() {
+    set failures = failures + 1;
+  }
+  if not test_precision_loss_conversion() {
+    set failures = failures + 1;
+  }
+  if not test_constant_overflow_and_division_by_zero() {
+    set failures = failures + 1;
+  }
+  if not test_invalid_constant_literal_from_hir() {
     set failures = failures + 1;
   }
   give failures;

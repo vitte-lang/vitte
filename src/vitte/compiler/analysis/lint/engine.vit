@@ -11,7 +11,10 @@ use vitte/compiler/analysis/lint/rules.{
   stats_mark_set,
   stats_mark_use
 }
+use vitte/compiler/analysis/typeck/coercion.{ numeric_coercion_is_lossless, numeric_type_width, normalize_type_name }
+use vitte/compiler/analysis/typeck/traits.{ type_is_float, type_is_integer, type_is_numeric }
 use vitte/compiler/frontend/ast/node.{ Span }
+use vitte/compiler/frontend/lexer/literals.{ LiteralValidation, validate_number_lexeme }
 use vitte/compiler/source/span.{ span }
 use vitte/compiler/middle/hir.{ HirExpr, HirExprKind, HirItemKind, HirProcParam, HirStmt, HirStmtKind, HirUnit, hir_stmt_terminated }
 
@@ -82,6 +85,138 @@ proc bool_literal_text(expr: HirExpr) -> string {
   give "";
 }
 
+proc decimal_integer_text(text: string) -> bool {
+  let value: string = trim(text);
+  if value == "" {
+    give false;
+  }
+  let i: u64 = if slice(value, 0, 1) == "-" { 1 as u64 } else { 0 as u64 };
+  if i == len(value) {
+    give false;
+  }
+  while i < len(value) {
+    let ch: string = slice(value, i, i + 1);
+    if ch == "_" {
+      set i = i + 1;
+      continue;
+    }
+    if ch < "0" or ch > "9" {
+      give false;
+    }
+    set i = i + 1;
+  }
+  give true;
+}
+
+proc integer_type_min(ty: string) -> int {
+  let value: string = normalize_type_name(ty);
+  if value == "u8" or value == "u16" or value == "u32" or value == "u64" or value == "u128" or value == "usize" {
+    give 0;
+  }
+  if value == "i8" {
+    give -128;
+  }
+  if value == "i16" {
+    give -32768;
+  }
+  if value == "i32" or value == "int" {
+    give -2147483648;
+  }
+  give -9223372036854775807;
+}
+
+proc integer_type_max(ty: string) -> int {
+  let value: string = normalize_type_name(ty);
+  if value == "i8" {
+    give 127;
+  }
+  if value == "u8" {
+    give 255;
+  }
+  if value == "i16" {
+    give 32767;
+  }
+  if value == "u16" {
+    give 65535;
+  }
+  if value == "i32" or value == "int" {
+    give 2147483647;
+  }
+  if value == "u32" {
+    give 4294967295;
+  }
+  give 9223372036854775807;
+}
+
+proc integer_type_supported_for_const_lint(ty: string) -> bool {
+  let value: string = normalize_type_name(ty);
+  give value == "i8" or value == "u8"
+    or value == "i16" or value == "u16"
+    or value == "i32" or value == "u32"
+    or value == "int" or value == "i64";
+}
+
+proc safe_decimal_int_value(text: string) -> int {
+  let cleaned: string = "";
+  let i: u64 = 0;
+  while i < len(text) {
+    let ch: string = slice(text, i, i + 1);
+    if ch != "_" {
+      set cleaned = cleaned + ch;
+    }
+    set i = i + 1;
+  }
+  give parse_int(cleaned);
+}
+
+proc cast_target_type(expr: HirExpr) -> string {
+  if len(expr.children) >= 2 {
+    let target: HirExpr = expr.children[1];
+    if target.inferred_type != "" and target.inferred_type != "unknown" {
+      give normalize_type_name(target.inferred_type);
+    }
+    if target.name != "" {
+      give normalize_type_name(target.name);
+    }
+    if target.text != "" {
+      give normalize_type_name(target.text);
+    }
+  }
+  give normalize_type_name(expr.inferred_type);
+}
+
+proc cast_source_type(expr: HirExpr) -> string {
+  if len(expr.children) > 0 {
+    give normalize_type_name(expr.children[0].inferred_type);
+  }
+  give "";
+}
+
+proc expr_is_zero_constant(expr: HirExpr) -> bool {
+  if not expr.valid {
+    give false;
+  }
+  if expr.kind == HirExprKind.Int and decimal_integer_text(expr.text) {
+    give safe_decimal_int_value(expr.text) == 0;
+  }
+  if expr.kind == HirExprKind.Float {
+    let value: string = trim(expr.text);
+    give value == "0.0" or value == "0." or value == ".0" or value == "0e0" or value == "0E0";
+  }
+  give false;
+}
+
+proc expr_has_terminating_stmt(stmts: [HirStmt]) -> bool {
+  let i: u64 = 0;
+  while i < len(stmts) {
+    if stmt_terminates(stmts[i]) {
+      give true;
+    }
+    set i = i + 1;
+  }
+  give false;
+}
+
 proc stmt_list_terminates(stmts: [HirStmt]) -> bool {
   let i: u64 = 0;
   while i < len(stmts) {
@@ -101,6 +236,115 @@ proc stmt_terminates(stmt: HirStmt) -> bool {
     give stmt_list_terminates(stmt.then_stmts) and stmt_list_terminates(stmt.else_stmts);
   }
   give false;
+}
+
+proc collect_expr_diagnostics(diagnostics: [LintDiagnostic], expr: HirExpr) -> [LintDiagnostic] {
+  let out: [LintDiagnostic] = diagnostics;
+  if not expr.valid {
+    give out;
+  }
+
+  if (expr.kind == HirExprKind.Int or expr.kind == HirExprKind.Float) and expr.text != "" {
+    let validation: LiteralValidation = validate_number_lexeme(expr.text);
+    if not validation.valid {
+      set out = lint_add_diag(out, lint_diagnostic(
+        "LINT_W_INVALID_CONSTANT",
+        LintSeverity.Warning,
+        "constant literal is invalid",
+        [expr.text],
+        validation.error_message,
+        expr.span,
+        false
+      ));
+    }
+  }
+
+  if expr.kind == HirExprKind.Int and type_is_integer(expr.inferred_type) and integer_type_supported_for_const_lint(expr.inferred_type) and decimal_integer_text(expr.text) {
+    let value: int = safe_decimal_int_value(expr.text);
+    if value < integer_type_min(expr.inferred_type) or value > integer_type_max(expr.inferred_type) {
+      set out = lint_add_diag(out, lint_diagnostic(
+        "LINT_W_CONSTANT_OVERFLOW",
+        LintSeverity.Warning,
+        "integer constant overflows `" + normalize_type_name(expr.inferred_type) + "`",
+        [expr.text, normalize_type_name(expr.inferred_type)],
+        "use a wider type or reduce the literal value",
+        expr.span,
+        false
+      ));
+    }
+  }
+
+  if expr.kind == HirExprKind.Binary and (expr.operator == "/" or expr.operator == "%") and len(expr.children) >= 2 and expr_is_zero_constant(expr.children[1]) {
+    set out = lint_add_diag(out, lint_diagnostic(
+      "LINT_W_CONSTANT_DIVISION_BY_ZERO",
+      LintSeverity.Warning,
+      "constant division by zero",
+      [expr.text],
+      "guard the divisor or use a non-zero constant",
+      expr.children[1].span,
+      false
+    ));
+  }
+
+  if expr.kind == HirExprKind.Binary and len(expr.children) >= 2 and expr.children[0].kind == HirExprKind.Int and expr.children[1].kind == HirExprKind.Int and type_is_integer(expr.inferred_type) and integer_type_supported_for_const_lint(expr.inferred_type) and decimal_integer_text(expr.children[0].text) and decimal_integer_text(expr.children[1].text) {
+    let left: int = safe_decimal_int_value(expr.children[0].text);
+    let right: int = safe_decimal_int_value(expr.children[1].text);
+    let min0: int = integer_type_min(expr.inferred_type);
+    let max0: int = integer_type_max(expr.inferred_type);
+    let overflow: bool = false;
+    if expr.operator == "+" {
+      set overflow = (right > 0 and left > max0 - right) or (right < 0 and left < min0 - right);
+    } elif expr.operator == "-" {
+      set overflow = (right > 0 and left < min0 + right) or (right < 0 and left > max0 + right);
+    } elif expr.operator == "*" and left >= 0 and right > 0 {
+      set overflow = left > max0 / right;
+    }
+    if overflow {
+      set out = lint_add_diag(out, lint_diagnostic(
+        "LINT_W_CONSTANT_OVERFLOW",
+        LintSeverity.Warning,
+        "constant arithmetic overflows `" + normalize_type_name(expr.inferred_type) + "`",
+        [expr.text, normalize_type_name(expr.inferred_type)],
+        "use checked arithmetic or a wider type",
+        expr.span,
+        false
+      ));
+    }
+  }
+
+  if expr.kind == HirExprKind.Cast {
+    let source_ty: string = cast_source_type(expr);
+    let target_ty: string = cast_target_type(expr);
+    if type_is_numeric(source_ty) and type_is_numeric(target_ty) and source_ty != target_ty and not numeric_coercion_is_lossless(target_ty, source_ty) {
+      set out = lint_add_diag(out, lint_diagnostic(
+        "LINT_W_DANGEROUS_CONVERSION",
+        LintSeverity.Warning,
+        "numeric cast from `" + source_ty + "` to `" + target_ty + "` may change the value",
+        [source_ty, target_ty],
+        "check the range before casting or use an explicit checked conversion helper",
+        expr.span,
+        false
+      ));
+    }
+    if (type_is_float(source_ty) and type_is_integer(target_ty)) or (type_is_integer(source_ty) and type_is_float(target_ty) and numeric_type_width(source_ty) > numeric_type_width(target_ty)) or (type_is_float(source_ty) and type_is_float(target_ty) and numeric_type_width(source_ty) > numeric_type_width(target_ty)) {
+      set out = lint_add_diag(out, lint_diagnostic(
+        "LINT_W_PRECISION_LOSS",
+        LintSeverity.Warning,
+        "conversion from `" + source_ty + "` to `" + target_ty + "` can lose precision",
+        [source_ty, target_ty],
+        "use a wider target type or round explicitly before the conversion",
+        expr.span,
+        false
+      ));
+    }
+  }
+
+  let i: u64 = 0;
+  while i < len(expr.children) {
+    set out = collect_expr_diagnostics(out, expr.children[i]);
+    set i = i + 1;
+  }
+  give out;
 }
 
 proc item_requires_return(annotation_text: string) -> bool {
@@ -146,7 +390,7 @@ proc add_unreachable_branch_diag(diagnostics: [LintDiagnostic], stmt: HirStmt, c
 }
 
 proc collect_stmt_data(source_path: string, diagnostics: [LintDiagnostic], stats: [LintBindingStat], stmt: HirStmt) -> LintWalk {
-  let current_diagnostics: [LintDiagnostic] = diagnostics;
+  let current_diagnostics: [LintDiagnostic] = collect_expr_diagnostics(diagnostics, stmt.expr);
   let current_stats: [LintBindingStat] = record_expr_uses(stats, stmt.expr);
 
   if stmt.kind == HirStmtKind.Let and stmt.name != "" {
@@ -176,6 +420,18 @@ proc collect_stmt_data(source_path: string, diagnostics: [LintDiagnostic], stats
       false
     ));
     set current_diagnostics = add_unreachable_branch_diag(current_diagnostics, stmt, condition_text);
+  }
+
+  if (stmt.kind == HirStmtKind.Loop or (stmt.kind == HirStmtKind.While and bool_literal_text(stmt.expr) == "true")) and not expr_has_terminating_stmt(stmt.then_stmts) {
+    set current_diagnostics = lint_add_diag(current_diagnostics, lint_diagnostic(
+      "LINT_W_OBVIOUS_INFINITE_LOOP",
+      LintSeverity.Warning,
+      "loop condition is obviously infinite",
+      [stmt.expr.text],
+      "add a terminating `break`, `give`, `panic`, or make the condition depend on state",
+      stmt.span,
+      false
+    ));
   }
 
   if stmt.kind == HirStmtKind.ExprStmt and stmt.expr.valid {
