@@ -46,6 +46,8 @@ use vitte/compiler/middle/hir.{
     HirUnit
 }
 
+const TYPECK_ERROR_SENTINEL: string = "__vitte_type_error__"
+
 pick TypeckErrorKind {
     InvalidHir
     UnknownName
@@ -78,6 +80,18 @@ form ExprTypeResult {
     valid: bool
     known: bool
     opaque: bool
+}
+
+proc typeck_error_sentinel() -> string {
+    give TYPECK_ERROR_SENTINEL;
+}
+
+proc typeck_is_error_sentinel(ty: string) -> bool {
+    give ty == TYPECK_ERROR_SENTINEL;
+}
+
+proc typeck_type_blocks_followup(ty: string) -> bool {
+    give ty == TYPECK_ERROR_SENTINEL or ty == "opaque";
 }
 
 proc ast_span_to_source_span(span: Span) -> SourceSpan {
@@ -308,8 +322,8 @@ proc expr_result(ty: string, diagnostics: [Diagnostic], valid: bool) -> ExprType
         ty: ty,
         diagnostics: diagnostics,
         valid: valid,
-        known: ty != "" and ty != "unknown",
-        opaque: ty == "opaque"
+        known: ty != "" and ty != "unknown" and ty != TYPECK_ERROR_SENTINEL,
+        opaque: ty == "opaque" or ty == TYPECK_ERROR_SENTINEL
     };
 }
 
@@ -321,13 +335,18 @@ proc expr_error(ty: string, diagnostic: Diagnostic) -> ExprTypeResult {
     give expr_result(ty, [diagnostic], false);
 }
 
+proc expr_type_error(diagnostic: Diagnostic) -> ExprTypeResult {
+    set diagnostic = diagnostic_with_subject_type(diagnostic, TYPECK_ERROR_SENTINEL);
+    give expr_result(TYPECK_ERROR_SENTINEL, [diagnostic], false);
+}
+
 proc expr_merge(ty: string, left: ExprTypeResult, right: ExprTypeResult) -> ExprTypeResult {
     give ExprTypeResult {
         ty: ty,
         diagnostics: merge_typeck_diagnostics(left.diagnostics, right.diagnostics),
         valid: left.valid and right.valid,
-        known: ty != "" and ty != "unknown",
-        opaque: ty == "opaque"
+        known: ty != "" and ty != "unknown" and ty != TYPECK_ERROR_SENTINEL,
+        opaque: ty == "opaque" or ty == TYPECK_ERROR_SENTINEL
     };
 }
 
@@ -657,8 +676,12 @@ proc result_summary(result: TypeckResult) -> string {
 share TypeckErrorKind
 share TypeckResult
 share ExprTypeResult
+share TYPECK_ERROR_SENTINEL
 
 share ast_span_to_source_span
+share typeck_error_sentinel
+share typeck_is_error_sentinel
+share typeck_type_blocks_followup
 
 share typeck_message
 share typeck_help
@@ -677,6 +700,7 @@ share merge_typeck_diagnostics
 share expr_result
 share expr_ok
 share expr_error
+share expr_type_error
 share expr_merge
 
 share typeck_result

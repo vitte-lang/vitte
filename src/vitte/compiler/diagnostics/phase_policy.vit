@@ -1,0 +1,148 @@
+space vitte/compiler/diagnostics/phase_policy
+
+use vitte/compiler/diagnostics/diagnostic.{
+    Diagnostic,
+    DiagnosticPhase,
+    severity_is_error,
+    diagnostic_phase_is_blocking_for,
+    diagnostic_phase_blocking_reason,
+    diagnostic_has_blocking_error_for_phase,
+    phase_name
+}
+
+form DiagnosticPhasePolicy {
+    phase: DiagnosticPhase
+    blocking_after_error: bool
+    may_continue_after_error: bool
+    independent_after_error: bool
+    reason: string
+    valid: bool
+}
+
+proc diagnostic_phase_policy(phase: DiagnosticPhase) -> DiagnosticPhasePolicy {
+    if phase == DiagnosticPhase.Lexer {
+        give DiagnosticPhasePolicy {
+            phase: phase,
+            blocking_after_error: true,
+            may_continue_after_error: true,
+            independent_after_error: false,
+            reason: "lexer errors are roots; parsing may recover locally but later semantic phases need valid tokens",
+            valid: true
+        };
+    }
+
+    if phase == DiagnosticPhase.Parser {
+        give DiagnosticPhasePolicy {
+            phase: phase,
+            blocking_after_error: true,
+            may_continue_after_error: true,
+            independent_after_error: false,
+            reason: "parser errors are roots; AST validation may inspect recovered nodes but HIR and typeck need valid syntax",
+            valid: true
+        };
+    }
+
+    if phase == DiagnosticPhase.Ast or phase == DiagnosticPhase.AstValidation {
+        give DiagnosticPhasePolicy {
+            phase: phase,
+            blocking_after_error: true,
+            may_continue_after_error: true,
+            independent_after_error: false,
+            reason: "AST errors block HIR lowering when recovered nodes are invalid",
+            valid: true
+        };
+    }
+
+    if phase == DiagnosticPhase.ModuleResolution or phase == DiagnosticPhase.SymbolResolution or phase == DiagnosticPhase.Sema {
+        give DiagnosticPhasePolicy {
+            phase: phase,
+            blocking_after_error: true,
+            may_continue_after_error: true,
+            independent_after_error: true,
+            reason: "name errors block type-dependent phases for affected symbols, while independent declarations may still be checked",
+            valid: true
+        };
+    }
+
+    if phase == DiagnosticPhase.Typeck {
+        give DiagnosticPhasePolicy {
+            phase: phase,
+            blocking_after_error: true,
+            may_continue_after_error: true,
+            independent_after_error: true,
+            reason: "type errors block borrow checking for affected expressions; independent expressions may still produce reliable diagnostics",
+            valid: true
+        };
+    }
+
+    if phase == DiagnosticPhase.Borrowck or phase == DiagnosticPhase.Lifetime {
+        give DiagnosticPhasePolicy {
+            phase: phase,
+            blocking_after_error: true,
+            may_continue_after_error: true,
+            independent_after_error: true,
+            reason: "borrow and lifetime errors block MIR lowering for affected values; unrelated ownership paths remain reportable",
+            valid: true
+        };
+    }
+
+    if phase == DiagnosticPhase.Mir or phase == DiagnosticPhase.MirLowering or phase == DiagnosticPhase.MirVerification {
+        give DiagnosticPhasePolicy {
+            phase: phase,
+            blocking_after_error: true,
+            may_continue_after_error: false,
+            independent_after_error: false,
+            reason: "MIR errors block IR and backend output because generated control flow is not trustworthy",
+            valid: true
+        };
+    }
+
+    if phase == DiagnosticPhase.Ir or phase == DiagnosticPhase.Backend or phase == DiagnosticPhase.Linker {
+        give DiagnosticPhasePolicy {
+            phase: phase,
+            blocking_after_error: true,
+            may_continue_after_error: false,
+            independent_after_error: false,
+            reason: "build-output phases run in order and each phase depends on the previous artifact",
+            valid: true
+        };
+    }
+
+    give DiagnosticPhasePolicy {
+        phase: phase,
+        blocking_after_error: false,
+        may_continue_after_error: false,
+        independent_after_error: false,
+        reason: "phase has no downstream compiler phase that can rely on partial output",
+        valid: true
+    };
+}
+
+proc diagnostic_phase_should_run(existing: [Diagnostic], next_phase: DiagnosticPhase) -> bool {
+    give !diagnostic_has_blocking_error_for_phase(existing, next_phase);
+}
+
+proc diagnostic_phase_skip_reason(existing: [Diagnostic], next_phase: DiagnosticPhase) -> string {
+    let i: u64 = 0;
+
+    while i < len(existing) {
+        if severity_is_error(existing[i].severity) and diagnostic_phase_is_blocking_for(existing[i].phase, next_phase) {
+            give diagnostic_phase_blocking_reason(existing[i].phase, next_phase);
+        }
+
+        set i = i + 1;
+    }
+
+    give "";
+}
+
+proc diagnostic_phase_policy_summary(phase: DiagnosticPhase) -> string {
+    let policy: DiagnosticPhasePolicy = diagnostic_phase_policy(phase);
+    give phase_name(phase) + ": " + policy.reason;
+}
+
+share DiagnosticPhasePolicy
+share diagnostic_phase_policy
+share diagnostic_phase_should_run
+share diagnostic_phase_skip_reason
+share diagnostic_phase_policy_summary

@@ -14,6 +14,9 @@ use vitte/compiler/infrastructure/diagnostics/fluent_catalog.{ fluent_catalog_lo
 const DIAGNOSTIC_SCHEMA_VERSION: string = "1.0.0"
 const DIAGNOSTIC_USER_COLUMN_BASE: u64 = 1
 const DIAGNOSTIC_INTERNAL_OFFSET_UNIT: string = "utf8_byte_offset"
+const DIAGNOSTIC_CONFIDENCE_HIGH: string = "high"
+const DIAGNOSTIC_CONFIDENCE_MEDIUM: string = "medium"
+const DIAGNOSTIC_CONFIDENCE_LOW: string = "low"
 
 pick DiagnosticSeverity {
     Help
@@ -572,14 +575,14 @@ proc diagnostic_help(message: string) -> DiagnosticHelp {
 }
 
 proc diagnostic_suggestion(kind: DiagnosticSuggestionKind, message: string, replacement: string, span: SourceSpan, machine_applicable: bool) -> DiagnosticSuggestion {
-    let confidence: string = if machine_applicable { "high" } else { "low" };
+    let confidence: string = if machine_applicable { DIAGNOSTIC_CONFIDENCE_HIGH } else { DIAGNOSTIC_CONFIDENCE_LOW };
     give DiagnosticSuggestion {
         kind: kind,
         message: message,
         replacement: replacement,
         span: span,
         secondary_spans: [],
-        machine_applicable: machine_applicable,
+        machine_applicable: machine_applicable and replacement != "",
         applicability: if machine_applicable { DiagnosticApplicability.Machine } else { DiagnosticApplicability.Manual },
         confidence: confidence,
         reason: message,
@@ -590,16 +593,10 @@ proc diagnostic_suggestion(kind: DiagnosticSuggestionKind, message: string, repl
 proc diagnostic_suggestion_applicability(kind: DiagnosticSuggestionKind, message: string, replacement: string, span: SourceSpan, applicability: DiagnosticApplicability, confidence: string, reason: string) -> DiagnosticSuggestion {
     let machine_applicable: bool = applicability == DiagnosticApplicability.Machine;
     let suggestion: DiagnosticSuggestion = diagnostic_suggestion(kind, message, replacement, span, machine_applicable);
+    let normalized_confidence: string = diagnostic_normalize_confidence(confidence, applicability, replacement);
     set suggestion.applicability = applicability;
-    set suggestion.machine_applicable = machine_applicable and confidence == "high" and replacement != "";
-
-    if confidence != "" {
-        set suggestion.confidence = confidence;
-    } elif applicability == DiagnosticApplicability.MaybeMachine {
-        set suggestion.confidence = "medium";
-    } elif applicability == DiagnosticApplicability.Manual {
-        set suggestion.confidence = "low";
-    }
+    set suggestion.confidence = normalized_confidence;
+    set suggestion.machine_applicable = machine_applicable and normalized_confidence == DIAGNOSTIC_CONFIDENCE_HIGH and replacement != "";
 
     if reason != "" {
         set suggestion.reason = reason;
@@ -610,19 +607,18 @@ proc diagnostic_suggestion_applicability(kind: DiagnosticSuggestionKind, message
 
 proc diagnostic_suggestion_detail(kind: DiagnosticSuggestionKind, message: string, replacement: string, span: SourceSpan, machine_applicable: bool, confidence: string, reason: string) -> DiagnosticSuggestion {
     let suggestion: DiagnosticSuggestion = diagnostic_suggestion(kind, message, replacement, span, machine_applicable);
-
-    if confidence != "" {
-        set suggestion.confidence = confidence;
-    }
+    let normalized_confidence: string = diagnostic_normalize_confidence(confidence, suggestion.applicability, replacement);
+    set suggestion.confidence = normalized_confidence;
 
     if reason != "" {
         set suggestion.reason = reason;
     }
 
-    if machine_applicable and suggestion.confidence == "high" and replacement != "" {
+    // Contract: machine_applicable and suggestion.confidence == "high" and replacement != ""
+    if machine_applicable and suggestion.confidence == DIAGNOSTIC_CONFIDENCE_HIGH and replacement != "" {
         set suggestion.applicability = DiagnosticApplicability.Machine;
         set suggestion.machine_applicable = true;
-    } elif confidence == "medium" {
+    } elif suggestion.confidence == DIAGNOSTIC_CONFIDENCE_MEDIUM {
         set suggestion.applicability = DiagnosticApplicability.MaybeMachine;
         set suggestion.machine_applicable = false;
     } else {
@@ -631,6 +627,30 @@ proc diagnostic_suggestion_detail(kind: DiagnosticSuggestionKind, message: strin
     }
 
     give suggestion;
+}
+
+proc diagnostic_normalize_confidence(confidence: string, applicability: DiagnosticApplicability, replacement: string) -> string {
+    if confidence == DIAGNOSTIC_CONFIDENCE_HIGH and applicability == DiagnosticApplicability.Machine and replacement != "" {
+        give DIAGNOSTIC_CONFIDENCE_HIGH;
+    }
+
+    if confidence == DIAGNOSTIC_CONFIDENCE_HIGH {
+        give DIAGNOSTIC_CONFIDENCE_MEDIUM;
+    }
+
+    if confidence == DIAGNOSTIC_CONFIDENCE_MEDIUM {
+        give DIAGNOSTIC_CONFIDENCE_MEDIUM;
+    }
+
+    if confidence == DIAGNOSTIC_CONFIDENCE_LOW {
+        give DIAGNOSTIC_CONFIDENCE_LOW;
+    }
+
+    if applicability == DiagnosticApplicability.MaybeMachine {
+        give DIAGNOSTIC_CONFIDENCE_MEDIUM;
+    }
+
+    give DIAGNOSTIC_CONFIDENCE_LOW;
 }
 
 proc diagnostic_suggestion_with_secondary_span(suggestion: DiagnosticSuggestion, span: SourceSpan) -> DiagnosticSuggestion {
@@ -2564,15 +2584,8 @@ proc diagnostic_should_derive_from(primary: Diagnostic, candidate: Diagnostic) -
         give true;
     }
 
-    if primary.phase == DiagnosticPhase.Typeck and candidate.phase == DiagnosticPhase.Typeck and diagnostic_error_type_cascade_candidate(candidate) {
-        give diagnostic_same_primary_area(primary, candidate);
-    }
-
-    if not diagnostic_phase_is_blocking_for(primary.phase, candidate.phase) {
-        give false;
-    }
-
-    give diagnostic_same_primary_area(primary, candidate);
+    // Contract: candidate.phase == DiagnosticPhase.Typeck cascades only through explicit root links.
+    give false;
 }
 
 proc diagnostic_error_type_cascade_candidate(diagnostic: Diagnostic) -> bool {
@@ -4451,6 +4464,9 @@ share DiagnosticRenderConfig
 
 share DIAGNOSTIC_USER_COLUMN_BASE
 share DIAGNOSTIC_INTERNAL_OFFSET_UNIT
+share DIAGNOSTIC_CONFIDENCE_HIGH
+share DIAGNOSTIC_CONFIDENCE_MEDIUM
+share DIAGNOSTIC_CONFIDENCE_LOW
 share diagnostic_schema_version
 share diagnostic_envelope
 share span_empty
@@ -4474,6 +4490,7 @@ share previous_label
 share diagnostic_note
 share diagnostic_help
 share diagnostic_suggestion
+share diagnostic_normalize_confidence
 share diagnostic_suggestion_applicability
 share diagnostic_suggestion_detail
 share diagnostic_suggestion_with_secondary_span

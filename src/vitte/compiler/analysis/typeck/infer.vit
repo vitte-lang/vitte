@@ -19,7 +19,9 @@ use vitte/compiler/analysis/typeck/errors.{
     typeck_invalid_deref,
     typeck_invalid_index_target,
     typeck_trait_bound_unsatisfied,
-    typeck_unknown_member
+    typeck_unknown_member,
+    typeck_error_sentinel,
+    typeck_type_blocks_followup
 }
 use vitte/compiler/diagnostics/diagnostic.{ Diagnostic }
 use vitte/compiler/analysis/typeck/coercion.{
@@ -433,12 +435,12 @@ proc infer_literal_type(expr: HirExpr) -> ExprTypeResult {
         give expr_result("char", [], true);
     }
 
-    give expr_result("unknown", [], false);
+    give expr_result(typeck_error_sentinel(), [], false);
 }
 
 proc infer_unary_type(env: [TypeBinding], expr: HirExpr) -> ExprTypeResult {
     if len(expr.children) == 0 {
-        give expr_result("unknown", [missing_child_diag(
+        give expr_result(typeck_error_sentinel(), [missing_child_diag(
             "TYPECK_E_MALFORMED_UNARY",
             "unary expression requires one operand",
             expr
@@ -450,8 +452,8 @@ proc infer_unary_type(env: [TypeBinding], expr: HirExpr) -> ExprTypeResult {
     if expr.operator == "*" {
         let target: string = type_deref_target(inner.ty);
 
-        if target == "unknown" and inner.ty != "opaque" {
-            give expr_result("unknown", add_unique_diag(inner.diagnostics, typeck_invalid_deref(
+        if target == "unknown" and !typeck_type_blocks_followup(inner.ty) {
+            give expr_result(typeck_error_sentinel(), add_unique_diag(inner.diagnostics, typeck_invalid_deref(
                 inner.ty,
                 expr.span
             )), false);
@@ -465,8 +467,8 @@ proc infer_unary_type(env: [TypeBinding], expr: HirExpr) -> ExprTypeResult {
     }
 
     if expr.operator == "-" {
-        if !type_is_numeric(inner.ty) and inner.ty != "opaque" {
-            give expr_result("unknown", add_unique_diag(inner.diagnostics, typeck_diag(
+        if !type_is_numeric(inner.ty) and !typeck_type_blocks_followup(inner.ty) {
+            give expr_result(typeck_error_sentinel(), add_unique_diag(inner.diagnostics, typeck_diag(
                 "TYPECK_E_UNARY_MISMATCH",
                 "unary `-` requires a numeric operand",
                 [inner.ty],
@@ -552,7 +554,7 @@ proc infer_member_type(env: [TypeBinding], expr: HirExpr) -> ExprTypeResult {
 
     if nominal_ty == "@ambiguous-method" {
         let providers: string = env_get(env, "@member-provider:" + owner_type + "." + member);
-        give expr_result("unknown", add_unique_diag(base.diagnostics, typeck_ambiguous_method(
+        give expr_result(typeck_error_sentinel(), add_unique_diag(base.diagnostics, typeck_ambiguous_method(
             owner_type,
             member,
             providers,
@@ -564,8 +566,8 @@ proc infer_member_type(env: [TypeBinding], expr: HirExpr) -> ExprTypeResult {
         give expr_result(nominal_ty, base.diagnostics, base.valid);
     }
 
-    if projected == "unknown" {
-        give expr_result(projected, add_unique_diag(base.diagnostics, typeck_unknown_member(
+    if projected == "unknown" and !typeck_type_blocks_followup(base.ty) {
+        give expr_result(typeck_error_sentinel(), add_unique_diag(base.diagnostics, typeck_unknown_member(
             member,
             base.ty,
             expr.span
@@ -595,7 +597,7 @@ proc infer_index_type(env: [TypeBinding], expr: HirExpr) -> ExprTypeResult {
 
         set valid = valid and index0.valid;
 
-        if !type_is_numeric(index0.ty) and index0.ty != "opaque" {
+        if !type_is_numeric(index0.ty) and !typeck_type_blocks_followup(index0.ty) {
             set diagnostics = add_unique_diag(diagnostics, typeck_index_type(
                 index0.ty,
                 expr.span
@@ -607,7 +609,7 @@ proc infer_index_type(env: [TypeBinding], expr: HirExpr) -> ExprTypeResult {
 
     let element_ty: string = type_index_element(base.ty);
 
-    if element_ty == "opaque" and base.ty != "opaque" and base.ty != "unknown" {
+    if element_ty == "opaque" and !typeck_type_blocks_followup(base.ty) and base.ty != "unknown" {
         set diagnostics = add_unique_diag(diagnostics, typeck_invalid_index_target(
             base.ty,
             expr.span
@@ -641,7 +643,7 @@ proc infer_binary_type(env: [TypeBinding], expr: HirExpr) -> ExprTypeResult {
         let numeric_right: bool = type_is_numeric(right.ty) or right.ty == "opaque";
         let unified = unify_binary_result_type(left.ty, op, right.ty);
         if not numeric_left or not numeric_right or not unified.success {
-            give expr_result("unknown", add_unique_diag(diagnostics, typeck_binary_mismatch(left.ty, right.ty, op, expr.span)), false);
+            give expr_result(typeck_error_sentinel(), add_unique_diag(diagnostics, typeck_binary_mismatch(left.ty, right.ty, op, expr.span)), false);
         }
 
         give expr_result(unified.ty, diagnostics, valid);
@@ -683,7 +685,7 @@ proc infer_binary_type(env: [TypeBinding], expr: HirExpr) -> ExprTypeResult {
 
 proc infer_cast_type(env: [TypeBinding], expr: HirExpr) -> ExprTypeResult {
     if len(expr.children) < 2 {
-        give expr_result("unknown", [typeck_diag(
+        give expr_result(typeck_error_sentinel(), [typeck_diag(
             "TYPECK_E_MALFORMED_CAST",
             "cast expression requires a source and target",
             [expr.text],
@@ -701,7 +703,7 @@ proc infer_cast_type(env: [TypeBinding], expr: HirExpr) -> ExprTypeResult {
     let valid: bool = source.valid;
 
     if target_ty == "" or target_ty == "unknown" {
-        give expr_result("unknown", add_unique_diag(diagnostics, typeck_diag(
+        give expr_result(typeck_error_sentinel(), add_unique_diag(diagnostics, typeck_diag(
             "TYPECK_E_UNKNOWN_TYPE",
             "cast target type could not be resolved",
             [expr.text],
@@ -711,7 +713,7 @@ proc infer_cast_type(env: [TypeBinding], expr: HirExpr) -> ExprTypeResult {
         )), false);
     }
 
-    if source.ty == "opaque" or source.ty == "unknown" or target_ty == "opaque" {
+    if typeck_type_blocks_followup(source.ty) or source.ty == "unknown" or target_ty == "opaque" {
         give expr_result(target_ty, diagnostics, valid);
     }
 
@@ -719,7 +721,7 @@ proc infer_cast_type(env: [TypeBinding], expr: HirExpr) -> ExprTypeResult {
         give expr_result(target_ty, diagnostics, valid);
     }
 
-    give expr_result("unknown", add_unique_diag(diagnostics, typeck_invalid_cast(source.ty, target_ty, expr.span)), false);
+    give expr_result(typeck_error_sentinel(), add_unique_diag(diagnostics, typeck_invalid_cast(source.ty, target_ty, expr.span)), false);
 }
 
 proc split_function_signature_types(text: string) -> [string] {
