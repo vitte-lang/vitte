@@ -524,6 +524,34 @@ proc render_suggestions(ctx: RenderContext, diagnostic: Diagnostic) -> string {
     give out;
 }
 
+proc render_example_lines(ctx: RenderContext, diagnostic: Diagnostic) -> string {
+    let out: string = "";
+
+    if diagnostic.valid_example != "" {
+        set out = append_line(out, color_wrap(ctx, ansi_dim(), "  valid: " + diagnostic.valid_example));
+    }
+
+    if diagnostic.invalid_example != "" {
+        set out = append_line(out, color_wrap(ctx, ansi_dim(), "  invalid: " + diagnostic.invalid_example));
+    }
+
+    give out;
+}
+
+proc render_causality_lines(ctx: RenderContext, diagnostic: Diagnostic) -> string {
+    let out: string = "";
+
+    if diagnostic.cascade and diagnostic.cascade_of != "" {
+        set out = append_line(out, color_wrap(ctx, ansi_dim(), "  cascade-of: " + diagnostic.cascade_of));
+    }
+
+    if diagnostic.recovery_possible {
+        set out = append_line(out, color_wrap(ctx, ansi_dim(), "  recovery: compilation can continue after local recovery"));
+    }
+
+    give out;
+}
+
 proc render_diagnostic_text(ctx: RenderContext, diagnostic: Diagnostic) -> string {
     let out: string = render_header(ctx, diagnostic);
     set out = append_line(out, render_location(ctx, diagnostic.span));
@@ -543,6 +571,18 @@ proc render_diagnostic_text(ctx: RenderContext, diagnostic: Diagnostic) -> strin
 
     if helps != "" {
         set out = append_line(out, helps);
+    }
+
+    let examples: string = render_example_lines(ctx, diagnostic);
+
+    if examples != "" {
+        set out = append_line(out, examples);
+    }
+
+    let causality: string = render_causality_lines(ctx, diagnostic);
+
+    if causality != "" {
+        set out = append_line(out, causality);
     }
 
     let suggestions: string = render_suggestions(ctx, diagnostic);

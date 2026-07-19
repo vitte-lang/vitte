@@ -141,6 +141,7 @@ form DiagnosticCausalitySummary {
     root_count: u64
     cascade_count: u64
     suppressed_cascade_count: u64
+    duplicate_count: u64
     summary: string
     valid: bool
 }
@@ -176,7 +177,16 @@ form Diagnostic {
     subject_symbol: string
     subject_type: string
     subject_borrow: string
+    valid_example: string
+    invalid_example: string
+    primary_error_key: string
+    cascade_of: string
     span: SourceSpan
+    primary_error: bool
+    cascade: bool
+    suppressed: bool
+    duplicate: bool
+    recovery_possible: bool
     deprecated: bool
     unnecessary: bool
     fatal: bool
@@ -191,6 +201,9 @@ form DiagnosticReport {
     fatal_count: u64
     root_count: u64
     cascade_count: u64
+    suppressed_cascade_count: u64
+    duplicate_count: u64
+    recovery_possible: bool
     quality_score: u64
 }
 
@@ -1383,6 +1396,62 @@ proc diagnostic_default_example(phase: DiagnosticPhase, code: string) -> string 
     give "vitte check path/to/file.vit";
 }
 
+proc diagnostic_default_invalid_example(phase: DiagnosticPhase, code: string) -> string {
+    if code == "E0001" {
+        give "proc () -> int { give 0; }";
+    }
+
+    if code == "E0002" {
+        give "proc main() -> int { give ; }";
+    }
+
+    if code == "P000_UNBALANCED" {
+        give "proc main() -> int { give 0;";
+    }
+
+    if starts_with(code, "TYPECK_") {
+        give "let count: int = \"one\"";
+    }
+
+    if starts_with(code, "BORROWCK_") or starts_with(code, "BORROW_") {
+        give "move(value); use(value)";
+    }
+
+    if phase == DiagnosticPhase.Driver {
+        give "vitte check";
+    }
+
+    if phase == DiagnosticPhase.Lexer {
+        give "\"unterminated";
+    }
+
+    give "<invalid Vitte source>";
+}
+
+proc diagnostic_primary_key(code: string, span: SourceSpan) -> string {
+    give code + "@" + span.file + ":" + span.start_line as string + ":" + span.start_column as string;
+}
+
+proc diagnostic_phase_can_recover(phase: DiagnosticPhase) -> bool {
+    if phase == DiagnosticPhase.Lexer or phase == DiagnosticPhase.Parser {
+        give true;
+    }
+
+    if phase == DiagnosticPhase.Ast or phase == DiagnosticPhase.AstValidation {
+        give true;
+    }
+
+    if phase == DiagnosticPhase.ModuleResolution or phase == DiagnosticPhase.SymbolResolution or phase == DiagnosticPhase.Sema {
+        give true;
+    }
+
+    if phase == DiagnosticPhase.Typeck or phase == DiagnosticPhase.Borrowck or phase == DiagnosticPhase.Lifetime {
+        give true;
+    }
+
+    give false;
+}
+
 proc diagnostic_default_suggestion(phase: DiagnosticPhase, code: string, span: SourceSpan) -> DiagnosticSuggestion {
     let kind: DiagnosticSuggestionKind = diagnostic_default_suggestion_kind(phase, code);
     let message: string = diagnostic_default_suggestion_message(phase, code);
@@ -1559,7 +1628,16 @@ proc diagnostic_create(code: string, phase: DiagnosticPhase, severity: Diagnosti
         subject_symbol: "",
         subject_type: "",
         subject_borrow: "",
+        valid_example: diagnostic_default_example(phase, code),
+        invalid_example: diagnostic_default_invalid_example(phase, code),
+        primary_error_key: diagnostic_primary_key(code, span),
+        cascade_of: "",
         span: span,
+        primary_error: true,
+        cascade: false,
+        suppressed: false,
+        duplicate: false,
+        recovery_possible: diagnostic_phase_can_recover(phase) and not severity_is_fatal(severity),
         deprecated: false,
         unnecessary: false,
         fatal: severity_is_fatal(severity),
@@ -1672,6 +1750,36 @@ proc diagnostic_with_subject_borrow(diagnostic: Diagnostic, subject_borrow: stri
     }
 
     set diagnostic.subject_borrow = subject_borrow;
+    give diagnostic;
+}
+
+proc diagnostic_with_examples(diagnostic: Diagnostic, valid_example: string, invalid_example: string) -> Diagnostic {
+    if valid_example != "" {
+        set diagnostic.valid_example = valid_example;
+    }
+
+    if invalid_example != "" {
+        set diagnostic.invalid_example = invalid_example;
+    }
+
+    give diagnostic;
+}
+
+proc diagnostic_mark_cascade(diagnostic: Diagnostic, primary_error_key: string) -> Diagnostic {
+    if primary_error_key == "" {
+        give diagnostic;
+    }
+
+    set diagnostic.primary_error = false;
+    set diagnostic.cascade = true;
+    set diagnostic.cascade_of = primary_error_key;
+    set diagnostic.pipeline_context = diagnostic.pipeline_context + [diag_kv("cascade_of", primary_error_key)];
+    give diagnostic;
+}
+
+proc diagnostic_mark_suppressed(diagnostic: Diagnostic, primary_error_key: string) -> Diagnostic {
+    set diagnostic = diagnostic_mark_cascade(diagnostic, primary_error_key);
+    set diagnostic.suppressed = true;
     give diagnostic;
 }
 
@@ -1950,6 +2058,14 @@ proc prioritize_diagnostics(diagnostics: [Diagnostic]) -> [Diagnostic] {
 }
 
 proc diagnostic_is_root(diagnostic: Diagnostic) -> bool {
+    if diagnostic.cascade or diagnostic.cascade_of != "" or diagnostic.suppressed {
+        give false;
+    }
+
+    if diagnostic.primary_error {
+        give true;
+    }
+
     if diagnostic.phase == DiagnosticPhase.Lexer or diagnostic.phase == DiagnosticPhase.Parser {
         give true;
     }
@@ -1963,6 +2079,152 @@ proc diagnostic_is_root(diagnostic: Diagnostic) -> bool {
     }
 
     give false;
+}
+
+proc diagnostic_cascade_limit() -> u64 {
+    give 3 as u64;
+}
+
+proc diagnostic_same_primary_area(left: Diagnostic, right: Diagnostic) -> bool {
+    if left.span.file == "" or right.span.file == "" {
+        give false;
+    }
+
+    if left.span.file != right.span.file {
+        give false;
+    }
+
+    if right.span.start_line < left.span.start_line {
+        give false;
+    }
+
+    give right.span.start_line <= left.span.start_line + 8;
+}
+
+proc diagnostic_should_derive_from(primary: Diagnostic, candidate: Diagnostic) -> bool {
+    if primary.primary_error_key == "" {
+        give false;
+    }
+
+    if not severity_is_error(primary.severity) {
+        give false;
+    }
+
+    if not severity_is_error(candidate.severity) {
+        give false;
+    }
+
+    if primary.code == candidate.code and primary.message == candidate.message {
+        give false;
+    }
+
+    if diagnostic_phase_priority(candidate.phase) <= diagnostic_phase_priority(primary.phase) {
+        give false;
+    }
+
+    give diagnostic_same_primary_area(primary, candidate);
+}
+
+proc diagnostics_suppressed_cascade_count(diagnostics: [Diagnostic]) -> u64 {
+    let count: u64 = 0;
+    let i: u64 = 0;
+
+    while i < len(diagnostics) {
+        if diagnostics[i].suppressed {
+            set count = count + 1;
+        }
+
+        set i = i + 1;
+    }
+
+    give count;
+}
+
+proc diagnostics_duplicate_count(original: [Diagnostic], normalized: [Diagnostic]) -> u64 {
+    let unique: [Diagnostic] = [];
+    let i: u64 = 0;
+
+    while i < len(original) {
+        set unique = add_unique_diagnostic(unique, original[i]);
+        set i = i + 1;
+    }
+
+    if len(original) <= len(unique) {
+        give 0 as u64;
+    }
+
+    give len(original) - len(unique);
+}
+
+proc diagnostics_suppressed_cascade_count_from_original(original: [Diagnostic], normalized: [Diagnostic]) -> u64 {
+    let unique: [Diagnostic] = [];
+    let i: u64 = 0;
+
+    while i < len(original) {
+        set unique = add_unique_diagnostic(unique, original[i]);
+        set i = i + 1;
+    }
+
+    if len(unique) <= len(normalized) {
+        give 0 as u64;
+    }
+
+    give len(unique) - len(normalized);
+}
+
+proc diagnostics_recovery_possible(diagnostics: [Diagnostic]) -> bool {
+    let i: u64 = 0;
+
+    while i < len(diagnostics) {
+        if diagnostics[i].recovery_possible and not diagnostics[i].suppressed {
+            give true;
+        }
+
+        set i = i + 1;
+    }
+
+    give false;
+}
+
+proc diagnostic_report_visible_diagnostics(diagnostics: [Diagnostic]) -> [Diagnostic] {
+    let ordered: [Diagnostic] = prioritize_diagnostics(diagnostics);
+    let out: [Diagnostic] = [];
+    let primary: Diagnostic = diagnostic_create("DIAG_INTERNAL_PRIMARY", DiagnosticPhase.Internal, DiagnosticSeverity.Note, "internal primary placeholder", span_empty());
+    let have_primary: bool = false;
+    let cascade_count: u64 = 0;
+    let i: u64 = 0;
+
+    while i < len(ordered) {
+        let candidate: Diagnostic = ordered[i];
+
+        if len(add_unique_diagnostic(out, candidate)) == len(out) {
+            set candidate.duplicate = true;
+            set candidate.suppressed = true;
+        } elif have_primary and diagnostic_should_derive_from(primary, candidate) {
+            set candidate = diagnostic_mark_cascade(candidate, primary.primary_error_key);
+
+            if cascade_count >= diagnostic_cascade_limit() {
+                set candidate = diagnostic_mark_suppressed(candidate, primary.primary_error_key);
+            } else {
+                set out = out + [candidate];
+                set cascade_count = cascade_count + 1;
+            }
+        } else {
+            if not have_primary and severity_is_error(candidate.severity) {
+                set candidate.primary_error = true;
+                set candidate.cascade = false;
+                set candidate.cascade_of = "";
+                set primary = candidate;
+                set have_primary = true;
+            }
+
+            set out = out + [candidate];
+        }
+
+        set i = i + 1;
+    }
+
+    give out;
 }
 
 proc diagnostic_root_count(diagnostics: [Diagnostic]) -> u64 {
@@ -1992,13 +2254,17 @@ proc diagnostic_cascade_count(diagnostics: [Diagnostic]) -> u64 {
 proc diagnostic_causality_summary(diagnostics: [Diagnostic]) -> DiagnosticCausalitySummary {
     let roots: u64 = diagnostic_root_count(diagnostics);
     let cascades: u64 = diagnostic_cascade_count(diagnostics);
+    let suppressed: u64 = diagnostics_suppressed_cascade_count(diagnostics);
+    let duplicates: u64 = 0;
     let roots_text: string = roots as string;
     let cascades_text: string = cascades as string;
+    let suppressed_text: string = suppressed as string;
     give DiagnosticCausalitySummary {
         root_count: roots,
         cascade_count: cascades,
-        suppressed_cascade_count: cascades,
-        summary: roots_text + " root diagnostic(s), " + cascades_text + " probable cascade diagnostic(s)",
+        suppressed_cascade_count: suppressed,
+        duplicate_count: duplicates,
+        summary: roots_text + " root diagnostic(s), " + cascades_text + " probable cascade diagnostic(s), " + suppressed_text + " suppressed cascade diagnostic(s)",
         valid: true
     };
 }
@@ -2132,8 +2398,10 @@ proc diagnostics_have_fatal(diagnostics: [Diagnostic]) -> bool {
 }
 
 proc diagnostic_report(diagnostics: [Diagnostic]) -> DiagnosticReport {
-    let ordered: [Diagnostic] = prioritize_diagnostics(diagnostics);
+    let ordered: [Diagnostic] = diagnostic_report_visible_diagnostics(diagnostics);
     let causality: DiagnosticCausalitySummary = diagnostic_causality_summary(ordered);
+    let suppressed_cascades: u64 = diagnostics_suppressed_cascade_count_from_original(diagnostics, ordered);
+    let duplicates: u64 = diagnostics_duplicate_count(diagnostics, ordered);
     give DiagnosticReport {
         diagnostics: ordered,
         valid: !diagnostics_have_errors(ordered),
@@ -2151,6 +2419,9 @@ proc diagnostic_report(diagnostics: [Diagnostic]) -> DiagnosticReport {
         ),
         root_count: causality.root_count,
         cascade_count: causality.cascade_count,
+        suppressed_cascade_count: suppressed_cascades,
+        duplicate_count: duplicates,
+        recovery_possible: diagnostics_recovery_possible(ordered),
         quality_score: diagnostic_report_quality_score(ordered)
     };
 }

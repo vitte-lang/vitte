@@ -551,6 +551,34 @@ proc json_diagnostic(diagnostic: Diagnostic) -> string {
         ),
 
         json_key_value(
+            "valid_example",
+            json_optional_string(
+                diagnostic.valid_example
+            )
+        ),
+
+        json_key_value(
+            "invalid_example",
+            json_optional_string(
+                diagnostic.invalid_example
+            )
+        ),
+
+        json_key_value(
+            "primary_error_key",
+            json_optional_string(
+                diagnostic.primary_error_key
+            )
+        ),
+
+        json_key_value(
+            "cascade_of",
+            json_optional_string(
+                diagnostic.cascade_of
+            )
+        ),
+
+        json_key_value(
             "probable_fix",
             json_optional_string(
                 diagnostic.probable_fix
@@ -589,6 +617,41 @@ proc json_diagnostic(diagnostic: Diagnostic) -> string {
             "unnecessary",
             json_bool(
                 diagnostic.unnecessary
+            )
+        ),
+
+        json_key_value(
+            "primary_error",
+            json_bool(
+                diagnostic.primary_error
+            )
+        ),
+
+        json_key_value(
+            "cascade",
+            json_bool(
+                diagnostic.cascade
+            )
+        ),
+
+        json_key_value(
+            "suppressed",
+            json_bool(
+                diagnostic.suppressed
+            )
+        ),
+
+        json_key_value(
+            "duplicate",
+            json_bool(
+                diagnostic.duplicate
+            )
+        ),
+
+        json_key_value(
+            "recovery_possible",
+            json_bool(
+                diagnostic.recovery_possible
             )
         ),
 
@@ -654,6 +717,21 @@ proc json_report(report: DiagnosticReport) -> string {
         ),
 
         json_key_value(
+            "suppressed_cascade_count",
+            report.suppressed_cascade_count as string
+        ),
+
+        json_key_value(
+            "duplicate_count",
+            report.duplicate_count as string
+        ),
+
+        json_key_value(
+            "recovery_possible",
+            json_bool(report.recovery_possible)
+        ),
+
+        json_key_value(
             "quality_score",
             report.quality_score as string
         ),
@@ -663,7 +741,9 @@ proc json_report(report: DiagnosticReport) -> string {
             json_object([
                 json_key_value("root_count", report.root_count as string),
                 json_key_value("cascade_count", report.cascade_count as string),
-                json_key_value("suppressed_cascade_count", report.cascade_count as string)
+                json_key_value("suppressed_cascade_count", report.suppressed_cascade_count as string),
+                json_key_value("duplicate_count", report.duplicate_count as string),
+                json_key_value("recovery_possible", json_bool(report.recovery_possible))
             ])
         ),
 
@@ -689,7 +769,9 @@ proc json_envelope(envelope: DiagnosticEnvelope) -> string {
             json_object([
                 json_key_value("root_count", envelope.report.root_count as string),
                 json_key_value("cascade_count", envelope.report.cascade_count as string),
-                json_key_value("suppressed_cascade_count", envelope.report.cascade_count as string)
+                json_key_value("suppressed_cascade_count", envelope.report.suppressed_cascade_count as string),
+                json_key_value("duplicate_count", envelope.report.duplicate_count as string),
+                json_key_value("recovery_possible", json_bool(envelope.report.recovery_possible))
             ])
         ),
         json_key_value("report", json_report(envelope.report)),
@@ -713,7 +795,9 @@ proc json_report_envelope_with_canonical_context(report: DiagnosticReport, produ
             json_object([
                 json_key_value("root_count", report.root_count as string),
                 json_key_value("cascade_count", report.cascade_count as string),
-                json_key_value("suppressed_cascade_count", report.cascade_count as string)
+                json_key_value("suppressed_cascade_count", report.suppressed_cascade_count as string),
+                json_key_value("duplicate_count", report.duplicate_count as string),
+                json_key_value("recovery_possible", json_bool(report.recovery_possible))
             ])
         ),
         json_key_value("report", json_report(report)),

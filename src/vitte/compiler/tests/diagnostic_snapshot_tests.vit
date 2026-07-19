@@ -145,6 +145,8 @@ proc rendered_has_default_context(diag: Diagnostic) -> bool {
     and find(actual, "docs: docs://") >= 0
     and find(actual, "step 1: ") >= 0
     and find(actual, "help: ") >= 0
+    and find(actual, "valid: ") >= 0
+    and find(actual, "invalid: ") >= 0
     and find(actual, "suggestion:") >= 0;
 }
 
@@ -162,7 +164,11 @@ proc json_has_default_context(diag: Diagnostic) -> bool {
     and find(actual, "\"fixes\": [") >= 0
     and find(actual, "\"quality\": {") >= 0
     and find(actual, "\"suggestions\": [") >= 0
-    and find(actual, "\"confidence\": \"") >= 0;
+    and find(actual, "\"confidence\": \"") >= 0
+    and find(actual, "\"valid_example\": \"") >= 0
+    and find(actual, "\"invalid_example\": \"") >= 0
+    and find(actual, "\"primary_error_key\": \"") >= 0
+    and find(actual, "\"recovery_possible\": ") >= 0;
 }
 
 proc lsp_has_machine_context(diag: Diagnostic) -> bool {
@@ -330,6 +336,46 @@ proc test_machine_diagnostic_contract() -> bool {
     and report.quality_score >= 70;
 }
 
+proc sample_cascade_diagnostic(line: u64, message: string) -> Diagnostic {
+  give diagnostic_error(
+    "TYPECK_E_ASSIGN_MISMATCH",
+    DiagnosticPhase.Typeck,
+    message,
+    span_range("src/vitte/compiler/tests/diagnostics/parser/cascade.vit", line, 3, line, 9)
+  );
+}
+
+proc test_report_deduplicates_and_limits_cascades() -> bool {
+  let root: Diagnostic = parser_unclosed_block(
+    span_create("src/vitte/compiler/tests/diagnostics/parser/cascade.vit", 1, 1, 5),
+    span_create("src/vitte/compiler/tests/diagnostics/parser/cascade.vit", 2, 1, 1)
+  );
+  let duplicate: Diagnostic = parser_unclosed_block(
+    span_create("src/vitte/compiler/tests/diagnostics/parser/cascade.vit", 1, 1, 5),
+    span_create("src/vitte/compiler/tests/diagnostics/parser/cascade.vit", 2, 1, 1)
+  );
+  let report: DiagnosticReport = diagnostic_report([
+    root,
+    duplicate,
+    sample_cascade_diagnostic(2, "derived mismatch one"),
+    sample_cascade_diagnostic(3, "derived mismatch two"),
+    sample_cascade_diagnostic(4, "derived mismatch three"),
+    sample_cascade_diagnostic(5, "derived mismatch four")
+  ]);
+  let rendered: string = render_report(report, human_config());
+  let encoded: string = json_diagnostic(report.diagnostics[0]);
+  give len(report.diagnostics) == 4
+    and report.duplicate_count == 1
+    and report.suppressed_cascade_count == 1
+    and report.cascade_count == 3
+    and report.recovery_possible
+    and report.diagnostics[1].cascade
+    and report.diagnostics[1].cascade_of == report.diagnostics[0].primary_error_key
+    and find(rendered, "cascade-of: ") >= 0
+    and find(encoded, "\"valid_example\": \"") >= 0
+    and find(encoded, "\"invalid_example\": \"") >= 0;
+}
+
 proc run_all_tests() -> int {
   let failures: int = 0;
   let typeck_ok: bool = test_typeck_diagnostic_contract();
@@ -343,6 +389,7 @@ proc run_all_tests() -> int {
   let lsp_actions_ok: bool = test_lsp_code_action_contract();
   let catalog_ok: bool = test_typeck_and_borrowck_suggestion_catalog_contract();
   let rendered_suggestions_ok: bool = test_rendered_suggestion_applicability_contract();
+  let report_cascade_ok: bool = test_report_deduplicates_and_limits_cascades();
   if typeck_ok == false {
     set failures = failures + 1;
   }
@@ -374,6 +421,9 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if rendered_suggestions_ok == false {
+    set failures = failures + 1;
+  }
+  if report_cascade_ok == false {
     set failures = failures + 1;
   }
   give failures;
