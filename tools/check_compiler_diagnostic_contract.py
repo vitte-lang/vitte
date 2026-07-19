@@ -39,6 +39,18 @@ VAGUE_DIAGNOSTIC_PHRASES = (
     "type compatibility rule was violated",
     "type mismatch",
 )
+FORBIDDEN_AUTOFIX_REPLACEMENTS = (
+    '"todo()"',
+    '"(...)"',
+    '"<" +',
+    '"use module {"',
+    'extern \\"C\\" { ... }',
+)
+AUTOFIX_PRODUCERS = (
+    "diagnostic_with_insert",
+    "diagnostic_with_replace",
+    "diagnostic_suggestion_applicability",
+)
 ALLOWED_OUTPUT_BOUNDARIES = {
     "src/vitte/compiler/driver/compiler.vit",
     "src/vitte/compiler/diagnostics/render.vit",
@@ -263,6 +275,11 @@ def check_relational_diagnostic_contract() -> list[str]:
         for phrase in VAGUE_DIAGNOSTIC_PHRASES:
             if phrase in text:
                 failures.append(f"{rel}: vague diagnostic phrase is forbidden: {phrase!r}")
+        for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            if any(producer in line for producer in AUTOFIX_PRODUCERS):
+                for fragment in FORBIDDEN_AUTOFIX_REPLACEMENTS:
+                    if fragment in line:
+                        failures.append(f"{rel}:{line_number}: non-canonical Vitte autofix replacement is forbidden: {fragment!r}")
 
     required_fragments = (
         (SEMA_DIAGNOSTICS, "sema_duplicate_symbol_redefinition"),
@@ -308,6 +325,9 @@ def check_relational_diagnostic_contract() -> list[str]:
         (PARSER, "modifier `\" + last_modifier + \"` is only valid before a procedure declaration here"),
         (PARSER, "top-level declaration expected a Vitte declaration keyword"),
         (PARSER, "assignment statement is missing an assignment operator"),
+        (PARSER, "old Vitte container keyword"),
+        (PARSER, "write `form` for this declaration"),
+        (PARSER, "write `pick` for this declaration"),
         (TYPECK_DIAGNOSTICS, "why expected type is imposed:"),
         (TYPECK_DIAGNOSTICS, "origin of obtained type:"),
         (TYPECK_DIAGNOSTICS, "Expected type `"),
@@ -322,6 +342,32 @@ def check_relational_diagnostic_contract() -> list[str]:
         (CANONICAL_DIAGNOSTIC, "why expected type is imposed:"),
         (CANONICAL_DIAGNOSTIC, "origin of obtained type:"),
         (CANONICAL_DIAGNOSTIC, "give 3 as u64;"),
+        (CANONICAL_DIAGNOSTIC, "vitte_canonical_keywords"),
+        (CANONICAL_DIAGNOSTIC, "vitte_legacy_keyword_replacement"),
+        (CANONICAL_DIAGNOSTIC, "vitte_suggestion_is_canonical"),
+        (CANONICAL_DIAGNOSTIC, "space, use, form, pick, proc, let, set, give"),
+        (CANONICAL_DIAGNOSTIC, "parser_old_vitte_syntax"),
+        (CANONICAL_DIAGNOSTIC, "typeck_give_missing"),
+        (CANONICAL_DIAGNOSTIC, "typeck_give_without_value"),
+        (CANONICAL_DIAGNOSTIC, "typeck_give_type_mismatch"),
+        (CANONICAL_DIAGNOSTIC, "typeck_give_missing_control_path"),
+        (CANONICAL_DIAGNOSTIC, "sema_code_after_give"),
+        (CANONICAL_DIAGNOSTIC, "sema_set_immutable_binding"),
+        (CANONICAL_DIAGNOSTIC, "sema_set_reassignment_impossible"),
+        (CANONICAL_DIAGNOSTIC, "sema_mutable_never_modified"),
+        (CANONICAL_DIAGNOSTIC, "typeck_let_missing_initialization"),
+        (CANONICAL_DIAGNOSTIC, "typeck_let_type_inference_failed"),
+        (CANONICAL_DIAGNOSTIC, "typeck_form_unknown_field"),
+        (CANONICAL_DIAGNOSTIC, "typeck_form_missing_field"),
+        (CANONICAL_DIAGNOSTIC, "typeck_form_duplicate_field"),
+        (CANONICAL_DIAGNOSTIC, "typeck_form_field_type_mismatch"),
+        (CANONICAL_DIAGNOSTIC, "typeck_form_field_order"),
+        (CANONICAL_DIAGNOSTIC, "typeck_form_incomplete"),
+        (TYPECK_DIAGNOSTICS, "`give` in `\" + proc_name + \"` produces"),
+        (TYPECK_DIAGNOSTICS, "give a `\" + expected + \"` value or change the proc signature"),
+        (TYPECK_DIAGNOSTICS, "`let \" + name + \"` is read before it has a value"),
+        (SEMA_DIAGNOSTICS, "use module.{ \" + name + \" }"),
+        (PARSER, "a complete extern ABI block"),
         (CANONICAL_DIAGNOSTIC, "set diagnostic.suggestions = diagnostic_suggestion_list_add(diagnostic.suggestions, suggestion);"),
     )
     for path, fragment in required_fragments:

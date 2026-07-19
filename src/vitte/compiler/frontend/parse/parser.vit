@@ -1530,9 +1530,17 @@ proc parse_decl(state: ParserState) -> ParserState {
       let abi: ParserState = advance(walk);
       give skip_balanced(abi, "{", "}", "PEXTERN002");
     }
-    give with_diag(walk, "PEXTERN999", "extern declaration is incomplete: write `extern type Name` or an extern ABI block such as `extern \"C\" { ... }` before " + token_display(current_token(walk)));
+    give with_diag(walk, "PEXTERN999", "extern declaration is incomplete: write `extern type Name` or a complete extern ABI block before " + token_display(current_token(walk)));
   }
-  if tok.lexeme == "form" or tok.lexeme == "class" or tok.lexeme == "union" or tok.lexeme == "bits" or tok.lexeme == "pick" or tok.lexeme == "flags" or tok.lexeme == "trait" or tok.lexeme == "impl" {
+  if tok.lexeme == "class" or tok.lexeme == "union" or tok.lexeme == "bits" {
+    let current_form: ParserState = with_diag(prefixed, "PDECL_OLD_VITTE_SYNTAX", "old Vitte container keyword `" + tok.lexeme + "` is no longer canonical here; write `form` for this declaration");
+    give parse_container_decl(current_form);
+  }
+  if tok.lexeme == "flags" {
+    let current_pick: ParserState = with_diag(prefixed, "PDECL_OLD_VITTE_SYNTAX", "old Vitte container keyword `flags` is no longer canonical here; write `pick` for this declaration");
+    give parse_container_decl(current_pick);
+  }
+  if tok.lexeme == "form" or tok.lexeme == "pick" or tok.lexeme == "trait" or tok.lexeme == "impl" {
     give parse_container_decl(prefixed);
   }
   if tok.lexeme == "proc" or is_visibility(tok.lexeme) or is_proc_modifier(tok.lexeme) {

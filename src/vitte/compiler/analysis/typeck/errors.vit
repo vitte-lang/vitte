@@ -23,7 +23,6 @@ use vitte/compiler/diagnostics/diagnostic.{
     diagnostic_with_probable_fix,
     diagnostic_with_subject_symbol,
     diagnostic_with_subject_type,
-    diagnostic_with_replace,
     primary_label,
     secondary_label,
     add_unique_diagnostic,
@@ -412,19 +411,19 @@ proc typeck_binary_mismatch(left: string, right: string, op: string, span: Span)
 }
 
 proc typeck_assignment_mismatch(binding_name: string, expected: string, found: string, span: Span) -> Diagnostic {
-    let diag0: Diagnostic = typed_typeck_diag("TYPECK_E_ASSIGN_MISMATCH", "assignment to `" + binding_name + "` expects `" + expected + "` but receives `" + found + "`", [binding_name, expected, found], "change the assigned value or add an explicit conversion", span, DiagnosticSeverity.Error, DiagnosticPhase.Typeck, TypeckErrorKind.InvalidAssignment);
+    let diag0: Diagnostic = typed_typeck_diag("TYPECK_E_ASSIGN_MISMATCH", "`set " + binding_name + "` expects `" + expected + "` but receives `" + found + "`", [binding_name, expected, found], "change the `set` value or add an explicit conversion", span, DiagnosticSeverity.Error, DiagnosticPhase.Typeck, TypeckErrorKind.InvalidAssignment);
     give attach_assignment_mismatch_details(diag0, binding_name, expected, found);
 }
 
 proc typeck_return_mismatch(proc_name: string, expected: string, found: string, span: Span) -> Diagnostic {
-    let diag0: Diagnostic = typed_typeck_diag("TYPECK_E_RETURN_MISMATCH", "`" + proc_name + "` promises `" + expected + "` but returns `" + found + "`", [proc_name, expected, found], "return a `" + expected + "` value or change the procedure signature", span, DiagnosticSeverity.Error, DiagnosticPhase.Typeck, TypeckErrorKind.TypeMismatch);
-    let diag1: Diagnostic = diagnostic_with_rule(diag0, "procedure return compatibility");
-    let diag2: Diagnostic = diagnostic_with_explanation(diag1, "`" + proc_name + "` promises `" + expected + "` but this return path produces `" + found + "`");
-    let diag3: Diagnostic = diagnostic_add_cause(diag2, "expected type comes from the procedure return annotation");
-    let diag4: Diagnostic = diagnostic_add_cause(diag3, "found type comes from the returned expression");
+    let diag0: Diagnostic = typed_typeck_diag("TYPECK_E_RETURN_MISMATCH", "`give` in `" + proc_name + "` produces `" + found + "` but the proc result type is `" + expected + "`", [proc_name, expected, found], "give a `" + expected + "` value or change the proc signature", span, DiagnosticSeverity.Error, DiagnosticPhase.Typeck, TypeckErrorKind.TypeMismatch);
+    let diag1: Diagnostic = diagnostic_with_rule(diag0, "proc give compatibility");
+    let diag2: Diagnostic = diagnostic_with_explanation(diag1, "`" + proc_name + "` promises `" + expected + "` but this `give` path produces `" + found + "`");
+    let diag3: Diagnostic = diagnostic_add_cause(diag2, "expected type comes from the proc result annotation");
+    let diag4: Diagnostic = diagnostic_add_cause(diag3, "found type comes from the `give` expression");
     let diag5: Diagnostic = diagnostic_with_subject_symbol(diag4, proc_name);
     let diag6: Diagnostic = diagnostic_with_subject_type(diag5, expected);
-    give diagnostic_with_probable_fix(diag6, "align the returned expression with `" + expected + "` or update the signature intentionally");
+    give diagnostic_with_probable_fix(diag6, "align the `give` expression with `" + expected + "` or update the signature intentionally");
 }
 
 proc typeck_condition_type(found: string, span: Span) -> Diagnostic {
@@ -491,7 +490,7 @@ proc typeck_argument_mismatch(callee: string, position: u64, expected: string, f
     let diag3: Diagnostic = diagnostic_add_cause(diag2, "expected type `" + expected + "` because parameter " + position_text + " of `" + callee + "` is declared that way");
     let diag4: Diagnostic = diagnostic_add_cause(diag3, "obtained type `" + found + "` from argument " + position_text + " at the call site");
     let diag5: Diagnostic = diagnostic_with_probable_fix(diag4, "convert the value or modify the signature");
-    give diagnostic_with_replace(diag5, "wrap or replace this argument with an explicit `" + expected + "` value", "<" + expected + " value>", ast_span_to_source_span(span));
+    give diagnostic_with_help(diag5, "replace this argument with a Vitte expression whose type is `" + expected + "`");
 }
 
 proc typeck_invalid_call_arity(callee: string, expected_arity: u64, found_arity: u64, span: Span) -> Diagnostic {
@@ -503,7 +502,7 @@ proc typeck_invalid_call_arity(callee: string, expected_arity: u64, found_arity:
     let diag3: Diagnostic = diagnostic_add_cause(diag2, "expected arity comes from the callee signature");
     let diag4: Diagnostic = diagnostic_add_cause(diag3, "found arity comes from the call-site argument list");
     let diag5: Diagnostic = diagnostic_with_probable_fix(diag4, "add or remove arguments so the call matches the declared signature");
-    give diagnostic_with_replace(diag5, "rewrite the argument list so it contains " + expected_text + " argument(s)", "(...)", ast_span_to_source_span(span));
+    give diagnostic_with_help(diag5, "rewrite the call with " + expected_text + " concrete Vitte argument(s)");
 }
 
 proc typeck_generic_inference_failed(param_name: string, span: Span) -> Diagnostic {
@@ -600,7 +599,7 @@ proc enforce_typeck_cause_chains(diagnostics: [Diagnostic]) -> [Diagnostic] {
 }
 
 proc typeck_use_before_init(name: string, span: Span) -> Diagnostic {
-    give typed_typeck_diag("TYPECK_E_USE_BEFORE_INIT", "binding is used before initialization", [name], "initialize the binding before reading it", span, DiagnosticSeverity.Error, DiagnosticPhase.Typeck, TypeckErrorKind.UseBeforeInit);
+    give typed_typeck_diag("TYPECK_E_USE_BEFORE_INIT", "`let " + name + "` is read before it has a value", [name], "initialize the `let` binding before reading it", span, DiagnosticSeverity.Error, DiagnosticPhase.Typeck, TypeckErrorKind.UseBeforeInit);
 }
 
 proc typeck_use_after_move(name: string, span: Span) -> Diagnostic {

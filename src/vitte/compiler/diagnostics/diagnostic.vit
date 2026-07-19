@@ -1292,7 +1292,7 @@ proc diagnostic_default_suggestion_replacement(phase: DiagnosticPhase, code: str
     }
 
     if code == "E0002" {
-        give "todo()";
+        give "0";
     }
 
     give "";
@@ -1488,8 +1488,72 @@ proc diagnostic_suggestion_rank(suggestion: DiagnosticSuggestion) -> u64 {
     give 3 as u64;
 }
 
+proc vitte_canonical_keywords() -> [string] {
+    give ["space", "use", "form", "pick", "proc", "let", "set", "give"];
+}
+
+proc vitte_legacy_keyword_replacement(keyword: string) -> string {
+    if keyword == "namespace" or keyword == "module" {
+        give "space";
+    }
+
+    if keyword == "import" {
+        give "use";
+    }
+
+    if keyword == "class" or keyword == "struct" or keyword == "record" {
+        give "form";
+    }
+
+    if keyword == "enum" {
+        give "pick";
+    }
+
+    if keyword == "fn" or keyword == "function" {
+        give "proc";
+    }
+
+    if keyword == "var" {
+        give "let";
+    }
+
+    if keyword == "return" {
+        give "give";
+    }
+
+    give "";
+}
+
+proc vitte_suggestion_is_canonical(replacement: string) -> bool {
+    if replacement == "" {
+        give true;
+    }
+
+    if find(replacement, "return") >= 0 or find(replacement, "fn(") >= 0 or find(replacement, "function") >= 0 {
+        give false;
+    }
+
+    if find(replacement, "struct") >= 0 or find(replacement, "class") >= 0 or find(replacement, "enum") >= 0 or find(replacement, "var ") >= 0 {
+        give false;
+    }
+
+    if find(replacement, "use module {") >= 0 or find(replacement, "todo()") >= 0 or find(replacement, "...") >= 0 {
+        give false;
+    }
+
+    if find(replacement, "<") >= 0 or find(replacement, ">") >= 0 {
+        give false;
+    }
+
+    give true;
+}
+
 proc diagnostic_suggestion_list_add(suggestions: [DiagnosticSuggestion], suggestion: DiagnosticSuggestion) -> [DiagnosticSuggestion] {
     if not suggestion.valid {
+        give suggestions;
+    }
+
+    if not vitte_suggestion_is_canonical(suggestion.replacement) {
         give suggestions;
     }
 
@@ -1547,7 +1611,7 @@ proc diagnostic_catalog_suggestions(phase: DiagnosticPhase, code: string, span: 
 
     if code == "E0002" {
         give [
-            diagnostic_suggestion_applicability(DiagnosticSuggestionKind.Insert, "insert a placeholder expression", "todo()", span, DiagnosticApplicability.MaybeMachine, "medium", "the parser expected an expression"),
+            diagnostic_suggestion_applicability(DiagnosticSuggestionKind.Insert, "insert a placeholder expression", "0", span, DiagnosticApplicability.MaybeMachine, "medium", "the parser expected an expression"),
             diagnostic_suggestion_applicability(DiagnosticSuggestionKind.Help, "replace the placeholder with the intended value before committing", "", span, DiagnosticApplicability.Manual, "medium", "placeholder expressions preserve parsing but not intent")
         ];
     }
@@ -1919,6 +1983,10 @@ proc diagnostic_with_help(diagnostic: Diagnostic, message: string) -> Diagnostic
 }
 
 proc diagnostic_with_suggestion(diagnostic: Diagnostic, suggestion: DiagnosticSuggestion) -> Diagnostic {
+    if not vitte_suggestion_is_canonical(suggestion.replacement) {
+        give diagnostic;
+    }
+
     set diagnostic.suggestions = diagnostic_suggestion_list_add(diagnostic.suggestions, suggestion);
 
     give diagnostic;
@@ -3503,6 +3571,22 @@ proc lexer_unterminated_string(span: SourceSpan) -> Diagnostic {
     give diagnostic_with_help(diag, "terminate the string with a matching quote");
 }
 
+proc parser_old_vitte_syntax(old_keyword: string, span: SourceSpan) -> Diagnostic {
+    let replacement: string = vitte_legacy_keyword_replacement(old_keyword);
+    let current: string = if replacement == "" { "the current Vitte syntax" } else { "`" + replacement + "`" };
+    let diag0: Diagnostic = diagnostic_error("PARSE_E_OLD_VITTE_SYNTAX", DiagnosticPhase.Parser, "old Vitte keyword `" + old_keyword + "` is not canonical here", span);
+    let diag1: Diagnostic = diagnostic_with_rule(diag0, "canonical Vitte keywords");
+    let diag2: Diagnostic = diagnostic_with_explanation(diag1, "Vitte diagnostics and fixes use the current surface syntax: space, use, form, pick, proc, let, set, give.");
+    let diag3: Diagnostic = diagnostic_add_cause(diag2, "`" + old_keyword + "` belongs to an older Vitte prototype or to another language surface");
+    let diag4: Diagnostic = diagnostic_with_help(diag3, "replace `" + old_keyword + "` with " + current + " when that matches the intended construct");
+
+    if replacement != "" {
+        give diagnostic_with_replace(diag4, "replace old Vitte keyword `" + old_keyword + "` with `" + replacement + "`", replacement, span);
+    }
+
+    give diag4;
+}
+
 proc sema_unknown_identifier(name: string, span: SourceSpan) -> Diagnostic {
     let diag: Diagnostic = diagnostic_error("RES0127", DiagnosticPhase.SymbolResolution, "symbol `" + name + "` does not exist in this resolution context", span);
     set diag = diagnostic_with_rule(diag, "contextual name resolution");
@@ -3516,16 +3600,113 @@ proc sema_unknown_identifier(name: string, span: SourceSpan) -> Diagnostic {
 }
 
 proc typeck_assignment_mismatch(expected: string, found: string, span: SourceSpan) -> Diagnostic {
-    let diag: Diagnostic = diagnostic_error("TYPECK_E_ASSIGN_MISMATCH", DiagnosticPhase.Typeck, "assignment expects `" + expected + "` but receives `" + found + "`", span);
-    let expected_label: DiagnosticLabel = secondary_label("expected `" + expected + "` because the assignment target imposes it", span);
-    let found_label: DiagnosticLabel = secondary_label("obtained `" + found + "` from the assigned expression", span);
+    let diag: Diagnostic = diagnostic_error("TYPECK_E_ASSIGN_MISMATCH", DiagnosticPhase.Typeck, "`set` expects `" + expected + "` but receives `" + found + "`", span);
+    let expected_label: DiagnosticLabel = secondary_label("expected `" + expected + "` because the `let` binding or assignment target imposes it", span);
+    let found_label: DiagnosticLabel = secondary_label("obtained `" + found + "` from the `set` expression", span);
     set diag = diagnostic_with_label(diag, expected_label);
     set diag = diagnostic_with_label(diag, found_label);
-    set diag = diagnostic_add_cause(diag, "why expected type is imposed: assignment target type");
-    set diag = diagnostic_add_cause(diag, "origin of obtained type: assigned expression");
-    set diag = diagnostic_with_help(diag, "change the assigned value or add an explicit conversion");
+    set diag = diagnostic_add_cause(diag, "why expected type is imposed: `let` binding or assignment target type");
+    set diag = diagnostic_add_cause(diag, "origin of obtained type: `set` expression");
+    set diag = diagnostic_with_help(diag, "change the `set` value or add an explicit conversion");
 
     give diag;
+}
+
+proc typeck_give_missing(proc_name: string, expected: string, span: SourceSpan) -> Diagnostic {
+    let diag0: Diagnostic = diagnostic_error("TYPECK_E_GIVE_MISSING", DiagnosticPhase.Typeck, "`" + proc_name + "` must finish with `give` of `" + expected + "`", span);
+    let diag1: Diagnostic = diagnostic_with_rule(diag0, "proc result must be produced by give");
+    let diag2: Diagnostic = diagnostic_add_cause(diag1, "the proc signature requires result type `" + expected + "`");
+    give diagnostic_with_help(diag2, "add `give` with a `" + expected + "` value on every reachable control-flow path");
+}
+
+proc typeck_give_without_value(proc_name: string, span: SourceSpan) -> Diagnostic {
+    let diag0: Diagnostic = diagnostic_error("TYPECK_E_GIVE_VALUE_IN_UNIT_PROC", DiagnosticPhase.Typeck, "`give` provides a value in proc `" + proc_name + "` but the proc has no result type", span);
+    let diag1: Diagnostic = diagnostic_with_rule(diag0, "unit proc give form");
+    give diagnostic_with_help(diag1, "remove the value after `give` or add a result type to the proc signature");
+}
+
+proc typeck_give_type_mismatch(proc_name: string, expected: string, found: string, span: SourceSpan) -> Diagnostic {
+    let diag0: Diagnostic = diagnostic_error("TYPECK_E_GIVE_TYPE_MISMATCH", DiagnosticPhase.Typeck, "`give` in proc `" + proc_name + "` produces `" + found + "` but the proc result type is `" + expected + "`", span);
+    give attach_expected_found_details(diag0, "proc give compatibility", expected, found, "the proc signature declares result type `" + expected + "`", "the `give` expression", "convert the `give` value or modify the proc signature");
+}
+
+proc typeck_give_missing_control_path(proc_name: string, expected: string, span: SourceSpan) -> Diagnostic {
+    let diag0: Diagnostic = diagnostic_error("TYPECK_E_GIVE_MISSING_PATH", DiagnosticPhase.Typeck, "control path in `" + proc_name + "` can exit without `give`", span);
+    let diag1: Diagnostic = diagnostic_with_rule(diag0, "all result proc paths must give");
+    let diag2: Diagnostic = diagnostic_add_cause(diag1, "the proc signature requires result type `" + expected + "`");
+    give diagnostic_with_help(diag2, "add `give` on this path or make the path unreachable");
+}
+
+proc sema_code_after_give(span: SourceSpan) -> Diagnostic {
+    let diag0: Diagnostic = diagnostic_warning("SEMA_W_CODE_AFTER_GIVE", DiagnosticPhase.Sema, "code after `give` is unreachable", span);
+    let diag1: Diagnostic = diagnostic_with_rule(diag0, "give terminates the current proc path");
+    give diagnostic_with_help(diag1, "move this code before `give` or remove it");
+}
+
+proc sema_set_immutable_binding(name: string, span: SourceSpan) -> Diagnostic {
+    let diag0: Diagnostic = diagnostic_error("SEMA_E_SET_IMMUTABLE_BINDING", DiagnosticPhase.Sema, "`set` cannot mutate immutable `let` binding `" + name + "`", span);
+    let diag1: Diagnostic = diagnostic_with_rule(diag0, "let binding mutability");
+    give diagnostic_with_help(diag1, "declare `" + name + "` as mutable if mutation is intended, or create a new `let` binding");
+}
+
+proc sema_set_reassignment_impossible(name: string, span: SourceSpan) -> Diagnostic {
+    let diag0: Diagnostic = diagnostic_error("SEMA_E_SET_REASSIGNMENT_FORBIDDEN", DiagnosticPhase.Sema, "`set` cannot reassign `" + name + "` in this context", span);
+    let diag1: Diagnostic = diagnostic_with_rule(diag0, "assignment target must be assignable");
+    give diagnostic_with_help(diag1, "use `set` only on assignable local bindings, fields, or indexed places");
+}
+
+proc sema_mutable_never_modified(name: string, span: SourceSpan) -> Diagnostic {
+    let diag0: Diagnostic = diagnostic_warning("SEMA_W_MUTABLE_NEVER_MODIFIED", DiagnosticPhase.Sema, "mutable `let` binding `" + name + "` is never modified", span);
+    let diag1: Diagnostic = diagnostic_with_rule(diag0, "unnecessary mutability");
+    give diagnostic_with_help(diag1, "remove the mutable marker or add the intended `set`");
+}
+
+proc typeck_let_missing_initialization(name: string, span: SourceSpan) -> Diagnostic {
+    let diag0: Diagnostic = diagnostic_error("TYPECK_E_LET_INITIALIZER_MISSING", DiagnosticPhase.Typeck, "`let " + name + "` needs an initializer or an explicit type", span);
+    let diag1: Diagnostic = diagnostic_with_rule(diag0, "let initialization");
+    give diagnostic_with_help(diag1, "write `let " + name + ": Type` or `let " + name + " = value`");
+}
+
+proc typeck_let_type_inference_failed(name: string, span: SourceSpan) -> Diagnostic {
+    let diag0: Diagnostic = diagnostic_error("TYPECK_E_LET_INFER_FAILED", DiagnosticPhase.Typeck, "type of `let " + name + "` cannot be inferred", span);
+    let diag1: Diagnostic = diagnostic_with_rule(diag0, "let type inference");
+    give diagnostic_with_help(diag1, "add a type annotation to the `let` binding or initialize it with a more specific value");
+}
+
+proc typeck_form_unknown_field(form_name: string, field_name: string, span: SourceSpan) -> Diagnostic {
+    let diag0: Diagnostic = diagnostic_error("TYPECK_E_FORM_UNKNOWN_FIELD", DiagnosticPhase.Typeck, "form `" + form_name + "` has no field `" + field_name + "`", span);
+    let diag1: Diagnostic = diagnostic_with_rule(diag0, "form field lookup");
+    give diagnostic_with_help(diag1, "use a field declared by the `form` or correct the field name");
+}
+
+proc typeck_form_missing_field(form_name: string, field_name: string, span: SourceSpan) -> Diagnostic {
+    let diag0: Diagnostic = diagnostic_error("TYPECK_E_FORM_MISSING_FIELD", DiagnosticPhase.Typeck, "form `" + form_name + "` construction is missing field `" + field_name + "`", span);
+    let diag1: Diagnostic = diagnostic_with_rule(diag0, "complete form construction");
+    give diagnostic_with_help(diag1, "provide `" + field_name + ": value` in the `form` construction");
+}
+
+proc typeck_form_duplicate_field(form_name: string, field_name: string, span: SourceSpan) -> Diagnostic {
+    let diag0: Diagnostic = diagnostic_error("TYPECK_E_FORM_DUPLICATE_FIELD", DiagnosticPhase.Typeck, "field `" + field_name + "` is specified more than once for form `" + form_name + "`", span);
+    let diag1: Diagnostic = diagnostic_with_rule(diag0, "unique form fields");
+    give diagnostic_with_help(diag1, "keep a single `" + field_name + ": value` entry");
+}
+
+proc typeck_form_field_type_mismatch(form_name: string, field_name: string, expected: string, found: string, span: SourceSpan) -> Diagnostic {
+    let diag0: Diagnostic = diagnostic_error("TYPECK_E_FORM_FIELD_TYPE", DiagnosticPhase.Typeck, "field `" + field_name + "` of form `" + form_name + "` expects `" + expected + "` but receives `" + found + "`", span);
+    give attach_expected_found_details(diag0, "form field compatibility", expected, found, "field `" + field_name + "` is declared with type `" + expected + "`", "the supplied field value", "convert the field value or change the `form` declaration");
+}
+
+proc typeck_form_field_order(form_name: string, field_name: string, expected_position: u64, span: SourceSpan) -> Diagnostic {
+    let position: string = expected_position as string;
+    let diag0: Diagnostic = diagnostic_error("TYPECK_E_FORM_FIELD_ORDER", DiagnosticPhase.Typeck, "field `" + field_name + "` is out of order for form `" + form_name + "`", span);
+    let diag1: Diagnostic = diagnostic_with_rule(diag0, "ordered form construction");
+    give diagnostic_with_help(diag1, "move `" + field_name + "` to position " + position + " or use canonical named-field construction when supported");
+}
+
+proc typeck_form_incomplete(form_name: string, span: SourceSpan) -> Diagnostic {
+    let diag0: Diagnostic = diagnostic_error("TYPECK_E_FORM_INCOMPLETE", DiagnosticPhase.Typeck, "form `" + form_name + "` construction is incomplete", span);
+    let diag1: Diagnostic = diagnostic_with_rule(diag0, "complete form construction");
+    give diagnostic_with_help(diag1, "provide every required `form` field exactly once");
 }
 
 proc borrowck_use_after_move(name: string, use_span: SourceSpan, move_span: SourceSpan) -> Diagnostic {
@@ -3552,7 +3733,7 @@ proc borrowck_mutable_borrow_conflict(name: string, request_span: SourceSpan, ac
 proc ir_invalid_terminator(span: SourceSpan) -> Diagnostic {
     let diag: Diagnostic = diagnostic_error("IR_E_INVALID_TERMINATOR", DiagnosticPhase.Ir, "invalid block terminator", span);
     set diag = diagnostic_with_note(diag, "basic blocks must end with exactly one terminator");
-    set diag = diagnostic_with_help(diag, "insert a return, jump, branch, or unreachable instruction");
+    set diag = diagnostic_with_help(diag, "lower the source `give` or another valid control-flow terminator before backend emission");
 
     give diag;
 }
@@ -3716,6 +3897,9 @@ share diagnostic_suggestion_applicability
 share diagnostic_suggestion_detail
 share diagnostic_suggestion_limit
 share diagnostic_suggestion_rank
+share vitte_canonical_keywords
+share vitte_legacy_keyword_replacement
+share vitte_suggestion_is_canonical
 share diagnostic_suggestion_list_add
 share diagnostic_suggestion_list_extend
 share diagnostic_catalog_suggestions
@@ -3808,8 +3992,25 @@ share parser_expected_identifier
 share parser_expected_expression
 share parser_unclosed_block
 share lexer_unterminated_string
+share parser_old_vitte_syntax
 share sema_unknown_identifier
+share sema_code_after_give
+share sema_set_immutable_binding
+share sema_set_reassignment_impossible
+share sema_mutable_never_modified
 share typeck_assignment_mismatch
+share typeck_give_missing
+share typeck_give_without_value
+share typeck_give_type_mismatch
+share typeck_give_missing_control_path
+share typeck_let_missing_initialization
+share typeck_let_type_inference_failed
+share typeck_form_unknown_field
+share typeck_form_missing_field
+share typeck_form_duplicate_field
+share typeck_form_field_type_mismatch
+share typeck_form_field_order
+share typeck_form_incomplete
 share typeck_argument_mismatch
 share typeck_invalid_call_arity
 share typeck_if_branch_mismatch
