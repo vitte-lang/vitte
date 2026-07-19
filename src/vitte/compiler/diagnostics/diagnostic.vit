@@ -4045,104 +4045,104 @@ proc typeck_assignment_mismatch(expected: string, found: string, span: SourceSpa
 }
 
 proc typeck_give_missing(proc_name: string, expected: string, span: SourceSpan) -> Diagnostic {
-    let diag0: Diagnostic = diagnostic_error("TYPECK_E_GIVE_MISSING", DiagnosticPhase.Typeck, "`" + proc_name + "` must finish with `give` of `" + expected + "`", span);
+    let diag0: Diagnostic = diagnostic_error("TYPECK_E_MISSING_GIVE", DiagnosticPhase.Typeck, "`" + proc_name + "` must finish with `give` of `" + expected + "`", span);
     let diag1: Diagnostic = diagnostic_with_rule(diag0, "proc result must be produced by give");
     let diag2: Diagnostic = diagnostic_add_cause(diag1, "the proc signature requires result type `" + expected + "`");
     give diagnostic_with_help(diag2, "add `give` with a `" + expected + "` value on every reachable control-flow path");
 }
 
 proc typeck_give_without_value(proc_name: string, span: SourceSpan) -> Diagnostic {
-    let diag0: Diagnostic = diagnostic_error("TYPECK_E_GIVE_VALUE_IN_UNIT_PROC", DiagnosticPhase.Typeck, "`give` provides a value in proc `" + proc_name + "` but the proc has no result type", span);
+    let diag0: Diagnostic = diagnostic_error("TYPECK_E_GIVE_IN_VOID_PROC", DiagnosticPhase.Typeck, "`give` provides a value in proc `" + proc_name + "` but the proc has no result type", span);
     let diag1: Diagnostic = diagnostic_with_rule(diag0, "unit proc give form");
     give diagnostic_with_help(diag1, "remove the value after `give` or add a result type to the proc signature");
 }
 
 proc typeck_give_type_mismatch(proc_name: string, expected: string, found: string, span: SourceSpan) -> Diagnostic {
-    let diag0: Diagnostic = diagnostic_error("TYPECK_E_GIVE_TYPE_MISMATCH", DiagnosticPhase.Typeck, "`give` in proc `" + proc_name + "` produces `" + found + "` but the proc result type is `" + expected + "`", span);
+    let diag0: Diagnostic = diagnostic_error("TYPECK_E_RETURN_MISMATCH", DiagnosticPhase.Typeck, "`give` in proc `" + proc_name + "` produces `" + found + "` but the proc result type is `" + expected + "`", span);
     give attach_expected_found_details(diag0, "proc give compatibility", expected, found, "the proc signature declares result type `" + expected + "`", "the `give` expression", "convert the `give` value or modify the proc signature");
 }
 
 proc typeck_give_missing_control_path(proc_name: string, expected: string, span: SourceSpan) -> Diagnostic {
-    let diag0: Diagnostic = diagnostic_error("TYPECK_E_GIVE_MISSING_PATH", DiagnosticPhase.Typeck, "control path in `" + proc_name + "` can exit without `give`", span);
+    let diag0: Diagnostic = diagnostic_error("TYPECK_E_CONTROL_PATH_MISSING_GIVE", DiagnosticPhase.Typeck, "control path in `" + proc_name + "` can exit without `give`", span);
     let diag1: Diagnostic = diagnostic_with_rule(diag0, "all result proc paths must give");
     let diag2: Diagnostic = diagnostic_add_cause(diag1, "the proc signature requires result type `" + expected + "`");
     give diagnostic_with_help(diag2, "add `give` on this path or make the path unreachable");
 }
 
 proc sema_code_after_give(span: SourceSpan) -> Diagnostic {
-    let diag0: Diagnostic = diagnostic_warning("SEMA_W_CODE_AFTER_GIVE", DiagnosticPhase.Sema, "code after `give` is unreachable", span);
+    let diag0: Diagnostic = diagnostic_warning("TYPECK_W_UNREACHABLE_AFTER_GIVE", DiagnosticPhase.Sema, "code after `give` is unreachable", span);
     let diag1: Diagnostic = diagnostic_with_rule(diag0, "give terminates the current proc path");
     give diagnostic_with_help(diag1, "move this code before `give` or remove it");
 }
 
 proc sema_set_immutable_binding(name: string, span: SourceSpan) -> Diagnostic {
-    let diag0: Diagnostic = diagnostic_error("SEMA_E_SET_IMMUTABLE_BINDING", DiagnosticPhase.Sema, "`set` cannot mutate immutable `let` binding `" + name + "`", span);
+    let diag0: Diagnostic = diagnostic_error("TYPECK_E_IMMUTABLE_ASSIGN", DiagnosticPhase.Sema, "`set` cannot mutate immutable `let` binding `" + name + "`", span);
     let diag1: Diagnostic = diagnostic_with_rule(diag0, "let binding mutability");
     give diagnostic_with_help(diag1, "declare `" + name + "` as mutable if mutation is intended, or create a new `let` binding");
 }
 
 proc sema_set_reassignment_impossible(name: string, span: SourceSpan) -> Diagnostic {
-    let diag0: Diagnostic = diagnostic_error("SEMA_E_SET_REASSIGNMENT_FORBIDDEN", DiagnosticPhase.Sema, "`set` cannot reassign `" + name + "` in this context", span);
+    let diag0: Diagnostic = diagnostic_error("TYPECK_E_REASSIGNMENT_FORBIDDEN", DiagnosticPhase.Sema, "`set` cannot reassign `" + name + "` in this context", span);
     let diag1: Diagnostic = diagnostic_with_rule(diag0, "assignment target must be assignable");
     give diagnostic_with_help(diag1, "use `set` only on assignable local bindings, fields, or indexed places");
 }
 
 proc sema_mutable_never_modified(name: string, span: SourceSpan) -> Diagnostic {
-    let diag0: Diagnostic = diagnostic_warning("SEMA_W_MUTABLE_NEVER_MODIFIED", DiagnosticPhase.Sema, "mutable `let` binding `" + name + "` is never modified", span);
+    let diag0: Diagnostic = diagnostic_warning("TYPECK_W_MUTABLE_NEVER_MODIFIED", DiagnosticPhase.Sema, "mutable `let` binding `" + name + "` is never modified", span);
     let diag1: Diagnostic = diagnostic_with_rule(diag0, "unnecessary mutability");
     give diagnostic_with_help(diag1, "remove the mutable marker or add the intended `set`");
 }
 
 proc typeck_let_missing_initialization(name: string, span: SourceSpan) -> Diagnostic {
-    let diag0: Diagnostic = diagnostic_error("TYPECK_E_LET_INITIALIZER_MISSING", DiagnosticPhase.Typeck, "`let " + name + "` needs an initializer or an explicit type", span);
+    let diag0: Diagnostic = diagnostic_error("TYPECK_E_MISSING_INITIALIZER", DiagnosticPhase.Typeck, "`let " + name + "` needs an initializer or an explicit type", span);
     let diag1: Diagnostic = diagnostic_with_rule(diag0, "let initialization");
     give diagnostic_with_help(diag1, "write `let " + name + ": Type` or `let " + name + " = value`");
 }
 
 proc typeck_let_type_inference_failed(name: string, span: SourceSpan) -> Diagnostic {
-    let diag0: Diagnostic = diagnostic_error("TYPECK_E_LET_INFER_FAILED", DiagnosticPhase.Typeck, "type of `let " + name + "` cannot be inferred", span);
+    let diag0: Diagnostic = diagnostic_error("TYPECK_E_INFERENCE_FAILED", DiagnosticPhase.Typeck, "type of `let " + name + "` cannot be inferred", span);
     let diag1: Diagnostic = diagnostic_with_rule(diag0, "let type inference");
     give diagnostic_with_help(diag1, "add a type annotation to the `let` binding or initialize it with a more specific value");
 }
 
 proc typeck_form_unknown_field(form_name: string, field_name: string, span: SourceSpan) -> Diagnostic {
-    let diag0: Diagnostic = diagnostic_error("TYPECK_E_FORM_UNKNOWN_FIELD", DiagnosticPhase.Typeck, "form `" + form_name + "` has no field `" + field_name + "`", span);
+    let diag0: Diagnostic = diagnostic_error("AST_E_UNKNOWN_FIELD", DiagnosticPhase.Typeck, "form `" + form_name + "` has no field `" + field_name + "`", span);
     let diag1: Diagnostic = diagnostic_with_rule(diag0, "form field lookup");
     give diagnostic_with_help(diag1, "use a field declared by the `form` or correct the field name");
 }
 
 proc typeck_form_missing_field(form_name: string, field_name: string, span: SourceSpan) -> Diagnostic {
-    let diag0: Diagnostic = diagnostic_error("TYPECK_E_FORM_MISSING_FIELD", DiagnosticPhase.Typeck, "form `" + form_name + "` construction is missing field `" + field_name + "`", span);
+    let diag0: Diagnostic = diagnostic_error("AST_E_MISSING_FIELD", DiagnosticPhase.Typeck, "form `" + form_name + "` construction is missing field `" + field_name + "`", span);
     let diag1: Diagnostic = diagnostic_with_rule(diag0, "complete form construction");
     give diagnostic_with_help(diag1, "provide `" + field_name + ": value` in the `form` construction");
 }
 
 proc typeck_form_duplicate_field(form_name: string, field_name: string, span: SourceSpan) -> Diagnostic {
-    let diag0: Diagnostic = diagnostic_error("TYPECK_E_FORM_DUPLICATE_FIELD", DiagnosticPhase.Typeck, "field `" + field_name + "` is specified more than once for form `" + form_name + "`", span);
+    let diag0: Diagnostic = diagnostic_error("AST_E_DUPLICATE_FIELD", DiagnosticPhase.Typeck, "field `" + field_name + "` is specified more than once for form `" + form_name + "`", span);
     let diag1: Diagnostic = diagnostic_with_rule(diag0, "unique form fields");
     give diagnostic_with_help(diag1, "keep a single `" + field_name + ": value` entry");
 }
 
 proc typeck_form_field_type_mismatch(form_name: string, field_name: string, expected: string, found: string, span: SourceSpan) -> Diagnostic {
-    let diag0: Diagnostic = diagnostic_error("TYPECK_E_FORM_FIELD_TYPE", DiagnosticPhase.Typeck, "field `" + field_name + "` of form `" + form_name + "` expects `" + expected + "` but receives `" + found + "`", span);
+    let diag0: Diagnostic = diagnostic_error("AST_E_FIELD_TYPE_MISMATCH", DiagnosticPhase.Typeck, "field `" + field_name + "` of form `" + form_name + "` expects `" + expected + "` but receives `" + found + "`", span);
     give attach_expected_found_details(diag0, "form field compatibility", expected, found, "field `" + field_name + "` is declared with type `" + expected + "`", "the supplied field value", "convert the field value or change the `form` declaration");
 }
 
 proc typeck_form_field_order(form_name: string, field_name: string, expected_position: u64, span: SourceSpan) -> Diagnostic {
     let position: string = expected_position as string;
-    let diag0: Diagnostic = diagnostic_error("TYPECK_E_FORM_FIELD_ORDER", DiagnosticPhase.Typeck, "field `" + field_name + "` is out of order for form `" + form_name + "`", span);
+    let diag0: Diagnostic = diagnostic_error("AST_E_FIELD_ORDER", DiagnosticPhase.Typeck, "field `" + field_name + "` is out of order for form `" + form_name + "`", span);
     let diag1: Diagnostic = diagnostic_with_rule(diag0, "ordered form construction");
     give diagnostic_with_help(diag1, "move `" + field_name + "` to position " + position + " or use canonical named-field construction when supported");
 }
 
 proc typeck_form_incomplete(form_name: string, span: SourceSpan) -> Diagnostic {
-    let diag0: Diagnostic = diagnostic_error("TYPECK_E_FORM_INCOMPLETE", DiagnosticPhase.Typeck, "form `" + form_name + "` construction is incomplete", span);
+    let diag0: Diagnostic = diagnostic_error("AST_E_INCOMPLETE_CONSTRUCTION", DiagnosticPhase.Typeck, "form `" + form_name + "` construction is incomplete", span);
     let diag1: Diagnostic = diagnostic_with_rule(diag0, "complete form construction");
     give diagnostic_with_help(diag1, "provide every required `form` field exactly once");
 }
 
 proc typeck_pick_unknown_variant(pick_name: string, variant_name: string, span: SourceSpan) -> Diagnostic {
-    let diag0: Diagnostic = diagnostic_error("TYPECK_E_PICK_UNKNOWN_VARIANT", DiagnosticPhase.Typeck, "pick `" + pick_name + "` has no variant `" + variant_name + "`", span);
+    let diag0: Diagnostic = diagnostic_error("SEMA_E_UNKNOWN_VARIANT", DiagnosticPhase.Typeck, "pick `" + pick_name + "` has no variant `" + variant_name + "`", span);
     let diag1: Diagnostic = diagnostic_with_rule(diag0, "pick variant lookup");
     let diag2: Diagnostic = diagnostic_add_cause(diag1, "the variant must be declared inside pick `" + pick_name + "`");
     give diagnostic_with_help(diag2, "use a declared `pick` variant or correct the variant name");
@@ -4156,7 +4156,7 @@ proc typeck_pick_non_exhaustive(pick_name: string, missing_case: string, span: S
 }
 
 proc typeck_pick_unreachable_variant(pick_name: string, variant_name: string, span: SourceSpan) -> Diagnostic {
-    let diag0: Diagnostic = diagnostic_warning("TYPECK_W_PICK_VARIANT_UNREACHABLE", DiagnosticPhase.Typeck, "pick variant `" + variant_name + "` is unreachable in this pattern", span);
+    let diag0: Diagnostic = diagnostic_warning("SEMA_E_INACCESSIBLE_VARIANT", DiagnosticPhase.Typeck, "pick variant `" + variant_name + "` is unreachable in this pattern", span);
     let diag1: Diagnostic = diagnostic_with_rule(diag0, "pick branch reachability");
     let diag2: Diagnostic = diagnostic_add_cause(diag1, "an earlier branch already covers `" + variant_name + "` for pick `" + pick_name + "`");
     give diagnostic_with_help(diag2, "remove this branch or narrow the earlier pattern");
@@ -4168,14 +4168,14 @@ proc typeck_pick_payload_mismatch(pick_name: string, variant_name: string, expec
 }
 
 proc typeck_pick_impossible_pattern(pick_name: string, pattern_text: string, span: SourceSpan) -> Diagnostic {
-    let diag0: Diagnostic = diagnostic_error("TYPECK_E_PICK_IMPOSSIBLE_PATTERN", DiagnosticPhase.Typeck, "pattern `" + pattern_text + "` can never match pick `" + pick_name + "`", span);
+    let diag0: Diagnostic = diagnostic_error("TYPECK_E_IMPOSSIBLE_PATTERN", DiagnosticPhase.Typeck, "pattern `" + pattern_text + "` can never match pick `" + pick_name + "`", span);
     let diag1: Diagnostic = diagnostic_with_rule(diag0, "pick pattern possibility");
     let diag2: Diagnostic = diagnostic_add_cause(diag1, "the pattern is not compatible with any reachable variant of `" + pick_name + "`");
     give diagnostic_with_help(diag2, "replace the pattern with a declared `pick` variant that can occur here");
 }
 
 proc typeck_pick_duplicate_branch(pick_name: string, variant_name: string, first_span: SourceSpan, duplicate_span: SourceSpan) -> Diagnostic {
-    let diag0: Diagnostic = diagnostic_error("TYPECK_E_PICK_DUPLICATE_BRANCH", DiagnosticPhase.Typeck, "branch for pick variant `" + variant_name + "` is duplicated", duplicate_span);
+    let diag0: Diagnostic = diagnostic_error("SEMA_E_DUPLICATE_PICK_BRANCH", DiagnosticPhase.Typeck, "branch for pick variant `" + variant_name + "` is duplicated", duplicate_span);
     let diag1: Diagnostic = diagnostic_with_rule(diag0, "unique pick branches");
     let diag2: Diagnostic = diagnostic_with_label(diag1, previous_label("first branch for `" + pick_name + "." + variant_name + "` appears here", first_span));
     let diag3: Diagnostic = diagnostic_add_cause(diag2, "duplicate branch covers the same pick variant");
@@ -4183,7 +4183,7 @@ proc typeck_pick_duplicate_branch(pick_name: string, variant_name: string, first
 }
 
 proc typeck_proc_unknown(proc_name: string, span: SourceSpan) -> Diagnostic {
-    let diag0: Diagnostic = diagnostic_error("TYPECK_E_PROC_UNKNOWN", DiagnosticPhase.Typeck, "proc `" + proc_name + "` does not exist in this call context", span);
+    let diag0: Diagnostic = diagnostic_error("TYPECK_E_UNKNOWN_PROCEDURE", DiagnosticPhase.Typeck, "proc `" + proc_name + "` does not exist in this call context", span);
     let diag1: Diagnostic = diagnostic_with_rule(diag0, "proc call resolution");
     let diag2: Diagnostic = diagnostic_add_cause(diag1, "no visible callable proc named `" + proc_name + "` was found");
     give diagnostic_with_help(diag2, "declare the `proc`, add a canonical `use`, or correct the call name");
@@ -4192,14 +4192,14 @@ proc typeck_proc_unknown(proc_name: string, span: SourceSpan) -> Diagnostic {
 proc typeck_proc_argument_arity(proc_name: string, expected_params: string, expected_arity: u64, found_arity: u64, span: SourceSpan) -> Diagnostic {
     let expected_text: string = expected_arity as string;
     let found_text: string = found_arity as string;
-    let diag0: Diagnostic = diagnostic_error("TYPECK_E_PROC_CALL_ARITY", DiagnosticPhase.Typeck, "proc `" + proc_name + "` expects " + expected_text + " argument(s) but the call provides " + found_text, span);
+    let diag0: Diagnostic = diagnostic_error("TYPECK_E_CALL_ARITY", DiagnosticPhase.Typeck, "proc `" + proc_name + "` expects " + expected_text + " argument(s) but the call provides " + found_text, span);
     let diag1: Diagnostic = diagnostic_with_rule(diag0, "proc parameter arity");
     let diag2: Diagnostic = diagnostic_add_cause(diag1, "expected parameters: " + expected_params);
     give diagnostic_with_help(diag2, "rewrite the call so each provided argument maps to one expected parameter");
 }
 
 proc typeck_proc_named_argument_unknown(proc_name: string, argument_name: string, expected_params: string, span: SourceSpan) -> Diagnostic {
-    let diag0: Diagnostic = diagnostic_error("TYPECK_E_PROC_NAMED_ARGUMENT_UNKNOWN", DiagnosticPhase.Typeck, "proc `" + proc_name + "` has no parameter named `" + argument_name + "`", span);
+    let diag0: Diagnostic = diagnostic_error("TYPECK_E_UNKNOWN_NAMED_ARGUMENT", DiagnosticPhase.Typeck, "proc `" + proc_name + "` has no parameter named `" + argument_name + "`", span);
     let diag1: Diagnostic = diagnostic_with_rule(diag0, "proc named argument binding");
     let diag2: Diagnostic = diagnostic_add_cause(diag1, "expected parameters: " + expected_params);
     give diagnostic_with_help(diag2, "rename this argument to an existing parameter or remove it");
@@ -4208,32 +4208,32 @@ proc typeck_proc_named_argument_unknown(proc_name: string, argument_name: string
 proc typeck_proc_argument_order(proc_name: string, argument_name: string, expected_position: u64, found_position: u64, span: SourceSpan) -> Diagnostic {
     let expected_text: string = expected_position as string;
     let found_text: string = found_position as string;
-    let diag0: Diagnostic = diagnostic_error("TYPECK_E_PROC_ARGUMENT_ORDER", DiagnosticPhase.Typeck, "argument `" + argument_name + "` is in position " + found_text + " but proc `" + proc_name + "` expects it at position " + expected_text, span);
+    let diag0: Diagnostic = diagnostic_error("TYPECK_E_ARGUMENT_ORDER", DiagnosticPhase.Typeck, "argument `" + argument_name + "` is in position " + found_text + " but proc `" + proc_name + "` expects it at position " + expected_text, span);
     let diag1: Diagnostic = diagnostic_with_rule(diag0, "proc argument order");
     give diagnostic_with_help(diag1, "move this argument to the expected position or use canonical named arguments when supported");
 }
 
 proc typeck_proc_argument_type(proc_name: string, parameter_name: string, expected: string, found: string, arg_span: SourceSpan, param_span: SourceSpan) -> Diagnostic {
-    let diag0: Diagnostic = diagnostic_error("TYPECK_E_PROC_ARGUMENT_TYPE", DiagnosticPhase.Typeck, "argument for parameter `" + parameter_name + "` of proc `" + proc_name + "` expects `" + expected + "` but receives `" + found + "`", arg_span);
+    let diag0: Diagnostic = diagnostic_error("TYPECK_E_ARGUMENT_MISMATCH", DiagnosticPhase.Typeck, "argument for parameter `" + parameter_name + "` of proc `" + proc_name + "` expects `" + expected + "` but receives `" + found + "`", arg_span);
     let diag1: Diagnostic = diagnostic_with_label(diag0, previous_label("parameter `" + parameter_name + "` is declared here with type `" + expected + "`", param_span));
     give attach_expected_found_details(diag1, "proc argument type compatibility", expected, found, "parameter `" + parameter_name + "` of proc `" + proc_name + "`", "this call argument", "convert the argument or modify the proc signature");
 }
 
 proc typeck_proc_call_ambiguous(proc_name: string, candidates: string, span: SourceSpan) -> Diagnostic {
-    let diag0: Diagnostic = diagnostic_error("TYPECK_E_PROC_CALL_AMBIGUOUS", DiagnosticPhase.Typeck, "call to proc `" + proc_name + "` is ambiguous", span);
+    let diag0: Diagnostic = diagnostic_error("TYPECK_E_AMBIGUOUS_CALL", DiagnosticPhase.Typeck, "call to proc `" + proc_name + "` is ambiguous", span);
     let diag1: Diagnostic = diagnostic_with_rule(diag0, "proc overload resolution");
     let diag2: Diagnostic = diagnostic_add_cause(diag1, "matching candidates: " + candidates);
     give diagnostic_with_help(diag2, "add type annotations, qualify the proc path, or remove one candidate from scope");
 }
 
 proc typeck_proc_result_ignored(proc_name: string, result_type: string, span: SourceSpan) -> Diagnostic {
-    let diag0: Diagnostic = diagnostic_warning("TYPECK_W_PROC_RESULT_IGNORED", DiagnosticPhase.Typeck, "result of proc `" + proc_name + "` with type `" + result_type + "` is ignored", span);
+    let diag0: Diagnostic = diagnostic_warning("TYPECK_W_IGNORED_RESULT", DiagnosticPhase.Typeck, "result of proc `" + proc_name + "` with type `" + result_type + "` is ignored", span);
     let diag1: Diagnostic = diagnostic_with_rule(diag0, "proc result must be used or intentionally discarded");
     give diagnostic_with_help(diag1, "bind the result with `let`, pass it to another proc, or explicitly mark the discard");
 }
 
 proc typeck_proc_not_callable(callee: string, found_kind: string, span: SourceSpan) -> Diagnostic {
-    let diag0: Diagnostic = diagnostic_error("TYPECK_E_PROC_NOT_CALLABLE", DiagnosticPhase.Typeck, "`" + callee + "` is `" + found_kind + "`, not a callable proc", span);
+    let diag0: Diagnostic = diagnostic_error("TYPECK_E_NOT_CALLABLE", DiagnosticPhase.Typeck, "`" + callee + "` is `" + found_kind + "`, not a callable proc", span);
     let diag1: Diagnostic = diagnostic_with_rule(diag0, "proc call target");
     let diag2: Diagnostic = diagnostic_add_cause(diag1, "call syntax requires a visible `proc` or proc value");
     give diagnostic_with_help(diag2, "remove the call syntax or call a visible `proc`");

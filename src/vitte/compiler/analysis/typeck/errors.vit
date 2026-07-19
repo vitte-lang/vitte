@@ -427,7 +427,7 @@ proc typeck_return_mismatch(proc_name: string, expected: string, found: string, 
 }
 
 proc typeck_give_missing_path(proc_name: string, expected: string, span: Span) -> Diagnostic {
-    let diag0: Diagnostic = typed_typeck_diag("TYPECK_E_GIVE_MISSING_PATH", "control path in `" + proc_name + "` can finish without `give`", [proc_name, expected], "add `give value;` on every reachable path", span, DiagnosticSeverity.Error, DiagnosticPhase.Typeck, TypeckErrorKind.UseBeforeInit);
+    let diag0: Diagnostic = typed_typeck_diag("TYPECK_E_CONTROL_PATH_MISSING_GIVE", "control path in `" + proc_name + "` can finish without `give`", [proc_name, expected], "add `give value` on every reachable path", span, DiagnosticSeverity.Error, DiagnosticPhase.Typeck, TypeckErrorKind.UseBeforeInit);
     let diag1: Diagnostic = diagnostic_with_rule(diag0, "every reachable path of a value-producing proc must execute give");
     let diag2: Diagnostic = diagnostic_with_explanation(diag1, "proc `" + proc_name + "` declares result type `" + expected + "`, so every reachable path must produce that result with Vitte's canonical `give` statement");
     let diag3: Diagnostic = diagnostic_add_cause(diag2, "the proc signature requires `" + expected + "`, but this path reaches the closing brace without `give`");
@@ -435,20 +435,20 @@ proc typeck_give_missing_path(proc_name: string, expected: string, span: Span) -
 }
 
 proc typeck_give_value_in_unit_proc(proc_name: string, found: string, span: Span) -> Diagnostic {
-    let diag0: Diagnostic = typed_typeck_diag("TYPECK_E_GIVE_VALUE_IN_UNIT_PROC", "`give` provides a `" + found + "` value in proc `" + proc_name + "`, which declares no result", [proc_name, found], "remove the value after `give` or declare a proc result type", span, DiagnosticSeverity.Error, DiagnosticPhase.Typeck, TypeckErrorKind.TypeMismatch);
+    let diag0: Diagnostic = typed_typeck_diag("TYPECK_E_GIVE_IN_VOID_PROC", "`give` provides a `" + found + "` value in proc `" + proc_name + "`, which declares no result", [proc_name, found], "remove the value after `give` or declare a proc result type", span, DiagnosticSeverity.Error, DiagnosticPhase.Typeck, TypeckErrorKind.TypeMismatch);
     let diag1: Diagnostic = diagnostic_with_rule(diag0, "give value requires a proc result type");
-    let diag2: Diagnostic = diagnostic_with_explanation(diag1, "a proc without `-> Type` does not return a value; canonical Vitte therefore uses `give;` only to terminate it early");
-    give diagnostic_with_probable_fix(diag2, "use `give;` or add `-> " + found + "` to the proc signature when callers need the value");
+    let diag2: Diagnostic = diagnostic_with_explanation(diag1, "a proc without `-> Type` does not produce a value; canonical Vitte therefore uses bare `give` only to terminate it early");
+    give diagnostic_with_probable_fix(diag2, "use bare `give` or add `-> " + found + "` to the proc signature when callers need the value");
 }
 
 proc typeck_let_inference_failed(name: string, span: Span) -> Diagnostic {
-    let diag0: Diagnostic = typed_typeck_diag("TYPECK_E_LET_INFER_FAILED", "type of `let " + name + "` cannot be inferred", [name], "write `let " + name + ": Type = value;` with a concrete Vitte type", span, DiagnosticSeverity.Error, DiagnosticPhase.Typeck, TypeckErrorKind.TypeMismatch);
+    let diag0: Diagnostic = typed_typeck_diag("TYPECK_E_INFERENCE_FAILED", "type of `let " + name + "` cannot be inferred", [name], "write `let " + name + ": Type = value` with a concrete Vitte type", span, DiagnosticSeverity.Error, DiagnosticPhase.Typeck, TypeckErrorKind.TypeMismatch);
     let diag1: Diagnostic = diagnostic_with_rule(diag0, "let binding type must come from its annotation or initializer");
     give diagnostic_with_explanation(diag1, "the initializer does not determine one concrete type and the binding has no sufficient type annotation");
 }
 
 proc typeck_set_immutable(name: string, span: Span) -> Diagnostic {
-    let diag0: Diagnostic = typed_typeck_diag("TYPECK_E_IMMUTABLE_ASSIGN", "`set` cannot modify immutable binding `" + name + "`", [name], "declare it canonically as `let mut " + name + " = value;` if mutation is intended", span, DiagnosticSeverity.Error, DiagnosticPhase.Typeck, TypeckErrorKind.InvalidAssignment);
+    let diag0: Diagnostic = typed_typeck_diag("TYPECK_E_IMMUTABLE_ASSIGN", "`set` cannot modify immutable binding `" + name + "`", [name], "declare it canonically as `let mut " + name + " = value` if mutation is intended", span, DiagnosticSeverity.Error, DiagnosticPhase.Typeck, TypeckErrorKind.InvalidAssignment);
     let diag1: Diagnostic = diagnostic_with_rule(diag0, "set target must be a mutable Vitte binding");
     let diag2: Diagnostic = diagnostic_with_explanation(diag1, "plain `let` creates an immutable binding; only a binding declared with `let mut` may later be changed with `set`");
     give diagnostic_with_probable_fix(diag2, "add `mut` immediately after `let` at the declaration, or replace this `set` with a new `let`");

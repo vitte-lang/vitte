@@ -578,6 +578,12 @@ PARSE_E_UNEXPECTED_TOKEN.step1 = Look at the highlighted token and complete or r
 PARSE_E_UNEXPECTED_TOKEN.fix = complete the syntax shape named by the parser label at the highlighted token
 PARSE_E_UNEXPECTED_TOKEN.example = proc main() -> int { give 0 }
 
+PARSE_E_OLD_VITTE_SYNTAX.summary = old Vitte 構文 is not canonical.
+PARSE_E_OLD_VITTE_SYNTAX.cause = The highlighted token belongs to an older Vitte prototype or to another language surface.
+PARSE_E_OLD_VITTE_SYNTAX.step1 = Identify the intended construct, then compare it with the current Vitte keywords.
+PARSE_E_OLD_VITTE_SYNTAX.fix = replace the old token with the current Vitte keyword only when the construct is equivalent
+PARSE_E_OLD_VITTE_SYNTAX.example = proc main() -> int { give 0 }
+
 PARSE_EXPECTED_EXPR.summary = parse expected expr.
 PARSE_EXPECTED_EXPR.cause = The parser or lexer could not form the next valid source construct.
 PARSE_EXPECTED_EXPR.step1 = Look at the highlighted token and complete or remove the construct around it.
@@ -735,16 +741,57 @@ SEMA_E_UNKNOWN_FIELD.fix = rename the field to one declared by the form, or add 
 SEMA_E_UNKNOWN_FIELD.example = use vitte/core
 
 SEMA_E_UNKNOWN_VARIANT.summary = variant does not exist.
-SEMA_E_UNKNOWN_VARIANT.cause = A symbol, module path, binding, visibility rule, or import contract did not resolve.
-SEMA_E_UNKNOWN_VARIANT.step1 = Check the spelling and the nearest import or declaration.
-SEMA_E_UNKNOWN_VARIANT.fix = resolve the exact symbol contract reported by semantic analysis
-SEMA_E_UNKNOWN_VARIANT.example = use vitte/core
+SEMA_E_UNKNOWN_VARIANT.cause = A `pick` pattern or construction names a variant that is not declared by the selected `pick` type.
+SEMA_E_UNKNOWN_VARIANT.step1 = Compare the highlighted variant with the `case` names declared in the `pick`.
+SEMA_E_UNKNOWN_VARIANT.fix = rename the variant to a declared `case`, or add the missing `case` to the `pick` declaration
+SEMA_E_UNKNOWN_VARIANT.example = pick Status { Ready, Failed }
+let status: Status = Status.Ready
 
-SEMA_E_UNKNOWN_FUNCTION.summary = function does not exist.
-SEMA_E_UNKNOWN_FUNCTION.cause = A symbol, module path, binding, visibility rule, or import contract did not resolve.
-SEMA_E_UNKNOWN_FUNCTION.step1 = Check the spelling and the nearest import or declaration.
-SEMA_E_UNKNOWN_FUNCTION.fix = resolve the exact symbol contract reported by semantic analysis
-SEMA_E_UNKNOWN_FUNCTION.example = use vitte/core
+SEMA_E_INACCESSIBLE_VARIANT.summary = pick variant is inaccessible.
+SEMA_E_INACCESSIBLE_VARIANT.cause = A branch names a `pick` variant that cannot be reached after earlier branches.
+SEMA_E_INACCESSIBLE_VARIANT.step1 = Read the branches in order and find the earlier branch that already covers this variant.
+SEMA_E_INACCESSIBLE_VARIANT.fix = remove the unreachable branch or move the more specific `case` before the broader branch
+SEMA_E_INACCESSIBLE_VARIANT.example = match status {
+  case Ready { give 0 }
+  otherwise { give 1 }
+}
+
+SEMA_E_DUPLICATE_PICK_BRANCH.summary = pick branch is duplicated.
+SEMA_E_DUPLICATE_PICK_BRANCH.cause = The same `pick` variant is matched by more than one branch in the same `match`.
+SEMA_E_DUPLICATE_PICK_BRANCH.step1 = Find the earlier branch for the same `case` and decide which body should remain.
+SEMA_E_DUPLICATE_PICK_BRANCH.fix = merge the duplicate branch bodies or remove the later duplicate branch
+SEMA_E_DUPLICATE_PICK_BRANCH.example = match status {
+  case Ready { give 0 }
+  case Failed { give 1 }
+}
+
+TYPECK_E_PICK_NON_EXHAUSTIVE.summary = pick パターン is not exhaustive.
+TYPECK_E_PICK_NON_EXHAUSTIVE.cause = A `match` over a `pick` value does not cover every reachable variant.
+TYPECK_E_PICK_NON_EXHAUSTIVE.step1 = List the declared `case` variants and compare them with the branches already present.
+TYPECK_E_PICK_NON_EXHAUSTIVE.fix = add the missing `case` branch, or add an `otherwise` branch when a catch-all is intended
+TYPECK_E_PICK_NON_EXHAUSTIVE.example = match status {
+  case Ready { give 0 }
+  case Failed { give 1 }
+}
+
+TYPECK_E_PICK_PAYLOAD_MISMATCH.summary = pick payload does not match variant.
+TYPECK_E_PICK_PAYLOAD_MISMATCH.cause = A `pick` variant payload pattern does not match the fields declared for that `case`.
+TYPECK_E_PICK_PAYLOAD_MISMATCH.step1 = Compare each payload position or name with the selected variant declaration.
+TYPECK_E_PICK_PAYLOAD_MISMATCH.fix = use the expected payload shape for that `case`, including the correct field count and types
+TYPECK_E_PICK_PAYLOAD_MISMATCH.example = pick Event { Data(value: int) }
+match event { case Data(value: int) { give value } }
+
+TYPECK_E_IMPOSSIBLE_PATTERN.summary = pick パターン can never match.
+TYPECK_E_IMPOSSIBLE_PATTERN.cause = The pattern cannot match the scrutinee type produced by the expression.
+TYPECK_E_IMPOSSIBLE_PATTERN.step1 = Compare the matched expression type with the variant or literal named by the pattern.
+TYPECK_E_IMPOSSIBLE_PATTERN.fix = replace the branch pattern with one that belongs to the matched `pick` or value type
+TYPECK_E_IMPOSSIBLE_PATTERN.example = match status { case Ready { give 0 } }
+
+SEMA_E_UNKNOWN_FUNCTION.summary = procedure does not exist.
+SEMA_E_UNKNOWN_FUNCTION.cause = Name resolution could not find a visible `proc` with the highlighted name.
+SEMA_E_UNKNOWN_FUNCTION.step1 = Check the active `use` declarations and the procedure name at the call site.
+SEMA_E_UNKNOWN_FUNCTION.fix = import or declare the missing `proc`, or rename the call to a visible procedure
+SEMA_E_UNKNOWN_FUNCTION.example = proc add(left: int, right: int) -> int { give left + right }
 
 SEMA_E_UNKNOWN_SYMBOL.summary = 不明なシンボル.
 SEMA_E_UNKNOWN_SYMBOL.cause = A symbol, module path, binding, visibility rule, or import contract did not resolve.
@@ -887,7 +934,7 @@ TYPECK_E_RETURN_MISMATCH.example = let count: int = 1
 TYPECK_E_MISSING_GIVE.summary = give in 値 procedureが欠落しています.
 TYPECK_E_MISSING_GIVE.cause = A procedure declares a result type with `->`, but its body has no `give` for the value it promises.
 TYPECK_E_MISSING_GIVE.step1 = Inspect the procedure body and decide which value should be produced.
-TYPECK_E_MISSING_GIVE.fix = add `give expression` on every successful path, or remove the `-> Type` return contract
+TYPECK_E_MISSING_GIVE.fix = add `give expression` on every successful path, or remove the `-> Type` result contract
 TYPECK_E_MISSING_GIVE.example = proc answer() -> int { give 42 }
 
 TYPECK_E_GIVE_IN_VOID_PROC.summary = give 値 in procedure without 戻り 型.
@@ -986,23 +1033,77 @@ TYPECK_E_MATCH_NON_EXHAUSTIVE.step1 = Compare the expected and found types in th
 TYPECK_E_MATCH_NON_EXHAUSTIVE.fix = make the expression type match the type contract named by the type checker
 TYPECK_E_MATCH_NON_EXHAUSTIVE.example = let count: int = 1
 
-TYPECK_E_INVALID_CALL_TARGET.summary = 呼び出し 対象が無効です.
-TYPECK_E_INVALID_CALL_TARGET.cause = The inferred type does not satisfy the type required at this location.
-TYPECK_E_INVALID_CALL_TARGET.step1 = Compare the expected and found types in the diagnostic labels.
-TYPECK_E_INVALID_CALL_TARGET.fix = make the expression type match the type contract named by the type checker
-TYPECK_E_INVALID_CALL_TARGET.example = let count: int = 1
+TYPECK_E_INVALID_CALL_TARGET.summary = 呼び出し 対象 is not callable.
+TYPECK_E_INVALID_CALL_TARGET.cause = The expression before `(` is not a procedure or callable value.
+TYPECK_E_INVALID_CALL_TARGET.step1 = Check the type of the highlighted expression and the declaration it resolves to.
+TYPECK_E_INVALID_CALL_TARGET.fix = call a `proc` value, or remove `(...)` when the expression is just a value
+TYPECK_E_INVALID_CALL_TARGET.example = add(1, 2)
+
+TYPECK_E_UNKNOWN_PROCEDURE.summary = procedure does not exist.
+TYPECK_E_UNKNOWN_PROCEDURE.cause = Name resolution could not find a visible `proc` with the highlighted name.
+TYPECK_E_UNKNOWN_PROCEDURE.step1 = Check the active `use` declarations and the procedure name at the call site.
+TYPECK_E_UNKNOWN_PROCEDURE.fix = import or declare the missing `proc`, or rename the call to a visible procedure
+TYPECK_E_UNKNOWN_PROCEDURE.example = proc add(left: int, right: int) -> int { give left + right }
 
 TYPECK_E_ARGUMENT_MISMATCH.summary = 呼び出し 引数 型不一致.
-TYPECK_E_ARGUMENT_MISMATCH.cause = The inferred type does not satisfy the type required at this location.
-TYPECK_E_ARGUMENT_MISMATCH.step1 = Compare the expected and found types in the diagnostic labels.
-TYPECK_E_ARGUMENT_MISMATCH.fix = make the expression type match the type contract named by the type checker
-TYPECK_E_ARGUMENT_MISMATCH.example = let count: int = 1
+TYPECK_E_ARGUMENT_MISMATCH.cause = An argument expression does not match the type of the parameter it is passed to.
+TYPECK_E_ARGUMENT_MISMATCH.step1 = Link the highlighted argument to its parameter and compare the expected and found Vitte types.
+TYPECK_E_ARGUMENT_MISMATCH.fix = change that argument expression or the parameter type so the single argument matches its parameter
+TYPECK_E_ARGUMENT_MISMATCH.example = scale(value: 4, factor: 2)
 
 TYPECK_E_CALL_ARITY.summary = wrong 数値 of 呼び出し 引数.
-TYPECK_E_CALL_ARITY.cause = The inferred type does not satisfy the type required at this location.
-TYPECK_E_CALL_ARITY.step1 = Compare the expected and found types in the diagnostic labels.
-TYPECK_E_CALL_ARITY.fix = make the expression type match the type contract named by the type checker
-TYPECK_E_CALL_ARITY.example = let count: int = 1
+TYPECK_E_CALL_ARITY.cause = The call supplies a different number of arguments than the procedure parameter list.
+TYPECK_E_CALL_ARITY.step1 = Show the expected parameters in order, then attach each extra or missing argument to its nearest parameter.
+TYPECK_E_CALL_ARITY.fix = add missing arguments or remove extra arguments so the call matches the `proc` parameter list
+TYPECK_E_CALL_ARITY.example = add(1, 2)
+
+TYPECK_E_UNKNOWN_NAMED_ARGUMENT.summary = named 引数 has no matching parameter.
+TYPECK_E_UNKNOWN_NAMED_ARGUMENT.cause = A named argument does not correspond to any parameter in the called procedure.
+TYPECK_E_UNKNOWN_NAMED_ARGUMENT.step1 = Display the expected parameter names and highlight the unknown argument name.
+TYPECK_E_UNKNOWN_NAMED_ARGUMENT.fix = rename the argument to an expected parameter name or remove it
+TYPECK_E_UNKNOWN_NAMED_ARGUMENT.example = connect(host: "localhost", port: 8080)
+
+TYPECK_E_ARGUMENT_ORDER.summary = 呼び出し 引数 are in the wrong order.
+TYPECK_E_ARGUMENT_ORDER.cause = A positional or named argument appears after an argument form that makes the order invalid.
+TYPECK_E_ARGUMENT_ORDER.step1 = Compare the call argument order with the procedure parameter order shown in the diagnostic.
+TYPECK_E_ARGUMENT_ORDER.fix = reorder the arguments to match the parameter list, or use named arguments consistently
+TYPECK_E_ARGUMENT_ORDER.example = draw(x: 1, y: 2, color: "blue")
+
+TYPECK_E_AMBIGUOUS_CALL.summary = procedure 呼び出し is ambiguous.
+TYPECK_E_AMBIGUOUS_CALL.cause = More than one visible procedure can accept the same call shape.
+TYPECK_E_AMBIGUOUS_CALL.step1 = Show the candidate procedure signatures and identify the arguments that do not disambiguate them.
+TYPECK_E_AMBIGUOUS_CALL.fix = add a type annotation to one argument or call a more specific procedure name
+TYPECK_E_AMBIGUOUS_CALL.example = let result: int = parse("42")
+
+TYPECK_W_IGNORED_RESULT.summary = procedure result is ignored.
+TYPECK_W_IGNORED_RESULT.cause = A procedure result is produced but the surrounding statement does not use it.
+TYPECK_W_IGNORED_RESULT.step1 = Check whether the result should be bound with `let`, passed onward, or intentionally discarded.
+TYPECK_W_IGNORED_RESULT.fix = bind the result with `let name: Type = call(...)` when the value is needed
+TYPECK_W_IGNORED_RESULT.example = let total: int = add(1, 2)
+
+TYPECK_E_NOT_CALLABLE.summary = 値 is not callable.
+TYPECK_E_NOT_CALLABLE.cause = The expression before `(` is not a procedure or callable value.
+TYPECK_E_NOT_CALLABLE.step1 = Check the type of the highlighted expression and the declaration it resolves to.
+TYPECK_E_NOT_CALLABLE.fix = call a `proc` value, or remove `(...)` when the expression is just a value
+TYPECK_E_NOT_CALLABLE.example = add(1, 2)
+
+TYPECK_E_IMPL_MISSING_MEMBER.summary = implementation is 欠落 a required メンバー.
+TYPECK_E_IMPL_MISSING_MEMBER.cause = The inferred type does not satisfy the type required at this location.
+TYPECK_E_IMPL_MISSING_MEMBER.step1 = Compare the expected and found types in the diagnostic labels.
+TYPECK_E_IMPL_MISSING_MEMBER.fix = make the expression type match the type contract named by the type checker
+TYPECK_E_IMPL_MISSING_MEMBER.example = let count: int = 1
+
+TYPECK_E_IMPL_SIGNATURE_MISMATCH.summary = implementation メンバー signature does not match.
+TYPECK_E_IMPL_SIGNATURE_MISMATCH.cause = The inferred type does not satisfy the type required at this location.
+TYPECK_E_IMPL_SIGNATURE_MISMATCH.step1 = Compare the expected and found types in the diagnostic labels.
+TYPECK_E_IMPL_SIGNATURE_MISMATCH.fix = make the expression type match the type contract named by the type checker
+TYPECK_E_IMPL_SIGNATURE_MISMATCH.example = let count: int = 1
+
+TYPECK_E_IMPL_UNKNOWN_TRAIT.summary = trait does not exist.
+TYPECK_E_IMPL_UNKNOWN_TRAIT.cause = The inferred type does not satisfy the type required at this location.
+TYPECK_E_IMPL_UNKNOWN_TRAIT.step1 = Compare the expected and found types in the diagnostic labels.
+TYPECK_E_IMPL_UNKNOWN_TRAIT.fix = make the expression type match the type contract named by the type checker
+TYPECK_E_IMPL_UNKNOWN_TRAIT.example = let count: int = 1
 
 TYPECK_E_GENERIC_INFERENCE.summary = ジェネリック 型 could not be inferred.
 TYPECK_E_GENERIC_INFERENCE.cause = The inferred type does not satisfy the type required at this location.
@@ -1185,76 +1286,101 @@ BORROWCK_E_MOVE_AFTER_MOVE.fix = repair the ownership transition named by the bo
 BORROWCK_E_MOVE_AFTER_MOVE.example = let view = &value
 
 BORROWCK_E_USE_AFTER_MOVE.summary = 値 使用済み after ムーブ.
-BORROWCK_E_USE_AFTER_MOVE.cause = A value was moved, borrowed, assigned, or dropped in an invalid order.
-BORROWCK_E_USE_AFTER_MOVE.step1 = Find the earlier move or borrow mentioned by the diagnostic.
-BORROWCK_E_USE_AFTER_MOVE.fix = borrow before the move, clone explicitly, or move the later use before ownership transfer
-BORROWCK_E_USE_AFTER_MOVE.example = let view = &value
+BORROWCK_E_USE_AFTER_MOVE.cause = A value is used after ownership has moved away from its binding.
+BORROWCK_E_USE_AFTER_MOVE.step1 = Show where the value is created, where it is moved, and where it is reused after the move.
+BORROWCK_E_USE_AFTER_MOVE.fix = use the value before the move, borrow it instead of moving it, or create a new value
+BORROWCK_E_USE_AFTER_MOVE.example = let value: string = "vitte"
+
+BORROWCK_E_PARTIAL_MOVE.summary = 値 partially ムーブ済み.
+BORROWCK_E_PARTIAL_MOVE.cause = Part of a compound value was moved, then the original value was used as if it were still complete.
+BORROWCK_E_PARTIAL_MOVE.step1 = Show the original construction, the field or variant payload that moved, and the later whole-value use.
+BORROWCK_E_PARTIAL_MOVE.fix = avoid using the whole value after moving one part, or rebuild the missing part before use
+BORROWCK_E_PARTIAL_MOVE.example = form User { name: string, age: int }
 
 BORROWCK_E_BORROW_OF_MOVED_VALUE.summary = 借用 of ムーブ済み 値.
-BORROWCK_E_BORROW_OF_MOVED_VALUE.cause = A value was moved, borrowed, assigned, or dropped in an invalid order.
-BORROWCK_E_BORROW_OF_MOVED_VALUE.step1 = Find the earlier move or borrow mentioned by the diagnostic.
-BORROWCK_E_BORROW_OF_MOVED_VALUE.fix = repair the ownership transition named by the borrow checker before the highlighted use
-BORROWCK_E_BORROW_OF_MOVED_VALUE.example = let view = &value
+BORROWCK_E_BORROW_OF_MOVED_VALUE.cause = A borrow starts after ownership has already moved away from the original binding.
+BORROWCK_E_BORROW_OF_MOVED_VALUE.step1 = Show the value creation, the move, and the later borrow attempt in that order.
+BORROWCK_E_BORROW_OF_MOVED_VALUE.fix = create the borrow before the move, or move a different value
+BORROWCK_E_BORROW_OF_MOVED_VALUE.example = let value: string = "vitte"
+let view = &value
 
 BORROWCK_E_MUTABLE_BORROW_CONFLICT.summary = 可変 借用競合.
-BORROWCK_E_MUTABLE_BORROW_CONFLICT.cause = A value was moved, borrowed, assigned, or dropped in an invalid order.
-BORROWCK_E_MUTABLE_BORROW_CONFLICT.step1 = Find the earlier move or borrow mentioned by the diagnostic.
-BORROWCK_E_MUTABLE_BORROW_CONFLICT.fix = repair the ownership transition named by the borrow checker before the highlighted use
-BORROWCK_E_MUTABLE_BORROW_CONFLICT.example = let view = &value
+BORROWCK_E_MUTABLE_BORROW_CONFLICT.cause = A value is already mutably borrowed when another borrow of the same value starts.
+BORROWCK_E_MUTABLE_BORROW_CONFLICT.step1 = Report the value creation first, then the first mutable borrow, then the later conflicting borrow, then where the first borrow ends.
+BORROWCK_E_MUTABLE_BORROW_CONFLICT.fix = end the first mutable borrow before starting the next borrow
+BORROWCK_E_MUTABLE_BORROW_CONFLICT.example = let value: int = 1
+let first = &value
+
+BORROWCK_E_MUTABLE_SHARED_CONFLICT.summary = 可変 and 共有 borrows overlap.
+BORROWCK_E_MUTABLE_SHARED_CONFLICT.cause = A mutable borrow overlaps with a shared borrow of the same value.
+BORROWCK_E_MUTABLE_SHARED_CONFLICT.step1 = Show the value creation, the shared borrow, the mutable borrow, and the point where each borrow stops being used.
+BORROWCK_E_MUTABLE_SHARED_CONFLICT.fix = move the mutation after the shared borrow's last use, or shorten the shared borrow scope
+BORROWCK_E_MUTABLE_SHARED_CONFLICT.example = let value: int = 1
+let view = &value
 
 BORROWCK_E_SHARED_BORROW_CONFLICT.summary = 共有 借用競合.
-BORROWCK_E_SHARED_BORROW_CONFLICT.cause = A value was moved, borrowed, assigned, or dropped in an invalid order.
-BORROWCK_E_SHARED_BORROW_CONFLICT.step1 = Find the earlier move or borrow mentioned by the diagnostic.
-BORROWCK_E_SHARED_BORROW_CONFLICT.fix = repair the ownership transition named by the borrow checker before the highlighted use
-BORROWCK_E_SHARED_BORROW_CONFLICT.example = let view = &value
+BORROWCK_E_SHARED_BORROW_CONFLICT.cause = A mutable borrow overlaps with a shared borrow of the same value.
+BORROWCK_E_SHARED_BORROW_CONFLICT.step1 = Show the value creation, the shared borrow, the mutable borrow, and the point where each borrow stops being used.
+BORROWCK_E_SHARED_BORROW_CONFLICT.fix = move the mutation after the shared borrow's last use, or shorten the shared borrow scope
+BORROWCK_E_SHARED_BORROW_CONFLICT.example = let value: int = 1
+let view = &value
 
 BORROWCK_E_WRITE_WHILE_BORROWED.summary = 書き込み 中 借用済み.
-BORROWCK_E_WRITE_WHILE_BORROWED.cause = A value was moved, borrowed, assigned, or dropped in an invalid order.
-BORROWCK_E_WRITE_WHILE_BORROWED.step1 = Find the earlier move or borrow mentioned by the diagnostic.
-BORROWCK_E_WRITE_WHILE_BORROWED.fix = repair the ownership transition named by the borrow checker before the highlighted use
-BORROWCK_E_WRITE_WHILE_BORROWED.example = let view = &value
+BORROWCK_E_WRITE_WHILE_BORROWED.cause = A `set` mutates a value while an active borrow can still observe the old value.
+BORROWCK_E_WRITE_WHILE_BORROWED.step1 = Show the borrow start, the mutation, the later borrow use, and where the borrow ends.
+BORROWCK_E_WRITE_WHILE_BORROWED.fix = move the `set` after the borrow's last use, or shorten the borrow
+BORROWCK_E_WRITE_WHILE_BORROWED.example = let value: int = 1
+set value = 2
 
 BORROWCK_E_MOVE_WHILE_BORROWED.summary = ムーブ 中 借用済み.
-BORROWCK_E_MOVE_WHILE_BORROWED.cause = A value was moved, borrowed, assigned, or dropped in an invalid order.
-BORROWCK_E_MOVE_WHILE_BORROWED.step1 = Find the earlier move or borrow mentioned by the diagnostic.
-BORROWCK_E_MOVE_WHILE_BORROWED.fix = repair the ownership transition named by the borrow checker before the highlighted use
-BORROWCK_E_MOVE_WHILE_BORROWED.example = let view = &value
+BORROWCK_E_MOVE_WHILE_BORROWED.cause = Ownership moves out of a value while an active borrow can still use it.
+BORROWCK_E_MOVE_WHILE_BORROWED.step1 = Show the value creation, the borrow start, the move, the later borrow use, and where the borrow ends.
+BORROWCK_E_MOVE_WHILE_BORROWED.fix = move the value only after the borrow's last use, or pass a borrow instead of moving ownership
+BORROWCK_E_MOVE_WHILE_BORROWED.example = let value: string = "vitte"
+let view = &value
 
 BORROWCK_E_DROP_WHILE_BORROWED.summary = 破棄 中 借用済み.
-BORROWCK_E_DROP_WHILE_BORROWED.cause = A value was moved, borrowed, assigned, or dropped in an invalid order.
-BORROWCK_E_DROP_WHILE_BORROWED.step1 = Find the earlier move or borrow mentioned by the diagnostic.
-BORROWCK_E_DROP_WHILE_BORROWED.fix = repair the ownership transition named by the borrow checker before the highlighted use
-BORROWCK_E_DROP_WHILE_BORROWED.example = let view = &value
+BORROWCK_E_DROP_WHILE_BORROWED.cause = A value is destroyed while an active borrow still points to it.
+BORROWCK_E_DROP_WHILE_BORROWED.step1 = Show the value creation, the borrow start, the destruction point, and the last borrow use.
+BORROWCK_E_DROP_WHILE_BORROWED.fix = destroy the value only after the borrow is no longer used
+BORROWCK_E_DROP_WHILE_BORROWED.example = let value: string = "vitte"
 
 BORROWCK_E_ASSIGN_WHILE_BORROWED.summary = assign 中 借用済み.
-BORROWCK_E_ASSIGN_WHILE_BORROWED.cause = A value was moved, borrowed, assigned, or dropped in an invalid order.
-BORROWCK_E_ASSIGN_WHILE_BORROWED.step1 = Find the earlier move or borrow mentioned by the diagnostic.
-BORROWCK_E_ASSIGN_WHILE_BORROWED.fix = repair the ownership transition named by the borrow checker before the highlighted use
-BORROWCK_E_ASSIGN_WHILE_BORROWED.example = let view = &value
+BORROWCK_E_ASSIGN_WHILE_BORROWED.cause = A `set` mutates a value while an active borrow can still observe the old value.
+BORROWCK_E_ASSIGN_WHILE_BORROWED.step1 = Show the borrow start, the mutation, the later borrow use, and where the borrow ends.
+BORROWCK_E_ASSIGN_WHILE_BORROWED.fix = move the `set` after the borrow's last use, or shorten the borrow
+BORROWCK_E_ASSIGN_WHILE_BORROWED.example = let value: int = 1
+set value = 2
 
 BORROWCK_E_RETURN_REF_TO_LOCAL.summary = 戻り ref to ローカル.
-BORROWCK_E_RETURN_REF_TO_LOCAL.cause = A value was moved, borrowed, assigned, or dropped in an invalid order.
-BORROWCK_E_RETURN_REF_TO_LOCAL.step1 = Find the earlier move or borrow mentioned by the diagnostic.
-BORROWCK_E_RETURN_REF_TO_LOCAL.fix = repair the ownership transition named by the borrow checker before the highlighted use
-BORROWCK_E_RETURN_REF_TO_LOCAL.example = let view = &value
+BORROWCK_E_RETURN_REF_TO_LOCAL.cause = A procedure gives back a reference to a local value that ends when the procedure exits.
+BORROWCK_E_RETURN_REF_TO_LOCAL.step1 = Show the local value creation, the reference creation, and the `give` that would let the reference escape.
+BORROWCK_E_RETURN_REF_TO_LOCAL.fix = give an owned value, or take the referenced value from a parameter that outlives the procedure
+BORROWCK_E_RETURN_REF_TO_LOCAL.example = proc name() -> string { give "vitte" }
 
 BORROWCK_E_RETURN_BORROW_OF_LOCAL.summary = 戻り 借用 of ローカル.
-BORROWCK_E_RETURN_BORROW_OF_LOCAL.cause = A value was moved, borrowed, assigned, or dropped in an invalid order.
-BORROWCK_E_RETURN_BORROW_OF_LOCAL.step1 = Find the earlier move or borrow mentioned by the diagnostic.
-BORROWCK_E_RETURN_BORROW_OF_LOCAL.fix = repair the ownership transition named by the borrow checker before the highlighted use
-BORROWCK_E_RETURN_BORROW_OF_LOCAL.example = let view = &value
+BORROWCK_E_RETURN_BORROW_OF_LOCAL.cause = A procedure gives back a reference to a local value that ends when the procedure exits.
+BORROWCK_E_RETURN_BORROW_OF_LOCAL.step1 = Show the local value creation, the reference creation, and the `give` that would let the reference escape.
+BORROWCK_E_RETURN_BORROW_OF_LOCAL.fix = give an owned value, or take the referenced value from a parameter that outlives the procedure
+BORROWCK_E_RETURN_BORROW_OF_LOCAL.example = proc name() -> string { give "vitte" }
 
 BORROWCK_E_DANGLING_REFERENCE.summary = dangling 参照.
-BORROWCK_E_DANGLING_REFERENCE.cause = A value was moved, borrowed, assigned, or dropped in an invalid order.
-BORROWCK_E_DANGLING_REFERENCE.step1 = Find the earlier move or borrow mentioned by the diagnostic.
-BORROWCK_E_DANGLING_REFERENCE.fix = repair the ownership transition named by the borrow checker before the highlighted use
-BORROWCK_E_DANGLING_REFERENCE.example = let view = &value
+BORROWCK_E_DANGLING_REFERENCE.cause = A reference can remain usable after the value it points to is no longer alive.
+BORROWCK_E_DANGLING_REFERENCE.step1 = Show where the value is created, where the reference is created, and where the value stops being alive.
+BORROWCK_E_DANGLING_REFERENCE.fix = keep the referenced value alive longer, or give an owned value instead of a reference
+BORROWCK_E_DANGLING_REFERENCE.example = proc name() -> string { give "vitte" }
+
+BORROWCK_E_REFERENCE_OUTLIVES_VALUE.summary = 参照 outlives the 値 it points to.
+BORROWCK_E_REFERENCE_OUTLIVES_VALUE.cause = A reference can remain usable after the value it points to is no longer alive.
+BORROWCK_E_REFERENCE_OUTLIVES_VALUE.step1 = Show where the value is created, where the reference is created, and where the value stops being alive.
+BORROWCK_E_REFERENCE_OUTLIVES_VALUE.fix = keep the referenced value alive longer, or give an owned value instead of a reference
+BORROWCK_E_REFERENCE_OUTLIVES_VALUE.example = proc name() -> string { give "vitte" }
 
 BORROWCK_E_LIFETIME_TOO_SHORT.summary = ライフタイム 過剰 short.
-BORROWCK_E_LIFETIME_TOO_SHORT.cause = A value was moved, borrowed, assigned, or dropped in an invalid order.
-BORROWCK_E_LIFETIME_TOO_SHORT.step1 = Find the earlier move or borrow mentioned by the diagnostic.
-BORROWCK_E_LIFETIME_TOO_SHORT.fix = repair the ownership transition named by the borrow checker before the highlighted use
-BORROWCK_E_LIFETIME_TOO_SHORT.example = let view = &value
+BORROWCK_E_LIFETIME_TOO_SHORT.cause = A reference can remain usable after the value it points to is no longer alive.
+BORROWCK_E_LIFETIME_TOO_SHORT.step1 = Show where the value is created, where the reference is created, and where the value stops being alive.
+BORROWCK_E_LIFETIME_TOO_SHORT.fix = keep the referenced value alive longer, or give an owned value instead of a reference
+BORROWCK_E_LIFETIME_TOO_SHORT.example = proc name() -> string { give "vitte" }
 
 BORROWCK_E_IMMUTABLE_ASSIGN.summary = immutable assign.
 BORROWCK_E_IMMUTABLE_ASSIGN.cause = A value was moved, borrowed, assigned, or dropped in an invalid order.
@@ -1724,6 +1850,18 @@ BOOTSTRAP_E_ARTIFACT_INVALID.step1 = Inspect the bootstrap artifact and the stag
 BOOTSTRAP_E_ARTIFACT_INVALID.fix = repair the seed-rooted bootstrap artifact before using it as compiler input
 BOOTSTRAP_E_ARTIFACT_INVALID.example = vitte check path/to/file.vit
 
+E_BOOTSTRAP_BANNER.summary = bootstrap banner is 無効.
+E_BOOTSTRAP_BANNER.cause = The bootstrap compiler rejected a trust-root, stage artifact, or seed-root invariant.
+E_BOOTSTRAP_BANNER.step1 = Inspect the bootstrap artifact and the stage named by the diagnostic code.
+E_BOOTSTRAP_BANNER.fix = repair the seed-rooted bootstrap artifact before using it as compiler input
+E_BOOTSTRAP_BANNER.example = make bootstrap-seed-root-test
+
+E_BOOTSTRAP_CONST_SIGNATURE.summary = bootstrap 定数 signature is 無効.
+E_BOOTSTRAP_CONST_SIGNATURE.cause = The bootstrap compiler rejected a trust-root, stage artifact, or seed-root invariant.
+E_BOOTSTRAP_CONST_SIGNATURE.step1 = Inspect the bootstrap artifact and the stage named by the diagnostic code.
+E_BOOTSTRAP_CONST_SIGNATURE.fix = repair the seed-rooted bootstrap artifact before using it as compiler input
+E_BOOTSTRAP_CONST_SIGNATURE.example = make bootstrap-seed-root-test
+
 E_BOOTSTRAP_CONST_TYPE.summary = bootstrap 定数 has wrong 型.
 E_BOOTSTRAP_CONST_TYPE.cause = The bootstrap compiler rejected a trust-root, stage artifact, or seed-root invariant.
 E_BOOTSTRAP_CONST_TYPE.step1 = Inspect the bootstrap artifact and the stage named by the diagnostic code.
@@ -1736,6 +1874,54 @@ E_BOOTSTRAP_DUP_PROC.step1 = Inspect the bootstrap artifact and the stage named 
 E_BOOTSTRAP_DUP_PROC.fix = repair the seed-rooted bootstrap artifact before using it as compiler input
 E_BOOTSTRAP_DUP_PROC.example = vitte check path/to/file.vit
 
+E_BOOTSTRAP_EXPORT.summary = bootstrap export is 無効.
+E_BOOTSTRAP_EXPORT.cause = The bootstrap compiler rejected a trust-root, stage artifact, or seed-root invariant.
+E_BOOTSTRAP_EXPORT.step1 = Inspect the bootstrap artifact and the stage named by the diagnostic code.
+E_BOOTSTRAP_EXPORT.fix = repair the seed-rooted bootstrap artifact before using it as compiler input
+E_BOOTSTRAP_EXPORT.example = make bootstrap-seed-root-test
+
+E_BOOTSTRAP_MAIN_BODY.summary = bootstrap main body is 無効.
+E_BOOTSTRAP_MAIN_BODY.cause = The bootstrap compiler rejected a trust-root, stage artifact, or seed-root invariant.
+E_BOOTSTRAP_MAIN_BODY.step1 = Inspect the bootstrap artifact and the stage named by the diagnostic code.
+E_BOOTSTRAP_MAIN_BODY.fix = repair the seed-rooted bootstrap artifact before using it as compiler input
+E_BOOTSTRAP_MAIN_BODY.example = make bootstrap-seed-root-test
+
+E_BOOTSTRAP_MAIN_SIGNATURE.summary = bootstrap main signature is 無効.
+E_BOOTSTRAP_MAIN_SIGNATURE.cause = The bootstrap compiler rejected a trust-root, stage artifact, or seed-root invariant.
+E_BOOTSTRAP_MAIN_SIGNATURE.step1 = Inspect the bootstrap artifact and the stage named by the diagnostic code.
+E_BOOTSTRAP_MAIN_SIGNATURE.fix = repair the seed-rooted bootstrap artifact before using it as compiler input
+E_BOOTSTRAP_MAIN_SIGNATURE.example = make bootstrap-seed-root-test
+
+E_BOOTSTRAP_PROC_BODY.summary = bootstrap procedure body is 無効.
+E_BOOTSTRAP_PROC_BODY.cause = The bootstrap compiler rejected a trust-root, stage artifact, or seed-root invariant.
+E_BOOTSTRAP_PROC_BODY.step1 = Inspect the bootstrap artifact and the stage named by the diagnostic code.
+E_BOOTSTRAP_PROC_BODY.fix = repair the seed-rooted bootstrap artifact before using it as compiler input
+E_BOOTSTRAP_PROC_BODY.example = make bootstrap-seed-root-test
+
+E_BOOTSTRAP_PROC_SIGNATURE.summary = bootstrap procedure signature is 無効.
+E_BOOTSTRAP_PROC_SIGNATURE.cause = The bootstrap compiler rejected a trust-root, stage artifact, or seed-root invariant.
+E_BOOTSTRAP_PROC_SIGNATURE.step1 = Inspect the bootstrap artifact and the stage named by the diagnostic code.
+E_BOOTSTRAP_PROC_SIGNATURE.fix = repair the seed-rooted bootstrap artifact before using it as compiler input
+E_BOOTSTRAP_PROC_SIGNATURE.example = make bootstrap-seed-root-test
+
+E_BOOTSTRAP_SPACE.summary = bootstrap space 宣言 is 無効.
+E_BOOTSTRAP_SPACE.cause = The bootstrap compiler rejected a trust-root, stage artifact, or seed-root invariant.
+E_BOOTSTRAP_SPACE.step1 = Inspect the bootstrap artifact and the stage named by the diagnostic code.
+E_BOOTSTRAP_SPACE.fix = repair the seed-rooted bootstrap artifact before using it as compiler input
+E_BOOTSTRAP_SPACE.example = make bootstrap-seed-root-test
+
+E_BOOTSTRAP_TOP_LEVEL.summary = bootstrap top-level 宣言 is 無効.
+E_BOOTSTRAP_TOP_LEVEL.cause = The bootstrap compiler rejected a trust-root, stage artifact, or seed-root invariant.
+E_BOOTSTRAP_TOP_LEVEL.step1 = Inspect the bootstrap artifact and the stage named by the diagnostic code.
+E_BOOTSTRAP_TOP_LEVEL.fix = repair the seed-rooted bootstrap artifact before using it as compiler input
+E_BOOTSTRAP_TOP_LEVEL.example = make bootstrap-seed-root-test
+
+E_BOOTSTRAP_UNCLOSED_PROC.summary = bootstrap procedure body is not closed.
+E_BOOTSTRAP_UNCLOSED_PROC.cause = The bootstrap compiler rejected a trust-root, stage artifact, or seed-root invariant.
+E_BOOTSTRAP_UNCLOSED_PROC.step1 = Inspect the bootstrap artifact and the stage named by the diagnostic code.
+E_BOOTSTRAP_UNCLOSED_PROC.fix = repair the seed-rooted bootstrap artifact before using it as compiler input
+E_BOOTSTRAP_UNCLOSED_PROC.example = make bootstrap-seed-root-test
+
 E_BOOTSTRAP_UNKNOWN_CONST.summary = 不明なbootstrap 定数.
 E_BOOTSTRAP_UNKNOWN_CONST.cause = The bootstrap compiler rejected a trust-root, stage artifact, or seed-root invariant.
 E_BOOTSTRAP_UNKNOWN_CONST.step1 = Inspect the bootstrap artifact and the stage named by the diagnostic code.
@@ -1747,6 +1933,12 @@ E_BOOTSTRAP_UNKNOWN_PROC.cause = The bootstrap compiler rejected a trust-root, s
 E_BOOTSTRAP_UNKNOWN_PROC.step1 = Inspect the bootstrap artifact and the stage named by the diagnostic code.
 E_BOOTSTRAP_UNKNOWN_PROC.fix = repair the seed-rooted bootstrap artifact before using it as compiler input
 E_BOOTSTRAP_UNKNOWN_PROC.example = vitte check path/to/file.vit
+
+E_BOOTSTRAP_VERSION.summary = bootstrap version is 無効.
+E_BOOTSTRAP_VERSION.cause = The bootstrap compiler rejected a trust-root, stage artifact, or seed-root invariant.
+E_BOOTSTRAP_VERSION.step1 = Inspect the bootstrap artifact and the stage named by the diagnostic code.
+E_BOOTSTRAP_VERSION.fix = repair the seed-rooted bootstrap artifact before using it as compiler input
+E_BOOTSTRAP_VERSION.example = make bootstrap-seed-root-test
 
 LIMIT_FILE_SIZE_MAX.summary = ファイル size max.
 LIMIT_FILE_SIZE_MAX.cause = The input exceeded a configured compiler safety limit.
@@ -2030,7 +2222,7 @@ SYNTAX_E_BRANCH_MISMATCH.step1 = Look at the highlighted token and complete or r
 SYNTAX_E_BRANCH_MISMATCH.fix = complete the syntax shape named by the parser label at the highlighted token
 SYNTAX_E_BRANCH_MISMATCH.example = proc main() -> int { give 0 }
 
-SYNTAX_E_INVALID_CALL.summary = 呼び出しが無効です.
+SYNTAX_E_INVALID_CALL.summary = 呼び出し 対象 is not callable.
 SYNTAX_E_INVALID_CALL.cause = The parser or lexer could not form the next valid source construct.
 SYNTAX_E_INVALID_CALL.step1 = Look at the highlighted token and complete or remove the construct around it.
 SYNTAX_E_INVALID_CALL.fix = complete the syntax shape named by the parser label at the highlighted token
@@ -2408,7 +2600,7 @@ NAME_E_BRANCH_MISMATCH.step1 = Check the spelling and the nearest import or decl
 NAME_E_BRANCH_MISMATCH.fix = resolve the exact symbol contract reported by semantic analysis
 NAME_E_BRANCH_MISMATCH.example = use vitte/core
 
-NAME_E_INVALID_CALL.summary = 呼び出しが無効です.
+NAME_E_INVALID_CALL.summary = 呼び出し 対象 is not callable.
 NAME_E_INVALID_CALL.cause = A symbol, module path, binding, visibility rule, or import contract did not resolve.
 NAME_E_INVALID_CALL.step1 = Check the spelling and the nearest import or declaration.
 NAME_E_INVALID_CALL.fix = resolve the exact symbol contract reported by semantic analysis
@@ -2786,7 +2978,7 @@ MODULE_E_BRANCH_MISMATCH.step1 = Check the spelling and the nearest import or de
 MODULE_E_BRANCH_MISMATCH.fix = resolve the exact symbol contract reported by semantic analysis
 MODULE_E_BRANCH_MISMATCH.example = use vitte/core
 
-MODULE_E_INVALID_CALL.summary = 呼び出しが無効です.
+MODULE_E_INVALID_CALL.summary = 呼び出し 対象 is not callable.
 MODULE_E_INVALID_CALL.cause = A symbol, module path, binding, visibility rule, or import contract did not resolve.
 MODULE_E_INVALID_CALL.step1 = Check the spelling and the nearest import or declaration.
 MODULE_E_INVALID_CALL.fix = resolve the exact symbol contract reported by semantic analysis
@@ -3164,7 +3356,7 @@ TYPE_E_BRANCH_MISMATCH.step1 = Compare the expected and found types in the diagn
 TYPE_E_BRANCH_MISMATCH.fix = make the expression type match the type contract named by the type checker
 TYPE_E_BRANCH_MISMATCH.example = let count: int = 1
 
-TYPE_E_INVALID_CALL.summary = 呼び出しが無効です.
+TYPE_E_INVALID_CALL.summary = 呼び出し 対象 is not callable.
 TYPE_E_INVALID_CALL.cause = The inferred type does not satisfy the type required at this location.
 TYPE_E_INVALID_CALL.step1 = Compare the expected and found types in the diagnostic labels.
 TYPE_E_INVALID_CALL.fix = make the expression type match the type contract named by the type checker
@@ -3542,7 +3734,7 @@ GENERIC_E_BRANCH_MISMATCH.step1 = Compare the expected and found types in the di
 GENERIC_E_BRANCH_MISMATCH.fix = make the expression type match the type contract named by the type checker
 GENERIC_E_BRANCH_MISMATCH.example = let count: int = 1
 
-GENERIC_E_INVALID_CALL.summary = 呼び出しが無効です.
+GENERIC_E_INVALID_CALL.summary = 呼び出し 対象 is not callable.
 GENERIC_E_INVALID_CALL.cause = The inferred type does not satisfy the type required at this location.
 GENERIC_E_INVALID_CALL.step1 = Compare the expected and found types in the diagnostic labels.
 GENERIC_E_INVALID_CALL.fix = make the expression type match the type contract named by the type checker
@@ -3920,7 +4112,7 @@ TRAIT_E_BRANCH_MISMATCH.step1 = Compare the expected and found types in the diag
 TRAIT_E_BRANCH_MISMATCH.fix = make the expression type match the type contract named by the type checker
 TRAIT_E_BRANCH_MISMATCH.example = let count: int = 1
 
-TRAIT_E_INVALID_CALL.summary = 呼び出しが無効です.
+TRAIT_E_INVALID_CALL.summary = 呼び出し 対象 is not callable.
 TRAIT_E_INVALID_CALL.cause = The inferred type does not satisfy the type required at this location.
 TRAIT_E_INVALID_CALL.step1 = Compare the expected and found types in the diagnostic labels.
 TRAIT_E_INVALID_CALL.fix = make the expression type match the type contract named by the type checker
@@ -4298,7 +4490,7 @@ OWNERSHIP_E_BRANCH_MISMATCH.step1 = Find the earlier move or borrow mentioned by
 OWNERSHIP_E_BRANCH_MISMATCH.fix = repair the ownership transition named by the borrow checker before the highlighted use
 OWNERSHIP_E_BRANCH_MISMATCH.example = let view = &value
 
-OWNERSHIP_E_INVALID_CALL.summary = 呼び出しが無効です.
+OWNERSHIP_E_INVALID_CALL.summary = 呼び出し 対象 is not callable.
 OWNERSHIP_E_INVALID_CALL.cause = A value was moved, borrowed, assigned, or dropped in an invalid order.
 OWNERSHIP_E_INVALID_CALL.step1 = Find the earlier move or borrow mentioned by the diagnostic.
 OWNERSHIP_E_INVALID_CALL.fix = repair the ownership transition named by the borrow checker before the highlighted use
@@ -4676,7 +4868,7 @@ LIFETIME_E_BRANCH_MISMATCH.step1 = Find the earlier move or borrow mentioned by 
 LIFETIME_E_BRANCH_MISMATCH.fix = repair the ownership transition named by the borrow checker before the highlighted use
 LIFETIME_E_BRANCH_MISMATCH.example = let view = &value
 
-LIFETIME_E_INVALID_CALL.summary = 呼び出しが無効です.
+LIFETIME_E_INVALID_CALL.summary = 呼び出し 対象 is not callable.
 LIFETIME_E_INVALID_CALL.cause = A value was moved, borrowed, assigned, or dropped in an invalid order.
 LIFETIME_E_INVALID_CALL.step1 = Find the earlier move or borrow mentioned by the diagnostic.
 LIFETIME_E_INVALID_CALL.fix = repair the ownership transition named by the borrow checker before the highlighted use
@@ -5054,7 +5246,7 @@ CONST_E_BRANCH_MISMATCH.step1 = Reduce the constant expression at the reported s
 CONST_E_BRANCH_MISMATCH.fix = rewrite the highlighted constant expression so const evaluation can prove it safely
 CONST_E_BRANCH_MISMATCH.example = const size: int = 4
 
-CONST_E_INVALID_CALL.summary = 呼び出しが無効です.
+CONST_E_INVALID_CALL.summary = 呼び出し 対象 is not callable.
 CONST_E_INVALID_CALL.cause = A compile-time expression used an operation that cannot be evaluated safely.
 CONST_E_INVALID_CALL.step1 = Reduce the constant expression at the reported span.
 CONST_E_INVALID_CALL.fix = rewrite the highlighted constant expression so const evaluation can prove it safely
@@ -5432,11 +5624,11 @@ MACRO_E_BRANCH_MISMATCH.step1 = Inspect the macro invocation and the expansion n
 MACRO_E_BRANCH_MISMATCH.fix = change the macro arguments or stop the recursive expansion before lowering resumes
 MACRO_E_BRANCH_MISMATCH.example = vitte check path/to/file.vit
 
-MACRO_E_INVALID_CALL.summary = 呼び出しが無効です.
-MACRO_E_INVALID_CALL.cause = The macro expansion phase found code that violates this diagnostic rule.
+MACRO_E_INVALID_CALL.summary = 呼び出し 対象 is not callable.
+MACRO_E_INVALID_CALL.cause = A macro invocation, argument, recursion limit, or expansion contract could not produce valid user-facing code.
 MACRO_E_INVALID_CALL.step1 = Inspect the macro invocation and the expansion note attached to the primary diagnostic.
 MACRO_E_INVALID_CALL.fix = change the macro arguments or stop the recursive expansion before lowering resumes
-MACRO_E_INVALID_CALL.example = vitte check path/to/file.vit
+MACRO_E_INVALID_CALL.example = my_macro(value)
 
 MACRO_E_INVALID_CAST.summary = キャストが無効です.
 MACRO_E_INVALID_CAST.cause = The macro expansion phase found code that violates this diagnostic rule.
@@ -5804,11 +5996,11 @@ HIR_E_BRANCH_MISMATCH.step1 = Inspect the highlighted AST, HIR, MIR, or IR node 
 HIR_E_BRANCH_MISMATCH.fix = repair the malformed intermediate representation before continuing to the next phase
 HIR_E_BRANCH_MISMATCH.example = vitte check path/to/file.vit
 
-HIR_E_INVALID_CALL.summary = 呼び出しが無効です.
-HIR_E_INVALID_CALL.cause = The compiler pipeline phase found code that violates this diagnostic rule.
+HIR_E_INVALID_CALL.summary = 呼び出し 対象 is not callable.
+HIR_E_INVALID_CALL.cause = A compiler representation failed the structural invariant required before the next pipeline phase.
 HIR_E_INVALID_CALL.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
 HIR_E_INVALID_CALL.fix = repair the malformed intermediate representation before continuing to the next phase
-HIR_E_INVALID_CALL.example = vitte check path/to/file.vit
+HIR_E_INVALID_CALL.example = proc main() -> int { give 0 }
 
 HIR_E_INVALID_CAST.summary = キャストが無効です.
 HIR_E_INVALID_CAST.cause = The compiler pipeline phase found code that violates this diagnostic rule.
@@ -6182,11 +6374,11 @@ MIR_E_BRANCH_MISMATCH.step1 = Inspect the highlighted AST, HIR, MIR, or IR node 
 MIR_E_BRANCH_MISMATCH.fix = repair the malformed intermediate representation before continuing to the next phase
 MIR_E_BRANCH_MISMATCH.example = vitte check path/to/file.vit
 
-MIR_E_INVALID_CALL.summary = 呼び出しが無効です.
-MIR_E_INVALID_CALL.cause = The compiler pipeline phase found code that violates this diagnostic rule.
+MIR_E_INVALID_CALL.summary = 呼び出し 対象 is not callable.
+MIR_E_INVALID_CALL.cause = A compiler representation failed the structural invariant required before the next pipeline phase.
 MIR_E_INVALID_CALL.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
 MIR_E_INVALID_CALL.fix = repair the malformed intermediate representation before continuing to the next phase
-MIR_E_INVALID_CALL.example = vitte check path/to/file.vit
+MIR_E_INVALID_CALL.example = proc main() -> int { give 0 }
 
 MIR_E_INVALID_CAST.summary = キャストが無効です.
 MIR_E_INVALID_CAST.cause = The compiler pipeline phase found code that violates this diagnostic rule.
@@ -6560,11 +6752,11 @@ IR_E_BRANCH_MISMATCH.step1 = Inspect the highlighted AST, HIR, MIR, or IR node a
 IR_E_BRANCH_MISMATCH.fix = repair the malformed intermediate representation before continuing to the next phase
 IR_E_BRANCH_MISMATCH.example = vitte check path/to/file.vit
 
-IR_E_INVALID_CALL.summary = 呼び出しが無効です.
-IR_E_INVALID_CALL.cause = The compiler pipeline phase found code that violates this diagnostic rule.
+IR_E_INVALID_CALL.summary = 呼び出し 対象 is not callable.
+IR_E_INVALID_CALL.cause = A compiler representation failed the structural invariant required before the next pipeline phase.
 IR_E_INVALID_CALL.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
 IR_E_INVALID_CALL.fix = repair the malformed intermediate representation before continuing to the next phase
-IR_E_INVALID_CALL.example = vitte check path/to/file.vit
+IR_E_INVALID_CALL.example = proc main() -> int { give 0 }
 
 IR_E_INVALID_CAST.summary = キャストが無効です.
 IR_E_INVALID_CAST.cause = The compiler pipeline phase found code that violates this diagnostic rule.
@@ -6938,7 +7130,7 @@ BACKEND_E_BRANCH_MISMATCH.step1 = Check the target triple and the first backend 
 BACKEND_E_BRANCH_MISMATCH.fix = install the missing native tool, change target, or fix undefined symbols
 BACKEND_E_BRANCH_MISMATCH.example = vitte build app.vit -o app
 
-BACKEND_E_INVALID_CALL.summary = 呼び出しが無効です.
+BACKEND_E_INVALID_CALL.summary = 呼び出し 対象 is not callable.
 BACKEND_E_INVALID_CALL.cause = The selected target, linker, ABI, object file, or native toolchain failed.
 BACKEND_E_INVALID_CALL.step1 = Check the target triple and the first backend or linker note.
 BACKEND_E_INVALID_CALL.fix = install the missing native tool, change target, or fix undefined symbols
@@ -7304,7 +7496,7 @@ LINK_E_BRANCH_MISMATCH.step1 = Check the target triple and the first backend or 
 LINK_E_BRANCH_MISMATCH.fix = install the missing native tool, change target, or fix undefined symbols
 LINK_E_BRANCH_MISMATCH.example = vitte build app.vit -o app
 
-LINK_E_INVALID_CALL.summary = 呼び出しが無効です.
+LINK_E_INVALID_CALL.summary = 呼び出し 対象 is not callable.
 LINK_E_INVALID_CALL.cause = The selected target, linker, ABI, object file, or native toolchain failed.
 LINK_E_INVALID_CALL.step1 = Check the target triple and the first backend or linker note.
 LINK_E_INVALID_CALL.fix = install the missing native tool, change target, or fix undefined symbols
@@ -7682,11 +7874,11 @@ RUNTIME_E_BRANCH_MISMATCH.step1 = Inspect the runtime span and the operation nam
 RUNTIME_E_BRANCH_MISMATCH.fix = change the program state that reaches the runtime trap or add an explicit check before it
 RUNTIME_E_BRANCH_MISMATCH.example = vitte check path/to/file.vit
 
-RUNTIME_E_INVALID_CALL.summary = 呼び出しが無効です.
-RUNTIME_E_INVALID_CALL.cause = The runtime phase found code that violates this diagnostic rule.
+RUNTIME_E_INVALID_CALL.summary = 呼び出し 対象 is not callable.
+RUNTIME_E_INVALID_CALL.cause = Generated program execution reached a runtime safety check or trap reported by the Vitte runtime.
 RUNTIME_E_INVALID_CALL.step1 = Inspect the runtime span and the operation named by the diagnostic code.
 RUNTIME_E_INVALID_CALL.fix = change the program state that reaches the runtime trap or add an explicit check before it
-RUNTIME_E_INVALID_CALL.example = vitte check path/to/file.vit
+RUNTIME_E_INVALID_CALL.example = if index < len(items) { give items[index] }
 
 RUNTIME_E_INVALID_CAST.summary = キャストが無効です.
 RUNTIME_E_INVALID_CAST.cause = The runtime phase found code that violates this diagnostic rule.
@@ -8060,7 +8252,7 @@ DRIVER_E_BRANCH_MISMATCH.step1 = Re-run the command with --help and verify paths
 DRIVER_E_BRANCH_MISMATCH.fix = provide an existing input, writable output path, and supported target/profile
 DRIVER_E_BRANCH_MISMATCH.example = vitte check src/main.vit --lang en
 
-DRIVER_E_INVALID_CALL.summary = 呼び出しが無効です.
+DRIVER_E_INVALID_CALL.summary = 呼び出し 対象 is not callable.
 DRIVER_E_INVALID_CALL.cause = The driver could not use the provided input, option, cache, output, or profile.
 DRIVER_E_INVALID_CALL.step1 = Re-run the command with --help and verify paths and option values.
 DRIVER_E_INVALID_CALL.fix = provide an existing input, writable output path, and supported target/profile
@@ -8438,7 +8630,7 @@ LIMIT_E_BRANCH_MISMATCH.step1 = Split the file, expression, import graph, token,
 LIMIT_E_BRANCH_MISMATCH.fix = reduce the input size or raise the limit only in a trusted build profile
 LIMIT_E_BRANCH_MISMATCH.example = vitte check src/main.vit
 
-LIMIT_E_INVALID_CALL.summary = 呼び出しが無効です.
+LIMIT_E_INVALID_CALL.summary = 呼び出し 対象 is not callable.
 LIMIT_E_INVALID_CALL.cause = The input exceeded a configured compiler safety limit.
 LIMIT_E_INVALID_CALL.step1 = Split the file, expression, import graph, token, or macro expansion named by the code.
 LIMIT_E_INVALID_CALL.fix = reduce the input size or raise the limit only in a trusted build profile

@@ -724,7 +724,7 @@ RELATION_TEMPLATES: dict[str, dict[str, str]] = {
 
 PHRASE_TRANSLATIONS: dict[str, dict[str, str]] = {
     "fr": {
-        "proc may exit without returning a value": "la procedure peut se terminer sans retourner de valeur",
+        "procedure may exit without give": "la procedure peut se terminer sans give",
         "forbidden top-level syntax in strict-core mode": "syntaxe de niveau superieur interdite en mode strict-core",
         "forbidden statement syntax in strict-core mode": "syntaxe d'instruction interdite en mode strict-core",
         "forbidden expression syntax in strict-core mode": "syntaxe d'expression interdite en mode strict-core",
@@ -733,7 +733,7 @@ PHRASE_TRANSLATIONS: dict[str, dict[str, str]] = {
         "parser made no progress": "le parseur ne progresse plus",
     },
     "es": {
-        "proc may exit without returning a value": "proc puede salir sin devolver un valor",
+        "procedure may exit without give": "la procedure puede terminar sin give",
         "forbidden top-level syntax in strict-core mode": "sintaxis de nivel superior prohibida en modo strict-core",
         "forbidden statement syntax in strict-core mode": "sintaxis de sentencia prohibida en modo strict-core",
         "forbidden expression syntax in strict-core mode": "sintaxis de expresion prohibida en modo strict-core",
@@ -742,7 +742,7 @@ PHRASE_TRANSLATIONS: dict[str, dict[str, str]] = {
         "parser made no progress": "el analizador no avanzo",
     },
     "de": {
-        "proc may exit without returning a value": "proc kann enden, ohne einen Wert zurueckzugeben",
+        "procedure may exit without give": "Prozedur kann ohne give enden",
         "forbidden top-level syntax in strict-core mode": "verbotene Top-Level-Syntax im strict-core-Modus",
         "forbidden statement syntax in strict-core mode": "verbotene Anweisungssyntax im strict-core-Modus",
         "forbidden expression syntax in strict-core mode": "verbotene Ausdruckssyntax im strict-core-Modus",
@@ -751,7 +751,7 @@ PHRASE_TRANSLATIONS: dict[str, dict[str, str]] = {
         "parser made no progress": "Parser hat keinen Fortschritt gemacht",
     },
     "it": {
-        "proc may exit without returning a value": "proc puo terminare senza restituire un valore",
+        "procedure may exit without give": "la procedura puo terminare senza give",
         "forbidden top-level syntax in strict-core mode": "sintassi di livello superiore vietata in modo strict-core",
         "forbidden statement syntax in strict-core mode": "sintassi di istruzione vietata in modo strict-core",
         "forbidden expression syntax in strict-core mode": "sintassi di espressione vietata in modo strict-core",
@@ -760,7 +760,7 @@ PHRASE_TRANSLATIONS: dict[str, dict[str, str]] = {
         "parser made no progress": "il parser non e avanzato",
     },
     "pt-BR": {
-        "proc may exit without returning a value": "proc pode terminar sem retornar um valor",
+        "procedure may exit without give": "a procedure pode terminar sem give",
         "forbidden top-level syntax in strict-core mode": "sintaxe de nivel superior proibida no modo strict-core",
         "forbidden statement syntax in strict-core mode": "sintaxe de instrucao proibida no modo strict-core",
         "forbidden expression syntax in strict-core mode": "sintaxe de expressao proibida no modo strict-core",
@@ -769,7 +769,7 @@ PHRASE_TRANSLATIONS: dict[str, dict[str, str]] = {
         "parser made no progress": "o parser nao avancou",
     },
     "zh-CN": {
-        "proc may exit without returning a value": "proc 可能在未返回值的情况下退出",
+        "procedure may exit without give": "procedure 可能在没有 give 的情况下结束",
         "forbidden top-level syntax in strict-core mode": "strict-core 模式禁止的顶层语法",
         "forbidden statement syntax in strict-core mode": "strict-core 模式禁止的语句语法",
         "forbidden expression syntax in strict-core mode": "strict-core 模式禁止的表达式语法",
@@ -778,7 +778,7 @@ PHRASE_TRANSLATIONS: dict[str, dict[str, str]] = {
         "parser made no progress": "解析器没有取得进展",
     },
     "ja": {
-        "proc may exit without returning a value": "proc が値を返さずに終了する可能性があります",
+        "procedure may exit without give": "procedure は give なしで終了する可能性があります",
         "forbidden top-level syntax in strict-core mode": "strict-core モードで禁止されたトップレベル構文",
         "forbidden statement syntax in strict-core mode": "strict-core モードで禁止された文構文",
         "forbidden expression syntax in strict-core mode": "strict-core モードで禁止された式構文",
@@ -787,7 +787,7 @@ PHRASE_TRANSLATIONS: dict[str, dict[str, str]] = {
         "parser made no progress": "パーサが進行しませんでした",
     },
     "ko": {
-        "proc may exit without returning a value": "proc가 값을 반환하지 않고 종료될 수 있음",
+        "procedure may exit without give": "procedure가 give 없이 끝날 수 있음",
         "forbidden top-level syntax in strict-core mode": "strict-core 모드에서 금지된 최상위 구문",
         "forbidden statement syntax in strict-core mode": "strict-core 모드에서 금지된 문 구문",
         "forbidden expression syntax in strict-core mode": "strict-core 모드에서 금지된 식 구문",
@@ -796,7 +796,7 @@ PHRASE_TRANSLATIONS: dict[str, dict[str, str]] = {
         "parser made no progress": "파서가 진행하지 못함",
     },
     "tr": {
-        "proc may exit without returning a value": "proc deger dondurmeden cikabilir",
+        "procedure may exit without give": "procedure give olmadan bitebilir",
         "forbidden top-level syntax in strict-core mode": "strict-core modunda yasak ust duzey soz dizimi",
         "forbidden statement syntax in strict-core mode": "strict-core modunda yasak deyim soz dizimi",
         "forbidden expression syntax in strict-core mode": "strict-core modunda yasak ifade soz dizimi",
@@ -805,7 +805,7 @@ PHRASE_TRANSLATIONS: dict[str, dict[str, str]] = {
         "parser made no progress": "ayristirici ilerlemedi",
     },
     "ar": {
-        "proc may exit without returning a value": "قد يخرج proc دون ارجاع قيمة",
+        "procedure may exit without give": "قد تنتهي procedure دون give",
         "forbidden top-level syntax in strict-core mode": "بناء مستوى علوي محظور في وضع strict-core",
         "forbidden statement syntax in strict-core mode": "بناء عبارة محظور في وضع strict-core",
         "forbidden expression syntax in strict-core mode": "بناء تعبير محظور في وضع strict-core",
@@ -919,6 +919,10 @@ def render_locale(locale: str, codes: list[str], existing: dict[str, str], fallb
             value = existing.get(code, fallback.get(code, readable_from_code(code)))
             if re.search(r"\bmissing return\b|\breturn type mismatch\b|without returning|without return type", value):
                 value = readable_from_code(code)
+            if code.endswith("_INVALID_CALL") or code == "TYPECK_E_INVALID_CALL_TARGET":
+                value = readable_from_code(code)
+            if code == "SEMA_E_UNKNOWN_FUNCTION":
+                value = readable_from_code(code)
         else:
             value = translated_value(locale, code, fallback)
         lines.append(f"{code} = {value}")
@@ -957,6 +961,42 @@ def render_explain_locale(locale: str, codes: list[str], messages: dict[str, str
         for suffix in ("summary", "cause", "step1", "fix", "example"):
             key = f"{code}.{suffix}"
             value = existing.get(key, fallback.get(key, fields[suffix]))
+            if code in {
+                "SEMA_E_UNKNOWN_VARIANT",
+                "SEMA_E_INACCESSIBLE_VARIANT",
+                "SEMA_E_DUPLICATE_PICK_BRANCH",
+                "TYPECK_E_PICK_NON_EXHAUSTIVE",
+                "TYPECK_E_PICK_PAYLOAD_MISMATCH",
+                "TYPECK_E_IMPOSSIBLE_PATTERN",
+                "SEMA_E_UNKNOWN_FUNCTION",
+                "TYPECK_E_UNKNOWN_PROCEDURE",
+                "TYPECK_E_CALL_ARITY",
+                "TYPECK_E_UNKNOWN_NAMED_ARGUMENT",
+                "TYPECK_E_ARGUMENT_ORDER",
+                "TYPECK_E_ARGUMENT_MISMATCH",
+                "TYPECK_E_AMBIGUOUS_CALL",
+                "TYPECK_W_IGNORED_RESULT",
+                "TYPECK_E_INVALID_CALL_TARGET",
+                "TYPECK_E_NOT_CALLABLE",
+                "BORROWCK_E_MUTABLE_BORROW_CONFLICT",
+                "BORROWCK_E_MUTABLE_SHARED_CONFLICT",
+                "BORROWCK_E_SHARED_BORROW_CONFLICT",
+                "BORROWCK_E_USE_AFTER_MOVE",
+                "BORROWCK_E_PARTIAL_MOVE",
+                "BORROWCK_E_BORROW_OF_MOVED_VALUE",
+                "BORROWCK_E_REFERENCE_OUTLIVES_VALUE",
+                "BORROWCK_E_DANGLING_REFERENCE",
+                "BORROWCK_E_LIFETIME_TOO_SHORT",
+                "BORROWCK_E_RETURN_REF_TO_LOCAL",
+                "BORROWCK_E_RETURN_BORROW_OF_LOCAL",
+                "BORROWCK_E_WRITE_WHILE_BORROWED",
+                "BORROWCK_E_ASSIGN_WHILE_BORROWED",
+                "BORROWCK_E_MOVE_WHILE_BORROWED",
+                "BORROWCK_E_DROP_WHILE_BORROWED",
+            }:
+                value = fields[suffix]
+            if code.endswith("_INVALID_CALL"):
+                value = fields[suffix]
             if suffix == "fix":
                 value = fields[suffix]
             if value in (

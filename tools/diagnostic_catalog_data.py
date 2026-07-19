@@ -26,6 +26,7 @@ PUBLIC_EXTRA_CODES: tuple[str, ...] = (
     "PARSE_E_EXPECTED_TOKEN",
     "PARSE_E_PARAMETER_COLON_EXPECTED",
     "PARSE_E_UNEXPECTED_TOKEN",
+    "PARSE_E_OLD_VITTE_SYNTAX",
     "PARSE_EXPECTED_EXPR",
     "PARSE_EXPECTED_TYPE",
     "PARSE_EXPECTED_PATTERN",
@@ -53,6 +54,11 @@ PUBLIC_EXTRA_CODES: tuple[str, ...] = (
     "SEMA_E_SHADOWING_FORBIDDEN",
     "SEMA_E_UNKNOWN_FIELD",
     "SEMA_E_UNKNOWN_VARIANT",
+    "SEMA_E_INACCESSIBLE_VARIANT",
+    "SEMA_E_DUPLICATE_PICK_BRANCH",
+    "TYPECK_E_PICK_NON_EXHAUSTIVE",
+    "TYPECK_E_PICK_PAYLOAD_MISMATCH",
+    "TYPECK_E_IMPOSSIBLE_PATTERN",
     "SEMA_E_UNKNOWN_FUNCTION",
     "SEMA_E_UNKNOWN_SYMBOL",
     "SEMA_E_INVALID_IMPORT",
@@ -95,8 +101,17 @@ PUBLIC_EXTRA_CODES: tuple[str, ...] = (
     "TYPECK_E_INVALID_CAST",
     "TYPECK_E_MATCH_NON_EXHAUSTIVE",
     "TYPECK_E_INVALID_CALL_TARGET",
+    "TYPECK_E_UNKNOWN_PROCEDURE",
     "TYPECK_E_ARGUMENT_MISMATCH",
     "TYPECK_E_CALL_ARITY",
+    "TYPECK_E_UNKNOWN_NAMED_ARGUMENT",
+    "TYPECK_E_ARGUMENT_ORDER",
+    "TYPECK_E_AMBIGUOUS_CALL",
+    "TYPECK_W_IGNORED_RESULT",
+    "TYPECK_E_NOT_CALLABLE",
+    "TYPECK_E_IMPL_MISSING_MEMBER",
+    "TYPECK_E_IMPL_SIGNATURE_MISMATCH",
+    "TYPECK_E_IMPL_UNKNOWN_TRAIT",
     "TYPECK_E_GENERIC_INFERENCE",
     "TYPECK_E_TRAIT_BOUND",
     "TYPECK_E_CAUSE_CHAIN_MISSING",
@@ -128,8 +143,10 @@ PUBLIC_EXTRA_CODES: tuple[str, ...] = (
     "TYPE9999",
     "BORROWCK_E_MOVE_AFTER_MOVE",
     "BORROWCK_E_USE_AFTER_MOVE",
+    "BORROWCK_E_PARTIAL_MOVE",
     "BORROWCK_E_BORROW_OF_MOVED_VALUE",
     "BORROWCK_E_MUTABLE_BORROW_CONFLICT",
+    "BORROWCK_E_MUTABLE_SHARED_CONFLICT",
     "BORROWCK_E_SHARED_BORROW_CONFLICT",
     "BORROWCK_E_WRITE_WHILE_BORROWED",
     "BORROWCK_E_MOVE_WHILE_BORROWED",
@@ -138,6 +155,7 @@ PUBLIC_EXTRA_CODES: tuple[str, ...] = (
     "BORROWCK_E_RETURN_REF_TO_LOCAL",
     "BORROWCK_E_RETURN_BORROW_OF_LOCAL",
     "BORROWCK_E_DANGLING_REFERENCE",
+    "BORROWCK_E_REFERENCE_OUTLIVES_VALUE",
     "BORROWCK_E_LIFETIME_TOO_SHORT",
     "BORROWCK_E_IMMUTABLE_ASSIGN",
     "BORROWCK_E_USE_AFTER_DROP",
@@ -217,10 +235,21 @@ PUBLIC_EXTRA_CODES: tuple[str, ...] = (
     "BOOTSTRAP_E_COMPILER_MISSING",
     "BOOTSTRAP_E_SELF_CHECK_FAILED",
     "BOOTSTRAP_E_ARTIFACT_INVALID",
+    "E_BOOTSTRAP_BANNER",
+    "E_BOOTSTRAP_CONST_SIGNATURE",
     "E_BOOTSTRAP_CONST_TYPE",
     "E_BOOTSTRAP_DUP_PROC",
+    "E_BOOTSTRAP_EXPORT",
+    "E_BOOTSTRAP_MAIN_BODY",
+    "E_BOOTSTRAP_MAIN_SIGNATURE",
+    "E_BOOTSTRAP_PROC_BODY",
+    "E_BOOTSTRAP_PROC_SIGNATURE",
+    "E_BOOTSTRAP_SPACE",
+    "E_BOOTSTRAP_TOP_LEVEL",
+    "E_BOOTSTRAP_UNCLOSED_PROC",
     "E_BOOTSTRAP_UNKNOWN_CONST",
     "E_BOOTSTRAP_UNKNOWN_PROC",
+    "E_BOOTSTRAP_VERSION",
     "LIMIT_FILE_SIZE_MAX",
     "LIMIT_TOKEN_SIZE_MAX",
     "LIMIT_AST_DEPTH_MAX",
@@ -345,10 +374,29 @@ MESSAGE_OVERRIDES: dict[str, str] = {
     "TYPECK_E_INFERENCE_FAILED": "binding type could not be inferred",
     "TYPECK_E_ARGUMENT_MISMATCH": "call argument type mismatch",
     "TYPECK_E_CALL_ARITY": "wrong number of call arguments",
+    "TYPECK_E_INVALID_CALL_TARGET": "call target is not callable",
+    "TYPECK_E_UNKNOWN_PROCEDURE": "procedure does not exist",
+    "TYPECK_E_UNKNOWN_NAMED_ARGUMENT": "named argument has no matching parameter",
+    "TYPECK_E_ARGUMENT_ORDER": "call arguments are in the wrong order",
+    "TYPECK_E_AMBIGUOUS_CALL": "procedure call is ambiguous",
+    "TYPECK_W_IGNORED_RESULT": "procedure result is ignored",
+    "TYPECK_E_NOT_CALLABLE": "value is not callable",
+    "TYPECK_E_IMPL_MISSING_MEMBER": "implementation is missing a required member",
+    "TYPECK_E_IMPL_SIGNATURE_MISMATCH": "implementation member signature does not match",
+    "TYPECK_E_IMPL_UNKNOWN_TRAIT": "trait does not exist",
     "TYPECK_E_GENERIC_INFERENCE": "generic type could not be inferred",
     "TYPECK_E_TRAIT_BOUND": "trait constraint is not satisfied",
     "TYPECK_E_CAUSE_CHAIN_MISSING": "type diagnostic is missing a cause chain",
     "BORROWCK_E_USE_AFTER_MOVE": "value used after move",
+    "BORROWCK_E_PARTIAL_MOVE": "value partially moved",
+    "BORROWCK_E_BORROW_OF_MOVED_VALUE": "borrow starts after value moved",
+    "BORROWCK_E_MUTABLE_BORROW_CONFLICT": "mutable borrow overlaps another borrow",
+    "BORROWCK_E_MUTABLE_SHARED_CONFLICT": "mutable and shared borrows overlap",
+    "BORROWCK_E_WRITE_WHILE_BORROWED": "mutation happens while value is borrowed",
+    "BORROWCK_E_MOVE_WHILE_BORROWED": "move happens while value is borrowed",
+    "BORROWCK_E_DROP_WHILE_BORROWED": "value is destroyed while borrowed",
+    "BORROWCK_E_RETURN_REF_TO_LOCAL": "local reference escapes procedure",
+    "BORROWCK_E_REFERENCE_OUTLIVES_VALUE": "reference outlives the value it points to",
     "CONST_EVAL_E_DIVISION_BY_ZERO": "division by zero in constant evaluation",
     "MOD_E_MODULE_NOT_FOUND": "module not found",
     "MOD_E_IMPORT_CYCLE": "import cycle detected",
@@ -366,12 +414,18 @@ MESSAGE_OVERRIDES: dict[str, str] = {
     "PARSE_E_BLOCK_EXPECTED": "block expected",
     "PARSE_E_UNCLOSED_BLOCK": "unclosed block",
     "PARSE_E_PARAMETER_COLON_EXPECTED": "missing colon in procedure parameter",
+    "PARSE_E_OLD_VITTE_SYNTAX": "old Vitte syntax is not canonical",
     "SEMA_E_UNKNOWN_IDENTIFIER": "unknown identifier",
     "SEMA_E_AMBIGUOUS_SYMBOL": "ambiguous symbol",
     "SEMA_E_SHADOWING_FORBIDDEN": "shadowing is forbidden",
     "SEMA_E_UNKNOWN_FIELD": "field does not exist",
     "SEMA_E_UNKNOWN_VARIANT": "variant does not exist",
-    "SEMA_E_UNKNOWN_FUNCTION": "function does not exist",
+    "SEMA_E_INACCESSIBLE_VARIANT": "pick variant is inaccessible",
+    "SEMA_E_DUPLICATE_PICK_BRANCH": "pick branch is duplicated",
+    "TYPECK_E_PICK_NON_EXHAUSTIVE": "pick pattern is not exhaustive",
+    "TYPECK_E_PICK_PAYLOAD_MISMATCH": "pick payload does not match variant",
+    "TYPECK_E_IMPOSSIBLE_PATTERN": "pick pattern can never match",
+    "SEMA_E_UNKNOWN_FUNCTION": "procedure does not exist",
     "AST_E_UNKNOWN_FIELD": "unknown form field",
     "AST_E_MISSING_FIELD": "missing form field",
     "AST_E_FIELD_TYPE_MISMATCH": "form field type mismatch",
@@ -379,6 +433,17 @@ MESSAGE_OVERRIDES: dict[str, str] = {
     "AST_E_INCOMPLETE_CONSTRUCTION": "form construction is incomplete",
     "E_BOOTSTRAP_CONST_TYPE": "bootstrap constant has wrong type",
     "E_BOOTSTRAP_DUP_PROC": "duplicate bootstrap procedure",
+    "E_BOOTSTRAP_BANNER": "bootstrap banner is invalid",
+    "E_BOOTSTRAP_CONST_SIGNATURE": "bootstrap constant signature is invalid",
+    "E_BOOTSTRAP_EXPORT": "bootstrap export is invalid",
+    "E_BOOTSTRAP_MAIN_BODY": "bootstrap main body is invalid",
+    "E_BOOTSTRAP_MAIN_SIGNATURE": "bootstrap main signature is invalid",
+    "E_BOOTSTRAP_PROC_BODY": "bootstrap procedure body is invalid",
+    "E_BOOTSTRAP_PROC_SIGNATURE": "bootstrap procedure signature is invalid",
+    "E_BOOTSTRAP_SPACE": "bootstrap space declaration is invalid",
+    "E_BOOTSTRAP_TOP_LEVEL": "bootstrap top-level declaration is invalid",
+    "E_BOOTSTRAP_UNCLOSED_PROC": "bootstrap procedure body is not closed",
+    "E_BOOTSTRAP_VERSION": "bootstrap version is invalid",
     "E_BOOTSTRAP_UNKNOWN_CONST": "unknown bootstrap constant",
     "E_BOOTSTRAP_UNKNOWN_PROC": "unsupported bootstrap procedure",
     "LIMIT_DIAGNOSTICS_MAX": "too many diagnostics emitted",
@@ -410,6 +475,8 @@ def readable_from_code(code: str) -> str:
         return MESSAGE_OVERRIDES[code]
     if code.endswith("_MISSING_RETURN"):
         return "missing give"
+    if code.endswith("_INVALID_CALL"):
+        return "call target is not callable"
     text = code
     for prefix in (
         "LEX_E_",
@@ -489,6 +556,10 @@ def explanation_fields(code: str, message: str | None = None) -> dict[str, str]:
         "fix": "repair the highlighted compiler contract before checking later diagnostics",
         "example": "vitte check path/to/file.vit",
     }
+    # Diagnostic action convention:
+    # - cause/step1 are help text for understanding the error.
+    # - fix is reserved for a concrete edit only when the edit is likely correct.
+    # - use "consider ..." wording for non-automatic suggestions.
     if family == "syntax":
         fields["cause"] = "The parser or lexer could not form the next valid source construct."
         fields["step1"] = "Look at the highlighted token and complete or remove the construct around it."
@@ -564,6 +635,11 @@ def explanation_fields(code: str, message: str | None = None) -> dict[str, str]:
         fields["step1"] = "Start at the highlighted innermost block and verify each nested brace."
         fields["fix"] = "add `}` to close the highlighted block, then run the checker again for its parent block"
         fields["example"] = "while running { set running = false }"
+    elif code == "PARSE_E_OLD_VITTE_SYNTAX":
+        fields["cause"] = "The highlighted token belongs to an older Vitte prototype or to another language surface."
+        fields["step1"] = "Identify the intended construct, then compare it with the current Vitte keywords."
+        fields["fix"] = "replace the old token with the current Vitte keyword only when the construct is equivalent"
+        fields["example"] = "proc main() -> int { give 0 }"
     elif code == "TYPECK_E_ASSIGN_MISMATCH":
         fields["cause"] = "The assigned value does not satisfy the declared type of the target binding."
         fields["step1"] = "Compare the binding declaration label with the highlighted assigned expression."
@@ -572,7 +648,7 @@ def explanation_fields(code: str, message: str | None = None) -> dict[str, str]:
     elif code == "TYPECK_E_MISSING_GIVE":
         fields["cause"] = "A procedure declares a result type with `->`, but its body has no `give` for the value it promises."
         fields["step1"] = "Inspect the procedure body and decide which value should be produced."
-        fields["fix"] = "add `give expression` on every successful path, or remove the `-> Type` return contract"
+        fields["fix"] = "add `give expression` on every successful path, or remove the `-> Type` result contract"
         fields["example"] = "proc answer() -> int { give 42 }"
     elif code == "TYPECK_E_GIVE_IN_VOID_PROC":
         fields["cause"] = "A procedure without a `-> Type` result contract uses `give` with a value."
@@ -585,7 +661,7 @@ def explanation_fields(code: str, message: str | None = None) -> dict[str, str]:
         fields["fix"] = "change the `give` expression or the procedure result type so both name the same Vitte type"
         fields["example"] = "proc answer() -> int { give 42 }"
     elif code == "TYPECK_E_CONTROL_PATH_MISSING_GIVE":
-        fields["cause"] = "At least one branch can reach the end of a value-returning procedure without executing `give`."
+        fields["cause"] = "At least one branch can reach the end of a procedure with a result type without executing `give`."
         fields["step1"] = "Follow each `if`, `match`, `loop`, and early-exit path in the procedure."
         fields["fix"] = "add a final `give` or make every branch produce a value before control reaches the closing brace"
         fields["example"] = "proc code(ok: bool) -> int {\n  if ok { give 0 }\n  give 1\n}"
@@ -664,16 +740,131 @@ def explanation_fields(code: str, message: str | None = None) -> dict[str, str]:
         fields["step1"] = "Check whether the construction is missing fields or a closing brace."
         fields["fix"] = "complete the construction with every required `field: value` entry and the closing `}`"
         fields["example"] = "form Point { x: int, y: int }\nlet p: Point = Point { x: 1, y: 2 }"
+    elif code == "SEMA_E_UNKNOWN_VARIANT":
+        fields["cause"] = "A `pick` pattern or construction names a variant that is not declared by the selected `pick` type."
+        fields["step1"] = "Compare the highlighted variant with the `case` names declared in the `pick`."
+        fields["fix"] = "rename the variant to a declared `case`, or add the missing `case` to the `pick` declaration"
+        fields["example"] = "pick Status { Ready, Failed }\nlet status: Status = Status.Ready"
+    elif code == "TYPECK_E_PICK_NON_EXHAUSTIVE":
+        fields["cause"] = "A `match` over a `pick` value does not cover every reachable variant."
+        fields["step1"] = "List the declared `case` variants and compare them with the branches already present."
+        fields["fix"] = "add the missing `case` branch, or add an `otherwise` branch when a catch-all is intended"
+        fields["example"] = "match status {\n  case Ready { give 0 }\n  case Failed { give 1 }\n}"
+    elif code == "SEMA_E_INACCESSIBLE_VARIANT":
+        fields["cause"] = "A branch names a `pick` variant that cannot be reached after earlier branches."
+        fields["step1"] = "Read the branches in order and find the earlier branch that already covers this variant."
+        fields["fix"] = "remove the unreachable branch or move the more specific `case` before the broader branch"
+        fields["example"] = "match status {\n  case Ready { give 0 }\n  otherwise { give 1 }\n}"
+    elif code == "TYPECK_E_PICK_PAYLOAD_MISMATCH":
+        fields["cause"] = "A `pick` variant payload pattern does not match the fields declared for that `case`."
+        fields["step1"] = "Compare each payload position or name with the selected variant declaration."
+        fields["fix"] = "use the expected payload shape for that `case`, including the correct field count and types"
+        fields["example"] = "pick Event { Data(value: int) }\nmatch event { case Data(value: int) { give value } }"
+    elif code == "TYPECK_E_IMPOSSIBLE_PATTERN":
+        fields["cause"] = "The pattern cannot match the scrutinee type produced by the expression."
+        fields["step1"] = "Compare the matched expression type with the variant or literal named by the pattern."
+        fields["fix"] = "replace the branch pattern with one that belongs to the matched `pick` or value type"
+        fields["example"] = "match status { case Ready { give 0 } }"
+    elif code == "SEMA_E_DUPLICATE_PICK_BRANCH":
+        fields["cause"] = "The same `pick` variant is matched by more than one branch in the same `match`."
+        fields["step1"] = "Find the earlier branch for the same `case` and decide which body should remain."
+        fields["fix"] = "merge the duplicate branch bodies or remove the later duplicate branch"
+        fields["example"] = "match status {\n  case Ready { give 0 }\n  case Failed { give 1 }\n}"
+    elif code in {"SEMA_E_UNKNOWN_FUNCTION", "TYPECK_E_UNKNOWN_PROCEDURE"}:
+        fields["cause"] = "Name resolution could not find a visible `proc` with the highlighted name."
+        fields["step1"] = "Check the active `use` declarations and the procedure name at the call site."
+        fields["fix"] = "import or declare the missing `proc`, or rename the call to a visible procedure"
+        fields["example"] = "proc add(left: int, right: int) -> int { give left + right }"
+    elif code == "TYPECK_E_CALL_ARITY":
+        fields["cause"] = "The call supplies a different number of arguments than the procedure parameter list."
+        fields["step1"] = "Show the expected parameters in order, then attach each extra or missing argument to its nearest parameter."
+        fields["fix"] = "add missing arguments or remove extra arguments so the call matches the `proc` parameter list"
+        fields["example"] = "add(1, 2)"
+    elif code == "TYPECK_E_UNKNOWN_NAMED_ARGUMENT":
+        fields["cause"] = "A named argument does not correspond to any parameter in the called procedure."
+        fields["step1"] = "Display the expected parameter names and highlight the unknown argument name."
+        fields["fix"] = "rename the argument to an expected parameter name or remove it"
+        fields["example"] = "connect(host: \"localhost\", port: 8080)"
+    elif code == "TYPECK_E_ARGUMENT_ORDER":
+        fields["cause"] = "A positional or named argument appears after an argument form that makes the order invalid."
+        fields["step1"] = "Compare the call argument order with the procedure parameter order shown in the diagnostic."
+        fields["fix"] = "reorder the arguments to match the parameter list, or use named arguments consistently"
+        fields["example"] = "draw(x: 1, y: 2, color: \"blue\")"
+    elif code == "TYPECK_E_ARGUMENT_MISMATCH":
+        fields["cause"] = "An argument expression does not match the type of the parameter it is passed to."
+        fields["step1"] = "Link the highlighted argument to its parameter and compare the expected and found Vitte types."
+        fields["fix"] = "change that argument expression or the parameter type so the single argument matches its parameter"
+        fields["example"] = "scale(value: 4, factor: 2)"
+    elif code == "TYPECK_E_AMBIGUOUS_CALL":
+        fields["cause"] = "More than one visible procedure can accept the same call shape."
+        fields["step1"] = "Show the candidate procedure signatures and identify the arguments that do not disambiguate them."
+        fields["fix"] = "add a type annotation to one argument or call a more specific procedure name"
+        fields["example"] = "let result: int = parse(\"42\")"
+    elif code == "TYPECK_W_IGNORED_RESULT":
+        fields["cause"] = "A procedure result is produced but the surrounding statement does not use it."
+        fields["step1"] = "Check whether the result should be bound with `let`, passed onward, or intentionally discarded."
+        fields["fix"] = "bind the result with `let name: Type = call(...)` when the value is needed"
+        fields["example"] = "let total: int = add(1, 2)"
+    elif code in {"TYPECK_E_INVALID_CALL_TARGET", "TYPECK_E_NOT_CALLABLE"}:
+        fields["cause"] = "The expression before `(` is not a procedure or callable value."
+        fields["step1"] = "Check the type of the highlighted expression and the declaration it resolves to."
+        fields["fix"] = "call a `proc` value, or remove `(...)` when the expression is just a value"
+        fields["example"] = "add(1, 2)"
     elif code in {"SEMA_E_DUPLICATE_SYMBOL", "SEMA_E_DUPLICATE_ITEM", "SEMA_E_DUPLICATE_BINDING"}:
         fields["cause"] = "Name resolution found two declarations competing for the same symbol in one scope."
         fields["step1"] = "Compare the highlighted duplicate with the original declaration note."
         fields["fix"] = "rename one declaration or remove the duplicate from the same scope"
         fields["example"] = "proc main() -> int { give 0 }"
+    elif code == "BORROWCK_E_MUTABLE_BORROW_CONFLICT":
+        fields["cause"] = "A value is already mutably borrowed when another borrow of the same value starts."
+        fields["step1"] = "Report the value creation first, then the first mutable borrow, then the later conflicting borrow, then where the first borrow ends."
+        fields["fix"] = "end the first mutable borrow before starting the next borrow"
+        fields["example"] = "let value: int = 1\nlet first = &value"
+    elif code in {"BORROWCK_E_MUTABLE_SHARED_CONFLICT", "BORROWCK_E_SHARED_BORROW_CONFLICT"}:
+        fields["cause"] = "A mutable borrow overlaps with a shared borrow of the same value."
+        fields["step1"] = "Show the value creation, the shared borrow, the mutable borrow, and the point where each borrow stops being used."
+        fields["fix"] = "move the mutation after the shared borrow's last use, or shorten the shared borrow scope"
+        fields["example"] = "let value: int = 1\nlet view = &value"
     elif code == "BORROWCK_E_USE_AFTER_MOVE":
-        fields["cause"] = "Ownership moved before the highlighted later use."
-        fields["step1"] = "Find the earlier move note and decide whether this site needs ownership or a borrow."
-        fields["fix"] = "borrow before the move, clone explicitly, or move the later use before ownership transfer"
-        fields["example"] = "let view = &value"
+        fields["cause"] = "A value is used after ownership has moved away from its binding."
+        fields["step1"] = "Show where the value is created, where it is moved, and where it is reused after the move."
+        fields["fix"] = "use the value before the move, borrow it instead of moving it, or create a new value"
+        fields["example"] = "let value: string = \"vitte\""
+    elif code == "BORROWCK_E_BORROW_OF_MOVED_VALUE":
+        fields["cause"] = "A borrow starts after ownership has already moved away from the original binding."
+        fields["step1"] = "Show the value creation, the move, and the later borrow attempt in that order."
+        fields["fix"] = "create the borrow before the move, or move a different value"
+        fields["example"] = "let value: string = \"vitte\"\nlet view = &value"
+    elif code == "BORROWCK_E_PARTIAL_MOVE":
+        fields["cause"] = "Part of a compound value was moved, then the original value was used as if it were still complete."
+        fields["step1"] = "Show the original construction, the field or variant payload that moved, and the later whole-value use."
+        fields["fix"] = "avoid using the whole value after moving one part, or rebuild the missing part before use"
+        fields["example"] = "form User { name: string, age: int }"
+    elif code in {"BORROWCK_E_REFERENCE_OUTLIVES_VALUE", "BORROWCK_E_DANGLING_REFERENCE", "BORROWCK_E_LIFETIME_TOO_SHORT"}:
+        fields["cause"] = "A reference can remain usable after the value it points to is no longer alive."
+        fields["step1"] = "Show where the value is created, where the reference is created, and where the value stops being alive."
+        fields["fix"] = "keep the referenced value alive longer, or give an owned value instead of a reference"
+        fields["example"] = "proc name() -> string { give \"vitte\" }"
+    elif code in {"BORROWCK_E_RETURN_REF_TO_LOCAL", "BORROWCK_E_RETURN_BORROW_OF_LOCAL"}:
+        fields["cause"] = "A procedure gives back a reference to a local value that ends when the procedure exits."
+        fields["step1"] = "Show the local value creation, the reference creation, and the `give` that would let the reference escape."
+        fields["fix"] = "give an owned value, or take the referenced value from a parameter that outlives the procedure"
+        fields["example"] = "proc name() -> string { give \"vitte\" }"
+    elif code in {"BORROWCK_E_WRITE_WHILE_BORROWED", "BORROWCK_E_ASSIGN_WHILE_BORROWED"}:
+        fields["cause"] = "A `set` mutates a value while an active borrow can still observe the old value."
+        fields["step1"] = "Show the borrow start, the mutation, the later borrow use, and where the borrow ends."
+        fields["fix"] = "move the `set` after the borrow's last use, or shorten the borrow"
+        fields["example"] = "let value: int = 1\nset value = 2"
+    elif code == "BORROWCK_E_MOVE_WHILE_BORROWED":
+        fields["cause"] = "Ownership moves out of a value while an active borrow can still use it."
+        fields["step1"] = "Show the value creation, the borrow start, the move, the later borrow use, and where the borrow ends."
+        fields["fix"] = "move the value only after the borrow's last use, or pass a borrow instead of moving ownership"
+        fields["example"] = "let value: string = \"vitte\"\nlet view = &value"
+    elif code == "BORROWCK_E_DROP_WHILE_BORROWED":
+        fields["cause"] = "A value is destroyed while an active borrow still points to it."
+        fields["step1"] = "Show the value creation, the borrow start, the destruction point, and the last borrow use."
+        fields["fix"] = "destroy the value only after the borrow is no longer used"
+        fields["example"] = "let value: string = \"vitte\""
     elif code == "CONST_EVAL_E_DIVISION_BY_ZERO":
         fields["cause"] = "Constant evaluation reached a division whose divisor is known to be zero."
         fields["step1"] = "Inspect the divisor in the highlighted constant expression."

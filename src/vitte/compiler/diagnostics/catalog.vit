@@ -163,6 +163,9 @@ proc versioned_diagnostic_lookup(code: string) -> VersionedDiagnosticCode {
   if code == "P000_UNBALANCED" {
     give versioned_diagnostic_code(code, "parser", "delimiter-balance", "delimiter balance", "close-open-construct", "high", "docs://language/parser", "proc main() -> int {", "proc main() -> int { give 0 }")
   }
+  if code == "PARSE_E_OLD_VITTE_SYNTAX" {
+    give versioned_diagnostic_code(code, "parser", "canonical-syntax", "old Vitte syntax", "replace-with-current-keyword", "high", "docs://language/syntax", "return 0", "give 0")
+  }
   if code == "TYPECK_E_ASSIGN_MISMATCH" {
     give versioned_diagnostic_code(code, "typeck", "type-contract", "assignment compatibility", "align-contract", "medium", "docs://language/type-system", "let x: int = \"s\"", "let x: int = 0")
   }
@@ -201,6 +204,24 @@ proc versioned_diagnostic_lookup(code: string) -> VersionedDiagnosticCode {
   }
   if code == "TYPECK_E_CALL_ARITY" {
     give versioned_diagnostic_code(code, "typeck", "type-contract", "call arity", "align-arity", "high", "docs://language/type-system", "f(1, 2)", "f(1)")
+  }
+  if code == "TYPECK_E_UNKNOWN_PROCEDURE" {
+    give versioned_diagnostic_code(code, "typeck", "call-resolution", "unknown procedure", "import-or-declare-proc", "high", "docs://language/procedures", "missing_proc(1)", "proc known(value: int) -> int { give value }\nknown(1)")
+  }
+  if code == "TYPECK_E_UNKNOWN_NAMED_ARGUMENT" {
+    give versioned_diagnostic_code(code, "typeck", "call-arguments", "unknown named argument", "rename-argument", "high", "docs://language/procedures", "connect(host: \"localhost\", socket: 8080)", "connect(host: \"localhost\", port: 8080)")
+  }
+  if code == "TYPECK_E_ARGUMENT_ORDER" {
+    give versioned_diagnostic_code(code, "typeck", "call-arguments", "argument order", "reorder-arguments", "medium", "docs://language/procedures", "draw(color: \"blue\", 1, 2)", "draw(x: 1, y: 2, color: \"blue\")")
+  }
+  if code == "TYPECK_E_AMBIGUOUS_CALL" {
+    give versioned_diagnostic_code(code, "typeck", "call-resolution", "ambiguous call", "add-type-context", "medium", "docs://language/procedures", "parse(\"42\")", "let value: int = parse(\"42\")")
+  }
+  if code == "TYPECK_W_IGNORED_RESULT" {
+    give versioned_diagnostic_code(code, "typeck", "call-result", "ignored result", "bind-result", "medium", "docs://language/procedures", "add(1, 2)", "let total: int = add(1, 2)")
+  }
+  if code == "TYPECK_E_NOT_CALLABLE" {
+    give versioned_diagnostic_code(code, "typeck", "call-target", "not callable", "remove-call-or-use-proc", "high", "docs://language/procedures", "value()", "add(1, 2)")
   }
   if code == "TYPECK_E_GENERIC_INFERENCE" {
     give versioned_diagnostic_code(code, "typeck", "generic-inference", "generic inference completeness", "add-type-context", "medium", "docs://language/type-system", "identity()", "let value: int = identity(0)")
@@ -244,11 +265,53 @@ proc versioned_diagnostic_lookup(code: string) -> VersionedDiagnosticCode {
   if code == "AST_E_INCOMPLETE_CONSTRUCTION" {
     give versioned_diagnostic_code(code, "ast", "form-construction", "incomplete form construction", "complete-construction", "high", "docs://language/forms", "Point { x: 1", "Point { x: 1, y: 2 }")
   }
+  if code == "SEMA_E_UNKNOWN_VARIANT" {
+    give versioned_diagnostic_code(code, "sema", "pick-pattern", "unknown pick variant", "rename-or-declare-case", "high", "docs://language/pick", "Status.Pending", "Status.Ready")
+  }
+  if code == "TYPECK_E_PICK_NON_EXHAUSTIVE" {
+    give versioned_diagnostic_code(code, "typeck", "pick-pattern", "non exhaustive pick pattern", "add-missing-case", "high", "docs://language/pick", "match status { case Ready { give 0 } }", "match status { case Ready { give 0 } case Failed { give 1 } }")
+  }
+  if code == "SEMA_E_INACCESSIBLE_VARIANT" {
+    give versioned_diagnostic_code(code, "sema", "pick-pattern", "inaccessible pick variant", "remove-unreachable-case", "medium", "docs://language/pick", "match status { otherwise { give 1 } case Ready { give 0 } }", "match status { case Ready { give 0 } otherwise { give 1 } }")
+  }
+  if code == "TYPECK_E_PICK_PAYLOAD_MISMATCH" {
+    give versioned_diagnostic_code(code, "typeck", "pick-pattern", "pick payload mismatch", "match-case-payload", "high", "docs://language/pick", "case Data(text: string)", "case Data(value: int)")
+  }
+  if code == "TYPECK_E_IMPOSSIBLE_PATTERN" {
+    give versioned_diagnostic_code(code, "typeck", "pick-pattern", "impossible pattern", "use-compatible-pattern", "high", "docs://language/pick", "match status { case Data(value: int) { give value } }", "match status { case Ready { give 0 } }")
+  }
+  if code == "SEMA_E_DUPLICATE_PICK_BRANCH" {
+    give versioned_diagnostic_code(code, "sema", "pick-pattern", "duplicate pick branch", "merge-or-remove-branch", "high", "docs://language/pick", "match status { case Ready { give 0 } case Ready { give 1 } }", "match status { case Ready { give 0 } }")
+  }
   if code == "TYPECK_E_CAUSE_CHAIN_MISSING" {
     give versioned_diagnostic_code(code, "typeck", "diagnostic-quality", "type diagnostic cause chain", "attach-cause-chain", "high", "docs://compiler/diagnostics", "emit_type_error(code)", "emit_type_error(with_causes(code))")
   }
   if code == "BORROWCK_E_USE_AFTER_MOVE" {
-    give versioned_diagnostic_code(code, "borrowck", "ownership-flow", "moved value access", "shorten-or-reorder-access", "medium", "docs://language/ownership", "move value; use value;", "borrow value; use value;")
+    give versioned_diagnostic_code(code, "borrowck", "ownership-flow", "moved value access", "shorten-or-reorder-access", "medium", "docs://language/ownership", "consume(value)\nuse_value(value)", "use_value(value)\nconsume(value)")
+  }
+  if code == "BORROWCK_E_PARTIAL_MOVE" {
+    give versioned_diagnostic_code(code, "borrowck", "ownership-flow", "partial move", "avoid-whole-value-use", "medium", "docs://language/ownership", "let name: string = user.name\nuse_user(user)", "let name: string = user.name")
+  }
+  if code == "BORROWCK_E_BORROW_OF_MOVED_VALUE" {
+    give versioned_diagnostic_code(code, "borrowck", "ownership-flow", "borrow after move", "borrow-before-move", "high", "docs://language/ownership", "consume(value)\nlet view = &value", "let view = &value\nconsume(value)")
+  }
+  if code == "BORROWCK_E_MUTABLE_BORROW_CONFLICT" {
+    give versioned_diagnostic_code(code, "borrowck", "borrow-overlap", "overlapping mutable borrow", "shorten-first-borrow", "high", "docs://language/borrows", "let a = &value\nlet b = &value", "let a = &value\nuse_ref(a)\nlet b = &value")
+  }
+  if code == "BORROWCK_E_MUTABLE_SHARED_CONFLICT" {
+    give versioned_diagnostic_code(code, "borrowck", "borrow-overlap", "mutable and shared borrow conflict", "separate-borrow-scopes", "high", "docs://language/borrows", "let view = &value\nset value = 2", "let view = &value\nuse_ref(view)\nset value = 2")
+  }
+  if code == "BORROWCK_E_REFERENCE_OUTLIVES_VALUE" {
+    give versioned_diagnostic_code(code, "borrowck", "lifetime", "reference outlives value", "return-owned-value", "high", "docs://language/borrows", "proc name() -> &string { let local: string = \"vitte\"\ngive &local }", "proc name() -> string { give \"vitte\" }")
+  }
+  if code == "BORROWCK_E_WRITE_WHILE_BORROWED" {
+    give versioned_diagnostic_code(code, "borrowck", "borrow-overlap", "mutation while borrowed", "move-mutation-after-borrow", "high", "docs://language/borrows", "let view = &value\nset value = 2\nuse_ref(view)", "let view = &value\nuse_ref(view)\nset value = 2")
+  }
+  if code == "BORROWCK_E_MOVE_WHILE_BORROWED" {
+    give versioned_diagnostic_code(code, "borrowck", "borrow-overlap", "move while borrowed", "move-after-borrow", "high", "docs://language/borrows", "let view = &value\nconsume(value)\nuse_ref(view)", "let view = &value\nuse_ref(view)\nconsume(value)")
+  }
+  if code == "BORROWCK_E_DROP_WHILE_BORROWED" {
+    give versioned_diagnostic_code(code, "borrowck", "borrow-overlap", "destroy while borrowed", "drop-after-borrow", "high", "docs://language/borrows", "let view = &value\ndrop(value)\nuse_ref(view)", "let view = &value\nuse_ref(view)\ndrop(value)")
   }
   give versioned_diagnostic_code(code, "internal", "unknown", "compiler diagnostic contract", "inspect-primary-span", "low", "docs://compiler/diagnostics", "", "")
 }
@@ -346,11 +409,11 @@ proc bootstrap_catalog() -> DiagnosticCatalog {
 
   set catalog = register(catalog, diagnostic_code("TYPECK_E_UNKNOWN_TYPE", DiagnosticCategory.Typeck, DiagnosticSeverity.Error, "unknown type", "type resolution failed"))
 
-  set catalog = register(catalog, diagnostic_code("TYPECK_E_INVALID_CALL", DiagnosticCategory.Typeck, DiagnosticSeverity.Error, "invalid function call", "call arguments do not match function signature"))
+  set catalog = register(catalog, diagnostic_code("TYPECK_E_INVALID_CALL", DiagnosticCategory.Typeck, DiagnosticSeverity.Error, "call target is not callable", "call arguments do not match the procedure signature"))
 
   set catalog = register(catalog, diagnostic_code("TYPECK_E_ARGUMENT_MISMATCH", DiagnosticCategory.Typeck, DiagnosticSeverity.Error, "call argument violates the parameter type", "callee parameter imposes one type and the call argument produces another"))
 
-  set catalog = register(catalog, diagnostic_code("TYPECK_E_CALL_ARITY", DiagnosticCategory.Typeck, DiagnosticSeverity.Error, "wrong number of call arguments", "call argument count does not match function signature"))
+  set catalog = register(catalog, diagnostic_code("TYPECK_E_CALL_ARITY", DiagnosticCategory.Typeck, DiagnosticSeverity.Error, "wrong number of call arguments", "call argument count does not match procedure signature"))
 
   set catalog = register(catalog, diagnostic_code("TYPECK_E_GENERIC_INFERENCE", DiagnosticCategory.Typeck, DiagnosticSeverity.Error, "generic type could not be inferred", "local constraints do not determine a generic type parameter"))
 
