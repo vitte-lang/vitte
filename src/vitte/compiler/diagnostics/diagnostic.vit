@@ -2030,6 +2030,14 @@ proc same_diagnostic(left: Diagnostic, right: Diagnostic) -> bool {
         give false;
     }
 
+    if left.phase != right.phase {
+        give false;
+    }
+
+    if left.severity != right.severity {
+        give false;
+    }
+
     if left.message != right.message {
         give false;
     }
@@ -2046,7 +2054,27 @@ proc same_diagnostic(left: Diagnostic, right: Diagnostic) -> bool {
         give false;
     }
 
-    give true;
+    if left.span.end_line != right.span.end_line {
+        give false;
+    }
+
+    if left.span.end_column != right.span.end_column {
+        give false;
+    }
+
+    if left.span.length != right.span.length {
+        give false;
+    }
+
+    if left.root_cause != right.root_cause {
+        give false;
+    }
+
+    if left.primary_error_key != right.primary_error_key {
+        give false;
+    }
+
+    give left.cascade_of == right.cascade_of;
 }
 
 proc add_unique_diagnostic(diagnostics: [Diagnostic], diagnostic: Diagnostic) -> [Diagnostic] {
@@ -2155,6 +2183,14 @@ proc diagnostic_severity_priority(severity: DiagnosticSeverity) -> u64 {
     give 40 as u64;
 }
 
+proc diagnostic_span_sort_offset(span: SourceSpan) -> u64 {
+    if not span.valid {
+        give 0 as u64;
+    }
+
+    give span.start_line * 1000000 + span.start_column;
+}
+
 proc diagnostic_cascade_penalty(diagnostic: Diagnostic) -> u64 {
     if diagnostic.phase == DiagnosticPhase.Lexer or diagnostic.phase == DiagnosticPhase.Parser {
         give 0 as u64;
@@ -2190,6 +2226,17 @@ proc diagnostic_should_precede(left: Diagnostic, right: Diagnostic) -> bool {
         give false;
     }
 
+    let left_offset: u64 = diagnostic_span_sort_offset(left.span);
+    let right_offset: u64 = diagnostic_span_sort_offset(right.span);
+
+    if left_offset < right_offset {
+        give true;
+    }
+
+    if left_offset > right_offset {
+        give false;
+    }
+
     if left.span.start_line < right.span.start_line {
         give true;
     }
@@ -2203,6 +2250,44 @@ proc diagnostic_should_precede(left: Diagnostic, right: Diagnostic) -> bool {
     }
 
     if left.span.start_column > right.span.start_column {
+        give false;
+    }
+
+    if left.span.end_line < right.span.end_line {
+        give true;
+    }
+
+    if left.span.end_line > right.span.end_line {
+        give false;
+    }
+
+    if left.span.end_column < right.span.end_column {
+        give true;
+    }
+
+    if left.span.end_column > right.span.end_column {
+        give false;
+    }
+
+    let left_phase: u64 = diagnostic_phase_priority(left.phase);
+    let right_phase: u64 = diagnostic_phase_priority(right.phase);
+
+    if left_phase < right_phase {
+        give true;
+    }
+
+    if left_phase > right_phase {
+        give false;
+    }
+
+    let left_severity: u64 = diagnostic_severity_priority(left.severity);
+    let right_severity: u64 = diagnostic_severity_priority(right.severity);
+
+    if left_severity < right_severity {
+        give true;
+    }
+
+    if left_severity > right_severity {
         give false;
     }
 
@@ -2292,6 +2377,22 @@ proc diagnostic_same_primary_area(left: Diagnostic, right: Diagnostic) -> bool {
     give right.span.start_line <= left.span.start_line + 8;
 }
 
+proc diagnostic_direct_root_link(primary: Diagnostic, candidate: Diagnostic) -> bool {
+    if primary.primary_error_key == "" {
+        give false;
+    }
+
+    if candidate.cascade_of == primary.primary_error_key {
+        give true;
+    }
+
+    if candidate.primary_error_key != "" and candidate.primary_error_key == primary.primary_error_key {
+        give true;
+    }
+
+    give false;
+}
+
 proc diagnostic_should_derive_from(primary: Diagnostic, candidate: Diagnostic) -> bool {
     if primary.primary_error_key == "" {
         give false;
@@ -2309,11 +2410,15 @@ proc diagnostic_should_derive_from(primary: Diagnostic, candidate: Diagnostic) -
         give false;
     }
 
+    if diagnostic_direct_root_link(primary, candidate) {
+        give true;
+    }
+
     if primary.phase == DiagnosticPhase.Typeck and candidate.phase == DiagnosticPhase.Typeck and diagnostic_error_type_cascade_candidate(candidate) {
         give diagnostic_same_primary_area(primary, candidate);
     }
 
-    if diagnostic_phase_priority(candidate.phase) <= diagnostic_phase_priority(primary.phase) {
+    if not diagnostic_phase_is_blocking_for(primary.phase, candidate.phase) {
         give false;
     }
 
@@ -2325,16 +2430,100 @@ proc diagnostic_error_type_cascade_candidate(diagnostic: Diagnostic) -> bool {
         give false;
     }
 
-    if find(diagnostic.message, "unknown") >= 0 or find(diagnostic.message, "opaque") >= 0 {
+    if find(diagnostic.message, "unknown") >= 0 or find(diagnostic.message, "opaque") >= 0 or find(diagnostic.message, "__vitte_type_error__") >= 0 {
         give true;
     }
 
-    if find(diagnostic.root_cause, "unknown") >= 0 or find(diagnostic.root_cause, "opaque") >= 0 {
+    if find(diagnostic.root_cause, "unknown") >= 0 or find(diagnostic.root_cause, "opaque") >= 0 or find(diagnostic.root_cause, "__vitte_type_error__") >= 0 {
         give true;
     }
 
-    if diagnostic.subject_type == "unknown" or diagnostic.subject_type == "opaque" {
+    if diagnostic.subject_type == "unknown" or diagnostic.subject_type == "opaque" or diagnostic.subject_type == "__vitte_type_error__" {
         give true;
+    }
+
+    give false;
+}
+
+proc diagnostic_phase_is_blocking_for(blocker: DiagnosticPhase, next_phase: DiagnosticPhase) -> bool {
+    if blocker == DiagnosticPhase.Internal or blocker == DiagnosticPhase.Driver {
+        give true;
+    }
+
+    let next_priority: u64 = diagnostic_phase_priority(next_phase);
+
+    if next_priority <= diagnostic_phase_priority(blocker) {
+        give false;
+    }
+
+    if blocker == DiagnosticPhase.Lexer {
+        give next_priority >= diagnostic_phase_priority(DiagnosticPhase.Parser);
+    }
+
+    if blocker == DiagnosticPhase.Parser {
+        give next_priority >= diagnostic_phase_priority(DiagnosticPhase.Ast);
+    }
+
+    if blocker == DiagnosticPhase.Ast or blocker == DiagnosticPhase.AstValidation {
+        give next_priority >= diagnostic_phase_priority(DiagnosticPhase.Hir);
+    }
+
+    if blocker == DiagnosticPhase.ModuleResolution or blocker == DiagnosticPhase.SymbolResolution or blocker == DiagnosticPhase.Sema {
+        give next_priority >= diagnostic_phase_priority(DiagnosticPhase.Typeck);
+    }
+
+    if blocker == DiagnosticPhase.Hir {
+        give next_priority >= diagnostic_phase_priority(DiagnosticPhase.Typeck);
+    }
+
+    if blocker == DiagnosticPhase.Typeck {
+        give next_priority >= diagnostic_phase_priority(DiagnosticPhase.Borrowck);
+    }
+
+    if blocker == DiagnosticPhase.Borrowck or blocker == DiagnosticPhase.Lifetime {
+        give next_priority >= diagnostic_phase_priority(DiagnosticPhase.Mir);
+    }
+
+    if blocker == DiagnosticPhase.Mir or blocker == DiagnosticPhase.MirLowering or blocker == DiagnosticPhase.MirVerification {
+        give next_priority >= diagnostic_phase_priority(DiagnosticPhase.Ir);
+    }
+
+    if blocker == DiagnosticPhase.Ir {
+        give next_priority >= diagnostic_phase_priority(DiagnosticPhase.Backend);
+    }
+
+    if blocker == DiagnosticPhase.Backend {
+        give next_priority >= diagnostic_phase_priority(DiagnosticPhase.Linker);
+    }
+
+    if blocker == DiagnosticPhase.Linker {
+        give next_priority >= diagnostic_phase_priority(DiagnosticPhase.RuntimeExecution);
+    }
+
+    give false;
+}
+
+proc diagnostic_phase_blocking_reason(blocker: DiagnosticPhase, next_phase: DiagnosticPhase) -> string {
+    if not diagnostic_phase_is_blocking_for(blocker, next_phase) {
+        give "";
+    }
+
+    give phase_name(blocker) + " error blocks " + phase_name(next_phase) + " because the later phase depends on verified " + phase_name(blocker) + " output";
+}
+
+proc diagnostic_has_blocking_error_for_phase(diagnostics: [Diagnostic], next_phase: DiagnosticPhase) -> bool {
+    let i: u64 = 0;
+
+    while i < len(diagnostics) {
+        if severity_is_error(diagnostics[i].severity) and diagnostic_phase_is_blocking_for(diagnostics[i].phase, next_phase) {
+            give true;
+        }
+
+        if diagnostics[i].fatal and diagnostic_phase_is_blocking_for(diagnostics[i].phase, next_phase) {
+            give true;
+        }
+
+        set i = i + 1;
     }
 
     give false;
@@ -2425,12 +2614,13 @@ proc diagnostic_report_visible_diagnostics(diagnostics: [Diagnostic]) -> [Diagno
                 set cascade_count = cascade_count + 1;
             }
         } else {
-            if not have_primary and severity_is_error(candidate.severity) {
+            if severity_is_error(candidate.severity) {
                 set candidate.primary_error = true;
                 set candidate.cascade = false;
                 set candidate.cascade_of = "";
                 set primary = candidate;
                 set have_primary = true;
+                set cascade_count = 0 as u64;
             }
 
             set out = out + [candidate];
@@ -4116,11 +4306,16 @@ share diagnostic_report_add
 share diagnostic_report_merge
 share diagnostic_phase_priority
 share diagnostic_severity_priority
+share diagnostic_span_sort_offset
 share diagnostic_cascade_penalty
 share diagnostic_priority
 share prioritize_diagnostics
 share diagnostic_is_root
+share diagnostic_direct_root_link
 share diagnostic_error_type_cascade_candidate
+share diagnostic_phase_is_blocking_for
+share diagnostic_phase_blocking_reason
+share diagnostic_has_blocking_error_for_phase
 share diagnostic_root_count
 share diagnostic_cascade_count
 share diagnostic_causality_summary

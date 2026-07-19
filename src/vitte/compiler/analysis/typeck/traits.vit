@@ -2,6 +2,7 @@ space vitte/compiler/analysis/typeck
 
 pick TypeClass {
     Unknown
+    Invalid
     Unit
     Bool
     Char
@@ -18,6 +19,8 @@ pick TypeClass {
     Opaque
     Never
 }
+
+const TYPE_SENTINEL_INVALID: string = "__vitte_type_error__"
 
 form TypeTraitInfo {
     ty: string
@@ -132,8 +135,22 @@ proc type_is_unknown(ty: string) -> bool {
         or value == "unknown";
 }
 
+proc type_invalid_sentinel() -> string {
+    give TYPE_SENTINEL_INVALID;
+}
+
+proc type_is_invalid_sentinel(ty: string) -> bool {
+    give normalize_type_name(ty) == TYPE_SENTINEL_INVALID;
+}
+
+proc type_is_error_like(ty: string) -> bool {
+    give type_is_unknown(ty)
+        or type_is_invalid_sentinel(ty);
+}
+
 proc type_is_known(ty: string) -> bool {
-    give !type_is_unknown(ty);
+    give !type_is_unknown(ty)
+        and !type_is_invalid_sentinel(ty);
 }
 
 proc type_is_reference(ty: string) -> bool {
@@ -261,6 +278,10 @@ proc type_is_copy(ty: string) -> bool {
 proc type_class(ty: string) -> TypeClass {
     let value: string = normalize_type_name(ty);
 
+    if type_is_invalid_sentinel(value) {
+        give TypeClass.Invalid;
+    }
+
     if type_is_unknown(value) {
         give TypeClass.Unknown;
     }
@@ -329,6 +350,10 @@ proc type_class(ty: string) -> TypeClass {
 }
 
 proc type_class_name(class: TypeClass) -> string {
+    if class == TypeClass.Invalid {
+        give "invalid";
+    }
+
     if class == TypeClass.Unit {
         give "unit";
     }
@@ -462,6 +487,7 @@ proc type_allows_comparison(ty: string) -> bool {
 share TypeClass
 share TypeTraitInfo
 
+share TYPE_SENTINEL_INVALID
 share normalize_type_name
 share type_is_signed_integer
 share type_is_unsigned_integer
@@ -475,6 +501,9 @@ share type_is_never
 share type_is_string
 share type_is_opaque
 share type_is_unknown
+share type_invalid_sentinel
+share type_is_invalid_sentinel
+share type_is_error_like
 share type_is_known
 share type_is_reference
 share type_is_pointer

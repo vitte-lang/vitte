@@ -18,6 +18,7 @@ SEMA_DIAGNOSTICS = COMPILER_ROOT / "analysis" / "sema" / "errors.vit"
 SEMA_RESOLVER = COMPILER_ROOT / "analysis" / "sema" / "resolver.vit"
 PARSER = COMPILER_ROOT / "frontend" / "parse" / "parser.vit"
 TYPECK_DIAGNOSTICS = COMPILER_ROOT / "analysis" / "typeck" / "errors.vit"
+TYPECK_TRAITS = COMPILER_ROOT / "analysis" / "typeck" / "traits.vit"
 BORROWCK_DIAGNOSTICS = COMPILER_ROOT / "analysis" / "borrowck" / "errors.vit"
 BORROWCK_LIFETIMES = COMPILER_ROOT / "analysis" / "borrowck" / "lifetimes.vit"
 TYPE_UNIFY = COMPILER_ROOT / "analysis" / "typeck" / "unify.vit"
@@ -436,6 +437,26 @@ def check_relational_diagnostic_contract() -> list[str]:
         (SEMA_DIAGNOSTICS, "use module.{ \" + name + \" }"),
         (PARSER, "a complete extern ABI block"),
         (CANONICAL_DIAGNOSTIC, "set diagnostic.suggestions = diagnostic_suggestion_list_add(diagnostic.suggestions, suggestion);"),
+        (TYPECK_TRAITS, "TYPE_SENTINEL_INVALID"),
+        (TYPECK_TRAITS, "TypeClass.Invalid"),
+        (TYPECK_TRAITS, "type_invalid_sentinel"),
+        (TYPECK_TRAITS, "type_is_invalid_sentinel"),
+        (TYPECK_TRAITS, "type_is_error_like"),
+        (CANONICAL_DIAGNOSTIC, "left.phase != right.phase"),
+        (CANONICAL_DIAGNOSTIC, "left.severity != right.severity"),
+        (CANONICAL_DIAGNOSTIC, "left.span.end_line != right.span.end_line"),
+        (CANONICAL_DIAGNOSTIC, "left.span.length != right.span.length"),
+        (CANONICAL_DIAGNOSTIC, "diagnostic_span_sort_offset"),
+        (CANONICAL_DIAGNOSTIC, "diagnostic_phase_priority(left.phase)"),
+        (CANONICAL_DIAGNOSTIC, "diagnostic_severity_priority(left.severity)"),
+        (CANONICAL_DIAGNOSTIC, "diagnostic_direct_root_link"),
+        (CANONICAL_DIAGNOSTIC, "candidate.cascade_of == primary.primary_error_key"),
+        (CANONICAL_DIAGNOSTIC, "diagnostic_phase_is_blocking_for"),
+        (CANONICAL_DIAGNOSTIC, "diagnostic_phase_blocking_reason"),
+        (CANONICAL_DIAGNOSTIC, "diagnostic_has_blocking_error_for_phase"),
+        (CANONICAL_DIAGNOSTIC, "set primary = candidate;"),
+        (CANONICAL_DIAGNOSTIC, "set cascade_count = 0 as u64;"),
+        (CANONICAL_DIAGNOSTIC, "__vitte_type_error__"),
     )
     for path, fragment in required_fragments:
         text = path.read_text(encoding="utf-8")
