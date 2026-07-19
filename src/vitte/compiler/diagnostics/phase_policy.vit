@@ -15,6 +15,8 @@ form DiagnosticPhasePolicy {
     blocking_after_error: bool
     may_continue_after_error: bool
     independent_after_error: bool
+    blocks: [string]
+    root_error_codes: [string]
     reason: string
     valid: bool
 }
@@ -26,6 +28,8 @@ proc diagnostic_phase_policy(phase: DiagnosticPhase) -> DiagnosticPhasePolicy {
             blocking_after_error: true,
             may_continue_after_error: true,
             independent_after_error: false,
+            blocks: ["parser", "ast", "hir", "typeck", "borrowck", "mir", "ir", "backend", "linker"],
+            root_error_codes: ["LEX_E_INVALID_CHAR", "LEX_E_UNTERMINATED_STRING", "LEX_E_UNTERMINATED_COMMENT", "LEX_E_INVALID_TOKEN"],
             reason: "lexer errors are roots; parsing may recover locally but later semantic phases need valid tokens",
             valid: true
         };
@@ -37,6 +41,8 @@ proc diagnostic_phase_policy(phase: DiagnosticPhase) -> DiagnosticPhasePolicy {
             blocking_after_error: true,
             may_continue_after_error: true,
             independent_after_error: false,
+            blocks: ["ast", "hir", "typeck", "borrowck", "mir", "ir", "backend", "linker"],
+            root_error_codes: ["PARSE_E_UNEXPECTED_TOKEN", "PARSE_E_UNCLOSED_BLOCK", "PARSE_E_INCOMPLETE_EXPR", "PARSE_E_OLD_VITTE_SYNTAX"],
             reason: "parser errors are roots; AST validation may inspect recovered nodes but HIR and typeck need valid syntax",
             valid: true
         };
@@ -48,6 +54,8 @@ proc diagnostic_phase_policy(phase: DiagnosticPhase) -> DiagnosticPhasePolicy {
             blocking_after_error: true,
             may_continue_after_error: true,
             independent_after_error: false,
+            blocks: ["hir", "typeck", "borrowck", "mir", "ir", "backend", "linker"],
+            root_error_codes: ["AST_E_INVALID_NODE", "AST_E_INVALID_DECL", "AST_E_INCOMPLETE_CONSTRUCTION"],
             reason: "AST errors block HIR lowering when recovered nodes are invalid",
             valid: true
         };
@@ -59,6 +67,8 @@ proc diagnostic_phase_policy(phase: DiagnosticPhase) -> DiagnosticPhasePolicy {
             blocking_after_error: true,
             may_continue_after_error: true,
             independent_after_error: true,
+            blocks: ["typeck", "borrowck", "mir", "ir", "backend", "linker"],
+            root_error_codes: ["MOD_E_MODULE_NOT_FOUND", "MOD_E_IMPORT_CYCLE", "SEMA_E_UNKNOWN_IDENTIFIER", "SEMA_E_AMBIGUOUS_SYMBOL"],
             reason: "name errors block type-dependent phases for affected symbols, while independent declarations may still be checked",
             valid: true
         };
@@ -70,6 +80,8 @@ proc diagnostic_phase_policy(phase: DiagnosticPhase) -> DiagnosticPhasePolicy {
             blocking_after_error: true,
             may_continue_after_error: true,
             independent_after_error: true,
+            blocks: ["borrowck", "mir", "ir", "backend", "linker"],
+            root_error_codes: ["TYPECK_E_ASSIGN_MISMATCH", "TYPECK_E_ARGUMENT_MISMATCH", "TYPECK_E_MISSING_GIVE", "TYPECK_E_INFERENCE_FAILED"],
             reason: "type errors block borrow checking for affected expressions; independent expressions may still produce reliable diagnostics",
             valid: true
         };
@@ -81,6 +93,8 @@ proc diagnostic_phase_policy(phase: DiagnosticPhase) -> DiagnosticPhasePolicy {
             blocking_after_error: true,
             may_continue_after_error: true,
             independent_after_error: true,
+            blocks: ["mir", "ir", "backend", "linker"],
+            root_error_codes: ["BORROWCK_E_USE_AFTER_MOVE", "BORROWCK_E_MUTABLE_BORROW_CONFLICT", "BORROWCK_E_REFERENCE_OUTLIVES_VALUE"],
             reason: "borrow and lifetime errors block MIR lowering for affected values; unrelated ownership paths remain reportable",
             valid: true
         };
@@ -92,6 +106,8 @@ proc diagnostic_phase_policy(phase: DiagnosticPhase) -> DiagnosticPhasePolicy {
             blocking_after_error: true,
             may_continue_after_error: false,
             independent_after_error: false,
+            blocks: ["ir", "backend", "linker"],
+            root_error_codes: ["MIR_E_INVALID_CFG", "MIR_E_INVALID_TERMINATOR", "MIR_E_UNREACHABLE_BLOCK"],
             reason: "MIR errors block IR and backend output because generated control flow is not trustworthy",
             valid: true
         };
@@ -103,6 +119,8 @@ proc diagnostic_phase_policy(phase: DiagnosticPhase) -> DiagnosticPhasePolicy {
             blocking_after_error: true,
             may_continue_after_error: false,
             independent_after_error: false,
+            blocks: ["backend", "linker", "runtime_execution"],
+            root_error_codes: ["IR_E_INVALID_MODULE", "BACKEND_E_CODEGEN_FAILED", "LINK_E_SYSTEM_LINKER_FAILED"],
             reason: "build-output phases run in order and each phase depends on the previous artifact",
             valid: true
         };
@@ -113,9 +131,19 @@ proc diagnostic_phase_policy(phase: DiagnosticPhase) -> DiagnosticPhasePolicy {
         blocking_after_error: false,
         may_continue_after_error: false,
         independent_after_error: false,
+        blocks: [],
+        root_error_codes: [],
         reason: "phase has no downstream compiler phase that can rely on partial output",
         valid: true
     };
+}
+
+proc diagnostic_phase_blocks(phase: DiagnosticPhase) -> [string] {
+    give diagnostic_phase_policy(phase).blocks;
+}
+
+proc diagnostic_phase_root_error_codes(phase: DiagnosticPhase) -> [string] {
+    give diagnostic_phase_policy(phase).root_error_codes;
 }
 
 proc diagnostic_phase_should_run(existing: [Diagnostic], next_phase: DiagnosticPhase) -> bool {
@@ -143,6 +171,8 @@ proc diagnostic_phase_policy_summary(phase: DiagnosticPhase) -> string {
 
 share DiagnosticPhasePolicy
 share diagnostic_phase_policy
+share diagnostic_phase_blocks
+share diagnostic_phase_root_error_codes
 share diagnostic_phase_should_run
 share diagnostic_phase_skip_reason
 share diagnostic_phase_policy_summary

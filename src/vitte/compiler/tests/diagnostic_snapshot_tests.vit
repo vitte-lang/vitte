@@ -3,6 +3,7 @@ space vitte/compiler/tests/diagnostic_snapshot_tests
 use vitte/compiler/diagnostics/diagnostic.{
   Diagnostic,
   DiagnosticApplicability,
+  DiagnosticKind,
   DiagnosticPhase,
   DiagnosticStyle,
   DiagnosticSuggestion,
@@ -14,6 +15,7 @@ use vitte/compiler/diagnostics/diagnostic.{
   default_render_config,
   diagnostic_add_pipeline_context,
   backend_command_failed,
+  diagnostic_ice,
   diagnostic_error,
   diagnostic_explain_text_lang,
   diagnostic_text_line,
@@ -35,6 +37,7 @@ use vitte/compiler/diagnostics/diagnostic.{
 use vitte/compiler/diagnostics/json.{ json_diagnostic }
 use vitte/compiler/diagnostics/lsp.{ LspCanonicalContext, LspCodeAction, LspDiagnostic, LspPublishDiagnosticsParams, lsp_canonical_context, lsp_code_actions, lsp_diagnostic, lsp_diagnostic_with_canonical_context, lsp_publish_report_with_canonical_context, lsp_report_code_actions }
 use vitte/compiler/diagnostics/architecture.{ CompilerDiagnosticStage, canonical_diagnostic_stage_count, compiler_diagnostic_error, compiler_diagnostic_report, diagnostic_architecture_covers_required_stages, stage_component, stage_phase }
+use vitte/compiler/diagnostics/phase_policy.{ DiagnosticPhasePolicy, diagnostic_phase_blocks, diagnostic_phase_policy, diagnostic_phase_root_error_codes }
 
 const VERSION_TEXT: string = "diagnostic snapshot tests 0.1.0"
 const BANNER_TEXT: string = "diagnostic snapshot tests"
@@ -430,6 +433,45 @@ proc test_single_diagnostic_architecture_covers_compiler_pipeline() -> bool {
     and find(typeck.probable_fix, "type contract") >= 0;
 }
 
+proc test_phase_policy_defines_blocking_errors_precisely() -> bool {
+  let lexer: DiagnosticPhasePolicy = diagnostic_phase_policy(DiagnosticPhase.Lexer);
+  let typeck: DiagnosticPhasePolicy = diagnostic_phase_policy(DiagnosticPhase.Typeck);
+  let borrowck: DiagnosticPhasePolicy = diagnostic_phase_policy(DiagnosticPhase.Borrowck);
+  let linker: DiagnosticPhasePolicy = diagnostic_phase_policy(DiagnosticPhase.Linker);
+  let lexer_blocks: [string] = diagnostic_phase_blocks(DiagnosticPhase.Lexer);
+  let typeck_roots: [string] = diagnostic_phase_root_error_codes(DiagnosticPhase.Typeck);
+  give lexer.blocking_after_error
+    and lexer.may_continue_after_error
+    and lexer.independent_after_error == false
+    and len(lexer.blocks) == 9
+    and lexer_blocks[0] == "parser"
+    and lexer_blocks[8] == "linker"
+    and lexer.root_error_codes[0] == "LEX_E_INVALID_CHAR"
+    and typeck.independent_after_error
+    and typeck.blocks[0] == "borrowck"
+    and typeck_roots[2] == "TYPECK_E_MISSING_GIVE"
+    and borrowck.blocks[0] == "mir"
+    and borrowck.root_error_codes[0] == "BORROWCK_E_USE_AFTER_MOVE"
+    and linker.may_continue_after_error == false
+    and linker.root_error_codes[2] == "LINK_E_SYSTEM_LINKER_FAILED";
+}
+
+proc test_ice_is_internal_and_carries_required_context() -> bool {
+  let span0 = span_range("src/main.vit", 4, 3, 4, 8);
+  let diag: Diagnostic = diagnostic_ice("TYPECK_E_WRONG_KIND", DiagnosticPhase.Typeck, "", "lower give expression", "assertion failed: inferred type slot empty\nstack frame detail", "", span0);
+  give diag.code == "ICE0001"
+    and diag.kind == DiagnosticKind.InternalCompiler
+    and diag.phase == DiagnosticPhase.Internal
+    and diag.span.file == "src/main.vit"
+    and diag.internal_operation == "lower give expression"
+    and diag.internal_cause == "assertion failed: inferred type slot empty"
+    and diag.reproduction == "rerun the same command with the same source file"
+    and diag.root_cause == "internal compiler defect during lower give expression"
+    and find(diag.pipeline_context[0], "stable_id=ICE0001") >= 0
+    and find(diag.pipeline_context[1], "ice_phase=typeck") >= 0
+    and find(diag.pipeline_context[2], "vitte_file=src/main.vit") >= 0;
+}
+
 proc run_all_tests() -> int {
   let failures: int = 0;
   let typeck_ok: bool = test_typeck_diagnostic_contract();
@@ -447,6 +489,8 @@ proc run_all_tests() -> int {
   let report_order_ok: bool = test_report_orders_diagnostics_by_file_and_position();
   let text_format_ok: bool = test_text_diagnostic_format_is_stable();
   let architecture_ok: bool = test_single_diagnostic_architecture_covers_compiler_pipeline();
+  let phase_policy_ok: bool = test_phase_policy_defines_blocking_errors_precisely();
+  let ice_context_ok: bool = test_ice_is_internal_and_carries_required_context();
   if typeck_ok == false {
     set failures = failures + 1;
   }
@@ -490,6 +534,12 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if architecture_ok == false {
+    set failures = failures + 1;
+  }
+  if phase_policy_ok == false {
+    set failures = failures + 1;
+  }
+  if ice_context_ok == false {
     set failures = failures + 1;
   }
   give failures;

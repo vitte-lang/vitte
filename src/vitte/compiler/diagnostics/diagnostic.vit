@@ -2015,16 +2015,39 @@ proc diagnostic_add_pipeline_context(diagnostic: Diagnostic, context: string) ->
     give diagnostic;
 }
 
+proc diagnostic_sanitize_technical_cause(technical_cause: string) -> string {
+    if technical_cause == "" {
+        give "compiler invariant was violated";
+    }
+
+    let newline: int = find(technical_cause, "\n");
+    let one_line: string = technical_cause;
+    if newline > 0 {
+        set one_line = slice(technical_cause, 0, newline as u64);
+    }
+
+    if len(one_line) > 240 {
+        give slice(one_line, 0, 240);
+    }
+
+    give one_line;
+}
+
 proc diagnostic_ice(code: string, phase: DiagnosticPhase, source_file: string, operation: string, technical_cause: string, reproduction: string, span: SourceSpan) -> Diagnostic {
     let stable_code: string = if starts_with(code, "ICE") { code } else { "ICE0001" };
+    let source_text: string = if source_file != "" { source_file } else { span.file };
+    let operation_text: string = if operation != "" { operation } else { "compiler operation" };
+    let reproduction_text: string = if reproduction != "" { reproduction } else { "rerun the same command with the same source file" };
+    let cause_text: string = diagnostic_sanitize_technical_cause(technical_cause);
     let diag0: Diagnostic = diagnostic_fatal(stable_code, DiagnosticPhase.Internal, "internal compiler error in " + phase_name(phase), span);
     let diag1: Diagnostic = diagnostic_with_kind(diag0, DiagnosticKind.InternalCompiler);
-    let diag2: Diagnostic = diagnostic_add_pipeline_context(diag1, diag_kv("ice_phase", phase_name(phase)));
-    let diag3: Diagnostic = diagnostic_add_pipeline_context(diag2, diag_kv("vitte_file", source_file));
-    let diag4: Diagnostic = diagnostic_with_internal_operation(diag3, operation);
-    let diag5: Diagnostic = diagnostic_with_internal_cause(diag4, technical_cause);
-    let diag6: Diagnostic = diagnostic_with_reproduction(diag5, reproduction);
-    let diag7: Diagnostic = diagnostic_with_root_cause(diag6, "internal compiler defect during " + operation);
+    let diag2a: Diagnostic = diagnostic_add_pipeline_context(diag1, diag_kv("stable_id", stable_code));
+    let diag2: Diagnostic = diagnostic_add_pipeline_context(diag2a, diag_kv("ice_phase", phase_name(phase)));
+    let diag3: Diagnostic = diagnostic_add_pipeline_context(diag2, diag_kv("vitte_file", source_text));
+    let diag4: Diagnostic = diagnostic_with_internal_operation(diag3, operation_text);
+    let diag5: Diagnostic = diagnostic_with_internal_cause(diag4, cause_text);
+    let diag6: Diagnostic = diagnostic_with_reproduction(diag5, reproduction_text);
+    let diag7: Diagnostic = diagnostic_with_root_cause(diag6, "internal compiler defect during " + operation_text);
     give diagnostic_with_help(diag7, "re-run the same command and include " + stable_code + " with the Vitte file path");
 }
 
@@ -4533,6 +4556,7 @@ share diagnostic_with_external_stderr
 share diagnostic_with_internal_operation
 share diagnostic_with_reproduction
 share diagnostic_add_pipeline_context
+share diagnostic_sanitize_technical_cause
 share diagnostic_add_related_error
 share diagnostic_with_probable_fix
 share diagnostic_with_subject_symbol

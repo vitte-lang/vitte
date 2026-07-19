@@ -286,7 +286,10 @@ def validate_canonical_diagnostic_contract() -> list[str]:
         "DiagnosticKind.InternalCompiler",
         "starts_with(code, \"ICE\")",
         "diagnostic_ice",
+        "diagnostic_sanitize_technical_cause",
         "internal compiler error in \" + phase_name(phase)",
+        "diag_kv(\"stable_id\", stable_code)",
+        "diagnostic_with_internal_cause(diag4, cause_text)",
         "diagnostic_with_external_stderr",
         "if config.verbose and diagnostic.external_command != \"\"",
         "DIAGNOSTIC_USER_COLUMN_BASE",
@@ -295,6 +298,25 @@ def validate_canonical_diagnostic_contract() -> list[str]:
     for fragment in required_fragments:
         if fragment not in text:
             failures.append(f"src/vitte/compiler/diagnostics/diagnostic.vit: missing diagnostic contract fragment {fragment!r}")
+    return failures
+
+
+def validate_phase_policy_contract() -> list[str]:
+    text = (COMPILER_ROOT / "diagnostics" / "phase_policy.vit").read_text(encoding="utf-8")
+    failures: list[str] = []
+    required_fragments = (
+        "blocks: [string]",
+        "root_error_codes: [string]",
+        "diagnostic_phase_blocks",
+        "diagnostic_phase_root_error_codes",
+        "LEX_E_INVALID_CHAR",
+        "TYPECK_E_ASSIGN_MISMATCH",
+        "BORROWCK_E_USE_AFTER_MOVE",
+        "LINK_E_SYSTEM_LINKER_FAILED",
+    )
+    for fragment in required_fragments:
+        if fragment not in text:
+            failures.append(f"src/vitte/compiler/diagnostics/phase_policy.vit: missing phase policy fragment {fragment!r}")
     return failures
 
 
@@ -327,6 +349,7 @@ def main() -> int:
         *validate_catalog(),
         *validate_diagnostic_code_usage(),
         *validate_canonical_diagnostic_contract(),
+        *validate_phase_policy_contract(),
         *validate_backend_linker_contract(),
     ]
     if failures:
