@@ -21,8 +21,12 @@ use vitte/compiler/diagnostics/diagnostic.{
     diagnostic_recovery_scope,
     diagnostic_confidence,
     diagnostic_quality_score,
-    diagnostic_fix_plans
+    diagnostic_fix_plans,
+    diagnostic_kind_name
 }
+
+const USER_DIAGNOSTIC_COLUMNS: string = "one_based_visual_columns"
+const LSP_DIAGNOSTIC_COLUMNS: string = "zero_based_utf16_positions"
 
 pick LspDiagnosticSeverity {
     Error
@@ -253,8 +257,11 @@ proc lsp_eq() -> string {
 
 proc diagnostic_data_with_canonical_context(diagnostic: Diagnostic, context: LspCanonicalContext) -> string {
     let severity_data: string = "severity" + lsp_eq() + severity_name(diagnostic.severity);
+    let kind_data: string = "kind" + lsp_eq() + diagnostic_kind_name(diagnostic.kind);
     let phase_data: string = "phase" + lsp_eq() + phase_name(diagnostic.phase);
     let code_data: string = "code" + lsp_eq() + diagnostic.code;
+    let user_columns_data: string = "user_columns" + lsp_eq() + USER_DIAGNOSTIC_COLUMNS;
+    let lsp_columns_data: string = "lsp_columns" + lsp_eq() + LSP_DIAGNOSTIC_COLUMNS;
     let family_data: string = "family" + lsp_eq() + diagnostic_code_family(diagnostic.phase, diagnostic.code);
     let strategy_data: string = "strategy" + lsp_eq() + diagnostic_correction_strategy(diagnostic.phase, diagnostic.code);
     let recovery_data: string = "recovery_scope" + lsp_eq() + diagnostic_recovery_scope(diagnostic.phase, diagnostic.code);
@@ -264,7 +271,7 @@ proc diagnostic_data_with_canonical_context(diagnostic: Diagnostic, context: Lsp
     let pipeline_data: string = "pipeline_failed_at" + lsp_eq() + context.pipeline_failed_at;
     let failure_data: string = "pipeline_failure_reason" + lsp_eq() + context.pipeline_failure_reason;
     let validation_data: string = "validation_reason" + lsp_eq() + context.validation_reason;
-    give severity_data + ";" + phase_data + ";" + code_data + ";" + family_data + ";" + strategy_data + ";" + recovery_data + ";" + confidence_data + ";" + quality_data + ";" + fixes_data + ";" + pipeline_data + ";" + failure_data + ";" + validation_data;
+    give severity_data + ";" + kind_data + ";" + phase_data + ";" + code_data + ";" + user_columns_data + ";" + lsp_columns_data + ";" + family_data + ";" + strategy_data + ";" + recovery_data + ";" + confidence_data + ";" + quality_data + ";" + fixes_data + ";" + pipeline_data + ";" + failure_data + ";" + validation_data;
 }
 
 proc diagnostic_data(diagnostic: Diagnostic) -> string {
@@ -515,6 +522,9 @@ share LspCanonicalContext
 share LspDiagnostic
 share LspPublishDiagnosticsParams
 share LspCodeAction
+
+share USER_DIAGNOSTIC_COLUMNS
+share LSP_DIAGNOSTIC_COLUMNS
 
 share lsp_position
 share lsp_range

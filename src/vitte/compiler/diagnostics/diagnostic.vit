@@ -12,6 +12,8 @@ use vitte/stdlib/io/fileops.{ is_file, read_file }
 use vitte/compiler/infrastructure/diagnostics/fluent_catalog.{ fluent_catalog_lookup, fluent_catalog_normalize_locale }
 
 const DIAGNOSTIC_SCHEMA_VERSION: string = "1.0.0"
+const DIAGNOSTIC_USER_COLUMN_BASE: u64 = 1
+const DIAGNOSTIC_INTERNAL_OFFSET_UNIT: string = "utf8_byte_offset"
 
 pick DiagnosticSeverity {
     Help
@@ -47,9 +49,12 @@ pick DiagnosticPhase {
 
 pick DiagnosticStyle {
     Plain
+    Short
     Text
     Human
     Json
+    Lsp
+    Sarif
     Debug
 }
 
@@ -84,6 +89,14 @@ pick DiagnosticFixKind {
     Reorder
     ScopeSplit
     Help
+}
+
+pick DiagnosticKind {
+    User
+    Configuration
+    Environment
+    Linker
+    InternalCompiler
 }
 
 form SourceSpan {
@@ -161,6 +174,7 @@ form DiagnosticQuality {
 
 form Diagnostic {
     code: string
+    kind: DiagnosticKind
     phase: DiagnosticPhase
     severity: DiagnosticSeverity
     title: string
@@ -182,6 +196,10 @@ form Diagnostic {
     subject_symbol: string
     subject_type: string
     subject_borrow: string
+    external_command: string
+    external_stderr: string
+    internal_operation: string
+    reproduction: string
     valid_example: string
     invalid_example: string
     primary_error_key: string
@@ -232,6 +250,7 @@ form DiagnosticRenderConfig {
     show_notes: bool
     show_helps: bool
     show_suggestions: bool
+    verbose: bool
     color: bool
 }
 
@@ -401,6 +420,26 @@ proc phase_name(phase: DiagnosticPhase) -> string {
     }
 
     give "unknown";
+}
+
+proc diagnostic_kind_name(kind: DiagnosticKind) -> string {
+    if kind == DiagnosticKind.User {
+        give "user";
+    }
+
+    if kind == DiagnosticKind.Configuration {
+        give "configuration";
+    }
+
+    if kind == DiagnosticKind.Environment {
+        give "environment";
+    }
+
+    if kind == DiagnosticKind.Linker {
+        give "linker";
+    }
+
+    give "internal_compiler";
 }
 
 proc severity_is_error(severity: DiagnosticSeverity) -> bool {
@@ -690,6 +729,10 @@ proc diagnostic_fix_plans(diagnostic: Diagnostic) -> [DiagnosticFixPlan] {
 }
 
 proc diagnostic_default_rule(phase: DiagnosticPhase, code: string) -> string {
+    if starts_with(code, "ICE") {
+        give "internal compiler invariant";
+    }
+
     if code == "PATTR003" {
         give "attribute placement";
     }
@@ -786,6 +829,10 @@ proc diagnostic_default_rule(phase: DiagnosticPhase, code: string) -> string {
 }
 
 proc diagnostic_default_explanation(phase: DiagnosticPhase, code: string) -> string {
+    if starts_with(code, "ICE") {
+        give "The compiler violated one of its own internal invariants. This is not a user-program error.";
+    }
+
     if code == "PATTR003" {
         give "An attribute block was parsed without a declaration following it, so the compiler cannot decide which item the attribute configures.";
     }
@@ -886,6 +933,10 @@ proc diagnostic_default_explanation(phase: DiagnosticPhase, code: string) -> str
 }
 
 proc diagnostic_default_root_cause(phase: DiagnosticPhase, code: string) -> string {
+    if starts_with(code, "ICE") {
+        give "internal compiler defect";
+    }
+
     if code == "PATTR003" {
         give "attribute prefix has no declaration target";
     }
@@ -950,6 +1001,10 @@ proc diagnostic_default_root_cause(phase: DiagnosticPhase, code: string) -> stri
 }
 
 proc diagnostic_default_probable_fix(phase: DiagnosticPhase, code: string) -> string {
+    if starts_with(code, "ICE") {
+        give "rerun the same command with the same input and report the stable ICE identifier";
+    }
+
     if code == "PATTR003" {
         give "attach the attribute to the next declaration or remove the standalone attribute block";
     }
@@ -1046,6 +1101,10 @@ proc diagnostic_default_probable_fix(phase: DiagnosticPhase, code: string) -> st
 }
 
 proc diagnostic_default_documentation(phase: DiagnosticPhase, code: string) -> string {
+    if starts_with(code, "ICE") {
+        give "docs://compiler/internal-compiler-errors";
+    }
+
     if phase == DiagnosticPhase.Lexer {
         give "docs://language/lexer";
     }
@@ -1075,6 +1134,26 @@ proc diagnostic_default_documentation(phase: DiagnosticPhase, code: string) -> s
     }
 
     give "docs://compiler/diagnostics";
+}
+
+proc diagnostic_default_kind(phase: DiagnosticPhase, code: string) -> DiagnosticKind {
+    if starts_with(code, "ICE") or phase == DiagnosticPhase.Internal {
+        give DiagnosticKind.InternalCompiler;
+    }
+
+    if phase == DiagnosticPhase.Linker or starts_with(code, "LINK_E_") or starts_with(code, "LINKER_") {
+        give DiagnosticKind.Linker;
+    }
+
+    if phase == DiagnosticPhase.Driver or starts_with(code, "DRIVER_") {
+        give DiagnosticKind.Configuration;
+    }
+
+    if phase == DiagnosticPhase.Backend or phase == DiagnosticPhase.RuntimeExecution {
+        give DiagnosticKind.Environment;
+    }
+
+    give DiagnosticKind.User;
 }
 
 proc diagnostic_default_step(phase: DiagnosticPhase) -> string {
@@ -1751,6 +1830,7 @@ proc diagnostic_create(code: string, phase: DiagnosticPhase, severity: Diagnosti
     let cause: string = if effective_code == "ICE0001" and code != "ICE0001" { "diagnostic producer emitted user-facing diagnostic without an exact source span" } else { diagnostic_default_root_cause(effective_phase, effective_code) };
     give Diagnostic {
         code: effective_code,
+        kind: diagnostic_default_kind(effective_phase, effective_code),
         phase: effective_phase,
         severity: effective_severity,
         title: effective_message,
@@ -1772,6 +1852,10 @@ proc diagnostic_create(code: string, phase: DiagnosticPhase, severity: Diagnosti
         subject_symbol: "",
         subject_type: "",
         subject_borrow: "",
+        external_command: "",
+        external_stderr: "",
+        internal_operation: "",
+        reproduction: "",
         valid_example: diagnostic_default_example(effective_phase, effective_code),
         invalid_example: diagnostic_default_invalid_example(effective_phase, effective_code),
         primary_error_key: diagnostic_primary_key(effective_code, span),
@@ -1861,6 +1945,47 @@ proc diagnostic_with_internal_cause(diagnostic: Diagnostic, internal_cause: stri
     give diagnostic;
 }
 
+proc diagnostic_with_kind(diagnostic: Diagnostic, kind: DiagnosticKind) -> Diagnostic {
+    set diagnostic.kind = kind;
+    give diagnostic;
+}
+
+proc diagnostic_with_external_command(diagnostic: Diagnostic, command_text: string) -> Diagnostic {
+    if command_text == "" {
+        give diagnostic;
+    }
+
+    set diagnostic.external_command = command_text;
+    give diagnostic;
+}
+
+proc diagnostic_with_external_stderr(diagnostic: Diagnostic, stderr_text: string) -> Diagnostic {
+    if stderr_text == "" {
+        give diagnostic;
+    }
+
+    set diagnostic.external_stderr = stderr_text;
+    give diagnostic;
+}
+
+proc diagnostic_with_internal_operation(diagnostic: Diagnostic, operation: string) -> Diagnostic {
+    if operation == "" {
+        give diagnostic;
+    }
+
+    set diagnostic.internal_operation = operation;
+    give diagnostic;
+}
+
+proc diagnostic_with_reproduction(diagnostic: Diagnostic, reproduction: string) -> Diagnostic {
+    if reproduction == "" {
+        give diagnostic;
+    }
+
+    set diagnostic.reproduction = reproduction;
+    give diagnostic;
+}
+
 proc diagnostic_add_pipeline_context(diagnostic: Diagnostic, context: string) -> Diagnostic {
     if context == "" {
         give diagnostic;
@@ -1868,6 +1993,19 @@ proc diagnostic_add_pipeline_context(diagnostic: Diagnostic, context: string) ->
 
     set diagnostic.pipeline_context = diagnostic.pipeline_context + [context];
     give diagnostic;
+}
+
+proc diagnostic_ice(code: string, phase: DiagnosticPhase, source_file: string, operation: string, technical_cause: string, reproduction: string, span: SourceSpan) -> Diagnostic {
+    let stable_code: string = if starts_with(code, "ICE") { code } else { "ICE0001" };
+    let diag0: Diagnostic = diagnostic_fatal(stable_code, DiagnosticPhase.Internal, "internal compiler error in " + phase_name(phase), span);
+    let diag1: Diagnostic = diagnostic_with_kind(diag0, DiagnosticKind.InternalCompiler);
+    let diag2: Diagnostic = diagnostic_add_pipeline_context(diag1, diag_kv("ice_phase", phase_name(phase)));
+    let diag3: Diagnostic = diagnostic_add_pipeline_context(diag2, diag_kv("vitte_file", source_file));
+    let diag4: Diagnostic = diagnostic_with_internal_operation(diag3, operation);
+    let diag5: Diagnostic = diagnostic_with_internal_cause(diag4, technical_cause);
+    let diag6: Diagnostic = diagnostic_with_reproduction(diag5, reproduction);
+    let diag7: Diagnostic = diagnostic_with_root_cause(diag6, "internal compiler defect during " + operation);
+    give diagnostic_with_help(diag7, "re-run the same command and include " + stable_code + " with the Vitte file path");
 }
 
 proc diagnostic_add_related_error(diagnostic: Diagnostic, related_error: string) -> Diagnostic {
@@ -2030,6 +2168,10 @@ proc same_diagnostic(left: Diagnostic, right: Diagnostic) -> bool {
         give false;
     }
 
+    if left.kind != right.kind {
+        give false;
+    }
+
     if left.phase != right.phase {
         give false;
     }
@@ -2067,6 +2209,14 @@ proc same_diagnostic(left: Diagnostic, right: Diagnostic) -> bool {
     }
 
     if left.root_cause != right.root_cause {
+        give false;
+    }
+
+    if left.external_stderr != right.external_stderr {
+        give false;
+    }
+
+    if left.internal_operation != right.internal_operation {
         give false;
     }
 
@@ -2853,6 +3003,7 @@ proc default_render_config() -> DiagnosticRenderConfig {
         show_notes: true,
         show_helps: true,
         show_suggestions: true,
+        verbose: false,
         color: true
     };
 }
@@ -3116,6 +3267,20 @@ proc render_string_list(prefix: string, values: [string]) -> [string] {
     give out;
 }
 
+proc diagnostic_external_summary(stderr_text: string) -> string {
+    if stderr_text == "" {
+        give "";
+    }
+
+    let newline: int = find(stderr_text, "\n");
+
+    if newline > 0 {
+        give slice(stderr_text, 0, newline as u64);
+    }
+
+    give stderr_text;
+}
+
 proc render_suggestion(suggestion: DiagnosticSuggestion, config: DiagnosticRenderConfig) -> string {
     let prefix: string = color_wrap(config, ansi_bold() + ansi_cyan(), "suggestion");
     let kind_name: string = suggestion_kind_name(suggestion.kind);
@@ -3151,6 +3316,10 @@ proc append_line(text: string, line: string) -> string {
 }
 
 proc render_diagnostic(diagnostic: Diagnostic, config: DiagnosticRenderConfig) -> string {
+    if config.style == DiagnosticStyle.Short {
+        give diagnostic_text_line(diagnostic);
+    }
+
     if config.style == DiagnosticStyle.Text {
         give diagnostic_text_line(diagnostic);
     }
@@ -3187,6 +3356,24 @@ proc render_diagnostic(diagnostic: Diagnostic, config: DiagnosticRenderConfig) -
 
         if diagnostic.root_cause != "" {
             set human_out = append_line(human_out, "cause: " + diagnostic.root_cause);
+        }
+
+        set human_out = append_line(human_out, "kind: " + diagnostic_kind_name(diagnostic.kind));
+
+        if diagnostic.internal_operation != "" {
+            set human_out = append_line(human_out, "operation: " + diagnostic.internal_operation);
+        }
+
+        if diagnostic.reproduction != "" {
+            set human_out = append_line(human_out, "reproduce: " + diagnostic.reproduction);
+        }
+
+        if diagnostic.external_stderr != "" {
+            set human_out = append_line(human_out, "tool output: " + diagnostic_external_summary(diagnostic.external_stderr));
+        }
+
+        if config.verbose and diagnostic.external_command != "" {
+            set human_out = append_line(human_out, "command: " + diagnostic.external_command);
         }
 
         set human_out = append_line(human_out, "step 1: " + diagnostic_default_step1(diagnostic.phase, diagnostic.code));
@@ -3251,6 +3438,8 @@ proc render_diagnostic(diagnostic: Diagnostic, config: DiagnosticRenderConfig) -
         set out = append_line(out, render_detail("rule", diagnostic.rule));
     }
 
+    set out = append_line(out, render_detail("kind", diagnostic_kind_name(diagnostic.kind)));
+
     if diagnostic.subject_symbol != "" {
         set out = append_line(out, render_detail("symbol", diagnostic.subject_symbol));
     }
@@ -3269,6 +3458,22 @@ proc render_diagnostic(diagnostic: Diagnostic, config: DiagnosticRenderConfig) -
 
     if diagnostic.technical_note != "" {
         set out = append_line(out, render_detail("technical_note", diagnostic.technical_note));
+    }
+
+    if diagnostic.internal_operation != "" {
+        set out = append_line(out, render_detail("operation", diagnostic.internal_operation));
+    }
+
+    if diagnostic.reproduction != "" {
+        set out = append_line(out, render_detail("reproduce", diagnostic.reproduction));
+    }
+
+    if diagnostic.external_stderr != "" {
+        set out = append_line(out, render_detail("tool_output", diagnostic_external_summary(diagnostic.external_stderr)));
+    }
+
+    if config.verbose and diagnostic.external_command != "" {
+        set out = append_line(out, render_detail("command", diagnostic.external_command));
     }
 
     if diagnostic.root_cause != "" {
@@ -4188,18 +4393,38 @@ proc backend_unsupported_target_detail(backend_name: string, target_name: string
     give diagnostic_with_probable_fix(diag2, "switch target or select a backend that supports " + target_name);
 }
 
+proc vitte_demangle_symbol(symbol_name: string) -> string {
+    if starts_with(symbol_name, "vitte_impl_") {
+        give "impl " + slice(symbol_name, 11, len(symbol_name));
+    }
+
+    if starts_with(symbol_name, "vitte_mono_") {
+        give "generic " + slice(symbol_name, 11, len(symbol_name));
+    }
+
+    if starts_with(symbol_name, "vitte_") {
+        give slice(symbol_name, 6, len(symbol_name));
+    }
+
+    give symbol_name;
+}
+
 proc backend_command_failed(phase: DiagnosticPhase, code: string, message: string, backend_name: string, target_name: string, command_text: string, stderr_text: string, expected_artifact: string, span: SourceSpan) -> Diagnostic {
     let diag0: Diagnostic = diagnostic_fatal(code, phase, message, span);
-    let diag1: Diagnostic = diagnostic_add_pipeline_context(diag0, diag_kv("backend", backend_name));
+    let diag0a: Diagnostic = if phase == DiagnosticPhase.Linker { diagnostic_with_kind(diag0, DiagnosticKind.Linker) } else { diagnostic_with_kind(diag0, DiagnosticKind.Environment) };
+    let diag1: Diagnostic = diagnostic_add_pipeline_context(diag0a, diag_kv("backend", backend_name));
     let diag2: Diagnostic = diagnostic_add_pipeline_context(diag1, diag_kv("target", target_name));
-    let diag3: Diagnostic = diagnostic_add_cause(diag2, "external command: " + command_text);
-    let diag4: Diagnostic = diagnostic_add_cause(diag3, "stderr: " + stderr_text);
-    give diagnostic_with_probable_fix(diag4, "ensure the tool exists and produces `" + expected_artifact + "`");
+    let diag3: Diagnostic = diagnostic_with_external_command(diag2, command_text);
+    let diag4: Diagnostic = diagnostic_with_external_stderr(diag3, stderr_text);
+    let diag5: Diagnostic = diagnostic_add_cause(diag4, "external tool failed while producing `" + expected_artifact + "`");
+    give diagnostic_with_probable_fix(diag5, "fix the toolchain diagnostic and rerun with verbose output only if command details are needed");
 }
 
 proc linker_unresolved_symbol(symbol_name: string, backend_name: string, target_name: string, command_text: string, stderr_text: string, expected_artifact: string, span: SourceSpan) -> Diagnostic {
-    let diag0: Diagnostic = backend_command_failed(DiagnosticPhase.Linker, "LINKER_E_UNRESOLVED_SYMBOL", "linker could not resolve external symbol `" + symbol_name + "`", backend_name, target_name, command_text, stderr_text, expected_artifact, span);
-    give diagnostic_with_subject_symbol(diag0, symbol_name);
+    let vitte_name: string = vitte_demangle_symbol(symbol_name);
+    let diag0: Diagnostic = backend_command_failed(DiagnosticPhase.Linker, "LINK_E_UNDEFINED_SYMBOL", "linker could not resolve Vitte item `" + vitte_name + "`", backend_name, target_name, command_text, stderr_text, expected_artifact, span);
+    let diag1: Diagnostic = diagnostic_with_subject_symbol(diag0, vitte_name);
+    give diagnostic_add_pipeline_context(diag1, diag_kv("native_symbol", symbol_name));
 }
 
 share DiagnosticSeverity
@@ -4209,6 +4434,7 @@ share DiagnosticLabelKind
 share DiagnosticSuggestionKind
 share DiagnosticApplicability
 share DiagnosticFixKind
+share DiagnosticKind
 
 share SourceSpan
 share DiagnosticLabel
@@ -4223,6 +4449,8 @@ share DiagnosticReport
 share DiagnosticEnvelope
 share DiagnosticRenderConfig
 
+share DIAGNOSTIC_USER_COLUMN_BASE
+share DIAGNOSTIC_INTERNAL_OFFSET_UNIT
 share diagnostic_schema_version
 share diagnostic_envelope
 share span_empty
@@ -4231,6 +4459,7 @@ share span_range
 
 share severity_name
 share phase_name
+share diagnostic_kind_name
 share severity_is_error
 share severity_is_fatal
 share label_kind_name
@@ -4281,6 +4510,11 @@ share diagnostic_with_root_cause
 share diagnostic_add_cause
 share diagnostic_with_file_id
 share diagnostic_with_internal_cause
+share diagnostic_with_kind
+share diagnostic_with_external_command
+share diagnostic_with_external_stderr
+share diagnostic_with_internal_operation
+share diagnostic_with_reproduction
 share diagnostic_add_pipeline_context
 share diagnostic_add_related_error
 share diagnostic_with_probable_fix
@@ -4292,6 +4526,7 @@ share diagnostic_with_insert
 share diagnostic_with_remove
 share diagnostic_with_suggestion_detail
 share diagnostic_with_multispan_suggestion
+share diagnostic_ice
 
 share same_diagnostic
 share add_unique_diagnostic
@@ -4347,6 +4582,7 @@ share diagnostic_recovery_scope
 share diagnostic_confidence
 share diagnostic_explain_text
 share diagnostic_explain_text_lang
+share diagnostic_default_kind
 share diagnostic_default_step1
 share diagnostic_default_example
 
@@ -4404,3 +4640,4 @@ share mir_cfg_incoherent
 share backend_unsupported_target_detail
 share backend_command_failed
 share linker_unresolved_symbol
+share vitte_demangle_symbol

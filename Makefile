@@ -2519,6 +2519,7 @@ diagnostic-contracts:
 	@bin/vittec0 check src/vitte/compiler/diagnostics/diagnostic.vit
 	@bin/vittec0 check src/vitte/compiler/diagnostics/json.vit
 	@bin/vittec0 check src/vitte/compiler/diagnostics/lsp.vit
+	@bin/vittec0 check src/vitte/compiler/diagnostics/sarif.vit
 	@bin/vittec0 check src/vitte/compiler/diagnostics/render.vit
 	@bin/vittec0 check src/vitte/compiler/diagnostics/suggestions.vit
 	@bin/vittec0 check src/vitte/compiler/diagnostics/mod.vit

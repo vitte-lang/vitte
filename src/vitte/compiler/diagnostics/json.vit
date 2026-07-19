@@ -31,7 +31,8 @@ use vitte/compiler/diagnostics/diagnostic.{
     diagnostic_confidence,
     diagnostic_fix_plans,
     diagnostic_quality,
-    diagnostic_schema_version
+    diagnostic_schema_version,
+    diagnostic_kind_name
 }
 
 proc json_escape(text: string) -> string {
@@ -389,6 +390,15 @@ proc json_diagnostic(diagnostic: Diagnostic) -> string {
         ),
 
         json_key_value(
+            "kind",
+            json_quote(
+                diagnostic_kind_name(
+                    diagnostic.kind
+                )
+            )
+        ),
+
+        json_key_value(
             "phase",
             json_quote(
                 phase_name(
@@ -656,6 +666,34 @@ proc json_diagnostic(diagnostic: Diagnostic) -> string {
             "subject_borrow",
             json_optional_string(
                 diagnostic.subject_borrow
+            )
+        ),
+
+        json_key_value(
+            "external_command",
+            json_optional_string(
+                diagnostic.external_command
+            )
+        ),
+
+        json_key_value(
+            "external_stderr",
+            json_optional_string(
+                diagnostic.external_stderr
+            )
+        ),
+
+        json_key_value(
+            "internal_operation",
+            json_optional_string(
+                diagnostic.internal_operation
+            )
+        ),
+
+        json_key_value(
+            "reproduction",
+            json_optional_string(
+                diagnostic.reproduction
             )
         ),
 

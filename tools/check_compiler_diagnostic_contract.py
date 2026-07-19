@@ -23,6 +23,9 @@ BORROWCK_DIAGNOSTICS = COMPILER_ROOT / "analysis" / "borrowck" / "errors.vit"
 BORROWCK_LIFETIMES = COMPILER_ROOT / "analysis" / "borrowck" / "lifetimes.vit"
 TYPE_UNIFY = COMPILER_ROOT / "analysis" / "typeck" / "unify.vit"
 DIAGNOSTIC_CATALOG = COMPILER_ROOT / "diagnostics" / "catalog.vit"
+DIAGNOSTIC_LSP = COMPILER_ROOT / "diagnostics" / "lsp.vit"
+DIAGNOSTIC_SARIF = COMPILER_ROOT / "diagnostics" / "sarif.vit"
+BACKEND_DIAGNOSTICS = COMPILER_ROOT / "backend" / "diagnostics.vit"
 MIDDLE_TYPECHECK_DIAGNOSTICS = COMPILER_ROOT / "middle" / "typecheck" / "diagnostics.vit"
 
 DIRECT_OUTPUT = re.compile(r"\b(?:print|printf|fprintf|eprintf|fputs|fwrite|fputc)\s*\(")
@@ -279,6 +282,9 @@ def check_relational_diagnostic_contract() -> list[str]:
         BORROWCK_LIFETIMES,
         TYPE_UNIFY,
         DIAGNOSTIC_CATALOG,
+        DIAGNOSTIC_LSP,
+        DIAGNOSTIC_SARIF,
+        BACKEND_DIAGNOSTICS,
         MIDDLE_TYPECHECK_DIAGNOSTICS,
     )
     for path in checked_paths:
@@ -457,6 +463,44 @@ def check_relational_diagnostic_contract() -> list[str]:
         (CANONICAL_DIAGNOSTIC, "set primary = candidate;"),
         (CANONICAL_DIAGNOSTIC, "set cascade_count = 0 as u64;"),
         (CANONICAL_DIAGNOSTIC, "__vitte_type_error__"),
+        (CANONICAL_DIAGNOSTIC, "pick DiagnosticKind"),
+        (CANONICAL_DIAGNOSTIC, "DiagnosticKind.User"),
+        (CANONICAL_DIAGNOSTIC, "DiagnosticKind.Configuration"),
+        (CANONICAL_DIAGNOSTIC, "DiagnosticKind.Environment"),
+        (CANONICAL_DIAGNOSTIC, "DiagnosticKind.Linker"),
+        (CANONICAL_DIAGNOSTIC, "DiagnosticKind.InternalCompiler"),
+        (CANONICAL_DIAGNOSTIC, "kind: diagnostic_default_kind(effective_phase, effective_code)"),
+        (CANONICAL_DIAGNOSTIC, "external_command: \"\""),
+        (CANONICAL_DIAGNOSTIC, "external_stderr: \"\""),
+        (CANONICAL_DIAGNOSTIC, "internal_operation: \"\""),
+        (CANONICAL_DIAGNOSTIC, "reproduction: \"\""),
+        (CANONICAL_DIAGNOSTIC, "diagnostic_ice"),
+        (CANONICAL_DIAGNOSTIC, "The compiler violated one of its own internal invariants. This is not a user-program error."),
+        (CANONICAL_DIAGNOSTIC, "DIAGNOSTIC_USER_COLUMN_BASE"),
+        (CANONICAL_DIAGNOSTIC, "DIAGNOSTIC_INTERNAL_OFFSET_UNIT"),
+        (CANONICAL_DIAGNOSTIC, "DiagnosticStyle.Short"),
+        (CANONICAL_DIAGNOSTIC, "    Lsp"),
+        (CANONICAL_DIAGNOSTIC, "    Sarif"),
+        (CANONICAL_DIAGNOSTIC, "if config.verbose and diagnostic.external_command != \"\""),
+        (CANONICAL_DIAGNOSTIC, "diagnostic_external_summary"),
+        (DIAGNOSTIC_LSP, "USER_DIAGNOSTIC_COLUMNS"),
+        (DIAGNOSTIC_LSP, "LSP_DIAGNOSTIC_COLUMNS"),
+        (DIAGNOSTIC_LSP, "diagnostic_kind_name(diagnostic.kind)"),
+        (DIAGNOSTIC_SARIF, "sarif_report"),
+        (DIAGNOSTIC_SARIF, "This renderer consumes the canonical Diagnostic object."),
+        (BACKEND_DIAGNOSTICS, "vitte_demangle_symbol"),
+        (BACKEND_DIAGNOSTICS, "linker_failure_code"),
+        (BACKEND_DIAGNOSTICS, "LINK_E_ARCHITECTURE_INCOMPATIBLE"),
+        (BACKEND_DIAGNOSTICS, "LINK_E_LIBRARY_NOT_FOUND"),
+        (BACKEND_DIAGNOSTICS, "LINK_E_UNSUPPORTED_FORMAT"),
+        (BACKEND_DIAGNOSTICS, "LINK_E_DUPLICATE_SYMBOL"),
+        (BACKEND_DIAGNOSTICS, "LINK_E_ENTRYPOINT_MISSING"),
+        (BACKEND_DIAGNOSTICS, "LINK_E_PERMISSION_DENIED"),
+        (BACKEND_DIAGNOSTICS, "diagnostic_with_external_command"),
+        (BACKEND_DIAGNOSTICS, "diagnostic_with_external_stderr"),
+        (DIAGNOSTIC_CATALOG, "LINK_E_ARCHITECTURE_INCOMPATIBLE"),
+        (DIAGNOSTIC_CATALOG, "LINK_E_ENTRYPOINT_MISSING"),
+        (DIAGNOSTIC_CATALOG, "LINK_E_PERMISSION_DENIED"),
     )
     for path, fragment in required_fragments:
         text = path.read_text(encoding="utf-8")

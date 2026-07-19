@@ -1,0 +1,142 @@
+<<<
+    SARIF serialization for Vitte diagnostics.
+
+    This renderer consumes the canonical Diagnostic object.
+>>>
+
+space vitte/compiler/diagnostics/sarif
+
+use vitte/compiler/diagnostics/diagnostic.{
+    Diagnostic,
+    DiagnosticReport,
+    SourceSpan,
+    severity_name,
+    phase_name,
+    diagnostic_kind_name
+}
+
+use vitte/compiler/diagnostics/json.{
+    json_array,
+    json_bool,
+    json_key_value,
+    json_object,
+    json_quote
+}
+
+proc sarif_level(diagnostic: Diagnostic) -> string {
+    if severity_name(diagnostic.severity) == "fatal" {
+        give "error";
+    }
+
+    if severity_name(diagnostic.severity) == "error" {
+        give "error";
+    }
+
+    if severity_name(diagnostic.severity) == "warning" {
+        give "warning";
+    }
+
+    give "note";
+}
+
+proc sarif_region(span: SourceSpan) -> string {
+    give json_object([
+        json_key_value("startLine", span.start_line as string),
+        json_key_value("startColumn", span.start_column as string),
+        json_key_value("endLine", span.end_line as string),
+        json_key_value("endColumn", span.end_column as string)
+    ]);
+}
+
+proc sarif_location(span: SourceSpan) -> string {
+    give json_object([
+        json_key_value(
+            "physicalLocation",
+            json_object([
+                json_key_value(
+                    "artifactLocation",
+                    json_object([
+                        json_key_value("uri", json_quote(span.file))
+                    ])
+                ),
+                json_key_value("region", sarif_region(span))
+            ])
+        )
+    ]);
+}
+
+proc sarif_properties(diagnostic: Diagnostic) -> string {
+    give json_object([
+        json_key_value("kind", json_quote(diagnostic_kind_name(diagnostic.kind))),
+        json_key_value("phase", json_quote(phase_name(diagnostic.phase))),
+        json_key_value("rootCause", json_quote(diagnostic.root_cause)),
+        json_key_value("internalOperation", json_quote(diagnostic.internal_operation)),
+        json_key_value("reproduction", json_quote(diagnostic.reproduction)),
+        json_key_value("hasExternalStderr", json_bool(diagnostic.external_stderr != "")),
+        json_key_value("externalCommandHiddenByDefault", json_bool(diagnostic.external_command != ""))
+    ]);
+}
+
+proc sarif_result(diagnostic: Diagnostic) -> string {
+    give json_object([
+        json_key_value("ruleId", json_quote(diagnostic.code)),
+        json_key_value("level", json_quote(sarif_level(diagnostic))),
+        json_key_value(
+            "message",
+            json_object([
+                json_key_value("text", json_quote(diagnostic.message))
+            ])
+        ),
+        json_key_value("locations", json_array([sarif_location(diagnostic.span)])),
+        json_key_value("properties", sarif_properties(diagnostic))
+    ]);
+}
+
+proc sarif_results(report: DiagnosticReport) -> string {
+    let encoded: [string] = [];
+    let i: u64 = 0;
+
+    while i < len(report.diagnostics) {
+        set encoded = encoded + [sarif_result(report.diagnostics[i])];
+        set i = i + 1;
+    }
+
+    give json_array(encoded);
+}
+
+proc sarif_report(report: DiagnosticReport) -> string {
+    give json_object([
+        json_key_value("version", json_quote("2.1.0")),
+        json_key_value(
+            "$schema",
+            json_quote("https://json.schemastore.org/sarif-2.1.0.json")
+        ),
+        json_key_value(
+            "runs",
+            json_array([
+                json_object([
+                    json_key_value(
+                        "tool",
+                        json_object([
+                            json_key_value(
+                                "driver",
+                                json_object([
+                                    json_key_value("name", json_quote("vittec"))
+                                ])
+                            )
+                        ])
+                    ),
+                    json_key_value("results", sarif_results(report))
+                ])
+            ])
+        )
+    ]);
+}
+
+share sarif_level
+share sarif_region
+share sarif_location
+share sarif_properties
+share sarif_result
+share sarif_results
+share sarif_report

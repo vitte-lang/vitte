@@ -2,13 +2,17 @@ space vitte/compiler/backend/diagnostics
 
 use vitte/compiler/diagnostics/diagnostic.{
   Diagnostic,
+  DiagnosticKind,
   DiagnosticPhase,
   DiagnosticSeverity,
   SourceSpan,
   diagnostic_add_cause,
   diagnostic_add_pipeline_context,
   diagnostic_fatal,
+  diagnostic_with_external_command,
+  diagnostic_with_external_stderr,
   diagnostic_with_help,
+  diagnostic_with_kind,
   diagnostic_with_probable_fix,
   diagnostic_with_root_cause,
   diagnostic_with_rule,
@@ -34,13 +38,93 @@ proc backend_diag_context(diagnostic: Diagnostic, backend_name: string, target_n
 proc backend_diag_command(diagnostic: Diagnostic, command_text: string, exit_code: int, stderr_text: string) -> Diagnostic {
   let out: Diagnostic = diagnostic;
   if command_text != "" {
-    set out = diagnostic_add_cause(out, "command: " + command_text);
+    set out = diagnostic_with_external_command(out, command_text);
   }
   set out = diagnostic_add_cause(out, "exit code: " + (exit_code as string));
   if stderr_text != "" {
-    set out = diagnostic_add_cause(out, "stderr: " + stderr_text);
+    set out = diagnostic_with_external_stderr(out, stderr_text);
   }
   give out;
+}
+
+proc vitte_demangle_symbol(symbol_name: string) -> string {
+  if starts_with(symbol_name, "vitte_impl_") {
+    give "impl " + slice(symbol_name, 11, len(symbol_name));
+  }
+
+  if starts_with(symbol_name, "vitte_mono_") {
+    give "generic " + slice(symbol_name, 11, len(symbol_name));
+  }
+
+  if starts_with(symbol_name, "vitte_") {
+    give slice(symbol_name, 6, len(symbol_name));
+  }
+
+  give symbol_name;
+}
+
+proc linker_failure_code(stderr_text: string) -> string {
+  if find(stderr_text, "Undefined symbols") >= 0 or find(stderr_text, "undefined symbol") >= 0 or find(stderr_text, "unresolved external symbol") >= 0 {
+    give "LINK_E_UNDEFINED_SYMBOL";
+  }
+
+  if find(stderr_text, "library not found") >= 0 or find(stderr_text, "cannot find -l") >= 0 or find(stderr_text, "No such file or directory") >= 0 {
+    give "LINK_E_LIBRARY_NOT_FOUND";
+  }
+
+  if find(stderr_text, "wrong architecture") >= 0 or find(stderr_text, "file is incompatible") >= 0 or find(stderr_text, "architecture") >= 0 {
+    give "LINK_E_ARCHITECTURE_INCOMPATIBLE";
+  }
+
+  if find(stderr_text, "file format not recognized") >= 0 or find(stderr_text, "invalid object") >= 0 or find(stderr_text, "malformed object") >= 0 {
+    give "LINK_E_UNSUPPORTED_FORMAT";
+  }
+
+  if find(stderr_text, "duplicate symbol") >= 0 or find(stderr_text, "multiple definition") >= 0 {
+    give "LINK_E_DUPLICATE_SYMBOL";
+  }
+
+  if find(stderr_text, "entry point") >= 0 or find(stderr_text, "undefined reference to `main") >= 0 or find(stderr_text, "_main") >= 0 {
+    give "LINK_E_ENTRYPOINT_MISSING";
+  }
+
+  if find(stderr_text, "Permission denied") >= 0 or find(stderr_text, "permission denied") >= 0 {
+    give "LINK_E_PERMISSION_DENIED";
+  }
+
+  give "LINK_E_SYSTEM_LINKER_FAILED";
+}
+
+proc linker_failure_message(code: string) -> string {
+  if code == "LINK_E_UNDEFINED_SYMBOL" {
+    give "linker is missing a native symbol";
+  }
+
+  if code == "LINK_E_LIBRARY_NOT_FOUND" {
+    give "linker cannot find a required library";
+  }
+
+  if code == "LINK_E_ARCHITECTURE_INCOMPATIBLE" {
+    give "linker input architecture is incompatible with the target";
+  }
+
+  if code == "LINK_E_UNSUPPORTED_FORMAT" {
+    give "linker received an invalid object file";
+  }
+
+  if code == "LINK_E_DUPLICATE_SYMBOL" {
+    give "linker found a duplicated native symbol";
+  }
+
+  if code == "LINK_E_ENTRYPOINT_MISSING" {
+    give "linker cannot find the program entry point";
+  }
+
+  if code == "LINK_E_PERMISSION_DENIED" {
+    give "linker cannot write or read a required path because permission was denied";
+  }
+
+  give "system linker command failed";
 }
 
 proc backend_unsupported_feature(feature_name: string, backend_name: string, target_name: string, span: SourceSpan) -> Diagnostic {
@@ -78,20 +162,25 @@ proc backend_native_generation_failed(backend_name: string, target_name: string,
 }
 
 proc linker_command_failed(backend_name: string, target_name: string, command_text: string, exit_code: int, stderr_text: string, output_path: string, span: SourceSpan) -> Diagnostic {
-  let diag0: Diagnostic = diagnostic_fatal("LINK_E_SYSTEM_LINKER_FAILED", DiagnosticPhase.Linker, "system linker command failed", span);
-  let diag1: Diagnostic = backend_diag_context(diag0, backend_name, target_name, output_path);
+  let code: string = linker_failure_code(stderr_text);
+  let diag0: Diagnostic = diagnostic_fatal(code, DiagnosticPhase.Linker, linker_failure_message(code), span);
+  let diag1a: Diagnostic = diagnostic_with_kind(diag0, DiagnosticKind.Linker);
+  let diag1: Diagnostic = backend_diag_context(diag1a, backend_name, target_name, output_path);
   let diag2: Diagnostic = backend_diag_command(diag1, command_text, exit_code, stderr_text);
-  let diag3: Diagnostic = diagnostic_with_root_cause(diag2, "the linker returned a non-zero status or did not create the output");
-  give diagnostic_with_probable_fix(diag3, "fix the first linker error and rerun the displayed command");
+  let diag3: Diagnostic = diagnostic_with_root_cause(diag2, "the linker reported `" + code + "` from its structured stderr classifier");
+  give diagnostic_with_probable_fix(diag3, "fix the first linker diagnostic and rerun with verbose output only if command details are needed");
 }
 
 proc linker_native_symbol_not_found(symbol_name: string, backend_name: string, target_name: string, command_text: string, exit_code: int, stderr_text: string, span: SourceSpan) -> Diagnostic {
-  let diag0: Diagnostic = diagnostic_fatal("LINK_E_UNDEFINED_SYMBOL", DiagnosticPhase.Linker, "native symbol `" + symbol_name + "` was not found", span);
-  let diag1: Diagnostic = diagnostic_with_subject_symbol(diag0, symbol_name);
+  let vitte_name: string = vitte_demangle_symbol(symbol_name);
+  let diag0: Diagnostic = diagnostic_fatal("LINK_E_UNDEFINED_SYMBOL", DiagnosticPhase.Linker, "native symbol for Vitte item `" + vitte_name + "` was not found", span);
+  let diag0a: Diagnostic = diagnostic_with_kind(diag0, DiagnosticKind.Linker);
+  let diag1: Diagnostic = diagnostic_with_subject_symbol(diag0a, vitte_name);
   let diag2: Diagnostic = backend_diag_context(diag1, backend_name, target_name, "");
   let diag3: Diagnostic = backend_diag_command(diag2, command_text, exit_code, stderr_text);
-  let diag4: Diagnostic = diagnostic_with_root_cause(diag3, "no linked object or runtime library defines the requested symbol");
-  give diagnostic_with_probable_fix(diag4, "link the library that defines `" + symbol_name + "` or correct its native name");
+  let diag4: Diagnostic = diagnostic_add_pipeline_context(diag3, "native_symbol=" + symbol_name);
+  let diag5: Diagnostic = diagnostic_with_root_cause(diag4, "no linked object or runtime library defines the requested native symbol");
+  give diagnostic_with_probable_fix(diag5, "link the library that defines `" + vitte_name + "` or correct its Vitte declaration");
 }
 
 proc backend_output_permission_denied(output_path: string, operation: string, span: SourceSpan) -> Diagnostic {
