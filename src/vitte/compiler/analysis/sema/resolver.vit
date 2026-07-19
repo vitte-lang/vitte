@@ -4,6 +4,9 @@ use vitte/compiler/analysis/sema/errors.{
   SemaDiagnostic,
   SemaSeverity,
   sema_diagnostic,
+  sema_ambiguous_symbol,
+  sema_inaccessible_module,
+  sema_out_of_scope_symbol,
   sema_unknown_symbol_with_candidate_groups,
   sema_span_empty
 }
@@ -151,6 +154,75 @@ proc resolve_symbol(symbols: [SemaSymbol], name: string, scope_depth: u64) -> Se
   give symbol_find_visible(symbols, name, scope_depth);
 }
 
+proc symbol_visible_match_count(symbols: [SemaSymbol], name: string, scope_depth: u64) -> u64 {
+  let count: u64 = 0;
+  let i: u64 = 0;
+  while i < len(symbols) {
+    let symbol: SemaSymbol = symbols[i];
+    let local_visible: bool = symbol.kind != SemaSymbolKind.Local and symbol.kind != SemaSymbolKind.Parameter;
+    if symbol.kind == SemaSymbolKind.Local or symbol.kind == SemaSymbolKind.Parameter {
+      set local_visible = symbol.scope_depth <= scope_depth;
+    }
+    if symbol.valid and symbol.name == name and local_visible {
+      set count = count + 1;
+    }
+    set i = i + 1;
+  }
+  give count;
+}
+
+proc symbol_visible_local_count(symbols: [SemaSymbol], name: string, scope_depth: u64) -> u64 {
+  let count: u64 = 0;
+  let i: u64 = 0;
+  while i < len(symbols) {
+    let symbol: SemaSymbol = symbols[i];
+    if symbol.valid
+        and symbol.name == name
+        and (symbol.kind == SemaSymbolKind.Local or symbol.kind == SemaSymbolKind.Parameter)
+        and symbol.scope_depth <= scope_depth {
+      set count = count + 1;
+    }
+    set i = i + 1;
+  }
+  give count;
+}
+
+proc symbol_hidden_declaration_line(symbols: [SemaSymbol], name: string, scope_depth: u64) -> u64 {
+  let i: u64 = 0;
+  while i < len(symbols) {
+    let symbol: SemaSymbol = symbols[i];
+    if symbol.valid
+        and symbol.name == name
+        and (symbol.kind == SemaSymbolKind.Local or symbol.kind == SemaSymbolKind.Parameter)
+        and symbol.scope_depth > scope_depth {
+      give symbol.line;
+    }
+    set i = i + 1;
+  }
+  give 0 as u64;
+}
+
+proc symbol_visible_candidates_text(symbols: [SemaSymbol], name: string, scope_depth: u64) -> string {
+  let out: string = "";
+  let i: u64 = 0;
+  while i < len(symbols) {
+    let symbol: SemaSymbol = symbols[i];
+    let local_visible: bool = symbol.kind != SemaSymbolKind.Local and symbol.kind != SemaSymbolKind.Parameter;
+    if symbol.kind == SemaSymbolKind.Local or symbol.kind == SemaSymbolKind.Parameter {
+      set local_visible = symbol.scope_depth <= scope_depth;
+    }
+    if symbol.valid and symbol.name == name and local_visible {
+      if out == "" {
+        set out = symbol.qualified_name;
+      } else {
+        set out = out + ", " + symbol.qualified_name;
+      }
+    }
+    set i = i + 1;
+  }
+  give out;
+}
+
 proc symbol_candidate_names(symbols: [SemaSymbol], scope_depth: u64) -> [string] {
   let names: [string] = [];
   let i: u64 = 0;
@@ -291,6 +363,14 @@ proc annotate_expr(expr: HirExpr, symbols: [SemaSymbol], scope_depth: u64, next_
   let is_borrow_expr: bool = expr.kind == HirExprKind.BorrowShared or expr.kind == HirExprKind.BorrowMut;
 
   if expr.kind == HirExprKind.Name and expr.name != "" {
+    let visible_count: u64 = symbol_visible_match_count(current_symbols, expr.name, scope_depth);
+    let visible_locals: u64 = symbol_visible_local_count(current_symbols, expr.name, scope_depth);
+    if visible_count > 1 and visible_locals == 0 {
+      set diagnostics = sema_add_diag(
+        diagnostics,
+        sema_ambiguous_symbol(expr.name, symbol_visible_candidates_text(current_symbols, expr.name, scope_depth), expr.span)
+      );
+    }
     let ensure: SemaWalk = symbol_or_external(current_symbols, expr.name, scope_depth, current_next_id);
     set current_symbols = ensure.symbols;
     set current_next_id = ensure.next_symbol_id;
@@ -300,8 +380,10 @@ proc annotate_expr(expr: HirExpr, symbols: [SemaSymbol], scope_depth: u64, next_
     set resolved_kind = symbol_kind_name(resolved.kind);
     set external = resolved.kind == SemaSymbolKind.External;
     if external {
-      set diagnostics = sema_add_diag(
-        diagnostics,
+      let hidden_line: u64 = symbol_hidden_declaration_line(current_symbols, expr.name, scope_depth);
+      let unresolved_diag: SemaDiagnostic = if hidden_line > 0 {
+        sema_out_of_scope_symbol(expr.name, hidden_line, expr.span)
+      } else {
         sema_unknown_symbol_with_candidate_groups(
           expr.name,
           function_candidate_names(current_symbols, scope_depth),
@@ -311,6 +393,10 @@ proc annotate_expr(expr: HirExpr, symbols: [SemaSymbol], scope_depth: u64, next_
           module_candidate_names(current_symbols, scope_depth),
           expr.span
         )
+      };
+      set diagnostics = sema_add_diag(
+        diagnostics,
+        unresolved_diag
       );
     }
   } elif expr.kind == HirExprKind.Member and len(children) > 0 {
@@ -333,15 +419,7 @@ proc annotate_expr(expr: HirExpr, symbols: [SemaSymbol], scope_depth: u64, next_
         set resolved_kind = "external";
         set external = true;
         set place_category = "value";
-        set diagnostics = sema_add_diag(diagnostics, sema_diagnostic(
-          "SEMA_W_UNRESOLVED_MEMBER",
-          SemaSeverity.Warning,
-          "unresolved imported member `" + expr.text + "` treated as external",
-          [expr.text],
-          "export the member from the imported module or use a valid exported item",
-          expr.span,
-          false
-        ));
+        set diagnostics = sema_add_diag(diagnostics, sema_inaccessible_module(base_symbol.module_path, member, expr.span));
       }
     } else {
       set binding = base.binding;

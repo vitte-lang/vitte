@@ -3504,9 +3504,13 @@ proc lexer_unterminated_string(span: SourceSpan) -> Diagnostic {
 }
 
 proc sema_unknown_identifier(name: string, span: SourceSpan) -> Diagnostic {
-    let diag: Diagnostic = diagnostic_error("E1005", DiagnosticPhase.Sema, "unknown identifier `" + name + "`", span);
-    set diag = diagnostic_with_note(diag, "no matching local, import, or item exists in this scope");
-    set diag = diagnostic_with_help(diag, "declare the symbol before use or import it from a module");
+    let diag: Diagnostic = diagnostic_error("RES0127", DiagnosticPhase.SymbolResolution, "symbol `" + name + "` does not exist in this resolution context", span);
+    set diag = diagnostic_with_rule(diag, "contextual name resolution");
+    set diag = diagnostic_with_explanation(diag, "The resolver distinguishes a missing symbol from a symbol that is out of scope, private, imported under an alias, or ambiguous.");
+    set diag = diagnostic_with_root_cause(diag, "missing_symbol: `" + name + "` cannot be resolved in expression name lookup");
+    set diag = diagnostic_add_cause(diag, "resolution failure kind: missing_symbol");
+    set diag = diagnostic_with_label(diag, secondary_label("missing_symbol appears here for `" + name + "`", span));
+    set diag = diagnostic_with_help(diag, "declare `" + name + "` before this use, import it, or correct the spelling");
 
     give diag;
 }
@@ -3555,25 +3559,27 @@ proc ir_invalid_terminator(span: SourceSpan) -> Diagnostic {
 
 proc attach_expected_found_details(diagnostic: Diagnostic, rule_name: string, expected: string, found: string, expected_origin: string, found_origin: string, probable_fix: string) -> Diagnostic {
     let diag0: Diagnostic = diagnostic_with_rule(diagnostic, rule_name);
-    let diag1: Diagnostic = diagnostic_with_explanation(diag0, "The expected type is `" + expected + "` because of " + expected_origin + "; the obtained type is `" + found + "` from " + found_origin + ".");
+    let diag1: Diagnostic = diagnostic_with_explanation(diag0, "Expected type `" + expected + "` because " + expected_origin + "; obtained type `" + found + "` from " + found_origin + ". Convert the value or modify the signature when that is the intended API.");
     let diag2: Diagnostic = diagnostic_with_root_cause(diag1, rule_name + " imposes `" + expected + "` here, but the checked value has type `" + found + "`");
     let diag3: Diagnostic = diagnostic_add_cause(diag2, "why expected type is imposed: " + expected_origin);
     let diag4: Diagnostic = diagnostic_add_cause(diag3, "origin of obtained type: " + found_origin);
-    let diag5: Diagnostic = diagnostic_with_subject_type(diag4, expected);
-    let diag6: Diagnostic = diagnostic_with_label(diag5, secondary_label("expected `" + expected + "` from " + expected_origin, diagnostic.span));
-    let diag7: Diagnostic = diagnostic_with_label(diag6, secondary_label("obtained `" + found + "` from " + found_origin, diagnostic.span));
+    let diag5: Diagnostic = diagnostic_add_cause(diag4, "expected type `" + expected + "` because " + expected_origin);
+    let diag6: Diagnostic = diagnostic_add_cause(diag5, "obtained type `" + found + "` from " + found_origin);
+    let diag7: Diagnostic = diagnostic_with_subject_type(diag6, expected);
+    let diag8: Diagnostic = diagnostic_with_label(diag7, secondary_label("expected `" + expected + "` from " + expected_origin, diagnostic.span));
+    let diag9: Diagnostic = diagnostic_with_label(diag8, secondary_label("obtained `" + found + "` from " + found_origin, diagnostic.span));
 
     if probable_fix != "" {
-        give diagnostic_with_probable_fix(diag7, probable_fix);
+        give diagnostic_with_probable_fix(diag9, probable_fix);
     }
 
-    give diag7;
+    give diag9;
 }
 
 proc typeck_argument_mismatch(expected: string, found: string, expected_origin: string, found_origin: string, span: SourceSpan) -> Diagnostic {
     let diag0: Diagnostic = diagnostic_error("TYPECK_E_ARGUMENT_MISMATCH", DiagnosticPhase.Typeck, "call argument expects `" + expected + "` but receives `" + found + "`", span);
-    let diag1: Diagnostic = diagnostic_with_help(diag0, "pass a `" + expected + "` value or change the callee signature");
-    give attach_expected_found_details(diag1, "function argument compatibility", expected, found, expected_origin, found_origin, "align the argument type with the parameter type");
+    let diag1: Diagnostic = diagnostic_with_help(diag0, "convert the value or modify the callee signature");
+    give attach_expected_found_details(diag1, "function argument compatibility", expected, found, expected_origin, found_origin, "convert the value or modify the signature");
 }
 
 proc typeck_invalid_call_arity(callee: string, expected_arity: u64, found_arity: u64, span: SourceSpan) -> Diagnostic {

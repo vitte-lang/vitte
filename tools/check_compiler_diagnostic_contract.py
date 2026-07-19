@@ -15,6 +15,7 @@ COMPILER_ROOT = ROOT / "src" / "vitte" / "compiler"
 CANONICAL_DIAGNOSTIC = COMPILER_ROOT / "diagnostics" / "diagnostic.vit"
 INFRA_DIAGNOSTIC = COMPILER_ROOT / "infrastructure" / "diagnostics" / "diagnostic.vit"
 SEMA_DIAGNOSTICS = COMPILER_ROOT / "analysis" / "sema" / "errors.vit"
+SEMA_RESOLVER = COMPILER_ROOT / "analysis" / "sema" / "resolver.vit"
 TYPECK_DIAGNOSTICS = COMPILER_ROOT / "analysis" / "typeck" / "errors.vit"
 BORROWCK_DIAGNOSTICS = COMPILER_ROOT / "analysis" / "borrowck" / "errors.vit"
 TYPE_UNIFY = COMPILER_ROOT / "analysis" / "typeck" / "unify.vit"
@@ -247,6 +248,7 @@ def check_relational_diagnostic_contract() -> list[str]:
     checked_paths = (
         CANONICAL_DIAGNOSTIC,
         SEMA_DIAGNOSTICS,
+        SEMA_RESOLVER,
         TYPECK_DIAGNOSTICS,
         BORROWCK_DIAGNOSTICS,
         TYPE_UNIFY,
@@ -264,8 +266,33 @@ def check_relational_diagnostic_contract() -> list[str]:
         (SEMA_DIAGNOSTICS, "sema_duplicate_symbol_redefinition"),
         (SEMA_DIAGNOSTICS, "first declaration of"),
         (SEMA_DIAGNOSTICS, "redefinition appears here"),
+        (SEMA_DIAGNOSTICS, "SemaResolutionFailureKind"),
+        (SEMA_DIAGNOSTICS, "MissingSymbol"),
+        (SEMA_DIAGNOSTICS, "OutOfScopeSymbol"),
+        (SEMA_DIAGNOSTICS, "PrivateSymbol"),
+        (SEMA_DIAGNOSTICS, "RenamedImport"),
+        (SEMA_DIAGNOSTICS, "AmbiguousSymbol"),
+        (SEMA_DIAGNOSTICS, "MissingModule"),
+        (SEMA_DIAGNOSTICS, "InaccessibleModule"),
+        (SEMA_DIAGNOSTICS, "ImportCycle"),
+        (SEMA_DIAGNOSTICS, "InvalidModulePath"),
+        (SEMA_DIAGNOSTICS, "resolution failure kind: "),
+        (SEMA_DIAGNOSTICS, "symbol `\" + name + \"` exists but is outside the current scope"),
+        (SEMA_DIAGNOSTICS, "symbol `\" + name + \"` is private in the exporting module"),
+        (SEMA_DIAGNOSTICS, "symbol `\" + name + \"` was imported under another name"),
+        (SEMA_DIAGNOSTICS, "symbol `\" + name + \"` resolves to multiple visible candidates"),
+        (SEMA_DIAGNOSTICS, "module `\" + name + \"` does not exist"),
+        (SEMA_DIAGNOSTICS, "module `\" + name + \"` exists but is not accessible from here"),
+        (SEMA_DIAGNOSTICS, "import cycle reaches module"),
+        (SEMA_DIAGNOSTICS, "module path `\" + name + \"` is not a valid Vitte module path"),
+        (SEMA_RESOLVER, "sema_ambiguous_symbol"),
+        (SEMA_RESOLVER, "sema_out_of_scope_symbol"),
+        (SEMA_RESOLVER, "sema_inaccessible_module"),
         (TYPECK_DIAGNOSTICS, "why expected type is imposed:"),
         (TYPECK_DIAGNOSTICS, "origin of obtained type:"),
+        (TYPECK_DIAGNOSTICS, "Expected type `"),
+        (TYPECK_DIAGNOSTICS, "obtained type `"),
+        (TYPECK_DIAGNOSTICS, "Convert the value or modify the signature"),
         (TYPECK_DIAGNOSTICS, "expected `"),
         (TYPECK_DIAGNOSTICS, "obtained `"),
         (BORROWCK_DIAGNOSTICS, "value was moved here"),

@@ -12,6 +12,12 @@ use vitte/compiler/diagnostics/diagnostic.{
     diagnostic_with_note,
     diagnostic_with_help,
     diagnostic_with_label,
+    diagnostic_with_rule,
+    diagnostic_with_explanation,
+    diagnostic_with_root_cause,
+    diagnostic_add_cause,
+    diagnostic_with_probable_fix,
+    diagnostic_with_subject_symbol,
     diagnostic_with_insert,
     diagnostic_with_replace,
     secondary_label,
@@ -59,6 +65,18 @@ pick SemaDiagnosticKind {
     InvalidModule
     Internal
     Unknown
+}
+
+pick SemaResolutionFailureKind {
+    MissingSymbol
+    OutOfScopeSymbol
+    PrivateSymbol
+    RenamedImport
+    AmbiguousSymbol
+    MissingModule
+    InaccessibleModule
+    ImportCycle
+    InvalidModulePath
 }
 
 form SemaContext {
@@ -161,6 +179,138 @@ proc sema_kind_name(kind: SemaDiagnosticKind) -> string {
         give "internal";
     }
     give "unknown";
+}
+
+proc sema_resolution_failure_name(kind: SemaResolutionFailureKind) -> string {
+    if kind == SemaResolutionFailureKind.MissingSymbol {
+        give "missing_symbol";
+    }
+    if kind == SemaResolutionFailureKind.OutOfScopeSymbol {
+        give "out_of_scope_symbol";
+    }
+    if kind == SemaResolutionFailureKind.PrivateSymbol {
+        give "private_symbol";
+    }
+    if kind == SemaResolutionFailureKind.RenamedImport {
+        give "renamed_import";
+    }
+    if kind == SemaResolutionFailureKind.AmbiguousSymbol {
+        give "ambiguous_symbol";
+    }
+    if kind == SemaResolutionFailureKind.MissingModule {
+        give "missing_module";
+    }
+    if kind == SemaResolutionFailureKind.InaccessibleModule {
+        give "inaccessible_module";
+    }
+    if kind == SemaResolutionFailureKind.ImportCycle {
+        give "import_cycle";
+    }
+    give "invalid_module_path";
+}
+
+proc sema_resolution_code(kind: SemaResolutionFailureKind) -> string {
+    if kind == SemaResolutionFailureKind.AmbiguousSymbol {
+        give "RES0072";
+    }
+    if kind == SemaResolutionFailureKind.PrivateSymbol {
+        give "RES0119";
+    }
+    if kind == SemaResolutionFailureKind.MissingModule {
+        give "RES0067";
+    }
+    if kind == SemaResolutionFailureKind.InaccessibleModule {
+        give "RES0070";
+    }
+    if kind == SemaResolutionFailureKind.ImportCycle {
+        give "RES0065";
+    }
+    if kind == SemaResolutionFailureKind.InvalidModulePath {
+        give "RES0064";
+    }
+    if kind == SemaResolutionFailureKind.RenamedImport {
+        give "RES0095";
+    }
+    give "RES0127";
+}
+
+proc sema_resolution_phase(kind: SemaResolutionFailureKind) -> SemaPhase {
+    if kind == SemaResolutionFailureKind.MissingModule
+        or kind == SemaResolutionFailureKind.InaccessibleModule
+        or kind == SemaResolutionFailureKind.ImportCycle
+        or kind == SemaResolutionFailureKind.InvalidModulePath {
+        give SemaPhase.ImportResolution;
+    }
+    give SemaPhase.NameResolution;
+}
+
+proc sema_resolution_kind(kind: SemaResolutionFailureKind) -> SemaDiagnosticKind {
+    if kind == SemaResolutionFailureKind.MissingModule
+        or kind == SemaResolutionFailureKind.InaccessibleModule
+        or kind == SemaResolutionFailureKind.ImportCycle
+        or kind == SemaResolutionFailureKind.InvalidModulePath {
+        give SemaDiagnosticKind.InvalidImport;
+    }
+    if kind == SemaResolutionFailureKind.PrivateSymbol {
+        give SemaDiagnosticKind.InvalidVisibility;
+    }
+    give SemaDiagnosticKind.UnknownSymbol;
+}
+
+proc sema_resolution_title(kind: SemaResolutionFailureKind, name: string) -> string {
+    if kind == SemaResolutionFailureKind.MissingSymbol {
+        give "symbol `" + name + "` does not exist in this resolution context";
+    }
+    if kind == SemaResolutionFailureKind.OutOfScopeSymbol {
+        give "symbol `" + name + "` exists but is outside the current scope";
+    }
+    if kind == SemaResolutionFailureKind.PrivateSymbol {
+        give "symbol `" + name + "` is private in the exporting module";
+    }
+    if kind == SemaResolutionFailureKind.RenamedImport {
+        give "symbol `" + name + "` was imported under another name";
+    }
+    if kind == SemaResolutionFailureKind.AmbiguousSymbol {
+        give "symbol `" + name + "` resolves to multiple visible candidates";
+    }
+    if kind == SemaResolutionFailureKind.MissingModule {
+        give "module `" + name + "` does not exist";
+    }
+    if kind == SemaResolutionFailureKind.InaccessibleModule {
+        give "module `" + name + "` exists but is not accessible from here";
+    }
+    if kind == SemaResolutionFailureKind.ImportCycle {
+        give "import cycle reaches module `" + name + "`";
+    }
+    give "module path `" + name + "` is not a valid Vitte module path";
+}
+
+proc sema_resolution_help(kind: SemaResolutionFailureKind, name: string, detail: string) -> string {
+    if kind == SemaResolutionFailureKind.MissingSymbol {
+        give "declare `" + name + "` before this use, import it, or correct the spelling";
+    }
+    if kind == SemaResolutionFailureKind.OutOfScopeSymbol {
+        give "move this use into the declaring scope or move the declaration to an enclosing scope";
+    }
+    if kind == SemaResolutionFailureKind.PrivateSymbol {
+        give "export `" + name + "` from its module or use a public API";
+    }
+    if kind == SemaResolutionFailureKind.RenamedImport {
+        give "use the import alias `" + detail + "` or change the import alias";
+    }
+    if kind == SemaResolutionFailureKind.AmbiguousSymbol {
+        give "qualify the name or remove one visible candidate";
+    }
+    if kind == SemaResolutionFailureKind.MissingModule {
+        give "create the module file, add the package dependency, or correct the module path";
+    }
+    if kind == SemaResolutionFailureKind.InaccessibleModule {
+        give "export the requested symbol from the module or import an accessible module";
+    }
+    if kind == SemaResolutionFailureKind.ImportCycle {
+        give "break the cycle by moving shared declarations into a lower-level module";
+    }
+    give "use a canonical module path such as `package/module` and remove invalid separators";
 }
 
 proc sema_message(code: string, fallback: string) -> string {
@@ -531,12 +681,71 @@ proc sema_add_nearby_note_and_fix(diagnostic: Diagnostic, name: string, category
     give diagnostic_with_replace(diag, "replace `" + name + "` with " + category + " `" + nearby + "`", nearby, ast_span_to_source_span(span));
 }
 
+proc sema_resolution_failure(kind: SemaResolutionFailureKind, name: string, context: string, detail: string, span: Span) -> Diagnostic {
+    let code: string = sema_resolution_code(kind);
+    let label: string = sema_resolution_failure_name(kind);
+    let phase: SemaPhase = sema_resolution_phase(kind);
+    let diagnostic_kind: SemaDiagnosticKind = sema_resolution_kind(kind);
+    let title: string = sema_resolution_title(kind, name);
+    let help: string = sema_resolution_help(kind, name, detail);
+    let diag0: Diagnostic = sema_typed_diagnostic(code, DiagnosticSeverity.Error, phase, diagnostic_kind, title, [name], help, span);
+    let diag1: Diagnostic = diagnostic_with_rule(diag0, "contextual name and module resolution");
+    let diag2: Diagnostic = diagnostic_with_explanation(diag1, "The resolver distinguishes missing symbols, out-of-scope symbols, private symbols, renamed imports, ambiguous symbols, missing modules, inaccessible modules, import cycles, and malformed module paths before reporting this failure.");
+    let diag3: Diagnostic = diagnostic_with_root_cause(diag2, label + ": `" + name + "` cannot be resolved in " + context);
+    let diag4: Diagnostic = diagnostic_add_cause(diag3, "resolution context: " + context);
+    let diag5: Diagnostic = diagnostic_add_cause(diag4, "resolution failure kind: " + label);
+    let diag6: Diagnostic = if detail != "" { diagnostic_add_cause(diag5, "resolution detail: " + detail) } else { diag5 };
+    let diag7: Diagnostic = diagnostic_with_label(diag6, secondary_label(label + " appears here for `" + name + "`", ast_span_to_source_span(span)));
+    let diag8: Diagnostic = diagnostic_with_subject_symbol(diag7, name);
+    give diagnostic_with_probable_fix(diag8, help);
+}
+
+proc sema_missing_symbol(name: string, context: string, span: Span) -> Diagnostic {
+    give sema_resolution_failure(SemaResolutionFailureKind.MissingSymbol, name, context, "", span);
+}
+
+proc sema_out_of_scope_symbol(name: string, declared_line: u64, span: Span) -> Diagnostic {
+    let detail: string = "declaration is not visible at this scope depth";
+    let diag0: Diagnostic = sema_resolution_failure(SemaResolutionFailureKind.OutOfScopeSymbol, name, "lexical scope lookup", detail, span);
+    let previous: SourceSpan = sema_previous_declaration_span(span, declared_line);
+    if previous.valid {
+        give diagnostic_with_label(diag0, secondary_label("`" + name + "` is declared here but the current scope cannot see it", previous));
+    }
+    give diag0;
+}
+
+proc sema_private_symbol(name: string, module_path: string, span: Span) -> Diagnostic {
+    give sema_resolution_failure(SemaResolutionFailureKind.PrivateSymbol, name, "import from module `" + module_path + "`", "the symbol is not exported by the module", span);
+}
+
+proc sema_renamed_import(name: string, alias: string, module_path: string, span: Span) -> Diagnostic {
+    give sema_resolution_failure(SemaResolutionFailureKind.RenamedImport, name, "import from module `" + module_path + "`", alias, span);
+}
+
+proc sema_ambiguous_symbol(name: string, candidates: string, span: Span) -> Diagnostic {
+    give sema_resolution_failure(SemaResolutionFailureKind.AmbiguousSymbol, name, "visible symbol set", "candidates: " + candidates, span);
+}
+
+proc sema_missing_module(module_path: string, span: Span) -> Diagnostic {
+    give sema_resolution_failure(SemaResolutionFailureKind.MissingModule, module_path, "module graph lookup", "", span);
+}
+
+proc sema_inaccessible_module(module_path: string, symbol_name: string, span: Span) -> Diagnostic {
+    give sema_resolution_failure(SemaResolutionFailureKind.InaccessibleModule, module_path, "module export lookup", "requested symbol `" + symbol_name + "` is not exported", span);
+}
+
+proc sema_import_cycle(module_path: string, chain: string, span: Span) -> Diagnostic {
+    give sema_resolution_failure(SemaResolutionFailureKind.ImportCycle, module_path, "import graph traversal", chain, span);
+}
+
+proc sema_invalid_module_path(path: string, span: Span) -> Diagnostic {
+    give sema_resolution_failure(SemaResolutionFailureKind.InvalidModulePath, path, "module path parser", "module paths use canonical package/module segments", span);
+}
+
 proc sema_unknown_symbol(name: string, span: Span) -> Diagnostic {
-    let code: string = "SEMA_E_UNKNOWN_SYMBOL";
+    let diag: Diagnostic = sema_missing_symbol(name, "expression name lookup", span);
 
-    let diag: Diagnostic = sema_typed_diagnostic(code, DiagnosticSeverity.Error, SemaPhase.NameResolution, SemaDiagnosticKind.UnknownSymbol, "unknown symbol `" + name + "`", [name], "declare the symbol before use or import it from another module", span);
-
-    set diag = diagnostic_with_note(diag, sema_note(code, "no matching local, imported item, builtin, or module item was found"));
+    set diag = diagnostic_with_note(diag, "no matching local, imported item, builtin, or module item was found");
     set diag = diagnostic_with_insert(diag, "insert an import for `" + name + "` if it is defined in another module", "use module { " + name + " }", ast_span_to_source_span(span));
 
     give diag;
@@ -566,11 +775,9 @@ proc sema_unknown_symbol_with_candidate_groups(name: string, functions: [string]
 }
 
 proc sema_invalid_import(path: string, span: Span) -> Diagnostic {
-    let code: string = "SEMA_E_INVALID_IMPORT";
+    let diag: Diagnostic = sema_invalid_module_path(path, span);
 
-    let diag: Diagnostic = sema_typed_diagnostic(code, DiagnosticSeverity.Error, SemaPhase.ImportResolution, SemaDiagnosticKind.InvalidImport, "invalid import `" + path + "`", [path], "use a canonical module path or add a valid import alias", span);
-
-    set diag = diagnostic_with_note(diag, sema_note(code, "imports must resolve to an existing module or exported item"));
+    set diag = diagnostic_with_note(diag, "imports must resolve to an existing module or exported item");
     set diag = diagnostic_with_insert(diag, "replace this import with a canonical module path", "use package/module { symbol }", ast_span_to_source_span(span));
 
     give diag;
@@ -674,6 +881,7 @@ proc sema_result_summary(result: DiagnosticReport) -> string {
 
 share SemaPhase
 share SemaDiagnosticKind
+share SemaResolutionFailureKind
 share SemaContext
 
 share sema_span_empty
@@ -681,6 +889,10 @@ share ast_span_to_source_span
 
 share sema_phase_name
 share sema_kind_name
+share sema_resolution_failure_name
+share sema_resolution_code
+share sema_resolution_phase
+share sema_resolution_kind
 share sema_message
 share sema_help
 share sema_note
@@ -714,6 +926,16 @@ share sema_duplicate_symbol_redefinition
 share sema_string_distance
 share sema_nearby_symbol
 share sema_keyword_candidates
+share sema_resolution_failure
+share sema_missing_symbol
+share sema_out_of_scope_symbol
+share sema_private_symbol
+share sema_renamed_import
+share sema_ambiguous_symbol
+share sema_missing_module
+share sema_inaccessible_module
+share sema_import_cycle
+share sema_invalid_module_path
 share sema_unknown_symbol
 share sema_unknown_symbol_with_candidates
 share sema_unknown_symbol_with_candidate_groups

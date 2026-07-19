@@ -209,12 +209,12 @@ proc attach_typeck_context(diagnostic: Diagnostic, code: string, kind: TypeckErr
 
 proc attach_assignment_mismatch_details(diagnostic: Diagnostic, binding_name: string, expected: string, found: string) -> Diagnostic {
     let diag0: Diagnostic = diagnostic_with_rule(diagnostic, "assignment type compatibility");
-    let diag1: Diagnostic = diagnostic_with_explanation(diag0, "The left side of this assignment expects `" + expected + "`, but the right side produces `" + found + "`. Vitte does not perform implicit conversion here.");
+    let diag1: Diagnostic = diagnostic_with_explanation(diag0, "Expected type `" + expected + "` because binding `" + binding_name + "` is declared or inferred with that type; obtained type `" + found + "` from the assigned expression. Convert the value or modify the binding type intentionally.");
     let diag2: Diagnostic = diagnostic_with_technical_note(diag1, "The type checker compares the inferred expression type against the declared or inferred target binding type during assignment validation.");
     let diag3: Diagnostic = diagnostic_with_documentation(diag2, "docs://language/type-system/assignment-compatibility");
     let diag4: Diagnostic = diagnostic_with_root_cause(diag3, "binding `" + binding_name + "` requires `" + expected + "` while the assigned expression produces `" + found + "`");
-    let diag5: Diagnostic = diagnostic_add_cause(diag4, "binding `" + binding_name + "` expects `" + expected + "`");
-    let diag6: Diagnostic = diagnostic_add_cause(diag5, "assigned expression produced `" + found + "`");
+    let diag5: Diagnostic = diagnostic_add_cause(diag4, "expected type `" + expected + "` because binding `" + binding_name + "` is declared or inferred with that type");
+    let diag6: Diagnostic = diagnostic_add_cause(diag5, "obtained type `" + found + "` from the assigned expression");
     let diag7: Diagnostic = diagnostic_add_related_error(diag6, "TYPECK_E_BINARY_MISMATCH");
     let diag8: Diagnostic = diagnostic_with_probable_fix(diag7, "change the variable type to `" + found + "` or assign a value of type `" + expected + "`");
     let diag9: Diagnostic = diagnostic_with_subject_symbol(diag8, binding_name);
@@ -229,22 +229,24 @@ proc attach_assignment_mismatch_details(diagnostic: Diagnostic, binding_name: st
 
 proc attach_expected_found_details(diagnostic: Diagnostic, rule_name: string, expected: string, found: string, expected_origin: string, found_origin: string, probable_fix: string) -> Diagnostic {
     let diag0: Diagnostic = diagnostic_with_rule(diagnostic, rule_name);
-    let diag1: Diagnostic = diagnostic_with_explanation(diag0, "The expected type is `" + expected + "` because of " + expected_origin + "; the checked expression produced `" + found + "` from " + found_origin + ".");
+    let diag1: Diagnostic = diagnostic_with_explanation(diag0, "Expected type `" + expected + "` because " + expected_origin + "; obtained type `" + found + "` from " + found_origin + ". Convert the value or modify the signature when that is the intended API.");
     let diag2: Diagnostic = diagnostic_with_root_cause(diag1, rule_name + " requires `" + expected + "` at this program point, but the observed value has type `" + found + "`");
     let diag3: Diagnostic = diagnostic_add_cause(diag2, "why expected type is imposed: " + expected_origin);
     let diag4: Diagnostic = diagnostic_add_cause(diag3, "origin of obtained type: " + found_origin);
-    let diag5: Diagnostic = diagnostic_with_subject_type(diag4, expected);
-    let diag6: Diagnostic = diagnostic_with_label(diag5, secondary_label("expected `" + expected + "` from " + expected_origin, diagnostic.span));
-    let diag7: Diagnostic = diagnostic_with_label(diag6, secondary_label("obtained `" + found + "` from " + found_origin, diagnostic.span));
+    let diag5: Diagnostic = diagnostic_add_cause(diag4, "expected type `" + expected + "` because " + expected_origin);
+    let diag6: Diagnostic = diagnostic_add_cause(diag5, "obtained type `" + found + "` from " + found_origin);
+    let diag7: Diagnostic = diagnostic_with_subject_type(diag6, expected);
+    let diag8: Diagnostic = diagnostic_with_label(diag7, secondary_label("expected `" + expected + "` from " + expected_origin, diagnostic.span));
+    let diag9: Diagnostic = diagnostic_with_label(diag8, secondary_label("obtained `" + found + "` from " + found_origin, diagnostic.span));
 
     if probable_fix != "" {
         give diagnostic_with_probable_fix(
-            diag7,
+            diag9,
             probable_fix
         );
     }
 
-    give diag7;
+    give diag9;
 }
 
 proc attach_typeck_labels_and_help(diagnostic: Diagnostic, labels: [string], suggestion: string, span: SourceSpan) -> Diagnostic {
@@ -483,12 +485,12 @@ proc typeck_invalid_call(callee: string, span: Span) -> Diagnostic {
 
 proc typeck_argument_mismatch(callee: string, position: u64, expected: string, found: string, span: Span) -> Diagnostic {
     let position_text: string = position as string;
-    let diag0: Diagnostic = typed_typeck_diag("TYPECK_E_ARGUMENT_MISMATCH", "argument " + position_text + " of `" + callee + "` expects `" + expected + "` but receives `" + found + "`", [callee, expected, found], "pass a `" + expected + "` value or change the callee signature", span, DiagnosticSeverity.Error, DiagnosticPhase.Typeck, TypeckErrorKind.InvalidCall);
+    let diag0: Diagnostic = typed_typeck_diag("TYPECK_E_ARGUMENT_MISMATCH", "argument " + position_text + " of `" + callee + "` expects `" + expected + "` but receives `" + found + "`", [callee, expected, found], "convert the value or modify the callee signature", span, DiagnosticSeverity.Error, DiagnosticPhase.Typeck, TypeckErrorKind.InvalidCall);
     let diag1: Diagnostic = diagnostic_with_rule(diag0, "function argument compatibility");
-    let diag2: Diagnostic = diagnostic_with_explanation(diag1, "argument " + position_text + " of `" + callee + "` expects `" + expected + "`, but this call passes `" + found + "`");
-    let diag3: Diagnostic = diagnostic_add_cause(diag2, "expected type comes from parameter " + position_text + " of `" + callee + "`");
-    let diag4: Diagnostic = diagnostic_add_cause(diag3, "found type comes from argument " + position_text + " at the call site");
-    let diag5: Diagnostic = diagnostic_with_probable_fix(diag4, "align argument " + position_text + " with `" + expected + "` or widen the callee signature");
+    let diag2: Diagnostic = diagnostic_with_explanation(diag1, "Expected type `" + expected + "` because parameter " + position_text + " of `" + callee + "` is declared that way; obtained type `" + found + "` from this argument expression. Convert the value or modify the signature.");
+    let diag3: Diagnostic = diagnostic_add_cause(diag2, "expected type `" + expected + "` because parameter " + position_text + " of `" + callee + "` is declared that way");
+    let diag4: Diagnostic = diagnostic_add_cause(diag3, "obtained type `" + found + "` from argument " + position_text + " at the call site");
+    let diag5: Diagnostic = diagnostic_with_probable_fix(diag4, "convert the value or modify the signature");
     give diagnostic_with_replace(diag5, "wrap or replace this argument with an explicit `" + expected + "` value", "<" + expected + " value>", ast_span_to_source_span(span));
 }
 
