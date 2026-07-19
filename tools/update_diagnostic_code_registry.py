@@ -33,6 +33,17 @@ PHASE_PREFIXES: dict[str, str] = {
     "ice": "ICE",
 }
 
+CATALOG_TEST_ASSERTS = [
+    "code",
+    "title",
+    "span",
+    "notes",
+    "suggestions",
+    "no_parasitic_diagnostics",
+    "stable_order",
+    "recovery",
+]
+
 
 def phase_for_legacy_code(code: str) -> str:
     if code.startswith("LEX_"):
@@ -78,6 +89,45 @@ def documentation_for_code(public_code: str, legacy_code: str, phase: str) -> di
         "example": fields["example"],
         "url": f"docs://compiler/diagnostics/{phase}/{public_code}",
     }
+
+
+def default_severity_for_code(legacy_code: str, phase: str) -> str:
+    if "_W_" in legacy_code or legacy_code.startswith("WARN_"):
+        return "warning"
+    if "_H_" in legacy_code or legacy_code.endswith("_HELP"):
+        return "help"
+    if phase == "ice":
+        return "fatal"
+    if legacy_code.endswith("_FAILED") or "_FATAL" in legacy_code or "_PANIC" in legacy_code:
+        return "fatal"
+    if phase in {"codegen", "linker"} and (
+        "UNSUPPORTED" in legacy_code or "FAILED" in legacy_code or "DENIED" in legacy_code
+    ):
+        return "fatal"
+    return "error"
+
+
+def required_parameters_for_code(legacy_code: str) -> list[str]:
+    parameters = ["primary_span", "message_key"]
+    if "EXPECTED" in legacy_code or "MISMATCH" in legacy_code:
+        parameters += ["expected", "found"]
+    if "SYMBOL" in legacy_code or "NAME" in legacy_code or "IDENTIFIER" in legacy_code:
+        parameters += ["symbol"]
+    if "TYPE" in legacy_code:
+        parameters += ["type"]
+    if "BORROW" in legacy_code or "MOVE" in legacy_code or "LIFETIME" in legacy_code:
+        parameters += ["related_span"]
+    return parameters
+
+
+def tests_for_code(public_code: str, phase: str) -> list[dict[str, object]]:
+    return [
+        {
+            "path": f"tests/diagnostics/catalog/{phase}.catalog.json",
+            "case": public_code,
+            "asserts": CATALOG_TEST_ASSERTS,
+        }
+    ]
 
 
 def load_existing_registry() -> list[dict[str, object]]:
@@ -137,10 +187,14 @@ def render() -> str:
             public_code = f"{PHASE_PREFIXES[phase]}{counters[phase]:04d}"
         entries_by_key[legacy_code] = {
             "code": public_code,
+            "title": documentation_for_code(public_code, legacy_code, phase)["title"],
             "phase": phase,
+            "default_severity": default_severity_for_code(legacy_code, phase),
             "message_key": legacy_code,
+            "required_parameters": required_parameters_for_code(legacy_code),
             "aliases": [legacy_code],
             "documentation": documentation_for_code(public_code, legacy_code, phase),
+            "tests": tests_for_code(public_code, phase),
             "stable": True,
             "deprecated": False,
         }
@@ -154,10 +208,14 @@ def render() -> str:
             continue
         entries_by_key[legacy_code] = {
             "code": code,
+            "title": documentation_for_code(code, legacy_code, phase)["title"],
             "phase": phase,
+            "default_severity": default_severity_for_code(legacy_code, phase),
             "message_key": legacy_code,
+            "required_parameters": required_parameters_for_code(legacy_code),
             "aliases": [legacy_code],
             "documentation": documentation_for_code(code, legacy_code, phase),
+            "tests": tests_for_code(code, phase),
             "stable": True,
             "deprecated": True,
         }

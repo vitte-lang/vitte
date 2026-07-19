@@ -127,6 +127,38 @@ proc linker_failure_message(code: string) -> string {
   give "system linker command failed";
 }
 
+proc linker_failure_diagnostic(code: string, span: SourceSpan) -> Diagnostic {
+  if code == "LINK_E_UNDEFINED_SYMBOL" {
+    give diagnostic_fatal("LINK_E_UNDEFINED_SYMBOL", DiagnosticPhase.Linker, linker_failure_message(code), span);
+  }
+
+  if code == "LINK_E_LIBRARY_NOT_FOUND" {
+    give diagnostic_fatal("LINK_E_LIBRARY_NOT_FOUND", DiagnosticPhase.Linker, linker_failure_message(code), span);
+  }
+
+  if code == "LINK_E_ARCHITECTURE_INCOMPATIBLE" {
+    give diagnostic_fatal("LINK_E_ARCHITECTURE_INCOMPATIBLE", DiagnosticPhase.Linker, linker_failure_message(code), span);
+  }
+
+  if code == "LINK_E_UNSUPPORTED_FORMAT" {
+    give diagnostic_fatal("LINK_E_UNSUPPORTED_FORMAT", DiagnosticPhase.Linker, linker_failure_message(code), span);
+  }
+
+  if code == "LINK_E_DUPLICATE_SYMBOL" {
+    give diagnostic_fatal("LINK_E_DUPLICATE_SYMBOL", DiagnosticPhase.Linker, linker_failure_message(code), span);
+  }
+
+  if code == "LINK_E_ENTRYPOINT_MISSING" {
+    give diagnostic_fatal("LINK_E_ENTRYPOINT_MISSING", DiagnosticPhase.Linker, linker_failure_message(code), span);
+  }
+
+  if code == "LINK_E_PERMISSION_DENIED" {
+    give diagnostic_fatal("LINK_E_PERMISSION_DENIED", DiagnosticPhase.Linker, linker_failure_message(code), span);
+  }
+
+  give diagnostic_fatal("LINK_E_SYSTEM_LINKER_FAILED", DiagnosticPhase.Linker, linker_failure_message("LINK_E_SYSTEM_LINKER_FAILED"), span);
+}
+
 proc backend_unsupported_feature(feature_name: string, backend_name: string, target_name: string, span: SourceSpan) -> Diagnostic {
   let diag0: Diagnostic = diagnostic_fatal("BACKEND_E_UNSUPPORTED_FEATURE", DiagnosticPhase.Backend, "backend feature `" + feature_name + "` is not supported", span);
   let diag1: Diagnostic = diagnostic_with_rule(diag0, "selected backend and target must implement every requested code-generation feature");
@@ -163,7 +195,7 @@ proc backend_native_generation_failed(backend_name: string, target_name: string,
 
 proc linker_command_failed(backend_name: string, target_name: string, command_text: string, exit_code: int, stderr_text: string, output_path: string, span: SourceSpan) -> Diagnostic {
   let code: string = linker_failure_code(stderr_text);
-  let diag0: Diagnostic = diagnostic_fatal(code, DiagnosticPhase.Linker, linker_failure_message(code), span);
+  let diag0: Diagnostic = linker_failure_diagnostic(code, span);
   let diag1a: Diagnostic = diagnostic_with_kind(diag0, DiagnosticKind.Linker);
   let diag1: Diagnostic = backend_diag_context(diag1a, backend_name, target_name, output_path);
   let diag2: Diagnostic = backend_diag_command(diag1, command_text, exit_code, stderr_text);
