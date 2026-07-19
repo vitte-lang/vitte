@@ -285,7 +285,7 @@ proc expect_ident(state: ParserState, code: string) -> ParserState {
   if is_ident_like(current_token(state)) {
     give advance(state);
   }
-  give with_diag(state, code, parser_rule_for_code(code) + " expected an identifier for " + parser_identifier_context_for_code(code) + " before " + token_display(current_token(state)));
+  give with_diag(state, code, parser_context_for_code(code) + " needs an identifier for " + parser_identifier_context_for_code(code) + " before " + token_display(current_token(state)));
 }
 
 proc optional_text(state: ParserState, text: string) -> ParserState {
@@ -386,46 +386,65 @@ proc expected_text_message(state: ParserState, text: string) -> string {
 }
 
 proc parser_rule_for_code(code: string) -> string {
+  give parser_context_for_code(code);
+}
+
+proc parser_context_for_code(code: string) -> string {
   if starts_with(code, "PGEN") {
-    give "generic parameter grammar";
+    give "generic parameter list";
   }
   if starts_with(code, "PPATH") {
-    give "module or qualified path grammar";
+    give "module or qualified path";
   }
   if starts_with(code, "PATTR") {
-    give "attribute grammar";
+    give "attribute";
   }
   if starts_with(code, "PBUILTIN") {
-    give "builtin expression grammar";
+    give "builtin expression";
   }
   if starts_with(code, "PCALL") {
-    give "call expression grammar";
+    give "function call";
   }
   if starts_with(code, "PMEMBER") {
-    give "member access grammar";
+    give "member access";
   }
   if starts_with(code, "PSTMT") {
-    give "statement grammar";
+    give "Vitte statement";
   }
   if starts_with(code, "PQUERY") {
-    give "query declaration grammar";
+    give "query declaration";
+  }
+  if starts_with(code, "PPROC") {
+    give "procedure declaration";
+  }
+  if starts_with(code, "PDECL") {
+    give "declaration";
+  }
+  if starts_with(code, "PBLOCK") {
+    give "block";
+  }
+  if starts_with(code, "PTYPE") {
+    give "type annotation";
+  }
+  if starts_with(code, "PPAT") {
+    give "pattern";
   }
   if starts_with(code, "PEXTERN") {
-    give "extern declaration grammar";
+    give "extern declaration";
   }
   if starts_with(code, "PPRIMARY") {
-    give "primary expression grammar";
+    give "expression";
   }
   if code == "P0001" {
-    give "top-level declaration grammar";
+    give "top-level declaration";
   }
   if code == "PLIST_COMMA" {
-    give "comma-separated list grammar";
+    give "list";
   }
   if code == "P000_UNBALANCED" {
-    give "delimiter balance grammar";
+    give "delimited block";
   }
-  give "syntax grammar";
+  give "Vitte syntax";
 }
 
 proc parser_identifier_context_for_code(code: string) -> string {
@@ -438,23 +457,33 @@ proc parser_identifier_context_for_code(code: string) -> string {
   if starts_with(code, "PMEMBER") {
     give "a member name after `.`";
   }
-  give "the current syntax rule";
+  give "the current Vitte construct";
 }
 
 proc expected_text_message_for_code(state: ParserState, text: string, code: string) -> string {
-  let rule: string = parser_rule_for_code(code);
-  if is_closing_delimiter_text(text) {
-    let open_text: string = delimiter_open_for_close(text);
-    let name: string = delimiter_name(text);
-    give rule + " expected closing " + name + " `" + text + "` for `" + open_text + "` before " + token_display(current_token(state));
+  let context: string = parser_context_for_code(code);
+  if text == ")" {
+    give context + " is missing closing parenthesis `)` before " + token_display(current_token(state));
+  }
+  if text == "}" {
+    give context + " is missing closing brace `}` before " + token_display(current_token(state));
+  }
+  if text == "]" {
+    give context + " is missing closing bracket `]` before " + token_display(current_token(state));
   }
   if text == ";" {
-    give rule + " expected statement terminator `;` before " + token_display(current_token(state));
+    give context + " is missing semicolon `;` before " + token_display(current_token(state));
   }
   if text == "," {
-    give rule + " expected separator `,` between list elements before " + token_display(current_token(state));
+    give context + " is missing comma `,` between elements before " + token_display(current_token(state));
   }
-  give rule + " expected `" + text + "` before " + token_display(current_token(state));
+  if text == "{" {
+    give context + " needs a block starting with `{` before " + token_display(current_token(state));
+  }
+  if text == assign_op_eq() {
+    give context + " is incomplete: add `=` followed by the required value before " + token_display(current_token(state));
+  }
+  give context + " needs `" + text + "` here before " + token_display(current_token(state));
 }
 
 proc is_expr_recovery_boundary(state: ParserState) -> bool {
@@ -501,7 +530,13 @@ proc skip_balanced(state: ParserState, open_text: string, close_text: string, co
     set current = advance(current);
   }
   if depth != 0 {
-    give with_diag(current, "P000_UNBALANCED", "delimiter balance grammar expected closing " + delimiter_name(close_text) + " `" + close_text + "` for `" + open_text + "` before " + token_display(current_token(current)));
+    if close_text == "}" {
+      give with_diag(current, "P000_UNBALANCED", "block is missing closing brace `}` for `{` before " + token_display(current_token(current)));
+    }
+    if close_text == ")" {
+      give with_diag(current, "P000_UNBALANCED", "expression or parameter list is missing closing parenthesis `)` for `(` before " + token_display(current_token(current)));
+    }
+    give with_diag(current, "P000_UNBALANCED", "delimited construct is missing closing " + delimiter_name(close_text) + " `" + close_text + "` for `" + open_text + "` before " + token_display(current_token(current)));
   }
   give current;
 }
@@ -711,8 +746,12 @@ proc parse_proc_suffixes(state: ParserState) -> ParserState {
 
 proc parse_proc_decl(state: ParserState) -> ParserState {
   let current: ParserState = state;
+  let modifier_seen: bool = false;
+  let last_modifier: string = "";
   while is_visibility(current_token(current).lexeme) or is_proc_modifier(current_token(current).lexeme) or at_text(current, "extern") {
     let lex: string = current_token(current).lexeme;
+    set modifier_seen = true;
+    set last_modifier = lex;
     set current = advance(current);
     if lex == "pub" and at_text(current, "(") {
       set current = skip_balanced(current, "(", ")", "PVIS001");
@@ -720,6 +759,9 @@ proc parse_proc_decl(state: ParserState) -> ParserState {
     if lex == "extern" and (at_kind(current, TokenKind.String) or at_text(current, "C") or at_text(current, "sysv64") or at_text(current, "win64")) {
       set current = advance(current);
     }
+  }
+  if modifier_seen and not at_text(current, "proc") {
+    give with_diag(current, "PMODIFIER_MISPLACED", "modifier `" + last_modifier + "` is only valid before a procedure declaration here; move it before `proc` or remove it before " + token_display(current_token(current)));
   }
   set current = expect_text(current, "proc", "PPROC001");
   if at_text(current, "operator") {
@@ -742,11 +784,17 @@ proc parse_proc_decl(state: ParserState) -> ParserState {
   if at_text(current, "{") {
     give parse_block(current);
   }
-  give expect_text(current, ";", "PPROC005");
+  if at_text(current, ";") {
+    give advance(current);
+  }
+  give with_diag(current, "PPROC_BODY_MISSING", "procedure declaration is missing its body; add a block `{ ... }` or end an external declaration with `;` before " + token_display(current_token(current)));
 }
 
 proc parse_type_primary(state: ParserState) -> ParserState {
   let current: ParserState = state;
+  if is_eof(current) or at_text(current, ";") or at_text(current, ",") or is_closing_delimiter_text(current_token(current).lexeme) or at_text(current, "{") or at_text(current, assign_op_eq()) {
+    give with_diag(current, "PTYPE_MISSING", "type annotation is missing a Vitte type name or type expression before " + token_display(current_token(current)));
+  }
   if at_text(current, "[") {
     set current = advance(current);
     set current = parse_type_expr(current);
@@ -1017,6 +1065,9 @@ proc parse_match_expr(state: ParserState) -> ParserState {
 proc parse_primary(state: ParserState) -> ParserState {
   let current: ParserState = state;
   let tok: Token = current_token(current);
+  if is_eof(current) or at_text(current, ";") or at_text(current, ",") or is_closing_delimiter_text(tok.lexeme) {
+    give with_diag(current, "PPRIMARY_EXPR_MISSING", "expression is missing a Vitte value, name, call, literal, block, or grouped expression before " + token_display(tok));
+  }
   if is_literal_token(tok) {
     give advance(current);
   }
@@ -1098,7 +1149,7 @@ proc parse_primary(state: ParserState) -> ParserState {
     }
     give with_path;
   }
-  give with_diag(current, "PPRIMARY999", "primary expression grammar expected a literal, name, call, block, grouped expression, array expression, or builtin expression before " + token_display(tok));
+  give with_diag(current, "PPRIMARY999", "expression needs a Vitte value, name, call, literal, block, grouped expression, array expression, or builtin expression before " + token_display(tok));
 }
 
 proc parse_postfix_expr(state: ParserState) -> ParserState {
@@ -1228,7 +1279,7 @@ proc parse_stmt(state: ParserState) -> ParserState {
       let exprd: ParserState = parse_expr(advance(target));
       give expect_text(exprd, ";", "PSTMT006");
     }
-    give with_diag(target, "PSTMT007", "assignment statement grammar expected one of: `=`, `+=`, `-=`, `*=`, `/=`, `%=`, `&=`, `|=`, `^=`, `<<=`, `>>=` before " + token_display(current_token(target)));
+    give with_diag(target, "PSTMT007", "assignment statement is missing an assignment operator such as `=` or `+=` before " + token_display(current_token(target)));
   }
   if at_text(current, "give") {
     let walk: ParserState = advance(current);
@@ -1479,7 +1530,7 @@ proc parse_decl(state: ParserState) -> ParserState {
       let abi: ParserState = advance(walk);
       give skip_balanced(abi, "{", "}", "PEXTERN002");
     }
-    give with_diag(walk, "PEXTERN999", "expected extern type or extern block");
+    give with_diag(walk, "PEXTERN999", "extern declaration is incomplete: write `extern type Name` or an extern ABI block such as `extern \"C\" { ... }` before " + token_display(current_token(walk)));
   }
   if tok.lexeme == "form" or tok.lexeme == "class" or tok.lexeme == "union" or tok.lexeme == "bits" or tok.lexeme == "pick" or tok.lexeme == "flags" or tok.lexeme == "trait" or tok.lexeme == "impl" {
     give parse_container_decl(prefixed);
@@ -1528,9 +1579,9 @@ proc parse_decl(state: ParserState) -> ParserState {
     give parse_block(named);
   }
   if is_toplevel_keyword(tok.lexeme) {
-    give skip_until_boundary(prefixed, ";", "{", "");
+    give with_diag(prefixed, "PDECL_INCOMPLETE", "declaration is incomplete: start with a Vitte declaration such as `proc`, `const`, `type`, `form`, `trait`, `use`, or `export`, then provide the required name and body");
   }
-  give with_diag(prefixed, "P0001", "top-level declaration grammar expected one of: space, use, export, const, static, global, region, type, opaque, extern, form, class, union, bits, pick, flags, trait, impl, proc, intrinsic, compiler, query, pass, backend, diagnostic, macro, comptime, static_assert, test, bench, entry before " + token_display(tok));
+  give with_diag(prefixed, "P0001", "top-level declaration expected a Vitte declaration keyword such as `proc`, `const`, `type`, `form`, `trait`, `use`, or `export` before " + token_display(tok));
 }
 
 proc parse_source(source_name: string, tokens: [Token]) -> ParseResult {
