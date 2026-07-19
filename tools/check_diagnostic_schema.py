@@ -15,6 +15,23 @@ CODES = ROOT / "schemas/diagnostics/codes.json"
 FIXTURES = ROOT / "tests/diagnostics/schema"
 INVALID_FIXTURES = ROOT / "tests/diagnostics/schema-invalid"
 CODE_PATTERN = re.compile(r"^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$")
+VAGUE_CAUSE_PATTERNS = (
+    "compiler contract",
+    "diagnostic rule",
+    "error occurred",
+    "failure occurred",
+    "invalid input",
+    "invalid program",
+    "something went wrong",
+)
+VAGUE_ACTION_PATTERNS = (
+    "fix the error",
+    "fix the issue",
+    "follow the primary help text",
+    "inspect diagnostics",
+    "repair the highlighted compiler contract",
+    "try again",
+)
 REQUIRED = {
     "schema", "schema_version", "code", "severity", "phase", "message_key", "message",
     "primary_span", "labels", "notes", "helps", "suggestions",
@@ -42,6 +59,15 @@ def validate_span(value: object, path: Path, field: str) -> None:
         positions.append((line, column, byte))
     if positions[1] < positions[0] or positions[1][2] < positions[0][2]:
         raise ValueError(f"{path}: {field} end precedes start")
+    if positions[1] == positions[0]:
+        raise ValueError(f"{path}: {field} must identify a non-empty real source range")
+
+
+def reject_vague_text(text: str, path: Path, field: str, patterns: tuple[str, ...]) -> None:
+    lowered = text.lower()
+    for pattern in patterns:
+        if pattern in lowered:
+            raise ValueError(f"{path}: {field} is too vague: {text!r}")
 
 
 def validate_fixture(value: object, path: Path) -> None:
@@ -71,6 +97,21 @@ def validate_fixture(value: object, path: Path) -> None:
         primary_labels += label["kind"] == "primary"
     if primary_labels != 1:
         raise ValueError(f"{path}: exactly one primary label is required")
+    primary_label = next(label for label in value["labels"] if label["kind"] == "primary")
+    if primary_label.get("span") != value["primary_span"]:
+        raise ValueError(f"{path}: primary label span must match primary_span")
+    if not isinstance(value["notes"], list) or not value["notes"]:
+        raise ValueError(f"{path}: at least one note is required to describe the real cause")
+    for index, note in enumerate(value["notes"]):
+        if not isinstance(note, str) or not note:
+            raise ValueError(f"{path}: notes[{index}] requires a message")
+        reject_vague_text(note, path, f"notes[{index}]", VAGUE_CAUSE_PATTERNS)
+    if not isinstance(value["helps"], list):
+        raise ValueError(f"{path}: helps must be an array")
+    for index, help_text in enumerate(value["helps"]):
+        if not isinstance(help_text, str) or not help_text:
+            raise ValueError(f"{path}: helps[{index}] requires a message")
+        reject_vague_text(help_text, path, f"helps[{index}]", VAGUE_ACTION_PATTERNS)
     if not isinstance(value["suggestions"], list):
         raise ValueError(f"{path}: suggestions must be an array")
     for index, suggestion in enumerate(value["suggestions"]):
@@ -81,6 +122,9 @@ def validate_fixture(value: object, path: Path) -> None:
         if not isinstance(suggestion.get("message"), str) or not isinstance(suggestion.get("replacement"), str):
             raise ValueError(f"{path}: suggestions[{index}] requires message and replacement")
         validate_span(suggestion.get("span"), path, f"suggestions[{index}].span")
+        reject_vague_text(suggestion["message"], path, f"suggestions[{index}].message", VAGUE_ACTION_PATTERNS)
+    if not value["helps"] and not value["suggestions"]:
+        raise ValueError(f"{path}: at least one help or suggestion is required to describe a corrective action")
 
 
 def main() -> int:
