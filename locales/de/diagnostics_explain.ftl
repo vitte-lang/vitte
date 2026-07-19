@@ -6,67 +6,67 @@ E0001.summary = The Parser expected a Name for something (variable, Typ, Modul, 
 E0001.cause = The parser or lexer could not form the next valid source construct.
 E0001.step1 = Look at the highlighted token and complete or remove the construct around it.
 E0001.fix = complete the syntax shape named by the parser label at the highlighted token
-E0001.example = proc main() -> i32 { return 0 }
+E0001.example = proc main() -> int { give 0 }
 
 E0002.summary = The Parser expected an Ausdruck at this location.
 E0002.cause = The parser or lexer could not form the next valid source construct.
 E0002.step1 = Look at the highlighted token and complete or remove the construct around it.
 E0002.fix = complete the syntax shape named by the parser label at the highlighted token
-E0002.example = proc main() -> i32 { return 0 }
+E0002.example = proc main() -> int { give 0 }
 
 E0003.summary = The Parser expected a Muster.
 E0003.cause = The parser or lexer could not form the next valid source construct.
 E0003.step1 = Look at the highlighted token and complete or remove the construct around it.
 E0003.fix = complete the syntax shape named by the parser label at the highlighted token
-E0003.example = when x is Option.Some { return 0 }
+E0003.example = proc main() -> int { give 0 }
 
 E0004.summary = The Parser expected a Typ Name.
 E0004.cause = The parser or lexer could not form the next valid source construct.
 E0004.step1 = Look at the highlighted token and complete or remove the construct around it.
 E0004.fix = complete the syntax shape named by the parser label at the highlighted token
-E0004.example = proc id(x: int) -> int { return x }
+E0004.example = proc main() -> int { give 0 }
 
 E0005.summary = A Block was opened but not closed with 'end' or '.end'.
 E0005.cause = The parser or lexer could not form the next valid source construct.
 E0005.step1 = Look at the highlighted token and complete or remove the construct around it.
 E0005.fix = complete the syntax shape named by the parser label at the highlighted token
-E0005.example = form Point\n  field x as int\n.end
+E0005.example = proc main() -> int { give 0 }
 
 E0006.summary = An attribute muss followed by a proc Deklaration sein.
 E0006.cause = The parser or lexer could not form the next valid source construct.
 E0006.step1 = Look at the highlighted token and complete or remove the construct around it.
 E0006.fix = complete the syntax shape named by the parser label at the highlighted token
-E0006.example = #[inline]\nproc add(a: int, b: int) -> int { return a + b }
+E0006.example = proc main() -> int { give 0 }
 
 E0007.summary = The Parser expected a top-level Deklaration.
 E0007.cause = The parser or lexer could not form the next valid source construct.
 E0007.step1 = Look at the highlighted token and complete or remove the construct around it.
 E0007.fix = complete the syntax shape named by the parser label at the highlighted token
-E0007.example = space my/app\nproc main() -> int { return 0 }
+E0007.example = proc main() -> int { give 0 }
 
 E0008.summary = A Muster bound the same Name more than once.
 E0008.cause = The parser or lexer could not form the next valid source construct.
 E0008.step1 = Look at the highlighted token and complete or remove the construct around it.
 E0008.fix = complete the syntax shape named by the parser label at the highlighted token
-E0008.example = when Pair(x, y) { return 0 }
+E0008.example = proc main() -> int { give 0 }
 
 E0009.summary = A referenced Typ Name was fehlend.
 E0009.cause = The parser or lexer could not form the next valid source construct.
 E0009.step1 = Look at the highlighted token and complete or remove the construct around it.
 E0009.fix = complete the syntax shape named by the parser label at the highlighted token
-E0009.example = use std/core/option.Option\nproc f(x: Option[int]) -> int { return 0 }
+E0009.example = proc main() -> int { give 0 }
 
 E0010.summary = The base Typ of a generisch was fehlend.
 E0010.cause = The parser or lexer could not form the next valid source construct.
 E0010.step1 = Look at the highlighted token and complete or remove the construct around it.
 E0010.fix = complete the syntax shape named by the parser label at the highlighted token
-E0010.example = use std/core/option.Option\nlet x: Option[int] = Option.None
+E0010.example = proc main() -> int { give 0 }
 
 E0011.summary = A generisch Typ must include at least one Argument.
 E0011.cause = The parser or lexer could not form the next valid source construct.
 E0011.step1 = Look at the highlighted token and complete or remove the construct around it.
 E0011.fix = complete the syntax shape named by the parser label at the highlighted token
-E0011.example = let x: Option[int] = Option.None
+E0011.example = proc main() -> int { give 0 }
 
 E0012.summary = This Typ form is not supported yet.
 E0012.cause = The parser or lexer could not form the next valid source construct.
@@ -74,7 +74,7 @@ E0012.step1 = Look at the highlighted token and complete or remove the construct
 E0012.fix = complete the syntax shape named by the parser label at the highlighted token
 E0012.example = let p: *int = &value
 
-E0013.summary = A procedure with an explicit Rueckgabe Typ has a Pfad that reaches the end without returning a Wert.
+E0013.summary = proc kann enden, ohne einen Wert zurueckzugeben.
 E0013.cause = The parser or lexer could not form the next valid source construct.
 E0013.step1 = Look at the highlighted token and complete or remove the construct around it.
 E0013.fix = complete the syntax shape named by the parser label at the highlighted token
@@ -96,13 +96,13 @@ E0016.summary = This Muster is not supported by the HIR lowering yet.
 E0016.cause = The parser or lexer could not form the next valid source construct.
 E0016.step1 = Look at the highlighted token and complete or remove the construct around it.
 E0016.fix = complete the syntax shape named by the parser label at the highlighted token
-E0016.example = when x is Option.Some { return 0 }
+E0016.example = proc main() -> int { give 0 }
 
 E0017.summary = This Anweisung is not supported by the HIR lowering yet.
 E0017.cause = The parser or lexer could not form the next valid source construct.
 E0017.step1 = Look at the highlighted token and complete or remove the construct around it.
 E0017.fix = complete the syntax shape named by the parser label at the highlighted token
-E0017.example = return 0
+E0017.example = proc main() -> int { give 0 }
 
 E0018.summary = An extern procedure cannot define a body.
 E0018.cause = The parser or lexer could not form the next valid source construct.
@@ -111,567 +111,597 @@ E0018.fix = complete the syntax shape named by the parser label at the highlight
 E0018.example = #[extern]\nproc puts(s: string) -> int
 
 E1001.summary = Muster Bindung doppelt.
-E1001.cause = The general phase found code that violates this diagnostic rule.
-E1001.step1 = Fix the first span reported for this diagnostic, then run the command again.
-E1001.fix = repair the highlighted compiler contract before checking later diagnostics
+E1001.cause = The inferred type does not satisfy the type required at this location.
+E1001.step1 = Compare the expected and found types in the diagnostic labels.
+E1001.fix = make the expression type match the type contract named by the type checker
 E1001.example = vitte check path/to/file.vit
 
 E1002.summary = Typ (did you mean a built-in like int/i32/i64/i128/u32/u64/u128/bool/string?) unbekannt.
-E1002.cause = The general phase found code that violates this diagnostic rule.
-E1002.step1 = Fix the first span reported for this diagnostic, then run the command again.
-E1002.fix = repair the highlighted compiler contract before checking later diagnostics
+E1002.cause = The inferred type does not satisfy the type required at this location.
+E1002.step1 = Compare the expected and found types in the diagnostic labels.
+E1002.fix = make the expression type match the type contract named by the type checker
 E1002.example = vitte check path/to/file.vit
 
 E1003.summary = generisch base Typ unbekannt.
-E1003.cause = The general phase found code that violates this diagnostic rule.
-E1003.step1 = Fix the first span reported for this diagnostic, then run the command again.
-E1003.fix = repair the highlighted compiler contract before checking later diagnostics
+E1003.cause = The inferred type does not satisfy the type required at this location.
+E1003.step1 = Compare the expected and found types in the diagnostic labels.
+E1003.fix = make the expression type match the type contract named by the type checker
 E1003.example = vitte check path/to/file.vit
 
 E1004.summary = generisch Typ erfordert mindestens ein Argument.
-E1004.cause = The general phase found code that violates this diagnostic rule.
-E1004.step1 = Fix the first span reported for this diagnostic, then run the command again.
-E1004.fix = repair the highlighted compiler contract before checking later diagnostics
+E1004.cause = The inferred type does not satisfy the type required at this location.
+E1004.step1 = Compare the expected and found types in the diagnostic labels.
+E1004.fix = make the expression type match the type contract named by the type checker
 E1004.example = vitte check path/to/file.vit
 
 E1005.summary = Bezeichner unbekannt.
-E1005.cause = The general phase found code that violates this diagnostic rule.
-E1005.step1 = Fix the first span reported for this diagnostic, then run the command again.
-E1005.fix = repair the highlighted compiler contract before checking later diagnostics
+E1005.cause = The inferred type does not satisfy the type required at this location.
+E1005.step1 = Compare the expected and found types in the diagnostic labels.
+E1005.fix = make the expression type match the type contract named by the type checker
 E1005.example = vitte check path/to/file.vit
 
 E1006.summary = generisch Typ erfordert mindestens ein Typ Argument.
-E1006.cause = The general phase found code that violates this diagnostic rule.
-E1006.step1 = Fix the first span reported for this diagnostic, then run the command again.
-E1006.fix = repair the highlighted compiler contract before checking later diagnostics
+E1006.cause = The inferred type does not satisfy the type required at this location.
+E1006.step1 = Compare the expected and found types in the diagnostic labels.
+E1006.fix = make the expression type match the type contract named by the type checker
 E1006.example = vitte check path/to/file.vit
 
 E1007.summary = Umwandlung between signed and unsigned values ungueltig.
-E1007.cause = The general phase found code that violates this diagnostic rule.
-E1007.step1 = Fix the first span reported for this diagnostic, then run the command again.
-E1007.fix = repair the highlighted compiler contract before checking later diagnostics
+E1007.cause = The inferred type does not satisfy the type required at this location.
+E1007.step1 = Compare the expected and found types in the diagnostic labels.
+E1007.fix = make the expression type match the type contract named by the type checker
 E1007.example = vitte check path/to/file.vit
 
 E1010.summary = stdlib Modul von active stdlib Profil abgelehnt.
-E1010.cause = The general phase found code that violates this diagnostic rule.
-E1010.step1 = Fix the first span reported for this diagnostic, then run the command again.
-E1010.fix = repair the highlighted compiler contract before checking later diagnostics
+E1010.cause = The inferred type does not satisfy the type required at this location.
+E1010.step1 = Compare the expected and found types in the diagnostic labels.
+E1010.fix = make the expression type match the type contract named by the type checker
 E1010.example = vitte check path/to/file.vit
 
 E1011.summary = strict-imports requires explicit alias.
-E1011.cause = The general phase found code that violates this diagnostic rule.
-E1011.step1 = Fix the first span reported for this diagnostic, then run the command again.
-E1011.fix = repair the highlighted compiler contract before checking later diagnostics
+E1011.cause = The inferred type does not satisfy the type required at this location.
+E1011.step1 = Compare the expected and found types in the diagnostic labels.
+E1011.fix = make the expression type match the type contract named by the type checker
 E1011.example = vitte check path/to/file.vit
 
 E1012.summary = strict-imports verbietet unused Import aliases.
-E1012.cause = The general phase found code that violates this diagnostic rule.
-E1012.step1 = Fix the first span reported for this diagnostic, then run the command again.
-E1012.fix = repair the highlighted compiler contract before checking later diagnostics
+E1012.cause = The inferred type does not satisfy the type required at this location.
+E1012.step1 = Compare the expected and found types in the diagnostic labels.
+E1012.fix = make the expression type match the type contract named by the type checker
 E1012.example = vitte check path/to/file.vit
 
 E1013.summary = strict-imports verbietet non-canonical Import paths.
-E1013.cause = The general phase found code that violates this diagnostic rule.
-E1013.step1 = Fix the first span reported for this diagnostic, then run the command again.
-E1013.fix = repair the highlighted compiler contract before checking later diagnostics
+E1013.cause = The inferred type does not satisfy the type required at this location.
+E1013.step1 = Compare the expected and found types in the diagnostic labels.
+E1013.fix = make the expression type match the type contract named by the type checker
 E1013.example = vitte check path/to/file.vit
 
 E1014.summary = stdlib Modul fehlend.
-E1014.cause = The general phase found code that violates this diagnostic rule.
-E1014.step1 = Fix the first span reported for this diagnostic, then run the command again.
-E1014.fix = repair the highlighted compiler contract before checking later diagnostics
+E1014.cause = The inferred type does not satisfy the type required at this location.
+E1014.step1 = Compare the expected and found types in the diagnostic labels.
+E1014.fix = make the expression type match the type contract named by the type checker
 E1014.example = vitte check path/to/file.vit
 
 E1015.summary = experimental Modul Import denied.
-E1015.cause = The general phase found code that violates this diagnostic rule.
-E1015.step1 = Fix the first span reported for this diagnostic, then run the command again.
-E1015.fix = repair the highlighted compiler contract before checking later diagnostics
+E1015.cause = The inferred type does not satisfy the type required at this location.
+E1015.step1 = Compare the expected and found types in the diagnostic labels.
+E1015.fix = make the expression type match the type contract named by the type checker
 E1015.example = vitte check path/to/file.vit
 
 E1016.summary = intern Modul Import denied.
-E1016.cause = The general phase found code that violates this diagnostic rule.
-E1016.step1 = Fix the first span reported for this diagnostic, then run the command again.
-E1016.fix = repair the highlighted compiler contract before checking later diagnostics
+E1016.cause = The inferred type does not satisfy the type required at this location.
+E1016.step1 = Compare the expected and found types in the diagnostic labels.
+E1016.fix = make the expression type match the type contract named by the type checker
 E1016.example = vitte check path/to/file.vit
 
 E1017.summary = re-export Symbol Konflikt.
-E1017.cause = The general phase found code that violates this diagnostic rule.
-E1017.step1 = Fix the first span reported for this diagnostic, then run the command again.
-E1017.fix = repair the highlighted compiler contract before checking later diagnostics
+E1017.cause = The inferred type does not satisfy the type required at this location.
+E1017.step1 = Compare the expected and found types in the diagnostic labels.
+E1017.fix = make the expression type match the type contract named by the type checker
 E1017.example = vitte check path/to/file.vit
 
 E1018.summary = ambiguous Import Pfad.
-E1018.cause = The general phase found code that violates this diagnostic rule.
-E1018.step1 = Fix the first span reported for this diagnostic, then run the command again.
-E1018.fix = repair the highlighted compiler contract before checking later diagnostics
+E1018.cause = The inferred type does not satisfy the type required at this location.
+E1018.step1 = Compare the expected and found types in the diagnostic labels.
+E1018.fix = make the expression type match the type contract named by the type checker
 E1018.example = vitte check path/to/file.vit
 
 E1019.summary = strict-modules verbietet glob imports.
-E1019.cause = The general phase found code that violates this diagnostic rule.
-E1019.step1 = Fix the first span reported for this diagnostic, then run the command again.
-E1019.fix = repair the highlighted compiler contract before checking later diagnostics
+E1019.cause = The inferred type does not satisfy the type required at this location.
+E1019.step1 = Compare the expected and found types in the diagnostic labels.
+E1019.fix = make the expression type match the type contract named by the type checker
 E1019.example = vitte check path/to/file.vit
 
 E1020.summary = legacy Import Pfad ist veraltet.
-E1020.cause = The general phase found code that violates this diagnostic rule.
-E1020.step1 = Fix the first span reported for this diagnostic, then run the command again.
-E1020.fix = repair the highlighted compiler contract before checking later diagnostics
+E1020.cause = The inferred type does not satisfy the type required at this location.
+E1020.step1 = Compare the expected and found types in the diagnostic labels.
+E1020.fix = make the expression type match the type contract named by the type checker
 E1020.example = vitte check path/to/file.vit
 
 E1021.summary = entry Modul Pfad muss canonical sein.
-E1021.cause = The general phase found code that violates this diagnostic rule.
-E1021.step1 = Fix the first span reported for this diagnostic, then run the command again.
-E1021.fix = repair the highlighted compiler contract before checking later diagnostics
+E1021.cause = The inferred type does not satisfy the type required at this location.
+E1021.step1 = Compare the expected and found types in the diagnostic labels.
+E1021.fix = make the expression type match the type contract named by the type checker
 E1021.example = vitte check path/to/file.vit
 
 E1022.summary = entry Name doppelt.
-E1022.cause = The general phase found code that violates this diagnostic rule.
-E1022.step1 = Fix the first span reported for this diagnostic, then run the command again.
-E1022.fix = repair the highlighted compiler contract before checking later diagnostics
+E1022.cause = The inferred type does not satisfy the type required at this location.
+E1022.step1 = Compare the expected and found types in the diagnostic labels.
+E1022.fix = make the expression type match the type contract named by the type checker
 E1022.example = vitte check path/to/file.vit
 
 E1023.summary = share referenziert unbekanntes Symbol.
-E1023.cause = The general phase found code that violates this diagnostic rule.
-E1023.step1 = Fix the first span reported for this diagnostic, then run the command again.
-E1023.fix = repair the highlighted compiler contract before checking later diagnostics
+E1023.cause = The inferred type does not satisfy the type required at this location.
+E1023.step1 = Compare the expected and found types in the diagnostic labels.
+E1023.fix = make the expression type match the type contract named by the type checker
 E1023.example = vitte check path/to/file.vit
 
 E1024.summary = Symbol in share list doppelt.
-E1024.cause = The general phase found code that violates this diagnostic rule.
-E1024.step1 = Fix the first span reported for this diagnostic, then run the command again.
-E1024.fix = repair the highlighted compiler contract before checking later diagnostics
+E1024.cause = The inferred type does not satisfy the type required at this location.
+E1024.step1 = Compare the expected and found types in the diagnostic labels.
+E1024.fix = make the expression type match the type contract named by the type checker
 E1024.example = vitte check path/to/file.vit
 
 E1025.summary = Symbol nicht von Modul exportiert.
-E1025.cause = The general phase found code that violates this diagnostic rule.
-E1025.step1 = Fix the first span reported for this diagnostic, then run the command again.
-E1025.fix = repair the highlighted compiler contract before checking later diagnostics
+E1025.cause = The inferred type does not satisfy the type required at this location.
+E1025.step1 = Compare the expected and found types in the diagnostic labels.
+E1025.fix = make the expression type match the type contract named by the type checker
 E1025.example = vitte check path/to/file.vit
 
 E1026.summary = share Deklaration doppelt.
-E1026.cause = The general phase found code that violates this diagnostic rule.
-E1026.step1 = Fix the first span reported for this diagnostic, then run the command again.
-E1026.fix = repair the highlighted compiler contract before checking later diagnostics
+E1026.cause = The inferred type does not satisfy the type required at this location.
+E1026.step1 = Compare the expected and found types in the diagnostic labels.
+E1026.fix = make the expression type match the type contract named by the type checker
 E1026.example = vitte check path/to/file.vit
 
 E1027.summary = Import Bindung doppelt.
-E1027.cause = The general phase found code that violates this diagnostic rule.
-E1027.step1 = Fix the first span reported for this diagnostic, then run the command again.
-E1027.fix = repair the highlighted compiler contract before checking later diagnostics
+E1027.cause = The inferred type does not satisfy the type required at this location.
+E1027.step1 = Compare the expected and found types in the diagnostic labels.
+E1027.fix = make the expression type match the type contract named by the type checker
 E1027.example = vitte check path/to/file.vit
 
 E1028.summary = Import Bindung kollidiert mit lokal Deklaration.
-E1028.cause = The general phase found code that violates this diagnostic rule.
-E1028.step1 = Fix the first span reported for this diagnostic, then run the command again.
-E1028.fix = repair the highlighted compiler contract before checking later diagnostics
+E1028.cause = The inferred type does not satisfy the type required at this location.
+E1028.step1 = Compare the expected and found types in the diagnostic labels.
+E1028.fix = make the expression type match the type contract named by the type checker
 E1028.example = vitte check path/to/file.vit
 
 E1029.summary = lokal Deklaration Name doppelt.
-E1029.cause = The general phase found code that violates this diagnostic rule.
-E1029.step1 = Fix the first span reported for this diagnostic, then run the command again.
-E1029.fix = repair the highlighted compiler contract before checking later diagnostics
+E1029.cause = The inferred type does not satisfy the type required at this location.
+E1029.step1 = Compare the expected and found types in the diagnostic labels.
+E1029.fix = make the expression type match the type contract named by the type checker
 E1029.example = vitte check path/to/file.vit
 
 E1030.summary = Modul alias Member not exported.
-E1030.cause = The general phase found code that violates this diagnostic rule.
-E1030.step1 = Fix the first span reported for this diagnostic, then run the command again.
-E1030.fix = repair the highlighted compiler contract before checking later diagnostics
+E1030.cause = The inferred type does not satisfy the type required at this location.
+E1030.step1 = Compare the expected and found types in the diagnostic labels.
+E1030.fix = make the expression type match the type contract named by the type checker
 E1030.example = vitte check path/to/file.vit
 
 E1031.summary = qualified Typ Member fehlend.
-E1031.cause = The general phase found code that violates this diagnostic rule.
-E1031.step1 = Fix the first span reported for this diagnostic, then run the command again.
-E1031.fix = repair the highlighted compiler contract before checking later diagnostics
+E1031.cause = The inferred type does not satisfy the type required at this location.
+E1031.step1 = Compare the expected and found types in the diagnostic labels.
+E1031.fix = make the expression type match the type contract named by the type checker
 E1031.example = vitte check path/to/file.vit
 
 E1032.summary = Ausdruck ist nicht aufrufbar.
-E1032.cause = The general phase found code that violates this diagnostic rule.
-E1032.step1 = Fix the first span reported for this diagnostic, then run the command again.
-E1032.fix = repair the highlighted compiler contract before checking later diagnostics
+E1032.cause = The inferred type does not satisfy the type required at this location.
+E1032.step1 = Compare the expected and found types in the diagnostic labels.
+E1032.fix = make the expression type match the type contract named by the type checker
 E1032.example = vitte check path/to/file.vit
 
 E2001.summary = Typ nicht unterstuetzt.
-E2001.cause = The general phase found code that violates this diagnostic rule.
-E2001.step1 = Fix the first span reported for this diagnostic, then run the command again.
-E2001.fix = repair the highlighted compiler contract before checking later diagnostics
+E2001.cause = A compiler representation failed the structural invariant required before the next pipeline phase.
+E2001.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+E2001.fix = repair the malformed intermediate representation before continuing to the next phase
 E2001.example = vitte check path/to/file.vit
 
 E2002.summary = invoke has no Aufrufziel.
-E2002.cause = The general phase found code that violates this diagnostic rule.
-E2002.step1 = Fix the first span reported for this diagnostic, then run the command again.
-E2002.fix = repair the highlighted compiler contract before checking later diagnostics
+E2002.cause = A compiler representation failed the structural invariant required before the next pipeline phase.
+E2002.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+E2002.fix = repair the malformed intermediate representation before continuing to the next phase
 E2002.example = vitte check path/to/file.vit
 
 E2003.summary = Ausdruck in HIR nicht unterstuetzt.
-E2003.cause = The general phase found code that violates this diagnostic rule.
-E2003.step1 = Fix the first span reported for this diagnostic, then run the command again.
-E2003.fix = repair the highlighted compiler contract before checking later diagnostics
+E2003.cause = A compiler representation failed the structural invariant required before the next pipeline phase.
+E2003.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+E2003.fix = repair the malformed intermediate representation before continuing to the next phase
 E2003.example = vitte check path/to/file.vit
 
 E2004.summary = Muster in HIR nicht unterstuetzt.
-E2004.cause = The general phase found code that violates this diagnostic rule.
-E2004.step1 = Fix the first span reported for this diagnostic, then run the command again.
-E2004.fix = repair the highlighted compiler contract before checking later diagnostics
+E2004.cause = A compiler representation failed the structural invariant required before the next pipeline phase.
+E2004.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+E2004.fix = repair the malformed intermediate representation before continuing to the next phase
 E2004.example = vitte check path/to/file.vit
 
 E2005.summary = Anweisung in HIR nicht unterstuetzt.
-E2005.cause = The general phase found code that violates this diagnostic rule.
-E2005.step1 = Fix the first span reported for this diagnostic, then run the command again.
-E2005.fix = repair the highlighted compiler contract before checking later diagnostics
+E2005.cause = A compiler representation failed the structural invariant required before the next pipeline phase.
+E2005.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+E2005.fix = repair the malformed intermediate representation before continuing to the next phase
 E2005.example = vitte check path/to/file.vit
 
 E2006.summary = HIR Typ kind unerwartet.
-E2006.cause = The general phase found code that violates this diagnostic rule.
-E2006.step1 = Fix the first span reported for this diagnostic, then run the command again.
-E2006.fix = repair the highlighted compiler contract before checking later diagnostics
+E2006.cause = A compiler representation failed the structural invariant required before the next pipeline phase.
+E2006.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+E2006.fix = repair the malformed intermediate representation before continuing to the next phase
 E2006.example = vitte check path/to/file.vit
 
 E2007.summary = HIR expr kind unerwartet.
-E2007.cause = The general phase found code that violates this diagnostic rule.
-E2007.step1 = Fix the first span reported for this diagnostic, then run the command again.
-E2007.fix = repair the highlighted compiler contract before checking later diagnostics
+E2007.cause = A compiler representation failed the structural invariant required before the next pipeline phase.
+E2007.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+E2007.fix = repair the malformed intermediate representation before continuing to the next phase
 E2007.example = vitte check path/to/file.vit
 
 E2008.summary = HIR stmt kind unerwartet.
-E2008.cause = The general phase found code that violates this diagnostic rule.
-E2008.step1 = Fix the first span reported for this diagnostic, then run the command again.
-E2008.fix = repair the highlighted compiler contract before checking later diagnostics
+E2008.cause = A compiler representation failed the structural invariant required before the next pipeline phase.
+E2008.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+E2008.fix = repair the malformed intermediate representation before continuing to the next phase
 E2008.example = vitte check path/to/file.vit
 
 E2009.summary = HIR Muster kind unerwartet.
-E2009.cause = The general phase found code that violates this diagnostic rule.
-E2009.step1 = Fix the first span reported for this diagnostic, then run the command again.
-E2009.fix = repair the highlighted compiler contract before checking later diagnostics
+E2009.cause = A compiler representation failed the structural invariant required before the next pipeline phase.
+E2009.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+E2009.fix = repair the malformed intermediate representation before continuing to the next phase
 E2009.example = vitte check path/to/file.vit
 
 E2010.summary = HIR decl kind unerwartet.
-E2010.cause = The general phase found code that violates this diagnostic rule.
-E2010.step1 = Fix the first span reported for this diagnostic, then run the command again.
-E2010.fix = repair the highlighted compiler contract before checking later diagnostics
+E2010.cause = A compiler representation failed the structural invariant required before the next pipeline phase.
+E2010.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+E2010.fix = repair the malformed intermediate representation before continuing to the next phase
 E2010.example = vitte check path/to/file.vit
 
 LEX_E_INVALID_CHAR.summary = Zeichen ungueltig.
 LEX_E_INVALID_CHAR.cause = The parser or lexer could not form the next valid source construct.
 LEX_E_INVALID_CHAR.step1 = Look at the highlighted token and complete or remove the construct around it.
 LEX_E_INVALID_CHAR.fix = complete the syntax shape named by the parser label at the highlighted token
-LEX_E_INVALID_CHAR.example = proc main() -> int { give 0; }
+LEX_E_INVALID_CHAR.example = proc main() -> int { give 0 }
 
 LEX_E_INVALID_NUMBER.summary = numeric Literal ungueltig.
 LEX_E_INVALID_NUMBER.cause = The parser or lexer could not form the next valid source construct.
 LEX_E_INVALID_NUMBER.step1 = Look at the highlighted token and complete or remove the construct around it.
 LEX_E_INVALID_NUMBER.fix = complete the syntax shape named by the parser label at the highlighted token
-LEX_E_INVALID_NUMBER.example = proc main() -> int { give 0; }
+LEX_E_INVALID_NUMBER.example = proc main() -> int { give 0 }
 
 LEX_E_INVALID_ESCAPE.summary = Escape sequence ungueltig.
 LEX_E_INVALID_ESCAPE.cause = The parser or lexer could not form the next valid source construct.
 LEX_E_INVALID_ESCAPE.step1 = Look at the highlighted token and complete or remove the construct around it.
 LEX_E_INVALID_ESCAPE.fix = complete the syntax shape named by the parser label at the highlighted token
-LEX_E_INVALID_ESCAPE.example = proc main() -> int { give 0; }
+LEX_E_INVALID_ESCAPE.example = proc main() -> int { give 0 }
 
 LEX_E_INVALID_UNICODE_ESCAPE.summary = unicode Escape sequence ungueltig.
 LEX_E_INVALID_UNICODE_ESCAPE.cause = The parser or lexer could not form the next valid source construct.
 LEX_E_INVALID_UNICODE_ESCAPE.step1 = Look at the highlighted token and complete or remove the construct around it.
 LEX_E_INVALID_UNICODE_ESCAPE.fix = complete the syntax shape named by the parser label at the highlighted token
-LEX_E_INVALID_UNICODE_ESCAPE.example = proc main() -> int { give 0; }
+LEX_E_INVALID_UNICODE_ESCAPE.example = proc main() -> int { give 0 }
 
 LEX_E_INVALID_UTF8.summary = UTF-8 byte sequence ungueltig.
 LEX_E_INVALID_UTF8.cause = The parser or lexer could not form the next valid source construct.
 LEX_E_INVALID_UTF8.step1 = Look at the highlighted token and complete or remove the construct around it.
 LEX_E_INVALID_UTF8.fix = complete the syntax shape named by the parser label at the highlighted token
-LEX_E_INVALID_UTF8.example = proc main() -> int { give 0; }
+LEX_E_INVALID_UTF8.example = proc main() -> int { give 0 }
 
 LEX_E_INVALID_CHAR_LITERAL.summary = Zeichen Literal ungueltig.
 LEX_E_INVALID_CHAR_LITERAL.cause = The parser or lexer could not form the next valid source construct.
 LEX_E_INVALID_CHAR_LITERAL.step1 = Look at the highlighted token and complete or remove the construct around it.
 LEX_E_INVALID_CHAR_LITERAL.fix = complete the syntax shape named by the parser label at the highlighted token
-LEX_E_INVALID_CHAR_LITERAL.example = proc main() -> int { give 0; }
+LEX_E_INVALID_CHAR_LITERAL.example = proc main() -> int { give 0 }
 
 LEX_E_INVALID_IDENTIFIER.summary = Bezeichner ungueltig.
 LEX_E_INVALID_IDENTIFIER.cause = The parser or lexer could not form the next valid source construct.
 LEX_E_INVALID_IDENTIFIER.step1 = Look at the highlighted token and complete or remove the construct around it.
 LEX_E_INVALID_IDENTIFIER.fix = complete the syntax shape named by the parser label at the highlighted token
-LEX_E_INVALID_IDENTIFIER.example = proc main() -> int { give 0; }
+LEX_E_INVALID_IDENTIFIER.example = proc main() -> int { give 0 }
 
 LEX_E_UNTERMINATED_STRING.summary = string Literal nicht beendet.
 LEX_E_UNTERMINATED_STRING.cause = The parser or lexer could not form the next valid source construct.
 LEX_E_UNTERMINATED_STRING.step1 = Look at the highlighted token and complete or remove the construct around it.
 LEX_E_UNTERMINATED_STRING.fix = add the closing `"` on the same line; do not close a string with a single quote
-LEX_E_UNTERMINATED_STRING.example = proc main() -> int { give 0; }
+LEX_E_UNTERMINATED_STRING.example = print("message")
 
 LEX_E_UNTERMINATED_CHAR.summary = Zeichen Literal nicht beendet.
 LEX_E_UNTERMINATED_CHAR.cause = The parser or lexer could not form the next valid source construct.
 LEX_E_UNTERMINATED_CHAR.step1 = Look at the highlighted token and complete or remove the construct around it.
 LEX_E_UNTERMINATED_CHAR.fix = complete the syntax shape named by the parser label at the highlighted token
-LEX_E_UNTERMINATED_CHAR.example = proc main() -> int { give 0; }
+LEX_E_UNTERMINATED_CHAR.example = proc main() -> int { give 0 }
 
 LEX_E_UNTERMINATED_BLOCK_COMMENT.summary = Block comment nicht beendet.
 LEX_E_UNTERMINATED_BLOCK_COMMENT.cause = The parser or lexer could not form the next valid source construct.
 LEX_E_UNTERMINATED_BLOCK_COMMENT.step1 = Look at the highlighted token and complete or remove the construct around it.
 LEX_E_UNTERMINATED_BLOCK_COMMENT.fix = complete the syntax shape named by the parser label at the highlighted token
-LEX_E_UNTERMINATED_BLOCK_COMMENT.example = proc main() -> int { give 0; }
+LEX_E_UNTERMINATED_BLOCK_COMMENT.example = proc main() -> int { give 0 }
 
 LEX_E_UNTERMINATED_REGION_COMMENT.summary = region comment nicht beendet.
 LEX_E_UNTERMINATED_REGION_COMMENT.cause = The parser or lexer could not form the next valid source construct.
 LEX_E_UNTERMINATED_REGION_COMMENT.step1 = Look at the highlighted token and complete or remove the construct around it.
 LEX_E_UNTERMINATED_REGION_COMMENT.fix = complete the syntax shape named by the parser label at the highlighted token
-LEX_E_UNTERMINATED_REGION_COMMENT.example = proc main() -> int { give 0; }
+LEX_E_UNTERMINATED_REGION_COMMENT.example = proc main() -> int { give 0 }
 
 LEX_E_UNEXPECTED_EOF.summary = end of Datei unerwartet.
 LEX_E_UNEXPECTED_EOF.cause = The parser or lexer could not form the next valid source construct.
 LEX_E_UNEXPECTED_EOF.step1 = Look at the highlighted token and complete or remove the construct around it.
 LEX_E_UNEXPECTED_EOF.fix = complete the syntax shape named by the parser label at the highlighted token
-LEX_E_UNEXPECTED_EOF.example = proc main() -> int { give 0; }
+LEX_E_UNEXPECTED_EOF.example = proc main() -> int { give 0 }
 
 LEX_E_TOKEN_TOO_LARGE.summary = Token zu.
 LEX_E_TOKEN_TOO_LARGE.cause = The parser or lexer could not form the next valid source construct.
 LEX_E_TOKEN_TOO_LARGE.step1 = Look at the highlighted token and complete or remove the construct around it.
 LEX_E_TOKEN_TOO_LARGE.fix = complete the syntax shape named by the parser label at the highlighted token
-LEX_E_TOKEN_TOO_LARGE.example = proc main() -> int { give 0; }
+LEX_E_TOKEN_TOO_LARGE.example = proc main() -> int { give 0 }
 
 PLOOP.summary = Parser hat keinen Fortschritt gemacht.
 PLOOP.cause = The parser or lexer could not form the next valid source construct.
 PLOOP.step1 = Look at the highlighted token and complete or remove the construct around it.
 PLOOP.fix = complete the syntax shape named by the parser label at the highlighted token
-PLOOP.example = proc main() -> int { give 0; }
+PLOOP.example = proc main() -> int { give 0 }
 
 PPRIMARY999.summary = Ausdruck Token unerwartet.
 PPRIMARY999.cause = The parser or lexer could not form the next valid source construct.
 PPRIMARY999.step1 = Look at the highlighted token and complete or remove the construct around it.
 PPRIMARY999.fix = complete the syntax shape named by the parser label at the highlighted token
-PPRIMARY999.example = proc main() -> int { give 0; }
+PPRIMARY999.example = proc main() -> int { give 0 }
 
 PSTMT007.summary = Zuweisung Operator erwartet.
 PSTMT007.cause = The parser or lexer could not form the next valid source construct.
 PSTMT007.step1 = Look at the highlighted token and complete or remove the construct around it.
 PSTMT007.fix = complete the syntax shape named by the parser label at the highlighted token
-PSTMT007.example = proc main() -> int { give 0; }
+PSTMT007.example = proc main() -> int { give 0 }
 
 P0001.summary = top-level Token unerwartet.
 P0001.cause = The parser or lexer could not form the next valid source construct.
 P0001.step1 = Look at the highlighted token and complete or remove the construct around it.
 P0001.fix = complete the syntax shape named by the parser label at the highlighted token
-P0001.example = proc main() -> int { give 0; }
+P0001.example = proc main() -> int { give 0 }
 
 P000_UNBALANCED.summary = Block nicht geschlossen.
 P000_UNBALANCED.cause = The parser or lexer could not form the next valid source construct.
 P000_UNBALANCED.step1 = Look at the highlighted token and complete or remove the construct around it.
 P000_UNBALANCED.fix = complete the syntax shape named by the parser label at the highlighted token
-P000_UNBALANCED.example = proc main() -> int { give 0; }
+P000_UNBALANCED.example = proc main() -> int { give 0 }
 
 LEX_E_INVALID_FLOAT.summary = Fliesszahl ungueltig.
 LEX_E_INVALID_FLOAT.cause = The parser or lexer could not form the next valid source construct.
 LEX_E_INVALID_FLOAT.step1 = Look at the highlighted token and complete or remove the construct around it.
 LEX_E_INVALID_FLOAT.fix = complete the syntax shape named by the parser label at the highlighted token
-LEX_E_INVALID_FLOAT.example = proc main() -> int { give 0; }
+LEX_E_INVALID_FLOAT.example = proc main() -> int { give 0 }
 
 LEX_E_INVALID_BINARY.summary = binaer ungueltig.
 LEX_E_INVALID_BINARY.cause = The parser or lexer could not form the next valid source construct.
 LEX_E_INVALID_BINARY.step1 = Look at the highlighted token and complete or remove the construct around it.
 LEX_E_INVALID_BINARY.fix = complete the syntax shape named by the parser label at the highlighted token
-LEX_E_INVALID_BINARY.example = proc main() -> int { give 0; }
+LEX_E_INVALID_BINARY.example = proc main() -> int { give 0 }
 
 LEX_E_INVALID_OCTAL.summary = octal ungueltig.
 LEX_E_INVALID_OCTAL.cause = The parser or lexer could not form the next valid source construct.
 LEX_E_INVALID_OCTAL.step1 = Look at the highlighted token and complete or remove the construct around it.
 LEX_E_INVALID_OCTAL.fix = complete the syntax shape named by the parser label at the highlighted token
-LEX_E_INVALID_OCTAL.example = proc main() -> int { give 0; }
+LEX_E_INVALID_OCTAL.example = proc main() -> int { give 0 }
 
 LEX_E_INVALID_HEX.summary = hex ungueltig.
 LEX_E_INVALID_HEX.cause = The parser or lexer could not form the next valid source construct.
 LEX_E_INVALID_HEX.step1 = Look at the highlighted token and complete or remove the construct around it.
 LEX_E_INVALID_HEX.fix = complete the syntax shape named by the parser label at the highlighted token
-LEX_E_INVALID_HEX.example = proc main() -> int { give 0; }
+LEX_E_INVALID_HEX.example = proc main() -> int { give 0 }
 
 LEX_E_INVALID_INDENTATION.summary = Einrueckung ungueltig.
 LEX_E_INVALID_INDENTATION.cause = The parser or lexer could not form the next valid source construct.
 LEX_E_INVALID_INDENTATION.step1 = Look at the highlighted token and complete or remove the construct around it.
 LEX_E_INVALID_INDENTATION.fix = complete the syntax shape named by the parser label at the highlighted token
-LEX_E_INVALID_INDENTATION.example = proc main() -> int { give 0; }
+LEX_E_INVALID_INDENTATION.example = proc main() -> int { give 0 }
 
 LEX_E_INVALID_TOKEN.summary = Token ungueltig.
 LEX_E_INVALID_TOKEN.cause = The parser or lexer could not form the next valid source construct.
 LEX_E_INVALID_TOKEN.step1 = Look at the highlighted token and complete or remove the construct around it.
 LEX_E_INVALID_TOKEN.fix = complete the syntax shape named by the parser label at the highlighted token
-LEX_E_INVALID_TOKEN.example = proc main() -> int { give 0; }
+LEX_E_INVALID_TOKEN.example = proc main() -> int { give 0 }
 
 LEX_E_INVALID_UNICODE.summary = unicode ungueltig.
 LEX_E_INVALID_UNICODE.cause = The parser or lexer could not form the next valid source construct.
 LEX_E_INVALID_UNICODE.step1 = Look at the highlighted token and complete or remove the construct around it.
 LEX_E_INVALID_UNICODE.fix = complete the syntax shape named by the parser label at the highlighted token
-LEX_E_INVALID_UNICODE.example = proc main() -> int { give 0; }
+LEX_E_INVALID_UNICODE.example = proc main() -> int { give 0 }
 
 LEX_E_UNTERMINATED_COMMENT.summary = comment nicht beendet.
 LEX_E_UNTERMINATED_COMMENT.cause = The parser or lexer could not form the next valid source construct.
 LEX_E_UNTERMINATED_COMMENT.step1 = Look at the highlighted token and complete or remove the construct around it.
 LEX_E_UNTERMINATED_COMMENT.fix = complete the syntax shape named by the parser label at the highlighted token
-LEX_E_UNTERMINATED_COMMENT.example = proc main() -> int { give 0; }
+LEX_E_UNTERMINATED_COMMENT.example = proc main() -> int { give 0 }
 
 PATTR003.summary = pattr003.
 PATTR003.cause = The parser or lexer could not form the next valid source construct.
 PATTR003.step1 = Look at the highlighted token and complete or remove the construct around it.
 PATTR003.fix = complete the syntax shape named by the parser label at the highlighted token
-PATTR003.example = proc main() -> int { give 0; }
+PATTR003.example = proc main() -> int { give 0 }
 
 PARSE_E_TOPLEVEL_DECL_EXPECTED.summary = top-level Deklaration expected.
 PARSE_E_TOPLEVEL_DECL_EXPECTED.cause = The parser or lexer could not form the next valid source construct.
 PARSE_E_TOPLEVEL_DECL_EXPECTED.step1 = Look at the highlighted token and complete or remove the construct around it.
 PARSE_E_TOPLEVEL_DECL_EXPECTED.fix = complete the syntax shape named by the parser label at the highlighted token
-PARSE_E_TOPLEVEL_DECL_EXPECTED.example = proc main() -> int { give 0; }
+PARSE_E_TOPLEVEL_DECL_EXPECTED.example = proc main() -> int { give 0 }
 
 PARSE_E_INCOMPLETE_EXPR.summary = incomplete Ausdruck.
 PARSE_E_INCOMPLETE_EXPR.cause = The parser or lexer could not form the next valid source construct.
 PARSE_E_INCOMPLETE_EXPR.step1 = Look at the highlighted token and complete or remove the construct around it.
 PARSE_E_INCOMPLETE_EXPR.fix = complete the syntax shape named by the parser label at the highlighted token
-PARSE_E_INCOMPLETE_EXPR.example = proc main() -> int { give 0; }
+PARSE_E_INCOMPLETE_EXPR.example = proc main() -> int { give 0 }
 
 PARSE_E_MISSING_RPAREN.summary = closing parenthesis fehlt.
 PARSE_E_MISSING_RPAREN.cause = The parser or lexer could not form the next valid source construct.
 PARSE_E_MISSING_RPAREN.step1 = Look at the highlighted token and complete or remove the construct around it.
 PARSE_E_MISSING_RPAREN.fix = complete the syntax shape named by the parser label at the highlighted token
-PARSE_E_MISSING_RPAREN.example = proc main() -> int { give 0; }
+PARSE_E_MISSING_RPAREN.example = proc main() -> int { give 0 }
 
 PARSE_E_MISSING_COMMA.summary = comma fehlt.
 PARSE_E_MISSING_COMMA.cause = The parser or lexer could not form the next valid source construct.
 PARSE_E_MISSING_COMMA.step1 = Look at the highlighted token and complete or remove the construct around it.
 PARSE_E_MISSING_COMMA.fix = complete the syntax shape named by the parser label at the highlighted token
-PARSE_E_MISSING_COMMA.example = proc main() -> int { give 0; }
+PARSE_E_MISSING_COMMA.example = proc main() -> int { give 0 }
 
 PARSE_E_TYPE_EXPECTED.summary = Typ expected.
 PARSE_E_TYPE_EXPECTED.cause = The parser or lexer could not form the next valid source construct.
 PARSE_E_TYPE_EXPECTED.step1 = Look at the highlighted token and complete or remove the construct around it.
 PARSE_E_TYPE_EXPECTED.fix = complete the syntax shape named by the parser label at the highlighted token
-PARSE_E_TYPE_EXPECTED.example = proc main() -> int { give 0; }
+PARSE_E_TYPE_EXPECTED.example = proc main() -> int { give 0 }
 
 PARSE_E_PATTERN_EXPECTED.summary = Muster expected.
 PARSE_E_PATTERN_EXPECTED.cause = The parser or lexer could not form the next valid source construct.
 PARSE_E_PATTERN_EXPECTED.step1 = Look at the highlighted token and complete or remove the construct around it.
 PARSE_E_PATTERN_EXPECTED.fix = complete the syntax shape named by the parser label at the highlighted token
-PARSE_E_PATTERN_EXPECTED.example = proc main() -> int { give 0; }
+PARSE_E_PATTERN_EXPECTED.example = proc main() -> int { give 0 }
 
 PARSE_E_BLOCK_EXPECTED.summary = Block expected.
 PARSE_E_BLOCK_EXPECTED.cause = The parser or lexer could not form the next valid source construct.
 PARSE_E_BLOCK_EXPECTED.step1 = Look at the highlighted token and complete or remove the construct around it.
 PARSE_E_BLOCK_EXPECTED.fix = complete the syntax shape named by the parser label at the highlighted token
-PARSE_E_BLOCK_EXPECTED.example = proc main() -> int { give 0; }
+PARSE_E_BLOCK_EXPECTED.example = proc main() -> int { give 0 }
 
 PARSE_E_UNCLOSED_BLOCK.summary = Block nicht geschlossen.
 PARSE_E_UNCLOSED_BLOCK.cause = The parser or lexer could not form the next valid source construct.
 PARSE_E_UNCLOSED_BLOCK.step1 = Look at the highlighted token and complete or remove the construct around it.
 PARSE_E_UNCLOSED_BLOCK.fix = add `}` to close the highlighted block, then run the checker again for its parent block
-PARSE_E_UNCLOSED_BLOCK.example = proc main() -> int { give 0; }
+PARSE_E_UNCLOSED_BLOCK.example = while running { set running = false }
 
 PARSE_E_EXPECTED_TOKEN.summary = Token erwartet.
 PARSE_E_EXPECTED_TOKEN.cause = The parser or lexer could not form the next valid source construct.
 PARSE_E_EXPECTED_TOKEN.step1 = Look at the highlighted token and complete or remove the construct around it.
 PARSE_E_EXPECTED_TOKEN.fix = complete the syntax shape named by the parser label at the highlighted token
-PARSE_E_EXPECTED_TOKEN.example = proc main() -> int { give 0; }
+PARSE_E_EXPECTED_TOKEN.example = proc main() -> int { give 0 }
 
 PARSE_E_PARAMETER_COLON_EXPECTED.summary = parameter colon expected.
 PARSE_E_PARAMETER_COLON_EXPECTED.cause = The parser or lexer could not form the next valid source construct.
 PARSE_E_PARAMETER_COLON_EXPECTED.step1 = Look at the highlighted token and complete or remove the construct around it.
 PARSE_E_PARAMETER_COLON_EXPECTED.fix = insert `:` between the parameter name and its type, for example `right: f64`
-PARSE_E_PARAMETER_COLON_EXPECTED.example = proc main() -> int { give 0; }
+PARSE_E_PARAMETER_COLON_EXPECTED.example = proc calculate(right: f64) -> f64 { give right }
 
 PARSE_E_UNEXPECTED_TOKEN.summary = Token unerwartet.
 PARSE_E_UNEXPECTED_TOKEN.cause = The parser or lexer could not form the next valid source construct.
 PARSE_E_UNEXPECTED_TOKEN.step1 = Look at the highlighted token and complete or remove the construct around it.
 PARSE_E_UNEXPECTED_TOKEN.fix = complete the syntax shape named by the parser label at the highlighted token
-PARSE_E_UNEXPECTED_TOKEN.example = proc main() -> int { give 0; }
+PARSE_E_UNEXPECTED_TOKEN.example = proc main() -> int { give 0 }
 
 PARSE_EXPECTED_EXPR.summary = parse expected expr.
 PARSE_EXPECTED_EXPR.cause = The parser or lexer could not form the next valid source construct.
 PARSE_EXPECTED_EXPR.step1 = Look at the highlighted token and complete or remove the construct around it.
 PARSE_EXPECTED_EXPR.fix = complete the syntax shape named by the parser label at the highlighted token
-PARSE_EXPECTED_EXPR.example = proc main() -> int { give 0; }
+PARSE_EXPECTED_EXPR.example = proc main() -> int { give 0 }
 
 PARSE_EXPECTED_TYPE.summary = parse expected Typ.
 PARSE_EXPECTED_TYPE.cause = The parser or lexer could not form the next valid source construct.
 PARSE_EXPECTED_TYPE.step1 = Look at the highlighted token and complete or remove the construct around it.
 PARSE_EXPECTED_TYPE.fix = complete the syntax shape named by the parser label at the highlighted token
-PARSE_EXPECTED_TYPE.example = proc main() -> int { give 0; }
+PARSE_EXPECTED_TYPE.example = proc main() -> int { give 0 }
 
 PARSE_EXPECTED_PATTERN.summary = parse expected Muster.
 PARSE_EXPECTED_PATTERN.cause = The parser or lexer could not form the next valid source construct.
 PARSE_EXPECTED_PATTERN.step1 = Look at the highlighted token and complete or remove the construct around it.
 PARSE_EXPECTED_PATTERN.fix = complete the syntax shape named by the parser label at the highlighted token
-PARSE_EXPECTED_PATTERN.example = proc main() -> int { give 0; }
+PARSE_EXPECTED_PATTERN.example = proc main() -> int { give 0 }
 
 PARSE_EXPECTED_BLOCK.summary = parse expected Block.
 PARSE_EXPECTED_BLOCK.cause = The parser or lexer could not form the next valid source construct.
 PARSE_EXPECTED_BLOCK.step1 = Look at the highlighted token and complete or remove the construct around it.
 PARSE_EXPECTED_BLOCK.fix = complete the syntax shape named by the parser label at the highlighted token
-PARSE_EXPECTED_BLOCK.example = proc main() -> int { give 0; }
+PARSE_EXPECTED_BLOCK.example = proc main() -> int { give 0 }
 
 PARSE_EXPECTED_IDENTIFIER.summary = parse expected Bezeichner.
 PARSE_EXPECTED_IDENTIFIER.cause = The parser or lexer could not form the next valid source construct.
 PARSE_EXPECTED_IDENTIFIER.step1 = Look at the highlighted token and complete or remove the construct around it.
 PARSE_EXPECTED_IDENTIFIER.fix = complete the syntax shape named by the parser label at the highlighted token
-PARSE_EXPECTED_IDENTIFIER.example = proc main() -> int { give 0; }
+PARSE_EXPECTED_IDENTIFIER.example = proc main() -> int { give 0 }
 
 FAST0001.summary = fast0001.
 FAST0001.cause = The parser or lexer could not form the next valid source construct.
 FAST0001.step1 = Look at the highlighted token and complete or remove the construct around it.
 FAST0001.fix = complete the syntax shape named by the parser label at the highlighted token
-FAST0001.example = proc main() -> int { give 0; }
+FAST0001.example = proc main() -> int { give 0 }
 
 FLEX0001.summary = flex0001.
 FLEX0001.cause = The parser or lexer could not form the next valid source construct.
 FLEX0001.step1 = Look at the highlighted token and complete or remove the construct around it.
 FLEX0001.fix = complete the syntax shape named by the parser label at the highlighted token
-FLEX0001.example = proc main() -> int { give 0; }
+FLEX0001.example = proc main() -> int { give 0 }
 
 AST_E_INVALID_NODE.summary = Knoten ungueltig.
 AST_E_INVALID_NODE.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-AST_E_INVALID_NODE.step1 = Fix the first span reported for this diagnostic, then run the command again.
-AST_E_INVALID_NODE.fix = repair the highlighted compiler contract before checking later diagnostics
+AST_E_INVALID_NODE.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+AST_E_INVALID_NODE.fix = repair the malformed intermediate representation before continuing to the next phase
 AST_E_INVALID_NODE.example = vitte check path/to/file.vit
 
 AST_E_EMPTY_MODULE.summary = leer Modul.
 AST_E_EMPTY_MODULE.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-AST_E_EMPTY_MODULE.step1 = Fix the first span reported for this diagnostic, then run the command again.
-AST_E_EMPTY_MODULE.fix = repair the highlighted compiler contract before checking later diagnostics
+AST_E_EMPTY_MODULE.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+AST_E_EMPTY_MODULE.fix = repair the malformed intermediate representation before continuing to the next phase
 AST_E_EMPTY_MODULE.example = vitte check path/to/file.vit
 
 AST_E_INVALID_DECL.summary = decl ungueltig.
 AST_E_INVALID_DECL.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-AST_E_INVALID_DECL.step1 = Fix the first span reported for this diagnostic, then run the command again.
-AST_E_INVALID_DECL.fix = repair the highlighted compiler contract before checking later diagnostics
+AST_E_INVALID_DECL.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+AST_E_INVALID_DECL.fix = repair the malformed intermediate representation before continuing to the next phase
 AST_E_INVALID_DECL.example = vitte check path/to/file.vit
 
 AST_E_INVALID_EXPR.summary = expr ungueltig.
 AST_E_INVALID_EXPR.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-AST_E_INVALID_EXPR.step1 = Fix the first span reported for this diagnostic, then run the command again.
-AST_E_INVALID_EXPR.fix = repair the highlighted compiler contract before checking later diagnostics
+AST_E_INVALID_EXPR.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+AST_E_INVALID_EXPR.fix = repair the malformed intermediate representation before continuing to the next phase
 AST_E_INVALID_EXPR.example = vitte check path/to/file.vit
 
 AST_E_INVALID_PATTERN.summary = Muster ungueltig.
 AST_E_INVALID_PATTERN.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-AST_E_INVALID_PATTERN.step1 = Fix the first span reported for this diagnostic, then run the command again.
-AST_E_INVALID_PATTERN.fix = repair the highlighted compiler contract before checking later diagnostics
+AST_E_INVALID_PATTERN.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+AST_E_INVALID_PATTERN.fix = repair the malformed intermediate representation before continuing to the next phase
 AST_E_INVALID_PATTERN.example = vitte check path/to/file.vit
 
 AST_E_INVALID_ATTRIBUTE.summary = attribute ungueltig.
 AST_E_INVALID_ATTRIBUTE.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-AST_E_INVALID_ATTRIBUTE.step1 = Fix the first span reported for this diagnostic, then run the command again.
-AST_E_INVALID_ATTRIBUTE.fix = repair the highlighted compiler contract before checking later diagnostics
+AST_E_INVALID_ATTRIBUTE.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+AST_E_INVALID_ATTRIBUTE.fix = repair the malformed intermediate representation before continuing to the next phase
 AST_E_INVALID_ATTRIBUTE.example = vitte check path/to/file.vit
 
 AST_E_DUPLICATE_FIELD.summary = Feld doppelt.
 AST_E_DUPLICATE_FIELD.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-AST_E_DUPLICATE_FIELD.step1 = Fix the first span reported for this diagnostic, then run the command again.
-AST_E_DUPLICATE_FIELD.fix = repair the highlighted compiler contract before checking later diagnostics
+AST_E_DUPLICATE_FIELD.step1 = Find the earlier field label and the highlighted duplicate.
+AST_E_DUPLICATE_FIELD.fix = keep one field entry and remove or rename the duplicate
 AST_E_DUPLICATE_FIELD.example = vitte check path/to/file.vit
+
+AST_E_UNKNOWN_FIELD.summary = form Feld unbekannt.
+AST_E_UNKNOWN_FIELD.cause = A `form` construction or field access names a field that the form declaration does not contain.
+AST_E_UNKNOWN_FIELD.step1 = Compare the highlighted field name with the fields declared in the `form`.
+AST_E_UNKNOWN_FIELD.fix = rename the field to one declared by the form, or add the missing field to the form declaration
+AST_E_UNKNOWN_FIELD.example = form Point { x: int, y: int }
+
+AST_E_MISSING_FIELD.summary = form Feld fehlt.
+AST_E_MISSING_FIELD.cause = A `form` construction omits a required field that has no default value.
+AST_E_MISSING_FIELD.step1 = Compare the construction with every required field in the `form` declaration.
+AST_E_MISSING_FIELD.fix = add the missing `field: value` entry to the construction
+AST_E_MISSING_FIELD.example = form Point { x: int, y: int }
+
+AST_E_FIELD_TYPE_MISMATCH.summary = form Feld Typ Nichtuebereinstimmung.
+AST_E_FIELD_TYPE_MISMATCH.cause = A value assigned to a `form` field does not match that field's declared type.
+AST_E_FIELD_TYPE_MISMATCH.step1 = Compare the field declaration type with the highlighted field initializer.
+AST_E_FIELD_TYPE_MISMATCH.fix = change the field initializer to the declared type, or change the field type in the `form`
+AST_E_FIELD_TYPE_MISMATCH.example = form User { name: string, age: int }
+
+AST_E_FIELD_ORDER.summary = form fields are out of order.
+AST_E_FIELD_ORDER.cause = This `form` construction uses positional or order-sensitive fields in a different order than the declaration.
+AST_E_FIELD_ORDER.step1 = Read the field order from the `form` declaration.
+AST_E_FIELD_ORDER.fix = reorder the construction fields to match the `form` declaration, or use named fields when the rule allows them
+AST_E_FIELD_ORDER.example = form Pair { left: int, right: int }
+
+AST_E_INCOMPLETE_CONSTRUCTION.summary = form construction is incomplete.
+AST_E_INCOMPLETE_CONSTRUCTION.cause = A `form` construction ended before all required fields were supplied.
+AST_E_INCOMPLETE_CONSTRUCTION.step1 = Check whether the construction is missing fields or a closing brace.
+AST_E_INCOMPLETE_CONSTRUCTION.fix = complete the construction with every required `field: value` entry and the closing `}`
+AST_E_INCOMPLETE_CONSTRUCTION.example = form Point { x: int, y: int }
 
 AST_E_INVALID_VISIBILITY.summary = Sichtbarkeit ungueltig.
 AST_E_INVALID_VISIBILITY.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-AST_E_INVALID_VISIBILITY.step1 = Fix the first span reported for this diagnostic, then run the command again.
-AST_E_INVALID_VISIBILITY.fix = repair the highlighted compiler contract before checking later diagnostics
+AST_E_INVALID_VISIBILITY.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+AST_E_INVALID_VISIBILITY.fix = repair the malformed intermediate representation before continuing to the next phase
 AST_E_INVALID_VISIBILITY.example = vitte check path/to/file.vit
 
 AST_E_INVALID_ENTRY.summary = entry ungueltig.
 AST_E_INVALID_ENTRY.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-AST_E_INVALID_ENTRY.step1 = Fix the first span reported for this diagnostic, then run the command again.
-AST_E_INVALID_ENTRY.fix = repair the highlighted compiler contract before checking later diagnostics
+AST_E_INVALID_ENTRY.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+AST_E_INVALID_ENTRY.fix = repair the malformed intermediate representation before continuing to the next phase
 AST_E_INVALID_ENTRY.example = vitte check path/to/file.vit
 
 SEMA_E_DUPLICATE_SYMBOL.summary = Symbol doppelt.
@@ -701,7 +731,7 @@ SEMA_E_SHADOWING_FORBIDDEN.example = use vitte/core
 SEMA_E_UNKNOWN_FIELD.summary = Feld does not exist.
 SEMA_E_UNKNOWN_FIELD.cause = A symbol, module path, binding, visibility rule, or import contract did not resolve.
 SEMA_E_UNKNOWN_FIELD.step1 = Check the spelling and the nearest import or declaration.
-SEMA_E_UNKNOWN_FIELD.fix = resolve the exact symbol contract reported by semantic analysis
+SEMA_E_UNKNOWN_FIELD.fix = rename the field to one declared by the form, or add the missing field to the form declaration
 SEMA_E_UNKNOWN_FIELD.example = use vitte/core
 
 SEMA_E_UNKNOWN_VARIANT.summary = variant does not exist.
@@ -851,8 +881,62 @@ TYPECK_E_ASSIGN_MISMATCH.example = let count: int = 1
 TYPECK_E_RETURN_MISMATCH.summary = Rueckgabe Typ Nichtuebereinstimmung.
 TYPECK_E_RETURN_MISMATCH.cause = The inferred type does not satisfy the type required at this location.
 TYPECK_E_RETURN_MISMATCH.step1 = Compare the expected and found types in the diagnostic labels.
-TYPECK_E_RETURN_MISMATCH.fix = make the expression type match the type contract named by the type checker
+TYPECK_E_RETURN_MISMATCH.fix = change the `give` expression or the procedure result type so both name the same Vitte type
 TYPECK_E_RETURN_MISMATCH.example = let count: int = 1
+
+TYPECK_E_MISSING_GIVE.summary = give in Wert procedure fehlt.
+TYPECK_E_MISSING_GIVE.cause = A procedure declares a result type with `->`, but its body has no `give` for the value it promises.
+TYPECK_E_MISSING_GIVE.step1 = Inspect the procedure body and decide which value should be produced.
+TYPECK_E_MISSING_GIVE.fix = add `give expression` on every successful path, or remove the `-> Type` return contract
+TYPECK_E_MISSING_GIVE.example = proc answer() -> int { give 42 }
+
+TYPECK_E_GIVE_IN_VOID_PROC.summary = give Wert in procedure without Rueckgabe Typ.
+TYPECK_E_GIVE_IN_VOID_PROC.cause = A procedure without a `-> Type` contract uses `give` with a value.
+TYPECK_E_GIVE_IN_VOID_PROC.step1 = Check whether the procedure should produce a value or only perform effects.
+TYPECK_E_GIVE_IN_VOID_PROC.fix = add the correct `-> Type` to the procedure, or remove the value from the `give` statement
+TYPECK_E_GIVE_IN_VOID_PROC.example = proc answer() -> int { give 42 }
+
+TYPECK_E_CONTROL_PATH_MISSING_GIVE.summary = control Pfad reaches end without give.
+TYPECK_E_CONTROL_PATH_MISSING_GIVE.cause = At least one branch can reach the end of a value-returning procedure without executing `give`.
+TYPECK_E_CONTROL_PATH_MISSING_GIVE.step1 = Follow each `if`, `match`, `loop`, and early-exit path in the procedure.
+TYPECK_E_CONTROL_PATH_MISSING_GIVE.fix = add a final `give` or make every branch produce a value before control reaches the closing brace
+TYPECK_E_CONTROL_PATH_MISSING_GIVE.example = proc code(ok: bool) -> int {
+
+TYPECK_W_UNREACHABLE_AFTER_GIVE.summary = code after give is unerreichbar.
+TYPECK_W_UNREACHABLE_AFTER_GIVE.cause = `give` ends the current procedure path, so later statements in the same block cannot run.
+TYPECK_W_UNREACHABLE_AFTER_GIVE.step1 = Inspect the statement immediately after the highlighted `give`.
+TYPECK_W_UNREACHABLE_AFTER_GIVE.fix = move the statement before `give`, put it in another branch, or remove it
+TYPECK_W_UNREACHABLE_AFTER_GIVE.example = proc main() -> int {
+
+TYPECK_E_IMMUTABLE_ASSIGN.summary = cannot assign to immutable Bindung.
+TYPECK_E_IMMUTABLE_ASSIGN.cause = `set` can only change a binding or field that the current scope is allowed to mutate.
+TYPECK_E_IMMUTABLE_ASSIGN.step1 = Find the original `let`, parameter, or field declaration for the highlighted target.
+TYPECK_E_IMMUTABLE_ASSIGN.fix = declare the binding with the current mutable form accepted by Vitte, or replace the later `set` with a new `let`
+TYPECK_E_IMMUTABLE_ASSIGN.example = let count: int = 0
+
+TYPECK_W_MUTABLE_NEVER_MODIFIED.summary = veraenderbar Bindung is never changed.
+TYPECK_W_MUTABLE_NEVER_MODIFIED.cause = A binding was declared mutable, but no reachable `set` changes it.
+TYPECK_W_MUTABLE_NEVER_MODIFIED.step1 = Search the binding scope for `set name = ...` or field updates through that binding.
+TYPECK_W_MUTABLE_NEVER_MODIFIED.fix = remove the mutable marker from the `let`, or keep it only when a later `set` is intended
+TYPECK_W_MUTABLE_NEVER_MODIFIED.example = let count: int = 0
+
+TYPECK_E_REASSIGNMENT_FORBIDDEN.summary = Ziel cannot be reassigned.
+TYPECK_E_REASSIGNMENT_FORBIDDEN.cause = The target of `set` is not an assignable place, such as a computed expression, temporary value, or non-settable projection.
+TYPECK_E_REASSIGNMENT_FORBIDDEN.step1 = Check that the left side of `set` is a binding, field, or index place that Vitte allows to be assigned.
+TYPECK_E_REASSIGNMENT_FORBIDDEN.fix = assign to a valid place with `set target = value`, or bind the computed value with `let`
+TYPECK_E_REASSIGNMENT_FORBIDDEN.example = set user.name = name
+
+TYPECK_E_MISSING_INITIALIZER.summary = let Bindung requires an initializer or Typ.
+TYPECK_E_MISSING_INITIALIZER.cause = `let` introduced a binding without enough information to create a value.
+TYPECK_E_MISSING_INITIALIZER.step1 = Inspect the binding and check whether it has either an initializer or an explicit type plus a supported delayed-initialization path.
+TYPECK_E_MISSING_INITIALIZER.fix = add `= expression`, or add the missing type annotation required by the active Vitte rule
+TYPECK_E_MISSING_INITIALIZER.example = let count: int = 0
+
+TYPECK_E_INFERENCE_FAILED.summary = Bindung Typ could not be inferred.
+TYPECK_E_INFERENCE_FAILED.cause = The initializer or later uses do not provide enough constraints to infer the binding type.
+TYPECK_E_INFERENCE_FAILED.step1 = Look at the highlighted `let` and the first use of the binding.
+TYPECK_E_INFERENCE_FAILED.fix = add an explicit Vitte type annotation after the binding name
+TYPECK_E_INFERENCE_FAILED.example = let items: [int] = []
 
 TYPECK_E_CONDITION_TYPE.summary = Bedingung Typ.
 TYPECK_E_CONDITION_TYPE.cause = The inferred type does not satisfy the type required at this location.
@@ -863,7 +947,7 @@ TYPECK_E_CONDITION_TYPE.example = let count: int = 1
 TYPECK_E_UNKNOWN_MEMBER.summary = Member unbekannt.
 TYPECK_E_UNKNOWN_MEMBER.cause = The inferred type does not satisfy the type required at this location.
 TYPECK_E_UNKNOWN_MEMBER.step1 = Compare the expected and found types in the diagnostic labels.
-TYPECK_E_UNKNOWN_MEMBER.fix = make the expression type match the type contract named by the type checker
+TYPECK_E_UNKNOWN_MEMBER.fix = rename the field to one declared by the form, or add the missing field to the form declaration
 TYPECK_E_UNKNOWN_MEMBER.example = let count: int = 1
 
 TYPECK_E_INDEX_TYPE.summary = Index Typ.
@@ -1281,165 +1365,165 @@ CONST_EVAL_E_UNKNOWN.fix = rewrite the highlighted constant expression so const 
 CONST_EVAL_E_UNKNOWN.example = const size: int = 4
 
 MOD_E_MODULE_NOT_FOUND.summary = Modul fehlend.
-MOD_E_MODULE_NOT_FOUND.cause = The general phase found code that violates this diagnostic rule.
-MOD_E_MODULE_NOT_FOUND.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MOD_E_MODULE_NOT_FOUND.fix = repair the highlighted compiler contract before checking later diagnostics
+MOD_E_MODULE_NOT_FOUND.cause = A symbol, module path, binding, visibility rule, or import contract did not resolve.
+MOD_E_MODULE_NOT_FOUND.step1 = Check the spelling and the nearest import or declaration.
+MOD_E_MODULE_NOT_FOUND.fix = resolve the exact symbol contract reported by semantic analysis
 MOD_E_MODULE_NOT_FOUND.example = vitte check path/to/file.vit
 
 MOD_E_IMPORT_CYCLE.summary = Import Zyklus detected.
-MOD_E_IMPORT_CYCLE.cause = The general phase found code that violates this diagnostic rule.
-MOD_E_IMPORT_CYCLE.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MOD_E_IMPORT_CYCLE.fix = repair the highlighted compiler contract before checking later diagnostics
+MOD_E_IMPORT_CYCLE.cause = A symbol, module path, binding, visibility rule, or import contract did not resolve.
+MOD_E_IMPORT_CYCLE.step1 = Check the spelling and the nearest import or declaration.
+MOD_E_IMPORT_CYCLE.fix = resolve the exact symbol contract reported by semantic analysis
 MOD_E_IMPORT_CYCLE.example = vitte check path/to/file.vit
 
 MOD_E_SYMBOL_NOT_EXPORTED.summary = Symbol is nicht von Modul exportiert.
-MOD_E_SYMBOL_NOT_EXPORTED.cause = The general phase found code that violates this diagnostic rule.
-MOD_E_SYMBOL_NOT_EXPORTED.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MOD_E_SYMBOL_NOT_EXPORTED.fix = repair the highlighted compiler contract before checking later diagnostics
+MOD_E_SYMBOL_NOT_EXPORTED.cause = A symbol, module path, binding, visibility rule, or import contract did not resolve.
+MOD_E_SYMBOL_NOT_EXPORTED.step1 = Check the spelling and the nearest import or declaration.
+MOD_E_SYMBOL_NOT_EXPORTED.fix = resolve the exact symbol contract reported by semantic analysis
 MOD_E_SYMBOL_NOT_EXPORTED.example = vitte check path/to/file.vit
 
 MOD_E_IMPORT_NOT_FOUND.summary = Import fehlend.
-MOD_E_IMPORT_NOT_FOUND.cause = The general phase found code that violates this diagnostic rule.
-MOD_E_IMPORT_NOT_FOUND.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MOD_E_IMPORT_NOT_FOUND.fix = repair the highlighted compiler contract before checking later diagnostics
+MOD_E_IMPORT_NOT_FOUND.cause = A symbol, module path, binding, visibility rule, or import contract did not resolve.
+MOD_E_IMPORT_NOT_FOUND.step1 = Check the spelling and the nearest import or declaration.
+MOD_E_IMPORT_NOT_FOUND.fix = resolve the exact symbol contract reported by semantic analysis
 MOD_E_IMPORT_NOT_FOUND.example = vitte check path/to/file.vit
 
 MOD_E_PACKAGE_MISSING.summary = package fehlend.
-MOD_E_PACKAGE_MISSING.cause = The general phase found code that violates this diagnostic rule.
-MOD_E_PACKAGE_MISSING.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MOD_E_PACKAGE_MISSING.fix = repair the highlighted compiler contract before checking later diagnostics
+MOD_E_PACKAGE_MISSING.cause = A symbol, module path, binding, visibility rule, or import contract did not resolve.
+MOD_E_PACKAGE_MISSING.step1 = Check the spelling and the nearest import or declaration.
+MOD_E_PACKAGE_MISSING.fix = resolve the exact symbol contract reported by semantic analysis
 MOD_E_PACKAGE_MISSING.example = vitte check path/to/file.vit
 
 MOD_E_STDLIB_MISSING.summary = stdlib fehlend.
-MOD_E_STDLIB_MISSING.cause = The general phase found code that violates this diagnostic rule.
-MOD_E_STDLIB_MISSING.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MOD_E_STDLIB_MISSING.fix = repair the highlighted compiler contract before checking later diagnostics
+MOD_E_STDLIB_MISSING.cause = A symbol, module path, binding, visibility rule, or import contract did not resolve.
+MOD_E_STDLIB_MISSING.step1 = Check the spelling and the nearest import or declaration.
+MOD_E_STDLIB_MISSING.fix = resolve the exact symbol contract reported by semantic analysis
 MOD_E_STDLIB_MISSING.example = vitte check path/to/file.vit
 
 MOD_E_AMBIGUOUS_MODULE.summary = ambiguous Modul Pfad.
-MOD_E_AMBIGUOUS_MODULE.cause = The general phase found code that violates this diagnostic rule.
-MOD_E_AMBIGUOUS_MODULE.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MOD_E_AMBIGUOUS_MODULE.fix = repair the highlighted compiler contract before checking later diagnostics
+MOD_E_AMBIGUOUS_MODULE.cause = A symbol, module path, binding, visibility rule, or import contract did not resolve.
+MOD_E_AMBIGUOUS_MODULE.step1 = Check the spelling and the nearest import or declaration.
+MOD_E_AMBIGUOUS_MODULE.fix = resolve the exact symbol contract reported by semantic analysis
 MOD_E_AMBIGUOUS_MODULE.example = vitte check path/to/file.vit
 
 HIR_E_INVALID_EXPR.summary = expr ungueltig.
 HIR_E_INVALID_EXPR.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-HIR_E_INVALID_EXPR.step1 = Fix the first span reported for this diagnostic, then run the command again.
-HIR_E_INVALID_EXPR.fix = repair the highlighted compiler contract before checking later diagnostics
+HIR_E_INVALID_EXPR.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+HIR_E_INVALID_EXPR.fix = repair the malformed intermediate representation before continuing to the next phase
 HIR_E_INVALID_EXPR.example = vitte check path/to/file.vit
 
 HIR_E_INVALID_STMT.summary = stmt ungueltig.
 HIR_E_INVALID_STMT.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-HIR_E_INVALID_STMT.step1 = Fix the first span reported for this diagnostic, then run the command again.
-HIR_E_INVALID_STMT.fix = repair the highlighted compiler contract before checking later diagnostics
+HIR_E_INVALID_STMT.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+HIR_E_INVALID_STMT.fix = repair the malformed intermediate representation before continuing to the next phase
 HIR_E_INVALID_STMT.example = vitte check path/to/file.vit
 
 HIR_E_INVALID_PATTERN.summary = Muster ungueltig.
 HIR_E_INVALID_PATTERN.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-HIR_E_INVALID_PATTERN.step1 = Fix the first span reported for this diagnostic, then run the command again.
-HIR_E_INVALID_PATTERN.fix = repair the highlighted compiler contract before checking later diagnostics
+HIR_E_INVALID_PATTERN.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+HIR_E_INVALID_PATTERN.fix = repair the malformed intermediate representation before continuing to the next phase
 HIR_E_INVALID_PATTERN.example = vitte check path/to/file.vit
 
 HIR_E_INVALID_TYPE.summary = Typ ungueltig.
 HIR_E_INVALID_TYPE.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-HIR_E_INVALID_TYPE.step1 = Fix the first span reported for this diagnostic, then run the command again.
-HIR_E_INVALID_TYPE.fix = repair the highlighted compiler contract before checking later diagnostics
+HIR_E_INVALID_TYPE.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+HIR_E_INVALID_TYPE.fix = repair the malformed intermediate representation before continuing to the next phase
 HIR_E_INVALID_TYPE.example = vitte check path/to/file.vit
 
 HIR_E_MISSING_SYMBOL.summary = Symbol fehlt.
 HIR_E_MISSING_SYMBOL.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-HIR_E_MISSING_SYMBOL.step1 = Fix the first span reported for this diagnostic, then run the command again.
-HIR_E_MISSING_SYMBOL.fix = repair the highlighted compiler contract before checking later diagnostics
+HIR_E_MISSING_SYMBOL.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+HIR_E_MISSING_SYMBOL.fix = repair the malformed intermediate representation before continuing to the next phase
 HIR_E_MISSING_SYMBOL.example = vitte check path/to/file.vit
 
 HIR_E_INVALID_CONTROL_FLOW.summary = control Kontrollfluss ungueltig.
 HIR_E_INVALID_CONTROL_FLOW.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-HIR_E_INVALID_CONTROL_FLOW.step1 = Fix the first span reported for this diagnostic, then run the command again.
-HIR_E_INVALID_CONTROL_FLOW.fix = repair the highlighted compiler contract before checking later diagnostics
+HIR_E_INVALID_CONTROL_FLOW.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+HIR_E_INVALID_CONTROL_FLOW.fix = repair the malformed intermediate representation before continuing to the next phase
 HIR_E_INVALID_CONTROL_FLOW.example = vitte check path/to/file.vit
 
 HIR_E_LOWERING_FAILED.summary = lowering fehlgeschlagen.
 HIR_E_LOWERING_FAILED.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-HIR_E_LOWERING_FAILED.step1 = Fix the first span reported for this diagnostic, then run the command again.
-HIR_E_LOWERING_FAILED.fix = repair the highlighted compiler contract before checking later diagnostics
+HIR_E_LOWERING_FAILED.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+HIR_E_LOWERING_FAILED.fix = repair the malformed intermediate representation before continuing to the next phase
 HIR_E_LOWERING_FAILED.example = vitte check path/to/file.vit
 
 MIR_E_INVALID_BLOCK.summary = Block ungueltig.
 MIR_E_INVALID_BLOCK.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-MIR_E_INVALID_BLOCK.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MIR_E_INVALID_BLOCK.fix = repair the highlighted compiler contract before checking later diagnostics
+MIR_E_INVALID_BLOCK.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+MIR_E_INVALID_BLOCK.fix = repair the malformed intermediate representation before continuing to the next phase
 MIR_E_INVALID_BLOCK.example = vitte check path/to/file.vit
 
 MIR_E_INVALID_TERMINATOR.summary = Terminator ungueltig.
 MIR_E_INVALID_TERMINATOR.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-MIR_E_INVALID_TERMINATOR.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MIR_E_INVALID_TERMINATOR.fix = repair the highlighted compiler contract before checking later diagnostics
+MIR_E_INVALID_TERMINATOR.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+MIR_E_INVALID_TERMINATOR.fix = repair the malformed intermediate representation before continuing to the next phase
 MIR_E_INVALID_TERMINATOR.example = vitte check path/to/file.vit
 
 MIR_E_UNREACHABLE_BLOCK.summary = unerreichbar Block.
 MIR_E_UNREACHABLE_BLOCK.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-MIR_E_UNREACHABLE_BLOCK.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MIR_E_UNREACHABLE_BLOCK.fix = repair the highlighted compiler contract before checking later diagnostics
+MIR_E_UNREACHABLE_BLOCK.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+MIR_E_UNREACHABLE_BLOCK.fix = repair the malformed intermediate representation before continuing to the next phase
 MIR_E_UNREACHABLE_BLOCK.example = vitte check path/to/file.vit
 
 MIR_E_INVALID_OPERAND.summary = Operand ungueltig.
 MIR_E_INVALID_OPERAND.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-MIR_E_INVALID_OPERAND.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MIR_E_INVALID_OPERAND.fix = repair the highlighted compiler contract before checking later diagnostics
+MIR_E_INVALID_OPERAND.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+MIR_E_INVALID_OPERAND.fix = repair the malformed intermediate representation before continuing to the next phase
 MIR_E_INVALID_OPERAND.example = vitte check path/to/file.vit
 
 MIR_E_INVALID_PLACE.summary = place ungueltig.
 MIR_E_INVALID_PLACE.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-MIR_E_INVALID_PLACE.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MIR_E_INVALID_PLACE.fix = repair the highlighted compiler contract before checking later diagnostics
+MIR_E_INVALID_PLACE.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+MIR_E_INVALID_PLACE.fix = repair the malformed intermediate representation before continuing to the next phase
 MIR_E_INVALID_PLACE.example = vitte check path/to/file.vit
 
 MIR_E_DATAFLOW_CONFLICT.summary = dataflow Konflikt.
 MIR_E_DATAFLOW_CONFLICT.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-MIR_E_DATAFLOW_CONFLICT.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MIR_E_DATAFLOW_CONFLICT.fix = repair the highlighted compiler contract before checking later diagnostics
+MIR_E_DATAFLOW_CONFLICT.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+MIR_E_DATAFLOW_CONFLICT.fix = repair the malformed intermediate representation before continuing to the next phase
 MIR_E_DATAFLOW_CONFLICT.example = vitte check path/to/file.vit
 
 MIR_E_VERIFICATION_FAILED.summary = verification fehlgeschlagen.
 MIR_E_VERIFICATION_FAILED.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-MIR_E_VERIFICATION_FAILED.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MIR_E_VERIFICATION_FAILED.fix = repair the highlighted compiler contract before checking later diagnostics
+MIR_E_VERIFICATION_FAILED.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+MIR_E_VERIFICATION_FAILED.fix = repair the malformed intermediate representation before continuing to the next phase
 MIR_E_VERIFICATION_FAILED.example = vitte check path/to/file.vit
 
 IR_E_INVALID_MODULE.summary = Modul ungueltig.
 IR_E_INVALID_MODULE.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-IR_E_INVALID_MODULE.step1 = Fix the first span reported for this diagnostic, then run the command again.
-IR_E_INVALID_MODULE.fix = repair the highlighted compiler contract before checking later diagnostics
+IR_E_INVALID_MODULE.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+IR_E_INVALID_MODULE.fix = repair the malformed intermediate representation before continuing to the next phase
 IR_E_INVALID_MODULE.example = vitte check path/to/file.vit
 
 IR_E_INVALID_FUNCTION.summary = function ungueltig.
 IR_E_INVALID_FUNCTION.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-IR_E_INVALID_FUNCTION.step1 = Fix the first span reported for this diagnostic, then run the command again.
-IR_E_INVALID_FUNCTION.fix = repair the highlighted compiler contract before checking later diagnostics
+IR_E_INVALID_FUNCTION.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+IR_E_INVALID_FUNCTION.fix = repair the malformed intermediate representation before continuing to the next phase
 IR_E_INVALID_FUNCTION.example = vitte check path/to/file.vit
 
 IR_E_INVALID_BLOCK.summary = Block ungueltig.
 IR_E_INVALID_BLOCK.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-IR_E_INVALID_BLOCK.step1 = Fix the first span reported for this diagnostic, then run the command again.
-IR_E_INVALID_BLOCK.fix = repair the highlighted compiler contract before checking later diagnostics
+IR_E_INVALID_BLOCK.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+IR_E_INVALID_BLOCK.fix = repair the malformed intermediate representation before continuing to the next phase
 IR_E_INVALID_BLOCK.example = vitte check path/to/file.vit
 
 IR_E_INVALID_INSTRUCTION.summary = Instruktion ungueltig.
 IR_E_INVALID_INSTRUCTION.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-IR_E_INVALID_INSTRUCTION.step1 = Fix the first span reported for this diagnostic, then run the command again.
-IR_E_INVALID_INSTRUCTION.fix = repair the highlighted compiler contract before checking later diagnostics
+IR_E_INVALID_INSTRUCTION.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+IR_E_INVALID_INSTRUCTION.fix = repair the malformed intermediate representation before continuing to the next phase
 IR_E_INVALID_INSTRUCTION.example = vitte check path/to/file.vit
 
 IR_E_TYPE_MISMATCH.summary = Typ Nichtuebereinstimmung.
 IR_E_TYPE_MISMATCH.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-IR_E_TYPE_MISMATCH.step1 = Fix the first span reported for this diagnostic, then run the command again.
-IR_E_TYPE_MISMATCH.fix = repair the highlighted compiler contract before checking later diagnostics
+IR_E_TYPE_MISMATCH.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+IR_E_TYPE_MISMATCH.fix = repair the malformed intermediate representation before continuing to the next phase
 IR_E_TYPE_MISMATCH.example = vitte check path/to/file.vit
 
 IR_E_VERIFY_FAILED.summary = verify fehlgeschlagen.
 IR_E_VERIFY_FAILED.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-IR_E_VERIFY_FAILED.step1 = Fix the first span reported for this diagnostic, then run the command again.
-IR_E_VERIFY_FAILED.fix = repair the highlighted compiler contract before checking later diagnostics
+IR_E_VERIFY_FAILED.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+IR_E_VERIFY_FAILED.fix = repair the malformed intermediate representation before continuing to the next phase
 IR_E_VERIFY_FAILED.example = vitte check path/to/file.vit
 
 BACKEND_E_UNSUPPORTED_TARGET.summary = Ziel nicht unterstuetzt.
@@ -1522,44 +1606,44 @@ LINK_E_SYSTEM_LINKER_FAILED.example = vitte build app.vit -o app
 
 RUNTIME_E_PANIC.summary = Panik.
 RUNTIME_E_PANIC.cause = The runtime phase found code that violates this diagnostic rule.
-RUNTIME_E_PANIC.step1 = Fix the first span reported for this diagnostic, then run the command again.
-RUNTIME_E_PANIC.fix = repair the highlighted compiler contract before checking later diagnostics
+RUNTIME_E_PANIC.step1 = Inspect the runtime span and the operation named by the diagnostic code.
+RUNTIME_E_PANIC.fix = change the program state that reaches the runtime trap or add an explicit check before it
 RUNTIME_E_PANIC.example = vitte check path/to/file.vit
 
 RUNTIME_E_ASSERT_FAILED.summary = Assertion fehlgeschlagen.
 RUNTIME_E_ASSERT_FAILED.cause = The runtime phase found code that violates this diagnostic rule.
-RUNTIME_E_ASSERT_FAILED.step1 = Fix the first span reported for this diagnostic, then run the command again.
-RUNTIME_E_ASSERT_FAILED.fix = repair the highlighted compiler contract before checking later diagnostics
+RUNTIME_E_ASSERT_FAILED.step1 = Inspect the runtime span and the operation named by the diagnostic code.
+RUNTIME_E_ASSERT_FAILED.fix = change the program state that reaches the runtime trap or add an explicit check before it
 RUNTIME_E_ASSERT_FAILED.example = vitte check path/to/file.vit
 
 RUNTIME_E_STACK_OVERFLOW.summary = Stack Ueberlauf.
 RUNTIME_E_STACK_OVERFLOW.cause = The runtime phase found code that violates this diagnostic rule.
-RUNTIME_E_STACK_OVERFLOW.step1 = Fix the first span reported for this diagnostic, then run the command again.
-RUNTIME_E_STACK_OVERFLOW.fix = repair the highlighted compiler contract before checking later diagnostics
+RUNTIME_E_STACK_OVERFLOW.step1 = Inspect the runtime span and the operation named by the diagnostic code.
+RUNTIME_E_STACK_OVERFLOW.fix = change the program state that reaches the runtime trap or add an explicit check before it
 RUNTIME_E_STACK_OVERFLOW.example = vitte check path/to/file.vit
 
 RUNTIME_E_OUT_OF_MEMORY.summary = out of memory.
 RUNTIME_E_OUT_OF_MEMORY.cause = The runtime phase found code that violates this diagnostic rule.
-RUNTIME_E_OUT_OF_MEMORY.step1 = Fix the first span reported for this diagnostic, then run the command again.
-RUNTIME_E_OUT_OF_MEMORY.fix = repair the highlighted compiler contract before checking later diagnostics
+RUNTIME_E_OUT_OF_MEMORY.step1 = Inspect the runtime span and the operation named by the diagnostic code.
+RUNTIME_E_OUT_OF_MEMORY.fix = change the program state that reaches the runtime trap or add an explicit check before it
 RUNTIME_E_OUT_OF_MEMORY.example = vitte check path/to/file.vit
 
 RUNTIME_E_DIVISION_BY_ZERO.summary = Division by Null.
 RUNTIME_E_DIVISION_BY_ZERO.cause = The runtime phase found code that violates this diagnostic rule.
-RUNTIME_E_DIVISION_BY_ZERO.step1 = Fix the first span reported for this diagnostic, then run the command again.
-RUNTIME_E_DIVISION_BY_ZERO.fix = repair the highlighted compiler contract before checking later diagnostics
+RUNTIME_E_DIVISION_BY_ZERO.step1 = Inspect the runtime span and the operation named by the diagnostic code.
+RUNTIME_E_DIVISION_BY_ZERO.fix = change the program state that reaches the runtime trap or add an explicit check before it
 RUNTIME_E_DIVISION_BY_ZERO.example = vitte check path/to/file.vit
 
 RUNTIME_E_BOUNDS_CHECK.summary = bounds check.
 RUNTIME_E_BOUNDS_CHECK.cause = The runtime phase found code that violates this diagnostic rule.
-RUNTIME_E_BOUNDS_CHECK.step1 = Fix the first span reported for this diagnostic, then run the command again.
-RUNTIME_E_BOUNDS_CHECK.fix = repair the highlighted compiler contract before checking later diagnostics
+RUNTIME_E_BOUNDS_CHECK.step1 = Inspect the runtime span and the operation named by the diagnostic code.
+RUNTIME_E_BOUNDS_CHECK.fix = change the program state that reaches the runtime trap or add an explicit check before it
 RUNTIME_E_BOUNDS_CHECK.example = vitte check path/to/file.vit
 
 RUNTIME_E_NULL_DEREF.summary = Null deref.
 RUNTIME_E_NULL_DEREF.cause = The runtime phase found code that violates this diagnostic rule.
-RUNTIME_E_NULL_DEREF.step1 = Fix the first span reported for this diagnostic, then run the command again.
-RUNTIME_E_NULL_DEREF.fix = repair the highlighted compiler contract before checking later diagnostics
+RUNTIME_E_NULL_DEREF.step1 = Inspect the runtime span and the operation named by the diagnostic code.
+RUNTIME_E_NULL_DEREF.fix = change the program state that reaches the runtime trap or add an explicit check before it
 RUNTIME_E_NULL_DEREF.example = vitte check path/to/file.vit
 
 DRIVER_E_INVALID_ARGUMENT.summary = Argument ungueltig.
@@ -1612,56 +1696,56 @@ DRIVER_E_TARGET_NOT_FOUND.example = vitte check src/main.vit --lang en
 
 BOOTSTRAP_E_STAGE_FAILURE.summary = stage failure.
 BOOTSTRAP_E_STAGE_FAILURE.cause = The bootstrap phase found code that violates this diagnostic rule.
-BOOTSTRAP_E_STAGE_FAILURE.step1 = Fix the first span reported for this diagnostic, then run the command again.
-BOOTSTRAP_E_STAGE_FAILURE.fix = repair the highlighted compiler contract before checking later diagnostics
+BOOTSTRAP_E_STAGE_FAILURE.step1 = Inspect the bootstrap artifact and the stage named by the diagnostic code.
+BOOTSTRAP_E_STAGE_FAILURE.fix = repair the seed-rooted bootstrap artifact before using it as compiler input
 BOOTSTRAP_E_STAGE_FAILURE.example = vitte check path/to/file.vit
 
 BOOTSTRAP_E_SEED_MISSING.summary = seed fehlend.
 BOOTSTRAP_E_SEED_MISSING.cause = The bootstrap phase found code that violates this diagnostic rule.
-BOOTSTRAP_E_SEED_MISSING.step1 = Fix the first span reported for this diagnostic, then run the command again.
-BOOTSTRAP_E_SEED_MISSING.fix = repair the highlighted compiler contract before checking later diagnostics
+BOOTSTRAP_E_SEED_MISSING.step1 = Inspect the bootstrap artifact and the stage named by the diagnostic code.
+BOOTSTRAP_E_SEED_MISSING.fix = repair the seed-rooted bootstrap artifact before using it as compiler input
 BOOTSTRAP_E_SEED_MISSING.example = vitte check path/to/file.vit
 
 BOOTSTRAP_E_COMPILER_MISSING.summary = compiler fehlend.
 BOOTSTRAP_E_COMPILER_MISSING.cause = The bootstrap phase found code that violates this diagnostic rule.
-BOOTSTRAP_E_COMPILER_MISSING.step1 = Fix the first span reported for this diagnostic, then run the command again.
-BOOTSTRAP_E_COMPILER_MISSING.fix = repair the highlighted compiler contract before checking later diagnostics
+BOOTSTRAP_E_COMPILER_MISSING.step1 = Inspect the bootstrap artifact and the stage named by the diagnostic code.
+BOOTSTRAP_E_COMPILER_MISSING.fix = repair the seed-rooted bootstrap artifact before using it as compiler input
 BOOTSTRAP_E_COMPILER_MISSING.example = vitte check path/to/file.vit
 
 BOOTSTRAP_E_SELF_CHECK_FAILED.summary = self check fehlgeschlagen.
 BOOTSTRAP_E_SELF_CHECK_FAILED.cause = The bootstrap phase found code that violates this diagnostic rule.
-BOOTSTRAP_E_SELF_CHECK_FAILED.step1 = Fix the first span reported for this diagnostic, then run the command again.
-BOOTSTRAP_E_SELF_CHECK_FAILED.fix = repair the highlighted compiler contract before checking later diagnostics
+BOOTSTRAP_E_SELF_CHECK_FAILED.step1 = Inspect the bootstrap artifact and the stage named by the diagnostic code.
+BOOTSTRAP_E_SELF_CHECK_FAILED.fix = repair the seed-rooted bootstrap artifact before using it as compiler input
 BOOTSTRAP_E_SELF_CHECK_FAILED.example = vitte check path/to/file.vit
 
 BOOTSTRAP_E_ARTIFACT_INVALID.summary = artifact ungueltig.
 BOOTSTRAP_E_ARTIFACT_INVALID.cause = The bootstrap phase found code that violates this diagnostic rule.
-BOOTSTRAP_E_ARTIFACT_INVALID.step1 = Fix the first span reported for this diagnostic, then run the command again.
-BOOTSTRAP_E_ARTIFACT_INVALID.fix = repair the highlighted compiler contract before checking later diagnostics
+BOOTSTRAP_E_ARTIFACT_INVALID.step1 = Inspect the bootstrap artifact and the stage named by the diagnostic code.
+BOOTSTRAP_E_ARTIFACT_INVALID.fix = repair the seed-rooted bootstrap artifact before using it as compiler input
 BOOTSTRAP_E_ARTIFACT_INVALID.example = vitte check path/to/file.vit
 
 E_BOOTSTRAP_CONST_TYPE.summary = bootstrap Konstante has wrong Typ.
-E_BOOTSTRAP_CONST_TYPE.cause = The general phase found code that violates this diagnostic rule.
-E_BOOTSTRAP_CONST_TYPE.step1 = Fix the first span reported for this diagnostic, then run the command again.
-E_BOOTSTRAP_CONST_TYPE.fix = repair the highlighted compiler contract before checking later diagnostics
+E_BOOTSTRAP_CONST_TYPE.cause = The bootstrap compiler rejected a trust-root, stage artifact, or seed-root invariant.
+E_BOOTSTRAP_CONST_TYPE.step1 = Inspect the bootstrap artifact and the stage named by the diagnostic code.
+E_BOOTSTRAP_CONST_TYPE.fix = repair the seed-rooted bootstrap artifact before using it as compiler input
 E_BOOTSTRAP_CONST_TYPE.example = vitte check path/to/file.vit
 
 E_BOOTSTRAP_DUP_PROC.summary = bootstrap procedure doppelt.
-E_BOOTSTRAP_DUP_PROC.cause = The general phase found code that violates this diagnostic rule.
-E_BOOTSTRAP_DUP_PROC.step1 = Fix the first span reported for this diagnostic, then run the command again.
-E_BOOTSTRAP_DUP_PROC.fix = repair the highlighted compiler contract before checking later diagnostics
+E_BOOTSTRAP_DUP_PROC.cause = The bootstrap compiler rejected a trust-root, stage artifact, or seed-root invariant.
+E_BOOTSTRAP_DUP_PROC.step1 = Inspect the bootstrap artifact and the stage named by the diagnostic code.
+E_BOOTSTRAP_DUP_PROC.fix = repair the seed-rooted bootstrap artifact before using it as compiler input
 E_BOOTSTRAP_DUP_PROC.example = vitte check path/to/file.vit
 
 E_BOOTSTRAP_UNKNOWN_CONST.summary = bootstrap Konstante unbekannt.
-E_BOOTSTRAP_UNKNOWN_CONST.cause = The general phase found code that violates this diagnostic rule.
-E_BOOTSTRAP_UNKNOWN_CONST.step1 = Fix the first span reported for this diagnostic, then run the command again.
-E_BOOTSTRAP_UNKNOWN_CONST.fix = repair the highlighted compiler contract before checking later diagnostics
+E_BOOTSTRAP_UNKNOWN_CONST.cause = The bootstrap compiler rejected a trust-root, stage artifact, or seed-root invariant.
+E_BOOTSTRAP_UNKNOWN_CONST.step1 = Inspect the bootstrap artifact and the stage named by the diagnostic code.
+E_BOOTSTRAP_UNKNOWN_CONST.fix = repair the seed-rooted bootstrap artifact before using it as compiler input
 E_BOOTSTRAP_UNKNOWN_CONST.example = vitte check path/to/file.vit
 
 E_BOOTSTRAP_UNKNOWN_PROC.summary = bootstrap procedure nicht unterstuetzt.
-E_BOOTSTRAP_UNKNOWN_PROC.cause = The general phase found code that violates this diagnostic rule.
-E_BOOTSTRAP_UNKNOWN_PROC.step1 = Fix the first span reported for this diagnostic, then run the command again.
-E_BOOTSTRAP_UNKNOWN_PROC.fix = repair the highlighted compiler contract before checking later diagnostics
+E_BOOTSTRAP_UNKNOWN_PROC.cause = The bootstrap compiler rejected a trust-root, stage artifact, or seed-root invariant.
+E_BOOTSTRAP_UNKNOWN_PROC.step1 = Inspect the bootstrap artifact and the stage named by the diagnostic code.
+E_BOOTSTRAP_UNKNOWN_PROC.fix = repair the seed-rooted bootstrap artifact before using it as compiler input
 E_BOOTSTRAP_UNKNOWN_PROC.example = vitte check path/to/file.vit
 
 LIMIT_FILE_SIZE_MAX.summary = Datei size max.
@@ -1726,411 +1810,411 @@ LIMIT_MACRO_EXPANSION_MAX.example = vitte check src/main.vit
 
 MACRO_E_EXPANSION_FAILED.summary = expansion fehlgeschlagen.
 MACRO_E_EXPANSION_FAILED.cause = The macro expansion phase found code that violates this diagnostic rule.
-MACRO_E_EXPANSION_FAILED.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MACRO_E_EXPANSION_FAILED.fix = repair the highlighted compiler contract before checking later diagnostics
+MACRO_E_EXPANSION_FAILED.step1 = Inspect the macro invocation and the expansion note attached to the primary diagnostic.
+MACRO_E_EXPANSION_FAILED.fix = change the macro arguments or stop the recursive expansion before lowering resumes
 MACRO_E_EXPANSION_FAILED.example = vitte check path/to/file.vit
 
 MACRO_E_RECURSION_LIMIT.summary = recursion limit.
 MACRO_E_RECURSION_LIMIT.cause = The macro expansion phase found code that violates this diagnostic rule.
-MACRO_E_RECURSION_LIMIT.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MACRO_E_RECURSION_LIMIT.fix = repair the highlighted compiler contract before checking later diagnostics
+MACRO_E_RECURSION_LIMIT.step1 = Inspect the macro invocation and the expansion note attached to the primary diagnostic.
+MACRO_E_RECURSION_LIMIT.fix = change the macro arguments or stop the recursive expansion before lowering resumes
 MACRO_E_RECURSION_LIMIT.example = vitte check path/to/file.vit
 
 MACRO_E_INVALID_ARGUMENT.summary = Argument ungueltig.
 MACRO_E_INVALID_ARGUMENT.cause = The macro expansion phase found code that violates this diagnostic rule.
-MACRO_E_INVALID_ARGUMENT.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MACRO_E_INVALID_ARGUMENT.fix = repair the highlighted compiler contract before checking later diagnostics
+MACRO_E_INVALID_ARGUMENT.step1 = Inspect the macro invocation and the expansion note attached to the primary diagnostic.
+MACRO_E_INVALID_ARGUMENT.fix = change the macro arguments or stop the recursive expansion before lowering resumes
 MACRO_E_INVALID_ARGUMENT.example = vitte check path/to/file.vit
 
 MACRO_E_UNKNOWN_MACRO.summary = macro unbekannt.
 MACRO_E_UNKNOWN_MACRO.cause = The macro expansion phase found code that violates this diagnostic rule.
-MACRO_E_UNKNOWN_MACRO.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MACRO_E_UNKNOWN_MACRO.fix = repair the highlighted compiler contract before checking later diagnostics
+MACRO_E_UNKNOWN_MACRO.step1 = Inspect the macro invocation and the expansion note attached to the primary diagnostic.
+MACRO_E_UNKNOWN_MACRO.fix = change the macro arguments or stop the recursive expansion before lowering resumes
 MACRO_E_UNKNOWN_MACRO.example = vitte check path/to/file.vit
 
 MACRO_E_UNSTABLE_FEATURE.summary = unstable Funktion.
 MACRO_E_UNSTABLE_FEATURE.cause = The macro expansion phase found code that violates this diagnostic rule.
-MACRO_E_UNSTABLE_FEATURE.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MACRO_E_UNSTABLE_FEATURE.fix = repair the highlighted compiler contract before checking later diagnostics
+MACRO_E_UNSTABLE_FEATURE.step1 = Inspect the macro invocation and the expansion note attached to the primary diagnostic.
+MACRO_E_UNSTABLE_FEATURE.fix = change the macro arguments or stop the recursive expansion before lowering resumes
 MACRO_E_UNSTABLE_FEATURE.example = vitte check path/to/file.vit
 
 SYNTAX_E_EXPECTED_IDENTIFIER.summary = Bezeichner erwartet.
 SYNTAX_E_EXPECTED_IDENTIFIER.cause = The parser or lexer could not form the next valid source construct.
 SYNTAX_E_EXPECTED_IDENTIFIER.step1 = Look at the highlighted token and complete or remove the construct around it.
 SYNTAX_E_EXPECTED_IDENTIFIER.fix = complete the syntax shape named by the parser label at the highlighted token
-SYNTAX_E_EXPECTED_IDENTIFIER.example = proc main() -> int { give 0; }
+SYNTAX_E_EXPECTED_IDENTIFIER.example = proc main() -> int { give 0 }
 
 SYNTAX_E_EXPECTED_EXPRESSION.summary = Ausdruck erwartet.
 SYNTAX_E_EXPECTED_EXPRESSION.cause = The parser or lexer could not form the next valid source construct.
 SYNTAX_E_EXPECTED_EXPRESSION.step1 = Look at the highlighted token and complete or remove the construct around it.
 SYNTAX_E_EXPECTED_EXPRESSION.fix = complete the syntax shape named by the parser label at the highlighted token
-SYNTAX_E_EXPECTED_EXPRESSION.example = proc main() -> int { give 0; }
+SYNTAX_E_EXPECTED_EXPRESSION.example = proc main() -> int { give 0 }
 
 SYNTAX_E_EXPECTED_TYPE.summary = Typ erwartet.
 SYNTAX_E_EXPECTED_TYPE.cause = The parser or lexer could not form the next valid source construct.
 SYNTAX_E_EXPECTED_TYPE.step1 = Look at the highlighted token and complete or remove the construct around it.
 SYNTAX_E_EXPECTED_TYPE.fix = complete the syntax shape named by the parser label at the highlighted token
-SYNTAX_E_EXPECTED_TYPE.example = proc main() -> int { give 0; }
+SYNTAX_E_EXPECTED_TYPE.example = proc main() -> int { give 0 }
 
 SYNTAX_E_EXPECTED_PATTERN.summary = Muster erwartet.
 SYNTAX_E_EXPECTED_PATTERN.cause = The parser or lexer could not form the next valid source construct.
 SYNTAX_E_EXPECTED_PATTERN.step1 = Look at the highlighted token and complete or remove the construct around it.
 SYNTAX_E_EXPECTED_PATTERN.fix = complete the syntax shape named by the parser label at the highlighted token
-SYNTAX_E_EXPECTED_PATTERN.example = proc main() -> int { give 0; }
+SYNTAX_E_EXPECTED_PATTERN.example = proc main() -> int { give 0 }
 
 SYNTAX_E_EXPECTED_BLOCK.summary = Block erwartet.
 SYNTAX_E_EXPECTED_BLOCK.cause = The parser or lexer could not form the next valid source construct.
 SYNTAX_E_EXPECTED_BLOCK.step1 = Look at the highlighted token and complete or remove the construct around it.
 SYNTAX_E_EXPECTED_BLOCK.fix = complete the syntax shape named by the parser label at the highlighted token
-SYNTAX_E_EXPECTED_BLOCK.example = proc main() -> int { give 0; }
+SYNTAX_E_EXPECTED_BLOCK.example = proc main() -> int { give 0 }
 
 SYNTAX_E_EXPECTED_DELIMITER.summary = Trennzeichen erwartet.
 SYNTAX_E_EXPECTED_DELIMITER.cause = The parser or lexer could not form the next valid source construct.
 SYNTAX_E_EXPECTED_DELIMITER.step1 = Look at the highlighted token and complete or remove the construct around it.
 SYNTAX_E_EXPECTED_DELIMITER.fix = complete the syntax shape named by the parser label at the highlighted token
-SYNTAX_E_EXPECTED_DELIMITER.example = proc main() -> int { give 0; }
+SYNTAX_E_EXPECTED_DELIMITER.example = proc main() -> int { give 0 }
 
 SYNTAX_E_UNEXPECTED_TOKEN.summary = Token unerwartet.
 SYNTAX_E_UNEXPECTED_TOKEN.cause = The parser or lexer could not form the next valid source construct.
 SYNTAX_E_UNEXPECTED_TOKEN.step1 = Look at the highlighted token and complete or remove the construct around it.
 SYNTAX_E_UNEXPECTED_TOKEN.fix = complete the syntax shape named by the parser label at the highlighted token
-SYNTAX_E_UNEXPECTED_TOKEN.example = proc main() -> int { give 0; }
+SYNTAX_E_UNEXPECTED_TOKEN.example = proc main() -> int { give 0 }
 
 SYNTAX_E_UNBALANCED_DELIMITER.summary = unbalanced Trennzeichen.
 SYNTAX_E_UNBALANCED_DELIMITER.cause = The parser or lexer could not form the next valid source construct.
 SYNTAX_E_UNBALANCED_DELIMITER.step1 = Look at the highlighted token and complete or remove the construct around it.
 SYNTAX_E_UNBALANCED_DELIMITER.fix = complete the syntax shape named by the parser label at the highlighted token
-SYNTAX_E_UNBALANCED_DELIMITER.example = proc main() -> int { give 0; }
+SYNTAX_E_UNBALANCED_DELIMITER.example = proc main() -> int { give 0 }
 
 SYNTAX_E_INVALID_ATTRIBUTE.summary = attribute ungueltig.
 SYNTAX_E_INVALID_ATTRIBUTE.cause = The parser or lexer could not form the next valid source construct.
 SYNTAX_E_INVALID_ATTRIBUTE.step1 = Look at the highlighted token and complete or remove the construct around it.
 SYNTAX_E_INVALID_ATTRIBUTE.fix = complete the syntax shape named by the parser label at the highlighted token
-SYNTAX_E_INVALID_ATTRIBUTE.example = proc main() -> int { give 0; }
+SYNTAX_E_INVALID_ATTRIBUTE.example = proc main() -> int { give 0 }
 
 SYNTAX_E_INVALID_DECLARATION.summary = Deklaration ungueltig.
 SYNTAX_E_INVALID_DECLARATION.cause = The parser or lexer could not form the next valid source construct.
 SYNTAX_E_INVALID_DECLARATION.step1 = Look at the highlighted token and complete or remove the construct around it.
 SYNTAX_E_INVALID_DECLARATION.fix = complete the syntax shape named by the parser label at the highlighted token
-SYNTAX_E_INVALID_DECLARATION.example = proc main() -> int { give 0; }
+SYNTAX_E_INVALID_DECLARATION.example = proc main() -> int { give 0 }
 
 SYNTAX_E_INVALID_STATEMENT.summary = Anweisung ungueltig.
 SYNTAX_E_INVALID_STATEMENT.cause = The parser or lexer could not form the next valid source construct.
 SYNTAX_E_INVALID_STATEMENT.step1 = Look at the highlighted token and complete or remove the construct around it.
 SYNTAX_E_INVALID_STATEMENT.fix = complete the syntax shape named by the parser label at the highlighted token
-SYNTAX_E_INVALID_STATEMENT.example = proc main() -> int { give 0; }
+SYNTAX_E_INVALID_STATEMENT.example = proc main() -> int { give 0 }
 
 SYNTAX_E_INVALID_EXPRESSION.summary = Ausdruck ungueltig.
 SYNTAX_E_INVALID_EXPRESSION.cause = The parser or lexer could not form the next valid source construct.
 SYNTAX_E_INVALID_EXPRESSION.step1 = Look at the highlighted token and complete or remove the construct around it.
 SYNTAX_E_INVALID_EXPRESSION.fix = complete the syntax shape named by the parser label at the highlighted token
-SYNTAX_E_INVALID_EXPRESSION.example = proc main() -> int { give 0; }
+SYNTAX_E_INVALID_EXPRESSION.example = proc main() -> int { give 0 }
 
 SYNTAX_E_INVALID_PATTERN.summary = Muster ungueltig.
 SYNTAX_E_INVALID_PATTERN.cause = The parser or lexer could not form the next valid source construct.
 SYNTAX_E_INVALID_PATTERN.step1 = Look at the highlighted token and complete or remove the construct around it.
 SYNTAX_E_INVALID_PATTERN.fix = complete the syntax shape named by the parser label at the highlighted token
-SYNTAX_E_INVALID_PATTERN.example = proc main() -> int { give 0; }
+SYNTAX_E_INVALID_PATTERN.example = proc main() -> int { give 0 }
 
 SYNTAX_E_INVALID_LITERAL.summary = Literal ungueltig.
 SYNTAX_E_INVALID_LITERAL.cause = The parser or lexer could not form the next valid source construct.
 SYNTAX_E_INVALID_LITERAL.step1 = Look at the highlighted token and complete or remove the construct around it.
 SYNTAX_E_INVALID_LITERAL.fix = complete the syntax shape named by the parser label at the highlighted token
-SYNTAX_E_INVALID_LITERAL.example = proc main() -> int { give 0; }
+SYNTAX_E_INVALID_LITERAL.example = proc main() -> int { give 0 }
 
 SYNTAX_E_INVALID_OPERATOR.summary = Operator ungueltig.
 SYNTAX_E_INVALID_OPERATOR.cause = The parser or lexer could not form the next valid source construct.
 SYNTAX_E_INVALID_OPERATOR.step1 = Look at the highlighted token and complete or remove the construct around it.
 SYNTAX_E_INVALID_OPERATOR.fix = complete the syntax shape named by the parser label at the highlighted token
-SYNTAX_E_INVALID_OPERATOR.example = proc main() -> int { give 0; }
+SYNTAX_E_INVALID_OPERATOR.example = proc main() -> int { give 0 }
 
 SYNTAX_E_INVALID_MODIFIER.summary = modifier ungueltig.
 SYNTAX_E_INVALID_MODIFIER.cause = The parser or lexer could not form the next valid source construct.
 SYNTAX_E_INVALID_MODIFIER.step1 = Look at the highlighted token and complete or remove the construct around it.
 SYNTAX_E_INVALID_MODIFIER.fix = complete the syntax shape named by the parser label at the highlighted token
-SYNTAX_E_INVALID_MODIFIER.example = proc main() -> int { give 0; }
+SYNTAX_E_INVALID_MODIFIER.example = proc main() -> int { give 0 }
 
 SYNTAX_E_MISSING_BODY.summary = body fehlt.
 SYNTAX_E_MISSING_BODY.cause = The parser or lexer could not form the next valid source construct.
 SYNTAX_E_MISSING_BODY.step1 = Look at the highlighted token and complete or remove the construct around it.
 SYNTAX_E_MISSING_BODY.fix = complete the syntax shape named by the parser label at the highlighted token
-SYNTAX_E_MISSING_BODY.example = proc main() -> int { give 0; }
+SYNTAX_E_MISSING_BODY.example = proc main() -> int { give 0 }
 
 SYNTAX_E_MISSING_RETURN.summary = Rueckgabe fehlt.
 SYNTAX_E_MISSING_RETURN.cause = The parser or lexer could not form the next valid source construct.
 SYNTAX_E_MISSING_RETURN.step1 = Look at the highlighted token and complete or remove the construct around it.
 SYNTAX_E_MISSING_RETURN.fix = complete the syntax shape named by the parser label at the highlighted token
-SYNTAX_E_MISSING_RETURN.example = proc main() -> int { give 0; }
+SYNTAX_E_MISSING_RETURN.example = proc main() -> int { give 0 }
 
 SYNTAX_E_DUPLICATE_NAME.summary = Name doppelt.
 SYNTAX_E_DUPLICATE_NAME.cause = The parser or lexer could not form the next valid source construct.
 SYNTAX_E_DUPLICATE_NAME.step1 = Look at the highlighted token and complete or remove the construct around it.
 SYNTAX_E_DUPLICATE_NAME.fix = complete the syntax shape named by the parser label at the highlighted token
-SYNTAX_E_DUPLICATE_NAME.example = proc main() -> int { give 0; }
+SYNTAX_E_DUPLICATE_NAME.example = proc main() -> int { give 0 }
 
 SYNTAX_E_UNKNOWN_NAME.summary = Name unbekannt.
 SYNTAX_E_UNKNOWN_NAME.cause = The parser or lexer could not form the next valid source construct.
 SYNTAX_E_UNKNOWN_NAME.step1 = Look at the highlighted token and complete or remove the construct around it.
 SYNTAX_E_UNKNOWN_NAME.fix = complete the syntax shape named by the parser label at the highlighted token
-SYNTAX_E_UNKNOWN_NAME.example = proc main() -> int { give 0; }
+SYNTAX_E_UNKNOWN_NAME.example = proc main() -> int { give 0 }
 
 SYNTAX_E_UNKNOWN_TYPE.summary = Typ unbekannt.
 SYNTAX_E_UNKNOWN_TYPE.cause = The parser or lexer could not form the next valid source construct.
 SYNTAX_E_UNKNOWN_TYPE.step1 = Look at the highlighted token and complete or remove the construct around it.
 SYNTAX_E_UNKNOWN_TYPE.fix = complete the syntax shape named by the parser label at the highlighted token
-SYNTAX_E_UNKNOWN_TYPE.example = proc main() -> int { give 0; }
+SYNTAX_E_UNKNOWN_TYPE.example = proc main() -> int { give 0 }
 
 SYNTAX_E_UNKNOWN_MODULE.summary = Modul unbekannt.
 SYNTAX_E_UNKNOWN_MODULE.cause = The parser or lexer could not form the next valid source construct.
 SYNTAX_E_UNKNOWN_MODULE.step1 = Look at the highlighted token and complete or remove the construct around it.
 SYNTAX_E_UNKNOWN_MODULE.fix = complete the syntax shape named by the parser label at the highlighted token
-SYNTAX_E_UNKNOWN_MODULE.example = proc main() -> int { give 0; }
+SYNTAX_E_UNKNOWN_MODULE.example = proc main() -> int { give 0 }
 
 SYNTAX_E_UNKNOWN_MEMBER.summary = Member unbekannt.
 SYNTAX_E_UNKNOWN_MEMBER.cause = The parser or lexer could not form the next valid source construct.
 SYNTAX_E_UNKNOWN_MEMBER.step1 = Look at the highlighted token and complete or remove the construct around it.
 SYNTAX_E_UNKNOWN_MEMBER.fix = complete the syntax shape named by the parser label at the highlighted token
-SYNTAX_E_UNKNOWN_MEMBER.example = proc main() -> int { give 0; }
+SYNTAX_E_UNKNOWN_MEMBER.example = proc main() -> int { give 0 }
 
 SYNTAX_E_AMBIGUOUS_NAME.summary = ambiguous Name.
 SYNTAX_E_AMBIGUOUS_NAME.cause = The parser or lexer could not form the next valid source construct.
 SYNTAX_E_AMBIGUOUS_NAME.step1 = Look at the highlighted token and complete or remove the construct around it.
 SYNTAX_E_AMBIGUOUS_NAME.fix = complete the syntax shape named by the parser label at the highlighted token
-SYNTAX_E_AMBIGUOUS_NAME.example = proc main() -> int { give 0; }
+SYNTAX_E_AMBIGUOUS_NAME.example = proc main() -> int { give 0 }
 
 SYNTAX_E_PRIVATE_SYMBOL.summary = private Symbol.
 SYNTAX_E_PRIVATE_SYMBOL.cause = The parser or lexer could not form the next valid source construct.
 SYNTAX_E_PRIVATE_SYMBOL.step1 = Look at the highlighted token and complete or remove the construct around it.
 SYNTAX_E_PRIVATE_SYMBOL.fix = complete the syntax shape named by the parser label at the highlighted token
-SYNTAX_E_PRIVATE_SYMBOL.example = proc main() -> int { give 0; }
+SYNTAX_E_PRIVATE_SYMBOL.example = proc main() -> int { give 0 }
 
 SYNTAX_E_IMPORT_NOT_FOUND.summary = Import fehlend.
 SYNTAX_E_IMPORT_NOT_FOUND.cause = The parser or lexer could not form the next valid source construct.
 SYNTAX_E_IMPORT_NOT_FOUND.step1 = Look at the highlighted token and complete or remove the construct around it.
 SYNTAX_E_IMPORT_NOT_FOUND.fix = complete the syntax shape named by the parser label at the highlighted token
-SYNTAX_E_IMPORT_NOT_FOUND.example = proc main() -> int { give 0; }
+SYNTAX_E_IMPORT_NOT_FOUND.example = proc main() -> int { give 0 }
 
 SYNTAX_E_IMPORT_CYCLE.summary = Import Zyklus.
 SYNTAX_E_IMPORT_CYCLE.cause = The parser or lexer could not form the next valid source construct.
 SYNTAX_E_IMPORT_CYCLE.step1 = Look at the highlighted token and complete or remove the construct around it.
 SYNTAX_E_IMPORT_CYCLE.fix = complete the syntax shape named by the parser label at the highlighted token
-SYNTAX_E_IMPORT_CYCLE.example = proc main() -> int { give 0; }
+SYNTAX_E_IMPORT_CYCLE.example = proc main() -> int { give 0 }
 
 SYNTAX_E_EXPORT_CONFLICT.summary = export Konflikt.
 SYNTAX_E_EXPORT_CONFLICT.cause = The parser or lexer could not form the next valid source construct.
 SYNTAX_E_EXPORT_CONFLICT.step1 = Look at the highlighted token and complete or remove the construct around it.
 SYNTAX_E_EXPORT_CONFLICT.fix = complete the syntax shape named by the parser label at the highlighted token
-SYNTAX_E_EXPORT_CONFLICT.example = proc main() -> int { give 0; }
+SYNTAX_E_EXPORT_CONFLICT.example = proc main() -> int { give 0 }
 
 SYNTAX_E_ARITY_MISMATCH.summary = arity Nichtuebereinstimmung.
 SYNTAX_E_ARITY_MISMATCH.cause = The parser or lexer could not form the next valid source construct.
 SYNTAX_E_ARITY_MISMATCH.step1 = Look at the highlighted token and complete or remove the construct around it.
 SYNTAX_E_ARITY_MISMATCH.fix = complete the syntax shape named by the parser label at the highlighted token
-SYNTAX_E_ARITY_MISMATCH.example = proc main() -> int { give 0; }
+SYNTAX_E_ARITY_MISMATCH.example = proc main() -> int { give 0 }
 
 SYNTAX_E_ARGUMENT_MISMATCH.summary = Argument Nichtuebereinstimmung.
 SYNTAX_E_ARGUMENT_MISMATCH.cause = The parser or lexer could not form the next valid source construct.
 SYNTAX_E_ARGUMENT_MISMATCH.step1 = Look at the highlighted token and complete or remove the construct around it.
 SYNTAX_E_ARGUMENT_MISMATCH.fix = complete the syntax shape named by the parser label at the highlighted token
-SYNTAX_E_ARGUMENT_MISMATCH.example = proc main() -> int { give 0; }
+SYNTAX_E_ARGUMENT_MISMATCH.example = proc main() -> int { give 0 }
 
 SYNTAX_E_ASSIGNMENT_MISMATCH.summary = Zuweisung Nichtuebereinstimmung.
 SYNTAX_E_ASSIGNMENT_MISMATCH.cause = The parser or lexer could not form the next valid source construct.
 SYNTAX_E_ASSIGNMENT_MISMATCH.step1 = Look at the highlighted token and complete or remove the construct around it.
 SYNTAX_E_ASSIGNMENT_MISMATCH.fix = complete the syntax shape named by the parser label at the highlighted token
-SYNTAX_E_ASSIGNMENT_MISMATCH.example = proc main() -> int { give 0; }
+SYNTAX_E_ASSIGNMENT_MISMATCH.example = proc main() -> int { give 0 }
 
 SYNTAX_E_BRANCH_MISMATCH.summary = branch Nichtuebereinstimmung.
 SYNTAX_E_BRANCH_MISMATCH.cause = The parser or lexer could not form the next valid source construct.
 SYNTAX_E_BRANCH_MISMATCH.step1 = Look at the highlighted token and complete or remove the construct around it.
 SYNTAX_E_BRANCH_MISMATCH.fix = complete the syntax shape named by the parser label at the highlighted token
-SYNTAX_E_BRANCH_MISMATCH.example = proc main() -> int { give 0; }
+SYNTAX_E_BRANCH_MISMATCH.example = proc main() -> int { give 0 }
 
 SYNTAX_E_INVALID_CALL.summary = Aufruf ungueltig.
 SYNTAX_E_INVALID_CALL.cause = The parser or lexer could not form the next valid source construct.
 SYNTAX_E_INVALID_CALL.step1 = Look at the highlighted token and complete or remove the construct around it.
 SYNTAX_E_INVALID_CALL.fix = complete the syntax shape named by the parser label at the highlighted token
-SYNTAX_E_INVALID_CALL.example = proc main() -> int { give 0; }
+SYNTAX_E_INVALID_CALL.example = proc main() -> int { give 0 }
 
 SYNTAX_E_INVALID_CAST.summary = Umwandlung ungueltig.
 SYNTAX_E_INVALID_CAST.cause = The parser or lexer could not form the next valid source construct.
 SYNTAX_E_INVALID_CAST.step1 = Look at the highlighted token and complete or remove the construct around it.
 SYNTAX_E_INVALID_CAST.fix = complete the syntax shape named by the parser label at the highlighted token
-SYNTAX_E_INVALID_CAST.example = proc main() -> int { give 0; }
+SYNTAX_E_INVALID_CAST.example = proc main() -> int { give 0 }
 
 SYNTAX_E_INVALID_INDEX.summary = Index ungueltig.
 SYNTAX_E_INVALID_INDEX.cause = The parser or lexer could not form the next valid source construct.
 SYNTAX_E_INVALID_INDEX.step1 = Look at the highlighted token and complete or remove the construct around it.
 SYNTAX_E_INVALID_INDEX.fix = complete the syntax shape named by the parser label at the highlighted token
-SYNTAX_E_INVALID_INDEX.example = proc main() -> int { give 0; }
+SYNTAX_E_INVALID_INDEX.example = proc main() -> int { give 0 }
 
 SYNTAX_E_INVALID_DEREF.summary = deref ungueltig.
 SYNTAX_E_INVALID_DEREF.cause = The parser or lexer could not form the next valid source construct.
 SYNTAX_E_INVALID_DEREF.step1 = Look at the highlighted token and complete or remove the construct around it.
 SYNTAX_E_INVALID_DEREF.fix = complete the syntax shape named by the parser label at the highlighted token
-SYNTAX_E_INVALID_DEREF.example = proc main() -> int { give 0; }
+SYNTAX_E_INVALID_DEREF.example = proc main() -> int { give 0 }
 
 SYNTAX_E_INVALID_BORROW.summary = Ausleihe ungueltig.
 SYNTAX_E_INVALID_BORROW.cause = The parser or lexer could not form the next valid source construct.
 SYNTAX_E_INVALID_BORROW.step1 = Look at the highlighted token and complete or remove the construct around it.
 SYNTAX_E_INVALID_BORROW.fix = complete the syntax shape named by the parser label at the highlighted token
-SYNTAX_E_INVALID_BORROW.example = proc main() -> int { give 0; }
+SYNTAX_E_INVALID_BORROW.example = proc main() -> int { give 0 }
 
 SYNTAX_E_INVALID_MOVE.summary = Verschiebung ungueltig.
 SYNTAX_E_INVALID_MOVE.cause = The parser or lexer could not form the next valid source construct.
 SYNTAX_E_INVALID_MOVE.step1 = Look at the highlighted token and complete or remove the construct around it.
 SYNTAX_E_INVALID_MOVE.fix = complete the syntax shape named by the parser label at the highlighted token
-SYNTAX_E_INVALID_MOVE.example = proc main() -> int { give 0; }
+SYNTAX_E_INVALID_MOVE.example = proc main() -> int { give 0 }
 
 SYNTAX_E_USE_AFTER_MOVE.summary = use after Verschiebung.
 SYNTAX_E_USE_AFTER_MOVE.cause = The parser or lexer could not form the next valid source construct.
 SYNTAX_E_USE_AFTER_MOVE.step1 = Look at the highlighted token and complete or remove the construct around it.
 SYNTAX_E_USE_AFTER_MOVE.fix = complete the syntax shape named by the parser label at the highlighted token
-SYNTAX_E_USE_AFTER_MOVE.example = proc main() -> int { give 0; }
+SYNTAX_E_USE_AFTER_MOVE.example = proc main() -> int { give 0 }
 
 SYNTAX_E_USE_AFTER_DROP.summary = use after Freigabe.
 SYNTAX_E_USE_AFTER_DROP.cause = The parser or lexer could not form the next valid source construct.
 SYNTAX_E_USE_AFTER_DROP.step1 = Look at the highlighted token and complete or remove the construct around it.
 SYNTAX_E_USE_AFTER_DROP.fix = complete the syntax shape named by the parser label at the highlighted token
-SYNTAX_E_USE_AFTER_DROP.example = proc main() -> int { give 0; }
+SYNTAX_E_USE_AFTER_DROP.example = proc main() -> int { give 0 }
 
 SYNTAX_E_USE_BEFORE_INIT.summary = use before init.
 SYNTAX_E_USE_BEFORE_INIT.cause = The parser or lexer could not form the next valid source construct.
 SYNTAX_E_USE_BEFORE_INIT.step1 = Look at the highlighted token and complete or remove the construct around it.
 SYNTAX_E_USE_BEFORE_INIT.fix = complete the syntax shape named by the parser label at the highlighted token
-SYNTAX_E_USE_BEFORE_INIT.example = proc main() -> int { give 0; }
+SYNTAX_E_USE_BEFORE_INIT.example = proc main() -> int { give 0 }
 
 SYNTAX_E_DOUBLE_DROP.summary = double Freigabe.
 SYNTAX_E_DOUBLE_DROP.cause = The parser or lexer could not form the next valid source construct.
 SYNTAX_E_DOUBLE_DROP.step1 = Look at the highlighted token and complete or remove the construct around it.
 SYNTAX_E_DOUBLE_DROP.fix = complete the syntax shape named by the parser label at the highlighted token
-SYNTAX_E_DOUBLE_DROP.example = proc main() -> int { give 0; }
+SYNTAX_E_DOUBLE_DROP.example = proc main() -> int { give 0 }
 
 SYNTAX_E_BORROW_CONFLICT.summary = Ausleihe Konflikt.
 SYNTAX_E_BORROW_CONFLICT.cause = The parser or lexer could not form the next valid source construct.
 SYNTAX_E_BORROW_CONFLICT.step1 = Look at the highlighted token and complete or remove the construct around it.
 SYNTAX_E_BORROW_CONFLICT.fix = complete the syntax shape named by the parser label at the highlighted token
-SYNTAX_E_BORROW_CONFLICT.example = proc main() -> int { give 0; }
+SYNTAX_E_BORROW_CONFLICT.example = proc main() -> int { give 0 }
 
 SYNTAX_E_MUTABILITY_CONFLICT.summary = mutability Konflikt.
 SYNTAX_E_MUTABILITY_CONFLICT.cause = The parser or lexer could not form the next valid source construct.
 SYNTAX_E_MUTABILITY_CONFLICT.step1 = Look at the highlighted token and complete or remove the construct around it.
 SYNTAX_E_MUTABILITY_CONFLICT.fix = complete the syntax shape named by the parser label at the highlighted token
-SYNTAX_E_MUTABILITY_CONFLICT.example = proc main() -> int { give 0; }
+SYNTAX_E_MUTABILITY_CONFLICT.example = proc main() -> int { give 0 }
 
 SYNTAX_E_LIFETIME_TOO_SHORT.summary = Lebensdauer zu short.
 SYNTAX_E_LIFETIME_TOO_SHORT.cause = The parser or lexer could not form the next valid source construct.
 SYNTAX_E_LIFETIME_TOO_SHORT.step1 = Look at the highlighted token and complete or remove the construct around it.
 SYNTAX_E_LIFETIME_TOO_SHORT.fix = complete the syntax shape named by the parser label at the highlighted token
-SYNTAX_E_LIFETIME_TOO_SHORT.example = proc main() -> int { give 0; }
+SYNTAX_E_LIFETIME_TOO_SHORT.example = proc main() -> int { give 0 }
 
 SYNTAX_E_DANGLING_REFERENCE.summary = dangling Referenz.
 SYNTAX_E_DANGLING_REFERENCE.cause = The parser or lexer could not form the next valid source construct.
 SYNTAX_E_DANGLING_REFERENCE.step1 = Look at the highlighted token and complete or remove the construct around it.
 SYNTAX_E_DANGLING_REFERENCE.fix = complete the syntax shape named by the parser label at the highlighted token
-SYNTAX_E_DANGLING_REFERENCE.example = proc main() -> int { give 0; }
+SYNTAX_E_DANGLING_REFERENCE.example = proc main() -> int { give 0 }
 
 SYNTAX_E_NON_EXHAUSTIVE_MATCH.summary = non exhaustive match.
 SYNTAX_E_NON_EXHAUSTIVE_MATCH.cause = The parser or lexer could not form the next valid source construct.
 SYNTAX_E_NON_EXHAUSTIVE_MATCH.step1 = Look at the highlighted token and complete or remove the construct around it.
 SYNTAX_E_NON_EXHAUSTIVE_MATCH.fix = complete the syntax shape named by the parser label at the highlighted token
-SYNTAX_E_NON_EXHAUSTIVE_MATCH.example = proc main() -> int { give 0; }
+SYNTAX_E_NON_EXHAUSTIVE_MATCH.example = proc main() -> int { give 0 }
 
 SYNTAX_E_UNREACHABLE_PATTERN.summary = unerreichbar Muster.
 SYNTAX_E_UNREACHABLE_PATTERN.cause = The parser or lexer could not form the next valid source construct.
 SYNTAX_E_UNREACHABLE_PATTERN.step1 = Look at the highlighted token and complete or remove the construct around it.
 SYNTAX_E_UNREACHABLE_PATTERN.fix = complete the syntax shape named by the parser label at the highlighted token
-SYNTAX_E_UNREACHABLE_PATTERN.example = proc main() -> int { give 0; }
+SYNTAX_E_UNREACHABLE_PATTERN.example = proc main() -> int { give 0 }
 
 SYNTAX_E_CONST_REQUIRED.summary = const required.
 SYNTAX_E_CONST_REQUIRED.cause = The parser or lexer could not form the next valid source construct.
 SYNTAX_E_CONST_REQUIRED.step1 = Look at the highlighted token and complete or remove the construct around it.
 SYNTAX_E_CONST_REQUIRED.fix = complete the syntax shape named by the parser label at the highlighted token
-SYNTAX_E_CONST_REQUIRED.example = proc main() -> int { give 0; }
+SYNTAX_E_CONST_REQUIRED.example = proc main() -> int { give 0 }
 
 SYNTAX_E_CONST_OVERFLOW.summary = const Ueberlauf.
 SYNTAX_E_CONST_OVERFLOW.cause = The parser or lexer could not form the next valid source construct.
 SYNTAX_E_CONST_OVERFLOW.step1 = Look at the highlighted token and complete or remove the construct around it.
 SYNTAX_E_CONST_OVERFLOW.fix = complete the syntax shape named by the parser label at the highlighted token
-SYNTAX_E_CONST_OVERFLOW.example = proc main() -> int { give 0; }
+SYNTAX_E_CONST_OVERFLOW.example = proc main() -> int { give 0 }
 
 SYNTAX_E_CONST_DIVISION_BY_ZERO.summary = const Division by Null.
 SYNTAX_E_CONST_DIVISION_BY_ZERO.cause = The parser or lexer could not form the next valid source construct.
 SYNTAX_E_CONST_DIVISION_BY_ZERO.step1 = Look at the highlighted token and complete or remove the construct around it.
 SYNTAX_E_CONST_DIVISION_BY_ZERO.fix = complete the syntax shape named by the parser label at the highlighted token
-SYNTAX_E_CONST_DIVISION_BY_ZERO.example = proc main() -> int { give 0; }
+SYNTAX_E_CONST_DIVISION_BY_ZERO.example = proc main() -> int { give 0 }
 
 SYNTAX_E_CONST_CYCLE.summary = const Zyklus.
 SYNTAX_E_CONST_CYCLE.cause = The parser or lexer could not form the next valid source construct.
 SYNTAX_E_CONST_CYCLE.step1 = Look at the highlighted token and complete or remove the construct around it.
 SYNTAX_E_CONST_CYCLE.fix = complete the syntax shape named by the parser label at the highlighted token
-SYNTAX_E_CONST_CYCLE.example = proc main() -> int { give 0; }
+SYNTAX_E_CONST_CYCLE.example = proc main() -> int { give 0 }
 
 SYNTAX_E_MACRO_NOT_FOUND.summary = macro fehlend.
 SYNTAX_E_MACRO_NOT_FOUND.cause = The parser or lexer could not form the next valid source construct.
 SYNTAX_E_MACRO_NOT_FOUND.step1 = Look at the highlighted token and complete or remove the construct around it.
 SYNTAX_E_MACRO_NOT_FOUND.fix = complete the syntax shape named by the parser label at the highlighted token
-SYNTAX_E_MACRO_NOT_FOUND.example = proc main() -> int { give 0; }
+SYNTAX_E_MACRO_NOT_FOUND.example = proc main() -> int { give 0 }
 
 SYNTAX_E_MACRO_RECURSION.summary = macro recursion.
 SYNTAX_E_MACRO_RECURSION.cause = The parser or lexer could not form the next valid source construct.
 SYNTAX_E_MACRO_RECURSION.step1 = Look at the highlighted token and complete or remove the construct around it.
 SYNTAX_E_MACRO_RECURSION.fix = complete the syntax shape named by the parser label at the highlighted token
-SYNTAX_E_MACRO_RECURSION.example = proc main() -> int { give 0; }
+SYNTAX_E_MACRO_RECURSION.example = proc main() -> int { give 0 }
 
 SYNTAX_E_MACRO_EXPANSION_FAILED.summary = macro expansion fehlgeschlagen.
 SYNTAX_E_MACRO_EXPANSION_FAILED.cause = The parser or lexer could not form the next valid source construct.
 SYNTAX_E_MACRO_EXPANSION_FAILED.step1 = Look at the highlighted token and complete or remove the construct around it.
 SYNTAX_E_MACRO_EXPANSION_FAILED.fix = complete the syntax shape named by the parser label at the highlighted token
-SYNTAX_E_MACRO_EXPANSION_FAILED.example = proc main() -> int { give 0; }
+SYNTAX_E_MACRO_EXPANSION_FAILED.example = proc main() -> int { give 0 }
 
 SYNTAX_E_TRAIT_NOT_IMPLEMENTED.summary = trait not implemented.
 SYNTAX_E_TRAIT_NOT_IMPLEMENTED.cause = The parser or lexer could not form the next valid source construct.
 SYNTAX_E_TRAIT_NOT_IMPLEMENTED.step1 = Look at the highlighted token and complete or remove the construct around it.
 SYNTAX_E_TRAIT_NOT_IMPLEMENTED.fix = complete the syntax shape named by the parser label at the highlighted token
-SYNTAX_E_TRAIT_NOT_IMPLEMENTED.example = proc main() -> int { give 0; }
+SYNTAX_E_TRAIT_NOT_IMPLEMENTED.example = proc main() -> int { give 0 }
 
 SYNTAX_E_TRAIT_AMBIGUOUS.summary = trait ambiguous.
 SYNTAX_E_TRAIT_AMBIGUOUS.cause = The parser or lexer could not form the next valid source construct.
 SYNTAX_E_TRAIT_AMBIGUOUS.step1 = Look at the highlighted token and complete or remove the construct around it.
 SYNTAX_E_TRAIT_AMBIGUOUS.fix = complete the syntax shape named by the parser label at the highlighted token
-SYNTAX_E_TRAIT_AMBIGUOUS.example = proc main() -> int { give 0; }
+SYNTAX_E_TRAIT_AMBIGUOUS.example = proc main() -> int { give 0 }
 
 SYNTAX_E_GENERIC_ARGUMENT_MISSING.summary = generisch Argument fehlend.
 SYNTAX_E_GENERIC_ARGUMENT_MISSING.cause = The parser or lexer could not form the next valid source construct.
 SYNTAX_E_GENERIC_ARGUMENT_MISSING.step1 = Look at the highlighted token and complete or remove the construct around it.
 SYNTAX_E_GENERIC_ARGUMENT_MISSING.fix = complete the syntax shape named by the parser label at the highlighted token
-SYNTAX_E_GENERIC_ARGUMENT_MISSING.example = proc main() -> int { give 0; }
+SYNTAX_E_GENERIC_ARGUMENT_MISSING.example = proc main() -> int { give 0 }
 
 SYNTAX_E_GENERIC_BOUND_FAILED.summary = generisch bound fehlgeschlagen.
 SYNTAX_E_GENERIC_BOUND_FAILED.cause = The parser or lexer could not form the next valid source construct.
 SYNTAX_E_GENERIC_BOUND_FAILED.step1 = Look at the highlighted token and complete or remove the construct around it.
 SYNTAX_E_GENERIC_BOUND_FAILED.fix = complete the syntax shape named by the parser label at the highlighted token
-SYNTAX_E_GENERIC_BOUND_FAILED.example = proc main() -> int { give 0; }
+SYNTAX_E_GENERIC_BOUND_FAILED.example = proc main() -> int { give 0 }
 
 SYNTAX_E_UNSUPPORTED_TARGET.summary = Ziel nicht unterstuetzt.
 SYNTAX_E_UNSUPPORTED_TARGET.cause = The parser or lexer could not form the next valid source construct.
 SYNTAX_E_UNSUPPORTED_TARGET.step1 = Look at the highlighted token and complete or remove the construct around it.
 SYNTAX_E_UNSUPPORTED_TARGET.fix = complete the syntax shape named by the parser label at the highlighted token
-SYNTAX_E_UNSUPPORTED_TARGET.example = proc main() -> int { give 0; }
+SYNTAX_E_UNSUPPORTED_TARGET.example = proc main() -> int { give 0 }
 
 SYNTAX_E_ABI_MISMATCH.summary = abi Nichtuebereinstimmung.
 SYNTAX_E_ABI_MISMATCH.cause = The parser or lexer could not form the next valid source construct.
 SYNTAX_E_ABI_MISMATCH.step1 = Look at the highlighted token and complete or remove the construct around it.
 SYNTAX_E_ABI_MISMATCH.fix = complete the syntax shape named by the parser label at the highlighted token
-SYNTAX_E_ABI_MISMATCH.example = proc main() -> int { give 0; }
+SYNTAX_E_ABI_MISMATCH.example = proc main() -> int { give 0 }
 
 SYNTAX_E_LINK_FAILED.summary = link fehlgeschlagen.
 SYNTAX_E_LINK_FAILED.cause = The parser or lexer could not form the next valid source construct.
 SYNTAX_E_LINK_FAILED.step1 = Look at the highlighted token and complete or remove the construct around it.
 SYNTAX_E_LINK_FAILED.fix = complete the syntax shape named by the parser label at the highlighted token
-SYNTAX_E_LINK_FAILED.example = proc main() -> int { give 0; }
+SYNTAX_E_LINK_FAILED.example = proc main() -> int { give 0 }
 
 SYNTAX_E_RUNTIME_PANIC.summary = runtime Panik.
 SYNTAX_E_RUNTIME_PANIC.cause = The parser or lexer could not form the next valid source construct.
 SYNTAX_E_RUNTIME_PANIC.step1 = Look at the highlighted token and complete or remove the construct around it.
 SYNTAX_E_RUNTIME_PANIC.fix = complete the syntax shape named by the parser label at the highlighted token
-SYNTAX_E_RUNTIME_PANIC.example = proc main() -> int { give 0; }
+SYNTAX_E_RUNTIME_PANIC.example = proc main() -> int { give 0 }
 
 NAME_E_EXPECTED_IDENTIFIER.summary = Bezeichner erwartet.
 NAME_E_EXPECTED_IDENTIFIER.cause = A symbol, module path, binding, visibility rule, or import contract did not resolve.
@@ -5158,1508 +5242,1508 @@ CONST_E_RUNTIME_PANIC.example = const size: int = 4
 
 MACRO_E_EXPECTED_IDENTIFIER.summary = Bezeichner erwartet.
 MACRO_E_EXPECTED_IDENTIFIER.cause = The macro expansion phase found code that violates this diagnostic rule.
-MACRO_E_EXPECTED_IDENTIFIER.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MACRO_E_EXPECTED_IDENTIFIER.fix = repair the highlighted compiler contract before checking later diagnostics
+MACRO_E_EXPECTED_IDENTIFIER.step1 = Inspect the macro invocation and the expansion note attached to the primary diagnostic.
+MACRO_E_EXPECTED_IDENTIFIER.fix = change the macro arguments or stop the recursive expansion before lowering resumes
 MACRO_E_EXPECTED_IDENTIFIER.example = vitte check path/to/file.vit
 
 MACRO_E_EXPECTED_EXPRESSION.summary = Ausdruck erwartet.
 MACRO_E_EXPECTED_EXPRESSION.cause = The macro expansion phase found code that violates this diagnostic rule.
-MACRO_E_EXPECTED_EXPRESSION.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MACRO_E_EXPECTED_EXPRESSION.fix = repair the highlighted compiler contract before checking later diagnostics
+MACRO_E_EXPECTED_EXPRESSION.step1 = Inspect the macro invocation and the expansion note attached to the primary diagnostic.
+MACRO_E_EXPECTED_EXPRESSION.fix = change the macro arguments or stop the recursive expansion before lowering resumes
 MACRO_E_EXPECTED_EXPRESSION.example = vitte check path/to/file.vit
 
 MACRO_E_EXPECTED_TYPE.summary = Typ erwartet.
 MACRO_E_EXPECTED_TYPE.cause = The macro expansion phase found code that violates this diagnostic rule.
-MACRO_E_EXPECTED_TYPE.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MACRO_E_EXPECTED_TYPE.fix = repair the highlighted compiler contract before checking later diagnostics
+MACRO_E_EXPECTED_TYPE.step1 = Inspect the macro invocation and the expansion note attached to the primary diagnostic.
+MACRO_E_EXPECTED_TYPE.fix = change the macro arguments or stop the recursive expansion before lowering resumes
 MACRO_E_EXPECTED_TYPE.example = vitte check path/to/file.vit
 
 MACRO_E_EXPECTED_PATTERN.summary = Muster erwartet.
 MACRO_E_EXPECTED_PATTERN.cause = The macro expansion phase found code that violates this diagnostic rule.
-MACRO_E_EXPECTED_PATTERN.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MACRO_E_EXPECTED_PATTERN.fix = repair the highlighted compiler contract before checking later diagnostics
+MACRO_E_EXPECTED_PATTERN.step1 = Inspect the macro invocation and the expansion note attached to the primary diagnostic.
+MACRO_E_EXPECTED_PATTERN.fix = change the macro arguments or stop the recursive expansion before lowering resumes
 MACRO_E_EXPECTED_PATTERN.example = vitte check path/to/file.vit
 
 MACRO_E_EXPECTED_BLOCK.summary = Block erwartet.
 MACRO_E_EXPECTED_BLOCK.cause = The macro expansion phase found code that violates this diagnostic rule.
-MACRO_E_EXPECTED_BLOCK.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MACRO_E_EXPECTED_BLOCK.fix = repair the highlighted compiler contract before checking later diagnostics
+MACRO_E_EXPECTED_BLOCK.step1 = Inspect the macro invocation and the expansion note attached to the primary diagnostic.
+MACRO_E_EXPECTED_BLOCK.fix = change the macro arguments or stop the recursive expansion before lowering resumes
 MACRO_E_EXPECTED_BLOCK.example = vitte check path/to/file.vit
 
 MACRO_E_EXPECTED_DELIMITER.summary = Trennzeichen erwartet.
 MACRO_E_EXPECTED_DELIMITER.cause = The macro expansion phase found code that violates this diagnostic rule.
-MACRO_E_EXPECTED_DELIMITER.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MACRO_E_EXPECTED_DELIMITER.fix = repair the highlighted compiler contract before checking later diagnostics
+MACRO_E_EXPECTED_DELIMITER.step1 = Inspect the macro invocation and the expansion note attached to the primary diagnostic.
+MACRO_E_EXPECTED_DELIMITER.fix = change the macro arguments or stop the recursive expansion before lowering resumes
 MACRO_E_EXPECTED_DELIMITER.example = vitte check path/to/file.vit
 
 MACRO_E_UNEXPECTED_TOKEN.summary = Token unerwartet.
 MACRO_E_UNEXPECTED_TOKEN.cause = The macro expansion phase found code that violates this diagnostic rule.
-MACRO_E_UNEXPECTED_TOKEN.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MACRO_E_UNEXPECTED_TOKEN.fix = repair the highlighted compiler contract before checking later diagnostics
+MACRO_E_UNEXPECTED_TOKEN.step1 = Inspect the macro invocation and the expansion note attached to the primary diagnostic.
+MACRO_E_UNEXPECTED_TOKEN.fix = change the macro arguments or stop the recursive expansion before lowering resumes
 MACRO_E_UNEXPECTED_TOKEN.example = vitte check path/to/file.vit
 
 MACRO_E_UNBALANCED_DELIMITER.summary = unbalanced Trennzeichen.
 MACRO_E_UNBALANCED_DELIMITER.cause = The macro expansion phase found code that violates this diagnostic rule.
-MACRO_E_UNBALANCED_DELIMITER.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MACRO_E_UNBALANCED_DELIMITER.fix = repair the highlighted compiler contract before checking later diagnostics
+MACRO_E_UNBALANCED_DELIMITER.step1 = Inspect the macro invocation and the expansion note attached to the primary diagnostic.
+MACRO_E_UNBALANCED_DELIMITER.fix = change the macro arguments or stop the recursive expansion before lowering resumes
 MACRO_E_UNBALANCED_DELIMITER.example = vitte check path/to/file.vit
 
 MACRO_E_INVALID_ATTRIBUTE.summary = attribute ungueltig.
 MACRO_E_INVALID_ATTRIBUTE.cause = The macro expansion phase found code that violates this diagnostic rule.
-MACRO_E_INVALID_ATTRIBUTE.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MACRO_E_INVALID_ATTRIBUTE.fix = repair the highlighted compiler contract before checking later diagnostics
+MACRO_E_INVALID_ATTRIBUTE.step1 = Inspect the macro invocation and the expansion note attached to the primary diagnostic.
+MACRO_E_INVALID_ATTRIBUTE.fix = change the macro arguments or stop the recursive expansion before lowering resumes
 MACRO_E_INVALID_ATTRIBUTE.example = vitte check path/to/file.vit
 
 MACRO_E_INVALID_DECLARATION.summary = Deklaration ungueltig.
 MACRO_E_INVALID_DECLARATION.cause = The macro expansion phase found code that violates this diagnostic rule.
-MACRO_E_INVALID_DECLARATION.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MACRO_E_INVALID_DECLARATION.fix = repair the highlighted compiler contract before checking later diagnostics
+MACRO_E_INVALID_DECLARATION.step1 = Inspect the macro invocation and the expansion note attached to the primary diagnostic.
+MACRO_E_INVALID_DECLARATION.fix = change the macro arguments or stop the recursive expansion before lowering resumes
 MACRO_E_INVALID_DECLARATION.example = vitte check path/to/file.vit
 
 MACRO_E_INVALID_STATEMENT.summary = Anweisung ungueltig.
 MACRO_E_INVALID_STATEMENT.cause = The macro expansion phase found code that violates this diagnostic rule.
-MACRO_E_INVALID_STATEMENT.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MACRO_E_INVALID_STATEMENT.fix = repair the highlighted compiler contract before checking later diagnostics
+MACRO_E_INVALID_STATEMENT.step1 = Inspect the macro invocation and the expansion note attached to the primary diagnostic.
+MACRO_E_INVALID_STATEMENT.fix = change the macro arguments or stop the recursive expansion before lowering resumes
 MACRO_E_INVALID_STATEMENT.example = vitte check path/to/file.vit
 
 MACRO_E_INVALID_EXPRESSION.summary = Ausdruck ungueltig.
 MACRO_E_INVALID_EXPRESSION.cause = The macro expansion phase found code that violates this diagnostic rule.
-MACRO_E_INVALID_EXPRESSION.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MACRO_E_INVALID_EXPRESSION.fix = repair the highlighted compiler contract before checking later diagnostics
+MACRO_E_INVALID_EXPRESSION.step1 = Inspect the macro invocation and the expansion note attached to the primary diagnostic.
+MACRO_E_INVALID_EXPRESSION.fix = change the macro arguments or stop the recursive expansion before lowering resumes
 MACRO_E_INVALID_EXPRESSION.example = vitte check path/to/file.vit
 
 MACRO_E_INVALID_PATTERN.summary = Muster ungueltig.
 MACRO_E_INVALID_PATTERN.cause = The macro expansion phase found code that violates this diagnostic rule.
-MACRO_E_INVALID_PATTERN.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MACRO_E_INVALID_PATTERN.fix = repair the highlighted compiler contract before checking later diagnostics
+MACRO_E_INVALID_PATTERN.step1 = Inspect the macro invocation and the expansion note attached to the primary diagnostic.
+MACRO_E_INVALID_PATTERN.fix = change the macro arguments or stop the recursive expansion before lowering resumes
 MACRO_E_INVALID_PATTERN.example = vitte check path/to/file.vit
 
 MACRO_E_INVALID_LITERAL.summary = Literal ungueltig.
 MACRO_E_INVALID_LITERAL.cause = The macro expansion phase found code that violates this diagnostic rule.
-MACRO_E_INVALID_LITERAL.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MACRO_E_INVALID_LITERAL.fix = repair the highlighted compiler contract before checking later diagnostics
+MACRO_E_INVALID_LITERAL.step1 = Inspect the macro invocation and the expansion note attached to the primary diagnostic.
+MACRO_E_INVALID_LITERAL.fix = change the macro arguments or stop the recursive expansion before lowering resumes
 MACRO_E_INVALID_LITERAL.example = vitte check path/to/file.vit
 
 MACRO_E_INVALID_OPERATOR.summary = Operator ungueltig.
 MACRO_E_INVALID_OPERATOR.cause = The macro expansion phase found code that violates this diagnostic rule.
-MACRO_E_INVALID_OPERATOR.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MACRO_E_INVALID_OPERATOR.fix = repair the highlighted compiler contract before checking later diagnostics
+MACRO_E_INVALID_OPERATOR.step1 = Inspect the macro invocation and the expansion note attached to the primary diagnostic.
+MACRO_E_INVALID_OPERATOR.fix = change the macro arguments or stop the recursive expansion before lowering resumes
 MACRO_E_INVALID_OPERATOR.example = vitte check path/to/file.vit
 
 MACRO_E_INVALID_MODIFIER.summary = modifier ungueltig.
 MACRO_E_INVALID_MODIFIER.cause = The macro expansion phase found code that violates this diagnostic rule.
-MACRO_E_INVALID_MODIFIER.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MACRO_E_INVALID_MODIFIER.fix = repair the highlighted compiler contract before checking later diagnostics
+MACRO_E_INVALID_MODIFIER.step1 = Inspect the macro invocation and the expansion note attached to the primary diagnostic.
+MACRO_E_INVALID_MODIFIER.fix = change the macro arguments or stop the recursive expansion before lowering resumes
 MACRO_E_INVALID_MODIFIER.example = vitte check path/to/file.vit
 
 MACRO_E_MISSING_BODY.summary = body fehlt.
 MACRO_E_MISSING_BODY.cause = The macro expansion phase found code that violates this diagnostic rule.
-MACRO_E_MISSING_BODY.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MACRO_E_MISSING_BODY.fix = repair the highlighted compiler contract before checking later diagnostics
+MACRO_E_MISSING_BODY.step1 = Inspect the macro invocation and the expansion note attached to the primary diagnostic.
+MACRO_E_MISSING_BODY.fix = change the macro arguments or stop the recursive expansion before lowering resumes
 MACRO_E_MISSING_BODY.example = vitte check path/to/file.vit
 
 MACRO_E_MISSING_RETURN.summary = Rueckgabe fehlt.
 MACRO_E_MISSING_RETURN.cause = The macro expansion phase found code that violates this diagnostic rule.
-MACRO_E_MISSING_RETURN.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MACRO_E_MISSING_RETURN.fix = repair the highlighted compiler contract before checking later diagnostics
+MACRO_E_MISSING_RETURN.step1 = Inspect the macro invocation and the expansion note attached to the primary diagnostic.
+MACRO_E_MISSING_RETURN.fix = change the macro arguments or stop the recursive expansion before lowering resumes
 MACRO_E_MISSING_RETURN.example = vitte check path/to/file.vit
 
 MACRO_E_DUPLICATE_NAME.summary = Name doppelt.
 MACRO_E_DUPLICATE_NAME.cause = The macro expansion phase found code that violates this diagnostic rule.
-MACRO_E_DUPLICATE_NAME.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MACRO_E_DUPLICATE_NAME.fix = repair the highlighted compiler contract before checking later diagnostics
+MACRO_E_DUPLICATE_NAME.step1 = Inspect the macro invocation and the expansion note attached to the primary diagnostic.
+MACRO_E_DUPLICATE_NAME.fix = change the macro arguments or stop the recursive expansion before lowering resumes
 MACRO_E_DUPLICATE_NAME.example = vitte check path/to/file.vit
 
 MACRO_E_UNKNOWN_NAME.summary = Name unbekannt.
 MACRO_E_UNKNOWN_NAME.cause = The macro expansion phase found code that violates this diagnostic rule.
-MACRO_E_UNKNOWN_NAME.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MACRO_E_UNKNOWN_NAME.fix = repair the highlighted compiler contract before checking later diagnostics
+MACRO_E_UNKNOWN_NAME.step1 = Inspect the macro invocation and the expansion note attached to the primary diagnostic.
+MACRO_E_UNKNOWN_NAME.fix = change the macro arguments or stop the recursive expansion before lowering resumes
 MACRO_E_UNKNOWN_NAME.example = vitte check path/to/file.vit
 
 MACRO_E_UNKNOWN_TYPE.summary = Typ unbekannt.
 MACRO_E_UNKNOWN_TYPE.cause = The macro expansion phase found code that violates this diagnostic rule.
-MACRO_E_UNKNOWN_TYPE.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MACRO_E_UNKNOWN_TYPE.fix = repair the highlighted compiler contract before checking later diagnostics
+MACRO_E_UNKNOWN_TYPE.step1 = Inspect the macro invocation and the expansion note attached to the primary diagnostic.
+MACRO_E_UNKNOWN_TYPE.fix = change the macro arguments or stop the recursive expansion before lowering resumes
 MACRO_E_UNKNOWN_TYPE.example = vitte check path/to/file.vit
 
 MACRO_E_UNKNOWN_MODULE.summary = Modul unbekannt.
 MACRO_E_UNKNOWN_MODULE.cause = The macro expansion phase found code that violates this diagnostic rule.
-MACRO_E_UNKNOWN_MODULE.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MACRO_E_UNKNOWN_MODULE.fix = repair the highlighted compiler contract before checking later diagnostics
+MACRO_E_UNKNOWN_MODULE.step1 = Inspect the macro invocation and the expansion note attached to the primary diagnostic.
+MACRO_E_UNKNOWN_MODULE.fix = change the macro arguments or stop the recursive expansion before lowering resumes
 MACRO_E_UNKNOWN_MODULE.example = vitte check path/to/file.vit
 
 MACRO_E_UNKNOWN_MEMBER.summary = Member unbekannt.
 MACRO_E_UNKNOWN_MEMBER.cause = The macro expansion phase found code that violates this diagnostic rule.
-MACRO_E_UNKNOWN_MEMBER.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MACRO_E_UNKNOWN_MEMBER.fix = repair the highlighted compiler contract before checking later diagnostics
+MACRO_E_UNKNOWN_MEMBER.step1 = Inspect the macro invocation and the expansion note attached to the primary diagnostic.
+MACRO_E_UNKNOWN_MEMBER.fix = change the macro arguments or stop the recursive expansion before lowering resumes
 MACRO_E_UNKNOWN_MEMBER.example = vitte check path/to/file.vit
 
 MACRO_E_AMBIGUOUS_NAME.summary = ambiguous Name.
 MACRO_E_AMBIGUOUS_NAME.cause = The macro expansion phase found code that violates this diagnostic rule.
-MACRO_E_AMBIGUOUS_NAME.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MACRO_E_AMBIGUOUS_NAME.fix = repair the highlighted compiler contract before checking later diagnostics
+MACRO_E_AMBIGUOUS_NAME.step1 = Inspect the macro invocation and the expansion note attached to the primary diagnostic.
+MACRO_E_AMBIGUOUS_NAME.fix = change the macro arguments or stop the recursive expansion before lowering resumes
 MACRO_E_AMBIGUOUS_NAME.example = vitte check path/to/file.vit
 
 MACRO_E_PRIVATE_SYMBOL.summary = private Symbol.
 MACRO_E_PRIVATE_SYMBOL.cause = The macro expansion phase found code that violates this diagnostic rule.
-MACRO_E_PRIVATE_SYMBOL.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MACRO_E_PRIVATE_SYMBOL.fix = repair the highlighted compiler contract before checking later diagnostics
+MACRO_E_PRIVATE_SYMBOL.step1 = Inspect the macro invocation and the expansion note attached to the primary diagnostic.
+MACRO_E_PRIVATE_SYMBOL.fix = change the macro arguments or stop the recursive expansion before lowering resumes
 MACRO_E_PRIVATE_SYMBOL.example = vitte check path/to/file.vit
 
 MACRO_E_IMPORT_NOT_FOUND.summary = Import fehlend.
 MACRO_E_IMPORT_NOT_FOUND.cause = The macro expansion phase found code that violates this diagnostic rule.
-MACRO_E_IMPORT_NOT_FOUND.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MACRO_E_IMPORT_NOT_FOUND.fix = repair the highlighted compiler contract before checking later diagnostics
+MACRO_E_IMPORT_NOT_FOUND.step1 = Inspect the macro invocation and the expansion note attached to the primary diagnostic.
+MACRO_E_IMPORT_NOT_FOUND.fix = change the macro arguments or stop the recursive expansion before lowering resumes
 MACRO_E_IMPORT_NOT_FOUND.example = vitte check path/to/file.vit
 
 MACRO_E_IMPORT_CYCLE.summary = Import Zyklus.
 MACRO_E_IMPORT_CYCLE.cause = The macro expansion phase found code that violates this diagnostic rule.
-MACRO_E_IMPORT_CYCLE.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MACRO_E_IMPORT_CYCLE.fix = repair the highlighted compiler contract before checking later diagnostics
+MACRO_E_IMPORT_CYCLE.step1 = Inspect the macro invocation and the expansion note attached to the primary diagnostic.
+MACRO_E_IMPORT_CYCLE.fix = change the macro arguments or stop the recursive expansion before lowering resumes
 MACRO_E_IMPORT_CYCLE.example = vitte check path/to/file.vit
 
 MACRO_E_EXPORT_CONFLICT.summary = export Konflikt.
 MACRO_E_EXPORT_CONFLICT.cause = The macro expansion phase found code that violates this diagnostic rule.
-MACRO_E_EXPORT_CONFLICT.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MACRO_E_EXPORT_CONFLICT.fix = repair the highlighted compiler contract before checking later diagnostics
+MACRO_E_EXPORT_CONFLICT.step1 = Inspect the macro invocation and the expansion note attached to the primary diagnostic.
+MACRO_E_EXPORT_CONFLICT.fix = change the macro arguments or stop the recursive expansion before lowering resumes
 MACRO_E_EXPORT_CONFLICT.example = vitte check path/to/file.vit
 
 MACRO_E_ARITY_MISMATCH.summary = arity Nichtuebereinstimmung.
 MACRO_E_ARITY_MISMATCH.cause = The macro expansion phase found code that violates this diagnostic rule.
-MACRO_E_ARITY_MISMATCH.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MACRO_E_ARITY_MISMATCH.fix = repair the highlighted compiler contract before checking later diagnostics
+MACRO_E_ARITY_MISMATCH.step1 = Inspect the macro invocation and the expansion note attached to the primary diagnostic.
+MACRO_E_ARITY_MISMATCH.fix = change the macro arguments or stop the recursive expansion before lowering resumes
 MACRO_E_ARITY_MISMATCH.example = vitte check path/to/file.vit
 
 MACRO_E_ARGUMENT_MISMATCH.summary = Argument Nichtuebereinstimmung.
 MACRO_E_ARGUMENT_MISMATCH.cause = The macro expansion phase found code that violates this diagnostic rule.
-MACRO_E_ARGUMENT_MISMATCH.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MACRO_E_ARGUMENT_MISMATCH.fix = repair the highlighted compiler contract before checking later diagnostics
+MACRO_E_ARGUMENT_MISMATCH.step1 = Inspect the macro invocation and the expansion note attached to the primary diagnostic.
+MACRO_E_ARGUMENT_MISMATCH.fix = change the macro arguments or stop the recursive expansion before lowering resumes
 MACRO_E_ARGUMENT_MISMATCH.example = vitte check path/to/file.vit
 
 MACRO_E_ASSIGNMENT_MISMATCH.summary = Zuweisung Nichtuebereinstimmung.
 MACRO_E_ASSIGNMENT_MISMATCH.cause = The macro expansion phase found code that violates this diagnostic rule.
-MACRO_E_ASSIGNMENT_MISMATCH.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MACRO_E_ASSIGNMENT_MISMATCH.fix = repair the highlighted compiler contract before checking later diagnostics
+MACRO_E_ASSIGNMENT_MISMATCH.step1 = Inspect the macro invocation and the expansion note attached to the primary diagnostic.
+MACRO_E_ASSIGNMENT_MISMATCH.fix = change the macro arguments or stop the recursive expansion before lowering resumes
 MACRO_E_ASSIGNMENT_MISMATCH.example = vitte check path/to/file.vit
 
 MACRO_E_BRANCH_MISMATCH.summary = branch Nichtuebereinstimmung.
 MACRO_E_BRANCH_MISMATCH.cause = The macro expansion phase found code that violates this diagnostic rule.
-MACRO_E_BRANCH_MISMATCH.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MACRO_E_BRANCH_MISMATCH.fix = repair the highlighted compiler contract before checking later diagnostics
+MACRO_E_BRANCH_MISMATCH.step1 = Inspect the macro invocation and the expansion note attached to the primary diagnostic.
+MACRO_E_BRANCH_MISMATCH.fix = change the macro arguments or stop the recursive expansion before lowering resumes
 MACRO_E_BRANCH_MISMATCH.example = vitte check path/to/file.vit
 
 MACRO_E_INVALID_CALL.summary = Aufruf ungueltig.
 MACRO_E_INVALID_CALL.cause = The macro expansion phase found code that violates this diagnostic rule.
-MACRO_E_INVALID_CALL.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MACRO_E_INVALID_CALL.fix = repair the highlighted compiler contract before checking later diagnostics
+MACRO_E_INVALID_CALL.step1 = Inspect the macro invocation and the expansion note attached to the primary diagnostic.
+MACRO_E_INVALID_CALL.fix = change the macro arguments or stop the recursive expansion before lowering resumes
 MACRO_E_INVALID_CALL.example = vitte check path/to/file.vit
 
 MACRO_E_INVALID_CAST.summary = Umwandlung ungueltig.
 MACRO_E_INVALID_CAST.cause = The macro expansion phase found code that violates this diagnostic rule.
-MACRO_E_INVALID_CAST.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MACRO_E_INVALID_CAST.fix = repair the highlighted compiler contract before checking later diagnostics
+MACRO_E_INVALID_CAST.step1 = Inspect the macro invocation and the expansion note attached to the primary diagnostic.
+MACRO_E_INVALID_CAST.fix = change the macro arguments or stop the recursive expansion before lowering resumes
 MACRO_E_INVALID_CAST.example = vitte check path/to/file.vit
 
 MACRO_E_INVALID_INDEX.summary = Index ungueltig.
 MACRO_E_INVALID_INDEX.cause = The macro expansion phase found code that violates this diagnostic rule.
-MACRO_E_INVALID_INDEX.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MACRO_E_INVALID_INDEX.fix = repair the highlighted compiler contract before checking later diagnostics
+MACRO_E_INVALID_INDEX.step1 = Inspect the macro invocation and the expansion note attached to the primary diagnostic.
+MACRO_E_INVALID_INDEX.fix = change the macro arguments or stop the recursive expansion before lowering resumes
 MACRO_E_INVALID_INDEX.example = vitte check path/to/file.vit
 
 MACRO_E_INVALID_DEREF.summary = deref ungueltig.
 MACRO_E_INVALID_DEREF.cause = The macro expansion phase found code that violates this diagnostic rule.
-MACRO_E_INVALID_DEREF.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MACRO_E_INVALID_DEREF.fix = repair the highlighted compiler contract before checking later diagnostics
+MACRO_E_INVALID_DEREF.step1 = Inspect the macro invocation and the expansion note attached to the primary diagnostic.
+MACRO_E_INVALID_DEREF.fix = change the macro arguments or stop the recursive expansion before lowering resumes
 MACRO_E_INVALID_DEREF.example = vitte check path/to/file.vit
 
 MACRO_E_INVALID_BORROW.summary = Ausleihe ungueltig.
 MACRO_E_INVALID_BORROW.cause = The macro expansion phase found code that violates this diagnostic rule.
-MACRO_E_INVALID_BORROW.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MACRO_E_INVALID_BORROW.fix = repair the highlighted compiler contract before checking later diagnostics
+MACRO_E_INVALID_BORROW.step1 = Inspect the macro invocation and the expansion note attached to the primary diagnostic.
+MACRO_E_INVALID_BORROW.fix = change the macro arguments or stop the recursive expansion before lowering resumes
 MACRO_E_INVALID_BORROW.example = vitte check path/to/file.vit
 
 MACRO_E_INVALID_MOVE.summary = Verschiebung ungueltig.
 MACRO_E_INVALID_MOVE.cause = The macro expansion phase found code that violates this diagnostic rule.
-MACRO_E_INVALID_MOVE.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MACRO_E_INVALID_MOVE.fix = repair the highlighted compiler contract before checking later diagnostics
+MACRO_E_INVALID_MOVE.step1 = Inspect the macro invocation and the expansion note attached to the primary diagnostic.
+MACRO_E_INVALID_MOVE.fix = change the macro arguments or stop the recursive expansion before lowering resumes
 MACRO_E_INVALID_MOVE.example = vitte check path/to/file.vit
 
 MACRO_E_USE_AFTER_MOVE.summary = use after Verschiebung.
 MACRO_E_USE_AFTER_MOVE.cause = The macro expansion phase found code that violates this diagnostic rule.
-MACRO_E_USE_AFTER_MOVE.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MACRO_E_USE_AFTER_MOVE.fix = repair the highlighted compiler contract before checking later diagnostics
+MACRO_E_USE_AFTER_MOVE.step1 = Inspect the macro invocation and the expansion note attached to the primary diagnostic.
+MACRO_E_USE_AFTER_MOVE.fix = change the macro arguments or stop the recursive expansion before lowering resumes
 MACRO_E_USE_AFTER_MOVE.example = vitte check path/to/file.vit
 
 MACRO_E_USE_AFTER_DROP.summary = use after Freigabe.
 MACRO_E_USE_AFTER_DROP.cause = The macro expansion phase found code that violates this diagnostic rule.
-MACRO_E_USE_AFTER_DROP.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MACRO_E_USE_AFTER_DROP.fix = repair the highlighted compiler contract before checking later diagnostics
+MACRO_E_USE_AFTER_DROP.step1 = Inspect the macro invocation and the expansion note attached to the primary diagnostic.
+MACRO_E_USE_AFTER_DROP.fix = change the macro arguments or stop the recursive expansion before lowering resumes
 MACRO_E_USE_AFTER_DROP.example = vitte check path/to/file.vit
 
 MACRO_E_USE_BEFORE_INIT.summary = use before init.
 MACRO_E_USE_BEFORE_INIT.cause = The macro expansion phase found code that violates this diagnostic rule.
-MACRO_E_USE_BEFORE_INIT.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MACRO_E_USE_BEFORE_INIT.fix = repair the highlighted compiler contract before checking later diagnostics
+MACRO_E_USE_BEFORE_INIT.step1 = Inspect the macro invocation and the expansion note attached to the primary diagnostic.
+MACRO_E_USE_BEFORE_INIT.fix = change the macro arguments or stop the recursive expansion before lowering resumes
 MACRO_E_USE_BEFORE_INIT.example = vitte check path/to/file.vit
 
 MACRO_E_DOUBLE_DROP.summary = double Freigabe.
 MACRO_E_DOUBLE_DROP.cause = The macro expansion phase found code that violates this diagnostic rule.
-MACRO_E_DOUBLE_DROP.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MACRO_E_DOUBLE_DROP.fix = repair the highlighted compiler contract before checking later diagnostics
+MACRO_E_DOUBLE_DROP.step1 = Inspect the macro invocation and the expansion note attached to the primary diagnostic.
+MACRO_E_DOUBLE_DROP.fix = change the macro arguments or stop the recursive expansion before lowering resumes
 MACRO_E_DOUBLE_DROP.example = vitte check path/to/file.vit
 
 MACRO_E_BORROW_CONFLICT.summary = Ausleihe Konflikt.
 MACRO_E_BORROW_CONFLICT.cause = The macro expansion phase found code that violates this diagnostic rule.
-MACRO_E_BORROW_CONFLICT.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MACRO_E_BORROW_CONFLICT.fix = repair the highlighted compiler contract before checking later diagnostics
+MACRO_E_BORROW_CONFLICT.step1 = Inspect the macro invocation and the expansion note attached to the primary diagnostic.
+MACRO_E_BORROW_CONFLICT.fix = change the macro arguments or stop the recursive expansion before lowering resumes
 MACRO_E_BORROW_CONFLICT.example = vitte check path/to/file.vit
 
 MACRO_E_MUTABILITY_CONFLICT.summary = mutability Konflikt.
 MACRO_E_MUTABILITY_CONFLICT.cause = The macro expansion phase found code that violates this diagnostic rule.
-MACRO_E_MUTABILITY_CONFLICT.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MACRO_E_MUTABILITY_CONFLICT.fix = repair the highlighted compiler contract before checking later diagnostics
+MACRO_E_MUTABILITY_CONFLICT.step1 = Inspect the macro invocation and the expansion note attached to the primary diagnostic.
+MACRO_E_MUTABILITY_CONFLICT.fix = change the macro arguments or stop the recursive expansion before lowering resumes
 MACRO_E_MUTABILITY_CONFLICT.example = vitte check path/to/file.vit
 
 MACRO_E_LIFETIME_TOO_SHORT.summary = Lebensdauer zu short.
 MACRO_E_LIFETIME_TOO_SHORT.cause = The macro expansion phase found code that violates this diagnostic rule.
-MACRO_E_LIFETIME_TOO_SHORT.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MACRO_E_LIFETIME_TOO_SHORT.fix = repair the highlighted compiler contract before checking later diagnostics
+MACRO_E_LIFETIME_TOO_SHORT.step1 = Inspect the macro invocation and the expansion note attached to the primary diagnostic.
+MACRO_E_LIFETIME_TOO_SHORT.fix = change the macro arguments or stop the recursive expansion before lowering resumes
 MACRO_E_LIFETIME_TOO_SHORT.example = vitte check path/to/file.vit
 
 MACRO_E_DANGLING_REFERENCE.summary = dangling Referenz.
 MACRO_E_DANGLING_REFERENCE.cause = The macro expansion phase found code that violates this diagnostic rule.
-MACRO_E_DANGLING_REFERENCE.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MACRO_E_DANGLING_REFERENCE.fix = repair the highlighted compiler contract before checking later diagnostics
+MACRO_E_DANGLING_REFERENCE.step1 = Inspect the macro invocation and the expansion note attached to the primary diagnostic.
+MACRO_E_DANGLING_REFERENCE.fix = change the macro arguments or stop the recursive expansion before lowering resumes
 MACRO_E_DANGLING_REFERENCE.example = vitte check path/to/file.vit
 
 MACRO_E_NON_EXHAUSTIVE_MATCH.summary = non exhaustive match.
 MACRO_E_NON_EXHAUSTIVE_MATCH.cause = The macro expansion phase found code that violates this diagnostic rule.
-MACRO_E_NON_EXHAUSTIVE_MATCH.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MACRO_E_NON_EXHAUSTIVE_MATCH.fix = repair the highlighted compiler contract before checking later diagnostics
+MACRO_E_NON_EXHAUSTIVE_MATCH.step1 = Inspect the macro invocation and the expansion note attached to the primary diagnostic.
+MACRO_E_NON_EXHAUSTIVE_MATCH.fix = change the macro arguments or stop the recursive expansion before lowering resumes
 MACRO_E_NON_EXHAUSTIVE_MATCH.example = vitte check path/to/file.vit
 
 MACRO_E_UNREACHABLE_PATTERN.summary = unerreichbar Muster.
 MACRO_E_UNREACHABLE_PATTERN.cause = The macro expansion phase found code that violates this diagnostic rule.
-MACRO_E_UNREACHABLE_PATTERN.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MACRO_E_UNREACHABLE_PATTERN.fix = repair the highlighted compiler contract before checking later diagnostics
+MACRO_E_UNREACHABLE_PATTERN.step1 = Inspect the macro invocation and the expansion note attached to the primary diagnostic.
+MACRO_E_UNREACHABLE_PATTERN.fix = change the macro arguments or stop the recursive expansion before lowering resumes
 MACRO_E_UNREACHABLE_PATTERN.example = vitte check path/to/file.vit
 
 MACRO_E_CONST_REQUIRED.summary = const required.
 MACRO_E_CONST_REQUIRED.cause = The macro expansion phase found code that violates this diagnostic rule.
-MACRO_E_CONST_REQUIRED.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MACRO_E_CONST_REQUIRED.fix = repair the highlighted compiler contract before checking later diagnostics
+MACRO_E_CONST_REQUIRED.step1 = Inspect the macro invocation and the expansion note attached to the primary diagnostic.
+MACRO_E_CONST_REQUIRED.fix = change the macro arguments or stop the recursive expansion before lowering resumes
 MACRO_E_CONST_REQUIRED.example = vitte check path/to/file.vit
 
 MACRO_E_CONST_OVERFLOW.summary = const Ueberlauf.
 MACRO_E_CONST_OVERFLOW.cause = The macro expansion phase found code that violates this diagnostic rule.
-MACRO_E_CONST_OVERFLOW.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MACRO_E_CONST_OVERFLOW.fix = repair the highlighted compiler contract before checking later diagnostics
+MACRO_E_CONST_OVERFLOW.step1 = Inspect the macro invocation and the expansion note attached to the primary diagnostic.
+MACRO_E_CONST_OVERFLOW.fix = change the macro arguments or stop the recursive expansion before lowering resumes
 MACRO_E_CONST_OVERFLOW.example = vitte check path/to/file.vit
 
 MACRO_E_CONST_DIVISION_BY_ZERO.summary = const Division by Null.
 MACRO_E_CONST_DIVISION_BY_ZERO.cause = The macro expansion phase found code that violates this diagnostic rule.
-MACRO_E_CONST_DIVISION_BY_ZERO.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MACRO_E_CONST_DIVISION_BY_ZERO.fix = repair the highlighted compiler contract before checking later diagnostics
+MACRO_E_CONST_DIVISION_BY_ZERO.step1 = Inspect the macro invocation and the expansion note attached to the primary diagnostic.
+MACRO_E_CONST_DIVISION_BY_ZERO.fix = change the macro arguments or stop the recursive expansion before lowering resumes
 MACRO_E_CONST_DIVISION_BY_ZERO.example = vitte check path/to/file.vit
 
 MACRO_E_CONST_CYCLE.summary = const Zyklus.
 MACRO_E_CONST_CYCLE.cause = The macro expansion phase found code that violates this diagnostic rule.
-MACRO_E_CONST_CYCLE.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MACRO_E_CONST_CYCLE.fix = repair the highlighted compiler contract before checking later diagnostics
+MACRO_E_CONST_CYCLE.step1 = Inspect the macro invocation and the expansion note attached to the primary diagnostic.
+MACRO_E_CONST_CYCLE.fix = change the macro arguments or stop the recursive expansion before lowering resumes
 MACRO_E_CONST_CYCLE.example = vitte check path/to/file.vit
 
 MACRO_E_MACRO_NOT_FOUND.summary = macro fehlend.
 MACRO_E_MACRO_NOT_FOUND.cause = The macro expansion phase found code that violates this diagnostic rule.
-MACRO_E_MACRO_NOT_FOUND.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MACRO_E_MACRO_NOT_FOUND.fix = repair the highlighted compiler contract before checking later diagnostics
+MACRO_E_MACRO_NOT_FOUND.step1 = Inspect the macro invocation and the expansion note attached to the primary diagnostic.
+MACRO_E_MACRO_NOT_FOUND.fix = change the macro arguments or stop the recursive expansion before lowering resumes
 MACRO_E_MACRO_NOT_FOUND.example = vitte check path/to/file.vit
 
 MACRO_E_MACRO_RECURSION.summary = macro recursion.
 MACRO_E_MACRO_RECURSION.cause = The macro expansion phase found code that violates this diagnostic rule.
-MACRO_E_MACRO_RECURSION.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MACRO_E_MACRO_RECURSION.fix = repair the highlighted compiler contract before checking later diagnostics
+MACRO_E_MACRO_RECURSION.step1 = Inspect the macro invocation and the expansion note attached to the primary diagnostic.
+MACRO_E_MACRO_RECURSION.fix = change the macro arguments or stop the recursive expansion before lowering resumes
 MACRO_E_MACRO_RECURSION.example = vitte check path/to/file.vit
 
 MACRO_E_MACRO_EXPANSION_FAILED.summary = macro expansion fehlgeschlagen.
 MACRO_E_MACRO_EXPANSION_FAILED.cause = The macro expansion phase found code that violates this diagnostic rule.
-MACRO_E_MACRO_EXPANSION_FAILED.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MACRO_E_MACRO_EXPANSION_FAILED.fix = repair the highlighted compiler contract before checking later diagnostics
+MACRO_E_MACRO_EXPANSION_FAILED.step1 = Inspect the macro invocation and the expansion note attached to the primary diagnostic.
+MACRO_E_MACRO_EXPANSION_FAILED.fix = change the macro arguments or stop the recursive expansion before lowering resumes
 MACRO_E_MACRO_EXPANSION_FAILED.example = vitte check path/to/file.vit
 
 MACRO_E_TRAIT_NOT_IMPLEMENTED.summary = trait not implemented.
 MACRO_E_TRAIT_NOT_IMPLEMENTED.cause = The macro expansion phase found code that violates this diagnostic rule.
-MACRO_E_TRAIT_NOT_IMPLEMENTED.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MACRO_E_TRAIT_NOT_IMPLEMENTED.fix = repair the highlighted compiler contract before checking later diagnostics
+MACRO_E_TRAIT_NOT_IMPLEMENTED.step1 = Inspect the macro invocation and the expansion note attached to the primary diagnostic.
+MACRO_E_TRAIT_NOT_IMPLEMENTED.fix = change the macro arguments or stop the recursive expansion before lowering resumes
 MACRO_E_TRAIT_NOT_IMPLEMENTED.example = vitte check path/to/file.vit
 
 MACRO_E_TRAIT_AMBIGUOUS.summary = trait ambiguous.
 MACRO_E_TRAIT_AMBIGUOUS.cause = The macro expansion phase found code that violates this diagnostic rule.
-MACRO_E_TRAIT_AMBIGUOUS.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MACRO_E_TRAIT_AMBIGUOUS.fix = repair the highlighted compiler contract before checking later diagnostics
+MACRO_E_TRAIT_AMBIGUOUS.step1 = Inspect the macro invocation and the expansion note attached to the primary diagnostic.
+MACRO_E_TRAIT_AMBIGUOUS.fix = change the macro arguments or stop the recursive expansion before lowering resumes
 MACRO_E_TRAIT_AMBIGUOUS.example = vitte check path/to/file.vit
 
 MACRO_E_GENERIC_ARGUMENT_MISSING.summary = generisch Argument fehlend.
 MACRO_E_GENERIC_ARGUMENT_MISSING.cause = The macro expansion phase found code that violates this diagnostic rule.
-MACRO_E_GENERIC_ARGUMENT_MISSING.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MACRO_E_GENERIC_ARGUMENT_MISSING.fix = repair the highlighted compiler contract before checking later diagnostics
+MACRO_E_GENERIC_ARGUMENT_MISSING.step1 = Inspect the macro invocation and the expansion note attached to the primary diagnostic.
+MACRO_E_GENERIC_ARGUMENT_MISSING.fix = change the macro arguments or stop the recursive expansion before lowering resumes
 MACRO_E_GENERIC_ARGUMENT_MISSING.example = vitte check path/to/file.vit
 
 MACRO_E_GENERIC_BOUND_FAILED.summary = generisch bound fehlgeschlagen.
 MACRO_E_GENERIC_BOUND_FAILED.cause = The macro expansion phase found code that violates this diagnostic rule.
-MACRO_E_GENERIC_BOUND_FAILED.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MACRO_E_GENERIC_BOUND_FAILED.fix = repair the highlighted compiler contract before checking later diagnostics
+MACRO_E_GENERIC_BOUND_FAILED.step1 = Inspect the macro invocation and the expansion note attached to the primary diagnostic.
+MACRO_E_GENERIC_BOUND_FAILED.fix = change the macro arguments or stop the recursive expansion before lowering resumes
 MACRO_E_GENERIC_BOUND_FAILED.example = vitte check path/to/file.vit
 
 MACRO_E_UNSUPPORTED_TARGET.summary = Ziel nicht unterstuetzt.
 MACRO_E_UNSUPPORTED_TARGET.cause = The macro expansion phase found code that violates this diagnostic rule.
-MACRO_E_UNSUPPORTED_TARGET.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MACRO_E_UNSUPPORTED_TARGET.fix = repair the highlighted compiler contract before checking later diagnostics
+MACRO_E_UNSUPPORTED_TARGET.step1 = Inspect the macro invocation and the expansion note attached to the primary diagnostic.
+MACRO_E_UNSUPPORTED_TARGET.fix = change the macro arguments or stop the recursive expansion before lowering resumes
 MACRO_E_UNSUPPORTED_TARGET.example = vitte check path/to/file.vit
 
 MACRO_E_ABI_MISMATCH.summary = abi Nichtuebereinstimmung.
 MACRO_E_ABI_MISMATCH.cause = The macro expansion phase found code that violates this diagnostic rule.
-MACRO_E_ABI_MISMATCH.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MACRO_E_ABI_MISMATCH.fix = repair the highlighted compiler contract before checking later diagnostics
+MACRO_E_ABI_MISMATCH.step1 = Inspect the macro invocation and the expansion note attached to the primary diagnostic.
+MACRO_E_ABI_MISMATCH.fix = change the macro arguments or stop the recursive expansion before lowering resumes
 MACRO_E_ABI_MISMATCH.example = vitte check path/to/file.vit
 
 MACRO_E_LINK_FAILED.summary = link fehlgeschlagen.
 MACRO_E_LINK_FAILED.cause = The macro expansion phase found code that violates this diagnostic rule.
-MACRO_E_LINK_FAILED.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MACRO_E_LINK_FAILED.fix = repair the highlighted compiler contract before checking later diagnostics
+MACRO_E_LINK_FAILED.step1 = Inspect the macro invocation and the expansion note attached to the primary diagnostic.
+MACRO_E_LINK_FAILED.fix = change the macro arguments or stop the recursive expansion before lowering resumes
 MACRO_E_LINK_FAILED.example = vitte check path/to/file.vit
 
 MACRO_E_RUNTIME_PANIC.summary = runtime Panik.
 MACRO_E_RUNTIME_PANIC.cause = The macro expansion phase found code that violates this diagnostic rule.
-MACRO_E_RUNTIME_PANIC.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MACRO_E_RUNTIME_PANIC.fix = repair the highlighted compiler contract before checking later diagnostics
+MACRO_E_RUNTIME_PANIC.step1 = Inspect the macro invocation and the expansion note attached to the primary diagnostic.
+MACRO_E_RUNTIME_PANIC.fix = change the macro arguments or stop the recursive expansion before lowering resumes
 MACRO_E_RUNTIME_PANIC.example = vitte check path/to/file.vit
 
 HIR_E_EXPECTED_IDENTIFIER.summary = Bezeichner erwartet.
 HIR_E_EXPECTED_IDENTIFIER.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-HIR_E_EXPECTED_IDENTIFIER.step1 = Fix the first span reported for this diagnostic, then run the command again.
-HIR_E_EXPECTED_IDENTIFIER.fix = repair the highlighted compiler contract before checking later diagnostics
+HIR_E_EXPECTED_IDENTIFIER.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+HIR_E_EXPECTED_IDENTIFIER.fix = repair the malformed intermediate representation before continuing to the next phase
 HIR_E_EXPECTED_IDENTIFIER.example = vitte check path/to/file.vit
 
 HIR_E_EXPECTED_EXPRESSION.summary = Ausdruck erwartet.
 HIR_E_EXPECTED_EXPRESSION.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-HIR_E_EXPECTED_EXPRESSION.step1 = Fix the first span reported for this diagnostic, then run the command again.
-HIR_E_EXPECTED_EXPRESSION.fix = repair the highlighted compiler contract before checking later diagnostics
+HIR_E_EXPECTED_EXPRESSION.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+HIR_E_EXPECTED_EXPRESSION.fix = repair the malformed intermediate representation before continuing to the next phase
 HIR_E_EXPECTED_EXPRESSION.example = vitte check path/to/file.vit
 
 HIR_E_EXPECTED_TYPE.summary = Typ erwartet.
 HIR_E_EXPECTED_TYPE.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-HIR_E_EXPECTED_TYPE.step1 = Fix the first span reported for this diagnostic, then run the command again.
-HIR_E_EXPECTED_TYPE.fix = repair the highlighted compiler contract before checking later diagnostics
+HIR_E_EXPECTED_TYPE.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+HIR_E_EXPECTED_TYPE.fix = repair the malformed intermediate representation before continuing to the next phase
 HIR_E_EXPECTED_TYPE.example = vitte check path/to/file.vit
 
 HIR_E_EXPECTED_PATTERN.summary = Muster erwartet.
 HIR_E_EXPECTED_PATTERN.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-HIR_E_EXPECTED_PATTERN.step1 = Fix the first span reported for this diagnostic, then run the command again.
-HIR_E_EXPECTED_PATTERN.fix = repair the highlighted compiler contract before checking later diagnostics
+HIR_E_EXPECTED_PATTERN.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+HIR_E_EXPECTED_PATTERN.fix = repair the malformed intermediate representation before continuing to the next phase
 HIR_E_EXPECTED_PATTERN.example = vitte check path/to/file.vit
 
 HIR_E_EXPECTED_BLOCK.summary = Block erwartet.
 HIR_E_EXPECTED_BLOCK.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-HIR_E_EXPECTED_BLOCK.step1 = Fix the first span reported for this diagnostic, then run the command again.
-HIR_E_EXPECTED_BLOCK.fix = repair the highlighted compiler contract before checking later diagnostics
+HIR_E_EXPECTED_BLOCK.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+HIR_E_EXPECTED_BLOCK.fix = repair the malformed intermediate representation before continuing to the next phase
 HIR_E_EXPECTED_BLOCK.example = vitte check path/to/file.vit
 
 HIR_E_EXPECTED_DELIMITER.summary = Trennzeichen erwartet.
 HIR_E_EXPECTED_DELIMITER.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-HIR_E_EXPECTED_DELIMITER.step1 = Fix the first span reported for this diagnostic, then run the command again.
-HIR_E_EXPECTED_DELIMITER.fix = repair the highlighted compiler contract before checking later diagnostics
+HIR_E_EXPECTED_DELIMITER.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+HIR_E_EXPECTED_DELIMITER.fix = repair the malformed intermediate representation before continuing to the next phase
 HIR_E_EXPECTED_DELIMITER.example = vitte check path/to/file.vit
 
 HIR_E_UNEXPECTED_TOKEN.summary = Token unerwartet.
 HIR_E_UNEXPECTED_TOKEN.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-HIR_E_UNEXPECTED_TOKEN.step1 = Fix the first span reported for this diagnostic, then run the command again.
-HIR_E_UNEXPECTED_TOKEN.fix = repair the highlighted compiler contract before checking later diagnostics
+HIR_E_UNEXPECTED_TOKEN.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+HIR_E_UNEXPECTED_TOKEN.fix = repair the malformed intermediate representation before continuing to the next phase
 HIR_E_UNEXPECTED_TOKEN.example = vitte check path/to/file.vit
 
 HIR_E_UNBALANCED_DELIMITER.summary = unbalanced Trennzeichen.
 HIR_E_UNBALANCED_DELIMITER.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-HIR_E_UNBALANCED_DELIMITER.step1 = Fix the first span reported for this diagnostic, then run the command again.
-HIR_E_UNBALANCED_DELIMITER.fix = repair the highlighted compiler contract before checking later diagnostics
+HIR_E_UNBALANCED_DELIMITER.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+HIR_E_UNBALANCED_DELIMITER.fix = repair the malformed intermediate representation before continuing to the next phase
 HIR_E_UNBALANCED_DELIMITER.example = vitte check path/to/file.vit
 
 HIR_E_INVALID_ATTRIBUTE.summary = attribute ungueltig.
 HIR_E_INVALID_ATTRIBUTE.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-HIR_E_INVALID_ATTRIBUTE.step1 = Fix the first span reported for this diagnostic, then run the command again.
-HIR_E_INVALID_ATTRIBUTE.fix = repair the highlighted compiler contract before checking later diagnostics
+HIR_E_INVALID_ATTRIBUTE.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+HIR_E_INVALID_ATTRIBUTE.fix = repair the malformed intermediate representation before continuing to the next phase
 HIR_E_INVALID_ATTRIBUTE.example = vitte check path/to/file.vit
 
 HIR_E_INVALID_DECLARATION.summary = Deklaration ungueltig.
 HIR_E_INVALID_DECLARATION.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-HIR_E_INVALID_DECLARATION.step1 = Fix the first span reported for this diagnostic, then run the command again.
-HIR_E_INVALID_DECLARATION.fix = repair the highlighted compiler contract before checking later diagnostics
+HIR_E_INVALID_DECLARATION.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+HIR_E_INVALID_DECLARATION.fix = repair the malformed intermediate representation before continuing to the next phase
 HIR_E_INVALID_DECLARATION.example = vitte check path/to/file.vit
 
 HIR_E_INVALID_STATEMENT.summary = Anweisung ungueltig.
 HIR_E_INVALID_STATEMENT.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-HIR_E_INVALID_STATEMENT.step1 = Fix the first span reported for this diagnostic, then run the command again.
-HIR_E_INVALID_STATEMENT.fix = repair the highlighted compiler contract before checking later diagnostics
+HIR_E_INVALID_STATEMENT.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+HIR_E_INVALID_STATEMENT.fix = repair the malformed intermediate representation before continuing to the next phase
 HIR_E_INVALID_STATEMENT.example = vitte check path/to/file.vit
 
 HIR_E_INVALID_EXPRESSION.summary = Ausdruck ungueltig.
 HIR_E_INVALID_EXPRESSION.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-HIR_E_INVALID_EXPRESSION.step1 = Fix the first span reported for this diagnostic, then run the command again.
-HIR_E_INVALID_EXPRESSION.fix = repair the highlighted compiler contract before checking later diagnostics
+HIR_E_INVALID_EXPRESSION.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+HIR_E_INVALID_EXPRESSION.fix = repair the malformed intermediate representation before continuing to the next phase
 HIR_E_INVALID_EXPRESSION.example = vitte check path/to/file.vit
 
 HIR_E_INVALID_LITERAL.summary = Literal ungueltig.
 HIR_E_INVALID_LITERAL.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-HIR_E_INVALID_LITERAL.step1 = Fix the first span reported for this diagnostic, then run the command again.
-HIR_E_INVALID_LITERAL.fix = repair the highlighted compiler contract before checking later diagnostics
+HIR_E_INVALID_LITERAL.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+HIR_E_INVALID_LITERAL.fix = repair the malformed intermediate representation before continuing to the next phase
 HIR_E_INVALID_LITERAL.example = vitte check path/to/file.vit
 
 HIR_E_INVALID_OPERATOR.summary = Operator ungueltig.
 HIR_E_INVALID_OPERATOR.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-HIR_E_INVALID_OPERATOR.step1 = Fix the first span reported for this diagnostic, then run the command again.
-HIR_E_INVALID_OPERATOR.fix = repair the highlighted compiler contract before checking later diagnostics
+HIR_E_INVALID_OPERATOR.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+HIR_E_INVALID_OPERATOR.fix = repair the malformed intermediate representation before continuing to the next phase
 HIR_E_INVALID_OPERATOR.example = vitte check path/to/file.vit
 
 HIR_E_INVALID_MODIFIER.summary = modifier ungueltig.
 HIR_E_INVALID_MODIFIER.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-HIR_E_INVALID_MODIFIER.step1 = Fix the first span reported for this diagnostic, then run the command again.
-HIR_E_INVALID_MODIFIER.fix = repair the highlighted compiler contract before checking later diagnostics
+HIR_E_INVALID_MODIFIER.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+HIR_E_INVALID_MODIFIER.fix = repair the malformed intermediate representation before continuing to the next phase
 HIR_E_INVALID_MODIFIER.example = vitte check path/to/file.vit
 
 HIR_E_MISSING_BODY.summary = body fehlt.
 HIR_E_MISSING_BODY.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-HIR_E_MISSING_BODY.step1 = Fix the first span reported for this diagnostic, then run the command again.
-HIR_E_MISSING_BODY.fix = repair the highlighted compiler contract before checking later diagnostics
+HIR_E_MISSING_BODY.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+HIR_E_MISSING_BODY.fix = repair the malformed intermediate representation before continuing to the next phase
 HIR_E_MISSING_BODY.example = vitte check path/to/file.vit
 
 HIR_E_MISSING_RETURN.summary = Rueckgabe fehlt.
 HIR_E_MISSING_RETURN.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-HIR_E_MISSING_RETURN.step1 = Fix the first span reported for this diagnostic, then run the command again.
-HIR_E_MISSING_RETURN.fix = repair the highlighted compiler contract before checking later diagnostics
+HIR_E_MISSING_RETURN.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+HIR_E_MISSING_RETURN.fix = repair the malformed intermediate representation before continuing to the next phase
 HIR_E_MISSING_RETURN.example = vitte check path/to/file.vit
 
 HIR_E_DUPLICATE_NAME.summary = Name doppelt.
 HIR_E_DUPLICATE_NAME.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-HIR_E_DUPLICATE_NAME.step1 = Fix the first span reported for this diagnostic, then run the command again.
-HIR_E_DUPLICATE_NAME.fix = repair the highlighted compiler contract before checking later diagnostics
+HIR_E_DUPLICATE_NAME.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+HIR_E_DUPLICATE_NAME.fix = repair the malformed intermediate representation before continuing to the next phase
 HIR_E_DUPLICATE_NAME.example = vitte check path/to/file.vit
 
 HIR_E_UNKNOWN_NAME.summary = Name unbekannt.
 HIR_E_UNKNOWN_NAME.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-HIR_E_UNKNOWN_NAME.step1 = Fix the first span reported for this diagnostic, then run the command again.
-HIR_E_UNKNOWN_NAME.fix = repair the highlighted compiler contract before checking later diagnostics
+HIR_E_UNKNOWN_NAME.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+HIR_E_UNKNOWN_NAME.fix = repair the malformed intermediate representation before continuing to the next phase
 HIR_E_UNKNOWN_NAME.example = vitte check path/to/file.vit
 
 HIR_E_UNKNOWN_TYPE.summary = Typ unbekannt.
 HIR_E_UNKNOWN_TYPE.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-HIR_E_UNKNOWN_TYPE.step1 = Fix the first span reported for this diagnostic, then run the command again.
-HIR_E_UNKNOWN_TYPE.fix = repair the highlighted compiler contract before checking later diagnostics
+HIR_E_UNKNOWN_TYPE.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+HIR_E_UNKNOWN_TYPE.fix = repair the malformed intermediate representation before continuing to the next phase
 HIR_E_UNKNOWN_TYPE.example = vitte check path/to/file.vit
 
 HIR_E_UNKNOWN_MODULE.summary = Modul unbekannt.
 HIR_E_UNKNOWN_MODULE.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-HIR_E_UNKNOWN_MODULE.step1 = Fix the first span reported for this diagnostic, then run the command again.
-HIR_E_UNKNOWN_MODULE.fix = repair the highlighted compiler contract before checking later diagnostics
+HIR_E_UNKNOWN_MODULE.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+HIR_E_UNKNOWN_MODULE.fix = repair the malformed intermediate representation before continuing to the next phase
 HIR_E_UNKNOWN_MODULE.example = vitte check path/to/file.vit
 
 HIR_E_UNKNOWN_MEMBER.summary = Member unbekannt.
 HIR_E_UNKNOWN_MEMBER.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-HIR_E_UNKNOWN_MEMBER.step1 = Fix the first span reported for this diagnostic, then run the command again.
-HIR_E_UNKNOWN_MEMBER.fix = repair the highlighted compiler contract before checking later diagnostics
+HIR_E_UNKNOWN_MEMBER.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+HIR_E_UNKNOWN_MEMBER.fix = repair the malformed intermediate representation before continuing to the next phase
 HIR_E_UNKNOWN_MEMBER.example = vitte check path/to/file.vit
 
 HIR_E_AMBIGUOUS_NAME.summary = ambiguous Name.
 HIR_E_AMBIGUOUS_NAME.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-HIR_E_AMBIGUOUS_NAME.step1 = Fix the first span reported for this diagnostic, then run the command again.
-HIR_E_AMBIGUOUS_NAME.fix = repair the highlighted compiler contract before checking later diagnostics
+HIR_E_AMBIGUOUS_NAME.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+HIR_E_AMBIGUOUS_NAME.fix = repair the malformed intermediate representation before continuing to the next phase
 HIR_E_AMBIGUOUS_NAME.example = vitte check path/to/file.vit
 
 HIR_E_PRIVATE_SYMBOL.summary = private Symbol.
 HIR_E_PRIVATE_SYMBOL.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-HIR_E_PRIVATE_SYMBOL.step1 = Fix the first span reported for this diagnostic, then run the command again.
-HIR_E_PRIVATE_SYMBOL.fix = repair the highlighted compiler contract before checking later diagnostics
+HIR_E_PRIVATE_SYMBOL.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+HIR_E_PRIVATE_SYMBOL.fix = repair the malformed intermediate representation before continuing to the next phase
 HIR_E_PRIVATE_SYMBOL.example = vitte check path/to/file.vit
 
 HIR_E_IMPORT_NOT_FOUND.summary = Import fehlend.
 HIR_E_IMPORT_NOT_FOUND.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-HIR_E_IMPORT_NOT_FOUND.step1 = Fix the first span reported for this diagnostic, then run the command again.
-HIR_E_IMPORT_NOT_FOUND.fix = repair the highlighted compiler contract before checking later diagnostics
+HIR_E_IMPORT_NOT_FOUND.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+HIR_E_IMPORT_NOT_FOUND.fix = repair the malformed intermediate representation before continuing to the next phase
 HIR_E_IMPORT_NOT_FOUND.example = vitte check path/to/file.vit
 
 HIR_E_IMPORT_CYCLE.summary = Import Zyklus.
 HIR_E_IMPORT_CYCLE.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-HIR_E_IMPORT_CYCLE.step1 = Fix the first span reported for this diagnostic, then run the command again.
-HIR_E_IMPORT_CYCLE.fix = repair the highlighted compiler contract before checking later diagnostics
+HIR_E_IMPORT_CYCLE.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+HIR_E_IMPORT_CYCLE.fix = repair the malformed intermediate representation before continuing to the next phase
 HIR_E_IMPORT_CYCLE.example = vitte check path/to/file.vit
 
 HIR_E_EXPORT_CONFLICT.summary = export Konflikt.
 HIR_E_EXPORT_CONFLICT.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-HIR_E_EXPORT_CONFLICT.step1 = Fix the first span reported for this diagnostic, then run the command again.
-HIR_E_EXPORT_CONFLICT.fix = repair the highlighted compiler contract before checking later diagnostics
+HIR_E_EXPORT_CONFLICT.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+HIR_E_EXPORT_CONFLICT.fix = repair the malformed intermediate representation before continuing to the next phase
 HIR_E_EXPORT_CONFLICT.example = vitte check path/to/file.vit
 
 HIR_E_ARITY_MISMATCH.summary = arity Nichtuebereinstimmung.
 HIR_E_ARITY_MISMATCH.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-HIR_E_ARITY_MISMATCH.step1 = Fix the first span reported for this diagnostic, then run the command again.
-HIR_E_ARITY_MISMATCH.fix = repair the highlighted compiler contract before checking later diagnostics
+HIR_E_ARITY_MISMATCH.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+HIR_E_ARITY_MISMATCH.fix = repair the malformed intermediate representation before continuing to the next phase
 HIR_E_ARITY_MISMATCH.example = vitte check path/to/file.vit
 
 HIR_E_ARGUMENT_MISMATCH.summary = Argument Nichtuebereinstimmung.
 HIR_E_ARGUMENT_MISMATCH.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-HIR_E_ARGUMENT_MISMATCH.step1 = Fix the first span reported for this diagnostic, then run the command again.
-HIR_E_ARGUMENT_MISMATCH.fix = repair the highlighted compiler contract before checking later diagnostics
+HIR_E_ARGUMENT_MISMATCH.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+HIR_E_ARGUMENT_MISMATCH.fix = repair the malformed intermediate representation before continuing to the next phase
 HIR_E_ARGUMENT_MISMATCH.example = vitte check path/to/file.vit
 
 HIR_E_ASSIGNMENT_MISMATCH.summary = Zuweisung Nichtuebereinstimmung.
 HIR_E_ASSIGNMENT_MISMATCH.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-HIR_E_ASSIGNMENT_MISMATCH.step1 = Fix the first span reported for this diagnostic, then run the command again.
-HIR_E_ASSIGNMENT_MISMATCH.fix = repair the highlighted compiler contract before checking later diagnostics
+HIR_E_ASSIGNMENT_MISMATCH.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+HIR_E_ASSIGNMENT_MISMATCH.fix = repair the malformed intermediate representation before continuing to the next phase
 HIR_E_ASSIGNMENT_MISMATCH.example = vitte check path/to/file.vit
 
 HIR_E_BRANCH_MISMATCH.summary = branch Nichtuebereinstimmung.
 HIR_E_BRANCH_MISMATCH.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-HIR_E_BRANCH_MISMATCH.step1 = Fix the first span reported for this diagnostic, then run the command again.
-HIR_E_BRANCH_MISMATCH.fix = repair the highlighted compiler contract before checking later diagnostics
+HIR_E_BRANCH_MISMATCH.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+HIR_E_BRANCH_MISMATCH.fix = repair the malformed intermediate representation before continuing to the next phase
 HIR_E_BRANCH_MISMATCH.example = vitte check path/to/file.vit
 
 HIR_E_INVALID_CALL.summary = Aufruf ungueltig.
 HIR_E_INVALID_CALL.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-HIR_E_INVALID_CALL.step1 = Fix the first span reported for this diagnostic, then run the command again.
-HIR_E_INVALID_CALL.fix = repair the highlighted compiler contract before checking later diagnostics
+HIR_E_INVALID_CALL.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+HIR_E_INVALID_CALL.fix = repair the malformed intermediate representation before continuing to the next phase
 HIR_E_INVALID_CALL.example = vitte check path/to/file.vit
 
 HIR_E_INVALID_CAST.summary = Umwandlung ungueltig.
 HIR_E_INVALID_CAST.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-HIR_E_INVALID_CAST.step1 = Fix the first span reported for this diagnostic, then run the command again.
-HIR_E_INVALID_CAST.fix = repair the highlighted compiler contract before checking later diagnostics
+HIR_E_INVALID_CAST.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+HIR_E_INVALID_CAST.fix = repair the malformed intermediate representation before continuing to the next phase
 HIR_E_INVALID_CAST.example = vitte check path/to/file.vit
 
 HIR_E_INVALID_INDEX.summary = Index ungueltig.
 HIR_E_INVALID_INDEX.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-HIR_E_INVALID_INDEX.step1 = Fix the first span reported for this diagnostic, then run the command again.
-HIR_E_INVALID_INDEX.fix = repair the highlighted compiler contract before checking later diagnostics
+HIR_E_INVALID_INDEX.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+HIR_E_INVALID_INDEX.fix = repair the malformed intermediate representation before continuing to the next phase
 HIR_E_INVALID_INDEX.example = vitte check path/to/file.vit
 
 HIR_E_INVALID_DEREF.summary = deref ungueltig.
 HIR_E_INVALID_DEREF.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-HIR_E_INVALID_DEREF.step1 = Fix the first span reported for this diagnostic, then run the command again.
-HIR_E_INVALID_DEREF.fix = repair the highlighted compiler contract before checking later diagnostics
+HIR_E_INVALID_DEREF.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+HIR_E_INVALID_DEREF.fix = repair the malformed intermediate representation before continuing to the next phase
 HIR_E_INVALID_DEREF.example = vitte check path/to/file.vit
 
 HIR_E_INVALID_BORROW.summary = Ausleihe ungueltig.
 HIR_E_INVALID_BORROW.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-HIR_E_INVALID_BORROW.step1 = Fix the first span reported for this diagnostic, then run the command again.
-HIR_E_INVALID_BORROW.fix = repair the highlighted compiler contract before checking later diagnostics
+HIR_E_INVALID_BORROW.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+HIR_E_INVALID_BORROW.fix = repair the malformed intermediate representation before continuing to the next phase
 HIR_E_INVALID_BORROW.example = vitte check path/to/file.vit
 
 HIR_E_INVALID_MOVE.summary = Verschiebung ungueltig.
 HIR_E_INVALID_MOVE.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-HIR_E_INVALID_MOVE.step1 = Fix the first span reported for this diagnostic, then run the command again.
-HIR_E_INVALID_MOVE.fix = repair the highlighted compiler contract before checking later diagnostics
+HIR_E_INVALID_MOVE.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+HIR_E_INVALID_MOVE.fix = repair the malformed intermediate representation before continuing to the next phase
 HIR_E_INVALID_MOVE.example = vitte check path/to/file.vit
 
 HIR_E_USE_AFTER_MOVE.summary = use after Verschiebung.
 HIR_E_USE_AFTER_MOVE.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-HIR_E_USE_AFTER_MOVE.step1 = Fix the first span reported for this diagnostic, then run the command again.
-HIR_E_USE_AFTER_MOVE.fix = repair the highlighted compiler contract before checking later diagnostics
+HIR_E_USE_AFTER_MOVE.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+HIR_E_USE_AFTER_MOVE.fix = repair the malformed intermediate representation before continuing to the next phase
 HIR_E_USE_AFTER_MOVE.example = vitte check path/to/file.vit
 
 HIR_E_USE_AFTER_DROP.summary = use after Freigabe.
 HIR_E_USE_AFTER_DROP.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-HIR_E_USE_AFTER_DROP.step1 = Fix the first span reported for this diagnostic, then run the command again.
-HIR_E_USE_AFTER_DROP.fix = repair the highlighted compiler contract before checking later diagnostics
+HIR_E_USE_AFTER_DROP.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+HIR_E_USE_AFTER_DROP.fix = repair the malformed intermediate representation before continuing to the next phase
 HIR_E_USE_AFTER_DROP.example = vitte check path/to/file.vit
 
 HIR_E_USE_BEFORE_INIT.summary = use before init.
 HIR_E_USE_BEFORE_INIT.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-HIR_E_USE_BEFORE_INIT.step1 = Fix the first span reported for this diagnostic, then run the command again.
-HIR_E_USE_BEFORE_INIT.fix = repair the highlighted compiler contract before checking later diagnostics
+HIR_E_USE_BEFORE_INIT.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+HIR_E_USE_BEFORE_INIT.fix = repair the malformed intermediate representation before continuing to the next phase
 HIR_E_USE_BEFORE_INIT.example = vitte check path/to/file.vit
 
 HIR_E_DOUBLE_DROP.summary = double Freigabe.
 HIR_E_DOUBLE_DROP.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-HIR_E_DOUBLE_DROP.step1 = Fix the first span reported for this diagnostic, then run the command again.
-HIR_E_DOUBLE_DROP.fix = repair the highlighted compiler contract before checking later diagnostics
+HIR_E_DOUBLE_DROP.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+HIR_E_DOUBLE_DROP.fix = repair the malformed intermediate representation before continuing to the next phase
 HIR_E_DOUBLE_DROP.example = vitte check path/to/file.vit
 
 HIR_E_BORROW_CONFLICT.summary = Ausleihe Konflikt.
 HIR_E_BORROW_CONFLICT.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-HIR_E_BORROW_CONFLICT.step1 = Fix the first span reported for this diagnostic, then run the command again.
-HIR_E_BORROW_CONFLICT.fix = repair the highlighted compiler contract before checking later diagnostics
+HIR_E_BORROW_CONFLICT.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+HIR_E_BORROW_CONFLICT.fix = repair the malformed intermediate representation before continuing to the next phase
 HIR_E_BORROW_CONFLICT.example = vitte check path/to/file.vit
 
 HIR_E_MUTABILITY_CONFLICT.summary = mutability Konflikt.
 HIR_E_MUTABILITY_CONFLICT.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-HIR_E_MUTABILITY_CONFLICT.step1 = Fix the first span reported for this diagnostic, then run the command again.
-HIR_E_MUTABILITY_CONFLICT.fix = repair the highlighted compiler contract before checking later diagnostics
+HIR_E_MUTABILITY_CONFLICT.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+HIR_E_MUTABILITY_CONFLICT.fix = repair the malformed intermediate representation before continuing to the next phase
 HIR_E_MUTABILITY_CONFLICT.example = vitte check path/to/file.vit
 
 HIR_E_LIFETIME_TOO_SHORT.summary = Lebensdauer zu short.
 HIR_E_LIFETIME_TOO_SHORT.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-HIR_E_LIFETIME_TOO_SHORT.step1 = Fix the first span reported for this diagnostic, then run the command again.
-HIR_E_LIFETIME_TOO_SHORT.fix = repair the highlighted compiler contract before checking later diagnostics
+HIR_E_LIFETIME_TOO_SHORT.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+HIR_E_LIFETIME_TOO_SHORT.fix = repair the malformed intermediate representation before continuing to the next phase
 HIR_E_LIFETIME_TOO_SHORT.example = vitte check path/to/file.vit
 
 HIR_E_DANGLING_REFERENCE.summary = dangling Referenz.
 HIR_E_DANGLING_REFERENCE.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-HIR_E_DANGLING_REFERENCE.step1 = Fix the first span reported for this diagnostic, then run the command again.
-HIR_E_DANGLING_REFERENCE.fix = repair the highlighted compiler contract before checking later diagnostics
+HIR_E_DANGLING_REFERENCE.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+HIR_E_DANGLING_REFERENCE.fix = repair the malformed intermediate representation before continuing to the next phase
 HIR_E_DANGLING_REFERENCE.example = vitte check path/to/file.vit
 
 HIR_E_NON_EXHAUSTIVE_MATCH.summary = non exhaustive match.
 HIR_E_NON_EXHAUSTIVE_MATCH.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-HIR_E_NON_EXHAUSTIVE_MATCH.step1 = Fix the first span reported for this diagnostic, then run the command again.
-HIR_E_NON_EXHAUSTIVE_MATCH.fix = repair the highlighted compiler contract before checking later diagnostics
+HIR_E_NON_EXHAUSTIVE_MATCH.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+HIR_E_NON_EXHAUSTIVE_MATCH.fix = repair the malformed intermediate representation before continuing to the next phase
 HIR_E_NON_EXHAUSTIVE_MATCH.example = vitte check path/to/file.vit
 
 HIR_E_UNREACHABLE_PATTERN.summary = unerreichbar Muster.
 HIR_E_UNREACHABLE_PATTERN.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-HIR_E_UNREACHABLE_PATTERN.step1 = Fix the first span reported for this diagnostic, then run the command again.
-HIR_E_UNREACHABLE_PATTERN.fix = repair the highlighted compiler contract before checking later diagnostics
+HIR_E_UNREACHABLE_PATTERN.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+HIR_E_UNREACHABLE_PATTERN.fix = repair the malformed intermediate representation before continuing to the next phase
 HIR_E_UNREACHABLE_PATTERN.example = vitte check path/to/file.vit
 
 HIR_E_CONST_REQUIRED.summary = const required.
 HIR_E_CONST_REQUIRED.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-HIR_E_CONST_REQUIRED.step1 = Fix the first span reported for this diagnostic, then run the command again.
-HIR_E_CONST_REQUIRED.fix = repair the highlighted compiler contract before checking later diagnostics
+HIR_E_CONST_REQUIRED.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+HIR_E_CONST_REQUIRED.fix = repair the malformed intermediate representation before continuing to the next phase
 HIR_E_CONST_REQUIRED.example = vitte check path/to/file.vit
 
 HIR_E_CONST_OVERFLOW.summary = const Ueberlauf.
 HIR_E_CONST_OVERFLOW.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-HIR_E_CONST_OVERFLOW.step1 = Fix the first span reported for this diagnostic, then run the command again.
-HIR_E_CONST_OVERFLOW.fix = repair the highlighted compiler contract before checking later diagnostics
+HIR_E_CONST_OVERFLOW.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+HIR_E_CONST_OVERFLOW.fix = repair the malformed intermediate representation before continuing to the next phase
 HIR_E_CONST_OVERFLOW.example = vitte check path/to/file.vit
 
 HIR_E_CONST_DIVISION_BY_ZERO.summary = const Division by Null.
 HIR_E_CONST_DIVISION_BY_ZERO.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-HIR_E_CONST_DIVISION_BY_ZERO.step1 = Fix the first span reported for this diagnostic, then run the command again.
-HIR_E_CONST_DIVISION_BY_ZERO.fix = repair the highlighted compiler contract before checking later diagnostics
+HIR_E_CONST_DIVISION_BY_ZERO.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+HIR_E_CONST_DIVISION_BY_ZERO.fix = repair the malformed intermediate representation before continuing to the next phase
 HIR_E_CONST_DIVISION_BY_ZERO.example = vitte check path/to/file.vit
 
 HIR_E_CONST_CYCLE.summary = const Zyklus.
 HIR_E_CONST_CYCLE.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-HIR_E_CONST_CYCLE.step1 = Fix the first span reported for this diagnostic, then run the command again.
-HIR_E_CONST_CYCLE.fix = repair the highlighted compiler contract before checking later diagnostics
+HIR_E_CONST_CYCLE.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+HIR_E_CONST_CYCLE.fix = repair the malformed intermediate representation before continuing to the next phase
 HIR_E_CONST_CYCLE.example = vitte check path/to/file.vit
 
 HIR_E_MACRO_NOT_FOUND.summary = macro fehlend.
 HIR_E_MACRO_NOT_FOUND.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-HIR_E_MACRO_NOT_FOUND.step1 = Fix the first span reported for this diagnostic, then run the command again.
-HIR_E_MACRO_NOT_FOUND.fix = repair the highlighted compiler contract before checking later diagnostics
+HIR_E_MACRO_NOT_FOUND.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+HIR_E_MACRO_NOT_FOUND.fix = repair the malformed intermediate representation before continuing to the next phase
 HIR_E_MACRO_NOT_FOUND.example = vitte check path/to/file.vit
 
 HIR_E_MACRO_RECURSION.summary = macro recursion.
 HIR_E_MACRO_RECURSION.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-HIR_E_MACRO_RECURSION.step1 = Fix the first span reported for this diagnostic, then run the command again.
-HIR_E_MACRO_RECURSION.fix = repair the highlighted compiler contract before checking later diagnostics
+HIR_E_MACRO_RECURSION.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+HIR_E_MACRO_RECURSION.fix = repair the malformed intermediate representation before continuing to the next phase
 HIR_E_MACRO_RECURSION.example = vitte check path/to/file.vit
 
 HIR_E_MACRO_EXPANSION_FAILED.summary = macro expansion fehlgeschlagen.
 HIR_E_MACRO_EXPANSION_FAILED.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-HIR_E_MACRO_EXPANSION_FAILED.step1 = Fix the first span reported for this diagnostic, then run the command again.
-HIR_E_MACRO_EXPANSION_FAILED.fix = repair the highlighted compiler contract before checking later diagnostics
+HIR_E_MACRO_EXPANSION_FAILED.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+HIR_E_MACRO_EXPANSION_FAILED.fix = repair the malformed intermediate representation before continuing to the next phase
 HIR_E_MACRO_EXPANSION_FAILED.example = vitte check path/to/file.vit
 
 HIR_E_TRAIT_NOT_IMPLEMENTED.summary = trait not implemented.
 HIR_E_TRAIT_NOT_IMPLEMENTED.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-HIR_E_TRAIT_NOT_IMPLEMENTED.step1 = Fix the first span reported for this diagnostic, then run the command again.
-HIR_E_TRAIT_NOT_IMPLEMENTED.fix = repair the highlighted compiler contract before checking later diagnostics
+HIR_E_TRAIT_NOT_IMPLEMENTED.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+HIR_E_TRAIT_NOT_IMPLEMENTED.fix = repair the malformed intermediate representation before continuing to the next phase
 HIR_E_TRAIT_NOT_IMPLEMENTED.example = vitte check path/to/file.vit
 
 HIR_E_TRAIT_AMBIGUOUS.summary = trait ambiguous.
 HIR_E_TRAIT_AMBIGUOUS.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-HIR_E_TRAIT_AMBIGUOUS.step1 = Fix the first span reported for this diagnostic, then run the command again.
-HIR_E_TRAIT_AMBIGUOUS.fix = repair the highlighted compiler contract before checking later diagnostics
+HIR_E_TRAIT_AMBIGUOUS.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+HIR_E_TRAIT_AMBIGUOUS.fix = repair the malformed intermediate representation before continuing to the next phase
 HIR_E_TRAIT_AMBIGUOUS.example = vitte check path/to/file.vit
 
 HIR_E_GENERIC_ARGUMENT_MISSING.summary = generisch Argument fehlend.
 HIR_E_GENERIC_ARGUMENT_MISSING.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-HIR_E_GENERIC_ARGUMENT_MISSING.step1 = Fix the first span reported for this diagnostic, then run the command again.
-HIR_E_GENERIC_ARGUMENT_MISSING.fix = repair the highlighted compiler contract before checking later diagnostics
+HIR_E_GENERIC_ARGUMENT_MISSING.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+HIR_E_GENERIC_ARGUMENT_MISSING.fix = repair the malformed intermediate representation before continuing to the next phase
 HIR_E_GENERIC_ARGUMENT_MISSING.example = vitte check path/to/file.vit
 
 HIR_E_GENERIC_BOUND_FAILED.summary = generisch bound fehlgeschlagen.
 HIR_E_GENERIC_BOUND_FAILED.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-HIR_E_GENERIC_BOUND_FAILED.step1 = Fix the first span reported for this diagnostic, then run the command again.
-HIR_E_GENERIC_BOUND_FAILED.fix = repair the highlighted compiler contract before checking later diagnostics
+HIR_E_GENERIC_BOUND_FAILED.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+HIR_E_GENERIC_BOUND_FAILED.fix = repair the malformed intermediate representation before continuing to the next phase
 HIR_E_GENERIC_BOUND_FAILED.example = vitte check path/to/file.vit
 
 HIR_E_UNSUPPORTED_TARGET.summary = Ziel nicht unterstuetzt.
 HIR_E_UNSUPPORTED_TARGET.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-HIR_E_UNSUPPORTED_TARGET.step1 = Fix the first span reported for this diagnostic, then run the command again.
-HIR_E_UNSUPPORTED_TARGET.fix = repair the highlighted compiler contract before checking later diagnostics
+HIR_E_UNSUPPORTED_TARGET.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+HIR_E_UNSUPPORTED_TARGET.fix = repair the malformed intermediate representation before continuing to the next phase
 HIR_E_UNSUPPORTED_TARGET.example = vitte check path/to/file.vit
 
 HIR_E_ABI_MISMATCH.summary = abi Nichtuebereinstimmung.
 HIR_E_ABI_MISMATCH.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-HIR_E_ABI_MISMATCH.step1 = Fix the first span reported for this diagnostic, then run the command again.
-HIR_E_ABI_MISMATCH.fix = repair the highlighted compiler contract before checking later diagnostics
+HIR_E_ABI_MISMATCH.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+HIR_E_ABI_MISMATCH.fix = repair the malformed intermediate representation before continuing to the next phase
 HIR_E_ABI_MISMATCH.example = vitte check path/to/file.vit
 
 HIR_E_LINK_FAILED.summary = link fehlgeschlagen.
 HIR_E_LINK_FAILED.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-HIR_E_LINK_FAILED.step1 = Fix the first span reported for this diagnostic, then run the command again.
-HIR_E_LINK_FAILED.fix = repair the highlighted compiler contract before checking later diagnostics
+HIR_E_LINK_FAILED.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+HIR_E_LINK_FAILED.fix = repair the malformed intermediate representation before continuing to the next phase
 HIR_E_LINK_FAILED.example = vitte check path/to/file.vit
 
 HIR_E_RUNTIME_PANIC.summary = runtime Panik.
 HIR_E_RUNTIME_PANIC.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-HIR_E_RUNTIME_PANIC.step1 = Fix the first span reported for this diagnostic, then run the command again.
-HIR_E_RUNTIME_PANIC.fix = repair the highlighted compiler contract before checking later diagnostics
+HIR_E_RUNTIME_PANIC.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+HIR_E_RUNTIME_PANIC.fix = repair the malformed intermediate representation before continuing to the next phase
 HIR_E_RUNTIME_PANIC.example = vitte check path/to/file.vit
 
 MIR_E_EXPECTED_IDENTIFIER.summary = Bezeichner erwartet.
 MIR_E_EXPECTED_IDENTIFIER.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-MIR_E_EXPECTED_IDENTIFIER.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MIR_E_EXPECTED_IDENTIFIER.fix = repair the highlighted compiler contract before checking later diagnostics
+MIR_E_EXPECTED_IDENTIFIER.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+MIR_E_EXPECTED_IDENTIFIER.fix = repair the malformed intermediate representation before continuing to the next phase
 MIR_E_EXPECTED_IDENTIFIER.example = vitte check path/to/file.vit
 
 MIR_E_EXPECTED_EXPRESSION.summary = Ausdruck erwartet.
 MIR_E_EXPECTED_EXPRESSION.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-MIR_E_EXPECTED_EXPRESSION.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MIR_E_EXPECTED_EXPRESSION.fix = repair the highlighted compiler contract before checking later diagnostics
+MIR_E_EXPECTED_EXPRESSION.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+MIR_E_EXPECTED_EXPRESSION.fix = repair the malformed intermediate representation before continuing to the next phase
 MIR_E_EXPECTED_EXPRESSION.example = vitte check path/to/file.vit
 
 MIR_E_EXPECTED_TYPE.summary = Typ erwartet.
 MIR_E_EXPECTED_TYPE.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-MIR_E_EXPECTED_TYPE.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MIR_E_EXPECTED_TYPE.fix = repair the highlighted compiler contract before checking later diagnostics
+MIR_E_EXPECTED_TYPE.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+MIR_E_EXPECTED_TYPE.fix = repair the malformed intermediate representation before continuing to the next phase
 MIR_E_EXPECTED_TYPE.example = vitte check path/to/file.vit
 
 MIR_E_EXPECTED_PATTERN.summary = Muster erwartet.
 MIR_E_EXPECTED_PATTERN.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-MIR_E_EXPECTED_PATTERN.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MIR_E_EXPECTED_PATTERN.fix = repair the highlighted compiler contract before checking later diagnostics
+MIR_E_EXPECTED_PATTERN.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+MIR_E_EXPECTED_PATTERN.fix = repair the malformed intermediate representation before continuing to the next phase
 MIR_E_EXPECTED_PATTERN.example = vitte check path/to/file.vit
 
 MIR_E_EXPECTED_BLOCK.summary = Block erwartet.
 MIR_E_EXPECTED_BLOCK.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-MIR_E_EXPECTED_BLOCK.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MIR_E_EXPECTED_BLOCK.fix = repair the highlighted compiler contract before checking later diagnostics
+MIR_E_EXPECTED_BLOCK.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+MIR_E_EXPECTED_BLOCK.fix = repair the malformed intermediate representation before continuing to the next phase
 MIR_E_EXPECTED_BLOCK.example = vitte check path/to/file.vit
 
 MIR_E_EXPECTED_DELIMITER.summary = Trennzeichen erwartet.
 MIR_E_EXPECTED_DELIMITER.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-MIR_E_EXPECTED_DELIMITER.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MIR_E_EXPECTED_DELIMITER.fix = repair the highlighted compiler contract before checking later diagnostics
+MIR_E_EXPECTED_DELIMITER.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+MIR_E_EXPECTED_DELIMITER.fix = repair the malformed intermediate representation before continuing to the next phase
 MIR_E_EXPECTED_DELIMITER.example = vitte check path/to/file.vit
 
 MIR_E_UNEXPECTED_TOKEN.summary = Token unerwartet.
 MIR_E_UNEXPECTED_TOKEN.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-MIR_E_UNEXPECTED_TOKEN.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MIR_E_UNEXPECTED_TOKEN.fix = repair the highlighted compiler contract before checking later diagnostics
+MIR_E_UNEXPECTED_TOKEN.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+MIR_E_UNEXPECTED_TOKEN.fix = repair the malformed intermediate representation before continuing to the next phase
 MIR_E_UNEXPECTED_TOKEN.example = vitte check path/to/file.vit
 
 MIR_E_UNBALANCED_DELIMITER.summary = unbalanced Trennzeichen.
 MIR_E_UNBALANCED_DELIMITER.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-MIR_E_UNBALANCED_DELIMITER.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MIR_E_UNBALANCED_DELIMITER.fix = repair the highlighted compiler contract before checking later diagnostics
+MIR_E_UNBALANCED_DELIMITER.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+MIR_E_UNBALANCED_DELIMITER.fix = repair the malformed intermediate representation before continuing to the next phase
 MIR_E_UNBALANCED_DELIMITER.example = vitte check path/to/file.vit
 
 MIR_E_INVALID_ATTRIBUTE.summary = attribute ungueltig.
 MIR_E_INVALID_ATTRIBUTE.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-MIR_E_INVALID_ATTRIBUTE.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MIR_E_INVALID_ATTRIBUTE.fix = repair the highlighted compiler contract before checking later diagnostics
+MIR_E_INVALID_ATTRIBUTE.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+MIR_E_INVALID_ATTRIBUTE.fix = repair the malformed intermediate representation before continuing to the next phase
 MIR_E_INVALID_ATTRIBUTE.example = vitte check path/to/file.vit
 
 MIR_E_INVALID_DECLARATION.summary = Deklaration ungueltig.
 MIR_E_INVALID_DECLARATION.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-MIR_E_INVALID_DECLARATION.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MIR_E_INVALID_DECLARATION.fix = repair the highlighted compiler contract before checking later diagnostics
+MIR_E_INVALID_DECLARATION.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+MIR_E_INVALID_DECLARATION.fix = repair the malformed intermediate representation before continuing to the next phase
 MIR_E_INVALID_DECLARATION.example = vitte check path/to/file.vit
 
 MIR_E_INVALID_STATEMENT.summary = Anweisung ungueltig.
 MIR_E_INVALID_STATEMENT.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-MIR_E_INVALID_STATEMENT.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MIR_E_INVALID_STATEMENT.fix = repair the highlighted compiler contract before checking later diagnostics
+MIR_E_INVALID_STATEMENT.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+MIR_E_INVALID_STATEMENT.fix = repair the malformed intermediate representation before continuing to the next phase
 MIR_E_INVALID_STATEMENT.example = vitte check path/to/file.vit
 
 MIR_E_INVALID_EXPRESSION.summary = Ausdruck ungueltig.
 MIR_E_INVALID_EXPRESSION.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-MIR_E_INVALID_EXPRESSION.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MIR_E_INVALID_EXPRESSION.fix = repair the highlighted compiler contract before checking later diagnostics
+MIR_E_INVALID_EXPRESSION.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+MIR_E_INVALID_EXPRESSION.fix = repair the malformed intermediate representation before continuing to the next phase
 MIR_E_INVALID_EXPRESSION.example = vitte check path/to/file.vit
 
 MIR_E_INVALID_PATTERN.summary = Muster ungueltig.
 MIR_E_INVALID_PATTERN.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-MIR_E_INVALID_PATTERN.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MIR_E_INVALID_PATTERN.fix = repair the highlighted compiler contract before checking later diagnostics
+MIR_E_INVALID_PATTERN.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+MIR_E_INVALID_PATTERN.fix = repair the malformed intermediate representation before continuing to the next phase
 MIR_E_INVALID_PATTERN.example = vitte check path/to/file.vit
 
 MIR_E_INVALID_LITERAL.summary = Literal ungueltig.
 MIR_E_INVALID_LITERAL.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-MIR_E_INVALID_LITERAL.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MIR_E_INVALID_LITERAL.fix = repair the highlighted compiler contract before checking later diagnostics
+MIR_E_INVALID_LITERAL.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+MIR_E_INVALID_LITERAL.fix = repair the malformed intermediate representation before continuing to the next phase
 MIR_E_INVALID_LITERAL.example = vitte check path/to/file.vit
 
 MIR_E_INVALID_OPERATOR.summary = Operator ungueltig.
 MIR_E_INVALID_OPERATOR.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-MIR_E_INVALID_OPERATOR.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MIR_E_INVALID_OPERATOR.fix = repair the highlighted compiler contract before checking later diagnostics
+MIR_E_INVALID_OPERATOR.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+MIR_E_INVALID_OPERATOR.fix = repair the malformed intermediate representation before continuing to the next phase
 MIR_E_INVALID_OPERATOR.example = vitte check path/to/file.vit
 
 MIR_E_INVALID_MODIFIER.summary = modifier ungueltig.
 MIR_E_INVALID_MODIFIER.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-MIR_E_INVALID_MODIFIER.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MIR_E_INVALID_MODIFIER.fix = repair the highlighted compiler contract before checking later diagnostics
+MIR_E_INVALID_MODIFIER.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+MIR_E_INVALID_MODIFIER.fix = repair the malformed intermediate representation before continuing to the next phase
 MIR_E_INVALID_MODIFIER.example = vitte check path/to/file.vit
 
 MIR_E_MISSING_BODY.summary = body fehlt.
 MIR_E_MISSING_BODY.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-MIR_E_MISSING_BODY.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MIR_E_MISSING_BODY.fix = repair the highlighted compiler contract before checking later diagnostics
+MIR_E_MISSING_BODY.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+MIR_E_MISSING_BODY.fix = repair the malformed intermediate representation before continuing to the next phase
 MIR_E_MISSING_BODY.example = vitte check path/to/file.vit
 
 MIR_E_MISSING_RETURN.summary = Rueckgabe fehlt.
 MIR_E_MISSING_RETURN.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-MIR_E_MISSING_RETURN.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MIR_E_MISSING_RETURN.fix = repair the highlighted compiler contract before checking later diagnostics
+MIR_E_MISSING_RETURN.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+MIR_E_MISSING_RETURN.fix = repair the malformed intermediate representation before continuing to the next phase
 MIR_E_MISSING_RETURN.example = vitte check path/to/file.vit
 
 MIR_E_DUPLICATE_NAME.summary = Name doppelt.
 MIR_E_DUPLICATE_NAME.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-MIR_E_DUPLICATE_NAME.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MIR_E_DUPLICATE_NAME.fix = repair the highlighted compiler contract before checking later diagnostics
+MIR_E_DUPLICATE_NAME.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+MIR_E_DUPLICATE_NAME.fix = repair the malformed intermediate representation before continuing to the next phase
 MIR_E_DUPLICATE_NAME.example = vitte check path/to/file.vit
 
 MIR_E_UNKNOWN_NAME.summary = Name unbekannt.
 MIR_E_UNKNOWN_NAME.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-MIR_E_UNKNOWN_NAME.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MIR_E_UNKNOWN_NAME.fix = repair the highlighted compiler contract before checking later diagnostics
+MIR_E_UNKNOWN_NAME.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+MIR_E_UNKNOWN_NAME.fix = repair the malformed intermediate representation before continuing to the next phase
 MIR_E_UNKNOWN_NAME.example = vitte check path/to/file.vit
 
 MIR_E_UNKNOWN_TYPE.summary = Typ unbekannt.
 MIR_E_UNKNOWN_TYPE.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-MIR_E_UNKNOWN_TYPE.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MIR_E_UNKNOWN_TYPE.fix = repair the highlighted compiler contract before checking later diagnostics
+MIR_E_UNKNOWN_TYPE.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+MIR_E_UNKNOWN_TYPE.fix = repair the malformed intermediate representation before continuing to the next phase
 MIR_E_UNKNOWN_TYPE.example = vitte check path/to/file.vit
 
 MIR_E_UNKNOWN_MODULE.summary = Modul unbekannt.
 MIR_E_UNKNOWN_MODULE.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-MIR_E_UNKNOWN_MODULE.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MIR_E_UNKNOWN_MODULE.fix = repair the highlighted compiler contract before checking later diagnostics
+MIR_E_UNKNOWN_MODULE.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+MIR_E_UNKNOWN_MODULE.fix = repair the malformed intermediate representation before continuing to the next phase
 MIR_E_UNKNOWN_MODULE.example = vitte check path/to/file.vit
 
 MIR_E_UNKNOWN_MEMBER.summary = Member unbekannt.
 MIR_E_UNKNOWN_MEMBER.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-MIR_E_UNKNOWN_MEMBER.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MIR_E_UNKNOWN_MEMBER.fix = repair the highlighted compiler contract before checking later diagnostics
+MIR_E_UNKNOWN_MEMBER.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+MIR_E_UNKNOWN_MEMBER.fix = repair the malformed intermediate representation before continuing to the next phase
 MIR_E_UNKNOWN_MEMBER.example = vitte check path/to/file.vit
 
 MIR_E_AMBIGUOUS_NAME.summary = ambiguous Name.
 MIR_E_AMBIGUOUS_NAME.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-MIR_E_AMBIGUOUS_NAME.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MIR_E_AMBIGUOUS_NAME.fix = repair the highlighted compiler contract before checking later diagnostics
+MIR_E_AMBIGUOUS_NAME.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+MIR_E_AMBIGUOUS_NAME.fix = repair the malformed intermediate representation before continuing to the next phase
 MIR_E_AMBIGUOUS_NAME.example = vitte check path/to/file.vit
 
 MIR_E_PRIVATE_SYMBOL.summary = private Symbol.
 MIR_E_PRIVATE_SYMBOL.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-MIR_E_PRIVATE_SYMBOL.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MIR_E_PRIVATE_SYMBOL.fix = repair the highlighted compiler contract before checking later diagnostics
+MIR_E_PRIVATE_SYMBOL.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+MIR_E_PRIVATE_SYMBOL.fix = repair the malformed intermediate representation before continuing to the next phase
 MIR_E_PRIVATE_SYMBOL.example = vitte check path/to/file.vit
 
 MIR_E_IMPORT_NOT_FOUND.summary = Import fehlend.
 MIR_E_IMPORT_NOT_FOUND.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-MIR_E_IMPORT_NOT_FOUND.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MIR_E_IMPORT_NOT_FOUND.fix = repair the highlighted compiler contract before checking later diagnostics
+MIR_E_IMPORT_NOT_FOUND.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+MIR_E_IMPORT_NOT_FOUND.fix = repair the malformed intermediate representation before continuing to the next phase
 MIR_E_IMPORT_NOT_FOUND.example = vitte check path/to/file.vit
 
 MIR_E_IMPORT_CYCLE.summary = Import Zyklus.
 MIR_E_IMPORT_CYCLE.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-MIR_E_IMPORT_CYCLE.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MIR_E_IMPORT_CYCLE.fix = repair the highlighted compiler contract before checking later diagnostics
+MIR_E_IMPORT_CYCLE.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+MIR_E_IMPORT_CYCLE.fix = repair the malformed intermediate representation before continuing to the next phase
 MIR_E_IMPORT_CYCLE.example = vitte check path/to/file.vit
 
 MIR_E_EXPORT_CONFLICT.summary = export Konflikt.
 MIR_E_EXPORT_CONFLICT.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-MIR_E_EXPORT_CONFLICT.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MIR_E_EXPORT_CONFLICT.fix = repair the highlighted compiler contract before checking later diagnostics
+MIR_E_EXPORT_CONFLICT.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+MIR_E_EXPORT_CONFLICT.fix = repair the malformed intermediate representation before continuing to the next phase
 MIR_E_EXPORT_CONFLICT.example = vitte check path/to/file.vit
 
 MIR_E_ARITY_MISMATCH.summary = arity Nichtuebereinstimmung.
 MIR_E_ARITY_MISMATCH.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-MIR_E_ARITY_MISMATCH.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MIR_E_ARITY_MISMATCH.fix = repair the highlighted compiler contract before checking later diagnostics
+MIR_E_ARITY_MISMATCH.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+MIR_E_ARITY_MISMATCH.fix = repair the malformed intermediate representation before continuing to the next phase
 MIR_E_ARITY_MISMATCH.example = vitte check path/to/file.vit
 
 MIR_E_ARGUMENT_MISMATCH.summary = Argument Nichtuebereinstimmung.
 MIR_E_ARGUMENT_MISMATCH.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-MIR_E_ARGUMENT_MISMATCH.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MIR_E_ARGUMENT_MISMATCH.fix = repair the highlighted compiler contract before checking later diagnostics
+MIR_E_ARGUMENT_MISMATCH.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+MIR_E_ARGUMENT_MISMATCH.fix = repair the malformed intermediate representation before continuing to the next phase
 MIR_E_ARGUMENT_MISMATCH.example = vitte check path/to/file.vit
 
 MIR_E_ASSIGNMENT_MISMATCH.summary = Zuweisung Nichtuebereinstimmung.
 MIR_E_ASSIGNMENT_MISMATCH.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-MIR_E_ASSIGNMENT_MISMATCH.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MIR_E_ASSIGNMENT_MISMATCH.fix = repair the highlighted compiler contract before checking later diagnostics
+MIR_E_ASSIGNMENT_MISMATCH.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+MIR_E_ASSIGNMENT_MISMATCH.fix = repair the malformed intermediate representation before continuing to the next phase
 MIR_E_ASSIGNMENT_MISMATCH.example = vitte check path/to/file.vit
 
 MIR_E_BRANCH_MISMATCH.summary = branch Nichtuebereinstimmung.
 MIR_E_BRANCH_MISMATCH.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-MIR_E_BRANCH_MISMATCH.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MIR_E_BRANCH_MISMATCH.fix = repair the highlighted compiler contract before checking later diagnostics
+MIR_E_BRANCH_MISMATCH.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+MIR_E_BRANCH_MISMATCH.fix = repair the malformed intermediate representation before continuing to the next phase
 MIR_E_BRANCH_MISMATCH.example = vitte check path/to/file.vit
 
 MIR_E_INVALID_CALL.summary = Aufruf ungueltig.
 MIR_E_INVALID_CALL.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-MIR_E_INVALID_CALL.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MIR_E_INVALID_CALL.fix = repair the highlighted compiler contract before checking later diagnostics
+MIR_E_INVALID_CALL.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+MIR_E_INVALID_CALL.fix = repair the malformed intermediate representation before continuing to the next phase
 MIR_E_INVALID_CALL.example = vitte check path/to/file.vit
 
 MIR_E_INVALID_CAST.summary = Umwandlung ungueltig.
 MIR_E_INVALID_CAST.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-MIR_E_INVALID_CAST.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MIR_E_INVALID_CAST.fix = repair the highlighted compiler contract before checking later diagnostics
+MIR_E_INVALID_CAST.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+MIR_E_INVALID_CAST.fix = repair the malformed intermediate representation before continuing to the next phase
 MIR_E_INVALID_CAST.example = vitte check path/to/file.vit
 
 MIR_E_INVALID_INDEX.summary = Index ungueltig.
 MIR_E_INVALID_INDEX.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-MIR_E_INVALID_INDEX.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MIR_E_INVALID_INDEX.fix = repair the highlighted compiler contract before checking later diagnostics
+MIR_E_INVALID_INDEX.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+MIR_E_INVALID_INDEX.fix = repair the malformed intermediate representation before continuing to the next phase
 MIR_E_INVALID_INDEX.example = vitte check path/to/file.vit
 
 MIR_E_INVALID_DEREF.summary = deref ungueltig.
 MIR_E_INVALID_DEREF.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-MIR_E_INVALID_DEREF.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MIR_E_INVALID_DEREF.fix = repair the highlighted compiler contract before checking later diagnostics
+MIR_E_INVALID_DEREF.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+MIR_E_INVALID_DEREF.fix = repair the malformed intermediate representation before continuing to the next phase
 MIR_E_INVALID_DEREF.example = vitte check path/to/file.vit
 
 MIR_E_INVALID_BORROW.summary = Ausleihe ungueltig.
 MIR_E_INVALID_BORROW.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-MIR_E_INVALID_BORROW.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MIR_E_INVALID_BORROW.fix = repair the highlighted compiler contract before checking later diagnostics
+MIR_E_INVALID_BORROW.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+MIR_E_INVALID_BORROW.fix = repair the malformed intermediate representation before continuing to the next phase
 MIR_E_INVALID_BORROW.example = vitte check path/to/file.vit
 
 MIR_E_INVALID_MOVE.summary = Verschiebung ungueltig.
 MIR_E_INVALID_MOVE.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-MIR_E_INVALID_MOVE.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MIR_E_INVALID_MOVE.fix = repair the highlighted compiler contract before checking later diagnostics
+MIR_E_INVALID_MOVE.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+MIR_E_INVALID_MOVE.fix = repair the malformed intermediate representation before continuing to the next phase
 MIR_E_INVALID_MOVE.example = vitte check path/to/file.vit
 
 MIR_E_USE_AFTER_MOVE.summary = use after Verschiebung.
 MIR_E_USE_AFTER_MOVE.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-MIR_E_USE_AFTER_MOVE.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MIR_E_USE_AFTER_MOVE.fix = repair the highlighted compiler contract before checking later diagnostics
+MIR_E_USE_AFTER_MOVE.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+MIR_E_USE_AFTER_MOVE.fix = repair the malformed intermediate representation before continuing to the next phase
 MIR_E_USE_AFTER_MOVE.example = vitte check path/to/file.vit
 
 MIR_E_USE_AFTER_DROP.summary = use after Freigabe.
 MIR_E_USE_AFTER_DROP.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-MIR_E_USE_AFTER_DROP.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MIR_E_USE_AFTER_DROP.fix = repair the highlighted compiler contract before checking later diagnostics
+MIR_E_USE_AFTER_DROP.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+MIR_E_USE_AFTER_DROP.fix = repair the malformed intermediate representation before continuing to the next phase
 MIR_E_USE_AFTER_DROP.example = vitte check path/to/file.vit
 
 MIR_E_USE_BEFORE_INIT.summary = use before init.
 MIR_E_USE_BEFORE_INIT.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-MIR_E_USE_BEFORE_INIT.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MIR_E_USE_BEFORE_INIT.fix = repair the highlighted compiler contract before checking later diagnostics
+MIR_E_USE_BEFORE_INIT.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+MIR_E_USE_BEFORE_INIT.fix = repair the malformed intermediate representation before continuing to the next phase
 MIR_E_USE_BEFORE_INIT.example = vitte check path/to/file.vit
 
 MIR_E_DOUBLE_DROP.summary = double Freigabe.
 MIR_E_DOUBLE_DROP.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-MIR_E_DOUBLE_DROP.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MIR_E_DOUBLE_DROP.fix = repair the highlighted compiler contract before checking later diagnostics
+MIR_E_DOUBLE_DROP.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+MIR_E_DOUBLE_DROP.fix = repair the malformed intermediate representation before continuing to the next phase
 MIR_E_DOUBLE_DROP.example = vitte check path/to/file.vit
 
 MIR_E_BORROW_CONFLICT.summary = Ausleihe Konflikt.
 MIR_E_BORROW_CONFLICT.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-MIR_E_BORROW_CONFLICT.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MIR_E_BORROW_CONFLICT.fix = repair the highlighted compiler contract before checking later diagnostics
+MIR_E_BORROW_CONFLICT.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+MIR_E_BORROW_CONFLICT.fix = repair the malformed intermediate representation before continuing to the next phase
 MIR_E_BORROW_CONFLICT.example = vitte check path/to/file.vit
 
 MIR_E_MUTABILITY_CONFLICT.summary = mutability Konflikt.
 MIR_E_MUTABILITY_CONFLICT.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-MIR_E_MUTABILITY_CONFLICT.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MIR_E_MUTABILITY_CONFLICT.fix = repair the highlighted compiler contract before checking later diagnostics
+MIR_E_MUTABILITY_CONFLICT.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+MIR_E_MUTABILITY_CONFLICT.fix = repair the malformed intermediate representation before continuing to the next phase
 MIR_E_MUTABILITY_CONFLICT.example = vitte check path/to/file.vit
 
 MIR_E_LIFETIME_TOO_SHORT.summary = Lebensdauer zu short.
 MIR_E_LIFETIME_TOO_SHORT.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-MIR_E_LIFETIME_TOO_SHORT.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MIR_E_LIFETIME_TOO_SHORT.fix = repair the highlighted compiler contract before checking later diagnostics
+MIR_E_LIFETIME_TOO_SHORT.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+MIR_E_LIFETIME_TOO_SHORT.fix = repair the malformed intermediate representation before continuing to the next phase
 MIR_E_LIFETIME_TOO_SHORT.example = vitte check path/to/file.vit
 
 MIR_E_DANGLING_REFERENCE.summary = dangling Referenz.
 MIR_E_DANGLING_REFERENCE.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-MIR_E_DANGLING_REFERENCE.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MIR_E_DANGLING_REFERENCE.fix = repair the highlighted compiler contract before checking later diagnostics
+MIR_E_DANGLING_REFERENCE.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+MIR_E_DANGLING_REFERENCE.fix = repair the malformed intermediate representation before continuing to the next phase
 MIR_E_DANGLING_REFERENCE.example = vitte check path/to/file.vit
 
 MIR_E_NON_EXHAUSTIVE_MATCH.summary = non exhaustive match.
 MIR_E_NON_EXHAUSTIVE_MATCH.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-MIR_E_NON_EXHAUSTIVE_MATCH.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MIR_E_NON_EXHAUSTIVE_MATCH.fix = repair the highlighted compiler contract before checking later diagnostics
+MIR_E_NON_EXHAUSTIVE_MATCH.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+MIR_E_NON_EXHAUSTIVE_MATCH.fix = repair the malformed intermediate representation before continuing to the next phase
 MIR_E_NON_EXHAUSTIVE_MATCH.example = vitte check path/to/file.vit
 
 MIR_E_UNREACHABLE_PATTERN.summary = unerreichbar Muster.
 MIR_E_UNREACHABLE_PATTERN.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-MIR_E_UNREACHABLE_PATTERN.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MIR_E_UNREACHABLE_PATTERN.fix = repair the highlighted compiler contract before checking later diagnostics
+MIR_E_UNREACHABLE_PATTERN.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+MIR_E_UNREACHABLE_PATTERN.fix = repair the malformed intermediate representation before continuing to the next phase
 MIR_E_UNREACHABLE_PATTERN.example = vitte check path/to/file.vit
 
 MIR_E_CONST_REQUIRED.summary = const required.
 MIR_E_CONST_REQUIRED.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-MIR_E_CONST_REQUIRED.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MIR_E_CONST_REQUIRED.fix = repair the highlighted compiler contract before checking later diagnostics
+MIR_E_CONST_REQUIRED.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+MIR_E_CONST_REQUIRED.fix = repair the malformed intermediate representation before continuing to the next phase
 MIR_E_CONST_REQUIRED.example = vitte check path/to/file.vit
 
 MIR_E_CONST_OVERFLOW.summary = const Ueberlauf.
 MIR_E_CONST_OVERFLOW.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-MIR_E_CONST_OVERFLOW.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MIR_E_CONST_OVERFLOW.fix = repair the highlighted compiler contract before checking later diagnostics
+MIR_E_CONST_OVERFLOW.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+MIR_E_CONST_OVERFLOW.fix = repair the malformed intermediate representation before continuing to the next phase
 MIR_E_CONST_OVERFLOW.example = vitte check path/to/file.vit
 
 MIR_E_CONST_DIVISION_BY_ZERO.summary = const Division by Null.
 MIR_E_CONST_DIVISION_BY_ZERO.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-MIR_E_CONST_DIVISION_BY_ZERO.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MIR_E_CONST_DIVISION_BY_ZERO.fix = repair the highlighted compiler contract before checking later diagnostics
+MIR_E_CONST_DIVISION_BY_ZERO.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+MIR_E_CONST_DIVISION_BY_ZERO.fix = repair the malformed intermediate representation before continuing to the next phase
 MIR_E_CONST_DIVISION_BY_ZERO.example = vitte check path/to/file.vit
 
 MIR_E_CONST_CYCLE.summary = const Zyklus.
 MIR_E_CONST_CYCLE.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-MIR_E_CONST_CYCLE.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MIR_E_CONST_CYCLE.fix = repair the highlighted compiler contract before checking later diagnostics
+MIR_E_CONST_CYCLE.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+MIR_E_CONST_CYCLE.fix = repair the malformed intermediate representation before continuing to the next phase
 MIR_E_CONST_CYCLE.example = vitte check path/to/file.vit
 
 MIR_E_MACRO_NOT_FOUND.summary = macro fehlend.
 MIR_E_MACRO_NOT_FOUND.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-MIR_E_MACRO_NOT_FOUND.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MIR_E_MACRO_NOT_FOUND.fix = repair the highlighted compiler contract before checking later diagnostics
+MIR_E_MACRO_NOT_FOUND.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+MIR_E_MACRO_NOT_FOUND.fix = repair the malformed intermediate representation before continuing to the next phase
 MIR_E_MACRO_NOT_FOUND.example = vitte check path/to/file.vit
 
 MIR_E_MACRO_RECURSION.summary = macro recursion.
 MIR_E_MACRO_RECURSION.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-MIR_E_MACRO_RECURSION.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MIR_E_MACRO_RECURSION.fix = repair the highlighted compiler contract before checking later diagnostics
+MIR_E_MACRO_RECURSION.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+MIR_E_MACRO_RECURSION.fix = repair the malformed intermediate representation before continuing to the next phase
 MIR_E_MACRO_RECURSION.example = vitte check path/to/file.vit
 
 MIR_E_MACRO_EXPANSION_FAILED.summary = macro expansion fehlgeschlagen.
 MIR_E_MACRO_EXPANSION_FAILED.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-MIR_E_MACRO_EXPANSION_FAILED.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MIR_E_MACRO_EXPANSION_FAILED.fix = repair the highlighted compiler contract before checking later diagnostics
+MIR_E_MACRO_EXPANSION_FAILED.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+MIR_E_MACRO_EXPANSION_FAILED.fix = repair the malformed intermediate representation before continuing to the next phase
 MIR_E_MACRO_EXPANSION_FAILED.example = vitte check path/to/file.vit
 
 MIR_E_TRAIT_NOT_IMPLEMENTED.summary = trait not implemented.
 MIR_E_TRAIT_NOT_IMPLEMENTED.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-MIR_E_TRAIT_NOT_IMPLEMENTED.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MIR_E_TRAIT_NOT_IMPLEMENTED.fix = repair the highlighted compiler contract before checking later diagnostics
+MIR_E_TRAIT_NOT_IMPLEMENTED.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+MIR_E_TRAIT_NOT_IMPLEMENTED.fix = repair the malformed intermediate representation before continuing to the next phase
 MIR_E_TRAIT_NOT_IMPLEMENTED.example = vitte check path/to/file.vit
 
 MIR_E_TRAIT_AMBIGUOUS.summary = trait ambiguous.
 MIR_E_TRAIT_AMBIGUOUS.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-MIR_E_TRAIT_AMBIGUOUS.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MIR_E_TRAIT_AMBIGUOUS.fix = repair the highlighted compiler contract before checking later diagnostics
+MIR_E_TRAIT_AMBIGUOUS.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+MIR_E_TRAIT_AMBIGUOUS.fix = repair the malformed intermediate representation before continuing to the next phase
 MIR_E_TRAIT_AMBIGUOUS.example = vitte check path/to/file.vit
 
 MIR_E_GENERIC_ARGUMENT_MISSING.summary = generisch Argument fehlend.
 MIR_E_GENERIC_ARGUMENT_MISSING.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-MIR_E_GENERIC_ARGUMENT_MISSING.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MIR_E_GENERIC_ARGUMENT_MISSING.fix = repair the highlighted compiler contract before checking later diagnostics
+MIR_E_GENERIC_ARGUMENT_MISSING.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+MIR_E_GENERIC_ARGUMENT_MISSING.fix = repair the malformed intermediate representation before continuing to the next phase
 MIR_E_GENERIC_ARGUMENT_MISSING.example = vitte check path/to/file.vit
 
 MIR_E_GENERIC_BOUND_FAILED.summary = generisch bound fehlgeschlagen.
 MIR_E_GENERIC_BOUND_FAILED.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-MIR_E_GENERIC_BOUND_FAILED.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MIR_E_GENERIC_BOUND_FAILED.fix = repair the highlighted compiler contract before checking later diagnostics
+MIR_E_GENERIC_BOUND_FAILED.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+MIR_E_GENERIC_BOUND_FAILED.fix = repair the malformed intermediate representation before continuing to the next phase
 MIR_E_GENERIC_BOUND_FAILED.example = vitte check path/to/file.vit
 
 MIR_E_UNSUPPORTED_TARGET.summary = Ziel nicht unterstuetzt.
 MIR_E_UNSUPPORTED_TARGET.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-MIR_E_UNSUPPORTED_TARGET.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MIR_E_UNSUPPORTED_TARGET.fix = repair the highlighted compiler contract before checking later diagnostics
+MIR_E_UNSUPPORTED_TARGET.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+MIR_E_UNSUPPORTED_TARGET.fix = repair the malformed intermediate representation before continuing to the next phase
 MIR_E_UNSUPPORTED_TARGET.example = vitte check path/to/file.vit
 
 MIR_E_ABI_MISMATCH.summary = abi Nichtuebereinstimmung.
 MIR_E_ABI_MISMATCH.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-MIR_E_ABI_MISMATCH.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MIR_E_ABI_MISMATCH.fix = repair the highlighted compiler contract before checking later diagnostics
+MIR_E_ABI_MISMATCH.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+MIR_E_ABI_MISMATCH.fix = repair the malformed intermediate representation before continuing to the next phase
 MIR_E_ABI_MISMATCH.example = vitte check path/to/file.vit
 
 MIR_E_LINK_FAILED.summary = link fehlgeschlagen.
 MIR_E_LINK_FAILED.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-MIR_E_LINK_FAILED.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MIR_E_LINK_FAILED.fix = repair the highlighted compiler contract before checking later diagnostics
+MIR_E_LINK_FAILED.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+MIR_E_LINK_FAILED.fix = repair the malformed intermediate representation before continuing to the next phase
 MIR_E_LINK_FAILED.example = vitte check path/to/file.vit
 
 MIR_E_RUNTIME_PANIC.summary = runtime Panik.
 MIR_E_RUNTIME_PANIC.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-MIR_E_RUNTIME_PANIC.step1 = Fix the first span reported for this diagnostic, then run the command again.
-MIR_E_RUNTIME_PANIC.fix = repair the highlighted compiler contract before checking later diagnostics
+MIR_E_RUNTIME_PANIC.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+MIR_E_RUNTIME_PANIC.fix = repair the malformed intermediate representation before continuing to the next phase
 MIR_E_RUNTIME_PANIC.example = vitte check path/to/file.vit
 
 IR_E_EXPECTED_IDENTIFIER.summary = Bezeichner erwartet.
 IR_E_EXPECTED_IDENTIFIER.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-IR_E_EXPECTED_IDENTIFIER.step1 = Fix the first span reported for this diagnostic, then run the command again.
-IR_E_EXPECTED_IDENTIFIER.fix = repair the highlighted compiler contract before checking later diagnostics
+IR_E_EXPECTED_IDENTIFIER.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+IR_E_EXPECTED_IDENTIFIER.fix = repair the malformed intermediate representation before continuing to the next phase
 IR_E_EXPECTED_IDENTIFIER.example = vitte check path/to/file.vit
 
 IR_E_EXPECTED_EXPRESSION.summary = Ausdruck erwartet.
 IR_E_EXPECTED_EXPRESSION.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-IR_E_EXPECTED_EXPRESSION.step1 = Fix the first span reported for this diagnostic, then run the command again.
-IR_E_EXPECTED_EXPRESSION.fix = repair the highlighted compiler contract before checking later diagnostics
+IR_E_EXPECTED_EXPRESSION.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+IR_E_EXPECTED_EXPRESSION.fix = repair the malformed intermediate representation before continuing to the next phase
 IR_E_EXPECTED_EXPRESSION.example = vitte check path/to/file.vit
 
 IR_E_EXPECTED_TYPE.summary = Typ erwartet.
 IR_E_EXPECTED_TYPE.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-IR_E_EXPECTED_TYPE.step1 = Fix the first span reported for this diagnostic, then run the command again.
-IR_E_EXPECTED_TYPE.fix = repair the highlighted compiler contract before checking later diagnostics
+IR_E_EXPECTED_TYPE.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+IR_E_EXPECTED_TYPE.fix = repair the malformed intermediate representation before continuing to the next phase
 IR_E_EXPECTED_TYPE.example = vitte check path/to/file.vit
 
 IR_E_EXPECTED_PATTERN.summary = Muster erwartet.
 IR_E_EXPECTED_PATTERN.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-IR_E_EXPECTED_PATTERN.step1 = Fix the first span reported for this diagnostic, then run the command again.
-IR_E_EXPECTED_PATTERN.fix = repair the highlighted compiler contract before checking later diagnostics
+IR_E_EXPECTED_PATTERN.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+IR_E_EXPECTED_PATTERN.fix = repair the malformed intermediate representation before continuing to the next phase
 IR_E_EXPECTED_PATTERN.example = vitte check path/to/file.vit
 
 IR_E_EXPECTED_BLOCK.summary = Block erwartet.
 IR_E_EXPECTED_BLOCK.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-IR_E_EXPECTED_BLOCK.step1 = Fix the first span reported for this diagnostic, then run the command again.
-IR_E_EXPECTED_BLOCK.fix = repair the highlighted compiler contract before checking later diagnostics
+IR_E_EXPECTED_BLOCK.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+IR_E_EXPECTED_BLOCK.fix = repair the malformed intermediate representation before continuing to the next phase
 IR_E_EXPECTED_BLOCK.example = vitte check path/to/file.vit
 
 IR_E_EXPECTED_DELIMITER.summary = Trennzeichen erwartet.
 IR_E_EXPECTED_DELIMITER.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-IR_E_EXPECTED_DELIMITER.step1 = Fix the first span reported for this diagnostic, then run the command again.
-IR_E_EXPECTED_DELIMITER.fix = repair the highlighted compiler contract before checking later diagnostics
+IR_E_EXPECTED_DELIMITER.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+IR_E_EXPECTED_DELIMITER.fix = repair the malformed intermediate representation before continuing to the next phase
 IR_E_EXPECTED_DELIMITER.example = vitte check path/to/file.vit
 
 IR_E_UNEXPECTED_TOKEN.summary = Token unerwartet.
 IR_E_UNEXPECTED_TOKEN.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-IR_E_UNEXPECTED_TOKEN.step1 = Fix the first span reported for this diagnostic, then run the command again.
-IR_E_UNEXPECTED_TOKEN.fix = repair the highlighted compiler contract before checking later diagnostics
+IR_E_UNEXPECTED_TOKEN.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+IR_E_UNEXPECTED_TOKEN.fix = repair the malformed intermediate representation before continuing to the next phase
 IR_E_UNEXPECTED_TOKEN.example = vitte check path/to/file.vit
 
 IR_E_UNBALANCED_DELIMITER.summary = unbalanced Trennzeichen.
 IR_E_UNBALANCED_DELIMITER.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-IR_E_UNBALANCED_DELIMITER.step1 = Fix the first span reported for this diagnostic, then run the command again.
-IR_E_UNBALANCED_DELIMITER.fix = repair the highlighted compiler contract before checking later diagnostics
+IR_E_UNBALANCED_DELIMITER.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+IR_E_UNBALANCED_DELIMITER.fix = repair the malformed intermediate representation before continuing to the next phase
 IR_E_UNBALANCED_DELIMITER.example = vitte check path/to/file.vit
 
 IR_E_INVALID_ATTRIBUTE.summary = attribute ungueltig.
 IR_E_INVALID_ATTRIBUTE.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-IR_E_INVALID_ATTRIBUTE.step1 = Fix the first span reported for this diagnostic, then run the command again.
-IR_E_INVALID_ATTRIBUTE.fix = repair the highlighted compiler contract before checking later diagnostics
+IR_E_INVALID_ATTRIBUTE.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+IR_E_INVALID_ATTRIBUTE.fix = repair the malformed intermediate representation before continuing to the next phase
 IR_E_INVALID_ATTRIBUTE.example = vitte check path/to/file.vit
 
 IR_E_INVALID_DECLARATION.summary = Deklaration ungueltig.
 IR_E_INVALID_DECLARATION.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-IR_E_INVALID_DECLARATION.step1 = Fix the first span reported for this diagnostic, then run the command again.
-IR_E_INVALID_DECLARATION.fix = repair the highlighted compiler contract before checking later diagnostics
+IR_E_INVALID_DECLARATION.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+IR_E_INVALID_DECLARATION.fix = repair the malformed intermediate representation before continuing to the next phase
 IR_E_INVALID_DECLARATION.example = vitte check path/to/file.vit
 
 IR_E_INVALID_STATEMENT.summary = Anweisung ungueltig.
 IR_E_INVALID_STATEMENT.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-IR_E_INVALID_STATEMENT.step1 = Fix the first span reported for this diagnostic, then run the command again.
-IR_E_INVALID_STATEMENT.fix = repair the highlighted compiler contract before checking later diagnostics
+IR_E_INVALID_STATEMENT.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+IR_E_INVALID_STATEMENT.fix = repair the malformed intermediate representation before continuing to the next phase
 IR_E_INVALID_STATEMENT.example = vitte check path/to/file.vit
 
 IR_E_INVALID_EXPRESSION.summary = Ausdruck ungueltig.
 IR_E_INVALID_EXPRESSION.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-IR_E_INVALID_EXPRESSION.step1 = Fix the first span reported for this diagnostic, then run the command again.
-IR_E_INVALID_EXPRESSION.fix = repair the highlighted compiler contract before checking later diagnostics
+IR_E_INVALID_EXPRESSION.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+IR_E_INVALID_EXPRESSION.fix = repair the malformed intermediate representation before continuing to the next phase
 IR_E_INVALID_EXPRESSION.example = vitte check path/to/file.vit
 
 IR_E_INVALID_PATTERN.summary = Muster ungueltig.
 IR_E_INVALID_PATTERN.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-IR_E_INVALID_PATTERN.step1 = Fix the first span reported for this diagnostic, then run the command again.
-IR_E_INVALID_PATTERN.fix = repair the highlighted compiler contract before checking later diagnostics
+IR_E_INVALID_PATTERN.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+IR_E_INVALID_PATTERN.fix = repair the malformed intermediate representation before continuing to the next phase
 IR_E_INVALID_PATTERN.example = vitte check path/to/file.vit
 
 IR_E_INVALID_LITERAL.summary = Literal ungueltig.
 IR_E_INVALID_LITERAL.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-IR_E_INVALID_LITERAL.step1 = Fix the first span reported for this diagnostic, then run the command again.
-IR_E_INVALID_LITERAL.fix = repair the highlighted compiler contract before checking later diagnostics
+IR_E_INVALID_LITERAL.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+IR_E_INVALID_LITERAL.fix = repair the malformed intermediate representation before continuing to the next phase
 IR_E_INVALID_LITERAL.example = vitte check path/to/file.vit
 
 IR_E_INVALID_OPERATOR.summary = Operator ungueltig.
 IR_E_INVALID_OPERATOR.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-IR_E_INVALID_OPERATOR.step1 = Fix the first span reported for this diagnostic, then run the command again.
-IR_E_INVALID_OPERATOR.fix = repair the highlighted compiler contract before checking later diagnostics
+IR_E_INVALID_OPERATOR.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+IR_E_INVALID_OPERATOR.fix = repair the malformed intermediate representation before continuing to the next phase
 IR_E_INVALID_OPERATOR.example = vitte check path/to/file.vit
 
 IR_E_INVALID_MODIFIER.summary = modifier ungueltig.
 IR_E_INVALID_MODIFIER.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-IR_E_INVALID_MODIFIER.step1 = Fix the first span reported for this diagnostic, then run the command again.
-IR_E_INVALID_MODIFIER.fix = repair the highlighted compiler contract before checking later diagnostics
+IR_E_INVALID_MODIFIER.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+IR_E_INVALID_MODIFIER.fix = repair the malformed intermediate representation before continuing to the next phase
 IR_E_INVALID_MODIFIER.example = vitte check path/to/file.vit
 
 IR_E_MISSING_BODY.summary = body fehlt.
 IR_E_MISSING_BODY.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-IR_E_MISSING_BODY.step1 = Fix the first span reported for this diagnostic, then run the command again.
-IR_E_MISSING_BODY.fix = repair the highlighted compiler contract before checking later diagnostics
+IR_E_MISSING_BODY.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+IR_E_MISSING_BODY.fix = repair the malformed intermediate representation before continuing to the next phase
 IR_E_MISSING_BODY.example = vitte check path/to/file.vit
 
 IR_E_MISSING_RETURN.summary = Rueckgabe fehlt.
 IR_E_MISSING_RETURN.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-IR_E_MISSING_RETURN.step1 = Fix the first span reported for this diagnostic, then run the command again.
-IR_E_MISSING_RETURN.fix = repair the highlighted compiler contract before checking later diagnostics
+IR_E_MISSING_RETURN.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+IR_E_MISSING_RETURN.fix = repair the malformed intermediate representation before continuing to the next phase
 IR_E_MISSING_RETURN.example = vitte check path/to/file.vit
 
 IR_E_DUPLICATE_NAME.summary = Name doppelt.
 IR_E_DUPLICATE_NAME.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-IR_E_DUPLICATE_NAME.step1 = Fix the first span reported for this diagnostic, then run the command again.
-IR_E_DUPLICATE_NAME.fix = repair the highlighted compiler contract before checking later diagnostics
+IR_E_DUPLICATE_NAME.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+IR_E_DUPLICATE_NAME.fix = repair the malformed intermediate representation before continuing to the next phase
 IR_E_DUPLICATE_NAME.example = vitte check path/to/file.vit
 
 IR_E_UNKNOWN_NAME.summary = Name unbekannt.
 IR_E_UNKNOWN_NAME.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-IR_E_UNKNOWN_NAME.step1 = Fix the first span reported for this diagnostic, then run the command again.
-IR_E_UNKNOWN_NAME.fix = repair the highlighted compiler contract before checking later diagnostics
+IR_E_UNKNOWN_NAME.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+IR_E_UNKNOWN_NAME.fix = repair the malformed intermediate representation before continuing to the next phase
 IR_E_UNKNOWN_NAME.example = vitte check path/to/file.vit
 
 IR_E_UNKNOWN_TYPE.summary = Typ unbekannt.
 IR_E_UNKNOWN_TYPE.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-IR_E_UNKNOWN_TYPE.step1 = Fix the first span reported for this diagnostic, then run the command again.
-IR_E_UNKNOWN_TYPE.fix = repair the highlighted compiler contract before checking later diagnostics
+IR_E_UNKNOWN_TYPE.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+IR_E_UNKNOWN_TYPE.fix = repair the malformed intermediate representation before continuing to the next phase
 IR_E_UNKNOWN_TYPE.example = vitte check path/to/file.vit
 
 IR_E_UNKNOWN_MODULE.summary = Modul unbekannt.
 IR_E_UNKNOWN_MODULE.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-IR_E_UNKNOWN_MODULE.step1 = Fix the first span reported for this diagnostic, then run the command again.
-IR_E_UNKNOWN_MODULE.fix = repair the highlighted compiler contract before checking later diagnostics
+IR_E_UNKNOWN_MODULE.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+IR_E_UNKNOWN_MODULE.fix = repair the malformed intermediate representation before continuing to the next phase
 IR_E_UNKNOWN_MODULE.example = vitte check path/to/file.vit
 
 IR_E_UNKNOWN_MEMBER.summary = Member unbekannt.
 IR_E_UNKNOWN_MEMBER.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-IR_E_UNKNOWN_MEMBER.step1 = Fix the first span reported for this diagnostic, then run the command again.
-IR_E_UNKNOWN_MEMBER.fix = repair the highlighted compiler contract before checking later diagnostics
+IR_E_UNKNOWN_MEMBER.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+IR_E_UNKNOWN_MEMBER.fix = repair the malformed intermediate representation before continuing to the next phase
 IR_E_UNKNOWN_MEMBER.example = vitte check path/to/file.vit
 
 IR_E_AMBIGUOUS_NAME.summary = ambiguous Name.
 IR_E_AMBIGUOUS_NAME.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-IR_E_AMBIGUOUS_NAME.step1 = Fix the first span reported for this diagnostic, then run the command again.
-IR_E_AMBIGUOUS_NAME.fix = repair the highlighted compiler contract before checking later diagnostics
+IR_E_AMBIGUOUS_NAME.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+IR_E_AMBIGUOUS_NAME.fix = repair the malformed intermediate representation before continuing to the next phase
 IR_E_AMBIGUOUS_NAME.example = vitte check path/to/file.vit
 
 IR_E_PRIVATE_SYMBOL.summary = private Symbol.
 IR_E_PRIVATE_SYMBOL.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-IR_E_PRIVATE_SYMBOL.step1 = Fix the first span reported for this diagnostic, then run the command again.
-IR_E_PRIVATE_SYMBOL.fix = repair the highlighted compiler contract before checking later diagnostics
+IR_E_PRIVATE_SYMBOL.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+IR_E_PRIVATE_SYMBOL.fix = repair the malformed intermediate representation before continuing to the next phase
 IR_E_PRIVATE_SYMBOL.example = vitte check path/to/file.vit
 
 IR_E_IMPORT_NOT_FOUND.summary = Import fehlend.
 IR_E_IMPORT_NOT_FOUND.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-IR_E_IMPORT_NOT_FOUND.step1 = Fix the first span reported for this diagnostic, then run the command again.
-IR_E_IMPORT_NOT_FOUND.fix = repair the highlighted compiler contract before checking later diagnostics
+IR_E_IMPORT_NOT_FOUND.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+IR_E_IMPORT_NOT_FOUND.fix = repair the malformed intermediate representation before continuing to the next phase
 IR_E_IMPORT_NOT_FOUND.example = vitte check path/to/file.vit
 
 IR_E_IMPORT_CYCLE.summary = Import Zyklus.
 IR_E_IMPORT_CYCLE.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-IR_E_IMPORT_CYCLE.step1 = Fix the first span reported for this diagnostic, then run the command again.
-IR_E_IMPORT_CYCLE.fix = repair the highlighted compiler contract before checking later diagnostics
+IR_E_IMPORT_CYCLE.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+IR_E_IMPORT_CYCLE.fix = repair the malformed intermediate representation before continuing to the next phase
 IR_E_IMPORT_CYCLE.example = vitte check path/to/file.vit
 
 IR_E_EXPORT_CONFLICT.summary = export Konflikt.
 IR_E_EXPORT_CONFLICT.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-IR_E_EXPORT_CONFLICT.step1 = Fix the first span reported for this diagnostic, then run the command again.
-IR_E_EXPORT_CONFLICT.fix = repair the highlighted compiler contract before checking later diagnostics
+IR_E_EXPORT_CONFLICT.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+IR_E_EXPORT_CONFLICT.fix = repair the malformed intermediate representation before continuing to the next phase
 IR_E_EXPORT_CONFLICT.example = vitte check path/to/file.vit
 
 IR_E_ARITY_MISMATCH.summary = arity Nichtuebereinstimmung.
 IR_E_ARITY_MISMATCH.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-IR_E_ARITY_MISMATCH.step1 = Fix the first span reported for this diagnostic, then run the command again.
-IR_E_ARITY_MISMATCH.fix = repair the highlighted compiler contract before checking later diagnostics
+IR_E_ARITY_MISMATCH.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+IR_E_ARITY_MISMATCH.fix = repair the malformed intermediate representation before continuing to the next phase
 IR_E_ARITY_MISMATCH.example = vitte check path/to/file.vit
 
 IR_E_ARGUMENT_MISMATCH.summary = Argument Nichtuebereinstimmung.
 IR_E_ARGUMENT_MISMATCH.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-IR_E_ARGUMENT_MISMATCH.step1 = Fix the first span reported for this diagnostic, then run the command again.
-IR_E_ARGUMENT_MISMATCH.fix = repair the highlighted compiler contract before checking later diagnostics
+IR_E_ARGUMENT_MISMATCH.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+IR_E_ARGUMENT_MISMATCH.fix = repair the malformed intermediate representation before continuing to the next phase
 IR_E_ARGUMENT_MISMATCH.example = vitte check path/to/file.vit
 
 IR_E_ASSIGNMENT_MISMATCH.summary = Zuweisung Nichtuebereinstimmung.
 IR_E_ASSIGNMENT_MISMATCH.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-IR_E_ASSIGNMENT_MISMATCH.step1 = Fix the first span reported for this diagnostic, then run the command again.
-IR_E_ASSIGNMENT_MISMATCH.fix = repair the highlighted compiler contract before checking later diagnostics
+IR_E_ASSIGNMENT_MISMATCH.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+IR_E_ASSIGNMENT_MISMATCH.fix = repair the malformed intermediate representation before continuing to the next phase
 IR_E_ASSIGNMENT_MISMATCH.example = vitte check path/to/file.vit
 
 IR_E_BRANCH_MISMATCH.summary = branch Nichtuebereinstimmung.
 IR_E_BRANCH_MISMATCH.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-IR_E_BRANCH_MISMATCH.step1 = Fix the first span reported for this diagnostic, then run the command again.
-IR_E_BRANCH_MISMATCH.fix = repair the highlighted compiler contract before checking later diagnostics
+IR_E_BRANCH_MISMATCH.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+IR_E_BRANCH_MISMATCH.fix = repair the malformed intermediate representation before continuing to the next phase
 IR_E_BRANCH_MISMATCH.example = vitte check path/to/file.vit
 
 IR_E_INVALID_CALL.summary = Aufruf ungueltig.
 IR_E_INVALID_CALL.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-IR_E_INVALID_CALL.step1 = Fix the first span reported for this diagnostic, then run the command again.
-IR_E_INVALID_CALL.fix = repair the highlighted compiler contract before checking later diagnostics
+IR_E_INVALID_CALL.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+IR_E_INVALID_CALL.fix = repair the malformed intermediate representation before continuing to the next phase
 IR_E_INVALID_CALL.example = vitte check path/to/file.vit
 
 IR_E_INVALID_CAST.summary = Umwandlung ungueltig.
 IR_E_INVALID_CAST.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-IR_E_INVALID_CAST.step1 = Fix the first span reported for this diagnostic, then run the command again.
-IR_E_INVALID_CAST.fix = repair the highlighted compiler contract before checking later diagnostics
+IR_E_INVALID_CAST.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+IR_E_INVALID_CAST.fix = repair the malformed intermediate representation before continuing to the next phase
 IR_E_INVALID_CAST.example = vitte check path/to/file.vit
 
 IR_E_INVALID_INDEX.summary = Index ungueltig.
 IR_E_INVALID_INDEX.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-IR_E_INVALID_INDEX.step1 = Fix the first span reported for this diagnostic, then run the command again.
-IR_E_INVALID_INDEX.fix = repair the highlighted compiler contract before checking later diagnostics
+IR_E_INVALID_INDEX.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+IR_E_INVALID_INDEX.fix = repair the malformed intermediate representation before continuing to the next phase
 IR_E_INVALID_INDEX.example = vitte check path/to/file.vit
 
 IR_E_INVALID_DEREF.summary = deref ungueltig.
 IR_E_INVALID_DEREF.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-IR_E_INVALID_DEREF.step1 = Fix the first span reported for this diagnostic, then run the command again.
-IR_E_INVALID_DEREF.fix = repair the highlighted compiler contract before checking later diagnostics
+IR_E_INVALID_DEREF.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+IR_E_INVALID_DEREF.fix = repair the malformed intermediate representation before continuing to the next phase
 IR_E_INVALID_DEREF.example = vitte check path/to/file.vit
 
 IR_E_INVALID_BORROW.summary = Ausleihe ungueltig.
 IR_E_INVALID_BORROW.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-IR_E_INVALID_BORROW.step1 = Fix the first span reported for this diagnostic, then run the command again.
-IR_E_INVALID_BORROW.fix = repair the highlighted compiler contract before checking later diagnostics
+IR_E_INVALID_BORROW.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+IR_E_INVALID_BORROW.fix = repair the malformed intermediate representation before continuing to the next phase
 IR_E_INVALID_BORROW.example = vitte check path/to/file.vit
 
 IR_E_INVALID_MOVE.summary = Verschiebung ungueltig.
 IR_E_INVALID_MOVE.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-IR_E_INVALID_MOVE.step1 = Fix the first span reported for this diagnostic, then run the command again.
-IR_E_INVALID_MOVE.fix = repair the highlighted compiler contract before checking later diagnostics
+IR_E_INVALID_MOVE.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+IR_E_INVALID_MOVE.fix = repair the malformed intermediate representation before continuing to the next phase
 IR_E_INVALID_MOVE.example = vitte check path/to/file.vit
 
 IR_E_USE_AFTER_MOVE.summary = use after Verschiebung.
 IR_E_USE_AFTER_MOVE.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-IR_E_USE_AFTER_MOVE.step1 = Fix the first span reported for this diagnostic, then run the command again.
-IR_E_USE_AFTER_MOVE.fix = repair the highlighted compiler contract before checking later diagnostics
+IR_E_USE_AFTER_MOVE.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+IR_E_USE_AFTER_MOVE.fix = repair the malformed intermediate representation before continuing to the next phase
 IR_E_USE_AFTER_MOVE.example = vitte check path/to/file.vit
 
 IR_E_USE_AFTER_DROP.summary = use after Freigabe.
 IR_E_USE_AFTER_DROP.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-IR_E_USE_AFTER_DROP.step1 = Fix the first span reported for this diagnostic, then run the command again.
-IR_E_USE_AFTER_DROP.fix = repair the highlighted compiler contract before checking later diagnostics
+IR_E_USE_AFTER_DROP.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+IR_E_USE_AFTER_DROP.fix = repair the malformed intermediate representation before continuing to the next phase
 IR_E_USE_AFTER_DROP.example = vitte check path/to/file.vit
 
 IR_E_USE_BEFORE_INIT.summary = use before init.
 IR_E_USE_BEFORE_INIT.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-IR_E_USE_BEFORE_INIT.step1 = Fix the first span reported for this diagnostic, then run the command again.
-IR_E_USE_BEFORE_INIT.fix = repair the highlighted compiler contract before checking later diagnostics
+IR_E_USE_BEFORE_INIT.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+IR_E_USE_BEFORE_INIT.fix = repair the malformed intermediate representation before continuing to the next phase
 IR_E_USE_BEFORE_INIT.example = vitte check path/to/file.vit
 
 IR_E_DOUBLE_DROP.summary = double Freigabe.
 IR_E_DOUBLE_DROP.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-IR_E_DOUBLE_DROP.step1 = Fix the first span reported for this diagnostic, then run the command again.
-IR_E_DOUBLE_DROP.fix = repair the highlighted compiler contract before checking later diagnostics
+IR_E_DOUBLE_DROP.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+IR_E_DOUBLE_DROP.fix = repair the malformed intermediate representation before continuing to the next phase
 IR_E_DOUBLE_DROP.example = vitte check path/to/file.vit
 
 IR_E_BORROW_CONFLICT.summary = Ausleihe Konflikt.
 IR_E_BORROW_CONFLICT.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-IR_E_BORROW_CONFLICT.step1 = Fix the first span reported for this diagnostic, then run the command again.
-IR_E_BORROW_CONFLICT.fix = repair the highlighted compiler contract before checking later diagnostics
+IR_E_BORROW_CONFLICT.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+IR_E_BORROW_CONFLICT.fix = repair the malformed intermediate representation before continuing to the next phase
 IR_E_BORROW_CONFLICT.example = vitte check path/to/file.vit
 
 IR_E_MUTABILITY_CONFLICT.summary = mutability Konflikt.
 IR_E_MUTABILITY_CONFLICT.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-IR_E_MUTABILITY_CONFLICT.step1 = Fix the first span reported for this diagnostic, then run the command again.
-IR_E_MUTABILITY_CONFLICT.fix = repair the highlighted compiler contract before checking later diagnostics
+IR_E_MUTABILITY_CONFLICT.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+IR_E_MUTABILITY_CONFLICT.fix = repair the malformed intermediate representation before continuing to the next phase
 IR_E_MUTABILITY_CONFLICT.example = vitte check path/to/file.vit
 
 IR_E_LIFETIME_TOO_SHORT.summary = Lebensdauer zu short.
 IR_E_LIFETIME_TOO_SHORT.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-IR_E_LIFETIME_TOO_SHORT.step1 = Fix the first span reported for this diagnostic, then run the command again.
-IR_E_LIFETIME_TOO_SHORT.fix = repair the highlighted compiler contract before checking later diagnostics
+IR_E_LIFETIME_TOO_SHORT.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+IR_E_LIFETIME_TOO_SHORT.fix = repair the malformed intermediate representation before continuing to the next phase
 IR_E_LIFETIME_TOO_SHORT.example = vitte check path/to/file.vit
 
 IR_E_DANGLING_REFERENCE.summary = dangling Referenz.
 IR_E_DANGLING_REFERENCE.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-IR_E_DANGLING_REFERENCE.step1 = Fix the first span reported for this diagnostic, then run the command again.
-IR_E_DANGLING_REFERENCE.fix = repair the highlighted compiler contract before checking later diagnostics
+IR_E_DANGLING_REFERENCE.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+IR_E_DANGLING_REFERENCE.fix = repair the malformed intermediate representation before continuing to the next phase
 IR_E_DANGLING_REFERENCE.example = vitte check path/to/file.vit
 
 IR_E_NON_EXHAUSTIVE_MATCH.summary = non exhaustive match.
 IR_E_NON_EXHAUSTIVE_MATCH.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-IR_E_NON_EXHAUSTIVE_MATCH.step1 = Fix the first span reported for this diagnostic, then run the command again.
-IR_E_NON_EXHAUSTIVE_MATCH.fix = repair the highlighted compiler contract before checking later diagnostics
+IR_E_NON_EXHAUSTIVE_MATCH.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+IR_E_NON_EXHAUSTIVE_MATCH.fix = repair the malformed intermediate representation before continuing to the next phase
 IR_E_NON_EXHAUSTIVE_MATCH.example = vitte check path/to/file.vit
 
 IR_E_UNREACHABLE_PATTERN.summary = unerreichbar Muster.
 IR_E_UNREACHABLE_PATTERN.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-IR_E_UNREACHABLE_PATTERN.step1 = Fix the first span reported for this diagnostic, then run the command again.
-IR_E_UNREACHABLE_PATTERN.fix = repair the highlighted compiler contract before checking later diagnostics
+IR_E_UNREACHABLE_PATTERN.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+IR_E_UNREACHABLE_PATTERN.fix = repair the malformed intermediate representation before continuing to the next phase
 IR_E_UNREACHABLE_PATTERN.example = vitte check path/to/file.vit
 
 IR_E_CONST_REQUIRED.summary = const required.
 IR_E_CONST_REQUIRED.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-IR_E_CONST_REQUIRED.step1 = Fix the first span reported for this diagnostic, then run the command again.
-IR_E_CONST_REQUIRED.fix = repair the highlighted compiler contract before checking later diagnostics
+IR_E_CONST_REQUIRED.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+IR_E_CONST_REQUIRED.fix = repair the malformed intermediate representation before continuing to the next phase
 IR_E_CONST_REQUIRED.example = vitte check path/to/file.vit
 
 IR_E_CONST_OVERFLOW.summary = const Ueberlauf.
 IR_E_CONST_OVERFLOW.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-IR_E_CONST_OVERFLOW.step1 = Fix the first span reported for this diagnostic, then run the command again.
-IR_E_CONST_OVERFLOW.fix = repair the highlighted compiler contract before checking later diagnostics
+IR_E_CONST_OVERFLOW.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+IR_E_CONST_OVERFLOW.fix = repair the malformed intermediate representation before continuing to the next phase
 IR_E_CONST_OVERFLOW.example = vitte check path/to/file.vit
 
 IR_E_CONST_DIVISION_BY_ZERO.summary = const Division by Null.
 IR_E_CONST_DIVISION_BY_ZERO.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-IR_E_CONST_DIVISION_BY_ZERO.step1 = Fix the first span reported for this diagnostic, then run the command again.
-IR_E_CONST_DIVISION_BY_ZERO.fix = repair the highlighted compiler contract before checking later diagnostics
+IR_E_CONST_DIVISION_BY_ZERO.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+IR_E_CONST_DIVISION_BY_ZERO.fix = repair the malformed intermediate representation before continuing to the next phase
 IR_E_CONST_DIVISION_BY_ZERO.example = vitte check path/to/file.vit
 
 IR_E_CONST_CYCLE.summary = const Zyklus.
 IR_E_CONST_CYCLE.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-IR_E_CONST_CYCLE.step1 = Fix the first span reported for this diagnostic, then run the command again.
-IR_E_CONST_CYCLE.fix = repair the highlighted compiler contract before checking later diagnostics
+IR_E_CONST_CYCLE.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+IR_E_CONST_CYCLE.fix = repair the malformed intermediate representation before continuing to the next phase
 IR_E_CONST_CYCLE.example = vitte check path/to/file.vit
 
 IR_E_MACRO_NOT_FOUND.summary = macro fehlend.
 IR_E_MACRO_NOT_FOUND.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-IR_E_MACRO_NOT_FOUND.step1 = Fix the first span reported for this diagnostic, then run the command again.
-IR_E_MACRO_NOT_FOUND.fix = repair the highlighted compiler contract before checking later diagnostics
+IR_E_MACRO_NOT_FOUND.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+IR_E_MACRO_NOT_FOUND.fix = repair the malformed intermediate representation before continuing to the next phase
 IR_E_MACRO_NOT_FOUND.example = vitte check path/to/file.vit
 
 IR_E_MACRO_RECURSION.summary = macro recursion.
 IR_E_MACRO_RECURSION.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-IR_E_MACRO_RECURSION.step1 = Fix the first span reported for this diagnostic, then run the command again.
-IR_E_MACRO_RECURSION.fix = repair the highlighted compiler contract before checking later diagnostics
+IR_E_MACRO_RECURSION.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+IR_E_MACRO_RECURSION.fix = repair the malformed intermediate representation before continuing to the next phase
 IR_E_MACRO_RECURSION.example = vitte check path/to/file.vit
 
 IR_E_MACRO_EXPANSION_FAILED.summary = macro expansion fehlgeschlagen.
 IR_E_MACRO_EXPANSION_FAILED.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-IR_E_MACRO_EXPANSION_FAILED.step1 = Fix the first span reported for this diagnostic, then run the command again.
-IR_E_MACRO_EXPANSION_FAILED.fix = repair the highlighted compiler contract before checking later diagnostics
+IR_E_MACRO_EXPANSION_FAILED.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+IR_E_MACRO_EXPANSION_FAILED.fix = repair the malformed intermediate representation before continuing to the next phase
 IR_E_MACRO_EXPANSION_FAILED.example = vitte check path/to/file.vit
 
 IR_E_TRAIT_NOT_IMPLEMENTED.summary = trait not implemented.
 IR_E_TRAIT_NOT_IMPLEMENTED.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-IR_E_TRAIT_NOT_IMPLEMENTED.step1 = Fix the first span reported for this diagnostic, then run the command again.
-IR_E_TRAIT_NOT_IMPLEMENTED.fix = repair the highlighted compiler contract before checking later diagnostics
+IR_E_TRAIT_NOT_IMPLEMENTED.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+IR_E_TRAIT_NOT_IMPLEMENTED.fix = repair the malformed intermediate representation before continuing to the next phase
 IR_E_TRAIT_NOT_IMPLEMENTED.example = vitte check path/to/file.vit
 
 IR_E_TRAIT_AMBIGUOUS.summary = trait ambiguous.
 IR_E_TRAIT_AMBIGUOUS.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-IR_E_TRAIT_AMBIGUOUS.step1 = Fix the first span reported for this diagnostic, then run the command again.
-IR_E_TRAIT_AMBIGUOUS.fix = repair the highlighted compiler contract before checking later diagnostics
+IR_E_TRAIT_AMBIGUOUS.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+IR_E_TRAIT_AMBIGUOUS.fix = repair the malformed intermediate representation before continuing to the next phase
 IR_E_TRAIT_AMBIGUOUS.example = vitte check path/to/file.vit
 
 IR_E_GENERIC_ARGUMENT_MISSING.summary = generisch Argument fehlend.
 IR_E_GENERIC_ARGUMENT_MISSING.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-IR_E_GENERIC_ARGUMENT_MISSING.step1 = Fix the first span reported for this diagnostic, then run the command again.
-IR_E_GENERIC_ARGUMENT_MISSING.fix = repair the highlighted compiler contract before checking later diagnostics
+IR_E_GENERIC_ARGUMENT_MISSING.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+IR_E_GENERIC_ARGUMENT_MISSING.fix = repair the malformed intermediate representation before continuing to the next phase
 IR_E_GENERIC_ARGUMENT_MISSING.example = vitte check path/to/file.vit
 
 IR_E_GENERIC_BOUND_FAILED.summary = generisch bound fehlgeschlagen.
 IR_E_GENERIC_BOUND_FAILED.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-IR_E_GENERIC_BOUND_FAILED.step1 = Fix the first span reported for this diagnostic, then run the command again.
-IR_E_GENERIC_BOUND_FAILED.fix = repair the highlighted compiler contract before checking later diagnostics
+IR_E_GENERIC_BOUND_FAILED.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+IR_E_GENERIC_BOUND_FAILED.fix = repair the malformed intermediate representation before continuing to the next phase
 IR_E_GENERIC_BOUND_FAILED.example = vitte check path/to/file.vit
 
 IR_E_UNSUPPORTED_TARGET.summary = Ziel nicht unterstuetzt.
 IR_E_UNSUPPORTED_TARGET.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-IR_E_UNSUPPORTED_TARGET.step1 = Fix the first span reported for this diagnostic, then run the command again.
-IR_E_UNSUPPORTED_TARGET.fix = repair the highlighted compiler contract before checking later diagnostics
+IR_E_UNSUPPORTED_TARGET.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+IR_E_UNSUPPORTED_TARGET.fix = repair the malformed intermediate representation before continuing to the next phase
 IR_E_UNSUPPORTED_TARGET.example = vitte check path/to/file.vit
 
 IR_E_ABI_MISMATCH.summary = abi Nichtuebereinstimmung.
 IR_E_ABI_MISMATCH.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-IR_E_ABI_MISMATCH.step1 = Fix the first span reported for this diagnostic, then run the command again.
-IR_E_ABI_MISMATCH.fix = repair the highlighted compiler contract before checking later diagnostics
+IR_E_ABI_MISMATCH.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+IR_E_ABI_MISMATCH.fix = repair the malformed intermediate representation before continuing to the next phase
 IR_E_ABI_MISMATCH.example = vitte check path/to/file.vit
 
 IR_E_LINK_FAILED.summary = link fehlgeschlagen.
 IR_E_LINK_FAILED.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-IR_E_LINK_FAILED.step1 = Fix the first span reported for this diagnostic, then run the command again.
-IR_E_LINK_FAILED.fix = repair the highlighted compiler contract before checking later diagnostics
+IR_E_LINK_FAILED.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+IR_E_LINK_FAILED.fix = repair the malformed intermediate representation before continuing to the next phase
 IR_E_LINK_FAILED.example = vitte check path/to/file.vit
 
 IR_E_RUNTIME_PANIC.summary = runtime Panik.
 IR_E_RUNTIME_PANIC.cause = The compiler pipeline phase found code that violates this diagnostic rule.
-IR_E_RUNTIME_PANIC.step1 = Fix the first span reported for this diagnostic, then run the command again.
-IR_E_RUNTIME_PANIC.fix = repair the highlighted compiler contract before checking later diagnostics
+IR_E_RUNTIME_PANIC.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
+IR_E_RUNTIME_PANIC.fix = repair the malformed intermediate representation before continuing to the next phase
 IR_E_RUNTIME_PANIC.example = vitte check path/to/file.vit
 
 BACKEND_E_EXPECTED_IDENTIFIER.summary = Bezeichner erwartet.
@@ -7408,380 +7492,380 @@ LINK_E_RUNTIME_PANIC.example = vitte build app.vit -o app
 
 RUNTIME_E_EXPECTED_IDENTIFIER.summary = Bezeichner erwartet.
 RUNTIME_E_EXPECTED_IDENTIFIER.cause = The runtime phase found code that violates this diagnostic rule.
-RUNTIME_E_EXPECTED_IDENTIFIER.step1 = Fix the first span reported for this diagnostic, then run the command again.
-RUNTIME_E_EXPECTED_IDENTIFIER.fix = repair the highlighted compiler contract before checking later diagnostics
+RUNTIME_E_EXPECTED_IDENTIFIER.step1 = Inspect the runtime span and the operation named by the diagnostic code.
+RUNTIME_E_EXPECTED_IDENTIFIER.fix = change the program state that reaches the runtime trap or add an explicit check before it
 RUNTIME_E_EXPECTED_IDENTIFIER.example = vitte check path/to/file.vit
 
 RUNTIME_E_EXPECTED_EXPRESSION.summary = Ausdruck erwartet.
 RUNTIME_E_EXPECTED_EXPRESSION.cause = The runtime phase found code that violates this diagnostic rule.
-RUNTIME_E_EXPECTED_EXPRESSION.step1 = Fix the first span reported for this diagnostic, then run the command again.
-RUNTIME_E_EXPECTED_EXPRESSION.fix = repair the highlighted compiler contract before checking later diagnostics
+RUNTIME_E_EXPECTED_EXPRESSION.step1 = Inspect the runtime span and the operation named by the diagnostic code.
+RUNTIME_E_EXPECTED_EXPRESSION.fix = change the program state that reaches the runtime trap or add an explicit check before it
 RUNTIME_E_EXPECTED_EXPRESSION.example = vitte check path/to/file.vit
 
 RUNTIME_E_EXPECTED_TYPE.summary = Typ erwartet.
 RUNTIME_E_EXPECTED_TYPE.cause = The runtime phase found code that violates this diagnostic rule.
-RUNTIME_E_EXPECTED_TYPE.step1 = Fix the first span reported for this diagnostic, then run the command again.
-RUNTIME_E_EXPECTED_TYPE.fix = repair the highlighted compiler contract before checking later diagnostics
+RUNTIME_E_EXPECTED_TYPE.step1 = Inspect the runtime span and the operation named by the diagnostic code.
+RUNTIME_E_EXPECTED_TYPE.fix = change the program state that reaches the runtime trap or add an explicit check before it
 RUNTIME_E_EXPECTED_TYPE.example = vitte check path/to/file.vit
 
 RUNTIME_E_EXPECTED_PATTERN.summary = Muster erwartet.
 RUNTIME_E_EXPECTED_PATTERN.cause = The runtime phase found code that violates this diagnostic rule.
-RUNTIME_E_EXPECTED_PATTERN.step1 = Fix the first span reported for this diagnostic, then run the command again.
-RUNTIME_E_EXPECTED_PATTERN.fix = repair the highlighted compiler contract before checking later diagnostics
+RUNTIME_E_EXPECTED_PATTERN.step1 = Inspect the runtime span and the operation named by the diagnostic code.
+RUNTIME_E_EXPECTED_PATTERN.fix = change the program state that reaches the runtime trap or add an explicit check before it
 RUNTIME_E_EXPECTED_PATTERN.example = vitte check path/to/file.vit
 
 RUNTIME_E_EXPECTED_BLOCK.summary = Block erwartet.
 RUNTIME_E_EXPECTED_BLOCK.cause = The runtime phase found code that violates this diagnostic rule.
-RUNTIME_E_EXPECTED_BLOCK.step1 = Fix the first span reported for this diagnostic, then run the command again.
-RUNTIME_E_EXPECTED_BLOCK.fix = repair the highlighted compiler contract before checking later diagnostics
+RUNTIME_E_EXPECTED_BLOCK.step1 = Inspect the runtime span and the operation named by the diagnostic code.
+RUNTIME_E_EXPECTED_BLOCK.fix = change the program state that reaches the runtime trap or add an explicit check before it
 RUNTIME_E_EXPECTED_BLOCK.example = vitte check path/to/file.vit
 
 RUNTIME_E_EXPECTED_DELIMITER.summary = Trennzeichen erwartet.
 RUNTIME_E_EXPECTED_DELIMITER.cause = The runtime phase found code that violates this diagnostic rule.
-RUNTIME_E_EXPECTED_DELIMITER.step1 = Fix the first span reported for this diagnostic, then run the command again.
-RUNTIME_E_EXPECTED_DELIMITER.fix = repair the highlighted compiler contract before checking later diagnostics
+RUNTIME_E_EXPECTED_DELIMITER.step1 = Inspect the runtime span and the operation named by the diagnostic code.
+RUNTIME_E_EXPECTED_DELIMITER.fix = change the program state that reaches the runtime trap or add an explicit check before it
 RUNTIME_E_EXPECTED_DELIMITER.example = vitte check path/to/file.vit
 
 RUNTIME_E_UNEXPECTED_TOKEN.summary = Token unerwartet.
 RUNTIME_E_UNEXPECTED_TOKEN.cause = The runtime phase found code that violates this diagnostic rule.
-RUNTIME_E_UNEXPECTED_TOKEN.step1 = Fix the first span reported for this diagnostic, then run the command again.
-RUNTIME_E_UNEXPECTED_TOKEN.fix = repair the highlighted compiler contract before checking later diagnostics
+RUNTIME_E_UNEXPECTED_TOKEN.step1 = Inspect the runtime span and the operation named by the diagnostic code.
+RUNTIME_E_UNEXPECTED_TOKEN.fix = change the program state that reaches the runtime trap or add an explicit check before it
 RUNTIME_E_UNEXPECTED_TOKEN.example = vitte check path/to/file.vit
 
 RUNTIME_E_UNBALANCED_DELIMITER.summary = unbalanced Trennzeichen.
 RUNTIME_E_UNBALANCED_DELIMITER.cause = The runtime phase found code that violates this diagnostic rule.
-RUNTIME_E_UNBALANCED_DELIMITER.step1 = Fix the first span reported for this diagnostic, then run the command again.
-RUNTIME_E_UNBALANCED_DELIMITER.fix = repair the highlighted compiler contract before checking later diagnostics
+RUNTIME_E_UNBALANCED_DELIMITER.step1 = Inspect the runtime span and the operation named by the diagnostic code.
+RUNTIME_E_UNBALANCED_DELIMITER.fix = change the program state that reaches the runtime trap or add an explicit check before it
 RUNTIME_E_UNBALANCED_DELIMITER.example = vitte check path/to/file.vit
 
 RUNTIME_E_INVALID_ATTRIBUTE.summary = attribute ungueltig.
 RUNTIME_E_INVALID_ATTRIBUTE.cause = The runtime phase found code that violates this diagnostic rule.
-RUNTIME_E_INVALID_ATTRIBUTE.step1 = Fix the first span reported for this diagnostic, then run the command again.
-RUNTIME_E_INVALID_ATTRIBUTE.fix = repair the highlighted compiler contract before checking later diagnostics
+RUNTIME_E_INVALID_ATTRIBUTE.step1 = Inspect the runtime span and the operation named by the diagnostic code.
+RUNTIME_E_INVALID_ATTRIBUTE.fix = change the program state that reaches the runtime trap or add an explicit check before it
 RUNTIME_E_INVALID_ATTRIBUTE.example = vitte check path/to/file.vit
 
 RUNTIME_E_INVALID_DECLARATION.summary = Deklaration ungueltig.
 RUNTIME_E_INVALID_DECLARATION.cause = The runtime phase found code that violates this diagnostic rule.
-RUNTIME_E_INVALID_DECLARATION.step1 = Fix the first span reported for this diagnostic, then run the command again.
-RUNTIME_E_INVALID_DECLARATION.fix = repair the highlighted compiler contract before checking later diagnostics
+RUNTIME_E_INVALID_DECLARATION.step1 = Inspect the runtime span and the operation named by the diagnostic code.
+RUNTIME_E_INVALID_DECLARATION.fix = change the program state that reaches the runtime trap or add an explicit check before it
 RUNTIME_E_INVALID_DECLARATION.example = vitte check path/to/file.vit
 
 RUNTIME_E_INVALID_STATEMENT.summary = Anweisung ungueltig.
 RUNTIME_E_INVALID_STATEMENT.cause = The runtime phase found code that violates this diagnostic rule.
-RUNTIME_E_INVALID_STATEMENT.step1 = Fix the first span reported for this diagnostic, then run the command again.
-RUNTIME_E_INVALID_STATEMENT.fix = repair the highlighted compiler contract before checking later diagnostics
+RUNTIME_E_INVALID_STATEMENT.step1 = Inspect the runtime span and the operation named by the diagnostic code.
+RUNTIME_E_INVALID_STATEMENT.fix = change the program state that reaches the runtime trap or add an explicit check before it
 RUNTIME_E_INVALID_STATEMENT.example = vitte check path/to/file.vit
 
 RUNTIME_E_INVALID_EXPRESSION.summary = Ausdruck ungueltig.
 RUNTIME_E_INVALID_EXPRESSION.cause = The runtime phase found code that violates this diagnostic rule.
-RUNTIME_E_INVALID_EXPRESSION.step1 = Fix the first span reported for this diagnostic, then run the command again.
-RUNTIME_E_INVALID_EXPRESSION.fix = repair the highlighted compiler contract before checking later diagnostics
+RUNTIME_E_INVALID_EXPRESSION.step1 = Inspect the runtime span and the operation named by the diagnostic code.
+RUNTIME_E_INVALID_EXPRESSION.fix = change the program state that reaches the runtime trap or add an explicit check before it
 RUNTIME_E_INVALID_EXPRESSION.example = vitte check path/to/file.vit
 
 RUNTIME_E_INVALID_PATTERN.summary = Muster ungueltig.
 RUNTIME_E_INVALID_PATTERN.cause = The runtime phase found code that violates this diagnostic rule.
-RUNTIME_E_INVALID_PATTERN.step1 = Fix the first span reported for this diagnostic, then run the command again.
-RUNTIME_E_INVALID_PATTERN.fix = repair the highlighted compiler contract before checking later diagnostics
+RUNTIME_E_INVALID_PATTERN.step1 = Inspect the runtime span and the operation named by the diagnostic code.
+RUNTIME_E_INVALID_PATTERN.fix = change the program state that reaches the runtime trap or add an explicit check before it
 RUNTIME_E_INVALID_PATTERN.example = vitte check path/to/file.vit
 
 RUNTIME_E_INVALID_LITERAL.summary = Literal ungueltig.
 RUNTIME_E_INVALID_LITERAL.cause = The runtime phase found code that violates this diagnostic rule.
-RUNTIME_E_INVALID_LITERAL.step1 = Fix the first span reported for this diagnostic, then run the command again.
-RUNTIME_E_INVALID_LITERAL.fix = repair the highlighted compiler contract before checking later diagnostics
+RUNTIME_E_INVALID_LITERAL.step1 = Inspect the runtime span and the operation named by the diagnostic code.
+RUNTIME_E_INVALID_LITERAL.fix = change the program state that reaches the runtime trap or add an explicit check before it
 RUNTIME_E_INVALID_LITERAL.example = vitte check path/to/file.vit
 
 RUNTIME_E_INVALID_OPERATOR.summary = Operator ungueltig.
 RUNTIME_E_INVALID_OPERATOR.cause = The runtime phase found code that violates this diagnostic rule.
-RUNTIME_E_INVALID_OPERATOR.step1 = Fix the first span reported for this diagnostic, then run the command again.
-RUNTIME_E_INVALID_OPERATOR.fix = repair the highlighted compiler contract before checking later diagnostics
+RUNTIME_E_INVALID_OPERATOR.step1 = Inspect the runtime span and the operation named by the diagnostic code.
+RUNTIME_E_INVALID_OPERATOR.fix = change the program state that reaches the runtime trap or add an explicit check before it
 RUNTIME_E_INVALID_OPERATOR.example = vitte check path/to/file.vit
 
 RUNTIME_E_INVALID_MODIFIER.summary = modifier ungueltig.
 RUNTIME_E_INVALID_MODIFIER.cause = The runtime phase found code that violates this diagnostic rule.
-RUNTIME_E_INVALID_MODIFIER.step1 = Fix the first span reported for this diagnostic, then run the command again.
-RUNTIME_E_INVALID_MODIFIER.fix = repair the highlighted compiler contract before checking later diagnostics
+RUNTIME_E_INVALID_MODIFIER.step1 = Inspect the runtime span and the operation named by the diagnostic code.
+RUNTIME_E_INVALID_MODIFIER.fix = change the program state that reaches the runtime trap or add an explicit check before it
 RUNTIME_E_INVALID_MODIFIER.example = vitte check path/to/file.vit
 
 RUNTIME_E_MISSING_BODY.summary = body fehlt.
 RUNTIME_E_MISSING_BODY.cause = The runtime phase found code that violates this diagnostic rule.
-RUNTIME_E_MISSING_BODY.step1 = Fix the first span reported for this diagnostic, then run the command again.
-RUNTIME_E_MISSING_BODY.fix = repair the highlighted compiler contract before checking later diagnostics
+RUNTIME_E_MISSING_BODY.step1 = Inspect the runtime span and the operation named by the diagnostic code.
+RUNTIME_E_MISSING_BODY.fix = change the program state that reaches the runtime trap or add an explicit check before it
 RUNTIME_E_MISSING_BODY.example = vitte check path/to/file.vit
 
 RUNTIME_E_MISSING_RETURN.summary = Rueckgabe fehlt.
 RUNTIME_E_MISSING_RETURN.cause = The runtime phase found code that violates this diagnostic rule.
-RUNTIME_E_MISSING_RETURN.step1 = Fix the first span reported for this diagnostic, then run the command again.
-RUNTIME_E_MISSING_RETURN.fix = repair the highlighted compiler contract before checking later diagnostics
+RUNTIME_E_MISSING_RETURN.step1 = Inspect the runtime span and the operation named by the diagnostic code.
+RUNTIME_E_MISSING_RETURN.fix = change the program state that reaches the runtime trap or add an explicit check before it
 RUNTIME_E_MISSING_RETURN.example = vitte check path/to/file.vit
 
 RUNTIME_E_DUPLICATE_NAME.summary = Name doppelt.
 RUNTIME_E_DUPLICATE_NAME.cause = The runtime phase found code that violates this diagnostic rule.
-RUNTIME_E_DUPLICATE_NAME.step1 = Fix the first span reported for this diagnostic, then run the command again.
-RUNTIME_E_DUPLICATE_NAME.fix = repair the highlighted compiler contract before checking later diagnostics
+RUNTIME_E_DUPLICATE_NAME.step1 = Inspect the runtime span and the operation named by the diagnostic code.
+RUNTIME_E_DUPLICATE_NAME.fix = change the program state that reaches the runtime trap or add an explicit check before it
 RUNTIME_E_DUPLICATE_NAME.example = vitte check path/to/file.vit
 
 RUNTIME_E_UNKNOWN_NAME.summary = Name unbekannt.
 RUNTIME_E_UNKNOWN_NAME.cause = The runtime phase found code that violates this diagnostic rule.
-RUNTIME_E_UNKNOWN_NAME.step1 = Fix the first span reported for this diagnostic, then run the command again.
-RUNTIME_E_UNKNOWN_NAME.fix = repair the highlighted compiler contract before checking later diagnostics
+RUNTIME_E_UNKNOWN_NAME.step1 = Inspect the runtime span and the operation named by the diagnostic code.
+RUNTIME_E_UNKNOWN_NAME.fix = change the program state that reaches the runtime trap or add an explicit check before it
 RUNTIME_E_UNKNOWN_NAME.example = vitte check path/to/file.vit
 
 RUNTIME_E_UNKNOWN_TYPE.summary = Typ unbekannt.
 RUNTIME_E_UNKNOWN_TYPE.cause = The runtime phase found code that violates this diagnostic rule.
-RUNTIME_E_UNKNOWN_TYPE.step1 = Fix the first span reported for this diagnostic, then run the command again.
-RUNTIME_E_UNKNOWN_TYPE.fix = repair the highlighted compiler contract before checking later diagnostics
+RUNTIME_E_UNKNOWN_TYPE.step1 = Inspect the runtime span and the operation named by the diagnostic code.
+RUNTIME_E_UNKNOWN_TYPE.fix = change the program state that reaches the runtime trap or add an explicit check before it
 RUNTIME_E_UNKNOWN_TYPE.example = vitte check path/to/file.vit
 
 RUNTIME_E_UNKNOWN_MODULE.summary = Modul unbekannt.
 RUNTIME_E_UNKNOWN_MODULE.cause = The runtime phase found code that violates this diagnostic rule.
-RUNTIME_E_UNKNOWN_MODULE.step1 = Fix the first span reported for this diagnostic, then run the command again.
-RUNTIME_E_UNKNOWN_MODULE.fix = repair the highlighted compiler contract before checking later diagnostics
+RUNTIME_E_UNKNOWN_MODULE.step1 = Inspect the runtime span and the operation named by the diagnostic code.
+RUNTIME_E_UNKNOWN_MODULE.fix = change the program state that reaches the runtime trap or add an explicit check before it
 RUNTIME_E_UNKNOWN_MODULE.example = vitte check path/to/file.vit
 
 RUNTIME_E_UNKNOWN_MEMBER.summary = Member unbekannt.
 RUNTIME_E_UNKNOWN_MEMBER.cause = The runtime phase found code that violates this diagnostic rule.
-RUNTIME_E_UNKNOWN_MEMBER.step1 = Fix the first span reported for this diagnostic, then run the command again.
-RUNTIME_E_UNKNOWN_MEMBER.fix = repair the highlighted compiler contract before checking later diagnostics
+RUNTIME_E_UNKNOWN_MEMBER.step1 = Inspect the runtime span and the operation named by the diagnostic code.
+RUNTIME_E_UNKNOWN_MEMBER.fix = change the program state that reaches the runtime trap or add an explicit check before it
 RUNTIME_E_UNKNOWN_MEMBER.example = vitte check path/to/file.vit
 
 RUNTIME_E_AMBIGUOUS_NAME.summary = ambiguous Name.
 RUNTIME_E_AMBIGUOUS_NAME.cause = The runtime phase found code that violates this diagnostic rule.
-RUNTIME_E_AMBIGUOUS_NAME.step1 = Fix the first span reported for this diagnostic, then run the command again.
-RUNTIME_E_AMBIGUOUS_NAME.fix = repair the highlighted compiler contract before checking later diagnostics
+RUNTIME_E_AMBIGUOUS_NAME.step1 = Inspect the runtime span and the operation named by the diagnostic code.
+RUNTIME_E_AMBIGUOUS_NAME.fix = change the program state that reaches the runtime trap or add an explicit check before it
 RUNTIME_E_AMBIGUOUS_NAME.example = vitte check path/to/file.vit
 
 RUNTIME_E_PRIVATE_SYMBOL.summary = private Symbol.
 RUNTIME_E_PRIVATE_SYMBOL.cause = The runtime phase found code that violates this diagnostic rule.
-RUNTIME_E_PRIVATE_SYMBOL.step1 = Fix the first span reported for this diagnostic, then run the command again.
-RUNTIME_E_PRIVATE_SYMBOL.fix = repair the highlighted compiler contract before checking later diagnostics
+RUNTIME_E_PRIVATE_SYMBOL.step1 = Inspect the runtime span and the operation named by the diagnostic code.
+RUNTIME_E_PRIVATE_SYMBOL.fix = change the program state that reaches the runtime trap or add an explicit check before it
 RUNTIME_E_PRIVATE_SYMBOL.example = vitte check path/to/file.vit
 
 RUNTIME_E_IMPORT_NOT_FOUND.summary = Import fehlend.
 RUNTIME_E_IMPORT_NOT_FOUND.cause = The runtime phase found code that violates this diagnostic rule.
-RUNTIME_E_IMPORT_NOT_FOUND.step1 = Fix the first span reported for this diagnostic, then run the command again.
-RUNTIME_E_IMPORT_NOT_FOUND.fix = repair the highlighted compiler contract before checking later diagnostics
+RUNTIME_E_IMPORT_NOT_FOUND.step1 = Inspect the runtime span and the operation named by the diagnostic code.
+RUNTIME_E_IMPORT_NOT_FOUND.fix = change the program state that reaches the runtime trap or add an explicit check before it
 RUNTIME_E_IMPORT_NOT_FOUND.example = vitte check path/to/file.vit
 
 RUNTIME_E_IMPORT_CYCLE.summary = Import Zyklus.
 RUNTIME_E_IMPORT_CYCLE.cause = The runtime phase found code that violates this diagnostic rule.
-RUNTIME_E_IMPORT_CYCLE.step1 = Fix the first span reported for this diagnostic, then run the command again.
-RUNTIME_E_IMPORT_CYCLE.fix = repair the highlighted compiler contract before checking later diagnostics
+RUNTIME_E_IMPORT_CYCLE.step1 = Inspect the runtime span and the operation named by the diagnostic code.
+RUNTIME_E_IMPORT_CYCLE.fix = change the program state that reaches the runtime trap or add an explicit check before it
 RUNTIME_E_IMPORT_CYCLE.example = vitte check path/to/file.vit
 
 RUNTIME_E_EXPORT_CONFLICT.summary = export Konflikt.
 RUNTIME_E_EXPORT_CONFLICT.cause = The runtime phase found code that violates this diagnostic rule.
-RUNTIME_E_EXPORT_CONFLICT.step1 = Fix the first span reported for this diagnostic, then run the command again.
-RUNTIME_E_EXPORT_CONFLICT.fix = repair the highlighted compiler contract before checking later diagnostics
+RUNTIME_E_EXPORT_CONFLICT.step1 = Inspect the runtime span and the operation named by the diagnostic code.
+RUNTIME_E_EXPORT_CONFLICT.fix = change the program state that reaches the runtime trap or add an explicit check before it
 RUNTIME_E_EXPORT_CONFLICT.example = vitte check path/to/file.vit
 
 RUNTIME_E_ARITY_MISMATCH.summary = arity Nichtuebereinstimmung.
 RUNTIME_E_ARITY_MISMATCH.cause = The runtime phase found code that violates this diagnostic rule.
-RUNTIME_E_ARITY_MISMATCH.step1 = Fix the first span reported for this diagnostic, then run the command again.
-RUNTIME_E_ARITY_MISMATCH.fix = repair the highlighted compiler contract before checking later diagnostics
+RUNTIME_E_ARITY_MISMATCH.step1 = Inspect the runtime span and the operation named by the diagnostic code.
+RUNTIME_E_ARITY_MISMATCH.fix = change the program state that reaches the runtime trap or add an explicit check before it
 RUNTIME_E_ARITY_MISMATCH.example = vitte check path/to/file.vit
 
 RUNTIME_E_ARGUMENT_MISMATCH.summary = Argument Nichtuebereinstimmung.
 RUNTIME_E_ARGUMENT_MISMATCH.cause = The runtime phase found code that violates this diagnostic rule.
-RUNTIME_E_ARGUMENT_MISMATCH.step1 = Fix the first span reported for this diagnostic, then run the command again.
-RUNTIME_E_ARGUMENT_MISMATCH.fix = repair the highlighted compiler contract before checking later diagnostics
+RUNTIME_E_ARGUMENT_MISMATCH.step1 = Inspect the runtime span and the operation named by the diagnostic code.
+RUNTIME_E_ARGUMENT_MISMATCH.fix = change the program state that reaches the runtime trap or add an explicit check before it
 RUNTIME_E_ARGUMENT_MISMATCH.example = vitte check path/to/file.vit
 
 RUNTIME_E_ASSIGNMENT_MISMATCH.summary = Zuweisung Nichtuebereinstimmung.
 RUNTIME_E_ASSIGNMENT_MISMATCH.cause = The runtime phase found code that violates this diagnostic rule.
-RUNTIME_E_ASSIGNMENT_MISMATCH.step1 = Fix the first span reported for this diagnostic, then run the command again.
-RUNTIME_E_ASSIGNMENT_MISMATCH.fix = repair the highlighted compiler contract before checking later diagnostics
+RUNTIME_E_ASSIGNMENT_MISMATCH.step1 = Inspect the runtime span and the operation named by the diagnostic code.
+RUNTIME_E_ASSIGNMENT_MISMATCH.fix = change the program state that reaches the runtime trap or add an explicit check before it
 RUNTIME_E_ASSIGNMENT_MISMATCH.example = vitte check path/to/file.vit
 
 RUNTIME_E_BRANCH_MISMATCH.summary = branch Nichtuebereinstimmung.
 RUNTIME_E_BRANCH_MISMATCH.cause = The runtime phase found code that violates this diagnostic rule.
-RUNTIME_E_BRANCH_MISMATCH.step1 = Fix the first span reported for this diagnostic, then run the command again.
-RUNTIME_E_BRANCH_MISMATCH.fix = repair the highlighted compiler contract before checking later diagnostics
+RUNTIME_E_BRANCH_MISMATCH.step1 = Inspect the runtime span and the operation named by the diagnostic code.
+RUNTIME_E_BRANCH_MISMATCH.fix = change the program state that reaches the runtime trap or add an explicit check before it
 RUNTIME_E_BRANCH_MISMATCH.example = vitte check path/to/file.vit
 
 RUNTIME_E_INVALID_CALL.summary = Aufruf ungueltig.
 RUNTIME_E_INVALID_CALL.cause = The runtime phase found code that violates this diagnostic rule.
-RUNTIME_E_INVALID_CALL.step1 = Fix the first span reported for this diagnostic, then run the command again.
-RUNTIME_E_INVALID_CALL.fix = repair the highlighted compiler contract before checking later diagnostics
+RUNTIME_E_INVALID_CALL.step1 = Inspect the runtime span and the operation named by the diagnostic code.
+RUNTIME_E_INVALID_CALL.fix = change the program state that reaches the runtime trap or add an explicit check before it
 RUNTIME_E_INVALID_CALL.example = vitte check path/to/file.vit
 
 RUNTIME_E_INVALID_CAST.summary = Umwandlung ungueltig.
 RUNTIME_E_INVALID_CAST.cause = The runtime phase found code that violates this diagnostic rule.
-RUNTIME_E_INVALID_CAST.step1 = Fix the first span reported for this diagnostic, then run the command again.
-RUNTIME_E_INVALID_CAST.fix = repair the highlighted compiler contract before checking later diagnostics
+RUNTIME_E_INVALID_CAST.step1 = Inspect the runtime span and the operation named by the diagnostic code.
+RUNTIME_E_INVALID_CAST.fix = change the program state that reaches the runtime trap or add an explicit check before it
 RUNTIME_E_INVALID_CAST.example = vitte check path/to/file.vit
 
 RUNTIME_E_INVALID_INDEX.summary = Index ungueltig.
 RUNTIME_E_INVALID_INDEX.cause = The runtime phase found code that violates this diagnostic rule.
-RUNTIME_E_INVALID_INDEX.step1 = Fix the first span reported for this diagnostic, then run the command again.
-RUNTIME_E_INVALID_INDEX.fix = repair the highlighted compiler contract before checking later diagnostics
+RUNTIME_E_INVALID_INDEX.step1 = Inspect the runtime span and the operation named by the diagnostic code.
+RUNTIME_E_INVALID_INDEX.fix = change the program state that reaches the runtime trap or add an explicit check before it
 RUNTIME_E_INVALID_INDEX.example = vitte check path/to/file.vit
 
 RUNTIME_E_INVALID_DEREF.summary = deref ungueltig.
 RUNTIME_E_INVALID_DEREF.cause = The runtime phase found code that violates this diagnostic rule.
-RUNTIME_E_INVALID_DEREF.step1 = Fix the first span reported for this diagnostic, then run the command again.
-RUNTIME_E_INVALID_DEREF.fix = repair the highlighted compiler contract before checking later diagnostics
+RUNTIME_E_INVALID_DEREF.step1 = Inspect the runtime span and the operation named by the diagnostic code.
+RUNTIME_E_INVALID_DEREF.fix = change the program state that reaches the runtime trap or add an explicit check before it
 RUNTIME_E_INVALID_DEREF.example = vitte check path/to/file.vit
 
 RUNTIME_E_INVALID_BORROW.summary = Ausleihe ungueltig.
 RUNTIME_E_INVALID_BORROW.cause = The runtime phase found code that violates this diagnostic rule.
-RUNTIME_E_INVALID_BORROW.step1 = Fix the first span reported for this diagnostic, then run the command again.
-RUNTIME_E_INVALID_BORROW.fix = repair the highlighted compiler contract before checking later diagnostics
+RUNTIME_E_INVALID_BORROW.step1 = Inspect the runtime span and the operation named by the diagnostic code.
+RUNTIME_E_INVALID_BORROW.fix = change the program state that reaches the runtime trap or add an explicit check before it
 RUNTIME_E_INVALID_BORROW.example = vitte check path/to/file.vit
 
 RUNTIME_E_INVALID_MOVE.summary = Verschiebung ungueltig.
 RUNTIME_E_INVALID_MOVE.cause = The runtime phase found code that violates this diagnostic rule.
-RUNTIME_E_INVALID_MOVE.step1 = Fix the first span reported for this diagnostic, then run the command again.
-RUNTIME_E_INVALID_MOVE.fix = repair the highlighted compiler contract before checking later diagnostics
+RUNTIME_E_INVALID_MOVE.step1 = Inspect the runtime span and the operation named by the diagnostic code.
+RUNTIME_E_INVALID_MOVE.fix = change the program state that reaches the runtime trap or add an explicit check before it
 RUNTIME_E_INVALID_MOVE.example = vitte check path/to/file.vit
 
 RUNTIME_E_USE_AFTER_MOVE.summary = use after Verschiebung.
 RUNTIME_E_USE_AFTER_MOVE.cause = The runtime phase found code that violates this diagnostic rule.
-RUNTIME_E_USE_AFTER_MOVE.step1 = Fix the first span reported for this diagnostic, then run the command again.
-RUNTIME_E_USE_AFTER_MOVE.fix = repair the highlighted compiler contract before checking later diagnostics
+RUNTIME_E_USE_AFTER_MOVE.step1 = Inspect the runtime span and the operation named by the diagnostic code.
+RUNTIME_E_USE_AFTER_MOVE.fix = change the program state that reaches the runtime trap or add an explicit check before it
 RUNTIME_E_USE_AFTER_MOVE.example = vitte check path/to/file.vit
 
 RUNTIME_E_USE_AFTER_DROP.summary = use after Freigabe.
 RUNTIME_E_USE_AFTER_DROP.cause = The runtime phase found code that violates this diagnostic rule.
-RUNTIME_E_USE_AFTER_DROP.step1 = Fix the first span reported for this diagnostic, then run the command again.
-RUNTIME_E_USE_AFTER_DROP.fix = repair the highlighted compiler contract before checking later diagnostics
+RUNTIME_E_USE_AFTER_DROP.step1 = Inspect the runtime span and the operation named by the diagnostic code.
+RUNTIME_E_USE_AFTER_DROP.fix = change the program state that reaches the runtime trap or add an explicit check before it
 RUNTIME_E_USE_AFTER_DROP.example = vitte check path/to/file.vit
 
 RUNTIME_E_USE_BEFORE_INIT.summary = use before init.
 RUNTIME_E_USE_BEFORE_INIT.cause = The runtime phase found code that violates this diagnostic rule.
-RUNTIME_E_USE_BEFORE_INIT.step1 = Fix the first span reported for this diagnostic, then run the command again.
-RUNTIME_E_USE_BEFORE_INIT.fix = repair the highlighted compiler contract before checking later diagnostics
+RUNTIME_E_USE_BEFORE_INIT.step1 = Inspect the runtime span and the operation named by the diagnostic code.
+RUNTIME_E_USE_BEFORE_INIT.fix = change the program state that reaches the runtime trap or add an explicit check before it
 RUNTIME_E_USE_BEFORE_INIT.example = vitte check path/to/file.vit
 
 RUNTIME_E_DOUBLE_DROP.summary = double Freigabe.
 RUNTIME_E_DOUBLE_DROP.cause = The runtime phase found code that violates this diagnostic rule.
-RUNTIME_E_DOUBLE_DROP.step1 = Fix the first span reported for this diagnostic, then run the command again.
-RUNTIME_E_DOUBLE_DROP.fix = repair the highlighted compiler contract before checking later diagnostics
+RUNTIME_E_DOUBLE_DROP.step1 = Inspect the runtime span and the operation named by the diagnostic code.
+RUNTIME_E_DOUBLE_DROP.fix = change the program state that reaches the runtime trap or add an explicit check before it
 RUNTIME_E_DOUBLE_DROP.example = vitte check path/to/file.vit
 
 RUNTIME_E_BORROW_CONFLICT.summary = Ausleihe Konflikt.
 RUNTIME_E_BORROW_CONFLICT.cause = The runtime phase found code that violates this diagnostic rule.
-RUNTIME_E_BORROW_CONFLICT.step1 = Fix the first span reported for this diagnostic, then run the command again.
-RUNTIME_E_BORROW_CONFLICT.fix = repair the highlighted compiler contract before checking later diagnostics
+RUNTIME_E_BORROW_CONFLICT.step1 = Inspect the runtime span and the operation named by the diagnostic code.
+RUNTIME_E_BORROW_CONFLICT.fix = change the program state that reaches the runtime trap or add an explicit check before it
 RUNTIME_E_BORROW_CONFLICT.example = vitte check path/to/file.vit
 
 RUNTIME_E_MUTABILITY_CONFLICT.summary = mutability Konflikt.
 RUNTIME_E_MUTABILITY_CONFLICT.cause = The runtime phase found code that violates this diagnostic rule.
-RUNTIME_E_MUTABILITY_CONFLICT.step1 = Fix the first span reported for this diagnostic, then run the command again.
-RUNTIME_E_MUTABILITY_CONFLICT.fix = repair the highlighted compiler contract before checking later diagnostics
+RUNTIME_E_MUTABILITY_CONFLICT.step1 = Inspect the runtime span and the operation named by the diagnostic code.
+RUNTIME_E_MUTABILITY_CONFLICT.fix = change the program state that reaches the runtime trap or add an explicit check before it
 RUNTIME_E_MUTABILITY_CONFLICT.example = vitte check path/to/file.vit
 
 RUNTIME_E_LIFETIME_TOO_SHORT.summary = Lebensdauer zu short.
 RUNTIME_E_LIFETIME_TOO_SHORT.cause = The runtime phase found code that violates this diagnostic rule.
-RUNTIME_E_LIFETIME_TOO_SHORT.step1 = Fix the first span reported for this diagnostic, then run the command again.
-RUNTIME_E_LIFETIME_TOO_SHORT.fix = repair the highlighted compiler contract before checking later diagnostics
+RUNTIME_E_LIFETIME_TOO_SHORT.step1 = Inspect the runtime span and the operation named by the diagnostic code.
+RUNTIME_E_LIFETIME_TOO_SHORT.fix = change the program state that reaches the runtime trap or add an explicit check before it
 RUNTIME_E_LIFETIME_TOO_SHORT.example = vitte check path/to/file.vit
 
 RUNTIME_E_DANGLING_REFERENCE.summary = dangling Referenz.
 RUNTIME_E_DANGLING_REFERENCE.cause = The runtime phase found code that violates this diagnostic rule.
-RUNTIME_E_DANGLING_REFERENCE.step1 = Fix the first span reported for this diagnostic, then run the command again.
-RUNTIME_E_DANGLING_REFERENCE.fix = repair the highlighted compiler contract before checking later diagnostics
+RUNTIME_E_DANGLING_REFERENCE.step1 = Inspect the runtime span and the operation named by the diagnostic code.
+RUNTIME_E_DANGLING_REFERENCE.fix = change the program state that reaches the runtime trap or add an explicit check before it
 RUNTIME_E_DANGLING_REFERENCE.example = vitte check path/to/file.vit
 
 RUNTIME_E_NON_EXHAUSTIVE_MATCH.summary = non exhaustive match.
 RUNTIME_E_NON_EXHAUSTIVE_MATCH.cause = The runtime phase found code that violates this diagnostic rule.
-RUNTIME_E_NON_EXHAUSTIVE_MATCH.step1 = Fix the first span reported for this diagnostic, then run the command again.
-RUNTIME_E_NON_EXHAUSTIVE_MATCH.fix = repair the highlighted compiler contract before checking later diagnostics
+RUNTIME_E_NON_EXHAUSTIVE_MATCH.step1 = Inspect the runtime span and the operation named by the diagnostic code.
+RUNTIME_E_NON_EXHAUSTIVE_MATCH.fix = change the program state that reaches the runtime trap or add an explicit check before it
 RUNTIME_E_NON_EXHAUSTIVE_MATCH.example = vitte check path/to/file.vit
 
 RUNTIME_E_UNREACHABLE_PATTERN.summary = unerreichbar Muster.
 RUNTIME_E_UNREACHABLE_PATTERN.cause = The runtime phase found code that violates this diagnostic rule.
-RUNTIME_E_UNREACHABLE_PATTERN.step1 = Fix the first span reported for this diagnostic, then run the command again.
-RUNTIME_E_UNREACHABLE_PATTERN.fix = repair the highlighted compiler contract before checking later diagnostics
+RUNTIME_E_UNREACHABLE_PATTERN.step1 = Inspect the runtime span and the operation named by the diagnostic code.
+RUNTIME_E_UNREACHABLE_PATTERN.fix = change the program state that reaches the runtime trap or add an explicit check before it
 RUNTIME_E_UNREACHABLE_PATTERN.example = vitte check path/to/file.vit
 
 RUNTIME_E_CONST_REQUIRED.summary = const required.
 RUNTIME_E_CONST_REQUIRED.cause = The runtime phase found code that violates this diagnostic rule.
-RUNTIME_E_CONST_REQUIRED.step1 = Fix the first span reported for this diagnostic, then run the command again.
-RUNTIME_E_CONST_REQUIRED.fix = repair the highlighted compiler contract before checking later diagnostics
+RUNTIME_E_CONST_REQUIRED.step1 = Inspect the runtime span and the operation named by the diagnostic code.
+RUNTIME_E_CONST_REQUIRED.fix = change the program state that reaches the runtime trap or add an explicit check before it
 RUNTIME_E_CONST_REQUIRED.example = vitte check path/to/file.vit
 
 RUNTIME_E_CONST_OVERFLOW.summary = const Ueberlauf.
 RUNTIME_E_CONST_OVERFLOW.cause = The runtime phase found code that violates this diagnostic rule.
-RUNTIME_E_CONST_OVERFLOW.step1 = Fix the first span reported for this diagnostic, then run the command again.
-RUNTIME_E_CONST_OVERFLOW.fix = repair the highlighted compiler contract before checking later diagnostics
+RUNTIME_E_CONST_OVERFLOW.step1 = Inspect the runtime span and the operation named by the diagnostic code.
+RUNTIME_E_CONST_OVERFLOW.fix = change the program state that reaches the runtime trap or add an explicit check before it
 RUNTIME_E_CONST_OVERFLOW.example = vitte check path/to/file.vit
 
 RUNTIME_E_CONST_DIVISION_BY_ZERO.summary = const Division by Null.
 RUNTIME_E_CONST_DIVISION_BY_ZERO.cause = The runtime phase found code that violates this diagnostic rule.
-RUNTIME_E_CONST_DIVISION_BY_ZERO.step1 = Fix the first span reported for this diagnostic, then run the command again.
-RUNTIME_E_CONST_DIVISION_BY_ZERO.fix = repair the highlighted compiler contract before checking later diagnostics
+RUNTIME_E_CONST_DIVISION_BY_ZERO.step1 = Inspect the runtime span and the operation named by the diagnostic code.
+RUNTIME_E_CONST_DIVISION_BY_ZERO.fix = change the program state that reaches the runtime trap or add an explicit check before it
 RUNTIME_E_CONST_DIVISION_BY_ZERO.example = vitte check path/to/file.vit
 
 RUNTIME_E_CONST_CYCLE.summary = const Zyklus.
 RUNTIME_E_CONST_CYCLE.cause = The runtime phase found code that violates this diagnostic rule.
-RUNTIME_E_CONST_CYCLE.step1 = Fix the first span reported for this diagnostic, then run the command again.
-RUNTIME_E_CONST_CYCLE.fix = repair the highlighted compiler contract before checking later diagnostics
+RUNTIME_E_CONST_CYCLE.step1 = Inspect the runtime span and the operation named by the diagnostic code.
+RUNTIME_E_CONST_CYCLE.fix = change the program state that reaches the runtime trap or add an explicit check before it
 RUNTIME_E_CONST_CYCLE.example = vitte check path/to/file.vit
 
 RUNTIME_E_MACRO_NOT_FOUND.summary = macro fehlend.
 RUNTIME_E_MACRO_NOT_FOUND.cause = The runtime phase found code that violates this diagnostic rule.
-RUNTIME_E_MACRO_NOT_FOUND.step1 = Fix the first span reported for this diagnostic, then run the command again.
-RUNTIME_E_MACRO_NOT_FOUND.fix = repair the highlighted compiler contract before checking later diagnostics
+RUNTIME_E_MACRO_NOT_FOUND.step1 = Inspect the runtime span and the operation named by the diagnostic code.
+RUNTIME_E_MACRO_NOT_FOUND.fix = change the program state that reaches the runtime trap or add an explicit check before it
 RUNTIME_E_MACRO_NOT_FOUND.example = vitte check path/to/file.vit
 
 RUNTIME_E_MACRO_RECURSION.summary = macro recursion.
 RUNTIME_E_MACRO_RECURSION.cause = The runtime phase found code that violates this diagnostic rule.
-RUNTIME_E_MACRO_RECURSION.step1 = Fix the first span reported for this diagnostic, then run the command again.
-RUNTIME_E_MACRO_RECURSION.fix = repair the highlighted compiler contract before checking later diagnostics
+RUNTIME_E_MACRO_RECURSION.step1 = Inspect the runtime span and the operation named by the diagnostic code.
+RUNTIME_E_MACRO_RECURSION.fix = change the program state that reaches the runtime trap or add an explicit check before it
 RUNTIME_E_MACRO_RECURSION.example = vitte check path/to/file.vit
 
 RUNTIME_E_MACRO_EXPANSION_FAILED.summary = macro expansion fehlgeschlagen.
 RUNTIME_E_MACRO_EXPANSION_FAILED.cause = The runtime phase found code that violates this diagnostic rule.
-RUNTIME_E_MACRO_EXPANSION_FAILED.step1 = Fix the first span reported for this diagnostic, then run the command again.
-RUNTIME_E_MACRO_EXPANSION_FAILED.fix = repair the highlighted compiler contract before checking later diagnostics
+RUNTIME_E_MACRO_EXPANSION_FAILED.step1 = Inspect the runtime span and the operation named by the diagnostic code.
+RUNTIME_E_MACRO_EXPANSION_FAILED.fix = change the program state that reaches the runtime trap or add an explicit check before it
 RUNTIME_E_MACRO_EXPANSION_FAILED.example = vitte check path/to/file.vit
 
 RUNTIME_E_TRAIT_NOT_IMPLEMENTED.summary = trait not implemented.
 RUNTIME_E_TRAIT_NOT_IMPLEMENTED.cause = The runtime phase found code that violates this diagnostic rule.
-RUNTIME_E_TRAIT_NOT_IMPLEMENTED.step1 = Fix the first span reported for this diagnostic, then run the command again.
-RUNTIME_E_TRAIT_NOT_IMPLEMENTED.fix = repair the highlighted compiler contract before checking later diagnostics
+RUNTIME_E_TRAIT_NOT_IMPLEMENTED.step1 = Inspect the runtime span and the operation named by the diagnostic code.
+RUNTIME_E_TRAIT_NOT_IMPLEMENTED.fix = change the program state that reaches the runtime trap or add an explicit check before it
 RUNTIME_E_TRAIT_NOT_IMPLEMENTED.example = vitte check path/to/file.vit
 
 RUNTIME_E_TRAIT_AMBIGUOUS.summary = trait ambiguous.
 RUNTIME_E_TRAIT_AMBIGUOUS.cause = The runtime phase found code that violates this diagnostic rule.
-RUNTIME_E_TRAIT_AMBIGUOUS.step1 = Fix the first span reported for this diagnostic, then run the command again.
-RUNTIME_E_TRAIT_AMBIGUOUS.fix = repair the highlighted compiler contract before checking later diagnostics
+RUNTIME_E_TRAIT_AMBIGUOUS.step1 = Inspect the runtime span and the operation named by the diagnostic code.
+RUNTIME_E_TRAIT_AMBIGUOUS.fix = change the program state that reaches the runtime trap or add an explicit check before it
 RUNTIME_E_TRAIT_AMBIGUOUS.example = vitte check path/to/file.vit
 
 RUNTIME_E_GENERIC_ARGUMENT_MISSING.summary = generisch Argument fehlend.
 RUNTIME_E_GENERIC_ARGUMENT_MISSING.cause = The runtime phase found code that violates this diagnostic rule.
-RUNTIME_E_GENERIC_ARGUMENT_MISSING.step1 = Fix the first span reported for this diagnostic, then run the command again.
-RUNTIME_E_GENERIC_ARGUMENT_MISSING.fix = repair the highlighted compiler contract before checking later diagnostics
+RUNTIME_E_GENERIC_ARGUMENT_MISSING.step1 = Inspect the runtime span and the operation named by the diagnostic code.
+RUNTIME_E_GENERIC_ARGUMENT_MISSING.fix = change the program state that reaches the runtime trap or add an explicit check before it
 RUNTIME_E_GENERIC_ARGUMENT_MISSING.example = vitte check path/to/file.vit
 
 RUNTIME_E_GENERIC_BOUND_FAILED.summary = generisch bound fehlgeschlagen.
 RUNTIME_E_GENERIC_BOUND_FAILED.cause = The runtime phase found code that violates this diagnostic rule.
-RUNTIME_E_GENERIC_BOUND_FAILED.step1 = Fix the first span reported for this diagnostic, then run the command again.
-RUNTIME_E_GENERIC_BOUND_FAILED.fix = repair the highlighted compiler contract before checking later diagnostics
+RUNTIME_E_GENERIC_BOUND_FAILED.step1 = Inspect the runtime span and the operation named by the diagnostic code.
+RUNTIME_E_GENERIC_BOUND_FAILED.fix = change the program state that reaches the runtime trap or add an explicit check before it
 RUNTIME_E_GENERIC_BOUND_FAILED.example = vitte check path/to/file.vit
 
 RUNTIME_E_UNSUPPORTED_TARGET.summary = Ziel nicht unterstuetzt.
 RUNTIME_E_UNSUPPORTED_TARGET.cause = The runtime phase found code that violates this diagnostic rule.
-RUNTIME_E_UNSUPPORTED_TARGET.step1 = Fix the first span reported for this diagnostic, then run the command again.
-RUNTIME_E_UNSUPPORTED_TARGET.fix = repair the highlighted compiler contract before checking later diagnostics
+RUNTIME_E_UNSUPPORTED_TARGET.step1 = Inspect the runtime span and the operation named by the diagnostic code.
+RUNTIME_E_UNSUPPORTED_TARGET.fix = change the program state that reaches the runtime trap or add an explicit check before it
 RUNTIME_E_UNSUPPORTED_TARGET.example = vitte check path/to/file.vit
 
 RUNTIME_E_ABI_MISMATCH.summary = abi Nichtuebereinstimmung.
 RUNTIME_E_ABI_MISMATCH.cause = The runtime phase found code that violates this diagnostic rule.
-RUNTIME_E_ABI_MISMATCH.step1 = Fix the first span reported for this diagnostic, then run the command again.
-RUNTIME_E_ABI_MISMATCH.fix = repair the highlighted compiler contract before checking later diagnostics
+RUNTIME_E_ABI_MISMATCH.step1 = Inspect the runtime span and the operation named by the diagnostic code.
+RUNTIME_E_ABI_MISMATCH.fix = change the program state that reaches the runtime trap or add an explicit check before it
 RUNTIME_E_ABI_MISMATCH.example = vitte check path/to/file.vit
 
 RUNTIME_E_LINK_FAILED.summary = link fehlgeschlagen.
 RUNTIME_E_LINK_FAILED.cause = The runtime phase found code that violates this diagnostic rule.
-RUNTIME_E_LINK_FAILED.step1 = Fix the first span reported for this diagnostic, then run the command again.
-RUNTIME_E_LINK_FAILED.fix = repair the highlighted compiler contract before checking later diagnostics
+RUNTIME_E_LINK_FAILED.step1 = Inspect the runtime span and the operation named by the diagnostic code.
+RUNTIME_E_LINK_FAILED.fix = change the program state that reaches the runtime trap or add an explicit check before it
 RUNTIME_E_LINK_FAILED.example = vitte check path/to/file.vit
 
 RUNTIME_E_RUNTIME_PANIC.summary = runtime Panik.
 RUNTIME_E_RUNTIME_PANIC.cause = The runtime phase found code that violates this diagnostic rule.
-RUNTIME_E_RUNTIME_PANIC.step1 = Fix the first span reported for this diagnostic, then run the command again.
-RUNTIME_E_RUNTIME_PANIC.fix = repair the highlighted compiler contract before checking later diagnostics
+RUNTIME_E_RUNTIME_PANIC.step1 = Inspect the runtime span and the operation named by the diagnostic code.
+RUNTIME_E_RUNTIME_PANIC.fix = change the program state that reaches the runtime trap or add an explicit check before it
 RUNTIME_E_RUNTIME_PANIC.example = vitte check path/to/file.vit
 
 DRIVER_E_EXPECTED_IDENTIFIER.summary = Bezeichner erwartet.

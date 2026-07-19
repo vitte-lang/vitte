@@ -917,6 +917,8 @@ def render_locale(locale: str, codes: list[str], existing: dict[str, str], fallb
     for code in codes:
         if locale == "en":
             value = existing.get(code, fallback.get(code, readable_from_code(code)))
+            if re.search(r"\bmissing return\b|\breturn type mismatch\b|without returning|without return type", value):
+                value = readable_from_code(code)
         else:
             value = translated_value(locale, code, fallback)
         lines.append(f"{code} = {value}")
@@ -963,6 +965,10 @@ def render_explain_locale(locale: str, codes: list[str], messages: dict[str, str
                 "Follow the primary help text and make the smallest source change that removes the first error.",
             ):
                 value = fields[suffix]
+            if suffix in {"summary", "cause"} and re.search(r"\bmissing return\b|\breturn type mismatch\b|without returning|without return type|\bdeclares a return type\b", value):
+                value = explanation_fields(code, readable_from_code(code))[suffix]
+            if suffix == "example" and re.search(r"\breturn\b|\.end\b|\bfield\s+\w+\s+as\b|\bfn\s+\w+|Option\[|\bgive\b[^\n;]*;", value):
+                value = fields[suffix]
             if locale != "en" and suffix == "summary":
                 value = translate_message(locale, value.removesuffix(".")) + "."
             lines.append(f"{key} = {value}")
@@ -996,10 +1002,7 @@ def sync_locale(locale: str, check: bool) -> int:
         current = out_path.read_text(encoding="utf-8")
     else:
         current = ""
-    if locale == "en":
-        updated = append_missing_codes(current, missing, fallback) if current else render_locale(locale, codes, existing, fallback)
-    else:
-        updated = render_locale(locale, codes, existing, fallback)
+    updated = render_locale(locale, codes, existing, fallback)
     if updated != current:
         out_path.write_text(updated, encoding="utf-8")
         print(f"[diagnostics-ftl] wrote {out_path.relative_to(ROOT)}")

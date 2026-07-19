@@ -40,6 +40,11 @@ PUBLIC_EXTRA_CODES: tuple[str, ...] = (
     "AST_E_INVALID_PATTERN",
     "AST_E_INVALID_ATTRIBUTE",
     "AST_E_DUPLICATE_FIELD",
+    "AST_E_UNKNOWN_FIELD",
+    "AST_E_MISSING_FIELD",
+    "AST_E_FIELD_TYPE_MISMATCH",
+    "AST_E_FIELD_ORDER",
+    "AST_E_INCOMPLETE_CONSTRUCTION",
     "AST_E_INVALID_VISIBILITY",
     "AST_E_INVALID_ENTRY",
     "SEMA_E_DUPLICATE_SYMBOL",
@@ -72,6 +77,15 @@ PUBLIC_EXTRA_CODES: tuple[str, ...] = (
     "TYPECK_E_BINARY_MISMATCH",
     "TYPECK_E_ASSIGN_MISMATCH",
     "TYPECK_E_RETURN_MISMATCH",
+    "TYPECK_E_MISSING_GIVE",
+    "TYPECK_E_GIVE_IN_VOID_PROC",
+    "TYPECK_E_CONTROL_PATH_MISSING_GIVE",
+    "TYPECK_W_UNREACHABLE_AFTER_GIVE",
+    "TYPECK_E_IMMUTABLE_ASSIGN",
+    "TYPECK_W_MUTABLE_NEVER_MODIFIED",
+    "TYPECK_E_REASSIGNMENT_FORBIDDEN",
+    "TYPECK_E_MISSING_INITIALIZER",
+    "TYPECK_E_INFERENCE_FAILED",
     "TYPECK_E_CONDITION_TYPE",
     "TYPECK_E_UNKNOWN_MEMBER",
     "TYPECK_E_INDEX_TYPE",
@@ -318,7 +332,17 @@ PUBLIC_MATRIX_CODES: tuple[str, ...] = tuple(
 
 MESSAGE_OVERRIDES: dict[str, str] = {
     "TYPECK_E_ASSIGN_MISMATCH": "assignment type mismatch",
-    "TYPECK_E_RETURN_MISMATCH": "return type mismatch",
+    "E0013": "procedure may exit without give",
+    "TYPECK_E_RETURN_MISMATCH": "give type mismatch",
+    "TYPECK_E_MISSING_GIVE": "missing give in value procedure",
+    "TYPECK_E_GIVE_IN_VOID_PROC": "give value in procedure without result type",
+    "TYPECK_E_CONTROL_PATH_MISSING_GIVE": "control path reaches end without give",
+    "TYPECK_W_UNREACHABLE_AFTER_GIVE": "code after give is unreachable",
+    "TYPECK_E_IMMUTABLE_ASSIGN": "cannot set immutable binding",
+    "TYPECK_W_MUTABLE_NEVER_MODIFIED": "mutable binding is never changed",
+    "TYPECK_E_REASSIGNMENT_FORBIDDEN": "target cannot be reassigned",
+    "TYPECK_E_MISSING_INITIALIZER": "let binding requires an initializer or type",
+    "TYPECK_E_INFERENCE_FAILED": "binding type could not be inferred",
     "TYPECK_E_ARGUMENT_MISMATCH": "call argument type mismatch",
     "TYPECK_E_CALL_ARITY": "wrong number of call arguments",
     "TYPECK_E_GENERIC_INFERENCE": "generic type could not be inferred",
@@ -348,6 +372,11 @@ MESSAGE_OVERRIDES: dict[str, str] = {
     "SEMA_E_UNKNOWN_FIELD": "field does not exist",
     "SEMA_E_UNKNOWN_VARIANT": "variant does not exist",
     "SEMA_E_UNKNOWN_FUNCTION": "function does not exist",
+    "AST_E_UNKNOWN_FIELD": "unknown form field",
+    "AST_E_MISSING_FIELD": "missing form field",
+    "AST_E_FIELD_TYPE_MISMATCH": "form field type mismatch",
+    "AST_E_FIELD_ORDER": "form fields are out of order",
+    "AST_E_INCOMPLETE_CONSTRUCTION": "form construction is incomplete",
     "E_BOOTSTRAP_CONST_TYPE": "bootstrap constant has wrong type",
     "E_BOOTSTRAP_DUP_PROC": "duplicate bootstrap procedure",
     "E_BOOTSTRAP_UNKNOWN_CONST": "unknown bootstrap constant",
@@ -379,6 +408,8 @@ def public_diagnostic_codes(existing: list[str] | None = None) -> list[str]:
 def readable_from_code(code: str) -> str:
     if code in MESSAGE_OVERRIDES:
         return MESSAGE_OVERRIDES[code]
+    if code.endswith("_MISSING_RETURN"):
+        return "missing give"
     text = code
     for prefix in (
         "LEX_E_",
@@ -462,7 +493,7 @@ def explanation_fields(code: str, message: str | None = None) -> dict[str, str]:
         fields["cause"] = "The parser or lexer could not form the next valid source construct."
         fields["step1"] = "Look at the highlighted token and complete or remove the construct around it."
         fields["fix"] = "complete the syntax shape named by the parser label at the highlighted token"
-        fields["example"] = "proc main() -> int { give 0; }"
+        fields["example"] = "proc main() -> int { give 0 }"
     elif family == "type checking":
         fields["cause"] = "The inferred type does not satisfy the type required at this location."
         fields["step1"] = "Compare the expected and found types in the diagnostic labels."
@@ -487,7 +518,7 @@ def explanation_fields(code: str, message: str | None = None) -> dict[str, str]:
         fields["cause"] = "A compiler representation failed the structural invariant required before the next pipeline phase."
         fields["step1"] = "Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering."
         fields["fix"] = "repair the malformed intermediate representation before continuing to the next phase"
-        fields["example"] = "proc main() -> int { give 0; }"
+        fields["example"] = "proc main() -> int { give 0 }"
     elif family == "resource limit":
         fields["cause"] = "The input exceeded a configured compiler safety limit."
         fields["step1"] = "Split the file, expression, import graph, token, or macro expansion named by the code."
@@ -507,12 +538,12 @@ def explanation_fields(code: str, message: str | None = None) -> dict[str, str]:
         fields["cause"] = "A macro invocation, argument, recursion limit, or expansion contract could not produce valid user-facing code."
         fields["step1"] = "Inspect the macro invocation and the expansion note attached to the primary diagnostic."
         fields["fix"] = "change the macro arguments or stop the recursive expansion before lowering resumes"
-        fields["example"] = "my_macro!(value)"
+        fields["example"] = "my_macro(value)"
     elif family == "runtime":
         fields["cause"] = "Generated program execution reached a runtime safety check or trap reported by the Vitte runtime."
         fields["step1"] = "Inspect the runtime span and the operation named by the diagnostic code."
         fields["fix"] = "change the program state that reaches the runtime trap or add an explicit check before it"
-        fields["example"] = "if index < len(items) { give items[index]; }"
+        fields["example"] = "if index < len(items) { give items[index] }"
     elif family == "bootstrap":
         fields["cause"] = "The bootstrap compiler rejected a trust-root, stage artifact, or seed-root invariant."
         fields["step1"] = "Inspect the bootstrap artifact and the stage named by the diagnostic code."
@@ -522,42 +553,122 @@ def explanation_fields(code: str, message: str | None = None) -> dict[str, str]:
         fields["cause"] = "A procedure parameter name is followed by its type without the required colon separator."
         fields["step1"] = "Inspect the highlighted parameter in the multi-line procedure signature."
         fields["fix"] = "insert `:` between the parameter name and its type, for example `right: f64`"
-        fields["example"] = "proc calculate(right: f64) -> f64 { give right; }"
+        fields["example"] = "proc calculate(right: f64) -> f64 { give right }"
     elif code == "LEX_E_UNTERMINATED_STRING":
         fields["cause"] = "A string starts with a double quote but reaches the end of the line without a matching double quote."
         fields["step1"] = "Check that the opening and closing string delimiters are both double quotes."
         fields["fix"] = "add the closing `\"` on the same line; do not close a string with a single quote"
-        fields["example"] = 'print("message");'
+        fields["example"] = 'print("message")'
     elif code == "PARSE_E_UNCLOSED_BLOCK":
         fields["cause"] = "An opening brace has no matching closing brace before the end of the file."
         fields["step1"] = "Start at the highlighted innermost block and verify each nested brace."
         fields["fix"] = "add `}` to close the highlighted block, then run the checker again for its parent block"
-        fields["example"] = "while running { set running = false; }"
+        fields["example"] = "while running { set running = false }"
     elif code == "TYPECK_E_ASSIGN_MISMATCH":
         fields["cause"] = "The assigned value does not satisfy the declared type of the target binding."
         fields["step1"] = "Compare the binding declaration label with the highlighted assigned expression."
         fields["fix"] = "assign a value of the declared binding type, or change the binding annotation at its declaration"
         fields["example"] = "let count: int = 1"
+    elif code == "TYPECK_E_MISSING_GIVE":
+        fields["cause"] = "A procedure declares a result type with `->`, but its body has no `give` for the value it promises."
+        fields["step1"] = "Inspect the procedure body and decide which value should be produced."
+        fields["fix"] = "add `give expression` on every successful path, or remove the `-> Type` return contract"
+        fields["example"] = "proc answer() -> int { give 42 }"
+    elif code == "TYPECK_E_GIVE_IN_VOID_PROC":
+        fields["cause"] = "A procedure without a `-> Type` result contract uses `give` with a value."
+        fields["step1"] = "Check whether the procedure should produce a value or only perform effects."
+        fields["fix"] = "add the correct `-> Type` to the procedure, or remove the value from the `give` statement"
+        fields["example"] = "proc answer() -> int { give 42 }"
+    elif code == "TYPECK_E_RETURN_MISMATCH":
+        fields["cause"] = "The expression after `give` does not match the procedure result type."
+        fields["step1"] = "Compare the `-> Type` annotation with the type inferred for the highlighted `give` expression."
+        fields["fix"] = "change the `give` expression or the procedure result type so both name the same Vitte type"
+        fields["example"] = "proc answer() -> int { give 42 }"
+    elif code == "TYPECK_E_CONTROL_PATH_MISSING_GIVE":
+        fields["cause"] = "At least one branch can reach the end of a value-returning procedure without executing `give`."
+        fields["step1"] = "Follow each `if`, `match`, `loop`, and early-exit path in the procedure."
+        fields["fix"] = "add a final `give` or make every branch produce a value before control reaches the closing brace"
+        fields["example"] = "proc code(ok: bool) -> int {\n  if ok { give 0 }\n  give 1\n}"
+    elif code == "TYPECK_W_UNREACHABLE_AFTER_GIVE":
+        fields["cause"] = "`give` ends the current procedure path, so later statements in the same block cannot run."
+        fields["step1"] = "Inspect the statement immediately after the highlighted `give`."
+        fields["fix"] = "move the statement before `give`, put it in another branch, or remove it"
+        fields["example"] = "proc main() -> int {\n  let code: int = 0\n  give code\n}"
     elif code == "TYPECK_E_BINARY_MISMATCH":
         fields["cause"] = "The binary operator received operands whose types do not share the operator contract."
         fields["step1"] = "Inspect the left and right operand labels before changing the operator."
         fields["fix"] = "make both operands valid for the operator before MIR lowering"
         fields["example"] = "let total: int = left + right"
+    elif code == "TYPECK_E_IMMUTABLE_ASSIGN":
+        fields["cause"] = "`set` can only change a binding or field that the current scope is allowed to mutate."
+        fields["step1"] = "Find the original `let`, parameter, or field declaration for the highlighted target."
+        fields["fix"] = "declare the binding with the current mutable form accepted by Vitte, or replace the later `set` with a new `let`"
+        fields["example"] = "let count: int = 0\nset count = count + 1"
+    elif code == "TYPECK_W_MUTABLE_NEVER_MODIFIED":
+        fields["cause"] = "A binding was declared mutable, but no reachable `set` changes it."
+        fields["step1"] = "Search the binding scope for `set name = ...` or field updates through that binding."
+        fields["fix"] = "remove the mutable marker from the `let`, or keep it only when a later `set` is intended"
+        fields["example"] = "let count: int = 0"
+    elif code == "TYPECK_E_REASSIGNMENT_FORBIDDEN":
+        fields["cause"] = "The target of `set` is not an assignable place, such as a computed expression, temporary value, or non-settable projection."
+        fields["step1"] = "Check that the left side of `set` is a binding, field, or index place that Vitte allows to be assigned."
+        fields["fix"] = "assign to a valid place with `set target = value`, or bind the computed value with `let`"
+        fields["example"] = "set user.name = name"
+    elif code == "TYPECK_E_MISSING_INITIALIZER":
+        fields["cause"] = "`let` introduced a binding without enough information to create a value."
+        fields["step1"] = "Inspect the binding and check whether it has either an initializer or an explicit type plus a supported delayed-initialization path."
+        fields["fix"] = "add `= expression`, or add the missing type annotation required by the active Vitte rule"
+        fields["example"] = "let count: int = 0"
+    elif code == "TYPECK_E_INFERENCE_FAILED":
+        fields["cause"] = "The initializer or later uses do not provide enough constraints to infer the binding type."
+        fields["step1"] = "Look at the highlighted `let` and the first use of the binding."
+        fields["fix"] = "add an explicit Vitte type annotation after the binding name"
+        fields["example"] = "let items: [int] = []"
     elif code == "TYPECK_E_CONDITION_TYPE":
         fields["cause"] = "A control-flow condition produced a non-boolean value."
         fields["step1"] = "Check the highlighted condition expression before lowering branches to MIR."
         fields["fix"] = "make the condition produce bool, for example by adding an explicit comparison"
-        fields["example"] = "if count > 0 { give count; }"
+        fields["example"] = "if count > 0 { give count }"
     elif code in {"SEMA_E_UNKNOWN_IDENTIFIER", "SEMA_E_UNKNOWN_SYMBOL", "SEMA_E_UNKNOWN_NAME"}:
         fields["cause"] = "Name resolution could not find the highlighted identifier in the active scope or imports."
         fields["step1"] = "Check the nearest symbol note and the active import list."
         fields["fix"] = "declare the missing identifier in scope or import the module that exports it"
         fields["example"] = "use app/math.{total}"
+    elif code in {"AST_E_UNKNOWN_FIELD", "SEMA_E_UNKNOWN_FIELD", "TYPECK_E_UNKNOWN_MEMBER"}:
+        fields["cause"] = "A `form` construction or field access names a field that the form declaration does not contain."
+        fields["step1"] = "Compare the highlighted field name with the fields declared in the `form`."
+        fields["fix"] = "rename the field to one declared by the form, or add the missing field to the form declaration"
+        fields["example"] = "form Point { x: int, y: int }\nlet p: Point = Point { x: 1, y: 2 }"
+    elif code == "AST_E_MISSING_FIELD":
+        fields["cause"] = "A `form` construction omits a required field that has no default value."
+        fields["step1"] = "Compare the construction with every required field in the `form` declaration."
+        fields["fix"] = "add the missing `field: value` entry to the construction"
+        fields["example"] = "form Point { x: int, y: int }\nlet p: Point = Point { x: 1, y: 2 }"
+    elif code == "AST_E_DUPLICATE_FIELD":
+        fields["cause"] = "The same field name appears more than once in one `form` declaration or construction."
+        fields["step1"] = "Find the earlier field label and the highlighted duplicate."
+        fields["fix"] = "keep one field entry and remove or rename the duplicate"
+        fields["example"] = "form Point { x: int, y: int }"
+    elif code == "AST_E_FIELD_TYPE_MISMATCH":
+        fields["cause"] = "A value assigned to a `form` field does not match that field's declared type."
+        fields["step1"] = "Compare the field declaration type with the highlighted field initializer."
+        fields["fix"] = "change the field initializer to the declared type, or change the field type in the `form`"
+        fields["example"] = "form User { name: string, age: int }\nlet user: User = User { name: \"Ada\", age: 36 }"
+    elif code == "AST_E_FIELD_ORDER":
+        fields["cause"] = "This `form` construction uses positional or order-sensitive fields in a different order than the declaration."
+        fields["step1"] = "Read the field order from the `form` declaration."
+        fields["fix"] = "reorder the construction fields to match the `form` declaration, or use named fields when the rule allows them"
+        fields["example"] = "form Pair { left: int, right: int }\nlet pair: Pair = Pair { left: 1, right: 2 }"
+    elif code == "AST_E_INCOMPLETE_CONSTRUCTION":
+        fields["cause"] = "A `form` construction ended before all required fields were supplied."
+        fields["step1"] = "Check whether the construction is missing fields or a closing brace."
+        fields["fix"] = "complete the construction with every required `field: value` entry and the closing `}`"
+        fields["example"] = "form Point { x: int, y: int }\nlet p: Point = Point { x: 1, y: 2 }"
     elif code in {"SEMA_E_DUPLICATE_SYMBOL", "SEMA_E_DUPLICATE_ITEM", "SEMA_E_DUPLICATE_BINDING"}:
         fields["cause"] = "Name resolution found two declarations competing for the same symbol in one scope."
         fields["step1"] = "Compare the highlighted duplicate with the original declaration note."
         fields["fix"] = "rename one declaration or remove the duplicate from the same scope"
-        fields["example"] = "proc main() -> int { give 0; }"
+        fields["example"] = "proc main() -> int { give 0 }"
     elif code == "BORROWCK_E_USE_AFTER_MOVE":
         fields["cause"] = "Ownership moved before the highlighted later use."
         fields["step1"] = "Find the earlier move note and decide whether this site needs ownership or a borrow."
