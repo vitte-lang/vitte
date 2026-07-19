@@ -30,8 +30,12 @@ Invariants
 - every diagnostic must have one stable public code
 - every diagnostic must carry a severity
 - source spans must be explicit
+- every diagnostic must carry a title, message, phase, file id, primary span,
+  secondary spans, notes, helps, suggestions, and optional internal cause
 - rendering must not mutate diagnostic state
 - diagnostic construction must be independent from terminal output
+- compiler phases must return structured `Diagnostic` values instead of
+  converting phase failures into strings
 
 Canonical Flow
 
@@ -107,6 +111,22 @@ Recommended Files
 diagnostic.vit
 
 Core diagnostic object.
+
+This is the official compiler diagnostic structure. Producers must preserve the
+same object shape from lexer through linker:
+
+- `code`
+- `severity`
+- `title`
+- `message`
+- `span` and `primary_span`
+- `secondary_spans`
+- `notes`
+- `helps`
+- `suggestions`
+- `phase`
+- `file_id`
+- `internal_cause`
 
 severity.vit
 

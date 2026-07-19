@@ -93,16 +93,21 @@ form Diagnostic {
     code: string
     phase: DiagnosticPhase
     severity: DiagnosticSeverity
+    title: string
     message: string
     explanation: string
     labels: [DiagnosticLabel]
+    secondary_spans: [SourceSpan]
     notes: [DiagnosticNote]
     helps: [DiagnosticHelp]
     suggestions: [DiagnosticSuggestion]
     documentation_url: string
     pipeline_context: [string]
     probable_fix: string
+    primary_span: SourceSpan
     span: SourceSpan
+    file_id: u64
+    internal_cause: string
     fatal: bool
     valid: bool
 }
@@ -609,16 +614,21 @@ proc diagnostic_create(code: string, phase: DiagnosticPhase, severity: Diagnosti
         code: code,
         phase: phase,
         severity: severity,
+        title: message,
         message: message,
         explanation: diagnostic_default_explanation(phase),
         labels: [],
+        secondary_spans: [],
         notes: [diagnostic_note("clear, contextual, and correction-oriented diagnostics")],
         helps: if default_help_text == "" { [] } else { [diagnostic_help(default_help_text)] },
         suggestions: if default_suggestion.valid { [default_suggestion] } else { [] },
         documentation_url: diagnostic_default_documentation(phase),
         pipeline_context: [phase_context, step_context, family_context, strategy_context, recovery_context, confidence_context],
         probable_fix: diagnostic_default_probable_fix(phase),
+        primary_span: span,
         span: span,
+        file_id: 0,
+        internal_cause: diagnostic_default_explanation(phase),
         fatal: severity == DiagnosticSeverity.Fatal,
         valid: code != "" and message != ""
     };
@@ -638,6 +648,12 @@ proc diagnostic_fatal(code: string, phase: DiagnosticPhase, message: string, spa
 
 proc diagnostic_with_label(diagnostic: Diagnostic, label: DiagnosticLabel) -> Diagnostic {
     set diagnostic.labels = diagnostic.labels + [label];
+    if label.primary {
+        set diagnostic.span = label.span;
+        set diagnostic.primary_span = label.span;
+    } else {
+        set diagnostic.secondary_spans = diagnostic.secondary_spans + [label.span];
+    }
     give diagnostic;
 }
 
@@ -679,6 +695,20 @@ proc diagnostic_add_pipeline_context(diagnostic: Diagnostic, context: string) ->
     }
 
     set diagnostic.pipeline_context = diagnostic.pipeline_context + [context];
+    give diagnostic;
+}
+
+proc diagnostic_with_file_id(diagnostic: Diagnostic, file_id: u64) -> Diagnostic {
+    set diagnostic.file_id = file_id;
+    give diagnostic;
+}
+
+proc diagnostic_with_internal_cause(diagnostic: Diagnostic, internal_cause: string) -> Diagnostic {
+    if internal_cause == "" {
+        give diagnostic;
+    }
+
+    set diagnostic.internal_cause = internal_cause;
     give diagnostic;
 }
 
@@ -768,6 +798,8 @@ share diagnostic_with_help
 share diagnostic_with_suggestion
 share diagnostic_with_documentation
 share diagnostic_add_pipeline_context
+share diagnostic_with_file_id
+share diagnostic_with_internal_cause
 share diagnostic_with_probable_fix
 share diagnostic_report_empty
 share diagnostic_report_add

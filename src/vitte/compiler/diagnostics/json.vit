@@ -130,6 +130,18 @@ proc json_source_span(span: SourceSpan) -> string {
     ]);
 }
 
+proc json_source_spans(spans: [SourceSpan]) -> string {
+    let encoded: [string] = [];
+    let i: u64 = 0;
+
+    while i < len(spans) {
+        set encoded = encoded + [json_source_span(spans[i])];
+        set i = i + 1;
+    }
+
+    give json_array(encoded);
+}
+
 proc json_label(label: DiagnosticLabel) -> string {
     give json_object([
         json_key_value(
@@ -425,9 +437,21 @@ proc json_diagnostic(diagnostic: Diagnostic) -> string {
         ),
 
         json_key_value(
+            "file_id",
+            diagnostic.file_id as string
+        ),
+
+        json_key_value(
             "rule",
             json_optional_string(
                 diagnostic.rule
+            )
+        ),
+
+        json_key_value(
+            "title",
+            json_quote(
+                diagnostic.title
             )
         ),
 
@@ -456,6 +480,20 @@ proc json_diagnostic(diagnostic: Diagnostic) -> string {
             "span",
             json_source_span(
                 diagnostic.span
+            )
+        ),
+
+        json_key_value(
+            "primary_span",
+            json_source_span(
+                diagnostic.primary_span
+            )
+        ),
+
+        json_key_value(
+            "secondary_spans",
+            json_source_spans(
+                diagnostic.secondary_spans
             )
         ),
 
@@ -519,6 +557,13 @@ proc json_diagnostic(diagnostic: Diagnostic) -> string {
             "root_cause",
             json_optional_string(
                 diagnostic.root_cause
+            )
+        ),
+
+        json_key_value(
+            "internal_cause",
+            json_optional_string(
+                diagnostic.internal_cause
             )
         ),
 
@@ -911,6 +956,7 @@ share json_string_array
 share json_optional_string
 
 share json_source_span
+share json_source_spans
 
 share json_label
 share json_labels

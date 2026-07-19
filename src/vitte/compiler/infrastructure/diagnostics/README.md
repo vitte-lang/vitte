@@ -17,11 +17,16 @@ stack.
   - a stable public code using the phase-number convention
   - a phase
   - a severity
+  - a title
+  - a message
   - a primary span
-  - optional labels
-  - optional notes
-  - optional helps
-  - optional suggestions
+  - secondary spans
+  - labels
+  - notes
+  - helps
+  - suggestions
+  - a file id
+  - an optional internal cause
 - `diagnostic.vit` owns the common data model and report counters.
 - `labels.vit` owns label-specific constructors.
 - `suggestions.vit` owns structured fixes and machine-applicable edits.
@@ -30,6 +35,8 @@ stack.
 ## Invariants
 
 - Use spans, not bare line/column pairs, as the stable location contract.
+- Keep `span`, `primary_span`, and `secondary_spans` synchronized when labels
+  are added.
 - Suggestions must stay structured even when rendered as plain text.
 - A fatal diagnostic is always an error; not every error is fatal.
 - Reports are valid only when they contain no error and no fatal diagnostic.

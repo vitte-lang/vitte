@@ -161,11 +161,13 @@ form Diagnostic {
     code: string
     phase: DiagnosticPhase
     severity: DiagnosticSeverity
+    title: string
     rule: string
     message: string
     explanation: string
     technical_note: string
     labels: [DiagnosticLabel]
+    secondary_spans: [SourceSpan]
     notes: [DiagnosticNote]
     helps: [DiagnosticHelp]
     suggestions: [DiagnosticSuggestion]
@@ -182,7 +184,10 @@ form Diagnostic {
     invalid_example: string
     primary_error_key: string
     cascade_of: string
+    primary_span: SourceSpan
     span: SourceSpan
+    file_id: u64
+    internal_cause: string
     primary_error: bool
     cascade: bool
     suppressed: bool
@@ -1612,11 +1617,13 @@ proc diagnostic_create(code: string, phase: DiagnosticPhase, severity: Diagnosti
         code: code,
         phase: phase,
         severity: severity,
+        title: message,
         rule: diagnostic_default_rule(phase, code),
         message: message,
         explanation: diagnostic_default_explanation(phase, code),
         technical_note: "",
         labels: [primary_label(message, span)],
+        secondary_spans: [],
         notes: if default_note_text == "" { [] } else { [diagnostic_note(default_note_text)] },
         helps: if default_help_text == "" { [] } else { [diagnostic_help(default_help_text)] },
         suggestions: default_suggestions,
@@ -1633,7 +1640,10 @@ proc diagnostic_create(code: string, phase: DiagnosticPhase, severity: Diagnosti
         invalid_example: diagnostic_default_invalid_example(phase, code),
         primary_error_key: diagnostic_primary_key(code, span),
         cascade_of: "",
+        primary_span: span,
         span: span,
+        file_id: 0,
+        internal_cause: diagnostic_default_root_cause(phase, code),
         primary_error: true,
         cascade: false,
         suppressed: false,
@@ -1688,6 +1698,7 @@ proc diagnostic_with_root_cause(diagnostic: Diagnostic, root_cause: string) -> D
     }
 
     set diagnostic.root_cause = root_cause;
+    set diagnostic.internal_cause = root_cause;
     give diagnostic;
 }
 
@@ -1697,6 +1708,20 @@ proc diagnostic_add_cause(diagnostic: Diagnostic, cause: string) -> Diagnostic {
     }
 
     set diagnostic.cause_chain = diagnostic.cause_chain + [cause];
+    give diagnostic;
+}
+
+proc diagnostic_with_file_id(diagnostic: Diagnostic, file_id: u64) -> Diagnostic {
+    set diagnostic.file_id = file_id;
+    give diagnostic;
+}
+
+proc diagnostic_with_internal_cause(diagnostic: Diagnostic, internal_cause: string) -> Diagnostic {
+    if internal_cause == "" {
+        give diagnostic;
+    }
+
+    set diagnostic.internal_cause = internal_cause;
     give diagnostic;
 }
 
@@ -1798,6 +1823,12 @@ proc diagnostic_fatal(code: string, phase: DiagnosticPhase, message: string, spa
 
 proc diagnostic_with_label(diagnostic: Diagnostic, label: DiagnosticLabel) -> Diagnostic {
     set diagnostic.labels = diagnostic.labels + [label];
+    if label.primary {
+        set diagnostic.span = label.span;
+        set diagnostic.primary_span = label.span;
+    } else {
+        set diagnostic.secondary_spans = diagnostic.secondary_spans + [label.span];
+    }
 
     give diagnostic;
 }
@@ -3631,6 +3662,8 @@ share diagnostic_with_suggestion
 share diagnostic_with_documentation
 share diagnostic_with_root_cause
 share diagnostic_add_cause
+share diagnostic_with_file_id
+share diagnostic_with_internal_cause
 share diagnostic_add_pipeline_context
 share diagnostic_add_related_error
 share diagnostic_with_probable_fix

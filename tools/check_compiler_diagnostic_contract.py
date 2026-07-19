@@ -12,6 +12,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 CODES = ROOT / "schemas" / "diagnostics" / "codes.json"
 COMPILER_ROOT = ROOT / "src" / "vitte" / "compiler"
+CANONICAL_DIAGNOSTIC = COMPILER_ROOT / "diagnostics" / "diagnostic.vit"
+INFRA_DIAGNOSTIC = COMPILER_ROOT / "infrastructure" / "diagnostics" / "diagnostic.vit"
 
 DIRECT_OUTPUT = re.compile(r"\b(?:print|printf|fprintf|eprintf|fputs|fwrite|fputc)\s*\(")
 VAGUE_DRIVER_MESSAGES = (
@@ -33,6 +35,36 @@ ALLOWED_RUNTIME_OUTPUT = {
     "src/vitte/compiler/backends/runtime_c/vitte_runtime.c",
     "src/vitte/compiler/backends/runtime_c/vitte_runtime.h",
 }
+REQUIRED_DIAGNOSTIC_FIELDS = (
+    "code",
+    "severity",
+    "title",
+    "message",
+    "span",
+    "secondary_spans",
+    "notes",
+    "helps",
+    "suggestions",
+    "phase",
+    "file_id",
+    "internal_cause",
+)
+REQUIRED_CANONICAL_INITIALIZERS = (
+    "title: message",
+    "secondary_spans: []",
+    "primary_span: span",
+    "span: span",
+    "file_id: 0",
+    "internal_cause: diagnostic_default_root_cause(phase, code)",
+)
+REQUIRED_INFRA_INITIALIZERS = (
+    "title: message",
+    "secondary_spans: []",
+    "primary_span: span",
+    "span: span",
+    "file_id: 0",
+    "internal_cause: diagnostic_default_explanation(phase)",
+)
 
 
 def fail(message: str) -> int:
@@ -139,9 +171,68 @@ def check_driver_vague_messages() -> list[str]:
     ]
 
 
+def extract_form_body(text: str, form_name: str) -> str | None:
+    match = re.search(rf"\bform\s+{re.escape(form_name)}\s*\{{", text)
+    if not match:
+        return None
+    depth = 1
+    i = match.end()
+    while i < len(text):
+        if text[i] == "{":
+            depth += 1
+        elif text[i] == "}":
+            depth -= 1
+            if depth == 0:
+                return text[match.end():i]
+        i += 1
+    return None
+
+
+def form_fields(text: str, form_name: str) -> set[str] | None:
+    body = extract_form_body(text, form_name)
+    if body is None:
+        return None
+    fields: set[str] = set()
+    for line in body.splitlines():
+        match = re.match(r"\s*([A-Za-z_][A-Za-z0-9_]*)\s*:", line)
+        if match:
+            fields.add(match.group(1))
+    return fields
+
+
+def check_diagnostic_object_contract() -> list[str]:
+    failures: list[str] = []
+    for path, required_initializers in (
+        (CANONICAL_DIAGNOSTIC, REQUIRED_CANONICAL_INITIALIZERS),
+        (INFRA_DIAGNOSTIC, REQUIRED_INFRA_INITIALIZERS),
+    ):
+        text = path.read_text(encoding="utf-8")
+        rel = path.relative_to(ROOT)
+        fields = form_fields(text, "Diagnostic")
+        if fields is None:
+            failures.append(f"{rel}: missing form Diagnostic")
+            continue
+        for field in REQUIRED_DIAGNOSTIC_FIELDS:
+            if field not in fields:
+                failures.append(f"{rel}: Diagnostic is missing required field {field!r}")
+        for initializer in required_initializers:
+            if initializer not in text:
+                failures.append(f"{rel}: diagnostic_create must initialize {initializer!r}")
+        if "set diagnostic.secondary_spans = diagnostic.secondary_spans + [label.span]" not in text:
+            failures.append(f"{rel}: secondary labels must preserve their spans in secondary_spans")
+        if "set diagnostic.primary_span = label.span" not in text or "set diagnostic.span = label.span" not in text:
+            failures.append(f"{rel}: primary labels must synchronize span and primary_span")
+        if "proc diagnostic_with_file_id" not in text:
+            failures.append(f"{rel}: missing diagnostic_with_file_id helper")
+        if "proc diagnostic_with_internal_cause" not in text:
+            failures.append(f"{rel}: missing diagnostic_with_internal_cause helper")
+    return failures
+
+
 def main() -> int:
     failures = [
         *check_code_documentation(),
+        *check_diagnostic_object_contract(),
         *check_direct_output_boundaries(),
         *check_driver_vague_messages(),
     ]
