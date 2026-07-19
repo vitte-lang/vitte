@@ -868,7 +868,7 @@ proc diagnostic_default_root_cause(phase: DiagnosticPhase, code: string) -> stri
     }
 
     if code == "TYPECK_E_ASSIGN_MISMATCH" {
-        give "assignment target and assigned value have incompatible types";
+        give "assignment target imposes one type while the assigned expression produces another";
     }
 
     if code == "TYPECK_E_ARGUMENT_MISMATCH" {
@@ -884,7 +884,7 @@ proc diagnostic_default_root_cause(phase: DiagnosticPhase, code: string) -> stri
     }
 
     if code == "BORROWCK_E_MUTABLE_BORROW_CONFLICT" or code == "BORROWCK_E_SHARED_BORROW_CONFLICT" {
-        give "active borrow overlaps with an incompatible access";
+        give "active borrow lifetime overlaps a later access requiring a different permission";
     }
 
     if phase == DiagnosticPhase.Lexer {
@@ -3512,9 +3512,13 @@ proc sema_unknown_identifier(name: string, span: SourceSpan) -> Diagnostic {
 }
 
 proc typeck_assignment_mismatch(expected: string, found: string, span: SourceSpan) -> Diagnostic {
-    let diag: Diagnostic = diagnostic_error("TYPECK_E_ASSIGN_MISMATCH", DiagnosticPhase.Typeck, "assignment type mismatch", span);
-    let mismatch_label: DiagnosticLabel = secondary_label("expected `" + expected + "`, found `" + found + "`", span);
-    set diag = diagnostic_with_label(diag, mismatch_label);
+    let diag: Diagnostic = diagnostic_error("TYPECK_E_ASSIGN_MISMATCH", DiagnosticPhase.Typeck, "assignment expects `" + expected + "` but receives `" + found + "`", span);
+    let expected_label: DiagnosticLabel = secondary_label("expected `" + expected + "` because the assignment target imposes it", span);
+    let found_label: DiagnosticLabel = secondary_label("obtained `" + found + "` from the assigned expression", span);
+    set diag = diagnostic_with_label(diag, expected_label);
+    set diag = diagnostic_with_label(diag, found_label);
+    set diag = diagnostic_add_cause(diag, "why expected type is imposed: assignment target type");
+    set diag = diagnostic_add_cause(diag, "origin of obtained type: assigned expression");
     set diag = diagnostic_with_help(diag, "change the assigned value or add an explicit conversion");
 
     give diag;
@@ -3534,6 +3538,7 @@ proc borrowck_mutable_borrow_conflict(name: string, request_span: SourceSpan, ac
     let diag: Diagnostic = diagnostic_error("BORROWCK_E_MUTABLE_BORROW_CONFLICT", DiagnosticPhase.Borrowck, "cannot mutably borrow `" + name + "` while another borrow is active", request_span);
     let active_label: DiagnosticLabel = previous_label("active borrow starts here", active_span);
     set diag = diagnostic_with_label(diag, active_label);
+    set diag = diagnostic_with_label(diag, secondary_label("conflict appears here: mutable borrow requires exclusive access", request_span));
     set diag = diagnostic_with_note(diag, "mutable access requires exclusive access");
     set diag = diagnostic_with_help(diag, "end the previous borrow before taking mutable access");
 
@@ -3550,21 +3555,23 @@ proc ir_invalid_terminator(span: SourceSpan) -> Diagnostic {
 
 proc attach_expected_found_details(diagnostic: Diagnostic, rule_name: string, expected: string, found: string, expected_origin: string, found_origin: string, probable_fix: string) -> Diagnostic {
     let diag0: Diagnostic = diagnostic_with_rule(diagnostic, rule_name);
-    let diag1: Diagnostic = diagnostic_with_explanation(diag0, "expected `" + expected + "` but got `" + found + "`");
-    let diag2: Diagnostic = diagnostic_with_root_cause(diag1, "type compatibility rule was violated");
-    let diag3: Diagnostic = diagnostic_add_cause(diag2, "expected type comes from " + expected_origin);
-    let diag4: Diagnostic = diagnostic_add_cause(diag3, "found type comes from " + found_origin);
+    let diag1: Diagnostic = diagnostic_with_explanation(diag0, "The expected type is `" + expected + "` because of " + expected_origin + "; the obtained type is `" + found + "` from " + found_origin + ".");
+    let diag2: Diagnostic = diagnostic_with_root_cause(diag1, rule_name + " imposes `" + expected + "` here, but the checked value has type `" + found + "`");
+    let diag3: Diagnostic = diagnostic_add_cause(diag2, "why expected type is imposed: " + expected_origin);
+    let diag4: Diagnostic = diagnostic_add_cause(diag3, "origin of obtained type: " + found_origin);
     let diag5: Diagnostic = diagnostic_with_subject_type(diag4, expected);
+    let diag6: Diagnostic = diagnostic_with_label(diag5, secondary_label("expected `" + expected + "` from " + expected_origin, diagnostic.span));
+    let diag7: Diagnostic = diagnostic_with_label(diag6, secondary_label("obtained `" + found + "` from " + found_origin, diagnostic.span));
 
     if probable_fix != "" {
-        give diagnostic_with_probable_fix(diag5, probable_fix);
+        give diagnostic_with_probable_fix(diag7, probable_fix);
     }
 
-    give diag5;
+    give diag7;
 }
 
 proc typeck_argument_mismatch(expected: string, found: string, expected_origin: string, found_origin: string, span: SourceSpan) -> Diagnostic {
-    let diag0: Diagnostic = diagnostic_error("TYPECK_E_ARGUMENT_MISMATCH", DiagnosticPhase.Typeck, "call argument type mismatch", span);
+    let diag0: Diagnostic = diagnostic_error("TYPECK_E_ARGUMENT_MISMATCH", DiagnosticPhase.Typeck, "call argument expects `" + expected + "` but receives `" + found + "`", span);
     let diag1: Diagnostic = diagnostic_with_help(diag0, "pass a `" + expected + "` value or change the callee signature");
     give attach_expected_found_details(diag1, "function argument compatibility", expected, found, expected_origin, found_origin, "align the argument type with the parameter type");
 }
@@ -3581,7 +3588,7 @@ proc typeck_invalid_call_arity(callee: string, expected_arity: u64, found_arity:
 }
 
 proc typeck_if_branch_mismatch(then_type: string, else_type: string, span: SourceSpan) -> Diagnostic {
-    let diag0: Diagnostic = diagnostic_error("TYPECK_E_IF_BRANCH_MISMATCH", DiagnosticPhase.Typeck, "if branches produce incompatible types", span);
+    let diag0: Diagnostic = diagnostic_error("TYPECK_E_IF_BRANCH_MISMATCH", DiagnosticPhase.Typeck, "if branches produce different result types", span);
     let diag1: Diagnostic = diagnostic_with_help(diag0, "make both branches return the same type or insert an explicit conversion");
     give attach_expected_found_details(diag1, "if expression branch unification", then_type, else_type, "the then branch result", "the else branch result", "normalize both branches to one common result type");
 }

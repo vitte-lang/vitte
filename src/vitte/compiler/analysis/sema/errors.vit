@@ -317,6 +317,22 @@ proc sema_with_label(diagnostic: Diagnostic, message: string, span: Span) -> Dia
     give diagnostic_with_label(diagnostic, secondary_label(message, ast_span_to_source_span(span)));
 }
 
+proc sema_previous_declaration_span(current: Span, previous_line: u64) -> SourceSpan {
+    if previous_line == 0 or current.file == "" {
+        give sema_span_empty();
+    }
+
+    give SourceSpan {
+        file: current.file,
+        start_line: previous_line,
+        start_column: 1,
+        end_line: previous_line,
+        end_column: 1,
+        length: 1,
+        valid: true
+    };
+}
+
 proc sema_add_unique_diag(diagnostics: [Diagnostic], diagnostic: Diagnostic) -> [Diagnostic] {
     give add_unique_diagnostic(diagnostics, diagnostic);
 }
@@ -411,8 +427,19 @@ proc sema_duplicate_symbol(name: string, span: Span) -> Diagnostic {
     let diag: Diagnostic = sema_typed_diagnostic(code, DiagnosticSeverity.Error, SemaPhase.SymbolCollection, SemaDiagnosticKind.DuplicateSymbol, "duplicate symbol `" + name + "`", [name], "rename one declaration or remove the duplicate", span);
 
     set diag = diagnostic_with_note(diag, sema_note(code, "symbols must be unique inside the same scope"));
+    set diag = diagnostic_with_label(diag, secondary_label("redefinition appears here for `" + name + "`", ast_span_to_source_span(span)));
 
     give diag;
+}
+
+proc sema_duplicate_symbol_redefinition(name: string, declared_line: u64, redefined_span: Span) -> Diagnostic {
+    let code: string = "SEMA_E_DUPLICATE_SYMBOL";
+    let previous: SourceSpan = sema_previous_declaration_span(redefined_span, declared_line);
+    let diag0: Diagnostic = sema_typed_diagnostic(code, DiagnosticSeverity.Error, SemaPhase.SymbolCollection, SemaDiagnosticKind.DuplicateSymbol, "symbol `" + name + "` is defined more than once in this scope", [name], "rename one declaration or remove the redefinition", redefined_span);
+    let diag1: Diagnostic = diagnostic_with_label(diag0, secondary_label("redefinition appears here", ast_span_to_source_span(redefined_span)));
+    let diag2: Diagnostic = if previous.valid { diagnostic_with_label(diag1, secondary_label("first declaration of `" + name + "` is here", previous)) } else { diag1 };
+    let diag3: Diagnostic = diagnostic_with_note(diag2, sema_note(code, "a single scope cannot contain two declarations with the same symbol name"));
+    give diagnostic_with_help(diag3, "keep the original declaration, or rename this redefinition to a distinct symbol");
 }
 
 proc sema_string_distance(left: string, right: string) -> u64 {
@@ -664,6 +691,7 @@ share sema_diagnostic
 share sema_typed_diagnostic
 share sema_with_note
 share sema_with_label
+share sema_previous_declaration_span
 
 share sema_add_unique_diag
 share sema_merge_diagnostics
@@ -682,6 +710,7 @@ share sema_warning
 share sema_internal_error
 
 share sema_duplicate_symbol
+share sema_duplicate_symbol_redefinition
 share sema_string_distance
 share sema_nearby_symbol
 share sema_keyword_candidates

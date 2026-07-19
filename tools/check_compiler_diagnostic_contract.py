@@ -14,6 +14,12 @@ CODES = ROOT / "schemas" / "diagnostics" / "codes.json"
 COMPILER_ROOT = ROOT / "src" / "vitte" / "compiler"
 CANONICAL_DIAGNOSTIC = COMPILER_ROOT / "diagnostics" / "diagnostic.vit"
 INFRA_DIAGNOSTIC = COMPILER_ROOT / "infrastructure" / "diagnostics" / "diagnostic.vit"
+SEMA_DIAGNOSTICS = COMPILER_ROOT / "analysis" / "sema" / "errors.vit"
+TYPECK_DIAGNOSTICS = COMPILER_ROOT / "analysis" / "typeck" / "errors.vit"
+BORROWCK_DIAGNOSTICS = COMPILER_ROOT / "analysis" / "borrowck" / "errors.vit"
+TYPE_UNIFY = COMPILER_ROOT / "analysis" / "typeck" / "unify.vit"
+DIAGNOSTIC_CATALOG = COMPILER_ROOT / "diagnostics" / "catalog.vit"
+MIDDLE_TYPECHECK_DIAGNOSTICS = COMPILER_ROOT / "middle" / "typecheck" / "diagnostics.vit"
 
 DIRECT_OUTPUT = re.compile(r"\b(?:print|printf|fprintf|eprintf|fputs|fwrite|fputc)\s*\(")
 VAGUE_DRIVER_MESSAGES = (
@@ -23,6 +29,13 @@ VAGUE_DRIVER_MESSAGES = (
     "semantic error",
     "type error",
     "unknown failure",
+)
+VAGUE_DIAGNOSTIC_PHRASES = (
+    "incompatible types",
+    "types incompatibles",
+    "types are incompatible",
+    "type compatibility rule was violated",
+    "type mismatch",
 )
 ALLOWED_OUTPUT_BOUNDARIES = {
     "src/vitte/compiler/driver/compiler.vit",
@@ -229,10 +242,51 @@ def check_diagnostic_object_contract() -> list[str]:
     return failures
 
 
+def check_relational_diagnostic_contract() -> list[str]:
+    failures: list[str] = []
+    checked_paths = (
+        CANONICAL_DIAGNOSTIC,
+        SEMA_DIAGNOSTICS,
+        TYPECK_DIAGNOSTICS,
+        BORROWCK_DIAGNOSTICS,
+        TYPE_UNIFY,
+        DIAGNOSTIC_CATALOG,
+        MIDDLE_TYPECHECK_DIAGNOSTICS,
+    )
+    for path in checked_paths:
+        text = path.read_text(encoding="utf-8").lower()
+        rel = path.relative_to(ROOT)
+        for phrase in VAGUE_DIAGNOSTIC_PHRASES:
+            if phrase in text:
+                failures.append(f"{rel}: vague diagnostic phrase is forbidden: {phrase!r}")
+
+    required_fragments = (
+        (SEMA_DIAGNOSTICS, "sema_duplicate_symbol_redefinition"),
+        (SEMA_DIAGNOSTICS, "first declaration of"),
+        (SEMA_DIAGNOSTICS, "redefinition appears here"),
+        (TYPECK_DIAGNOSTICS, "why expected type is imposed:"),
+        (TYPECK_DIAGNOSTICS, "origin of obtained type:"),
+        (TYPECK_DIAGNOSTICS, "expected `"),
+        (TYPECK_DIAGNOSTICS, "obtained `"),
+        (BORROWCK_DIAGNOSTICS, "value was moved here"),
+        (BORROWCK_DIAGNOSTICS, "borrow is still active at the conflict"),
+        (BORROWCK_DIAGNOSTICS, "conflict appears here"),
+        (BORROWCK_DIAGNOSTICS, "where the value was moved or borrow began"),
+        (CANONICAL_DIAGNOSTIC, "why expected type is imposed:"),
+        (CANONICAL_DIAGNOSTIC, "origin of obtained type:"),
+    )
+    for path, fragment in required_fragments:
+        text = path.read_text(encoding="utf-8")
+        if fragment not in text:
+            failures.append(f"{path.relative_to(ROOT)}: missing relational diagnostic fragment {fragment!r}")
+    return failures
+
+
 def main() -> int:
     failures = [
         *check_code_documentation(),
         *check_diagnostic_object_contract(),
+        *check_relational_diagnostic_contract(),
         *check_direct_output_boundaries(),
         *check_driver_vague_messages(),
     ]

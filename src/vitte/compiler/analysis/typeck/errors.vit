@@ -212,35 +212,39 @@ proc attach_assignment_mismatch_details(diagnostic: Diagnostic, binding_name: st
     let diag1: Diagnostic = diagnostic_with_explanation(diag0, "The left side of this assignment expects `" + expected + "`, but the right side produces `" + found + "`. Vitte does not perform implicit conversion here.");
     let diag2: Diagnostic = diagnostic_with_technical_note(diag1, "The type checker compares the inferred expression type against the declared or inferred target binding type during assignment validation.");
     let diag3: Diagnostic = diagnostic_with_documentation(diag2, "docs://language/type-system/assignment-compatibility");
-    let diag4: Diagnostic = diagnostic_with_root_cause(diag3, "assignment target type and expression type are incompatible");
+    let diag4: Diagnostic = diagnostic_with_root_cause(diag3, "binding `" + binding_name + "` requires `" + expected + "` while the assigned expression produces `" + found + "`");
     let diag5: Diagnostic = diagnostic_add_cause(diag4, "binding `" + binding_name + "` expects `" + expected + "`");
     let diag6: Diagnostic = diagnostic_add_cause(diag5, "assigned expression produced `" + found + "`");
     let diag7: Diagnostic = diagnostic_add_related_error(diag6, "TYPECK_E_BINARY_MISMATCH");
     let diag8: Diagnostic = diagnostic_with_probable_fix(diag7, "change the variable type to `" + found + "` or assign a value of type `" + expected + "`");
     let diag9: Diagnostic = diagnostic_with_subject_symbol(diag8, binding_name);
     let diag10: Diagnostic = diagnostic_with_subject_type(diag9, expected);
+    let diag11: Diagnostic = diagnostic_with_label(diag10, secondary_label("expected type `" + expected + "` is imposed by binding `" + binding_name + "`", diag10.span));
+    let diag12: Diagnostic = diagnostic_with_label(diag11, secondary_label("assigned expression produced `" + found + "` here", diag10.span));
     give diagnostic_with_help(
-        diag10,
+        diag12,
         "change the variable type to `" + found + "` or assign a `" + expected + "` value"
     );
 }
 
 proc attach_expected_found_details(diagnostic: Diagnostic, rule_name: string, expected: string, found: string, expected_origin: string, found_origin: string, probable_fix: string) -> Diagnostic {
     let diag0: Diagnostic = diagnostic_with_rule(diagnostic, rule_name);
-    let diag1: Diagnostic = diagnostic_with_explanation(diag0, "expected `" + expected + "` but got `" + found + "`");
-    let diag2: Diagnostic = diagnostic_with_root_cause(diag1, "type compatibility rule was violated");
-    let diag3: Diagnostic = diagnostic_add_cause(diag2, "expected type origin: " + expected_origin);
-    let diag4: Diagnostic = diagnostic_add_cause(diag3, "found type origin: " + found_origin);
+    let diag1: Diagnostic = diagnostic_with_explanation(diag0, "The expected type is `" + expected + "` because of " + expected_origin + "; the checked expression produced `" + found + "` from " + found_origin + ".");
+    let diag2: Diagnostic = diagnostic_with_root_cause(diag1, rule_name + " requires `" + expected + "` at this program point, but the observed value has type `" + found + "`");
+    let diag3: Diagnostic = diagnostic_add_cause(diag2, "why expected type is imposed: " + expected_origin);
+    let diag4: Diagnostic = diagnostic_add_cause(diag3, "origin of obtained type: " + found_origin);
     let diag5: Diagnostic = diagnostic_with_subject_type(diag4, expected);
+    let diag6: Diagnostic = diagnostic_with_label(diag5, secondary_label("expected `" + expected + "` from " + expected_origin, diagnostic.span));
+    let diag7: Diagnostic = diagnostic_with_label(diag6, secondary_label("obtained `" + found + "` from " + found_origin, diagnostic.span));
 
     if probable_fix != "" {
         give diagnostic_with_probable_fix(
-            diag5,
+            diag7,
             probable_fix
         );
     }
 
-    give diag5;
+    give diag7;
 }
 
 proc attach_typeck_labels_and_help(diagnostic: Diagnostic, labels: [string], suggestion: string, span: SourceSpan) -> Diagnostic {
@@ -401,17 +405,17 @@ proc typeck_invalid_deref(ty: string, span: Span) -> Diagnostic {
 }
 
 proc typeck_binary_mismatch(left: string, right: string, op: string, span: Span) -> Diagnostic {
-    let diag0: Diagnostic = typed_typeck_diag("TYPECK_E_BINARY_MISMATCH", "binary operator type mismatch", [left, right, op], "make both operands compatible or add an explicit conversion", span, DiagnosticSeverity.Error, DiagnosticPhase.Typeck, TypeckErrorKind.InvalidBinary);
+    let diag0: Diagnostic = typed_typeck_diag("TYPECK_E_BINARY_MISMATCH", "binary operator `" + op + "` cannot combine `" + left + "` with `" + right + "`", [left, right, op], "make both operands compatible or add an explicit conversion", span, DiagnosticSeverity.Error, DiagnosticPhase.Typeck, TypeckErrorKind.InvalidBinary);
     give attach_expected_found_details(diag0, "binary operator operand compatibility", left, right, "left operand of `" + op + "`", "right operand of `" + op + "`", "convert one operand or use an operator supported by both operand types");
 }
 
 proc typeck_assignment_mismatch(binding_name: string, expected: string, found: string, span: Span) -> Diagnostic {
-    let diag0: Diagnostic = typed_typeck_diag("TYPECK_E_ASSIGN_MISMATCH", "assignment type mismatch", [binding_name, expected, found], "change the assigned value or add an explicit conversion", span, DiagnosticSeverity.Error, DiagnosticPhase.Typeck, TypeckErrorKind.InvalidAssignment);
+    let diag0: Diagnostic = typed_typeck_diag("TYPECK_E_ASSIGN_MISMATCH", "assignment to `" + binding_name + "` expects `" + expected + "` but receives `" + found + "`", [binding_name, expected, found], "change the assigned value or add an explicit conversion", span, DiagnosticSeverity.Error, DiagnosticPhase.Typeck, TypeckErrorKind.InvalidAssignment);
     give attach_assignment_mismatch_details(diag0, binding_name, expected, found);
 }
 
 proc typeck_return_mismatch(proc_name: string, expected: string, found: string, span: Span) -> Diagnostic {
-    let diag0: Diagnostic = typed_typeck_diag("TYPECK_E_RETURN_MISMATCH", "return type mismatch", [proc_name, expected, found], "return a `" + expected + "` value or change the procedure signature", span, DiagnosticSeverity.Error, DiagnosticPhase.Typeck, TypeckErrorKind.TypeMismatch);
+    let diag0: Diagnostic = typed_typeck_diag("TYPECK_E_RETURN_MISMATCH", "`" + proc_name + "` promises `" + expected + "` but returns `" + found + "`", [proc_name, expected, found], "return a `" + expected + "` value or change the procedure signature", span, DiagnosticSeverity.Error, DiagnosticPhase.Typeck, TypeckErrorKind.TypeMismatch);
     let diag1: Diagnostic = diagnostic_with_rule(diag0, "procedure return compatibility");
     let diag2: Diagnostic = diagnostic_with_explanation(diag1, "`" + proc_name + "` promises `" + expected + "` but this return path produces `" + found + "`");
     let diag3: Diagnostic = diagnostic_add_cause(diag2, "expected type comes from the procedure return annotation");
@@ -446,12 +450,12 @@ proc typeck_invalid_index_target(container_ty: string, span: Span) -> Diagnostic
 }
 
 proc typeck_if_branch_mismatch(then_ty: string, else_ty: string, span: Span) -> Diagnostic {
-    let diag0: Diagnostic = typed_typeck_diag("TYPECK_E_IF_BRANCH_MISMATCH", "if branches produce incompatible types", [then_ty, else_ty], "make both branches evaluate to the same type", span, DiagnosticSeverity.Error, DiagnosticPhase.Typeck, TypeckErrorKind.TypeMismatch);
+    let diag0: Diagnostic = typed_typeck_diag("TYPECK_E_IF_BRANCH_MISMATCH", "if branches produce different result types", [then_ty, else_ty], "make both branches evaluate to the same type", span, DiagnosticSeverity.Error, DiagnosticPhase.Typeck, TypeckErrorKind.TypeMismatch);
     give attach_expected_found_details(diag0, "if expression branch unification", then_ty, else_ty, "then branch result type", "else branch result type", "normalize both branches to a single result type or cast explicitly");
 }
 
 proc typeck_compare_mismatch(left_ty: string, right_ty: string, span: Span) -> Diagnostic {
-    let diag0: Diagnostic = typed_typeck_diag("TYPECK_E_COMPARE_MISMATCH", "comparison operands are not compatible", [left_ty, right_ty], "compare values of compatible types", span, DiagnosticSeverity.Error, DiagnosticPhase.Typeck, TypeckErrorKind.InvalidBinary);
+    let diag0: Diagnostic = typed_typeck_diag("TYPECK_E_COMPARE_MISMATCH", "comparison cannot compare `" + left_ty + "` with `" + right_ty + "`", [left_ty, right_ty], "compare values of compatible types", span, DiagnosticSeverity.Error, DiagnosticPhase.Typeck, TypeckErrorKind.InvalidBinary);
     give attach_expected_found_details(diag0, "comparison operand compatibility", left_ty, right_ty, "left comparison operand", "right comparison operand", "convert one side or compare values that share a common comparable type");
 }
 
@@ -479,7 +483,7 @@ proc typeck_invalid_call(callee: string, span: Span) -> Diagnostic {
 
 proc typeck_argument_mismatch(callee: string, position: u64, expected: string, found: string, span: Span) -> Diagnostic {
     let position_text: string = position as string;
-    let diag0: Diagnostic = typed_typeck_diag("TYPECK_E_ARGUMENT_MISMATCH", "call argument type mismatch", [callee, expected, found], "pass a `" + expected + "` value or change the callee signature", span, DiagnosticSeverity.Error, DiagnosticPhase.Typeck, TypeckErrorKind.InvalidCall);
+    let diag0: Diagnostic = typed_typeck_diag("TYPECK_E_ARGUMENT_MISMATCH", "argument " + position_text + " of `" + callee + "` expects `" + expected + "` but receives `" + found + "`", [callee, expected, found], "pass a `" + expected + "` value or change the callee signature", span, DiagnosticSeverity.Error, DiagnosticPhase.Typeck, TypeckErrorKind.InvalidCall);
     let diag1: Diagnostic = diagnostic_with_rule(diag0, "function argument compatibility");
     let diag2: Diagnostic = diagnostic_with_explanation(diag1, "argument " + position_text + " of `" + callee + "` expects `" + expected + "`, but this call passes `" + found + "`");
     let diag3: Diagnostic = diagnostic_add_cause(diag2, "expected type comes from parameter " + position_text + " of `" + callee + "`");
@@ -598,7 +602,12 @@ proc typeck_use_before_init(name: string, span: Span) -> Diagnostic {
 }
 
 proc typeck_use_after_move(name: string, span: Span) -> Diagnostic {
-    give typed_typeck_diag("TYPECK_E_USE_AFTER_MOVE", "binding was moved before this use", [name], "borrow the value or clone it before moving", span, DiagnosticSeverity.Error, DiagnosticPhase.Typeck, TypeckErrorKind.UseAfterMove);
+    let diag0: Diagnostic = typed_typeck_diag("TYPECK_E_USE_AFTER_MOVE", "binding `" + name + "` is used after ownership was moved", [name], "borrow the value or clone it before moving", span, DiagnosticSeverity.Error, DiagnosticPhase.Typeck, TypeckErrorKind.UseAfterMove);
+    let diag1: Diagnostic = diagnostic_with_rule(diag0, "moved binding cannot be read until reinitialized");
+    let diag2: Diagnostic = diagnostic_with_explanation(diag1, "`" + name + "` no longer owns a usable value at this use. The move site must appear earlier in this control-flow path; borrow checking can attach that earlier move when it is known.");
+    let diag3: Diagnostic = diagnostic_add_cause(diag2, "conflict appears at this use of `" + name + "`");
+    let diag4: Diagnostic = diagnostic_add_cause(diag3, "move origin is required from the ownership tracker when available");
+    give diagnostic_with_label(diag4, secondary_label("conflict appears here: `" + name + "` is read after a move", ast_span_to_source_span(span)));
 }
 
 proc diagnostic_summary(diagnostic: Diagnostic) -> string {
