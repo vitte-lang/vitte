@@ -149,6 +149,24 @@ proc test_parser_reports_missing_brace() -> bool {
     and frontend_has_message(fe, "before end of file");
 }
 
+proc test_parser_reports_missing_semicolon() -> bool {
+  let source_text: string = "proc main() { let x = 1 give x; }\n";
+  let fe: FrontendOutput = frontend_run("missing_semicolon.vit", source_text);
+  give not fe.valid
+    and fe.recovery_used
+    and frontend_has_message(fe, "missing semicolon `;`")
+    and frontend_has_message(fe, "before `give`");
+}
+
+proc test_parser_reports_missing_comma() -> bool {
+  let source_text: string = "proc add(left: int right: int) -> int { give left; }\n";
+  let fe: FrontendOutput = frontend_run("missing_comma.vit", source_text);
+  give not fe.valid
+    and fe.recovery_used
+    and frontend_has_message(fe, "missing comma `,`")
+    and frontend_has_message(fe, "before `right`");
+}
+
 proc test_frontend_accepts_docstring_attr_prefix() -> bool {
   let source_text: string = "r\"main entry\"\nproc main() -> int { give 0; }\n";
   let fe: FrontendOutput = frontend_run("docstring_attr.vit", source_text);
@@ -201,6 +219,12 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if not test_parser_reports_missing_brace() {
+    set failures = failures + 1;
+  }
+  if not test_parser_reports_missing_semicolon() {
+    set failures = failures + 1;
+  }
+  if not test_parser_reports_missing_comma() {
     set failures = failures + 1;
   }
   if not test_frontend_accepts_docstring_attr_prefix() {

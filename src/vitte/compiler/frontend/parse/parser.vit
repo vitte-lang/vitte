@@ -387,6 +387,12 @@ proc expected_text_message(state: ParserState, text: string) -> string {
     let name: string = delimiter_name(text);
     give "missing closing " + name + " `" + text + "` for `" + open_text + "` before " + token_display(current_token(state));
   }
+  if text == ";" {
+    give "missing semicolon `;` before " + token_display(current_token(state));
+  }
+  if text == "," {
+    give "missing comma `,` before " + token_display(current_token(state));
+  }
   give "expected `" + text + "`";
 }
 
@@ -482,6 +488,11 @@ proc parse_generic_params(state: ParserState) -> ParserState {
     if at_text(current, assign_op_eq()) {
       set current = advance(current);
       set current = parse_type_expr(current);
+    }
+    if at_text(current, ",") {
+      set current = advance(current);
+    } elif not at_text(current, "]") and not is_eof(current) {
+      set current = with_diag(current, "PLIST_COMMA", expected_text_message(current, ","));
     }
   }
   give expect_text(current, "]", "PGEN003");
@@ -596,6 +607,8 @@ proc parse_param_list(state: ParserState, closing: string) -> ParserState {
     }
     if at_text(current, ",") {
       set current = advance(current);
+    } elif not at_text(current, closing) and not is_eof(current) {
+      set current = with_diag(current, "PLIST_COMMA", expected_text_message(current, ","));
     } else {
       break;
     }
@@ -884,6 +897,9 @@ proc parse_arg_list(state: ParserState, closing: string) -> ParserState {
       set current = advance(current);
     } else {
       set current = parse_expr(current);
+      if not at_text(current, ",") and not at_text(current, closing) and not is_eof(current) {
+        set current = with_diag(current, "PLIST_COMMA", expected_text_message(current, ","));
+      }
     }
   }
   give current;
