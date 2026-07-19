@@ -477,6 +477,33 @@ proc sema_nearby_symbol(name: string, candidates: [string]) -> string {
     give "";
 }
 
+proc sema_keyword_candidates() -> [string] {
+    give [
+        "space", "use", "export", "const", "static", "global",
+        "region", "type", "opaque", "extern", "form", "class", "union",
+        "bits", "pick", "flags", "trait", "impl", "proc",
+        "intrinsic", "compiler", "query", "pass", "backend",
+        "diagnostic", "macro", "comptime", "static_assert", "test", "bench", "entry",
+        "pub", "priv", "unsafe", "async", "inline", "noinline",
+        "where", "effects", "requires", "operator", "as", "for", "at",
+        "let", "set", "give", "try", "defer", "asm", "emit", "assert", "panic",
+        "if", "elif", "else", "while", "loop", "in", "break", "continue",
+        "select", "when", "match", "case", "with", "critical", "mut", "owned",
+        "borrow", "move", "await", "not", "and", "or", "is", "self", "ref",
+        "dyn", "true", "false", "null", "sizeof", "alignof", "offsetof",
+        "typeof", "nameof", "map", "resource", "volatile", "atomic", "noexcept"
+    ];
+}
+
+proc sema_add_nearby_note_and_fix(diagnostic: Diagnostic, name: string, category: string, nearby: string, span: Span) -> Diagnostic {
+    if nearby == "" {
+        give diagnostic;
+    }
+
+    let diag: Diagnostic = diagnostic_with_note(diagnostic, "nearest " + category + ": `" + nearby + "`");
+    give diagnostic_with_replace(diag, "replace `" + name + "` with " + category + " `" + nearby + "`", nearby, ast_span_to_source_span(span));
+}
+
 proc sema_unknown_symbol(name: string, span: Span) -> Diagnostic {
     let code: string = "SEMA_E_UNKNOWN_SYMBOL";
 
@@ -489,15 +516,24 @@ proc sema_unknown_symbol(name: string, span: Span) -> Diagnostic {
 }
 
 proc sema_unknown_symbol_with_candidates(name: string, candidates: [string], span: Span) -> Diagnostic {
+    give sema_unknown_symbol_with_candidate_groups(name, candidates, [], [], [], [], span);
+}
+
+proc sema_unknown_symbol_with_candidate_groups(name: string, functions: [string], variables: [string], types: [string], fields: [string], modules: [string], span: Span) -> Diagnostic {
     let diag: Diagnostic = sema_unknown_symbol(name, span);
-    let nearby: string = sema_nearby_symbol(name, candidates);
+    let keyword: string = sema_nearby_symbol(name, sema_keyword_candidates());
+    let function0: string = sema_nearby_symbol(name, functions);
+    let variable0: string = sema_nearby_symbol(name, variables);
+    let type0: string = sema_nearby_symbol(name, types);
+    let field0: string = sema_nearby_symbol(name, fields);
+    let module0: string = sema_nearby_symbol(name, modules);
 
-    if nearby == "" {
-        give diag;
-    }
-
-    set diag = diagnostic_with_note(diag, "a visible symbol with a similar spelling was found: `" + nearby + "`");
-    set diag = diagnostic_with_replace(diag, "replace `" + name + "` with `" + nearby + "`", nearby, ast_span_to_source_span(span));
+    set diag = sema_add_nearby_note_and_fix(diag, name, "keyword", keyword, span);
+    set diag = sema_add_nearby_note_and_fix(diag, name, "function", function0, span);
+    set diag = sema_add_nearby_note_and_fix(diag, name, "variable", variable0, span);
+    set diag = sema_add_nearby_note_and_fix(diag, name, "type", type0, span);
+    set diag = sema_add_nearby_note_and_fix(diag, name, "field", field0, span);
+    set diag = sema_add_nearby_note_and_fix(diag, name, "module", module0, span);
 
     give diag;
 }
@@ -648,8 +684,10 @@ share sema_internal_error
 share sema_duplicate_symbol
 share sema_string_distance
 share sema_nearby_symbol
+share sema_keyword_candidates
 share sema_unknown_symbol
 share sema_unknown_symbol_with_candidates
+share sema_unknown_symbol_with_candidate_groups
 share sema_invalid_import
 share sema_invalid_export
 share sema_invalid_attribute

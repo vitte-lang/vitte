@@ -12,7 +12,7 @@ use vitte/compiler/analysis/typeck/errors.{ TypeckResult }
 use vitte/compiler/diagnostics/diagnostic.{ Diagnostic, DiagnosticPhase, DiagnosticReport, DiagnosticRenderConfig, DiagnosticStyle, SourceSpan, default_render_config, diagnostic_from_surface, diagnostic_report, diagnostic_report_empty, phase_name, render_report, span_range }
 use vitte/compiler/diagnostics/json.{ json_report, json_report_envelope, json_report_envelope_with_canonical_context }
 use vitte/compiler/infrastructure/incremental.{ IncrementalGraph, build_analysis_graph }
-use vitte/compiler/middle/hir.{ HirItemKind, HirUnit, hir_module_empty }
+use vitte/compiler/middle/hir.{ HirExpr, HirItem, HirItemKind, HirStmt, HirUnit, hir_module_empty }
 use vitte/compiler/middle/hir/lower_ast.{ lower_ast_to_hir }
 use vitte/compiler/middle/pipeline.{ MiddleOutput, middle_run_frontend_for_target }
 use vitte/compiler/middle/lower/hir_to_mir.{ lower_hir_to_mir }
@@ -1023,6 +1023,99 @@ proc closest_module_path(module_path: string, summaries: [SemaModuleSummary]) ->
     give sema_nearby_symbol(module_path, module_summary_paths(summaries));
 }
 
+proc imported_symbol_id_in_module(symbols: [SemaSymbol], resolved_id: u64, module_path: string) -> bool {
+    let i: u64 = 0;
+    while i < len(symbols) {
+        if symbols[i].id == resolved_id and symbols[i].module_path == module_path {
+            give true;
+        }
+        set i = i + 1;
+    }
+    give false;
+}
+
+proc expr_uses_import_module(expr: HirExpr, imported: [SemaSymbol], module_path: string) -> bool {
+    if expr.resolved_id > 0 and imported_symbol_id_in_module(imported, expr.resolved_id, module_path) {
+        give true;
+    }
+
+    let i: u64 = 0;
+    while i < len(expr.children) {
+        if expr_uses_import_module(expr.children[i], imported, module_path) {
+            give true;
+        }
+        set i = i + 1;
+    }
+
+    give false;
+}
+
+proc stmt_uses_import_module(stmt: HirStmt, imported: [SemaSymbol], module_path: string) -> bool {
+    if expr_uses_import_module(stmt.expr, imported, module_path) {
+        give true;
+    }
+
+    let i: u64 = 0;
+    while i < len(stmt.then_stmts) {
+        if stmt_uses_import_module(stmt.then_stmts[i], imported, module_path) {
+            give true;
+        }
+        set i = i + 1;
+    }
+
+    i = 0;
+    while i < len(stmt.else_stmts) {
+        if stmt_uses_import_module(stmt.else_stmts[i], imported, module_path) {
+            give true;
+        }
+        set i = i + 1;
+    }
+
+    give false;
+}
+
+proc item_uses_import_module(item: HirItem, imported: [SemaSymbol], module_path: string) -> bool {
+    if expr_uses_import_module(item.expr, imported, module_path) {
+        give true;
+    }
+
+    let i: u64 = 0;
+    while i < len(item.stmts) {
+        if stmt_uses_import_module(item.stmts[i], imported, module_path) {
+            give true;
+        }
+        set i = i + 1;
+    }
+
+    i = 0;
+    while i < len(item.members) {
+        if expr_uses_import_module(item.members[i].expr, imported, module_path) {
+            give true;
+        }
+        let j: u64 = 0;
+        while j < len(item.members[i].body_stmts) {
+            if stmt_uses_import_module(item.members[i].body_stmts[j], imported, module_path) {
+                give true;
+            }
+            set j = j + 1;
+        }
+        set i = i + 1;
+    }
+
+    give false;
+}
+
+proc hir_uses_import_module(hir: HirUnit, imported: [SemaSymbol], module_path: string) -> bool {
+    let i: u64 = 0;
+    while i < len(hir.module.items) {
+        if item_uses_import_module(hir.module.items[i], imported, module_path) {
+            give true;
+        }
+        set i = i + 1;
+    }
+    give false;
+}
+
 proc missing_module_diagnostics(frontend: FrontendOutput, hir: HirUnit, summary: SemaModuleSummary, summaries: [SemaModuleSummary]) -> [AnalysisDiagnostic] {
     let diagnostics: [AnalysisDiagnostic] = [];
     let manager = cache_source(source_manager_empty(), frontend.source_path, frontend.source_text, true);
@@ -1067,6 +1160,42 @@ proc missing_module_diagnostics(frontend: FrontendOutput, hir: HirUnit, summary:
     give diagnostics;
 }
 
+proc unused_import_diagnostics(frontend: FrontendOutput, hir: HirUnit, resolved_hir: HirUnit, summary: SemaModuleSummary, summaries: [SemaModuleSummary], imported: [SemaSymbol]) -> [AnalysisDiagnostic] {
+    let diagnostics: [AnalysisDiagnostic] = [];
+    let manager = cache_source(source_manager_empty(), frontend.source_path, frontend.source_text, true);
+    let file_id: u64 = source_manager_file_id(manager, frontend.source_path);
+    let i: u64 = 0;
+
+    while i < len(summary.imports) {
+        let import0: SemaModuleImport = summary.imports[i];
+        if module_summary_index(summaries, import0.module_path) >= 0 and not hir_uses_import_module(resolved_hir, imported, import0.module_path) {
+            let span: Span = module_import_span(hir, import0.module_path);
+            let length: u64 = ast_span_length(span.start_column, span.end_column);
+            let span_start: u64 = offset_lookup(manager, file_id, span.start_line, span.start_column);
+            let diagnostic: AnalysisDiagnostic = analysis_diagnostic_with_span(
+                "module_resolution",
+                "SEMA_W_UNUSED_IMPORT",
+                "warning",
+                "unused import `" + import0.module_path + "`",
+                ["imported module is never referenced: `" + import0.module_path + "`"],
+                "remove the import or use one of its exported symbols",
+                span.start_line,
+                span.start_column,
+                length,
+                false,
+                frontend.source_path,
+                file_id,
+                span_start,
+                span_start + length
+            );
+            set diagnostics = diagnostics + [diagnostic];
+        }
+        set i = i + 1;
+    }
+
+    give diagnostics;
+}
+
 proc analyze_source_set(inputs: [DriverModuleInput]) -> DriverModuleSetArtifacts {
     let frontends: [FrontendOutput] = [];
     let hirs: [HirUnit] = [];
@@ -1097,6 +1226,10 @@ proc analyze_source_set(inputs: [DriverModuleInput]) -> DriverModuleSetArtifacts
         let mir1: MirUnit = validate_mir(mir0);
         let analysis: AnalysisOutput = analysis_run_prechecked(frontends[i], sema_result, typeck_result, mir1);
         let module_diagnostics: [AnalysisDiagnostic] = missing_module_diagnostics(frontends[i], hirs[i], summary, summaries);
+        let unused_diagnostics: [AnalysisDiagnostic] = unused_import_diagnostics(frontends[i], hirs[i], sema_result.hir, summary, summaries, imported);
+        if len(unused_diagnostics) > 0 {
+            set analysis.diagnostics = analysis.diagnostics + unused_diagnostics;
+        }
         if len(module_diagnostics) > 0 {
             set analysis.diagnostics = analysis.diagnostics + module_diagnostics;
             set analysis.sema_ok = false;

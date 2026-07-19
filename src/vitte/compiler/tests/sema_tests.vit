@@ -1,13 +1,13 @@
 space vitte/compiler/tests/sema_tests
 
 use vitte/compiler/analysis/sema.{ SemaResult, run_sema_hir }
-use vitte/compiler/analysis/sema/errors.{ SemaDiagnosticKind, SemaPhase, sema_context_error, sema_context_result, sema_context_with_phase, sema_invalid_import, sema_kind_name, sema_nearby_symbol, sema_phase_name, sema_result_summary, sema_string_distance, sema_summary, sema_unknown_symbol_with_candidates }
+use vitte/compiler/analysis/sema/errors.{ SemaDiagnosticKind, SemaPhase, sema_context_error, sema_context_result, sema_context_with_phase, sema_invalid_import, sema_kind_name, sema_nearby_symbol, sema_phase_name, sema_result_summary, sema_string_distance, sema_summary, sema_unknown_symbol_with_candidate_groups, sema_unknown_symbol_with_candidates }
 use vitte/compiler/analysis/sema/modules.{ imported_symbols_from_summary, module_import_from_use, summarize_module_hir }
 use vitte/compiler/analysis/sema/names.{ PlaceRootKind, place_root_is_builtin, place_root_is_self, place_root_kind_name, place_root_name, sema_builtin_name, sema_is_ident_char }
 use vitte/compiler/analysis/sema/scopes.{ SemaSymbolKind, SemaSymbolTable, SemaVisibility, symbol_kind_name, symbol_table_add_builtin, symbol_table_count_kind, symbol_table_enter_scope, symbol_table_import, symbol_table_insert, symbol_table_leave_scope, symbol_table_resolve }
 use vitte/compiler/analysis/sema/visibility.{ normalize_visibility, visibility_exported, visibility_externally_visible, visibility_info, visibility_is_internal_only, visibility_less_permissive, visibility_merge, visibility_more_permissive, visibility_valid }
 use vitte/compiler/driver/compile.{ DriverModuleSetArtifacts, analyze_source_set, driver_module_input }
-use vitte/compiler/diagnostics/diagnostic.{ DiagnosticPhase }
+use vitte/compiler/diagnostics/diagnostic.{ Diagnostic, DiagnosticPhase }
 use vitte/compiler/frontend/ast.node.{ ast_span_empty }
 use vitte/compiler/frontend/pipeline.{ FrontendOutput, frontend_run }
 use vitte/compiler/middle/hir/lower_ast.{ lower_ast_to_hir }
@@ -19,6 +19,17 @@ proc has_code(result: SemaResult, code: string) -> bool {
   let i: u64 = 0;
   while i < len(result.diagnostics) {
     if result.diagnostics[i].code == code {
+      give true;
+    }
+    set i = i + 1;
+  }
+  give false;
+}
+
+proc diagnostic_has_note_text(diagnostic: Diagnostic, text: string) -> bool {
+  let i: u64 = 0;
+  while i < len(diagnostic.notes) {
+    if find(diagnostic.notes[i].message, text) >= 0 {
       give true;
     }
     set i = i + 1;
@@ -158,6 +169,28 @@ proc test_missing_module_suggests_nearby_module() -> bool {
       give not artifacts.valid
         and find(diagnostic.labels[2], "closest module: `demo/math`") >= 0
         and find(diagnostic.help, "did you mean module `demo/math`?") >= 0;
+    }
+    set i = i + 1;
+  }
+  give false;
+}
+
+proc test_unused_import_reports_warning() -> bool {
+  let dep: string = "space demo/math;\nexport *;\nproc sum() -> int { give 0; }\n";
+  let root: string = "space demo/app;\nuse demo/math { * };\nproc main() -> int { give 0; }\n";
+  let artifacts: DriverModuleSetArtifacts = analyze_source_set([
+    driver_module_input("demo_math_unused.vit", dep),
+    driver_module_input("demo_app_unused_import.vit", root)
+  ]);
+  let diagnostics = artifacts.modules[1].analysis.diagnostics;
+  let i: u64 = 0;
+  while i < len(diagnostics) {
+    let diagnostic = diagnostics[i];
+    if diagnostic.code == "SEMA_W_UNUSED_IMPORT" {
+      give artifacts.valid
+        and diagnostic.severity == "warning"
+        and find(diagnostic.message, "demo/math") >= 0
+        and not diagnostic.fatal;
     }
     set i = i + 1;
   }
@@ -312,6 +345,25 @@ proc test_unknown_symbol_suggests_nearby_visible_symbol() -> bool {
     and diag.suggestions[1].replacement == "count";
 }
 
+proc test_unknown_symbol_suggests_by_category() -> bool {
+  let diag = sema_unknown_symbol_with_candidate_groups(
+    "pritn",
+    ["print"],
+    ["price"],
+    ["Point"],
+    ["priority"],
+    ["parser"],
+    ast_span_empty()
+  );
+  give diag.code == "SEMA_E_UNKNOWN_SYMBOL"
+    and len(diag.suggestions) >= 5
+    and diagnostic_has_note_text(diag, "nearest keyword: `priv`")
+    and diagnostic_has_note_text(diag, "nearest function: `print`")
+    and diagnostic_has_note_text(diag, "nearest variable: `price`")
+    and diagnostic_has_note_text(diag, "nearest type: `Point`")
+    and diagnostic_has_note_text(diag, "nearest field: `priority`");
+}
+
 proc test_resolves_type_level_surface_item_kinds() -> bool {
   let source: string =
     "form Point { x: int, y: int }\n" +
@@ -402,6 +454,9 @@ proc run_all_tests() -> int {
   if not test_missing_module_suggests_nearby_module() {
     set failures = failures + 1;
   }
+  if not test_unused_import_reports_warning() {
+    set failures = failures + 1;
+  }
   if not test_invalid_visibility_is_rejected() {
     set failures = failures + 1;
   }
@@ -421,6 +476,9 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if not test_unknown_symbol_suggests_nearby_visible_symbol() {
+    set failures = failures + 1;
+  }
+  if not test_unknown_symbol_suggests_by_category() {
     set failures = failures + 1;
   }
   if not test_resolves_type_level_surface_item_kinds() {

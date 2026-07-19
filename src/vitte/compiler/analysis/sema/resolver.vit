@@ -4,7 +4,7 @@ use vitte/compiler/analysis/sema/errors.{
   SemaDiagnostic,
   SemaSeverity,
   sema_diagnostic,
-  sema_unknown_symbol_with_candidates,
+  sema_unknown_symbol_with_candidate_groups,
   sema_span_empty
 }
 use vitte/compiler/analysis/sema/names.{ place_root_name, sema_builtin_name }
@@ -168,6 +168,44 @@ proc symbol_candidate_names(symbols: [SemaSymbol], scope_depth: u64) -> [string]
   give names;
 }
 
+proc symbol_kind_candidate_names(symbols: [SemaSymbol], scope_depth: u64, kind_a: SemaSymbolKind, kind_b: SemaSymbolKind, kind_c: SemaSymbolKind) -> [string] {
+  let names: [string] = [];
+  let i: u64 = 0;
+  while i < len(symbols) {
+    let symbol: SemaSymbol = symbols[i];
+    let local_visible: bool = symbol.kind != SemaSymbolKind.Local and symbol.kind != SemaSymbolKind.Parameter;
+    if symbol.kind == SemaSymbolKind.Local or symbol.kind == SemaSymbolKind.Parameter {
+      set local_visible = symbol.scope_depth <= scope_depth;
+    }
+    let kind_matches: bool = symbol.kind == kind_a or symbol.kind == kind_b or symbol.kind == kind_c;
+    if symbol.valid and local_visible and kind_matches and symbol.name != "" {
+      set names = names + [symbol.name];
+    }
+    set i = i + 1;
+  }
+  give names;
+}
+
+proc function_candidate_names(symbols: [SemaSymbol], scope_depth: u64) -> [string] {
+  give symbol_kind_candidate_names(symbols, scope_depth, SemaSymbolKind.Function, SemaSymbolKind.Imported, SemaSymbolKind.Builtin);
+}
+
+proc variable_candidate_names(symbols: [SemaSymbol], scope_depth: u64) -> [string] {
+  give symbol_kind_candidate_names(symbols, scope_depth, SemaSymbolKind.Local, SemaSymbolKind.Parameter, SemaSymbolKind.Const);
+}
+
+proc type_candidate_names(symbols: [SemaSymbol], scope_depth: u64) -> [string] {
+  give symbol_kind_candidate_names(symbols, scope_depth, SemaSymbolKind.Type, SemaSymbolKind.Form, SemaSymbolKind.Pick);
+}
+
+proc field_candidate_names(symbols: [SemaSymbol], scope_depth: u64) -> [string] {
+  give symbol_kind_candidate_names(symbols, scope_depth, SemaSymbolKind.Field, SemaSymbolKind.Variant, SemaSymbolKind.Unknown);
+}
+
+proc module_candidate_names(symbols: [SemaSymbol], scope_depth: u64) -> [string] {
+  give symbol_kind_candidate_names(symbols, scope_depth, SemaSymbolKind.Module, SemaSymbolKind.Unknown, SemaSymbolKind.Unknown);
+}
+
 proc symbol_or_external(symbols: [SemaSymbol], name: string, scope_depth: u64, next_symbol_id: u64) -> SemaWalk {
   let resolved: SemaSymbol = resolve_symbol(symbols, name, scope_depth);
   if resolved.valid {
@@ -264,7 +302,15 @@ proc annotate_expr(expr: HirExpr, symbols: [SemaSymbol], scope_depth: u64, next_
     if external {
       set diagnostics = sema_add_diag(
         diagnostics,
-        sema_unknown_symbol_with_candidates(expr.name, symbol_candidate_names(current_symbols, scope_depth), expr.span)
+        sema_unknown_symbol_with_candidate_groups(
+          expr.name,
+          function_candidate_names(current_symbols, scope_depth),
+          variable_candidate_names(current_symbols, scope_depth),
+          type_candidate_names(current_symbols, scope_depth),
+          field_candidate_names(current_symbols, scope_depth),
+          module_candidate_names(current_symbols, scope_depth),
+          expr.span
+        )
       );
     }
   } elif expr.kind == HirExprKind.Member and len(children) > 0 {
