@@ -5,6 +5,7 @@ use vitte/compiler/frontend/lexer/token.{
   TokenKind,
   token,
   token_kind_is_literal,
+  token_with_file,
   token_with_offset
 }
 
@@ -571,6 +572,27 @@ proc scan_tokens(text: string) -> ScanResult {
   set tokens = tokens + [token_with_offset(TokenKind.Eof, "", walk.line, walk.column, walk.index)];
   let metrics: ScanMetrics = scan_metrics(len(tokens), keyword_count, identifier_count, literal_count, comment_count, invalid_count, walk.line, len(diagnostics) == 0 and invalid_count == 0);
   give scan_result(tokens, diagnostics, metrics);
+}
+
+proc tokens_with_source_file(tokens: [Token], source_path: string) -> [Token] {
+  let out: [Token] = [];
+  let i: u64 = 0;
+
+  while i < len(tokens) {
+    set out = out + [token_with_file(tokens[i], source_path)];
+    set i = i + 1;
+  }
+
+  give out;
+}
+
+proc scan_tokens_from_file(source_path: string, text: string) -> ScanResult {
+  let result: ScanResult = scan_tokens(text);
+  give scan_result(
+    tokens_with_source_file(result.tokens, source_path),
+    result.diagnostics,
+    result.metrics
+  );
 }
 
 proc scanner_summary(result: ScanResult) -> string {

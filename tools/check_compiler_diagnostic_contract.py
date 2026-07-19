@@ -50,12 +50,12 @@ REQUIRED_DIAGNOSTIC_FIELDS = (
     "internal_cause",
 )
 REQUIRED_CANONICAL_INITIALIZERS = (
-    "title: message",
+    "title: effective_message",
     "secondary_spans: []",
     "primary_span: span",
     "span: span",
     "file_id: 0",
-    "internal_cause: diagnostic_default_root_cause(phase, code)",
+    "internal_cause: cause",
 )
 REQUIRED_INFRA_INITIALIZERS = (
     "title: message",

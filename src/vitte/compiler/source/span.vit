@@ -2,6 +2,12 @@ space vitte/compiler/source/span
 
 export *
 
+pick SpanOriginKind {
+  Source,
+  Synthetic,
+  Missing,
+}
+
 form Span {
   file: string
 
@@ -15,12 +21,19 @@ form Span {
   end_column: u64
 
   width: u64
+  origin: SpanOriginKind
+  synthetic_reason: string
   valid: bool
 }
 
-proc span_offsets(file: string, start_offset: u64, end_offset: u64, start_line: u64, start_column: u64, end_line: u64, end_column: u64) -> Span {
+proc span_offsets_with_origin(file: string, start_offset: u64, end_offset: u64, start_line: u64, start_column: u64, end_line: u64, end_column: u64, origin: SpanOriginKind, synthetic_reason: string) -> Span {
   let safe_end_offset: u64 = if end_offset < start_offset { start_offset } else { end_offset };
   let width: u64 = if safe_end_offset > start_offset { safe_end_offset - start_offset } else { 1 };
+  let source_valid: bool = file != ""
+    and start_line > 0
+    and start_column > 0
+    and end_line >= start_line
+    and end_column > 0;
 
   give Span {
     file: file,
@@ -31,11 +44,14 @@ proc span_offsets(file: string, start_offset: u64, end_offset: u64, start_line: 
     end_line: end_line,
     end_column: end_column,
     width: width,
-    valid: start_line > 0
-      and start_column > 0
-      and end_line >= start_line
-      and end_column > 0
+    origin: origin,
+    synthetic_reason: synthetic_reason,
+    valid: source_valid and origin != SpanOriginKind.Missing
   };
+}
+
+proc span_offsets(file: string, start_offset: u64, end_offset: u64, start_line: u64, start_column: u64, end_line: u64, end_column: u64) -> Span {
+  give span_offsets_with_origin(file, start_offset, end_offset, start_line, start_column, end_line, end_column, SpanOriginKind.Source, "");
 }
 
 proc span(file: string, start_line: u64, start_column: u64, end_line: u64, end_column: u64) -> Span {
@@ -43,22 +59,47 @@ proc span(file: string, start_line: u64, start_column: u64, end_line: u64, end_c
   give span_offsets(file, 0, 0, start_line, start_column, end_line, safe_end_column);
 }
 
-proc span_empty() -> Span {
+proc synthetic_span(origin: Span, reason: string) -> Span {
+  if not origin.valid {
+    give span_missing(reason);
+  }
+
+  give span_offsets_with_origin(origin.file, origin.start_offset, origin.end_offset, origin.start_line, origin.start_column, origin.end_line, origin.end_column, SpanOriginKind.Synthetic, reason);
+}
+
+proc span_missing(reason: string) -> Span {
   give Span {
     file: "",
     start_offset: 0,
     end_offset: 0,
-    start_line: 1,
-    start_column: 1,
-    end_line: 1,
-    end_column: 1,
-    width: 1,
+    start_line: 0,
+    start_column: 0,
+    end_line: 0,
+    end_column: 0,
+    width: 0,
+    origin: SpanOriginKind.Missing,
+    synthetic_reason: reason,
     valid: false
   };
 }
 
+proc span_empty() -> Span {
+  give span_missing("missing span");
+}
+
 proc span_is_empty(value: Span) -> bool {
   give not value.valid;
+}
+
+proc span_is_synthetic(value: Span) -> bool {
+  give value.origin == SpanOriginKind.Synthetic;
+}
+
+proc span_has_source_location(value: Span) -> bool {
+  give value.valid
+    and value.file != ""
+    and value.start_line > 0
+    and value.start_column > 0;
 }
 
 proc span_is_single_line(value: Span) -> bool {
@@ -105,7 +146,9 @@ proc merge_spans(a: Span, b: Span) -> Span {
   let start_offset: u64 = if a.start_offset < b.start_offset { a.start_offset } else { b.start_offset };
   let end_offset: u64 = if a.end_offset > b.end_offset { a.end_offset } else { b.end_offset };
   let file: string = if a.file != "" { a.file } else { b.file };
-  give span_offsets(file, start_offset, end_offset, start_line, start_column, end_line, end_column);
+  let origin: SpanOriginKind = if span_is_synthetic(a) or span_is_synthetic(b) { SpanOriginKind.Synthetic } else { SpanOriginKind.Source };
+  let reason: string = if span_is_synthetic(a) { a.synthetic_reason } else { b.synthetic_reason };
+  give span_offsets_with_origin(file, start_offset, end_offset, start_line, start_column, end_line, end_column, origin, reason);
 }
 
 proc span_width(value: Span) -> u64 {
@@ -120,6 +163,10 @@ proc span_height(value: Span) -> u64 {
 }
 
 proc span_location(value: Span) -> string {
+  if not span_has_source_location(value) {
+    give "<missing-span>";
+  }
+
   give value.file + ":" + (value.start_line as string) + ":" + (value.start_column as string);
 }
 
@@ -128,5 +175,15 @@ proc span_range(value: Span) -> string {
 }
 
 proc span_summary(value: Span) -> string {
-  give "file " + value.file + " range " + span_range(value) + " width " + (value.width as string) + " valid " + (value.valid as string);
+  give "file " + value.file + " range " + span_range(value) + " width " + (value.width as string) + " origin " + span_origin_name(value.origin) + " valid " + (value.valid as string);
+}
+
+proc span_origin_name(origin: SpanOriginKind) -> string {
+  if origin == SpanOriginKind.Source {
+    give "source";
+  }
+  if origin == SpanOriginKind.Synthetic {
+    give "synthetic";
+  }
+  give "missing";
 }

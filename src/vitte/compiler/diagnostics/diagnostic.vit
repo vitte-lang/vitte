@@ -1603,56 +1603,121 @@ proc diagnostic_suggestion_list(phase: DiagnosticPhase, code: string, span: Sour
     give diagnostic_suggestion_list_add(out, fallback);
 }
 
+proc diagnostic_phase_requires_user_span(phase: DiagnosticPhase) -> bool {
+    give phase == DiagnosticPhase.Lexer
+        or phase == DiagnosticPhase.Parser
+        or phase == DiagnosticPhase.Ast
+        or phase == DiagnosticPhase.AstValidation
+        or phase == DiagnosticPhase.ModuleResolution
+        or phase == DiagnosticPhase.SymbolResolution
+        or phase == DiagnosticPhase.Sema
+        or phase == DiagnosticPhase.Hir
+        or phase == DiagnosticPhase.Typeck
+        or phase == DiagnosticPhase.Borrowck
+        or phase == DiagnosticPhase.Lifetime
+        or phase == DiagnosticPhase.Mir
+        or phase == DiagnosticPhase.MirLowering
+        or phase == DiagnosticPhase.MirVerification
+        or phase == DiagnosticPhase.Ir
+        or phase == DiagnosticPhase.Backend
+        or phase == DiagnosticPhase.Linker;
+}
+
+proc diagnostic_missing_user_span_code(code: string, phase: DiagnosticPhase, span: SourceSpan) -> string {
+    if code == "ICE0001" or phase == DiagnosticPhase.Internal or span.valid {
+        give code;
+    }
+    if diagnostic_phase_requires_user_span(phase) {
+        give "ICE0001";
+    }
+    give code;
+}
+
+proc diagnostic_missing_user_span_phase(phase: DiagnosticPhase, span: SourceSpan) -> DiagnosticPhase {
+    if phase == DiagnosticPhase.Internal or span.valid {
+        give phase;
+    }
+    if diagnostic_phase_requires_user_span(phase) {
+        give DiagnosticPhase.Internal;
+    }
+    give phase;
+}
+
+proc diagnostic_missing_user_span_severity(severity: DiagnosticSeverity, phase: DiagnosticPhase, span: SourceSpan) -> DiagnosticSeverity {
+    if phase == DiagnosticPhase.Internal or span.valid {
+        give severity;
+    }
+    if diagnostic_phase_requires_user_span(phase) {
+        give DiagnosticSeverity.Fatal;
+    }
+    give severity;
+}
+
+proc diagnostic_missing_user_span_message(message: string, code: string, phase: DiagnosticPhase, span: SourceSpan) -> string {
+    if phase == DiagnosticPhase.Internal or span.valid {
+        give message;
+    }
+    if diagnostic_phase_requires_user_span(phase) {
+        give "internal compiler error: diagnostic " + code + " from " + phase_name(phase) + " requires an exact source span";
+    }
+    give message;
+}
+
 proc diagnostic_create(code: string, phase: DiagnosticPhase, severity: DiagnosticSeverity, message: string, span: SourceSpan) -> Diagnostic {
-    let default_note_text: string = diagnostic_default_note(phase, code);
-    let default_help_text: string = diagnostic_default_help(phase, code);
-    let default_suggestions: [DiagnosticSuggestion] = diagnostic_suggestion_list(phase, code, span);
-    let phase_context: string = diag_kv("phase", phase_name(phase));
-    let step_context: string = diag_kv("step", diagnostic_default_step(phase));
-    let family_context: string = diag_kv("family", diagnostic_code_family(phase, code));
-    let strategy_context: string = diag_kv("correction_strategy", diagnostic_correction_strategy(phase, code));
-    let recovery_context: string = diag_kv("recovery_scope", diagnostic_recovery_scope(phase, code));
-    let confidence_context: string = diag_kv("confidence", diagnostic_confidence(phase, code));
+    let effective_code: string = diagnostic_missing_user_span_code(code, phase, span);
+    let effective_phase: DiagnosticPhase = diagnostic_missing_user_span_phase(phase, span);
+    let effective_severity: DiagnosticSeverity = diagnostic_missing_user_span_severity(severity, phase, span);
+    let effective_message: string = diagnostic_missing_user_span_message(message, code, phase, span);
+    let default_note_text: string = diagnostic_default_note(effective_phase, effective_code);
+    let default_help_text: string = diagnostic_default_help(effective_phase, effective_code);
+    let default_suggestions: [DiagnosticSuggestion] = diagnostic_suggestion_list(effective_phase, effective_code, span);
+    let phase_context: string = diag_kv("phase", phase_name(effective_phase));
+    let step_context: string = diag_kv("step", diagnostic_default_step(effective_phase));
+    let family_context: string = diag_kv("family", diagnostic_code_family(effective_phase, effective_code));
+    let strategy_context: string = diag_kv("correction_strategy", diagnostic_correction_strategy(effective_phase, effective_code));
+    let recovery_context: string = diag_kv("recovery_scope", diagnostic_recovery_scope(effective_phase, effective_code));
+    let confidence_context: string = diag_kv("confidence", diagnostic_confidence(effective_phase, effective_code));
+    let cause: string = if effective_code == "ICE0001" and code != "ICE0001" { "diagnostic producer emitted user-facing diagnostic without an exact source span" } else { diagnostic_default_root_cause(effective_phase, effective_code) };
     give Diagnostic {
-        code: code,
-        phase: phase,
-        severity: severity,
-        title: message,
-        rule: diagnostic_default_rule(phase, code),
-        message: message,
-        explanation: diagnostic_default_explanation(phase, code),
+        code: effective_code,
+        phase: effective_phase,
+        severity: effective_severity,
+        title: effective_message,
+        rule: diagnostic_default_rule(effective_phase, effective_code),
+        message: effective_message,
+        explanation: diagnostic_default_explanation(effective_phase, effective_code),
         technical_note: "",
-        labels: [primary_label(message, span)],
+        labels: [primary_label(effective_message, span)],
         secondary_spans: [],
         notes: if default_note_text == "" { [] } else { [diagnostic_note(default_note_text)] },
         helps: if default_help_text == "" { [] } else { [diagnostic_help(default_help_text)] },
         suggestions: default_suggestions,
-        documentation_url: diagnostic_default_documentation(phase, code),
-        root_cause: diagnostic_default_root_cause(phase, code),
+        documentation_url: diagnostic_default_documentation(effective_phase, effective_code),
+        root_cause: cause,
         cause_chain: [],
         pipeline_context: [phase_context, step_context, family_context, strategy_context, recovery_context, confidence_context],
         related_errors: [],
-        probable_fix: diagnostic_default_probable_fix(phase, code),
+        probable_fix: diagnostic_default_probable_fix(effective_phase, effective_code),
         subject_symbol: "",
         subject_type: "",
         subject_borrow: "",
-        valid_example: diagnostic_default_example(phase, code),
-        invalid_example: diagnostic_default_invalid_example(phase, code),
-        primary_error_key: diagnostic_primary_key(code, span),
+        valid_example: diagnostic_default_example(effective_phase, effective_code),
+        invalid_example: diagnostic_default_invalid_example(effective_phase, effective_code),
+        primary_error_key: diagnostic_primary_key(effective_code, span),
         cascade_of: "",
         primary_span: span,
         span: span,
         file_id: 0,
-        internal_cause: diagnostic_default_root_cause(phase, code),
+        internal_cause: cause,
         primary_error: true,
         cascade: false,
         suppressed: false,
         duplicate: false,
-        recovery_possible: diagnostic_phase_can_recover(phase) and not severity_is_fatal(severity),
+        recovery_possible: diagnostic_phase_can_recover(effective_phase) and not severity_is_fatal(effective_severity),
         deprecated: false,
         unnecessary: false,
-        fatal: severity_is_fatal(severity),
-        valid: code != "" and message != ""
+        fatal: severity_is_fatal(effective_severity),
+        valid: effective_code != "" and effective_message != ""
     };
 }
 

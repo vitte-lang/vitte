@@ -58,10 +58,13 @@ use vitte/compiler/middle/hir.{
   hir_item_with_generic_contract,
   hir_nominal_member,
   hir_proc_param,
+  hir_proc_param_with_span,
   hir_stmt,
   hir_module,
+  hir_module_with_span,
   hir_module_empty,
   hir_unit,
+  hir_generic_param_with_span,
   semantic_diagnostic
 }
 use vitte/compiler/middle/hir/validate.{ validate_hir }
@@ -538,7 +541,8 @@ proc lower_member_kind(kind: AstNominalMemberKind) -> HirNominalMemberKind {
 }
 
 proc lower_member_param(param: AstParam) -> HirProcParam {
-  give hir_proc_param(
+  give hir_proc_param_with_span(
+    param.span,
     lower_pattern_binding_name(param.pattern),
     lower_type_text(param.annotation),
     param.mode,
@@ -677,7 +681,8 @@ proc lower_generic_param_info(params: [AstGenericParam]) -> [HirGenericParam] {
   let out: [HirGenericParam] = [];
   let i: u64 = 0;
   while i < len(params) {
-    set out = out + [hir_generic_param(
+    set out = out + [hir_generic_param_with_span(
+      params[i].span,
       params[i].name,
       params[i].kind,
       lower_type_text(params[i].bound),
@@ -847,7 +852,7 @@ proc lower_ast_to_hir_unvalidated(frontend: FrontendOutput) -> HirUnit {
   }
 
   let module_valid: bool = len(items) > 0;
-  let module: HirModule = hir_module(frontend.source_path, items, [], 0, symbol_count, module_valid);
+  let module: HirModule = hir_module_with_span(frontend.ast_root.span, frontend.source_path, items, [], 0, symbol_count, module_valid);
 
   give hir_unit(
     frontend.source_path,

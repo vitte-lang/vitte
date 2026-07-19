@@ -44,7 +44,7 @@ use vitte/compiler/frontend/pipeline.{ FrontendDiagnostic, FrontendOutput, front
 use vitte/compiler/frontend/parse/mod
 use vitte/compiler/frontend/lexer/mod
 use vitte/compiler/frontend/lexer/token.{ Token, TokenKind }
-use vitte/compiler/frontend/lexer/scanner.{ ScanResult, scan_tokens }
+use vitte/compiler/frontend/lexer/scanner.{ ScanResult, scan_tokens_from_file }
 use vitte/compiler/frontend/ast/mod
 use vitte/compiler/analysis/mod
 use vitte/compiler/analysis/pipeline.{ AnalysisOutput, analysis_run_frontend }
@@ -1243,7 +1243,7 @@ proc run_cli_request(request: CompilerCliRequest) -> int {
     }
 
     if request.command == "dump-tokens" {
-        let scanned: ScanResult = scan_tokens(source_text);
+        let scanned: ScanResult = scan_tokens_from_file(source_path, source_text);
         if not scanned.valid {
             print_frontend_diagnostics_list(frontend_run(source_path, source_text).diagnostics);
             give cli_exit_code(driver.DriverExitStatus::LexFailure);

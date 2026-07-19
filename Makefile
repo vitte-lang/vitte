@@ -2515,6 +2515,7 @@ optimization-phase2-gate:
 diagnostic-contracts:
 	@python3 tools/check_diagnostic_schema.py
 	@python3 tools/check_compiler_diagnostic_contract.py
+	@python3 tools/check_span_provenance_contract.py
 	@bin/vittec0 check src/vitte/compiler/diagnostics/diagnostic.vit
 	@bin/vittec0 check src/vitte/compiler/diagnostics/json.vit
 	@bin/vittec0 check src/vitte/compiler/diagnostics/lsp.vit

@@ -9,6 +9,7 @@ use vitte/compiler/frontend/lexer/token.{
 }
 
 use vitte/compiler/frontend/lexer/scanner.{ ScanResult, scan_tokens }
+use vitte/compiler/frontend/lexer/scanner.{ scan_tokens_from_file }
 
 const VERSION_TEXT: string = "frontend token contract tests 0.1.0"
 const BANNER_TEXT: string = "frontend token contract tests"
@@ -41,6 +42,17 @@ proc test_canonical_scanner_api_compiles() -> bool {
     and result.tokens[6].kind == TokenKind.Char;
 }
 
+proc test_file_aware_token_spans() -> bool {
+  let result: ScanResult = scan_tokens_from_file("tokens/source_path.vit", "let value = 1;\n");
+
+  give result.valid
+    and len(result.tokens) > 0
+    and result.tokens[0].span.file == "tokens/source_path.vit"
+    and result.tokens[0].span.start_line == 1
+    and result.tokens[0].span.start_column == 1
+    and result.tokens[0].span.valid;
+}
+
 proc run_all_tests() -> int {
   let failures: int = 0;
 
@@ -49,6 +61,10 @@ proc run_all_tests() -> int {
   }
 
   if not test_canonical_scanner_api_compiles() {
+    set failures = failures + 1;
+  }
+
+  if not test_file_aware_token_spans() {
     set failures = failures + 1;
   }
 

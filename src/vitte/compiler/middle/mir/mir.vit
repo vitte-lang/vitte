@@ -1,6 +1,7 @@
 space vitte/compiler/middle/mir
 
 use vitte/compiler/frontend/ast/node.{ Span, ast_span_empty }
+use vitte/compiler/source/span.{ span_is_synthetic, synthetic_span }
 
 export *
 
@@ -122,6 +123,7 @@ form MirStatement {
 }
 
 form MirTerminator {
+  span: Span
   kind: MirTerminatorKind
   target_block: u64
   else_block: u64
@@ -135,6 +137,7 @@ form MirTerminator {
 
 form MirBlock {
   id: u64
+  span: Span
   label: string
   predecessors: [u64]
   statements: [MirStatement]
@@ -156,6 +159,7 @@ form MirFunctionParam {
 
 form MirFunction {
   id: u64
+  span: Span
   name: string
   generic_params: [string]
   entry_block: u64
@@ -168,12 +172,14 @@ form MirFunction {
 }
 
 form MirModule {
+  span: Span
   name: string
   functions: [MirFunction]
   valid: bool
 }
 
 form MirUnit {
+  span: Span
   source_path: string
   module: MirModule
   function_count: u64
@@ -185,6 +191,7 @@ form MirUnit {
 
 proc mir_module_empty() -> MirModule {
   give MirModule {
+    span: ast_span_empty(),
     name: "",
     functions: [],
     valid: false
@@ -278,6 +285,22 @@ proc mir_statement_assign(id: u64, span: Span, place: MirPlace, rvalue: MirRvalu
 
 proc mir_terminator(kind: MirTerminatorKind, target_block: u64, else_block: u64, unwind_block: u64, condition: MirOperand, switch_values: [string], switch_targets: [u64], reachable: bool, valid: bool) -> MirTerminator {
   give MirTerminator {
+    span: ast_span_empty(),
+    kind: kind,
+    target_block: target_block,
+    else_block: else_block,
+    unwind_block: unwind_block,
+    condition: condition,
+    switch_values: switch_values,
+    switch_targets: switch_targets,
+    reachable: reachable,
+    valid: valid
+  };
+}
+
+proc mir_terminator_with_span(span: Span, kind: MirTerminatorKind, target_block: u64, else_block: u64, unwind_block: u64, condition: MirOperand, switch_values: [string], switch_targets: [u64], reachable: bool, valid: bool) -> MirTerminator {
+  give MirTerminator {
+    span: span,
     kind: kind,
     target_block: target_block,
     else_block: else_block,
@@ -304,6 +327,21 @@ proc mir_terminator_return() -> MirTerminator {
   );
 }
 
+proc mir_terminator_return_at(span: Span) -> MirTerminator {
+  give mir_terminator_with_span(
+    span,
+    MirTerminatorKind.Return,
+    0,
+    0,
+    0,
+    mir_operand_empty(),
+    [],
+    [],
+    true,
+    true
+  );
+}
+
 proc mir_terminator_goto(target_block: u64) -> MirTerminator {
   give mir_terminator(
     MirTerminatorKind.Goto,
@@ -318,8 +356,38 @@ proc mir_terminator_goto(target_block: u64) -> MirTerminator {
   );
 }
 
+proc mir_terminator_goto_at(span: Span, target_block: u64) -> MirTerminator {
+  give mir_terminator_with_span(
+    span,
+    MirTerminatorKind.Goto,
+    target_block,
+    0,
+    0,
+    mir_operand_empty(),
+    [],
+    [],
+    true,
+    target_block > 0
+  );
+}
+
 proc mir_terminator_branch(condition: MirOperand, target_block: u64, else_block: u64) -> MirTerminator {
   give mir_terminator(
+    MirTerminatorKind.Branch,
+    target_block,
+    else_block,
+    0,
+    condition,
+    [],
+    [],
+    true,
+    condition.valid and target_block > 0 and else_block > 0
+  );
+}
+
+proc mir_terminator_branch_at(span: Span, condition: MirOperand, target_block: u64, else_block: u64) -> MirTerminator {
+  give mir_terminator_with_span(
+    span,
     MirTerminatorKind.Branch,
     target_block,
     else_block,
@@ -351,6 +419,21 @@ proc mir_terminator_switch(condition: MirOperand, switch_values: [string], switc
 proc mir_block(id: u64, label: string, predecessors: [u64], statements: [MirStatement], terminator: MirTerminator, sealed: bool, reachable: bool, valid: bool) -> MirBlock {
   give MirBlock {
     id: id,
+    span: terminator.span,
+    label: label,
+    predecessors: predecessors,
+    statements: statements,
+    terminator: terminator,
+    sealed: sealed,
+    reachable: reachable,
+    valid: valid
+  };
+}
+
+proc mir_block_with_span(id: u64, span: Span, label: string, predecessors: [u64], statements: [MirStatement], terminator: MirTerminator, sealed: bool, reachable: bool, valid: bool) -> MirBlock {
+  give MirBlock {
+    id: id,
+    span: span,
     label: label,
     predecessors: predecessors,
     statements: statements,
@@ -401,6 +484,23 @@ proc mir_function_param(name: string, type_name: string, mode: string, mutable: 
 proc mir_function(name: string, entry_block: u64, params: [MirFunctionParam], return_type: string, local_count: u64, temporary_count: u64, blocks: [MirBlock], valid: bool) -> MirFunction {
   give MirFunction {
     id: 0,
+    span: if len(blocks) > 0 { blocks[0].span } else { ast_span_empty() },
+    name: name,
+    generic_params: [],
+    entry_block: entry_block,
+    params: params,
+    return_type: return_type,
+    local_count: local_count,
+    temporary_count: temporary_count,
+    blocks: blocks,
+    valid: valid
+  };
+}
+
+proc mir_function_with_span(id: u64, span: Span, name: string, entry_block: u64, params: [MirFunctionParam], return_type: string, local_count: u64, temporary_count: u64, blocks: [MirBlock], valid: bool) -> MirFunction {
+  give MirFunction {
+    id: id,
+    span: span,
     name: name,
     generic_params: [],
     entry_block: entry_block,
@@ -465,6 +565,7 @@ proc mir_substitute_type(ty: string, generic_params: [string], generic_arguments
 
 proc mir_unit(source_path: string, module: MirModule, function_count: u64, block_count: u64, instruction_count: u64, lowered: bool, valid: bool) -> MirUnit {
   give MirUnit {
+    span: module.span,
     source_path: source_path,
     module: module,
     function_count: function_count,
@@ -473,6 +574,48 @@ proc mir_unit(source_path: string, module: MirModule, function_count: u64, block
     lowered: lowered,
     valid: valid
   };
+}
+
+proc mir_module_with_span(span: Span, name: string, functions: [MirFunction], valid: bool) -> MirModule {
+  give MirModule {
+    span: span,
+    name: name,
+    functions: functions,
+    valid: valid
+  };
+}
+
+proc mir_unit_with_span(span: Span, source_path: string, module: MirModule, function_count: u64, block_count: u64, instruction_count: u64, lowered: bool, valid: bool) -> MirUnit {
+  give MirUnit {
+    span: span,
+    source_path: source_path,
+    module: module,
+    function_count: function_count,
+    block_count: block_count,
+    instruction_count: instruction_count,
+    lowered: lowered,
+    valid: valid
+  };
+}
+
+proc mir_synthetic_span(origin: Span, reason: string) -> Span {
+  give synthetic_span(origin, reason);
+}
+
+proc mir_statement_is_synthetic(statement: MirStatement) -> bool {
+  give span_is_synthetic(statement.span);
+}
+
+proc mir_terminator_is_synthetic(terminator: MirTerminator) -> bool {
+  give span_is_synthetic(terminator.span);
+}
+
+proc mir_block_is_synthetic(block: MirBlock) -> bool {
+  give span_is_synthetic(block.span);
+}
+
+proc mir_function_is_synthetic(function0: MirFunction) -> bool {
+  give span_is_synthetic(function0.span);
 }
 
 proc mir_binary_operator_name(op: MirBinaryOperator) -> string {

@@ -1,6 +1,7 @@
 space vitte/compiler/middle/hir
 
 use vitte/compiler/frontend/ast/node.{ Span, ast_span, ast_span_empty }
+use vitte/compiler/source/span.{ span_is_synthetic, synthetic_span }
 
 export *
 
@@ -247,6 +248,7 @@ form HirStmt {
 }
 
 form HirProcParam {
+  span: Span
   name: string
   annotation_text: string
   mode: string
@@ -270,6 +272,7 @@ form HirNominalMember {
 }
 
 form HirGenericParam {
+  span: Span
   name: string
   kind: string
   bound_text: string
@@ -310,6 +313,7 @@ form HirItem {
 }
 
 form HirModule {
+  span: Span
   name: string
   items: [HirItem]
   diagnostics: [SemanticDiagnostic]
@@ -319,6 +323,7 @@ form HirModule {
 }
 
 form HirUnit {
+  span: Span
   source_path: string
   module: HirModule
   node_count: u64
@@ -423,6 +428,20 @@ proc hir_stmt(id: u64, span: Span, kind: HirStmtKind, name: string, target: stri
 
 proc hir_proc_param(name: string, annotation_text: string, mode: string, mutable: bool, borrowed: bool, variadic: bool, valid: bool) -> HirProcParam {
   give HirProcParam {
+    span: ast_span_empty(),
+    name: name,
+    annotation_text: annotation_text,
+    mode: mode,
+    mutable: mutable,
+    borrowed: borrowed,
+    variadic: variadic,
+    valid: valid
+  };
+}
+
+proc hir_proc_param_with_span(span: Span, name: string, annotation_text: string, mode: string, mutable: bool, borrowed: bool, variadic: bool, valid: bool) -> HirProcParam {
+  give HirProcParam {
+    span: span,
     name: name,
     annotation_text: annotation_text,
     mode: mode,
@@ -450,6 +469,18 @@ proc hir_nominal_member(id: u64, span: Span, kind: HirNominalMemberKind, name: s
 
 proc hir_generic_param(name: string, kind: string, bound_text: string, default_type_text: string, valid: bool) -> HirGenericParam {
   give HirGenericParam {
+    span: ast_span_empty(),
+    name: name,
+    kind: kind,
+    bound_text: bound_text,
+    default_type_text: default_type_text,
+    valid: valid
+  };
+}
+
+proc hir_generic_param_with_span(span: Span, name: string, kind: string, bound_text: string, default_type_text: string, valid: bool) -> HirGenericParam {
+  give HirGenericParam {
+    span: span,
     name: name,
     kind: kind,
     bound_text: bound_text,
@@ -502,6 +533,19 @@ proc hir_item(id: u64, span: Span, kind: HirItemKind, name: string, resolved_id:
 
 proc hir_module(name: string, items: [HirItem], diagnostics: [SemanticDiagnostic], dependency_count: u64, symbol_count: u64, valid: bool) -> HirModule {
   give HirModule {
+    span: ast_span_empty(),
+    name: name,
+    items: items,
+    diagnostics: diagnostics,
+    dependency_count: dependency_count,
+    symbol_count: symbol_count,
+    valid: valid
+  };
+}
+
+proc hir_module_with_span(span: Span, name: string, items: [HirItem], diagnostics: [SemanticDiagnostic], dependency_count: u64, symbol_count: u64, valid: bool) -> HirModule {
+  give HirModule {
+    span: span,
     name: name,
     items: items,
     diagnostics: diagnostics,
@@ -513,6 +557,7 @@ proc hir_module(name: string, items: [HirItem], diagnostics: [SemanticDiagnostic
 
 proc hir_unit(source_path: string, module: HirModule, node_count: u64, symbol_count: u64, scope_count: u64, expr_count: u64, stmt_count: u64, item_count: u64, lowered: bool, analyzed: bool, valid: bool) -> HirUnit {
   give HirUnit {
+    span: module.span,
     source_path: source_path,
     module: module,
     node_count: node_count,
@@ -529,6 +574,7 @@ proc hir_unit(source_path: string, module: HirModule, node_count: u64, symbol_co
 
 proc hir_module_empty() -> HirModule {
   give HirModule {
+    span: ast_span_empty(),
     name: "",
     items: [],
     diagnostics: [],
@@ -536,6 +582,22 @@ proc hir_module_empty() -> HirModule {
     symbol_count: 0,
     valid: false
   };
+}
+
+proc hir_synthetic_span(origin: Span, reason: string) -> Span {
+  give synthetic_span(origin, reason);
+}
+
+proc hir_expr_is_synthetic(expr: HirExpr) -> bool {
+  give span_is_synthetic(expr.span);
+}
+
+proc hir_stmt_is_synthetic(stmt: HirStmt) -> bool {
+  give span_is_synthetic(stmt.span);
+}
+
+proc hir_item_is_synthetic(item: HirItem) -> bool {
+  give span_is_synthetic(item.span);
 }
 
 proc hir_expr_empty() -> HirExpr {

@@ -23,7 +23,7 @@ form Token {
   span: Span
 }
 
-proc token_span(lexeme: string, line: u64, column: u64, offset: u64) -> Span {
+proc token_span_for_file(file: string, lexeme: string, line: u64, column: u64, offset: u64) -> Span {
   let end_line: u64 = line;
   let end_column: u64 = column;
   let index: u64 = 0;
@@ -39,7 +39,11 @@ proc token_span(lexeme: string, line: u64, column: u64, offset: u64) -> Span {
     set index = index + 1;
   }
 
-  give span_offsets("", offset, offset + len(lexeme), line, column, end_line, end_column);
+  give span_offsets(file, offset, offset + len(lexeme), line, column, end_line, end_column);
+}
+
+proc token_span(lexeme: string, line: u64, column: u64, offset: u64) -> Span {
+  give token_span_for_file("", lexeme, line, column, offset);
 }
 
 proc token(kind: TokenKind, lexeme: string, line: u64, column: u64) -> Token {
@@ -48,6 +52,14 @@ proc token(kind: TokenKind, lexeme: string, line: u64, column: u64) -> Token {
 
 proc token_with_offset(kind: TokenKind, lexeme: string, line: u64, column: u64, offset: u64) -> Token {
   give Token { kind: kind, lexeme: lexeme, line: line, column: column, offset: offset, span: token_span(lexeme, line, column, offset) };
+}
+
+proc token_with_file_offset(kind: TokenKind, lexeme: string, file: string, line: u64, column: u64, offset: u64) -> Token {
+  give Token { kind: kind, lexeme: lexeme, line: line, column: column, offset: offset, span: token_span_for_file(file, lexeme, line, column, offset) };
+}
+
+proc token_with_file(token0: Token, file: string) -> Token {
+  give token_with_file_offset(token0.kind, token0.lexeme, file, token0.line, token0.column, token0.offset);
 }
 
 proc token_kind_is_literal(kind: TokenKind) -> bool {
