@@ -4,6 +4,7 @@ use vitte/compiler/analysis/sema/errors.{
   SemaDiagnostic,
   SemaSeverity,
   sema_diagnostic,
+  sema_unknown_symbol_with_candidates,
   sema_span_empty
 }
 use vitte/compiler/analysis/sema/names.{ place_root_name, sema_builtin_name }
@@ -150,6 +151,23 @@ proc resolve_symbol(symbols: [SemaSymbol], name: string, scope_depth: u64) -> Se
   give symbol_find_visible(symbols, name, scope_depth);
 }
 
+proc symbol_candidate_names(symbols: [SemaSymbol], scope_depth: u64) -> [string] {
+  let names: [string] = [];
+  let i: u64 = 0;
+  while i < len(symbols) {
+    let symbol: SemaSymbol = symbols[i];
+    let local_visible: bool = symbol.kind != SemaSymbolKind.Local and symbol.kind != SemaSymbolKind.Parameter;
+    if symbol.kind == SemaSymbolKind.Local or symbol.kind == SemaSymbolKind.Parameter {
+      set local_visible = symbol.scope_depth <= scope_depth;
+    }
+    if symbol.valid and local_visible and symbol.kind != SemaSymbolKind.External and symbol.name != "" {
+      set names = names + [symbol.name];
+    }
+    set i = i + 1;
+  }
+  give names;
+}
+
 proc symbol_or_external(symbols: [SemaSymbol], name: string, scope_depth: u64, next_symbol_id: u64) -> SemaWalk {
   let resolved: SemaSymbol = resolve_symbol(symbols, name, scope_depth);
   if resolved.valid {
@@ -244,15 +262,10 @@ proc annotate_expr(expr: HirExpr, symbols: [SemaSymbol], scope_depth: u64, next_
     set resolved_kind = symbol_kind_name(resolved.kind);
     set external = resolved.kind == SemaSymbolKind.External;
     if external {
-      set diagnostics = sema_add_diag(diagnostics, sema_diagnostic(
-        "SEMA_W_UNRESOLVED_NAME",
-        SemaSeverity.Warning,
-        "unresolved value `" + expr.name + "` treated as external",
-        [expr.name],
-        "declare, import, or expose the value explicitly to make resolution deterministic",
-        expr.span,
-        false
-      ));
+      set diagnostics = sema_add_diag(
+        diagnostics,
+        sema_unknown_symbol_with_candidates(expr.name, symbol_candidate_names(current_symbols, scope_depth), expr.span)
+      );
     }
   } elif expr.kind == HirExprKind.Member and len(children) > 0 {
     let base: HirExpr = children[0];

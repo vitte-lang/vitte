@@ -42,12 +42,24 @@ proc test_undeclared_target() -> bool {
   give has_code(result, "SEMA_E_UNDECLARED_TARGET");
 }
 
-proc test_unresolved_name_warning_is_nonfatal() -> bool {
-  let source: string = "proc main() { give flag; }\n";
-  let fe: FrontendOutput = frontend_run("sema_unresolved_name.vit", source);
+proc test_unknown_identifier_suggests_nearby_symbol() -> bool {
+  let source: string = "proc main() { let count = 1; give cout; }\n";
+  let fe: FrontendOutput = frontend_run("sema_unknown_identifier.vit", source);
   let hir = lower_ast_to_hir(fe);
   let result: SemaResult = run_sema_hir(hir);
-  give fe.valid and result.valid and has_code(result, "SEMA_W_UNRESOLVED_NAME");
+  let i: u64 = 0;
+  while i < len(result.diagnostics) {
+    let diagnostic = result.diagnostics[i];
+    if diagnostic.code == "SEMA_E_UNKNOWN_SYMBOL" {
+      give fe.valid
+        and not result.valid
+        and find(diagnostic.message, "cout") >= 0
+        and len(diagnostic.suggestions) >= 2
+        and diagnostic.suggestions[1].replacement == "count";
+    }
+    set i = i + 1;
+  }
+  give false;
 }
 
 proc test_resolves_local_name_on_hir() -> bool {
@@ -125,6 +137,27 @@ proc test_missing_module_reports_tested_paths() -> bool {
         and diagnostic.file == "demo_app_missing.vit"
         and find(diagnostic.labels[1], "tested paths: ./demo/missing.vit") >= 0
         and find(diagnostic.labels[1], "src/demo/missing/mod.vit") >= 0;
+    }
+    set i = i + 1;
+  }
+  give false;
+}
+
+proc test_missing_module_suggests_nearby_module() -> bool {
+  let dep: string = "space demo/math;\nexport *;\nproc sum() -> int { give 0; }\n";
+  let root: string = "space demo/app;\nuse demo/maths as math;\nproc main() -> int { give 0; }\n";
+  let artifacts: DriverModuleSetArtifacts = analyze_source_set([
+    driver_module_input("demo_math.vit", dep),
+    driver_module_input("demo_app_misspelled_module.vit", root)
+  ]);
+  let diagnostics = artifacts.modules[1].analysis.diagnostics;
+  let i: u64 = 0;
+  while i < len(diagnostics) {
+    let diagnostic = diagnostics[i];
+    if diagnostic.code == "MOD_E_MODULE_NOT_FOUND" {
+      give not artifacts.valid
+        and find(diagnostic.labels[2], "closest module: `demo/math`") >= 0
+        and find(diagnostic.help, "did you mean module `demo/math`?") >= 0;
     }
     set i = i + 1;
   }
@@ -345,7 +378,7 @@ proc run_all_tests() -> int {
   if not test_undeclared_target() {
     set failures = failures + 1;
   }
-  if not test_unresolved_name_warning_is_nonfatal() {
+  if not test_unknown_identifier_suggests_nearby_symbol() {
     set failures = failures + 1;
   }
   if not test_resolves_local_name_on_hir() {
@@ -364,6 +397,9 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if not test_missing_module_reports_tested_paths() {
+    set failures = failures + 1;
+  }
+  if not test_missing_module_suggests_nearby_module() {
     set failures = failures + 1;
   }
   if not test_invalid_visibility_is_rejected() {

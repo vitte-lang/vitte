@@ -5,6 +5,7 @@ use vitte/compiler/analysis/pipeline.{ AnalysisOutput, analysis_run_prechecked }
 use vitte/compiler/analysis/report.{ AnalysisDiagnostic, analysis_diagnostic_with_span, ast_span_length }
 use vitte/compiler/analysis/borrowck.{ BorrowCheckResult, borrow_check_hir_mir }
 use vitte/compiler/analysis/sema.{ SemaModuleImport, SemaModuleSummary, SemaResult, imported_symbols_from_summary, module_import_from_use, run_sema_hir, run_sema_hir_with_imports, summarize_module_hir }
+use vitte/compiler/analysis/sema/errors.{ sema_nearby_symbol }
 use vitte/compiler/analysis/sema/scopes.{ SemaSymbol, SemaSymbolKind, SemaSymbolState, SemaVisibility, sema_symbol_full }
 use vitte/compiler/analysis/typeck/api.{ run_production_typeck_hir }
 use vitte/compiler/analysis/typeck/errors.{ TypeckResult }
@@ -1006,6 +1007,22 @@ proc module_tested_paths(module_path: string) -> string {
     give "./" + relative + ".vit, ./" + relative + "/mod.vit, src/" + relative + ".vit, src/" + relative + "/mod.vit";
 }
 
+proc module_summary_paths(summaries: [SemaModuleSummary]) -> [string] {
+    let paths: [string] = [];
+    let i: u64 = 0;
+    while i < len(summaries) {
+        if summaries[i].valid and summaries[i].module_path != "" {
+            set paths = paths + [summaries[i].module_path];
+        }
+        set i = i + 1;
+    }
+    give paths;
+}
+
+proc closest_module_path(module_path: string, summaries: [SemaModuleSummary]) -> string {
+    give sema_nearby_symbol(module_path, module_summary_paths(summaries));
+}
+
 proc missing_module_diagnostics(frontend: FrontendOutput, hir: HirUnit, summary: SemaModuleSummary, summaries: [SemaModuleSummary]) -> [AnalysisDiagnostic] {
     let diagnostics: [AnalysisDiagnostic] = [];
     let manager = cache_source(source_manager_empty(), frontend.source_path, frontend.source_text, true);
@@ -1018,16 +1035,21 @@ proc missing_module_diagnostics(frontend: FrontendOutput, hir: HirUnit, summary:
             let span: Span = module_import_span(hir, import0.module_path);
             let length: u64 = ast_span_length(span.start_column, span.end_column);
             let span_start: u64 = offset_lookup(manager, file_id, span.start_line, span.start_column);
+            let closest: string = closest_module_path(import0.module_path, summaries);
+            let labels: [string] = [
+                "requested by module `" + summary.module_path + "`",
+                "tested paths: " + module_tested_paths(import0.module_path)
+            ];
+            if closest != "" {
+                set labels = labels + ["closest module: `" + closest + "`"];
+            }
             let diagnostic: AnalysisDiagnostic = analysis_diagnostic_with_span(
                 "module_resolution",
                 "MOD_E_MODULE_NOT_FOUND",
                 "error",
                 "module `" + import0.module_path + "` not found",
-                [
-                    "requested by module `" + summary.module_path + "`",
-                    "tested paths: " + module_tested_paths(import0.module_path)
-                ],
-                "check the module path or add the missing module to the source set",
+                labels,
+                if closest == "" { "check the module path or add the missing module to the source set" } else { "did you mean module `" + closest + "`?" },
                 span.start_line,
                 span.start_column,
                 length,
