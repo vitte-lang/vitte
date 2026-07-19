@@ -16,6 +16,7 @@ use vitte/compiler/diagnostics/diagnostic.{
   backend_command_failed,
   diagnostic_error,
   diagnostic_explain_text_lang,
+  diagnostic_text_line,
   diagnostic_report,
   diagnostic_explain_text,
   diagnostic_with_documentation,
@@ -376,6 +377,28 @@ proc test_report_deduplicates_and_limits_cascades() -> bool {
     and find(encoded, "\"invalid_example\": \"") >= 0;
 }
 
+proc test_report_orders_diagnostics_by_file_and_position() -> bool {
+  let first: Diagnostic = diagnostic_error("TYPECK_E_LATE", DiagnosticPhase.Typeck, "late", span_create("b.vit", 1, 1, 1));
+  let second: Diagnostic = diagnostic_error("LEX_E_FIRST", DiagnosticPhase.Lexer, "first", span_create("a.vit", 4, 9, 1));
+  let third: Diagnostic = diagnostic_error("PARSE_E_EARLIER", DiagnosticPhase.Parser, "earlier", span_create("a.vit", 2, 3, 1));
+  let report: DiagnosticReport = diagnostic_report([first, second, third]);
+  give len(report.diagnostics) == 3
+    and report.diagnostics[0].code == "PARSE_E_EARLIER"
+    and report.diagnostics[1].code == "LEX_E_FIRST"
+    and report.diagnostics[2].code == "TYPECK_E_LATE";
+}
+
+proc test_text_diagnostic_format_is_stable() -> bool {
+  let diag: Diagnostic = diagnostic_error("TYPECK_E_TEXT", DiagnosticPhase.Typeck, "text format", span_create("text.vit", 3, 5, 1));
+  let config: DiagnosticRenderConfig = default_render_config();
+  set config.style = DiagnosticStyle.Text;
+  set config.color = false;
+  let line: string = diagnostic_text_line(diag);
+  let rendered: string = render_report(diagnostic_report([diag]), config);
+  give line == "severity=error code=TYPECK_E_TEXT phase=typeck span=text.vit:3:5 message=text format"
+    and rendered == line;
+}
+
 proc run_all_tests() -> int {
   let failures: int = 0;
   let typeck_ok: bool = test_typeck_diagnostic_contract();
@@ -390,6 +413,8 @@ proc run_all_tests() -> int {
   let catalog_ok: bool = test_typeck_and_borrowck_suggestion_catalog_contract();
   let rendered_suggestions_ok: bool = test_rendered_suggestion_applicability_contract();
   let report_cascade_ok: bool = test_report_deduplicates_and_limits_cascades();
+  let report_order_ok: bool = test_report_orders_diagnostics_by_file_and_position();
+  let text_format_ok: bool = test_text_diagnostic_format_is_stable();
   if typeck_ok == false {
     set failures = failures + 1;
   }
@@ -424,6 +449,12 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if report_cascade_ok == false {
+    set failures = failures + 1;
+  }
+  if report_order_ok == false {
+    set failures = failures + 1;
+  }
+  if text_format_ok == false {
     set failures = failures + 1;
   }
   give failures;

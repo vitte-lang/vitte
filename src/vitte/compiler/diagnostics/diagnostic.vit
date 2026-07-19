@@ -47,6 +47,7 @@ pick DiagnosticPhase {
 
 pick DiagnosticStyle {
     Plain
+    Text
     Human
     Json
     Debug
@@ -2004,14 +2005,11 @@ proc diagnostic_priority(diagnostic: Diagnostic) -> u64 {
 }
 
 proc diagnostic_should_precede(left: Diagnostic, right: Diagnostic) -> bool {
-    let left_priority: u64 = diagnostic_priority(left);
-    let right_priority: u64 = diagnostic_priority(right);
-
-    if left_priority < right_priority {
+    if left.span.file < right.span.file {
         give true;
     }
 
-    if left_priority > right_priority {
+    if left.span.file > right.span.file {
         give false;
     }
 
@@ -2023,7 +2021,23 @@ proc diagnostic_should_precede(left: Diagnostic, right: Diagnostic) -> bool {
         give false;
     }
 
-    give left.span.start_column <= right.span.start_column;
+    if left.span.start_column < right.span.start_column {
+        give true;
+    }
+
+    if left.span.start_column > right.span.start_column {
+        give false;
+    }
+
+    if left.code < right.code {
+        give true;
+    }
+
+    if left.code > right.code {
+        give false;
+    }
+
+    give left.message <= right.message;
 }
 
 proc prioritize_diagnostics(diagnostics: [Diagnostic]) -> [Diagnostic] {
@@ -2547,6 +2561,14 @@ proc diagnostic_header_text(diagnostic: Diagnostic, config: DiagnosticRenderConf
     give color_wrap(config, color, text);
 }
 
+proc diagnostic_text_line(diagnostic: Diagnostic) -> string {
+    give "severity=" + severity_name(diagnostic.severity)
+        + " code=" + diagnostic.code
+        + " phase=" + phase_name(diagnostic.phase)
+        + " span=" + span_location_text(diagnostic.span)
+        + " message=" + diagnostic.message;
+}
+
 proc render_label(label: DiagnosticLabel, config: DiagnosticRenderConfig) -> string {
     let prefix: string = color_wrap(config, ansi_bold() + ansi_blue(), label_kind_name(label.kind));
     let location: string = span_location_text(label.span);
@@ -2738,6 +2760,10 @@ proc append_line(text: string, line: string) -> string {
 }
 
 proc render_diagnostic(diagnostic: Diagnostic, config: DiagnosticRenderConfig) -> string {
+    if config.style == DiagnosticStyle.Text {
+        give diagnostic_text_line(diagnostic);
+    }
+
     if config.style == DiagnosticStyle.Human {
         let out_human: string = diagnostic_header_text(diagnostic, config);
         let location_header: string = "  --> " + span_location_text(diagnostic.span);
@@ -3643,6 +3669,7 @@ share diagnostic_report_quality_score
 share default_render_config
 share span_location_text
 share diagnostic_header_text
+share diagnostic_text_line
 share render_label
 share render_note
 share render_help
