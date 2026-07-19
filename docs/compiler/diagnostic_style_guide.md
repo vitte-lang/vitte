@@ -47,13 +47,19 @@ Never mark a medium or low confidence suggestion as machine applicable. Use `hel
 
 Spans
 
-User-facing columns start at one. Internal offsets are UTF-8 byte offsets and must not be described as visual columns.
+User-facing columns start at one and are visual Unicode columns. Tabs are rendered with the compiler diagnostic tab width, currently four columns. Internal offsets are UTF-8 byte offsets and must not be described as visual columns.
 
 Diagnostics may include multiple spans when one source error requires coordinated edits, for example declaration and use, or all arguments that must be reordered together.
 
 Rendering
 
 All renderers consume the same `Diagnostic` object. Do not rebuild diagnostics separately for terminal, JSON, LSP, or SARIF.
+
+Use the dedicated render profiles for the surface:
+
+- terminal: human renderer, color allowed, command details hidden unless verbose;
+- monochrome: same diagnostic content without ANSI color;
+- IDE: canonical diagnostic object converted to LSP/JSON/SARIF without reparsing messages.
 
 Default terminal output must be concise:
 

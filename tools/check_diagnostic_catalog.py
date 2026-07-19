@@ -294,7 +294,13 @@ def validate_canonical_diagnostic_contract() -> list[str]:
         "if config.verbose and diagnostic.external_command != \"\"",
         "Vitte item: \" + diagnostic.subject_symbol",
         "DIAGNOSTIC_USER_COLUMN_BASE",
+        "DIAGNOSTIC_USER_COLUMN_UNIT",
         "DIAGNOSTIC_INTERNAL_OFFSET_UNIT",
+        "DIAGNOSTIC_TAB_WIDTH",
+        "monochrome_render_config",
+        "terminal_render_config",
+        "ide_render_config",
+        "diagnostic_position_policy_text",
     )
     for fragment in required_fragments:
         if fragment not in text:

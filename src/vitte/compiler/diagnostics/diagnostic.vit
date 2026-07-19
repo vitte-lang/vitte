@@ -13,7 +13,9 @@ use vitte/compiler/infrastructure/diagnostics/fluent_catalog.{ fluent_catalog_lo
 
 const DIAGNOSTIC_SCHEMA_VERSION: string = "1.0.0"
 const DIAGNOSTIC_USER_COLUMN_BASE: u64 = 1
+const DIAGNOSTIC_USER_COLUMN_UNIT: string = "visual_unicode_column"
 const DIAGNOSTIC_INTERNAL_OFFSET_UNIT: string = "utf8_byte_offset"
+const DIAGNOSTIC_TAB_WIDTH: u64 = 4
 const DIAGNOSTIC_CONFIDENCE_HIGH: string = "high"
 const DIAGNOSTIC_CONFIDENCE_MEDIUM: string = "medium"
 const DIAGNOSTIC_CONFIDENCE_LOW: string = "low"
@@ -3044,6 +3046,36 @@ proc default_render_config() -> DiagnosticRenderConfig {
     };
 }
 
+proc monochrome_render_config() -> DiagnosticRenderConfig {
+    let config: DiagnosticRenderConfig = default_render_config();
+    set config.color = false;
+    give config;
+}
+
+proc terminal_render_config() -> DiagnosticRenderConfig {
+    let config: DiagnosticRenderConfig = default_render_config();
+    set config.style = DiagnosticStyle.Human;
+    set config.color = true;
+    set config.verbose = false;
+    give config;
+}
+
+proc ide_render_config() -> DiagnosticRenderConfig {
+    let config: DiagnosticRenderConfig = default_render_config();
+    set config.style = DiagnosticStyle.Lsp;
+    set config.color = false;
+    set config.verbose = false;
+    give config;
+}
+
+proc diagnostic_position_policy_text() -> string {
+    give "user columns start at 1 and use visual Unicode columns; internal offsets use UTF-8 bytes";
+}
+
+proc diagnostic_internal_offset_text(byte_offset: u64) -> string {
+    give DIAGNOSTIC_INTERNAL_OFFSET_UNIT + ": " + (byte_offset as string);
+}
+
 proc ansi_reset() -> string {
     give "\u001b[0m";
 }
@@ -3829,8 +3861,7 @@ proc diagnostic_from_surface(code: string, message: string, span: SourceSpan, fa
         let diag9: Diagnostic = diagnostic_with_note(diag7, "detected by the lexer before parser recovery");
 
         if byte_offset > 0 {
-            let byte_offset_text: string = byte_offset as string;
-            give diagnostic_with_note(diag9, "byte offset: " + byte_offset_text);
+            give diagnostic_with_note(diag9, diagnostic_internal_offset_text(byte_offset));
         }
 
         give diag9;
@@ -4490,7 +4521,9 @@ share DiagnosticEnvelope
 share DiagnosticRenderConfig
 
 share DIAGNOSTIC_USER_COLUMN_BASE
+share DIAGNOSTIC_USER_COLUMN_UNIT
 share DIAGNOSTIC_INTERNAL_OFFSET_UNIT
+share DIAGNOSTIC_TAB_WIDTH
 share DIAGNOSTIC_CONFIDENCE_HIGH
 share DIAGNOSTIC_CONFIDENCE_MEDIUM
 share DIAGNOSTIC_CONFIDENCE_LOW
@@ -4499,6 +4532,11 @@ share diagnostic_envelope
 share span_empty
 share span_create
 share span_range
+share monochrome_render_config
+share terminal_render_config
+share ide_render_config
+share diagnostic_position_policy_text
+share diagnostic_internal_offset_text
 
 share severity_name
 share phase_name

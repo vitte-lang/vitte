@@ -10,9 +10,15 @@ use vitte/compiler/diagnostics/diagnostic.{
   DiagnosticSuggestionKind,
   DiagnosticReport,
   DiagnosticRenderConfig,
+  DIAGNOSTIC_INTERNAL_OFFSET_UNIT,
+  DIAGNOSTIC_TAB_WIDTH,
+  DIAGNOSTIC_USER_COLUMN_BASE,
+  DIAGNOSTIC_USER_COLUMN_UNIT,
   diagnostic_fix_plans,
   diagnostic_quality_score,
   default_render_config,
+  diagnostic_internal_offset_text,
+  diagnostic_position_policy_text,
   diagnostic_add_pipeline_context,
   backend_command_failed,
   diagnostic_ice,
@@ -26,16 +32,20 @@ use vitte/compiler/diagnostics/diagnostic.{
   diagnostic_with_label,
   diagnostic_with_probable_fix,
   diagnostic_with_suggestion_detail,
+  ide_render_config,
+  monochrome_render_config,
   primary_label,
   previous_label,
   render_report,
   span_create,
   span_range,
+  terminal_render_config,
   parser_unclosed_block,
   lexer_unterminated_string
 }
-use vitte/compiler/diagnostics/json.{ json_diagnostic }
-use vitte/compiler/diagnostics/lsp.{ LspCanonicalContext, LspCodeAction, LspDiagnostic, LspPublishDiagnosticsParams, lsp_canonical_context, lsp_code_actions, lsp_diagnostic, lsp_diagnostic_with_canonical_context, lsp_publish_report_with_canonical_context, lsp_report_code_actions }
+use vitte/compiler/diagnostics/json.{ json_diagnostic, json_report }
+use vitte/compiler/diagnostics/lsp.{ LspCanonicalContext, LspCodeAction, LspDiagnostic, LspPublishDiagnosticsParams, lsp_canonical_context, lsp_code_actions, lsp_diagnostic, lsp_diagnostic_summary, lsp_diagnostic_with_canonical_context, lsp_publish_report_with_canonical_context, lsp_report_code_actions }
+use vitte/compiler/diagnostics/sarif.{ sarif_report }
 use vitte/compiler/diagnostics/architecture.{ CompilerDiagnosticStage, canonical_diagnostic_stage_count, compiler_diagnostic_error, compiler_diagnostic_report, diagnostic_architecture_covers_required_stages, stage_component, stage_phase }
 use vitte/compiler/diagnostics/phase_policy.{ DiagnosticPhasePolicy, diagnostic_phase_blocks, diagnostic_phase_policy, diagnostic_phase_root_error_codes }
 
@@ -472,6 +482,47 @@ proc test_ice_is_internal_and_carries_required_context() -> bool {
     and find(diag.pipeline_context[2], "vitte_file=src/main.vit") >= 0;
 }
 
+proc test_diagnostic_position_policy_is_explicit() -> bool {
+  let mono: DiagnosticRenderConfig = monochrome_render_config();
+  let terminal: DiagnosticRenderConfig = terminal_render_config();
+  let ide: DiagnosticRenderConfig = ide_render_config();
+  give DIAGNOSTIC_USER_COLUMN_BASE == 1
+    and DIAGNOSTIC_USER_COLUMN_UNIT == "visual_unicode_column"
+    and DIAGNOSTIC_INTERNAL_OFFSET_UNIT == "utf8_byte_offset"
+    and DIAGNOSTIC_TAB_WIDTH == 4
+    and find(diagnostic_position_policy_text(), "user columns start at 1") >= 0
+    and find(diagnostic_position_policy_text(), "UTF-8 bytes") >= 0
+    and diagnostic_internal_offset_text(12) == "utf8_byte_offset: 12"
+    and mono.color == false
+    and terminal.style == DiagnosticStyle.Human
+    and terminal.color
+    and ide.style == DiagnosticStyle.Lsp
+    and ide.color == false;
+}
+
+proc test_all_renderers_share_the_same_diagnostic_object() -> bool {
+  let diag0: Diagnostic = diagnostic_error("TYPECK_E_RENDER_SHARED", DiagnosticPhase.Typeck, "unicode café tab\tshape", span_create("unicode.vit", 2, 5, 4));
+  let diag: Diagnostic = diagnostic_with_explanation(diag0, "same Diagnostic object feeds every renderer");
+  let report: DiagnosticReport = diagnostic_report([diag]);
+  let short_config: DiagnosticRenderConfig = monochrome_render_config();
+  set short_config.style = DiagnosticStyle.Short;
+  let human_config: DiagnosticRenderConfig = monochrome_render_config();
+  set human_config.style = DiagnosticStyle.Human;
+  let short_text: string = render_report(report, short_config);
+  let human_text: string = render_report(report, human_config);
+  let json_text: string = json_report(report);
+  let lsp_actual: LspDiagnostic = lsp_diagnostic(diag);
+  let lsp_text: string = lsp_diagnostic_summary(lsp_actual);
+  let sarif_text: string = sarif_report(report);
+  give find(short_text, "TYPECK_E_RENDER_SHARED") >= 0
+    and find(human_text, "unicode café tab") >= 0
+    and find(json_text, "\"code\": \"TYPECK_E_RENDER_SHARED\"") >= 0
+    and find(json_text, "\"message\": \"unicode café tab\\tshape\"") >= 0
+    and find(lsp_text, "TYPECK_E_RENDER_SHARED") >= 0
+    and find(sarif_text, "\"ruleId\": \"TYPECK_E_RENDER_SHARED\"") >= 0
+    and find(sarif_text, "\"text\": \"unicode café tab\\tshape\"") >= 0;
+}
+
 proc run_all_tests() -> int {
   let failures: int = 0;
   let typeck_ok: bool = test_typeck_diagnostic_contract();
@@ -491,6 +542,8 @@ proc run_all_tests() -> int {
   let architecture_ok: bool = test_single_diagnostic_architecture_covers_compiler_pipeline();
   let phase_policy_ok: bool = test_phase_policy_defines_blocking_errors_precisely();
   let ice_context_ok: bool = test_ice_is_internal_and_carries_required_context();
+  let position_policy_ok: bool = test_diagnostic_position_policy_is_explicit();
+  let shared_render_ok: bool = test_all_renderers_share_the_same_diagnostic_object();
   if typeck_ok == false {
     set failures = failures + 1;
   }
@@ -540,6 +593,12 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if ice_context_ok == false {
+    set failures = failures + 1;
+  }
+  if position_policy_ok == false {
+    set failures = failures + 1;
+  }
+  if shared_render_ok == false {
     set failures = failures + 1;
   }
   give failures;
