@@ -14,7 +14,7 @@ stack.
 ## Contract
 
 - One diagnostic has:
-  - a stable code
+  - a stable public code using the phase-number convention
   - a phase
   - a severity
   - a primary span
@@ -35,6 +35,11 @@ stack.
 - Reports are valid only when they contain no error and no fatal diagnostic.
 - New phase-specific producers should add labels and suggestions before adding
   more free-form prose.
+- New public codes must use `LEXxxxx`, `PARxxxx`, `RESxxxx`, `SEMxxxx`,
+  `TYPxxxx`, `BORxxxx`, `MIRxxxx`, `IRxxxx`, `GENxxxx`, `LNKxxxx`, or
+  `ICExxxx`. Legacy names remain message keys and aliases, not public codes.
+- Do not reuse one code for different root causes. If the cause is different,
+  allocate the next code for that phase.
 
 ## Near-term direction
 

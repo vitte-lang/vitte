@@ -47,7 +47,15 @@ def main() -> int:
     tests_text = TESTS.read_text(encoding="utf-8")
     spec_text = SPEC.read_text(encoding="utf-8")
     registry = json.loads(CODES.read_text(encoding="utf-8"))
-    known_codes = {entry.get("code") for entry in registry.get("codes", []) if isinstance(entry, dict)}
+    known_codes: set[object] = set()
+    for entry in registry.get("codes", []):
+        if not isinstance(entry, dict):
+            continue
+        known_codes.add(entry.get("code"))
+        known_codes.add(entry.get("message_key"))
+        aliases = entry.get("aliases")
+        if isinstance(aliases, list):
+            known_codes.update(aliases)
     results: list[dict[str, object]] = []
 
     for rule in rules:

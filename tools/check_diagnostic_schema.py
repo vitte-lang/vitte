@@ -14,7 +14,21 @@ PHASES = ROOT / "schemas/diagnostics/phases.json"
 CODES = ROOT / "schemas/diagnostics/codes.json"
 FIXTURES = ROOT / "tests/diagnostics/schema"
 INVALID_FIXTURES = ROOT / "tests/diagnostics/schema-invalid"
-CODE_PATTERN = re.compile(r"^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$")
+CANONICAL_CODE_PATTERN = re.compile(r"^(LEX|PAR|RES|SEM|TYP|BOR|MIR|IR|GEN|LNK|ICE)[0-9]{4}$")
+MESSAGE_KEY_PATTERN = re.compile(r"^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$")
+PHASE_PREFIX = {
+    "lexer": "LEX",
+    "parser": "PAR",
+    "resolver": "RES",
+    "sema": "SEM",
+    "typeck": "TYP",
+    "borrowck": "BOR",
+    "mir": "MIR",
+    "ir": "IR",
+    "codegen": "GEN",
+    "linker": "LNK",
+    "ice": "ICE",
+}
 VAGUE_CAUSE_PATTERNS = (
     "compiler contract",
     "diagnostic rule",
@@ -70,7 +84,7 @@ def reject_vague_text(text: str, path: Path, field: str, patterns: tuple[str, ..
             raise ValueError(f"{path}: {field} is too vague: {text!r}")
 
 
-def validate_fixture(value: object, path: Path) -> None:
+def validate_fixture(value: object, path: Path, registry: dict[str, dict[str, object]]) -> None:
     if not isinstance(value, dict):
         raise ValueError(f"{path}: diagnostic must be an object")
     missing = REQUIRED - value.keys()
@@ -78,12 +92,20 @@ def validate_fixture(value: object, path: Path) -> None:
         raise ValueError(f"{path}: missing fields: {', '.join(sorted(missing))}")
     if value["schema"] != "vitte.diagnostic" or value["schema_version"] != "1.0.0":
         raise ValueError(f"{path}: invalid schema identity")
-    if not isinstance(value["code"], str) or not CODE_PATTERN.fullmatch(value["code"]):
+    if not isinstance(value["code"], str) or not CANONICAL_CODE_PATTERN.fullmatch(value["code"]):
         raise ValueError(f"{path}: diagnostic code is missing or malformed")
-    if not isinstance(value["message_key"], str) or not CODE_PATTERN.fullmatch(value["message_key"]):
+    entry = registry.get(value["code"])
+    if entry is None:
+        raise ValueError(f"{path}: diagnostic code is not registered: {value['code']}")
+    if entry.get("phase") != value["phase"]:
+        raise ValueError(f"{path}: diagnostic code {value['code']} belongs to phase {entry.get('phase')}, not {value['phase']}")
+    if not isinstance(value["message_key"], str) or not MESSAGE_KEY_PATTERN.fullmatch(value["message_key"]):
         raise ValueError(f"{path}: diagnostic message must reference a Fluent catalog key")
-    if value["message_key"] != value["code"]:
-        raise ValueError(f"{path}: message_key must equal the diagnostic code")
+    aliases = entry.get("aliases")
+    if value["message_key"] != entry.get("message_key") and (
+        not isinstance(aliases, list) or value["message_key"] not in aliases
+    ):
+        raise ValueError(f"{path}: message_key must be the registered Fluent key or alias for {value['code']}")
     validate_span(value["primary_span"], path, "primary_span")
     if not isinstance(value["labels"], list) or not value["labels"]:
         raise ValueError(f"{path}: at least one label is required")
@@ -150,7 +172,7 @@ def main() -> int:
     if not isinstance(phases, dict) or not isinstance(phases.get("phases"), list):
         raise ValueError(f"{PHASES}: invalid phase registry")
     phase_names = [entry.get("name") for entry in phases["phases"] if isinstance(entry, dict)]
-    expected_phases = ["lexer", "parser", "sema", "typeck", "borrowck", "mir", "backend", "linker", "runtime"]
+    expected_phases = ["lexer", "parser", "resolver", "sema", "typeck", "borrowck", "mir", "ir", "codegen", "linker", "ice"]
     if phase_names != expected_phases:
         raise ValueError(f"{PHASES}: phase order must be {expected_phases}")
     schema_phases = schema.get("properties", {}).get("phase", {}).get("enum", [])
@@ -162,15 +184,52 @@ def main() -> int:
     codes = load(CODES)
     if not isinstance(codes, dict) or not isinstance(codes.get("codes"), list) or not codes["codes"]:
         raise ValueError(f"{CODES}: invalid or empty diagnostic code registry")
+    if codes.get("schema_version") != "2.0.0":
+        raise ValueError(f"{CODES}: diagnostic code registry must use schema_version 2.0.0")
+    if codes.get("phase_prefixes") != PHASE_PREFIX:
+        raise ValueError(f"{CODES}: phase_prefixes must match the canonical compiler phase convention")
     code_names = [entry.get("code") for entry in codes["codes"] if isinstance(entry, dict)]
     duplicate_codes = sorted({code for code in code_names if code_names.count(code) > 1})
     if duplicate_codes:
         raise ValueError(f"{CODES}: duplicate diagnostic codes: {', '.join(duplicate_codes)}")
+    registry: dict[str, dict[str, object]] = {}
+    aliases: dict[str, str] = {}
+    previous_sort_key: tuple[int, str] | None = None
+    phase_order = {phase: index for index, phase in enumerate(PHASE_PREFIX)}
+    for index, entry in enumerate(codes["codes"]):
+        if not isinstance(entry, dict):
+            raise ValueError(f"{CODES}: codes[{index}] must be an object")
+        code = entry.get("code")
+        phase = entry.get("phase")
+        message_key = entry.get("message_key")
+        entry_aliases = entry.get("aliases")
+        if not isinstance(code, str) or not CANONICAL_CODE_PATTERN.fullmatch(code):
+            raise ValueError(f"{CODES}: codes[{index}].code is not canonical: {code!r}")
+        if phase not in PHASE_PREFIX:
+            raise ValueError(f"{CODES}: {code} has an unknown phase: {phase!r}")
+        if not code.startswith(PHASE_PREFIX[phase]):
+            raise ValueError(f"{CODES}: {code} does not match phase {phase}")
+        if not isinstance(message_key, str) or not MESSAGE_KEY_PATTERN.fullmatch(message_key):
+            raise ValueError(f"{CODES}: {code} has an invalid message_key")
+        if not isinstance(entry_aliases, list) or entry_aliases != [message_key]:
+            raise ValueError(f"{CODES}: {code} must have exactly one legacy alias matching message_key")
+        if entry.get("stable") is not True:
+            raise ValueError(f"{CODES}: {code} must be marked stable=true")
+        if entry.get("deprecated") not in {True, False}:
+            raise ValueError(f"{CODES}: {code} must declare deprecated=true or deprecated=false")
+        if message_key in aliases:
+            raise ValueError(f"{CODES}: legacy diagnostic key {message_key} maps to both {aliases[message_key]} and {code}")
+        sort_key = (phase_order[phase], code)
+        if previous_sort_key is not None and sort_key <= previous_sort_key:
+            raise ValueError(f"{CODES}: codes must be sorted by phase and stable public code")
+        previous_sort_key = sort_key
+        aliases[message_key] = code
+        registry[code] = entry
     fixtures = sorted(FIXTURES.glob("*.json"))
     if not fixtures:
         raise ValueError(f"{FIXTURES}: no diagnostic fixtures")
     for fixture in fixtures:
-        validate_fixture(load(fixture), fixture)
+        validate_fixture(load(fixture), fixture, registry)
     if not any(
         isinstance(value := load(fixture), dict)
         and isinstance(value.get("primary_span"), dict)
@@ -185,7 +244,7 @@ def main() -> int:
     invalid_fixtures = sorted(INVALID_FIXTURES.glob("*.json"))
     for fixture in invalid_fixtures:
         try:
-            validate_fixture(load(fixture), fixture)
+            validate_fixture(load(fixture), fixture, registry)
         except ValueError:
             continue
         raise ValueError(f"{fixture}: invalid fixture unexpectedly passed")

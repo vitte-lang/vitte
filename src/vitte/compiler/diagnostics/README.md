@@ -27,7 +27,7 @@ The diagnostics layer describes and renders errors. Other compiler phases produc
 Invariants
 
 - diagnostics must be deterministic
-- every diagnostic must have a stable code when possible
+- every diagnostic must have one stable public code
 - every diagnostic must carry a severity
 - source spans must be explicit
 - rendering must not mutate diagnostic state
@@ -78,14 +78,29 @@ A renderer may output:
 
 Catalog contract
 
-The catalog owns stable diagnostic codes.
+The catalog owns stable public diagnostic codes.
 
-Examples:
-- LEX_E_INVALID_CHAR
-- PARSE_E_EXPECTED_TOKEN
-- SEMA_E_UNKNOWN_SYMBOL
-- TYPECK_E_ASSIGN_MISMATCH
-- BORROW_E_USE_AFTER_MOVE
+Public codes are grouped by compiler phase and use a dense four-digit suffix:
+
+- `LEXxxxx`: lexer
+- `PARxxxx`: parser
+- `RESxxxx`: module and name resolution
+- `SEMxxxx`: semantic analysis
+- `TYPxxxx`: type checking
+- `BORxxxx`: borrow checking
+- `MIRxxxx`: HIR/MIR lowering and MIR validation
+- `IRxxxx`: backend IR validation
+- `GENxxxx`: code generation and native toolchain preparation
+- `LNKxxxx`: linker
+- `ICExxxx`: internal compiler errors and compiler-contract violations
+
+The historical Fluent keys such as `LEX_E_INVALID_CHAR` or
+`TYPECK_E_ASSIGN_MISMATCH` are message keys and compatibility aliases only.
+They must not be used as new public diagnostic codes.
+
+One public code names one real cause. Do not group unrelated failures under a
+single code such as `GEN0001` just because they happen in the same compiler
+phase. Add the next phase-local code instead.
 
 Recommended Files
 

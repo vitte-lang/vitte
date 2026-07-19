@@ -13,182 +13,405 @@
     {
       "id": "T-LITERAL",
       "judgment": "Gamma |- expression : type",
-      "premises": ["literal kind has a canonical primitive type"],
+      "premises": [
+        "literal kind has a canonical primitive type"
+      ],
       "conclusion": "Gamma |- literal : primitive(kind)",
-      "implementation": {"file": "src/vitte/compiler/analysis/typeck/infer.vit", "symbol": "infer_literal_type"},
-      "tests": ["test_valid_numeric_flow"],
+      "implementation": {
+        "file": "src/vitte/compiler/analysis/typeck/infer.vit",
+        "symbol": "infer_literal_type"
+      },
+      "tests": [
+        "test_valid_numeric_flow"
+      ],
       "diagnostics": []
     },
     {
       "id": "T-NAME",
       "judgment": "Gamma |- expression : type",
-      "premises": ["Gamma(name) = type", "binding is initialized", "binding is not moved"],
+      "premises": [
+        "Gamma(name) = type",
+        "binding is initialized",
+        "binding is not moved"
+      ],
       "conclusion": "Gamma |- name : type",
-      "implementation": {"file": "src/vitte/compiler/analysis/typeck/infer.vit", "symbol": "infer_name_type"},
-      "tests": ["test_proc_params_typecheck_body_without_unresolved_names", "test_typeck_infer_env_helpers_cover_binding_lifecycle"],
-      "diagnostics": ["TYPECK_E_UNKNOWN_NAME", "TYPECK_E_USE_BEFORE_INIT", "TYPECK_E_USE_AFTER_MOVE"]
+      "implementation": {
+        "file": "src/vitte/compiler/analysis/typeck/infer.vit",
+        "symbol": "infer_name_type"
+      },
+      "tests": [
+        "test_proc_params_typecheck_body_without_unresolved_names",
+        "test_typeck_infer_env_helpers_cover_binding_lifecycle"
+      ],
+      "diagnostics": [
+        "TYP0248",
+        "TYP0251",
+        "TYP0250"
+      ]
     },
     {
       "id": "T-DECLARED-TYPE",
       "judgment": "Gamma |- expression : type",
-      "premises": ["every identifier in an annotation is primitive, generic, Self, or visible nominal"],
+      "premises": [
+        "every identifier in an annotation is primitive, generic, Self, or visible nominal"
+      ],
       "conclusion": "Gamma |- annotation well-formed",
-      "implementation": {"file": "src/vitte/compiler/analysis/typeck/checker.vit", "symbol": "validate_declared_type"},
-      "tests": ["test_declared_types_accept_nominals_generics_and_compounds", "test_declared_field_reports_unknown_nested_type"],
-      "diagnostics": ["TYPECK_E_UNKNOWN_TYPE"]
+      "implementation": {
+        "file": "src/vitte/compiler/analysis/typeck/checker.vit",
+        "symbol": "validate_declared_type"
+      },
+      "tests": [
+        "test_declared_types_accept_nominals_generics_and_compounds",
+        "test_declared_field_reports_unknown_nested_type"
+      ],
+      "diagnostics": [
+        "TYP0249"
+      ]
     },
     {
       "id": "T-ASSIGN",
       "judgment": "Gamma |- statement => Gamma'",
-      "premises": ["Gamma(target) = expected", "Gamma |- value : actual", "actual <= expected", "target is mutable"],
+      "premises": [
+        "Gamma(target) = expected",
+        "Gamma |- value : actual",
+        "actual <= expected",
+        "target is mutable"
+      ],
       "conclusion": "Gamma |- set target = value => Gamma",
-      "implementation": {"file": "src/vitte/compiler/analysis/typeck/checker.vit", "symbol": "check_stmt_tree"},
-      "tests": ["test_valid_numeric_flow", "test_assign_mismatch", "test_immutable_param_rejects_assignment"],
-      "diagnostics": ["TYPECK_E_ASSIGN_MISMATCH", "TYPECK_E_IMMUTABLE_ASSIGN"]
+      "implementation": {
+        "file": "src/vitte/compiler/analysis/typeck/checker.vit",
+        "symbol": "check_stmt_tree"
+      },
+      "tests": [
+        "test_valid_numeric_flow",
+        "test_assign_mismatch",
+        "test_immutable_param_rejects_assignment"
+      ],
+      "diagnostics": [
+        "TYP0213",
+        "TYP0223"
+      ]
     },
     {
       "id": "T-RETURN",
       "judgment": "Gamma |- statement => Gamma'",
-      "premises": ["procedure return type is expected", "Gamma |- value : actual", "actual <= expected"],
+      "premises": [
+        "procedure return type is expected",
+        "Gamma |- value : actual",
+        "actual <= expected"
+      ],
       "conclusion": "Gamma |- give value valid for procedure",
-      "implementation": {"file": "src/vitte/compiler/analysis/typeck/checker.vit", "symbol": "check_stmt_tree"},
-      "tests": ["test_return_mismatch_carries_rich_diagnostic_context"],
-      "diagnostics": ["TYPECK_E_RETURN_MISMATCH"]
+      "implementation": {
+        "file": "src/vitte/compiler/analysis/typeck/checker.vit",
+        "symbol": "check_stmt_tree"
+      },
+      "tests": [
+        "test_return_mismatch_carries_rich_diagnostic_context"
+      ],
+      "diagnostics": [
+        "TYP0243"
+      ]
     },
     {
       "id": "T-UNARY",
       "judgment": "Gamma |- expression : type",
-      "premises": ["Gamma |- operand : source", "operator is defined for source"],
+      "premises": [
+        "Gamma |- operand : source",
+        "operator is defined for source"
+      ],
       "conclusion": "Gamma |- operator operand : result(operator, source)",
-      "implementation": {"file": "src/vitte/compiler/analysis/typeck/infer.vit", "symbol": "infer_unary_type"},
-      "tests": ["test_invalid_deref"],
-      "diagnostics": ["TYPECK_E_INVALID_DEREF"]
+      "implementation": {
+        "file": "src/vitte/compiler/analysis/typeck/infer.vit",
+        "symbol": "infer_unary_type"
+      },
+      "tests": [
+        "test_invalid_deref"
+      ],
+      "diagnostics": [
+        "TYP0231"
+      ]
     },
     {
       "id": "T-BINARY",
       "judgment": "Gamma |- expression : type",
-      "premises": ["Gamma |- left : left_type", "Gamma |- right : right_type", "operator admits a common operand type"],
+      "premises": [
+        "Gamma |- left : left_type",
+        "Gamma |- right : right_type",
+        "operator admits a common operand type"
+      ],
       "conclusion": "Gamma |- left operator right : operator_result",
-      "implementation": {"file": "src/vitte/compiler/analysis/typeck/infer.vit", "symbol": "infer_binary_type"},
-      "tests": ["test_valid_numeric_flow", "test_binary_mismatch_carries_expected_found_context"],
-      "diagnostics": ["TYPECK_E_BINARY_MISMATCH"]
+      "implementation": {
+        "file": "src/vitte/compiler/analysis/typeck/infer.vit",
+        "symbol": "infer_binary_type"
+      },
+      "tests": [
+        "test_valid_numeric_flow",
+        "test_binary_mismatch_carries_expected_found_context"
+      ],
+      "diagnostics": [
+        "TYP0214"
+      ]
     },
     {
       "id": "T-CONDITION",
       "judgment": "Gamma |- expression : type",
-      "premises": ["Gamma |- condition : type", "type is truthy"],
+      "premises": [
+        "Gamma |- condition : type",
+        "type is truthy"
+      ],
       "conclusion": "Gamma |- condition valid for control flow",
-      "implementation": {"file": "src/vitte/compiler/analysis/typeck/infer.vit", "symbol": "infer_if_type"},
-      "tests": ["test_condition_type_carries_rule_and_fix"],
-      "diagnostics": ["TYPECK_E_CONDITION_TYPE"]
+      "implementation": {
+        "file": "src/vitte/compiler/analysis/typeck/infer.vit",
+        "symbol": "infer_if_type"
+      },
+      "tests": [
+        "test_condition_type_carries_rule_and_fix"
+      ],
+      "diagnostics": [
+        "TYP0218"
+      ]
     },
     {
       "id": "T-BRANCH",
       "judgment": "Gamma |- expression : type",
-      "premises": ["Gamma |- then : left_type", "Gamma |- else : right_type", "left_type and right_type unify"],
+      "premises": [
+        "Gamma |- then : left_type",
+        "Gamma |- else : right_type",
+        "left_type and right_type unify"
+      ],
       "conclusion": "Gamma |- if condition then else : unified_type",
-      "implementation": {"file": "src/vitte/compiler/analysis/typeck/infer.vit", "symbol": "infer_if_type"},
-      "tests": ["test_if_branch_mismatch_carries_unification_rule"],
-      "diagnostics": ["TYPECK_E_IF_BRANCH_MISMATCH"]
+      "implementation": {
+        "file": "src/vitte/compiler/analysis/typeck/infer.vit",
+        "symbol": "infer_if_type"
+      },
+      "tests": [
+        "test_if_branch_mismatch_carries_unification_rule"
+      ],
+      "diagnostics": [
+        "TYP0222"
+      ]
     },
     {
       "id": "T-CALL",
       "judgment": "Gamma |- expression : type",
-      "premises": ["Gamma |- callee : fn(parameters) -> result", "argument count matches", "each argument type coerces to its parameter type"],
+      "premises": [
+        "Gamma |- callee : fn(parameters) -> result",
+        "argument count matches",
+        "each argument type coerces to its parameter type"
+      ],
       "conclusion": "Gamma |- callee(arguments) : result",
-      "implementation": {"file": "src/vitte/compiler/analysis/typeck/infer.vit", "symbol": "infer_call_type"},
-      "tests": ["test_typed_call_returns_signature_result_type", "test_call_arity_carries_signature_context", "test_argument_mismatch_carries_expected_found_context"],
-      "diagnostics": ["TYPECK_E_INVALID_CALL_TARGET", "TYPECK_E_CALL_ARITY", "TYPECK_E_ARGUMENT_MISMATCH"]
+      "implementation": {
+        "file": "src/vitte/compiler/analysis/typeck/infer.vit",
+        "symbol": "infer_call_type"
+      },
+      "tests": [
+        "test_typed_call_returns_signature_result_type",
+        "test_call_arity_carries_signature_context",
+        "test_argument_mismatch_carries_expected_found_context"
+      ],
+      "diagnostics": [
+        "TYP0229",
+        "TYP0215",
+        "TYP0212"
+      ]
     },
     {
       "id": "T-GENERIC-INFER",
       "judgment": "Gamma |- expression : type",
-      "premises": ["callee has generic parameters", "explicit and argument constraints have a unique consistent substitution"],
+      "premises": [
+        "callee has generic parameters",
+        "explicit and argument constraints have a unique consistent substitution"
+      ],
       "conclusion": "Gamma |- generic call : substitute(result, substitution)",
-      "implementation": {"file": "src/vitte/compiler/analysis/typeck/infer.vit", "symbol": "infer_call_substitutions"},
-      "tests": ["test_generic_call_infers_and_substitutes_return_type", "test_generic_call_reports_unconstrained_parameter"],
-      "diagnostics": ["TYPECK_E_GENERIC_INFERENCE"]
+      "implementation": {
+        "file": "src/vitte/compiler/analysis/typeck/infer.vit",
+        "symbol": "infer_call_substitutions"
+      },
+      "tests": [
+        "test_generic_call_infers_and_substitutes_return_type",
+        "test_generic_call_reports_unconstrained_parameter"
+      ],
+      "diagnostics": [
+        "TYP0221"
+      ]
     },
     {
       "id": "T-GENERIC-BOUND",
       "judgment": "Impls |- type : trait",
-      "premises": ["substitution(parameter) = type", "a visible implementation proves type : required_trait"],
+      "premises": [
+        "substitution(parameter) = type",
+        "a visible implementation proves type : required_trait"
+      ],
       "conclusion": "generic bound is satisfied",
-      "implementation": {"file": "src/vitte/compiler/analysis/typeck/infer.vit", "symbol": "trait_bound_satisfied"},
-      "tests": ["test_generic_trait_bound_accepts_visible_impl", "test_generic_trait_bound_reports_unsatisfied_impl"],
-      "diagnostics": ["TYPECK_E_TRAIT_BOUND"]
+      "implementation": {
+        "file": "src/vitte/compiler/analysis/typeck/infer.vit",
+        "symbol": "trait_bound_satisfied"
+      },
+      "tests": [
+        "test_generic_trait_bound_accepts_visible_impl",
+        "test_generic_trait_bound_reports_unsatisfied_impl"
+      ],
+      "diagnostics": [
+        "TYP0244"
+      ]
     },
     {
       "id": "T-MEMBER",
       "judgment": "Gamma |- expression : type",
-      "premises": ["Gamma |- receiver : owner", "owner exposes member with member_type"],
+      "premises": [
+        "Gamma |- receiver : owner",
+        "owner exposes member with member_type"
+      ],
       "conclusion": "Gamma |- receiver.member : member_type",
-      "implementation": {"file": "src/vitte/compiler/analysis/typeck/infer.vit", "symbol": "infer_member_type"},
-      "tests": ["test_nominal_field_access_resolves_from_member_table"],
-      "diagnostics": ["TYPECK_E_UNKNOWN_MEMBER"]
+      "implementation": {
+        "file": "src/vitte/compiler/analysis/typeck/infer.vit",
+        "symbol": "infer_member_type"
+      },
+      "tests": [
+        "test_nominal_field_access_resolves_from_member_table"
+      ],
+      "diagnostics": [
+        "TYP0247"
+      ]
     },
     {
       "id": "T-METHOD",
       "judgment": "Gamma |- expression : type",
-      "premises": ["receiver type has exactly one visible method provider", "Self is bound to receiver type"],
+      "premises": [
+        "receiver type has exactly one visible method provider",
+        "Self is bound to receiver type"
+      ],
       "conclusion": "Gamma |- receiver.method : bound_method_type",
-      "implementation": {"file": "src/vitte/compiler/analysis/typeck/infer.vit", "symbol": "infer_member_type"},
-      "tests": ["test_impl_method_dispatch_binds_self_away_for_call_type", "test_impl_method_dispatch_rejects_ambiguous_traits"],
-      "diagnostics": ["TYPECK_E_AMBIGUOUS_METHOD"]
+      "implementation": {
+        "file": "src/vitte/compiler/analysis/typeck/infer.vit",
+        "symbol": "infer_member_type"
+      },
+      "tests": [
+        "test_impl_method_dispatch_binds_self_away_for_call_type",
+        "test_impl_method_dispatch_rejects_ambiguous_traits"
+      ],
+      "diagnostics": [
+        "TYP0211"
+      ]
     },
     {
       "id": "T-CAST",
       "judgment": "Gamma |- expression : type",
-      "premises": ["Gamma |- value : source", "explicit cast source -> target is supported"],
+      "premises": [
+        "Gamma |- value : source",
+        "explicit cast source -> target is supported"
+      ],
       "conclusion": "Gamma |- value as target : target",
-      "implementation": {"file": "src/vitte/compiler/analysis/typeck/infer.vit", "symbol": "infer_cast_type"},
-      "tests": ["test_numeric_coercions_are_directional_in_production", "test_invalid_cast_carries_cast_rule"],
-      "diagnostics": ["TYPECK_E_INVALID_CAST"]
+      "implementation": {
+        "file": "src/vitte/compiler/analysis/typeck/infer.vit",
+        "symbol": "infer_cast_type"
+      },
+      "tests": [
+        "test_numeric_coercions_are_directional_in_production",
+        "test_invalid_cast_carries_cast_rule"
+      ],
+      "diagnostics": [
+        "TYP0230"
+      ]
     },
     {
       "id": "T-COERCE",
       "judgment": "Gamma |- actual <= expected",
-      "premises": ["conversion preserves value semantics or is an allowed reborrow"],
+      "premises": [
+        "conversion preserves value semantics or is an allowed reborrow"
+      ],
       "conclusion": "actual implicitly coerces to expected",
-      "implementation": {"file": "src/vitte/compiler/analysis/typeck/coercion.vit", "symbol": "coerce_type"},
-      "tests": ["test_numeric_coercions_are_directional_in_production", "test_typeck_coercion_helpers_cover_projection_surface"],
+      "implementation": {
+        "file": "src/vitte/compiler/analysis/typeck/coercion.vit",
+        "symbol": "coerce_type"
+      },
+      "tests": [
+        "test_numeric_coercions_are_directional_in_production",
+        "test_typeck_coercion_helpers_cover_projection_surface"
+      ],
       "diagnostics": []
     },
     {
       "id": "T-IMPL",
       "judgment": "Impls |- type : trait",
-      "premises": ["trait is visible", "every required method exists", "method parameter and return signatures match"],
+      "premises": [
+        "trait is visible",
+        "every required method exists",
+        "method parameter and return signatures match"
+      ],
       "conclusion": "implementation proves type : trait",
-      "implementation": {"file": "src/vitte/compiler/analysis/typeck/checker.vit", "symbol": "check_impl_against_trait"},
-      "tests": ["test_typeck_preserves_trait_impl_method_signatures_and_body_types", "test_typeck_reports_unknown_impl_trait", "test_typeck_reports_missing_impl_member", "test_typeck_reports_impl_return_signature_mismatch", "test_typeck_reports_impl_parameter_signature_mismatch"],
-      "diagnostics": ["TYPECK_E_IMPL_UNKNOWN_TRAIT", "TYPECK_E_IMPL_MISSING_MEMBER", "TYPECK_E_IMPL_SIGNATURE_MISMATCH"]
+      "implementation": {
+        "file": "src/vitte/compiler/analysis/typeck/checker.vit",
+        "symbol": "check_impl_against_trait"
+      },
+      "tests": [
+        "test_typeck_preserves_trait_impl_method_signatures_and_body_types",
+        "test_typeck_reports_unknown_impl_trait",
+        "test_typeck_reports_missing_impl_member",
+        "test_typeck_reports_impl_return_signature_mismatch",
+        "test_typeck_reports_impl_parameter_signature_mismatch"
+      ],
+      "diagnostics": [
+        "TYP0226",
+        "TYP0224",
+        "TYP0225"
+      ]
     },
     {
       "id": "T-COHERENCE",
       "judgment": "Impls |- type : trait",
-      "premises": ["no earlier visible implementation has the same normalized trait and target type"],
+      "premises": [
+        "no earlier visible implementation has the same normalized trait and target type"
+      ],
       "conclusion": "implementation set remains coherent",
-      "implementation": {"file": "src/vitte/compiler/analysis/typeck/checker.vit", "symbol": "check_impl_coherence"},
-      "tests": ["test_typeck_rejects_conflicting_trait_impls"],
-      "diagnostics": ["TYPECK_E_CONFLICTING_IMPL"]
+      "implementation": {
+        "file": "src/vitte/compiler/analysis/typeck/checker.vit",
+        "symbol": "check_impl_coherence"
+      },
+      "tests": [
+        "test_typeck_rejects_conflicting_trait_impls"
+      ],
+      "diagnostics": [
+        "TYP0219"
+      ]
     },
     {
       "id": "T-CONSTRAINT-ACYCLIC",
       "judgment": "Impls |- type : trait",
-      "premises": ["the graph of generic bounds and defaults is acyclic"],
+      "premises": [
+        "the graph of generic bounds and defaults is acyclic"
+      ],
       "conclusion": "generic constraint set is well-founded",
-      "implementation": {"file": "src/vitte/compiler/analysis/typeck/checker.vit", "symbol": "check_generic_constraint_cycles"},
-      "tests": ["test_typeck_rejects_cyclic_generic_constraints"],
-      "diagnostics": ["TYPECK_E_CONSTRAINT_CYCLE"]
+      "implementation": {
+        "file": "src/vitte/compiler/analysis/typeck/checker.vit",
+        "symbol": "check_generic_constraint_cycles"
+      },
+      "tests": [
+        "test_typeck_rejects_cyclic_generic_constraints"
+      ],
+      "diagnostics": [
+        "TYP0220"
+      ]
     },
     {
       "id": "T-MATCH-EXHAUSTIVE",
       "judgment": "Variants |- match exhaustive",
-      "premises": ["a fallback exists or every finite variant of the scrutinee type is covered"],
+      "premises": [
+        "a fallback exists or every finite variant of the scrutinee type is covered"
+      ],
       "conclusion": "match is exhaustive",
-      "implementation": {"file": "src/vitte/compiler/analysis/typeck/checker.vit", "symbol": "match_missing_case"},
-      "tests": ["test_match_pick_variants_can_be_exhaustive_without_fallback", "test_match_pick_reports_the_missing_variant", "test_match_bool_is_exhaustive_with_both_literals"],
-      "diagnostics": ["TYPECK_E_MATCH_NON_EXHAUSTIVE"]
+      "implementation": {
+        "file": "src/vitte/compiler/analysis/typeck/checker.vit",
+        "symbol": "match_missing_case"
+      },
+      "tests": [
+        "test_match_pick_variants_can_be_exhaustive_without_fallback",
+        "test_match_pick_reports_the_missing_variant",
+        "test_match_bool_is_exhaustive_with_both_literals"
+      ],
+      "diagnostics": [
+        "TYP0242"
+      ]
     }
   ]
 }

@@ -49,6 +49,24 @@ def ftl_has_code(path: Path, code: str) -> bool:
     return re.search(rf"^{re.escape(code)}\s*=", path.read_text(encoding="utf-8"), re.MULTILINE) is not None
 
 
+def registry_code_keys(registry: dict[str, object]) -> dict[str, str]:
+    out: dict[str, str] = {}
+    for entry in registry.get("codes", []):
+        if not isinstance(entry, dict):
+            continue
+        public_code = entry.get("code")
+        message_key = entry.get("message_key")
+        if isinstance(public_code, str) and isinstance(message_key, str):
+            out[public_code] = message_key
+            out[message_key] = message_key
+        aliases = entry.get("aliases")
+        if isinstance(aliases, list) and isinstance(message_key, str):
+            for alias in aliases:
+                if isinstance(alias, str):
+                    out[alias] = message_key
+    return out
+
+
 def main() -> int:
     payload = load_json(CONTRACTS)
     if not isinstance(payload, dict) or payload.get("schema") != "vitte.typeck-diagnostic-contracts":
@@ -70,7 +88,16 @@ def main() -> int:
     registry = load_json(CODES)
     if not isinstance(registry, dict) or not isinstance(registry.get("codes"), list):
         return fail(f"{CODES.relative_to(ROOT)} has an invalid code registry")
-    public_codes = {entry.get("code") for entry in registry["codes"] if isinstance(entry, dict)}
+    public_codes: set[object] = set()
+    for registry_entry in registry["codes"]:
+        if not isinstance(registry_entry, dict):
+            continue
+        public_codes.add(registry_entry.get("code"))
+        public_codes.add(registry_entry.get("message_key"))
+        aliases = registry_entry.get("aliases")
+        if isinstance(aliases, list):
+            public_codes.update(aliases)
+    message_keys = registry_code_keys(registry)
     errors_text = ERRORS.read_text(encoding="utf-8")
     tests_text = TESTS.read_text(encoding="utf-8")
     catalog_text = CATALOG.read_text(encoding="utf-8")
@@ -110,15 +137,16 @@ def main() -> int:
             reasons.append(f"{helper} helper missing from typeck/errors.vit")
         if isinstance(helper, str) and f"share {helper}" not in errors_text:
             reasons.append(f"{helper} is not shared from typeck/errors.vit")
-        if isinstance(code, str) and code not in catalog_text:
-            reasons.append(f"{code} missing from compiler diagnostics catalog")
+        message_key = message_keys.get(code) if isinstance(code, str) else None
+        if isinstance(message_key, str) and message_key not in catalog_text:
+            reasons.append(f"{code} message key {message_key} missing from compiler diagnostics catalog")
         missing_locales = [
             str(path.parent.name)
             for path in locale_files
-            if not isinstance(code, str) or not ftl_has_code(path, code)
+            if not isinstance(message_key, str) or not ftl_has_code(path, message_key)
         ]
         if missing_locales:
-            reasons.append(f"{code} missing from locales: {', '.join(missing_locales)}")
+            reasons.append(f"{code} missing from locales through message key {message_key}: {', '.join(missing_locales)}")
         if reasons:
             status = "fail"
             failures.extend(f"{diag_id}: {reason}" for reason in reasons)
