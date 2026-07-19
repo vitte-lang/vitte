@@ -166,7 +166,7 @@ export class PlaygroundPanel implements vscode.Disposable {
     const webview = this.panel.webview;
     const nonce = String(Date.now());
     const csp = `default-src 'none'; style-src 'unsafe-inline' ${webview.cspSource}; script-src 'nonce-${nonce}';`;
-    const initial = `// Éditez votre code Vitte ici\nfn main() {\n    println("Hello from Playground!");\n}`;
+    const initial = `// Editez votre code Vitte ici\nproc main() -> int {\n  give 0\n}`;
 
     this.panel.webview.html = `<!DOCTYPE html>
       <html lang="fr">

@@ -66,7 +66,7 @@ export function getCompletionDocumentKey(document: vscode.TextDocument): string 
   const lines: string[] = [];
   for (let i = 0; i < maxLines; i += 1) {
     const t = document.lineAt(i).text.trim();
-    if (/^(?:use|import|module|package|namespace)\b/i.test(t)) lines.push(t.toLowerCase());
+    if (/^(?:space|use)\b/i.test(t)) lines.push(t.toLowerCase());
     if (lines.length >= 24) break;
   }
   return `${document.uri.toString()}#${document.languageId}:${document.lineCount}:${lines.join("|")}`;
@@ -104,7 +104,7 @@ function extractImports(document: vscode.TextDocument): string[] {
   const imports: string[] = [];
   for (let i = 0; i < maxLines; i += 1) {
     const t = document.lineAt(i).text.trim();
-    const m = /^(?:use|import)\s+([A-Za-z0-9_./:-]+)/.exec(t);
+    const m = /^(?:use)\s+([A-Za-z0-9_./:-]+)/.exec(t);
     if (m?.[1]) imports.push(m[1].toLowerCase());
   }
   return imports;
@@ -150,17 +150,17 @@ function scopeSymbols(document: vscode.TextDocument, position: vscode.Position):
       else if (ch === "}") depth += 1;
     }
     if (depth < -2) break;
-    const varMatches = t.match(/\b(?:let|var|const|mut)\s+([A-Za-z_][A-Za-z0-9_]*)/g) ?? [];
+    const varMatches = t.match(/\b(?:let|const)\s+([A-Za-z_][A-Za-z0-9_]*)/g) ?? [];
     for (const m of varMatches) {
       const n = m.split(/\s+/).pop();
       if (n) out.add(n.toLowerCase());
     }
-    const fnMatch = /\b(?:fn|function|def)\s+([A-Za-z_][A-Za-z0-9_]*)/.exec(t);
+    const fnMatch = /\bproc\s+([A-Za-z_][A-Za-z0-9_]*)/.exec(t);
     if (fnMatch?.[1]) out.add(fnMatch[1].toLowerCase());
   }
   for (let i = position.line + 1; i <= to; i += 1) {
     const t = document.lineAt(i).text;
-    const varMatches = t.match(/\b(?:let|var|const|mut)\s+([A-Za-z_][A-Za-z0-9_]*)/g) ?? [];
+    const varMatches = t.match(/\b(?:let|const)\s+([A-Za-z_][A-Za-z0-9_]*)/g) ?? [];
     for (const m of varMatches) {
       const n = m.split(/\s+/).pop();
       if (n) out.add(n.toLowerCase());
@@ -220,7 +220,7 @@ function languageWeight(document: vscode.TextDocument, label: string): number {
     return 0;
   }
   if (lang === "vitte" || lang === "vit") {
-    if (/(gives|module|package|use|pub|impl|match)/.test(label)) return 1.25;
+    if (/(give|space|use|pub|impl|match|form|proc|let|set)/.test(label)) return 1.25;
     return 0;
   }
   return 0;
