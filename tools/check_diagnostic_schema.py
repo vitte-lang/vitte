@@ -84,6 +84,22 @@ def reject_vague_text(text: str, path: Path, field: str, patterns: tuple[str, ..
             raise ValueError(f"{path}: {field} is too vague: {text!r}")
 
 
+def validate_code_documentation(entry: dict[str, object], path: Path, code: str) -> None:
+    documentation = entry.get("documentation")
+    if not isinstance(documentation, dict):
+        raise ValueError(f"{path}: {code} must contain documentation")
+    required = {"title", "summary", "cause", "action", "example", "url"}
+    missing = required - documentation.keys()
+    if missing:
+        raise ValueError(f"{path}: {code} documentation missing fields: {', '.join(sorted(missing))}")
+    for field in sorted(required):
+        value = documentation.get(field)
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(f"{path}: {code} documentation.{field} must be non-empty")
+    reject_vague_text(documentation["cause"], path, f"{code}.documentation.cause", VAGUE_CAUSE_PATTERNS)
+    reject_vague_text(documentation["action"], path, f"{code}.documentation.action", VAGUE_ACTION_PATTERNS)
+
+
 def validate_fixture(value: object, path: Path, registry: dict[str, dict[str, object]]) -> None:
     if not isinstance(value, dict):
         raise ValueError(f"{path}: diagnostic must be an object")
@@ -217,6 +233,7 @@ def main() -> int:
             raise ValueError(f"{CODES}: {code} must be marked stable=true")
         if entry.get("deprecated") not in {True, False}:
             raise ValueError(f"{CODES}: {code} must declare deprecated=true or deprecated=false")
+        validate_code_documentation(entry, CODES, code)
         if message_key in aliases:
             raise ValueError(f"{CODES}: legacy diagnostic key {message_key} maps to both {aliases[message_key]} and {code}")
         sort_key = (phase_order[phase], code)

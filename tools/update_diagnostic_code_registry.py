@@ -8,8 +8,13 @@ from collections import defaultdict
 import json
 import re
 from pathlib import Path
+import sys
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "tools"))
+
+from diagnostic_catalog_data import explanation_fields, readable_from_code  # noqa: E402
+
 CATALOG = ROOT / "locales/en/diagnostics.ftl"
 REGISTRY = ROOT / "schemas/diagnostics/codes.json"
 CODE = re.compile(r"^([A-Z][A-Z0-9_]*?)\s*=", re.MULTILINE)
@@ -34,6 +39,10 @@ def phase_for_legacy_code(code: str) -> str:
         return "lexer"
     if code.startswith(("PARSE_", "SYNTAX_", "P", "FAST", "FLEX", "E0")):
         return "parser"
+    if code.startswith("E1"):
+        return "typeck"
+    if code.startswith("E2"):
+        return "mir"
     if code.startswith(("NAME_", "MODULE_", "MOD_")):
         return "resolver"
     if code.startswith(("SEMA_", "AST_")):
@@ -57,6 +66,18 @@ def phase_for_legacy_code(code: str) -> str:
 
 def legacy_sort_key(code: str) -> tuple[str, str]:
     return phase_for_legacy_code(code), code
+
+
+def documentation_for_code(public_code: str, legacy_code: str, phase: str) -> dict[str, str]:
+    fields = explanation_fields(legacy_code, readable_from_code(legacy_code))
+    return {
+        "title": readable_from_code(legacy_code),
+        "summary": fields["summary"],
+        "cause": fields["cause"],
+        "action": fields["step1"],
+        "example": fields["example"],
+        "url": f"docs://compiler/diagnostics/{phase}/{public_code}",
+    }
 
 
 def load_existing_registry() -> list[dict[str, object]]:
@@ -110,8 +131,8 @@ def render() -> str:
             public_code = existing.get("code")
             existing_phase = existing.get("phase")
             if not isinstance(public_code, str) or existing_phase != phase:
-                raise ValueError(f"{REGISTRY}: existing entry for {legacy_code} changed phase or code shape")
-        else:
+                existing = None
+        if not existing:
             counters[phase] += 1
             public_code = f"{PHASE_PREFIXES[phase]}{counters[phase]:04d}"
         entries_by_key[legacy_code] = {
@@ -119,6 +140,7 @@ def render() -> str:
             "phase": phase,
             "message_key": legacy_code,
             "aliases": [legacy_code],
+            "documentation": documentation_for_code(public_code, legacy_code, phase),
             "stable": True,
             "deprecated": False,
         }
@@ -135,6 +157,7 @@ def render() -> str:
             "phase": phase,
             "message_key": legacy_code,
             "aliases": [legacy_code],
+            "documentation": documentation_for_code(code, legacy_code, phase),
             "stable": True,
             "deprecated": True,
         }

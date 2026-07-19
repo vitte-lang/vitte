@@ -419,9 +419,13 @@ def readable_from_code(code: str) -> str:
 def diagnostic_family(code: str) -> str:
     if code.startswith(("E0", "LEX_", "P", "PARSE_", "FLEX", "FAST", "SYNTAX_")):
         return "syntax"
+    if code.startswith("E1"):
+        return "type checking"
+    if code.startswith("E2"):
+        return "compiler pipeline"
     if code.startswith(("AST_", "HIR_", "MIR_", "IR_")):
         return "compiler pipeline"
-    if code.startswith(("SEMA_", "NAME_", "MODULE_")):
+    if code.startswith(("SEMA_", "NAME_", "MODULE_", "MOD_")):
         return "name and module analysis"
     if code.startswith(("TYPECK_", "TYPE", "GENERIC_", "TRAIT_")):
         return "type checking"
@@ -435,7 +439,7 @@ def diagnostic_family(code: str) -> str:
         return "runtime"
     if code.startswith("DRIVER_"):
         return "command line"
-    if code.startswith("BOOTSTRAP_"):
+    if code.startswith(("BOOTSTRAP_", "E_BOOTSTRAP_")):
         return "bootstrap"
     if code.startswith("LIMIT_"):
         return "resource limit"
@@ -479,6 +483,11 @@ def explanation_fields(code: str, message: str | None = None) -> dict[str, str]:
         fields["step1"] = "Reduce the constant expression at the reported span."
         fields["fix"] = "rewrite the highlighted constant expression so const evaluation can prove it safely"
         fields["example"] = "const size: int = 4"
+    elif family == "compiler pipeline":
+        fields["cause"] = "A compiler representation failed the structural invariant required before the next pipeline phase."
+        fields["step1"] = "Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering."
+        fields["fix"] = "repair the malformed intermediate representation before continuing to the next phase"
+        fields["example"] = "proc main() -> int { give 0; }"
     elif family == "resource limit":
         fields["cause"] = "The input exceeded a configured compiler safety limit."
         fields["step1"] = "Split the file, expression, import graph, token, or macro expansion named by the code."
@@ -494,6 +503,21 @@ def explanation_fields(code: str, message: str | None = None) -> dict[str, str]:
         fields["step1"] = "Re-run the command with --help and verify paths and option values."
         fields["fix"] = "provide an existing input, writable output path, and supported target/profile"
         fields["example"] = "vitte check src/main.vit --lang en"
+    elif family == "macro expansion":
+        fields["cause"] = "A macro invocation, argument, recursion limit, or expansion contract could not produce valid user-facing code."
+        fields["step1"] = "Inspect the macro invocation and the expansion note attached to the primary diagnostic."
+        fields["fix"] = "change the macro arguments or stop the recursive expansion before lowering resumes"
+        fields["example"] = "my_macro!(value)"
+    elif family == "runtime":
+        fields["cause"] = "Generated program execution reached a runtime safety check or trap reported by the Vitte runtime."
+        fields["step1"] = "Inspect the runtime span and the operation named by the diagnostic code."
+        fields["fix"] = "change the program state that reaches the runtime trap or add an explicit check before it"
+        fields["example"] = "if index < len(items) { give items[index]; }"
+    elif family == "bootstrap":
+        fields["cause"] = "The bootstrap compiler rejected a trust-root, stage artifact, or seed-root invariant."
+        fields["step1"] = "Inspect the bootstrap artifact and the stage named by the diagnostic code."
+        fields["fix"] = "repair the seed-rooted bootstrap artifact before using it as compiler input"
+        fields["example"] = "make bootstrap-seed-root-test"
     if code == "PARSE_E_PARAMETER_COLON_EXPECTED":
         fields["cause"] = "A procedure parameter name is followed by its type without the required colon separator."
         fields["step1"] = "Inspect the highlighted parameter in the multi-line procedure signature."
