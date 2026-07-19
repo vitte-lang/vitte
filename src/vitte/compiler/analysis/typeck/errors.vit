@@ -466,26 +466,26 @@ proc typeck_invalid_cast(source_ty: string, target_ty: string, span: Span) -> Di
 }
 
 proc typeck_non_exhaustive_match(missing_case: string, span: Span) -> Diagnostic {
-    let diag0: Diagnostic = typed_typeck_diag("TYPECK_E_MATCH_NON_EXHAUSTIVE", "match expression is not exhaustive", [missing_case], "add the missing arm or a wildcard arm", span, DiagnosticSeverity.Error, DiagnosticPhase.Typeck, TypeckErrorKind.TypeMismatch);
-    let diag1: Diagnostic = diagnostic_with_rule(diag0, "pattern coverage completeness");
-    let diag2: Diagnostic = diagnostic_with_explanation(diag1, "the current match does not cover every remaining case");
-    let diag3: Diagnostic = diagnostic_add_cause(diag2, "missing case: `" + missing_case + "`");
-    give diagnostic_with_probable_fix(diag3, "add the missing arm explicitly or use `_`/`else` as a fallback branch");
+    let diag0: Diagnostic = typed_typeck_diag("TYPECK_E_MATCH_NON_EXHAUSTIVE", "pick pattern is not exhaustive", [missing_case], "add the missing pick branch or an explicit fallback branch", span, DiagnosticSeverity.Error, DiagnosticPhase.Typeck, TypeckErrorKind.TypeMismatch);
+    let diag1: Diagnostic = diagnostic_with_rule(diag0, "pick pattern coverage completeness");
+    let diag2: Diagnostic = diagnostic_with_explanation(diag1, "the current pattern does not cover every remaining pick variant");
+    let diag3: Diagnostic = diagnostic_add_cause(diag2, "missing pick variant or case: `" + missing_case + "`");
+    give diagnostic_with_probable_fix(diag3, "add the missing pick branch explicitly or use a fallback branch");
 }
 
 proc typeck_invalid_call(callee: string, span: Span) -> Diagnostic {
-    let diag0: Diagnostic = typed_typeck_diag("TYPECK_E_INVALID_CALL_TARGET", "expression is not callable", [callee], "call only procedures, functions, closures, or callable values", span, DiagnosticSeverity.Error, DiagnosticPhase.Typeck, TypeckErrorKind.InvalidCall);
-    let diag1: Diagnostic = diagnostic_with_rule(diag0, "call target must be callable");
-    let diag2: Diagnostic = diagnostic_with_explanation(diag1, "the expression resolved to `" + callee + "`, which is not a callable value");
-    let diag3: Diagnostic = diagnostic_add_cause(diag2, "expected target origin: proc, function item, closure, or callable value");
+    let diag0: Diagnostic = typed_typeck_diag("TYPECK_E_INVALID_CALL_TARGET", "expression is not a callable proc", [callee], "call only visible procs or proc values", span, DiagnosticSeverity.Error, DiagnosticPhase.Typeck, TypeckErrorKind.InvalidCall);
+    let diag1: Diagnostic = diagnostic_with_rule(diag0, "proc call target must be callable");
+    let diag2: Diagnostic = diagnostic_with_explanation(diag1, "the expression resolved to `" + callee + "`, which is not a callable proc value");
+    let diag3: Diagnostic = diagnostic_add_cause(diag2, "expected target origin: proc declaration or proc value");
     let diag4: Diagnostic = diagnostic_add_cause(diag3, "found target origin: expression `" + callee + "`");
-    give diagnostic_with_probable_fix(diag4, "call a procedure value, or remove the call syntax if this is a plain value");
+    give diagnostic_with_probable_fix(diag4, "call a proc value, or remove the call syntax if this is a plain value");
 }
 
 proc typeck_argument_mismatch(callee: string, position: u64, expected: string, found: string, span: Span) -> Diagnostic {
     let position_text: string = position as string;
     let diag0: Diagnostic = typed_typeck_diag("TYPECK_E_ARGUMENT_MISMATCH", "argument " + position_text + " of `" + callee + "` expects `" + expected + "` but receives `" + found + "`", [callee, expected, found], "convert the value or modify the callee signature", span, DiagnosticSeverity.Error, DiagnosticPhase.Typeck, TypeckErrorKind.InvalidCall);
-    let diag1: Diagnostic = diagnostic_with_rule(diag0, "function argument compatibility");
+    let diag1: Diagnostic = diagnostic_with_rule(diag0, "proc argument compatibility");
     let diag2: Diagnostic = diagnostic_with_explanation(diag1, "Expected type `" + expected + "` because parameter " + position_text + " of `" + callee + "` is declared that way; obtained type `" + found + "` from this argument expression. Convert the value or modify the signature.");
     let diag3: Diagnostic = diagnostic_add_cause(diag2, "expected type `" + expected + "` because parameter " + position_text + " of `" + callee + "` is declared that way");
     let diag4: Diagnostic = diagnostic_add_cause(diag3, "obtained type `" + found + "` from argument " + position_text + " at the call site");
@@ -497,7 +497,7 @@ proc typeck_invalid_call_arity(callee: string, expected_arity: u64, found_arity:
     let expected_text: string = expected_arity as string;
     let found_text: string = found_arity as string;
     let diag0: Diagnostic = typed_typeck_diag("TYPECK_E_CALL_ARITY", "wrong number of call arguments", [callee, expected_text, found_text], "pass the expected number of arguments or change the callee signature", span, DiagnosticSeverity.Error, DiagnosticPhase.Typeck, TypeckErrorKind.InvalidCall);
-    let diag1: Diagnostic = diagnostic_with_rule(diag0, "function call arity");
+    let diag1: Diagnostic = diagnostic_with_rule(diag0, "proc call arity");
     let diag2: Diagnostic = diagnostic_with_explanation(diag1, "`" + callee + "` expects " + expected_text + " argument(s), but this call provides " + found_text);
     let diag3: Diagnostic = diagnostic_add_cause(diag2, "expected arity comes from the callee signature");
     let diag4: Diagnostic = diagnostic_add_cause(diag3, "found arity comes from the call-site argument list");

@@ -676,11 +676,11 @@ proc diagnostic_default_rule(phase: DiagnosticPhase, code: string) -> string {
     }
 
     if code == "TYPECK_E_ARGUMENT_MISMATCH" {
-        give "function argument compatibility";
+        give "proc argument compatibility";
     }
 
     if code == "TYPECK_E_CALL_ARITY" {
-        give "function call arity";
+        give "proc call arity";
     }
 
     if code == "BORROWCK_E_USE_AFTER_MOVE" or code == "BORROW_E_USE_AFTER_MOVE" {
@@ -772,11 +772,11 @@ proc diagnostic_default_explanation(phase: DiagnosticPhase, code: string) -> str
     }
 
     if code == "TYPECK_E_ARGUMENT_MISMATCH" {
-        give "A call argument does not satisfy the corresponding parameter type contract.";
+        give "A proc call argument does not satisfy the corresponding parameter type contract.";
     }
 
     if code == "TYPECK_E_CALL_ARITY" {
-        give "The call site provides a different number of arguments than the callee accepts.";
+        give "The proc call site provides a different number of arguments than the callee accepts.";
     }
 
     if code == "BORROWCK_E_USE_AFTER_MOVE" or code == "BORROW_E_USE_AFTER_MOVE" {
@@ -872,11 +872,11 @@ proc diagnostic_default_root_cause(phase: DiagnosticPhase, code: string) -> stri
     }
 
     if code == "TYPECK_E_ARGUMENT_MISMATCH" {
-        give "call argument type does not match the parameter type";
+        give "proc call argument type does not match the parameter type";
     }
 
     if code == "TYPECK_E_CALL_ARITY" {
-        give "call argument count differs from the callee signature";
+        give "proc call argument count differs from the callee signature";
     }
 
     if code == "BORROWCK_E_USE_AFTER_MOVE" or code == "BORROW_E_USE_AFTER_MOVE" {
@@ -3709,6 +3709,104 @@ proc typeck_form_incomplete(form_name: string, span: SourceSpan) -> Diagnostic {
     give diagnostic_with_help(diag1, "provide every required `form` field exactly once");
 }
 
+proc typeck_pick_unknown_variant(pick_name: string, variant_name: string, span: SourceSpan) -> Diagnostic {
+    let diag0: Diagnostic = diagnostic_error("TYPECK_E_PICK_UNKNOWN_VARIANT", DiagnosticPhase.Typeck, "pick `" + pick_name + "` has no variant `" + variant_name + "`", span);
+    let diag1: Diagnostic = diagnostic_with_rule(diag0, "pick variant lookup");
+    let diag2: Diagnostic = diagnostic_add_cause(diag1, "the variant must be declared inside pick `" + pick_name + "`");
+    give diagnostic_with_help(diag2, "use a declared `pick` variant or correct the variant name");
+}
+
+proc typeck_pick_non_exhaustive(pick_name: string, missing_case: string, span: SourceSpan) -> Diagnostic {
+    let diag0: Diagnostic = diagnostic_error("TYPECK_E_PICK_NON_EXHAUSTIVE", DiagnosticPhase.Typeck, "pattern over pick `" + pick_name + "` does not cover variant `" + missing_case + "`", span);
+    let diag1: Diagnostic = diagnostic_with_rule(diag0, "pick pattern exhaustiveness");
+    let diag2: Diagnostic = diagnostic_add_cause(diag1, "missing pick variant: `" + missing_case + "`");
+    give diagnostic_with_help(diag2, "add a branch for `" + missing_case + "` or an explicit fallback branch");
+}
+
+proc typeck_pick_unreachable_variant(pick_name: string, variant_name: string, span: SourceSpan) -> Diagnostic {
+    let diag0: Diagnostic = diagnostic_warning("TYPECK_W_PICK_VARIANT_UNREACHABLE", DiagnosticPhase.Typeck, "pick variant `" + variant_name + "` is unreachable in this pattern", span);
+    let diag1: Diagnostic = diagnostic_with_rule(diag0, "pick branch reachability");
+    let diag2: Diagnostic = diagnostic_add_cause(diag1, "an earlier branch already covers `" + variant_name + "` for pick `" + pick_name + "`");
+    give diagnostic_with_help(diag2, "remove this branch or narrow the earlier pattern");
+}
+
+proc typeck_pick_payload_mismatch(pick_name: string, variant_name: string, expected: string, found: string, span: SourceSpan) -> Diagnostic {
+    let diag0: Diagnostic = diagnostic_error("TYPECK_E_PICK_PAYLOAD_MISMATCH", DiagnosticPhase.Typeck, "payload for `" + pick_name + "." + variant_name + "` expects `" + expected + "` but receives `" + found + "`", span);
+    give attach_expected_found_details(diag0, "pick variant payload compatibility", expected, found, "variant `" + variant_name + "` declares payload `" + expected + "`", "the supplied pick payload", "change the payload value or adjust the `pick` variant declaration");
+}
+
+proc typeck_pick_impossible_pattern(pick_name: string, pattern_text: string, span: SourceSpan) -> Diagnostic {
+    let diag0: Diagnostic = diagnostic_error("TYPECK_E_PICK_IMPOSSIBLE_PATTERN", DiagnosticPhase.Typeck, "pattern `" + pattern_text + "` can never match pick `" + pick_name + "`", span);
+    let diag1: Diagnostic = diagnostic_with_rule(diag0, "pick pattern possibility");
+    let diag2: Diagnostic = diagnostic_add_cause(diag1, "the pattern is not compatible with any reachable variant of `" + pick_name + "`");
+    give diagnostic_with_help(diag2, "replace the pattern with a declared `pick` variant that can occur here");
+}
+
+proc typeck_pick_duplicate_branch(pick_name: string, variant_name: string, first_span: SourceSpan, duplicate_span: SourceSpan) -> Diagnostic {
+    let diag0: Diagnostic = diagnostic_error("TYPECK_E_PICK_DUPLICATE_BRANCH", DiagnosticPhase.Typeck, "branch for pick variant `" + variant_name + "` is duplicated", duplicate_span);
+    let diag1: Diagnostic = diagnostic_with_rule(diag0, "unique pick branches");
+    let diag2: Diagnostic = diagnostic_with_label(diag1, previous_label("first branch for `" + pick_name + "." + variant_name + "` appears here", first_span));
+    let diag3: Diagnostic = diagnostic_add_cause(diag2, "duplicate branch covers the same pick variant");
+    give diagnostic_with_help(diag3, "merge the branch bodies or remove the duplicated branch");
+}
+
+proc typeck_proc_unknown(proc_name: string, span: SourceSpan) -> Diagnostic {
+    let diag0: Diagnostic = diagnostic_error("TYPECK_E_PROC_UNKNOWN", DiagnosticPhase.Typeck, "proc `" + proc_name + "` does not exist in this call context", span);
+    let diag1: Diagnostic = diagnostic_with_rule(diag0, "proc call resolution");
+    let diag2: Diagnostic = diagnostic_add_cause(diag1, "no visible callable proc named `" + proc_name + "` was found");
+    give diagnostic_with_help(diag2, "declare the `proc`, add a canonical `use`, or correct the call name");
+}
+
+proc typeck_proc_argument_arity(proc_name: string, expected_params: string, expected_arity: u64, found_arity: u64, span: SourceSpan) -> Diagnostic {
+    let expected_text: string = expected_arity as string;
+    let found_text: string = found_arity as string;
+    let diag0: Diagnostic = diagnostic_error("TYPECK_E_PROC_CALL_ARITY", DiagnosticPhase.Typeck, "proc `" + proc_name + "` expects " + expected_text + " argument(s) but the call provides " + found_text, span);
+    let diag1: Diagnostic = diagnostic_with_rule(diag0, "proc parameter arity");
+    let diag2: Diagnostic = diagnostic_add_cause(diag1, "expected parameters: " + expected_params);
+    give diagnostic_with_help(diag2, "rewrite the call so each provided argument maps to one expected parameter");
+}
+
+proc typeck_proc_named_argument_unknown(proc_name: string, argument_name: string, expected_params: string, span: SourceSpan) -> Diagnostic {
+    let diag0: Diagnostic = diagnostic_error("TYPECK_E_PROC_NAMED_ARGUMENT_UNKNOWN", DiagnosticPhase.Typeck, "proc `" + proc_name + "` has no parameter named `" + argument_name + "`", span);
+    let diag1: Diagnostic = diagnostic_with_rule(diag0, "proc named argument binding");
+    let diag2: Diagnostic = diagnostic_add_cause(diag1, "expected parameters: " + expected_params);
+    give diagnostic_with_help(diag2, "rename this argument to an existing parameter or remove it");
+}
+
+proc typeck_proc_argument_order(proc_name: string, argument_name: string, expected_position: u64, found_position: u64, span: SourceSpan) -> Diagnostic {
+    let expected_text: string = expected_position as string;
+    let found_text: string = found_position as string;
+    let diag0: Diagnostic = diagnostic_error("TYPECK_E_PROC_ARGUMENT_ORDER", DiagnosticPhase.Typeck, "argument `" + argument_name + "` is in position " + found_text + " but proc `" + proc_name + "` expects it at position " + expected_text, span);
+    let diag1: Diagnostic = diagnostic_with_rule(diag0, "proc argument order");
+    give diagnostic_with_help(diag1, "move this argument to the expected position or use canonical named arguments when supported");
+}
+
+proc typeck_proc_argument_type(proc_name: string, parameter_name: string, expected: string, found: string, arg_span: SourceSpan, param_span: SourceSpan) -> Diagnostic {
+    let diag0: Diagnostic = diagnostic_error("TYPECK_E_PROC_ARGUMENT_TYPE", DiagnosticPhase.Typeck, "argument for parameter `" + parameter_name + "` of proc `" + proc_name + "` expects `" + expected + "` but receives `" + found + "`", arg_span);
+    let diag1: Diagnostic = diagnostic_with_label(diag0, previous_label("parameter `" + parameter_name + "` is declared here with type `" + expected + "`", param_span));
+    give attach_expected_found_details(diag1, "proc argument type compatibility", expected, found, "parameter `" + parameter_name + "` of proc `" + proc_name + "`", "this call argument", "convert the argument or modify the proc signature");
+}
+
+proc typeck_proc_call_ambiguous(proc_name: string, candidates: string, span: SourceSpan) -> Diagnostic {
+    let diag0: Diagnostic = diagnostic_error("TYPECK_E_PROC_CALL_AMBIGUOUS", DiagnosticPhase.Typeck, "call to proc `" + proc_name + "` is ambiguous", span);
+    let diag1: Diagnostic = diagnostic_with_rule(diag0, "proc overload resolution");
+    let diag2: Diagnostic = diagnostic_add_cause(diag1, "matching candidates: " + candidates);
+    give diagnostic_with_help(diag2, "add type annotations, qualify the proc path, or remove one candidate from scope");
+}
+
+proc typeck_proc_result_ignored(proc_name: string, result_type: string, span: SourceSpan) -> Diagnostic {
+    let diag0: Diagnostic = diagnostic_warning("TYPECK_W_PROC_RESULT_IGNORED", DiagnosticPhase.Typeck, "result of proc `" + proc_name + "` with type `" + result_type + "` is ignored", span);
+    let diag1: Diagnostic = diagnostic_with_rule(diag0, "proc result must be used or intentionally discarded");
+    give diagnostic_with_help(diag1, "bind the result with `let`, pass it to another proc, or explicitly mark the discard");
+}
+
+proc typeck_proc_not_callable(callee: string, found_kind: string, span: SourceSpan) -> Diagnostic {
+    let diag0: Diagnostic = diagnostic_error("TYPECK_E_PROC_NOT_CALLABLE", DiagnosticPhase.Typeck, "`" + callee + "` is `" + found_kind + "`, not a callable proc", span);
+    let diag1: Diagnostic = diagnostic_with_rule(diag0, "proc call target");
+    let diag2: Diagnostic = diagnostic_add_cause(diag1, "call syntax requires a visible `proc` or proc value");
+    give diagnostic_with_help(diag2, "remove the call syntax or call a visible `proc`");
+}
+
 proc borrowck_use_after_move(name: string, use_span: SourceSpan, move_span: SourceSpan) -> Diagnostic {
     let diag: Diagnostic = diagnostic_error("BORROWCK_E_USE_AFTER_MOVE", DiagnosticPhase.Borrowck, "value `" + name + "` used after move", use_span);
     let move_label: DiagnosticLabel = previous_label("value was moved here", move_span);
@@ -3728,6 +3826,33 @@ proc borrowck_mutable_borrow_conflict(name: string, request_span: SourceSpan, ac
     set diag = diagnostic_with_help(diag, "end the previous borrow before taking mutable access");
 
     give diag;
+}
+
+proc borrowck_borrow_of_moved_value(name: string, borrow_span: SourceSpan, move_span: SourceSpan) -> Diagnostic {
+    let diag0: Diagnostic = diagnostic_error("BORROWCK_E_BORROW_OF_MOVED_VALUE", DiagnosticPhase.Borrowck, "cannot borrow `" + name + "` because ownership was already moved", borrow_span);
+    let diag1: Diagnostic = diagnostic_with_rule(diag0, "borrow requires an owned or borrowed-live value");
+    let diag2: Diagnostic = diagnostic_with_label(diag1, previous_label("ownership moved here", move_span));
+    let diag3: Diagnostic = diagnostic_with_label(diag2, secondary_label("borrow request appears here", borrow_span));
+    let diag4: Diagnostic = diagnostic_add_cause(diag3, "where the value was moved: line " + move_span.start_line as string);
+    give diagnostic_with_help(diag4, "borrow before the move, clone the value before moving, or reinitialize it before borrowing");
+}
+
+proc borrowck_write_while_borrowed(name: string, write_span: SourceSpan, borrow_span: SourceSpan) -> Diagnostic {
+    let diag0: Diagnostic = diagnostic_error("BORROWCK_E_WRITE_WHILE_BORROWED", DiagnosticPhase.Borrowck, "cannot `set` `" + name + "` while a borrow is active", write_span);
+    let diag1: Diagnostic = diagnostic_with_rule(diag0, "borrowed value write exclusion");
+    let diag2: Diagnostic = diagnostic_with_label(diag1, previous_label("borrow starts here", borrow_span));
+    let diag3: Diagnostic = diagnostic_with_label(diag2, secondary_label("conflict appears here: `set` requires write access", write_span));
+    let diag4: Diagnostic = diagnostic_add_cause(diag3, "borrow is still active at the conflict");
+    give diagnostic_with_help(diag4, "end the borrow before `set`, or move the write before the borrow starts");
+}
+
+proc borrowck_dangling_reference(name: string, use_span: SourceSpan, owner_end_span: SourceSpan) -> Diagnostic {
+    let diag0: Diagnostic = diagnostic_error("BORROWCK_E_DANGLING_REFERENCE", DiagnosticPhase.Borrowck, "reference `" + name + "` can outlive its owner", use_span);
+    let diag1: Diagnostic = diagnostic_with_rule(diag0, "borrow owner must outlive reference");
+    let diag2: Diagnostic = diagnostic_with_label(diag1, previous_label("owner stops being valid here", owner_end_span));
+    let diag3: Diagnostic = diagnostic_with_label(diag2, secondary_label("reference is still used here", use_span));
+    let diag4: Diagnostic = diagnostic_add_cause(diag3, "where the owner ends: line " + owner_end_span.start_line as string);
+    give diagnostic_with_help(diag4, "keep the owner alive longer or keep the reference inside the owner scope");
 }
 
 proc ir_invalid_terminator(span: SourceSpan) -> Diagnostic {
@@ -3760,12 +3885,12 @@ proc attach_expected_found_details(diagnostic: Diagnostic, rule_name: string, ex
 proc typeck_argument_mismatch(expected: string, found: string, expected_origin: string, found_origin: string, span: SourceSpan) -> Diagnostic {
     let diag0: Diagnostic = diagnostic_error("TYPECK_E_ARGUMENT_MISMATCH", DiagnosticPhase.Typeck, "call argument expects `" + expected + "` but receives `" + found + "`", span);
     let diag1: Diagnostic = diagnostic_with_help(diag0, "convert the value or modify the callee signature");
-    give attach_expected_found_details(diag1, "function argument compatibility", expected, found, expected_origin, found_origin, "convert the value or modify the signature");
+    give attach_expected_found_details(diag1, "proc argument compatibility", expected, found, expected_origin, found_origin, "convert the value or modify the signature");
 }
 
 proc typeck_invalid_call_arity(callee: string, expected_arity: u64, found_arity: u64, span: SourceSpan) -> Diagnostic {
     let diag0: Diagnostic = diagnostic_error("TYPECK_E_CALL_ARITY", DiagnosticPhase.Typeck, "wrong number of call arguments", span);
-    let diag1: Diagnostic = diagnostic_with_rule(diag0, "function call arity");
+    let diag1: Diagnostic = diagnostic_with_rule(diag0, "proc call arity");
     let diag2: Diagnostic = diagnostic_with_subject_symbol(diag1, callee);
     let expected_arity_text: string = expected_arity as string;
     let found_arity_text: string = found_arity as string;
@@ -4011,12 +4136,29 @@ share typeck_form_duplicate_field
 share typeck_form_field_type_mismatch
 share typeck_form_field_order
 share typeck_form_incomplete
+share typeck_pick_unknown_variant
+share typeck_pick_non_exhaustive
+share typeck_pick_unreachable_variant
+share typeck_pick_payload_mismatch
+share typeck_pick_impossible_pattern
+share typeck_pick_duplicate_branch
+share typeck_proc_unknown
+share typeck_proc_argument_arity
+share typeck_proc_named_argument_unknown
+share typeck_proc_argument_order
+share typeck_proc_argument_type
+share typeck_proc_call_ambiguous
+share typeck_proc_result_ignored
+share typeck_proc_not_callable
 share typeck_argument_mismatch
 share typeck_invalid_call_arity
 share typeck_if_branch_mismatch
 share typeck_non_exhaustive_match
 share borrowck_use_after_move
 share borrowck_mutable_borrow_conflict
+share borrowck_borrow_of_moved_value
+share borrowck_write_while_borrowed
+share borrowck_dangling_reference
 share borrowck_move_while_borrowed
 share borrowck_shared_borrow_conflict
 share borrowck_lifetime_too_short
