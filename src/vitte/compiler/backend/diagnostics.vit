@@ -325,6 +325,16 @@ proc backend_tool_crashed(backend_name: string, target_name: string, command_tex
   give diagnostic_with_probable_fix(diag3, "inspect the backend stderr and rerun with verbose output if command details are needed");
 }
 
+proc backend_remap_diagnostic_to_vitte_function(diagnostic: Diagnostic, native_symbol: string) -> Diagnostic {
+  if native_symbol == "" {
+    give diagnostic;
+  }
+  let vitte_name: string = vitte_demangle_symbol(native_symbol);
+  let diag1: Diagnostic = diagnostic_with_subject_symbol(diagnostic, vitte_name);
+  let diag2: Diagnostic = diagnostic_add_pipeline_context(diag1, "native_symbol=" + native_symbol);
+  give diagnostic_add_pipeline_context(diag2, "vitte_function=" + vitte_name);
+}
+
 proc linker_command_failed(backend_name: string, target_name: string, command_text: string, exit_code: int, stderr_text: string, output_path: string, span: SourceSpan) -> Diagnostic {
   let info: LinkerFailureInfo = linker_failure_info(stderr_text);
   let code: string = info.code;
@@ -332,7 +342,7 @@ proc linker_command_failed(backend_name: string, target_name: string, command_te
   let diag1a: Diagnostic = diagnostic_with_kind(diag0, DiagnosticKind.Linker);
   let diag1: Diagnostic = backend_diag_context(diag1a, backend_name, target_name, output_path);
   let diag2: Diagnostic = backend_diag_command(diag1, command_text, exit_code, stderr_text);
-  let diag3: Diagnostic = diagnostic_with_subject_symbol(diag2, info.vitte_symbol);
+  let diag3: Diagnostic = backend_remap_diagnostic_to_vitte_function(diag2, info.native_symbol);
   let diag4: Diagnostic = diagnostic_with_root_cause(diag3, info.detail);
   give diagnostic_with_probable_fix(diag4, "fix the first linker diagnostic and rerun with verbose output only if command details are needed");
 }
@@ -341,11 +351,10 @@ proc linker_native_symbol_not_found(symbol_name: string, backend_name: string, t
   let vitte_name: string = vitte_demangle_symbol(symbol_name);
   let diag0: Diagnostic = diagnostic_fatal("LINK_E_UNDEFINED_SYMBOL", DiagnosticPhase.Linker, "native symbol for Vitte item `" + vitte_name + "` was not found", span);
   let diag0a: Diagnostic = diagnostic_with_kind(diag0, DiagnosticKind.Linker);
-  let diag1: Diagnostic = diagnostic_with_subject_symbol(diag0a, vitte_name);
+  let diag1: Diagnostic = backend_remap_diagnostic_to_vitte_function(diag0a, symbol_name);
   let diag2: Diagnostic = backend_diag_context(diag1, backend_name, target_name, "");
   let diag3: Diagnostic = backend_diag_command(diag2, command_text, exit_code, stderr_text);
-  let diag4: Diagnostic = diagnostic_add_pipeline_context(diag3, "native_symbol=" + symbol_name);
-  let diag5: Diagnostic = diagnostic_with_root_cause(diag4, "no linked object or runtime library defines the requested native symbol");
+  let diag5: Diagnostic = diagnostic_with_root_cause(diag3, "no linked object or runtime library defines the requested native symbol");
   give diagnostic_with_probable_fix(diag5, "link the library that defines `" + vitte_name + "` or correct its Vitte declaration");
 }
 

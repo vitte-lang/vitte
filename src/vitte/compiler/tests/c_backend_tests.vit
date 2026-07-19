@@ -1,13 +1,13 @@
 space vitte/compiler/tests/c_backend_tests
 
 use vitte/compiler/backend/c/pipeline.{ CBackendPipelineResult, run_c_backend_frontend, run_c_backend_mir, run_c_backend_source }
-use vitte/compiler/backend/diagnostics.{ LinkerFailureInfo, backend_tool_crashed, linker_command_failed, linker_failure_info, vitte_demangle_symbol }
+use vitte/compiler/backend/diagnostics.{ LinkerFailureInfo, backend_remap_diagnostic_to_vitte_function, backend_tool_crashed, linker_command_failed, linker_failure_info, vitte_demangle_symbol }
 use vitte/compiler/backend/c/lowering.{ CTranslationUnit, lower_mir_to_c_with_hir_and_ir, lower_mir_to_c_with_ir }
 use vitte/compiler/backend/c/architecture.{ c_target_x86_64_linux, c_type_for_vitte_type }
 use vitte/compiler/backend/c/abi.{ C_ABI_NAME, C_ABI_SCHEMA_VERSION, CAbiPassMode, c_abi_contract, c_abi_function, c_abi_header_prelude, c_abi_param_value }
 use vitte/compiler/backend/ir.{ IrUnit, target_native_x86_64_linux, unit_empty, unit_with_source_path }
 use vitte/compiler/backends/llvm_bindings.{ LlvmBindingResult, emit_llvm_ir_from_ir }
-use vitte/compiler/diagnostics/diagnostic.{ Diagnostic, DiagnosticKind, DiagnosticPhase, span_create }
+use vitte/compiler/diagnostics/diagnostic.{ Diagnostic, DiagnosticKind, DiagnosticPhase, DiagnosticRenderConfig, DiagnosticStyle, default_render_config, diagnostic_report, render_report, span_create }
 use vitte/compiler/frontend/ast/node.{ ast_span_empty }
 use vitte/compiler/frontend/pipeline.{ FrontendOutput, frontend_run }
 use vitte/compiler/middle/mir.{ MirBinaryOperator, MirBlock, MirBorrowKind, MirFunction, MirModule, MirOperand, MirPlace, MirRvalue, MirRvalueKind, MirStatement, MirStatementKind, MirTerminatorKind, MirUnaryOperator, MirUnit, mir_terminator_return }
@@ -180,6 +180,26 @@ proc test_backend_crash_keeps_stderr_as_secondary_diagnostic() -> bool {
     and find(diag.message, "backend tool stopped") >= 0
     and find(diag.message, "compilation failed") < 0
     and find(diag.root_cause, "external backend process terminated") >= 0;
+}
+
+proc test_backend_diagnostics_remap_to_vitte_function_and_hide_command_by_default() -> bool {
+  let stderr_text: string = "ld: undefined symbol: _vitte_main\n";
+  let diag: Diagnostic = linker_command_failed("c", "x86_64-linux", "cc main.o -o app", 1, stderr_text, "build/app", span_create("main.vit", 1, 1, 4));
+  let human_config: DiagnosticRenderConfig = default_render_config();
+  set human_config.style = DiagnosticStyle.Human;
+  set human_config.verbose = false;
+  let human_text: string = render_report(diagnostic_report([diag]), human_config);
+  let verbose_config: DiagnosticRenderConfig = default_render_config();
+  set verbose_config.style = DiagnosticStyle.Human;
+  set verbose_config.verbose = true;
+  let verbose_text: string = render_report(diagnostic_report([diag]), verbose_config);
+  give diag.subject_symbol == "main"
+    and find(diag.pipeline_context[3], "native_symbol=_vitte_main") >= 0
+    and find(diag.pipeline_context[4], "vitte_function=main") >= 0
+    and find(human_text, "Vitte item: main") >= 0
+    and find(human_text, "tool output:") >= 0
+    and find(human_text, "command: cc main.o -o app") < 0
+    and find(verbose_text, "command: cc main.o -o app") >= 0;
 }
 
 proc test_c_backend_lowers_struct_tuple_and_array_values() -> bool {
@@ -547,6 +567,9 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if not test_backend_crash_keeps_stderr_as_secondary_diagnostic() {
+    set failures = failures + 1;
+  }
+  if not test_backend_diagnostics_remap_to_vitte_function_and_hide_command_by_default() {
     set failures = failures + 1;
   }
   if not test_c_backend_lowers_struct_tuple_and_array_values() {

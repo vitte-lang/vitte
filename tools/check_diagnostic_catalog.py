@@ -292,6 +292,7 @@ def validate_canonical_diagnostic_contract() -> list[str]:
         "diagnostic_with_internal_cause(diag4, cause_text)",
         "diagnostic_with_external_stderr",
         "if config.verbose and diagnostic.external_command != \"\"",
+        "Vitte item: \" + diagnostic.subject_symbol",
         "DIAGNOSTIC_USER_COLUMN_BASE",
         "DIAGNOSTIC_INTERNAL_OFFSET_UNIT",
     )
@@ -333,6 +334,8 @@ def validate_backend_linker_contract() -> list[str]:
         "LINK_E_ENTRYPOINT_MISSING",
         "LINK_E_PERMISSION_DENIED",
         "backend_tool_crashed",
+        "backend_remap_diagnostic_to_vitte_function",
+        "vitte_function=",
         "vitte_demangle_symbol",
         "diagnostic_with_external_stderr",
         "diagnostic_with_kind(diag0, DiagnosticKind.Linker)",
