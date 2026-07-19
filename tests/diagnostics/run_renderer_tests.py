@@ -30,6 +30,7 @@ def main() -> int:
         ("minimal.json", "location.txt"),
         ("multiple-labels.json", "labels.txt"),
         ("multiline-span.json", "help.txt"),
+        ("message-quality.json", "message-quality.txt"),
     )
     for fixture, snapshot in cases:
         result = subprocess.run(

@@ -19,14 +19,23 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Make Vitte executable
-        run: chmod +x ./bin/vitte || true
+      - name: Make Vitte binaries executable
+        run: chmod +x ./bin/vitte ./bin/vittec0 || true
 
       - name: Run diagnostics locales check
         run: python3 tools/check_diagnostics_locales.py
 
       - name: Run diagnostics JSON test
         run: python3 tests/diag_json_output_test.py
+
+      - name: Run diagnostic message snapshots
+        run: python3 tests/diagnostics/run_renderer_tests.py
+
+      - name: Run diagnostic quality gate
+        run: make diagnostic-quality
+
+      - name: Run portable diagnostic snapshots
+        run: make diag-snapshots-portable
 
       - name: Run full diagnostics sweep
         run: python3 tests/validate_all_diagnostics.py
