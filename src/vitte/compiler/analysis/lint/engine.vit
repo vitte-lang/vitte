@@ -6,13 +6,14 @@ use vitte/compiler/analysis/lint/rules.{
   LintBindingStat,
   expr_is_constant_bool,
   stats_add,
+  stats_add_binding,
   stats_index,
   stats_mark_set,
   stats_mark_use
 }
 use vitte/compiler/frontend/ast/node.{ Span }
 use vitte/compiler/source/span.{ span }
-use vitte/compiler/middle/hir.{ HirExpr, HirExprKind, HirItemKind, HirStmt, HirStmtKind, HirUnit }
+use vitte/compiler/middle/hir.{ HirExpr, HirExprKind, HirItemKind, HirProcParam, HirStmt, HirStmtKind, HirUnit, hir_stmt_terminated }
 
 form LintWalk {
   diagnostics: [LintDiagnostic]
@@ -74,6 +75,76 @@ proc span_for_name(source_path: string, line: u64, name: string) -> Span {
   give span(source_path, line, 1, line, len(name) as u64 + 1);
 }
 
+proc bool_literal_text(expr: HirExpr) -> string {
+  if expr.valid and expr.kind == HirExprKind.Bool {
+    give trim(expr.text);
+  }
+  give "";
+}
+
+proc stmt_list_terminates(stmts: [HirStmt]) -> bool {
+  let i: u64 = 0;
+  while i < len(stmts) {
+    if stmt_terminates(stmts[i]) {
+      give true;
+    }
+    set i = i + 1;
+  }
+  give false;
+}
+
+proc stmt_terminates(stmt: HirStmt) -> bool {
+  if hir_stmt_terminated(stmt) or stmt.kind == HirStmtKind.Break or stmt.kind == HirStmtKind.Continue {
+    give true;
+  }
+  if stmt.kind == HirStmtKind.If and len(stmt.then_stmts) > 0 and len(stmt.else_stmts) > 0 {
+    give stmt_list_terminates(stmt.then_stmts) and stmt_list_terminates(stmt.else_stmts);
+  }
+  give false;
+}
+
+proc item_requires_return(annotation_text: string) -> bool {
+  let text: string = trim(annotation_text);
+  give text != "" and text != "void" and text != "unit" and text != "()";
+}
+
+proc add_unreachable_branch_diag(diagnostics: [LintDiagnostic], stmt: HirStmt, condition_text: string) -> [LintDiagnostic] {
+  if stmt.kind == HirStmtKind.If and condition_text == "false" and len(stmt.then_stmts) > 0 {
+    give lint_add_diag(diagnostics, lint_diagnostic(
+      "LINT_W_UNREACHABLE_BRANCH",
+      LintSeverity.Warning,
+      "branch is unreachable because the condition is always false",
+      [stmt.expr.text],
+      "remove the unreachable branch or replace the constant condition",
+      stmt.then_stmts[0].span,
+      false
+    ));
+  }
+  if stmt.kind == HirStmtKind.If and condition_text == "true" and len(stmt.else_stmts) > 0 {
+    give lint_add_diag(diagnostics, lint_diagnostic(
+      "LINT_W_UNREACHABLE_BRANCH",
+      LintSeverity.Warning,
+      "else branch is unreachable because the condition is always true",
+      [stmt.expr.text],
+      "remove the unreachable branch or replace the constant condition",
+      stmt.else_stmts[0].span,
+      false
+    ));
+  }
+  if stmt.kind == HirStmtKind.While and condition_text == "false" {
+    give lint_add_diag(diagnostics, lint_diagnostic(
+      "LINT_W_UNREACHABLE_BRANCH",
+      LintSeverity.Warning,
+      "loop body is unreachable because the condition is always false",
+      [stmt.expr.text],
+      "remove the loop or replace the constant condition",
+      stmt.span,
+      false
+    ));
+  }
+  give diagnostics;
+}
+
 proc collect_stmt_data(source_path: string, diagnostics: [LintDiagnostic], stats: [LintBindingStat], stmt: HirStmt) -> LintWalk {
   let current_diagnostics: [LintDiagnostic] = diagnostics;
   let current_stats: [LintBindingStat] = record_expr_uses(stats, stmt.expr);
@@ -94,6 +165,7 @@ proc collect_stmt_data(source_path: string, diagnostics: [LintDiagnostic], stats
   let is_branch_stmt: bool = stmt.kind == HirStmtKind.If or stmt.kind == HirStmtKind.While;
   let has_constant_condition: bool = expr_is_constant_bool(stmt.expr);
   if is_branch_stmt and has_constant_condition {
+    let condition_text: string = bool_literal_text(stmt.expr);
     set current_diagnostics = lint_add_diag(current_diagnostics, lint_diagnostic(
       "LINT_W_CONSTANT_CONDITION",
       LintSeverity.Warning,
@@ -103,24 +175,62 @@ proc collect_stmt_data(source_path: string, diagnostics: [LintDiagnostic], stats
       stmt.span,
       false
     ));
+    set current_diagnostics = add_unreachable_branch_diag(current_diagnostics, stmt, condition_text);
   }
 
+  if stmt.kind == HirStmtKind.ExprStmt and stmt.expr.valid {
+    set current_diagnostics = lint_add_diag(current_diagnostics, lint_diagnostic(
+      "LINT_W_UNUSED_VALUE",
+      LintSeverity.Warning,
+      "value produced by expression is never used",
+      [stmt.expr.text],
+      "assign the value, pass it to another expression, or remove the expression",
+      stmt.expr.span,
+      false
+    ));
+  }
+
+  let then_walk: LintWalk = collect_stmt_list_data(source_path, current_diagnostics, current_stats, stmt.then_stmts);
+  set current_diagnostics = then_walk.diagnostics;
+  set current_stats = then_walk.stats;
+
+  let else_walk: LintWalk = collect_stmt_list_data(source_path, current_diagnostics, current_stats, stmt.else_stmts);
+  set current_diagnostics = else_walk.diagnostics;
+  set current_stats = else_walk.stats;
+
+  give LintWalk {
+    diagnostics: current_diagnostics,
+    stats: current_stats,
+    valid: true
+  };
+}
+
+proc collect_stmt_list_data(source_path: string, diagnostics: [LintDiagnostic], stats: [LintBindingStat], stmts: [HirStmt]) -> LintWalk {
+  let current_diagnostics: [LintDiagnostic] = diagnostics;
+  let current_stats: [LintBindingStat] = stats;
+  let terminated: bool = false;
   let i: u64 = 0;
-  while i < len(stmt.then_stmts) {
-    let nested: LintWalk = collect_stmt_data(source_path, current_diagnostics, current_stats, stmt.then_stmts[i]);
+  while i < len(stmts) {
+    let stmt: HirStmt = stmts[i];
+    if terminated or stmt.unreachable {
+      set current_diagnostics = lint_add_diag(current_diagnostics, lint_diagnostic(
+        "LINT_W_DEAD_CODE",
+        LintSeverity.Warning,
+        "statement is unreachable",
+        [stmt.message],
+        "remove the statement or move it before the terminating control flow",
+        stmt.span,
+        false
+      ));
+    }
+    let nested: LintWalk = collect_stmt_data(source_path, current_diagnostics, current_stats, stmt);
     set current_diagnostics = nested.diagnostics;
     set current_stats = nested.stats;
+    if stmt_terminates(stmt) {
+      set terminated = true;
+    }
     set i = i + 1;
   }
-
-  i = 0;
-  while i < len(stmt.else_stmts) {
-    let nested: LintWalk = collect_stmt_data(source_path, current_diagnostics, current_stats, stmt.else_stmts[i]);
-    set current_diagnostics = nested.diagnostics;
-    set current_stats = nested.stats;
-    set i = i + 1;
-  }
-
   give LintWalk {
     diagnostics: current_diagnostics,
     stats: current_stats,
@@ -134,6 +244,17 @@ proc finalize_stats_diagnostics(source_path: string, diagnostics: [LintDiagnosti
   while i < len(stats) {
     let stat: LintBindingStat = stats[i];
     if stat.use_count == 0 and not starts_with(stat.name, "_") {
+      if stat.parameter {
+        set out = lint_add_diag(out, lint_diagnostic(
+          "LINT_W_UNUSED_PARAMETER",
+          LintSeverity.Warning,
+          "parameter `" + stat.name + "` is never used",
+          [stat.name],
+          "remove the parameter or prefix it with `_` if it is intentionally unused",
+          span_for_name(source_path, stat.declared_line, stat.name),
+          false
+        ));
+      } else {
       set out = lint_add_diag(out, lint_diagnostic(
         "LINT_W_UNUSED_LOCAL",
         LintSeverity.Warning,
@@ -143,8 +264,9 @@ proc finalize_stats_diagnostics(source_path: string, diagnostics: [LintDiagnosti
         span_for_name(source_path, stat.declared_line, stat.name),
         false
       ));
+      }
     }
-    if stat.mutable and stat.set_count == 0 {
+    if stat.mutable and not stat.parameter and stat.set_count == 0 {
       set out = lint_add_diag(out, lint_diagnostic(
         "LINT_W_UNUSED_MUT",
         LintSeverity.Warning,
@@ -160,6 +282,34 @@ proc finalize_stats_diagnostics(source_path: string, diagnostics: [LintDiagnosti
   give out;
 }
 
+proc collect_item_params(stats: [LintBindingStat], item_line: u64, params: [HirProcParam]) -> [LintBindingStat] {
+  let out: [LintBindingStat] = stats;
+  let i: u64 = 0;
+  while i < len(params) {
+    let param: HirProcParam = params[i];
+    if param.valid and param.name != "" {
+      set out = stats_add_binding(out, param.name, param.mutable, true, item_line);
+    }
+    set i = i + 1;
+  }
+  give out;
+}
+
+proc add_missing_return_diag(diagnostics: [LintDiagnostic], item_name: string, annotation_text: string, item_span: Span, stmts: [HirStmt]) -> [LintDiagnostic] {
+  if item_requires_return(annotation_text) and not stmt_list_terminates(stmts) {
+    give lint_add_diag(diagnostics, lint_diagnostic(
+      "LINT_W_MISSING_RETURN",
+      LintSeverity.Warning,
+      "proc `" + item_name + "` may exit without returning `" + trim(annotation_text) + "`",
+      [item_name, trim(annotation_text)],
+      "add a `give` on every control-flow path",
+      item_span,
+      false
+    ));
+  }
+  give diagnostics;
+}
+
 proc run_lint_hir(source_path: string, hir: HirUnit) -> LintResult {
   if not hir.valid or not hir.module.valid {
     give LintResult {
@@ -169,24 +319,20 @@ proc run_lint_hir(source_path: string, hir: HirUnit) -> LintResult {
   }
 
   let diagnostics: [LintDiagnostic] = [];
-  let stats: [LintBindingStat] = [];
   let i: u64 = 0;
   while i < len(hir.module.items) {
     if hir.module.items[i].kind == HirItemKind.Proc {
-      let j: u64 = 0;
-      while j < len(hir.module.items[i].stmts) {
-        let stmt: HirStmt = hir.module.items[i].stmts[j];
-        let nested: LintWalk = collect_stmt_data(source_path, diagnostics, stats, stmt);
-        set diagnostics = nested.diagnostics;
-        set stats = nested.stats;
-        set j = j + 1;
-      }
+      let item_stats: [LintBindingStat] = collect_item_params([], hir.module.items[i].span.start_line, hir.module.items[i].params);
+      let nested: LintWalk = collect_stmt_list_data(source_path, diagnostics, item_stats, hir.module.items[i].stmts);
+      set diagnostics = nested.diagnostics;
+      set diagnostics = finalize_stats_diagnostics(source_path, diagnostics, nested.stats);
+      set diagnostics = add_missing_return_diag(diagnostics, hir.module.items[i].name, hir.module.items[i].annotation_text, hir.module.items[i].span, hir.module.items[i].stmts);
     }
     set i = i + 1;
   }
 
   give LintResult {
-    diagnostics: finalize_stats_diagnostics(source_path, diagnostics, stats),
+    diagnostics: diagnostics,
     valid: true
   };
 }

@@ -5,16 +5,18 @@ use vitte/compiler/middle/hir.{ HirExpr, HirExprKind }
 form LintBindingStat {
   name: string
   mutable: bool
+  parameter: bool
   declared_line: u64
   use_count: u64
   set_count: u64
   valid: bool
 }
 
-proc lint_binding_stat(name: string, mutable: bool, declared_line: u64) -> LintBindingStat {
+proc lint_binding_stat(name: string, mutable: bool, parameter: bool, declared_line: u64) -> LintBindingStat {
   give LintBindingStat {
     name: name,
     mutable: mutable,
+    parameter: parameter,
     declared_line: declared_line,
     use_count: 0,
     set_count: 0,
@@ -34,10 +36,14 @@ proc stats_index(stats: [LintBindingStat], name: string) -> int {
 }
 
 proc stats_add(stats: [LintBindingStat], name: string, mutable: bool, declared_line: u64) -> [LintBindingStat] {
+  give stats_add_binding(stats, name, mutable, false, declared_line);
+}
+
+proc stats_add_binding(stats: [LintBindingStat], name: string, mutable: bool, parameter: bool, declared_line: u64) -> [LintBindingStat] {
   if name == "" or stats_index(stats, name) >= 0 {
     give stats;
   }
-  give stats + [lint_binding_stat(name, mutable, declared_line)];
+  give stats + [lint_binding_stat(name, mutable, parameter, declared_line)];
 }
 
 proc stats_mark_use(stats: [LintBindingStat], name: string) -> [LintBindingStat] {
@@ -49,6 +55,7 @@ proc stats_mark_use(stats: [LintBindingStat], name: string) -> [LintBindingStat]
       set out = out + [LintBindingStat {
         name: stat.name,
         mutable: stat.mutable,
+        parameter: stat.parameter,
         declared_line: stat.declared_line,
         use_count: stat.use_count + 1,
         set_count: stat.set_count,
@@ -71,6 +78,7 @@ proc stats_mark_set(stats: [LintBindingStat], name: string) -> [LintBindingStat]
       set out = out + [LintBindingStat {
         name: stat.name,
         mutable: stat.mutable,
+        parameter: stat.parameter,
         declared_line: stat.declared_line,
         use_count: stat.use_count,
         set_count: stat.set_count + 1,

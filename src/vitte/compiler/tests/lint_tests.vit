@@ -46,6 +46,46 @@ proc test_projected_set_counts_as_mutation() -> bool {
   give not has_code(result, "LINT_W_UNUSED_MUT");
 }
 
+proc test_unused_parameter() -> bool {
+  let source: string = "proc main(value: int) -> int { give 0; }\n";
+  let fe: FrontendOutput = frontend_run("lint_unused_parameter.vit", source);
+  let hir = lower_ast_to_hir(fe);
+  let result: LintResult = run_lint_hir("lint_unused_parameter.vit", hir);
+  give has_code(result, "LINT_W_UNUSED_PARAMETER");
+}
+
+proc test_dead_code_after_give() -> bool {
+  let source: string = "proc main() -> int { give 1; let x = 2; }\n";
+  let fe: FrontendOutput = frontend_run("lint_dead_code.vit", source);
+  let hir = lower_ast_to_hir(fe);
+  let result: LintResult = run_lint_hir("lint_dead_code.vit", hir);
+  give has_code(result, "LINT_W_DEAD_CODE");
+}
+
+proc test_unused_expression_value() -> bool {
+  let source: string = "proc main() -> int { 1 + 2; give 0; }\n";
+  let fe: FrontendOutput = frontend_run("lint_unused_value.vit", source);
+  let hir = lower_ast_to_hir(fe);
+  let result: LintResult = run_lint_hir("lint_unused_value.vit", hir);
+  give has_code(result, "LINT_W_UNUSED_VALUE");
+}
+
+proc test_unreachable_constant_branch() -> bool {
+  let source: string = "proc main() -> int { if false { give 1; } give 0; }\n";
+  let fe: FrontendOutput = frontend_run("lint_unreachable_branch.vit", source);
+  let hir = lower_ast_to_hir(fe);
+  let result: LintResult = run_lint_hir("lint_unreachable_branch.vit", hir);
+  give has_code(result, "LINT_W_UNREACHABLE_BRANCH");
+}
+
+proc test_missing_return() -> bool {
+  let source: string = "proc main() -> int { let x = 1; }\n";
+  let fe: FrontendOutput = frontend_run("lint_missing_return.vit", source);
+  let hir = lower_ast_to_hir(fe);
+  let result: LintResult = run_lint_hir("lint_missing_return.vit", hir);
+  give has_code(result, "LINT_W_MISSING_RETURN");
+}
+
 proc run_all_tests() -> int {
   let failures: int = 0;
   if not test_unused_mut_and_local() {
@@ -55,6 +95,21 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if not test_projected_set_counts_as_mutation() {
+    set failures = failures + 1;
+  }
+  if not test_unused_parameter() {
+    set failures = failures + 1;
+  }
+  if not test_dead_code_after_give() {
+    set failures = failures + 1;
+  }
+  if not test_unused_expression_value() {
+    set failures = failures + 1;
+  }
+  if not test_unreachable_constant_branch() {
+    set failures = failures + 1;
+  }
+  if not test_missing_return() {
     set failures = failures + 1;
   }
   give failures;
