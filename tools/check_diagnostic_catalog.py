@@ -14,6 +14,16 @@ ROOT = Path(__file__).resolve().parents[1]
 CATALOG = ROOT / "schemas" / "diagnostics" / "codes.json"
 TEST_ROOT = ROOT / "tests" / "diagnostics" / "catalog"
 COMPILER_ROOT = ROOT / "src" / "vitte" / "compiler"
+SOURCE_SHAPE_FIXTURES = (
+    "source-ascii.json",
+    "source-accents.json",
+    "source-unicode.json",
+    "source-tabs.json",
+    "source-long-line.json",
+    "source-empty-file.json",
+    "source-lf.json",
+    "source-crlf.json",
+)
 
 SEVERITIES = {"error", "warning", "note", "help", "fatal"}
 KINDS = {"user", "configuration", "environment", "linker", "internal_compiler"}
@@ -129,6 +139,8 @@ def load_test_manifests() -> dict[str, set[str]]:
 
 
 def validate_catalog() -> list[str]:
+    if not CATALOG.exists():
+        return [f"{CATALOG.relative_to(ROOT)}: central diagnostic catalog is required"]
     payload = load_json(CATALOG)
     entries = payload.get("codes") if isinstance(payload, dict) else None
     if not isinstance(entries, list) or not entries:
@@ -223,6 +235,23 @@ def validate_catalog() -> list[str]:
             if not covered:
                 failures.append(f"{code}: no associated test case covers this diagnostic")
 
+    return failures
+
+
+def validate_source_shape_renderer_fixtures() -> list[str]:
+    failures: list[str] = []
+    schema_root = ROOT / "tests" / "diagnostics" / "schema"
+    source_root = ROOT / "tests" / "diagnostics" / "sources"
+    for fixture in SOURCE_SHAPE_FIXTURES:
+        if not (schema_root / fixture).is_file():
+            failures.append(f"tests/diagnostics/schema/{fixture}: source-shape renderer fixture is required")
+    for source in ("ascii.vit", "accents.vit", "unicode.vit", "tabs.vit", "long-line.vit", "empty.vit", "lf.vit", "crlf.vit"):
+        path = source_root / source
+        if not path.is_file():
+            failures.append(f"tests/diagnostics/sources/{source}: source-shape diagnostic source is required")
+    crlf = source_root / "crlf.vit"
+    if crlf.is_file() and b"\r\n" not in crlf.read_bytes():
+        failures.append("tests/diagnostics/sources/crlf.vit: CRLF fixture must contain CRLF line endings")
     return failures
 
 
@@ -360,6 +389,7 @@ def validate_backend_linker_contract() -> list[str]:
 def main() -> int:
     failures = [
         *validate_catalog(),
+        *validate_source_shape_renderer_fixtures(),
         *validate_diagnostic_code_usage(),
         *validate_canonical_diagnostic_contract(),
         *validate_phase_policy_contract(),
