@@ -5,6 +5,8 @@ use vitte/compiler/diagnostics/diagnostic.{
     DiagnosticReport,
     DiagnosticSeverity,
     DiagnosticPhase,
+    DiagnosticApplicability,
+    DiagnosticSuggestionKind,
     SourceSpan,
     diagnostic_error,
     diagnostic_warning,
@@ -18,6 +20,7 @@ use vitte/compiler/diagnostics/diagnostic.{
     diagnostic_add_cause,
     diagnostic_with_probable_fix,
     diagnostic_with_subject_symbol,
+    diagnostic_with_suggestion_detail,
     diagnostic_with_insert,
     diagnostic_with_replace,
     secondary_label,
@@ -681,6 +684,52 @@ proc sema_add_nearby_note_and_fix(diagnostic: Diagnostic, name: string, category
     give diagnostic_with_replace(diag, "replace `" + name + "` with " + category + " `" + nearby + "`", nearby, ast_span_to_source_span(span));
 }
 
+proc sema_symbol_category_compatible(expected_context: string, category: string) -> bool {
+    if expected_context == "any" {
+        give true;
+    }
+    if expected_context == "value" {
+        give category == "variable" or category == "function";
+    }
+    if expected_context == "callable" {
+        give category == "function";
+    }
+    if expected_context == "type" {
+        give category == "type";
+    }
+    if expected_context == "field" {
+        give category == "field";
+    }
+    if expected_context == "module" {
+        give category == "module";
+    }
+    if expected_context == "syntax" {
+        give category == "keyword";
+    }
+    give false;
+}
+
+proc sema_suggestion_rank_note(expected_context: string, category: string) -> string {
+    give "candidate accepted for `" + expected_context + "` context; ranked by scope, symbol kind, argument count when known, expected type when known, visibility, and spelling distance";
+}
+
+proc sema_add_contextual_nearby_fix(diagnostic: Diagnostic, name: string, expected_context: string, category: string, nearby: string, span: Span) -> Diagnostic {
+    if nearby == "" {
+        give diagnostic;
+    }
+
+    if not sema_symbol_category_compatible(expected_context, category) {
+        give diagnostic_with_note(diagnostic, "skipped " + category + " `" + nearby + "` because `" + expected_context + "` context does not accept that symbol kind");
+    }
+
+    let source_span: SourceSpan = ast_span_to_source_span(span);
+    let note_text: string = "nearest compatible " + category + ": `" + nearby + "`";
+    let message: string = "replace `" + name + "` with " + category + " `" + nearby + "`";
+    let reason: string = sema_suggestion_rank_note(expected_context, category);
+    let diag: Diagnostic = diagnostic_with_note(diagnostic, note_text);
+    give diagnostic_with_suggestion_detail(diag, DiagnosticSuggestionKind.Replace, message, nearby, source_span, false, "medium", reason);
+}
+
 proc sema_resolution_failure(kind: SemaResolutionFailureKind, name: string, context: string, detail: string, span: Span) -> Diagnostic {
     let code: string = sema_resolution_code(kind);
     let label: string = sema_resolution_failure_name(kind);
@@ -752,10 +801,14 @@ proc sema_unknown_symbol(name: string, span: Span) -> Diagnostic {
 }
 
 proc sema_unknown_symbol_with_candidates(name: string, candidates: [string], span: Span) -> Diagnostic {
-    give sema_unknown_symbol_with_candidate_groups(name, candidates, [], [], [], [], span);
+    give sema_unknown_symbol_with_candidate_groups(name, [], candidates, [], [], [], span);
 }
 
 proc sema_unknown_symbol_with_candidate_groups(name: string, functions: [string], variables: [string], types: [string], fields: [string], modules: [string], span: Span) -> Diagnostic {
+    give sema_unknown_symbol_with_candidate_groups_for_context(name, "value", functions, variables, types, fields, modules, span);
+}
+
+proc sema_unknown_symbol_with_candidate_groups_for_context(name: string, expected_context: string, functions: [string], variables: [string], types: [string], fields: [string], modules: [string], span: Span) -> Diagnostic {
     let diag: Diagnostic = sema_unknown_symbol(name, span);
     let keyword: string = sema_nearby_symbol(name, sema_keyword_candidates());
     let function0: string = sema_nearby_symbol(name, functions);
@@ -764,12 +817,13 @@ proc sema_unknown_symbol_with_candidate_groups(name: string, functions: [string]
     let field0: string = sema_nearby_symbol(name, fields);
     let module0: string = sema_nearby_symbol(name, modules);
 
-    set diag = sema_add_nearby_note_and_fix(diag, name, "keyword", keyword, span);
-    set diag = sema_add_nearby_note_and_fix(diag, name, "function", function0, span);
-    set diag = sema_add_nearby_note_and_fix(diag, name, "variable", variable0, span);
-    set diag = sema_add_nearby_note_and_fix(diag, name, "type", type0, span);
-    set diag = sema_add_nearby_note_and_fix(diag, name, "field", field0, span);
-    set diag = sema_add_nearby_note_and_fix(diag, name, "module", module0, span);
+    set diag = diagnostic_with_note(diag, "suggestions are limited to the three most credible compatible candidates");
+    set diag = sema_add_contextual_nearby_fix(diag, name, expected_context, "variable", variable0, span);
+    set diag = sema_add_contextual_nearby_fix(diag, name, expected_context, "function", function0, span);
+    set diag = sema_add_contextual_nearby_fix(diag, name, expected_context, "type", type0, span);
+    set diag = sema_add_contextual_nearby_fix(diag, name, expected_context, "field", field0, span);
+    set diag = sema_add_contextual_nearby_fix(diag, name, expected_context, "module", module0, span);
+    set diag = sema_add_contextual_nearby_fix(diag, name, expected_context, "keyword", keyword, span);
 
     give diag;
 }
@@ -926,6 +980,9 @@ share sema_duplicate_symbol_redefinition
 share sema_string_distance
 share sema_nearby_symbol
 share sema_keyword_candidates
+share sema_symbol_category_compatible
+share sema_suggestion_rank_note
+share sema_add_contextual_nearby_fix
 share sema_resolution_failure
 share sema_missing_symbol
 share sema_out_of_scope_symbol
@@ -939,6 +996,7 @@ share sema_invalid_module_path
 share sema_unknown_symbol
 share sema_unknown_symbol_with_candidates
 share sema_unknown_symbol_with_candidate_groups
+share sema_unknown_symbol_with_candidate_groups_for_context
 share sema_invalid_import
 share sema_invalid_export
 share sema_invalid_attribute

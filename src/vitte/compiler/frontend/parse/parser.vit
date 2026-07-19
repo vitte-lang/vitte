@@ -278,14 +278,14 @@ proc expect_text(state: ParserState, text: string, code: string) -> ParserState 
   if at_text(state, text) {
     give advance(state);
   }
-  give with_diag(state, code, expected_text_message(state, text));
+  give with_diag(state, code, expected_text_message_for_code(state, text, code));
 }
 
 proc expect_ident(state: ParserState, code: string) -> ParserState {
   if is_ident_like(current_token(state)) {
     give advance(state);
   }
-  give with_diag(state, code, "expected identifier");
+  give with_diag(state, code, parser_rule_for_code(code) + " expected an identifier for " + parser_identifier_context_for_code(code) + " before " + token_display(current_token(state)));
 }
 
 proc optional_text(state: ParserState, text: string) -> ParserState {
@@ -382,18 +382,79 @@ proc token_display(tok: Token) -> string {
 }
 
 proc expected_text_message(state: ParserState, text: string) -> string {
+  give expected_text_message_for_code(state, text, "");
+}
+
+proc parser_rule_for_code(code: string) -> string {
+  if starts_with(code, "PGEN") {
+    give "generic parameter grammar";
+  }
+  if starts_with(code, "PPATH") {
+    give "module or qualified path grammar";
+  }
+  if starts_with(code, "PATTR") {
+    give "attribute grammar";
+  }
+  if starts_with(code, "PBUILTIN") {
+    give "builtin expression grammar";
+  }
+  if starts_with(code, "PCALL") {
+    give "call expression grammar";
+  }
+  if starts_with(code, "PMEMBER") {
+    give "member access grammar";
+  }
+  if starts_with(code, "PSTMT") {
+    give "statement grammar";
+  }
+  if starts_with(code, "PQUERY") {
+    give "query declaration grammar";
+  }
+  if starts_with(code, "PEXTERN") {
+    give "extern declaration grammar";
+  }
+  if starts_with(code, "PPRIMARY") {
+    give "primary expression grammar";
+  }
+  if code == "P0001" {
+    give "top-level declaration grammar";
+  }
+  if code == "PLIST_COMMA" {
+    give "comma-separated list grammar";
+  }
+  if code == "P000_UNBALANCED" {
+    give "delimiter balance grammar";
+  }
+  give "syntax grammar";
+}
+
+proc parser_identifier_context_for_code(code: string) -> string {
+  if starts_with(code, "PGEN") {
+    give "a generic parameter name";
+  }
+  if starts_with(code, "PPATH") {
+    give "a module path segment or qualified symbol segment";
+  }
+  if starts_with(code, "PMEMBER") {
+    give "a member name after `.`";
+  }
+  give "the current syntax rule";
+}
+
+proc expected_text_message_for_code(state: ParserState, text: string, code: string) -> string {
+  let rule: string = parser_rule_for_code(code);
   if is_closing_delimiter_text(text) {
     let open_text: string = delimiter_open_for_close(text);
     let name: string = delimiter_name(text);
-    give "missing closing " + name + " `" + text + "` for `" + open_text + "` before " + token_display(current_token(state));
+    give rule + " expected closing " + name + " `" + text + "` for `" + open_text + "` before " + token_display(current_token(state));
   }
   if text == ";" {
-    give "missing semicolon `;` before " + token_display(current_token(state));
+    give rule + " expected statement terminator `;` before " + token_display(current_token(state));
   }
   if text == "," {
-    give "missing comma `,` before " + token_display(current_token(state));
+    give rule + " expected separator `,` between list elements before " + token_display(current_token(state));
   }
-  give "expected `" + text + "`";
+  give rule + " expected `" + text + "` before " + token_display(current_token(state));
 }
 
 proc is_expr_recovery_boundary(state: ParserState) -> bool {
@@ -440,7 +501,7 @@ proc skip_balanced(state: ParserState, open_text: string, close_text: string, co
     set current = advance(current);
   }
   if depth != 0 {
-    give with_diag(current, "P000_UNBALANCED", "missing closing " + delimiter_name(close_text) + " `" + close_text + "` for `" + open_text + "` before " + token_display(current_token(current)));
+    give with_diag(current, "P000_UNBALANCED", "delimiter balance grammar expected closing " + delimiter_name(close_text) + " `" + close_text + "` for `" + open_text + "` before " + token_display(current_token(current)));
   }
   give current;
 }
@@ -1037,7 +1098,7 @@ proc parse_primary(state: ParserState) -> ParserState {
     }
     give with_path;
   }
-  give with_diag(current, "PPRIMARY999", "unexpected expression token `" + tok.lexeme + "`");
+  give with_diag(current, "PPRIMARY999", "primary expression grammar expected a literal, name, call, block, grouped expression, array expression, or builtin expression before " + token_display(tok));
 }
 
 proc parse_postfix_expr(state: ParserState) -> ParserState {
@@ -1167,7 +1228,7 @@ proc parse_stmt(state: ParserState) -> ParserState {
       let exprd: ParserState = parse_expr(advance(target));
       give expect_text(exprd, ";", "PSTMT006");
     }
-    give with_diag(target, "PSTMT007", "expected assignment operator");
+    give with_diag(target, "PSTMT007", "assignment statement grammar expected one of: `=`, `+=`, `-=`, `*=`, `/=`, `%=`, `&=`, `|=`, `^=`, `<<=`, `>>=` before " + token_display(current_token(target)));
   }
   if at_text(current, "give") {
     let walk: ParserState = advance(current);
@@ -1469,7 +1530,7 @@ proc parse_decl(state: ParserState) -> ParserState {
   if is_toplevel_keyword(tok.lexeme) {
     give skip_until_boundary(prefixed, ";", "{", "");
   }
-  give with_diag(prefixed, "P0001", "unexpected top-level token `" + tok.lexeme + "`");
+  give with_diag(prefixed, "P0001", "top-level declaration grammar expected one of: space, use, export, const, static, global, region, type, opaque, extern, form, class, union, bits, pick, flags, trait, impl, proc, intrinsic, compiler, query, pass, backend, diagnostic, macro, comptime, static_assert, test, bench, entry before " + token_display(tok));
 }
 
 proc parse_source(source_name: string, tokens: [Token]) -> ParseResult {

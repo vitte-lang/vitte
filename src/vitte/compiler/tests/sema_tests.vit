@@ -37,6 +37,17 @@ proc diagnostic_has_note_text(diagnostic: Diagnostic, text: string) -> bool {
   give false;
 }
 
+proc diagnostic_has_suggestion_replacement(diagnostic: Diagnostic, replacement: string) -> bool {
+  let i: u64 = 0;
+  while i < len(diagnostic.suggestions) {
+    if diagnostic.suggestions[i].replacement == replacement {
+      give true;
+    }
+    set i = i + 1;
+  }
+  give false;
+}
+
 proc test_duplicate_binding() -> bool {
   let source: string = "proc main() { let x = 1; let x = 2; give x; }\n";
   let fe: FrontendOutput = frontend_run("sema_duplicate_binding.vit", source);
@@ -61,12 +72,12 @@ proc test_unknown_identifier_suggests_nearby_symbol() -> bool {
   let i: u64 = 0;
   while i < len(result.diagnostics) {
     let diagnostic = result.diagnostics[i];
-    if diagnostic.code == "SEMA_E_UNKNOWN_SYMBOL" {
+    if diagnostic.code == "RES0127" {
       give fe.valid
         and not result.valid
         and find(diagnostic.message, "cout") >= 0
-        and len(diagnostic.suggestions) >= 2
-        and diagnostic.suggestions[1].replacement == "count";
+        and len(diagnostic.suggestions) <= 3
+        and diagnostic_has_suggestion_replacement(diagnostic, "count");
     }
     set i = i + 1;
   }
@@ -340,9 +351,9 @@ proc test_unknown_symbol_suggests_nearby_visible_symbol() -> bool {
   give sema_string_distance("cout", "count") == 1
     and sema_nearby_symbol("cout", ["count", "value"]) == "count"
     and sema_nearby_symbol("unknown", ["count", "value"]) == ""
-    and diag.code == "SEMA_E_UNKNOWN_SYMBOL"
-    and len(diag.suggestions) == 2
-    and diag.suggestions[1].replacement == "count";
+    and diag.code == "RES0127"
+    and len(diag.suggestions) <= 3
+    and diagnostic_has_suggestion_replacement(diag, "count");
 }
 
 proc test_unknown_symbol_suggests_by_category() -> bool {
@@ -355,13 +366,12 @@ proc test_unknown_symbol_suggests_by_category() -> bool {
     ["parser"],
     ast_span_empty()
   );
-  give diag.code == "SEMA_E_UNKNOWN_SYMBOL"
-    and len(diag.suggestions) >= 5
-    and diagnostic_has_note_text(diag, "nearest keyword: `priv`")
+  give diag.code == "RES0127"
+    and len(diag.suggestions) <= 3
     and diagnostic_has_note_text(diag, "nearest function: `print`")
     and diagnostic_has_note_text(diag, "nearest variable: `price`")
-    and diagnostic_has_note_text(diag, "nearest type: `Point`")
-    and diagnostic_has_note_text(diag, "nearest field: `priority`");
+    and diagnostic_has_note_text(diag, "skipped type `Point`")
+    and diagnostic_has_note_text(diag, "skipped field `priority`");
 }
 
 proc test_resolves_type_level_surface_item_kinds() -> bool {

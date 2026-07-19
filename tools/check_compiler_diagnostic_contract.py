@@ -16,6 +16,7 @@ CANONICAL_DIAGNOSTIC = COMPILER_ROOT / "diagnostics" / "diagnostic.vit"
 INFRA_DIAGNOSTIC = COMPILER_ROOT / "infrastructure" / "diagnostics" / "diagnostic.vit"
 SEMA_DIAGNOSTICS = COMPILER_ROOT / "analysis" / "sema" / "errors.vit"
 SEMA_RESOLVER = COMPILER_ROOT / "analysis" / "sema" / "resolver.vit"
+PARSER = COMPILER_ROOT / "frontend" / "parse" / "parser.vit"
 TYPECK_DIAGNOSTICS = COMPILER_ROOT / "analysis" / "typeck" / "errors.vit"
 BORROWCK_DIAGNOSTICS = COMPILER_ROOT / "analysis" / "borrowck" / "errors.vit"
 TYPE_UNIFY = COMPILER_ROOT / "analysis" / "typeck" / "unify.vit"
@@ -249,6 +250,7 @@ def check_relational_diagnostic_contract() -> list[str]:
         CANONICAL_DIAGNOSTIC,
         SEMA_DIAGNOSTICS,
         SEMA_RESOLVER,
+        PARSER,
         TYPECK_DIAGNOSTICS,
         BORROWCK_DIAGNOSTICS,
         TYPE_UNIFY,
@@ -285,9 +287,18 @@ def check_relational_diagnostic_contract() -> list[str]:
         (SEMA_DIAGNOSTICS, "module `\" + name + \"` exists but is not accessible from here"),
         (SEMA_DIAGNOSTICS, "import cycle reaches module"),
         (SEMA_DIAGNOSTICS, "module path `\" + name + \"` is not a valid Vitte module path"),
+        (SEMA_DIAGNOSTICS, "sema_symbol_category_compatible"),
+        (SEMA_DIAGNOSTICS, "candidate accepted for `\" + expected_context + \"` context; ranked by scope, symbol kind, argument count when known, expected type when known, visibility, and spelling distance"),
+        (SEMA_DIAGNOSTICS, "suggestions are limited to the three most credible compatible candidates"),
+        (SEMA_DIAGNOSTICS, "skipped \" + category + \" `\" + nearby + \"` because `\" + expected_context + \"` context does not accept that symbol kind"),
         (SEMA_RESOLVER, "sema_ambiguous_symbol"),
         (SEMA_RESOLVER, "sema_out_of_scope_symbol"),
         (SEMA_RESOLVER, "sema_inaccessible_module"),
+        (PARSER, "parser_rule_for_code"),
+        (PARSER, "primary expression grammar expected a literal, name, call, block, grouped expression, array expression, or builtin expression"),
+        (PARSER, "top-level declaration grammar expected one of:"),
+        (PARSER, "assignment statement grammar expected one of:"),
+        (PARSER, "expected_text_message_for_code"),
         (TYPECK_DIAGNOSTICS, "why expected type is imposed:"),
         (TYPECK_DIAGNOSTICS, "origin of obtained type:"),
         (TYPECK_DIAGNOSTICS, "Expected type `"),
@@ -301,6 +312,8 @@ def check_relational_diagnostic_contract() -> list[str]:
         (BORROWCK_DIAGNOSTICS, "where the value was moved or borrow began"),
         (CANONICAL_DIAGNOSTIC, "why expected type is imposed:"),
         (CANONICAL_DIAGNOSTIC, "origin of obtained type:"),
+        (CANONICAL_DIAGNOSTIC, "give 3 as u64;"),
+        (CANONICAL_DIAGNOSTIC, "set diagnostic.suggestions = diagnostic_suggestion_list_add(diagnostic.suggestions, suggestion);"),
     )
     for path, fragment in required_fragments:
         text = path.read_text(encoding="utf-8")
