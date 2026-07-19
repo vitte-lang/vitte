@@ -1,11 +1,13 @@
 space vitte/compiler/tests/c_backend_tests
 
 use vitte/compiler/backend/c/pipeline.{ CBackendPipelineResult, run_c_backend_frontend, run_c_backend_mir, run_c_backend_source }
+use vitte/compiler/backend/diagnostics.{ LinkerFailureInfo, linker_command_failed, linker_failure_info, vitte_demangle_symbol }
 use vitte/compiler/backend/c/lowering.{ CTranslationUnit, lower_mir_to_c_with_hir_and_ir, lower_mir_to_c_with_ir }
 use vitte/compiler/backend/c/architecture.{ c_target_x86_64_linux, c_type_for_vitte_type }
 use vitte/compiler/backend/c/abi.{ C_ABI_NAME, C_ABI_SCHEMA_VERSION, CAbiPassMode, c_abi_contract, c_abi_function, c_abi_header_prelude, c_abi_param_value }
 use vitte/compiler/backend/ir.{ IrUnit, target_native_x86_64_linux, unit_empty, unit_with_source_path }
 use vitte/compiler/backends/llvm_bindings.{ LlvmBindingResult, emit_llvm_ir_from_ir }
+use vitte/compiler/diagnostics/diagnostic.{ Diagnostic, DiagnosticKind, DiagnosticPhase, span_create }
 use vitte/compiler/frontend/ast/node.{ ast_span_empty }
 use vitte/compiler/frontend/pipeline.{ FrontendOutput, frontend_run }
 use vitte/compiler/middle/mir.{ MirBinaryOperator, MirBlock, MirBorrowKind, MirFunction, MirModule, MirOperand, MirPlace, MirRvalue, MirRvalueKind, MirStatement, MirStatementKind, MirTerminatorKind, MirUnaryOperator, MirUnit, mir_terminator_return }
@@ -117,6 +119,22 @@ proc test_c_backend_emits_external_calls_as_declarations_only() -> bool {
     and find(result.emitted.source_text, "host_add(int64_t left, int64_t right) {") < 0
     and len(result.middle.ir.modules[0].external_symbols) >= 1
     and result.middle.ir.modules[0].external_symbols[0] == "host_add";
+}
+
+proc test_linker_diagnostics_classify_and_demangle_stderr() -> bool {
+  let stderr_text: string = "ld: undefined symbol: _vitte_main\n";
+  let info: LinkerFailureInfo = linker_failure_info(stderr_text);
+  let diag: Diagnostic = linker_command_failed("c", "x86_64-linux", "cc main.o -o app", 1, stderr_text, "build/app", span_create("main.vit", 1, 1, 4));
+  give info.code == "LINK_E_UNDEFINED_SYMBOL"
+    and info.native_symbol == "_vitte_main"
+    and info.vitte_symbol == "main"
+    and vitte_demangle_symbol("vitte_impl_Display_fmt") == "impl Display_fmt"
+    and diag.kind == DiagnosticKind.Linker
+    and diag.phase == DiagnosticPhase.Linker
+    and diag.subject_symbol == "main"
+    and diag.external_command == "cc main.o -o app"
+    and diag.external_stderr == stderr_text
+    and find(diag.root_cause, "main") >= 0;
 }
 
 proc test_c_backend_lowers_struct_tuple_and_array_values() -> bool {
@@ -475,6 +493,9 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if not test_c_backend_emits_external_calls_as_declarations_only() {
+    set failures = failures + 1;
+  }
+  if not test_linker_diagnostics_classify_and_demangle_stderr() {
     set failures = failures + 1;
   }
   if not test_c_backend_lowers_struct_tuple_and_array_values() {

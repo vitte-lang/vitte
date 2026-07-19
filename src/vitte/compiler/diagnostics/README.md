@@ -173,3 +173,13 @@ Design Rule
 Diagnostics are compiler facts, not terminal strings.
 
 The compiler should first build structured diagnostics, then render them through explicit output backends.
+
+Style Guide
+
+See `docs/compiler/diagnostic_style_guide.md`.
+
+Code review must reject a new diagnostic unless it answers:
+- what is incorrect;
+- where the problem is;
+- why it is incorrect in Vitte;
+- how to correct it.

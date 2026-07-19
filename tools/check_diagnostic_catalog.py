@@ -16,6 +16,7 @@ TEST_ROOT = ROOT / "tests" / "diagnostics" / "catalog"
 COMPILER_ROOT = ROOT / "src" / "vitte" / "compiler"
 
 SEVERITIES = {"error", "warning", "note", "help", "fatal"}
+KINDS = {"user", "configuration", "environment", "linker", "internal_compiler"}
 REQUIRED_ASSERTS = {
     "code",
     "title",
@@ -146,6 +147,7 @@ def validate_catalog() -> list[str]:
         phase = entry.get("phase")
         title = entry.get("title")
         severity = entry.get("default_severity")
+        kind = entry.get("kind", infer_kind(str(code), str(phase)))
         parameters = entry.get("required_parameters")
         documentation = entry.get("documentation")
         tests = entry.get("tests")
@@ -164,6 +166,14 @@ def validate_catalog() -> list[str]:
             failures.append(f"{code}: phase is required")
         if severity not in SEVERITIES:
             failures.append(f"{code}: default_severity must be one of {sorted(SEVERITIES)}")
+        if kind not in KINDS:
+            failures.append(f"{code}: kind must be one of {sorted(KINDS)}")
+        if isinstance(code, str) and code.startswith("ICE") and kind != "internal_compiler":
+            failures.append(f"{code}: ICE is reserved for internal compiler diagnostics")
+        if kind == "internal_compiler" and isinstance(code, str) and not code.startswith("ICE"):
+            failures.append(f"{code}: internal compiler diagnostics must use an ICE code")
+        if phase == "ice" and kind != "internal_compiler":
+            failures.append(f"{code}: ice phase must use kind=internal_compiler")
         if not isinstance(parameters, list) or not parameters or not all(isinstance(item, str) and item for item in parameters):
             failures.append(f"{code}: required_parameters must be a non-empty string array")
         if not isinstance(documentation, dict):
@@ -216,6 +226,18 @@ def validate_catalog() -> list[str]:
     return failures
 
 
+def infer_kind(code: str, phase: str) -> str:
+    if code.startswith("ICE") or phase == "ice":
+        return "internal_compiler"
+    if code.startswith("LNK") or code.startswith("LINK_") or phase == "linker":
+        return "linker"
+    if code.startswith("GEN") or code.startswith("BACKEND_") or phase == "codegen":
+        return "environment"
+    if code.startswith("DRIVER_"):
+        return "configuration"
+    return "user"
+
+
 def validate_diagnostic_code_usage() -> list[str]:
     payload = load_json(CATALOG)
     entries = payload.get("codes", [])
@@ -253,8 +275,60 @@ def validate_diagnostic_code_usage() -> list[str]:
     return failures
 
 
+def validate_canonical_diagnostic_contract() -> list[str]:
+    text = (COMPILER_ROOT / "diagnostics" / "diagnostic.vit").read_text(encoding="utf-8")
+    failures: list[str] = []
+    required_fragments = (
+        "DiagnosticKind.User",
+        "DiagnosticKind.Configuration",
+        "DiagnosticKind.Environment",
+        "DiagnosticKind.Linker",
+        "DiagnosticKind.InternalCompiler",
+        "starts_with(code, \"ICE\")",
+        "diagnostic_ice",
+        "internal compiler error in \" + phase_name(phase)",
+        "diagnostic_with_external_stderr",
+        "if config.verbose and diagnostic.external_command != \"\"",
+        "DIAGNOSTIC_USER_COLUMN_BASE",
+        "DIAGNOSTIC_INTERNAL_OFFSET_UNIT",
+    )
+    for fragment in required_fragments:
+        if fragment not in text:
+            failures.append(f"src/vitte/compiler/diagnostics/diagnostic.vit: missing diagnostic contract fragment {fragment!r}")
+    return failures
+
+
+def validate_backend_linker_contract() -> list[str]:
+    text = (COMPILER_ROOT / "backend" / "diagnostics.vit").read_text(encoding="utf-8")
+    failures: list[str] = []
+    required_fragments = (
+        "form LinkerFailureInfo",
+        "LINK_E_UNDEFINED_SYMBOL",
+        "LINK_E_LIBRARY_NOT_FOUND",
+        "LINK_E_ARCHITECTURE_INCOMPATIBLE",
+        "LINK_E_UNSUPPORTED_FORMAT",
+        "LINK_E_DUPLICATE_SYMBOL",
+        "LINK_E_ENTRYPOINT_MISSING",
+        "LINK_E_PERMISSION_DENIED",
+        "vitte_demangle_symbol",
+        "diagnostic_with_external_stderr",
+        "diagnostic_with_kind(diag0, DiagnosticKind.Linker)",
+    )
+    for fragment in required_fragments:
+        if fragment not in text:
+            failures.append(f"src/vitte/compiler/backend/diagnostics.vit: missing backend/linker diagnostic fragment {fragment!r}")
+    if "compilation failed" in text or "build failed" in text:
+        failures.append("src/vitte/compiler/backend/diagnostics.vit: backend/linker diagnostics must not collapse to build failed")
+    return failures
+
+
 def main() -> int:
-    failures = [*validate_catalog(), *validate_diagnostic_code_usage()]
+    failures = [
+        *validate_catalog(),
+        *validate_diagnostic_code_usage(),
+        *validate_canonical_diagnostic_contract(),
+        *validate_backend_linker_contract(),
+    ]
     if failures:
         for failure in failures:
             print(f"[diagnostic-catalog][error] {failure}", file=sys.stderr)

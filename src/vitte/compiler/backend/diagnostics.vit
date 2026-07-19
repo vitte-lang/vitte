@@ -21,6 +21,36 @@ use vitte/compiler/diagnostics/diagnostic.{
 
 export *
 
+form LinkerFailureInfo {
+  code: string
+  title: string
+  native_symbol: string
+  vitte_symbol: string
+  library_name: string
+  object_path: string
+  architecture: string
+  entry_name: string
+  permission_path: string
+  detail: string
+  valid: bool
+}
+
+proc linker_failure_info_empty() -> LinkerFailureInfo {
+  give LinkerFailureInfo {
+    code: "LINK_E_SYSTEM_LINKER_FAILED",
+    title: "system linker reported a precise failure",
+    native_symbol: "",
+    vitte_symbol: "",
+    library_name: "",
+    object_path: "",
+    architecture: "",
+    entry_name: "",
+    permission_path: "",
+    detail: "",
+    valid: true
+  };
+}
+
 proc backend_diag_context(diagnostic: Diagnostic, backend_name: string, target_name: string, output_path: string) -> Diagnostic {
   let out: Diagnostic = diagnostic;
   if backend_name != "" {
@@ -48,6 +78,10 @@ proc backend_diag_command(diagnostic: Diagnostic, command_text: string, exit_cod
 }
 
 proc vitte_demangle_symbol(symbol_name: string) -> string {
+  if starts_with(symbol_name, "_vitte_") {
+    give vitte_demangle_symbol(slice(symbol_name, 1, len(symbol_name)));
+  }
+
   if starts_with(symbol_name, "vitte_impl_") {
     give "impl " + slice(symbol_name, 11, len(symbol_name));
   }
@@ -63,36 +97,125 @@ proc vitte_demangle_symbol(symbol_name: string) -> string {
   give symbol_name;
 }
 
-proc linker_failure_code(stderr_text: string) -> string {
+proc linker_extract_after(stderr_text: string, marker: string) -> string {
+  let index: int = find(stderr_text, marker);
+  if index < 0 {
+    give "";
+  }
+
+  let start_i: int = index + len(marker);
+  let start: u64 = start_i as u64;
+  let rest: string = slice(stderr_text, start, len(stderr_text));
+  let newline: int = find(rest, "\n");
+  if newline > 0 {
+    give slice(rest, 0, newline as u64);
+  }
+  give rest;
+}
+
+proc linker_clean_fragment(text: string) -> string {
+  let out: string = text;
+  if starts_with(out, "`") or starts_with(out, "'") or starts_with(out, "\"") {
+    set out = slice(out, 1, len(out));
+  }
+  let tick: int = find(out, "`");
+  let quote: int = find(out, "'");
+  let dquote: int = find(out, "\"");
+  let space: int = find(out, " ");
+  let end: int = len(out) as int;
+  if tick >= 0 and tick < end {
+    set end = tick;
+  }
+  if quote >= 0 and quote < end {
+    set end = quote;
+  }
+  if dquote >= 0 and dquote < end {
+    set end = dquote;
+  }
+  if space >= 0 and space < end {
+    set end = space;
+  }
+  if end <= 0 {
+    give "";
+  }
+  give slice(out, 0, end as u64);
+}
+
+proc linker_failure_info(stderr_text: string) -> LinkerFailureInfo {
+  let info: LinkerFailureInfo = linker_failure_info_empty();
+
   if find(stderr_text, "Undefined symbols") >= 0 or find(stderr_text, "undefined symbol") >= 0 or find(stderr_text, "unresolved external symbol") >= 0 {
-    give "LINK_E_UNDEFINED_SYMBOL";
+    set info.code = "LINK_E_UNDEFINED_SYMBOL";
+    set info.title = "linker is missing a native symbol";
+    set info.native_symbol = linker_clean_fragment(linker_extract_after(stderr_text, "undefined symbol:"));
+    if info.native_symbol == "" {
+      set info.native_symbol = linker_clean_fragment(linker_extract_after(stderr_text, "unresolved external symbol"));
+    }
+    set info.vitte_symbol = vitte_demangle_symbol(info.native_symbol);
+    set info.detail = if info.vitte_symbol != "" { "Vitte item `" + info.vitte_symbol + "` needs native symbol `" + info.native_symbol + "`" } else { "a referenced native symbol has no linked definition" };
+    give info;
   }
 
   if find(stderr_text, "library not found") >= 0 or find(stderr_text, "cannot find -l") >= 0 or find(stderr_text, "No such file or directory") >= 0 {
-    give "LINK_E_LIBRARY_NOT_FOUND";
+    set info.code = "LINK_E_LIBRARY_NOT_FOUND";
+    set info.title = "linker cannot find a required library";
+    set info.library_name = linker_clean_fragment(linker_extract_after(stderr_text, "library not found for"));
+    if info.library_name == "" {
+      set info.library_name = linker_clean_fragment(linker_extract_after(stderr_text, "cannot find -l"));
+    }
+    set info.detail = if info.library_name != "" { "library `" + info.library_name + "` is required but was not found" } else { "a required linked library or object path is missing" };
+    give info;
   }
 
   if find(stderr_text, "wrong architecture") >= 0 or find(stderr_text, "file is incompatible") >= 0 or find(stderr_text, "architecture") >= 0 {
-    give "LINK_E_ARCHITECTURE_INCOMPATIBLE";
+    set info.code = "LINK_E_ARCHITECTURE_INCOMPATIBLE";
+    set info.title = "linker input architecture does not match the target";
+    set info.architecture = linker_clean_fragment(linker_extract_after(stderr_text, "architecture"));
+    set info.detail = "at least one object or library was built for another architecture";
+    give info;
   }
 
   if find(stderr_text, "file format not recognized") >= 0 or find(stderr_text, "invalid object") >= 0 or find(stderr_text, "malformed object") >= 0 {
-    give "LINK_E_UNSUPPORTED_FORMAT";
+    set info.code = "LINK_E_UNSUPPORTED_FORMAT";
+    set info.title = "linker received an object file in an unsupported format";
+    set info.object_path = linker_clean_fragment(linker_extract_after(stderr_text, "file format not recognized"));
+    set info.detail = "an object file exists but the linker cannot read its format";
+    give info;
   }
 
   if find(stderr_text, "duplicate symbol") >= 0 or find(stderr_text, "multiple definition") >= 0 {
-    give "LINK_E_DUPLICATE_SYMBOL";
+    set info.code = "LINK_E_DUPLICATE_SYMBOL";
+    set info.title = "linker found a duplicated native symbol";
+    set info.native_symbol = linker_clean_fragment(linker_extract_after(stderr_text, "duplicate symbol"));
+    if info.native_symbol == "" {
+      set info.native_symbol = linker_clean_fragment(linker_extract_after(stderr_text, "multiple definition of"));
+    }
+    set info.vitte_symbol = vitte_demangle_symbol(info.native_symbol);
+    set info.detail = if info.vitte_symbol != "" { "Vitte item `" + info.vitte_symbol + "` is defined by more than one object" } else { "one native symbol has multiple definitions" };
+    give info;
   }
 
   if find(stderr_text, "entry point") >= 0 or find(stderr_text, "undefined reference to `main") >= 0 or find(stderr_text, "_main") >= 0 {
-    give "LINK_E_ENTRYPOINT_MISSING";
+    set info.code = "LINK_E_ENTRYPOINT_MISSING";
+    set info.title = "linker cannot find the program entry point";
+    set info.entry_name = "main";
+    set info.detail = "the linked program has no exported entry procedure for the selected target";
+    give info;
   }
 
   if find(stderr_text, "Permission denied") >= 0 or find(stderr_text, "permission denied") >= 0 {
-    give "LINK_E_PERMISSION_DENIED";
+    set info.code = "LINK_E_PERMISSION_DENIED";
+    set info.title = "linker cannot access a required path";
+    set info.permission_path = linker_clean_fragment(linker_extract_after(stderr_text, "Permission denied"));
+    set info.detail = "the linker was denied read or write access by the operating system";
+    give info;
   }
 
-  give "LINK_E_SYSTEM_LINKER_FAILED";
+  give info;
+}
+
+proc linker_failure_code(stderr_text: string) -> string {
+  give linker_failure_info(stderr_text).code;
 }
 
 proc linker_failure_message(code: string) -> string {
@@ -194,13 +317,15 @@ proc backend_native_generation_failed(backend_name: string, target_name: string,
 }
 
 proc linker_command_failed(backend_name: string, target_name: string, command_text: string, exit_code: int, stderr_text: string, output_path: string, span: SourceSpan) -> Diagnostic {
-  let code: string = linker_failure_code(stderr_text);
+  let info: LinkerFailureInfo = linker_failure_info(stderr_text);
+  let code: string = info.code;
   let diag0: Diagnostic = linker_failure_diagnostic(code, span);
   let diag1a: Diagnostic = diagnostic_with_kind(diag0, DiagnosticKind.Linker);
   let diag1: Diagnostic = backend_diag_context(diag1a, backend_name, target_name, output_path);
   let diag2: Diagnostic = backend_diag_command(diag1, command_text, exit_code, stderr_text);
-  let diag3: Diagnostic = diagnostic_with_root_cause(diag2, "the linker reported `" + code + "` from its structured stderr classifier");
-  give diagnostic_with_probable_fix(diag3, "fix the first linker diagnostic and rerun with verbose output only if command details are needed");
+  let diag3: Diagnostic = diagnostic_with_subject_symbol(diag2, info.vitte_symbol);
+  let diag4: Diagnostic = diagnostic_with_root_cause(diag3, info.detail);
+  give diagnostic_with_probable_fix(diag4, "fix the first linker diagnostic and rerun with verbose output only if command details are needed");
 }
 
 proc linker_native_symbol_not_found(symbol_name: string, backend_name: string, target_name: string, command_text: string, exit_code: int, stderr_text: string, span: SourceSpan) -> Diagnostic {
