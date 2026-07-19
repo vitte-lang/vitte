@@ -119,6 +119,7 @@ form DiagnosticSuggestion {
     message: string
     replacement: string
     span: SourceSpan
+    secondary_spans: [SourceSpan]
     machine_applicable: bool
     applicability: DiagnosticApplicability
     confidence: string
@@ -132,6 +133,7 @@ form DiagnosticFixPlan {
     message: string
     replacement: string
     span: SourceSpan
+    secondary_spans: [SourceSpan]
     machine_applicable: bool
     confidence: string
     reason: string
@@ -537,6 +539,7 @@ proc diagnostic_suggestion(kind: DiagnosticSuggestionKind, message: string, repl
         message: message,
         replacement: replacement,
         span: span,
+        secondary_spans: [],
         machine_applicable: machine_applicable,
         applicability: if machine_applicable { DiagnosticApplicability.Machine } else { DiagnosticApplicability.Manual },
         confidence: confidence,
@@ -549,6 +552,7 @@ proc diagnostic_suggestion_applicability(kind: DiagnosticSuggestionKind, message
     let machine_applicable: bool = applicability == DiagnosticApplicability.Machine;
     let suggestion: DiagnosticSuggestion = diagnostic_suggestion(kind, message, replacement, span, machine_applicable);
     set suggestion.applicability = applicability;
+    set suggestion.machine_applicable = machine_applicable and confidence == "high" and replacement != "";
 
     if confidence != "" {
         set suggestion.confidence = confidence;
@@ -576,15 +580,39 @@ proc diagnostic_suggestion_detail(kind: DiagnosticSuggestionKind, message: strin
         set suggestion.reason = reason;
     }
 
-    if machine_applicable {
+    if machine_applicable and suggestion.confidence == "high" and replacement != "" {
         set suggestion.applicability = DiagnosticApplicability.Machine;
+        set suggestion.machine_applicable = true;
     } elif confidence == "medium" {
         set suggestion.applicability = DiagnosticApplicability.MaybeMachine;
+        set suggestion.machine_applicable = false;
     } else {
         set suggestion.applicability = DiagnosticApplicability.Manual;
+        set suggestion.machine_applicable = false;
     }
 
     give suggestion;
+}
+
+proc diagnostic_suggestion_with_secondary_span(suggestion: DiagnosticSuggestion, span: SourceSpan) -> DiagnosticSuggestion {
+    if not span.valid {
+        give suggestion;
+    }
+
+    set suggestion.secondary_spans = suggestion.secondary_spans + [span];
+    give suggestion;
+}
+
+proc diagnostic_suggestion_with_secondary_spans(suggestion: DiagnosticSuggestion, spans: [SourceSpan]) -> DiagnosticSuggestion {
+    let out: DiagnosticSuggestion = suggestion;
+    let i: u64 = 0;
+
+    while i < len(spans) {
+        set out = diagnostic_suggestion_with_secondary_span(out, spans[i]);
+        set i = i + 1;
+    }
+
+    give out;
 }
 
 proc diagnostic_fix_kind_from_suggestion(suggestion: DiagnosticSuggestion) -> DiagnosticFixKind {
@@ -635,11 +663,18 @@ proc diagnostic_fix_plan_from_suggestion(code: string, index: u64, suggestion: D
         message: suggestion.message,
         replacement: suggestion.replacement,
         span: suggestion.span,
+        secondary_spans: suggestion.secondary_spans,
         machine_applicable: suggestion.machine_applicable,
         confidence: suggestion.confidence,
         reason: suggestion.reason,
         valid: suggestion.valid
     };
+}
+
+proc diagnostic_multispan_fix_plan(code: string, message: string, replacement: string, primary_span: SourceSpan, secondary_spans: [SourceSpan], confidence: string) -> DiagnosticFixPlan {
+    let suggestion0: DiagnosticSuggestion = diagnostic_suggestion_detail(DiagnosticSuggestionKind.Replace, message, replacement, primary_span, confidence == "high", confidence, "multi-span correction updates every related location together");
+    let suggestion1: DiagnosticSuggestion = diagnostic_suggestion_with_secondary_spans(suggestion0, secondary_spans);
+    give diagnostic_fix_plan_from_suggestion(code, 0 as u64, suggestion1);
 }
 
 proc diagnostic_fix_plans(diagnostic: Diagnostic) -> [DiagnosticFixPlan] {
@@ -1243,27 +1278,7 @@ proc diagnostic_default_help(phase: DiagnosticPhase, code: string) -> string {
         give "compare the opening delimiter label with the primary span and close the intended block";
     }
 
-    if phase == DiagnosticPhase.Lexer {
-        give "fix this token first; later parser errors may disappear after tokenization is stable";
-    }
-
-    if phase == DiagnosticPhase.Parser {
-        give "fix the earliest syntax error first; later syntax errors may be recovery artifacts";
-    }
-
-    if phase == DiagnosticPhase.Typeck {
-        give "trace the expected type origin and the found value origin before changing code";
-    }
-
-    if phase == DiagnosticPhase.Borrowck or phase == DiagnosticPhase.Lifetime {
-        give "look for the first move or borrow that keeps the value unavailable at the primary span";
-    }
-
-    if phase == DiagnosticPhase.Backend or phase == DiagnosticPhase.Linker {
-        give "verify the selected target, emitted artifact path, and external tool output together";
-    }
-
-    give "start at the primary span, then use labels and cause chain to avoid fixing symptoms";
+    give "";
 }
 
 proc diagnostic_default_suggestion_kind(phase: DiagnosticPhase, code: string) -> DiagnosticSuggestionKind {
@@ -1275,7 +1290,7 @@ proc diagnostic_default_suggestion_kind(phase: DiagnosticPhase, code: string) ->
         give DiagnosticSuggestionKind.Insert;
     }
 
-    if phase == DiagnosticPhase.Lexer or phase == DiagnosticPhase.Typeck {
+    if phase == DiagnosticPhase.Lexer {
         give DiagnosticSuggestionKind.Replace;
     }
 
@@ -1319,15 +1334,7 @@ proc diagnostic_default_suggestion_message(phase: DiagnosticPhase, code: string)
         give "rewrite the invalid token at this span";
     }
 
-    if phase == DiagnosticPhase.Typeck {
-        give "replace the highlighted expression with one that satisfies the expected type";
-    }
-
-    if phase == DiagnosticPhase.Borrowck or phase == DiagnosticPhase.Lifetime {
-        give "reorder, shorten, or clone around the highlighted access";
-    }
-
-    give "apply the probable fix described by this diagnostic";
+    give "";
 }
 
 proc diagnostic_default_step1(phase: DiagnosticPhase, code: string) -> string {
@@ -1997,6 +2004,12 @@ proc diagnostic_with_suggestion_detail(diagnostic: Diagnostic, kind: DiagnosticS
     give diagnostic_with_suggestion(diagnostic, suggestion);
 }
 
+proc diagnostic_with_multispan_suggestion(diagnostic: Diagnostic, kind: DiagnosticSuggestionKind, message: string, replacement: string, span: SourceSpan, secondary_spans: [SourceSpan], machine_applicable: bool, confidence: string, reason: string) -> Diagnostic {
+    let suggestion0: DiagnosticSuggestion = diagnostic_suggestion_detail(kind, message, replacement, span, machine_applicable, confidence, reason);
+    let suggestion1: DiagnosticSuggestion = diagnostic_suggestion_with_secondary_spans(suggestion0, secondary_spans);
+    give diagnostic_with_suggestion(diagnostic, suggestion1);
+}
+
 proc diagnostic_with_replace(diagnostic: Diagnostic, message: string, replacement: string, span: SourceSpan) -> Diagnostic {
     let suggestion: DiagnosticSuggestion = diagnostic_suggestion(DiagnosticSuggestionKind.Replace, message, replacement, span, true);
     give diagnostic_with_suggestion(diagnostic, suggestion);
@@ -2260,7 +2273,7 @@ proc diagnostic_is_root(diagnostic: Diagnostic) -> bool {
 }
 
 proc diagnostic_cascade_limit() -> u64 {
-    give 3 as u64;
+    give 2 as u64;
 }
 
 proc diagnostic_same_primary_area(left: Diagnostic, right: Diagnostic) -> bool {
@@ -2296,11 +2309,35 @@ proc diagnostic_should_derive_from(primary: Diagnostic, candidate: Diagnostic) -
         give false;
     }
 
+    if primary.phase == DiagnosticPhase.Typeck and candidate.phase == DiagnosticPhase.Typeck and diagnostic_error_type_cascade_candidate(candidate) {
+        give diagnostic_same_primary_area(primary, candidate);
+    }
+
     if diagnostic_phase_priority(candidate.phase) <= diagnostic_phase_priority(primary.phase) {
         give false;
     }
 
     give diagnostic_same_primary_area(primary, candidate);
+}
+
+proc diagnostic_error_type_cascade_candidate(diagnostic: Diagnostic) -> bool {
+    if diagnostic.phase != DiagnosticPhase.Typeck {
+        give false;
+    }
+
+    if find(diagnostic.message, "unknown") >= 0 or find(diagnostic.message, "opaque") >= 0 {
+        give true;
+    }
+
+    if find(diagnostic.root_cause, "unknown") >= 0 or find(diagnostic.root_cause, "opaque") >= 0 {
+        give true;
+    }
+
+    if diagnostic.subject_type == "unknown" or diagnostic.subject_type == "opaque" {
+        give true;
+    }
+
+    give false;
 }
 
 proc diagnostics_suppressed_cascade_count(diagnostics: [Diagnostic]) -> u64 {
@@ -4020,6 +4057,8 @@ share diagnostic_help
 share diagnostic_suggestion
 share diagnostic_suggestion_applicability
 share diagnostic_suggestion_detail
+share diagnostic_suggestion_with_secondary_span
+share diagnostic_suggestion_with_secondary_spans
 share diagnostic_suggestion_limit
 share diagnostic_suggestion_rank
 share vitte_canonical_keywords
@@ -4032,6 +4071,7 @@ share diagnostic_suggestion_list
 share diagnostic_fix_kind_from_suggestion
 share diagnostic_fix_plan_id
 share diagnostic_fix_plan_from_suggestion
+share diagnostic_multispan_fix_plan
 share diagnostic_fix_plans
 
 share diagnostic_create
@@ -4061,6 +4101,7 @@ share diagnostic_with_replace
 share diagnostic_with_insert
 share diagnostic_with_remove
 share diagnostic_with_suggestion_detail
+share diagnostic_with_multispan_suggestion
 
 share same_diagnostic
 share add_unique_diagnostic
@@ -4079,6 +4120,7 @@ share diagnostic_cascade_penalty
 share diagnostic_priority
 share prioritize_diagnostics
 share diagnostic_is_root
+share diagnostic_error_type_cascade_candidate
 share diagnostic_root_count
 share diagnostic_cascade_count
 share diagnostic_causality_summary

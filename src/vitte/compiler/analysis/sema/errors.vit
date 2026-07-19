@@ -21,7 +21,6 @@ use vitte/compiler/diagnostics/diagnostic.{
     diagnostic_with_probable_fix,
     diagnostic_with_subject_symbol,
     diagnostic_with_suggestion_detail,
-    diagnostic_with_insert,
     diagnostic_with_replace,
     secondary_label,
     add_unique_diagnostic,
@@ -795,7 +794,7 @@ proc sema_unknown_symbol(name: string, span: Span) -> Diagnostic {
     let diag: Diagnostic = sema_missing_symbol(name, "expression name lookup", span);
 
     set diag = diagnostic_with_note(diag, "no matching local, imported item, builtin, or module item was found");
-    set diag = diagnostic_with_insert(diag, "insert a canonical `use` for `" + name + "` if it is defined in another module", "use module.{ " + name + " }", ast_span_to_source_span(span));
+    set diag = diagnostic_with_suggestion_detail(diag, DiagnosticSuggestionKind.Insert, "insert a canonical `use` for `" + name + "` if it is defined in another module", "use module.{ " + name + " }", ast_span_to_source_span(span), false, "medium", "the symbol may be exported by another module, but the exact module path must be confirmed");
 
     give diag;
 }
@@ -832,7 +831,7 @@ proc sema_invalid_import(path: string, span: Span) -> Diagnostic {
     let diag: Diagnostic = sema_invalid_module_path(path, span);
 
     set diag = diagnostic_with_note(diag, "imports must resolve to an existing module or exported item");
-    set diag = diagnostic_with_insert(diag, "replace this import with a canonical module path", "use package/module { symbol }", ast_span_to_source_span(span));
+    set diag = diagnostic_with_help(diag, "write a canonical `use` path that names an existing module and exported symbol");
 
     give diag;
 }
