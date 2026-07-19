@@ -1,6 +1,6 @@
 space vitte/compiler/analysis/typeck
 
-use vitte/compiler/analysis/typeck/errors.{ TypeckResult, add_unique_diag, typeck_assignment_mismatch, typeck_condition_type, typeck_conflicting_impl, typeck_constraint_cycle, typeck_diag, typeck_invalid_hir_result, typeck_non_exhaustive_match, typeck_result, typeck_return_mismatch, typeck_unknown_type }
+use vitte/compiler/analysis/typeck/errors.{ TypeckResult, add_unique_diag, typeck_assignment_mismatch, typeck_condition_type, typeck_conflicting_impl, typeck_constraint_cycle, typeck_diag, typeck_give_missing_path, typeck_give_value_in_unit_proc, typeck_invalid_hir_result, typeck_let_inference_failed, typeck_non_exhaustive_match, typeck_result, typeck_return_mismatch, typeck_set_immutable, typeck_unknown_type }
 use vitte/compiler/analysis/typeck/infer.{ TypeBinding, constrained_generic_type_binding, env_get, env_has, env_index, env_set, expression_types_compatible, function_param_types, function_return_type, infer_expr_type, param_type_binding, resolved_call_generic_arguments, split_function_signature_types, trait_impl_binding_name, type_identifier_index }
 use vitte/compiler/analysis/typeck/traits.{ type_is_copy, type_is_known, type_is_truthy }
 use vitte/compiler/diagnostics/diagnostic.{ Diagnostic }
@@ -60,6 +60,26 @@ proc append_member_provider(providers: string, provider: string) -> string {
     give providers;
   }
   give providers + ", " + provider;
+}
+
+proc typeck_stmt_list_gives(stmts: [HirStmt]) -> bool {
+  let i: u64 = 0;
+  while i < len(stmts) {
+    let stmt: HirStmt = stmts[i];
+    if stmt.kind == HirStmtKind.Give {
+      give true;
+    }
+    if stmt.kind == HirStmtKind.If and len(stmt.then_stmts) > 0 and len(stmt.else_stmts) > 0 and typeck_stmt_list_gives(stmt.then_stmts) and typeck_stmt_list_gives(stmt.else_stmts) {
+      give true;
+    }
+    set i = i + 1;
+  }
+  give false;
+}
+
+proc typeck_proc_has_result(annotation_text: string) -> bool {
+  let result: string = trim(annotation_text);
+  give result != "" and result != "unit" and result != "void" and result != "()";
 }
 
 proc nominal_variant_names(item: HirItem) -> [string] {
@@ -798,14 +818,7 @@ proc check_stmt_tree(diagnostics: [Diagnostic], env: [TypeBinding], stmts: [HirS
 
     if stmt.kind == HirStmtKind.Let {
       if not type_is_known(result.ty) {
-        set out = add_unique_diag(out, typeck_diag(
-          "TYPECK_E_UNKNOWN_TYPE",
-          "unable to infer type of declaration `" + stmt.name + "`",
-          [stmt.name],
-          "add a more explicit initializer or type annotation",
-          stmt.span,
-          true
-        ));
+        set out = add_unique_diag(out, typeck_let_inference_failed(stmt.name, stmt.span));
       }
       if stmt.annotation_text != "" and type_is_known(result.ty) and not expression_types_compatible(stmt.annotation_text, result.ty, stmt.expr) {
         set out = add_unique_diag(out, typeck_assignment_mismatch(stmt.name, stmt.annotation_text, result.ty, stmt.span));
@@ -822,14 +835,7 @@ proc check_stmt_tree(diagnostics: [Diagnostic], env: [TypeBinding], stmts: [HirS
       if target_name != "" and env_has(current_env, target_name) {
         let binding: TypeBinding = current_env[env_index(current_env, target_name)];
         if not binding.mutable {
-          set out = add_unique_diag(out, typeck_diag(
-            "TYPECK_E_IMMUTABLE_ASSIGN",
-            "cannot assign to immutable binding `" + target_name + "`",
-            [target_name],
-            "declare the binding as `mut` before assigning to it",
-            stmt.span,
-            true
-          ));
+          set out = add_unique_diag(out, typeck_set_immutable(target_name, stmt.span));
         } elif type_is_known(result.ty) and not expression_types_compatible(binding.ty, result.ty, stmt.expr) {
           set out = add_unique_diag(out, typeck_assignment_mismatch(
             target_name,
@@ -864,6 +870,8 @@ proc check_stmt_tree(diagnostics: [Diagnostic], env: [TypeBinding], stmts: [HirS
           result.ty,
           stmt.span
         ));
+      } elif not typeck_proc_has_result(return_type) and stmt.expr.valid and stmt.expr.text != "" and type_is_known(result.ty) and result.ty != "unit" {
+        set out = add_unique_diag(out, typeck_give_value_in_unit_proc(owner_name, result.ty, stmt.span));
       }
     }
 
@@ -929,6 +937,9 @@ proc check_module(diagnostics: [Diagnostic], env: [TypeBinding], hir: HirUnit) -
     let stmt_result: TypeckStmtWalk = check_stmt_tree([], item_env, item.stmts, item.annotation_text, item.name);
     let member_result: TypeckMemberWalk = typeck_members(module_env, item);
     set out = out + stmt_result.diagnostics;
+    if item.kind == HirItemKind.Proc and typeck_proc_has_result(item.annotation_text) and not typeck_stmt_list_gives(item.stmts) {
+      set out = add_unique_diag(out, typeck_give_missing_path(item.name, item.annotation_text, item.span));
+    }
     set out = out + member_result.diagnostics;
     set out = out + check_impl_against_trait(hir.module.items, item);
     set out = out + check_impl_coherence(hir.module.items, i);

@@ -7,6 +7,7 @@ use vitte/compiler/analysis/borrowck/errors.{
   borrow_error_move_while_borrowed_story,
   borrow_error_mutable_borrow_conflict_story,
   borrow_error_shared_borrow_conflict_story,
+  borrow_error_assign_while_borrowed_story,
   borrow_error_use_after_move_story,
   diagnostic_create,
   diagnostics_has_fatal
@@ -947,14 +948,17 @@ proc handle_set(result: BorrowCheckResult, metadata: BorrowMetadata, source_path
     give current0;
   }
   if shared_borrow_count_place(current0.ownership, target) > 0 or is_mutably_borrowed_place(current0.ownership, target) {
-    give add_diag(current0, diagnostic_create(
-      BorrowErrorKind.WriteWhileBorrowed,
+    let conflict_loan: Loan = first_conflicting_loan(current0.loans, target, LoanKind.Mutable);
+    let borrow_line: u64 = if conflict_loan.valid { conflict_loan.start_line } else { line };
+    let lifetime_text: string = if conflict_loan.valid { estimated_scope_text(conflict_loan.scope_end_line) } else { "after the active reference is no longer used" };
+    let conflict_id: u64 = if conflict_loan.valid { conflict_loan.id } else { line };
+    give add_diag(current0, borrow_error_assign_while_borrowed_story(
       source_path,
+      target,
       line,
-      "cannot write `" + target + "` while it is borrowed",
-      [target],
-      "end the active borrow before assigning to the local",
-      true
+      borrow_line,
+      lifetime_text,
+      conflict_id
     ));
   }
 

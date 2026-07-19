@@ -1142,7 +1142,8 @@ proc infer_call_type(env: [TypeBinding], expr: HirExpr) -> ExprTypeResult {
     let arity_invalid: bool = if variadic { arg_count < fixed_count } else { len(param_types) != arg_count };
 
     if type_is_function(callee_ty) and arity_invalid {
-        set diagnostics = add_unique_diag(diagnostics, typeck_invalid_call_arity(callee_text, fixed_count, arg_count, expr.span));
+        let expected_params: string = if len(param_types) == 0 { "(none)" } else { join(param_types, ", ") };
+        set diagnostics = add_unique_diag(diagnostics, typeck_invalid_call_arity(callee_text, expected_params, fixed_count, arg_count, expr.span));
         set valid = false;
     }
 
@@ -1181,7 +1182,7 @@ proc infer_call_type(env: [TypeBinding], expr: HirExpr) -> ExprTypeResult {
             let unresolved_expected: bool = type_has_unresolved_generics(expected_pattern, generic_params, substitutions);
             let arg_type_mismatch: bool = not unresolved_expected and expected_ty != "opaque" and arg_type_known and !expression_types_compatible(expected_ty, arg.ty, expr.children[i]);
             if arg_type_mismatch {
-                set diagnostics = add_unique_diag(diagnostics, typeck_argument_mismatch(callee_text, i, expected_ty, arg.ty, expr.span));
+                set diagnostics = add_unique_diag(diagnostics, typeck_argument_mismatch(callee_text, i, expected_ty, arg.ty, expr.children[i].span));
                 set valid = false;
             }
         }
