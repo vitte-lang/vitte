@@ -34,6 +34,7 @@ use vitte/compiler/diagnostics/diagnostic.{
 }
 use vitte/compiler/diagnostics/json.{ json_diagnostic }
 use vitte/compiler/diagnostics/lsp.{ LspCanonicalContext, LspCodeAction, LspDiagnostic, LspPublishDiagnosticsParams, lsp_canonical_context, lsp_code_actions, lsp_diagnostic, lsp_diagnostic_with_canonical_context, lsp_publish_report_with_canonical_context, lsp_report_code_actions }
+use vitte/compiler/diagnostics/architecture.{ CompilerDiagnosticStage, canonical_diagnostic_stage_count, compiler_diagnostic_error, compiler_diagnostic_report, diagnostic_architecture_covers_required_stages, stage_component, stage_phase }
 
 const VERSION_TEXT: string = "diagnostic snapshot tests 0.1.0"
 const BANNER_TEXT: string = "diagnostic snapshot tests"
@@ -399,6 +400,36 @@ proc test_text_diagnostic_format_is_stable() -> bool {
     and rendered == line;
 }
 
+proc test_single_diagnostic_architecture_covers_compiler_pipeline() -> bool {
+  let span0 = span_create("architecture.vit", 1, 1, 1);
+  let lexer: Diagnostic = compiler_diagnostic_error(CompilerDiagnosticStage.Lexer, "LEX_E_ARCH", "lexer contract", span0);
+  let parser: Diagnostic = compiler_diagnostic_error(CompilerDiagnosticStage.Parser, "PARSE_E_ARCH", "parser contract", span0);
+  let resolver: Diagnostic = compiler_diagnostic_error(CompilerDiagnosticStage.Resolver, "SEMA_E_UNKNOWN_SYMBOL", "resolver contract", span0);
+  let sema: Diagnostic = compiler_diagnostic_error(CompilerDiagnosticStage.Sema, "SEMA_E_ARCH", "sema contract", span0);
+  let typeck: Diagnostic = compiler_diagnostic_error(CompilerDiagnosticStage.TypeChecker, "TYPECK_E_ARCH", "type contract", span0);
+  let borrowck: Diagnostic = compiler_diagnostic_error(CompilerDiagnosticStage.BorrowChecker, "BORROWCK_E_ARCH", "borrow contract", span0);
+  let mir: Diagnostic = compiler_diagnostic_error(CompilerDiagnosticStage.Mir, "MIR_E_ARCH", "mir contract", span0);
+  let backend: Diagnostic = compiler_diagnostic_error(CompilerDiagnosticStage.Backend, "BACKEND_E_ARCH", "backend contract", span0);
+  let linker: Diagnostic = compiler_diagnostic_error(CompilerDiagnosticStage.Linker, "LINK_E_ARCH", "linker contract", span0);
+  let report: DiagnosticReport = compiler_diagnostic_report([lexer, parser, resolver, sema, typeck, borrowck, mir, backend, linker]);
+  give diagnostic_architecture_covers_required_stages()
+    and canonical_diagnostic_stage_count() == 9
+    and len(report.diagnostics) == 9
+    and lexer.phase == DiagnosticPhase.Lexer
+    and parser.phase == DiagnosticPhase.Parser
+    and resolver.phase == DiagnosticPhase.SymbolResolution
+    and sema.phase == DiagnosticPhase.Sema
+    and typeck.phase == DiagnosticPhase.Typeck
+    and borrowck.phase == DiagnosticPhase.Borrowck
+    and mir.phase == DiagnosticPhase.Mir
+    and backend.phase == DiagnosticPhase.Backend
+    and linker.phase == DiagnosticPhase.Linker
+    and stage_phase(CompilerDiagnosticStage.TypeChecker) == DiagnosticPhase.Typeck
+    and stage_component(CompilerDiagnosticStage.Linker) == "backend.linker"
+    and find(linker.pipeline_context[6], "stage=linker") >= 0
+    and find(typeck.probable_fix, "type contract") >= 0;
+}
+
 proc run_all_tests() -> int {
   let failures: int = 0;
   let typeck_ok: bool = test_typeck_diagnostic_contract();
@@ -415,6 +446,7 @@ proc run_all_tests() -> int {
   let report_cascade_ok: bool = test_report_deduplicates_and_limits_cascades();
   let report_order_ok: bool = test_report_orders_diagnostics_by_file_and_position();
   let text_format_ok: bool = test_text_diagnostic_format_is_stable();
+  let architecture_ok: bool = test_single_diagnostic_architecture_covers_compiler_pipeline();
   if typeck_ok == false {
     set failures = failures + 1;
   }
@@ -455,6 +487,9 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if text_format_ok == false {
+    set failures = failures + 1;
+  }
+  if architecture_ok == false {
     set failures = failures + 1;
   }
   give failures;

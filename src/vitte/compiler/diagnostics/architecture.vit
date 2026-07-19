@@ -1,0 +1,243 @@
+space vitte/compiler/diagnostics/architecture
+
+use vitte/compiler/diagnostics/diagnostic.{
+  Diagnostic,
+  DiagnosticPhase,
+  DiagnosticReport,
+  DiagnosticSeverity,
+  SourceSpan,
+  diagnostic_add_pipeline_context,
+  diagnostic_create,
+  diagnostic_report,
+  diagnostic_with_probable_fix,
+  diagnostic_with_root_cause,
+  diagnostic_with_rule,
+  phase_name
+}
+
+pick CompilerDiagnosticStage {
+  Lexer
+  Parser
+  Resolver
+  Sema
+  TypeChecker
+  BorrowChecker
+  Mir
+  Backend
+  Linker
+}
+
+form CompilerDiagnosticOrigin {
+  stage: CompilerDiagnosticStage
+  phase: DiagnosticPhase
+  component: string
+  rule: string
+  valid: bool
+}
+
+proc canonical_diagnostic_stage_count() -> u64 {
+  give 9 as u64;
+}
+
+proc stage_name(stage: CompilerDiagnosticStage) -> string {
+  if stage == CompilerDiagnosticStage.Lexer {
+    give "lexer";
+  }
+  if stage == CompilerDiagnosticStage.Parser {
+    give "parser";
+  }
+  if stage == CompilerDiagnosticStage.Resolver {
+    give "resolver";
+  }
+  if stage == CompilerDiagnosticStage.Sema {
+    give "sema";
+  }
+  if stage == CompilerDiagnosticStage.TypeChecker {
+    give "type_checker";
+  }
+  if stage == CompilerDiagnosticStage.BorrowChecker {
+    give "borrow_checker";
+  }
+  if stage == CompilerDiagnosticStage.Mir {
+    give "mir";
+  }
+  if stage == CompilerDiagnosticStage.Backend {
+    give "backend";
+  }
+  give "linker";
+}
+
+proc stage_phase(stage: CompilerDiagnosticStage) -> DiagnosticPhase {
+  if stage == CompilerDiagnosticStage.Lexer {
+    give DiagnosticPhase.Lexer;
+  }
+  if stage == CompilerDiagnosticStage.Parser {
+    give DiagnosticPhase.Parser;
+  }
+  if stage == CompilerDiagnosticStage.Resolver {
+    give DiagnosticPhase.SymbolResolution;
+  }
+  if stage == CompilerDiagnosticStage.Sema {
+    give DiagnosticPhase.Sema;
+  }
+  if stage == CompilerDiagnosticStage.TypeChecker {
+    give DiagnosticPhase.Typeck;
+  }
+  if stage == CompilerDiagnosticStage.BorrowChecker {
+    give DiagnosticPhase.Borrowck;
+  }
+  if stage == CompilerDiagnosticStage.Mir {
+    give DiagnosticPhase.Mir;
+  }
+  if stage == CompilerDiagnosticStage.Backend {
+    give DiagnosticPhase.Backend;
+  }
+  give DiagnosticPhase.Linker;
+}
+
+proc stage_component(stage: CompilerDiagnosticStage) -> string {
+  if stage == CompilerDiagnosticStage.Lexer {
+    give "frontend.lexer";
+  }
+  if stage == CompilerDiagnosticStage.Parser {
+    give "frontend.parser";
+  }
+  if stage == CompilerDiagnosticStage.Resolver {
+    give "analysis.resolver";
+  }
+  if stage == CompilerDiagnosticStage.Sema {
+    give "analysis.sema";
+  }
+  if stage == CompilerDiagnosticStage.TypeChecker {
+    give "middle.typecheck";
+  }
+  if stage == CompilerDiagnosticStage.BorrowChecker {
+    give "middle.borrow";
+  }
+  if stage == CompilerDiagnosticStage.Mir {
+    give "middle.mir";
+  }
+  if stage == CompilerDiagnosticStage.Backend {
+    give "backend.codegen";
+  }
+  give "backend.linker";
+}
+
+proc stage_rule(stage: CompilerDiagnosticStage) -> string {
+  if stage == CompilerDiagnosticStage.Lexer {
+    give "token stream";
+  }
+  if stage == CompilerDiagnosticStage.Parser {
+    give "syntax tree";
+  }
+  if stage == CompilerDiagnosticStage.Resolver {
+    give "name resolution";
+  }
+  if stage == CompilerDiagnosticStage.Sema {
+    give "semantic contract";
+  }
+  if stage == CompilerDiagnosticStage.TypeChecker {
+    give "type contract";
+  }
+  if stage == CompilerDiagnosticStage.BorrowChecker {
+    give "ownership contract";
+  }
+  if stage == CompilerDiagnosticStage.Mir {
+    give "middle ir contract";
+  }
+  if stage == CompilerDiagnosticStage.Backend {
+    give "code generation contract";
+  }
+  give "link contract";
+}
+
+proc stage_root_cause(stage: CompilerDiagnosticStage) -> string {
+  give stage_component(stage) + " rejected " + stage_rule(stage);
+}
+
+proc stage_probable_fix(stage: CompilerDiagnosticStage) -> string {
+  if stage == CompilerDiagnosticStage.Lexer {
+    give "repair the highlighted token before parser recovery";
+  }
+  if stage == CompilerDiagnosticStage.Parser {
+    give "repair the highlighted grammar shape before AST lowering";
+  }
+  if stage == CompilerDiagnosticStage.Resolver {
+    give "bind the highlighted name through scope or imports before semantic analysis";
+  }
+  if stage == CompilerDiagnosticStage.Sema {
+    give "repair the semantic invariant before type checking";
+  }
+  if stage == CompilerDiagnosticStage.TypeChecker {
+    give "make the highlighted expression satisfy its required type contract";
+  }
+  if stage == CompilerDiagnosticStage.BorrowChecker {
+    give "repair the ownership transition before MIR validation";
+  }
+  if stage == CompilerDiagnosticStage.Mir {
+    give "repair the MIR invariant before backend lowering";
+  }
+  if stage == CompilerDiagnosticStage.Backend {
+    give "repair backend inputs before object emission";
+  }
+  give "repair object symbols and libraries before final link";
+}
+
+proc compiler_diagnostic_origin(stage: CompilerDiagnosticStage) -> CompilerDiagnosticOrigin {
+  let phase: DiagnosticPhase = stage_phase(stage);
+  give CompilerDiagnosticOrigin {
+    stage: stage,
+    phase: phase,
+    component: stage_component(stage),
+    rule: stage_rule(stage),
+    valid: phase_name(phase) != "" and stage_component(stage) != ""
+  };
+}
+
+proc compiler_diagnostic(stage: CompilerDiagnosticStage, code: string, severity: DiagnosticSeverity, message: string, span: SourceSpan) -> Diagnostic {
+  let origin: CompilerDiagnosticOrigin = compiler_diagnostic_origin(stage);
+  let diag0: Diagnostic = diagnostic_create(code, origin.phase, severity, message, span);
+  let diag1: Diagnostic = diagnostic_with_rule(diag0, origin.rule);
+  let diag2: Diagnostic = diagnostic_with_root_cause(diag1, stage_root_cause(stage));
+  let diag3: Diagnostic = diagnostic_with_probable_fix(diag2, stage_probable_fix(stage));
+  let diag4: Diagnostic = diagnostic_add_pipeline_context(diag3, "diagnostic_architecture=canonical");
+  let diag5: Diagnostic = diagnostic_add_pipeline_context(diag4, "stage=" + stage_name(stage));
+  let diag6: Diagnostic = diagnostic_add_pipeline_context(diag5, "component=" + origin.component);
+  give diagnostic_add_pipeline_context(diag6, "canonical_phase=" + phase_name(origin.phase));
+}
+
+proc compiler_diagnostic_error(stage: CompilerDiagnosticStage, code: string, message: string, span: SourceSpan) -> Diagnostic {
+  give compiler_diagnostic(stage, code, DiagnosticSeverity.Error, message, span);
+}
+
+proc compiler_diagnostic_report(diagnostics: [Diagnostic]) -> DiagnosticReport {
+  give diagnostic_report(diagnostics);
+}
+
+proc diagnostic_architecture_covers_required_stages() -> bool {
+  give canonical_diagnostic_stage_count() == 9
+    and stage_phase(CompilerDiagnosticStage.Lexer) == DiagnosticPhase.Lexer
+    and stage_phase(CompilerDiagnosticStage.Parser) == DiagnosticPhase.Parser
+    and stage_phase(CompilerDiagnosticStage.Resolver) == DiagnosticPhase.SymbolResolution
+    and stage_phase(CompilerDiagnosticStage.Sema) == DiagnosticPhase.Sema
+    and stage_phase(CompilerDiagnosticStage.TypeChecker) == DiagnosticPhase.Typeck
+    and stage_phase(CompilerDiagnosticStage.BorrowChecker) == DiagnosticPhase.Borrowck
+    and stage_phase(CompilerDiagnosticStage.Mir) == DiagnosticPhase.Mir
+    and stage_phase(CompilerDiagnosticStage.Backend) == DiagnosticPhase.Backend
+    and stage_phase(CompilerDiagnosticStage.Linker) == DiagnosticPhase.Linker;
+}
+
+share CompilerDiagnosticStage
+share CompilerDiagnosticOrigin
+share canonical_diagnostic_stage_count
+share stage_name
+share stage_phase
+share stage_component
+share stage_rule
+share stage_root_cause
+share stage_probable_fix
+share compiler_diagnostic_origin
+share compiler_diagnostic
+share compiler_diagnostic_error
+share compiler_diagnostic_report
+share diagnostic_architecture_covers_required_stages
