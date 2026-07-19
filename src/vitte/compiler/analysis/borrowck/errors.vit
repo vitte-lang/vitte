@@ -37,6 +37,7 @@ const BORROWCK_INVALID_ID: u64 = 18446744073709551615
 pick BorrowErrorKind {
     None
     MoveAfterMove
+    PartialMove
     UseAfterMove
     BorrowOfMovedValue
     MutableBorrowConflict
@@ -106,6 +107,9 @@ proc span_with_length(span: SourceSpan, length: u64) -> SourceSpan {
 proc error_code(kind: BorrowErrorKind) -> string {
     if kind == BorrowErrorKind.MoveAfterMove {
         give "BORROWCK_E_MOVE_AFTER_MOVE";
+    }
+    if kind == BorrowErrorKind.PartialMove {
+        give "BORROWCK_E_PARTIAL_MOVE";
     }
     if kind == BorrowErrorKind.UseAfterMove {
         give "BORROWCK_E_USE_AFTER_MOVE";
@@ -192,6 +196,37 @@ proc borrow_phase_name(phase: BorrowPhase) -> string {
     give "unknown";
 }
 
+proc borrow_phase_user_text(phase: BorrowPhase) -> string {
+    if phase == BorrowPhase.CollectMoves {
+        give "the compiler is reading where values are moved";
+    }
+    if phase == BorrowPhase.CollectLoans {
+        give "the compiler is reading where values are borrowed";
+    }
+    if phase == BorrowPhase.AliasAnalysis {
+        give "the compiler is checking whether two names can refer to the same value";
+    }
+    if phase == BorrowPhase.CaptureAnalysis {
+        give "the compiler is checking values captured by nested code";
+    }
+    if phase == BorrowPhase.DropAnalysis {
+        give "the compiler is checking where values are destroyed";
+    }
+    if phase == BorrowPhase.Dataflow {
+        give "the compiler is following ownership through the control flow";
+    }
+    if phase == BorrowPhase.RegionCheck {
+        give "the compiler is checking that every borrow ends before its owner is destroyed";
+    }
+    if phase == BorrowPhase.Validate {
+        give "the compiler is validating the ownership facts before reporting";
+    }
+    if phase == BorrowPhase.Report {
+        give "the compiler is preparing the user-facing borrow diagnostic";
+    }
+    give "the compiler is checking Vitte ownership rules";
+}
+
 proc borrow_message(code: string, fallback: string) -> string {
     let msg: string = diagnostic_message(code);
 
@@ -264,20 +299,12 @@ proc attach_labels_and_help(diagnostic: Diagnostic, labels: [string], suggestion
 proc attach_borrow_context(diagnostic: Diagnostic, code: string, phase: BorrowPhase, entity: u64) -> Diagnostic {
     let diag: Diagnostic = diagnostic;
 
-    set diag = diagnostic_with_note(diag, "borrowck phase: " + borrow_phase_name(phase));
+    set diag = diagnostic_with_note(diag, borrow_phase_user_text(phase));
 
     let note: string = diagnostic_default_note(code);
 
     if note != "" {
         set diag = diagnostic_with_note(diag, note);
-    }
-
-    if entity != BORROWCK_INVALID_ID {
-        let entity_note: string = "entity:";
-        let entity_text: string = entity as string;
-        set entity_note = entity_note + " ";
-        set entity_note = entity_note + entity_text;
-        set diag = diagnostic_with_note(diag, entity_note);
     }
 
     give diag;
@@ -391,18 +418,28 @@ proc borrow_error_temporal_story(kind: BorrowErrorKind, name: string, primary_me
         "conflict appears here: `" + name + "` is used after ownership moved"
     } elif kind == BorrowErrorKind.MoveAfterMove {
         "conflict appears here: `" + name + "` is moved again"
+    } elif kind == BorrowErrorKind.PartialMove {
+        "conflict appears here: `" + name + "` is used after one of its fields was moved"
     } elif kind == BorrowErrorKind.MoveWhileBorrowed {
         "conflict appears here: `" + name + "` is moved while a borrow is still active"
     } elif kind == BorrowErrorKind.MutableBorrowConflict {
-        "conflict appears here: mutable borrow of `" + name + "` requires exclusive access"
+        "conflict appears here: a second mutable borrow of `" + name + "` requires exclusive access"
     } elif kind == BorrowErrorKind.SharedBorrowConflict {
-        "conflict appears here: shared borrow of `" + name + "` overlaps mutable access"
+        "conflict appears here: immutable borrow of `" + name + "` overlaps an active mutable borrow"
+    } elif kind == BorrowErrorKind.WriteWhileBorrowed or kind == BorrowErrorKind.AssignWhileBorrowed {
+        "conflict appears here: `set` mutates `" + name + "` while a borrow is active"
+    } elif kind == BorrowErrorKind.DropWhileBorrowed {
+        "conflict appears here: `" + name + "` is destroyed while a borrow is active"
+    } elif kind == BorrowErrorKind.LifetimeTooShort or kind == BorrowErrorKind.DanglingReference or kind == BorrowErrorKind.ReturnRefToLocal or kind == BorrowErrorKind.ReturnBorrowOfLocal {
+        "conflict appears here: reference to `" + name + "` would outlive its owner"
     } else {
         "conflict appears here for `" + name + "`"
     };
     let previous_text: string = if kind == BorrowErrorKind.UseAfterMove or kind == BorrowErrorKind.MoveAfterMove {
         "value was moved here"
-    } elif kind == BorrowErrorKind.MoveWhileBorrowed or kind == BorrowErrorKind.MutableBorrowConflict or kind == BorrowErrorKind.SharedBorrowConflict {
+    } elif kind == BorrowErrorKind.PartialMove {
+        previous_message
+    } elif kind == BorrowErrorKind.MoveWhileBorrowed or kind == BorrowErrorKind.MutableBorrowConflict or kind == BorrowErrorKind.SharedBorrowConflict or kind == BorrowErrorKind.WriteWhileBorrowed or kind == BorrowErrorKind.AssignWhileBorrowed or kind == BorrowErrorKind.DropWhileBorrowed or kind == BorrowErrorKind.LifetimeTooShort or kind == BorrowErrorKind.DanglingReference or kind == BorrowErrorKind.ReturnRefToLocal or kind == BorrowErrorKind.ReturnBorrowOfLocal {
         previous_message + "; borrow is still active at the conflict"
     } else {
         previous_message
@@ -447,33 +484,43 @@ proc borrow_error_temporal_story(kind: BorrowErrorKind, name: string, primary_me
     );
     let diag7: Diagnostic = diagnostic_with_explanation(
         diag6,
-        "borrow checking rejected this step because `" + name + "` was already committed to an earlier ownership or borrow action"
+        "Vitte rejected this ownership step because `" + name + "` was already committed to an earlier move or borrow that still matters here"
     );
     let diag8: Diagnostic = diagnostic_with_root_cause(
         diag7,
-        "the earlier ownership or borrow event overlaps this later conflicting operation"
+        "the earlier code event overlaps this later operation on `" + name + "`"
     );
     let previous_line_text: string = previous_span.start_line as string;
     let use_line_text: string = use_span.start_line as string;
     let diag9: Diagnostic = diagnostic_add_cause(
         diag8,
-        "where the value was moved or borrow began: line " + previous_line_text
+        "chronology step 1: `" + name + "` is created before the first highlighted ownership event"
     );
     let diag10: Diagnostic = diagnostic_add_cause(
         diag9,
-        "where the conflict appears: line " + use_line_text
+        "chronology step 2: " + previous_text + " at line " + previous_line_text
     );
     let diag11: Diagnostic = diagnostic_add_cause(
         diag10,
-        "where the borrow is still active: " + lifetime_text
+        "chronology step 3: " + conflict_text + " at line " + use_line_text
+    );
+    let has_borrow_lifetime: bool = kind == BorrowErrorKind.MoveWhileBorrowed or kind == BorrowErrorKind.MutableBorrowConflict or kind == BorrowErrorKind.SharedBorrowConflict or kind == BorrowErrorKind.WriteWhileBorrowed or kind == BorrowErrorKind.AssignWhileBorrowed or kind == BorrowErrorKind.DropWhileBorrowed or kind == BorrowErrorKind.LifetimeTooShort or kind == BorrowErrorKind.DanglingReference or kind == BorrowErrorKind.ReturnRefToLocal or kind == BorrowErrorKind.ReturnBorrowOfLocal;
+    let diag12: Diagnostic = if has_borrow_lifetime and lifetime_text != "" {
+        diagnostic_add_cause(diag11, "chronology step 4: borrow ends " + lifetime_text)
+    } else {
+        diagnostic_add_cause(diag11, "chronology step 4: the value can be reused only after a new `let` initialization or a valid `set`")
+    };
+    let diag13: Diagnostic = diagnostic_add_cause(
+        diag12,
+        "where the value is reused: line " + use_line_text
     );
 
-    let diag12: Diagnostic = diagnostic_with_probable_fix(
-        diag11,
+    let diag14: Diagnostic = diagnostic_with_probable_fix(
+        diag13,
         probable_fix
     );
     give diagnostic_with_help(
-        diag12,
+        diag14,
         "rewrite the ownership path so the earlier event no longer conflicts with this use; shorten the borrow, clone explicitly, or move the later access"
     );
 }
@@ -530,6 +577,32 @@ proc borrow_error_move_after_move_story(file: string, name: string, current_line
     );
 }
 
+proc borrow_error_partial_move(file: string, line: u64, entity: u64) -> Diagnostic {
+    give borrow_error_generic(
+        BorrowErrorKind.PartialMove,
+        file,
+        line,
+        entity,
+        "value used after one of its fields was moved",
+        "moving a field can leave the rest of the form only partly available",
+        "move the whole value, clone the field, or rebuild the form before using it again"
+    );
+}
+
+proc borrow_error_partial_move_story(file: string, name: string, use_line: u64, field_move_line: u64, lifetime_text: string, entity: u64) -> Diagnostic {
+    give borrow_error_temporal_story(
+        BorrowErrorKind.PartialMove,
+        name,
+        "value `" + name + "` is used after a partial move",
+        span_create(file, use_line, 1, 1),
+        span_create(file, field_move_line, 1, 1),
+        "one field was moved here",
+        lifetime_text,
+        "rebuild `" + name + "`, avoid moving the field, or move the whole value once",
+        entity
+    );
+}
+
 proc borrow_error_borrow_of_moved_value(file: string, line: u64, entity: u64) -> Diagnostic {
     give borrow_error_generic(
         BorrowErrorKind.BorrowOfMovedValue,
@@ -548,9 +621,9 @@ proc borrow_error_mutable_borrow_conflict(file: string, line: u64, entity: u64) 
         file,
         line,
         entity,
-        "mutable borrow conflicts with an existing borrow",
-        "mutable access requires exclusive access to the value",
-        "end the previous borrow before taking a mutable borrow"
+        "mutable borrow conflicts with another active borrow",
+        "a mutable borrow requires exclusive access, so it cannot overlap another mutable or immutable borrow",
+        "end the previous borrow before taking this mutable borrow"
     );
 }
 
@@ -558,7 +631,7 @@ proc borrow_error_mutable_borrow_conflict_story(file: string, name: string, requ
     give borrow_error_temporal_story(
         BorrowErrorKind.MutableBorrowConflict,
         name,
-        "mutable borrow of `" + name + "` conflicts with an active borrow",
+        "mutable borrow of `" + name + "` conflicts with another active borrow",
         span_create(file, request_line, 1, 1),
         span_create(file, active_borrow_line, 1, 1),
         "active borrow starts here",
@@ -574,9 +647,9 @@ proc borrow_error_shared_borrow_conflict(file: string, line: u64, entity: u64) -
         file,
         line,
         entity,
-        "shared borrow conflicts with an active mutable borrow",
-        "shared access cannot overlap exclusive mutable access",
-        "restrict the mutable borrow lifetime before sharing the value"
+        "immutable borrow conflicts with an active mutable borrow",
+        "immutable access cannot overlap exclusive mutable access",
+        "end the mutable borrow before taking the immutable borrow"
     );
 }
 
@@ -584,7 +657,7 @@ proc borrow_error_shared_borrow_conflict_story(file: string, name: string, reque
     give borrow_error_temporal_story(
         BorrowErrorKind.SharedBorrowConflict,
         name,
-        "shared borrow of `" + name + "` conflicts with an active mutable borrow",
+        "immutable borrow of `" + name + "` conflicts with an active mutable borrow",
         span_create(file, request_line, 1, 1),
         span_create(file, active_borrow_line, 1, 1),
         "mutable borrow starts here",
@@ -638,9 +711,23 @@ proc borrow_error_drop_while_borrowed(file: string, line: u64, entity: u64) -> D
         file,
         line,
         entity,
-        "cannot drop value while borrowed",
-        "dropping the owner would invalidate active borrows",
-        "let all borrows end before dropping the value"
+        "cannot destroy value while it is borrowed",
+        "destroying the owner would invalidate active borrows",
+        "let all borrows end before the value is destroyed"
+    );
+}
+
+proc borrow_error_drop_while_borrowed_story(file: string, name: string, drop_line: u64, borrow_line: u64, lifetime_text: string, entity: u64) -> Diagnostic {
+    give borrow_error_temporal_story(
+        BorrowErrorKind.DropWhileBorrowed,
+        name,
+        "cannot destroy `" + name + "` while it is still borrowed",
+        span_create(file, drop_line, 1, 1),
+        span_create(file, borrow_line, 1, 1),
+        "borrow starts here",
+        lifetime_text,
+        "destroy `" + name + "` only after the borrow ends, or shorten the borrow scope",
+        entity
     );
 }
 
@@ -650,9 +737,23 @@ proc borrow_error_assign_while_borrowed(file: string, line: u64, entity: u64) ->
         file,
         line,
         entity,
-        "cannot assign while value is borrowed",
-        "assignment would overwrite storage referenced by an active borrow",
-        "end the borrow before assigning a new value"
+        "cannot `set` value while it is borrowed",
+        "`set` would overwrite storage referenced by an active borrow",
+        "end the borrow before assigning a new value with `set`"
+    );
+}
+
+proc borrow_error_assign_while_borrowed_story(file: string, name: string, assign_line: u64, borrow_line: u64, lifetime_text: string, entity: u64) -> Diagnostic {
+    give borrow_error_temporal_story(
+        BorrowErrorKind.AssignWhileBorrowed,
+        name,
+        "cannot `set` `" + name + "` while it is still borrowed",
+        span_create(file, assign_line, 1, 1),
+        span_create(file, borrow_line, 1, 1),
+        "borrow starts here",
+        lifetime_text,
+        "move the `set` after the borrow ends or shorten the borrow scope",
+        entity
     );
 }
 
@@ -665,6 +766,20 @@ proc borrow_error_return_ref_to_local(file: string, line: u64, entity: u64) -> D
         "cannot return reference to local value",
         "local storage is destroyed when the current scope ends",
         "return an owned value or store the value in longer-lived storage"
+    );
+}
+
+proc borrow_error_return_ref_to_local_story(file: string, name: string, give_line: u64, local_line: u64, lifetime_text: string, entity: u64) -> Diagnostic {
+    give borrow_error_temporal_story(
+        BorrowErrorKind.ReturnRefToLocal,
+        name,
+        "cannot `give` a reference to local `" + name + "`",
+        span_create(file, give_line, 1, 1),
+        span_create(file, local_line, 1, 1),
+        "local value is created here",
+        lifetime_text,
+        "return an owned value or move the owner to a longer-lived scope",
+        entity
     );
 }
 
@@ -699,7 +814,7 @@ proc borrow_error_lifetime_too_short(file: string, line: u64, entity: u64) -> Di
         line,
         entity,
         "lifetime does not live long enough",
-        "region constraints require the borrowed value to remain valid longer",
+        "the reference needs the owner to remain valid longer",
         "extend the owner lifetime or avoid storing the borrow beyond the owner"
     );
 }
@@ -829,6 +944,8 @@ share borrow_error_generic
 
 share borrow_error_move_after_move
 share borrow_error_move_after_move_story
+share borrow_error_partial_move
+share borrow_error_partial_move_story
 share borrow_error_use_after_move
 share borrow_error_use_after_move_story
 share borrow_error_borrow_of_moved_value
@@ -840,8 +957,11 @@ share borrow_error_write_while_borrowed
 share borrow_error_move_while_borrowed
 share borrow_error_move_while_borrowed_story
 share borrow_error_drop_while_borrowed
+share borrow_error_drop_while_borrowed_story
 share borrow_error_assign_while_borrowed
+share borrow_error_assign_while_borrowed_story
 share borrow_error_return_ref_to_local
+share borrow_error_return_ref_to_local_story
 share borrow_error_return_borrow_of_local
 share borrow_error_dangling_reference
 share borrow_error_lifetime_too_short

@@ -19,6 +19,7 @@ SEMA_RESOLVER = COMPILER_ROOT / "analysis" / "sema" / "resolver.vit"
 PARSER = COMPILER_ROOT / "frontend" / "parse" / "parser.vit"
 TYPECK_DIAGNOSTICS = COMPILER_ROOT / "analysis" / "typeck" / "errors.vit"
 BORROWCK_DIAGNOSTICS = COMPILER_ROOT / "analysis" / "borrowck" / "errors.vit"
+BORROWCK_LIFETIMES = COMPILER_ROOT / "analysis" / "borrowck" / "lifetimes.vit"
 TYPE_UNIFY = COMPILER_ROOT / "analysis" / "typeck" / "unify.vit"
 DIAGNOSTIC_CATALOG = COMPILER_ROOT / "diagnostics" / "catalog.vit"
 MIDDLE_TYPECHECK_DIAGNOSTICS = COMPILER_ROOT / "middle" / "typecheck" / "diagnostics.vit"
@@ -51,6 +52,14 @@ AUTOFIX_PRODUCERS = (
     "diagnostic_with_insert",
     "diagnostic_with_replace",
     "diagnostic_suggestion_applicability",
+)
+FORBIDDEN_USER_DIAGNOSTIC_FRAGMENTS = (
+    "borrowck phase:",
+    "entity:",
+    "LoanId",
+    "RegionId",
+    "MovePath",
+    "region constraints",
 )
 ALLOWED_OUTPUT_BOUNDARIES = {
     "src/vitte/compiler/driver/compiler.vit",
@@ -266,6 +275,7 @@ def check_relational_diagnostic_contract() -> list[str]:
         PARSER,
         TYPECK_DIAGNOSTICS,
         BORROWCK_DIAGNOSTICS,
+        BORROWCK_LIFETIMES,
         TYPE_UNIFY,
         DIAGNOSTIC_CATALOG,
         MIDDLE_TYPECHECK_DIAGNOSTICS,
@@ -281,6 +291,10 @@ def check_relational_diagnostic_contract() -> list[str]:
                 for fragment in FORBIDDEN_AUTOFIX_REPLACEMENTS:
                     if fragment in line:
                         failures.append(f"{rel}:{line_number}: non-canonical Vitte autofix replacement is forbidden: {fragment!r}")
+            for string_literal in re.findall(r'"([^"\\\\]*(?:\\\\.[^"\\\\]*)*)"', line):
+                for fragment in FORBIDDEN_USER_DIAGNOSTIC_FRAGMENTS:
+                    if fragment.lower() in string_literal.lower():
+                        failures.append(f"{rel}:{line_number}: internal borrow diagnostic jargon is forbidden: {fragment!r}")
 
     required_fragments = (
         (SEMA_DIAGNOSTICS, "sema_duplicate_symbol_redefinition"),
@@ -343,7 +357,24 @@ def check_relational_diagnostic_contract() -> list[str]:
         (BORROWCK_DIAGNOSTICS, "value was moved here"),
         (BORROWCK_DIAGNOSTICS, "borrow is still active at the conflict"),
         (BORROWCK_DIAGNOSTICS, "conflict appears here"),
-        (BORROWCK_DIAGNOSTICS, "where the value was moved or borrow began"),
+        (BORROWCK_DIAGNOSTICS, "chronology step 1:"),
+        (BORROWCK_DIAGNOSTICS, "chronology step 2:"),
+        (BORROWCK_DIAGNOSTICS, "chronology step 3:"),
+        (BORROWCK_DIAGNOSTICS, "chronology step 4:"),
+        (BORROWCK_DIAGNOSTICS, "where the value is reused:"),
+        (BORROWCK_DIAGNOSTICS, "the compiler is following ownership through the control flow"),
+        (BORROWCK_DIAGNOSTICS, "the compiler is checking that every borrow ends before its owner is destroyed"),
+        (BORROWCK_DIAGNOSTICS, "BorrowErrorKind.PartialMove"),
+        (BORROWCK_DIAGNOSTICS, "borrow_error_partial_move_story"),
+        (BORROWCK_DIAGNOSTICS, "a mutable borrow requires exclusive access, so it cannot overlap another mutable or immutable borrow"),
+        (BORROWCK_DIAGNOSTICS, "immutable borrow of `\" + name + \"` conflicts with an active mutable borrow"),
+        (BORROWCK_DIAGNOSTICS, "cannot `set` value while it is borrowed"),
+        (BORROWCK_DIAGNOSTICS, "cannot destroy value while it is borrowed"),
+        (BORROWCK_DIAGNOSTICS, "borrow_error_drop_while_borrowed_story"),
+        (BORROWCK_DIAGNOSTICS, "borrow_error_assign_while_borrowed_story"),
+        (BORROWCK_DIAGNOSTICS, "borrow_error_return_ref_to_local_story"),
+        (BORROWCK_LIFETIMES, "borrow may outlive its owner"),
+        (BORROWCK_LIFETIMES, "owner must stay alive for this use"),
         (BORROWCK_DIAGNOSTICS, "shorten the borrow, clone explicitly, or move the later access"),
         (CANONICAL_DIAGNOSTIC, "why expected type is imposed:"),
         (CANONICAL_DIAGNOSTIC, "origin of obtained type:"),

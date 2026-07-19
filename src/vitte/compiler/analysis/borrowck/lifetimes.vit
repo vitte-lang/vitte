@@ -378,7 +378,7 @@ proc add_returned_local_diagnostic(result: LifetimeResult, file: string, line: u
 }
 
 proc add_lifetime_too_short_diagnostic(result: LifetimeResult, file: string, line: u64, region_name: string, required_region: string) -> LifetimeResult {
-    let diagnostic: BorrowDiagnostic = diagnostic_full(BorrowErrorKind.LifetimeTooShort, BorrowSeverity.Error, BorrowPhase.RegionCheck, "lifetime `" + region_name + "` does not live long enough", [region_name, required_region], "extend the source lifetime or avoid storing the borrow beyond its owner", span_create(file, line, 1, 1), 0);
+    let diagnostic: BorrowDiagnostic = diagnostic_full(BorrowErrorKind.LifetimeTooShort, BorrowSeverity.Error, BorrowPhase.RegionCheck, "borrow may outlive its owner", ["borrow must remain valid here", "owner must stay alive for this use"], "extend the owner lifetime or keep the reference inside the owner scope", span_create(file, line, 1, 1), 0);
 
     give lifetime_result_with_diag(result, diagnostic);
 }
