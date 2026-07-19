@@ -370,9 +370,9 @@ def main() -> int:
                     }
                     results.append(result)
                     if c_build.returncode != 0:
-                        failures.append(f"{case['name']}/{opt_level}: C compilation failed: {c_build.stderr.strip()}")
+                        failures.append(f"{case['name']}/{opt_level}: C compiler rejected emitted source: {c_build.stderr.strip()}")
                     if llvm_build.returncode != 0:
-                        failures.append(f"{case['name']}/{opt_level}: LLVM compilation failed: {llvm_build.stderr.strip()}")
+                        failures.append(f"{case['name']}/{opt_level}: LLVM toolchain rejected emitted IR: {llvm_build.stderr.strip()}")
                     if not outputs_match:
                         failures.append(f"{case['name']}/{opt_level}: backend outputs differ")
                     if not expected_match:

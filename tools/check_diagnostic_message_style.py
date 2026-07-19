@@ -34,6 +34,21 @@ GENERIC_FIX_PATTERNS = (
     "balance delimiters, complete the missing token, or rewrite the local expression",
     "follow the primary help text",
 )
+GENERIC_MESSAGE_PATTERNS = (
+    "compilation failed",
+    "compile failed",
+    "failed to compile",
+    "invalid program",
+    "unexpected error",
+    "semantic error",
+    "type error",
+    "unknown failure",
+)
+ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def strip_ansi(text: str) -> str:
+    return ANSI_ESCAPE_RE.sub("", text)
 
 
 def catalog_messages() -> Iterable[tuple[Path, int, str, str]]:
@@ -90,11 +105,27 @@ def snapshot_messages() -> Iterable[tuple[Path, int, str, str]]:
         *sorted((ROOT / "tests/diagnostics/renderer").glob("*.txt")),
         *sorted((ROOT / "tests/diag_snapshots").glob("*.must")),
         *sorted((ROOT / "tests/diag_snapshots").glob("*.json.must")),
+        *sorted((ROOT / "tests/bootstrap_native").glob("*.must")),
+        ROOT / "toolchain/seed/vittec0.seed",
     ]
     for path in paths:
+        if not path.exists():
+            continue
         for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
-            text = line.strip()
+            text = strip_ansi(line).strip()
             if not text:
+                continue
+            cli_error = re.match(r'^cli_error\s+\S+\s+"([^"]+)"(?:\s+"([^"]+)")?', text)
+            if cli_error:
+                yield path, line_number, "message", cli_error.group(1)
+                if cli_error.group(2):
+                    yield path, line_number, "help", cli_error.group(2)
+                continue
+            bracketed = re.match(r"^\[[^\]]+\]\[error\]\s+\S+:\s*(.+?)(?:\s+\(hint:\s*(.+)\))?$", text)
+            if bracketed:
+                yield path, line_number, "message", bracketed.group(1)
+                if bracketed.group(2):
+                    yield path, line_number, "help", bracketed.group(2)
                 continue
             header = re.match(r"^(error|warning|fatal)\[[^\]]+\](?::|\s+\w+:)\s*(.+)$", text)
             if header:
@@ -138,6 +169,9 @@ def lint_message(path: Path, line_number: int, kind: str, message: str) -> list[
     for generic in GENERIC_FIX_PATTERNS:
         if generic in lowered:
             errors.append(f"{prefix}: uses a generic catch-all diagnostic fix")
+    for generic in GENERIC_MESSAGE_PATTERNS:
+        if generic in lowered:
+            errors.append(f"{prefix}: uses a banned generic compiler message")
     return errors
 
 
