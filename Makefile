@@ -248,7 +248,9 @@ vitte-bootstrap-check:
 	for src in $(VITTE_COMPILER_CHECKS); do \
 		echo "[vitte-bootstrap-check][$(VITTE_ANALYSIS_MODE)] $$src"; \
 		if [ "$(VITTE_ANALYSIS_MODE)" = "build" ]; then \
-			if grep -Eq '^[[:space:]]*proc[[:space:]]+main[[:space:]]*\(' "$$src"; then \
+			if grep -Eq '^[[:space:]]*const[[:space:]]+BOOTSTRAP_FULL_COMPILER:[[:space:]]*int[[:space:]]*=[[:space:]]*1' "$$src"; then \
+				"$(VITTE_BOOTSTRAP)" check "$$src"; \
+			elif grep -Eq '^[[:space:]]*proc[[:space:]]+main[[:space:]]*\(' "$$src"; then \
 				"$(VITTE_BOOTSTRAP)" build-native --src "$$src" --out "/tmp/vitte.native.bootstrap.out"; \
 			else \
 				"$(VITTE_BOOTSTRAP)" check "$$src"; \
@@ -519,7 +521,9 @@ seed-check: bootstrap-seed
 		i=$$((i + 1)); \
 		echo "[seed-check][$(VITTE_ANALYSIS_MODE)] ($$i/$$total) $$src"; \
 		if [ "$(VITTE_ANALYSIS_MODE)" = "build" ]; then \
-			if grep -Eq '^[[:space:]]*proc[[:space:]]+main[[:space:]]*\(' "$$src"; then \
+			if grep -Eq '^[[:space:]]*const[[:space:]]+BOOTSTRAP_FULL_COMPILER:[[:space:]]*int[[:space:]]*=[[:space:]]*1' "$$src"; then \
+				run_with_deep_help "bin/vittec0 check --strict \"$$src\"" "$$src" "/tmp/vitte.seed.err"; \
+			elif grep -Eq '^[[:space:]]*proc[[:space:]]+main[[:space:]]*\(' "$$src"; then \
 				run_with_deep_help "bin/vittec0 build-native --src \"$$src\" --out \"/tmp/vitte.native.seed.out\"" "$$src" "/tmp/vitte.seed.err"; \
 			else \
 				run_with_deep_help "bin/vittec0 check --strict \"$$src\"" "$$src" "/tmp/vitte.seed.err"; \
@@ -565,7 +569,9 @@ seed-gate: bootstrap-seed
 		i=$$((i + 1)); \
 		echo "[seed-gate][$(VITTE_ANALYSIS_MODE)] ($$i/$$total) $$src"; \
 		if [ "$(VITTE_ANALYSIS_MODE)" = "build" ]; then \
-			if grep -Eq '^[[:space:]]*proc[[:space:]]+main[[:space:]]*\(' "$$src"; then \
+			if grep -Eq '^[[:space:]]*const[[:space:]]+BOOTSTRAP_FULL_COMPILER:[[:space:]]*int[[:space:]]*=[[:space:]]*1' "$$src"; then \
+				run_with_deep_help "bin/vittec0 check --strict \"$$src\"" "$$src" "/tmp/vitte.seed.err"; \
+			elif grep -Eq '^[[:space:]]*proc[[:space:]]+main[[:space:]]*\(' "$$src"; then \
 				run_with_deep_help "bin/vittec0 build-native --src \"$$src\" --out \"/tmp/vitte.native.seed.out\"" "$$src" "/tmp/vitte.seed.err"; \
 			else \
 				run_with_deep_help "bin/vittec0 check --strict \"$$src\"" "$$src" "/tmp/vitte.seed.err"; \

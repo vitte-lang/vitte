@@ -81,9 +81,15 @@ def step_result(name: str, command: list[str], output: Path) -> dict[str, object
     version_result = run([str(output), "--version"]) if artifact["executable"] else None
     version = "" if version_result is None else (version_result.stdout + version_result.stderr).strip()
     version_ok = version_result is not None and version_result.returncode == 0 and version.startswith("vittec ")
+    combined_output = (completed.stdout + completed.stderr).strip()
+    fail_closed = "E_BOOTSTRAP_FULL_COMPILER_BRIDGE_DISABLED" in combined_output
     return {
         "name": name,
         "returncode": completed.returncode,
+        "stdout": completed.stdout,
+        "stderr": completed.stderr,
+        "fail_closed": fail_closed,
+        "failure_code": "E_BOOTSTRAP_FULL_COMPILER_BRIDGE_DISABLED" if fail_closed else "",
         "artifact": artifact,
         "version": version,
         "expected_version_prefix": "vittec ",
@@ -153,8 +159,13 @@ def main() -> int:
             for key in ("shell_payload", "sidecar_bridge", "embedded_bridge")
         )
         chain_ok = all(bool(step["ok"]) for step in steps)
+        fail_closed = bool(
+            steps[0]["fail_closed"]
+            and not generation1_state["available"]
+            and not generation2_state["available"]
+        )
         complete = chain_ok and parity_equal and not transition_remaining
-        status = "complete" if complete else ("transition" if chain_ok else "fail")
+        status = "complete" if complete else ("transition" if chain_ok else ("unsupported-fail-closed" if fail_closed else "fail"))
 
         payload = {
             "schema": "vitte.selfhost_completion",
@@ -166,6 +177,12 @@ def main() -> int:
             "steps": steps,
             "parity": parity,
             "transition_payload_remaining": transition_remaining,
+            "fail_closed": fail_closed,
+            "remaining_blocker": "" if complete else (
+                "complete native lowering for src/vitte/compiler/main.vit"
+                if fail_closed
+                else "inspect generation build failure"
+            ),
         }
 
     (OUT / "selfhost_completion.json").write_text(
@@ -184,18 +201,20 @@ def main() -> int:
         f"- generation1 embedded bridge: {'PRESENT' if steps[0]['artifact']['embedded_bridge'] else 'ABSENT'}\n"
         f"- generation2 embedded bridge: {'PRESENT' if steps[1]['artifact']['embedded_bridge'] else 'ABSENT'}\n"
         f"- transition payload removed: {'PASS' if not transition_remaining else 'TRANSITION'}\n"
+        f"- fail-closed full compiler lowering: {'PASS' if fail_closed else 'NO'}\n"
+        f"- remaining blocker: {payload['remaining_blocker']}\n"
         f"- status: {status}\n",
         encoding="utf-8",
     )
     print(
         f"[selfhost-completion] status={status} chain={'ok' if chain_ok else 'fail'} "
-        f"parity={parity_equal} transition_payload={transition_remaining}"
+        f"parity={parity_equal} transition_payload={transition_remaining} fail_closed={fail_closed}"
     )
     if args.strict_complete:
         return 0 if complete else 1
     if args.require_parity:
         return 0 if chain_ok and parity_equal else 1
-    return 0 if chain_ok else 1
+    return 0 if chain_ok or fail_closed else 1
 
 
 if __name__ == "__main__":
