@@ -284,6 +284,22 @@ proc test_automatic_correction_application_contract() -> bool {
     and fixed == "proc main() -> int { give 0 }";
 }
 
+proc vitte_fix_recompile_probe_for_test(source: string) -> bool {
+  give find(source, "proc main") >= 0
+    and find(source, "{") >= 0
+    and find(source, "give 0") >= 0
+    and find(source, "}") >= 0;
+}
+
+proc test_recompile_after_applied_fix_contract() -> bool {
+  let diag: Diagnostic = sample_parser_diagnostic();
+  let plans = diagnostic_fix_plans(diag);
+  let fixed: string = apply_parser_missing_brace_fix_for_test("proc main() -> int { give 0 ", plans[0].replacement);
+  give len(plans) > 0
+    and plans[0].machine_applicable
+    and vitte_fix_recompile_probe_for_test(fixed);
+}
+
 proc test_typeck_and_borrowck_suggestion_catalog_contract() -> bool {
   let typeck: Diagnostic = sample_typeck_diagnostic();
   let borrowck: Diagnostic = sample_borrowck_diagnostic();
@@ -644,6 +660,7 @@ proc run_all_tests() -> int {
   let lsp_actions_ok: bool = test_lsp_code_action_contract();
   let machine_fix_ok: bool = test_machine_applicable_fix_contract();
   let automatic_correction_ok: bool = test_automatic_correction_application_contract();
+  let recompile_fix_ok: bool = test_recompile_after_applied_fix_contract();
   let catalog_ok: bool = test_typeck_and_borrowck_suggestion_catalog_contract();
   let rendered_suggestions_ok: bool = test_rendered_suggestion_applicability_contract();
   let report_cascade_ok: bool = test_report_deduplicates_and_limits_cascades();
@@ -691,6 +708,9 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if automatic_correction_ok == false {
+    set failures = failures + 1;
+  }
+  if recompile_fix_ok == false {
     set failures = failures + 1;
   }
   if catalog_ok == false {
