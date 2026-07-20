@@ -839,6 +839,7 @@ frontend-diagnostics-test:
 	@python3 tests/diagnostics/input_matrix_test.py
 	@tools/apply_fixits_recompile_test.py
 	@python3 tests/diagnostics/check_explain_cli.py
+	@python3 tests/diagnostics/check_cli_diagnostic_options.py
 
 diagnostics-portable diagnostics-local compiler-diagnostics-local: frontend-diagnostics-test diagnostics-locales-lint diagnostics-ftl-check diagnostics-fluent-gate diagnostic-quality diag-snapshots-portable negative-tests-portable
 
