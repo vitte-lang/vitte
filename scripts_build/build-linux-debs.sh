@@ -2,6 +2,8 @@
 set -eu
 
 ROOT_DIR=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
+SCRIPT_NAME=build-linux-debs
+. "$ROOT_DIR/scripts_build/common.sh"
 VERSION=${VERSION:-$(tr -d ' \r\n' < "$ROOT_DIR/toolchain/scripts/package/PACKAGE_VERSION")}
 OUT_DIR=${OUT_DIR:-$ROOT_DIR/pkgout}
 ARCH=${ARCH:-all}
@@ -706,11 +708,7 @@ data.tar.gz'
 write_checksum() {
   package_file=$1
 
-  (
-    cd "$OUT_DIR"
-    package_name=$(basename "$package_file")
-    shasum -a 256 "$package_name" > "$package_name.sha256"
-  )
+  scripts_build_sha256_write "$package_file" "$package_file.sha256"
 }
 
 build_one() {
@@ -823,7 +821,6 @@ for tool in \
   install \
   mktemp \
   python3 \
-  shasum \
   tar \
   touch \
   wc

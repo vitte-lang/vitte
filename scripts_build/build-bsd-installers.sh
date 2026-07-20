@@ -2,6 +2,8 @@
 set -eu
 
 ROOT_DIR=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
+SCRIPT_NAME=build-bsd-installers
+. "$ROOT_DIR/scripts_build/common.sh"
 VERSION=${VERSION:-$(tr -d ' \r\n' < "$ROOT_DIR/toolchain/scripts/package/PACKAGE_VERSION")}
 OUT_DIR=${OUT_DIR:-$ROOT_DIR/pkgout}
 ARCH=${ARCH:-all}
@@ -202,7 +204,7 @@ build_one() {
   (
     cd "$OUT_DIR"
     archive_name=$(basename "$archive")
-    shasum -a 256 "$archive_name" > "$archive_name.sha256"
+    scripts_build_sha256_write "$OUT_DIR/$archive_name" "$OUT_DIR/$archive_name.sha256"
   )
 
   printf '[build-bsd-installers] wrote %s\n' "$archive"

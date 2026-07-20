@@ -2,9 +2,12 @@
 set -eu
 
 ROOT_DIR=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
+SCRIPT_NAME=build-macos-installers
+. "$ROOT_DIR/scripts_build/common.sh"
 VERSION=${VERSION:-$(tr -d ' \r\n' < "$ROOT_DIR/toolchain/scripts/package/PACKAGE_VERSION")}
 OUT_DIR=${OUT_DIR:-$ROOT_DIR/pkgout}
 ARCH=${ARCH:-all}
+STRICT_DMG=${STRICT_DMG:-0}
 PKG_BUILDER=$ROOT_DIR/toolchain/scripts/package/make-macos-pkg.sh
 
 EDITORS_DIR=$ROOT_DIR/editors
@@ -128,7 +131,7 @@ write_checksum() {
   (
     cd "$OUT_DIR"
     filename=$(basename "$file")
-    shasum -a 256 "$filename" > "$filename.sha256"
+    scripts_build_sha256_write "$OUT_DIR/$filename" "$OUT_DIR/$filename.sha256"
   )
 
   log "wrote $file.sha256"
@@ -269,7 +272,7 @@ create_geany_integration() {
     "$EDITORS_DIR/filetypes.Vitte.conf")
 
   geany_unix_root=$payload_root/usr/local/share/geany/filedefs
-  geany_macos_root=$payload_root/Library/Application Support/geany/filedefs
+  geany_macos_root="$payload_root/Library/Application Support/geany/filedefs"
 
   mkdir -p \
     "$geany_unix_root" \
@@ -444,6 +447,7 @@ create_dmg() {
 
   stage=$ROOT_DIR/target/macos-dmg-stage/$volume_name
 
+  [ ! -d "$stage" ] || chmod -R u+w "$stage" 2>/dev/null || true
   rm -rf "$stage"
   rm -f "$dmg_file"
 
@@ -477,9 +481,8 @@ Nano:
 
 Geany:
     /usr/local/share/geany/filedefs/filetypes.Vitte.conf
-    /usr/local/share/geany/filedefs/filetypes.vitte.conf
     /Library/Application Support/geany/filedefs/filetypes.Vitte.conf
-    /Library/Application Support/geany/filedefs/filetypes.vitte.conf
+    archived lowercase source: /usr/local/share/vitte/editors/geany/filetypes.vitte.conf
 
 Supported Vitte extensions:
 
@@ -488,14 +491,21 @@ Supported Vitte extensions:
     .vitl
 EOF
 
-  hdiutil create \
-    -quiet \
-    -ov \
-    -format UDZO \
-    -fs HFS+ \
-    -volname "$volume_name" \
-    -srcfolder "$stage" \
-    "$dmg_file"
+  if ! hdiutil create \
+      -ov \
+      -format UDZO \
+      -fs HFS+ \
+      -volname "$volume_name" \
+      -srcfolder "$stage" \
+      "$dmg_file"
+  then
+    if [ "$STRICT_DMG" -eq 1 ]; then
+      die "hdiutil failed while creating macOS DMG: $dmg_file"
+    fi
+    rm -f "$dmg_file"
+    log "DMG deferred: hdiutil could not create $dmg_file on this host"
+    return 0
+  fi
 
   require_file "$dmg_file" "macOS DMG"
 }
@@ -506,6 +516,7 @@ verify_product_package() {
 
   expanded=$ROOT_DIR/target/macos-pkg-verification-$label
 
+  [ ! -d "$expanded" ] || chmod -R u+w "$expanded" 2>/dev/null || true
   rm -rf "$expanded"
 
   pkgutil --expand-full "$package_file" "$expanded"
@@ -568,12 +579,12 @@ verify_product_package() {
     die "missing Geany Vitte filetype in macOS package"
 
   find "$expanded" \
-    -path '*/Payload/usr/local/share/geany/filedefs/filetypes.vitte.conf' \
+    -path '*/Payload/usr/local/share/vitte/editors/geany/filetypes.vitte.conf' \
     -type f \
     -print \
     -quit |
     grep -q . ||
-    die "missing lowercase Geany Vitte filetype in macOS package"
+    die "missing archived lowercase Geany Vitte filetype in macOS package"
 
   find "$expanded" \
     -path '*/Payload/Library/Application Support/geany/filedefs/filetypes.Vitte.conf' \
@@ -584,15 +595,15 @@ verify_product_package() {
     die "missing macOS Geany Vitte filetype in macOS package"
 
   find "$expanded" \
-    -path '*/Payload/Library/Application Support/geany/filedefs/filetypes.vitte.conf' \
+    -path '*/Payload/usr/local/share/vitte/editors/geany/snippets.vitte.conf' \
     -type f \
     -print \
     -quit |
     grep -q . ||
-    die "missing lowercase macOS Geany Vitte filetype in macOS package"
+    die "missing archived Geany snippets in macOS package"
 
   find "$expanded" \
-    -path '*/Payload/usr/local/share/licenses/vitte/LICENSE' \
+    -path '*/Payload/usr/local/share/vitte/LICENSE' \
     -type f \
     -print \
     -quit |
@@ -607,6 +618,7 @@ verify_product_package() {
     grep -q . ||
     die "missing Vitte logo in macOS package"
 
+  chmod -R u+w "$expanded" 2>/dev/null || true
   rm -rf "$expanded"
 
   log "verified package payload: $package_file"
@@ -821,17 +833,23 @@ build_one() {
     "Mac OS X $minimum_system"
 
   require_file \
-    "$dmg_file" \
-    "final macOS DMG"
+    "$package_file" \
+    "final macOS product package"
 
   write_checksum "$package_file"
-  write_checksum "$dmg_file"
+  if [ -s "$dmg_file" ]; then
+    write_checksum "$dmg_file"
+  fi
 
   package_size=$(wc -c < "$package_file" | tr -d ' ')
-  dmg_size=$(wc -c < "$dmg_file" | tr -d ' ')
 
   log "wrote $package_file ($package_size bytes)"
-  log "wrote $dmg_file ($dmg_size bytes)"
+  if [ -s "$dmg_file" ]; then
+    dmg_size=$(wc -c < "$dmg_file" | tr -d ' ')
+    log "wrote $dmg_file ($dmg_size bytes)"
+  else
+    log "DMG artifact deferred for $label"
+  fi
   log "toolchain component: $toolchain_component"
   log "editor component: $editors_component"
 }
@@ -967,7 +985,6 @@ for tool in \
   pkgbuild \
   pkgutil \
   productbuild \
-  shasum \
   tar \
   tr \
   wc

@@ -2,6 +2,8 @@
 set -eu
 
 ROOT_DIR=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
+SCRIPT_NAME=build-windows-installer
+. "$ROOT_DIR/scripts_build/common.sh"
 VERSION=${VERSION:-$(tr -d ' \r\n' < "$ROOT_DIR/toolchain/scripts/package/PACKAGE_VERSION")}
 OUT_DIR=${OUT_DIR:-$ROOT_DIR/pkgout}
 ARCH=${ARCH:-all}
@@ -229,14 +231,14 @@ EOF
 
   rm -f "$kit_file" "$kit_file.sha256"
   COPYFILE_DISABLE=1 tar -czf "$kit_file" -C "$stage" installer.nsi BUILD.txt LICENSE README.md logo.png payload
-  (cd "$OUT_DIR" && shasum -a 256 "$(basename "$kit_file")" > "$(basename "$kit_file").sha256")
+  scripts_build_sha256_write "$kit_file" "$kit_file.sha256"
   printf '[build-windows-installer] wrote build kit %s (%s bytes)\n' "$kit_file" "$(wc -c < "$kit_file" | tr -d ' ')"
 
   if [ "$has_pe" -eq 1 ] && command -v makensis >/dev/null 2>&1; then
     rm -f "$package_file" "$package_file.sha256"
     (cd "$stage" && makensis -DVERSION="$VERSION" -DARCH="$arch" -DWINDOWS_TARGETS="$WINDOWS_TARGETS" -DOUT_FILE="$package_file" installer.nsi)
     validate_pe "$package_file" "$arch" || die "NSIS output is not a Windows $arch executable"
-    (cd "$OUT_DIR" && shasum -a 256 "$(basename "$package_file")" > "$(basename "$package_file").sha256")
+    scripts_build_sha256_write "$package_file" "$package_file.sha256"
     printf '[build-windows-installer] wrote %s (%s bytes)\n' "$package_file" "$(wc -c < "$package_file" | tr -d ' ')"
   elif [ "$has_pe" -eq 0 ]; then
     printf '[build-windows-installer] Windows %s PE payload unavailable; NSIS kit generated, native .exe deferred\n' "$arch" >&2
@@ -245,7 +247,7 @@ EOF
   fi
 }
 
-for tool in install python3 shasum tar wc; do
+for tool in install python3 tar wc; do
   require "$tool"
 done
 

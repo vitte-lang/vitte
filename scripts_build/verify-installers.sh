@@ -2,6 +2,8 @@
 set -eu
 
 ROOT_DIR=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
+SCRIPT_NAME=verify-installers
+. "$ROOT_DIR/scripts_build/common.sh"
 VERSION=${VERSION:-$(tr -d ' \r\n' < "$ROOT_DIR/toolchain/scripts/package/PACKAGE_VERSION")}
 OUT_DIR=${OUT_DIR:-$ROOT_DIR/pkgout}
 STRICT_NATIVE=${STRICT_NATIVE:-0}
@@ -20,7 +22,7 @@ verify_sum() {
   file=$1
   require_file "$file"
   require_file "$file.sha256"
-  (cd "$OUT_DIR" && shasum -a 256 -c "$(basename "$file").sha256" >/dev/null)
+  scripts_build_sha256_check "$file" "$file.sha256"
 }
 
 verify_optional_sum() {
@@ -67,7 +69,7 @@ done
 for bsd_kit in "$OUT_DIR"/vitte-"$VERSION"-*-*-installer.tar.xz; do
   [ -e "$bsd_kit" ] || continue
   verify_sum "$bsd_kit"
-  tar -tJf "$bsd_kit" | grep -Fx 'root/usr/local/share/vitte/assets/logo.png' >/dev/null ||
+  scripts_build_tar_list_xz "$bsd_kit" | grep -Fx 'root/usr/local/share/vitte/assets/logo.png' >/dev/null ||
     die "missing BSD installer logo: $bsd_kit"
 done
 

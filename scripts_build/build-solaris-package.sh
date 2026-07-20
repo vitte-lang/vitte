@@ -2,6 +2,8 @@
 set -eu
 
 ROOT_DIR=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
+SCRIPT_NAME=build-solaris-package
+. "$ROOT_DIR/scripts_build/common.sh"
 VERSION=${VERSION:-$(tr -d ' \r\n' < "$ROOT_DIR/toolchain/scripts/package/PACKAGE_VERSION")}
 OUT_DIR=${OUT_DIR:-$ROOT_DIR/pkgout}
 ARCH=${ARCH:-all}
@@ -365,11 +367,7 @@ verify_portable_kit() {
 write_checksum() {
   file=$1
 
-  (
-    cd "$OUT_DIR"
-    filename=$(basename "$file")
-    shasum -a 256 "$filename" > "$filename.sha256"
-  )
+  scripts_build_sha256_write "$file" "$file.sha256"
 
   printf '[build-solaris-package] wrote %s.sha256\n' "$file"
 }
@@ -519,7 +517,6 @@ for tool in \
   install \
   mktemp \
   python3 \
-  shasum \
   tar \
   wc
 do

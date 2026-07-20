@@ -2,6 +2,8 @@
 set -eu
 
 ROOT_DIR=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
+SCRIPT_NAME=build-freebsd-packages
+. "$ROOT_DIR/scripts_build/common.sh"
 VERSION=${VERSION:-$(tr -d ' \r\n' < "$ROOT_DIR/toolchain/scripts/package/PACKAGE_VERSION")}
 OUT_DIR=${OUT_DIR:-$ROOT_DIR/pkgout}
 ARCH=${ARCH:-all}
@@ -610,11 +612,7 @@ verify_package() {
 write_checksum() {
   package_file=$1
 
-  (
-    cd "$OUT_DIR"
-    package_name=$(basename "$package_file")
-    shasum -a 256 "$package_name" > "$package_name.sha256"
-  )
+  scripts_build_sha256_write "$package_file" "$package_file.sha256"
 }
 
 build_one() {
@@ -736,7 +734,6 @@ for tool in \
   mkdir \
   mktemp \
   python3 \
-  shasum \
   wc
 do
   require "$tool"

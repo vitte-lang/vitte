@@ -2,6 +2,8 @@
 set -eu
 
 ROOT_DIR=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
+SCRIPT_NAME=stage-installer-payload
+. "$ROOT_DIR/scripts_build/common.sh"
 DEST=${1:?usage: stage-installer-payload.sh DEST PLATFORM ARCH [unix|windows]}
 PLATFORM=${2:?missing platform}
 ARCH=${3:?missing architecture}
@@ -20,12 +22,8 @@ copy_tree() {
   [ -e "$source" ] || return 0
   mkdir -p "$destination"
   COPYFILE_DISABLE=1 tar \
-    --exclude='.DS_Store' \
-    --exclude='._*' \
-    --exclude='.vitte-cache' \
-    --exclude='__pycache__' \
-    --exclude='node_modules' \
     -cf - -C "$source" . | tar -xf - -C "$destination"
+  find "$destination" \( -name '.DS_Store' -o -name '._*' -o -name '.vitte-cache' -o -name '__pycache__' -o -name 'node_modules' \) -prune -exec rm -rf {} \; 2>/dev/null || true
 }
 
 normalize_key() {
