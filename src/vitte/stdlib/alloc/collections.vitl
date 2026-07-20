@@ -86,6 +86,11 @@ proc hashmap_is_empty<K, V>(map: HashMap<K, V>) -> bool { give map.length == 0; 
 proc hashmap_contains_key<K, V>(map: ref HashMap<K, V>, key: K) -> bool { give is_some<usize>(hashmap_find_index<K, V>(map, key)); }
 proc hashmap_capacity<K, V>(map: HashMap<K, V>) -> usize { give vec_capacity<(K, V)>(map.buckets); }
 proc hashmap_reserve<K, V>(map: ref mut HashMap<K, V>, additional: usize) { vec_reserve<(K, V)>(&mut ((*map).buckets), additional); }
+proc hashmap_get_or_insert<K, V>(map: ref mut HashMap<K, V>, key: K, value: V) -> ref V { give compiler_map_entry_or_insert<K, V>(map, key, value); }
+proc hashmap_keys<K, V>(map: HashMap<K, V>) -> Iterator<K> { give compiler_hashmap_keys<K, V>(map); }
+proc hashmap_values<K, V>(map: HashMap<K, V>) -> Iterator<V> { give compiler_hashmap_values<K, V>(map); }
+proc hashmap_retain<K, V>(map: ref mut HashMap<K, V>, predicate: proc(ref K, ref V) -> bool) { compiler_hashmap_retain<K, V>(map, predicate); }
+proc hashmap_extend<K, V>(map: ref mut HashMap<K, V>, entries: Iterator<(K, V)>) { compiler_hashmap_extend<K, V>(map, entries); }
 proc hashmap_clear<K, V>(map: ref mut HashMap<K, V>) {
     set (*map).buckets = vec_new<(K, V)>();
     set (*map).length = 0;
@@ -100,6 +105,11 @@ proc hashset_len<T>(set: HashSet<T>) -> usize { give hashmap_len<T, bool>(set.ma
 proc hashset_is_empty<T>(set: HashSet<T>) -> bool { give hashset_len<T>(set) == 0; }
 proc hashset_clear<T>(set: ref mut HashSet<T>) { hashmap_clear<T, bool>(&mut ((*set).map)); }
 proc hashset_iter<T>(set: HashSet<T>) -> Iterator<(T, bool)> { give hashmap_iter<T, bool>(set.map); }
+proc hashset_union<T>(left: ref HashSet<T>, right: ref HashSet<T>) -> HashSet<T> { give compiler_hashset_union<T>(left, right); }
+proc hashset_intersection<T>(left: ref HashSet<T>, right: ref HashSet<T>) -> HashSet<T> { give compiler_hashset_intersection<T>(left, right); }
+proc hashset_difference<T>(left: ref HashSet<T>, right: ref HashSet<T>) -> HashSet<T> { give compiler_hashset_difference<T>(left, right); }
+proc hashset_is_subset<T>(left: ref HashSet<T>, right: ref HashSet<T>) -> bool { give compiler_hashset_is_subset<T>(left, right); }
+proc hashset_is_disjoint<T>(left: ref HashSet<T>, right: ref HashSet<T>) -> bool { give compiler_hashset_is_disjoint<T>(left, right); }
 
 proc btreemap_new<K, V>() -> BTreeMap<K, V> { give BTreeMap<K, V> { entries: vec_new<(K, V)>(), length: 0 }; }
 proc btreemap_find_index<K, V>(map: ref BTreeMap<K, V>, key: K) -> Option<usize> {
@@ -148,6 +158,9 @@ proc btreemap_remove<K, V>(map: ref mut BTreeMap<K, V>, key: K) -> Option<V> {
 proc btreemap_len<K, V>(map: BTreeMap<K, V>) -> usize { give map.length; }
 proc btreemap_is_empty<K, V>(map: BTreeMap<K, V>) -> bool { give map.length == 0; }
 proc btreemap_contains_key<K, V>(map: ref BTreeMap<K, V>, key: K) -> bool { give is_some<usize>(btreemap_find_index<K, V>(map, key)); }
+proc btreemap_floor<K, V>(map: ref BTreeMap<K, V>, key: K) -> Option<ref (K, V)> { give compiler_btreemap_floor<K, V>(map, key); }
+proc btreemap_ceiling<K, V>(map: ref BTreeMap<K, V>, key: K) -> Option<ref (K, V)> { give compiler_btreemap_ceiling<K, V>(map, key); }
+proc btreemap_range<K, V>(map: ref BTreeMap<K, V>, start: K, end: K) -> Iterator<ref (K, V)> { give compiler_btreemap_range<K, V>(map, start, end); }
 proc btreemap_first<K, V>(map: ref BTreeMap<K, V>) -> Option<ref (K, V)> { give vec_get<(K, V)>((*map).entries, 0); }
 proc btreemap_last<K, V>(map: ref BTreeMap<K, V>) -> Option<ref (K, V)> {
     if (*map).length == 0 { give none<ref (K, V)>(); }
@@ -167,6 +180,9 @@ proc btreeset_len<T>(set: BTreeSet<T>) -> usize { give btreemap_len<T, bool>(set
 proc btreeset_is_empty<T>(set: BTreeSet<T>) -> bool { give btreeset_len<T>(set) == 0; }
 proc btreeset_clear<T>(set: ref mut BTreeSet<T>) { btreemap_clear<T, bool>(&mut ((*set).map)); }
 proc btreeset_iter<T>(set: BTreeSet<T>) -> Iterator<(T, bool)> { give btreemap_iter<T, bool>(set.map); }
+proc btreeset_range<T>(set: ref BTreeSet<T>, start: T, end: T) -> Iterator<ref (T, bool)> { give btreemap_range<T, bool>(&((*set).map), start, end); }
+proc btreeset_first<T>(set: ref BTreeSet<T>) -> Option<ref (T, bool)> { give btreemap_first<T, bool>(&((*set).map)); }
+proc btreeset_last<T>(set: ref BTreeSet<T>) -> Option<ref (T, bool)> { give btreemap_last<T, bool>(&((*set).map)); }
 
 proc deque_new<T>() -> Deque<T> { give Deque<T> { data: vec_new<T>(), head: 0, length: 0 }; }
 proc deque_push_back<T>(deque: ref mut Deque<T>, value: T) { vec_push<T>(&mut ((*deque).data), value); set (*deque).length = (*deque).length + 1; }
@@ -187,6 +203,8 @@ proc deque_pop_front<T>(deque: ref mut Deque<T>) -> Option<T> {
     give item;
 }
 proc deque_len<T>(deque: Deque<T>) -> usize { give deque.length; }
+proc deque_capacity<T>(deque: Deque<T>) -> usize { give vec_capacity<T>(deque.data); }
+proc deque_reserve<T>(deque: ref mut Deque<T>, additional: usize) { vec_reserve<T>(&mut ((*deque).data), additional); }
 proc deque_is_empty<T>(deque: Deque<T>) -> bool { give deque.length == 0; }
 proc deque_front<T>(deque: ref Deque<T>) -> Option<ref T> { give vec_get<T>((*deque).data, 0); }
 proc deque_back<T>(deque: ref Deque<T>) -> Option<ref T> {
@@ -198,6 +216,9 @@ proc deque_clear<T>(deque: ref mut Deque<T>) {
     set (*deque).head = 0;
     set (*deque).length = 0;
 }
+proc deque_rotate_left<T>(deque: ref mut Deque<T>, amount: usize) { compiler_deque_rotate_left<T>(deque, amount); }
+proc deque_rotate_right<T>(deque: ref mut Deque<T>, amount: usize) { compiler_deque_rotate_right<T>(deque, amount); }
+proc deque_make_contiguous<T>(deque: ref mut Deque<T>) -> [T] { give compiler_deque_make_contiguous<T>(deque); }
 proc deque_iter<T>(deque: Deque<T>) -> Iterator<T> { give vec_iter<T>(deque.data); }
 
 proc smallvec_new<T, N>() -> SmallVec<T, N> { give SmallVec<T, N> { inline_len: 0, spilled: vec_new<T>() }; }
@@ -205,10 +226,15 @@ proc smallvec_len<T, N>(value: SmallVec<T, N>) -> usize { give value.inline_len 
 proc smallvec_capacity<T, N>(value: SmallVec<T, N>) -> usize { give compiler_smallvec_inline_capacity<T, N>() + vec_capacity<T>(value.spilled); }
 proc smallvec_is_empty<T, N>(value: SmallVec<T, N>) -> bool { give smallvec_len<T, N>(value) == 0; }
 proc smallvec_reserve<T, N>(value: ref mut SmallVec<T, N>, additional: usize) { vec_reserve<T>(&mut ((*value).spilled), additional); }
+proc smallvec_inline_capacity<T, N>() -> usize { give compiler_smallvec_inline_capacity<T, N>(); }
+proc smallvec_spilled<T, N>(value: SmallVec<T, N>) -> bool { give vec_len<T>(value.spilled) > 0; }
 proc smallvec_push<T, N>(value: ref mut SmallVec<T, N>, item: T) {
     vec_push<T>(&mut ((*value).spilled), item);
 }
 proc smallvec_pop<T, N>(value: ref mut SmallVec<T, N>) -> Option<T> { give vec_pop<T>(&mut ((*value).spilled)); }
+proc smallvec_insert<T, N>(value: ref mut SmallVec<T, N>, index: usize, item: T) { vec_insert<T>(&mut ((*value).spilled), index, item); }
+proc smallvec_remove<T, N>(value: ref mut SmallVec<T, N>, index: usize) -> Option<T> { give vec_remove<T>(&mut ((*value).spilled), index); }
+proc smallvec_shrink_to_fit<T, N>(value: ref mut SmallVec<T, N>) { vec_shrink_to_fit<T>(&mut ((*value).spilled)); }
 proc smallvec_clear<T, N>(value: ref mut SmallVec<T, N>) {
     set (*value).spilled = vec_new<T>();
     set (*value).inline_len = 0;
