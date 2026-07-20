@@ -11,6 +11,43 @@ scripts_build_require() {
     scripts_build_die "missing required tool: $1"
 }
 
+scripts_build_parse_common_flags() {
+  DRY_RUN=${DRY_RUN:-0}
+  HELP=${HELP:-0}
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --dry-run)
+        DRY_RUN=1
+        ;;
+      --help | -h)
+        HELP=1
+        ;;
+      *)
+        scripts_build_die "unsupported option: $1"
+        ;;
+    esac
+    shift
+  done
+}
+
+scripts_build_maybe_help() {
+  usage=$1
+  if [ "${HELP:-0}" -eq 1 ]; then
+    printf '%s\n' "$usage"
+    exit 0
+  fi
+}
+
+scripts_build_maybe_dry_run() {
+  description=$1
+  if [ "${DRY_RUN:-0}" -eq 1 ]; then
+    script_name=${SCRIPT_NAME:-scripts_build}
+    printf '[%s][dry-run] %s\n' "$script_name" "$description"
+    exit 0
+  fi
+}
+
 scripts_build_sha256_write() {
   file=$1
   output=${2:-$file.sha256}

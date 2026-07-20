@@ -4,6 +4,7 @@ set -eu
 ROOT_DIR=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 SCRIPT_NAME=build-bsd-installers
 . "$ROOT_DIR/scripts_build/common.sh"
+scripts_build_parse_common_flags "$@"
 VERSION=${VERSION:-$(tr -d ' \r\n' < "$ROOT_DIR/toolchain/scripts/package/PACKAGE_VERSION")}
 OUT_DIR=${OUT_DIR:-$ROOT_DIR/pkgout}
 ARCH=${ARCH:-all}
@@ -12,6 +13,8 @@ BSD_RELEASE=${BSD_RELEASE:-all}
 
 EDITORS_DIR=$ROOT_DIR/editors
 COMPLETIONS_DIR=$ROOT_DIR/completions
+scripts_build_maybe_help "usage: build-bsd-installers.sh [--dry-run]"
+scripts_build_maybe_dry_run "would build BSD portable installers version=$VERSION family=$BSD_FAMILY release=$BSD_RELEASE arch=$ARCH out=$OUT_DIR"
 
 die() {
   printf '[build-bsd-installers][error] %s\n' "$*" >&2

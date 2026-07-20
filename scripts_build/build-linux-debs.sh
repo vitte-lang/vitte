@@ -4,6 +4,7 @@ set -eu
 ROOT_DIR=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 SCRIPT_NAME=build-linux-debs
 . "$ROOT_DIR/scripts_build/common.sh"
+scripts_build_parse_common_flags "$@"
 VERSION=${VERSION:-$(tr -d ' \r\n' < "$ROOT_DIR/toolchain/scripts/package/PACKAGE_VERSION")}
 OUT_DIR=${OUT_DIR:-$ROOT_DIR/pkgout}
 ARCH=${ARCH:-all}
@@ -17,6 +18,8 @@ LOGO_FILE=$ROOT_DIR/assets/logo.png
 
 PACKAGE_VERSION_FILE=$ROOT_DIR/toolchain/scripts/package/PACKAGE_VERSION
 PAYLOAD_SCRIPT=$ROOT_DIR/scripts_build/stage-installer-payload.sh
+scripts_build_maybe_help "usage: build-linux-debs.sh [--dry-run]"
+scripts_build_maybe_dry_run "would build Linux deb packages version=$VERSION arch=$ARCH out=$OUT_DIR"
 
 die() {
   printf '[build-linux-debs][error] %s\n' "$*" >&2

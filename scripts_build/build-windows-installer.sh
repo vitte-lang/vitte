@@ -4,12 +4,15 @@ set -eu
 ROOT_DIR=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 SCRIPT_NAME=build-windows-installer
 . "$ROOT_DIR/scripts_build/common.sh"
+scripts_build_parse_common_flags "$@"
 VERSION=${VERSION:-$(tr -d ' \r\n' < "$ROOT_DIR/toolchain/scripts/package/PACKAGE_VERSION")}
 OUT_DIR=${OUT_DIR:-$ROOT_DIR/pkgout}
 ARCH=${ARCH:-all}
 PACKAGE_NAME=${PACKAGE_NAME:-vitte}
 WINDOWS_VITTE_EXE=${WINDOWS_VITTE_EXE:-}
 WINDOWS_TARGETS=${WINDOWS_TARGETS:-xp vista 7 8 8.1 10 11}
+scripts_build_maybe_help "usage: build-windows-installer.sh [--dry-run]"
+scripts_build_maybe_dry_run "would build Windows NSIS kits version=$VERSION arch=$ARCH out=$OUT_DIR"
 
 die() {
   printf '[build-windows-installer][error] %s\n' "$*" >&2

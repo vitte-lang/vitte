@@ -4,6 +4,7 @@ set -eu
 ROOT_DIR=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 SCRIPT_NAME=build-macos-installers
 . "$ROOT_DIR/scripts_build/common.sh"
+scripts_build_parse_common_flags "$@"
 VERSION=${VERSION:-$(tr -d ' \r\n' < "$ROOT_DIR/toolchain/scripts/package/PACKAGE_VERSION")}
 OUT_DIR=${OUT_DIR:-$ROOT_DIR/pkgout}
 ARCH=${ARCH:-all}
@@ -19,6 +20,8 @@ MACOS2006_BINARY=${MACOS2006_BINARY:-$ROOT_DIR/target/macos2006-i386/vitte}
 MACOS2006_DEPLOYMENT_TARGET=${MACOS2006_DEPLOYMENT_TARGET:-10.4}
 MACOS2006_SDK=${MACOS2006_SDK:-MacOSX10.4u.sdk}
 MACOS2006_CC=${MACOS2006_CC:-gcc-4.0}
+scripts_build_maybe_help "usage: build-macos-installers.sh [--dry-run]"
+scripts_build_maybe_dry_run "would build macOS pkg artifacts version=$VERSION arch=$ARCH strict_dmg=$STRICT_DMG out=$OUT_DIR"
 
 die() {
   printf '[build-macos-installers][error] %s\n' "$*" >&2

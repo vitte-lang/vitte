@@ -4,12 +4,23 @@ set -eu
 ROOT_DIR=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 SCRIPT_NAME=stage-installer-payload
 . "$ROOT_DIR/scripts_build/common.sh"
+case "${1:-}" in
+  --dry-run)
+    shift
+    DRY_RUN=1
+    ;;
+  --help | -h)
+    printf '%s\n' "usage: stage-installer-payload.sh [--dry-run] DEST PLATFORM ARCH [unix|windows]"
+    exit 0
+    ;;
+esac
 DEST=${1:?usage: stage-installer-payload.sh DEST PLATFORM ARCH [unix|windows]}
 PLATFORM=${2:?missing platform}
 ARCH=${3:?missing architecture}
 LAYOUT=${4:-unix}
 VERSION=${VERSION:-$(tr -d ' \r\n' < "$ROOT_DIR/toolchain/scripts/package/PACKAGE_VERSION")}
 STRICT_PROCESSOR=${STRICT_PROCESSOR:-0}
+scripts_build_maybe_dry_run "would stage installer payload platform=$PLATFORM arch=$ARCH layout=$LAYOUT dest=$DEST"
 
 die() {
   printf '[stage-installer-payload][error] %s\n' "$*" >&2

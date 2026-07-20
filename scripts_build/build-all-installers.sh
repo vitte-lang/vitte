@@ -2,8 +2,13 @@
 set -eu
 
 ROOT_DIR=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
+SCRIPT_NAME=build-all-installers
+. "$ROOT_DIR/scripts_build/common.sh"
+scripts_build_parse_common_flags "$@"
 VERSION=${VERSION:-$(tr -d ' \r\n' < "$ROOT_DIR/toolchain/scripts/package/PACKAGE_VERSION")}
 OUT_DIR=${OUT_DIR:-$ROOT_DIR/pkgout}
+scripts_build_maybe_help "usage: build-all-installers.sh [--dry-run]"
+scripts_build_maybe_dry_run "would build installers for linux, freebsd, bsd, macos on Darwin, solaris, and windows into $OUT_DIR"
 
 run() {
   printf '[build-all-installers] %s\n' "$1"
