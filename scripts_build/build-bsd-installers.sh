@@ -89,8 +89,16 @@ write_install_script() {
 #!/bin/sh
 set -eu
 
-[ "$(id -u)" -eq 0 ] || {
-  printf 'Vitte installation requires root\n' >&2
+PREFIX=${PREFIX:-/usr/local}
+DESTDIR=${DESTDIR:-}
+
+case "$PREFIX" in
+  /*) ;;
+  *) printf 'PREFIX must be absolute: %s\n' "$PREFIX" >&2; exit 1 ;;
+esac
+
+[ "$(id -u)" -eq 0 ] || [ -n "$DESTDIR" ] || mkdir -p "$PREFIX" 2>/dev/null || {
+  printf 'Vitte installation requires root unless DESTDIR is set or PREFIX is writable\n' >&2
   exit 1
 }
 
@@ -101,16 +109,57 @@ HERE=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
   exit 1
 }
 
-tar -cf - -C "$HERE/root" . |
-  tar -xf - -C /
+target_root=${DESTDIR:-/}
+mkdir -p "$target_root"
 
-printf 'Vitte installed in /usr/local.\n'
-printf 'Run: vitte --help\n'
-printf 'Editor integrations: /usr/local/share/vitte/editors\n'
-printf 'Shell completions: /usr/local/share/vitte/completions\n'
+if [ "$PREFIX" = /usr/local ]; then
+  tar -cf - -C "$HERE/root" . | tar -xf - -C "$target_root"
+else
+  mkdir -p "$target_root$PREFIX"
+  tar -cf - -C "$HERE/root/usr/local" . | tar -xf - -C "$target_root$PREFIX"
+  for command in vitte vittec vittec0; do
+    wrapper=$target_root$PREFIX/bin/$command
+    if [ -f "$wrapper" ]; then
+      sed "s#/usr/local#$PREFIX#g" "$wrapper" > "$wrapper.tmp"
+      mv "$wrapper.tmp" "$wrapper"
+      chmod 0755 "$wrapper"
+    fi
+  done
+fi
+
+printf 'Vitte installed in %s%s.\n' "$DESTDIR" "$PREFIX"
+printf 'Run: %s/bin/vitte --help\n' "$PREFIX"
+printf 'Editor integrations: %s/share/vitte/editors\n' "$PREFIX"
+printf 'Shell completions: %s/share/vitte/completions\n' "$PREFIX"
 SH
 
   chmod 0755 "$stage/install.sh"
+
+  cat > "$stage/uninstall.sh" <<'SH'
+#!/bin/sh
+set -eu
+
+PREFIX=${PREFIX:-/usr/local}
+DESTDIR=${DESTDIR:-}
+
+case "$PREFIX" in
+  /*) ;;
+  *) printf 'PREFIX must be absolute: %s\n' "$PREFIX" >&2; exit 1 ;;
+esac
+
+[ "$(id -u)" -eq 0 ] || [ -n "$DESTDIR" ] || [ -w "$PREFIX" ] || {
+  printf 'Vitte uninstall requires root unless DESTDIR is set or PREFIX is writable\n' >&2
+  exit 1
+}
+
+root=${DESTDIR:-/}
+rm -f "$root$PREFIX/bin/vitte" "$root$PREFIX/bin/vittec" "$root$PREFIX/bin/vittec0"
+rm -rf "$root$PREFIX/libexec/vitte" "$root$PREFIX/share/vitte"
+printf 'Vitte removed from %s%s.\n' "$DESTDIR" "$PREFIX"
+SH
+
+  chmod 0755 "$stage/install.sh"
+  chmod 0755 "$stage/uninstall.sh"
 }
 
 write_install_documentation() {
@@ -197,7 +246,7 @@ build_one() {
 
   rm -f "$archive" "$checksum"
 
-  scripts_build_tar_xz "$archive" "$stage" install.sh INSTALL.txt root
+  scripts_build_tar_xz "$archive" "$stage" install.sh uninstall.sh INSTALL.txt root
 
   (
     cd "$OUT_DIR"

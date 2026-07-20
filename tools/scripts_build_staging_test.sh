@@ -36,6 +36,11 @@ stage_unix() {
   test -x "$dest/usr/local/libexec/vitte/vitte"
   test -s "$dest/usr/local/share/vitte/INSTALLATION.json"
   test -s "$dest/usr/local/share/vitte/VERSION"
+  test -d "$dest/usr/local/share/vitte/src/vitte/stdlib"
+  test -d "$dest/usr/local/share/vitte/docs"
+  test -d "$dest/usr/local/share/vitte/locales"
+  test -d "$dest/usr/local/share/vitte/completions"
+  test -d "$dest/usr/local/share/vitte/editors"
   test "$(python3 - "$dest/usr/local/bin/vitte" <<'PY'
 import stat
 import sys
@@ -59,6 +64,11 @@ stage_windows() {
   test -d "$dest/bin"
   test -s "$dest/share/vitte/INSTALLATION.json"
   test -s "$dest/share/vitte/VERSION"
+  test -d "$dest/share/vitte/src/vitte/stdlib"
+  test -d "$dest/share/vitte/docs"
+  test -d "$dest/share/vitte/locales"
+  test -d "$dest/share/vitte/completions"
+  test -d "$dest/share/vitte/editors"
 }
 
 "$ROOT_DIR/scripts_build/package-matrix.sh" list >/dev/null

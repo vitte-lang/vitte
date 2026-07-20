@@ -97,6 +97,12 @@ for bsd_kit in "$OUT_DIR"/vitte-"$VERSION"-*-*-installer.tar.xz; do
     die "missing BSD installer logo: $bsd_kit"
   scripts_build_tar_list_xz "$bsd_kit" | grep -Fx 'root/usr/local/share/vitte/INSTALLATION.json' >/dev/null ||
     die "missing BSD installer INSTALLATION.json: $bsd_kit"
+  scripts_build_tar_list_xz "$bsd_kit" | grep -Fx 'uninstall.sh' >/dev/null ||
+    die "missing BSD uninstall script: $bsd_kit"
+  for component in src/vitte/stdlib docs locales completions editors; do
+    scripts_build_tar_list_xz "$bsd_kit" | grep -q "^root/usr/local/share/vitte/$component/" ||
+      die "BSD installer missing payload component $component: $bsd_kit"
+  done
   for command in vitte vittec vittec0; do
     tar -xOf "$bsd_kit" "root/usr/local/bin/$command" 2>/dev/null | grep -F "/usr/local/libexec/vitte/$command" >/dev/null ||
       die "BSD wrapper does not exec libexec $command: $bsd_kit"
@@ -120,10 +126,21 @@ for arch in amd64 i386; do
       tar -tzf "$solaris_kit" | grep -Fx "$required" >/dev/null ||
         die "Solaris kit missing $required: $solaris_kit"
     done
+    for required in install.sh uninstall.sh; do
+      tar -tzf "$solaris_kit" | grep -Fx "$required" >/dev/null ||
+        die "Solaris kit missing $required: $solaris_kit"
+    done
     tar -xOzf "$solaris_kit" prototype | grep -F 'usr/local/bin/vitte' >/dev/null ||
       die "Solaris prototype missing vitte command"
   }
 done
+
+if [ -s "$OUT_DIR/CHECKSUMS.txt" ]; then
+  while IFS= read -r line; do
+    set -- $line
+    [ -s "$OUT_DIR/$2" ] || die "CHECKSUMS.txt references missing artifact: $2"
+  done < "$OUT_DIR/CHECKSUMS.txt"
+fi
 
 for item in 'amd64 0x8664' 'i386 0x014c' 'arm64 0xaa64' 'armv7 0x01c4'; do
   set -- $item

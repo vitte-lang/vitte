@@ -321,7 +321,39 @@ create_portable_kit() {
 
   rm -f "$kit_file"
 
-  scripts_build_tar_gz "$kit_file" "$spool" pkginfo depend postinstall preremove prototype root
+  cat > "$spool/install.sh" <<'SH'
+#!/bin/sh
+set -eu
+PREFIX=${PREFIX:-/usr/local}
+DESTDIR=${DESTDIR:-}
+case "$PREFIX" in /*) ;; *) echo "PREFIX must be absolute: $PREFIX" >&2; exit 1 ;; esac
+[ "$(id -u)" -eq 0 ] || [ -n "$DESTDIR" ] || mkdir -p "$PREFIX" 2>/dev/null || { echo "Solaris portable install requires root unless DESTDIR is set or PREFIX is writable" >&2; exit 1; }
+target_root=${DESTDIR:-/}
+mkdir -p "$target_root"
+if [ "$PREFIX" = /usr/local ]; then
+  tar -cf - -C "$(dirname "$0")/root" . | tar -xf - -C "$target_root"
+else
+  mkdir -p "$target_root$PREFIX"
+  tar -cf - -C "$(dirname "$0")/root/usr/local" . | tar -xf - -C "$target_root$PREFIX"
+fi
+echo "Vitte installed in $DESTDIR$PREFIX."
+SH
+  chmod 0755 "$spool/install.sh"
+  cat > "$spool/uninstall.sh" <<'SH'
+#!/bin/sh
+set -eu
+PREFIX=${PREFIX:-/usr/local}
+DESTDIR=${DESTDIR:-}
+case "$PREFIX" in /*) ;; *) echo "PREFIX must be absolute: $PREFIX" >&2; exit 1 ;; esac
+[ "$(id -u)" -eq 0 ] || [ -n "$DESTDIR" ] || [ -w "$PREFIX" ] || { echo "Solaris portable uninstall requires root unless DESTDIR is set or PREFIX is writable" >&2; exit 1; }
+root=${DESTDIR:-/}
+rm -f "$root$PREFIX/bin/vitte" "$root$PREFIX/bin/vittec" "$root$PREFIX/bin/vittec0"
+rm -rf "$root$PREFIX/libexec/vitte" "$root$PREFIX/share/vitte"
+echo "Vitte removed from $DESTDIR$PREFIX."
+SH
+  chmod 0755 "$spool/uninstall.sh"
+
+  scripts_build_tar_gz "$kit_file" "$spool" pkginfo depend postinstall preremove prototype install.sh uninstall.sh root
 
   [ -s "$kit_file" ] ||
     die "portable SVR4 kit was not created: $kit_file"
@@ -341,6 +373,8 @@ verify_portable_kit() {
     postinstall \
     preremove \
     prototype \
+    install.sh \
+    uninstall.sh \
     root/usr/local/bin/vitte \
     root/usr/local/share/licenses/vitte/LICENSE \
     root/usr/local/share/vitte/assets/logo.png

@@ -9,6 +9,9 @@ VERSION=${VERSION:-$(tr -d ' \r\n' < "$ROOT_DIR/toolchain/scripts/package/PACKAG
 OUT_DIR=${OUT_DIR:-$ROOT_DIR/pkgout}
 ARCH=${ARCH:-all}
 PACKAGE_NAME=${PACKAGE_NAME:-vitte}
+SIGN=${SIGN:-0}
+WINDOWS_SIGNTOOL=${WINDOWS_SIGNTOOL:-signtool}
+WINDOWS_SIGN_CERT=${WINDOWS_SIGN_CERT:-}
 WINDOWS_VITTE_EXE=${WINDOWS_VITTE_EXE:-}
 WINDOWS_TARGETS=${WINDOWS_TARGETS:-xp vista 7 8 8.1 10 11}
 scripts_build_maybe_help "usage: build-windows-installer.sh [--dry-run]"
@@ -56,6 +59,16 @@ machine = struct.unpack_from("<H", data, offset + 4)[0]
 if machine != expected:
     raise SystemExit(f"wrong PE processor 0x{machine:04x}, expected 0x{expected:04x}: {path}")
 PY
+}
+
+sign_windows_artifact() {
+  artifact=$1
+  [ "$SIGN" -eq 1 ] || return 0
+  [ -n "$WINDOWS_SIGN_CERT" ] ||
+    die "SIGN=1 requires WINDOWS_SIGN_CERT"
+  command -v "$WINDOWS_SIGNTOOL" >/dev/null 2>&1 ||
+    die "SIGN=1 requires signtool or WINDOWS_SIGNTOOL"
+  "$WINDOWS_SIGNTOOL" sign /fd SHA256 /f "$WINDOWS_SIGN_CERT" "$artifact"
 }
 
 find_windows_exe() {
@@ -241,6 +254,7 @@ EOF
     rm -f "$package_file" "$package_file.sha256"
     (cd "$stage" && makensis -DVERSION="$VERSION" -DARCH="$arch" -DWINDOWS_TARGETS="$WINDOWS_TARGETS" -DOUT_FILE="$package_file" installer.nsi)
     validate_pe "$package_file" "$arch" || die "NSIS output is not a Windows $arch executable"
+    sign_windows_artifact "$package_file"
     scripts_build_sha256_write "$package_file" "$package_file.sha256"
     printf '[build-windows-installer] wrote %s (%s bytes)\n' "$package_file" "$(wc -c < "$package_file" | tr -d ' ')"
   elif [ "$has_pe" -eq 0 ]; then

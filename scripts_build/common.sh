@@ -151,3 +151,31 @@ scripts_build_tar_xz() {
   shift 2
   COPYFILE_DISABLE=1 tar -cJf "$output" -C "$base" "$@"
 }
+
+scripts_build_write_artifact_manifest() {
+  file=$1
+  platform=$2
+  arch=$3
+  version=$4
+  output=${5:-$file.MANIFEST.json}
+
+  scripts_build_require python3
+  python3 - "$file" "$platform" "$arch" "$version" "$output" <<'PY'
+import hashlib
+import json
+import sys
+from pathlib import Path
+
+file = Path(sys.argv[1])
+manifest = {
+    "schema": "org.vitte.installer-artifact.v1",
+    "name": file.name,
+    "platform": sys.argv[2],
+    "arch": sys.argv[3],
+    "version": sys.argv[4],
+    "size": file.stat().st_size,
+    "sha256": hashlib.sha256(file.read_bytes()).hexdigest(),
+}
+Path(sys.argv[5]).write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+PY
+}

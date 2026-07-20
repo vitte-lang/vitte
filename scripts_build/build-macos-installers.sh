@@ -9,6 +9,10 @@ VERSION=${VERSION:-$(tr -d ' \r\n' < "$ROOT_DIR/toolchain/scripts/package/PACKAG
 OUT_DIR=${OUT_DIR:-$ROOT_DIR/pkgout}
 ARCH=${ARCH:-all}
 STRICT_DMG=${STRICT_DMG:-0}
+SIGN=${SIGN:-0}
+NOTARIZE=${NOTARIZE:-0}
+MACOS_SIGN_IDENTITY=${MACOS_SIGN_IDENTITY:-}
+MACOS_NOTARY_PROFILE=${MACOS_NOTARY_PROFILE:-}
 PKG_BUILDER=$ROOT_DIR/toolchain/scripts/package/make-macos-pkg.sh
 
 EDITORS_DIR=$ROOT_DIR/editors
@@ -520,6 +524,24 @@ verify_product_package() {
 
   pkgutil --expand-full "$package_file" "$expanded"
 
+  test -d "$expanded/vitte-component.pkg" ||
+    die "missing macOS toolchain component package"
+
+  test -d "$expanded/vitte-editors.pkg" ||
+    die "missing macOS editor component package"
+
+  test -s "$expanded/Distribution" ||
+    die "missing macOS Distribution resource"
+
+  test -s "$expanded/Resources/LICENSE" ||
+    die "missing macOS license resource"
+
+  test -s "$expanded/Resources/Welcome.txt" ||
+    die "missing macOS welcome resource"
+
+  test -x "$expanded/vitte-editors.pkg/Scripts/postinstall" ||
+    die "missing macOS editor postinstall script"
+
   find "$expanded" \
     -path '*/Payload/usr/local/bin/vitte' \
     -type f \
@@ -621,6 +643,28 @@ verify_product_package() {
   rm -rf "$expanded"
 
   log "verified package payload: $package_file"
+}
+
+sign_macos_artifact() {
+  artifact=$1
+  [ "$SIGN" -eq 1 ] || return 0
+  [ -n "$MACOS_SIGN_IDENTITY" ] ||
+    die "SIGN=1 requires MACOS_SIGN_IDENTITY"
+  scripts_build_require productsign
+  signed=$artifact.signed
+  productsign --sign "$MACOS_SIGN_IDENTITY" "$artifact" "$signed"
+  mv "$signed" "$artifact"
+}
+
+notarize_macos_artifact() {
+  artifact=$1
+  [ "$NOTARIZE" -eq 1 ] || return 0
+  [ "$SIGN" -eq 1 ] ||
+    die "NOTARIZE=1 requires SIGN=1"
+  [ -n "$MACOS_NOTARY_PROFILE" ] ||
+    die "NOTARIZE=1 requires MACOS_NOTARY_PROFILE"
+  scripts_build_require xcrun
+  xcrun notarytool submit "$artifact" --keychain-profile "$MACOS_NOTARY_PROFILE" --wait
 }
 
 write_distribution() {
@@ -823,6 +867,9 @@ build_one() {
   verify_product_package \
     "$package_file" \
     "$label"
+
+  sign_macos_artifact "$package_file"
+  notarize_macos_artifact "$package_file"
 
   create_dmg \
     "$package_file" \
