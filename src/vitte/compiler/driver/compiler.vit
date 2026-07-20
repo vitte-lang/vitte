@@ -226,6 +226,7 @@ form CompilerCliRequest {
     diagnostic_quality: bool
     show_cascades: bool
     fix_apply: bool
+    deny_warnings: bool
     fail_under: u64
     max_errors: u64
     stdlib_path: string
@@ -307,6 +308,7 @@ proc empty_cli_request() -> CompilerCliRequest {
         diagnostic_quality: false,
         show_cascades: false,
         fix_apply: false,
+        deny_warnings: false,
         fail_under: 0,
         max_errors: 0,
         stdlib_path: "src/vitte/stdlib",
@@ -433,6 +435,7 @@ proc cli_is_known_flag(text: string) -> bool {
         or text == "--show-cascades"
         or text == "--dry-run"
         or text == "--apply"
+        or text == "--deny-warnings"
         or text == "--fail-under"
         or text == "--max-errors"
         or text == "--stdlib-path"
@@ -661,6 +664,9 @@ proc parse_cli_request(args: list[string]) -> CompilerCliRequest {
                 set i = i + 1;
             } elif arg == "--apply" {
                 set request.fix_apply = true;
+                set i = i + 1;
+            } elif arg == "--deny-warnings" {
+                set request.deny_warnings = true;
                 set i = i + 1;
             } elif arg == "--fail-under" {
                 if i + 1 >= len(args) {
