@@ -56,6 +56,30 @@ Kinds
 - `linker`: native link step found missing symbols, libraries, duplicate definitions, incompatible architecture, invalid objects, missing entry point, or permissions.
 - `internal_compiler`: compiler invariant was broken. Only this kind may use `ICE`.
 
+Stable Codes
+
+`schemas/diagnostics/codes.json` is the central registry for public diagnostic
+codes. A public code is stable once it appears there.
+
+Public codes use the stable phase prefix from the registry followed by four
+decimal digits:
+
+- `LEX0000` for lexer diagnostics.
+- `PAR0000` for parser diagnostics.
+- `RES0000` for resolver diagnostics.
+- `SEM0000` for semantic-analysis diagnostics.
+- `TYP0000` for type-checker diagnostics.
+- `BOR0000` for borrow-checker diagnostics.
+- `MIR0000` for MIR diagnostics.
+- `IR0000` for IR diagnostics.
+- `GEN0000` for backend/codegen diagnostics.
+- `LNK0000` for linker diagnostics.
+- `ICE0000` for internal compiler errors.
+
+Do not reuse a removed code for a different diagnostic. Keep old message keys in
+`aliases` when migrating from legacy names, and mark obsolete entries as
+`deprecated` instead of deleting or renumbering them.
+
 ICE Rules
 
 `ICE` is reserved for compiler defects. An ICE must never be rendered as a user error.

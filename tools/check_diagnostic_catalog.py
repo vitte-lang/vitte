@@ -105,6 +105,7 @@ PRECISE_CAUSE_WORDS = (
     "source",
 )
 CODE_LITERAL = re.compile(r'"([A-Z][A-Z0-9_]*|[A-Z]{3}[0-9]{4}|E[0-9]{4}|P[0-9A-Z_]+)"')
+PUBLIC_CODE = re.compile(r"^[A-Z]{2,3}[0-9]{4}$")
 ALLOWED_DYNAMIC_PRODUCERS = {
     "src/vitte/compiler/diagnostics/diagnostic.vit",
     "src/vitte/compiler/diagnostics/architecture.vit",
@@ -199,6 +200,8 @@ def validate_style_guide() -> list[str]:
         "Where is the problem?",
         "Why is it incorrect in Vitte?",
         "How can the user correct it?",
+        "Stable Codes",
+        "stable phase prefix from the registry followed by four",
     )
     missing = [item for item in required if item not in text]
     if missing:
@@ -229,6 +232,9 @@ def validate_catalog() -> list[str]:
     entries = payload.get("codes") if isinstance(payload, dict) else None
     if not isinstance(entries, list) or not entries:
         return [f"{CATALOG.relative_to(ROOT)}: codes must be a non-empty array"]
+    phase_prefixes = payload.get("phase_prefixes")
+    if not isinstance(phase_prefixes, dict):
+        return [f"{CATALOG.relative_to(ROOT)}: phase_prefixes must define the stable public-code prefixes"]
 
     manifests = load_test_manifests()
     failures: list[str] = []
@@ -254,6 +260,11 @@ def validate_catalog() -> list[str]:
         if code in seen_codes:
             failures.append(f"{code}: duplicate diagnostic code")
         seen_codes.add(code)
+        prefix = phase_prefixes.get(phase) if isinstance(phase, str) else None
+        if not isinstance(prefix, str) or not re.fullmatch(r"[A-Z]{2,3}", prefix):
+            failures.append(f"{code}: phase {phase!r} must have a two- or three-letter uppercase prefix")
+        elif not PUBLIC_CODE.fullmatch(code) or not code.startswith(prefix):
+            failures.append(f"{code}: stable code must be {prefix} followed by four decimal digits for phase {phase}")
         if not isinstance(title, str) or not title.strip():
             failures.append(f"{code}: title is required")
         else:
