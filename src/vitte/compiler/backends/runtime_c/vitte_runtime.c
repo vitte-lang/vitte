@@ -851,6 +851,7 @@ int32_t vitte_host_run_executable(VitteString executable_path) {
 }
 
 void vitte_builtin_trap(VitteString msg) {
+  (void)msg;
   vitte_note_panic(2);
   if (g_boundary_depth <= 0) {
     abort();

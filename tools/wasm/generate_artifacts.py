@@ -51,23 +51,26 @@ FEATURES = {
     "fetch_api": True,
     "timers_api": True,
     "console_api": True,
-    "dom_bindings": False,
-    "webgpu_bindings": False,
-    "webgl_bindings": False,
-    "threads": False,
-    "simd": False,
-    "exceptions": False,
-    "tail_calls": False,
-    "multi_memory": False,
-    "reference_types": False,
-    "gc_proposal": False,
-    "component_model": False,
-    "dynamic_linking": False,
     "source_maps": True,
     "debug_info": True,
     "size_optimization": True,
     "lto": True,
 }
+
+ROADMAP_FEATURES = [
+    "dom_bindings",
+    "webgpu_bindings",
+    "webgl_bindings",
+    "threads",
+    "simd",
+    "exceptions",
+    "tail_calls",
+    "multi_memory",
+    "reference_types",
+    "gc_proposal",
+    "component_model",
+    "dynamic_linking",
+]
 
 ROADMAP = [
     "real_mir_to_wasm_lowering",
@@ -260,6 +263,8 @@ def build_report(
                 OPT_LEVELS,
             "features":
                 FEATURES,
+            "roadmap_features":
+                ROADMAP_FEATURES,
         },
         "artifacts": {
             "wat": {
@@ -342,6 +347,15 @@ def write_markdown(report: dict):
             f"- {name}: "
             f"{'PASS' if enabled else 'FAIL'}"
         )
+
+    lines.extend([
+        "",
+        "## Roadmap Features",
+        "",
+    ])
+
+    for feature in report["backend"]["roadmap_features"]:
+        lines.append(f"- {feature}: ROADMAP")
 
     lines.extend([
         "",
@@ -475,4 +489,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

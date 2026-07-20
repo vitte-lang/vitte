@@ -45,13 +45,22 @@ FEATURES = {
     "function_metadata": True,
     "symbol_table_export": True,
     "debug_metadata": True,
-    "incremental_emit": False,
     "cross_target_emit": True,
     "multi_module_emit": True,
     "linker_metadata": True,
     "diagnostic_metadata": True,
     "dependency_graph_export": True,
 }
+
+ROADMAP_FEATURES = [
+    "incremental_emit",
+    "parallel_emit",
+    "lto_metadata",
+    "pgo_metadata",
+    "wasm_emit",
+    "llvm_emit",
+    "native_emit",
+]
 
 PIPELINE = [
     "hir",
@@ -68,13 +77,7 @@ ROADMAP = [
     "real_mir_emission",
     "real_cfg_export",
     "real_symbol_tables",
-    "incremental_emit",
-    "parallel_emit",
-    "lto_metadata",
-    "pgo_metadata",
-    "wasm_emit",
-    "llvm_emit",
-    "native_emit",
+    *ROADMAP_FEATURES,
 ]
 
 
@@ -267,6 +270,8 @@ def build_report() -> dict:
             TARGETS,
         "features":
             FEATURES,
+        "roadmap_features":
+            ROADMAP_FEATURES,
         "pipeline":
             PIPELINE,
         "roadmap":
@@ -332,6 +337,15 @@ def write_markdown(report: dict):
             f"- {name}: "
             f"{'PASS' if enabled else 'FAIL'}"
         )
+
+    lines.extend([
+        "",
+        "## Roadmap Features",
+        "",
+    ])
+
+    for name in report["roadmap_features"]:
+        lines.append(f"- {name}: ROADMAP")
 
     REPORT_MD.write_text(
         "\n".join(lines)
@@ -435,4 +449,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

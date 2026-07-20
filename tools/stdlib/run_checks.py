@@ -248,19 +248,25 @@ FEATURE_MODULES = {
     "deque": "collections/deque.vitl",
     "io": "io.vitl",
     "filesystem": "io/file.vitl",
-    "async": "async.vitl",
-    "channels": "async/channel.vitl",
     "ffi": "ffi/ffi.vitl",
-    "network": "network.vitl",
     "http": "network/http.vitl",
     "json": "json.vitl",
-    "yaml": "yaml.vitl",
-    "toml": "toml.vitl",
     "regex": "regex.vitl",
     "crypto": "crypto.vitl",
     "compression": "compression.vitl",
+}
+
+ROADMAP_FEATURE_MODULES = {
+    "async": "async.vitl",
+    "channels": "async/channel.vitl",
+    "network_facade": "network.vitl",
     "image": "image.vitl",
     "audio": "audio.vitl",
+}
+
+NON_SCOPE_FEATURE_MODULES = {
+    "yaml": "yaml.vitl",
+    "toml": "toml.vitl",
 }
 
 
@@ -2284,6 +2290,10 @@ def build_report() -> dict:
             feature_score(features),
         "features":
             features,
+        "roadmap_features":
+            ROADMAP_FEATURE_MODULES,
+        "non_scope_features":
+            NON_SCOPE_FEATURE_MODULES,
         "architecture":
             architecture_manifest,
         "module_manifest":

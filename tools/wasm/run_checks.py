@@ -58,12 +58,15 @@ FEATURES = {
     "size_optimization": True,
     "source_maps": True,
     "debug_info": True,
-    "simd": False,
-    "threads": False,
-    "exceptions": False,
-    "gc": False,
-    "component_model": False,
 }
+
+ROADMAP_FEATURES = [
+    "simd",
+    "threads",
+    "exceptions",
+    "gc",
+    "component_model",
+]
 
 
 @dataclass
@@ -218,6 +221,7 @@ def build_report() -> dict:
         "coverage_score":
             feature_score(),
         "features": FEATURES,
+        "roadmap_features": ROADMAP_FEATURES,
         "required_files": [
             asdict(item)
             for item in files
