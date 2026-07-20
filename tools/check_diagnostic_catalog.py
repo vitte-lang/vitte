@@ -321,10 +321,12 @@ def line_for_offset(text: str, offset: int) -> int:
     return text.count("\n", 0, offset) + 1
 
 
-def split_first_argument(text: str, start: int) -> tuple[str, int]:
+def split_call_arguments(text: str, start: int) -> tuple[list[str], int]:
+    args: list[str] = []
     depth = 0
     in_string = False
     escaped = False
+    arg_start = start
     index = start
     while index < len(text):
         char = text[index]
@@ -342,25 +344,37 @@ def split_first_argument(text: str, start: int) -> tuple[str, int]:
                 depth += 1
             elif char == ")":
                 if depth == 0:
-                    return text[start:index].strip(), index
+                    tail = text[arg_start:index].strip()
+                    if tail:
+                        args.append(tail)
+                    return args, index
                 depth -= 1
             elif char == "," and depth == 0:
-                return text[start:index].strip(), index
+                args.append(text[arg_start:index].strip())
+                arg_start = index + 1
         index += 1
-    return text[start:index].strip(), index
+    tail = text[arg_start:index].strip()
+    if tail:
+        args.append(tail)
+    return args, index
 
 
-def diagnostic_call_first_args(text: str) -> list[tuple[int, str]]:
-    calls: list[tuple[int, str]] = []
+def diagnostic_call_args(text: str) -> list[tuple[int, str, list[str]]]:
+    calls: list[tuple[int, str, list[str]]] = []
     pattern = re.compile(r"\bdiagnostic_(?:create|error|warning|fatal)\s*\(")
     for match in pattern.finditer(text):
         line_start = text.rfind("\n", 0, match.start()) + 1
         prefix = text[line_start:match.start()].strip()
         if prefix.startswith("proc "):
             continue
-        first_arg, _ = split_first_argument(text, match.end())
-        calls.append((line_for_offset(text, match.start()), first_arg))
+        args, _ = split_call_arguments(text, match.end())
+        first_arg = args[0] if args else ""
+        calls.append((line_for_offset(text, match.start()), first_arg, args))
     return calls
+
+
+def diagnostic_call_first_args(text: str) -> list[tuple[int, str]]:
+    return [(line, first_arg) for line, first_arg, _args in diagnostic_call_args(text)]
 
 
 def is_dynamic_code_expression(first_arg: str) -> bool:
@@ -373,6 +387,34 @@ def is_dynamic_code_expression(first_arg: str) -> bool:
     if "(" in first_arg or ")" in first_arg:
         return True
     if "[" in first_arg or "]" in first_arg:
+        return True
+    return False
+
+
+def diagnostic_message_arg(args: list[str]) -> str:
+    if len(args) >= 5:
+        return args[3]
+    if len(args) >= 4:
+        return args[2]
+    return ""
+
+
+def is_ice_code_expression(first_arg: str) -> bool:
+    literal = CODE_LITERAL.fullmatch(first_arg)
+    return bool(literal and literal.group(1).startswith("ICE"))
+
+
+def is_registered_message_expression(message_arg: str) -> bool:
+    value = message_arg.strip()
+    if value in {"message", "resolved_message", "localized_message", "title", "msg"}:
+        return True
+    if value.startswith("diagnostic_message("):
+        return True
+    if value.startswith("fluent_catalog_lookup("):
+        return True
+    if value.startswith("linker_failure_message("):
+        return True
+    if value.startswith("backend_registered_message("):
         return True
     return False
 
@@ -426,10 +468,14 @@ def validate_diagnostic_code_usage() -> list[str]:
         if "/tests/" in rel:
             continue
         text = path.read_text(encoding="utf-8")
-        for line_number, first_arg in diagnostic_call_first_args(text):
+        for line_number, first_arg, args in diagnostic_call_args(text):
             if is_dynamic_code_expression(first_arg):
                 failures.append(f"{rel}:{line_number}: diagnostic code must not be constructed dynamically")
                 continue
+            message_arg = diagnostic_message_arg(args)
+            if message_arg and not is_ice_code_expression(first_arg) and not is_registered_message_expression(message_arg):
+                if rel not in ALLOWED_DYNAMIC_PRODUCERS:
+                    failures.append(f"{rel}:{line_number}: diagnostic message must come from the registered catalog")
             if rel in ALLOWED_DYNAMIC_PRODUCERS:
                 continue
             literal = CODE_LITERAL.fullmatch(first_arg)
@@ -472,6 +518,55 @@ proc demo() -> Diagnostic {
     literal_calls = diagnostic_call_first_args(literal)
     if len(literal_calls) != 1 or is_dynamic_code_expression(literal_calls[0][1]):
         return ["dynamic diagnostic-code guard rejected a literal diagnostic code"]
+    return []
+
+
+def validate_free_message_guard_contract() -> list[str]:
+    sample = '''
+proc demo() -> Diagnostic {
+  give diagnostic_error(
+    "TYPECK_E_ASSIGN_MISMATCH",
+    DiagnosticPhase.Typeck,
+    "free message",
+    span
+  )
+}
+'''
+    calls = diagnostic_call_args(sample)
+    if len(calls) != 1:
+        return ["free diagnostic-message guard failed to find a multi-line diagnostic call"]
+    _line, first_arg, args = calls[0]
+    message_arg = diagnostic_message_arg(args)
+    if is_ice_code_expression(first_arg):
+        return ["free diagnostic-message guard misclassified a non-ICE code"]
+    if is_registered_message_expression(message_arg):
+        return ["free diagnostic-message guard failed to reject a literal message"]
+    registered = '''
+proc demo() -> Diagnostic {
+  give diagnostic_error(
+    "TYPECK_E_ASSIGN_MISMATCH",
+    DiagnosticPhase.Typeck,
+    diagnostic_message("TYPECK_E_ASSIGN_MISMATCH"),
+    span
+  )
+}
+'''
+    registered_calls = diagnostic_call_args(registered)
+    if len(registered_calls) != 1 or not is_registered_message_expression(diagnostic_message_arg(registered_calls[0][2])):
+        return ["free diagnostic-message guard rejected a registered catalog message"]
+    ice = '''
+proc demo() -> Diagnostic {
+  give diagnostic_fatal(
+    "ICE0001",
+    DiagnosticPhase.Internal,
+    "internal compiler error",
+    span
+  )
+}
+'''
+    ice_calls = diagnostic_call_args(ice)
+    if len(ice_calls) != 1 or not is_ice_code_expression(ice_calls[0][1]):
+        return ["free diagnostic-message guard rejected the ICE exception"]
     return []
 
 
@@ -564,6 +659,7 @@ def main() -> int:
         *validate_source_shape_renderer_fixtures(),
         *validate_diagnostic_code_usage(),
         *validate_dynamic_code_guard_contract(),
+        *validate_free_message_guard_contract(),
         *validate_canonical_diagnostic_contract(),
         *validate_phase_policy_contract(),
         *validate_backend_linker_contract(),
