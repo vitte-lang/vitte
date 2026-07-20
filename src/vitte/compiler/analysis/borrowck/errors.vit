@@ -315,6 +315,23 @@ proc borrow_note(code: string, fallback: string) -> string {
     give fallback;
 }
 
+proc borrowck_chronology_step(kind: BorrowErrorKind, name: string, step: u64, detail: string, line: string) -> string {
+    let event_kind: string = if kind == BorrowErrorKind.UseAfterMove or kind == BorrowErrorKind.MoveAfterMove or kind == BorrowErrorKind.PartialMove {
+        "move"
+    } elif kind == BorrowErrorKind.MoveWhileBorrowed or kind == BorrowErrorKind.MutableBorrowConflict or kind == BorrowErrorKind.SharedBorrowConflict or kind == BorrowErrorKind.WriteWhileBorrowed or kind == BorrowErrorKind.AssignWhileBorrowed or kind == BorrowErrorKind.DropWhileBorrowed or kind == BorrowErrorKind.LifetimeTooShort or kind == BorrowErrorKind.DanglingReference or kind == BorrowErrorKind.ReturnRefToLocal or kind == BorrowErrorKind.ReturnBorrowOfLocal {
+        "borrow"
+    } else {
+        "reuse"
+    };
+    let step_text: string = step as string;
+
+    if line != "" {
+        give "chronology step " + step_text + " [" + event_kind + "]: `" + name + "` " + detail + " at line " + line;
+    }
+
+    give "chronology step " + step_text + " [" + event_kind + "]: `" + name + "` " + detail;
+}
+
 proc severity_for_fatal(fatal: bool) -> DiagnosticSeverity {
     if fatal {
         give DiagnosticSeverity.Fatal;
@@ -552,21 +569,21 @@ proc borrow_error_temporal_story(kind: BorrowErrorKind, name: string, primary_me
     let use_line_text: string = use_span.start_line as string;
     let diag9: Diagnostic = diagnostic_add_cause(
         diag8,
-        "chronology step 1: `" + name + "` is created before the first highlighted ownership event"
+        borrowck_chronology_step(kind, name, 1, "is created before the first highlighted ownership event", "")
     );
     let diag10: Diagnostic = diagnostic_add_cause(
         diag9,
-        "chronology step 2: " + previous_text + " at line " + previous_line_text
+        borrowck_chronology_step(kind, name, 2, previous_text, previous_line_text)
     );
     let diag11: Diagnostic = diagnostic_add_cause(
         diag10,
-        "chronology step 3: " + conflict_text + " at line " + use_line_text
+        borrowck_chronology_step(kind, name, 3, conflict_text, use_line_text)
     );
     let has_borrow_lifetime: bool = kind == BorrowErrorKind.MoveWhileBorrowed or kind == BorrowErrorKind.MutableBorrowConflict or kind == BorrowErrorKind.SharedBorrowConflict or kind == BorrowErrorKind.WriteWhileBorrowed or kind == BorrowErrorKind.AssignWhileBorrowed or kind == BorrowErrorKind.DropWhileBorrowed or kind == BorrowErrorKind.LifetimeTooShort or kind == BorrowErrorKind.DanglingReference or kind == BorrowErrorKind.ReturnRefToLocal or kind == BorrowErrorKind.ReturnBorrowOfLocal;
     let diag12: Diagnostic = if has_borrow_lifetime and lifetime_text != "" {
-        diagnostic_add_cause(diag11, "chronology step 4: borrow ends " + lifetime_text)
+        diagnostic_add_cause(diag11, borrowck_chronology_step(kind, name, 4, "borrow ends " + lifetime_text, ""))
     } else {
-        diagnostic_add_cause(diag11, "chronology step 4: the value can be reused only after a new `let` initialization or a valid `set`")
+        diagnostic_add_cause(diag11, borrowck_chronology_step(kind, name, 4, "can be reused only after a new `let` initialization or a valid `set`", ""))
     };
     let diag13: Diagnostic = diagnostic_add_cause(
         diag12,
