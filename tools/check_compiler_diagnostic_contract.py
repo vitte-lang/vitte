@@ -32,6 +32,7 @@ BACKEND_DIAGNOSTICS = COMPILER_ROOT / "backend" / "diagnostics.vit"
 MIDDLE_TYPECHECK_DIAGNOSTICS = COMPILER_ROOT / "middle" / "typecheck" / "diagnostics.vit"
 DIAGNOSTICS_MIGRATION_CHECK = ROOT / "tools" / "check_diagnostics_migration.py"
 DRIVER_COMPILER = COMPILER_ROOT / "driver" / "compiler.vit"
+DIAGNOSTIC_SNAPSHOT_TESTS = COMPILER_ROOT / "tests" / "diagnostic_snapshot_tests.vit"
 
 DIRECT_OUTPUT = re.compile(r"\b(?:print|printf|fprintf|eprintf|fputs|fwrite|fputc)\s*\(")
 VAGUE_DRIVER_MESSAGES = (
@@ -562,10 +563,14 @@ def check_relational_diagnostic_contract() -> list[str]:
         (CANONICAL_DIAGNOSTIC, "give \"error\";"),
         (CANONICAL_DIAGNOSTIC, "share diagnostic_public_severity_level"),
         (CANONICAL_DIAGNOSTIC, "diagnostic_suggestion_with_confidence"),
+        (CANONICAL_DIAGNOSTIC, "diagnostic_has_machine_applicable_fix"),
         (CANONICAL_DIAGNOSTIC, "confidence == DIAGNOSTIC_CONFIDENCE_HIGH and replacement != \"\""),
         (CANONICAL_DIAGNOSTIC, "confidence == DIAGNOSTIC_CONFIDENCE_MEDIUM"),
         (CANONICAL_DIAGNOSTIC, "DiagnosticApplicability.Manual"),
         (CANONICAL_DIAGNOSTIC, "share diagnostic_suggestion_with_confidence"),
+        (CANONICAL_DIAGNOSTIC, "share diagnostic_has_machine_applicable_fix"),
+        (DIAGNOSTIC_SNAPSHOT_TESTS, "test_machine_applicable_fix_contract"),
+        (DIAGNOSTIC_SNAPSHOT_TESTS, "diagnostic_has_machine_applicable_fix(diag)"),
         (CANONICAL_DIAGNOSTIC, "why expected type is imposed:"),
         (CANONICAL_DIAGNOSTIC, "origin of obtained type:"),
         (CANONICAL_DIAGNOSTIC, "give 3 as u64;"),

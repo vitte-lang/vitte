@@ -810,6 +810,21 @@ proc diagnostic_fix_plans(diagnostic: Diagnostic) -> [DiagnosticFixPlan] {
     give plans;
 }
 
+proc diagnostic_has_machine_applicable_fix(diagnostic: Diagnostic) -> bool {
+    let plans: [DiagnosticFixPlan] = diagnostic_fix_plans(diagnostic);
+    let i: u64 = 0;
+
+    while i < len(plans) {
+        if plans[i].machine_applicable and plans[i].confidence == DIAGNOSTIC_CONFIDENCE_HIGH and plans[i].replacement != "" {
+            give true;
+        }
+
+        set i = i + 1;
+    }
+
+    give false;
+}
+
 proc diagnostic_default_rule(phase: DiagnosticPhase, code: string) -> string {
     if starts_with(code, "ICE") {
         give "internal compiler invariant";
@@ -4755,6 +4770,7 @@ share diagnostic_fix_plan_id
 share diagnostic_fix_plan_from_suggestion
 share diagnostic_multispan_fix_plan
 share diagnostic_fix_plans
+share diagnostic_has_machine_applicable_fix
 
 share diagnostic_create
 share diagnostic_error
