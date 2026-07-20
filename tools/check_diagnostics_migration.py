@@ -99,6 +99,31 @@ def compare_counts(name: str, current: dict[str, int], allowed: dict[str, int]) 
     return failures
 
 
+def migration_debt_counts() -> dict[str, int]:
+    legacy_calls = count_by_file(LEGACY_CALL_RE)
+    direct_concats = count_by_file(DIRECT_CONCAT_RE)
+    catch_all = count_by_file(CATCH_ALL_RE)
+    return {
+        "legacy_call_sites": sum(legacy_calls.values()),
+        "direct_message_concat_sites": sum(direct_concats.values()),
+        "catch_all_messages": sum(catch_all.values()),
+    }
+
+
+def render_migration_debt_counts(counts: dict[str, int]) -> str:
+    total = counts["legacy_call_sites"] + counts["direct_message_concat_sites"] + counts["catch_all_messages"]
+    return (
+        "[diagnostics-migration] unmigrated="
+        + str(total)
+        + " legacy_call_sites="
+        + str(counts["legacy_call_sites"])
+        + " direct_message_concat_sites="
+        + str(counts["direct_message_concat_sites"])
+        + " catch_all_messages="
+        + str(counts["catch_all_messages"])
+    )
+
+
 def validate_four_question_catalog() -> list[str]:
     payload = json.loads(CENTRAL_CATALOG.read_text(encoding="utf-8"))
     failures: list[str] = []
@@ -150,6 +175,7 @@ def validate_no_unstructured_diagnostics() -> list[str]:
 
 def main() -> int:
     baseline = json.loads(BASELINE.read_text(encoding="utf-8"))
+    debt_counts = migration_debt_counts()
     failures: list[str] = []
     failures.extend(validate_review_rule())
     failures.extend(validate_four_question_catalog())
@@ -162,6 +188,7 @@ def main() -> int:
         for failure in failures:
             print(f"[diagnostics-migration][error] {failure}", file=sys.stderr)
         return 1
+    print(render_migration_debt_counts(debt_counts))
     print("[diagnostics-migration] OK")
     return 0
 
