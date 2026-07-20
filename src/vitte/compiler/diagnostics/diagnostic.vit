@@ -3999,6 +3999,70 @@ proc diagnostic_explain_text(code: string) -> string {
     give diagnostic_explain_text_lang(code, "en");
 }
 
+proc diagnostic_explain_typical_cases(code: string) -> string {
+    if code == "TYPECK_E_ASSIGN_MISMATCH" {
+        give "assigning a string to an integer binding; returning a value that does not match the declared result; updating a variable after its annotation changed";
+    }
+    if code == "BORROWCK_E_USE_AFTER_MOVE" {
+        give "using a binding after passing it to an owning parameter; keeping a borrow live across a move; moving a root value while a field projection is still needed";
+    }
+    if code == "P000_UNBALANCED" {
+        give "missing closing brace at end of a procedure; nested block closed in the wrong order; pasted code that dropped a delimiter";
+    }
+    if code == "E0001" {
+        give "missing name after a declaration keyword; invalid character where an identifier starts; incomplete import or type declaration";
+    }
+    give "a source construct violates the compiler rule named by this diagnostic; reduce the snippet to the highlighted span and one surrounding declaration";
+}
+
+proc diagnostic_explain_common_traps(code: string) -> string {
+    if code == "TYPECK_E_ASSIGN_MISMATCH" {
+        give "changing the annotation to silence the error can break callers; implicit conversion is not inserted; fixing the later use may leave the original contract wrong";
+    }
+    if code == "BORROWCK_E_USE_AFTER_MOVE" {
+        give "cloning by habit can hide ownership cost; moving a root also affects field projections; reordering code can change observable side effects";
+    }
+    if code == "P000_UNBALANCED" {
+        give "adding a delimiter at EOF may close the wrong block; comments and strings can contain delimiter-like text; indentation is not proof of structure";
+    }
+    if code == "E0001" {
+        give "using a keyword as a name still fails; Unicode that looks like ASCII may be a different code point; adding any token is not enough if the surrounding construct is incomplete";
+    }
+    give "fixing only the highlighted token may expose the next error; broad rewrites can hide the minimal cause; generated code should preserve spans";
+}
+
+proc diagnostic_explain_invalid_example(code: string) -> string {
+    if code == "TYPECK_E_ASSIGN_MISMATCH" {
+        give "let count: int = \"one\"";
+    }
+    if code == "BORROWCK_E_USE_AFTER_MOVE" {
+        give "let moved = value; give value";
+    }
+    if code == "P000_UNBALANCED" {
+        give "proc main() -> int { give 0";
+    }
+    if code == "E0001" {
+        give "proc () -> int { give 0 }";
+    }
+    give "<invalid snippet at the reported span>";
+}
+
+proc diagnostic_explain_corrected_example(code: string) -> string {
+    if code == "TYPECK_E_ASSIGN_MISMATCH" {
+        give "let count: int = 1";
+    }
+    if code == "BORROWCK_E_USE_AFTER_MOVE" {
+        give "give value; let moved = value";
+    }
+    if code == "P000_UNBALANCED" {
+        give "proc main() -> int { give 0 }";
+    }
+    if code == "E0001" {
+        give "proc main() -> int { give 0 }";
+    }
+    give diagnostic_default_example(phase_from_code(code), code);
+}
+
 proc diagnostic_explain_text_lang(code: string, lang: string) -> string {
     let phase: DiagnosticPhase = phase_from_code(code);
     let span: SourceSpan = span_create("<explain>", 1, 1, 1);
@@ -4017,11 +4081,16 @@ proc diagnostic_explain_text_lang(code: string, lang: string) -> string {
     set out = out + "\nmessage: " + title;
     set out = out + "\nsummary: " + diag.explanation;
     set out = out + "\ncause: " + diag.root_cause;
+    set out = out + "\ntypical cases: " + diagnostic_explain_typical_cases(code);
     set out = out + "\nstep 1: " + diagnostic_default_step1(phase, code);
     set out = out + "\ncorrection strategy: " + diagnostic_correction_strategy(phase, code);
     set out = out + "\nrecovery scope: " + diagnostic_recovery_scope(phase, code);
     set out = out + "\nconfidence: " + diagnostic_confidence(phase, code);
     set out = out + "\nfix: " + diag.probable_fix;
+    set out = out + "\ncommon traps: " + diagnostic_explain_common_traps(code);
+    set out = out + "\ninvalid example: " + diagnostic_explain_invalid_example(code);
+    set out = out + "\ncorrected example: " + diagnostic_explain_corrected_example(code);
+    set out = out + "\nvalid example: " + diagnostic_default_example(phase, code);
     set out = out + "\nexample: " + diagnostic_default_example(phase, code);
     set out = out + "\ndocs: " + diag.documentation_url;
 

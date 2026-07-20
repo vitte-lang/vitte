@@ -835,6 +835,8 @@ negative-tests-portable:
 .PHONY: frontend-diagnostics-test diagnostics-portable diagnostics-local compiler-diagnostics-local
 frontend-diagnostics-test:
 	@python3 tests/diagnostics/run_frontend_diagnostic_tests.py
+	@python3 tests/diagnostics/input_matrix_test.py
+	@tools/apply_fixits_recompile_test.py
 
 diagnostics-portable diagnostics-local compiler-diagnostics-local: frontend-diagnostics-test diagnostics-locales-lint diagnostics-ftl-check diagnostics-fluent-gate diagnostic-quality diag-snapshots-portable negative-tests-portable
 

@@ -24,6 +24,20 @@ FREQUENT_CODES = [
     "E1029",
 ]
 
+REQUIRED_FIELDS = [
+    "summary:",
+    "cause:",
+    "fix:",
+    "example:",
+]
+FULL_EXPLAIN_FIELDS = [
+    "typical cases:",
+    "common traps:",
+    "invalid example:",
+    "corrected example:",
+    "valid example:",
+]
+
 
 def main() -> int:
     ap = argparse.ArgumentParser()
@@ -45,7 +59,8 @@ def main() -> int:
             text=True,
         )
         text = proc.stdout
-        ok = proc.returncode == 0 and ("Fix:" in text) and ("Summary:" in text) and ("Example:" in text)
+        required = REQUIRED_FIELDS + (FULL_EXPLAIN_FIELDS if args.strict else [])
+        ok = proc.returncode == 0 and all(field in text for field in required)
         print(f"[diag-autofix] {code}: {'ok' if ok else 'missing'}")
         if not ok:
             failed.append(code)

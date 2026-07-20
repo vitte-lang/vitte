@@ -86,6 +86,10 @@ def main() -> int:
         raise SystemExit("[fixits][error] no machine-applicable fix-it suggestions found")
 
     fixed = apply_suggestions(source, suggestions)
+    fixed_diags = analyze(fixed, fixture.name)
+    if fixed_diags:
+        codes = ", ".join(str(diag.get("code", "<unknown>")) for diag in fixed_diags)
+        raise SystemExit(f"[fixits][error] fixed source still has frontend diagnostic(s): {codes}")
 
     with tempfile.TemporaryDirectory(prefix="vitte-fixits.", dir=ROOT / "target") as tmp:
         fixed_path = Path(tmp) / fixture.name
