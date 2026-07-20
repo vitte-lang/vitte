@@ -219,35 +219,63 @@ proc linker_failure_code(stderr_text: string) -> string {
 }
 
 proc linker_failure_message(code: string) -> string {
-  if code == "LINK_E_UNDEFINED_SYMBOL" {
+  if code == "LNK0058" or code == "LINK_E_UNDEFINED_SYMBOL" {
     give "linker is missing a native symbol";
   }
 
-  if code == "LINK_E_LIBRARY_NOT_FOUND" {
+  if code == "LNK0041" or code == "LINK_E_LIBRARY_NOT_FOUND" {
     give "linker cannot find a required library";
   }
 
-  if code == "LINK_E_ARCHITECTURE_INCOMPATIBLE" {
+  if code == "LNK0070" or code == "LINK_E_ARCHITECTURE_INCOMPATIBLE" {
     give "linker input architecture is incompatible with the target";
   }
 
-  if code == "LINK_E_UNSUPPORTED_FORMAT" {
+  if code == "LNK0065" or code == "LINK_E_UNSUPPORTED_FORMAT" {
     give "linker received an invalid object file";
   }
 
-  if code == "LINK_E_DUPLICATE_SYMBOL" {
+  if code == "LNK0015" or code == "LINK_E_DUPLICATE_SYMBOL" {
     give "linker found a duplicated native symbol";
   }
 
-  if code == "LINK_E_ENTRYPOINT_MISSING" {
+  if code == "LNK0071" or code == "LINK_E_ENTRYPOINT_MISSING" {
     give "linker cannot find the program entry point";
   }
 
-  if code == "LINK_E_PERMISSION_DENIED" {
+  if code == "LNK0072" or code == "LINK_E_PERMISSION_DENIED" {
     give "linker cannot write or read a required path because permission was denied";
   }
 
   give "system linker command failed";
+}
+
+proc linker_public_code(code: string) -> string {
+  if code == "LINK_E_DUPLICATE_SYMBOL" {
+    give "LNK0015";
+  }
+  if code == "LINK_E_LIBRARY_NOT_FOUND" {
+    give "LNK0041";
+  }
+  if code == "LINK_E_SYSTEM_LINKER_FAILED" {
+    give "LNK0054";
+  }
+  if code == "LINK_E_UNDEFINED_SYMBOL" {
+    give "LNK0058";
+  }
+  if code == "LINK_E_UNSUPPORTED_FORMAT" {
+    give "LNK0065";
+  }
+  if code == "LINK_E_ARCHITECTURE_INCOMPATIBLE" {
+    give "LNK0070";
+  }
+  if code == "LINK_E_ENTRYPOINT_MISSING" {
+    give "LNK0071";
+  }
+  if code == "LINK_E_PERMISSION_DENIED" {
+    give "LNK0072";
+  }
+  give code;
 }
 
 proc backend_registered_message(code: string) -> string {
@@ -263,7 +291,7 @@ proc backend_registered_message(code: string) -> string {
   if code == "GEN0009" or code == "BACKEND_E_CODEGEN_FAILED" {
     give "native object generation failed";
   }
-  if code == "LINK_E_UNDEFINED_SYMBOL" {
+  if code == "LNK0058" or code == "LINK_E_UNDEFINED_SYMBOL" {
     give "native symbol for Vitte item was not found";
   }
   if code == "GEN0052" or code == "BACKEND_E_OBJECT_WRITE_FAILED" {
@@ -299,34 +327,34 @@ proc backend_public_code(code: string) -> string {
 
 proc linker_failure_diagnostic(code: string, span: SourceSpan) -> Diagnostic {
   if code == "LINK_E_UNDEFINED_SYMBOL" {
-    give diagnostic_fatal("LINK_E_UNDEFINED_SYMBOL", DiagnosticPhase.Linker, linker_failure_message(code), span);
+    give diagnostic_fatal("LNK0058", DiagnosticPhase.Linker, linker_failure_message("LNK0058"), span);
   }
 
   if code == "LINK_E_LIBRARY_NOT_FOUND" {
-    give diagnostic_fatal("LINK_E_LIBRARY_NOT_FOUND", DiagnosticPhase.Linker, linker_failure_message(code), span);
+    give diagnostic_fatal("LNK0041", DiagnosticPhase.Linker, linker_failure_message("LNK0041"), span);
   }
 
   if code == "LINK_E_ARCHITECTURE_INCOMPATIBLE" {
-    give diagnostic_fatal("LINK_E_ARCHITECTURE_INCOMPATIBLE", DiagnosticPhase.Linker, linker_failure_message(code), span);
+    give diagnostic_fatal("LNK0070", DiagnosticPhase.Linker, linker_failure_message("LNK0070"), span);
   }
 
   if code == "LINK_E_UNSUPPORTED_FORMAT" {
-    give diagnostic_fatal("LINK_E_UNSUPPORTED_FORMAT", DiagnosticPhase.Linker, linker_failure_message(code), span);
+    give diagnostic_fatal("LNK0065", DiagnosticPhase.Linker, linker_failure_message("LNK0065"), span);
   }
 
   if code == "LINK_E_DUPLICATE_SYMBOL" {
-    give diagnostic_fatal("LINK_E_DUPLICATE_SYMBOL", DiagnosticPhase.Linker, linker_failure_message(code), span);
+    give diagnostic_fatal("LNK0015", DiagnosticPhase.Linker, linker_failure_message("LNK0015"), span);
   }
 
   if code == "LINK_E_ENTRYPOINT_MISSING" {
-    give diagnostic_fatal("LINK_E_ENTRYPOINT_MISSING", DiagnosticPhase.Linker, linker_failure_message(code), span);
+    give diagnostic_fatal("LNK0071", DiagnosticPhase.Linker, linker_failure_message("LNK0071"), span);
   }
 
   if code == "LINK_E_PERMISSION_DENIED" {
-    give diagnostic_fatal("LINK_E_PERMISSION_DENIED", DiagnosticPhase.Linker, linker_failure_message(code), span);
+    give diagnostic_fatal("LNK0072", DiagnosticPhase.Linker, linker_failure_message("LNK0072"), span);
   }
 
-  give diagnostic_fatal("LINK_E_SYSTEM_LINKER_FAILED", DiagnosticPhase.Linker, linker_failure_message("LINK_E_SYSTEM_LINKER_FAILED"), span);
+  give diagnostic_fatal("LNK0054", DiagnosticPhase.Linker, linker_failure_message("LNK0054"), span);
 }
 
 proc backend_unsupported_feature(feature_name: string, backend_name: string, target_name: string, span: SourceSpan) -> Diagnostic {
@@ -396,7 +424,7 @@ proc linker_command_failed(backend_name: string, target_name: string, command_te
 
 proc linker_native_symbol_not_found(symbol_name: string, backend_name: string, target_name: string, command_text: string, exit_code: int, stderr_text: string, span: SourceSpan) -> Diagnostic {
   let vitte_name: string = vitte_demangle_symbol(symbol_name);
-  let diag0: Diagnostic = diagnostic_fatal("LINK_E_UNDEFINED_SYMBOL", DiagnosticPhase.Linker, backend_registered_message("LINK_E_UNDEFINED_SYMBOL"), span);
+  let diag0: Diagnostic = diagnostic_fatal("LNK0058", DiagnosticPhase.Linker, backend_registered_message("LNK0058"), span);
   let diag0a: Diagnostic = diagnostic_with_kind(diag0, DiagnosticKind.Linker);
   let diag1: Diagnostic = backend_remap_diagnostic_to_vitte_function(diag0a, symbol_name);
   let diag2: Diagnostic = backend_diag_context(diag1, backend_name, target_name, "");
