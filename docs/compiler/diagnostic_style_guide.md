@@ -11,6 +11,9 @@ Code review must reject any new or changed diagnostic that does not answer all
 four questions in the central catalog and in the rendered diagnostic surface.
 The title may stay short, but the label, note, help, and suggestion content must
 make the four answers visible without relying on a free-form fallback message.
+The review rule is explicit: every diagnostic must state the cause, the
+location, the reason it violates Vitte, and the correction. A diagnostic that
+omits one of those four fields is not reviewable.
 
 Use the official Vitte names everywhere. The same source concept must keep the
 same name in lexer, parser, resolver, type checker, borrow checker, backend,

@@ -126,6 +126,8 @@ def validate_review_rule() -> list[str]:
     required = (
         "Code review must reject",
         "does not answer all",
+        "must state the cause, the",
+        "location, the reason it violates Vitte, and the correction",
         "Do not concatenate user-facing error strings",
     )
     return [
