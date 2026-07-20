@@ -628,6 +628,20 @@ proc render_report(ctx: RenderContext, report: DiagnosticReport) -> RenderedDiag
     give rendered_diagnostic(render_report_text(ctx, report));
 }
 
+proc render_terminal_report(report: DiagnosticReport, color_mode: RenderColorMode, width: u64) -> string {
+    let ctx: RenderContext = render_context_default();
+    set ctx.color_mode = color_mode;
+    set ctx.config.width = width;
+    give render_report_text(ctx, report);
+}
+
+proc render_terminal_diagnostic(diagnostic: Diagnostic, color_mode: RenderColorMode, width: u64) -> string {
+    let ctx: RenderContext = render_context_default();
+    set ctx.color_mode = color_mode;
+    set ctx.config.width = width;
+    give render_diagnostic_text(ctx, diagnostic);
+}
+
 proc render_report_summary(report: DiagnosticReport) -> string {
     if report.valid {
         give "diagnostics ok";
@@ -729,6 +743,8 @@ share render_diagnostic_text
 share render_diagnostic
 share render_report_text
 share render_report
+share render_terminal_report
+share render_terminal_diagnostic
 share render_report_summary
 
 share render_plain_diagnostic

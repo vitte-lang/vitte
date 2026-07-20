@@ -24,6 +24,7 @@ BORROWCK_DIAGNOSTICS = COMPILER_ROOT / "analysis" / "borrowck" / "errors.vit"
 BORROWCK_LIFETIMES = COMPILER_ROOT / "analysis" / "borrowck" / "lifetimes.vit"
 TYPE_UNIFY = COMPILER_ROOT / "analysis" / "typeck" / "unify.vit"
 DIAGNOSTIC_CATALOG = COMPILER_ROOT / "diagnostics" / "catalog.vit"
+DIAGNOSTIC_RENDER = COMPILER_ROOT / "diagnostics" / "render.vit"
 DIAGNOSTIC_LSP = COMPILER_ROOT / "diagnostics" / "lsp.vit"
 DIAGNOSTIC_SARIF = COMPILER_ROOT / "diagnostics" / "sarif.vit"
 BACKEND_DIAGNOSTICS = COMPILER_ROOT / "backend" / "diagnostics.vit"
@@ -339,6 +340,7 @@ def check_relational_diagnostic_contract() -> list[str]:
         BORROWCK_LIFETIMES,
         TYPE_UNIFY,
         DIAGNOSTIC_CATALOG,
+        DIAGNOSTIC_RENDER,
         DIAGNOSTIC_LSP,
         DIAGNOSTIC_SARIF,
         BACKEND_DIAGNOSTICS,
@@ -514,6 +516,10 @@ def check_relational_diagnostic_contract() -> list[str]:
         (DIAGNOSTICS_MIGRATION_CHECK, "UNSTRUCTURED_DIAGNOSTIC_RE"),
         (DIAGNOSTICS_MIGRATION_CHECK, "STRUCTURED_DIAGNOSTIC_ALLOWLIST"),
         (DIAGNOSTICS_MIGRATION_CHECK, "validate_no_unstructured_diagnostics"),
+        (DIAGNOSTIC_RENDER, "render_terminal_report"),
+        (DIAGNOSTIC_RENDER, "render_terminal_diagnostic"),
+        (DIAGNOSTIC_RENDER, "set ctx.color_mode = color_mode;"),
+        (DIAGNOSTIC_RENDER, "set ctx.config.width = width;"),
         (CANONICAL_DIAGNOSTIC, "why expected type is imposed:"),
         (CANONICAL_DIAGNOSTIC, "origin of obtained type:"),
         (CANONICAL_DIAGNOSTIC, "give 3 as u64;"),
