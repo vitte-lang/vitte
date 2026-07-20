@@ -29,6 +29,21 @@ def assert_contains(name: str, output: str, needles: tuple[str, ...]) -> None:
             raise SystemExit(f"[explain-cli][error] {name}: missing {needle!r}\n{output}")
 
 
+def check_command() -> None:
+    proc = subprocess.run(
+        [str(BIN), "check", "tests/check/main.vit"],
+        cwd=str(ROOT),
+        check=False,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+    if proc.returncode != 0:
+        raise SystemExit(f"[explain-cli][error] vitte check failed\n{proc.stdout}")
+    if "check succeeded" not in proc.stdout:
+        raise SystemExit(f"[explain-cli][error] vitte check did not report success\n{proc.stdout}")
+
+
 def main() -> int:
     if not BIN.exists():
         raise SystemExit(f"[explain-cli][error] missing binary: {BIN}")
@@ -43,8 +58,12 @@ def main() -> int:
             "phase: typeck",
             "message: assignment type mismatch",
             "cause:",
+            "typical cases:",
+            "correction:",
+            "common pitfalls:",
             "fix:",
-            "example:",
+            "invalid example:",
+            "valid example:",
         ),
     )
 
@@ -59,11 +78,15 @@ def main() -> int:
             "error code: NO_SUCH_CODE",
             "phase: diagnostics",
             "full catalog",
+            "typical cases:",
+            "common pitfalls:",
             "vitte explain NO_SUCH_CODE --lang en",
         ),
     )
 
-    print("[explain-cli] checked vitte explain")
+    check_command()
+
+    print("[explain-cli] checked vitte explain and vitte check")
     return 0
 
 

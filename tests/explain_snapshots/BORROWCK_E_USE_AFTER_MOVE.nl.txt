@@ -4,6 +4,11 @@ phase: borrowck
 message: waarde gebruikt after verplaatsing
 summary: waarde gebruikt after verplaatsing.
 cause: A value is used after ownership has moved away from its binding.
+typical cases: passing ownership to another procedure and reading the original binding later; moving a field then using the parent; keeping an alias after ownership transfer
 step 1: Show where the value is created, where it is moved, and where it is reused after the move.
+correction: use the value before the move, borrow it instead of moving it, or create a new value
+common pitfalls: do not keep references that outlive the moved owner
 fix: use the value before the move, borrow it instead of moving it, or create a new value
 example: let value: string = "vitte"
+invalid example: let moved = value; give value
+valid example: let value: string = "vitte"
