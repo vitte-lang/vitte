@@ -1,0 +1,13 @@
+space vitte/stdlib/std/units
+
+export *
+
+pick UnitKind { Length Mass Time Data Temperature }
+form Unit { name: String symbol: String kind: UnitKind scale: f64 }
+form Quantity { value: f64 unit: Unit }
+
+proc unit(name: String, symbol: String, kind: UnitKind, scale: f64) -> Unit { give Unit { name: name, symbol: symbol, kind: kind, scale: scale }; }
+proc quantity(value: f64, unit_value: Unit) -> Quantity { give Quantity { value: value, unit: unit_value }; }
+proc convert(value: Quantity, target: Unit) -> Quantity { give compiler_units_convert(value, target); }
+proc meter() -> Unit { give unit(compiler_test_string("meter"), compiler_test_string("m"), UnitKind.Length, 1.0); }
+proc byte_unit() -> Unit { give unit(compiler_test_string("byte"), compiler_test_string("B"), UnitKind.Data, 1.0); }

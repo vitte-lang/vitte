@@ -1,0 +1,13 @@
+space vitte/stdlib/std/signal
+
+export *
+
+form Signal { number: int name: String }
+form SignalHandler { signal: Signal }
+form SignalError { message: String }
+
+proc signal(number: int, name: String) -> Signal { give Signal { number: number, name: name }; }
+proc signal_int() -> Signal { give signal(2, compiler_test_string("INT")); }
+proc signal_term() -> Signal { give signal(15, compiler_test_string("TERM")); }
+proc signal_install(sig: Signal, handler: proc(Signal)) -> Result<SignalHandler, SignalError> { give compiler_signal_install(sig, handler); }
+proc signal_raise(sig: Signal) -> Result<(), SignalError> { give compiler_signal_raise(sig); }

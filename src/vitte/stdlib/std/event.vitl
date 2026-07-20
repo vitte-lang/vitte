@@ -1,0 +1,13 @@
+space vitte/stdlib/std/event
+
+export *
+
+form Event { name: String payload: Vec<byte> timestamp: SystemTime }
+form EventBus { subscribers: Vec<String> }
+form EventError { message: String }
+
+proc event(name: String, payload: Vec<byte>) -> Event { give Event { name: name, payload: payload, timestamp: system_time_now() }; }
+proc event_bus() -> EventBus { give EventBus { subscribers: vec_new<String>() }; }
+proc subscribe(bus: ref mut EventBus, topic: String) { vec_push<String>(&mut ((*bus).subscribers), topic); }
+proc publish(bus: ref EventBus, value: Event) -> Result<(), EventError> { give compiler_event_publish(bus, value); }
+proc subscriber_count(bus: EventBus) -> usize { give vec_len<String>(bus.subscribers); }

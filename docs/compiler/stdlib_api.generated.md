@@ -5277,6 +5277,17 @@ Each entry is suitable for LSP symbol indexing and documentation lookup.
 - `proc threshold` signature `proc threshold(report: BenchReport, max_nanos: u128) -> bool { give report.nanos <= max_nanos; }` example `threshold`
 - `proc report_text` signature `proc report_text(report: BenchReport) -> String { give compiler_bench_report_text(report); }` example `report_text`
 
+## `src/vitte/stdlib/std/calendar.vitl`
+
+- `pick Weekday` signature `pick Weekday { Monday Tuesday Wednesday Thursday Friday Saturday Sunday }` example `Weekday`
+- `form Date` signature `form Date { year: i32 month: u8 day: u8 }` example `Date`
+- `form CalendarError` signature `form CalendarError { message: String }` example `CalendarError`
+- `proc date` signature `proc date(year: i32, month: u8, day: u8) -> Result<Date, CalendarError> { give compiler_calendar_date(year, month, day); }` example `date`
+- `proc is_leap_year` signature `proc is_leap_year(year: i32) -> bool { give compiler_calendar_is_leap_year(year); }` example `is_leap_year`
+- `proc weekday` signature `proc weekday(value: Date) -> Weekday { give compiler_calendar_weekday(value); }` example `weekday`
+- `proc days_in_month` signature `proc days_in_month(year: i32, month: u8) -> u8 { give compiler_calendar_days_in_month(year, month); }` example `days_in_month`
+- `proc date_format` signature `proc date_format(value: Date, pattern: string) -> String { give compiler_calendar_format(value, pattern); }` example `date_format`
+
 ## `src/vitte/stdlib/std/cli.vitl`
 
 - `form Flag` signature `form Flag { name: String short: Option<rune> help: String takes_value: bool }` example `Flag`
@@ -5298,6 +5309,16 @@ Each entry is suitable for LSP symbol indexing and documentation lookup.
 - `proc csv_parse` signature `proc csv_parse(text: Utf8View, options: CsvOptions) -> Result<Vec<CsvRecord>, CsvError> { give compiler_csv_parse(text, options); }` example `csv_parse`
 - `proc csv_write` signature `proc csv_write(records: Vec<CsvRecord>, options: CsvOptions) -> Result<String, CsvError> { give compiler_csv_write(records, options); }` example `csv_write`
 - `proc csv_record` signature `proc csv_record(fields: Vec<String>) -> CsvRecord { give CsvRecord { fields: fields }; }` example `csv_record`
+
+## `src/vitte/stdlib/std/diff.vitl`
+
+- `pick DiffTag` signature `pick DiffTag { Equal Insert Delete Replace }` example `DiffTag`
+- `form DiffHunk` signature `form DiffHunk { tag: DiffTag old_text: String new_text: String }` example `DiffHunk`
+- `form DiffOptions` signature `form DiffOptions { context: usize }` example `DiffOptions`
+- `proc diff_options` signature `proc diff_options() -> DiffOptions { give DiffOptions { context: 3 }; }` example `diff_options`
+- `proc diff_lines` signature `proc diff_lines(old_text: Utf8View, new_text: Utf8View, options: DiffOptions) -> Vec<DiffHunk> { give compiler_diff_lines(old_text, new_text, options); }` example `diff_lines`
+- `proc diff_words` signature `proc diff_words(old_text: Utf8View, new_text: Utf8View, options: DiffOptions) -> Vec<DiffHunk> { give compiler_diff_words(old_text, new_text, options); }` example `diff_words`
+- `proc diff_unified` signature `proc diff_unified(old_text: Utf8View, new_text: Utf8View, options: DiffOptions) -> String { give compiler_diff_unified(old_text, new_text, options); }` example `diff_unified`
 
 ## `src/vitte/stdlib/std/env.vitl`
 
@@ -5325,6 +5346,17 @@ Each entry is suitable for LSP symbol indexing and documentation lookup.
 - `proc capture_backtrace` signature `proc capture_backtrace() -> Backtrace { give compiler_error_capture_backtrace(); }` example `capture_backtrace`
 - `proc error_with_backtrace` signature `proc error_with_backtrace(error: Error) -> Error { give compiler_error_attach_backtrace(error, capture_backtrace()); }` example `error_with_backtrace`
 - `proc error_chain` signature `proc error_chain(error: Error) -> Iterator<Error> { give compiler_error_chain(error); }` example `error_chain`
+
+## `src/vitte/stdlib/std/event.vitl`
+
+- `form Event` signature `form Event { name: String payload: Vec<byte> timestamp: SystemTime }` example `Event`
+- `form EventBus` signature `form EventBus { subscribers: Vec<String> }` example `EventBus`
+- `form EventError` signature `form EventError { message: String }` example `EventError`
+- `proc event` signature `proc event(name: String, payload: Vec<byte>) -> Event { give Event { name: name, payload: payload, timestamp: system_time_now() }; }` example `event`
+- `proc event_bus` signature `proc event_bus() -> EventBus { give EventBus { subscribers: vec_new<String>() }; }` example `event_bus`
+- `proc subscribe` signature `proc subscribe(bus: ref mut EventBus, topic: String) { vec_push<String>(&mut ((*bus).subscribers), topic); }` example `subscribe`
+- `proc publish` signature `proc publish(bus: ref EventBus, value: Event) -> Result<(), EventError> { give compiler_event_publish(bus, value); }` example `publish`
+- `proc subscriber_count` signature `proc subscriber_count(bus: EventBus) -> usize { give vec_len<String>(bus.subscribers); }` example `subscriber_count`
 
 ## `src/vitte/stdlib/std/format.vitl`
 
@@ -5361,6 +5393,16 @@ Each entry is suitable for LSP symbol indexing and documentation lookup.
 - `proc set_permissions` signature `proc set_permissions(path_value: Path, value: Permissions) -> Result<(), FsError> { give compiler_fs_set_permissions(path_value, value); }` example `set_permissions`
 - `proc read_dir` signature `proc read_dir(path_value: Path) -> Result<Iterator<DirEntry>, FsError> { give compiler_fs_read_dir(path_value); }` example `read_dir`
 - `proc exists` signature `proc exists(path_value: Path) -> bool { give compiler_fs_exists(path_value); }` example `exists`
+
+## `src/vitte/stdlib/std/glob.vitl`
+
+- `form GlobPattern` signature `form GlobPattern { text: String }` example `GlobPattern`
+- `form GlobOptions` signature `form GlobOptions { case_sensitive: bool recursive: bool }` example `GlobOptions`
+- `form GlobError` signature `form GlobError { message: String offset: usize }` example `GlobError`
+- `proc glob_pattern` signature `proc glob_pattern(text: String) -> Result<GlobPattern, GlobError> { give compiler_glob_pattern(text); }` example `glob_pattern`
+- `proc glob_default_options` signature `proc glob_default_options() -> GlobOptions { give GlobOptions { case_sensitive: true, recursive: false }; }` example `glob_default_options`
+- `proc glob_match` signature `proc glob_match(pattern: GlobPattern, path_value: PathBuf, options: GlobOptions) -> bool { give compiler_glob_match(pattern, path_value, options); }` example `glob_match`
+- `proc glob_walk` signature `proc glob_walk(root: PathBuf, pattern: GlobPattern, options: GlobOptions) -> Result<Iterator<PathBuf>, GlobError> { give compiler_glob_walk(root, pattern, options); }` example `glob_walk`
 
 ## `src/vitte/stdlib/std/hash.vitl`
 
@@ -5423,6 +5465,16 @@ Each entry is suitable for LSP symbol indexing and documentation lookup.
 - `proc page_size` signature `proc page_size() -> usize { give compiler_kernel_page_size(); }` example `page_size`
 - `proc cpu_count` signature `proc cpu_count() -> usize { give compiler_kernel_cpu_count(); }` example `cpu_count`
 
+## `src/vitte/stdlib/std/locale.vitl`
+
+- `form Locale` signature `form Locale { language: String region: Option<String> }` example `Locale`
+- `form LocaleError` signature `form LocaleError { message: String }` example `LocaleError`
+- `proc locale_parse` signature `proc locale_parse(text: Utf8View) -> Result<Locale, LocaleError> { give compiler_locale_parse(text); }` example `locale_parse`
+- `proc locale_current` signature `proc locale_current() -> Option<Locale> { give compiler_locale_current(); }` example `locale_current`
+- `proc locale_to_string` signature `proc locale_to_string(value: Locale) -> String { give compiler_locale_to_string(value); }` example `locale_to_string`
+- `proc locale_language` signature `proc locale_language(value: Locale) -> String { give value.language; }` example `locale_language`
+- `proc locale_region` signature `proc locale_region(value: Locale) -> Option<String> { give value.region; }` example `locale_region`
+
 ## `src/vitte/stdlib/std/log.vitl`
 
 - `pick LogLevel` signature `pick LogLevel { Trace Debug Info Warn Error }` example `LogLevel`
@@ -5434,6 +5486,17 @@ Each entry is suitable for LSP symbol indexing and documentation lookup.
 - `proc info` signature `proc info(logger_value: ref mut Logger, message: String) { log(logger_value, LogRecord { level: LogLevel.Info, target: compiler_log_default_target(), message: message }); }` example `info`
 - `proc warn` signature `proc warn(logger_value: ref mut Logger, message: String) { log(logger_value, LogRecord { level: LogLevel.Warn, target: compiler_log_default_target(), message: message }); }` example `warn`
 - `proc error` signature `proc error(logger_value: ref mut Logger, message: String) { log(logger_value, LogRecord { level: LogLevel.Error, target: compiler_log_default_target(), message: message }); }` example `error`
+
+## `src/vitte/stdlib/std/metrics.vitl`
+
+- `form Counter` signature `form Counter { name: String value: u64 }` example `Counter`
+- `form Gauge` signature `form Gauge { name: String value: f64 }` example `Gauge`
+- `form Histogram` signature `form Histogram { name: String buckets: Vec<f64> }` example `Histogram`
+- `proc counter` signature `proc counter(name: String) -> Counter { give Counter { name: name, value: 0 }; }` example `counter`
+- `proc counter_inc` signature `proc counter_inc(value: ref mut Counter, amount: u64) { set (*value).value = (*value).value + amount; }` example `counter_inc`
+- `proc gauge` signature `proc gauge(name: String, value: f64) -> Gauge { give Gauge { name: name, value: value }; }` example `gauge`
+- `proc histogram` signature `proc histogram(name: String, buckets: Vec<f64>) -> Histogram { give Histogram { name: name, buckets: buckets }; }` example `histogram`
+- `proc metrics_render_counter` signature `proc metrics_render_counter(value: Counter) -> String { give compiler_metrics_render_counter(value); }` example `metrics_render_counter`
 
 ## `src/vitte/stdlib/std/mime.vitl`
 
@@ -5558,6 +5621,17 @@ Each entry is suitable for LSP symbol indexing and documentation lookup.
 - `proc semver_matches` signature `proc semver_matches(req: VersionReq, value: Version) -> bool { give compiler_semver_matches(req, value); }` example `semver_matches`
 - `proc semver_compare` signature `proc semver_compare(left: Version, right: Version) -> Ordering { give compiler_semver_compare(left, right); }` example `semver_compare`
 
+## `src/vitte/stdlib/std/signal.vitl`
+
+- `form Signal` signature `form Signal { number: int name: String }` example `Signal`
+- `form SignalHandler` signature `form SignalHandler { signal: Signal }` example `SignalHandler`
+- `form SignalError` signature `form SignalError { message: String }` example `SignalError`
+- `proc signal` signature `proc signal(number: int, name: String) -> Signal { give Signal { number: number, name: name }; }` example `signal`
+- `proc signal_int` signature `proc signal_int() -> Signal { give signal(2, compiler_test_string("INT")); }` example `signal_int`
+- `proc signal_term` signature `proc signal_term() -> Signal { give signal(15, compiler_test_string("TERM")); }` example `signal_term`
+- `proc signal_install` signature `proc signal_install(sig: Signal, handler: proc(Signal)) -> Result<SignalHandler, SignalError> { give compiler_signal_install(sig, handler); }` example `signal_install`
+- `proc signal_raise` signature `proc signal_raise(sig: Signal) -> Result<(), SignalError> { give compiler_signal_raise(sig); }` example `signal_raise`
+
 ## `src/vitte/stdlib/std/sync.vitl`
 
 - `form Mutex` signature `form Mutex<T> { state: compiler_mutex_state value: T }` example `Mutex`
@@ -5581,6 +5655,17 @@ Each entry is suitable for LSP symbol indexing and documentation lookup.
 - `proc atomic_load` signature `proc atomic_load<T>(value: ref Atomic<T>) -> T { give compiler_atomic_load<T>(value); }` example `atomic_load`
 - `proc atomic_store` signature `proc atomic_store<T>(value: ref Atomic<T>, next: T) { compiler_atomic_store<T>(value, next); }` example `atomic_store`
 - `proc atomic_compare_exchange` signature `proc atomic_compare_exchange<T>(value: ref Atomic<T>, current: T, next: T) -> Result<T, T> { give compiler_atomic_compare_exchange<T>(value, current, next); }` example `atomic_compare_exchange`
+
+## `src/vitte/stdlib/std/tempfile.vitl`
+
+- `form TempFile` signature `form TempFile { path: Path delete_on_drop: bool }` example `TempFile`
+- `form TempDir` signature `form TempDir { path: Path delete_on_drop: bool }` example `TempDir`
+- `form TempError` signature `form TempError { message: String }` example `TempError`
+- `proc temp_file` signature `proc temp_file(prefix: String) -> Result<TempFile, TempError> { give compiler_temp_file(prefix); }` example `temp_file`
+- `proc temp_dir` signature `proc temp_dir(prefix: String) -> Result<TempDir, TempError> { give compiler_temp_dir(prefix); }` example `temp_dir`
+- `proc temp_path` signature `proc temp_path(prefix: String) -> Path { give compiler_temp_path(prefix); }` example `temp_path`
+- `proc persist_file` signature `proc persist_file(file: TempFile, target: Path) -> Result<Path, TempError> { give compiler_temp_persist_file(file, target); }` example `persist_file`
+- `proc persist_dir` signature `proc persist_dir(dir: TempDir, target: Path) -> Result<Path, TempError> { give compiler_temp_persist_dir(dir, target); }` example `persist_dir`
 
 ## `src/vitte/stdlib/std/testing.vitl`
 
@@ -5625,6 +5710,28 @@ Each entry is suitable for LSP symbol indexing and documentation lookup.
 - `proc system_time_to_datetime` signature `proc system_time_to_datetime(time: SystemTime) -> DateTime { give compiler_time_to_datetime(time); }` example `system_time_to_datetime`
 - `proc datetime_to_system_time` signature `proc datetime_to_system_time(value: DateTime) -> SystemTime { give compiler_datetime_to_system_time(value); }` example `datetime_to_system_time`
 - `proc format_datetime` signature `proc format_datetime(value: DateTime, pattern: string) -> String { give compiler_time_format_datetime(value, pattern); }` example `format_datetime`
+
+## `src/vitte/stdlib/std/terminal.vitl`
+
+- `pick TerminalColor` signature `pick TerminalColor { Default Black Red Green Yellow Blue Magenta Cyan White }` example `TerminalColor`
+- `form TerminalStyle` signature `form TerminalStyle { fg: TerminalColor bg: TerminalColor bold: bool underline: bool }` example `TerminalStyle`
+- `form TerminalSize` signature `form TerminalSize { columns: u16 rows: u16 }` example `TerminalSize`
+- `proc terminal_size` signature `proc terminal_size() -> Option<TerminalSize> { give compiler_terminal_size(); }` example `terminal_size`
+- `proc terminal_is_tty` signature `proc terminal_is_tty(writer: Writer) -> bool { give compiler_terminal_is_tty(writer); }` example `terminal_is_tty`
+- `proc terminal_style` signature `proc terminal_style() -> TerminalStyle { give TerminalStyle { fg: TerminalColor.Default, bg: TerminalColor.Default, bold: false, underline: false }; }` example `terminal_style`
+- `proc terminal_apply` signature `proc terminal_apply(text: String, style: TerminalStyle) -> String { give compiler_terminal_apply(text, style); }` example `terminal_apply`
+- `proc terminal_clear` signature `proc terminal_clear(writer: Writer) -> Result<(), IoError> { give compiler_terminal_clear(writer); }` example `terminal_clear`
+
+## `src/vitte/stdlib/std/units.vitl`
+
+- `pick UnitKind` signature `pick UnitKind { Length Mass Time Data Temperature }` example `UnitKind`
+- `form Unit` signature `form Unit { name: String symbol: String kind: UnitKind scale: f64 }` example `Unit`
+- `form Quantity` signature `form Quantity { value: f64 unit: Unit }` example `Quantity`
+- `proc unit` signature `proc unit(name: String, symbol: String, kind: UnitKind, scale: f64) -> Unit { give Unit { name: name, symbol: symbol, kind: kind, scale: scale }; }` example `unit`
+- `proc quantity` signature `proc quantity(value: f64, unit_value: Unit) -> Quantity { give Quantity { value: value, unit: unit_value }; }` example `quantity`
+- `proc convert` signature `proc convert(value: Quantity, target: Unit) -> Quantity { give compiler_units_convert(value, target); }` example `convert`
+- `proc meter` signature `proc meter() -> Unit { give unit(compiler_test_string("meter"), compiler_test_string("m"), UnitKind.Length, 1.0); }` example `meter`
+- `proc byte_unit` signature `proc byte_unit() -> Unit { give unit(compiler_test_string("byte"), compiler_test_string("B"), UnitKind.Data, 1.0); }` example `byte_unit`
 
 ## `src/vitte/stdlib/std/uri.vitl`
 
@@ -5674,6 +5781,10 @@ Each entry is suitable for LSP symbol indexing and documentation lookup.
 ## `src/vitte/stdlib/tests/std_extra_libraries_contracts.vit`
 
 - `proc stdlib_extra_libraries_contracts_smoke` signature `proc stdlib_extra_libraries_contracts_smoke() -> bool {` example `stdlib_extra_libraries_contracts_smoke`
+
+## `src/vitte/stdlib/tests/std_more_libraries_contracts.vit`
+
+- `proc stdlib_more_libraries_contracts_smoke` signature `proc stdlib_more_libraries_contracts_smoke() -> bool {` example `stdlib_more_libraries_contracts_smoke`
 
 ## `src/vitte/stdlib/tests/std_runtime_contracts.vit`
 

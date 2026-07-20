@@ -1,0 +1,24 @@
+use src/vitte/stdlib/std/terminal as std_terminal
+use src/vitte/stdlib/std/signal as std_signal
+use src/vitte/stdlib/std/glob as std_glob
+use src/vitte/stdlib/std/calendar as std_calendar
+use src/vitte/stdlib/std/units as std_units
+use src/vitte/stdlib/std/metrics as std_metrics
+use src/vitte/stdlib/std/event as std_event
+
+proc stdlib_more_libraries_contracts_smoke() -> bool {
+    let style: std_terminal.TerminalStyle = std_terminal.terminal_style();
+    let sig: std_signal.Signal = std_signal.signal_int();
+    let options: std_glob.GlobOptions = std_glob.glob_default_options();
+    let meter: std_units.Unit = std_units.meter();
+    let counter: std_metrics.Counter = std_metrics.counter(compiler_test_string("requests"));
+    let bus: std_event.EventBus = std_event.event_bus();
+
+    give not style.bold
+        and sig.number == 2
+        and options.case_sensitive
+        and std_calendar.is_leap_year(2024)
+        and meter.scale == 1.0
+        and counter.value == 0
+        and std_event.subscriber_count(bus) == 0;
+}
