@@ -436,6 +436,17 @@ proc test_multifile_diagnostic_spans() -> bool {
     and report.diagnostics[0].secondary_spans[0].file == "app/helper.vit";
 }
 
+proc test_unicode_and_tab_diagnostic_rendering() -> bool {
+  let diag: Diagnostic = diagnostic_error("LEX0002", DiagnosticPhase.Lexer, "caractère café\tinterdit", span_create("unicode_tabs.vit", 2, 9, 3));
+  let report: DiagnosticReport = diagnostic_report([diag]);
+  let encoded: string = json_report(report);
+  let rendered: string = render_report(report, human_config());
+  give find(encoded, "caractère café\\tinterdit") >= 0
+    and find(encoded, "\"start_column\": 9") >= 0
+    and find(rendered, "caractère café\tinterdit") >= 0
+    and DIAGNOSTIC_TAB_WIDTH == 4;
+}
+
 proc test_report_orders_diagnostics_by_file_and_position() -> bool {
   let first: Diagnostic = diagnostic_error("TYPECK_E_LATE", DiagnosticPhase.Typeck, "late", span_create("b.vit", 1, 1, 1));
   let second: Diagnostic = diagnostic_error("LEX_E_FIRST", DiagnosticPhase.Lexer, "first", span_create("a.vit", 4, 9, 1));
@@ -585,6 +596,7 @@ proc run_all_tests() -> int {
   let report_cascade_ok: bool = test_report_deduplicates_and_limits_cascades();
   let multi_error_ok: bool = test_multiple_independent_errors_in_one_file();
   let multifile_ok: bool = test_multifile_diagnostic_spans();
+  let unicode_tabs_ok: bool = test_unicode_and_tab_diagnostic_rendering();
   let report_order_ok: bool = test_report_orders_diagnostics_by_file_and_position();
   let text_format_ok: bool = test_text_diagnostic_format_is_stable();
   let architecture_ok: bool = test_single_diagnostic_architecture_covers_compiler_pipeline();
@@ -635,6 +647,9 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if multifile_ok == false {
+    set failures = failures + 1;
+  }
+  if unicode_tabs_ok == false {
     set failures = failures + 1;
   }
   if report_order_ok == false {
