@@ -269,6 +269,19 @@ def check_catalog_codes_unique() -> list[str]:
     return failures
 
 
+def check_catalog_tests_present() -> list[str]:
+    payload = json.loads(CODES.read_text(encoding="utf-8"))
+    failures: list[str] = []
+    for entry in payload.get("codes", []):
+        if not isinstance(entry, dict):
+            continue
+        code = entry.get("code", "<missing>")
+        tests = entry.get("tests")
+        if not isinstance(tests, list) or not tests:
+            failures.append(f"{code}: diagnostic must declare at least one associated test")
+    return failures
+
+
 def check_direct_output_boundaries() -> list[str]:
     failures: list[str] = []
     for path in compiler_sources():
@@ -833,6 +846,7 @@ def main() -> int:
         *check_code_documentation(),
         *check_catalog_codes_present(),
         *check_catalog_codes_unique(),
+        *check_catalog_tests_present(),
         *check_diagnostic_object_contract(),
         *check_span_object_contract(),
         *check_relational_diagnostic_contract(),
