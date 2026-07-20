@@ -63,6 +63,7 @@ go make hir-coverage
 go make sema-gate
 go make borrowck-gate
 go make mir-gate
+go make ir-gate
 
 # 5) Diagnostics quality baseline
 if [ "$MODE" = "fast" ]; then

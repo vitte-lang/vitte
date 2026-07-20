@@ -38,3 +38,31 @@ fixtures. It is not a backend IR and production modules must not import it.
 - Keep target contracts explicit (ABI, endianness, object format).
 - Avoid silent backend fallback in critical phases.
 - Validate runtime payload/link artifacts in tests.
+
+## Coverage state
+
+IR coverage is tracked by `src/vitte/compiler/tests/ir_coverage_manifest.json` and checked by `tools/ir_coverage_check.py`.
+
+The current gate requires every declared supported backend IR surface to have:
+
+- a manifest entry;
+- a `support_status`;
+- an `owner_phase`;
+- an evidence test;
+- a concrete assertion for that evidence.
+
+Generated reports are written to `target/reports/ir_coverage/`:
+
+- `coverage.json` contains the machine-readable gate result;
+- `coverage.md` contains the review table;
+- `remaining.md` lists missing entries and hardening tasks;
+- `fixtures.md` records required IR fixture artifacts and source fixtures.
+
+## Test commands
+
+- `make ir-fixtures` validates required IR fixture artifacts.
+- `make ir-snapshots` validates coverage snapshots.
+- `make ir-coverage` validates the manifest and regenerates reports.
+- `make ir-gate` runs the full IR gate, including the backend IR contract audit and core IR golden snapshot.
+
+`ir-gate` is the reference local command before changing backend IR forms, MIR-to-IR lowering, IR validation, codegen IR consumers or linker IR consumers.
