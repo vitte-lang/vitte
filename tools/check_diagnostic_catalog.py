@@ -87,7 +87,6 @@ PRECISE_CAUSE_WORDS = (
     "literal",
     "source",
 )
-DIAGNOSTIC_CALL = re.compile(r"\bdiagnostic_(?:create|error|warning|fatal)\s*\((?P<arg>[^,\n]+)")
 CODE_LITERAL = re.compile(r'"([A-Z][A-Z0-9_]*|[A-Z]{3}[0-9]{4}|E[0-9]{4}|P[0-9A-Z_]+)"')
 ALLOWED_DYNAMIC_PRODUCERS = {
     "src/vitte/compiler/diagnostics/diagnostic.vit",
@@ -97,11 +96,15 @@ ALLOWED_DYNAMIC_PRODUCERS = {
     "src/vitte/compiler/infrastructure/session/diagnostics.vit",
     "src/vitte/compiler/analysis/sema/errors.vit",
     "src/vitte/compiler/analysis/typeck/errors.vit",
+    "src/vitte/compiler/analysis/borrowck/mod.vit",
     "src/vitte/compiler/analysis/borrowck/errors.vit",
     "src/vitte/compiler/analysis/borrowck/lifetimes.vit",
     "src/vitte/compiler/analysis/const_eval/errors.vit",
+    "src/vitte/compiler/analysis/const_eval/evaluator.vit",
     "src/vitte/compiler/analysis/const_eval/interpreter.vit",
+    "src/vitte/compiler/analysis/report.vit",
     "src/vitte/compiler/middle/typecheck/diagnostics.vit",
+    "src/vitte/compiler/middle/borrow/checks.vit",
 }
 
 
@@ -314,6 +317,66 @@ def validate_central_catalog() -> list[str]:
     return failures
 
 
+def line_for_offset(text: str, offset: int) -> int:
+    return text.count("\n", 0, offset) + 1
+
+
+def split_first_argument(text: str, start: int) -> tuple[str, int]:
+    depth = 0
+    in_string = False
+    escaped = False
+    index = start
+    while index < len(text):
+        char = text[index]
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+        else:
+            if char == '"':
+                in_string = True
+            elif char == "(":
+                depth += 1
+            elif char == ")":
+                if depth == 0:
+                    return text[start:index].strip(), index
+                depth -= 1
+            elif char == "," and depth == 0:
+                return text[start:index].strip(), index
+        index += 1
+    return text[start:index].strip(), index
+
+
+def diagnostic_call_first_args(text: str) -> list[tuple[int, str]]:
+    calls: list[tuple[int, str]] = []
+    pattern = re.compile(r"\bdiagnostic_(?:create|error|warning|fatal)\s*\(")
+    for match in pattern.finditer(text):
+        line_start = text.rfind("\n", 0, match.start()) + 1
+        prefix = text[line_start:match.start()].strip()
+        if prefix.startswith("proc "):
+            continue
+        first_arg, _ = split_first_argument(text, match.end())
+        calls.append((line_for_offset(text, match.start()), first_arg))
+    return calls
+
+
+def is_dynamic_code_expression(first_arg: str) -> bool:
+    if CODE_LITERAL.fullmatch(first_arg):
+        return False
+    if "+" in first_arg:
+        return True
+    if " as " in first_arg:
+        return True
+    if "(" in first_arg or ")" in first_arg:
+        return True
+    if "[" in first_arg or "]" in first_arg:
+        return True
+    return False
+
+
 def validate_source_shape_renderer_fixtures() -> list[str]:
     failures: list[str] = []
     schema_root = ROOT / "tests" / "diagnostics" / "schema"
@@ -362,22 +425,54 @@ def validate_diagnostic_code_usage() -> list[str]:
         rel = path.relative_to(ROOT).as_posix()
         if "/tests/" in rel:
             continue
-        for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
-            match = DIAGNOSTIC_CALL.search(line)
-            if match:
-                first_arg = match.group("arg").strip()
-                if "+" in first_arg:
-                    failures.append(f"{rel}:{line_number}: diagnostic code must not be constructed dynamically")
-                if rel in ALLOWED_DYNAMIC_PRODUCERS:
-                    continue
-                literal = CODE_LITERAL.fullmatch(first_arg)
-                if literal:
-                    value = literal.group(1)
-                    if not value.startswith("ICE") and value not in known and value != "DIAG_INTERNAL_PRIMARY":
-                        failures.append(f"{rel}:{line_number}: diagnostic code {value!r} is not registered")
-                elif rel not in ALLOWED_DYNAMIC_PRODUCERS:
-                    failures.append(f"{rel}:{line_number}: diagnostic code must be a registered literal or an official catalog wrapper")
+        text = path.read_text(encoding="utf-8")
+        for line_number, first_arg in diagnostic_call_first_args(text):
+            if is_dynamic_code_expression(first_arg):
+                failures.append(f"{rel}:{line_number}: diagnostic code must not be constructed dynamically")
+                continue
+            if rel in ALLOWED_DYNAMIC_PRODUCERS:
+                continue
+            literal = CODE_LITERAL.fullmatch(first_arg)
+            if literal:
+                value = literal.group(1)
+                if not value.startswith("ICE") and value not in known and value != "DIAG_INTERNAL_PRIMARY":
+                    failures.append(f"{rel}:{line_number}: diagnostic code {value!r} is not registered")
+            elif rel not in ALLOWED_DYNAMIC_PRODUCERS:
+                failures.append(f"{rel}:{line_number}: diagnostic code must be a registered literal or an official catalog wrapper")
     return failures
+
+
+def validate_dynamic_code_guard_contract() -> list[str]:
+    sample = '''
+proc demo() -> Diagnostic {
+  give diagnostic_error(
+    "TYPECK_" + suffix,
+    DiagnosticPhase.Typeck,
+    "message",
+    span
+  )
+}
+'''
+    calls = diagnostic_call_first_args(sample)
+    if len(calls) != 1:
+        return ["dynamic diagnostic-code guard failed to find a multi-line diagnostic call"]
+    _line, first_arg = calls[0]
+    if not is_dynamic_code_expression(first_arg):
+        return ["dynamic diagnostic-code guard failed to reject a constructed code expression"]
+    literal = '''
+proc demo() -> Diagnostic {
+  give diagnostic_error(
+    "TYPECK_E_ASSIGN_MISMATCH",
+    DiagnosticPhase.Typeck,
+    "message",
+    span
+  )
+}
+'''
+    literal_calls = diagnostic_call_first_args(literal)
+    if len(literal_calls) != 1 or is_dynamic_code_expression(literal_calls[0][1]):
+        return ["dynamic diagnostic-code guard rejected a literal diagnostic code"]
+    return []
 
 
 def validate_canonical_diagnostic_contract() -> list[str]:
@@ -468,6 +563,7 @@ def main() -> int:
         *validate_central_catalog(),
         *validate_source_shape_renderer_fixtures(),
         *validate_diagnostic_code_usage(),
+        *validate_dynamic_code_guard_contract(),
         *validate_canonical_diagnostic_contract(),
         *validate_phase_policy_contract(),
         *validate_backend_linker_contract(),
