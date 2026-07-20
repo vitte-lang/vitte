@@ -44,6 +44,39 @@ GENERIC_MESSAGE_PATTERNS = (
     "type error",
     "unknown failure",
 )
+VAGUE_TERMS_REQUIRING_CAUSE = (
+    "invalid",
+    "failed",
+    "unknown error",
+    "unexpected failure",
+    "something went wrong",
+    "semantic problem",
+    "internal issue",
+)
+CAUSE_MARKERS = (
+    "`",
+    "because",
+    "cannot",
+    "does not",
+    "expected",
+    "from",
+    "missing",
+    "no ",
+    "not ",
+    "outside",
+    "requires",
+    "unsupported",
+    "while",
+    "without",
+)
+VAGUE_SUFFIXES_WITHOUT_CAUSE = {
+    "",
+    "error",
+    "failure",
+    "issue",
+    "problem",
+    "program",
+}
 ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*m")
 
 
@@ -148,6 +181,18 @@ def is_style_exempt(message: str) -> bool:
     return message.startswith(ALLOWED_UPPER_PREFIXES)
 
 
+def vague_term_has_precise_cause(lowered: str, term: str) -> bool:
+    index = lowered.find(term)
+    if index < 0:
+        return True
+    suffix = lowered[index + len(term):].strip(" \t:;,.!-")
+    if any(marker in lowered for marker in CAUSE_MARKERS):
+        return True
+    if suffix not in VAGUE_SUFFIXES_WITHOUT_CAUSE:
+        return True
+    return False
+
+
 def lint_message(path: Path, line_number: int, kind: str, message: str) -> list[str]:
     stripped = message.strip()
     if not stripped or stripped.startswith(("{", "[")):
@@ -172,6 +217,9 @@ def lint_message(path: Path, line_number: int, kind: str, message: str) -> list[
     for generic in GENERIC_MESSAGE_PATTERNS:
         if generic in lowered:
             errors.append(f"{prefix}: uses a banned generic compiler message")
+    for term in VAGUE_TERMS_REQUIRING_CAUSE:
+        if term in lowered and not vague_term_has_precise_cause(lowered, term):
+            errors.append(f"{prefix}: uses vague term without a precise cause: {term!r}")
     return errors
 
 

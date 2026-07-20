@@ -31,6 +31,7 @@ DIAGNOSTIC_SARIF = COMPILER_ROOT / "diagnostics" / "sarif.vit"
 BACKEND_DIAGNOSTICS = COMPILER_ROOT / "backend" / "diagnostics.vit"
 MIDDLE_TYPECHECK_DIAGNOSTICS = COMPILER_ROOT / "middle" / "typecheck" / "diagnostics.vit"
 DIAGNOSTICS_MIGRATION_CHECK = ROOT / "tools" / "check_diagnostics_migration.py"
+DIAGNOSTIC_MESSAGE_STYLE = ROOT / "tools" / "check_diagnostic_message_style.py"
 DRIVER_COMPILER = COMPILER_ROOT / "driver" / "compiler.vit"
 DIAGNOSTIC_SNAPSHOT_TESTS = COMPILER_ROOT / "tests" / "diagnostic_snapshot_tests.vit"
 DIAGNOSTIC_SNAPSHOT_SUITE = ROOT / "tests" / "diagnostics" / "catalog" / "snapshots" / "diagnostic-suite.snap"
@@ -636,6 +637,10 @@ def check_relational_diagnostic_contract() -> list[str]:
         (DIAGNOSTIC_EXAMPLES_DOC, "## Borrowck"),
         (DIAGNOSTIC_EXAMPLES_DOC, "## Linker"),
         (DIAGNOSTIC_EXAMPLES_DOC, "Corrected:"),
+        (DIAGNOSTIC_MESSAGE_STYLE, "VAGUE_TERMS_REQUIRING_CAUSE"),
+        (DIAGNOSTIC_MESSAGE_STYLE, "CAUSE_MARKERS"),
+        (DIAGNOSTIC_MESSAGE_STYLE, "vague_term_has_precise_cause"),
+        (DIAGNOSTIC_MESSAGE_STYLE, "uses vague term without a precise cause"),
         (DIAGNOSTIC_SNAPSHOT_SUITE, "schema: vitte.diagnostic-snapshot-suite"),
         (DIAGNOSTIC_SNAPSHOT_SUITE, "one-code-one-snapshot"),
         (DIAGNOSTIC_SNAPSHOT_SUITE, "machine-applicable-fix"),
