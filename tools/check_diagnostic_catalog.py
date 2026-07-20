@@ -62,6 +62,8 @@ CENTRAL_SNAPSHOT_ASSERTS = {
     "notes",
     "suggestions",
     "no_parasitic_diagnostics",
+    "stable_order",
+    "recovery",
 }
 FORBIDDEN_TERMS = (
     "invalid",
