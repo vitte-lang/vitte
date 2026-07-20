@@ -1,0 +1,20 @@
+use src/vitte/stdlib/std/uuid as std_uuid
+use src/vitte/stdlib/std/base64 as std_base64
+use src/vitte/stdlib/std/csv as std_csv
+use src/vitte/stdlib/std/semver as std_semver
+use src/vitte/stdlib/std/mime as std_mime
+use src/vitte/stdlib/std/kernel as std_kernel
+
+proc stdlib_extra_libraries_contracts_smoke() -> bool {
+    let nil: std_uuid.Uuid = std_uuid.uuid_nil();
+    let b64: std_base64.Base64Config = std_base64.base64_standard();
+    let csv: std_csv.CsvOptions = std_csv.csv_default_options();
+    let version: std_semver.Version = std_semver.version(1, 0, 0);
+    let mime: std_mime.Mime = std_mime.mime_text_plain();
+
+    give std_uuid.uuid_is_nil(nil)
+        and b64.padding
+        and csv.delimiter == 44
+        and version.major == 1
+        and std_kernel.page_size() >= 0;
+}

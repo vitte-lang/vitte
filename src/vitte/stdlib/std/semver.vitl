@@ -1,0 +1,28 @@
+space vitte/stdlib/std/semver
+
+export *
+
+form Version {
+    major: u64
+    minor: u64
+    patch: u64
+    pre: Option<String>
+    build: Option<String>
+}
+
+form VersionReq {
+    text: String
+}
+
+form SemverError {
+    message: String
+    offset: usize
+}
+
+proc version(major: u64, minor: u64, patch: u64) -> Version {
+    give Version { major: major, minor: minor, patch: patch, pre: none<String>(), build: none<String>() };
+}
+proc semver_parse(text: Utf8View) -> Result<Version, SemverError> { give compiler_semver_parse(text); }
+proc semver_req_parse(text: Utf8View) -> Result<VersionReq, SemverError> { give compiler_semver_req_parse(text); }
+proc semver_matches(req: VersionReq, value: Version) -> bool { give compiler_semver_matches(req, value); }
+proc semver_compare(left: Version, right: Version) -> Ordering { give compiler_semver_compare(left, right); }

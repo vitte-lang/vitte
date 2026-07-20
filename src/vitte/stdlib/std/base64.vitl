@@ -1,0 +1,23 @@
+space vitte/stdlib/std/base64
+
+export *
+
+pick Base64Alphabet {
+    Standard
+    UrlSafe
+}
+
+form Base64Config {
+    alphabet: Base64Alphabet
+    padding: bool
+}
+
+form Base64Error {
+    message: String
+    offset: usize
+}
+
+proc base64_standard() -> Base64Config { give Base64Config { alphabet: Base64Alphabet.Standard, padding: true }; }
+proc base64_url_safe() -> Base64Config { give Base64Config { alphabet: Base64Alphabet.UrlSafe, padding: false }; }
+proc base64_encode(bytes: [byte], config: Base64Config) -> String { give compiler_base64_encode(bytes, config); }
+proc base64_decode(text: Utf8View, config: Base64Config) -> Result<Vec<byte>, Base64Error> { give compiler_base64_decode(text, config); }

@@ -1,0 +1,23 @@
+space vitte/stdlib/std/csv
+
+export *
+
+form CsvOptions {
+    delimiter: rune
+    has_headers: bool
+}
+
+form CsvRecord {
+    fields: Vec<String>
+}
+
+form CsvError {
+    message: String
+    line: usize
+    column: usize
+}
+
+proc csv_default_options() -> CsvOptions { give CsvOptions { delimiter: 44, has_headers: false }; }
+proc csv_parse(text: Utf8View, options: CsvOptions) -> Result<Vec<CsvRecord>, CsvError> { give compiler_csv_parse(text, options); }
+proc csv_write(records: Vec<CsvRecord>, options: CsvOptions) -> Result<String, CsvError> { give compiler_csv_write(records, options); }
+proc csv_record(fields: Vec<String>) -> CsvRecord { give CsvRecord { fields: fields }; }

@@ -5258,6 +5258,16 @@ Each entry is suitable for LSP symbol indexing and documentation lookup.
 - `proc fetch_add_usize` signature `proc fetch_add_usize(value: ref AtomicUsize, amount: usize, ordering: Ordering) -> usize { give compiler_atomic_fetch_add_usize(value, amount, ordering); }` example `fetch_add_usize`
 - `proc fetch_sub_usize` signature `proc fetch_sub_usize(value: ref AtomicUsize, amount: usize, ordering: Ordering) -> usize { give compiler_atomic_fetch_sub_usize(value, amount, ordering); }` example `fetch_sub_usize`
 
+## `src/vitte/stdlib/std/base64.vitl`
+
+- `pick Base64Alphabet` signature `pick Base64Alphabet {` example `Base64Alphabet`
+- `form Base64Config` signature `form Base64Config {` example `Base64Config`
+- `form Base64Error` signature `form Base64Error {` example `Base64Error`
+- `proc base64_standard` signature `proc base64_standard() -> Base64Config { give Base64Config { alphabet: Base64Alphabet.Standard, padding: true }; }` example `base64_standard`
+- `proc base64_url_safe` signature `proc base64_url_safe() -> Base64Config { give Base64Config { alphabet: Base64Alphabet.UrlSafe, padding: false }; }` example `base64_url_safe`
+- `proc base64_encode` signature `proc base64_encode(bytes: [byte], config: Base64Config) -> String { give compiler_base64_encode(bytes, config); }` example `base64_encode`
+- `proc base64_decode` signature `proc base64_decode(text: Utf8View, config: Base64Config) -> Result<Vec<byte>, Base64Error> { give compiler_base64_decode(text, config); }` example `base64_decode`
+
 ## `src/vitte/stdlib/std/bench.vitl`
 
 - `form Benchmark` signature `form Benchmark { name: String iterations: u64 }` example `Benchmark`
@@ -5278,6 +5288,16 @@ Each entry is suitable for LSP symbol indexing and documentation lookup.
 - `proc add_flag` signature `proc add_flag(app: ref mut CliApp, value: Flag) { vec_push<Flag>(&mut ((*app).flags), value); }` example `add_flag`
 - `proc parse` signature `proc parse(app: CliApp, args: Iterator<String>) -> Result<CliMatches, CliError> { give compiler_cli_parse(app, args); }` example `parse`
 - `proc help` signature `proc help(app: CliApp) -> String { give compiler_cli_help(app); }` example `help`
+
+## `src/vitte/stdlib/std/csv.vitl`
+
+- `form CsvOptions` signature `form CsvOptions {` example `CsvOptions`
+- `form CsvRecord` signature `form CsvRecord {` example `CsvRecord`
+- `form CsvError` signature `form CsvError {` example `CsvError`
+- `proc csv_default_options` signature `proc csv_default_options() -> CsvOptions { give CsvOptions { delimiter: 44, has_headers: false }; }` example `csv_default_options`
+- `proc csv_parse` signature `proc csv_parse(text: Utf8View, options: CsvOptions) -> Result<Vec<CsvRecord>, CsvError> { give compiler_csv_parse(text, options); }` example `csv_parse`
+- `proc csv_write` signature `proc csv_write(records: Vec<CsvRecord>, options: CsvOptions) -> Result<String, CsvError> { give compiler_csv_write(records, options); }` example `csv_write`
+- `proc csv_record` signature `proc csv_record(fields: Vec<String>) -> CsvRecord { give CsvRecord { fields: fields }; }` example `csv_record`
 
 ## `src/vitte/stdlib/std/env.vitl`
 
@@ -5357,6 +5377,18 @@ Each entry is suitable for LSP symbol indexing and documentation lookup.
 - `proc random_finish` signature `proc random_finish(hasher: RandomHasher) -> u64 { give compiler_hash_random_finish(hasher); }` example `random_finish`
 - `proc sip_finish` signature `proc sip_finish(hasher: SipHasher) -> u64 { give compiler_hash_sip_finish(hasher); }` example `sip_finish`
 
+## `src/vitte/stdlib/std/http.vitl`
+
+- `form HeaderMap` signature `form HeaderMap {` example `HeaderMap`
+- `form Request` signature `form Request {` example `Request`
+- `form Response` signature `form Response {` example `Response`
+- `form HttpError` signature `form HttpError {` example `HttpError`
+- `proc headers` signature `proc headers() -> HeaderMap { give HeaderMap { values: hashmap_new<String, String>() }; }` example `headers`
+- `proc request` signature `proc request(method: String, url: Url) -> Request { give compiler_http_request(method, url); }` example `request`
+- `proc response` signature `proc response(status: u16) -> Response { give compiler_http_response(status); }` example `response`
+- `proc http_get` signature `proc http_get(url: Url) -> Result<Response, HttpError> { give compiler_http_get(url); }` example `http_get`
+- `proc http_send` signature `proc http_send(req: Request) -> Result<Response, HttpError> { give compiler_http_send(req); }` example `http_send`
+
 ## `src/vitte/stdlib/std/io.vitl`
 
 - `form IoError` signature `form IoError { code: int message: string }` example `IoError`
@@ -5381,6 +5413,16 @@ Each entry is suitable for LSP symbol indexing and documentation lookup.
 - `proc cursor` signature `proc cursor(data: Vec<byte>) -> Cursor { give Cursor { data: data, position: 0 }; }` example `cursor`
 - `proc cursor_position` signature `proc cursor_position(cursor_value: Cursor) -> usize { give cursor_value.position; }` example `cursor_position`
 
+## `src/vitte/stdlib/std/kernel.vitl`
+
+- `form KernelInfo` signature `form KernelInfo {` example `KernelInfo`
+- `form KernelError` signature `form KernelError {` example `KernelError`
+- `proc kernel_info` signature `proc kernel_info() -> Result<KernelInfo, KernelError> { give compiler_kernel_info(); }` example `kernel_info`
+- `proc kernel_name` signature `proc kernel_name() -> String { give compiler_kernel_name(); }` example `kernel_name`
+- `proc kernel_release` signature `proc kernel_release() -> String { give compiler_kernel_release(); }` example `kernel_release`
+- `proc page_size` signature `proc page_size() -> usize { give compiler_kernel_page_size(); }` example `page_size`
+- `proc cpu_count` signature `proc cpu_count() -> usize { give compiler_kernel_cpu_count(); }` example `cpu_count`
+
 ## `src/vitte/stdlib/std/log.vitl`
 
 - `pick LogLevel` signature `pick LogLevel { Trace Debug Info Warn Error }` example `LogLevel`
@@ -5392,6 +5434,15 @@ Each entry is suitable for LSP symbol indexing and documentation lookup.
 - `proc info` signature `proc info(logger_value: ref mut Logger, message: String) { log(logger_value, LogRecord { level: LogLevel.Info, target: compiler_log_default_target(), message: message }); }` example `info`
 - `proc warn` signature `proc warn(logger_value: ref mut Logger, message: String) { log(logger_value, LogRecord { level: LogLevel.Warn, target: compiler_log_default_target(), message: message }); }` example `warn`
 - `proc error` signature `proc error(logger_value: ref mut Logger, message: String) { log(logger_value, LogRecord { level: LogLevel.Error, target: compiler_log_default_target(), message: message }); }` example `error`
+
+## `src/vitte/stdlib/std/mime.vitl`
+
+- `form Mime` signature `form Mime {` example `Mime`
+- `form MimeError` signature `form MimeError {` example `MimeError`
+- `proc mime_parse` signature `proc mime_parse(text: Utf8View) -> Result<Mime, MimeError> { give compiler_mime_parse(text); }` example `mime_parse`
+- `proc mime_to_string` signature `proc mime_to_string(value: Mime) -> String { give compiler_mime_to_string(value); }` example `mime_to_string`
+- `proc mime_text_plain` signature `proc mime_text_plain() -> Mime { give compiler_mime_text_plain(); }` example `mime_text_plain`
+- `proc mime_application_json` signature `proc mime_application_json() -> Mime { give compiler_mime_application_json(); }` example `mime_application_json`
 
 ## `src/vitte/stdlib/std/net.vitl`
 
@@ -5436,6 +5487,14 @@ Each entry is suitable for LSP symbol indexing and documentation lookup.
 - `proc file_name` signature `proc file_name(path_value: PathBuf) -> Option<String> { give compiler_path_file_name(path_value); }` example `file_name`
 - `proc extension` signature `proc extension(path_value: PathBuf) -> Option<String> { give compiler_path_extension(path_value); }` example `extension`
 - `proc with_extension` signature `proc with_extension(path_value: PathBuf, ext: String) -> PathBuf { give compiler_path_with_extension(path_value, ext); }` example `with_extension`
+
+## `src/vitte/stdlib/std/percent_encoding.vitl`
+
+- `form PercentEncodeSet` signature `form PercentEncodeSet {` example `PercentEncodeSet`
+- `form PercentDecodeError` signature `form PercentDecodeError {` example `PercentDecodeError`
+- `proc percent_encode_set_component` signature `proc percent_encode_set_component() -> PercentEncodeSet { give PercentEncodeSet { name: compiler_test_string("component") }; }` example `percent_encode_set_component`
+- `proc percent_encode` signature `proc percent_encode(text: Utf8View, set: PercentEncodeSet) -> String { give compiler_percent_encode(text, set); }` example `percent_encode`
+- `proc percent_decode` signature `proc percent_decode(text: Utf8View) -> Result<String, PercentDecodeError> { give compiler_percent_decode(text); }` example `percent_decode`
 
 ## `src/vitte/stdlib/std/process.vitl`
 
@@ -5487,6 +5546,17 @@ Each entry is suitable for LSP symbol indexing and documentation lookup.
 - `proc json_value` signature `proc json_value(input: Utf8View) -> Result<JsonValue, SerializationError> {` example `json_value`
 - `proc write_json_string` signature `proc write_json_string(encoder: ref mut Encoder, value: String) -> Result<(), SerializationError> {` example `write_json_string`
 - `proc write_json_field` signature `proc write_json_field<T>(encoder: ref mut Encoder, name: String, value: T) -> Result<(), SerializationError> {` example `write_json_field`
+
+## `src/vitte/stdlib/std/semver.vitl`
+
+- `form Version` signature `form Version {` example `Version`
+- `form VersionReq` signature `form VersionReq {` example `VersionReq`
+- `form SemverError` signature `form SemverError {` example `SemverError`
+- `proc version` signature `proc version(major: u64, minor: u64, patch: u64) -> Version {` example `version`
+- `proc semver_parse` signature `proc semver_parse(text: Utf8View) -> Result<Version, SemverError> { give compiler_semver_parse(text); }` example `semver_parse`
+- `proc semver_req_parse` signature `proc semver_req_parse(text: Utf8View) -> Result<VersionReq, SemverError> { give compiler_semver_req_parse(text); }` example `semver_req_parse`
+- `proc semver_matches` signature `proc semver_matches(req: VersionReq, value: Version) -> bool { give compiler_semver_matches(req, value); }` example `semver_matches`
+- `proc semver_compare` signature `proc semver_compare(left: Version, right: Version) -> Ordering { give compiler_semver_compare(left, right); }` example `semver_compare`
 
 ## `src/vitte/stdlib/std/sync.vitl`
 
@@ -5556,6 +5626,35 @@ Each entry is suitable for LSP symbol indexing and documentation lookup.
 - `proc datetime_to_system_time` signature `proc datetime_to_system_time(value: DateTime) -> SystemTime { give compiler_datetime_to_system_time(value); }` example `datetime_to_system_time`
 - `proc format_datetime` signature `proc format_datetime(value: DateTime, pattern: string) -> String { give compiler_time_format_datetime(value, pattern); }` example `format_datetime`
 
+## `src/vitte/stdlib/std/uri.vitl`
+
+- `form Uri` signature `form Uri {` example `Uri`
+- `form UriError` signature `form UriError {` example `UriError`
+- `proc uri_parse` signature `proc uri_parse(text: Utf8View) -> Result<Uri, UriError> { give compiler_uri_parse(text); }` example `uri_parse`
+- `proc uri_to_string` signature `proc uri_to_string(value: Uri) -> String { give compiler_uri_to_string(value); }` example `uri_to_string`
+- `proc uri_path` signature `proc uri_path(value: Uri) -> String { give value.path; }` example `uri_path`
+- `proc uri_query` signature `proc uri_query(value: Uri) -> Option<String> { give value.query; }` example `uri_query`
+
+## `src/vitte/stdlib/std/url.vitl`
+
+- `form Url` signature `form Url {` example `Url`
+- `form UrlError` signature `form UrlError {` example `UrlError`
+- `proc url_parse` signature `proc url_parse(text: Utf8View) -> Result<Url, UrlError> { give compiler_url_parse(text); }` example `url_parse`
+- `proc url_to_string` signature `proc url_to_string(value: Url) -> String { give compiler_url_to_string(value); }` example `url_to_string`
+- `proc url_join` signature `proc url_join(base: Url, reference: Utf8View) -> Result<Url, UrlError> { give compiler_url_join(base, reference); }` example `url_join`
+- `proc url_scheme` signature `proc url_scheme(value: Url) -> String { give value.scheme; }` example `url_scheme`
+- `proc url_path` signature `proc url_path(value: Url) -> String { give value.path; }` example `url_path`
+
+## `src/vitte/stdlib/std/uuid.vitl`
+
+- `form Uuid` signature `form Uuid {` example `Uuid`
+- `form UuidError` signature `form UuidError {` example `UuidError`
+- `proc uuid_nil` signature `proc uuid_nil() -> Uuid { give compiler_uuid_nil(); }` example `uuid_nil`
+- `proc uuid_v4` signature `proc uuid_v4() -> Result<Uuid, UuidError> { give compiler_uuid_v4(); }` example `uuid_v4`
+- `proc uuid_parse` signature `proc uuid_parse(text: Utf8View) -> Result<Uuid, UuidError> { give compiler_uuid_parse(text); }` example `uuid_parse`
+- `proc uuid_to_string` signature `proc uuid_to_string(value: Uuid) -> String { give compiler_uuid_to_string(value); }` example `uuid_to_string`
+- `proc uuid_is_nil` signature `proc uuid_is_nil(value: Uuid) -> bool { give compiler_uuid_is_nil(value); }` example `uuid_is_nil`
+
 ## `src/vitte/stdlib/tests/api_contracts.vit`
 
 - `proc stdlib_api_contracts_smoke` signature `proc stdlib_api_contracts_smoke() -> bool {` example `stdlib_api_contracts_smoke`
@@ -5571,6 +5670,10 @@ Each entry is suitable for LSP symbol indexing and documentation lookup.
 ## `src/vitte/stdlib/tests/serialization_platform_contracts.vit`
 
 - `proc stdlib_serialization_platform_contracts_smoke` signature `proc stdlib_serialization_platform_contracts_smoke() -> bool {` example `stdlib_serialization_platform_contracts_smoke`
+
+## `src/vitte/stdlib/tests/std_extra_libraries_contracts.vit`
+
+- `proc stdlib_extra_libraries_contracts_smoke` signature `proc stdlib_extra_libraries_contracts_smoke() -> bool {` example `stdlib_extra_libraries_contracts_smoke`
 
 ## `src/vitte/stdlib/tests/std_runtime_contracts.vit`
 

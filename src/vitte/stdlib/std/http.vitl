@@ -1,0 +1,30 @@
+space vitte/stdlib/std/http
+
+export *
+
+form HeaderMap {
+    values: HashMap<String, String>
+}
+
+form Request {
+    method: String
+    url: Url
+    headers: HeaderMap
+    body: Vec<byte>
+}
+
+form Response {
+    status: u16
+    headers: HeaderMap
+    body: Vec<byte>
+}
+
+form HttpError {
+    message: String
+}
+
+proc headers() -> HeaderMap { give HeaderMap { values: hashmap_new<String, String>() }; }
+proc request(method: String, url: Url) -> Request { give compiler_http_request(method, url); }
+proc response(status: u16) -> Response { give compiler_http_response(status); }
+proc http_get(url: Url) -> Result<Response, HttpError> { give compiler_http_get(url); }
+proc http_send(req: Request) -> Result<Response, HttpError> { give compiler_http_send(req); }
