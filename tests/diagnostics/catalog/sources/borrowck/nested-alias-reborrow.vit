@@ -1,0 +1,13 @@
+space diagnostics/catalog/borrowck/nested_alias_reborrow
+
+proc consume(value: Box) -> int {
+    give 1;
+}
+
+proc main() -> int {
+    let root = make_box();
+    let first_borrow = borrow root.child;
+    let second_borrow = borrow first_borrow.leaf;
+    let moved = consume(root);
+    give second_borrow.value;
+}

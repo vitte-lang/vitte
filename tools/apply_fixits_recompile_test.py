@@ -17,7 +17,13 @@ from diagnostic_frontend import analyze  # noqa: E402
 
 
 BIN = ROOT / "bin" / "vitte"
-FIXTURE = ROOT / "tests" / "diagnostics" / "frontend" / "parser" / "fixit-keyword-recompile.vit"
+DEFAULT_FIXTURES = (
+    ROOT / "tests" / "diagnostics" / "frontend" / "parser" / "fixit-keyword-recompile.vit",
+    ROOT / "tests" / "diagnostics" / "frontend" / "parser" / "keyword-pro.vit",
+    ROOT / "tests" / "diagnostics" / "frontend" / "parser" / "keyword-distance.vit",
+    ROOT / "tests" / "diagnostics" / "frontend" / "parser" / "missing-brace.vit",
+    ROOT / "tests" / "diagnostics" / "frontend" / "lexer" / "invalid-number.vit",
+)
 
 
 def run_check(path: Path) -> tuple[int, str]:
@@ -65,14 +71,9 @@ def apply_suggestions(source: str, suggestions: list[dict[str, Any]]) -> str:
     return fixed
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--fixture", type=Path, default=FIXTURE)
-    args = ap.parse_args()
-
+def check_fixture(fixture: Path) -> None:
     if not BIN.exists():
         raise SystemExit(f"[fixits][error] missing compiler binary: {BIN}")
-    fixture = args.fixture
     if not fixture.exists():
         raise SystemExit(f"[fixits][error] missing fixture: {fixture}")
 
@@ -97,9 +98,19 @@ def main() -> int:
         fixed_rc, fixed_output = run_check(fixed_path)
         if fixed_rc != 0:
             print(fixed_output)
-            raise SystemExit("[fixits][error] fixed source did not recompile")
+            raise SystemExit(f"[fixits][error] fixed source did not recompile: {fixture}")
 
-    print("[fixits] applied machine-applicable suggestions and recompiled fixed source")
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--fixture", type=Path, action="append", dest="fixtures")
+    args = ap.parse_args()
+
+    fixtures = tuple(args.fixtures) if args.fixtures else DEFAULT_FIXTURES
+    for fixture in fixtures:
+        check_fixture(fixture)
+
+    print(f"[fixits] applied machine-applicable suggestions and recompiled {len(fixtures)} fixed source(s)")
     return 0
 
 
