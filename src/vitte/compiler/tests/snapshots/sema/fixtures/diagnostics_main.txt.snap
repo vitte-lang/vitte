@@ -1,0 +1,37 @@
+# Sema Diagnostics
+
+## invalid/unknown_symbol.vit
+- error[RES0127] symbol_resolution 3:8: symbol `cout` does not exist in this resolution context
+  label: missing_symbol appears here for `cout`
+  note: nearest variable: `count`
+  help: replace `cout` with variable `count`
+
+## invalid/duplicate_binding.vit
+- error[SEM0011] symbol_collection 3:7: duplicate binding `value` in the same scope
+  label: value
+  note: sema phase: symbol_collection
+  help: rename or remove one binding
+
+## invalid/undeclared_target.vit
+- error[SEM0025] name_resolution 2:7: assignment target `missing` is not declared
+  label: missing
+  note: target must resolve before assignment
+  help: declare `missing` before assigning to it
+
+## invalid/private_access.vit
+- error[RES0070] module_resolution 5:12: module `demo/private_dep` exists but is not accessible from here
+  label: requested symbol `hidden` is not exported
+  note: private symbol is not exported
+  help: export `hidden` from its module or use a public API
+
+## invalid/missing_module.vit
+- error[MOD_E_MODULE_NOT_FOUND] module_resolution 2:5: module `demo/missing` not found
+  label: tested paths: ./demo/missing.vit, src/demo/missing/mod.vit
+  note: requested by module `demo/app`
+  help: check the module path or add the missing module to the source set
+
+## invalid/import_cycle.vit
+- error[RES0065] module_resolution 2:5: import cycle reaches module `demo/cycle_a`
+  label: import_cycle appears here for `demo/cycle_a`
+  note: resolution failure kind: import_cycle
+  help: break the cycle by moving shared declarations into a lower-level module

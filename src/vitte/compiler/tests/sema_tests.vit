@@ -1,14 +1,15 @@
 space vitte/compiler/tests/sema_tests
 
 use vitte/compiler/analysis/sema.{ SemaResult, run_sema_hir }
-use vitte/compiler/analysis/sema/errors.{ SemaDiagnosticKind, SemaPhase, sema_context_error, sema_context_result, sema_context_with_phase, sema_invalid_import, sema_kind_name, sema_nearby_symbol, sema_phase_name, sema_result_summary, sema_string_distance, sema_summary, sema_unknown_symbol_with_candidate_groups, sema_unknown_symbol_with_candidates }
+use vitte/compiler/analysis/sema/errors.{ SemaDiagnosticKind, SemaPhase, sema_add_unique_diag, sema_context_error, sema_context_result, sema_context_warning, sema_context_with_phase, sema_duplicate_symbol_redefinition, sema_invalid_import, sema_kind_name, sema_nearby_symbol, sema_phase_name, sema_result_summary, sema_string_distance, sema_summary, sema_unknown_symbol_with_candidate_groups, sema_unknown_symbol_with_candidates }
 use vitte/compiler/analysis/sema/modules.{ imported_symbols_from_summary, module_import_from_use, summarize_module_hir }
 use vitte/compiler/analysis/sema/names.{ PlaceRootKind, place_root_is_builtin, place_root_is_self, place_root_kind_name, place_root_name, sema_builtin_name, sema_is_ident_char }
 use vitte/compiler/analysis/sema/scopes.{ SemaSymbolKind, SemaSymbolTable, SemaVisibility, symbol_kind_name, symbol_table_add_builtin, symbol_table_count_kind, symbol_table_enter_scope, symbol_table_import, symbol_table_insert, symbol_table_leave_scope, symbol_table_resolve }
 use vitte/compiler/analysis/sema/visibility.{ normalize_visibility, visibility_exported, visibility_externally_visible, visibility_info, visibility_is_internal_only, visibility_less_permissive, visibility_merge, visibility_more_permissive, visibility_valid }
+use vitte/compiler/analysis/report.{ apply_diagnostic_policy, diagnostic_policy_default, diagnostic_policy_disable_code }
 use vitte/compiler/driver/compile.{ DriverModuleSetArtifacts, analyze_source_set, driver_module_input }
-use vitte/compiler/diagnostics/diagnostic.{ Diagnostic, DiagnosticPhase }
-use vitte/compiler/frontend/ast.node.{ ast_span_empty }
+use vitte/compiler/diagnostics/diagnostic.{ Diagnostic, DiagnosticPhase, DiagnosticSeverity, sema_code_after_give, sema_mutable_never_modified, sema_set_immutable_binding, span_create, typeck_form_duplicate_field, typeck_pick_duplicate_branch }
+use vitte/compiler/frontend/ast.node.{ ast_span, ast_span_empty }
 use vitte/compiler/frontend/pipeline.{ FrontendOutput, frontend_run }
 use vitte/compiler/middle/hir/lower_ast.{ lower_ast_to_hir }
 
@@ -432,6 +433,400 @@ proc test_sema_preserves_member_params_without_duplicate_symbol_growth() -> bool
     and impl_member.body_stmts[0].expr.text == "\"point\"";
 }
 
+proc test_sema_diagnostics_are_stable_deduplicated_and_contextual() -> bool {
+  let span1 = ast_span("sema_order.vit", 3, 5, 3, 10);
+  let span2 = ast_span("sema_order.vit", 7, 9, 7, 12);
+  let first = sema_duplicate_symbol_redefinition("value", 1, span1);
+  let second = sema_invalid_import("demo/missing", span2);
+  let deduped = sema_add_unique_diag(sema_add_unique_diag([], first), first);
+  let warned = sema_context_warning(
+    sema_context_with_phase(SemaPhase.ImportResolution),
+    "SEMA_W_UNUSED_IMPORT",
+    SemaDiagnosticKind.InvalidImport,
+    "unused import `demo/math`",
+    ["imported module is never referenced: `demo/math`"],
+    "remove the import or use one of its exported symbols",
+    span2
+  );
+  let warning_report = sema_context_result(warned);
+  give len(deduped) == 1
+    and first.code == "SEM0013"
+    and first.span.file == "sema_order.vit"
+    and first.span.start_line == 3
+    and first.span.start_column == 5
+    and len(first.labels) >= 2
+    and len(first.notes) >= 2
+    and find(first.help, "rename") >= 0
+    and second.phase == DiagnosticPhase.ModuleResolution
+    and second.span.start_line == 7
+    and len(second.notes) >= 3
+    and len(second.suggestions) >= 1
+    and len(warning_report.diagnostics) == 1
+    and warning_report.diagnostics[0].severity == "warning"
+    and not warning_report.diagnostics[0].fatal;
+}
+
+proc test_sema_no_parasitic_diagnostics_and_error_recovery() -> bool {
+  let source: string =
+    "proc main() {\n" +
+    "  set missing = 1;\n" +
+    "  let after = 2;\n" +
+    "  give after;\n" +
+    "}\n";
+  let fe: FrontendOutput = frontend_run("sema_recovery_after_error.vit", source);
+  let hir = lower_ast_to_hir(fe);
+  let result: SemaResult = run_sema_hir(hir);
+  give fe.valid
+    and not result.valid
+    and len(result.diagnostics) == 1
+    and result.diagnostics[0].code == "SEM0025"
+    and result.hir.module.items[0].stmts[2].expr.binding == "after"
+    and result.hir.module.items[0].stmts[2].expr.resolved_kind == "local";
+}
+
+proc test_sema_multi_errors_same_file_order() -> bool {
+  let source: string =
+    "proc main() {\n" +
+    "  set missing = 1;\n" +
+    "  let x = 1;\n" +
+    "  let x = 2;\n" +
+    "  give other;\n" +
+    "}\n";
+  let fe: FrontendOutput = frontend_run("sema_multi_errors.vit", source);
+  let hir = lower_ast_to_hir(fe);
+  let result: SemaResult = run_sema_hir(hir);
+  give not result.valid
+    and len(result.diagnostics) == 3
+    and result.diagnostics[0].code == "SEM0025"
+    and result.diagnostics[1].code == "SEM0011"
+    and result.diagnostics[2].code == "RES0127"
+    and result.diagnostics[0].span.start_line <= result.diagnostics[1].span.start_line
+    and result.diagnostics[1].span.start_line <= result.diagnostics[2].span.start_line;
+}
+
+proc test_sema_symbol_order_scope_and_shadowing() -> bool {
+  let table0: SemaSymbolTable = SemaSymbolTable { symbols: [], next_id: 1, scope_depth: 0, module_path: "demo/app" };
+  let table1 = symbol_table_insert(table0, "item", SemaSymbolKind.Function, false, SemaVisibility.Public, "fn() -> int", 1, 1);
+  let table2 = symbol_table_enter_scope(table1);
+  let table3 = symbol_table_insert(table2, "item", SemaSymbolKind.Local, false, SemaVisibility.Private, "int", 2, 3);
+  let table4 = symbol_table_insert(table3, "other", SemaSymbolKind.Local, false, SemaVisibility.Private, "int", 3, 3);
+  let local_item = symbol_table_resolve(table4, "item");
+  let local_other = symbol_table_resolve(table4, "other");
+  let table5 = symbol_table_leave_scope(table4);
+  let module_item = symbol_table_resolve(table5, "item");
+  let out_other = symbol_table_resolve(table5, "other");
+  give len(table4.symbols) == 3
+    and table4.symbols[0].name == "item"
+    and table4.symbols[1].name == "item"
+    and table4.symbols[2].name == "other"
+    and local_item.kind == SemaSymbolKind.Local
+    and local_other.valid
+    and module_item.kind == SemaSymbolKind.Function
+    and not out_other.valid;
+}
+
+proc test_sema_import_order_and_forms() -> bool {
+  let source: string =
+    "space demo/app;\n" +
+    "use demo/core { * };\n" +
+    "use demo/math as math;\n" +
+    "use root/pkg;\n" +
+    "proc main() -> int { give 0; }\n";
+  let fe: FrontendOutput = frontend_run("sema_import_forms.vit", source);
+  let hir = lower_ast_to_hir(fe);
+  let summary = summarize_module_hir(hir, 10);
+  let glob = module_import_from_use("demo/core { * }");
+  let alias = module_import_from_use("demo/math as math");
+  let absolute = module_import_from_use("root/pkg");
+  let grouped = module_import_from_use("demo/pkg { one, two }");
+  let relative = module_import_from_use("./demo/pkg");
+  give summary.valid
+    and len(summary.imports) == 3
+    and summary.imports[0].module_path == "demo/core"
+    and summary.imports[1].module_path == "demo/math"
+    and summary.imports[1].alias == "math"
+    and summary.imports[2].module_path == "root/pkg"
+    and glob.import_all
+    and alias.valid
+    and alias.alias == "math"
+    and not alias.import_all
+    and absolute.valid
+    and grouped.valid
+    and not grouped.import_all
+    and relative.valid;
+}
+
+proc test_sema_multifile_cross_imports_and_visibility() -> bool {
+  let core: string = "space demo/core;\nexport *;\nproc core_value() -> int { give 1; }\n";
+  let math: string = "space demo/math;\nuse demo/core { * };\nexport *;\nproc sum() -> int { give core_value(); }\n";
+  let app: string = "space demo/app;\nuse demo/math as math;\nproc main() -> int { give math.sum(); }\n";
+  let artifacts: DriverModuleSetArtifacts = analyze_source_set([
+    driver_module_input("demo_core.vit", core),
+    driver_module_input("demo_math_cross.vit", math),
+    driver_module_input("demo_app_cross.vit", app)
+  ]);
+  let math_call = artifacts.modules[1].resolved_hir.module.items[2].stmts[0].expr;
+  let app_call = artifacts.modules[2].resolved_hir.module.items[2].stmts[0].expr.children[0];
+  give artifacts.valid
+    and artifacts.modules[1].imports[0] == "demo/core"
+    and artifacts.modules[2].imports[0] == "demo/math"
+    and math_call.resolved_kind == "import"
+    and app_call.resolved_kind == "import";
+}
+
+proc test_sema_collision_and_visibility_diagnostics() -> bool {
+  let dep: string =
+    "space demo/lib;\n" +
+    "export *;\n" +
+    "public proc visible() -> int { give 1; }\n" +
+    "private proc hidden() -> int { give 2; }\n";
+  let app: string =
+    "space demo/app;\n" +
+    "use demo/lib as lib;\n" +
+    "proc main() -> int { give lib.hidden(); }\n";
+  let collision: string =
+    "space demo/collision;\n" +
+    "proc same() -> int { give 1; }\n" +
+    "proc same() -> int { give 2; }\n";
+  let artifacts: DriverModuleSetArtifacts = analyze_source_set([
+    driver_module_input("demo_lib_visibility.vit", dep),
+    driver_module_input("demo_app_private.vit", app),
+    driver_module_input("demo_collision.vit", collision)
+  ]);
+  let private_diag = artifacts.modules[1].analysis.diagnostics[0];
+  let duplicate_diag = artifacts.modules[2].analysis.diagnostics[0];
+  give not artifacts.valid
+    and private_diag.code == "RES0070"
+    and find(private_diag.message, "not exported") >= 0
+    and duplicate_diag.code == "SEM0012"
+    and find(duplicate_diag.message, "duplicate item") >= 0;
+}
+
+proc test_sema_import_collision_and_cycle_contracts() -> bool {
+  let import_a = module_import_from_use("demo/a as dep");
+  let import_b = module_import_from_use("demo/b as dep");
+  let cycle_diag = sema_invalid_import("demo/a -> demo/b -> demo/a", ast_span("sema_cycle.vit", 4, 1, 4, 10));
+  give import_a.valid
+    and import_b.valid
+    and import_a.alias == import_b.alias
+    and import_a.module_path != import_b.module_path
+    and cycle_diag.phase == DiagnosticPhase.ModuleResolution
+    and cycle_diag.span.file == "sema_cycle.vit"
+    and len(cycle_diag.labels) >= 2
+    and len(cycle_diag.notes) >= 3;
+}
+
+proc test_sema_visibility_internal_package_external_and_exports() -> bool {
+  let source: string =
+    "space demo/visibility;\n" +
+    "export *;\n" +
+    "internal proc inside() -> int { give 1; }\n" +
+    "package proc packaged() -> int { give 2; }\n" +
+    "external proc foreign() -> int;\n" +
+    "public proc visible() -> int { give 3; }\n" +
+    "private proc hidden() -> int { give 4; }\n";
+  let fe: FrontendOutput = frontend_run("sema_visibility_exports.vit", source);
+  let hir = lower_ast_to_hir(fe);
+  let summary = summarize_module_hir(hir, 500);
+  give fe.valid
+    and summary.valid
+    and normalize_visibility("internal") == "internal"
+    and normalize_visibility("package") == "package"
+    and normalize_visibility("external") == "external"
+    and visibility_externally_visible("external")
+    and visibility_is_internal_only("internal")
+    and visibility_is_internal_only("package")
+    and len(summary.exports) == 5
+    and summary.exports[0].name == "inside"
+    and summary.exports[1].name == "packaged"
+    and summary.exports[2].name == "foreign"
+    and summary.exports[3].name == "visible"
+    and summary.exports[4].name == "hidden";
+}
+
+proc test_sema_private_and_public_access_from_other_module() -> bool {
+  let dep: string =
+    "space demo/access;\n" +
+    "public proc visible() -> int { give 1; }\n" +
+    "private proc hidden() -> int { give 2; }\n";
+  let public_app: string = "space demo/public_app;\nuse demo/access as access;\nproc main() -> int { give access.visible(); }\n";
+  let private_app: string = "space demo/private_app;\nuse demo/access as access;\nproc main() -> int { give access.hidden(); }\n";
+  let artifacts: DriverModuleSetArtifacts = analyze_source_set([
+    driver_module_input("demo_access.vit", dep),
+    driver_module_input("demo_public_app.vit", public_app),
+    driver_module_input("demo_private_app.vit", private_app)
+  ]);
+  let public_call = artifacts.modules[1].resolved_hir.module.items[2].stmts[0].expr.children[0];
+  let private_diag = artifacts.modules[2].analysis.diagnostics[0];
+  give not artifacts.valid
+    and artifacts.modules[1].valid
+    and public_call.resolved_kind == "import"
+    and public_call.binding == "visible"
+    and private_diag.code == "RES0070";
+}
+
+proc test_sema_explicit_export_missing_import_warning_policy() -> bool {
+  let dep: string = "space demo/exported;\npublic proc sum() -> int { give 1; }\n";
+  let unused: string = "space demo/unused;\nuse demo/exported { * };\nproc main() -> int { give 0; }\n";
+  let used: string = "space demo/used;\nuse demo/exported { * };\nproc main() -> int { give sum(); }\n";
+  let missing_export: string = "space demo/missing_export;\nexport missing;\nproc main() -> int { give 0; }\n";
+  let artifacts: DriverModuleSetArtifacts = analyze_source_set([
+    driver_module_input("demo_exported.vit", dep),
+    driver_module_input("demo_unused_import.vit", unused),
+    driver_module_input("demo_used_import.vit", used),
+    driver_module_input("demo_missing_export.vit", missing_export)
+  ]);
+  let unused_diag = artifacts.modules[1].analysis.diagnostics[0];
+  let disabled = apply_diagnostic_policy(artifacts.modules[1].analysis.diagnostics, diagnostic_policy_disable_code(diagnostic_policy_default(), "SEMA_W_UNUSED_IMPORT"));
+  give not artifacts.valid
+    and unused_diag.code == "SEMA_W_UNUSED_IMPORT"
+    and unused_diag.severity == "warning"
+    and len(disabled) == 0
+    and artifacts.modules[2].valid
+    and len(artifacts.modules[2].analysis.diagnostics) == 0
+    and not artifacts.modules[3].valid;
+}
+
+proc test_sema_duplicate_params_items_members_fields_variants_impls() -> bool {
+  let params: string = "proc main(x: int, x: int) -> int { give x; }\n";
+  let items: string = "proc same() -> int { give 1; }\nproc same() -> int { give 2; }\n";
+  let members: string =
+    "form Point { x: int }\n" +
+    "trait Show {\n" +
+    "  proc show(self: Self) -> string;\n" +
+    "  proc show(self: Self) -> string;\n" +
+    "}\n";
+  let forms: string = "form Point { x: int, x: int }\nproc main() -> int { give 0; }\n";
+  let variants: string = "pick Option { Some, Some }\nproc main() -> int { give 0; }\n";
+  let impls: string =
+    "form Point { x: int }\n" +
+    "impl MissingTrait for MissingType {\n" +
+    "  proc show(self: Self) -> string { give \"x\"; }\n" +
+    "}\n";
+  let params_result: SemaResult = run_sema_hir(lower_ast_to_hir(frontend_run("sema_dup_params.vit", params)));
+  let items_result: SemaResult = run_sema_hir(lower_ast_to_hir(frontend_run("sema_dup_items.vit", items)));
+  let members_result: SemaResult = run_sema_hir(lower_ast_to_hir(frontend_run("sema_dup_members.vit", members)));
+  let fields_result: SemaResult = run_sema_hir(lower_ast_to_hir(frontend_run("sema_dup_fields.vit", forms)));
+  let variants_result: SemaResult = run_sema_hir(lower_ast_to_hir(frontend_run("sema_dup_variants.vit", variants)));
+  let impl_result: SemaResult = run_sema_hir(lower_ast_to_hir(frontend_run("sema_missing_impl_target.vit", impls)));
+  let field_diag = typeck_form_duplicate_field("Point", "x", span_create("sema_dup_fields.vit", 1, 22, 1));
+  let variant_diag = typeck_pick_duplicate_branch("Option", "Some", span_create("sema_dup_variants.vit", 1, 15, 4), span_create("sema_dup_variants.vit", 1, 21, 4));
+  give not params_result.valid
+    and has_code(params_result, "SEM0011")
+    and not items_result.valid
+    and has_code(items_result, "SEM0012")
+    and members_result.valid
+    and fields_result.valid
+    and variants_result.valid
+    and impl_result.valid
+    and field_diag.code == "AST_E_DUPLICATE_FIELD"
+    and variant_diag.code == "SEMA_E_DUPLICATE_PICK_BRANCH";
+}
+
+proc test_sema_builtin_qualified_member_and_alias_calls() -> bool {
+  let source: string =
+    "proc main() {\n" +
+    "  let x = argc;\n" +
+    "  let argc = 2;\n" +
+    "  let y = argc;\n" +
+    "  let box = make_box();\n" +
+    "  set box.field = y;\n" +
+    "}\n";
+  let dep: string = "space demo/math;\npublic proc sum() -> int { give 0; }\n";
+  let app: string = "space demo/app;\nuse demo/math as math;\nproc main() -> int { give math.sum(); }\n";
+  let result: SemaResult = run_sema_hir(lower_ast_to_hir(frontend_run("sema_builtin_shadow.vit", source)));
+  let artifacts: DriverModuleSetArtifacts = analyze_source_set([
+    driver_module_input("demo_math_alias_call.vit", dep),
+    driver_module_input("demo_app_alias_call.vit", app)
+  ]);
+  let imported = artifacts.modules[1].resolved_hir.module.items[2].stmts[0].expr.children[0];
+  let table0: SemaSymbolTable = symbol_table_import(SemaSymbolTable { symbols: [], next_id: 1, scope_depth: 0, module_path: "demo/app" }, "sum", "demo/math", "fn() -> int", 1);
+  let q0 = symbol_table_resolve(table0, "demo/math::sum");
+  let q1 = symbol_table_resolve(table0, "demo/math.sum");
+  give result.valid
+    and result.hir.module.items[0].stmts[0].expr.resolved_kind == "builtin"
+    and result.hir.module.items[0].stmts[2].expr.resolved_kind == "local"
+    and result.hir.module.items[0].stmts[4].target_binding == "box.field"
+    and artifacts.valid
+    and imported.binding == "sum"
+    and imported.resolved_kind == "import"
+    and q0.valid
+    and not q1.valid;
+}
+
+proc test_sema_suggestions_are_ranked_limited_and_stable() -> bool {
+  let source: string =
+    "proc main() {\n" +
+    "  let count = 1;\n" +
+    "  let counter = 2;\n" +
+    "  give cout;\n" +
+    "}\n";
+  let dep: string = "space demo/suggest;\npublic proc compute() -> int { give 1; }\n";
+  let app: string = "space demo/suggest_app;\nuse demo/suggest { * };\nproc main() -> int { give comput(); }\n";
+  let local_result: SemaResult = run_sema_hir(lower_ast_to_hir(frontend_run("sema_suggest_local.vit", source)));
+  let artifacts: DriverModuleSetArtifacts = analyze_source_set([
+    driver_module_input("demo_suggest.vit", dep),
+    driver_module_input("demo_suggest_app.vit", app)
+  ]);
+  let diag = sema_unknown_symbol_with_candidate_groups(
+    "pritn",
+    ["print", "println", "printf", "printer"],
+    ["price", "prior"],
+    ["Point"],
+    ["priority"],
+    ["parser"],
+    ast_span("sema_suggestions.vit", 5, 7, 5, 12)
+  );
+  let local_diag = local_result.diagnostics[0];
+  let import_diag = artifacts.modules[1].analysis.diagnostics[0];
+  give not local_result.valid
+    and diagnostic_has_suggestion_replacement(local_diag, "count")
+    and not artifacts.valid
+    and import_diag.code == "RES0127"
+    and find(import_diag.message, "comput") >= 0
+    and len(diag.suggestions) == 3
+    and diag.suggestions[0].replacement == "price"
+    and diag.suggestions[1].replacement == "print"
+    and diagnostic_has_note_text(diag, "skipped type `Point`")
+    and diagnostic_has_note_text(diag, "skipped field `priority`")
+    and diagnostic_has_note_text(diag, "skipped module `parser`");
+}
+
+proc test_sema_resolution_diagnostic_kinds() -> bool {
+  let amb_a: string = "space demo/amb_a;\npublic proc value() -> int { give 1; }\n";
+  let amb_b: string = "space demo/amb_b;\npublic proc value() -> int { give 2; }\n";
+  let amb_app: string = "space demo/amb_app;\nuse demo/amb_a { * };\nuse demo/amb_b { * };\nproc main() -> int { give value(); }\n";
+  let missing_module: string = "space demo/missing_mod;\nuse demo/missng as missing;\nproc main() -> int { give 0; }\n";
+  let artifacts: DriverModuleSetArtifacts = analyze_source_set([
+    driver_module_input("demo_amb_a.vit", amb_a),
+    driver_module_input("demo_amb_b.vit", amb_b),
+    driver_module_input("demo_amb_app.vit", amb_app),
+    driver_module_input("demo_missing_mod.vit", missing_module)
+  ]);
+  let scope_source: string =
+    "proc main() {\n" +
+    "  if true { let scoped = 1; }\n" +
+    "  give scoped;\n" +
+    "}\n";
+  let scope_result: SemaResult = run_sema_hir(lower_ast_to_hir(frontend_run("sema_out_scope.vit", scope_source)));
+  let assign_diag = sema_set_immutable_binding("x", span_create("sema_immutable.vit", 2, 3, 1));
+  let after_give = sema_code_after_give(span_create("sema_after_give.vit", 4, 3, 4));
+  let mutable_warn = sema_mutable_never_modified("value", span_create("sema_mutable_warn.vit", 2, 7, 5));
+  give not artifacts.valid
+    and artifacts.modules[2].analysis.diagnostics[0].code == "RES0072"
+    and artifacts.modules[3].analysis.diagnostics[0].code == "MOD_E_MODULE_NOT_FOUND"
+    and not scope_result.valid
+    and scope_result.diagnostics[0].code == "RES0127"
+    and assign_diag.code == "TYPECK_E_IMMUTABLE_ASSIGN"
+    and assign_diag.severity == "error"
+    and after_give.code == "TYPECK_W_UNREACHABLE_AFTER_GIVE"
+    and after_give.severity == "warning"
+    and mutable_warn.code == "TYPECK_W_MUTABLE_NEVER_MODIFIED"
+    and mutable_warn.severity == "warning"
+    and not after_give.fatal
+    and not mutable_warn.fatal;
+}
+
 proc run_all_tests() -> int {
   let failures: int = 0;
   if not test_duplicate_binding() {
@@ -495,6 +890,51 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if not test_sema_preserves_member_params_without_duplicate_symbol_growth() {
+    set failures = failures + 1;
+  }
+  if not test_sema_diagnostics_are_stable_deduplicated_and_contextual() {
+    set failures = failures + 1;
+  }
+  if not test_sema_no_parasitic_diagnostics_and_error_recovery() {
+    set failures = failures + 1;
+  }
+  if not test_sema_multi_errors_same_file_order() {
+    set failures = failures + 1;
+  }
+  if not test_sema_symbol_order_scope_and_shadowing() {
+    set failures = failures + 1;
+  }
+  if not test_sema_import_order_and_forms() {
+    set failures = failures + 1;
+  }
+  if not test_sema_multifile_cross_imports_and_visibility() {
+    set failures = failures + 1;
+  }
+  if not test_sema_collision_and_visibility_diagnostics() {
+    set failures = failures + 1;
+  }
+  if not test_sema_import_collision_and_cycle_contracts() {
+    set failures = failures + 1;
+  }
+  if not test_sema_visibility_internal_package_external_and_exports() {
+    set failures = failures + 1;
+  }
+  if not test_sema_private_and_public_access_from_other_module() {
+    set failures = failures + 1;
+  }
+  if not test_sema_explicit_export_missing_import_warning_policy() {
+    set failures = failures + 1;
+  }
+  if not test_sema_duplicate_params_items_members_fields_variants_impls() {
+    set failures = failures + 1;
+  }
+  if not test_sema_builtin_qualified_member_and_alias_calls() {
+    set failures = failures + 1;
+  }
+  if not test_sema_suggestions_are_ranked_limited_and_stable() {
+    set failures = failures + 1;
+  }
+  if not test_sema_resolution_diagnostic_kinds() {
     set failures = failures + 1;
   }
   give failures;
