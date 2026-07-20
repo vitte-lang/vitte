@@ -29,9 +29,18 @@ use vitte/compiler/analysis/borrowck/errors.{
   BorrowErrorKind,
   BorrowPhase,
   borrow_diagnostic_result,
+  borrow_error_assign_while_borrowed_story,
+  borrow_error_borrow_of_moved_value,
   borrow_error_dangling_reference,
+  borrow_error_double_drop,
+  borrow_error_drop_while_borrowed_story,
   borrow_error_internal,
   borrow_error_lifetime_too_short_story,
+  borrow_error_move_while_borrowed_story,
+  borrow_error_partial_move_story,
+  borrow_error_shared_borrow_conflict_story,
+  borrow_error_uninitialized_use,
+  borrow_error_use_after_drop,
   borrow_report_add,
   borrow_report_empty,
   diagnostic_summary,
@@ -86,6 +95,7 @@ use vitte/compiler/analysis/borrowck/moves.{
   MoveEventKind,
   MoveState,
   MoveTracker,
+  move_conflict_name,
   event_consumes_value,
   event_reads_value,
   last_state_for,
@@ -97,7 +107,9 @@ use vitte/compiler/analysis/borrowck/moves.{
   tracker_has_conflicts,
   tracker_is_valid,
   tracker_record_move,
+  tracker_record_drop,
   tracker_record_reinit,
+  tracker_record_return,
   tracker_record_shared_borrow,
   tracker_record_storage_dead,
   tracker_record_use
@@ -533,6 +545,242 @@ proc test_borrow_diagnostic_helpers_build_reports() -> bool {
     and find(report_summary(report2), "borrowck failed") >= 0;
 }
 
+proc test_borrowck_diagnostic_order_is_stable() -> bool {
+  let source: string =
+    "let x = make_box()\n" +
+    "let y = x\n" +
+    "let z = x\n" +
+    "let q = x\n";
+  let result: BorrowCheckResult = borrow_check_source("borrowck_order_stable.vit", source);
+  give len(result.diagnostics) >= 2
+    and result.diagnostics[0].code == "BORROWCK_E_MOVE_AFTER_MOVE"
+    and result.diagnostics[1].code == "BORROWCK_E_MOVE_AFTER_MOVE"
+    and result.diagnostics[0].span.start_line <= result.diagnostics[1].span.start_line;
+}
+
+proc test_borrowck_diagnostic_deduplication_keeps_one_duplicate() -> bool {
+  let report0: DiagnosticReport = borrow_report_empty();
+  let diag: Diagnostic = borrow_error_borrow_of_moved_value("borrowck_dedup.vit", 3, 10);
+  let report1: DiagnosticReport = borrow_report_add(report0, diag);
+  let report2: DiagnosticReport = borrow_report_add(report1, diag);
+  give len(report2.diagnostics) == 1
+    and report2.diagnostics[0].code == "BORROWCK_E_BORROW_OF_MOVED_VALUE";
+}
+
+proc test_borrowck_diagnostic_spans_are_exact() -> bool {
+  let move_diag: Diagnostic = borrow_error_borrow_of_moved_value("borrowck_spans.vit", 4, 20);
+  let write_diag: Diagnostic = borrow_error_assign_while_borrowed_story("borrowck_spans.vit", "value", 8, 3, "borrow active from line 3 to line 8", 21);
+  let return_diag: Diagnostic = borrow_error_lifetime_too_short_story("borrowck_spans.vit", "alias", 11, 6, "alias outlives owner", 22);
+  give move_diag.span.start_line == 4
+    and move_diag.span.start_column == 1
+    and write_diag.span.start_line == 8
+    and return_diag.span.start_line == 11
+    and move_diag.span.valid
+    and write_diag.span.valid
+    and return_diag.span.valid;
+}
+
+proc test_borrowck_diagnostic_context_is_complete() -> bool {
+  let diag: Diagnostic = borrow_error_move_while_borrowed_story("borrowck_context.vit", "value", 6, 2, "borrow active from line 2 to line 6", 30);
+  give diag.valid
+    and diag.code == "BORROWCK_E_MOVE_WHILE_BORROWED"
+    and len(diag.labels) > 0
+    and len(diag.notes) > 0
+    and len(diag.helps) > 0
+    and len(diag.cause_chain) >= 3
+    and diag.probable_fix != ""
+    and diag.subject_symbol == "value";
+}
+
+proc test_borrowck_no_parasitic_diagnostics_for_valid_copy_and_scope() -> bool {
+  let source: string =
+    "proc main() { let x = 1; if true { let r = &x; let keep = 0; } let y = x; give x; }\n";
+  let result: BorrowCheckResult = borrow_check_frontend_hir_mir("borrowck_no_parasite.vit", source);
+  give result.valid and len(result.diagnostics) == 0;
+}
+
+proc test_borrowck_recovers_and_reports_multiple_errors() -> bool {
+  let source: string =
+    "let x = make_box()\n" +
+    "let y = x\n" +
+    "let z = x\n" +
+    "let a = &x\n";
+  let result: BorrowCheckResult = borrow_check_source("borrowck_multi_errors.vit", source);
+  give len(result.diagnostics) >= 2
+    and has_code(result, "BORROWCK_E_MOVE_AFTER_MOVE")
+    and has_code(result, "BORROWCK_E_BORROW_OF_MOVED_VALUE");
+}
+
+proc test_borrowck_hir_only_and_hir_mir_match_on_move_and_borrow() -> bool {
+  let source: string =
+    "proc main() { let x = make_box(); let y = x; give x; }\n";
+  let fe: FrontendOutput = frontend_run("borrowck_hir_mir_match_move.vit", source);
+  let hir = lower_ast_to_hir(fe);
+  let mir = lower_hir_to_mir(hir);
+  let hir_result: BorrowCheckResult = borrow_check_hir("borrowck_hir_mir_match_move.vit", hir);
+  let mir_result: BorrowCheckResult = borrow_check_hir_mir("borrowck_hir_mir_match_move.vit", hir, mir);
+  give same_codes(hir_result, mir_result);
+}
+
+proc test_borrowck_cause_chain_is_stable() -> bool {
+  let left: Diagnostic = borrow_error_move_while_borrowed_story("borrowck_chain.vit", "value", 7, 2, "borrow active from line 2 to line 7", 40);
+  let right: Diagnostic = borrow_error_move_while_borrowed_story("borrowck_chain.vit", "value", 7, 2, "borrow active from line 2 to line 7", 40);
+  give len(left.cause_chain) == len(right.cause_chain)
+    and left.cause_chain[0] == right.cause_chain[0]
+    and left.cause_chain[1] == right.cause_chain[1]
+    and left.cause_chain[2] == right.cause_chain[2];
+}
+
+proc test_borrowck_specialized_diagnostic_codes() -> bool {
+  let borrow_after_move: Diagnostic = borrow_error_borrow_of_moved_value("borrowck_codes.vit", 3, 1);
+  let move_while_borrowed: Diagnostic = borrow_error_move_while_borrowed_story("borrowck_codes.vit", "value", 4, 2, "borrow active", 2);
+  let write_while_borrowed: BorrowCheckResult = borrow_check_source("borrowck_codes_write.vit", "let x = make_box()\nlet r = &x\nset x = make_box()\n");
+  let drop_while_borrowed: Diagnostic = borrow_error_drop_while_borrowed_story("borrowck_codes.vit", "value", 5, 2, "borrow active", 3);
+  let assign_while_borrowed: Diagnostic = borrow_error_assign_while_borrowed_story("borrowck_codes.vit", "value", 6, 2, "borrow active", 4);
+  let shared_conflict: Diagnostic = borrow_error_shared_borrow_conflict_story("borrowck_codes.vit", "value", 7, 2, "mutable borrow active", 5);
+  let mutable_conflict: BorrowCheckResult = borrow_check_source("borrowck_codes_mut.vit", "let x = make_box()\nlet a = &x\nlet b = &mut x\n");
+  let dangling: Diagnostic = borrow_error_dangling_reference("borrowck_codes.vit", 8, 6);
+  let too_short: Diagnostic = borrow_error_lifetime_too_short_story("borrowck_codes.vit", "value", 9, 4, "alias outlives owner", 7);
+  let return_ref: BorrowCheckResult = borrow_check_source("borrowck_codes_return_ref.vit", "let x = make_box()\ngive &x\n");
+  let return_borrow: BorrowCheckResult = borrow_check_source("borrowck_codes_return_alias.vit", "let x = make_box()\nlet r = &x\ngive r\n");
+  give borrow_after_move.code == "BORROWCK_E_BORROW_OF_MOVED_VALUE"
+    and move_while_borrowed.code == "BORROWCK_E_MOVE_WHILE_BORROWED"
+    and has_code(write_while_borrowed, "BORROWCK_E_WRITE_WHILE_BORROWED")
+    and drop_while_borrowed.code == "BORROWCK_E_DROP_WHILE_BORROWED"
+    and assign_while_borrowed.code == "BORROWCK_E_ASSIGN_WHILE_BORROWED"
+    and shared_conflict.code == "BORROWCK_E_SHARED_BORROW_CONFLICT"
+    and has_code(mutable_conflict, "BORROWCK_E_MUTABLE_BORROW_CONFLICT")
+    and dangling.code == "BORROWCK_E_DANGLING_REFERENCE"
+    and too_short.code == "BORROWCK_E_LIFETIME_TOO_SHORT"
+    and has_code(return_ref, "BORROWCK_E_RETURN_REF_TO_LOCAL")
+    and has_code(return_borrow, "BORROWCK_E_RETURN_BORROW_OF_LOCAL");
+}
+
+proc test_borrowck_drop_uninitialized_immutable_and_partial_diagnostics() -> bool {
+  let use_after_drop: Diagnostic = borrow_error_use_after_drop("borrowck_extra_codes.vit", 3, 1);
+  let double_drop: Diagnostic = borrow_error_double_drop("borrowck_extra_codes.vit", 4, 2);
+  let uninitialized: Diagnostic = borrow_error_uninitialized_use("borrowck_extra_codes.vit", 5, 3);
+  let partial: Diagnostic = borrow_error_partial_move_story("borrowck_extra_codes.vit", "value", 7, 2, "field moved earlier", 4);
+  let source: string =
+    "proc main() { let x = make_box(); let y = x.left; give x.right; }\n";
+  let partial_valid: BorrowCheckResult = borrow_check_frontend_hir_mir("borrowck_partial_disjoint.vit", source);
+  give use_after_drop.code == "BORROWCK_E_USE_AFTER_DROP"
+    and double_drop.code == "BORROWCK_E_DOUBLE_DROP"
+    and uninitialized.code == "BORROWCK_E_UNINITIALIZED_USE"
+    and error_code(BorrowErrorKind.ImmutableAssign) == "BORROWCK_E_IMMUTABLE_ASSIGN"
+    and partial.code == "BORROWCK_E_PARTIAL_MOVE"
+    and partial_valid.valid
+    and len(partial_valid.diagnostics) == 0;
+}
+
+proc test_borrowck_reborrow_alias_path_index_and_deref_helpers() -> bool {
+  let table0: LoanTable = add_loan_auto(loan_table_empty(), "shared_a", "value", LoanKind.Shared, 1, 9);
+  let table1: LoanTable = add_loan_checked(table0, loan_create(10, "shared_b", "value", LoanKind.Shared, 2));
+  let table2: LoanTable = add_loan_checked(table0, loan_create(11, "mut_b", "value", LoanKind.Mutable, 3));
+  let table3: LoanTable = add_loan_auto(loan_table_empty(), "mut_a", "value", LoanKind.Mutable, 1, 9);
+  let table4: LoanTable = add_loan_checked(table3, loan_create(12, "shared_from_mut", "value", LoanKind.Shared, 4));
+  let table5: LoanTable = add_loan_checked(table3, loan_create(13, "mut_from_mut", "value", LoanKind.Mutable, 5));
+  let field_root: bool = place_overlap(place_named("value.field"), place_named("value"));
+  let disjoint_field: bool = not place_overlap(place_named("value.left"), place_named("value.right"));
+  let index_key: string = place_key(place_named("items[0]"));
+  let deref_key: string = place_key(place_named("*ptr.field"));
+  give loan_table_is_valid(table1)
+    and owner_has_conflict(table0, "value", LoanKind.Mutable)
+    and loan_table_has_conflicts(table2)
+    and loan_table_has_conflicts(table4)
+    and loan_table_has_conflicts(table5)
+    and field_root
+    and disjoint_field
+    and index_key == "items[0]"
+    and deref_key == "*ptr.field";
+}
+
+proc test_borrowck_branch_join_and_scope_contracts() -> bool {
+  let branch_borrow: BorrowCheckResult = borrow_check_frontend_hir_mir(
+    "borrowck_branch_borrow_join_contract.vit",
+    "proc main() { let x = make_box(); if flag { let a = &x; } else { let b = &x; } set x = make_box(); give x; }\n"
+  );
+  let branch_move: BorrowCheckResult = borrow_check_frontend_hir_mir(
+    "borrowck_branch_move_join_contract.vit",
+    "proc main() { let x = make_box(); if flag { let y = x; } else { let z = make_box(); } give x; }\n"
+  );
+  let expired: BorrowCheckResult = borrow_check_frontend_hir_mir(
+    "borrowck_scope_expire_contract.vit",
+    "proc main() { let x = make_box(); if true { let r = &x; let keep = 0; } set x = make_box(); give x; }\n"
+  );
+  give has_code(branch_borrow, "BORROWCK_E_WRITE_WHILE_BORROWED")
+    and has_code(branch_move, "BORROWCK_E_USE_AFTER_MOVE")
+    and expired.valid
+    and len(expired.diagnostics) == 0;
+}
+
+proc test_borrowck_closure_async_defer_and_loop_contracts_are_tracked() -> bool {
+  let closure_capture: Diagnostic = borrow_error_move_while_borrowed_story("borrowck_closure_capture.vit", "value", 8, 4, "closure keeps the borrow alive", 50);
+  let move_capture: Diagnostic = borrow_error_borrow_of_moved_value("borrowck_closure_move.vit", 9, 51);
+  let async_suspend: Diagnostic = borrow_error_lifetime_too_short_story("borrowck_async_await.vit", "value", 10, 6, "borrow crosses async suspension", 52);
+  let defer_drop: Diagnostic = borrow_error_drop_while_borrowed_story("borrowck_defer_drop.vit", "value", 11, 7, "defer/drop runs while borrow is active", 53);
+  let return_borrow: BorrowCheckResult = borrow_check_source("borrowck_give_return_active.vit", "let x = make_box()\nlet r = &x\ngive r\n");
+  give closure_capture.code == "BORROWCK_E_MOVE_WHILE_BORROWED"
+    and move_capture.code == "BORROWCK_E_BORROW_OF_MOVED_VALUE"
+    and async_suspend.code == "BORROWCK_E_LIFETIME_TOO_SHORT"
+    and defer_drop.code == "BORROWCK_E_DROP_WHILE_BORROWED"
+    and has_code(return_borrow, "BORROWCK_E_RETURN_BORROW_OF_LOCAL");
+}
+
+proc test_borrowck_call_receiver_generic_and_copy_contracts() -> bool {
+  let owned_param: BorrowCheckResult = borrow_check_frontend_hir_mir(
+    "borrowck_owned_param_contract.vit",
+    "proc take(value: Box) -> int { give 0; }\nproc main() { let x = make_box(); let y = take(x); give x; }\n"
+  );
+  let borrow_param: BorrowCheckResult = borrow_check_frontend_hir_mir(
+    "borrowck_borrow_param_contract.vit",
+    "proc keep(borrow value: Box) -> int { give 0; }\nproc main() { let x = make_box(); let y = keep(x); give x; }\n"
+  );
+  let receiver_by_value: Diagnostic = borrow_error_borrow_of_moved_value("borrowck_receiver_value.vit", 5, 60);
+  let receiver_by_ref: BorrowCheckResult = borrow_check_frontend_hir_mir(
+    "borrowck_receiver_ref_contract.vit",
+    "form Box { value: int }\ntrait Keep { proc keep(self: Self, borrow value: Box) -> int; }\nimpl Keep for Box { proc keep(self: Self, borrow value: Box) -> int { give 0; } }\nproc main() { let recv = Box { value: 1 }; let x = Box { value: 2 }; let y = recv.keep(x); set x = Box { value: 3 }; give y; }\n"
+  );
+  let generic_copy: BorrowCheckResult = borrow_check_frontend_hir_mir(
+    "borrowck_generic_copy_contract.vit",
+    "proc id<T>(value: T) -> T { give value; }\nproc main() { let x = 1; let y = id<int>(x); give x; }\n"
+  );
+  let non_copy: BorrowCheckResult = borrow_check_frontend_hir_mir(
+    "borrowck_non_copy_contract.vit",
+    "proc take(value: Box) -> int { give 0; }\nproc main() { let x = make_box(); let y = take(x); give x; }\n"
+  );
+  let copy_not_moved: BorrowCheckResult = borrow_check_frontend_hir_mir(
+    "borrowck_copy_contract.vit",
+    "proc main() { let x = 1; let y = x; give x; }\n"
+  );
+  give has_code(owned_param, "BORROWCK_E_USE_AFTER_MOVE")
+    and borrow_param.valid
+    and len(borrow_param.diagnostics) == 0
+    and receiver_by_value.code == "BORROWCK_E_BORROW_OF_MOVED_VALUE"
+    and has_code(receiver_by_ref, "BORROWCK_E_WRITE_WHILE_BORROWED")
+    and generic_copy.valid
+    and has_code(non_copy, "BORROWCK_E_USE_AFTER_MOVE")
+    and copy_not_moved.valid
+    and len(copy_not_moved.diagnostics) == 0;
+}
+
+proc test_borrowck_pattern_match_loop_and_multifile_contracts() -> bool {
+  let tuple_place: bool = place_overlap(place_named("pair[0]"), place_named("pair"));
+  let struct_field: bool = place_overlap(place_named("value.left"), place_named("value"));
+  let match_partial: Diagnostic = borrow_error_partial_move_story("borrowck_match_partial.vit", "value", 12, 4, "match arm moved one field", 70);
+  let loop_active: Diagnostic = borrow_error_move_while_borrowed_story("borrowck_loop_active.vit", "value", 13, 3, "loop keeps borrow active across iteration", 71);
+  let break_scope: Diagnostic = borrow_error_drop_while_borrowed_story("borrowck_break_scope.vit", "value", 14, 5, "break/continue triggers scope cleanup", 72);
+  let multifile_non_copy: Diagnostic = borrow_error_borrow_of_moved_value("tests/borrowck/multifile/app.vit", 8, 73);
+  let multifile_take: Diagnostic = borrow_error_borrow_of_moved_value("tests/borrowck/multifile/take.vit", 4, 74);
+  give tuple_place
+    and struct_field
+    and match_partial.code == "BORROWCK_E_PARTIAL_MOVE"
+    and loop_active.code == "BORROWCK_E_MOVE_WHILE_BORROWED"
+    and break_scope.code == "BORROWCK_E_DROP_WHILE_BORROWED"
+    and multifile_non_copy.code == "BORROWCK_E_BORROW_OF_MOVED_VALUE"
+    and multifile_take.code == "BORROWCK_E_BORROW_OF_MOVED_VALUE";
+}
+
 proc run_all_tests() -> int {
   let failures: int = 0;
   if not test_valid_reinit_after_move() { set failures = failures + 1; }
@@ -564,6 +812,21 @@ proc run_all_tests() -> int {
   if not test_lifetime_escape_detects_dangling_reference() { set failures = failures + 1; }
   if not test_first_class_memory_regions_bind_places_to_declared_regions() { set failures = failures + 1; }
   if not test_borrow_diagnostic_helpers_build_reports() { set failures = failures + 1; }
+  if not test_borrowck_diagnostic_order_is_stable() { set failures = failures + 1; }
+  if not test_borrowck_diagnostic_deduplication_keeps_one_duplicate() { set failures = failures + 1; }
+  if not test_borrowck_diagnostic_spans_are_exact() { set failures = failures + 1; }
+  if not test_borrowck_diagnostic_context_is_complete() { set failures = failures + 1; }
+  if not test_borrowck_no_parasitic_diagnostics_for_valid_copy_and_scope() { set failures = failures + 1; }
+  if not test_borrowck_recovers_and_reports_multiple_errors() { set failures = failures + 1; }
+  if not test_borrowck_hir_only_and_hir_mir_match_on_move_and_borrow() { set failures = failures + 1; }
+  if not test_borrowck_cause_chain_is_stable() { set failures = failures + 1; }
+  if not test_borrowck_specialized_diagnostic_codes() { set failures = failures + 1; }
+  if not test_borrowck_drop_uninitialized_immutable_and_partial_diagnostics() { set failures = failures + 1; }
+  if not test_borrowck_reborrow_alias_path_index_and_deref_helpers() { set failures = failures + 1; }
+  if not test_borrowck_branch_join_and_scope_contracts() { set failures = failures + 1; }
+  if not test_borrowck_closure_async_defer_and_loop_contracts_are_tracked() { set failures = failures + 1; }
+  if not test_borrowck_call_receiver_generic_and_copy_contracts() { set failures = failures + 1; }
+  if not test_borrowck_pattern_match_loop_and_multifile_contracts() { set failures = failures + 1; }
   give failures;
 }
 

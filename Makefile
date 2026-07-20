@@ -1067,6 +1067,21 @@ mir-lowering-test:
 sema-analysis-test:
 	@bin/vitte check src/vitte/compiler/tests/sema_tests.vit
 
+.PHONY: sema-fixtures
+sema-fixtures:
+	@python3 tools/sema_fixture_snapshots.py
+
+.PHONY: sema-snapshots
+sema-snapshots:
+	@python3 tools/sema_fixture_snapshots.py
+
+.PHONY: sema-coverage
+sema-coverage:
+	@python3 tools/sema_coverage_check.py
+
+.PHONY: sema-gate
+sema-gate: sema-analysis-test sema-fixtures sema-snapshots sema-coverage
+
 .PHONY: const-eval-analysis-test
 const-eval-analysis-test:
 	@bin/vitte check src/vitte/compiler/tests/const_eval_tests.vit
@@ -1075,9 +1090,49 @@ const-eval-analysis-test:
 typeck-analysis-test:
 	@bin/vitte check src/vitte/compiler/tests/typeck_tests.vit
 
+.PHONY: typeck-fixtures
+typeck-fixtures:
+	@python3 tools/type_system/run_checks.py
+	@python3 tools/typeck_fixture_check.py
+
+.PHONY: typeck-snapshots
+typeck-snapshots:
+	@python3 tools/check_typeck_diagnostic_contracts.py
+	@python3 tools/check_type_system_rules.py
+	@python3 tools/typeck_snapshot_check.py
+	@python3 tools/type_system/generate_artifacts.py
+	@! grep -En "FAIL" target/type_system/features.txt >/dev/null
+	@test -f target/type_system/features.txt
+	@test -f target/type_system/analysis.json
+	@test -f target/type_system/fixture_metrics.csv
+	@test -f target/reports/type_system_coverage.md
+
+.PHONY: typeck-coverage
+typeck-coverage:
+	@python3 tools/typeck_coverage_check.py
+
+.PHONY: typeck-gate
+typeck-gate: typeck-analysis-test typeck-fixtures typeck-snapshots typeck-coverage typeck-differential-test typeck-fuzz-test
+	@python3 tools/typeck_surface_audit.py
+
 .PHONY: borrowck-analysis-test
 borrowck-analysis-test:
 	@bin/vitte check src/vitte/compiler/tests/borrowck_tests.vit
+
+.PHONY: borrowck-fixtures
+borrowck-fixtures:
+	@python3 tools/borrowck_coverage_check.py --fixtures
+
+.PHONY: borrowck-snapshots
+borrowck-snapshots:
+	@python3 tools/borrowck_coverage_check.py --snapshots
+
+.PHONY: borrowck-coverage
+borrowck-coverage:
+	@python3 tools/borrowck_coverage_check.py
+
+.PHONY: borrowck-gate
+borrowck-gate: borrowck-analysis-test borrowck-fixtures borrowck-snapshots borrowck-coverage
 
 .PHONY: frontend-token-consistency
 frontend-token-consistency:
@@ -1111,7 +1166,7 @@ parser-lexer-fuzz-smoke:
 	@python3 tools/parser_lexer_fuzz_smoke.py --cases 80 --seed 1337
 
 .PHONY: core-language-gate
-core-language-gate: grammar-check grammar-test core-language-test parser-recovery-golden grammar-coverage frontend-lexer-test frontend-ast-test hir-lowering-test mir-lowering-test sema-analysis-test const-eval-analysis-test typeck-analysis-test borrowck-analysis-test frontend-token-consistency strict-core-guard-test core-forbidden-syntax-lint core-ir-golden-snapshots core-semantic-success core-semantic-snapshots diagnostics-locales-lint
+core-language-gate: grammar-check grammar-test core-language-test parser-recovery-golden grammar-coverage frontend-lexer-test frontend-ast-test hir-lowering-test mir-lowering-test sema-gate const-eval-analysis-test typeck-gate borrowck-gate frontend-token-consistency strict-core-guard-test core-forbidden-syntax-lint core-ir-golden-snapshots core-semantic-success core-semantic-snapshots diagnostics-locales-lint
 
 .PHONY: core-semantic-success-portable
 core-semantic-success-portable:
@@ -1122,7 +1177,7 @@ core-semantic-snapshots-portable:
 	@BIN="$(CURDIR)/bin/vittec0" MANIFEST=tests/diag_snapshots/core_semantic_manifest.txt tools/diag_snapshots.sh
 
 .PHONY: core-language-gate-portable
-core-language-gate-portable: grammar-check grammar-test-portable core-language-test-portable parser-recovery-golden-portable grammar-coverage frontend-ast-test hir-lowering-test mir-lowering-test sema-analysis-test const-eval-analysis-test typeck-analysis-test borrowck-analysis-test frontend-token-consistency strict-core-guard-test-portable core-forbidden-syntax-lint core-ir-golden-snapshots core-semantic-success-portable core-semantic-snapshots-portable diagnostics-locales-lint
+core-language-gate-portable: grammar-check grammar-test-portable core-language-test-portable parser-recovery-golden-portable grammar-coverage frontend-ast-test hir-lowering-test mir-lowering-test sema-gate const-eval-analysis-test typeck-analysis-test borrowck-analysis-test frontend-token-consistency strict-core-guard-test-portable core-forbidden-syntax-lint core-ir-golden-snapshots core-semantic-success-portable core-semantic-snapshots-portable diagnostics-locales-lint
 
 .PHONY: core-release-gate
 core-release-gate: core-language-gate diagnostics-ftl-check
@@ -2441,19 +2496,7 @@ typeck-fuzz-test:
 	@python3 tools/typeck_fuzz_test.py
 
 
-type-system-gate:
-	@python3 tools/type_system/run_checks.py
-	@python3 tools/typeck_surface_audit.py
-	@python3 tools/check_typeck_diagnostic_contracts.py
-	@python3 tools/check_type_system_rules.py
-	@$(MAKE) --no-print-directory typeck-differential-test
-	@$(MAKE) --no-print-directory typeck-fuzz-test
-	@python3 tools/type_system/generate_artifacts.py
-	@! grep -En "FAIL" target/type_system/features.txt >/dev/null
-	@test -f target/type_system/features.txt
-	@test -f target/type_system/analysis.json
-	@test -f target/type_system/fixture_metrics.csv
-	@test -f target/reports/type_system_coverage.md
+type-system-gate: typeck-gate
 
 
 .PHONY: memory-model-gate

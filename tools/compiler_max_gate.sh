@@ -60,6 +60,8 @@ fi
 
 # 4) Pass contracts (audited above)
 go make hir-coverage
+go make sema-gate
+go make borrowck-gate
 
 # 5) Diagnostics quality baseline
 if [ "$MODE" = "fast" ]; then
