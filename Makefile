@@ -1063,6 +1063,21 @@ hir-coverage:
 mir-lowering-test:
 	@bin/vitte check src/vitte/compiler/tests/mir_tests.vit
 
+.PHONY: mir-fixtures
+mir-fixtures:
+	@python3 tools/mir_coverage_check.py --fixtures
+
+.PHONY: mir-snapshots
+mir-snapshots:
+	@python3 tools/mir_coverage_check.py --snapshots
+
+.PHONY: mir-coverage
+mir-coverage:
+	@python3 tools/mir_coverage_check.py
+
+.PHONY: mir-gate
+mir-gate: mir-lowering-test mir-fixtures mir-snapshots mir-coverage
+
 .PHONY: sema-analysis-test
 sema-analysis-test:
 	@bin/vitte check src/vitte/compiler/tests/sema_tests.vit
@@ -1166,7 +1181,7 @@ parser-lexer-fuzz-smoke:
 	@python3 tools/parser_lexer_fuzz_smoke.py --cases 80 --seed 1337
 
 .PHONY: core-language-gate
-core-language-gate: grammar-check grammar-test core-language-test parser-recovery-golden grammar-coverage frontend-lexer-test frontend-ast-test hir-lowering-test mir-lowering-test sema-gate const-eval-analysis-test typeck-gate borrowck-gate frontend-token-consistency strict-core-guard-test core-forbidden-syntax-lint core-ir-golden-snapshots core-semantic-success core-semantic-snapshots diagnostics-locales-lint
+core-language-gate: grammar-check grammar-test core-language-test parser-recovery-golden grammar-coverage frontend-lexer-test frontend-ast-test hir-lowering-test mir-gate sema-gate const-eval-analysis-test typeck-gate borrowck-gate frontend-token-consistency strict-core-guard-test core-forbidden-syntax-lint core-ir-golden-snapshots core-semantic-success core-semantic-snapshots diagnostics-locales-lint
 
 .PHONY: core-semantic-success-portable
 core-semantic-success-portable:

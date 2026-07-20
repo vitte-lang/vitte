@@ -1446,6 +1446,59 @@ proc test_mir_block_merging_preserves_cfg_joins() -> bool {
     and len(result.mir.module.functions[0].blocks[3].predecessors) == 2;
 }
 
+proc test_mir_order_ids_and_counts_are_stable() -> bool {
+  let source: string =
+    "proc helper(value: int) -> int { give value; }\n" +
+    "proc main() -> int { let first = helper(1); let second = helper(2); give first; }\n";
+  let fe: FrontendOutput = frontend_run("mir_order_ids_counts.vit", source);
+  let middle: MiddleOutput = middle_run(fe);
+  let mir: MirUnit = middle.mir;
+  if not middle.valid or not mir.valid or len(mir.module.functions) != 2 {
+    give false;
+  }
+  let helper_fn: MirFunction = mir.module.functions[0];
+  let main_fn: MirFunction = mir.module.functions[1];
+  give mir.function_count == len(mir.module.functions)
+    and mir.block_count >= len(helper_fn.blocks) + len(main_fn.blocks)
+    and mir.instruction_count >= 3
+    and helper_fn.id == 1
+    and main_fn.id == 2
+    and helper_fn.name == "helper"
+    and main_fn.name == "main"
+    and main_fn.blocks[0].id == main_fn.entry_block
+    and main_fn.blocks[0].statements[0].id < main_fn.blocks[1].statements[0].id
+    and main_fn.blocks[0].statements[0].place.local == "first"
+    and main_fn.blocks[1].statements[0].place.local == "second"
+    and main_fn.local_count >= 2
+    and main_fn.temporary_count == 0;
+}
+
+proc test_mir_preserves_real_spans_from_hir() -> bool {
+  let source: string =
+    "proc main() -> int {\n" +
+    "  let value = 1;\n" +
+    "  set value = value + 1;\n" +
+    "  give value;\n" +
+    "}\n";
+  let fe: FrontendOutput = frontend_run("mir_real_spans.vit", source);
+  let middle: MiddleOutput = middle_run(fe);
+  let mir: MirUnit = middle.mir;
+  if not middle.valid or not mir.valid or len(mir.module.functions) == 0 {
+    give false;
+  }
+  let fn0: MirFunction = mir.module.functions[0];
+  let first_stmt: MirStatement = fn0.blocks[0].statements[0];
+  let set_stmt: MirStatement = fn0.blocks[1].statements[0];
+  let return_stmt: MirStatement = fn0.blocks[2].statements[0];
+  give first_stmt.span.valid
+    and set_stmt.span.valid
+    and return_stmt.span.valid
+    and first_stmt.span.file == "mir_real_spans.vit"
+    and first_stmt.span.start_line == 2
+    and set_stmt.span.start_line == 3
+    and return_stmt.span.start_line == 4;
+}
+
 proc run_all_tests() -> int {
   let failures: int = 0;
   if not test_mir_lowering() {
@@ -1566,6 +1619,12 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if not test_mir_block_merging_preserves_cfg_joins() {
+    set failures = failures + 1;
+  }
+  if not test_mir_order_ids_and_counts_are_stable() {
+    set failures = failures + 1;
+  }
+  if not test_mir_preserves_real_spans_from_hir() {
     set failures = failures + 1;
   }
   give failures;
