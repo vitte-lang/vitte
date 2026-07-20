@@ -89,7 +89,7 @@ form DiagnosticSuggestion {
     valid: bool
 }
 
-form Diagnostic {
+form InfrastructureDiagnostic {
     code: string
     phase: DiagnosticPhase
     severity: DiagnosticSeverity
@@ -113,7 +113,7 @@ form Diagnostic {
 }
 
 form DiagnosticReport {
-    diagnostics: [Diagnostic]
+    diagnostics: [InfrastructureDiagnostic]
     valid: bool
     warning_count: u64
     error_count: u64
@@ -601,7 +601,7 @@ proc diagnostic_kv(key: string, value: string) -> string {
     give key + diagnostic_eq() + value;
 }
 
-proc diagnostic_create(code: string, phase: DiagnosticPhase, severity: DiagnosticSeverity, message: string, span: SourceSpan) -> Diagnostic {
+proc diagnostic_create(code: string, phase: DiagnosticPhase, severity: DiagnosticSeverity, message: string, span: SourceSpan) -> InfrastructureDiagnostic {
     let phase_context: string = diagnostic_kv("phase", phase_name(phase));
     let step_context: string = diagnostic_kv("step", diagnostic_default_step(phase));
     let family_context: string = diagnostic_kv("family", diagnostic_code_family(phase, code));
@@ -610,7 +610,7 @@ proc diagnostic_create(code: string, phase: DiagnosticPhase, severity: Diagnosti
     let confidence_context: string = diagnostic_kv("confidence", diagnostic_confidence(phase, code));
     let default_help_text: string = diagnostic_default_help(phase, code);
     let default_suggestion: DiagnosticSuggestion = diagnostic_default_suggestion(phase, code, span);
-    give Diagnostic {
+    give InfrastructureDiagnostic {
         code: code,
         phase: phase,
         severity: severity,
@@ -634,19 +634,19 @@ proc diagnostic_create(code: string, phase: DiagnosticPhase, severity: Diagnosti
     };
 }
 
-proc diagnostic_error(code: string, phase: DiagnosticPhase, message: string, span: SourceSpan) -> Diagnostic {
+proc diagnostic_error(code: string, phase: DiagnosticPhase, message: string, span: SourceSpan) -> InfrastructureDiagnostic {
     give diagnostic_create(code, phase, DiagnosticSeverity.Error, message, span);
 }
 
-proc diagnostic_warning(code: string, phase: DiagnosticPhase, message: string, span: SourceSpan) -> Diagnostic {
+proc diagnostic_warning(code: string, phase: DiagnosticPhase, message: string, span: SourceSpan) -> InfrastructureDiagnostic {
     give diagnostic_create(code, phase, DiagnosticSeverity.Warning, message, span);
 }
 
-proc diagnostic_fatal(code: string, phase: DiagnosticPhase, message: string, span: SourceSpan) -> Diagnostic {
+proc diagnostic_fatal(code: string, phase: DiagnosticPhase, message: string, span: SourceSpan) -> InfrastructureDiagnostic {
     give diagnostic_create(code, phase, DiagnosticSeverity.Fatal, message, span);
 }
 
-proc diagnostic_with_label(diagnostic: Diagnostic, label: DiagnosticLabel) -> Diagnostic {
+proc diagnostic_with_label(diagnostic: InfrastructureDiagnostic, label: DiagnosticLabel) -> InfrastructureDiagnostic {
     set diagnostic.labels = diagnostic.labels + [label];
     if label.primary {
         set diagnostic.span = label.span;
@@ -657,7 +657,7 @@ proc diagnostic_with_label(diagnostic: Diagnostic, label: DiagnosticLabel) -> Di
     give diagnostic;
 }
 
-proc diagnostic_with_note(diagnostic: Diagnostic, message: string) -> Diagnostic {
+proc diagnostic_with_note(diagnostic: InfrastructureDiagnostic, message: string) -> InfrastructureDiagnostic {
     if message == "" {
         give diagnostic;
     }
@@ -666,7 +666,7 @@ proc diagnostic_with_note(diagnostic: Diagnostic, message: string) -> Diagnostic
     give diagnostic;
 }
 
-proc diagnostic_with_help(diagnostic: Diagnostic, message: string) -> Diagnostic {
+proc diagnostic_with_help(diagnostic: InfrastructureDiagnostic, message: string) -> InfrastructureDiagnostic {
     if message == "" {
         give diagnostic;
     }
@@ -675,12 +675,12 @@ proc diagnostic_with_help(diagnostic: Diagnostic, message: string) -> Diagnostic
     give diagnostic;
 }
 
-proc diagnostic_with_suggestion(diagnostic: Diagnostic, suggestion: DiagnosticSuggestion) -> Diagnostic {
+proc diagnostic_with_suggestion(diagnostic: InfrastructureDiagnostic, suggestion: DiagnosticSuggestion) -> InfrastructureDiagnostic {
     set diagnostic.suggestions = diagnostic.suggestions + [suggestion];
     give diagnostic;
 }
 
-proc diagnostic_with_documentation(diagnostic: Diagnostic, documentation_url: string) -> Diagnostic {
+proc diagnostic_with_documentation(diagnostic: InfrastructureDiagnostic, documentation_url: string) -> InfrastructureDiagnostic {
     if documentation_url == "" {
         give diagnostic;
     }
@@ -689,7 +689,7 @@ proc diagnostic_with_documentation(diagnostic: Diagnostic, documentation_url: st
     give diagnostic;
 }
 
-proc diagnostic_add_pipeline_context(diagnostic: Diagnostic, context: string) -> Diagnostic {
+proc diagnostic_add_pipeline_context(diagnostic: InfrastructureDiagnostic, context: string) -> InfrastructureDiagnostic {
     if context == "" {
         give diagnostic;
     }
@@ -698,12 +698,12 @@ proc diagnostic_add_pipeline_context(diagnostic: Diagnostic, context: string) ->
     give diagnostic;
 }
 
-proc diagnostic_with_file_id(diagnostic: Diagnostic, file_id: u64) -> Diagnostic {
+proc diagnostic_with_file_id(diagnostic: InfrastructureDiagnostic, file_id: u64) -> InfrastructureDiagnostic {
     set diagnostic.file_id = file_id;
     give diagnostic;
 }
 
-proc diagnostic_with_internal_cause(diagnostic: Diagnostic, internal_cause: string) -> Diagnostic {
+proc diagnostic_with_internal_cause(diagnostic: InfrastructureDiagnostic, internal_cause: string) -> InfrastructureDiagnostic {
     if internal_cause == "" {
         give diagnostic;
     }
@@ -712,7 +712,7 @@ proc diagnostic_with_internal_cause(diagnostic: Diagnostic, internal_cause: stri
     give diagnostic;
 }
 
-proc diagnostic_with_probable_fix(diagnostic: Diagnostic, probable_fix: string) -> Diagnostic {
+proc diagnostic_with_probable_fix(diagnostic: InfrastructureDiagnostic, probable_fix: string) -> InfrastructureDiagnostic {
     if probable_fix == "" {
         give diagnostic;
     }
@@ -731,7 +731,7 @@ proc diagnostic_report_empty() -> DiagnosticReport {
     };
 }
 
-proc diagnostic_report_add(report: DiagnosticReport, diagnostic: Diagnostic) -> DiagnosticReport {
+proc diagnostic_report_add(report: DiagnosticReport, diagnostic: InfrastructureDiagnostic) -> DiagnosticReport {
     let next: DiagnosticReport = report;
     set next.diagnostics = next.diagnostics + [diagnostic];
 
@@ -770,7 +770,7 @@ share DiagnosticLabel
 share DiagnosticNote
 share DiagnosticHelp
 share DiagnosticSuggestion
-share Diagnostic
+share InfrastructureDiagnostic
 share DiagnosticReport
 share DiagnosticRenderConfig
 

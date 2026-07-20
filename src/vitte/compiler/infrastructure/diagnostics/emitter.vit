@@ -10,7 +10,7 @@ use vitte/compiler/infrastructure/diagnostics/colors.{
 }
 
 use vitte/compiler/infrastructure/diagnostics/diagnostic.{
-    Diagnostic,
+    InfrastructureDiagnostic,
     DiagnosticHelp,
     DiagnosticLabel,
     DiagnosticNote,
@@ -65,7 +65,7 @@ proc diagnostic_label(message: string, location: SourceSpan) -> DiagnosticLabel 
     give primary_label(message, location);
 }
 
-proc diagnostic_message(level: DiagnosticLevel, code: string, message: string, fatal: bool) -> Diagnostic {
+proc diagnostic_message(level: DiagnosticLevel, code: string, message: string, fatal: bool) -> InfrastructureDiagnostic {
     if fatal {
         give base_diagnostic_fatal(code, DiagnosticPhase.Internal, message, diagnostic_location("<unknown>", 1, 1));
     }
@@ -153,13 +153,13 @@ proc render_label(label: DiagnosticLabel) -> string {
     give render_location(label.span) + ": " + label.message;
 }
 
-proc render_header(diag: Diagnostic) -> string {
+proc render_header(diag: InfrastructureDiagnostic) -> string {
     let prefix: string = severity_name(diag.severity);
     let phase_text: string = phase_name(diag.phase);
     give prefix + "[" + diag.code + "]" + " " + phase_text + ": " + diag.message;
 }
 
-proc render_header_colored(diag: Diagnostic) -> string {
+proc render_header_colored(diag: InfrastructureDiagnostic) -> string {
     let header: string = render_header(diag);
 
     if diag.severity == DiagnosticSeverity.Error or diag.severity == DiagnosticSeverity.Fatal {
@@ -181,19 +181,19 @@ proc render_header_colored(diag: Diagnostic) -> string {
     give apply_info(header);
 }
 
-proc add_label(diag: Diagnostic, label: DiagnosticLabel) -> Diagnostic {
+proc add_label(diag: InfrastructureDiagnostic, label: DiagnosticLabel) -> InfrastructureDiagnostic {
     give diagnostic_with_label(diag, label);
 }
 
-proc add_note(diag: Diagnostic, note: string) -> Diagnostic {
+proc add_note(diag: InfrastructureDiagnostic, note: string) -> InfrastructureDiagnostic {
     give diagnostic_with_note(diag, note);
 }
 
-proc add_help(diag: Diagnostic, help: string) -> Diagnostic {
+proc add_help(diag: InfrastructureDiagnostic, help: string) -> InfrastructureDiagnostic {
     give diagnostic_with_help(diag, help);
 }
 
-proc add_suggestion(diag: Diagnostic, suggestion: DiagnosticSuggestion) -> Diagnostic {
+proc add_suggestion(diag: InfrastructureDiagnostic, suggestion: DiagnosticSuggestion) -> InfrastructureDiagnostic {
     give diagnostic_with_suggestion(diag, suggestion);
 }
 
@@ -283,7 +283,7 @@ proc render_labels(labels: [DiagnosticLabel]) -> string {
     give out;
 }
 
-proc emit(diag: Diagnostic, options: EmitterOptions) -> EmitResult {
+proc emit(diag: InfrastructureDiagnostic, options: EmitterOptions) -> EmitResult {
     let rendered: string = "";
 
     if options.use_colors {
@@ -331,42 +331,42 @@ proc count_lines(text: string) -> u64 {
     give count;
 }
 
-proc diagnostic_error(code: string, message: string) -> Diagnostic {
+proc diagnostic_error(code: string, message: string) -> InfrastructureDiagnostic {
     give base_diagnostic_error(code, DiagnosticPhase.Internal, message, diagnostic_location("<unknown>", 1, 1));
 }
 
-proc diagnostic_warning(code: string, message: string) -> Diagnostic {
+proc diagnostic_warning(code: string, message: string) -> InfrastructureDiagnostic {
     give diagnostic_create(code, DiagnosticPhase.Internal, DiagnosticSeverity.Warning, message, diagnostic_location("<unknown>", 1, 1));
 }
 
-proc diagnostic_note(code: string, message: string) -> Diagnostic {
+proc diagnostic_note(code: string, message: string) -> InfrastructureDiagnostic {
     give diagnostic_create(code, DiagnosticPhase.Internal, DiagnosticSeverity.Note, message, diagnostic_location("<unknown>", 1, 1));
 }
 
-proc diagnostic_help(code: string, message: string) -> Diagnostic {
+proc diagnostic_help(code: string, message: string) -> InfrastructureDiagnostic {
     give diagnostic_create(code, DiagnosticPhase.Internal, DiagnosticSeverity.Help, message, diagnostic_location("<unknown>", 1, 1));
 }
 
-proc diagnostic_info(code: string, message: string) -> Diagnostic {
+proc diagnostic_info(code: string, message: string) -> InfrastructureDiagnostic {
     give diagnostic_create(code, DiagnosticPhase.Internal, message_level_info(), message, diagnostic_location("<unknown>", 1, 1));
 }
 
-proc emit_plain(diag: Diagnostic) -> string {
+proc emit_plain(diag: InfrastructureDiagnostic) -> string {
     let result: EmitResult = emit(diag, emitter_options_full(false, true, true, true, true));
     give result.rendered;
 }
 
-proc emit_colored(diag: Diagnostic) -> string {
+proc emit_colored(diag: InfrastructureDiagnostic) -> string {
     let result: EmitResult = emit(diag, default_emitter_options());
     give result.rendered;
 }
 
 proc emitter_selftest() -> bool {
     let location: SourceSpan = diagnostic_location("main.vit", 10, 5);
-    let diag0: Diagnostic = diagnostic_error("E0001", "unexpected token");
-    let diag1: Diagnostic = add_label(diag0, diagnostic_label("expected expression", location));
-    let diag2: Diagnostic = add_note(diag1, "parser recovery applied");
-    let diag3: Diagnostic = add_help(diag2, "insert an expression before the closing delimiter");
+    let diag0: InfrastructureDiagnostic = diagnostic_error("E0001", "unexpected token");
+    let diag1: InfrastructureDiagnostic = add_label(diag0, diagnostic_label("expected expression", location));
+    let diag2: InfrastructureDiagnostic = add_note(diag1, "parser recovery applied");
+    let diag3: InfrastructureDiagnostic = add_help(diag2, "insert an expression before the closing delimiter");
     let result: EmitResult = emit(diag3, default_emitter_options());
 
     give result.line_count >= 3

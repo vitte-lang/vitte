@@ -13,7 +13,6 @@ ROOT = Path(__file__).resolve().parents[1]
 CODES = ROOT / "schemas" / "diagnostics" / "codes.json"
 COMPILER_ROOT = ROOT / "src" / "vitte" / "compiler"
 CANONICAL_DIAGNOSTIC = COMPILER_ROOT / "diagnostics" / "diagnostic.vit"
-INFRA_DIAGNOSTIC = COMPILER_ROOT / "infrastructure" / "diagnostics" / "diagnostic.vit"
 SEMA_DIAGNOSTICS = COMPILER_ROOT / "analysis" / "sema" / "errors.vit"
 SEMA_RESOLVER = COMPILER_ROOT / "analysis" / "sema" / "resolver.vit"
 PARSER = COMPILER_ROOT / "frontend" / "parse" / "parser.vit"
@@ -97,14 +96,6 @@ REQUIRED_CANONICAL_INITIALIZERS = (
     "span: span",
     "file_id: 0",
     "internal_cause: cause",
-)
-REQUIRED_INFRA_INITIALIZERS = (
-    "title: message",
-    "secondary_spans: []",
-    "primary_span: span",
-    "span: span",
-    "file_id: 0",
-    "internal_cause: diagnostic_default_explanation(phase)",
 )
 
 
@@ -243,30 +234,38 @@ def form_fields(text: str, form_name: str) -> set[str] | None:
 
 def check_diagnostic_object_contract() -> list[str]:
     failures: list[str] = []
-    for path, required_initializers in (
-        (CANONICAL_DIAGNOSTIC, REQUIRED_CANONICAL_INITIALIZERS),
-        (INFRA_DIAGNOSTIC, REQUIRED_INFRA_INITIALIZERS),
-    ):
+    diagnostic_forms: list[str] = []
+    for path in compiler_sources():
         text = path.read_text(encoding="utf-8")
-        rel = path.relative_to(ROOT)
-        fields = form_fields(text, "Diagnostic")
-        if fields is None:
-            failures.append(f"{rel}: missing form Diagnostic")
-            continue
-        for field in REQUIRED_DIAGNOSTIC_FIELDS:
-            if field not in fields:
-                failures.append(f"{rel}: Diagnostic is missing required field {field!r}")
-        for initializer in required_initializers:
-            if initializer not in text:
-                failures.append(f"{rel}: diagnostic_create must initialize {initializer!r}")
-        if "set diagnostic.secondary_spans = diagnostic.secondary_spans + [label.span]" not in text:
-            failures.append(f"{rel}: secondary labels must preserve their spans in secondary_spans")
-        if "set diagnostic.primary_span = label.span" not in text or "set diagnostic.span = label.span" not in text:
-            failures.append(f"{rel}: primary labels must synchronize span and primary_span")
-        if "proc diagnostic_with_file_id" not in text:
-            failures.append(f"{rel}: missing diagnostic_with_file_id helper")
-        if "proc diagnostic_with_internal_cause" not in text:
-            failures.append(f"{rel}: missing diagnostic_with_internal_cause helper")
+        if re.search(r"(?m)^form\s+Diagnostic\s*\{", text):
+            diagnostic_forms.append(path.relative_to(ROOT).as_posix())
+    allowed = CANONICAL_DIAGNOSTIC.relative_to(ROOT).as_posix()
+    for path in diagnostic_forms:
+        if path != allowed:
+            failures.append(f"{path}: only {allowed} may define form Diagnostic")
+    if allowed not in diagnostic_forms:
+        failures.append(f"{allowed}: missing unique form Diagnostic")
+
+    text = CANONICAL_DIAGNOSTIC.read_text(encoding="utf-8")
+    rel = CANONICAL_DIAGNOSTIC.relative_to(ROOT)
+    fields = form_fields(text, "Diagnostic")
+    if fields is None:
+        failures.append(f"{rel}: missing form Diagnostic")
+        return failures
+    for field in REQUIRED_DIAGNOSTIC_FIELDS:
+        if field not in fields:
+            failures.append(f"{rel}: Diagnostic is missing required field {field!r}")
+    for initializer in REQUIRED_CANONICAL_INITIALIZERS:
+        if initializer not in text:
+            failures.append(f"{rel}: diagnostic_create must initialize {initializer!r}")
+    if "set diagnostic.secondary_spans = diagnostic.secondary_spans + [label.span]" not in text:
+        failures.append(f"{rel}: secondary labels must preserve their spans in secondary_spans")
+    if "set diagnostic.primary_span = label.span" not in text or "set diagnostic.span = label.span" not in text:
+        failures.append(f"{rel}: primary labels must synchronize span and primary_span")
+    if "proc diagnostic_with_file_id" not in text:
+        failures.append(f"{rel}: missing diagnostic_with_file_id helper")
+    if "proc diagnostic_with_internal_cause" not in text:
+        failures.append(f"{rel}: missing diagnostic_with_internal_cause helper")
     return failures
 
 

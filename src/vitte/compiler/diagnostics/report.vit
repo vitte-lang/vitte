@@ -1,6 +1,6 @@
 space vitte/compiler/diagnostics/report
 
-form Diagnostic {
+form TextDiagnostic {
     severity: string
     code: string
     file: string
@@ -10,7 +10,7 @@ form Diagnostic {
     valid: bool
 }
 
-proc diagnostic(severity: string, code: string, file: string, line: u64, column: u64, message: string) -> Diagnostic {
+proc text_diagnostic(severity: string, code: string, file: string, line: u64, column: u64, message: string) -> TextDiagnostic {
     let sev: string = severity;
     let ln: u64 = line;
     let col: u64 = column;
@@ -25,7 +25,7 @@ proc diagnostic(severity: string, code: string, file: string, line: u64, column:
         set col = 1 as u64;
     }
 
-    give Diagnostic {
+    give TextDiagnostic {
         severity: sev,
         code: code,
         file: file,
@@ -36,8 +36,8 @@ proc diagnostic(severity: string, code: string, file: string, line: u64, column:
     };
 }
 
-proc error_text(message: string) -> Diagnostic {
-    give diagnostic("error", "DRIVER_E_TEXT", "", 1 as u64, 1 as u64, message);
+proc error_text(message: string) -> TextDiagnostic {
+    give text_diagnostic("error", "DRIVER_E_TEXT", "", 1 as u64, 1 as u64, message);
 }
 
 proc ansi_reset() -> string {
@@ -90,7 +90,7 @@ proc colorize_severity(severity: string) -> string {
     give text;
 }
 
-proc render_text(diagnostic0: Diagnostic) -> string {
+proc render_text(diagnostic0: TextDiagnostic) -> string {
     let severity_text: string = colorize_severity(diagnostic0.severity);
     let line_text: string = diagnostic0.line as string;
     let column_text: string = diagnostic0.column as string;
