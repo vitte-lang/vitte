@@ -6,8 +6,35 @@ pick Weekday { Monday Tuesday Wednesday Thursday Friday Saturday Sunday }
 form Date { year: i32 month: u8 day: u8 }
 form CalendarError { message: String }
 
-proc date(year: i32, month: u8, day: u8) -> Result<Date, CalendarError> { give compiler_calendar_date(year, month, day); }
-proc is_leap_year(year: i32) -> bool { give compiler_calendar_is_leap_year(year); }
+proc date(year: i32, month: u8, day: u8) -> Result<Date, CalendarError> {
+    if month < 1 or month > 12 {
+        give err<Date, CalendarError>(CalendarError { message: compiler_test_string("month out of range") });
+    }
+    if day < 1 or day > days_in_month(year, month) {
+        give err<Date, CalendarError>(CalendarError { message: compiler_test_string("day out of range") });
+    }
+    give ok<Date, CalendarError>(Date { year: year, month: month, day: day });
+}
+proc is_leap_year(year: i32) -> bool {
+    if year % 400 == 0 {
+        give true;
+    }
+    if year % 100 == 0 {
+        give false;
+    }
+    give year % 4 == 0;
+}
 proc weekday(value: Date) -> Weekday { give compiler_calendar_weekday(value); }
-proc days_in_month(year: i32, month: u8) -> u8 { give compiler_calendar_days_in_month(year, month); }
+proc days_in_month(year: i32, month: u8) -> u8 {
+    if month == 2 {
+        if is_leap_year(year) {
+            give 29;
+        }
+        give 28;
+    }
+    if month == 4 or month == 6 or month == 9 or month == 11 {
+        give 30;
+    }
+    give 31;
+}
 proc date_format(value: Date, pattern: string) -> String { give compiler_calendar_format(value, pattern); }

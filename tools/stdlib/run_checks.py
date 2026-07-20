@@ -109,6 +109,13 @@ STDLIB_NEXT_STEP_SOURCES = (
     SOURCE_STDLIB_DIR / "tests" / "std_more_libraries_contracts.vit",
     SOURCE_STDLIB_DIR / "tests" / "fuzz" / "utf8_url_csv.vit",
     SOURCE_STDLIB_DIR / "tests" / "fuzz" / "path_json_parse.vit",
+    SOURCE_STDLIB_DIR / "tests" / "module_runner.vit",
+    SOURCE_STDLIB_DIR / "tests" / "modules" / "std_uuid_test.vit",
+    SOURCE_STDLIB_DIR / "tests" / "modules" / "std_calendar_test.vit",
+    SOURCE_STDLIB_DIR / "tests" / "modules" / "std_units_test.vit",
+    SOURCE_STDLIB_DIR / "tests" / "modules" / "std_metrics_test.vit",
+    SOURCE_STDLIB_DIR / "tests" / "modules" / "std_mime_test.vit",
+    SOURCE_STDLIB_DIR / "tests" / "modules" / "std_percent_encoding_test.vit",
     SOURCE_STDLIB_DIR / "tests" / "snapshots" / "stdlib_api.snap",
     SOURCE_STDLIB_DIR / "examples" / "stdlib_max.vit",
     ROOT / "tools" / "stdlib" / "generate_api_docs.py",
@@ -788,6 +795,13 @@ REQUIRED_NEXT_STEP_FRAGMENTS = {
     "tests/std_more_libraries_contracts.vit": ("stdlib_more_libraries_contracts_smoke", "std_terminal.terminal_style", "std_calendar.is_leap_year", "std_event.event_bus"),
     "tests/fuzz/utf8_url_csv.vit": ("fuzz_utf8_url_csv", "core_string.validate_utf8", "std_url.url_parse", "std_csv.csv_parse"),
     "tests/fuzz/path_json_parse.vit": ("fuzz_path_json_parse", "std_path.normalize", "std_serialization.json_value", "std_parse.parse_i64"),
+    "tests/module_runner.vit": ("stdlib_module_tests_run", "std_uuid_test", "std_calendar_test", "std_percent_encoding_test"),
+    "tests/modules/std_uuid_test.vit": ("std_uuid_test", "std_uuid.uuid_nil", "std_uuid.uuid_is_nil"),
+    "tests/modules/std_calendar_test.vit": ("std_calendar_test", "std_calendar.is_leap_year", "std_calendar.date"),
+    "tests/modules/std_units_test.vit": ("std_units_test", "std_units.convert", "std_units.meter"),
+    "tests/modules/std_metrics_test.vit": ("std_metrics_test", "std_metrics.counter_inc", "counter.value == 3"),
+    "tests/modules/std_mime_test.vit": ("std_mime_test", "std_mime.mime_text_plain", "std_mime.mime_application_json"),
+    "tests/modules/std_percent_encoding_test.vit": ("std_percent_encoding_test", "percent_encode_set_component", "component"),
     "examples/stdlib_max.vit": ("stdlib_max_example", "std_uuid.uuid_nil", "std_path.path_buf", "std_random.prng"),
 }
 
@@ -1559,6 +1573,55 @@ def validate_stdlib_max_artifacts() -> list[ValidationResult]:
     ]
 
 
+def validate_real_vitte_implementations() -> list[ValidationResult]:
+    checks = {
+        SOURCE_STDLIB_DIR / "std" / "uuid.vitl": (
+            "proc uuid_nil() -> Uuid { give compiler_uuid_nil(); }",
+            "proc uuid_is_nil(value: Uuid) -> bool { give compiler_uuid_is_nil(value); }",
+        ),
+        SOURCE_STDLIB_DIR / "std" / "calendar.vitl": (
+            "compiler_calendar_is_leap_year",
+            "compiler_calendar_days_in_month",
+        ),
+        SOURCE_STDLIB_DIR / "std" / "units.vitl": (
+            "compiler_units_convert",
+        ),
+        SOURCE_STDLIB_DIR / "std" / "metrics.vitl": (
+            "compiler_metrics_render_counter",
+        ),
+        SOURCE_STDLIB_DIR / "std" / "mime.vitl": (
+            "compiler_mime_text_plain",
+            "compiler_mime_application_json",
+        ),
+    }
+    violations: list[str] = []
+    for path, forbidden in checks.items():
+        text = path.read_text(encoding="utf-8")
+        for fragment in forbidden:
+            if fragment in text:
+                violations.append(f"{path.relative_to(ROOT)} keeps {fragment}")
+
+    module_tests = sorted((SOURCE_STDLIB_DIR / "tests" / "modules").glob("*.vit"))
+    runner_text = (SOURCE_STDLIB_DIR / "tests" / "module_runner.vit").read_text(encoding="utf-8")
+    missing_runner_refs = [
+        path.stem
+        for path in module_tests
+        if path.stem not in runner_text
+    ]
+    return [
+        ValidationResult(
+            name="stdlib_replaces_simple_compiler_surfaces",
+            status=not violations,
+            detail="ok" if not violations else "; ".join(violations[:5]),
+        ),
+        ValidationResult(
+            name="stdlib_has_executable_module_tests",
+            status=len(module_tests) >= 6 and not missing_runner_refs,
+            detail=f"tests={len(module_tests)}" if not missing_runner_refs else ", ".join(missing_runner_refs),
+        ),
+    ]
+
+
 def validate_architecture(manifest: dict) -> list[ValidationResult]:
     results: list[ValidationResult] = []
     levels = architecture_levels(manifest)
@@ -1665,6 +1728,7 @@ def build_report() -> dict:
     ci_matrix_results = validate_ci_matrix(ci_matrix_manifest)
     lsp_api_results = validate_lsp_api_index()
     max_artifact_results = validate_stdlib_max_artifacts()
+    real_impl_results = validate_real_vitte_implementations()
     module_results = validate_module_manifest(module_manifest)
     graph_results = validate_dependency_graph_manifest(
         dependency_graph_manifest,
@@ -1701,7 +1765,7 @@ def build_report() -> dict:
     ]
     architecture_failures = [
         item
-        for item in architecture + std_platform_results + ci_matrix_results + lsp_api_results + max_artifact_results + module_results + graph_results + primitive_results + option_result_results + convert_default_clone_results + drop_scope_memory_results + iterator_results + range_number_results + float_math_results + string_ascii_unicode_results + next_step_results
+        for item in architecture + std_platform_results + ci_matrix_results + lsp_api_results + max_artifact_results + real_impl_results + module_results + graph_results + primitive_results + option_result_results + convert_default_clone_results + drop_scope_memory_results + iterator_results + range_number_results + float_math_results + string_ascii_unicode_results + next_step_results
         if not item.status
     ]
 
@@ -1746,7 +1810,7 @@ def build_report() -> dict:
         ],
         "architecture_results": [
             asdict(item)
-            for item in architecture + std_platform_results + ci_matrix_results + lsp_api_results + max_artifact_results + module_results + graph_results + primitive_results + option_result_results + convert_default_clone_results + drop_scope_memory_results + iterator_results + range_number_results + float_math_results + string_ascii_unicode_results + next_step_results
+            for item in architecture + std_platform_results + ci_matrix_results + lsp_api_results + max_artifact_results + real_impl_results + module_results + graph_results + primitive_results + option_result_results + convert_default_clone_results + drop_scope_memory_results + iterator_results + range_number_results + float_math_results + string_ascii_unicode_results + next_step_results
         ],
         "required_symbols": [
             asdict(item)

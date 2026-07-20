@@ -5286,10 +5286,10 @@ Each entry is suitable for LSP symbol indexing and documentation lookup.
 - `pick Weekday` signature `pick Weekday { Monday Tuesday Wednesday Thursday Friday Saturday Sunday }` example `Weekday`
 - `form Date` signature `form Date { year: i32 month: u8 day: u8 }` example `Date`
 - `form CalendarError` signature `form CalendarError { message: String }` example `CalendarError`
-- `proc date` signature `proc date(year: i32, month: u8, day: u8) -> Result<Date, CalendarError> { give compiler_calendar_date(year, month, day); }` example `date`
-- `proc is_leap_year` signature `proc is_leap_year(year: i32) -> bool { give compiler_calendar_is_leap_year(year); }` example `is_leap_year`
+- `proc date` signature `proc date(year: i32, month: u8, day: u8) -> Result<Date, CalendarError> {` example `date`
+- `proc is_leap_year` signature `proc is_leap_year(year: i32) -> bool {` example `is_leap_year`
 - `proc weekday` signature `proc weekday(value: Date) -> Weekday { give compiler_calendar_weekday(value); }` example `weekday`
-- `proc days_in_month` signature `proc days_in_month(year: i32, month: u8) -> u8 { give compiler_calendar_days_in_month(year, month); }` example `days_in_month`
+- `proc days_in_month` signature `proc days_in_month(year: i32, month: u8) -> u8 {` example `days_in_month`
 - `proc date_format` signature `proc date_format(value: Date, pattern: string) -> String { give compiler_calendar_format(value, pattern); }` example `date_format`
 
 ## `src/vitte/stdlib/std/cli.vitl`
@@ -5500,7 +5500,7 @@ Each entry is suitable for LSP symbol indexing and documentation lookup.
 - `proc counter_inc` signature `proc counter_inc(value: ref mut Counter, amount: u64) { set (*value).value = (*value).value + amount; }` example `counter_inc`
 - `proc gauge` signature `proc gauge(name: String, value: f64) -> Gauge { give Gauge { name: name, value: value }; }` example `gauge`
 - `proc histogram` signature `proc histogram(name: String, buckets: Vec<f64>) -> Histogram { give Histogram { name: name, buckets: buckets }; }` example `histogram`
-- `proc metrics_render_counter` signature `proc metrics_render_counter(value: Counter) -> String { give compiler_metrics_render_counter(value); }` example `metrics_render_counter`
+- `proc metrics_render_counter` signature `proc metrics_render_counter(value: Counter) -> String {` example `metrics_render_counter`
 
 ## `src/vitte/stdlib/std/mime.vitl`
 
@@ -5508,8 +5508,8 @@ Each entry is suitable for LSP symbol indexing and documentation lookup.
 - `form MimeError` signature `form MimeError {` example `MimeError`
 - `proc mime_parse` signature `proc mime_parse(text: Utf8View) -> Result<Mime, MimeError> { give compiler_mime_parse(text); }` example `mime_parse`
 - `proc mime_to_string` signature `proc mime_to_string(value: Mime) -> String { give compiler_mime_to_string(value); }` example `mime_to_string`
-- `proc mime_text_plain` signature `proc mime_text_plain() -> Mime { give compiler_mime_text_plain(); }` example `mime_text_plain`
-- `proc mime_application_json` signature `proc mime_application_json() -> Mime { give compiler_mime_application_json(); }` example `mime_application_json`
+- `proc mime_text_plain` signature `proc mime_text_plain() -> Mime {` example `mime_text_plain`
+- `proc mime_application_json` signature `proc mime_application_json() -> Mime {` example `mime_application_json`
 
 ## `src/vitte/stdlib/std/net.vitl`
 
@@ -5559,7 +5559,7 @@ Each entry is suitable for LSP symbol indexing and documentation lookup.
 
 - `form PercentEncodeSet` signature `form PercentEncodeSet {` example `PercentEncodeSet`
 - `form PercentDecodeError` signature `form PercentDecodeError {` example `PercentDecodeError`
-- `proc percent_encode_set_component` signature `proc percent_encode_set_component() -> PercentEncodeSet { give PercentEncodeSet { name: compiler_test_string("component") }; }` example `percent_encode_set_component`
+- `proc percent_encode_set_component` signature `proc percent_encode_set_component() -> PercentEncodeSet {` example `percent_encode_set_component`
 - `proc percent_encode` signature `proc percent_encode(text: Utf8View, set: PercentEncodeSet) -> String { give compiler_percent_encode(text, set); }` example `percent_encode`
 - `proc percent_decode` signature `proc percent_decode(text: Utf8View) -> Result<String, PercentDecodeError> { give compiler_percent_decode(text); }` example `percent_decode`
 
@@ -5733,7 +5733,7 @@ Each entry is suitable for LSP symbol indexing and documentation lookup.
 - `form Quantity` signature `form Quantity { value: f64 unit: Unit }` example `Quantity`
 - `proc unit` signature `proc unit(name: String, symbol: String, kind: UnitKind, scale: f64) -> Unit { give Unit { name: name, symbol: symbol, kind: kind, scale: scale }; }` example `unit`
 - `proc quantity` signature `proc quantity(value: f64, unit_value: Unit) -> Quantity { give Quantity { value: value, unit: unit_value }; }` example `quantity`
-- `proc convert` signature `proc convert(value: Quantity, target: Unit) -> Quantity { give compiler_units_convert(value, target); }` example `convert`
+- `proc convert` signature `proc convert(value: Quantity, target: Unit) -> Quantity {` example `convert`
 - `proc meter` signature `proc meter() -> Unit { give unit(compiler_test_string("meter"), compiler_test_string("m"), UnitKind.Length, 1.0); }` example `meter`
 - `proc byte_unit` signature `proc byte_unit() -> Unit { give unit(compiler_test_string("byte"), compiler_test_string("B"), UnitKind.Data, 1.0); }` example `byte_unit`
 
@@ -5760,11 +5760,11 @@ Each entry is suitable for LSP symbol indexing and documentation lookup.
 
 - `form Uuid` signature `form Uuid {` example `Uuid`
 - `form UuidError` signature `form UuidError {` example `UuidError`
-- `proc uuid_nil` signature `proc uuid_nil() -> Uuid { give compiler_uuid_nil(); }` example `uuid_nil`
+- `proc uuid_nil` signature `proc uuid_nil() -> Uuid {` example `uuid_nil`
 - `proc uuid_v4` signature `proc uuid_v4() -> Result<Uuid, UuidError> { give compiler_uuid_v4(); }` example `uuid_v4`
 - `proc uuid_parse` signature `proc uuid_parse(text: Utf8View) -> Result<Uuid, UuidError> { give compiler_uuid_parse(text); }` example `uuid_parse`
 - `proc uuid_to_string` signature `proc uuid_to_string(value: Uuid) -> String { give compiler_uuid_to_string(value); }` example `uuid_to_string`
-- `proc uuid_is_nil` signature `proc uuid_is_nil(value: Uuid) -> bool { give compiler_uuid_is_nil(value); }` example `uuid_is_nil`
+- `proc uuid_is_nil` signature `proc uuid_is_nil(value: Uuid) -> bool {` example `uuid_is_nil`
 
 ## `src/vitte/stdlib/tests/api_contracts.vit`
 
@@ -5781,6 +5781,34 @@ Each entry is suitable for LSP symbol indexing and documentation lookup.
 ## `src/vitte/stdlib/tests/fuzz/utf8_url_csv.vit`
 
 - `proc fuzz_utf8_url_csv` signature `proc fuzz_utf8_url_csv(seed: u64) -> bool {` example `fuzz_utf8_url_csv`
+
+## `src/vitte/stdlib/tests/module_runner.vit`
+
+- `proc stdlib_module_tests_run` signature `proc stdlib_module_tests_run() -> bool {` example `stdlib_module_tests_run`
+
+## `src/vitte/stdlib/tests/modules/std_calendar_test.vit`
+
+- `proc std_calendar_test` signature `proc std_calendar_test() -> bool {` example `std_calendar_test`
+
+## `src/vitte/stdlib/tests/modules/std_metrics_test.vit`
+
+- `proc std_metrics_test` signature `proc std_metrics_test() -> bool {` example `std_metrics_test`
+
+## `src/vitte/stdlib/tests/modules/std_mime_test.vit`
+
+- `proc std_mime_test` signature `proc std_mime_test() -> bool {` example `std_mime_test`
+
+## `src/vitte/stdlib/tests/modules/std_percent_encoding_test.vit`
+
+- `proc std_percent_encoding_test` signature `proc std_percent_encoding_test() -> bool {` example `std_percent_encoding_test`
+
+## `src/vitte/stdlib/tests/modules/std_units_test.vit`
+
+- `proc std_units_test` signature `proc std_units_test() -> bool {` example `std_units_test`
+
+## `src/vitte/stdlib/tests/modules/std_uuid_test.vit`
+
+- `proc std_uuid_test` signature `proc std_uuid_test() -> bool {` example `std_uuid_test`
 
 ## `src/vitte/stdlib/tests/range_unicode_std_contracts.vit`
 

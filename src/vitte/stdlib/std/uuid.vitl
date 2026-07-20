@@ -10,8 +10,21 @@ form UuidError {
     message: String
 }
 
-proc uuid_nil() -> Uuid { give compiler_uuid_nil(); }
+proc uuid_nil() -> Uuid {
+    give Uuid {
+        bytes: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    };
+}
 proc uuid_v4() -> Result<Uuid, UuidError> { give compiler_uuid_v4(); }
 proc uuid_parse(text: Utf8View) -> Result<Uuid, UuidError> { give compiler_uuid_parse(text); }
 proc uuid_to_string(value: Uuid) -> String { give compiler_uuid_to_string(value); }
-proc uuid_is_nil(value: Uuid) -> bool { give compiler_uuid_is_nil(value); }
+proc uuid_is_nil(value: Uuid) -> bool {
+    let i: usize = 0;
+    while i < 16 {
+        if value.bytes[i] != 0 {
+            give false;
+        }
+        set i = i + 1;
+    }
+    give true;
+}
