@@ -1,0 +1,153 @@
+{
+  "schema": "vitte.diagnostic-catalog",
+  "schema_version": "1.0.0",
+  "description": "Central registry for public diagnostics emitted by the current compiler surface.",
+  "entries": [
+    {
+      "code": "LEX_E_TOKEN_TOO_LARGE",
+      "title": "token too large",
+      "phase": "lexer",
+      "default_severity": "error",
+      "required_parameters": ["primary_span", "token_length", "limit"],
+      "documentation": {
+        "url": "docs://language/lexer/token-limits",
+        "summary": "A single token exceeds the lexer byte limit.",
+        "cause": "The lexer cannot safely classify a token whose byte length is above the configured limit.",
+        "correction": "Shorten the token, split generated identifiers, or move large data into a string or external resource."
+      },
+      "tests": [
+        "tests/diagnostics/input_matrix_test.py"
+      ]
+    },
+    {
+      "code": "PARSE_E_TOPLEVEL_DECL_EXPECTED",
+      "title": "top-level declaration expected",
+      "phase": "parser",
+      "default_severity": "error",
+      "required_parameters": ["primary_span", "found_token", "expected_tokens"],
+      "documentation": {
+        "url": "docs://language/parser/top-level-declarations",
+        "summary": "The parser found a token that cannot start a module item.",
+        "cause": "Only declarations, imports, exports, and related module items are valid at top level.",
+        "correction": "Replace the token with a valid declaration keyword or move the statement inside a procedure."
+      },
+      "tests": [
+        "tests/diagnostics/frontend/parser/fixit-keyword-recompile.vit",
+        "tests/diagnostics/frontend/parser/fixit-keyword-recompile.expect.json",
+        "tools/apply_fixits_recompile_test.py"
+      ]
+    },
+    {
+      "code": "E_BOOTSTRAP_EXPORT",
+      "title": "bootstrap export is invalid",
+      "phase": "bootstrap",
+      "default_severity": "error",
+      "required_parameters": ["primary_span", "source_path"],
+      "documentation": {
+        "url": "docs://compiler/bootstrap/diagnostics",
+        "summary": "The bootstrap parser expected an export marker required by its subset contract.",
+        "cause": "The source does not satisfy the bootstrap subset shape used by the seed compiler.",
+        "correction": "Add the required export marker or use the full compiler path for non-bootstrap source."
+      },
+      "tests": [
+        "tests/diag_snapshots/multiple_diagnostics_one_file.vit",
+        "tests/diag_snapshots/multiple_diagnostics_one_file.must",
+        "tests/diagnostics/input_matrix_test.py"
+      ]
+    },
+    {
+      "code": "SEMA_E_UNKNOWN_IDENTIFIER",
+      "title": "unknown identifier",
+      "phase": "symbol_resolution",
+      "default_severity": "error",
+      "required_parameters": ["primary_span", "identifier", "scope"],
+      "documentation": {
+        "url": "docs://compiler/name-resolution",
+        "summary": "A referenced name is not visible in the current scope.",
+        "cause": "No local declaration, imported symbol, or exported module item matches the identifier at the use site.",
+        "correction": "Declare the identifier, import the module that exports it, or rename the use to an in-scope symbol."
+      },
+      "tests": [
+        "tests/diag_snapshots/primary_error_source.vit",
+        "tests/diag_snapshots/primary_error_source.must",
+        "tests/diag_snapshots/primary_error_source.json.must",
+        "tests/diagnostics/input_matrix_test.py"
+      ]
+    },
+    {
+      "code": "MOD_E_IMPORT_CYCLE",
+      "title": "import cycle detected",
+      "phase": "module_resolution",
+      "default_severity": "error",
+      "required_parameters": ["primary_span", "module_name", "import_chain"],
+      "documentation": {
+        "url": "docs://compiler/modules/import-cycles",
+        "summary": "Module loading reached a module that is already in the active import stack.",
+        "cause": "Two or more modules depend on each other directly or transitively.",
+        "correction": "Move shared declarations into a third module or split the interface so imports form a directed acyclic graph."
+      },
+      "tests": [
+        "tests/diag_snapshots/import_cycle_main.vit",
+        "tests/diag_snapshots/import_cycle_main.must",
+        "tests/diag_snapshots/import_cycle_main.json.must"
+      ]
+    },
+    {
+      "code": "TYPECK_E_ASSIGN_MISMATCH",
+      "title": "assignment type mismatch",
+      "phase": "typeck",
+      "default_severity": "error",
+      "required_parameters": ["primary_span", "expected_type", "found_type", "target_symbol"],
+      "documentation": {
+        "url": "docs://language/type-system/assignment-compatibility",
+        "summary": "The assigned expression type does not satisfy the target binding type.",
+        "cause": "The type checker compares the inferred expression type against the declared or inferred target type and they differ.",
+        "correction": "Assign a value of the declared type or change the declaration only when the broader contract is wrong."
+      },
+      "tests": [
+        "tests/diag_snapshots/declaration_use_links.vit",
+        "tests/diag_snapshots/declaration_use_links.must",
+        "tests/diag_snapshots/declaration_use_links.json.must"
+      ]
+    },
+    {
+      "code": "TYPECK_E_BINARY_MISMATCH",
+      "title": "binary operator type mismatch",
+      "phase": "typeck",
+      "default_severity": "error",
+      "required_parameters": ["primary_span", "operator", "left_type", "right_type"],
+      "documentation": {
+        "url": "docs://language/type-system/operators",
+        "summary": "A binary operator received operands with incompatible types.",
+        "cause": "The operator rule requires compatible operand types before MIR lowering.",
+        "correction": "Convert or replace one operand so both sides satisfy the operator contract."
+      },
+      "tests": [
+        "tests/diag_snapshots/binary_mismatch.vit",
+        "tests/diag_snapshots/binary_mismatch.must",
+        "tests/diag_snapshots/binary_mismatch.json.must"
+      ]
+    },
+    {
+      "code": "BORROWCK_E_USE_AFTER_MOVE",
+      "title": "value used after move",
+      "phase": "borrowck",
+      "default_severity": "error",
+      "required_parameters": ["primary_span", "moved_symbol", "move_span"],
+      "documentation": {
+        "url": "docs://compiler/borrowck",
+        "summary": "A value is read after ownership has been moved away.",
+        "cause": "Borrow checking found a later use of a binding whose ownership was consumed on an earlier path.",
+        "correction": "Use the value before the move, borrow it instead of moving it, or create a new value."
+      },
+      "tests": [
+        "tests/diag_snapshots/use_after_move.vit",
+        "tests/diag_snapshots/use_after_move.must",
+        "tests/diag_snapshots/use_after_move.json.must",
+        "src/vitte/compiler/tests/diagnostics/borrowck/complex_alias_path.vit",
+        "src/vitte/compiler/tests/diagnostics/borrowck/complex_alias_path.txt.snap",
+        "src/vitte/compiler/tests/diagnostics/borrowck/complex_alias_path.json.snap"
+      ]
+    }
+  ]
+}

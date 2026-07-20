@@ -12,6 +12,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 CATALOG = ROOT / "schemas" / "diagnostics" / "codes.json"
+CENTRAL_CATALOG = ROOT / "schemas" / "diagnostics" / "catalog.json"
 TEST_ROOT = ROOT / "tests" / "diagnostics" / "catalog"
 COMPILER_ROOT = ROOT / "src" / "vitte" / "compiler"
 SOURCE_SHAPE_FIXTURES = (
@@ -26,6 +27,23 @@ SOURCE_SHAPE_FIXTURES = (
 )
 
 SEVERITIES = {"error", "warning", "note", "help", "fatal"}
+CENTRAL_PHASES = {
+    "lexer",
+    "parser",
+    "bootstrap",
+    "module_resolution",
+    "symbol_resolution",
+    "sema",
+    "typeck",
+    "borrowck",
+    "mir",
+    "ir",
+    "codegen",
+    "linker",
+    "runtime",
+    "driver",
+    "ice",
+}
 KINDS = {"user", "configuration", "environment", "linker", "internal_compiler"}
 REQUIRED_ASSERTS = {
     "code",
@@ -238,6 +256,64 @@ def validate_catalog() -> list[str]:
     return failures
 
 
+def validate_central_catalog() -> list[str]:
+    if not CENTRAL_CATALOG.exists():
+        return [f"{CENTRAL_CATALOG.relative_to(ROOT)}: central diagnostic catalog is required"]
+    payload = load_json(CENTRAL_CATALOG)
+    entries = payload.get("entries") if isinstance(payload, dict) else None
+    if not isinstance(entries, list) or not entries:
+        return [f"{CENTRAL_CATALOG.relative_to(ROOT)}: entries must be a non-empty array"]
+
+    failures: list[str] = []
+    seen: set[str] = set()
+    required_doc_fields = ("url", "summary", "cause", "correction")
+    for index, entry in enumerate(entries):
+        if not isinstance(entry, dict):
+            failures.append(f"central.entries[{index}]: entry must be an object")
+            continue
+        code = entry.get("code")
+        title = entry.get("title")
+        phase = entry.get("phase")
+        severity = entry.get("default_severity")
+        parameters = entry.get("required_parameters")
+        documentation = entry.get("documentation")
+        tests = entry.get("tests")
+
+        if not isinstance(code, str) or not code:
+            failures.append(f"central.entries[{index}]: code is required")
+            continue
+        if code in seen:
+            failures.append(f"{code}: duplicate central catalog entry")
+        seen.add(code)
+        if not isinstance(title, str) or not title.strip():
+            failures.append(f"{code}: title is required")
+        if phase not in CENTRAL_PHASES:
+            failures.append(f"{code}: phase must be one of {sorted(CENTRAL_PHASES)}")
+        if severity not in SEVERITIES:
+            failures.append(f"{code}: default_severity must be one of {sorted(SEVERITIES)}")
+        if not isinstance(parameters, list) or not parameters:
+            failures.append(f"{code}: required_parameters must be a non-empty array")
+        elif not all(isinstance(value, str) and value.strip() for value in parameters):
+            failures.append(f"{code}: required_parameters must contain only non-empty strings")
+        if not isinstance(documentation, dict):
+            failures.append(f"{code}: documentation is required")
+        else:
+            for field in required_doc_fields:
+                value = documentation.get(field)
+                if not isinstance(value, str) or not value.strip():
+                    failures.append(f"{code}: documentation.{field} is required")
+        if not isinstance(tests, list) or not tests:
+            failures.append(f"{code}: tests must contain at least one associated test path")
+        else:
+            for test_path in tests:
+                if not isinstance(test_path, str) or not test_path:
+                    failures.append(f"{code}: tests entries must be non-empty strings")
+                    continue
+                if not (ROOT / test_path).exists():
+                    failures.append(f"{code}: associated test path does not exist: {test_path}")
+    return failures
+
+
 def validate_source_shape_renderer_fixtures() -> list[str]:
     failures: list[str] = []
     schema_root = ROOT / "tests" / "diagnostics" / "schema"
@@ -389,6 +465,7 @@ def validate_backend_linker_contract() -> list[str]:
 def main() -> int:
     failures = [
         *validate_catalog(),
+        *validate_central_catalog(),
         *validate_source_shape_renderer_fixtures(),
         *validate_diagnostic_code_usage(),
         *validate_canonical_diagnostic_contract(),
