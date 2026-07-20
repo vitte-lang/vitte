@@ -252,6 +252,23 @@ def check_catalog_codes_present() -> list[str]:
     return failures
 
 
+def check_catalog_codes_unique() -> list[str]:
+    payload = json.loads(CODES.read_text(encoding="utf-8"))
+    failures: list[str] = []
+    seen: dict[str, int] = {}
+    for index, entry in enumerate(payload.get("codes", [])):
+        if not isinstance(entry, dict):
+            continue
+        code = entry.get("code")
+        if not isinstance(code, str) or not code.strip():
+            continue
+        previous = seen.get(code)
+        if previous is not None:
+            failures.append(f"{code}: duplicate diagnostic code at entries #{previous} and #{index}")
+        seen[code] = index
+    return failures
+
+
 def check_direct_output_boundaries() -> list[str]:
     failures: list[str] = []
     for path in compiler_sources():
@@ -815,6 +832,7 @@ def main() -> int:
     failures = [
         *check_code_documentation(),
         *check_catalog_codes_present(),
+        *check_catalog_codes_unique(),
         *check_diagnostic_object_contract(),
         *check_span_object_contract(),
         *check_relational_diagnostic_contract(),
