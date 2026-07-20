@@ -107,13 +107,22 @@ STDLIB_NEXT_STEP_SOURCES = (
     SOURCE_STDLIB_DIR / "tests" / "serialization_platform_contracts.vit",
     SOURCE_STDLIB_DIR / "tests" / "std_extra_libraries_contracts.vit",
     SOURCE_STDLIB_DIR / "tests" / "std_more_libraries_contracts.vit",
+    SOURCE_STDLIB_DIR / "tests" / "fuzz" / "utf8_url_csv.vit",
+    SOURCE_STDLIB_DIR / "tests" / "fuzz" / "path_json_parse.vit",
+    SOURCE_STDLIB_DIR / "tests" / "snapshots" / "stdlib_api.snap",
+    SOURCE_STDLIB_DIR / "examples" / "stdlib_max.vit",
     ROOT / "tools" / "stdlib" / "generate_api_docs.py",
     ROOT / "tools" / "stdlib" / "generate_unicode_tables.py",
     ROOT / "docs" / "compiler" / "stdlib_next_steps.md",
     ROOT / "docs" / "compiler" / "stdlib_boundaries.md",
     ROOT / "docs" / "compiler" / "stdlib_api.md",
     ROOT / "docs" / "compiler" / "stdlib_api.generated.md",
+    ROOT / "docs" / "compiler" / "stdlib_api.generated.json",
     ROOT / "docs" / "compiler" / "stdlib_lsp_index.md",
+    ROOT / "docs" / "compiler" / "stdlib_lsp_index.generated.json",
+    ROOT / "docs" / "compiler" / "stdlib_api_stability.md",
+    ROOT / "docs" / "compiler" / "stdlib_contributing.md",
+    ROOT / "docs" / "compiler" / "stdlib_changelog.md",
     CI_MATRIX_MANIFEST,
 )
 
@@ -777,6 +786,9 @@ REQUIRED_NEXT_STEP_FRAGMENTS = {
     "tests/serialization_platform_contracts.vit": ("stdlib_serialization_platform_contracts_smoke", "std_serialization.json_encoder", "platform_posix.posix_available"),
     "tests/std_extra_libraries_contracts.vit": ("stdlib_extra_libraries_contracts_smoke", "std_uuid.uuid_nil", "std_base64.base64_standard", "std_kernel.page_size"),
     "tests/std_more_libraries_contracts.vit": ("stdlib_more_libraries_contracts_smoke", "std_terminal.terminal_style", "std_calendar.is_leap_year", "std_event.event_bus"),
+    "tests/fuzz/utf8_url_csv.vit": ("fuzz_utf8_url_csv", "core_string.validate_utf8", "std_url.url_parse", "std_csv.csv_parse"),
+    "tests/fuzz/path_json_parse.vit": ("fuzz_path_json_parse", "std_path.normalize", "std_serialization.json_value", "std_parse.parse_i64"),
+    "examples/stdlib_max.vit": ("stdlib_max_example", "std_uuid.uuid_nil", "std_path.path_buf", "std_random.prng"),
 }
 
 
@@ -1496,16 +1508,53 @@ def validate_std_platform_access(manifest: dict) -> list[ValidationResult]:
 
 def validate_lsp_api_index() -> list[ValidationResult]:
     api_text = (ROOT / "docs" / "compiler" / "stdlib_api.generated.md").read_text(encoding="utf-8")
+    api_json = json.loads((ROOT / "docs" / "compiler" / "stdlib_api.generated.json").read_text(encoding="utf-8"))
     lsp_text = (ROOT / "docs" / "compiler" / "stdlib_lsp_index.md").read_text(encoding="utf-8")
+    lsp_json = json.loads((ROOT / "docs" / "compiler" / "stdlib_lsp_index.generated.json").read_text(encoding="utf-8"))
     required_api = ("signature `", "example `", "std/serialization.vitl", "std/atomic.vitl")
     required_lsp = ("symbol name", "public signature", "minimal usage example")
     missing_api = [fragment for fragment in required_api if fragment not in api_text]
     missing_lsp = [fragment for fragment in required_lsp if fragment not in lsp_text]
+    json_ok = api_json.get("schema") == "vitte.stdlib.api" and bool(api_json.get("modules"))
+    lsp_ok = lsp_json.get("schema") == "vitte.stdlib.lsp-index" and bool(lsp_json.get("symbols"))
     return [
         ValidationResult(
             name="stdlib_lsp_api_index_generated",
-            status=not missing_api and not missing_lsp,
-            detail="ok" if not missing_api and not missing_lsp else ", ".join(missing_api + missing_lsp),
+            status=not missing_api and not missing_lsp and json_ok and lsp_ok,
+            detail="ok" if not missing_api and not missing_lsp and json_ok and lsp_ok else ", ".join(missing_api + missing_lsp),
+        )
+    ]
+
+
+def validate_stdlib_max_artifacts() -> list[ValidationResult]:
+    paths = {
+        "examples": SOURCE_STDLIB_DIR / "examples" / "stdlib_max.vit",
+        "snapshot": SOURCE_STDLIB_DIR / "tests" / "snapshots" / "stdlib_api.snap",
+        "fuzz_utf8": SOURCE_STDLIB_DIR / "tests" / "fuzz" / "utf8_url_csv.vit",
+        "fuzz_path": SOURCE_STDLIB_DIR / "tests" / "fuzz" / "path_json_parse.vit",
+        "stability": ROOT / "docs" / "compiler" / "stdlib_api_stability.md",
+        "contributing": ROOT / "docs" / "compiler" / "stdlib_contributing.md",
+        "changelog": ROOT / "docs" / "compiler" / "stdlib_changelog.md",
+    }
+    missing = [name for name, path in paths.items() if not path.exists()]
+    stability_text = paths["stability"].read_text(encoding="utf-8")
+    contributing_text = paths["contributing"].read_text(encoding="utf-8")
+    required_fragments = (
+        "public names are not removed",
+        "each public module must have a test reference",
+        "each public module must have an example reference",
+        "Do not add direct OS access in `std`",
+    )
+    missing_fragments = [
+        fragment
+        for fragment in required_fragments
+        if fragment not in stability_text + contributing_text
+    ]
+    return [
+        ValidationResult(
+            name="stdlib_max_artifacts_present",
+            status=not missing and not missing_fragments,
+            detail="ok" if not missing and not missing_fragments else ", ".join(missing + missing_fragments),
         )
     ]
 
@@ -1615,6 +1664,7 @@ def build_report() -> dict:
     std_platform_results = validate_std_platform_access(architecture_manifest)
     ci_matrix_results = validate_ci_matrix(ci_matrix_manifest)
     lsp_api_results = validate_lsp_api_index()
+    max_artifact_results = validate_stdlib_max_artifacts()
     module_results = validate_module_manifest(module_manifest)
     graph_results = validate_dependency_graph_manifest(
         dependency_graph_manifest,
@@ -1651,7 +1701,7 @@ def build_report() -> dict:
     ]
     architecture_failures = [
         item
-        for item in architecture + std_platform_results + ci_matrix_results + lsp_api_results + module_results + graph_results + primitive_results + option_result_results + convert_default_clone_results + drop_scope_memory_results + iterator_results + range_number_results + float_math_results + string_ascii_unicode_results + next_step_results
+        for item in architecture + std_platform_results + ci_matrix_results + lsp_api_results + max_artifact_results + module_results + graph_results + primitive_results + option_result_results + convert_default_clone_results + drop_scope_memory_results + iterator_results + range_number_results + float_math_results + string_ascii_unicode_results + next_step_results
         if not item.status
     ]
 
@@ -1696,7 +1746,7 @@ def build_report() -> dict:
         ],
         "architecture_results": [
             asdict(item)
-            for item in architecture + std_platform_results + ci_matrix_results + lsp_api_results + module_results + graph_results + primitive_results + option_result_results + convert_default_clone_results + drop_scope_memory_results + iterator_results + range_number_results + float_math_results + string_ascii_unicode_results + next_step_results
+            for item in architecture + std_platform_results + ci_matrix_results + lsp_api_results + max_artifact_results + module_results + graph_results + primitive_results + option_result_results + convert_default_clone_results + drop_scope_memory_results + iterator_results + range_number_results + float_math_results + string_ascii_unicode_results + next_step_results
         ],
         "required_symbols": [
             asdict(item)

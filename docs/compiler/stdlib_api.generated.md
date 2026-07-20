@@ -3695,6 +3695,10 @@ Each entry is suitable for LSP symbol indexing and documentation lookup.
 - `proc utf32_encode` signature `proc utf32_encode(code_point: i32) -> string {` example `utf32_encode`
 - `proc utf32_decode` signature `proc utf32_decode(encoded: string) -> i32 {` example `utf32_decode`
 
+## `src/vitte/stdlib/examples/stdlib_max.vit`
+
+- `proc stdlib_max_example` signature `proc stdlib_max_example() -> bool {` example `stdlib_max_example`
+
 ## `src/vitte/stdlib/generated/unicode_tables.vitl`
 
 - `const GENERATED_UNICODE_VERSION` signature `const GENERATED_UNICODE_VERSION: string = "15.1.0"` example `GENERATED_UNICODE_VERSION`
@@ -5769,6 +5773,14 @@ Each entry is suitable for LSP symbol indexing and documentation lookup.
 ## `src/vitte/stdlib/tests/core_alloc_contracts.vit`
 
 - `proc stdlib_core_alloc_contracts_smoke` signature `proc stdlib_core_alloc_contracts_smoke() -> bool {` example `stdlib_core_alloc_contracts_smoke`
+
+## `src/vitte/stdlib/tests/fuzz/path_json_parse.vit`
+
+- `proc fuzz_path_json_parse` signature `proc fuzz_path_json_parse(seed: u64) -> bool {` example `fuzz_path_json_parse`
+
+## `src/vitte/stdlib/tests/fuzz/utf8_url_csv.vit`
+
+- `proc fuzz_utf8_url_csv` signature `proc fuzz_utf8_url_csv(seed: u64) -> bool {` example `fuzz_utf8_url_csv`
 
 ## `src/vitte/stdlib/tests/range_unicode_std_contracts.vit`
 

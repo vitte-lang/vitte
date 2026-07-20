@@ -1,0 +1,16 @@
+use src/vitte/stdlib/std/path as std_path
+use src/vitte/stdlib/std/serialization as std_serialization
+use src/vitte/stdlib/std/parse as std_parse
+
+proc fuzz_path_json_parse(seed: u64) -> bool {
+    let text = compiler_fuzz_string(seed);
+    let view = compiler_fuzz_utf8_view_from_string(text);
+    let path = std_path.path_buf(text);
+    let normalized = std_path.normalize(path);
+    let json = std_serialization.json_value(view);
+    let number = std_parse.parse_i64(view, 10);
+
+    give std_path.is_absolute(normalized) or std_path.is_relative(normalized)
+        and (json.ok or json.ok == false)
+        and (number.ok or number.ok == false);
+}

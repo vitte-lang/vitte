@@ -1,0 +1,16 @@
+use src/vitte/stdlib/core/string as core_string
+use src/vitte/stdlib/std/url as std_url
+use src/vitte/stdlib/std/csv as std_csv
+
+proc fuzz_utf8_url_csv(seed: u64) -> bool {
+    let bytes: [byte] = compiler_fuzz_bytes(seed);
+    let valid: bool = core_string.validate_utf8(bytes);
+    if valid {
+        let view: core_string.Utf8View = compiler_fuzz_utf8_view(bytes);
+        let parsed_url = std_url.url_parse(view);
+        let parsed_csv = std_csv.csv_parse(view, std_csv.csv_default_options());
+        give parsed_url.ok or parsed_url.ok == false
+            and parsed_csv.ok or parsed_csv.ok == false;
+    }
+    give true;
+}
