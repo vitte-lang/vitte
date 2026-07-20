@@ -2605,18 +2605,23 @@ optimization-phase2-gate:
 	@test -f data/optimization_phase2/reports/jit_async_loops.md
 
 
-.PHONY: diagnostic-catalog-check diagnostic-audit diagnostic-contracts
+.PHONY: diagnostic-catalog-check diagnostic-audit stdlib-diagnostics diagnostic-contracts
 diagnostic-catalog-check:
 	@python3 tools/check_diagnostic_catalog.py
 
 diagnostic-audit:
 	@python3 tools/audit_compiler_diagnostics.py --write
 
+stdlib-diagnostics:
+	@python3 tools/check_stdlib_diagnostic_contract.py
+	@bin/vittec0 check src/vitte/compiler/tests/diagnostic_snapshot_tests.vit
+
 diagnostic-contracts:
 	@python3 tools/check_diagnostic_schema.py
 	@$(MAKE) --no-print-directory diagnostic-catalog-check
 	@$(MAKE) --no-print-directory diagnostics-migration-gate
 	@python3 tools/check_compiler_diagnostic_contract.py
+	@python3 tools/check_stdlib_diagnostic_contract.py
 	@python3 tools/check_span_provenance_contract.py
 	@bin/vittec0 check src/vitte/compiler/diagnostics/diagnostic.vit
 	@bin/vittec0 check src/vitte/compiler/diagnostics/json.vit

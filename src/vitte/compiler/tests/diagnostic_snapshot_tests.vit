@@ -655,6 +655,77 @@ proc test_all_renderers_share_the_same_diagnostic_object() -> bool {
     and find(sarif_text, "\"text\": \"unicode café tab\\tshape\"") >= 0;
 }
 
+proc sample_stdlib_diagnostic() -> Diagnostic {
+  let file: string = "src/vitte/stdlib/alloc/vec.vitl";
+  let diag0: Diagnostic = diagnostic_error(
+    "STDLIB_E_CONTRACT",
+    DiagnosticPhase.Driver,
+    "stdlib module contract failed for alloc.vec",
+    span_range(file, 33, 5, 33, 31)
+  );
+  let diag1: Diagnostic = diagnostic_with_label(
+    diag0,
+    primary_label("the public Vec API must preserve length, capacity, drop, and iterator invariants", span_range(file, 33, 5, 33, 31))
+  );
+  let diag2: Diagnostic = diagnostic_with_explanation(
+    diag1,
+    "The stdlib gate compiles library modules as compiler inputs, so stdlib failures must be reported with the same structured diagnostics as user code."
+  );
+  let diag3: Diagnostic = diagnostic_with_probable_fix(
+    diag2,
+    "fix the stdlib module or its manifest entry, then rerun make stdlib-gate"
+  );
+  let diag4: Diagnostic = diagnostic_with_documentation(
+    diag3,
+    "docs://compiler/stdlib-diagnostics"
+  );
+  let diag5: Diagnostic = diagnostic_with_suggestion_detail(
+    diag4,
+    DiagnosticSuggestionKind.Help,
+    "rerun the stdlib diagnostic gate to see every structured field",
+    "make stdlib-diagnostics",
+    span_range(file, 33, 5, 33, 31),
+    false,
+    "high",
+    "stdlib diagnostics must keep file, span, note, help, and summary context"
+  );
+  set diag5.pipeline_context = [
+    "driver",
+    "stdlib discovery",
+    "module graph",
+    "stdlib compile",
+    "diagnostic render",
+    "summary"
+  ];
+  give diag5;
+}
+
+proc test_stdlib_diagnostic_contract() -> bool {
+  let diag: Diagnostic = sample_stdlib_diagnostic();
+  let report: DiagnosticReport = diagnostic_report([diag]);
+  let rendered: string = render_report(report, human_config());
+  let encoded: string = json_report(report);
+  let summary: string = diagnostic_text_line(report.diagnostics[0]);
+  give report.error_count == 1
+    and report.warning_count == 0
+    and report.diagnostics[0].code == "STDLIB_E_CONTRACT"
+    and report.diagnostics[0].span.file == "src/vitte/stdlib/alloc/vec.vitl"
+    and len(report.diagnostics[0].labels) >= 1
+    and len(report.diagnostics[0].notes) > 0
+    and len(report.diagnostics[0].helps) > 0
+    and len(report.diagnostics[0].suggestions) > 0
+    and find(rendered, "STDLIB_E_CONTRACT") >= 0
+    and find(rendered, "src/vitte/stdlib/alloc/vec.vitl") >= 0
+    and find(rendered, "Pipeline:") >= 0
+    and find(rendered, "help: ") >= 0
+    and find(encoded, "\"code\": \"STDLIB_E_CONTRACT\"") >= 0
+    and find(encoded, "\"phase\": \"driver\"") >= 0
+    and find(encoded, "\"file\": \"src/vitte/stdlib/alloc/vec.vitl\"") >= 0
+    and find(encoded, "\"suggestions\": [") >= 0
+    and find(summary, "severity=error code=STDLIB_E_CONTRACT") >= 0
+    and find(rendered, "build failed") < 0;
+}
+
 proc run_all_tests() -> int {
   let failures: int = 0;
   let typeck_ok: bool = test_typeck_diagnostic_contract();
@@ -686,6 +757,7 @@ proc run_all_tests() -> int {
   let ice_context_ok: bool = test_ice_is_internal_and_carries_required_context();
   let position_policy_ok: bool = test_diagnostic_position_policy_is_explicit();
   let shared_render_ok: bool = test_all_renderers_share_the_same_diagnostic_object();
+  let stdlib_diagnostic_ok: bool = test_stdlib_diagnostic_contract();
   if typeck_ok == false {
     set failures = failures + 1;
   }
@@ -771,6 +843,9 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if shared_render_ok == false {
+    set failures = failures + 1;
+  }
+  if stdlib_diagnostic_ok == false {
     set failures = failures + 1;
   }
   give failures;
