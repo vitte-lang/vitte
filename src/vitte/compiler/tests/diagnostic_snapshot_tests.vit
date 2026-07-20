@@ -28,6 +28,7 @@ use vitte/compiler/diagnostics/diagnostic.{
   diagnostic_report,
   diagnostic_explain_text,
   diagnostic_has_machine_applicable_fix,
+  diagnostic_suggestions_produce_valid_vitte,
   diagnostic_with_documentation,
   diagnostic_with_explanation,
   diagnostic_with_label,
@@ -298,6 +299,13 @@ proc test_recompile_after_applied_fix_contract() -> bool {
   give len(plans) > 0
     and plans[0].machine_applicable
     and vitte_fix_recompile_probe_for_test(fixed);
+}
+
+proc test_each_suggestion_produces_valid_vitte_contract() -> bool {
+  let parser: Diagnostic = sample_parser_diagnostic();
+  let typeck: Diagnostic = sample_typeck_diagnostic();
+  give diagnostic_suggestions_produce_valid_vitte(parser)
+    and diagnostic_suggestions_produce_valid_vitte(typeck);
 }
 
 proc test_typeck_and_borrowck_suggestion_catalog_contract() -> bool {
@@ -661,6 +669,7 @@ proc run_all_tests() -> int {
   let machine_fix_ok: bool = test_machine_applicable_fix_contract();
   let automatic_correction_ok: bool = test_automatic_correction_application_contract();
   let recompile_fix_ok: bool = test_recompile_after_applied_fix_contract();
+  let valid_suggestions_ok: bool = test_each_suggestion_produces_valid_vitte_contract();
   let catalog_ok: bool = test_typeck_and_borrowck_suggestion_catalog_contract();
   let rendered_suggestions_ok: bool = test_rendered_suggestion_applicability_contract();
   let report_cascade_ok: bool = test_report_deduplicates_and_limits_cascades();
@@ -711,6 +720,9 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if recompile_fix_ok == false {
+    set failures = failures + 1;
+  }
+  if valid_suggestions_ok == false {
     set failures = failures + 1;
   }
   if catalog_ok == false {

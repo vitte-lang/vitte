@@ -825,6 +825,34 @@ proc diagnostic_has_machine_applicable_fix(diagnostic: Diagnostic) -> bool {
     give false;
 }
 
+proc diagnostic_suggestion_replacement_is_valid_vitte(suggestion: DiagnosticSuggestion) -> bool {
+    if suggestion.replacement == "" {
+        give suggestion.kind == DiagnosticSuggestionKind.Help or suggestion.kind == DiagnosticSuggestionKind.Remove;
+    }
+
+    give vitte_suggestion_is_canonical(suggestion.replacement)
+        or suggestion.replacement == "}"
+        or suggestion.replacement == ")"
+        or suggestion.replacement == ","
+        or suggestion.replacement == ";"
+        or suggestion.replacement == "0"
+        or suggestion.replacement == "name";
+}
+
+proc diagnostic_suggestions_produce_valid_vitte(diagnostic: Diagnostic) -> bool {
+    let i: u64 = 0;
+
+    while i < len(diagnostic.suggestions) {
+        if diagnostic.suggestions[i].machine_applicable and diagnostic_suggestion_replacement_is_valid_vitte(diagnostic.suggestions[i]) == false {
+            give false;
+        }
+
+        set i = i + 1;
+    }
+
+    give true;
+}
+
 proc diagnostic_default_rule(phase: DiagnosticPhase, code: string) -> string {
     if starts_with(code, "ICE") {
         give "internal compiler invariant";
@@ -4771,6 +4799,8 @@ share diagnostic_fix_plan_from_suggestion
 share diagnostic_multispan_fix_plan
 share diagnostic_fix_plans
 share diagnostic_has_machine_applicable_fix
+share diagnostic_suggestion_replacement_is_valid_vitte
+share diagnostic_suggestions_produce_valid_vitte
 
 share diagnostic_create
 share diagnostic_error
