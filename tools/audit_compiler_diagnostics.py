@@ -34,6 +34,29 @@ SCATTERED_ERROR_RE = re.compile(
 GENERATED_SKIP = (
     "src/vitte/compiler/infrastructure/diagnostics/fluent_catalog.vit",
 )
+PHASE_ORDER = ("lexer", "parser", "resolver", "sema", "typeck", "borrowck", "MIR", "backend", "linker")
+PHASE_HINTS = {
+    "lexer": "lexer",
+    "parser": "parser",
+    "parse": "parser",
+    "module_resolution": "resolver",
+    "symbol_resolution": "resolver",
+    "resolver": "resolver",
+    "sema": "sema",
+    "const_eval": "sema",
+    "typeck": "typeck",
+    "typecheck": "typeck",
+    "borrowck": "borrowck",
+    "borrow": "borrowck",
+    "mir": "MIR",
+    "mir_lowering": "MIR",
+    "mir_verification": "MIR",
+    "ir": "MIR",
+    "backend": "backend",
+    "codegen": "backend",
+    "link": "linker",
+    "linker": "linker",
+}
 
 
 def rel(path: Path) -> str:
@@ -70,6 +93,81 @@ def current_legacy_counts() -> dict[str, int]:
     return dict(sorted(counts.items()))
 
 
+def phase_from_code(code: str) -> str:
+    if code.startswith(("LEX_", "LEX")):
+        return "lexer"
+    if code.startswith(("LIMIT_FILE_SIZE", "LIMIT_TOKEN_SIZE")):
+        return "lexer"
+    if code.startswith(("PARSE_", "P")):
+        return "parser"
+    if code.startswith(("LIMIT_AST_DEPTH", "LIMIT_EXPR_DEPTH", "LIMIT_PARSER_RECURSION")):
+        return "parser"
+    if code.startswith(("MOD_", "LIMIT_IMPORT_DEPTH", "LIMIT_MODULE_COUNT", "SEMA_E_UNKNOWN", "SEMA_E_DUPLICATE", "SEMA_E_AMBIGUOUS", "SEMA_E_PRIVATE", "SEMA_E_SHADOWING")):
+        return "resolver"
+    if code.startswith(("SEMA_", "CONST_EVAL_", "AST_", "LIMIT_SYMBOL_COUNT", "LIMIT_MACRO_EXPANSION", "LIMIT_DIAGNOSTICS")):
+        return "sema"
+    if code.startswith(("TYPECK_", "TYPE_")):
+        return "typeck"
+    if code.startswith(("BORROWCK_", "BORROW_")):
+        return "borrowck"
+    if code.startswith(("MIR_", "IR_", "HIR", "HIRV")):
+        return "MIR"
+    if code.startswith(("BACKEND_", "CBACKEND_", "LLVM_", "DRIVER_E_CODEGEN", "DRIVER_E_OUTPUT")):
+        return "backend"
+    if code.startswith(("LINK_", "DRIVER_E_LINK")):
+        return "linker"
+    if code.startswith(("DRIVER_E_IR", "DRIVER_E_MIR")):
+        return "MIR"
+    if code.startswith(("DRIVER_E_ANALYSIS", "DRIVER_E_SEMA", "DRIVER_E_FRONTEND_INPUT", "DRIVER_E_FRONTEND_INVALID")):
+        return "sema"
+    if code.startswith(("DRIVER_E_PARSE", "DRIVER_E_FRONTEND_DIAG_")):
+        return "parser"
+    if code.startswith(("DRIVER_E_TYPECK",)):
+        return "typeck"
+    if code.startswith(("DRIVER_E_BORROWCK",)):
+        return "borrowck"
+    if code.startswith(("DRIVER_E_INVALID_LINK",)):
+        return "linker"
+    if code.startswith(("DRIVER_E_", "E_CLI_", "E_BUILD_OUTPUT", "E_BACKEND_", "BOOTSTRAP_E_STAGE_FAILURE", "RUNTIME_E_")):
+        return "backend"
+    if code.startswith(("E_STRICT_EXPORT", "E_STRICT_SPACE", "E_STRICT_VERSION", "E_STRICT_BANNER")):
+        return "sema"
+    if code.startswith(("E_STRICT_SHELL", "E_CLI_OUTPUT_OVERWRITES_SOURCE", "E_DRIVER_SURFACE_UNAVAILABLE")):
+        return "backend"
+    if code.startswith(("E_BOOTSTRAP_MAIN_BODY", "E_BOOTSTRAP_PROC_BODY", "E_BOOTSTRAP_EXPECTED", "E_BOOTSTRAP_UNKNOWN", "E_BOOTSTRAP_CONST_TYPE")):
+        return "sema"
+    if code.startswith(("E_BOOTSTRAP_",)):
+        return "parser"
+    if code in {"codegen.error"}:
+        return "backend"
+    if code in {"ir.error"}:
+        return "MIR"
+    if code in {"link.error"}:
+        return "linker"
+    return "backend"
+
+
+def phase_from_location(location: str) -> str:
+    lowered = location.lower()
+    for hint, phase in PHASE_HINTS.items():
+        if hint in lowered:
+            return phase
+    return "backend"
+
+
+def phase_for_code(code: str, locations: set[str]) -> str:
+    phase = phase_from_code(code)
+    if phase != "other":
+        return phase
+    votes: Counter[str] = Counter()
+    for location in locations:
+        votes[phase_from_location(location)] += 1
+    if votes:
+        phase, _ = votes.most_common(1)[0]
+        return phase
+    return "other"
+
+
 def collect() -> dict[str, object]:
     known = catalog_codes()
     code_locations: dict[str, set[str]] = defaultdict(set)
@@ -88,9 +186,19 @@ def collect() -> dict[str, object]:
                 scattered[path_rel].append(f"{line_no}: {match.group(1)}")
 
     all_codes = set(code_locations)
+    codes_by_phase: dict[str, list[str]] = {phase: [] for phase in PHASE_ORDER}
+    for code, locations in code_locations.items():
+        phase = phase_for_code(code, locations)
+        codes_by_phase.setdefault(phase, []).append(code)
+    codes_by_phase = {
+        phase: sorted(codes_by_phase.get(phase, []))
+        for phase in PHASE_ORDER
+        if codes_by_phase.get(phase)
+    }
     return {
         "known_catalog_codes": sorted(known),
         "seen_codes": {code: sorted(locations) for code, locations in sorted(code_locations.items())},
+        "codes_by_phase": codes_by_phase,
         "uncatalogued_seen_codes": sorted(all_codes - known),
         "missing_in_sources": sorted(known - all_codes),
         "output_locations": dict(sorted(output_locations.items())),
@@ -101,6 +209,7 @@ def collect() -> dict[str, object]:
 
 def render(data: dict[str, object]) -> str:
     seen_codes: dict[str, list[str]] = data["seen_codes"]  # type: ignore[assignment]
+    codes_by_phase: dict[str, list[str]] = data["codes_by_phase"]  # type: ignore[assignment]
     uncatalogued: list[str] = data["uncatalogued_seen_codes"]  # type: ignore[assignment]
     missing: list[str] = data["missing_in_sources"]  # type: ignore[assignment]
     outputs: dict[str, list[str]] = data["output_locations"]  # type: ignore[assignment]
@@ -115,6 +224,7 @@ def render(data: dict[str, object]) -> str:
         "## Summary",
         "",
         f"- diagnostic codes seen in compiler surfaces: {len(seen_codes)}",
+        f"- diagnostics classified by requested phases: {sum(len(codes) for codes in codes_by_phase.values())}",
         f"- uncatalogued code-like diagnostics seen: {len(uncatalogued)}",
         f"- central catalog codes not seen in scanned sources: {len(missing)}",
         f"- direct output call sites: {sum(len(items) for items in outputs.values())}",
@@ -128,6 +238,15 @@ def render(data: dict[str, object]) -> str:
         preview = ", ".join(locations[:4])
         more = f" (+{len(locations) - 4} more)" if len(locations) > 4 else ""
         lines.append(f"- `{code}`: {preview}{more}")
+
+    lines.extend(["", "## Diagnostics By Phase", ""])
+    for phase in PHASE_ORDER:
+        codes = codes_by_phase.get(phase, [])
+        if not codes:
+            continue
+        lines.append(f"### {phase} ({len(codes)})")
+        lines.extend(f"- `{code}`" for code in codes)
+        lines.append("")
 
     lines.extend(["", "## Uncatalogued Code-Like Diagnostics", ""])
     if uncatalogued:
