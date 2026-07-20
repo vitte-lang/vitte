@@ -424,6 +424,18 @@ proc test_multiple_independent_errors_in_one_file() -> bool {
     and report.diagnostics[2].code == "BORROWCK_E_USE_AFTER_MOVE";
 }
 
+proc test_multifile_diagnostic_spans() -> bool {
+  let main_span = span_create("app/main.vit", 4, 5, 6);
+  let helper_span = span_create("app/helper.vit", 2, 1, 9);
+  let diag0: Diagnostic = diagnostic_error("RES0065", DiagnosticPhase.SymbolResolution, "import cycle reaches helper", main_span);
+  let diag: Diagnostic = diagnostic_with_label(diag0, previous_label("helper import participates in the same cycle", helper_span));
+  let report: DiagnosticReport = diagnostic_report([diag]);
+  give len(report.diagnostics) == 1
+    and report.diagnostics[0].span.file == "app/main.vit"
+    and len(report.diagnostics[0].secondary_spans) == 1
+    and report.diagnostics[0].secondary_spans[0].file == "app/helper.vit";
+}
+
 proc test_report_orders_diagnostics_by_file_and_position() -> bool {
   let first: Diagnostic = diagnostic_error("TYPECK_E_LATE", DiagnosticPhase.Typeck, "late", span_create("b.vit", 1, 1, 1));
   let second: Diagnostic = diagnostic_error("LEX_E_FIRST", DiagnosticPhase.Lexer, "first", span_create("a.vit", 4, 9, 1));
@@ -572,6 +584,7 @@ proc run_all_tests() -> int {
   let rendered_suggestions_ok: bool = test_rendered_suggestion_applicability_contract();
   let report_cascade_ok: bool = test_report_deduplicates_and_limits_cascades();
   let multi_error_ok: bool = test_multiple_independent_errors_in_one_file();
+  let multifile_ok: bool = test_multifile_diagnostic_spans();
   let report_order_ok: bool = test_report_orders_diagnostics_by_file_and_position();
   let text_format_ok: bool = test_text_diagnostic_format_is_stable();
   let architecture_ok: bool = test_single_diagnostic_architecture_covers_compiler_pipeline();
@@ -619,6 +632,9 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if multi_error_ok == false {
+    set failures = failures + 1;
+  }
+  if multifile_ok == false {
     set failures = failures + 1;
   }
   if report_order_ok == false {
