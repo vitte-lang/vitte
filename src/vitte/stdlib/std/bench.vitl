@@ -1,0 +1,11 @@
+space vitte/stdlib/std/bench
+
+export *
+
+form Benchmark { name: String iterations: u64 }
+form BenchReport { name: String iterations: u64 nanos: u128 passed_threshold: bool }
+
+proc benchmark(name: String, iterations: u64) -> Benchmark { give Benchmark { name: name, iterations: iterations }; }
+proc run(bench: Benchmark, body: proc()) -> BenchReport { give compiler_bench_run(bench, body); }
+proc threshold(report: BenchReport, max_nanos: u128) -> bool { give report.nanos <= max_nanos; }
+proc report_text(report: BenchReport) -> String { give compiler_bench_report_text(report); }

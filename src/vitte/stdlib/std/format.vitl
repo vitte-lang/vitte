@@ -1,0 +1,15 @@
+space vitte/stdlib/std/format
+
+export *
+
+pick FormatBase { Binary Octal Decimal HexLower HexUpper }
+form FormatSpec { width: Option<usize> pad: rune base: FormatBase debug: bool }
+form Display<T> { fmt: proc(T, FormatSpec) -> String }
+form Debug<T> { fmt_debug: proc(T) -> String }
+
+proc default_spec() -> FormatSpec { give FormatSpec { width: none<usize>(), pad: 32, base: FormatBase.Decimal, debug: false }; }
+proc format<T>(value: T, spec: FormatSpec) -> String { give compiler_format<T>(value, spec); }
+proc debug<T>(value: T) -> String { give compiler_debug<T>(value); }
+proc pad_left(text: String, width: usize, pad: rune) -> String { give compiler_format_pad_left(text, width, pad); }
+proc format_int(value: i64, base: FormatBase) -> String { give compiler_format_int(value, base); }
+proc format_uint(value: u64, base: FormatBase) -> String { give compiler_format_uint(value, base); }

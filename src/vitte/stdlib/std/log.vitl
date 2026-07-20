@@ -1,0 +1,14 @@
+space vitte/stdlib/std/log
+
+export *
+
+pick LogLevel { Trace Debug Info Warn Error }
+form LogRecord { level: LogLevel target: String message: String }
+form Logger { sink: Writer min_level: LogLevel compact: bool }
+
+proc logger(sink: Writer, min_level: LogLevel) -> Logger { give Logger { sink: sink, min_level: min_level, compact: true }; }
+proc log(logger_value: ref mut Logger, record: LogRecord) { compiler_log_write(logger_value, record); }
+proc trace(logger_value: ref mut Logger, message: String) { log(logger_value, LogRecord { level: LogLevel.Trace, target: compiler_log_default_target(), message: message }); }
+proc info(logger_value: ref mut Logger, message: String) { log(logger_value, LogRecord { level: LogLevel.Info, target: compiler_log_default_target(), message: message }); }
+proc warn(logger_value: ref mut Logger, message: String) { log(logger_value, LogRecord { level: LogLevel.Warn, target: compiler_log_default_target(), message: message }); }
+proc error(logger_value: ref mut Logger, message: String) { log(logger_value, LogRecord { level: LogLevel.Error, target: compiler_log_default_target(), message: message }); }

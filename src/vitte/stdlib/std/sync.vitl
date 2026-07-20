@@ -1,0 +1,26 @@
+space vitte/stdlib/std/sync
+
+export *
+
+form Mutex<T> { state: compiler_mutex_state value: T }
+form RwLock<T> { state: compiler_rwlock_state value: T }
+form Once { state: compiler_once_state }
+form Condvar { state: compiler_condvar_state }
+form Atomic<T> { value: T }
+
+proc mutex<T>(value: T) -> Mutex<T> { give compiler_mutex_new<T>(value); }
+proc mutex_lock<T>(mutex_value: ref Mutex<T>) -> ref mut T { give compiler_mutex_lock<T>(mutex_value); }
+proc mutex_unlock<T>(mutex_value: ref Mutex<T>) { compiler_mutex_unlock<T>(mutex_value); }
+proc rwlock<T>(value: T) -> RwLock<T> { give compiler_rwlock_new<T>(value); }
+proc read<T>(lock: ref RwLock<T>) -> ref T { give compiler_rwlock_read<T>(lock); }
+proc write<T>(lock: ref RwLock<T>) -> ref mut T { give compiler_rwlock_write<T>(lock); }
+proc once() -> Once { give compiler_once_new(); }
+proc call_once(once_value: ref Once, f: proc()) { compiler_once_call(once_value, f); }
+proc condvar() -> Condvar { give compiler_condvar_new(); }
+proc wait<T>(cond: ref Condvar, mutex_value: ref Mutex<T>) { compiler_condvar_wait<T>(cond, mutex_value); }
+proc notify_one(cond: ref Condvar) { compiler_condvar_notify_one(cond); }
+proc notify_all(cond: ref Condvar) { compiler_condvar_notify_all(cond); }
+proc atomic<T>(value: T) -> Atomic<T> { give Atomic<T> { value: value }; }
+proc atomic_load<T>(value: ref Atomic<T>) -> T { give compiler_atomic_load<T>(value); }
+proc atomic_store<T>(value: ref Atomic<T>, next: T) { compiler_atomic_store<T>(value, next); }
+proc atomic_compare_exchange<T>(value: ref Atomic<T>, current: T, next: T) -> Result<T, T> { give compiler_atomic_compare_exchange<T>(value, current, next); }

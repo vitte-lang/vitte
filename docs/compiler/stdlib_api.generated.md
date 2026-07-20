@@ -5191,15 +5191,42 @@ Generated from `src/vitte/stdlib/stdlib_modules.json`.
 - `proc profiler_empty`
 - `proc profiler_selftest`
 
+## `src/vitte/stdlib/std/bench.vitl`
+
+- `form Benchmark`
+- `form BenchReport`
+- `proc benchmark`
+- `proc run`
+- `proc threshold`
+- `proc report_text`
+
+## `src/vitte/stdlib/std/cli.vitl`
+
+- `form Flag`
+- `form CliApp`
+- `form CliMatches`
+- `form CliError`
+- `proc cli_app`
+- `proc flag`
+- `proc add_flag`
+- `proc parse`
+- `proc help`
+
 ## `src/vitte/stdlib/std/env.vitl`
 
 - `form EnvError`
+- `form EnvVar`
 - `proc args`
 - `proc var`
+- `proc vars`
 - `proc set_var`
+- `proc set_var_unicode`
 - `proc remove_var`
 - `proc current_dir`
 - `proc set_current_dir`
+- `proc home_dir`
+- `proc temp_dir`
+- `proc os_string_var`
 
 ## `src/vitte/stdlib/std/error.vitl`
 
@@ -5211,6 +5238,19 @@ Generated from `src/vitte/stdlib/stdlib_modules.json`.
 - `proc capture_backtrace`
 - `proc error_with_backtrace`
 - `proc error_chain`
+
+## `src/vitte/stdlib/std/format.vitl`
+
+- `pick FormatBase`
+- `form FormatSpec`
+- `form Display`
+- `form Debug`
+- `proc default_spec`
+- `proc format`
+- `proc debug`
+- `proc pad_left`
+- `proc format_int`
+- `proc format_uint`
 
 ## `src/vitte/stdlib/std/fs.vitl`
 
@@ -5234,6 +5274,21 @@ Generated from `src/vitte/stdlib/stdlib_modules.json`.
 - `proc set_permissions`
 - `proc read_dir`
 - `proc exists`
+
+## `src/vitte/stdlib/std/hash.vitl`
+
+- `form StableHasher`
+- `form RandomHasher`
+- `form SipHasher`
+- `proc stable_hasher`
+- `proc random_hasher`
+- `proc sip_hasher`
+- `proc stable_write`
+- `proc random_write`
+- `proc sip_write`
+- `proc stable_finish`
+- `proc random_finish`
+- `proc sip_finish`
 
 ## `src/vitte/stdlib/std/io.vitl`
 
@@ -5259,29 +5314,162 @@ Generated from `src/vitte/stdlib/stdlib_modules.json`.
 - `proc cursor`
 - `proc cursor_position`
 
+## `src/vitte/stdlib/std/log.vitl`
+
+- `pick LogLevel`
+- `form LogRecord`
+- `form Logger`
+- `proc logger`
+- `proc log`
+- `proc trace`
+- `proc info`
+- `proc warn`
+- `proc error`
+
+## `src/vitte/stdlib/std/net.vitl`
+
+- `form IpAddr`
+- `form SocketAddr`
+- `form TcpStream`
+- `form TcpListener`
+- `form UdpSocket`
+- `form NetError`
+- `proc ip_addr`
+- `proc socket_addr`
+- `proc dns_lookup`
+- `proc tcp_connect`
+- `proc tcp_bind`
+- `proc tcp_accept`
+- `proc udp_bind`
+- `proc udp_send_to`
+- `proc udp_recv_from`
+
+## `src/vitte/stdlib/std/parse.vitl`
+
+- `form ParseError`
+- `proc parse_bool`
+- `proc parse_i64`
+- `proc parse_u64`
+- `proc parse_f64`
+- `proc parse_utf8`
+- `proc parse_error`
+
+## `src/vitte/stdlib/std/path.vitl`
+
+- `pick ComponentKind`
+- `form Component`
+- `form PathBuf`
+- `proc path_buf`
+- `proc components`
+- `proc normalize`
+- `proc is_absolute`
+- `proc is_relative`
+- `proc join`
+- `proc parent`
+- `proc file_name`
+- `proc extension`
+- `proc with_extension`
+
 ## `src/vitte/stdlib/std/process.vitl`
 
 - `form ExitStatus`
+- `form Stdio`
+- `form Child`
+- `form Output`
 - `form Command`
 - `form ProcessError`
 - `proc command`
 - `proc arg`
+- `proc env`
+- `proc env_remove`
+- `proc current_dir`
+- `proc stdin_piped`
+- `proc stdout_piped`
+- `proc stderr_piped`
+- `proc spawn`
+- `proc wait`
 - `proc status`
 - `proc output`
 - `proc exit`
+
+## `src/vitte/stdlib/std/random.vitl`
+
+- `form Prng`
+- `form RandomError`
+- `proc prng`
+- `proc next_u64`
+- `proc next_bool`
+- `proc range_u64`
+- `proc os_entropy`
+- `proc random_f64`
+
+## `src/vitte/stdlib/std/sync.vitl`
+
+- `form Mutex`
+- `form RwLock`
+- `form Once`
+- `form Condvar`
+- `form Atomic`
+- `proc mutex`
+- `proc mutex_lock`
+- `proc mutex_unlock`
+- `proc rwlock`
+- `proc read`
+- `proc write`
+- `proc once`
+- `proc call_once`
+- `proc condvar`
+- `proc wait`
+- `proc notify_one`
+- `proc notify_all`
+- `proc atomic`
+- `proc atomic_load`
+- `proc atomic_store`
+- `proc atomic_compare_exchange`
+
+## `src/vitte/stdlib/std/testing.vitl`
+
+- `form TestError`
+- `form Fixture`
+- `form Snapshot`
+- `form Case`
+- `proc assert_true`
+- `proc assert_eq`
+- `proc snapshot`
+- `proc assert_snapshot`
+- `proc parameterized`
+
+## `src/vitte/stdlib/std/thread.vitl`
+
+- `form ThreadId`
+- `form JoinHandle`
+- `form ThreadError`
+- `proc current_id`
+- `proc spawn`
+- `proc join`
+- `proc sleep`
+- `proc yield_now`
 
 ## `src/vitte/stdlib/std/time.vitl`
 
 - `form Duration`
 - `form Instant`
 - `form SystemTime`
+- `form DateTime`
 - `proc duration_from_secs`
 - `proc duration_from_millis`
+- `proc duration_from_micros`
+- `proc duration_from_nanos`
 - `proc duration_as_nanos`
+- `proc duration_as_secs`
 - `proc instant_now`
 - `proc system_time_now`
 - `proc elapsed`
 - `proc checked_add_duration`
+- `proc checked_sub_duration`
+- `proc system_time_to_datetime`
+- `proc datetime_to_system_time`
+- `proc format_datetime`
 
 ## `src/vitte/stdlib/tests/api_contracts.vit`
 
@@ -5294,6 +5482,10 @@ Generated from `src/vitte/stdlib/stdlib_modules.json`.
 ## `src/vitte/stdlib/tests/range_unicode_std_contracts.vit`
 
 - `proc stdlib_range_unicode_std_contracts_smoke`
+
+## `src/vitte/stdlib/tests/std_runtime_contracts.vit`
+
+- `proc stdlib_runtime_contracts_smoke`
 
 ## `src/vitte/stdlib/tools/unicode_tables.vitl`
 

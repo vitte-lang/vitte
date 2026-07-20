@@ -1,0 +1,20 @@
+space vitte/stdlib/std/net
+
+export *
+
+form IpAddr { text: String }
+form SocketAddr { ip: IpAddr port: u16 }
+form TcpStream { handle: int }
+form TcpListener { handle: int }
+form UdpSocket { handle: int }
+form NetError { message: String }
+
+proc ip_addr(text: String) -> Result<IpAddr, NetError> { give compiler_net_ip_addr(text); }
+proc socket_addr(ip: IpAddr, port: u16) -> SocketAddr { give SocketAddr { ip: ip, port: port }; }
+proc dns_lookup(name: String) -> Result<Vec<IpAddr>, NetError> { give compiler_net_dns_lookup(name); }
+proc tcp_connect(addr: SocketAddr) -> Result<TcpStream, NetError> { give compiler_net_tcp_connect(addr); }
+proc tcp_bind(addr: SocketAddr) -> Result<TcpListener, NetError> { give compiler_net_tcp_bind(addr); }
+proc tcp_accept(listener: ref TcpListener) -> Result<TcpStream, NetError> { give compiler_net_tcp_accept(listener); }
+proc udp_bind(addr: SocketAddr) -> Result<UdpSocket, NetError> { give compiler_net_udp_bind(addr); }
+proc udp_send_to(socket: ref UdpSocket, bytes: [byte], addr: SocketAddr) -> Result<usize, NetError> { give compiler_net_udp_send_to(socket, bytes, addr); }
+proc udp_recv_from(socket: ref UdpSocket, buffer: ref mut [byte]) -> Result<(usize, SocketAddr), NetError> { give compiler_net_udp_recv_from(socket, buffer); }

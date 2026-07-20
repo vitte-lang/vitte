@@ -1,0 +1,16 @@
+space vitte/stdlib/std/random
+
+export *
+
+form Prng { state: u64 }
+form RandomError { message: String }
+
+proc prng(seed: u64) -> Prng { give Prng { state: seed }; }
+proc next_u64(rng: ref mut Prng) -> u64 {
+    set (*rng).state = (*rng).state * 6364136223846793005 + 1442695040888963407;
+    give (*rng).state;
+}
+proc next_bool(rng: ref mut Prng) -> bool { give (next_u64(rng) & 1) == 1; }
+proc range_u64(rng: ref mut Prng, upper: u64) -> u64 { give next_u64(rng) % upper; }
+proc os_entropy(buffer: ref mut [byte]) -> Result<(), RandomError> { give compiler_random_os_entropy(buffer); }
+proc random_f64(rng: ref mut Prng) -> f64 { give compiler_random_u64_to_unit_f64(next_u64(rng)); }

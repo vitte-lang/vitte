@@ -5,11 +5,19 @@ export *
 form Duration { nanos: u128 }
 form Instant { ticks: u128 }
 form SystemTime { nanos_since_epoch: i128 }
+form DateTime { year: i32 month: u8 day: u8 hour: u8 minute: u8 second: u8 nanos: u32 offset_seconds: i32 }
 
 proc duration_from_secs(secs: u64) -> Duration { give Duration { nanos: secs as u128 * 1000000000 }; }
 proc duration_from_millis(ms: u64) -> Duration { give Duration { nanos: ms as u128 * 1000000 }; }
+proc duration_from_micros(us: u64) -> Duration { give Duration { nanos: us as u128 * 1000 }; }
+proc duration_from_nanos(ns: u128) -> Duration { give Duration { nanos: ns }; }
 proc duration_as_nanos(value: Duration) -> u128 { give value.nanos; }
+proc duration_as_secs(value: Duration) -> u64 { give (value.nanos / 1000000000) as u64; }
 proc instant_now() -> Instant { give compiler_time_instant_now(); }
 proc system_time_now() -> SystemTime { give compiler_time_system_now(); }
 proc elapsed(start: Instant) -> Duration { give compiler_time_elapsed(start); }
 proc checked_add_duration(time: Instant, duration: Duration) -> Option<Instant> { give compiler_time_checked_add(time, duration); }
+proc checked_sub_duration(time: Instant, duration: Duration) -> Option<Instant> { give compiler_time_checked_sub(time, duration); }
+proc system_time_to_datetime(time: SystemTime) -> DateTime { give compiler_time_to_datetime(time); }
+proc datetime_to_system_time(value: DateTime) -> SystemTime { give compiler_datetime_to_system_time(value); }
+proc format_datetime(value: DateTime, pattern: string) -> String { give compiler_time_format_datetime(value, pattern); }

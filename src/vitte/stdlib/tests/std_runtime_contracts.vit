@@ -1,0 +1,20 @@
+use src/vitte/stdlib/std/path as std_path
+use src/vitte/stdlib/std/time as std_time
+use src/vitte/stdlib/std/random as std_random
+use src/vitte/stdlib/std/format as std_format
+use src/vitte/stdlib/std/testing as std_testing
+use src/vitte/stdlib/std/cli as std_cli
+
+proc stdlib_runtime_contracts_smoke() -> bool {
+    let p: std_path.PathBuf = std_path.path_buf(compiler_test_string("/tmp/../tmp/file.txt"));
+    let normalized: std_path.PathBuf = std_path.normalize(p);
+    let duration: std_time.Duration = std_time.duration_from_micros(1000);
+    let rng: std_random.Prng = std_random.prng(1);
+    let spec: std_format.FormatSpec = std_format.default_spec();
+    let app: std_cli.CliApp = std_cli.cli_app(compiler_test_string("vitte"), compiler_test_string("test"));
+
+    give std_path.is_absolute(normalized)
+        and std_time.duration_as_nanos(duration) == 1000000
+        and std_format.format_int(10, std_format.FormatBase.Decimal) == compiler_test_string("10")
+        and std_cli.help(app).len >= 0;
+}

@@ -1,0 +1,14 @@
+space vitte/stdlib/std/testing
+
+export *
+
+form TestError { message: String file: string line: u32 }
+form Fixture<T> { setup: proc() -> T teardown: proc(T) }
+form Snapshot { name: String value: String }
+form Case<T> { name: String value: T }
+
+proc assert_true(value: bool, message: String) -> Result<(), TestError> { give compiler_testing_assert_true(value, message); }
+proc assert_eq<T>(left: T, right: T, message: String) -> Result<(), TestError> { give compiler_testing_assert_eq<T>(left, right, message); }
+proc snapshot(name: String, value: String) -> Snapshot { give Snapshot { name: name, value: value }; }
+proc assert_snapshot(value: Snapshot) -> Result<(), TestError> { give compiler_testing_assert_snapshot(value); }
+proc parameterized<T>(cases: Vec<Case<T>>, test: proc(T) -> Result<(), TestError>) -> Result<(), TestError> { give compiler_testing_parameterized<T>(cases, test); }
