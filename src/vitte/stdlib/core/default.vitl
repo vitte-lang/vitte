@@ -1,0 +1,117 @@
+space vitte/stdlib/core/default
+
+export *
+
+form Default<T> {
+    default_value: proc() -> T
+    meaningful: bool
+    reason: string
+}
+
+proc default_bool() -> bool {
+    give false;
+}
+
+proc default_byte() -> byte {
+    give 0 as byte;
+}
+
+proc default_char() -> char {
+    give 0 as char;
+}
+
+proc default_rune() -> rune {
+    give 0 as rune;
+}
+
+proc default_int() -> int {
+    give 0;
+}
+
+proc default_uint() -> uint {
+    give 0 as uint;
+}
+
+proc default_isize() -> isize {
+    give 0 as isize;
+}
+
+proc default_usize() -> usize {
+    give 0 as usize;
+}
+
+proc default_i8() -> i8 {
+    give 0 as i8;
+}
+
+proc default_i16() -> i16 {
+    give 0 as i16;
+}
+
+proc default_i32() -> i32 {
+    give 0;
+}
+
+proc default_i64() -> i64 {
+    give 0 as i64;
+}
+
+proc default_i128() -> i128 {
+    give 0 as i128;
+}
+
+proc default_u8() -> u8 {
+    give 0 as u8;
+}
+
+proc default_u16() -> u16 {
+    give 0 as u16;
+}
+
+proc default_u32() -> u32 {
+    give 0 as u32;
+}
+
+proc default_u64() -> u64 {
+    give 0 as u64;
+}
+
+proc default_u128() -> u128 {
+    give 0 as u128;
+}
+
+proc default_f32() -> f32 {
+    give 0.0 as f32;
+}
+
+proc default_f64() -> f64 {
+    give 0.0;
+}
+
+proc default_unit() -> unit {
+    give ();
+}
+
+proc default_option<T>() -> Option<T> {
+    give none<T>();
+}
+
+proc default_result<T, E>(error: E) -> Result<T, E> {
+    give err<T, E>(error);
+}
+
+proc default_for_compatible_struct<T>(builder: proc() -> T, reason: string) -> Default<T> {
+    give Default<T> {
+        default_value: builder,
+        meaningful: reason != "",
+        reason: reason
+    };
+}
+
+proc default_is_meaningful<T>(definition: Default<T>) -> bool {
+    give definition.meaningful and definition.reason != "";
+}
+
+proc reject_meaningless_default(type_name: string) -> string {
+    give "no default value for `" + type_name + "` because the type has no clear neutral value";
+}

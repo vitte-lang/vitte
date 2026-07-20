@@ -26,6 +26,10 @@ CORE_PRIMITIVE_DOC = ROOT / "docs" / "compiler" / "stdlib_core_primitive.md"
 CORE_OPTION_SOURCE = SOURCE_STDLIB_DIR / "core" / "option.vitl"
 CORE_RESULT_SOURCE = SOURCE_STDLIB_DIR / "core" / "result.vitl"
 CORE_OPTION_RESULT_DOC = ROOT / "docs" / "compiler" / "stdlib_core_option_result.md"
+CORE_CONVERT_SOURCE = SOURCE_STDLIB_DIR / "core" / "convert.vitl"
+CORE_DEFAULT_SOURCE = SOURCE_STDLIB_DIR / "core" / "default.vitl"
+CORE_CLONE_SOURCE = SOURCE_STDLIB_DIR / "core" / "clone.vitl"
+CORE_CONVERT_DEFAULT_CLONE_DOC = ROOT / "docs" / "compiler" / "stdlib_core_convert_default_clone.md"
 
 REPORT_DIR.mkdir(parents=True, exist_ok=True)
 STDLIB_DIR.mkdir(parents=True, exist_ok=True)
@@ -47,6 +51,10 @@ REQUIRED_FILES = [
     CORE_OPTION_SOURCE,
     CORE_RESULT_SOURCE,
     CORE_OPTION_RESULT_DOC,
+    CORE_CONVERT_SOURCE,
+    CORE_DEFAULT_SOURCE,
+    CORE_CLONE_SOURCE,
+    CORE_CONVERT_DEFAULT_CLONE_DOC,
 ]
 
 
@@ -217,6 +225,62 @@ REQUIRED_RESULT_FRAGMENTS = (
     "proc result_iter_next<T, E>",
     "proc propagate<T, E>",
     "proc try_result<T, E>",
+)
+REQUIRED_CONVERT_FRAGMENTS = (
+    "form From<T, U>",
+    "form Into<T, U>",
+    "form TryFrom<T, U, E>",
+    "form TryInto<T, U, E>",
+    "form AsRef<T, U>",
+    "form AsMut<T, U>",
+    "form Borrow<T, U>",
+    "form BorrowMut<T, U>",
+    "numeric_safe_i32_to_i64",
+    "numeric_checked_i64_to_i32",
+    "numeric_saturating_i64_to_i32",
+    "numeric_wrapping_i64_to_i32",
+    "numeric_truncating_f64_to_i64",
+    "dangerous_implicit_conversion_allowed",
+    "conversion_impossible_error",
+    "require_explicit_conversion",
+)
+REQUIRED_DEFAULT_FRAGMENTS = (
+    "form Default<T>",
+    "default_bool",
+    "default_byte",
+    "default_char",
+    "default_rune",
+    "default_int",
+    "default_uint",
+    "default_isize",
+    "default_usize",
+    "default_i8",
+    "default_i16",
+    "default_i32",
+    "default_i64",
+    "default_i128",
+    "default_u8",
+    "default_u16",
+    "default_u32",
+    "default_u64",
+    "default_u128",
+    "default_f32",
+    "default_f64",
+    "default_for_compatible_struct",
+    "reject_meaningless_default",
+)
+REQUIRED_CLONE_FRAGMENTS = (
+    "form Clone<T>",
+    "form Copy<T>",
+    "pick CloneCost",
+    "copy_trivial",
+    "clone_from_ref",
+    "copy_is_trivial",
+    "clone_is_costly",
+    "implicit_clone_allowed",
+    "copy_forbidden_diagnostic",
+    "clone_required_diagnostic",
+    "reject_implicit_clone",
 )
 
 
@@ -598,6 +662,69 @@ def validate_core_option_result() -> list[ValidationResult]:
     ]
 
 
+def validate_core_convert_default_clone() -> list[ValidationResult]:
+    convert_source = CORE_CONVERT_SOURCE.read_text(encoding="utf-8")
+    default_source = CORE_DEFAULT_SOURCE.read_text(encoding="utf-8")
+    clone_source = CORE_CLONE_SOURCE.read_text(encoding="utf-8")
+    doc = CORE_CONVERT_DEFAULT_CLONE_DOC.read_text(encoding="utf-8")
+    missing_convert = [
+        fragment
+        for fragment in REQUIRED_CONVERT_FRAGMENTS
+        if fragment not in convert_source
+    ]
+    missing_default = [
+        fragment
+        for fragment in REQUIRED_DEFAULT_FRAGMENTS
+        if fragment not in default_source
+    ]
+    missing_clone = [
+        fragment
+        for fragment in REQUIRED_CLONE_FRAGMENTS
+        if fragment not in clone_source
+    ]
+    required_doc_fragments = (
+        "core.convert",
+        "From",
+        "TryFrom",
+        "Dangerous implicit conversions are forbidden",
+        "conversion_impossible_error",
+        "core.default",
+        "Default<T>",
+        "no clear neutral value",
+        "core.clone",
+        "Clone<T>",
+        "Copy<T>",
+        "avoid implicit clones",
+    )
+    missing_doc = [
+        fragment
+        for fragment in required_doc_fragments
+        if fragment not in doc
+    ]
+    return [
+        ValidationResult(
+            name="core_convert_defines_conversion_traits",
+            status=not missing_convert,
+            detail="ok" if not missing_convert else ", ".join(missing_convert),
+        ),
+        ValidationResult(
+            name="core_default_defines_meaningful_defaults",
+            status=not missing_default,
+            detail="ok" if not missing_default else ", ".join(missing_default),
+        ),
+        ValidationResult(
+            name="core_clone_defines_copy_clone_contracts",
+            status=not missing_clone,
+            detail="ok" if not missing_clone else ", ".join(missing_clone),
+        ),
+        ValidationResult(
+            name="core_convert_default_clone_documents_policy",
+            status=not missing_doc,
+            detail="ok" if not missing_doc else ", ".join(missing_doc),
+        ),
+    ]
+
+
 def validate_architecture(manifest: dict) -> list[ValidationResult]:
     results: list[ValidationResult] = []
     levels = architecture_levels(manifest)
@@ -695,6 +822,7 @@ def build_report() -> dict:
     )
     primitive_results = validate_core_primitives()
     option_result_results = validate_core_option_result()
+    convert_default_clone_results = validate_core_convert_default_clone()
 
     required = validate_required_symbols(
         symbols
@@ -717,7 +845,7 @@ def build_report() -> dict:
     ]
     architecture_failures = [
         item
-        for item in architecture + module_results + graph_results + primitive_results + option_result_results
+        for item in architecture + module_results + graph_results + primitive_results + option_result_results + convert_default_clone_results
         if not item.status
     ]
 
@@ -760,7 +888,7 @@ def build_report() -> dict:
         ],
         "architecture_results": [
             asdict(item)
-            for item in architecture + module_results + graph_results + primitive_results + option_result_results
+            for item in architecture + module_results + graph_results + primitive_results + option_result_results + convert_default_clone_results
         ],
         "required_symbols": [
             asdict(item)

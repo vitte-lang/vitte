@@ -1,0 +1,148 @@
+space vitte/stdlib/core/convert
+
+export *
+
+pick ConversionKind {
+    Safe
+    Checked
+    Saturating
+    Wrapping
+    Truncating
+    Impossible
+}
+
+form ConversionResult<T> {
+    ok: bool
+    value: T
+    message: string
+}
+
+form From<T, U> {
+    convert: proc(T) -> U
+}
+
+form Into<T, U> {
+    convert_into: proc(T) -> U
+}
+
+form TryFrom<T, U, E> {
+    try_convert: proc(T) -> Result<U, E>
+}
+
+form TryInto<T, U, E> {
+    try_convert_into: proc(T) -> Result<U, E>
+}
+
+form AsRef<T, U> {
+    as_ref: proc(ref T) -> ref U
+}
+
+form AsMut<T, U> {
+    as_mut: proc(ref mut T) -> ref mut U
+}
+
+form Borrow<T, U> {
+    borrow: proc(ref T) -> ref U
+}
+
+form BorrowMut<T, U> {
+    borrow_mut: proc(ref mut T) -> ref mut U
+}
+
+proc conversion_ok<T>(value: T) -> ConversionResult<T> {
+    give ConversionResult<T> {
+        ok: true,
+        value: value,
+        message: ""
+    };
+}
+
+proc conversion_error<T>(message: string) -> ConversionResult<T> {
+    give ConversionResult<T> {
+        ok: false,
+        value: zero<T>(),
+        message: message
+    };
+}
+
+proc numeric_safe_i32_to_i64(value: i32) -> i64 {
+    give value as i64;
+}
+
+proc numeric_safe_u32_to_u64(value: u32) -> u64 {
+    give value as u64;
+}
+
+proc numeric_checked_i64_to_i32(value: i64) -> ConversionResult<i32> {
+    if value < -2147483648 or value > 2147483647 {
+        give conversion_error<i32>("i64 value is outside i32 range");
+    }
+    give conversion_ok<i32>(value as i32);
+}
+
+proc numeric_checked_u64_to_u32(value: u64) -> ConversionResult<u32> {
+    if value > 4294967295 {
+        give conversion_error<u32>("u64 value is outside u32 range");
+    }
+    give conversion_ok<u32>(value as u32);
+}
+
+proc numeric_saturating_i64_to_i32(value: i64) -> i32 {
+    if value < -2147483648 {
+        give -2147483648;
+    }
+    if value > 2147483647 {
+        give 2147483647;
+    }
+    give value as i32;
+}
+
+proc numeric_saturating_u64_to_u32(value: u64) -> u32 {
+    if value > 4294967295 {
+        give 4294967295;
+    }
+    give value as u32;
+}
+
+proc numeric_wrapping_i64_to_i32(value: i64) -> i32 {
+    give value as i32;
+}
+
+proc numeric_wrapping_u64_to_u32(value: u64) -> u32 {
+    give value as u32;
+}
+
+proc numeric_truncating_f64_to_i64(value: f64) -> i64 {
+    give value as i64;
+}
+
+proc numeric_truncating_f32_to_i32(value: f32) -> i32 {
+    give value as i32;
+}
+
+proc dangerous_implicit_conversion_allowed(from_type: string, to_type: string) -> bool {
+    if from_type == to_type {
+        give true;
+    }
+    if from_type == "i32" and to_type == "i64" {
+        give true;
+    }
+    if from_type == "u32" and to_type == "u64" {
+        give true;
+    }
+    give false;
+}
+
+proc conversion_impossible_error(from_type: string, to_type: string) -> string {
+    give "cannot convert `" + from_type + "` to `" + to_type + "` because no safe, checked, saturating, wrapping, or explicit truncating conversion is defined";
+}
+
+proc require_explicit_conversion(from_type: string, to_type: string, kind: ConversionKind) -> ConversionResult<string> {
+    if dangerous_implicit_conversion_allowed(from_type, to_type) {
+        give conversion_ok<string>("implicit safe conversion");
+    }
+    if kind == ConversionKind.Impossible {
+        give conversion_error<string>(conversion_impossible_error(from_type, to_type));
+    }
+    give conversion_ok<string>("explicit conversion required");
+}

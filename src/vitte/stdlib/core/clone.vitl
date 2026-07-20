@@ -1,0 +1,65 @@
+space vitte/stdlib/core/clone
+
+export *
+
+pick CloneCost {
+    Trivial
+    Cheap
+    Expensive
+    Forbidden
+}
+
+form Clone<T> {
+    clone_value: proc(ref T) -> T
+    cost: CloneCost
+}
+
+form Copy<T> {
+    copy_value: proc(T) -> T
+    trivial: bool
+}
+
+proc copy_trivial<T>(value: T) -> T {
+    give value;
+}
+
+proc clone_from_ref<T>(value: ref T, clone_impl: Clone<T>) -> T {
+    give clone_impl.clone_value(value);
+}
+
+proc clone_cost_name(cost: CloneCost) -> string {
+    if cost == CloneCost.Trivial {
+        give "trivial";
+    }
+    if cost == CloneCost.Cheap {
+        give "cheap";
+    }
+    if cost == CloneCost.Expensive {
+        give "expensive";
+    }
+    give "forbidden";
+}
+
+proc copy_is_trivial<T>(copy_impl: Copy<T>) -> bool {
+    give copy_impl.trivial;
+}
+
+proc clone_is_costly<T>(clone_impl: Clone<T>) -> bool {
+    give clone_impl.cost == CloneCost.Expensive;
+}
+
+proc implicit_clone_allowed<T>(clone_impl: Clone<T>) -> bool {
+    give clone_impl.cost == CloneCost.Trivial;
+}
+
+proc copy_forbidden_diagnostic(type_name: string, reason: string) -> string {
+    give "cannot copy `" + type_name + "` because " + reason;
+}
+
+proc clone_required_diagnostic(type_name: string) -> string {
+    give "clone `" + type_name + "` explicitly because cloning may allocate or duplicate ownership";
+}
+
+proc reject_implicit_clone(type_name: string) -> string {
+    give "implicit clone of `" + type_name + "` is forbidden; call clone explicitly";
+}
