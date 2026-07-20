@@ -23,6 +23,13 @@ proc wait<T>(cond: ref Condvar, mutex_value: ref Mutex<T>) { compiler_condvar_wa
 proc notify_one(cond: ref Condvar) { compiler_condvar_notify_one(cond); }
 proc notify_all(cond: ref Condvar) { compiler_condvar_notify_all(cond); }
 proc atomic<T>(value: T) -> Atomic<T> { give Atomic<T> { value: value }; }
-proc atomic_load<T>(value: ref Atomic<T>) -> T { give compiler_atomic_load<T>(value); }
-proc atomic_store<T>(value: ref Atomic<T>, next: T) { compiler_atomic_store<T>(value, next); }
-proc atomic_compare_exchange<T>(value: ref Atomic<T>, current: T, next: T) -> Result<T, T> { give compiler_atomic_compare_exchange<T>(value, current, next); }
+proc atomic_load<T>(value: ref Atomic<T>) -> T { give (*value).value; }
+proc atomic_store<T>(value: ref Atomic<T>, next: T) { set (*value).value = next; }
+proc atomic_compare_exchange<T>(value: ref Atomic<T>, current: T, next: T) -> Result<T, T> {
+    let old: T = (*value).value;
+    if compiler_values_equal<T>(old, current) {
+        set (*value).value = next;
+        give ok<T, T>(old);
+    }
+    give err<T, T>(old);
+}

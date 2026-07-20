@@ -4,6 +4,7 @@ Generated from commits touching `src/vitte/stdlib`, `tools/stdlib`, and stdlib d
 
 ## Recent Changes
 
+- `a48f7bd2b` Add stdlib fuzzing and stability gates
 - `ec8fb43a0` Implement stdlib utility runners and parsers
 - `8976edb03` Expand real stdlib collection and IO surfaces
 - `dd7ae3658` Harden stdlib platform and alloc contracts
@@ -43,4 +44,3 @@ Generated from commits touching `src/vitte/stdlib`, `tools/stdlib`, and stdlib d
 - `baf01a128` /home/vincentr/Documents/GitHub/vitte/tools/stdlib/run_checks.py
 - `580ed77b0` Vitte compiler pipeline and expands executable native coverage.
 - `376998507` Canonicalize compiler imports and reachability
-- `6c34a8956` @

@@ -1,0 +1,19 @@
+use src/vitte/stdlib/alloc/collections as alloc_collections
+use src/vitte/stdlib/alloc/string as alloc_string
+use src/vitte/stdlib/alloc/vec as alloc_vec
+
+proc alloc_api_test() -> bool {
+    let values: alloc_vec.Vec<int> = alloc_vec.vec_with_capacity<int>(2);
+    alloc_vec.vec_push<int>(&mut values, 10);
+    alloc_vec.vec_push<int>(&mut values, 20);
+
+    let text: alloc_string.String = alloc_string.string_new();
+    alloc_string.string_push_str(&mut text, "ok");
+
+    let map: alloc_collections.HashMap<int, int> = alloc_collections.hashmap_new<int, int>();
+    alloc_collections.hashmap_insert<int, int>(&mut map, 1, 2);
+
+    give alloc_vec.vec_capacity<int>(values) >= alloc_vec.vec_len<int>(values)
+        and alloc_string.string_capacity(text) >= alloc_string.string_len(text)
+        and alloc_collections.hashmap_len<int, int>(map) == 1;
+}

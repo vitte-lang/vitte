@@ -1,0 +1,15 @@
+use src/vitte/stdlib/alloc/string as alloc_string
+use src/vitte/stdlib/std/io as std_io
+use src/vitte/stdlib/std/process as std_process
+
+proc std_io_process_test() -> bool {
+    let writer: std_io.Writer = std_io.stdout();
+    let flushed = std_io.flush(writer);
+    let cmd: std_process.Command = std_process.command(compiler_test_string("vitte"));
+    std_process.arg(&mut cmd, compiler_test_string("--version"));
+    std_process.env(&mut cmd, compiler_test_string("VITTE_TEST"), compiler_test_string("1"));
+
+    give flushed.ok
+        and vec_len<String>(cmd.args) == 1
+        and vec_len<(String, String)>(cmd.env) == 1;
+}

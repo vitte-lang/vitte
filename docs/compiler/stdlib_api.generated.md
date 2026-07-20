@@ -5772,17 +5772,17 @@ Stability: `stable`
 
 - `form EnvError` signature `form EnvError { name: string message: string }` example `env.EnvError` stability `stable`
 - `form EnvVar` signature `form EnvVar { name: String value: String unicode: bool os_specific: bool }` example `env.EnvVar` stability `stable`
-- `proc args` signature `proc args() -> Iterator<String> { give compiler_env_args(); }` example `env.args(...)` stability `stable`
-- `proc var` signature `proc var(name: string) -> Result<String, EnvError> { give compiler_env_var(name); }` example `env.var(...)` stability `stable`
-- `proc vars` signature `proc vars() -> Iterator<EnvVar> { give compiler_env_vars(); }` example `env.vars(...)` stability `stable`
-- `proc set_var` signature `proc set_var(name: string, value: string) -> Result<(), EnvError> { give compiler_env_set_var(name, value); }` example `env.set_var(...)` stability `stable`
-- `proc set_var_unicode` signature `proc set_var_unicode(name: String, value: String) -> Result<(), EnvError> { give compiler_env_set_var_unicode(name, value); }` example `env.set_var_unicode(...)` stability `stable`
-- `proc remove_var` signature `proc remove_var(name: string) -> Result<(), EnvError> { give compiler_env_remove_var(name); }` example `env.remove_var(...)` stability `stable`
-- `proc current_dir` signature `proc current_dir() -> Result<Path, EnvError> { give compiler_env_current_dir(); }` example `env.current_dir(...)` stability `stable`
-- `proc set_current_dir` signature `proc set_current_dir(path_value: Path) -> Result<(), EnvError> { give compiler_env_set_current_dir(path_value); }` example `env.set_current_dir(...)` stability `stable`
-- `proc home_dir` signature `proc home_dir() -> Option<Path> { give compiler_env_home_dir(); }` example `env.home_dir(...)` stability `stable`
-- `proc temp_dir` signature `proc temp_dir() -> Path { give compiler_env_temp_dir(); }` example `env.temp_dir(...)` stability `stable`
-- `proc os_string_var` signature `proc os_string_var(name: String) -> Result<String, EnvError> { give compiler_env_os_string_var(name); }` example `env.os_string_var(...)` stability `stable`
+- `proc args` signature `proc args() -> Iterator<String> { give compiler_backend_env_args(); }` example `env.args(...)` stability `stable`
+- `proc var` signature `proc var(name: string) -> Result<String, EnvError> { give compiler_backend_env_var(name); }` example `env.var(...)` stability `stable`
+- `proc vars` signature `proc vars() -> Iterator<EnvVar> { give compiler_backend_env_vars(); }` example `env.vars(...)` stability `stable`
+- `proc set_var` signature `proc set_var(name: string, value: string) -> Result<(), EnvError> { give compiler_backend_env_set_var(name, value); }` example `env.set_var(...)` stability `stable`
+- `proc set_var_unicode` signature `proc set_var_unicode(name: String, value: String) -> Result<(), EnvError> { give compiler_backend_env_set_var_unicode(name, value); }` example `env.set_var_unicode(...)` stability `stable`
+- `proc remove_var` signature `proc remove_var(name: string) -> Result<(), EnvError> { give compiler_backend_env_remove_var(name); }` example `env.remove_var(...)` stability `stable`
+- `proc current_dir` signature `proc current_dir() -> Result<Path, EnvError> { give compiler_backend_env_current_dir(); }` example `env.current_dir(...)` stability `stable`
+- `proc set_current_dir` signature `proc set_current_dir(path_value: Path) -> Result<(), EnvError> { give compiler_backend_env_set_current_dir(path_value); }` example `env.set_current_dir(...)` stability `stable`
+- `proc home_dir` signature `proc home_dir() -> Option<Path> { give compiler_backend_env_home_dir(); }` example `env.home_dir(...)` stability `stable`
+- `proc temp_dir` signature `proc temp_dir() -> Path { give compiler_backend_env_temp_dir(); }` example `env.temp_dir(...)` stability `stable`
+- `proc os_string_var` signature `proc os_string_var(name: String) -> Result<String, EnvError> { give compiler_backend_env_os_string_var(name); }` example `env.os_string_var(...)` stability `stable`
 
 ## `src/vitte/stdlib/std/error.vitl`
 
@@ -5906,15 +5906,15 @@ Stability: `stable`
 - `form BufReader` signature `form BufReader { inner: Reader buffer: Vec<byte> position: usize }` example `io.BufReader` stability `stable`
 - `form BufWriter` signature `form BufWriter { inner: Writer buffer: Vec<byte> }` example `io.BufWriter` stability `stable`
 - `form Cursor` signature `form Cursor { data: Vec<byte> position: usize }` example `io.Cursor` stability `stable`
-- `proc stdin` signature `proc stdin() -> Reader { give compiler_stdio_stdin(); }` example `io.stdin(...)` stability `stable`
-- `proc stdout` signature `proc stdout() -> Writer { give compiler_stdio_stdout(); }` example `io.stdout(...)` stability `stable`
-- `proc stderr` signature `proc stderr() -> Writer { give compiler_stdio_stderr(); }` example `io.stderr(...)` stability `stable`
-- `proc read_to_string` signature `proc read_to_string(reader: Reader) -> Result<String, IoError> { give compiler_io_read_to_string(reader); }` example `io.read_to_string(...)` stability `stable`
-- `proc read` signature `proc read(reader: ref mut Reader, buffer: ref mut [byte]) -> Result<usize, IoError> { give compiler_io_read(reader, buffer); }` example `io.read(...)` stability `stable`
-- `proc write` signature `proc write(writer: ref mut Writer, bytes: [byte]) -> Result<usize, IoError> { give compiler_io_write(writer, bytes); }` example `io.write(...)` stability `stable`
-- `proc write_all` signature `proc write_all(writer: Writer, bytes: [byte]) -> Result<(), IoError> { give compiler_io_write_all(writer, bytes); }` example `io.write_all(...)` stability `stable`
-- `proc write_string` signature `proc write_string(writer: Writer, text: string) -> Result<(), IoError> { give compiler_io_write_string(writer, text); }` example `io.write_string(...)` stability `stable`
-- `proc flush` signature `proc flush(writer: Writer) -> Result<(), IoError> { give compiler_io_flush(writer); }` example `io.flush(...)` stability `stable`
+- `proc stdin` signature `proc stdin() -> Reader { give compiler_backend_stdio_stdin(); }` example `io.stdin(...)` stability `stable`
+- `proc stdout` signature `proc stdout() -> Writer { give compiler_backend_stdio_stdout(); }` example `io.stdout(...)` stability `stable`
+- `proc stderr` signature `proc stderr() -> Writer { give compiler_backend_stdio_stderr(); }` example `io.stderr(...)` stability `stable`
+- `proc read_to_string` signature `proc read_to_string(reader: Reader) -> Result<String, IoError> { give compiler_backend_io_read_to_string(reader); }` example `io.read_to_string(...)` stability `stable`
+- `proc read` signature `proc read(reader: ref mut Reader, buffer: ref mut [byte]) -> Result<usize, IoError> { give compiler_backend_io_read(reader, buffer); }` example `io.read(...)` stability `stable`
+- `proc write` signature `proc write(writer: ref mut Writer, bytes: [byte]) -> Result<usize, IoError> { give compiler_backend_io_write(writer, bytes); }` example `io.write(...)` stability `stable`
+- `proc write_all` signature `proc write_all(writer: Writer, bytes: [byte]) -> Result<(), IoError> {` example `io.write_all(...)` stability `stable`
+- `proc write_string` signature `proc write_string(writer: Writer, text: string) -> Result<(), IoError> { give write_all(writer, compiler_string_bytes(text)); }` example `io.write_string(...)` stability `stable`
+- `proc flush` signature `proc flush(writer: Writer) -> Result<(), IoError> { give compiler_backend_io_flush(writer); }` example `io.flush(...)` stability `stable`
 - `proc buf_reader` signature `proc buf_reader(inner: Reader) -> BufReader { give BufReader { inner: inner, buffer: vec_new<byte>(), position: 0 }; }` example `io.buf_reader(...)` stability `stable`
 - `proc buf_writer` signature `proc buf_writer(inner: Writer) -> BufWriter { give BufWriter { inner: inner, buffer: vec_new<byte>() }; }` example `io.buf_writer(...)` stability `stable`
 - `proc cursor` signature `proc cursor(data: Vec<byte>) -> Cursor { give Cursor { data: data, position: 0 }; }` example `io.cursor(...)` stability `stable`
@@ -6053,19 +6053,19 @@ Stability: `stable`
 - `form Output` signature `form Output { status: ExitStatus stdout: Vec<byte> stderr: Vec<byte> }` example `process.Output` stability `stable`
 - `form Command` signature `form Command { program: String args: Vec<String> env: Vec<(String, String)> stdin: Stdio stdout: Stdio stderr: Stdio cwd: Option<Path> }` example `process.Command` stability `stable`
 - `form ProcessError` signature `form ProcessError { code: int message: string }` example `process.ProcessError` stability `stable`
-- `proc command` signature `proc command(program: String) -> Command { give compiler_process_command(program); }` example `process.command(...)` stability `stable`
-- `proc arg` signature `proc arg(cmd: ref mut Command, value: String) { compiler_process_arg(cmd, value); }` example `process.arg(...)` stability `stable`
-- `proc env` signature `proc env(cmd: ref mut Command, name: String, value: String) { compiler_process_env(cmd, name, value); }` example `process.env(...)` stability `stable`
-- `proc env_remove` signature `proc env_remove(cmd: ref mut Command, name: String) { compiler_process_env_remove(cmd, name); }` example `process.env_remove(...)` stability `stable`
-- `proc current_dir` signature `proc current_dir(cmd: ref mut Command, path_value: Path) { compiler_process_current_dir(cmd, path_value); }` example `process.current_dir(...)` stability `stable`
+- `proc command` signature `proc command(program: String) -> Command {` example `process.command(...)` stability `stable`
+- `proc arg` signature `proc arg(cmd: ref mut Command, value: String) { vec_push<String>(&mut ((*cmd).args), value); }` example `process.arg(...)` stability `stable`
+- `proc env` signature `proc env(cmd: ref mut Command, name: String, value: String) { vec_push<(String, String)>(&mut ((*cmd).env), (name, value)); }` example `process.env(...)` stability `stable`
+- `proc env_remove` signature `proc env_remove(cmd: ref mut Command, name: String) { compiler_backend_process_env_remove_from_vec(&mut ((*cmd).env), name); }` example `process.env_remove(...)` stability `stable`
+- `proc current_dir` signature `proc current_dir(cmd: ref mut Command, path_value: Path) { set (*cmd).cwd = some<Path>(path_value); }` example `process.current_dir(...)` stability `stable`
 - `proc stdin_piped` signature `proc stdin_piped() -> Stdio { give Stdio { mode: "piped" }; }` example `process.stdin_piped(...)` stability `stable`
 - `proc stdout_piped` signature `proc stdout_piped() -> Stdio { give Stdio { mode: "piped" }; }` example `process.stdout_piped(...)` stability `stable`
 - `proc stderr_piped` signature `proc stderr_piped() -> Stdio { give Stdio { mode: "piped" }; }` example `process.stderr_piped(...)` stability `stable`
-- `proc spawn` signature `proc spawn(cmd: Command) -> Result<Child, ProcessError> { give compiler_process_spawn(cmd); }` example `process.spawn(...)` stability `stable`
-- `proc wait` signature `proc wait(child: Child) -> Result<ExitStatus, ProcessError> { give compiler_process_wait(child); }` example `process.wait(...)` stability `stable`
-- `proc status` signature `proc status(cmd: Command) -> Result<ExitStatus, ProcessError> { give compiler_process_status(cmd); }` example `process.status(...)` stability `stable`
-- `proc output` signature `proc output(cmd: Command) -> Result<Output, ProcessError> { give compiler_process_output(cmd); }` example `process.output(...)` stability `stable`
-- `proc exit` signature `proc exit(code: int) -> never { give compiler_process_exit(code); }` example `process.exit(...)` stability `stable`
+- `proc spawn` signature `proc spawn(cmd: Command) -> Result<Child, ProcessError> { give compiler_backend_process_spawn(cmd); }` example `process.spawn(...)` stability `stable`
+- `proc wait` signature `proc wait(child: Child) -> Result<ExitStatus, ProcessError> { give compiler_backend_process_wait(child); }` example `process.wait(...)` stability `stable`
+- `proc status` signature `proc status(cmd: Command) -> Result<ExitStatus, ProcessError> {` example `process.status(...)` stability `stable`
+- `proc output` signature `proc output(cmd: Command) -> Result<Output, ProcessError> { give compiler_backend_process_output(cmd); }` example `process.output(...)` stability `stable`
+- `proc exit` signature `proc exit(code: int) -> never { give compiler_backend_process_exit(code); }` example `process.exit(...)` stability `stable`
 
 ## `src/vitte/stdlib/std/random.vitl`
 
@@ -6149,9 +6149,9 @@ Stability: `stable`
 - `proc notify_one` signature `proc notify_one(cond: ref Condvar) { compiler_condvar_notify_one(cond); }` example `sync.notify_one(...)` stability `stable`
 - `proc notify_all` signature `proc notify_all(cond: ref Condvar) { compiler_condvar_notify_all(cond); }` example `sync.notify_all(...)` stability `stable`
 - `proc atomic` signature `proc atomic<T>(value: T) -> Atomic<T> { give Atomic<T> { value: value }; }` example `sync.atomic(...)` stability `stable`
-- `proc atomic_load` signature `proc atomic_load<T>(value: ref Atomic<T>) -> T { give compiler_atomic_load<T>(value); }` example `sync.atomic_load(...)` stability `stable`
-- `proc atomic_store` signature `proc atomic_store<T>(value: ref Atomic<T>, next: T) { compiler_atomic_store<T>(value, next); }` example `sync.atomic_store(...)` stability `stable`
-- `proc atomic_compare_exchange` signature `proc atomic_compare_exchange<T>(value: ref Atomic<T>, current: T, next: T) -> Result<T, T> { give compiler_atomic_compare_exchange<T>(value, current, next); }` example `sync.atomic_compare_exchange(...)` stability `stable`
+- `proc atomic_load` signature `proc atomic_load<T>(value: ref Atomic<T>) -> T { give (*value).value; }` example `sync.atomic_load(...)` stability `stable`
+- `proc atomic_store` signature `proc atomic_store<T>(value: ref Atomic<T>, next: T) { set (*value).value = next; }` example `sync.atomic_store(...)` stability `stable`
+- `proc atomic_compare_exchange` signature `proc atomic_compare_exchange<T>(value: ref Atomic<T>, current: T, next: T) -> Result<T, T> {` example `sync.atomic_compare_exchange(...)` stability `stable`
 
 ## `src/vitte/stdlib/std/tempfile.vitl`
 
@@ -6191,11 +6191,11 @@ Stability: `stable`
 - `form ThreadId` signature `form ThreadId { value: u64 }` example `thread.ThreadId` stability `stable`
 - `form JoinHandle` signature `form JoinHandle<T> { id: ThreadId }` example `thread.JoinHandle` stability `stable`
 - `form ThreadError` signature `form ThreadError { message: String }` example `thread.ThreadError` stability `stable`
-- `proc current_id` signature `proc current_id() -> ThreadId { give compiler_thread_current_id(); }` example `thread.current_id(...)` stability `stable`
-- `proc spawn` signature `proc spawn<T>(f: proc() -> T) -> Result<JoinHandle<T>, ThreadError> { give compiler_thread_spawn<T>(f); }` example `thread.spawn(...)` stability `stable`
-- `proc join` signature `proc join<T>(handle: JoinHandle<T>) -> Result<T, ThreadError> { give compiler_thread_join<T>(handle); }` example `thread.join(...)` stability `stable`
-- `proc sleep` signature `proc sleep(duration: Duration) { compiler_thread_sleep(duration); }` example `thread.sleep(...)` stability `stable`
-- `proc yield_now` signature `proc yield_now() { compiler_thread_yield_now(); }` example `thread.yield_now(...)` stability `stable`
+- `proc current_id` signature `proc current_id() -> ThreadId { give compiler_backend_thread_current_id(); }` example `thread.current_id(...)` stability `stable`
+- `proc spawn` signature `proc spawn<T>(f: proc() -> T) -> Result<JoinHandle<T>, ThreadError> { give compiler_backend_thread_spawn<T>(f); }` example `thread.spawn(...)` stability `stable`
+- `proc join` signature `proc join<T>(handle: JoinHandle<T>) -> Result<T, ThreadError> { give compiler_backend_thread_join<T>(handle); }` example `thread.join(...)` stability `stable`
+- `proc sleep` signature `proc sleep(duration: Duration) { compiler_backend_thread_sleep(duration); }` example `thread.sleep(...)` stability `stable`
+- `proc yield_now` signature `proc yield_now() { compiler_backend_thread_yield_now(); }` example `thread.yield_now(...)` stability `stable`
 
 ## `src/vitte/stdlib/std/time.vitl`
 
@@ -6211,14 +6211,14 @@ Stability: `stable`
 - `proc duration_from_nanos` signature `proc duration_from_nanos(ns: u128) -> Duration { give Duration { nanos: ns }; }` example `time.duration_from_nanos(...)` stability `stable`
 - `proc duration_as_nanos` signature `proc duration_as_nanos(value: Duration) -> u128 { give value.nanos; }` example `time.duration_as_nanos(...)` stability `stable`
 - `proc duration_as_secs` signature `proc duration_as_secs(value: Duration) -> u64 { give (value.nanos / 1000000000) as u64; }` example `time.duration_as_secs(...)` stability `stable`
-- `proc instant_now` signature `proc instant_now() -> Instant { give compiler_time_instant_now(); }` example `time.instant_now(...)` stability `stable`
-- `proc system_time_now` signature `proc system_time_now() -> SystemTime { give compiler_time_system_now(); }` example `time.system_time_now(...)` stability `stable`
-- `proc elapsed` signature `proc elapsed(start: Instant) -> Duration { give compiler_time_elapsed(start); }` example `time.elapsed(...)` stability `stable`
-- `proc checked_add_duration` signature `proc checked_add_duration(time: Instant, duration: Duration) -> Option<Instant> { give compiler_time_checked_add(time, duration); }` example `time.checked_add_duration(...)` stability `stable`
-- `proc checked_sub_duration` signature `proc checked_sub_duration(time: Instant, duration: Duration) -> Option<Instant> { give compiler_time_checked_sub(time, duration); }` example `time.checked_sub_duration(...)` stability `stable`
-- `proc system_time_to_datetime` signature `proc system_time_to_datetime(time: SystemTime) -> DateTime { give compiler_time_to_datetime(time); }` example `time.system_time_to_datetime(...)` stability `stable`
-- `proc datetime_to_system_time` signature `proc datetime_to_system_time(value: DateTime) -> SystemTime { give compiler_datetime_to_system_time(value); }` example `time.datetime_to_system_time(...)` stability `stable`
-- `proc format_datetime` signature `proc format_datetime(value: DateTime, pattern: string) -> String { give compiler_time_format_datetime(value, pattern); }` example `time.format_datetime(...)` stability `stable`
+- `proc instant_now` signature `proc instant_now() -> Instant { give compiler_backend_instant_now(); }` example `time.instant_now(...)` stability `stable`
+- `proc system_time_now` signature `proc system_time_now() -> SystemTime { give compiler_backend_system_time_now(); }` example `time.system_time_now(...)` stability `stable`
+- `proc elapsed` signature `proc elapsed(start: Instant) -> Duration {` example `time.elapsed(...)` stability `stable`
+- `proc checked_add_duration` signature `proc checked_add_duration(time: Instant, duration: Duration) -> Option<Instant> {` example `time.checked_add_duration(...)` stability `stable`
+- `proc checked_sub_duration` signature `proc checked_sub_duration(time: Instant, duration: Duration) -> Option<Instant> {` example `time.checked_sub_duration(...)` stability `stable`
+- `proc system_time_to_datetime` signature `proc system_time_to_datetime(time: SystemTime) -> DateTime { give compiler_backend_time_to_datetime(time); }` example `time.system_time_to_datetime(...)` stability `stable`
+- `proc datetime_to_system_time` signature `proc datetime_to_system_time(value: DateTime) -> SystemTime { give compiler_backend_datetime_to_system_time(value); }` example `time.datetime_to_system_time(...)` stability `stable`
+- `proc format_datetime` signature `proc format_datetime(value: DateTime, pattern: string) -> String { give compiler_backend_format_datetime(value, pattern); }` example `time.format_datetime(...)` stability `stable`
 
 ## `src/vitte/stdlib/std/terminal.vitl`
 
@@ -6350,6 +6350,24 @@ Stability: `internal`
 Stability: `internal`
 
 - `proc stdlib_module_tests_run` signature `proc stdlib_module_tests_run() -> bool {` example `module_runner.stdlib_module_tests_run(...)` stability `internal`
+
+## `src/vitte/stdlib/tests/modules/alloc_api_test.vit`
+
+Stability: `internal`
+
+- `proc alloc_api_test` signature `proc alloc_api_test() -> bool {` example `alloc_api_test.alloc_api_test(...)` stability `internal`
+
+## `src/vitte/stdlib/tests/modules/std_io_process_test.vit`
+
+Stability: `internal`
+
+- `proc std_io_process_test` signature `proc std_io_process_test() -> bool {` example `std_io_process_test.std_io_process_test(...)` stability `internal`
+
+## `src/vitte/stdlib/tests/modules/std_thread_sync_time_env_test.vit`
+
+Stability: `internal`
+
+- `proc std_thread_sync_time_env_test` signature `proc std_thread_sync_time_env_test() -> bool {` example `std_thread_sync_time_env_test.std_thread_sync_time_env_test(...)` stability `internal`
 
 ## `src/vitte/stdlib/tests/modules/std_calendar_test.vit`
 

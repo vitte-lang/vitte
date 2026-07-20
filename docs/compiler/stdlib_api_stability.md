@@ -24,3 +24,16 @@ Compatibility rules:
 Public functions that can panic must either return a structured diagnostic/result
 or be listed in this document with the cause, location, and recovery guidance.
 Undocumented public panic usage fails the stdlib gate.
+
+## Backend Primitive Inventory
+
+CI writes `target/reports/stdlib_compiler_helpers.json` on every stdlib gate run.
+The report separates required backend primitives from temporary wrappers so that
+modules can be migrated toward Vitte implementations without hiding remaining
+compiler hooks.
+
+## Alloc API Stability
+
+Allocation APIs must preserve capacity, drop, iteration, ownership, and error
+contracts. Changes to `Vec`, `String`, maps, sets, deque, box, rc, or arc require
+an executable module test and an alloc memory invariant test.

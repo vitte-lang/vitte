@@ -120,12 +120,15 @@ STDLIB_NEXT_STEP_SOURCES = (
     SOURCE_STDLIB_DIR / "tests" / "fuzz" / "path_fuzz.vit",
     SOURCE_STDLIB_DIR / "tests" / "module_runner.vit",
     SOURCE_STDLIB_DIR / "tests" / "public_module_coverage.vit",
+    SOURCE_STDLIB_DIR / "tests" / "modules" / "alloc_api_test.vit",
     SOURCE_STDLIB_DIR / "tests" / "modules" / "std_uuid_test.vit",
     SOURCE_STDLIB_DIR / "tests" / "modules" / "std_calendar_test.vit",
+    SOURCE_STDLIB_DIR / "tests" / "modules" / "std_io_process_test.vit",
     SOURCE_STDLIB_DIR / "tests" / "modules" / "std_units_test.vit",
     SOURCE_STDLIB_DIR / "tests" / "modules" / "std_metrics_test.vit",
     SOURCE_STDLIB_DIR / "tests" / "modules" / "std_mime_test.vit",
     SOURCE_STDLIB_DIR / "tests" / "modules" / "std_percent_encoding_test.vit",
+    SOURCE_STDLIB_DIR / "tests" / "modules" / "std_thread_sync_time_env_test.vit",
     SOURCE_STDLIB_DIR / "tests" / "negative" / "stdlib_negative_cases.vit",
     SOURCE_STDLIB_DIR / "benchmarks" / "index.vit",
     SOURCE_STDLIB_DIR / "benchmarks" / "modules" / "vec_bench.vit",
@@ -162,6 +165,7 @@ HISTORY_DIR.mkdir(parents=True, exist_ok=True)
 JSON_REPORT = REPORT_DIR / "stdlib_validation.json"
 MARKDOWN_REPORT = REPORT_DIR / "stdlib_validation.md"
 HTML_REPORT = REPORT_DIR / "stdlib_validation.html"
+COMPILER_HELPERS_REPORT = REPORT_DIR / "stdlib_compiler_helpers.json"
 
 
 REQUIRED_FILES = [
@@ -820,14 +824,17 @@ REQUIRED_NEXT_STEP_FRAGMENTS = {
     "tests/std_more_libraries_contracts.vit": ("stdlib_more_libraries_contracts_smoke", "std_terminal.terminal_style", "std_calendar.is_leap_year", "std_event.event_bus"),
     "tests/fuzz/utf8_url_csv.vit": ("fuzz_utf8_url_csv", "core_string.validate_utf8", "std_url.url_parse", "std_csv.csv_parse"),
     "tests/fuzz/path_json_parse.vit": ("fuzz_path_json_parse", "std_path.normalize", "std_serialization.json_value", "std_parse.parse_i64"),
-    "tests/module_runner.vit": ("stdlib_module_tests_run", "std_uuid_test", "std_calendar_test", "std_percent_encoding_test", "stdlib_negative_cases_run"),
+    "tests/module_runner.vit": ("stdlib_module_tests_run", "std_uuid_test", "std_calendar_test", "std_percent_encoding_test", "std_io_process_test", "std_thread_sync_time_env_test", "alloc_api_test", "stdlib_negative_cases_run"),
     "tests/public_module_coverage.vit": ("PUBLIC_MODULE_TEST_COUNT", "public_module_tests_present", "src/vitte/stdlib/std/uuid.vitl"),
+    "tests/modules/alloc_api_test.vit": ("alloc_api_test", "vec_capacity", "string_capacity", "hashmap_len"),
     "tests/modules/std_uuid_test.vit": ("std_uuid_test", "std_uuid.uuid_nil", "std_uuid.uuid_is_nil"),
     "tests/modules/std_calendar_test.vit": ("std_calendar_test", "std_calendar.is_leap_year", "std_calendar.date"),
+    "tests/modules/std_io_process_test.vit": ("std_io_process_test", "std_io.flush", "std_process.command", "std_process.arg"),
     "tests/modules/std_units_test.vit": ("std_units_test", "std_units.convert", "std_units.meter"),
     "tests/modules/std_metrics_test.vit": ("std_metrics_test", "std_metrics.counter_inc", "counter.value == 3"),
     "tests/modules/std_mime_test.vit": ("std_mime_test", "std_mime.mime_text_plain", "std_mime.mime_application_json"),
     "tests/modules/std_percent_encoding_test.vit": ("std_percent_encoding_test", "percent_encode_set_component", "component"),
+    "tests/modules/std_thread_sync_time_env_test.vit": ("std_thread_sync_time_env_test", "std_sync.atomic_compare_exchange", "std_time.checked_add_duration", "std_env.temp_dir"),
     "tests/alloc_memory_invariants.vit": ("alloc_memory_invariants_run", "alloc_vec_memory_invariants", "alloc_collections_memory_invariants"),
     "tests/negative/stdlib_negative_cases.vit": ("stdlib_negative_invalid_inputs", "stdlib_negative_boundaries", "stdlib_negative_overflow", "is_err", "is_none", "9223372036854775808", "range_step(0, 10, 0)"),
     "tests/fuzz/utf8_fuzz.vit": ("fuzz_utf8", "validate_utf8", "is_char_boundary"),
@@ -897,6 +904,62 @@ def stdlib_symbol_index() -> dict[str, str]:
                 symbols[match.group(1)] = str(source_path.relative_to(ROOT))
 
     return symbols
+
+
+def compiler_helper_inventory() -> dict[str, dict[str, list[str]]]:
+    backend_markers = (
+        "compiler_backend_",
+        "compiler_platform_",
+        "compiler_os_",
+        "compiler_alloc_",
+        "compiler_vec_",
+        "compiler_box_",
+        "compiler_rc_",
+        "compiler_arc_",
+        "compiler_mutex_",
+        "compiler_rwlock_",
+        "compiler_once_",
+        "compiler_condvar_",
+        "compiler_atomic_",
+        "compiler_pair_",
+    )
+    helper_re = re.compile(r"\bcompiler_[A-Za-z0-9_]+")
+    inventory: dict[str, dict[str, list[str]]] = {}
+    for source in stdlib_sources():
+        helpers = sorted(set(helper_re.findall(source.read_text(encoding="utf-8", errors="ignore"))))
+        if not helpers:
+            continue
+        backend = [name for name in helpers if name.startswith(backend_markers)]
+        temporary = [name for name in helpers if name not in backend]
+        inventory[source.relative_to(ROOT).as_posix()] = {
+            "backend_primitives": backend,
+            "temporary_wrappers": temporary,
+        }
+    return inventory
+
+
+def validate_compiler_helper_inventory(inventory: dict[str, dict[str, list[str]]]) -> list[ValidationResult]:
+    prioritized = ("std/io.vitl", "std/process.vitl", "std/thread.vitl", "std/sync.vitl", "std/time.vitl", "std/env.vitl")
+    temporary_in_prioritized: list[str] = []
+    for module, entry in inventory.items():
+        if any(module.endswith(path) for path in prioritized):
+            temporary_in_prioritized.extend(
+                f"{module}:{helper}"
+                for helper in entry.get("temporary_wrappers", [])
+                if not helper.startswith(("compiler_test_", "compiler_values_equal", "compiler_string_bytes"))
+            )
+    return [
+        ValidationResult(
+            name="compiler_helpers_inventory_generated",
+            status=COMPILER_HELPERS_REPORT.is_file(),
+            detail=str(COMPILER_HELPERS_REPORT.relative_to(ROOT)) if COMPILER_HELPERS_REPORT.is_file() else "missing",
+        ),
+        ValidationResult(
+            name="prioritized_contractual_modules_split_backend_helpers",
+            status=not temporary_in_prioritized,
+            detail="ok" if not temporary_in_prioritized else "; ".join(temporary_in_prioritized[:8]),
+        ),
+    ]
 
 
 def validate_required_symbols(
@@ -2074,6 +2137,12 @@ def build_report() -> dict:
     module_manifest = load_module_manifest()
     dependency_graph_manifest = load_dependency_graph_manifest()
     ci_matrix_manifest = load_ci_matrix_manifest()
+    compiler_inventory = compiler_helper_inventory()
+    COMPILER_HELPERS_REPORT.write_text(json.dumps({
+        "schema": "vitte.stdlib.compiler-helpers",
+        "schema_version": "1.0.0",
+        "modules": compiler_inventory,
+    }, indent=2), encoding="utf-8")
 
     files = validate_files()
     architecture = validate_architecture(architecture_manifest)
@@ -2083,6 +2152,7 @@ def build_report() -> dict:
     lsp_api_results = validate_lsp_api_index()
     max_artifact_results = validate_stdlib_max_artifacts()
     real_impl_results = validate_real_vitte_implementations()
+    compiler_helper_results = validate_compiler_helper_inventory(compiler_inventory)
     module_results = validate_module_manifest(module_manifest)
     graph_results = validate_dependency_graph_manifest(
         dependency_graph_manifest,
@@ -2119,7 +2189,7 @@ def build_report() -> dict:
     ]
     architecture_failures = [
         item
-        for item in architecture + std_platform_results + explicit_import_results + ci_matrix_results + lsp_api_results + max_artifact_results + real_impl_results + module_results + graph_results + primitive_results + option_result_results + convert_default_clone_results + drop_scope_memory_results + iterator_results + range_number_results + float_math_results + string_ascii_unicode_results + next_step_results
+        for item in architecture + std_platform_results + explicit_import_results + ci_matrix_results + lsp_api_results + max_artifact_results + real_impl_results + compiler_helper_results + module_results + graph_results + primitive_results + option_result_results + convert_default_clone_results + drop_scope_memory_results + iterator_results + range_number_results + float_math_results + string_ascii_unicode_results + next_step_results
         if not item.status
     ]
 
@@ -2158,13 +2228,15 @@ def build_report() -> dict:
             dependency_graph_manifest,
         "ci_matrix":
             ci_matrix_manifest,
+        "compiler_helpers":
+            compiler_inventory,
         "required_files": [
             asdict(item)
             for item in files
         ],
         "architecture_results": [
             asdict(item)
-            for item in architecture + std_platform_results + explicit_import_results + ci_matrix_results + lsp_api_results + max_artifact_results + real_impl_results + module_results + graph_results + primitive_results + option_result_results + convert_default_clone_results + drop_scope_memory_results + iterator_results + range_number_results + float_math_results + string_ascii_unicode_results + next_step_results
+            for item in architecture + std_platform_results + explicit_import_results + ci_matrix_results + lsp_api_results + max_artifact_results + real_impl_results + compiler_helper_results + module_results + graph_results + primitive_results + option_result_results + convert_default_clone_results + drop_scope_memory_results + iterator_results + range_number_results + float_math_results + string_ascii_unicode_results + next_step_results
         ],
         "required_symbols": [
             asdict(item)

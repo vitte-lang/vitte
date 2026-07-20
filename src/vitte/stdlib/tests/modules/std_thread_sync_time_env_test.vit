@@ -1,0 +1,23 @@
+use src/vitte/stdlib/std/env as std_env
+use src/vitte/stdlib/std/sync as std_sync
+use src/vitte/stdlib/std/thread as std_thread
+use src/vitte/stdlib/std/time as std_time
+
+proc std_thread_sync_time_env_test() -> bool {
+    let atom: std_sync.Atomic<int> = std_sync.atomic<int>(1);
+    let before: int = std_sync.atomic_load<int>(&atom);
+    std_sync.atomic_store<int>(&atom, 2);
+    let swapped = std_sync.atomic_compare_exchange<int>(&atom, 2, 3);
+    let duration: std_time.Duration = std_time.duration_from_millis(5);
+    let instant: std_time.Instant = std_time.Instant { ticks: 10 };
+    let added = std_time.checked_add_duration(instant, duration);
+    let tid: std_thread.ThreadId = std_thread.current_id();
+    let tmp = std_env.temp_dir();
+
+    give before == 1
+        and swapped.ok
+        and std_sync.atomic_load<int>(&atom) == 3
+        and added.ok
+        and tid.value >= 0
+        and tmp.text.len >= 0;
+}
