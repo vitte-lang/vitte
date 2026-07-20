@@ -1904,11 +1904,13 @@ emit_pre_backend_diagnostic() {
     src="$1"
     if diag_info="$(detect_professional_diagnostic "$src")"; then
         render_professional_diagnostic_text "$src" "$diag_info" >&2
+        render_driver_interrupted_after_max_errors "$diag_info" >&2
         render_driver_diagnostic_summary "$src" "$diag_info" >&2
         return 0
     fi
     if parser_info="$(detect_simple_unclosed_block "$src")"; then
         render_professional_diagnostic_text "$src" "$parser_info" >&2
+        render_driver_interrupted_after_max_errors "$parser_info" >&2
         render_driver_diagnostic_summary "$src" "$parser_info" >&2
         return 0
     fi
@@ -4341,6 +4343,14 @@ render_driver_diagnostic_summary() {
     printf 'summary: errors=%s warnings=%s stopped_phase=%s files=%s\n' "$error_count" "$warning_count" "$phase" "$src"
 }
 
+render_driver_interrupted_after_max_errors() {
+    info="$1"
+    severity="$(diag_field "$info" 2)"
+    if [ "$severity" != "warning" ] && [ "${diagnostic_max_errors:-0}" -gt 0 ]; then
+        printf 'compilation interrompue après %s erreurs\n' "$diagnostic_max_errors"
+    fi
+}
+
 render_professional_diagnostic_json() {
     src="$1"
     info="$2"
@@ -5045,6 +5055,7 @@ case "$cmd" in
                 render_professional_diagnostic_surface_json "$src" "$diag_info"
             else
                 render_professional_diagnostic_text "$src" "$diag_info" >&2
+                render_driver_interrupted_after_max_errors "$diag_info" >&2
                 render_driver_diagnostic_summary "$src" "$diag_info" >&2
             fi
             exit 1
@@ -5055,6 +5066,7 @@ case "$cmd" in
                 render_professional_diagnostic_surface_json "$src" "$parser_info"
             else
                 render_professional_diagnostic_text "$src" "$parser_info" >&2
+                render_driver_interrupted_after_max_errors "$parser_info" >&2
                 render_driver_diagnostic_summary "$src" "$parser_info" >&2
             fi
             exit 1

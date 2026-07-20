@@ -46,12 +46,38 @@ diagnostic needs a small known-good source file.
 - Human text:
   - `error[CODE] phase: message`
   - labels, notes, helps, and suggestions are rendered below the primary header.
+  - if `--max-errors N` stops compilation, `compilation interrompue après N erreurs` is printed only after the detailed diagnostics already emitted.
+  - the final summary reports counts, stopped phase, and files without repeating diagnostic details.
 - JSON envelope:
   - `schema = "vitte.compiler.surface"`
   - `surface = "diagnostics"`
   - top-level validity and pipeline summary fields
   - `primary_report.diagnostics[]` for the flattened report
   - `phase_reports.<phase>` for per-phase diagnostics
+
+## Stable API Contract
+
+Vitte diagnostics are a stable compiler API. CLI text, JSON, LSP conversion,
+editor integrations, and tests must consume the same diagnostic object and must
+not rebuild separate messages per surface.
+
+Stable fields:
+
+- `code`
+- `severity`
+- `phase`
+- `message`
+- `span`
+- `labels`
+- `notes`
+- `helps`
+- `suggestions`
+- `documentation_url`
+
+Surface-specific renderers may change layout, color, and wrapping, but they must
+preserve code, severity, phase, spans, notes, helps, suggestions, order, and
+counts. A summary or max-error interruption message is metadata about emission;
+it must never replace or hide a detailed diagnostic.
 
 ## Suggestions contract
 

@@ -52,6 +52,12 @@ def main() -> int:
     require("build failed" not in build_text.lower(), "build emitted generic build failed summary")
     require(build_text.count("error[SEMA_E_UNKNOWN_IDENTIFIER]") == 1, "build repeated the diagnostic in the final summary")
     require(check_text.count("error[SEMA_E_UNKNOWN_IDENTIFIER]") == 1, "check repeated the diagnostic in the final summary")
+    for label, text in (("check", check_text), ("build", build_text)):
+        detail_index = text.find("error[SEMA_E_UNKNOWN_IDENTIFIER]")
+        interrupted_index = text.find("compilation interrompue après 1 erreurs")
+        summary_index = text.find("summary: errors=1 warnings=0")
+        require(interrupted_index > detail_index, f"{label} interruption message replaced or preceded the detailed diagnostic")
+        require(summary_index > interrupted_index, f"{label} summary did not follow the interruption message")
     require("\x1b[" not in check.stdout, "--color never emitted ANSI escape sequences")
 
     json_result = run("check", str(FIXTURE), "--error-format", "json")
