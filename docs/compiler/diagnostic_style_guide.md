@@ -7,6 +7,11 @@ Every diagnostic must answer four questions:
 - Why is it incorrect in Vitte?
 - How can the user correct it?
 
+Code review must reject any new or changed diagnostic that does not answer all
+four questions in the central catalog and in the rendered diagnostic surface.
+The title may stay short, but the label, note, help, and suggestion content must
+make the four answers visible without relying on a free-form fallback message.
+
 Use the official Vitte names everywhere. The same source concept must keep the
 same name in lexer, parser, resolver, type checker, borrow checker, backend,
 JSON, LSP, snapshots, and terminal output.
@@ -83,6 +88,10 @@ Diagnostics may include multiple spans when one source error requires coordinate
 Rendering
 
 All renderers consume the same `Diagnostic` object. Do not rebuild diagnostics separately for terminal, JSON, LSP, or SARIF.
+
+Do not concatenate user-facing error strings at emission sites. Use a catalogued
+diagnostic variant with named parameters, then let the renderer format the final
+message. ICE rendering is the only exception.
 
 Use the dedicated render profiles for the surface:
 

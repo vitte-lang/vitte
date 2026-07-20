@@ -2523,6 +2523,7 @@ diagnostic-catalog-check:
 diagnostic-contracts:
 	@python3 tools/check_diagnostic_schema.py
 	@$(MAKE) --no-print-directory diagnostic-catalog-check
+	@$(MAKE) --no-print-directory diagnostics-migration-gate
 	@python3 tools/check_compiler_diagnostic_contract.py
 	@python3 tools/check_span_provenance_contract.py
 	@bin/vittec0 check src/vitte/compiler/diagnostics/diagnostic.vit
