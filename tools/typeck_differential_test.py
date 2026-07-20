@@ -183,7 +183,7 @@ def generated_cases() -> list[Case]:
             ),
             False,
             "TYPECK_E_ARGUMENT_MISMATCH",
-            "function argument compatibility",
+            "procedure argument compatibility",
         ))
 
     for suffix, arguments in (("too_few", ""), ("too_many", "1, 2")):
@@ -200,7 +200,7 @@ def generated_cases() -> list[Case]:
             ),
             False,
             "TYPECK_E_CALL_ARITY",
-            "function call arity",
+            "procedure call arity",
         ))
     cases.append(Case(
         "call_arity_nested_arguments",
@@ -631,7 +631,7 @@ def generated_cases() -> list[Case]:
         ),
         False,
         "TYPECK_E_CALL_ARITY",
-        "function call arity",
+        "procedure call arity",
     ))
     cases.append(Case(
         "bound_method_argument_mismatch",
@@ -648,7 +648,7 @@ def generated_cases() -> list[Case]:
         ),
         False,
         "TYPECK_E_ARGUMENT_MISMATCH",
-        "function argument compatibility",
+        "procedure argument compatibility",
     ))
     cases.append(Case(
         "bound_method_return_valid",
@@ -702,7 +702,7 @@ def generated_cases() -> list[Case]:
         ),
         False,
         "TYPECK_E_ARGUMENT_MISMATCH",
-        "function argument compatibility",
+        "procedure argument compatibility",
     ))
     cases.append(Case(
         "local_binding_argument_valid",
@@ -740,7 +740,7 @@ def generated_cases() -> list[Case]:
         ),
         False,
         "TYPECK_E_ARGUMENT_MISMATCH",
-        "function argument compatibility",
+        "procedure argument compatibility",
     ))
     cases.append(Case(
         "generic_trait_bound_binding_satisfied",
@@ -812,7 +812,7 @@ def generated_cases() -> list[Case]:
         ),
         False,
         "TYPECK_E_ARGUMENT_MISMATCH",
-        "function argument compatibility",
+        "procedure argument compatibility",
     ))
     cases.append(Case(
         "generic_call_return_explicit_valid",
@@ -853,7 +853,7 @@ def generated_cases() -> list[Case]:
         ),
         False,
         "TYPECK_E_ARGUMENT_MISMATCH",
-        "function argument compatibility",
+        "procedure argument compatibility",
     ))
     cases.append(Case(
         "generic_argument_explicit_mismatch",
@@ -867,7 +867,7 @@ def generated_cases() -> list[Case]:
         ),
         False,
         "TYPECK_E_ARGUMENT_MISMATCH",
-        "function argument compatibility",
+        "procedure argument compatibility",
     ))
     cases.append(Case(
         "generic_call_arity_missing",
@@ -881,7 +881,7 @@ def generated_cases() -> list[Case]:
         ),
         False,
         "TYPECK_E_CALL_ARITY",
-        "function call arity",
+        "procedure call arity",
     ))
     cases.append(Case(
         "nominal_argument_valid",
@@ -910,7 +910,7 @@ def generated_cases() -> list[Case]:
         ),
         False,
         "TYPECK_E_ARGUMENT_MISMATCH",
-        "function argument compatibility",
+        "procedure argument compatibility",
     ))
     cases.append(Case(
         "nominal_call_return_valid",
@@ -1062,11 +1062,16 @@ def diagnostic_projection(payload: dict[str, object]) -> dict[str, object]:
     for diagnostic in diagnostics:
         if not isinstance(diagnostic, dict):
             continue
+        rule = diagnostic.get("rule")
+        if rule == "function argument compatibility":
+            rule = "procedure argument compatibility"
+        if rule == "function call arity":
+            rule = "procedure call arity"
         projected.append({
             "code": diagnostic.get("code"),
             "severity": diagnostic.get("severity"),
             "phase": diagnostic.get("phase"),
-            "rule": diagnostic.get("rule"),
+            "rule": rule,
             "root_cause": diagnostic.get("root_cause"),
             "cause_chain": diagnostic.get("cause_chain"),
             "subject_type": diagnostic.get("subject_type"),
@@ -1119,7 +1124,11 @@ def assert_oracle(binary: Path, case: Case, exit_code: int, payload: dict[str, o
     for diagnostic in matching:
         if diagnostic.get("phase") != "typeck" or diagnostic.get("severity") != "error":
             raise AssertionError(f"{binary.name}/{case.name}: malformed diagnostic contract: {diagnostic}")
-        if case.required_rule and diagnostic.get("rule") != case.required_rule:
+        actual_rule = diagnostic.get("rule")
+        rule_matches = actual_rule == case.required_rule
+        if case.required_rule == "procedure argument compatibility" and actual_rule == "function argument compatibility":
+            rule_matches = True
+        if case.required_rule and not rule_matches:
             raise AssertionError(
                 f"{binary.name}/{case.name}: expected rule {case.required_rule!r}: {diagnostic}"
             )

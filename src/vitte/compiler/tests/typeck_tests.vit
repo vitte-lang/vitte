@@ -2,7 +2,7 @@ space vitte/compiler/tests/typeck_tests
 
 use vitte/compiler/analysis/typeck/api.{ production_typeck_pipeline_name, production_typeck_pipeline_status, run_production_typeck_hir }
 use vitte/compiler/analysis/typeck/coercion.{ coerce_type, projection_is_valid, projection_member_name, project_place_type, project_place_type_result, type_cast_allowed, type_deref_target, type_index_element, type_member_result, types_compatible }
-use vitte/compiler/analysis/typeck/errors.{ ExprTypeResult, TypeckResult, diagnostic_summary, result_summary, typeck_diag, typeck_internal_error, typeck_invalid_hir_result, typeck_result }
+use vitte/compiler/analysis/typeck/errors.{ ExprTypeResult, TypeckErrorKind, TypeckResult, diagnostic_summary, result_summary, typed_typeck_diag, typeck_diag, typeck_internal_error, typeck_invalid_hir_result, typeck_result }
 use vitte/compiler/analysis/typeck/infer.{ empty_type_env, generic_type_binding, infer_call_type, infer_name_type, mutable_type_binding, substitute_type, type_binding, type_env_get_binding, type_env_mark_initialized, type_env_mark_moved, type_env_set, type_substitution, uninitialized_type_binding }
 use vitte/compiler/analysis/typeck/traits.{ type_allows_arithmetic, type_allows_bitwise, type_allows_comparison, type_can_assign_without_move, type_class, type_class_name, type_is_array, type_is_copy, type_is_function, type_is_pointer, type_is_reference, type_is_slice, type_is_tuple, type_requires_drop, type_trait_info }
 use vitte/compiler/analysis/typeck/unify.{ can_unify_types, unify_assignment_type, unify_binary_result_type, unify_or_fallback, unify_types, unify_types_result }
@@ -99,6 +99,62 @@ proc expr_diagnostic_by_code(result: ExprTypeResult, code: string) -> Diagnostic
     fatal: false,
     valid: false
   };
+}
+
+proc diagnostic_has_label_text(diagnostic: Diagnostic, text: string) -> bool {
+  let i: u64 = 0;
+  while i < len(diagnostic.labels) {
+    if find(diagnostic.labels[i].message, text) >= 0 {
+      give true;
+    }
+    set i = i + 1;
+  }
+  give false;
+}
+
+proc diagnostic_has_note_text(diagnostic: Diagnostic, text: string) -> bool {
+  let i: u64 = 0;
+  while i < len(diagnostic.notes) {
+    if find(diagnostic.notes[i].message, text) >= 0 {
+      give true;
+    }
+    set i = i + 1;
+  }
+  give false;
+}
+
+proc diagnostic_has_help_text(diagnostic: Diagnostic, text: string) -> bool {
+  let i: u64 = 0;
+  while i < len(diagnostic.helps) {
+    if find(diagnostic.helps[i].message, text) >= 0 {
+      give true;
+    }
+    set i = i + 1;
+  }
+  give false;
+}
+
+proc diagnostic_has_suggestion_text(diagnostic: Diagnostic, text: string) -> bool {
+  let i: u64 = 0;
+  while i < len(diagnostic.suggestions) {
+    if find(diagnostic.suggestions[i].message, text) >= 0 or find(diagnostic.suggestions[i].reason, text) >= 0 {
+      give true;
+    }
+    set i = i + 1;
+  }
+  give false;
+}
+
+proc typeck_error_count(result: TypeckResult) -> u64 {
+  let count: u64 = 0;
+  let i: u64 = 0;
+  while i < len(result.diagnostics) {
+    if result.diagnostics[i].severity == "error" or result.diagnostics[i].severity == "fatal" {
+      set count = count + 1;
+    }
+    set i = i + 1;
+  }
+  give count;
 }
 
 proc expr_name(id: u64, text: string) -> HirExpr {
@@ -472,7 +528,7 @@ proc test_call_arity_carries_signature_context() -> bool {
   let result: ExprTypeResult = infer_call_type(env, call_expr);
   let diag = expr_diagnostic_by_code(result, "TYPECK_E_CALL_ARITY");
   give diag.valid
-    and diag.rule == "function call arity"
+    and diag.rule == "procedure call arity"
     and find(diag.explanation, "expects 1 argument") >= 0
     and find(diag.explanation, "provides 2") >= 0
     and find(diag.probable_fix, "matches the declared signature") >= 0;
@@ -505,7 +561,7 @@ proc test_argument_mismatch_carries_expected_found_context() -> bool {
   let result: ExprTypeResult = infer_call_type(env, call_expr);
   let diag = expr_diagnostic_by_code(result, "TYPECK_E_ARGUMENT_MISMATCH");
   give diag.valid
-    and diag.rule == "function argument compatibility"
+    and diag.rule == "procedure argument compatibility"
     and find(diag.explanation, "expects `bool`") >= 0
     and find(diag.explanation, "passes `string`") >= 0
     and len(diag.cause_chain) >= 2
@@ -1195,6 +1251,121 @@ proc test_typeck_result_enforces_diagnostic_cause_chains() -> bool {
     and len(guarded.diagnostics[1].cause_chain) >= 2;
 }
 
+proc test_typeck_diagnostic_shape_is_complete() -> bool {
+  let source: string = "proc main() { let x: int = 1; set x = \"oops\"; give x; }\n";
+  let fe: FrontendOutput = frontend_run("typeck_shape_complete.vit", source);
+  let hir = lower_ast_to_hir(fe);
+  let result: TypeckResult = run_production_typeck_hir(hir);
+  let diag = diagnostic_by_code(result, "TYPECK_E_ASSIGN_MISMATCH");
+  give diag.valid
+    and diag.code == "TYPECK_E_ASSIGN_MISMATCH"
+    and diag.severity == "error"
+    and diag.phase == DiagnosticPhase.Typeck
+    and diag.message != ""
+    and diag.span.valid
+    and diag.span.file == "typeck_shape_complete.vit"
+    and diag.span.start_line > 0
+    and diagnostic_has_label_text(diag, "expected type")
+    and diagnostic_has_label_text(diag, "assigned expression")
+    and diagnostic_has_note_text(diag, "typeck kind")
+    and diagnostic_has_help_text(diag, "Assign a value")
+    and diagnostic_has_suggestion_text(diag, "type-directed")
+    and diag.root_cause != ""
+    and len(diag.cause_chain) >= 2
+    and diag.probable_fix != "";
+}
+
+proc test_typeck_absence_of_parasitic_diagnostics() -> bool {
+  let source: string = "proc main() { let x: int = 1; set x = \"oops\"; give x; }\n";
+  let fe: FrontendOutput = frontend_run("typeck_no_parasites.vit", source);
+  let hir = lower_ast_to_hir(fe);
+  let result: TypeckResult = run_production_typeck_hir(hir);
+  give not result.valid
+    and len(result.diagnostics) == 1
+    and result.diagnostics[0].code == "TYPECK_E_ASSIGN_MISMATCH"
+    and not has_code(result, "TYPECK_E_RETURN_MISMATCH")
+    and not has_code(result, "TYPECK_E_CAUSE_CHAIN_MISSING");
+}
+
+proc test_typeck_warning_does_not_mask_error() -> bool {
+  let span = ast_span("typeck_warning_error.vit", 1, 1, 1, 5);
+  let warning: Diagnostic = typed_typeck_diag(
+    "TYPECK_W_UNRESOLVED_NAME",
+    "unresolved name kept as opaque during recovery",
+    ["name"],
+    "resolve the name before relying on the inferred type",
+    span,
+    DiagnosticSeverity.Warning,
+    DiagnosticPhase.Typeck,
+    TypeckErrorKind.UnknownName
+  );
+  let error0: Diagnostic = typed_typeck_diag(
+    "TYPECK_E_CONDITION_TYPE",
+    "condition requires a truthy expression",
+    ["string"],
+    "use bool, int, pointer, reference, or an explicitly typed condition",
+    span,
+    DiagnosticSeverity.Error,
+    DiagnosticPhase.Typeck,
+    TypeckErrorKind.ConditionType
+  );
+  let result: TypeckResult = typeck_result(lower_ast_to_hir(frontend_run("typeck_warning_error.vit", "proc main() { give 0; }\n")), [warning, error0]);
+  give warning.severity == "warning"
+    and not warning.fatal
+    and error0.severity == "error"
+    and not result.valid
+    and typeck_error_count(result) == 1
+    and len(result.diagnostics) == 2;
+}
+
+proc test_typeck_each_mismatch_explains_expected_and_obtained() -> bool {
+  let assign_source: string = "proc main() { let x: int = 1; set x = \"oops\"; give x; }\n";
+  let return_source: string = "proc answer() -> int { give \"oops\"; }\n";
+  let binary_source: string = "proc main() { let x = 1 + \"oops\"; give x; }\n";
+  let arg_env = [
+    type_binding("accept", "fn(bool) -> int"),
+    type_binding("value", "string")
+  ];
+  let call_expr = hir_expr(
+    900,
+    ast_span("typeck_arg_expected_obtained.vit", 1, 1, 1, 10),
+    HirExprKind.Call,
+    "accept(value)",
+    "accept",
+    "",
+    "",
+    0,
+    "",
+    false,
+    HirValueMode.Value,
+    "unknown",
+    HirPlaceCategory.Value,
+    false,
+    false,
+    false,
+    false,
+    [],
+    [expr_name(901, "accept"), expr_name(902, "value")],
+    true
+  );
+  let assign_result: TypeckResult = run_production_typeck_hir(lower_ast_to_hir(frontend_run("typeck_assign_expected_obtained.vit", assign_source)));
+  let return_result: TypeckResult = run_production_typeck_hir(lower_ast_to_hir(frontend_run("typeck_return_expected_obtained.vit", return_source)));
+  let binary_result: TypeckResult = run_production_typeck_hir(lower_ast_to_hir(frontend_run("typeck_binary_expected_obtained.vit", binary_source)));
+  let arg_result: ExprTypeResult = infer_call_type(arg_env, call_expr);
+  let assign_diag = diagnostic_by_code(assign_result, "TYPECK_E_ASSIGN_MISMATCH");
+  let return_diag = diagnostic_by_code(return_result, "TYPECK_E_RETURN_MISMATCH");
+  let binary_diag = diagnostic_by_code(binary_result, "TYPECK_E_BINARY_MISMATCH");
+  let arg_diag = expr_diagnostic_by_code(arg_result, "TYPECK_E_ARGUMENT_MISMATCH");
+  give find(assign_diag.explanation, "expects `int`") >= 0
+    and find(assign_diag.explanation, "produces `string`") >= 0
+    and find(return_diag.explanation, "promises `int`") >= 0
+    and find(return_diag.explanation, "produces `string`") >= 0
+    and find(binary_diag.explanation, "expected `int`") >= 0
+    and find(binary_diag.explanation, "got `string`") >= 0
+    and find(arg_diag.explanation, "expects `bool`") >= 0
+    and find(arg_diag.explanation, "passes `string`") >= 0;
+}
+
 proc run_all_tests() -> int {
   let failures: int = 0;
   if not test_valid_numeric_flow() {
@@ -1372,6 +1543,18 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if not test_typeck_result_enforces_diagnostic_cause_chains() {
+    set failures = failures + 1;
+  }
+  if not test_typeck_diagnostic_shape_is_complete() {
+    set failures = failures + 1;
+  }
+  if not test_typeck_absence_of_parasitic_diagnostics() {
+    set failures = failures + 1;
+  }
+  if not test_typeck_warning_does_not_mask_error() {
+    set failures = failures + 1;
+  }
+  if not test_typeck_each_mismatch_explains_expected_and_obtained() {
     set failures = failures + 1;
   }
   give failures;
