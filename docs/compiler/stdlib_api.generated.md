@@ -5831,24 +5831,31 @@ Stability: `stable`
 
 - `form Path` signature `form Path { text: string }` example `fs.Path` stability `stable`
 - `form Permissions` signature `form Permissions { readonly: bool executable: bool }` example `fs.Permissions` stability `stable`
-- `form Metadata` signature `form Metadata { is_file: bool is_dir: bool len: u64 permissions: Permissions }` example `fs.Metadata` stability `stable`
+- `form Metadata` signature `form Metadata { is_file: bool is_dir: bool is_symlink: bool len: u64 permissions: Permissions }` example `fs.Metadata` stability `stable`
 - `form FsError` signature `form FsError { code: int message: string path: Path }` example `fs.FsError` stability `stable`
 - `form DirEntry` signature `form DirEntry { path: Path metadata: Metadata }` example `fs.DirEntry` stability `stable`
+- `form WalkDir` signature `form WalkDir { root: Path follow_symlinks: bool }` example `fs.WalkDir` stability `stable`
 - `proc path` signature `proc path(text: string) -> Path { give Path { text: text }; }` example `fs.path(...)` stability `stable`
 - `proc fs_error` signature `proc fs_error(path_value: Path, message: string) -> FsError { give FsError { code: -1, message: message, path: path_value }; }` example `fs.fs_error(...)` stability `stable`
-- `proc read` signature `proc read(path_value: Path) -> Result<Vec<byte>, FsError> { give compiler_platform_fs_read(path_value); }` example `fs.read(...)` stability `stable`
-- `proc read_to_string` signature `proc read_to_string(path_value: Path) -> Result<String, FsError> { give compiler_platform_fs_read_to_string(path_value); }` example `fs.read_to_string(...)` stability `stable`
-- `proc write` signature `proc write(path_value: Path, bytes: [byte]) -> Result<(), FsError> { give compiler_platform_fs_write(path_value, bytes); }` example `fs.write(...)` stability `stable`
-- `proc create_dir_all` signature `proc create_dir_all(path_value: Path) -> Result<(), FsError> { give compiler_platform_fs_create_dir_all(path_value); }` example `fs.create_dir_all(...)` stability `stable`
-- `proc create_dir` signature `proc create_dir(path_value: Path) -> Result<(), FsError> { give compiler_platform_fs_create_dir(path_value); }` example `fs.create_dir(...)` stability `stable`
-- `proc remove_file` signature `proc remove_file(path_value: Path) -> Result<(), FsError> { give compiler_platform_fs_remove_file(path_value); }` example `fs.remove_file(...)` stability `stable`
-- `proc remove_dir` signature `proc remove_dir(path_value: Path) -> Result<(), FsError> { give compiler_platform_fs_remove_dir(path_value); }` example `fs.remove_dir(...)` stability `stable`
-- `proc rename` signature `proc rename(from: Path, to: Path) -> Result<(), FsError> { give compiler_platform_fs_rename(from, to); }` example `fs.rename(...)` stability `stable`
-- `proc copy` signature `proc copy(from: Path, to: Path) -> Result<u64, FsError> { give compiler_platform_fs_copy(from, to); }` example `fs.copy(...)` stability `stable`
-- `proc metadata` signature `proc metadata(path_value: Path) -> Result<Metadata, FsError> { give compiler_platform_fs_metadata(path_value); }` example `fs.metadata(...)` stability `stable`
-- `proc permissions` signature `proc permissions(path_value: Path) -> Result<Permissions, FsError> { give compiler_platform_fs_permissions(path_value); }` example `fs.permissions(...)` stability `stable`
-- `proc set_permissions` signature `proc set_permissions(path_value: Path, value: Permissions) -> Result<(), FsError> { give compiler_platform_fs_set_permissions(path_value, value); }` example `fs.set_permissions(...)` stability `stable`
-- `proc read_dir` signature `proc read_dir(path_value: Path) -> Result<Iterator<DirEntry>, FsError> { give compiler_platform_fs_read_dir(path_value); }` example `fs.read_dir(...)` stability `stable`
+- `proc read` signature `proc read(path_value: Path) -> Result<Vec<byte>, FsError> { give compiler_backend_fs_read(path_value); }` example `fs.read(...)` stability `stable`
+- `proc read_to_string` signature `proc read_to_string(path_value: Path) -> Result<String, FsError> { give compiler_backend_fs_read_to_string(path_value); }` example `fs.read_to_string(...)` stability `stable`
+- `proc write` signature `proc write(path_value: Path, bytes: [byte]) -> Result<(), FsError> { give compiler_backend_fs_write(path_value, bytes); }` example `fs.write(...)` stability `stable`
+- `proc create_dir_all` signature `proc create_dir_all(path_value: Path) -> Result<(), FsError> { give compiler_backend_fs_create_dir_all(path_value); }` example `fs.create_dir_all(...)` stability `stable`
+- `proc create_dir` signature `proc create_dir(path_value: Path) -> Result<(), FsError> { give compiler_backend_fs_create_dir(path_value); }` example `fs.create_dir(...)` stability `stable`
+- `proc remove_file` signature `proc remove_file(path_value: Path) -> Result<(), FsError> { give compiler_backend_fs_remove_file(path_value); }` example `fs.remove_file(...)` stability `stable`
+- `proc remove_dir` signature `proc remove_dir(path_value: Path) -> Result<(), FsError> { give compiler_backend_fs_remove_dir(path_value); }` example `fs.remove_dir(...)` stability `stable`
+- `proc rename` signature `proc rename(from: Path, to: Path) -> Result<(), FsError> { give compiler_backend_fs_rename(from, to); }` example `fs.rename(...)` stability `stable`
+- `proc copy` signature `proc copy(from: Path, to: Path) -> Result<u64, FsError> { give compiler_backend_fs_copy(from, to); }` example `fs.copy(...)` stability `stable`
+- `proc metadata` signature `proc metadata(path_value: Path) -> Result<Metadata, FsError> { give compiler_backend_fs_metadata(path_value); }` example `fs.metadata(...)` stability `stable`
+- `proc symlink_metadata` signature `proc symlink_metadata(path_value: Path) -> Result<Metadata, FsError> { give compiler_backend_fs_symlink_metadata(path_value); }` example `fs.symlink_metadata(...)` stability `stable`
+- `proc permissions` signature `proc permissions(path_value: Path) -> Result<Permissions, FsError> { give compiler_backend_fs_permissions(path_value); }` example `fs.permissions(...)` stability `stable`
+- `proc set_permissions` signature `proc set_permissions(path_value: Path, value: Permissions) -> Result<(), FsError> { give compiler_backend_fs_set_permissions(path_value, value); }` example `fs.set_permissions(...)` stability `stable`
+- `proc read_dir` signature `proc read_dir(path_value: Path) -> Result<Iterator<DirEntry>, FsError> { give compiler_backend_fs_read_dir(path_value); }` example `fs.read_dir(...)` stability `stable`
+- `proc symlink` signature `proc symlink(original: Path, link: Path) -> Result<(), FsError> { give compiler_backend_fs_symlink(original, link); }` example `fs.symlink(...)` stability `stable`
+- `proc read_link` signature `proc read_link(path_value: Path) -> Result<Path, FsError> { give compiler_backend_fs_read_link(path_value); }` example `fs.read_link(...)` stability `stable`
+- `proc walk_dir` signature `proc walk_dir(root: Path) -> WalkDir { give WalkDir { root: root, follow_symlinks: false }; }` example `fs.walk_dir(...)` stability `stable`
+- `proc walk_dir_following_symlinks` signature `proc walk_dir_following_symlinks(root: Path) -> WalkDir { give WalkDir { root: root, follow_symlinks: true }; }` example `fs.walk_dir_following_symlinks(...)` stability `stable`
+- `proc walk_entries` signature `proc walk_entries(walk: WalkDir) -> Result<Iterator<DirEntry>, FsError> { give compiler_backend_fs_walk_entries(walk); }` example `fs.walk_entries(...)` stability `stable`
 - `proc exists` signature `proc exists(path_value: Path) -> bool { give is_ok<Metadata, FsError>(metadata(path_value)); }` example `fs.exists(...)` stability `stable`
 
 ## `src/vitte/stdlib/std/glob.vitl`
@@ -5903,6 +5910,7 @@ Stability: `stable`
 - `form Writer` signature `form Writer { handle: int }` example `io.Writer` stability `stable`
 - `form Read` signature `form Read { read: proc(ref mut Reader, ref mut [byte]) -> Result<usize, IoError> }` example `io.Read` stability `stable`
 - `form Write` signature `form Write { write: proc(ref mut Writer, [byte]) -> Result<usize, IoError> flush: proc(ref mut Writer) -> Result<(), IoError> }` example `io.Write` stability `stable`
+- `form Seek` signature `form Seek { seek: proc(ref mut Reader, i128) -> Result<usize, IoError> }` example `io.Seek` stability `stable`
 - `form BufReader` signature `form BufReader { inner: Reader buffer: Vec<byte> position: usize }` example `io.BufReader` stability `stable`
 - `form BufWriter` signature `form BufWriter { inner: Writer buffer: Vec<byte> }` example `io.BufWriter` stability `stable`
 - `form Cursor` signature `form Cursor { data: Vec<byte> position: usize }` example `io.Cursor` stability `stable`
@@ -5919,6 +5927,10 @@ Stability: `stable`
 - `proc buf_writer` signature `proc buf_writer(inner: Writer) -> BufWriter { give BufWriter { inner: inner, buffer: vec_new<byte>() }; }` example `io.buf_writer(...)` stability `stable`
 - `proc cursor` signature `proc cursor(data: Vec<byte>) -> Cursor { give Cursor { data: data, position: 0 }; }` example `io.cursor(...)` stability `stable`
 - `proc cursor_position` signature `proc cursor_position(cursor_value: Cursor) -> usize { give cursor_value.position; }` example `io.cursor_position(...)` stability `stable`
+- `proc seek` signature `proc seek(reader: ref mut Reader, offset: i128) -> Result<usize, IoError> { give compiler_backend_io_seek(reader, offset); }` example `io.seek(...)` stability `stable`
+- `proc buffered_read` signature `proc buffered_read(reader: ref mut BufReader, buffer: ref mut [byte]) -> Result<usize, IoError> {` example `io.buffered_read(...)` stability `stable`
+- `proc buffered_write` signature `proc buffered_write(writer: ref mut BufWriter, bytes: [byte]) -> Result<usize, IoError> {` example `io.buffered_write(...)` stability `stable`
+- `proc io_error` signature `proc io_error(code: int, message: string) -> IoError { give IoError { code: code, message: message }; }` example `io.io_error(...)` stability `stable`
 
 ## `src/vitte/stdlib/std/kernel.vitl`
 
@@ -6019,18 +6031,22 @@ Stability: `stable`
 
 Stability: `stable`
 
+- `pick PathStyle` signature `pick PathStyle { Unix Windows }` example `path.PathStyle` stability `stable`
 - `pick ComponentKind` signature `pick ComponentKind { Root Prefix Current Parent Normal }` example `path.ComponentKind` stability `stable`
 - `form Component` signature `form Component { kind: ComponentKind text: String }` example `path.Component` stability `stable`
-- `form PathBuf` signature `form PathBuf { value: String absolute: bool }` example `path.PathBuf` stability `stable`
-- `proc path_buf` signature `proc path_buf(text: String) -> PathBuf { give compiler_path_buf(text); }` example `path.path_buf(...)` stability `stable`
-- `proc components` signature `proc components(path_value: PathBuf) -> Iterator<Component> { give compiler_path_components(path_value); }` example `path.components(...)` stability `stable`
+- `form PathBuf` signature `form PathBuf { value: String absolute: bool style: PathStyle }` example `path.PathBuf` stability `stable`
+- `proc path_buf` signature `proc path_buf(text: String) -> PathBuf {` example `path.path_buf(...)` stability `stable`
+- `proc unix_path` signature `proc unix_path(text: String) -> PathBuf { give PathBuf { value: text, absolute: compiler_unix_path_is_absolute(text), style: PathStyle.Unix }; }` example `path.unix_path(...)` stability `stable`
+- `proc windows_path` signature `proc windows_path(text: String) -> PathBuf { give PathBuf { value: text, absolute: compiler_windows_path_is_absolute(text), style: PathStyle.Windows }; }` example `path.windows_path(...)` stability `stable`
+- `proc components` signature `proc components(path_value: PathBuf) -> Iterator<Component> { give compiler_path_components_text(path_value.value, path_value.style); }` example `path.components(...)` stability `stable`
 - `proc normalize` signature `proc normalize(path_value: PathBuf) -> PathBuf {` example `path.normalize(...)` stability `stable`
+- `proc normalize_strict` signature `proc normalize_strict(path_value: PathBuf) -> Result<PathBuf, String> {` example `path.normalize_strict(...)` stability `stable`
 - `proc is_absolute` signature `proc is_absolute(path_value: PathBuf) -> bool { give path_value.absolute; }` example `path.is_absolute(...)` stability `stable`
 - `proc is_relative` signature `proc is_relative(path_value: PathBuf) -> bool { give not path_value.absolute; }` example `path.is_relative(...)` stability `stable`
 - `proc join` signature `proc join(base: PathBuf, child: PathBuf) -> PathBuf {` example `path.join(...)` stability `stable`
 - `proc parent` signature `proc parent(path_value: PathBuf) -> Option<PathBuf> {` example `path.parent(...)` stability `stable`
-- `proc file_name` signature `proc file_name(path_value: PathBuf) -> Option<String> { give compiler_path_file_name_text(path_value.value); }` example `path.file_name(...)` stability `stable`
-- `proc extension` signature `proc extension(path_value: PathBuf) -> Option<String> { give compiler_path_extension_text(path_value.value); }` example `path.extension(...)` stability `stable`
+- `proc file_name` signature `proc file_name(path_value: PathBuf) -> Option<String> { give compiler_path_file_name_text(path_value.value, path_value.style); }` example `path.file_name(...)` stability `stable`
+- `proc extension` signature `proc extension(path_value: PathBuf) -> Option<String> { give compiler_path_extension_text(path_value.value, path_value.style); }` example `path.extension(...)` stability `stable`
 - `proc with_extension` signature `proc with_extension(path_value: PathBuf, ext: String) -> PathBuf {` example `path.with_extension(...)` stability `stable`
 
 ## `src/vitte/stdlib/std/percent_encoding.vitl`
@@ -6314,6 +6330,38 @@ Stability: `internal`
 Stability: `internal`
 
 - `proc fuzz_path` signature `proc fuzz_path(seed: u64) -> bool {` example `path_fuzz.fuzz_path(...)` stability `internal`
+
+## `src/vitte/stdlib/tests/fuzz/minimize.vit`
+
+Stability: `internal`
+
+- `form FuzzFailure` signature `form FuzzFailure { seed: u64 input: [byte] minimized: [byte] }` example `minimize.FuzzFailure` stability `internal`
+- `proc minimize_failure` signature `proc minimize_failure(seed: u64, input: [byte], predicate: proc([byte]) -> bool) -> FuzzFailure {` example `minimize.minimize_failure(...)` stability `internal`
+- `proc fuzz_minimizer_smoke` signature `proc fuzz_minimizer_smoke(seed: u64) -> bool {` example `minimize.fuzz_minimizer_smoke(...)` stability `internal`
+
+## `src/vitte/stdlib/tests/platform/posix_test.vit`
+
+Stability: `internal`
+
+- `proc platform_posix_test` signature `proc platform_posix_test() -> bool {` example `posix_test.platform_posix_test(...)` stability `internal`
+
+## `src/vitte/stdlib/tests/platform/windows_test.vit`
+
+Stability: `internal`
+
+- `proc platform_windows_test` signature `proc platform_windows_test() -> bool {` example `windows_test.platform_windows_test(...)` stability `internal`
+
+## `src/vitte/stdlib/tests/platform/wasm_test.vit`
+
+Stability: `internal`
+
+- `proc platform_wasm_test` signature `proc platform_wasm_test() -> bool {` example `wasm_test.platform_wasm_test(...)` stability `internal`
+
+## `src/vitte/stdlib/tests/platform/embedded_test.vit`
+
+Stability: `internal`
+
+- `proc platform_embedded_test` signature `proc platform_embedded_test() -> bool {` example `embedded_test.platform_embedded_test(...)` stability `internal`
 
 ## `src/vitte/stdlib/tests/fuzz/json_fuzz.vit`
 

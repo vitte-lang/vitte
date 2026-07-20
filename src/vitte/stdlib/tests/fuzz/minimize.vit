@@ -1,0 +1,19 @@
+use src/vitte/stdlib/alloc/vec as alloc_vec
+
+form FuzzFailure { seed: u64 input: [byte] minimized: [byte] }
+
+proc minimize_failure(seed: u64, input: [byte], predicate: proc([byte]) -> bool) -> FuzzFailure {
+    let current: [byte] = input;
+    while compiler_slice_len<byte>(current) > 1 and predicate(compiler_drop_last_byte(current)) {
+        set current = compiler_drop_last_byte(current);
+    }
+    give FuzzFailure { seed: seed, input: input, minimized: current };
+}
+
+proc fuzz_minimizer_smoke(seed: u64) -> bool {
+    let bytes: [byte] = compiler_fuzz_bytes(seed);
+    let failure = minimize_failure(seed, bytes, proc(candidate: [byte]) -> bool {
+        give compiler_slice_len<byte>(candidate) > 0;
+    });
+    give compiler_slice_len<byte>(failure.minimized) <= compiler_slice_len<byte>(bytes);
+}

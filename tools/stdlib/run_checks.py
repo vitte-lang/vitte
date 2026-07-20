@@ -118,6 +118,7 @@ STDLIB_NEXT_STEP_SOURCES = (
     SOURCE_STDLIB_DIR / "tests" / "fuzz" / "csv_fuzz.vit",
     SOURCE_STDLIB_DIR / "tests" / "fuzz" / "json_fuzz.vit",
     SOURCE_STDLIB_DIR / "tests" / "fuzz" / "path_fuzz.vit",
+    SOURCE_STDLIB_DIR / "tests" / "fuzz" / "minimize.vit",
     SOURCE_STDLIB_DIR / "tests" / "module_runner.vit",
     SOURCE_STDLIB_DIR / "tests" / "public_module_coverage.vit",
     SOURCE_STDLIB_DIR / "tests" / "modules" / "alloc_api_test.vit",
@@ -129,6 +130,10 @@ STDLIB_NEXT_STEP_SOURCES = (
     SOURCE_STDLIB_DIR / "tests" / "modules" / "std_mime_test.vit",
     SOURCE_STDLIB_DIR / "tests" / "modules" / "std_percent_encoding_test.vit",
     SOURCE_STDLIB_DIR / "tests" / "modules" / "std_thread_sync_time_env_test.vit",
+    SOURCE_STDLIB_DIR / "tests" / "platform" / "posix_test.vit",
+    SOURCE_STDLIB_DIR / "tests" / "platform" / "windows_test.vit",
+    SOURCE_STDLIB_DIR / "tests" / "platform" / "wasm_test.vit",
+    SOURCE_STDLIB_DIR / "tests" / "platform" / "embedded_test.vit",
     SOURCE_STDLIB_DIR / "tests" / "negative" / "stdlib_negative_cases.vit",
     SOURCE_STDLIB_DIR / "benchmarks" / "index.vit",
     SOURCE_STDLIB_DIR / "benchmarks" / "modules" / "vec_bench.vit",
@@ -138,7 +143,14 @@ STDLIB_NEXT_STEP_SOURCES = (
     SOURCE_STDLIB_DIR / "benchmarks" / "modules" / "path_bench.vit",
     SOURCE_STDLIB_DIR / "benchmarks" / "modules" / "format_bench.vit",
     SOURCE_STDLIB_DIR / "benchmarks" / "modules" / "parse_bench.vit",
+    SOURCE_STDLIB_DIR / "benchmarks" / "thresholds.json",
+    SOURCE_STDLIB_DIR / "benchmarks" / "history.json",
     SOURCE_STDLIB_DIR / "tests" / "snapshots" / "stdlib_api.snap",
+    SOURCE_STDLIB_DIR / "tests" / "snapshots" / "modules" / "alloc.snap",
+    SOURCE_STDLIB_DIR / "tests" / "snapshots" / "modules" / "io.snap",
+    SOURCE_STDLIB_DIR / "tests" / "snapshots" / "modules" / "fs.snap",
+    SOURCE_STDLIB_DIR / "tests" / "snapshots" / "modules" / "path.snap",
+    SOURCE_STDLIB_DIR / "tests" / "snapshots" / "modules" / "platform.snap",
     SOURCE_STDLIB_DIR / "examples" / "stdlib_max.vit",
     SOURCE_STDLIB_DIR / "examples" / "public_module_examples.vit",
     SOURCE_STDLIB_DIR / "examples" / "stdlib_usage_examples.vit",
@@ -768,11 +780,11 @@ REQUIRED_NEXT_STEP_FRAGMENTS = {
     "alloc/smallvec.vitl": ("type SmallVec<T, N>", "proc smallvec_push<T, N>", "proc smallvec_pop<T, N>"),
     "alloc/rc.vitl": ("form Rc<T>", "form Weak<T>", "proc rc_new<T>", "proc weak_upgrade<T>"),
     "alloc/arc.vitl": ("form Arc<T>", "form ArcWeak<T>", "proc arc_new<T>", "proc arc_weak_upgrade<T>"),
-    "std/io.vitl": ("form IoError", "form Reader", "form Writer", "form Read", "form Write", "form BufReader", "form BufWriter", "form Cursor", "proc read_to_string"),
+    "std/io.vitl": ("form IoError", "form Reader", "form Writer", "form Read", "form Write", "form Seek", "form BufReader", "form BufWriter", "form Cursor", "proc read_to_string", "proc seek", "proc buffered_read", "proc buffered_write"),
     "std/error.vitl": ("form Error", "form Backtrace", "form ErrorTrait<T>", "proc error_with_source", "proc capture_backtrace", "proc error_chain"),
-    "std/fs.vitl": ("form Path", "form Metadata", "form FsError", "form Permissions", "form DirEntry", "proc read_to_string", "proc read_dir", "proc set_permissions"),
+    "std/fs.vitl": ("form Path", "form Metadata", "form FsError", "form Permissions", "form DirEntry", "form WalkDir", "proc read_to_string", "proc read_dir", "proc set_permissions", "proc symlink", "proc read_link", "proc walk_entries"),
     "std/env.vitl": ("form EnvError", "proc args", "proc var", "proc current_dir"),
-    "std/path.vitl": ("form PathBuf", "pick ComponentKind", "proc components", "proc normalize", "proc is_absolute", "proc is_relative"),
+    "std/path.vitl": ("form PathBuf", "pick PathStyle", "pick ComponentKind", "proc components", "proc normalize", "proc normalize_strict", "proc unix_path", "proc windows_path", "proc is_absolute", "proc is_relative"),
     "std/time.vitl": ("form Duration", "form Instant", "proc instant_now", "proc elapsed"),
     "std/process.vitl": ("form ExitStatus", "form Command", "form Child", "form Output", "proc spawn", "proc status", "proc output", "proc exit"),
     "std/serialization.vitl": ("form Encode<T>", "form Decode<T>", "form Encoder", "form Decoder", "proc encode_json<T>", "proc decode_json<T>"),
@@ -842,6 +854,11 @@ REQUIRED_NEXT_STEP_FRAGMENTS = {
     "tests/fuzz/csv_fuzz.vit": ("fuzz_csv", "std_csv.csv_parse"),
     "tests/fuzz/json_fuzz.vit": ("fuzz_json", "std_serialization.json_value"),
     "tests/fuzz/path_fuzz.vit": ("fuzz_path", "std_path.normalize"),
+    "tests/fuzz/minimize.vit": ("form FuzzFailure", "minimize_failure", "fuzz_minimizer_smoke"),
+    "tests/platform/posix_test.vit": ("platform_posix_test", "posix_available"),
+    "tests/platform/windows_test.vit": ("platform_windows_test", "windows_available"),
+    "tests/platform/wasm_test.vit": ("platform_wasm_test", "wasm_available"),
+    "tests/platform/embedded_test.vit": ("platform_embedded_test", "embedded_available"),
     "benchmarks/index.vit": ("stdlib_benchmarks_smoke", "bench_vec_push_pop", "bench_string_push_concat", "bench_hashmap_insert_get", "bench_utf8_validate_decode", "bench_path_normalize_join", "bench_format_ints", "bench_parse_numbers"),
     "benchmarks/modules/vec_bench.vit": ("bench_vec_push_pop", "vec_with_capacity", "vec_push", "vec_pop"),
     "benchmarks/modules/string_bench.vit": ("bench_string_push_concat", "string_reserve", "string_push", "string_concat"),
@@ -1819,6 +1836,27 @@ def validate_stdlib_max_artifacts() -> list[ValidationResult]:
         "path": SOURCE_STDLIB_DIR / "tests" / "fuzz" / "path_fuzz.vit",
     }
     missing_fuzz = [name for name, path in fuzz_files.items() if not path.is_file()]
+    corpus_files = {
+        "utf8": SOURCE_STDLIB_DIR / "tests" / "fuzz" / "corpus" / "utf8.seed",
+        "url": SOURCE_STDLIB_DIR / "tests" / "fuzz" / "corpus" / "url.seed",
+        "csv": SOURCE_STDLIB_DIR / "tests" / "fuzz" / "corpus" / "csv.seed",
+        "json": SOURCE_STDLIB_DIR / "tests" / "fuzz" / "corpus" / "json.seed",
+        "path": SOURCE_STDLIB_DIR / "tests" / "fuzz" / "corpus" / "path.seed",
+    }
+    missing_corpus = [name for name, path in corpus_files.items() if not path.is_file() or not path.read_text(encoding="utf-8", errors="ignore").strip()]
+    minimizer = SOURCE_STDLIB_DIR / "tests" / "fuzz" / "minimize.vit"
+    minimizer_ok = minimizer.is_file() and "minimize_failure" in minimizer.read_text(encoding="utf-8", errors="ignore")
+    snapshot_dir = SOURCE_STDLIB_DIR / "tests" / "snapshots" / "modules"
+    required_snapshots = {"alloc.snap", "io.snap", "fs.snap", "path.snap", "platform.snap"}
+    present_snapshots = {path.name for path in snapshot_dir.glob("*.snap")} if snapshot_dir.is_dir() else set()
+    missing_snapshots = sorted(required_snapshots - present_snapshots)
+    threshold_path = SOURCE_STDLIB_DIR / "benchmarks" / "thresholds.json"
+    history_path = SOURCE_STDLIB_DIR / "benchmarks" / "history.json"
+    threshold_data = json.loads(threshold_path.read_text(encoding="utf-8")) if threshold_path.is_file() else {}
+    history_data = json.loads(history_path.read_text(encoding="utf-8")) if history_path.is_file() else {}
+    bench_names = {"vec", "string", "hashmap", "utf8", "path", "format", "parse"}
+    threshold_ok = bench_names.issubset(set(threshold_data.get("thresholds", {}).keys()))
+    history_ok = bench_names.issubset(set(history_data.get("baseline", {}).keys())) and "max_regression_percent" in history_data
     invariant_text = (SOURCE_STDLIB_DIR / "tests" / "alloc_memory_invariants.vit").read_text(encoding="utf-8", errors="ignore")
     invariant_ok = all(fragment in invariant_text for fragment in ("vec_len", "string_capacity", "hashmap_len", "deque_len"))
     changelog_text = paths["changelog"].read_text(encoding="utf-8")
@@ -1846,6 +1884,26 @@ def validate_stdlib_max_artifacts() -> list[ValidationResult]:
             name="stdlib_fuzzing_covers_utf8_url_csv_json_path",
             status=not missing_fuzz,
             detail="ok" if not missing_fuzz else ", ".join(missing_fuzz),
+        ),
+        ValidationResult(
+            name="stdlib_fuzzing_has_seed_corpus_and_minimizer",
+            status=not missing_corpus and minimizer_ok,
+            detail="ok" if not missing_corpus and minimizer_ok else ", ".join(missing_corpus + ([] if minimizer_ok else ["minimizer"])),
+        ),
+        ValidationResult(
+            name="stdlib_module_snapshots_present",
+            status=not missing_snapshots,
+            detail="ok" if not missing_snapshots else ", ".join(missing_snapshots),
+        ),
+        ValidationResult(
+            name="stdlib_benchmarks_have_thresholds",
+            status=threshold_ok,
+            detail="ok" if threshold_ok else "missing benchmark thresholds",
+        ),
+        ValidationResult(
+            name="stdlib_benchmark_history_compared",
+            status=history_ok,
+            detail="ok" if history_ok else "missing benchmark history baseline",
         ),
         ValidationResult(
             name="stdlib_alloc_memory_invariants_checked",

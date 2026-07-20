@@ -8,23 +8,30 @@ use src/vitte/stdlib/core/result as core_result
 use src/vitte/stdlib/core/iterator as core_iterator
 form Path { text: string }
 form Permissions { readonly: bool executable: bool }
-form Metadata { is_file: bool is_dir: bool len: u64 permissions: Permissions }
+form Metadata { is_file: bool is_dir: bool is_symlink: bool len: u64 permissions: Permissions }
 form FsError { code: int message: string path: Path }
 form DirEntry { path: Path metadata: Metadata }
+form WalkDir { root: Path follow_symlinks: bool }
 
 proc path(text: string) -> Path { give Path { text: text }; }
 proc fs_error(path_value: Path, message: string) -> FsError { give FsError { code: -1, message: message, path: path_value }; }
-proc read(path_value: Path) -> Result<Vec<byte>, FsError> { give compiler_platform_fs_read(path_value); }
-proc read_to_string(path_value: Path) -> Result<String, FsError> { give compiler_platform_fs_read_to_string(path_value); }
-proc write(path_value: Path, bytes: [byte]) -> Result<(), FsError> { give compiler_platform_fs_write(path_value, bytes); }
-proc create_dir_all(path_value: Path) -> Result<(), FsError> { give compiler_platform_fs_create_dir_all(path_value); }
-proc create_dir(path_value: Path) -> Result<(), FsError> { give compiler_platform_fs_create_dir(path_value); }
-proc remove_file(path_value: Path) -> Result<(), FsError> { give compiler_platform_fs_remove_file(path_value); }
-proc remove_dir(path_value: Path) -> Result<(), FsError> { give compiler_platform_fs_remove_dir(path_value); }
-proc rename(from: Path, to: Path) -> Result<(), FsError> { give compiler_platform_fs_rename(from, to); }
-proc copy(from: Path, to: Path) -> Result<u64, FsError> { give compiler_platform_fs_copy(from, to); }
-proc metadata(path_value: Path) -> Result<Metadata, FsError> { give compiler_platform_fs_metadata(path_value); }
-proc permissions(path_value: Path) -> Result<Permissions, FsError> { give compiler_platform_fs_permissions(path_value); }
-proc set_permissions(path_value: Path, value: Permissions) -> Result<(), FsError> { give compiler_platform_fs_set_permissions(path_value, value); }
-proc read_dir(path_value: Path) -> Result<Iterator<DirEntry>, FsError> { give compiler_platform_fs_read_dir(path_value); }
+proc read(path_value: Path) -> Result<Vec<byte>, FsError> { give compiler_backend_fs_read(path_value); }
+proc read_to_string(path_value: Path) -> Result<String, FsError> { give compiler_backend_fs_read_to_string(path_value); }
+proc write(path_value: Path, bytes: [byte]) -> Result<(), FsError> { give compiler_backend_fs_write(path_value, bytes); }
+proc create_dir_all(path_value: Path) -> Result<(), FsError> { give compiler_backend_fs_create_dir_all(path_value); }
+proc create_dir(path_value: Path) -> Result<(), FsError> { give compiler_backend_fs_create_dir(path_value); }
+proc remove_file(path_value: Path) -> Result<(), FsError> { give compiler_backend_fs_remove_file(path_value); }
+proc remove_dir(path_value: Path) -> Result<(), FsError> { give compiler_backend_fs_remove_dir(path_value); }
+proc rename(from: Path, to: Path) -> Result<(), FsError> { give compiler_backend_fs_rename(from, to); }
+proc copy(from: Path, to: Path) -> Result<u64, FsError> { give compiler_backend_fs_copy(from, to); }
+proc metadata(path_value: Path) -> Result<Metadata, FsError> { give compiler_backend_fs_metadata(path_value); }
+proc symlink_metadata(path_value: Path) -> Result<Metadata, FsError> { give compiler_backend_fs_symlink_metadata(path_value); }
+proc permissions(path_value: Path) -> Result<Permissions, FsError> { give compiler_backend_fs_permissions(path_value); }
+proc set_permissions(path_value: Path, value: Permissions) -> Result<(), FsError> { give compiler_backend_fs_set_permissions(path_value, value); }
+proc read_dir(path_value: Path) -> Result<Iterator<DirEntry>, FsError> { give compiler_backend_fs_read_dir(path_value); }
+proc symlink(original: Path, link: Path) -> Result<(), FsError> { give compiler_backend_fs_symlink(original, link); }
+proc read_link(path_value: Path) -> Result<Path, FsError> { give compiler_backend_fs_read_link(path_value); }
+proc walk_dir(root: Path) -> WalkDir { give WalkDir { root: root, follow_symlinks: false }; }
+proc walk_dir_following_symlinks(root: Path) -> WalkDir { give WalkDir { root: root, follow_symlinks: true }; }
+proc walk_entries(walk: WalkDir) -> Result<Iterator<DirEntry>, FsError> { give compiler_backend_fs_walk_entries(walk); }
 proc exists(path_value: Path) -> bool { give is_ok<Metadata, FsError>(metadata(path_value)); }

@@ -57980,7 +57980,7 @@
           "id": "src/vitte/stdlib/std/fs.vitl::Metadata",
           "name": "Metadata",
           "kind": "form",
-          "signature": "form Metadata { is_file: bool is_dir: bool len: u64 permissions: Permissions }",
+          "signature": "form Metadata { is_file: bool is_dir: bool is_symlink: bool len: u64 permissions: Permissions }",
           "module": "src/vitte/stdlib/std/fs.vitl",
           "line": 11,
           "stability": "stable",
@@ -58010,12 +58010,23 @@
           "example": "fs.DirEntry"
         },
         {
+          "id": "src/vitte/stdlib/std/fs.vitl::WalkDir",
+          "name": "WalkDir",
+          "kind": "form",
+          "signature": "form WalkDir { root: Path follow_symlinks: bool }",
+          "module": "src/vitte/stdlib/std/fs.vitl",
+          "line": 14,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "fs.WalkDir"
+        },
+        {
           "id": "src/vitte/stdlib/std/fs.vitl::path",
           "name": "path",
           "kind": "proc",
           "signature": "proc path(text: string) -> Path { give Path { text: text }; }",
           "module": "src/vitte/stdlib/std/fs.vitl",
-          "line": 15,
+          "line": 16,
           "stability": "stable",
           "visibility": "public",
           "example": "fs.path(...)"
@@ -58026,7 +58037,7 @@
           "kind": "proc",
           "signature": "proc fs_error(path_value: Path, message: string) -> FsError { give FsError { code: -1, message: message, path: path_value }; }",
           "module": "src/vitte/stdlib/std/fs.vitl",
-          "line": 16,
+          "line": 17,
           "stability": "stable",
           "visibility": "public",
           "example": "fs.fs_error(...)"
@@ -58035,9 +58046,9 @@
           "id": "src/vitte/stdlib/std/fs.vitl::read",
           "name": "read",
           "kind": "proc",
-          "signature": "proc read(path_value: Path) -> Result<Vec<byte>, FsError> { give compiler_platform_fs_read(path_value); }",
+          "signature": "proc read(path_value: Path) -> Result<Vec<byte>, FsError> { give compiler_backend_fs_read(path_value); }",
           "module": "src/vitte/stdlib/std/fs.vitl",
-          "line": 17,
+          "line": 18,
           "stability": "stable",
           "visibility": "public",
           "example": "fs.read(...)"
@@ -58046,9 +58057,9 @@
           "id": "src/vitte/stdlib/std/fs.vitl::read_to_string",
           "name": "read_to_string",
           "kind": "proc",
-          "signature": "proc read_to_string(path_value: Path) -> Result<String, FsError> { give compiler_platform_fs_read_to_string(path_value); }",
+          "signature": "proc read_to_string(path_value: Path) -> Result<String, FsError> { give compiler_backend_fs_read_to_string(path_value); }",
           "module": "src/vitte/stdlib/std/fs.vitl",
-          "line": 18,
+          "line": 19,
           "stability": "stable",
           "visibility": "public",
           "example": "fs.read_to_string(...)"
@@ -58057,9 +58068,9 @@
           "id": "src/vitte/stdlib/std/fs.vitl::write",
           "name": "write",
           "kind": "proc",
-          "signature": "proc write(path_value: Path, bytes: [byte]) -> Result<(), FsError> { give compiler_platform_fs_write(path_value, bytes); }",
+          "signature": "proc write(path_value: Path, bytes: [byte]) -> Result<(), FsError> { give compiler_backend_fs_write(path_value, bytes); }",
           "module": "src/vitte/stdlib/std/fs.vitl",
-          "line": 19,
+          "line": 20,
           "stability": "stable",
           "visibility": "public",
           "example": "fs.write(...)"
@@ -58068,9 +58079,9 @@
           "id": "src/vitte/stdlib/std/fs.vitl::create_dir_all",
           "name": "create_dir_all",
           "kind": "proc",
-          "signature": "proc create_dir_all(path_value: Path) -> Result<(), FsError> { give compiler_platform_fs_create_dir_all(path_value); }",
+          "signature": "proc create_dir_all(path_value: Path) -> Result<(), FsError> { give compiler_backend_fs_create_dir_all(path_value); }",
           "module": "src/vitte/stdlib/std/fs.vitl",
-          "line": 20,
+          "line": 21,
           "stability": "stable",
           "visibility": "public",
           "example": "fs.create_dir_all(...)"
@@ -58079,9 +58090,9 @@
           "id": "src/vitte/stdlib/std/fs.vitl::create_dir",
           "name": "create_dir",
           "kind": "proc",
-          "signature": "proc create_dir(path_value: Path) -> Result<(), FsError> { give compiler_platform_fs_create_dir(path_value); }",
+          "signature": "proc create_dir(path_value: Path) -> Result<(), FsError> { give compiler_backend_fs_create_dir(path_value); }",
           "module": "src/vitte/stdlib/std/fs.vitl",
-          "line": 21,
+          "line": 22,
           "stability": "stable",
           "visibility": "public",
           "example": "fs.create_dir(...)"
@@ -58090,9 +58101,9 @@
           "id": "src/vitte/stdlib/std/fs.vitl::remove_file",
           "name": "remove_file",
           "kind": "proc",
-          "signature": "proc remove_file(path_value: Path) -> Result<(), FsError> { give compiler_platform_fs_remove_file(path_value); }",
+          "signature": "proc remove_file(path_value: Path) -> Result<(), FsError> { give compiler_backend_fs_remove_file(path_value); }",
           "module": "src/vitte/stdlib/std/fs.vitl",
-          "line": 22,
+          "line": 23,
           "stability": "stable",
           "visibility": "public",
           "example": "fs.remove_file(...)"
@@ -58101,9 +58112,9 @@
           "id": "src/vitte/stdlib/std/fs.vitl::remove_dir",
           "name": "remove_dir",
           "kind": "proc",
-          "signature": "proc remove_dir(path_value: Path) -> Result<(), FsError> { give compiler_platform_fs_remove_dir(path_value); }",
+          "signature": "proc remove_dir(path_value: Path) -> Result<(), FsError> { give compiler_backend_fs_remove_dir(path_value); }",
           "module": "src/vitte/stdlib/std/fs.vitl",
-          "line": 23,
+          "line": 24,
           "stability": "stable",
           "visibility": "public",
           "example": "fs.remove_dir(...)"
@@ -58112,9 +58123,9 @@
           "id": "src/vitte/stdlib/std/fs.vitl::rename",
           "name": "rename",
           "kind": "proc",
-          "signature": "proc rename(from: Path, to: Path) -> Result<(), FsError> { give compiler_platform_fs_rename(from, to); }",
+          "signature": "proc rename(from: Path, to: Path) -> Result<(), FsError> { give compiler_backend_fs_rename(from, to); }",
           "module": "src/vitte/stdlib/std/fs.vitl",
-          "line": 24,
+          "line": 25,
           "stability": "stable",
           "visibility": "public",
           "example": "fs.rename(...)"
@@ -58123,9 +58134,9 @@
           "id": "src/vitte/stdlib/std/fs.vitl::copy",
           "name": "copy",
           "kind": "proc",
-          "signature": "proc copy(from: Path, to: Path) -> Result<u64, FsError> { give compiler_platform_fs_copy(from, to); }",
+          "signature": "proc copy(from: Path, to: Path) -> Result<u64, FsError> { give compiler_backend_fs_copy(from, to); }",
           "module": "src/vitte/stdlib/std/fs.vitl",
-          "line": 25,
+          "line": 26,
           "stability": "stable",
           "visibility": "public",
           "example": "fs.copy(...)"
@@ -58134,20 +58145,31 @@
           "id": "src/vitte/stdlib/std/fs.vitl::metadata",
           "name": "metadata",
           "kind": "proc",
-          "signature": "proc metadata(path_value: Path) -> Result<Metadata, FsError> { give compiler_platform_fs_metadata(path_value); }",
+          "signature": "proc metadata(path_value: Path) -> Result<Metadata, FsError> { give compiler_backend_fs_metadata(path_value); }",
           "module": "src/vitte/stdlib/std/fs.vitl",
-          "line": 26,
+          "line": 27,
           "stability": "stable",
           "visibility": "public",
           "example": "fs.metadata(...)"
         },
         {
+          "id": "src/vitte/stdlib/std/fs.vitl::symlink_metadata",
+          "name": "symlink_metadata",
+          "kind": "proc",
+          "signature": "proc symlink_metadata(path_value: Path) -> Result<Metadata, FsError> { give compiler_backend_fs_symlink_metadata(path_value); }",
+          "module": "src/vitte/stdlib/std/fs.vitl",
+          "line": 28,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "fs.symlink_metadata(...)"
+        },
+        {
           "id": "src/vitte/stdlib/std/fs.vitl::permissions",
           "name": "permissions",
           "kind": "proc",
-          "signature": "proc permissions(path_value: Path) -> Result<Permissions, FsError> { give compiler_platform_fs_permissions(path_value); }",
+          "signature": "proc permissions(path_value: Path) -> Result<Permissions, FsError> { give compiler_backend_fs_permissions(path_value); }",
           "module": "src/vitte/stdlib/std/fs.vitl",
-          "line": 27,
+          "line": 29,
           "stability": "stable",
           "visibility": "public",
           "example": "fs.permissions(...)"
@@ -58156,9 +58178,9 @@
           "id": "src/vitte/stdlib/std/fs.vitl::set_permissions",
           "name": "set_permissions",
           "kind": "proc",
-          "signature": "proc set_permissions(path_value: Path, value: Permissions) -> Result<(), FsError> { give compiler_platform_fs_set_permissions(path_value, value); }",
+          "signature": "proc set_permissions(path_value: Path, value: Permissions) -> Result<(), FsError> { give compiler_backend_fs_set_permissions(path_value, value); }",
           "module": "src/vitte/stdlib/std/fs.vitl",
-          "line": 28,
+          "line": 30,
           "stability": "stable",
           "visibility": "public",
           "example": "fs.set_permissions(...)"
@@ -58167,12 +58189,67 @@
           "id": "src/vitte/stdlib/std/fs.vitl::read_dir",
           "name": "read_dir",
           "kind": "proc",
-          "signature": "proc read_dir(path_value: Path) -> Result<Iterator<DirEntry>, FsError> { give compiler_platform_fs_read_dir(path_value); }",
+          "signature": "proc read_dir(path_value: Path) -> Result<Iterator<DirEntry>, FsError> { give compiler_backend_fs_read_dir(path_value); }",
           "module": "src/vitte/stdlib/std/fs.vitl",
-          "line": 29,
+          "line": 31,
           "stability": "stable",
           "visibility": "public",
           "example": "fs.read_dir(...)"
+        },
+        {
+          "id": "src/vitte/stdlib/std/fs.vitl::symlink",
+          "name": "symlink",
+          "kind": "proc",
+          "signature": "proc symlink(original: Path, link: Path) -> Result<(), FsError> { give compiler_backend_fs_symlink(original, link); }",
+          "module": "src/vitte/stdlib/std/fs.vitl",
+          "line": 32,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "fs.symlink(...)"
+        },
+        {
+          "id": "src/vitte/stdlib/std/fs.vitl::read_link",
+          "name": "read_link",
+          "kind": "proc",
+          "signature": "proc read_link(path_value: Path) -> Result<Path, FsError> { give compiler_backend_fs_read_link(path_value); }",
+          "module": "src/vitte/stdlib/std/fs.vitl",
+          "line": 33,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "fs.read_link(...)"
+        },
+        {
+          "id": "src/vitte/stdlib/std/fs.vitl::walk_dir",
+          "name": "walk_dir",
+          "kind": "proc",
+          "signature": "proc walk_dir(root: Path) -> WalkDir { give WalkDir { root: root, follow_symlinks: false }; }",
+          "module": "src/vitte/stdlib/std/fs.vitl",
+          "line": 34,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "fs.walk_dir(...)"
+        },
+        {
+          "id": "src/vitte/stdlib/std/fs.vitl::walk_dir_following_symlinks",
+          "name": "walk_dir_following_symlinks",
+          "kind": "proc",
+          "signature": "proc walk_dir_following_symlinks(root: Path) -> WalkDir { give WalkDir { root: root, follow_symlinks: true }; }",
+          "module": "src/vitte/stdlib/std/fs.vitl",
+          "line": 35,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "fs.walk_dir_following_symlinks(...)"
+        },
+        {
+          "id": "src/vitte/stdlib/std/fs.vitl::walk_entries",
+          "name": "walk_entries",
+          "kind": "proc",
+          "signature": "proc walk_entries(walk: WalkDir) -> Result<Iterator<DirEntry>, FsError> { give compiler_backend_fs_walk_entries(walk); }",
+          "module": "src/vitte/stdlib/std/fs.vitl",
+          "line": 36,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "fs.walk_entries(...)"
         },
         {
           "id": "src/vitte/stdlib/std/fs.vitl::exists",
@@ -58180,7 +58257,7 @@
           "kind": "proc",
           "signature": "proc exists(path_value: Path) -> bool { give is_ok<Metadata, FsError>(metadata(path_value)); }",
           "module": "src/vitte/stdlib/std/fs.vitl",
-          "line": 30,
+          "line": 37,
           "stability": "stable",
           "visibility": "public",
           "example": "fs.exists(...)"
@@ -58577,12 +58654,23 @@
           "example": "io.Write"
         },
         {
+          "id": "src/vitte/stdlib/std/io.vitl::Seek",
+          "name": "Seek",
+          "kind": "form",
+          "signature": "form Seek { seek: proc(ref mut Reader, i128) -> Result<usize, IoError> }",
+          "module": "src/vitte/stdlib/std/io.vitl",
+          "line": 14,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "io.Seek"
+        },
+        {
           "id": "src/vitte/stdlib/std/io.vitl::BufReader",
           "name": "BufReader",
           "kind": "form",
           "signature": "form BufReader { inner: Reader buffer: Vec<byte> position: usize }",
           "module": "src/vitte/stdlib/std/io.vitl",
-          "line": 14,
+          "line": 15,
           "stability": "stable",
           "visibility": "public",
           "example": "io.BufReader"
@@ -58593,7 +58681,7 @@
           "kind": "form",
           "signature": "form BufWriter { inner: Writer buffer: Vec<byte> }",
           "module": "src/vitte/stdlib/std/io.vitl",
-          "line": 15,
+          "line": 16,
           "stability": "stable",
           "visibility": "public",
           "example": "io.BufWriter"
@@ -58604,7 +58692,7 @@
           "kind": "form",
           "signature": "form Cursor { data: Vec<byte> position: usize }",
           "module": "src/vitte/stdlib/std/io.vitl",
-          "line": 16,
+          "line": 17,
           "stability": "stable",
           "visibility": "public",
           "example": "io.Cursor"
@@ -58615,7 +58703,7 @@
           "kind": "proc",
           "signature": "proc stdin() -> Reader { give compiler_backend_stdio_stdin(); }",
           "module": "src/vitte/stdlib/std/io.vitl",
-          "line": 18,
+          "line": 19,
           "stability": "stable",
           "visibility": "public",
           "example": "io.stdin(...)"
@@ -58626,7 +58714,7 @@
           "kind": "proc",
           "signature": "proc stdout() -> Writer { give compiler_backend_stdio_stdout(); }",
           "module": "src/vitte/stdlib/std/io.vitl",
-          "line": 19,
+          "line": 20,
           "stability": "stable",
           "visibility": "public",
           "example": "io.stdout(...)"
@@ -58637,7 +58725,7 @@
           "kind": "proc",
           "signature": "proc stderr() -> Writer { give compiler_backend_stdio_stderr(); }",
           "module": "src/vitte/stdlib/std/io.vitl",
-          "line": 20,
+          "line": 21,
           "stability": "stable",
           "visibility": "public",
           "example": "io.stderr(...)"
@@ -58648,7 +58736,7 @@
           "kind": "proc",
           "signature": "proc read_to_string(reader: Reader) -> Result<String, IoError> { give compiler_backend_io_read_to_string(reader); }",
           "module": "src/vitte/stdlib/std/io.vitl",
-          "line": 21,
+          "line": 22,
           "stability": "stable",
           "visibility": "public",
           "example": "io.read_to_string(...)"
@@ -58659,7 +58747,7 @@
           "kind": "proc",
           "signature": "proc read(reader: ref mut Reader, buffer: ref mut [byte]) -> Result<usize, IoError> { give compiler_backend_io_read(reader, buffer); }",
           "module": "src/vitte/stdlib/std/io.vitl",
-          "line": 22,
+          "line": 23,
           "stability": "stable",
           "visibility": "public",
           "example": "io.read(...)"
@@ -58670,7 +58758,7 @@
           "kind": "proc",
           "signature": "proc write(writer: ref mut Writer, bytes: [byte]) -> Result<usize, IoError> { give compiler_backend_io_write(writer, bytes); }",
           "module": "src/vitte/stdlib/std/io.vitl",
-          "line": 23,
+          "line": 24,
           "stability": "stable",
           "visibility": "public",
           "example": "io.write(...)"
@@ -58681,7 +58769,7 @@
           "kind": "proc",
           "signature": "proc write_all(writer: Writer, bytes: [byte]) -> Result<(), IoError> {",
           "module": "src/vitte/stdlib/std/io.vitl",
-          "line": 24,
+          "line": 25,
           "stability": "stable",
           "visibility": "public",
           "example": "io.write_all(...)"
@@ -58692,7 +58780,7 @@
           "kind": "proc",
           "signature": "proc write_string(writer: Writer, text: string) -> Result<(), IoError> { give write_all(writer, compiler_string_bytes(text)); }",
           "module": "src/vitte/stdlib/std/io.vitl",
-          "line": 32,
+          "line": 33,
           "stability": "stable",
           "visibility": "public",
           "example": "io.write_string(...)"
@@ -58703,7 +58791,7 @@
           "kind": "proc",
           "signature": "proc flush(writer: Writer) -> Result<(), IoError> { give compiler_backend_io_flush(writer); }",
           "module": "src/vitte/stdlib/std/io.vitl",
-          "line": 33,
+          "line": 34,
           "stability": "stable",
           "visibility": "public",
           "example": "io.flush(...)"
@@ -58714,7 +58802,7 @@
           "kind": "proc",
           "signature": "proc buf_reader(inner: Reader) -> BufReader { give BufReader { inner: inner, buffer: vec_new<byte>(), position: 0 }; }",
           "module": "src/vitte/stdlib/std/io.vitl",
-          "line": 34,
+          "line": 35,
           "stability": "stable",
           "visibility": "public",
           "example": "io.buf_reader(...)"
@@ -58725,7 +58813,7 @@
           "kind": "proc",
           "signature": "proc buf_writer(inner: Writer) -> BufWriter { give BufWriter { inner: inner, buffer: vec_new<byte>() }; }",
           "module": "src/vitte/stdlib/std/io.vitl",
-          "line": 35,
+          "line": 36,
           "stability": "stable",
           "visibility": "public",
           "example": "io.buf_writer(...)"
@@ -58736,7 +58824,7 @@
           "kind": "proc",
           "signature": "proc cursor(data: Vec<byte>) -> Cursor { give Cursor { data: data, position: 0 }; }",
           "module": "src/vitte/stdlib/std/io.vitl",
-          "line": 36,
+          "line": 37,
           "stability": "stable",
           "visibility": "public",
           "example": "io.cursor(...)"
@@ -58747,10 +58835,54 @@
           "kind": "proc",
           "signature": "proc cursor_position(cursor_value: Cursor) -> usize { give cursor_value.position; }",
           "module": "src/vitte/stdlib/std/io.vitl",
-          "line": 37,
+          "line": 38,
           "stability": "stable",
           "visibility": "public",
           "example": "io.cursor_position(...)"
+        },
+        {
+          "id": "src/vitte/stdlib/std/io.vitl::seek",
+          "name": "seek",
+          "kind": "proc",
+          "signature": "proc seek(reader: ref mut Reader, offset: i128) -> Result<usize, IoError> { give compiler_backend_io_seek(reader, offset); }",
+          "module": "src/vitte/stdlib/std/io.vitl",
+          "line": 39,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "io.seek(...)"
+        },
+        {
+          "id": "src/vitte/stdlib/std/io.vitl::buffered_read",
+          "name": "buffered_read",
+          "kind": "proc",
+          "signature": "proc buffered_read(reader: ref mut BufReader, buffer: ref mut [byte]) -> Result<usize, IoError> {",
+          "module": "src/vitte/stdlib/std/io.vitl",
+          "line": 40,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "io.buffered_read(...)"
+        },
+        {
+          "id": "src/vitte/stdlib/std/io.vitl::buffered_write",
+          "name": "buffered_write",
+          "kind": "proc",
+          "signature": "proc buffered_write(writer: ref mut BufWriter, bytes: [byte]) -> Result<usize, IoError> {",
+          "module": "src/vitte/stdlib/std/io.vitl",
+          "line": 47,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "io.buffered_write(...)"
+        },
+        {
+          "id": "src/vitte/stdlib/std/io.vitl::io_error",
+          "name": "io_error",
+          "kind": "proc",
+          "signature": "proc io_error(code: int, message: string) -> IoError { give IoError { code: code, message: message }; }",
+          "module": "src/vitte/stdlib/std/io.vitl",
+          "line": 54,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "io.io_error(...)"
         }
       ]
     },
@@ -59469,12 +59601,23 @@
       "stability": "stable",
       "symbols": [
         {
+          "id": "src/vitte/stdlib/std/path.vitl::PathStyle",
+          "name": "PathStyle",
+          "kind": "pick",
+          "signature": "pick PathStyle { Unix Windows }",
+          "module": "src/vitte/stdlib/std/path.vitl",
+          "line": 11,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "path.PathStyle"
+        },
+        {
           "id": "src/vitte/stdlib/std/path.vitl::ComponentKind",
           "name": "ComponentKind",
           "kind": "pick",
           "signature": "pick ComponentKind { Root Prefix Current Parent Normal }",
           "module": "src/vitte/stdlib/std/path.vitl",
-          "line": 10,
+          "line": 12,
           "stability": "stable",
           "visibility": "public",
           "example": "path.ComponentKind"
@@ -59485,7 +59628,7 @@
           "kind": "form",
           "signature": "form Component { kind: ComponentKind text: String }",
           "module": "src/vitte/stdlib/std/path.vitl",
-          "line": 11,
+          "line": 13,
           "stability": "stable",
           "visibility": "public",
           "example": "path.Component"
@@ -59494,9 +59637,9 @@
           "id": "src/vitte/stdlib/std/path.vitl::PathBuf",
           "name": "PathBuf",
           "kind": "form",
-          "signature": "form PathBuf { value: String absolute: bool }",
+          "signature": "form PathBuf { value: String absolute: bool style: PathStyle }",
           "module": "src/vitte/stdlib/std/path.vitl",
-          "line": 12,
+          "line": 14,
           "stability": "stable",
           "visibility": "public",
           "example": "path.PathBuf"
@@ -59505,20 +59648,42 @@
           "id": "src/vitte/stdlib/std/path.vitl::path_buf",
           "name": "path_buf",
           "kind": "proc",
-          "signature": "proc path_buf(text: String) -> PathBuf { give compiler_path_buf(text); }",
+          "signature": "proc path_buf(text: String) -> PathBuf {",
           "module": "src/vitte/stdlib/std/path.vitl",
-          "line": 14,
+          "line": 16,
           "stability": "stable",
           "visibility": "public",
           "example": "path.path_buf(...)"
         },
         {
+          "id": "src/vitte/stdlib/std/path.vitl::unix_path",
+          "name": "unix_path",
+          "kind": "proc",
+          "signature": "proc unix_path(text: String) -> PathBuf { give PathBuf { value: text, absolute: compiler_unix_path_is_absolute(text), style: PathStyle.Unix }; }",
+          "module": "src/vitte/stdlib/std/path.vitl",
+          "line": 23,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "path.unix_path(...)"
+        },
+        {
+          "id": "src/vitte/stdlib/std/path.vitl::windows_path",
+          "name": "windows_path",
+          "kind": "proc",
+          "signature": "proc windows_path(text: String) -> PathBuf { give PathBuf { value: text, absolute: compiler_windows_path_is_absolute(text), style: PathStyle.Windows }; }",
+          "module": "src/vitte/stdlib/std/path.vitl",
+          "line": 24,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "path.windows_path(...)"
+        },
+        {
           "id": "src/vitte/stdlib/std/path.vitl::components",
           "name": "components",
           "kind": "proc",
-          "signature": "proc components(path_value: PathBuf) -> Iterator<Component> { give compiler_path_components(path_value); }",
+          "signature": "proc components(path_value: PathBuf) -> Iterator<Component> { give compiler_path_components_text(path_value.value, path_value.style); }",
           "module": "src/vitte/stdlib/std/path.vitl",
-          "line": 15,
+          "line": 25,
           "stability": "stable",
           "visibility": "public",
           "example": "path.components(...)"
@@ -59529,10 +59694,21 @@
           "kind": "proc",
           "signature": "proc normalize(path_value: PathBuf) -> PathBuf {",
           "module": "src/vitte/stdlib/std/path.vitl",
-          "line": 16,
+          "line": 26,
           "stability": "stable",
           "visibility": "public",
           "example": "path.normalize(...)"
+        },
+        {
+          "id": "src/vitte/stdlib/std/path.vitl::normalize_strict",
+          "name": "normalize_strict",
+          "kind": "proc",
+          "signature": "proc normalize_strict(path_value: PathBuf) -> Result<PathBuf, String> {",
+          "module": "src/vitte/stdlib/std/path.vitl",
+          "line": 33,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "path.normalize_strict(...)"
         },
         {
           "id": "src/vitte/stdlib/std/path.vitl::is_absolute",
@@ -59540,7 +59716,7 @@
           "kind": "proc",
           "signature": "proc is_absolute(path_value: PathBuf) -> bool { give path_value.absolute; }",
           "module": "src/vitte/stdlib/std/path.vitl",
-          "line": 22,
+          "line": 39,
           "stability": "stable",
           "visibility": "public",
           "example": "path.is_absolute(...)"
@@ -59551,7 +59727,7 @@
           "kind": "proc",
           "signature": "proc is_relative(path_value: PathBuf) -> bool { give not path_value.absolute; }",
           "module": "src/vitte/stdlib/std/path.vitl",
-          "line": 23,
+          "line": 40,
           "stability": "stable",
           "visibility": "public",
           "example": "path.is_relative(...)"
@@ -59562,7 +59738,7 @@
           "kind": "proc",
           "signature": "proc join(base: PathBuf, child: PathBuf) -> PathBuf {",
           "module": "src/vitte/stdlib/std/path.vitl",
-          "line": 24,
+          "line": 41,
           "stability": "stable",
           "visibility": "public",
           "example": "path.join(...)"
@@ -59573,7 +59749,7 @@
           "kind": "proc",
           "signature": "proc parent(path_value: PathBuf) -> Option<PathBuf> {",
           "module": "src/vitte/stdlib/std/path.vitl",
-          "line": 33,
+          "line": 51,
           "stability": "stable",
           "visibility": "public",
           "example": "path.parent(...)"
@@ -59582,9 +59758,9 @@
           "id": "src/vitte/stdlib/std/path.vitl::file_name",
           "name": "file_name",
           "kind": "proc",
-          "signature": "proc file_name(path_value: PathBuf) -> Option<String> { give compiler_path_file_name_text(path_value.value); }",
+          "signature": "proc file_name(path_value: PathBuf) -> Option<String> { give compiler_path_file_name_text(path_value.value, path_value.style); }",
           "module": "src/vitte/stdlib/std/path.vitl",
-          "line": 40,
+          "line": 58,
           "stability": "stable",
           "visibility": "public",
           "example": "path.file_name(...)"
@@ -59593,9 +59769,9 @@
           "id": "src/vitte/stdlib/std/path.vitl::extension",
           "name": "extension",
           "kind": "proc",
-          "signature": "proc extension(path_value: PathBuf) -> Option<String> { give compiler_path_extension_text(path_value.value); }",
+          "signature": "proc extension(path_value: PathBuf) -> Option<String> { give compiler_path_extension_text(path_value.value, path_value.style); }",
           "module": "src/vitte/stdlib/std/path.vitl",
-          "line": 41,
+          "line": 59,
           "stability": "stable",
           "visibility": "public",
           "example": "path.extension(...)"
@@ -59606,7 +59782,7 @@
           "kind": "proc",
           "signature": "proc with_extension(path_value: PathBuf, ext: String) -> PathBuf {",
           "module": "src/vitte/stdlib/std/path.vitl",
-          "line": 42,
+          "line": 60,
           "stability": "stable",
           "visibility": "public",
           "example": "path.with_extension(...)"
@@ -61704,6 +61880,118 @@
           "stability": "internal",
           "visibility": "public",
           "example": "path_fuzz.fuzz_path(...)"
+        }
+      ]
+    },
+    {
+      "module": "src/vitte/stdlib/tests/fuzz/minimize.vit",
+      "path": "src/vitte/stdlib/tests/fuzz/minimize.vit",
+      "stability": "internal",
+      "symbols": [
+        {
+          "id": "src/vitte/stdlib/tests/fuzz/minimize.vit::FuzzFailure",
+          "name": "FuzzFailure",
+          "kind": "form",
+          "signature": "form FuzzFailure { seed: u64 input: [byte] minimized: [byte] }",
+          "module": "src/vitte/stdlib/tests/fuzz/minimize.vit",
+          "line": 3,
+          "stability": "internal",
+          "visibility": "public",
+          "example": "minimize.FuzzFailure"
+        },
+        {
+          "id": "src/vitte/stdlib/tests/fuzz/minimize.vit::minimize_failure",
+          "name": "minimize_failure",
+          "kind": "proc",
+          "signature": "proc minimize_failure(seed: u64, input: [byte], predicate: proc([byte]) -> bool) -> FuzzFailure {",
+          "module": "src/vitte/stdlib/tests/fuzz/minimize.vit",
+          "line": 5,
+          "stability": "internal",
+          "visibility": "public",
+          "example": "minimize.minimize_failure(...)"
+        },
+        {
+          "id": "src/vitte/stdlib/tests/fuzz/minimize.vit::fuzz_minimizer_smoke",
+          "name": "fuzz_minimizer_smoke",
+          "kind": "proc",
+          "signature": "proc fuzz_minimizer_smoke(seed: u64) -> bool {",
+          "module": "src/vitte/stdlib/tests/fuzz/minimize.vit",
+          "line": 13,
+          "stability": "internal",
+          "visibility": "public",
+          "example": "minimize.fuzz_minimizer_smoke(...)"
+        }
+      ]
+    },
+    {
+      "module": "src/vitte/stdlib/tests/platform/posix_test.vit",
+      "path": "src/vitte/stdlib/tests/platform/posix_test.vit",
+      "stability": "internal",
+      "symbols": [
+        {
+          "id": "src/vitte/stdlib/tests/platform/posix_test.vit::platform_posix_test",
+          "name": "platform_posix_test",
+          "kind": "proc",
+          "signature": "proc platform_posix_test() -> bool {",
+          "module": "src/vitte/stdlib/tests/platform/posix_test.vit",
+          "line": 3,
+          "stability": "internal",
+          "visibility": "public",
+          "example": "posix_test.platform_posix_test(...)"
+        }
+      ]
+    },
+    {
+      "module": "src/vitte/stdlib/tests/platform/windows_test.vit",
+      "path": "src/vitte/stdlib/tests/platform/windows_test.vit",
+      "stability": "internal",
+      "symbols": [
+        {
+          "id": "src/vitte/stdlib/tests/platform/windows_test.vit::platform_windows_test",
+          "name": "platform_windows_test",
+          "kind": "proc",
+          "signature": "proc platform_windows_test() -> bool {",
+          "module": "src/vitte/stdlib/tests/platform/windows_test.vit",
+          "line": 3,
+          "stability": "internal",
+          "visibility": "public",
+          "example": "windows_test.platform_windows_test(...)"
+        }
+      ]
+    },
+    {
+      "module": "src/vitte/stdlib/tests/platform/wasm_test.vit",
+      "path": "src/vitte/stdlib/tests/platform/wasm_test.vit",
+      "stability": "internal",
+      "symbols": [
+        {
+          "id": "src/vitte/stdlib/tests/platform/wasm_test.vit::platform_wasm_test",
+          "name": "platform_wasm_test",
+          "kind": "proc",
+          "signature": "proc platform_wasm_test() -> bool {",
+          "module": "src/vitte/stdlib/tests/platform/wasm_test.vit",
+          "line": 3,
+          "stability": "internal",
+          "visibility": "public",
+          "example": "wasm_test.platform_wasm_test(...)"
+        }
+      ]
+    },
+    {
+      "module": "src/vitte/stdlib/tests/platform/embedded_test.vit",
+      "path": "src/vitte/stdlib/tests/platform/embedded_test.vit",
+      "stability": "internal",
+      "symbols": [
+        {
+          "id": "src/vitte/stdlib/tests/platform/embedded_test.vit::platform_embedded_test",
+          "name": "platform_embedded_test",
+          "kind": "proc",
+          "signature": "proc platform_embedded_test() -> bool {",
+          "module": "src/vitte/stdlib/tests/platform/embedded_test.vit",
+          "line": 3,
+          "stability": "internal",
+          "visibility": "public",
+          "example": "embedded_test.platform_embedded_test(...)"
         }
       ]
     },

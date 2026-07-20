@@ -11,6 +11,7 @@ form Reader { handle: int }
 form Writer { handle: int }
 form Read { read: proc(ref mut Reader, ref mut [byte]) -> Result<usize, IoError> }
 form Write { write: proc(ref mut Writer, [byte]) -> Result<usize, IoError> flush: proc(ref mut Writer) -> Result<(), IoError> }
+form Seek { seek: proc(ref mut Reader, i128) -> Result<usize, IoError> }
 form BufReader { inner: Reader buffer: Vec<byte> position: usize }
 form BufWriter { inner: Writer buffer: Vec<byte> }
 form Cursor { data: Vec<byte> position: usize }
@@ -35,3 +36,19 @@ proc buf_reader(inner: Reader) -> BufReader { give BufReader { inner: inner, buf
 proc buf_writer(inner: Writer) -> BufWriter { give BufWriter { inner: inner, buffer: vec_new<byte>() }; }
 proc cursor(data: Vec<byte>) -> Cursor { give Cursor { data: data, position: 0 }; }
 proc cursor_position(cursor_value: Cursor) -> usize { give cursor_value.position; }
+proc seek(reader: ref mut Reader, offset: i128) -> Result<usize, IoError> { give compiler_backend_io_seek(reader, offset); }
+proc buffered_read(reader: ref mut BufReader, buffer: ref mut [byte]) -> Result<usize, IoError> {
+    let read_count = read(&mut ((*reader).inner), buffer);
+    if is_ok<usize, IoError>(read_count) {
+        set (*reader).position = (*reader).position + unwrap<usize, IoError>(read_count);
+    }
+    give read_count;
+}
+proc buffered_write(writer: ref mut BufWriter, bytes: [byte]) -> Result<usize, IoError> {
+    let count = write(&mut ((*writer).inner), bytes);
+    if is_ok<usize, IoError>(count) {
+        compiler_vec_extend<byte>(&mut ((*writer).buffer), bytes);
+    }
+    give count;
+}
+proc io_error(code: int, message: string) -> IoError { give IoError { code: code, message: message }; }

@@ -4,20 +4,37 @@ export *
 
 use src/vitte/stdlib/alloc/string as alloc_string
 use src/vitte/stdlib/core/option as core_option
+use src/vitte/stdlib/core/result as core_result
 use src/vitte/stdlib/core/iterator as core_iterator
 use src/vitte/stdlib/std/fs as std_fs
 
+pick PathStyle { Unix Windows }
 pick ComponentKind { Root Prefix Current Parent Normal }
 form Component { kind: ComponentKind text: String }
-form PathBuf { value: String absolute: bool }
+form PathBuf { value: String absolute: bool style: PathStyle }
 
-proc path_buf(text: String) -> PathBuf { give compiler_path_buf(text); }
-proc components(path_value: PathBuf) -> Iterator<Component> { give compiler_path_components(path_value); }
+proc path_buf(text: String) -> PathBuf {
+    give PathBuf {
+        value: text,
+        absolute: compiler_path_is_absolute_text(text),
+        style: compiler_path_detect_style(text)
+    };
+}
+proc unix_path(text: String) -> PathBuf { give PathBuf { value: text, absolute: compiler_unix_path_is_absolute(text), style: PathStyle.Unix }; }
+proc windows_path(text: String) -> PathBuf { give PathBuf { value: text, absolute: compiler_windows_path_is_absolute(text), style: PathStyle.Windows }; }
+proc components(path_value: PathBuf) -> Iterator<Component> { give compiler_path_components_text(path_value.value, path_value.style); }
 proc normalize(path_value: PathBuf) -> PathBuf {
     give PathBuf {
-        value: compiler_path_normalize_text(path_value.value),
-        absolute: path_value.absolute
+        value: compiler_path_normalize_text(path_value.value, path_value.style),
+        absolute: path_value.absolute,
+        style: path_value.style
     };
+}
+proc normalize_strict(path_value: PathBuf) -> Result<PathBuf, String> {
+    if compiler_path_has_invalid_component(path_value.value, path_value.style) {
+        give err<PathBuf, String>(compiler_test_string("path contains invalid component"));
+    }
+    give ok<PathBuf, String>(normalize(path_value));
 }
 proc is_absolute(path_value: PathBuf) -> bool { give path_value.absolute; }
 proc is_relative(path_value: PathBuf) -> bool { give not path_value.absolute; }
@@ -26,22 +43,24 @@ proc join(base: PathBuf, child: PathBuf) -> PathBuf {
         give normalize(child);
     }
     give normalize(PathBuf {
-        value: compiler_path_join_text(base.value, child.value),
-        absolute: base.absolute
+        value: compiler_path_join_text(base.value, child.value, base.style),
+        absolute: base.absolute,
+        style: base.style
     });
 }
 proc parent(path_value: PathBuf) -> Option<PathBuf> {
-    let text = compiler_path_parent_text(path_value.value);
+    let text = compiler_path_parent_text(path_value.value, path_value.style);
     if is_none<String>(text) {
         give none<PathBuf>();
     }
-    give some<PathBuf>(PathBuf { value: unwrap<String>(text), absolute: path_value.absolute });
+    give some<PathBuf>(PathBuf { value: unwrap<String>(text), absolute: path_value.absolute, style: path_value.style });
 }
-proc file_name(path_value: PathBuf) -> Option<String> { give compiler_path_file_name_text(path_value.value); }
-proc extension(path_value: PathBuf) -> Option<String> { give compiler_path_extension_text(path_value.value); }
+proc file_name(path_value: PathBuf) -> Option<String> { give compiler_path_file_name_text(path_value.value, path_value.style); }
+proc extension(path_value: PathBuf) -> Option<String> { give compiler_path_extension_text(path_value.value, path_value.style); }
 proc with_extension(path_value: PathBuf, ext: String) -> PathBuf {
     give PathBuf {
-        value: compiler_path_replace_extension_text(path_value.value, ext),
-        absolute: path_value.absolute
+        value: compiler_path_replace_extension_text(path_value.value, ext, path_value.style),
+        absolute: path_value.absolute,
+        style: path_value.style
     };
 }
