@@ -1,0 +1,56 @@
+space vitte/stdlib/alloc/collections
+
+export *
+
+form HashMap<K, V> {
+    buckets: Vec<(K, V)>
+    length: usize
+}
+
+form HashSet<T> {
+    map: HashMap<T, bool>
+}
+
+form BTreeMap<K, V> {
+    entries: Vec<(K, V)>
+    length: usize
+}
+
+form BTreeSet<T> {
+    map: BTreeMap<T, bool>
+}
+
+form Deque<T> {
+    data: Vec<T>
+    head: usize
+    length: usize
+}
+
+proc hashmap_new<K, V>() -> HashMap<K, V> { give compiler_hashmap_new<K, V>(); }
+proc hashmap_insert<K, V>(map: ref mut HashMap<K, V>, key: K, value: V) -> Option<V> { give compiler_hashmap_insert<K, V>(map, key, value); }
+proc hashmap_get<K, V>(map: ref HashMap<K, V>, key: K) -> Option<ref V> { give compiler_hashmap_get<K, V>(map, key); }
+proc hashmap_remove<K, V>(map: ref mut HashMap<K, V>, key: K) -> Option<V> { give compiler_hashmap_remove<K, V>(map, key); }
+proc hashmap_len<K, V>(map: HashMap<K, V>) -> usize { give map.length; }
+
+proc hashset_new<T>() -> HashSet<T> { give HashSet<T> { map: hashmap_new<T, bool>() }; }
+proc hashset_insert<T>(set: ref mut HashSet<T>, value: T) -> bool { give is_none<bool>(hashmap_insert<T, bool>(&mut ((*set).map), value, true)); }
+proc hashset_contains<T>(set: ref HashSet<T>, value: T) -> bool { give is_some<ref bool>(hashmap_get<T, bool>(&((*set).map), value)); }
+proc hashset_remove<T>(set: ref mut HashSet<T>, value: T) -> bool { give is_some<bool>(hashmap_remove<T, bool>(&mut ((*set).map), value)); }
+
+proc btreemap_new<K, V>() -> BTreeMap<K, V> { give compiler_btreemap_new<K, V>(); }
+proc btreemap_insert<K, V>(map: ref mut BTreeMap<K, V>, key: K, value: V) -> Option<V> { give compiler_btreemap_insert<K, V>(map, key, value); }
+proc btreemap_get<K, V>(map: ref BTreeMap<K, V>, key: K) -> Option<ref V> { give compiler_btreemap_get<K, V>(map, key); }
+proc btreemap_remove<K, V>(map: ref mut BTreeMap<K, V>, key: K) -> Option<V> { give compiler_btreemap_remove<K, V>(map, key); }
+proc btreemap_iter<K, V>(map: BTreeMap<K, V>) -> Iterator<(K, V)> { give compiler_btreemap_iter<K, V>(map); }
+
+proc btreeset_new<T>() -> BTreeSet<T> { give BTreeSet<T> { map: btreemap_new<T, bool>() }; }
+proc btreeset_insert<T>(set: ref mut BTreeSet<T>, value: T) -> bool { give is_none<bool>(btreemap_insert<T, bool>(&mut ((*set).map), value, true)); }
+proc btreeset_contains<T>(set: ref BTreeSet<T>, value: T) -> bool { give is_some<ref bool>(btreemap_get<T, bool>(&((*set).map), value)); }
+proc btreeset_remove<T>(set: ref mut BTreeSet<T>, value: T) -> bool { give is_some<bool>(btreemap_remove<T, bool>(&mut ((*set).map), value)); }
+
+proc deque_new<T>() -> Deque<T> { give Deque<T> { data: vec_new<T>(), head: 0, length: 0 }; }
+proc deque_push_back<T>(deque: ref mut Deque<T>, value: T) { vec_push<T>(&mut ((*deque).data), value); set (*deque).length = (*deque).length + 1; }
+proc deque_push_front<T>(deque: ref mut Deque<T>, value: T) { compiler_deque_push_front<T>(deque, value); }
+proc deque_pop_back<T>(deque: ref mut Deque<T>) -> Option<T> { give compiler_deque_pop_back<T>(deque); }
+proc deque_pop_front<T>(deque: ref mut Deque<T>) -> Option<T> { give compiler_deque_pop_front<T>(deque); }
+proc deque_len<T>(deque: Deque<T>) -> usize { give deque.length; }

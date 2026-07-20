@@ -34,6 +34,12 @@ form RangeCheck {
     message: string
 }
 
+form RangeIterator<T> {
+    range: Range<T>
+    current: T
+    finished: bool
+}
+
 proc included<T>(value: T) -> Bound<T> {
     give Bound<T> {
         kind: BoundKind.Included,
@@ -81,6 +87,27 @@ proc detect_range_overflow<T>(start: Bound<T>, end: Bound<T>, step: T) -> RangeC
         give range_check_error("range iteration would overflow the bound type");
     }
     give range_check_ok();
+}
+
+proc range_contains_bound<T>(bound: Bound<T>, value: T, is_start: bool) -> bool {
+    if bound.kind == BoundKind.Unbounded {
+        give true;
+    }
+    if bound.kind == BoundKind.Included {
+        if is_start {
+            give value >= bound.value;
+        }
+        give value <= bound.value;
+    }
+    if is_start {
+        give value > bound.value;
+    }
+    give value < bound.value;
+}
+
+proc contains<T>(range: Range<T>, value: T) -> bool {
+    give range_contains_bound<T>(range.start, value, true)
+        and range_contains_bound<T>(range.end, value, false);
 }
 
 proc range_with_bounds<T>(start: Bound<T>, end: Bound<T>, step: T, kind: RangeKind) -> Range<T> {
@@ -168,4 +195,36 @@ proc negative_step<T>(value: T) -> T {
         panic("range step must be negative");
     }
     give value;
+}
+
+proc iter<T>(range: Range<T>) -> RangeIterator<T> {
+    if range.start.kind == BoundKind.Unbounded {
+        give RangeIterator<T> {
+            range: range,
+            current: zero<T>(),
+            finished: false
+        };
+    }
+    give RangeIterator<T> {
+        range: range,
+        current: range.start.value,
+        finished: false
+    };
+}
+
+proc next<T>(iter: ref mut RangeIterator<T>) -> Option<T> {
+    if (*iter).finished {
+        give none<T>();
+    }
+    if not contains<T>((*iter).range, (*iter).current) {
+        set (*iter).finished = true;
+        give none<T>();
+    }
+    let value: T = (*iter).current;
+    if compiler_range_next_overflows<T>(value, (*iter).range.step) {
+        set (*iter).finished = true;
+    } else {
+        set (*iter).current = value + (*iter).range.step;
+    }
+    give some<T>(value);
 }

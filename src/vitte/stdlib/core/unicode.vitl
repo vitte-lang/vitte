@@ -5,6 +5,14 @@ export *
 const UNICODE_VERSION: string = "15.1.0"
 const UNICODE_TABLES_GENERATED: bool = true
 const UNICODE_TABLE_GENERATOR: string = "src/vitte/stdlib/generated/unicode_tables"
+const UNICODE_UCD_CHECKSUM: string = "sha256:local-ucd-contract"
+
+pick NormalizationForm {
+    NFC
+    NFD
+    NFKC
+    NFKD
+}
 
 pick UnicodeCategory {
     UppercaseLetter
@@ -107,4 +115,28 @@ proc to_titlecase(value: rune) -> Iterator<rune> {
 
 proc case_fold(value: rune) -> Iterator<rune> {
     give compiler_unicode_case_fold(value);
+}
+
+proc normalize(text: Utf8View, form: NormalizationForm) -> String {
+    give compiler_unicode_normalize(text, form);
+}
+
+proc normalize_nfc(text: Utf8View) -> String {
+    give normalize(text, NormalizationForm.NFC);
+}
+
+proc normalize_nfd(text: Utf8View) -> String {
+    give normalize(text, NormalizationForm.NFD);
+}
+
+proc normalize_nfkc(text: Utf8View) -> String {
+    give normalize(text, NormalizationForm.NFKC);
+}
+
+proc normalize_nfkd(text: Utf8View) -> String {
+    give normalize(text, NormalizationForm.NFKD);
+}
+
+proc case_fold_string(text: Utf8View) -> String {
+    give compiler_unicode_case_fold_string(text);
 }

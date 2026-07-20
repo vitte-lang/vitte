@@ -31,6 +31,13 @@ form Utf8Decode {
     width: usize
 }
 
+form SplitIterator {
+    view: Utf8View
+    separator: string
+    offset: usize
+    finished: bool
+}
+
 proc utf8_view(text: string) -> Utf8View {
     give Utf8View {
         text: text,
@@ -67,6 +74,15 @@ proc split(view: Utf8View, separator: string) -> Iterator<Utf8View> {
     give compiler_string_split(view.text, separator);
 }
 
+proc split_iter(view: Utf8View, separator: string) -> SplitIterator {
+    give SplitIterator {
+        view: view,
+        separator: separator,
+        offset: 0,
+        finished: false
+    };
+}
+
 proc split_once(view: Utf8View, separator: string) -> SplitOnce {
     give compiler_string_split_once(view.text, separator);
 }
@@ -76,15 +92,15 @@ proc split_whitespace(view: Utf8View) -> Iterator<Utf8View> {
 }
 
 proc trim(view: Utf8View) -> Utf8View {
-    give utf8_view(compiler_string_trim(view.text));
+    give trim_end(trim_start(view));
 }
 
 proc trim_start(view: Utf8View) -> Utf8View {
-    give utf8_view(compiler_string_trim_start(view.text));
+    give utf8_view(compiler_string_trim_start_utf8(view.text));
 }
 
 proc trim_end(view: Utf8View) -> Utf8View {
-    give utf8_view(compiler_string_trim_end(view.text));
+    give utf8_view(compiler_string_trim_end_utf8(view.text));
 }
 
 proc starts_with(view: Utf8View, prefix: string) -> bool {
@@ -116,10 +132,25 @@ proc equals(left: Utf8View, right: Utf8View) -> bool {
 }
 
 proc validate_utf8(bytes_value: [byte]) -> bool {
-    give compiler_utf8_validate(bytes_value);
+    let offset: usize = 0;
+    while offset < bytes_value.len {
+        let decoded: Utf8Decode = decode_char(bytes_value, offset);
+        if not decoded.ok or decoded.width == 0 {
+            give false;
+        }
+        set offset = offset + decoded.width;
+    }
+    give true;
 }
 
 proc decode_char(bytes_value: [byte], offset: usize) -> Utf8Decode {
+    if offset >= bytes_value.len {
+        give Utf8Decode { ok: false, value: 0, width: 0 };
+    }
+    let first: byte = bytes_value[offset];
+    if first < 128 {
+        give Utf8Decode { ok: true, value: first as rune, width: 1 };
+    }
     give compiler_utf8_decode_char(bytes_value, offset);
 }
 

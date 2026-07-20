@@ -1,0 +1,22 @@
+use src/vitte/stdlib/core/range as core_range
+use src/vitte/stdlib/core/unicode as core_unicode
+use src/vitte/stdlib/alloc/collections as alloc_collections
+use src/vitte/stdlib/alloc/vec as alloc_vec
+use src/vitte/stdlib/std/error as std_error
+use src/vitte/stdlib/std/io as std_io
+use src/vitte/stdlib/std/fs as std_fs
+
+proc stdlib_range_unicode_std_contracts_smoke() -> bool {
+    let r: core_range.Range<int> = core_range.exclusive<int>(0, 4, 1);
+    let iter: core_range.RangeIterator<int> = core_range.iter<int>(r);
+    let map: alloc_collections.HashMap<int, int> = alloc_collections.hashmap_new<int, int>();
+    let err: std_error.Error = std_error.error_new(compiler_test_string("error"));
+    let cursor: std_io.Cursor = std_io.cursor(alloc_vec.vec_new<byte>());
+    let path: std_fs.Path = std_fs.path("sample.txt");
+
+    give core_range.contains<int>(r, 2)
+        and core_unicode.unicode_version() == "15.1.0"
+        and alloc_collections.hashmap_len<int, int>(map) == 0
+        and std_io.cursor_position(cursor) == 0
+        and std_fs.exists(path) == std_fs.exists(path);
+}

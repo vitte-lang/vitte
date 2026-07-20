@@ -1,0 +1,39 @@
+space vitte/stdlib/std/error
+
+export *
+
+form Backtrace {
+    frames: Vec<String>
+    captured: bool
+}
+
+form Error {
+    message: String
+    source: Option<Box<Error>>
+    backtrace: Option<Backtrace>
+}
+
+form ErrorTrait<T> {
+    message: proc(T) -> String
+    source: proc(T) -> Option<Error>
+}
+
+proc error_new(message: String) -> Error {
+    give Error {
+        message: message,
+        source: none<Box<Error>>(),
+        backtrace: none<Backtrace>()
+    };
+}
+
+proc error_with_source(message: String, source: Error) -> Error {
+    give Error {
+        message: message,
+        source: some<Box<Error>>(box_new<Error>(source)),
+        backtrace: none<Backtrace>()
+    };
+}
+
+proc capture_backtrace() -> Backtrace { give compiler_error_capture_backtrace(); }
+proc error_with_backtrace(error: Error) -> Error { give compiler_error_attach_backtrace(error, capture_backtrace()); }
+proc error_chain(error: Error) -> Iterator<Error> { give compiler_error_chain(error); }

@@ -5,11 +5,22 @@ export *
 form IoError { code: int message: string }
 form Reader { handle: int }
 form Writer { handle: int }
+form Read { read: proc(ref mut Reader, ref mut [byte]) -> Result<usize, IoError> }
+form Write { write: proc(ref mut Writer, [byte]) -> Result<usize, IoError> flush: proc(ref mut Writer) -> Result<(), IoError> }
+form BufReader { inner: Reader buffer: Vec<byte> position: usize }
+form BufWriter { inner: Writer buffer: Vec<byte> }
+form Cursor { data: Vec<byte> position: usize }
 
 proc stdin() -> Reader { give compiler_stdio_stdin(); }
 proc stdout() -> Writer { give compiler_stdio_stdout(); }
 proc stderr() -> Writer { give compiler_stdio_stderr(); }
 proc read_to_string(reader: Reader) -> Result<String, IoError> { give compiler_io_read_to_string(reader); }
+proc read(reader: ref mut Reader, buffer: ref mut [byte]) -> Result<usize, IoError> { give compiler_io_read(reader, buffer); }
+proc write(writer: ref mut Writer, bytes: [byte]) -> Result<usize, IoError> { give compiler_io_write(writer, bytes); }
 proc write_all(writer: Writer, bytes: [byte]) -> Result<(), IoError> { give compiler_io_write_all(writer, bytes); }
 proc write_string(writer: Writer, text: string) -> Result<(), IoError> { give compiler_io_write_string(writer, text); }
 proc flush(writer: Writer) -> Result<(), IoError> { give compiler_io_flush(writer); }
+proc buf_reader(inner: Reader) -> BufReader { give BufReader { inner: inner, buffer: vec_new<byte>(), position: 0 }; }
+proc buf_writer(inner: Writer) -> BufWriter { give BufWriter { inner: inner, buffer: vec_new<byte>() }; }
+proc cursor(data: Vec<byte>) -> Cursor { give Cursor { data: data, position: 0 }; }
+proc cursor_position(cursor_value: Cursor) -> usize { give cursor_value.position; }

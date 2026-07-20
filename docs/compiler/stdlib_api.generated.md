@@ -2932,6 +2932,7 @@ Generated from `src/vitte/stdlib/stdlib_modules.json`.
 - `form Bound`
 - `form Range`
 - `form RangeCheck`
+- `form RangeIterator`
 - `proc included`
 - `proc excluded`
 - `proc unbounded`
@@ -2939,6 +2940,8 @@ Generated from `src/vitte/stdlib/stdlib_modules.json`.
 - `proc range_check_error`
 - `proc detect_zero_step`
 - `proc detect_range_overflow`
+- `proc range_contains_bound`
+- `proc contains`
 - `proc range_with_bounds`
 - `proc exclusive`
 - `proc inclusive`
@@ -2948,6 +2951,8 @@ Generated from `src/vitte/stdlib/stdlib_modules.json`.
 - `proc to`
 - `proc positive_step`
 - `proc negative_step`
+- `proc iter`
+- `proc next`
 
 ## `src/vitte/stdlib/core/result.vitl`
 
@@ -3025,6 +3030,7 @@ Generated from `src/vitte/stdlib/stdlib_modules.json`.
 - `form SplitOnce`
 - `pick StringOrdering`
 - `form Utf8Decode`
+- `form SplitIterator`
 - `proc utf8_view`
 - `proc byte_length`
 - `proc char_length`
@@ -3033,6 +3039,7 @@ Generated from `src/vitte/stdlib/stdlib_modules.json`.
 - `proc char_indices`
 - `proc lines`
 - `proc split`
+- `proc split_iter`
 - `proc split_once`
 - `proc split_whitespace`
 - `proc trim`
@@ -3120,6 +3127,8 @@ Generated from `src/vitte/stdlib/stdlib_modules.json`.
 - `const UNICODE_VERSION`
 - `const UNICODE_TABLES_GENERATED`
 - `const UNICODE_TABLE_GENERATOR`
+- `const UNICODE_UCD_CHECKSUM`
+- `pick NormalizationForm`
 - `pick UnicodeCategory`
 - `form UnicodeProperties`
 - `proc unicode_version`
@@ -3137,6 +3146,12 @@ Generated from `src/vitte/stdlib/stdlib_modules.json`.
 - `proc to_lowercase`
 - `proc to_titlecase`
 - `proc case_fold`
+- `proc normalize`
+- `proc normalize_nfc`
+- `proc normalize_nfd`
+- `proc normalize_nfkc`
+- `proc normalize_nfkd`
+- `proc case_fold_string`
 
 ## `src/vitte/stdlib/core/utils.vitl`
 
@@ -3185,6 +3200,38 @@ Generated from `src/vitte/stdlib/stdlib_modules.json`.
 - `proc box_as_ref`
 - `proc box_as_mut`
 - `proc box_drop`
+
+## `src/vitte/stdlib/alloc/collections.vitl`
+
+- `form HashMap`
+- `form HashSet`
+- `form BTreeMap`
+- `form BTreeSet`
+- `form Deque`
+- `proc hashmap_new`
+- `proc hashmap_insert`
+- `proc hashmap_get`
+- `proc hashmap_remove`
+- `proc hashmap_len`
+- `proc hashset_new`
+- `proc hashset_insert`
+- `proc hashset_contains`
+- `proc hashset_remove`
+- `proc btreemap_new`
+- `proc btreemap_insert`
+- `proc btreemap_get`
+- `proc btreemap_remove`
+- `proc btreemap_iter`
+- `proc btreeset_new`
+- `proc btreeset_insert`
+- `proc btreeset_contains`
+- `proc btreeset_remove`
+- `proc deque_new`
+- `proc deque_push_back`
+- `proc deque_push_front`
+- `proc deque_pop_back`
+- `proc deque_pop_front`
+- `proc deque_len`
 
 ## `src/vitte/stdlib/alloc/rc.vitl`
 
@@ -3657,6 +3704,8 @@ Generated from `src/vitte/stdlib/stdlib_modules.json`.
 - `proc generated_unicode_checksum`
 - `proc generated_unicode_category`
 - `proc generated_unicode_properties`
+- `proc generated_unicode_normalization`
+- `proc generated_unicode_case_fold`
 
 ## `src/vitte/stdlib/json/builder.vitl`
 
@@ -5152,18 +5201,38 @@ Generated from `src/vitte/stdlib/stdlib_modules.json`.
 - `proc current_dir`
 - `proc set_current_dir`
 
+## `src/vitte/stdlib/std/error.vitl`
+
+- `form Backtrace`
+- `form Error`
+- `form ErrorTrait`
+- `proc error_new`
+- `proc error_with_source`
+- `proc capture_backtrace`
+- `proc error_with_backtrace`
+- `proc error_chain`
+
 ## `src/vitte/stdlib/std/fs.vitl`
 
 - `form Path`
+- `form Permissions`
 - `form Metadata`
 - `form FsError`
+- `form DirEntry`
 - `proc path`
 - `proc read`
 - `proc read_to_string`
 - `proc write`
 - `proc create_dir_all`
+- `proc create_dir`
 - `proc remove_file`
+- `proc remove_dir`
+- `proc rename`
+- `proc copy`
 - `proc metadata`
+- `proc permissions`
+- `proc set_permissions`
+- `proc read_dir`
 - `proc exists`
 
 ## `src/vitte/stdlib/std/io.vitl`
@@ -5171,13 +5240,24 @@ Generated from `src/vitte/stdlib/stdlib_modules.json`.
 - `form IoError`
 - `form Reader`
 - `form Writer`
+- `form Read`
+- `form Write`
+- `form BufReader`
+- `form BufWriter`
+- `form Cursor`
 - `proc stdin`
 - `proc stdout`
 - `proc stderr`
 - `proc read_to_string`
+- `proc read`
+- `proc write`
 - `proc write_all`
 - `proc write_string`
 - `proc flush`
+- `proc buf_reader`
+- `proc buf_writer`
+- `proc cursor`
+- `proc cursor_position`
 
 ## `src/vitte/stdlib/std/process.vitl`
 
@@ -5210,6 +5290,10 @@ Generated from `src/vitte/stdlib/stdlib_modules.json`.
 ## `src/vitte/stdlib/tests/core_alloc_contracts.vit`
 
 - `proc stdlib_core_alloc_contracts_smoke`
+
+## `src/vitte/stdlib/tests/range_unicode_std_contracts.vit`
+
+- `proc stdlib_range_unicode_std_contracts_smoke`
 
 ## `src/vitte/stdlib/tools/unicode_tables.vitl`
 
