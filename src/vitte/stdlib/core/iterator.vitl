@@ -90,15 +90,36 @@ proc iterator_size_hint<T>(iter: Iterator<T>) -> SizeHint {
 }
 
 proc count<T>(iter: Iterator<T>) -> usize {
-    give compiler_iterator_count<T>(iter);
+    let cursor: Iterator<T> = iter;
+    let total: usize = 0;
+    while is_some<T>(next<T>(&mut cursor)) {
+        set total = total + 1;
+    }
+    give total;
 }
 
 proc last<T>(iter: Iterator<T>) -> Option<T> {
-    give compiler_iterator_last<T>(iter);
+    let cursor: Iterator<T> = iter;
+    let item: Option<T> = none<T>();
+    let current: Option<T> = next<T>(&mut cursor);
+    while is_some<T>(current) {
+        set item = current;
+        set current = next<T>(&mut cursor);
+    }
+    give item;
 }
 
 proc nth<T>(iter: ref mut Iterator<T>, index: usize) -> Option<T> {
-    give compiler_iterator_nth<T>(iter, index);
+    let current_index: usize = 0;
+    let item: Option<T> = next<T>(iter);
+    while is_some<T>(item) {
+        if current_index == index {
+            give item;
+        }
+        set current_index = current_index + 1;
+        set item = next<T>(iter);
+    }
+    give none<T>();
 }
 
 proc step_by<T>(iter: Iterator<T>, step: usize) -> Iterator<T> {
@@ -182,11 +203,28 @@ proc inspect<T>(iter: Iterator<T>, f: proc(T)) -> Iterator<T> {
 }
 
 proc fold<T, U>(iter: Iterator<T>, init: U, f: proc(U, T) -> U) -> U {
-    give compiler_iterator_fold<T, U>(iter, init, f);
+    let cursor: Iterator<T> = iter;
+    let acc: U = init;
+    let item: Option<T> = next<T>(&mut cursor);
+    while is_some<T>(item) {
+        set acc = f(acc, item.value);
+        set item = next<T>(&mut cursor);
+    }
+    give acc;
 }
 
 proc reduce<T>(iter: Iterator<T>, f: proc(T, T) -> T) -> Option<T> {
-    give compiler_iterator_reduce<T>(iter, f);
+    let cursor: Iterator<T> = iter;
+    let acc: Option<T> = next<T>(&mut cursor);
+    if is_none<T>(acc) {
+        give none<T>();
+    }
+    let item: Option<T> = next<T>(&mut cursor);
+    while is_some<T>(item) {
+        set acc = some<T>(f(acc.value, item.value));
+        set item = next<T>(&mut cursor);
+    }
+    give acc;
 }
 
 proc try_fold<T, U, E>(iter: Iterator<T>, init: U, f: proc(U, T) -> Result<U, E>) -> Result<U, E> {
@@ -194,15 +232,39 @@ proc try_fold<T, U, E>(iter: Iterator<T>, init: U, f: proc(U, T) -> Result<U, E>
 }
 
 proc all<T>(iter: Iterator<T>, predicate: proc(T) -> bool) -> bool {
-    give compiler_iterator_all<T>(iter, predicate);
+    let cursor: Iterator<T> = iter;
+    let item: Option<T> = next<T>(&mut cursor);
+    while is_some<T>(item) {
+        if not predicate(item.value) {
+            give false;
+        }
+        set item = next<T>(&mut cursor);
+    }
+    give true;
 }
 
 proc any<T>(iter: Iterator<T>, predicate: proc(T) -> bool) -> bool {
-    give compiler_iterator_any<T>(iter, predicate);
+    let cursor: Iterator<T> = iter;
+    let item: Option<T> = next<T>(&mut cursor);
+    while is_some<T>(item) {
+        if predicate(item.value) {
+            give true;
+        }
+        set item = next<T>(&mut cursor);
+    }
+    give false;
 }
 
 proc find<T>(iter: Iterator<T>, predicate: proc(T) -> bool) -> Option<T> {
-    give compiler_iterator_find<T>(iter, predicate);
+    let cursor: Iterator<T> = iter;
+    let item: Option<T> = next<T>(&mut cursor);
+    while is_some<T>(item) {
+        if predicate(item.value) {
+            give item;
+        }
+        set item = next<T>(&mut cursor);
+    }
+    give none<T>();
 }
 
 proc find_map<T, U>(iter: Iterator<T>, f: proc(T) -> Option<U>) -> Option<U> {
@@ -210,7 +272,17 @@ proc find_map<T, U>(iter: Iterator<T>, f: proc(T) -> Option<U>) -> Option<U> {
 }
 
 proc position<T>(iter: Iterator<T>, predicate: proc(T) -> bool) -> Option<usize> {
-    give compiler_iterator_position<T>(iter, predicate);
+    let cursor: Iterator<T> = iter;
+    let index: usize = 0;
+    let item: Option<T> = next<T>(&mut cursor);
+    while is_some<T>(item) {
+        if predicate(item.value) {
+            give some<usize>(index);
+        }
+        set index = index + 1;
+        set item = next<T>(&mut cursor);
+    }
+    give none<usize>();
 }
 
 proc rposition<T>(iter: DoubleEndedIterator<T>, predicate: proc(T) -> bool) -> Option<usize> {

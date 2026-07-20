@@ -60,7 +60,12 @@ STDLIB_NEXT_STEP_SOURCES = (
     SOURCE_STDLIB_DIR / "generated" / "unicode_tables.vitl",
     SOURCE_STDLIB_DIR / "tools" / "unicode_tables.vitl",
     SOURCE_STDLIB_DIR / "tests" / "api_contracts.vit",
+    SOURCE_STDLIB_DIR / "tests" / "core_alloc_contracts.vit",
+    ROOT / "tools" / "stdlib" / "generate_api_docs.py",
     ROOT / "docs" / "compiler" / "stdlib_next_steps.md",
+    ROOT / "docs" / "compiler" / "stdlib_boundaries.md",
+    ROOT / "docs" / "compiler" / "stdlib_api.md",
+    ROOT / "docs" / "compiler" / "stdlib_api.generated.md",
 )
 
 REPORT_DIR.mkdir(parents=True, exist_ok=True)
@@ -635,13 +640,13 @@ REQUIRED_UNICODE_FRAGMENTS = (
     "proc case_fold",
 )
 REQUIRED_NEXT_STEP_FRAGMENTS = {
-    "core/slice.vitl": ("form Slice<T>", "proc get<T>", "proc chunks<T>", "proc windows<T>"),
+    "core/slice.vitl": ("form Slice<T>", "proc get<T>", "proc chunks<T>", "proc windows<T>", "proc binary_search<T>", "proc sort_unstable<T>", "proc sort_stable<T>"),
     "core/array.vitl": ("form Array<T>", "proc array_len<T", "proc array_get<T", "proc array_sort<T"),
     "core/cmp.vitl": ("pick Ordering", "form Eq<T>", "form Ord<T>", "proc compare<T>"),
     "core/hash.vitl": ("form Hasher", "form Hash<T>", "proc hash<T>", "proc combine_hash"),
     "alloc/box.vitl": ("form Box<T>", "proc box_new<T>", "proc box_drop<T>"),
-    "alloc/vec.vitl": ("form Vec<T>", "proc vec_new<T>", "proc vec_push<T>", "proc vec_iter<T>"),
-    "alloc/string.vitl": ("form String", "proc string_new", "proc string_push", "proc string_as_utf8_view"),
+    "alloc/vec.vitl": ("form Vec<T>", "proc vec_new<T>", "proc vec_push<T>", "proc vec_iter<T>", "proc vec_drop<T>", "compiler_vec_realloc"),
+    "alloc/string.vitl": ("form String", "proc string_new", "proc string_push", "proc string_concat", "proc string_slice", "proc string_as_utf8_view"),
     "alloc/rc.vitl": ("form Rc<T>", "form Weak<T>", "proc rc_new<T>", "proc weak_upgrade<T>"),
     "alloc/arc.vitl": ("form Arc<T>", "form ArcWeak<T>", "proc arc_new<T>", "proc arc_weak_upgrade<T>"),
     "std/io.vitl": ("form IoError", "form Reader", "form Writer", "proc read_to_string"),
@@ -653,6 +658,7 @@ REQUIRED_NEXT_STEP_FRAGMENTS = {
     "generated/unicode_tables.vitl": ("GENERATED_UNICODE_VERSION", "proc generated_unicode_category", "proc generated_unicode_properties"),
     "tools/unicode_tables.vitl": ("form UnicodeTableGeneration", "proc generate_unicode_tables", "proc verify_unicode_tables"),
     "tests/api_contracts.vit": ("stdlib_api_contracts_smoke", "std_time.duration_from_secs", "platform_abi.supports_filesystem"),
+    "tests/core_alloc_contracts.vit": ("stdlib_core_alloc_contracts_smoke", "alloc_vec.vec_push", "alloc_string.string_push"),
 }
 
 
@@ -1286,16 +1292,27 @@ def validate_stdlib_next_steps() -> list[ValidationResult]:
 
     doc = ROOT / "docs" / "compiler" / "stdlib_next_steps.md"
     doc_text = doc.read_text(encoding="utf-8")
+    boundaries_text = (ROOT / "docs" / "compiler" / "stdlib_boundaries.md").read_text(encoding="utf-8")
+    api_text = (ROOT / "docs" / "compiler" / "stdlib_api.md").read_text(encoding="utf-8")
+    generated_api_text = (ROOT / "docs" / "compiler" / "stdlib_api.generated.md").read_text(encoding="utf-8")
+    generator_text = (ROOT / "tools" / "stdlib" / "generate_api_docs.py").read_text(encoding="utf-8")
     doc_fragments = (
         "core slices",
         "allocation containers",
         "standard I/O",
         "generated Unicode tables",
+        "`core` is the allocation-free layer",
+        "`alloc` owns heap-backed containers",
+        "`std` is the OS-facing layer",
+        "Current Stabilized Surface",
+        "Generated from `src/vitte/stdlib/stdlib_modules.json`",
+        "collect_symbols",
     )
+    combined_docs = "\n".join((doc_text, boundaries_text, api_text, generated_api_text, generator_text))
     missing_doc = [
         fragment
         for fragment in doc_fragments
-        if fragment not in doc_text
+        if fragment not in combined_docs
     ]
     results.append(ValidationResult(
         name="stdlib_next_steps_documented",

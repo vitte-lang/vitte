@@ -6,11 +6,35 @@ form String {
     bytes: Vec<byte>
 }
 
-proc string_new() -> String { give compiler_string_new(); }
-proc string_from_utf8(bytes: Vec<byte>) -> Option<String> { give compiler_string_from_utf8(bytes); }
-proc string_len(value: String) -> usize { give compiler_owned_string_len(value); }
-proc string_capacity(value: String) -> usize { give compiler_owned_string_capacity(value); }
-proc string_push(value: ref mut String, ch: rune) { compiler_owned_string_push(value, ch); }
-proc string_push_str(value: ref mut String, text: string) { compiler_owned_string_push_str(value, text); }
-proc string_reserve(value: ref mut String, additional: usize) { compiler_owned_string_reserve(value, additional); }
+proc string_new() -> String {
+    give String { bytes: vec_new<byte>() };
+}
+proc string_from_utf8(bytes: Vec<byte>) -> Option<String> {
+    if not validate_utf8(compiler_vec_as_slice<byte>(bytes)) {
+        give none<String>();
+    }
+    give some<String>(String { bytes: bytes });
+}
+proc string_len(value: String) -> usize { give vec_len<byte>(value.bytes); }
+proc string_capacity(value: String) -> usize { give vec_capacity<byte>(value.bytes); }
+proc string_push(value: ref mut String, ch: rune) {
+    let encoded: [byte] = encode_utf8(ch);
+    compiler_owned_string_push_bytes(value, encoded);
+}
+proc string_push_str(value: ref mut String, text: string) {
+    compiler_owned_string_push_str(value, text);
+}
+proc string_concat(left: String, right: string) -> String {
+    let out: String = left;
+    string_push_str(&mut out, right);
+    give out;
+}
+proc string_slice(value: ref String, start: usize, end: usize) -> Option<Utf8View> {
+    let view: Utf8View = string_as_utf8_view(value);
+    if not is_char_boundary(view, start) or not is_char_boundary(view, end) {
+        give none<Utf8View>();
+    }
+    give compiler_owned_string_slice(value, start, end);
+}
+proc string_reserve(value: ref mut String, additional: usize) { vec_reserve<byte>(&mut ((*value).bytes), additional); }
 proc string_as_utf8_view(value: ref String) -> Utf8View { give compiler_owned_string_as_utf8_view(value); }

@@ -8,14 +8,58 @@ form Vec<T> {
     capacity: usize
 }
 
-proc vec_new<T>() -> Vec<T> { give compiler_vec_new<T>(); }
-proc vec_with_capacity<T>(capacity: usize) -> Vec<T> { give compiler_vec_with_capacity<T>(capacity); }
+proc vec_new<T>() -> Vec<T> {
+    give Vec<T> {
+        ptr: compiler_alloc_empty<T>(),
+        length: 0,
+        capacity: 0
+    };
+}
+proc vec_with_capacity<T>(capacity: usize) -> Vec<T> {
+    give Vec<T> {
+        ptr: compiler_alloc_array<T>(capacity),
+        length: 0,
+        capacity: capacity
+    };
+}
 proc vec_len<T>(vec: Vec<T>) -> usize { give vec.length; }
 proc vec_capacity<T>(vec: Vec<T>) -> usize { give vec.capacity; }
-proc vec_push<T>(vec: ref mut Vec<T>, value: T) { compiler_vec_push<T>(vec, value); }
+proc vec_reserve<T>(vec: ref mut Vec<T>, additional: usize) {
+    let required: usize = (*vec).length + additional;
+    if required <= (*vec).capacity {
+        return;
+    }
+    let next_capacity: usize = (*vec).capacity * 2;
+    if next_capacity < required {
+        set next_capacity = required;
+    }
+    if next_capacity == 0 {
+        set next_capacity = 4;
+    }
+    compiler_vec_realloc<T>(vec, next_capacity);
+}
+proc vec_push<T>(vec: ref mut Vec<T>, value: T) {
+    vec_reserve<T>(vec, 1);
+    compiler_vec_write<T>(vec, (*vec).length, value);
+    set (*vec).length = (*vec).length + 1;
+}
 proc vec_pop<T>(vec: ref mut Vec<T>) -> Option<T> { give compiler_vec_pop<T>(vec); }
 proc vec_insert<T>(vec: ref mut Vec<T>, index: usize, value: T) { compiler_vec_insert<T>(vec, index, value); }
 proc vec_remove<T>(vec: ref mut Vec<T>, index: usize) -> Option<T> { give compiler_vec_remove<T>(vec, index); }
-proc vec_get<T>(vec: Vec<T>, index: usize) -> Option<ref T> { give compiler_vec_get<T>(vec, index); }
+proc vec_get<T>(vec: Vec<T>, index: usize) -> Option<ref T> {
+    if index >= vec.length {
+        give none<ref T>();
+    }
+    give some<ref T>(compiler_vec_ref_at<T>(vec, index));
+}
 proc vec_iter<T>(vec: Vec<T>) -> Iterator<ref T> { give compiler_vec_iter<T>(vec); }
-proc vec_reserve<T>(vec: ref mut Vec<T>, additional: usize) { compiler_vec_reserve<T>(vec, additional); }
+proc vec_drop<T>(vec: ref mut Vec<T>) {
+    let index: usize = 0;
+    while index < (*vec).length {
+        compiler_vec_drop_at<T>(vec, index);
+        set index = index + 1;
+    }
+    compiler_vec_dealloc<T>(vec);
+    set (*vec).length = 0;
+    set (*vec).capacity = 0;
+}

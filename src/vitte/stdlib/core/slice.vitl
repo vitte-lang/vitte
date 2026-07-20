@@ -12,16 +12,67 @@ form SliceIndex {
     end: usize
 }
 
+form SliceChunks<T> {
+    source: Slice<T>
+    size: usize
+    offset: usize
+}
+
+form SliceWindows<T> {
+    source: Slice<T>
+    size: usize
+    offset: usize
+}
+
 proc len<T>(slice: Slice<T>) -> usize { give slice.length; }
 proc is_empty<T>(slice: Slice<T>) -> bool { give slice.length == 0; }
-proc get<T>(slice: Slice<T>, index: usize) -> Option<ref T> { give compiler_slice_get<T>(slice, index); }
+proc get<T>(slice: Slice<T>, index: usize) -> Option<ref T> {
+    if index >= slice.length {
+        give none<ref T>();
+    }
+    give some<ref T>(compiler_slice_ref_at<T>(slice, index));
+}
 proc get_mut<T>(slice: ref mut Slice<T>, index: usize) -> Option<ref mut T> { give compiler_slice_get_mut<T>(slice, index); }
 proc first<T>(slice: Slice<T>) -> Option<ref T> { give get<T>(slice, 0); }
-proc last<T>(slice: Slice<T>) -> Option<ref T> { give compiler_slice_last<T>(slice); }
-proc split_at<T>(slice: Slice<T>, index: usize) -> (Slice<T>, Slice<T>) { give compiler_slice_split_at<T>(slice, index); }
-proc subslice<T>(slice: Slice<T>, start: usize, end: usize) -> Option<Slice<T>> { give compiler_slice_subslice<T>(slice, start, end); }
+proc last<T>(slice: Slice<T>) -> Option<ref T> {
+    if slice.length == 0 {
+        give none<ref T>();
+    }
+    give get<T>(slice, slice.length - 1);
+}
+proc split_at<T>(slice: Slice<T>, index: usize) -> (Slice<T>, Slice<T>) {
+    if index > slice.length {
+        panic("slice split index is outside the slice");
+    }
+    give compiler_slice_split_at<T>(slice, index);
+}
+proc subslice<T>(slice: Slice<T>, start: usize, end: usize) -> Option<Slice<T>> {
+    if start > end or end > slice.length {
+        give none<Slice<T>>();
+    }
+    give some<Slice<T>>(compiler_slice_range<T>(slice, start, end));
+}
 proc iter<T>(slice: Slice<T>) -> Iterator<ref T> { give compiler_slice_iter<T>(slice); }
-proc chunks<T>(slice: Slice<T>, size: usize) -> Iterator<Slice<T>> { give compiler_slice_chunks<T>(slice, size); }
-proc windows<T>(slice: Slice<T>, size: usize) -> Iterator<Slice<T>> { give compiler_slice_windows<T>(slice, size); }
+proc chunks<T>(slice: Slice<T>, size: usize) -> SliceChunks<T> {
+    if size == 0 {
+        panic("slice chunk size must not be zero");
+    }
+    give SliceChunks<T> { source: slice, size: size, offset: 0 };
+}
+proc windows<T>(slice: Slice<T>, size: usize) -> SliceWindows<T> {
+    if size == 0 {
+        panic("slice window size must not be zero");
+    }
+    give SliceWindows<T> { source: slice, size: size, offset: 0 };
+}
+proc binary_search<T>(slice: Slice<T>, needle: T, compare: proc(T, T) -> int) -> Option<usize> {
+    give compiler_slice_binary_search<T>(slice, needle, compare);
+}
+proc sort_unstable<T>(slice: ref mut Slice<T>, compare: proc(T, T) -> int) {
+    compiler_slice_sort_unstable<T>(slice, compare);
+}
+proc sort_stable<T>(slice: ref mut Slice<T>, compare: proc(T, T) -> int) {
+    compiler_slice_sort_stable<T>(slice, compare);
+}
 proc fill<T>(slice: ref mut Slice<T>, value: T) { compiler_slice_fill<T>(slice, value); }
 proc copy_from<T>(dst: ref mut Slice<T>, src: Slice<T>) { compiler_slice_copy_from<T>(dst, src); }
