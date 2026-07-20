@@ -27,6 +27,16 @@ form Allocator {
     stats: MemoryStats
 }
 
+form MemoryLayout {
+    size: u64
+    align: u64
+}
+
+form MemoryCheck {
+    ok: bool
+    message: string
+}
+
 proc empty_memory_stats() -> MemoryStats {
     give MemoryStats {
         total: 0,
@@ -194,6 +204,118 @@ proc clone_allocator(alloc: Allocator) -> Allocator {
         blocks: alloc.blocks,
         stats: alloc.stats
     };
+}
+
+proc memory_layout(size: u64, align: u64) -> MemoryLayout {
+    give MemoryLayout {
+        size: size,
+        align: align
+    };
+}
+
+proc memory_check_ok() -> MemoryCheck {
+    give MemoryCheck {
+        ok: true,
+        message: ""
+    };
+}
+
+proc memory_check_error(message: string) -> MemoryCheck {
+    give MemoryCheck {
+        ok: false,
+        message: message
+    };
+}
+
+proc size_of<T>() -> u64 {
+    give layout_of<T>().size;
+}
+
+proc size_of_value<T>(value: ref T) -> u64 {
+    give size_of<T>();
+}
+
+proc align_of<T>() -> u64 {
+    give layout_of<T>().align;
+}
+
+proc align_of_value<T>(value: ref T) -> u64 {
+    give align_of<T>();
+}
+
+proc offset_of<T>(field_name: string) -> u64 {
+    give compiler_offset_of<T>(field_name);
+}
+
+proc swap<T>(left: ref mut T, right: ref mut T) {
+    let tmp: T = *left;
+    set *left = *right;
+    set *right = tmp;
+}
+
+proc replace<T>(slot: ref mut T, value: T) -> T {
+    let old: T = *slot;
+    set *slot = value;
+    give old;
+}
+
+proc take<T>(slot: ref mut T, default_value: T) -> T {
+    give replace<T>(slot, default_value);
+}
+
+proc forget<T>(value: T) {
+    core_forget<T>(value);
+}
+
+proc drop<T>(value: ref mut T) {
+    core_drop<T>(value);
+}
+
+proc detect_size_compatible(from_layout: MemoryLayout, to_layout: MemoryLayout) -> MemoryCheck {
+    if from_layout.size != to_layout.size {
+        give memory_check_error("size mismatch: source and destination layouts have different byte sizes");
+    }
+    give memory_check_ok();
+}
+
+proc detect_alignment_compatible(from_layout: MemoryLayout, to_layout: MemoryLayout) -> MemoryCheck {
+    if from_layout.align < to_layout.align {
+        give memory_check_error("alignment mismatch: destination requires stricter alignment");
+    }
+    give memory_check_ok();
+}
+
+proc unsafe_transmute<T, U>(value: T, from_layout: MemoryLayout, to_layout: MemoryLayout) -> U {
+    let size_check: MemoryCheck = detect_size_compatible(from_layout, to_layout);
+    let align_check: MemoryCheck = detect_alignment_compatible(from_layout, to_layout);
+    if not size_check.ok {
+        panic(size_check.message);
+    }
+    if not align_check.ok {
+        panic(align_check.message);
+    }
+    give compiler_transmute<T, U>(value);
+}
+
+proc unsafe_zeroed<T>() -> T {
+    give compiler_zeroed<T>();
+}
+
+proc unsafe_uninitialized<T>() -> T {
+    give compiler_uninitialized<T>();
+}
+
+proc unsafe_operation_invariants(operation: string) -> string {
+    if operation == "transmute" {
+        give "caller must prove identical size, compatible alignment, valid bit pattern, and ownership preservation";
+    }
+    if operation == "zeroed" {
+        give "caller must prove the all-zero bit pattern is valid for the target type";
+    }
+    if operation == "uninitialized" {
+        give "caller must fully initialize the value before any read or drop";
+    }
+    give "unknown unsafe memory operation";
 }
 
 proc memory_selftest() -> bool {

@@ -1,0 +1,75 @@
+space vitte/stdlib/core/scope
+
+export *
+
+pick ScopeExitReason {
+    Normal
+    EarlyReturn
+    Break
+    Continue
+    Error
+    Panic
+}
+
+form ScopeGuard<T> {
+    value: T
+    action: proc(ref mut T) -> unit
+    active: bool
+}
+
+form DeferAction {
+    name: string
+    run: proc() -> unit
+    executed: bool
+}
+
+proc scope_guard<T>(value: T, action: proc(ref mut T) -> unit) -> ScopeGuard<T> {
+    give ScopeGuard<T> {
+        value: value,
+        action: action,
+        active: true
+    };
+}
+
+proc dismiss<T>(guard: ref mut ScopeGuard<T>) {
+    set (*guard).active = false;
+}
+
+proc run_scope_guard<T>(guard: ref mut ScopeGuard<T>) {
+    if (*guard).active {
+        (*guard).action(&mut ((*guard).value));
+        set (*guard).active = false;
+    }
+}
+
+proc defer(name: string, run: proc() -> unit) -> DeferAction {
+    give DeferAction {
+        name: name,
+        run: run,
+        executed: false
+    };
+}
+
+proc run_defer(action: ref mut DeferAction) {
+    if not (*action).executed {
+        (*action).run();
+        set (*action).executed = true;
+    }
+}
+
+proc defer_runs_for_exit(reason: ScopeExitReason) -> bool {
+    give reason == ScopeExitReason.Normal
+        or reason == ScopeExitReason.EarlyReturn
+        or reason == ScopeExitReason.Break
+        or reason == ScopeExitReason.Continue
+        or reason == ScopeExitReason.Error
+        or reason == ScopeExitReason.Panic;
+}
+
+proc defer_panic_behavior() -> string {
+    give "defer actions run during panic unwinding in reverse registration order; a second panic aborts the process";
+}
+
+proc scope_exit_guarantee(reason: ScopeExitReason, action: DeferAction) -> bool {
+    give defer_runs_for_exit(reason) and action.name != "";
+}

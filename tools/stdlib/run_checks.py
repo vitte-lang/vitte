@@ -30,6 +30,9 @@ CORE_CONVERT_SOURCE = SOURCE_STDLIB_DIR / "core" / "convert.vitl"
 CORE_DEFAULT_SOURCE = SOURCE_STDLIB_DIR / "core" / "default.vitl"
 CORE_CLONE_SOURCE = SOURCE_STDLIB_DIR / "core" / "clone.vitl"
 CORE_CONVERT_DEFAULT_CLONE_DOC = ROOT / "docs" / "compiler" / "stdlib_core_convert_default_clone.md"
+CORE_DROP_SOURCE = SOURCE_STDLIB_DIR / "core" / "drop.vitl"
+CORE_SCOPE_SOURCE = SOURCE_STDLIB_DIR / "core" / "scope.vitl"
+CORE_DROP_SCOPE_MEMORY_DOC = ROOT / "docs" / "compiler" / "stdlib_core_drop_scope_memory.md"
 
 REPORT_DIR.mkdir(parents=True, exist_ok=True)
 STDLIB_DIR.mkdir(parents=True, exist_ok=True)
@@ -55,6 +58,9 @@ REQUIRED_FILES = [
     CORE_DEFAULT_SOURCE,
     CORE_CLONE_SOURCE,
     CORE_CONVERT_DEFAULT_CLONE_DOC,
+    CORE_DROP_SOURCE,
+    CORE_SCOPE_SOURCE,
+    CORE_DROP_SCOPE_MEMORY_DOC,
 ]
 
 
@@ -281,6 +287,54 @@ REQUIRED_CLONE_FRAGMENTS = (
     "copy_forbidden_diagnostic",
     "clone_required_diagnostic",
     "reject_implicit_clone",
+)
+REQUIRED_DROP_FRAGMENTS = (
+    "pick DropState",
+    "form DropProtocol<T>",
+    "form DropResult",
+    "form DropSlot",
+    "proc drop<T>",
+    "proc forget<T>",
+    "proc needs_drop<T>",
+    "deterministic_drop_order",
+    "partial_drop_allowed",
+    "early_exit_drop_required",
+    "drop_error_policy",
+    "double_drop_forbidden",
+    "double_drop_diagnostic",
+)
+REQUIRED_SCOPE_FRAGMENTS = (
+    "pick ScopeExitReason",
+    "form ScopeGuard<T>",
+    "form DeferAction",
+    "proc scope_guard<T>",
+    "proc dismiss<T>",
+    "proc run_scope_guard<T>",
+    "proc defer",
+    "proc run_defer",
+    "defer_runs_for_exit",
+    "defer_panic_behavior",
+    "scope_exit_guarantee",
+)
+REQUIRED_MEMORY_FRAGMENTS = (
+    "form MemoryLayout",
+    "form MemoryCheck",
+    "proc size_of<T>",
+    "proc size_of_value<T>",
+    "proc align_of<T>",
+    "proc align_of_value<T>",
+    "proc offset_of<T>",
+    "proc swap<T>",
+    "proc replace<T>",
+    "proc take<T>",
+    "proc forget<T>",
+    "proc drop<T>",
+    "proc unsafe_transmute<T, U>",
+    "proc unsafe_zeroed<T>",
+    "proc unsafe_uninitialized<T>",
+    "detect_size_compatible",
+    "detect_alignment_compatible",
+    "unsafe_operation_invariants",
 )
 
 
@@ -725,6 +779,69 @@ def validate_core_convert_default_clone() -> list[ValidationResult]:
     ]
 
 
+def validate_core_drop_scope_memory() -> list[ValidationResult]:
+    drop_source = CORE_DROP_SOURCE.read_text(encoding="utf-8")
+    scope_source = CORE_SCOPE_SOURCE.read_text(encoding="utf-8")
+    memory_source = (SOURCE_STDLIB_DIR / "core" / "memory.vitl").read_text(encoding="utf-8")
+    doc = CORE_DROP_SCOPE_MEMORY_DOC.read_text(encoding="utf-8")
+    missing_drop = [
+        fragment
+        for fragment in REQUIRED_DROP_FRAGMENTS
+        if fragment not in drop_source
+    ]
+    missing_scope = [
+        fragment
+        for fragment in REQUIRED_SCOPE_FRAGMENTS
+        if fragment not in scope_source
+    ]
+    missing_memory = [
+        fragment
+        for fragment in REQUIRED_MEMORY_FRAGMENTS
+        if fragment not in memory_source
+    ]
+    required_doc_fragments = (
+        "deterministic order",
+        "Partial destruction",
+        "Early exits",
+        "Double destruction is forbidden",
+        "defer",
+        "panic unwinding",
+        "unsafe_transmute",
+        "unsafe_zeroed",
+        "unsafe_uninitialized",
+        "detect_size_compatible",
+        "detect_alignment_compatible",
+        "Unsafe Invariants",
+    )
+    missing_doc = [
+        fragment
+        for fragment in required_doc_fragments
+        if fragment not in doc
+    ]
+    return [
+        ValidationResult(
+            name="core_drop_defines_destruction_protocol",
+            status=not missing_drop,
+            detail="ok" if not missing_drop else ", ".join(missing_drop),
+        ),
+        ValidationResult(
+            name="core_scope_defines_defer_guarantees",
+            status=not missing_scope,
+            detail="ok" if not missing_scope else ", ".join(missing_scope),
+        ),
+        ValidationResult(
+            name="core_memory_defines_layout_and_unsafe_api",
+            status=not missing_memory,
+            detail="ok" if not missing_memory else ", ".join(missing_memory),
+        ),
+        ValidationResult(
+            name="core_drop_scope_memory_documents_invariants",
+            status=not missing_doc,
+            detail="ok" if not missing_doc else ", ".join(missing_doc),
+        ),
+    ]
+
+
 def validate_architecture(manifest: dict) -> list[ValidationResult]:
     results: list[ValidationResult] = []
     levels = architecture_levels(manifest)
@@ -823,6 +940,7 @@ def build_report() -> dict:
     primitive_results = validate_core_primitives()
     option_result_results = validate_core_option_result()
     convert_default_clone_results = validate_core_convert_default_clone()
+    drop_scope_memory_results = validate_core_drop_scope_memory()
 
     required = validate_required_symbols(
         symbols
@@ -845,7 +963,7 @@ def build_report() -> dict:
     ]
     architecture_failures = [
         item
-        for item in architecture + module_results + graph_results + primitive_results + option_result_results + convert_default_clone_results
+        for item in architecture + module_results + graph_results + primitive_results + option_result_results + convert_default_clone_results + drop_scope_memory_results
         if not item.status
     ]
 
@@ -888,7 +1006,7 @@ def build_report() -> dict:
         ],
         "architecture_results": [
             asdict(item)
-            for item in architecture + module_results + graph_results + primitive_results + option_result_results + convert_default_clone_results
+            for item in architecture + module_results + graph_results + primitive_results + option_result_results + convert_default_clone_results + drop_scope_memory_results
         ],
         "required_symbols": [
             asdict(item)

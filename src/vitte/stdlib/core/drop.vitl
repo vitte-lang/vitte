@@ -1,0 +1,113 @@
+space vitte/stdlib/core/drop
+
+export *
+
+pick DropState {
+    Live
+    Dropped
+    Forgotten
+    Partial
+    Failed
+}
+
+pick DropOrder {
+    DeclarationReverse
+    FieldDeclaration
+    ArrayIndexAscending
+}
+
+form DropProtocol<T> {
+    drop_value: proc(ref mut T) -> DropResult
+    needs_drop: bool
+    order: DropOrder
+}
+
+form DropResult {
+    ok: bool
+    state: DropState
+    message: string
+}
+
+form DropSlot {
+    name: string
+    state: DropState
+    sequence: u64
+}
+
+proc drop_ok(state: DropState) -> DropResult {
+    give DropResult {
+        ok: true,
+        state: state,
+        message: ""
+    };
+}
+
+proc drop_error(message: string) -> DropResult {
+    give DropResult {
+        ok: false,
+        state: DropState.Failed,
+        message: message
+    };
+}
+
+proc drop<T>(value: ref mut T, protocol: DropProtocol<T>) -> DropResult {
+    if not protocol.needs_drop {
+        give drop_ok(DropState.Dropped);
+    }
+    give protocol.drop_value(value);
+}
+
+proc forget<T>(value: T) -> DropResult {
+    give drop_ok(DropState.Forgotten);
+}
+
+proc needs_drop<T>(protocol: DropProtocol<T>) -> bool {
+    give protocol.needs_drop;
+}
+
+proc drop_slot(name: string, sequence: u64) -> DropSlot {
+    give DropSlot {
+        name: name,
+        state: DropState.Live,
+        sequence: sequence
+    };
+}
+
+proc mark_dropped(slot: DropSlot) -> DropSlot {
+    let out: DropSlot = slot;
+    set out.state = DropState.Dropped;
+    give out;
+}
+
+proc mark_partial(slot: DropSlot) -> DropSlot {
+    let out: DropSlot = slot;
+    set out.state = DropState.Partial;
+    give out;
+}
+
+proc deterministic_drop_order(left: DropSlot, right: DropSlot) -> bool {
+    give left.sequence > right.sequence;
+}
+
+proc partial_drop_allowed(slot: DropSlot) -> bool {
+    give slot.state == DropState.Live or slot.state == DropState.Partial;
+}
+
+proc early_exit_drop_required(slot: DropSlot) -> bool {
+    give slot.state == DropState.Live or slot.state == DropState.Partial;
+}
+
+proc drop_error_policy(result: DropResult) -> DropResult {
+    if result.ok {
+        give result;
+    }
+    give drop_error("destructor failed while leaving scope: " + result.message);
+}
+
+proc double_drop_forbidden(slot: DropSlot) -> bool {
+    give slot.state == DropState.Dropped or slot.state == DropState.Forgotten;
+}
+
+proc double_drop_diagnostic(name: string) -> string {
+    give "cannot drop `" + name + "` more than once";
+}
