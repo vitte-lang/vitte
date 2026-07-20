@@ -13,6 +13,7 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 CATALOG = ROOT / "schemas" / "diagnostics" / "codes.json"
 CENTRAL_CATALOG = ROOT / "schemas" / "diagnostics" / "catalog.json"
+DIAGNOSTIC_STYLE_GUIDE = ROOT / "docs" / "compiler" / "diagnostic_style_guide.md"
 TEST_ROOT = ROOT / "tests" / "diagnostics" / "catalog"
 COMPILER_ROOT = ROOT / "src" / "vitte" / "compiler"
 SOURCE_SHAPE_FIXTURES = (
@@ -73,6 +74,10 @@ FORBIDDEN_TERMS = (
     "something went wrong",
     "semantic problem",
     "internal issue",
+)
+FORBIDDEN_TERMINOLOGY = (
+    "function",
+    "routine",
 )
 LEGACY_CONDITIONALLY_FORBIDDEN = ("invalid", "failed")
 PRECISE_CAUSE_WORDS = (
@@ -170,6 +175,35 @@ def validate_text(text: str, location: str, strict: bool = True) -> list[str]:
             if term in lowered and not precise_enough(text, term):
                 failures.append(f"{location}: uses {term!r} without a precise cause")
     return failures
+
+
+def validate_official_terms(text: str, location: str) -> list[str]:
+    lowered = text.lower()
+    failures: list[str] = []
+    for term in FORBIDDEN_TERMINOLOGY:
+        if re.search(rf"\b{re.escape(term)}\b", lowered):
+            failures.append(f"{location}: use official Vitte term 'procedure' instead of {term!r}")
+    return failures
+
+
+def validate_style_guide() -> list[str]:
+    if not DIAGNOSTIC_STYLE_GUIDE.exists():
+        return [f"{DIAGNOSTIC_STYLE_GUIDE.relative_to(ROOT)}: diagnostic style guide is required"]
+    text = DIAGNOSTIC_STYLE_GUIDE.read_text(encoding="utf-8")
+    required = (
+        "procedure",
+        "lexer",
+        "parser",
+        "type checker",
+        "What is incorrect?",
+        "Where is the problem?",
+        "Why is it incorrect in Vitte?",
+        "How can the user correct it?",
+    )
+    missing = [item for item in required if item not in text]
+    if missing:
+        return [f"{DIAGNOSTIC_STYLE_GUIDE.relative_to(ROOT)}: missing required style rule(s): {missing}"]
+    return []
 
 
 def load_test_manifests() -> dict[str, set[str]]:
@@ -298,7 +332,7 @@ def validate_central_catalog() -> list[str]:
 
     failures: list[str] = []
     seen: set[str] = set()
-    required_doc_fields = ("url", "summary", "cause", "correction")
+    required_doc_fields = ("url", "summary", "incorrect", "location", "reason", "correction")
     for index, entry in enumerate(entries):
         if not isinstance(entry, dict):
             failures.append(f"central.entries[{index}]: entry must be an object")
@@ -321,6 +355,7 @@ def validate_central_catalog() -> list[str]:
             failures.append(f"{code}: title is required")
         else:
             failures.extend(validate_text(title, f"{code}.title"))
+            failures.extend(validate_official_terms(title, f"{code}.title"))
         if phase not in CENTRAL_PHASES:
             failures.append(f"{code}: phase must be one of {sorted(CENTRAL_PHASES)}")
         if severity not in SEVERITIES:
@@ -338,6 +373,7 @@ def validate_central_catalog() -> list[str]:
                     failures.append(f"{code}: documentation.{field} is required")
                 else:
                     failures.extend(validate_text(value, f"{code}.documentation.{field}"))
+                    failures.extend(validate_official_terms(value, f"{code}.documentation.{field}"))
         if not isinstance(tests, list) or not tests:
             failures.append(f"{code}: tests must contain at least one associated test path")
         else:
@@ -773,6 +809,7 @@ def main() -> int:
     failures = [
         *validate_catalog(),
         *validate_central_catalog(),
+        *validate_style_guide(),
         *validate_catalog_ci_invariant_contract(),
         *validate_message_style_ci_invariant_contract(),
         *validate_source_shape_renderer_fixtures(),

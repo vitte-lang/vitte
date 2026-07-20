@@ -7,12 +7,41 @@ Every diagnostic must answer four questions:
 - Why is it incorrect in Vitte?
 - How can the user correct it?
 
-Use one terminology set everywhere:
+Use the official Vitte names everywhere. The same source concept must keep the
+same name in lexer, parser, resolver, type checker, borrow checker, backend,
+JSON, LSP, snapshots, and terminal output.
 
-- `procedure`, never function or routine.
+Official terms:
+
+- `procedure` for the user-facing concept, never function or routine.
+- `proc` only when referring to the literal Vitte keyword in source.
 - `give`, never return.
 - `form`, `pick`, `let`, `set`, `space`, and `use` for language syntax.
+- `identifier` for a source name token.
+- `symbol` for the compiler entity created after name resolution.
+- `token` for lexer output.
+- `declaration` for a source construct that introduces a name.
+- `module` for importable source units.
 - `lexer`, `parser`, `type checker`, `borrow checker`, `backend`, and `linker` for compiler phases.
+
+Do not rename a concept between phases. If the lexer reports an `identifier`,
+the parser, resolver, and type checker must not call the same source text a
+symbol until name resolution has actually produced a symbol.
+
+Four-question rule:
+
+- What is incorrect? Put the short answer in the title and the precise answer in a label.
+- Where is the problem? Put it in the primary span and, when useful, a secondary label.
+- Why is it incorrect in Vitte? Put it in a note.
+- How can the user correct it? Put it in help or a suggestion.
+
+The central catalog must also answer those questions in structured
+documentation fields:
+
+- `incorrect`;
+- `location`;
+- `reason`;
+- `correction`.
 
 Kinds
 

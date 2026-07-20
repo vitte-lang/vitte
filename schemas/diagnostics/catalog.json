@@ -12,6 +12,9 @@
       "documentation": {
         "url": "docs://language/lexer/token-limits",
         "summary": "A single token exceeds the lexer byte limit.",
+        "incorrect": "The source contains one token whose byte length is above the supported lexer limit.",
+        "location": "The primary span covers the oversized token.",
+        "reason": "The lexer cannot safely classify a token whose byte length is above the configured limit.",
         "cause": "The lexer cannot safely classify a token whose byte length is above the configured limit.",
         "correction": "Shorten the token, split generated identifiers, or move large data into a string or external resource."
       },
@@ -29,6 +32,9 @@
       "documentation": {
         "url": "docs://language/parser/top-level-declarations",
         "summary": "The parser found a token that cannot start a module item.",
+        "incorrect": "The source has a token at top level that is not a valid Vitte declaration, import, export, or module item.",
+        "location": "The primary span points at the token that cannot start a top-level item.",
+        "reason": "Only declarations, imports, exports, and related module items are valid at top level.",
         "cause": "Only declarations, imports, exports, and related module items are valid at top level.",
         "correction": "Replace the token with a valid declaration keyword or move the statement inside a procedure."
       },
@@ -50,6 +56,9 @@
       "documentation": {
         "url": "docs://compiler/bootstrap/diagnostics",
         "summary": "The bootstrap parser expected an export marker required by its subset contract.",
+        "incorrect": "The bootstrap source does not contain the export marker required by the seed compiler subset.",
+        "location": "The primary span points at the source position where the bootstrap subset contract is checked.",
+        "reason": "The source does not satisfy the bootstrap subset shape used by the seed compiler.",
         "cause": "The source does not satisfy the bootstrap subset shape used by the seed compiler.",
         "correction": "Add the required export marker or use the full compiler path for non-bootstrap source."
       },
@@ -69,6 +78,9 @@
       "documentation": {
         "url": "docs://compiler/name-resolution",
         "summary": "A referenced name is not visible in the current scope.",
+        "incorrect": "The source references an identifier that does not resolve to a visible declaration.",
+        "location": "The primary span points at the unresolved identifier use.",
+        "reason": "No local declaration, imported symbol, or exported module item matches the identifier at the use site.",
         "cause": "No local declaration, imported symbol, or exported module item matches the identifier at the use site.",
         "correction": "Declare the identifier, import the module that exports it, or rename the use to an in-scope symbol."
       },
@@ -90,6 +102,9 @@
       "documentation": {
         "url": "docs://compiler/modules/import-cycles",
         "summary": "Module loading reached a module that is already in the active import stack.",
+        "incorrect": "The module graph contains an import cycle.",
+        "location": "The primary span points at the import that re-enters the active module stack.",
+        "reason": "Two or more modules depend on each other directly or transitively.",
         "cause": "Two or more modules depend on each other directly or transitively.",
         "correction": "Move shared declarations into a third module or split the interface so imports form a directed acyclic graph."
       },
@@ -113,6 +128,9 @@
       "documentation": {
         "url": "docs://language/type-system/assignment-compatibility",
         "summary": "The assigned expression type does not satisfy the target binding type.",
+        "incorrect": "The assignment stores an expression whose type does not match the target binding type.",
+        "location": "The primary span points at the assigned expression, and notes link back to the declaration when available.",
+        "reason": "The type checker compares the inferred expression type against the declared or inferred target type and they differ.",
         "cause": "The type checker compares the inferred expression type against the declared or inferred target type and they differ.",
         "correction": "Assign a value of the declared type or change the declaration only when the broader contract is wrong."
       },
@@ -135,6 +153,9 @@
       "documentation": {
         "url": "docs://language/type-system/operators",
         "summary": "A binary operator received operands with incompatible types.",
+        "incorrect": "The binary operator is applied to operands whose types do not satisfy the operator rule.",
+        "location": "The primary span points at the operator expression or incompatible operand.",
+        "reason": "The operator rule requires compatible operand types before MIR lowering.",
         "cause": "The operator rule requires compatible operand types before MIR lowering.",
         "correction": "Convert or replace one operand so both sides satisfy the operator contract."
       },
@@ -154,6 +175,9 @@
       "documentation": {
         "url": "docs://compiler/borrowck",
         "summary": "A value is read after ownership has been moved away.",
+        "incorrect": "The source uses a binding after ownership has already moved away from it.",
+        "location": "The primary span points at the later use, and notes link to the earlier move.",
+        "reason": "Borrow checking found a later use of a binding whose ownership was consumed on an earlier path.",
         "cause": "Borrow checking found a later use of a binding whose ownership was consumed on an earlier path.",
         "correction": "Use the value before the move, borrow it instead of moving it, or create a new value."
       },
