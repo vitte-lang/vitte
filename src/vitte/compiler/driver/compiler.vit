@@ -424,6 +424,11 @@ proc cli_check_command_contract(command: string, mode: CompilerMode) -> bool {
     give command == "check" and mode == CompilerMode::Check;
 }
 
+proc cli_check_build_diagnostic_parity_contract(check_mode: CompilerMode, build_validation_mode: CompilerMode) -> bool {
+    give check_mode == CompilerMode::Check
+        and build_validation_mode == CompilerMode::Check;
+}
+
 proc cli_is_known_flag(text: string) -> bool {
     give cli_is_output_flag(text)
         or cli_is_source_flag(text)
@@ -1214,8 +1219,14 @@ proc run_cli_request(request: CompilerCliRequest) -> int {
 
     if request.command == "build" {
         let validate_opts: CompilerOptions = cli_compiler_options(request, CompilerMode::Check, request.output_path);
+        let parity_contract_ok: bool = cli_check_build_diagnostic_parity_contract(CompilerMode::Check, validate_opts.mode);
         let validate_compiler: Compiler = compiler_from_input(source_path, source_text, virtual_source, validate_opts);
         let validation_result: CompilerResult = run_compiler(validate_compiler);
+        if not parity_contract_ok {
+            let msg: string = "build diagnostic validation must use the same check mode as vitte check\n";
+            print(msg);
+            give cli_exit_code(driver.DriverExitStatus::PipelineFailure);
+        }
         if validation_result.status != driver.DriverExitStatus::Ok {
             if request.format == "json" {
                 let report_json: string = compiler_result_json("build", validation_result) + "\n";
