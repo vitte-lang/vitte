@@ -321,15 +321,7 @@ create_portable_kit() {
 
   rm -f "$kit_file"
 
-  COPYFILE_DISABLE=1 \
-    tar -czf "$kit_file" \
-      -C "$spool" \
-      pkginfo \
-      depend \
-      postinstall \
-      preremove \
-      prototype \
-      root
+  scripts_build_tar_gz "$kit_file" "$spool" pkginfo depend postinstall preremove prototype root
 
   [ -s "$kit_file" ] ||
     die "portable SVR4 kit was not created: $kit_file"

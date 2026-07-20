@@ -233,7 +233,7 @@ The canonical generator validates the PE header before invoking NSIS:
 EOF
 
   rm -f "$kit_file" "$kit_file.sha256"
-  COPYFILE_DISABLE=1 tar -czf "$kit_file" -C "$stage" installer.nsi BUILD.txt LICENSE README.md logo.png payload
+  scripts_build_tar_gz "$kit_file" "$stage" installer.nsi BUILD.txt LICENSE README.md logo.png payload
   scripts_build_sha256_write "$kit_file" "$kit_file.sha256"
   printf '[build-windows-installer] wrote build kit %s (%s bytes)\n' "$kit_file" "$(wc -c < "$kit_file" | tr -d ' ')"
 

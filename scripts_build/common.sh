@@ -55,7 +55,7 @@ scripts_build_sha256_write() {
   [ -s "$file" ] ||
     scripts_build_die "checksum input missing or empty: $file"
 
-  if command -v shasum >/dev/null 2>&1; then
+  if [ "${SCRIPTS_BUILD_SHA256_BACKEND:-auto}" != python ] && command -v shasum >/dev/null 2>&1; then
     (
       cd "$(dirname "$file")"
       shasum -a 256 "$(basename "$file")" > "$output"
@@ -63,7 +63,7 @@ scripts_build_sha256_write() {
     return 0
   fi
 
-  if command -v sha256sum >/dev/null 2>&1; then
+  if [ "${SCRIPTS_BUILD_SHA256_BACKEND:-auto}" != python ] && command -v sha256sum >/dev/null 2>&1; then
     (
       cd "$(dirname "$file")"
       sha256sum "$(basename "$file")" > "$output"
@@ -95,12 +95,12 @@ scripts_build_sha256_check() {
   [ -s "$sum_file" ] ||
     scripts_build_die "missing checksum: $sum_file"
 
-  if command -v shasum >/dev/null 2>&1; then
+  if [ "${SCRIPTS_BUILD_SHA256_BACKEND:-auto}" != python ] && command -v shasum >/dev/null 2>&1; then
     (cd "$(dirname "$file")" && shasum -a 256 -c "$(basename "$sum_file")" >/dev/null)
     return 0
   fi
 
-  if command -v sha256sum >/dev/null 2>&1; then
+  if [ "${SCRIPTS_BUILD_SHA256_BACKEND:-auto}" != python ] && command -v sha256sum >/dev/null 2>&1; then
     (cd "$(dirname "$file")" && sha256sum -c "$(basename "$sum_file")" >/dev/null)
     return 0
   fi
@@ -127,4 +127,27 @@ scripts_build_tar_list_xz() {
     return 0
   fi
   tar -tzf "$archive"
+}
+
+scripts_build_copy_tree() {
+  source=$1
+  destination=$2
+  [ -e "$source" ] || return 0
+  mkdir -p "$destination"
+  COPYFILE_DISABLE=1 tar -cf - -C "$source" . | tar -xf - -C "$destination"
+  find "$destination" \( -name '.DS_Store' -o -name '._*' -o -name '.vitte-cache' -o -name '__pycache__' -o -name 'node_modules' \) -prune -exec rm -rf {} \; 2>/dev/null || true
+}
+
+scripts_build_tar_gz() {
+  output=$1
+  base=$2
+  shift 2
+  COPYFILE_DISABLE=1 tar -czf "$output" -C "$base" "$@"
+}
+
+scripts_build_tar_xz() {
+  output=$1
+  base=$2
+  shift 2
+  COPYFILE_DISABLE=1 tar -cJf "$output" -C "$base" "$@"
 }

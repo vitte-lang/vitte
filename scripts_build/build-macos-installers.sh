@@ -105,11 +105,7 @@ copy_tree() {
   [ -d "$source_dir" ] ||
     die "source directory not found: $source_dir"
 
-  mkdir -p "$destination_dir"
-
-  COPYFILE_DISABLE=1 \
-    tar -cf - -C "$source_dir" . |
-    tar -xf - -C "$destination_dir"
+  scripts_build_copy_tree "$source_dir" "$destination_dir"
 }
 
 copy_resources() {
@@ -920,10 +916,7 @@ The installer contains native syntax highlighting for Vim, Emacs, Nano
 and Geany.
 EOF
 
-  COPYFILE_DISABLE=1 \
-    tar -czf "$archive" \
-      -C "$stage" \
-      .
+  scripts_build_tar_gz "$archive" "$stage" .
 
   require_file \
     "$archive" \

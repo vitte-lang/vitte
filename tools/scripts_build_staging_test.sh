@@ -36,6 +36,21 @@ stage_unix() {
   test -x "$dest/usr/local/libexec/vitte/vitte"
   test -s "$dest/usr/local/share/vitte/INSTALLATION.json"
   test -s "$dest/usr/local/share/vitte/VERSION"
+  test "$(python3 - "$dest/usr/local/bin/vitte" <<'PY'
+import stat
+import sys
+from pathlib import Path
+print(oct(stat.S_IMODE(Path(sys.argv[1]).stat().st_mode)))
+PY
+)" = "0o755"
+  test "$(python3 - "$dest/usr/local/share/vitte/INSTALLATION.json" <<'PY'
+import stat
+import sys
+from pathlib import Path
+print(oct(stat.S_IMODE(Path(sys.argv[1]).stat().st_mode)))
+PY
+)" = "0o644"
+  grep -F "/usr/local/libexec/vitte/vitte" "$dest/usr/local/bin/vitte" >/dev/null
 }
 
 stage_windows() {

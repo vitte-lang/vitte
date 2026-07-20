@@ -30,11 +30,7 @@ die() {
 copy_tree() {
   source=$1
   destination=$2
-  [ -e "$source" ] || return 0
-  mkdir -p "$destination"
-  COPYFILE_DISABLE=1 tar \
-    -cf - -C "$source" . | tar -xf - -C "$destination"
-  find "$destination" \( -name '.DS_Store' -o -name '._*' -o -name '.vitte-cache' -o -name '__pycache__' -o -name 'node_modules' \) -prune -exec rm -rf {} \; 2>/dev/null || true
+  scripts_build_copy_tree "$source" "$destination"
 }
 
 normalize_key() {

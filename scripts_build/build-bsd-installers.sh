@@ -197,12 +197,7 @@ build_one() {
 
   rm -f "$archive" "$checksum"
 
-  COPYFILE_DISABLE=1 \
-    tar -cJf "$archive" \
-      -C "$stage" \
-      install.sh \
-      INSTALL.txt \
-      root
+  scripts_build_tar_xz "$archive" "$stage" install.sh INSTALL.txt root
 
   (
     cd "$OUT_DIR"

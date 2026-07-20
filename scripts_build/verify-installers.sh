@@ -33,7 +33,25 @@ verify_optional_sum() {
 verify_deb() {
   arch=$1
   file=$OUT_DIR/vitte_${VERSION}_${arch}.deb
-  verify_optional_sum "$file"
+  [ -e "$file" ] || return 0
+  verify_sum "$file"
+  tmp=$(mktemp -d)
+  trap 'rm -rf "$tmp"' EXIT HUP INT TERM
+  (cd "$tmp" && ar -x "$file")
+  for member in debian-binary control.tar.gz data.tar.gz; do
+    [ -s "$tmp/$member" ] || die "Debian package missing $member: $file"
+  done
+  bsdtar -tf "$tmp/control.tar.gz" | grep -Eq '^(\./)?control$' || die "Debian package missing control: $file"
+  bsdtar -tf "$tmp/control.tar.gz" | grep -Eq '^(\./)?md5sums$' || die "Debian package missing md5sums: $file"
+  bsdtar -tf "$tmp/control.tar.gz" | grep -Eq '^(\./)?postinst$' || die "Debian package missing postinst: $file"
+  bsdtar -tf "$tmp/control.tar.gz" | grep -Eq '^(\./)?prerm$' || die "Debian package missing prerm: $file"
+  bsdtar -tf "$tmp/data.tar.gz" | grep -Eq '^(\./)?usr/local/share/vitte/INSTALLATION.json$' || die "Debian package missing INSTALLATION.json: $file"
+  for command in vitte vittec vittec0; do
+    bsdtar -xOf "$tmp/data.tar.gz" "./usr/local/bin/$command" 2>/dev/null | grep -F "/usr/local/libexec/vitte/$command" >/dev/null ||
+      die "Debian wrapper does not exec libexec $command: $file"
+  done
+  rm -rf "$tmp"
+  trap - EXIT HUP INT TERM
 }
 
 verify_freebsd() {
@@ -42,6 +60,12 @@ verify_freebsd() {
   file=$OUT_DIR/vitte-${VERSION}-freebsd-${arch}.pkg
   [ -e "$file" ] || return 0
   verify_sum "$file"
+  bsdtar -tf "$file" | grep -Fx '+MANIFEST' >/dev/null || die "FreeBSD package missing +MANIFEST: $file"
+  bsdtar -tf "$file" | grep -Fx '+COMPACT_MANIFEST' >/dev/null || die "FreeBSD package missing +COMPACT_MANIFEST: $file"
+  bsdtar -tf "$file" | grep -Fx '+POST_INSTALL' >/dev/null || die "FreeBSD package missing +POST_INSTALL: $file"
+  bsdtar -tf "$file" | grep -Fx '+PRE_DEINSTALL' >/dev/null || die "FreeBSD package missing +PRE_DEINSTALL: $file"
+  bsdtar -tf "$file" | grep -Fx '+POST_DEINSTALL' >/dev/null || die "FreeBSD package missing +POST_DEINSTALL: $file"
+  bsdtar -tf "$file" | grep -Eq '^(\./)?usr/local/share/vitte/INSTALLATION.json$' || die "FreeBSD package missing INSTALLATION.json: $file"
   bsdtar -xOf "$file" +COMPACT_MANIFEST | python3 -c \
     'import json,sys; value=json.load(sys.stdin); expected=sys.argv[1]; assert value["abi"] == expected' \
     "FreeBSD:$FREEBSD_MAJOR:$abi_arch" || die "wrong FreeBSD ABI: $file"
@@ -71,6 +95,12 @@ for bsd_kit in "$OUT_DIR"/vitte-"$VERSION"-*-*-installer.tar.xz; do
   verify_sum "$bsd_kit"
   scripts_build_tar_list_xz "$bsd_kit" | grep -Fx 'root/usr/local/share/vitte/assets/logo.png' >/dev/null ||
     die "missing BSD installer logo: $bsd_kit"
+  scripts_build_tar_list_xz "$bsd_kit" | grep -Fx 'root/usr/local/share/vitte/INSTALLATION.json' >/dev/null ||
+    die "missing BSD installer INSTALLATION.json: $bsd_kit"
+  for command in vitte vittec vittec0; do
+    tar -xOf "$bsd_kit" "root/usr/local/bin/$command" 2>/dev/null | grep -F "/usr/local/libexec/vitte/$command" >/dev/null ||
+      die "BSD wrapper does not exec libexec $command: $bsd_kit"
+  done
 done
 
 if [ "$(uname -s)" = Darwin ]; then
@@ -86,6 +116,12 @@ for arch in amd64 i386; do
     verify_sum "$solaris_kit"
     tar -xOzf "$solaris_kit" pkginfo | grep -Fx "VITTE_PROCESSOR=$arch" >/dev/null ||
       die "invalid Solaris processor"
+    for required in pkginfo prototype depend postinstall preremove root/usr/local/share/vitte/INSTALLATION.json; do
+      tar -tzf "$solaris_kit" | grep -Fx "$required" >/dev/null ||
+        die "Solaris kit missing $required: $solaris_kit"
+    done
+    tar -xOzf "$solaris_kit" prototype | grep -F 'usr/local/bin/vitte' >/dev/null ||
+      die "Solaris prototype missing vitte command"
   }
 done
 
@@ -98,6 +134,10 @@ for item in 'amd64 0x8664' 'i386 0x014c' 'arm64 0xaa64' 'armv7 0x01c4'; do
       die "invalid Windows processor manifest"
     tar -tzf "$windows_kit" | grep -Fx 'payload/share/vitte/assets/logo.png' >/dev/null ||
       die "missing Windows installer logo"
+    for required in installer.nsi BUILD.txt payload/share/vitte/INSTALLATION.json payload/share/vitte/VERSION; do
+      tar -tzf "$windows_kit" | grep -Fx "$required" >/dev/null ||
+        die "Windows kit missing $required: $windows_kit"
+    done
   }
 done
 
