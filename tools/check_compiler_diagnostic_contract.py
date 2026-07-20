@@ -166,6 +166,12 @@ def compiler_contract_sources() -> list[Path]:
 def check_code_documentation() -> list[str]:
     payload = json.loads(CODES.read_text(encoding="utf-8"))
     failures: list[str] = []
+    if payload.get("schema") != "vitte.diagnostic-codes":
+        failures.append("registry schema must be vitte.diagnostic-codes")
+    if payload.get("schema_version") != "2.0.0":
+        failures.append("registry schema_version must be 2.0.0")
+    if payload.get("source") != "locales/en/diagnostics.ftl":
+        failures.append("registry source must be locales/en/diagnostics.ftl")
     seen_codes: set[str] = set()
     seen_aliases: dict[str, str] = {}
     for entry in payload.get("codes", []):

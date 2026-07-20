@@ -18,7 +18,7 @@ SCAN_ROOTS = (
     ROOT / "bin" / "vitte",
     ROOT / "bin" / "vittec",
 )
-CATALOG = ROOT / "schemas" / "diagnostics" / "catalog.json"
+CATALOG = ROOT / "schemas" / "diagnostics" / "codes.json"
 LEGACY_AUDIT = ROOT / "schemas" / "diagnostics" / "legacy_audit.json"
 
 CODE_RE = re.compile(
@@ -92,8 +92,14 @@ def catalog_codes() -> set[str]:
     payload = json.loads(CATALOG.read_text(encoding="utf-8"))
     return {
         str(entry.get("code"))
-        for entry in payload.get("entries", [])
+        for entry in payload.get("codes", [])
         if isinstance(entry, dict) and isinstance(entry.get("code"), str)
+    } | {
+        str(alias)
+        for entry in payload.get("codes", [])
+        if isinstance(entry, dict)
+        for alias in entry.get("aliases", [])
+        if isinstance(alias, str)
     }
 
 

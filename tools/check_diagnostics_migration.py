@@ -12,7 +12,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 BASELINE = ROOT / "schemas" / "diagnostics" / "legacy_audit.json"
 STYLE_GUIDE = ROOT / "docs" / "compiler" / "diagnostic_style_guide.md"
-CENTRAL_CATALOG = ROOT / "schemas" / "diagnostics" / "catalog.json"
+CENTRAL_CATALOG = ROOT / "schemas" / "diagnostics" / "codes.json"
 SCAN_ROOTS = (
     ROOT / "src" / "vitte" / "compiler",
     ROOT / "src" / "vitte" / "packages" / "compiler",
@@ -39,9 +39,6 @@ CATCH_ALL_RE = re.compile(
     r")\b",
     re.IGNORECASE,
 )
-FOUR_QUESTION_FIELDS = ("incorrect", "location", "reason", "correction")
-
-
 def rel(path: Path) -> str:
     return path.relative_to(ROOT).as_posix()
 
@@ -88,16 +85,22 @@ def compare_counts(name: str, current: dict[str, int], allowed: dict[str, int]) 
 def validate_four_question_catalog() -> list[str]:
     payload = json.loads(CENTRAL_CATALOG.read_text(encoding="utf-8"))
     failures: list[str] = []
-    for entry in payload.get("entries", []):
+    for entry in payload.get("codes", []):
         code = entry.get("code", "<missing>")
         documentation = entry.get("documentation")
         if not isinstance(documentation, dict):
             failures.append(f"{code}: documentation object is required")
             continue
-        for field in FOUR_QUESTION_FIELDS:
+        field_map = {
+            "incorrect": "title",
+            "location": "summary",
+            "reason": "cause",
+            "correction": "action",
+        }
+        for question, field in field_map.items():
             value = documentation.get(field)
             if not isinstance(value, str) or not value.strip():
-                failures.append(f"{code}: documentation.{field} must answer the diagnostic style guide question")
+                failures.append(f"{code}: documentation.{field} must answer {question!r} from the diagnostic style guide")
     return failures
 
 
