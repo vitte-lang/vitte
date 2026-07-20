@@ -23,6 +23,9 @@ MODULE_MANIFEST = SOURCE_STDLIB_DIR / "stdlib_modules.json"
 DEPENDENCY_GRAPH_MANIFEST = SOURCE_STDLIB_DIR / "stdlib_dependency_graph.json"
 CORE_PRIMITIVE_SOURCE = SOURCE_STDLIB_DIR / "core" / "primitive.vitl"
 CORE_PRIMITIVE_DOC = ROOT / "docs" / "compiler" / "stdlib_core_primitive.md"
+CORE_OPTION_SOURCE = SOURCE_STDLIB_DIR / "core" / "option.vitl"
+CORE_RESULT_SOURCE = SOURCE_STDLIB_DIR / "core" / "result.vitl"
+CORE_OPTION_RESULT_DOC = ROOT / "docs" / "compiler" / "stdlib_core_option_result.md"
 
 REPORT_DIR.mkdir(parents=True, exist_ok=True)
 STDLIB_DIR.mkdir(parents=True, exist_ok=True)
@@ -41,6 +44,9 @@ REQUIRED_FILES = [
     DEPENDENCY_GRAPH_MANIFEST,
     CORE_PRIMITIVE_SOURCE,
     CORE_PRIMITIVE_DOC,
+    CORE_OPTION_SOURCE,
+    CORE_RESULT_SOURCE,
+    CORE_OPTION_RESULT_DOC,
 ]
 
 
@@ -149,6 +155,68 @@ REQUIRED_PRIMITIVE_FRAGMENTS = (
     "PrimitiveKind.FunctionPointer",
     "PRIMITIVE_F16_BACKEND_FEATURE",
     "PRIMITIVE_F128_BACKEND_FEATURE",
+)
+REQUIRED_OPTION_FRAGMENTS = (
+    "form Option<T>",
+    "proc some<T>",
+    "proc none<T>",
+    "proc is_some<T>",
+    "proc is_none<T>",
+    "proc unwrap<T>",
+    "proc expect<T>",
+    "proc unwrap_or<T>",
+    "proc unwrap_or_else<T>",
+    "proc map<T, U>",
+    "proc map_or<T, U>",
+    "proc map_or_else<T, U>",
+    "proc and<T, U>",
+    "proc and_then<T, U>",
+    "proc or<T>",
+    "proc or_else<T>",
+    "proc xor<T>",
+    "proc filter<T>",
+    "proc take<T>",
+    "proc replace<T>",
+    "proc insert<T>",
+    "proc get_or_insert<T>",
+    "proc get_or_insert_with<T>",
+    "proc as_ref<T>",
+    "proc as_mut<T>",
+    "proc flatten<T>",
+    "proc transpose<T, E>",
+    "form OptionIterator<T>",
+    "proc option_iter<T>",
+    "proc option_iter_next<T>",
+)
+REQUIRED_RESULT_FRAGMENTS = (
+    "form Result<T, E>",
+    "proc ok<T, E>",
+    "proc err<T, E>",
+    "proc is_ok<T, E>",
+    "proc is_err<T, E>",
+    "proc unwrap<T, E>",
+    "proc unwrap_err<T, E>",
+    "proc expect<T, E>",
+    "proc expect_err<T, E>",
+    "proc map<T, U, E>",
+    "proc map_err<T, E, F>",
+    "proc map_or<T, U, E>",
+    "proc map_or_else<T, U, E>",
+    "proc and<T, U, E>",
+    "proc and_then<T, U, E>",
+    "proc or<T, E, F>",
+    "proc or_else<T, E, F>",
+    "proc unwrap_or<T, E>",
+    "proc unwrap_or_else<T, E>",
+    "proc as_ref<T, E>",
+    "proc as_mut<T, E>",
+    "proc flatten<T, E>",
+    "proc transpose<T, E>",
+    "form ResultIterator<T, E>",
+    "proc result_iter<T, E>",
+    "proc result_iter_next<T, E>",
+    "proc propagate<T, E>",
+    "proc try_result<T, E>",
 )
 
 
@@ -481,6 +549,55 @@ def validate_core_primitives() -> list[ValidationResult]:
     ]
 
 
+def validate_core_option_result() -> list[ValidationResult]:
+    option_source = CORE_OPTION_SOURCE.read_text(encoding="utf-8")
+    result_source = CORE_RESULT_SOURCE.read_text(encoding="utf-8")
+    doc = CORE_OPTION_RESULT_DOC.read_text(encoding="utf-8")
+    missing_option = [
+        fragment
+        for fragment in REQUIRED_OPTION_FRAGMENTS
+        if fragment not in option_source
+    ]
+    missing_result = [
+        fragment
+        for fragment in REQUIRED_RESULT_FRAGMENTS
+        if fragment not in result_source
+    ]
+    required_doc_fragments = (
+        "Option<T>",
+        "Result<T, E>",
+        "some",
+        "none",
+        "ok",
+        "err",
+        "propagate(result)",
+        "try_result(result)",
+        "Error Propagation",
+    )
+    missing_doc = [
+        fragment
+        for fragment in required_doc_fragments
+        if fragment not in doc
+    ]
+    return [
+        ValidationResult(
+            name="core_option_defines_full_api",
+            status=not missing_option,
+            detail="ok" if not missing_option else ", ".join(missing_option),
+        ),
+        ValidationResult(
+            name="core_result_defines_full_api",
+            status=not missing_result,
+            detail="ok" if not missing_result else ", ".join(missing_result),
+        ),
+        ValidationResult(
+            name="core_option_result_documents_api",
+            status=not missing_doc,
+            detail="ok" if not missing_doc else ", ".join(missing_doc),
+        ),
+    ]
+
+
 def validate_architecture(manifest: dict) -> list[ValidationResult]:
     results: list[ValidationResult] = []
     levels = architecture_levels(manifest)
@@ -577,6 +694,7 @@ def build_report() -> dict:
         stdlib_dependency_edges(architecture_manifest),
     )
     primitive_results = validate_core_primitives()
+    option_result_results = validate_core_option_result()
 
     required = validate_required_symbols(
         symbols
@@ -599,7 +717,7 @@ def build_report() -> dict:
     ]
     architecture_failures = [
         item
-        for item in architecture + module_results + graph_results + primitive_results
+        for item in architecture + module_results + graph_results + primitive_results + option_result_results
         if not item.status
     ]
 
@@ -642,7 +760,7 @@ def build_report() -> dict:
         ],
         "architecture_results": [
             asdict(item)
-            for item in architecture + module_results + graph_results + primitive_results
+            for item in architecture + module_results + graph_results + primitive_results + option_result_results
         ],
         "required_symbols": [
             asdict(item)

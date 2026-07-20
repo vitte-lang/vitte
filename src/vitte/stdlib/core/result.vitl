@@ -1,0 +1,198 @@
+space vitte/stdlib/core/result
+
+export *
+
+pick ResultState {
+    Ok
+    Err
+}
+
+form Result<T, E> {
+    state: ResultState
+    value: T
+    error: E
+}
+
+form ResultIterator<T, E> {
+    item: Result<T, E>
+    consumed: bool
+}
+
+proc ok<T, E>(value: T) -> Result<T, E> {
+    give Result<T, E> {
+        state: ResultState.Ok,
+        value: value,
+        error: zero<E>()
+    };
+}
+
+proc err<T, E>(error: E) -> Result<T, E> {
+    give Result<T, E> {
+        state: ResultState.Err,
+        value: zero<T>(),
+        error: error
+    };
+}
+
+proc is_ok<T, E>(result: Result<T, E>) -> bool {
+    give result.state == ResultState.Ok;
+}
+
+proc is_err<T, E>(result: Result<T, E>) -> bool {
+    give result.state == ResultState.Err;
+}
+
+proc unwrap<T, E>(result: Result<T, E>) -> T {
+    if is_err(result) {
+        panic("called Result.unwrap on err");
+    }
+    give result.value;
+}
+
+proc unwrap_err<T, E>(result: Result<T, E>) -> E {
+    if is_ok(result) {
+        panic("called Result.unwrap_err on ok");
+    }
+    give result.error;
+}
+
+proc expect<T, E>(result: Result<T, E>, message: string) -> T {
+    if is_err(result) {
+        panic(message);
+    }
+    give result.value;
+}
+
+proc expect_err<T, E>(result: Result<T, E>, message: string) -> E {
+    if is_ok(result) {
+        panic(message);
+    }
+    give result.error;
+}
+
+proc map<T, U, E>(result: Result<T, E>, f: proc(T) -> U) -> Result<U, E> {
+    if is_ok(result) {
+        give ok<U, E>(f(result.value));
+    }
+    give err<U, E>(result.error);
+}
+
+proc map_err<T, E, F>(result: Result<T, E>, f: proc(E) -> F) -> Result<T, F> {
+    if is_ok(result) {
+        give ok<T, F>(result.value);
+    }
+    give err<T, F>(f(result.error));
+}
+
+proc map_or<T, U, E>(result: Result<T, E>, fallback: U, f: proc(T) -> U) -> U {
+    if is_ok(result) {
+        give f(result.value);
+    }
+    give fallback;
+}
+
+proc map_or_else<T, U, E>(result: Result<T, E>, fallback: proc(E) -> U, f: proc(T) -> U) -> U {
+    if is_ok(result) {
+        give f(result.value);
+    }
+    give fallback(result.error);
+}
+
+proc and<T, U, E>(result: Result<T, E>, next: Result<U, E>) -> Result<U, E> {
+    if is_ok(result) {
+        give next;
+    }
+    give err<U, E>(result.error);
+}
+
+proc and_then<T, U, E>(result: Result<T, E>, f: proc(T) -> Result<U, E>) -> Result<U, E> {
+    if is_ok(result) {
+        give f(result.value);
+    }
+    give err<U, E>(result.error);
+}
+
+proc or<T, E, F>(result: Result<T, E>, fallback: Result<T, F>) -> Result<T, F> {
+    if is_ok(result) {
+        give ok<T, F>(result.value);
+    }
+    give fallback;
+}
+
+proc or_else<T, E, F>(result: Result<T, E>, fallback: proc(E) -> Result<T, F>) -> Result<T, F> {
+    if is_ok(result) {
+        give ok<T, F>(result.value);
+    }
+    give fallback(result.error);
+}
+
+proc unwrap_or<T, E>(result: Result<T, E>, fallback: T) -> T {
+    if is_ok(result) {
+        give result.value;
+    }
+    give fallback;
+}
+
+proc unwrap_or_else<T, E>(result: Result<T, E>, fallback: proc(E) -> T) -> T {
+    if is_ok(result) {
+        give result.value;
+    }
+    give fallback(result.error);
+}
+
+proc as_ref<T, E>(result: ref Result<T, E>) -> Result<ref T, ref E> {
+    if is_ok(*result) {
+        give ok<ref T, ref E>(&((*result).value));
+    }
+    give err<ref T, ref E>(&((*result).error));
+}
+
+proc as_mut<T, E>(result: ref mut Result<T, E>) -> Result<ref mut T, ref mut E> {
+    if is_ok(*result) {
+        give ok<ref mut T, ref mut E>(&mut ((*result).value));
+    }
+    give err<ref mut T, ref mut E>(&mut ((*result).error));
+}
+
+proc flatten<T, E>(result: Result<Result<T, E>, E>) -> Result<T, E> {
+    if is_ok(result) {
+        give result.value;
+    }
+    give err<T, E>(result.error);
+}
+
+proc transpose<T, E>(result: Result<Option<T>, E>) -> Option<Result<T, E>> {
+    if is_err(result) {
+        give some<Result<T, E>>(err<T, E>(result.error));
+    }
+    if is_some(result.value) {
+        give some<Result<T, E>>(ok<T, E>(result.value.value));
+    }
+    give none<Result<T, E>>();
+}
+
+proc result_iter<T, E>(result: Result<T, E>) -> ResultIterator<T, E> {
+    give ResultIterator<T, E> {
+        item: result,
+        consumed: false
+    };
+}
+
+proc result_iter_next<T, E>(iter: ref ResultIterator<T, E>) -> Option<T> {
+    if (*iter).consumed or is_err((*iter).item) {
+        give none<T>();
+    }
+    set (*iter).consumed = true;
+    give some<T>((*iter).item.value);
+}
+
+proc propagate<T, E>(result: Result<T, E>) -> T {
+    if is_err(result) {
+        raise result.error;
+    }
+    give result.value;
+}
+
+proc try_result<T, E>(result: Result<T, E>) -> T {
+    give propagate<T, E>(result);
+}

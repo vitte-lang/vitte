@@ -1,0 +1,211 @@
+space vitte/stdlib/core/option
+
+export *
+
+pick OptionState {
+    Some
+    None
+}
+
+form Option<T> {
+    state: OptionState
+    value: T
+}
+
+form OptionIterator<T> {
+    item: Option<T>
+    consumed: bool
+}
+
+proc some<T>(value: T) -> Option<T> {
+    give Option<T> {
+        state: OptionState.Some,
+        value: value
+    };
+}
+
+proc none<T>() -> Option<T> {
+    give Option<T> {
+        state: OptionState.None,
+        value: zero<T>()
+    };
+}
+
+proc is_some<T>(option: Option<T>) -> bool {
+    give option.state == OptionState.Some;
+}
+
+proc is_none<T>(option: Option<T>) -> bool {
+    give option.state == OptionState.None;
+}
+
+proc unwrap<T>(option: Option<T>) -> T {
+    if is_none(option) {
+        panic("called Option.unwrap on none");
+    }
+    give option.value;
+}
+
+proc expect<T>(option: Option<T>, message: string) -> T {
+    if is_none(option) {
+        panic(message);
+    }
+    give option.value;
+}
+
+proc unwrap_or<T>(option: Option<T>, fallback: T) -> T {
+    if is_some(option) {
+        give option.value;
+    }
+    give fallback;
+}
+
+proc unwrap_or_else<T>(option: Option<T>, fallback: proc() -> T) -> T {
+    if is_some(option) {
+        give option.value;
+    }
+    give fallback();
+}
+
+proc map<T, U>(option: Option<T>, f: proc(T) -> U) -> Option<U> {
+    if is_some(option) {
+        give some<U>(f(option.value));
+    }
+    give none<U>();
+}
+
+proc map_or<T, U>(option: Option<T>, fallback: U, f: proc(T) -> U) -> U {
+    if is_some(option) {
+        give f(option.value);
+    }
+    give fallback;
+}
+
+proc map_or_else<T, U>(option: Option<T>, fallback: proc() -> U, f: proc(T) -> U) -> U {
+    if is_some(option) {
+        give f(option.value);
+    }
+    give fallback();
+}
+
+proc and<T, U>(option: Option<T>, next: Option<U>) -> Option<U> {
+    if is_some(option) {
+        give next;
+    }
+    give none<U>();
+}
+
+proc and_then<T, U>(option: Option<T>, f: proc(T) -> Option<U>) -> Option<U> {
+    if is_some(option) {
+        give f(option.value);
+    }
+    give none<U>();
+}
+
+proc or<T>(option: Option<T>, fallback: Option<T>) -> Option<T> {
+    if is_some(option) {
+        give option;
+    }
+    give fallback;
+}
+
+proc or_else<T>(option: Option<T>, fallback: proc() -> Option<T>) -> Option<T> {
+    if is_some(option) {
+        give option;
+    }
+    give fallback();
+}
+
+proc xor<T>(left: Option<T>, right: Option<T>) -> Option<T> {
+    if is_some(left) and is_none(right) {
+        give left;
+    }
+    if is_none(left) and is_some(right) {
+        give right;
+    }
+    give none<T>();
+}
+
+proc filter<T>(option: Option<T>, predicate: proc(T) -> bool) -> Option<T> {
+    if is_some(option) and predicate(option.value) {
+        give option;
+    }
+    give none<T>();
+}
+
+proc take<T>(slot: ref Option<T>) -> Option<T> {
+    let previous: Option<T> = *slot;
+    set *slot = none<T>();
+    give previous;
+}
+
+proc replace<T>(slot: ref Option<T>, value: T) -> Option<T> {
+    let previous: Option<T> = *slot;
+    set *slot = some<T>(value);
+    give previous;
+}
+
+proc insert<T>(slot: ref Option<T>, value: T) -> ref T {
+    set *slot = some<T>(value);
+    give &((*slot).value);
+}
+
+proc get_or_insert<T>(slot: ref Option<T>, value: T) -> ref T {
+    if is_none(*slot) {
+        set *slot = some<T>(value);
+    }
+    give &((*slot).value);
+}
+
+proc get_or_insert_with<T>(slot: ref Option<T>, f: proc() -> T) -> ref T {
+    if is_none(*slot) {
+        set *slot = some<T>(f());
+    }
+    give &((*slot).value);
+}
+
+proc as_ref<T>(option: ref Option<T>) -> Option<ref T> {
+    if is_some(*option) {
+        give some<ref T>(&((*option).value));
+    }
+    give none<ref T>();
+}
+
+proc as_mut<T>(option: ref mut Option<T>) -> Option<ref mut T> {
+    if is_some(*option) {
+        give some<ref mut T>(&mut ((*option).value));
+    }
+    give none<ref mut T>();
+}
+
+proc flatten<T>(option: Option<Option<T>>) -> Option<T> {
+    if is_some(option) {
+        give option.value;
+    }
+    give none<T>();
+}
+
+proc transpose<T, E>(option: Option<Result<T, E>>) -> Result<Option<T>, E> {
+    if is_none(option) {
+        give ok<Option<T>, E>(none<T>());
+    }
+    if is_ok(option.value) {
+        give ok<Option<T>, E>(some<T>(option.value.value));
+    }
+    give err<Option<T>, E>(option.value.error);
+}
+
+proc option_iter<T>(option: Option<T>) -> OptionIterator<T> {
+    give OptionIterator<T> {
+        item: option,
+        consumed: false
+    };
+}
+
+proc option_iter_next<T>(iter: ref OptionIterator<T>) -> Option<T> {
+    if (*iter).consumed {
+        give none<T>();
+    }
+    set (*iter).consumed = true;
+    give (*iter).item;
+}
