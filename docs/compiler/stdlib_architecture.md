@@ -2,8 +2,10 @@
 
 The Vitte standard library is a compiled Vitte source tree rooted at
 `src/vitte/stdlib`. Its architecture is defined by
-`src/vitte/stdlib/stdlib_architecture.json` and validated by
-`make stdlib-gate`.
+`src/vitte/stdlib/stdlib_architecture.json`, its module inventory is defined by
+`src/vitte/stdlib/stdlib_modules.json`, and its official dependency graph is
+defined by `src/vitte/stdlib/stdlib_dependency_graph.json`. All three are
+validated by `make stdlib-gate`.
 
 ## Levels
 
@@ -50,8 +52,12 @@ depend on it.
 
 The stdlib gate fails when:
 
+- one of the required top-level directories is missing;
+- a direct stdlib module directory does not contain `index.vit`;
+- `export *`, `share *`, or `share all` appears outside an official entrypoint;
 - a module imports a higher level;
 - the dependency graph contains a cycle;
+- an observed dependency edge is absent from the official graph;
 - `core` imports operating-system modules;
 - `core` uses dynamic allocation patterns;
 - the architecture manifest is missing or malformed;

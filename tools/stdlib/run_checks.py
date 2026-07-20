@@ -19,6 +19,8 @@ STDLIB_DIR = ROOT / "target" / "stdlib"
 SOURCE_STDLIB_DIR = ROOT / "src/vitte/stdlib"
 HISTORY_DIR = STDLIB_DIR / "history"
 ARCHITECTURE_MANIFEST = SOURCE_STDLIB_DIR / "stdlib_architecture.json"
+MODULE_MANIFEST = SOURCE_STDLIB_DIR / "stdlib_modules.json"
+DEPENDENCY_GRAPH_MANIFEST = SOURCE_STDLIB_DIR / "stdlib_dependency_graph.json"
 
 REPORT_DIR.mkdir(parents=True, exist_ok=True)
 STDLIB_DIR.mkdir(parents=True, exist_ok=True)
@@ -33,6 +35,8 @@ REQUIRED_FILES = [
     ROOT / "src/vitte/stdlib/mod.vit",
     ROOT / "src/vitte/stdlib/tests/smoke.vit",
     ARCHITECTURE_MANIFEST,
+    MODULE_MANIFEST,
+    DEPENDENCY_GRAPH_MANIFEST,
 ]
 
 
@@ -90,6 +94,7 @@ FEATURE_MODULES = {
 
 
 USE_RE = re.compile(r"^\s*use\s+([A-Za-z0-9_/-]+)")
+WILDCARD_REEXPORT_RE = re.compile(r"^\s*(?:export|share)\s+(?:\*|all)\s*$")
 CORE_FORBIDDEN_IMPORT_PREFIXES = (
     "vitte/stdlib/io",
     "vitte/stdlib/os",
@@ -208,6 +213,18 @@ def load_architecture_manifest() -> dict:
     )
 
 
+def load_module_manifest() -> dict:
+    return json.loads(
+        MODULE_MANIFEST.read_text(encoding="utf-8")
+    )
+
+
+def load_dependency_graph_manifest() -> dict:
+    return json.loads(
+        DEPENDENCY_GRAPH_MANIFEST.read_text(encoding="utf-8")
+    )
+
+
 def stdlib_sources() -> list[Path]:
     return sorted(SOURCE_STDLIB_DIR.glob("**/*.vit*"))
 
@@ -301,6 +318,83 @@ def has_cycle(edges: list[tuple[str, str, str]]) -> bool:
     return any(visit(node) for node in graph)
 
 
+def validate_module_manifest(manifest: dict) -> list[ValidationResult]:
+    results: list[ValidationResult] = []
+    required_directories = manifest.get("required_directories", [])
+    missing_required = [
+        name
+        for name in required_directories
+        if not (SOURCE_STDLIB_DIR / name).is_dir()
+    ]
+    results.append(ValidationResult(
+        name="required_stdlib_directories",
+        status=not missing_required,
+        detail="ok" if not missing_required else ", ".join(missing_required),
+    ))
+
+    module_directories = manifest.get("module_directories", [])
+    missing_indexes = [
+        name
+        for name in module_directories
+        if not (SOURCE_STDLIB_DIR / name / "index.vit").is_file()
+    ]
+    results.append(ValidationResult(
+        name="index_required_for_each_module_directory",
+        status=not missing_indexes,
+        detail="ok" if not missing_indexes else ", ".join(missing_indexes),
+    ))
+
+    official = set(manifest.get("official_entrypoints", []))
+    uncontrolled: list[str] = []
+    for source in stdlib_sources():
+        relative = source.relative_to(ROOT).as_posix()
+        for line in source.read_text(encoding="utf-8", errors="ignore").splitlines():
+            if WILDCARD_REEXPORT_RE.match(line) and relative not in official:
+                uncontrolled.append(relative)
+                break
+    results.append(ValidationResult(
+        name="wildcard_reexports_only_in_official_entrypoints",
+        status=not uncontrolled,
+        detail="ok" if not uncontrolled else "; ".join(uncontrolled[:8]),
+    ))
+
+    stale_entrypoints = [
+        path
+        for path in official
+        if not (ROOT / path).is_file()
+    ]
+    results.append(ValidationResult(
+        name="official_entrypoints_exist",
+        status=not stale_entrypoints,
+        detail="ok" if not stale_entrypoints else "; ".join(stale_entrypoints[:8]),
+    ))
+    return results
+
+
+def validate_dependency_graph_manifest(manifest: dict, edges: list[tuple[str, str, str]]) -> list[ValidationResult]:
+    results: list[ValidationResult] = []
+    declared = {
+        (edge["from"], edge["to"])
+        for edge in manifest.get("edges", [])
+    }
+    undeclared = [
+        f"{path}: {left} -> {right}"
+        for left, right, path in edges
+        if left != right and (left, right) not in declared
+    ]
+    results.append(ValidationResult(
+        name="official_dependency_graph_edges",
+        status=not undeclared,
+        detail="ok" if not undeclared else "; ".join(undeclared[:8]),
+    ))
+    results.append(ValidationResult(
+        name="official_dependency_graph_acyclic",
+        status=not has_cycle([(left, right, path) for left, right, path in edges if left != right]),
+        detail=f"declared_edges={len(declared)}",
+    ))
+    return results
+
+
 def validate_architecture(manifest: dict) -> list[ValidationResult]:
     results: list[ValidationResult] = []
     levels = architecture_levels(manifest)
@@ -386,9 +480,16 @@ def build_report() -> dict:
     symbols = stdlib_symbol_index()
     features = detected_features()
     architecture_manifest = load_architecture_manifest()
+    module_manifest = load_module_manifest()
+    dependency_graph_manifest = load_dependency_graph_manifest()
 
     files = validate_files()
     architecture = validate_architecture(architecture_manifest)
+    module_results = validate_module_manifest(module_manifest)
+    graph_results = validate_dependency_graph_manifest(
+        dependency_graph_manifest,
+        stdlib_dependency_edges(architecture_manifest),
+    )
 
     required = validate_required_symbols(
         symbols
@@ -411,7 +512,7 @@ def build_report() -> dict:
     ]
     architecture_failures = [
         item
-        for item in architecture
+        for item in architecture + module_results + graph_results
         if not item.status
     ]
 
@@ -444,13 +545,17 @@ def build_report() -> dict:
             features,
         "architecture":
             architecture_manifest,
+        "module_manifest":
+            module_manifest,
+        "dependency_graph":
+            dependency_graph_manifest,
         "required_files": [
             asdict(item)
             for item in files
         ],
         "architecture_results": [
             asdict(item)
-            for item in architecture
+            for item in architecture + module_results + graph_results
         ],
         "required_symbols": [
             asdict(item)
