@@ -55,6 +55,14 @@ REQUIRED_ASSERTS = {
     "stable_order",
     "recovery",
 }
+CENTRAL_SNAPSHOT_ASSERTS = {
+    "code",
+    "title",
+    "span",
+    "notes",
+    "suggestions",
+    "no_parasitic_diagnostics",
+}
 FORBIDDEN_TERMS = (
     "invalid",
     "failed",
@@ -338,11 +346,23 @@ def validate_central_catalog() -> list[str]:
                     continue
                 if test_path.endswith((".snap", ".must", ".json.must", ".txt.snap", ".json.snap")):
                     has_snapshot = True
+                    failures.extend(validate_central_snapshot_assertions(code, test_path))
                 if not (ROOT / test_path).exists():
                     failures.append(f"{code}: associated test path does not exist: {test_path}")
             if not has_snapshot:
                 failures.append(f"{code}: tests must include at least one snapshot expectation")
     return failures
+
+
+def validate_central_snapshot_assertions(code: str, test_path: str) -> list[str]:
+    path = ROOT / test_path
+    if not path.exists() or not test_path.startswith("tests/diagnostics/catalog/snapshots/central/") or not test_path.endswith(".snap"):
+        return []
+    text = path.read_text(encoding="utf-8")
+    missing = sorted(assertion for assertion in CENTRAL_SNAPSHOT_ASSERTS if assertion not in text)
+    if missing:
+        return [f"{code}: snapshot {test_path} must assert {missing}"]
+    return []
 
 
 def central_catalog_entry_errors(entries: list[Any]) -> list[str]:
