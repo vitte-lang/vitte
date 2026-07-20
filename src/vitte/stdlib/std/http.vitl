@@ -5,6 +5,7 @@ export *
 use src/vitte/stdlib/alloc/string as alloc_string
 use src/vitte/stdlib/alloc/vec as alloc_vec
 use src/vitte/stdlib/alloc/collections as alloc_collections
+use src/vitte/stdlib/core/option as core_option
 use src/vitte/stdlib/core/result as core_result
 use src/vitte/stdlib/std/net as std_net
 use src/vitte/stdlib/std/url as std_url
@@ -30,19 +31,34 @@ form Response {
 form HttpError {
     message: String
 }
+form HttpClient { default_headers: HeaderMap timeout: Timeout max_redirects: usize }
+form HttpUrlEncoded { fields: Vec<(String, String)> }
 
 proc headers() -> HeaderMap { give HeaderMap { values: hashmap_new<String, String>() }; }
 proc header_insert(headers_value: ref mut HeaderMap, name: String, value: String) { hashmap_insert<String, String>(&mut ((*headers_value).values), name, value); }
+proc header_get(headers_value: ref HeaderMap, name: String) -> Option<ref String> { give hashmap_get<String, String>(&((*headers_value).values), name); }
+proc header_remove(headers_value: ref mut HeaderMap, name: String) -> Option<String> { give hashmap_remove<String, String>(&mut ((*headers_value).values), name); }
 proc request(method: String, url: Url) -> Request {
     give Request { method: method, url: url, headers: headers(), body: vec_new<byte>(), max_redirects: 0 };
 }
 proc response(status: u16) -> Response { give Response { status: status, headers: headers(), body: vec_new<byte>() }; }
+proc client() -> HttpClient { give HttpClient { default_headers: headers(), timeout: timeout_millis(30000), max_redirects: 10 }; }
+proc client_with_timeout(timeout: Timeout) -> HttpClient { give HttpClient { default_headers: headers(), timeout: timeout, max_redirects: 10 }; }
 proc with_body(req: ref mut Request, body: Vec<byte>) { set (*req).body = body; }
+proc with_header(req: ref mut Request, name: String, value: String) { header_insert(&mut ((*req).headers), name, value); }
+proc with_json_body(req: ref mut Request, json: String) {
+    with_header(req, compiler_test_string("content-type"), compiler_test_string("application/json"));
+    set (*req).body = compiler_string_to_bytes(json);
+}
 proc follow_redirects(req: ref mut Request, max: usize) { set (*req).max_redirects = max; }
 proc http_get(url: Url) -> Result<Response, HttpError> { give http_send(request(compiler_test_string("GET"), url)); }
 proc http_send(req: Request) -> Result<Response, HttpError> { give compiler_platform_http_send(req); }
+proc http_send_with_client(client_value: HttpClient, req: Request) -> Result<Response, HttpError> { give compiler_platform_http_send_with_client(client_value, req); }
 proc http_post(url: Url, body: Vec<byte>) -> Result<Response, HttpError> {
     let req: Request = request(compiler_test_string("POST"), url);
     with_body(&mut req, body);
     give http_send(req);
 }
+proc status_is_success(response_value: Response) -> bool { give response_value.status >= 200 and response_value.status < 300; }
+proc status_is_redirect(response_value: Response) -> bool { give response_value.status >= 300 and response_value.status < 400; }
+proc body_text(response_value: Response) -> Result<String, HttpError> { give compiler_http_body_text(response_value); }

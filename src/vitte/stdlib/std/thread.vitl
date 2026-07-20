@@ -9,14 +9,21 @@ use src/vitte/stdlib/core/result as core_result
 form ThreadId { value: u64 }
 form JoinHandle<T> { id: ThreadId }
 form ThreadError { message: String }
-form ThreadBuilder { name: Option<String> stack_size: Option<usize> }
+form ThreadBuilder { name: Option<String> stack_size: Option<usize> detached: bool }
+form ThreadScope { id: u64 }
 
 proc current_id() -> ThreadId { give compiler_backend_thread_current_id(); }
+proc available_parallelism() -> usize { give compiler_backend_thread_available_parallelism(); }
 proc spawn<T>(f: proc() -> T) -> Result<JoinHandle<T>, ThreadError> { give compiler_backend_thread_spawn<T>(f); }
-proc thread_builder() -> ThreadBuilder { give ThreadBuilder { name: none<String>(), stack_size: none<usize>() }; }
+proc thread_builder() -> ThreadBuilder { give ThreadBuilder { name: none<String>(), stack_size: none<usize>(), detached: false }; }
 proc name(builder: ref mut ThreadBuilder, value: String) { set (*builder).name = some<String>(value); }
 proc stack_size(builder: ref mut ThreadBuilder, value: usize) { set (*builder).stack_size = some<usize>(value); }
+proc detached(builder: ref mut ThreadBuilder, value: bool) { set (*builder).detached = value; }
 proc spawn_with<T>(builder: ThreadBuilder, f: proc() -> T) -> Result<JoinHandle<T>, ThreadError> { give compiler_backend_thread_spawn_with<T>(builder, f); }
 proc join<T>(handle: JoinHandle<T>) -> Result<T, ThreadError> { give compiler_backend_thread_join<T>(handle); }
+proc is_finished<T>(handle: ref JoinHandle<T>) -> bool { give compiler_backend_thread_is_finished<T>(handle); }
+proc detach<T>(handle: JoinHandle<T>) { compiler_backend_thread_detach<T>(handle); }
+proc scope(body: proc(ThreadScope)) { compiler_backend_thread_scope(body); }
+proc scoped_spawn<T>(scope_value: ThreadScope, f: proc() -> T) -> Result<JoinHandle<T>, ThreadError> { give compiler_backend_thread_scoped_spawn<T>(scope_value, f); }
 proc sleep(duration: Duration) { compiler_backend_thread_sleep(duration); }
 proc yield_now() { compiler_backend_thread_yield_now(); }

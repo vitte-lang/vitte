@@ -2,6 +2,7 @@ space vitte/stdlib/std/sync
 
 export *
 
+use src/vitte/stdlib/core/option as core_option
 use src/vitte/stdlib/core/result as core_result
 
 form Mutex<T> { state: compiler_mutex_state value: T }
@@ -12,14 +13,19 @@ form Atomic<T> { value: T }
 form MutexGuard<T> { value: ref mut T }
 form RwReadGuard<T> { value: ref T }
 form RwWriteGuard<T> { value: ref mut T }
+form Barrier { state: compiler_backend_sync_barrier_state }
+form Semaphore { state: compiler_backend_sync_semaphore_state }
 
 proc mutex<T>(value: T) -> Mutex<T> { give compiler_mutex_new<T>(value); }
 proc mutex_lock<T>(mutex_value: ref Mutex<T>) -> ref mut T { give compiler_mutex_lock<T>(mutex_value); }
+proc mutex_try_lock<T>(mutex_value: ref Mutex<T>) -> Option<MutexGuard<T>> { give compiler_mutex_try_lock<T>(mutex_value); }
 proc lock<T>(mutex_value: ref Mutex<T>) -> MutexGuard<T> { give MutexGuard<T> { value: mutex_lock<T>(mutex_value) }; }
 proc mutex_unlock<T>(mutex_value: ref Mutex<T>) { compiler_mutex_unlock<T>(mutex_value); }
 proc rwlock<T>(value: T) -> RwLock<T> { give compiler_rwlock_new<T>(value); }
 proc read<T>(lock: ref RwLock<T>) -> ref T { give compiler_rwlock_read<T>(lock); }
 proc write<T>(lock: ref RwLock<T>) -> ref mut T { give compiler_rwlock_write<T>(lock); }
+proc try_read<T>(lock: ref RwLock<T>) -> Option<RwReadGuard<T>> { give compiler_rwlock_try_read<T>(lock); }
+proc try_write<T>(lock: ref RwLock<T>) -> Option<RwWriteGuard<T>> { give compiler_rwlock_try_write<T>(lock); }
 proc read_guard<T>(lock: ref RwLock<T>) -> RwReadGuard<T> { give RwReadGuard<T> { value: read<T>(lock) }; }
 proc write_guard<T>(lock: ref RwLock<T>) -> RwWriteGuard<T> { give RwWriteGuard<T> { value: write<T>(lock) }; }
 proc once() -> Once { give compiler_once_new(); }
@@ -28,6 +34,12 @@ proc condvar() -> Condvar { give compiler_condvar_new(); }
 proc wait<T>(cond: ref Condvar, mutex_value: ref Mutex<T>) { compiler_condvar_wait<T>(cond, mutex_value); }
 proc notify_one(cond: ref Condvar) { compiler_condvar_notify_one(cond); }
 proc notify_all(cond: ref Condvar) { compiler_condvar_notify_all(cond); }
+proc barrier(parties: usize) -> Barrier { give compiler_backend_sync_barrier_new(parties); }
+proc barrier_wait(value: ref Barrier) { compiler_backend_sync_barrier_wait(value); }
+proc semaphore(permits: usize) -> Semaphore { give compiler_backend_sync_semaphore_new(permits); }
+proc semaphore_acquire(value: ref Semaphore) { compiler_backend_sync_semaphore_acquire(value); }
+proc semaphore_try_acquire(value: ref Semaphore) -> bool { give compiler_backend_sync_semaphore_try_acquire(value); }
+proc semaphore_release(value: ref Semaphore) { compiler_backend_sync_semaphore_release(value); }
 proc atomic<T>(value: T) -> Atomic<T> { give Atomic<T> { value: value }; }
 proc atomic_load<T>(value: ref Atomic<T>) -> T { give (*value).value; }
 proc atomic_store<T>(value: ref Atomic<T>, next: T) { set (*value).value = next; }

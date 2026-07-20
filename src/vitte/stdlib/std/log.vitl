@@ -3,24 +3,30 @@ space vitte/stdlib/std/log
 export *
 
 use src/vitte/stdlib/alloc/string as alloc_string
+use src/vitte/stdlib/alloc/vec as alloc_vec
 use src/vitte/stdlib/core/option as core_option
 use src/vitte/stdlib/std/io as std_io
 
 pick LogLevel { Trace Debug Info Warn Error }
-pick LogSinkKind { Writer Memory Null }
-form LogRecord { level: LogLevel target: String message: String }
+pick LogSinkKind { Writer Memory Null Structured }
+form LogField { name: String value: String }
+form LogRecord { level: LogLevel target: String message: String fields: Vec<LogField> }
 form LogSink { kind: LogSinkKind writer: Option<Writer> }
 form Logger { sink: LogSink min_level: LogLevel compact: bool }
 
 proc writer_sink(sink: Writer) -> LogSink { give LogSink { kind: LogSinkKind.Writer, writer: some<Writer>(sink) }; }
 proc null_sink() -> LogSink { give LogSink { kind: LogSinkKind.Null, writer: none<Writer>() }; }
+proc structured_sink(sink: Writer) -> LogSink { give LogSink { kind: LogSinkKind.Structured, writer: some<Writer>(sink) }; }
 proc logger(sink: Writer, min_level: LogLevel) -> Logger { give Logger { sink: writer_sink(sink), min_level: min_level, compact: true }; }
 proc logger_with_sink(sink: LogSink, min_level: LogLevel, compact: bool) -> Logger { give Logger { sink: sink, min_level: min_level, compact: compact }; }
+proc log_record(level: LogLevel, target: String, message: String) -> LogRecord { give LogRecord { level: level, target: target, message: message, fields: vec_new<LogField>() }; }
+proc log_field(name: String, value: String) -> LogField { give LogField { name: name, value: value }; }
+proc log_with_field(record: ref mut LogRecord, field: LogField) { vec_push<LogField>(&mut ((*record).fields), field); }
 proc log(logger_value: ref mut Logger, record: LogRecord) { compiler_log_write(logger_value, record); }
 proc log_enabled(logger_value: Logger, level: LogLevel) -> bool { give compiler_log_level_enabled(logger_value.min_level, level); }
 proc compact_record(record: LogRecord) -> String { give compiler_log_compact_record(record); }
-proc trace(logger_value: ref mut Logger, message: String) { log(logger_value, LogRecord { level: LogLevel.Trace, target: compiler_log_default_target(), message: message }); }
-proc debug(logger_value: ref mut Logger, message: String) { log(logger_value, LogRecord { level: LogLevel.Debug, target: compiler_log_default_target(), message: message }); }
-proc info(logger_value: ref mut Logger, message: String) { log(logger_value, LogRecord { level: LogLevel.Info, target: compiler_log_default_target(), message: message }); }
-proc warn(logger_value: ref mut Logger, message: String) { log(logger_value, LogRecord { level: LogLevel.Warn, target: compiler_log_default_target(), message: message }); }
-proc error(logger_value: ref mut Logger, message: String) { log(logger_value, LogRecord { level: LogLevel.Error, target: compiler_log_default_target(), message: message }); }
+proc trace(logger_value: ref mut Logger, message: String) { log(logger_value, log_record(LogLevel.Trace, compiler_log_default_target(), message)); }
+proc debug(logger_value: ref mut Logger, message: String) { log(logger_value, log_record(LogLevel.Debug, compiler_log_default_target(), message)); }
+proc info(logger_value: ref mut Logger, message: String) { log(logger_value, log_record(LogLevel.Info, compiler_log_default_target(), message)); }
+proc warn(logger_value: ref mut Logger, message: String) { log(logger_value, log_record(LogLevel.Warn, compiler_log_default_target(), message)); }
+proc error(logger_value: ref mut Logger, message: String) { log(logger_value, log_record(LogLevel.Error, compiler_log_default_target(), message)); }

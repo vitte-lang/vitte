@@ -12,8 +12,12 @@ form Metadata { is_file: bool is_dir: bool is_symlink: bool len: u64 permissions
 form FsError { code: int message: string path: Path }
 form DirEntry { path: Path metadata: Metadata }
 form WalkDir { root: Path follow_symlinks: bool }
+form FileType { file: bool dir: bool symlink: bool block_device: bool char_device: bool fifo: bool socket: bool }
+form FileTimes { accessed_nanos: i128 modified_nanos: i128 created_nanos: i128 }
+form CopyOptions { overwrite: bool preserve_permissions: bool preserve_times: bool recursive: bool }
 
 proc path(text: string) -> Path { give Path { text: text }; }
+proc copy_options() -> CopyOptions { give CopyOptions { overwrite: false, preserve_permissions: true, preserve_times: true, recursive: false }; }
 proc fs_error(path_value: Path, message: string) -> FsError { give FsError { code: -1, message: message, path: path_value }; }
 proc read(path_value: Path) -> Result<Vec<byte>, FsError> { give compiler_backend_fs_read(path_value); }
 proc read_to_string(path_value: Path) -> Result<String, FsError> { give compiler_backend_fs_read_to_string(path_value); }
@@ -24,8 +28,13 @@ proc remove_file(path_value: Path) -> Result<(), FsError> { give compiler_backen
 proc remove_dir(path_value: Path) -> Result<(), FsError> { give compiler_backend_fs_remove_dir(path_value); }
 proc rename(from: Path, to: Path) -> Result<(), FsError> { give compiler_backend_fs_rename(from, to); }
 proc copy(from: Path, to: Path) -> Result<u64, FsError> { give compiler_backend_fs_copy(from, to); }
+proc copy_with_options(from: Path, to: Path, options: CopyOptions) -> Result<u64, FsError> { give compiler_backend_fs_copy_with_options(from, to, options); }
+proc move_path(from: Path, to: Path, options: CopyOptions) -> Result<(), FsError> { give compiler_backend_fs_move_path(from, to, options); }
 proc metadata(path_value: Path) -> Result<Metadata, FsError> { give compiler_backend_fs_metadata(path_value); }
 proc symlink_metadata(path_value: Path) -> Result<Metadata, FsError> { give compiler_backend_fs_symlink_metadata(path_value); }
+proc file_type(path_value: Path) -> Result<FileType, FsError> { give compiler_backend_fs_file_type(path_value); }
+proc file_times(path_value: Path) -> Result<FileTimes, FsError> { give compiler_backend_fs_file_times(path_value); }
+proc set_file_times(path_value: Path, times: FileTimes) -> Result<(), FsError> { give compiler_backend_fs_set_file_times(path_value, times); }
 proc permissions(path_value: Path) -> Result<Permissions, FsError> { give compiler_backend_fs_permissions(path_value); }
 proc set_permissions(path_value: Path, value: Permissions) -> Result<(), FsError> { give compiler_backend_fs_set_permissions(path_value, value); }
 proc read_dir(path_value: Path) -> Result<Iterator<DirEntry>, FsError> { give compiler_backend_fs_read_dir(path_value); }
@@ -35,3 +44,8 @@ proc walk_dir(root: Path) -> WalkDir { give WalkDir { root: root, follow_symlink
 proc walk_dir_following_symlinks(root: Path) -> WalkDir { give WalkDir { root: root, follow_symlinks: true }; }
 proc walk_entries(walk: WalkDir) -> Result<Iterator<DirEntry>, FsError> { give compiler_backend_fs_walk_entries(walk); }
 proc exists(path_value: Path) -> bool { give is_ok<Metadata, FsError>(metadata(path_value)); }
+proc canonicalize(path_value: Path) -> Result<Path, FsError> { give compiler_backend_fs_canonicalize(path_value); }
+proc hard_link(original: Path, link: Path) -> Result<(), FsError> { give compiler_backend_fs_hard_link(original, link); }
+proc remove_dir_all(path_value: Path) -> Result<(), FsError> { give compiler_backend_fs_remove_dir_all(path_value); }
+proc atomic_write(path_value: Path, bytes: [byte]) -> Result<(), FsError> { give compiler_backend_fs_atomic_write(path_value, bytes); }
+proc same_file(left: Path, right: Path) -> Result<bool, FsError> { give compiler_backend_fs_same_file(left, right); }

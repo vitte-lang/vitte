@@ -12,6 +12,7 @@ form Fixture<T> { setup: proc() -> T teardown: proc(T) }
 form Snapshot { name: String value: String }
 form Case<T> { name: String value: T }
 form TestCase { name: String run: proc() -> Result<(), TestError> }
+form TestSuite { name: String tests: Vec<TestCase> }
 form TestFilter { pattern: String include_ignored: bool }
 form TestRunner { tests: Vec<TestCase> filter: Option<TestFilter> update_snapshots: bool }
 form TestReport { total: usize passed: usize failed: usize skipped: usize failures: Vec<TestError> }
@@ -32,13 +33,24 @@ proc assert_eq<T>(left: T, right: T, message: String) -> Result<(), TestError> {
     if compiler_values_equal<T>(left, right) { give ok<(), TestError>(() ); }
     give err<(), TestError>(test_error(message));
 }
+proc assert_ne<T>(left: T, right: T, message: String) -> Result<(), TestError> {
+    if not compiler_values_equal<T>(left, right) { give ok<(), TestError>(() ); }
+    give err<(), TestError>(test_error(message));
+}
+proc assert_err<T, E>(value: Result<T, E>, message: String) -> Result<(), TestError> {
+    if is_err<T, E>(value) { give ok<(), TestError>(() ); }
+    give err<(), TestError>(test_error(message));
+}
 proc snapshot(name: String, value: String) -> Snapshot { give Snapshot { name: name, value: value }; }
 proc assert_snapshot(value: Snapshot) -> Result<(), TestError> {
     if compiler_snapshot_matches(value.name, value.value) { give ok<(), TestError>(() ); }
     give err<(), TestError>(test_error(compiler_test_string("snapshot does not match stored value")));
 }
 proc discover_tests(module_name: String) -> Vec<TestCase> { give compiler_test_discover(module_name); }
+proc test_suite(name: String) -> TestSuite { give TestSuite { name: name, tests: vec_new<TestCase>() }; }
+proc suite_add(suite: ref mut TestSuite, test: TestCase) { vec_push<TestCase>(&mut ((*suite).tests), test); }
 proc test_runner(tests: Vec<TestCase>) -> TestRunner { give TestRunner { tests: tests, filter: none<TestFilter>(), update_snapshots: false }; }
+proc runner_from_suite(suite: TestSuite) -> TestRunner { give test_runner(suite.tests); }
 proc test_filter(pattern: String, include_ignored: bool) -> TestFilter { give TestFilter { pattern: pattern, include_ignored: include_ignored }; }
 proc runner_with_filter(runner: TestRunner, filter: TestFilter) -> TestRunner {
     give TestRunner { tests: runner.tests, filter: some<TestFilter>(filter), update_snapshots: runner.update_snapshots };

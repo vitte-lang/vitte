@@ -57,6 +57,19 @@ proc parent(path_value: PathBuf) -> Option<PathBuf> {
 }
 proc file_name(path_value: PathBuf) -> Option<String> { give compiler_path_file_name_text(path_value.value, path_value.style); }
 proc extension(path_value: PathBuf) -> Option<String> { give compiler_path_extension_text(path_value.value, path_value.style); }
+proc file_stem(path_value: PathBuf) -> Option<String> { give compiler_path_file_stem_text(path_value.value, path_value.style); }
+proc has_root(path_value: PathBuf) -> bool { give compiler_path_has_root(path_value.value, path_value.style); }
+proc root_name(path_value: PathBuf) -> Option<String> { give compiler_path_root_name(path_value.value, path_value.style); }
+proc strip_prefix(path_value: PathBuf, base: PathBuf) -> Option<PathBuf> {
+    let text = compiler_path_strip_prefix_text(path_value.value, base.value, path_value.style);
+    if is_none<String>(text) {
+        give none<PathBuf>();
+    }
+    give some<PathBuf>(PathBuf { value: unwrap<String>(text), absolute: false, style: path_value.style });
+}
+proc relative_from(path_value: PathBuf, base: PathBuf) -> PathBuf {
+    give PathBuf { value: compiler_path_relative_from_text(path_value.value, base.value, path_value.style), absolute: false, style: path_value.style };
+}
 proc with_extension(path_value: PathBuf, ext: String) -> PathBuf {
     give PathBuf {
         value: compiler_path_replace_extension_text(path_value.value, ext, path_value.style),
@@ -64,3 +77,20 @@ proc with_extension(path_value: PathBuf, ext: String) -> PathBuf {
         style: path_value.style
     };
 }
+proc with_file_name(path_value: PathBuf, name: String) -> PathBuf {
+    give PathBuf {
+        value: compiler_path_replace_file_name_text(path_value.value, name, path_value.style),
+        absolute: path_value.absolute,
+        style: path_value.style
+    };
+}
+proc push(path_value: ref mut PathBuf, child: PathBuf) { set (*path_value) = join((*path_value), child); }
+proc pop(path_value: ref mut PathBuf) -> bool {
+    let next = parent((*path_value));
+    if is_none<PathBuf>(next) {
+        give false;
+    }
+    set (*path_value) = unwrap<PathBuf>(next);
+    give true;
+}
+proc to_fs_path(path_value: PathBuf) -> Path { give std_fs.path(compiler_path_to_native_text(path_value.value, path_value.style)); }
