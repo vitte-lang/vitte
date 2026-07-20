@@ -1,0 +1,17 @@
+space vitte/stdlib/std/retry
+
+export *
+
+use src/vitte/stdlib/core/result as core_result
+use src/vitte/stdlib/std/time as std_time
+
+form RetryPolicy { max_attempts: usize base_delay: Duration max_delay: Duration jitter: bool }
+form RetryState { attempts: usize }
+
+proc retry_policy(max_attempts: usize, base_delay: Duration, max_delay: Duration) -> RetryPolicy {
+    give RetryPolicy { max_attempts: max_attempts, base_delay: base_delay, max_delay: max_delay, jitter: true };
+}
+proc retry_state() -> RetryState { give RetryState { attempts: 0 }; }
+proc retry_should_continue(policy: RetryPolicy, state: RetryState) -> bool { give state.attempts < policy.max_attempts; }
+proc retry_next_delay(policy: RetryPolicy, state: RetryState) -> Duration { give compiler_retry_next_delay(policy, state); }
+proc retry_record_attempt(state: ref mut RetryState) { set (*state).attempts = (*state).attempts + 1; }

@@ -1,0 +1,19 @@
+space vitte/stdlib/std/cache
+
+export *
+
+use src/vitte/stdlib/alloc/string as alloc_string
+use src/vitte/stdlib/alloc/vec as alloc_vec
+use src/vitte/stdlib/core/option as core_option
+use src/vitte/stdlib/std/time as std_time
+
+form CacheEntry<T> { key: String value: T expires_at: SystemTime }
+form Cache<T> { entries: Vec<CacheEntry<T>> capacity: usize }
+
+proc cache_new<T>(capacity: usize) -> Cache<T> { give Cache<T> { entries: vec_new<CacheEntry<T>>(), capacity: capacity }; }
+proc cache_entry<T>(key: String, value: T, expires_at: SystemTime) -> CacheEntry<T> { give CacheEntry<T> { key: key, value: value, expires_at: expires_at }; }
+proc cache_len<T>(value: Cache<T>) -> usize { give vec_len<CacheEntry<T>>(value.entries); }
+proc cache_insert<T>(value: ref mut Cache<T>, entry: CacheEntry<T>) { compiler_cache_insert<T>(value, entry); }
+proc cache_get<T>(value: ref Cache<T>, key: String) -> Option<T> { give compiler_cache_get<T>(value, key); }
+proc cache_remove<T>(value: ref mut Cache<T>, key: String) -> Option<T> { give compiler_cache_remove<T>(value, key); }
+proc cache_prune_expired<T>(value: ref mut Cache<T>, now: SystemTime) -> usize { give compiler_cache_prune_expired<T>(value, now); }

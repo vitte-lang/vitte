@@ -1,0 +1,19 @@
+space vitte/stdlib/std/archive
+
+export *
+
+use src/vitte/stdlib/alloc/string as alloc_string
+use src/vitte/stdlib/alloc/vec as alloc_vec
+use src/vitte/stdlib/core/result as core_result
+use src/vitte/stdlib/core/string as core_string
+
+form ArchiveEntry { path: String size: u64 mode: u32 }
+form Archive { entries: Vec<ArchiveEntry> format: String }
+form ArchiveError { message: String }
+
+proc archive_new(format: String) -> Archive { give Archive { entries: vec_new<ArchiveEntry>(), format: format }; }
+proc archive_entry(path: String, size: u64, mode: u32) -> ArchiveEntry { give ArchiveEntry { path: path, size: size, mode: mode }; }
+proc archive_add(value: ref mut Archive, entry: ArchiveEntry) { vec_push<ArchiveEntry>(&mut ((*value).entries), entry); }
+proc archive_len(value: Archive) -> usize { give vec_len<ArchiveEntry>(value.entries); }
+proc archive_pack(value: Archive) -> Result<Vec<byte>, ArchiveError> { give compiler_archive_pack(value); }
+proc archive_unpack(bytes: Vec<byte>) -> Result<Archive, ArchiveError> { give compiler_archive_unpack(bytes); }

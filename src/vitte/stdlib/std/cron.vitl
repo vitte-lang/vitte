@@ -1,0 +1,17 @@
+space vitte/stdlib/std/cron
+
+export *
+
+use src/vitte/stdlib/alloc/string as alloc_string
+use src/vitte/stdlib/core/result as core_result
+use src/vitte/stdlib/core/string as core_string
+use src/vitte/stdlib/std/time as std_time
+
+form CronSchedule { expression: String }
+form CronError { message: String }
+
+proc cron_parse(text: Utf8View) -> Result<CronSchedule, CronError> { give compiler_cron_parse(text); }
+proc cron_every_minute() -> CronSchedule { give CronSchedule { expression: compiler_test_string("* * * * *") }; }
+proc cron_daily(hour: u8, minute: u8) -> CronSchedule { give CronSchedule { expression: compiler_cron_daily(hour, minute) }; }
+proc cron_matches(schedule: CronSchedule, instant: SystemTime) -> bool { give compiler_cron_matches(schedule, instant); }
+proc cron_next(schedule: CronSchedule, after: SystemTime) -> Result<SystemTime, CronError> { give compiler_cron_next(schedule, after); }

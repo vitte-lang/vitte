@@ -1,0 +1,15 @@
+space vitte/stdlib/std/rate_limit
+
+export *
+
+use src/vitte/stdlib/std/time as std_time
+
+form RateLimit { capacity: u64 tokens: u64 refill_per_second: u64 last_refill: SystemTime }
+
+proc rate_limit_new(capacity: u64, refill_per_second: u64, now: SystemTime) -> RateLimit {
+    give RateLimit { capacity: capacity, tokens: capacity, refill_per_second: refill_per_second, last_refill: now };
+}
+proc rate_limit_allow(value: ref mut RateLimit, now: SystemTime) -> bool { give compiler_rate_limit_allow(value, now); }
+proc rate_limit_allow_n(value: ref mut RateLimit, amount: u64, now: SystemTime) -> bool { give compiler_rate_limit_allow_n(value, amount, now); }
+proc rate_limit_remaining(value: RateLimit) -> u64 { give value.tokens; }
+proc rate_limit_reset(value: ref mut RateLimit, now: SystemTime) { set (*value).tokens = (*value).capacity; set (*value).last_refill = now; }

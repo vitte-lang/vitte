@@ -1,0 +1,22 @@
+space vitte/stdlib/std/tracing
+
+export *
+
+use src/vitte/stdlib/alloc/string as alloc_string
+use src/vitte/stdlib/alloc/vec as alloc_vec
+use src/vitte/stdlib/std/time as std_time
+
+form TraceId { high: u64 low: u64 }
+form SpanId { value: u64 }
+form TraceSpan { trace_id: TraceId span_id: SpanId parent: SpanId name: String started_at: SystemTime }
+form TraceEvent { span_id: SpanId name: String timestamp: SystemTime fields: Vec<(String, String)> }
+
+proc trace_id_new() -> TraceId { give compiler_trace_id_new(); }
+proc span_id_new() -> SpanId { give compiler_span_id_new(); }
+proc trace_span_start(trace_id: TraceId, parent: SpanId, name: String) -> TraceSpan {
+    give TraceSpan { trace_id: trace_id, span_id: span_id_new(), parent: parent, name: name, started_at: system_time_now() };
+}
+proc trace_event(span_id: SpanId, name: String) -> TraceEvent {
+    give TraceEvent { span_id: span_id, name: name, timestamp: system_time_now(), fields: vec_new<(String, String)>() };
+}
+proc trace_emit(value: TraceEvent) { compiler_trace_emit(value); }

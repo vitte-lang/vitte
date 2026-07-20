@@ -1,0 +1,35 @@
+use src/vitte/stdlib/std/archive as std_archive
+use src/vitte/stdlib/std/bitset as std_bitset
+use src/vitte/stdlib/std/cache as std_cache
+use src/vitte/stdlib/std/checksum as std_checksum
+use src/vitte/stdlib/std/cron as std_cron
+use src/vitte/stdlib/std/graph as std_graph
+use src/vitte/stdlib/std/pool as std_pool
+use src/vitte/stdlib/std/rate_limit as std_rate_limit
+use src/vitte/stdlib/std/retry as std_retry
+use src/vitte/stdlib/std/tracing as std_tracing
+use src/vitte/stdlib/std/time as std_time
+
+proc stdlib_max_libraries_contracts_smoke() -> bool {
+    let archive: std_archive.Archive = std_archive.archive_new(compiler_test_string("tar"));
+    let bits: std_bitset.BitSet = std_bitset.bitset_new(128);
+    let cache: std_cache.Cache<int> = std_cache.cache_new<int>(16);
+    let cron: std_cron.CronSchedule = std_cron.cron_every_minute();
+    let graph: std_graph.Graph<int, int> = std_graph.graph_new<int, int>(true);
+    let pool: std_pool.Pool<int> = std_pool.pool_new<int>(8);
+    let now: std_time.SystemTime = std_time.system_time_now();
+    let limiter: std_rate_limit.RateLimit = std_rate_limit.rate_limit_new(10, 1, now);
+    let policy: std_retry.RetryPolicy = std_retry.retry_policy(3, std_time.duration_from_millis(10), std_time.duration_from_secs(1));
+    let trace: std_tracing.TraceId = std_tracing.trace_id_new();
+
+    give std_archive.archive_len(archive) == 0
+        and std_bitset.bitset_len(bits) == 128
+        and std_cache.cache_len<int>(cache) == 0
+        and std_checksum.checksum_crc32(compiler_string_bytes("")) == 0
+        and cron.expression == compiler_test_string("* * * * *")
+        and std_graph.graph_node_count<int, int>(graph) == 0
+        and std_pool.pool_capacity<int>(pool) == 8
+        and std_rate_limit.rate_limit_remaining(limiter) == 10
+        and std_retry.retry_should_continue(policy, std_retry.retry_state())
+        and trace.high != 0;
+}

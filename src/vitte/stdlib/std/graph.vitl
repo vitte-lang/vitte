@@ -1,0 +1,18 @@
+space vitte/stdlib/std/graph
+
+export *
+
+use src/vitte/stdlib/alloc/vec as alloc_vec
+use src/vitte/stdlib/core/option as core_option
+
+form GraphNode<T> { id: usize value: T }
+form GraphEdge<W> { from: usize to: usize weight: W }
+form Graph<T, W> { nodes: Vec<GraphNode<T>> edges: Vec<GraphEdge<W>> directed: bool }
+
+proc graph_new<T, W>(directed: bool) -> Graph<T, W> { give Graph<T, W> { nodes: vec_new<GraphNode<T>>(), edges: vec_new<GraphEdge<W>>(), directed: directed }; }
+proc graph_add_node<T, W>(value: ref mut Graph<T, W>, node: GraphNode<T>) { vec_push<GraphNode<T>>(&mut ((*value).nodes), node); }
+proc graph_add_edge<T, W>(value: ref mut Graph<T, W>, edge: GraphEdge<W>) { vec_push<GraphEdge<W>>(&mut ((*value).edges), edge); }
+proc graph_node_count<T, W>(value: Graph<T, W>) -> usize { give vec_len<GraphNode<T>>(value.nodes); }
+proc graph_edge_count<T, W>(value: Graph<T, W>) -> usize { give vec_len<GraphEdge<W>>(value.edges); }
+proc graph_neighbors<T, W>(value: ref Graph<T, W>, id: usize) -> Vec<usize> { give compiler_graph_neighbors<T, W>(value, id); }
+proc graph_toposort<T, W>(value: ref Graph<T, W>) -> Option<Vec<usize>> { give compiler_graph_toposort<T, W>(value); }

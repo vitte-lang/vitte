@@ -1,0 +1,15 @@
+space vitte/stdlib/std/pool
+
+export *
+
+use src/vitte/stdlib/alloc/vec as alloc_vec
+use src/vitte/stdlib/core/option as core_option
+
+form Pool<T> { free: Vec<T> capacity: usize }
+
+proc pool_new<T>(capacity: usize) -> Pool<T> { give Pool<T> { free: vec_new<T>(), capacity: capacity }; }
+proc pool_len<T>(value: Pool<T>) -> usize { give vec_len<T>(value.free); }
+proc pool_capacity<T>(value: Pool<T>) -> usize { give value.capacity; }
+proc pool_put<T>(value: ref mut Pool<T>, item: T) -> bool { give compiler_pool_put<T>(value, item); }
+proc pool_take<T>(value: ref mut Pool<T>) -> Option<T> { give compiler_pool_take<T>(value); }
+proc pool_clear<T>(value: ref mut Pool<T>) { compiler_pool_clear<T>(value); }
