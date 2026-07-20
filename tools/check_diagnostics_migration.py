@@ -55,6 +55,16 @@ STRUCTURED_DIAGNOSTIC_ALLOWLIST = {
     "src/vitte/compiler/middle/typecheck/diagnostics.vit",
     "src/vitte/compiler/diagnostics/diagnostic.vit",
 }
+REMOVED_LEGACY_DIAGNOSTIC_PATHS = (
+    "src/vitte/compiler/diagnostics/legacy.vit",
+    "src/vitte/compiler/diagnostics/freeform.vit",
+    "src/vitte/compiler/diagnostics/raw.vit",
+    "src/vitte/compiler/infrastructure/diagnostics/legacy_emitter.vit",
+)
+REMOVED_LEGACY_ENTRYPOINT_RE = re.compile(
+    r"\b(?:legacy_diagnostic_system|freeform_diagnostic_system|raw_diagnostic_emitter|"
+    r"LegacyDiagnostic|FreeformDiagnostic|RawDiagnostic)\b"
+)
 
 def rel(path: Path) -> str:
     return path.relative_to(ROOT).as_posix()
@@ -173,6 +183,18 @@ def validate_no_unstructured_diagnostics() -> list[str]:
     return failures
 
 
+def validate_legacy_system_removed() -> list[str]:
+    failures: list[str] = []
+    for path in REMOVED_LEGACY_DIAGNOSTIC_PATHS:
+        if (ROOT / path).exists():
+            failures.append(f"removed legacy diagnostic system file must not exist: {path}")
+    for path in compiler_sources():
+        text = path.read_text(encoding="utf-8")
+        if REMOVED_LEGACY_ENTRYPOINT_RE.search(text):
+            failures.append(f"removed legacy diagnostic system entry point is forbidden: {rel(path)}")
+    return failures
+
+
 def main() -> int:
     baseline = json.loads(BASELINE.read_text(encoding="utf-8"))
     debt_counts = migration_debt_counts()
@@ -183,6 +205,7 @@ def main() -> int:
     failures.extend(compare_counts("direct diagnostic message concatenation", count_by_file(DIRECT_CONCAT_RE), baseline.get("direct_message_concat_sites", {})))
     failures.extend(compare_counts("catch-all diagnostic message", count_by_file(CATCH_ALL_RE), baseline.get("catch_all_messages", {})))
     failures.extend(validate_no_unstructured_diagnostics())
+    failures.extend(validate_legacy_system_removed())
 
     if failures:
         for failure in failures:
