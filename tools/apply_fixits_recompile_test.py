@@ -90,7 +90,7 @@ def check_fixture(fixture: Path) -> None:
     fixed_diags = analyze(fixed, fixture.name)
     if fixed_diags:
         codes = ", ".join(str(diag.get("code", "<unknown>")) for diag in fixed_diags)
-        raise SystemExit(f"[fixits][error] fixed source still has frontend diagnostic(s): {codes}")
+        raise SystemExit(f"[fixits][error] fixed source still has frontend diagnostic(s) for {fixture}: {codes}")
 
     with tempfile.TemporaryDirectory(prefix="vitte-fixits.", dir=ROOT / "target") as tmp:
         fixed_path = Path(tmp) / fixture.name
