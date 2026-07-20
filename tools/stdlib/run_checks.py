@@ -1543,17 +1543,25 @@ def validate_lsp_api_index() -> list[ValidationResult]:
     api_json = json.loads((ROOT / "docs" / "compiler" / "stdlib_api.generated.json").read_text(encoding="utf-8"))
     lsp_text = (ROOT / "docs" / "compiler" / "stdlib_lsp_index.md").read_text(encoding="utf-8")
     lsp_json = json.loads((ROOT / "docs" / "compiler" / "stdlib_lsp_index.generated.json").read_text(encoding="utf-8"))
-    required_api = ("signature `", "example `", "std/serialization.vitl", "std/atomic.vitl")
-    required_lsp = ("symbol name", "public signature", "minimal usage example")
+    required_api = ("signature `", "example `", "stability `", "std/serialization.vitl", "std/atomic.vitl")
+    required_lsp = ("symbol name", "public signature", "minimal usage example", "stability", "source line")
     missing_api = [fragment for fragment in required_api if fragment not in api_text]
     missing_lsp = [fragment for fragment in required_lsp if fragment not in lsp_text]
     json_ok = api_json.get("schema") == "vitte.stdlib.api" and bool(api_json.get("modules"))
     lsp_ok = lsp_json.get("schema") == "vitte.stdlib.lsp-index" and bool(lsp_json.get("symbols"))
+    required_symbol_fields = {"id", "name", "kind", "signature", "module", "line", "example", "stability", "visibility"}
+    json_symbols = [
+        symbol
+        for module in api_json.get("modules", [])
+        for symbol in module.get("symbols", [])
+    ]
+    api_structured_ok = all(required_symbol_fields.issubset(symbol) for symbol in json_symbols)
+    lsp_structured_ok = all(required_symbol_fields.issubset(symbol) for symbol in lsp_json.get("symbols", []))
     return [
         ValidationResult(
             name="stdlib_lsp_api_index_generated",
-            status=not missing_api and not missing_lsp and json_ok and lsp_ok,
-            detail="ok" if not missing_api and not missing_lsp and json_ok and lsp_ok else ", ".join(missing_api + missing_lsp),
+            status=not missing_api and not missing_lsp and json_ok and lsp_ok and api_structured_ok and lsp_structured_ok,
+            detail="ok" if not missing_api and not missing_lsp and json_ok and lsp_ok and api_structured_ok and lsp_structured_ok else ", ".join(missing_api + missing_lsp + ["missing structured fields"]),
         )
     ]
 
