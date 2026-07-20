@@ -397,17 +397,43 @@ proc attach_sema_context(diagnostic: Diagnostic, phase: SemaPhase, kind: SemaDia
     give diag;
 }
 
+proc sema_public_code(code: string) -> string {
+    if code == "SEMA_E_AMBIGUOUS_SYMBOL" { give "SEM0010"; }
+    if code == "SEMA_E_DUPLICATE_BINDING" { give "SEM0011"; }
+    if code == "SEMA_E_DUPLICATE_ITEM" { give "SEM0012"; }
+    if code == "SEMA_E_DUPLICATE_SYMBOL" { give "SEM0013"; }
+    if code == "SEMA_E_INTERNAL" { give "SEM0014"; }
+    if code == "SEMA_E_INVALID_ASSIGN_TARGET" { give "SEM0015"; }
+    if code == "SEMA_E_INVALID_ATTRIBUTE" { give "SEM0016"; }
+    if code == "SEMA_E_INVALID_CONTROL_FLOW" { give "SEM0017"; }
+    if code == "SEMA_E_INVALID_EXPORT" { give "SEM0018"; }
+    if code == "SEMA_E_INVALID_HIR" { give "SEM0019"; }
+    if code == "SEMA_E_INVALID_IMPORT" { give "SEM0020"; }
+    if code == "SEMA_E_INVALID_MODULE" { give "SEM0021"; }
+    if code == "SEMA_E_INVALID_VISIBILITY" { give "SEM0022"; }
+    if code == "SEMA_E_MISSING_BINDING" { give "SEM0023"; }
+    if code == "SEMA_E_SHADOWING_FORBIDDEN" { give "SEM0024"; }
+    if code == "SEMA_E_UNDECLARED_TARGET" { give "SEM0025"; }
+    if code == "SEMA_E_UNKNOWN_FIELD" { give "SEM0026"; }
+    if code == "SEMA_E_UNKNOWN_FUNCTION" { give "SEM0027"; }
+    if code == "SEMA_E_UNKNOWN_IDENTIFIER" { give "SEM0028"; }
+    if code == "SEMA_E_UNKNOWN_SYMBOL" { give "SEM0029"; }
+    if code == "SEMA_E_UNKNOWN_VARIANT" { give "SEM0030"; }
+    give code;
+}
+
 proc sema_diagnostic(code: string, severity: DiagnosticSeverity, message: string, labels: [string], suggestion: string, span: Span, fatal: bool) -> Diagnostic {
     let source_span: SourceSpan = ast_span_to_source_span(span);
     let real_severity: DiagnosticSeverity = severity;
-    let resolved_message: string = sema_message(code, message);
-    let resolved_help: string = sema_help(code, suggestion);
+    let public_code: string = sema_public_code(code);
+    let resolved_message: string = sema_message(public_code, message);
+    let resolved_help: string = sema_help(public_code, suggestion);
 
     if fatal {
         set real_severity = DiagnosticSeverity.Fatal;
     }
 
-    let diag: Diagnostic = diagnostic_severity(real_severity, code, resolved_message, source_span);
+    let diag: Diagnostic = diagnostic_severity(real_severity, public_code, resolved_message, source_span);
 
     let i: u64 = 0;
 
@@ -423,7 +449,7 @@ proc sema_diagnostic(code: string, severity: DiagnosticSeverity, message: string
         set diag = diagnostic_with_help(diag, resolved_help);
     }
 
-    let note: string = diagnostic_default_note(code);
+    let note: string = diagnostic_default_note(public_code);
 
     if note != "" {
         set diag = diagnostic_with_note(diag, note);
@@ -434,10 +460,11 @@ proc sema_diagnostic(code: string, severity: DiagnosticSeverity, message: string
 
 proc sema_typed_diagnostic(code: string, severity: DiagnosticSeverity, phase: SemaPhase, kind: SemaDiagnosticKind, message: string, labels: [string], suggestion: string, span: Span) -> Diagnostic {
     let source_span: SourceSpan = ast_span_to_source_span(span);
-    let resolved_message: string = sema_message(code, message);
-    let resolved_help: string = sema_help(code, suggestion);
+    let public_code: string = sema_public_code(code);
+    let resolved_message: string = sema_message(public_code, message);
+    let resolved_help: string = sema_help(public_code, suggestion);
 
-    let diag: Diagnostic = diagnostic_severity_with_phase(severity, sema_diagnostic_phase(phase), code, resolved_message, source_span);
+    let diag: Diagnostic = diagnostic_severity_with_phase(severity, sema_diagnostic_phase(phase), public_code, resolved_message, source_span);
 
     set diag = attach_sema_context(diag, phase, kind);
 
@@ -455,7 +482,7 @@ proc sema_typed_diagnostic(code: string, severity: DiagnosticSeverity, phase: Se
         set diag = diagnostic_with_help(diag, resolved_help);
     }
 
-    let note: string = diagnostic_default_note(code);
+    let note: string = diagnostic_default_note(public_code);
 
     if note != "" {
         set diag = diagnostic_with_note(diag, note);
