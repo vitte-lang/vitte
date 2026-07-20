@@ -2,7 +2,7 @@ space vitte/compiler/frontend/parse/parser
 
 use vitte/compiler/frontend/lexer/token.{ Token, TokenKind, token }
 use vitte/compiler/frontend/parse/errors.{ ParseDiagnostic, parse_error_with_span }
-use vitte/compiler/frontend/parse/recovery.{ recover_decl_index, recover_expr_index, recover_pattern_index, recover_stmt_index, recover_type_index }
+use vitte/compiler/frontend/parse/recovery.{ RecoveryControl, default_recovery_control, recover_decl_index, recover_expr_index, recover_pattern_index, recover_stmt_index, recover_type_index, recovery_allowed }
 use vitte/compiler/frontend/ast/node.{ Span, ast_span, ast_span_empty, ast_span_offsets }
 use vitte/compiler/frontend/ast/expr.{ AstExpr, AstExprKind, ast_expr_binary, ast_expr_call, ast_expr_index, ast_expr_leaf, ast_expr_member, ast_expr_node, ast_expr_typed, ast_expr_unary, ast_expr_unknown }
 use vitte/compiler/frontend/ast/item.{ AstGenericParam, AstItem, AstItemKind, AstModule, AstNominalMember, AstNominalMemberKind, AstParam, AstProcSignature, ast_generic_param, ast_generic_param_empty, ast_item_create, ast_item_typed, ast_item_typed_with_members, ast_module, ast_module_empty, ast_nominal_member, ast_param, ast_param_empty, ast_proc_signature, ast_proc_signature_empty, count_module_exprs, count_module_patterns, count_module_stmts, count_module_types }
@@ -279,6 +279,10 @@ proc recover_pattern_state(state: ParserState) -> ParserState {
     give state;
   }
   give with_index_and_recovery(state, index, true);
+}
+
+proc parser_recovery_allowed(state: ParserState, control: RecoveryControl) -> bool {
+  give recovery_allowed(control, len(state.diagnostics), state.recovery_count);
 }
 
 proc at_text(state: ParserState, text: string) -> bool {
@@ -1407,6 +1411,7 @@ proc parse_stmt(state: ParserState) -> ParserState {
 proc parse_block(state: ParserState) -> ParserState {
   let current: ParserState = expect_text(state, "{", "PBLOCK001");
   let walk: ParserState = current;
+  let recovery_control: RecoveryControl = default_recovery_control();
   while not is_eof(walk) and not at_text(walk, "}") {
     let before_index: u64 = walk.index;
     let before_diags: u64 = len(walk.diagnostics);
@@ -1414,7 +1419,7 @@ proc parse_block(state: ParserState) -> ParserState {
     if walk.index == before_index {
       set walk = with_diag(walk, "PLOOP", "statement parser made no progress");
     }
-    if len(walk.diagnostics) > before_diags {
+    if len(walk.diagnostics) > before_diags and parser_recovery_allowed(walk, recovery_control) {
       let recovered: ParserState = recover_stmt_state(walk);
       if recovered.index == walk.index and walk.index == before_index and not at_text(walk, "}") and not is_eof(walk) {
         set walk = advance(walk);
@@ -1618,6 +1623,7 @@ proc parse_decl(state: ParserState) -> ParserState {
 proc parse_source(source_name: string, tokens: [Token]) -> ParseResult {
   let current: ParserState = parser_state(source_name, tokens);
   let walk: ParserState = current;
+  let recovery_control: RecoveryControl = default_recovery_control();
   while not is_eof(walk) {
     let before: u64 = walk.index;
     let before_diags: u64 = len(walk.diagnostics);
@@ -1625,7 +1631,7 @@ proc parse_source(source_name: string, tokens: [Token]) -> ParseResult {
     if walk.index == before {
       set walk = with_diag(walk, "PLOOP", "parser made no progress");
     }
-    if len(walk.diagnostics) > before_diags or walk.index == before {
+    if (len(walk.diagnostics) > before_diags or walk.index == before) and parser_recovery_allowed(walk, recovery_control) {
       let recovered: ParserState = recover_decl_state(walk);
       if recovered.index == walk.index and walk.index == before and not is_eof(walk) {
         set walk = advance(walk);

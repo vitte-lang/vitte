@@ -5,6 +5,7 @@ use vitte/compiler/frontend/lexer/token.{ Token, TokenKind }
 export *
 
 const PARSE_DIAG_CAP: u64 = 3
+const PARSE_RECOVERY_CAP: u64 = 64
 
 pick RecoveryKind {
     None
@@ -28,6 +29,13 @@ form RecoveryStats {
     diagnostic_count: u64
     recovery_count: u64
     capped: bool
+}
+
+form RecoveryControl {
+    max_recoveries: u64
+    sync_points: [string]
+    preserve_primary_error: bool
+    valid: bool
 }
 
 form RecoveryMetrics {
@@ -59,6 +67,32 @@ proc recovery_stats(diagnostic_count: u64, recovery_count: u64) -> RecoveryStats
 
 proc parse_diag_cap() -> u64 {
     give PARSE_DIAG_CAP;
+}
+
+proc parse_recovery_cap() -> u64 {
+    give PARSE_RECOVERY_CAP;
+}
+
+proc default_recovery_control() -> RecoveryControl {
+    give RecoveryControl {
+        max_recoveries: PARSE_RECOVERY_CAP,
+        sync_points: parser_sync_points(),
+        preserve_primary_error: true,
+        valid: true
+    };
+}
+
+proc recovery_allowed(control: RecoveryControl, diagnostic_count: u64, recovery_count: u64) -> bool {
+    if not control.valid {
+        give false;
+    }
+    if recovery_count >= control.max_recoveries {
+        give false;
+    }
+    if control.preserve_primary_error and diagnostic_count == 0 {
+        give false;
+    }
+    give true;
 }
 
 proc capped_diag_count(count: u64) -> u64 {
