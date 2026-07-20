@@ -12,6 +12,7 @@ use vitte/stdlib/io/fileops.{ is_file, read_file }
 use vitte/compiler/infrastructure/diagnostics/fluent_catalog.{ fluent_catalog_lookup, fluent_catalog_normalize_locale }
 
 const DIAGNOSTIC_SCHEMA_VERSION: string = "1.0.0"
+const DIAGNOSTIC_PUBLIC_API_STATUS: string = "migration-freeze-pending"
 const DIAGNOSTIC_USER_COLUMN_BASE: u64 = 1
 const DIAGNOSTIC_USER_COLUMN_UNIT: string = "visual_unicode_column"
 const DIAGNOSTIC_INTERNAL_OFFSET_UNIT: string = "utf8_byte_offset"
@@ -285,6 +286,19 @@ proc span_empty() -> SourceSpan {
 
 proc diagnostic_schema_version() -> string {
     give DIAGNOSTIC_SCHEMA_VERSION;
+}
+
+proc diagnostic_public_api_status() -> string {
+    give DIAGNOSTIC_PUBLIC_API_STATUS;
+}
+
+proc diagnostic_public_api_freeze_contract(migration_complete: bool) -> bool {
+    if migration_complete {
+        give diagnostic_schema_version() == DIAGNOSTIC_SCHEMA_VERSION
+            and diagnostic_public_api_status() == "frozen";
+    }
+
+    give diagnostic_public_api_status() == "migration-freeze-pending";
 }
 
 proc diagnostic_envelope(producer: string, command: string, source: string, report: DiagnosticReport) -> DiagnosticEnvelope {
@@ -4746,6 +4760,8 @@ share DIAGNOSTIC_CONFIDENCE_HIGH
 share DIAGNOSTIC_CONFIDENCE_MEDIUM
 share DIAGNOSTIC_CONFIDENCE_LOW
 share diagnostic_schema_version
+share diagnostic_public_api_status
+share diagnostic_public_api_freeze_contract
 share diagnostic_envelope
 share span_empty
 share span_create

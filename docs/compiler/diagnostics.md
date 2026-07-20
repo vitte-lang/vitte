@@ -10,6 +10,9 @@ one `Diagnostic` value and one catalog entry.
 - `Span`, `PrimarySpan`, and `SecondarySpan` identify source locations.
 - Diagnostic codes are stable public identifiers and are never assembled from
   dynamic string fragments.
+- The public API status is `migration-freeze-pending` until the migration debt
+  reaches zero; after that point the status must be changed to `frozen` with a
+  stable schema version.
 - The catalog owns the code, title, phase, default severity, required
   parameters, documentation, and associated tests.
 - ICE reports are the only diagnostics allowed to describe an internal compiler
