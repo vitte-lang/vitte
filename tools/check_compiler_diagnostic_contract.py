@@ -36,6 +36,8 @@ DIAGNOSTIC_SNAPSHOT_TESTS = COMPILER_ROOT / "tests" / "diagnostic_snapshot_tests
 DIAGNOSTIC_SNAPSHOT_SUITE = ROOT / "tests" / "diagnostics" / "catalog" / "snapshots" / "diagnostic-suite.snap"
 DIAGNOSTICS_DOC = ROOT / "docs" / "compiler" / "diagnostics.md"
 DIAGNOSTIC_EXAMPLES_DOC = ROOT / "docs" / "compiler" / "diagnostic_examples.md"
+DIAGNOSTIC_STYLE_GUIDE = ROOT / "docs" / "compiler" / "diagnostic_style_guide.md"
+DIAGNOSTIC_VOCABULARY_AUDIT = ROOT / "docs" / "compiler" / "diagnostic_vocabulary_audit.md"
 
 DIRECT_OUTPUT = re.compile(r"\b(?:print|printf|fprintf|eprintf|fputs|fwrite|fputc)\s*\(")
 VAGUE_DRIVER_MESSAGES = (
@@ -258,6 +260,25 @@ def check_driver_vague_messages() -> list[str]:
         for message in VAGUE_DRIVER_MESSAGES
         if message in text
     ]
+
+
+def check_vitte_vocabulary_contract() -> list[str]:
+    failures: list[str] = []
+    style = DIAGNOSTIC_STYLE_GUIDE.read_text(encoding="utf-8")
+    audit = DIAGNOSTIC_VOCABULARY_AUDIT.read_text(encoding="utf-8")
+    required = (
+        "Use `procedure` for the user-facing callable concept.",
+        "Do not use `function` for the user-facing callable concept.",
+        "Do not use `routine` for the user-facing callable concept.",
+        "Do not use `return` when the diagnostic is describing Vitte syntax.",
+        "lexer, parser, resolver, sema, typeck, borrowck",
+    )
+    if "`procedure` for the user-facing concept, never function or routine" not in style:
+        failures.append(f"{DIAGNOSTIC_STYLE_GUIDE.relative_to(ROOT)}: missing canonical procedure terminology rule")
+    for fragment in required:
+        if fragment not in audit:
+            failures.append(f"{DIAGNOSTIC_VOCABULARY_AUDIT.relative_to(ROOT)}: missing vocabulary audit fragment {fragment!r}")
+    return failures
 
 
 def extract_form_body(text: str, form_name: str) -> str | None:
@@ -781,6 +802,7 @@ def main() -> int:
         *check_relational_diagnostic_contract(),
         *check_direct_output_boundaries(),
         *check_driver_vague_messages(),
+        *check_vitte_vocabulary_contract(),
     ]
     if failures:
         for failure in failures:
