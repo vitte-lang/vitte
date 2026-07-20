@@ -4035,6 +4035,46 @@ proc diagnostic_from_catalog(code: string, message: string, span: SourceSpan) ->
     give diagnostic_create(code, phase_from_code(code), severity_from_code(code), message, span);
 }
 
+proc mir_ir_public_code(code: string) -> string {
+    if code == "MIR_E_CFG_INCOHERENT" {
+        give "MIR0139";
+    }
+    if code == "MIR_E_INVALID_BLOCK" {
+        give "MIR0097";
+    }
+    if code == "MIR_E_INVALID_TERMINATOR" {
+        give "MIR0113";
+    }
+    if code == "MIR_E_UNREACHABLE_BLOCK" {
+        give "MIR0133";
+    }
+    if code == "MIR_E_VERIFICATION_FAILED" {
+        give "MIR0139";
+    }
+    if code == "IR_E_INVALID_MODULE" {
+        give "IR0039";
+    }
+    if code == "IR_E_INVALID_FUNCTION" {
+        give "IR0034";
+    }
+    if code == "IR_E_INVALID_BLOCK" {
+        give "IR0027";
+    }
+    if code == "IR_E_INVALID_INSTRUCTION" {
+        give "IR0036";
+    }
+    if code == "IR_E_INVALID_TERMINATOR" {
+        give "IR0036";
+    }
+    if code == "IR_E_TYPE_MISMATCH" {
+        give "IR0057";
+    }
+    if code == "IR_E_VERIFY_FAILED" {
+        give "IR0069";
+    }
+    give code;
+}
+
 proc diagnostic_explain_text(code: string) -> string {
     give diagnostic_explain_text_lang(code, "en");
 }
@@ -4468,7 +4508,7 @@ proc borrowck_dangling_reference(name: string, use_span: SourceSpan, owner_end_s
 }
 
 proc ir_invalid_terminator(span: SourceSpan) -> Diagnostic {
-    let diag: Diagnostic = diagnostic_error("IR_E_INVALID_TERMINATOR", DiagnosticPhase.Ir, "invalid block terminator", span);
+    let diag: Diagnostic = diagnostic_error("IR0036", DiagnosticPhase.Ir, "invalid block terminator", span);
     set diag = diagnostic_with_note(diag, "basic blocks must end with exactly one terminator");
     set diag = diagnostic_with_help(diag, "lower the source `give` or another valid control-flow terminator before backend emission");
 
@@ -4561,7 +4601,7 @@ proc borrowck_lifetime_too_short(name: string, borrow_span: SourceSpan, drop_spa
 }
 
 proc mir_cfg_incoherent(span: SourceSpan) -> Diagnostic {
-    let diag0: Diagnostic = diagnostic_error("MIR_E_CFG_INCOHERENT", DiagnosticPhase.MirVerification, "MIR control-flow graph is incoherent", span);
+    let diag0: Diagnostic = diagnostic_error("MIR0139", DiagnosticPhase.MirVerification, "MIR control-flow graph is incoherent", span);
     let diag1: Diagnostic = diagnostic_with_rule(diag0, "each MIR edge must point to a valid reachable basic block");
     give diagnostic_with_help(diag1, "repair the malformed control-flow edge or lower the source again");
 }
