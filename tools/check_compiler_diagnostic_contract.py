@@ -25,6 +25,7 @@ BORROWCK_LIFETIMES = COMPILER_ROOT / "analysis" / "borrowck" / "lifetimes.vit"
 TYPE_UNIFY = COMPILER_ROOT / "analysis" / "typeck" / "unify.vit"
 DIAGNOSTIC_CATALOG = COMPILER_ROOT / "diagnostics" / "catalog.vit"
 DIAGNOSTIC_RENDER = COMPILER_ROOT / "diagnostics" / "render.vit"
+DIAGNOSTIC_JSON = COMPILER_ROOT / "diagnostics" / "json.vit"
 DIAGNOSTIC_LSP = COMPILER_ROOT / "diagnostics" / "lsp.vit"
 DIAGNOSTIC_SARIF = COMPILER_ROOT / "diagnostics" / "sarif.vit"
 BACKEND_DIAGNOSTICS = COMPILER_ROOT / "backend" / "diagnostics.vit"
@@ -341,6 +342,7 @@ def check_relational_diagnostic_contract() -> list[str]:
         TYPE_UNIFY,
         DIAGNOSTIC_CATALOG,
         DIAGNOSTIC_RENDER,
+        DIAGNOSTIC_JSON,
         DIAGNOSTIC_LSP,
         DIAGNOSTIC_SARIF,
         BACKEND_DIAGNOSTICS,
@@ -520,6 +522,10 @@ def check_relational_diagnostic_contract() -> list[str]:
         (DIAGNOSTIC_RENDER, "render_terminal_diagnostic"),
         (DIAGNOSTIC_RENDER, "set ctx.color_mode = color_mode;"),
         (DIAGNOSTIC_RENDER, "set ctx.config.width = width;"),
+        (DIAGNOSTIC_JSON, "json_diagnostic_output"),
+        (DIAGNOSTIC_JSON, "\"canonical Diagnostic JSON renderer\""),
+        (DIAGNOSTIC_JSON, "\"diagnostics are serialized from the shared DiagnosticReport\""),
+        (DIAGNOSTIC_JSON, "share json_diagnostic_output"),
         (CANONICAL_DIAGNOSTIC, "why expected type is imposed:"),
         (CANONICAL_DIAGNOSTIC, "origin of obtained type:"),
         (CANONICAL_DIAGNOSTIC, "give 3 as u64;"),
