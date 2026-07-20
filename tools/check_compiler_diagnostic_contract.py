@@ -240,6 +240,18 @@ def check_code_documentation() -> list[str]:
     return failures
 
 
+def check_catalog_codes_present() -> list[str]:
+    payload = json.loads(CODES.read_text(encoding="utf-8"))
+    failures: list[str] = []
+    for index, entry in enumerate(payload.get("codes", [])):
+        if not isinstance(entry, dict):
+            continue
+        code = entry.get("code")
+        if not isinstance(code, str) or not code.strip():
+            failures.append(f"catalog entry #{index}: diagnostic code is required")
+    return failures
+
+
 def check_direct_output_boundaries() -> list[str]:
     failures: list[str] = []
     for path in compiler_sources():
@@ -802,6 +814,7 @@ def check_relational_diagnostic_contract() -> list[str]:
 def main() -> int:
     failures = [
         *check_code_documentation(),
+        *check_catalog_codes_present(),
         *check_diagnostic_object_contract(),
         *check_span_object_contract(),
         *check_relational_diagnostic_contract(),
