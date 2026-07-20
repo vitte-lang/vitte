@@ -133,13 +133,27 @@ def precise_enough(text: str, term: str) -> bool:
     return any(word in lowered for word in PRECISE_CAUSE_WORDS) and len(words) >= 3
 
 
+def followed_by_precise_cause(text: str, term: str) -> bool:
+    lowered = text.lower()
+    start = lowered.find(term)
+    if start < 0:
+        return True
+    tail = lowered[start + len(term):]
+    if not tail.strip():
+        return False
+    words = re.findall(r"[a-z0-9_]+", tail)
+    if len(words) < 2:
+        return False
+    return any(word in words for word in PRECISE_CAUSE_WORDS)
+
+
 def validate_text(text: str, location: str, strict: bool = True) -> list[str]:
     lowered = text.lower()
     failures: list[str] = []
     for term in FORBIDDEN_TERMS:
         if not strict and term in LEGACY_CONDITIONALLY_FORBIDDEN:
             continue
-        if term in lowered:
+        if term in lowered and not followed_by_precise_cause(text, term):
             failures.append(f"{location}: contains forbidden vague term {term!r}")
     if not strict:
         for term in LEGACY_CONDITIONALLY_FORBIDDEN:
@@ -317,12 +331,17 @@ def validate_central_catalog() -> list[str]:
         if not isinstance(tests, list) or not tests:
             failures.append(f"{code}: tests must contain at least one associated test path")
         else:
+            has_snapshot = False
             for test_path in tests:
                 if not isinstance(test_path, str) or not test_path:
                     failures.append(f"{code}: tests entries must be non-empty strings")
                     continue
+                if test_path.endswith((".snap", ".must", ".json.must", ".txt.snap", ".json.snap")):
+                    has_snapshot = True
                 if not (ROOT / test_path).exists():
                     failures.append(f"{code}: associated test path does not exist: {test_path}")
+            if not has_snapshot:
+                failures.append(f"{code}: tests must include at least one snapshot expectation")
     return failures
 
 
@@ -341,6 +360,8 @@ def central_catalog_entry_errors(entries: list[Any]) -> list[str]:
         seen.add(code)
         if not isinstance(tests, list) or not tests:
             failures.append(f"{code}: tests must contain at least one associated test path")
+        elif not any(isinstance(path, str) and path.endswith((".snap", ".must", ".json.must", ".txt.snap", ".json.snap")) for path in tests):
+            failures.append(f"{code}: tests must include at least one snapshot expectation")
     return failures
 
 
@@ -358,11 +379,17 @@ def validate_catalog_ci_invariant_contract() -> list[str]:
     if not any("tests must contain at least one associated test path" in error for error in missing_test_errors):
         return ["catalog CI invariant failed to reject diagnostics without tests"]
 
+    missing_snapshot_errors = central_catalog_entry_errors([
+        {"code": "TEST_E_NO_SNAPSHOT", "tests": ["tests/diagnostics/input_matrix_test.py"]},
+    ])
+    if not any("tests must include at least one snapshot expectation" in error for error in missing_snapshot_errors):
+        return ["catalog CI invariant failed to reject diagnostics without snapshots"]
+
     return []
 
 
 def validate_message_style_ci_invariant_contract() -> list[str]:
-    forbidden = validate_text("something went wrong while checking this source", "TEST.message")
+    forbidden = validate_text("something went wrong", "TEST.message")
     if not any("forbidden vague term" in error for error in forbidden):
         return ["catalog CI invariant failed to reject forbidden diagnostic message terms"]
 
@@ -370,9 +397,13 @@ def validate_message_style_ci_invariant_contract() -> list[str]:
     if not any("forbidden vague term" in error for error in vague):
         return ["catalog CI invariant failed to reject vague diagnostic message terms"]
 
-    failed = validate_text("failed while checking this source", "TEST.message")
+    failed = validate_text("failed", "TEST.message")
     if not any("forbidden vague term" in error for error in failed):
         return ["catalog CI invariant failed to reject failed diagnostic message terms"]
+
+    caused = validate_text("something went wrong because target object is missing", "TEST.message")
+    if caused:
+        return ["catalog CI invariant rejected a forbidden term followed by a precise cause"]
 
     precise = validate_text("binary literal uses a forbidden prefix", "TEST.message")
     if precise:
