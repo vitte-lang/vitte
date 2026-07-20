@@ -397,6 +397,15 @@ proc lsp_publish_report(uri: string, report: DiagnosticReport, version: u64) -> 
     give lsp_publish_report_with_canonical_context(uri, report, version, lsp_canonical_context_none());
 }
 
+proc lsp_diagnostic_output(uri: string, report: DiagnosticReport, version: u64, pipeline_failed_at: string, validation_reason: string) -> LspPublishDiagnosticsParams {
+    let context: LspCanonicalContext = lsp_canonical_context(
+        pipeline_failed_at,
+        "canonical Diagnostic LSP renderer",
+        validation_reason
+    );
+    give lsp_publish_report_with_canonical_context(uri, report, version, context);
+}
+
 proc lsp_code_action_from_suggestion(diagnostic: Diagnostic, suggestion: DiagnosticSuggestion) -> LspCodeAction {
     let uri: string = span_uri(suggestion.span);
     let range: LspRange = lsp_range_from_span(suggestion.span);
@@ -554,6 +563,7 @@ share lsp_publish_diagnostics_with_canonical_context
 share lsp_publish_diagnostics
 share lsp_publish_report_with_canonical_context
 share lsp_publish_report
+share lsp_diagnostic_output
 share lsp_code_action_from_suggestion
 share lsp_code_actions
 share lsp_report_code_actions
