@@ -379,6 +379,10 @@ proc cli_is_input_flag(text: string) -> bool {
     give text == "--src" or text == "--input";
 }
 
+proc cli_explain_command_contract(command: string, code: string) -> bool {
+    give command == "explain" and code != "";
+}
+
 proc cli_is_known_flag(text: string) -> bool {
     give cli_is_output_flag(text)
         or cli_is_source_flag(text)
@@ -394,6 +398,7 @@ proc cli_is_known_flag(text: string) -> bool {
         or text == "--stdlib-path"
         or text == "--stdlib-version"
         or text == "--lang"
+        or text == "--format"
         or text == "--native"
         or text == "--no-native"
         or text == "--json";
@@ -691,7 +696,7 @@ proc parse_cli_request(args: list[string]) -> CompilerCliRequest {
         }
     }
 
-    if request.command == "explain" and request.input_path == "" {
+    if request.command == "explain" and not cli_explain_command_contract(request.command, request.input_path) {
         set request.status = driver.DriverExitStatus::MissingInput;
         set request.message = "usage: vitte explain CODE";
         give request;

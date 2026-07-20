@@ -31,6 +31,7 @@ DIAGNOSTIC_SARIF = COMPILER_ROOT / "diagnostics" / "sarif.vit"
 BACKEND_DIAGNOSTICS = COMPILER_ROOT / "backend" / "diagnostics.vit"
 MIDDLE_TYPECHECK_DIAGNOSTICS = COMPILER_ROOT / "middle" / "typecheck" / "diagnostics.vit"
 DIAGNOSTICS_MIGRATION_CHECK = ROOT / "tools" / "check_diagnostics_migration.py"
+DRIVER_COMPILER = COMPILER_ROOT / "driver" / "compiler.vit"
 
 DIRECT_OUTPUT = re.compile(r"\b(?:print|printf|fprintf|eprintf|fputs|fwrite|fputc)\s*\(")
 VAGUE_DRIVER_MESSAGES = (
@@ -347,6 +348,7 @@ def check_relational_diagnostic_contract() -> list[str]:
         DIAGNOSTIC_SARIF,
         BACKEND_DIAGNOSTICS,
         MIDDLE_TYPECHECK_DIAGNOSTICS,
+        DRIVER_COMPILER,
     )
     for path in checked_paths:
         text = path.read_text(encoding="utf-8").lower()
@@ -530,6 +532,9 @@ def check_relational_diagnostic_contract() -> list[str]:
         (DIAGNOSTIC_LSP, "\"canonical Diagnostic LSP renderer\""),
         (DIAGNOSTIC_LSP, "lsp_publish_report_with_canonical_context(uri, report, version, context)"),
         (DIAGNOSTIC_LSP, "share lsp_diagnostic_output"),
+        (DRIVER_COMPILER, "cli_explain_command_contract"),
+        (DRIVER_COMPILER, "usage: vitte explain CODE"),
+        (DRIVER_COMPILER, "diagnostic_explain_text_lang(request.input_path, request.lang)"),
         (CANONICAL_DIAGNOSTIC, "why expected type is imposed:"),
         (CANONICAL_DIAGNOSTIC, "origin of obtained type:"),
         (CANONICAL_DIAGNOSTIC, "give 3 as u64;"),
