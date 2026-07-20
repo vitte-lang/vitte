@@ -31,6 +31,21 @@ SCATTERED_ERROR_RE = re.compile(
     r'"([^"\n]*(?:error|failed|failure|invalid|unknown error|something went wrong)[^"\n]*)"',
     re.IGNORECASE,
 )
+CATCH_ALL_RE = re.compile(
+    r"(?:"
+    r"\b(?:failed|failure|invalid|unknown|unsupported|error|problem|issue)\b|"
+    r"made no progress|something went wrong|semantic problem|internal issue|"
+    r"\b[a-z]+\.error\b"
+    r")",
+    re.IGNORECASE,
+)
+PRECISE_HINT_RE = re.compile(
+    r"\b(?:because|missing|required|expected|actual|found|span|token|identifier|"
+    r"symbol|module|type|borrow|move|lifetime|target|path|file|permission|"
+    r"delimiter|literal|operator|argument|parameter|return|object|linker|"
+    r"toolchain|source|phase|invariant)\b",
+    re.IGNORECASE,
+)
 GENERATED_SKIP = (
     "src/vitte/compiler/infrastructure/diagnostics/fluent_catalog.vit",
 )
@@ -91,6 +106,34 @@ def current_legacy_counts() -> dict[str, int]:
         for path, count in payload.get(group, {}).items():
             counts[path] += int(count)
     return dict(sorted(counts.items()))
+
+
+def current_legacy_catch_all_counts() -> dict[str, int]:
+    if not LEGACY_AUDIT.exists():
+        return {}
+    payload = json.loads(LEGACY_AUDIT.read_text(encoding="utf-8"))
+    return {
+        path: int(count)
+        for path, count in sorted(payload.get("catch_all_messages", {}).items())
+    }
+
+
+def catch_all_reason(message: str) -> str | None:
+    lowered = message.lower()
+    if not CATCH_ALL_RE.search(message):
+        return None
+    words = re.findall(r"[a-z0-9_]+", lowered)
+    if len(words) <= 3:
+        return "short vague status"
+    if re.fullmatch(r"[a-z]+\.error", lowered):
+        return "generic dotted error code"
+    if "made no progress" in lowered:
+        return "parser progress fallback"
+    if not PRECISE_HINT_RE.search(message):
+        return "vague error wording without a precise cause"
+    if lowered in {"error", "failed", "failure", "invalid", "unknown", "unsupported"}:
+        return "single-word fallback"
+    return None
 
 
 def phase_from_code(code: str) -> str:
@@ -173,6 +216,7 @@ def collect() -> dict[str, object]:
     code_locations: dict[str, set[str]] = defaultdict(set)
     output_locations: dict[str, list[str]] = defaultdict(list)
     scattered: dict[str, list[str]] = defaultdict(list)
+    catch_all: dict[str, list[str]] = defaultdict(list)
 
     for path in scan_files():
         path_rel = rel(path)
@@ -183,7 +227,16 @@ def collect() -> dict[str, object]:
             if output:
                 output_locations[output.group(1)].append(f"{path_rel}:{line_no}: {line.strip()}")
             for match in SCATTERED_ERROR_RE.finditer(line):
-                scattered[path_rel].append(f"{line_no}: {match.group(1)}")
+                message = match.group(1)
+                scattered[path_rel].append(f"{line_no}: {message}")
+                reason = catch_all_reason(message)
+                if reason:
+                    catch_all[path_rel].append(f"{line_no}: {reason}: {message}")
+            for match in CODE_RE.finditer(line):
+                code_like = match.group(0)
+                reason = catch_all_reason(code_like)
+                if reason:
+                    catch_all[path_rel].append(f"{line_no}: {reason}: {code_like}")
 
     all_codes = set(code_locations)
     codes_by_phase: dict[str, list[str]] = {phase: [] for phase in PHASE_ORDER}
@@ -203,7 +256,9 @@ def collect() -> dict[str, object]:
         "missing_in_sources": sorted(known - all_codes),
         "output_locations": dict(sorted(output_locations.items())),
         "scattered_error_strings": dict(sorted(scattered.items())),
+        "catch_all_messages": dict(sorted(catch_all.items())),
         "legacy_debt": current_legacy_counts(),
+        "legacy_catch_all_debt": current_legacy_catch_all_counts(),
     }
 
 
@@ -214,7 +269,9 @@ def render(data: dict[str, object]) -> str:
     missing: list[str] = data["missing_in_sources"]  # type: ignore[assignment]
     outputs: dict[str, list[str]] = data["output_locations"]  # type: ignore[assignment]
     scattered: dict[str, list[str]] = data["scattered_error_strings"]  # type: ignore[assignment]
+    catch_all: dict[str, list[str]] = data["catch_all_messages"]  # type: ignore[assignment]
     legacy: dict[str, int] = data["legacy_debt"]  # type: ignore[assignment]
+    legacy_catch_all: dict[str, int] = data["legacy_catch_all_debt"]  # type: ignore[assignment]
 
     lines: list[str] = [
         "# Compiler Diagnostics Audit",
@@ -229,6 +286,7 @@ def render(data: dict[str, object]) -> str:
         f"- central catalog codes not seen in scanned sources: {len(missing)}",
         f"- direct output call sites: {sum(len(items) for items in outputs.values())}",
         f"- files with scattered error strings: {len(scattered)}",
+        f"- catch-all message candidates: {sum(len(items) for items in catch_all.values())}",
         f"- legacy diagnostic debt baseline entries: {sum(legacy.values())}",
         "",
         "## Current Compiler Diagnostics",
@@ -267,6 +325,24 @@ def render(data: dict[str, object]) -> str:
         if len(locations) > 80:
             lines.append(f"- ... {len(locations) - 80} more")
         lines.append("")
+
+    lines.extend(["## Catch-All Message Candidates", ""])
+    lines.append("Messages in this section use vague fallback wording and should be specialized before becoming user-facing diagnostics.")
+    lines.append("")
+    for path, entries in catch_all.items():
+        lines.append(f"### `{path}`")
+        lines.extend(f"- `{entry}`" for entry in entries[:80])
+        if len(entries) > 80:
+            lines.append(f"- ... {len(entries) - 80} more")
+        lines.append("")
+
+    lines.extend(["## Legacy Catch-All Baseline", ""])
+    if legacy_catch_all:
+        for path, count in legacy_catch_all.items():
+            lines.append(f"- `{path}`: {count}")
+    else:
+        lines.append("- none")
+    lines.append("")
 
     lines.extend(["## Scattered Error Strings", ""])
     for path, entries in scattered.items():
