@@ -1,0 +1,171 @@
+space vitte/stdlib/core/range
+
+export *
+
+pick BoundKind {
+    Included
+    Excluded
+    Unbounded
+}
+
+pick RangeKind {
+    Exclusive
+    Inclusive
+    Open
+    Full
+    From
+    To
+}
+
+form Bound<T> {
+    kind: BoundKind
+    value: T
+}
+
+form Range<T> {
+    start: Bound<T>
+    end: Bound<T>
+    step: T
+    kind: RangeKind
+}
+
+form RangeCheck {
+    ok: bool
+    message: string
+}
+
+proc included<T>(value: T) -> Bound<T> {
+    give Bound<T> {
+        kind: BoundKind.Included,
+        value: value
+    };
+}
+
+proc excluded<T>(value: T) -> Bound<T> {
+    give Bound<T> {
+        kind: BoundKind.Excluded,
+        value: value
+    };
+}
+
+proc unbounded<T>() -> Bound<T> {
+    give Bound<T> {
+        kind: BoundKind.Unbounded,
+        value: zero<T>()
+    };
+}
+
+proc range_check_ok() -> RangeCheck {
+    give RangeCheck {
+        ok: true,
+        message: ""
+    };
+}
+
+proc range_check_error(message: string) -> RangeCheck {
+    give RangeCheck {
+        ok: false,
+        message: message
+    };
+}
+
+proc detect_zero_step<T>(step: T) -> RangeCheck {
+    if compiler_range_step_is_zero<T>(step) {
+        give range_check_error("range step must not be zero");
+    }
+    give range_check_ok();
+}
+
+proc detect_range_overflow<T>(start: Bound<T>, end: Bound<T>, step: T) -> RangeCheck {
+    if compiler_range_overflows<T>(start, end, step) {
+        give range_check_error("range iteration would overflow the bound type");
+    }
+    give range_check_ok();
+}
+
+proc range_with_bounds<T>(start: Bound<T>, end: Bound<T>, step: T, kind: RangeKind) -> Range<T> {
+    let step_check: RangeCheck = detect_zero_step<T>(step);
+    if not step_check.ok {
+        panic(step_check.message);
+    }
+
+    let overflow_check: RangeCheck = detect_range_overflow<T>(start, end, step);
+    if not overflow_check.ok {
+        panic(overflow_check.message);
+    }
+
+    give Range<T> {
+        start: start,
+        end: end,
+        step: step,
+        kind: kind
+    };
+}
+
+proc exclusive<T>(start: T, end: T, step: T) -> Range<T> {
+    give range_with_bounds<T>(
+        included<T>(start),
+        excluded<T>(end),
+        step,
+        RangeKind.Exclusive
+    );
+}
+
+proc inclusive<T>(start: T, end: T, step: T) -> Range<T> {
+    give range_with_bounds<T>(
+        included<T>(start),
+        included<T>(end),
+        step,
+        RangeKind.Inclusive
+    );
+}
+
+proc open<T>(step: T) -> Range<T> {
+    give range_with_bounds<T>(
+        unbounded<T>(),
+        unbounded<T>(),
+        step,
+        RangeKind.Open
+    );
+}
+
+proc full<T>() -> Range<T> {
+    give Range<T> {
+        start: unbounded<T>(),
+        end: unbounded<T>(),
+        step: compiler_range_default_positive_step<T>(),
+        kind: RangeKind.Full
+    };
+}
+
+proc from<T>(start: T, step: T) -> Range<T> {
+    give range_with_bounds<T>(
+        included<T>(start),
+        unbounded<T>(),
+        step,
+        RangeKind.From
+    );
+}
+
+proc to<T>(end: T, step: T) -> Range<T> {
+    give range_with_bounds<T>(
+        unbounded<T>(),
+        excluded<T>(end),
+        step,
+        RangeKind.To
+    );
+}
+
+proc positive_step<T>(value: T) -> T {
+    if compiler_range_step_is_zero<T>(value) or compiler_range_step_is_negative<T>(value) {
+        panic("range step must be positive");
+    }
+    give value;
+}
+
+proc negative_step<T>(value: T) -> T {
+    if compiler_range_step_is_zero<T>(value) or not compiler_range_step_is_negative<T>(value) {
+        panic("range step must be negative");
+    }
+    give value;
+}

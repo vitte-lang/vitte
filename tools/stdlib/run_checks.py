@@ -34,6 +34,8 @@ CORE_DROP_SOURCE = SOURCE_STDLIB_DIR / "core" / "drop.vitl"
 CORE_SCOPE_SOURCE = SOURCE_STDLIB_DIR / "core" / "scope.vitl"
 CORE_DROP_SCOPE_MEMORY_DOC = ROOT / "docs" / "compiler" / "stdlib_core_drop_scope_memory.md"
 CORE_ITERATOR_SOURCE = SOURCE_STDLIB_DIR / "core" / "iterator.vitl"
+CORE_RANGE_SOURCE = SOURCE_STDLIB_DIR / "core" / "range.vitl"
+CORE_NUMBER_SOURCE = SOURCE_STDLIB_DIR / "core" / "number.vitl"
 
 REPORT_DIR.mkdir(parents=True, exist_ok=True)
 STDLIB_DIR.mkdir(parents=True, exist_ok=True)
@@ -63,6 +65,8 @@ REQUIRED_FILES = [
     CORE_SCOPE_SOURCE,
     CORE_DROP_SCOPE_MEMORY_DOC,
     CORE_ITERATOR_SOURCE,
+    CORE_RANGE_SOURCE,
+    CORE_NUMBER_SOURCE,
 ]
 
 
@@ -390,6 +394,87 @@ REQUIRED_ITERATOR_FRAGMENTS = (
     "proc fused<T>",
     "proc cloneable<T>",
     "proc range<T>",
+)
+REQUIRED_RANGE_FRAGMENTS = (
+    "pick BoundKind",
+    "BoundKind.Included",
+    "BoundKind.Excluded",
+    "BoundKind.Unbounded",
+    "pick RangeKind",
+    "RangeKind.Exclusive",
+    "RangeKind.Inclusive",
+    "RangeKind.Open",
+    "RangeKind.Full",
+    "RangeKind.From",
+    "RangeKind.To",
+    "form Bound<T>",
+    "form Range<T>",
+    "form RangeCheck",
+    "proc included<T>",
+    "proc excluded<T>",
+    "proc unbounded<T>",
+    "proc exclusive<T>",
+    "proc inclusive<T>",
+    "proc open<T>",
+    "proc full<T>",
+    "proc from<T>",
+    "proc to<T>",
+    "proc positive_step<T>",
+    "proc negative_step<T>",
+    "detect_zero_step",
+    "detect_range_overflow",
+)
+REQUIRED_NUMBER_FRAGMENTS = (
+    "form NumberLimits<T>",
+    "form FloatConstants<T>",
+    "form Checked<T>",
+    "form Overflowing<T>",
+    "pick Sign",
+    "pick Endian",
+    "proc number_limits<T>",
+    "proc float_constants<T>",
+    "proc checked_add<T>",
+    "proc checked_sub<T>",
+    "proc checked_mul<T>",
+    "proc checked_div<T>",
+    "proc checked_rem<T>",
+    "proc checked_neg<T>",
+    "proc checked_shl<T>",
+    "proc checked_shr<T>",
+    "proc saturating_add<T>",
+    "proc saturating_sub<T>",
+    "proc saturating_mul<T>",
+    "proc saturating_div<T>",
+    "proc wrapping_add<T>",
+    "proc wrapping_sub<T>",
+    "proc wrapping_mul<T>",
+    "proc wrapping_div<T>",
+    "proc overflowing_add<T>",
+    "proc overflowing_sub<T>",
+    "proc overflowing_mul<T>",
+    "proc overflowing_div<T>",
+    "proc abs<T>",
+    "proc sign<T>",
+    "proc signum<T>",
+    "proc pow<T>",
+    "proc pow_mod<T>",
+    "proc gcd<T>",
+    "proc lcm<T>",
+    "proc is_even<T>",
+    "proc is_odd<T>",
+    "proc count_ones<T>",
+    "proc count_zeros<T>",
+    "proc leading_zeros<T>",
+    "proc trailing_zeros<T>",
+    "proc rotate_left<T>",
+    "proc rotate_right<T>",
+    "proc reverse_bits<T>",
+    "proc reverse_bytes<T>",
+    "proc to_little_endian<T>",
+    "proc to_big_endian<T>",
+    "proc from_little_endian<T>",
+    "proc from_big_endian<T>",
+    "proc endian_convert<T>",
 )
 
 
@@ -913,6 +998,33 @@ def validate_core_iterator() -> list[ValidationResult]:
     ]
 
 
+def validate_core_range_number() -> list[ValidationResult]:
+    range_source = CORE_RANGE_SOURCE.read_text(encoding="utf-8")
+    number_source = CORE_NUMBER_SOURCE.read_text(encoding="utf-8")
+    missing_range = [
+        fragment
+        for fragment in REQUIRED_RANGE_FRAGMENTS
+        if fragment not in range_source
+    ]
+    missing_number = [
+        fragment
+        for fragment in REQUIRED_NUMBER_FRAGMENTS
+        if fragment not in number_source
+    ]
+    return [
+        ValidationResult(
+            name="core_range_defines_bounds_and_range_kinds",
+            status=not missing_range,
+            detail="ok" if not missing_range else ", ".join(missing_range),
+        ),
+        ValidationResult(
+            name="core_number_centralizes_numeric_operations",
+            status=not missing_number,
+            detail="ok" if not missing_number else ", ".join(missing_number),
+        ),
+    ]
+
+
 def validate_architecture(manifest: dict) -> list[ValidationResult]:
     results: list[ValidationResult] = []
     levels = architecture_levels(manifest)
@@ -1013,6 +1125,7 @@ def build_report() -> dict:
     convert_default_clone_results = validate_core_convert_default_clone()
     drop_scope_memory_results = validate_core_drop_scope_memory()
     iterator_results = validate_core_iterator()
+    range_number_results = validate_core_range_number()
 
     required = validate_required_symbols(
         symbols
@@ -1035,7 +1148,7 @@ def build_report() -> dict:
     ]
     architecture_failures = [
         item
-        for item in architecture + module_results + graph_results + primitive_results + option_result_results + convert_default_clone_results + drop_scope_memory_results + iterator_results
+        for item in architecture + module_results + graph_results + primitive_results + option_result_results + convert_default_clone_results + drop_scope_memory_results + iterator_results + range_number_results
         if not item.status
     ]
 
@@ -1078,7 +1191,7 @@ def build_report() -> dict:
         ],
         "architecture_results": [
             asdict(item)
-            for item in architecture + module_results + graph_results + primitive_results + option_result_results + convert_default_clone_results + drop_scope_memory_results + iterator_results
+            for item in architecture + module_results + graph_results + primitive_results + option_result_results + convert_default_clone_results + drop_scope_memory_results + iterator_results + range_number_results
         ],
         "required_symbols": [
             asdict(item)
