@@ -2516,9 +2516,12 @@ optimization-phase2-gate:
 	@test -f data/optimization_phase2/reports/jit_async_loops.md
 
 
-.PHONY: diagnostic-catalog-check diagnostic-contracts
+.PHONY: diagnostic-catalog-check diagnostic-audit diagnostic-contracts
 diagnostic-catalog-check:
 	@python3 tools/check_diagnostic_catalog.py
+
+diagnostic-audit:
+	@python3 tools/audit_compiler_diagnostics.py --write
 
 diagnostic-contracts:
 	@python3 tools/check_diagnostic_schema.py
