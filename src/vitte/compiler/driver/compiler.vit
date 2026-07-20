@@ -383,6 +383,10 @@ proc cli_explain_command_contract(command: string, code: string) -> bool {
     give command == "explain" and code != "";
 }
 
+proc cli_check_command_contract(command: string, mode: CompilerMode) -> bool {
+    give command == "check" and mode == CompilerMode::Check;
+}
+
 proc cli_is_known_flag(text: string) -> bool {
     give cli_is_output_flag(text)
         or cli_is_source_flag(text)
@@ -1083,8 +1087,14 @@ proc run_cli_request(request: CompilerCliRequest) -> int {
 
     if request.command == "check" {
         let opts: CompilerOptions = cli_compiler_options(request, CompilerMode::Check, request.output_path);
+        let check_contract_ok: bool = cli_check_command_contract(request.command, opts.mode);
         let compiler0: Compiler = compiler_from_input(source_path, source_text, virtual_source, opts);
         let r0: CompilerResult = run_compiler(compiler0);
+        if not check_contract_ok {
+            let msg: string = "check command must run diagnostics without final generation\n";
+            print(msg);
+            give cli_exit_code(driver.DriverExitStatus::PipelineFailure);
+        }
         if request.format == "json" {
             let report_json: string = compiler_result_json("check", r0) + "\n";
             print(report_json);
