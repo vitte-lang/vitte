@@ -54,18 +54,24 @@ def main() -> int:
     require('"code":"SEMA_E_UNKNOWN_IDENTIFIER"' in json_result.stdout, "json format missing diagnostic code")
 
     allowed = run("check", str(FIXTURE), "--allow", "SEMA_E_UNKNOWN_IDENTIFIER")
-    require(allowed.returncode == 0, f"--allow did not suppress diagnostic\n{allowed.stdout}")
-    require("check succeeded" in allowed.stdout, "--allow did not finish through check")
+    require(allowed.returncode != 0, "--allow suppressed a structural error")
+    require("error[SEMA_E_UNKNOWN_IDENTIFIER]" in clean(allowed.stdout), "--allow changed structural error output")
 
     warned = run("check", str(FIXTURE), "--warn", "SEMA_E_UNKNOWN_IDENTIFIER", "--color", "never")
-    require(warned.returncode == 0, f"--warn returned failure\n{warned.stdout}")
-    require("warning[SEMA_E_UNKNOWN_IDENTIFIER]" in clean(warned.stdout), "--warn did not lower severity")
+    require(warned.returncode != 0, "--warn downgraded a structural error")
+    require("error[SEMA_E_UNKNOWN_IDENTIFIER]" in clean(warned.stdout), "--warn changed structural error severity")
 
     denied_warning = run("check", str(FIXTURE), "--warn", "SEMA_E_UNKNOWN_IDENTIFIER", "--deny-warnings")
-    require(denied_warning.returncode != 0, "--deny-warnings accepted a warning diagnostic")
+    require(denied_warning.returncode != 0, "--deny-warnings accepted an invalid compilation")
 
     denied = run("check", str(FIXTURE), "--allow", "SEMA_E_UNKNOWN_IDENTIFIER", "--deny", "SEMA_E_UNKNOWN_IDENTIFIER")
     require(denied.returncode != 0, "--deny should override --allow for the same diagnostic code")
+
+    allow_structural_group = run("check", str(FIXTURE), "--allow", "structural")
+    require(allow_structural_group.returncode != 0, "--allow structural suppressed a structural error")
+
+    warn_style_group = run("check", "tests/check/main.vit", "--warn", "style", "--allow", "unused")
+    require(warn_style_group.returncode == 0, "warning groups should not affect valid code")
 
     print("[cli-diagnostic-options] checked check/build diagnostic options")
     return 0

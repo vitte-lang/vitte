@@ -96,6 +96,7 @@ print_compiler_help() {
     printf '  --src PATH  --out PATH  -o PATH  --lang LANG  --trace-pipeline  --strict\n'
     printf '  --error-format text|json  --diagnostic-width N  --color auto|always|never\n'
     printf '  --max-errors N  --deny-warnings  --allow CODE  --warn CODE  --deny CODE\n'
+    printf '  diagnostic groups: structural, syntax, semantic, type, borrow, style, unused, deprecation\n'
     printf '  --dump-ast-json  --dump-hir-json  --dump-mir-json  --diagnostics-json\n'
 }
 
@@ -2193,13 +2194,18 @@ code_list_contains() {
 diagnostic_effective_severity() {
     code="$1"
     default_severity="$2"
-    # shellcheck disable=SC2086
-    if code_list_contains "$code" $diagnostic_deny_codes; then
+    phase="${3:-}"
+    if diagnostic_is_structural "$code" "$phase"; then
         printf 'error\n'
         return 0
     fi
     # shellcheck disable=SC2086
-    if code_list_contains "$code" $diagnostic_warn_codes; then
+    if diagnostic_selector_matches "$code" "$phase" "style" $diagnostic_deny_codes; then
+        printf 'error\n'
+        return 0
+    fi
+    # shellcheck disable=SC2086
+    if diagnostic_selector_matches "$code" "$phase" "style" $diagnostic_warn_codes; then
         printf 'warning\n'
         return 0
     fi
@@ -2208,12 +2214,74 @@ diagnostic_effective_severity() {
 
 diagnostic_is_allowed() {
     code="$1"
-    # shellcheck disable=SC2086
-    if code_list_contains "$code" $diagnostic_deny_codes; then
+    phase="${2:-}"
+    if diagnostic_is_structural "$code" "$phase"; then
         return 1
     fi
     # shellcheck disable=SC2086
-    code_list_contains "$code" $diagnostic_allow_codes
+    if diagnostic_selector_matches "$code" "$phase" "style" $diagnostic_deny_codes; then
+        return 1
+    fi
+    # shellcheck disable=SC2086
+    diagnostic_selector_matches "$code" "$phase" "style" $diagnostic_allow_codes
+}
+
+diagnostic_is_structural() {
+    code="$1"
+    phase="${2:-}"
+    case "$phase" in
+        lexer|parser|ast_validation|module_resolution|symbol_resolution|sema|typeck|borrowck)
+            return 0
+            ;;
+    esac
+    case "$code" in
+        LEX_*|PARSE_*|P[0-9]*|AST_*|MOD_*|SEMA_*|TYPECK_*|BORROWCK_*|E_BOOTSTRAP_*)
+            return 0
+            ;;
+    esac
+    return 1
+}
+
+diagnostic_selector_matches() {
+    code="$1"
+    phase="$2"
+    class="${3:-style}"
+    shift 3
+    for selector in "$@"; do
+        case "$selector" in
+            "$code")
+                return 0
+                ;;
+            all)
+                return 0
+                ;;
+            structural)
+                diagnostic_is_structural "$code" "$phase" && return 0
+                ;;
+            syntax)
+                case "$phase:$code" in lexer:*|parser:*|ast_validation:*|*:LEX_*|*:PARSE_*|*:P[0-9]*|*:AST_*) return 0 ;; esac
+                ;;
+            semantic)
+                case "$phase:$code" in module_resolution:*|symbol_resolution:*|sema:*|*:MOD_*|*:SEMA_*) return 0 ;; esac
+                ;;
+            type)
+                case "$phase:$code" in typeck:*|*:TYPECK_*) return 0 ;; esac
+                ;;
+            borrow)
+                case "$phase:$code" in borrowck:*|*:BORROWCK_*) return 0 ;; esac
+                ;;
+            style)
+                case "$class:$code" in style:STYLE_*|style:LINT_*|style:WARN_STYLE_*) return 0 ;; esac
+                ;;
+            unused)
+                case "$code" in *UNUSED*|*NEVER_USED*|*UNREACHABLE*) return 0 ;; esac
+                ;;
+            deprecation)
+                case "$code" in *DEPRECATED*|*LEGACY*) return 0 ;; esac
+                ;;
+        esac
+    done
+    return 1
 }
 
 diagnostic_should_fail() {
@@ -4428,8 +4496,8 @@ render_professional_diagnostic_text() {
     info="$2"
     code="$(diag_field "$info" 1)"
     severity="$(diag_field "$info" 2)"
-    severity="$(diagnostic_effective_severity "$code" "$severity")"
     phase="$(diag_field "$info" 3)"
+    severity="$(diagnostic_effective_severity "$code" "$severity" "$phase")"
     message="$(diag_field "$info" 4)"
     message="$(localized_diagnostic_message "$code" "$message")"
     line="$(diag_field "$info" 5)"
@@ -4475,8 +4543,8 @@ render_professional_diagnostic_json() {
     info="$2"
     code="$(diag_field "$info" 1)"
     severity="$(diag_field "$info" 2)"
-    severity="$(diagnostic_effective_severity "$code" "$severity")"
     phase="$(diag_field "$info" 3)"
+    severity="$(diagnostic_effective_severity "$code" "$severity" "$phase")"
     message="$(diag_field "$info" 4)"
     message="$(localized_diagnostic_message "$code" "$message")"
     line="$(diag_field "$info" 5)"
@@ -4494,7 +4562,16 @@ render_professional_diagnostic_json() {
     label_json="$(json_escape "$label")"
     note_json="$(json_escape "$note")"
     help_json="$(json_escape "$help")"
-    printf '{"schema":"vitte.compiler.diagnostics","schema_version":"1.0.0","status":"error","diagnostics":{"error_count":1,"warning_count":0,"items":[{"code":"%s","severity":"%s","phase":"%s","file":"%s","span":{"start_line":%s,"start_column":%s,"end_line":%s,"end_column":%s},"message":"%s","labels":[{"kind":"primary","message":"%s","span":{"start_line":%s,"start_column":%s,"end_line":%s,"end_column":%s}}],"notes":[{"message":"%s"}],"help":[{"message":"%s"}]}]}}\n' \
+    status="error"
+    error_count=1
+    warning_count=0
+    if [ "$severity" = "warning" ]; then
+        status="warning"
+        error_count=0
+        warning_count=1
+    fi
+    printf '{"schema":"vitte.compiler.diagnostics","schema_version":"1.0.0","status":"%s","diagnostics":{"error_count":%s,"warning_count":%s,"items":[{"code":"%s","severity":"%s","phase":"%s","file":"%s","span":{"start_line":%s,"start_column":%s,"end_line":%s,"end_column":%s},"message":"%s","labels":[{"kind":"primary","message":"%s","span":{"start_line":%s,"start_column":%s,"end_line":%s,"end_column":%s}}],"notes":[{"message":"%s"}],"help":[{"message":"%s"}]}]}}\n' \
+        "$status" "$error_count" "$warning_count" \
         "$code_json" "$severity_json" "$phase_json" "$src_json" "$line" "$col" "$line" "$end_col" "$msg_json" "$label_json" "$line" "$col" "$line" "$end_col" "$note_json" "$help_json"
 }
 
@@ -4504,8 +4581,9 @@ handle_professional_diagnostic() {
     format="${3:-text}"
     code="$(diag_field "$info" 1)"
     default_severity="$(diag_field "$info" 2)"
-    severity="$(diagnostic_effective_severity "$code" "$default_severity")"
-    if diagnostic_is_allowed "$code"; then
+    phase="$(diag_field "$info" 3)"
+    severity="$(diagnostic_effective_severity "$code" "$default_severity" "$phase")"
+    if diagnostic_is_allowed "$code" "$phase"; then
         return 0
     fi
     if [ "$format" = "surface-json" ]; then
