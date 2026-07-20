@@ -317,6 +317,41 @@ def validate_central_catalog() -> list[str]:
     return failures
 
 
+def central_catalog_entry_errors(entries: list[Any]) -> list[str]:
+    failures: list[str] = []
+    seen: set[str] = set()
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        code = entry.get("code")
+        tests = entry.get("tests")
+        if not isinstance(code, str) or not code:
+            continue
+        if code in seen:
+            failures.append(f"{code}: duplicate central catalog entry")
+        seen.add(code)
+        if not isinstance(tests, list) or not tests:
+            failures.append(f"{code}: tests must contain at least one associated test path")
+    return failures
+
+
+def validate_catalog_ci_invariant_contract() -> list[str]:
+    duplicate_errors = central_catalog_entry_errors([
+        {"code": "TEST_E_DUPLICATE", "tests": ["tests/diagnostics/input_matrix_test.py"]},
+        {"code": "TEST_E_DUPLICATE", "tests": ["tests/diagnostics/input_matrix_test.py"]},
+    ])
+    if not any("duplicate central catalog entry" in error for error in duplicate_errors):
+        return ["catalog CI invariant failed to reject duplicate diagnostic codes"]
+
+    missing_test_errors = central_catalog_entry_errors([
+        {"code": "TEST_E_NO_TESTS", "tests": []},
+    ])
+    if not any("tests must contain at least one associated test path" in error for error in missing_test_errors):
+        return ["catalog CI invariant failed to reject diagnostics without tests"]
+
+    return []
+
+
 def line_for_offset(text: str, offset: int) -> int:
     return text.count("\n", 0, offset) + 1
 
@@ -656,6 +691,7 @@ def main() -> int:
     failures = [
         *validate_catalog(),
         *validate_central_catalog(),
+        *validate_catalog_ci_invariant_contract(),
         *validate_source_shape_renderer_fixtures(),
         *validate_diagnostic_code_usage(),
         *validate_dynamic_code_guard_contract(),
