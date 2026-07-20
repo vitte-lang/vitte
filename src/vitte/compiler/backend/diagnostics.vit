@@ -251,28 +251,50 @@ proc linker_failure_message(code: string) -> string {
 }
 
 proc backend_registered_message(code: string) -> string {
-  if code == "BACKEND_E_UNSUPPORTED_FEATURE" {
+  if code == "GEN0064" or code == "BACKEND_E_UNSUPPORTED_FEATURE" {
     give "backend feature is not supported";
   }
-  if code == "BACKEND_E_UNSUPPORTED_TARGET" {
+  if code == "GEN0065" or code == "BACKEND_E_UNSUPPORTED_TARGET" {
     give "target architecture is not supported by the selected backend";
   }
-  if code == "BACKEND_E_NATIVE_TOOL_MISSING" {
+  if code == "GEN0050" or code == "BACKEND_E_NATIVE_TOOL_MISSING" {
     give "required native compiler was not found";
   }
-  if code == "BACKEND_E_CODEGEN_FAILED" {
+  if code == "GEN0009" or code == "BACKEND_E_CODEGEN_FAILED" {
     give "native object generation failed";
   }
   if code == "LINK_E_UNDEFINED_SYMBOL" {
     give "native symbol for Vitte item was not found";
   }
-  if code == "BACKEND_E_OBJECT_WRITE_FAILED" {
+  if code == "GEN0052" or code == "BACKEND_E_OBJECT_WRITE_FAILED" {
     give "permission denied while writing output";
   }
-  if code == "DRIVER_E_OUTPUT_WRITE_FAILED" {
+  if code == "GEN0122" or code == "DRIVER_E_OUTPUT_WRITE_FAILED" {
     give "output path would overwrite the source file";
   }
   give "backend diagnostic";
+}
+
+proc backend_public_code(code: string) -> string {
+  if code == "BACKEND_E_CODEGEN_FAILED" {
+    give "GEN0009";
+  }
+  if code == "BACKEND_E_NATIVE_TOOL_MISSING" {
+    give "GEN0050";
+  }
+  if code == "BACKEND_E_OBJECT_WRITE_FAILED" {
+    give "GEN0052";
+  }
+  if code == "BACKEND_E_UNSUPPORTED_FEATURE" {
+    give "GEN0064";
+  }
+  if code == "BACKEND_E_UNSUPPORTED_TARGET" {
+    give "GEN0065";
+  }
+  if code == "DRIVER_E_OUTPUT_WRITE_FAILED" {
+    give "GEN0122";
+  }
+  give code;
 }
 
 proc linker_failure_diagnostic(code: string, span: SourceSpan) -> Diagnostic {
@@ -308,7 +330,7 @@ proc linker_failure_diagnostic(code: string, span: SourceSpan) -> Diagnostic {
 }
 
 proc backend_unsupported_feature(feature_name: string, backend_name: string, target_name: string, span: SourceSpan) -> Diagnostic {
-  let diag0: Diagnostic = diagnostic_fatal("BACKEND_E_UNSUPPORTED_FEATURE", DiagnosticPhase.Backend, backend_registered_message("BACKEND_E_UNSUPPORTED_FEATURE"), span);
+  let diag0: Diagnostic = diagnostic_fatal("GEN0064", DiagnosticPhase.Backend, backend_registered_message("GEN0064"), span);
   let diag1: Diagnostic = diagnostic_with_rule(diag0, "selected backend and target must implement every requested code-generation feature");
   let diag2: Diagnostic = backend_diag_context(diag1, backend_name, target_name, "");
   let diag3: Diagnostic = diagnostic_add_pipeline_context(diag2, "feature=" + feature_name);
@@ -317,7 +339,7 @@ proc backend_unsupported_feature(feature_name: string, backend_name: string, tar
 }
 
 proc backend_unsupported_target(backend_name: string, target_name: string, span: SourceSpan) -> Diagnostic {
-  let diag0: Diagnostic = diagnostic_fatal("BACKEND_E_UNSUPPORTED_TARGET", DiagnosticPhase.Backend, backend_registered_message("BACKEND_E_UNSUPPORTED_TARGET"), span);
+  let diag0: Diagnostic = diagnostic_fatal("GEN0065", DiagnosticPhase.Backend, backend_registered_message("GEN0065"), span);
   let diag1: Diagnostic = diagnostic_with_rule(diag0, "backend target triples must be explicitly supported");
   let diag2: Diagnostic = backend_diag_context(diag1, backend_name, target_name, "");
   let diag3: Diagnostic = diagnostic_with_root_cause(diag2, "the target triple has no compatible backend implementation");
@@ -325,7 +347,7 @@ proc backend_unsupported_target(backend_name: string, target_name: string, span:
 }
 
 proc backend_missing_c_compiler(compiler_name: string, command_text: string, target_name: string, span: SourceSpan) -> Diagnostic {
-  let diag0: Diagnostic = diagnostic_fatal("BACKEND_E_NATIVE_TOOL_MISSING", DiagnosticPhase.Backend, backend_registered_message("BACKEND_E_NATIVE_TOOL_MISSING"), span);
+  let diag0: Diagnostic = diagnostic_fatal("GEN0050", DiagnosticPhase.Backend, backend_registered_message("GEN0050"), span);
   let diag1: Diagnostic = backend_diag_context(diag0, "", target_name, "");
   let diag2: Diagnostic = diagnostic_add_pipeline_context(diag1, "tool=" + compiler_name);
   let diag3: Diagnostic = diagnostic_add_cause(diag2, "command: " + command_text);
@@ -334,7 +356,7 @@ proc backend_missing_c_compiler(compiler_name: string, command_text: string, tar
 }
 
 proc backend_native_generation_failed(backend_name: string, target_name: string, command_text: string, exit_code: int, stderr_text: string, output_path: string, span: SourceSpan) -> Diagnostic {
-  let diag0: Diagnostic = diagnostic_fatal("BACKEND_E_CODEGEN_FAILED", DiagnosticPhase.Backend, backend_registered_message("BACKEND_E_CODEGEN_FAILED"), span);
+  let diag0: Diagnostic = diagnostic_fatal("GEN0009", DiagnosticPhase.Backend, backend_registered_message("GEN0009"), span);
   let diag1: Diagnostic = backend_diag_context(diag0, backend_name, target_name, output_path);
   let diag2: Diagnostic = backend_diag_command(diag1, command_text, exit_code, stderr_text);
   let diag3: Diagnostic = diagnostic_with_root_cause(diag2, "the native compiler did not produce the expected object file");
@@ -342,7 +364,7 @@ proc backend_native_generation_failed(backend_name: string, target_name: string,
 }
 
 proc backend_tool_crashed(backend_name: string, target_name: string, command_text: string, exit_code: int, stderr_text: string, output_path: string, span: SourceSpan) -> Diagnostic {
-  let diag0: Diagnostic = diagnostic_fatal("BACKEND_E_CODEGEN_FAILED", DiagnosticPhase.Backend, backend_registered_message("BACKEND_E_CODEGEN_FAILED"), span);
+  let diag0: Diagnostic = diagnostic_fatal("GEN0009", DiagnosticPhase.Backend, backend_registered_message("GEN0009"), span);
   let diag0a: Diagnostic = diagnostic_with_kind(diag0, DiagnosticKind.Environment);
   let diag1: Diagnostic = backend_diag_context(diag0a, backend_name, target_name, output_path);
   let diag2: Diagnostic = backend_diag_command(diag1, command_text, exit_code, stderr_text);
@@ -384,7 +406,7 @@ proc linker_native_symbol_not_found(symbol_name: string, backend_name: string, t
 }
 
 proc backend_output_permission_denied(output_path: string, operation: string, span: SourceSpan) -> Diagnostic {
-  let diag0: Diagnostic = diagnostic_fatal("BACKEND_E_OBJECT_WRITE_FAILED", DiagnosticPhase.Backend, backend_registered_message("BACKEND_E_OBJECT_WRITE_FAILED"), span);
+  let diag0: Diagnostic = diagnostic_fatal("GEN0052", DiagnosticPhase.Backend, backend_registered_message("GEN0052"), span);
   let diag1: Diagnostic = backend_diag_context(diag0, "", "", output_path);
   let diag2: Diagnostic = diagnostic_add_pipeline_context(diag1, "operation=" + operation);
   let diag3: Diagnostic = diagnostic_with_root_cause(diag2, "the output path or its parent directory is not writable");
@@ -392,7 +414,7 @@ proc backend_output_permission_denied(output_path: string, operation: string, sp
 }
 
 proc backend_output_overwrites_source(source_path: string, output_path: string, span: SourceSpan) -> Diagnostic {
-  let diag0: Diagnostic = diagnostic_fatal("DRIVER_E_OUTPUT_WRITE_FAILED", DiagnosticPhase.Driver, backend_registered_message("DRIVER_E_OUTPUT_WRITE_FAILED"), span);
+  let diag0: Diagnostic = diagnostic_fatal("GEN0122", DiagnosticPhase.Driver, backend_registered_message("GEN0122"), span);
   let diag1: Diagnostic = backend_diag_context(diag0, "", "", output_path);
   let diag2: Diagnostic = diagnostic_add_pipeline_context(diag1, "source=" + source_path);
   let diag3: Diagnostic = diagnostic_with_root_cause(diag2, "the source and output paths identify the same file");
