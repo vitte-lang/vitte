@@ -165,6 +165,64 @@ proc error_code(kind: BorrowErrorKind) -> string {
     give "BORROWCK_E_UNKNOWN";
 }
 
+proc borrowck_public_code(code: string) -> string {
+    if code == "BORROWCK_E_ASSIGN_WHILE_BORROWED" {
+        give "BOR0001";
+    }
+    if code == "BORROWCK_E_BORROW_OF_MOVED_VALUE" {
+        give "BOR0002";
+    }
+    if code == "BORROWCK_E_DANGLING_REFERENCE" {
+        give "BOR0003";
+    }
+    if code == "BORROWCK_E_DOUBLE_DROP" {
+        give "BOR0004";
+    }
+    if code == "BORROWCK_E_DROP_WHILE_BORROWED" {
+        give "BOR0005";
+    }
+    if code == "BORROWCK_E_IMMUTABLE_ASSIGN" {
+        give "BOR0006";
+    }
+    if code == "BORROWCK_E_INTERNAL" {
+        give "BOR0007";
+    }
+    if code == "BORROWCK_E_LIFETIME_TOO_SHORT" {
+        give "BOR0008";
+    }
+    if code == "BORROWCK_E_MOVE_AFTER_MOVE" {
+        give "BOR0010";
+    }
+    if code == "BORROWCK_E_MOVE_WHILE_BORROWED" {
+        give "BOR0011";
+    }
+    if code == "BORROWCK_E_MUTABLE_BORROW_CONFLICT" {
+        give "BOR0013";
+    }
+    if code == "BORROWCK_E_RETURN_BORROW_OF_LOCAL" {
+        give "BOR0014";
+    }
+    if code == "BORROWCK_E_RETURN_REF_TO_LOCAL" {
+        give "BOR0015";
+    }
+    if code == "BORROWCK_E_SHARED_BORROW_CONFLICT" {
+        give "BOR0016";
+    }
+    if code == "BORROWCK_E_UNINITIALIZED_USE" {
+        give "BOR0017";
+    }
+    if code == "BORROWCK_E_USE_AFTER_DROP" {
+        give "BOR0019";
+    }
+    if code == "BORROWCK_E_USE_AFTER_MOVE" {
+        give "BOR0020";
+    }
+    if code == "BORROWCK_E_WRITE_WHILE_BORROWED" {
+        give "BOR0021";
+    }
+    give code;
+}
+
 proc borrow_phase_name(phase: BorrowPhase) -> string {
     if phase == BorrowPhase.CollectMoves {
         give "collect_moves";
@@ -311,7 +369,7 @@ proc attach_borrow_context(diagnostic: Diagnostic, code: string, phase: BorrowPh
 }
 
 proc diagnostic_create(kind: BorrowErrorKind, file: string, line: u64, message: string, labels: [string], suggestion: string, fatal: bool) -> Diagnostic {
-    let code: string = error_code(kind);
+    let code: string = borrowck_public_code(error_code(kind));
     let resolved_message: string = borrow_message(code, message);
     let resolved_help: string = borrow_help(code, suggestion);
     let length: u64 = 1;
@@ -333,7 +391,7 @@ proc diagnostic_create(kind: BorrowErrorKind, file: string, line: u64, message: 
 }
 
 proc diagnostic_full(kind: BorrowErrorKind, severity: DiagnosticSeverity, phase: BorrowPhase, message: string, labels: [string], suggestion: string, span: SourceSpan, entity: u64) -> Diagnostic {
-    let code: string = error_code(kind);
+    let code: string = borrowck_public_code(error_code(kind));
     let resolved_message: string = borrow_message(code, message);
     let resolved_help: string = borrow_help(code, suggestion);
 
@@ -394,7 +452,7 @@ proc borrow_report_add(report: DiagnosticReport, diagnostic: Diagnostic) -> Diag
 }
 
 proc borrow_error_generic(kind: BorrowErrorKind, file: string, line: u64, entity: u64, fallback_message: string, fallback_note: string, fallback_help: string) -> Diagnostic {
-    let code: string = error_code(kind);
+    let code: string = borrowck_public_code(error_code(kind));
     let span: SourceSpan = span_create(file, line, 1, 1);
     let message: string = borrow_message(code, fallback_message);
 
@@ -413,7 +471,7 @@ proc borrow_error_generic(kind: BorrowErrorKind, file: string, line: u64, entity
 }
 
 proc borrow_error_temporal_story(kind: BorrowErrorKind, name: string, primary_message: string, use_span: SourceSpan, previous_span: SourceSpan, previous_message: string, lifetime_text: string, probable_fix: string, entity: u64) -> Diagnostic {
-    let code: string = error_code(kind);
+    let code: string = borrowck_public_code(error_code(kind));
     let conflict_text: string = if kind == BorrowErrorKind.UseAfterMove {
         "conflict appears here: `" + name + "` is used after ownership moved"
     } elif kind == BorrowErrorKind.MoveAfterMove {
