@@ -37,7 +37,29 @@ form ParserState {
 }
 
 proc parse_diag(code: string, message: string, line: u64, column: u64, width: u64) -> ParseDiagnostic {
-  give parse_error_with_span(code, message, line, column, width, 0, if width == 0 { 1 } else { width });
+  give parse_error_with_span(parser_public_code(code), message, line, column, width, 0, if width == 0 { 1 } else { width });
+}
+
+proc parser_public_code(code: string) -> string {
+  if code == "P0001" {
+    give "PAR0021";
+  }
+  if code == "P000_UNBALANCED" {
+    give "PAR0022";
+  }
+  if code == "PATTR003" {
+    give "PAR0039";
+  }
+  if code == "PLOOP" {
+    give "PAR0040";
+  }
+  if code == "PPRIMARY999" {
+    give "PAR0041";
+  }
+  if code == "PSTMT007" {
+    give "PAR0042";
+  }
+  give code;
 }
 
 proc parser_state(source_name: string, tokens: [Token]) -> ParserState {
@@ -109,7 +131,8 @@ proc advance(state: ParserState) -> ParserState {
 proc with_diag(state: ParserState, code: string, message: string) -> ParserState {
   let tok: Token = current_token(state);
   let width0: u64 = token_diag_width(tok);
-  let ds: [ParseDiagnostic] = state.diagnostics + [parse_error_with_span(code, message, tok.line, tok.column, width0, tok.offset, tok.offset + width0)];
+  let public_code: string = parser_public_code(code);
+  let ds: [ParseDiagnostic] = state.diagnostics + [parse_error_with_span(public_code, message, tok.line, tok.column, width0, tok.offset, tok.offset + width0)];
   give ParserState {
     source_name: state.source_name,
     tokens: state.tokens,
