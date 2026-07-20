@@ -34,6 +34,7 @@ DIAGNOSTICS_MIGRATION_CHECK = ROOT / "tools" / "check_diagnostics_migration.py"
 DRIVER_COMPILER = COMPILER_ROOT / "driver" / "compiler.vit"
 DIAGNOSTIC_SNAPSHOT_TESTS = COMPILER_ROOT / "tests" / "diagnostic_snapshot_tests.vit"
 DIAGNOSTIC_SNAPSHOT_SUITE = ROOT / "tests" / "diagnostics" / "catalog" / "snapshots" / "diagnostic-suite.snap"
+DIAGNOSTICS_DOC = ROOT / "docs" / "compiler" / "diagnostics.md"
 
 DIRECT_OUTPUT = re.compile(r"\b(?:print|printf|fprintf|eprintf|fputs|fwrite|fputc)\s*\(")
 VAGUE_DRIVER_MESSAGES = (
@@ -602,6 +603,10 @@ def check_relational_diagnostic_contract() -> list[str]:
         (DIAGNOSTIC_SNAPSHOT_TESTS, "vitte_fix_recompile_probe_for_test(fixed)"),
         (DIAGNOSTIC_SNAPSHOT_TESTS, "test_each_suggestion_produces_valid_vitte_contract"),
         (DIAGNOSTIC_SNAPSHOT_TESTS, "diagnostic_suggestions_produce_valid_vitte(parser)"),
+        (DIAGNOSTICS_DOC, "The compiler diagnostic system is a stable API"),
+        (DIAGNOSTICS_DOC, "Every user-facing diagnostic is represented by"),
+        (DIAGNOSTICS_DOC, "`vitte check` is the reference command for diagnostics without final"),
+        (DIAGNOSTICS_DOC, "Machine-applicable suggestions must include a concrete replacement"),
         (DIAGNOSTIC_SNAPSHOT_SUITE, "schema: vitte.diagnostic-snapshot-suite"),
         (DIAGNOSTIC_SNAPSHOT_SUITE, "one-code-one-snapshot"),
         (DIAGNOSTIC_SNAPSHOT_SUITE, "machine-applicable-fix"),
