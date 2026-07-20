@@ -9,6 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 BIN = ROOT / "bin" / "vitte"
 NEGATIVE_DIR = ROOT / "tests" / "diagnostics" / "negative"
+EXPECT_SUFFIXES = (".stderr", ".snap")
 
 
 def normalize(text: str) -> str:
@@ -18,13 +19,17 @@ def normalize(text: str) -> str:
 def main() -> int:
     if not BIN.exists():
         raise SystemExit(f"[diagnostics-negative][error] missing compiler binary: {BIN}")
-    fixtures = sorted(NEGATIVE_DIR.glob("*.vit"))
+    fixtures = sorted(NEGATIVE_DIR.glob("*/*.vit"))
     if not fixtures:
         raise SystemExit(f"[diagnostics-negative][error] no fixtures in {NEGATIVE_DIR}")
     for fixture in fixtures:
-        expect = fixture.with_suffix(".must")
-        if not expect.exists():
-            raise SystemExit(f"[diagnostics-negative][error] missing expectation: {expect}")
+        expectations = [fixture.with_suffix(suffix) for suffix in EXPECT_SUFFIXES if fixture.with_suffix(suffix).exists()]
+        if not expectations:
+            expected = ", ".join(str(fixture.with_suffix(suffix)) for suffix in EXPECT_SUFFIXES)
+            raise SystemExit(f"[diagnostics-negative][error] missing expectation: {expected}")
+        if len(expectations) != 1:
+            raise SystemExit(f"[diagnostics-negative][error] multiple expectations for {fixture}: {expectations}")
+        expect = expectations[0]
         proc = subprocess.run(
             [str(BIN), "check", "--lang=en", str(fixture.relative_to(ROOT))],
             cwd=str(ROOT),
