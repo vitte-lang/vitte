@@ -104,6 +104,7 @@ STDLIB_NEXT_STEP_SOURCES = (
     SOURCE_STDLIB_DIR / "generated" / "unicode_tables.vitl",
     SOURCE_STDLIB_DIR / "tools" / "unicode_tables.vitl",
     SOURCE_STDLIB_DIR / "tests" / "api_contracts.vit",
+    SOURCE_STDLIB_DIR / "tests" / "alloc_memory_invariants.vit",
     SOURCE_STDLIB_DIR / "tests" / "core_alloc_contracts.vit",
     SOURCE_STDLIB_DIR / "tests" / "range_unicode_std_contracts.vit",
     SOURCE_STDLIB_DIR / "tests" / "std_runtime_contracts.vit",
@@ -112,6 +113,11 @@ STDLIB_NEXT_STEP_SOURCES = (
     SOURCE_STDLIB_DIR / "tests" / "std_more_libraries_contracts.vit",
     SOURCE_STDLIB_DIR / "tests" / "fuzz" / "utf8_url_csv.vit",
     SOURCE_STDLIB_DIR / "tests" / "fuzz" / "path_json_parse.vit",
+    SOURCE_STDLIB_DIR / "tests" / "fuzz" / "utf8_fuzz.vit",
+    SOURCE_STDLIB_DIR / "tests" / "fuzz" / "url_fuzz.vit",
+    SOURCE_STDLIB_DIR / "tests" / "fuzz" / "csv_fuzz.vit",
+    SOURCE_STDLIB_DIR / "tests" / "fuzz" / "json_fuzz.vit",
+    SOURCE_STDLIB_DIR / "tests" / "fuzz" / "path_fuzz.vit",
     SOURCE_STDLIB_DIR / "tests" / "module_runner.vit",
     SOURCE_STDLIB_DIR / "tests" / "public_module_coverage.vit",
     SOURCE_STDLIB_DIR / "tests" / "modules" / "std_uuid_test.vit",
@@ -132,7 +138,9 @@ STDLIB_NEXT_STEP_SOURCES = (
     SOURCE_STDLIB_DIR / "tests" / "snapshots" / "stdlib_api.snap",
     SOURCE_STDLIB_DIR / "examples" / "stdlib_max.vit",
     SOURCE_STDLIB_DIR / "examples" / "public_module_examples.vit",
+    SOURCE_STDLIB_DIR / "examples" / "stdlib_usage_examples.vit",
     ROOT / "tools" / "stdlib" / "generate_api_docs.py",
+    ROOT / "tools" / "stdlib" / "generate_changelog.py",
     ROOT / "tools" / "stdlib" / "generate_unicode_tables.py",
     ROOT / "docs" / "compiler" / "stdlib_next_steps.md",
     ROOT / "docs" / "compiler" / "stdlib_boundaries.md",
@@ -820,7 +828,13 @@ REQUIRED_NEXT_STEP_FRAGMENTS = {
     "tests/modules/std_metrics_test.vit": ("std_metrics_test", "std_metrics.counter_inc", "counter.value == 3"),
     "tests/modules/std_mime_test.vit": ("std_mime_test", "std_mime.mime_text_plain", "std_mime.mime_application_json"),
     "tests/modules/std_percent_encoding_test.vit": ("std_percent_encoding_test", "percent_encode_set_component", "component"),
+    "tests/alloc_memory_invariants.vit": ("alloc_memory_invariants_run", "alloc_vec_memory_invariants", "alloc_collections_memory_invariants"),
     "tests/negative/stdlib_negative_cases.vit": ("stdlib_negative_invalid_inputs", "stdlib_negative_boundaries", "stdlib_negative_overflow", "is_err", "is_none", "9223372036854775808", "range_step(0, 10, 0)"),
+    "tests/fuzz/utf8_fuzz.vit": ("fuzz_utf8", "validate_utf8", "is_char_boundary"),
+    "tests/fuzz/url_fuzz.vit": ("fuzz_url", "std_url.url_parse"),
+    "tests/fuzz/csv_fuzz.vit": ("fuzz_csv", "std_csv.csv_parse"),
+    "tests/fuzz/json_fuzz.vit": ("fuzz_json", "std_serialization.json_value"),
+    "tests/fuzz/path_fuzz.vit": ("fuzz_path", "std_path.normalize"),
     "benchmarks/index.vit": ("stdlib_benchmarks_smoke", "bench_vec_push_pop", "bench_string_push_concat", "bench_hashmap_insert_get", "bench_utf8_validate_decode", "bench_path_normalize_join", "bench_format_ints", "bench_parse_numbers"),
     "benchmarks/modules/vec_bench.vit": ("bench_vec_push_pop", "vec_with_capacity", "vec_push", "vec_pop"),
     "benchmarks/modules/string_bench.vit": ("bench_string_push_concat", "string_reserve", "string_push", "string_concat"),
@@ -831,6 +845,7 @@ REQUIRED_NEXT_STEP_FRAGMENTS = {
     "benchmarks/modules/parse_bench.vit": ("bench_parse_numbers", "parse_i64", "is_ok"),
     "examples/stdlib_max.vit": ("stdlib_max_example", "std_uuid.uuid_nil", "std_path.path_buf", "std_random.prng"),
     "examples/public_module_examples.vit": ("PUBLIC_MODULE_EXAMPLE_COUNT", "public_module_examples_present", "src/vitte/stdlib/std/uuid.vitl"),
+    "examples/stdlib_usage_examples.vit": ("stdlib_usage_examples", "std_uuid.uuid_v4", "std_base64.base64_standard", "std_csv.csv_record"),
 }
 
 
@@ -1723,18 +1738,72 @@ def validate_stdlib_max_artifacts() -> list[ValidationResult]:
         "each public module must have a test reference",
         "each public module must have an example reference",
         "Do not add direct OS access in `std`",
+        "Module Stability Classes",
+        "Panic Documentation Contract",
+        "Review Checklist",
+        "Fuzzing",
     )
     missing_fragments = [
         fragment
         for fragment in required_fragments
         if fragment not in stability_text + contributing_text
     ]
+    fuzz_files = {
+        "utf8": SOURCE_STDLIB_DIR / "tests" / "fuzz" / "utf8_fuzz.vit",
+        "url": SOURCE_STDLIB_DIR / "tests" / "fuzz" / "url_fuzz.vit",
+        "csv": SOURCE_STDLIB_DIR / "tests" / "fuzz" / "csv_fuzz.vit",
+        "json": SOURCE_STDLIB_DIR / "tests" / "fuzz" / "json_fuzz.vit",
+        "path": SOURCE_STDLIB_DIR / "tests" / "fuzz" / "path_fuzz.vit",
+    }
+    missing_fuzz = [name for name, path in fuzz_files.items() if not path.is_file()]
+    invariant_text = (SOURCE_STDLIB_DIR / "tests" / "alloc_memory_invariants.vit").read_text(encoding="utf-8", errors="ignore")
+    invariant_ok = all(fragment in invariant_text for fragment in ("vec_len", "string_capacity", "hashmap_len", "deque_len"))
+    changelog_text = paths["changelog"].read_text(encoding="utf-8")
+    changelog_ok = "Generated from commits touching" in changelog_text and "Recent Changes" in changelog_text
+    examples_ok = (SOURCE_STDLIB_DIR / "examples" / "stdlib_usage_examples.vit").is_file()
+
+    panic_doc = stability_text + contributing_text
+    public_panic_violations: list[str] = []
+    for source in stdlib_sources():
+        rel = source.relative_to(ROOT).as_posix()
+        if "/tests/" in rel or "/examples/" in rel or "/benchmarks/" in rel:
+            continue
+        text = source.read_text(encoding="utf-8", errors="ignore")
+        if re.search(r"\bproc\s+[A-Za-z0-9_]*panic[A-Za-z0-9_]*\b", text) or re.search(r"\bpanic\s*\(", text):
+            if rel not in panic_doc and "public panic" not in panic_doc:
+                public_panic_violations.append(rel)
+
     return [
         ValidationResult(
             name="stdlib_max_artifacts_present",
             status=not missing and not missing_fragments,
             detail="ok" if not missing and not missing_fragments else ", ".join(missing + missing_fragments),
-        )
+        ),
+        ValidationResult(
+            name="stdlib_fuzzing_covers_utf8_url_csv_json_path",
+            status=not missing_fuzz,
+            detail="ok" if not missing_fuzz else ", ".join(missing_fuzz),
+        ),
+        ValidationResult(
+            name="stdlib_alloc_memory_invariants_checked",
+            status=invariant_ok,
+            detail="ok" if invariant_ok else "missing alloc invariant fragments",
+        ),
+        ValidationResult(
+            name="stdlib_changelog_generated_from_commits",
+            status=changelog_ok,
+            detail="ok" if changelog_ok else "missing generated changelog marker",
+        ),
+        ValidationResult(
+            name="stdlib_examples_present",
+            status=examples_ok,
+            detail="ok" if examples_ok else "missing stdlib_usage_examples.vit",
+        ),
+        ValidationResult(
+            name="public_panic_requires_documented_diagnostic",
+            status=not public_panic_violations,
+            detail="ok" if not public_panic_violations else "; ".join(public_panic_violations[:8]),
+        ),
     ]
 
 

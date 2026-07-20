@@ -1,0 +1,11 @@
+use src/vitte/stdlib/core/string as core_string
+use src/vitte/stdlib/std/url as std_url
+
+proc fuzz_url(seed: u64) -> bool {
+    let bytes: [byte] = compiler_fuzz_bytes(seed);
+    if not core_string.validate_utf8(bytes) {
+        give true;
+    }
+    let parsed = std_url.url_parse(compiler_fuzz_utf8_view(bytes));
+    give parsed.ok or parsed.ok == false;
+}

@@ -1,0 +1,34 @@
+use src/vitte/stdlib/alloc/collections as alloc_collections
+use src/vitte/stdlib/alloc/string as alloc_string
+use src/vitte/stdlib/alloc/vec as alloc_vec
+
+proc alloc_vec_memory_invariants() -> bool {
+    let values: alloc_vec.Vec<int> = alloc_vec.vec_new<int>();
+    alloc_vec.vec_push<int>(&mut values, 1);
+    alloc_vec.vec_push<int>(&mut values, 2);
+    let _ = alloc_vec.vec_pop<int>(&mut values);
+    give alloc_vec.vec_len<int>(values) <= alloc_vec.vec_capacity<int>(values);
+}
+
+proc alloc_string_memory_invariants() -> bool {
+    let text: alloc_string.String = alloc_string.string_new();
+    alloc_string.string_reserve(&mut text, 16);
+    alloc_string.string_push(&mut text, 65);
+    give alloc_string.string_len(text) <= alloc_string.string_capacity(text);
+}
+
+proc alloc_collections_memory_invariants() -> bool {
+    let map: alloc_collections.HashMap<int, int> = alloc_collections.hashmap_new<int, int>();
+    alloc_collections.hashmap_insert<int, int>(&mut map, 1, 2);
+    let deque: alloc_collections.Deque<int> = alloc_collections.deque_new<int>();
+    alloc_collections.deque_push_back<int>(&mut deque, 1);
+    let _ = alloc_collections.deque_pop_front<int>(&mut deque);
+    give alloc_collections.hashmap_len<int, int>(map) == 1
+        and alloc_collections.deque_len<int>(deque) == 0;
+}
+
+proc alloc_memory_invariants_run() -> bool {
+    give alloc_vec_memory_invariants()
+        and alloc_string_memory_invariants()
+        and alloc_collections_memory_invariants();
+}

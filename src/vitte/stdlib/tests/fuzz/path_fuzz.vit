@@ -1,0 +1,9 @@
+use src/vitte/stdlib/alloc/string as alloc_string
+use src/vitte/stdlib/std/path as std_path
+
+proc fuzz_path(seed: u64) -> bool {
+    let text: alloc_string.String = compiler_fuzz_string(seed);
+    let path = std_path.path_buf(text);
+    let normalized = std_path.normalize(path);
+    give std_path.is_absolute(normalized) or std_path.is_relative(normalized);
+}

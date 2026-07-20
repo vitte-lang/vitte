@@ -3876,6 +3876,12 @@ Stability: `stable`
 
 - `proc stdlib_max_example` signature `proc stdlib_max_example() -> bool {` example `stdlib_max.stdlib_max_example(...)` stability `stable`
 
+## `src/vitte/stdlib/examples/stdlib_usage_examples.vit`
+
+Stability: `stable`
+
+- `proc stdlib_usage_examples` signature `proc stdlib_usage_examples() -> bool {` example `stdlib_usage_examples.stdlib_usage_examples(...)` stability `stable`
+
 ## `src/vitte/stdlib/examples/public_module_examples.vit`
 
 Stability: `stable`
@@ -6282,6 +6288,15 @@ Stability: `internal`
 
 - `proc stdlib_api_contracts_smoke` signature `proc stdlib_api_contracts_smoke() -> bool {` example `api_contracts.stdlib_api_contracts_smoke(...)` stability `internal`
 
+## `src/vitte/stdlib/tests/alloc_memory_invariants.vit`
+
+Stability: `internal`
+
+- `proc alloc_vec_memory_invariants` signature `proc alloc_vec_memory_invariants() -> bool {` example `alloc_memory_invariants.alloc_vec_memory_invariants(...)` stability `internal`
+- `proc alloc_string_memory_invariants` signature `proc alloc_string_memory_invariants() -> bool {` example `alloc_memory_invariants.alloc_string_memory_invariants(...)` stability `internal`
+- `proc alloc_collections_memory_invariants` signature `proc alloc_collections_memory_invariants() -> bool {` example `alloc_memory_invariants.alloc_collections_memory_invariants(...)` stability `internal`
+- `proc alloc_memory_invariants_run` signature `proc alloc_memory_invariants_run() -> bool {` example `alloc_memory_invariants.alloc_memory_invariants_run(...)` stability `internal`
+
 ## `src/vitte/stdlib/tests/core_alloc_contracts.vit`
 
 Stability: `internal`
@@ -6293,6 +6308,36 @@ Stability: `internal`
 Stability: `internal`
 
 - `proc fuzz_path_json_parse` signature `proc fuzz_path_json_parse(seed: u64) -> bool {` example `path_json_parse.fuzz_path_json_parse(...)` stability `internal`
+
+## `src/vitte/stdlib/tests/fuzz/path_fuzz.vit`
+
+Stability: `internal`
+
+- `proc fuzz_path` signature `proc fuzz_path(seed: u64) -> bool {` example `path_fuzz.fuzz_path(...)` stability `internal`
+
+## `src/vitte/stdlib/tests/fuzz/json_fuzz.vit`
+
+Stability: `internal`
+
+- `proc fuzz_json` signature `proc fuzz_json(seed: u64) -> bool {` example `json_fuzz.fuzz_json(...)` stability `internal`
+
+## `src/vitte/stdlib/tests/fuzz/csv_fuzz.vit`
+
+Stability: `internal`
+
+- `proc fuzz_csv` signature `proc fuzz_csv(seed: u64) -> bool {` example `csv_fuzz.fuzz_csv(...)` stability `internal`
+
+## `src/vitte/stdlib/tests/fuzz/url_fuzz.vit`
+
+Stability: `internal`
+
+- `proc fuzz_url` signature `proc fuzz_url(seed: u64) -> bool {` example `url_fuzz.fuzz_url(...)` stability `internal`
+
+## `src/vitte/stdlib/tests/fuzz/utf8_fuzz.vit`
+
+Stability: `internal`
+
+- `proc fuzz_utf8` signature `proc fuzz_utf8(seed: u64) -> bool {` example `utf8_fuzz.fuzz_utf8(...)` stability `internal`
 
 ## `src/vitte/stdlib/tests/fuzz/utf8_url_csv.vit`
 
