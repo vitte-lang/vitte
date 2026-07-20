@@ -57,4 +57,29 @@ test -x "$TMP_ROOT/install-root/opt/vitte/bin/vitte"
 PREFIX="$TMP_ROOT/install-root/opt/vitte" "$TMP_ROOT/extract/uninstall.sh" >/dev/null
 test ! -e "$TMP_ROOT/install-root/opt/vitte/bin/vitte"
 
+space_root="$TMP_ROOT/path with spaces"
+mkdir -p "$space_root/out"
+env \
+  VERSION=$VERSION \
+  VITTE_BIN_AMD64="$TMP_ROOT/bin/vitte" \
+  VITTE_VITTEC_AMD64="$TMP_ROOT/bin/vittec" \
+  VITTE_VITTEC0_AMD64="$TMP_ROOT/bin/vittec0" \
+  "$ROOT_DIR/scripts_build/stage-installer-payload.sh" "$space_root/out/linux payload" linux amd64 unix >/dev/null
+test -s "$space_root/out/linux payload/usr/local/share/vitte/INSTALLATION.json"
+
+case_dir="$TMP_ROOT/case-check"
+mkdir -p "$case_dir"
+printf 'canonical\n' > "$case_dir/filetypes.Vitte.conf"
+if [ -e "$case_dir/filetypes.vitte.conf" ]; then
+  test -e "$case_dir/filetypes.Vitte.conf"
+else
+  printf 'lowercase\n' > "$case_dir/filetypes.vitte.conf"
+  test -e "$case_dir/filetypes.Vitte.conf"
+  test -e "$case_dir/filetypes.vitte.conf"
+fi
+
+tar -tf "$archive" >/dev/null
+/bin/sh -n "$TMP_ROOT/extract/install.sh"
+/bin/sh -n "$TMP_ROOT/extract/uninstall.sh"
+
 printf '[scripts-build-arch-matrix] OK\n'

@@ -11,6 +11,27 @@ FAMILY=${FAMILY:-all}
 SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH:-$(git -C "$ROOT_DIR" log -1 --format=%ct 2>/dev/null || date +%s)}
 SBOM=${SBOM:-0}
 scripts_build_maybe_help "usage: build-all-installers.sh [--dry-run]"
+if [ "$LIST_TARGETS" -eq 1 ]; then
+  "$ROOT_DIR/scripts_build/package-matrix.sh" list
+  exit 0
+fi
+if [ "$PRINT_ENV" -eq 1 ]; then
+  printf 'VERSION=%s\nOUT_DIR=%s\nFAMILY=%s\nSOURCE_DATE_EPOCH=%s\nSBOM=%s\n' "$VERSION" "$OUT_DIR" "$FAMILY" "$SOURCE_DATE_EPOCH" "$SBOM"
+  exit 0
+fi
+if [ -n "$VERIFY_ONLY" ]; then
+  VERSION=$VERSION OUT_DIR=$VERIFY_ONLY "$ROOT_DIR/scripts_build/verify-installers.sh"
+  exit 0
+fi
+if [ "$CLEAN" -eq 1 ]; then
+  case "${CONFIRM_CLEAN:-}" in
+    YES) ;;
+    *) scripts_build_die "--clean requires CONFIRM_CLEAN=YES" ;;
+  esac
+  find "$ROOT_DIR/target" -maxdepth 1 -type d -name 'installer-*' -exec rm -rf {} +
+  printf '[build-all-installers] cleaned target/installer-*\n'
+  exit 0
+fi
 scripts_build_maybe_dry_run "would build installers family=$FAMILY version=$VERSION out=$OUT_DIR"
 
 run() {
@@ -24,6 +45,8 @@ run() {
   after=$(find "$OUT_DIR" -maxdepth 1 -type f 2>/dev/null | wc -l | tr -d ' ')
   count=$((after - before))
   printf '[build-all-installers] summary family=%s new_artifacts=%s total_artifacts=%s\n' "$family" "$count" "$after"
+  mkdir -p "$OUT_DIR/logs"
+  printf '{"schema":"org.vitte.installer-builder-log.v1","family":"%s","new_artifacts":%s,"total_artifacts":%s}\n' "$family" "$count" "$after" > "$OUT_DIR/logs/$family.json"
 }
 
 case "$FAMILY" in

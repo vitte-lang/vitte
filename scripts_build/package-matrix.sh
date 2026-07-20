@@ -25,7 +25,7 @@ normalize_os() {
     NetBSD | netbsd) printf 'netbsd\n' ;;
     DragonFly | dragonfly) printf 'dragonfly\n' ;;
     SunOS | Solaris | solaris) printf 'solaris\n' ;;
-    Windows | windows | MINGW* | MSYS* | CYGWIN*) printf 'windows\n' ;;
+    Windows | windows | windows-xp | windows-vista | windows-7 | windows-8 | windows-8.1 | windows-10 | windows-11 | MINGW* | MSYS* | CYGWIN*) printf '%s\n' "$1" | tr '[:upper:]' '[:lower:]' ;;
     *) printf 'unsupported os: %s\n' "$1" >&2; exit 1 ;;
   esac
 }
@@ -39,13 +39,33 @@ emit_rows() {
     'macos x86_64 pkg' \
     'macos universal pkg' \
     'macos macos2006 config' \
-    'windows amd64 exe' \
-    'windows i386 exe' \
+    'windows-xp i386 exe' \
+    'windows-vista i386 exe' \
+    'windows-7 amd64 exe' \
+    'windows-8 amd64 exe' \
+    'windows-8.1 amd64 exe' \
+    'windows-10 amd64 exe' \
+    'windows-11 amd64 exe' \
+    'windows-11 arm64 exe' \
     'freebsd amd64 pkg' \
     'freebsd i386 pkg' \
+    'freebsd arm64 pkg' \
+    'freebsd riscv64 pkg' \
+    'freebsd powerpc64 pkg' \
+    'openbsd amd64 tar.xz' \
     'openbsd i386 tar.xz' \
+    'openbsd arm64 tar.xz' \
+    'openbsd sparc64 tar.xz' \
     'netbsd amd64 tar.xz' \
-    'dragonfly i386 tar.xz' \
+    'netbsd i386 tar.xz' \
+    'netbsd sparc64 tar.xz' \
+    'netbsd mips64 tar.xz' \
+    'dragonfly amd64 tar.xz' \
+    'midnightbsd amd64 tar.xz' \
+    'ghostbsd amd64 tar.xz' \
+    'hardenedbsd amd64 tar.xz' \
+    'nomadbsd amd64 tar.xz' \
+    'hellosystem amd64 tar.xz' \
     'solaris amd64 pkg' \
     'solaris i386 pkg'
 }

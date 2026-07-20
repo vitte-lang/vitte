@@ -1,0 +1,31 @@
+name: installer-gate
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  installer-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install shellcheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+
+      - name: Run installer gate
+        run: make installers-check
+
+      - name: Upload installer reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: installer-gate-reports
+          path: target/reports/installers/
+          if-no-files-found: warn

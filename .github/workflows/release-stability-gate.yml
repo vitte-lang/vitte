@@ -21,6 +21,12 @@ jobs:
       - name: Validate macOS release installer strictness
         run: STRICT_DMG=1 scripts_build/build-macos-installers.sh --dry-run
 
+      - name: Enforce installer shellcheck for release
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+          shellcheck scripts_build/*.sh tools/scripts_build_*_test.sh
+
       - name: Upload release stability reports
         if: always()
         uses: actions/upload-artifact@v6

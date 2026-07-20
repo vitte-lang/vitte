@@ -14,6 +14,10 @@ scripts_build_require() {
 scripts_build_parse_common_flags() {
   DRY_RUN=${DRY_RUN:-0}
   HELP=${HELP:-0}
+  LIST_TARGETS=${LIST_TARGETS:-0}
+  PRINT_ENV=${PRINT_ENV:-0}
+  VERIFY_ONLY=${VERIFY_ONLY:-}
+  CLEAN=${CLEAN:-0}
 
   while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -22,6 +26,19 @@ scripts_build_parse_common_flags() {
         ;;
       --help | -h)
         HELP=1
+        ;;
+      --list-targets)
+        LIST_TARGETS=1
+        ;;
+      --print-env)
+        PRINT_ENV=1
+        ;;
+      --verify-only)
+        shift
+        VERIFY_ONLY=${1:?missing OUT_DIR for --verify-only}
+        ;;
+      --clean)
+        CLEAN=1
         ;;
       *)
         scripts_build_die "unsupported option: $1"

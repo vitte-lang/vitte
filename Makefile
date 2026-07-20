@@ -1552,6 +1552,10 @@ packages-check-all:
 pkg-matrix:
 	@tools/pkg_matrix.sh
 
+.PHONY: installers-check
+installers-check:
+	@tools/installers_check.sh
+
 .PHONY: pkg-cli-integration
 pkg-cli-integration:
 	@tools/pkg_cli_integration.sh
