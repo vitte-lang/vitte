@@ -30,6 +30,7 @@ Examples:
 - macOS release: `FAMILY=macos STRICT_DMG=1 SIGN=1 NOTARIZE=1 scripts_build/build-all-installers.sh`
 - Solaris: `FAMILY=solaris ARCH=i386 scripts_build/build-all-installers.sh`
 - Windows retrocompatibility kits: `FAMILY=windows ARCH=all scripts_build/build-all-installers.sh`
+- Windows professional matrix: `pwsh scripts_build/windows-build.ps1 -Arch all -WindowsVersion all`
 
 Exit codes:
 
