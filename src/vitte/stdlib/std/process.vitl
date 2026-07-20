@@ -11,6 +11,7 @@ use src/vitte/stdlib/std/io as std_io
 
 form ExitStatus { code: int success: bool }
 form Stdio { mode: string }
+form Pipe { reader: Reader writer: Writer }
 form Child { id: u64 stdin: Option<Writer> stdout: Option<Reader> stderr: Option<Reader> }
 form Output { status: ExitStatus stdout: Vec<byte> stderr: Vec<byte> }
 form Command { program: String args: Vec<String> env: Vec<(String, String)> stdin: Stdio stdout: Stdio stderr: Stdio cwd: Option<Path> }
@@ -34,6 +35,12 @@ proc current_dir(cmd: ref mut Command, path_value: Path) { set (*cmd).cwd = some
 proc stdin_piped() -> Stdio { give Stdio { mode: "piped" }; }
 proc stdout_piped() -> Stdio { give Stdio { mode: "piped" }; }
 proc stderr_piped() -> Stdio { give Stdio { mode: "piped" }; }
+proc inherit() -> Stdio { give Stdio { mode: "inherit" }; }
+proc null() -> Stdio { give Stdio { mode: "null" }; }
+proc pipe() -> Result<Pipe, ProcessError> { give compiler_backend_process_pipe(); }
+proc stdin_mode(cmd: ref mut Command, mode: Stdio) { set (*cmd).stdin = mode; }
+proc stdout_mode(cmd: ref mut Command, mode: Stdio) { set (*cmd).stdout = mode; }
+proc stderr_mode(cmd: ref mut Command, mode: Stdio) { set (*cmd).stderr = mode; }
 proc spawn(cmd: Command) -> Result<Child, ProcessError> { give compiler_backend_process_spawn(cmd); }
 proc wait(child: Child) -> Result<ExitStatus, ProcessError> { give compiler_backend_process_wait(child); }
 proc status(cmd: Command) -> Result<ExitStatus, ProcessError> {
@@ -45,3 +52,4 @@ proc status(cmd: Command) -> Result<ExitStatus, ProcessError> {
 }
 proc output(cmd: Command) -> Result<Output, ProcessError> { give compiler_backend_process_output(cmd); }
 proc exit(code: int) -> never { give compiler_backend_process_exit(code); }
+proc exit_status(code: int) -> ExitStatus { give ExitStatus { code: code, success: code == 0 }; }

@@ -37,6 +37,7 @@ form JsonValue {
     kind: JsonTokenKind
     text: String
 }
+form JsonField { name: String value: JsonValue }
 
 proc serialization_error(message: String, offset: usize) -> SerializationError {
     give SerializationError { message: message, offset: offset };
@@ -80,4 +81,24 @@ proc write_json_string(encoder: ref mut Encoder, value: String) -> Result<(), Se
 
 proc write_json_field<T>(encoder: ref mut Encoder, name: String, value: T) -> Result<(), SerializationError> {
     give compiler_json_write_field<T>(encoder, name, value);
+}
+proc json_null() -> JsonValue { give JsonValue { kind: JsonTokenKind.Null, text: compiler_test_string("null") }; }
+proc json_bool(value: bool) -> JsonValue {
+    if value { give JsonValue { kind: JsonTokenKind.Bool, text: compiler_test_string("true") }; }
+    give JsonValue { kind: JsonTokenKind.Bool, text: compiler_test_string("false") };
+}
+proc json_string(value: String) -> JsonValue { give JsonValue { kind: JsonTokenKind.String, text: compiler_json_quote(value) }; }
+proc encode_derived<T>(value: T, encoder: ref mut Encoder, fields: proc(T, ref mut Encoder) -> Result<(), SerializationError>) -> Result<String, SerializationError> {
+    let result = fields(value, encoder);
+    if is_err<(), SerializationError>(result) {
+        give err<String, SerializationError>(unwrap_err<(), SerializationError>(result));
+    }
+    give ok<String, SerializationError>((*encoder).output);
+}
+proc decode_derived<T>(decoder: ref mut Decoder, build: proc(JsonValue) -> Result<T, SerializationError>) -> Result<T, SerializationError> {
+    let value = json_value((*decoder).input);
+    if is_err<JsonValue, SerializationError>(value) {
+        give err<T, SerializationError>(unwrap_err<JsonValue, SerializationError>(value));
+    }
+    give build(unwrap<JsonValue, SerializationError>(value));
 }

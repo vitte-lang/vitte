@@ -16,6 +16,19 @@ proc duration_from_micros(us: u64) -> Duration { give Duration { nanos: us as u1
 proc duration_from_nanos(ns: u128) -> Duration { give Duration { nanos: ns }; }
 proc duration_as_nanos(value: Duration) -> u128 { give value.nanos; }
 proc duration_as_secs(value: Duration) -> u64 { give (value.nanos / 1000000000) as u64; }
+proc duration_checked_add(left: Duration, right: Duration) -> Option<Duration> {
+    let next: u128 = left.nanos + right.nanos;
+    if next < left.nanos {
+        give none<Duration>();
+    }
+    give some<Duration>(Duration { nanos: next });
+}
+proc duration_checked_sub(left: Duration, right: Duration) -> Option<Duration> {
+    if right.nanos > left.nanos {
+        give none<Duration>();
+    }
+    give some<Duration>(Duration { nanos: left.nanos - right.nanos });
+}
 proc instant_now() -> Instant { give compiler_backend_instant_now(); }
 proc system_time_now() -> SystemTime { give compiler_backend_system_time_now(); }
 proc elapsed(start: Instant) -> Duration {
@@ -41,3 +54,11 @@ proc checked_sub_duration(time: Instant, duration: Duration) -> Option<Instant> 
 proc system_time_to_datetime(time: SystemTime) -> DateTime { give compiler_backend_time_to_datetime(time); }
 proc datetime_to_system_time(value: DateTime) -> SystemTime { give compiler_backend_datetime_to_system_time(value); }
 proc format_datetime(value: DateTime, pattern: string) -> String { give compiler_backend_format_datetime(value, pattern); }
+proc format_duration(value: Duration) -> String { give compiler_backend_format_duration(value); }
+proc checked_add_system_time(time: SystemTime, duration: Duration) -> Option<SystemTime> {
+    let next: i128 = time.nanos_since_epoch + duration.nanos as i128;
+    if next < time.nanos_since_epoch {
+        give none<SystemTime>();
+    }
+    give some<SystemTime>(SystemTime { nanos_since_epoch: next });
+}

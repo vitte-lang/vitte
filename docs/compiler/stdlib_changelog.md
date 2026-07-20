@@ -4,6 +4,7 @@ Generated from commits touching `src/vitte/stdlib`, `tools/stdlib`, and stdlib d
 
 ## Recent Changes
 
+- `d85b800c2` Add stdlib snapshots fuzzing and IO gates
 - `64289fd7e` Track stdlib compiler helpers and module tests
 - `a48f7bd2b` Add stdlib fuzzing and stability gates
 - `ec8fb43a0` Implement stdlib utility runners and parsers
@@ -43,4 +44,3 @@ Generated from commits touching `src/vitte/stdlib`, `tools/stdlib`, and stdlib d
 - `4948274e1` Clean compiler surfaces and remove dead duplicates
 - `fe2346e17` tools/stdlib: add standard library artifact generation infrastructure
 - `baf01a128` /home/vincentr/Documents/GitHub/vitte/tools/stdlib/run_checks.py
-- `580ed77b0` Vitte compiler pipeline and expands executable native coverage.

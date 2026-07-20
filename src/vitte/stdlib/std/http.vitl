@@ -18,6 +18,7 @@ form Request {
     url: Url
     headers: HeaderMap
     body: Vec<byte>
+    max_redirects: usize
 }
 
 form Response {
@@ -31,9 +32,17 @@ form HttpError {
 }
 
 proc headers() -> HeaderMap { give HeaderMap { values: hashmap_new<String, String>() }; }
+proc header_insert(headers_value: ref mut HeaderMap, name: String, value: String) { hashmap_insert<String, String>(&mut ((*headers_value).values), name, value); }
 proc request(method: String, url: Url) -> Request {
-    give Request { method: method, url: url, headers: headers(), body: vec_new<byte>() };
+    give Request { method: method, url: url, headers: headers(), body: vec_new<byte>(), max_redirects: 0 };
 }
 proc response(status: u16) -> Response { give Response { status: status, headers: headers(), body: vec_new<byte>() }; }
+proc with_body(req: ref mut Request, body: Vec<byte>) { set (*req).body = body; }
+proc follow_redirects(req: ref mut Request, max: usize) { set (*req).max_redirects = max; }
 proc http_get(url: Url) -> Result<Response, HttpError> { give http_send(request(compiler_test_string("GET"), url)); }
 proc http_send(req: Request) -> Result<Response, HttpError> { give compiler_platform_http_send(req); }
+proc http_post(url: Url, body: Vec<byte>) -> Result<Response, HttpError> {
+    let req: Request = request(compiler_test_string("POST"), url);
+    with_body(&mut req, body);
+    give http_send(req);
+}

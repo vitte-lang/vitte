@@ -5688,6 +5688,11 @@ Stability: `stable`
 - `proc store_usize` signature `proc store_usize(value: ref AtomicUsize, next: usize, ordering: Ordering) { compiler_atomic_store_usize(value, next, ordering); }` example `atomic.store_usize(...)` stability `stable`
 - `proc fetch_add_usize` signature `proc fetch_add_usize(value: ref AtomicUsize, amount: usize, ordering: Ordering) -> usize { give compiler_atomic_fetch_add_usize(value, amount, ordering); }` example `atomic.fetch_add_usize(...)` stability `stable`
 - `proc fetch_sub_usize` signature `proc fetch_sub_usize(value: ref AtomicUsize, amount: usize, ordering: Ordering) -> usize { give compiler_atomic_fetch_sub_usize(value, amount, ordering); }` example `atomic.fetch_sub_usize(...)` stability `stable`
+- `proc swap_usize` signature `proc swap_usize(value: ref AtomicUsize, next: usize, ordering: Ordering) -> usize { give compiler_atomic_swap_usize(value, next, ordering); }` example `atomic.swap_usize(...)` stability `stable`
+- `proc compare_exchange_usize` signature `proc compare_exchange_usize(value: ref AtomicUsize, current: usize, next: usize, success: Ordering, failure: Ordering) -> Result<usize, usize> {` example `atomic.compare_exchange_usize(...)` stability `stable`
+- `proc fetch_or_usize` signature `proc fetch_or_usize(value: ref AtomicUsize, mask: usize, ordering: Ordering) -> usize { give compiler_atomic_fetch_or_usize(value, mask, ordering); }` example `atomic.fetch_or_usize(...)` stability `stable`
+- `proc fetch_and_usize` signature `proc fetch_and_usize(value: ref AtomicUsize, mask: usize, ordering: Ordering) -> usize { give compiler_atomic_fetch_and_usize(value, mask, ordering); }` example `atomic.fetch_and_usize(...)` stability `stable`
+- `proc fetch_xor_usize` signature `proc fetch_xor_usize(value: ref AtomicUsize, mask: usize, ordering: Ordering) -> usize { give compiler_atomic_fetch_xor_usize(value, mask, ordering); }` example `atomic.fetch_xor_usize(...)` stability `stable`
 
 ## `src/vitte/stdlib/std/base64.vitl`
 
@@ -5783,6 +5788,11 @@ Stability: `stable`
 - `proc home_dir` signature `proc home_dir() -> Option<Path> { give compiler_backend_env_home_dir(); }` example `env.home_dir(...)` stability `stable`
 - `proc temp_dir` signature `proc temp_dir() -> Path { give compiler_backend_env_temp_dir(); }` example `env.temp_dir(...)` stability `stable`
 - `proc os_string_var` signature `proc os_string_var(name: String) -> Result<String, EnvError> { give compiler_backend_env_os_string_var(name); }` example `env.os_string_var(...)` stability `stable`
+- `proc args_os` signature `proc args_os() -> Iterator<String> { give compiler_backend_env_args_os(); }` example `env.args_os(...)` stability `stable`
+- `proc var_unicode` signature `proc var_unicode(name: String) -> Result<String, EnvError> { give compiler_backend_env_var_unicode(name); }` example `env.var_unicode(...)` stability `stable`
+- `proc config_dir` signature `proc config_dir() -> Option<Path> { give compiler_backend_env_config_dir(); }` example `env.config_dir(...)` stability `stable`
+- `proc data_dir` signature `proc data_dir() -> Option<Path> { give compiler_backend_env_data_dir(); }` example `env.data_dir(...)` stability `stable`
+- `proc cache_dir` signature `proc cache_dir() -> Option<Path> { give compiler_backend_env_cache_dir(); }` example `env.cache_dir(...)` stability `stable`
 
 ## `src/vitte/stdlib/std/error.vitl`
 
@@ -5896,10 +5906,14 @@ Stability: `stable`
 - `form Response` signature `form Response {` example `http.Response` stability `stable`
 - `form HttpError` signature `form HttpError {` example `http.HttpError` stability `stable`
 - `proc headers` signature `proc headers() -> HeaderMap { give HeaderMap { values: hashmap_new<String, String>() }; }` example `http.headers(...)` stability `stable`
+- `proc header_insert` signature `proc header_insert(headers_value: ref mut HeaderMap, name: String, value: String) { hashmap_insert<String, String>(&mut ((*headers_value).values), name, value); }` example `http.header_insert(...)` stability `stable`
 - `proc request` signature `proc request(method: String, url: Url) -> Request {` example `http.request(...)` stability `stable`
 - `proc response` signature `proc response(status: u16) -> Response { give Response { status: status, headers: headers(), body: vec_new<byte>() }; }` example `http.response(...)` stability `stable`
+- `proc with_body` signature `proc with_body(req: ref mut Request, body: Vec<byte>) { set (*req).body = body; }` example `http.with_body(...)` stability `stable`
+- `proc follow_redirects` signature `proc follow_redirects(req: ref mut Request, max: usize) { set (*req).max_redirects = max; }` example `http.follow_redirects(...)` stability `stable`
 - `proc http_get` signature `proc http_get(url: Url) -> Result<Response, HttpError> { give http_send(request(compiler_test_string("GET"), url)); }` example `http.http_get(...)` stability `stable`
 - `proc http_send` signature `proc http_send(req: Request) -> Result<Response, HttpError> { give compiler_platform_http_send(req); }` example `http.http_send(...)` stability `stable`
+- `proc http_post` signature `proc http_post(url: Url, body: Vec<byte>) -> Result<Response, HttpError> {` example `http.http_post(...)` stability `stable`
 
 ## `src/vitte/stdlib/std/io.vitl`
 
@@ -6003,17 +6017,23 @@ Stability: `stable`
 - `form TcpStream` signature `form TcpStream { handle: int }` example `net.TcpStream` stability `stable`
 - `form TcpListener` signature `form TcpListener { handle: int }` example `net.TcpListener` stability `stable`
 - `form UdpSocket` signature `form UdpSocket { handle: int }` example `net.UdpSocket` stability `stable`
+- `form Timeout` signature `form Timeout { millis: u64 }` example `net.Timeout` stability `stable`
 - `form NetError` signature `form NetError { message: String }` example `net.NetError` stability `stable`
 - `proc net_error` signature `proc net_error(message: String) -> NetError { give NetError { message: message }; }` example `net.net_error(...)` stability `stable`
 - `proc ip_addr` signature `proc ip_addr(text: String) -> Result<IpAddr, NetError> {` example `net.ip_addr(...)` stability `stable`
 - `proc socket_addr` signature `proc socket_addr(ip: IpAddr, port: u16) -> SocketAddr { give SocketAddr { ip: ip, port: port }; }` example `net.socket_addr(...)` stability `stable`
 - `proc dns_lookup` signature `proc dns_lookup(name: String) -> Result<Vec<IpAddr>, NetError> { give compiler_platform_dns_lookup(name); }` example `net.dns_lookup(...)` stability `stable`
 - `proc tcp_connect` signature `proc tcp_connect(addr: SocketAddr) -> Result<TcpStream, NetError> { give compiler_platform_tcp_connect(addr); }` example `net.tcp_connect(...)` stability `stable`
+- `proc tcp_connect_timeout` signature `proc tcp_connect_timeout(addr: SocketAddr, timeout: Timeout) -> Result<TcpStream, NetError> { give compiler_platform_tcp_connect_timeout(addr, timeout); }` example `net.tcp_connect_timeout(...)` stability `stable`
 - `proc tcp_bind` signature `proc tcp_bind(addr: SocketAddr) -> Result<TcpListener, NetError> { give compiler_platform_tcp_bind(addr); }` example `net.tcp_bind(...)` stability `stable`
 - `proc tcp_accept` signature `proc tcp_accept(listener: ref TcpListener) -> Result<TcpStream, NetError> { give compiler_platform_tcp_accept(listener); }` example `net.tcp_accept(...)` stability `stable`
+- `proc tcp_read` signature `proc tcp_read(stream: ref TcpStream, buffer: ref mut [byte]) -> Result<usize, NetError> { give compiler_platform_tcp_read(stream, buffer); }` example `net.tcp_read(...)` stability `stable`
+- `proc tcp_write` signature `proc tcp_write(stream: ref TcpStream, bytes: [byte]) -> Result<usize, NetError> { give compiler_platform_tcp_write(stream, bytes); }` example `net.tcp_write(...)` stability `stable`
 - `proc udp_bind` signature `proc udp_bind(addr: SocketAddr) -> Result<UdpSocket, NetError> { give compiler_platform_udp_bind(addr); }` example `net.udp_bind(...)` stability `stable`
 - `proc udp_send_to` signature `proc udp_send_to(socket: ref UdpSocket, bytes: [byte], addr: SocketAddr) -> Result<usize, NetError> { give compiler_platform_udp_send_to(socket, bytes, addr); }` example `net.udp_send_to(...)` stability `stable`
 - `proc udp_recv_from` signature `proc udp_recv_from(socket: ref UdpSocket, buffer: ref mut [byte]) -> Result<(usize, SocketAddr), NetError> { give compiler_platform_udp_recv_from(socket, buffer); }` example `net.udp_recv_from(...)` stability `stable`
+- `proc set_timeout` signature `proc set_timeout(socket: ref UdpSocket, timeout: Timeout) -> Result<(), NetError> { give compiler_platform_udp_set_timeout(socket, timeout); }` example `net.set_timeout(...)` stability `stable`
+- `proc timeout_millis` signature `proc timeout_millis(value: u64) -> Timeout { give Timeout { millis: value }; }` example `net.timeout_millis(...)` stability `stable`
 
 ## `src/vitte/stdlib/std/parse.vitl`
 
@@ -6065,6 +6085,7 @@ Stability: `stable`
 
 - `form ExitStatus` signature `form ExitStatus { code: int success: bool }` example `process.ExitStatus` stability `stable`
 - `form Stdio` signature `form Stdio { mode: string }` example `process.Stdio` stability `stable`
+- `form Pipe` signature `form Pipe { reader: Reader writer: Writer }` example `process.Pipe` stability `stable`
 - `form Child` signature `form Child { id: u64 stdin: Option<Writer> stdout: Option<Reader> stderr: Option<Reader> }` example `process.Child` stability `stable`
 - `form Output` signature `form Output { status: ExitStatus stdout: Vec<byte> stderr: Vec<byte> }` example `process.Output` stability `stable`
 - `form Command` signature `form Command { program: String args: Vec<String> env: Vec<(String, String)> stdin: Stdio stdout: Stdio stderr: Stdio cwd: Option<Path> }` example `process.Command` stability `stable`
@@ -6077,11 +6098,18 @@ Stability: `stable`
 - `proc stdin_piped` signature `proc stdin_piped() -> Stdio { give Stdio { mode: "piped" }; }` example `process.stdin_piped(...)` stability `stable`
 - `proc stdout_piped` signature `proc stdout_piped() -> Stdio { give Stdio { mode: "piped" }; }` example `process.stdout_piped(...)` stability `stable`
 - `proc stderr_piped` signature `proc stderr_piped() -> Stdio { give Stdio { mode: "piped" }; }` example `process.stderr_piped(...)` stability `stable`
+- `proc inherit` signature `proc inherit() -> Stdio { give Stdio { mode: "inherit" }; }` example `process.inherit(...)` stability `stable`
+- `proc null` signature `proc null() -> Stdio { give Stdio { mode: "null" }; }` example `process.null(...)` stability `stable`
+- `proc pipe` signature `proc pipe() -> Result<Pipe, ProcessError> { give compiler_backend_process_pipe(); }` example `process.pipe(...)` stability `stable`
+- `proc stdin_mode` signature `proc stdin_mode(cmd: ref mut Command, mode: Stdio) { set (*cmd).stdin = mode; }` example `process.stdin_mode(...)` stability `stable`
+- `proc stdout_mode` signature `proc stdout_mode(cmd: ref mut Command, mode: Stdio) { set (*cmd).stdout = mode; }` example `process.stdout_mode(...)` stability `stable`
+- `proc stderr_mode` signature `proc stderr_mode(cmd: ref mut Command, mode: Stdio) { set (*cmd).stderr = mode; }` example `process.stderr_mode(...)` stability `stable`
 - `proc spawn` signature `proc spawn(cmd: Command) -> Result<Child, ProcessError> { give compiler_backend_process_spawn(cmd); }` example `process.spawn(...)` stability `stable`
 - `proc wait` signature `proc wait(child: Child) -> Result<ExitStatus, ProcessError> { give compiler_backend_process_wait(child); }` example `process.wait(...)` stability `stable`
 - `proc status` signature `proc status(cmd: Command) -> Result<ExitStatus, ProcessError> {` example `process.status(...)` stability `stable`
 - `proc output` signature `proc output(cmd: Command) -> Result<Output, ProcessError> { give compiler_backend_process_output(cmd); }` example `process.output(...)` stability `stable`
 - `proc exit` signature `proc exit(code: int) -> never { give compiler_backend_process_exit(code); }` example `process.exit(...)` stability `stable`
+- `proc exit_status` signature `proc exit_status(code: int) -> ExitStatus { give ExitStatus { code: code, success: code == 0 }; }` example `process.exit_status(...)` stability `stable`
 
 ## `src/vitte/stdlib/std/random.vitl`
 
@@ -6107,6 +6135,7 @@ Stability: `stable`
 - `form Encoder` signature `form Encoder {` example `serialization.Encoder` stability `stable`
 - `form Decoder` signature `form Decoder {` example `serialization.Decoder` stability `stable`
 - `form JsonValue` signature `form JsonValue {` example `serialization.JsonValue` stability `stable`
+- `form JsonField` signature `form JsonField { name: String value: JsonValue }` example `serialization.JsonField` stability `stable`
 - `proc serialization_error` signature `proc serialization_error(message: String, offset: usize) -> SerializationError {` example `serialization.serialization_error(...)` stability `stable`
 - `proc json_encoder` signature `proc json_encoder() -> Encoder {` example `serialization.json_encoder(...)` stability `stable`
 - `proc json_decoder` signature `proc json_decoder(input: Utf8View) -> Decoder {` example `serialization.json_decoder(...)` stability `stable`
@@ -6115,6 +6144,11 @@ Stability: `stable`
 - `proc json_value` signature `proc json_value(input: Utf8View) -> Result<JsonValue, SerializationError> {` example `serialization.json_value(...)` stability `stable`
 - `proc write_json_string` signature `proc write_json_string(encoder: ref mut Encoder, value: String) -> Result<(), SerializationError> {` example `serialization.write_json_string(...)` stability `stable`
 - `proc write_json_field` signature `proc write_json_field<T>(encoder: ref mut Encoder, name: String, value: T) -> Result<(), SerializationError> {` example `serialization.write_json_field(...)` stability `stable`
+- `proc json_null` signature `proc json_null() -> JsonValue { give JsonValue { kind: JsonTokenKind.Null, text: compiler_test_string("null") }; }` example `serialization.json_null(...)` stability `stable`
+- `proc json_bool` signature `proc json_bool(value: bool) -> JsonValue {` example `serialization.json_bool(...)` stability `stable`
+- `proc json_string` signature `proc json_string(value: String) -> JsonValue { give JsonValue { kind: JsonTokenKind.String, text: compiler_json_quote(value) }; }` example `serialization.json_string(...)` stability `stable`
+- `proc encode_derived` signature `proc encode_derived<T>(value: T, encoder: ref mut Encoder, fields: proc(T, ref mut Encoder) -> Result<(), SerializationError>) -> Result<String, SerializationError> {` example `serialization.encode_derived(...)` stability `stable`
+- `proc decode_derived` signature `proc decode_derived<T>(decoder: ref mut Decoder, build: proc(JsonValue) -> Result<T, SerializationError>) -> Result<T, SerializationError> {` example `serialization.decode_derived(...)` stability `stable`
 
 ## `src/vitte/stdlib/std/semver.vitl`
 
@@ -6152,12 +6186,18 @@ Stability: `stable`
 - `form Once` signature `form Once { state: compiler_once_state }` example `sync.Once` stability `stable`
 - `form Condvar` signature `form Condvar { state: compiler_condvar_state }` example `sync.Condvar` stability `stable`
 - `form Atomic` signature `form Atomic<T> { value: T }` example `sync.Atomic` stability `stable`
+- `form MutexGuard` signature `form MutexGuard<T> { value: ref mut T }` example `sync.MutexGuard` stability `stable`
+- `form RwReadGuard` signature `form RwReadGuard<T> { value: ref T }` example `sync.RwReadGuard` stability `stable`
+- `form RwWriteGuard` signature `form RwWriteGuard<T> { value: ref mut T }` example `sync.RwWriteGuard` stability `stable`
 - `proc mutex` signature `proc mutex<T>(value: T) -> Mutex<T> { give compiler_mutex_new<T>(value); }` example `sync.mutex(...)` stability `stable`
 - `proc mutex_lock` signature `proc mutex_lock<T>(mutex_value: ref Mutex<T>) -> ref mut T { give compiler_mutex_lock<T>(mutex_value); }` example `sync.mutex_lock(...)` stability `stable`
+- `proc lock` signature `proc lock<T>(mutex_value: ref Mutex<T>) -> MutexGuard<T> { give MutexGuard<T> { value: mutex_lock<T>(mutex_value) }; }` example `sync.lock(...)` stability `stable`
 - `proc mutex_unlock` signature `proc mutex_unlock<T>(mutex_value: ref Mutex<T>) { compiler_mutex_unlock<T>(mutex_value); }` example `sync.mutex_unlock(...)` stability `stable`
 - `proc rwlock` signature `proc rwlock<T>(value: T) -> RwLock<T> { give compiler_rwlock_new<T>(value); }` example `sync.rwlock(...)` stability `stable`
 - `proc read` signature `proc read<T>(lock: ref RwLock<T>) -> ref T { give compiler_rwlock_read<T>(lock); }` example `sync.read(...)` stability `stable`
 - `proc write` signature `proc write<T>(lock: ref RwLock<T>) -> ref mut T { give compiler_rwlock_write<T>(lock); }` example `sync.write(...)` stability `stable`
+- `proc read_guard` signature `proc read_guard<T>(lock: ref RwLock<T>) -> RwReadGuard<T> { give RwReadGuard<T> { value: read<T>(lock) }; }` example `sync.read_guard(...)` stability `stable`
+- `proc write_guard` signature `proc write_guard<T>(lock: ref RwLock<T>) -> RwWriteGuard<T> { give RwWriteGuard<T> { value: write<T>(lock) }; }` example `sync.write_guard(...)` stability `stable`
 - `proc once` signature `proc once() -> Once { give compiler_once_new(); }` example `sync.once(...)` stability `stable`
 - `proc call_once` signature `proc call_once(once_value: ref Once, f: proc()) { compiler_once_call(once_value, f); }` example `sync.call_once(...)` stability `stable`
 - `proc condvar` signature `proc condvar() -> Condvar { give compiler_condvar_new(); }` example `sync.condvar(...)` stability `stable`
@@ -6207,8 +6247,13 @@ Stability: `stable`
 - `form ThreadId` signature `form ThreadId { value: u64 }` example `thread.ThreadId` stability `stable`
 - `form JoinHandle` signature `form JoinHandle<T> { id: ThreadId }` example `thread.JoinHandle` stability `stable`
 - `form ThreadError` signature `form ThreadError { message: String }` example `thread.ThreadError` stability `stable`
+- `form ThreadBuilder` signature `form ThreadBuilder { name: Option<String> stack_size: Option<usize> }` example `thread.ThreadBuilder` stability `stable`
 - `proc current_id` signature `proc current_id() -> ThreadId { give compiler_backend_thread_current_id(); }` example `thread.current_id(...)` stability `stable`
 - `proc spawn` signature `proc spawn<T>(f: proc() -> T) -> Result<JoinHandle<T>, ThreadError> { give compiler_backend_thread_spawn<T>(f); }` example `thread.spawn(...)` stability `stable`
+- `proc thread_builder` signature `proc thread_builder() -> ThreadBuilder { give ThreadBuilder { name: none<String>(), stack_size: none<usize>() }; }` example `thread.thread_builder(...)` stability `stable`
+- `proc name` signature `proc name(builder: ref mut ThreadBuilder, value: String) { set (*builder).name = some<String>(value); }` example `thread.name(...)` stability `stable`
+- `proc stack_size` signature `proc stack_size(builder: ref mut ThreadBuilder, value: usize) { set (*builder).stack_size = some<usize>(value); }` example `thread.stack_size(...)` stability `stable`
+- `proc spawn_with` signature `proc spawn_with<T>(builder: ThreadBuilder, f: proc() -> T) -> Result<JoinHandle<T>, ThreadError> { give compiler_backend_thread_spawn_with<T>(builder, f); }` example `thread.spawn_with(...)` stability `stable`
 - `proc join` signature `proc join<T>(handle: JoinHandle<T>) -> Result<T, ThreadError> { give compiler_backend_thread_join<T>(handle); }` example `thread.join(...)` stability `stable`
 - `proc sleep` signature `proc sleep(duration: Duration) { compiler_backend_thread_sleep(duration); }` example `thread.sleep(...)` stability `stable`
 - `proc yield_now` signature `proc yield_now() { compiler_backend_thread_yield_now(); }` example `thread.yield_now(...)` stability `stable`
@@ -6227,6 +6272,8 @@ Stability: `stable`
 - `proc duration_from_nanos` signature `proc duration_from_nanos(ns: u128) -> Duration { give Duration { nanos: ns }; }` example `time.duration_from_nanos(...)` stability `stable`
 - `proc duration_as_nanos` signature `proc duration_as_nanos(value: Duration) -> u128 { give value.nanos; }` example `time.duration_as_nanos(...)` stability `stable`
 - `proc duration_as_secs` signature `proc duration_as_secs(value: Duration) -> u64 { give (value.nanos / 1000000000) as u64; }` example `time.duration_as_secs(...)` stability `stable`
+- `proc duration_checked_add` signature `proc duration_checked_add(left: Duration, right: Duration) -> Option<Duration> {` example `time.duration_checked_add(...)` stability `stable`
+- `proc duration_checked_sub` signature `proc duration_checked_sub(left: Duration, right: Duration) -> Option<Duration> {` example `time.duration_checked_sub(...)` stability `stable`
 - `proc instant_now` signature `proc instant_now() -> Instant { give compiler_backend_instant_now(); }` example `time.instant_now(...)` stability `stable`
 - `proc system_time_now` signature `proc system_time_now() -> SystemTime { give compiler_backend_system_time_now(); }` example `time.system_time_now(...)` stability `stable`
 - `proc elapsed` signature `proc elapsed(start: Instant) -> Duration {` example `time.elapsed(...)` stability `stable`
@@ -6235,6 +6282,8 @@ Stability: `stable`
 - `proc system_time_to_datetime` signature `proc system_time_to_datetime(time: SystemTime) -> DateTime { give compiler_backend_time_to_datetime(time); }` example `time.system_time_to_datetime(...)` stability `stable`
 - `proc datetime_to_system_time` signature `proc datetime_to_system_time(value: DateTime) -> SystemTime { give compiler_backend_datetime_to_system_time(value); }` example `time.datetime_to_system_time(...)` stability `stable`
 - `proc format_datetime` signature `proc format_datetime(value: DateTime, pattern: string) -> String { give compiler_backend_format_datetime(value, pattern); }` example `time.format_datetime(...)` stability `stable`
+- `proc format_duration` signature `proc format_duration(value: Duration) -> String { give compiler_backend_format_duration(value); }` example `time.format_duration(...)` stability `stable`
+- `proc checked_add_system_time` signature `proc checked_add_system_time(time: SystemTime, duration: Duration) -> Option<SystemTime> {` example `time.checked_add_system_time(...)` stability `stable`
 
 ## `src/vitte/stdlib/std/terminal.vitl`
 

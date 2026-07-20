@@ -10,6 +10,7 @@ form SocketAddr { ip: IpAddr port: u16 }
 form TcpStream { handle: int }
 form TcpListener { handle: int }
 form UdpSocket { handle: int }
+form Timeout { millis: u64 }
 form NetError { message: String }
 
 proc net_error(message: String) -> NetError { give NetError { message: message }; }
@@ -22,8 +23,13 @@ proc ip_addr(text: String) -> Result<IpAddr, NetError> {
 proc socket_addr(ip: IpAddr, port: u16) -> SocketAddr { give SocketAddr { ip: ip, port: port }; }
 proc dns_lookup(name: String) -> Result<Vec<IpAddr>, NetError> { give compiler_platform_dns_lookup(name); }
 proc tcp_connect(addr: SocketAddr) -> Result<TcpStream, NetError> { give compiler_platform_tcp_connect(addr); }
+proc tcp_connect_timeout(addr: SocketAddr, timeout: Timeout) -> Result<TcpStream, NetError> { give compiler_platform_tcp_connect_timeout(addr, timeout); }
 proc tcp_bind(addr: SocketAddr) -> Result<TcpListener, NetError> { give compiler_platform_tcp_bind(addr); }
 proc tcp_accept(listener: ref TcpListener) -> Result<TcpStream, NetError> { give compiler_platform_tcp_accept(listener); }
+proc tcp_read(stream: ref TcpStream, buffer: ref mut [byte]) -> Result<usize, NetError> { give compiler_platform_tcp_read(stream, buffer); }
+proc tcp_write(stream: ref TcpStream, bytes: [byte]) -> Result<usize, NetError> { give compiler_platform_tcp_write(stream, bytes); }
 proc udp_bind(addr: SocketAddr) -> Result<UdpSocket, NetError> { give compiler_platform_udp_bind(addr); }
 proc udp_send_to(socket: ref UdpSocket, bytes: [byte], addr: SocketAddr) -> Result<usize, NetError> { give compiler_platform_udp_send_to(socket, bytes, addr); }
 proc udp_recv_from(socket: ref UdpSocket, buffer: ref mut [byte]) -> Result<(usize, SocketAddr), NetError> { give compiler_platform_udp_recv_from(socket, buffer); }
+proc set_timeout(socket: ref UdpSocket, timeout: Timeout) -> Result<(), NetError> { give compiler_platform_udp_set_timeout(socket, timeout); }
+proc timeout_millis(value: u64) -> Timeout { give Timeout { millis: value }; }

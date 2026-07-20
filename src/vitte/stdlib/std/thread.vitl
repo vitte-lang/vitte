@@ -3,14 +3,20 @@ space vitte/stdlib/std/thread
 export *
 
 use src/vitte/stdlib/alloc/string as alloc_string
+use src/vitte/stdlib/core/option as core_option
 use src/vitte/stdlib/core/result as core_result
 
 form ThreadId { value: u64 }
 form JoinHandle<T> { id: ThreadId }
 form ThreadError { message: String }
+form ThreadBuilder { name: Option<String> stack_size: Option<usize> }
 
 proc current_id() -> ThreadId { give compiler_backend_thread_current_id(); }
 proc spawn<T>(f: proc() -> T) -> Result<JoinHandle<T>, ThreadError> { give compiler_backend_thread_spawn<T>(f); }
+proc thread_builder() -> ThreadBuilder { give ThreadBuilder { name: none<String>(), stack_size: none<usize>() }; }
+proc name(builder: ref mut ThreadBuilder, value: String) { set (*builder).name = some<String>(value); }
+proc stack_size(builder: ref mut ThreadBuilder, value: usize) { set (*builder).stack_size = some<usize>(value); }
+proc spawn_with<T>(builder: ThreadBuilder, f: proc() -> T) -> Result<JoinHandle<T>, ThreadError> { give compiler_backend_thread_spawn_with<T>(builder, f); }
 proc join<T>(handle: JoinHandle<T>) -> Result<T, ThreadError> { give compiler_backend_thread_join<T>(handle); }
 proc sleep(duration: Duration) { compiler_backend_thread_sleep(duration); }
 proc yield_now() { compiler_backend_thread_yield_now(); }
