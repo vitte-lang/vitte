@@ -33,6 +33,7 @@ MIDDLE_TYPECHECK_DIAGNOSTICS = COMPILER_ROOT / "middle" / "typecheck" / "diagnos
 DIAGNOSTICS_MIGRATION_CHECK = ROOT / "tools" / "check_diagnostics_migration.py"
 DRIVER_COMPILER = COMPILER_ROOT / "driver" / "compiler.vit"
 DIAGNOSTIC_SNAPSHOT_TESTS = COMPILER_ROOT / "tests" / "diagnostic_snapshot_tests.vit"
+DIAGNOSTIC_SNAPSHOT_SUITE = ROOT / "tests" / "diagnostics" / "catalog" / "snapshots" / "diagnostic-suite.snap"
 
 DIRECT_OUTPUT = re.compile(r"\b(?:print|printf|fprintf|eprintf|fputs|fwrite|fputc)\s*\(")
 VAGUE_DRIVER_MESSAGES = (
@@ -571,6 +572,9 @@ def check_relational_diagnostic_contract() -> list[str]:
         (CANONICAL_DIAGNOSTIC, "share diagnostic_has_machine_applicable_fix"),
         (DIAGNOSTIC_SNAPSHOT_TESTS, "test_machine_applicable_fix_contract"),
         (DIAGNOSTIC_SNAPSHOT_TESTS, "diagnostic_has_machine_applicable_fix(diag)"),
+        (DIAGNOSTIC_SNAPSHOT_SUITE, "schema: vitte.diagnostic-snapshot-suite"),
+        (DIAGNOSTIC_SNAPSHOT_SUITE, "one-code-one-snapshot"),
+        (DIAGNOSTIC_SNAPSHOT_SUITE, "machine-applicable-fix"),
         (CANONICAL_DIAGNOSTIC, "why expected type is imposed:"),
         (CANONICAL_DIAGNOSTIC, "origin of obtained type:"),
         (CANONICAL_DIAGNOSTIC, "give 3 as u64;"),
