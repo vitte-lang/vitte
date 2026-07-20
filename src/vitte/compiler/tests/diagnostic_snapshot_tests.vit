@@ -426,6 +426,15 @@ proc test_cascade_diagnostics_link_to_root() -> bool {
     and report.cascade_count == 1;
 }
 
+proc test_duplicate_diagnostics_are_suppressed() -> bool {
+  let first: Diagnostic = diagnostic_error("LEX0002", DiagnosticPhase.Lexer, "same invalid character", span_create("dedup.vit", 1, 2, 1));
+  let second: Diagnostic = diagnostic_error("LEX0002", DiagnosticPhase.Lexer, "same invalid character", span_create("dedup.vit", 1, 2, 1));
+  let report: DiagnosticReport = diagnostic_report([first, second]);
+  give len(report.diagnostics) == 1
+    and report.duplicate_count == 1
+    and report.diagnostics[0].code == "LEX0002";
+}
+
 proc test_multiple_independent_errors_in_one_file() -> bool {
   let first: Diagnostic = diagnostic_error("PARSE_E_TOPLEVEL_DECL_EXPECTED", DiagnosticPhase.Parser, "expected declaration", span_create("multi_errors.vit", 1, 1, 4));
   let second: Diagnostic = diagnostic_error("TYPECK_E_ASSIGN_MISMATCH", DiagnosticPhase.Typeck, "assignment contract failed", span_create("multi_errors.vit", 3, 7, 5));
@@ -609,6 +618,7 @@ proc run_all_tests() -> int {
   let rendered_suggestions_ok: bool = test_rendered_suggestion_applicability_contract();
   let report_cascade_ok: bool = test_report_deduplicates_and_limits_cascades();
   let cascade_link_ok: bool = test_cascade_diagnostics_link_to_root();
+  let dedup_ok: bool = test_duplicate_diagnostics_are_suppressed();
   let multi_error_ok: bool = test_multiple_independent_errors_in_one_file();
   let multifile_ok: bool = test_multifile_diagnostic_spans();
   let unicode_tabs_ok: bool = test_unicode_and_tab_diagnostic_rendering();
@@ -659,6 +669,9 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if cascade_link_ok == false {
+    set failures = failures + 1;
+  }
+  if dedup_ok == false {
     set failures = failures + 1;
   }
   if multi_error_ok == false {
