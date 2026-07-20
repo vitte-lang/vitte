@@ -213,6 +213,25 @@ def check_code_documentation() -> list[str]:
                 failures.append(f"{code}: documentation.{field} is required")
         if isinstance(documentation.get("url"), str) and f"/{phase}/{code}" not in documentation["url"]:
             failures.append(f"{code}: documentation url must include the producing phase")
+        tests = entry.get("tests")
+        if not isinstance(tests, list) or not tests:
+            failures.append(f"{code}: at least one diagnostic test is required")
+        else:
+            for test in tests:
+                if not isinstance(test, dict):
+                    failures.append(f"{code}: diagnostic test entry must be an object")
+                    continue
+                test_path = test.get("path")
+                test_case = test.get("case")
+                asserts = test.get("asserts")
+                if not isinstance(test_path, str) or not test_path:
+                    failures.append(f"{code}: diagnostic test path is required")
+                elif not (ROOT / test_path).exists():
+                    failures.append(f"{code}: diagnostic test path does not exist: {test_path}")
+                if test_case != code:
+                    failures.append(f"{code}: diagnostic test case must match the code")
+                if not isinstance(asserts, list) or "code" not in asserts or "span" not in asserts:
+                    failures.append(f"{code}: diagnostic test must assert code and span")
     return failures
 
 
