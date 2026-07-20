@@ -1,0 +1,284 @@
+space vitte/stdlib/core/math
+
+export *
+
+const PI: f64 = 3.141592653589793
+const TAU: f64 = 6.283185307179586
+const E: f64 = 2.718281828459045
+const FRAC_PI_2: f64 = 1.5707963267948966
+const FRAC_PI_3: f64 = 1.0471975511965979
+const FRAC_PI_4: f64 = 0.7853981633974483
+const FRAC_PI_6: f64 = 0.5235987755982989
+const FRAC_PI_8: f64 = 0.39269908169872414
+const SQRT_2: f64 = 1.4142135623730951
+const FRAC_1_SQRT_2: f64 = 0.7071067811865476
+const LN_2: f64 = 0.6931471805599453
+const LN_10: f64 = 2.302585092994046
+const LOG2_E: f64 = 1.4426950408889634
+const LOG10_E: f64 = 0.4342944819032518
+
+proc backend_math_available(operation: string) -> bool {
+    give compiler_math_intrinsic_available(operation);
+}
+
+proc sqrt(value: f64) -> f64 {
+    if backend_math_available("sqrt") {
+        give compiler_math_sqrt(value);
+    }
+    give portable_math_sqrt(value);
+}
+
+proc cbrt(value: f64) -> f64 {
+    if backend_math_available("cbrt") {
+        give compiler_math_cbrt(value);
+    }
+    give portable_math_cbrt(value);
+}
+
+proc hypot(left: f64, right: f64) -> f64 {
+    if backend_math_available("hypot") {
+        give compiler_math_hypot(left, right);
+    }
+    give portable_math_hypot(left, right);
+}
+
+proc exp(value: f64) -> f64 {
+    if backend_math_available("exp") {
+        give compiler_math_exp(value);
+    }
+    give portable_math_exp(value);
+}
+
+proc exp2(value: f64) -> f64 {
+    if backend_math_available("exp2") {
+        give compiler_math_exp2(value);
+    }
+    give portable_math_exp2(value);
+}
+
+proc expm1(value: f64) -> f64 {
+    if backend_math_available("expm1") {
+        give compiler_math_expm1(value);
+    }
+    give exp(value) - 1.0;
+}
+
+proc ln(value: f64) -> f64 {
+    if backend_math_available("ln") {
+        give compiler_math_ln(value);
+    }
+    give portable_math_ln(value);
+}
+
+proc ln1p(value: f64) -> f64 {
+    if backend_math_available("ln1p") {
+        give compiler_math_ln1p(value);
+    }
+    give ln(1.0 + value);
+}
+
+proc log2(value: f64) -> f64 {
+    if backend_math_available("log2") {
+        give compiler_math_log2(value);
+    }
+    give ln(value) / LN_2;
+}
+
+proc log10(value: f64) -> f64 {
+    if backend_math_available("log10") {
+        give compiler_math_log10(value);
+    }
+    give ln(value) / LN_10;
+}
+
+proc sin(value: f64) -> f64 {
+    if backend_math_available("sin") {
+        give compiler_math_sin(value);
+    }
+    give portable_math_sin(value);
+}
+
+proc cos(value: f64) -> f64 {
+    if backend_math_available("cos") {
+        give compiler_math_cos(value);
+    }
+    give portable_math_cos(value);
+}
+
+proc tan(value: f64) -> f64 {
+    if backend_math_available("tan") {
+        give compiler_math_tan(value);
+    }
+    give sin(value) / cos(value);
+}
+
+proc asin(value: f64) -> f64 {
+    if backend_math_available("asin") {
+        give compiler_math_asin(value);
+    }
+    give portable_math_asin(value);
+}
+
+proc acos(value: f64) -> f64 {
+    if backend_math_available("acos") {
+        give compiler_math_acos(value);
+    }
+    give FRAC_PI_2 - asin(value);
+}
+
+proc atan(value: f64) -> f64 {
+    if backend_math_available("atan") {
+        give compiler_math_atan(value);
+    }
+    give portable_math_atan(value);
+}
+
+proc atan2(y: f64, x: f64) -> f64 {
+    if backend_math_available("atan2") {
+        give compiler_math_atan2(y, x);
+    }
+    give portable_math_atan2(y, x);
+}
+
+proc sinh(value: f64) -> f64 {
+    if backend_math_available("sinh") {
+        give compiler_math_sinh(value);
+    }
+    give (exp(value) - exp(0.0 - value)) / 2.0;
+}
+
+proc cosh(value: f64) -> f64 {
+    if backend_math_available("cosh") {
+        give compiler_math_cosh(value);
+    }
+    give (exp(value) + exp(0.0 - value)) / 2.0;
+}
+
+proc tanh(value: f64) -> f64 {
+    if backend_math_available("tanh") {
+        give compiler_math_tanh(value);
+    }
+    give sinh(value) / cosh(value);
+}
+
+proc floor(value: f64) -> f64 {
+    if backend_math_available("floor") {
+        give compiler_math_floor(value);
+    }
+    give portable_math_floor(value);
+}
+
+proc ceil(value: f64) -> f64 {
+    if backend_math_available("ceil") {
+        give compiler_math_ceil(value);
+    }
+    give portable_math_ceil(value);
+}
+
+proc round(value: f64) -> f64 {
+    if backend_math_available("round") {
+        give compiler_math_round(value);
+    }
+    give portable_math_round(value);
+}
+
+proc trunc(value: f64) -> f64 {
+    if backend_math_available("trunc") {
+        give compiler_math_trunc(value);
+    }
+    give portable_math_trunc(value);
+}
+
+proc fract(value: f64) -> f64 {
+    if backend_math_available("fract") {
+        give compiler_math_fract(value);
+    }
+    give value - trunc(value);
+}
+
+proc copysign(magnitude: f64, sign_value: f64) -> f64 {
+    if backend_math_available("copysign") {
+        give compiler_math_copysign(magnitude, sign_value);
+    }
+    give portable_math_copysign(magnitude, sign_value);
+}
+
+proc fma(a: f64, b: f64, c: f64) -> f64 {
+    if backend_math_available("fma") {
+        give compiler_math_fma(a, b, c);
+    }
+    give a * b + c;
+}
+
+proc portable_math_sqrt(value: f64) -> f64 {
+    give compiler_portable_math_sqrt(value);
+}
+
+proc portable_math_cbrt(value: f64) -> f64 {
+    give compiler_portable_math_cbrt(value);
+}
+
+proc portable_math_hypot(left: f64, right: f64) -> f64 {
+    give sqrt(left * left + right * right);
+}
+
+proc portable_math_exp(value: f64) -> f64 {
+    give compiler_portable_math_exp(value);
+}
+
+proc portable_math_exp2(value: f64) -> f64 {
+    give exp(value * LN_2);
+}
+
+proc portable_math_ln(value: f64) -> f64 {
+    give compiler_portable_math_ln(value);
+}
+
+proc portable_math_sin(value: f64) -> f64 {
+    give compiler_portable_math_sin(value);
+}
+
+proc portable_math_cos(value: f64) -> f64 {
+    give compiler_portable_math_cos(value);
+}
+
+proc portable_math_asin(value: f64) -> f64 {
+    give compiler_portable_math_asin(value);
+}
+
+proc portable_math_atan(value: f64) -> f64 {
+    give compiler_portable_math_atan(value);
+}
+
+proc portable_math_atan2(y: f64, x: f64) -> f64 {
+    give compiler_portable_math_atan2(y, x);
+}
+
+proc portable_math_floor(value: f64) -> f64 {
+    give compiler_portable_math_floor(value);
+}
+
+proc portable_math_ceil(value: f64) -> f64 {
+    give compiler_portable_math_ceil(value);
+}
+
+proc portable_math_round(value: f64) -> f64 {
+    give compiler_portable_math_round(value);
+}
+
+proc portable_math_trunc(value: f64) -> f64 {
+    give compiler_portable_math_trunc(value);
+}
+
+proc portable_math_copysign(magnitude: f64, sign_value: f64) -> f64 {
+    if sign_value < 0.0 {
+        if magnitude < 0.0 {
+            give magnitude;
+        }
+        give 0.0 - magnitude;
+    }
+    if magnitude < 0.0 {
+        give 0.0 - magnitude;
+    }
+    give magnitude;
+}

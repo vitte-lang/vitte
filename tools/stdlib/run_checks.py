@@ -36,6 +36,8 @@ CORE_DROP_SCOPE_MEMORY_DOC = ROOT / "docs" / "compiler" / "stdlib_core_drop_scop
 CORE_ITERATOR_SOURCE = SOURCE_STDLIB_DIR / "core" / "iterator.vitl"
 CORE_RANGE_SOURCE = SOURCE_STDLIB_DIR / "core" / "range.vitl"
 CORE_NUMBER_SOURCE = SOURCE_STDLIB_DIR / "core" / "number.vitl"
+CORE_FLOAT_SOURCE = SOURCE_STDLIB_DIR / "core" / "float.vitl"
+CORE_MATH_SOURCE = SOURCE_STDLIB_DIR / "core" / "math.vitl"
 
 REPORT_DIR.mkdir(parents=True, exist_ok=True)
 STDLIB_DIR.mkdir(parents=True, exist_ok=True)
@@ -67,6 +69,8 @@ REQUIRED_FILES = [
     CORE_ITERATOR_SOURCE,
     CORE_RANGE_SOURCE,
     CORE_NUMBER_SOURCE,
+    CORE_FLOAT_SOURCE,
+    CORE_MATH_SOURCE,
 ]
 
 
@@ -475,6 +479,67 @@ REQUIRED_NUMBER_FRAGMENTS = (
     "proc from_little_endian<T>",
     "proc from_big_endian<T>",
     "proc endian_convert<T>",
+)
+REQUIRED_FLOAT_FRAGMENTS = (
+    "pick FloatClass",
+    "pick FloatOrdering",
+    "proc is_nan<T>",
+    "proc is_infinite<T>",
+    "proc is_finite<T>",
+    "proc is_normal<T>",
+    "proc is_subnormal<T>",
+    "proc is_sign_positive<T>",
+    "proc is_sign_negative<T>",
+    "proc next_up<T>",
+    "proc next_down<T>",
+    "proc total_compare<T>",
+    "proc float_class<T>",
+)
+REQUIRED_MATH_FRAGMENTS = (
+    "const PI: f64",
+    "const TAU: f64",
+    "const E: f64",
+    "const FRAC_PI_2: f64",
+    "const FRAC_PI_3: f64",
+    "const FRAC_PI_4: f64",
+    "const FRAC_PI_6: f64",
+    "const FRAC_PI_8: f64",
+    "const SQRT_2: f64",
+    "const FRAC_1_SQRT_2: f64",
+    "const LN_2: f64",
+    "const LN_10: f64",
+    "const LOG2_E: f64",
+    "const LOG10_E: f64",
+    "proc backend_math_available",
+    "proc sqrt",
+    "proc cbrt",
+    "proc hypot",
+    "proc exp",
+    "proc exp2",
+    "proc expm1",
+    "proc ln",
+    "proc ln1p",
+    "proc log2",
+    "proc log10",
+    "proc sin",
+    "proc cos",
+    "proc tan",
+    "proc asin",
+    "proc acos",
+    "proc atan",
+    "proc atan2",
+    "proc sinh",
+    "proc cosh",
+    "proc tanh",
+    "proc floor",
+    "proc ceil",
+    "proc round",
+    "proc trunc",
+    "proc fract",
+    "proc copysign",
+    "proc fma",
+    "portable_math_",
+    "compiler_math_intrinsic_available",
 )
 
 
@@ -1025,6 +1090,33 @@ def validate_core_range_number() -> list[ValidationResult]:
     ]
 
 
+def validate_core_float_math() -> list[ValidationResult]:
+    float_source = CORE_FLOAT_SOURCE.read_text(encoding="utf-8")
+    math_source = CORE_MATH_SOURCE.read_text(encoding="utf-8")
+    missing_float = [
+        fragment
+        for fragment in REQUIRED_FLOAT_FRAGMENTS
+        if fragment not in float_source
+    ]
+    missing_math = [
+        fragment
+        for fragment in REQUIRED_MATH_FRAGMENTS
+        if fragment not in math_source
+    ]
+    return [
+        ValidationResult(
+            name="core_float_defines_float_classification",
+            status=not missing_float,
+            detail="ok" if not missing_float else ", ".join(missing_float),
+        ),
+        ValidationResult(
+            name="core_math_defines_portable_math_contract",
+            status=not missing_math,
+            detail="ok" if not missing_math else ", ".join(missing_math),
+        ),
+    ]
+
+
 def validate_architecture(manifest: dict) -> list[ValidationResult]:
     results: list[ValidationResult] = []
     levels = architecture_levels(manifest)
@@ -1126,6 +1218,7 @@ def build_report() -> dict:
     drop_scope_memory_results = validate_core_drop_scope_memory()
     iterator_results = validate_core_iterator()
     range_number_results = validate_core_range_number()
+    float_math_results = validate_core_float_math()
 
     required = validate_required_symbols(
         symbols
@@ -1148,7 +1241,7 @@ def build_report() -> dict:
     ]
     architecture_failures = [
         item
-        for item in architecture + module_results + graph_results + primitive_results + option_result_results + convert_default_clone_results + drop_scope_memory_results + iterator_results + range_number_results
+        for item in architecture + module_results + graph_results + primitive_results + option_result_results + convert_default_clone_results + drop_scope_memory_results + iterator_results + range_number_results + float_math_results
         if not item.status
     ]
 
@@ -1191,7 +1284,7 @@ def build_report() -> dict:
         ],
         "architecture_results": [
             asdict(item)
-            for item in architecture + module_results + graph_results + primitive_results + option_result_results + convert_default_clone_results + drop_scope_memory_results + iterator_results + range_number_results
+            for item in architecture + module_results + graph_results + primitive_results + option_result_results + convert_default_clone_results + drop_scope_memory_results + iterator_results + range_number_results + float_math_results
         ],
         "required_symbols": [
             asdict(item)
