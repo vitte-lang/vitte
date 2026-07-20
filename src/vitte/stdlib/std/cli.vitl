@@ -10,12 +10,19 @@ use src/vitte/stdlib/core/result as core_result
 use src/vitte/stdlib/core/iterator as core_iterator
 
 form Flag { name: String short: Option<rune> help: String takes_value: bool }
-form CliApp { name: String about: String flags: Vec<Flag> }
+form Subcommand { name: String about: String flags: Vec<Flag> }
+form CliApp { name: String about: String flags: Vec<Flag> subcommands: Vec<Subcommand> }
 form CliMatches { values: HashMap<String, String> present: HashSet<String> }
-form CliError { message: String flag: Option<String> }
+pick CliErrorKind { MissingValue UnknownFlag UnknownSubcommand HelpRequested }
+form CliError { message: String flag: Option<String> kind: CliErrorKind }
 
-proc cli_app(name: String, about: String) -> CliApp { give CliApp { name: name, about: about, flags: vec_new<Flag>() }; }
+proc cli_app(name: String, about: String) -> CliApp { give CliApp { name: name, about: about, flags: vec_new<Flag>(), subcommands: vec_new<Subcommand>() }; }
 proc flag(name: String, short: Option<rune>, help: String, takes_value: bool) -> Flag { give Flag { name: name, short: short, help: help, takes_value: takes_value }; }
+proc subcommand(name: String, about: String) -> Subcommand { give Subcommand { name: name, about: about, flags: vec_new<Flag>() }; }
 proc add_flag(app: ref mut CliApp, value: Flag) { vec_push<Flag>(&mut ((*app).flags), value); }
+proc add_subcommand(app: ref mut CliApp, value: Subcommand) { vec_push<Subcommand>(&mut ((*app).subcommands), value); }
+proc add_subcommand_flag(command: ref mut Subcommand, value: Flag) { vec_push<Flag>(&mut ((*command).flags), value); }
 proc parse(app: CliApp, args: Iterator<String>) -> Result<CliMatches, CliError> { give compiler_cli_parse(app, args); }
 proc help(app: CliApp) -> String { give compiler_cli_help(app); }
+proc subcommand_help(app: CliApp, name: String) -> String { give compiler_cli_subcommand_help(app, name); }
+proc cli_error(message: String, flag: Option<String>, kind: CliErrorKind) -> CliError { give CliError { message: message, flag: flag, kind: kind }; }

@@ -3346,30 +3346,60 @@ Stability: `stable`
 - `proc hashmap_get` signature `proc hashmap_get<K, V>(map: ref HashMap<K, V>, key: K) -> Option<ref V> {` example `collections.hashmap_get(...)` stability `stable`
 - `proc hashmap_remove` signature `proc hashmap_remove<K, V>(map: ref mut HashMap<K, V>, key: K) -> Option<V> {` example `collections.hashmap_remove(...)` stability `stable`
 - `proc hashmap_len` signature `proc hashmap_len<K, V>(map: HashMap<K, V>) -> usize { give map.length; }` example `collections.hashmap_len(...)` stability `stable`
+- `proc hashmap_is_empty` signature `proc hashmap_is_empty<K, V>(map: HashMap<K, V>) -> bool { give map.length == 0; }` example `collections.hashmap_is_empty(...)` stability `stable`
+- `proc hashmap_contains_key` signature `proc hashmap_contains_key<K, V>(map: ref HashMap<K, V>, key: K) -> bool { give is_some<usize>(hashmap_find_index<K, V>(map, key)); }` example `collections.hashmap_contains_key(...)` stability `stable`
+- `proc hashmap_capacity` signature `proc hashmap_capacity<K, V>(map: HashMap<K, V>) -> usize { give vec_capacity<(K, V)>(map.buckets); }` example `collections.hashmap_capacity(...)` stability `stable`
+- `proc hashmap_reserve` signature `proc hashmap_reserve<K, V>(map: ref mut HashMap<K, V>, additional: usize) { vec_reserve<(K, V)>(&mut ((*map).buckets), additional); }` example `collections.hashmap_reserve(...)` stability `stable`
+- `proc hashmap_clear` signature `proc hashmap_clear<K, V>(map: ref mut HashMap<K, V>) {` example `collections.hashmap_clear(...)` stability `stable`
+- `proc hashmap_iter` signature `proc hashmap_iter<K, V>(map: HashMap<K, V>) -> Iterator<(K, V)> { give vec_iter<(K, V)>(map.buckets); }` example `collections.hashmap_iter(...)` stability `stable`
 - `proc hashset_new` signature `proc hashset_new<T>() -> HashSet<T> { give HashSet<T> { map: hashmap_new<T, bool>() }; }` example `collections.hashset_new(...)` stability `stable`
 - `proc hashset_insert` signature `proc hashset_insert<T>(set: ref mut HashSet<T>, value: T) -> bool { give is_none<bool>(hashmap_insert<T, bool>(&mut ((*set).map), value, true)); }` example `collections.hashset_insert(...)` stability `stable`
 - `proc hashset_contains` signature `proc hashset_contains<T>(set: ref HashSet<T>, value: T) -> bool { give is_some<ref bool>(hashmap_get<T, bool>(&((*set).map), value)); }` example `collections.hashset_contains(...)` stability `stable`
 - `proc hashset_remove` signature `proc hashset_remove<T>(set: ref mut HashSet<T>, value: T) -> bool { give is_some<bool>(hashmap_remove<T, bool>(&mut ((*set).map), value)); }` example `collections.hashset_remove(...)` stability `stable`
+- `proc hashset_len` signature `proc hashset_len<T>(set: HashSet<T>) -> usize { give hashmap_len<T, bool>(set.map); }` example `collections.hashset_len(...)` stability `stable`
+- `proc hashset_is_empty` signature `proc hashset_is_empty<T>(set: HashSet<T>) -> bool { give hashset_len<T>(set) == 0; }` example `collections.hashset_is_empty(...)` stability `stable`
+- `proc hashset_clear` signature `proc hashset_clear<T>(set: ref mut HashSet<T>) { hashmap_clear<T, bool>(&mut ((*set).map)); }` example `collections.hashset_clear(...)` stability `stable`
+- `proc hashset_iter` signature `proc hashset_iter<T>(set: HashSet<T>) -> Iterator<(T, bool)> { give hashmap_iter<T, bool>(set.map); }` example `collections.hashset_iter(...)` stability `stable`
 - `proc btreemap_new` signature `proc btreemap_new<K, V>() -> BTreeMap<K, V> { give BTreeMap<K, V> { entries: vec_new<(K, V)>(), length: 0 }; }` example `collections.btreemap_new(...)` stability `stable`
 - `proc btreemap_find_index` signature `proc btreemap_find_index<K, V>(map: ref BTreeMap<K, V>, key: K) -> Option<usize> {` example `collections.btreemap_find_index(...)` stability `stable`
 - `proc btreemap_insert` signature `proc btreemap_insert<K, V>(map: ref mut BTreeMap<K, V>, key: K, value: V) -> Option<V> {` example `collections.btreemap_insert(...)` stability `stable`
 - `proc btreemap_get` signature `proc btreemap_get<K, V>(map: ref BTreeMap<K, V>, key: K) -> Option<ref V> {` example `collections.btreemap_get(...)` stability `stable`
 - `proc btreemap_remove` signature `proc btreemap_remove<K, V>(map: ref mut BTreeMap<K, V>, key: K) -> Option<V> {` example `collections.btreemap_remove(...)` stability `stable`
+- `proc btreemap_len` signature `proc btreemap_len<K, V>(map: BTreeMap<K, V>) -> usize { give map.length; }` example `collections.btreemap_len(...)` stability `stable`
+- `proc btreemap_is_empty` signature `proc btreemap_is_empty<K, V>(map: BTreeMap<K, V>) -> bool { give map.length == 0; }` example `collections.btreemap_is_empty(...)` stability `stable`
+- `proc btreemap_contains_key` signature `proc btreemap_contains_key<K, V>(map: ref BTreeMap<K, V>, key: K) -> bool { give is_some<usize>(btreemap_find_index<K, V>(map, key)); }` example `collections.btreemap_contains_key(...)` stability `stable`
+- `proc btreemap_first` signature `proc btreemap_first<K, V>(map: ref BTreeMap<K, V>) -> Option<ref (K, V)> { give vec_get<(K, V)>((*map).entries, 0); }` example `collections.btreemap_first(...)` stability `stable`
+- `proc btreemap_last` signature `proc btreemap_last<K, V>(map: ref BTreeMap<K, V>) -> Option<ref (K, V)> {` example `collections.btreemap_last(...)` stability `stable`
+- `proc btreemap_clear` signature `proc btreemap_clear<K, V>(map: ref mut BTreeMap<K, V>) {` example `collections.btreemap_clear(...)` stability `stable`
 - `proc btreemap_iter` signature `proc btreemap_iter<K, V>(map: BTreeMap<K, V>) -> Iterator<(K, V)> { give vec_iter<(K, V)>(map.entries); }` example `collections.btreemap_iter(...)` stability `stable`
 - `proc btreeset_new` signature `proc btreeset_new<T>() -> BTreeSet<T> { give BTreeSet<T> { map: btreemap_new<T, bool>() }; }` example `collections.btreeset_new(...)` stability `stable`
 - `proc btreeset_insert` signature `proc btreeset_insert<T>(set: ref mut BTreeSet<T>, value: T) -> bool { give is_none<bool>(btreemap_insert<T, bool>(&mut ((*set).map), value, true)); }` example `collections.btreeset_insert(...)` stability `stable`
 - `proc btreeset_contains` signature `proc btreeset_contains<T>(set: ref BTreeSet<T>, value: T) -> bool { give is_some<ref bool>(btreemap_get<T, bool>(&((*set).map), value)); }` example `collections.btreeset_contains(...)` stability `stable`
 - `proc btreeset_remove` signature `proc btreeset_remove<T>(set: ref mut BTreeSet<T>, value: T) -> bool { give is_some<bool>(btreemap_remove<T, bool>(&mut ((*set).map), value)); }` example `collections.btreeset_remove(...)` stability `stable`
+- `proc btreeset_len` signature `proc btreeset_len<T>(set: BTreeSet<T>) -> usize { give btreemap_len<T, bool>(set.map); }` example `collections.btreeset_len(...)` stability `stable`
+- `proc btreeset_is_empty` signature `proc btreeset_is_empty<T>(set: BTreeSet<T>) -> bool { give btreeset_len<T>(set) == 0; }` example `collections.btreeset_is_empty(...)` stability `stable`
+- `proc btreeset_clear` signature `proc btreeset_clear<T>(set: ref mut BTreeSet<T>) { btreemap_clear<T, bool>(&mut ((*set).map)); }` example `collections.btreeset_clear(...)` stability `stable`
+- `proc btreeset_iter` signature `proc btreeset_iter<T>(set: BTreeSet<T>) -> Iterator<(T, bool)> { give btreemap_iter<T, bool>(set.map); }` example `collections.btreeset_iter(...)` stability `stable`
 - `proc deque_new` signature `proc deque_new<T>() -> Deque<T> { give Deque<T> { data: vec_new<T>(), head: 0, length: 0 }; }` example `collections.deque_new(...)` stability `stable`
 - `proc deque_push_back` signature `proc deque_push_back<T>(deque: ref mut Deque<T>, value: T) { vec_push<T>(&mut ((*deque).data), value); set (*deque).length = (*deque).length + 1; }` example `collections.deque_push_back(...)` stability `stable`
 - `proc deque_push_front` signature `proc deque_push_front<T>(deque: ref mut Deque<T>, value: T) { vec_insert<T>(&mut ((*deque).data), 0, value); set (*deque).length = (*deque).length + 1; }` example `collections.deque_push_front(...)` stability `stable`
 - `proc deque_pop_back` signature `proc deque_pop_back<T>(deque: ref mut Deque<T>) -> Option<T> {` example `collections.deque_pop_back(...)` stability `stable`
 - `proc deque_pop_front` signature `proc deque_pop_front<T>(deque: ref mut Deque<T>) -> Option<T> {` example `collections.deque_pop_front(...)` stability `stable`
 - `proc deque_len` signature `proc deque_len<T>(deque: Deque<T>) -> usize { give deque.length; }` example `collections.deque_len(...)` stability `stable`
+- `proc deque_is_empty` signature `proc deque_is_empty<T>(deque: Deque<T>) -> bool { give deque.length == 0; }` example `collections.deque_is_empty(...)` stability `stable`
+- `proc deque_front` signature `proc deque_front<T>(deque: ref Deque<T>) -> Option<ref T> { give vec_get<T>((*deque).data, 0); }` example `collections.deque_front(...)` stability `stable`
+- `proc deque_back` signature `proc deque_back<T>(deque: ref Deque<T>) -> Option<ref T> {` example `collections.deque_back(...)` stability `stable`
+- `proc deque_clear` signature `proc deque_clear<T>(deque: ref mut Deque<T>) {` example `collections.deque_clear(...)` stability `stable`
+- `proc deque_iter` signature `proc deque_iter<T>(deque: Deque<T>) -> Iterator<T> { give vec_iter<T>(deque.data); }` example `collections.deque_iter(...)` stability `stable`
 - `proc smallvec_new` signature `proc smallvec_new<T, N>() -> SmallVec<T, N> { give SmallVec<T, N> { inline_len: 0, spilled: vec_new<T>() }; }` example `collections.smallvec_new(...)` stability `stable`
 - `proc smallvec_len` signature `proc smallvec_len<T, N>(value: SmallVec<T, N>) -> usize { give value.inline_len + vec_len<T>(value.spilled); }` example `collections.smallvec_len(...)` stability `stable`
+- `proc smallvec_capacity` signature `proc smallvec_capacity<T, N>(value: SmallVec<T, N>) -> usize { give compiler_smallvec_inline_capacity<T, N>() + vec_capacity<T>(value.spilled); }` example `collections.smallvec_capacity(...)` stability `stable`
+- `proc smallvec_is_empty` signature `proc smallvec_is_empty<T, N>(value: SmallVec<T, N>) -> bool { give smallvec_len<T, N>(value) == 0; }` example `collections.smallvec_is_empty(...)` stability `stable`
+- `proc smallvec_reserve` signature `proc smallvec_reserve<T, N>(value: ref mut SmallVec<T, N>, additional: usize) { vec_reserve<T>(&mut ((*value).spilled), additional); }` example `collections.smallvec_reserve(...)` stability `stable`
 - `proc smallvec_push` signature `proc smallvec_push<T, N>(value: ref mut SmallVec<T, N>, item: T) {` example `collections.smallvec_push(...)` stability `stable`
 - `proc smallvec_pop` signature `proc smallvec_pop<T, N>(value: ref mut SmallVec<T, N>) -> Option<T> { give vec_pop<T>(&mut ((*value).spilled)); }` example `collections.smallvec_pop(...)` stability `stable`
+- `proc smallvec_clear` signature `proc smallvec_clear<T, N>(value: ref mut SmallVec<T, N>) {` example `collections.smallvec_clear(...)` stability `stable`
+- `proc smallvec_iter` signature `proc smallvec_iter<T, N>(value: SmallVec<T, N>) -> Iterator<T> { give vec_iter<T>(value.spilled); }` example `collections.smallvec_iter(...)` stability `stable`
 
 ## `src/vitte/stdlib/alloc/rc.vitl`
 
@@ -5711,14 +5741,20 @@ Stability: `stable`
 Stability: `stable`
 
 - `form Benchmark` signature `form Benchmark { name: String iterations: u64 }` example `bench.Benchmark` stability `stable`
-- `form BenchReport` signature `form BenchReport { name: String iterations: u64 nanos: u128 passed_threshold: bool }` example `bench.BenchReport` stability `stable`
+- `form BenchOptions` signature `form BenchOptions { warmup: u64 samples: u64 max_nanos: u128 }` example `bench.BenchOptions` stability `stable`
+- `form BenchStats` signature `form BenchStats { min_nanos: u128 max_nanos: u128 mean_nanos: u128 samples: u64 }` example `bench.BenchStats` stability `stable`
+- `form BenchReport` signature `form BenchReport { name: String iterations: u64 nanos: u128 passed_threshold: bool stats: BenchStats }` example `bench.BenchReport` stability `stable`
 - `form BenchSuite` signature `form BenchSuite { benches: Vec<Benchmark> }` example `bench.BenchSuite` stability `stable`
 - `form BenchSuiteReport` signature `form BenchSuiteReport { reports: Vec<BenchReport> total_nanos: u128 }` example `bench.BenchSuiteReport` stability `stable`
 - `proc benchmark` signature `proc benchmark(name: String, iterations: u64) -> Benchmark { give Benchmark { name: name, iterations: iterations }; }` example `bench.benchmark(...)` stability `stable`
+- `proc bench_options` signature `proc bench_options(warmup: u64, samples: u64, max_nanos: u128) -> BenchOptions { give BenchOptions { warmup: warmup, samples: samples, max_nanos: max_nanos }; }` example `bench.bench_options(...)` stability `stable`
 - `proc run` signature `proc run(bench: Benchmark, body: proc()) -> BenchReport {` example `bench.run(...)` stability `stable`
+- `proc run_with_options` signature `proc run_with_options(bench: Benchmark, options: BenchOptions, body: proc()) -> BenchReport {` example `bench.run_with_options(...)` stability `stable`
+- `proc bench_stats` signature `proc bench_stats(min_nanos: u128, max_nanos: u128, mean_nanos: u128, samples: u64) -> BenchStats {` example `bench.bench_stats(...)` stability `stable`
 - `proc threshold` signature `proc threshold(report: BenchReport, max_nanos: u128) -> bool { give report.nanos <= max_nanos; }` example `bench.threshold(...)` stability `stable`
 - `proc report_text` signature `proc report_text(report: BenchReport) -> String {` example `bench.report_text(...)` stability `stable`
 - `proc run_suite` signature `proc run_suite(suite: BenchSuite, body: proc(Benchmark)) -> BenchSuiteReport {` example `bench.run_suite(...)` stability `stable`
+- `proc threshold_passed` signature `proc threshold_passed(report: BenchReport) -> bool { give report.passed_threshold; }` example `bench.threshold_passed(...)` stability `stable`
 
 ## `src/vitte/stdlib/std/calendar.vitl`
 
@@ -5738,14 +5774,21 @@ Stability: `stable`
 Stability: `stable`
 
 - `form Flag` signature `form Flag { name: String short: Option<rune> help: String takes_value: bool }` example `cli.Flag` stability `stable`
-- `form CliApp` signature `form CliApp { name: String about: String flags: Vec<Flag> }` example `cli.CliApp` stability `stable`
+- `form Subcommand` signature `form Subcommand { name: String about: String flags: Vec<Flag> }` example `cli.Subcommand` stability `stable`
+- `form CliApp` signature `form CliApp { name: String about: String flags: Vec<Flag> subcommands: Vec<Subcommand> }` example `cli.CliApp` stability `stable`
 - `form CliMatches` signature `form CliMatches { values: HashMap<String, String> present: HashSet<String> }` example `cli.CliMatches` stability `stable`
-- `form CliError` signature `form CliError { message: String flag: Option<String> }` example `cli.CliError` stability `stable`
-- `proc cli_app` signature `proc cli_app(name: String, about: String) -> CliApp { give CliApp { name: name, about: about, flags: vec_new<Flag>() }; }` example `cli.cli_app(...)` stability `stable`
+- `pick CliErrorKind` signature `pick CliErrorKind { MissingValue UnknownFlag UnknownSubcommand HelpRequested }` example `cli.CliErrorKind` stability `stable`
+- `form CliError` signature `form CliError { message: String flag: Option<String> kind: CliErrorKind }` example `cli.CliError` stability `stable`
+- `proc cli_app` signature `proc cli_app(name: String, about: String) -> CliApp { give CliApp { name: name, about: about, flags: vec_new<Flag>(), subcommands: vec_new<Subcommand>() }; }` example `cli.cli_app(...)` stability `stable`
 - `proc flag` signature `proc flag(name: String, short: Option<rune>, help: String, takes_value: bool) -> Flag { give Flag { name: name, short: short, help: help, takes_value: takes_value }; }` example `cli.flag(...)` stability `stable`
+- `proc subcommand` signature `proc subcommand(name: String, about: String) -> Subcommand { give Subcommand { name: name, about: about, flags: vec_new<Flag>() }; }` example `cli.subcommand(...)` stability `stable`
 - `proc add_flag` signature `proc add_flag(app: ref mut CliApp, value: Flag) { vec_push<Flag>(&mut ((*app).flags), value); }` example `cli.add_flag(...)` stability `stable`
+- `proc add_subcommand` signature `proc add_subcommand(app: ref mut CliApp, value: Subcommand) { vec_push<Subcommand>(&mut ((*app).subcommands), value); }` example `cli.add_subcommand(...)` stability `stable`
+- `proc add_subcommand_flag` signature `proc add_subcommand_flag(command: ref mut Subcommand, value: Flag) { vec_push<Flag>(&mut ((*command).flags), value); }` example `cli.add_subcommand_flag(...)` stability `stable`
 - `proc parse` signature `proc parse(app: CliApp, args: Iterator<String>) -> Result<CliMatches, CliError> { give compiler_cli_parse(app, args); }` example `cli.parse(...)` stability `stable`
 - `proc help` signature `proc help(app: CliApp) -> String { give compiler_cli_help(app); }` example `cli.help(...)` stability `stable`
+- `proc subcommand_help` signature `proc subcommand_help(app: CliApp, name: String) -> String { give compiler_cli_subcommand_help(app, name); }` example `cli.subcommand_help(...)` stability `stable`
+- `proc cli_error` signature `proc cli_error(message: String, flag: Option<String>, kind: CliErrorKind) -> CliError { give CliError { message: message, flag: flag, kind: kind }; }` example `cli.cli_error(...)` stability `stable`
 
 ## `src/vitte/stdlib/std/csv.vitl`
 
@@ -5825,15 +5868,20 @@ Stability: `stable`
 Stability: `stable`
 
 - `pick FormatBase` signature `pick FormatBase { Binary Octal Decimal HexLower HexUpper }` example `format.FormatBase` stability `stable`
-- `form FormatSpec` signature `form FormatSpec { width: Option<usize> pad: rune base: FormatBase debug: bool }` example `format.FormatSpec` stability `stable`
+- `pick Alignment` signature `pick Alignment { Left Right Center }` example `format.Alignment` stability `stable`
+- `form FormatSpec` signature `form FormatSpec { width: Option<usize> pad: rune base: FormatBase debug: bool align: Alignment alternate: bool }` example `format.FormatSpec` stability `stable`
 - `form Display` signature `form Display<T> { fmt: proc(T, FormatSpec) -> String }` example `format.Display` stability `stable`
 - `form Debug` signature `form Debug<T> { fmt_debug: proc(T) -> String }` example `format.Debug` stability `stable`
-- `proc default_spec` signature `proc default_spec() -> FormatSpec { give FormatSpec { width: none<usize>(), pad: 32, base: FormatBase.Decimal, debug: false }; }` example `format.default_spec(...)` stability `stable`
+- `proc default_spec` signature `proc default_spec() -> FormatSpec { give FormatSpec { width: none<usize>(), pad: 32, base: FormatBase.Decimal, debug: false, align: Alignment.Right, alternate: false }; }` example `format.default_spec(...)` stability `stable`
+- `proc format_spec` signature `proc format_spec(width: Option<usize>, pad: rune, base: FormatBase, align: Alignment) -> FormatSpec {` example `format.format_spec(...)` stability `stable`
 - `proc format` signature `proc format<T>(value: T, spec: FormatSpec) -> String {` example `format.format(...)` stability `stable`
 - `proc debug` signature `proc debug<T>(value: T) -> String { give compiler_debug_value<T>(value); }` example `format.debug(...)` stability `stable`
 - `proc pad_left` signature `proc pad_left(text: String, width: usize, pad: rune) -> String {` example `format.pad_left(...)` stability `stable`
+- `proc pad_right` signature `proc pad_right(text: String, width: usize, pad: rune) -> String {` example `format.pad_right(...)` stability `stable`
+- `proc pad_center` signature `proc pad_center(text: String, width: usize, pad: rune) -> String {` example `format.pad_center(...)` stability `stable`
 - `proc format_int` signature `proc format_int(value: i64, base: FormatBase) -> String {` example `format.format_int(...)` stability `stable`
 - `proc format_uint` signature `proc format_uint(value: u64, base: FormatBase) -> String { give compiler_uint_to_base(value, base); }` example `format.format_uint(...)` stability `stable`
+- `proc format_debug` signature `proc format_debug<T>(value: T) -> String { give debug<T>(value); }` example `format.format_debug(...)` stability `stable`
 
 ## `src/vitte/stdlib/std/fs.vitl`
 
@@ -5887,15 +5935,21 @@ Stability: `stable`
 - `form StableHasher` signature `form StableHasher { state: u64 }` example `hash.StableHasher` stability `stable`
 - `form RandomHasher` signature `form RandomHasher { state: u64 }` example `hash.RandomHasher` stability `stable`
 - `form SipHasher` signature `form SipHasher { k0: u64 k1: u64 state: u64 }` example `hash.SipHasher` stability `stable`
+- `pick HashStability` signature `pick HashStability { Stable NonStable }` example `hash.HashStability` stability `stable`
+- `form HashSeed` signature `form HashSeed { k0: u64 k1: u64 }` example `hash.HashSeed` stability `stable`
 - `proc stable_hasher` signature `proc stable_hasher() -> StableHasher { give StableHasher { state: 1469598103934665603 }; }` example `hash.stable_hasher(...)` stability `stable`
 - `proc random_hasher` signature `proc random_hasher() -> RandomHasher { give compiler_hash_random_hasher(); }` example `hash.random_hasher(...)` stability `stable`
 - `proc sip_hasher` signature `proc sip_hasher(k0: u64, k1: u64) -> SipHasher { give SipHasher { k0: k0, k1: k1, state: 0 }; }` example `hash.sip_hasher(...)` stability `stable`
+- `proc hash_seed` signature `proc hash_seed(k0: u64, k1: u64) -> HashSeed { give HashSeed { k0: k0, k1: k1 }; }` example `hash.hash_seed(...)` stability `stable`
 - `proc stable_write` signature `proc stable_write(hasher: ref mut StableHasher, bytes: [byte]) { compiler_hash_stable_write(hasher, bytes); }` example `hash.stable_write(...)` stability `stable`
 - `proc random_write` signature `proc random_write(hasher: ref mut RandomHasher, bytes: [byte]) { compiler_hash_random_write(hasher, bytes); }` example `hash.random_write(...)` stability `stable`
 - `proc sip_write` signature `proc sip_write(hasher: ref mut SipHasher, bytes: [byte]) { compiler_hash_sip_write(hasher, bytes); }` example `hash.sip_write(...)` stability `stable`
 - `proc stable_finish` signature `proc stable_finish(hasher: StableHasher) -> u64 { give compiler_hash_stable_finish(hasher); }` example `hash.stable_finish(...)` stability `stable`
 - `proc random_finish` signature `proc random_finish(hasher: RandomHasher) -> u64 { give compiler_hash_random_finish(hasher); }` example `hash.random_finish(...)` stability `stable`
 - `proc sip_finish` signature `proc sip_finish(hasher: SipHasher) -> u64 { give compiler_hash_sip_finish(hasher); }` example `hash.sip_finish(...)` stability `stable`
+- `proc stable_hash_bytes` signature `proc stable_hash_bytes(bytes: [byte]) -> u64 {` example `hash.stable_hash_bytes(...)` stability `stable`
+- `proc nonstable_hash_bytes` signature `proc nonstable_hash_bytes(bytes: [byte]) -> u64 {` example `hash.nonstable_hash_bytes(...)` stability `stable`
+- `proc siphash24` signature `proc siphash24(bytes: [byte], seed: HashSeed) -> u64 {` example `hash.siphash24(...)` stability `stable`
 
 ## `src/vitte/stdlib/std/http.vitl`
 
@@ -5975,11 +6029,19 @@ Stability: `stable`
 Stability: `stable`
 
 - `pick LogLevel` signature `pick LogLevel { Trace Debug Info Warn Error }` example `log.LogLevel` stability `stable`
+- `pick LogSinkKind` signature `pick LogSinkKind { Writer Memory Null }` example `log.LogSinkKind` stability `stable`
 - `form LogRecord` signature `form LogRecord { level: LogLevel target: String message: String }` example `log.LogRecord` stability `stable`
-- `form Logger` signature `form Logger { sink: Writer min_level: LogLevel compact: bool }` example `log.Logger` stability `stable`
-- `proc logger` signature `proc logger(sink: Writer, min_level: LogLevel) -> Logger { give Logger { sink: sink, min_level: min_level, compact: true }; }` example `log.logger(...)` stability `stable`
+- `form LogSink` signature `form LogSink { kind: LogSinkKind writer: Option<Writer> }` example `log.LogSink` stability `stable`
+- `form Logger` signature `form Logger { sink: LogSink min_level: LogLevel compact: bool }` example `log.Logger` stability `stable`
+- `proc writer_sink` signature `proc writer_sink(sink: Writer) -> LogSink { give LogSink { kind: LogSinkKind.Writer, writer: some<Writer>(sink) }; }` example `log.writer_sink(...)` stability `stable`
+- `proc null_sink` signature `proc null_sink() -> LogSink { give LogSink { kind: LogSinkKind.Null, writer: none<Writer>() }; }` example `log.null_sink(...)` stability `stable`
+- `proc logger` signature `proc logger(sink: Writer, min_level: LogLevel) -> Logger { give Logger { sink: writer_sink(sink), min_level: min_level, compact: true }; }` example `log.logger(...)` stability `stable`
+- `proc logger_with_sink` signature `proc logger_with_sink(sink: LogSink, min_level: LogLevel, compact: bool) -> Logger { give Logger { sink: sink, min_level: min_level, compact: compact }; }` example `log.logger_with_sink(...)` stability `stable`
 - `proc log` signature `proc log(logger_value: ref mut Logger, record: LogRecord) { compiler_log_write(logger_value, record); }` example `log.log(...)` stability `stable`
+- `proc log_enabled` signature `proc log_enabled(logger_value: Logger, level: LogLevel) -> bool { give compiler_log_level_enabled(logger_value.min_level, level); }` example `log.log_enabled(...)` stability `stable`
+- `proc compact_record` signature `proc compact_record(record: LogRecord) -> String { give compiler_log_compact_record(record); }` example `log.compact_record(...)` stability `stable`
 - `proc trace` signature `proc trace(logger_value: ref mut Logger, message: String) { log(logger_value, LogRecord { level: LogLevel.Trace, target: compiler_log_default_target(), message: message }); }` example `log.trace(...)` stability `stable`
+- `proc debug` signature `proc debug(logger_value: ref mut Logger, message: String) { log(logger_value, LogRecord { level: LogLevel.Debug, target: compiler_log_default_target(), message: message }); }` example `log.debug(...)` stability `stable`
 - `proc info` signature `proc info(logger_value: ref mut Logger, message: String) { log(logger_value, LogRecord { level: LogLevel.Info, target: compiler_log_default_target(), message: message }); }` example `log.info(...)` stability `stable`
 - `proc warn` signature `proc warn(logger_value: ref mut Logger, message: String) { log(logger_value, LogRecord { level: LogLevel.Warn, target: compiler_log_default_target(), message: message }); }` example `log.warn(...)` stability `stable`
 - `proc error` signature `proc error(logger_value: ref mut Logger, message: String) { log(logger_value, LogRecord { level: LogLevel.Error, target: compiler_log_default_target(), message: message }); }` example `log.error(...)` stability `stable`
@@ -6039,13 +6101,18 @@ Stability: `stable`
 
 Stability: `stable`
 
-- `form ParseError` signature `form ParseError { message: String offset: usize }` example `parse.ParseError` stability `stable`
+- `pick ParseErrorKind` signature `pick ParseErrorKind { ExpectedBoolean InvalidDigit Overflow Underflow InvalidFloat InvalidUtf8 Empty }` example `parse.ParseErrorKind` stability `stable`
+- `form ParseError` signature `form ParseError { message: String offset: usize kind: ParseErrorKind }` example `parse.ParseError` stability `stable`
 - `proc parse_bool` signature `proc parse_bool(text: Utf8View) -> Result<bool, ParseError> {` example `parse.parse_bool(...)` stability `stable`
 - `proc parse_i64` signature `proc parse_i64(text: Utf8View, base: u32) -> Result<i64, ParseError> {` example `parse.parse_i64(...)` stability `stable`
 - `proc parse_u64` signature `proc parse_u64(text: Utf8View, base: u32) -> Result<u64, ParseError> {` example `parse.parse_u64(...)` stability `stable`
 - `proc parse_f64` signature `proc parse_f64(text: Utf8View) -> Result<f64, ParseError> {` example `parse.parse_f64(...)` stability `stable`
 - `proc parse_utf8` signature `proc parse_utf8(bytes: [byte]) -> Result<Utf8View, ParseError> {` example `parse.parse_utf8(...)` stability `stable`
-- `proc parse_error` signature `proc parse_error(message: String, offset: usize) -> ParseError { give ParseError { message: message, offset: offset }; }` example `parse.parse_error(...)` stability `stable`
+- `proc parse_i32` signature `proc parse_i32(text: Utf8View, base: u32) -> Result<i32, ParseError> { give compiler_parse_i32_result(text, base); }` example `parse.parse_i32(...)` stability `stable`
+- `proc parse_u32` signature `proc parse_u32(text: Utf8View, base: u32) -> Result<u32, ParseError> { give compiler_parse_u32_result(text, base); }` example `parse.parse_u32(...)` stability `stable`
+- `proc parse_usize` signature `proc parse_usize(text: Utf8View, base: u32) -> Result<usize, ParseError> { give compiler_parse_usize_result(text, base); }` example `parse.parse_usize(...)` stability `stable`
+- `proc parse_error` signature `proc parse_error(message: String, offset: usize) -> ParseError { give ParseError { message: message, offset: offset, kind: ParseErrorKind.InvalidDigit }; }` example `parse.parse_error(...)` stability `stable`
+- `proc parse_error_kind` signature `proc parse_error_kind(message: String, offset: usize, kind: ParseErrorKind) -> ParseError { give ParseError { message: message, offset: offset, kind: kind }; }` example `parse.parse_error_kind(...)` stability `stable`
 
 ## `src/vitte/stdlib/std/path.vitl`
 
@@ -6116,12 +6183,24 @@ Stability: `stable`
 Stability: `stable`
 
 - `form Prng` signature `form Prng { state: u64 }` example `random.Prng` stability `stable`
-- `form RandomError` signature `form RandomError { message: String }` example `random.RandomError` stability `stable`
+- `pick EntropyFailure` signature `pick EntropyFailure { Unavailable PermissionDenied ShortRead Unsupported }` example `random.EntropyFailure` stability `stable`
+- `form RandomError` signature `form RandomError { message: String failure: EntropyFailure }` example `random.RandomError` stability `stable`
+- `form Seed` signature `form Seed { value: u64 stable: bool }` example `random.Seed` stability `stable`
+- `form DistributionU64` signature `form DistributionU64 { lower: u64 upper: u64 }` example `random.DistributionU64` stability `stable`
+- `form DistributionF64` signature `form DistributionF64 { lower: f64 upper: f64 }` example `random.DistributionF64` stability `stable`
+- `proc seed` signature `proc seed(value: u64) -> Seed { give Seed { value: value, stable: true }; }` example `random.seed(...)` stability `stable`
+- `proc entropy_seed` signature `proc entropy_seed(value: u64) -> Seed { give Seed { value: value, stable: false }; }` example `random.entropy_seed(...)` stability `stable`
+- `proc prng_from_seed` signature `proc prng_from_seed(value: Seed) -> Prng { give prng(value.value); }` example `random.prng_from_seed(...)` stability `stable`
 - `proc prng` signature `proc prng(seed: u64) -> Prng {` example `random.prng(...)` stability `stable`
 - `proc next_u64` signature `proc next_u64(rng: ref mut Prng) -> u64 {` example `random.next_u64(...)` stability `stable`
 - `proc next_bool` signature `proc next_bool(rng: ref mut Prng) -> bool { give (next_u64(rng) & 1) == 1; }` example `random.next_bool(...)` stability `stable`
 - `proc range_u64` signature `proc range_u64(rng: ref mut Prng, upper: u64) -> u64 { give next_u64(rng) % upper; }` example `random.range_u64(...)` stability `stable`
+- `proc uniform_u64` signature `proc uniform_u64(lower: u64, upper: u64) -> DistributionU64 { give DistributionU64 { lower: lower, upper: upper }; }` example `random.uniform_u64(...)` stability `stable`
+- `proc sample_u64` signature `proc sample_u64(rng: ref mut Prng, distribution: DistributionU64) -> u64 {` example `random.sample_u64(...)` stability `stable`
+- `proc uniform_f64` signature `proc uniform_f64(lower: f64, upper: f64) -> DistributionF64 { give DistributionF64 { lower: lower, upper: upper }; }` example `random.uniform_f64(...)` stability `stable`
+- `proc sample_f64` signature `proc sample_f64(rng: ref mut Prng, distribution: DistributionF64) -> f64 {` example `random.sample_f64(...)` stability `stable`
 - `proc os_entropy` signature `proc os_entropy(buffer: ref mut [byte]) -> Result<(), RandomError> {` example `random.os_entropy(...)` stability `stable`
+- `proc entropy_error` signature `proc entropy_error(message: String, failure: EntropyFailure) -> RandomError { give RandomError { message: message, failure: failure }; }` example `random.entropy_error(...)` stability `stable`
 - `proc random_f64` signature `proc random_f64(rng: ref mut Prng) -> f64 { give compiler_u64_to_unit_f64(next_u64(rng)); }` example `random.random_f64(...)` stability `stable`
 
 ## `src/vitte/stdlib/std/serialization.vitl`
@@ -6231,14 +6310,23 @@ Stability: `stable`
 - `form Snapshot` signature `form Snapshot { name: String value: String }` example `testing.Snapshot` stability `stable`
 - `form Case` signature `form Case<T> { name: String value: T }` example `testing.Case` stability `stable`
 - `form TestCase` signature `form TestCase { name: String run: proc() -> Result<(), TestError> }` example `testing.TestCase` stability `stable`
-- `form TestReport` signature `form TestReport { total: usize passed: usize failed: usize failures: Vec<TestError> }` example `testing.TestReport` stability `stable`
+- `form TestFilter` signature `form TestFilter { pattern: String include_ignored: bool }` example `testing.TestFilter` stability `stable`
+- `form TestRunner` signature `form TestRunner { tests: Vec<TestCase> filter: Option<TestFilter> update_snapshots: bool }` example `testing.TestRunner` stability `stable`
+- `form TestReport` signature `form TestReport { total: usize passed: usize failed: usize skipped: usize failures: Vec<TestError> }` example `testing.TestReport` stability `stable`
 - `proc test_error` signature `proc test_error(message: String) -> TestError { give TestError { message: message, file: "stdlib", line: 0 }; }` example `testing.test_error(...)` stability `stable`
+- `proc fixture` signature `proc fixture<T>(setup: proc() -> T, teardown: proc(T)) -> Fixture<T> { give Fixture<T> { setup: setup, teardown: teardown }; }` example `testing.fixture(...)` stability `stable`
+- `proc with_fixture` signature `proc with_fixture<T>(value: Fixture<T>, body: proc(T) -> Result<(), TestError>) -> Result<(), TestError> {` example `testing.with_fixture(...)` stability `stable`
 - `proc assert_true` signature `proc assert_true(value: bool, message: String) -> Result<(), TestError> {` example `testing.assert_true(...)` stability `stable`
 - `proc assert_eq` signature `proc assert_eq<T>(left: T, right: T, message: String) -> Result<(), TestError> {` example `testing.assert_eq(...)` stability `stable`
 - `proc snapshot` signature `proc snapshot(name: String, value: String) -> Snapshot { give Snapshot { name: name, value: value }; }` example `testing.snapshot(...)` stability `stable`
 - `proc assert_snapshot` signature `proc assert_snapshot(value: Snapshot) -> Result<(), TestError> {` example `testing.assert_snapshot(...)` stability `stable`
+- `proc discover_tests` signature `proc discover_tests(module_name: String) -> Vec<TestCase> { give compiler_test_discover(module_name); }` example `testing.discover_tests(...)` stability `stable`
+- `proc test_runner` signature `proc test_runner(tests: Vec<TestCase>) -> TestRunner { give TestRunner { tests: tests, filter: none<TestFilter>(), update_snapshots: false }; }` example `testing.test_runner(...)` stability `stable`
+- `proc test_filter` signature `proc test_filter(pattern: String, include_ignored: bool) -> TestFilter { give TestFilter { pattern: pattern, include_ignored: include_ignored }; }` example `testing.test_filter(...)` stability `stable`
+- `proc runner_with_filter` signature `proc runner_with_filter(runner: TestRunner, filter: TestFilter) -> TestRunner {` example `testing.runner_with_filter(...)` stability `stable`
 - `proc parameterized` signature `proc parameterized<T>(cases: Vec<Case<T>>, test: proc(T) -> Result<(), TestError>) -> Result<(), TestError> {` example `testing.parameterized(...)` stability `stable`
 - `proc run_tests` signature `proc run_tests(cases: Vec<TestCase>) -> TestReport {` example `testing.run_tests(...)` stability `stable`
+- `proc run_runner` signature `proc run_runner(runner: TestRunner) -> TestReport { give run_tests(runner.tests); }` example `testing.run_runner(...)` stability `stable`
 
 ## `src/vitte/stdlib/std/thread.vitl`
 

@@ -6,35 +6,40 @@ use src/vitte/stdlib/alloc/string as alloc_string
 use src/vitte/stdlib/core/result as core_result
 use src/vitte/stdlib/core/string as core_string
 
-form ParseError { message: String offset: usize }
+pick ParseErrorKind { ExpectedBoolean InvalidDigit Overflow Underflow InvalidFloat InvalidUtf8 Empty }
+form ParseError { message: String offset: usize kind: ParseErrorKind }
 
 proc parse_bool(text: Utf8View) -> Result<bool, ParseError> {
     if compiler_utf8_equals(text, "true") { give ok<bool, ParseError>(true); }
     if compiler_utf8_equals(text, "false") { give ok<bool, ParseError>(false); }
-    give err<bool, ParseError>(parse_error(compiler_test_string("expected true or false"), 0));
+    give err<bool, ParseError>(parse_error_kind(compiler_test_string("expected true or false"), 0, ParseErrorKind.ExpectedBoolean));
 }
 proc parse_i64(text: Utf8View, base: u32) -> Result<i64, ParseError> {
     if not compiler_parse_integer_fits_i64(text, base) {
-        give err<i64, ParseError>(parse_error(compiler_test_string("integer outside i64 range"), compiler_parse_error_offset(text, base)));
+        give err<i64, ParseError>(parse_error_kind(compiler_test_string("integer outside i64 range"), compiler_parse_error_offset(text, base), ParseErrorKind.Overflow));
     }
     give ok<i64, ParseError>(compiler_parse_i64_checked(text, base));
 }
 proc parse_u64(text: Utf8View, base: u32) -> Result<u64, ParseError> {
     if not compiler_parse_integer_fits_u64(text, base) {
-        give err<u64, ParseError>(parse_error(compiler_test_string("integer outside u64 range"), compiler_parse_error_offset(text, base)));
+        give err<u64, ParseError>(parse_error_kind(compiler_test_string("integer outside u64 range"), compiler_parse_error_offset(text, base), ParseErrorKind.Overflow));
     }
     give ok<u64, ParseError>(compiler_parse_u64_checked(text, base));
 }
 proc parse_f64(text: Utf8View) -> Result<f64, ParseError> {
     if not compiler_parse_float_valid(text) {
-        give err<f64, ParseError>(parse_error(compiler_test_string("invalid floating point literal"), 0));
+        give err<f64, ParseError>(parse_error_kind(compiler_test_string("malformed floating point literal at offset 0"), 0, ParseErrorKind.InvalidFloat));
     }
     give ok<f64, ParseError>(compiler_parse_f64_checked(text));
 }
 proc parse_utf8(bytes: [byte]) -> Result<Utf8View, ParseError> {
     if not validate_utf8(bytes) {
-        give err<Utf8View, ParseError>(parse_error(compiler_test_string("bytes are not valid UTF-8"), 0));
+        give err<Utf8View, ParseError>(parse_error_kind(compiler_test_string("bytes are not valid UTF-8"), 0, ParseErrorKind.InvalidUtf8));
     }
     give ok<Utf8View, ParseError>(compiler_bytes_utf8_view(bytes));
 }
-proc parse_error(message: String, offset: usize) -> ParseError { give ParseError { message: message, offset: offset }; }
+proc parse_i32(text: Utf8View, base: u32) -> Result<i32, ParseError> { give compiler_parse_i32_result(text, base); }
+proc parse_u32(text: Utf8View, base: u32) -> Result<u32, ParseError> { give compiler_parse_u32_result(text, base); }
+proc parse_usize(text: Utf8View, base: u32) -> Result<usize, ParseError> { give compiler_parse_usize_result(text, base); }
+proc parse_error(message: String, offset: usize) -> ParseError { give ParseError { message: message, offset: offset, kind: ParseErrorKind.InvalidDigit }; }
+proc parse_error_kind(message: String, offset: usize, kind: ParseErrorKind) -> ParseError { give ParseError { message: message, offset: offset, kind: kind }; }

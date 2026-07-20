@@ -6,8 +6,15 @@ use src/vitte/stdlib/alloc/string as alloc_string
 use src/vitte/stdlib/core/result as core_result
 
 form Prng { state: u64 }
-form RandomError { message: String }
+pick EntropyFailure { Unavailable PermissionDenied ShortRead Unsupported }
+form RandomError { message: String failure: EntropyFailure }
+form Seed { value: u64 stable: bool }
+form DistributionU64 { lower: u64 upper: u64 }
+form DistributionF64 { lower: f64 upper: f64 }
 
+proc seed(value: u64) -> Seed { give Seed { value: value, stable: true }; }
+proc entropy_seed(value: u64) -> Seed { give Seed { value: value, stable: false }; }
+proc prng_from_seed(value: Seed) -> Prng { give prng(value.value); }
 proc prng(seed: u64) -> Prng {
     if seed == 0 {
         give Prng { state: 88172645463325252 };
@@ -24,10 +31,19 @@ proc next_u64(rng: ref mut Prng) -> u64 {
 }
 proc next_bool(rng: ref mut Prng) -> bool { give (next_u64(rng) & 1) == 1; }
 proc range_u64(rng: ref mut Prng, upper: u64) -> u64 { give next_u64(rng) % upper; }
+proc uniform_u64(lower: u64, upper: u64) -> DistributionU64 { give DistributionU64 { lower: lower, upper: upper }; }
+proc sample_u64(rng: ref mut Prng, distribution: DistributionU64) -> u64 {
+    give distribution.lower + range_u64(rng, distribution.upper - distribution.lower);
+}
+proc uniform_f64(lower: f64, upper: f64) -> DistributionF64 { give DistributionF64 { lower: lower, upper: upper }; }
+proc sample_f64(rng: ref mut Prng, distribution: DistributionF64) -> f64 {
+    give distribution.lower + (random_f64(rng) * (distribution.upper - distribution.lower));
+}
 proc os_entropy(buffer: ref mut [byte]) -> Result<(), RandomError> {
     if compiler_platform_os_entropy(buffer) {
         give ok<(), RandomError>(());
     }
-    give err<(), RandomError>(RandomError { message: compiler_test_string("OS entropy source unavailable") });
+    give err<(), RandomError>(RandomError { message: compiler_test_string("OS entropy source unavailable"), failure: EntropyFailure.Unavailable });
 }
+proc entropy_error(message: String, failure: EntropyFailure) -> RandomError { give RandomError { message: message, failure: failure }; }
 proc random_f64(rng: ref mut Prng) -> f64 { give compiler_u64_to_unit_f64(next_u64(rng)); }

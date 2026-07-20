@@ -5,13 +5,31 @@ export *
 form StableHasher { state: u64 }
 form RandomHasher { state: u64 }
 form SipHasher { k0: u64 k1: u64 state: u64 }
+pick HashStability { Stable NonStable }
+form HashSeed { k0: u64 k1: u64 }
 
 proc stable_hasher() -> StableHasher { give StableHasher { state: 1469598103934665603 }; }
 proc random_hasher() -> RandomHasher { give compiler_hash_random_hasher(); }
 proc sip_hasher(k0: u64, k1: u64) -> SipHasher { give SipHasher { k0: k0, k1: k1, state: 0 }; }
+proc hash_seed(k0: u64, k1: u64) -> HashSeed { give HashSeed { k0: k0, k1: k1 }; }
 proc stable_write(hasher: ref mut StableHasher, bytes: [byte]) { compiler_hash_stable_write(hasher, bytes); }
 proc random_write(hasher: ref mut RandomHasher, bytes: [byte]) { compiler_hash_random_write(hasher, bytes); }
 proc sip_write(hasher: ref mut SipHasher, bytes: [byte]) { compiler_hash_sip_write(hasher, bytes); }
 proc stable_finish(hasher: StableHasher) -> u64 { give compiler_hash_stable_finish(hasher); }
 proc random_finish(hasher: RandomHasher) -> u64 { give compiler_hash_random_finish(hasher); }
 proc sip_finish(hasher: SipHasher) -> u64 { give compiler_hash_sip_finish(hasher); }
+proc stable_hash_bytes(bytes: [byte]) -> u64 {
+    let hasher: StableHasher = stable_hasher();
+    stable_write(&mut hasher, bytes);
+    give stable_finish(hasher);
+}
+proc nonstable_hash_bytes(bytes: [byte]) -> u64 {
+    let hasher: RandomHasher = random_hasher();
+    random_write(&mut hasher, bytes);
+    give random_finish(hasher);
+}
+proc siphash24(bytes: [byte], seed: HashSeed) -> u64 {
+    let hasher: SipHasher = sip_hasher(seed.k0, seed.k1);
+    sip_write(&mut hasher, bytes);
+    give sip_finish(hasher);
+}

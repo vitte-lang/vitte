@@ -6,11 +6,14 @@ use src/vitte/stdlib/alloc/string as alloc_string
 use src/vitte/stdlib/alloc/vec as alloc_vec
 
 form Benchmark { name: String iterations: u64 }
-form BenchReport { name: String iterations: u64 nanos: u128 passed_threshold: bool }
+form BenchOptions { warmup: u64 samples: u64 max_nanos: u128 }
+form BenchStats { min_nanos: u128 max_nanos: u128 mean_nanos: u128 samples: u64 }
+form BenchReport { name: String iterations: u64 nanos: u128 passed_threshold: bool stats: BenchStats }
 form BenchSuite { benches: Vec<Benchmark> }
 form BenchSuiteReport { reports: Vec<BenchReport> total_nanos: u128 }
 
 proc benchmark(name: String, iterations: u64) -> Benchmark { give Benchmark { name: name, iterations: iterations }; }
+proc bench_options(warmup: u64, samples: u64, max_nanos: u128) -> BenchOptions { give BenchOptions { warmup: warmup, samples: samples, max_nanos: max_nanos }; }
 proc run(bench: Benchmark, body: proc()) -> BenchReport {
     let start: u128 = compiler_monotonic_nanos();
     let i: u64 = 0;
@@ -19,7 +22,20 @@ proc run(bench: Benchmark, body: proc()) -> BenchReport {
         set i = i + 1;
     }
     let elapsed: u128 = compiler_monotonic_nanos() - start;
-    give BenchReport { name: bench.name, iterations: bench.iterations, nanos: elapsed, passed_threshold: true };
+    let stats: BenchStats = BenchStats { min_nanos: elapsed, max_nanos: elapsed, mean_nanos: elapsed, samples: 1 };
+    give BenchReport { name: bench.name, iterations: bench.iterations, nanos: elapsed, passed_threshold: true, stats: stats };
+}
+proc run_with_options(bench: Benchmark, options: BenchOptions, body: proc()) -> BenchReport {
+    let warm: u64 = 0;
+    while warm < options.warmup {
+        body();
+        set warm = warm + 1;
+    }
+    let report: BenchReport = run(bench, body);
+    give BenchReport { name: report.name, iterations: report.iterations, nanos: report.nanos, passed_threshold: report.nanos <= options.max_nanos, stats: bench_stats(report.nanos, report.nanos, report.nanos, options.samples) };
+}
+proc bench_stats(min_nanos: u128, max_nanos: u128, mean_nanos: u128, samples: u64) -> BenchStats {
+    give BenchStats { min_nanos: min_nanos, max_nanos: max_nanos, mean_nanos: mean_nanos, samples: samples };
 }
 proc threshold(report: BenchReport, max_nanos: u128) -> bool { give report.nanos <= max_nanos; }
 proc report_text(report: BenchReport) -> String {
@@ -43,3 +59,4 @@ proc run_suite(suite: BenchSuite, body: proc(Benchmark)) -> BenchSuiteReport {
     }
     give BenchSuiteReport { reports: reports, total_nanos: total };
 }
+proc threshold_passed(report: BenchReport) -> bool { give report.passed_threshold; }

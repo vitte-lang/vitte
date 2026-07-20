@@ -34242,12 +34242,78 @@
           "example": "collections.hashmap_len(...)"
         },
         {
+          "id": "src/vitte/stdlib/alloc/collections.vitl::hashmap_is_empty",
+          "name": "hashmap_is_empty",
+          "kind": "proc",
+          "signature": "proc hashmap_is_empty<K, V>(map: HashMap<K, V>) -> bool { give map.length == 0; }",
+          "module": "src/vitte/stdlib/alloc/collections.vitl",
+          "line": 85,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "collections.hashmap_is_empty(...)"
+        },
+        {
+          "id": "src/vitte/stdlib/alloc/collections.vitl::hashmap_contains_key",
+          "name": "hashmap_contains_key",
+          "kind": "proc",
+          "signature": "proc hashmap_contains_key<K, V>(map: ref HashMap<K, V>, key: K) -> bool { give is_some<usize>(hashmap_find_index<K, V>(map, key)); }",
+          "module": "src/vitte/stdlib/alloc/collections.vitl",
+          "line": 86,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "collections.hashmap_contains_key(...)"
+        },
+        {
+          "id": "src/vitte/stdlib/alloc/collections.vitl::hashmap_capacity",
+          "name": "hashmap_capacity",
+          "kind": "proc",
+          "signature": "proc hashmap_capacity<K, V>(map: HashMap<K, V>) -> usize { give vec_capacity<(K, V)>(map.buckets); }",
+          "module": "src/vitte/stdlib/alloc/collections.vitl",
+          "line": 87,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "collections.hashmap_capacity(...)"
+        },
+        {
+          "id": "src/vitte/stdlib/alloc/collections.vitl::hashmap_reserve",
+          "name": "hashmap_reserve",
+          "kind": "proc",
+          "signature": "proc hashmap_reserve<K, V>(map: ref mut HashMap<K, V>, additional: usize) { vec_reserve<(K, V)>(&mut ((*map).buckets), additional); }",
+          "module": "src/vitte/stdlib/alloc/collections.vitl",
+          "line": 88,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "collections.hashmap_reserve(...)"
+        },
+        {
+          "id": "src/vitte/stdlib/alloc/collections.vitl::hashmap_clear",
+          "name": "hashmap_clear",
+          "kind": "proc",
+          "signature": "proc hashmap_clear<K, V>(map: ref mut HashMap<K, V>) {",
+          "module": "src/vitte/stdlib/alloc/collections.vitl",
+          "line": 89,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "collections.hashmap_clear(...)"
+        },
+        {
+          "id": "src/vitte/stdlib/alloc/collections.vitl::hashmap_iter",
+          "name": "hashmap_iter",
+          "kind": "proc",
+          "signature": "proc hashmap_iter<K, V>(map: HashMap<K, V>) -> Iterator<(K, V)> { give vec_iter<(K, V)>(map.buckets); }",
+          "module": "src/vitte/stdlib/alloc/collections.vitl",
+          "line": 93,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "collections.hashmap_iter(...)"
+        },
+        {
           "id": "src/vitte/stdlib/alloc/collections.vitl::hashset_new",
           "name": "hashset_new",
           "kind": "proc",
           "signature": "proc hashset_new<T>() -> HashSet<T> { give HashSet<T> { map: hashmap_new<T, bool>() }; }",
           "module": "src/vitte/stdlib/alloc/collections.vitl",
-          "line": 86,
+          "line": 95,
           "stability": "stable",
           "visibility": "public",
           "example": "collections.hashset_new(...)"
@@ -34258,7 +34324,7 @@
           "kind": "proc",
           "signature": "proc hashset_insert<T>(set: ref mut HashSet<T>, value: T) -> bool { give is_none<bool>(hashmap_insert<T, bool>(&mut ((*set).map), value, true)); }",
           "module": "src/vitte/stdlib/alloc/collections.vitl",
-          "line": 87,
+          "line": 96,
           "stability": "stable",
           "visibility": "public",
           "example": "collections.hashset_insert(...)"
@@ -34269,7 +34335,7 @@
           "kind": "proc",
           "signature": "proc hashset_contains<T>(set: ref HashSet<T>, value: T) -> bool { give is_some<ref bool>(hashmap_get<T, bool>(&((*set).map), value)); }",
           "module": "src/vitte/stdlib/alloc/collections.vitl",
-          "line": 88,
+          "line": 97,
           "stability": "stable",
           "visibility": "public",
           "example": "collections.hashset_contains(...)"
@@ -34280,10 +34346,54 @@
           "kind": "proc",
           "signature": "proc hashset_remove<T>(set: ref mut HashSet<T>, value: T) -> bool { give is_some<bool>(hashmap_remove<T, bool>(&mut ((*set).map), value)); }",
           "module": "src/vitte/stdlib/alloc/collections.vitl",
-          "line": 89,
+          "line": 98,
           "stability": "stable",
           "visibility": "public",
           "example": "collections.hashset_remove(...)"
+        },
+        {
+          "id": "src/vitte/stdlib/alloc/collections.vitl::hashset_len",
+          "name": "hashset_len",
+          "kind": "proc",
+          "signature": "proc hashset_len<T>(set: HashSet<T>) -> usize { give hashmap_len<T, bool>(set.map); }",
+          "module": "src/vitte/stdlib/alloc/collections.vitl",
+          "line": 99,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "collections.hashset_len(...)"
+        },
+        {
+          "id": "src/vitte/stdlib/alloc/collections.vitl::hashset_is_empty",
+          "name": "hashset_is_empty",
+          "kind": "proc",
+          "signature": "proc hashset_is_empty<T>(set: HashSet<T>) -> bool { give hashset_len<T>(set) == 0; }",
+          "module": "src/vitte/stdlib/alloc/collections.vitl",
+          "line": 100,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "collections.hashset_is_empty(...)"
+        },
+        {
+          "id": "src/vitte/stdlib/alloc/collections.vitl::hashset_clear",
+          "name": "hashset_clear",
+          "kind": "proc",
+          "signature": "proc hashset_clear<T>(set: ref mut HashSet<T>) { hashmap_clear<T, bool>(&mut ((*set).map)); }",
+          "module": "src/vitte/stdlib/alloc/collections.vitl",
+          "line": 101,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "collections.hashset_clear(...)"
+        },
+        {
+          "id": "src/vitte/stdlib/alloc/collections.vitl::hashset_iter",
+          "name": "hashset_iter",
+          "kind": "proc",
+          "signature": "proc hashset_iter<T>(set: HashSet<T>) -> Iterator<(T, bool)> { give hashmap_iter<T, bool>(set.map); }",
+          "module": "src/vitte/stdlib/alloc/collections.vitl",
+          "line": 102,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "collections.hashset_iter(...)"
         },
         {
           "id": "src/vitte/stdlib/alloc/collections.vitl::btreemap_new",
@@ -34291,7 +34401,7 @@
           "kind": "proc",
           "signature": "proc btreemap_new<K, V>() -> BTreeMap<K, V> { give BTreeMap<K, V> { entries: vec_new<(K, V)>(), length: 0 }; }",
           "module": "src/vitte/stdlib/alloc/collections.vitl",
-          "line": 91,
+          "line": 104,
           "stability": "stable",
           "visibility": "public",
           "example": "collections.btreemap_new(...)"
@@ -34302,7 +34412,7 @@
           "kind": "proc",
           "signature": "proc btreemap_find_index<K, V>(map: ref BTreeMap<K, V>, key: K) -> Option<usize> {",
           "module": "src/vitte/stdlib/alloc/collections.vitl",
-          "line": 92,
+          "line": 105,
           "stability": "stable",
           "visibility": "public",
           "example": "collections.btreemap_find_index(...)"
@@ -34313,7 +34423,7 @@
           "kind": "proc",
           "signature": "proc btreemap_insert<K, V>(map: ref mut BTreeMap<K, V>, key: K, value: V) -> Option<V> {",
           "module": "src/vitte/stdlib/alloc/collections.vitl",
-          "line": 103,
+          "line": 116,
           "stability": "stable",
           "visibility": "public",
           "example": "collections.btreemap_insert(...)"
@@ -34324,7 +34434,7 @@
           "kind": "proc",
           "signature": "proc btreemap_get<K, V>(map: ref BTreeMap<K, V>, key: K) -> Option<ref V> {",
           "module": "src/vitte/stdlib/alloc/collections.vitl",
-          "line": 119,
+          "line": 132,
           "stability": "stable",
           "visibility": "public",
           "example": "collections.btreemap_get(...)"
@@ -34335,10 +34445,76 @@
           "kind": "proc",
           "signature": "proc btreemap_remove<K, V>(map: ref mut BTreeMap<K, V>, key: K) -> Option<V> {",
           "module": "src/vitte/stdlib/alloc/collections.vitl",
-          "line": 126,
+          "line": 139,
           "stability": "stable",
           "visibility": "public",
           "example": "collections.btreemap_remove(...)"
+        },
+        {
+          "id": "src/vitte/stdlib/alloc/collections.vitl::btreemap_len",
+          "name": "btreemap_len",
+          "kind": "proc",
+          "signature": "proc btreemap_len<K, V>(map: BTreeMap<K, V>) -> usize { give map.length; }",
+          "module": "src/vitte/stdlib/alloc/collections.vitl",
+          "line": 148,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "collections.btreemap_len(...)"
+        },
+        {
+          "id": "src/vitte/stdlib/alloc/collections.vitl::btreemap_is_empty",
+          "name": "btreemap_is_empty",
+          "kind": "proc",
+          "signature": "proc btreemap_is_empty<K, V>(map: BTreeMap<K, V>) -> bool { give map.length == 0; }",
+          "module": "src/vitte/stdlib/alloc/collections.vitl",
+          "line": 149,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "collections.btreemap_is_empty(...)"
+        },
+        {
+          "id": "src/vitte/stdlib/alloc/collections.vitl::btreemap_contains_key",
+          "name": "btreemap_contains_key",
+          "kind": "proc",
+          "signature": "proc btreemap_contains_key<K, V>(map: ref BTreeMap<K, V>, key: K) -> bool { give is_some<usize>(btreemap_find_index<K, V>(map, key)); }",
+          "module": "src/vitte/stdlib/alloc/collections.vitl",
+          "line": 150,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "collections.btreemap_contains_key(...)"
+        },
+        {
+          "id": "src/vitte/stdlib/alloc/collections.vitl::btreemap_first",
+          "name": "btreemap_first",
+          "kind": "proc",
+          "signature": "proc btreemap_first<K, V>(map: ref BTreeMap<K, V>) -> Option<ref (K, V)> { give vec_get<(K, V)>((*map).entries, 0); }",
+          "module": "src/vitte/stdlib/alloc/collections.vitl",
+          "line": 151,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "collections.btreemap_first(...)"
+        },
+        {
+          "id": "src/vitte/stdlib/alloc/collections.vitl::btreemap_last",
+          "name": "btreemap_last",
+          "kind": "proc",
+          "signature": "proc btreemap_last<K, V>(map: ref BTreeMap<K, V>) -> Option<ref (K, V)> {",
+          "module": "src/vitte/stdlib/alloc/collections.vitl",
+          "line": 152,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "collections.btreemap_last(...)"
+        },
+        {
+          "id": "src/vitte/stdlib/alloc/collections.vitl::btreemap_clear",
+          "name": "btreemap_clear",
+          "kind": "proc",
+          "signature": "proc btreemap_clear<K, V>(map: ref mut BTreeMap<K, V>) {",
+          "module": "src/vitte/stdlib/alloc/collections.vitl",
+          "line": 156,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "collections.btreemap_clear(...)"
         },
         {
           "id": "src/vitte/stdlib/alloc/collections.vitl::btreemap_iter",
@@ -34346,7 +34522,7 @@
           "kind": "proc",
           "signature": "proc btreemap_iter<K, V>(map: BTreeMap<K, V>) -> Iterator<(K, V)> { give vec_iter<(K, V)>(map.entries); }",
           "module": "src/vitte/stdlib/alloc/collections.vitl",
-          "line": 135,
+          "line": 160,
           "stability": "stable",
           "visibility": "public",
           "example": "collections.btreemap_iter(...)"
@@ -34357,7 +34533,7 @@
           "kind": "proc",
           "signature": "proc btreeset_new<T>() -> BTreeSet<T> { give BTreeSet<T> { map: btreemap_new<T, bool>() }; }",
           "module": "src/vitte/stdlib/alloc/collections.vitl",
-          "line": 137,
+          "line": 162,
           "stability": "stable",
           "visibility": "public",
           "example": "collections.btreeset_new(...)"
@@ -34368,7 +34544,7 @@
           "kind": "proc",
           "signature": "proc btreeset_insert<T>(set: ref mut BTreeSet<T>, value: T) -> bool { give is_none<bool>(btreemap_insert<T, bool>(&mut ((*set).map), value, true)); }",
           "module": "src/vitte/stdlib/alloc/collections.vitl",
-          "line": 138,
+          "line": 163,
           "stability": "stable",
           "visibility": "public",
           "example": "collections.btreeset_insert(...)"
@@ -34379,7 +34555,7 @@
           "kind": "proc",
           "signature": "proc btreeset_contains<T>(set: ref BTreeSet<T>, value: T) -> bool { give is_some<ref bool>(btreemap_get<T, bool>(&((*set).map), value)); }",
           "module": "src/vitte/stdlib/alloc/collections.vitl",
-          "line": 139,
+          "line": 164,
           "stability": "stable",
           "visibility": "public",
           "example": "collections.btreeset_contains(...)"
@@ -34390,10 +34566,54 @@
           "kind": "proc",
           "signature": "proc btreeset_remove<T>(set: ref mut BTreeSet<T>, value: T) -> bool { give is_some<bool>(btreemap_remove<T, bool>(&mut ((*set).map), value)); }",
           "module": "src/vitte/stdlib/alloc/collections.vitl",
-          "line": 140,
+          "line": 165,
           "stability": "stable",
           "visibility": "public",
           "example": "collections.btreeset_remove(...)"
+        },
+        {
+          "id": "src/vitte/stdlib/alloc/collections.vitl::btreeset_len",
+          "name": "btreeset_len",
+          "kind": "proc",
+          "signature": "proc btreeset_len<T>(set: BTreeSet<T>) -> usize { give btreemap_len<T, bool>(set.map); }",
+          "module": "src/vitte/stdlib/alloc/collections.vitl",
+          "line": 166,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "collections.btreeset_len(...)"
+        },
+        {
+          "id": "src/vitte/stdlib/alloc/collections.vitl::btreeset_is_empty",
+          "name": "btreeset_is_empty",
+          "kind": "proc",
+          "signature": "proc btreeset_is_empty<T>(set: BTreeSet<T>) -> bool { give btreeset_len<T>(set) == 0; }",
+          "module": "src/vitte/stdlib/alloc/collections.vitl",
+          "line": 167,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "collections.btreeset_is_empty(...)"
+        },
+        {
+          "id": "src/vitte/stdlib/alloc/collections.vitl::btreeset_clear",
+          "name": "btreeset_clear",
+          "kind": "proc",
+          "signature": "proc btreeset_clear<T>(set: ref mut BTreeSet<T>) { btreemap_clear<T, bool>(&mut ((*set).map)); }",
+          "module": "src/vitte/stdlib/alloc/collections.vitl",
+          "line": 168,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "collections.btreeset_clear(...)"
+        },
+        {
+          "id": "src/vitte/stdlib/alloc/collections.vitl::btreeset_iter",
+          "name": "btreeset_iter",
+          "kind": "proc",
+          "signature": "proc btreeset_iter<T>(set: BTreeSet<T>) -> Iterator<(T, bool)> { give btreemap_iter<T, bool>(set.map); }",
+          "module": "src/vitte/stdlib/alloc/collections.vitl",
+          "line": 169,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "collections.btreeset_iter(...)"
         },
         {
           "id": "src/vitte/stdlib/alloc/collections.vitl::deque_new",
@@ -34401,7 +34621,7 @@
           "kind": "proc",
           "signature": "proc deque_new<T>() -> Deque<T> { give Deque<T> { data: vec_new<T>(), head: 0, length: 0 }; }",
           "module": "src/vitte/stdlib/alloc/collections.vitl",
-          "line": 142,
+          "line": 171,
           "stability": "stable",
           "visibility": "public",
           "example": "collections.deque_new(...)"
@@ -34412,7 +34632,7 @@
           "kind": "proc",
           "signature": "proc deque_push_back<T>(deque: ref mut Deque<T>, value: T) { vec_push<T>(&mut ((*deque).data), value); set (*deque).length = (*deque).length + 1; }",
           "module": "src/vitte/stdlib/alloc/collections.vitl",
-          "line": 143,
+          "line": 172,
           "stability": "stable",
           "visibility": "public",
           "example": "collections.deque_push_back(...)"
@@ -34423,7 +34643,7 @@
           "kind": "proc",
           "signature": "proc deque_push_front<T>(deque: ref mut Deque<T>, value: T) { vec_insert<T>(&mut ((*deque).data), 0, value); set (*deque).length = (*deque).length + 1; }",
           "module": "src/vitte/stdlib/alloc/collections.vitl",
-          "line": 144,
+          "line": 173,
           "stability": "stable",
           "visibility": "public",
           "example": "collections.deque_push_front(...)"
@@ -34434,7 +34654,7 @@
           "kind": "proc",
           "signature": "proc deque_pop_back<T>(deque: ref mut Deque<T>) -> Option<T> {",
           "module": "src/vitte/stdlib/alloc/collections.vitl",
-          "line": 145,
+          "line": 174,
           "stability": "stable",
           "visibility": "public",
           "example": "collections.deque_pop_back(...)"
@@ -34445,7 +34665,7 @@
           "kind": "proc",
           "signature": "proc deque_pop_front<T>(deque: ref mut Deque<T>) -> Option<T> {",
           "module": "src/vitte/stdlib/alloc/collections.vitl",
-          "line": 152,
+          "line": 181,
           "stability": "stable",
           "visibility": "public",
           "example": "collections.deque_pop_front(...)"
@@ -34456,10 +34676,65 @@
           "kind": "proc",
           "signature": "proc deque_len<T>(deque: Deque<T>) -> usize { give deque.length; }",
           "module": "src/vitte/stdlib/alloc/collections.vitl",
-          "line": 160,
+          "line": 189,
           "stability": "stable",
           "visibility": "public",
           "example": "collections.deque_len(...)"
+        },
+        {
+          "id": "src/vitte/stdlib/alloc/collections.vitl::deque_is_empty",
+          "name": "deque_is_empty",
+          "kind": "proc",
+          "signature": "proc deque_is_empty<T>(deque: Deque<T>) -> bool { give deque.length == 0; }",
+          "module": "src/vitte/stdlib/alloc/collections.vitl",
+          "line": 190,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "collections.deque_is_empty(...)"
+        },
+        {
+          "id": "src/vitte/stdlib/alloc/collections.vitl::deque_front",
+          "name": "deque_front",
+          "kind": "proc",
+          "signature": "proc deque_front<T>(deque: ref Deque<T>) -> Option<ref T> { give vec_get<T>((*deque).data, 0); }",
+          "module": "src/vitte/stdlib/alloc/collections.vitl",
+          "line": 191,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "collections.deque_front(...)"
+        },
+        {
+          "id": "src/vitte/stdlib/alloc/collections.vitl::deque_back",
+          "name": "deque_back",
+          "kind": "proc",
+          "signature": "proc deque_back<T>(deque: ref Deque<T>) -> Option<ref T> {",
+          "module": "src/vitte/stdlib/alloc/collections.vitl",
+          "line": 192,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "collections.deque_back(...)"
+        },
+        {
+          "id": "src/vitte/stdlib/alloc/collections.vitl::deque_clear",
+          "name": "deque_clear",
+          "kind": "proc",
+          "signature": "proc deque_clear<T>(deque: ref mut Deque<T>) {",
+          "module": "src/vitte/stdlib/alloc/collections.vitl",
+          "line": 196,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "collections.deque_clear(...)"
+        },
+        {
+          "id": "src/vitte/stdlib/alloc/collections.vitl::deque_iter",
+          "name": "deque_iter",
+          "kind": "proc",
+          "signature": "proc deque_iter<T>(deque: Deque<T>) -> Iterator<T> { give vec_iter<T>(deque.data); }",
+          "module": "src/vitte/stdlib/alloc/collections.vitl",
+          "line": 201,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "collections.deque_iter(...)"
         },
         {
           "id": "src/vitte/stdlib/alloc/collections.vitl::smallvec_new",
@@ -34467,7 +34742,7 @@
           "kind": "proc",
           "signature": "proc smallvec_new<T, N>() -> SmallVec<T, N> { give SmallVec<T, N> { inline_len: 0, spilled: vec_new<T>() }; }",
           "module": "src/vitte/stdlib/alloc/collections.vitl",
-          "line": 162,
+          "line": 203,
           "stability": "stable",
           "visibility": "public",
           "example": "collections.smallvec_new(...)"
@@ -34478,10 +34753,43 @@
           "kind": "proc",
           "signature": "proc smallvec_len<T, N>(value: SmallVec<T, N>) -> usize { give value.inline_len + vec_len<T>(value.spilled); }",
           "module": "src/vitte/stdlib/alloc/collections.vitl",
-          "line": 163,
+          "line": 204,
           "stability": "stable",
           "visibility": "public",
           "example": "collections.smallvec_len(...)"
+        },
+        {
+          "id": "src/vitte/stdlib/alloc/collections.vitl::smallvec_capacity",
+          "name": "smallvec_capacity",
+          "kind": "proc",
+          "signature": "proc smallvec_capacity<T, N>(value: SmallVec<T, N>) -> usize { give compiler_smallvec_inline_capacity<T, N>() + vec_capacity<T>(value.spilled); }",
+          "module": "src/vitte/stdlib/alloc/collections.vitl",
+          "line": 205,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "collections.smallvec_capacity(...)"
+        },
+        {
+          "id": "src/vitte/stdlib/alloc/collections.vitl::smallvec_is_empty",
+          "name": "smallvec_is_empty",
+          "kind": "proc",
+          "signature": "proc smallvec_is_empty<T, N>(value: SmallVec<T, N>) -> bool { give smallvec_len<T, N>(value) == 0; }",
+          "module": "src/vitte/stdlib/alloc/collections.vitl",
+          "line": 206,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "collections.smallvec_is_empty(...)"
+        },
+        {
+          "id": "src/vitte/stdlib/alloc/collections.vitl::smallvec_reserve",
+          "name": "smallvec_reserve",
+          "kind": "proc",
+          "signature": "proc smallvec_reserve<T, N>(value: ref mut SmallVec<T, N>, additional: usize) { vec_reserve<T>(&mut ((*value).spilled), additional); }",
+          "module": "src/vitte/stdlib/alloc/collections.vitl",
+          "line": 207,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "collections.smallvec_reserve(...)"
         },
         {
           "id": "src/vitte/stdlib/alloc/collections.vitl::smallvec_push",
@@ -34489,7 +34797,7 @@
           "kind": "proc",
           "signature": "proc smallvec_push<T, N>(value: ref mut SmallVec<T, N>, item: T) {",
           "module": "src/vitte/stdlib/alloc/collections.vitl",
-          "line": 164,
+          "line": 208,
           "stability": "stable",
           "visibility": "public",
           "example": "collections.smallvec_push(...)"
@@ -34500,10 +34808,32 @@
           "kind": "proc",
           "signature": "proc smallvec_pop<T, N>(value: ref mut SmallVec<T, N>) -> Option<T> { give vec_pop<T>(&mut ((*value).spilled)); }",
           "module": "src/vitte/stdlib/alloc/collections.vitl",
-          "line": 167,
+          "line": 211,
           "stability": "stable",
           "visibility": "public",
           "example": "collections.smallvec_pop(...)"
+        },
+        {
+          "id": "src/vitte/stdlib/alloc/collections.vitl::smallvec_clear",
+          "name": "smallvec_clear",
+          "kind": "proc",
+          "signature": "proc smallvec_clear<T, N>(value: ref mut SmallVec<T, N>) {",
+          "module": "src/vitte/stdlib/alloc/collections.vitl",
+          "line": 212,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "collections.smallvec_clear(...)"
+        },
+        {
+          "id": "src/vitte/stdlib/alloc/collections.vitl::smallvec_iter",
+          "name": "smallvec_iter",
+          "kind": "proc",
+          "signature": "proc smallvec_iter<T, N>(value: SmallVec<T, N>) -> Iterator<T> { give vec_iter<T>(value.spilled); }",
+          "module": "src/vitte/stdlib/alloc/collections.vitl",
+          "line": 216,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "collections.smallvec_iter(...)"
         }
       ]
     },
@@ -57089,12 +57419,34 @@
           "example": "bench.Benchmark"
         },
         {
+          "id": "src/vitte/stdlib/std/bench.vitl::BenchOptions",
+          "name": "BenchOptions",
+          "kind": "form",
+          "signature": "form BenchOptions { warmup: u64 samples: u64 max_nanos: u128 }",
+          "module": "src/vitte/stdlib/std/bench.vitl",
+          "line": 9,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "bench.BenchOptions"
+        },
+        {
+          "id": "src/vitte/stdlib/std/bench.vitl::BenchStats",
+          "name": "BenchStats",
+          "kind": "form",
+          "signature": "form BenchStats { min_nanos: u128 max_nanos: u128 mean_nanos: u128 samples: u64 }",
+          "module": "src/vitte/stdlib/std/bench.vitl",
+          "line": 10,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "bench.BenchStats"
+        },
+        {
           "id": "src/vitte/stdlib/std/bench.vitl::BenchReport",
           "name": "BenchReport",
           "kind": "form",
-          "signature": "form BenchReport { name: String iterations: u64 nanos: u128 passed_threshold: bool }",
+          "signature": "form BenchReport { name: String iterations: u64 nanos: u128 passed_threshold: bool stats: BenchStats }",
           "module": "src/vitte/stdlib/std/bench.vitl",
-          "line": 9,
+          "line": 11,
           "stability": "stable",
           "visibility": "public",
           "example": "bench.BenchReport"
@@ -57105,7 +57457,7 @@
           "kind": "form",
           "signature": "form BenchSuite { benches: Vec<Benchmark> }",
           "module": "src/vitte/stdlib/std/bench.vitl",
-          "line": 10,
+          "line": 12,
           "stability": "stable",
           "visibility": "public",
           "example": "bench.BenchSuite"
@@ -57116,7 +57468,7 @@
           "kind": "form",
           "signature": "form BenchSuiteReport { reports: Vec<BenchReport> total_nanos: u128 }",
           "module": "src/vitte/stdlib/std/bench.vitl",
-          "line": 11,
+          "line": 13,
           "stability": "stable",
           "visibility": "public",
           "example": "bench.BenchSuiteReport"
@@ -57127,10 +57479,21 @@
           "kind": "proc",
           "signature": "proc benchmark(name: String, iterations: u64) -> Benchmark { give Benchmark { name: name, iterations: iterations }; }",
           "module": "src/vitte/stdlib/std/bench.vitl",
-          "line": 13,
+          "line": 15,
           "stability": "stable",
           "visibility": "public",
           "example": "bench.benchmark(...)"
+        },
+        {
+          "id": "src/vitte/stdlib/std/bench.vitl::bench_options",
+          "name": "bench_options",
+          "kind": "proc",
+          "signature": "proc bench_options(warmup: u64, samples: u64, max_nanos: u128) -> BenchOptions { give BenchOptions { warmup: warmup, samples: samples, max_nanos: max_nanos }; }",
+          "module": "src/vitte/stdlib/std/bench.vitl",
+          "line": 16,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "bench.bench_options(...)"
         },
         {
           "id": "src/vitte/stdlib/std/bench.vitl::run",
@@ -57138,10 +57501,32 @@
           "kind": "proc",
           "signature": "proc run(bench: Benchmark, body: proc()) -> BenchReport {",
           "module": "src/vitte/stdlib/std/bench.vitl",
-          "line": 14,
+          "line": 17,
           "stability": "stable",
           "visibility": "public",
           "example": "bench.run(...)"
+        },
+        {
+          "id": "src/vitte/stdlib/std/bench.vitl::run_with_options",
+          "name": "run_with_options",
+          "kind": "proc",
+          "signature": "proc run_with_options(bench: Benchmark, options: BenchOptions, body: proc()) -> BenchReport {",
+          "module": "src/vitte/stdlib/std/bench.vitl",
+          "line": 28,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "bench.run_with_options(...)"
+        },
+        {
+          "id": "src/vitte/stdlib/std/bench.vitl::bench_stats",
+          "name": "bench_stats",
+          "kind": "proc",
+          "signature": "proc bench_stats(min_nanos: u128, max_nanos: u128, mean_nanos: u128, samples: u64) -> BenchStats {",
+          "module": "src/vitte/stdlib/std/bench.vitl",
+          "line": 37,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "bench.bench_stats(...)"
         },
         {
           "id": "src/vitte/stdlib/std/bench.vitl::threshold",
@@ -57149,7 +57534,7 @@
           "kind": "proc",
           "signature": "proc threshold(report: BenchReport, max_nanos: u128) -> bool { give report.nanos <= max_nanos; }",
           "module": "src/vitte/stdlib/std/bench.vitl",
-          "line": 24,
+          "line": 40,
           "stability": "stable",
           "visibility": "public",
           "example": "bench.threshold(...)"
@@ -57160,7 +57545,7 @@
           "kind": "proc",
           "signature": "proc report_text(report: BenchReport) -> String {",
           "module": "src/vitte/stdlib/std/bench.vitl",
-          "line": 25,
+          "line": 41,
           "stability": "stable",
           "visibility": "public",
           "example": "bench.report_text(...)"
@@ -57171,10 +57556,21 @@
           "kind": "proc",
           "signature": "proc run_suite(suite: BenchSuite, body: proc(Benchmark)) -> BenchSuiteReport {",
           "module": "src/vitte/stdlib/std/bench.vitl",
-          "line": 33,
+          "line": 49,
           "stability": "stable",
           "visibility": "public",
           "example": "bench.run_suite(...)"
+        },
+        {
+          "id": "src/vitte/stdlib/std/bench.vitl::threshold_passed",
+          "name": "threshold_passed",
+          "kind": "proc",
+          "signature": "proc threshold_passed(report: BenchReport) -> bool { give report.passed_threshold; }",
+          "module": "src/vitte/stdlib/std/bench.vitl",
+          "line": 62,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "bench.threshold_passed(...)"
         }
       ]
     },
@@ -57290,12 +57686,23 @@
           "example": "cli.Flag"
         },
         {
+          "id": "src/vitte/stdlib/std/cli.vitl::Subcommand",
+          "name": "Subcommand",
+          "kind": "form",
+          "signature": "form Subcommand { name: String about: String flags: Vec<Flag> }",
+          "module": "src/vitte/stdlib/std/cli.vitl",
+          "line": 13,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "cli.Subcommand"
+        },
+        {
           "id": "src/vitte/stdlib/std/cli.vitl::CliApp",
           "name": "CliApp",
           "kind": "form",
-          "signature": "form CliApp { name: String about: String flags: Vec<Flag> }",
+          "signature": "form CliApp { name: String about: String flags: Vec<Flag> subcommands: Vec<Subcommand> }",
           "module": "src/vitte/stdlib/std/cli.vitl",
-          "line": 13,
+          "line": 14,
           "stability": "stable",
           "visibility": "public",
           "example": "cli.CliApp"
@@ -57306,18 +57713,29 @@
           "kind": "form",
           "signature": "form CliMatches { values: HashMap<String, String> present: HashSet<String> }",
           "module": "src/vitte/stdlib/std/cli.vitl",
-          "line": 14,
+          "line": 15,
           "stability": "stable",
           "visibility": "public",
           "example": "cli.CliMatches"
         },
         {
+          "id": "src/vitte/stdlib/std/cli.vitl::CliErrorKind",
+          "name": "CliErrorKind",
+          "kind": "pick",
+          "signature": "pick CliErrorKind { MissingValue UnknownFlag UnknownSubcommand HelpRequested }",
+          "module": "src/vitte/stdlib/std/cli.vitl",
+          "line": 16,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "cli.CliErrorKind"
+        },
+        {
           "id": "src/vitte/stdlib/std/cli.vitl::CliError",
           "name": "CliError",
           "kind": "form",
-          "signature": "form CliError { message: String flag: Option<String> }",
+          "signature": "form CliError { message: String flag: Option<String> kind: CliErrorKind }",
           "module": "src/vitte/stdlib/std/cli.vitl",
-          "line": 15,
+          "line": 17,
           "stability": "stable",
           "visibility": "public",
           "example": "cli.CliError"
@@ -57326,9 +57744,9 @@
           "id": "src/vitte/stdlib/std/cli.vitl::cli_app",
           "name": "cli_app",
           "kind": "proc",
-          "signature": "proc cli_app(name: String, about: String) -> CliApp { give CliApp { name: name, about: about, flags: vec_new<Flag>() }; }",
+          "signature": "proc cli_app(name: String, about: String) -> CliApp { give CliApp { name: name, about: about, flags: vec_new<Flag>(), subcommands: vec_new<Subcommand>() }; }",
           "module": "src/vitte/stdlib/std/cli.vitl",
-          "line": 17,
+          "line": 19,
           "stability": "stable",
           "visibility": "public",
           "example": "cli.cli_app(...)"
@@ -57339,10 +57757,21 @@
           "kind": "proc",
           "signature": "proc flag(name: String, short: Option<rune>, help: String, takes_value: bool) -> Flag { give Flag { name: name, short: short, help: help, takes_value: takes_value }; }",
           "module": "src/vitte/stdlib/std/cli.vitl",
-          "line": 18,
+          "line": 20,
           "stability": "stable",
           "visibility": "public",
           "example": "cli.flag(...)"
+        },
+        {
+          "id": "src/vitte/stdlib/std/cli.vitl::subcommand",
+          "name": "subcommand",
+          "kind": "proc",
+          "signature": "proc subcommand(name: String, about: String) -> Subcommand { give Subcommand { name: name, about: about, flags: vec_new<Flag>() }; }",
+          "module": "src/vitte/stdlib/std/cli.vitl",
+          "line": 21,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "cli.subcommand(...)"
         },
         {
           "id": "src/vitte/stdlib/std/cli.vitl::add_flag",
@@ -57350,10 +57779,32 @@
           "kind": "proc",
           "signature": "proc add_flag(app: ref mut CliApp, value: Flag) { vec_push<Flag>(&mut ((*app).flags), value); }",
           "module": "src/vitte/stdlib/std/cli.vitl",
-          "line": 19,
+          "line": 22,
           "stability": "stable",
           "visibility": "public",
           "example": "cli.add_flag(...)"
+        },
+        {
+          "id": "src/vitte/stdlib/std/cli.vitl::add_subcommand",
+          "name": "add_subcommand",
+          "kind": "proc",
+          "signature": "proc add_subcommand(app: ref mut CliApp, value: Subcommand) { vec_push<Subcommand>(&mut ((*app).subcommands), value); }",
+          "module": "src/vitte/stdlib/std/cli.vitl",
+          "line": 23,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "cli.add_subcommand(...)"
+        },
+        {
+          "id": "src/vitte/stdlib/std/cli.vitl::add_subcommand_flag",
+          "name": "add_subcommand_flag",
+          "kind": "proc",
+          "signature": "proc add_subcommand_flag(command: ref mut Subcommand, value: Flag) { vec_push<Flag>(&mut ((*command).flags), value); }",
+          "module": "src/vitte/stdlib/std/cli.vitl",
+          "line": 24,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "cli.add_subcommand_flag(...)"
         },
         {
           "id": "src/vitte/stdlib/std/cli.vitl::parse",
@@ -57361,7 +57812,7 @@
           "kind": "proc",
           "signature": "proc parse(app: CliApp, args: Iterator<String>) -> Result<CliMatches, CliError> { give compiler_cli_parse(app, args); }",
           "module": "src/vitte/stdlib/std/cli.vitl",
-          "line": 20,
+          "line": 25,
           "stability": "stable",
           "visibility": "public",
           "example": "cli.parse(...)"
@@ -57372,10 +57823,32 @@
           "kind": "proc",
           "signature": "proc help(app: CliApp) -> String { give compiler_cli_help(app); }",
           "module": "src/vitte/stdlib/std/cli.vitl",
-          "line": 21,
+          "line": 26,
           "stability": "stable",
           "visibility": "public",
           "example": "cli.help(...)"
+        },
+        {
+          "id": "src/vitte/stdlib/std/cli.vitl::subcommand_help",
+          "name": "subcommand_help",
+          "kind": "proc",
+          "signature": "proc subcommand_help(app: CliApp, name: String) -> String { give compiler_cli_subcommand_help(app, name); }",
+          "module": "src/vitte/stdlib/std/cli.vitl",
+          "line": 27,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "cli.subcommand_help(...)"
+        },
+        {
+          "id": "src/vitte/stdlib/std/cli.vitl::cli_error",
+          "name": "cli_error",
+          "kind": "proc",
+          "signature": "proc cli_error(message: String, flag: Option<String>, kind: CliErrorKind) -> CliError { give CliError { message: message, flag: flag, kind: kind }; }",
+          "module": "src/vitte/stdlib/std/cli.vitl",
+          "line": 28,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "cli.cli_error(...)"
         }
       ]
     },
@@ -57959,12 +58432,23 @@
           "example": "format.FormatBase"
         },
         {
+          "id": "src/vitte/stdlib/std/format.vitl::Alignment",
+          "name": "Alignment",
+          "kind": "pick",
+          "signature": "pick Alignment { Left Right Center }",
+          "module": "src/vitte/stdlib/std/format.vitl",
+          "line": 9,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "format.Alignment"
+        },
+        {
           "id": "src/vitte/stdlib/std/format.vitl::FormatSpec",
           "name": "FormatSpec",
           "kind": "form",
-          "signature": "form FormatSpec { width: Option<usize> pad: rune base: FormatBase debug: bool }",
+          "signature": "form FormatSpec { width: Option<usize> pad: rune base: FormatBase debug: bool align: Alignment alternate: bool }",
           "module": "src/vitte/stdlib/std/format.vitl",
-          "line": 9,
+          "line": 10,
           "stability": "stable",
           "visibility": "public",
           "example": "format.FormatSpec"
@@ -57975,7 +58459,7 @@
           "kind": "form",
           "signature": "form Display<T> { fmt: proc(T, FormatSpec) -> String }",
           "module": "src/vitte/stdlib/std/format.vitl",
-          "line": 10,
+          "line": 11,
           "stability": "stable",
           "visibility": "public",
           "example": "format.Display"
@@ -57986,7 +58470,7 @@
           "kind": "form",
           "signature": "form Debug<T> { fmt_debug: proc(T) -> String }",
           "module": "src/vitte/stdlib/std/format.vitl",
-          "line": 11,
+          "line": 12,
           "stability": "stable",
           "visibility": "public",
           "example": "format.Debug"
@@ -57995,12 +58479,23 @@
           "id": "src/vitte/stdlib/std/format.vitl::default_spec",
           "name": "default_spec",
           "kind": "proc",
-          "signature": "proc default_spec() -> FormatSpec { give FormatSpec { width: none<usize>(), pad: 32, base: FormatBase.Decimal, debug: false }; }",
+          "signature": "proc default_spec() -> FormatSpec { give FormatSpec { width: none<usize>(), pad: 32, base: FormatBase.Decimal, debug: false, align: Alignment.Right, alternate: false }; }",
           "module": "src/vitte/stdlib/std/format.vitl",
-          "line": 13,
+          "line": 14,
           "stability": "stable",
           "visibility": "public",
           "example": "format.default_spec(...)"
+        },
+        {
+          "id": "src/vitte/stdlib/std/format.vitl::format_spec",
+          "name": "format_spec",
+          "kind": "proc",
+          "signature": "proc format_spec(width: Option<usize>, pad: rune, base: FormatBase, align: Alignment) -> FormatSpec {",
+          "module": "src/vitte/stdlib/std/format.vitl",
+          "line": 15,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "format.format_spec(...)"
         },
         {
           "id": "src/vitte/stdlib/std/format.vitl::format",
@@ -58008,7 +58503,7 @@
           "kind": "proc",
           "signature": "proc format<T>(value: T, spec: FormatSpec) -> String {",
           "module": "src/vitte/stdlib/std/format.vitl",
-          "line": 14,
+          "line": 18,
           "stability": "stable",
           "visibility": "public",
           "example": "format.format(...)"
@@ -58019,7 +58514,7 @@
           "kind": "proc",
           "signature": "proc debug<T>(value: T) -> String { give compiler_debug_value<T>(value); }",
           "module": "src/vitte/stdlib/std/format.vitl",
-          "line": 17,
+          "line": 24,
           "stability": "stable",
           "visibility": "public",
           "example": "format.debug(...)"
@@ -58030,10 +58525,32 @@
           "kind": "proc",
           "signature": "proc pad_left(text: String, width: usize, pad: rune) -> String {",
           "module": "src/vitte/stdlib/std/format.vitl",
-          "line": 18,
+          "line": 25,
           "stability": "stable",
           "visibility": "public",
           "example": "format.pad_left(...)"
+        },
+        {
+          "id": "src/vitte/stdlib/std/format.vitl::pad_right",
+          "name": "pad_right",
+          "kind": "proc",
+          "signature": "proc pad_right(text: String, width: usize, pad: rune) -> String {",
+          "module": "src/vitte/stdlib/std/format.vitl",
+          "line": 36,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "format.pad_right(...)"
+        },
+        {
+          "id": "src/vitte/stdlib/std/format.vitl::pad_center",
+          "name": "pad_center",
+          "kind": "proc",
+          "signature": "proc pad_center(text: String, width: usize, pad: rune) -> String {",
+          "module": "src/vitte/stdlib/std/format.vitl",
+          "line": 46,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "format.pad_center(...)"
         },
         {
           "id": "src/vitte/stdlib/std/format.vitl::format_int",
@@ -58041,7 +58558,7 @@
           "kind": "proc",
           "signature": "proc format_int(value: i64, base: FormatBase) -> String {",
           "module": "src/vitte/stdlib/std/format.vitl",
-          "line": 29,
+          "line": 52,
           "stability": "stable",
           "visibility": "public",
           "example": "format.format_int(...)"
@@ -58052,10 +58569,21 @@
           "kind": "proc",
           "signature": "proc format_uint(value: u64, base: FormatBase) -> String { give compiler_uint_to_base(value, base); }",
           "module": "src/vitte/stdlib/std/format.vitl",
-          "line": 38,
+          "line": 61,
           "stability": "stable",
           "visibility": "public",
           "example": "format.format_uint(...)"
+        },
+        {
+          "id": "src/vitte/stdlib/std/format.vitl::format_debug",
+          "name": "format_debug",
+          "kind": "proc",
+          "signature": "proc format_debug<T>(value: T) -> String { give debug<T>(value); }",
+          "module": "src/vitte/stdlib/std/format.vitl",
+          "line": 62,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "format.format_debug(...)"
         }
       ]
     },
@@ -58497,12 +59025,34 @@
           "example": "hash.SipHasher"
         },
         {
+          "id": "src/vitte/stdlib/std/hash.vitl::HashStability",
+          "name": "HashStability",
+          "kind": "pick",
+          "signature": "pick HashStability { Stable NonStable }",
+          "module": "src/vitte/stdlib/std/hash.vitl",
+          "line": 8,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "hash.HashStability"
+        },
+        {
+          "id": "src/vitte/stdlib/std/hash.vitl::HashSeed",
+          "name": "HashSeed",
+          "kind": "form",
+          "signature": "form HashSeed { k0: u64 k1: u64 }",
+          "module": "src/vitte/stdlib/std/hash.vitl",
+          "line": 9,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "hash.HashSeed"
+        },
+        {
           "id": "src/vitte/stdlib/std/hash.vitl::stable_hasher",
           "name": "stable_hasher",
           "kind": "proc",
           "signature": "proc stable_hasher() -> StableHasher { give StableHasher { state: 1469598103934665603 }; }",
           "module": "src/vitte/stdlib/std/hash.vitl",
-          "line": 9,
+          "line": 11,
           "stability": "stable",
           "visibility": "public",
           "example": "hash.stable_hasher(...)"
@@ -58513,7 +59063,7 @@
           "kind": "proc",
           "signature": "proc random_hasher() -> RandomHasher { give compiler_hash_random_hasher(); }",
           "module": "src/vitte/stdlib/std/hash.vitl",
-          "line": 10,
+          "line": 12,
           "stability": "stable",
           "visibility": "public",
           "example": "hash.random_hasher(...)"
@@ -58524,10 +59074,21 @@
           "kind": "proc",
           "signature": "proc sip_hasher(k0: u64, k1: u64) -> SipHasher { give SipHasher { k0: k0, k1: k1, state: 0 }; }",
           "module": "src/vitte/stdlib/std/hash.vitl",
-          "line": 11,
+          "line": 13,
           "stability": "stable",
           "visibility": "public",
           "example": "hash.sip_hasher(...)"
+        },
+        {
+          "id": "src/vitte/stdlib/std/hash.vitl::hash_seed",
+          "name": "hash_seed",
+          "kind": "proc",
+          "signature": "proc hash_seed(k0: u64, k1: u64) -> HashSeed { give HashSeed { k0: k0, k1: k1 }; }",
+          "module": "src/vitte/stdlib/std/hash.vitl",
+          "line": 14,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "hash.hash_seed(...)"
         },
         {
           "id": "src/vitte/stdlib/std/hash.vitl::stable_write",
@@ -58535,7 +59096,7 @@
           "kind": "proc",
           "signature": "proc stable_write(hasher: ref mut StableHasher, bytes: [byte]) { compiler_hash_stable_write(hasher, bytes); }",
           "module": "src/vitte/stdlib/std/hash.vitl",
-          "line": 12,
+          "line": 15,
           "stability": "stable",
           "visibility": "public",
           "example": "hash.stable_write(...)"
@@ -58546,7 +59107,7 @@
           "kind": "proc",
           "signature": "proc random_write(hasher: ref mut RandomHasher, bytes: [byte]) { compiler_hash_random_write(hasher, bytes); }",
           "module": "src/vitte/stdlib/std/hash.vitl",
-          "line": 13,
+          "line": 16,
           "stability": "stable",
           "visibility": "public",
           "example": "hash.random_write(...)"
@@ -58557,7 +59118,7 @@
           "kind": "proc",
           "signature": "proc sip_write(hasher: ref mut SipHasher, bytes: [byte]) { compiler_hash_sip_write(hasher, bytes); }",
           "module": "src/vitte/stdlib/std/hash.vitl",
-          "line": 14,
+          "line": 17,
           "stability": "stable",
           "visibility": "public",
           "example": "hash.sip_write(...)"
@@ -58568,7 +59129,7 @@
           "kind": "proc",
           "signature": "proc stable_finish(hasher: StableHasher) -> u64 { give compiler_hash_stable_finish(hasher); }",
           "module": "src/vitte/stdlib/std/hash.vitl",
-          "line": 15,
+          "line": 18,
           "stability": "stable",
           "visibility": "public",
           "example": "hash.stable_finish(...)"
@@ -58579,7 +59140,7 @@
           "kind": "proc",
           "signature": "proc random_finish(hasher: RandomHasher) -> u64 { give compiler_hash_random_finish(hasher); }",
           "module": "src/vitte/stdlib/std/hash.vitl",
-          "line": 16,
+          "line": 19,
           "stability": "stable",
           "visibility": "public",
           "example": "hash.random_finish(...)"
@@ -58590,10 +59151,43 @@
           "kind": "proc",
           "signature": "proc sip_finish(hasher: SipHasher) -> u64 { give compiler_hash_sip_finish(hasher); }",
           "module": "src/vitte/stdlib/std/hash.vitl",
-          "line": 17,
+          "line": 20,
           "stability": "stable",
           "visibility": "public",
           "example": "hash.sip_finish(...)"
+        },
+        {
+          "id": "src/vitte/stdlib/std/hash.vitl::stable_hash_bytes",
+          "name": "stable_hash_bytes",
+          "kind": "proc",
+          "signature": "proc stable_hash_bytes(bytes: [byte]) -> u64 {",
+          "module": "src/vitte/stdlib/std/hash.vitl",
+          "line": 21,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "hash.stable_hash_bytes(...)"
+        },
+        {
+          "id": "src/vitte/stdlib/std/hash.vitl::nonstable_hash_bytes",
+          "name": "nonstable_hash_bytes",
+          "kind": "proc",
+          "signature": "proc nonstable_hash_bytes(bytes: [byte]) -> u64 {",
+          "module": "src/vitte/stdlib/std/hash.vitl",
+          "line": 26,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "hash.nonstable_hash_bytes(...)"
+        },
+        {
+          "id": "src/vitte/stdlib/std/hash.vitl::siphash24",
+          "name": "siphash24",
+          "kind": "proc",
+          "signature": "proc siphash24(bytes: [byte], seed: HashSeed) -> u64 {",
+          "module": "src/vitte/stdlib/std/hash.vitl",
+          "line": 31,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "hash.siphash24(...)"
         }
       ]
     },
@@ -59219,10 +59813,21 @@
           "kind": "pick",
           "signature": "pick LogLevel { Trace Debug Info Warn Error }",
           "module": "src/vitte/stdlib/std/log.vitl",
-          "line": 8,
+          "line": 9,
           "stability": "stable",
           "visibility": "public",
           "example": "log.LogLevel"
+        },
+        {
+          "id": "src/vitte/stdlib/std/log.vitl::LogSinkKind",
+          "name": "LogSinkKind",
+          "kind": "pick",
+          "signature": "pick LogSinkKind { Writer Memory Null }",
+          "module": "src/vitte/stdlib/std/log.vitl",
+          "line": 10,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "log.LogSinkKind"
         },
         {
           "id": "src/vitte/stdlib/std/log.vitl::LogRecord",
@@ -59230,32 +59835,76 @@
           "kind": "form",
           "signature": "form LogRecord { level: LogLevel target: String message: String }",
           "module": "src/vitte/stdlib/std/log.vitl",
-          "line": 9,
+          "line": 11,
           "stability": "stable",
           "visibility": "public",
           "example": "log.LogRecord"
         },
         {
+          "id": "src/vitte/stdlib/std/log.vitl::LogSink",
+          "name": "LogSink",
+          "kind": "form",
+          "signature": "form LogSink { kind: LogSinkKind writer: Option<Writer> }",
+          "module": "src/vitte/stdlib/std/log.vitl",
+          "line": 12,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "log.LogSink"
+        },
+        {
           "id": "src/vitte/stdlib/std/log.vitl::Logger",
           "name": "Logger",
           "kind": "form",
-          "signature": "form Logger { sink: Writer min_level: LogLevel compact: bool }",
+          "signature": "form Logger { sink: LogSink min_level: LogLevel compact: bool }",
           "module": "src/vitte/stdlib/std/log.vitl",
-          "line": 10,
+          "line": 13,
           "stability": "stable",
           "visibility": "public",
           "example": "log.Logger"
         },
         {
+          "id": "src/vitte/stdlib/std/log.vitl::writer_sink",
+          "name": "writer_sink",
+          "kind": "proc",
+          "signature": "proc writer_sink(sink: Writer) -> LogSink { give LogSink { kind: LogSinkKind.Writer, writer: some<Writer>(sink) }; }",
+          "module": "src/vitte/stdlib/std/log.vitl",
+          "line": 15,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "log.writer_sink(...)"
+        },
+        {
+          "id": "src/vitte/stdlib/std/log.vitl::null_sink",
+          "name": "null_sink",
+          "kind": "proc",
+          "signature": "proc null_sink() -> LogSink { give LogSink { kind: LogSinkKind.Null, writer: none<Writer>() }; }",
+          "module": "src/vitte/stdlib/std/log.vitl",
+          "line": 16,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "log.null_sink(...)"
+        },
+        {
           "id": "src/vitte/stdlib/std/log.vitl::logger",
           "name": "logger",
           "kind": "proc",
-          "signature": "proc logger(sink: Writer, min_level: LogLevel) -> Logger { give Logger { sink: sink, min_level: min_level, compact: true }; }",
+          "signature": "proc logger(sink: Writer, min_level: LogLevel) -> Logger { give Logger { sink: writer_sink(sink), min_level: min_level, compact: true }; }",
           "module": "src/vitte/stdlib/std/log.vitl",
-          "line": 12,
+          "line": 17,
           "stability": "stable",
           "visibility": "public",
           "example": "log.logger(...)"
+        },
+        {
+          "id": "src/vitte/stdlib/std/log.vitl::logger_with_sink",
+          "name": "logger_with_sink",
+          "kind": "proc",
+          "signature": "proc logger_with_sink(sink: LogSink, min_level: LogLevel, compact: bool) -> Logger { give Logger { sink: sink, min_level: min_level, compact: compact }; }",
+          "module": "src/vitte/stdlib/std/log.vitl",
+          "line": 18,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "log.logger_with_sink(...)"
         },
         {
           "id": "src/vitte/stdlib/std/log.vitl::log",
@@ -59263,10 +59912,32 @@
           "kind": "proc",
           "signature": "proc log(logger_value: ref mut Logger, record: LogRecord) { compiler_log_write(logger_value, record); }",
           "module": "src/vitte/stdlib/std/log.vitl",
-          "line": 13,
+          "line": 19,
           "stability": "stable",
           "visibility": "public",
           "example": "log.log(...)"
+        },
+        {
+          "id": "src/vitte/stdlib/std/log.vitl::log_enabled",
+          "name": "log_enabled",
+          "kind": "proc",
+          "signature": "proc log_enabled(logger_value: Logger, level: LogLevel) -> bool { give compiler_log_level_enabled(logger_value.min_level, level); }",
+          "module": "src/vitte/stdlib/std/log.vitl",
+          "line": 20,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "log.log_enabled(...)"
+        },
+        {
+          "id": "src/vitte/stdlib/std/log.vitl::compact_record",
+          "name": "compact_record",
+          "kind": "proc",
+          "signature": "proc compact_record(record: LogRecord) -> String { give compiler_log_compact_record(record); }",
+          "module": "src/vitte/stdlib/std/log.vitl",
+          "line": 21,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "log.compact_record(...)"
         },
         {
           "id": "src/vitte/stdlib/std/log.vitl::trace",
@@ -59274,10 +59945,21 @@
           "kind": "proc",
           "signature": "proc trace(logger_value: ref mut Logger, message: String) { log(logger_value, LogRecord { level: LogLevel.Trace, target: compiler_log_default_target(), message: message }); }",
           "module": "src/vitte/stdlib/std/log.vitl",
-          "line": 14,
+          "line": 22,
           "stability": "stable",
           "visibility": "public",
           "example": "log.trace(...)"
+        },
+        {
+          "id": "src/vitte/stdlib/std/log.vitl::debug",
+          "name": "debug",
+          "kind": "proc",
+          "signature": "proc debug(logger_value: ref mut Logger, message: String) { log(logger_value, LogRecord { level: LogLevel.Debug, target: compiler_log_default_target(), message: message }); }",
+          "module": "src/vitte/stdlib/std/log.vitl",
+          "line": 23,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "log.debug(...)"
         },
         {
           "id": "src/vitte/stdlib/std/log.vitl::info",
@@ -59285,7 +59967,7 @@
           "kind": "proc",
           "signature": "proc info(logger_value: ref mut Logger, message: String) { log(logger_value, LogRecord { level: LogLevel.Info, target: compiler_log_default_target(), message: message }); }",
           "module": "src/vitte/stdlib/std/log.vitl",
-          "line": 15,
+          "line": 24,
           "stability": "stable",
           "visibility": "public",
           "example": "log.info(...)"
@@ -59296,7 +59978,7 @@
           "kind": "proc",
           "signature": "proc warn(logger_value: ref mut Logger, message: String) { log(logger_value, LogRecord { level: LogLevel.Warn, target: compiler_log_default_target(), message: message }); }",
           "module": "src/vitte/stdlib/std/log.vitl",
-          "line": 16,
+          "line": 25,
           "stability": "stable",
           "visibility": "public",
           "example": "log.warn(...)"
@@ -59307,7 +59989,7 @@
           "kind": "proc",
           "signature": "proc error(logger_value: ref mut Logger, message: String) { log(logger_value, LogRecord { level: LogLevel.Error, target: compiler_log_default_target(), message: message }); }",
           "module": "src/vitte/stdlib/std/log.vitl",
-          "line": 17,
+          "line": 26,
           "stability": "stable",
           "visibility": "public",
           "example": "log.error(...)"
@@ -59737,12 +60419,23 @@
       "stability": "stable",
       "symbols": [
         {
+          "id": "src/vitte/stdlib/std/parse.vitl::ParseErrorKind",
+          "name": "ParseErrorKind",
+          "kind": "pick",
+          "signature": "pick ParseErrorKind { ExpectedBoolean InvalidDigit Overflow Underflow InvalidFloat InvalidUtf8 Empty }",
+          "module": "src/vitte/stdlib/std/parse.vitl",
+          "line": 9,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "parse.ParseErrorKind"
+        },
+        {
           "id": "src/vitte/stdlib/std/parse.vitl::ParseError",
           "name": "ParseError",
           "kind": "form",
-          "signature": "form ParseError { message: String offset: usize }",
+          "signature": "form ParseError { message: String offset: usize kind: ParseErrorKind }",
           "module": "src/vitte/stdlib/std/parse.vitl",
-          "line": 9,
+          "line": 10,
           "stability": "stable",
           "visibility": "public",
           "example": "parse.ParseError"
@@ -59753,7 +60446,7 @@
           "kind": "proc",
           "signature": "proc parse_bool(text: Utf8View) -> Result<bool, ParseError> {",
           "module": "src/vitte/stdlib/std/parse.vitl",
-          "line": 11,
+          "line": 12,
           "stability": "stable",
           "visibility": "public",
           "example": "parse.parse_bool(...)"
@@ -59764,7 +60457,7 @@
           "kind": "proc",
           "signature": "proc parse_i64(text: Utf8View, base: u32) -> Result<i64, ParseError> {",
           "module": "src/vitte/stdlib/std/parse.vitl",
-          "line": 16,
+          "line": 17,
           "stability": "stable",
           "visibility": "public",
           "example": "parse.parse_i64(...)"
@@ -59775,7 +60468,7 @@
           "kind": "proc",
           "signature": "proc parse_u64(text: Utf8View, base: u32) -> Result<u64, ParseError> {",
           "module": "src/vitte/stdlib/std/parse.vitl",
-          "line": 22,
+          "line": 23,
           "stability": "stable",
           "visibility": "public",
           "example": "parse.parse_u64(...)"
@@ -59786,7 +60479,7 @@
           "kind": "proc",
           "signature": "proc parse_f64(text: Utf8View) -> Result<f64, ParseError> {",
           "module": "src/vitte/stdlib/std/parse.vitl",
-          "line": 28,
+          "line": 29,
           "stability": "stable",
           "visibility": "public",
           "example": "parse.parse_f64(...)"
@@ -59797,21 +60490,65 @@
           "kind": "proc",
           "signature": "proc parse_utf8(bytes: [byte]) -> Result<Utf8View, ParseError> {",
           "module": "src/vitte/stdlib/std/parse.vitl",
-          "line": 34,
+          "line": 35,
           "stability": "stable",
           "visibility": "public",
           "example": "parse.parse_utf8(...)"
         },
         {
+          "id": "src/vitte/stdlib/std/parse.vitl::parse_i32",
+          "name": "parse_i32",
+          "kind": "proc",
+          "signature": "proc parse_i32(text: Utf8View, base: u32) -> Result<i32, ParseError> { give compiler_parse_i32_result(text, base); }",
+          "module": "src/vitte/stdlib/std/parse.vitl",
+          "line": 41,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "parse.parse_i32(...)"
+        },
+        {
+          "id": "src/vitte/stdlib/std/parse.vitl::parse_u32",
+          "name": "parse_u32",
+          "kind": "proc",
+          "signature": "proc parse_u32(text: Utf8View, base: u32) -> Result<u32, ParseError> { give compiler_parse_u32_result(text, base); }",
+          "module": "src/vitte/stdlib/std/parse.vitl",
+          "line": 42,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "parse.parse_u32(...)"
+        },
+        {
+          "id": "src/vitte/stdlib/std/parse.vitl::parse_usize",
+          "name": "parse_usize",
+          "kind": "proc",
+          "signature": "proc parse_usize(text: Utf8View, base: u32) -> Result<usize, ParseError> { give compiler_parse_usize_result(text, base); }",
+          "module": "src/vitte/stdlib/std/parse.vitl",
+          "line": 43,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "parse.parse_usize(...)"
+        },
+        {
           "id": "src/vitte/stdlib/std/parse.vitl::parse_error",
           "name": "parse_error",
           "kind": "proc",
-          "signature": "proc parse_error(message: String, offset: usize) -> ParseError { give ParseError { message: message, offset: offset }; }",
+          "signature": "proc parse_error(message: String, offset: usize) -> ParseError { give ParseError { message: message, offset: offset, kind: ParseErrorKind.InvalidDigit }; }",
           "module": "src/vitte/stdlib/std/parse.vitl",
-          "line": 40,
+          "line": 44,
           "stability": "stable",
           "visibility": "public",
           "example": "parse.parse_error(...)"
+        },
+        {
+          "id": "src/vitte/stdlib/std/parse.vitl::parse_error_kind",
+          "name": "parse_error_kind",
+          "kind": "proc",
+          "signature": "proc parse_error_kind(message: String, offset: usize, kind: ParseErrorKind) -> ParseError { give ParseError { message: message, offset: offset, kind: kind }; }",
+          "module": "src/vitte/stdlib/std/parse.vitl",
+          "line": 45,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "parse.parse_error_kind(...)"
         }
       ]
     },
@@ -60392,15 +61129,92 @@
           "example": "random.Prng"
         },
         {
-          "id": "src/vitte/stdlib/std/random.vitl::RandomError",
-          "name": "RandomError",
-          "kind": "form",
-          "signature": "form RandomError { message: String }",
+          "id": "src/vitte/stdlib/std/random.vitl::EntropyFailure",
+          "name": "EntropyFailure",
+          "kind": "pick",
+          "signature": "pick EntropyFailure { Unavailable PermissionDenied ShortRead Unsupported }",
           "module": "src/vitte/stdlib/std/random.vitl",
           "line": 9,
           "stability": "stable",
           "visibility": "public",
+          "example": "random.EntropyFailure"
+        },
+        {
+          "id": "src/vitte/stdlib/std/random.vitl::RandomError",
+          "name": "RandomError",
+          "kind": "form",
+          "signature": "form RandomError { message: String failure: EntropyFailure }",
+          "module": "src/vitte/stdlib/std/random.vitl",
+          "line": 10,
+          "stability": "stable",
+          "visibility": "public",
           "example": "random.RandomError"
+        },
+        {
+          "id": "src/vitte/stdlib/std/random.vitl::Seed",
+          "name": "Seed",
+          "kind": "form",
+          "signature": "form Seed { value: u64 stable: bool }",
+          "module": "src/vitte/stdlib/std/random.vitl",
+          "line": 11,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "random.Seed"
+        },
+        {
+          "id": "src/vitte/stdlib/std/random.vitl::DistributionU64",
+          "name": "DistributionU64",
+          "kind": "form",
+          "signature": "form DistributionU64 { lower: u64 upper: u64 }",
+          "module": "src/vitte/stdlib/std/random.vitl",
+          "line": 12,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "random.DistributionU64"
+        },
+        {
+          "id": "src/vitte/stdlib/std/random.vitl::DistributionF64",
+          "name": "DistributionF64",
+          "kind": "form",
+          "signature": "form DistributionF64 { lower: f64 upper: f64 }",
+          "module": "src/vitte/stdlib/std/random.vitl",
+          "line": 13,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "random.DistributionF64"
+        },
+        {
+          "id": "src/vitte/stdlib/std/random.vitl::seed",
+          "name": "seed",
+          "kind": "proc",
+          "signature": "proc seed(value: u64) -> Seed { give Seed { value: value, stable: true }; }",
+          "module": "src/vitte/stdlib/std/random.vitl",
+          "line": 15,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "random.seed(...)"
+        },
+        {
+          "id": "src/vitte/stdlib/std/random.vitl::entropy_seed",
+          "name": "entropy_seed",
+          "kind": "proc",
+          "signature": "proc entropy_seed(value: u64) -> Seed { give Seed { value: value, stable: false }; }",
+          "module": "src/vitte/stdlib/std/random.vitl",
+          "line": 16,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "random.entropy_seed(...)"
+        },
+        {
+          "id": "src/vitte/stdlib/std/random.vitl::prng_from_seed",
+          "name": "prng_from_seed",
+          "kind": "proc",
+          "signature": "proc prng_from_seed(value: Seed) -> Prng { give prng(value.value); }",
+          "module": "src/vitte/stdlib/std/random.vitl",
+          "line": 17,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "random.prng_from_seed(...)"
         },
         {
           "id": "src/vitte/stdlib/std/random.vitl::prng",
@@ -60408,7 +61222,7 @@
           "kind": "proc",
           "signature": "proc prng(seed: u64) -> Prng {",
           "module": "src/vitte/stdlib/std/random.vitl",
-          "line": 11,
+          "line": 18,
           "stability": "stable",
           "visibility": "public",
           "example": "random.prng(...)"
@@ -60419,7 +61233,7 @@
           "kind": "proc",
           "signature": "proc next_u64(rng: ref mut Prng) -> u64 {",
           "module": "src/vitte/stdlib/std/random.vitl",
-          "line": 17,
+          "line": 24,
           "stability": "stable",
           "visibility": "public",
           "example": "random.next_u64(...)"
@@ -60430,7 +61244,7 @@
           "kind": "proc",
           "signature": "proc next_bool(rng: ref mut Prng) -> bool { give (next_u64(rng) & 1) == 1; }",
           "module": "src/vitte/stdlib/std/random.vitl",
-          "line": 25,
+          "line": 32,
           "stability": "stable",
           "visibility": "public",
           "example": "random.next_bool(...)"
@@ -60441,10 +61255,54 @@
           "kind": "proc",
           "signature": "proc range_u64(rng: ref mut Prng, upper: u64) -> u64 { give next_u64(rng) % upper; }",
           "module": "src/vitte/stdlib/std/random.vitl",
-          "line": 26,
+          "line": 33,
           "stability": "stable",
           "visibility": "public",
           "example": "random.range_u64(...)"
+        },
+        {
+          "id": "src/vitte/stdlib/std/random.vitl::uniform_u64",
+          "name": "uniform_u64",
+          "kind": "proc",
+          "signature": "proc uniform_u64(lower: u64, upper: u64) -> DistributionU64 { give DistributionU64 { lower: lower, upper: upper }; }",
+          "module": "src/vitte/stdlib/std/random.vitl",
+          "line": 34,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "random.uniform_u64(...)"
+        },
+        {
+          "id": "src/vitte/stdlib/std/random.vitl::sample_u64",
+          "name": "sample_u64",
+          "kind": "proc",
+          "signature": "proc sample_u64(rng: ref mut Prng, distribution: DistributionU64) -> u64 {",
+          "module": "src/vitte/stdlib/std/random.vitl",
+          "line": 35,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "random.sample_u64(...)"
+        },
+        {
+          "id": "src/vitte/stdlib/std/random.vitl::uniform_f64",
+          "name": "uniform_f64",
+          "kind": "proc",
+          "signature": "proc uniform_f64(lower: f64, upper: f64) -> DistributionF64 { give DistributionF64 { lower: lower, upper: upper }; }",
+          "module": "src/vitte/stdlib/std/random.vitl",
+          "line": 38,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "random.uniform_f64(...)"
+        },
+        {
+          "id": "src/vitte/stdlib/std/random.vitl::sample_f64",
+          "name": "sample_f64",
+          "kind": "proc",
+          "signature": "proc sample_f64(rng: ref mut Prng, distribution: DistributionF64) -> f64 {",
+          "module": "src/vitte/stdlib/std/random.vitl",
+          "line": 39,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "random.sample_f64(...)"
         },
         {
           "id": "src/vitte/stdlib/std/random.vitl::os_entropy",
@@ -60452,10 +61310,21 @@
           "kind": "proc",
           "signature": "proc os_entropy(buffer: ref mut [byte]) -> Result<(), RandomError> {",
           "module": "src/vitte/stdlib/std/random.vitl",
-          "line": 27,
+          "line": 42,
           "stability": "stable",
           "visibility": "public",
           "example": "random.os_entropy(...)"
+        },
+        {
+          "id": "src/vitte/stdlib/std/random.vitl::entropy_error",
+          "name": "entropy_error",
+          "kind": "proc",
+          "signature": "proc entropy_error(message: String, failure: EntropyFailure) -> RandomError { give RandomError { message: message, failure: failure }; }",
+          "module": "src/vitte/stdlib/std/random.vitl",
+          "line": 48,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "random.entropy_error(...)"
         },
         {
           "id": "src/vitte/stdlib/std/random.vitl::random_f64",
@@ -60463,7 +61332,7 @@
           "kind": "proc",
           "signature": "proc random_f64(rng: ref mut Prng) -> f64 { give compiler_u64_to_unit_f64(next_u64(rng)); }",
           "module": "src/vitte/stdlib/std/random.vitl",
-          "line": 33,
+          "line": 49,
           "stability": "stable",
           "visibility": "public",
           "example": "random.random_f64(...)"
@@ -61319,7 +62188,7 @@
           "kind": "form",
           "signature": "form TestError { message: String file: string line: u32 }",
           "module": "src/vitte/stdlib/std/testing.vitl",
-          "line": 9,
+          "line": 10,
           "stability": "stable",
           "visibility": "public",
           "example": "testing.TestError"
@@ -61330,7 +62199,7 @@
           "kind": "form",
           "signature": "form Fixture<T> { setup: proc() -> T teardown: proc(T) }",
           "module": "src/vitte/stdlib/std/testing.vitl",
-          "line": 10,
+          "line": 11,
           "stability": "stable",
           "visibility": "public",
           "example": "testing.Fixture"
@@ -61341,7 +62210,7 @@
           "kind": "form",
           "signature": "form Snapshot { name: String value: String }",
           "module": "src/vitte/stdlib/std/testing.vitl",
-          "line": 11,
+          "line": 12,
           "stability": "stable",
           "visibility": "public",
           "example": "testing.Snapshot"
@@ -61352,7 +62221,7 @@
           "kind": "form",
           "signature": "form Case<T> { name: String value: T }",
           "module": "src/vitte/stdlib/std/testing.vitl",
-          "line": 12,
+          "line": 13,
           "stability": "stable",
           "visibility": "public",
           "example": "testing.Case"
@@ -61363,18 +62232,40 @@
           "kind": "form",
           "signature": "form TestCase { name: String run: proc() -> Result<(), TestError> }",
           "module": "src/vitte/stdlib/std/testing.vitl",
-          "line": 13,
+          "line": 14,
           "stability": "stable",
           "visibility": "public",
           "example": "testing.TestCase"
         },
         {
+          "id": "src/vitte/stdlib/std/testing.vitl::TestFilter",
+          "name": "TestFilter",
+          "kind": "form",
+          "signature": "form TestFilter { pattern: String include_ignored: bool }",
+          "module": "src/vitte/stdlib/std/testing.vitl",
+          "line": 15,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "testing.TestFilter"
+        },
+        {
+          "id": "src/vitte/stdlib/std/testing.vitl::TestRunner",
+          "name": "TestRunner",
+          "kind": "form",
+          "signature": "form TestRunner { tests: Vec<TestCase> filter: Option<TestFilter> update_snapshots: bool }",
+          "module": "src/vitte/stdlib/std/testing.vitl",
+          "line": 16,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "testing.TestRunner"
+        },
+        {
           "id": "src/vitte/stdlib/std/testing.vitl::TestReport",
           "name": "TestReport",
           "kind": "form",
-          "signature": "form TestReport { total: usize passed: usize failed: usize failures: Vec<TestError> }",
+          "signature": "form TestReport { total: usize passed: usize failed: usize skipped: usize failures: Vec<TestError> }",
           "module": "src/vitte/stdlib/std/testing.vitl",
-          "line": 14,
+          "line": 17,
           "stability": "stable",
           "visibility": "public",
           "example": "testing.TestReport"
@@ -61385,10 +62276,32 @@
           "kind": "proc",
           "signature": "proc test_error(message: String) -> TestError { give TestError { message: message, file: \"stdlib\", line: 0 }; }",
           "module": "src/vitte/stdlib/std/testing.vitl",
-          "line": 16,
+          "line": 19,
           "stability": "stable",
           "visibility": "public",
           "example": "testing.test_error(...)"
+        },
+        {
+          "id": "src/vitte/stdlib/std/testing.vitl::fixture",
+          "name": "fixture",
+          "kind": "proc",
+          "signature": "proc fixture<T>(setup: proc() -> T, teardown: proc(T)) -> Fixture<T> { give Fixture<T> { setup: setup, teardown: teardown }; }",
+          "module": "src/vitte/stdlib/std/testing.vitl",
+          "line": 20,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "testing.fixture(...)"
+        },
+        {
+          "id": "src/vitte/stdlib/std/testing.vitl::with_fixture",
+          "name": "with_fixture",
+          "kind": "proc",
+          "signature": "proc with_fixture<T>(value: Fixture<T>, body: proc(T) -> Result<(), TestError>) -> Result<(), TestError> {",
+          "module": "src/vitte/stdlib/std/testing.vitl",
+          "line": 21,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "testing.with_fixture(...)"
         },
         {
           "id": "src/vitte/stdlib/std/testing.vitl::assert_true",
@@ -61396,7 +62309,7 @@
           "kind": "proc",
           "signature": "proc assert_true(value: bool, message: String) -> Result<(), TestError> {",
           "module": "src/vitte/stdlib/std/testing.vitl",
-          "line": 17,
+          "line": 27,
           "stability": "stable",
           "visibility": "public",
           "example": "testing.assert_true(...)"
@@ -61407,7 +62320,7 @@
           "kind": "proc",
           "signature": "proc assert_eq<T>(left: T, right: T, message: String) -> Result<(), TestError> {",
           "module": "src/vitte/stdlib/std/testing.vitl",
-          "line": 21,
+          "line": 31,
           "stability": "stable",
           "visibility": "public",
           "example": "testing.assert_eq(...)"
@@ -61418,7 +62331,7 @@
           "kind": "proc",
           "signature": "proc snapshot(name: String, value: String) -> Snapshot { give Snapshot { name: name, value: value }; }",
           "module": "src/vitte/stdlib/std/testing.vitl",
-          "line": 25,
+          "line": 35,
           "stability": "stable",
           "visibility": "public",
           "example": "testing.snapshot(...)"
@@ -61429,10 +62342,54 @@
           "kind": "proc",
           "signature": "proc assert_snapshot(value: Snapshot) -> Result<(), TestError> {",
           "module": "src/vitte/stdlib/std/testing.vitl",
-          "line": 26,
+          "line": 36,
           "stability": "stable",
           "visibility": "public",
           "example": "testing.assert_snapshot(...)"
+        },
+        {
+          "id": "src/vitte/stdlib/std/testing.vitl::discover_tests",
+          "name": "discover_tests",
+          "kind": "proc",
+          "signature": "proc discover_tests(module_name: String) -> Vec<TestCase> { give compiler_test_discover(module_name); }",
+          "module": "src/vitte/stdlib/std/testing.vitl",
+          "line": 40,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "testing.discover_tests(...)"
+        },
+        {
+          "id": "src/vitte/stdlib/std/testing.vitl::test_runner",
+          "name": "test_runner",
+          "kind": "proc",
+          "signature": "proc test_runner(tests: Vec<TestCase>) -> TestRunner { give TestRunner { tests: tests, filter: none<TestFilter>(), update_snapshots: false }; }",
+          "module": "src/vitte/stdlib/std/testing.vitl",
+          "line": 41,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "testing.test_runner(...)"
+        },
+        {
+          "id": "src/vitte/stdlib/std/testing.vitl::test_filter",
+          "name": "test_filter",
+          "kind": "proc",
+          "signature": "proc test_filter(pattern: String, include_ignored: bool) -> TestFilter { give TestFilter { pattern: pattern, include_ignored: include_ignored }; }",
+          "module": "src/vitte/stdlib/std/testing.vitl",
+          "line": 42,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "testing.test_filter(...)"
+        },
+        {
+          "id": "src/vitte/stdlib/std/testing.vitl::runner_with_filter",
+          "name": "runner_with_filter",
+          "kind": "proc",
+          "signature": "proc runner_with_filter(runner: TestRunner, filter: TestFilter) -> TestRunner {",
+          "module": "src/vitte/stdlib/std/testing.vitl",
+          "line": 43,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "testing.runner_with_filter(...)"
         },
         {
           "id": "src/vitte/stdlib/std/testing.vitl::parameterized",
@@ -61440,7 +62397,7 @@
           "kind": "proc",
           "signature": "proc parameterized<T>(cases: Vec<Case<T>>, test: proc(T) -> Result<(), TestError>) -> Result<(), TestError> {",
           "module": "src/vitte/stdlib/std/testing.vitl",
-          "line": 30,
+          "line": 46,
           "stability": "stable",
           "visibility": "public",
           "example": "testing.parameterized(...)"
@@ -61451,10 +62408,21 @@
           "kind": "proc",
           "signature": "proc run_tests(cases: Vec<TestCase>) -> TestReport {",
           "module": "src/vitte/stdlib/std/testing.vitl",
-          "line": 42,
+          "line": 58,
           "stability": "stable",
           "visibility": "public",
           "example": "testing.run_tests(...)"
+        },
+        {
+          "id": "src/vitte/stdlib/std/testing.vitl::run_runner",
+          "name": "run_runner",
+          "kind": "proc",
+          "signature": "proc run_runner(runner: TestRunner) -> TestReport { give run_tests(runner.tests); }",
+          "module": "src/vitte/stdlib/std/testing.vitl",
+          "line": 74,
+          "stability": "stable",
+          "visibility": "public",
+          "example": "testing.run_runner(...)"
         }
       ]
     },

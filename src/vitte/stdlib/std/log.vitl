@@ -3,15 +3,24 @@ space vitte/stdlib/std/log
 export *
 
 use src/vitte/stdlib/alloc/string as alloc_string
+use src/vitte/stdlib/core/option as core_option
 use src/vitte/stdlib/std/io as std_io
 
 pick LogLevel { Trace Debug Info Warn Error }
+pick LogSinkKind { Writer Memory Null }
 form LogRecord { level: LogLevel target: String message: String }
-form Logger { sink: Writer min_level: LogLevel compact: bool }
+form LogSink { kind: LogSinkKind writer: Option<Writer> }
+form Logger { sink: LogSink min_level: LogLevel compact: bool }
 
-proc logger(sink: Writer, min_level: LogLevel) -> Logger { give Logger { sink: sink, min_level: min_level, compact: true }; }
+proc writer_sink(sink: Writer) -> LogSink { give LogSink { kind: LogSinkKind.Writer, writer: some<Writer>(sink) }; }
+proc null_sink() -> LogSink { give LogSink { kind: LogSinkKind.Null, writer: none<Writer>() }; }
+proc logger(sink: Writer, min_level: LogLevel) -> Logger { give Logger { sink: writer_sink(sink), min_level: min_level, compact: true }; }
+proc logger_with_sink(sink: LogSink, min_level: LogLevel, compact: bool) -> Logger { give Logger { sink: sink, min_level: min_level, compact: compact }; }
 proc log(logger_value: ref mut Logger, record: LogRecord) { compiler_log_write(logger_value, record); }
+proc log_enabled(logger_value: Logger, level: LogLevel) -> bool { give compiler_log_level_enabled(logger_value.min_level, level); }
+proc compact_record(record: LogRecord) -> String { give compiler_log_compact_record(record); }
 proc trace(logger_value: ref mut Logger, message: String) { log(logger_value, LogRecord { level: LogLevel.Trace, target: compiler_log_default_target(), message: message }); }
+proc debug(logger_value: ref mut Logger, message: String) { log(logger_value, LogRecord { level: LogLevel.Debug, target: compiler_log_default_target(), message: message }); }
 proc info(logger_value: ref mut Logger, message: String) { log(logger_value, LogRecord { level: LogLevel.Info, target: compiler_log_default_target(), message: message }); }
 proc warn(logger_value: ref mut Logger, message: String) { log(logger_value, LogRecord { level: LogLevel.Warn, target: compiler_log_default_target(), message: message }); }
 proc error(logger_value: ref mut Logger, message: String) { log(logger_value, LogRecord { level: LogLevel.Error, target: compiler_log_default_target(), message: message }); }
