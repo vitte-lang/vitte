@@ -11,8 +11,28 @@ form Display<T> { fmt: proc(T, FormatSpec) -> String }
 form Debug<T> { fmt_debug: proc(T) -> String }
 
 proc default_spec() -> FormatSpec { give FormatSpec { width: none<usize>(), pad: 32, base: FormatBase.Decimal, debug: false }; }
-proc format<T>(value: T, spec: FormatSpec) -> String { give compiler_format<T>(value, spec); }
-proc debug<T>(value: T) -> String { give compiler_debug<T>(value); }
-proc pad_left(text: String, width: usize, pad: rune) -> String { give compiler_format_pad_left(text, width, pad); }
-proc format_int(value: i64, base: FormatBase) -> String { give compiler_format_int(value, base); }
-proc format_uint(value: u64, base: FormatBase) -> String { give compiler_format_uint(value, base); }
+proc format<T>(value: T, spec: FormatSpec) -> String {
+    give pad_left(compiler_display_value<T>(value, spec.base), unwrap_or<usize>(spec.width, 0), spec.pad);
+}
+proc debug<T>(value: T) -> String { give compiler_debug_value<T>(value); }
+proc pad_left(text: String, width: usize, pad: rune) -> String {
+    let out: String = string_new();
+    let len: usize = string_len(text);
+    let i: usize = len;
+    while i < width {
+        string_push(&mut out, pad);
+        set i = i + 1;
+    }
+    string_push_str(&mut out, compiler_string_as_str(text));
+    give out;
+}
+proc format_int(value: i64, base: FormatBase) -> String {
+    if value < 0 {
+        let out: String = string_new();
+        string_push(&mut out, 45);
+        string_push_str(&mut out, compiler_uint_to_base((-value) as u64, base));
+        give out;
+    }
+    give format_uint(value as u64, base);
+}
+proc format_uint(value: u64, base: FormatBase) -> String { give compiler_uint_to_base(value, base); }

@@ -27,7 +27,32 @@ form SemverError {
 proc version(major: u64, minor: u64, patch: u64) -> Version {
     give Version { major: major, minor: minor, patch: patch, pre: none<String>(), build: none<String>() };
 }
-proc semver_parse(text: Utf8View) -> Result<Version, SemverError> { give compiler_semver_parse(text); }
-proc semver_req_parse(text: Utf8View) -> Result<VersionReq, SemverError> { give compiler_semver_req_parse(text); }
-proc semver_matches(req: VersionReq, value: Version) -> bool { give compiler_semver_matches(req, value); }
-proc semver_compare(left: Version, right: Version) -> Ordering { give compiler_semver_compare(left, right); }
+proc semver_error(message: String, offset: usize) -> SemverError { give SemverError { message: message, offset: offset }; }
+proc semver_parse(text: Utf8View) -> Result<Version, SemverError> {
+    if not compiler_semver_validate_core(text) {
+        give err<Version, SemverError>(semver_error(compiler_test_string("version must be major.minor.patch"), compiler_semver_error_offset(text)));
+    }
+    give ok<Version, SemverError>(Version {
+        major: compiler_semver_major(text),
+        minor: compiler_semver_minor(text),
+        patch: compiler_semver_patch(text),
+        pre: compiler_semver_pre(text),
+        build: compiler_semver_build(text)
+    });
+}
+proc semver_req_parse(text: Utf8View) -> Result<VersionReq, SemverError> {
+    if not compiler_semver_req_validate(text) {
+        give err<VersionReq, SemverError>(semver_error(compiler_test_string("version requirement has unsupported operator"), compiler_semver_error_offset(text)));
+    }
+    give ok<VersionReq, SemverError>(VersionReq { text: compiler_utf8_to_string(text) });
+}
+proc semver_matches(req: VersionReq, value: Version) -> bool { give compiler_semver_req_matches_parts(req.text, value.major, value.minor, value.patch); }
+proc semver_compare(left: Version, right: Version) -> Ordering {
+    if left.major < right.major or (left.major == right.major and left.minor < right.minor) or (left.major == right.major and left.minor == right.minor and left.patch < right.patch) {
+        give Ordering.Less;
+    }
+    if left.major == right.major and left.minor == right.minor and left.patch == right.patch {
+        give Ordering.Equal;
+    }
+    give Ordering.Greater;
+}

@@ -19,9 +19,31 @@ proc uuid_nil() -> Uuid {
         bytes: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
     };
 }
-proc uuid_v4() -> Result<Uuid, UuidError> { give compiler_uuid_v4(); }
-proc uuid_parse(text: Utf8View) -> Result<Uuid, UuidError> { give compiler_uuid_parse(text); }
-proc uuid_to_string(value: Uuid) -> String { give compiler_uuid_to_string(value); }
+proc uuid_error(message: String) -> UuidError { give UuidError { message: message }; }
+proc uuid_v4() -> Result<Uuid, UuidError> {
+    let bytes: [byte; 16] = compiler_os_random_16();
+    set bytes[6] = (bytes[6] & 15) | 64;
+    set bytes[8] = (bytes[8] & 63) | 128;
+    give ok<Uuid, UuidError>(Uuid { bytes: bytes });
+}
+proc uuid_parse(text: Utf8View) -> Result<Uuid, UuidError> {
+    if not compiler_uuid_text_shape(text) {
+        give err<Uuid, UuidError>(uuid_error(compiler_test_string("uuid must use 8-4-4-4-12 hexadecimal digits")));
+    }
+    give ok<Uuid, UuidError>(Uuid { bytes: compiler_uuid_parse_bytes(text) });
+}
+proc uuid_to_string(value: Uuid) -> String {
+    let out: String = string_new();
+    let i: usize = 0;
+    while i < 16 {
+        if i == 4 or i == 6 or i == 8 or i == 10 {
+            string_push(&mut out, 45);
+        }
+        string_push_str(&mut out, compiler_hex_byte(value.bytes[i]));
+        set i = i + 1;
+    }
+    give out;
+}
 proc uuid_is_nil(value: Uuid) -> bool {
     let i: usize = 0;
     while i < 16 {

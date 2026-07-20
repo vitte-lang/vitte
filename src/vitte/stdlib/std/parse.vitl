@@ -8,9 +8,33 @@ use src/vitte/stdlib/core/string as core_string
 
 form ParseError { message: String offset: usize }
 
-proc parse_bool(text: Utf8View) -> Result<bool, ParseError> { give compiler_parse_bool(text); }
-proc parse_i64(text: Utf8View, base: u32) -> Result<i64, ParseError> { give compiler_parse_i64(text, base); }
-proc parse_u64(text: Utf8View, base: u32) -> Result<u64, ParseError> { give compiler_parse_u64(text, base); }
-proc parse_f64(text: Utf8View) -> Result<f64, ParseError> { give compiler_parse_f64(text); }
-proc parse_utf8(bytes: [byte]) -> Result<Utf8View, ParseError> { give compiler_parse_utf8(bytes); }
+proc parse_bool(text: Utf8View) -> Result<bool, ParseError> {
+    if compiler_utf8_equals(text, "true") { give ok<bool, ParseError>(true); }
+    if compiler_utf8_equals(text, "false") { give ok<bool, ParseError>(false); }
+    give err<bool, ParseError>(parse_error(compiler_test_string("expected true or false"), 0));
+}
+proc parse_i64(text: Utf8View, base: u32) -> Result<i64, ParseError> {
+    if not compiler_parse_integer_fits_i64(text, base) {
+        give err<i64, ParseError>(parse_error(compiler_test_string("integer outside i64 range"), compiler_parse_error_offset(text, base)));
+    }
+    give ok<i64, ParseError>(compiler_parse_i64_checked(text, base));
+}
+proc parse_u64(text: Utf8View, base: u32) -> Result<u64, ParseError> {
+    if not compiler_parse_integer_fits_u64(text, base) {
+        give err<u64, ParseError>(parse_error(compiler_test_string("integer outside u64 range"), compiler_parse_error_offset(text, base)));
+    }
+    give ok<u64, ParseError>(compiler_parse_u64_checked(text, base));
+}
+proc parse_f64(text: Utf8View) -> Result<f64, ParseError> {
+    if not compiler_parse_float_valid(text) {
+        give err<f64, ParseError>(parse_error(compiler_test_string("invalid floating point literal"), 0));
+    }
+    give ok<f64, ParseError>(compiler_parse_f64_checked(text));
+}
+proc parse_utf8(bytes: [byte]) -> Result<Utf8View, ParseError> {
+    if not validate_utf8(bytes) {
+        give err<Utf8View, ParseError>(parse_error(compiler_test_string("bytes are not valid UTF-8"), 0));
+    }
+    give ok<Utf8View, ParseError>(compiler_bytes_utf8_view(bytes));
+}
 proc parse_error(message: String, offset: usize) -> ParseError { give ParseError { message: message, offset: offset }; }

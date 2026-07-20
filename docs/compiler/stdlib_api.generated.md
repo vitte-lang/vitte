@@ -5701,10 +5701,13 @@ Stability: `stable`
 
 - `form Benchmark` signature `form Benchmark { name: String iterations: u64 }` example `bench.Benchmark` stability `stable`
 - `form BenchReport` signature `form BenchReport { name: String iterations: u64 nanos: u128 passed_threshold: bool }` example `bench.BenchReport` stability `stable`
+- `form BenchSuite` signature `form BenchSuite { benches: Vec<Benchmark> }` example `bench.BenchSuite` stability `stable`
+- `form BenchSuiteReport` signature `form BenchSuiteReport { reports: Vec<BenchReport> total_nanos: u128 }` example `bench.BenchSuiteReport` stability `stable`
 - `proc benchmark` signature `proc benchmark(name: String, iterations: u64) -> Benchmark { give Benchmark { name: name, iterations: iterations }; }` example `bench.benchmark(...)` stability `stable`
-- `proc run` signature `proc run(bench: Benchmark, body: proc()) -> BenchReport { give compiler_bench_run(bench, body); }` example `bench.run(...)` stability `stable`
+- `proc run` signature `proc run(bench: Benchmark, body: proc()) -> BenchReport {` example `bench.run(...)` stability `stable`
 - `proc threshold` signature `proc threshold(report: BenchReport, max_nanos: u128) -> bool { give report.nanos <= max_nanos; }` example `bench.threshold(...)` stability `stable`
-- `proc report_text` signature `proc report_text(report: BenchReport) -> String { give compiler_bench_report_text(report); }` example `bench.report_text(...)` stability `stable`
+- `proc report_text` signature `proc report_text(report: BenchReport) -> String {` example `bench.report_text(...)` stability `stable`
+- `proc run_suite` signature `proc run_suite(suite: BenchSuite, body: proc(Benchmark)) -> BenchSuiteReport {` example `bench.run_suite(...)` stability `stable`
 
 ## `src/vitte/stdlib/std/calendar.vitl`
 
@@ -5810,11 +5813,11 @@ Stability: `stable`
 - `form Display` signature `form Display<T> { fmt: proc(T, FormatSpec) -> String }` example `format.Display` stability `stable`
 - `form Debug` signature `form Debug<T> { fmt_debug: proc(T) -> String }` example `format.Debug` stability `stable`
 - `proc default_spec` signature `proc default_spec() -> FormatSpec { give FormatSpec { width: none<usize>(), pad: 32, base: FormatBase.Decimal, debug: false }; }` example `format.default_spec(...)` stability `stable`
-- `proc format` signature `proc format<T>(value: T, spec: FormatSpec) -> String { give compiler_format<T>(value, spec); }` example `format.format(...)` stability `stable`
-- `proc debug` signature `proc debug<T>(value: T) -> String { give compiler_debug<T>(value); }` example `format.debug(...)` stability `stable`
-- `proc pad_left` signature `proc pad_left(text: String, width: usize, pad: rune) -> String { give compiler_format_pad_left(text, width, pad); }` example `format.pad_left(...)` stability `stable`
-- `proc format_int` signature `proc format_int(value: i64, base: FormatBase) -> String { give compiler_format_int(value, base); }` example `format.format_int(...)` stability `stable`
-- `proc format_uint` signature `proc format_uint(value: u64, base: FormatBase) -> String { give compiler_format_uint(value, base); }` example `format.format_uint(...)` stability `stable`
+- `proc format` signature `proc format<T>(value: T, spec: FormatSpec) -> String {` example `format.format(...)` stability `stable`
+- `proc debug` signature `proc debug<T>(value: T) -> String { give compiler_debug_value<T>(value); }` example `format.debug(...)` stability `stable`
+- `proc pad_left` signature `proc pad_left(text: String, width: usize, pad: rune) -> String {` example `format.pad_left(...)` stability `stable`
+- `proc format_int` signature `proc format_int(value: i64, base: FormatBase) -> String {` example `format.format_int(...)` stability `stable`
+- `proc format_uint` signature `proc format_uint(value: u64, base: FormatBase) -> String { give compiler_uint_to_base(value, base); }` example `format.format_uint(...)` stability `stable`
 
 ## `src/vitte/stdlib/std/fs.vitl`
 
@@ -5999,11 +6002,11 @@ Stability: `stable`
 Stability: `stable`
 
 - `form ParseError` signature `form ParseError { message: String offset: usize }` example `parse.ParseError` stability `stable`
-- `proc parse_bool` signature `proc parse_bool(text: Utf8View) -> Result<bool, ParseError> { give compiler_parse_bool(text); }` example `parse.parse_bool(...)` stability `stable`
-- `proc parse_i64` signature `proc parse_i64(text: Utf8View, base: u32) -> Result<i64, ParseError> { give compiler_parse_i64(text, base); }` example `parse.parse_i64(...)` stability `stable`
-- `proc parse_u64` signature `proc parse_u64(text: Utf8View, base: u32) -> Result<u64, ParseError> { give compiler_parse_u64(text, base); }` example `parse.parse_u64(...)` stability `stable`
-- `proc parse_f64` signature `proc parse_f64(text: Utf8View) -> Result<f64, ParseError> { give compiler_parse_f64(text); }` example `parse.parse_f64(...)` stability `stable`
-- `proc parse_utf8` signature `proc parse_utf8(bytes: [byte]) -> Result<Utf8View, ParseError> { give compiler_parse_utf8(bytes); }` example `parse.parse_utf8(...)` stability `stable`
+- `proc parse_bool` signature `proc parse_bool(text: Utf8View) -> Result<bool, ParseError> {` example `parse.parse_bool(...)` stability `stable`
+- `proc parse_i64` signature `proc parse_i64(text: Utf8View, base: u32) -> Result<i64, ParseError> {` example `parse.parse_i64(...)` stability `stable`
+- `proc parse_u64` signature `proc parse_u64(text: Utf8View, base: u32) -> Result<u64, ParseError> {` example `parse.parse_u64(...)` stability `stable`
+- `proc parse_f64` signature `proc parse_f64(text: Utf8View) -> Result<f64, ParseError> {` example `parse.parse_f64(...)` stability `stable`
+- `proc parse_utf8` signature `proc parse_utf8(bytes: [byte]) -> Result<Utf8View, ParseError> {` example `parse.parse_utf8(...)` stability `stable`
 - `proc parse_error` signature `proc parse_error(message: String, offset: usize) -> ParseError { give ParseError { message: message, offset: offset }; }` example `parse.parse_error(...)` stability `stable`
 
 ## `src/vitte/stdlib/std/path.vitl`
@@ -6064,12 +6067,12 @@ Stability: `stable`
 
 - `form Prng` signature `form Prng { state: u64 }` example `random.Prng` stability `stable`
 - `form RandomError` signature `form RandomError { message: String }` example `random.RandomError` stability `stable`
-- `proc prng` signature `proc prng(seed: u64) -> Prng { give Prng { state: seed }; }` example `random.prng(...)` stability `stable`
+- `proc prng` signature `proc prng(seed: u64) -> Prng {` example `random.prng(...)` stability `stable`
 - `proc next_u64` signature `proc next_u64(rng: ref mut Prng) -> u64 {` example `random.next_u64(...)` stability `stable`
 - `proc next_bool` signature `proc next_bool(rng: ref mut Prng) -> bool { give (next_u64(rng) & 1) == 1; }` example `random.next_bool(...)` stability `stable`
 - `proc range_u64` signature `proc range_u64(rng: ref mut Prng, upper: u64) -> u64 { give next_u64(rng) % upper; }` example `random.range_u64(...)` stability `stable`
-- `proc os_entropy` signature `proc os_entropy(buffer: ref mut [byte]) -> Result<(), RandomError> { give compiler_random_os_entropy(buffer); }` example `random.os_entropy(...)` stability `stable`
-- `proc random_f64` signature `proc random_f64(rng: ref mut Prng) -> f64 { give compiler_random_u64_to_unit_f64(next_u64(rng)); }` example `random.random_f64(...)` stability `stable`
+- `proc os_entropy` signature `proc os_entropy(buffer: ref mut [byte]) -> Result<(), RandomError> {` example `random.os_entropy(...)` stability `stable`
+- `proc random_f64` signature `proc random_f64(rng: ref mut Prng) -> f64 { give compiler_u64_to_unit_f64(next_u64(rng)); }` example `random.random_f64(...)` stability `stable`
 
 ## `src/vitte/stdlib/std/serialization.vitl`
 
@@ -6099,10 +6102,11 @@ Stability: `stable`
 - `form VersionReq` signature `form VersionReq {` example `semver.VersionReq` stability `stable`
 - `form SemverError` signature `form SemverError {` example `semver.SemverError` stability `stable`
 - `proc version` signature `proc version(major: u64, minor: u64, patch: u64) -> Version {` example `semver.version(...)` stability `stable`
-- `proc semver_parse` signature `proc semver_parse(text: Utf8View) -> Result<Version, SemverError> { give compiler_semver_parse(text); }` example `semver.semver_parse(...)` stability `stable`
-- `proc semver_req_parse` signature `proc semver_req_parse(text: Utf8View) -> Result<VersionReq, SemverError> { give compiler_semver_req_parse(text); }` example `semver.semver_req_parse(...)` stability `stable`
-- `proc semver_matches` signature `proc semver_matches(req: VersionReq, value: Version) -> bool { give compiler_semver_matches(req, value); }` example `semver.semver_matches(...)` stability `stable`
-- `proc semver_compare` signature `proc semver_compare(left: Version, right: Version) -> Ordering { give compiler_semver_compare(left, right); }` example `semver.semver_compare(...)` stability `stable`
+- `proc semver_error` signature `proc semver_error(message: String, offset: usize) -> SemverError { give SemverError { message: message, offset: offset }; }` example `semver.semver_error(...)` stability `stable`
+- `proc semver_parse` signature `proc semver_parse(text: Utf8View) -> Result<Version, SemverError> {` example `semver.semver_parse(...)` stability `stable`
+- `proc semver_req_parse` signature `proc semver_req_parse(text: Utf8View) -> Result<VersionReq, SemverError> {` example `semver.semver_req_parse(...)` stability `stable`
+- `proc semver_matches` signature `proc semver_matches(req: VersionReq, value: Version) -> bool { give compiler_semver_req_matches_parts(req.text, value.major, value.minor, value.patch); }` example `semver.semver_matches(...)` stability `stable`
+- `proc semver_compare` signature `proc semver_compare(left: Version, right: Version) -> Ordering {` example `semver.semver_compare(...)` stability `stable`
 
 ## `src/vitte/stdlib/std/signal.vitl`
 
@@ -6164,11 +6168,15 @@ Stability: `stable`
 - `form Fixture` signature `form Fixture<T> { setup: proc() -> T teardown: proc(T) }` example `testing.Fixture` stability `stable`
 - `form Snapshot` signature `form Snapshot { name: String value: String }` example `testing.Snapshot` stability `stable`
 - `form Case` signature `form Case<T> { name: String value: T }` example `testing.Case` stability `stable`
-- `proc assert_true` signature `proc assert_true(value: bool, message: String) -> Result<(), TestError> { give compiler_testing_assert_true(value, message); }` example `testing.assert_true(...)` stability `stable`
-- `proc assert_eq` signature `proc assert_eq<T>(left: T, right: T, message: String) -> Result<(), TestError> { give compiler_testing_assert_eq<T>(left, right, message); }` example `testing.assert_eq(...)` stability `stable`
+- `form TestCase` signature `form TestCase { name: String run: proc() -> Result<(), TestError> }` example `testing.TestCase` stability `stable`
+- `form TestReport` signature `form TestReport { total: usize passed: usize failed: usize failures: Vec<TestError> }` example `testing.TestReport` stability `stable`
+- `proc test_error` signature `proc test_error(message: String) -> TestError { give TestError { message: message, file: "stdlib", line: 0 }; }` example `testing.test_error(...)` stability `stable`
+- `proc assert_true` signature `proc assert_true(value: bool, message: String) -> Result<(), TestError> {` example `testing.assert_true(...)` stability `stable`
+- `proc assert_eq` signature `proc assert_eq<T>(left: T, right: T, message: String) -> Result<(), TestError> {` example `testing.assert_eq(...)` stability `stable`
 - `proc snapshot` signature `proc snapshot(name: String, value: String) -> Snapshot { give Snapshot { name: name, value: value }; }` example `testing.snapshot(...)` stability `stable`
-- `proc assert_snapshot` signature `proc assert_snapshot(value: Snapshot) -> Result<(), TestError> { give compiler_testing_assert_snapshot(value); }` example `testing.assert_snapshot(...)` stability `stable`
-- `proc parameterized` signature `proc parameterized<T>(cases: Vec<Case<T>>, test: proc(T) -> Result<(), TestError>) -> Result<(), TestError> { give compiler_testing_parameterized<T>(cases, test); }` example `testing.parameterized(...)` stability `stable`
+- `proc assert_snapshot` signature `proc assert_snapshot(value: Snapshot) -> Result<(), TestError> {` example `testing.assert_snapshot(...)` stability `stable`
+- `proc parameterized` signature `proc parameterized<T>(cases: Vec<Case<T>>, test: proc(T) -> Result<(), TestError>) -> Result<(), TestError> {` example `testing.parameterized(...)` stability `stable`
+- `proc run_tests` signature `proc run_tests(cases: Vec<TestCase>) -> TestReport {` example `testing.run_tests(...)` stability `stable`
 
 ## `src/vitte/stdlib/std/thread.vitl`
 
@@ -6262,9 +6270,10 @@ Stability: `stable`
 - `form Uuid` signature `form Uuid {` example `uuid.Uuid` stability `stable`
 - `form UuidError` signature `form UuidError {` example `uuid.UuidError` stability `stable`
 - `proc uuid_nil` signature `proc uuid_nil() -> Uuid {` example `uuid.uuid_nil(...)` stability `stable`
-- `proc uuid_v4` signature `proc uuid_v4() -> Result<Uuid, UuidError> { give compiler_uuid_v4(); }` example `uuid.uuid_v4(...)` stability `stable`
-- `proc uuid_parse` signature `proc uuid_parse(text: Utf8View) -> Result<Uuid, UuidError> { give compiler_uuid_parse(text); }` example `uuid.uuid_parse(...)` stability `stable`
-- `proc uuid_to_string` signature `proc uuid_to_string(value: Uuid) -> String { give compiler_uuid_to_string(value); }` example `uuid.uuid_to_string(...)` stability `stable`
+- `proc uuid_error` signature `proc uuid_error(message: String) -> UuidError { give UuidError { message: message }; }` example `uuid.uuid_error(...)` stability `stable`
+- `proc uuid_v4` signature `proc uuid_v4() -> Result<Uuid, UuidError> {` example `uuid.uuid_v4(...)` stability `stable`
+- `proc uuid_parse` signature `proc uuid_parse(text: Utf8View) -> Result<Uuid, UuidError> {` example `uuid.uuid_parse(...)` stability `stable`
+- `proc uuid_to_string` signature `proc uuid_to_string(value: Uuid) -> String {` example `uuid.uuid_to_string(...)` stability `stable`
 - `proc uuid_is_nil` signature `proc uuid_is_nil(value: Uuid) -> bool {` example `uuid.uuid_is_nil(...)` stability `stable`
 
 ## `src/vitte/stdlib/tests/api_contracts.vit`

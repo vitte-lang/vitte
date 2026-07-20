@@ -3,11 +3,43 @@ space vitte/stdlib/std/bench
 export *
 
 use src/vitte/stdlib/alloc/string as alloc_string
+use src/vitte/stdlib/alloc/vec as alloc_vec
 
 form Benchmark { name: String iterations: u64 }
 form BenchReport { name: String iterations: u64 nanos: u128 passed_threshold: bool }
+form BenchSuite { benches: Vec<Benchmark> }
+form BenchSuiteReport { reports: Vec<BenchReport> total_nanos: u128 }
 
 proc benchmark(name: String, iterations: u64) -> Benchmark { give Benchmark { name: name, iterations: iterations }; }
-proc run(bench: Benchmark, body: proc()) -> BenchReport { give compiler_bench_run(bench, body); }
+proc run(bench: Benchmark, body: proc()) -> BenchReport {
+    let start: u128 = compiler_monotonic_nanos();
+    let i: u64 = 0;
+    while i < bench.iterations {
+        body();
+        set i = i + 1;
+    }
+    let elapsed: u128 = compiler_monotonic_nanos() - start;
+    give BenchReport { name: bench.name, iterations: bench.iterations, nanos: elapsed, passed_threshold: true };
+}
 proc threshold(report: BenchReport, max_nanos: u128) -> bool { give report.nanos <= max_nanos; }
-proc report_text(report: BenchReport) -> String { give compiler_bench_report_text(report); }
+proc report_text(report: BenchReport) -> String {
+    let out: String = string_new();
+    string_push_str(&mut out, compiler_string_as_str(report.name));
+    string_push_str(&mut out, compiler_test_string(": "));
+    string_push_str(&mut out, compiler_u128_to_decimal(report.nanos));
+    string_push_str(&mut out, compiler_test_string(" ns"));
+    give out;
+}
+proc run_suite(suite: BenchSuite, body: proc(Benchmark)) -> BenchSuiteReport {
+    let reports: Vec<BenchReport> = vec_new<BenchReport>();
+    let total: u128 = 0;
+    let index: usize = 0;
+    while index < vec_len<Benchmark>(suite.benches) {
+        let bench = unwrap<ref Benchmark>(vec_get<Benchmark>(suite.benches, index));
+        let report = run(*bench, proc() { body(*bench); });
+        set total = total + report.nanos;
+        vec_push<BenchReport>(&mut reports, report);
+        set index = index + 1;
+    }
+    give BenchSuiteReport { reports: reports, total_nanos: total };
+}

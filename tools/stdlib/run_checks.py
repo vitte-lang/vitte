@@ -1806,6 +1806,45 @@ def validate_real_vitte_implementations() -> list[ValidationResult]:
             "compiler_csv_parse(text, options)",
             "compiler_csv_write(records, options)",
         ),
+        SOURCE_STDLIB_DIR / "std" / "uuid.vitl": (
+            "compiler_uuid_v4",
+            "compiler_uuid_parse(text)",
+            "compiler_uuid_to_string(value)",
+        ),
+        SOURCE_STDLIB_DIR / "std" / "semver.vitl": (
+            "compiler_semver_parse(text)",
+            "compiler_semver_req_parse(text)",
+            "compiler_semver_matches(req, value)",
+            "compiler_semver_compare(left, right)",
+        ),
+        SOURCE_STDLIB_DIR / "std" / "format.vitl": (
+            "compiler_format<T>",
+            "compiler_debug<T>",
+            "compiler_format_pad_left",
+            "compiler_format_int",
+            "compiler_format_uint",
+        ),
+        SOURCE_STDLIB_DIR / "std" / "parse.vitl": (
+            "compiler_parse_bool",
+            "compiler_parse_i64(text, base)",
+            "compiler_parse_u64(text, base)",
+            "compiler_parse_f64(text)",
+            "compiler_parse_utf8(bytes)",
+        ),
+        SOURCE_STDLIB_DIR / "std" / "random.vitl": (
+            "compiler_random_os_entropy",
+            "compiler_random_u64_to_unit_f64",
+        ),
+        SOURCE_STDLIB_DIR / "std" / "testing.vitl": (
+            "compiler_testing_assert_true",
+            "compiler_testing_assert_eq",
+            "compiler_testing_assert_snapshot",
+            "compiler_testing_parameterized",
+        ),
+        SOURCE_STDLIB_DIR / "std" / "bench.vitl": (
+            "compiler_bench_run",
+            "compiler_bench_report_text",
+        ),
         SOURCE_STDLIB_DIR / "std" / "mime.vitl": (
             "compiler_mime_text_plain",
             "compiler_mime_application_json",

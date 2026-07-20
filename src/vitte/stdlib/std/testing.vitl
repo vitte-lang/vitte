@@ -10,9 +10,48 @@ form TestError { message: String file: string line: u32 }
 form Fixture<T> { setup: proc() -> T teardown: proc(T) }
 form Snapshot { name: String value: String }
 form Case<T> { name: String value: T }
+form TestCase { name: String run: proc() -> Result<(), TestError> }
+form TestReport { total: usize passed: usize failed: usize failures: Vec<TestError> }
 
-proc assert_true(value: bool, message: String) -> Result<(), TestError> { give compiler_testing_assert_true(value, message); }
-proc assert_eq<T>(left: T, right: T, message: String) -> Result<(), TestError> { give compiler_testing_assert_eq<T>(left, right, message); }
+proc test_error(message: String) -> TestError { give TestError { message: message, file: "stdlib", line: 0 }; }
+proc assert_true(value: bool, message: String) -> Result<(), TestError> {
+    if value { give ok<(), TestError>(() ); }
+    give err<(), TestError>(test_error(message));
+}
+proc assert_eq<T>(left: T, right: T, message: String) -> Result<(), TestError> {
+    if compiler_values_equal<T>(left, right) { give ok<(), TestError>(() ); }
+    give err<(), TestError>(test_error(message));
+}
 proc snapshot(name: String, value: String) -> Snapshot { give Snapshot { name: name, value: value }; }
-proc assert_snapshot(value: Snapshot) -> Result<(), TestError> { give compiler_testing_assert_snapshot(value); }
-proc parameterized<T>(cases: Vec<Case<T>>, test: proc(T) -> Result<(), TestError>) -> Result<(), TestError> { give compiler_testing_parameterized<T>(cases, test); }
+proc assert_snapshot(value: Snapshot) -> Result<(), TestError> {
+    if compiler_snapshot_matches(value.name, value.value) { give ok<(), TestError>(() ); }
+    give err<(), TestError>(test_error(compiler_test_string("snapshot does not match stored value")));
+}
+proc parameterized<T>(cases: Vec<Case<T>>, test: proc(T) -> Result<(), TestError>) -> Result<(), TestError> {
+    let index: usize = 0;
+    while index < vec_len<Case<T>>(cases) {
+        let case_value = unwrap<ref Case<T>>(vec_get<Case<T>>(cases, index));
+        let result = test((*case_value).value);
+        if is_err<(), TestError>(result) {
+            give result;
+        }
+        set index = index + 1;
+    }
+    give ok<(), TestError>(() );
+}
+proc run_tests(cases: Vec<TestCase>) -> TestReport {
+    let failures: Vec<TestError> = vec_new<TestError>();
+    let passed: usize = 0;
+    let index: usize = 0;
+    while index < vec_len<TestCase>(cases) {
+        let test_case = unwrap<ref TestCase>(vec_get<TestCase>(cases, index));
+        let result = ((*test_case).run)();
+        if is_ok<(), TestError>(result) {
+            set passed = passed + 1;
+        } else {
+            vec_push<TestError>(&mut failures, unwrap_err<(), TestError>(result));
+        }
+        set index = index + 1;
+    }
+    give TestReport { total: vec_len<TestCase>(cases), passed: passed, failed: vec_len<TestError>(failures), failures: failures };
+}
