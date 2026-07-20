@@ -56,13 +56,15 @@ REQUIRED_ASSERTS = {
     "recovery",
 }
 FORBIDDEN_TERMS = (
+    "invalid",
+    "failed",
     "unknown error",
     "unexpected failure",
     "something went wrong",
     "semantic problem",
     "internal issue",
 )
-CONDITIONALLY_FORBIDDEN = ("invalid", "failed")
+LEGACY_CONDITIONALLY_FORBIDDEN = ("invalid", "failed")
 PRECISE_CAUSE_WORDS = (
     "because",
     "when",
@@ -131,15 +133,18 @@ def precise_enough(text: str, term: str) -> bool:
     return any(word in lowered for word in PRECISE_CAUSE_WORDS) and len(words) >= 3
 
 
-def validate_text(text: str, location: str) -> list[str]:
+def validate_text(text: str, location: str, strict: bool = True) -> list[str]:
     lowered = text.lower()
     failures: list[str] = []
     for term in FORBIDDEN_TERMS:
+        if not strict and term in LEGACY_CONDITIONALLY_FORBIDDEN:
+            continue
         if term in lowered:
             failures.append(f"{location}: contains forbidden vague term {term!r}")
-    for term in CONDITIONALLY_FORBIDDEN:
-        if term in lowered and not precise_enough(text, term):
-            failures.append(f"{location}: uses {term!r} without a precise cause")
+    if not strict:
+        for term in LEGACY_CONDITIONALLY_FORBIDDEN:
+            if term in lowered and not precise_enough(text, term):
+                failures.append(f"{location}: uses {term!r} without a precise cause")
     return failures
 
 
@@ -194,7 +199,7 @@ def validate_catalog() -> list[str]:
         if not isinstance(title, str) or not title.strip():
             failures.append(f"{code}: title is required")
         else:
-            failures.extend(validate_text(title, f"{code}.title"))
+            failures.extend(validate_text(title, f"{code}.title", strict=False))
         if not isinstance(phase, str) or not phase:
             failures.append(f"{code}: phase is required")
         if severity not in SEVERITIES:
@@ -217,7 +222,7 @@ def validate_catalog() -> list[str]:
                 if not isinstance(value, str) or not value.strip():
                     failures.append(f"{code}: documentation.{field} is required")
                 else:
-                    failures.extend(validate_text(value, f"{code}.documentation.{field}"))
+                    failures.extend(validate_text(value, f"{code}.documentation.{field}", strict=False))
         aliases = entry.get("aliases")
         if not isinstance(aliases, list) or not aliases:
             failures.append(f"{code}: aliases must contain the registered message key")
@@ -362,10 +367,14 @@ def validate_message_style_ci_invariant_contract() -> list[str]:
         return ["catalog CI invariant failed to reject forbidden diagnostic message terms"]
 
     vague = validate_text("invalid program", "TEST.message")
-    if not any("without a precise cause" in error for error in vague):
+    if not any("forbidden vague term" in error for error in vague):
         return ["catalog CI invariant failed to reject vague diagnostic message terms"]
 
-    precise = validate_text("invalid binary literal prefix", "TEST.message")
+    failed = validate_text("failed while checking this source", "TEST.message")
+    if not any("forbidden vague term" in error for error in failed):
+        return ["catalog CI invariant failed to reject failed diagnostic message terms"]
+
+    precise = validate_text("binary literal uses a forbidden prefix", "TEST.message")
     if precise:
         return ["catalog CI invariant rejected a precise diagnostic message"]
 
