@@ -290,6 +290,8 @@ def validate_central_catalog() -> list[str]:
         seen.add(code)
         if not isinstance(title, str) or not title.strip():
             failures.append(f"{code}: title is required")
+        else:
+            failures.extend(validate_text(title, f"{code}.title"))
         if phase not in CENTRAL_PHASES:
             failures.append(f"{code}: phase must be one of {sorted(CENTRAL_PHASES)}")
         if severity not in SEVERITIES:
@@ -305,6 +307,8 @@ def validate_central_catalog() -> list[str]:
                 value = documentation.get(field)
                 if not isinstance(value, str) or not value.strip():
                     failures.append(f"{code}: documentation.{field} is required")
+                else:
+                    failures.extend(validate_text(value, f"{code}.documentation.{field}"))
         if not isinstance(tests, list) or not tests:
             failures.append(f"{code}: tests must contain at least one associated test path")
         else:
@@ -348,6 +352,22 @@ def validate_catalog_ci_invariant_contract() -> list[str]:
     ])
     if not any("tests must contain at least one associated test path" in error for error in missing_test_errors):
         return ["catalog CI invariant failed to reject diagnostics without tests"]
+
+    return []
+
+
+def validate_message_style_ci_invariant_contract() -> list[str]:
+    forbidden = validate_text("something went wrong while checking this source", "TEST.message")
+    if not any("forbidden vague term" in error for error in forbidden):
+        return ["catalog CI invariant failed to reject forbidden diagnostic message terms"]
+
+    vague = validate_text("invalid program", "TEST.message")
+    if not any("without a precise cause" in error for error in vague):
+        return ["catalog CI invariant failed to reject vague diagnostic message terms"]
+
+    precise = validate_text("invalid binary literal prefix", "TEST.message")
+    if precise:
+        return ["catalog CI invariant rejected a precise diagnostic message"]
 
     return []
 
@@ -692,6 +712,7 @@ def main() -> int:
         *validate_catalog(),
         *validate_central_catalog(),
         *validate_catalog_ci_invariant_contract(),
+        *validate_message_style_ci_invariant_contract(),
         *validate_source_shape_renderer_fixtures(),
         *validate_diagnostic_code_usage(),
         *validate_dynamic_code_guard_contract(),
