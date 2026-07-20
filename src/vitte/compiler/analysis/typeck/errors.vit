@@ -142,6 +142,52 @@ proc typeck_note(code: string, fallback: string) -> string {
     give fallback;
 }
 
+proc typeck_public_code(code: string) -> string {
+    if code == "TYPECK_E_AMBIGUOUS_METHOD" { give "TYP0211"; }
+    if code == "TYPECK_E_ARGUMENT_MISMATCH" { give "TYP0212"; }
+    if code == "TYPECK_E_ASSIGN_MISMATCH" { give "TYP0213"; }
+    if code == "TYPECK_E_BINARY_MISMATCH" { give "TYP0214"; }
+    if code == "TYPECK_E_CALL_ARITY" { give "TYP0215"; }
+    if code == "TYPECK_E_CAUSE_CHAIN_MISSING" { give "TYP0216"; }
+    if code == "TYPECK_E_COMPARE_MISMATCH" { give "TYP0217"; }
+    if code == "TYPECK_E_CONDITION_TYPE" { give "TYP0218"; }
+    if code == "TYPECK_E_CONFLICTING_IMPL" { give "TYP0219"; }
+    if code == "TYPECK_E_CONSTRAINT_CYCLE" { give "TYP0220"; }
+    if code == "TYPECK_E_GENERIC_INFERENCE" { give "TYP0221"; }
+    if code == "TYPECK_E_IF_BRANCH_MISMATCH" { give "TYP0222"; }
+    if code == "TYPECK_E_IMMUTABLE_ASSIGN" { give "TYP0223"; }
+    if code == "TYPECK_E_IMPL_MISSING_MEMBER" { give "TYP0224"; }
+    if code == "TYPECK_E_IMPL_SIGNATURE_MISMATCH" { give "TYP0225"; }
+    if code == "TYPECK_E_IMPL_UNKNOWN_TRAIT" { give "TYP0226"; }
+    if code == "TYPECK_E_INDEX_TYPE" { give "TYP0227"; }
+    if code == "TYPECK_E_INTERNAL" { give "TYP0228"; }
+    if code == "TYPECK_E_INVALID_CALL_TARGET" { give "TYP0229"; }
+    if code == "TYPECK_E_INVALID_CAST" { give "TYP0230"; }
+    if code == "TYPECK_E_INVALID_DEREF" { give "TYP0231"; }
+    if code == "TYPECK_E_INVALID_EXPR" { give "TYP0232"; }
+    if code == "TYPECK_E_INVALID_HIR" { give "TYP0233"; }
+    if code == "TYPECK_E_INVALID_INDEX_TARGET" { give "TYP0234"; }
+    if code == "TYPECK_E_MALFORMED_BINARY" { give "TYP0235"; }
+    if code == "TYPECK_E_MALFORMED_BORROW" { give "TYP0236"; }
+    if code == "TYPECK_E_MALFORMED_CAST" { give "TYP0237"; }
+    if code == "TYPECK_E_MALFORMED_IF" { give "TYP0238"; }
+    if code == "TYPECK_E_MALFORMED_INDEX" { give "TYP0239"; }
+    if code == "TYPECK_E_MALFORMED_MEMBER" { give "TYP0240"; }
+    if code == "TYPECK_E_MALFORMED_UNARY" { give "TYP0241"; }
+    if code == "TYPECK_E_MATCH_NON_EXHAUSTIVE" { give "TYP0242"; }
+    if code == "TYPECK_E_RETURN_MISMATCH" { give "TYP0243"; }
+    if code == "TYPECK_E_TRAIT_BOUND" { give "TYP0244"; }
+    if code == "TYPECK_E_UNARY_MISMATCH" { give "TYP0245"; }
+    if code == "TYPECK_E_UNKNOWN_ITEM" { give "TYP0246"; }
+    if code == "TYPECK_E_UNKNOWN_MEMBER" { give "TYP0247"; }
+    if code == "TYPECK_E_UNKNOWN_NAME" { give "TYP0248"; }
+    if code == "TYPECK_E_UNKNOWN_TYPE" { give "TYP0249"; }
+    if code == "TYPECK_E_USE_AFTER_MOVE" { give "TYP0250"; }
+    if code == "TYPECK_E_USE_BEFORE_INIT" { give "TYP0251"; }
+    if code == "TYPECK_W_UNRESOLVED_NAME" { give "TYP0252"; }
+    give code;
+}
+
 proc typeck_diagnostic_from_severity(code: string, severity: DiagnosticSeverity, message: string, span: SourceSpan) -> Diagnostic {
     if severity == DiagnosticSeverity.Fatal {
         give diagnostic_fatal(code, DiagnosticPhase.Typeck, message, span);
@@ -284,24 +330,26 @@ proc attach_typeck_labels_and_help(diagnostic: Diagnostic, labels: [string], sug
 proc typeck_diag(code: string, message: string, labels: [string], suggestion: string, span: Span, fatal: bool) -> Diagnostic {
     let source_span: SourceSpan = ast_span_to_source_span(span);
     let severity: DiagnosticSeverity = if fatal { DiagnosticSeverity.Fatal } else { DiagnosticSeverity.Error };
-    let resolved_message: string = typeck_message(code, message);
-    let resolved_help: string = typeck_help(code, suggestion);
-    let diag: Diagnostic = typeck_diagnostic_from_severity(code, severity, resolved_message, source_span);
+    let public_code: string = typeck_public_code(code);
+    let resolved_message: string = typeck_message(public_code, message);
+    let resolved_help: string = typeck_help(public_code, suggestion);
+    let diag: Diagnostic = typeck_diagnostic_from_severity(public_code, severity, resolved_message, source_span);
     give attach_typeck_labels_and_help(diag, labels, resolved_help, source_span);
 }
 
 proc typed_typeck_diag(code: string, message: string, labels: [string], suggestion: string, span: Span, severity: DiagnosticSeverity, phase: DiagnosticPhase, kind: TypeckErrorKind) -> Diagnostic {
     let source_span: SourceSpan = ast_span_to_source_span(span);
-    let resolved_message: string = typeck_message(code, message);
-    let resolved_help: string = typeck_help(code, suggestion);
+    let public_code: string = typeck_public_code(code);
+    let resolved_message: string = typeck_message(public_code, message);
+    let resolved_help: string = typeck_help(public_code, suggestion);
     let diag: Diagnostic = if severity == DiagnosticSeverity.Fatal {
-        diagnostic_fatal(code, phase, resolved_message, source_span)
+        diagnostic_fatal(public_code, phase, resolved_message, source_span)
     } elif severity == DiagnosticSeverity.Warning {
-        diagnostic_warning(code, phase, resolved_message, source_span)
+        diagnostic_warning(public_code, phase, resolved_message, source_span)
     } else {
-        diagnostic_error(code, phase, resolved_message, source_span)
+        diagnostic_error(public_code, phase, resolved_message, source_span)
     };
-    set diag = attach_typeck_context(diag, code, kind);
+    set diag = attach_typeck_context(diag, public_code, kind);
     give attach_typeck_labels_and_help(diag, labels, resolved_help, source_span);
 }
 
