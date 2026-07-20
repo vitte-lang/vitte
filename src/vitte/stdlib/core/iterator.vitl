@@ -1,0 +1,290 @@
+space vitte/stdlib/core/iterator
+
+export *
+
+pick IteratorKind {
+    Forward
+    DoubleEnded
+    ExactSize
+    Fused
+    Cloneable
+    Range
+}
+
+form SizeHint {
+    lower: usize
+    upper: Option<usize>
+}
+
+form Iterator<T> {
+    next_item: proc(ref mut Iterator<T>) -> Option<T>
+    hint: SizeHint
+    kind: IteratorKind
+}
+
+form DoubleEndedIterator<T> {
+    base: Iterator<T>
+    next_back_item: proc(ref mut DoubleEndedIterator<T>) -> Option<T>
+}
+
+form ExactSizeIterator<T> {
+    base: Iterator<T>
+    length: usize
+}
+
+form FusedIterator<T> {
+    base: Iterator<T>
+    exhausted: bool
+}
+
+form CloneableIterator<T> {
+    base: Iterator<T>
+    clone_iter: proc(CloneableIterator<T>) -> CloneableIterator<T>
+}
+
+form RangeIterator<T> {
+    current: T
+    end: T
+    step: T
+}
+
+form ChainIterator<T> {
+    first: Iterator<T>
+    second: Iterator<T>
+    using_first: bool
+}
+
+form ZipIterator<T, U> {
+    left: Iterator<T>
+    right: Iterator<U>
+}
+
+form MapIterator<T, U> {
+    source: Iterator<T>
+    map_item: proc(T) -> U
+}
+
+form FilterIterator<T> {
+    source: Iterator<T>
+    keep_item: proc(T) -> bool
+}
+
+form PeekableIterator<T> {
+    source: Iterator<T>
+    peeked: Option<T>
+}
+
+proc size_hint(lower: usize, upper: Option<usize>) -> SizeHint {
+    give SizeHint {
+        lower: lower,
+        upper: upper
+    };
+}
+
+proc next<T>(iter: ref mut Iterator<T>) -> Option<T> {
+    give ((*iter).next_item)(iter);
+}
+
+proc iterator_size_hint<T>(iter: Iterator<T>) -> SizeHint {
+    give iter.hint;
+}
+
+proc count<T>(iter: Iterator<T>) -> usize {
+    give compiler_iterator_count<T>(iter);
+}
+
+proc last<T>(iter: Iterator<T>) -> Option<T> {
+    give compiler_iterator_last<T>(iter);
+}
+
+proc nth<T>(iter: ref mut Iterator<T>, index: usize) -> Option<T> {
+    give compiler_iterator_nth<T>(iter, index);
+}
+
+proc step_by<T>(iter: Iterator<T>, step: usize) -> Iterator<T> {
+    give compiler_iterator_step_by<T>(iter, step);
+}
+
+proc chain<T>(first: Iterator<T>, second: Iterator<T>) -> ChainIterator<T> {
+    give ChainIterator<T> {
+        first: first,
+        second: second,
+        using_first: true
+    };
+}
+
+proc zip<T, U>(left: Iterator<T>, right: Iterator<U>) -> ZipIterator<T, U> {
+    give ZipIterator<T, U> {
+        left: left,
+        right: right
+    };
+}
+
+proc map<T, U>(iter: Iterator<T>, f: proc(T) -> U) -> MapIterator<T, U> {
+    give MapIterator<T, U> {
+        source: iter,
+        map_item: f
+    };
+}
+
+proc filter<T>(iter: Iterator<T>, predicate: proc(T) -> bool) -> FilterIterator<T> {
+    give FilterIterator<T> {
+        source: iter,
+        keep_item: predicate
+    };
+}
+
+proc filter_map<T, U>(iter: Iterator<T>, f: proc(T) -> Option<U>) -> Iterator<U> {
+    give compiler_iterator_filter_map<T, U>(iter, f);
+}
+
+proc flat_map<T, U>(iter: Iterator<T>, f: proc(T) -> Iterator<U>) -> Iterator<U> {
+    give compiler_iterator_flat_map<T, U>(iter, f);
+}
+
+proc flatten<T>(iter: Iterator<Iterator<T>>) -> Iterator<T> {
+    give compiler_iterator_flatten<T>(iter);
+}
+
+proc enumerate<T>(iter: Iterator<T>) -> Iterator<(usize, T)> {
+    give compiler_iterator_enumerate<T>(iter);
+}
+
+proc peekable<T>(iter: Iterator<T>) -> PeekableIterator<T> {
+    give PeekableIterator<T> {
+        source: iter,
+        peeked: none<T>()
+    };
+}
+
+proc skip<T>(iter: Iterator<T>, amount: usize) -> Iterator<T> {
+    give compiler_iterator_skip<T>(iter, amount);
+}
+
+proc take<T>(iter: Iterator<T>, amount: usize) -> Iterator<T> {
+    give compiler_iterator_take<T>(iter, amount);
+}
+
+proc skip_while<T>(iter: Iterator<T>, predicate: proc(T) -> bool) -> Iterator<T> {
+    give compiler_iterator_skip_while<T>(iter, predicate);
+}
+
+proc take_while<T>(iter: Iterator<T>, predicate: proc(T) -> bool) -> Iterator<T> {
+    give compiler_iterator_take_while<T>(iter, predicate);
+}
+
+proc scan<T, S, U>(iter: Iterator<T>, state: S, f: proc(ref mut S, T) -> Option<U>) -> Iterator<U> {
+    give compiler_iterator_scan<T, S, U>(iter, state, f);
+}
+
+proc inspect<T>(iter: Iterator<T>, f: proc(T)) -> Iterator<T> {
+    give compiler_iterator_inspect<T>(iter, f);
+}
+
+proc fold<T, U>(iter: Iterator<T>, init: U, f: proc(U, T) -> U) -> U {
+    give compiler_iterator_fold<T, U>(iter, init, f);
+}
+
+proc reduce<T>(iter: Iterator<T>, f: proc(T, T) -> T) -> Option<T> {
+    give compiler_iterator_reduce<T>(iter, f);
+}
+
+proc try_fold<T, U, E>(iter: Iterator<T>, init: U, f: proc(U, T) -> Result<U, E>) -> Result<U, E> {
+    give compiler_iterator_try_fold<T, U, E>(iter, init, f);
+}
+
+proc all<T>(iter: Iterator<T>, predicate: proc(T) -> bool) -> bool {
+    give compiler_iterator_all<T>(iter, predicate);
+}
+
+proc any<T>(iter: Iterator<T>, predicate: proc(T) -> bool) -> bool {
+    give compiler_iterator_any<T>(iter, predicate);
+}
+
+proc find<T>(iter: Iterator<T>, predicate: proc(T) -> bool) -> Option<T> {
+    give compiler_iterator_find<T>(iter, predicate);
+}
+
+proc find_map<T, U>(iter: Iterator<T>, f: proc(T) -> Option<U>) -> Option<U> {
+    give compiler_iterator_find_map<T, U>(iter, f);
+}
+
+proc position<T>(iter: Iterator<T>, predicate: proc(T) -> bool) -> Option<usize> {
+    give compiler_iterator_position<T>(iter, predicate);
+}
+
+proc rposition<T>(iter: DoubleEndedIterator<T>, predicate: proc(T) -> bool) -> Option<usize> {
+    give compiler_iterator_rposition<T>(iter, predicate);
+}
+
+proc min<T>(iter: Iterator<T>) -> Option<T> {
+    give compiler_iterator_min<T>(iter);
+}
+
+proc max<T>(iter: Iterator<T>) -> Option<T> {
+    give compiler_iterator_max<T>(iter);
+}
+
+proc min_by<T>(iter: Iterator<T>, compare: proc(T, T) -> int) -> Option<T> {
+    give compiler_iterator_min_by<T>(iter, compare);
+}
+
+proc max_by<T>(iter: Iterator<T>, compare: proc(T, T) -> int) -> Option<T> {
+    give compiler_iterator_max_by<T>(iter, compare);
+}
+
+proc sum<T>(iter: Iterator<T>) -> T {
+    give compiler_iterator_sum<T>(iter);
+}
+
+proc product<T>(iter: Iterator<T>) -> T {
+    give compiler_iterator_product<T>(iter);
+}
+
+proc collect<T, C>(iter: Iterator<T>) -> C {
+    give compiler_iterator_collect<T, C>(iter);
+}
+
+proc partition<T, C>(iter: Iterator<T>, predicate: proc(T) -> bool) -> (C, C) {
+    give compiler_iterator_partition<T, C>(iter, predicate);
+}
+
+proc unzip<T, U, C, D>(iter: Iterator<(T, U)>) -> (C, D) {
+    give compiler_iterator_unzip<T, U, C, D>(iter);
+}
+
+proc double_ended<T>(iter: Iterator<T>, next_back_item: proc(ref mut DoubleEndedIterator<T>) -> Option<T>) -> DoubleEndedIterator<T> {
+    give DoubleEndedIterator<T> {
+        base: iter,
+        next_back_item: next_back_item
+    };
+}
+
+proc exact_size<T>(iter: Iterator<T>, length: usize) -> ExactSizeIterator<T> {
+    give ExactSizeIterator<T> {
+        base: iter,
+        length: length
+    };
+}
+
+proc fused<T>(iter: Iterator<T>) -> FusedIterator<T> {
+    give FusedIterator<T> {
+        base: iter,
+        exhausted: false
+    };
+}
+
+proc cloneable<T>(iter: Iterator<T>, clone_iter: proc(CloneableIterator<T>) -> CloneableIterator<T>) -> CloneableIterator<T> {
+    give CloneableIterator<T> {
+        base: iter,
+        clone_iter: clone_iter
+    };
+}
+
+proc range<T>(start: T, end: T, step: T) -> RangeIterator<T> {
+    give RangeIterator<T> {
+        current: start,
+        end: end,
+        step: step
+    };
+}

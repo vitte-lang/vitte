@@ -33,6 +33,7 @@ CORE_CONVERT_DEFAULT_CLONE_DOC = ROOT / "docs" / "compiler" / "stdlib_core_conve
 CORE_DROP_SOURCE = SOURCE_STDLIB_DIR / "core" / "drop.vitl"
 CORE_SCOPE_SOURCE = SOURCE_STDLIB_DIR / "core" / "scope.vitl"
 CORE_DROP_SCOPE_MEMORY_DOC = ROOT / "docs" / "compiler" / "stdlib_core_drop_scope_memory.md"
+CORE_ITERATOR_SOURCE = SOURCE_STDLIB_DIR / "core" / "iterator.vitl"
 
 REPORT_DIR.mkdir(parents=True, exist_ok=True)
 STDLIB_DIR.mkdir(parents=True, exist_ok=True)
@@ -61,6 +62,7 @@ REQUIRED_FILES = [
     CORE_DROP_SOURCE,
     CORE_SCOPE_SOURCE,
     CORE_DROP_SCOPE_MEMORY_DOC,
+    CORE_ITERATOR_SOURCE,
 ]
 
 
@@ -335,6 +337,59 @@ REQUIRED_MEMORY_FRAGMENTS = (
     "detect_size_compatible",
     "detect_alignment_compatible",
     "unsafe_operation_invariants",
+)
+REQUIRED_ITERATOR_FRAGMENTS = (
+    "form Iterator<T>",
+    "form SizeHint",
+    "proc next<T>",
+    "proc iterator_size_hint<T>",
+    "proc count<T>",
+    "proc last<T>",
+    "proc nth<T>",
+    "proc step_by<T>",
+    "proc chain<T>",
+    "proc zip<T, U>",
+    "proc map<T, U>",
+    "proc filter<T>",
+    "proc filter_map<T, U>",
+    "proc flat_map<T, U>",
+    "proc flatten<T>",
+    "proc enumerate<T>",
+    "proc peekable<T>",
+    "proc skip<T>",
+    "proc take<T>",
+    "proc skip_while<T>",
+    "proc take_while<T>",
+    "proc scan<T, S, U>",
+    "proc inspect<T>",
+    "proc fold<T, U>",
+    "proc reduce<T>",
+    "proc try_fold<T, U, E>",
+    "proc all<T>",
+    "proc any<T>",
+    "proc find<T>",
+    "proc find_map<T, U>",
+    "proc position<T>",
+    "proc rposition<T>",
+    "proc min<T>",
+    "proc max<T>",
+    "proc min_by<T>",
+    "proc max_by<T>",
+    "proc sum<T>",
+    "proc product<T>",
+    "proc collect<T, C>",
+    "proc partition<T, C>",
+    "proc unzip<T, U, C, D>",
+    "form DoubleEndedIterator<T>",
+    "form ExactSizeIterator<T>",
+    "form FusedIterator<T>",
+    "form CloneableIterator<T>",
+    "form RangeIterator<T>",
+    "proc double_ended<T>",
+    "proc exact_size<T>",
+    "proc fused<T>",
+    "proc cloneable<T>",
+    "proc range<T>",
 )
 
 
@@ -842,6 +897,22 @@ def validate_core_drop_scope_memory() -> list[ValidationResult]:
     ]
 
 
+def validate_core_iterator() -> list[ValidationResult]:
+    iterator_source = CORE_ITERATOR_SOURCE.read_text(encoding="utf-8")
+    missing_iterator = [
+        fragment
+        for fragment in REQUIRED_ITERATOR_FRAGMENTS
+        if fragment not in iterator_source
+    ]
+    return [
+        ValidationResult(
+            name="core_iterator_defines_standard_iterator_contract",
+            status=not missing_iterator,
+            detail="ok" if not missing_iterator else ", ".join(missing_iterator),
+        ),
+    ]
+
+
 def validate_architecture(manifest: dict) -> list[ValidationResult]:
     results: list[ValidationResult] = []
     levels = architecture_levels(manifest)
@@ -941,6 +1012,7 @@ def build_report() -> dict:
     option_result_results = validate_core_option_result()
     convert_default_clone_results = validate_core_convert_default_clone()
     drop_scope_memory_results = validate_core_drop_scope_memory()
+    iterator_results = validate_core_iterator()
 
     required = validate_required_symbols(
         symbols
@@ -963,7 +1035,7 @@ def build_report() -> dict:
     ]
     architecture_failures = [
         item
-        for item in architecture + module_results + graph_results + primitive_results + option_result_results + convert_default_clone_results + drop_scope_memory_results
+        for item in architecture + module_results + graph_results + primitive_results + option_result_results + convert_default_clone_results + drop_scope_memory_results + iterator_results
         if not item.status
     ]
 
@@ -1006,7 +1078,7 @@ def build_report() -> dict:
         ],
         "architecture_results": [
             asdict(item)
-            for item in architecture + module_results + graph_results + primitive_results + option_result_results + convert_default_clone_results + drop_scope_memory_results
+            for item in architecture + module_results + graph_results + primitive_results + option_result_results + convert_default_clone_results + drop_scope_memory_results + iterator_results
         ],
         "required_symbols": [
             asdict(item)
