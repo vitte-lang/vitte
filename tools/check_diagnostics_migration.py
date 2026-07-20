@@ -39,6 +39,23 @@ CATCH_ALL_RE = re.compile(
     r")\b",
     re.IGNORECASE,
 )
+UNSTRUCTURED_DIAGNOSTIC_RE = re.compile(
+    r"\b(?:"
+    r"form\s+(?:FrontendDiagnostic|AnalysisDiagnostic|CBackendDiagnostic|TypeDiagnostic)\b|"
+    r"(?:freeform|raw|legacy)_(?:error|warning|diagnostic)\s*\(|"
+    r"(?:error|warning|fatal)_message\s*:\s*string"
+    r")"
+)
+STRUCTURED_DIAGNOSTIC_ALLOWLIST = {
+    "src/vitte/compiler/frontend/diagnostics.vit",
+    "src/vitte/compiler/frontend/pipeline.vit",
+    "src/vitte/compiler/frontend/lexer/literals.vit",
+    "src/vitte/compiler/analysis/report.vit",
+    "src/vitte/compiler/backend/c/diagnostics.vit",
+    "src/vitte/compiler/middle/typecheck/diagnostics.vit",
+    "src/vitte/compiler/diagnostics/diagnostic.vit",
+}
+
 def rel(path: Path) -> str:
     return path.relative_to(ROOT).as_posix()
 
@@ -117,6 +134,17 @@ def validate_review_rule() -> list[str]:
         if item not in text
     ]
 
+def validate_no_unstructured_diagnostics() -> list[str]:
+    failures: list[str] = []
+    for path in compiler_sources():
+        path_rel = rel(path)
+        if path_rel in STRUCTURED_DIAGNOSTIC_ALLOWLIST:
+            continue
+        text = path.read_text(encoding="utf-8")
+        if UNSTRUCTURED_DIAGNOSTIC_RE.search(text):
+            failures.append(f"unstructured diagnostic shape is forbidden outside canonical adapters: {path_rel}")
+    return failures
+
 
 def main() -> int:
     baseline = json.loads(BASELINE.read_text(encoding="utf-8"))
@@ -126,6 +154,7 @@ def main() -> int:
     failures.extend(compare_counts("legacy diagnostic call", count_by_file(LEGACY_CALL_RE), baseline.get("legacy_call_sites", {})))
     failures.extend(compare_counts("direct diagnostic message concatenation", count_by_file(DIRECT_CONCAT_RE), baseline.get("direct_message_concat_sites", {})))
     failures.extend(compare_counts("catch-all diagnostic message", count_by_file(CATCH_ALL_RE), baseline.get("catch_all_messages", {})))
+    failures.extend(validate_no_unstructured_diagnostics())
 
     if failures:
         for failure in failures:

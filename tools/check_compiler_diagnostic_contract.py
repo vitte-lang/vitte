@@ -28,6 +28,7 @@ DIAGNOSTIC_LSP = COMPILER_ROOT / "diagnostics" / "lsp.vit"
 DIAGNOSTIC_SARIF = COMPILER_ROOT / "diagnostics" / "sarif.vit"
 BACKEND_DIAGNOSTICS = COMPILER_ROOT / "backend" / "diagnostics.vit"
 MIDDLE_TYPECHECK_DIAGNOSTICS = COMPILER_ROOT / "middle" / "typecheck" / "diagnostics.vit"
+DIAGNOSTICS_MIGRATION_CHECK = ROOT / "tools" / "check_diagnostics_migration.py"
 
 DIRECT_OUTPUT = re.compile(r"\b(?:print|printf|fprintf|eprintf|fputs|fwrite|fputc)\s*\(")
 VAGUE_DRIVER_MESSAGES = (
@@ -510,6 +511,9 @@ def check_relational_diagnostic_contract() -> list[str]:
         (CANONICAL_DIAGNOSTIC, "give \"IR0039\";"),
         (CANONICAL_DIAGNOSTIC, "IR_E_INVALID_TERMINATOR"),
         (CANONICAL_DIAGNOSTIC, "give \"IR0036\";"),
+        (DIAGNOSTICS_MIGRATION_CHECK, "UNSTRUCTURED_DIAGNOSTIC_RE"),
+        (DIAGNOSTICS_MIGRATION_CHECK, "STRUCTURED_DIAGNOSTIC_ALLOWLIST"),
+        (DIAGNOSTICS_MIGRATION_CHECK, "validate_no_unstructured_diagnostics"),
         (CANONICAL_DIAGNOSTIC, "why expected type is imposed:"),
         (CANONICAL_DIAGNOSTIC, "origin of obtained type:"),
         (CANONICAL_DIAGNOSTIC, "give 3 as u64;"),
