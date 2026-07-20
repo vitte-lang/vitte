@@ -38,6 +38,9 @@ CORE_RANGE_SOURCE = SOURCE_STDLIB_DIR / "core" / "range.vitl"
 CORE_NUMBER_SOURCE = SOURCE_STDLIB_DIR / "core" / "number.vitl"
 CORE_FLOAT_SOURCE = SOURCE_STDLIB_DIR / "core" / "float.vitl"
 CORE_MATH_SOURCE = SOURCE_STDLIB_DIR / "core" / "math.vitl"
+CORE_STRING_SOURCE = SOURCE_STDLIB_DIR / "core" / "string.vitl"
+CORE_ASCII_SOURCE = SOURCE_STDLIB_DIR / "core" / "ascii.vitl"
+CORE_UNICODE_SOURCE = SOURCE_STDLIB_DIR / "core" / "unicode.vitl"
 
 REPORT_DIR.mkdir(parents=True, exist_ok=True)
 STDLIB_DIR.mkdir(parents=True, exist_ok=True)
@@ -71,6 +74,9 @@ REQUIRED_FILES = [
     CORE_NUMBER_SOURCE,
     CORE_FLOAT_SOURCE,
     CORE_MATH_SOURCE,
+    CORE_STRING_SOURCE,
+    CORE_ASCII_SOURCE,
+    CORE_UNICODE_SOURCE,
 ]
 
 
@@ -540,6 +546,71 @@ REQUIRED_MATH_FRAGMENTS = (
     "proc fma",
     "portable_math_",
     "compiler_math_intrinsic_available",
+)
+REQUIRED_STRING_FRAGMENTS = (
+    "form Utf8View",
+    "form CharIndex",
+    "form SplitOnce",
+    "pick StringOrdering",
+    "form Utf8Decode",
+    "proc utf8_view",
+    "proc byte_length",
+    "proc char_length",
+    "proc bytes",
+    "proc chars",
+    "proc char_indices",
+    "proc lines",
+    "proc split",
+    "proc split_once",
+    "proc split_whitespace",
+    "proc trim",
+    "proc trim_start",
+    "proc trim_end",
+    "proc starts_with",
+    "proc ends_with",
+    "proc contains",
+    "proc find",
+    "proc rfind",
+    "proc compare",
+    "proc equals",
+    "proc validate_utf8",
+    "proc decode_char",
+    "proc encode_utf8",
+    "proc is_char_boundary",
+    "proc checked_byte_index",
+    "proc reject_mid_char_index",
+)
+REQUIRED_ASCII_FRAGMENTS = (
+    "proc is_ascii",
+    "proc is_alphabetic",
+    "proc is_numeric",
+    "proc is_alphanumeric",
+    "proc is_whitespace",
+    "proc to_uppercase",
+    "proc to_lowercase",
+    "proc escape_ascii",
+)
+REQUIRED_UNICODE_FRAGMENTS = (
+    "const UNICODE_VERSION",
+    "const UNICODE_TABLES_GENERATED",
+    "const UNICODE_TABLE_GENERATOR",
+    "pick UnicodeCategory",
+    "form UnicodeProperties",
+    "proc unicode_version",
+    "proc unicode_tables_generated",
+    "proc unicode_table_generator",
+    "proc general_category",
+    "proc properties",
+    "proc is_alphabetic",
+    "proc is_numeric",
+    "proc is_alphanumeric",
+    "proc is_whitespace",
+    "proc is_uppercase",
+    "proc is_lowercase",
+    "proc to_uppercase",
+    "proc to_lowercase",
+    "proc to_titlecase",
+    "proc case_fold",
 )
 
 
@@ -1117,6 +1188,44 @@ def validate_core_float_math() -> list[ValidationResult]:
     ]
 
 
+def validate_core_string_ascii_unicode() -> list[ValidationResult]:
+    string_source = CORE_STRING_SOURCE.read_text(encoding="utf-8")
+    ascii_source = CORE_ASCII_SOURCE.read_text(encoding="utf-8")
+    unicode_source = CORE_UNICODE_SOURCE.read_text(encoding="utf-8")
+    missing_string = [
+        fragment
+        for fragment in REQUIRED_STRING_FRAGMENTS
+        if fragment not in string_source
+    ]
+    missing_ascii = [
+        fragment
+        for fragment in REQUIRED_ASCII_FRAGMENTS
+        if fragment not in ascii_source
+    ]
+    missing_unicode = [
+        fragment
+        for fragment in REQUIRED_UNICODE_FRAGMENTS
+        if fragment not in unicode_source
+    ]
+    return [
+        ValidationResult(
+            name="core_string_defines_utf8_view_contract",
+            status=not missing_string,
+            detail="ok" if not missing_string else ", ".join(missing_string),
+        ),
+        ValidationResult(
+            name="core_ascii_defines_ascii_character_contract",
+            status=not missing_ascii,
+            detail="ok" if not missing_ascii else ", ".join(missing_ascii),
+        ),
+        ValidationResult(
+            name="core_unicode_defines_versioned_unicode_tables",
+            status=not missing_unicode,
+            detail="ok" if not missing_unicode else ", ".join(missing_unicode),
+        ),
+    ]
+
+
 def validate_architecture(manifest: dict) -> list[ValidationResult]:
     results: list[ValidationResult] = []
     levels = architecture_levels(manifest)
@@ -1219,6 +1328,7 @@ def build_report() -> dict:
     iterator_results = validate_core_iterator()
     range_number_results = validate_core_range_number()
     float_math_results = validate_core_float_math()
+    string_ascii_unicode_results = validate_core_string_ascii_unicode()
 
     required = validate_required_symbols(
         symbols
@@ -1241,7 +1351,7 @@ def build_report() -> dict:
     ]
     architecture_failures = [
         item
-        for item in architecture + module_results + graph_results + primitive_results + option_result_results + convert_default_clone_results + drop_scope_memory_results + iterator_results + range_number_results + float_math_results
+        for item in architecture + module_results + graph_results + primitive_results + option_result_results + convert_default_clone_results + drop_scope_memory_results + iterator_results + range_number_results + float_math_results + string_ascii_unicode_results
         if not item.status
     ]
 
@@ -1284,7 +1394,7 @@ def build_report() -> dict:
         ],
         "architecture_results": [
             asdict(item)
-            for item in architecture + module_results + graph_results + primitive_results + option_result_results + convert_default_clone_results + drop_scope_memory_results + iterator_results + range_number_results + float_math_results
+            for item in architecture + module_results + graph_results + primitive_results + option_result_results + convert_default_clone_results + drop_scope_memory_results + iterator_results + range_number_results + float_math_results + string_ascii_unicode_results
         ],
         "required_symbols": [
             asdict(item)

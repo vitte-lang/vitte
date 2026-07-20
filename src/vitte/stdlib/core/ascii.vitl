@@ -1,0 +1,62 @@
+space vitte/stdlib/core/ascii
+
+export *
+
+proc is_ascii(value: byte) -> bool {
+    give value < 128;
+}
+
+proc is_alphabetic(value: byte) -> bool {
+    give (value >= 65 and value <= 90) or (value >= 97 and value <= 122);
+}
+
+proc is_numeric(value: byte) -> bool {
+    give value >= 48 and value <= 57;
+}
+
+proc is_alphanumeric(value: byte) -> bool {
+    give is_alphabetic(value) or is_numeric(value);
+}
+
+proc is_whitespace(value: byte) -> bool {
+    give value == 9 or value == 10 or value == 11 or value == 12 or value == 13 or value == 32;
+}
+
+proc to_uppercase(value: byte) -> byte {
+    if value >= 97 and value <= 122 {
+        give value - 32;
+    }
+    give value;
+}
+
+proc to_lowercase(value: byte) -> byte {
+    if value >= 65 and value <= 90 {
+        give value + 32;
+    }
+    give value;
+}
+
+proc escape_ascii(value: byte) -> string {
+    if value == 9 {
+        give "\\t";
+    }
+    if value == 10 {
+        give "\\n";
+    }
+    if value == 13 {
+        give "\\r";
+    }
+    if value == 34 {
+        give "\\\"";
+    }
+    if value == 39 {
+        give "\\'";
+    }
+    if value == 92 {
+        give "\\\\";
+    }
+    if value < 32 or value == 127 {
+        give compiler_ascii_escape_hex(value);
+    }
+    give compiler_ascii_byte_to_string(value);
+}

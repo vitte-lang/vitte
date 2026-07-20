@@ -1,0 +1,145 @@
+space vitte/stdlib/core/string
+
+export *
+
+form Utf8View {
+    text: string
+    byte_len: usize
+    char_len: usize
+}
+
+form CharIndex {
+    byte_index: usize
+    value: rune
+}
+
+form SplitOnce {
+    found: bool
+    before: Utf8View
+    after: Utf8View
+}
+
+pick StringOrdering {
+    Less
+    Equal
+    Greater
+}
+
+form Utf8Decode {
+    ok: bool
+    value: rune
+    width: usize
+}
+
+proc utf8_view(text: string) -> Utf8View {
+    give Utf8View {
+        text: text,
+        byte_len: byte_length(text),
+        char_len: char_length(text)
+    };
+}
+
+proc byte_length(text: string) -> usize {
+    give compiler_string_byte_length(text);
+}
+
+proc char_length(text: string) -> usize {
+    give compiler_string_char_length(text);
+}
+
+proc bytes(view: Utf8View) -> Iterator<byte> {
+    give compiler_string_bytes(view.text);
+}
+
+proc chars(view: Utf8View) -> Iterator<rune> {
+    give compiler_string_chars(view.text);
+}
+
+proc char_indices(view: Utf8View) -> Iterator<CharIndex> {
+    give compiler_string_char_indices(view.text);
+}
+
+proc lines(view: Utf8View) -> Iterator<Utf8View> {
+    give compiler_string_lines(view.text);
+}
+
+proc split(view: Utf8View, separator: string) -> Iterator<Utf8View> {
+    give compiler_string_split(view.text, separator);
+}
+
+proc split_once(view: Utf8View, separator: string) -> SplitOnce {
+    give compiler_string_split_once(view.text, separator);
+}
+
+proc split_whitespace(view: Utf8View) -> Iterator<Utf8View> {
+    give compiler_string_split_whitespace(view.text);
+}
+
+proc trim(view: Utf8View) -> Utf8View {
+    give utf8_view(compiler_string_trim(view.text));
+}
+
+proc trim_start(view: Utf8View) -> Utf8View {
+    give utf8_view(compiler_string_trim_start(view.text));
+}
+
+proc trim_end(view: Utf8View) -> Utf8View {
+    give utf8_view(compiler_string_trim_end(view.text));
+}
+
+proc starts_with(view: Utf8View, prefix: string) -> bool {
+    give compiler_string_starts_with(view.text, prefix);
+}
+
+proc ends_with(view: Utf8View, suffix: string) -> bool {
+    give compiler_string_ends_with(view.text, suffix);
+}
+
+proc contains(view: Utf8View, needle: string) -> bool {
+    give compiler_string_contains(view.text, needle);
+}
+
+proc find(view: Utf8View, needle: string) -> Option<usize> {
+    give compiler_string_find(view.text, needle);
+}
+
+proc rfind(view: Utf8View, needle: string) -> Option<usize> {
+    give compiler_string_rfind(view.text, needle);
+}
+
+proc compare(left: Utf8View, right: Utf8View) -> StringOrdering {
+    give compiler_string_compare(left.text, right.text);
+}
+
+proc equals(left: Utf8View, right: Utf8View) -> bool {
+    give compare(left, right) == StringOrdering.Equal;
+}
+
+proc validate_utf8(bytes_value: [byte]) -> bool {
+    give compiler_utf8_validate(bytes_value);
+}
+
+proc decode_char(bytes_value: [byte], offset: usize) -> Utf8Decode {
+    give compiler_utf8_decode_char(bytes_value, offset);
+}
+
+proc encode_utf8(value: rune) -> [byte] {
+    give compiler_utf8_encode(value);
+}
+
+proc is_char_boundary(view: Utf8View, byte_index: usize) -> bool {
+    give compiler_string_is_char_boundary(view.text, byte_index);
+}
+
+proc checked_byte_index(view: Utf8View, byte_index: usize) -> Option<byte> {
+    if not is_char_boundary(view, byte_index) {
+        give none<byte>();
+    }
+    give compiler_string_checked_byte_index(view.text, byte_index);
+}
+
+proc reject_mid_char_index(view: Utf8View, byte_index: usize) {
+    if not is_char_boundary(view, byte_index) {
+        panic("string byte index must be on a UTF-8 character boundary");
+    }
+}
