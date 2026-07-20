@@ -3,6 +3,7 @@ space vitte/stdlib/std/serialization
 export *
 
 use src/vitte/stdlib/alloc/string as alloc_string
+use src/vitte/stdlib/alloc/vec as alloc_vec
 use src/vitte/stdlib/core/result as core_result
 use src/vitte/stdlib/core/string as core_string
 
@@ -50,19 +51,31 @@ proc json_decoder(input: Utf8View) -> Decoder {
 }
 
 proc encode_json<T>(value: T) -> Result<String, SerializationError> {
-    give compiler_json_encode<T>(value);
+    give ok<String, SerializationError>(compiler_json_encode_value<T>(value));
 }
 
 proc decode_json<T>(input: Utf8View) -> Result<T, SerializationError> {
-    give compiler_json_decode<T>(input);
+    if not compiler_json_validate(input) {
+        give err<T, SerializationError>(serialization_error(compiler_test_string("malformed JSON"), 0));
+    }
+    give compiler_json_decode_checked<T>(input);
 }
 
 proc json_value(input: Utf8View) -> Result<JsonValue, SerializationError> {
-    give compiler_json_value(input);
+    if not compiler_json_validate(input) {
+        give err<JsonValue, SerializationError>(serialization_error(compiler_test_string("malformed JSON"), 0));
+    }
+    give ok<JsonValue, SerializationError>(JsonValue {
+        kind: compiler_json_kind(input),
+        text: compiler_utf8_to_string(input)
+    });
 }
 
 proc write_json_string(encoder: ref mut Encoder, value: String) -> Result<(), SerializationError> {
-    give compiler_json_write_string(encoder, value);
+    string_push_str(&mut ((*encoder).output), compiler_test_string("\""));
+    string_push_str(&mut ((*encoder).output), compiler_json_escape(value));
+    string_push_str(&mut ((*encoder).output), compiler_test_string("\""));
+    give ok<(), SerializationError>(());
 }
 
 proc write_json_field<T>(encoder: ref mut Encoder, name: String, value: T) -> Result<(), SerializationError> {

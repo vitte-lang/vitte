@@ -25,5 +25,18 @@ form Base64Error {
 
 proc base64_standard() -> Base64Config { give Base64Config { alphabet: Base64Alphabet.Standard, padding: true }; }
 proc base64_url_safe() -> Base64Config { give Base64Config { alphabet: Base64Alphabet.UrlSafe, padding: false }; }
-proc base64_encode(bytes: [byte], config: Base64Config) -> String { give compiler_base64_encode(bytes, config); }
-proc base64_decode(text: Utf8View, config: Base64Config) -> Result<Vec<byte>, Base64Error> { give compiler_base64_decode(text, config); }
+proc base64_encode(bytes: [byte], config: Base64Config) -> String {
+    let out: String = string_new();
+    let index: usize = 0;
+    while index < compiler_slice_len<byte>(bytes) {
+        string_push_str(&mut out, compiler_base64_encode_triplet(bytes, index, config));
+        set index = index + 3;
+    }
+    give out;
+}
+proc base64_decode(text: Utf8View, config: Base64Config) -> Result<Vec<byte>, Base64Error> {
+    if not compiler_base64_validate(text, config) {
+        give err<Vec<byte>, Base64Error>(Base64Error { message: compiler_test_string("invalid base64 digit"), offset: compiler_base64_error_offset(text, config) });
+    }
+    give ok<Vec<byte>, Base64Error>(compiler_base64_decode_checked(text, config));
+}

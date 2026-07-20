@@ -3300,6 +3300,36 @@ Stability: `stable`
 - `proc box_as_mut` signature `proc box_as_mut<T>(boxed: ref mut Box<T>) -> ref mut T { give compiler_box_as_mut<T>(boxed); }` example `box.box_as_mut(...)` stability `stable`
 - `proc box_drop` signature `proc box_drop<T>(boxed: Box<T>) { compiler_box_drop<T>(boxed); }` example `box.box_drop(...)` stability `stable`
 
+## `src/vitte/stdlib/alloc/btree.vitl`
+
+Stability: `stable`
+
+- `proc btree_map_new` signature `proc btree_map_new<K, V>() -> BTreeMap<K, V> { give alloc_collections.btreemap_new<K, V>(); }` example `btree.btree_map_new(...)` stability `stable`
+- `proc btree_map_insert` signature `proc btree_map_insert<K, V>(map: ref mut BTreeMap<K, V>, key: K, value: V) -> Option<V> { give alloc_collections.btreemap_insert<K, V>(map, key, value); }` example `btree.btree_map_insert(...)` stability `stable`
+- `proc btree_map_get` signature `proc btree_map_get<K, V>(map: ref BTreeMap<K, V>, key: K) -> Option<ref V> { give alloc_collections.btreemap_get<K, V>(map, key); }` example `btree.btree_map_get(...)` stability `stable`
+- `proc btree_map_remove` signature `proc btree_map_remove<K, V>(map: ref mut BTreeMap<K, V>, key: K) -> Option<V> { give alloc_collections.btreemap_remove<K, V>(map, key); }` example `btree.btree_map_remove(...)` stability `stable`
+- `proc btree_set_new` signature `proc btree_set_new<T>() -> BTreeSet<T> { give alloc_collections.btreeset_new<T>(); }` example `btree.btree_set_new(...)` stability `stable`
+
+## `src/vitte/stdlib/alloc/deque.vitl`
+
+Stability: `stable`
+
+- `proc deque_new` signature `proc deque_new<T>() -> Deque<T> { give alloc_collections.deque_new<T>(); }` example `deque.deque_new(...)` stability `stable`
+- `proc deque_push_back` signature `proc deque_push_back<T>(deque: ref mut Deque<T>, value: T) { alloc_collections.deque_push_back<T>(deque, value); }` example `deque.deque_push_back(...)` stability `stable`
+- `proc deque_push_front` signature `proc deque_push_front<T>(deque: ref mut Deque<T>, value: T) { alloc_collections.deque_push_front<T>(deque, value); }` example `deque.deque_push_front(...)` stability `stable`
+- `proc deque_pop_back` signature `proc deque_pop_back<T>(deque: ref mut Deque<T>) -> Option<T> { give alloc_collections.deque_pop_back<T>(deque); }` example `deque.deque_pop_back(...)` stability `stable`
+- `proc deque_pop_front` signature `proc deque_pop_front<T>(deque: ref mut Deque<T>) -> Option<T> { give alloc_collections.deque_pop_front<T>(deque); }` example `deque.deque_pop_front(...)` stability `stable`
+- `proc deque_len` signature `proc deque_len<T>(deque: Deque<T>) -> usize { give alloc_collections.deque_len<T>(deque); }` example `deque.deque_len(...)` stability `stable`
+
+## `src/vitte/stdlib/alloc/smallvec.vitl`
+
+Stability: `stable`
+
+- `proc smallvec_new` signature `proc smallvec_new<T, N>() -> SmallVec<T, N> { give alloc_collections.smallvec_new<T, N>(); }` example `smallvec.smallvec_new(...)` stability `stable`
+- `proc smallvec_len` signature `proc smallvec_len<T, N>(value: SmallVec<T, N>) -> usize { give alloc_collections.smallvec_len<T, N>(value); }` example `smallvec.smallvec_len(...)` stability `stable`
+- `proc smallvec_push` signature `proc smallvec_push<T, N>(value: ref mut SmallVec<T, N>, item: T) { alloc_collections.smallvec_push<T, N>(value, item); }` example `smallvec.smallvec_push(...)` stability `stable`
+- `proc smallvec_pop` signature `proc smallvec_pop<T, N>(value: ref mut SmallVec<T, N>) -> Option<T> { give alloc_collections.smallvec_pop<T, N>(value); }` example `smallvec.smallvec_pop(...)` stability `stable`
+
 ## `src/vitte/stdlib/alloc/collections.vitl`
 
 Stability: `stable`
@@ -3309,6 +3339,7 @@ Stability: `stable`
 - `form BTreeMap` signature `form BTreeMap<K, V> {` example `collections.BTreeMap` stability `stable`
 - `form BTreeSet` signature `form BTreeSet<T> {` example `collections.BTreeSet` stability `stable`
 - `form Deque` signature `form Deque<T> {` example `collections.Deque` stability `stable`
+- `form SmallVec` signature `form SmallVec<T, N> {` example `collections.SmallVec` stability `stable`
 - `proc hashmap_new` signature `proc hashmap_new<K, V>() -> HashMap<K, V> {` example `collections.hashmap_new(...)` stability `stable`
 - `proc hashmap_find_index` signature `proc hashmap_find_index<K, V>(map: ref HashMap<K, V>, key: K) -> Option<usize> {` example `collections.hashmap_find_index(...)` stability `stable`
 - `proc hashmap_insert` signature `proc hashmap_insert<K, V>(map: ref mut HashMap<K, V>, key: K, value: V) -> Option<V> {` example `collections.hashmap_insert(...)` stability `stable`
@@ -3319,21 +3350,26 @@ Stability: `stable`
 - `proc hashset_insert` signature `proc hashset_insert<T>(set: ref mut HashSet<T>, value: T) -> bool { give is_none<bool>(hashmap_insert<T, bool>(&mut ((*set).map), value, true)); }` example `collections.hashset_insert(...)` stability `stable`
 - `proc hashset_contains` signature `proc hashset_contains<T>(set: ref HashSet<T>, value: T) -> bool { give is_some<ref bool>(hashmap_get<T, bool>(&((*set).map), value)); }` example `collections.hashset_contains(...)` stability `stable`
 - `proc hashset_remove` signature `proc hashset_remove<T>(set: ref mut HashSet<T>, value: T) -> bool { give is_some<bool>(hashmap_remove<T, bool>(&mut ((*set).map), value)); }` example `collections.hashset_remove(...)` stability `stable`
-- `proc btreemap_new` signature `proc btreemap_new<K, V>() -> BTreeMap<K, V> { give compiler_btreemap_new<K, V>(); }` example `collections.btreemap_new(...)` stability `stable`
-- `proc btreemap_insert` signature `proc btreemap_insert<K, V>(map: ref mut BTreeMap<K, V>, key: K, value: V) -> Option<V> { give compiler_btreemap_insert<K, V>(map, key, value); }` example `collections.btreemap_insert(...)` stability `stable`
-- `proc btreemap_get` signature `proc btreemap_get<K, V>(map: ref BTreeMap<K, V>, key: K) -> Option<ref V> { give compiler_btreemap_get<K, V>(map, key); }` example `collections.btreemap_get(...)` stability `stable`
-- `proc btreemap_remove` signature `proc btreemap_remove<K, V>(map: ref mut BTreeMap<K, V>, key: K) -> Option<V> { give compiler_btreemap_remove<K, V>(map, key); }` example `collections.btreemap_remove(...)` stability `stable`
-- `proc btreemap_iter` signature `proc btreemap_iter<K, V>(map: BTreeMap<K, V>) -> Iterator<(K, V)> { give compiler_btreemap_iter<K, V>(map); }` example `collections.btreemap_iter(...)` stability `stable`
+- `proc btreemap_new` signature `proc btreemap_new<K, V>() -> BTreeMap<K, V> { give BTreeMap<K, V> { entries: vec_new<(K, V)>(), length: 0 }; }` example `collections.btreemap_new(...)` stability `stable`
+- `proc btreemap_find_index` signature `proc btreemap_find_index<K, V>(map: ref BTreeMap<K, V>, key: K) -> Option<usize> {` example `collections.btreemap_find_index(...)` stability `stable`
+- `proc btreemap_insert` signature `proc btreemap_insert<K, V>(map: ref mut BTreeMap<K, V>, key: K, value: V) -> Option<V> {` example `collections.btreemap_insert(...)` stability `stable`
+- `proc btreemap_get` signature `proc btreemap_get<K, V>(map: ref BTreeMap<K, V>, key: K) -> Option<ref V> {` example `collections.btreemap_get(...)` stability `stable`
+- `proc btreemap_remove` signature `proc btreemap_remove<K, V>(map: ref mut BTreeMap<K, V>, key: K) -> Option<V> {` example `collections.btreemap_remove(...)` stability `stable`
+- `proc btreemap_iter` signature `proc btreemap_iter<K, V>(map: BTreeMap<K, V>) -> Iterator<(K, V)> { give vec_iter<(K, V)>(map.entries); }` example `collections.btreemap_iter(...)` stability `stable`
 - `proc btreeset_new` signature `proc btreeset_new<T>() -> BTreeSet<T> { give BTreeSet<T> { map: btreemap_new<T, bool>() }; }` example `collections.btreeset_new(...)` stability `stable`
 - `proc btreeset_insert` signature `proc btreeset_insert<T>(set: ref mut BTreeSet<T>, value: T) -> bool { give is_none<bool>(btreemap_insert<T, bool>(&mut ((*set).map), value, true)); }` example `collections.btreeset_insert(...)` stability `stable`
 - `proc btreeset_contains` signature `proc btreeset_contains<T>(set: ref BTreeSet<T>, value: T) -> bool { give is_some<ref bool>(btreemap_get<T, bool>(&((*set).map), value)); }` example `collections.btreeset_contains(...)` stability `stable`
 - `proc btreeset_remove` signature `proc btreeset_remove<T>(set: ref mut BTreeSet<T>, value: T) -> bool { give is_some<bool>(btreemap_remove<T, bool>(&mut ((*set).map), value)); }` example `collections.btreeset_remove(...)` stability `stable`
 - `proc deque_new` signature `proc deque_new<T>() -> Deque<T> { give Deque<T> { data: vec_new<T>(), head: 0, length: 0 }; }` example `collections.deque_new(...)` stability `stable`
 - `proc deque_push_back` signature `proc deque_push_back<T>(deque: ref mut Deque<T>, value: T) { vec_push<T>(&mut ((*deque).data), value); set (*deque).length = (*deque).length + 1; }` example `collections.deque_push_back(...)` stability `stable`
-- `proc deque_push_front` signature `proc deque_push_front<T>(deque: ref mut Deque<T>, value: T) { compiler_deque_push_front<T>(deque, value); }` example `collections.deque_push_front(...)` stability `stable`
-- `proc deque_pop_back` signature `proc deque_pop_back<T>(deque: ref mut Deque<T>) -> Option<T> { give compiler_deque_pop_back<T>(deque); }` example `collections.deque_pop_back(...)` stability `stable`
-- `proc deque_pop_front` signature `proc deque_pop_front<T>(deque: ref mut Deque<T>) -> Option<T> { give compiler_deque_pop_front<T>(deque); }` example `collections.deque_pop_front(...)` stability `stable`
+- `proc deque_push_front` signature `proc deque_push_front<T>(deque: ref mut Deque<T>, value: T) { vec_insert<T>(&mut ((*deque).data), 0, value); set (*deque).length = (*deque).length + 1; }` example `collections.deque_push_front(...)` stability `stable`
+- `proc deque_pop_back` signature `proc deque_pop_back<T>(deque: ref mut Deque<T>) -> Option<T> {` example `collections.deque_pop_back(...)` stability `stable`
+- `proc deque_pop_front` signature `proc deque_pop_front<T>(deque: ref mut Deque<T>) -> Option<T> {` example `collections.deque_pop_front(...)` stability `stable`
 - `proc deque_len` signature `proc deque_len<T>(deque: Deque<T>) -> usize { give deque.length; }` example `collections.deque_len(...)` stability `stable`
+- `proc smallvec_new` signature `proc smallvec_new<T, N>() -> SmallVec<T, N> { give SmallVec<T, N> { inline_len: 0, spilled: vec_new<T>() }; }` example `collections.smallvec_new(...)` stability `stable`
+- `proc smallvec_len` signature `proc smallvec_len<T, N>(value: SmallVec<T, N>) -> usize { give value.inline_len + vec_len<T>(value.spilled); }` example `collections.smallvec_len(...)` stability `stable`
+- `proc smallvec_push` signature `proc smallvec_push<T, N>(value: ref mut SmallVec<T, N>, item: T) {` example `collections.smallvec_push(...)` stability `stable`
+- `proc smallvec_pop` signature `proc smallvec_pop<T, N>(value: ref mut SmallVec<T, N>) -> Option<T> { give vec_pop<T>(&mut ((*value).spilled)); }` example `collections.smallvec_pop(...)` stability `stable`
 
 ## `src/vitte/stdlib/alloc/rc.vitl`
 
@@ -3844,7 +3880,7 @@ Stability: `stable`
 
 Stability: `stable`
 
-- `const PUBLIC_MODULE_EXAMPLE_COUNT` signature `const PUBLIC_MODULE_EXAMPLE_COUNT: usize = 150` example `public_module_examples.PUBLIC_MODULE_EXAMPLE_COUNT` stability `stable`
+- `const PUBLIC_MODULE_EXAMPLE_COUNT` signature `const PUBLIC_MODULE_EXAMPLE_COUNT: usize = 153` example `public_module_examples.PUBLIC_MODULE_EXAMPLE_COUNT` stability `stable`
 - `const PUBLIC_MODULE_000_EXAMPLE` signature `const PUBLIC_MODULE_000_EXAMPLE: string = "src/vitte/stdlib/mod.vit"` example `public_module_examples.PUBLIC_MODULE_000_EXAMPLE` stability `stable`
 - `const PUBLIC_MODULE_001_EXAMPLE` signature `const PUBLIC_MODULE_001_EXAMPLE: string = "src/vitte/stdlib/core.vitl"` example `public_module_examples.PUBLIC_MODULE_001_EXAMPLE` stability `stable`
 - `const PUBLIC_MODULE_002_EXAMPLE` signature `const PUBLIC_MODULE_002_EXAMPLE: string = "src/vitte/stdlib/core_alias.vitl"` example `public_module_examples.PUBLIC_MODULE_002_EXAMPLE` stability `stable`
@@ -3995,6 +4031,9 @@ Stability: `stable`
 - `const PUBLIC_MODULE_147_EXAMPLE` signature `const PUBLIC_MODULE_147_EXAMPLE: string = "src/vitte/stdlib/std/uri.vitl"` example `public_module_examples.PUBLIC_MODULE_147_EXAMPLE` stability `stable`
 - `const PUBLIC_MODULE_148_EXAMPLE` signature `const PUBLIC_MODULE_148_EXAMPLE: string = "src/vitte/stdlib/std/url.vitl"` example `public_module_examples.PUBLIC_MODULE_148_EXAMPLE` stability `stable`
 - `const PUBLIC_MODULE_149_EXAMPLE` signature `const PUBLIC_MODULE_149_EXAMPLE: string = "src/vitte/stdlib/std/uuid.vitl"` example `public_module_examples.PUBLIC_MODULE_149_EXAMPLE` stability `stable`
+- `const PUBLIC_MODULE_EXTRA_158_EXAMPLE` signature `const PUBLIC_MODULE_EXTRA_158_EXAMPLE: string = "src/vitte/stdlib/alloc/btree.vitl"` example `public_module_examples.PUBLIC_MODULE_EXTRA_158_EXAMPLE` stability `stable`
+- `const PUBLIC_MODULE_EXTRA_159_EXAMPLE` signature `const PUBLIC_MODULE_EXTRA_159_EXAMPLE: string = "src/vitte/stdlib/alloc/deque.vitl"` example `public_module_examples.PUBLIC_MODULE_EXTRA_159_EXAMPLE` stability `stable`
+- `const PUBLIC_MODULE_EXTRA_160_EXAMPLE` signature `const PUBLIC_MODULE_EXTRA_160_EXAMPLE: string = "src/vitte/stdlib/alloc/smallvec.vitl"` example `public_module_examples.PUBLIC_MODULE_EXTRA_160_EXAMPLE` stability `stable`
 - `proc public_module_examples_present` signature `proc public_module_examples_present() -> bool {` example `public_module_examples.public_module_examples_present(...)` stability `stable`
 
 ## `src/vitte/stdlib/generated/unicode_tables.vitl`
@@ -5653,8 +5692,8 @@ Stability: `stable`
 - `form Base64Error` signature `form Base64Error {` example `base64.Base64Error` stability `stable`
 - `proc base64_standard` signature `proc base64_standard() -> Base64Config { give Base64Config { alphabet: Base64Alphabet.Standard, padding: true }; }` example `base64.base64_standard(...)` stability `stable`
 - `proc base64_url_safe` signature `proc base64_url_safe() -> Base64Config { give Base64Config { alphabet: Base64Alphabet.UrlSafe, padding: false }; }` example `base64.base64_url_safe(...)` stability `stable`
-- `proc base64_encode` signature `proc base64_encode(bytes: [byte], config: Base64Config) -> String { give compiler_base64_encode(bytes, config); }` example `base64.base64_encode(...)` stability `stable`
-- `proc base64_decode` signature `proc base64_decode(text: Utf8View, config: Base64Config) -> Result<Vec<byte>, Base64Error> { give compiler_base64_decode(text, config); }` example `base64.base64_decode(...)` stability `stable`
+- `proc base64_encode` signature `proc base64_encode(bytes: [byte], config: Base64Config) -> String {` example `base64.base64_encode(...)` stability `stable`
+- `proc base64_decode` signature `proc base64_decode(text: Utf8View, config: Base64Config) -> Result<Vec<byte>, Base64Error> {` example `base64.base64_decode(...)` stability `stable`
 
 ## `src/vitte/stdlib/std/bench.vitl`
 
@@ -5702,8 +5741,8 @@ Stability: `stable`
 - `form CsvRecord` signature `form CsvRecord {` example `csv.CsvRecord` stability `stable`
 - `form CsvError` signature `form CsvError {` example `csv.CsvError` stability `stable`
 - `proc csv_default_options` signature `proc csv_default_options() -> CsvOptions { give CsvOptions { delimiter: 44, has_headers: false }; }` example `csv.csv_default_options(...)` stability `stable`
-- `proc csv_parse` signature `proc csv_parse(text: Utf8View, options: CsvOptions) -> Result<Vec<CsvRecord>, CsvError> { give compiler_csv_parse(text, options); }` example `csv.csv_parse(...)` stability `stable`
-- `proc csv_write` signature `proc csv_write(records: Vec<CsvRecord>, options: CsvOptions) -> Result<String, CsvError> { give compiler_csv_write(records, options); }` example `csv.csv_write(...)` stability `stable`
+- `proc csv_parse` signature `proc csv_parse(text: Utf8View, options: CsvOptions) -> Result<Vec<CsvRecord>, CsvError> {` example `csv.csv_parse(...)` stability `stable`
+- `proc csv_write` signature `proc csv_write(records: Vec<CsvRecord>, options: CsvOptions) -> Result<String, CsvError> {` example `csv.csv_write(...)` stability `stable`
 - `proc csv_record` signature `proc csv_record(fields: Vec<String>) -> CsvRecord { give CsvRecord { fields: fields }; }` example `csv.csv_record(...)` stability `stable`
 
 ## `src/vitte/stdlib/std/diff.vitl`
@@ -5787,20 +5826,21 @@ Stability: `stable`
 - `form FsError` signature `form FsError { code: int message: string path: Path }` example `fs.FsError` stability `stable`
 - `form DirEntry` signature `form DirEntry { path: Path metadata: Metadata }` example `fs.DirEntry` stability `stable`
 - `proc path` signature `proc path(text: string) -> Path { give Path { text: text }; }` example `fs.path(...)` stability `stable`
-- `proc read` signature `proc read(path_value: Path) -> Result<Vec<byte>, FsError> { give compiler_fs_read(path_value); }` example `fs.read(...)` stability `stable`
-- `proc read_to_string` signature `proc read_to_string(path_value: Path) -> Result<String, FsError> { give compiler_fs_read_to_string(path_value); }` example `fs.read_to_string(...)` stability `stable`
-- `proc write` signature `proc write(path_value: Path, bytes: [byte]) -> Result<(), FsError> { give compiler_fs_write(path_value, bytes); }` example `fs.write(...)` stability `stable`
-- `proc create_dir_all` signature `proc create_dir_all(path_value: Path) -> Result<(), FsError> { give compiler_fs_create_dir_all(path_value); }` example `fs.create_dir_all(...)` stability `stable`
-- `proc create_dir` signature `proc create_dir(path_value: Path) -> Result<(), FsError> { give compiler_fs_create_dir(path_value); }` example `fs.create_dir(...)` stability `stable`
-- `proc remove_file` signature `proc remove_file(path_value: Path) -> Result<(), FsError> { give compiler_fs_remove_file(path_value); }` example `fs.remove_file(...)` stability `stable`
-- `proc remove_dir` signature `proc remove_dir(path_value: Path) -> Result<(), FsError> { give compiler_fs_remove_dir(path_value); }` example `fs.remove_dir(...)` stability `stable`
-- `proc rename` signature `proc rename(from: Path, to: Path) -> Result<(), FsError> { give compiler_fs_rename(from, to); }` example `fs.rename(...)` stability `stable`
-- `proc copy` signature `proc copy(from: Path, to: Path) -> Result<u64, FsError> { give compiler_fs_copy(from, to); }` example `fs.copy(...)` stability `stable`
-- `proc metadata` signature `proc metadata(path_value: Path) -> Result<Metadata, FsError> { give compiler_fs_metadata(path_value); }` example `fs.metadata(...)` stability `stable`
-- `proc permissions` signature `proc permissions(path_value: Path) -> Result<Permissions, FsError> { give compiler_fs_permissions(path_value); }` example `fs.permissions(...)` stability `stable`
-- `proc set_permissions` signature `proc set_permissions(path_value: Path, value: Permissions) -> Result<(), FsError> { give compiler_fs_set_permissions(path_value, value); }` example `fs.set_permissions(...)` stability `stable`
-- `proc read_dir` signature `proc read_dir(path_value: Path) -> Result<Iterator<DirEntry>, FsError> { give compiler_fs_read_dir(path_value); }` example `fs.read_dir(...)` stability `stable`
-- `proc exists` signature `proc exists(path_value: Path) -> bool { give compiler_fs_exists(path_value); }` example `fs.exists(...)` stability `stable`
+- `proc fs_error` signature `proc fs_error(path_value: Path, message: string) -> FsError { give FsError { code: -1, message: message, path: path_value }; }` example `fs.fs_error(...)` stability `stable`
+- `proc read` signature `proc read(path_value: Path) -> Result<Vec<byte>, FsError> { give compiler_platform_fs_read(path_value); }` example `fs.read(...)` stability `stable`
+- `proc read_to_string` signature `proc read_to_string(path_value: Path) -> Result<String, FsError> { give compiler_platform_fs_read_to_string(path_value); }` example `fs.read_to_string(...)` stability `stable`
+- `proc write` signature `proc write(path_value: Path, bytes: [byte]) -> Result<(), FsError> { give compiler_platform_fs_write(path_value, bytes); }` example `fs.write(...)` stability `stable`
+- `proc create_dir_all` signature `proc create_dir_all(path_value: Path) -> Result<(), FsError> { give compiler_platform_fs_create_dir_all(path_value); }` example `fs.create_dir_all(...)` stability `stable`
+- `proc create_dir` signature `proc create_dir(path_value: Path) -> Result<(), FsError> { give compiler_platform_fs_create_dir(path_value); }` example `fs.create_dir(...)` stability `stable`
+- `proc remove_file` signature `proc remove_file(path_value: Path) -> Result<(), FsError> { give compiler_platform_fs_remove_file(path_value); }` example `fs.remove_file(...)` stability `stable`
+- `proc remove_dir` signature `proc remove_dir(path_value: Path) -> Result<(), FsError> { give compiler_platform_fs_remove_dir(path_value); }` example `fs.remove_dir(...)` stability `stable`
+- `proc rename` signature `proc rename(from: Path, to: Path) -> Result<(), FsError> { give compiler_platform_fs_rename(from, to); }` example `fs.rename(...)` stability `stable`
+- `proc copy` signature `proc copy(from: Path, to: Path) -> Result<u64, FsError> { give compiler_platform_fs_copy(from, to); }` example `fs.copy(...)` stability `stable`
+- `proc metadata` signature `proc metadata(path_value: Path) -> Result<Metadata, FsError> { give compiler_platform_fs_metadata(path_value); }` example `fs.metadata(...)` stability `stable`
+- `proc permissions` signature `proc permissions(path_value: Path) -> Result<Permissions, FsError> { give compiler_platform_fs_permissions(path_value); }` example `fs.permissions(...)` stability `stable`
+- `proc set_permissions` signature `proc set_permissions(path_value: Path, value: Permissions) -> Result<(), FsError> { give compiler_platform_fs_set_permissions(path_value, value); }` example `fs.set_permissions(...)` stability `stable`
+- `proc read_dir` signature `proc read_dir(path_value: Path) -> Result<Iterator<DirEntry>, FsError> { give compiler_platform_fs_read_dir(path_value); }` example `fs.read_dir(...)` stability `stable`
+- `proc exists` signature `proc exists(path_value: Path) -> bool { give is_ok<Metadata, FsError>(metadata(path_value)); }` example `fs.exists(...)` stability `stable`
 
 ## `src/vitte/stdlib/std/glob.vitl`
 
@@ -5840,10 +5880,10 @@ Stability: `stable`
 - `form Response` signature `form Response {` example `http.Response` stability `stable`
 - `form HttpError` signature `form HttpError {` example `http.HttpError` stability `stable`
 - `proc headers` signature `proc headers() -> HeaderMap { give HeaderMap { values: hashmap_new<String, String>() }; }` example `http.headers(...)` stability `stable`
-- `proc request` signature `proc request(method: String, url: Url) -> Request { give compiler_http_request(method, url); }` example `http.request(...)` stability `stable`
-- `proc response` signature `proc response(status: u16) -> Response { give compiler_http_response(status); }` example `http.response(...)` stability `stable`
-- `proc http_get` signature `proc http_get(url: Url) -> Result<Response, HttpError> { give compiler_http_get(url); }` example `http.http_get(...)` stability `stable`
-- `proc http_send` signature `proc http_send(req: Request) -> Result<Response, HttpError> { give compiler_http_send(req); }` example `http.http_send(...)` stability `stable`
+- `proc request` signature `proc request(method: String, url: Url) -> Request {` example `http.request(...)` stability `stable`
+- `proc response` signature `proc response(status: u16) -> Response { give Response { status: status, headers: headers(), body: vec_new<byte>() }; }` example `http.response(...)` stability `stable`
+- `proc http_get` signature `proc http_get(url: Url) -> Result<Response, HttpError> { give http_send(request(compiler_test_string("GET"), url)); }` example `http.http_get(...)` stability `stable`
+- `proc http_send` signature `proc http_send(req: Request) -> Result<Response, HttpError> { give compiler_platform_http_send(req); }` example `http.http_send(...)` stability `stable`
 
 ## `src/vitte/stdlib/std/io.vitl`
 
@@ -5943,15 +5983,16 @@ Stability: `stable`
 - `form TcpListener` signature `form TcpListener { handle: int }` example `net.TcpListener` stability `stable`
 - `form UdpSocket` signature `form UdpSocket { handle: int }` example `net.UdpSocket` stability `stable`
 - `form NetError` signature `form NetError { message: String }` example `net.NetError` stability `stable`
-- `proc ip_addr` signature `proc ip_addr(text: String) -> Result<IpAddr, NetError> { give compiler_net_ip_addr(text); }` example `net.ip_addr(...)` stability `stable`
+- `proc net_error` signature `proc net_error(message: String) -> NetError { give NetError { message: message }; }` example `net.net_error(...)` stability `stable`
+- `proc ip_addr` signature `proc ip_addr(text: String) -> Result<IpAddr, NetError> {` example `net.ip_addr(...)` stability `stable`
 - `proc socket_addr` signature `proc socket_addr(ip: IpAddr, port: u16) -> SocketAddr { give SocketAddr { ip: ip, port: port }; }` example `net.socket_addr(...)` stability `stable`
-- `proc dns_lookup` signature `proc dns_lookup(name: String) -> Result<Vec<IpAddr>, NetError> { give compiler_net_dns_lookup(name); }` example `net.dns_lookup(...)` stability `stable`
-- `proc tcp_connect` signature `proc tcp_connect(addr: SocketAddr) -> Result<TcpStream, NetError> { give compiler_net_tcp_connect(addr); }` example `net.tcp_connect(...)` stability `stable`
-- `proc tcp_bind` signature `proc tcp_bind(addr: SocketAddr) -> Result<TcpListener, NetError> { give compiler_net_tcp_bind(addr); }` example `net.tcp_bind(...)` stability `stable`
-- `proc tcp_accept` signature `proc tcp_accept(listener: ref TcpListener) -> Result<TcpStream, NetError> { give compiler_net_tcp_accept(listener); }` example `net.tcp_accept(...)` stability `stable`
-- `proc udp_bind` signature `proc udp_bind(addr: SocketAddr) -> Result<UdpSocket, NetError> { give compiler_net_udp_bind(addr); }` example `net.udp_bind(...)` stability `stable`
-- `proc udp_send_to` signature `proc udp_send_to(socket: ref UdpSocket, bytes: [byte], addr: SocketAddr) -> Result<usize, NetError> { give compiler_net_udp_send_to(socket, bytes, addr); }` example `net.udp_send_to(...)` stability `stable`
-- `proc udp_recv_from` signature `proc udp_recv_from(socket: ref UdpSocket, buffer: ref mut [byte]) -> Result<(usize, SocketAddr), NetError> { give compiler_net_udp_recv_from(socket, buffer); }` example `net.udp_recv_from(...)` stability `stable`
+- `proc dns_lookup` signature `proc dns_lookup(name: String) -> Result<Vec<IpAddr>, NetError> { give compiler_platform_dns_lookup(name); }` example `net.dns_lookup(...)` stability `stable`
+- `proc tcp_connect` signature `proc tcp_connect(addr: SocketAddr) -> Result<TcpStream, NetError> { give compiler_platform_tcp_connect(addr); }` example `net.tcp_connect(...)` stability `stable`
+- `proc tcp_bind` signature `proc tcp_bind(addr: SocketAddr) -> Result<TcpListener, NetError> { give compiler_platform_tcp_bind(addr); }` example `net.tcp_bind(...)` stability `stable`
+- `proc tcp_accept` signature `proc tcp_accept(listener: ref TcpListener) -> Result<TcpStream, NetError> { give compiler_platform_tcp_accept(listener); }` example `net.tcp_accept(...)` stability `stable`
+- `proc udp_bind` signature `proc udp_bind(addr: SocketAddr) -> Result<UdpSocket, NetError> { give compiler_platform_udp_bind(addr); }` example `net.udp_bind(...)` stability `stable`
+- `proc udp_send_to` signature `proc udp_send_to(socket: ref UdpSocket, bytes: [byte], addr: SocketAddr) -> Result<usize, NetError> { give compiler_platform_udp_send_to(socket, bytes, addr); }` example `net.udp_send_to(...)` stability `stable`
+- `proc udp_recv_from` signature `proc udp_recv_from(socket: ref UdpSocket, buffer: ref mut [byte]) -> Result<(usize, SocketAddr), NetError> { give compiler_platform_udp_recv_from(socket, buffer); }` example `net.udp_recv_from(...)` stability `stable`
 
 ## `src/vitte/stdlib/std/parse.vitl`
 
@@ -5974,14 +6015,14 @@ Stability: `stable`
 - `form PathBuf` signature `form PathBuf { value: String absolute: bool }` example `path.PathBuf` stability `stable`
 - `proc path_buf` signature `proc path_buf(text: String) -> PathBuf { give compiler_path_buf(text); }` example `path.path_buf(...)` stability `stable`
 - `proc components` signature `proc components(path_value: PathBuf) -> Iterator<Component> { give compiler_path_components(path_value); }` example `path.components(...)` stability `stable`
-- `proc normalize` signature `proc normalize(path_value: PathBuf) -> PathBuf { give compiler_path_normalize(path_value); }` example `path.normalize(...)` stability `stable`
+- `proc normalize` signature `proc normalize(path_value: PathBuf) -> PathBuf {` example `path.normalize(...)` stability `stable`
 - `proc is_absolute` signature `proc is_absolute(path_value: PathBuf) -> bool { give path_value.absolute; }` example `path.is_absolute(...)` stability `stable`
 - `proc is_relative` signature `proc is_relative(path_value: PathBuf) -> bool { give not path_value.absolute; }` example `path.is_relative(...)` stability `stable`
-- `proc join` signature `proc join(base: PathBuf, child: PathBuf) -> PathBuf { give compiler_path_join(base, child); }` example `path.join(...)` stability `stable`
-- `proc parent` signature `proc parent(path_value: PathBuf) -> Option<PathBuf> { give compiler_path_parent(path_value); }` example `path.parent(...)` stability `stable`
-- `proc file_name` signature `proc file_name(path_value: PathBuf) -> Option<String> { give compiler_path_file_name(path_value); }` example `path.file_name(...)` stability `stable`
-- `proc extension` signature `proc extension(path_value: PathBuf) -> Option<String> { give compiler_path_extension(path_value); }` example `path.extension(...)` stability `stable`
-- `proc with_extension` signature `proc with_extension(path_value: PathBuf, ext: String) -> PathBuf { give compiler_path_with_extension(path_value, ext); }` example `path.with_extension(...)` stability `stable`
+- `proc join` signature `proc join(base: PathBuf, child: PathBuf) -> PathBuf {` example `path.join(...)` stability `stable`
+- `proc parent` signature `proc parent(path_value: PathBuf) -> Option<PathBuf> {` example `path.parent(...)` stability `stable`
+- `proc file_name` signature `proc file_name(path_value: PathBuf) -> Option<String> { give compiler_path_file_name_text(path_value.value); }` example `path.file_name(...)` stability `stable`
+- `proc extension` signature `proc extension(path_value: PathBuf) -> Option<String> { give compiler_path_extension_text(path_value.value); }` example `path.extension(...)` stability `stable`
+- `proc with_extension` signature `proc with_extension(path_value: PathBuf, ext: String) -> PathBuf {` example `path.with_extension(...)` stability `stable`
 
 ## `src/vitte/stdlib/std/percent_encoding.vitl`
 
@@ -6305,7 +6346,7 @@ Stability: `internal`
 
 Stability: `internal`
 
-- `const PUBLIC_MODULE_TEST_COUNT` signature `const PUBLIC_MODULE_TEST_COUNT: usize = 150` example `public_module_coverage.PUBLIC_MODULE_TEST_COUNT` stability `internal`
+- `const PUBLIC_MODULE_TEST_COUNT` signature `const PUBLIC_MODULE_TEST_COUNT: usize = 153` example `public_module_coverage.PUBLIC_MODULE_TEST_COUNT` stability `internal`
 - `const PUBLIC_MODULE_000_TEST` signature `const PUBLIC_MODULE_000_TEST: string = "src/vitte/stdlib/mod.vit"` example `public_module_coverage.PUBLIC_MODULE_000_TEST` stability `internal`
 - `const PUBLIC_MODULE_001_TEST` signature `const PUBLIC_MODULE_001_TEST: string = "src/vitte/stdlib/core.vitl"` example `public_module_coverage.PUBLIC_MODULE_001_TEST` stability `internal`
 - `const PUBLIC_MODULE_002_TEST` signature `const PUBLIC_MODULE_002_TEST: string = "src/vitte/stdlib/core_alias.vitl"` example `public_module_coverage.PUBLIC_MODULE_002_TEST` stability `internal`
@@ -6456,6 +6497,9 @@ Stability: `internal`
 - `const PUBLIC_MODULE_147_TEST` signature `const PUBLIC_MODULE_147_TEST: string = "src/vitte/stdlib/std/uri.vitl"` example `public_module_coverage.PUBLIC_MODULE_147_TEST` stability `internal`
 - `const PUBLIC_MODULE_148_TEST` signature `const PUBLIC_MODULE_148_TEST: string = "src/vitte/stdlib/std/url.vitl"` example `public_module_coverage.PUBLIC_MODULE_148_TEST` stability `internal`
 - `const PUBLIC_MODULE_149_TEST` signature `const PUBLIC_MODULE_149_TEST: string = "src/vitte/stdlib/std/uuid.vitl"` example `public_module_coverage.PUBLIC_MODULE_149_TEST` stability `internal`
+- `const PUBLIC_MODULE_EXTRA_158_TEST` signature `const PUBLIC_MODULE_EXTRA_158_TEST: string = "src/vitte/stdlib/alloc/btree.vitl"` example `public_module_coverage.PUBLIC_MODULE_EXTRA_158_TEST` stability `internal`
+- `const PUBLIC_MODULE_EXTRA_159_TEST` signature `const PUBLIC_MODULE_EXTRA_159_TEST: string = "src/vitte/stdlib/alloc/deque.vitl"` example `public_module_coverage.PUBLIC_MODULE_EXTRA_159_TEST` stability `internal`
+- `const PUBLIC_MODULE_EXTRA_160_TEST` signature `const PUBLIC_MODULE_EXTRA_160_TEST: string = "src/vitte/stdlib/alloc/smallvec.vitl"` example `public_module_coverage.PUBLIC_MODULE_EXTRA_160_TEST` stability `internal`
 - `proc public_module_tests_present` signature `proc public_module_tests_present() -> bool {` example `public_module_coverage.public_module_tests_present(...)` stability `internal`
 
 ## `src/vitte/stdlib/tests/range_unicode_std_contracts.vit`

@@ -6,6 +6,7 @@ use src/vitte/stdlib/alloc/string as alloc_string
 use src/vitte/stdlib/alloc/vec as alloc_vec
 use src/vitte/stdlib/alloc/collections as alloc_collections
 use src/vitte/stdlib/core/result as core_result
+use src/vitte/stdlib/std/net as std_net
 use src/vitte/stdlib/std/url as std_url
 
 form HeaderMap {
@@ -30,7 +31,9 @@ form HttpError {
 }
 
 proc headers() -> HeaderMap { give HeaderMap { values: hashmap_new<String, String>() }; }
-proc request(method: String, url: Url) -> Request { give compiler_http_request(method, url); }
-proc response(status: u16) -> Response { give compiler_http_response(status); }
-proc http_get(url: Url) -> Result<Response, HttpError> { give compiler_http_get(url); }
-proc http_send(req: Request) -> Result<Response, HttpError> { give compiler_http_send(req); }
+proc request(method: String, url: Url) -> Request {
+    give Request { method: method, url: url, headers: headers(), body: vec_new<byte>() };
+}
+proc response(status: u16) -> Response { give Response { status: status, headers: headers(), body: vec_new<byte>() }; }
+proc http_get(url: Url) -> Result<Response, HttpError> { give http_send(request(compiler_test_string("GET"), url)); }
+proc http_send(req: Request) -> Result<Response, HttpError> { give compiler_platform_http_send(req); }
