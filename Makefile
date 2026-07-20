@@ -1052,6 +1052,12 @@ frontend-ast-test:
 hir-lowering-test:
 	@bin/vitte check src/vitte/compiler/tests/hir_tests.vit
 	@python3 tools/ast_hir_lowering_audit.py
+	@python3 tools/hir_coverage_check.py
+
+.PHONY: hir-coverage
+hir-coverage:
+	@python3 tools/hir_coverage_check.py
+	@python3 tools/hir_fixture_snapshots.py
 
 .PHONY: mir-lowering-test
 mir-lowering-test:

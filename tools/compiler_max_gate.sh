@@ -59,6 +59,8 @@ else
 fi
 
 # 4) Pass contracts (audited above)
+go make hir-coverage
+
 # 5) Diagnostics quality baseline
 if [ "$MODE" = "fast" ]; then
   go make core-semantic-resolve-snapshots

@@ -2,16 +2,30 @@ space vitte/compiler/tests/hir_tests
 
 use vitte/compiler/frontend/pipeline.{ FrontendOutput, frontend_run }
 use vitte/compiler/frontend/ast.expr.{ AstExprKind }
+use vitte/compiler/frontend/ast.pattern.{ AstPatternKind }
+use vitte/compiler/analysis/sema.{ SemaResult, run_sema_hir }
+use vitte/compiler/driver/compile.{ DriverModuleSetArtifacts, analyze_source_set, driver_module_input }
 use vitte/compiler/middle/hir/lower_ast.{ lower_ast_to_hir, lower_expr_kind }
-use vitte/compiler/middle/hir.{ HirExprKind, HirItemKind, HirNominalMemberKind, HirProcParam, HirStmtKind, HirUnit, hir_expr_empty, hir_item_with_members, hir_module, hir_nominal_member, hir_proc_param, hir_unit }
+use vitte/compiler/middle/lower/hir_to_mir.{ lower_hir_to_mir }
+use vitte/compiler/middle/hir.{ HirBinding, HirBindingKind, HirExpr, HirExprKind, HirGenericParam, HirItem, HirItemKind, HirModule, HirNominalMember, HirNominalMemberKind, HirPlaceCategory, HirProcParam, HirStmt, HirStmtKind, HirTypeInfo, HirUnit, HirValueMode, SemanticDiagnostic, SemanticSeverity, hir_binding, hir_expr, hir_expr_empty, hir_generic_param_with_span, hir_item_with_members, hir_module, hir_nominal_member, hir_proc_param, hir_stmt, hir_type_info, hir_unit, semantic_diagnostic }
+use vitte/compiler/middle/mir.{ MirUnit }
 use vitte/compiler/middle/hir/builder.{ hir_builder_selftest }
 use vitte/compiler/middle/hir/control_flow.{ control_flow_selftest }
 use vitte/compiler/middle/hir/pretty.{ pretty_selftest }
 use vitte/compiler/middle/hir/validate.{ validate_hir }
-use vitte/compiler/frontend/ast.node.{ ast_span_empty }
+use vitte/compiler/frontend/ast.node.{ ast_span, ast_span_empty }
+use vitte/compiler/source/span.{ span_is_synthetic }
 
 const VERSION_TEXT: string = "middle hir tests 0.2.0"
 const BANNER_TEXT: string = "middle hir tests"
+
+proc test_hir_expr(kind: HirExprKind) -> HirExpr {
+  give hir_expr(100, ast_span("hir_surface.vit", 1, 1, 1, 2), kind, "x", "x", "", "x", 10, "local", false, HirValueMode.Value, "i32", HirPlaceCategory.Value, true, true, true, false, [], [], true);
+}
+
+proc test_hir_stmt(kind: HirStmtKind) -> HirStmt {
+  give hir_stmt(200, ast_span("hir_surface.vit", 2, 1, 2, 5), kind, "x", "x", "x", 10, "local", "i32", test_hir_expr(HirExprKind.Int), "", false, kind == HirStmtKind.Give or kind == HirStmtKind.Panic or kind == HirStmtKind.Unreachable, false, 1, [], [], [], [], true);
+}
 
 proc test_hir_lowering() -> bool {
   let source: string = "const ANSWER = 42;\nproc main() { let x = ANSWER; give x; }\n";
@@ -210,6 +224,500 @@ proc test_hir_preserves_call_generic_arguments() -> bool {
     and len(call.children) == 2;
 }
 
+proc test_hir_minimal_item_coverage() -> bool {
+  let source: string =
+    "const ANSWER: int = 42;\n" +
+    "static DEFAULT_LIMIT: int = 64;\n" +
+    "type Word = u64\n" +
+    "extern type Ctx;\n" +
+    "form Point { x: int, y: int }\n" +
+    "pick Option[T] { None, Some(T), }\n" +
+    "trait Show { proc show(self: Self) -> string; }\n" +
+    "impl Show for Point { proc show(self: Self) -> string { give \"point\"; } }\n" +
+    "proc main() -> int { give ANSWER; }\n";
+  let fe: FrontendOutput = frontend_run("hir_minimal_items.vit", source);
+  let hir: HirUnit = lower_ast_to_hir(fe);
+  if not hir.valid or len(hir.module.items) < 9 {
+    give false;
+  }
+  give hir.module.items[0].kind == HirItemKind.Const
+    and hir.module.items[1].kind == HirItemKind.Static
+    and hir.module.items[2].kind == HirItemKind.Type
+    and hir.module.items[3].kind == HirItemKind.Extern
+    and hir.module.items[4].kind == HirItemKind.Form
+    and hir.module.items[5].kind == HirItemKind.Pick
+    and hir.module.items[6].kind == HirItemKind.Trait
+    and hir.module.items[7].kind == HirItemKind.Impl
+    and hir.module.items[8].kind == HirItemKind.Proc;
+}
+
+proc test_hir_import_and_module_coverage() -> bool {
+  let source: string =
+    "space demo/app;\n" +
+    "use demo/math as math;\n" +
+    "use demo/mem.{ Arena, Slice }\n" +
+    "proc main() -> int { give 0; }\n";
+  let fe: FrontendOutput = frontend_run("hir_imports_modules.vit", source);
+  let hir: HirUnit = lower_ast_to_hir(fe);
+  if not hir.valid or len(hir.module.items) < 4 {
+    give false;
+  }
+  give hir.module.name == "hir_imports_modules.vit"
+    and hir.module.items[0].kind == HirItemKind.Space
+    and hir.module.items[1].kind == HirItemKind.Use
+    and hir.module.items[2].kind == HirItemKind.Use
+    and hir.module.items[3].kind == HirItemKind.Proc;
+}
+
+proc test_hir_function_shape_coverage() -> bool {
+  let source: string =
+    "proc no_params() -> int { give 0; }\n" +
+    "proc pair(left: int, right: int) -> int { give left; }\n";
+  let fe: FrontendOutput = frontend_run("hir_function_shapes.vit", source);
+  let hir: HirUnit = lower_ast_to_hir(fe);
+  if not hir.valid or len(hir.module.items) != 2 {
+    give false;
+  }
+  give hir.module.items[0].kind == HirItemKind.Proc
+    and hir.module.items[0].signature_param_count == 0
+    and len(hir.module.items[0].params) == 0
+    and hir.module.items[1].kind == HirItemKind.Proc
+    and hir.module.items[1].signature_param_count == 2
+    and len(hir.module.items[1].params) == 2
+    and hir.module.items[1].params[0].name == "left"
+    and hir.module.items[1].params[1].name == "right";
+}
+
+proc test_hir_return_and_extern_function_coverage() -> bool {
+  let source: string =
+    "extern C proc host_add(left: int, right: int) -> int;\n" +
+    "proc explicit() -> int { give 1; }\n" +
+    "proc implicit_block() { 1; }\n";
+  let fe: FrontendOutput = frontend_run("hir_returns_extern.vit", source);
+  let hir: HirUnit = lower_ast_to_hir(fe);
+  if not hir.valid or len(hir.module.items) != 3 {
+    give false;
+  }
+  give hir.module.items[0].kind == HirItemKind.Proc
+    and hir.module.items[0].abi == "C"
+    and hir.module.items[0].signature_param_count == 2
+    and hir.module.items[0].annotation_text == "int"
+    and hir.module.items[1].annotation_text == "int"
+    and hir.module.items[1].stmts[0].kind == HirStmtKind.Give
+    and hir.module.items[2].annotation_text == ""
+    and hir.module.items[2].stmts[0].kind == HirStmtKind.ExprStmt;
+}
+
+proc test_hir_impl_method_receiver_coverage() -> bool {
+  let source: string =
+    "form Counter { value: int }\n" +
+    "impl Counter {\n" +
+    "  proc value(self: Self) -> int { give 0; }\n" +
+    "  proc borrow_value(borrow self: Self) -> int { give 0; }\n" +
+    "  proc bump(mut self: Self) -> int { give 1; }\n" +
+    "  proc make() -> Self { give Counter { value: 0 }; }\n" +
+    "}\n";
+  let fe: FrontendOutput = frontend_run("hir_impl_receivers.vit", source);
+  let hir: HirUnit = lower_ast_to_hir(fe);
+  if not hir.valid or len(hir.module.items) != 2 {
+    give false;
+  }
+  let impl_item = hir.module.items[1];
+  if impl_item.kind != HirItemKind.Impl or len(impl_item.members) != 4 {
+    give false;
+  }
+  give impl_item.members[0].kind == HirNominalMemberKind.ImplMethod
+    and impl_item.members[0].params[0].name == "self"
+    and impl_item.members[0].params[0].annotation_text == "Self"
+    and impl_item.members[1].params[0].mode == "borrow"
+    and impl_item.members[1].params[0].borrowed
+    and impl_item.members[2].params[0].mode == "mut"
+    and impl_item.members[2].params[0].mutable
+    and impl_item.members[3].name == "make"
+    and len(impl_item.members[3].params) == 0;
+}
+
+proc test_hir_block_and_let_coverage() -> bool {
+  let source: string =
+    "proc blocks() {\n" +
+    "  {}\n" +
+    "  { let local = 1; }\n" +
+    "  { let typed: int = 2; typed; }\n" +
+    "  let simple = 1;\n" +
+    "  let mut mutable_value: int = 2;\n" +
+    "}\n";
+  let fe: FrontendOutput = frontend_run("hir_blocks_lets.vit", source);
+  let hir: HirUnit = lower_ast_to_hir(fe);
+  if not hir.valid or len(hir.module.items) != 1 or len(hir.module.items[0].stmts) < 5 {
+    give false;
+  }
+  give hir.module.items[0].stmts[0].kind == HirStmtKind.ExprStmt
+    and hir.module.items[0].stmts[0].expr.kind == HirExprKind.Block
+    and hir.module.items[0].stmts[1].expr.kind == HirExprKind.Block
+    and hir.module.items[0].stmts[2].expr.kind == HirExprKind.Block
+    and hir.module.items[0].stmts[3].kind == HirStmtKind.Let
+    and hir.module.items[0].stmts[3].name == "simple"
+    and hir.module.items[0].stmts[4].kind == HirStmtKind.Let
+    and hir.module.items[0].stmts[4].name == "mutable_value"
+    and hir.module.items[0].stmts[4].mutable
+    and hir.module.items[0].stmts[4].annotation_text == "int";
+}
+
+proc test_hir_pattern_source_coverage() -> bool {
+  let source: string =
+    "proc patterns(value: Option[int], point: Point, pair: (int, int)) {\n" +
+    "  let name = 1;\n" +
+    "  let (left, right) = pair;\n" +
+    "  let Point { x: px, y: _ } = point;\n" +
+    "  match value { case Some(1) => { let literal = 1; } else => { let _ = 0; } }\n" +
+    "}\n";
+  let fe: FrontendOutput = frontend_run("hir_patterns.vit", source);
+  if not fe.valid or len(fe.ast_root.items) != 1 {
+    give false;
+  }
+  let proc_item = fe.ast_root.items[0];
+  let hir: HirUnit = lower_ast_to_hir(fe);
+  if not hir.valid or len(hir.module.items[0].stmts) < 4 {
+    give false;
+  }
+  give proc_item.stmts[0].pattern.kind == AstPatternKind.Name
+    and proc_item.stmts[1].pattern.kind == AstPatternKind.Tuple
+    and proc_item.stmts[2].pattern.kind == AstPatternKind.Struct
+    and proc_item.stmts[3].then_stmts[0].pattern.kind == AstPatternKind.Struct
+    and proc_item.stmts[3].else_stmts[0].pattern.kind == AstPatternKind.Wildcard
+    and hir.module.items[0].stmts[0].kind == HirStmtKind.Let
+    and hir.module.items[0].stmts[1].kind == HirStmtKind.Let
+    and hir.module.items[0].stmts[2].kind == HirStmtKind.Let
+    and hir.module.items[0].stmts[3].kind == HirStmtKind.Match;
+}
+
+proc test_hir_expr_kind_surface_coverage() -> bool {
+  give test_hir_expr(HirExprKind.AddressOf).kind == HirExprKind.AddressOf
+    and test_hir_expr(HirExprKind.Alignof).kind == HirExprKind.Alignof
+    and test_hir_expr(HirExprKind.Array).kind == HirExprKind.Array
+    and test_hir_expr(HirExprKind.Assign).kind == HirExprKind.Assign
+    and test_hir_expr(HirExprKind.Await).kind == HirExprKind.Await
+    and test_hir_expr(HirExprKind.Binary).kind == HirExprKind.Binary
+    and test_hir_expr(HirExprKind.Bool).kind == HirExprKind.Bool
+    and test_hir_expr(HirExprKind.BorrowMut).kind == HirExprKind.BorrowMut
+    and test_hir_expr(HirExprKind.BorrowShared).kind == HirExprKind.BorrowShared
+    and test_hir_expr(HirExprKind.Call).kind == HirExprKind.Call
+    and test_hir_expr(HirExprKind.Cast).kind == HirExprKind.Cast
+    and test_hir_expr(HirExprKind.Char).kind == HirExprKind.Char
+    and test_hir_expr(HirExprKind.Closure).kind == HirExprKind.Closure
+    and test_hir_expr(HirExprKind.Comptime).kind == HirExprKind.Comptime
+    and test_hir_expr(HirExprKind.CompoundAssign).kind == HirExprKind.CompoundAssign
+    and test_hir_expr(HirExprKind.Deref).kind == HirExprKind.Deref
+    and test_hir_expr(HirExprKind.Float).kind == HirExprKind.Float
+    and test_hir_expr(HirExprKind.If).kind == HirExprKind.If
+    and test_hir_expr(HirExprKind.Index).kind == HirExprKind.Index
+    and test_hir_expr(HirExprKind.Int).kind == HirExprKind.Int
+    and test_hir_expr(HirExprKind.Lambda).kind == HirExprKind.Lambda
+    and test_hir_expr(HirExprKind.Macro).kind == HirExprKind.Macro
+    and test_hir_expr(HirExprKind.Match).kind == HirExprKind.Match
+    and test_hir_expr(HirExprKind.Member).kind == HirExprKind.Member
+    and test_hir_expr(HirExprKind.Move).kind == HirExprKind.Move
+    and test_hir_expr(HirExprKind.Name).kind == HirExprKind.Name
+    and test_hir_expr(HirExprKind.Nameof).kind == HirExprKind.Nameof
+    and test_hir_expr(HirExprKind.Offsetof).kind == HirExprKind.Offsetof
+    and test_hir_expr(HirExprKind.Path).kind == HirExprKind.Path
+    and test_hir_expr(HirExprKind.Range).kind == HirExprKind.Range
+    and test_hir_expr(HirExprKind.Resource).kind == HirExprKind.Resource
+    and test_hir_expr(HirExprKind.Sizeof).kind == HirExprKind.Sizeof
+    and test_hir_expr(HirExprKind.Slice).kind == HirExprKind.Slice
+    and test_hir_expr(HirExprKind.String).kind == HirExprKind.String
+    and test_hir_expr(HirExprKind.Struct).kind == HirExprKind.Struct
+    and test_hir_expr(HirExprKind.Try).kind == HirExprKind.Try
+    and test_hir_expr(HirExprKind.Tuple).kind == HirExprKind.Tuple
+    and test_hir_expr(HirExprKind.TupleIndex).kind == HirExprKind.TupleIndex
+    and test_hir_expr(HirExprKind.Typeof).kind == HirExprKind.Typeof
+    and test_hir_expr(HirExprKind.Unary).kind == HirExprKind.Unary
+    and test_hir_expr(HirExprKind.Unsafe).kind == HirExprKind.Unsafe
+    and test_hir_expr(HirExprKind.Yield).kind == HirExprKind.Yield;
+}
+
+proc test_hir_stmt_kind_surface_coverage() -> bool {
+  give test_hir_stmt(HirStmtKind.Assert).kind == HirStmtKind.Assert
+    and test_hir_stmt(HirStmtKind.Break).kind == HirStmtKind.Break
+    and test_hir_stmt(HirStmtKind.Const).kind == HirStmtKind.Const
+    and test_hir_stmt(HirStmtKind.Continue).kind == HirStmtKind.Continue
+    and test_hir_stmt(HirStmtKind.Critical).kind == HirStmtKind.Critical
+    and test_hir_stmt(HirStmtKind.Defer).kind == HirStmtKind.Defer
+    and test_hir_stmt(HirStmtKind.Emit).kind == HirStmtKind.Emit
+    and test_hir_stmt(HirStmtKind.ExprStmt).kind == HirStmtKind.ExprStmt
+    and test_hir_stmt(HirStmtKind.For).kind == HirStmtKind.For
+    and test_hir_stmt(HirStmtKind.Give).kind == HirStmtKind.Give
+    and test_hir_stmt(HirStmtKind.If).kind == HirStmtKind.If
+    and test_hir_stmt(HirStmtKind.Loop).kind == HirStmtKind.Loop
+    and test_hir_stmt(HirStmtKind.Match).kind == HirStmtKind.Match
+    and test_hir_stmt(HirStmtKind.Panic).kind == HirStmtKind.Panic
+    and test_hir_stmt(HirStmtKind.Select).kind == HirStmtKind.Select
+    and test_hir_stmt(HirStmtKind.Set).kind == HirStmtKind.Set
+    and test_hir_stmt(HirStmtKind.StaticAssert).kind == HirStmtKind.StaticAssert
+    and test_hir_stmt(HirStmtKind.Try).kind == HirStmtKind.Try
+    and test_hir_stmt(HirStmtKind.Unreachable).kind == HirStmtKind.Unreachable
+    and test_hir_stmt(HirStmtKind.Unsafe).kind == HirStmtKind.Unsafe
+    and test_hir_stmt(HirStmtKind.When).kind == HirStmtKind.When
+    and test_hir_stmt(HirStmtKind.While).kind == HirStmtKind.While
+    and test_hir_stmt(HirStmtKind.With).kind == HirStmtKind.With;
+}
+
+proc test_hir_binding_value_and_place_surface_coverage() -> bool {
+  give hir_binding(1, "local", HirBindingKind.Local, false, true, false, false, "i32").kind == HirBindingKind.Local
+    and hir_binding(2, "param", HirBindingKind.Parameter, false, true, false, false, "i32").kind == HirBindingKind.Parameter
+    and hir_binding(3, "capture", HirBindingKind.Capture, false, true, false, false, "i32").kind == HirBindingKind.Capture
+    and hir_binding(4, "global", HirBindingKind.Global, false, true, false, false, "i32").kind == HirBindingKind.Global
+    and hir_binding(5, "static", HirBindingKind.Static, false, true, false, false, "i32").kind == HirBindingKind.Static
+    and hir_binding(6, "proc", HirBindingKind.Proc, false, true, false, false, "proc").kind == HirBindingKind.Proc
+    and hir_binding(7, "type", HirBindingKind.Type, false, true, false, false, "type").kind == HirBindingKind.Type
+    and hir_binding(8, "field", HirBindingKind.Field, false, true, false, false, "i32").kind == HirBindingKind.Field
+    and hir_binding(9, "variant", HirBindingKind.Variant, false, true, false, false, "Option").kind == HirBindingKind.Variant
+    and hir_binding(10, "module", HirBindingKind.Module, false, true, false, false, "module").kind == HirBindingKind.Module
+    and hir_binding(11, "trait", HirBindingKind.Trait, false, true, false, false, "trait").kind == HirBindingKind.Trait
+    and hir_binding(12, "impl", HirBindingKind.Impl, false, true, false, false, "impl").kind == HirBindingKind.Impl
+    and test_hir_expr(HirExprKind.Int).value_mode == HirValueMode.Value
+    and hir_expr(101, ast_span_empty(), HirExprKind.Name, "x", "x", "", "x", 0, "", false, HirValueMode.Place, "i32", HirPlaceCategory.Local, true, false, true, false, [], [], true).value_mode == HirValueMode.Place
+    and hir_expr(102, ast_span_empty(), HirExprKind.Move, "move x", "x", "", "x", 0, "", false, HirValueMode.Move, "i32", HirPlaceCategory.Local, false, false, false, false, [], [], true).value_mode == HirValueMode.Move
+    and hir_expr(103, ast_span_empty(), HirExprKind.Int, "1", "", "", "", 0, "", false, HirValueMode.Copy, "i32", HirPlaceCategory.Value, true, true, false, false, [], [], true).value_mode == HirValueMode.Copy
+    and hir_expr(104, ast_span_empty(), HirExprKind.BorrowShared, "&x", "x", "", "x", 0, "", false, HirValueMode.BorrowShared, "&i32", HirPlaceCategory.Local, true, false, false, false, [], [], true).value_mode == HirValueMode.BorrowShared
+    and hir_expr(105, ast_span_empty(), HirExprKind.BorrowMut, "&mut x", "x", "", "x", 0, "", false, HirValueMode.BorrowMut, "&mut i32", HirPlaceCategory.Local, true, false, false, false, [], [], true).value_mode == HirValueMode.BorrowMut
+    and hir_expr(106, ast_span_empty(), HirExprKind.Comptime, "comptime 1", "", "", "", 0, "", false, HirValueMode.Const, "i32", HirPlaceCategory.Value, true, true, false, false, [], [], true).value_mode == HirValueMode.Const
+    and hir_expr(107, ast_span_empty(), HirExprKind.Invalid, "", "", "", "", 0, "", false, HirValueMode.Invalid, "unknown", HirPlaceCategory.Invalid, false, false, false, false, [], [], false).value_mode == HirValueMode.Invalid
+    and hir_expr(108, ast_span_empty(), HirExprKind.Member, "p.x", "x", "", "p", 0, "", false, HirValueMode.Place, "i32", HirPlaceCategory.Field, true, false, true, false, [], [], true).place_category == HirPlaceCategory.Field
+    and hir_expr(109, ast_span_empty(), HirExprKind.Index, "a[0]", "", "", "a", 0, "", false, HirValueMode.Place, "i32", HirPlaceCategory.Index, true, false, true, false, [], [], true).place_category == HirPlaceCategory.Index
+    and hir_expr(110, ast_span_empty(), HirExprKind.Deref, "*p", "", "", "p", 0, "", false, HirValueMode.Place, "i32", HirPlaceCategory.Deref, true, false, true, false, [], [], true).place_category == HirPlaceCategory.Deref
+    and hir_expr(111, ast_span_empty(), HirExprKind.Path, "GLOBAL", "GLOBAL", "", "GLOBAL", 0, "", false, HirValueMode.Place, "i32", HirPlaceCategory.Global, true, false, true, false, [], [], true).place_category == HirPlaceCategory.Global
+    and hir_expr(112, ast_span_empty(), HirExprKind.Path, "STATIC", "STATIC", "", "STATIC", 0, "", false, HirValueMode.Place, "i32", HirPlaceCategory.Static, true, false, true, false, [], [], true).place_category == HirPlaceCategory.Static
+    and hir_expr(113, ast_span_empty(), HirExprKind.Call, "make()", "", "", "", 0, "", false, HirValueMode.Value, "i32", HirPlaceCategory.Temporary, true, false, false, true, [], [], true).place_category == HirPlaceCategory.Temporary
+    and hir_expr(114, ast_span_empty(), HirExprKind.Invalid, "", "", "", "", 0, "", false, HirValueMode.Invalid, "unknown", HirPlaceCategory.Invalid, false, false, false, false, [], [], false).place_category == HirPlaceCategory.Invalid;
+}
+
+proc test_hir_span_surface_coverage() -> bool {
+  let source: string = "proc identity[T](value: int) -> int { let x: int = value; give x; }\n";
+  let fe: FrontendOutput = frontend_run("hir_spans.vit", source);
+  let hir: HirUnit = lower_ast_to_hir(fe);
+  let item = hir.module.items[0];
+  let stmt = item.stmts[0];
+  let param = item.params[0];
+  let generic_param: HirGenericParam = item.generic_param_info[0];
+  let member = hir_nominal_member(400, ast_span("hir_spans.vit", 3, 1, 3, 10), HirNominalMemberKind.Field, "field", "int", hir_expr_empty(), [], [], "", true);
+  give hir.valid
+    and item.span.valid
+    and stmt.span.valid
+    and stmt.expr.span.valid
+    and param.span.valid
+    and generic_param.span.valid
+    and member.span.valid
+    and not span_is_synthetic(item.span)
+    and not span_is_synthetic(stmt.span)
+    and not span_is_synthetic(stmt.expr.span)
+    and not span_is_synthetic(param.span)
+    and not span_is_synthetic(generic_param.span)
+    and not span_is_synthetic(member.span);
+}
+
+proc test_hir_invalid_surface_diagnostics() -> bool {
+  let bad_expr: HirExpr = hir_expr(501, ast_span("hir_invalid.vit", 1, 1, 1, 2), HirExprKind.Unknown, "", "", "", "", 0, "", false, HirValueMode.Invalid, "unknown", HirPlaceCategory.Invalid, false, false, false, false, [semantic_diagnostic("HIR_TEST_EXPR", SemanticSeverity.Error, "bad expr", ast_span("hir_invalid.vit", 1, 1, 1, 2), "expr", "note")], [], false);
+  let bad_stmt: HirStmt = hir_stmt(502, ast_span("hir_invalid.vit", 2, 1, 2, 6), HirStmtKind.Let, "", "", "", 0, "", "", bad_expr, "", false, false, false, 1, [], [], [], [], false);
+  let bad_param: HirProcParam = hir_proc_param("", "", "", false, false, false, false);
+  let bad_member = hir_nominal_member(503, ast_span("hir_invalid.vit", 3, 1, 3, 7), HirNominalMemberKind.Unknown, "", "", hir_expr_empty(), [bad_param], [], "", false);
+  let bad_generic: HirGenericParam = hir_generic_param_with_span(ast_span("hir_invalid.vit", 4, 2, 4, 3), "", "type", "", "", false);
+  let bad_item = hir_item_with_members(504, ast_span("hir_invalid.vit", 1, 1, 4, 4), HirItemKind.Proc, "", 0, "", "public", true, "", 1, ["T"], [bad_generic], [], [], 0, 0, 0, 1, 1, [bad_param], "", "", bad_expr, [bad_stmt], [bad_member], "", 0, [], false);
+  let checked: HirUnit = validate_hir(hir_unit("hir_invalid.vit", hir_module("hir_invalid.vit", [bad_item], [], 0, 0, true), 4, 0, 1, 1, 1, 1, true, false, true));
+  if checked.valid or len(checked.module.diagnostics) < 10 {
+    give false;
+  }
+  give checked.module.diagnostics[0].code != ""
+    and checked.module.diagnostics[0].severity == SemanticSeverity.Error
+    and checked.module.diagnostics[0].span.valid
+    and checked.module.diagnostics[0].note == ""
+    and checked.module.diagnostics[0].message != "";
+}
+
+proc test_hir_recovery_partial_unit_after_frontend_error() -> bool {
+  let source: string = "proc good() -> int { give 1; }\nproc bad() { @ }\nproc later() -> int { give 2; }\n";
+  let fe: FrontendOutput = frontend_run("hir_partial_error.vit", source);
+  let hir: HirUnit = lower_ast_to_hir(fe);
+  give not fe.valid
+    and not hir.valid
+    and hir.item_count == 0
+    and len(hir.module.items) == 0;
+}
+
+proc test_hir_stable_order_coverage() -> bool {
+  let source: string =
+    "const A = 1;\n" +
+    "proc first() { let a = add(1, 2); give a; }\n" +
+    "proc second() { let b = pair(3, 4); give b; }\n";
+  let fe: FrontendOutput = frontend_run("hir_stable_order.vit", source);
+  let hir: HirUnit = lower_ast_to_hir(fe);
+  let first_stmt = hir.module.items[1].stmts[0];
+  give hir.valid
+    and hir.module.items[0].name == "A"
+    and hir.module.items[1].name == "first"
+    and hir.module.items[2].name == "second"
+    and hir.module.items[1].stmts[0].name == "a"
+    and hir.module.items[1].stmts[1].kind == HirStmtKind.Give
+    and first_stmt.expr.kind == HirExprKind.Call
+    and len(first_stmt.expr.children) == 3
+    and first_stmt.expr.children[0].name == "add"
+    and first_stmt.expr.children[1].text == "1"
+    and first_stmt.expr.children[2].text == "2";
+}
+
+proc test_hir_decl_use_links_coverage() -> bool {
+  let source: string = "proc main() { let x = 1; set x.field = 2; give x; }\n";
+  let fe: FrontendOutput = frontend_run("hir_decl_use_links.vit", source);
+  let hir: HirUnit = lower_ast_to_hir(fe);
+  let result: SemaResult = run_sema_hir(hir);
+  let set_stmt = result.hir.module.items[0].stmts[1];
+  let give_expr = result.hir.module.items[0].stmts[2].expr;
+  give result.valid
+    and give_expr.binding == "x"
+    and give_expr.resolved_id > 0
+    and give_expr.resolved_kind == "local"
+    and set_stmt.target_binding == "x.field"
+    and set_stmt.target_resolved_id > 0
+    and set_stmt.target_resolved_kind == "local";
+}
+
+proc test_hir_precise_import_coverage() -> bool {
+  let source: string =
+    "space demo/app;\n" +
+    "use vitte/std/io;\n" +
+    "use demo/math as math;\n" +
+    "use demo/mem.{ Arena, Slice }\n" +
+    "use demo/prelude { * };\n" +
+    "proc main() -> int { give 0; }\n";
+  let fe: FrontendOutput = frontend_run("hir_precise_imports.vit", source);
+  let hir: HirUnit = lower_ast_to_hir(fe);
+  give hir.valid
+    and hir.module.items[0].kind == HirItemKind.Space
+    and hir.module.items[1].kind == HirItemKind.Use
+    and hir.module.items[2].kind == HirItemKind.Use
+    and hir.module.items[3].kind == HirItemKind.Use
+    and hir.module.items[4].kind == HirItemKind.Use
+    and find(hir.module.items[1].name, "vitte/std/io") >= 0
+    and find(hir.module.items[2].name, "demo/math") >= 0
+    and find(hir.module.items[2].name, "math") >= 0
+    and find(hir.module.items[3].name, "Arena") >= 0
+    and find(hir.module.items[3].name, "Slice") >= 0
+    and find(hir.module.items[4].name, "*") >= 0;
+}
+
+proc test_hir_multifile_and_import_cycle_coverage() -> bool {
+  let dep: string = "space demo/math;\nexport *;\nproc sum() -> int { give 1; }\n";
+  let root: string = "space demo/app;\nuse demo/math { * };\nproc main() -> int { give sum(); }\n";
+  let artifacts: DriverModuleSetArtifacts = analyze_source_set([
+    driver_module_input("demo_math.vit", dep),
+    driver_module_input("demo_app.vit", root)
+  ]);
+  let call_expr = artifacts.modules[1].resolved_hir.module.items[2].stmts[0].expr;
+  let cycle_a: string = "space cycle/a;\nuse cycle/b { * };\nproc a() -> int { give b(); }\n";
+  let cycle_b: string = "space cycle/b;\nuse cycle/a { * };\nproc b() -> int { give a(); }\n";
+  let cycle: DriverModuleSetArtifacts = analyze_source_set([
+    driver_module_input("cycle_a.vit", cycle_a),
+    driver_module_input("cycle_b.vit", cycle_b)
+  ]);
+  give artifacts.valid
+    and len(artifacts.modules) == 2
+    and artifacts.modules[1].imports[0] == "demo/math"
+    and call_expr.resolved_kind == "import"
+    and call_expr.resolved_id > 0
+    and not cycle.valid
+    and len(cycle.diagnostics) > 0;
+}
+
+proc test_hir_remaining_declared_surface_coverage() -> bool {
+  let expr_unknown: HirExpr = test_hir_expr(HirExprKind.Unknown);
+  let expr_invalid: HirExpr = test_hir_expr(HirExprKind.Invalid);
+  let expr_is: HirExpr = test_hir_expr(HirExprKind.Is);
+  let stmt_unknown: HirStmt = test_hir_stmt(HirStmtKind.Unknown);
+  let stmt_asm: HirStmt = test_hir_stmt(HirStmtKind.Asm);
+  let binding_unknown: HirBinding = hir_binding(900, "", HirBindingKind.Unknown, false, false, false, false, "");
+  let type_info: HirTypeInfo = hir_type_info("i32", true, true, false, false);
+  let diagnostic: SemanticDiagnostic = semantic_diagnostic("HIR_TEST", SemanticSeverity.Warning, "surface", ast_span("hir_surface.vit", 8, 1, 8, 4), "symbol", "note");
+  let member_field: HirNominalMember = hir_nominal_member(901, ast_span_empty(), HirNominalMemberKind.Field, "field", "int", hir_expr_empty(), [], [], "", true);
+  let member_variant: HirNominalMember = hir_nominal_member(902, ast_span_empty(), HirNominalMemberKind.Variant, "Some", "int", hir_expr_empty(), [], [], "", true);
+  let member_trait: HirNominalMember = hir_nominal_member(903, ast_span_empty(), HirNominalMemberKind.TraitMethod, "show", "string", hir_expr_empty(), [hir_proc_param("self", "Self", "", false, false, false, true)], [], "", true);
+  let member_unknown: HirNominalMember = hir_nominal_member(904, ast_span_empty(), HirNominalMemberKind.Unknown, "unknown", "int", hir_expr_empty(), [], [], "", true);
+  let item_backend: HirItem = hir_item_with_members(910, ast_span_empty(), HirItemKind.Backend, "Backend", 0, "", "public", true, "", 0, [], 0, 0, 0, 0, 0, [], "", "", hir_expr_empty(), [], [], "", 0, [], true);
+  let item_bench: HirItem = hir_item_with_members(911, ast_span_empty(), HirItemKind.Bench, "bench", 0, "", "public", true, "", 0, [], 0, 0, 0, 0, 0, [], "", "", hir_expr_empty(), [], [], "", 0, [], true);
+  let item_bits: HirItem = hir_item_with_members(912, ast_span_empty(), HirItemKind.Bits, "Bits", 0, "", "public", true, "", 0, [], 0, 0, 0, 0, 0, [], "u8", "", hir_expr_empty(), [], [], "", 0, [], true);
+  let item_class: HirItem = hir_item_with_members(913, ast_span_empty(), HirItemKind.Class, "Class", 0, "", "public", true, "", 0, [], 0, 0, 0, 0, 0, [], "", "", hir_expr_empty(), [], [], "", 0, [], true);
+  let item_compiler: HirItem = hir_item_with_members(914, ast_span_empty(), HirItemKind.Compiler, "Compiler", 0, "", "public", true, "", 0, [], 0, 0, 0, 0, 0, [], "", "", hir_expr_empty(), [], [], "", 0, [], true);
+  let item_comptime: HirItem = hir_item_with_members(915, ast_span_empty(), HirItemKind.Comptime, "Comptime", 0, "", "public", true, "", 0, [], 0, 0, 0, 0, 0, [], "", "", hir_expr_empty(), [], [], "", 0, [], true);
+  let item_diag: HirItem = hir_item_with_members(916, ast_span_empty(), HirItemKind.Diagnostic, "Diagnostic", 0, "", "public", true, "", 0, [], 0, 0, 0, 0, 0, [], "", "", hir_expr_empty(), [], [], "", 0, [], true);
+  let item_entry: HirItem = hir_item_with_members(917, ast_span_empty(), HirItemKind.Entry, "Entry", 0, "", "public", true, "", 0, [], 0, 0, 0, 0, 0, [], "", "", hir_expr_empty(), [], [], "", 0, [], true);
+  let item_export: HirItem = hir_item_with_members(918, ast_span_empty(), HirItemKind.Export, "Export", 0, "", "public", true, "", 0, [], 0, 0, 0, 0, 0, [], "", "", hir_expr_empty(), [], [], "", 0, [], true);
+  let item_flags: HirItem = hir_item_with_members(919, ast_span_empty(), HirItemKind.Flags, "Flags", 0, "", "public", true, "", 0, [], 0, 0, 0, 0, 0, [], "u8", "", hir_expr_empty(), [], [], "", 0, [], true);
+  let item_global: HirItem = hir_item_with_members(920, ast_span_empty(), HirItemKind.Global, "Global", 0, "", "public", true, "", 0, [], 0, 0, 0, 0, 0, [], "int", "", hir_expr_empty(), [], [], "", 0, [], true);
+  let item_intrinsic: HirItem = hir_item_with_members(921, ast_span_empty(), HirItemKind.Intrinsic, "intrinsic", 0, "", "public", true, "", 0, [], 0, 0, 0, 0, 0, [], "", "", hir_expr_empty(), [], [], "", 0, [], true);
+  let item_macro: HirItem = hir_item_with_members(922, ast_span_empty(), HirItemKind.Macro, "Macro", 0, "", "public", true, "", 0, [], 0, 0, 0, 0, 0, [], "", "", hir_expr_empty(), [], [], "", 0, [], true);
+  let item_opaque: HirItem = hir_item_with_members(923, ast_span_empty(), HirItemKind.Opaque, "Opaque", 0, "", "public", true, "", 0, [], 0, 0, 0, 0, 0, [], "u64", "", hir_expr_empty(), [], [], "", 0, [], true);
+  let item_pass: HirItem = hir_item_with_members(924, ast_span_empty(), HirItemKind.Pass, "Pass", 0, "", "public", true, "", 0, [], 0, 0, 0, 0, 0, [], "", "", hir_expr_empty(), [], [], "", 0, [], true);
+  let item_query: HirItem = hir_item_with_members(925, ast_span_empty(), HirItemKind.Query, "Query", 0, "", "public", true, "", 0, [], 0, 0, 0, 0, 0, [], "", "", hir_expr_empty(), [], [], "", 0, [], true);
+  let item_region: HirItem = hir_item_with_members(926, ast_span_empty(), HirItemKind.Region, "Region", 0, "", "public", true, "", 0, [], 0, 0, 0, 0, 0, [], "", "", hir_expr_empty(), [], [], "", 0, [], true);
+  let item_static_assert: HirItem = hir_item_with_members(927, ast_span_empty(), HirItemKind.StaticAssert, "StaticAssert", 0, "", "public", true, "", 0, [], 0, 0, 0, 0, 0, [], "", "", test_hir_expr(HirExprKind.Bool), [], [], "", 0, [], true);
+  let item_test: HirItem = hir_item_with_members(928, ast_span_empty(), HirItemKind.Test, "Test", 0, "", "public", true, "", 0, [], 0, 0, 0, 0, 0, [], "", "", hir_expr_empty(), [], [], "", 0, [], true);
+  let item_union: HirItem = hir_item_with_members(929, ast_span_empty(), HirItemKind.Union, "Union", 0, "", "public", true, "", 0, [], 0, 0, 0, 0, 0, [], "", "", hir_expr_empty(), [], [], "", 0, [], true);
+  let item_unknown: HirItem = hir_item_with_members(930, ast_span_empty(), HirItemKind.Unknown, "Unknown", 0, "", "public", true, "", 0, [], 0, 0, 0, 0, 0, [], "", "", hir_expr_empty(), [], [], "", 0, [], false);
+  let module: HirModule = hir_module("surface", [item_backend], [diagnostic], 0, 1, true);
+  let unit: HirUnit = hir_unit("surface.vit", module, 1, 1, 1, 0, 0, 1, true, false, true);
+  give expr_unknown.kind == HirExprKind.Unknown
+    and expr_invalid.kind == HirExprKind.Invalid
+    and expr_is.kind == HirExprKind.Is
+    and stmt_unknown.kind == HirStmtKind.Unknown
+    and stmt_asm.kind == HirStmtKind.Asm
+    and binding_unknown.kind == HirBindingKind.Unknown
+    and type_info.name == "i32"
+    and diagnostic.code == "HIR_TEST"
+    and member_field.kind == HirNominalMemberKind.Field
+    and member_variant.kind == HirNominalMemberKind.Variant
+    and member_trait.kind == HirNominalMemberKind.TraitMethod
+    and member_unknown.kind == HirNominalMemberKind.Unknown
+    and item_backend.kind == HirItemKind.Backend
+    and item_bench.kind == HirItemKind.Bench
+    and item_bits.kind == HirItemKind.Bits
+    and item_class.kind == HirItemKind.Class
+    and item_compiler.kind == HirItemKind.Compiler
+    and item_comptime.kind == HirItemKind.Comptime
+    and item_diag.kind == HirItemKind.Diagnostic
+    and item_entry.kind == HirItemKind.Entry
+    and item_export.kind == HirItemKind.Export
+    and item_flags.kind == HirItemKind.Flags
+    and item_global.kind == HirItemKind.Global
+    and item_intrinsic.kind == HirItemKind.Intrinsic
+    and item_macro.kind == HirItemKind.Macro
+    and item_opaque.kind == HirItemKind.Opaque
+    and item_pass.kind == HirItemKind.Pass
+    and item_query.kind == HirItemKind.Query
+    and item_region.kind == HirItemKind.Region
+    and item_static_assert.kind == HirItemKind.StaticAssert
+    and item_test.kind == HirItemKind.Test
+    and item_union.kind == HirItemKind.Union
+    and item_unknown.kind == HirItemKind.Unknown
+    and module.name == "surface"
+    and unit.source_path == "surface.vit";
+}
+
+proc test_hir_to_mir_fixture_nodes_survive() -> bool {
+  let source: string =
+    "form Point { x: int, y: int }\n" +
+    "proc add(left: int, right: int) -> int { let total = left + right; give total; }\n" +
+    "proc main() -> int { let point = Point { x: 1, y: 2 }; give add(point.x, point.y); }\n";
+  let fe: FrontendOutput = frontend_run("hir_to_mir_fixture.vit", source);
+  let hir: HirUnit = lower_ast_to_hir(fe);
+  let mir: MirUnit = lower_hir_to_mir(hir);
+  give hir.valid
+    and mir.valid
+    and mir.function_count >= 2
+    and mir.block_count >= 2
+    and mir.instruction_count > 0
+    and mir.module.functions[0].name == "add"
+    and mir.module.functions[1].name == "main";
+}
+
 proc test_hir_validation_rejects_empty_trait_and_impl() -> bool {
   let source: string =
     "trait Empty {}\n" +
@@ -328,6 +836,63 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if not test_hir_preserves_call_generic_arguments() {
+    set failures = failures + 1;
+  }
+  if not test_hir_minimal_item_coverage() {
+    set failures = failures + 1;
+  }
+  if not test_hir_import_and_module_coverage() {
+    set failures = failures + 1;
+  }
+  if not test_hir_function_shape_coverage() {
+    set failures = failures + 1;
+  }
+  if not test_hir_return_and_extern_function_coverage() {
+    set failures = failures + 1;
+  }
+  if not test_hir_impl_method_receiver_coverage() {
+    set failures = failures + 1;
+  }
+  if not test_hir_block_and_let_coverage() {
+    set failures = failures + 1;
+  }
+  if not test_hir_pattern_source_coverage() {
+    set failures = failures + 1;
+  }
+  if not test_hir_expr_kind_surface_coverage() {
+    set failures = failures + 1;
+  }
+  if not test_hir_stmt_kind_surface_coverage() {
+    set failures = failures + 1;
+  }
+  if not test_hir_binding_value_and_place_surface_coverage() {
+    set failures = failures + 1;
+  }
+  if not test_hir_span_surface_coverage() {
+    set failures = failures + 1;
+  }
+  if not test_hir_invalid_surface_diagnostics() {
+    set failures = failures + 1;
+  }
+  if not test_hir_recovery_partial_unit_after_frontend_error() {
+    set failures = failures + 1;
+  }
+  if not test_hir_stable_order_coverage() {
+    set failures = failures + 1;
+  }
+  if not test_hir_decl_use_links_coverage() {
+    set failures = failures + 1;
+  }
+  if not test_hir_precise_import_coverage() {
+    set failures = failures + 1;
+  }
+  if not test_hir_multifile_and_import_cycle_coverage() {
+    set failures = failures + 1;
+  }
+  if not test_hir_remaining_declared_surface_coverage() {
+    set failures = failures + 1;
+  }
+  if not test_hir_to_mir_fixture_nodes_survive() {
     set failures = failures + 1;
   }
   if not test_hir_validation_rejects_empty_trait_and_impl() {
