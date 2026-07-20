@@ -227,6 +227,7 @@ form CompilerCliRequest {
     show_cascades: bool
     fix_apply: bool
     fail_under: u64
+    max_errors: u64
     stdlib_path: string
     stdlib_version: string
     lang: string
@@ -307,6 +308,7 @@ proc empty_cli_request() -> CompilerCliRequest {
         show_cascades: false,
         fix_apply: false,
         fail_under: 0,
+        max_errors: 0,
         stdlib_path: "src/vitte/stdlib",
         stdlib_version: "",
         lang: "en",
@@ -432,6 +434,7 @@ proc cli_is_known_flag(text: string) -> bool {
         or text == "--dry-run"
         or text == "--apply"
         or text == "--fail-under"
+        or text == "--max-errors"
         or text == "--stdlib-path"
         or text == "--stdlib-version"
         or text == "--lang"
@@ -666,6 +669,14 @@ proc parse_cli_request(args: list[string]) -> CompilerCliRequest {
                     give request;
                 }
                 set request.fail_under = args[i + 1] as u64;
+                set i = i + 2;
+            } elif arg == "--max-errors" {
+                if i + 1 >= len(args) {
+                    set request.status = driver.DriverExitStatus::InvalidArguments;
+                    set request.message = "missing value after " + arg;
+                    give request;
+                }
+                set request.max_errors = args[i + 1] as u64;
                 set i = i + 2;
             } elif arg == "--stdlib-path" {
                 if i + 1 >= len(args) {
