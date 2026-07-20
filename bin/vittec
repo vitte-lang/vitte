@@ -1904,10 +1904,12 @@ emit_pre_backend_diagnostic() {
     src="$1"
     if diag_info="$(detect_professional_diagnostic "$src")"; then
         render_professional_diagnostic_text "$src" "$diag_info" >&2
+        render_driver_diagnostic_summary "$src" "$diag_info" >&2
         return 0
     fi
     if parser_info="$(detect_simple_unclosed_block "$src")"; then
         render_professional_diagnostic_text "$src" "$parser_info" >&2
+        render_driver_diagnostic_summary "$src" "$parser_info" >&2
         return 0
     fi
     return 1
@@ -4324,6 +4326,21 @@ render_professional_diagnostic_text() {
     fi
 }
 
+render_driver_diagnostic_summary() {
+    src="$1"
+    info="$2"
+    severity="$(diag_field "$info" 2)"
+    phase="$(diag_field "$info" 3)"
+    error_count=0
+    warning_count=0
+    if [ "$severity" = "warning" ]; then
+        warning_count=1
+    else
+        error_count=1
+    fi
+    printf 'summary: errors=%s warnings=%s stopped_phase=%s files=%s\n' "$error_count" "$warning_count" "$phase" "$src"
+}
+
 render_professional_diagnostic_json() {
     src="$1"
     info="$2"
@@ -5028,6 +5045,7 @@ case "$cmd" in
                 render_professional_diagnostic_surface_json "$src" "$diag_info"
             else
                 render_professional_diagnostic_text "$src" "$diag_info" >&2
+                render_driver_diagnostic_summary "$src" "$diag_info" >&2
             fi
             exit 1
         fi
@@ -5037,6 +5055,7 @@ case "$cmd" in
                 render_professional_diagnostic_surface_json "$src" "$parser_info"
             else
                 render_professional_diagnostic_text "$src" "$parser_info" >&2
+                render_driver_diagnostic_summary "$src" "$parser_info" >&2
             fi
             exit 1
         fi

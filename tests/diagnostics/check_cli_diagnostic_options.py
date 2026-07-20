@@ -45,9 +45,13 @@ def main() -> int:
         "error[SEMA_E_UNKNOWN_IDENTIFIER] symbol_resolution: unknown identifier",
         "missing_negative_symbol",
         "name not found in this scope",
+        f"summary: errors=1 warnings=0 stopped_phase=symbol_resolution files={FIXTURE}",
     ):
         require(needle in check_text, f"check missing {needle!r}\n{check_text}")
         require(needle in build_text, f"build missing {needle!r}\n{build_text}")
+    require("build failed" not in build_text.lower(), "build emitted generic build failed summary")
+    require(build_text.count("error[SEMA_E_UNKNOWN_IDENTIFIER]") == 1, "build repeated the diagnostic in the final summary")
+    require(check_text.count("error[SEMA_E_UNKNOWN_IDENTIFIER]") == 1, "check repeated the diagnostic in the final summary")
     require("\x1b[" not in check.stdout, "--color never emitted ANSI escape sequences")
 
     json_result = run("check", str(FIXTURE), "--error-format", "json")
