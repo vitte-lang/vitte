@@ -1,0 +1,47 @@
+use src/vitte/stdlib/alloc/vec as alloc_vec
+use src/vitte/stdlib/alloc/string as alloc_string
+use src/vitte/stdlib/core/range as core_range
+use src/vitte/stdlib/core/string as core_string
+use src/vitte/stdlib/std/calendar as std_calendar
+use src/vitte/stdlib/std/parse as std_parse
+use src/vitte/stdlib/std/units as std_units
+use src/vitte/stdlib/std/uuid as std_uuid
+
+proc stdlib_negative_invalid_inputs() -> bool {
+    let invalid_uuid = std_uuid.uuid_parse("not-a-uuid");
+    let invalid_date = std_calendar.date(2026, 2, 30);
+    let invalid_bool = std_parse.parse_bool(core_string.utf8_view("maybe"));
+
+    give is_err<std_uuid.Uuid, std_uuid.UuidError>(invalid_uuid)
+        and is_err<std_calendar.Date, std_calendar.CalendarError>(invalid_date)
+        and is_err<bool, std_parse.ParseError>(invalid_bool);
+}
+
+proc stdlib_negative_boundaries() -> bool {
+    let empty_vec: alloc_vec.Vec<int> = alloc_vec.vec_new<int>();
+    let out_of_bounds = alloc_vec.vec_get<int>(empty_vec, 0);
+    let empty_string: alloc_string.String = alloc_string.string_new();
+    let bad_slice = alloc_string.string_slice(&empty_string, 1, 0);
+
+    give is_none<ref int>(out_of_bounds)
+        and is_none<core_string.Utf8View>(bad_slice);
+}
+
+proc stdlib_negative_overflow() -> bool {
+    let bad_range = core_range.range_step(0, 10, 0);
+    let huge = std_parse.parse_i64(core_string.utf8_view("9223372036854775808"), 10);
+    let impossible = std_units.convert(
+        std_units.quantity(1.0, std_units.unit(std_units.UnitKind.Length, 1.0)),
+        std_units.unit(std_units.UnitKind.Time, 1.0),
+    );
+
+    give is_err<core_range.Range, core_range.RangeError>(bad_range)
+        and is_err<i64, std_parse.ParseError>(huge)
+        and is_err<std_units.Quantity, std_units.UnitError>(impossible);
+}
+
+proc stdlib_negative_cases_run() -> bool {
+    give stdlib_negative_invalid_inputs()
+        and stdlib_negative_boundaries()
+        and stdlib_negative_overflow();
+}

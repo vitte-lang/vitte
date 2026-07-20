@@ -5810,6 +5810,13 @@ Each entry is suitable for LSP symbol indexing and documentation lookup.
 
 - `proc std_uuid_test` signature `proc std_uuid_test() -> bool {` example `std_uuid_test`
 
+## `src/vitte/stdlib/tests/negative/stdlib_negative_cases.vit`
+
+- `proc stdlib_negative_invalid_inputs` signature `proc stdlib_negative_invalid_inputs() -> bool {` example `stdlib_negative_invalid_inputs`
+- `proc stdlib_negative_boundaries` signature `proc stdlib_negative_boundaries() -> bool {` example `stdlib_negative_boundaries`
+- `proc stdlib_negative_overflow` signature `proc stdlib_negative_overflow() -> bool {` example `stdlib_negative_overflow`
+- `proc stdlib_negative_cases_run` signature `proc stdlib_negative_cases_run() -> bool {` example `stdlib_negative_cases_run`
+
 ## `src/vitte/stdlib/tests/range_unicode_std_contracts.vit`
 
 - `proc stdlib_range_unicode_std_contracts_smoke` signature `proc stdlib_range_unicode_std_contracts_smoke() -> bool {` example `stdlib_range_unicode_std_contracts_smoke`
@@ -5836,3 +5843,31 @@ Each entry is suitable for LSP symbol indexing and documentation lookup.
 - `proc unicode_table_generation` signature `proc unicode_table_generation(version: string, source: string, output: string) -> UnicodeTableGeneration {` example `unicode_table_generation`
 - `proc generate_unicode_tables` signature `proc generate_unicode_tables(job: UnicodeTableGeneration) -> Result<(), string> {` example `generate_unicode_tables`
 - `proc verify_unicode_tables` signature `proc verify_unicode_tables(version: string) -> bool {` example `verify_unicode_tables`
+
+## `src/vitte/stdlib/benchmarks/modules/vec_bench.vit`
+
+- `proc bench_vec_push_pop` signature `proc bench_vec_push_pop(iterations: usize) -> usize {` example `bench_vec_push_pop`
+
+## `src/vitte/stdlib/benchmarks/modules/string_bench.vit`
+
+- `proc bench_string_push_concat` signature `proc bench_string_push_concat(iterations: usize) -> usize {` example `bench_string_push_concat`
+
+## `src/vitte/stdlib/benchmarks/modules/hashmap_bench.vit`
+
+- `proc bench_hashmap_insert_get` signature `proc bench_hashmap_insert_get(iterations: usize) -> usize {` example `bench_hashmap_insert_get`
+
+## `src/vitte/stdlib/benchmarks/modules/utf8_bench.vit`
+
+- `proc bench_utf8_validate_decode` signature `proc bench_utf8_validate_decode(iterations: usize) -> usize {` example `bench_utf8_validate_decode`
+
+## `src/vitte/stdlib/benchmarks/modules/path_bench.vit`
+
+- `proc bench_path_normalize_join` signature `proc bench_path_normalize_join(iterations: usize) -> usize {` example `bench_path_normalize_join`
+
+## `src/vitte/stdlib/benchmarks/modules/format_bench.vit`
+
+- `proc bench_format_ints` signature `proc bench_format_ints(iterations: usize) -> usize {` example `bench_format_ints`
+
+## `src/vitte/stdlib/benchmarks/modules/parse_bench.vit`
+
+- `proc bench_parse_numbers` signature `proc bench_parse_numbers(iterations: usize) -> usize {` example `bench_parse_numbers`

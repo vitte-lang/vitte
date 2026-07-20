@@ -1,0 +1,22 @@
+use src/vitte/stdlib/alloc/string as alloc_string
+use src/vitte/stdlib/std/path as std_path
+
+proc bench_path_normalize_join(iterations: usize) -> usize {
+    let base_text: alloc_string.String = alloc_string.string_new();
+    alloc_string.string_push_str(&mut base_text, "/tmp/vitte");
+    let child_text: alloc_string.String = alloc_string.string_new();
+    alloc_string.string_push_str(&mut child_text, "../stdlib/./tests");
+    let base: std_path.PathBuf = std_path.path_buf(base_text);
+    let child: std_path.PathBuf = std_path.path_buf(child_text);
+    let count: usize = 0;
+    let index: usize = 0;
+    while index < iterations {
+        let joined = std_path.join(base, child);
+        let normalized = std_path.normalize(joined);
+        if std_path.is_absolute(normalized) {
+            set count = count + 1;
+        }
+        set index = index + 1;
+    }
+    give count;
+}

@@ -1,0 +1,21 @@
+use src/vitte/stdlib/alloc/collections as alloc_collections
+
+proc bench_hashmap_insert_get(iterations: usize) -> usize {
+    let map: alloc_collections.HashMap<int, int> = alloc_collections.hashmap_new<int, int>();
+    let index: usize = 0;
+    while index < iterations {
+        alloc_collections.hashmap_insert<int, int>(&mut map, index as int, (index * 2) as int);
+        set index = index + 1;
+    }
+
+    let found: usize = 0;
+    let probe: usize = 0;
+    while probe < iterations {
+        if is_some<ref int>(alloc_collections.hashmap_get<int, int>(&map, probe as int)) {
+            set found = found + 1;
+        }
+        set probe = probe + 1;
+    }
+
+    give found;
+}
