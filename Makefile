@@ -339,6 +339,10 @@ profiling-baseline-gate:
 	@tools/profiling/generate_baseline_report.py
 	@tools/profiling/update_matrix_from_baseline.py
 
+.PHONY: profile-sample
+profile-sample: profiling-baseline-gate
+	@echo "[profile-sample] PASS"
+
 .PHONY: startup-gate
 startup-gate:
 	@python3 tools/startup_benchmark.py --strict
