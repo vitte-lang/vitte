@@ -715,9 +715,28 @@ proc sema_suggestion_rank_note(expected_context: string, category: string) -> st
     give "candidate accepted for `" + expected_context + "` context; ranked by scope, symbol kind, argument count when known, expected type when known, visibility, and spelling distance";
 }
 
-proc sema_add_contextual_nearby_fix(diagnostic: Diagnostic, name: string, expected_context: string, category: string, nearby: string, span: Span) -> Diagnostic {
+proc sema_symbol_suggestion_seen(seen: [string], nearby: string) -> bool {
+    let index: u64 = 0;
+    while index < len(seen) {
+        if seen[index] == nearby {
+            give true;
+        }
+        set index = index + 1;
+    }
+    give false;
+}
+
+proc sema_add_contextual_nearby_fix(diagnostic: Diagnostic, name: string, expected_context: string, category: string, nearby: string, span: Span, seen: [string], emitted_count: u64) -> Diagnostic {
     if nearby == "" {
         give diagnostic;
+    }
+
+    if emitted_count >= 3 {
+        give diagnostic_with_note(diagnostic, "skipped " + category + " `" + nearby + "` because three closer compatible suggestions were already emitted");
+    }
+
+    if sema_symbol_suggestion_seen(seen, nearby) {
+        give diagnostic_with_note(diagnostic, "skipped duplicate suggestion `" + nearby + "`");
     }
 
     if not sema_symbol_category_compatible(expected_context, category) {
@@ -730,6 +749,13 @@ proc sema_add_contextual_nearby_fix(diagnostic: Diagnostic, name: string, expect
     let reason: string = sema_suggestion_rank_note(expected_context, category);
     let diag: Diagnostic = diagnostic_with_note(diagnostic, note_text);
     give diagnostic_with_suggestion_detail(diag, DiagnosticSuggestionKind.Replace, message, nearby, source_span, false, "medium", reason);
+}
+
+proc sema_nearby_emitted_count(before: Diagnostic, after: Diagnostic) -> u64 {
+    if len(after.suggestions) <= len(before.suggestions) {
+        give 0 as u64;
+    }
+    give len(after.suggestions) - len(before.suggestions);
 }
 
 proc sema_resolution_failure(kind: SemaResolutionFailureKind, name: string, context: string, detail: string, span: Span) -> Diagnostic {
@@ -818,14 +844,31 @@ proc sema_unknown_symbol_with_candidate_groups_for_context(name: string, expecte
     let type0: string = sema_nearby_symbol(name, types);
     let field0: string = sema_nearby_symbol(name, fields);
     let module0: string = sema_nearby_symbol(name, modules);
+    let emitted: u64 = 0;
+    let seen: [string] = [];
 
     set diag = diagnostic_with_note(diag, "suggestions are limited to the three most credible compatible candidates");
-    set diag = sema_add_contextual_nearby_fix(diag, name, expected_context, "variable", variable0, span);
-    set diag = sema_add_contextual_nearby_fix(diag, name, expected_context, "function", function0, span);
-    set diag = sema_add_contextual_nearby_fix(diag, name, expected_context, "type", type0, span);
-    set diag = sema_add_contextual_nearby_fix(diag, name, expected_context, "field", field0, span);
-    set diag = sema_add_contextual_nearby_fix(diag, name, expected_context, "module", module0, span);
-    set diag = sema_add_contextual_nearby_fix(diag, name, expected_context, "keyword", keyword, span);
+    let before_variable: Diagnostic = diag;
+    set diag = sema_add_contextual_nearby_fix(diag, name, expected_context, "variable", variable0, span, seen, emitted);
+    set emitted = emitted + sema_nearby_emitted_count(before_variable, diag);
+    if emitted > 0 and variable0 != "" { set seen = seen + [variable0]; }
+    let before_function: Diagnostic = diag;
+    set diag = sema_add_contextual_nearby_fix(diag, name, expected_context, "function", function0, span, seen, emitted);
+    set emitted = emitted + sema_nearby_emitted_count(before_function, diag);
+    if emitted > 0 and function0 != "" { set seen = seen + [function0]; }
+    let before_type: Diagnostic = diag;
+    set diag = sema_add_contextual_nearby_fix(diag, name, expected_context, "type", type0, span, seen, emitted);
+    set emitted = emitted + sema_nearby_emitted_count(before_type, diag);
+    if emitted > 0 and type0 != "" { set seen = seen + [type0]; }
+    let before_field: Diagnostic = diag;
+    set diag = sema_add_contextual_nearby_fix(diag, name, expected_context, "field", field0, span, seen, emitted);
+    set emitted = emitted + sema_nearby_emitted_count(before_field, diag);
+    if emitted > 0 and field0 != "" { set seen = seen + [field0]; }
+    let before_module: Diagnostic = diag;
+    set diag = sema_add_contextual_nearby_fix(diag, name, expected_context, "module", module0, span, seen, emitted);
+    set emitted = emitted + sema_nearby_emitted_count(before_module, diag);
+    if emitted > 0 and module0 != "" { set seen = seen + [module0]; }
+    set diag = sema_add_contextual_nearby_fix(diag, name, expected_context, "keyword", keyword, span, seen, emitted);
 
     give diag;
 }
