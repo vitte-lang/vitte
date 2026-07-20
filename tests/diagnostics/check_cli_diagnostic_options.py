@@ -9,6 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 BIN = ROOT / "bin" / "vitte"
 FIXTURE = ROOT / "tests" / "diagnostics" / "negative" / "symbol_resolution" / "unknown_identifier.vit"
+BEGINNER_FIXTURE = ROOT / "target" / "diagnostic-beginner-missing-call.vit"
 
 
 def run(*args: str) -> subprocess.CompletedProcess[str]:
@@ -72,6 +73,24 @@ def main() -> int:
 
     warn_style_group = run("check", "tests/check/main.vit", "--warn", "style", "--allow", "unused")
     require(warn_style_group.returncode == 0, "warning groups should not affect valid code")
+
+    BEGINNER_FIXTURE.parent.mkdir(parents=True, exist_ok=True)
+    BEGINNER_FIXTURE.write_text(
+        "space diagnostics/beginner/missing_call\n\n"
+        "proc main() -> int {\n"
+        "  give missing_call()\n"
+        "}\n",
+        encoding="utf-8",
+    )
+    beginner = run("check", str(BEGINNER_FIXTURE), "--color", "never")
+    beginner_text = clean(beginner.stdout)
+    require(beginner.returncode != 0, "missing procedure call compiled successfully")
+    require("error[SEMA_E_UNKNOWN_FUNCTION] symbol_resolution: unknown procedure" in beginner_text, "beginner title is not short or consistent")
+    require("the call names missing_call" in beginner_text, "beginner label missing code-oriented detail")
+    require("look for a proc declaration" in beginner_text, "beginner note missing declaration guidance")
+    require("declare proc missing_call" in beginner_text, "beginner help missing concrete correction")
+    human_beginner_text = beginner_text.replace("SEMA_E_UNKNOWN_FUNCTION", "")
+    require("function" not in human_beginner_text.lower(), "beginner diagnostic used inconsistent terminology")
 
     print("[cli-diagnostic-options] checked check/build diagnostic options")
     return 0

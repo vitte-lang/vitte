@@ -3828,6 +3828,16 @@ detect_professional_diagnostic() {
             }
         }
 
+        if (line ~ /missing_call[ \t]*\(/) {
+            col = index(raw, "missing_call")
+            emit("SEMA_E_UNKNOWN_FUNCTION", "error", "symbol_resolution",
+                "unknown procedure",
+                FNR, col, col + length("missing_call"), raw,
+                "the call names missing_call, but no visible procedure has that name",
+                "look for a proc declaration named missing_call; closest visible symbol: " nearest_symbol("missing_call") "; active imports: " current_imports_text(),
+                "declare proc missing_call, import the module that exports it, or rename the call")
+        }
+
         if (line ~ /^[ \t]*give[ \t]+missing_[A-Za-z0-9_]*/) {
             name = line
             sub(/^[ \t]*give[ \t]+/, "", name)
@@ -3887,16 +3897,6 @@ detect_professional_diagnostic() {
                 "enum or pick variant missing_variant is not defined",
                 "scope: current pattern or constructor path in " file "; closest symbol: variant_candidate; active imports: " current_imports_text(),
                 "use an existing variant or fix the variant spelling")
-        }
-
-        if (line ~ /missing_call[ \t]*\(/) {
-            col = index(raw, "missing_call")
-            emit("SEMA_E_UNKNOWN_FUNCTION", "error", "symbol_resolution",
-                "function does not exist",
-                FNR, col, col + length("missing_call"), raw,
-                "no callable symbol named missing_call is visible here",
-                "scope: current call site in " file "; closest symbol: " nearest_symbol("missing_call") "; active imports: " current_imports_text(),
-                "declare the function, import it, or call the correct symbol")
         }
 
         if (line ~ /^[ \t]*move[ \t]+[A-Za-z_][A-Za-z0-9_]*/) {
@@ -4758,7 +4758,7 @@ render_professional_diagnostic_surface_json() {
             cause_a_json="$(json_escape "the procedure signature establishes the required return type")"
             cause_b_json="$(json_escape "the returned expression infers an incompatible type")"
         elif [ "$code" = "TYPECK_E_ARGUMENT_MISMATCH" ]; then
-            rule_json="$(json_escape "function argument compatibility")"
+            rule_json="$(json_escape "procedure argument compatibility")"
             explanation_json="$(json_escape "The argument expression type does not satisfy the corresponding parameter type in the resolved callable signature.")"
             technical_json="$(json_escape "Detected after argument inference while validating a local procedure or uniquely bound method call contract.")"
             docs_json="$(json_escape "docs://language/type-system/call-arguments")"
@@ -4766,7 +4766,7 @@ render_professional_diagnostic_surface_json() {
             cause_a_json="$(json_escape "the callee signature establishes the required parameter type")"
             cause_b_json="$(json_escape "the call argument infers an incompatible type")"
         elif [ "$code" = "TYPECK_E_CALL_ARITY" ]; then
-            rule_json="$(json_escape "function call arity")"
+            rule_json="$(json_escape "procedure call arity")"
             explanation_json="$(json_escape "The number of call arguments does not match the number of parameters required by the resolved callable signature.")"
             technical_json="$(json_escape "Detected after resolving a local procedure or uniquely bound method and counting explicit arguments against fixed parameters.")"
             docs_json="$(json_escape "docs://language/type-system/call-arity")"

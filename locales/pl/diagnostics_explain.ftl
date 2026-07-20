@@ -787,10 +787,10 @@ TYPECK_E_IMPOSSIBLE_PATTERN.step1 = Compare the matched expression type with the
 TYPECK_E_IMPOSSIBLE_PATTERN.fix = replace the branch pattern with one that belongs to the matched `pick` or value type
 TYPECK_E_IMPOSSIBLE_PATTERN.example = match status { case Ready { give 0 } }
 
-SEMA_E_UNKNOWN_FUNCTION.summary = procedure does not exist.
+SEMA_E_UNKNOWN_FUNCTION.summary = unknown procedure.
 SEMA_E_UNKNOWN_FUNCTION.cause = Name resolution could not find a visible `proc` with the highlighted name.
 SEMA_E_UNKNOWN_FUNCTION.step1 = Check the active `use` declarations and the procedure name at the call site.
-SEMA_E_UNKNOWN_FUNCTION.fix = import or declare the missing `proc`, or rename the call to a visible procedure
+SEMA_E_UNKNOWN_FUNCTION.fix = declare proc missing_call, import the module that exports it, or rename the call
 SEMA_E_UNKNOWN_FUNCTION.example = proc add(left: int, right: int) -> int { give left + right }
 
 SEMA_E_UNKNOWN_SYMBOL.summary = symbol nieznany.
@@ -1622,7 +1622,7 @@ IR_E_INVALID_MODULE.step1 = Inspect the highlighted AST, HIR, MIR, or IR node an
 IR_E_INVALID_MODULE.fix = repair the malformed intermediate representation before continuing to the next phase
 IR_E_INVALID_MODULE.example = vitte check path/to/file.vit
 
-IR_E_INVALID_FUNCTION.summary = function nieprawidlowy.
+IR_E_INVALID_FUNCTION.summary = procedure nieprawidlowy.
 IR_E_INVALID_FUNCTION.cause = The compiler pipeline phase found code that violates this diagnostic rule.
 IR_E_INVALID_FUNCTION.step1 = Inspect the highlighted AST, HIR, MIR, or IR node and preserve its required fields during lowering.
 IR_E_INVALID_FUNCTION.fix = repair the malformed intermediate representation before continuing to the next phase
