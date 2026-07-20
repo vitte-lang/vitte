@@ -232,6 +232,7 @@ form CompilerCliRequest {
     lang: string
     format: string
     error_format: string
+    color: string
     valid: bool
     status: driver.DriverExitStatus
     message: string
@@ -311,6 +312,7 @@ proc empty_cli_request() -> CompilerCliRequest {
         lang: "en",
         format: "",
         error_format: "terminal",
+        color: "auto",
         valid: false,
         status: driver.DriverExitStatus::InvalidArguments,
         message: "missing compiler command"
@@ -397,6 +399,19 @@ proc cli_normalize_error_format(text: string) -> string {
     give "";
 }
 
+proc cli_normalize_color(text: string) -> string {
+    if text == "auto" {
+        give "auto";
+    }
+    if text == "always" {
+        give "always";
+    }
+    if text == "never" {
+        give "never";
+    }
+    give "";
+}
+
 proc cli_explain_command_contract(command: string, code: string) -> bool {
     give command == "explain" and code != "";
 }
@@ -422,6 +437,7 @@ proc cli_is_known_flag(text: string) -> bool {
         or text == "--lang"
         or text == "--format"
         or text == "--error-format"
+        or text == "--color"
         or text == "--native"
         or text == "--no-native"
         or text == "--json";
@@ -706,6 +722,19 @@ proc parse_cli_request(args: list[string]) -> CompilerCliRequest {
                 }
                 if request.error_format == "json" {
                     set request.format = "json";
+                }
+                set i = i + 2;
+            } elif arg == "--color" {
+                if i + 1 >= len(args) {
+                    set request.status = driver.DriverExitStatus::InvalidArguments;
+                    set request.message = "missing value after " + arg;
+                    give request;
+                }
+                set request.color = cli_normalize_color(args[i + 1]);
+                if request.color == "" {
+                    set request.status = driver.DriverExitStatus::InvalidArguments;
+                    set request.message = "unsupported --color value: " + args[i + 1];
+                    give request;
                 }
                 set i = i + 2;
             } elif arg == "--json" {
