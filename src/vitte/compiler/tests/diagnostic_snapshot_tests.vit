@@ -481,6 +481,20 @@ proc test_report_orders_diagnostics_by_file_and_position() -> bool {
     and report.diagnostics[2].code == "TYPECK_E_LATE";
 }
 
+proc test_diagnostic_order_is_stable_across_runs() -> bool {
+  let first: Diagnostic = diagnostic_error("TYPECK_E_LATE", DiagnosticPhase.Typeck, "late", span_create("b.vit", 1, 1, 1));
+  let second: Diagnostic = diagnostic_error("LEX_E_FIRST", DiagnosticPhase.Lexer, "first", span_create("a.vit", 4, 9, 1));
+  let third: Diagnostic = diagnostic_error("PARSE_E_EARLIER", DiagnosticPhase.Parser, "earlier", span_create("a.vit", 2, 3, 1));
+  let left: DiagnosticReport = diagnostic_report([first, second, third]);
+  let right: DiagnosticReport = diagnostic_report([first, second, third]);
+  give len(left.diagnostics) == len(right.diagnostics)
+    and left.diagnostics[0].code == right.diagnostics[0].code
+    and left.diagnostics[1].code == right.diagnostics[1].code
+    and left.diagnostics[2].code == right.diagnostics[2].code
+    and left.diagnostics[0].span.file == "a.vit"
+    and left.diagnostics[0].span.start_line == 2;
+}
+
 proc test_text_diagnostic_format_is_stable() -> bool {
   let diag: Diagnostic = diagnostic_error("TYPECK_E_TEXT", DiagnosticPhase.Typeck, "text format", span_create("text.vit", 3, 5, 1));
   let config: DiagnosticRenderConfig = default_render_config();
@@ -623,6 +637,7 @@ proc run_all_tests() -> int {
   let multifile_ok: bool = test_multifile_diagnostic_spans();
   let unicode_tabs_ok: bool = test_unicode_and_tab_diagnostic_rendering();
   let report_order_ok: bool = test_report_orders_diagnostics_by_file_and_position();
+  let stable_order_ok: bool = test_diagnostic_order_is_stable_across_runs();
   let text_format_ok: bool = test_text_diagnostic_format_is_stable();
   let architecture_ok: bool = test_single_diagnostic_architecture_covers_compiler_pipeline();
   let phase_policy_ok: bool = test_phase_policy_defines_blocking_errors_precisely();
@@ -684,6 +699,9 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if report_order_ok == false {
+    set failures = failures + 1;
+  }
+  if stable_order_ok == false {
     set failures = failures + 1;
   }
   if text_format_ok == false {

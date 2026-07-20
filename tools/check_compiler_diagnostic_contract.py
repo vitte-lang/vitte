@@ -605,6 +605,8 @@ def check_relational_diagnostic_contract() -> list[str]:
         (DIAGNOSTIC_SNAPSHOT_TESTS, "cascade_of == report.diagnostics[0].primary_error_key"),
         (DIAGNOSTIC_SNAPSHOT_TESTS, "test_duplicate_diagnostics_are_suppressed"),
         (DIAGNOSTIC_SNAPSHOT_TESTS, "duplicate_count == 1"),
+        (DIAGNOSTIC_SNAPSHOT_TESTS, "test_diagnostic_order_is_stable_across_runs"),
+        (DIAGNOSTIC_SNAPSHOT_TESTS, "left.diagnostics[0].code == right.diagnostics[0].code"),
         (CANONICAL_DIAGNOSTIC, "why expected type is imposed:"),
         (CANONICAL_DIAGNOSTIC, "origin of obtained type:"),
         (CANONICAL_DIAGNOSTIC, "give 3 as u64;"),
