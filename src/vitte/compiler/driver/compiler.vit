@@ -231,6 +231,7 @@ form CompilerCliRequest {
     stdlib_version: string
     lang: string
     format: string
+    error_format: string
     valid: bool
     status: driver.DriverExitStatus
     message: string
@@ -309,6 +310,7 @@ proc empty_cli_request() -> CompilerCliRequest {
         stdlib_version: "",
         lang: "en",
         format: "",
+        error_format: "terminal",
         valid: false,
         status: driver.DriverExitStatus::InvalidArguments,
         message: "missing compiler command"
@@ -379,6 +381,22 @@ proc cli_is_input_flag(text: string) -> bool {
     give text == "--src" or text == "--input";
 }
 
+proc cli_normalize_error_format(text: string) -> string {
+    if text == "json" {
+        give "json";
+    }
+    if text == "lsp" {
+        give "lsp";
+    }
+    if text == "short" {
+        give "short";
+    }
+    if text == "terminal" or text == "human" or text == "text" {
+        give "terminal";
+    }
+    give "";
+}
+
 proc cli_explain_command_contract(command: string, code: string) -> bool {
     give command == "explain" and code != "";
 }
@@ -403,6 +421,7 @@ proc cli_is_known_flag(text: string) -> bool {
         or text == "--stdlib-version"
         or text == "--lang"
         or text == "--format"
+        or text == "--error-format"
         or text == "--native"
         or text == "--no-native"
         or text == "--json";
@@ -663,9 +682,35 @@ proc parse_cli_request(args: list[string]) -> CompilerCliRequest {
                     give request;
                 }
                 set request.format = args[i + 1];
+                set request.error_format = cli_normalize_error_format(args[i + 1]);
+                if request.error_format == "" {
+                    set request.status = driver.DriverExitStatus::InvalidArguments;
+                    set request.message = "unsupported --format value: " + args[i + 1];
+                    give request;
+                }
+                if request.error_format == "json" {
+                    set request.format = "json";
+                }
+                set i = i + 2;
+            } elif arg == "--error-format" {
+                if i + 1 >= len(args) {
+                    set request.status = driver.DriverExitStatus::InvalidArguments;
+                    set request.message = "missing value after " + arg;
+                    give request;
+                }
+                set request.error_format = cli_normalize_error_format(args[i + 1]);
+                if request.error_format == "" {
+                    set request.status = driver.DriverExitStatus::InvalidArguments;
+                    set request.message = "unsupported --error-format value: " + args[i + 1];
+                    give request;
+                }
+                if request.error_format == "json" {
+                    set request.format = "json";
+                }
                 set i = i + 2;
             } elif arg == "--json" {
                 set request.format = "json";
+                set request.error_format = "json";
                 set i = i + 1;
             } else {
                 set i = i + 1;
