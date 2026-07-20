@@ -110,6 +110,7 @@ STDLIB_NEXT_STEP_SOURCES = (
     SOURCE_STDLIB_DIR / "tests" / "fuzz" / "utf8_url_csv.vit",
     SOURCE_STDLIB_DIR / "tests" / "fuzz" / "path_json_parse.vit",
     SOURCE_STDLIB_DIR / "tests" / "module_runner.vit",
+    SOURCE_STDLIB_DIR / "tests" / "public_module_coverage.vit",
     SOURCE_STDLIB_DIR / "tests" / "modules" / "std_uuid_test.vit",
     SOURCE_STDLIB_DIR / "tests" / "modules" / "std_calendar_test.vit",
     SOURCE_STDLIB_DIR / "tests" / "modules" / "std_units_test.vit",
@@ -127,6 +128,7 @@ STDLIB_NEXT_STEP_SOURCES = (
     SOURCE_STDLIB_DIR / "benchmarks" / "modules" / "parse_bench.vit",
     SOURCE_STDLIB_DIR / "tests" / "snapshots" / "stdlib_api.snap",
     SOURCE_STDLIB_DIR / "examples" / "stdlib_max.vit",
+    SOURCE_STDLIB_DIR / "examples" / "public_module_examples.vit",
     ROOT / "tools" / "stdlib" / "generate_api_docs.py",
     ROOT / "tools" / "stdlib" / "generate_unicode_tables.py",
     ROOT / "docs" / "compiler" / "stdlib_next_steps.md",
@@ -805,6 +807,7 @@ REQUIRED_NEXT_STEP_FRAGMENTS = {
     "tests/fuzz/utf8_url_csv.vit": ("fuzz_utf8_url_csv", "core_string.validate_utf8", "std_url.url_parse", "std_csv.csv_parse"),
     "tests/fuzz/path_json_parse.vit": ("fuzz_path_json_parse", "std_path.normalize", "std_serialization.json_value", "std_parse.parse_i64"),
     "tests/module_runner.vit": ("stdlib_module_tests_run", "std_uuid_test", "std_calendar_test", "std_percent_encoding_test", "stdlib_negative_cases_run"),
+    "tests/public_module_coverage.vit": ("PUBLIC_MODULE_TEST_COUNT", "public_module_tests_present", "src/vitte/stdlib/std/uuid.vitl"),
     "tests/modules/std_uuid_test.vit": ("std_uuid_test", "std_uuid.uuid_nil", "std_uuid.uuid_is_nil"),
     "tests/modules/std_calendar_test.vit": ("std_calendar_test", "std_calendar.is_leap_year", "std_calendar.date"),
     "tests/modules/std_units_test.vit": ("std_units_test", "std_units.convert", "std_units.meter"),
@@ -821,6 +824,7 @@ REQUIRED_NEXT_STEP_FRAGMENTS = {
     "benchmarks/modules/format_bench.vit": ("bench_format_ints", "format_int", "format_uint", "FormatBase.HexLower"),
     "benchmarks/modules/parse_bench.vit": ("bench_parse_numbers", "parse_i64", "is_ok"),
     "examples/stdlib_max.vit": ("stdlib_max_example", "std_uuid.uuid_nil", "std_path.path_buf", "std_random.prng"),
+    "examples/public_module_examples.vit": ("PUBLIC_MODULE_EXAMPLE_COUNT", "public_module_examples_present", "src/vitte/stdlib/std/uuid.vitl"),
 }
 
 
@@ -1083,6 +1087,55 @@ def validate_module_manifest(manifest: dict) -> list[ValidationResult]:
         name="official_entrypoints_exist",
         status=not stale_entrypoints,
         detail="ok" if not stale_entrypoints else "; ".join(stale_entrypoints[:8]),
+    ))
+    rules = manifest.get("rules", {})
+    public_coverage_rules_enabled = (
+        rules.get("public_modules_require_examples") is True
+        and rules.get("public_modules_require_dedicated_tests") is True
+    )
+    results.append(ValidationResult(
+        name="public_module_coverage_rules_enabled",
+        status=public_coverage_rules_enabled,
+        detail="ok" if public_coverage_rules_enabled else json.dumps(rules, sort_keys=True),
+    ))
+
+    def is_public_module(entry: str) -> bool:
+        parts = Path(entry).parts
+        return (
+            entry.startswith("src/vitte/stdlib/")
+            and entry.endswith((".vit", ".vitl"))
+            and not any(part in parts for part in ("tests", "benchmarks", "examples", "generated", "tools"))
+        )
+
+    public_modules = sorted(path for path in official if is_public_module(path))
+    coverage = manifest.get("public_module_coverage", {})
+    modules_without_coverage = [
+        module
+        for module in public_modules
+        if module not in coverage
+    ]
+    modules_without_examples: list[str] = []
+    modules_without_tests: list[str] = []
+
+    for module in public_modules:
+        entry = coverage.get(module, {})
+        example_path = ROOT / entry.get("example", "")
+        test_path = ROOT / entry.get("test", "")
+
+        if not example_path.is_file() or module not in example_path.read_text(encoding="utf-8", errors="ignore"):
+            modules_without_examples.append(module)
+        if not test_path.is_file() or module not in test_path.read_text(encoding="utf-8", errors="ignore"):
+            modules_without_tests.append(module)
+
+    results.append(ValidationResult(
+        name="public_modules_have_examples",
+        status=not modules_without_coverage and not modules_without_examples,
+        detail="ok" if not modules_without_coverage and not modules_without_examples else "; ".join((modules_without_coverage + modules_without_examples)[:8]),
+    ))
+    results.append(ValidationResult(
+        name="public_modules_have_dedicated_tests",
+        status=not modules_without_coverage and not modules_without_tests,
+        detail="ok" if not modules_without_coverage and not modules_without_tests else "; ".join((modules_without_coverage + modules_without_tests)[:8]),
     ))
     return results
 
