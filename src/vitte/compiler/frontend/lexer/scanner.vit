@@ -307,10 +307,10 @@ proc scan_quoted_token(cursor: Cursor, quote: string, kind: TokenKind) -> ScanRe
   let lexeme: string = cursor_slice(cursor, cursor.index, walk.index);
 
   if not closed {
-    let code: string = "LEX_E_UNTERMINATED_CHAR";
+    let code: string = "LEX0018";
     let message: string = "unterminated char literal";
     if quote == "\"" {
-      set code = "LEX_E_UNTERMINATED_STRING";
+      set code = "LEX0021";
       set message = "unterminated string literal";
     }
     set diagnostics = diagnostics + [lex_diag(code, message, start_line, start_col, len(lexeme))];
@@ -369,7 +369,7 @@ proc scan_raw_string_token(cursor: Cursor) -> ScanResult {
   let lexeme: string = cursor_slice(cursor, cursor.index, walk.index);
 
   if not closed {
-    set diagnostics = diagnostics + [lex_diag("LEX_E_UNTERMINATED_STRING", "unterminated raw string literal", start_line, start_col, len(lexeme))];
+    set diagnostics = diagnostics + [lex_diag("LEX0021", "unterminated raw string literal", start_line, start_col, len(lexeme))];
     set tokens = tokens + [token_with_offset(TokenKind.Invalid, lexeme, start_line, start_col, cursor.index)];
     give scan_result(tokens, diagnostics, scan_metrics(len(tokens), 0, 0, len(tokens), 0, len(diagnostics), 0, false));
   }

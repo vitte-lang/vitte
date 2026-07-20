@@ -1287,7 +1287,7 @@ proc diagnostic_default_note(phase: DiagnosticPhase, code: string) -> string {
 }
 
 proc diagnostic_code_family(phase: DiagnosticPhase, code: string) -> string {
-    if starts_with(code, "LEX_") or starts_with(code, "FLEX") {
+    if starts_with(code, "LEX") or starts_with(code, "FLEX") {
         give "lexical-form";
     }
 
@@ -1319,7 +1319,7 @@ proc diagnostic_code_family(phase: DiagnosticPhase, code: string) -> string {
 }
 
 proc diagnostic_correction_strategy(phase: DiagnosticPhase, code: string) -> string {
-    if code == "LEX_E_UNTERMINATED_STRING" or code == "LEX_E_UNTERMINATED_CHAR" or code == "P000_UNBALANCED" {
+    if lexer_code_is(code, "LEX_E_UNTERMINATED_STRING", "LEX0021") or lexer_code_is(code, "LEX_E_UNTERMINATED_CHAR", "LEX0018") or code == "P000_UNBALANCED" {
         give "close-open-construct";
     }
 
@@ -1391,7 +1391,7 @@ proc diagnostic_confidence(phase: DiagnosticPhase, code: string) -> string {
         give "high";
     }
 
-    if starts_with(code, "LEX_") {
+    if starts_with(code, "LEX") {
         give "high";
     }
 
@@ -3701,40 +3701,44 @@ proc first_backtick_fragment(text: string) -> string {
     give slice(rest, 0, fragment_end);
 }
 
+proc lexer_code_is(code: string, legacy: string, stable: string) -> bool {
+    give code == legacy or code == stable;
+}
+
 proc lexer_rule_from_code(code: string) -> string {
-    if code == "LEX_E_INVALID_CHAR" {
+    if lexer_code_is(code, "LEX_E_INVALID_CHAR", "LEX0002") {
         give "source character set";
     }
 
-    if code == "LEX_E_UNTERMINATED_STRING" {
+    if lexer_code_is(code, "LEX_E_UNTERMINATED_STRING", "LEX0021") {
         give "string literal termination";
     }
 
-    if code == "LEX_E_UNTERMINATED_CHAR" or code == "LEX_E_INVALID_CHAR_LITERAL" {
+    if lexer_code_is(code, "LEX_E_UNTERMINATED_CHAR", "LEX0018") or lexer_code_is(code, "LEX_E_INVALID_CHAR_LITERAL", "LEX0003") {
         give "char literal shape";
     }
 
-    if code == "LEX_E_INVALID_NUMBER" {
+    if lexer_code_is(code, "LEX_E_INVALID_NUMBER", "LEX0009") {
         give "numeric literal grammar";
     }
 
-    if code == "LEX_E_UNTERMINATED_BLOCK_COMMENT" or code == "LEX_E_UNTERMINATED_REGION_COMMENT" {
+    if lexer_code_is(code, "LEX_E_UNTERMINATED_BLOCK_COMMENT", "LEX0017") or lexer_code_is(code, "LEX_E_UNTERMINATED_REGION_COMMENT", "LEX0020") {
         give "comment termination";
     }
 
-    if code == "LEX_E_INVALID_UNICODE" or code == "LEX_E_INVALID_UNICODE_ESCAPE" {
+    if lexer_code_is(code, "LEX_E_INVALID_UNICODE", "LEX0012") or lexer_code_is(code, "LEX_E_INVALID_UNICODE_ESCAPE", "LEX0013") {
         give "unicode escape syntax";
     }
 
-    if code == "LEX_E_TOKEN_TOO_LARGE" {
+    if lexer_code_is(code, "LEX_E_TOKEN_TOO_LARGE", "LEX0015") {
         give "maximum token byte length";
     }
 
-    if code == "LEX_E_INVALID_UTF8" {
+    if lexer_code_is(code, "LEX_E_INVALID_UTF8", "LEX0014") {
         give "utf-8 source decoding";
     }
 
-    if code == "LEX_E_INVALID_ESCAPE" {
+    if lexer_code_is(code, "LEX_E_INVALID_ESCAPE", "LEX0004") {
         give "escape sequence grammar";
     }
 
@@ -3744,7 +3748,7 @@ proc lexer_rule_from_code(code: string) -> string {
 proc lexer_explanation_from_surface(code: string, message: string) -> string {
     let fragment: string = first_backtick_fragment(message);
 
-    if code == "LEX_E_INVALID_CHAR" {
+    if lexer_code_is(code, "LEX_E_INVALID_CHAR", "LEX0002") {
         if fragment != "" {
             give "The lexer encountered the unsupported character `" + fragment + "` and could not classify it as whitespace, punctuation, identifier, or literal content.";
         }
@@ -3752,39 +3756,39 @@ proc lexer_explanation_from_surface(code: string, message: string) -> string {
         give "The lexer encountered a source character that does not belong to the Vitte lexical grammar.";
     }
 
-    if code == "LEX_E_UNTERMINATED_STRING" {
+    if lexer_code_is(code, "LEX_E_UNTERMINATED_STRING", "LEX0021") {
         give "The lexer reached the end of the current string token before finding the closing quote, so parsing cannot continue with a stable token stream.";
     }
 
-    if code == "LEX_E_UNTERMINATED_CHAR" {
+    if lexer_code_is(code, "LEX_E_UNTERMINATED_CHAR", "LEX0018") {
         give "The lexer reached the end of the char literal before finding the closing quote, so the token does not represent exactly one character.";
     }
 
-    if code == "LEX_E_INVALID_CHAR_LITERAL" {
+    if lexer_code_is(code, "LEX_E_INVALID_CHAR_LITERAL", "LEX0003") {
         give "A Vitte char literal must encode exactly one character after escape decoding, but this token does not satisfy that rule.";
     }
 
-    if code == "LEX_E_INVALID_NUMBER" {
+    if lexer_code_is(code, "LEX_E_INVALID_NUMBER", "LEX0009") {
         give "The numeric token does not match the accepted integer or float grammar for its radix, separators, or suffix.";
     }
 
-    if code == "LEX_E_UNTERMINATED_BLOCK_COMMENT" or code == "LEX_E_UNTERMINATED_REGION_COMMENT" {
+    if lexer_code_is(code, "LEX_E_UNTERMINATED_BLOCK_COMMENT", "LEX0017") or lexer_code_is(code, "LEX_E_UNTERMINATED_REGION_COMMENT", "LEX0020") {
         give "The lexer entered a comment construct and reached the end of the source before its terminating delimiter was found.";
     }
 
-    if code == "LEX_E_INVALID_UNICODE" or code == "LEX_E_INVALID_UNICODE_ESCAPE" {
+    if lexer_code_is(code, "LEX_E_INVALID_UNICODE", "LEX0012") or lexer_code_is(code, "LEX_E_INVALID_UNICODE_ESCAPE", "LEX0013") {
         give "The lexer found a unicode escape that does not encode a valid scalar value or does not follow the required escape syntax.";
     }
 
-    if code == "LEX_E_INVALID_UTF8" {
+    if lexer_code_is(code, "LEX_E_INVALID_UTF8", "LEX0014") {
         give "The source buffer contains bytes that are not valid UTF-8, so the lexer cannot interpret the next source character reliably.";
     }
 
-    if code == "LEX_E_TOKEN_TOO_LARGE" {
+    if lexer_code_is(code, "LEX_E_TOKEN_TOO_LARGE", "LEX0015") {
         give "The lexer accepted the token shape, but its byte length exceeded the implementation limit for a single token.";
     }
 
-    if code == "LEX_E_INVALID_ESCAPE" {
+    if lexer_code_is(code, "LEX_E_INVALID_ESCAPE", "LEX0004") {
         give "The escape sequence inside the literal is not recognized by the Vitte lexer.";
     }
 
@@ -3794,7 +3798,7 @@ proc lexer_explanation_from_surface(code: string, message: string) -> string {
 proc lexer_probable_fix_from_surface(code: string, message: string) -> string {
     let fragment: string = first_backtick_fragment(message);
 
-    if code == "LEX_E_INVALID_CHAR" {
+    if lexer_code_is(code, "LEX_E_INVALID_CHAR", "LEX0002") {
         if fragment != "" {
             give "remove `" + fragment + "` or replace it with valid Vitte syntax";
         }
@@ -3802,39 +3806,39 @@ proc lexer_probable_fix_from_surface(code: string, message: string) -> string {
         give "remove or replace the unsupported source character";
     }
 
-    if code == "LEX_E_UNTERMINATED_STRING" {
+    if lexer_code_is(code, "LEX_E_UNTERMINATED_STRING", "LEX0021") {
         give "insert the missing closing quote for the string literal";
     }
 
-    if code == "LEX_E_UNTERMINATED_CHAR" or code == "LEX_E_INVALID_CHAR_LITERAL" {
+    if lexer_code_is(code, "LEX_E_UNTERMINATED_CHAR", "LEX0018") or lexer_code_is(code, "LEX_E_INVALID_CHAR_LITERAL", "LEX0003") {
         give "rewrite the char literal so it contains exactly one character and a closing quote";
     }
 
-    if code == "LEX_E_INVALID_NUMBER" {
+    if lexer_code_is(code, "LEX_E_INVALID_NUMBER", "LEX0009") {
         give "rewrite the numeric literal using a valid radix, separator, and suffix combination";
     }
 
-    if code == "LEX_E_UNTERMINATED_BLOCK_COMMENT" {
+    if lexer_code_is(code, "LEX_E_UNTERMINATED_BLOCK_COMMENT", "LEX0017") {
         give "close the block comment with `*/`";
     }
 
-    if code == "LEX_E_UNTERMINATED_REGION_COMMENT" {
+    if lexer_code_is(code, "LEX_E_UNTERMINATED_REGION_COMMENT", "LEX0020") {
         give "close the region comment with `>>>`";
     }
 
-    if code == "LEX_E_INVALID_UNICODE" or code == "LEX_E_INVALID_UNICODE_ESCAPE" {
+    if lexer_code_is(code, "LEX_E_INVALID_UNICODE", "LEX0012") or lexer_code_is(code, "LEX_E_INVALID_UNICODE_ESCAPE", "LEX0013") {
         give "use a valid unicode scalar escape such as `u+0041`";
     }
 
-    if code == "LEX_E_INVALID_UTF8" {
+    if lexer_code_is(code, "LEX_E_INVALID_UTF8", "LEX0014") {
         give "save the source file as UTF-8 or remove the offending byte sequence";
     }
 
-    if code == "LEX_E_TOKEN_TOO_LARGE" {
+    if lexer_code_is(code, "LEX_E_TOKEN_TOO_LARGE", "LEX0015") {
         give "split the token into smaller pieces or move the data into runtime input";
     }
 
-    if code == "LEX_E_INVALID_ESCAPE" {
+    if lexer_code_is(code, "LEX_E_INVALID_ESCAPE", "LEX0004") {
         give "replace the escape with a supported sequence such as `\\n`, `\\t`, `\\\\`, `\\\"`, or a valid unicode escape";
     }
 
@@ -3842,35 +3846,35 @@ proc lexer_probable_fix_from_surface(code: string, message: string) -> string {
 }
 
 proc lexer_documentation_from_code(code: string) -> string {
-    if code == "LEX_E_INVALID_CHAR" {
+    if lexer_code_is(code, "LEX_E_INVALID_CHAR", "LEX0002") {
         give "docs://language/lexer/source-characters";
     }
 
-    if code == "LEX_E_UNTERMINATED_STRING" {
+    if lexer_code_is(code, "LEX_E_UNTERMINATED_STRING", "LEX0021") {
         give "docs://language/lexer/string-literals";
     }
 
-    if code == "LEX_E_UNTERMINATED_CHAR" or code == "LEX_E_INVALID_CHAR_LITERAL" {
+    if lexer_code_is(code, "LEX_E_UNTERMINATED_CHAR", "LEX0018") or lexer_code_is(code, "LEX_E_INVALID_CHAR_LITERAL", "LEX0003") {
         give "docs://language/lexer/char-literals";
     }
 
-    if code == "LEX_E_INVALID_NUMBER" {
+    if lexer_code_is(code, "LEX_E_INVALID_NUMBER", "LEX0009") {
         give "docs://language/lexer/numeric-literals";
     }
 
-    if code == "LEX_E_UNTERMINATED_BLOCK_COMMENT" or code == "LEX_E_UNTERMINATED_REGION_COMMENT" {
+    if lexer_code_is(code, "LEX_E_UNTERMINATED_BLOCK_COMMENT", "LEX0017") or lexer_code_is(code, "LEX_E_UNTERMINATED_REGION_COMMENT", "LEX0020") {
         give "docs://language/lexer/comments";
     }
 
-    if code == "LEX_E_INVALID_UNICODE" or code == "LEX_E_INVALID_UNICODE_ESCAPE" or code == "LEX_E_INVALID_UTF8" {
+    if lexer_code_is(code, "LEX_E_INVALID_UNICODE", "LEX0012") or lexer_code_is(code, "LEX_E_INVALID_UNICODE_ESCAPE", "LEX0013") or lexer_code_is(code, "LEX_E_INVALID_UTF8", "LEX0014") {
         give "docs://language/lexer/unicode";
     }
 
-    if code == "LEX_E_TOKEN_TOO_LARGE" {
+    if lexer_code_is(code, "LEX_E_TOKEN_TOO_LARGE", "LEX0015") {
         give "docs://language/implementation/lexer-limits";
     }
 
-    if code == "LEX_E_INVALID_ESCAPE" {
+    if lexer_code_is(code, "LEX_E_INVALID_ESCAPE", "LEX0004") {
         give "docs://language/lexer/escape-sequences";
     }
 
@@ -3944,7 +3948,7 @@ proc diagnostic_from_surface(code: string, message: string, span: SourceSpan, fa
 }
 
 proc phase_from_code(code: string) -> DiagnosticPhase {
-    if starts_with(code, "LEX_") {
+    if starts_with(code, "LEX") {
         give DiagnosticPhase.Lexer;
     }
 
@@ -4175,7 +4179,7 @@ proc parser_unclosed_block(open_span: SourceSpan, eof_span: SourceSpan) -> Diagn
 }
 
 proc lexer_unterminated_string(span: SourceSpan) -> Diagnostic {
-    let diag: Diagnostic = diagnostic_error("LEX_E_UNTERMINATED_STRING", DiagnosticPhase.Lexer, "unterminated string literal", span);
+    let diag: Diagnostic = diagnostic_error("LEX0021", DiagnosticPhase.Lexer, "unterminated string literal", span);
     give diagnostic_with_help(diag, "terminate the string with a matching quote");
 }
 

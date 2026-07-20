@@ -243,7 +243,7 @@ proc validate_numeric_suffix(suffix: string) -> LiteralValidation {
 
   if not is_letter(slice(suffix, 0, 1)) {
     give literal_invalid(
-      "LEX_E_INVALID_NUMBER",
+      "LEX0009",
       "invalid numeric literal suffix",
       LiteralKind.Integer,
       false
@@ -255,7 +255,7 @@ proc validate_numeric_suffix(suffix: string) -> LiteralValidation {
   while i < len(suffix) {
     if not is_identifier_continue(slice(suffix, i, i + 1)) {
       give literal_invalid(
-        "LEX_E_INVALID_NUMBER",
+        "LEX0009",
         "invalid numeric literal suffix",
         LiteralKind.Integer,
         false
@@ -339,7 +339,7 @@ proc validate_number_lexeme(lexeme: string) -> LiteralValidation {
     if ch == "_" {
       if not saw_digit or prev_underscore or i + 1 >= len(lexeme) {
         give literal_invalid(
-          "LEX_E_INVALID_NUMBER",
+          "LEX0009",
           "invalid underscore placement in numeric literal",
           LiteralKind.Integer,
           saw_dot
@@ -354,7 +354,7 @@ proc validate_number_lexeme(lexeme: string) -> LiteralValidation {
     if base_mode == "" and ch == "." {
       if saw_dot or saw_exponent or prev_underscore or i + 1 >= len(lexeme) or not is_digit(slice(lexeme, i + 1, i + 2)) {
         give literal_invalid(
-          "LEX_E_INVALID_NUMBER",
+          "LEX0009",
           "malformed float literal",
           LiteralKind.Float,
           true
@@ -370,7 +370,7 @@ proc validate_number_lexeme(lexeme: string) -> LiteralValidation {
     if base_mode == "" and (ch == "e" or ch == "E") {
       if not saw_digit or prev_underscore or saw_exponent {
         give literal_invalid(
-          "LEX_E_INVALID_NUMBER",
+          "LEX0009",
           "malformed float exponent",
           LiteralKind.Float,
           true
@@ -380,7 +380,7 @@ proc validate_number_lexeme(lexeme: string) -> LiteralValidation {
       let exponent_index: u64 = i + 1;
       if exponent_index >= len(lexeme) {
         give literal_invalid(
-          "LEX_E_INVALID_NUMBER",
+          "LEX0009",
           "malformed float exponent",
           LiteralKind.Float,
           true
@@ -396,7 +396,7 @@ proc validate_number_lexeme(lexeme: string) -> LiteralValidation {
 
       if i >= len(lexeme) or not is_digit(slice(lexeme, i, i + 1)) {
         give literal_invalid(
-          "LEX_E_INVALID_NUMBER",
+          "LEX0009",
           "malformed float exponent",
           LiteralKind.Float,
           true
@@ -418,7 +418,7 @@ proc validate_number_lexeme(lexeme: string) -> LiteralValidation {
         if exp_ch == "_" {
           if exponent_digits == 0 or i + 1 >= len(lexeme) or not is_digit(slice(lexeme, i + 1, i + 2)) {
             give literal_invalid(
-              "LEX_E_INVALID_NUMBER",
+              "LEX0009",
               "invalid underscore placement in float exponent",
               LiteralKind.Float,
               true
@@ -432,7 +432,7 @@ proc validate_number_lexeme(lexeme: string) -> LiteralValidation {
 
       if exponent_digits == 0 {
         give literal_invalid(
-          "LEX_E_INVALID_NUMBER",
+          "LEX0009",
           "malformed float exponent",
           LiteralKind.Float,
           true
@@ -448,7 +448,7 @@ proc validate_number_lexeme(lexeme: string) -> LiteralValidation {
     }
 
     give literal_invalid(
-      "LEX_E_INVALID_NUMBER",
+      "LEX0009",
       "invalid numeric literal",
       LiteralKind.Integer,
       saw_dot
@@ -457,7 +457,7 @@ proc validate_number_lexeme(lexeme: string) -> LiteralValidation {
 
   if not saw_digit or prev_underscore {
     give literal_invalid(
-      "LEX_E_INVALID_NUMBER",
+      "LEX0009",
       "numeric literal requires digits",
       LiteralKind.Integer,
       saw_dot
@@ -466,7 +466,7 @@ proc validate_number_lexeme(lexeme: string) -> LiteralValidation {
 
   if saw_exponent and exponent_digits == 0 {
     give literal_invalid(
-      "LEX_E_INVALID_NUMBER",
+      "LEX0009",
       "malformed float exponent",
       LiteralKind.Float,
       true
@@ -499,7 +499,7 @@ proc validate_string_lexeme(lexeme: string) -> LiteralValidation {
     if ch == "\\" {
       if i + 1 >= len(lexeme) - 1 {
         give literal_invalid(
-          "LEX_E_INVALID_ESCAPE",
+          "LEX0004",
           "truncated escape sequence",
           LiteralKind.String,
           false
@@ -510,7 +510,7 @@ proc validate_string_lexeme(lexeme: string) -> LiteralValidation {
 
       if not is_valid_escape_char(esc) {
         give literal_invalid(
-          "LEX_E_INVALID_ESCAPE",
+          "LEX0004",
           "invalid escape sequence",
           LiteralKind.String,
           false
@@ -538,7 +538,7 @@ proc validate_raw_string_lexeme(lexeme: string) -> LiteralValidation {
   if starts_with(lexeme, "r\"") {
     if len(lexeme) < 3 or slice(lexeme, len(lexeme) - 1, len(lexeme)) != "\"" {
       give literal_invalid(
-        "LEX_E_UNTERMINATED_STRING",
+        "LEX0021",
         "unterminated raw string literal",
         LiteralKind.RawString,
         false
@@ -557,7 +557,7 @@ proc validate_raw_string_lexeme(lexeme: string) -> LiteralValidation {
   if starts_with(lexeme, "\"\"\"") {
     if len(lexeme) < 6 or slice(lexeme, len(lexeme) - 3, len(lexeme)) != "\"\"\"" {
       give literal_invalid(
-        "LEX_E_UNTERMINATED_STRING",
+        "LEX0021",
         "unterminated raw string literal",
         LiteralKind.RawString,
         false
@@ -574,7 +574,7 @@ proc validate_raw_string_lexeme(lexeme: string) -> LiteralValidation {
   }
 
   give literal_invalid(
-    "LEX_E_UNTERMINATED_STRING",
+    "LEX0021",
     "invalid raw string literal",
     LiteralKind.RawString,
     false
@@ -584,7 +584,7 @@ proc validate_raw_string_lexeme(lexeme: string) -> LiteralValidation {
 proc validate_char_lexeme(lexeme: string) -> LiteralValidation {
   if len(lexeme) < 3 {
     give literal_invalid(
-      "LEX_E_INVALID_CHAR_LITERAL",
+      "LEX0003",
       "empty char literal",
       LiteralKind.Char,
       false
@@ -600,7 +600,7 @@ proc validate_char_lexeme(lexeme: string) -> LiteralValidation {
     if ch == "\\" {
       if i + 1 >= len(lexeme) - 1 {
         give literal_invalid(
-          "LEX_E_INVALID_ESCAPE",
+          "LEX0004",
           "truncated escape sequence",
           LiteralKind.Char,
           false
@@ -611,7 +611,7 @@ proc validate_char_lexeme(lexeme: string) -> LiteralValidation {
 
       if not is_valid_escape_char(esc) {
         give literal_invalid(
-          "LEX_E_INVALID_ESCAPE",
+          "LEX0004",
           "invalid escape sequence",
           LiteralKind.Char,
           false
@@ -629,7 +629,7 @@ proc validate_char_lexeme(lexeme: string) -> LiteralValidation {
 
   if units != 1 {
     give literal_invalid(
-      "LEX_E_INVALID_CHAR_LITERAL",
+      "LEX0003",
       "char literal must contain exactly one character",
       LiteralKind.Char,
       false
@@ -649,7 +649,7 @@ proc validate_char_lexeme(lexeme: string) -> LiteralValidation {
 proc validate_identifier_lexeme(lexeme: string) -> LiteralValidation {
   if len(lexeme) == 0 {
     give literal_invalid(
-      "LEX_E_INVALID_IDENTIFIER",
+      "LEX0007",
       "empty identifier",
       LiteralKind.Identifier,
       false
@@ -658,7 +658,7 @@ proc validate_identifier_lexeme(lexeme: string) -> LiteralValidation {
 
   if not is_letter(slice(lexeme, 0, 1)) {
     give literal_invalid(
-      "LEX_E_INVALID_IDENTIFIER",
+      "LEX0007",
       "identifier must start with a letter or underscore",
       LiteralKind.Identifier,
       false
@@ -670,7 +670,7 @@ proc validate_identifier_lexeme(lexeme: string) -> LiteralValidation {
   while i < len(lexeme) {
     if not is_identifier_continue(slice(lexeme, i, i + 1)) {
       give literal_invalid(
-        "LEX_E_INVALID_IDENTIFIER",
+        "LEX0007",
         "invalid identifier character",
         LiteralKind.Identifier,
         false
