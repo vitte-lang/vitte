@@ -594,6 +594,8 @@ def check_relational_diagnostic_contract() -> list[str]:
         (DIAGNOSTIC_SNAPSHOT_SUITE, "schema: vitte.diagnostic-snapshot-suite"),
         (DIAGNOSTIC_SNAPSHOT_SUITE, "one-code-one-snapshot"),
         (DIAGNOSTIC_SNAPSHOT_SUITE, "machine-applicable-fix"),
+        (DIAGNOSTIC_SNAPSHOT_TESTS, "test_multiple_independent_errors_in_one_file"),
+        (DIAGNOSTIC_SNAPSHOT_TESTS, "multi_errors.vit"),
         (CANONICAL_DIAGNOSTIC, "why expected type is imposed:"),
         (CANONICAL_DIAGNOSTIC, "origin of obtained type:"),
         (CANONICAL_DIAGNOSTIC, "give 3 as u64;"),

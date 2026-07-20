@@ -412,6 +412,18 @@ proc test_report_deduplicates_and_limits_cascades() -> bool {
     and find(encoded, "\"invalid_example\": \"") >= 0;
 }
 
+proc test_multiple_independent_errors_in_one_file() -> bool {
+  let first: Diagnostic = diagnostic_error("PARSE_E_TOPLEVEL_DECL_EXPECTED", DiagnosticPhase.Parser, "expected declaration", span_create("multi_errors.vit", 1, 1, 4));
+  let second: Diagnostic = diagnostic_error("TYPECK_E_ASSIGN_MISMATCH", DiagnosticPhase.Typeck, "assignment contract failed", span_create("multi_errors.vit", 3, 7, 5));
+  let third: Diagnostic = diagnostic_error("BORROWCK_E_USE_AFTER_MOVE", DiagnosticPhase.Borrowck, "value used after move", span_create("multi_errors.vit", 5, 3, 4));
+  let report: DiagnosticReport = diagnostic_report([third, first, second]);
+  give len(report.diagnostics) == 3
+    and report.error_count == 3
+    and report.diagnostics[0].code == "PARSE_E_TOPLEVEL_DECL_EXPECTED"
+    and report.diagnostics[1].code == "TYPECK_E_ASSIGN_MISMATCH"
+    and report.diagnostics[2].code == "BORROWCK_E_USE_AFTER_MOVE";
+}
+
 proc test_report_orders_diagnostics_by_file_and_position() -> bool {
   let first: Diagnostic = diagnostic_error("TYPECK_E_LATE", DiagnosticPhase.Typeck, "late", span_create("b.vit", 1, 1, 1));
   let second: Diagnostic = diagnostic_error("LEX_E_FIRST", DiagnosticPhase.Lexer, "first", span_create("a.vit", 4, 9, 1));
@@ -559,6 +571,7 @@ proc run_all_tests() -> int {
   let catalog_ok: bool = test_typeck_and_borrowck_suggestion_catalog_contract();
   let rendered_suggestions_ok: bool = test_rendered_suggestion_applicability_contract();
   let report_cascade_ok: bool = test_report_deduplicates_and_limits_cascades();
+  let multi_error_ok: bool = test_multiple_independent_errors_in_one_file();
   let report_order_ok: bool = test_report_orders_diagnostics_by_file_and_position();
   let text_format_ok: bool = test_text_diagnostic_format_is_stable();
   let architecture_ok: bool = test_single_diagnostic_architecture_covers_compiler_pipeline();
@@ -603,6 +616,9 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if report_cascade_ok == false {
+    set failures = failures + 1;
+  }
+  if multi_error_ok == false {
     set failures = failures + 1;
   }
   if report_order_ok == false {
