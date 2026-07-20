@@ -16,6 +16,8 @@ REPORT_DIR = ROOT / "target" / "reports" / "mir_coverage"
 SNAPSHOT_DIR = ROOT / "src" / "vitte" / "compiler" / "tests" / "snapshots" / "mir"
 JSON_SNAPSHOT = SNAPSHOT_DIR / "coverage.json.snap"
 TEXT_SNAPSHOT = SNAPSHOT_DIR / "coverage.txt.snap"
+FIXTURE_JSON_SNAPSHOT = SNAPSHOT_DIR / "fixtures.json.snap"
+FIXTURE_TEXT_SNAPSHOT = SNAPSHOT_DIR / "fixtures.txt.snap"
 
 SUPPORT_STATUSES = {"supported", "hir_only", "mir_only", "planned", "not_supported"}
 OWNER_PHASES = {"lower_hir", "mir", "mir_validate", "mir_transform", "mir_to_ir", "diagnostics"}
@@ -24,6 +26,18 @@ REQUIRED_FIXTURES = {
     "tests/golden/frontend/snapshots/fixtures/hello_min.mir.json",
     "tests/hir/snapshots/valid/basic.mir-survival.json.snap",
     "tests/diagnostics/catalog/mir.catalog.json",
+    "tests/mir/valid/basic.vit",
+    "tests/mir/valid/control_flow.vit",
+    "tests/mir/valid/calls.vit",
+    "tests/mir/valid/generics.vit",
+    "tests/mir/valid/borrows.vit",
+    "tests/mir/valid/aggregates.vit",
+    "tests/mir/invalid/bad_cfg.vit",
+    "tests/mir/invalid/bad_call_arity.vit",
+    "tests/mir/invalid/bad_borrow.vit",
+    "tests/mir/invalid/bad_generic_arity.vit",
+    "tests/mir/multifile/app.vit",
+    "tests/mir/multifile/lib.vit",
 }
 
 
@@ -83,6 +97,7 @@ def build_payload() -> tuple[dict[str, object], list[str], str, str]:
     rows: list[dict[str, object]] = []
     supported_total = 0
     supported_covered = 0
+    status_totals = {status: 0 for status in sorted(SUPPORT_STATUSES)}
     for index, entry in enumerate(entries):
         surface = str(entry.get("surface", ""))
         tests = entry.get("tests", [])
@@ -96,6 +111,8 @@ def build_payload() -> tuple[dict[str, object], list[str], str, str]:
         covered.add(surface)
         if status not in SUPPORT_STATUSES:
             failures.append(f"{surface}: invalid or missing support_status `{status}`")
+        else:
+            status_totals[status] += 1
         if owner_phase not in OWNER_PHASES:
             failures.append(f"{surface}: invalid or missing owner_phase `{owner_phase}`")
         if not isinstance(tests, list):
@@ -144,6 +161,7 @@ def build_payload() -> tuple[dict[str, object], list[str], str, str]:
         "manifest_entry_count": len(covered),
         "supported_total": supported_total,
         "supported_covered": supported_covered,
+        "status_totals": status_totals,
         "uncovered_surfaces": uncovered,
         "stale_surfaces": stale,
         "coverage_table": rows,
@@ -176,6 +194,10 @@ def build_payload() -> tuple[dict[str, object], list[str], str, str]:
         f"- Declared surfaces: {payload['declared_surface_count']}",
         f"- Manifest entries: {payload['manifest_entry_count']}",
         f"- Supported coverage: {payload['supported_covered']}/{payload['supported_total']}",
+        f"- Planned surfaces: {status_totals['planned']}",
+        f"- HIR-only surfaces: {status_totals['hir_only']}",
+        f"- MIR-only surfaces: {status_totals['mir_only']}",
+        f"- Not-supported surfaces: {status_totals['not_supported']}",
         f"- Missing manifest entries: {len(uncovered)}",
         "",
         "## Missing Manifest Entries",
@@ -186,8 +208,8 @@ def build_payload() -> tuple[dict[str, object], list[str], str, str]:
         "",
         "## Remaining Hardening Tasks",
         "",
-        "- Add compiler-emitted JSON snapshots for representative MIR fixtures.",
-        "- Add dedicated `tests/mir` source fixtures for valid, invalid and multifile lowering.",
+        "- Expand compiler-emitted JSON snapshots beyond the current representative MIR fixture set.",
+        "- Add executable checks for every `tests/mir` source fixture once the CLI exposes stable per-fixture MIR dumps.",
         "- Add structured MIR diagnostic snapshots when MIR validation emits diagnostics directly.",
         "- Audit legacy `src/vitte/compiler/ir/mir_extended.vit` and `src/vitte/compiler/ir/hir_to_mir_lowering.vit` against canonical middle MIR.",
         "- Keep every `supported` surface backed by a named test and concrete assertion.",
@@ -207,6 +229,7 @@ def write_reports() -> list[str]:
         "manifest_entry_count",
         "supported_total",
         "supported_covered",
+        "status_totals",
         "uncovered_surfaces",
         "stale_surfaces",
         "coverage_table",
@@ -225,7 +248,46 @@ def write_reports() -> list[str]:
         failures.append(f"missing MIR text snapshot: {rel(TEXT_SNAPSHOT)}")
     elif TEXT_SNAPSHOT.read_text(encoding="utf-8") != text_snapshot:
         failures.append(f"MIR text snapshot drift: {rel(TEXT_SNAPSHOT)}")
+    fixture_json, fixture_text = fixture_snapshots()
+    (REPORT_DIR / "fixtures.json.snap").write_text(fixture_json, encoding="utf-8")
+    (REPORT_DIR / "fixtures.txt.snap").write_text(fixture_text, encoding="utf-8")
+    if not FIXTURE_JSON_SNAPSHOT.is_file():
+        failures.append(f"missing MIR fixture JSON snapshot: {rel(FIXTURE_JSON_SNAPSHOT)}")
+    elif FIXTURE_JSON_SNAPSHOT.read_text(encoding="utf-8") != fixture_json:
+        failures.append(f"MIR fixture JSON snapshot drift: {rel(FIXTURE_JSON_SNAPSHOT)}")
+    if not FIXTURE_TEXT_SNAPSHOT.is_file():
+        failures.append(f"missing MIR fixture text snapshot: {rel(FIXTURE_TEXT_SNAPSHOT)}")
+    elif FIXTURE_TEXT_SNAPSHOT.read_text(encoding="utf-8") != fixture_text:
+        failures.append(f"MIR fixture text snapshot drift: {rel(FIXTURE_TEXT_SNAPSHOT)}")
     return failures
+
+
+def fixture_snapshots() -> tuple[str, str]:
+    cases = []
+    for name in sorted(REQUIRED_FIXTURES):
+        path = ROOT / name
+        text = path.read_text(encoding="utf-8", errors="replace") if path.is_file() else ""
+        cases.append({
+            "fixture": name,
+            "lines": len(text.splitlines()),
+            "has_namespace": "space " in text,
+            "kind": "source" if name.endswith(".vit") else "snapshot",
+        })
+    payload = {
+        "schema": "vitte.compiler.mir_fixture_snapshots",
+        "schema_version": "1.0.0",
+        "cases": cases,
+    }
+    json_text = json.dumps(payload, ensure_ascii=True, indent=2, sort_keys=True) + "\n"
+    lines = [
+        "# MIR Fixture Snapshots",
+        "",
+        "| Fixture | Kind | Lines | Namespace |",
+        "| --- | --- | --- | --- |",
+    ]
+    for case in cases:
+        lines.append(f"| {case['fixture']} | {case['kind']} | {case['lines']} | {case['has_namespace']} |")
+    return json_text, "\n".join(lines) + "\n"
 
 
 def check_fixtures() -> int:

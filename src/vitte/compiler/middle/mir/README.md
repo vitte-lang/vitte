@@ -38,7 +38,7 @@ Generated reports are written to `target/reports/mir_coverage/`:
 - `coverage.json` contains the machine-readable gate result;
 - `coverage.md` contains the review table;
 - `remaining.md` lists missing entries and hardening tasks;
-- `fixtures.md` records required MIR fixture artifacts.
+- `fixtures.md` records required MIR fixture artifacts and source fixtures.
 
 ## Test commands
 
@@ -62,7 +62,7 @@ Generated reports are written to `target/reports/mir_coverage/`:
 
 ## Remaining work
 
-- Add compiler-emitted JSON snapshots for representative MIR fixtures.
-- Add dedicated `tests/mir` source fixtures for valid, invalid and multifile lowering.
+- Expand compiler-emitted JSON snapshots beyond the current representative MIR fixture set.
+- Add executable checks for every `tests/mir` source fixture once the CLI exposes stable per-fixture MIR dumps.
 - Add structured MIR diagnostic snapshots when MIR validation emits diagnostics directly.
 - Audit legacy `src/vitte/compiler/ir/mir_extended.vit` and `src/vitte/compiler/ir/hir_to_mir_lowering.vit` against canonical middle MIR.
