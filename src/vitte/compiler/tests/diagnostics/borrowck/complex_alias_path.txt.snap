@@ -1,0 +1,18 @@
+error[BORROW_E_USE_AFTER_MOVE]: borrowed projection `owner.field` used after moving `owner`
+  --> src/vitte/compiler/tests/diagnostics/borrowck/complex_alias_path.vit:4:6
+   |
+ 2 | let shared = borrow owner.field
+   |              ------------------ borrow of projection starts here
+ 3 | let moved = owner
+   |             ----- move of root owner invalidates the projection
+ 4 | give shared
+   |      ^^^^^^ borrowed projection is no longer valid
+   |
+note: clear, contextual, and correction-oriented diagnostics
+help: shorten the borrow window or move only after the final use of the projection
+  suggestion: help src/vitte/compiler/tests/diagnostics/borrowck/complex_alias_path.vit:4:6 move `owner` after the last use of `shared` (medium confidence) [manual] because ownership-path
+  suggestion: help src/vitte/compiler/tests/diagnostics/borrowck/complex_alias_path.vit:4:6 clone or copy the projected value only when that cost is explicit (low confidence) [manual] because ownership repairs can change performance or semantics
+
+Pipeline:
+  phase=borrowck -> step=borrow checking -> family=ownership -> correction_strategy=ownership-path -> recovery_scope=current-control-flow -> confidence=medium -> lexer -> parser -> AST -> HIR -> sema -> borrowck [FAILED]
+docs: docs://language/ownership

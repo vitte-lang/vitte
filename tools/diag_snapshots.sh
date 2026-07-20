@@ -96,7 +96,7 @@ for src in "${files[@]}"; do
 
   while IFS= read -r needle; do
     [[ -z "$needle" ]] && continue
-    if ! grep -Fq "$needle" <<<"$out"; then
+    if ! grep -Fq -- "$needle" <<<"$out"; then
       printf "%s\n" "$out"
       die "snapshot mismatch for $src: missing '$needle'"
     fi
@@ -113,7 +113,7 @@ for src in "${files[@]}"; do
     fi
     while IFS= read -r needle; do
       [[ -z "$needle" ]] && continue
-      if ! grep -Fq "$needle" <<<"$out_json"; then
+      if ! grep -Fq -- "$needle" <<<"$out_json"; then
         printf "%s\n" "$out_json"
         die "json snapshot mismatch for $src: missing '$needle'"
       fi
