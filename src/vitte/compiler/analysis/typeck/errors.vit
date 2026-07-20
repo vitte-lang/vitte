@@ -286,9 +286,13 @@ proc attach_assignment_mismatch_details(diagnostic: Diagnostic, binding_name: st
     );
 }
 
+proc typeck_expected_obtained_explanation(expected: string, found: string, expected_origin: string, found_origin: string) -> string {
+    give "Expected type `" + expected + "` because " + expected_origin + "; obtained type `" + found + "` from " + found_origin + ".";
+}
+
 proc attach_expected_found_details(diagnostic: Diagnostic, rule_name: string, expected: string, found: string, expected_origin: string, found_origin: string, probable_fix: string) -> Diagnostic {
     let diag0: Diagnostic = diagnostic_with_rule(diagnostic, rule_name);
-    let diag1: Diagnostic = diagnostic_with_explanation(diag0, "Expected type `" + expected + "` because " + expected_origin + "; obtained type `" + found + "` from " + found_origin + ". Convert the value or modify the signature when that is the intended API.");
+    let diag1: Diagnostic = diagnostic_with_explanation(diag0, typeck_expected_obtained_explanation(expected, found, expected_origin, found_origin) + " Convert the value or modify the signature when that is the intended API.");
     let diag2: Diagnostic = diagnostic_with_root_cause(diag1, rule_name + " requires `" + expected + "` at this program point, but the observed value has type `" + found + "`");
     let diag3: Diagnostic = diagnostic_add_cause(diag2, "why expected type is imposed: " + expected_origin);
     let diag4: Diagnostic = diagnostic_add_cause(diag3, "origin of obtained type: " + found_origin);
@@ -484,13 +488,8 @@ proc typeck_assignment_mismatch(binding_name: string, expected: string, found: s
 
 proc typeck_return_mismatch(proc_name: string, expected: string, found: string, span: Span) -> Diagnostic {
     let diag0: Diagnostic = typed_typeck_diag("TYPECK_E_RETURN_MISMATCH", "`give` in `" + proc_name + "` produces `" + found + "` but the proc result type is `" + expected + "`", [proc_name, expected, found], "give a `" + expected + "` value or change the proc signature", span, DiagnosticSeverity.Error, DiagnosticPhase.Typeck, TypeckErrorKind.TypeMismatch);
-    let diag1: Diagnostic = diagnostic_with_rule(diag0, "proc give compatibility");
-    let diag2: Diagnostic = diagnostic_with_explanation(diag1, "`" + proc_name + "` promises `" + expected + "` but this `give` path produces `" + found + "`");
-    let diag3: Diagnostic = diagnostic_add_cause(diag2, "expected type comes from the proc result annotation");
-    let diag4: Diagnostic = diagnostic_add_cause(diag3, "found type comes from the `give` expression");
-    let diag5: Diagnostic = diagnostic_with_subject_symbol(diag4, proc_name);
-    let diag6: Diagnostic = diagnostic_with_subject_type(diag5, expected);
-    give diagnostic_with_probable_fix(diag6, "align the `give` expression with `" + expected + "` or update the signature intentionally");
+    let diag1: Diagnostic = attach_expected_found_details(diag0, "proc give compatibility", expected, found, "the proc result annotation for `" + proc_name + "`", "the `give` expression", "align the `give` expression with `" + expected + "` or update the signature intentionally");
+    give diagnostic_with_subject_symbol(diag1, proc_name);
 }
 
 proc typeck_give_missing_path(proc_name: string, expected: string, span: Span) -> Diagnostic {
