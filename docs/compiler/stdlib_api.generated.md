@@ -3309,10 +3309,11 @@ Stability: `stable`
 - `form BTreeMap` signature `form BTreeMap<K, V> {` example `collections.BTreeMap` stability `stable`
 - `form BTreeSet` signature `form BTreeSet<T> {` example `collections.BTreeSet` stability `stable`
 - `form Deque` signature `form Deque<T> {` example `collections.Deque` stability `stable`
-- `proc hashmap_new` signature `proc hashmap_new<K, V>() -> HashMap<K, V> { give compiler_hashmap_new<K, V>(); }` example `collections.hashmap_new(...)` stability `stable`
-- `proc hashmap_insert` signature `proc hashmap_insert<K, V>(map: ref mut HashMap<K, V>, key: K, value: V) -> Option<V> { give compiler_hashmap_insert<K, V>(map, key, value); }` example `collections.hashmap_insert(...)` stability `stable`
-- `proc hashmap_get` signature `proc hashmap_get<K, V>(map: ref HashMap<K, V>, key: K) -> Option<ref V> { give compiler_hashmap_get<K, V>(map, key); }` example `collections.hashmap_get(...)` stability `stable`
-- `proc hashmap_remove` signature `proc hashmap_remove<K, V>(map: ref mut HashMap<K, V>, key: K) -> Option<V> { give compiler_hashmap_remove<K, V>(map, key); }` example `collections.hashmap_remove(...)` stability `stable`
+- `proc hashmap_new` signature `proc hashmap_new<K, V>() -> HashMap<K, V> {` example `collections.hashmap_new(...)` stability `stable`
+- `proc hashmap_find_index` signature `proc hashmap_find_index<K, V>(map: ref HashMap<K, V>, key: K) -> Option<usize> {` example `collections.hashmap_find_index(...)` stability `stable`
+- `proc hashmap_insert` signature `proc hashmap_insert<K, V>(map: ref mut HashMap<K, V>, key: K, value: V) -> Option<V> {` example `collections.hashmap_insert(...)` stability `stable`
+- `proc hashmap_get` signature `proc hashmap_get<K, V>(map: ref HashMap<K, V>, key: K) -> Option<ref V> {` example `collections.hashmap_get(...)` stability `stable`
+- `proc hashmap_remove` signature `proc hashmap_remove<K, V>(map: ref mut HashMap<K, V>, key: K) -> Option<V> {` example `collections.hashmap_remove(...)` stability `stable`
 - `proc hashmap_len` signature `proc hashmap_len<K, V>(map: HashMap<K, V>) -> usize { give map.length; }` example `collections.hashmap_len(...)` stability `stable`
 - `proc hashset_new` signature `proc hashset_new<T>() -> HashSet<T> { give HashSet<T> { map: hashmap_new<T, bool>() }; }` example `collections.hashset_new(...)` stability `stable`
 - `proc hashset_insert` signature `proc hashset_insert<T>(set: ref mut HashSet<T>, value: T) -> bool { give is_none<bool>(hashmap_insert<T, bool>(&mut ((*set).map), value, true)); }` example `collections.hashset_insert(...)` stability `stable`

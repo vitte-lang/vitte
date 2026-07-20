@@ -2,6 +2,10 @@ space vitte/stdlib/alloc/collections
 
 export *
 
+use src/vitte/stdlib/alloc/vec as alloc_vec
+use src/vitte/stdlib/core/iterator as core_iterator
+use src/vitte/stdlib/core/option as core_option
+
 form HashMap<K, V> {
     buckets: Vec<(K, V)>
     length: usize
@@ -26,10 +30,52 @@ form Deque<T> {
     length: usize
 }
 
-proc hashmap_new<K, V>() -> HashMap<K, V> { give compiler_hashmap_new<K, V>(); }
-proc hashmap_insert<K, V>(map: ref mut HashMap<K, V>, key: K, value: V) -> Option<V> { give compiler_hashmap_insert<K, V>(map, key, value); }
-proc hashmap_get<K, V>(map: ref HashMap<K, V>, key: K) -> Option<ref V> { give compiler_hashmap_get<K, V>(map, key); }
-proc hashmap_remove<K, V>(map: ref mut HashMap<K, V>, key: K) -> Option<V> { give compiler_hashmap_remove<K, V>(map, key); }
+proc hashmap_new<K, V>() -> HashMap<K, V> {
+    give HashMap<K, V> {
+        buckets: vec_new<(K, V)>(),
+        length: 0
+    };
+}
+proc hashmap_find_index<K, V>(map: ref HashMap<K, V>, key: K) -> Option<usize> {
+    let index: usize = 0;
+    while index < (*map).length {
+        let entry = vec_get<(K, V)>((*map).buckets, index);
+        if is_some<ref (K, V)>(entry) and compiler_pair_key_eq<K, V>(unwrap<ref (K, V)>(entry), key) {
+            give some<usize>(index);
+        }
+        set index = index + 1;
+    }
+    give none<usize>();
+}
+proc hashmap_insert<K, V>(map: ref mut HashMap<K, V>, key: K, value: V) -> Option<V> {
+    let existing = hashmap_find_index<K, V>(&(*map), key);
+    if is_some<usize>(existing) {
+        let index: usize = unwrap<usize>(existing);
+        let removed = vec_remove<(K, V)>(&mut ((*map).buckets), index);
+        vec_insert<(K, V)>(&mut ((*map).buckets), index, (key, value));
+        give compiler_pair_value<K, V>(unwrap<(K, V)>(removed));
+    }
+    vec_push<(K, V)>(&mut ((*map).buckets), (key, value));
+    set (*map).length = (*map).length + 1;
+    give none<V>();
+}
+proc hashmap_get<K, V>(map: ref HashMap<K, V>, key: K) -> Option<ref V> {
+    let existing = hashmap_find_index<K, V>(map, key);
+    if is_none<usize>(existing) {
+        give none<ref V>();
+    }
+    let entry = vec_get<(K, V)>((*map).buckets, unwrap<usize>(existing));
+    give some<ref V>(compiler_pair_value_ref<K, V>(unwrap<ref (K, V)>(entry)));
+}
+proc hashmap_remove<K, V>(map: ref mut HashMap<K, V>, key: K) -> Option<V> {
+    let existing = hashmap_find_index<K, V>(&(*map), key);
+    if is_none<usize>(existing) {
+        give none<V>();
+    }
+    let removed = vec_remove<(K, V)>(&mut ((*map).buckets), unwrap<usize>(existing));
+    set (*map).length = (*map).length - 1;
+    give compiler_pair_value<K, V>(unwrap<(K, V)>(removed));
+}
 proc hashmap_len<K, V>(map: HashMap<K, V>) -> usize { give map.length; }
 
 proc hashset_new<T>() -> HashSet<T> { give HashSet<T> { map: hashmap_new<T, bool>() }; }

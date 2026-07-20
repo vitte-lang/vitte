@@ -971,6 +971,16 @@ def path_level(path: Path, manifest: dict) -> str:
 
 
 def module_to_path(module: str) -> Path | None:
+    if module.startswith("src/vitte/stdlib/"):
+        candidate = ROOT / f"{module}.vitl"
+        if candidate.exists():
+            return candidate
+        candidate = ROOT / f"{module}.vit"
+        if candidate.exists():
+            return candidate
+        candidate = ROOT / module
+        if candidate.exists():
+            return candidate
     if not module.startswith("vitte/stdlib"):
         return None
     suffix = module.removeprefix("vitte/stdlib").strip("/")
@@ -1549,6 +1559,11 @@ def validate_ci_matrix(matrix: dict) -> list[ValidationResult]:
     required = {"posix", "windows", "wasm", "embedded"}
     commands = matrix.get("commands", [])
     rules = matrix.get("rules", {})
+    platform_families = matrix.get("platform_families", {})
+    required_family_commands = {
+        f"python3 tools/stdlib/run_checks.py --platform-family {family}"
+        for family in required
+    }
     return [
         ValidationResult(
             name="stdlib_ci_matrix_platform_targets",
@@ -1564,8 +1579,15 @@ def validate_ci_matrix(matrix: dict) -> list[ValidationResult]:
             name="stdlib_ci_matrix_dependency_rules",
             status=rules.get("core_has_no_alloc_std_platform_imports") is True
             and rules.get("std_uses_platform_for_os_access") is True
-            and rules.get("api_index_generated") is True,
+            and rules.get("api_index_generated") is True
+            and rules.get("platform_family_matrix_required") is True,
             detail=json.dumps(rules, sort_keys=True),
+        ),
+        ValidationResult(
+            name="stdlib_ci_matrix_runs_each_platform_family",
+            status=required_family_commands.issubset(set(commands))
+            and required.issubset(set(platform_families.keys())),
+            detail="ok" if required_family_commands.issubset(set(commands)) and required.issubset(set(platform_families.keys())) else ", ".join(sorted(required_family_commands - set(commands))),
         ),
     ]
 
@@ -1577,8 +1599,15 @@ def validate_std_platform_access(manifest: dict) -> list[ValidationResult]:
         if path_level(source, manifest) == "std"
     ]
     violations: list[str] = []
+    direct_kernel_imports: list[str] = []
     for source in std_sources:
         text = source.read_text(encoding="utf-8", errors="ignore")
+        imports = imports_for_source(source)
+        direct_kernel_imports.extend(
+            f"{source.relative_to(ROOT)} imports {imported}"
+            for imported in imports
+            if imported.startswith(("src/vitte/stdlib/kernel", "vitte/stdlib/kernel"))
+        )
         for pattern in STD_RAW_PLATFORM_PATTERNS:
             if re.search(pattern, text):
                 violations.append(f"{source.relative_to(ROOT)} matches {pattern}")
@@ -1587,6 +1616,57 @@ def validate_std_platform_access(manifest: dict) -> list[ValidationResult]:
             name="std_does_not_bypass_platform",
             status=not violations,
             detail="ok" if not violations else "; ".join(violations[:5]),
+        ),
+        ValidationResult(
+            name="std_never_depends_on_kernel_outside_platform",
+            status=not direct_kernel_imports,
+            detail="ok" if not direct_kernel_imports else "; ".join(direct_kernel_imports[:5]),
+        ),
+    ]
+
+
+def validate_explicit_external_imports() -> list[ValidationResult]:
+    required_imports = {
+        "Vec": "src/vitte/stdlib/alloc/vec",
+        "String": "src/vitte/stdlib/alloc/string",
+        "HashMap": "src/vitte/stdlib/alloc/collections",
+        "HashSet": "src/vitte/stdlib/alloc/collections",
+        "Box": "src/vitte/stdlib/alloc/box",
+        "Option": "src/vitte/stdlib/core/option",
+        "Result": "src/vitte/stdlib/core/result",
+        "Iterator": "src/vitte/stdlib/core/iterator",
+        "Utf8View": "src/vitte/stdlib/core/string",
+        "PathBuf": "src/vitte/stdlib/std/path",
+        "Path": "src/vitte/stdlib/std/fs",
+        "Reader": "src/vitte/stdlib/std/io",
+        "Writer": "src/vitte/stdlib/std/io",
+        "IoError": "src/vitte/stdlib/std/io",
+        "Url": "src/vitte/stdlib/std/url",
+        "SystemTime": "src/vitte/stdlib/std/time",
+    }
+    scoped_roots = (
+        SOURCE_STDLIB_DIR / "alloc",
+        SOURCE_STDLIB_DIR / "std",
+        SOURCE_STDLIB_DIR / "platform",
+    )
+    violations: list[str] = []
+    for source in stdlib_sources():
+        if not any(source.is_relative_to(root) for root in scoped_roots):
+            continue
+        text = source.read_text(encoding="utf-8", errors="ignore")
+        imports = set(imports_for_source(source))
+        for token, required in required_imports.items():
+            required_path = ROOT / required
+            same_module = source.as_posix().startswith(required_path.as_posix())
+            if same_module:
+                continue
+            if re.search(rf"\b{re.escape(token)}\b", text) and required not in imports:
+                violations.append(f"{source.relative_to(ROOT)} uses {token} without {required}")
+    return [
+        ValidationResult(
+            name="std_alloc_external_types_have_explicit_imports",
+            status=not violations,
+            detail="ok" if not violations else "; ".join(violations[:8]),
         )
     ]
 
@@ -1668,6 +1748,12 @@ def validate_real_vitte_implementations() -> list[ValidationResult]:
         SOURCE_STDLIB_DIR / "std" / "metrics.vitl": (
             "compiler_metrics_render_counter",
         ),
+        SOURCE_STDLIB_DIR / "alloc" / "collections.vitl": (
+            "compiler_hashmap_new",
+            "compiler_hashmap_insert",
+            "compiler_hashmap_get",
+            "compiler_hashmap_remove",
+        ),
         SOURCE_STDLIB_DIR / "std" / "mime.vitl": (
             "compiler_mime_text_plain",
             "compiler_mime_application_json",
@@ -1741,14 +1827,20 @@ def validate_architecture(manifest: dict) -> list[ValidationResult]:
     ]
     core_os_violations: list[str] = []
     core_alloc_violations: list[str] = []
+    core_no_std_violations: list[str] = []
     for source in core_sources:
         text = source.read_text(encoding="utf-8", errors="ignore")
         for imported in imports_for_source(source):
             if imported.startswith(CORE_FORBIDDEN_IMPORT_PREFIXES):
                 core_os_violations.append(f"{source.relative_to(ROOT)} imports {imported}")
+            if imported.startswith(("src/vitte/stdlib/std", "vitte/stdlib/std", "src/vitte/stdlib/platform", "vitte/stdlib/platform")):
+                core_no_std_violations.append(f"{source.relative_to(ROOT)} imports {imported}")
         for pattern in CORE_DYNAMIC_ALLOCATION_PATTERNS:
             if re.search(pattern, text):
                 core_alloc_violations.append(f"{source.relative_to(ROOT)} matches {pattern}")
+        for forbidden in ("compiler_platform_family", "compiler_posix_", "compiler_windows_", "compiler_wasm_", "compiler_embedded_", "compiler_kernel_"):
+            if forbidden in text:
+                core_no_std_violations.append(f"{source.relative_to(ROOT)} uses {forbidden}")
 
     results.append(ValidationResult(
         name="core_has_no_operating_system_dependency",
@@ -1770,6 +1862,28 @@ def validate_architecture(manifest: dict) -> list[ValidationResult]:
         name="core_has_no_dynamic_allocation",
         status=not core_alloc_violations,
         detail="ok" if not core_alloc_violations else "; ".join(core_alloc_violations[:5]),
+    ))
+    results.append(ValidationResult(
+        name="core_no_std_strict",
+        status=not core_no_std_violations,
+        detail="ok" if not core_no_std_violations else "; ".join(core_no_std_violations[:5]),
+    ))
+    platform_families = set(manifest.get("rules", {}).get("platform_families_real", []))
+    platform_sources = {
+        "posix": SOURCE_STDLIB_DIR / "platform" / "posix.vitl",
+        "windows": SOURCE_STDLIB_DIR / "platform" / "windows.vitl",
+        "wasm": SOURCE_STDLIB_DIR / "platform" / "wasm.vitl",
+        "embedded": SOURCE_STDLIB_DIR / "platform" / "embedded.vitl",
+    }
+    missing_platforms = [
+        family
+        for family, path in platform_sources.items()
+        if family not in platform_families or not path.is_file() or f"{family}_available" not in path.read_text(encoding="utf-8", errors="ignore")
+    ]
+    results.append(ValidationResult(
+        name="platform_families_real",
+        status=not missing_platforms,
+        detail="ok" if not missing_platforms else ", ".join(missing_platforms),
     ))
     results.append(ValidationResult(
         name="stdlib_is_compiled_from_vitte_sources",
@@ -1804,6 +1918,7 @@ def build_report() -> dict:
     files = validate_files()
     architecture = validate_architecture(architecture_manifest)
     std_platform_results = validate_std_platform_access(architecture_manifest)
+    explicit_import_results = validate_explicit_external_imports()
     ci_matrix_results = validate_ci_matrix(ci_matrix_manifest)
     lsp_api_results = validate_lsp_api_index()
     max_artifact_results = validate_stdlib_max_artifacts()
@@ -1844,7 +1959,7 @@ def build_report() -> dict:
     ]
     architecture_failures = [
         item
-        for item in architecture + std_platform_results + ci_matrix_results + lsp_api_results + max_artifact_results + real_impl_results + module_results + graph_results + primitive_results + option_result_results + convert_default_clone_results + drop_scope_memory_results + iterator_results + range_number_results + float_math_results + string_ascii_unicode_results + next_step_results
+        for item in architecture + std_platform_results + explicit_import_results + ci_matrix_results + lsp_api_results + max_artifact_results + real_impl_results + module_results + graph_results + primitive_results + option_result_results + convert_default_clone_results + drop_scope_memory_results + iterator_results + range_number_results + float_math_results + string_ascii_unicode_results + next_step_results
         if not item.status
     ]
 
@@ -1889,7 +2004,7 @@ def build_report() -> dict:
         ],
         "architecture_results": [
             asdict(item)
-            for item in architecture + std_platform_results + ci_matrix_results + lsp_api_results + max_artifact_results + real_impl_results + module_results + graph_results + primitive_results + option_result_results + convert_default_clone_results + drop_scope_memory_results + iterator_results + range_number_results + float_math_results + string_ascii_unicode_results + next_step_results
+            for item in architecture + std_platform_results + explicit_import_results + ci_matrix_results + lsp_api_results + max_artifact_results + real_impl_results + module_results + graph_results + primitive_results + option_result_results + convert_default_clone_results + drop_scope_memory_results + iterator_results + range_number_results + float_math_results + string_ascii_unicode_results + next_step_results
         ],
         "required_symbols": [
             asdict(item)
