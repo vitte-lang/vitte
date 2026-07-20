@@ -1,0 +1,27 @@
+space vitte/stdlib/core/slice
+
+export *
+
+form Slice<T> {
+    data: ref T
+    length: usize
+}
+
+form SliceIndex {
+    start: usize
+    end: usize
+}
+
+proc len<T>(slice: Slice<T>) -> usize { give slice.length; }
+proc is_empty<T>(slice: Slice<T>) -> bool { give slice.length == 0; }
+proc get<T>(slice: Slice<T>, index: usize) -> Option<ref T> { give compiler_slice_get<T>(slice, index); }
+proc get_mut<T>(slice: ref mut Slice<T>, index: usize) -> Option<ref mut T> { give compiler_slice_get_mut<T>(slice, index); }
+proc first<T>(slice: Slice<T>) -> Option<ref T> { give get<T>(slice, 0); }
+proc last<T>(slice: Slice<T>) -> Option<ref T> { give compiler_slice_last<T>(slice); }
+proc split_at<T>(slice: Slice<T>, index: usize) -> (Slice<T>, Slice<T>) { give compiler_slice_split_at<T>(slice, index); }
+proc subslice<T>(slice: Slice<T>, start: usize, end: usize) -> Option<Slice<T>> { give compiler_slice_subslice<T>(slice, start, end); }
+proc iter<T>(slice: Slice<T>) -> Iterator<ref T> { give compiler_slice_iter<T>(slice); }
+proc chunks<T>(slice: Slice<T>, size: usize) -> Iterator<Slice<T>> { give compiler_slice_chunks<T>(slice, size); }
+proc windows<T>(slice: Slice<T>, size: usize) -> Iterator<Slice<T>> { give compiler_slice_windows<T>(slice, size); }
+proc fill<T>(slice: ref mut Slice<T>, value: T) { compiler_slice_fill<T>(slice, value); }
+proc copy_from<T>(dst: ref mut Slice<T>, src: Slice<T>) { compiler_slice_copy_from<T>(dst, src); }

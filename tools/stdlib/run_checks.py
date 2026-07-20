@@ -41,6 +41,27 @@ CORE_MATH_SOURCE = SOURCE_STDLIB_DIR / "core" / "math.vitl"
 CORE_STRING_SOURCE = SOURCE_STDLIB_DIR / "core" / "string.vitl"
 CORE_ASCII_SOURCE = SOURCE_STDLIB_DIR / "core" / "ascii.vitl"
 CORE_UNICODE_SOURCE = SOURCE_STDLIB_DIR / "core" / "unicode.vitl"
+STDLIB_NEXT_STEP_SOURCES = (
+    SOURCE_STDLIB_DIR / "core" / "slice.vitl",
+    SOURCE_STDLIB_DIR / "core" / "array.vitl",
+    SOURCE_STDLIB_DIR / "core" / "cmp.vitl",
+    SOURCE_STDLIB_DIR / "core" / "hash.vitl",
+    SOURCE_STDLIB_DIR / "alloc" / "box.vitl",
+    SOURCE_STDLIB_DIR / "alloc" / "vec.vitl",
+    SOURCE_STDLIB_DIR / "alloc" / "string.vitl",
+    SOURCE_STDLIB_DIR / "alloc" / "rc.vitl",
+    SOURCE_STDLIB_DIR / "alloc" / "arc.vitl",
+    SOURCE_STDLIB_DIR / "std" / "io.vitl",
+    SOURCE_STDLIB_DIR / "std" / "fs.vitl",
+    SOURCE_STDLIB_DIR / "std" / "env.vitl",
+    SOURCE_STDLIB_DIR / "std" / "time.vitl",
+    SOURCE_STDLIB_DIR / "std" / "process.vitl",
+    SOURCE_STDLIB_DIR / "platform" / "abi.vitl",
+    SOURCE_STDLIB_DIR / "generated" / "unicode_tables.vitl",
+    SOURCE_STDLIB_DIR / "tools" / "unicode_tables.vitl",
+    SOURCE_STDLIB_DIR / "tests" / "api_contracts.vit",
+    ROOT / "docs" / "compiler" / "stdlib_next_steps.md",
+)
 
 REPORT_DIR.mkdir(parents=True, exist_ok=True)
 STDLIB_DIR.mkdir(parents=True, exist_ok=True)
@@ -77,6 +98,7 @@ REQUIRED_FILES = [
     CORE_STRING_SOURCE,
     CORE_ASCII_SOURCE,
     CORE_UNICODE_SOURCE,
+    *STDLIB_NEXT_STEP_SOURCES,
 ]
 
 
@@ -612,6 +634,26 @@ REQUIRED_UNICODE_FRAGMENTS = (
     "proc to_titlecase",
     "proc case_fold",
 )
+REQUIRED_NEXT_STEP_FRAGMENTS = {
+    "core/slice.vitl": ("form Slice<T>", "proc get<T>", "proc chunks<T>", "proc windows<T>"),
+    "core/array.vitl": ("form Array<T>", "proc array_len<T", "proc array_get<T", "proc array_sort<T"),
+    "core/cmp.vitl": ("pick Ordering", "form Eq<T>", "form Ord<T>", "proc compare<T>"),
+    "core/hash.vitl": ("form Hasher", "form Hash<T>", "proc hash<T>", "proc combine_hash"),
+    "alloc/box.vitl": ("form Box<T>", "proc box_new<T>", "proc box_drop<T>"),
+    "alloc/vec.vitl": ("form Vec<T>", "proc vec_new<T>", "proc vec_push<T>", "proc vec_iter<T>"),
+    "alloc/string.vitl": ("form String", "proc string_new", "proc string_push", "proc string_as_utf8_view"),
+    "alloc/rc.vitl": ("form Rc<T>", "form Weak<T>", "proc rc_new<T>", "proc weak_upgrade<T>"),
+    "alloc/arc.vitl": ("form Arc<T>", "form ArcWeak<T>", "proc arc_new<T>", "proc arc_weak_upgrade<T>"),
+    "std/io.vitl": ("form IoError", "form Reader", "form Writer", "proc read_to_string"),
+    "std/fs.vitl": ("form Path", "form Metadata", "form FsError", "proc read_to_string"),
+    "std/env.vitl": ("form EnvError", "proc args", "proc var", "proc current_dir"),
+    "std/time.vitl": ("form Duration", "form Instant", "proc instant_now", "proc elapsed"),
+    "std/process.vitl": ("form ExitStatus", "form Command", "proc command", "proc exit"),
+    "platform/abi.vitl": ("form PlatformInfo", "form PlatformFeature", "proc platform_info", "proc supports_filesystem"),
+    "generated/unicode_tables.vitl": ("GENERATED_UNICODE_VERSION", "proc generated_unicode_category", "proc generated_unicode_properties"),
+    "tools/unicode_tables.vitl": ("form UnicodeTableGeneration", "proc generate_unicode_tables", "proc verify_unicode_tables"),
+    "tests/api_contracts.vit": ("stdlib_api_contracts_smoke", "std_time.duration_from_secs", "platform_abi.supports_filesystem"),
+}
 
 
 @dataclass
@@ -1226,6 +1268,43 @@ def validate_core_string_ascii_unicode() -> list[ValidationResult]:
     ]
 
 
+def validate_stdlib_next_steps() -> list[ValidationResult]:
+    results: list[ValidationResult] = []
+    for relative, fragments in REQUIRED_NEXT_STEP_FRAGMENTS.items():
+        path = SOURCE_STDLIB_DIR / relative
+        source = path.read_text(encoding="utf-8")
+        missing = [
+            fragment
+            for fragment in fragments
+            if fragment not in source
+        ]
+        results.append(ValidationResult(
+            name="stdlib_next_step_" + relative.replace("/", "_").replace(".", "_"),
+            status=not missing,
+            detail="ok" if not missing else ", ".join(missing),
+        ))
+
+    doc = ROOT / "docs" / "compiler" / "stdlib_next_steps.md"
+    doc_text = doc.read_text(encoding="utf-8")
+    doc_fragments = (
+        "core slices",
+        "allocation containers",
+        "standard I/O",
+        "generated Unicode tables",
+    )
+    missing_doc = [
+        fragment
+        for fragment in doc_fragments
+        if fragment not in doc_text
+    ]
+    results.append(ValidationResult(
+        name="stdlib_next_steps_documented",
+        status=not missing_doc,
+        detail="ok" if not missing_doc else ", ".join(missing_doc),
+    ))
+    return results
+
+
 def validate_architecture(manifest: dict) -> list[ValidationResult]:
     results: list[ValidationResult] = []
     levels = architecture_levels(manifest)
@@ -1329,6 +1408,7 @@ def build_report() -> dict:
     range_number_results = validate_core_range_number()
     float_math_results = validate_core_float_math()
     string_ascii_unicode_results = validate_core_string_ascii_unicode()
+    next_step_results = validate_stdlib_next_steps()
 
     required = validate_required_symbols(
         symbols
@@ -1351,7 +1431,7 @@ def build_report() -> dict:
     ]
     architecture_failures = [
         item
-        for item in architecture + module_results + graph_results + primitive_results + option_result_results + convert_default_clone_results + drop_scope_memory_results + iterator_results + range_number_results + float_math_results + string_ascii_unicode_results
+        for item in architecture + module_results + graph_results + primitive_results + option_result_results + convert_default_clone_results + drop_scope_memory_results + iterator_results + range_number_results + float_math_results + string_ascii_unicode_results + next_step_results
         if not item.status
     ]
 
@@ -1394,7 +1474,7 @@ def build_report() -> dict:
         ],
         "architecture_results": [
             asdict(item)
-            for item in architecture + module_results + graph_results + primitive_results + option_result_results + convert_default_clone_results + drop_scope_memory_results + iterator_results + range_number_results + float_math_results + string_ascii_unicode_results
+            for item in architecture + module_results + graph_results + primitive_results + option_result_results + convert_default_clone_results + drop_scope_memory_results + iterator_results + range_number_results + float_math_results + string_ascii_unicode_results + next_step_results
         ],
         "required_symbols": [
             asdict(item)

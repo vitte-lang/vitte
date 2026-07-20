@@ -1,0 +1,18 @@
+space vitte/stdlib/core/hash
+
+export *
+
+form Hasher {
+    state: u64
+}
+
+form Hash<T> {
+    hash_into: proc(ref mut Hasher, T)
+}
+
+proc hasher(seed: u64) -> Hasher { give Hasher { state: seed }; }
+proc write_u64(h: ref mut Hasher, value: u64) { compiler_hash_write_u64(h, value); }
+proc write_bytes(h: ref mut Hasher, values: [byte]) { compiler_hash_write_bytes(h, values); }
+proc finish(h: Hasher) -> u64 { give compiler_hash_finish(h); }
+proc hash<T>(value: T) -> u64 { give compiler_hash<T>(value); }
+proc combine_hash(left: u64, right: u64) -> u64 { give compiler_hash_combine(left, right); }

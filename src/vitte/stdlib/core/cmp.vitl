@@ -1,0 +1,16 @@
+space vitte/stdlib/core/cmp
+
+export *
+
+pick Ordering { Less Equal Greater }
+
+form Eq<T> { eq: proc(T, T) -> bool }
+form PartialEq<T> { eq: proc(T, T) -> bool }
+form Ord<T> { cmp: proc(T, T) -> Ordering }
+form PartialOrd<T> { partial_cmp: proc(T, T) -> Option<Ordering> }
+
+proc compare<T>(left: T, right: T) -> Ordering { give compiler_cmp<T>(left, right); }
+proc equals<T>(left: T, right: T) -> bool { give compare<T>(left, right) == Ordering.Equal; }
+proc min<T>(left: T, right: T) -> T { if compare<T>(left, right) == Ordering.Greater { give right; } give left; }
+proc max<T>(left: T, right: T) -> T { if compare<T>(left, right) == Ordering.Less { give right; } give left; }
+proc clamp<T>(value: T, low: T, high: T) -> T { give max<T>(low, min<T>(value, high)); }
