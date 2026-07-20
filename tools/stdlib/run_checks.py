@@ -21,6 +21,8 @@ HISTORY_DIR = STDLIB_DIR / "history"
 ARCHITECTURE_MANIFEST = SOURCE_STDLIB_DIR / "stdlib_architecture.json"
 MODULE_MANIFEST = SOURCE_STDLIB_DIR / "stdlib_modules.json"
 DEPENDENCY_GRAPH_MANIFEST = SOURCE_STDLIB_DIR / "stdlib_dependency_graph.json"
+CORE_PRIMITIVE_SOURCE = SOURCE_STDLIB_DIR / "core" / "primitive.vitl"
+CORE_PRIMITIVE_DOC = ROOT / "docs" / "compiler" / "stdlib_core_primitive.md"
 
 REPORT_DIR.mkdir(parents=True, exist_ok=True)
 STDLIB_DIR.mkdir(parents=True, exist_ok=True)
@@ -37,6 +39,8 @@ REQUIRED_FILES = [
     ARCHITECTURE_MANIFEST,
     MODULE_MANIFEST,
     DEPENDENCY_GRAPH_MANIFEST,
+    CORE_PRIMITIVE_SOURCE,
+    CORE_PRIMITIVE_DOC,
 ]
 
 
@@ -111,6 +115,40 @@ CORE_DYNAMIC_ALLOCATION_PATTERNS = (
     r"\bVec\s*<",
     r"\bHashMap\s*<",
     r"\bdynamic_alloc",
+)
+REQUIRED_PRIMITIVE_FRAGMENTS = (
+    "PrimitiveKind.Bool",
+    "PrimitiveKind.Byte",
+    "PrimitiveKind.Char",
+    "PrimitiveKind.Rune",
+    "PrimitiveKind.Int",
+    "PrimitiveKind.Uint",
+    "PrimitiveKind.Isize",
+    "PrimitiveKind.Usize",
+    "PrimitiveKind.I8",
+    "PrimitiveKind.I16",
+    "PrimitiveKind.I32",
+    "PrimitiveKind.I64",
+    "PrimitiveKind.I128",
+    "PrimitiveKind.U8",
+    "PrimitiveKind.U16",
+    "PrimitiveKind.U32",
+    "PrimitiveKind.U64",
+    "PrimitiveKind.U128",
+    "PrimitiveKind.F16",
+    "PrimitiveKind.F32",
+    "PrimitiveKind.F64",
+    "PrimitiveKind.F128",
+    "PrimitiveKind.Never",
+    "PrimitiveKind.Unit",
+    "PrimitiveKind.Tuple",
+    "PrimitiveKind.FixedArray",
+    "PrimitiveKind.Slice",
+    "PrimitiveKind.Pointer",
+    "PrimitiveKind.Reference",
+    "PrimitiveKind.FunctionPointer",
+    "PRIMITIVE_F16_BACKEND_FEATURE",
+    "PRIMITIVE_F128_BACKEND_FEATURE",
 )
 
 
@@ -395,6 +433,54 @@ def validate_dependency_graph_manifest(manifest: dict, edges: list[tuple[str, st
     return results
 
 
+def validate_core_primitives() -> list[ValidationResult]:
+    source = CORE_PRIMITIVE_SOURCE.read_text(encoding="utf-8")
+    doc = CORE_PRIMITIVE_DOC.read_text(encoding="utf-8")
+    missing_fragments = [
+        fragment
+        for fragment in REQUIRED_PRIMITIVE_FRAGMENTS
+        if fragment not in source
+    ]
+    required_doc_fragments = (
+        "`bool`",
+        "`byte`",
+        "`char`",
+        "`rune`",
+        "`int`",
+        "`uint`",
+        "`isize`",
+        "`usize`",
+        "`i128`",
+        "`u128`",
+        "`f16`",
+        "`f128`",
+        "`never`",
+        "`unit`",
+        "Tuples",
+        "Fixed arrays",
+        "Slices",
+        "pointer",
+        "Architecture-Dependent Types",
+    )
+    missing_doc = [
+        fragment
+        for fragment in required_doc_fragments
+        if fragment not in doc
+    ]
+    return [
+        ValidationResult(
+            name="core_primitive_defines_fundamental_types",
+            status=not missing_fragments,
+            detail="ok" if not missing_fragments else ", ".join(missing_fragments),
+        ),
+        ValidationResult(
+            name="core_primitive_documents_layouts",
+            status=not missing_doc,
+            detail="ok" if not missing_doc else ", ".join(missing_doc),
+        ),
+    ]
+
+
 def validate_architecture(manifest: dict) -> list[ValidationResult]:
     results: list[ValidationResult] = []
     levels = architecture_levels(manifest)
@@ -490,6 +576,7 @@ def build_report() -> dict:
         dependency_graph_manifest,
         stdlib_dependency_edges(architecture_manifest),
     )
+    primitive_results = validate_core_primitives()
 
     required = validate_required_symbols(
         symbols
@@ -512,7 +599,7 @@ def build_report() -> dict:
     ]
     architecture_failures = [
         item
-        for item in architecture + module_results + graph_results
+        for item in architecture + module_results + graph_results + primitive_results
         if not item.status
     ]
 
@@ -555,7 +642,7 @@ def build_report() -> dict:
         ],
         "architecture_results": [
             asdict(item)
-            for item in architecture + module_results + graph_results
+            for item in architecture + module_results + graph_results + primitive_results
         ],
         "required_symbols": [
             asdict(item)

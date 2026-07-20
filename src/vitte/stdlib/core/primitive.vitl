@@ -1,0 +1,274 @@
+space vitte/stdlib/core/primitive
+
+export *
+
+pick PrimitiveKind {
+    Bool
+    Byte
+    Char
+    Rune
+    Int
+    Uint
+    Isize
+    Usize
+    I8
+    I16
+    I32
+    I64
+    I128
+    U8
+    U16
+    U32
+    U64
+    U128
+    F16
+    F32
+    F64
+    F128
+    Never
+    Unit
+    Tuple
+    FixedArray
+    Slice
+    Pointer
+    Reference
+    FunctionPointer
+}
+
+form PrimitiveLayout {
+    kind: PrimitiveKind
+    name: string
+    size_bytes: u64
+    align_bytes: u64
+    signed: bool
+    integer: bool
+    float: bool
+    pointer_sized: bool
+    sized: bool
+    backend_optional: bool
+    architecture_note: string
+}
+
+const PRIMITIVE_POINTER_32_SIZE: u64 = 4
+const PRIMITIVE_POINTER_64_SIZE: u64 = 8
+const PRIMITIVE_SLICE_WORDS: u64 = 2
+const PRIMITIVE_F16_BACKEND_FEATURE: string = "float16"
+const PRIMITIVE_F128_BACKEND_FEATURE: string = "float128"
+
+proc primitive_layout(kind: PrimitiveKind, name: string, size_bytes: u64, align_bytes: u64) -> PrimitiveLayout {
+    give PrimitiveLayout {
+        kind: kind,
+        name: name,
+        size_bytes: size_bytes,
+        align_bytes: align_bytes,
+        signed: false,
+        integer: false,
+        float: false,
+        pointer_sized: false,
+        sized: true,
+        backend_optional: false,
+        architecture_note: "stable across supported architectures"
+    };
+}
+
+proc primitive_signed_integer(kind: PrimitiveKind, name: string, size_bytes: u64, align_bytes: u64) -> PrimitiveLayout {
+    let out: PrimitiveLayout = primitive_layout(kind, name, size_bytes, align_bytes);
+    set out.signed = true;
+    set out.integer = true;
+    give out;
+}
+
+proc primitive_unsigned_integer(kind: PrimitiveKind, name: string, size_bytes: u64, align_bytes: u64) -> PrimitiveLayout {
+    let out: PrimitiveLayout = primitive_layout(kind, name, size_bytes, align_bytes);
+    set out.integer = true;
+    give out;
+}
+
+proc primitive_float(kind: PrimitiveKind, name: string, size_bytes: u64, align_bytes: u64, backend_optional: bool, feature: string) -> PrimitiveLayout {
+    let out: PrimitiveLayout = primitive_layout(kind, name, size_bytes, align_bytes);
+    set out.float = true;
+    set out.backend_optional = backend_optional;
+    if backend_optional {
+        set out.architecture_note = "available only when backend feature `" + feature + "` is enabled";
+    }
+    give out;
+}
+
+proc primitive_pointer_sized(kind: PrimitiveKind, name: string, pointer_width_bytes: u64) -> PrimitiveLayout {
+    let out: PrimitiveLayout = primitive_unsigned_integer(kind, name, pointer_width_bytes, pointer_width_bytes);
+    set out.pointer_sized = true;
+    set out.architecture_note = "size and alignment follow target pointer width";
+    give out;
+}
+
+proc primitive_unsized(kind: PrimitiveKind, name: string) -> PrimitiveLayout {
+    let out: PrimitiveLayout = primitive_layout(kind, name, 0, 1);
+    set out.sized = false;
+    set out.architecture_note = "layout is determined by the concrete instantiation";
+    give out;
+}
+
+proc bool_type() -> PrimitiveLayout {
+    give primitive_layout(PrimitiveKind.Bool, "bool", 1, 1);
+}
+
+proc byte_type() -> PrimitiveLayout {
+    give primitive_unsigned_integer(PrimitiveKind.Byte, "byte", 1, 1);
+}
+
+proc char_type() -> PrimitiveLayout {
+    give primitive_layout(PrimitiveKind.Char, "char", 1, 1);
+}
+
+proc rune_type() -> PrimitiveLayout {
+    give primitive_unsigned_integer(PrimitiveKind.Rune, "rune", 4, 4);
+}
+
+proc int_type(pointer_width_bytes: u64) -> PrimitiveLayout {
+    let out: PrimitiveLayout = primitive_pointer_sized(PrimitiveKind.Int, "int", pointer_width_bytes);
+    set out.signed = true;
+    give out;
+}
+
+proc uint_type(pointer_width_bytes: u64) -> PrimitiveLayout {
+    give primitive_pointer_sized(PrimitiveKind.Uint, "uint", pointer_width_bytes);
+}
+
+proc isize_type(pointer_width_bytes: u64) -> PrimitiveLayout {
+    let out: PrimitiveLayout = primitive_pointer_sized(PrimitiveKind.Isize, "isize", pointer_width_bytes);
+    set out.signed = true;
+    give out;
+}
+
+proc usize_type(pointer_width_bytes: u64) -> PrimitiveLayout {
+    give primitive_pointer_sized(PrimitiveKind.Usize, "usize", pointer_width_bytes);
+}
+
+proc i8_type() -> PrimitiveLayout {
+    give primitive_signed_integer(PrimitiveKind.I8, "i8", 1, 1);
+}
+
+proc i16_type() -> PrimitiveLayout {
+    give primitive_signed_integer(PrimitiveKind.I16, "i16", 2, 2);
+}
+
+proc i32_type() -> PrimitiveLayout {
+    give primitive_signed_integer(PrimitiveKind.I32, "i32", 4, 4);
+}
+
+proc i64_type() -> PrimitiveLayout {
+    give primitive_signed_integer(PrimitiveKind.I64, "i64", 8, 8);
+}
+
+proc i128_type() -> PrimitiveLayout {
+    give primitive_signed_integer(PrimitiveKind.I128, "i128", 16, 16);
+}
+
+proc u8_type() -> PrimitiveLayout {
+    give primitive_unsigned_integer(PrimitiveKind.U8, "u8", 1, 1);
+}
+
+proc u16_type() -> PrimitiveLayout {
+    give primitive_unsigned_integer(PrimitiveKind.U16, "u16", 2, 2);
+}
+
+proc u32_type() -> PrimitiveLayout {
+    give primitive_unsigned_integer(PrimitiveKind.U32, "u32", 4, 4);
+}
+
+proc u64_type() -> PrimitiveLayout {
+    give primitive_unsigned_integer(PrimitiveKind.U64, "u64", 8, 8);
+}
+
+proc u128_type() -> PrimitiveLayout {
+    give primitive_unsigned_integer(PrimitiveKind.U128, "u128", 16, 16);
+}
+
+proc f16_type() -> PrimitiveLayout {
+    give primitive_float(PrimitiveKind.F16, "f16", 2, 2, true, PRIMITIVE_F16_BACKEND_FEATURE);
+}
+
+proc f32_type() -> PrimitiveLayout {
+    give primitive_float(PrimitiveKind.F32, "f32", 4, 4, false, "");
+}
+
+proc f64_type() -> PrimitiveLayout {
+    give primitive_float(PrimitiveKind.F64, "f64", 8, 8, false, "");
+}
+
+proc f128_type() -> PrimitiveLayout {
+    give primitive_float(PrimitiveKind.F128, "f128", 16, 16, true, PRIMITIVE_F128_BACKEND_FEATURE);
+}
+
+proc never_type() -> PrimitiveLayout {
+    let out: PrimitiveLayout = primitive_layout(PrimitiveKind.Never, "never", 0, 1);
+    set out.sized = false;
+    set out.architecture_note = "uninhabited control-flow type; no value is laid out";
+    give out;
+}
+
+proc unit_type() -> PrimitiveLayout {
+    give primitive_layout(PrimitiveKind.Unit, "unit", 0, 1);
+}
+
+proc tuple_type() -> PrimitiveLayout {
+    give primitive_unsized(PrimitiveKind.Tuple, "tuple");
+}
+
+proc fixed_array_type(element_size: u64, element_align: u64, count: u64) -> PrimitiveLayout {
+    give primitive_layout(PrimitiveKind.FixedArray, "fixed_array", element_size * count, element_align);
+}
+
+proc slice_type(pointer_width_bytes: u64) -> PrimitiveLayout {
+    let out: PrimitiveLayout = primitive_layout(PrimitiveKind.Slice, "slice", pointer_width_bytes * PRIMITIVE_SLICE_WORDS, pointer_width_bytes);
+    set out.pointer_sized = true;
+    set out.architecture_note = "fat pointer: data pointer plus length";
+    give out;
+}
+
+proc pointer_type(pointer_width_bytes: u64) -> PrimitiveLayout {
+    give primitive_pointer_sized(PrimitiveKind.Pointer, "pointer", pointer_width_bytes);
+}
+
+proc reference_type(pointer_width_bytes: u64) -> PrimitiveLayout {
+    give primitive_pointer_sized(PrimitiveKind.Reference, "reference", pointer_width_bytes);
+}
+
+proc function_pointer_type(pointer_width_bytes: u64) -> PrimitiveLayout {
+    give primitive_pointer_sized(PrimitiveKind.FunctionPointer, "function_pointer", pointer_width_bytes);
+}
+
+proc primitive_layouts(pointer_width_bytes: u64) -> [PrimitiveLayout] {
+    give [
+        bool_type(),
+        byte_type(),
+        char_type(),
+        rune_type(),
+        int_type(pointer_width_bytes),
+        uint_type(pointer_width_bytes),
+        isize_type(pointer_width_bytes),
+        usize_type(pointer_width_bytes),
+        i8_type(),
+        i16_type(),
+        i32_type(),
+        i64_type(),
+        i128_type(),
+        u8_type(),
+        u16_type(),
+        u32_type(),
+        u64_type(),
+        u128_type(),
+        f16_type(),
+        f32_type(),
+        f64_type(),
+        f128_type(),
+        never_type(),
+        unit_type(),
+        tuple_type(),
+        fixed_array_type(1, 1, 0),
+        slice_type(pointer_width_bytes),
+        pointer_type(pointer_width_bytes),
+        reference_type(pointer_width_bytes),
+        function_pointer_type(pointer_width_bytes)
+    ];
+}
