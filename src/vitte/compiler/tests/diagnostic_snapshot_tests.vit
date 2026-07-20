@@ -412,6 +412,20 @@ proc test_report_deduplicates_and_limits_cascades() -> bool {
     and find(encoded, "\"invalid_example\": \"") >= 0;
 }
 
+proc test_cascade_diagnostics_link_to_root() -> bool {
+  let root: Diagnostic = parser_unclosed_block(
+    span_create("cascade_link.vit", 1, 1, 5),
+    span_create("cascade_link.vit", 8, 1, 1)
+  );
+  let child: Diagnostic = sample_cascade_diagnostic(4, "derived type error after parser recovery");
+  let report: DiagnosticReport = diagnostic_report([root, child]);
+  give len(report.diagnostics) == 2
+    and report.diagnostics[0].primary_error
+    and report.diagnostics[1].cascade
+    and report.diagnostics[1].cascade_of == report.diagnostics[0].primary_error_key
+    and report.cascade_count == 1;
+}
+
 proc test_multiple_independent_errors_in_one_file() -> bool {
   let first: Diagnostic = diagnostic_error("PARSE_E_TOPLEVEL_DECL_EXPECTED", DiagnosticPhase.Parser, "expected declaration", span_create("multi_errors.vit", 1, 1, 4));
   let second: Diagnostic = diagnostic_error("TYPECK_E_ASSIGN_MISMATCH", DiagnosticPhase.Typeck, "assignment contract failed", span_create("multi_errors.vit", 3, 7, 5));
@@ -594,6 +608,7 @@ proc run_all_tests() -> int {
   let catalog_ok: bool = test_typeck_and_borrowck_suggestion_catalog_contract();
   let rendered_suggestions_ok: bool = test_rendered_suggestion_applicability_contract();
   let report_cascade_ok: bool = test_report_deduplicates_and_limits_cascades();
+  let cascade_link_ok: bool = test_cascade_diagnostics_link_to_root();
   let multi_error_ok: bool = test_multiple_independent_errors_in_one_file();
   let multifile_ok: bool = test_multifile_diagnostic_spans();
   let unicode_tabs_ok: bool = test_unicode_and_tab_diagnostic_rendering();
@@ -641,6 +656,9 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if report_cascade_ok == false {
+    set failures = failures + 1;
+  }
+  if cascade_link_ok == false {
     set failures = failures + 1;
   }
   if multi_error_ok == false {

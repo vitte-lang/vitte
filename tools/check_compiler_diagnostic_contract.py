@@ -601,6 +601,8 @@ def check_relational_diagnostic_contract() -> list[str]:
         (DIAGNOSTIC_SNAPSHOT_TESTS, "test_unicode_and_tab_diagnostic_rendering"),
         (DIAGNOSTIC_SNAPSHOT_TESTS, "caractère café\\tinterdit"),
         (DIAGNOSTIC_SNAPSHOT_TESTS, "DIAGNOSTIC_TAB_WIDTH == 4"),
+        (DIAGNOSTIC_SNAPSHOT_TESTS, "test_cascade_diagnostics_link_to_root"),
+        (DIAGNOSTIC_SNAPSHOT_TESTS, "cascade_of == report.diagnostics[0].primary_error_key"),
         (CANONICAL_DIAGNOSTIC, "why expected type is imposed:"),
         (CANONICAL_DIAGNOSTIC, "origin of obtained type:"),
         (CANONICAL_DIAGNOSTIC, "give 3 as u64;"),
