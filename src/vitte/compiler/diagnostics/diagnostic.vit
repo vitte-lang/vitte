@@ -680,6 +680,17 @@ proc diagnostic_suggestion_detail(kind: DiagnosticSuggestionKind, message: strin
     give suggestion;
 }
 
+proc diagnostic_suggestion_with_confidence(kind: DiagnosticSuggestionKind, message: string, replacement: string, span: SourceSpan, confidence: string, reason: string) -> DiagnosticSuggestion {
+    let applicability: DiagnosticApplicability = if confidence == DIAGNOSTIC_CONFIDENCE_HIGH and replacement != "" {
+        DiagnosticApplicability.Machine
+    } elif confidence == DIAGNOSTIC_CONFIDENCE_MEDIUM {
+        DiagnosticApplicability.MaybeMachine
+    } else {
+        DiagnosticApplicability.Manual
+    };
+    give diagnostic_suggestion_applicability(kind, message, replacement, span, applicability, confidence, reason);
+}
+
 proc diagnostic_normalize_confidence(confidence: string, applicability: DiagnosticApplicability, replacement: string) -> string {
     if confidence == DIAGNOSTIC_CONFIDENCE_HIGH and applicability == DiagnosticApplicability.Machine and replacement != "" {
         give DIAGNOSTIC_CONFIDENCE_HIGH;
@@ -4727,6 +4738,7 @@ share diagnostic_suggestion
 share diagnostic_normalize_confidence
 share diagnostic_suggestion_applicability
 share diagnostic_suggestion_detail
+share diagnostic_suggestion_with_confidence
 share diagnostic_suggestion_with_secondary_span
 share diagnostic_suggestion_with_secondary_spans
 share diagnostic_suggestion_limit
