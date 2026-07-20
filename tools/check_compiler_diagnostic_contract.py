@@ -12,7 +12,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 CODES = ROOT / "schemas" / "diagnostics" / "codes.json"
 COMPILER_ROOT = ROOT / "src" / "vitte" / "compiler"
+COMPILER_PACKAGE_ROOT = ROOT / "src" / "vitte" / "packages" / "compiler"
 CANONICAL_DIAGNOSTIC = COMPILER_ROOT / "diagnostics" / "diagnostic.vit"
+CANONICAL_SPAN = COMPILER_ROOT / "source" / "span.vit"
 SEMA_DIAGNOSTICS = COMPILER_ROOT / "analysis" / "sema" / "errors.vit"
 SEMA_RESOLVER = COMPILER_ROOT / "analysis" / "sema" / "resolver.vit"
 PARSER = COMPILER_ROOT / "frontend" / "parse" / "parser.vit"
@@ -133,6 +135,18 @@ def compiler_sources() -> list[Path]:
     return sorted(
         path
         for path in COMPILER_ROOT.rglob("*")
+        if path.suffix in {".vit", ".c", ".h"}
+        and "/tests/" not in path.as_posix()
+        and not path.as_posix().endswith("/tests.vit")
+    )
+
+
+def compiler_contract_sources() -> list[Path]:
+    roots = (COMPILER_ROOT, COMPILER_PACKAGE_ROOT)
+    return sorted(
+        path
+        for root in roots
+        for path in root.rglob("*")
         if path.suffix in {".vit", ".c", ".h"}
         and "/tests/" not in path.as_posix()
         and not path.as_posix().endswith("/tests.vit")
@@ -266,6 +280,22 @@ def check_diagnostic_object_contract() -> list[str]:
         failures.append(f"{rel}: missing diagnostic_with_file_id helper")
     if "proc diagnostic_with_internal_cause" not in text:
         failures.append(f"{rel}: missing diagnostic_with_internal_cause helper")
+    return failures
+
+
+def check_span_object_contract() -> list[str]:
+    failures: list[str] = []
+    span_forms: list[str] = []
+    for path in compiler_contract_sources():
+        text = path.read_text(encoding="utf-8")
+        if re.search(r"(?m)^form\s+Span\s*\{", text):
+            span_forms.append(path.relative_to(ROOT).as_posix())
+    allowed = CANONICAL_SPAN.relative_to(ROOT).as_posix()
+    for path in span_forms:
+        if path != allowed:
+            failures.append(f"{path}: only {allowed} may define form Span")
+    if allowed not in span_forms:
+        failures.append(f"{allowed}: missing unique form Span")
     return failures
 
 
@@ -512,6 +542,7 @@ def main() -> int:
     failures = [
         *check_code_documentation(),
         *check_diagnostic_object_contract(),
+        *check_span_object_contract(),
         *check_relational_diagnostic_contract(),
         *check_direct_output_boundaries(),
         *check_driver_vague_messages(),
