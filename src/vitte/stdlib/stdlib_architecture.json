@@ -1,0 +1,120 @@
+{
+  "schema": "vitte.stdlib.architecture",
+  "schema_version": "1.0.0",
+  "levels": [
+    {
+      "name": "core",
+      "rank": 0,
+      "root": "src/vitte/stdlib/core",
+      "facades": [
+        "src/vitte/stdlib/core.vitl",
+        "src/vitte/stdlib/core_alias.vitl"
+      ],
+      "depends_on": [],
+      "requires_os": false,
+      "allows_dynamic_allocation": false,
+      "purpose": "OS-independent primitives, constants, simple algorithms, and fixed-size helpers."
+    },
+    {
+      "name": "alloc",
+      "rank": 1,
+      "root": "src/vitte/stdlib/alloc",
+      "facades": [
+        "src/vitte/stdlib/memory.vitl",
+        "src/vitte/stdlib/collections.vitl",
+        "src/vitte/stdlib/collections"
+      ],
+      "depends_on": [
+        "core"
+      ],
+      "requires_os": false,
+      "allows_dynamic_allocation": true,
+      "purpose": "Allocator-aware memory and collection APIs that remain portable."
+    },
+    {
+      "name": "std",
+      "rank": 2,
+      "root": "src/vitte/stdlib/std",
+      "facades": [
+        "src/vitte/stdlib/math.vitl",
+        "src/vitte/stdlib/math",
+        "src/vitte/stdlib/strings.vitl",
+        "src/vitte/stdlib/encoding.vitl",
+        "src/vitte/stdlib/encoding",
+        "src/vitte/stdlib/json.vitl",
+        "src/vitte/stdlib/json",
+        "src/vitte/stdlib/crypto.vitl",
+        "src/vitte/stdlib/crypto",
+        "src/vitte/stdlib/compression.vitl",
+        "src/vitte/stdlib/compression",
+        "src/vitte/stdlib/regex.vitl",
+        "src/vitte/stdlib/data",
+        "src/vitte/stdlib/data"
+      ],
+      "depends_on": [
+        "core",
+        "alloc"
+      ],
+      "requires_os": false,
+      "allows_dynamic_allocation": true,
+      "purpose": "Portable high-level library modules with no direct operating-system dependency."
+    },
+    {
+      "name": "platform",
+      "rank": 3,
+      "root": "src/vitte/stdlib/platform",
+      "facades": [
+        "src/vitte/stdlib/io.vitl",
+        "src/vitte/stdlib/io",
+        "src/vitte/stdlib/core/io_helpers.vitl",
+        "src/vitte/stdlib/path.vitl",
+        "src/vitte/stdlib/path",
+        "src/vitte/stdlib/os.vitl",
+        "src/vitte/stdlib/sysinfo.vitl",
+        "src/vitte/stdlib/datetime.vitl",
+        "src/vitte/stdlib/runtime.vitl",
+        "src/vitte/stdlib/kernel.vitl",
+        "src/vitte/stdlib/kernel",
+        "src/vitte/stdlib/network",
+        "src/vitte/stdlib/threading",
+        "src/vitte/stdlib/ffi",
+        "src/vitte/stdlib/profiling"
+      ],
+      "depends_on": [
+        "core",
+        "alloc",
+        "std"
+      ],
+      "requires_os": true,
+      "allows_dynamic_allocation": true,
+      "purpose": "Host, kernel, IO, threading, network, runtime, and FFI boundaries."
+    },
+    {
+      "name": "experimental",
+      "rank": 4,
+      "root": "src/vitte/stdlib/experimental",
+      "facades": [
+        "src/vitte/stdlib/async",
+        "src/vitte/stdlib/graphics.vitl",
+        "src/vitte/stdlib/tests"
+      ],
+      "depends_on": [
+        "core",
+        "alloc",
+        "std",
+        "platform"
+      ],
+      "requires_os": false,
+      "allows_dynamic_allocation": true,
+      "purpose": "Unstable APIs that can depend on any stable lower level but cannot be depended on by lower levels."
+    }
+  ],
+  "maximum_additional_libraries": 0,
+  "rules": {
+    "no_circular_dependencies": true,
+    "strict_dependency_hierarchy": true,
+    "core_has_no_operating_system_dependency": true,
+    "core_has_no_dynamic_allocation": true,
+    "stdlib_is_compiled_from_vitte_sources": true
+  }
+}

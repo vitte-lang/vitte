@@ -18,6 +18,7 @@ REPORT_DIR = ROOT / "target" / "reports"
 STDLIB_DIR = ROOT / "target" / "stdlib"
 SOURCE_STDLIB_DIR = ROOT / "src/vitte/stdlib"
 HISTORY_DIR = STDLIB_DIR / "history"
+ARCHITECTURE_MANIFEST = SOURCE_STDLIB_DIR / "stdlib_architecture.json"
 
 REPORT_DIR.mkdir(parents=True, exist_ok=True)
 STDLIB_DIR.mkdir(parents=True, exist_ok=True)
@@ -31,6 +32,7 @@ HTML_REPORT = REPORT_DIR / "stdlib_validation.html"
 REQUIRED_FILES = [
     ROOT / "src/vitte/stdlib/mod.vit",
     ROOT / "src/vitte/stdlib/tests/smoke.vit",
+    ARCHITECTURE_MANIFEST,
 ]
 
 
@@ -85,6 +87,26 @@ FEATURE_MODULES = {
     "image": "image.vitl",
     "audio": "audio.vitl",
 }
+
+
+USE_RE = re.compile(r"^\s*use\s+([A-Za-z0-9_/-]+)")
+CORE_FORBIDDEN_IMPORT_PREFIXES = (
+    "vitte/stdlib/io",
+    "vitte/stdlib/os",
+    "vitte/stdlib/kernel",
+    "vitte/stdlib/network",
+    "vitte/stdlib/threading",
+    "vitte/stdlib/ffi",
+    "vitte/stdlib/platform",
+)
+CORE_DYNAMIC_ALLOCATION_PATTERNS = (
+    r"\balloc\s*\(",
+    r"\bmalloc\s*\(",
+    r"\bnew\s*\(",
+    r"\bVec\s*<",
+    r"\bHashMap\s*<",
+    r"\bdynamic_alloc",
+)
 
 
 @dataclass
@@ -180,6 +202,172 @@ def detected_features() -> dict[str, bool]:
     }
 
 
+def load_architecture_manifest() -> dict:
+    return json.loads(
+        ARCHITECTURE_MANIFEST.read_text(encoding="utf-8")
+    )
+
+
+def stdlib_sources() -> list[Path]:
+    return sorted(SOURCE_STDLIB_DIR.glob("**/*.vit*"))
+
+
+def architecture_levels(manifest: dict) -> dict[str, dict]:
+    return {
+        level["name"]: level
+        for level in manifest["levels"]
+    }
+
+
+def path_level(path: Path, manifest: dict) -> str:
+    relative = path.relative_to(ROOT).as_posix()
+    best_name = ""
+    best_len = -1
+    for level in manifest["levels"]:
+        candidates = [level["root"]] + level.get("facades", [])
+        for candidate in candidates:
+            if relative == candidate or relative.startswith(candidate.rstrip("/") + "/"):
+                if len(candidate) > best_len:
+                    best_name = level["name"]
+                    best_len = len(candidate)
+    return best_name
+
+
+def module_to_path(module: str) -> Path | None:
+    if not module.startswith("vitte/stdlib"):
+        return None
+    suffix = module.removeprefix("vitte/stdlib").strip("/")
+    if suffix == "":
+        return SOURCE_STDLIB_DIR / "mod.vit"
+    candidates = [
+        SOURCE_STDLIB_DIR / f"{suffix}.vitl",
+        SOURCE_STDLIB_DIR / f"{suffix}.vit",
+        SOURCE_STDLIB_DIR / suffix / "mod.vit",
+        SOURCE_STDLIB_DIR / suffix / f"{Path(suffix).name}.vitl",
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def imports_for_source(path: Path) -> list[str]:
+    imports: list[str] = []
+    for line in path.read_text(encoding="utf-8", errors="ignore").splitlines():
+        match = USE_RE.match(line)
+        if match:
+            imports.append(match.group(1))
+    return imports
+
+
+def stdlib_dependency_edges(manifest: dict) -> list[tuple[str, str, str]]:
+    edges: list[tuple[str, str, str]] = []
+    for source in stdlib_sources():
+        source_level = path_level(source, manifest)
+        if not source_level:
+            continue
+        for imported in imports_for_source(source):
+            imported_path = module_to_path(imported)
+            if imported_path is None:
+                continue
+            imported_level = path_level(imported_path, manifest)
+            if imported_level:
+                edges.append((source_level, imported_level, source.relative_to(ROOT).as_posix()))
+    return edges
+
+
+def has_cycle(edges: list[tuple[str, str, str]]) -> bool:
+    graph: dict[str, set[str]] = {}
+    for left, right, _path in edges:
+        if left == right:
+            continue
+        graph.setdefault(left, set()).add(right)
+    visiting: set[str] = set()
+    visited: set[str] = set()
+
+    def visit(node: str) -> bool:
+        if node in visiting:
+            return True
+        if node in visited:
+            return False
+        visiting.add(node)
+        for child in graph.get(node, set()):
+            if visit(child):
+                return True
+        visiting.remove(node)
+        visited.add(node)
+        return False
+
+    return any(visit(node) for node in graph)
+
+
+def validate_architecture(manifest: dict) -> list[ValidationResult]:
+    results: list[ValidationResult] = []
+    levels = architecture_levels(manifest)
+    required_names = ["core", "alloc", "std", "platform", "experimental"]
+    results.append(ValidationResult(
+        name="stdlib_levels",
+        status=list(levels.keys()) == required_names,
+        detail=" -> ".join(levels.keys()),
+    ))
+    results.append(ValidationResult(
+        name="maximum_additional_libraries",
+        status=manifest.get("maximum_additional_libraries") == 0,
+        detail=str(manifest.get("maximum_additional_libraries")),
+    ))
+
+    ranks = {name: int(level["rank"]) for name, level in levels.items()}
+    edges = stdlib_dependency_edges(manifest)
+    upward_edges = [
+        f"{path}: {left} -> {right}"
+        for left, right, path in edges
+        if ranks[right] > ranks[left]
+    ]
+    results.append(ValidationResult(
+        name="strict_dependency_hierarchy",
+        status=not upward_edges,
+        detail="ok" if not upward_edges else "; ".join(upward_edges[:5]),
+    ))
+    results.append(ValidationResult(
+        name="no_circular_dependencies",
+        status=not has_cycle(edges),
+        detail=f"edges={len(edges)}",
+    ))
+
+    core_sources = [
+        source
+        for source in stdlib_sources()
+        if path_level(source, manifest) == "core"
+    ]
+    core_os_violations: list[str] = []
+    core_alloc_violations: list[str] = []
+    for source in core_sources:
+        text = source.read_text(encoding="utf-8", errors="ignore")
+        for imported in imports_for_source(source):
+            if imported.startswith(CORE_FORBIDDEN_IMPORT_PREFIXES):
+                core_os_violations.append(f"{source.relative_to(ROOT)} imports {imported}")
+        for pattern in CORE_DYNAMIC_ALLOCATION_PATTERNS:
+            if re.search(pattern, text):
+                core_alloc_violations.append(f"{source.relative_to(ROOT)} matches {pattern}")
+
+    results.append(ValidationResult(
+        name="core_has_no_operating_system_dependency",
+        status=not core_os_violations,
+        detail="ok" if not core_os_violations else "; ".join(core_os_violations[:5]),
+    ))
+    results.append(ValidationResult(
+        name="core_has_no_dynamic_allocation",
+        status=not core_alloc_violations,
+        detail="ok" if not core_alloc_violations else "; ".join(core_alloc_violations[:5]),
+    ))
+    results.append(ValidationResult(
+        name="stdlib_is_compiled_from_vitte_sources",
+        status=all(path.suffix in {".vit", ".vitl"} for path in stdlib_sources()),
+        detail=f"sources={len(stdlib_sources())}",
+    ))
+    return results
+
+
 def feature_score(features: dict[str, bool]) -> float:
     enabled = sum(
         1
@@ -197,8 +385,10 @@ def feature_score(features: dict[str, bool]) -> float:
 def build_report() -> dict:
     symbols = stdlib_symbol_index()
     features = detected_features()
+    architecture_manifest = load_architecture_manifest()
 
     files = validate_files()
+    architecture = validate_architecture(architecture_manifest)
 
     required = validate_required_symbols(
         symbols
@@ -219,11 +409,17 @@ def build_report() -> dict:
         for item in required
         if not item.status
     ]
+    architecture_failures = [
+        item
+        for item in architecture
+        if not item.status
+    ]
 
     status = (
         "PASS"
         if not missing_files
         and not missing_symbols
+        and not architecture_failures
         else "FAIL"
     )
 
@@ -246,9 +442,15 @@ def build_report() -> dict:
             feature_score(features),
         "features":
             features,
+        "architecture":
+            architecture_manifest,
         "required_files": [
             asdict(item)
             for item in files
+        ],
+        "architecture_results": [
+            asdict(item)
+            for item in architecture
         ],
         "required_symbols": [
             asdict(item)
@@ -269,6 +471,8 @@ def build_report() -> dict:
                 len(missing_files),
             "missing_symbols":
                 len(missing_symbols),
+            "architecture_failures":
+                len(architecture_failures),
         },
     }
 
@@ -318,6 +522,21 @@ def write_markdown(report: dict):
             f"{'PASS' if item['status'] else 'FAIL'} |"
         )
 
+    lines.extend([
+        "",
+        "## Architecture",
+        "",
+        "| Contract | Status | Detail |",
+        "|------|------|------|",
+    ])
+
+    for item in report["architecture_results"]:
+        lines.append(
+            f"| {item['name']} | "
+            f"{'PASS' if item['status'] else 'FAIL'} | "
+            f"{item['detail']} |"
+        )
+
     MARKDOWN_REPORT.write_text(
         "\n".join(lines) + "\n",
         encoding="utf-8",
@@ -332,6 +551,17 @@ def write_html(report: dict):
             f"<tr>"
             f"<td>{item['name']}</td>"
             f"<td>{'PASS' if item['status'] else 'FAIL'}</td>"
+            f"</tr>"
+        )
+
+    architecture_rows = []
+
+    for item in report["architecture_results"]:
+        architecture_rows.append(
+            f"<tr>"
+            f"<td>{item['name']}</td>"
+            f"<td>{'PASS' if item['status'] else 'FAIL'}</td>"
+            f"<td>{item['detail']}</td>"
             f"</tr>"
         )
 
@@ -357,6 +587,19 @@ def write_html(report: dict):
 </tr>
 
 {''.join(rows)}
+
+</table>
+
+<h2>Architecture</h2>
+
+<table border="1">
+<tr>
+<th>Contract</th>
+<th>Status</th>
+<th>Detail</th>
+</tr>
+
+{''.join(architecture_rows)}
 
 </table>
 
