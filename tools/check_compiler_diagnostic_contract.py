@@ -99,6 +99,16 @@ REQUIRED_CANONICAL_INITIALIZERS = (
     "file_id: 0",
     "internal_cause: cause",
 )
+REQUIRED_SPAN_WRAPPER_FORMS = (
+    "PrimarySpan",
+    "SecondarySpan",
+)
+REQUIRED_SPAN_WRAPPER_HELPERS = (
+    "proc primary_span(span: SourceSpan, message: string) -> PrimarySpan",
+    "proc secondary_span(span: SourceSpan, message: string) -> SecondarySpan",
+    "proc primary_span_label(value: PrimarySpan) -> DiagnosticLabel",
+    "proc secondary_span_label(value: SecondarySpan) -> DiagnosticLabel",
+)
 
 
 def fail(message: str) -> int:
@@ -272,6 +282,17 @@ def check_diagnostic_object_contract() -> list[str]:
     for initializer in REQUIRED_CANONICAL_INITIALIZERS:
         if initializer not in text:
             failures.append(f"{rel}: diagnostic_create must initialize {initializer!r}")
+    for form_name in REQUIRED_SPAN_WRAPPER_FORMS:
+        fields = form_fields(text, form_name)
+        if fields is None:
+            failures.append(f"{rel}: missing form {form_name}")
+            continue
+        for field in ("span", "message", "valid"):
+            if field not in fields:
+                failures.append(f"{rel}: {form_name} is missing required field {field!r}")
+    for helper in REQUIRED_SPAN_WRAPPER_HELPERS:
+        if helper not in text:
+            failures.append(f"{rel}: missing span wrapper helper {helper!r}")
     if "set diagnostic.secondary_spans = diagnostic.secondary_spans + [label.span]" not in text:
         failures.append(f"{rel}: secondary labels must preserve their spans in secondary_spans")
     if "set diagnostic.primary_span = label.span" not in text or "set diagnostic.span = label.span" not in text:

@@ -114,6 +114,18 @@ form SourceSpan {
     valid: bool
 }
 
+form PrimarySpan {
+    span: SourceSpan
+    message: string
+    valid: bool
+}
+
+form SecondarySpan {
+    span: SourceSpan
+    message: string
+    valid: bool
+}
+
 form DiagnosticLabel {
     kind: DiagnosticLabelKind
     message: string
@@ -548,6 +560,30 @@ proc diagnostic_label(kind: DiagnosticLabelKind, message: string, span: SourceSp
         primary: kind == DiagnosticLabelKind.Primary,
         valid: message != "" and span.valid
     };
+}
+
+proc primary_span(span: SourceSpan, message: string) -> PrimarySpan {
+    give PrimarySpan {
+        span: span,
+        message: message,
+        valid: span.valid and message != ""
+    };
+}
+
+proc secondary_span(span: SourceSpan, message: string) -> SecondarySpan {
+    give SecondarySpan {
+        span: span,
+        message: message,
+        valid: span.valid and message != ""
+    };
+}
+
+proc primary_span_label(value: PrimarySpan) -> DiagnosticLabel {
+    give diagnostic_label(DiagnosticLabelKind.Primary, value.message, value.span);
+}
+
+proc secondary_span_label(value: SecondarySpan) -> DiagnosticLabel {
+    give diagnostic_label(DiagnosticLabelKind.Secondary, value.message, value.span);
 }
 
 proc primary_label(message: string, span: SourceSpan) -> DiagnosticLabel {
@@ -4577,6 +4613,8 @@ share DiagnosticFixKind
 share DiagnosticKind
 
 share SourceSpan
+share PrimarySpan
+share SecondarySpan
 share DiagnosticLabel
 share DiagnosticNote
 share DiagnosticHelp
@@ -4601,6 +4639,10 @@ share diagnostic_envelope
 share span_empty
 share span_create
 share span_range
+share primary_span
+share secondary_span
+share primary_span_label
+share secondary_span_label
 share monochrome_render_config
 share terminal_render_config
 share ide_render_config
