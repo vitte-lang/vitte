@@ -357,6 +357,14 @@ proc lsp_diagnostic(diagnostic: Diagnostic) -> LspDiagnostic {
     give lsp_diagnostic_with_canonical_context(diagnostic, lsp_canonical_context_none());
 }
 
+proc lsp_cli_diagnostic_parity_contract(diagnostic: Diagnostic) -> bool {
+    let lsp: LspDiagnostic = lsp_diagnostic(diagnostic);
+    give lsp.code == diagnostic.code
+        and lsp.message == diagnostic.message
+        and lsp.source == "vitte"
+        and lsp.valid == diagnostic.valid;
+}
+
 proc lsp_diagnostics_with_canonical_context(diagnostics: [Diagnostic], context: LspCanonicalContext) -> [LspDiagnostic] {
     let out: [LspDiagnostic] = [];
     let i: u64 = 0;
@@ -564,6 +572,7 @@ share lsp_publish_diagnostics
 share lsp_publish_report_with_canonical_context
 share lsp_publish_report
 share lsp_diagnostic_output
+share lsp_cli_diagnostic_parity_contract
 share lsp_code_action_from_suggestion
 share lsp_code_actions
 share lsp_report_code_actions
