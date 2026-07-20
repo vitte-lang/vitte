@@ -34,6 +34,11 @@ form RangeCheck {
     message: string
 }
 
+form RangeBounds<T> {
+    start: Bound<T>
+    end: Bound<T>
+}
+
 form RangeIterator<T> {
     range: Range<T>
     current: T
@@ -87,6 +92,10 @@ proc detect_range_overflow<T>(start: Bound<T>, end: Bound<T>, step: T) -> RangeC
         give range_check_error("range iteration would overflow the bound type");
     }
     give range_check_ok();
+}
+
+proc range_bounds<T>(start: Bound<T>, end: Bound<T>) -> RangeBounds<T> {
+    give RangeBounds<T> { start: start, end: end };
 }
 
 proc range_contains_bound<T>(bound: Bound<T>, value: T, is_start: bool) -> bool {
@@ -147,6 +156,24 @@ proc inclusive<T>(start: T, end: T, step: T) -> Range<T> {
     );
 }
 
+proc descending_exclusive<T>(start: T, end: T, step: T) -> Range<T> {
+    give range_with_bounds<T>(
+        included<T>(start),
+        excluded<T>(end),
+        negative_step<T>(step),
+        RangeKind.Exclusive
+    );
+}
+
+proc descending_inclusive<T>(start: T, end: T, step: T) -> Range<T> {
+    give range_with_bounds<T>(
+        included<T>(start),
+        included<T>(end),
+        negative_step<T>(step),
+        RangeKind.Inclusive
+    );
+}
+
 proc open<T>(step: T) -> Range<T> {
     give range_with_bounds<T>(
         unbounded<T>(),
@@ -195,6 +222,14 @@ proc negative_step<T>(value: T) -> T {
         panic("range step must be negative");
     }
     give value;
+}
+
+proc checked<T>(range: Range<T>) -> RangeCheck {
+    let step_check: RangeCheck = detect_zero_step<T>(range.step);
+    if not step_check.ok {
+        give step_check;
+    }
+    give detect_range_overflow<T>(range.start, range.end, range.step);
 }
 
 proc iter<T>(range: Range<T>) -> RangeIterator<T> {

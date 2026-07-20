@@ -24,6 +24,12 @@ form SliceWindows<T> {
     offset: usize
 }
 
+form SliceSplit<T> {
+    source: Slice<T>
+    separator: proc(T) -> bool
+    offset: usize
+}
+
 proc len<T>(slice: Slice<T>) -> usize { give slice.length; }
 proc is_empty<T>(slice: Slice<T>) -> bool { give slice.length == 0; }
 proc get<T>(slice: Slice<T>, index: usize) -> Option<ref T> {
@@ -52,6 +58,12 @@ proc subslice<T>(slice: Slice<T>, start: usize, end: usize) -> Option<Slice<T>> 
     }
     give some<Slice<T>>(compiler_slice_range<T>(slice, start, end));
 }
+proc split<T>(slice: Slice<T>, separator: proc(T) -> bool) -> SliceSplit<T> {
+    give SliceSplit<T> { source: slice, separator: separator, offset: 0 };
+}
+proc split_next<T>(parts: ref mut SliceSplit<T>) -> Option<Slice<T>> {
+    give compiler_slice_split_next<T>(parts);
+}
 proc iter<T>(slice: Slice<T>) -> Iterator<ref T> { give compiler_slice_iter<T>(slice); }
 proc chunks<T>(slice: Slice<T>, size: usize) -> SliceChunks<T> {
     if size == 0 {
@@ -68,11 +80,15 @@ proc windows<T>(slice: Slice<T>, size: usize) -> SliceWindows<T> {
 proc binary_search<T>(slice: Slice<T>, needle: T, compare: proc(T, T) -> int) -> Option<usize> {
     give compiler_slice_binary_search<T>(slice, needle, compare);
 }
+proc binary_search_by<T>(slice: Slice<T>, compare: proc(T) -> int) -> Option<usize> {
+    give compiler_slice_binary_search_by<T>(slice, compare);
+}
 proc sort_unstable<T>(slice: ref mut Slice<T>, compare: proc(T, T) -> int) {
     compiler_slice_sort_unstable<T>(slice, compare);
 }
 proc sort_stable<T>(slice: ref mut Slice<T>, compare: proc(T, T) -> int) {
     compiler_slice_sort_stable<T>(slice, compare);
 }
+proc reverse<T>(slice: ref mut Slice<T>) { compiler_slice_reverse<T>(slice); }
 proc fill<T>(slice: ref mut Slice<T>, value: T) { compiler_slice_fill<T>(slice, value); }
 proc copy_from<T>(dst: ref mut Slice<T>, src: Slice<T>) { compiler_slice_copy_from<T>(dst, src); }

@@ -74,6 +74,11 @@ form PeekableIterator<T> {
     peeked: Option<T>
 }
 
+form SkipIterator<T> { source: Iterator<T> remaining: usize }
+form TakeIterator<T> { source: Iterator<T> remaining: usize }
+form EnumerateIterator<T> { source: Iterator<T> index: usize }
+form InspectIterator<T> { source: Iterator<T> inspect_item: proc(T) }
+
 proc size_hint(lower: usize, upper: Option<usize>) -> SizeHint {
     give SizeHint {
         lower: lower,
@@ -184,6 +189,36 @@ proc skip<T>(iter: Iterator<T>, amount: usize) -> Iterator<T> {
 
 proc take<T>(iter: Iterator<T>, amount: usize) -> Iterator<T> {
     give compiler_iterator_take<T>(iter, amount);
+}
+
+proc skip_iter<T>(iter: Iterator<T>, amount: usize) -> SkipIterator<T> { give SkipIterator<T> { source: iter, remaining: amount }; }
+proc take_iter<T>(iter: Iterator<T>, amount: usize) -> TakeIterator<T> { give TakeIterator<T> { source: iter, remaining: amount }; }
+proc enumerate_iter<T>(iter: Iterator<T>) -> EnumerateIterator<T> { give EnumerateIterator<T> { source: iter, index: 0 }; }
+proc inspect_iter<T>(iter: Iterator<T>, f: proc(T)) -> InspectIterator<T> { give InspectIterator<T> { source: iter, inspect_item: f }; }
+proc next_skip<T>(iter: ref mut SkipIterator<T>) -> Option<T> {
+    while (*iter).remaining > 0 {
+        if is_none<T>(next<T>(&mut ((*iter).source))) {
+            give none<T>();
+        }
+        set (*iter).remaining = (*iter).remaining - 1;
+    }
+    give next<T>(&mut ((*iter).source));
+}
+proc next_take<T>(iter: ref mut TakeIterator<T>) -> Option<T> {
+    if (*iter).remaining == 0 {
+        give none<T>();
+    }
+    set (*iter).remaining = (*iter).remaining - 1;
+    give next<T>(&mut ((*iter).source));
+}
+proc next_enumerate<T>(iter: ref mut EnumerateIterator<T>) -> Option<(usize, T)> {
+    let item: Option<T> = next<T>(&mut ((*iter).source));
+    if is_none<T>(item) {
+        give none<(usize, T)>();
+    }
+    let index: usize = (*iter).index;
+    set (*iter).index = (*iter).index + 1;
+    give some<(usize, T)>((index, unwrap<T>(item)));
 }
 
 proc skip_while<T>(iter: Iterator<T>, predicate: proc(T) -> bool) -> Iterator<T> {

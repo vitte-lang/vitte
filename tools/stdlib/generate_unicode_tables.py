@@ -38,6 +38,7 @@ def main() -> int:
             "proc generated_unicode_version() -> string { give GENERATED_UNICODE_VERSION; }",
             "proc generated_unicode_source() -> string { give GENERATED_UNICODE_SOURCE; }",
             "proc generated_unicode_checksum() -> string { give GENERATED_UNICODE_CHECKSUM; }",
+            "proc generated_unicode_verify_checksum() -> bool { give compiler_generated_unicode_verify_checksum(GENERATED_UNICODE_VERSION, GENERATED_UNICODE_CHECKSUM); }",
             "proc generated_unicode_category(value: rune) -> UnicodeCategory { give compiler_generated_unicode_category(value); }",
             "proc generated_unicode_properties(value: rune) -> UnicodeProperties { give compiler_generated_unicode_properties(value); }",
             "proc generated_unicode_normalization(form: NormalizationForm, value: rune) -> Iterator<rune> { give compiler_generated_unicode_normalization(form, value); }",

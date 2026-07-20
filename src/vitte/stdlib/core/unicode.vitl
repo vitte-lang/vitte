@@ -69,6 +69,11 @@ proc unicode_table_generator() -> string {
     give UNICODE_TABLE_GENERATOR;
 }
 
+proc unicode_ucd_checksum() -> string { give UNICODE_UCD_CHECKSUM; }
+proc unicode_tables_verified() -> bool {
+    give compiler_unicode_verify_checksum(UNICODE_VERSION, UNICODE_UCD_CHECKSUM);
+}
+
 proc general_category(value: rune) -> UnicodeCategory {
     give compiler_unicode_general_category(value);
 }
@@ -139,4 +144,11 @@ proc normalize_nfkd(text: Utf8View) -> String {
 
 proc case_fold_string(text: Utf8View) -> String {
     give compiler_unicode_case_fold_string(text);
+}
+
+proc normalize_with_checksum(text: Utf8View, form: NormalizationForm, checksum: string) -> String {
+    if checksum != UNICODE_UCD_CHECKSUM {
+        panic("Unicode table checksum does not match the selected UCD version");
+    }
+    give normalize(text, form);
 }

@@ -10,9 +10,16 @@ form String {
     bytes: Vec<byte>
 }
 
+form StringSlice {
+    view: Utf8View
+    start: usize
+    end: usize
+}
+
 proc string_new() -> String {
     give String { bytes: vec_new<byte>() };
 }
+proc string_with_capacity(capacity: usize) -> String { give String { bytes: vec_with_capacity<byte>(capacity) }; }
 proc string_from_utf8(bytes: Vec<byte>) -> Option<String> {
     if not validate_utf8(compiler_vec_as_slice<byte>(bytes)) {
         give none<String>();
@@ -21,6 +28,7 @@ proc string_from_utf8(bytes: Vec<byte>) -> Option<String> {
 }
 proc string_len(value: String) -> usize { give vec_len<byte>(value.bytes); }
 proc string_capacity(value: String) -> usize { give vec_capacity<byte>(value.bytes); }
+proc string_is_empty(value: String) -> bool { give string_len(value) == 0; }
 proc string_push(value: ref mut String, ch: rune) {
     let encoded: [byte] = encode_utf8(ch);
     compiler_owned_string_push_bytes(value, encoded);
@@ -40,5 +48,37 @@ proc string_slice(value: ref String, start: usize, end: usize) -> Option<Utf8Vie
     }
     give compiler_owned_string_slice(value, start, end);
 }
+proc string_slice_checked(value: ref String, start: usize, end: usize) -> Option<StringSlice> {
+    let sliced = string_slice(value, start, end);
+    if is_none<Utf8View>(sliced) {
+        give none<StringSlice>();
+    }
+    give some<StringSlice>(StringSlice { view: unwrap<Utf8View>(sliced), start: start, end: end });
+}
 proc string_reserve(value: ref mut String, additional: usize) { vec_reserve<byte>(&mut ((*value).bytes), additional); }
+proc string_shrink_to_fit(value: ref mut String) { compiler_string_shrink_to_fit(value); }
+proc string_clear(value: ref mut String) { set (*value).bytes = vec_new<byte>(); }
+proc string_truncate(value: ref mut String, new_len: usize) -> bool {
+    let view: Utf8View = string_as_utf8_view(value);
+    if not is_char_boundary(view, new_len) {
+        give false;
+    }
+    compiler_string_truncate(value, new_len);
+    give true;
+}
+proc string_insert(value: ref mut String, index: usize, ch: rune) -> bool {
+    let view: Utf8View = string_as_utf8_view(value);
+    if not is_char_boundary(view, index) {
+        give false;
+    }
+    compiler_string_insert(value, index, ch);
+    give true;
+}
+proc string_remove(value: ref mut String, index: usize) -> Option<rune> {
+    let view: Utf8View = string_as_utf8_view(value);
+    if not is_char_boundary(view, index) {
+        give none<rune>();
+    }
+    give compiler_string_remove(value, index);
+}
 proc string_as_utf8_view(value: ref String) -> Utf8View { give compiler_owned_string_as_utf8_view(value); }

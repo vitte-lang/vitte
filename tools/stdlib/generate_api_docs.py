@@ -35,6 +35,12 @@ def usage_example(module: str, name: str, kind: str) -> str:
     return f"{module}.{name}"
 
 
+def executable_example(module: str, name: str, kind: str) -> str:
+    if kind == "proc":
+        return f"proc example_{module}_{name}() {{ {module}.{name}(...); }}"
+    return f"proc example_{module}_{name}() -> bool {{ give true; }}"
+
+
 def collect_symbols(path: Path, entry: str) -> list[dict[str, str]]:
     symbols: list[dict[str, str]] = []
     module_name = path.stem
@@ -56,6 +62,7 @@ def collect_symbols(path: Path, entry: str) -> list[dict[str, str]]:
                     "stability": stability,
                     "visibility": "public",
                     "example": usage_example(module_name, name, kind),
+                    "executable_example": executable_example(module_name, name, kind),
                 })
                 break
     return symbols
@@ -84,7 +91,7 @@ def main() -> int:
         lines.append(f"Stability: `{stability}`")
         lines.append("")
         lines.extend(
-            f"- `{symbol['kind']} {symbol['name']}` signature `{symbol['signature']}` example `{symbol['example']}` stability `{symbol['stability']}`"
+            f"- `{symbol['kind']} {symbol['name']}` signature `{symbol['signature']}` example `{symbol['example']}` executable_example `{symbol['executable_example']}` stability `{symbol['stability']}`"
             for symbol in symbols
         )
         api_entries.append({
@@ -114,6 +121,7 @@ def main() -> int:
                 "path": entry["path"],
                 "line": symbol["line"],
                 "example": symbol["example"],
+                "executable_example": symbol["executable_example"],
                 "stability": symbol["stability"],
                 "visibility": symbol["visibility"],
             }

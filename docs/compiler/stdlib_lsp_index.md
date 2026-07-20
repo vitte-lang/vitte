@@ -14,4 +14,5 @@ Required editor data:
 - module path
 - source line
 - minimal usage example
+- executable example
 - stability

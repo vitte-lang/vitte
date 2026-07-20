@@ -765,9 +765,14 @@ REQUIRED_UNICODE_FRAGMENTS = (
     "proc normalize_nfkc",
     "proc normalize_nfkd",
     "proc case_fold_string",
+    "proc unicode_ucd_checksum",
+    "proc unicode_tables_verified",
+    "proc normalize_with_checksum",
 )
 REQUIRED_NEXT_STEP_FRAGMENTS = {
-    "core/slice.vitl": ("form Slice<T>", "proc get<T>", "proc chunks<T>", "proc windows<T>", "proc binary_search<T>", "proc sort_unstable<T>", "proc sort_stable<T>"),
+    "core/iterator.vitl": ("form Iterator<T>", "form MapIterator<T, U>", "form FilterIterator<T>", "form SkipIterator<T>", "form TakeIterator<T>", "form EnumerateIterator<T>", "proc map<T, U>", "proc filter<T>", "proc skip_iter<T>", "proc take_iter<T>", "proc next_skip<T>", "proc next_take<T>", "proc next_enumerate<T>"),
+    "core/range.vitl": ("pick BoundKind", "pick RangeKind", "form Range<T>", "form RangeBounds<T>", "proc inclusive<T>", "proc exclusive<T>", "proc descending_exclusive<T>", "proc descending_inclusive<T>", "proc detect_range_overflow<T>", "proc positive_step<T>", "proc negative_step<T>", "proc checked<T>"),
+    "core/slice.vitl": ("form Slice<T>", "proc get<T>", "proc chunks<T>", "proc windows<T>", "proc split<T>", "proc binary_search<T>", "proc binary_search_by<T>", "proc sort_unstable<T>", "proc sort_stable<T>", "proc reverse<T>"),
     "core/array.vitl": ("form Array<T>", "proc array_len<T", "proc array_get<T", "proc array_sort<T"),
     "core/cmp.vitl": ("pick Ordering", "form Eq<T>", "form Ord<T>", "proc compare<T>"),
     "core/hash.vitl": ("form Hasher", "form Hash<T>", "proc hash<T>", "proc combine_hash"),
@@ -776,7 +781,7 @@ REQUIRED_NEXT_STEP_FRAGMENTS = {
     "alloc/collections.vitl": ("form HashMap<K, V>", "form HashSet<T>", "form BTreeMap<K, V>", "form BTreeSet<T>", "form Deque<T>", "form SmallVec<T, N>", "proc hashmap_insert<K, V>", "proc hashmap_contains_key<K, V>", "proc hashmap_capacity<K, V>", "proc btreemap_insert<K, V>", "proc btreemap_first<K, V>", "proc deque_push_back<T>", "proc deque_front<T>", "proc smallvec_push<T, N>", "proc smallvec_capacity<T, N>"),
     "alloc/deque.vitl": ("type Deque<T>", "proc deque_push_back<T>", "proc deque_pop_front<T>"),
     "alloc/vec.vitl": ("form Vec<T>", "proc vec_new<T>", "proc vec_push<T>", "proc vec_iter<T>", "proc vec_drop<T>", "compiler_vec_realloc"),
-    "alloc/string.vitl": ("form String", "proc string_new", "proc string_push", "proc string_concat", "proc string_slice", "proc string_as_utf8_view"),
+    "alloc/string.vitl": ("form String", "form StringSlice", "proc string_new", "proc string_with_capacity", "proc string_push", "proc string_concat", "proc string_slice", "proc string_slice_checked", "proc string_reserve", "proc string_shrink_to_fit", "proc string_truncate", "proc string_as_utf8_view"),
     "alloc/smallvec.vitl": ("type SmallVec<T, N>", "proc smallvec_push<T, N>", "proc smallvec_pop<T, N>"),
     "alloc/rc.vitl": ("form Rc<T>", "form Weak<T>", "proc rc_new<T>", "proc weak_upgrade<T>"),
     "alloc/arc.vitl": ("form Arc<T>", "form ArcWeak<T>", "proc arc_new<T>", "proc arc_weak_upgrade<T>"),
@@ -825,7 +830,7 @@ REQUIRED_NEXT_STEP_FRAGMENTS = {
     "platform/windows.vitl": ("form WindowsHandle", "form WindowsError", "proc windows_open", "proc windows_read"),
     "platform/wasm.vitl": ("form WasmMemory", "form WasmImport", "proc wasm_memory_pages", "proc wasm_call"),
     "platform/embedded.vitl": ("form EmbeddedPin", "form EmbeddedClock", "proc embedded_available", "proc write_pin"),
-    "generated/unicode_tables.vitl": ("GENERATED_UNICODE_VERSION", "GENERATED_UNICODE_CHECKSUM", "sha256:", "proc generated_unicode_category", "proc generated_unicode_properties", "proc generated_unicode_normalization", "proc generated_unicode_case_fold"),
+    "generated/unicode_tables.vitl": ("GENERATED_UNICODE_VERSION", "GENERATED_UNICODE_CHECKSUM", "sha256:", "proc generated_unicode_verify_checksum", "proc generated_unicode_category", "proc generated_unicode_properties", "proc generated_unicode_normalization", "proc generated_unicode_case_fold"),
     "tools/unicode_tables.vitl": ("form UnicodeTableGeneration", "proc generate_unicode_tables", "proc verify_unicode_tables"),
     "tests/api_contracts.vit": ("stdlib_api_contracts_smoke", "std_time.duration_from_secs", "platform_abi.supports_filesystem"),
     "tests/core_alloc_contracts.vit": ("stdlib_core_alloc_contracts_smoke", "alloc_vec.vec_push", "alloc_string.string_push"),
@@ -836,7 +841,8 @@ REQUIRED_NEXT_STEP_FRAGMENTS = {
     "tests/std_more_libraries_contracts.vit": ("stdlib_more_libraries_contracts_smoke", "std_terminal.terminal_style", "std_calendar.is_leap_year", "std_event.event_bus"),
     "tests/fuzz/utf8_url_csv.vit": ("fuzz_utf8_url_csv", "core_string.validate_utf8", "std_url.url_parse", "std_csv.csv_parse"),
     "tests/fuzz/path_json_parse.vit": ("fuzz_path_json_parse", "std_path.normalize", "std_serialization.json_value", "std_parse.parse_i64"),
-    "tests/module_runner.vit": ("stdlib_module_tests_run", "std_uuid_test", "std_calendar_test", "std_percent_encoding_test", "std_io_process_test", "std_thread_sync_time_env_test", "alloc_api_test", "stdlib_negative_cases_run"),
+    "tests/module_runner.vit": ("stdlib_module_tests_run", "std_uuid_test", "std_calendar_test", "std_percent_encoding_test", "std_io_process_test", "std_thread_sync_time_env_test", "std_text_inputs_test", "alloc_api_test", "stdlib_negative_cases_run"),
+    "tests/modules/std_text_inputs_test.vit": ("std_text_inputs_test", "café déjà vu", "alpha\\r\\nbeta", "\\tcol1\\tcol2", "unicode_tables_verified", "parse_bool"),
     "tests/public_module_coverage.vit": ("PUBLIC_MODULE_TEST_COUNT", "public_module_tests_present", "src/vitte/stdlib/std/uuid.vitl"),
     "tests/modules/alloc_api_test.vit": ("alloc_api_test", "vec_capacity", "string_capacity", "hashmap_len"),
     "tests/modules/std_uuid_test.vit": ("std_uuid_test", "std_uuid.uuid_nil", "std_uuid.uuid_is_nil"),
@@ -1777,13 +1783,13 @@ def validate_lsp_api_index() -> list[ValidationResult]:
     api_json = json.loads((ROOT / "docs" / "compiler" / "stdlib_api.generated.json").read_text(encoding="utf-8"))
     lsp_text = (ROOT / "docs" / "compiler" / "stdlib_lsp_index.md").read_text(encoding="utf-8")
     lsp_json = json.loads((ROOT / "docs" / "compiler" / "stdlib_lsp_index.generated.json").read_text(encoding="utf-8"))
-    required_api = ("signature `", "example `", "stability `", "std/serialization.vitl", "std/atomic.vitl")
-    required_lsp = ("symbol name", "public signature", "minimal usage example", "stability", "source line")
+    required_api = ("signature `", "example `", "executable_example `", "stability `", "std/serialization.vitl", "std/atomic.vitl")
+    required_lsp = ("symbol name", "public signature", "minimal usage example", "executable example", "stability", "source line")
     missing_api = [fragment for fragment in required_api if fragment not in api_text]
     missing_lsp = [fragment for fragment in required_lsp if fragment not in lsp_text]
     json_ok = api_json.get("schema") == "vitte.stdlib.api" and bool(api_json.get("modules"))
     lsp_ok = lsp_json.get("schema") == "vitte.stdlib.lsp-index" and bool(lsp_json.get("symbols"))
-    required_symbol_fields = {"id", "name", "kind", "signature", "module", "line", "example", "stability", "visibility"}
+    required_symbol_fields = {"id", "name", "kind", "signature", "module", "line", "example", "executable_example", "stability", "visibility"}
     json_symbols = [
         symbol
         for module in api_json.get("modules", [])

@@ -4,6 +4,7 @@ Generated from commits touching `src/vitte/stdlib`, `tools/stdlib`, and stdlib d
 
 ## Recent Changes
 
+- `25928e5c1` Expand stdlib utilities and collections APIs
 - `aed68c999` Expand stdlib runtime network and serialization APIs
 - `d85b800c2` Add stdlib snapshots fuzzing and IO gates
 - `64289fd7e` Track stdlib compiler helpers and module tests
@@ -43,4 +44,3 @@ Generated from commits touching `src/vitte/stdlib`, `tools/stdlib`, and stdlib d
 - `b7b030fa1` backend: verify native object structure
 - `397d1bba7` backend: emit deterministic native objects
 - `4948274e1` Clean compiler surfaces and remove dead duplicates
-- `fe2346e17` tools/stdlib: add standard library artifact generation infrastructure

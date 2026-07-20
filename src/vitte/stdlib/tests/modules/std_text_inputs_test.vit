@@ -1,0 +1,33 @@
+use src/vitte/stdlib/alloc/string as alloc_string
+use src/vitte/stdlib/core/result as core_result
+use src/vitte/stdlib/core/string as core_string
+use src/vitte/stdlib/core/unicode as core_unicode
+use src/vitte/stdlib/std/parse as std_parse
+
+proc std_text_inputs_test() -> bool {
+    let lf: string = "alpha\nbeta\n";
+    let crlf: string = "alpha\r\nbeta\r\n";
+    let accents: string = "café déjà vu";
+    let unicode: string = "λ雪🙂";
+    let tabs: string = "\tcol1\tcol2";
+    let long_line: string = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
+    let text: alloc_string.String = alloc_string.string_new();
+    alloc_string.string_push_str(&mut text, lf);
+    alloc_string.string_push_str(&mut text, crlf);
+    alloc_string.string_push_str(&mut text, accents);
+    alloc_string.string_push_str(&mut text, unicode);
+    alloc_string.string_push_str(&mut text, tabs);
+    alloc_string.string_push_str(&mut text, long_line);
+
+    let view: core_string.Utf8View = alloc_string.string_as_utf8_view(&text);
+    let normalized: alloc_string.String = core_unicode.normalize_nfc(view);
+
+    give alloc_string.string_len(text) > 150
+        and alloc_string.string_capacity(text) >= alloc_string.string_len(text)
+        and core_string.validate_utf8(compiler_string_bytes(accents))
+        and core_string.validate_utf8(compiler_string_bytes(unicode))
+        and core_unicode.unicode_tables_verified()
+        and alloc_string.string_len(normalized) > 0
+        and is_ok<bool, std_parse.ParseError>(std_parse.parse_bool(compiler_utf8_view("true")));
+}
