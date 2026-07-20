@@ -21,6 +21,7 @@ HISTORY_DIR = STDLIB_DIR / "history"
 ARCHITECTURE_MANIFEST = SOURCE_STDLIB_DIR / "stdlib_architecture.json"
 MODULE_MANIFEST = SOURCE_STDLIB_DIR / "stdlib_modules.json"
 DEPENDENCY_GRAPH_MANIFEST = SOURCE_STDLIB_DIR / "stdlib_dependency_graph.json"
+CI_MATRIX_MANIFEST = SOURCE_STDLIB_DIR / "stdlib_ci_matrix.json"
 CORE_PRIMITIVE_SOURCE = SOURCE_STDLIB_DIR / "core" / "primitive.vitl"
 CORE_PRIMITIVE_DOC = ROOT / "docs" / "compiler" / "stdlib_core_primitive.md"
 CORE_OPTION_SOURCE = SOURCE_STDLIB_DIR / "core" / "option.vitl"
@@ -58,6 +59,8 @@ STDLIB_NEXT_STEP_SOURCES = (
     SOURCE_STDLIB_DIR / "std" / "env.vitl",
     SOURCE_STDLIB_DIR / "std" / "time.vitl",
     SOURCE_STDLIB_DIR / "std" / "process.vitl",
+    SOURCE_STDLIB_DIR / "std" / "serialization.vitl",
+    SOURCE_STDLIB_DIR / "std" / "atomic.vitl",
     SOURCE_STDLIB_DIR / "std" / "path.vitl",
     SOURCE_STDLIB_DIR / "std" / "thread.vitl",
     SOURCE_STDLIB_DIR / "std" / "sync.vitl",
@@ -71,18 +74,25 @@ STDLIB_NEXT_STEP_SOURCES = (
     SOURCE_STDLIB_DIR / "std" / "log.vitl",
     SOURCE_STDLIB_DIR / "std" / "cli.vitl",
     SOURCE_STDLIB_DIR / "platform" / "abi.vitl",
+    SOURCE_STDLIB_DIR / "platform" / "posix.vitl",
+    SOURCE_STDLIB_DIR / "platform" / "windows.vitl",
+    SOURCE_STDLIB_DIR / "platform" / "wasm.vitl",
+    SOURCE_STDLIB_DIR / "platform" / "embedded.vitl",
     SOURCE_STDLIB_DIR / "generated" / "unicode_tables.vitl",
     SOURCE_STDLIB_DIR / "tools" / "unicode_tables.vitl",
     SOURCE_STDLIB_DIR / "tests" / "api_contracts.vit",
     SOURCE_STDLIB_DIR / "tests" / "core_alloc_contracts.vit",
     SOURCE_STDLIB_DIR / "tests" / "range_unicode_std_contracts.vit",
     SOURCE_STDLIB_DIR / "tests" / "std_runtime_contracts.vit",
+    SOURCE_STDLIB_DIR / "tests" / "serialization_platform_contracts.vit",
     ROOT / "tools" / "stdlib" / "generate_api_docs.py",
     ROOT / "tools" / "stdlib" / "generate_unicode_tables.py",
     ROOT / "docs" / "compiler" / "stdlib_next_steps.md",
     ROOT / "docs" / "compiler" / "stdlib_boundaries.md",
     ROOT / "docs" / "compiler" / "stdlib_api.md",
     ROOT / "docs" / "compiler" / "stdlib_api.generated.md",
+    ROOT / "docs" / "compiler" / "stdlib_lsp_index.md",
+    CI_MATRIX_MANIFEST,
 )
 
 REPORT_DIR.mkdir(parents=True, exist_ok=True)
@@ -100,6 +110,7 @@ REQUIRED_FILES = [
     ARCHITECTURE_MANIFEST,
     MODULE_MANIFEST,
     DEPENDENCY_GRAPH_MANIFEST,
+    CI_MATRIX_MANIFEST,
     CORE_PRIMITIVE_SOURCE,
     CORE_PRIMITIVE_DOC,
     CORE_OPTION_SOURCE,
@@ -195,6 +206,14 @@ CORE_DYNAMIC_ALLOCATION_PATTERNS = (
     r"\bVec\s*<",
     r"\bHashMap\s*<",
     r"\bdynamic_alloc",
+)
+STD_RAW_PLATFORM_PATTERNS = (
+    r"\bsyscall_",
+    r"\blibc_",
+    r"\bwin32_",
+    r"\bposix_",
+    r"\bwasm_",
+    r"\bembedded_",
 )
 REQUIRED_PRIMITIVE_FRAGMENTS = (
     "PrimitiveKind.Bool",
@@ -689,6 +708,8 @@ REQUIRED_NEXT_STEP_FRAGMENTS = {
     "std/path.vitl": ("form PathBuf", "pick ComponentKind", "proc components", "proc normalize", "proc is_absolute", "proc is_relative"),
     "std/time.vitl": ("form Duration", "form Instant", "proc instant_now", "proc elapsed"),
     "std/process.vitl": ("form ExitStatus", "form Command", "form Child", "form Output", "proc spawn", "proc status", "proc output", "proc exit"),
+    "std/serialization.vitl": ("form Encode<T>", "form Decode<T>", "form Encoder", "form Decoder", "proc encode_json<T>", "proc decode_json<T>"),
+    "std/atomic.vitl": ("pick Ordering", "form AtomicBool", "form AtomicUsize", "proc load_bool", "proc compare_exchange_bool", "proc fetch_add_usize"),
     "std/thread.vitl": ("form ThreadId", "form JoinHandle<T>", "proc spawn<T>", "proc join<T>", "proc sleep", "proc current_id"),
     "std/sync.vitl": ("form Mutex<T>", "form RwLock<T>", "form Once", "form Condvar", "form Atomic<T>", "proc atomic_compare_exchange<T>"),
     "std/net.vitl": ("form TcpStream", "form TcpListener", "form UdpSocket", "proc dns_lookup", "proc tcp_connect", "proc udp_bind"),
@@ -701,12 +722,17 @@ REQUIRED_NEXT_STEP_FRAGMENTS = {
     "std/log.vitl": ("pick LogLevel", "form LogRecord", "form Logger", "proc logger", "proc warn", "proc error"),
     "std/cli.vitl": ("form Flag", "form CliApp", "form CliMatches", "proc parse", "proc help"),
     "platform/abi.vitl": ("form PlatformInfo", "form PlatformFeature", "proc platform_info", "proc supports_filesystem"),
+    "platform/posix.vitl": ("form PosixFd", "form PosixError", "proc posix_open", "proc posix_read"),
+    "platform/windows.vitl": ("form WindowsHandle", "form WindowsError", "proc windows_open", "proc windows_read"),
+    "platform/wasm.vitl": ("form WasmMemory", "form WasmImport", "proc wasm_memory_pages", "proc wasm_call"),
+    "platform/embedded.vitl": ("form EmbeddedPin", "form EmbeddedClock", "proc embedded_available", "proc write_pin"),
     "generated/unicode_tables.vitl": ("GENERATED_UNICODE_VERSION", "GENERATED_UNICODE_CHECKSUM", "sha256:", "proc generated_unicode_category", "proc generated_unicode_properties", "proc generated_unicode_normalization", "proc generated_unicode_case_fold"),
     "tools/unicode_tables.vitl": ("form UnicodeTableGeneration", "proc generate_unicode_tables", "proc verify_unicode_tables"),
     "tests/api_contracts.vit": ("stdlib_api_contracts_smoke", "std_time.duration_from_secs", "platform_abi.supports_filesystem"),
     "tests/core_alloc_contracts.vit": ("stdlib_core_alloc_contracts_smoke", "alloc_vec.vec_push", "alloc_string.string_push"),
     "tests/range_unicode_std_contracts.vit": ("stdlib_range_unicode_std_contracts_smoke", "core_range.contains", "alloc_collections.hashmap_new", "std_error.error_new"),
     "tests/std_runtime_contracts.vit": ("stdlib_runtime_contracts_smoke", "std_path.normalize", "std_random.prng", "std_cli.help"),
+    "tests/serialization_platform_contracts.vit": ("stdlib_serialization_platform_contracts_smoke", "std_serialization.json_encoder", "platform_posix.posix_available"),
 }
 
 
@@ -818,6 +844,12 @@ def load_module_manifest() -> dict:
 def load_dependency_graph_manifest() -> dict:
     return json.loads(
         DEPENDENCY_GRAPH_MANIFEST.read_text(encoding="utf-8")
+    )
+
+
+def load_ci_matrix_manifest() -> dict:
+    return json.loads(
+        CI_MATRIX_MANIFEST.read_text(encoding="utf-8")
     )
 
 
@@ -1370,6 +1402,70 @@ def validate_stdlib_next_steps() -> list[ValidationResult]:
     return results
 
 
+def validate_ci_matrix(matrix: dict) -> list[ValidationResult]:
+    targets = matrix.get("targets", [])
+    platforms = {target.get("platform") for target in targets}
+    required = {"posix", "windows", "wasm", "embedded"}
+    commands = matrix.get("commands", [])
+    rules = matrix.get("rules", {})
+    return [
+        ValidationResult(
+            name="stdlib_ci_matrix_platform_targets",
+            status=required.issubset(platforms),
+            detail="ok" if required.issubset(platforms) else ", ".join(sorted(required - platforms)),
+        ),
+        ValidationResult(
+            name="stdlib_ci_matrix_runs_gate",
+            status="make stdlib-gate" in commands and "python3 tools/stdlib/run_checks.py" in commands,
+            detail=", ".join(commands),
+        ),
+        ValidationResult(
+            name="stdlib_ci_matrix_dependency_rules",
+            status=rules.get("core_has_no_alloc_std_platform_imports") is True
+            and rules.get("std_uses_platform_for_os_access") is True
+            and rules.get("api_index_generated") is True,
+            detail=json.dumps(rules, sort_keys=True),
+        ),
+    ]
+
+
+def validate_std_platform_access(manifest: dict) -> list[ValidationResult]:
+    std_sources = [
+        source
+        for source in stdlib_sources()
+        if path_level(source, manifest) == "std"
+    ]
+    violations: list[str] = []
+    for source in std_sources:
+        text = source.read_text(encoding="utf-8", errors="ignore")
+        for pattern in STD_RAW_PLATFORM_PATTERNS:
+            if re.search(pattern, text):
+                violations.append(f"{source.relative_to(ROOT)} matches {pattern}")
+    return [
+        ValidationResult(
+            name="std_does_not_bypass_platform",
+            status=not violations,
+            detail="ok" if not violations else "; ".join(violations[:5]),
+        )
+    ]
+
+
+def validate_lsp_api_index() -> list[ValidationResult]:
+    api_text = (ROOT / "docs" / "compiler" / "stdlib_api.generated.md").read_text(encoding="utf-8")
+    lsp_text = (ROOT / "docs" / "compiler" / "stdlib_lsp_index.md").read_text(encoding="utf-8")
+    required_api = ("signature `", "example `", "std/serialization.vitl", "std/atomic.vitl")
+    required_lsp = ("symbol name", "public signature", "minimal usage example")
+    missing_api = [fragment for fragment in required_api if fragment not in api_text]
+    missing_lsp = [fragment for fragment in required_lsp if fragment not in lsp_text]
+    return [
+        ValidationResult(
+            name="stdlib_lsp_api_index_generated",
+            status=not missing_api and not missing_lsp,
+            detail="ok" if not missing_api and not missing_lsp else ", ".join(missing_api + missing_lsp),
+        )
+    ]
+
+
 def validate_architecture(manifest: dict) -> list[ValidationResult]:
     results: list[ValidationResult] = []
     levels = architecture_levels(manifest)
@@ -1424,6 +1520,17 @@ def validate_architecture(manifest: dict) -> list[ValidationResult]:
         status=not core_os_violations,
         detail="ok" if not core_os_violations else "; ".join(core_os_violations[:5]),
     ))
+    core_forbidden_level_imports = [
+        f"{source.relative_to(ROOT)} imports {imported}"
+        for source in core_sources
+        for imported in imports_for_source(source)
+        if imported.startswith(("vitte/stdlib/alloc", "vitte/stdlib/std", "vitte/stdlib/platform"))
+    ]
+    results.append(ValidationResult(
+        name="core_has_no_alloc_std_platform_imports",
+        status=not core_forbidden_level_imports,
+        detail="ok" if not core_forbidden_level_imports else "; ".join(core_forbidden_level_imports[:5]),
+    ))
     results.append(ValidationResult(
         name="core_has_no_dynamic_allocation",
         status=not core_alloc_violations,
@@ -1457,9 +1564,13 @@ def build_report() -> dict:
     architecture_manifest = load_architecture_manifest()
     module_manifest = load_module_manifest()
     dependency_graph_manifest = load_dependency_graph_manifest()
+    ci_matrix_manifest = load_ci_matrix_manifest()
 
     files = validate_files()
     architecture = validate_architecture(architecture_manifest)
+    std_platform_results = validate_std_platform_access(architecture_manifest)
+    ci_matrix_results = validate_ci_matrix(ci_matrix_manifest)
+    lsp_api_results = validate_lsp_api_index()
     module_results = validate_module_manifest(module_manifest)
     graph_results = validate_dependency_graph_manifest(
         dependency_graph_manifest,
@@ -1496,7 +1607,7 @@ def build_report() -> dict:
     ]
     architecture_failures = [
         item
-        for item in architecture + module_results + graph_results + primitive_results + option_result_results + convert_default_clone_results + drop_scope_memory_results + iterator_results + range_number_results + float_math_results + string_ascii_unicode_results + next_step_results
+        for item in architecture + std_platform_results + ci_matrix_results + lsp_api_results + module_results + graph_results + primitive_results + option_result_results + convert_default_clone_results + drop_scope_memory_results + iterator_results + range_number_results + float_math_results + string_ascii_unicode_results + next_step_results
         if not item.status
     ]
 
@@ -1533,13 +1644,15 @@ def build_report() -> dict:
             module_manifest,
         "dependency_graph":
             dependency_graph_manifest,
+        "ci_matrix":
+            ci_matrix_manifest,
         "required_files": [
             asdict(item)
             for item in files
         ],
         "architecture_results": [
             asdict(item)
-            for item in architecture + module_results + graph_results + primitive_results + option_result_results + convert_default_clone_results + drop_scope_memory_results + iterator_results + range_number_results + float_math_results + string_ascii_unicode_results + next_step_results
+            for item in architecture + std_platform_results + ci_matrix_results + lsp_api_results + module_results + graph_results + primitive_results + option_result_results + convert_default_clone_results + drop_scope_memory_results + iterator_results + range_number_results + float_math_results + string_ascii_unicode_results + next_step_results
         ],
         "required_symbols": [
             asdict(item)

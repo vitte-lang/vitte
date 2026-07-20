@@ -1,0 +1,14 @@
+space vitte/stdlib/platform/posix
+
+export *
+
+form PosixFd { raw: int }
+form PosixError { errno: int message: String }
+form PosixStat { mode: u32 size: u64 mtime: i64 }
+
+proc posix_available() -> bool { give compiler_platform_family() == "posix"; }
+proc posix_open(path: PathBuf, flags: int, mode: u32) -> Result<PosixFd, PosixError> { give compiler_posix_open(path, flags, mode); }
+proc posix_close(fd: PosixFd) -> Result<(), PosixError> { give compiler_posix_close(fd); }
+proc posix_read(fd: PosixFd, buffer: ref mut [byte]) -> Result<usize, PosixError> { give compiler_posix_read(fd, buffer); }
+proc posix_write(fd: PosixFd, buffer: [byte]) -> Result<usize, PosixError> { give compiler_posix_write(fd, buffer); }
+proc posix_stat(path: PathBuf) -> Result<PosixStat, PosixError> { give compiler_posix_stat(path); }

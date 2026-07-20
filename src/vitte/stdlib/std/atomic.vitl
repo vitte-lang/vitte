@@ -1,0 +1,27 @@
+space vitte/stdlib/std/atomic
+
+export *
+
+pick Ordering { Relaxed Acquire Release AcqRel SeqCst }
+
+form AtomicBool { value: bool }
+form AtomicUsize { value: usize }
+form AtomicU64 { value: u64 }
+form AtomicI64 { value: i64 }
+
+proc atomic_bool(value: bool) -> AtomicBool { give AtomicBool { value: value }; }
+proc atomic_usize(value: usize) -> AtomicUsize { give AtomicUsize { value: value }; }
+proc atomic_u64(value: u64) -> AtomicU64 { give AtomicU64 { value: value }; }
+proc atomic_i64(value: i64) -> AtomicI64 { give AtomicI64 { value: value }; }
+
+proc load_bool(value: ref AtomicBool, ordering: Ordering) -> bool { give compiler_atomic_load_bool(value, ordering); }
+proc store_bool(value: ref AtomicBool, next: bool, ordering: Ordering) { compiler_atomic_store_bool(value, next, ordering); }
+proc swap_bool(value: ref AtomicBool, next: bool, ordering: Ordering) -> bool { give compiler_atomic_swap_bool(value, next, ordering); }
+proc compare_exchange_bool(value: ref AtomicBool, current: bool, next: bool, success: Ordering, failure: Ordering) -> Result<bool, bool> {
+    give compiler_atomic_compare_exchange_bool(value, current, next, success, failure);
+}
+
+proc load_usize(value: ref AtomicUsize, ordering: Ordering) -> usize { give compiler_atomic_load_usize(value, ordering); }
+proc store_usize(value: ref AtomicUsize, next: usize, ordering: Ordering) { compiler_atomic_store_usize(value, next, ordering); }
+proc fetch_add_usize(value: ref AtomicUsize, amount: usize, ordering: Ordering) -> usize { give compiler_atomic_fetch_add_usize(value, amount, ordering); }
+proc fetch_sub_usize(value: ref AtomicUsize, amount: usize, ordering: Ordering) -> usize { give compiler_atomic_fetch_sub_usize(value, amount, ordering); }

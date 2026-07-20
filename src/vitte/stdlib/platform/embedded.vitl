@@ -1,0 +1,14 @@
+space vitte/stdlib/platform/embedded
+
+export *
+
+form EmbeddedPin { number: u32 }
+form EmbeddedClock { hz: u64 }
+form EmbeddedError { message: String }
+
+proc embedded_available() -> bool { give compiler_platform_family() == "embedded"; }
+proc monotonic_ticks() -> u64 { give compiler_embedded_monotonic_ticks(); }
+proc clock_frequency() -> EmbeddedClock { give compiler_embedded_clock_frequency(); }
+proc pin(number: u32) -> EmbeddedPin { give EmbeddedPin { number: number }; }
+proc read_pin(pin_value: EmbeddedPin) -> Result<bool, EmbeddedError> { give compiler_embedded_read_pin(pin_value); }
+proc write_pin(pin_value: EmbeddedPin, value: bool) -> Result<(), EmbeddedError> { give compiler_embedded_write_pin(pin_value, value); }

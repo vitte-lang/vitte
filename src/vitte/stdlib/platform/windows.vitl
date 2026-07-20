@@ -1,0 +1,14 @@
+space vitte/stdlib/platform/windows
+
+export *
+
+form WindowsHandle { raw: u64 }
+form WindowsError { code: u32 message: String }
+form WindowsPath { value: String verbatim: bool }
+
+proc windows_available() -> bool { give compiler_platform_family() == "windows"; }
+proc windows_path(path: PathBuf) -> WindowsPath { give compiler_windows_path(path); }
+proc windows_open(path: WindowsPath, access: u32) -> Result<WindowsHandle, WindowsError> { give compiler_windows_open(path, access); }
+proc windows_close(handle: WindowsHandle) -> Result<(), WindowsError> { give compiler_windows_close(handle); }
+proc windows_read(handle: WindowsHandle, buffer: ref mut [byte]) -> Result<usize, WindowsError> { give compiler_windows_read(handle, buffer); }
+proc windows_write(handle: WindowsHandle, buffer: [byte]) -> Result<usize, WindowsError> { give compiler_windows_write(handle, buffer); }

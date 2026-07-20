@@ -1,0 +1,18 @@
+use src/vitte/stdlib/std/serialization as std_serialization
+use src/vitte/stdlib/std/atomic as std_atomic
+use src/vitte/stdlib/platform/posix as platform_posix
+use src/vitte/stdlib/platform/windows as platform_windows
+use src/vitte/stdlib/platform/wasm as platform_wasm
+use src/vitte/stdlib/platform/embedded as platform_embedded
+
+proc stdlib_serialization_platform_contracts_smoke() -> bool {
+    let encoder: std_serialization.Encoder = std_serialization.json_encoder();
+    let flag: std_atomic.AtomicBool = std_atomic.atomic_bool(true);
+
+    give std_atomic.load_bool(&flag, std_atomic.Ordering.Relaxed)
+        and std_serialization.serialization_error(compiler_test_string("x"), 0).offset == 0
+        and (platform_posix.posix_available() or not platform_posix.posix_available())
+        and (platform_windows.windows_available() or not platform_windows.windows_available())
+        and (platform_wasm.wasm_available() or not platform_wasm.wasm_available())
+        and (platform_embedded.embedded_available() or not platform_embedded.embedded_available());
+}

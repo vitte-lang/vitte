@@ -10,10 +10,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 MANIFEST = ROOT / "src/vitte/stdlib/stdlib_modules.json"
 OUTPUT = ROOT / "docs/compiler/stdlib_api.generated.md"
-PROC_RE = re.compile(r"^\s*proc\s+([A-Za-z_][A-Za-z0-9_]*)")
-FORM_RE = re.compile(r"^\s*form\s+([A-Za-z_][A-Za-z0-9_]*)")
-PICK_RE = re.compile(r"^\s*pick\s+([A-Za-z_][A-Za-z0-9_]*)")
-CONST_RE = re.compile(r"^\s*const\s+([A-Za-z_][A-Za-z0-9_]*)")
+PROC_RE = re.compile(r"^\s*proc\s+([A-Za-z_][A-Za-z0-9_]*)(.*)")
+FORM_RE = re.compile(r"^\s*form\s+([A-Za-z_][A-Za-z0-9_]*)(.*)")
+PICK_RE = re.compile(r"^\s*pick\s+([A-Za-z_][A-Za-z0-9_]*)(.*)")
+CONST_RE = re.compile(r"^\s*const\s+([A-Za-z_][A-Za-z0-9_]*)(.*)")
 
 
 def collect_symbols(path: Path) -> list[str]:
@@ -22,7 +22,9 @@ def collect_symbols(path: Path) -> list[str]:
         for regex, kind in ((PROC_RE, "proc"), (FORM_RE, "form"), (PICK_RE, "pick"), (CONST_RE, "const")):
             match = regex.match(line)
             if match:
-                symbols.append(f"- `{kind} {match.group(1)}`")
+                signature = line.strip()
+                name = match.group(1)
+                symbols.append(f"- `{kind} {name}` signature `{signature}` example `{name}`")
                 break
     return symbols
 
@@ -33,6 +35,7 @@ def main() -> int:
         "# Vitte Stdlib API",
         "",
         "Generated from `src/vitte/stdlib/stdlib_modules.json`.",
+        "Each entry is suitable for LSP symbol indexing and documentation lookup.",
         "",
     ]
     for entry in manifest["official_entrypoints"]:

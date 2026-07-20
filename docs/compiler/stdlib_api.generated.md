@@ -1,5495 +1,5584 @@
 # Vitte Stdlib API
 
 Generated from `src/vitte/stdlib/stdlib_modules.json`.
+Each entry is suitable for LSP symbol indexing and documentation lookup.
 
 ## `src/vitte/stdlib/mod.vit`
 
-- `form Vector`
-- `form HashMap`
-- `proc vector_new`
-- `proc vector_push`
-- `proc hashmap_new`
-- `proc hashmap_insert`
-- `proc io_read_file`
-- `proc io_write_file`
-- `proc io_append_file`
-- `proc io_file_exists`
-- `proc io_create_directory`
-- `proc io_is_file`
-- `proc io_is_directory`
-- `proc io_copy_file`
-- `proc io_move_file`
-- `proc io_delete_file`
-- `proc io_delete_directory`
-- `proc io_list_directory`
+- `form Vector` signature `form Vector<T> {` example `Vector`
+- `form HashMap` signature `form HashMap<K, V> {` example `HashMap`
+- `proc vector_new` signature `proc vector_new<T>() -> Vector<T> {` example `vector_new`
+- `proc vector_push` signature `proc vector_push<T>(vec: Vector<T>, item: T) -> Vector<T> {` example `vector_push`
+- `proc hashmap_new` signature `proc hashmap_new<K, V>() -> HashMap<K, V> {` example `hashmap_new`
+- `proc hashmap_insert` signature `proc hashmap_insert<K, V>(map: HashMap<K, V>, key: K, value: V) -> HashMap<K, V> {` example `hashmap_insert`
+- `proc io_read_file` signature `proc io_read_file(path: string) -> string {` example `io_read_file`
+- `proc io_write_file` signature `proc io_write_file(path: string, content: string) -> bool {` example `io_write_file`
+- `proc io_append_file` signature `proc io_append_file(path: string, content: string) -> bool {` example `io_append_file`
+- `proc io_file_exists` signature `proc io_file_exists(path: string) -> bool {` example `io_file_exists`
+- `proc io_create_directory` signature `proc io_create_directory(path: string) -> bool {` example `io_create_directory`
+- `proc io_is_file` signature `proc io_is_file(path: string) -> bool {` example `io_is_file`
+- `proc io_is_directory` signature `proc io_is_directory(path: string) -> bool {` example `io_is_directory`
+- `proc io_copy_file` signature `proc io_copy_file(src: string, dst: string) -> bool {` example `io_copy_file`
+- `proc io_move_file` signature `proc io_move_file(src: string, dst: string) -> bool {` example `io_move_file`
+- `proc io_delete_file` signature `proc io_delete_file(path: string) -> bool {` example `io_delete_file`
+- `proc io_delete_directory` signature `proc io_delete_directory(path: string) -> bool {` example `io_delete_directory`
+- `proc io_list_directory` signature `proc io_list_directory(path: string) -> [string] {` example `io_list_directory`
 
 ## `src/vitte/stdlib/core.vitl`
 
-- `const CORE_VERSION`
-- `const TRUE`
-- `const FALSE`
-- `const OK`
-- `const ERR`
-- `const NULL`
-- `const I8_MIN`
-- `const I8_MAX`
-- `const U8_MAX`
-- `const I16_MIN`
-- `const I16_MAX`
-- `const U16_MAX`
-- `const I32_MIN`
-- `const I32_MAX`
-- `const U32_MAX`
-- `const I64_MIN`
-- `const I64_MAX`
-- `const USIZE_BITS`
-- `const ISIZE_BITS`
-- `const F32_EPSILON`
-- `const F64_EPSILON`
-- `const EXIT_SUCCESS`
-- `const EXIT_FAILURE`
-- `const EPERM`
-- `const ENOENT`
-- `const ESRCH`
-- `const EINTR`
-- `const EIO`
-- `const ENXIO`
-- `const E2BIG`
-- `const ENOEXEC`
-- `const EBADF`
-- `const ECHILD`
-- `const EAGAIN`
-- `const ENOMEM`
-- `const EACCES`
-- `const EFAULT`
-- `const EBUSY`
-- `const EEXIST`
-- `const EXDEV`
-- `const ENODEV`
-- `const ENOTDIR`
-- `const EISDIR`
-- `const EINVAL`
-- `const ENFILE`
-- `const EMFILE`
-- `const ENOTTY`
-- `const ETXTBSY`
-- `const EFBIG`
-- `const ENOSPC`
-- `const ESPIPE`
-- `const EROFS`
-- `const EMLINK`
-- `const EPIPE`
-- `const ERANGE`
-- `const ENOSYS`
-- `const ENOTEMPTY`
-- `const ENOTSUP`
-- `pick CoreStatus`
-- `pick Option`
-- `pick Result`
-- `form CoreError`
-- `form Span`
-- `form Range`
-- `form USizeRange`
-- `form Pair`
-- `form Triple`
-- `form Slice`
-- `form Buffer`
-- `form AllocBlock`
-- `form Version`
-- `form CoreManifest`
-- `form CoreHealth`
-- `form CoreSummary`
-- `proc core_version`
-- `proc core_name`
-- `proc ok`
-- `proc err`
-- `proc core_error`
-- `proc core_modules`
-- `proc core_module_count`
-- `proc core_manifest`
-- `proc core_ready`
-- `proc core_health`
-- `proc core_summary`
-- `proc errno_name`
-- `proc strerror`
-- `proc option_is_some`
-- `proc option_is_none`
-- `proc option_unwrap_or`
-- `proc result_is_ok`
-- `proc result_is_err`
-- `proc result_unwrap_or`
-- `proc assert_true`
-- `proc assert_false`
-- `proc assert_int_eq`
-- `proc assert_int_ne`
-- `proc assert_not_null`
-- `proc min_int`
-- `proc max_int`
-- `proc clamp_int`
-- `proc abs_int`
-- `proc sign_int`
-- `proc cmp_int`
-- `proc is_even`
-- `proc is_odd`
-- `proc align_up`
-- `proc align_down`
-- `proc is_aligned`
-- `proc ptr_null`
-- `proc ptr_is_null`
-- `proc ptr_is_aligned`
-- `proc ptr_add`
-- `proc ptr_sub`
-- `proc ptr_diff`
-- `proc bit`
-- `proc bit_is_set`
-- `proc bit_set`
-- `proc bit_clear`
-- `proc bit_toggle`
-- `proc low_byte`
-- `proc high_byte_u16`
-- `proc make_u16`
-- `proc swap_u16`
-- `proc swap_u32`
-- `proc strlen`
-- `proc string_is_empty`
-- `proc string_eq`
-- `proc string_ne`
-- `proc string_starts_with`
-- `proc string_ends_with`
-- `proc string_contains`
-- `proc string_find`
-- `proc string_repeat`
-- `proc string_slice`
-- `proc string_reverse`
-- `proc string_trim_left`
-- `proc string_trim_right`
-- `proc string_trim`
-- `proc char_is_digit`
-- `proc char_is_lower`
-- `proc char_is_upper`
-- `proc char_is_alpha`
-- `proc char_is_alnum`
-- `proc char_is_space`
-- `proc char_to_lower`
-- `proc char_to_upper`
-- `proc bytes_empty`
-- `proc bytes_len`
-- `proc bytes_is_empty`
-- `proc buffer_new`
-- `proc buffer_from_bytes`
-- `proc buffer_clear`
-- `proc buffer_is_empty`
-- `proc slice_new`
-- `proc slice_range`
-- `proc array_len`
-- `proc array_is_empty`
-- `proc array_first_int`
-- `proc array_last_int`
-- `proc array_contains_int`
-- `proc array_sum_int`
-- `proc array_min_int`
-- `proc array_max_int`
-- `proc array_reverse_int`
-- `proc array_fill_int`
-- `proc array_range_int`
-- `proc memcmp`
-- `proc memset`
-- `proc memcpy`
-- `proc memzero`
-- `proc atoi`
-- `proc parse_i64`
-- `proc parse_int`
-- `proc parse_bool`
-- `proc itoa`
-- `proc to_string_int`
-- `proc to_string_i64`
-- `proc to_string_bool`
-- `proc to_string_status`
-- `proc hash_int`
-- `proc hash_string`
-- `proc range_new`
-- `proc range_len`
-- `proc range_contains`
-- `proc span_new`
-- `proc span_len`
-- `proc span_contains`
-- `proc pair`
-- `proc triple`
-- `proc random_seed`
-- `proc random_next`
-- `proc random_range`
-- `proc clock_ticks`
-- `proc time_seconds`
-- `proc sleep_ms`
-- `proc env_get`
-- `proc env_has`
-- `proc platform_name`
-- `proc arch_name`
-- `proc is_debug`
-- `proc is_release`
-- `proc unreachable_core`
-- `proc library_meta`
-- `proc core_selftest`
+- `const CORE_VERSION` signature `const CORE_VERSION: string = "1.0.0"` example `CORE_VERSION`
+- `const TRUE` signature `const TRUE: bool = true` example `TRUE`
+- `const FALSE` signature `const FALSE: bool = false` example `FALSE`
+- `const OK` signature `const OK: int = 0` example `OK`
+- `const ERR` signature `const ERR: int = 1` example `ERR`
+- `const NULL` signature `const NULL: int = 0` example `NULL`
+- `const I8_MIN` signature `const I8_MIN: i8 = -128` example `I8_MIN`
+- `const I8_MAX` signature `const I8_MAX: i8 = 127` example `I8_MAX`
+- `const U8_MAX` signature `const U8_MAX: u8 = 255` example `U8_MAX`
+- `const I16_MIN` signature `const I16_MIN: i16 = -32768` example `I16_MIN`
+- `const I16_MAX` signature `const I16_MAX: i16 = 32767` example `I16_MAX`
+- `const U16_MAX` signature `const U16_MAX: u16 = 65535` example `U16_MAX`
+- `const I32_MIN` signature `const I32_MIN: i32 = -2147483648` example `I32_MIN`
+- `const I32_MAX` signature `const I32_MAX: i32 = 2147483647` example `I32_MAX`
+- `const U32_MAX` signature `const U32_MAX: u32 = 4294967295` example `U32_MAX`
+- `const I64_MIN` signature `const I64_MIN: i64 = -9223372036854775808` example `I64_MIN`
+- `const I64_MAX` signature `const I64_MAX: i64 = 9223372036854775807` example `I64_MAX`
+- `const USIZE_BITS` signature `const USIZE_BITS: int = 64` example `USIZE_BITS`
+- `const ISIZE_BITS` signature `const ISIZE_BITS: int = 64` example `ISIZE_BITS`
+- `const F32_EPSILON` signature `const F32_EPSILON: f32 = 0.000001` example `F32_EPSILON`
+- `const F64_EPSILON` signature `const F64_EPSILON: f64 = 0.000000000001` example `F64_EPSILON`
+- `const EXIT_SUCCESS` signature `const EXIT_SUCCESS: int = 0` example `EXIT_SUCCESS`
+- `const EXIT_FAILURE` signature `const EXIT_FAILURE: int = 1` example `EXIT_FAILURE`
+- `const EPERM` signature `const EPERM: int = 1` example `EPERM`
+- `const ENOENT` signature `const ENOENT: int = 2` example `ENOENT`
+- `const ESRCH` signature `const ESRCH: int = 3` example `ESRCH`
+- `const EINTR` signature `const EINTR: int = 4` example `EINTR`
+- `const EIO` signature `const EIO: int = 5` example `EIO`
+- `const ENXIO` signature `const ENXIO: int = 6` example `ENXIO`
+- `const E2BIG` signature `const E2BIG: int = 7` example `E2BIG`
+- `const ENOEXEC` signature `const ENOEXEC: int = 8` example `ENOEXEC`
+- `const EBADF` signature `const EBADF: int = 9` example `EBADF`
+- `const ECHILD` signature `const ECHILD: int = 10` example `ECHILD`
+- `const EAGAIN` signature `const EAGAIN: int = 11` example `EAGAIN`
+- `const ENOMEM` signature `const ENOMEM: int = 12` example `ENOMEM`
+- `const EACCES` signature `const EACCES: int = 13` example `EACCES`
+- `const EFAULT` signature `const EFAULT: int = 14` example `EFAULT`
+- `const EBUSY` signature `const EBUSY: int = 16` example `EBUSY`
+- `const EEXIST` signature `const EEXIST: int = 17` example `EEXIST`
+- `const EXDEV` signature `const EXDEV: int = 18` example `EXDEV`
+- `const ENODEV` signature `const ENODEV: int = 19` example `ENODEV`
+- `const ENOTDIR` signature `const ENOTDIR: int = 20` example `ENOTDIR`
+- `const EISDIR` signature `const EISDIR: int = 21` example `EISDIR`
+- `const EINVAL` signature `const EINVAL: int = 22` example `EINVAL`
+- `const ENFILE` signature `const ENFILE: int = 23` example `ENFILE`
+- `const EMFILE` signature `const EMFILE: int = 24` example `EMFILE`
+- `const ENOTTY` signature `const ENOTTY: int = 25` example `ENOTTY`
+- `const ETXTBSY` signature `const ETXTBSY: int = 26` example `ETXTBSY`
+- `const EFBIG` signature `const EFBIG: int = 27` example `EFBIG`
+- `const ENOSPC` signature `const ENOSPC: int = 28` example `ENOSPC`
+- `const ESPIPE` signature `const ESPIPE: int = 29` example `ESPIPE`
+- `const EROFS` signature `const EROFS: int = 30` example `EROFS`
+- `const EMLINK` signature `const EMLINK: int = 31` example `EMLINK`
+- `const EPIPE` signature `const EPIPE: int = 32` example `EPIPE`
+- `const ERANGE` signature `const ERANGE: int = 34` example `ERANGE`
+- `const ENOSYS` signature `const ENOSYS: int = 38` example `ENOSYS`
+- `const ENOTEMPTY` signature `const ENOTEMPTY: int = 39` example `ENOTEMPTY`
+- `const ENOTSUP` signature `const ENOTSUP: int = 95` example `ENOTSUP`
+- `pick CoreStatus` signature `pick CoreStatus {` example `CoreStatus`
+- `pick Option` signature `pick Option[T] {` example `Option`
+- `pick Result` signature `pick Result[T, E] {` example `Result`
+- `form CoreError` signature `form CoreError {` example `CoreError`
+- `form Span` signature `form Span {` example `Span`
+- `form Range` signature `form Range {` example `Range`
+- `form USizeRange` signature `form USizeRange {` example `USizeRange`
+- `form Pair` signature `form Pair[A, B] {` example `Pair`
+- `form Triple` signature `form Triple[A, B, C] {` example `Triple`
+- `form Slice` signature `form Slice[T] {` example `Slice`
+- `form Buffer` signature `form Buffer {` example `Buffer`
+- `form AllocBlock` signature `form AllocBlock {` example `AllocBlock`
+- `form Version` signature `form Version {` example `Version`
+- `form CoreManifest` signature `form CoreManifest {` example `CoreManifest`
+- `form CoreHealth` signature `form CoreHealth {` example `CoreHealth`
+- `form CoreSummary` signature `form CoreSummary {` example `CoreSummary`
+- `proc core_version` signature `proc core_version() -> Version {` example `core_version`
+- `proc core_name` signature `proc core_name() -> string {` example `core_name`
+- `proc ok` signature `proc ok() -> CoreStatus {` example `ok`
+- `proc err` signature `proc err() -> CoreStatus {` example `err`
+- `proc core_error` signature `proc core_error(code: int, message: string) -> CoreError {` example `core_error`
+- `proc core_modules` signature `proc core_modules() -> [string] {` example `core_modules`
+- `proc core_module_count` signature `proc core_module_count() -> int {` example `core_module_count`
+- `proc core_manifest` signature `proc core_manifest() -> CoreManifest {` example `core_manifest`
+- `proc core_ready` signature `proc core_ready() -> bool {` example `core_ready`
+- `proc core_health` signature `proc core_health() -> CoreHealth {` example `core_health`
+- `proc core_summary` signature `proc core_summary() -> CoreSummary {` example `core_summary`
+- `proc errno_name` signature `proc errno_name(code: int) -> string {` example `errno_name`
+- `proc strerror` signature `proc strerror(code: int) -> string {` example `strerror`
+- `proc option_is_some` signature `proc option_is_some[T](value: Option[T]) -> bool {` example `option_is_some`
+- `proc option_is_none` signature `proc option_is_none[T](value: Option[T]) -> bool {` example `option_is_none`
+- `proc option_unwrap_or` signature `proc option_unwrap_or[T](value: Option[T], fallback: T) -> T {` example `option_unwrap_or`
+- `proc result_is_ok` signature `proc result_is_ok[T, E](value: Result[T, E]) -> bool {` example `result_is_ok`
+- `proc result_is_err` signature `proc result_is_err[T, E](value: Result[T, E]) -> bool {` example `result_is_err`
+- `proc result_unwrap_or` signature `proc result_unwrap_or[T, E](value: Result[T, E], fallback: T) -> T {` example `result_unwrap_or`
+- `proc assert_true` signature `proc assert_true(condition: bool, message: string) -> void {` example `assert_true`
+- `proc assert_false` signature `proc assert_false(condition: bool, message: string) -> void {` example `assert_false`
+- `proc assert_int_eq` signature `proc assert_int_eq(a: int, b: int, message: string) -> void {` example `assert_int_eq`
+- `proc assert_int_ne` signature `proc assert_int_ne(a: int, b: int, message: string) -> void {` example `assert_int_ne`
+- `proc assert_not_null` signature `proc assert_not_null(ptr: usize, message: string) -> void {` example `assert_not_null`
+- `proc min_int` signature `proc min_int(a: int, b: int) -> int {` example `min_int`
+- `proc max_int` signature `proc max_int(a: int, b: int) -> int {` example `max_int`
+- `proc clamp_int` signature `proc clamp_int(x: int, low: int, high: int) -> int {` example `clamp_int`
+- `proc abs_int` signature `proc abs_int(x: int) -> int {` example `abs_int`
+- `proc sign_int` signature `proc sign_int(x: int) -> int {` example `sign_int`
+- `proc cmp_int` signature `proc cmp_int(a: int, b: int) -> int {` example `cmp_int`
+- `proc is_even` signature `proc is_even(x: int) -> bool {` example `is_even`
+- `proc is_odd` signature `proc is_odd(x: int) -> bool {` example `is_odd`
+- `proc align_up` signature `proc align_up(value: usize, align: usize) -> usize {` example `align_up`
+- `proc align_down` signature `proc align_down(value: usize, align: usize) -> usize {` example `align_down`
+- `proc is_aligned` signature `proc is_aligned(value: usize, align: usize) -> bool {` example `is_aligned`
+- `proc ptr_null` signature `proc ptr_null() -> usize {` example `ptr_null`
+- `proc ptr_is_null` signature `proc ptr_is_null(ptr: usize) -> bool {` example `ptr_is_null`
+- `proc ptr_is_aligned` signature `proc ptr_is_aligned(ptr: usize, align: usize) -> bool {` example `ptr_is_aligned`
+- `proc ptr_add` signature `proc ptr_add(ptr: usize, offset: usize) -> usize {` example `ptr_add`
+- `proc ptr_sub` signature `proc ptr_sub(ptr: usize, offset: usize) -> usize {` example `ptr_sub`
+- `proc ptr_diff` signature `proc ptr_diff(a: usize, b: usize) -> isize {` example `ptr_diff`
+- `proc bit` signature `proc bit(n: int) -> usize {` example `bit`
+- `proc bit_is_set` signature `proc bit_is_set(value: usize, n: int) -> bool {` example `bit_is_set`
+- `proc bit_set` signature `proc bit_set(value: usize, n: int) -> usize {` example `bit_set`
+- `proc bit_clear` signature `proc bit_clear(value: usize, n: int) -> usize {` example `bit_clear`
+- `proc bit_toggle` signature `proc bit_toggle(value: usize, n: int) -> usize {` example `bit_toggle`
+- `proc low_byte` signature `proc low_byte(value: usize) -> u8 {` example `low_byte`
+- `proc high_byte_u16` signature `proc high_byte_u16(value: u16) -> u8 {` example `high_byte_u16`
+- `proc make_u16` signature `proc make_u16(lo: u8, hi: u8) -> u16 {` example `make_u16`
+- `proc swap_u16` signature `proc swap_u16(x: u16) -> u16 {` example `swap_u16`
+- `proc swap_u32` signature `proc swap_u32(x: u32) -> u32 {` example `swap_u32`
+- `proc strlen` signature `proc strlen(s: string) -> usize {` example `strlen`
+- `proc string_is_empty` signature `proc string_is_empty(s: string) -> bool {` example `string_is_empty`
+- `proc string_eq` signature `proc string_eq(a: string, b: string) -> bool {` example `string_eq`
+- `proc string_ne` signature `proc string_ne(a: string, b: string) -> bool {` example `string_ne`
+- `proc string_starts_with` signature `proc string_starts_with(s: string, prefix: string) -> bool {` example `string_starts_with`
+- `proc string_ends_with` signature `proc string_ends_with(s: string, suffix: string) -> bool {` example `string_ends_with`
+- `proc string_contains` signature `proc string_contains(s: string, needle: string) -> bool {` example `string_contains`
+- `proc string_find` signature `proc string_find(s: string, needle: string) -> int {` example `string_find`
+- `proc string_repeat` signature `proc string_repeat(s: string, count: int) -> string {` example `string_repeat`
+- `proc string_slice` signature `proc string_slice(s: string, start: int, end: int) -> string {` example `string_slice`
+- `proc string_reverse` signature `proc string_reverse(s: string) -> string {` example `string_reverse`
+- `proc string_trim_left` signature `proc string_trim_left(s: string) -> string {` example `string_trim_left`
+- `proc string_trim_right` signature `proc string_trim_right(s: string) -> string {` example `string_trim_right`
+- `proc string_trim` signature `proc string_trim(s: string) -> string {` example `string_trim`
+- `proc char_is_digit` signature `proc char_is_digit(c: char) -> bool {` example `char_is_digit`
+- `proc char_is_lower` signature `proc char_is_lower(c: char) -> bool {` example `char_is_lower`
+- `proc char_is_upper` signature `proc char_is_upper(c: char) -> bool {` example `char_is_upper`
+- `proc char_is_alpha` signature `proc char_is_alpha(c: char) -> bool {` example `char_is_alpha`
+- `proc char_is_alnum` signature `proc char_is_alnum(c: char) -> bool {` example `char_is_alnum`
+- `proc char_is_space` signature `proc char_is_space(c: char) -> bool {` example `char_is_space`
+- `proc char_to_lower` signature `proc char_to_lower(c: char) -> char {` example `char_to_lower`
+- `proc char_to_upper` signature `proc char_to_upper(c: char) -> char {` example `char_to_upper`
+- `proc bytes_empty` signature `proc bytes_empty() -> bytes {` example `bytes_empty`
+- `proc bytes_len` signature `proc bytes_len(b: bytes) -> usize {` example `bytes_len`
+- `proc bytes_is_empty` signature `proc bytes_is_empty(b: bytes) -> bool {` example `bytes_is_empty`
+- `proc buffer_new` signature `proc buffer_new(capacity: usize) -> Buffer {` example `buffer_new`
+- `proc buffer_from_bytes` signature `proc buffer_from_bytes(data: bytes) -> Buffer {` example `buffer_from_bytes`
+- `proc buffer_clear` signature `proc buffer_clear(buf: Buffer) -> Buffer {` example `buffer_clear`
+- `proc buffer_is_empty` signature `proc buffer_is_empty(buf: Buffer) -> bool {` example `buffer_is_empty`
+- `proc slice_new` signature `proc slice_new[T](data: [T]) -> Slice[T] {` example `slice_new`
+- `proc slice_range` signature `proc slice_range[T](data: [T], start: usize, len: usize) -> Slice[T] {` example `slice_range`
+- `proc array_len` signature `proc array_len[T](xs: [T]) -> usize {` example `array_len`
+- `proc array_is_empty` signature `proc array_is_empty[T](xs: [T]) -> bool {` example `array_is_empty`
+- `proc array_first_int` signature `proc array_first_int(xs: [int]) -> Option[int] {` example `array_first_int`
+- `proc array_last_int` signature `proc array_last_int(xs: [int]) -> Option[int] {` example `array_last_int`
+- `proc array_contains_int` signature `proc array_contains_int(xs: [int], value: int) -> bool {` example `array_contains_int`
+- `proc array_sum_int` signature `proc array_sum_int(xs: [int]) -> int {` example `array_sum_int`
+- `proc array_min_int` signature `proc array_min_int(xs: [int]) -> Option[int] {` example `array_min_int`
+- `proc array_max_int` signature `proc array_max_int(xs: [int]) -> Option[int] {` example `array_max_int`
+- `proc array_reverse_int` signature `proc array_reverse_int(xs: [int]) -> [int] {` example `array_reverse_int`
+- `proc array_fill_int` signature `proc array_fill_int(count: usize, value: int) -> [int] {` example `array_fill_int`
+- `proc array_range_int` signature `proc array_range_int(start: int, end: int) -> [int] {` example `array_range_int`
+- `proc memcmp` signature `proc memcmp(a: bytes, b: bytes, count: usize) -> int {` example `memcmp`
+- `proc memset` signature `proc memset(buf: bytes, value: u8, count: usize) -> bytes {` example `memset`
+- `proc memcpy` signature `proc memcpy(dst: bytes, src: bytes, count: usize) -> bytes {` example `memcpy`
+- `proc memzero` signature `proc memzero(count: usize) -> bytes {` example `memzero`
+- `proc atoi` signature `proc atoi(s: string) -> i64 {` example `atoi`
+- `proc parse_i64` signature `proc parse_i64(s: string) -> i64 {` example `parse_i64`
+- `proc parse_int` signature `proc parse_int(s: string) -> int {` example `parse_int`
+- `proc parse_bool` signature `proc parse_bool(s: string) -> bool {` example `parse_bool`
+- `proc itoa` signature `proc itoa(value: i64) -> string {` example `itoa`
+- `proc to_string_int` signature `proc to_string_int(value: int) -> string {` example `to_string_int`
+- `proc to_string_i64` signature `proc to_string_i64(value: i64) -> string {` example `to_string_i64`
+- `proc to_string_bool` signature `proc to_string_bool(value: bool) -> string {` example `to_string_bool`
+- `proc to_string_status` signature `proc to_string_status(status: CoreStatus) -> string {` example `to_string_status`
+- `proc hash_int` signature `proc hash_int(value: int) -> usize {` example `hash_int`
+- `proc hash_string` signature `proc hash_string(s: string) -> usize {` example `hash_string`
+- `proc range_new` signature `proc range_new(start: int, end: int) -> Range {` example `range_new`
+- `proc range_len` signature `proc range_len(r: Range) -> int {` example `range_len`
+- `proc range_contains` signature `proc range_contains(r: Range, value: int) -> bool {` example `range_contains`
+- `proc span_new` signature `proc span_new(start: usize, end: usize) -> Span {` example `span_new`
+- `proc span_len` signature `proc span_len(s: Span) -> usize {` example `span_len`
+- `proc span_contains` signature `proc span_contains(s: Span, value: usize) -> bool {` example `span_contains`
+- `proc pair` signature `proc pair[A, B](a: A, b: B) -> Pair[A, B] {` example `pair`
+- `proc triple` signature `proc triple[A, B, C](a: A, b: B, c: C) -> Triple[A, B, C] {` example `triple`
+- `proc random_seed` signature `proc random_seed(seed: u64) -> u64 {` example `random_seed`
+- `proc random_next` signature `proc random_next(seed: u64) -> u64 {` example `random_next`
+- `proc random_range` signature `proc random_range(seed: u64, min: int, max: int) -> int {` example `random_range`
+- `proc clock_ticks` signature `proc clock_ticks() -> i64 {` example `clock_ticks`
+- `proc time_seconds` signature `proc time_seconds() -> i64 {` example `time_seconds`
+- `proc sleep_ms` signature `proc sleep_ms(ms: int) -> int {` example `sleep_ms`
+- `proc env_get` signature `proc env_get(name: string) -> Option[string] {` example `env_get`
+- `proc env_has` signature `proc env_has(name: string) -> bool {` example `env_has`
+- `proc platform_name` signature `proc platform_name() -> string {` example `platform_name`
+- `proc arch_name` signature `proc arch_name() -> string {` example `arch_name`
+- `proc is_debug` signature `proc is_debug() -> bool {` example `is_debug`
+- `proc is_release` signature `proc is_release() -> bool {` example `is_release`
+- `proc unreachable_core` signature `proc unreachable_core() -> never {` example `unreachable_core`
+- `proc library_meta` signature `proc library_meta() -> string {` example `library_meta`
+- `proc core_selftest` signature `proc core_selftest() -> bool {` example `core_selftest`
 
 ## `src/vitte/stdlib/memory.vitl`
 
-- `const MEMORY_VERSION`
-- `const OK`
-- `const ERR`
-- `const NULL`
-- `const PAGE_SIZE`
-- `const HUGE_PAGE_SIZE`
-- `const DEFAULT_ALIGN`
-- `const CACHE_LINE_SIZE`
-- `const KB`
-- `const MB`
-- `const GB`
-- `const MEM_READ`
-- `const MEM_WRITE`
-- `const MEM_EXEC`
-- `const MEM_USER`
-- `const MEM_KERNEL`
-- `const MEM_DEVICE`
-- `const MEM_DMA`
-- `pick MemoryStatus`
-- `pick AllocKind`
-- `pick PageState`
-- `form MemoryResult`
-- `form MemoryBlock`
-- `form MemoryRegion`
-- `form Page`
-- `form PageRange`
-- `form Heap`
-- `form Arena`
-- `form Pool`
-- `form SlabClass`
-- `form SlabAllocator`
-- `form ByteBuffer`
-- `form MemoryStats`
-- `form MemoryMap`
-- `proc memory_ok`
-- `proc memory_error`
-- `proc is_null`
-- `proc non_null`
-- `proc align_up`
-- `proc align_down`
-- `proc is_aligned`
-- `proc align_ptr`
-- `proc page_align_up`
-- `proc page_align_down`
-- `proc page_index`
-- `proc page_addr`
-- `proc page_offset`
-- `proc pages_for_size`
-- `proc bytes_to_kb`
-- `proc bytes_to_mb`
-- `proc bytes_to_gb`
-- `proc kb`
-- `proc mb`
-- `proc gb`
-- `proc checked_add`
-- `proc checked_mul`
-- `proc ptr_add`
-- `proc ptr_sub`
-- `proc ptr_diff`
-- `proc ptr_in_range`
-- `proc ranges_overlap`
-- `proc block_new`
-- `proc block_empty`
-- `proc block_end`
-- `proc block_contains`
-- `proc block_is_valid`
-- `proc region_new`
-- `proc region_end`
-- `proc region_contains`
-- `proc region_is_readable`
-- `proc region_is_writable`
-- `proc region_is_executable`
-- `proc region_is_kernel`
-- `proc region_is_user`
-- `proc memory_map_empty`
-- `proc memory_map_add`
-- `proc memory_map_find`
-- `proc memory_map_usable_regions`
-- `proc heap_new`
-- `proc heap_remaining`
-- `proc heap_alloc`
-- `proc heap_last_block`
-- `proc heap_contains`
-- `proc heap_reset`
-- `proc heap_stats`
-- `proc arena_new`
-- `proc arena_remaining`
-- `proc arena_current`
-- `proc arena_alloc`
-- `proc arena_alloc_aligned`
-- `proc arena_last_addr`
-- `proc arena_reset`
-- `proc arena_mark`
-- `proc arena_restore`
-- `proc arena_used`
-- `proc arena_full`
-- `proc pool_new`
-- `proc pool_block_addr`
-- `proc pool_index_of`
-- `proc pool_has_free`
-- `proc pool_alloc`
-- `proc pool_last_alloc_addr`
-- `proc pool_free`
-- `proc pool_used`
-- `proc pool_free_count`
-- `proc pool_capacity`
-- `proc pool_contains`
-- `proc slab_class`
-- `proc slab_new`
-- `proc slab_find_class`
-- `proc slab_alloc`
-- `proc slab_free`
-- `proc slab_free_blocks`
-- `proc page_new`
-- `proc page_is_free`
-- `proc page_is_used`
-- `proc page_range`
-- `proc page_range_end`
-- `proc page_range_contains`
-- `proc pages_make`
-- `proc pages_mark_range`
-- `proc pages_find_free_run`
-- `proc pages_alloc`
-- `proc pages_free`
-- `proc bytes_empty`
-- `proc bytes_len`
-- `proc bytes_is_empty`
-- `proc bytes_repeat`
-- `proc bytes_zero`
-- `proc bytes_fill`
-- `proc bytes_slice`
-- `proc bytes_concat`
-- `proc bytes_get`
-- `proc bytes_set`
-- `proc bytes_equal`
-- `proc memcmp`
-- `proc memcpy`
-- `proc memmove`
-- `proc memset`
-- `proc memzero`
-- `proc memchr`
-- `proc memrchr`
-- `proc buffer_new`
-- `proc buffer_from_bytes`
-- `proc buffer_is_empty`
-- `proc buffer_remaining`
-- `proc buffer_clear`
-- `proc buffer_reserve`
-- `proc buffer_push_byte`
-- `proc buffer_append`
-- `proc buffer_slice`
-- `proc buffer_to_bytes`
-- `proc array_fill_int`
-- `proc memory_stats_empty`
-- `proc memory_stats_from_heap`
-- `proc memory_stats_percent_used`
-- `proc memory_format_size`
-- `proc memory_check_block`
-- `proc memory_check_region`
-- `proc memory_zero_block`
-- `proc memory_copy_block`
-- `proc memory_domains`
-- `proc memory_ready`
-- `proc library_meta`
-- `proc memory_selftest_alignment`
-- `proc memory_selftest_bytes`
-- `proc memory_selftest_heap`
-- `proc memory_selftest_arena`
-- `proc memory_selftest_pool`
-- `proc memory_selftest_pages`
-- `proc memory_selftest`
+- `const MEMORY_VERSION` signature `const MEMORY_VERSION: string = ""` example `MEMORY_VERSION`
+- `const OK` signature `const OK: int = 0` example `OK`
+- `const ERR` signature `const ERR: int = 0` example `ERR`
+- `const NULL` signature `const NULL: usize = 0` example `NULL`
+- `const PAGE_SIZE` signature `const PAGE_SIZE: usize = 0` example `PAGE_SIZE`
+- `const HUGE_PAGE_SIZE` signature `const HUGE_PAGE_SIZE: usize = 0` example `HUGE_PAGE_SIZE`
+- `const DEFAULT_ALIGN` signature `const DEFAULT_ALIGN: usize = 0` example `DEFAULT_ALIGN`
+- `const CACHE_LINE_SIZE` signature `const CACHE_LINE_SIZE: usize = 0` example `CACHE_LINE_SIZE`
+- `const KB` signature `const KB: usize = 0` example `KB`
+- `const MB` signature `const MB: usize = 0` example `MB`
+- `const GB` signature `const GB: usize = 0` example `GB`
+- `const MEM_READ` signature `const MEM_READ: int = 0` example `MEM_READ`
+- `const MEM_WRITE` signature `const MEM_WRITE: int = 0` example `MEM_WRITE`
+- `const MEM_EXEC` signature `const MEM_EXEC: int = 0` example `MEM_EXEC`
+- `const MEM_USER` signature `const MEM_USER: int = 0` example `MEM_USER`
+- `const MEM_KERNEL` signature `const MEM_KERNEL: int = 0` example `MEM_KERNEL`
+- `const MEM_DEVICE` signature `const MEM_DEVICE: int = 0` example `MEM_DEVICE`
+- `const MEM_DMA` signature `const MEM_DMA: int = 0` example `MEM_DMA`
+- `pick MemoryStatus` signature `pick MemoryStatus {` example `MemoryStatus`
+- `pick AllocKind` signature `pick AllocKind {` example `AllocKind`
+- `pick PageState` signature `pick PageState {` example `PageState`
+- `form MemoryResult` signature `form MemoryResult {` example `MemoryResult`
+- `form MemoryBlock` signature `form MemoryBlock {` example `MemoryBlock`
+- `form MemoryRegion` signature `form MemoryRegion {` example `MemoryRegion`
+- `form Page` signature `form Page {` example `Page`
+- `form PageRange` signature `form PageRange {` example `PageRange`
+- `form Heap` signature `form Heap {` example `Heap`
+- `form Arena` signature `form Arena {` example `Arena`
+- `form Pool` signature `form Pool {` example `Pool`
+- `form SlabClass` signature `form SlabClass {` example `SlabClass`
+- `form SlabAllocator` signature `form SlabAllocator {` example `SlabAllocator`
+- `form ByteBuffer` signature `form ByteBuffer {` example `ByteBuffer`
+- `form MemoryStats` signature `form MemoryStats {` example `MemoryStats`
+- `form MemoryMap` signature `form MemoryMap {` example `MemoryMap`
+- `proc memory_ok` signature `proc memory_ok() -> int {` example `memory_ok`
+- `proc memory_error` signature `proc memory_error() -> int {` example `memory_error`
+- `proc is_null` signature `proc is_null() -> int {` example `is_null`
+- `proc non_null` signature `proc non_null() -> int {` example `non_null`
+- `proc align_up` signature `proc align_up() -> int {` example `align_up`
+- `proc align_down` signature `proc align_down() -> int {` example `align_down`
+- `proc is_aligned` signature `proc is_aligned() -> int {` example `is_aligned`
+- `proc align_ptr` signature `proc align_ptr() -> int {` example `align_ptr`
+- `proc page_align_up` signature `proc page_align_up() -> int {` example `page_align_up`
+- `proc page_align_down` signature `proc page_align_down() -> int {` example `page_align_down`
+- `proc page_index` signature `proc page_index() -> int {` example `page_index`
+- `proc page_addr` signature `proc page_addr() -> int {` example `page_addr`
+- `proc page_offset` signature `proc page_offset() -> int {` example `page_offset`
+- `proc pages_for_size` signature `proc pages_for_size() -> int {` example `pages_for_size`
+- `proc bytes_to_kb` signature `proc bytes_to_kb() -> int {` example `bytes_to_kb`
+- `proc bytes_to_mb` signature `proc bytes_to_mb() -> int {` example `bytes_to_mb`
+- `proc bytes_to_gb` signature `proc bytes_to_gb() -> int {` example `bytes_to_gb`
+- `proc kb` signature `proc kb() -> int {` example `kb`
+- `proc mb` signature `proc mb() -> int {` example `mb`
+- `proc gb` signature `proc gb() -> int {` example `gb`
+- `proc checked_add` signature `proc checked_add() -> int {` example `checked_add`
+- `proc checked_mul` signature `proc checked_mul() -> int {` example `checked_mul`
+- `proc ptr_add` signature `proc ptr_add() -> int {` example `ptr_add`
+- `proc ptr_sub` signature `proc ptr_sub() -> int {` example `ptr_sub`
+- `proc ptr_diff` signature `proc ptr_diff() -> int {` example `ptr_diff`
+- `proc ptr_in_range` signature `proc ptr_in_range() -> int {` example `ptr_in_range`
+- `proc ranges_overlap` signature `proc ranges_overlap() -> int {` example `ranges_overlap`
+- `proc block_new` signature `proc block_new() -> int {` example `block_new`
+- `proc block_empty` signature `proc block_empty() -> int {` example `block_empty`
+- `proc block_end` signature `proc block_end() -> int {` example `block_end`
+- `proc block_contains` signature `proc block_contains() -> int {` example `block_contains`
+- `proc block_is_valid` signature `proc block_is_valid() -> int {` example `block_is_valid`
+- `proc region_new` signature `proc region_new() -> int {` example `region_new`
+- `proc region_end` signature `proc region_end() -> int {` example `region_end`
+- `proc region_contains` signature `proc region_contains() -> int {` example `region_contains`
+- `proc region_is_readable` signature `proc region_is_readable() -> int {` example `region_is_readable`
+- `proc region_is_writable` signature `proc region_is_writable() -> int {` example `region_is_writable`
+- `proc region_is_executable` signature `proc region_is_executable() -> int {` example `region_is_executable`
+- `proc region_is_kernel` signature `proc region_is_kernel() -> int {` example `region_is_kernel`
+- `proc region_is_user` signature `proc region_is_user() -> int {` example `region_is_user`
+- `proc memory_map_empty` signature `proc memory_map_empty() -> int {` example `memory_map_empty`
+- `proc memory_map_add` signature `proc memory_map_add() -> int {` example `memory_map_add`
+- `proc memory_map_find` signature `proc memory_map_find() -> int {` example `memory_map_find`
+- `proc memory_map_usable_regions` signature `proc memory_map_usable_regions() -> int {` example `memory_map_usable_regions`
+- `proc heap_new` signature `proc heap_new() -> int {` example `heap_new`
+- `proc heap_remaining` signature `proc heap_remaining() -> int {` example `heap_remaining`
+- `proc heap_alloc` signature `proc heap_alloc() -> int {` example `heap_alloc`
+- `proc heap_last_block` signature `proc heap_last_block() -> int {` example `heap_last_block`
+- `proc heap_contains` signature `proc heap_contains() -> int {` example `heap_contains`
+- `proc heap_reset` signature `proc heap_reset() -> int {` example `heap_reset`
+- `proc heap_stats` signature `proc heap_stats() -> int {` example `heap_stats`
+- `proc arena_new` signature `proc arena_new() -> int {` example `arena_new`
+- `proc arena_remaining` signature `proc arena_remaining() -> int {` example `arena_remaining`
+- `proc arena_current` signature `proc arena_current() -> int {` example `arena_current`
+- `proc arena_alloc` signature `proc arena_alloc() -> int {` example `arena_alloc`
+- `proc arena_alloc_aligned` signature `proc arena_alloc_aligned() -> int {` example `arena_alloc_aligned`
+- `proc arena_last_addr` signature `proc arena_last_addr() -> int {` example `arena_last_addr`
+- `proc arena_reset` signature `proc arena_reset() -> int {` example `arena_reset`
+- `proc arena_mark` signature `proc arena_mark() -> int {` example `arena_mark`
+- `proc arena_restore` signature `proc arena_restore() -> int {` example `arena_restore`
+- `proc arena_used` signature `proc arena_used() -> int {` example `arena_used`
+- `proc arena_full` signature `proc arena_full() -> int {` example `arena_full`
+- `proc pool_new` signature `proc pool_new() -> int {` example `pool_new`
+- `proc pool_block_addr` signature `proc pool_block_addr() -> int {` example `pool_block_addr`
+- `proc pool_index_of` signature `proc pool_index_of() -> int {` example `pool_index_of`
+- `proc pool_has_free` signature `proc pool_has_free() -> int {` example `pool_has_free`
+- `proc pool_alloc` signature `proc pool_alloc() -> int {` example `pool_alloc`
+- `proc pool_last_alloc_addr` signature `proc pool_last_alloc_addr() -> int {` example `pool_last_alloc_addr`
+- `proc pool_free` signature `proc pool_free() -> int {` example `pool_free`
+- `proc pool_used` signature `proc pool_used() -> int {` example `pool_used`
+- `proc pool_free_count` signature `proc pool_free_count() -> int {` example `pool_free_count`
+- `proc pool_capacity` signature `proc pool_capacity() -> int {` example `pool_capacity`
+- `proc pool_contains` signature `proc pool_contains() -> int {` example `pool_contains`
+- `proc slab_class` signature `proc slab_class() -> int {` example `slab_class`
+- `proc slab_new` signature `proc slab_new() -> int {` example `slab_new`
+- `proc slab_find_class` signature `proc slab_find_class() -> int {` example `slab_find_class`
+- `proc slab_alloc` signature `proc slab_alloc() -> int {` example `slab_alloc`
+- `proc slab_free` signature `proc slab_free() -> int {` example `slab_free`
+- `proc slab_free_blocks` signature `proc slab_free_blocks() -> int {` example `slab_free_blocks`
+- `proc page_new` signature `proc page_new() -> int {` example `page_new`
+- `proc page_is_free` signature `proc page_is_free() -> int {` example `page_is_free`
+- `proc page_is_used` signature `proc page_is_used() -> int {` example `page_is_used`
+- `proc page_range` signature `proc page_range() -> int {` example `page_range`
+- `proc page_range_end` signature `proc page_range_end() -> int {` example `page_range_end`
+- `proc page_range_contains` signature `proc page_range_contains() -> int {` example `page_range_contains`
+- `proc pages_make` signature `proc pages_make() -> int {` example `pages_make`
+- `proc pages_mark_range` signature `proc pages_mark_range() -> int {` example `pages_mark_range`
+- `proc pages_find_free_run` signature `proc pages_find_free_run() -> int {` example `pages_find_free_run`
+- `proc pages_alloc` signature `proc pages_alloc() -> int {` example `pages_alloc`
+- `proc pages_free` signature `proc pages_free() -> int {` example `pages_free`
+- `proc bytes_empty` signature `proc bytes_empty() -> int {` example `bytes_empty`
+- `proc bytes_len` signature `proc bytes_len() -> int {` example `bytes_len`
+- `proc bytes_is_empty` signature `proc bytes_is_empty() -> int {` example `bytes_is_empty`
+- `proc bytes_repeat` signature `proc bytes_repeat() -> int {` example `bytes_repeat`
+- `proc bytes_zero` signature `proc bytes_zero() -> int {` example `bytes_zero`
+- `proc bytes_fill` signature `proc bytes_fill() -> int {` example `bytes_fill`
+- `proc bytes_slice` signature `proc bytes_slice() -> int {` example `bytes_slice`
+- `proc bytes_concat` signature `proc bytes_concat() -> int {` example `bytes_concat`
+- `proc bytes_get` signature `proc bytes_get() -> int {` example `bytes_get`
+- `proc bytes_set` signature `proc bytes_set() -> int {` example `bytes_set`
+- `proc bytes_equal` signature `proc bytes_equal() -> int {` example `bytes_equal`
+- `proc memcmp` signature `proc memcmp() -> int {` example `memcmp`
+- `proc memcpy` signature `proc memcpy() -> int {` example `memcpy`
+- `proc memmove` signature `proc memmove() -> int {` example `memmove`
+- `proc memset` signature `proc memset() -> int {` example `memset`
+- `proc memzero` signature `proc memzero() -> int {` example `memzero`
+- `proc memchr` signature `proc memchr() -> int {` example `memchr`
+- `proc memrchr` signature `proc memrchr() -> int {` example `memrchr`
+- `proc buffer_new` signature `proc buffer_new() -> int {` example `buffer_new`
+- `proc buffer_from_bytes` signature `proc buffer_from_bytes() -> int {` example `buffer_from_bytes`
+- `proc buffer_is_empty` signature `proc buffer_is_empty() -> int {` example `buffer_is_empty`
+- `proc buffer_remaining` signature `proc buffer_remaining() -> int {` example `buffer_remaining`
+- `proc buffer_clear` signature `proc buffer_clear() -> int {` example `buffer_clear`
+- `proc buffer_reserve` signature `proc buffer_reserve() -> int {` example `buffer_reserve`
+- `proc buffer_push_byte` signature `proc buffer_push_byte() -> int {` example `buffer_push_byte`
+- `proc buffer_append` signature `proc buffer_append() -> int {` example `buffer_append`
+- `proc buffer_slice` signature `proc buffer_slice() -> int {` example `buffer_slice`
+- `proc buffer_to_bytes` signature `proc buffer_to_bytes() -> int {` example `buffer_to_bytes`
+- `proc array_fill_int` signature `proc array_fill_int() -> int {` example `array_fill_int`
+- `proc memory_stats_empty` signature `proc memory_stats_empty() -> int {` example `memory_stats_empty`
+- `proc memory_stats_from_heap` signature `proc memory_stats_from_heap() -> int {` example `memory_stats_from_heap`
+- `proc memory_stats_percent_used` signature `proc memory_stats_percent_used() -> int {` example `memory_stats_percent_used`
+- `proc memory_format_size` signature `proc memory_format_size() -> int {` example `memory_format_size`
+- `proc memory_check_block` signature `proc memory_check_block() -> int {` example `memory_check_block`
+- `proc memory_check_region` signature `proc memory_check_region() -> int {` example `memory_check_region`
+- `proc memory_zero_block` signature `proc memory_zero_block() -> int {` example `memory_zero_block`
+- `proc memory_copy_block` signature `proc memory_copy_block() -> int {` example `memory_copy_block`
+- `proc memory_domains` signature `proc memory_domains() -> int {` example `memory_domains`
+- `proc memory_ready` signature `proc memory_ready() -> int {` example `memory_ready`
+- `proc library_meta` signature `proc library_meta() -> int {` example `library_meta`
+- `proc memory_selftest_alignment` signature `proc memory_selftest_alignment() -> int {` example `memory_selftest_alignment`
+- `proc memory_selftest_bytes` signature `proc memory_selftest_bytes() -> int {` example `memory_selftest_bytes`
+- `proc memory_selftest_heap` signature `proc memory_selftest_heap() -> int {` example `memory_selftest_heap`
+- `proc memory_selftest_arena` signature `proc memory_selftest_arena() -> int {` example `memory_selftest_arena`
+- `proc memory_selftest_pool` signature `proc memory_selftest_pool() -> int {` example `memory_selftest_pool`
+- `proc memory_selftest_pages` signature `proc memory_selftest_pages() -> int {` example `memory_selftest_pages`
+- `proc memory_selftest` signature `proc memory_selftest() -> int {` example `memory_selftest`
 
 ## `src/vitte/stdlib/collections.vitl`
 
-- `const COLLECTION_OK`
-- `const COLLECTION_ERR`
-- `const COLLECTION_ERR_EMPTY`
-- `const COLLECTION_ERR_BOUNDS`
-- `const COLLECTION_ERR_NOT_FOUND`
-- `const COLLECTION_ERR_FULL`
-- `const COLLECTION_ERR_DUPLICATE`
-- `const DEFAULT_CAPACITY`
-- `const GROWTH_FACTOR`
-- `const HASHMAP_MAX_LOAD_NUM`
-- `const HASHMAP_MAX_LOAD_DEN`
-- `form OptionI64`
-- `form OptionString`
-- `form CollectionResult`
-- `form Vector`
-- `form Pair`
-- `form Indexed`
-- `form Range`
-- `form ListNode`
-- `form LinkedList`
-- `form Queue`
-- `form Deque`
-- `form Stack`
-- `form HashEntry`
-- `form HashMap`
-- `form HashSet`
-- `form BinaryHeap`
-- `pick Ordering`
-- `proc collection_error_name`
-- `proc option_i64_none`
-- `proc option_i64_some`
-- `proc option_string_none`
-- `proc option_string_some`
-- `proc vector_new`
-- `proc vector_with_capacity`
-- `proc vector_from_array`
-- `proc vector_len`
-- `proc vector_size`
-- `proc vector_capacity`
-- `proc vector_is_empty`
-- `proc vector_is_valid_index`
-- `proc vector_reserve`
-- `proc vector_push`
-- `proc vector_pop_i64`
-- `proc vector_pop`
-- `proc vector_get_i64`
-- `proc vector_at_i64`
-- `proc vector_set_i64`
-- `proc vector_insert_i64`
-- `proc vector_remove_i64`
-- `proc vector_clear`
-- `proc vector_to_array`
-- `proc vector_clone`
-- `proc vector_extend`
-- `proc vector_contains_i64`
-- `proc vector_index_of_i64`
-- `proc vector_reverse_i64`
-- `proc vector_sum_i64`
-- `proc vector_min_i64`
-- `proc vector_max_i64`
-- `proc vector_sort_i64`
-- `proc vector_binary_search_i64`
-- `proc copy`
-- `proc list_new`
-- `proc list_len`
-- `proc list_size`
-- `proc list_is_empty`
-- `proc list_push_back`
-- `proc list_push_front`
-- `proc list_clear`
-- `proc list_to_array`
-- `proc queue_new`
-- `proc queue_len`
-- `proc queue_size`
-- `proc queue_is_empty`
-- `proc queue_is_full`
-- `proc queue_enqueue`
-- `proc queue_dequeue_i64`
-- `proc queue_front_i64`
-- `proc queue_clear`
-- `proc deque_new`
-- `proc deque_is_empty`
-- `proc deque_is_full`
-- `proc deque_push_back`
-- `proc deque_push_front_i64`
-- `proc deque_pop_back_i64`
-- `proc deque_pop_front_i64`
-- `proc stack_new`
-- `proc stack_len`
-- `proc stack_size`
-- `proc stack_is_empty`
-- `proc stack_is_full`
-- `proc stack_push`
-- `proc stack_pop_i64`
-- `proc stack_peek_i64`
-- `proc stack_clear`
-- `proc hashmap_new`
-- `proc hashmap_empty_entries`
-- `proc hashmap_len`
-- `proc hashmap_size`
-- `proc hashmap_is_empty`
-- `proc hashmap_load_percent`
-- `proc hashmap_should_grow`
-- `proc hash_string`
-- `proc hashmap_find_slot`
-- `proc hashmap_contains`
-- `proc hashmap_insert`
-- `proc hashmap_remove`
-- `proc hashmap_clear`
-- `proc hashmap_rehash`
-- `proc hashmap_keys`
-- `proc hashmap_get_i64`
-- `proc hashmap_values_i64`
-- `proc hashmap_items_i64`
-- `proc hashset_new`
-- `proc hashset_with_capacity`
-- `proc hashset_insert`
-- `proc hashset_remove`
-- `proc hashset_contains`
-- `proc hashset_size`
-- `proc hashset_len`
-- `proc hashset_is_empty`
-- `proc hashset_clear`
-- `proc hashset_values`
-- `proc hashset_union`
-- `proc hashset_intersection`
-- `proc hashset_difference`
-- `proc heap_new`
-- `proc heap_len`
-- `proc heap_is_empty`
-- `proc min_heap_i64`
-- `proc max_heap_i64`
-- `proc heap_should_swap_i64`
-- `proc heap_push_i64`
-- `proc heap_peek_i64`
-- `proc range_new`
-- `proc range_len`
-- `proc range_to_array`
-- `proc range`
-- `proc range2`
-- `proc range3`
-- `proc zip`
-- `proc enumerate`
-- `proc reversed`
-- `proc array_is_empty`
-- `proc array_first_i64`
-- `proc array_last_i64`
-- `proc array_sum_i64`
-- `proc array_product_i64`
-- `proc array_contains_i64`
-- `proc array_index_of_i64`
-- `proc array_count_i64`
-- `proc array_unique_i64`
-- `proc array_filter_nonzero_i64`
-- `proc array_map_double_i64`
-- `proc array_sort_i64`
-- `proc normalize_capacity`
-- `proc min_i32`
-- `proc max_i32`
-- `proc clamp_i32`
-- `proc compare_i64`
-- `proc zero_value`
-- `proc array_len`
-- `proc array_copy`
-- `proc array_get`
-- `proc array_set`
-- `proc array_push`
-- `proc array_take`
-- `proc array_drop`
-- `proc array_get_i64`
-- `proc array_set_i64`
-- `proc array_get_string`
-- `proc string_len`
-- `proc string_char_code`
-- `proc stdlib_smoke_6`
-- `proc stdlib_smoke_7`
-- `proc stdlib_smoke_8`
-- `proc stdlib_smoke_9`
-- `proc stdlib_smoke_10`
-- `proc stdlib_smoke_11`
+- `const COLLECTION_OK` signature `const COLLECTION_OK: i32 = 0` example `COLLECTION_OK`
+- `const COLLECTION_ERR` signature `const COLLECTION_ERR: i32 = 0` example `COLLECTION_ERR`
+- `const COLLECTION_ERR_EMPTY` signature `const COLLECTION_ERR_EMPTY: i32 = 0` example `COLLECTION_ERR_EMPTY`
+- `const COLLECTION_ERR_BOUNDS` signature `const COLLECTION_ERR_BOUNDS: i32 = 0` example `COLLECTION_ERR_BOUNDS`
+- `const COLLECTION_ERR_NOT_FOUND` signature `const COLLECTION_ERR_NOT_FOUND: i32 = 0` example `COLLECTION_ERR_NOT_FOUND`
+- `const COLLECTION_ERR_FULL` signature `const COLLECTION_ERR_FULL: i32 = 0` example `COLLECTION_ERR_FULL`
+- `const COLLECTION_ERR_DUPLICATE` signature `const COLLECTION_ERR_DUPLICATE: i32 = 0` example `COLLECTION_ERR_DUPLICATE`
+- `const DEFAULT_CAPACITY` signature `const DEFAULT_CAPACITY: i32 = 0` example `DEFAULT_CAPACITY`
+- `const GROWTH_FACTOR` signature `const GROWTH_FACTOR: i32 = 0` example `GROWTH_FACTOR`
+- `const HASHMAP_MAX_LOAD_NUM` signature `const HASHMAP_MAX_LOAD_NUM: i32 = 0` example `HASHMAP_MAX_LOAD_NUM`
+- `const HASHMAP_MAX_LOAD_DEN` signature `const HASHMAP_MAX_LOAD_DEN: i32 = 0` example `HASHMAP_MAX_LOAD_DEN`
+- `form OptionI64` signature `form OptionI64 {` example `OptionI64`
+- `form OptionString` signature `form OptionString {` example `OptionString`
+- `form CollectionResult` signature `form CollectionResult {` example `CollectionResult`
+- `form Vector` signature `form Vector {` example `Vector`
+- `form Pair` signature `form Pair {` example `Pair`
+- `form Indexed` signature `form Indexed {` example `Indexed`
+- `form Range` signature `form Range {` example `Range`
+- `form ListNode` signature `form ListNode {` example `ListNode`
+- `form LinkedList` signature `form LinkedList {` example `LinkedList`
+- `form Queue` signature `form Queue {` example `Queue`
+- `form Deque` signature `form Deque {` example `Deque`
+- `form Stack` signature `form Stack {` example `Stack`
+- `form HashEntry` signature `form HashEntry {` example `HashEntry`
+- `form HashMap` signature `form HashMap {` example `HashMap`
+- `form HashSet` signature `form HashSet {` example `HashSet`
+- `form BinaryHeap` signature `form BinaryHeap {` example `BinaryHeap`
+- `pick Ordering` signature `pick Ordering {` example `Ordering`
+- `proc collection_error_name` signature `proc collection_error_name() -> int {` example `collection_error_name`
+- `proc option_i64_none` signature `proc option_i64_none() -> int {` example `option_i64_none`
+- `proc option_i64_some` signature `proc option_i64_some() -> int {` example `option_i64_some`
+- `proc option_string_none` signature `proc option_string_none() -> int {` example `option_string_none`
+- `proc option_string_some` signature `proc option_string_some() -> int {` example `option_string_some`
+- `proc vector_new` signature `proc vector_new() -> int {` example `vector_new`
+- `proc vector_with_capacity` signature `proc vector_with_capacity() -> int {` example `vector_with_capacity`
+- `proc vector_from_array` signature `proc vector_from_array() -> int {` example `vector_from_array`
+- `proc vector_len` signature `proc vector_len() -> int {` example `vector_len`
+- `proc vector_size` signature `proc vector_size() -> int {` example `vector_size`
+- `proc vector_capacity` signature `proc vector_capacity() -> int {` example `vector_capacity`
+- `proc vector_is_empty` signature `proc vector_is_empty() -> int {` example `vector_is_empty`
+- `proc vector_is_valid_index` signature `proc vector_is_valid_index() -> int {` example `vector_is_valid_index`
+- `proc vector_reserve` signature `proc vector_reserve() -> int {` example `vector_reserve`
+- `proc vector_push` signature `proc vector_push() -> int {` example `vector_push`
+- `proc vector_pop_i64` signature `proc vector_pop_i64() -> int {` example `vector_pop_i64`
+- `proc vector_pop` signature `proc vector_pop() -> int {` example `vector_pop`
+- `proc vector_get_i64` signature `proc vector_get_i64() -> int {` example `vector_get_i64`
+- `proc vector_at_i64` signature `proc vector_at_i64() -> int {` example `vector_at_i64`
+- `proc vector_set_i64` signature `proc vector_set_i64() -> int {` example `vector_set_i64`
+- `proc vector_insert_i64` signature `proc vector_insert_i64() -> int {` example `vector_insert_i64`
+- `proc vector_remove_i64` signature `proc vector_remove_i64() -> int {` example `vector_remove_i64`
+- `proc vector_clear` signature `proc vector_clear() -> int {` example `vector_clear`
+- `proc vector_to_array` signature `proc vector_to_array() -> int {` example `vector_to_array`
+- `proc vector_clone` signature `proc vector_clone() -> int {` example `vector_clone`
+- `proc vector_extend` signature `proc vector_extend() -> int {` example `vector_extend`
+- `proc vector_contains_i64` signature `proc vector_contains_i64() -> int {` example `vector_contains_i64`
+- `proc vector_index_of_i64` signature `proc vector_index_of_i64() -> int {` example `vector_index_of_i64`
+- `proc vector_reverse_i64` signature `proc vector_reverse_i64() -> int {` example `vector_reverse_i64`
+- `proc vector_sum_i64` signature `proc vector_sum_i64() -> int {` example `vector_sum_i64`
+- `proc vector_min_i64` signature `proc vector_min_i64() -> int {` example `vector_min_i64`
+- `proc vector_max_i64` signature `proc vector_max_i64() -> int {` example `vector_max_i64`
+- `proc vector_sort_i64` signature `proc vector_sort_i64() -> int {` example `vector_sort_i64`
+- `proc vector_binary_search_i64` signature `proc vector_binary_search_i64() -> int {` example `vector_binary_search_i64`
+- `proc copy` signature `proc copy() -> int {` example `copy`
+- `proc list_new` signature `proc list_new() -> int {` example `list_new`
+- `proc list_len` signature `proc list_len() -> int {` example `list_len`
+- `proc list_size` signature `proc list_size() -> int {` example `list_size`
+- `proc list_is_empty` signature `proc list_is_empty() -> int {` example `list_is_empty`
+- `proc list_push_back` signature `proc list_push_back() -> int {` example `list_push_back`
+- `proc list_push_front` signature `proc list_push_front() -> int {` example `list_push_front`
+- `proc list_clear` signature `proc list_clear() -> int {` example `list_clear`
+- `proc list_to_array` signature `proc list_to_array() -> int {` example `list_to_array`
+- `proc queue_new` signature `proc queue_new() -> int {` example `queue_new`
+- `proc queue_len` signature `proc queue_len() -> int {` example `queue_len`
+- `proc queue_size` signature `proc queue_size() -> int {` example `queue_size`
+- `proc queue_is_empty` signature `proc queue_is_empty() -> int {` example `queue_is_empty`
+- `proc queue_is_full` signature `proc queue_is_full() -> int {` example `queue_is_full`
+- `proc queue_enqueue` signature `proc queue_enqueue() -> int {` example `queue_enqueue`
+- `proc queue_dequeue_i64` signature `proc queue_dequeue_i64() -> int {` example `queue_dequeue_i64`
+- `proc queue_front_i64` signature `proc queue_front_i64() -> int {` example `queue_front_i64`
+- `proc queue_clear` signature `proc queue_clear() -> int {` example `queue_clear`
+- `proc deque_new` signature `proc deque_new() -> int {` example `deque_new`
+- `proc deque_is_empty` signature `proc deque_is_empty() -> int {` example `deque_is_empty`
+- `proc deque_is_full` signature `proc deque_is_full() -> int {` example `deque_is_full`
+- `proc deque_push_back` signature `proc deque_push_back() -> int {` example `deque_push_back`
+- `proc deque_push_front_i64` signature `proc deque_push_front_i64() -> int {` example `deque_push_front_i64`
+- `proc deque_pop_back_i64` signature `proc deque_pop_back_i64() -> int {` example `deque_pop_back_i64`
+- `proc deque_pop_front_i64` signature `proc deque_pop_front_i64() -> int {` example `deque_pop_front_i64`
+- `proc stack_new` signature `proc stack_new() -> int {` example `stack_new`
+- `proc stack_len` signature `proc stack_len() -> int {` example `stack_len`
+- `proc stack_size` signature `proc stack_size() -> int {` example `stack_size`
+- `proc stack_is_empty` signature `proc stack_is_empty() -> int {` example `stack_is_empty`
+- `proc stack_is_full` signature `proc stack_is_full() -> int {` example `stack_is_full`
+- `proc stack_push` signature `proc stack_push() -> int {` example `stack_push`
+- `proc stack_pop_i64` signature `proc stack_pop_i64() -> int {` example `stack_pop_i64`
+- `proc stack_peek_i64` signature `proc stack_peek_i64() -> int {` example `stack_peek_i64`
+- `proc stack_clear` signature `proc stack_clear() -> int {` example `stack_clear`
+- `proc hashmap_new` signature `proc hashmap_new() -> int {` example `hashmap_new`
+- `proc hashmap_empty_entries` signature `proc hashmap_empty_entries() -> int {` example `hashmap_empty_entries`
+- `proc hashmap_len` signature `proc hashmap_len() -> int {` example `hashmap_len`
+- `proc hashmap_size` signature `proc hashmap_size() -> int {` example `hashmap_size`
+- `proc hashmap_is_empty` signature `proc hashmap_is_empty() -> int {` example `hashmap_is_empty`
+- `proc hashmap_load_percent` signature `proc hashmap_load_percent() -> int {` example `hashmap_load_percent`
+- `proc hashmap_should_grow` signature `proc hashmap_should_grow() -> int {` example `hashmap_should_grow`
+- `proc hash_string` signature `proc hash_string() -> int {` example `hash_string`
+- `proc hashmap_find_slot` signature `proc hashmap_find_slot() -> int {` example `hashmap_find_slot`
+- `proc hashmap_contains` signature `proc hashmap_contains() -> int {` example `hashmap_contains`
+- `proc hashmap_insert` signature `proc hashmap_insert() -> int {` example `hashmap_insert`
+- `proc hashmap_remove` signature `proc hashmap_remove() -> int {` example `hashmap_remove`
+- `proc hashmap_clear` signature `proc hashmap_clear() -> int {` example `hashmap_clear`
+- `proc hashmap_rehash` signature `proc hashmap_rehash() -> int {` example `hashmap_rehash`
+- `proc hashmap_keys` signature `proc hashmap_keys() -> int {` example `hashmap_keys`
+- `proc hashmap_get_i64` signature `proc hashmap_get_i64() -> int {` example `hashmap_get_i64`
+- `proc hashmap_values_i64` signature `proc hashmap_values_i64() -> int {` example `hashmap_values_i64`
+- `proc hashmap_items_i64` signature `proc hashmap_items_i64() -> int {` example `hashmap_items_i64`
+- `proc hashset_new` signature `proc hashset_new() -> int {` example `hashset_new`
+- `proc hashset_with_capacity` signature `proc hashset_with_capacity() -> int {` example `hashset_with_capacity`
+- `proc hashset_insert` signature `proc hashset_insert() -> int {` example `hashset_insert`
+- `proc hashset_remove` signature `proc hashset_remove() -> int {` example `hashset_remove`
+- `proc hashset_contains` signature `proc hashset_contains() -> int {` example `hashset_contains`
+- `proc hashset_size` signature `proc hashset_size() -> int {` example `hashset_size`
+- `proc hashset_len` signature `proc hashset_len() -> int {` example `hashset_len`
+- `proc hashset_is_empty` signature `proc hashset_is_empty() -> int {` example `hashset_is_empty`
+- `proc hashset_clear` signature `proc hashset_clear() -> int {` example `hashset_clear`
+- `proc hashset_values` signature `proc hashset_values() -> int {` example `hashset_values`
+- `proc hashset_union` signature `proc hashset_union() -> int {` example `hashset_union`
+- `proc hashset_intersection` signature `proc hashset_intersection() -> int {` example `hashset_intersection`
+- `proc hashset_difference` signature `proc hashset_difference() -> int {` example `hashset_difference`
+- `proc heap_new` signature `proc heap_new() -> int {` example `heap_new`
+- `proc heap_len` signature `proc heap_len() -> int {` example `heap_len`
+- `proc heap_is_empty` signature `proc heap_is_empty() -> int {` example `heap_is_empty`
+- `proc min_heap_i64` signature `proc min_heap_i64() -> int {` example `min_heap_i64`
+- `proc max_heap_i64` signature `proc max_heap_i64() -> int {` example `max_heap_i64`
+- `proc heap_should_swap_i64` signature `proc heap_should_swap_i64() -> int {` example `heap_should_swap_i64`
+- `proc heap_push_i64` signature `proc heap_push_i64() -> int {` example `heap_push_i64`
+- `proc heap_peek_i64` signature `proc heap_peek_i64() -> int {` example `heap_peek_i64`
+- `proc range_new` signature `proc range_new() -> int {` example `range_new`
+- `proc range_len` signature `proc range_len() -> int {` example `range_len`
+- `proc range_to_array` signature `proc range_to_array() -> int {` example `range_to_array`
+- `proc range` signature `proc range() -> int {` example `range`
+- `proc range2` signature `proc range2() -> int {` example `range2`
+- `proc range3` signature `proc range3() -> int {` example `range3`
+- `proc zip` signature `proc zip() -> int {` example `zip`
+- `proc enumerate` signature `proc enumerate() -> int {` example `enumerate`
+- `proc reversed` signature `proc reversed() -> int {` example `reversed`
+- `proc array_is_empty` signature `proc array_is_empty() -> int {` example `array_is_empty`
+- `proc array_first_i64` signature `proc array_first_i64() -> int {` example `array_first_i64`
+- `proc array_last_i64` signature `proc array_last_i64() -> int {` example `array_last_i64`
+- `proc array_sum_i64` signature `proc array_sum_i64() -> int {` example `array_sum_i64`
+- `proc array_product_i64` signature `proc array_product_i64() -> int {` example `array_product_i64`
+- `proc array_contains_i64` signature `proc array_contains_i64() -> int {` example `array_contains_i64`
+- `proc array_index_of_i64` signature `proc array_index_of_i64() -> int {` example `array_index_of_i64`
+- `proc array_count_i64` signature `proc array_count_i64() -> int {` example `array_count_i64`
+- `proc array_unique_i64` signature `proc array_unique_i64() -> int {` example `array_unique_i64`
+- `proc array_filter_nonzero_i64` signature `proc array_filter_nonzero_i64() -> int {` example `array_filter_nonzero_i64`
+- `proc array_map_double_i64` signature `proc array_map_double_i64() -> int {` example `array_map_double_i64`
+- `proc array_sort_i64` signature `proc array_sort_i64() -> int {` example `array_sort_i64`
+- `proc normalize_capacity` signature `proc normalize_capacity() -> int {` example `normalize_capacity`
+- `proc min_i32` signature `proc min_i32() -> int {` example `min_i32`
+- `proc max_i32` signature `proc max_i32() -> int {` example `max_i32`
+- `proc clamp_i32` signature `proc clamp_i32() -> int {` example `clamp_i32`
+- `proc compare_i64` signature `proc compare_i64() -> int {` example `compare_i64`
+- `proc zero_value` signature `proc zero_value() -> int {` example `zero_value`
+- `proc array_len` signature `proc array_len() -> int {` example `array_len`
+- `proc array_copy` signature `proc array_copy() -> int {` example `array_copy`
+- `proc array_get` signature `proc array_get() -> int {` example `array_get`
+- `proc array_set` signature `proc array_set() -> int {` example `array_set`
+- `proc array_push` signature `proc array_push() -> int {` example `array_push`
+- `proc array_take` signature `proc array_take() -> int {` example `array_take`
+- `proc array_drop` signature `proc array_drop() -> int {` example `array_drop`
+- `proc array_get_i64` signature `proc array_get_i64() -> int {` example `array_get_i64`
+- `proc array_set_i64` signature `proc array_set_i64() -> int {` example `array_set_i64`
+- `proc array_get_string` signature `proc array_get_string() -> int {` example `array_get_string`
+- `proc string_len` signature `proc string_len() -> int {` example `string_len`
+- `proc string_char_code` signature `proc string_char_code() -> int {` example `string_char_code`
+- `proc stdlib_smoke_6` signature `proc stdlib_smoke_6() -> int {` example `stdlib_smoke_6`
+- `proc stdlib_smoke_7` signature `proc stdlib_smoke_7() -> int {` example `stdlib_smoke_7`
+- `proc stdlib_smoke_8` signature `proc stdlib_smoke_8() -> int {` example `stdlib_smoke_8`
+- `proc stdlib_smoke_9` signature `proc stdlib_smoke_9() -> int {` example `stdlib_smoke_9`
+- `proc stdlib_smoke_10` signature `proc stdlib_smoke_10() -> int {` example `stdlib_smoke_10`
+- `proc stdlib_smoke_11` signature `proc stdlib_smoke_11() -> int {` example `stdlib_smoke_11`
 
 ## `src/vitte/stdlib/math.vitl`
 
-- `const PI`
-- `const E`
-- `const TAU`
-- `const HALF_PI`
-- `const QUARTER_PI`
-- `const DEG_TO_RAD`
-- `const RAD_TO_DEG`
-- `const I32_MIN`
-- `const I32_MAX`
-- `const BYTE_BITS`
-- `const WORD_BITS`
-- `const DEFAULT_SCALE`
-- `const PERCENT_SCALE`
-- `form Ratio`
-- `form IntRange`
-- `form IntStats`
-- `form Point2i`
-- `form Size2i`
-- `form Rect2i`
-- `form Vec2i`
-- `form Vec3i`
-- `form MathManifest`
-- `form MathHealth`
-- `form MathSummary`
-- `pick MathError`
-- `proc math_error_code`
-- `proc math_version`
-- `proc math_name`
-- `proc math_module_count`
-- `proc math_modules`
-- `proc math_manifest`
-- `proc add`
-- `proc sub`
-- `proc mul`
-- `proc div_trunc`
-- `proc rem`
-- `proc abs`
-- `proc min`
-- `proc max`
-- `proc clamp`
-- `proc sign`
-- `proc between`
-- `proc compare`
-- `proc neg`
-- `proc inc`
-- `proc dec`
-- `proc square`
-- `proc cube`
-- `proc avg2`
-- `proc midpoint`
-- `proc safe_div`
-- `proc safe_rem`
-- `proc saturating_add`
-- `proc saturating_sub`
-- `proc saturating_mul`
-- `proc checked_add_valid`
-- `proc checked_mul_valid`
-- `proc gcd`
-- `proc lcm`
-- `proc gcd_many`
-- `proc lcm_many`
-- `proc is_even`
-- `proc is_odd`
-- `proc is_prime`
-- `proc is_composite`
-- `proc next_prime`
-- `proc prev_prime`
-- `proc prime_factors`
-- `proc divisors`
-- `proc totient`
-- `proc coprime`
-- `proc pow_int`
-- `proc pow2`
-- `proc pow10`
-- `proc factorial`
-- `proc triangular`
-- `proc fibonacci`
-- `proc binomial`
-- `proc falling_factorial`
-- `proc rising_factorial`
-- `proc double_factorial`
-- `proc sqrt_floor`
-- `proc sqrt_ceil`
-- `proc cube_root_floor`
-- `proc cube_root_ceil`
-- `proc is_square`
-- `proc is_cube`
-- `proc ilog2_floor`
-- `proc ilog10_floor`
-- `proc ceil_div`
-- `proc floor_div`
-- `proc floor_mod`
-- `proc div_round_nearest`
-- `proc mod_normalize`
-- `proc mod_add`
-- `proc mod_sub`
-- `proc mod_mul`
-- `proc mod_pow`
-- `proc mod_neg`
-- `proc mod_inverse`
-- `proc mod_div`
-- `proc is_pow2`
-- `proc prev_pow2`
-- `proc next_pow2`
-- `proc has_single_bit`
-- `proc bit_floor`
-- `proc bit_ceil`
-- `proc bit_width`
-- `proc bit_count`
-- `proc lowbit`
-- `proc lowbit_pow2`
-- `proc parity`
-- `proc is_bit_set`
-- `proc set_bit`
-- `proc clear_bit`
-- `proc toggle_bit`
-- `proc align_down`
-- `proc align_up`
-- `proc round_to`
-- `proc floor_to`
-- `proc round_down_pow2`
-- `proc round_up_pow2`
-- `proc clamp_zero`
-- `proc clamp_nonzero`
-- `proc clamp_percent`
-- `proc lerp_int`
-- `proc inv_lerp_int`
-- `proc remap_int`
-- `proc smoothstep_scaled`
-- `proc ratio_new`
-- `proc ratio_add`
-- `proc ratio_sub`
-- `proc ratio_mul`
-- `proc ratio_div`
-- `proc ratio_to_scaled`
-- `proc ratio_percent`
-- `proc rect_area`
-- `proc rect_perimeter`
-- `proc triangle_area2`
-- `proc distance_sq`
-- `proc manhattan_distance`
-- `proc point`
-- `proc size2`
-- `proc rect`
-- `proc vec2i`
-- `proc vec3i`
-- `proc point_distance_sq`
-- `proc point_manhattan`
-- `proc rect_right`
-- `proc rect_bottom`
-- `proc rect_contains_point`
-- `proc rect_intersects`
-- `proc vec`
-- `proc vec_add`
-- `proc vec_sub`
-- `proc vec_scale`
-- `proc vec_dot`
-- `proc vec_norm_sq`
-- `proc vec2i_add`
-- `proc vec2i_sub`
-- `proc vec2i_scale`
-- `proc vec2i_dot`
-- `proc vec2i_cross`
-- `proc vec2i_norm_sq`
-- `proc vec3i_add`
-- `proc vec3i_sub`
-- `proc vec3i_scale`
-- `proc vec3i_dot`
-- `proc vec3i_cross`
-- `proc vec3i_norm_sq`
-- `proc cx`
-- `proc cx_add`
-- `proc cx_sub`
-- `proc cx_mul`
-- `proc cx_conj`
-- `proc cx_abs_sq`
-- `proc mat`
-- `proc mat_id`
-- `proc mat_add`
-- `proc mat_sub`
-- `proc mat_mul`
-- `proc mat_trace`
-- `proc mat_det`
-- `proc arr_len`
-- `proc arr_is_empty`
-- `proc arr_first`
-- `proc arr_last`
-- `proc arr_contains`
-- `proc arr_index_of`
-- `proc arr_count`
-- `proc arr_last_index_of`
-- `proc arr_copy`
-- `proc arr_append`
-- `proc arr_prepend`
-- `proc arr_concat`
-- `proc arr_push`
-- `proc arr_set`
-- `proc arr_swap`
-- `proc arr_clear`
-- `proc arr_pop`
-- `proc arr_pop_at`
-- `proc arr_insert`
-- `proc arr_remove_at`
-- `proc arr_repeat`
-- `proc arr_fill`
-- `proc arr_reverse`
-- `proc arr_sum`
-- `proc arr_min`
-- `proc arr_max`
-- `proc arr_mean`
-- `proc arr_mean_scaled`
-- `proc arr_range`
-- `proc arr_sum_abs`
-- `proc arr_product`
-- `proc arr_any`
-- `proc arr_all`
-- `proc arr_count_nonzero`
-- `proc arr_prefix_sum`
-- `proc arr_prefix_min`
-- `proc arr_prefix_max`
-- `proc arr_take`
-- `proc arr_drop`
-- `proc arr_head`
-- `proc arr_tail`
-- `proc arr_slice`
-- `proc arr_rotate_left`
-- `proc arr_rotate_right`
-- `proc arr_replace_slice`
-- `proc arr_splice`
-- `proc arr_rotate`
-- `proc arr_enumerate`
-- `proc arr_zip`
-- `proc arr_chunks`
-- `proc arr_clamp_each`
-- `proc arr_get`
-- `proc arr_stats`
-- `proc arr_sort_simple`
-- `proc arr_median_floor`
-- `proc arr_variance_scaled`
-- `proc arr_stddev_floor`
-- `proc permutations`
-- `proc combinations`
-- `proc probability_percent`
-- `proc odds_ratio`
-- `proc pairings`
-- `proc percent`
-- `proc percent_scaled`
-- `proc arithmetic_term`
-- `proc arithmetic_sum`
-- `proc geometric_term`
-- `proc triangular_term`
-- `proc fibonacci_term`
-- `proc finite_difference`
-- `proc slope_between`
-- `proc derivative_at_int`
-- `proc normalize_degrees`
-- `proc opposite_angle`
-- `proc complement_angle`
-- `proc supplement_angle`
-- `proc quadrant`
-- `proc is_right_angle`
-- `proc is_straight_angle`
-- `proc degrees_to_radians`
-- `proc radians_to_degrees`
-- `proc sin`
-- `proc cos`
-- `proc tan`
-- `proc asin`
-- `proc acos`
-- `proc atan`
-- `proc atan2`
-- `proc sinh`
-- `proc cosh`
-- `proc tanh`
-- `proc asinh`
-- `proc acosh`
-- `proc atanh`
-- `proc exp`
-- `proc log`
-- `proc log10`
-- `proc pow`
-- `proc sqrt`
-- `proc fabs`
-- `proc fmod`
-- `proc ceil`
-- `proc floor`
-- `proc round_f64`
-- `proc trunc_f64`
-- `proc fract_f64`
-- `proc clamp_f64`
-- `proc min_f64`
-- `proc max_f64`
-- `proc lerp_f64`
-- `proc smoothstep_f64`
-- `proc is_nan`
-- `proc is_infinite`
-- `proc is_finite`
-- `proc math_ready`
-- `proc math_health`
-- `proc math_summary`
-- `proc math_domains`
-- `proc library_meta`
-- `proc math_selftest`
-- `proc stdlib_smoke_1`
-- `proc stdlib_smoke_2`
-- `proc stdlib_smoke_3`
-- `proc stdlib_smoke_4`
-- `proc stdlib_smoke_5`
+- `const PI` signature `const PI: f64 = 0.0` example `PI`
+- `const E` signature `const E: f64 = 0.0` example `E`
+- `const TAU` signature `const TAU: f64 = 0.0` example `TAU`
+- `const HALF_PI` signature `const HALF_PI: f64 = 0.0` example `HALF_PI`
+- `const QUARTER_PI` signature `const QUARTER_PI: f64 = 0.0` example `QUARTER_PI`
+- `const DEG_TO_RAD` signature `const DEG_TO_RAD: f64 = 0.0` example `DEG_TO_RAD`
+- `const RAD_TO_DEG` signature `const RAD_TO_DEG: f64 = 0.0` example `RAD_TO_DEG`
+- `const I32_MIN` signature `const I32_MIN: int = 0` example `I32_MIN`
+- `const I32_MAX` signature `const I32_MAX: int = 0` example `I32_MAX`
+- `const BYTE_BITS` signature `const BYTE_BITS: int = 0` example `BYTE_BITS`
+- `const WORD_BITS` signature `const WORD_BITS: int = 0` example `WORD_BITS`
+- `const DEFAULT_SCALE` signature `const DEFAULT_SCALE: int = 0` example `DEFAULT_SCALE`
+- `const PERCENT_SCALE` signature `const PERCENT_SCALE: int = 0` example `PERCENT_SCALE`
+- `form Ratio` signature `form Ratio {` example `Ratio`
+- `form IntRange` signature `form IntRange {` example `IntRange`
+- `form IntStats` signature `form IntStats {` example `IntStats`
+- `form Point2i` signature `form Point2i {` example `Point2i`
+- `form Size2i` signature `form Size2i {` example `Size2i`
+- `form Rect2i` signature `form Rect2i {` example `Rect2i`
+- `form Vec2i` signature `form Vec2i {` example `Vec2i`
+- `form Vec3i` signature `form Vec3i {` example `Vec3i`
+- `form MathManifest` signature `form MathManifest {` example `MathManifest`
+- `form MathHealth` signature `form MathHealth {` example `MathHealth`
+- `form MathSummary` signature `form MathSummary {` example `MathSummary`
+- `pick MathError` signature `pick MathError {` example `MathError`
+- `proc math_error_code` signature `proc math_error_code() -> int {` example `math_error_code`
+- `proc math_version` signature `proc math_version() -> int {` example `math_version`
+- `proc math_name` signature `proc math_name() -> int {` example `math_name`
+- `proc math_module_count` signature `proc math_module_count() -> int {` example `math_module_count`
+- `proc math_modules` signature `proc math_modules() -> int {` example `math_modules`
+- `proc math_manifest` signature `proc math_manifest() -> int {` example `math_manifest`
+- `proc add` signature `proc add() -> int {` example `add`
+- `proc sub` signature `proc sub() -> int {` example `sub`
+- `proc mul` signature `proc mul() -> int {` example `mul`
+- `proc div_trunc` signature `proc div_trunc() -> int {` example `div_trunc`
+- `proc rem` signature `proc rem() -> int {` example `rem`
+- `proc abs` signature `proc abs() -> int {` example `abs`
+- `proc min` signature `proc min() -> int {` example `min`
+- `proc max` signature `proc max() -> int {` example `max`
+- `proc clamp` signature `proc clamp() -> int {` example `clamp`
+- `proc sign` signature `proc sign() -> int {` example `sign`
+- `proc between` signature `proc between() -> int {` example `between`
+- `proc compare` signature `proc compare() -> int {` example `compare`
+- `proc neg` signature `proc neg() -> int {` example `neg`
+- `proc inc` signature `proc inc() -> int {` example `inc`
+- `proc dec` signature `proc dec() -> int {` example `dec`
+- `proc square` signature `proc square() -> int {` example `square`
+- `proc cube` signature `proc cube() -> int {` example `cube`
+- `proc avg2` signature `proc avg2() -> int {` example `avg2`
+- `proc midpoint` signature `proc midpoint() -> int {` example `midpoint`
+- `proc safe_div` signature `proc safe_div() -> int {` example `safe_div`
+- `proc safe_rem` signature `proc safe_rem() -> int {` example `safe_rem`
+- `proc saturating_add` signature `proc saturating_add() -> int {` example `saturating_add`
+- `proc saturating_sub` signature `proc saturating_sub() -> int {` example `saturating_sub`
+- `proc saturating_mul` signature `proc saturating_mul() -> int {` example `saturating_mul`
+- `proc checked_add_valid` signature `proc checked_add_valid() -> int {` example `checked_add_valid`
+- `proc checked_mul_valid` signature `proc checked_mul_valid() -> int {` example `checked_mul_valid`
+- `proc gcd` signature `proc gcd() -> int {` example `gcd`
+- `proc lcm` signature `proc lcm() -> int {` example `lcm`
+- `proc gcd_many` signature `proc gcd_many() -> int {` example `gcd_many`
+- `proc lcm_many` signature `proc lcm_many() -> int {` example `lcm_many`
+- `proc is_even` signature `proc is_even() -> int {` example `is_even`
+- `proc is_odd` signature `proc is_odd() -> int {` example `is_odd`
+- `proc is_prime` signature `proc is_prime() -> int {` example `is_prime`
+- `proc is_composite` signature `proc is_composite() -> int {` example `is_composite`
+- `proc next_prime` signature `proc next_prime() -> int {` example `next_prime`
+- `proc prev_prime` signature `proc prev_prime() -> int {` example `prev_prime`
+- `proc prime_factors` signature `proc prime_factors() -> int {` example `prime_factors`
+- `proc divisors` signature `proc divisors() -> int {` example `divisors`
+- `proc totient` signature `proc totient() -> int {` example `totient`
+- `proc coprime` signature `proc coprime() -> int {` example `coprime`
+- `proc pow_int` signature `proc pow_int() -> int {` example `pow_int`
+- `proc pow2` signature `proc pow2() -> int {` example `pow2`
+- `proc pow10` signature `proc pow10() -> int {` example `pow10`
+- `proc factorial` signature `proc factorial() -> int {` example `factorial`
+- `proc triangular` signature `proc triangular() -> int {` example `triangular`
+- `proc fibonacci` signature `proc fibonacci() -> int {` example `fibonacci`
+- `proc binomial` signature `proc binomial() -> int {` example `binomial`
+- `proc falling_factorial` signature `proc falling_factorial() -> int {` example `falling_factorial`
+- `proc rising_factorial` signature `proc rising_factorial() -> int {` example `rising_factorial`
+- `proc double_factorial` signature `proc double_factorial() -> int {` example `double_factorial`
+- `proc sqrt_floor` signature `proc sqrt_floor() -> int {` example `sqrt_floor`
+- `proc sqrt_ceil` signature `proc sqrt_ceil() -> int {` example `sqrt_ceil`
+- `proc cube_root_floor` signature `proc cube_root_floor() -> int {` example `cube_root_floor`
+- `proc cube_root_ceil` signature `proc cube_root_ceil() -> int {` example `cube_root_ceil`
+- `proc is_square` signature `proc is_square() -> int {` example `is_square`
+- `proc is_cube` signature `proc is_cube() -> int {` example `is_cube`
+- `proc ilog2_floor` signature `proc ilog2_floor() -> int {` example `ilog2_floor`
+- `proc ilog10_floor` signature `proc ilog10_floor() -> int {` example `ilog10_floor`
+- `proc ceil_div` signature `proc ceil_div() -> int {` example `ceil_div`
+- `proc floor_div` signature `proc floor_div() -> int {` example `floor_div`
+- `proc floor_mod` signature `proc floor_mod() -> int {` example `floor_mod`
+- `proc div_round_nearest` signature `proc div_round_nearest() -> int {` example `div_round_nearest`
+- `proc mod_normalize` signature `proc mod_normalize() -> int {` example `mod_normalize`
+- `proc mod_add` signature `proc mod_add() -> int {` example `mod_add`
+- `proc mod_sub` signature `proc mod_sub() -> int {` example `mod_sub`
+- `proc mod_mul` signature `proc mod_mul() -> int {` example `mod_mul`
+- `proc mod_pow` signature `proc mod_pow() -> int {` example `mod_pow`
+- `proc mod_neg` signature `proc mod_neg() -> int {` example `mod_neg`
+- `proc mod_inverse` signature `proc mod_inverse() -> int {` example `mod_inverse`
+- `proc mod_div` signature `proc mod_div() -> int {` example `mod_div`
+- `proc is_pow2` signature `proc is_pow2() -> int {` example `is_pow2`
+- `proc prev_pow2` signature `proc prev_pow2() -> int {` example `prev_pow2`
+- `proc next_pow2` signature `proc next_pow2() -> int {` example `next_pow2`
+- `proc has_single_bit` signature `proc has_single_bit() -> int {` example `has_single_bit`
+- `proc bit_floor` signature `proc bit_floor() -> int {` example `bit_floor`
+- `proc bit_ceil` signature `proc bit_ceil() -> int {` example `bit_ceil`
+- `proc bit_width` signature `proc bit_width() -> int {` example `bit_width`
+- `proc bit_count` signature `proc bit_count() -> int {` example `bit_count`
+- `proc lowbit` signature `proc lowbit() -> int {` example `lowbit`
+- `proc lowbit_pow2` signature `proc lowbit_pow2() -> int {` example `lowbit_pow2`
+- `proc parity` signature `proc parity() -> int {` example `parity`
+- `proc is_bit_set` signature `proc is_bit_set() -> int {` example `is_bit_set`
+- `proc set_bit` signature `proc set_bit() -> int {` example `set_bit`
+- `proc clear_bit` signature `proc clear_bit() -> int {` example `clear_bit`
+- `proc toggle_bit` signature `proc toggle_bit() -> int {` example `toggle_bit`
+- `proc align_down` signature `proc align_down() -> int {` example `align_down`
+- `proc align_up` signature `proc align_up() -> int {` example `align_up`
+- `proc round_to` signature `proc round_to() -> int {` example `round_to`
+- `proc floor_to` signature `proc floor_to() -> int {` example `floor_to`
+- `proc round_down_pow2` signature `proc round_down_pow2() -> int {` example `round_down_pow2`
+- `proc round_up_pow2` signature `proc round_up_pow2() -> int {` example `round_up_pow2`
+- `proc clamp_zero` signature `proc clamp_zero() -> int {` example `clamp_zero`
+- `proc clamp_nonzero` signature `proc clamp_nonzero() -> int {` example `clamp_nonzero`
+- `proc clamp_percent` signature `proc clamp_percent() -> int {` example `clamp_percent`
+- `proc lerp_int` signature `proc lerp_int() -> int {` example `lerp_int`
+- `proc inv_lerp_int` signature `proc inv_lerp_int() -> int {` example `inv_lerp_int`
+- `proc remap_int` signature `proc remap_int() -> int {` example `remap_int`
+- `proc smoothstep_scaled` signature `proc smoothstep_scaled() -> int {` example `smoothstep_scaled`
+- `proc ratio_new` signature `proc ratio_new() -> int {` example `ratio_new`
+- `proc ratio_add` signature `proc ratio_add() -> int {` example `ratio_add`
+- `proc ratio_sub` signature `proc ratio_sub() -> int {` example `ratio_sub`
+- `proc ratio_mul` signature `proc ratio_mul() -> int {` example `ratio_mul`
+- `proc ratio_div` signature `proc ratio_div() -> int {` example `ratio_div`
+- `proc ratio_to_scaled` signature `proc ratio_to_scaled() -> int {` example `ratio_to_scaled`
+- `proc ratio_percent` signature `proc ratio_percent() -> int {` example `ratio_percent`
+- `proc rect_area` signature `proc rect_area() -> int {` example `rect_area`
+- `proc rect_perimeter` signature `proc rect_perimeter() -> int {` example `rect_perimeter`
+- `proc triangle_area2` signature `proc triangle_area2() -> int {` example `triangle_area2`
+- `proc distance_sq` signature `proc distance_sq() -> int {` example `distance_sq`
+- `proc manhattan_distance` signature `proc manhattan_distance() -> int {` example `manhattan_distance`
+- `proc point` signature `proc point() -> int {` example `point`
+- `proc size2` signature `proc size2() -> int {` example `size2`
+- `proc rect` signature `proc rect() -> int {` example `rect`
+- `proc vec2i` signature `proc vec2i() -> int {` example `vec2i`
+- `proc vec3i` signature `proc vec3i() -> int {` example `vec3i`
+- `proc point_distance_sq` signature `proc point_distance_sq() -> int {` example `point_distance_sq`
+- `proc point_manhattan` signature `proc point_manhattan() -> int {` example `point_manhattan`
+- `proc rect_right` signature `proc rect_right() -> int {` example `rect_right`
+- `proc rect_bottom` signature `proc rect_bottom() -> int {` example `rect_bottom`
+- `proc rect_contains_point` signature `proc rect_contains_point() -> int {` example `rect_contains_point`
+- `proc rect_intersects` signature `proc rect_intersects() -> int {` example `rect_intersects`
+- `proc vec` signature `proc vec() -> int {` example `vec`
+- `proc vec_add` signature `proc vec_add() -> int {` example `vec_add`
+- `proc vec_sub` signature `proc vec_sub() -> int {` example `vec_sub`
+- `proc vec_scale` signature `proc vec_scale() -> int {` example `vec_scale`
+- `proc vec_dot` signature `proc vec_dot() -> int {` example `vec_dot`
+- `proc vec_norm_sq` signature `proc vec_norm_sq() -> int {` example `vec_norm_sq`
+- `proc vec2i_add` signature `proc vec2i_add() -> int {` example `vec2i_add`
+- `proc vec2i_sub` signature `proc vec2i_sub() -> int {` example `vec2i_sub`
+- `proc vec2i_scale` signature `proc vec2i_scale() -> int {` example `vec2i_scale`
+- `proc vec2i_dot` signature `proc vec2i_dot() -> int {` example `vec2i_dot`
+- `proc vec2i_cross` signature `proc vec2i_cross() -> int {` example `vec2i_cross`
+- `proc vec2i_norm_sq` signature `proc vec2i_norm_sq() -> int {` example `vec2i_norm_sq`
+- `proc vec3i_add` signature `proc vec3i_add() -> int {` example `vec3i_add`
+- `proc vec3i_sub` signature `proc vec3i_sub() -> int {` example `vec3i_sub`
+- `proc vec3i_scale` signature `proc vec3i_scale() -> int {` example `vec3i_scale`
+- `proc vec3i_dot` signature `proc vec3i_dot() -> int {` example `vec3i_dot`
+- `proc vec3i_cross` signature `proc vec3i_cross() -> int {` example `vec3i_cross`
+- `proc vec3i_norm_sq` signature `proc vec3i_norm_sq() -> int {` example `vec3i_norm_sq`
+- `proc cx` signature `proc cx() -> int {` example `cx`
+- `proc cx_add` signature `proc cx_add() -> int {` example `cx_add`
+- `proc cx_sub` signature `proc cx_sub() -> int {` example `cx_sub`
+- `proc cx_mul` signature `proc cx_mul() -> int {` example `cx_mul`
+- `proc cx_conj` signature `proc cx_conj() -> int {` example `cx_conj`
+- `proc cx_abs_sq` signature `proc cx_abs_sq() -> int {` example `cx_abs_sq`
+- `proc mat` signature `proc mat() -> int {` example `mat`
+- `proc mat_id` signature `proc mat_id() -> int {` example `mat_id`
+- `proc mat_add` signature `proc mat_add() -> int {` example `mat_add`
+- `proc mat_sub` signature `proc mat_sub() -> int {` example `mat_sub`
+- `proc mat_mul` signature `proc mat_mul() -> int {` example `mat_mul`
+- `proc mat_trace` signature `proc mat_trace() -> int {` example `mat_trace`
+- `proc mat_det` signature `proc mat_det() -> int {` example `mat_det`
+- `proc arr_len` signature `proc arr_len() -> int {` example `arr_len`
+- `proc arr_is_empty` signature `proc arr_is_empty() -> int {` example `arr_is_empty`
+- `proc arr_first` signature `proc arr_first() -> int {` example `arr_first`
+- `proc arr_last` signature `proc arr_last() -> int {` example `arr_last`
+- `proc arr_contains` signature `proc arr_contains() -> int {` example `arr_contains`
+- `proc arr_index_of` signature `proc arr_index_of() -> int {` example `arr_index_of`
+- `proc arr_count` signature `proc arr_count() -> int {` example `arr_count`
+- `proc arr_last_index_of` signature `proc arr_last_index_of() -> int {` example `arr_last_index_of`
+- `proc arr_copy` signature `proc arr_copy() -> int {` example `arr_copy`
+- `proc arr_append` signature `proc arr_append() -> int {` example `arr_append`
+- `proc arr_prepend` signature `proc arr_prepend() -> int {` example `arr_prepend`
+- `proc arr_concat` signature `proc arr_concat() -> int {` example `arr_concat`
+- `proc arr_push` signature `proc arr_push() -> int {` example `arr_push`
+- `proc arr_set` signature `proc arr_set() -> int {` example `arr_set`
+- `proc arr_swap` signature `proc arr_swap() -> int {` example `arr_swap`
+- `proc arr_clear` signature `proc arr_clear() -> int {` example `arr_clear`
+- `proc arr_pop` signature `proc arr_pop() -> int {` example `arr_pop`
+- `proc arr_pop_at` signature `proc arr_pop_at() -> int {` example `arr_pop_at`
+- `proc arr_insert` signature `proc arr_insert() -> int {` example `arr_insert`
+- `proc arr_remove_at` signature `proc arr_remove_at() -> int {` example `arr_remove_at`
+- `proc arr_repeat` signature `proc arr_repeat() -> int {` example `arr_repeat`
+- `proc arr_fill` signature `proc arr_fill() -> int {` example `arr_fill`
+- `proc arr_reverse` signature `proc arr_reverse() -> int {` example `arr_reverse`
+- `proc arr_sum` signature `proc arr_sum() -> int {` example `arr_sum`
+- `proc arr_min` signature `proc arr_min() -> int {` example `arr_min`
+- `proc arr_max` signature `proc arr_max() -> int {` example `arr_max`
+- `proc arr_mean` signature `proc arr_mean() -> int {` example `arr_mean`
+- `proc arr_mean_scaled` signature `proc arr_mean_scaled() -> int {` example `arr_mean_scaled`
+- `proc arr_range` signature `proc arr_range() -> int {` example `arr_range`
+- `proc arr_sum_abs` signature `proc arr_sum_abs() -> int {` example `arr_sum_abs`
+- `proc arr_product` signature `proc arr_product() -> int {` example `arr_product`
+- `proc arr_any` signature `proc arr_any() -> int {` example `arr_any`
+- `proc arr_all` signature `proc arr_all() -> int {` example `arr_all`
+- `proc arr_count_nonzero` signature `proc arr_count_nonzero() -> int {` example `arr_count_nonzero`
+- `proc arr_prefix_sum` signature `proc arr_prefix_sum() -> int {` example `arr_prefix_sum`
+- `proc arr_prefix_min` signature `proc arr_prefix_min() -> int {` example `arr_prefix_min`
+- `proc arr_prefix_max` signature `proc arr_prefix_max() -> int {` example `arr_prefix_max`
+- `proc arr_take` signature `proc arr_take() -> int {` example `arr_take`
+- `proc arr_drop` signature `proc arr_drop() -> int {` example `arr_drop`
+- `proc arr_head` signature `proc arr_head() -> int {` example `arr_head`
+- `proc arr_tail` signature `proc arr_tail() -> int {` example `arr_tail`
+- `proc arr_slice` signature `proc arr_slice() -> int {` example `arr_slice`
+- `proc arr_rotate_left` signature `proc arr_rotate_left() -> int {` example `arr_rotate_left`
+- `proc arr_rotate_right` signature `proc arr_rotate_right() -> int {` example `arr_rotate_right`
+- `proc arr_replace_slice` signature `proc arr_replace_slice() -> int {` example `arr_replace_slice`
+- `proc arr_splice` signature `proc arr_splice() -> int {` example `arr_splice`
+- `proc arr_rotate` signature `proc arr_rotate() -> int {` example `arr_rotate`
+- `proc arr_enumerate` signature `proc arr_enumerate() -> int {` example `arr_enumerate`
+- `proc arr_zip` signature `proc arr_zip() -> int {` example `arr_zip`
+- `proc arr_chunks` signature `proc arr_chunks() -> int {` example `arr_chunks`
+- `proc arr_clamp_each` signature `proc arr_clamp_each() -> int {` example `arr_clamp_each`
+- `proc arr_get` signature `proc arr_get() -> int {` example `arr_get`
+- `proc arr_stats` signature `proc arr_stats() -> int {` example `arr_stats`
+- `proc arr_sort_simple` signature `proc arr_sort_simple() -> int {` example `arr_sort_simple`
+- `proc arr_median_floor` signature `proc arr_median_floor() -> int {` example `arr_median_floor`
+- `proc arr_variance_scaled` signature `proc arr_variance_scaled() -> int {` example `arr_variance_scaled`
+- `proc arr_stddev_floor` signature `proc arr_stddev_floor() -> int {` example `arr_stddev_floor`
+- `proc permutations` signature `proc permutations() -> int {` example `permutations`
+- `proc combinations` signature `proc combinations() -> int {` example `combinations`
+- `proc probability_percent` signature `proc probability_percent() -> int {` example `probability_percent`
+- `proc odds_ratio` signature `proc odds_ratio() -> int {` example `odds_ratio`
+- `proc pairings` signature `proc pairings() -> int {` example `pairings`
+- `proc percent` signature `proc percent() -> int {` example `percent`
+- `proc percent_scaled` signature `proc percent_scaled() -> int {` example `percent_scaled`
+- `proc arithmetic_term` signature `proc arithmetic_term() -> int {` example `arithmetic_term`
+- `proc arithmetic_sum` signature `proc arithmetic_sum() -> int {` example `arithmetic_sum`
+- `proc geometric_term` signature `proc geometric_term() -> int {` example `geometric_term`
+- `proc triangular_term` signature `proc triangular_term() -> int {` example `triangular_term`
+- `proc fibonacci_term` signature `proc fibonacci_term() -> int {` example `fibonacci_term`
+- `proc finite_difference` signature `proc finite_difference() -> int {` example `finite_difference`
+- `proc slope_between` signature `proc slope_between() -> int {` example `slope_between`
+- `proc derivative_at_int` signature `proc derivative_at_int() -> int {` example `derivative_at_int`
+- `proc normalize_degrees` signature `proc normalize_degrees() -> int {` example `normalize_degrees`
+- `proc opposite_angle` signature `proc opposite_angle() -> int {` example `opposite_angle`
+- `proc complement_angle` signature `proc complement_angle() -> int {` example `complement_angle`
+- `proc supplement_angle` signature `proc supplement_angle() -> int {` example `supplement_angle`
+- `proc quadrant` signature `proc quadrant() -> int {` example `quadrant`
+- `proc is_right_angle` signature `proc is_right_angle() -> int {` example `is_right_angle`
+- `proc is_straight_angle` signature `proc is_straight_angle() -> int {` example `is_straight_angle`
+- `proc degrees_to_radians` signature `proc degrees_to_radians() -> int {` example `degrees_to_radians`
+- `proc radians_to_degrees` signature `proc radians_to_degrees() -> int {` example `radians_to_degrees`
+- `proc sin` signature `proc sin() -> int {` example `sin`
+- `proc cos` signature `proc cos() -> int {` example `cos`
+- `proc tan` signature `proc tan() -> int {` example `tan`
+- `proc asin` signature `proc asin() -> int {` example `asin`
+- `proc acos` signature `proc acos() -> int {` example `acos`
+- `proc atan` signature `proc atan() -> int {` example `atan`
+- `proc atan2` signature `proc atan2() -> int {` example `atan2`
+- `proc sinh` signature `proc sinh() -> int {` example `sinh`
+- `proc cosh` signature `proc cosh() -> int {` example `cosh`
+- `proc tanh` signature `proc tanh() -> int {` example `tanh`
+- `proc asinh` signature `proc asinh() -> int {` example `asinh`
+- `proc acosh` signature `proc acosh() -> int {` example `acosh`
+- `proc atanh` signature `proc atanh() -> int {` example `atanh`
+- `proc exp` signature `proc exp() -> int {` example `exp`
+- `proc log` signature `proc log() -> int {` example `log`
+- `proc log10` signature `proc log10() -> int {` example `log10`
+- `proc pow` signature `proc pow() -> int {` example `pow`
+- `proc sqrt` signature `proc sqrt() -> int {` example `sqrt`
+- `proc fabs` signature `proc fabs() -> int {` example `fabs`
+- `proc fmod` signature `proc fmod() -> int {` example `fmod`
+- `proc ceil` signature `proc ceil() -> int {` example `ceil`
+- `proc floor` signature `proc floor() -> int {` example `floor`
+- `proc round_f64` signature `proc round_f64() -> int {` example `round_f64`
+- `proc trunc_f64` signature `proc trunc_f64() -> int {` example `trunc_f64`
+- `proc fract_f64` signature `proc fract_f64() -> int {` example `fract_f64`
+- `proc clamp_f64` signature `proc clamp_f64() -> int {` example `clamp_f64`
+- `proc min_f64` signature `proc min_f64() -> int {` example `min_f64`
+- `proc max_f64` signature `proc max_f64() -> int {` example `max_f64`
+- `proc lerp_f64` signature `proc lerp_f64() -> int {` example `lerp_f64`
+- `proc smoothstep_f64` signature `proc smoothstep_f64() -> int {` example `smoothstep_f64`
+- `proc is_nan` signature `proc is_nan() -> int {` example `is_nan`
+- `proc is_infinite` signature `proc is_infinite() -> int {` example `is_infinite`
+- `proc is_finite` signature `proc is_finite() -> int {` example `is_finite`
+- `proc math_ready` signature `proc math_ready() -> int {` example `math_ready`
+- `proc math_health` signature `proc math_health() -> int {` example `math_health`
+- `proc math_summary` signature `proc math_summary() -> int {` example `math_summary`
+- `proc math_domains` signature `proc math_domains() -> int {` example `math_domains`
+- `proc library_meta` signature `proc library_meta() -> int {` example `library_meta`
+- `proc math_selftest` signature `proc math_selftest() -> int {` example `math_selftest`
+- `proc stdlib_smoke_1` signature `proc stdlib_smoke_1() -> int {` example `stdlib_smoke_1`
+- `proc stdlib_smoke_2` signature `proc stdlib_smoke_2() -> int {` example `stdlib_smoke_2`
+- `proc stdlib_smoke_3` signature `proc stdlib_smoke_3() -> int {` example `stdlib_smoke_3`
+- `proc stdlib_smoke_4` signature `proc stdlib_smoke_4() -> int {` example `stdlib_smoke_4`
+- `proc stdlib_smoke_5` signature `proc stdlib_smoke_5() -> int {` example `stdlib_smoke_5`
 
 ## `src/vitte/stdlib/strings.vitl`
 
-- `form StringLibraryManifest`
-- `form StringLibraryHealth`
-- `form StringLibrarySummary`
-- `form StringBuilder`
-- `form StringBuilderReport`
-- `proc sb_new`
-- `proc sb_append`
-- `proc sb_append_char`
-- `proc sb_append_int`
-- `proc sb_insert`
-- `proc sb_delete`
-- `proc sb_replace`
-- `proc sb_to_string`
-- `proc sb_clear`
-- `proc sb_length`
-- `proc sb_version`
-- `proc sb_ready`
-- `proc sb_report`
-- `proc sb_selftest`
-- `proc strings_version`
-- `proc strings_name`
-- `proc strings_module_count`
-- `proc strings_modules`
-- `proc strings_manifest`
-- `proc strings_ready`
-- `proc strings_health`
-- `proc strings_summary`
-- `proc strings_selftest`
-- `form StringNormalizeReport`
-- `form StringFormatReport`
-- `form StringSearchReport`
-- `form StringTokenizeReport`
-- `form StringUnicodeReport`
-- `form StringMetricsReport`
-- `form StringTemplateReport`
-- `form StringPredicateReport`
-- `form StringTransformReport`
-- `form StringAsciiReport`
-- `form StringWhitespaceReport`
-- `form StringLocaleReport`
-- `form StringPatternReport`
-- `form StringInflectionReport`
-- `proc str_starts_with`
-- `proc str_ends_with`
-- `proc str_contains`
-- `proc str_index_of`
-- `proc str_last_index_of`
-- `proc str_substring`
-- `proc str_split`
-- `proc str_split_limit`
-- `proc str_join`
-- `proc str_repeat`
-- `proc str_reverse`
-- `proc str_pad_left`
-- `proc str_pad_right`
-- `proc str_center`
-- `proc str_indent`
-- `proc str_dedent`
-- `proc str_uppercase`
-- `proc str_lowercase`
-- `proc str_title_case`
-- `proc str_capitalize`
-- `proc str_swap_case`
-- `proc str_trim`
-- `proc str_trim_left`
-- `proc str_trim_right`
-- `proc str_trim_chars`
-- `proc str_equals`
-- `proc str_equals_ignore_case`
-- `proc str_compare`
-- `proc str_levenshtein_distance`
-- `proc str_escape`
-- `proc str_unescape`
-- `proc str_escape_quotes`
-- `proc str_escape_newlines`
-- `proc str_format`
-- `proc str_interpolate`
-- `proc is_digit`
-- `proc is_alpha`
-- `proc is_alnum`
-- `proc is_space`
-- `proc is_upper`
-- `proc is_lower`
-- `proc is_punct`
-- `proc str_replace`
-- `proc str_replace_all`
-- `proc str_remove_prefix`
-- `proc str_remove_suffix`
-- `proc str_normalize_whitespace`
-- `proc str_slug`
-- `proc str_snake_case`
-- `proc str_kebab_case`
-- `proc str_camel_case`
-- `proc str_pascal_case`
-- `proc str_wrap`
-- `proc str_lines`
-- `proc str_words`
-- `proc str_tokens`
-- `proc str_count`
-- `proc str_is_empty`
-- `proc str_is_blank`
-- `proc str_ascii_only`
-- `proc str_repeat_char`
-- `proc str_center_text`
-- `proc str_truncate`
-- `proc str_head`
-- `proc str_tail`
-- `proc str_normalize_report`
-- `proc str_format_report`
-- `proc str_search_report`
-- `proc str_tokenize_report`
-- `proc strings_max_report`
-- `proc str_ascii_strip`
-- `proc str_ascii_only_text`
-- `proc str_whitespace_collapse`
-- `proc str_whitespace_trim_lines`
-- `proc str_locale_normalize`
-- `proc str_locale_compare`
-- `proc str_pattern_match`
-- `proc str_pattern_replace`
-- `proc str_pattern_find`
-- `proc str_pluralize`
-- `proc str_singularize`
-- `proc str_inflect_count`
-- `proc str_ascii_report`
-- `proc str_whitespace_report`
-- `proc str_locale_report`
-- `proc str_pattern_report`
-- `proc str_inflection_report`
-- `proc str_unicode_normalize`
-- `proc str_unicode_fold`
-- `proc str_unicode_strip_accents`
-- `proc str_length`
-- `proc str_word_count`
-- `proc str_line_count`
-- `proc str_template_apply`
-- `proc str_template_render`
-- `proc str_template_expand`
-- `proc str_is_empty_report`
-- `proc str_transform_upper`
-- `proc str_transform_lower`
-- `proc str_transform_title`
-- `proc str_transform_slug`
-- `proc str_transform_snake`
-- `proc str_transform_kebab`
-- `proc str_transform_report`
-- `proc string_report`
+- `form StringLibraryManifest` signature `form StringLibraryManifest {` example `StringLibraryManifest`
+- `form StringLibraryHealth` signature `form StringLibraryHealth {` example `StringLibraryHealth`
+- `form StringLibrarySummary` signature `form StringLibrarySummary {` example `StringLibrarySummary`
+- `form StringBuilder` signature `form StringBuilder {` example `StringBuilder`
+- `form StringBuilderReport` signature `form StringBuilderReport {` example `StringBuilderReport`
+- `proc sb_new` signature `proc sb_new(capacity: i32) -> StringBuilder {` example `sb_new`
+- `proc sb_append` signature `proc sb_append(sb: StringBuilder, text_value: string) -> int {` example `sb_append`
+- `proc sb_append_char` signature `proc sb_append_char(sb: StringBuilder, ch: i32) -> int {` example `sb_append_char`
+- `proc sb_append_int` signature `proc sb_append_int(sb: StringBuilder, value: i32) -> int {` example `sb_append_int`
+- `proc sb_insert` signature `proc sb_insert(sb: StringBuilder, index: i32, text_value: string) -> int {` example `sb_insert`
+- `proc sb_delete` signature `proc sb_delete(sb: StringBuilder, start: i32, end: i32) -> int {` example `sb_delete`
+- `proc sb_replace` signature `proc sb_replace(sb: StringBuilder, oldstr: string, newstr: string) -> int {` example `sb_replace`
+- `proc sb_to_string` signature `proc sb_to_string(sb: StringBuilder) -> string {` example `sb_to_string`
+- `proc sb_clear` signature `proc sb_clear(sb: StringBuilder) {` example `sb_clear`
+- `proc sb_length` signature `proc sb_length(sb: StringBuilder) -> i32 {` example `sb_length`
+- `proc sb_version` signature `proc sb_version() -> string {` example `sb_version`
+- `proc sb_ready` signature `proc sb_ready() -> bool {` example `sb_ready`
+- `proc sb_report` signature `proc sb_report(sb: StringBuilder) -> StringBuilderReport {` example `sb_report`
+- `proc sb_selftest` signature `proc sb_selftest() -> bool {` example `sb_selftest`
+- `proc strings_version` signature `proc strings_version() -> string {` example `strings_version`
+- `proc strings_name` signature `proc strings_name() -> string {` example `strings_name`
+- `proc strings_module_count` signature `proc strings_module_count() -> i32 {` example `strings_module_count`
+- `proc strings_modules` signature `proc strings_modules() -> [string] {` example `strings_modules`
+- `proc strings_manifest` signature `proc strings_manifest() -> StringLibraryManifest {` example `strings_manifest`
+- `proc strings_ready` signature `proc strings_ready() -> bool {` example `strings_ready`
+- `proc strings_health` signature `proc strings_health() -> StringLibraryHealth {` example `strings_health`
+- `proc strings_summary` signature `proc strings_summary() -> StringLibrarySummary {` example `strings_summary`
+- `proc strings_selftest` signature `proc strings_selftest() -> bool {` example `strings_selftest`
+- `form StringNormalizeReport` signature `form StringNormalizeReport {` example `StringNormalizeReport`
+- `form StringFormatReport` signature `form StringFormatReport {` example `StringFormatReport`
+- `form StringSearchReport` signature `form StringSearchReport {` example `StringSearchReport`
+- `form StringTokenizeReport` signature `form StringTokenizeReport {` example `StringTokenizeReport`
+- `form StringUnicodeReport` signature `form StringUnicodeReport {` example `StringUnicodeReport`
+- `form StringMetricsReport` signature `form StringMetricsReport {` example `StringMetricsReport`
+- `form StringTemplateReport` signature `form StringTemplateReport {` example `StringTemplateReport`
+- `form StringPredicateReport` signature `form StringPredicateReport {` example `StringPredicateReport`
+- `form StringTransformReport` signature `form StringTransformReport {` example `StringTransformReport`
+- `form StringAsciiReport` signature `form StringAsciiReport {` example `StringAsciiReport`
+- `form StringWhitespaceReport` signature `form StringWhitespaceReport {` example `StringWhitespaceReport`
+- `form StringLocaleReport` signature `form StringLocaleReport {` example `StringLocaleReport`
+- `form StringPatternReport` signature `form StringPatternReport {` example `StringPatternReport`
+- `form StringInflectionReport` signature `form StringInflectionReport {` example `StringInflectionReport`
+- `proc str_starts_with` signature `proc str_starts_with(text_value: string, prefix: string) -> int {` example `str_starts_with`
+- `proc str_ends_with` signature `proc str_ends_with(text_value: string, suffix: string) -> int {` example `str_ends_with`
+- `proc str_contains` signature `proc str_contains(text_value: string, substr: string) -> int {` example `str_contains`
+- `proc str_index_of` signature `proc str_index_of(text_value: string, substr: string) -> i32 {` example `str_index_of`
+- `proc str_last_index_of` signature `proc str_last_index_of(text_value: string, substr: string) -> i32 {` example `str_last_index_of`
+- `proc str_substring` signature `proc str_substring(text_value: string, start: i32, end: i32) -> string {` example `str_substring`
+- `proc str_split` signature `proc str_split(text_value: string, delimiter: string) -> [string] {` example `str_split`
+- `proc str_split_limit` signature `proc str_split_limit(text_value: string, delimiter: string, limit: i32) -> [string] {` example `str_split_limit`
+- `proc str_join` signature `proc str_join(parts: [string], delimiter: string) -> string {` example `str_join`
+- `proc str_repeat` signature `proc str_repeat(text_value: string, count: i32) -> string {` example `str_repeat`
+- `proc str_reverse` signature `proc str_reverse(text_value: string) -> string {` example `str_reverse`
+- `proc str_pad_left` signature `proc str_pad_left(text_value: string, width: i32, padchar: i32) -> string {` example `str_pad_left`
+- `proc str_pad_right` signature `proc str_pad_right(text_value: string, width: i32, padchar: i32) -> string {` example `str_pad_right`
+- `proc str_center` signature `proc str_center(text_value: string, width: i32, padchar: i32) -> string {` example `str_center`
+- `proc str_indent` signature `proc str_indent(text_value: string, spaces: i32) -> string {` example `str_indent`
+- `proc str_dedent` signature `proc str_dedent(text_value: string) -> string {` example `str_dedent`
+- `proc str_uppercase` signature `proc str_uppercase(text_value: string) -> string {` example `str_uppercase`
+- `proc str_lowercase` signature `proc str_lowercase(text_value: string) -> string {` example `str_lowercase`
+- `proc str_title_case` signature `proc str_title_case(text_value: string) -> string {` example `str_title_case`
+- `proc str_capitalize` signature `proc str_capitalize(text_value: string) -> string {` example `str_capitalize`
+- `proc str_swap_case` signature `proc str_swap_case(text_value: string) -> string {` example `str_swap_case`
+- `proc str_trim` signature `proc str_trim(text_value: string) -> string {` example `str_trim`
+- `proc str_trim_left` signature `proc str_trim_left(text_value: string) -> string {` example `str_trim_left`
+- `proc str_trim_right` signature `proc str_trim_right(text_value: string) -> string {` example `str_trim_right`
+- `proc str_trim_chars` signature `proc str_trim_chars(text_value: string, chars: string) -> string {` example `str_trim_chars`
+- `proc str_equals` signature `proc str_equals(str1: string, str2: string) -> int {` example `str_equals`
+- `proc str_equals_ignore_case` signature `proc str_equals_ignore_case(str1: string, str2: string) -> int {` example `str_equals_ignore_case`
+- `proc str_compare` signature `proc str_compare(str1: string, str2: string) -> int {` example `str_compare`
+- `proc str_levenshtein_distance` signature `proc str_levenshtein_distance(str1: string, str2: string) -> i32 {` example `str_levenshtein_distance`
+- `proc str_escape` signature `proc str_escape(text_value: string) -> string {` example `str_escape`
+- `proc str_unescape` signature `proc str_unescape(text_value: string) -> string {` example `str_unescape`
+- `proc str_escape_quotes` signature `proc str_escape_quotes(text_value: string) -> string {` example `str_escape_quotes`
+- `proc str_escape_newlines` signature `proc str_escape_newlines(text_value: string) -> string {` example `str_escape_newlines`
+- `proc str_format` signature `proc str_format(template: string, args: [string]) -> string {` example `str_format`
+- `proc str_interpolate` signature `proc str_interpolate(template: string) -> string {` example `str_interpolate`
+- `proc is_digit` signature `proc is_digit(ch: i32) -> int {` example `is_digit`
+- `proc is_alpha` signature `proc is_alpha(ch: i32) -> int {` example `is_alpha`
+- `proc is_alnum` signature `proc is_alnum(ch: i32) -> int {` example `is_alnum`
+- `proc is_space` signature `proc is_space(ch: i32) -> int {` example `is_space`
+- `proc is_upper` signature `proc is_upper(ch: i32) -> int {` example `is_upper`
+- `proc is_lower` signature `proc is_lower(ch: i32) -> int {` example `is_lower`
+- `proc is_punct` signature `proc is_punct(ch: i32) -> int {` example `is_punct`
+- `proc str_replace` signature `proc str_replace(text_value: string, oldstr: string, newstr: string) -> string {` example `str_replace`
+- `proc str_replace_all` signature `proc str_replace_all(text_value: string, oldstr: string, newstr: string) -> string {` example `str_replace_all`
+- `proc str_remove_prefix` signature `proc str_remove_prefix(text_value: string, prefix: string) -> string {` example `str_remove_prefix`
+- `proc str_remove_suffix` signature `proc str_remove_suffix(text_value: string, suffix: string) -> string {` example `str_remove_suffix`
+- `proc str_normalize_whitespace` signature `proc str_normalize_whitespace(text_value: string) -> string {` example `str_normalize_whitespace`
+- `proc str_slug` signature `proc str_slug(text_value: string) -> string {` example `str_slug`
+- `proc str_snake_case` signature `proc str_snake_case(text_value: string) -> string {` example `str_snake_case`
+- `proc str_kebab_case` signature `proc str_kebab_case(text_value: string) -> string {` example `str_kebab_case`
+- `proc str_camel_case` signature `proc str_camel_case(text_value: string) -> string {` example `str_camel_case`
+- `proc str_pascal_case` signature `proc str_pascal_case(text_value: string) -> string {` example `str_pascal_case`
+- `proc str_wrap` signature `proc str_wrap(text_value: string, width: i32) -> [string] {` example `str_wrap`
+- `proc str_lines` signature `proc str_lines(text_value: string) -> [string] {` example `str_lines`
+- `proc str_words` signature `proc str_words(text_value: string) -> [string] {` example `str_words`
+- `proc str_tokens` signature `proc str_tokens(text_value: string) -> [string] {` example `str_tokens`
+- `proc str_count` signature `proc str_count(text_value: string, needle: string) -> i32 {` example `str_count`
+- `proc str_is_empty` signature `proc str_is_empty(text_value: string) -> int {` example `str_is_empty`
+- `proc str_is_blank` signature `proc str_is_blank(text_value: string) -> int {` example `str_is_blank`
+- `proc str_ascii_only` signature `proc str_ascii_only(text_value: string) -> int {` example `str_ascii_only`
+- `proc str_repeat_char` signature `proc str_repeat_char(ch: i32, count: i32) -> string {` example `str_repeat_char`
+- `proc str_center_text` signature `proc str_center_text(text_value: string, width: i32) -> string {` example `str_center_text`
+- `proc str_truncate` signature `proc str_truncate(text_value: string, width: i32) -> string {` example `str_truncate`
+- `proc str_head` signature `proc str_head(text_value: string, count: i32) -> string {` example `str_head`
+- `proc str_tail` signature `proc str_tail(text_value: string, count: i32) -> string {` example `str_tail`
+- `proc str_normalize_report` signature `proc str_normalize_report(text_value: string) -> StringNormalizeReport {` example `str_normalize_report`
+- `proc str_format_report` signature `proc str_format_report(template: string) -> StringFormatReport {` example `str_format_report`
+- `proc str_search_report` signature `proc str_search_report(haystack: string, needle: string) -> StringSearchReport {` example `str_search_report`
+- `proc str_tokenize_report` signature `proc str_tokenize_report(text_value: string) -> StringTokenizeReport {` example `str_tokenize_report`
+- `proc strings_max_report` signature `proc strings_max_report() -> StringLibrarySummary {` example `strings_max_report`
+- `proc str_ascii_strip` signature `proc str_ascii_strip(text_value: string) -> string {` example `str_ascii_strip`
+- `proc str_ascii_only_text` signature `proc str_ascii_only_text(text_value: string) -> string {` example `str_ascii_only_text`
+- `proc str_whitespace_collapse` signature `proc str_whitespace_collapse(text_value: string) -> string {` example `str_whitespace_collapse`
+- `proc str_whitespace_trim_lines` signature `proc str_whitespace_trim_lines(text_value: string) -> string {` example `str_whitespace_trim_lines`
+- `proc str_locale_normalize` signature `proc str_locale_normalize(text_value: string) -> string {` example `str_locale_normalize`
+- `proc str_locale_compare` signature `proc str_locale_compare(str1: string, str2: string) -> i32 {` example `str_locale_compare`
+- `proc str_pattern_match` signature `proc str_pattern_match(text_value: string, pattern: string) -> int {` example `str_pattern_match`
+- `proc str_pattern_replace` signature `proc str_pattern_replace(text_value: string, pattern: string, replacement: string) -> string {` example `str_pattern_replace`
+- `proc str_pattern_find` signature `proc str_pattern_find(text_value: string, pattern: string) -> i32 {` example `str_pattern_find`
+- `proc str_pluralize` signature `proc str_pluralize(text_value: string) -> string {` example `str_pluralize`
+- `proc str_singularize` signature `proc str_singularize(text_value: string) -> string {` example `str_singularize`
+- `proc str_inflect_count` signature `proc str_inflect_count(word: string, count: i32) -> string {` example `str_inflect_count`
+- `proc str_ascii_report` signature `proc str_ascii_report(text_value: string) -> StringAsciiReport {` example `str_ascii_report`
+- `proc str_whitespace_report` signature `proc str_whitespace_report(text_value: string) -> StringWhitespaceReport {` example `str_whitespace_report`
+- `proc str_locale_report` signature `proc str_locale_report(text_value: string) -> StringLocaleReport {` example `str_locale_report`
+- `proc str_pattern_report` signature `proc str_pattern_report(text_value: string, pattern: string) -> StringPatternReport {` example `str_pattern_report`
+- `proc str_inflection_report` signature `proc str_inflection_report(text_value: string) -> StringInflectionReport {` example `str_inflection_report`
+- `proc str_unicode_normalize` signature `proc str_unicode_normalize(text_value: string) -> string {` example `str_unicode_normalize`
+- `proc str_unicode_fold` signature `proc str_unicode_fold(text_value: string) -> string {` example `str_unicode_fold`
+- `proc str_unicode_strip_accents` signature `proc str_unicode_strip_accents(text_value: string) -> string {` example `str_unicode_strip_accents`
+- `proc str_length` signature `proc str_length(text_value: string) -> i32 {` example `str_length`
+- `proc str_word_count` signature `proc str_word_count(text_value: string) -> i32 {` example `str_word_count`
+- `proc str_line_count` signature `proc str_line_count(text_value: string) -> i32 {` example `str_line_count`
+- `proc str_template_apply` signature `proc str_template_apply(template: string, data: [string]) -> string {` example `str_template_apply`
+- `proc str_template_render` signature `proc str_template_render(template: string) -> string {` example `str_template_render`
+- `proc str_template_expand` signature `proc str_template_expand(template: string) -> string {` example `str_template_expand`
+- `proc str_is_empty_report` signature `proc str_is_empty_report(text_value: string) -> StringPredicateReport {` example `str_is_empty_report`
+- `proc str_transform_upper` signature `proc str_transform_upper(text_value: string) -> string {` example `str_transform_upper`
+- `proc str_transform_lower` signature `proc str_transform_lower(text_value: string) -> string {` example `str_transform_lower`
+- `proc str_transform_title` signature `proc str_transform_title(text_value: string) -> string {` example `str_transform_title`
+- `proc str_transform_slug` signature `proc str_transform_slug(text_value: string) -> string {` example `str_transform_slug`
+- `proc str_transform_snake` signature `proc str_transform_snake(text_value: string) -> string {` example `str_transform_snake`
+- `proc str_transform_kebab` signature `proc str_transform_kebab(text_value: string) -> string {` example `str_transform_kebab`
+- `proc str_transform_report` signature `proc str_transform_report(text_value: string) -> StringTransformReport {` example `str_transform_report`
+- `proc string_report` signature `proc string_report() -> StringLibrarySummary {` example `string_report`
 
 ## `src/vitte/stdlib/encoding.vitl`
 
-- `proc base64_encode`
-- `proc base64_decode`
-- `proc base64_encode_url_safe`
-- `proc base64_decode_url_safe`
-- `proc hex_encode`
-- `proc hex_decode`
-- `proc hex_encode_uppercase`
-- `proc hex_encode_lowercase`
-- `proc url_encode`
-- `proc url_decode`
-- `proc url_encode_component`
-- `proc url_decode_component`
-- `proc url_query_escape`
-- `proc url_query_unescape`
-- `proc html_escape`
-- `proc html_unescape`
-- `proc xml_escape`
-- `proc xml_unescape`
-- `proc cdata_escape`
-- `proc utf8_encode`
-- `proc utf8_decode`
-- `proc utf8_is_valid`
-- `proc utf8_length`
-- `proc utf8_byte_length`
-- `proc utf8_char_at`
-- `proc utf8_substring`
-- `proc utf16_encode`
-- `proc utf16_decode`
-- `proc utf16_to_utf8`
-- `proc utf8_to_utf16`
-- `proc utf32_encode`
-- `proc utf32_decode`
-- `const UNICODE_NFC`
-- `const UNICODE_NFD`
-- `const UNICODE_NFKC`
-- `const UNICODE_NFKD`
-- `proc unicode_normalize`
-- `proc unicode_is_normalized`
-- `proc char_code_point`
-- `proc code_point_to_char`
-- `proc is_valid_code_point`
-- `proc upcase_unicode`
-- `proc downcase_unicode`
-- `proc title_case_unicode`
-- `proc has_bom`
-- `proc add_bom_utf8`
-- `proc add_bom_utf16`
-- `proc remove_bom`
-- `proc detect_encoding`
-- `proc detect_encoding_confidence`
-- `proc convert_encoding`
-- `proc punycode_encode`
-- `proc punycode_decode`
-- `proc quote_printable_encode`
-- `proc quote_printable_decode`
-- `proc uuencode`
-- `proc uudecode`
+- `proc base64_encode` signature `proc base64_encode(data: string) -> string {` example `base64_encode`
+- `proc base64_decode` signature `proc base64_decode(data: string) -> string {` example `base64_decode`
+- `proc base64_encode_url_safe` signature `proc base64_encode_url_safe(data: string) -> string {` example `base64_encode_url_safe`
+- `proc base64_decode_url_safe` signature `proc base64_decode_url_safe(data: string) -> string {` example `base64_decode_url_safe`
+- `proc hex_encode` signature `proc hex_encode(data: string) -> string {` example `hex_encode`
+- `proc hex_decode` signature `proc hex_decode(data: string) -> string {` example `hex_decode`
+- `proc hex_encode_uppercase` signature `proc hex_encode_uppercase(data: string) -> string {` example `hex_encode_uppercase`
+- `proc hex_encode_lowercase` signature `proc hex_encode_lowercase(data: string) -> string {` example `hex_encode_lowercase`
+- `proc url_encode` signature `proc url_encode(text_value: string) -> string {` example `url_encode`
+- `proc url_decode` signature `proc url_decode(text_value: string) -> string {` example `url_decode`
+- `proc url_encode_component` signature `proc url_encode_component(text_value: string) -> string {` example `url_encode_component`
+- `proc url_decode_component` signature `proc url_decode_component(text_value: string) -> string {` example `url_decode_component`
+- `proc url_query_escape` signature `proc url_query_escape(text_value: string) -> string {` example `url_query_escape`
+- `proc url_query_unescape` signature `proc url_query_unescape(text_value: string) -> string {` example `url_query_unescape`
+- `proc html_escape` signature `proc html_escape(text_value: string) -> string {` example `html_escape`
+- `proc html_unescape` signature `proc html_unescape(text_value: string) -> string {` example `html_unescape`
+- `proc xml_escape` signature `proc xml_escape(text_value: string) -> string {` example `xml_escape`
+- `proc xml_unescape` signature `proc xml_unescape(text_value: string) -> string {` example `xml_unescape`
+- `proc cdata_escape` signature `proc cdata_escape(text_value: string) -> string {` example `cdata_escape`
+- `proc utf8_encode` signature `proc utf8_encode(code_point: i32) -> string {` example `utf8_encode`
+- `proc utf8_decode` signature `proc utf8_decode(encoded: string) -> i32 {` example `utf8_decode`
+- `proc utf8_is_valid` signature `proc utf8_is_valid(text_value: string) -> int {` example `utf8_is_valid`
+- `proc utf8_length` signature `proc utf8_length(text_value: string) -> i32 {` example `utf8_length`
+- `proc utf8_byte_length` signature `proc utf8_byte_length(text_value: string) -> i32 {` example `utf8_byte_length`
+- `proc utf8_char_at` signature `proc utf8_char_at(text_value: string, index: i32) -> i32 {` example `utf8_char_at`
+- `proc utf8_substring` signature `proc utf8_substring(text_value: string, start: i32, end: i32) -> string {` example `utf8_substring`
+- `proc utf16_encode` signature `proc utf16_encode(code_point: i32) -> string {` example `utf16_encode`
+- `proc utf16_decode` signature `proc utf16_decode(encoded: string) -> i32 {` example `utf16_decode`
+- `proc utf16_to_utf8` signature `proc utf16_to_utf8(text_value: string) -> string {` example `utf16_to_utf8`
+- `proc utf8_to_utf16` signature `proc utf8_to_utf16(text_value: string) -> string {` example `utf8_to_utf16`
+- `proc utf32_encode` signature `proc utf32_encode(code_point: i32) -> string {` example `utf32_encode`
+- `proc utf32_decode` signature `proc utf32_decode(encoded: string) -> i32 {` example `utf32_decode`
+- `const UNICODE_NFC` signature `const UNICODE_NFC: i32 = 1` example `UNICODE_NFC`
+- `const UNICODE_NFD` signature `const UNICODE_NFD: i32 = 2` example `UNICODE_NFD`
+- `const UNICODE_NFKC` signature `const UNICODE_NFKC: i32 = 3` example `UNICODE_NFKC`
+- `const UNICODE_NFKD` signature `const UNICODE_NFKD: i32 = 4` example `UNICODE_NFKD`
+- `proc unicode_normalize` signature `proc unicode_normalize(text_value: string, normalization_form: i32) -> string {` example `unicode_normalize`
+- `proc unicode_is_normalized` signature `proc unicode_is_normalized(text_value: string, normalization_form: i32) -> int {` example `unicode_is_normalized`
+- `proc char_code_point` signature `proc char_code_point(ch: i32) -> i32 {` example `char_code_point`
+- `proc code_point_to_char` signature `proc code_point_to_char(code: i32) -> i32 {` example `code_point_to_char`
+- `proc is_valid_code_point` signature `proc is_valid_code_point(code: i32) -> int {` example `is_valid_code_point`
+- `proc upcase_unicode` signature `proc upcase_unicode(text_value: string) -> string {` example `upcase_unicode`
+- `proc downcase_unicode` signature `proc downcase_unicode(text_value: string) -> string {` example `downcase_unicode`
+- `proc title_case_unicode` signature `proc title_case_unicode(text_value: string) -> string {` example `title_case_unicode`
+- `proc has_bom` signature `proc has_bom(data: string) -> int {` example `has_bom`
+- `proc add_bom_utf8` signature `proc add_bom_utf8(text_value: string) -> string {` example `add_bom_utf8`
+- `proc add_bom_utf16` signature `proc add_bom_utf16(text_value: string) -> string {` example `add_bom_utf16`
+- `proc remove_bom` signature `proc remove_bom(text_value: string) -> string {` example `remove_bom`
+- `proc detect_encoding` signature `proc detect_encoding(data: string) -> string {` example `detect_encoding`
+- `proc detect_encoding_confidence` signature `proc detect_encoding_confidence(data: string) -> f64 {` example `detect_encoding_confidence`
+- `proc convert_encoding` signature `proc convert_encoding(data: string, from_enc: string, to_enc: string) -> string {` example `convert_encoding`
+- `proc punycode_encode` signature `proc punycode_encode(text_value: string) -> string {` example `punycode_encode`
+- `proc punycode_decode` signature `proc punycode_decode(text_value: string) -> string {` example `punycode_decode`
+- `proc quote_printable_encode` signature `proc quote_printable_encode(data: string) -> string {` example `quote_printable_encode`
+- `proc quote_printable_decode` signature `proc quote_printable_decode(data: string) -> string {` example `quote_printable_decode`
+- `proc uuencode` signature `proc uuencode(data: string) -> string {` example `uuencode`
+- `proc uudecode` signature `proc uudecode(data: string) -> string {` example `uudecode`
 
 ## `src/vitte/stdlib/json.vitl`
 
-- `pick JSONValue`
-- `form JSONParser`
-- `form JSONBuilder`
-- `form JsonLibraryManifest`
-- `form JsonLibraryHealth`
-- `form JsonLibrarySummary`
-- `form JsonLibraryReport`
-- `form JsonParseReport`
-- `form JsonStringifyReport`
-- `form JsonBuilderReport`
-- `form JsonSchemaReport`
-- `proc json_version`
-- `proc json_name`
-- `proc json_module_count`
-- `proc json_modules`
-- `proc json_manifest`
-- `proc json_ready`
-- `proc json_health`
-- `proc json_summary`
-- `proc json_selftest`
-- `proc json_report`
-- `proc json_parse`
-- `proc json_stringify`
-- `proc json_stringify_pretty`
-- `proc json_parse_object`
-- `proc json_parse_array`
-- `proc json_parse_string`
-- `proc json_parse_number`
-- `proc json_parse_bool`
-- `proc json_parse_null`
-- `proc json_builder_new`
-- `proc json_builder_append_null`
-- `proc json_builder_append_bool`
-- `proc json_builder_append_number`
-- `proc json_builder_append_string`
-- `proc json_builder_start_object`
-- `proc json_builder_end_object`
-- `proc json_builder_start_array`
-- `proc json_builder_end_array`
-- `proc json_builder_append_comma`
-- `proc json_builder_append_colon`
-- `proc json_builder_to_string`
-- `proc json_builder_clear`
-- `proc json_is_valid`
-- `proc json_format`
-- `proc json_minify`
-- `proc json_value_type`
-- `proc json_parse_report`
-- `proc json_stringify_report`
-- `proc json_builder_report`
-- `proc json_schema_report`
-- `proc json_max_report`
+- `pick JSONValue` signature `pick JSONValue {` example `JSONValue`
+- `form JSONParser` signature `form JSONParser {` example `JSONParser`
+- `form JSONBuilder` signature `form JSONBuilder {` example `JSONBuilder`
+- `form JsonLibraryManifest` signature `form JsonLibraryManifest {` example `JsonLibraryManifest`
+- `form JsonLibraryHealth` signature `form JsonLibraryHealth {` example `JsonLibraryHealth`
+- `form JsonLibrarySummary` signature `form JsonLibrarySummary {` example `JsonLibrarySummary`
+- `form JsonLibraryReport` signature `form JsonLibraryReport {` example `JsonLibraryReport`
+- `form JsonParseReport` signature `form JsonParseReport {` example `JsonParseReport`
+- `form JsonStringifyReport` signature `form JsonStringifyReport {` example `JsonStringifyReport`
+- `form JsonBuilderReport` signature `form JsonBuilderReport {` example `JsonBuilderReport`
+- `form JsonSchemaReport` signature `form JsonSchemaReport {` example `JsonSchemaReport`
+- `proc json_version` signature `proc json_version() -> string {` example `json_version`
+- `proc json_name` signature `proc json_name() -> string {` example `json_name`
+- `proc json_module_count` signature `proc json_module_count() -> i32 {` example `json_module_count`
+- `proc json_modules` signature `proc json_modules() -> [string] {` example `json_modules`
+- `proc json_manifest` signature `proc json_manifest() -> JsonLibraryManifest {` example `json_manifest`
+- `proc json_ready` signature `proc json_ready() -> bool {` example `json_ready`
+- `proc json_health` signature `proc json_health() -> JsonLibraryHealth {` example `json_health`
+- `proc json_summary` signature `proc json_summary() -> JsonLibrarySummary {` example `json_summary`
+- `proc json_selftest` signature `proc json_selftest() -> bool {` example `json_selftest`
+- `proc json_report` signature `proc json_report() -> JsonLibraryReport {` example `json_report`
+- `proc json_parse` signature `proc json_parse(text_value: string) -> JSONValue {` example `json_parse`
+- `proc json_stringify` signature `proc json_stringify(value: JSONValue) -> string {` example `json_stringify`
+- `proc json_stringify_pretty` signature `proc json_stringify_pretty(value: JSONValue, indent: i32) -> string {` example `json_stringify_pretty`
+- `proc json_parse_object` signature `proc json_parse_object(parser: JSONParser) -> [string] {` example `json_parse_object`
+- `proc json_parse_array` signature `proc json_parse_array(parser: JSONParser) -> [JSONValue] {` example `json_parse_array`
+- `proc json_parse_string` signature `proc json_parse_string(parser: JSONParser) -> string {` example `json_parse_string`
+- `proc json_parse_number` signature `proc json_parse_number(parser: JSONParser) -> f64 {` example `json_parse_number`
+- `proc json_parse_bool` signature `proc json_parse_bool(parser: JSONParser) -> int {` example `json_parse_bool`
+- `proc json_parse_null` signature `proc json_parse_null(parser: JSONParser) -> int {` example `json_parse_null`
+- `proc json_builder_new` signature `proc json_builder_new() -> JSONBuilder {` example `json_builder_new`
+- `proc json_builder_append_null` signature `proc json_builder_append_null(b: JSONBuilder) -> int {` example `json_builder_append_null`
+- `proc json_builder_append_bool` signature `proc json_builder_append_bool(b: JSONBuilder, value: int) -> int {` example `json_builder_append_bool`
+- `proc json_builder_append_number` signature `proc json_builder_append_number(b: JSONBuilder, value: f64) -> int {` example `json_builder_append_number`
+- `proc json_builder_append_string` signature `proc json_builder_append_string(b: JSONBuilder, value: string) -> int {` example `json_builder_append_string`
+- `proc json_builder_start_object` signature `proc json_builder_start_object(b: JSONBuilder) -> int {` example `json_builder_start_object`
+- `proc json_builder_end_object` signature `proc json_builder_end_object(b: JSONBuilder) -> int {` example `json_builder_end_object`
+- `proc json_builder_start_array` signature `proc json_builder_start_array(b: JSONBuilder) -> int {` example `json_builder_start_array`
+- `proc json_builder_end_array` signature `proc json_builder_end_array(b: JSONBuilder) -> int {` example `json_builder_end_array`
+- `proc json_builder_append_comma` signature `proc json_builder_append_comma(b: JSONBuilder) -> int {` example `json_builder_append_comma`
+- `proc json_builder_append_colon` signature `proc json_builder_append_colon(b: JSONBuilder) -> int {` example `json_builder_append_colon`
+- `proc json_builder_to_string` signature `proc json_builder_to_string(b: JSONBuilder) -> string {` example `json_builder_to_string`
+- `proc json_builder_clear` signature `proc json_builder_clear(b: JSONBuilder) {` example `json_builder_clear`
+- `proc json_is_valid` signature `proc json_is_valid(text_value: string) -> int {` example `json_is_valid`
+- `proc json_format` signature `proc json_format(text_value: string) -> string {` example `json_format`
+- `proc json_minify` signature `proc json_minify(text_value: string) -> string {` example `json_minify`
+- `proc json_value_type` signature `proc json_value_type(value: JSONValue) -> string {` example `json_value_type`
+- `proc json_parse_report` signature `proc json_parse_report(text_value: string) -> JsonParseReport {` example `json_parse_report`
+- `proc json_stringify_report` signature `proc json_stringify_report(value: JSONValue) -> JsonStringifyReport {` example `json_stringify_report`
+- `proc json_builder_report` signature `proc json_builder_report() -> JsonBuilderReport {` example `json_builder_report`
+- `proc json_schema_report` signature `proc json_schema_report() -> JsonSchemaReport {` example `json_schema_report`
+- `proc json_max_report` signature `proc json_max_report() -> JsonLibrarySummary {` example `json_max_report`
 
 ## `src/vitte/stdlib/crypto.vitl`
 
-- `form CryptoLibraryManifest`
-- `form CryptoLibraryHealth`
-- `form CryptoLibrarySummary`
-- `form CryptoLibraryReport`
-- `const SHA1_DIGEST_SIZE`
-- `const SHA256_DIGEST_SIZE`
-- `const SHA512_DIGEST_SIZE`
-- `const AES_ECB`
-- `const AES_CBC`
-- `const AES_CTR`
-- `const AES_GCM`
-- `const AES_128`
-- `const AES_192`
-- `const AES_256`
-- `form Hash`
-- `form HMAC`
-- `proc crypto_version`
-- `proc crypto_name`
-- `proc crypto_modules`
-- `proc crypto_module_count`
-- `proc crypto_manifest`
-- `proc crypto_ready`
-- `proc crypto_health`
-- `proc crypto_summary`
-- `proc crypto_report`
-- `proc md5`
-- `proc md5_hex`
-- `proc sha1`
-- `proc sha1_hex`
-- `proc sha256`
-- `proc sha256_hex`
-- `proc sha512`
-- `proc sha512_hex`
-- `proc sha3_256`
-- `proc sha3_256_hex`
-- `proc sha3_512`
-- `proc sha3_512_hex`
-- `proc blake2b`
-- `proc blake2b_hex`
-- `proc hash_new`
-- `proc hash_update`
-- `proc hash_final`
-- `proc hash_final_hex`
-- `proc hmac_new`
-- `proc hmac_update`
-- `proc hmac_final`
-- `proc hmac_final_hex`
-- `proc hash_compare`
-- `proc hash_file`
-- `proc hash_file_hex`
-- `proc random_bytes`
-- `proc random_bytes_hex`
-- `proc pbkdf2`
-- `proc bcrypt_hash`
-- `proc bcrypt_verify`
-- `proc crypt_encode_base64`
-- `proc crypt_decode_base64`
-- `proc crypt_encode_hex`
-- `proc crypt_decode_hex`
-- `proc crypto_selftest`
+- `form CryptoLibraryManifest` signature `form CryptoLibraryManifest {` example `CryptoLibraryManifest`
+- `form CryptoLibraryHealth` signature `form CryptoLibraryHealth {` example `CryptoLibraryHealth`
+- `form CryptoLibrarySummary` signature `form CryptoLibrarySummary {` example `CryptoLibrarySummary`
+- `form CryptoLibraryReport` signature `form CryptoLibraryReport {` example `CryptoLibraryReport`
+- `const SHA1_DIGEST_SIZE` signature `const SHA1_DIGEST_SIZE: i32 = 20` example `SHA1_DIGEST_SIZE`
+- `const SHA256_DIGEST_SIZE` signature `const SHA256_DIGEST_SIZE: i32 = 32` example `SHA256_DIGEST_SIZE`
+- `const SHA512_DIGEST_SIZE` signature `const SHA512_DIGEST_SIZE: i32 = 64` example `SHA512_DIGEST_SIZE`
+- `const AES_ECB` signature `const AES_ECB: i32 = 1` example `AES_ECB`
+- `const AES_CBC` signature `const AES_CBC: i32 = 2` example `AES_CBC`
+- `const AES_CTR` signature `const AES_CTR: i32 = 3` example `AES_CTR`
+- `const AES_GCM` signature `const AES_GCM: i32 = 4` example `AES_GCM`
+- `const AES_128` signature `const AES_128: i32 = 16` example `AES_128`
+- `const AES_192` signature `const AES_192: i32 = 24` example `AES_192`
+- `const AES_256` signature `const AES_256: i32 = 32` example `AES_256`
+- `form Hash` signature `form Hash {` example `Hash`
+- `form HMAC` signature `form HMAC {` example `HMAC`
+- `proc crypto_version` signature `proc crypto_version() -> string {` example `crypto_version`
+- `proc crypto_name` signature `proc crypto_name() -> string {` example `crypto_name`
+- `proc crypto_modules` signature `proc crypto_modules() -> [string] {` example `crypto_modules`
+- `proc crypto_module_count` signature `proc crypto_module_count() -> i32 {` example `crypto_module_count`
+- `proc crypto_manifest` signature `proc crypto_manifest() -> CryptoLibraryManifest {` example `crypto_manifest`
+- `proc crypto_ready` signature `proc crypto_ready() -> bool {` example `crypto_ready`
+- `proc crypto_health` signature `proc crypto_health() -> CryptoLibraryHealth {` example `crypto_health`
+- `proc crypto_summary` signature `proc crypto_summary() -> CryptoLibrarySummary {` example `crypto_summary`
+- `proc crypto_report` signature `proc crypto_report() -> CryptoLibraryReport {` example `crypto_report`
+- `proc md5` signature `proc md5(data: string) -> string {` example `md5`
+- `proc md5_hex` signature `proc md5_hex(data: string) -> string {` example `md5_hex`
+- `proc sha1` signature `proc sha1(data: string) -> string {` example `sha1`
+- `proc sha1_hex` signature `proc sha1_hex(data: string) -> string {` example `sha1_hex`
+- `proc sha256` signature `proc sha256(data: string) -> string {` example `sha256`
+- `proc sha256_hex` signature `proc sha256_hex(data: string) -> string {` example `sha256_hex`
+- `proc sha512` signature `proc sha512(data: string) -> string {` example `sha512`
+- `proc sha512_hex` signature `proc sha512_hex(data: string) -> string {` example `sha512_hex`
+- `proc sha3_256` signature `proc sha3_256(data: string) -> string {` example `sha3_256`
+- `proc sha3_256_hex` signature `proc sha3_256_hex(data: string) -> string {` example `sha3_256_hex`
+- `proc sha3_512` signature `proc sha3_512(data: string) -> string {` example `sha3_512`
+- `proc sha3_512_hex` signature `proc sha3_512_hex(data: string) -> string {` example `sha3_512_hex`
+- `proc blake2b` signature `proc blake2b(data: string, size: i32) -> string {` example `blake2b`
+- `proc blake2b_hex` signature `proc blake2b_hex(data: string, size: i32) -> string {` example `blake2b_hex`
+- `proc hash_new` signature `proc hash_new(algorithm: i32) -> Hash {` example `hash_new`
+- `proc hash_update` signature `proc hash_update(h: Hash, data: string) -> int {` example `hash_update`
+- `proc hash_final` signature `proc hash_final(h: Hash) -> string {` example `hash_final`
+- `proc hash_final_hex` signature `proc hash_final_hex(h: Hash) -> string {` example `hash_final_hex`
+- `proc hmac_new` signature `proc hmac_new(algorithm: i32, key: string) -> HMAC {` example `hmac_new`
+- `proc hmac_update` signature `proc hmac_update(h: HMAC, data: string) -> int {` example `hmac_update`
+- `proc hmac_final` signature `proc hmac_final(h: HMAC) -> string {` example `hmac_final`
+- `proc hmac_final_hex` signature `proc hmac_final_hex(h: HMAC) -> string {` example `hmac_final_hex`
+- `proc hash_compare` signature `proc hash_compare(hash1: string, hash2: string) -> int {` example `hash_compare`
+- `proc hash_file` signature `proc hash_file(filepath: string, algorithm: i32) -> string {` example `hash_file`
+- `proc hash_file_hex` signature `proc hash_file_hex(filepath: string, algorithm: i32) -> string {` example `hash_file_hex`
+- `proc random_bytes` signature `proc random_bytes(size: i32) -> string {` example `random_bytes`
+- `proc random_bytes_hex` signature `proc random_bytes_hex(size: i32) -> string {` example `random_bytes_hex`
+- `proc pbkdf2` signature `proc pbkdf2(password: string, salt: string, iterations: i32, length: i32) -> string {` example `pbkdf2`
+- `proc bcrypt_hash` signature `proc bcrypt_hash(password: string, rounds: i32) -> string {` example `bcrypt_hash`
+- `proc bcrypt_verify` signature `proc bcrypt_verify(password: string, hash: string) -> int {` example `bcrypt_verify`
+- `proc crypt_encode_base64` signature `proc crypt_encode_base64(data: string) -> string {` example `crypt_encode_base64`
+- `proc crypt_decode_base64` signature `proc crypt_decode_base64(data: string) -> string {` example `crypt_decode_base64`
+- `proc crypt_encode_hex` signature `proc crypt_encode_hex(data: string) -> string {` example `crypt_encode_hex`
+- `proc crypt_decode_hex` signature `proc crypt_decode_hex(data: string) -> string {` example `crypt_decode_hex`
+- `proc crypto_selftest` signature `proc crypto_selftest() -> bool {` example `crypto_selftest`
 
 ## `src/vitte/stdlib/compression.vitl`
 
-- `const Z_FAST_COMPRESSION`
-- `const Z_DEFAULT_COMPRESSION`
-- `const Z_BEST_COMPRESSION`
-- `const Z_DEFAULT_STRATEGY`
-- `const Z_FILTERED`
-- `const Z_HUFFMAN_ONLY`
-- `const Z_RLE`
-- `const ALGO_DEFLATE`
-- `const ALGO_GZIP`
-- `const ALGO_ZLIB`
-- `const ALGO_RLE`
-- `const ALGO_HUFFMAN`
-- `const ALGO_LZ77`
-- `const ALGO_BROTLI`
-- `const ERR_INVALID_ALGO`
-- `const ERR_INVALID_DATA`
-- `const ERR_EMPTY`
-- `form CompressionStats`
-- `form CompressionManifest`
-- `form CompressionHealth`
-- `form CompressionSummary`
-- `form Compressor`
-- `form Decompressor`
-- `pick CompressionResult`
-- `proc compression_version`
-- `proc compression_algorithms`
-- `proc compression_manifest`
-- `proc compression_ready`
-- `proc compression_health`
-- `proc compression_summary`
-- `proc _char_to_digit`
-- `proc _is_digit`
-- `proc _escape_marker`
-- `proc _unescape_marker`
-- `proc _parse_int`
-- `proc _read_run`
-- `proc compress_rle`
-- `proc decompress_rle`
-- `proc _wrap_algo`
-- `proc _unwrap_algo`
-- `proc _slice_text`
-- `proc compress_deflate`
-- `proc decompress_deflate`
-- `proc compress_gzip`
-- `proc decompress_gzip`
-- `proc compress_zlib`
-- `proc decompress_zlib`
-- `proc compress_huffman`
-- `proc decompress_huffman`
-- `proc compress_lz77`
-- `proc decompress_lz77`
-- `proc compress_brotli`
-- `proc decompress_brotli`
-- `proc compressor_new`
-- `proc compressor_set_strategy`
-- `proc compressor_set_algorithm`
-- `proc compressor_compress`
-- `proc compressor_flush`
-- `proc compressor_reset`
-- `proc decompressor_new`
-- `proc decompressor_set_algorithm`
-- `proc decompressor_decompress`
-- `proc decompressor_flush`
-- `proc decompressor_reset`
-- `proc compress`
-- `proc decompress`
-- `proc compress_ex`
-- `proc get_compression_ratio`
-- `proc estimate_compressed_size`
-- `proc get_best_compression_level`
-- `proc compression_selftest`
+- `const Z_FAST_COMPRESSION` signature `const Z_FAST_COMPRESSION: i32 = 1` example `Z_FAST_COMPRESSION`
+- `const Z_DEFAULT_COMPRESSION` signature `const Z_DEFAULT_COMPRESSION: i32 = 6` example `Z_DEFAULT_COMPRESSION`
+- `const Z_BEST_COMPRESSION` signature `const Z_BEST_COMPRESSION: i32 = 9` example `Z_BEST_COMPRESSION`
+- `const Z_DEFAULT_STRATEGY` signature `const Z_DEFAULT_STRATEGY: i32 = 0` example `Z_DEFAULT_STRATEGY`
+- `const Z_FILTERED` signature `const Z_FILTERED: i32 = 1` example `Z_FILTERED`
+- `const Z_HUFFMAN_ONLY` signature `const Z_HUFFMAN_ONLY: i32 = 2` example `Z_HUFFMAN_ONLY`
+- `const Z_RLE` signature `const Z_RLE: i32 = 3` example `Z_RLE`
+- `const ALGO_DEFLATE` signature `const ALGO_DEFLATE: i32 = 1` example `ALGO_DEFLATE`
+- `const ALGO_GZIP` signature `const ALGO_GZIP: i32 = 2` example `ALGO_GZIP`
+- `const ALGO_ZLIB` signature `const ALGO_ZLIB: i32 = 3` example `ALGO_ZLIB`
+- `const ALGO_RLE` signature `const ALGO_RLE: i32 = 4` example `ALGO_RLE`
+- `const ALGO_HUFFMAN` signature `const ALGO_HUFFMAN: i32 = 5` example `ALGO_HUFFMAN`
+- `const ALGO_LZ77` signature `const ALGO_LZ77: i32 = 6` example `ALGO_LZ77`
+- `const ALGO_BROTLI` signature `const ALGO_BROTLI: i32 = 7` example `ALGO_BROTLI`
+- `const ERR_INVALID_ALGO` signature `const ERR_INVALID_ALGO: i32 = -1` example `ERR_INVALID_ALGO`
+- `const ERR_INVALID_DATA` signature `const ERR_INVALID_DATA: i32 = -2` example `ERR_INVALID_DATA`
+- `const ERR_EMPTY` signature `const ERR_EMPTY: i32 = -3` example `ERR_EMPTY`
+- `form CompressionStats` signature `form CompressionStats {` example `CompressionStats`
+- `form CompressionManifest` signature `form CompressionManifest {` example `CompressionManifest`
+- `form CompressionHealth` signature `form CompressionHealth {` example `CompressionHealth`
+- `form CompressionSummary` signature `form CompressionSummary {` example `CompressionSummary`
+- `form Compressor` signature `form Compressor {` example `Compressor`
+- `form Decompressor` signature `form Decompressor {` example `Decompressor`
+- `pick CompressionResult` signature `pick CompressionResult {` example `CompressionResult`
+- `proc compression_version` signature `proc compression_version() -> string {` example `compression_version`
+- `proc compression_algorithms` signature `proc compression_algorithms() -> [string] {` example `compression_algorithms`
+- `proc compression_manifest` signature `proc compression_manifest() -> CompressionManifest {` example `compression_manifest`
+- `proc compression_ready` signature `proc compression_ready() -> bool {` example `compression_ready`
+- `proc compression_health` signature `proc compression_health() -> CompressionHealth {` example `compression_health`
+- `proc compression_summary` signature `proc compression_summary() -> CompressionSummary {` example `compression_summary`
+- `proc _char_to_digit` signature `proc _char_to_digit(ch: char) -> i32 {` example `_char_to_digit`
+- `proc _is_digit` signature `proc _is_digit(ch: char) -> bool {` example `_is_digit`
+- `proc _escape_marker` signature `proc _escape_marker(text: string) -> string {` example `_escape_marker`
+- `proc _unescape_marker` signature `proc _unescape_marker(text: string) -> string {` example `_unescape_marker`
+- `proc _parse_int` signature `proc _parse_int(text: string, start: i32, end: i32) -> i32 {` example `_parse_int`
+- `proc _read_run` signature `proc _read_run(text: string, index: i32) -> [i32] {` example `_read_run`
+- `proc compress_rle` signature `proc compress_rle(data: string) -> string {` example `compress_rle`
+- `proc decompress_rle` signature `proc decompress_rle(data: string) -> string {` example `decompress_rle`
+- `proc _wrap_algo` signature `proc _wrap_algo(tag: string, data: string, level: i32) -> string {` example `_wrap_algo`
+- `proc _unwrap_algo` signature `proc _unwrap_algo(tag: string, data: string) -> string {` example `_unwrap_algo`
+- `proc _slice_text` signature `proc _slice_text(text: string, start: i32, end: i32) -> string {` example `_slice_text`
+- `proc compress_deflate` signature `proc compress_deflate(data: string, level: i32) -> string {` example `compress_deflate`
+- `proc decompress_deflate` signature `proc decompress_deflate(data: string) -> string {` example `decompress_deflate`
+- `proc compress_gzip` signature `proc compress_gzip(data: string, level: i32) -> string {` example `compress_gzip`
+- `proc decompress_gzip` signature `proc decompress_gzip(data: string) -> string {` example `decompress_gzip`
+- `proc compress_zlib` signature `proc compress_zlib(data: string, level: i32) -> string {` example `compress_zlib`
+- `proc decompress_zlib` signature `proc decompress_zlib(data: string) -> string {` example `decompress_zlib`
+- `proc compress_huffman` signature `proc compress_huffman(data: string) -> string {` example `compress_huffman`
+- `proc decompress_huffman` signature `proc decompress_huffman(data: string) -> string {` example `decompress_huffman`
+- `proc compress_lz77` signature `proc compress_lz77(data: string) -> string {` example `compress_lz77`
+- `proc decompress_lz77` signature `proc decompress_lz77(data: string) -> string {` example `decompress_lz77`
+- `proc compress_brotli` signature `proc compress_brotli(data: string, level: i32) -> string {` example `compress_brotli`
+- `proc decompress_brotli` signature `proc decompress_brotli(data: string) -> string {` example `decompress_brotli`
+- `proc compressor_new` signature `proc compressor_new(level: i32) -> Compressor {` example `compressor_new`
+- `proc compressor_set_strategy` signature `proc compressor_set_strategy(c: Compressor, strategy: i32) -> int {` example `compressor_set_strategy`
+- `proc compressor_set_algorithm` signature `proc compressor_set_algorithm(c: Compressor, algorithm: i32) -> int {` example `compressor_set_algorithm`
+- `proc compressor_compress` signature `proc compressor_compress(c: Compressor, data: string) -> string {` example `compressor_compress`
+- `proc compressor_flush` signature `proc compressor_flush(c: Compressor) -> string {` example `compressor_flush`
+- `proc compressor_reset` signature `proc compressor_reset(c: Compressor) -> int {` example `compressor_reset`
+- `proc decompressor_new` signature `proc decompressor_new() -> Decompressor {` example `decompressor_new`
+- `proc decompressor_set_algorithm` signature `proc decompressor_set_algorithm(d: Decompressor, algorithm: i32) -> int {` example `decompressor_set_algorithm`
+- `proc decompressor_decompress` signature `proc decompressor_decompress(d: Decompressor, data: string) -> string {` example `decompressor_decompress`
+- `proc decompressor_flush` signature `proc decompressor_flush(d: Decompressor) -> string {` example `decompressor_flush`
+- `proc decompressor_reset` signature `proc decompressor_reset(d: Decompressor) -> int {` example `decompressor_reset`
+- `proc compress` signature `proc compress(data: string, algo: i32, level: i32) -> string {` example `compress`
+- `proc decompress` signature `proc decompress(data: string, algo: i32) -> string {` example `decompress`
+- `proc compress_ex` signature `proc compress_ex(data: string, algo: i32, level: i32, strategy: i32) -> string {` example `compress_ex`
+- `proc get_compression_ratio` signature `proc get_compression_ratio(original_size: i64, compressed_size: i64) -> f64 {` example `get_compression_ratio`
+- `proc estimate_compressed_size` signature `proc estimate_compressed_size(data: string) -> i64 {` example `estimate_compressed_size`
+- `proc get_best_compression_level` signature `proc get_best_compression_level(data: string) -> i32 {` example `get_best_compression_level`
+- `proc compression_selftest` signature `proc compression_selftest() -> bool {` example `compression_selftest`
 
 ## `src/vitte/stdlib/regex.vitl`
 
-- `form Regex`
-- `form Match`
-- `form MatchResult`
-- `form RegexLibraryManifest`
-- `form RegexLibraryHealth`
-- `form RegexLibrarySummary`
-- `form RegexParseReport`
-- `form RegexMatchReport`
-- `form RegexReplaceReport`
-- `proc regex_version`
-- `proc regex_name`
-- `proc regex_module_count`
-- `proc regex_modules`
-- `proc regex_manifest`
-- `proc regex_ready`
-- `proc regex_health`
-- `proc regex_summary`
-- `proc regex_selftest`
-- `proc regex_compile`
-- `proc regex_compile_flags`
-- `proc regex_is_valid`
-- `proc regex_match`
-- `proc regex_match_at`
-- `proc regex_find`
-- `proc regex_find_all`
-- `proc regex_get_group`
-- `proc regex_group_count`
-- `proc regex_replace`
-- `proc regex_replace_first`
-- `proc regex_replace_all`
-- `proc regex_split`
-- `proc regex_split_limit`
-- `proc regex_test`
-- `proc regex_test_at`
-- `proc regex_escape`
-- `proc regex_create_pattern`
-- `proc str_matches`
-- `proc str_matches_at`
-- `proc str_find_match`
-- `proc str_find_all_matches`
-- `proc str_replace_regex`
-- `proc str_split_regex`
-- `const REGEX_EMAIL`
-- `const REGEX_URL`
-- `const REGEX_IPV4`
-- `const REGEX_IPV6`
-- `const REGEX_PHONE`
-- `const REGEX_DATE`
-- `const REGEX_TIME`
-- `const REGEX_UUID`
-- `const REGEX_CREDIT_CARD`
-- `proc is_email`
-- `proc is_url`
-- `proc is_ipv4`
-- `proc is_ipv6`
-- `proc is_phone`
-- `proc is_date`
-- `proc is_time`
-- `proc is_uuid`
-- `proc regex_parse_report`
-- `proc regex_match_report`
-- `proc regex_replace_report`
+- `form Regex` signature `form Regex {` example `Regex`
+- `form Match` signature `form Match {` example `Match`
+- `form MatchResult` signature `form MatchResult {` example `MatchResult`
+- `form RegexLibraryManifest` signature `form RegexLibraryManifest {` example `RegexLibraryManifest`
+- `form RegexLibraryHealth` signature `form RegexLibraryHealth {` example `RegexLibraryHealth`
+- `form RegexLibrarySummary` signature `form RegexLibrarySummary {` example `RegexLibrarySummary`
+- `form RegexParseReport` signature `form RegexParseReport {` example `RegexParseReport`
+- `form RegexMatchReport` signature `form RegexMatchReport {` example `RegexMatchReport`
+- `form RegexReplaceReport` signature `form RegexReplaceReport {` example `RegexReplaceReport`
+- `proc regex_version` signature `proc regex_version() -> string {` example `regex_version`
+- `proc regex_name` signature `proc regex_name() -> string {` example `regex_name`
+- `proc regex_module_count` signature `proc regex_module_count() -> i32 {` example `regex_module_count`
+- `proc regex_modules` signature `proc regex_modules() -> [string] {` example `regex_modules`
+- `proc regex_manifest` signature `proc regex_manifest() -> RegexLibraryManifest {` example `regex_manifest`
+- `proc regex_ready` signature `proc regex_ready() -> bool {` example `regex_ready`
+- `proc regex_health` signature `proc regex_health() -> RegexLibraryHealth {` example `regex_health`
+- `proc regex_summary` signature `proc regex_summary() -> RegexLibrarySummary {` example `regex_summary`
+- `proc regex_selftest` signature `proc regex_selftest() -> bool {` example `regex_selftest`
+- `proc regex_compile` signature `proc regex_compile(pattern: string) -> Regex {` example `regex_compile`
+- `proc regex_compile_flags` signature `proc regex_compile_flags(pattern: string, flag_bits: i32) -> Regex {` example `regex_compile_flags`
+- `proc regex_is_valid` signature `proc regex_is_valid(pattern: string) -> int {` example `regex_is_valid`
+- `proc regex_match` signature `proc regex_match(re: Regex, text_value: string) -> int {` example `regex_match`
+- `proc regex_match_at` signature `proc regex_match_at(re: Regex, text_value: string, pos: i32) -> int {` example `regex_match_at`
+- `proc regex_find` signature `proc regex_find(re: Regex, text_value: string) -> Match {` example `regex_find`
+- `proc regex_find_all` signature `proc regex_find_all(re: Regex, text_value: string) -> MatchResult {` example `regex_find_all`
+- `proc regex_get_group` signature `proc regex_get_group(m: Match, group: i32) -> string {` example `regex_get_group`
+- `proc regex_group_count` signature `proc regex_group_count(m: Match) -> i32 {` example `regex_group_count`
+- `proc regex_replace` signature `proc regex_replace(re: Regex, text_value: string, replacement: string) -> string {` example `regex_replace`
+- `proc regex_replace_first` signature `proc regex_replace_first(re: Regex, text_value: string, replacement: string) -> string {` example `regex_replace_first`
+- `proc regex_replace_all` signature `proc regex_replace_all(re: Regex, text_value: string, replacement: string) -> string {` example `regex_replace_all`
+- `proc regex_split` signature `proc regex_split(re: Regex, text_value: string) -> [string] {` example `regex_split`
+- `proc regex_split_limit` signature `proc regex_split_limit(re: Regex, text_value: string, limit: i32) -> [string] {` example `regex_split_limit`
+- `proc regex_test` signature `proc regex_test(re: Regex, text_value: string) -> int {` example `regex_test`
+- `proc regex_test_at` signature `proc regex_test_at(re: Regex, text_value: string, pos: i32) -> int {` example `regex_test_at`
+- `proc regex_escape` signature `proc regex_escape(text_value: string) -> string {` example `regex_escape`
+- `proc regex_create_pattern` signature `proc regex_create_pattern(parts: [string], separator: string) -> string {` example `regex_create_pattern`
+- `proc str_matches` signature `proc str_matches(text_value: string, pattern: string) -> int {` example `str_matches`
+- `proc str_matches_at` signature `proc str_matches_at(text_value: string, pattern: string, pos: i32) -> int {` example `str_matches_at`
+- `proc str_find_match` signature `proc str_find_match(text_value: string, pattern: string) -> Match {` example `str_find_match`
+- `proc str_find_all_matches` signature `proc str_find_all_matches(text_value: string, pattern: string) -> MatchResult {` example `str_find_all_matches`
+- `proc str_replace_regex` signature `proc str_replace_regex(text_value: string, pattern: string, replacement: string) -> string {` example `str_replace_regex`
+- `proc str_split_regex` signature `proc str_split_regex(text_value: string, pattern: string) -> [string] {` example `str_split_regex`
+- `const REGEX_EMAIL` signature `const REGEX_EMAIL: string = ""` example `REGEX_EMAIL`
+- `const REGEX_URL` signature `const REGEX_URL: string = ""` example `REGEX_URL`
+- `const REGEX_IPV4` signature `const REGEX_IPV4: string = ""` example `REGEX_IPV4`
+- `const REGEX_IPV6` signature `const REGEX_IPV6: string = ""` example `REGEX_IPV6`
+- `const REGEX_PHONE` signature `const REGEX_PHONE: string = ""` example `REGEX_PHONE`
+- `const REGEX_DATE` signature `const REGEX_DATE: string = ""` example `REGEX_DATE`
+- `const REGEX_TIME` signature `const REGEX_TIME: string = ""` example `REGEX_TIME`
+- `const REGEX_UUID` signature `const REGEX_UUID: string = ""` example `REGEX_UUID`
+- `const REGEX_CREDIT_CARD` signature `const REGEX_CREDIT_CARD: string = ""` example `REGEX_CREDIT_CARD`
+- `proc is_email` signature `proc is_email(text_value: string) -> int {` example `is_email`
+- `proc is_url` signature `proc is_url(text_value: string) -> int {` example `is_url`
+- `proc is_ipv4` signature `proc is_ipv4(text_value: string) -> int {` example `is_ipv4`
+- `proc is_ipv6` signature `proc is_ipv6(text_value: string) -> int {` example `is_ipv6`
+- `proc is_phone` signature `proc is_phone(text_value: string) -> int {` example `is_phone`
+- `proc is_date` signature `proc is_date(text_value: string) -> int {` example `is_date`
+- `proc is_time` signature `proc is_time(text_value: string) -> int {` example `is_time`
+- `proc is_uuid` signature `proc is_uuid(text_value: string) -> int {` example `is_uuid`
+- `proc regex_parse_report` signature `proc regex_parse_report(pattern: string) -> RegexParseReport {` example `regex_parse_report`
+- `proc regex_match_report` signature `proc regex_match_report(pattern: string, text: string) -> RegexMatchReport {` example `regex_match_report`
+- `proc regex_replace_report` signature `proc regex_replace_report(pattern: string, text: string) -> RegexReplaceReport {` example `regex_replace_report`
 
 ## `src/vitte/stdlib/io.vitl`
 
-- `const IO_VERSION`
-- `const EOF`
-- `const NULL_FD`
-- `const SEEK_SET`
-- `const SEEK_CUR`
-- `const SEEK_END`
-- `const IO_READ`
-- `const IO_WRITE`
-- `const IO_APPEND`
-- `const IO_CREATE`
-- `const IO_TRUNC`
-- `const IO_BINARY`
-- `const IO_TEXT`
-- `const READ`
-- `const WRITE`
-- `const APPEND`
-- `const READ_WRITE`
-- `const WRITE_READ`
-- `const APPEND_READ`
-- `const READ_BINARY`
-- `const WRITE_BINARY`
-- `const APPEND_BINARY`
-- `const _IOFBF`
-- `const _IOLBF`
-- `const _IONBF`
-- `const PATH_SEP`
-- `const EXT_SEP`
-- `const MAX_PATH`
-- `pick IoStatus`
-- `form IoResult`
-- `form File`
-- `form FileStat`
-- `form DirEntry`
-- `form Buffer`
-- `form TextReader`
-- `form TextWriter`
-- `form PathInfo`
-- `form IOLibraryManifest`
-- `form IOLibraryHealth`
-- `form IOLibrarySummary`
-- `proc io_ok`
-- `proc io_name`
-- `proc io_version`
-- `proc io_modules`
-- `proc io_module_count`
-- `proc io_manifest`
-- `proc io_health`
-- `proc io_summary`
-- `proc io_failed`
-- `proc null_file`
-- `proc stdin_file`
-- `proc stdout_file`
-- `proc stderr_file`
-- `proc file_is_open`
-- `proc file_can_read`
-- `proc file_can_write`
-- `proc mode_readable`
-- `proc mode_writable`
-- `proc mode_append`
-- `proc mode_binary`
-- `proc fopen`
-- `proc freopen`
-- `proc fclose`
-- `proc fflush`
-- `proc ferror`
-- `proc feof`
-- `proc clearerr`
-- `proc rewind`
-- `proc fseek`
-- `proc ftell`
-- `proc fgetpos`
-- `proc fsetpos`
-- `proc fread`
-- `proc fwrite`
-- `proc fgetc`
-- `proc getc`
-- `proc getchar`
-- `proc fputc`
-- `proc putc`
-- `proc putchar`
-- `proc ungetc`
-- `proc fgets`
-- `proc gets`
-- `proc fputs`
-- `proc puts`
-- `proc print`
-- `proc println`
-- `proc eprint`
-- `proc eprintln`
-- `proc emit_string`
-- `proc print_int`
-- `proc println_int`
-- `proc print_float`
-- `proc println_float`
-- `proc print_bool`
-- `proc println_bool`
-- `proc printf`
-- `proc fprintf`
-- `proc sprintf`
-- `proc snprintf`
-- `proc scanf`
-- `proc fscanf`
-- `proc sscanf`
-- `proc read_line`
-- `proc read_string`
-- `proc read_int`
-- `proc read_float`
-- `proc read_bool`
-- `proc read_all_stdin`
-- `proc read_file`
-- `proc read_file_bytes`
-- `proc read_lines`
-- `proc write_file`
-- `proc write_file_bytes`
-- `proc append_file`
-- `proc copy_file`
-- `proc move_file`
-- `proc remove`
-- `proc rename`
-- `proc file_exists`
-- `proc is_file`
-- `proc is_dir`
-- `proc is_symlink`
-- `proc file_size`
-- `proc stat`
-- `proc mkdir`
-- `proc mkdir_all`
-- `proc rmdir`
-- `proc list_dir`
-- `proc read_dir_names`
-- `proc touch`
-- `proc tmpfile`
-- `proc tmpnam`
-- `proc basename`
-- `proc dirname`
-- `proc extension`
-- `proc stem`
-- `proc path_join`
-- `proc path_join3`
-- `proc path_normalize`
-- `proc path_is_absolute`
-- `proc path_is_relative`
-- `proc path_parse`
-- `proc buffer_new`
-- `proc buffer_from_bytes`
-- `proc buffer_clear`
-- `proc buffer_remaining`
-- `proc buffer_is_empty`
-- `proc reader_new`
-- `proc writer_new`
-- `proc reader_read_line`
-- `proc writer_write`
-- `proc writer_writeln`
-- `proc perror`
-- `proc strerror`
-- `proc setbuf`
-- `proc setvbuf`
-- `proc format_apply`
-- `proc to_string_i64`
-- `proc to_string_f64`
-- `proc parse_i64`
-- `proc parse_f64`
-- `proc split_lines`
-- `proc string_contains`
-- `proc string_starts_with`
-- `proc string_ends_with`
-- `proc string_slice`
-- `proc string_char_at`
-- `proc io_ready`
-- `proc io_domains`
-- `proc library_meta`
-- `proc io_selftest`
+- `const IO_VERSION` signature `const IO_VERSION: string = "1.0.0"` example `IO_VERSION`
+- `const EOF` signature `const EOF: int = -1` example `EOF`
+- `const NULL_FD` signature `const NULL_FD: int = -1` example `NULL_FD`
+- `const SEEK_SET` signature `const SEEK_SET: int = 0` example `SEEK_SET`
+- `const SEEK_CUR` signature `const SEEK_CUR: int = 1` example `SEEK_CUR`
+- `const SEEK_END` signature `const SEEK_END: int = 2` example `SEEK_END`
+- `const IO_READ` signature `const IO_READ: int = 1` example `IO_READ`
+- `const IO_WRITE` signature `const IO_WRITE: int = 2` example `IO_WRITE`
+- `const IO_APPEND` signature `const IO_APPEND: int = 4` example `IO_APPEND`
+- `const IO_CREATE` signature `const IO_CREATE: int = 8` example `IO_CREATE`
+- `const IO_TRUNC` signature `const IO_TRUNC: int = 16` example `IO_TRUNC`
+- `const IO_BINARY` signature `const IO_BINARY: int = 32` example `IO_BINARY`
+- `const IO_TEXT` signature `const IO_TEXT: int = 64` example `IO_TEXT`
+- `const READ` signature `const READ: string = "r"` example `READ`
+- `const WRITE` signature `const WRITE: string = "w"` example `WRITE`
+- `const APPEND` signature `const APPEND: string = "a"` example `APPEND`
+- `const READ_WRITE` signature `const READ_WRITE: string = "r+"` example `READ_WRITE`
+- `const WRITE_READ` signature `const WRITE_READ: string = "w+"` example `WRITE_READ`
+- `const APPEND_READ` signature `const APPEND_READ: string = "a+"` example `APPEND_READ`
+- `const READ_BINARY` signature `const READ_BINARY: string = "rb"` example `READ_BINARY`
+- `const WRITE_BINARY` signature `const WRITE_BINARY: string = "wb"` example `WRITE_BINARY`
+- `const APPEND_BINARY` signature `const APPEND_BINARY: string = "ab"` example `APPEND_BINARY`
+- `const _IOFBF` signature `const _IOFBF: i32 = 0` example `_IOFBF`
+- `const _IOLBF` signature `const _IOLBF: i32 = 1` example `_IOLBF`
+- `const _IONBF` signature `const _IONBF: i32 = 2` example `_IONBF`
+- `const PATH_SEP` signature `const PATH_SEP: string = "/"` example `PATH_SEP`
+- `const EXT_SEP` signature `const EXT_SEP: string = "."` example `EXT_SEP`
+- `const MAX_PATH` signature `const MAX_PATH: int = 4096` example `MAX_PATH`
+- `pick IoStatus` signature `pick IoStatus {` example `IoStatus`
+- `form IoResult` signature `form IoResult {` example `IoResult`
+- `form File` signature `form File {` example `File`
+- `form FileStat` signature `form FileStat {` example `FileStat`
+- `form DirEntry` signature `form DirEntry {` example `DirEntry`
+- `form Buffer` signature `form Buffer {` example `Buffer`
+- `form TextReader` signature `form TextReader {` example `TextReader`
+- `form TextWriter` signature `form TextWriter {` example `TextWriter`
+- `form PathInfo` signature `form PathInfo {` example `PathInfo`
+- `form IOLibraryManifest` signature `form IOLibraryManifest {` example `IOLibraryManifest`
+- `form IOLibraryHealth` signature `form IOLibraryHealth {` example `IOLibraryHealth`
+- `form IOLibrarySummary` signature `form IOLibrarySummary {` example `IOLibrarySummary`
+- `proc io_ok` signature `proc io_ok(message: string) -> IoResult {` example `io_ok`
+- `proc io_name` signature `proc io_name() -> string {` example `io_name`
+- `proc io_version` signature `proc io_version() -> string {` example `io_version`
+- `proc io_modules` signature `proc io_modules() -> [string] {` example `io_modules`
+- `proc io_module_count` signature `proc io_module_count() -> int {` example `io_module_count`
+- `proc io_manifest` signature `proc io_manifest() -> IOLibraryManifest {` example `io_manifest`
+- `proc io_health` signature `proc io_health() -> IOLibraryHealth {` example `io_health`
+- `proc io_summary` signature `proc io_summary() -> IOLibrarySummary {` example `io_summary`
+- `proc io_failed` signature `proc io_failed(code: int, message: string) -> IoResult {` example `io_failed`
+- `proc null_file` signature `proc null_file() -> File {` example `null_file`
+- `proc stdin_file` signature `proc stdin_file() -> File {` example `stdin_file`
+- `proc stdout_file` signature `proc stdout_file() -> File {` example `stdout_file`
+- `proc stderr_file` signature `proc stderr_file() -> File {` example `stderr_file`
+- `proc file_is_open` signature `proc file_is_open(f: File) -> bool {` example `file_is_open`
+- `proc file_can_read` signature `proc file_can_read(f: File) -> bool {` example `file_can_read`
+- `proc file_can_write` signature `proc file_can_write(f: File) -> bool {` example `file_can_write`
+- `proc mode_readable` signature `proc mode_readable(mode: string) -> bool {` example `mode_readable`
+- `proc mode_writable` signature `proc mode_writable(mode: string) -> bool {` example `mode_writable`
+- `proc mode_append` signature `proc mode_append(mode: string) -> bool {` example `mode_append`
+- `proc mode_binary` signature `proc mode_binary(mode: string) -> bool {` example `mode_binary`
+- `proc fopen` signature `proc fopen(path: string, mode: string) -> File {` example `fopen`
+- `proc freopen` signature `proc freopen(path: string, mode: string, stream: File) -> File {` example `freopen`
+- `proc fclose` signature `proc fclose(f: File) -> int {` example `fclose`
+- `proc fflush` signature `proc fflush(f: File) -> int {` example `fflush`
+- `proc ferror` signature `proc ferror(f: File) -> int {` example `ferror`
+- `proc feof` signature `proc feof(f: File) -> bool {` example `feof`
+- `proc clearerr` signature `proc clearerr(f: File) -> File {` example `clearerr`
+- `proc rewind` signature `proc rewind(f: File) -> File {` example `rewind`
+- `proc fseek` signature `proc fseek(f: File, offset: i64, whence: int) -> File {` example `fseek`
+- `proc ftell` signature `proc ftell(f: File) -> i64 {` example `ftell`
+- `proc fgetpos` signature `proc fgetpos(f: File) -> i64 {` example `fgetpos`
+- `proc fsetpos` signature `proc fsetpos(f: File, pos: i64) -> File {` example `fsetpos`
+- `proc fread` signature `proc fread(buffer: bytes, size: usize, count: usize, f: File) -> usize {` example `fread`
+- `proc fwrite` signature `proc fwrite(buffer: bytes, size: usize, count: usize, f: File) -> usize {` example `fwrite`
+- `proc fgetc` signature `proc fgetc(f: File) -> int {` example `fgetc`
+- `proc getc` signature `proc getc(f: File) -> int {` example `getc`
+- `proc getchar` signature `proc getchar() -> int {` example `getchar`
+- `proc fputc` signature `proc fputc(c: int, f: File) -> int {` example `fputc`
+- `proc putc` signature `proc putc(c: int, f: File) -> int {` example `putc`
+- `proc putchar` signature `proc putchar(c: int) -> int {` example `putchar`
+- `proc ungetc` signature `proc ungetc(c: int, f: File) -> int {` example `ungetc`
+- `proc fgets` signature `proc fgets(size: int, f: File) -> string {` example `fgets`
+- `proc gets` signature `proc gets() -> string {` example `gets`
+- `proc fputs` signature `proc fputs(s: string, f: File) -> int {` example `fputs`
+- `proc puts` signature `proc puts(s: string) -> int {` example `puts`
+- `proc print` signature `proc print(s: string) -> void {` example `print`
+- `proc println` signature `proc println(s: string) -> void {` example `println`
+- `proc eprint` signature `proc eprint(s: string) -> void {` example `eprint`
+- `proc eprintln` signature `proc eprintln(s: string) -> void {` example `eprintln`
+- `proc emit_string` signature `proc emit_string(s: string) -> void {` example `emit_string`
+- `proc print_int` signature `proc print_int(value: i64) -> void {` example `print_int`
+- `proc println_int` signature `proc println_int(value: i64) -> void {` example `println_int`
+- `proc print_float` signature `proc print_float(value: f64) -> void {` example `print_float`
+- `proc println_float` signature `proc println_float(value: f64) -> void {` example `println_float`
+- `proc print_bool` signature `proc print_bool(value: bool) -> void {` example `print_bool`
+- `proc println_bool` signature `proc println_bool(value: bool) -> void {` example `println_bool`
+- `proc printf` signature `proc printf(format: string, args: [string]) -> int {` example `printf`
+- `proc fprintf` signature `proc fprintf(f: File, format: string, args: [string]) -> int {` example `fprintf`
+- `proc sprintf` signature `proc sprintf(format: string, args: [string]) -> string {` example `sprintf`
+- `proc snprintf` signature `proc snprintf(size: usize, format: string, args: [string]) -> string {` example `snprintf`
+- `proc scanf` signature `proc scanf(format: string) -> int {` example `scanf`
+- `proc fscanf` signature `proc fscanf(f: File, format: string) -> int {` example `fscanf`
+- `proc sscanf` signature `proc sscanf(input: string, format: string) -> int {` example `sscanf`
+- `proc read_line` signature `proc read_line() -> string {` example `read_line`
+- `proc read_string` signature `proc read_string() -> string {` example `read_string`
+- `proc read_int` signature `proc read_int() -> i64 {` example `read_int`
+- `proc read_float` signature `proc read_float() -> f64 {` example `read_float`
+- `proc read_bool` signature `proc read_bool() -> bool {` example `read_bool`
+- `proc read_all_stdin` signature `proc read_all_stdin() -> string {` example `read_all_stdin`
+- `proc read_file` signature `proc read_file(path: string) -> string {` example `read_file`
+- `proc read_file_bytes` signature `proc read_file_bytes(path: string) -> bytes {` example `read_file_bytes`
+- `proc read_lines` signature `proc read_lines(path: string) -> [string] {` example `read_lines`
+- `proc write_file` signature `proc write_file(path: string, content: string) -> int {` example `write_file`
+- `proc write_file_bytes` signature `proc write_file_bytes(path: string, content: bytes) -> int {` example `write_file_bytes`
+- `proc append_file` signature `proc append_file(path: string, content: string) -> int {` example `append_file`
+- `proc copy_file` signature `proc copy_file(src: string, dst: string) -> int {` example `copy_file`
+- `proc move_file` signature `proc move_file(src: string, dst: string) -> int {` example `move_file`
+- `proc remove` signature `proc remove(path: string) -> int {` example `remove`
+- `proc rename` signature `proc rename(old_path: string, new_path: string) -> int {` example `rename`
+- `proc file_exists` signature `proc file_exists(path: string) -> bool {` example `file_exists`
+- `proc is_file` signature `proc is_file(path: string) -> bool {` example `is_file`
+- `proc is_dir` signature `proc is_dir(path: string) -> bool {` example `is_dir`
+- `proc is_symlink` signature `proc is_symlink(path: string) -> bool {` example `is_symlink`
+- `proc file_size` signature `proc file_size(path: string) -> i64 {` example `file_size`
+- `proc stat` signature `proc stat(path: string) -> FileStat {` example `stat`
+- `proc mkdir` signature `proc mkdir(path: string) -> int {` example `mkdir`
+- `proc mkdir_all` signature `proc mkdir_all(path: string) -> int {` example `mkdir_all`
+- `proc rmdir` signature `proc rmdir(path: string) -> int {` example `rmdir`
+- `proc list_dir` signature `proc list_dir(path: string) -> [DirEntry] {` example `list_dir`
+- `proc read_dir_names` signature `proc read_dir_names(path: string) -> [string] {` example `read_dir_names`
+- `proc touch` signature `proc touch(path: string) -> int {` example `touch`
+- `proc tmpfile` signature `proc tmpfile() -> File {` example `tmpfile`
+- `proc tmpnam` signature `proc tmpnam(prefix: string) -> string {` example `tmpnam`
+- `proc basename` signature `proc basename(path: string) -> string {` example `basename`
+- `proc dirname` signature `proc dirname(path: string) -> string {` example `dirname`
+- `proc extension` signature `proc extension(path: string) -> string {` example `extension`
+- `proc stem` signature `proc stem(path: string) -> string {` example `stem`
+- `proc path_join` signature `proc path_join(a: string, b: string) -> string {` example `path_join`
+- `proc path_join3` signature `proc path_join3(a: string, b: string, c: string) -> string {` example `path_join3`
+- `proc path_normalize` signature `proc path_normalize(path: string) -> string {` example `path_normalize`
+- `proc path_is_absolute` signature `proc path_is_absolute(path: string) -> bool {` example `path_is_absolute`
+- `proc path_is_relative` signature `proc path_is_relative(path: string) -> bool {` example `path_is_relative`
+- `proc path_parse` signature `proc path_parse(path: string) -> PathInfo {` example `path_parse`
+- `proc buffer_new` signature `proc buffer_new(capacity: usize) -> Buffer {` example `buffer_new`
+- `proc buffer_from_bytes` signature `proc buffer_from_bytes(data: bytes) -> Buffer {` example `buffer_from_bytes`
+- `proc buffer_clear` signature `proc buffer_clear(buf: Buffer) -> Buffer {` example `buffer_clear`
+- `proc buffer_remaining` signature `proc buffer_remaining(buf: Buffer) -> usize {` example `buffer_remaining`
+- `proc buffer_is_empty` signature `proc buffer_is_empty(buf: Buffer) -> bool {` example `buffer_is_empty`
+- `proc reader_new` signature `proc reader_new(f: File) -> TextReader {` example `reader_new`
+- `proc writer_new` signature `proc writer_new(f: File) -> TextWriter {` example `writer_new`
+- `proc reader_read_line` signature `proc reader_read_line(r: TextReader) -> string {` example `reader_read_line`
+- `proc writer_write` signature `proc writer_write(w: TextWriter, s: string) -> TextWriter {` example `writer_write`
+- `proc writer_writeln` signature `proc writer_writeln(w: TextWriter, s: string) -> TextWriter {` example `writer_writeln`
+- `proc perror` signature `proc perror(message: string) -> void {` example `perror`
+- `proc strerror` signature `proc strerror(code: int) -> string {` example `strerror`
+- `proc setbuf` signature `proc setbuf(f: File, buffer: bytes) -> int {` example `setbuf`
+- `proc setvbuf` signature `proc setvbuf(f: File, buffer: bytes, mode: i32, size: i64) -> int {` example `setvbuf`
+- `proc format_apply` signature `proc format_apply(format: string, args: [string]) -> string {` example `format_apply`
+- `proc to_string_i64` signature `proc to_string_i64(value: i64) -> string {` example `to_string_i64`
+- `proc to_string_f64` signature `proc to_string_f64(value: f64) -> string {` example `to_string_f64`
+- `proc parse_i64` signature `proc parse_i64(s: string) -> i64 {` example `parse_i64`
+- `proc parse_f64` signature `proc parse_f64(s: string) -> f64 {` example `parse_f64`
+- `proc split_lines` signature `proc split_lines(s: string) -> [string] {` example `split_lines`
+- `proc string_contains` signature `proc string_contains(s: string, needle: string) -> bool {` example `string_contains`
+- `proc string_starts_with` signature `proc string_starts_with(s: string, prefix: string) -> bool {` example `string_starts_with`
+- `proc string_ends_with` signature `proc string_ends_with(s: string, suffix: string) -> bool {` example `string_ends_with`
+- `proc string_slice` signature `proc string_slice(s: string, start: int, end: int) -> string {` example `string_slice`
+- `proc string_char_at` signature `proc string_char_at(s: string, index: int) -> string {` example `string_char_at`
+- `proc io_ready` signature `proc io_ready() -> bool {` example `io_ready`
+- `proc io_domains` signature `proc io_domains() -> [string] {` example `io_domains`
+- `proc library_meta` signature `proc library_meta() -> string {` example `library_meta`
+- `proc io_selftest` signature `proc io_selftest() -> bool {` example `io_selftest`
 
 ## `src/vitte/stdlib/path.vitl`
 
-- `const PATH_SEPARATOR`
-- `const PATH_DELIMITER`
-- `form Path`
-- `form PathWalker`
-- `form PathLibraryManifest`
-- `form PathLibraryHealth`
-- `form PathLibrarySummary`
-- `form FileStat`
-- `const S_ISREG`
-- `const S_ISDIR`
-- `const S_ISLNK`
-- `proc listdir`
-- `proc getenv`
-- `proc getcwd`
-- `proc setenv`
-- `proc access`
-- `proc stat`
-- `proc lstat`
-- `proc _path_slice`
-- `proc _path_strip_trailing_separator`
-- `proc _path_split`
-- `proc _path_join_parts`
-- `proc _path_remove_last_component`
-- `proc _path_segment_matches`
-- `proc _path_match_parts`
-- `proc _path_collect_recursive`
-- `proc _join_strings`
-- `proc _get_env_variable`
-- `proc path_version`
-- `proc path_name`
-- `proc path_module_count`
-- `proc path_modules`
-- `proc path_manifest`
-- `proc path_ready`
-- `proc path_health`
-- `proc path_summary`
-- `proc path_selftest`
-- `proc path_new`
-- `proc path_normalize`
-- `proc path_resolve`
-- `proc path_absolute`
-- `proc path_relative`
-- `proc path_get_parent`
-- `proc path_get_filename`
-- `proc path_get_basename`
-- `proc path_get_stem`
-- `proc path_get_extension`
-- `proc path_get_directory`
-- `proc path_get_root`
-- `proc path_join`
-- `proc path_join_multi`
-- `proc path_with_extension`
-- `proc path_with_filename`
-- `proc path_exists`
-- `proc path_is_file`
-- `proc path_is_dir`
-- `proc path_is_symlink`
-- `proc path_is_absolute`
-- `proc path_is_relative`
-- `proc path_is_hidden`
-- `proc path_equals`
-- `proc path_starts_with`
-- `proc path_ends_with`
-- `proc path_matches`
-- `proc path_glob`
-- `proc path_glob_recursive`
-- `proc path_walk`
-- `proc path_walk_recursive`
-- `proc path_walker_next`
-- `proc path_walker_has_next`
-- `proc path_clean`
-- `proc path_canonicalize`
-- `proc path_simplify`
-- `proc path_expand_home`
-- `proc path_expand_env`
-- `proc home_dir`
-- `proc temp_dir`
-- `proc current_dir`
-- `proc config_dir`
-- `proc cache_dir`
-- `proc desktop_dir`
-- `proc documents_dir`
-- `proc downloads_dir`
-- `proc get_path_env`
-- `proc find_in_path`
-- `proc add_to_path`
-- `proc remove_from_path`
-- `proc path_segments`
-- `proc path_depth`
-- `proc path_report`
+- `const PATH_SEPARATOR` signature `const PATH_SEPARATOR: string = "/"` example `PATH_SEPARATOR`
+- `const PATH_DELIMITER` signature `const PATH_DELIMITER: string = ":"` example `PATH_DELIMITER`
+- `form Path` signature `form Path {` example `Path`
+- `form PathWalker` signature `form PathWalker {` example `PathWalker`
+- `form PathLibraryManifest` signature `form PathLibraryManifest {` example `PathLibraryManifest`
+- `form PathLibraryHealth` signature `form PathLibraryHealth {` example `PathLibraryHealth`
+- `form PathLibrarySummary` signature `form PathLibrarySummary {` example `PathLibrarySummary`
+- `form FileStat` signature `form FileStat {` example `FileStat`
+- `const S_ISREG` signature `const S_ISREG: i32 = 1` example `S_ISREG`
+- `const S_ISDIR` signature `const S_ISDIR: i32 = 2` example `S_ISDIR`
+- `const S_ISLNK` signature `const S_ISLNK: i32 = 4` example `S_ISLNK`
+- `proc listdir` signature `proc listdir(root: string) -> [string] {` example `listdir`
+- `proc getenv` signature `proc getenv(name: string) -> string {` example `getenv`
+- `proc getcwd` signature `proc getcwd() -> string {` example `getcwd`
+- `proc setenv` signature `proc setenv(name: string, value: string, overwrite: i32) -> i32 {` example `setenv`
+- `proc access` signature `proc access(p: string, mode: i32) -> i32 {` example `access`
+- `proc stat` signature `proc stat(p: string) -> FileStat {` example `stat`
+- `proc lstat` signature `proc lstat(p: string) -> FileStat {` example `lstat`
+- `proc _path_slice` signature `proc _path_slice(str: string, start: int, end: int) -> string {` example `_path_slice`
+- `proc _path_strip_trailing_separator` signature `proc _path_strip_trailing_separator(p: string) -> string {` example `_path_strip_trailing_separator`
+- `proc _path_split` signature `proc _path_split(p: string) -> [string] {` example `_path_split`
+- `proc _path_join_parts` signature `proc _path_join_parts(parts: [string], absolute: int) -> string {` example `_path_join_parts`
+- `proc _path_remove_last_component` signature `proc _path_remove_last_component(parts: [string]) -> [string] {` example `_path_remove_last_component`
+- `proc _path_segment_matches` signature `proc _path_segment_matches(text: string, pattern: string) -> int {` example `_path_segment_matches`
+- `proc _path_match_parts` signature `proc _path_match_parts(parts: [string], pattern_parts: [string], pi: int, qi: int) -> int {` example `_path_match_parts`
+- `proc _path_collect_recursive` signature `proc _path_collect_recursive(root: string, entries: [string]) -> [string] {` example `_path_collect_recursive`
+- `proc _join_strings` signature `proc _join_strings(values: [string], delimiter: string) -> string {` example `_join_strings`
+- `proc _get_env_variable` signature `proc _get_env_variable(name: string) -> string {` example `_get_env_variable`
+- `proc path_version` signature `proc path_version() -> string {` example `path_version`
+- `proc path_name` signature `proc path_name() -> string {` example `path_name`
+- `proc path_module_count` signature `proc path_module_count() -> i32 {` example `path_module_count`
+- `proc path_modules` signature `proc path_modules() -> [string] {` example `path_modules`
+- `proc path_manifest` signature `proc path_manifest() -> PathLibraryManifest {` example `path_manifest`
+- `proc path_ready` signature `proc path_ready() -> bool {` example `path_ready`
+- `proc path_health` signature `proc path_health() -> PathLibraryHealth {` example `path_health`
+- `proc path_summary` signature `proc path_summary() -> PathLibrarySummary {` example `path_summary`
+- `proc path_selftest` signature `proc path_selftest() -> bool {` example `path_selftest`
+- `proc path_new` signature `proc path_new(p: string) -> Path {` example `path_new`
+- `proc path_normalize` signature `proc path_normalize(p: string) -> string {` example `path_normalize`
+- `proc path_resolve` signature `proc path_resolve(p: string) -> string {` example `path_resolve`
+- `proc path_absolute` signature `proc path_absolute(p: string) -> string {` example `path_absolute`
+- `proc path_relative` signature `proc path_relative(base: string, target: string) -> string {` example `path_relative`
+- `proc path_get_parent` signature `proc path_get_parent(p: string) -> string {` example `path_get_parent`
+- `proc path_get_filename` signature `proc path_get_filename(p: string) -> string {` example `path_get_filename`
+- `proc path_get_basename` signature `proc path_get_basename(p: string) -> string {` example `path_get_basename`
+- `proc path_get_stem` signature `proc path_get_stem(p: string) -> string {` example `path_get_stem`
+- `proc path_get_extension` signature `proc path_get_extension(p: string) -> string {` example `path_get_extension`
+- `proc path_get_directory` signature `proc path_get_directory(p: string) -> string {` example `path_get_directory`
+- `proc path_get_root` signature `proc path_get_root(p: string) -> string {` example `path_get_root`
+- `proc path_join` signature `proc path_join(base: string, component: string) -> string {` example `path_join`
+- `proc path_join_multi` signature `proc path_join_multi(base: string, components: [string]) -> string {` example `path_join_multi`
+- `proc path_with_extension` signature `proc path_with_extension(p: string, ext: string) -> string {` example `path_with_extension`
+- `proc path_with_filename` signature `proc path_with_filename(p: string, filename: string) -> string {` example `path_with_filename`
+- `proc path_exists` signature `proc path_exists(p: string) -> int {` example `path_exists`
+- `proc path_is_file` signature `proc path_is_file(p: string) -> int {` example `path_is_file`
+- `proc path_is_dir` signature `proc path_is_dir(p: string) -> int {` example `path_is_dir`
+- `proc path_is_symlink` signature `proc path_is_symlink(p: string) -> int {` example `path_is_symlink`
+- `proc path_is_absolute` signature `proc path_is_absolute(p: string) -> int {` example `path_is_absolute`
+- `proc path_is_relative` signature `proc path_is_relative(p: string) -> int {` example `path_is_relative`
+- `proc path_is_hidden` signature `proc path_is_hidden(p: string) -> int {` example `path_is_hidden`
+- `proc path_equals` signature `proc path_equals(p1: string, p2: string) -> int {` example `path_equals`
+- `proc path_starts_with` signature `proc path_starts_with(p: string, prefix: string) -> int {` example `path_starts_with`
+- `proc path_ends_with` signature `proc path_ends_with(p: string, suffix: string) -> int {` example `path_ends_with`
+- `proc path_matches` signature `proc path_matches(p: string, pattern: string) -> int {` example `path_matches`
+- `proc path_glob` signature `proc path_glob(pattern: string) -> [string] {` example `path_glob`
+- `proc path_glob_recursive` signature `proc path_glob_recursive(pattern: string) -> [string] {` example `path_glob_recursive`
+- `proc path_walk` signature `proc path_walk(root: string) -> PathWalker {` example `path_walk`
+- `proc path_walk_recursive` signature `proc path_walk_recursive(root: string) -> PathWalker {` example `path_walk_recursive`
+- `proc path_walker_next` signature `proc path_walker_next(w: PathWalker) -> string {` example `path_walker_next`
+- `proc path_walker_has_next` signature `proc path_walker_has_next(w: PathWalker) -> int {` example `path_walker_has_next`
+- `proc path_clean` signature `proc path_clean(p: string) -> string {` example `path_clean`
+- `proc path_canonicalize` signature `proc path_canonicalize(p: string) -> string {` example `path_canonicalize`
+- `proc path_simplify` signature `proc path_simplify(p: string) -> string {` example `path_simplify`
+- `proc path_expand_home` signature `proc path_expand_home(p: string) -> string {` example `path_expand_home`
+- `proc path_expand_env` signature `proc path_expand_env(p: string) -> string {` example `path_expand_env`
+- `proc home_dir` signature `proc home_dir() -> string {` example `home_dir`
+- `proc temp_dir` signature `proc temp_dir() -> string {` example `temp_dir`
+- `proc current_dir` signature `proc current_dir() -> string {` example `current_dir`
+- `proc config_dir` signature `proc config_dir() -> string {` example `config_dir`
+- `proc cache_dir` signature `proc cache_dir() -> string {` example `cache_dir`
+- `proc desktop_dir` signature `proc desktop_dir() -> string {` example `desktop_dir`
+- `proc documents_dir` signature `proc documents_dir() -> string {` example `documents_dir`
+- `proc downloads_dir` signature `proc downloads_dir() -> string {` example `downloads_dir`
+- `proc get_path_env` signature `proc get_path_env() -> [string] {` example `get_path_env`
+- `proc find_in_path` signature `proc find_in_path(executable: string) -> string {` example `find_in_path`
+- `proc add_to_path` signature `proc add_to_path(directory: string) -> int {` example `add_to_path`
+- `proc remove_from_path` signature `proc remove_from_path(directory: string) -> int {` example `remove_from_path`
+- `proc path_segments` signature `proc path_segments(p: string) -> [string] {` example `path_segments`
+- `proc path_depth` signature `proc path_depth(p: string) -> i32 {` example `path_depth`
+- `proc path_report` signature `proc path_report(p: string) -> Path {` example `path_report`
 
 ## `src/vitte/stdlib/os.vitl`
 
-- `const OS_VERSION`
-- `const OK`
-- `const ERR`
-- `const EOF`
-- `const EXIT_SUCCESS`
-- `const EXIT_FAILURE`
-- `const STDIN_FILENO`
-- `const STDOUT_FILENO`
-- `const STDERR_FILENO`
-- `const SEEK_SET`
-- `const SEEK_CUR`
-- `const SEEK_END`
-- `const AT_FDCWD`
-- `const F_OK`
-- `const X_OK`
-- `const W_OK`
-- `const R_OK`
-- `const O_RDONLY`
-- `const O_WRONLY`
-- `const O_RDWR`
-- `const O_CREAT`
-- `const O_EXCL`
-- `const O_NOCTTY`
-- `const O_TRUNC`
-- `const O_APPEND`
-- `const O_NONBLOCK`
-- `const O_DIRECTORY`
-- `const O_NOFOLLOW`
-- `const O_CLOEXEC`
-- `const S_IFMT`
-- `const S_IFSOCK`
-- `const S_IFLNK`
-- `const S_IFREG`
-- `const S_IFBLK`
-- `const S_IFDIR`
-- `const S_IFCHR`
-- `const S_IFIFO`
-- `const S_IRUSR`
-- `const S_IWUSR`
-- `const S_IXUSR`
-- `const S_IRGRP`
-- `const S_IWGRP`
-- `const S_IXGRP`
-- `const S_IROTH`
-- `const S_IWOTH`
-- `const S_IXOTH`
-- `const SIGINT`
-- `const SIGQUIT`
-- `const SIGILL`
-- `const SIGABRT`
-- `const SIGFPE`
-- `const SIGKILL`
-- `const SIGSEGV`
-- `const SIGPIPE`
-- `const SIGALRM`
-- `const SIGTERM`
-- `const SIGCHLD`
-- `const SIGCONT`
-- `const SIGSTOP`
-- `const SIGTSTP`
-- `const SIGTTIN`
-- `const SIGTTOU`
-- `const WNOHANG`
-- `const WUNTRACED`
-- `const WCONTINUED`
-- `const EPERM`
-- `const ENOENT`
-- `const ESRCH`
-- `const EINTR`
-- `const EIO`
-- `const ENXIO`
-- `const E2BIG`
-- `const ENOEXEC`
-- `const EBADF`
-- `const ECHILD`
-- `const EAGAIN`
-- `const ENOMEM`
-- `const EACCES`
-- `const EFAULT`
-- `const EBUSY`
-- `const EEXIST`
-- `const EXDEV`
-- `const ENODEV`
-- `const ENOTDIR`
-- `const EISDIR`
-- `const EINVAL`
-- `const ENFILE`
-- `const EMFILE`
-- `const ENOTTY`
-- `const EFBIG`
-- `const ENOSPC`
-- `const ESPIPE`
-- `const EROFS`
-- `const EMLINK`
-- `const EPIPE`
-- `const ERANGE`
-- `const ENOSYS`
-- `const ENOTEMPTY`
-- `const ELOOP`
-- `const ENAMETOOLONG`
-- `const ETIMEDOUT`
-- `const ECONNREFUSED`
-- `const ENOTSUP`
-- `pick OsStatus`
-- `pick PlatformKind`
-- `pick ProcessState`
-- `pick FileType`
-- `pick OpenMode`
-- `pick SignalDisposition`
-- `form OsError`
-- `form OsResult`
-- `form Process`
-- `form ProcessInfo`
-- `form SpawnOptions`
-- `form ExecResult`
-- `form EnvVar`
-- `form User`
-- `form Group`
-- `form SystemInfo`
-- `form FileDescriptor`
-- `form FileStat`
-- `form DirEntry`
-- `form PathInfo`
-- `form Pipe`
-- `form WaitStatus`
-- `form SignalAction`
-- `form Timespec`
-- `form Timeval`
-- `form ResourceUsage`
-- `form MountInfo`
-- `form TerminalSize`
-- `form PollFd`
-- `form OsSnapshot`
-- `proc os_result_ok`
-- `proc os_result_error`
-- `proc os_error`
-- `proc errno_name`
-- `proc strerror`
-- `proc status_from_errno`
-- `proc getpid`
-- `proc getppid`
-- `proc getpgid`
-- `proc getsid`
-- `proc setpgid`
-- `proc fork`
-- `proc vfork`
-- `proc exec`
-- `proc execv`
-- `proc execve`
-- `proc execvp`
-- `proc system`
-- `proc spawn`
-- `proc spawn_with_options`
-- `proc run`
-- `proc wait`
-- `proc waitpid`
-- `proc wait_status_code`
-- `proc kill`
-- `proc signal`
-- `proc signal_ignore`
-- `proc signal_default`
-- `proc raise`
-- `proc pause`
-- `proc exit`
-- `proc abort`
-- `proc process_current`
-- `proc process_info`
-- `proc process_list`
-- `proc process_exists`
-- `proc process_kill`
-- `proc getuid`
-- `proc geteuid`
-- `proc getgid`
-- `proc getegid`
-- `proc setuid`
-- `proc setgid`
-- `proc getuser`
-- `proc getgroup`
-- `proc getenv`
-- `proc getenv_or`
-- `proc setenv`
-- `proc unsetenv`
-- `proc hasenv`
-- `proc env_list`
-- `proc env_get_all`
-- `proc env_clear`
-- `proc env_find`
-- `proc env_set_local`
-- `proc chdir`
-- `proc getcwd`
-- `proc cwd`
-- `proc gethostname`
-- `proc sethostname`
-- `proc uname`
-- `proc system_info`
-- `proc os_name`
-- `proc os_version`
-- `proc kernel_version`
-- `proc arch_name`
-- `proc platform_kind`
-- `proc is_unix`
-- `proc is_windows`
-- `proc is_vitte_os`
-- `proc is_kernel`
-- `proc cpu_count`
-- `proc page_size`
-- `proc uptime`
-- `proc clock_time`
-- `proc time_now`
-- `proc gettimeofday`
-- `proc timespec`
-- `proc timeval`
-- `proc sleep`
-- `proc usleep`
-- `proc nanosleep`
-- `proc open`
-- `proc open_mode`
-- `proc close`
-- `proc read`
-- `proc write`
-- `proc pread`
-- `proc pwrite`
-- `proc lseek`
-- `proc dup`
-- `proc dup2`
-- `proc pipe`
-- `proc pipe2`
-- `proc poll`
-- `proc os_select`
-- `proc file_descriptor`
-- `proc fd_valid`
-- `proc fd_is_standard`
-- `proc empty_stat`
-- `proc stat`
-- `proc lstat`
-- `proc fstat`
-- `proc mode_is_file`
-- `proc mode_is_dir`
-- `proc mode_is_symlink`
-- `proc exists`
-- `proc is_file`
-- `proc is_dir`
-- `proc is_symlink`
-- `proc file_size`
-- `proc chmod`
-- `proc chown`
-- `proc mkdir`
-- `proc mkdir_all`
-- `proc rmdir`
-- `proc unlink`
-- `proc remove`
-- `proc rename`
-- `proc link`
-- `proc symlink`
-- `proc readlink`
-- `proc truncate`
-- `proc ftruncate`
-- `proc access`
-- `proc list_dir`
-- `proc dir_names`
-- `proc mount`
-- `proc umount`
-- `proc mounts`
-- `proc path_sep`
-- `proc path_join`
-- `proc path_join3`
-- `proc path_is_absolute`
-- `proc path_is_relative`
-- `proc path_normalize`
-- `proc basename`
-- `proc dirname`
-- `proc extension`
-- `proc stem`
-- `proc path_parse`
-- `proc tmpdir`
-- `proc tmpnam`
-- `proc mktemp`
-- `proc mkstemp`
-- `proc terminal_size`
-- `proc isatty`
-- `proc ttyname`
-- `proc resource_usage`
-- `proc getrusage`
-- `proc reboot`
-- `proc shutdown`
-- `proc panic_os`
-- `proc syscall0`
-- `proc syscall1`
-- `proc syscall2`
-- `proc syscall3`
-- `proc syscall4`
-- `proc syscall5`
-- `proc syscall6`
-- `proc os_snapshot`
-- `proc string_starts_with`
-- `proc string_ends_with`
-- `proc os_domains`
-- `proc os_ready`
-- `proc library_meta`
-- `proc os_selftest`
+- `const OS_VERSION` signature `const OS_VERSION: string = ""` example `OS_VERSION`
+- `const OK` signature `const OK: int = 0` example `OK`
+- `const ERR` signature `const ERR: int = 0` example `ERR`
+- `const EOF` signature `const EOF: int = 0` example `EOF`
+- `const EXIT_SUCCESS` signature `const EXIT_SUCCESS: int = 0` example `EXIT_SUCCESS`
+- `const EXIT_FAILURE` signature `const EXIT_FAILURE: int = 0` example `EXIT_FAILURE`
+- `const STDIN_FILENO` signature `const STDIN_FILENO: int = 0` example `STDIN_FILENO`
+- `const STDOUT_FILENO` signature `const STDOUT_FILENO: int = 0` example `STDOUT_FILENO`
+- `const STDERR_FILENO` signature `const STDERR_FILENO: int = 0` example `STDERR_FILENO`
+- `const SEEK_SET` signature `const SEEK_SET: int = 0` example `SEEK_SET`
+- `const SEEK_CUR` signature `const SEEK_CUR: int = 0` example `SEEK_CUR`
+- `const SEEK_END` signature `const SEEK_END: int = 0` example `SEEK_END`
+- `const AT_FDCWD` signature `const AT_FDCWD: int = 0` example `AT_FDCWD`
+- `const F_OK` signature `const F_OK: int = 0` example `F_OK`
+- `const X_OK` signature `const X_OK: int = 0` example `X_OK`
+- `const W_OK` signature `const W_OK: int = 0` example `W_OK`
+- `const R_OK` signature `const R_OK: int = 0` example `R_OK`
+- `const O_RDONLY` signature `const O_RDONLY: int = 0` example `O_RDONLY`
+- `const O_WRONLY` signature `const O_WRONLY: int = 0` example `O_WRONLY`
+- `const O_RDWR` signature `const O_RDWR: int = 0` example `O_RDWR`
+- `const O_CREAT` signature `const O_CREAT: int = 0` example `O_CREAT`
+- `const O_EXCL` signature `const O_EXCL: int = 0` example `O_EXCL`
+- `const O_NOCTTY` signature `const O_NOCTTY: int = 0` example `O_NOCTTY`
+- `const O_TRUNC` signature `const O_TRUNC: int = 0` example `O_TRUNC`
+- `const O_APPEND` signature `const O_APPEND: int = 0` example `O_APPEND`
+- `const O_NONBLOCK` signature `const O_NONBLOCK: int = 0` example `O_NONBLOCK`
+- `const O_DIRECTORY` signature `const O_DIRECTORY: int = 0` example `O_DIRECTORY`
+- `const O_NOFOLLOW` signature `const O_NOFOLLOW: int = 0` example `O_NOFOLLOW`
+- `const O_CLOEXEC` signature `const O_CLOEXEC: int = 0` example `O_CLOEXEC`
+- `const S_IFMT` signature `const S_IFMT: int = 0` example `S_IFMT`
+- `const S_IFSOCK` signature `const S_IFSOCK: int = 0` example `S_IFSOCK`
+- `const S_IFLNK` signature `const S_IFLNK: int = 0` example `S_IFLNK`
+- `const S_IFREG` signature `const S_IFREG: int = 0` example `S_IFREG`
+- `const S_IFBLK` signature `const S_IFBLK: int = 0` example `S_IFBLK`
+- `const S_IFDIR` signature `const S_IFDIR: int = 0` example `S_IFDIR`
+- `const S_IFCHR` signature `const S_IFCHR: int = 0` example `S_IFCHR`
+- `const S_IFIFO` signature `const S_IFIFO: int = 0` example `S_IFIFO`
+- `const S_IRUSR` signature `const S_IRUSR: int = 0` example `S_IRUSR`
+- `const S_IWUSR` signature `const S_IWUSR: int = 0` example `S_IWUSR`
+- `const S_IXUSR` signature `const S_IXUSR: int = 0` example `S_IXUSR`
+- `const S_IRGRP` signature `const S_IRGRP: int = 0` example `S_IRGRP`
+- `const S_IWGRP` signature `const S_IWGRP: int = 0` example `S_IWGRP`
+- `const S_IXGRP` signature `const S_IXGRP: int = 0` example `S_IXGRP`
+- `const S_IROTH` signature `const S_IROTH: int = 0` example `S_IROTH`
+- `const S_IWOTH` signature `const S_IWOTH: int = 0` example `S_IWOTH`
+- `const S_IXOTH` signature `const S_IXOTH: int = 0` example `S_IXOTH`
+- `const SIGINT` signature `const SIGINT: int = 0` example `SIGINT`
+- `const SIGQUIT` signature `const SIGQUIT: int = 0` example `SIGQUIT`
+- `const SIGILL` signature `const SIGILL: int = 0` example `SIGILL`
+- `const SIGABRT` signature `const SIGABRT: int = 0` example `SIGABRT`
+- `const SIGFPE` signature `const SIGFPE: int = 0` example `SIGFPE`
+- `const SIGKILL` signature `const SIGKILL: int = 0` example `SIGKILL`
+- `const SIGSEGV` signature `const SIGSEGV: int = 0` example `SIGSEGV`
+- `const SIGPIPE` signature `const SIGPIPE: int = 0` example `SIGPIPE`
+- `const SIGALRM` signature `const SIGALRM: int = 0` example `SIGALRM`
+- `const SIGTERM` signature `const SIGTERM: int = 0` example `SIGTERM`
+- `const SIGCHLD` signature `const SIGCHLD: int = 0` example `SIGCHLD`
+- `const SIGCONT` signature `const SIGCONT: int = 0` example `SIGCONT`
+- `const SIGSTOP` signature `const SIGSTOP: int = 0` example `SIGSTOP`
+- `const SIGTSTP` signature `const SIGTSTP: int = 0` example `SIGTSTP`
+- `const SIGTTIN` signature `const SIGTTIN: int = 0` example `SIGTTIN`
+- `const SIGTTOU` signature `const SIGTTOU: int = 0` example `SIGTTOU`
+- `const WNOHANG` signature `const WNOHANG: int = 0` example `WNOHANG`
+- `const WUNTRACED` signature `const WUNTRACED: int = 0` example `WUNTRACED`
+- `const WCONTINUED` signature `const WCONTINUED: int = 0` example `WCONTINUED`
+- `const EPERM` signature `const EPERM: int = 0` example `EPERM`
+- `const ENOENT` signature `const ENOENT: int = 0` example `ENOENT`
+- `const ESRCH` signature `const ESRCH: int = 0` example `ESRCH`
+- `const EINTR` signature `const EINTR: int = 0` example `EINTR`
+- `const EIO` signature `const EIO: int = 0` example `EIO`
+- `const ENXIO` signature `const ENXIO: int = 0` example `ENXIO`
+- `const E2BIG` signature `const E2BIG: int = 0` example `E2BIG`
+- `const ENOEXEC` signature `const ENOEXEC: int = 0` example `ENOEXEC`
+- `const EBADF` signature `const EBADF: int = 0` example `EBADF`
+- `const ECHILD` signature `const ECHILD: int = 0` example `ECHILD`
+- `const EAGAIN` signature `const EAGAIN: int = 0` example `EAGAIN`
+- `const ENOMEM` signature `const ENOMEM: int = 0` example `ENOMEM`
+- `const EACCES` signature `const EACCES: int = 0` example `EACCES`
+- `const EFAULT` signature `const EFAULT: int = 0` example `EFAULT`
+- `const EBUSY` signature `const EBUSY: int = 0` example `EBUSY`
+- `const EEXIST` signature `const EEXIST: int = 0` example `EEXIST`
+- `const EXDEV` signature `const EXDEV: int = 0` example `EXDEV`
+- `const ENODEV` signature `const ENODEV: int = 0` example `ENODEV`
+- `const ENOTDIR` signature `const ENOTDIR: int = 0` example `ENOTDIR`
+- `const EISDIR` signature `const EISDIR: int = 0` example `EISDIR`
+- `const EINVAL` signature `const EINVAL: int = 0` example `EINVAL`
+- `const ENFILE` signature `const ENFILE: int = 0` example `ENFILE`
+- `const EMFILE` signature `const EMFILE: int = 0` example `EMFILE`
+- `const ENOTTY` signature `const ENOTTY: int = 0` example `ENOTTY`
+- `const EFBIG` signature `const EFBIG: int = 0` example `EFBIG`
+- `const ENOSPC` signature `const ENOSPC: int = 0` example `ENOSPC`
+- `const ESPIPE` signature `const ESPIPE: int = 0` example `ESPIPE`
+- `const EROFS` signature `const EROFS: int = 0` example `EROFS`
+- `const EMLINK` signature `const EMLINK: int = 0` example `EMLINK`
+- `const EPIPE` signature `const EPIPE: int = 0` example `EPIPE`
+- `const ERANGE` signature `const ERANGE: int = 0` example `ERANGE`
+- `const ENOSYS` signature `const ENOSYS: int = 0` example `ENOSYS`
+- `const ENOTEMPTY` signature `const ENOTEMPTY: int = 0` example `ENOTEMPTY`
+- `const ELOOP` signature `const ELOOP: int = 0` example `ELOOP`
+- `const ENAMETOOLONG` signature `const ENAMETOOLONG: int = 0` example `ENAMETOOLONG`
+- `const ETIMEDOUT` signature `const ETIMEDOUT: int = 0` example `ETIMEDOUT`
+- `const ECONNREFUSED` signature `const ECONNREFUSED: int = 0` example `ECONNREFUSED`
+- `const ENOTSUP` signature `const ENOTSUP: int = 0` example `ENOTSUP`
+- `pick OsStatus` signature `pick OsStatus {` example `OsStatus`
+- `pick PlatformKind` signature `pick PlatformKind {` example `PlatformKind`
+- `pick ProcessState` signature `pick ProcessState {` example `ProcessState`
+- `pick FileType` signature `pick FileType {` example `FileType`
+- `pick OpenMode` signature `pick OpenMode {` example `OpenMode`
+- `pick SignalDisposition` signature `pick SignalDisposition {` example `SignalDisposition`
+- `form OsError` signature `form OsError {` example `OsError`
+- `form OsResult` signature `form OsResult {` example `OsResult`
+- `form Process` signature `form Process {` example `Process`
+- `form ProcessInfo` signature `form ProcessInfo {` example `ProcessInfo`
+- `form SpawnOptions` signature `form SpawnOptions {` example `SpawnOptions`
+- `form ExecResult` signature `form ExecResult {` example `ExecResult`
+- `form EnvVar` signature `form EnvVar {` example `EnvVar`
+- `form User` signature `form User {` example `User`
+- `form Group` signature `form Group {` example `Group`
+- `form SystemInfo` signature `form SystemInfo {` example `SystemInfo`
+- `form FileDescriptor` signature `form FileDescriptor {` example `FileDescriptor`
+- `form FileStat` signature `form FileStat {` example `FileStat`
+- `form DirEntry` signature `form DirEntry {` example `DirEntry`
+- `form PathInfo` signature `form PathInfo {` example `PathInfo`
+- `form Pipe` signature `form Pipe {` example `Pipe`
+- `form WaitStatus` signature `form WaitStatus {` example `WaitStatus`
+- `form SignalAction` signature `form SignalAction {` example `SignalAction`
+- `form Timespec` signature `form Timespec {` example `Timespec`
+- `form Timeval` signature `form Timeval {` example `Timeval`
+- `form ResourceUsage` signature `form ResourceUsage {` example `ResourceUsage`
+- `form MountInfo` signature `form MountInfo {` example `MountInfo`
+- `form TerminalSize` signature `form TerminalSize {` example `TerminalSize`
+- `form PollFd` signature `form PollFd {` example `PollFd`
+- `form OsSnapshot` signature `form OsSnapshot {` example `OsSnapshot`
+- `proc os_result_ok` signature `proc os_result_ok() -> int {` example `os_result_ok`
+- `proc os_result_error` signature `proc os_result_error() -> int {` example `os_result_error`
+- `proc os_error` signature `proc os_error() -> int {` example `os_error`
+- `proc errno_name` signature `proc errno_name() -> int {` example `errno_name`
+- `proc strerror` signature `proc strerror() -> int {` example `strerror`
+- `proc status_from_errno` signature `proc status_from_errno() -> int {` example `status_from_errno`
+- `proc getpid` signature `proc getpid() -> int {` example `getpid`
+- `proc getppid` signature `proc getppid() -> int {` example `getppid`
+- `proc getpgid` signature `proc getpgid() -> int {` example `getpgid`
+- `proc getsid` signature `proc getsid() -> int {` example `getsid`
+- `proc setpgid` signature `proc setpgid() -> int {` example `setpgid`
+- `proc fork` signature `proc fork() -> int {` example `fork`
+- `proc vfork` signature `proc vfork() -> int {` example `vfork`
+- `proc exec` signature `proc exec() -> int {` example `exec`
+- `proc execv` signature `proc execv() -> int {` example `execv`
+- `proc execve` signature `proc execve() -> int {` example `execve`
+- `proc execvp` signature `proc execvp() -> int {` example `execvp`
+- `proc system` signature `proc system() -> int {` example `system`
+- `proc spawn` signature `proc spawn() -> int {` example `spawn`
+- `proc spawn_with_options` signature `proc spawn_with_options() -> int {` example `spawn_with_options`
+- `proc run` signature `proc run() -> int {` example `run`
+- `proc wait` signature `proc wait() -> int {` example `wait`
+- `proc waitpid` signature `proc waitpid() -> int {` example `waitpid`
+- `proc wait_status_code` signature `proc wait_status_code() -> int {` example `wait_status_code`
+- `proc kill` signature `proc kill() -> int {` example `kill`
+- `proc signal` signature `proc signal() -> int {` example `signal`
+- `proc signal_ignore` signature `proc signal_ignore() -> int {` example `signal_ignore`
+- `proc signal_default` signature `proc signal_default() -> int {` example `signal_default`
+- `proc raise` signature `proc raise() -> int {` example `raise`
+- `proc pause` signature `proc pause() -> int {` example `pause`
+- `proc exit` signature `proc exit() -> int {` example `exit`
+- `proc abort` signature `proc abort() -> int {` example `abort`
+- `proc process_current` signature `proc process_current() -> int {` example `process_current`
+- `proc process_info` signature `proc process_info() -> int {` example `process_info`
+- `proc process_list` signature `proc process_list() -> int {` example `process_list`
+- `proc process_exists` signature `proc process_exists() -> int {` example `process_exists`
+- `proc process_kill` signature `proc process_kill() -> int {` example `process_kill`
+- `proc getuid` signature `proc getuid() -> int {` example `getuid`
+- `proc geteuid` signature `proc geteuid() -> int {` example `geteuid`
+- `proc getgid` signature `proc getgid() -> int {` example `getgid`
+- `proc getegid` signature `proc getegid() -> int {` example `getegid`
+- `proc setuid` signature `proc setuid() -> int {` example `setuid`
+- `proc setgid` signature `proc setgid() -> int {` example `setgid`
+- `proc getuser` signature `proc getuser() -> int {` example `getuser`
+- `proc getgroup` signature `proc getgroup() -> int {` example `getgroup`
+- `proc getenv` signature `proc getenv() -> int {` example `getenv`
+- `proc getenv_or` signature `proc getenv_or() -> int {` example `getenv_or`
+- `proc setenv` signature `proc setenv() -> int {` example `setenv`
+- `proc unsetenv` signature `proc unsetenv() -> int {` example `unsetenv`
+- `proc hasenv` signature `proc hasenv() -> int {` example `hasenv`
+- `proc env_list` signature `proc env_list() -> int {` example `env_list`
+- `proc env_get_all` signature `proc env_get_all() -> int {` example `env_get_all`
+- `proc env_clear` signature `proc env_clear() -> int {` example `env_clear`
+- `proc env_find` signature `proc env_find() -> int {` example `env_find`
+- `proc env_set_local` signature `proc env_set_local() -> int {` example `env_set_local`
+- `proc chdir` signature `proc chdir() -> int {` example `chdir`
+- `proc getcwd` signature `proc getcwd() -> int {` example `getcwd`
+- `proc cwd` signature `proc cwd() -> int {` example `cwd`
+- `proc gethostname` signature `proc gethostname() -> int {` example `gethostname`
+- `proc sethostname` signature `proc sethostname() -> int {` example `sethostname`
+- `proc uname` signature `proc uname() -> int {` example `uname`
+- `proc system_info` signature `proc system_info() -> int {` example `system_info`
+- `proc os_name` signature `proc os_name() -> int {` example `os_name`
+- `proc os_version` signature `proc os_version() -> int {` example `os_version`
+- `proc kernel_version` signature `proc kernel_version() -> int {` example `kernel_version`
+- `proc arch_name` signature `proc arch_name() -> int {` example `arch_name`
+- `proc platform_kind` signature `proc platform_kind() -> int {` example `platform_kind`
+- `proc is_unix` signature `proc is_unix() -> int {` example `is_unix`
+- `proc is_windows` signature `proc is_windows() -> int {` example `is_windows`
+- `proc is_vitte_os` signature `proc is_vitte_os() -> int {` example `is_vitte_os`
+- `proc is_kernel` signature `proc is_kernel() -> int {` example `is_kernel`
+- `proc cpu_count` signature `proc cpu_count() -> int {` example `cpu_count`
+- `proc page_size` signature `proc page_size() -> int {` example `page_size`
+- `proc uptime` signature `proc uptime() -> int {` example `uptime`
+- `proc clock_time` signature `proc clock_time() -> int {` example `clock_time`
+- `proc time_now` signature `proc time_now() -> int {` example `time_now`
+- `proc gettimeofday` signature `proc gettimeofday() -> int {` example `gettimeofday`
+- `proc timespec` signature `proc timespec() -> int {` example `timespec`
+- `proc timeval` signature `proc timeval() -> int {` example `timeval`
+- `proc sleep` signature `proc sleep() -> int {` example `sleep`
+- `proc usleep` signature `proc usleep() -> int {` example `usleep`
+- `proc nanosleep` signature `proc nanosleep() -> int {` example `nanosleep`
+- `proc open` signature `proc open() -> int {` example `open`
+- `proc open_mode` signature `proc open_mode() -> int {` example `open_mode`
+- `proc close` signature `proc close() -> int {` example `close`
+- `proc read` signature `proc read() -> int {` example `read`
+- `proc write` signature `proc write() -> int {` example `write`
+- `proc pread` signature `proc pread() -> int {` example `pread`
+- `proc pwrite` signature `proc pwrite() -> int {` example `pwrite`
+- `proc lseek` signature `proc lseek() -> int {` example `lseek`
+- `proc dup` signature `proc dup() -> int {` example `dup`
+- `proc dup2` signature `proc dup2() -> int {` example `dup2`
+- `proc pipe` signature `proc pipe() -> int {` example `pipe`
+- `proc pipe2` signature `proc pipe2() -> int {` example `pipe2`
+- `proc poll` signature `proc poll() -> int {` example `poll`
+- `proc os_select` signature `proc os_select() -> int {` example `os_select`
+- `proc file_descriptor` signature `proc file_descriptor() -> int {` example `file_descriptor`
+- `proc fd_valid` signature `proc fd_valid() -> int {` example `fd_valid`
+- `proc fd_is_standard` signature `proc fd_is_standard() -> int {` example `fd_is_standard`
+- `proc empty_stat` signature `proc empty_stat() -> int {` example `empty_stat`
+- `proc stat` signature `proc stat() -> int {` example `stat`
+- `proc lstat` signature `proc lstat() -> int {` example `lstat`
+- `proc fstat` signature `proc fstat() -> int {` example `fstat`
+- `proc mode_is_file` signature `proc mode_is_file() -> int {` example `mode_is_file`
+- `proc mode_is_dir` signature `proc mode_is_dir() -> int {` example `mode_is_dir`
+- `proc mode_is_symlink` signature `proc mode_is_symlink() -> int {` example `mode_is_symlink`
+- `proc exists` signature `proc exists() -> int {` example `exists`
+- `proc is_file` signature `proc is_file() -> int {` example `is_file`
+- `proc is_dir` signature `proc is_dir() -> int {` example `is_dir`
+- `proc is_symlink` signature `proc is_symlink() -> int {` example `is_symlink`
+- `proc file_size` signature `proc file_size() -> int {` example `file_size`
+- `proc chmod` signature `proc chmod() -> int {` example `chmod`
+- `proc chown` signature `proc chown() -> int {` example `chown`
+- `proc mkdir` signature `proc mkdir() -> int {` example `mkdir`
+- `proc mkdir_all` signature `proc mkdir_all() -> int {` example `mkdir_all`
+- `proc rmdir` signature `proc rmdir() -> int {` example `rmdir`
+- `proc unlink` signature `proc unlink() -> int {` example `unlink`
+- `proc remove` signature `proc remove() -> int {` example `remove`
+- `proc rename` signature `proc rename() -> int {` example `rename`
+- `proc link` signature `proc link() -> int {` example `link`
+- `proc symlink` signature `proc symlink() -> int {` example `symlink`
+- `proc readlink` signature `proc readlink() -> int {` example `readlink`
+- `proc truncate` signature `proc truncate() -> int {` example `truncate`
+- `proc ftruncate` signature `proc ftruncate() -> int {` example `ftruncate`
+- `proc access` signature `proc access() -> int {` example `access`
+- `proc list_dir` signature `proc list_dir() -> int {` example `list_dir`
+- `proc dir_names` signature `proc dir_names() -> int {` example `dir_names`
+- `proc mount` signature `proc mount() -> int {` example `mount`
+- `proc umount` signature `proc umount() -> int {` example `umount`
+- `proc mounts` signature `proc mounts() -> int {` example `mounts`
+- `proc path_sep` signature `proc path_sep() -> int {` example `path_sep`
+- `proc path_join` signature `proc path_join() -> int {` example `path_join`
+- `proc path_join3` signature `proc path_join3() -> int {` example `path_join3`
+- `proc path_is_absolute` signature `proc path_is_absolute() -> int {` example `path_is_absolute`
+- `proc path_is_relative` signature `proc path_is_relative() -> int {` example `path_is_relative`
+- `proc path_normalize` signature `proc path_normalize() -> int {` example `path_normalize`
+- `proc basename` signature `proc basename() -> int {` example `basename`
+- `proc dirname` signature `proc dirname() -> int {` example `dirname`
+- `proc extension` signature `proc extension() -> int {` example `extension`
+- `proc stem` signature `proc stem() -> int {` example `stem`
+- `proc path_parse` signature `proc path_parse() -> int {` example `path_parse`
+- `proc tmpdir` signature `proc tmpdir() -> int {` example `tmpdir`
+- `proc tmpnam` signature `proc tmpnam() -> int {` example `tmpnam`
+- `proc mktemp` signature `proc mktemp() -> int {` example `mktemp`
+- `proc mkstemp` signature `proc mkstemp() -> int {` example `mkstemp`
+- `proc terminal_size` signature `proc terminal_size() -> int {` example `terminal_size`
+- `proc isatty` signature `proc isatty() -> int {` example `isatty`
+- `proc ttyname` signature `proc ttyname() -> int {` example `ttyname`
+- `proc resource_usage` signature `proc resource_usage() -> int {` example `resource_usage`
+- `proc getrusage` signature `proc getrusage() -> int {` example `getrusage`
+- `proc reboot` signature `proc reboot() -> int {` example `reboot`
+- `proc shutdown` signature `proc shutdown() -> int {` example `shutdown`
+- `proc panic_os` signature `proc panic_os() -> int {` example `panic_os`
+- `proc syscall0` signature `proc syscall0() -> int {` example `syscall0`
+- `proc syscall1` signature `proc syscall1() -> int {` example `syscall1`
+- `proc syscall2` signature `proc syscall2() -> int {` example `syscall2`
+- `proc syscall3` signature `proc syscall3() -> int {` example `syscall3`
+- `proc syscall4` signature `proc syscall4() -> int {` example `syscall4`
+- `proc syscall5` signature `proc syscall5() -> int {` example `syscall5`
+- `proc syscall6` signature `proc syscall6() -> int {` example `syscall6`
+- `proc os_snapshot` signature `proc os_snapshot() -> int {` example `os_snapshot`
+- `proc string_starts_with` signature `proc string_starts_with() -> int {` example `string_starts_with`
+- `proc string_ends_with` signature `proc string_ends_with() -> int {` example `string_ends_with`
+- `proc os_domains` signature `proc os_domains() -> int {` example `os_domains`
+- `proc os_ready` signature `proc os_ready() -> int {` example `os_ready`
+- `proc library_meta` signature `proc library_meta() -> int {` example `library_meta`
+- `proc os_selftest` signature `proc os_selftest() -> int {` example `os_selftest`
 
 ## `src/vitte/stdlib/sysinfo.vitl`
 
-- `form OSInfo`
-- `form CPUInfo`
-- `form MemoryInfo`
-- `form DiskStat`
-- `form ProcessInfo`
-- `form NetworkStat`
-- `form BatteryInfo`
-- `form SystemLoad`
-- `form SysInfoManifest`
-- `form SystemSummary`
-- `form SystemSnapshot`
-- `form SystemHealthReport`
-- `form SysInfoReport`
-- `proc sysinfo_version`
-- `proc sysinfo_name`
-- `proc sysinfo_module_count`
-- `proc sysinfo_modules`
-- `proc sysinfo_manifest`
-- `proc sysinfo_ready`
-- `proc sysinfo_modules_detail`
-- `proc sysinfo_collection_count`
-- `proc get_os_info`
-- `proc get_os_name`
-- `proc get_os_version`
-- `proc get_architecture`
-- `proc is_windows`
-- `proc is_linux`
-- `proc is_macos`
-- `proc is_unix`
-- `proc get_cpu_info`
-- `proc get_cpu_count`
-- `proc get_cpu_count_physical`
-- `proc get_cpu_frequency`
-- `proc get_cpu_usage`
-- `proc get_process_cpu_usage`
-- `proc get_memory_info`
-- `proc get_total_memory`
-- `proc get_available_memory`
-- `proc get_used_memory`
-- `proc get_free_memory`
-- `proc get_memory_percent`
-- `proc get_process_memory_mb`
-- `proc get_disk_usage`
-- `proc get_disk_usage_all`
-- `proc get_total_disk_space`
-- `proc get_used_disk_space`
-- `proc get_free_disk_space`
-- `proc get_process_info`
-- `proc get_current_process_id`
-- `proc get_parent_process_id`
-- `proc get_running_processes`
-- `proc get_process_count`
-- `proc get_thread_count`
-- `proc get_network_interfaces`
-- `proc get_network_interface`
-- `proc get_hostname`
-- `proc get_local_ip`
-- `proc get_mac_address`
-- `proc get_uptime_seconds`
-- `proc get_boot_time`
-- `proc get_system_load_average`
-- `proc get_battery_percent`
-- `proc get_battery_time_remaining`
-- `proc is_on_battery`
-- `proc is_charging`
-- `proc get_battery_info`
-- `proc get_system_health_report`
-- `proc get_current_process_info`
-- `proc get_system_load`
-- `proc get_primary_disk_usage`
-- `proc get_primary_network_stat`
-- `proc get_system_snapshot`
-- `proc get_system_summary`
-- `proc get_sysinfo_report`
-- `proc sysinfo_health`
-- `proc sysinfo_selftest`
+- `form OSInfo` signature `form OSInfo {` example `OSInfo`
+- `form CPUInfo` signature `form CPUInfo {` example `CPUInfo`
+- `form MemoryInfo` signature `form MemoryInfo {` example `MemoryInfo`
+- `form DiskStat` signature `form DiskStat {` example `DiskStat`
+- `form ProcessInfo` signature `form ProcessInfo {` example `ProcessInfo`
+- `form NetworkStat` signature `form NetworkStat {` example `NetworkStat`
+- `form BatteryInfo` signature `form BatteryInfo {` example `BatteryInfo`
+- `form SystemLoad` signature `form SystemLoad {` example `SystemLoad`
+- `form SysInfoManifest` signature `form SysInfoManifest {` example `SysInfoManifest`
+- `form SystemSummary` signature `form SystemSummary {` example `SystemSummary`
+- `form SystemSnapshot` signature `form SystemSnapshot {` example `SystemSnapshot`
+- `form SystemHealthReport` signature `form SystemHealthReport {` example `SystemHealthReport`
+- `form SysInfoReport` signature `form SysInfoReport {` example `SysInfoReport`
+- `proc sysinfo_version` signature `proc sysinfo_version() -> string {` example `sysinfo_version`
+- `proc sysinfo_name` signature `proc sysinfo_name() -> string {` example `sysinfo_name`
+- `proc sysinfo_module_count` signature `proc sysinfo_module_count() -> i32 {` example `sysinfo_module_count`
+- `proc sysinfo_modules` signature `proc sysinfo_modules() -> [string] {` example `sysinfo_modules`
+- `proc sysinfo_manifest` signature `proc sysinfo_manifest() -> SysInfoManifest {` example `sysinfo_manifest`
+- `proc sysinfo_ready` signature `proc sysinfo_ready() -> bool {` example `sysinfo_ready`
+- `proc sysinfo_modules_detail` signature `proc sysinfo_modules_detail() -> [string] {` example `sysinfo_modules_detail`
+- `proc sysinfo_collection_count` signature `proc sysinfo_collection_count() -> i32 {` example `sysinfo_collection_count`
+- `proc get_os_info` signature `proc get_os_info() -> OSInfo {` example `get_os_info`
+- `proc get_os_name` signature `proc get_os_name() -> string {` example `get_os_name`
+- `proc get_os_version` signature `proc get_os_version() -> string {` example `get_os_version`
+- `proc get_architecture` signature `proc get_architecture() -> string {` example `get_architecture`
+- `proc is_windows` signature `proc is_windows() -> int {` example `is_windows`
+- `proc is_linux` signature `proc is_linux() -> int {` example `is_linux`
+- `proc is_macos` signature `proc is_macos() -> int {` example `is_macos`
+- `proc is_unix` signature `proc is_unix() -> int {` example `is_unix`
+- `proc get_cpu_info` signature `proc get_cpu_info() -> CPUInfo {` example `get_cpu_info`
+- `proc get_cpu_count` signature `proc get_cpu_count() -> i32 {` example `get_cpu_count`
+- `proc get_cpu_count_physical` signature `proc get_cpu_count_physical() -> i32 {` example `get_cpu_count_physical`
+- `proc get_cpu_frequency` signature `proc get_cpu_frequency() -> f64 {` example `get_cpu_frequency`
+- `proc get_cpu_usage` signature `proc get_cpu_usage() -> f64 {` example `get_cpu_usage`
+- `proc get_process_cpu_usage` signature `proc get_process_cpu_usage() -> f64 {` example `get_process_cpu_usage`
+- `proc get_memory_info` signature `proc get_memory_info() -> MemoryInfo {` example `get_memory_info`
+- `proc get_total_memory` signature `proc get_total_memory() -> i64 {` example `get_total_memory`
+- `proc get_available_memory` signature `proc get_available_memory() -> i64 {` example `get_available_memory`
+- `proc get_used_memory` signature `proc get_used_memory() -> i64 {` example `get_used_memory`
+- `proc get_free_memory` signature `proc get_free_memory() -> i64 {` example `get_free_memory`
+- `proc get_memory_percent` signature `proc get_memory_percent() -> f64 {` example `get_memory_percent`
+- `proc get_process_memory_mb` signature `proc get_process_memory_mb() -> i32 {` example `get_process_memory_mb`
+- `proc get_disk_usage` signature `proc get_disk_usage(path: string) -> DiskStat {` example `get_disk_usage`
+- `proc get_disk_usage_all` signature `proc get_disk_usage_all() -> [DiskStat] {` example `get_disk_usage_all`
+- `proc get_total_disk_space` signature `proc get_total_disk_space(path: string) -> i64 {` example `get_total_disk_space`
+- `proc get_used_disk_space` signature `proc get_used_disk_space(path: string) -> i64 {` example `get_used_disk_space`
+- `proc get_free_disk_space` signature `proc get_free_disk_space(path: string) -> i64 {` example `get_free_disk_space`
+- `proc get_process_info` signature `proc get_process_info(pid: i32) -> ProcessInfo {` example `get_process_info`
+- `proc get_current_process_id` signature `proc get_current_process_id() -> i32 {` example `get_current_process_id`
+- `proc get_parent_process_id` signature `proc get_parent_process_id() -> i32 {` example `get_parent_process_id`
+- `proc get_running_processes` signature `proc get_running_processes() -> [ProcessInfo] {` example `get_running_processes`
+- `proc get_process_count` signature `proc get_process_count() -> i32 {` example `get_process_count`
+- `proc get_thread_count` signature `proc get_thread_count() -> i32 {` example `get_thread_count`
+- `proc get_network_interfaces` signature `proc get_network_interfaces() -> [NetworkStat] {` example `get_network_interfaces`
+- `proc get_network_interface` signature `proc get_network_interface(name: string) -> NetworkStat {` example `get_network_interface`
+- `proc get_hostname` signature `proc get_hostname() -> string {` example `get_hostname`
+- `proc get_local_ip` signature `proc get_local_ip() -> string {` example `get_local_ip`
+- `proc get_mac_address` signature `proc get_mac_address(interface: string) -> string {` example `get_mac_address`
+- `proc get_uptime_seconds` signature `proc get_uptime_seconds() -> i64 {` example `get_uptime_seconds`
+- `proc get_boot_time` signature `proc get_boot_time() -> i64 {` example `get_boot_time`
+- `proc get_system_load_average` signature `proc get_system_load_average() -> [f64] {` example `get_system_load_average`
+- `proc get_battery_percent` signature `proc get_battery_percent() -> i32 {` example `get_battery_percent`
+- `proc get_battery_time_remaining` signature `proc get_battery_time_remaining() -> i32 {` example `get_battery_time_remaining`
+- `proc is_on_battery` signature `proc is_on_battery() -> int {` example `is_on_battery`
+- `proc is_charging` signature `proc is_charging() -> int {` example `is_charging`
+- `proc get_battery_info` signature `proc get_battery_info() -> BatteryInfo {` example `get_battery_info`
+- `proc get_system_health_report` signature `proc get_system_health_report() -> SystemHealthReport {` example `get_system_health_report`
+- `proc get_current_process_info` signature `proc get_current_process_info() -> ProcessInfo {` example `get_current_process_info`
+- `proc get_system_load` signature `proc get_system_load() -> SystemLoad {` example `get_system_load`
+- `proc get_primary_disk_usage` signature `proc get_primary_disk_usage() -> DiskStat {` example `get_primary_disk_usage`
+- `proc get_primary_network_stat` signature `proc get_primary_network_stat() -> NetworkStat {` example `get_primary_network_stat`
+- `proc get_system_snapshot` signature `proc get_system_snapshot() -> SystemSnapshot {` example `get_system_snapshot`
+- `proc get_system_summary` signature `proc get_system_summary() -> SystemSummary {` example `get_system_summary`
+- `proc get_sysinfo_report` signature `proc get_sysinfo_report() -> SysInfoReport {` example `get_sysinfo_report`
+- `proc sysinfo_health` signature `proc sysinfo_health() -> bool {` example `sysinfo_health`
+- `proc sysinfo_selftest` signature `proc sysinfo_selftest() -> bool {` example `sysinfo_selftest`
 
 ## `src/vitte/stdlib/datetime.vitl`
 
-- `form DatetimeLibraryManifest`
-- `form DatetimeLibraryHealth`
-- `form DatetimeLibrarySummary`
-- `form DatetimeLibraryReport`
-- `const NANOS_PER_MICRO`
-- `const NANOS_PER_MILLI`
-- `const NANOS_PER_SECOND`
-- `const SECONDS_PER_MINUTE`
-- `const MINUTES_PER_HOUR`
-- `const HOURS_PER_DAY`
-- `const SECONDS_PER_HOUR`
-- `const SECONDS_PER_DAY`
-- `const MILLIS_PER_SECOND`
-- `const MICROS_PER_SECOND`
-- `const UNIX_EPOCH_YEAR`
-- `proc datetime_library_version`
-- `proc datetime_library_name`
-- `proc datetime_library_module_count`
-- `proc datetime_library_modules`
-- `proc datetime_library_manifest`
-- `proc datetime_library_ready`
-- `proc datetime_library_health`
-- `proc datetime_library_summary`
-- `proc datetime_library_selftest`
-- `proc datetime_library_report`
-- `form Duration`
-- `form Date`
-- `form Time`
-- `form DateTime`
-- `form UnixTimestamp`
-- `pick Weekday`
-- `pick Month`
-- `pick MaybeMonth`
-- `pick DateTimeError`
-- `pick MaybeDate`
-- `pick MaybeTime`
-- `pick MaybeDateTime`
-- `proc duration_new`
-- `proc duration_zero`
-- `proc duration_from_seconds`
-- `proc duration_from_millis`
-- `proc duration_from_micros`
-- `proc duration_from_nanos`
-- `proc duration_total_seconds`
-- `proc duration_total_millis`
-- `proc duration_total_micros`
-- `proc duration_total_nanos`
-- `proc duration_add`
-- `proc duration_sub`
-- `proc duration_neg`
-- `proc duration_cmp`
-- `proc duration_eq`
-- `proc duration_lt`
-- `proc duration_lte`
-- `proc duration_gt`
-- `proc duration_gte`
-- `proc is_leap_year`
-- `proc days_in_month`
-- `proc days_in_year`
-- `proc month_to_number`
-- `proc number_to_month`
-- `proc month_name`
-- `proc month_short_name`
-- `proc weekday_name`
-- `proc weekday_short_name`
-- `proc validate_date`
-- `proc validate_time`
-- `proc validate_datetime`
-- `proc date_new`
-- `proc time_new`
-- `proc datetime_new`
-- `proc date_ordinal`
-- `proc date_from_ordinal`
-- `proc days_before_year`
-- `proc days_before_month`
-- `proc date_to_days_since_epoch`
-- `proc days_since_epoch_to_date`
-- `proc time_to_seconds`
-- `proc seconds_to_time`
-- `proc datetime_to_unix`
-- `proc unix_to_datetime`
-- `proc unix_normalize`
-- `proc unix_from_seconds`
-- `proc unix_from_millis`
-- `proc unix_to_millis`
-- `proc floor_div`
-- `proc floor_mod`
-- `proc weekday_from_days`
-- `proc date_weekday`
-- `proc date_add_days`
-- `proc datetime_add_duration`
-- `proc datetime_sub_duration`
-- `proc datetime_duration_between`
-- `proc date_cmp`
-- `proc time_cmp`
-- `proc datetime_cmp`
-- `proc date_eq`
-- `proc time_eq`
-- `proc datetime_eq`
-- `proc date_is_before`
-- `proc date_is_after`
-- `proc datetime_is_before`
-- `proc datetime_is_after`
-- `proc clamp_u8`
-- `proc ascii_digit_value`
-- `proc is_ascii_digit`
-- `proc parse_2_digits`
-- `proc parse_4_digits`
-- `proc parse_date_yyyy_mm_dd`
-- `proc parse_time_hh_mm_ss`
-- `proc parse_datetime_iso_basic`
-- `proc two_digits`
-- `proc four_digits`
-- `proc format_date_iso`
-- `proc format_time_iso`
-- `proc format_datetime_iso`
-- `proc format_datetime_space`
-- `proc format_date_human`
-- `proc format_weekday_date`
-- `proc start_of_day`
-- `proc end_of_day`
-- `proc date_next_day`
-- `proc date_prev_day`
-- `proc date_add_weeks`
-- `proc date_start_of_month`
-- `proc date_end_of_month`
-- `proc date_start_of_year`
-- `proc date_end_of_year`
-- `proc date_add_months`
-- `proc date_add_years`
-- `proc floor_div_i32`
-- `proc floor_mod_i32`
-- `proc iso_weekday_number`
-- `proc date_iso_weekday_number`
-- `proc is_weekend`
-- `proc is_weekday`
-- `proc date_days_between`
-- `proc datetime_seconds_between`
-- `proc unix_epoch_datetime`
-- `proc unix_epoch_date`
-- `proc midnight`
-- `proc noon`
-- `proc time_add_duration`
-- `proc time_is_midnight`
-- `proc time_is_noon`
-- `proc date_quarter`
-- `proc date_day_of_year`
-- `proc date_days_remaining_in_year`
-- `proc date_days_remaining_in_month`
-- `proc date_is_first_day_of_month`
-- `proc date_is_last_day_of_month`
-- `proc date_is_first_day_of_year`
-- `proc date_is_last_day_of_year`
-- `proc timestamp_cmp`
-- `proc timestamp_add_duration`
-- `proc timestamp_sub_duration`
-- `proc timestamp_duration_between`
-- `proc datetime_now_unavailable`
-- `proc string_len`
-- `proc string_at`
-- `proc string_slice`
-- `proc string_concat`
-- `proc string_concat_many`
-- `proc int_to_string`
-- `proc datetime_selftest`
+- `form DatetimeLibraryManifest` signature `form DatetimeLibraryManifest {` example `DatetimeLibraryManifest`
+- `form DatetimeLibraryHealth` signature `form DatetimeLibraryHealth {` example `DatetimeLibraryHealth`
+- `form DatetimeLibrarySummary` signature `form DatetimeLibrarySummary {` example `DatetimeLibrarySummary`
+- `form DatetimeLibraryReport` signature `form DatetimeLibraryReport {` example `DatetimeLibraryReport`
+- `const NANOS_PER_MICRO` signature `const NANOS_PER_MICRO: i64 = 0` example `NANOS_PER_MICRO`
+- `const NANOS_PER_MILLI` signature `const NANOS_PER_MILLI: i64 = 0` example `NANOS_PER_MILLI`
+- `const NANOS_PER_SECOND` signature `const NANOS_PER_SECOND: i64 = 0` example `NANOS_PER_SECOND`
+- `const SECONDS_PER_MINUTE` signature `const SECONDS_PER_MINUTE: i64 = 0` example `SECONDS_PER_MINUTE`
+- `const MINUTES_PER_HOUR` signature `const MINUTES_PER_HOUR: i64 = 0` example `MINUTES_PER_HOUR`
+- `const HOURS_PER_DAY` signature `const HOURS_PER_DAY: i64 = 0` example `HOURS_PER_DAY`
+- `const SECONDS_PER_HOUR` signature `const SECONDS_PER_HOUR: i64 = 0` example `SECONDS_PER_HOUR`
+- `const SECONDS_PER_DAY` signature `const SECONDS_PER_DAY: i64 = 0` example `SECONDS_PER_DAY`
+- `const MILLIS_PER_SECOND` signature `const MILLIS_PER_SECOND: i64 = 0` example `MILLIS_PER_SECOND`
+- `const MICROS_PER_SECOND` signature `const MICROS_PER_SECOND: i64 = 0` example `MICROS_PER_SECOND`
+- `const UNIX_EPOCH_YEAR` signature `const UNIX_EPOCH_YEAR: i32 = 0` example `UNIX_EPOCH_YEAR`
+- `proc datetime_library_version` signature `proc datetime_library_version() -> int {` example `datetime_library_version`
+- `proc datetime_library_name` signature `proc datetime_library_name() -> int {` example `datetime_library_name`
+- `proc datetime_library_module_count` signature `proc datetime_library_module_count() -> int {` example `datetime_library_module_count`
+- `proc datetime_library_modules` signature `proc datetime_library_modules() -> int {` example `datetime_library_modules`
+- `proc datetime_library_manifest` signature `proc datetime_library_manifest() -> int {` example `datetime_library_manifest`
+- `proc datetime_library_ready` signature `proc datetime_library_ready() -> int {` example `datetime_library_ready`
+- `proc datetime_library_health` signature `proc datetime_library_health() -> int {` example `datetime_library_health`
+- `proc datetime_library_summary` signature `proc datetime_library_summary() -> int {` example `datetime_library_summary`
+- `proc datetime_library_selftest` signature `proc datetime_library_selftest() -> int {` example `datetime_library_selftest`
+- `proc datetime_library_report` signature `proc datetime_library_report() -> int {` example `datetime_library_report`
+- `form Duration` signature `form Duration {` example `Duration`
+- `form Date` signature `form Date {` example `Date`
+- `form Time` signature `form Time {` example `Time`
+- `form DateTime` signature `form DateTime {` example `DateTime`
+- `form UnixTimestamp` signature `form UnixTimestamp {` example `UnixTimestamp`
+- `pick Weekday` signature `pick Weekday {` example `Weekday`
+- `pick Month` signature `pick Month {` example `Month`
+- `pick MaybeMonth` signature `pick MaybeMonth {` example `MaybeMonth`
+- `pick DateTimeError` signature `pick DateTimeError {` example `DateTimeError`
+- `pick MaybeDate` signature `pick MaybeDate {` example `MaybeDate`
+- `pick MaybeTime` signature `pick MaybeTime {` example `MaybeTime`
+- `pick MaybeDateTime` signature `pick MaybeDateTime {` example `MaybeDateTime`
+- `proc duration_new` signature `proc duration_new() -> int {` example `duration_new`
+- `proc duration_zero` signature `proc duration_zero() -> int {` example `duration_zero`
+- `proc duration_from_seconds` signature `proc duration_from_seconds() -> int {` example `duration_from_seconds`
+- `proc duration_from_millis` signature `proc duration_from_millis() -> int {` example `duration_from_millis`
+- `proc duration_from_micros` signature `proc duration_from_micros() -> int {` example `duration_from_micros`
+- `proc duration_from_nanos` signature `proc duration_from_nanos() -> int {` example `duration_from_nanos`
+- `proc duration_total_seconds` signature `proc duration_total_seconds() -> int {` example `duration_total_seconds`
+- `proc duration_total_millis` signature `proc duration_total_millis() -> int {` example `duration_total_millis`
+- `proc duration_total_micros` signature `proc duration_total_micros() -> int {` example `duration_total_micros`
+- `proc duration_total_nanos` signature `proc duration_total_nanos() -> int {` example `duration_total_nanos`
+- `proc duration_add` signature `proc duration_add() -> int {` example `duration_add`
+- `proc duration_sub` signature `proc duration_sub() -> int {` example `duration_sub`
+- `proc duration_neg` signature `proc duration_neg() -> int {` example `duration_neg`
+- `proc duration_cmp` signature `proc duration_cmp() -> int {` example `duration_cmp`
+- `proc duration_eq` signature `proc duration_eq() -> int {` example `duration_eq`
+- `proc duration_lt` signature `proc duration_lt() -> int {` example `duration_lt`
+- `proc duration_lte` signature `proc duration_lte() -> int {` example `duration_lte`
+- `proc duration_gt` signature `proc duration_gt() -> int {` example `duration_gt`
+- `proc duration_gte` signature `proc duration_gte() -> int {` example `duration_gte`
+- `proc is_leap_year` signature `proc is_leap_year() -> int {` example `is_leap_year`
+- `proc days_in_month` signature `proc days_in_month() -> int {` example `days_in_month`
+- `proc days_in_year` signature `proc days_in_year() -> int {` example `days_in_year`
+- `proc month_to_number` signature `proc month_to_number() -> int {` example `month_to_number`
+- `proc number_to_month` signature `proc number_to_month() -> int {` example `number_to_month`
+- `proc month_name` signature `proc month_name() -> int {` example `month_name`
+- `proc month_short_name` signature `proc month_short_name() -> int {` example `month_short_name`
+- `proc weekday_name` signature `proc weekday_name() -> int {` example `weekday_name`
+- `proc weekday_short_name` signature `proc weekday_short_name() -> int {` example `weekday_short_name`
+- `proc validate_date` signature `proc validate_date() -> int {` example `validate_date`
+- `proc validate_time` signature `proc validate_time() -> int {` example `validate_time`
+- `proc validate_datetime` signature `proc validate_datetime() -> int {` example `validate_datetime`
+- `proc date_new` signature `proc date_new() -> int {` example `date_new`
+- `proc time_new` signature `proc time_new() -> int {` example `time_new`
+- `proc datetime_new` signature `proc datetime_new() -> int {` example `datetime_new`
+- `proc date_ordinal` signature `proc date_ordinal() -> int {` example `date_ordinal`
+- `proc date_from_ordinal` signature `proc date_from_ordinal() -> int {` example `date_from_ordinal`
+- `proc days_before_year` signature `proc days_before_year() -> int {` example `days_before_year`
+- `proc days_before_month` signature `proc days_before_month() -> int {` example `days_before_month`
+- `proc date_to_days_since_epoch` signature `proc date_to_days_since_epoch() -> int {` example `date_to_days_since_epoch`
+- `proc days_since_epoch_to_date` signature `proc days_since_epoch_to_date() -> int {` example `days_since_epoch_to_date`
+- `proc time_to_seconds` signature `proc time_to_seconds() -> int {` example `time_to_seconds`
+- `proc seconds_to_time` signature `proc seconds_to_time() -> int {` example `seconds_to_time`
+- `proc datetime_to_unix` signature `proc datetime_to_unix() -> int {` example `datetime_to_unix`
+- `proc unix_to_datetime` signature `proc unix_to_datetime() -> int {` example `unix_to_datetime`
+- `proc unix_normalize` signature `proc unix_normalize() -> int {` example `unix_normalize`
+- `proc unix_from_seconds` signature `proc unix_from_seconds() -> int {` example `unix_from_seconds`
+- `proc unix_from_millis` signature `proc unix_from_millis() -> int {` example `unix_from_millis`
+- `proc unix_to_millis` signature `proc unix_to_millis() -> int {` example `unix_to_millis`
+- `proc floor_div` signature `proc floor_div() -> int {` example `floor_div`
+- `proc floor_mod` signature `proc floor_mod() -> int {` example `floor_mod`
+- `proc weekday_from_days` signature `proc weekday_from_days() -> int {` example `weekday_from_days`
+- `proc date_weekday` signature `proc date_weekday() -> int {` example `date_weekday`
+- `proc date_add_days` signature `proc date_add_days() -> int {` example `date_add_days`
+- `proc datetime_add_duration` signature `proc datetime_add_duration() -> int {` example `datetime_add_duration`
+- `proc datetime_sub_duration` signature `proc datetime_sub_duration() -> int {` example `datetime_sub_duration`
+- `proc datetime_duration_between` signature `proc datetime_duration_between() -> int {` example `datetime_duration_between`
+- `proc date_cmp` signature `proc date_cmp() -> int {` example `date_cmp`
+- `proc time_cmp` signature `proc time_cmp() -> int {` example `time_cmp`
+- `proc datetime_cmp` signature `proc datetime_cmp() -> int {` example `datetime_cmp`
+- `proc date_eq` signature `proc date_eq() -> int {` example `date_eq`
+- `proc time_eq` signature `proc time_eq() -> int {` example `time_eq`
+- `proc datetime_eq` signature `proc datetime_eq() -> int {` example `datetime_eq`
+- `proc date_is_before` signature `proc date_is_before() -> int {` example `date_is_before`
+- `proc date_is_after` signature `proc date_is_after() -> int {` example `date_is_after`
+- `proc datetime_is_before` signature `proc datetime_is_before() -> int {` example `datetime_is_before`
+- `proc datetime_is_after` signature `proc datetime_is_after() -> int {` example `datetime_is_after`
+- `proc clamp_u8` signature `proc clamp_u8() -> int {` example `clamp_u8`
+- `proc ascii_digit_value` signature `proc ascii_digit_value() -> int {` example `ascii_digit_value`
+- `proc is_ascii_digit` signature `proc is_ascii_digit() -> int {` example `is_ascii_digit`
+- `proc parse_2_digits` signature `proc parse_2_digits() -> int {` example `parse_2_digits`
+- `proc parse_4_digits` signature `proc parse_4_digits() -> int {` example `parse_4_digits`
+- `proc parse_date_yyyy_mm_dd` signature `proc parse_date_yyyy_mm_dd() -> int {` example `parse_date_yyyy_mm_dd`
+- `proc parse_time_hh_mm_ss` signature `proc parse_time_hh_mm_ss() -> int {` example `parse_time_hh_mm_ss`
+- `proc parse_datetime_iso_basic` signature `proc parse_datetime_iso_basic() -> int {` example `parse_datetime_iso_basic`
+- `proc two_digits` signature `proc two_digits() -> int {` example `two_digits`
+- `proc four_digits` signature `proc four_digits() -> int {` example `four_digits`
+- `proc format_date_iso` signature `proc format_date_iso() -> int {` example `format_date_iso`
+- `proc format_time_iso` signature `proc format_time_iso() -> int {` example `format_time_iso`
+- `proc format_datetime_iso` signature `proc format_datetime_iso() -> int {` example `format_datetime_iso`
+- `proc format_datetime_space` signature `proc format_datetime_space() -> int {` example `format_datetime_space`
+- `proc format_date_human` signature `proc format_date_human() -> int {` example `format_date_human`
+- `proc format_weekday_date` signature `proc format_weekday_date() -> int {` example `format_weekday_date`
+- `proc start_of_day` signature `proc start_of_day() -> int {` example `start_of_day`
+- `proc end_of_day` signature `proc end_of_day() -> int {` example `end_of_day`
+- `proc date_next_day` signature `proc date_next_day() -> int {` example `date_next_day`
+- `proc date_prev_day` signature `proc date_prev_day() -> int {` example `date_prev_day`
+- `proc date_add_weeks` signature `proc date_add_weeks() -> int {` example `date_add_weeks`
+- `proc date_start_of_month` signature `proc date_start_of_month() -> int {` example `date_start_of_month`
+- `proc date_end_of_month` signature `proc date_end_of_month() -> int {` example `date_end_of_month`
+- `proc date_start_of_year` signature `proc date_start_of_year() -> int {` example `date_start_of_year`
+- `proc date_end_of_year` signature `proc date_end_of_year() -> int {` example `date_end_of_year`
+- `proc date_add_months` signature `proc date_add_months() -> int {` example `date_add_months`
+- `proc date_add_years` signature `proc date_add_years() -> int {` example `date_add_years`
+- `proc floor_div_i32` signature `proc floor_div_i32() -> int {` example `floor_div_i32`
+- `proc floor_mod_i32` signature `proc floor_mod_i32() -> int {` example `floor_mod_i32`
+- `proc iso_weekday_number` signature `proc iso_weekday_number() -> int {` example `iso_weekday_number`
+- `proc date_iso_weekday_number` signature `proc date_iso_weekday_number() -> int {` example `date_iso_weekday_number`
+- `proc is_weekend` signature `proc is_weekend() -> int {` example `is_weekend`
+- `proc is_weekday` signature `proc is_weekday() -> int {` example `is_weekday`
+- `proc date_days_between` signature `proc date_days_between() -> int {` example `date_days_between`
+- `proc datetime_seconds_between` signature `proc datetime_seconds_between() -> int {` example `datetime_seconds_between`
+- `proc unix_epoch_datetime` signature `proc unix_epoch_datetime() -> int {` example `unix_epoch_datetime`
+- `proc unix_epoch_date` signature `proc unix_epoch_date() -> int {` example `unix_epoch_date`
+- `proc midnight` signature `proc midnight() -> int {` example `midnight`
+- `proc noon` signature `proc noon() -> int {` example `noon`
+- `proc time_add_duration` signature `proc time_add_duration() -> int {` example `time_add_duration`
+- `proc time_is_midnight` signature `proc time_is_midnight() -> int {` example `time_is_midnight`
+- `proc time_is_noon` signature `proc time_is_noon() -> int {` example `time_is_noon`
+- `proc date_quarter` signature `proc date_quarter() -> int {` example `date_quarter`
+- `proc date_day_of_year` signature `proc date_day_of_year() -> int {` example `date_day_of_year`
+- `proc date_days_remaining_in_year` signature `proc date_days_remaining_in_year() -> int {` example `date_days_remaining_in_year`
+- `proc date_days_remaining_in_month` signature `proc date_days_remaining_in_month() -> int {` example `date_days_remaining_in_month`
+- `proc date_is_first_day_of_month` signature `proc date_is_first_day_of_month() -> int {` example `date_is_first_day_of_month`
+- `proc date_is_last_day_of_month` signature `proc date_is_last_day_of_month() -> int {` example `date_is_last_day_of_month`
+- `proc date_is_first_day_of_year` signature `proc date_is_first_day_of_year() -> int {` example `date_is_first_day_of_year`
+- `proc date_is_last_day_of_year` signature `proc date_is_last_day_of_year() -> int {` example `date_is_last_day_of_year`
+- `proc timestamp_cmp` signature `proc timestamp_cmp() -> int {` example `timestamp_cmp`
+- `proc timestamp_add_duration` signature `proc timestamp_add_duration() -> int {` example `timestamp_add_duration`
+- `proc timestamp_sub_duration` signature `proc timestamp_sub_duration() -> int {` example `timestamp_sub_duration`
+- `proc timestamp_duration_between` signature `proc timestamp_duration_between() -> int {` example `timestamp_duration_between`
+- `proc datetime_now_unavailable` signature `proc datetime_now_unavailable() -> int {` example `datetime_now_unavailable`
+- `proc string_len` signature `proc string_len() -> int {` example `string_len`
+- `proc string_at` signature `proc string_at() -> int {` example `string_at`
+- `proc string_slice` signature `proc string_slice() -> int {` example `string_slice`
+- `proc string_concat` signature `proc string_concat() -> int {` example `string_concat`
+- `proc string_concat_many` signature `proc string_concat_many() -> int {` example `string_concat_many`
+- `proc int_to_string` signature `proc int_to_string() -> int {` example `int_to_string`
+- `proc datetime_selftest` signature `proc datetime_selftest() -> int {` example `datetime_selftest`
 
 ## `src/vitte/stdlib/runtime.vitl`
 
-- `form String`
-- `form Slice`
-- `form Pair`
-- `pick OptionString`
-- `pick IoErrorKind`
-- `form IoError`
-- `pick ResultIo`
-- `pick Result`
-- `form IpV4`
-- `form IpV6`
-- `pick IpAddr`
-- `form SocketAddr`
-- `form TcpStream`
-- `form TcpListener`
-- `form UdpSocket`
-- `form UdpRecv`
-- `pick JsonValue`
-- `form JsonMember`
-- `pick RegexMatch`
-- `pick OptionRegexMatch`
-- `form Regex`
-- `form ProcessResult`
-- `form ExitStatus`
-- `form ProcessChild`
-- `form FswatchWatcher`
-- `pick FswatchEventKind`
-- `form FswatchEvent`
-- `form DbHandle`
-- `form DbEntry`
-- `pick HttpMethod`
-- `form HttpHeader`
-- `form HttpRequest`
-- `form HttpResponse`
-- `form Unit`
-- `proc alloc`
-- `proc dealloc`
-- `proc runtime_panic`
-- `proc runtime_panic_boundary_begin`
-- `proc runtime_panic_boundary_end`
-- `proc runtime_panic_boundary_triggered`
-- `proc runtime_panic_boundary_code`
-- `proc runtime_panic_boundary_reset`
-- `proc assert_true`
-- `proc print_i32`
-- `proc runtime_unreachable`
-- `proc terminate`
-- `proc vitte_c_abi_version`
-- `proc empty_string`
-- `proc make_string`
-- `proc char_to_string`
-- `proc i32_to_string`
-- `proc string_concat`
-- `proc empty_slice_i32`
-- `proc empty_slice_string`
-- `proc slice_push_i32`
-- `proc slice_push_string`
-- `proc list_i32`
-- `proc list_string`
-- `proc time_now_ms`
-- `proc time_sleep_ms`
-- `proc env_get`
-- `proc env_set`
-- `proc os_platform`
-- `proc os_arch`
-- `proc os_home_dir`
-- `proc os_temp_dir`
-- `proc os_current_dir`
-- `proc os_set_current_dir`
-- `proc os_exe_path`
-- `proc os_path_sep`
-- `proc process_run`
-- `proc process_run_args`
-- `proc process_run_shell`
-- `proc process_spawn`
-- `proc process_wait`
-- `proc process_kill`
-- `proc process_stdout`
-- `proc process_stderr`
-- `proc json_parse`
-- `proc json_stringify`
-- `proc http_request`
-- `proc crypto_sha256`
-- `proc crypto_sha1`
-- `proc crypto_hmac_sha256`
-- `proc crypto_rand_bytes`
-- `proc tcp_connect`
-- `proc tcp_bind`
-- `proc tcp_accept`
-- `proc tcp_read`
-- `proc tcp_write`
-- `proc tcp_close`
-- `proc udp_bind`
-- `proc udp_recv_from`
-- `proc udp_send_to`
-- `proc udp_close`
-- `proc udp_set_nonblocking`
-- `proc udp_set_read_timeout`
-- `proc udp_set_write_timeout`
-- `proc tcp_set_nonblocking`
-- `proc tcp_set_read_timeout`
-- `proc tcp_set_write_timeout`
-- `proc regex_compile`
-- `proc regex_is_match`
-- `proc regex_find`
-- `proc regex_replace`
-- `proc regex_split`
-- `proc fswatch_watch`
-- `proc fswatch_poll`
-- `proc fswatch_close`
-- `proc db_open`
-- `proc db_close`
-- `proc db_set`
-- `proc db_get`
-- `proc db_delete`
-- `proc db_keys`
-- `proc db_keys_prefix`
-- `proc db_batch_put`
-- `proc db_begin`
-- `proc db_commit`
-- `proc db_rollback`
-- `form RuntimeManifest`
-- `form RuntimeHealth`
-- `form RuntimeSummary`
-- `proc runtime_version`
-- `proc runtime_ready`
-- `proc runtime_manifest`
-- `proc runtime_health`
-- `proc runtime_summary`
-- `proc runtime_selftest`
+- `form String` signature `form String {` example `String`
+- `form Slice` signature `form Slice {` example `Slice`
+- `form Pair` signature `form Pair {` example `Pair`
+- `pick OptionString` signature `pick OptionString {` example `OptionString`
+- `pick IoErrorKind` signature `pick IoErrorKind {` example `IoErrorKind`
+- `form IoError` signature `form IoError {` example `IoError`
+- `pick ResultIo` signature `pick ResultIo {` example `ResultIo`
+- `pick Result` signature `pick Result {` example `Result`
+- `form IpV4` signature `form IpV4 {` example `IpV4`
+- `form IpV6` signature `form IpV6 {` example `IpV6`
+- `pick IpAddr` signature `pick IpAddr {` example `IpAddr`
+- `form SocketAddr` signature `form SocketAddr {` example `SocketAddr`
+- `form TcpStream` signature `form TcpStream {` example `TcpStream`
+- `form TcpListener` signature `form TcpListener {` example `TcpListener`
+- `form UdpSocket` signature `form UdpSocket {` example `UdpSocket`
+- `form UdpRecv` signature `form UdpRecv {` example `UdpRecv`
+- `pick JsonValue` signature `pick JsonValue {` example `JsonValue`
+- `form JsonMember` signature `form JsonMember {` example `JsonMember`
+- `pick RegexMatch` signature `pick RegexMatch {` example `RegexMatch`
+- `pick OptionRegexMatch` signature `pick OptionRegexMatch {` example `OptionRegexMatch`
+- `form Regex` signature `form Regex {` example `Regex`
+- `form ProcessResult` signature `form ProcessResult {` example `ProcessResult`
+- `form ExitStatus` signature `form ExitStatus {` example `ExitStatus`
+- `form ProcessChild` signature `form ProcessChild {` example `ProcessChild`
+- `form FswatchWatcher` signature `form FswatchWatcher {` example `FswatchWatcher`
+- `pick FswatchEventKind` signature `pick FswatchEventKind {` example `FswatchEventKind`
+- `form FswatchEvent` signature `form FswatchEvent {` example `FswatchEvent`
+- `form DbHandle` signature `form DbHandle {` example `DbHandle`
+- `form DbEntry` signature `form DbEntry {` example `DbEntry`
+- `pick HttpMethod` signature `pick HttpMethod {` example `HttpMethod`
+- `form HttpHeader` signature `form HttpHeader {` example `HttpHeader`
+- `form HttpRequest` signature `form HttpRequest {` example `HttpRequest`
+- `form HttpResponse` signature `form HttpResponse {` example `HttpResponse`
+- `form Unit` signature `form Unit {` example `Unit`
+- `proc alloc` signature `proc alloc() -> int {` example `alloc`
+- `proc dealloc` signature `proc dealloc() -> int {` example `dealloc`
+- `proc runtime_panic` signature `proc runtime_panic() -> int {` example `runtime_panic`
+- `proc runtime_panic_boundary_begin` signature `proc runtime_panic_boundary_begin() -> int {` example `runtime_panic_boundary_begin`
+- `proc runtime_panic_boundary_end` signature `proc runtime_panic_boundary_end() -> int {` example `runtime_panic_boundary_end`
+- `proc runtime_panic_boundary_triggered` signature `proc runtime_panic_boundary_triggered() -> int {` example `runtime_panic_boundary_triggered`
+- `proc runtime_panic_boundary_code` signature `proc runtime_panic_boundary_code() -> int {` example `runtime_panic_boundary_code`
+- `proc runtime_panic_boundary_reset` signature `proc runtime_panic_boundary_reset() -> int {` example `runtime_panic_boundary_reset`
+- `proc assert_true` signature `proc assert_true() -> int {` example `assert_true`
+- `proc print_i32` signature `proc print_i32() -> int {` example `print_i32`
+- `proc runtime_unreachable` signature `proc runtime_unreachable() -> int {` example `runtime_unreachable`
+- `proc terminate` signature `proc terminate() -> int {` example `terminate`
+- `proc vitte_c_abi_version` signature `proc vitte_c_abi_version() -> int {` example `vitte_c_abi_version`
+- `proc empty_string` signature `proc empty_string() -> int {` example `empty_string`
+- `proc make_string` signature `proc make_string() -> int {` example `make_string`
+- `proc char_to_string` signature `proc char_to_string() -> int {` example `char_to_string`
+- `proc i32_to_string` signature `proc i32_to_string() -> int {` example `i32_to_string`
+- `proc string_concat` signature `proc string_concat() -> int {` example `string_concat`
+- `proc empty_slice_i32` signature `proc empty_slice_i32() -> int {` example `empty_slice_i32`
+- `proc empty_slice_string` signature `proc empty_slice_string() -> int {` example `empty_slice_string`
+- `proc slice_push_i32` signature `proc slice_push_i32() -> int {` example `slice_push_i32`
+- `proc slice_push_string` signature `proc slice_push_string() -> int {` example `slice_push_string`
+- `proc list_i32` signature `proc list_i32() -> int {` example `list_i32`
+- `proc list_string` signature `proc list_string() -> int {` example `list_string`
+- `proc time_now_ms` signature `proc time_now_ms() -> int {` example `time_now_ms`
+- `proc time_sleep_ms` signature `proc time_sleep_ms() -> int {` example `time_sleep_ms`
+- `proc env_get` signature `proc env_get() -> int {` example `env_get`
+- `proc env_set` signature `proc env_set() -> int {` example `env_set`
+- `proc os_platform` signature `proc os_platform() -> int {` example `os_platform`
+- `proc os_arch` signature `proc os_arch() -> int {` example `os_arch`
+- `proc os_home_dir` signature `proc os_home_dir() -> int {` example `os_home_dir`
+- `proc os_temp_dir` signature `proc os_temp_dir() -> int {` example `os_temp_dir`
+- `proc os_current_dir` signature `proc os_current_dir() -> int {` example `os_current_dir`
+- `proc os_set_current_dir` signature `proc os_set_current_dir() -> int {` example `os_set_current_dir`
+- `proc os_exe_path` signature `proc os_exe_path() -> int {` example `os_exe_path`
+- `proc os_path_sep` signature `proc os_path_sep() -> int {` example `os_path_sep`
+- `proc process_run` signature `proc process_run() -> int {` example `process_run`
+- `proc process_run_args` signature `proc process_run_args() -> int {` example `process_run_args`
+- `proc process_run_shell` signature `proc process_run_shell() -> int {` example `process_run_shell`
+- `proc process_spawn` signature `proc process_spawn() -> int {` example `process_spawn`
+- `proc process_wait` signature `proc process_wait() -> int {` example `process_wait`
+- `proc process_kill` signature `proc process_kill() -> int {` example `process_kill`
+- `proc process_stdout` signature `proc process_stdout() -> int {` example `process_stdout`
+- `proc process_stderr` signature `proc process_stderr() -> int {` example `process_stderr`
+- `proc json_parse` signature `proc json_parse() -> int {` example `json_parse`
+- `proc json_stringify` signature `proc json_stringify() -> int {` example `json_stringify`
+- `proc http_request` signature `proc http_request() -> int {` example `http_request`
+- `proc crypto_sha256` signature `proc crypto_sha256() -> int {` example `crypto_sha256`
+- `proc crypto_sha1` signature `proc crypto_sha1() -> int {` example `crypto_sha1`
+- `proc crypto_hmac_sha256` signature `proc crypto_hmac_sha256() -> int {` example `crypto_hmac_sha256`
+- `proc crypto_rand_bytes` signature `proc crypto_rand_bytes() -> int {` example `crypto_rand_bytes`
+- `proc tcp_connect` signature `proc tcp_connect() -> int {` example `tcp_connect`
+- `proc tcp_bind` signature `proc tcp_bind() -> int {` example `tcp_bind`
+- `proc tcp_accept` signature `proc tcp_accept() -> int {` example `tcp_accept`
+- `proc tcp_read` signature `proc tcp_read() -> int {` example `tcp_read`
+- `proc tcp_write` signature `proc tcp_write() -> int {` example `tcp_write`
+- `proc tcp_close` signature `proc tcp_close() -> int {` example `tcp_close`
+- `proc udp_bind` signature `proc udp_bind() -> int {` example `udp_bind`
+- `proc udp_recv_from` signature `proc udp_recv_from() -> int {` example `udp_recv_from`
+- `proc udp_send_to` signature `proc udp_send_to() -> int {` example `udp_send_to`
+- `proc udp_close` signature `proc udp_close() -> int {` example `udp_close`
+- `proc udp_set_nonblocking` signature `proc udp_set_nonblocking() -> int {` example `udp_set_nonblocking`
+- `proc udp_set_read_timeout` signature `proc udp_set_read_timeout() -> int {` example `udp_set_read_timeout`
+- `proc udp_set_write_timeout` signature `proc udp_set_write_timeout() -> int {` example `udp_set_write_timeout`
+- `proc tcp_set_nonblocking` signature `proc tcp_set_nonblocking() -> int {` example `tcp_set_nonblocking`
+- `proc tcp_set_read_timeout` signature `proc tcp_set_read_timeout() -> int {` example `tcp_set_read_timeout`
+- `proc tcp_set_write_timeout` signature `proc tcp_set_write_timeout() -> int {` example `tcp_set_write_timeout`
+- `proc regex_compile` signature `proc regex_compile() -> int {` example `regex_compile`
+- `proc regex_is_match` signature `proc regex_is_match() -> int {` example `regex_is_match`
+- `proc regex_find` signature `proc regex_find() -> int {` example `regex_find`
+- `proc regex_replace` signature `proc regex_replace() -> int {` example `regex_replace`
+- `proc regex_split` signature `proc regex_split() -> int {` example `regex_split`
+- `proc fswatch_watch` signature `proc fswatch_watch() -> int {` example `fswatch_watch`
+- `proc fswatch_poll` signature `proc fswatch_poll() -> int {` example `fswatch_poll`
+- `proc fswatch_close` signature `proc fswatch_close() -> int {` example `fswatch_close`
+- `proc db_open` signature `proc db_open() -> int {` example `db_open`
+- `proc db_close` signature `proc db_close() -> int {` example `db_close`
+- `proc db_set` signature `proc db_set() -> int {` example `db_set`
+- `proc db_get` signature `proc db_get() -> int {` example `db_get`
+- `proc db_delete` signature `proc db_delete() -> int {` example `db_delete`
+- `proc db_keys` signature `proc db_keys() -> int {` example `db_keys`
+- `proc db_keys_prefix` signature `proc db_keys_prefix() -> int {` example `db_keys_prefix`
+- `proc db_batch_put` signature `proc db_batch_put() -> int {` example `db_batch_put`
+- `proc db_begin` signature `proc db_begin() -> int {` example `db_begin`
+- `proc db_commit` signature `proc db_commit() -> int {` example `db_commit`
+- `proc db_rollback` signature `proc db_rollback() -> int {` example `db_rollback`
+- `form RuntimeManifest` signature `form RuntimeManifest {` example `RuntimeManifest`
+- `form RuntimeHealth` signature `form RuntimeHealth {` example `RuntimeHealth`
+- `form RuntimeSummary` signature `form RuntimeSummary {` example `RuntimeSummary`
+- `proc runtime_version` signature `proc runtime_version() -> string {` example `runtime_version`
+- `proc runtime_ready` signature `proc runtime_ready() -> bool {` example `runtime_ready`
+- `proc runtime_manifest` signature `proc runtime_manifest() -> RuntimeManifest {` example `runtime_manifest`
+- `proc runtime_health` signature `proc runtime_health() -> RuntimeHealth {` example `runtime_health`
+- `proc runtime_summary` signature `proc runtime_summary() -> RuntimeSummary {` example `runtime_summary`
+- `proc runtime_selftest` signature `proc runtime_selftest() -> bool {` example `runtime_selftest`
 
 ## `src/vitte/stdlib/kernel.vitl`
 
-- `proc module_ready`
+- `proc module_ready` signature `proc module_ready() -> bool {` example `module_ready`
 
 ## `src/vitte/stdlib/graphics.vitl`
 
-- `proc graphics_version`
-- `proc create_canvas`
-- `proc save_canvas`
-- `proc export_png`
-- `proc export_svg`
+- `proc graphics_version` signature `proc graphics_version() -> string {` example `graphics_version`
+- `proc create_canvas` signature `proc create_canvas(width: int, height: int) -> string {` example `create_canvas`
+- `proc save_canvas` signature `proc save_canvas(name: string) -> bool {` example `save_canvas`
+- `proc export_png` signature `proc export_png(canvas: string, filename: string) -> bool {` example `export_png`
+- `proc export_svg` signature `proc export_svg(canvas: string, filename: string) -> bool {` example `export_svg`
 
 ## `src/vitte/stdlib/core/algorithms.vitl`
 
-- `pick SortOrder`
-- `form SearchResult`
-- `proc compare_i64`
-- `proc swap_i64`
-- `proc reverse_i64`
-- `proc bubble_sort_i64`
-- `proc insertion_sort_i64`
-- `proc selection_sort_i64`
-- `proc quick_sort_range_i64`
-- `proc quick_sort_i64`
-- `proc linear_search_i64`
-- `proc binary_search_i64`
-- `proc contains_i64`
-- `proc sum_i64`
-- `proc average_i64`
-- `proc max_i64`
-- `proc min_i64`
-- `proc is_sorted_i64`
-- `proc unique_i64`
-- `proc algorithms_selftest`
+- `pick SortOrder` signature `pick SortOrder {` example `SortOrder`
+- `form SearchResult` signature `form SearchResult {` example `SearchResult`
+- `proc compare_i64` signature `proc compare_i64(left: i64, right: i64, order: SortOrder) -> bool {` example `compare_i64`
+- `proc swap_i64` signature `proc swap_i64(values: [i64], left: int, right: int) -> [i64] {` example `swap_i64`
+- `proc reverse_i64` signature `proc reverse_i64(values: [i64]) -> [i64] {` example `reverse_i64`
+- `proc bubble_sort_i64` signature `proc bubble_sort_i64(values: [i64], order: SortOrder) -> [i64] {` example `bubble_sort_i64`
+- `proc insertion_sort_i64` signature `proc insertion_sort_i64(values: [i64], order: SortOrder) -> [i64] {` example `insertion_sort_i64`
+- `proc selection_sort_i64` signature `proc selection_sort_i64(values: [i64], order: SortOrder) -> [i64] {` example `selection_sort_i64`
+- `proc quick_sort_range_i64` signature `proc quick_sort_range_i64(values: [i64], low: int, high: int, order: SortOrder) -> [i64] {` example `quick_sort_range_i64`
+- `proc quick_sort_i64` signature `proc quick_sort_i64(values: [i64], order: SortOrder) -> [i64] {` example `quick_sort_i64`
+- `proc linear_search_i64` signature `proc linear_search_i64(values: [i64], target: i64) -> SearchResult {` example `linear_search_i64`
+- `proc binary_search_i64` signature `proc binary_search_i64(values: [i64], target: i64) -> SearchResult {` example `binary_search_i64`
+- `proc contains_i64` signature `proc contains_i64(values: [i64], target: i64) -> bool {` example `contains_i64`
+- `proc sum_i64` signature `proc sum_i64(values: [i64]) -> i64 {` example `sum_i64`
+- `proc average_i64` signature `proc average_i64(values: [i64]) -> f64 {` example `average_i64`
+- `proc max_i64` signature `proc max_i64(values: [i64]) -> i64 {` example `max_i64`
+- `proc min_i64` signature `proc min_i64(values: [i64]) -> i64 {` example `min_i64`
+- `proc is_sorted_i64` signature `proc is_sorted_i64(values: [i64], order: SortOrder) -> bool {` example `is_sorted_i64`
+- `proc unique_i64` signature `proc unique_i64(values: [i64]) -> [i64] {` example `unique_i64`
+- `proc algorithms_selftest` signature `proc algorithms_selftest() -> bool {` example `algorithms_selftest`
 
 ## `src/vitte/stdlib/core/array.vitl`
 
-- `form Array`
-- `proc array_len`
-- `proc array_is_empty`
-- `proc array_get`
-- `proc array_get_mut`
-- `proc array_as_slice`
-- `proc array_iter`
-- `proc array_map`
-- `proc array_fill`
-- `proc array_copy`
-- `proc array_sort`
+- `form Array` signature `form Array<T> {` example `Array`
+- `proc array_len` signature `proc array_len<T, const N: usize>(array: [T; N]) -> usize { give N; }` example `array_len`
+- `proc array_is_empty` signature `proc array_is_empty<T, const N: usize>(array: [T; N]) -> bool { give N == 0; }` example `array_is_empty`
+- `proc array_get` signature `proc array_get<T, const N: usize>(array: [T; N], index: usize) -> Option<ref T> { give compiler_array_get<T, N>(array, index); }` example `array_get`
+- `proc array_get_mut` signature `proc array_get_mut<T, const N: usize>(array: ref mut [T; N], index: usize) -> Option<ref mut T> { give compiler_array_get_mut<T, N>(array, index); }` example `array_get_mut`
+- `proc array_as_slice` signature `proc array_as_slice<T, const N: usize>(array: [T; N]) -> Slice<T> { give compiler_array_as_slice<T, N>(array); }` example `array_as_slice`
+- `proc array_iter` signature `proc array_iter<T, const N: usize>(array: [T; N]) -> Iterator<ref T> { give compiler_array_iter<T, N>(array); }` example `array_iter`
+- `proc array_map` signature `proc array_map<T, U, const N: usize>(array: [T; N], f: proc(T) -> U) -> [U; N] { give compiler_array_map<T, U, N>(array, f); }` example `array_map`
+- `proc array_fill` signature `proc array_fill<T, const N: usize>(value: T) -> [T; N] { give compiler_array_fill<T, N>(value); }` example `array_fill`
+- `proc array_copy` signature `proc array_copy<T, const N: usize>(array: [T; N]) -> [T; N] { give compiler_array_copy<T, N>(array); }` example `array_copy`
+- `proc array_sort` signature `proc array_sort<T, const N: usize>(array: ref mut [T; N], compare: proc(T, T) -> int) { compiler_array_sort<T, N>(array, compare); }` example `array_sort`
 
 ## `src/vitte/stdlib/core/ascii.vitl`
 
-- `proc is_ascii`
-- `proc is_alphabetic`
-- `proc is_numeric`
-- `proc is_alphanumeric`
-- `proc is_whitespace`
-- `proc to_uppercase`
-- `proc to_lowercase`
-- `proc escape_ascii`
+- `proc is_ascii` signature `proc is_ascii(value: byte) -> bool {` example `is_ascii`
+- `proc is_alphabetic` signature `proc is_alphabetic(value: byte) -> bool {` example `is_alphabetic`
+- `proc is_numeric` signature `proc is_numeric(value: byte) -> bool {` example `is_numeric`
+- `proc is_alphanumeric` signature `proc is_alphanumeric(value: byte) -> bool {` example `is_alphanumeric`
+- `proc is_whitespace` signature `proc is_whitespace(value: byte) -> bool {` example `is_whitespace`
+- `proc to_uppercase` signature `proc to_uppercase(value: byte) -> byte {` example `to_uppercase`
+- `proc to_lowercase` signature `proc to_lowercase(value: byte) -> byte {` example `to_lowercase`
+- `proc escape_ascii` signature `proc escape_ascii(value: byte) -> string {` example `escape_ascii`
 
 ## `src/vitte/stdlib/core/clone.vitl`
 
-- `pick CloneCost`
-- `form Clone`
-- `form Copy`
-- `proc copy_trivial`
-- `proc clone_from_ref`
-- `proc clone_cost_name`
-- `proc copy_is_trivial`
-- `proc clone_is_costly`
-- `proc implicit_clone_allowed`
-- `proc copy_forbidden_diagnostic`
-- `proc clone_required_diagnostic`
-- `proc reject_implicit_clone`
+- `pick CloneCost` signature `pick CloneCost {` example `CloneCost`
+- `form Clone` signature `form Clone<T> {` example `Clone`
+- `form Copy` signature `form Copy<T> {` example `Copy`
+- `proc copy_trivial` signature `proc copy_trivial<T>(value: T) -> T {` example `copy_trivial`
+- `proc clone_from_ref` signature `proc clone_from_ref<T>(value: ref T, clone_impl: Clone<T>) -> T {` example `clone_from_ref`
+- `proc clone_cost_name` signature `proc clone_cost_name(cost: CloneCost) -> string {` example `clone_cost_name`
+- `proc copy_is_trivial` signature `proc copy_is_trivial<T>(copy_impl: Copy<T>) -> bool {` example `copy_is_trivial`
+- `proc clone_is_costly` signature `proc clone_is_costly<T>(clone_impl: Clone<T>) -> bool {` example `clone_is_costly`
+- `proc implicit_clone_allowed` signature `proc implicit_clone_allowed<T>(clone_impl: Clone<T>) -> bool {` example `implicit_clone_allowed`
+- `proc copy_forbidden_diagnostic` signature `proc copy_forbidden_diagnostic(type_name: string, reason: string) -> string {` example `copy_forbidden_diagnostic`
+- `proc clone_required_diagnostic` signature `proc clone_required_diagnostic(type_name: string) -> string {` example `clone_required_diagnostic`
+- `proc reject_implicit_clone` signature `proc reject_implicit_clone(type_name: string) -> string {` example `reject_implicit_clone`
 
 ## `src/vitte/stdlib/core/cmp.vitl`
 
-- `pick Ordering`
-- `form Eq`
-- `form PartialEq`
-- `form Ord`
-- `form PartialOrd`
-- `proc compare`
-- `proc equals`
-- `proc min`
-- `proc max`
-- `proc clamp`
+- `pick Ordering` signature `pick Ordering { Less Equal Greater }` example `Ordering`
+- `form Eq` signature `form Eq<T> { eq: proc(T, T) -> bool }` example `Eq`
+- `form PartialEq` signature `form PartialEq<T> { eq: proc(T, T) -> bool }` example `PartialEq`
+- `form Ord` signature `form Ord<T> { cmp: proc(T, T) -> Ordering }` example `Ord`
+- `form PartialOrd` signature `form PartialOrd<T> { partial_cmp: proc(T, T) -> Option<Ordering> }` example `PartialOrd`
+- `proc compare` signature `proc compare<T>(left: T, right: T) -> Ordering { give compiler_cmp<T>(left, right); }` example `compare`
+- `proc equals` signature `proc equals<T>(left: T, right: T) -> bool { give compare<T>(left, right) == Ordering.Equal; }` example `equals`
+- `proc min` signature `proc min<T>(left: T, right: T) -> T { if compare<T>(left, right) == Ordering.Greater { give right; } give left; }` example `min`
+- `proc max` signature `proc max<T>(left: T, right: T) -> T { if compare<T>(left, right) == Ordering.Less { give right; } give left; }` example `max`
+- `proc clamp` signature `proc clamp<T>(value: T, low: T, high: T) -> T { give max<T>(low, min<T>(value, high)); }` example `clamp`
 
 ## `src/vitte/stdlib/core/concurrency.vitl`
 
-- `pick TaskState`
-- `pick ChannelState`
-- `form Task`
-- `form Mutex`
-- `form SpinLock`
-- `form Semaphore`
-- `form Channel`
-- `form RuntimeStats`
-- `proc task`
-- `proc mutex`
-- `proc spinlock`
-- `proc semaphore`
-- `proc channel`
-- `proc runtime_stats`
-- `proc start_task`
-- `proc wait_task`
-- `proc complete_task`
-- `proc fail_task`
-- `proc cancel_task`
-- `proc task_running`
-- `proc task_finished`
-- `proc lock_mutex`
-- `proc unlock_mutex`
-- `proc mutex_locked`
-- `proc acquire_spinlock`
-- `proc release_spinlock`
-- `proc spinlock_locked`
-- `proc acquire_semaphore`
-- `proc release_semaphore`
-- `proc semaphore_available`
-- `proc send_message`
-- `proc receive_message`
-- `proc pop_message`
-- `proc close_channel`
-- `proc channel_open`
-- `proc count_running_tasks`
-- `proc count_waiting_tasks`
-- `proc count_completed_tasks`
-- `proc build_runtime_stats`
-- `proc concurrency_selftest`
+- `pick TaskState` signature `pick TaskState {` example `TaskState`
+- `pick ChannelState` signature `pick ChannelState {` example `ChannelState`
+- `form Task` signature `form Task {` example `Task`
+- `form Mutex` signature `form Mutex {` example `Mutex`
+- `form SpinLock` signature `form SpinLock {` example `SpinLock`
+- `form Semaphore` signature `form Semaphore {` example `Semaphore`
+- `form Channel` signature `form Channel {` example `Channel`
+- `form RuntimeStats` signature `form RuntimeStats {` example `RuntimeStats`
+- `proc task` signature `proc task(task_id: u64, name: string) -> Task {` example `task`
+- `proc mutex` signature `proc mutex() -> Mutex {` example `mutex`
+- `proc spinlock` signature `proc spinlock() -> SpinLock {` example `spinlock`
+- `proc semaphore` signature `proc semaphore(permits: int) -> Semaphore {` example `semaphore`
+- `proc channel` signature `proc channel(channel_id: u64) -> Channel {` example `channel`
+- `proc runtime_stats` signature `proc runtime_stats() -> RuntimeStats {` example `runtime_stats`
+- `proc start_task` signature `proc start_task(task: Task) -> Task {` example `start_task`
+- `proc wait_task` signature `proc wait_task(task: Task) -> Task {` example `wait_task`
+- `proc complete_task` signature `proc complete_task(task: Task) -> Task {` example `complete_task`
+- `proc fail_task` signature `proc fail_task(task: Task) -> Task {` example `fail_task`
+- `proc cancel_task` signature `proc cancel_task(task: Task) -> Task {` example `cancel_task`
+- `proc task_running` signature `proc task_running(task: Task) -> bool {` example `task_running`
+- `proc task_finished` signature `proc task_finished(task: Task) -> bool {` example `task_finished`
+- `proc lock_mutex` signature `proc lock_mutex(lock: Mutex, owner: u64) -> Mutex {` example `lock_mutex`
+- `proc unlock_mutex` signature `proc unlock_mutex(lock: Mutex, owner: u64) -> Mutex {` example `unlock_mutex`
+- `proc mutex_locked` signature `proc mutex_locked(lock: Mutex) -> bool {` example `mutex_locked`
+- `proc acquire_spinlock` signature `proc acquire_spinlock(lock: SpinLock) -> SpinLock {` example `acquire_spinlock`
+- `proc release_spinlock` signature `proc release_spinlock(lock: SpinLock) -> SpinLock {` example `release_spinlock`
+- `proc spinlock_locked` signature `proc spinlock_locked(lock: SpinLock) -> bool {` example `spinlock_locked`
+- `proc acquire_semaphore` signature `proc acquire_semaphore(sem: Semaphore) -> Semaphore {` example `acquire_semaphore`
+- `proc release_semaphore` signature `proc release_semaphore(sem: Semaphore) -> Semaphore {` example `release_semaphore`
+- `proc semaphore_available` signature `proc semaphore_available(sem: Semaphore) -> bool {` example `semaphore_available`
+- `proc send_message` signature `proc send_message(ch: Channel, message: string) -> Channel {` example `send_message`
+- `proc receive_message` signature `proc receive_message(ch: Channel) -> string {` example `receive_message`
+- `proc pop_message` signature `proc pop_message(ch: Channel) -> Channel {` example `pop_message`
+- `proc close_channel` signature `proc close_channel(ch: Channel) -> Channel {` example `close_channel`
+- `proc channel_open` signature `proc channel_open(ch: Channel) -> bool {` example `channel_open`
+- `proc count_running_tasks` signature `proc count_running_tasks(tasks: [Task]) -> int {` example `count_running_tasks`
+- `proc count_waiting_tasks` signature `proc count_waiting_tasks(tasks: [Task]) -> int {` example `count_waiting_tasks`
+- `proc count_completed_tasks` signature `proc count_completed_tasks(tasks: [Task]) -> int {` example `count_completed_tasks`
+- `proc build_runtime_stats` signature `proc build_runtime_stats(tasks: [Task]) -> RuntimeStats {` example `build_runtime_stats`
+- `proc concurrency_selftest` signature `proc concurrency_selftest() -> bool {` example `concurrency_selftest`
 
 ## `src/vitte/stdlib/core/convert.vitl`
 
-- `pick ConversionKind`
-- `form ConversionResult`
-- `form From`
-- `form Into`
-- `form TryFrom`
-- `form TryInto`
-- `form AsRef`
-- `form AsMut`
-- `form Borrow`
-- `form BorrowMut`
-- `proc conversion_ok`
-- `proc conversion_error`
-- `proc numeric_safe_i32_to_i64`
-- `proc numeric_safe_u32_to_u64`
-- `proc numeric_checked_i64_to_i32`
-- `proc numeric_checked_u64_to_u32`
-- `proc numeric_saturating_i64_to_i32`
-- `proc numeric_saturating_u64_to_u32`
-- `proc numeric_wrapping_i64_to_i32`
-- `proc numeric_wrapping_u64_to_u32`
-- `proc numeric_truncating_f64_to_i64`
-- `proc numeric_truncating_f32_to_i32`
-- `proc dangerous_implicit_conversion_allowed`
-- `proc conversion_impossible_error`
-- `proc require_explicit_conversion`
+- `pick ConversionKind` signature `pick ConversionKind {` example `ConversionKind`
+- `form ConversionResult` signature `form ConversionResult<T> {` example `ConversionResult`
+- `form From` signature `form From<T, U> {` example `From`
+- `form Into` signature `form Into<T, U> {` example `Into`
+- `form TryFrom` signature `form TryFrom<T, U, E> {` example `TryFrom`
+- `form TryInto` signature `form TryInto<T, U, E> {` example `TryInto`
+- `form AsRef` signature `form AsRef<T, U> {` example `AsRef`
+- `form AsMut` signature `form AsMut<T, U> {` example `AsMut`
+- `form Borrow` signature `form Borrow<T, U> {` example `Borrow`
+- `form BorrowMut` signature `form BorrowMut<T, U> {` example `BorrowMut`
+- `proc conversion_ok` signature `proc conversion_ok<T>(value: T) -> ConversionResult<T> {` example `conversion_ok`
+- `proc conversion_error` signature `proc conversion_error<T>(message: string) -> ConversionResult<T> {` example `conversion_error`
+- `proc numeric_safe_i32_to_i64` signature `proc numeric_safe_i32_to_i64(value: i32) -> i64 {` example `numeric_safe_i32_to_i64`
+- `proc numeric_safe_u32_to_u64` signature `proc numeric_safe_u32_to_u64(value: u32) -> u64 {` example `numeric_safe_u32_to_u64`
+- `proc numeric_checked_i64_to_i32` signature `proc numeric_checked_i64_to_i32(value: i64) -> ConversionResult<i32> {` example `numeric_checked_i64_to_i32`
+- `proc numeric_checked_u64_to_u32` signature `proc numeric_checked_u64_to_u32(value: u64) -> ConversionResult<u32> {` example `numeric_checked_u64_to_u32`
+- `proc numeric_saturating_i64_to_i32` signature `proc numeric_saturating_i64_to_i32(value: i64) -> i32 {` example `numeric_saturating_i64_to_i32`
+- `proc numeric_saturating_u64_to_u32` signature `proc numeric_saturating_u64_to_u32(value: u64) -> u32 {` example `numeric_saturating_u64_to_u32`
+- `proc numeric_wrapping_i64_to_i32` signature `proc numeric_wrapping_i64_to_i32(value: i64) -> i32 {` example `numeric_wrapping_i64_to_i32`
+- `proc numeric_wrapping_u64_to_u32` signature `proc numeric_wrapping_u64_to_u32(value: u64) -> u32 {` example `numeric_wrapping_u64_to_u32`
+- `proc numeric_truncating_f64_to_i64` signature `proc numeric_truncating_f64_to_i64(value: f64) -> i64 {` example `numeric_truncating_f64_to_i64`
+- `proc numeric_truncating_f32_to_i32` signature `proc numeric_truncating_f32_to_i32(value: f32) -> i32 {` example `numeric_truncating_f32_to_i32`
+- `proc dangerous_implicit_conversion_allowed` signature `proc dangerous_implicit_conversion_allowed(from_type: string, to_type: string) -> bool {` example `dangerous_implicit_conversion_allowed`
+- `proc conversion_impossible_error` signature `proc conversion_impossible_error(from_type: string, to_type: string) -> string {` example `conversion_impossible_error`
+- `proc require_explicit_conversion` signature `proc require_explicit_conversion(from_type: string, to_type: string, kind: ConversionKind) -> ConversionResult<string> {` example `require_explicit_conversion`
 
 ## `src/vitte/stdlib/core/default.vitl`
 
-- `form Default`
-- `proc default_bool`
-- `proc default_byte`
-- `proc default_char`
-- `proc default_rune`
-- `proc default_int`
-- `proc default_uint`
-- `proc default_isize`
-- `proc default_usize`
-- `proc default_i8`
-- `proc default_i16`
-- `proc default_i32`
-- `proc default_i64`
-- `proc default_i128`
-- `proc default_u8`
-- `proc default_u16`
-- `proc default_u32`
-- `proc default_u64`
-- `proc default_u128`
-- `proc default_f32`
-- `proc default_f64`
-- `proc default_unit`
-- `proc default_option`
-- `proc default_result`
-- `proc default_for_compatible_struct`
-- `proc default_is_meaningful`
-- `proc reject_meaningless_default`
+- `form Default` signature `form Default<T> {` example `Default`
+- `proc default_bool` signature `proc default_bool() -> bool {` example `default_bool`
+- `proc default_byte` signature `proc default_byte() -> byte {` example `default_byte`
+- `proc default_char` signature `proc default_char() -> char {` example `default_char`
+- `proc default_rune` signature `proc default_rune() -> rune {` example `default_rune`
+- `proc default_int` signature `proc default_int() -> int {` example `default_int`
+- `proc default_uint` signature `proc default_uint() -> uint {` example `default_uint`
+- `proc default_isize` signature `proc default_isize() -> isize {` example `default_isize`
+- `proc default_usize` signature `proc default_usize() -> usize {` example `default_usize`
+- `proc default_i8` signature `proc default_i8() -> i8 {` example `default_i8`
+- `proc default_i16` signature `proc default_i16() -> i16 {` example `default_i16`
+- `proc default_i32` signature `proc default_i32() -> i32 {` example `default_i32`
+- `proc default_i64` signature `proc default_i64() -> i64 {` example `default_i64`
+- `proc default_i128` signature `proc default_i128() -> i128 {` example `default_i128`
+- `proc default_u8` signature `proc default_u8() -> u8 {` example `default_u8`
+- `proc default_u16` signature `proc default_u16() -> u16 {` example `default_u16`
+- `proc default_u32` signature `proc default_u32() -> u32 {` example `default_u32`
+- `proc default_u64` signature `proc default_u64() -> u64 {` example `default_u64`
+- `proc default_u128` signature `proc default_u128() -> u128 {` example `default_u128`
+- `proc default_f32` signature `proc default_f32() -> f32 {` example `default_f32`
+- `proc default_f64` signature `proc default_f64() -> f64 {` example `default_f64`
+- `proc default_unit` signature `proc default_unit() -> unit {` example `default_unit`
+- `proc default_option` signature `proc default_option<T>() -> Option<T> {` example `default_option`
+- `proc default_result` signature `proc default_result<T, E>(error: E) -> Result<T, E> {` example `default_result`
+- `proc default_for_compatible_struct` signature `proc default_for_compatible_struct<T>(builder: proc() -> T, reason: string) -> Default<T> {` example `default_for_compatible_struct`
+- `proc default_is_meaningful` signature `proc default_is_meaningful<T>(definition: Default<T>) -> bool {` example `default_is_meaningful`
+- `proc reject_meaningless_default` signature `proc reject_meaningless_default(type_name: string) -> string {` example `reject_meaningless_default`
 
 ## `src/vitte/stdlib/core/drop.vitl`
 
-- `pick DropState`
-- `pick DropOrder`
-- `form DropProtocol`
-- `form DropResult`
-- `form DropSlot`
-- `proc drop_ok`
-- `proc drop_error`
-- `proc drop`
-- `proc forget`
-- `proc needs_drop`
-- `proc drop_slot`
-- `proc mark_dropped`
-- `proc mark_partial`
-- `proc deterministic_drop_order`
-- `proc partial_drop_allowed`
-- `proc early_exit_drop_required`
-- `proc drop_error_policy`
-- `proc double_drop_forbidden`
-- `proc double_drop_diagnostic`
+- `pick DropState` signature `pick DropState {` example `DropState`
+- `pick DropOrder` signature `pick DropOrder {` example `DropOrder`
+- `form DropProtocol` signature `form DropProtocol<T> {` example `DropProtocol`
+- `form DropResult` signature `form DropResult {` example `DropResult`
+- `form DropSlot` signature `form DropSlot {` example `DropSlot`
+- `proc drop_ok` signature `proc drop_ok(state: DropState) -> DropResult {` example `drop_ok`
+- `proc drop_error` signature `proc drop_error(message: string) -> DropResult {` example `drop_error`
+- `proc drop` signature `proc drop<T>(value: ref mut T, protocol: DropProtocol<T>) -> DropResult {` example `drop`
+- `proc forget` signature `proc forget<T>(value: T) -> DropResult {` example `forget`
+- `proc needs_drop` signature `proc needs_drop<T>(protocol: DropProtocol<T>) -> bool {` example `needs_drop`
+- `proc drop_slot` signature `proc drop_slot(name: string, sequence: u64) -> DropSlot {` example `drop_slot`
+- `proc mark_dropped` signature `proc mark_dropped(slot: DropSlot) -> DropSlot {` example `mark_dropped`
+- `proc mark_partial` signature `proc mark_partial(slot: DropSlot) -> DropSlot {` example `mark_partial`
+- `proc deterministic_drop_order` signature `proc deterministic_drop_order(left: DropSlot, right: DropSlot) -> bool {` example `deterministic_drop_order`
+- `proc partial_drop_allowed` signature `proc partial_drop_allowed(slot: DropSlot) -> bool {` example `partial_drop_allowed`
+- `proc early_exit_drop_required` signature `proc early_exit_drop_required(slot: DropSlot) -> bool {` example `early_exit_drop_required`
+- `proc drop_error_policy` signature `proc drop_error_policy(result: DropResult) -> DropResult {` example `drop_error_policy`
+- `proc double_drop_forbidden` signature `proc double_drop_forbidden(slot: DropSlot) -> bool {` example `double_drop_forbidden`
+- `proc double_drop_diagnostic` signature `proc double_drop_diagnostic(name: string) -> string {` example `double_drop_diagnostic`
 
 ## `src/vitte/stdlib/core/float.vitl`
 
-- `pick FloatClass`
-- `pick FloatOrdering`
-- `proc is_nan`
-- `proc is_infinite`
-- `proc is_finite`
-- `proc is_normal`
-- `proc is_subnormal`
-- `proc is_sign_positive`
-- `proc is_sign_negative`
-- `proc next_up`
-- `proc next_down`
-- `proc total_compare`
-- `proc float_class`
+- `pick FloatClass` signature `pick FloatClass {` example `FloatClass`
+- `pick FloatOrdering` signature `pick FloatOrdering {` example `FloatOrdering`
+- `proc is_nan` signature `proc is_nan<T>(value: T) -> bool {` example `is_nan`
+- `proc is_infinite` signature `proc is_infinite<T>(value: T) -> bool {` example `is_infinite`
+- `proc is_finite` signature `proc is_finite<T>(value: T) -> bool {` example `is_finite`
+- `proc is_normal` signature `proc is_normal<T>(value: T) -> bool {` example `is_normal`
+- `proc is_subnormal` signature `proc is_subnormal<T>(value: T) -> bool {` example `is_subnormal`
+- `proc is_sign_positive` signature `proc is_sign_positive<T>(value: T) -> bool {` example `is_sign_positive`
+- `proc is_sign_negative` signature `proc is_sign_negative<T>(value: T) -> bool {` example `is_sign_negative`
+- `proc next_up` signature `proc next_up<T>(value: T) -> T {` example `next_up`
+- `proc next_down` signature `proc next_down<T>(value: T) -> T {` example `next_down`
+- `proc total_compare` signature `proc total_compare<T>(left: T, right: T) -> FloatOrdering {` example `total_compare`
+- `proc float_class` signature `proc float_class<T>(value: T) -> FloatClass {` example `float_class`
 
 ## `src/vitte/stdlib/core/hash.vitl`
 
-- `form Hasher`
-- `form Hash`
-- `proc hasher`
-- `proc write_u64`
-- `proc write_bytes`
-- `proc finish`
-- `proc hash`
-- `proc combine_hash`
+- `form Hasher` signature `form Hasher {` example `Hasher`
+- `form Hash` signature `form Hash<T> {` example `Hash`
+- `proc hasher` signature `proc hasher(seed: u64) -> Hasher { give Hasher { state: seed }; }` example `hasher`
+- `proc write_u64` signature `proc write_u64(h: ref mut Hasher, value: u64) { compiler_hash_write_u64(h, value); }` example `write_u64`
+- `proc write_bytes` signature `proc write_bytes(h: ref mut Hasher, values: [byte]) { compiler_hash_write_bytes(h, values); }` example `write_bytes`
+- `proc finish` signature `proc finish(h: Hasher) -> u64 { give compiler_hash_finish(h); }` example `finish`
+- `proc hash` signature `proc hash<T>(value: T) -> u64 { give compiler_hash<T>(value); }` example `hash`
+- `proc combine_hash` signature `proc combine_hash(left: u64, right: u64) -> u64 { give compiler_hash_combine(left, right); }` example `combine_hash`
 
 ## `src/vitte/stdlib/core/io_helpers.vitl`
 
-- `pick IoStatus`
-- `form IoResult`
-- `form ReadResult`
-- `form WriteResult`
-- `form FileInfo`
-- `proc ok_result`
-- `proc error_result`
-- `proc empty_read_result`
-- `proc empty_write_result`
-- `proc file_info`
-- `proc read_text`
-- `proc write_text`
-- `proc append_text`
-- `proc read_lines`
-- `proc write_lines`
-- `proc exists`
-- `proc readable`
-- `proc writable`
-- `proc basename`
-- `proc dirname`
-- `proc extension`
-- `proc join_path`
-- `proc normalize_newlines`
-- `proc read_bytes`
-- `proc write_bytes`
-- `proc io_helpers_selftest`
+- `pick IoStatus` signature `pick IoStatus {` example `IoStatus`
+- `form IoResult` signature `form IoResult {` example `IoResult`
+- `form ReadResult` signature `form ReadResult {` example `ReadResult`
+- `form WriteResult` signature `form WriteResult {` example `WriteResult`
+- `form FileInfo` signature `form FileInfo {` example `FileInfo`
+- `proc ok_result` signature `proc ok_result(message: string) -> IoResult {` example `ok_result`
+- `proc error_result` signature `proc error_result(status: IoStatus, message: string) -> IoResult {` example `error_result`
+- `proc empty_read_result` signature `proc empty_read_result(status: IoStatus) -> ReadResult {` example `empty_read_result`
+- `proc empty_write_result` signature `proc empty_write_result(status: IoStatus) -> WriteResult {` example `empty_write_result`
+- `proc file_info` signature `proc file_info(path: string) -> FileInfo {` example `file_info`
+- `proc read_text` signature `proc read_text(path: string) -> ReadResult {` example `read_text`
+- `proc write_text` signature `proc write_text(path: string, data: string) -> WriteResult {` example `write_text`
+- `proc append_text` signature `proc append_text(path: string, data: string) -> WriteResult {` example `append_text`
+- `proc read_lines` signature `proc read_lines(path: string) -> [string] {` example `read_lines`
+- `proc write_lines` signature `proc write_lines(path: string, lines: [string]) -> WriteResult {` example `write_lines`
+- `proc exists` signature `proc exists(path: string) -> bool {` example `exists`
+- `proc readable` signature `proc readable(path: string) -> bool {` example `readable`
+- `proc writable` signature `proc writable(path: string) -> bool {` example `writable`
+- `proc basename` signature `proc basename(path: string) -> string {` example `basename`
+- `proc dirname` signature `proc dirname(path: string) -> string {` example `dirname`
+- `proc extension` signature `proc extension(path: string) -> string {` example `extension`
+- `proc join_path` signature `proc join_path(left: string, right: string) -> string {` example `join_path`
+- `proc normalize_newlines` signature `proc normalize_newlines(text: string) -> string {` example `normalize_newlines`
+- `proc read_bytes` signature `proc read_bytes(path: string) -> [int] {` example `read_bytes`
+- `proc write_bytes` signature `proc write_bytes(path: string, data: [int]) -> WriteResult {` example `write_bytes`
+- `proc io_helpers_selftest` signature `proc io_helpers_selftest() -> bool {` example `io_helpers_selftest`
 
 ## `src/vitte/stdlib/core/iterator.vitl`
 
-- `pick IteratorKind`
-- `form SizeHint`
-- `form Iterator`
-- `form DoubleEndedIterator`
-- `form ExactSizeIterator`
-- `form FusedIterator`
-- `form CloneableIterator`
-- `form RangeIterator`
-- `form ChainIterator`
-- `form ZipIterator`
-- `form MapIterator`
-- `form FilterIterator`
-- `form PeekableIterator`
-- `proc size_hint`
-- `proc next`
-- `proc iterator_size_hint`
-- `proc count`
-- `proc last`
-- `proc nth`
-- `proc step_by`
-- `proc chain`
-- `proc zip`
-- `proc map`
-- `proc filter`
-- `proc filter_map`
-- `proc flat_map`
-- `proc flatten`
-- `proc enumerate`
-- `proc peekable`
-- `proc skip`
-- `proc take`
-- `proc skip_while`
-- `proc take_while`
-- `proc scan`
-- `proc inspect`
-- `proc fold`
-- `proc reduce`
-- `proc try_fold`
-- `proc all`
-- `proc any`
-- `proc find`
-- `proc find_map`
-- `proc position`
-- `proc rposition`
-- `proc min`
-- `proc max`
-- `proc min_by`
-- `proc max_by`
-- `proc sum`
-- `proc product`
-- `proc collect`
-- `proc partition`
-- `proc unzip`
-- `proc double_ended`
-- `proc exact_size`
-- `proc fused`
-- `proc cloneable`
-- `proc range`
+- `pick IteratorKind` signature `pick IteratorKind {` example `IteratorKind`
+- `form SizeHint` signature `form SizeHint {` example `SizeHint`
+- `form Iterator` signature `form Iterator<T> {` example `Iterator`
+- `form DoubleEndedIterator` signature `form DoubleEndedIterator<T> {` example `DoubleEndedIterator`
+- `form ExactSizeIterator` signature `form ExactSizeIterator<T> {` example `ExactSizeIterator`
+- `form FusedIterator` signature `form FusedIterator<T> {` example `FusedIterator`
+- `form CloneableIterator` signature `form CloneableIterator<T> {` example `CloneableIterator`
+- `form RangeIterator` signature `form RangeIterator<T> {` example `RangeIterator`
+- `form ChainIterator` signature `form ChainIterator<T> {` example `ChainIterator`
+- `form ZipIterator` signature `form ZipIterator<T, U> {` example `ZipIterator`
+- `form MapIterator` signature `form MapIterator<T, U> {` example `MapIterator`
+- `form FilterIterator` signature `form FilterIterator<T> {` example `FilterIterator`
+- `form PeekableIterator` signature `form PeekableIterator<T> {` example `PeekableIterator`
+- `proc size_hint` signature `proc size_hint(lower: usize, upper: Option<usize>) -> SizeHint {` example `size_hint`
+- `proc next` signature `proc next<T>(iter: ref mut Iterator<T>) -> Option<T> {` example `next`
+- `proc iterator_size_hint` signature `proc iterator_size_hint<T>(iter: Iterator<T>) -> SizeHint {` example `iterator_size_hint`
+- `proc count` signature `proc count<T>(iter: Iterator<T>) -> usize {` example `count`
+- `proc last` signature `proc last<T>(iter: Iterator<T>) -> Option<T> {` example `last`
+- `proc nth` signature `proc nth<T>(iter: ref mut Iterator<T>, index: usize) -> Option<T> {` example `nth`
+- `proc step_by` signature `proc step_by<T>(iter: Iterator<T>, step: usize) -> Iterator<T> {` example `step_by`
+- `proc chain` signature `proc chain<T>(first: Iterator<T>, second: Iterator<T>) -> ChainIterator<T> {` example `chain`
+- `proc zip` signature `proc zip<T, U>(left: Iterator<T>, right: Iterator<U>) -> ZipIterator<T, U> {` example `zip`
+- `proc map` signature `proc map<T, U>(iter: Iterator<T>, f: proc(T) -> U) -> MapIterator<T, U> {` example `map`
+- `proc filter` signature `proc filter<T>(iter: Iterator<T>, predicate: proc(T) -> bool) -> FilterIterator<T> {` example `filter`
+- `proc filter_map` signature `proc filter_map<T, U>(iter: Iterator<T>, f: proc(T) -> Option<U>) -> Iterator<U> {` example `filter_map`
+- `proc flat_map` signature `proc flat_map<T, U>(iter: Iterator<T>, f: proc(T) -> Iterator<U>) -> Iterator<U> {` example `flat_map`
+- `proc flatten` signature `proc flatten<T>(iter: Iterator<Iterator<T>>) -> Iterator<T> {` example `flatten`
+- `proc enumerate` signature `proc enumerate<T>(iter: Iterator<T>) -> Iterator<(usize, T)> {` example `enumerate`
+- `proc peekable` signature `proc peekable<T>(iter: Iterator<T>) -> PeekableIterator<T> {` example `peekable`
+- `proc skip` signature `proc skip<T>(iter: Iterator<T>, amount: usize) -> Iterator<T> {` example `skip`
+- `proc take` signature `proc take<T>(iter: Iterator<T>, amount: usize) -> Iterator<T> {` example `take`
+- `proc skip_while` signature `proc skip_while<T>(iter: Iterator<T>, predicate: proc(T) -> bool) -> Iterator<T> {` example `skip_while`
+- `proc take_while` signature `proc take_while<T>(iter: Iterator<T>, predicate: proc(T) -> bool) -> Iterator<T> {` example `take_while`
+- `proc scan` signature `proc scan<T, S, U>(iter: Iterator<T>, state: S, f: proc(ref mut S, T) -> Option<U>) -> Iterator<U> {` example `scan`
+- `proc inspect` signature `proc inspect<T>(iter: Iterator<T>, f: proc(T)) -> Iterator<T> {` example `inspect`
+- `proc fold` signature `proc fold<T, U>(iter: Iterator<T>, init: U, f: proc(U, T) -> U) -> U {` example `fold`
+- `proc reduce` signature `proc reduce<T>(iter: Iterator<T>, f: proc(T, T) -> T) -> Option<T> {` example `reduce`
+- `proc try_fold` signature `proc try_fold<T, U, E>(iter: Iterator<T>, init: U, f: proc(U, T) -> Result<U, E>) -> Result<U, E> {` example `try_fold`
+- `proc all` signature `proc all<T>(iter: Iterator<T>, predicate: proc(T) -> bool) -> bool {` example `all`
+- `proc any` signature `proc any<T>(iter: Iterator<T>, predicate: proc(T) -> bool) -> bool {` example `any`
+- `proc find` signature `proc find<T>(iter: Iterator<T>, predicate: proc(T) -> bool) -> Option<T> {` example `find`
+- `proc find_map` signature `proc find_map<T, U>(iter: Iterator<T>, f: proc(T) -> Option<U>) -> Option<U> {` example `find_map`
+- `proc position` signature `proc position<T>(iter: Iterator<T>, predicate: proc(T) -> bool) -> Option<usize> {` example `position`
+- `proc rposition` signature `proc rposition<T>(iter: DoubleEndedIterator<T>, predicate: proc(T) -> bool) -> Option<usize> {` example `rposition`
+- `proc min` signature `proc min<T>(iter: Iterator<T>) -> Option<T> {` example `min`
+- `proc max` signature `proc max<T>(iter: Iterator<T>) -> Option<T> {` example `max`
+- `proc min_by` signature `proc min_by<T>(iter: Iterator<T>, compare: proc(T, T) -> int) -> Option<T> {` example `min_by`
+- `proc max_by` signature `proc max_by<T>(iter: Iterator<T>, compare: proc(T, T) -> int) -> Option<T> {` example `max_by`
+- `proc sum` signature `proc sum<T>(iter: Iterator<T>) -> T {` example `sum`
+- `proc product` signature `proc product<T>(iter: Iterator<T>) -> T {` example `product`
+- `proc collect` signature `proc collect<T, C>(iter: Iterator<T>) -> C {` example `collect`
+- `proc partition` signature `proc partition<T, C>(iter: Iterator<T>, predicate: proc(T) -> bool) -> (C, C) {` example `partition`
+- `proc unzip` signature `proc unzip<T, U, C, D>(iter: Iterator<(T, U)>) -> (C, D) {` example `unzip`
+- `proc double_ended` signature `proc double_ended<T>(iter: Iterator<T>, next_back_item: proc(ref mut DoubleEndedIterator<T>) -> Option<T>) -> DoubleEndedIterator<T> {` example `double_ended`
+- `proc exact_size` signature `proc exact_size<T>(iter: Iterator<T>, length: usize) -> ExactSizeIterator<T> {` example `exact_size`
+- `proc fused` signature `proc fused<T>(iter: Iterator<T>) -> FusedIterator<T> {` example `fused`
+- `proc cloneable` signature `proc cloneable<T>(iter: Iterator<T>, clone_iter: proc(CloneableIterator<T>) -> CloneableIterator<T>) -> CloneableIterator<T> {` example `cloneable`
+- `proc range` signature `proc range<T>(start: T, end: T, step: T) -> RangeIterator<T> {` example `range`
 
 ## `src/vitte/stdlib/core/math.vitl`
 
-- `const PI`
-- `const TAU`
-- `const E`
-- `const FRAC_PI_2`
-- `const FRAC_PI_3`
-- `const FRAC_PI_4`
-- `const FRAC_PI_6`
-- `const FRAC_PI_8`
-- `const SQRT_2`
-- `const FRAC_1_SQRT_2`
-- `const LN_2`
-- `const LN_10`
-- `const LOG2_E`
-- `const LOG10_E`
-- `proc backend_math_available`
-- `proc sqrt`
-- `proc cbrt`
-- `proc hypot`
-- `proc exp`
-- `proc exp2`
-- `proc expm1`
-- `proc ln`
-- `proc ln1p`
-- `proc log2`
-- `proc log10`
-- `proc sin`
-- `proc cos`
-- `proc tan`
-- `proc asin`
-- `proc acos`
-- `proc atan`
-- `proc atan2`
-- `proc sinh`
-- `proc cosh`
-- `proc tanh`
-- `proc floor`
-- `proc ceil`
-- `proc round`
-- `proc trunc`
-- `proc fract`
-- `proc copysign`
-- `proc fma`
-- `proc portable_math_sqrt`
-- `proc portable_math_cbrt`
-- `proc portable_math_hypot`
-- `proc portable_math_exp`
-- `proc portable_math_exp2`
-- `proc portable_math_ln`
-- `proc portable_math_sin`
-- `proc portable_math_cos`
-- `proc portable_math_asin`
-- `proc portable_math_atan`
-- `proc portable_math_atan2`
-- `proc portable_math_floor`
-- `proc portable_math_ceil`
-- `proc portable_math_round`
-- `proc portable_math_trunc`
-- `proc portable_math_copysign`
+- `const PI` signature `const PI: f64 = 3.141592653589793` example `PI`
+- `const TAU` signature `const TAU: f64 = 6.283185307179586` example `TAU`
+- `const E` signature `const E: f64 = 2.718281828459045` example `E`
+- `const FRAC_PI_2` signature `const FRAC_PI_2: f64 = 1.5707963267948966` example `FRAC_PI_2`
+- `const FRAC_PI_3` signature `const FRAC_PI_3: f64 = 1.0471975511965979` example `FRAC_PI_3`
+- `const FRAC_PI_4` signature `const FRAC_PI_4: f64 = 0.7853981633974483` example `FRAC_PI_4`
+- `const FRAC_PI_6` signature `const FRAC_PI_6: f64 = 0.5235987755982989` example `FRAC_PI_6`
+- `const FRAC_PI_8` signature `const FRAC_PI_8: f64 = 0.39269908169872414` example `FRAC_PI_8`
+- `const SQRT_2` signature `const SQRT_2: f64 = 1.4142135623730951` example `SQRT_2`
+- `const FRAC_1_SQRT_2` signature `const FRAC_1_SQRT_2: f64 = 0.7071067811865476` example `FRAC_1_SQRT_2`
+- `const LN_2` signature `const LN_2: f64 = 0.6931471805599453` example `LN_2`
+- `const LN_10` signature `const LN_10: f64 = 2.302585092994046` example `LN_10`
+- `const LOG2_E` signature `const LOG2_E: f64 = 1.4426950408889634` example `LOG2_E`
+- `const LOG10_E` signature `const LOG10_E: f64 = 0.4342944819032518` example `LOG10_E`
+- `proc backend_math_available` signature `proc backend_math_available(operation: string) -> bool {` example `backend_math_available`
+- `proc sqrt` signature `proc sqrt(value: f64) -> f64 {` example `sqrt`
+- `proc cbrt` signature `proc cbrt(value: f64) -> f64 {` example `cbrt`
+- `proc hypot` signature `proc hypot(left: f64, right: f64) -> f64 {` example `hypot`
+- `proc exp` signature `proc exp(value: f64) -> f64 {` example `exp`
+- `proc exp2` signature `proc exp2(value: f64) -> f64 {` example `exp2`
+- `proc expm1` signature `proc expm1(value: f64) -> f64 {` example `expm1`
+- `proc ln` signature `proc ln(value: f64) -> f64 {` example `ln`
+- `proc ln1p` signature `proc ln1p(value: f64) -> f64 {` example `ln1p`
+- `proc log2` signature `proc log2(value: f64) -> f64 {` example `log2`
+- `proc log10` signature `proc log10(value: f64) -> f64 {` example `log10`
+- `proc sin` signature `proc sin(value: f64) -> f64 {` example `sin`
+- `proc cos` signature `proc cos(value: f64) -> f64 {` example `cos`
+- `proc tan` signature `proc tan(value: f64) -> f64 {` example `tan`
+- `proc asin` signature `proc asin(value: f64) -> f64 {` example `asin`
+- `proc acos` signature `proc acos(value: f64) -> f64 {` example `acos`
+- `proc atan` signature `proc atan(value: f64) -> f64 {` example `atan`
+- `proc atan2` signature `proc atan2(y: f64, x: f64) -> f64 {` example `atan2`
+- `proc sinh` signature `proc sinh(value: f64) -> f64 {` example `sinh`
+- `proc cosh` signature `proc cosh(value: f64) -> f64 {` example `cosh`
+- `proc tanh` signature `proc tanh(value: f64) -> f64 {` example `tanh`
+- `proc floor` signature `proc floor(value: f64) -> f64 {` example `floor`
+- `proc ceil` signature `proc ceil(value: f64) -> f64 {` example `ceil`
+- `proc round` signature `proc round(value: f64) -> f64 {` example `round`
+- `proc trunc` signature `proc trunc(value: f64) -> f64 {` example `trunc`
+- `proc fract` signature `proc fract(value: f64) -> f64 {` example `fract`
+- `proc copysign` signature `proc copysign(magnitude: f64, sign_value: f64) -> f64 {` example `copysign`
+- `proc fma` signature `proc fma(a: f64, b: f64, c: f64) -> f64 {` example `fma`
+- `proc portable_math_sqrt` signature `proc portable_math_sqrt(value: f64) -> f64 {` example `portable_math_sqrt`
+- `proc portable_math_cbrt` signature `proc portable_math_cbrt(value: f64) -> f64 {` example `portable_math_cbrt`
+- `proc portable_math_hypot` signature `proc portable_math_hypot(left: f64, right: f64) -> f64 {` example `portable_math_hypot`
+- `proc portable_math_exp` signature `proc portable_math_exp(value: f64) -> f64 {` example `portable_math_exp`
+- `proc portable_math_exp2` signature `proc portable_math_exp2(value: f64) -> f64 {` example `portable_math_exp2`
+- `proc portable_math_ln` signature `proc portable_math_ln(value: f64) -> f64 {` example `portable_math_ln`
+- `proc portable_math_sin` signature `proc portable_math_sin(value: f64) -> f64 {` example `portable_math_sin`
+- `proc portable_math_cos` signature `proc portable_math_cos(value: f64) -> f64 {` example `portable_math_cos`
+- `proc portable_math_asin` signature `proc portable_math_asin(value: f64) -> f64 {` example `portable_math_asin`
+- `proc portable_math_atan` signature `proc portable_math_atan(value: f64) -> f64 {` example `portable_math_atan`
+- `proc portable_math_atan2` signature `proc portable_math_atan2(y: f64, x: f64) -> f64 {` example `portable_math_atan2`
+- `proc portable_math_floor` signature `proc portable_math_floor(value: f64) -> f64 {` example `portable_math_floor`
+- `proc portable_math_ceil` signature `proc portable_math_ceil(value: f64) -> f64 {` example `portable_math_ceil`
+- `proc portable_math_round` signature `proc portable_math_round(value: f64) -> f64 {` example `portable_math_round`
+- `proc portable_math_trunc` signature `proc portable_math_trunc(value: f64) -> f64 {` example `portable_math_trunc`
+- `proc portable_math_copysign` signature `proc portable_math_copysign(magnitude: f64, sign_value: f64) -> f64 {` example `portable_math_copysign`
 
 ## `src/vitte/stdlib/core/memory.vitl`
 
-- `pick AllocationState`
-- `form MemoryBlock`
-- `form MemoryStats`
-- `form Allocator`
-- `form MemoryLayout`
-- `form MemoryCheck`
-- `proc empty_memory_stats`
-- `proc empty_allocator`
-- `proc memory_block`
-- `proc reserved_block`
-- `proc free_block`
-- `proc allocator`
-- `proc allocate`
-- `proc reserve`
-- `proc release`
-- `proc find_block`
-- `proc allocated`
-- `proc reserved`
-- `proc total_used`
-- `proc total_free`
-- `proc allocation_count`
-- `proc free_count`
-- `proc fragmentation_ratio`
-- `proc clear_allocator`
-- `proc clone_allocator`
-- `proc memory_layout`
-- `proc memory_check_ok`
-- `proc memory_check_error`
-- `proc size_of`
-- `proc size_of_value`
-- `proc align_of`
-- `proc align_of_value`
-- `proc offset_of`
-- `proc swap`
-- `proc replace`
-- `proc take`
-- `proc forget`
-- `proc drop`
-- `proc detect_size_compatible`
-- `proc detect_alignment_compatible`
-- `proc unsafe_transmute`
-- `proc unsafe_zeroed`
-- `proc unsafe_uninitialized`
-- `proc unsafe_operation_invariants`
-- `proc memory_selftest`
+- `pick AllocationState` signature `pick AllocationState {` example `AllocationState`
+- `form MemoryBlock` signature `form MemoryBlock {` example `MemoryBlock`
+- `form MemoryStats` signature `form MemoryStats {` example `MemoryStats`
+- `form Allocator` signature `form Allocator {` example `Allocator`
+- `form MemoryLayout` signature `form MemoryLayout {` example `MemoryLayout`
+- `form MemoryCheck` signature `form MemoryCheck {` example `MemoryCheck`
+- `proc empty_memory_stats` signature `proc empty_memory_stats() -> MemoryStats {` example `empty_memory_stats`
+- `proc empty_allocator` signature `proc empty_allocator() -> Allocator {` example `empty_allocator`
+- `proc memory_block` signature `proc memory_block(address: u64, size: u64) -> MemoryBlock {` example `memory_block`
+- `proc reserved_block` signature `proc reserved_block(address: u64, size: u64) -> MemoryBlock {` example `reserved_block`
+- `proc free_block` signature `proc free_block(address: u64, size: u64) -> MemoryBlock {` example `free_block`
+- `proc allocator` signature `proc allocator(total: u64) -> Allocator {` example `allocator`
+- `proc allocate` signature `proc allocate(alloc: Allocator, address: u64, size: u64) -> Allocator {` example `allocate`
+- `proc reserve` signature `proc reserve(alloc: Allocator, address: u64, size: u64) -> Allocator {` example `reserve`
+- `proc release` signature `proc release(alloc: Allocator, address: u64) -> Allocator {` example `release`
+- `proc find_block` signature `proc find_block(alloc: Allocator, address: u64) -> MemoryBlock {` example `find_block`
+- `proc allocated` signature `proc allocated(alloc: Allocator, address: u64) -> bool {` example `allocated`
+- `proc reserved` signature `proc reserved(alloc: Allocator, address: u64) -> bool {` example `reserved`
+- `proc total_used` signature `proc total_used(alloc: Allocator) -> u64 {` example `total_used`
+- `proc total_free` signature `proc total_free(alloc: Allocator) -> u64 {` example `total_free`
+- `proc allocation_count` signature `proc allocation_count(alloc: Allocator) -> u64 {` example `allocation_count`
+- `proc free_count` signature `proc free_count(alloc: Allocator) -> u64 {` example `free_count`
+- `proc fragmentation_ratio` signature `proc fragmentation_ratio(alloc: Allocator) -> f64 {` example `fragmentation_ratio`
+- `proc clear_allocator` signature `proc clear_allocator(alloc: Allocator) -> Allocator {` example `clear_allocator`
+- `proc clone_allocator` signature `proc clone_allocator(alloc: Allocator) -> Allocator {` example `clone_allocator`
+- `proc memory_layout` signature `proc memory_layout(size: u64, align: u64) -> MemoryLayout {` example `memory_layout`
+- `proc memory_check_ok` signature `proc memory_check_ok() -> MemoryCheck {` example `memory_check_ok`
+- `proc memory_check_error` signature `proc memory_check_error(message: string) -> MemoryCheck {` example `memory_check_error`
+- `proc size_of` signature `proc size_of<T>() -> u64 {` example `size_of`
+- `proc size_of_value` signature `proc size_of_value<T>(value: ref T) -> u64 {` example `size_of_value`
+- `proc align_of` signature `proc align_of<T>() -> u64 {` example `align_of`
+- `proc align_of_value` signature `proc align_of_value<T>(value: ref T) -> u64 {` example `align_of_value`
+- `proc offset_of` signature `proc offset_of<T>(field_name: string) -> u64 {` example `offset_of`
+- `proc swap` signature `proc swap<T>(left: ref mut T, right: ref mut T) {` example `swap`
+- `proc replace` signature `proc replace<T>(slot: ref mut T, value: T) -> T {` example `replace`
+- `proc take` signature `proc take<T>(slot: ref mut T, default_value: T) -> T {` example `take`
+- `proc forget` signature `proc forget<T>(value: T) {` example `forget`
+- `proc drop` signature `proc drop<T>(value: ref mut T) {` example `drop`
+- `proc detect_size_compatible` signature `proc detect_size_compatible(from_layout: MemoryLayout, to_layout: MemoryLayout) -> MemoryCheck {` example `detect_size_compatible`
+- `proc detect_alignment_compatible` signature `proc detect_alignment_compatible(from_layout: MemoryLayout, to_layout: MemoryLayout) -> MemoryCheck {` example `detect_alignment_compatible`
+- `proc unsafe_transmute` signature `proc unsafe_transmute<T, U>(value: T, from_layout: MemoryLayout, to_layout: MemoryLayout) -> U {` example `unsafe_transmute`
+- `proc unsafe_zeroed` signature `proc unsafe_zeroed<T>() -> T {` example `unsafe_zeroed`
+- `proc unsafe_uninitialized` signature `proc unsafe_uninitialized<T>() -> T {` example `unsafe_uninitialized`
+- `proc unsafe_operation_invariants` signature `proc unsafe_operation_invariants(operation: string) -> string {` example `unsafe_operation_invariants`
+- `proc memory_selftest` signature `proc memory_selftest() -> bool {` example `memory_selftest`
 
 ## `src/vitte/stdlib/core/number.vitl`
 
-- `form NumberLimits`
-- `form FloatConstants`
-- `form Checked`
-- `form Overflowing`
-- `pick Sign`
-- `pick Endian`
-- `proc number_limits`
-- `proc float_constants`
-- `proc checked`
-- `proc checked_add`
-- `proc checked_sub`
-- `proc checked_mul`
-- `proc checked_div`
-- `proc checked_rem`
-- `proc checked_neg`
-- `proc checked_shl`
-- `proc checked_shr`
-- `proc saturating_add`
-- `proc saturating_sub`
-- `proc saturating_mul`
-- `proc saturating_div`
-- `proc wrapping_add`
-- `proc wrapping_sub`
-- `proc wrapping_mul`
-- `proc wrapping_div`
-- `proc overflowing_add`
-- `proc overflowing_sub`
-- `proc overflowing_mul`
-- `proc overflowing_div`
-- `proc abs`
-- `proc sign`
-- `proc signum`
-- `proc pow`
-- `proc pow_mod`
-- `proc gcd`
-- `proc lcm`
-- `proc is_even`
-- `proc is_odd`
-- `proc count_ones`
-- `proc count_zeros`
-- `proc leading_zeros`
-- `proc trailing_zeros`
-- `proc rotate_left`
-- `proc rotate_right`
-- `proc reverse_bits`
-- `proc reverse_bytes`
-- `proc to_little_endian`
-- `proc to_big_endian`
-- `proc from_little_endian`
-- `proc from_big_endian`
-- `proc endian_convert`
+- `form NumberLimits` signature `form NumberLimits<T> {` example `NumberLimits`
+- `form FloatConstants` signature `form FloatConstants<T> {` example `FloatConstants`
+- `form Checked` signature `form Checked<T> {` example `Checked`
+- `form Overflowing` signature `form Overflowing<T> {` example `Overflowing`
+- `pick Sign` signature `pick Sign {` example `Sign`
+- `pick Endian` signature `pick Endian {` example `Endian`
+- `proc number_limits` signature `proc number_limits<T>() -> NumberLimits<T> {` example `number_limits`
+- `proc float_constants` signature `proc float_constants<T>() -> FloatConstants<T> {` example `float_constants`
+- `proc checked` signature `proc checked<T>(ok: bool, value: T) -> Checked<T> {` example `checked`
+- `proc checked_add` signature `proc checked_add<T>(left: T, right: T) -> Checked<T> {` example `checked_add`
+- `proc checked_sub` signature `proc checked_sub<T>(left: T, right: T) -> Checked<T> {` example `checked_sub`
+- `proc checked_mul` signature `proc checked_mul<T>(left: T, right: T) -> Checked<T> {` example `checked_mul`
+- `proc checked_div` signature `proc checked_div<T>(left: T, right: T) -> Checked<T> {` example `checked_div`
+- `proc checked_rem` signature `proc checked_rem<T>(left: T, right: T) -> Checked<T> {` example `checked_rem`
+- `proc checked_neg` signature `proc checked_neg<T>(value: T) -> Checked<T> {` example `checked_neg`
+- `proc checked_shl` signature `proc checked_shl<T>(value: T, amount: u32) -> Checked<T> {` example `checked_shl`
+- `proc checked_shr` signature `proc checked_shr<T>(value: T, amount: u32) -> Checked<T> {` example `checked_shr`
+- `proc saturating_add` signature `proc saturating_add<T>(left: T, right: T) -> T {` example `saturating_add`
+- `proc saturating_sub` signature `proc saturating_sub<T>(left: T, right: T) -> T {` example `saturating_sub`
+- `proc saturating_mul` signature `proc saturating_mul<T>(left: T, right: T) -> T {` example `saturating_mul`
+- `proc saturating_div` signature `proc saturating_div<T>(left: T, right: T) -> T {` example `saturating_div`
+- `proc wrapping_add` signature `proc wrapping_add<T>(left: T, right: T) -> T {` example `wrapping_add`
+- `proc wrapping_sub` signature `proc wrapping_sub<T>(left: T, right: T) -> T {` example `wrapping_sub`
+- `proc wrapping_mul` signature `proc wrapping_mul<T>(left: T, right: T) -> T {` example `wrapping_mul`
+- `proc wrapping_div` signature `proc wrapping_div<T>(left: T, right: T) -> T {` example `wrapping_div`
+- `proc overflowing_add` signature `proc overflowing_add<T>(left: T, right: T) -> Overflowing<T> {` example `overflowing_add`
+- `proc overflowing_sub` signature `proc overflowing_sub<T>(left: T, right: T) -> Overflowing<T> {` example `overflowing_sub`
+- `proc overflowing_mul` signature `proc overflowing_mul<T>(left: T, right: T) -> Overflowing<T> {` example `overflowing_mul`
+- `proc overflowing_div` signature `proc overflowing_div<T>(left: T, right: T) -> Overflowing<T> {` example `overflowing_div`
+- `proc abs` signature `proc abs<T>(value: T) -> T {` example `abs`
+- `proc sign` signature `proc sign<T>(value: T) -> Sign {` example `sign`
+- `proc signum` signature `proc signum<T>(value: T) -> T {` example `signum`
+- `proc pow` signature `proc pow<T>(base: T, exponent: u64) -> T {` example `pow`
+- `proc pow_mod` signature `proc pow_mod<T>(base: T, exponent: T, modulus: T) -> T {` example `pow_mod`
+- `proc gcd` signature `proc gcd<T>(left: T, right: T) -> T {` example `gcd`
+- `proc lcm` signature `proc lcm<T>(left: T, right: T) -> T {` example `lcm`
+- `proc is_even` signature `proc is_even<T>(value: T) -> bool {` example `is_even`
+- `proc is_odd` signature `proc is_odd<T>(value: T) -> bool {` example `is_odd`
+- `proc count_ones` signature `proc count_ones<T>(value: T) -> u32 {` example `count_ones`
+- `proc count_zeros` signature `proc count_zeros<T>(value: T) -> u32 {` example `count_zeros`
+- `proc leading_zeros` signature `proc leading_zeros<T>(value: T) -> u32 {` example `leading_zeros`
+- `proc trailing_zeros` signature `proc trailing_zeros<T>(value: T) -> u32 {` example `trailing_zeros`
+- `proc rotate_left` signature `proc rotate_left<T>(value: T, amount: u32) -> T {` example `rotate_left`
+- `proc rotate_right` signature `proc rotate_right<T>(value: T, amount: u32) -> T {` example `rotate_right`
+- `proc reverse_bits` signature `proc reverse_bits<T>(value: T) -> T {` example `reverse_bits`
+- `proc reverse_bytes` signature `proc reverse_bytes<T>(value: T) -> T {` example `reverse_bytes`
+- `proc to_little_endian` signature `proc to_little_endian<T>(value: T) -> T {` example `to_little_endian`
+- `proc to_big_endian` signature `proc to_big_endian<T>(value: T) -> T {` example `to_big_endian`
+- `proc from_little_endian` signature `proc from_little_endian<T>(value: T) -> T {` example `from_little_endian`
+- `proc from_big_endian` signature `proc from_big_endian<T>(value: T) -> T {` example `from_big_endian`
+- `proc endian_convert` signature `proc endian_convert<T>(value: T, from: Endian, to: Endian) -> T {` example `endian_convert`
 
 ## `src/vitte/stdlib/core/panic.vitl`
 
-- `pick PanicLevel`
-- `form PanicLocation`
-- `form PanicFrame`
-- `form PanicData`
-- `form PanicResult`
-- `proc panic_location`
-- `proc panic_frame`
-- `proc panic_data`
-- `proc panic_result`
-- `proc info`
-- `proc warning`
-- `proc error`
-- `proc panic`
-- `proc fatal`
-- `proc unreachable`
-- `proc todo`
-- `proc assert`
-- `proc assert_eq_i64`
-- `proc assert_not_eq_i64`
-- `proc assert_string`
-- `proc panic_triggered`
-- `proc panic_recoverable`
-- `proc panic_message`
-- `proc add_frame`
-- `proc build_info`
-- `proc build_warning`
-- `proc build_error`
-- `proc build_fatal`
-- `proc panic_level_name`
-- `proc format_location`
-- `proc format_frame`
-- `proc format_stacktrace`
-- `proc format_panic`
-- `proc panic_selftest`
+- `pick PanicLevel` signature `pick PanicLevel {` example `PanicLevel`
+- `form PanicLocation` signature `form PanicLocation {` example `PanicLocation`
+- `form PanicFrame` signature `form PanicFrame {` example `PanicFrame`
+- `form PanicData` signature `form PanicData {` example `PanicData`
+- `form PanicResult` signature `form PanicResult {` example `PanicResult`
+- `proc panic_location` signature `proc panic_location(file: string, line: int, column: int) -> PanicLocation {` example `panic_location`
+- `proc panic_frame` signature `proc panic_frame(function_name: string, location: PanicLocation) -> PanicFrame {` example `panic_frame`
+- `proc panic_data` signature `proc panic_data(level: PanicLevel, message: string, location: PanicLocation, recoverable: bool) -> PanicData {` example `panic_data`
+- `proc panic_result` signature `proc panic_result(triggered: bool, recoverable: bool, message: string) -> PanicResult {` example `panic_result`
+- `proc info` signature `proc info(message: string) -> PanicResult {` example `info`
+- `proc warning` signature `proc warning(message: string) -> PanicResult {` example `warning`
+- `proc error` signature `proc error(message: string) -> PanicResult {` example `error`
+- `proc panic` signature `proc panic(message: string) -> PanicResult {` example `panic`
+- `proc fatal` signature `proc fatal(message: string) -> PanicResult {` example `fatal`
+- `proc unreachable` signature `proc unreachable(message: string) -> PanicResult {` example `unreachable`
+- `proc todo` signature `proc todo(message: string) -> PanicResult {` example `todo`
+- `proc assert` signature `proc assert(condition: bool, message: string) -> PanicResult {` example `assert`
+- `proc assert_eq_i64` signature `proc assert_eq_i64(left: i64, right: i64, message: string) -> PanicResult {` example `assert_eq_i64`
+- `proc assert_not_eq_i64` signature `proc assert_not_eq_i64(left: i64, right: i64, message: string) -> PanicResult {` example `assert_not_eq_i64`
+- `proc assert_string` signature `proc assert_string(left: string, right: string, message: string) -> PanicResult {` example `assert_string`
+- `proc panic_triggered` signature `proc panic_triggered(result: PanicResult) -> bool {` example `panic_triggered`
+- `proc panic_recoverable` signature `proc panic_recoverable(result: PanicResult) -> bool {` example `panic_recoverable`
+- `proc panic_message` signature `proc panic_message(result: PanicResult) -> string {` example `panic_message`
+- `proc add_frame` signature `proc add_frame(data: PanicData, frame: PanicFrame) -> PanicData {` example `add_frame`
+- `proc build_info` signature `proc build_info(message: string, file: string, line: int, column: int) -> PanicData {` example `build_info`
+- `proc build_warning` signature `proc build_warning(message: string, file: string, line: int, column: int) -> PanicData {` example `build_warning`
+- `proc build_error` signature `proc build_error(message: string, file: string, line: int, column: int) -> PanicData {` example `build_error`
+- `proc build_fatal` signature `proc build_fatal(message: string, file: string, line: int, column: int) -> PanicData {` example `build_fatal`
+- `proc panic_level_name` signature `proc panic_level_name(level: PanicLevel) -> string {` example `panic_level_name`
+- `proc format_location` signature `proc format_location(location: PanicLocation) -> string {` example `format_location`
+- `proc format_frame` signature `proc format_frame(frame: PanicFrame) -> string {` example `format_frame`
+- `proc format_stacktrace` signature `proc format_stacktrace(frames: [PanicFrame]) -> string {` example `format_stacktrace`
+- `proc format_panic` signature `proc format_panic(data: PanicData) -> string {` example `format_panic`
+- `proc panic_selftest` signature `proc panic_selftest() -> bool {` example `panic_selftest`
 
 ## `src/vitte/stdlib/core/option.vitl`
 
-- `pick OptionState`
-- `form Option`
-- `form OptionIterator`
-- `proc some`
-- `proc none`
-- `proc is_some`
-- `proc is_none`
-- `proc unwrap`
-- `proc expect`
-- `proc unwrap_or`
-- `proc unwrap_or_else`
-- `proc map`
-- `proc map_or`
-- `proc map_or_else`
-- `proc and`
-- `proc and_then`
-- `proc or`
-- `proc or_else`
-- `proc xor`
-- `proc filter`
-- `proc take`
-- `proc replace`
-- `proc insert`
-- `proc get_or_insert`
-- `proc get_or_insert_with`
-- `proc as_ref`
-- `proc as_mut`
-- `proc flatten`
-- `proc transpose`
-- `proc option_iter`
-- `proc option_iter_next`
+- `pick OptionState` signature `pick OptionState {` example `OptionState`
+- `form Option` signature `form Option<T> {` example `Option`
+- `form OptionIterator` signature `form OptionIterator<T> {` example `OptionIterator`
+- `proc some` signature `proc some<T>(value: T) -> Option<T> {` example `some`
+- `proc none` signature `proc none<T>() -> Option<T> {` example `none`
+- `proc is_some` signature `proc is_some<T>(option: Option<T>) -> bool {` example `is_some`
+- `proc is_none` signature `proc is_none<T>(option: Option<T>) -> bool {` example `is_none`
+- `proc unwrap` signature `proc unwrap<T>(option: Option<T>) -> T {` example `unwrap`
+- `proc expect` signature `proc expect<T>(option: Option<T>, message: string) -> T {` example `expect`
+- `proc unwrap_or` signature `proc unwrap_or<T>(option: Option<T>, fallback: T) -> T {` example `unwrap_or`
+- `proc unwrap_or_else` signature `proc unwrap_or_else<T>(option: Option<T>, fallback: proc() -> T) -> T {` example `unwrap_or_else`
+- `proc map` signature `proc map<T, U>(option: Option<T>, f: proc(T) -> U) -> Option<U> {` example `map`
+- `proc map_or` signature `proc map_or<T, U>(option: Option<T>, fallback: U, f: proc(T) -> U) -> U {` example `map_or`
+- `proc map_or_else` signature `proc map_or_else<T, U>(option: Option<T>, fallback: proc() -> U, f: proc(T) -> U) -> U {` example `map_or_else`
+- `proc and` signature `proc and<T, U>(option: Option<T>, next: Option<U>) -> Option<U> {` example `and`
+- `proc and_then` signature `proc and_then<T, U>(option: Option<T>, f: proc(T) -> Option<U>) -> Option<U> {` example `and_then`
+- `proc or` signature `proc or<T>(option: Option<T>, fallback: Option<T>) -> Option<T> {` example `or`
+- `proc or_else` signature `proc or_else<T>(option: Option<T>, fallback: proc() -> Option<T>) -> Option<T> {` example `or_else`
+- `proc xor` signature `proc xor<T>(left: Option<T>, right: Option<T>) -> Option<T> {` example `xor`
+- `proc filter` signature `proc filter<T>(option: Option<T>, predicate: proc(T) -> bool) -> Option<T> {` example `filter`
+- `proc take` signature `proc take<T>(slot: ref Option<T>) -> Option<T> {` example `take`
+- `proc replace` signature `proc replace<T>(slot: ref Option<T>, value: T) -> Option<T> {` example `replace`
+- `proc insert` signature `proc insert<T>(slot: ref Option<T>, value: T) -> ref T {` example `insert`
+- `proc get_or_insert` signature `proc get_or_insert<T>(slot: ref Option<T>, value: T) -> ref T {` example `get_or_insert`
+- `proc get_or_insert_with` signature `proc get_or_insert_with<T>(slot: ref Option<T>, f: proc() -> T) -> ref T {` example `get_or_insert_with`
+- `proc as_ref` signature `proc as_ref<T>(option: ref Option<T>) -> Option<ref T> {` example `as_ref`
+- `proc as_mut` signature `proc as_mut<T>(option: ref mut Option<T>) -> Option<ref mut T> {` example `as_mut`
+- `proc flatten` signature `proc flatten<T>(option: Option<Option<T>>) -> Option<T> {` example `flatten`
+- `proc transpose` signature `proc transpose<T, E>(option: Option<Result<T, E>>) -> Result<Option<T>, E> {` example `transpose`
+- `proc option_iter` signature `proc option_iter<T>(option: Option<T>) -> OptionIterator<T> {` example `option_iter`
+- `proc option_iter_next` signature `proc option_iter_next<T>(iter: ref OptionIterator<T>) -> Option<T> {` example `option_iter_next`
 
 ## `src/vitte/stdlib/core/primitive.vitl`
 
-- `pick PrimitiveKind`
-- `form PrimitiveLayout`
-- `const PRIMITIVE_POINTER_32_SIZE`
-- `const PRIMITIVE_POINTER_64_SIZE`
-- `const PRIMITIVE_SLICE_WORDS`
-- `const PRIMITIVE_F16_BACKEND_FEATURE`
-- `const PRIMITIVE_F128_BACKEND_FEATURE`
-- `proc primitive_layout`
-- `proc primitive_signed_integer`
-- `proc primitive_unsigned_integer`
-- `proc primitive_float`
-- `proc primitive_pointer_sized`
-- `proc primitive_unsized`
-- `proc bool_type`
-- `proc byte_type`
-- `proc char_type`
-- `proc rune_type`
-- `proc int_type`
-- `proc uint_type`
-- `proc isize_type`
-- `proc usize_type`
-- `proc i8_type`
-- `proc i16_type`
-- `proc i32_type`
-- `proc i64_type`
-- `proc i128_type`
-- `proc u8_type`
-- `proc u16_type`
-- `proc u32_type`
-- `proc u64_type`
-- `proc u128_type`
-- `proc f16_type`
-- `proc f32_type`
-- `proc f64_type`
-- `proc f128_type`
-- `proc never_type`
-- `proc unit_type`
-- `proc tuple_type`
-- `proc fixed_array_type`
-- `proc slice_type`
-- `proc pointer_type`
-- `proc reference_type`
-- `proc function_pointer_type`
-- `proc primitive_layouts`
+- `pick PrimitiveKind` signature `pick PrimitiveKind {` example `PrimitiveKind`
+- `form PrimitiveLayout` signature `form PrimitiveLayout {` example `PrimitiveLayout`
+- `const PRIMITIVE_POINTER_32_SIZE` signature `const PRIMITIVE_POINTER_32_SIZE: u64 = 4` example `PRIMITIVE_POINTER_32_SIZE`
+- `const PRIMITIVE_POINTER_64_SIZE` signature `const PRIMITIVE_POINTER_64_SIZE: u64 = 8` example `PRIMITIVE_POINTER_64_SIZE`
+- `const PRIMITIVE_SLICE_WORDS` signature `const PRIMITIVE_SLICE_WORDS: u64 = 2` example `PRIMITIVE_SLICE_WORDS`
+- `const PRIMITIVE_F16_BACKEND_FEATURE` signature `const PRIMITIVE_F16_BACKEND_FEATURE: string = "float16"` example `PRIMITIVE_F16_BACKEND_FEATURE`
+- `const PRIMITIVE_F128_BACKEND_FEATURE` signature `const PRIMITIVE_F128_BACKEND_FEATURE: string = "float128"` example `PRIMITIVE_F128_BACKEND_FEATURE`
+- `proc primitive_layout` signature `proc primitive_layout(kind: PrimitiveKind, name: string, size_bytes: u64, align_bytes: u64) -> PrimitiveLayout {` example `primitive_layout`
+- `proc primitive_signed_integer` signature `proc primitive_signed_integer(kind: PrimitiveKind, name: string, size_bytes: u64, align_bytes: u64) -> PrimitiveLayout {` example `primitive_signed_integer`
+- `proc primitive_unsigned_integer` signature `proc primitive_unsigned_integer(kind: PrimitiveKind, name: string, size_bytes: u64, align_bytes: u64) -> PrimitiveLayout {` example `primitive_unsigned_integer`
+- `proc primitive_float` signature `proc primitive_float(kind: PrimitiveKind, name: string, size_bytes: u64, align_bytes: u64, backend_optional: bool, feature: string) -> PrimitiveLayout {` example `primitive_float`
+- `proc primitive_pointer_sized` signature `proc primitive_pointer_sized(kind: PrimitiveKind, name: string, pointer_width_bytes: u64) -> PrimitiveLayout {` example `primitive_pointer_sized`
+- `proc primitive_unsized` signature `proc primitive_unsized(kind: PrimitiveKind, name: string) -> PrimitiveLayout {` example `primitive_unsized`
+- `proc bool_type` signature `proc bool_type() -> PrimitiveLayout {` example `bool_type`
+- `proc byte_type` signature `proc byte_type() -> PrimitiveLayout {` example `byte_type`
+- `proc char_type` signature `proc char_type() -> PrimitiveLayout {` example `char_type`
+- `proc rune_type` signature `proc rune_type() -> PrimitiveLayout {` example `rune_type`
+- `proc int_type` signature `proc int_type(pointer_width_bytes: u64) -> PrimitiveLayout {` example `int_type`
+- `proc uint_type` signature `proc uint_type(pointer_width_bytes: u64) -> PrimitiveLayout {` example `uint_type`
+- `proc isize_type` signature `proc isize_type(pointer_width_bytes: u64) -> PrimitiveLayout {` example `isize_type`
+- `proc usize_type` signature `proc usize_type(pointer_width_bytes: u64) -> PrimitiveLayout {` example `usize_type`
+- `proc i8_type` signature `proc i8_type() -> PrimitiveLayout {` example `i8_type`
+- `proc i16_type` signature `proc i16_type() -> PrimitiveLayout {` example `i16_type`
+- `proc i32_type` signature `proc i32_type() -> PrimitiveLayout {` example `i32_type`
+- `proc i64_type` signature `proc i64_type() -> PrimitiveLayout {` example `i64_type`
+- `proc i128_type` signature `proc i128_type() -> PrimitiveLayout {` example `i128_type`
+- `proc u8_type` signature `proc u8_type() -> PrimitiveLayout {` example `u8_type`
+- `proc u16_type` signature `proc u16_type() -> PrimitiveLayout {` example `u16_type`
+- `proc u32_type` signature `proc u32_type() -> PrimitiveLayout {` example `u32_type`
+- `proc u64_type` signature `proc u64_type() -> PrimitiveLayout {` example `u64_type`
+- `proc u128_type` signature `proc u128_type() -> PrimitiveLayout {` example `u128_type`
+- `proc f16_type` signature `proc f16_type() -> PrimitiveLayout {` example `f16_type`
+- `proc f32_type` signature `proc f32_type() -> PrimitiveLayout {` example `f32_type`
+- `proc f64_type` signature `proc f64_type() -> PrimitiveLayout {` example `f64_type`
+- `proc f128_type` signature `proc f128_type() -> PrimitiveLayout {` example `f128_type`
+- `proc never_type` signature `proc never_type() -> PrimitiveLayout {` example `never_type`
+- `proc unit_type` signature `proc unit_type() -> PrimitiveLayout {` example `unit_type`
+- `proc tuple_type` signature `proc tuple_type() -> PrimitiveLayout {` example `tuple_type`
+- `proc fixed_array_type` signature `proc fixed_array_type(element_size: u64, element_align: u64, count: u64) -> PrimitiveLayout {` example `fixed_array_type`
+- `proc slice_type` signature `proc slice_type(pointer_width_bytes: u64) -> PrimitiveLayout {` example `slice_type`
+- `proc pointer_type` signature `proc pointer_type(pointer_width_bytes: u64) -> PrimitiveLayout {` example `pointer_type`
+- `proc reference_type` signature `proc reference_type(pointer_width_bytes: u64) -> PrimitiveLayout {` example `reference_type`
+- `proc function_pointer_type` signature `proc function_pointer_type(pointer_width_bytes: u64) -> PrimitiveLayout {` example `function_pointer_type`
+- `proc primitive_layouts` signature `proc primitive_layouts(pointer_width_bytes: u64) -> [PrimitiveLayout] {` example `primitive_layouts`
 
 ## `src/vitte/stdlib/core/range.vitl`
 
-- `pick BoundKind`
-- `pick RangeKind`
-- `form Bound`
-- `form Range`
-- `form RangeCheck`
-- `form RangeIterator`
-- `proc included`
-- `proc excluded`
-- `proc unbounded`
-- `proc range_check_ok`
-- `proc range_check_error`
-- `proc detect_zero_step`
-- `proc detect_range_overflow`
-- `proc range_contains_bound`
-- `proc contains`
-- `proc range_with_bounds`
-- `proc exclusive`
-- `proc inclusive`
-- `proc open`
-- `proc full`
-- `proc from`
-- `proc to`
-- `proc positive_step`
-- `proc negative_step`
-- `proc iter`
-- `proc next`
+- `pick BoundKind` signature `pick BoundKind {` example `BoundKind`
+- `pick RangeKind` signature `pick RangeKind {` example `RangeKind`
+- `form Bound` signature `form Bound<T> {` example `Bound`
+- `form Range` signature `form Range<T> {` example `Range`
+- `form RangeCheck` signature `form RangeCheck {` example `RangeCheck`
+- `form RangeIterator` signature `form RangeIterator<T> {` example `RangeIterator`
+- `proc included` signature `proc included<T>(value: T) -> Bound<T> {` example `included`
+- `proc excluded` signature `proc excluded<T>(value: T) -> Bound<T> {` example `excluded`
+- `proc unbounded` signature `proc unbounded<T>() -> Bound<T> {` example `unbounded`
+- `proc range_check_ok` signature `proc range_check_ok() -> RangeCheck {` example `range_check_ok`
+- `proc range_check_error` signature `proc range_check_error(message: string) -> RangeCheck {` example `range_check_error`
+- `proc detect_zero_step` signature `proc detect_zero_step<T>(step: T) -> RangeCheck {` example `detect_zero_step`
+- `proc detect_range_overflow` signature `proc detect_range_overflow<T>(start: Bound<T>, end: Bound<T>, step: T) -> RangeCheck {` example `detect_range_overflow`
+- `proc range_contains_bound` signature `proc range_contains_bound<T>(bound: Bound<T>, value: T, is_start: bool) -> bool {` example `range_contains_bound`
+- `proc contains` signature `proc contains<T>(range: Range<T>, value: T) -> bool {` example `contains`
+- `proc range_with_bounds` signature `proc range_with_bounds<T>(start: Bound<T>, end: Bound<T>, step: T, kind: RangeKind) -> Range<T> {` example `range_with_bounds`
+- `proc exclusive` signature `proc exclusive<T>(start: T, end: T, step: T) -> Range<T> {` example `exclusive`
+- `proc inclusive` signature `proc inclusive<T>(start: T, end: T, step: T) -> Range<T> {` example `inclusive`
+- `proc open` signature `proc open<T>(step: T) -> Range<T> {` example `open`
+- `proc full` signature `proc full<T>() -> Range<T> {` example `full`
+- `proc from` signature `proc from<T>(start: T, step: T) -> Range<T> {` example `from`
+- `proc to` signature `proc to<T>(end: T, step: T) -> Range<T> {` example `to`
+- `proc positive_step` signature `proc positive_step<T>(value: T) -> T {` example `positive_step`
+- `proc negative_step` signature `proc negative_step<T>(value: T) -> T {` example `negative_step`
+- `proc iter` signature `proc iter<T>(range: Range<T>) -> RangeIterator<T> {` example `iter`
+- `proc next` signature `proc next<T>(iter: ref mut RangeIterator<T>) -> Option<T> {` example `next`
 
 ## `src/vitte/stdlib/core/result.vitl`
 
-- `pick ResultState`
-- `form Result`
-- `form ResultIterator`
-- `proc ok`
-- `proc err`
-- `proc is_ok`
-- `proc is_err`
-- `proc unwrap`
-- `proc unwrap_err`
-- `proc expect`
-- `proc expect_err`
-- `proc map`
-- `proc map_err`
-- `proc map_or`
-- `proc map_or_else`
-- `proc and`
-- `proc and_then`
-- `proc or`
-- `proc or_else`
-- `proc unwrap_or`
-- `proc unwrap_or_else`
-- `proc as_ref`
-- `proc as_mut`
-- `proc flatten`
-- `proc transpose`
-- `proc result_iter`
-- `proc result_iter_next`
-- `proc propagate`
-- `proc try_result`
+- `pick ResultState` signature `pick ResultState {` example `ResultState`
+- `form Result` signature `form Result<T, E> {` example `Result`
+- `form ResultIterator` signature `form ResultIterator<T, E> {` example `ResultIterator`
+- `proc ok` signature `proc ok<T, E>(value: T) -> Result<T, E> {` example `ok`
+- `proc err` signature `proc err<T, E>(error: E) -> Result<T, E> {` example `err`
+- `proc is_ok` signature `proc is_ok<T, E>(result: Result<T, E>) -> bool {` example `is_ok`
+- `proc is_err` signature `proc is_err<T, E>(result: Result<T, E>) -> bool {` example `is_err`
+- `proc unwrap` signature `proc unwrap<T, E>(result: Result<T, E>) -> T {` example `unwrap`
+- `proc unwrap_err` signature `proc unwrap_err<T, E>(result: Result<T, E>) -> E {` example `unwrap_err`
+- `proc expect` signature `proc expect<T, E>(result: Result<T, E>, message: string) -> T {` example `expect`
+- `proc expect_err` signature `proc expect_err<T, E>(result: Result<T, E>, message: string) -> E {` example `expect_err`
+- `proc map` signature `proc map<T, U, E>(result: Result<T, E>, f: proc(T) -> U) -> Result<U, E> {` example `map`
+- `proc map_err` signature `proc map_err<T, E, F>(result: Result<T, E>, f: proc(E) -> F) -> Result<T, F> {` example `map_err`
+- `proc map_or` signature `proc map_or<T, U, E>(result: Result<T, E>, fallback: U, f: proc(T) -> U) -> U {` example `map_or`
+- `proc map_or_else` signature `proc map_or_else<T, U, E>(result: Result<T, E>, fallback: proc(E) -> U, f: proc(T) -> U) -> U {` example `map_or_else`
+- `proc and` signature `proc and<T, U, E>(result: Result<T, E>, next: Result<U, E>) -> Result<U, E> {` example `and`
+- `proc and_then` signature `proc and_then<T, U, E>(result: Result<T, E>, f: proc(T) -> Result<U, E>) -> Result<U, E> {` example `and_then`
+- `proc or` signature `proc or<T, E, F>(result: Result<T, E>, fallback: Result<T, F>) -> Result<T, F> {` example `or`
+- `proc or_else` signature `proc or_else<T, E, F>(result: Result<T, E>, fallback: proc(E) -> Result<T, F>) -> Result<T, F> {` example `or_else`
+- `proc unwrap_or` signature `proc unwrap_or<T, E>(result: Result<T, E>, fallback: T) -> T {` example `unwrap_or`
+- `proc unwrap_or_else` signature `proc unwrap_or_else<T, E>(result: Result<T, E>, fallback: proc(E) -> T) -> T {` example `unwrap_or_else`
+- `proc as_ref` signature `proc as_ref<T, E>(result: ref Result<T, E>) -> Result<ref T, ref E> {` example `as_ref`
+- `proc as_mut` signature `proc as_mut<T, E>(result: ref mut Result<T, E>) -> Result<ref mut T, ref mut E> {` example `as_mut`
+- `proc flatten` signature `proc flatten<T, E>(result: Result<Result<T, E>, E>) -> Result<T, E> {` example `flatten`
+- `proc transpose` signature `proc transpose<T, E>(result: Result<Option<T>, E>) -> Option<Result<T, E>> {` example `transpose`
+- `proc result_iter` signature `proc result_iter<T, E>(result: Result<T, E>) -> ResultIterator<T, E> {` example `result_iter`
+- `proc result_iter_next` signature `proc result_iter_next<T, E>(iter: ref ResultIterator<T, E>) -> Option<T> {` example `result_iter_next`
+- `proc propagate` signature `proc propagate<T, E>(result: Result<T, E>) -> T {` example `propagate`
+- `proc try_result` signature `proc try_result<T, E>(result: Result<T, E>) -> T {` example `try_result`
 
 ## `src/vitte/stdlib/core/scope.vitl`
 
-- `pick ScopeExitReason`
-- `form ScopeGuard`
-- `form DeferAction`
-- `proc scope_guard`
-- `proc dismiss`
-- `proc run_scope_guard`
-- `proc defer`
-- `proc run_defer`
-- `proc defer_runs_for_exit`
-- `proc defer_panic_behavior`
-- `proc scope_exit_guarantee`
+- `pick ScopeExitReason` signature `pick ScopeExitReason {` example `ScopeExitReason`
+- `form ScopeGuard` signature `form ScopeGuard<T> {` example `ScopeGuard`
+- `form DeferAction` signature `form DeferAction {` example `DeferAction`
+- `proc scope_guard` signature `proc scope_guard<T>(value: T, action: proc(ref mut T) -> unit) -> ScopeGuard<T> {` example `scope_guard`
+- `proc dismiss` signature `proc dismiss<T>(guard: ref mut ScopeGuard<T>) {` example `dismiss`
+- `proc run_scope_guard` signature `proc run_scope_guard<T>(guard: ref mut ScopeGuard<T>) {` example `run_scope_guard`
+- `proc defer` signature `proc defer(name: string, run: proc() -> unit) -> DeferAction {` example `defer`
+- `proc run_defer` signature `proc run_defer(action: ref mut DeferAction) {` example `run_defer`
+- `proc defer_runs_for_exit` signature `proc defer_runs_for_exit(reason: ScopeExitReason) -> bool {` example `defer_runs_for_exit`
+- `proc defer_panic_behavior` signature `proc defer_panic_behavior() -> string {` example `defer_panic_behavior`
+- `proc scope_exit_guarantee` signature `proc scope_exit_guarantee(reason: ScopeExitReason, action: DeferAction) -> bool {` example `scope_exit_guarantee`
 
 ## `src/vitte/stdlib/core/slice.vitl`
 
-- `form Slice`
-- `form SliceIndex`
-- `form SliceChunks`
-- `form SliceWindows`
-- `proc len`
-- `proc is_empty`
-- `proc get`
-- `proc get_mut`
-- `proc first`
-- `proc last`
-- `proc split_at`
-- `proc subslice`
-- `proc iter`
-- `proc chunks`
-- `proc windows`
-- `proc binary_search`
-- `proc sort_unstable`
-- `proc sort_stable`
-- `proc fill`
-- `proc copy_from`
+- `form Slice` signature `form Slice<T> {` example `Slice`
+- `form SliceIndex` signature `form SliceIndex {` example `SliceIndex`
+- `form SliceChunks` signature `form SliceChunks<T> {` example `SliceChunks`
+- `form SliceWindows` signature `form SliceWindows<T> {` example `SliceWindows`
+- `proc len` signature `proc len<T>(slice: Slice<T>) -> usize { give slice.length; }` example `len`
+- `proc is_empty` signature `proc is_empty<T>(slice: Slice<T>) -> bool { give slice.length == 0; }` example `is_empty`
+- `proc get` signature `proc get<T>(slice: Slice<T>, index: usize) -> Option<ref T> {` example `get`
+- `proc get_mut` signature `proc get_mut<T>(slice: ref mut Slice<T>, index: usize) -> Option<ref mut T> { give compiler_slice_get_mut<T>(slice, index); }` example `get_mut`
+- `proc first` signature `proc first<T>(slice: Slice<T>) -> Option<ref T> { give get<T>(slice, 0); }` example `first`
+- `proc last` signature `proc last<T>(slice: Slice<T>) -> Option<ref T> {` example `last`
+- `proc split_at` signature `proc split_at<T>(slice: Slice<T>, index: usize) -> (Slice<T>, Slice<T>) {` example `split_at`
+- `proc subslice` signature `proc subslice<T>(slice: Slice<T>, start: usize, end: usize) -> Option<Slice<T>> {` example `subslice`
+- `proc iter` signature `proc iter<T>(slice: Slice<T>) -> Iterator<ref T> { give compiler_slice_iter<T>(slice); }` example `iter`
+- `proc chunks` signature `proc chunks<T>(slice: Slice<T>, size: usize) -> SliceChunks<T> {` example `chunks`
+- `proc windows` signature `proc windows<T>(slice: Slice<T>, size: usize) -> SliceWindows<T> {` example `windows`
+- `proc binary_search` signature `proc binary_search<T>(slice: Slice<T>, needle: T, compare: proc(T, T) -> int) -> Option<usize> {` example `binary_search`
+- `proc sort_unstable` signature `proc sort_unstable<T>(slice: ref mut Slice<T>, compare: proc(T, T) -> int) {` example `sort_unstable`
+- `proc sort_stable` signature `proc sort_stable<T>(slice: ref mut Slice<T>, compare: proc(T, T) -> int) {` example `sort_stable`
+- `proc fill` signature `proc fill<T>(slice: ref mut Slice<T>, value: T) { compiler_slice_fill<T>(slice, value); }` example `fill`
+- `proc copy_from` signature `proc copy_from<T>(dst: ref mut Slice<T>, src: Slice<T>) { compiler_slice_copy_from<T>(dst, src); }` example `copy_from`
 
 ## `src/vitte/stdlib/core/string.vitl`
 
-- `form Utf8View`
-- `form CharIndex`
-- `form SplitOnce`
-- `pick StringOrdering`
-- `form Utf8Decode`
-- `form SplitIterator`
-- `proc utf8_view`
-- `proc byte_length`
-- `proc char_length`
-- `proc bytes`
-- `proc chars`
-- `proc char_indices`
-- `proc lines`
-- `proc split`
-- `proc split_iter`
-- `proc split_once`
-- `proc split_whitespace`
-- `proc trim`
-- `proc trim_start`
-- `proc trim_end`
-- `proc starts_with`
-- `proc ends_with`
-- `proc contains`
-- `proc find`
-- `proc rfind`
-- `proc compare`
-- `proc equals`
-- `proc validate_utf8`
-- `proc decode_char`
-- `proc encode_utf8`
-- `proc is_char_boundary`
-- `proc checked_byte_index`
-- `proc reject_mid_char_index`
+- `form Utf8View` signature `form Utf8View {` example `Utf8View`
+- `form CharIndex` signature `form CharIndex {` example `CharIndex`
+- `form SplitOnce` signature `form SplitOnce {` example `SplitOnce`
+- `pick StringOrdering` signature `pick StringOrdering {` example `StringOrdering`
+- `form Utf8Decode` signature `form Utf8Decode {` example `Utf8Decode`
+- `form SplitIterator` signature `form SplitIterator {` example `SplitIterator`
+- `proc utf8_view` signature `proc utf8_view(text: string) -> Utf8View {` example `utf8_view`
+- `proc byte_length` signature `proc byte_length(text: string) -> usize {` example `byte_length`
+- `proc char_length` signature `proc char_length(text: string) -> usize {` example `char_length`
+- `proc bytes` signature `proc bytes(view: Utf8View) -> Iterator<byte> {` example `bytes`
+- `proc chars` signature `proc chars(view: Utf8View) -> Iterator<rune> {` example `chars`
+- `proc char_indices` signature `proc char_indices(view: Utf8View) -> Iterator<CharIndex> {` example `char_indices`
+- `proc lines` signature `proc lines(view: Utf8View) -> Iterator<Utf8View> {` example `lines`
+- `proc split` signature `proc split(view: Utf8View, separator: string) -> Iterator<Utf8View> {` example `split`
+- `proc split_iter` signature `proc split_iter(view: Utf8View, separator: string) -> SplitIterator {` example `split_iter`
+- `proc split_once` signature `proc split_once(view: Utf8View, separator: string) -> SplitOnce {` example `split_once`
+- `proc split_whitespace` signature `proc split_whitespace(view: Utf8View) -> Iterator<Utf8View> {` example `split_whitespace`
+- `proc trim` signature `proc trim(view: Utf8View) -> Utf8View {` example `trim`
+- `proc trim_start` signature `proc trim_start(view: Utf8View) -> Utf8View {` example `trim_start`
+- `proc trim_end` signature `proc trim_end(view: Utf8View) -> Utf8View {` example `trim_end`
+- `proc starts_with` signature `proc starts_with(view: Utf8View, prefix: string) -> bool {` example `starts_with`
+- `proc ends_with` signature `proc ends_with(view: Utf8View, suffix: string) -> bool {` example `ends_with`
+- `proc contains` signature `proc contains(view: Utf8View, needle: string) -> bool {` example `contains`
+- `proc find` signature `proc find(view: Utf8View, needle: string) -> Option<usize> {` example `find`
+- `proc rfind` signature `proc rfind(view: Utf8View, needle: string) -> Option<usize> {` example `rfind`
+- `proc compare` signature `proc compare(left: Utf8View, right: Utf8View) -> StringOrdering {` example `compare`
+- `proc equals` signature `proc equals(left: Utf8View, right: Utf8View) -> bool {` example `equals`
+- `proc validate_utf8` signature `proc validate_utf8(bytes_value: [byte]) -> bool {` example `validate_utf8`
+- `proc decode_char` signature `proc decode_char(bytes_value: [byte], offset: usize) -> Utf8Decode {` example `decode_char`
+- `proc encode_utf8` signature `proc encode_utf8(value: rune) -> [byte] {` example `encode_utf8`
+- `proc is_char_boundary` signature `proc is_char_boundary(view: Utf8View, byte_index: usize) -> bool {` example `is_char_boundary`
+- `proc checked_byte_index` signature `proc checked_byte_index(view: Utf8View, byte_index: usize) -> Option<byte> {` example `checked_byte_index`
+- `proc reject_mid_char_index` signature `proc reject_mid_char_index(view: Utf8View, byte_index: usize) {` example `reject_mid_char_index`
 
 ## `src/vitte/stdlib/core/strings.vitl`
 
-- `proc strlen`
-- `proc strcmp`
-- `proc strcasecmp`
-- `proc streq`
-- `proc strne`
-- `proc strstr`
-- `proc strchr`
-- `proc strrchr`
-- `proc chrcount`
-- `proc strbegin`
-- `proc strend`
-- `proc strreplace_first`
-- `proc strupcase`
-- `proc strdowncase`
-- `proc strlstrip`
-- `proc strrstrip`
-- `proc strstrip`
-- `proc strrepeat`
-- `proc strreverse`
+- `proc strlen` signature `proc strlen(text_value: string) -> int {` example `strlen`
+- `proc strcmp` signature `proc strcmp(a: string, b: string) -> int {` example `strcmp`
+- `proc strcasecmp` signature `proc strcasecmp(a: string, b: string) -> int {` example `strcasecmp`
+- `proc streq` signature `proc streq(a: string, b: string) -> bool {` example `streq`
+- `proc strne` signature `proc strne(a: string, b: string) -> bool {` example `strne`
+- `proc strstr` signature `proc strstr(haystack: string, needle: string) -> int {` example `strstr`
+- `proc strchr` signature `proc strchr(text_value: string, ch: int) -> int {` example `strchr`
+- `proc strrchr` signature `proc strrchr(text_value: string, ch: int) -> int {` example `strrchr`
+- `proc chrcount` signature `proc chrcount(text_value: string, ch: int) -> int {` example `chrcount`
+- `proc strbegin` signature `proc strbegin(text_value: string, prefix: string) -> bool {` example `strbegin`
+- `proc strend` signature `proc strend(text_value: string, suffix: string) -> bool {` example `strend`
+- `proc strreplace_first` signature `proc strreplace_first(text_value: string, old: string, new: string) -> string {` example `strreplace_first`
+- `proc strupcase` signature `proc strupcase(text_value: string) -> string {` example `strupcase`
+- `proc strdowncase` signature `proc strdowncase(text_value: string) -> string {` example `strdowncase`
+- `proc strlstrip` signature `proc strlstrip(text_value: string) -> string {` example `strlstrip`
+- `proc strrstrip` signature `proc strrstrip(text_value: string) -> string {` example `strrstrip`
+- `proc strstrip` signature `proc strstrip(text_value: string) -> string {` example `strstrip`
+- `proc strrepeat` signature `proc strrepeat(text_value: string, count: int) -> string {` example `strrepeat`
+- `proc strreverse` signature `proc strreverse(text_value: string) -> string {` example `strreverse`
 
 ## `src/vitte/stdlib/core/types.vitl`
 
-- `pick TypeKind`
-- `form TypeField`
-- `form TypeParameter`
-- `form TypeInfo`
-- `form TypeCheckResult`
-- `proc type_field`
-- `proc type_parameter`
-- `proc type_info`
-- `proc type_check_result`
-- `proc void_type`
-- `proc bool_type`
-- `proc char_type`
-- `proc string_type`
-- `proc i32_type`
-- `proc i64_type`
-- `proc u32_type`
-- `proc u64_type`
-- `proc f32_type`
-- `proc f64_type`
-- `proc pointer_type`
-- `proc array_type`
-- `proc function_type`
-- `proc struct_type`
-- `proc enum_type`
-- `proc generic_type`
-- `proc add_field`
-- `proc add_parameter`
-- `proc type_name`
-- `proc type_size`
-- `proc type_align`
-- `proc field_count`
-- `proc parameter_count`
-- `proc signed_type`
-- `proc same_type`
-- `proc check_type`
-- `proc type_kind_name`
-- `proc format_type`
-- `proc types_selftest`
+- `pick TypeKind` signature `pick TypeKind {` example `TypeKind`
+- `form TypeField` signature `form TypeField {` example `TypeField`
+- `form TypeParameter` signature `form TypeParameter {` example `TypeParameter`
+- `form TypeInfo` signature `form TypeInfo {` example `TypeInfo`
+- `form TypeCheckResult` signature `form TypeCheckResult {` example `TypeCheckResult`
+- `proc type_field` signature `proc type_field(name: string, field_type: string, offset: u64, size: u64) -> TypeField {` example `type_field`
+- `proc type_parameter` signature `proc type_parameter(name: string, constraint: string) -> TypeParameter {` example `type_parameter`
+- `proc type_info` signature `proc type_info(kind: TypeKind, name: string, size: u64, align: u64) -> TypeInfo {` example `type_info`
+- `proc type_check_result` signature `proc type_check_result(valid: bool, expected: string, actual: string) -> TypeCheckResult {` example `type_check_result`
+- `proc void_type` signature `proc void_type() -> TypeInfo {` example `void_type`
+- `proc bool_type` signature `proc bool_type() -> TypeInfo {` example `bool_type`
+- `proc char_type` signature `proc char_type() -> TypeInfo {` example `char_type`
+- `proc string_type` signature `proc string_type() -> TypeInfo {` example `string_type`
+- `proc i32_type` signature `proc i32_type() -> TypeInfo {` example `i32_type`
+- `proc i64_type` signature `proc i64_type() -> TypeInfo {` example `i64_type`
+- `proc u32_type` signature `proc u32_type() -> TypeInfo {` example `u32_type`
+- `proc u64_type` signature `proc u64_type() -> TypeInfo {` example `u64_type`
+- `proc f32_type` signature `proc f32_type() -> TypeInfo {` example `f32_type`
+- `proc f64_type` signature `proc f64_type() -> TypeInfo {` example `f64_type`
+- `proc pointer_type` signature `proc pointer_type(name: string) -> TypeInfo {` example `pointer_type`
+- `proc array_type` signature `proc array_type(name: string, size: u64) -> TypeInfo {` example `array_type`
+- `proc function_type` signature `proc function_type(name: string) -> TypeInfo {` example `function_type`
+- `proc struct_type` signature `proc struct_type(name: string, fields: [TypeField]) -> TypeInfo {` example `struct_type`
+- `proc enum_type` signature `proc enum_type(name: string) -> TypeInfo {` example `enum_type`
+- `proc generic_type` signature `proc generic_type(name: string, parameters: [TypeParameter]) -> TypeInfo {` example `generic_type`
+- `proc add_field` signature `proc add_field(info: TypeInfo, field: TypeField) -> TypeInfo {` example `add_field`
+- `proc add_parameter` signature `proc add_parameter(info: TypeInfo, parameter: TypeParameter) -> TypeInfo {` example `add_parameter`
+- `proc type_name` signature `proc type_name(info: TypeInfo) -> string {` example `type_name`
+- `proc type_size` signature `proc type_size(info: TypeInfo) -> u64 {` example `type_size`
+- `proc type_align` signature `proc type_align(info: TypeInfo) -> u64 {` example `type_align`
+- `proc field_count` signature `proc field_count(info: TypeInfo) -> int {` example `field_count`
+- `proc parameter_count` signature `proc parameter_count(info: TypeInfo) -> int {` example `parameter_count`
+- `proc signed_type` signature `proc signed_type(info: TypeInfo) -> bool {` example `signed_type`
+- `proc same_type` signature `proc same_type(left: TypeInfo, right: TypeInfo) -> bool {` example `same_type`
+- `proc check_type` signature `proc check_type(expected: TypeInfo, actual: TypeInfo) -> TypeCheckResult {` example `check_type`
+- `proc type_kind_name` signature `proc type_kind_name(kind: TypeKind) -> string {` example `type_kind_name`
+- `proc format_type` signature `proc format_type(info: TypeInfo) -> string {` example `format_type`
+- `proc types_selftest` signature `proc types_selftest() -> bool {` example `types_selftest`
 
 ## `src/vitte/stdlib/core/unicode.vitl`
 
-- `const UNICODE_VERSION`
-- `const UNICODE_TABLES_GENERATED`
-- `const UNICODE_TABLE_GENERATOR`
-- `const UNICODE_UCD_CHECKSUM`
-- `pick NormalizationForm`
-- `pick UnicodeCategory`
-- `form UnicodeProperties`
-- `proc unicode_version`
-- `proc unicode_tables_generated`
-- `proc unicode_table_generator`
-- `proc general_category`
-- `proc properties`
-- `proc is_alphabetic`
-- `proc is_numeric`
-- `proc is_alphanumeric`
-- `proc is_whitespace`
-- `proc is_uppercase`
-- `proc is_lowercase`
-- `proc to_uppercase`
-- `proc to_lowercase`
-- `proc to_titlecase`
-- `proc case_fold`
-- `proc normalize`
-- `proc normalize_nfc`
-- `proc normalize_nfd`
-- `proc normalize_nfkc`
-- `proc normalize_nfkd`
-- `proc case_fold_string`
+- `const UNICODE_VERSION` signature `const UNICODE_VERSION: string = "15.1.0"` example `UNICODE_VERSION`
+- `const UNICODE_TABLES_GENERATED` signature `const UNICODE_TABLES_GENERATED: bool = true` example `UNICODE_TABLES_GENERATED`
+- `const UNICODE_TABLE_GENERATOR` signature `const UNICODE_TABLE_GENERATOR: string = "src/vitte/stdlib/generated/unicode_tables"` example `UNICODE_TABLE_GENERATOR`
+- `const UNICODE_UCD_CHECKSUM` signature `const UNICODE_UCD_CHECKSUM: string = "sha256:local-ucd-contract"` example `UNICODE_UCD_CHECKSUM`
+- `pick NormalizationForm` signature `pick NormalizationForm {` example `NormalizationForm`
+- `pick UnicodeCategory` signature `pick UnicodeCategory {` example `UnicodeCategory`
+- `form UnicodeProperties` signature `form UnicodeProperties {` example `UnicodeProperties`
+- `proc unicode_version` signature `proc unicode_version() -> string {` example `unicode_version`
+- `proc unicode_tables_generated` signature `proc unicode_tables_generated() -> bool {` example `unicode_tables_generated`
+- `proc unicode_table_generator` signature `proc unicode_table_generator() -> string {` example `unicode_table_generator`
+- `proc general_category` signature `proc general_category(value: rune) -> UnicodeCategory {` example `general_category`
+- `proc properties` signature `proc properties(value: rune) -> UnicodeProperties {` example `properties`
+- `proc is_alphabetic` signature `proc is_alphabetic(value: rune) -> bool {` example `is_alphabetic`
+- `proc is_numeric` signature `proc is_numeric(value: rune) -> bool {` example `is_numeric`
+- `proc is_alphanumeric` signature `proc is_alphanumeric(value: rune) -> bool {` example `is_alphanumeric`
+- `proc is_whitespace` signature `proc is_whitespace(value: rune) -> bool {` example `is_whitespace`
+- `proc is_uppercase` signature `proc is_uppercase(value: rune) -> bool {` example `is_uppercase`
+- `proc is_lowercase` signature `proc is_lowercase(value: rune) -> bool {` example `is_lowercase`
+- `proc to_uppercase` signature `proc to_uppercase(value: rune) -> Iterator<rune> {` example `to_uppercase`
+- `proc to_lowercase` signature `proc to_lowercase(value: rune) -> Iterator<rune> {` example `to_lowercase`
+- `proc to_titlecase` signature `proc to_titlecase(value: rune) -> Iterator<rune> {` example `to_titlecase`
+- `proc case_fold` signature `proc case_fold(value: rune) -> Iterator<rune> {` example `case_fold`
+- `proc normalize` signature `proc normalize(text: Utf8View, form: NormalizationForm) -> String {` example `normalize`
+- `proc normalize_nfc` signature `proc normalize_nfc(text: Utf8View) -> String {` example `normalize_nfc`
+- `proc normalize_nfd` signature `proc normalize_nfd(text: Utf8View) -> String {` example `normalize_nfd`
+- `proc normalize_nfkc` signature `proc normalize_nfkc(text: Utf8View) -> String {` example `normalize_nfkc`
+- `proc normalize_nfkd` signature `proc normalize_nfkd(text: Utf8View) -> String {` example `normalize_nfkd`
+- `proc case_fold_string` signature `proc case_fold_string(text: Utf8View) -> String {` example `case_fold_string`
 
 ## `src/vitte/stdlib/core/utils.vitl`
 
-- `form Range`
-- `form Pair`
-- `form ClampResult`
-- `proc range`
-- `proc pair`
-- `proc clamp_result`
-- `proc min_i64`
-- `proc max_i64`
-- `proc abs_i64`
-- `proc clamp`
-- `proc in_range`
-- `proc swap_i64`
-- `proc repeat_string`
-- `proc join_strings`
-- `proc starts_with`
-- `proc ends_with`
-- `proc contains`
-- `proc reverse_string`
-- `proc split_lines`
-- `proc trim_spaces`
-- `proc bool_to_string`
-- `proc parse_bool`
-- `proc count_char`
-- `proc unique_strings`
-- `proc utils_selftest`
+- `form Range` signature `form Range {` example `Range`
+- `form Pair` signature `form Pair[T, U] {` example `Pair`
+- `form ClampResult` signature `form ClampResult {` example `ClampResult`
+- `proc range` signature `proc range(start: int, end: int) -> Range {` example `range`
+- `proc pair` signature `proc pair[T, U](first: T, second: U) -> Pair[T, U] {` example `pair`
+- `proc clamp_result` signature `proc clamp_result(value: int, changed: bool) -> ClampResult {` example `clamp_result`
+- `proc min_i64` signature `proc min_i64(left: i64, right: i64) -> i64 {` example `min_i64`
+- `proc max_i64` signature `proc max_i64(left: i64, right: i64) -> i64 {` example `max_i64`
+- `proc abs_i64` signature `proc abs_i64(value: i64) -> i64 {` example `abs_i64`
+- `proc clamp` signature `proc clamp(value: int, min: int, max: int) -> ClampResult {` example `clamp`
+- `proc in_range` signature `proc in_range(value: int, min: int, max: int) -> bool {` example `in_range`
+- `proc swap_i64` signature `proc swap_i64(left: i64, right: i64) -> Pair[i64, i64] {` example `swap_i64`
+- `proc repeat_string` signature `proc repeat_string(text: string, count: int) -> string {` example `repeat_string`
+- `proc join_strings` signature `proc join_strings(values: [string], separator: string) -> string {` example `join_strings`
+- `proc starts_with` signature `proc starts_with(text: string, prefix: string) -> bool {` example `starts_with`
+- `proc ends_with` signature `proc ends_with(text: string, suffix: string) -> bool {` example `ends_with`
+- `proc contains` signature `proc contains(text: string, pattern: string) -> bool {` example `contains`
+- `proc reverse_string` signature `proc reverse_string(text: string) -> string {` example `reverse_string`
+- `proc split_lines` signature `proc split_lines(text: string) -> [string] {` example `split_lines`
+- `proc trim_spaces` signature `proc trim_spaces(text: string) -> string {` example `trim_spaces`
+- `proc bool_to_string` signature `proc bool_to_string(value: bool) -> string {` example `bool_to_string`
+- `proc parse_bool` signature `proc parse_bool(text: string) -> bool {` example `parse_bool`
+- `proc count_char` signature `proc count_char(text: string, target: string) -> int {` example `count_char`
+- `proc unique_strings` signature `proc unique_strings(values: [string]) -> [string] {` example `unique_strings`
+- `proc utils_selftest` signature `proc utils_selftest() -> bool {` example `utils_selftest`
 
 ## `src/vitte/stdlib/alloc/arc.vitl`
 
-- `form Arc`
-- `form ArcWeak`
-- `proc arc_new`
-- `proc arc_clone`
-- `proc arc_strong_count`
-- `proc arc_weak_count`
-- `proc arc_downgrade`
-- `proc arc_weak_upgrade`
+- `form Arc` signature `form Arc<T> { ptr: ref T }` example `Arc`
+- `form ArcWeak` signature `form ArcWeak<T> { ptr: ref T }` example `ArcWeak`
+- `proc arc_new` signature `proc arc_new<T>(value: T) -> Arc<T> { give compiler_arc_new<T>(value); }` example `arc_new`
+- `proc arc_clone` signature `proc arc_clone<T>(value: Arc<T>) -> Arc<T> { give compiler_arc_clone<T>(value); }` example `arc_clone`
+- `proc arc_strong_count` signature `proc arc_strong_count<T>(value: Arc<T>) -> usize { give compiler_arc_strong_count<T>(value); }` example `arc_strong_count`
+- `proc arc_weak_count` signature `proc arc_weak_count<T>(value: Arc<T>) -> usize { give compiler_arc_weak_count<T>(value); }` example `arc_weak_count`
+- `proc arc_downgrade` signature `proc arc_downgrade<T>(value: Arc<T>) -> ArcWeak<T> { give compiler_arc_downgrade<T>(value); }` example `arc_downgrade`
+- `proc arc_weak_upgrade` signature `proc arc_weak_upgrade<T>(value: ArcWeak<T>) -> Option<Arc<T>> { give compiler_arc_weak_upgrade<T>(value); }` example `arc_weak_upgrade`
 
 ## `src/vitte/stdlib/alloc/box.vitl`
 
-- `form Box`
-- `proc box_new`
-- `proc box_into_inner`
-- `proc box_as_ref`
-- `proc box_as_mut`
-- `proc box_drop`
+- `form Box` signature `form Box<T> {` example `Box`
+- `proc box_new` signature `proc box_new<T>(value: T) -> Box<T> { give compiler_box_new<T>(value); }` example `box_new`
+- `proc box_into_inner` signature `proc box_into_inner<T>(boxed: Box<T>) -> T { give compiler_box_into_inner<T>(boxed); }` example `box_into_inner`
+- `proc box_as_ref` signature `proc box_as_ref<T>(boxed: ref Box<T>) -> ref T { give compiler_box_as_ref<T>(boxed); }` example `box_as_ref`
+- `proc box_as_mut` signature `proc box_as_mut<T>(boxed: ref mut Box<T>) -> ref mut T { give compiler_box_as_mut<T>(boxed); }` example `box_as_mut`
+- `proc box_drop` signature `proc box_drop<T>(boxed: Box<T>) { compiler_box_drop<T>(boxed); }` example `box_drop`
 
 ## `src/vitte/stdlib/alloc/collections.vitl`
 
-- `form HashMap`
-- `form HashSet`
-- `form BTreeMap`
-- `form BTreeSet`
-- `form Deque`
-- `proc hashmap_new`
-- `proc hashmap_insert`
-- `proc hashmap_get`
-- `proc hashmap_remove`
-- `proc hashmap_len`
-- `proc hashset_new`
-- `proc hashset_insert`
-- `proc hashset_contains`
-- `proc hashset_remove`
-- `proc btreemap_new`
-- `proc btreemap_insert`
-- `proc btreemap_get`
-- `proc btreemap_remove`
-- `proc btreemap_iter`
-- `proc btreeset_new`
-- `proc btreeset_insert`
-- `proc btreeset_contains`
-- `proc btreeset_remove`
-- `proc deque_new`
-- `proc deque_push_back`
-- `proc deque_push_front`
-- `proc deque_pop_back`
-- `proc deque_pop_front`
-- `proc deque_len`
+- `form HashMap` signature `form HashMap<K, V> {` example `HashMap`
+- `form HashSet` signature `form HashSet<T> {` example `HashSet`
+- `form BTreeMap` signature `form BTreeMap<K, V> {` example `BTreeMap`
+- `form BTreeSet` signature `form BTreeSet<T> {` example `BTreeSet`
+- `form Deque` signature `form Deque<T> {` example `Deque`
+- `proc hashmap_new` signature `proc hashmap_new<K, V>() -> HashMap<K, V> { give compiler_hashmap_new<K, V>(); }` example `hashmap_new`
+- `proc hashmap_insert` signature `proc hashmap_insert<K, V>(map: ref mut HashMap<K, V>, key: K, value: V) -> Option<V> { give compiler_hashmap_insert<K, V>(map, key, value); }` example `hashmap_insert`
+- `proc hashmap_get` signature `proc hashmap_get<K, V>(map: ref HashMap<K, V>, key: K) -> Option<ref V> { give compiler_hashmap_get<K, V>(map, key); }` example `hashmap_get`
+- `proc hashmap_remove` signature `proc hashmap_remove<K, V>(map: ref mut HashMap<K, V>, key: K) -> Option<V> { give compiler_hashmap_remove<K, V>(map, key); }` example `hashmap_remove`
+- `proc hashmap_len` signature `proc hashmap_len<K, V>(map: HashMap<K, V>) -> usize { give map.length; }` example `hashmap_len`
+- `proc hashset_new` signature `proc hashset_new<T>() -> HashSet<T> { give HashSet<T> { map: hashmap_new<T, bool>() }; }` example `hashset_new`
+- `proc hashset_insert` signature `proc hashset_insert<T>(set: ref mut HashSet<T>, value: T) -> bool { give is_none<bool>(hashmap_insert<T, bool>(&mut ((*set).map), value, true)); }` example `hashset_insert`
+- `proc hashset_contains` signature `proc hashset_contains<T>(set: ref HashSet<T>, value: T) -> bool { give is_some<ref bool>(hashmap_get<T, bool>(&((*set).map), value)); }` example `hashset_contains`
+- `proc hashset_remove` signature `proc hashset_remove<T>(set: ref mut HashSet<T>, value: T) -> bool { give is_some<bool>(hashmap_remove<T, bool>(&mut ((*set).map), value)); }` example `hashset_remove`
+- `proc btreemap_new` signature `proc btreemap_new<K, V>() -> BTreeMap<K, V> { give compiler_btreemap_new<K, V>(); }` example `btreemap_new`
+- `proc btreemap_insert` signature `proc btreemap_insert<K, V>(map: ref mut BTreeMap<K, V>, key: K, value: V) -> Option<V> { give compiler_btreemap_insert<K, V>(map, key, value); }` example `btreemap_insert`
+- `proc btreemap_get` signature `proc btreemap_get<K, V>(map: ref BTreeMap<K, V>, key: K) -> Option<ref V> { give compiler_btreemap_get<K, V>(map, key); }` example `btreemap_get`
+- `proc btreemap_remove` signature `proc btreemap_remove<K, V>(map: ref mut BTreeMap<K, V>, key: K) -> Option<V> { give compiler_btreemap_remove<K, V>(map, key); }` example `btreemap_remove`
+- `proc btreemap_iter` signature `proc btreemap_iter<K, V>(map: BTreeMap<K, V>) -> Iterator<(K, V)> { give compiler_btreemap_iter<K, V>(map); }` example `btreemap_iter`
+- `proc btreeset_new` signature `proc btreeset_new<T>() -> BTreeSet<T> { give BTreeSet<T> { map: btreemap_new<T, bool>() }; }` example `btreeset_new`
+- `proc btreeset_insert` signature `proc btreeset_insert<T>(set: ref mut BTreeSet<T>, value: T) -> bool { give is_none<bool>(btreemap_insert<T, bool>(&mut ((*set).map), value, true)); }` example `btreeset_insert`
+- `proc btreeset_contains` signature `proc btreeset_contains<T>(set: ref BTreeSet<T>, value: T) -> bool { give is_some<ref bool>(btreemap_get<T, bool>(&((*set).map), value)); }` example `btreeset_contains`
+- `proc btreeset_remove` signature `proc btreeset_remove<T>(set: ref mut BTreeSet<T>, value: T) -> bool { give is_some<bool>(btreemap_remove<T, bool>(&mut ((*set).map), value)); }` example `btreeset_remove`
+- `proc deque_new` signature `proc deque_new<T>() -> Deque<T> { give Deque<T> { data: vec_new<T>(), head: 0, length: 0 }; }` example `deque_new`
+- `proc deque_push_back` signature `proc deque_push_back<T>(deque: ref mut Deque<T>, value: T) { vec_push<T>(&mut ((*deque).data), value); set (*deque).length = (*deque).length + 1; }` example `deque_push_back`
+- `proc deque_push_front` signature `proc deque_push_front<T>(deque: ref mut Deque<T>, value: T) { compiler_deque_push_front<T>(deque, value); }` example `deque_push_front`
+- `proc deque_pop_back` signature `proc deque_pop_back<T>(deque: ref mut Deque<T>) -> Option<T> { give compiler_deque_pop_back<T>(deque); }` example `deque_pop_back`
+- `proc deque_pop_front` signature `proc deque_pop_front<T>(deque: ref mut Deque<T>) -> Option<T> { give compiler_deque_pop_front<T>(deque); }` example `deque_pop_front`
+- `proc deque_len` signature `proc deque_len<T>(deque: Deque<T>) -> usize { give deque.length; }` example `deque_len`
 
 ## `src/vitte/stdlib/alloc/rc.vitl`
 
-- `form Rc`
-- `form Weak`
-- `proc rc_new`
-- `proc rc_clone`
-- `proc rc_strong_count`
-- `proc rc_weak_count`
-- `proc rc_downgrade`
-- `proc weak_upgrade`
+- `form Rc` signature `form Rc<T> { ptr: ref T }` example `Rc`
+- `form Weak` signature `form Weak<T> { ptr: ref T }` example `Weak`
+- `proc rc_new` signature `proc rc_new<T>(value: T) -> Rc<T> { give compiler_rc_new<T>(value); }` example `rc_new`
+- `proc rc_clone` signature `proc rc_clone<T>(value: Rc<T>) -> Rc<T> { give compiler_rc_clone<T>(value); }` example `rc_clone`
+- `proc rc_strong_count` signature `proc rc_strong_count<T>(value: Rc<T>) -> usize { give compiler_rc_strong_count<T>(value); }` example `rc_strong_count`
+- `proc rc_weak_count` signature `proc rc_weak_count<T>(value: Rc<T>) -> usize { give compiler_rc_weak_count<T>(value); }` example `rc_weak_count`
+- `proc rc_downgrade` signature `proc rc_downgrade<T>(value: Rc<T>) -> Weak<T> { give compiler_rc_downgrade<T>(value); }` example `rc_downgrade`
+- `proc weak_upgrade` signature `proc weak_upgrade<T>(value: Weak<T>) -> Option<Rc<T>> { give compiler_weak_upgrade<T>(value); }` example `weak_upgrade`
 
 ## `src/vitte/stdlib/alloc/string.vitl`
 
-- `form String`
-- `proc string_new`
-- `proc string_from_utf8`
-- `proc string_len`
-- `proc string_capacity`
-- `proc string_push`
-- `proc string_push_str`
-- `proc string_concat`
-- `proc string_slice`
-- `proc string_reserve`
-- `proc string_as_utf8_view`
+- `form String` signature `form String {` example `String`
+- `proc string_new` signature `proc string_new() -> String {` example `string_new`
+- `proc string_from_utf8` signature `proc string_from_utf8(bytes: Vec<byte>) -> Option<String> {` example `string_from_utf8`
+- `proc string_len` signature `proc string_len(value: String) -> usize { give vec_len<byte>(value.bytes); }` example `string_len`
+- `proc string_capacity` signature `proc string_capacity(value: String) -> usize { give vec_capacity<byte>(value.bytes); }` example `string_capacity`
+- `proc string_push` signature `proc string_push(value: ref mut String, ch: rune) {` example `string_push`
+- `proc string_push_str` signature `proc string_push_str(value: ref mut String, text: string) {` example `string_push_str`
+- `proc string_concat` signature `proc string_concat(left: String, right: string) -> String {` example `string_concat`
+- `proc string_slice` signature `proc string_slice(value: ref String, start: usize, end: usize) -> Option<Utf8View> {` example `string_slice`
+- `proc string_reserve` signature `proc string_reserve(value: ref mut String, additional: usize) { vec_reserve<byte>(&mut ((*value).bytes), additional); }` example `string_reserve`
+- `proc string_as_utf8_view` signature `proc string_as_utf8_view(value: ref String) -> Utf8View { give compiler_owned_string_as_utf8_view(value); }` example `string_as_utf8_view`
 
 ## `src/vitte/stdlib/alloc/vec.vitl`
 
-- `form Vec`
-- `proc vec_new`
-- `proc vec_with_capacity`
-- `proc vec_len`
-- `proc vec_capacity`
-- `proc vec_reserve`
-- `proc vec_push`
-- `proc vec_pop`
-- `proc vec_insert`
-- `proc vec_remove`
-- `proc vec_get`
-- `proc vec_iter`
-- `proc vec_drop`
+- `form Vec` signature `form Vec<T> {` example `Vec`
+- `proc vec_new` signature `proc vec_new<T>() -> Vec<T> {` example `vec_new`
+- `proc vec_with_capacity` signature `proc vec_with_capacity<T>(capacity: usize) -> Vec<T> {` example `vec_with_capacity`
+- `proc vec_len` signature `proc vec_len<T>(vec: Vec<T>) -> usize { give vec.length; }` example `vec_len`
+- `proc vec_capacity` signature `proc vec_capacity<T>(vec: Vec<T>) -> usize { give vec.capacity; }` example `vec_capacity`
+- `proc vec_reserve` signature `proc vec_reserve<T>(vec: ref mut Vec<T>, additional: usize) {` example `vec_reserve`
+- `proc vec_push` signature `proc vec_push<T>(vec: ref mut Vec<T>, value: T) {` example `vec_push`
+- `proc vec_pop` signature `proc vec_pop<T>(vec: ref mut Vec<T>) -> Option<T> { give compiler_vec_pop<T>(vec); }` example `vec_pop`
+- `proc vec_insert` signature `proc vec_insert<T>(vec: ref mut Vec<T>, index: usize, value: T) { compiler_vec_insert<T>(vec, index, value); }` example `vec_insert`
+- `proc vec_remove` signature `proc vec_remove<T>(vec: ref mut Vec<T>, index: usize) -> Option<T> { give compiler_vec_remove<T>(vec, index); }` example `vec_remove`
+- `proc vec_get` signature `proc vec_get<T>(vec: Vec<T>, index: usize) -> Option<ref T> {` example `vec_get`
+- `proc vec_iter` signature `proc vec_iter<T>(vec: Vec<T>) -> Iterator<ref T> { give compiler_vec_iter<T>(vec); }` example `vec_iter`
+- `proc vec_drop` signature `proc vec_drop<T>(vec: ref mut Vec<T>) {` example `vec_drop`
 
 ## `src/vitte/stdlib/async/async.vitl`
 
-- `form TimeoutResult`
-- `form BatchProcessor`
-- `form TaskPool`
-- `const GLOBAL_EXECUTOR`
-- `proc global_executor`
-- `proc async`
-- `proc await`
-- `proc try_await`
-- `proc spawn_task`
-- `proc join_all`
-- `proc async_sleep`
-- `proc init_executor`
-- `proc start_executor`
-- `proc stop_executor`
-- `proc executor_runtime_stats`
-- `proc create_channel`
-- `proc parallel_all`
-- `proc race_first`
-- `proc with_timeout`
-- `proc timeout_has_value`
-- `proc timeout_value`
-- `proc retry_async`
-- `proc batch_processor_new`
-- `proc batch_add`
-- `proc task_pool_new`
-- `proc task_pool_submit`
-- `proc task_pool_wait_all`
-- `proc task_pool_shutdown`
-- `proc sleep_ms`
-- `proc async_version`
-- `proc async_ready`
-- `proc async_selftest_value`
-- `proc async_selftest`
+- `form TimeoutResult` signature `form TimeoutResult<T> {` example `TimeoutResult`
+- `form BatchProcessor` signature `form BatchProcessor<T, U> {` example `BatchProcessor`
+- `form TaskPool` signature `form TaskPool {` example `TaskPool`
+- `const GLOBAL_EXECUTOR` signature `const GLOBAL_EXECUTOR: Executor = Executor {` example `GLOBAL_EXECUTOR`
+- `proc global_executor` signature `proc global_executor() -> Executor {` example `global_executor`
+- `proc async` signature `proc async<T>(body: proc) -> Future<T> {` example `async`
+- `proc await` signature `proc await<T>(fut: Future<T>) -> T {` example `await`
+- `proc try_await` signature `proc try_await<T>(fut: Future<T>, timeout_ms: int) -> bool {` example `try_await`
+- `proc spawn_task` signature `proc spawn_task<T>(fut: Future<T>) -> int {` example `spawn_task`
+- `proc join_all` signature `proc join_all(task_ids: [int]) -> bool {` example `join_all`
+- `proc async_sleep` signature `proc async_sleep(ms: int) -> Future<bool> {` example `async_sleep`
+- `proc init_executor` signature `proc init_executor(num_workers: int) -> bool {` example `init_executor`
+- `proc start_executor` signature `proc start_executor() -> int {` example `start_executor`
+- `proc stop_executor` signature `proc stop_executor() -> int {` example `stop_executor`
+- `proc executor_runtime_stats` signature `proc executor_runtime_stats() -> ExecutorStats {` example `executor_runtime_stats`
+- `proc create_channel` signature `proc create_channel<T>(capacity: int) -> Channel<T> {` example `create_channel`
+- `proc parallel_all` signature `proc parallel_all<T>(futures: [Future<T>]) -> [T] {` example `parallel_all`
+- `proc race_first` signature `proc race_first<T>(futures: [Future<T>]) -> T {` example `race_first`
+- `proc with_timeout` signature `proc with_timeout<T>(fut: Future<T>, timeout_ms: int) -> TimeoutResult<T> {` example `with_timeout`
+- `proc timeout_has_value` signature `proc timeout_has_value<T>(result: TimeoutResult<T>) -> bool {` example `timeout_has_value`
+- `proc timeout_value` signature `proc timeout_value<T>(result: TimeoutResult<T>) -> T {` example `timeout_value`
+- `proc retry_async` signature `proc retry_async<T>(operation_id: int, max_attempts: int, backoff_ms: int) -> Future<T> {` example `retry_async`
+- `proc batch_processor_new` signature `proc batch_processor_new<T, U>(size: int, processor_id: int) -> BatchProcessor<T, U> {` example `batch_processor_new`
+- `proc batch_add` signature `proc batch_add<T, U>(bp: BatchProcessor<T, U>, item: T) -> bool {` example `batch_add`
+- `proc task_pool_new` signature `proc task_pool_new(num_workers: int) -> TaskPool {` example `task_pool_new`
+- `proc task_pool_submit` signature `proc task_pool_submit(pool: TaskPool, task_id: int) -> bool {` example `task_pool_submit`
+- `proc task_pool_wait_all` signature `proc task_pool_wait_all(pool: TaskPool) -> bool {` example `task_pool_wait_all`
+- `proc task_pool_shutdown` signature `proc task_pool_shutdown(pool: TaskPool) -> bool {` example `task_pool_shutdown`
+- `proc sleep_ms` signature `proc sleep_ms(ms: int) -> bool {` example `sleep_ms`
+- `proc async_version` signature `proc async_version() -> string {` example `async_version`
+- `proc async_ready` signature `proc async_ready() -> bool {` example `async_ready`
+- `proc async_selftest_value` signature `proc async_selftest_value() -> int {` example `async_selftest_value`
+- `proc async_selftest` signature `proc async_selftest() -> bool {` example `async_selftest`
 
 ## `src/vitte/stdlib/async/channel.vitl`
 
-- `form Queue`
-- `form Channel`
-- `form Select`
-- `proc channel_new`
-- `proc channel_send`
-- `proc channel_recv`
-- `proc channel_try_recv`
-- `proc channel_is_closed`
-- `proc channel_close_sender`
-- `proc channel_close_receiver`
-- `proc channel_len`
-- `proc channel_select`
-- `proc queue_new`
-- `proc queue_push`
-- `proc queue_pop`
-- `proc queue_len`
-- `proc queue_rest`
-- `proc mutex_new`
-- `proc mutex_lock`
-- `proc mutex_unlock`
-- `proc cond_new`
-- `proc cond_wait`
-- `proc cond_signal`
-- `proc cond_broadcast`
-- `proc channel_version`
-- `proc channel_ready`
-- `proc channel_selftest`
+- `form Queue` signature `form Queue<T> {` example `Queue`
+- `form Channel` signature `form Channel<T> {` example `Channel`
+- `form Select` signature `form Select<T> {` example `Select`
+- `proc channel_new` signature `proc channel_new<T>(capacity: int) -> Channel<T> {` example `channel_new`
+- `proc channel_send` signature `proc channel_send<T>(ch: Channel<T>, value: T) -> bool {` example `channel_send`
+- `proc channel_recv` signature `proc channel_recv<T>(ch: Channel<T>) -> T {` example `channel_recv`
+- `proc channel_try_recv` signature `proc channel_try_recv<T>(ch: Channel<T>) -> T {` example `channel_try_recv`
+- `proc channel_is_closed` signature `proc channel_is_closed<T>(ch: Channel<T>) -> bool {` example `channel_is_closed`
+- `proc channel_close_sender` signature `proc channel_close_sender<T>(ch: Channel<T>) -> bool {` example `channel_close_sender`
+- `proc channel_close_receiver` signature `proc channel_close_receiver<T>(ch: Channel<T>) -> bool {` example `channel_close_receiver`
+- `proc channel_len` signature `proc channel_len<T>(ch: Channel<T>) -> int {` example `channel_len`
+- `proc channel_select` signature `proc channel_select<T>(channels: [Channel<T>]) -> Select<T> {` example `channel_select`
+- `proc queue_new` signature `proc queue_new<T>() -> Queue<T> {` example `queue_new`
+- `proc queue_push` signature `proc queue_push<T>(q: Queue<T>, value: T) -> bool {` example `queue_push`
+- `proc queue_pop` signature `proc queue_pop<T>(q: Queue<T>) -> T {` example `queue_pop`
+- `proc queue_len` signature `proc queue_len<T>(q: Queue<T>) -> int {` example `queue_len`
+- `proc queue_rest` signature `proc queue_rest<T>(items: [T]) -> [T] {` example `queue_rest`
+- `proc mutex_new` signature `proc mutex_new() -> int {` example `mutex_new`
+- `proc mutex_lock` signature `proc mutex_lock(id: int) -> bool {` example `mutex_lock`
+- `proc mutex_unlock` signature `proc mutex_unlock(id: int) -> bool {` example `mutex_unlock`
+- `proc cond_new` signature `proc cond_new() -> int {` example `cond_new`
+- `proc cond_wait` signature `proc cond_wait(cond: int, mutex: int) -> bool {` example `cond_wait`
+- `proc cond_signal` signature `proc cond_signal(cond: int) -> bool {` example `cond_signal`
+- `proc cond_broadcast` signature `proc cond_broadcast(cond: int) -> bool {` example `cond_broadcast`
+- `proc channel_version` signature `proc channel_version() -> string {` example `channel_version`
+- `proc channel_ready` signature `proc channel_ready() -> bool {` example `channel_ready`
+- `proc channel_selftest` signature `proc channel_selftest() -> bool {` example `channel_selftest`
 
 ## `src/vitte/stdlib/async/future.vitl`
 
-- `form Future`
-- `proc future_new`
-- `proc future_is_ready`
-- `proc future_is_completed`
-- `proc future_is_errored`
-- `proc future_await`
-- `proc future_try_get`
-- `proc future_resolve`
-- `proc future_reject`
-- `proc future_error_message`
-- `proc future_map`
-- `proc future_chain`
-- `proc future_race`
-- `proc future_all`
-- `proc future_from_value`
-- `proc future_from_error`
-- `proc yield_cpu`
-- `proc mutex_new`
-- `proc mutex_lock`
-- `proc mutex_unlock`
-- `proc future_version`
-- `proc future_ready`
-- `proc future_selftest_add_one`
-- `proc future_selftest_double`
-- `proc future_selftest`
+- `form Future` signature `form Future<T> {` example `Future`
+- `proc future_new` signature `proc future_new<T>() -> Future<T> {` example `future_new`
+- `proc future_is_ready` signature `proc future_is_ready<T>(fut: Future<T>) -> bool {` example `future_is_ready`
+- `proc future_is_completed` signature `proc future_is_completed<T>(fut: Future<T>) -> bool {` example `future_is_completed`
+- `proc future_is_errored` signature `proc future_is_errored<T>(fut: Future<T>) -> bool {` example `future_is_errored`
+- `proc future_await` signature `proc future_await<T>(fut: Future<T>) -> T {` example `future_await`
+- `proc future_try_get` signature `proc future_try_get<T>(fut: Future<T>) -> T {` example `future_try_get`
+- `proc future_resolve` signature `proc future_resolve<T>(fut: Future<T>, value: T) -> bool {` example `future_resolve`
+- `proc future_reject` signature `proc future_reject<T>(fut: Future<T>, error: string) -> bool {` example `future_reject`
+- `proc future_error_message` signature `proc future_error_message<T>(fut: Future<T>) -> string {` example `future_error_message`
+- `proc future_map` signature `proc future_map<T, U>(fut: Future<T>, mapper: proc) -> Future<U> {` example `future_map`
+- `proc future_chain` signature `proc future_chain<T, U>(fut: Future<T>, then: proc) -> Future<U> {` example `future_chain`
+- `proc future_race` signature `proc future_race<T>(futures: [Future<T>]) -> T {` example `future_race`
+- `proc future_all` signature `proc future_all<T>(futures: [Future<T>]) -> [T] {` example `future_all`
+- `proc future_from_value` signature `proc future_from_value<T>(value: T) -> Future<T> {` example `future_from_value`
+- `proc future_from_error` signature `proc future_from_error<T>(error: string) -> Future<T> {` example `future_from_error`
+- `proc yield_cpu` signature `proc yield_cpu() -> bool {` example `yield_cpu`
+- `proc mutex_new` signature `proc mutex_new() -> int {` example `mutex_new`
+- `proc mutex_lock` signature `proc mutex_lock(id: int) -> bool {` example `mutex_lock`
+- `proc mutex_unlock` signature `proc mutex_unlock(id: int) -> bool {` example `mutex_unlock`
+- `proc future_version` signature `proc future_version() -> string {` example `future_version`
+- `proc future_ready` signature `proc future_ready() -> bool {` example `future_ready`
+- `proc future_selftest_add_one` signature `proc future_selftest_add_one(value: int) -> int {` example `future_selftest_add_one`
+- `proc future_selftest_double` signature `proc future_selftest_double(value: int) -> Future<int> {` example `future_selftest_double`
+- `proc future_selftest` signature `proc future_selftest() -> bool {` example `future_selftest`
 
 ## `src/vitte/stdlib/collections/queue.vitl`
 
-- `form Queue`
-- `proc _repeat_i64`
-- `proc queue_new`
-- `proc queue_reserve`
-- `proc _queue_resize`
-- `proc _queue_shrink`
-- `proc queue_enqueue`
-- `proc queue_dequeue`
-- `proc queue_push_front`
-- `proc queue_pop_back`
-- `proc queue_front`
-- `proc queue_back`
-- `proc queue_empty`
-- `proc queue_size`
-- `proc queue_clear`
-- `proc queue_is_full`
-- `proc queue_get`
-- `proc queue_to_array`
-- `proc __len__`
-- `proc __getitem__`
-- `proc __iter__`
+- `form Queue` signature `form Queue {` example `Queue`
+- `proc _repeat_i64` signature `proc _repeat_i64(value: i64, count: i32) -> [i64] {` example `_repeat_i64`
+- `proc queue_new` signature `proc queue_new(capacity: i32) -> Queue {` example `queue_new`
+- `proc queue_reserve` signature `proc queue_reserve(q: Queue, new_cap: i32) {` example `queue_reserve`
+- `proc _queue_resize` signature `proc _queue_resize(q: Queue) {` example `_queue_resize`
+- `proc _queue_shrink` signature `proc _queue_shrink(q: Queue) {` example `_queue_shrink`
+- `proc queue_enqueue` signature `proc queue_enqueue(q: Queue, value: i64) -> int {` example `queue_enqueue`
+- `proc queue_dequeue` signature `proc queue_dequeue(q: Queue) -> i64 {` example `queue_dequeue`
+- `proc queue_push_front` signature `proc queue_push_front(q: Queue, value: i64) -> int {` example `queue_push_front`
+- `proc queue_pop_back` signature `proc queue_pop_back(q: Queue) -> i64 {` example `queue_pop_back`
+- `proc queue_front` signature `proc queue_front(q: Queue) -> i64 {` example `queue_front`
+- `proc queue_back` signature `proc queue_back(q: Queue) -> i64 {` example `queue_back`
+- `proc queue_empty` signature `proc queue_empty(q: Queue) -> int {` example `queue_empty`
+- `proc queue_size` signature `proc queue_size(q: Queue) -> i32 {` example `queue_size`
+- `proc queue_clear` signature `proc queue_clear(q: Queue) {` example `queue_clear`
+- `proc queue_is_full` signature `proc queue_is_full(q: Queue) -> int {` example `queue_is_full`
+- `proc queue_get` signature `proc queue_get(q: Queue, idx: i64) -> i64 {` example `queue_get`
+- `proc queue_to_array` signature `proc queue_to_array(q: Queue) -> [i64] {` example `queue_to_array`
+- `proc __len__` signature `proc __len__(q: Queue) -> int {` example `__len__`
+- `proc __getitem__` signature `proc __getitem__(q: Queue, idx: i64) -> i64 {` example `__getitem__`
+- `proc __iter__` signature `proc __iter__(q: Queue) -> [i64] {` example `__iter__`
 
 ## `src/vitte/stdlib/collections/vector.vitl`
 
-- `form Vector`
-- `proc _repeat_i64`
-- `proc vector_new`
-- `proc _vector_resize`
-- `proc _vector_shrink`
-- `proc vector_push`
-- `proc vector_push_unchecked`
-- `proc vector_insert`
-- `proc vector_pop`
-- `proc vector_remove_at`
-- `proc vector_at`
-- `proc vector_get_unchecked`
-- `proc vector_set`
-- `proc vector_swap`
-- `proc vector_reverse`
-- `proc vector_reserve`
-- `proc vector_clear`
-- `proc vector_push_many`
-- `proc vector_extend`
-- `proc vector_slice`
-- `proc vector_find`
-- `proc vector_equals`
-- `proc vector_truncate`
-- `proc vector_clone`
-- `proc vector_size`
-- `proc vector_capacity`
-- `proc vector_empty`
-- `proc vector_to_array`
-- `proc __len__`
-- `proc __getitem__`
-- `proc __iter__`
+- `form Vector` signature `form Vector {` example `Vector`
+- `proc _repeat_i64` signature `proc _repeat_i64(value: i64, count: i32) -> [i64] {` example `_repeat_i64`
+- `proc vector_new` signature `proc vector_new(capacity: i32) -> Vector {` example `vector_new`
+- `proc _vector_resize` signature `proc _vector_resize(v: Vector) {` example `_vector_resize`
+- `proc _vector_shrink` signature `proc _vector_shrink(v: Vector) {` example `_vector_shrink`
+- `proc vector_push` signature `proc vector_push(v: Vector, value: i64) -> int {` example `vector_push`
+- `proc vector_push_unchecked` signature `proc vector_push_unchecked(v: Vector, value: i64) {` example `vector_push_unchecked`
+- `proc vector_insert` signature `proc vector_insert(v: Vector, idx: i32, value: i64) -> int {` example `vector_insert`
+- `proc vector_pop` signature `proc vector_pop(v: Vector) -> i64 {` example `vector_pop`
+- `proc vector_remove_at` signature `proc vector_remove_at(v: Vector, idx: i32) -> i64 {` example `vector_remove_at`
+- `proc vector_at` signature `proc vector_at(v: Vector, index: i32) -> i64 {` example `vector_at`
+- `proc vector_get_unchecked` signature `proc vector_get_unchecked(v: Vector, index: i32) -> i64 {` example `vector_get_unchecked`
+- `proc vector_set` signature `proc vector_set(v: Vector, index: i32, value: i64) -> int {` example `vector_set`
+- `proc vector_swap` signature `proc vector_swap(v: Vector, i: i32, j: i32) {` example `vector_swap`
+- `proc vector_reverse` signature `proc vector_reverse(v: Vector) {` example `vector_reverse`
+- `proc vector_reserve` signature `proc vector_reserve(v: Vector, new_cap: i32) {` example `vector_reserve`
+- `proc vector_clear` signature `proc vector_clear(v: Vector) {` example `vector_clear`
+- `proc vector_push_many` signature `proc vector_push_many(v: Vector, values: [i64]) {` example `vector_push_many`
+- `proc vector_extend` signature `proc vector_extend(v: Vector, other: Vector) {` example `vector_extend`
+- `proc vector_slice` signature `proc vector_slice(v: Vector, start: i32, end: i32) -> [i64] {` example `vector_slice`
+- `proc vector_find` signature `proc vector_find(v: Vector, value: i64) -> i32 {` example `vector_find`
+- `proc vector_equals` signature `proc vector_equals(a: Vector, b: Vector) -> int {` example `vector_equals`
+- `proc vector_truncate` signature `proc vector_truncate(v: Vector, n: i32) {` example `vector_truncate`
+- `proc vector_clone` signature `proc vector_clone(v: Vector) -> Vector {` example `vector_clone`
+- `proc vector_size` signature `proc vector_size(v: Vector) -> i32 {` example `vector_size`
+- `proc vector_capacity` signature `proc vector_capacity(v: Vector) -> i32 {` example `vector_capacity`
+- `proc vector_empty` signature `proc vector_empty(v: Vector) -> int {` example `vector_empty`
+- `proc vector_to_array` signature `proc vector_to_array(v: Vector) -> [i64] {` example `vector_to_array`
+- `proc __len__` signature `proc __len__(v: Vector) -> int {` example `__len__`
+- `proc __getitem__` signature `proc __getitem__(v: Vector, index: i64) -> i64 {` example `__getitem__`
+- `proc __iter__` signature `proc __iter__(v: Vector) -> [i64] {` example `__iter__`
 
 ## `src/vitte/stdlib/compression/algorithms.vitl`
 
-- `const RLE_MARK`
-- `const LZ_WINDOW`
-- `const LZ_LOOKAHEAD`
-- `form LZToken`
-- `form CompressionAlgorithmsManifest`
-- `form CompressionAlgorithmsHealth`
-- `form CompressionAlgorithmsSummary`
-- `proc compress_rle`
-- `proc decompress_rle`
-- `proc compress_lz77`
-- `proc decompress_lz77`
-- `proc compress_huffman`
-- `proc decompress_huffman`
-- `proc compression_algorithms_version`
-- `proc compression_algorithms_ready`
-- `proc compression_algorithms_manifest`
-- `proc compression_algorithms_health`
-- `proc compression_algorithms_summary`
-- `proc compression_algorithms_selftest`
+- `const RLE_MARK` signature `const RLE_MARK: i32 = -2147483648` example `RLE_MARK`
+- `const LZ_WINDOW` signature `const LZ_WINDOW: i32 = 32` example `LZ_WINDOW`
+- `const LZ_LOOKAHEAD` signature `const LZ_LOOKAHEAD: i32 = 16` example `LZ_LOOKAHEAD`
+- `form LZToken` signature `form LZToken {` example `LZToken`
+- `form CompressionAlgorithmsManifest` signature `form CompressionAlgorithmsManifest {` example `CompressionAlgorithmsManifest`
+- `form CompressionAlgorithmsHealth` signature `form CompressionAlgorithmsHealth {` example `CompressionAlgorithmsHealth`
+- `form CompressionAlgorithmsSummary` signature `form CompressionAlgorithmsSummary {` example `CompressionAlgorithmsSummary`
+- `proc compress_rle` signature `proc compress_rle(data: [i32]) -> [i32] {` example `compress_rle`
+- `proc decompress_rle` signature `proc decompress_rle(data: [i32]) -> [i32] {` example `decompress_rle`
+- `proc compress_lz77` signature `proc compress_lz77(data: [i32]) -> [LZToken] {` example `compress_lz77`
+- `proc decompress_lz77` signature `proc decompress_lz77(tokens: [LZToken]) -> [i32] {` example `decompress_lz77`
+- `proc compress_huffman` signature `proc compress_huffman(data: [i32]) -> [i32] {` example `compress_huffman`
+- `proc decompress_huffman` signature `proc decompress_huffman(data: [i32]) -> [i32] {` example `decompress_huffman`
+- `proc compression_algorithms_version` signature `proc compression_algorithms_version() -> string {` example `compression_algorithms_version`
+- `proc compression_algorithms_ready` signature `proc compression_algorithms_ready() -> bool {` example `compression_algorithms_ready`
+- `proc compression_algorithms_manifest` signature `proc compression_algorithms_manifest() -> CompressionAlgorithmsManifest {` example `compression_algorithms_manifest`
+- `proc compression_algorithms_health` signature `proc compression_algorithms_health() -> CompressionAlgorithmsHealth {` example `compression_algorithms_health`
+- `proc compression_algorithms_summary` signature `proc compression_algorithms_summary() -> CompressionAlgorithmsSummary {` example `compression_algorithms_summary`
+- `proc compression_algorithms_selftest` signature `proc compression_algorithms_selftest() -> bool {` example `compression_algorithms_selftest`
 
 ## `src/vitte/stdlib/compression/brotli.vitl`
 
-- `form BrotliManifest`
-- `form BrotliHealth`
-- `form BrotliSummary`
-- `proc _slice_text`
-- `proc _strip_prefix`
-- `proc _strip_quality_prefix`
-- `proc normalize_quality`
-- `proc compress`
-- `proc decompress`
-- `proc compress_with_quality`
-- `proc compress_bytes`
-- `proc decompress_bytes`
-- `proc brotli_version`
-- `proc brotli_ready`
-- `proc brotli_manifest`
-- `proc brotli_health`
-- `proc brotli_summary`
-- `proc get_compressed_size`
-- `proc compression_ratio`
-- `proc brotli_selftest`
+- `form BrotliManifest` signature `form BrotliManifest {` example `BrotliManifest`
+- `form BrotliHealth` signature `form BrotliHealth {` example `BrotliHealth`
+- `form BrotliSummary` signature `form BrotliSummary {` example `BrotliSummary`
+- `proc _slice_text` signature `proc _slice_text(text: string, start: i32, end: i32) -> string {` example `_slice_text`
+- `proc _strip_prefix` signature `proc _strip_prefix(text: string, prefix: string) -> string {` example `_strip_prefix`
+- `proc _strip_quality_prefix` signature `proc _strip_quality_prefix(text: string) -> string {` example `_strip_quality_prefix`
+- `proc normalize_quality` signature `proc normalize_quality(quality: int) -> int {` example `normalize_quality`
+- `proc compress` signature `proc compress(data: string) -> string {` example `compress`
+- `proc decompress` signature `proc decompress(data: string) -> string {` example `decompress`
+- `proc compress_with_quality` signature `proc compress_with_quality(data: string, quality: int) -> string {` example `compress_with_quality`
+- `proc compress_bytes` signature `proc compress_bytes(data: [int]) -> [int] {` example `compress_bytes`
+- `proc decompress_bytes` signature `proc decompress_bytes(data: [int]) -> [int] {` example `decompress_bytes`
+- `proc brotli_version` signature `proc brotli_version() -> string {` example `brotli_version`
+- `proc brotli_ready` signature `proc brotli_ready() -> bool {` example `brotli_ready`
+- `proc brotli_manifest` signature `proc brotli_manifest() -> BrotliManifest {` example `brotli_manifest`
+- `proc brotli_health` signature `proc brotli_health() -> BrotliHealth {` example `brotli_health`
+- `proc brotli_summary` signature `proc brotli_summary() -> BrotliSummary {` example `brotli_summary`
+- `proc get_compressed_size` signature `proc get_compressed_size(data: string) -> int {` example `get_compressed_size`
+- `proc compression_ratio` signature `proc compression_ratio(original: string, compressed: string) -> f64 {` example `compression_ratio`
+- `proc brotli_selftest` signature `proc brotli_selftest() -> bool {` example `brotli_selftest`
 
 ## `src/vitte/stdlib/compression/deflate.vitl`
 
-- `const Z_NO_COMPRESSION`
-- `const Z_FAST_COMPRESSION`
-- `const Z_DEFAULT_COMPRESSION`
-- `const Z_BEST_COMPRESSION`
-- `const Z_DEFAULT_STRATEGY`
-- `const Z_RLE`
-- `form DeflateContext`
-- `form DeflateManifest`
-- `form DeflateHealth`
-- `form DeflateSummary`
-- `proc _slice_text`
-- `proc deflate_version`
-- `proc deflate_ready`
-- `proc deflate_manifest`
-- `proc deflate_health`
-- `proc deflate_summary`
-- `proc compress_deflate`
-- `proc decompress_deflate`
-- `proc compress_zlib`
-- `proc decompress_zlib`
-- `proc compress_gzip`
-- `proc decompress_gzip`
-- `proc deflate_selftest`
+- `const Z_NO_COMPRESSION` signature `const Z_NO_COMPRESSION: i32 = 0` example `Z_NO_COMPRESSION`
+- `const Z_FAST_COMPRESSION` signature `const Z_FAST_COMPRESSION: i32 = 1` example `Z_FAST_COMPRESSION`
+- `const Z_DEFAULT_COMPRESSION` signature `const Z_DEFAULT_COMPRESSION: i32 = 6` example `Z_DEFAULT_COMPRESSION`
+- `const Z_BEST_COMPRESSION` signature `const Z_BEST_COMPRESSION: i32 = 9` example `Z_BEST_COMPRESSION`
+- `const Z_DEFAULT_STRATEGY` signature `const Z_DEFAULT_STRATEGY: i32 = 0` example `Z_DEFAULT_STRATEGY`
+- `const Z_RLE` signature `const Z_RLE: i32 = 3` example `Z_RLE`
+- `form DeflateContext` signature `form DeflateContext {` example `DeflateContext`
+- `form DeflateManifest` signature `form DeflateManifest {` example `DeflateManifest`
+- `form DeflateHealth` signature `form DeflateHealth {` example `DeflateHealth`
+- `form DeflateSummary` signature `form DeflateSummary {` example `DeflateSummary`
+- `proc _slice_text` signature `proc _slice_text(text: string, start: i32, end: i32) -> string {` example `_slice_text`
+- `proc deflate_version` signature `proc deflate_version() -> string {` example `deflate_version`
+- `proc deflate_ready` signature `proc deflate_ready() -> bool {` example `deflate_ready`
+- `proc deflate_manifest` signature `proc deflate_manifest() -> DeflateManifest {` example `deflate_manifest`
+- `proc deflate_health` signature `proc deflate_health() -> DeflateHealth {` example `deflate_health`
+- `proc deflate_summary` signature `proc deflate_summary() -> DeflateSummary {` example `deflate_summary`
+- `proc compress_deflate` signature `proc compress_deflate(data: [i32], level: i32) -> [i32] {` example `compress_deflate`
+- `proc decompress_deflate` signature `proc decompress_deflate(data: [i32]) -> [i32] {` example `decompress_deflate`
+- `proc compress_zlib` signature `proc compress_zlib(data: [i32], level: i32) -> [i32] {` example `compress_zlib`
+- `proc decompress_zlib` signature `proc decompress_zlib(data: [i32]) -> [i32] {` example `decompress_zlib`
+- `proc compress_gzip` signature `proc compress_gzip(data: [i32], level: i32) -> [i32] {` example `compress_gzip`
+- `proc decompress_gzip` signature `proc decompress_gzip(data: [i32]) -> [i32] {` example `decompress_gzip`
+- `proc deflate_selftest` signature `proc deflate_selftest() -> bool {` example `deflate_selftest`
 
 ## `src/vitte/stdlib/compression/huffman.vitl`
 
-- `form FrequencyEntry`
-- `form HuffmanManifest`
-- `form HuffmanHealth`
-- `form HuffmanSummary`
-- `proc _slice_text`
-- `proc _strip_prefix`
-- `proc encode`
-- `proc decode`
-- `proc build_frequency_table`
-- `proc build_huffman_tree`
-- `proc generate_codes`
-- `proc adaptive_huffman_encode`
-- `proc adaptive_huffman_decode`
-- `proc huffman_version`
-- `proc huffman_ready`
-- `proc huffman_manifest`
-- `proc huffman_health`
-- `proc huffman_summary`
-- `proc huffman_selftest`
+- `form FrequencyEntry` signature `form FrequencyEntry {` example `FrequencyEntry`
+- `form HuffmanManifest` signature `form HuffmanManifest {` example `HuffmanManifest`
+- `form HuffmanHealth` signature `form HuffmanHealth {` example `HuffmanHealth`
+- `form HuffmanSummary` signature `form HuffmanSummary {` example `HuffmanSummary`
+- `proc _slice_text` signature `proc _slice_text(text: string, start: i32, end: i32) -> string {` example `_slice_text`
+- `proc _strip_prefix` signature `proc _strip_prefix(text: string, prefix: string) -> string {` example `_strip_prefix`
+- `proc encode` signature `proc encode(data: string) -> string {` example `encode`
+- `proc decode` signature `proc decode(data: string) -> string {` example `decode`
+- `proc build_frequency_table` signature `proc build_frequency_table(data: string) -> [FrequencyEntry] {` example `build_frequency_table`
+- `proc build_huffman_tree` signature `proc build_huffman_tree(freq: [FrequencyEntry]) -> string {` example `build_huffman_tree`
+- `proc generate_codes` signature `proc generate_codes(tree: string) -> [string] {` example `generate_codes`
+- `proc adaptive_huffman_encode` signature `proc adaptive_huffman_encode(data: string) -> string {` example `adaptive_huffman_encode`
+- `proc adaptive_huffman_decode` signature `proc adaptive_huffman_decode(data: string) -> string {` example `adaptive_huffman_decode`
+- `proc huffman_version` signature `proc huffman_version() -> string {` example `huffman_version`
+- `proc huffman_ready` signature `proc huffman_ready() -> bool {` example `huffman_ready`
+- `proc huffman_manifest` signature `proc huffman_manifest() -> HuffmanManifest {` example `huffman_manifest`
+- `proc huffman_health` signature `proc huffman_health() -> HuffmanHealth {` example `huffman_health`
+- `proc huffman_summary` signature `proc huffman_summary() -> HuffmanSummary {` example `huffman_summary`
+- `proc huffman_selftest` signature `proc huffman_selftest() -> bool {` example `huffman_selftest`
 
 ## `src/vitte/stdlib/compression/interface.vitl`
 
-- `const ALGO_DEFLATE`
-- `const ALGO_GZIP`
-- `const ALGO_ZLIB`
-- `const ALGO_RLE`
-- `const ALGO_HUFFMAN`
-- `const ALGO_LZ77`
-- `const ALGO_BROTLI`
-- `const ERR_INVALID_ALGO`
-- `form CompressionInterfaceManifest`
-- `form CompressionInterfaceHealth`
-- `form CompressionInterfaceSummary`
-- `form Compressor`
-- `form Decompressor`
-- `proc compression_interface_version`
-- `proc compression_interface_ready`
-- `proc compression_interface_manifest`
-- `proc compression_interface_health`
-- `proc compression_interface_summary`
-- `proc compressor_new`
-- `proc compressor_set_algorithm`
-- `proc compressor_set_strategy`
-- `proc compressor_compress`
-- `proc compressor_flush`
-- `proc compressor_reset`
-- `proc decompressor_new`
-- `proc decompressor_set_algorithm`
-- `proc decompressor_decompress`
-- `proc decompressor_flush`
-- `proc decompressor_reset`
-- `proc compress`
-- `proc decompress`
-- `proc compress_ex`
-- `proc compression_interface_selftest`
+- `const ALGO_DEFLATE` signature `const ALGO_DEFLATE: i32 = 1` example `ALGO_DEFLATE`
+- `const ALGO_GZIP` signature `const ALGO_GZIP: i32 = 2` example `ALGO_GZIP`
+- `const ALGO_ZLIB` signature `const ALGO_ZLIB: i32 = 3` example `ALGO_ZLIB`
+- `const ALGO_RLE` signature `const ALGO_RLE: i32 = 4` example `ALGO_RLE`
+- `const ALGO_HUFFMAN` signature `const ALGO_HUFFMAN: i32 = 5` example `ALGO_HUFFMAN`
+- `const ALGO_LZ77` signature `const ALGO_LZ77: i32 = 6` example `ALGO_LZ77`
+- `const ALGO_BROTLI` signature `const ALGO_BROTLI: i32 = 7` example `ALGO_BROTLI`
+- `const ERR_INVALID_ALGO` signature `const ERR_INVALID_ALGO: i32 = -1` example `ERR_INVALID_ALGO`
+- `form CompressionInterfaceManifest` signature `form CompressionInterfaceManifest {` example `CompressionInterfaceManifest`
+- `form CompressionInterfaceHealth` signature `form CompressionInterfaceHealth {` example `CompressionInterfaceHealth`
+- `form CompressionInterfaceSummary` signature `form CompressionInterfaceSummary {` example `CompressionInterfaceSummary`
+- `form Compressor` signature `form Compressor {` example `Compressor`
+- `form Decompressor` signature `form Decompressor {` example `Decompressor`
+- `proc compression_interface_version` signature `proc compression_interface_version() -> string {` example `compression_interface_version`
+- `proc compression_interface_ready` signature `proc compression_interface_ready() -> bool {` example `compression_interface_ready`
+- `proc compression_interface_manifest` signature `proc compression_interface_manifest() -> CompressionInterfaceManifest {` example `compression_interface_manifest`
+- `proc compression_interface_health` signature `proc compression_interface_health() -> CompressionInterfaceHealth {` example `compression_interface_health`
+- `proc compression_interface_summary` signature `proc compression_interface_summary() -> CompressionInterfaceSummary {` example `compression_interface_summary`
+- `proc compressor_new` signature `proc compressor_new(level: i32) -> Compressor {` example `compressor_new`
+- `proc compressor_set_algorithm` signature `proc compressor_set_algorithm(c: Compressor, algo: i32) -> int {` example `compressor_set_algorithm`
+- `proc compressor_set_strategy` signature `proc compressor_set_strategy(c: Compressor, strategy: i32) -> int {` example `compressor_set_strategy`
+- `proc compressor_compress` signature `proc compressor_compress(c: Compressor, data: [i32]) -> [i32] {` example `compressor_compress`
+- `proc compressor_flush` signature `proc compressor_flush(c: Compressor) -> [i32] {` example `compressor_flush`
+- `proc compressor_reset` signature `proc compressor_reset(c: Compressor) -> int {` example `compressor_reset`
+- `proc decompressor_new` signature `proc decompressor_new() -> Decompressor {` example `decompressor_new`
+- `proc decompressor_set_algorithm` signature `proc decompressor_set_algorithm(d: Decompressor, algo: i32) -> int {` example `decompressor_set_algorithm`
+- `proc decompressor_decompress` signature `proc decompressor_decompress(d: Decompressor, data: [i32]) -> [i32] {` example `decompressor_decompress`
+- `proc decompressor_flush` signature `proc decompressor_flush(d: Decompressor) -> [i32] {` example `decompressor_flush`
+- `proc decompressor_reset` signature `proc decompressor_reset(d: Decompressor) -> int {` example `decompressor_reset`
+- `proc compress` signature `proc compress(data: [i32], algo: i32, level: i32) -> [i32] {` example `compress`
+- `proc decompress` signature `proc decompress(data: [i32], algo: i32) -> [i32] {` example `decompress`
+- `proc compress_ex` signature `proc compress_ex(data: [i32], algo: i32, level: i32, strategy: i32) -> [i32] {` example `compress_ex`
+- `proc compression_interface_selftest` signature `proc compression_interface_selftest() -> bool {` example `compression_interface_selftest`
 
 ## `src/vitte/stdlib/compression/lz.vitl`
 
-- `form LZManifest`
-- `form LZHealth`
-- `form LZSummary`
-- `proc _strip_prefix`
-- `proc _slice_text`
-- `proc compress`
-- `proc decompress`
-- `proc lz77_compress`
-- `proc lz77_decompress`
-- `proc lz78_compress`
-- `proc lz78_decompress`
-- `proc find_longest_match`
-- `proc lz_version`
-- `proc lz_ready`
-- `proc lz_manifest`
-- `proc lz_health`
-- `proc lz_summary`
-- `proc lz_selftest`
+- `form LZManifest` signature `form LZManifest {` example `LZManifest`
+- `form LZHealth` signature `form LZHealth {` example `LZHealth`
+- `form LZSummary` signature `form LZSummary {` example `LZSummary`
+- `proc _strip_prefix` signature `proc _strip_prefix(text: string, prefix: string) -> string {` example `_strip_prefix`
+- `proc _slice_text` signature `proc _slice_text(text: string, start: i32, end: i32) -> string {` example `_slice_text`
+- `proc compress` signature `proc compress(data: string) -> string {` example `compress`
+- `proc decompress` signature `proc decompress(data: string) -> string {` example `decompress`
+- `proc lz77_compress` signature `proc lz77_compress(data: string) -> string {` example `lz77_compress`
+- `proc lz77_decompress` signature `proc lz77_decompress(data: string) -> string {` example `lz77_decompress`
+- `proc lz78_compress` signature `proc lz78_compress(data: string) -> string {` example `lz78_compress`
+- `proc lz78_decompress` signature `proc lz78_decompress(data: string) -> string {` example `lz78_decompress`
+- `proc find_longest_match` signature `proc find_longest_match(data: string, pos: int, window_size: int) -> string {` example `find_longest_match`
+- `proc lz_version` signature `proc lz_version() -> string {` example `lz_version`
+- `proc lz_ready` signature `proc lz_ready() -> bool {` example `lz_ready`
+- `proc lz_manifest` signature `proc lz_manifest() -> LZManifest {` example `lz_manifest`
+- `proc lz_health` signature `proc lz_health() -> LZHealth {` example `lz_health`
+- `proc lz_summary` signature `proc lz_summary() -> LZSummary {` example `lz_summary`
+- `proc lz_selftest` signature `proc lz_selftest() -> bool {` example `lz_selftest`
 
 ## `src/vitte/stdlib/compression/stats.vitl`
 
-- `const Z_FAST_COMPRESSION`
-- `const Z_DEFAULT_COMPRESSION`
-- `const Z_BEST_COMPRESSION`
-- `const Z_DEFAULT_STRATEGY`
-- `const Z_RLE`
-- `const ALGO_DEFLATE`
-- `const ALGO_ZLIB`
-- `proc get_compression_ratio`
-- `proc detect_repetition_ratio`
-- `proc count_unique`
-- `proc estimate_entropy`
-- `proc estimate_compressed_size`
-- `proc get_best_compression_level`
-- `proc get_best_strategy`
-- `proc estimate_best_algorithm`
-- `form CompressionStats`
-- `form CompressionStatsManifest`
-- `form CompressionStatsHealth`
-- `form CompressionStatsSummary`
-- `proc analyze_data`
-- `proc compress_ex`
-- `proc compress_auto`
-- `proc compression_stats_version`
-- `proc compression_stats_ready`
-- `proc compression_stats_manifest`
-- `proc compression_stats_health`
-- `proc compression_stats_summary`
-- `proc compression_stats_selftest`
+- `const Z_FAST_COMPRESSION` signature `const Z_FAST_COMPRESSION: i32 = 1` example `Z_FAST_COMPRESSION`
+- `const Z_DEFAULT_COMPRESSION` signature `const Z_DEFAULT_COMPRESSION: i32 = 6` example `Z_DEFAULT_COMPRESSION`
+- `const Z_BEST_COMPRESSION` signature `const Z_BEST_COMPRESSION: i32 = 9` example `Z_BEST_COMPRESSION`
+- `const Z_DEFAULT_STRATEGY` signature `const Z_DEFAULT_STRATEGY: i32 = 0` example `Z_DEFAULT_STRATEGY`
+- `const Z_RLE` signature `const Z_RLE: i32 = 3` example `Z_RLE`
+- `const ALGO_DEFLATE` signature `const ALGO_DEFLATE: i32 = 1` example `ALGO_DEFLATE`
+- `const ALGO_ZLIB` signature `const ALGO_ZLIB: i32 = 3` example `ALGO_ZLIB`
+- `proc get_compression_ratio` signature `proc get_compression_ratio(original_size: i64, compressed_size: i64) -> f64 {` example `get_compression_ratio`
+- `proc detect_repetition_ratio` signature `proc detect_repetition_ratio(data: [i32]) -> f64 {` example `detect_repetition_ratio`
+- `proc count_unique` signature `proc count_unique(data: [i32]) -> i32 {` example `count_unique`
+- `proc estimate_entropy` signature `proc estimate_entropy(data: [i32]) -> f64 {` example `estimate_entropy`
+- `proc estimate_compressed_size` signature `proc estimate_compressed_size(data: [i32]) -> i64 {` example `estimate_compressed_size`
+- `proc get_best_compression_level` signature `proc get_best_compression_level(data: [i32]) -> i32 {` example `get_best_compression_level`
+- `proc get_best_strategy` signature `proc get_best_strategy(data: [i32]) -> i32 {` example `get_best_strategy`
+- `proc estimate_best_algorithm` signature `proc estimate_best_algorithm(data: [i32]) -> i32 {` example `estimate_best_algorithm`
+- `form CompressionStats` signature `form CompressionStats {` example `CompressionStats`
+- `form CompressionStatsManifest` signature `form CompressionStatsManifest {` example `CompressionStatsManifest`
+- `form CompressionStatsHealth` signature `form CompressionStatsHealth {` example `CompressionStatsHealth`
+- `form CompressionStatsSummary` signature `form CompressionStatsSummary {` example `CompressionStatsSummary`
+- `proc analyze_data` signature `proc analyze_data(data: [i32]) -> CompressionStats {` example `analyze_data`
+- `proc compress_ex` signature `proc compress_ex(data: [i32], algo: i32, level: i32, strategy: i32) -> [i32] {` example `compress_ex`
+- `proc compress_auto` signature `proc compress_auto(data: [i32]) -> [i32] {` example `compress_auto`
+- `proc compression_stats_version` signature `proc compression_stats_version() -> string {` example `compression_stats_version`
+- `proc compression_stats_ready` signature `proc compression_stats_ready() -> bool {` example `compression_stats_ready`
+- `proc compression_stats_manifest` signature `proc compression_stats_manifest() -> CompressionStatsManifest {` example `compression_stats_manifest`
+- `proc compression_stats_health` signature `proc compression_stats_health() -> CompressionStatsHealth {` example `compression_stats_health`
+- `proc compression_stats_summary` signature `proc compression_stats_summary() -> CompressionStatsSummary {` example `compression_stats_summary`
+- `proc compression_stats_selftest` signature `proc compression_stats_selftest() -> bool {` example `compression_stats_selftest`
 
 ## `src/vitte/stdlib/crypto/hash.vitl`
 
-- `const HASH_MD5`
-- `const HASH_SHA1`
-- `const HASH_SHA256`
-- `const HASH_SHA512`
-- `const HASH_SHA3_256`
-- `const HASH_SHA3_512`
-- `const HASH_BLAKE2B`
-- `const MD5_DIGEST_SIZE`
-- `const SHA1_DIGEST_SIZE`
-- `const SHA256_DIGEST_SIZE`
-- `const SHA512_DIGEST_SIZE`
-- `const AES_ECB`
-- `const AES_CBC`
-- `const AES_CTR`
-- `const AES_GCM`
-- `const AES_128`
-- `const AES_192`
-- `const AES_256`
-- `form Hash`
-- `form HashManifest`
-- `proc md5`
-- `proc md5_hex`
-- `proc sha1`
-- `proc sha1_hex`
-- `proc sha256`
-- `proc sha256_hex`
-- `proc sha512`
-- `proc sha512_hex`
-- `proc sha3_256`
-- `proc sha3_256_hex`
-- `proc sha3_512`
-- `proc sha3_512_hex`
-- `proc blake2b`
-- `proc blake2b_hex`
-- `proc hash_new`
-- `proc hash_update`
-- `proc hash_final`
-- `proc hash_final_hex`
-- `proc hash_version`
-- `proc hash_ready`
-- `proc hash_manifest`
-- `proc hash_selftest`
+- `const HASH_MD5` signature `const HASH_MD5: i32 = 1` example `HASH_MD5`
+- `const HASH_SHA1` signature `const HASH_SHA1: i32 = 2` example `HASH_SHA1`
+- `const HASH_SHA256` signature `const HASH_SHA256: i32 = 3` example `HASH_SHA256`
+- `const HASH_SHA512` signature `const HASH_SHA512: i32 = 4` example `HASH_SHA512`
+- `const HASH_SHA3_256` signature `const HASH_SHA3_256: i32 = 5` example `HASH_SHA3_256`
+- `const HASH_SHA3_512` signature `const HASH_SHA3_512: i32 = 6` example `HASH_SHA3_512`
+- `const HASH_BLAKE2B` signature `const HASH_BLAKE2B: i32 = 7` example `HASH_BLAKE2B`
+- `const MD5_DIGEST_SIZE` signature `const MD5_DIGEST_SIZE: i32 = 16` example `MD5_DIGEST_SIZE`
+- `const SHA1_DIGEST_SIZE` signature `const SHA1_DIGEST_SIZE: i32 = 20` example `SHA1_DIGEST_SIZE`
+- `const SHA256_DIGEST_SIZE` signature `const SHA256_DIGEST_SIZE: i32 = 32` example `SHA256_DIGEST_SIZE`
+- `const SHA512_DIGEST_SIZE` signature `const SHA512_DIGEST_SIZE: i32 = 64` example `SHA512_DIGEST_SIZE`
+- `const AES_ECB` signature `const AES_ECB: i32 = 1` example `AES_ECB`
+- `const AES_CBC` signature `const AES_CBC: i32 = 2` example `AES_CBC`
+- `const AES_CTR` signature `const AES_CTR: i32 = 3` example `AES_CTR`
+- `const AES_GCM` signature `const AES_GCM: i32 = 4` example `AES_GCM`
+- `const AES_128` signature `const AES_128: i32 = 16` example `AES_128`
+- `const AES_192` signature `const AES_192: i32 = 24` example `AES_192`
+- `const AES_256` signature `const AES_256: i32 = 32` example `AES_256`
+- `form Hash` signature `form Hash {` example `Hash`
+- `form HashManifest` signature `form HashManifest {` example `HashManifest`
+- `proc md5` signature `proc md5(data: string) -> string {` example `md5`
+- `proc md5_hex` signature `proc md5_hex(data: string) -> string {` example `md5_hex`
+- `proc sha1` signature `proc sha1(data: string) -> string {` example `sha1`
+- `proc sha1_hex` signature `proc sha1_hex(data: string) -> string {` example `sha1_hex`
+- `proc sha256` signature `proc sha256(data: string) -> string {` example `sha256`
+- `proc sha256_hex` signature `proc sha256_hex(data: string) -> string {` example `sha256_hex`
+- `proc sha512` signature `proc sha512(data: string) -> string {` example `sha512`
+- `proc sha512_hex` signature `proc sha512_hex(data: string) -> string {` example `sha512_hex`
+- `proc sha3_256` signature `proc sha3_256(data: string) -> string {` example `sha3_256`
+- `proc sha3_256_hex` signature `proc sha3_256_hex(data: string) -> string {` example `sha3_256_hex`
+- `proc sha3_512` signature `proc sha3_512(data: string) -> string {` example `sha3_512`
+- `proc sha3_512_hex` signature `proc sha3_512_hex(data: string) -> string {` example `sha3_512_hex`
+- `proc blake2b` signature `proc blake2b(data: string, size: i32) -> string {` example `blake2b`
+- `proc blake2b_hex` signature `proc blake2b_hex(data: string, size: i32) -> string {` example `blake2b_hex`
+- `proc hash_new` signature `proc hash_new(algorithm: i32) -> Hash {` example `hash_new`
+- `proc hash_update` signature `proc hash_update(h: Hash, data: string) -> int {` example `hash_update`
+- `proc hash_final` signature `proc hash_final(h: Hash) -> string {` example `hash_final`
+- `proc hash_final_hex` signature `proc hash_final_hex(h: Hash) -> string {` example `hash_final_hex`
+- `proc hash_version` signature `proc hash_version() -> string {` example `hash_version`
+- `proc hash_ready` signature `proc hash_ready() -> bool {` example `hash_ready`
+- `proc hash_manifest` signature `proc hash_manifest() -> HashManifest {` example `hash_manifest`
+- `proc hash_selftest` signature `proc hash_selftest() -> bool {` example `hash_selftest`
 
 ## `src/vitte/stdlib/crypto/keyderivation.vitl`
 
-- `form KeyDerivationManifest`
-- `proc pbkdf2`
-- `proc bcrypt_hash`
-- `proc bcrypt_verify`
-- `proc keyderivation_version`
-- `proc keyderivation_ready`
-- `proc keyderivation_manifest`
-- `proc keyderivation_selftest`
+- `form KeyDerivationManifest` signature `form KeyDerivationManifest {` example `KeyDerivationManifest`
+- `proc pbkdf2` signature `proc pbkdf2(password: string, salt: string, iterations: i32, length: i32) -> string {` example `pbkdf2`
+- `proc bcrypt_hash` signature `proc bcrypt_hash(password: string, rounds: i32) -> string {` example `bcrypt_hash`
+- `proc bcrypt_verify` signature `proc bcrypt_verify(password: string, hash: string) -> int {` example `bcrypt_verify`
+- `proc keyderivation_version` signature `proc keyderivation_version() -> string {` example `keyderivation_version`
+- `proc keyderivation_ready` signature `proc keyderivation_ready() -> bool {` example `keyderivation_ready`
+- `proc keyderivation_manifest` signature `proc keyderivation_manifest() -> KeyDerivationManifest {` example `keyderivation_manifest`
+- `proc keyderivation_selftest` signature `proc keyderivation_selftest() -> bool {` example `keyderivation_selftest`
 
 ## `src/vitte/stdlib/crypto/utils.vitl`
 
-- `form CryptoUtilsManifest`
-- `proc hash_compare`
-- `proc hash_file`
-- `proc hash_file_hex`
-- `proc crypt_encode_base64`
-- `proc crypt_decode_base64`
-- `proc crypt_encode_hex`
-- `proc crypt_decode_hex`
-- `proc crypto_utils_version`
-- `proc crypto_utils_ready`
-- `proc crypto_utils_manifest`
-- `proc crypto_utils_selftest`
+- `form CryptoUtilsManifest` signature `form CryptoUtilsManifest {` example `CryptoUtilsManifest`
+- `proc hash_compare` signature `proc hash_compare(hash1: string, hash2: string) -> int {` example `hash_compare`
+- `proc hash_file` signature `proc hash_file(filepath: string, algorithm: i32) -> string {` example `hash_file`
+- `proc hash_file_hex` signature `proc hash_file_hex(filepath: string, algorithm: i32) -> string {` example `hash_file_hex`
+- `proc crypt_encode_base64` signature `proc crypt_encode_base64(data: string) -> string {` example `crypt_encode_base64`
+- `proc crypt_decode_base64` signature `proc crypt_decode_base64(data: string) -> string {` example `crypt_decode_base64`
+- `proc crypt_encode_hex` signature `proc crypt_encode_hex(data: string) -> string {` example `crypt_encode_hex`
+- `proc crypt_decode_hex` signature `proc crypt_decode_hex(data: string) -> string {` example `crypt_decode_hex`
+- `proc crypto_utils_version` signature `proc crypto_utils_version() -> string {` example `crypto_utils_version`
+- `proc crypto_utils_ready` signature `proc crypto_utils_ready() -> bool {` example `crypto_utils_ready`
+- `proc crypto_utils_manifest` signature `proc crypto_utils_manifest() -> CryptoUtilsManifest {` example `crypto_utils_manifest`
+- `proc crypto_utils_selftest` signature `proc crypto_utils_selftest() -> bool {` example `crypto_utils_selftest`
 
 ## `src/vitte/stdlib/encoding/utf.vitl`
 
-- `proc utf8_encode`
-- `proc utf8_decode`
-- `proc utf8_is_valid`
-- `proc utf8_length`
-- `proc utf8_byte_length`
-- `proc utf8_char_at`
-- `proc utf8_substring`
-- `proc utf16_encode`
-- `proc utf16_decode`
-- `proc utf16_to_utf8`
-- `proc utf8_to_utf16`
-- `proc utf32_encode`
-- `proc utf32_decode`
+- `proc utf8_encode` signature `proc utf8_encode(code_point: i32) -> string {` example `utf8_encode`
+- `proc utf8_decode` signature `proc utf8_decode(encoded: string) -> i32 {` example `utf8_decode`
+- `proc utf8_is_valid` signature `proc utf8_is_valid(text_value: string) -> int {` example `utf8_is_valid`
+- `proc utf8_length` signature `proc utf8_length(text_value: string) -> i32 {` example `utf8_length`
+- `proc utf8_byte_length` signature `proc utf8_byte_length(text_value: string) -> i32 {` example `utf8_byte_length`
+- `proc utf8_char_at` signature `proc utf8_char_at(text_value: string, index: i32) -> i32 {` example `utf8_char_at`
+- `proc utf8_substring` signature `proc utf8_substring(text_value: string, start: i32, end: i32) -> string {` example `utf8_substring`
+- `proc utf16_encode` signature `proc utf16_encode(code_point: i32) -> string {` example `utf16_encode`
+- `proc utf16_decode` signature `proc utf16_decode(encoded: string) -> i32 {` example `utf16_decode`
+- `proc utf16_to_utf8` signature `proc utf16_to_utf8(text_value: string) -> string {` example `utf16_to_utf8`
+- `proc utf8_to_utf16` signature `proc utf8_to_utf16(text_value: string) -> string {` example `utf8_to_utf16`
+- `proc utf32_encode` signature `proc utf32_encode(code_point: i32) -> string {` example `utf32_encode`
+- `proc utf32_decode` signature `proc utf32_decode(encoded: string) -> i32 {` example `utf32_decode`
 
 ## `src/vitte/stdlib/generated/unicode_tables.vitl`
 
-- `const GENERATED_UNICODE_VERSION`
-- `const GENERATED_UNICODE_SOURCE`
-- `const GENERATED_UNICODE_CHECKSUM`
-- `proc generated_unicode_version`
-- `proc generated_unicode_source`
-- `proc generated_unicode_checksum`
-- `proc generated_unicode_category`
-- `proc generated_unicode_properties`
-- `proc generated_unicode_normalization`
-- `proc generated_unicode_case_fold`
+- `const GENERATED_UNICODE_VERSION` signature `const GENERATED_UNICODE_VERSION: string = "15.1.0"` example `GENERATED_UNICODE_VERSION`
+- `const GENERATED_UNICODE_SOURCE` signature `const GENERATED_UNICODE_SOURCE: string = "Unicode Character Database"` example `GENERATED_UNICODE_SOURCE`
+- `const GENERATED_UNICODE_CHECKSUM` signature `const GENERATED_UNICODE_CHECKSUM: string = "sha256:3ef91cd09d2e67d51ca928349eeb2c5176cb551c85e8f23228944b8a30141f9b"` example `GENERATED_UNICODE_CHECKSUM`
+- `proc generated_unicode_version` signature `proc generated_unicode_version() -> string { give GENERATED_UNICODE_VERSION; }` example `generated_unicode_version`
+- `proc generated_unicode_source` signature `proc generated_unicode_source() -> string { give GENERATED_UNICODE_SOURCE; }` example `generated_unicode_source`
+- `proc generated_unicode_checksum` signature `proc generated_unicode_checksum() -> string { give GENERATED_UNICODE_CHECKSUM; }` example `generated_unicode_checksum`
+- `proc generated_unicode_category` signature `proc generated_unicode_category(value: rune) -> UnicodeCategory { give compiler_generated_unicode_category(value); }` example `generated_unicode_category`
+- `proc generated_unicode_properties` signature `proc generated_unicode_properties(value: rune) -> UnicodeProperties { give compiler_generated_unicode_properties(value); }` example `generated_unicode_properties`
+- `proc generated_unicode_normalization` signature `proc generated_unicode_normalization(form: NormalizationForm, value: rune) -> Iterator<rune> { give compiler_generated_unicode_normalization(form, value); }` example `generated_unicode_normalization`
+- `proc generated_unicode_case_fold` signature `proc generated_unicode_case_fold(value: rune) -> Iterator<rune> { give compiler_generated_unicode_case_fold(value); }` example `generated_unicode_case_fold`
 
 ## `src/vitte/stdlib/json/builder.vitl`
 
-- `pick JSONValue`
-- `form JSONBuilder`
-- `form JsonBuilderManifest`
-- `proc json_builder_new`
-- `proc json_builder_append_null`
-- `proc json_builder_append_bool`
-- `proc json_builder_append_number`
-- `proc json_builder_append_string`
-- `proc json_builder_start_object`
-- `proc json_builder_end_object`
-- `proc json_builder_start_array`
-- `proc json_builder_end_array`
-- `proc json_builder_append_comma`
-- `proc json_builder_append_colon`
-- `proc json_builder_to_string`
-- `proc json_builder_clear`
-- `proc json_builder_version`
-- `proc json_builder_ready`
-- `proc json_builder_manifest`
-- `proc json_builder_selftest`
+- `pick JSONValue` signature `pick JSONValue {` example `JSONValue`
+- `form JSONBuilder` signature `form JSONBuilder {` example `JSONBuilder`
+- `form JsonBuilderManifest` signature `form JsonBuilderManifest {` example `JsonBuilderManifest`
+- `proc json_builder_new` signature `proc json_builder_new() -> JSONBuilder {` example `json_builder_new`
+- `proc json_builder_append_null` signature `proc json_builder_append_null(b: JSONBuilder) -> int {` example `json_builder_append_null`
+- `proc json_builder_append_bool` signature `proc json_builder_append_bool(b: JSONBuilder, value: int) -> int {` example `json_builder_append_bool`
+- `proc json_builder_append_number` signature `proc json_builder_append_number(b: JSONBuilder, value: f64) -> int {` example `json_builder_append_number`
+- `proc json_builder_append_string` signature `proc json_builder_append_string(b: JSONBuilder, value: string) -> int {` example `json_builder_append_string`
+- `proc json_builder_start_object` signature `proc json_builder_start_object(b: JSONBuilder) -> int {` example `json_builder_start_object`
+- `proc json_builder_end_object` signature `proc json_builder_end_object(b: JSONBuilder) -> int {` example `json_builder_end_object`
+- `proc json_builder_start_array` signature `proc json_builder_start_array(b: JSONBuilder) -> int {` example `json_builder_start_array`
+- `proc json_builder_end_array` signature `proc json_builder_end_array(b: JSONBuilder) -> int {` example `json_builder_end_array`
+- `proc json_builder_append_comma` signature `proc json_builder_append_comma(b: JSONBuilder) -> int {` example `json_builder_append_comma`
+- `proc json_builder_append_colon` signature `proc json_builder_append_colon(b: JSONBuilder) -> int {` example `json_builder_append_colon`
+- `proc json_builder_to_string` signature `proc json_builder_to_string(b: JSONBuilder) -> string {` example `json_builder_to_string`
+- `proc json_builder_clear` signature `proc json_builder_clear(b: JSONBuilder) {` example `json_builder_clear`
+- `proc json_builder_version` signature `proc json_builder_version() -> string {` example `json_builder_version`
+- `proc json_builder_ready` signature `proc json_builder_ready() -> bool {` example `json_builder_ready`
+- `proc json_builder_manifest` signature `proc json_builder_manifest() -> JsonBuilderManifest {` example `json_builder_manifest`
+- `proc json_builder_selftest` signature `proc json_builder_selftest() -> bool {` example `json_builder_selftest`
 
 ## `src/vitte/stdlib/json/parse.vitl`
 
-- `pick JSONValue`
-- `form JSONParser`
-- `form JsonParseManifest`
-- `proc json_parse`
-- `proc json_parse_object`
-- `proc json_parse_array`
-- `proc json_parse_string`
-- `proc json_parse_number`
-- `proc json_parse_bool`
-- `proc json_parse_null`
-- `proc json_parse_version`
-- `proc json_parse_ready`
-- `proc json_parse_manifest`
-- `proc json_parse_selftest`
+- `pick JSONValue` signature `pick JSONValue {` example `JSONValue`
+- `form JSONParser` signature `form JSONParser {` example `JSONParser`
+- `form JsonParseManifest` signature `form JsonParseManifest {` example `JsonParseManifest`
+- `proc json_parse` signature `proc json_parse(text_value: string) -> JSONValue {` example `json_parse`
+- `proc json_parse_object` signature `proc json_parse_object(parser: JSONParser) -> [string] {` example `json_parse_object`
+- `proc json_parse_array` signature `proc json_parse_array(parser: JSONParser) -> [JSONValue] {` example `json_parse_array`
+- `proc json_parse_string` signature `proc json_parse_string(parser: JSONParser) -> string {` example `json_parse_string`
+- `proc json_parse_number` signature `proc json_parse_number(parser: JSONParser) -> f64 {` example `json_parse_number`
+- `proc json_parse_bool` signature `proc json_parse_bool(parser: JSONParser) -> int {` example `json_parse_bool`
+- `proc json_parse_null` signature `proc json_parse_null(parser: JSONParser) -> int {` example `json_parse_null`
+- `proc json_parse_version` signature `proc json_parse_version() -> string {` example `json_parse_version`
+- `proc json_parse_ready` signature `proc json_parse_ready() -> bool {` example `json_parse_ready`
+- `proc json_parse_manifest` signature `proc json_parse_manifest() -> JsonParseManifest {` example `json_parse_manifest`
+- `proc json_parse_selftest` signature `proc json_parse_selftest() -> bool {` example `json_parse_selftest`
 
 ## `src/vitte/stdlib/json/stringify.vitl`
 
-- `pick JSONValue`
-- `form JsonStringifyManifest`
-- `proc json_stringify`
-- `proc json_stringify_pretty`
-- `proc json_is_valid`
-- `proc json_format`
-- `proc json_minify`
-- `proc json_value_type`
-- `proc json_stringify_version`
-- `proc json_stringify_ready`
-- `proc json_stringify_manifest`
-- `proc json_stringify_selftest`
+- `pick JSONValue` signature `pick JSONValue {` example `JSONValue`
+- `form JsonStringifyManifest` signature `form JsonStringifyManifest {` example `JsonStringifyManifest`
+- `proc json_stringify` signature `proc json_stringify(value: JSONValue) -> string {` example `json_stringify`
+- `proc json_stringify_pretty` signature `proc json_stringify_pretty(value: JSONValue, indent: i32) -> string {` example `json_stringify_pretty`
+- `proc json_is_valid` signature `proc json_is_valid(text_value: string) -> int {` example `json_is_valid`
+- `proc json_format` signature `proc json_format(text_value: string) -> string {` example `json_format`
+- `proc json_minify` signature `proc json_minify(text_value: string) -> string {` example `json_minify`
+- `proc json_value_type` signature `proc json_value_type(value: JSONValue) -> string {` example `json_value_type`
+- `proc json_stringify_version` signature `proc json_stringify_version() -> string {` example `json_stringify_version`
+- `proc json_stringify_ready` signature `proc json_stringify_ready() -> bool {` example `json_stringify_ready`
+- `proc json_stringify_manifest` signature `proc json_stringify_manifest() -> JsonStringifyManifest {` example `json_stringify_manifest`
+- `proc json_stringify_selftest` signature `proc json_stringify_selftest() -> bool {` example `json_stringify_selftest`
 
 ## `src/vitte/stdlib/json/types.vitl`
 
-- `pick JSONValue`
-- `form JSONParser`
-- `form JSONBuilder`
-- `form JsonTypesManifest`
-- `proc json_types_version`
-- `proc json_types_ready`
-- `proc json_types_manifest`
-- `proc json_types_selftest`
+- `pick JSONValue` signature `pick JSONValue {` example `JSONValue`
+- `form JSONParser` signature `form JSONParser {` example `JSONParser`
+- `form JSONBuilder` signature `form JSONBuilder {` example `JSONBuilder`
+- `form JsonTypesManifest` signature `form JsonTypesManifest {` example `JsonTypesManifest`
+- `proc json_types_version` signature `proc json_types_version() -> string {` example `json_types_version`
+- `proc json_types_ready` signature `proc json_types_ready() -> bool {` example `json_types_ready`
+- `proc json_types_manifest` signature `proc json_types_manifest() -> JsonTypesManifest {` example `json_types_manifest`
+- `proc json_types_selftest` signature `proc json_types_selftest() -> bool {` example `json_types_selftest`
 
 ## `src/vitte/stdlib/kernel/fileio.vitl`
 
-- `const STDIN_FILENO`
-- `const STDOUT_FILENO`
-- `const STDERR_FILENO`
-- `const O_RDONLY`
-- `const O_WRONLY`
-- `const O_RDWR`
-- `const O_APPEND`
-- `const O_CREAT`
-- `const O_EXCL`
-- `const O_TRUNC`
-- `const O_NONBLOCK`
-- `const O_SYNC`
-- `const S_IRUSR`
-- `const S_IWUSR`
-- `const S_IXUSR`
-- `const S_IRGRP`
-- `const S_IWGRP`
-- `const S_IXGRP`
-- `const S_IROTH`
-- `const S_IWOTH`
-- `const S_IXOTH`
-- `const S_ISREG`
-- `const S_ISDIR`
-- `const S_ISCHR`
-- `const S_ISBLK`
-- `const S_ISFIFO`
-- `const S_ISLNK`
-- `const S_ISSOCK`
-- `const SEEK_SET`
-- `const SEEK_CUR`
-- `const SEEK_END`
-- `form DirEnt`
-- `form FileStat`
-- `proc open`
-- `proc creat`
-- `proc close`
-- `proc read`
-- `proc write`
-- `proc lseek`
-- `proc pread`
-- `proc pwrite`
-- `proc fsync`
-- `proc fdatasync`
-- `proc dup`
-- `proc dup2`
-- `proc fcntl`
-- `proc ioctl`
-- `proc ftruncate`
-- `proc flock`
-- `proc mkdir`
-- `proc rmdir`
-- `proc opendir`
-- `proc closedir`
-- `proc readdir`
-- `proc rewinddir`
-- `proc chdir`
-- `proc getcwd`
-- `proc listdir`
-- `proc unlink`
-- `proc link`
-- `proc symlink`
-- `proc readlink`
-- `proc rename`
-- `proc chmod`
-- `proc fchmod`
-- `proc chown`
-- `proc fchown`
-- `proc stat`
-- `proc fstat`
-- `proc lstat`
-- `proc access`
-- `proc truncate`
-- `proc statvfs`
-- `proc pathconf`
-- `proc fpathconf`
-- `proc sync`
-- `proc umask`
+- `const STDIN_FILENO` signature `const STDIN_FILENO: i32 = 0` example `STDIN_FILENO`
+- `const STDOUT_FILENO` signature `const STDOUT_FILENO: i32 = 1` example `STDOUT_FILENO`
+- `const STDERR_FILENO` signature `const STDERR_FILENO: i32 = 2` example `STDERR_FILENO`
+- `const O_RDONLY` signature `const O_RDONLY: i32 = 0` example `O_RDONLY`
+- `const O_WRONLY` signature `const O_WRONLY: i32 = 1` example `O_WRONLY`
+- `const O_RDWR` signature `const O_RDWR: i32 = 2` example `O_RDWR`
+- `const O_APPEND` signature `const O_APPEND: i32 = 1024` example `O_APPEND`
+- `const O_CREAT` signature `const O_CREAT: i32 = 64` example `O_CREAT`
+- `const O_EXCL` signature `const O_EXCL: i32 = 128` example `O_EXCL`
+- `const O_TRUNC` signature `const O_TRUNC: i32 = 512` example `O_TRUNC`
+- `const O_NONBLOCK` signature `const O_NONBLOCK: i32 = 2048` example `O_NONBLOCK`
+- `const O_SYNC` signature `const O_SYNC: i32 = 4096` example `O_SYNC`
+- `const S_IRUSR` signature `const S_IRUSR: i32 = 256` example `S_IRUSR`
+- `const S_IWUSR` signature `const S_IWUSR: i32 = 128` example `S_IWUSR`
+- `const S_IXUSR` signature `const S_IXUSR: i32 = 64` example `S_IXUSR`
+- `const S_IRGRP` signature `const S_IRGRP: i32 = 32` example `S_IRGRP`
+- `const S_IWGRP` signature `const S_IWGRP: i32 = 16` example `S_IWGRP`
+- `const S_IXGRP` signature `const S_IXGRP: i32 = 8` example `S_IXGRP`
+- `const S_IROTH` signature `const S_IROTH: i32 = 4` example `S_IROTH`
+- `const S_IWOTH` signature `const S_IWOTH: i32 = 2` example `S_IWOTH`
+- `const S_IXOTH` signature `const S_IXOTH: i32 = 1` example `S_IXOTH`
+- `const S_ISREG` signature `const S_ISREG: i32 = 32768` example `S_ISREG`
+- `const S_ISDIR` signature `const S_ISDIR: i32 = 16384` example `S_ISDIR`
+- `const S_ISCHR` signature `const S_ISCHR: i32 = 8192` example `S_ISCHR`
+- `const S_ISBLK` signature `const S_ISBLK: i32 = 24576` example `S_ISBLK`
+- `const S_ISFIFO` signature `const S_ISFIFO: i32 = 4096` example `S_ISFIFO`
+- `const S_ISLNK` signature `const S_ISLNK: i32 = 40960` example `S_ISLNK`
+- `const S_ISSOCK` signature `const S_ISSOCK: i32 = 49152` example `S_ISSOCK`
+- `const SEEK_SET` signature `const SEEK_SET: i32 = 0` example `SEEK_SET`
+- `const SEEK_CUR` signature `const SEEK_CUR: i32 = 1` example `SEEK_CUR`
+- `const SEEK_END` signature `const SEEK_END: i32 = 2` example `SEEK_END`
+- `form DirEnt` signature `form DirEnt {` example `DirEnt`
+- `form FileStat` signature `form FileStat {` example `FileStat`
+- `proc open` signature `proc open(path: string, flag_bits: i32, mode: i32) -> i32 {` example `open`
+- `proc creat` signature `proc creat(path: string, mode: i32) -> i32 {` example `creat`
+- `proc close` signature `proc close(fd: i32) -> int {` example `close`
+- `proc read` signature `proc read(fd: i32, nbytes: i64) -> string {` example `read`
+- `proc write` signature `proc write(fd: i32, buf: string) -> i64 {` example `write`
+- `proc lseek` signature `proc lseek(fd: i32, offset: i64, whence: i32) -> i64 {` example `lseek`
+- `proc pread` signature `proc pread(fd: i32, offset: i64, nbytes: i64) -> string {` example `pread`
+- `proc pwrite` signature `proc pwrite(fd: i32, buf: string, offset: i64) -> i64 {` example `pwrite`
+- `proc fsync` signature `proc fsync(fd: i32) -> int {` example `fsync`
+- `proc fdatasync` signature `proc fdatasync(fd: i32) -> int {` example `fdatasync`
+- `proc dup` signature `proc dup(fd: i32) -> i32 {` example `dup`
+- `proc dup2` signature `proc dup2(oldfd: i32, newfd: i32) -> i32 {` example `dup2`
+- `proc fcntl` signature `proc fcntl(fd: i32, cmd: i32, arg: i32) -> int {` example `fcntl`
+- `proc ioctl` signature `proc ioctl(fd: i32, request: i32, arg: i32) -> int {` example `ioctl`
+- `proc ftruncate` signature `proc ftruncate(fd: i32, length: i64) -> int {` example `ftruncate`
+- `proc flock` signature `proc flock(fd: i32, operation: i32) -> int {` example `flock`
+- `proc mkdir` signature `proc mkdir(path: string, mode: i32) -> int {` example `mkdir`
+- `proc rmdir` signature `proc rmdir(path: string) -> int {` example `rmdir`
+- `proc opendir` signature `proc opendir(path: string) -> i32 {` example `opendir`
+- `proc closedir` signature `proc closedir(dirfd: i32) -> int {` example `closedir`
+- `proc readdir` signature `proc readdir(dirfd: i32) -> DirEnt {` example `readdir`
+- `proc rewinddir` signature `proc rewinddir(dirfd: i32) {` example `rewinddir`
+- `proc chdir` signature `proc chdir(path: string) -> int {` example `chdir`
+- `proc getcwd` signature `proc getcwd() -> string {` example `getcwd`
+- `proc listdir` signature `proc listdir(path: string) -> [string] {` example `listdir`
+- `proc unlink` signature `proc unlink(path: string) -> int {` example `unlink`
+- `proc link` signature `proc link(oldpath: string, newpath: string) -> int {` example `link`
+- `proc symlink` signature `proc symlink(oldpath: string, newpath: string) -> int {` example `symlink`
+- `proc readlink` signature `proc readlink(path: string) -> string {` example `readlink`
+- `proc rename` signature `proc rename(oldpath: string, newpath: string) -> int {` example `rename`
+- `proc chmod` signature `proc chmod(path: string, mode: i32) -> int {` example `chmod`
+- `proc fchmod` signature `proc fchmod(fd: i32, mode: i32) -> int {` example `fchmod`
+- `proc chown` signature `proc chown(path: string, uid: i32, gid: i32) -> int {` example `chown`
+- `proc fchown` signature `proc fchown(fd: i32, uid: i32, gid: i32) -> int {` example `fchown`
+- `proc stat` signature `proc stat(path: string) -> FileStat {` example `stat`
+- `proc fstat` signature `proc fstat(fd: i32) -> FileStat {` example `fstat`
+- `proc lstat` signature `proc lstat(path: string) -> FileStat {` example `lstat`
+- `proc access` signature `proc access(path: string, mode: i32) -> int {` example `access`
+- `proc truncate` signature `proc truncate(path: string, length: i64) -> int {` example `truncate`
+- `proc statvfs` signature `proc statvfs(path: string) -> [i64] {` example `statvfs`
+- `proc pathconf` signature `proc pathconf(path: string, name: string) -> i64 {` example `pathconf`
+- `proc fpathconf` signature `proc fpathconf(fd: i32, name: string) -> i64 {` example `fpathconf`
+- `proc sync` signature `proc sync() {` example `sync`
+- `proc umask` signature `proc umask(mask: i32) -> i32 {` example `umask`
 
 ## `src/vitte/stdlib/kernel/memory.vitl`
 
-- `const PROT_NONE`
-- `const PROT_READ`
-- `const PROT_WRITE`
-- `const PROT_EXEC`
-- `const MAP_SHARED`
-- `const MAP_PRIVATE`
-- `const MAP_FIXED`
-- `const MAP_ANONYMOUS`
-- `const MADV_NORMAL`
-- `const MADV_RANDOM`
-- `const MADV_SEQUENTIAL`
-- `const MADV_WILLNEED`
-- `const MADV_DONTNEED`
-- `const MCL_CURRENT`
-- `const MCL_FUTURE`
-- `const PAGE_SIZE`
-- `proc mmap`
-- `proc munmap`
-- `proc mprotect`
-- `proc madvise`
-- `proc msync`
-- `proc mlock`
-- `proc munlock`
-- `proc mlockall`
-- `proc munlockall`
-- `proc brk`
-- `proc sbrk`
-- `form MemInfo`
-- `proc get_meminfo`
-- `proc get_page_size`
-- `proc get_phys_pages`
-- `proc get_avphys_pages`
-- `proc mreconcile`
-- `proc mincore`
-- `proc get_memory_map`
+- `const PROT_NONE` signature `const PROT_NONE: i32 = 0` example `PROT_NONE`
+- `const PROT_READ` signature `const PROT_READ: i32 = 1` example `PROT_READ`
+- `const PROT_WRITE` signature `const PROT_WRITE: i32 = 2` example `PROT_WRITE`
+- `const PROT_EXEC` signature `const PROT_EXEC: i32 = 4` example `PROT_EXEC`
+- `const MAP_SHARED` signature `const MAP_SHARED: i32 = 1` example `MAP_SHARED`
+- `const MAP_PRIVATE` signature `const MAP_PRIVATE: i32 = 2` example `MAP_PRIVATE`
+- `const MAP_FIXED` signature `const MAP_FIXED: i32 = 10` example `MAP_FIXED`
+- `const MAP_ANONYMOUS` signature `const MAP_ANONYMOUS: i32 = 32` example `MAP_ANONYMOUS`
+- `const MADV_NORMAL` signature `const MADV_NORMAL: i32 = 0` example `MADV_NORMAL`
+- `const MADV_RANDOM` signature `const MADV_RANDOM: i32 = 1` example `MADV_RANDOM`
+- `const MADV_SEQUENTIAL` signature `const MADV_SEQUENTIAL: i32 = 2` example `MADV_SEQUENTIAL`
+- `const MADV_WILLNEED` signature `const MADV_WILLNEED: i32 = 3` example `MADV_WILLNEED`
+- `const MADV_DONTNEED` signature `const MADV_DONTNEED: i32 = 4` example `MADV_DONTNEED`
+- `const MCL_CURRENT` signature `const MCL_CURRENT: i32 = 1` example `MCL_CURRENT`
+- `const MCL_FUTURE` signature `const MCL_FUTURE: i32 = 2` example `MCL_FUTURE`
+- `const PAGE_SIZE` signature `const PAGE_SIZE: i64 = 4096` example `PAGE_SIZE`
+- `proc mmap` signature `proc mmap(addr: i64, length: i64, prot: i32, flag_bits: i32, fd: i32, offset: i64) -> i64 {` example `mmap`
+- `proc munmap` signature `proc munmap(addr: i64, length: i64) -> int {` example `munmap`
+- `proc mprotect` signature `proc mprotect(addr: i64, length: i64, prot: i32) -> int {` example `mprotect`
+- `proc madvise` signature `proc madvise(addr: i64, length: i64, advice: i32) -> int {` example `madvise`
+- `proc msync` signature `proc msync(addr: i64, length: i64, flag_bits: i32) -> int {` example `msync`
+- `proc mlock` signature `proc mlock(addr: i64, length: i64) -> int {` example `mlock`
+- `proc munlock` signature `proc munlock(addr: i64, length: i64) -> int {` example `munlock`
+- `proc mlockall` signature `proc mlockall(flag_bits: i32) -> int {` example `mlockall`
+- `proc munlockall` signature `proc munlockall() -> int {` example `munlockall`
+- `proc brk` signature `proc brk(addr: i64) -> i64 {` example `brk`
+- `proc sbrk` signature `proc sbrk(increment: i64) -> i64 {` example `sbrk`
+- `form MemInfo` signature `form MemInfo {` example `MemInfo`
+- `proc get_meminfo` signature `proc get_meminfo() -> MemInfo {` example `get_meminfo`
+- `proc get_page_size` signature `proc get_page_size() -> i64 {` example `get_page_size`
+- `proc get_phys_pages` signature `proc get_phys_pages() -> i64 {` example `get_phys_pages`
+- `proc get_avphys_pages` signature `proc get_avphys_pages() -> i64 {` example `get_avphys_pages`
+- `proc mreconcile` signature `proc mreconcile(pages_to_free: i64) -> int {` example `mreconcile`
+- `proc mincore` signature `proc mincore(addr: i64, length: i64, vec: [int]) -> int {` example `mincore`
+- `proc get_memory_map` signature `proc get_memory_map() -> string {` example `get_memory_map`
 
 ## `src/vitte/stdlib/kernel/sync.vitl`
 
-- `form Mutex`
-- `form Semaphore`
-- `form Lock`
-- `form CondVar`
-- `form Barrier`
-- `form RWLock`
-- `const PTHREAD_MUTEX_NORMAL`
-- `const PTHREAD_MUTEX_RECURSIVE`
-- `const PTHREAD_MUTEX_ERRORCHECK`
-- `proc pthread_mutex_create`
-- `proc pthread_mutex_lock`
-- `proc pthread_mutex_unlock`
-- `proc pthread_mutex_trylock`
-- `proc pthread_mutex_timedlock`
-- `proc pthread_mutex_destroy`
-- `proc sem_create`
-- `proc sem_wait`
-- `proc sem_trywait`
-- `proc sem_timedwait`
-- `proc sem_post`
-- `proc sem_getvalue`
-- `proc sem_destroy`
-- `proc pthread_cond_create`
-- `proc pthread_cond_wait`
-- `proc pthread_cond_timedwait`
-- `proc pthread_cond_signal`
-- `proc pthread_cond_broadcast`
-- `proc pthread_cond_destroy`
-- `proc pthread_barrier_create`
-- `proc pthread_barrier_wait`
-- `proc pthread_barrier_destroy`
-- `proc pthread_rwlock_create`
-- `proc pthread_rwlock_rdlock`
-- `proc pthread_rwlock_wrlock`
-- `proc pthread_rwlock_tryrdlock`
-- `proc pthread_rwlock_trywrlock`
-- `proc pthread_rwlock_unlock`
-- `proc pthread_rwlock_destroy`
-- `proc pthread_spin_create`
-- `proc pthread_spin_lock`
-- `proc pthread_spin_unlock`
-- `proc pthread_spin_trylock`
-- `proc pthread_spin_destroy`
+- `form Mutex` signature `form Mutex {` example `Mutex`
+- `form Semaphore` signature `form Semaphore {` example `Semaphore`
+- `form Lock` signature `form Lock {` example `Lock`
+- `form CondVar` signature `form CondVar {` example `CondVar`
+- `form Barrier` signature `form Barrier {` example `Barrier`
+- `form RWLock` signature `form RWLock {` example `RWLock`
+- `const PTHREAD_MUTEX_NORMAL` signature `const PTHREAD_MUTEX_NORMAL: i32 = 0` example `PTHREAD_MUTEX_NORMAL`
+- `const PTHREAD_MUTEX_RECURSIVE` signature `const PTHREAD_MUTEX_RECURSIVE: i32 = 1` example `PTHREAD_MUTEX_RECURSIVE`
+- `const PTHREAD_MUTEX_ERRORCHECK` signature `const PTHREAD_MUTEX_ERRORCHECK: i32 = 2` example `PTHREAD_MUTEX_ERRORCHECK`
+- `proc pthread_mutex_create` signature `proc pthread_mutex_create() -> Mutex {` example `pthread_mutex_create`
+- `proc pthread_mutex_lock` signature `proc pthread_mutex_lock(mutex: Mutex) -> int {` example `pthread_mutex_lock`
+- `proc pthread_mutex_unlock` signature `proc pthread_mutex_unlock(mutex: Mutex) -> int {` example `pthread_mutex_unlock`
+- `proc pthread_mutex_trylock` signature `proc pthread_mutex_trylock(mutex: Mutex) -> int {` example `pthread_mutex_trylock`
+- `proc pthread_mutex_timedlock` signature `proc pthread_mutex_timedlock(mutex: Mutex, timeout_ms: i64) -> int {` example `pthread_mutex_timedlock`
+- `proc pthread_mutex_destroy` signature `proc pthread_mutex_destroy(mutex: Mutex) -> int {` example `pthread_mutex_destroy`
+- `proc sem_create` signature `proc sem_create(initial_value: int) -> Semaphore {` example `sem_create`
+- `proc sem_wait` signature `proc sem_wait(sem: Semaphore) -> int {` example `sem_wait`
+- `proc sem_trywait` signature `proc sem_trywait(sem: Semaphore) -> int {` example `sem_trywait`
+- `proc sem_timedwait` signature `proc sem_timedwait(sem: Semaphore, timeout_ms: i64) -> int {` example `sem_timedwait`
+- `proc sem_post` signature `proc sem_post(sem: Semaphore) -> int {` example `sem_post`
+- `proc sem_getvalue` signature `proc sem_getvalue(sem: Semaphore) -> int {` example `sem_getvalue`
+- `proc sem_destroy` signature `proc sem_destroy(sem: Semaphore) -> int {` example `sem_destroy`
+- `proc pthread_cond_create` signature `proc pthread_cond_create() -> CondVar {` example `pthread_cond_create`
+- `proc pthread_cond_wait` signature `proc pthread_cond_wait(cond: CondVar, mutex: Mutex) -> int {` example `pthread_cond_wait`
+- `proc pthread_cond_timedwait` signature `proc pthread_cond_timedwait(cond: CondVar, mutex: Mutex, timeout_ms: i64) -> int {` example `pthread_cond_timedwait`
+- `proc pthread_cond_signal` signature `proc pthread_cond_signal(cond: CondVar) -> int {` example `pthread_cond_signal`
+- `proc pthread_cond_broadcast` signature `proc pthread_cond_broadcast(cond: CondVar) -> int {` example `pthread_cond_broadcast`
+- `proc pthread_cond_destroy` signature `proc pthread_cond_destroy(cond: CondVar) -> int {` example `pthread_cond_destroy`
+- `proc pthread_barrier_create` signature `proc pthread_barrier_create(count: int) -> Barrier {` example `pthread_barrier_create`
+- `proc pthread_barrier_wait` signature `proc pthread_barrier_wait(barrier: Barrier) -> int {` example `pthread_barrier_wait`
+- `proc pthread_barrier_destroy` signature `proc pthread_barrier_destroy(barrier: Barrier) -> int {` example `pthread_barrier_destroy`
+- `proc pthread_rwlock_create` signature `proc pthread_rwlock_create() -> RWLock {` example `pthread_rwlock_create`
+- `proc pthread_rwlock_rdlock` signature `proc pthread_rwlock_rdlock(rwlock: RWLock) -> int {` example `pthread_rwlock_rdlock`
+- `proc pthread_rwlock_wrlock` signature `proc pthread_rwlock_wrlock(rwlock: RWLock) -> int {` example `pthread_rwlock_wrlock`
+- `proc pthread_rwlock_tryrdlock` signature `proc pthread_rwlock_tryrdlock(rwlock: RWLock) -> int {` example `pthread_rwlock_tryrdlock`
+- `proc pthread_rwlock_trywrlock` signature `proc pthread_rwlock_trywrlock(rwlock: RWLock) -> int {` example `pthread_rwlock_trywrlock`
+- `proc pthread_rwlock_unlock` signature `proc pthread_rwlock_unlock(rwlock: RWLock) -> int {` example `pthread_rwlock_unlock`
+- `proc pthread_rwlock_destroy` signature `proc pthread_rwlock_destroy(rwlock: RWLock) -> int {` example `pthread_rwlock_destroy`
+- `proc pthread_spin_create` signature `proc pthread_spin_create() -> Lock {` example `pthread_spin_create`
+- `proc pthread_spin_lock` signature `proc pthread_spin_lock(spinlock: Lock) -> int {` example `pthread_spin_lock`
+- `proc pthread_spin_unlock` signature `proc pthread_spin_unlock(spinlock: Lock) -> int {` example `pthread_spin_unlock`
+- `proc pthread_spin_trylock` signature `proc pthread_spin_trylock(spinlock: Lock) -> int {` example `pthread_spin_trylock`
+- `proc pthread_spin_destroy` signature `proc pthread_spin_destroy(spinlock: Lock) -> int {` example `pthread_spin_destroy`
 
 ## `src/vitte/stdlib/kernel/users.vitl`
 
-- `const RLIMIT_CPU`
-- `const RLIMIT_FSIZE`
-- `const RLIMIT_DATA`
-- `const RLIMIT_STACK`
-- `const RLIMIT_CORE`
-- `const RLIMIT_RSS`
-- `const RLIMIT_NPROC`
-- `const RLIMIT_NOFILE`
-- `const RLIMIT_MEMLOCK`
-- `const RLIMIT_AS`
-- `const RLIM_INFINITY`
-- `form PasswdEntry`
-- `form GroupEntry`
-- `form RlimitEntry`
-- `proc getuid`
-- `proc geteuid`
-- `proc setuid`
-- `proc seteuid`
-- `proc getgid`
-- `proc getegid`
-- `proc setgid`
-- `proc setegid`
-- `proc getgroups`
-- `proc setgroups`
-- `proc getpid`
-- `proc getppid`
-- `proc getpgid`
-- `proc setpgid`
-- `proc getpgrp`
-- `proc setsid`
-- `proc getsid`
-- `proc getpwuid`
-- `proc getpwnam`
-- `proc getgrgid`
-- `proc getgrnam`
-- `proc getrlimit`
-- `proc setrlimit`
-- `proc getrlimit_cpu`
-- `proc setrlimit_cpu`
-- `proc getrlimit_fsize`
-- `proc setrlimit_fsize`
-- `proc getrlimit_nofile`
-- `proc setrlimit_nofile`
-- `proc getenv`
-- `proc setenv`
-- `proc unsetenv`
-- `proc environ`
-- `proc clearenv`
-- `proc getpriority`
-- `proc setpriority`
-- `proc getrusage`
-- `proc get_login`
-- `proc get_username`
-- `proc get_home_dir`
-- `proc get_shell`
-- `proc is_root`
-- `proc access`
-- `proc faccessat`
-- `proc eaccess`
-- `proc initgroups`
+- `const RLIMIT_CPU` signature `const RLIMIT_CPU: i32 = 0` example `RLIMIT_CPU`
+- `const RLIMIT_FSIZE` signature `const RLIMIT_FSIZE: i32 = 1` example `RLIMIT_FSIZE`
+- `const RLIMIT_DATA` signature `const RLIMIT_DATA: i32 = 2` example `RLIMIT_DATA`
+- `const RLIMIT_STACK` signature `const RLIMIT_STACK: i32 = 3` example `RLIMIT_STACK`
+- `const RLIMIT_CORE` signature `const RLIMIT_CORE: i32 = 4` example `RLIMIT_CORE`
+- `const RLIMIT_RSS` signature `const RLIMIT_RSS: i32 = 5` example `RLIMIT_RSS`
+- `const RLIMIT_NPROC` signature `const RLIMIT_NPROC: i32 = 6` example `RLIMIT_NPROC`
+- `const RLIMIT_NOFILE` signature `const RLIMIT_NOFILE: i32 = 7` example `RLIMIT_NOFILE`
+- `const RLIMIT_MEMLOCK` signature `const RLIMIT_MEMLOCK: i32 = 8` example `RLIMIT_MEMLOCK`
+- `const RLIMIT_AS` signature `const RLIMIT_AS: i32 = 9` example `RLIMIT_AS`
+- `const RLIM_INFINITY` signature `const RLIM_INFINITY: i64 = 9223372036854775807` example `RLIM_INFINITY`
+- `form PasswdEntry` signature `form PasswdEntry {` example `PasswdEntry`
+- `form GroupEntry` signature `form GroupEntry {` example `GroupEntry`
+- `form RlimitEntry` signature `form RlimitEntry {` example `RlimitEntry`
+- `proc getuid` signature `proc getuid() -> i32 {` example `getuid`
+- `proc geteuid` signature `proc geteuid() -> i32 {` example `geteuid`
+- `proc setuid` signature `proc setuid(uid: i32) -> int {` example `setuid`
+- `proc seteuid` signature `proc seteuid(uid: i32) -> int {` example `seteuid`
+- `proc getgid` signature `proc getgid() -> i32 {` example `getgid`
+- `proc getegid` signature `proc getegid() -> i32 {` example `getegid`
+- `proc setgid` signature `proc setgid(gid: i32) -> int {` example `setgid`
+- `proc setegid` signature `proc setegid(gid: i32) -> int {` example `setegid`
+- `proc getgroups` signature `proc getgroups() -> [i32] {` example `getgroups`
+- `proc setgroups` signature `proc setgroups(groups: [i32]) -> int {` example `setgroups`
+- `proc getpid` signature `proc getpid() -> i32 {` example `getpid`
+- `proc getppid` signature `proc getppid() -> i32 {` example `getppid`
+- `proc getpgid` signature `proc getpgid(pid: i32) -> i32 {` example `getpgid`
+- `proc setpgid` signature `proc setpgid(pid: i32, pgid: i32) -> int {` example `setpgid`
+- `proc getpgrp` signature `proc getpgrp() -> i32 {` example `getpgrp`
+- `proc setsid` signature `proc setsid() -> i32 {` example `setsid`
+- `proc getsid` signature `proc getsid(pid: i32) -> i32 {` example `getsid`
+- `proc getpwuid` signature `proc getpwuid(uid: i32) -> PasswdEntry {` example `getpwuid`
+- `proc getpwnam` signature `proc getpwnam(name: string) -> PasswdEntry {` example `getpwnam`
+- `proc getgrgid` signature `proc getgrgid(gid: i32) -> GroupEntry {` example `getgrgid`
+- `proc getgrnam` signature `proc getgrnam(name: string) -> GroupEntry {` example `getgrnam`
+- `proc getrlimit` signature `proc getrlimit(resource_id: i32) -> RlimitEntry {` example `getrlimit`
+- `proc setrlimit` signature `proc setrlimit(resource_id: i32, rlim: RlimitEntry) -> int {` example `setrlimit`
+- `proc getrlimit_cpu` signature `proc getrlimit_cpu() -> RlimitEntry {` example `getrlimit_cpu`
+- `proc setrlimit_cpu` signature `proc setrlimit_cpu(limit: RlimitEntry) -> int {` example `setrlimit_cpu`
+- `proc getrlimit_fsize` signature `proc getrlimit_fsize() -> RlimitEntry {` example `getrlimit_fsize`
+- `proc setrlimit_fsize` signature `proc setrlimit_fsize(limit: RlimitEntry) -> int {` example `setrlimit_fsize`
+- `proc getrlimit_nofile` signature `proc getrlimit_nofile() -> RlimitEntry {` example `getrlimit_nofile`
+- `proc setrlimit_nofile` signature `proc setrlimit_nofile(limit: RlimitEntry) -> int {` example `setrlimit_nofile`
+- `proc getenv` signature `proc getenv(name: string) -> string {` example `getenv`
+- `proc setenv` signature `proc setenv(name: string, value: string, overwrite: int) -> int {` example `setenv`
+- `proc unsetenv` signature `proc unsetenv(name: string) -> int {` example `unsetenv`
+- `proc environ` signature `proc environ() -> [string] {` example `environ`
+- `proc clearenv` signature `proc clearenv() -> int {` example `clearenv`
+- `proc getpriority` signature `proc getpriority(which: i32, who: i32) -> i32 {` example `getpriority`
+- `proc setpriority` signature `proc setpriority(which: i32, who: i32, prio: i32) -> int {` example `setpriority`
+- `proc getrusage` signature `proc getrusage(who: i32) -> [i64] {` example `getrusage`
+- `proc get_login` signature `proc get_login() -> string {` example `get_login`
+- `proc get_username` signature `proc get_username() -> string {` example `get_username`
+- `proc get_home_dir` signature `proc get_home_dir() -> string {` example `get_home_dir`
+- `proc get_shell` signature `proc get_shell() -> string {` example `get_shell`
+- `proc is_root` signature `proc is_root() -> int {` example `is_root`
+- `proc access` signature `proc access(pathname: string, mode: i32) -> int {` example `access`
+- `proc faccessat` signature `proc faccessat(dirfd: i32, pathname: string, mode: i32, flag_bits: i32) -> int {` example `faccessat`
+- `proc eaccess` signature `proc eaccess(pathname: string, mode: i32) -> int {` example `eaccess`
+- `proc initgroups` signature `proc initgroups(user_name: string, group: i32) -> int {` example `initgroups`
 
 ## `src/vitte/stdlib/math/algebra.vitl`
 
-- `proc add_vectors`
-- `proc dot`
-- `proc cross_2d`
-- `proc cross_3d`
-- `proc scalar_multiply`
-- `proc vector_magnitude`
-- `proc normalize_vector`
-- `proc matrix_multiply`
-- `proc matrix_transpose`
-- `proc determinant_2x2`
-- `proc solve_linear_system`
-- `proc algebra_version`
-- `proc algebra_ready`
-- `proc algebra_selftest`
+- `proc add_vectors` signature `proc add_vectors(a: [int], b: [int]) -> [int] {` example `add_vectors`
+- `proc dot` signature `proc dot(a: [int], b: [int]) -> int {` example `dot`
+- `proc cross_2d` signature `proc cross_2d(a: [int], b: [int]) -> int {` example `cross_2d`
+- `proc cross_3d` signature `proc cross_3d(a: [int], b: [int]) -> [int] {` example `cross_3d`
+- `proc scalar_multiply` signature `proc scalar_multiply(v: [int], k: int) -> [int] {` example `scalar_multiply`
+- `proc vector_magnitude` signature `proc vector_magnitude(v: [int]) -> int {` example `vector_magnitude`
+- `proc normalize_vector` signature `proc normalize_vector(v: [int]) -> [int] {` example `normalize_vector`
+- `proc matrix_multiply` signature `proc matrix_multiply(a: [[int]], b: [[int]]) -> [[int]] {` example `matrix_multiply`
+- `proc matrix_transpose` signature `proc matrix_transpose(m: [[int]]) -> [[int]] {` example `matrix_transpose`
+- `proc determinant_2x2` signature `proc determinant_2x2(m: [[int]]) -> int {` example `determinant_2x2`
+- `proc solve_linear_system` signature `proc solve_linear_system(a: [[int]], b: [int]) -> [int] {` example `solve_linear_system`
+- `proc algebra_version` signature `proc algebra_version() -> string {` example `algebra_version`
+- `proc algebra_ready` signature `proc algebra_ready() -> bool {` example `algebra_ready`
+- `proc algebra_selftest` signature `proc algebra_selftest() -> bool {` example `algebra_selftest`
 
 ## `src/vitte/stdlib/math/arithmetic.vitl`
 
-- `const PI`
-- `const E`
-- `const I64_MIN`
-- `const I64_MAX`
-- `const F64_INF`
-- `const F64_NAN`
-- `const RAND_A`
-- `const RAND_C`
-- `const RAND_M`
-- `pick SafeResult`
-- `form I128`
-- `proc abs_i64`
-- `proc abs_f64`
-- `proc add_i64`
-- `proc sub_i64`
-- `proc mul_i64`
-- `proc div_i64`
-- `proc mod_i64`
-- `proc add_f64`
-- `proc sub_f64`
-- `proc mul_f64`
-- `proc div_f64`
-- `proc max_i64`
-- `proc min_i64`
-- `proc max_f64`
-- `proc min_f64`
-- `proc pow_i64`
-- `proc pow_f64`
-- `proc fact`
-- `proc gcd`
-- `proc lcm`
-- `proc is_prime`
-- `proc fib`
-- `proc clamp_i64`
-- `proc lerp`
-- `proc safe_add`
-- `proc safe_mul`
-- `proc and_i64`
-- `proc or_i64`
-- `proc xor_i64`
-- `proc shl`
-- `proc shr`
-- `proc sign_i64`
-- `proc is_even`
-- `proc is_odd`
-- `proc popcount`
-- `proc leading_zeros`
-- `proc trailing_zeros`
-- `proc rotl`
-- `proc rotr`
-- `proc saturating_add`
-- `proc saturating_sub`
-- `proc div_floor`
-- `proc div_ceil`
-- `proc floor_f64`
-- `proc ceil_f64`
-- `proc round_f64`
-- `proc poly_eval`
-- `proc is_nan`
-- `proc is_inf`
-- `proc copysign`
-- `proc exp_f64`
-- `proc log_f64`
-- `proc sqrt_f64`
-- `proc sin_f64`
-- `proc cos_f64`
-- `proc log10_f64`
-- `proc fabs`
-- `proc fmod`
-- `proc ceil`
-- `proc floor`
-- `proc rand_next`
-- `proc rand_f64`
-- `proc add_i128`
-- `proc mul_i128`
-- `proc __add_overflow`
-- `proc __mul_overflow`
-- `proc __popcnt`
-- `proc __bsf`
-- `proc __bsr`
-- `proc arithmetic_version`
-- `proc arithmetic_ready`
-- `proc arithmetic_selftest`
+- `const PI` signature `const PI: f64 = 3.141592653589793` example `PI`
+- `const E` signature `const E: f64 = 2.718281828459045` example `E`
+- `const I64_MIN` signature `const I64_MIN: i64 = 9223372036854775808` example `I64_MIN`
+- `const I64_MAX` signature `const I64_MAX: i64 = 9223372036854775807` example `I64_MAX`
+- `const F64_INF` signature `const F64_INF: f64 = 1000000000000000000.0` example `F64_INF`
+- `const F64_NAN` signature `const F64_NAN: f64 = 0.0` example `F64_NAN`
+- `const RAND_A` signature `const RAND_A: i64 = 1664525` example `RAND_A`
+- `const RAND_C` signature `const RAND_C: i64 = 1013904223` example `RAND_C`
+- `const RAND_M` signature `const RAND_M: i64 = 2147483647` example `RAND_M`
+- `pick SafeResult` signature `pick SafeResult {` example `SafeResult`
+- `form I128` signature `form I128 {` example `I128`
+- `proc abs_i64` signature `proc abs_i64(value: i64) -> i64 {` example `abs_i64`
+- `proc abs_f64` signature `proc abs_f64(value: f64) -> f64 {` example `abs_f64`
+- `proc add_i64` signature `proc add_i64(a: i64, b: i64) -> i64 {` example `add_i64`
+- `proc sub_i64` signature `proc sub_i64(a: i64, b: i64) -> i64 {` example `sub_i64`
+- `proc mul_i64` signature `proc mul_i64(a: i64, b: i64) -> i64 {` example `mul_i64`
+- `proc div_i64` signature `proc div_i64(a: i64, b: i64) -> i64 {` example `div_i64`
+- `proc mod_i64` signature `proc mod_i64(a: i64, b: i64) -> i64 {` example `mod_i64`
+- `proc add_f64` signature `proc add_f64(a: f64, b: f64) -> f64 {` example `add_f64`
+- `proc sub_f64` signature `proc sub_f64(a: f64, b: f64) -> f64 {` example `sub_f64`
+- `proc mul_f64` signature `proc mul_f64(a: f64, b: f64) -> f64 {` example `mul_f64`
+- `proc div_f64` signature `proc div_f64(a: f64, b: f64) -> f64 {` example `div_f64`
+- `proc max_i64` signature `proc max_i64(a: i64, b: i64) -> i64 {` example `max_i64`
+- `proc min_i64` signature `proc min_i64(a: i64, b: i64) -> i64 {` example `min_i64`
+- `proc max_f64` signature `proc max_f64(a: f64, b: f64) -> f64 {` example `max_f64`
+- `proc min_f64` signature `proc min_f64(a: f64, b: f64) -> f64 {` example `min_f64`
+- `proc pow_i64` signature `proc pow_i64(base: i64, exponent: i64) -> i64 {` example `pow_i64`
+- `proc pow_f64` signature `proc pow_f64(base: f64, exponent: i64) -> f64 {` example `pow_f64`
+- `proc fact` signature `proc fact(value: i64) -> i64 {` example `fact`
+- `proc gcd` signature `proc gcd(a: i64, b: i64) -> i64 {` example `gcd`
+- `proc lcm` signature `proc lcm(a: i64, b: i64) -> i64 {` example `lcm`
+- `proc is_prime` signature `proc is_prime(value: i64) -> bool {` example `is_prime`
+- `proc fib` signature `proc fib(index: i64) -> i64 {` example `fib`
+- `proc clamp_i64` signature `proc clamp_i64(value: i64, low: i64, high: i64) -> i64 {` example `clamp_i64`
+- `proc lerp` signature `proc lerp(a: f64, b: f64, t: f64) -> f64 {` example `lerp`
+- `proc safe_add` signature `proc safe_add(a: i64, b: i64) -> SafeResult {` example `safe_add`
+- `proc safe_mul` signature `proc safe_mul(a: i64, b: i64) -> SafeResult {` example `safe_mul`
+- `proc and_i64` signature `proc and_i64(a: i64, b: i64) -> i64 {` example `and_i64`
+- `proc or_i64` signature `proc or_i64(a: i64, b: i64) -> i64 {` example `or_i64`
+- `proc xor_i64` signature `proc xor_i64(a: i64, b: i64) -> i64 {` example `xor_i64`
+- `proc shl` signature `proc shl(value: i64, bits: i64) -> i64 {` example `shl`
+- `proc shr` signature `proc shr(value: i64, bits: i64) -> i64 {` example `shr`
+- `proc sign_i64` signature `proc sign_i64(value: i64) -> i64 {` example `sign_i64`
+- `proc is_even` signature `proc is_even(value: i64) -> bool {` example `is_even`
+- `proc is_odd` signature `proc is_odd(value: i64) -> bool {` example `is_odd`
+- `proc popcount` signature `proc popcount(value: i64) -> i64 {` example `popcount`
+- `proc leading_zeros` signature `proc leading_zeros(value: i64) -> i64 {` example `leading_zeros`
+- `proc trailing_zeros` signature `proc trailing_zeros(value: i64) -> i64 {` example `trailing_zeros`
+- `proc rotl` signature `proc rotl(value: i64, bits: i64) -> i64 {` example `rotl`
+- `proc rotr` signature `proc rotr(value: i64, bits: i64) -> i64 {` example `rotr`
+- `proc saturating_add` signature `proc saturating_add(a: i64, b: i64) -> i64 {` example `saturating_add`
+- `proc saturating_sub` signature `proc saturating_sub(a: i64, b: i64) -> i64 {` example `saturating_sub`
+- `proc div_floor` signature `proc div_floor(a: i64, b: i64) -> i64 {` example `div_floor`
+- `proc div_ceil` signature `proc div_ceil(a: i64, b: i64) -> i64 {` example `div_ceil`
+- `proc floor_f64` signature `proc floor_f64(value: f64) -> i64 {` example `floor_f64`
+- `proc ceil_f64` signature `proc ceil_f64(value: f64) -> i64 {` example `ceil_f64`
+- `proc round_f64` signature `proc round_f64(value: f64) -> i64 {` example `round_f64`
+- `proc poly_eval` signature `proc poly_eval(coeffs: [f64], x: f64) -> f64 {` example `poly_eval`
+- `proc is_nan` signature `proc is_nan(value: f64) -> bool {` example `is_nan`
+- `proc is_inf` signature `proc is_inf(value: f64) -> bool {` example `is_inf`
+- `proc copysign` signature `proc copysign(magnitude: f64, sign_value: f64) -> f64 {` example `copysign`
+- `proc exp_f64` signature `proc exp_f64(value: f64) -> f64 {` example `exp_f64`
+- `proc log_f64` signature `proc log_f64(value: f64) -> f64 {` example `log_f64`
+- `proc sqrt_f64` signature `proc sqrt_f64(value: f64) -> f64 {` example `sqrt_f64`
+- `proc sin_f64` signature `proc sin_f64(value: f64) -> f64 {` example `sin_f64`
+- `proc cos_f64` signature `proc cos_f64(value: f64) -> f64 {` example `cos_f64`
+- `proc log10_f64` signature `proc log10_f64(value: f64) -> f64 {` example `log10_f64`
+- `proc fabs` signature `proc fabs(value: f64) -> f64 {` example `fabs`
+- `proc fmod` signature `proc fmod(a: f64, b: f64) -> f64 {` example `fmod`
+- `proc ceil` signature `proc ceil(value: f64) -> i64 {` example `ceil`
+- `proc floor` signature `proc floor(value: f64) -> i64 {` example `floor`
+- `proc rand_next` signature `proc rand_next(seed: i64) -> i64 {` example `rand_next`
+- `proc rand_f64` signature `proc rand_f64(seed: i64) -> f64 {` example `rand_f64`
+- `proc add_i128` signature `proc add_i128(a: I128, b: I128) -> I128 {` example `add_i128`
+- `proc mul_i128` signature `proc mul_i128(a: I128, b: I128) -> I128 {` example `mul_i128`
+- `proc __add_overflow` signature `proc __add_overflow(a: i64, b: i64) -> SafeResult {` example `__add_overflow`
+- `proc __mul_overflow` signature `proc __mul_overflow(a: i64, b: i64) -> SafeResult {` example `__mul_overflow`
+- `proc __popcnt` signature `proc __popcnt(value: i64) -> i64 {` example `__popcnt`
+- `proc __bsf` signature `proc __bsf(value: i64) -> i64 {` example `__bsf`
+- `proc __bsr` signature `proc __bsr(value: i64) -> i64 {` example `__bsr`
+- `proc arithmetic_version` signature `proc arithmetic_version() -> string {` example `arithmetic_version`
+- `proc arithmetic_ready` signature `proc arithmetic_ready() -> bool {` example `arithmetic_ready`
+- `proc arithmetic_selftest` signature `proc arithmetic_selftest() -> bool {` example `arithmetic_selftest`
 
 ## `src/vitte/stdlib/math/arrays.vitl`
 
-- `form RawSlice`
-- `form Vec`
-- `proc len`
-- `proc is_empty`
-- `proc first_or`
-- `proc last_or`
-- `proc first`
-- `proc last`
-- `proc contains`
-- `proc index_of`
-- `proc count`
-- `proc last_index_of`
-- `proc copy`
-- `proc append`
-- `proc prepend`
-- `proc concat`
-- `proc push`
-- `proc set_at`
-- `proc swap`
-- `proc clear`
-- `proc take`
-- `proc drop`
-- `proc pop`
-- `proc pop_at`
-- `proc insert`
-- `proc remove_at`
-- `proc repeat`
-- `proc fill`
-- `proc reverse_copy`
-- `proc reverse`
-- `proc sum`
-- `proc min`
-- `proc max`
-- `proc mean_floor`
-- `proc mean_scaled`
-- `proc range`
-- `proc abs_int`
-- `proc sum_abs`
-- `proc product`
-- `proc any_nonzero`
-- `proc all_nonzero`
-- `proc count_nonzero`
-- `proc prefix_min`
-- `proc prefix_max`
-- `proc clamp_each`
-- `proc prefix_sum`
-- `proc tail`
-- `proc head`
-- `proc slice`
-- `proc rotate_left`
-- `proc rotate_right`
-- `proc replace_slice`
-- `proc splice`
-- `proc rotate`
-- `proc enumerate`
-- `proc zip`
-- `proc chunks`
-- `proc sort`
-- `proc binary_search`
-- `proc map_add`
-- `proc filter_positive`
-- `proc reduce_sum`
-- `proc unique`
-- `proc intersect`
-- `proc union_values`
-- `proc difference`
-- `proc memset`
-- `proc memcpy`
-- `proc memcmp`
-- `proc flatten`
-- `proc repeat_array`
-- `proc equals`
-- `proc vec_new`
-- `proc vec_with_capacity`
-- `proc vec_push`
-- `proc vec_pop`
-- `proc vec_get`
-- `proc vec_set`
-- `proc vec_reserve`
-- `proc vec_shrink`
-- `proc sort_by`
-- `proc qsort`
-- `proc arrays_version`
-- `proc arrays_ready`
-- `proc arrays_selftest`
+- `form RawSlice` signature `form RawSlice {` example `RawSlice`
+- `form Vec` signature `form Vec {` example `Vec`
+- `proc len` signature `proc len(values: [int]) -> int {` example `len`
+- `proc is_empty` signature `proc is_empty(values: [int]) -> bool {` example `is_empty`
+- `proc first_or` signature `proc first_or(values: [int], fallback: int) -> int {` example `first_or`
+- `proc last_or` signature `proc last_or(values: [int], fallback: int) -> int {` example `last_or`
+- `proc first` signature `proc first(values: [int]) -> int { give first_or(values, 0) }` example `first`
+- `proc last` signature `proc last(values: [int]) -> int { give last_or(values, 0) }` example `last`
+- `proc contains` signature `proc contains(values: [int], needle: int) -> bool {` example `contains`
+- `proc index_of` signature `proc index_of(values: [int], needle: int) -> int {` example `index_of`
+- `proc count` signature `proc count(values: [int], needle: int) -> int {` example `count`
+- `proc last_index_of` signature `proc last_index_of(values: [int], needle: int) -> int {` example `last_index_of`
+- `proc copy` signature `proc copy(values: [int]) -> [int] { give values }` example `copy`
+- `proc append` signature `proc append(values: [int], value: int) -> [int] { give values + [value] }` example `append`
+- `proc prepend` signature `proc prepend(values: [int], value: int) -> [int] { give [value] + values }` example `prepend`
+- `proc concat` signature `proc concat(a: [int], b: [int]) -> [int] { give a + b }` example `concat`
+- `proc push` signature `proc push(values: [int], value: int) -> [int] { give append(values, value) }` example `push`
+- `proc set_at` signature `proc set_at(values: [int], index: int, value: int) -> [int] {` example `set_at`
+- `proc swap` signature `proc swap(values: [int], i: int, j: int) -> [int] {` example `swap`
+- `proc clear` signature `proc clear(values: [int]) -> [int] { give [] }` example `clear`
+- `proc take` signature `proc take(values: [int], count0: int) -> [int] {` example `take`
+- `proc drop` signature `proc drop(values: [int], count0: int) -> [int] {` example `drop`
+- `proc pop` signature `proc pop(values: [int]) -> [int] {` example `pop`
+- `proc pop_at` signature `proc pop_at(values: [int], index: int) -> [int] { give remove_at(values, index) }` example `pop_at`
+- `proc insert` signature `proc insert(values: [int], index: int, value: int) -> [int] {` example `insert`
+- `proc remove_at` signature `proc remove_at(values: [int], index: int) -> [int] {` example `remove_at`
+- `proc repeat` signature `proc repeat(value: int, count0: int) -> [int] {` example `repeat`
+- `proc fill` signature `proc fill(values: [int], value: int) -> [int] { give repeat(value, values.len) }` example `fill`
+- `proc reverse_copy` signature `proc reverse_copy(values: [int]) -> [int] {` example `reverse_copy`
+- `proc reverse` signature `proc reverse(values: [int]) -> [int] { give reverse_copy(values) }` example `reverse`
+- `proc sum` signature `proc sum(values: [int]) -> int {` example `sum`
+- `proc min` signature `proc min(values: [int]) -> int {` example `min`
+- `proc max` signature `proc max(values: [int]) -> int {` example `max`
+- `proc mean_floor` signature `proc mean_floor(values: [int]) -> int {` example `mean_floor`
+- `proc mean_scaled` signature `proc mean_scaled(values: [int], scale: int) -> int {` example `mean_scaled`
+- `proc range` signature `proc range(values: [int]) -> int {` example `range`
+- `proc abs_int` signature `proc abs_int(value: int) -> int {` example `abs_int`
+- `proc sum_abs` signature `proc sum_abs(values: [int]) -> int {` example `sum_abs`
+- `proc product` signature `proc product(values: [int]) -> int {` example `product`
+- `proc any_nonzero` signature `proc any_nonzero(values: [int]) -> bool {` example `any_nonzero`
+- `proc all_nonzero` signature `proc all_nonzero(values: [int]) -> bool {` example `all_nonzero`
+- `proc count_nonzero` signature `proc count_nonzero(values: [int]) -> int {` example `count_nonzero`
+- `proc prefix_min` signature `proc prefix_min(values: [int]) -> [int] {` example `prefix_min`
+- `proc prefix_max` signature `proc prefix_max(values: [int]) -> [int] {` example `prefix_max`
+- `proc clamp_each` signature `proc clamp_each(values: [int], low: int, high: int) -> [int] {` example `clamp_each`
+- `proc prefix_sum` signature `proc prefix_sum(values: [int]) -> [int] {` example `prefix_sum`
+- `proc tail` signature `proc tail(values: [int]) -> [int] { give drop(values, 1) }` example `tail`
+- `proc head` signature `proc head(values: [int]) -> int { give first(values) }` example `head`
+- `proc slice` signature `proc slice(values: [int], start: int, end: int) -> [int] {` example `slice`
+- `proc rotate_left` signature `proc rotate_left(values: [int], amount: int) -> [int] {` example `rotate_left`
+- `proc rotate_right` signature `proc rotate_right(values: [int], amount: int) -> [int] {` example `rotate_right`
+- `proc replace_slice` signature `proc replace_slice(values: [int], start: int, end: int, replacement: [int]) -> [int] {` example `replace_slice`
+- `proc splice` signature `proc splice(values: [int], start: int, delete_count: int, replacement: [int]) -> [int] {` example `splice`
+- `proc rotate` signature `proc rotate(values: [int], amount: int) -> [int] {` example `rotate`
+- `proc enumerate` signature `proc enumerate(values: [int]) -> [[int]] {` example `enumerate`
+- `proc zip` signature `proc zip(a: [int], b: [int]) -> [[int]] {` example `zip`
+- `proc chunks` signature `proc chunks(values: [int], size: int) -> [[int]] {` example `chunks`
+- `proc sort` signature `proc sort(values: [int]) -> [int] {` example `sort`
+- `proc binary_search` signature `proc binary_search(values: [int], needle: int) -> int {` example `binary_search`
+- `proc map_add` signature `proc map_add(values: [int], delta: int) -> [int] {` example `map_add`
+- `proc filter_positive` signature `proc filter_positive(values: [int]) -> [int] {` example `filter_positive`
+- `proc reduce_sum` signature `proc reduce_sum(values: [int]) -> int { give sum(values) }` example `reduce_sum`
+- `proc unique` signature `proc unique(values: [int]) -> [int] {` example `unique`
+- `proc intersect` signature `proc intersect(a: [int], b: [int]) -> [int] {` example `intersect`
+- `proc union_values` signature `proc union_values(a: [int], b: [int]) -> [int] {` example `union_values`
+- `proc difference` signature `proc difference(a: [int], b: [int]) -> [int] {` example `difference`
+- `proc memset` signature `proc memset(count0: int, value: int) -> [int] { give repeat(value, count0) }` example `memset`
+- `proc memcpy` signature `proc memcpy(values: [int]) -> [int] { give values }` example `memcpy`
+- `proc memcmp` signature `proc memcmp(a: [int], b: [int]) -> int {` example `memcmp`
+- `proc flatten` signature `proc flatten(values: [[int]]) -> [int] {` example `flatten`
+- `proc repeat_array` signature `proc repeat_array(values: [int], count0: int) -> [int] {` example `repeat_array`
+- `proc equals` signature `proc equals(a: [int], b: [int]) -> bool { give memcmp(a, b) == 0 }` example `equals`
+- `proc vec_new` signature `proc vec_new() -> Vec { give Vec { data: [] } }` example `vec_new`
+- `proc vec_with_capacity` signature `proc vec_with_capacity(capacity: int) -> Vec { give Vec { data: [] } }` example `vec_with_capacity`
+- `proc vec_push` signature `proc vec_push(v: Vec, value: int) -> Vec { give Vec { data: v.data + [value] } }` example `vec_push`
+- `proc vec_pop` signature `proc vec_pop(v: Vec) -> Vec { give Vec { data: pop(v.data) } }` example `vec_pop`
+- `proc vec_get` signature `proc vec_get(v: Vec, index: int) -> int { give first_or(slice(v.data, index, index + 1), 0) }` example `vec_get`
+- `proc vec_set` signature `proc vec_set(v: Vec, index: int, value: int) -> Vec { give Vec { data: set_at(v.data, index, value) } }` example `vec_set`
+- `proc vec_reserve` signature `proc vec_reserve(v: Vec, capacity: int) -> Vec { give v }` example `vec_reserve`
+- `proc vec_shrink` signature `proc vec_shrink(v: Vec) -> Vec { give v }` example `vec_shrink`
+- `proc sort_by` signature `proc sort_by(values: [int]) -> [int] { give sort(values) }` example `sort_by`
+- `proc qsort` signature `proc qsort(values: [int]) -> [int] { give sort(values) }` example `qsort`
+- `proc arrays_version` signature `proc arrays_version() -> string { give "max-1" }` example `arrays_version`
+- `proc arrays_ready` signature `proc arrays_ready() -> bool { give true }` example `arrays_ready`
+- `proc arrays_selftest` signature `proc arrays_selftest() -> bool {` example `arrays_selftest`
 
 ## `src/vitte/stdlib/math/calculus.vitl`
 
-- `const EPS`
-- `const MAX_ITER`
-- `form Complex`
-- `form CSR`
-- `form Dual`
-- `proc poly_eval`
-- `proc deriv_forward`
-- `proc deriv_backward`
-- `proc deriv_central`
-- `proc deriv2`
-- `proc gradient`
-- `proc integrate_trap`
-- `proc integrate_simpson`
-- `proc limit`
-- `proc deriv_coeffs`
-- `proc newton`
-- `proc bisection`
-- `proc taylor_exp`
-- `proc taylor_sin`
-- `proc euler`
-- `proc rk4`
-- `proc gradient_descent`
-- `proc newton_opt`
-- `proc integrate_montecarlo`
-- `proc adaptive_simpson`
-- `proc recurse`
-- `proc gradient_nd`
-- `proc stable_sum`
-- `proc stable_mean`
-- `proc poly_root_quadratic`
-- `proc dot`
-- `proc mat_mul`
-- `proc mat_vec`
-- `proc solve_gauss`
-- `proc c_add`
-- `proc c_sub`
-- `proc c_mul`
-- `proc fft`
-- `proc variance`
-- `proc stddev`
-- `proc normal_pdf`
-- `proc rk45`
-- `proc eigen_power`
-- `proc csr_matvec`
-- `proc d_add`
-- `proc d_mul`
-- `proc d_sin`
-- `proc autodiff`
-- `proc gamma`
-- `proc erf`
-- `proc parallel_map`
-- `proc parallel_reduce`
-- `proc mean_f64`
-- `proc abs_local`
-- `proc sqrt_local`
-- `proc exp_local`
-- `proc pow_simple`
-- `proc factorial_f64`
-- `proc calculus_version`
-- `proc calculus_ready`
-- `proc calculus_selftest`
+- `const EPS` signature `const EPS: f64 = 0.000001` example `EPS`
+- `const MAX_ITER` signature `const MAX_ITER: i64 = 32` example `MAX_ITER`
+- `form Complex` signature `form Complex { re: f64, im: f64 }` example `Complex`
+- `form CSR` signature `form CSR { rows: [int], cols: [int], values: [f64], width: int }` example `CSR`
+- `form Dual` signature `form Dual { real: f64, dual: f64 }` example `Dual`
+- `proc poly_eval` signature `proc poly_eval(coeffs: [f64], x: f64) -> f64 {` example `poly_eval`
+- `proc deriv_forward` signature `proc deriv_forward(coeffs: [f64], x: f64, h: f64) -> f64 {` example `deriv_forward`
+- `proc deriv_backward` signature `proc deriv_backward(coeffs: [f64], x: f64, h: f64) -> f64 {` example `deriv_backward`
+- `proc deriv_central` signature `proc deriv_central(coeffs: [f64], x: f64, h: f64) -> f64 {` example `deriv_central`
+- `proc deriv2` signature `proc deriv2(coeffs: [f64], x: f64, h: f64) -> f64 {` example `deriv2`
+- `proc gradient` signature `proc gradient(coeff_x: [f64], coeff_y: [f64], x: f64, y: f64, h: f64) -> [f64] {` example `gradient`
+- `proc integrate_trap` signature `proc integrate_trap(samples: [f64], h: f64) -> f64 {` example `integrate_trap`
+- `proc integrate_simpson` signature `proc integrate_simpson(samples: [f64], h: f64) -> f64 {` example `integrate_simpson`
+- `proc limit` signature `proc limit(left: f64, right: f64) -> f64 {` example `limit`
+- `proc deriv_coeffs` signature `proc deriv_coeffs(coeffs: [f64]) -> [f64] {` example `deriv_coeffs`
+- `proc newton` signature `proc newton(coeffs: [f64], guess: f64) -> f64 {` example `newton`
+- `proc bisection` signature `proc bisection(coeffs: [f64], low0: f64, high0: f64) -> f64 {` example `bisection`
+- `proc taylor_exp` signature `proc taylor_exp(x: f64, terms: int) -> f64 {` example `taylor_exp`
+- `proc taylor_sin` signature `proc taylor_sin(x: f64, terms: int) -> f64 {` example `taylor_sin`
+- `proc euler` signature `proc euler(y0: f64, step: f64, slope: [f64]) -> [f64] {` example `euler`
+- `proc rk4` signature `proc rk4(y0: f64, step: f64, slopes: [[f64]]) -> [f64] {` example `rk4`
+- `proc gradient_descent` signature `proc gradient_descent(start: f64, grad: [f64], rate: f64) -> f64 {` example `gradient_descent`
+- `proc newton_opt` signature `proc newton_opt(start: f64, first: [f64], second: [f64]) -> f64 {` example `newton_opt`
+- `proc integrate_montecarlo` signature `proc integrate_montecarlo(samples: [f64], low: f64, high: f64) -> f64 {` example `integrate_montecarlo`
+- `proc adaptive_simpson` signature `proc adaptive_simpson(samples: [f64], h: f64) -> f64 {` example `adaptive_simpson`
+- `proc recurse` signature `proc recurse(value: int) -> int {` example `recurse`
+- `proc gradient_nd` signature `proc gradient_nd(surface: [[f64]]) -> [f64] {` example `gradient_nd`
+- `proc stable_sum` signature `proc stable_sum(values: [f64]) -> f64 {` example `stable_sum`
+- `proc stable_mean` signature `proc stable_mean(values: [f64]) -> f64 {` example `stable_mean`
+- `proc poly_root_quadratic` signature `proc poly_root_quadratic(a: f64, b: f64, c: f64) -> [f64] {` example `poly_root_quadratic`
+- `proc dot` signature `proc dot(a: [f64], b: [f64]) -> f64 {` example `dot`
+- `proc mat_mul` signature `proc mat_mul(a: [[f64]], b: [[f64]]) -> [[f64]] {` example `mat_mul`
+- `proc mat_vec` signature `proc mat_vec(m: [[f64]], v: [f64]) -> [f64] {` example `mat_vec`
+- `proc solve_gauss` signature `proc solve_gauss(a: [[f64]], b: [f64]) -> [f64] {` example `solve_gauss`
+- `proc c_add` signature `proc c_add(a: Complex, b: Complex) -> Complex {` example `c_add`
+- `proc c_sub` signature `proc c_sub(a: Complex, b: Complex) -> Complex {` example `c_sub`
+- `proc c_mul` signature `proc c_mul(a: Complex, b: Complex) -> Complex {` example `c_mul`
+- `proc fft` signature `proc fft(values: [Complex]) -> [Complex] {` example `fft`
+- `proc variance` signature `proc variance(values: [f64]) -> f64 {` example `variance`
+- `proc stddev` signature `proc stddev(values: [f64]) -> f64 {` example `stddev`
+- `proc normal_pdf` signature `proc normal_pdf(x: f64, mean0: f64, std0: f64) -> f64 {` example `normal_pdf`
+- `proc rk45` signature `proc rk45(y0: f64, step: f64, slopes: [[f64]]) -> [f64] {` example `rk45`
+- `proc eigen_power` signature `proc eigen_power(matrix: [[f64]], vector: [f64], iters: int) -> [f64] {` example `eigen_power`
+- `proc csr_matvec` signature `proc csr_matvec(m: CSR, v: [f64]) -> [f64] {` example `csr_matvec`
+- `proc d_add` signature `proc d_add(a: Dual, b: Dual) -> Dual {` example `d_add`
+- `proc d_mul` signature `proc d_mul(a: Dual, b: Dual) -> Dual {` example `d_mul`
+- `proc d_sin` signature `proc d_sin(a: Dual) -> Dual {` example `d_sin`
+- `proc autodiff` signature `proc autodiff(a: Dual) -> Dual {` example `autodiff`
+- `proc gamma` signature `proc gamma(value: f64) -> f64 {` example `gamma`
+- `proc erf` signature `proc erf(value: f64) -> f64 {` example `erf`
+- `proc parallel_map` signature `proc parallel_map(values: [f64]) -> [f64] {` example `parallel_map`
+- `proc parallel_reduce` signature `proc parallel_reduce(values: [f64]) -> f64 {` example `parallel_reduce`
+- `proc mean_f64` signature `proc mean_f64(values: [f64]) -> f64 {` example `mean_f64`
+- `proc abs_local` signature `proc abs_local(value: f64) -> f64 {` example `abs_local`
+- `proc sqrt_local` signature `proc sqrt_local(value: f64) -> f64 {` example `sqrt_local`
+- `proc exp_local` signature `proc exp_local(value: f64) -> f64 {` example `exp_local`
+- `proc pow_simple` signature `proc pow_simple(base: f64, exp: int) -> f64 {` example `pow_simple`
+- `proc factorial_f64` signature `proc factorial_f64(value: int) -> f64 {` example `factorial_f64`
+- `proc calculus_version` signature `proc calculus_version() -> string {` example `calculus_version`
+- `proc calculus_ready` signature `proc calculus_ready() -> bool {` example `calculus_ready`
+- `proc calculus_selftest` signature `proc calculus_selftest() -> bool {` example `calculus_selftest`
 
 ## `src/vitte/stdlib/math/comparison.vitl`
 
-- `const EPS`
-- `proc eq`
-- `proc lt`
-- `proc gt`
-- `proc is_nan`
-- `proc is_inf`
-- `proc min`
-- `proc max`
-- `proc clamp`
-- `proc abs`
-- `proc sign`
-- `proc between`
-- `proc in_range`
-- `proc compare`
-- `proc cmp_reverse`
-- `proc min_f64`
-- `proc max_f64`
-- `proc clamp_f64`
-- `proc abs_f64`
-- `proc sign_f64`
-- `proc compare_f64`
-- `proc approx_eq`
-- `proc approx_lt`
-- `proc approx_gt`
-- `proc approx_between`
-- `proc approx_in_range`
-- `proc is_sorted`
-- `proc is_sorted_desc`
-- `proc is_sorted_f64`
-- `proc is_sorted_desc_f64`
-- `proc argmin`
-- `proc argmax`
-- `proc argmin_f64`
-- `proc argmax_f64`
-- `proc all`
-- `proc any`
-- `proc none`
-- `proc count_true`
-- `proc min_fast`
-- `proc max_fast`
-- `proc compare_generic`
-- `proc min_generic`
-- `proc max_generic`
-- `proc clamp_generic`
-- `proc is_sorted_generic`
-- `proc comparison_version`
-- `proc comparison_ready`
-- `proc comparison_selftest`
+- `const EPS` signature `const EPS: f64 = 0.000001` example `EPS`
+- `proc eq` signature `proc eq(a: int, b: int) -> bool { give a == b }` example `eq`
+- `proc lt` signature `proc lt(a: int, b: int) -> bool { give a < b }` example `lt`
+- `proc gt` signature `proc gt(a: int, b: int) -> bool { give a > b }` example `gt`
+- `proc is_nan` signature `proc is_nan(value: f64) -> bool { give false }` example `is_nan`
+- `proc is_inf` signature `proc is_inf(value: f64) -> bool { give value > 1000000000000000000.0 or value < 0.0 - 1000000000000000000.0 }` example `is_inf`
+- `proc min` signature `proc min(a: int, b: int) -> int { if a < b { give a } give b }` example `min`
+- `proc max` signature `proc max(a: int, b: int) -> int { if a > b { give a } give b }` example `max`
+- `proc clamp` signature `proc clamp(value: int, low: int, high: int) -> int { if value < low { give low } if value > high { give high } give value }` example `clamp`
+- `proc abs` signature `proc abs(value: int) -> int { if value < 0 { give 0 - value } give value }` example `abs`
+- `proc sign` signature `proc sign(value: int) -> int { if value > 0 { give 1 } if value < 0 { give -1 } give 0 }` example `sign`
+- `proc between` signature `proc between(value: int, low: int, high: int) -> bool { give value > low and value < high }` example `between`
+- `proc in_range` signature `proc in_range(value: int, low: int, high: int) -> bool { give value >= low and value <= high }` example `in_range`
+- `proc compare` signature `proc compare(a: int, b: int) -> int { if a < b { give -1 } if a > b { give 1 } give 0 }` example `compare`
+- `proc cmp_reverse` signature `proc cmp_reverse(a: int, b: int) -> int { give 0 - compare(a, b) }` example `cmp_reverse`
+- `proc min_f64` signature `proc min_f64(a: f64, b: f64) -> f64 { if a < b { give a } give b }` example `min_f64`
+- `proc max_f64` signature `proc max_f64(a: f64, b: f64) -> f64 { if a > b { give a } give b }` example `max_f64`
+- `proc clamp_f64` signature `proc clamp_f64(value: f64, low: f64, high: f64) -> f64 { if value < low { give low } if value > high { give high } give value }` example `clamp_f64`
+- `proc abs_f64` signature `proc abs_f64(value: f64) -> f64 { if value < 0.0 { give 0.0 - value } give value }` example `abs_f64`
+- `proc sign_f64` signature `proc sign_f64(value: f64) -> f64 { if value > 0.0 { give 1.0 } if value < 0.0 { give -1.0 } give 0.0 }` example `sign_f64`
+- `proc compare_f64` signature `proc compare_f64(a: f64, b: f64) -> int { if a < b { give -1 } if a > b { give 1 } give 0 }` example `compare_f64`
+- `proc approx_eq` signature `proc approx_eq(a: f64, b: f64) -> bool {` example `approx_eq`
+- `proc approx_lt` signature `proc approx_lt(a: f64, b: f64) -> bool { give a < b and not approx_eq(a, b) }` example `approx_lt`
+- `proc approx_gt` signature `proc approx_gt(a: f64, b: f64) -> bool { give a > b and not approx_eq(a, b) }` example `approx_gt`
+- `proc approx_between` signature `proc approx_between(value: f64, low: f64, high: f64) -> bool { give value > low - EPS and value < high + EPS }` example `approx_between`
+- `proc approx_in_range` signature `proc approx_in_range(value: f64, low: f64, high: f64) -> bool { give value >= low - EPS and value <= high + EPS }` example `approx_in_range`
+- `proc is_sorted` signature `proc is_sorted(values: [int]) -> bool { let i: int = 1 while i < values.len { if values[i] < values[i - 1] { give false } set i = i + 1 } give true }` example `is_sorted`
+- `proc is_sorted_desc` signature `proc is_sorted_desc(values: [int]) -> bool { let i: int = 1 while i < values.len { if values[i] > values[i - 1] { give false } set i = i + 1 } give true }` example `is_sorted_desc`
+- `proc is_sorted_f64` signature `proc is_sorted_f64(values: [f64]) -> bool { let i: int = 1 while i < values.len { if values[i] < values[i - 1] { give false } set i = i + 1 } give true }` example `is_sorted_f64`
+- `proc is_sorted_desc_f64` signature `proc is_sorted_desc_f64(values: [f64]) -> bool { let i: int = 1 while i < values.len { if values[i] > values[i - 1] { give false } set i = i + 1 } give true }` example `is_sorted_desc_f64`
+- `proc argmin` signature `proc argmin(values: [int]) -> int { if values.len == 0 { give -1 } let best: int = 0 let i: int = 1 while i < values.len { if values[i] < values[best] { set best = i } set i = i + 1 } give best }` example `argmin`
+- `proc argmax` signature `proc argmax(values: [int]) -> int { if values.len == 0 { give -1 } let best: int = 0 let i: int = 1 while i < values.len { if values[i] > values[best] { set best = i } set i = i + 1 } give best }` example `argmax`
+- `proc argmin_f64` signature `proc argmin_f64(values: [f64]) -> int { if values.len == 0 { give -1 } let best: int = 0 let i: int = 1 while i < values.len { if values[i] < values[best] { set best = i } set i = i + 1 } give best }` example `argmin_f64`
+- `proc argmax_f64` signature `proc argmax_f64(values: [f64]) -> int { if values.len == 0 { give -1 } let best: int = 0 let i: int = 1 while i < values.len { if values[i] > values[best] { set best = i } set i = i + 1 } give best }` example `argmax_f64`
+- `proc all` signature `proc all(values: [bool]) -> bool { let i: int = 0 while i < values.len { if not values[i] { give false } set i = i + 1 } give values.len > 0 }` example `all`
+- `proc any` signature `proc any(values: [bool]) -> bool { let i: int = 0 while i < values.len { if values[i] { give true } set i = i + 1 } give false }` example `any`
+- `proc none` signature `proc none(values: [bool]) -> bool { give not any(values) }` example `none`
+- `proc count_true` signature `proc count_true(values: [bool]) -> int { let total: int = 0 let i: int = 0 while i < values.len { if values[i] { set total = total + 1 } set i = i + 1 } give total }` example `count_true`
+- `proc min_fast` signature `proc min_fast(a: int, b: int) -> int { give min(a, b) }` example `min_fast`
+- `proc max_fast` signature `proc max_fast(a: int, b: int) -> int { give max(a, b) }` example `max_fast`
+- `proc compare_generic` signature `proc compare_generic(a: int, b: int) -> int { give compare(a, b) }` example `compare_generic`
+- `proc min_generic` signature `proc min_generic(a: int, b: int) -> int { give min(a, b) }` example `min_generic`
+- `proc max_generic` signature `proc max_generic(a: int, b: int) -> int { give max(a, b) }` example `max_generic`
+- `proc clamp_generic` signature `proc clamp_generic(value: int, low: int, high: int) -> int { give clamp(value, low, high) }` example `clamp_generic`
+- `proc is_sorted_generic` signature `proc is_sorted_generic(values: [int]) -> bool { give is_sorted(values) }` example `is_sorted_generic`
+- `proc comparison_version` signature `proc comparison_version() -> string { give "max-1" }` example `comparison_version`
+- `proc comparison_ready` signature `proc comparison_ready() -> bool { give true }` example `comparison_ready`
+- `proc comparison_selftest` signature `proc comparison_selftest() -> bool {` example `comparison_selftest`
 
 ## `src/vitte/stdlib/math/complex.vitl`
 
-- `proc abs_int`
-- `proc sqrt_floor`
-- `proc complex_pair`
-- `proc complex_zero`
-- `proc complex_one`
-- `proc complex_i`
-- `proc complex_is_valid`
-- `proc complex_real`
-- `proc complex_imag`
-- `proc complex_clone`
-- `proc complex_equal`
-- `proc complex_is_zero`
-- `proc complex_is_real`
-- `proc complex_is_imaginary`
-- `proc complex_is_unit`
-- `proc complex_add`
-- `proc complex_sub`
-- `proc complex_neg`
-- `proc complex_scale`
-- `proc complex_mul`
-- `proc complex_square`
-- `proc complex_cube`
-- `proc complex_conj`
-- `proc complex_abs_sq`
-- `proc complex_norm`
-- `proc complex_abs`
-- `proc complex_manhattan`
-- `proc complex_chebyshev`
-- `proc complex_dot`
-- `proc complex_cross`
-- `proc complex_distance_sq`
-- `proc complex_distance`
-- `proc complex_arg_quadrant`
-- `proc complex_inv`
-- `proc complex_div`
-- `proc complex_has_inverse`
-- `proc complex_pow`
-- `proc complex_from_real`
-- `proc complex_swap`
-- `proc complex_perp_left`
-- `proc complex_perp_right`
-- `proc complex_mul_i`
-- `proc complex_mul_neg_i`
-- `proc complex_powers`
-- `proc complex_re`
-- `proc complex_im`
-- `proc complex_version`
-- `proc complex_ready`
-- `proc complex_selftest`
+- `proc abs_int` signature `proc abs_int(value: int) -> int {` example `abs_int`
+- `proc sqrt_floor` signature `proc sqrt_floor(value: int) -> int {` example `sqrt_floor`
+- `proc complex_pair` signature `proc complex_pair(real: int, imag: int) -> [int] {` example `complex_pair`
+- `proc complex_zero` signature `proc complex_zero() -> [int] {` example `complex_zero`
+- `proc complex_one` signature `proc complex_one() -> [int] {` example `complex_one`
+- `proc complex_i` signature `proc complex_i() -> [int] {` example `complex_i`
+- `proc complex_is_valid` signature `proc complex_is_valid(value: [int]) -> bool {` example `complex_is_valid`
+- `proc complex_real` signature `proc complex_real(value: [int]) -> int {` example `complex_real`
+- `proc complex_imag` signature `proc complex_imag(value: [int]) -> int {` example `complex_imag`
+- `proc complex_clone` signature `proc complex_clone(value: [int]) -> [int] {` example `complex_clone`
+- `proc complex_equal` signature `proc complex_equal(a: [int], b: [int]) -> bool {` example `complex_equal`
+- `proc complex_is_zero` signature `proc complex_is_zero(value: [int]) -> bool {` example `complex_is_zero`
+- `proc complex_is_real` signature `proc complex_is_real(value: [int]) -> bool {` example `complex_is_real`
+- `proc complex_is_imaginary` signature `proc complex_is_imaginary(value: [int]) -> bool {` example `complex_is_imaginary`
+- `proc complex_is_unit` signature `proc complex_is_unit(value: [int]) -> bool {` example `complex_is_unit`
+- `proc complex_add` signature `proc complex_add(a: [int], b: [int]) -> [int] {` example `complex_add`
+- `proc complex_sub` signature `proc complex_sub(a: [int], b: [int]) -> [int] {` example `complex_sub`
+- `proc complex_neg` signature `proc complex_neg(value: [int]) -> [int] {` example `complex_neg`
+- `proc complex_scale` signature `proc complex_scale(value: [int], scalar: int) -> [int] {` example `complex_scale`
+- `proc complex_mul` signature `proc complex_mul(a: [int], b: [int]) -> [int] {` example `complex_mul`
+- `proc complex_square` signature `proc complex_square(value: [int]) -> [int] {` example `complex_square`
+- `proc complex_cube` signature `proc complex_cube(value: [int]) -> [int] {` example `complex_cube`
+- `proc complex_conj` signature `proc complex_conj(value: [int]) -> [int] {` example `complex_conj`
+- `proc complex_abs_sq` signature `proc complex_abs_sq(value: [int]) -> int {` example `complex_abs_sq`
+- `proc complex_norm` signature `proc complex_norm(value: [int]) -> int {` example `complex_norm`
+- `proc complex_abs` signature `proc complex_abs(value: [int]) -> int {` example `complex_abs`
+- `proc complex_manhattan` signature `proc complex_manhattan(value: [int]) -> int {` example `complex_manhattan`
+- `proc complex_chebyshev` signature `proc complex_chebyshev(value: [int]) -> int {` example `complex_chebyshev`
+- `proc complex_dot` signature `proc complex_dot(a: [int], b: [int]) -> int {` example `complex_dot`
+- `proc complex_cross` signature `proc complex_cross(a: [int], b: [int]) -> int {` example `complex_cross`
+- `proc complex_distance_sq` signature `proc complex_distance_sq(a: [int], b: [int]) -> int {` example `complex_distance_sq`
+- `proc complex_distance` signature `proc complex_distance(a: [int], b: [int]) -> int {` example `complex_distance`
+- `proc complex_arg_quadrant` signature `proc complex_arg_quadrant(value: [int]) -> int {` example `complex_arg_quadrant`
+- `proc complex_inv` signature `proc complex_inv(value: [int]) -> [int] {` example `complex_inv`
+- `proc complex_div` signature `proc complex_div(a: [int], b: [int]) -> [int] {` example `complex_div`
+- `proc complex_has_inverse` signature `proc complex_has_inverse(value: [int]) -> bool {` example `complex_has_inverse`
+- `proc complex_pow` signature `proc complex_pow(value: [int], exponent: int) -> [int] {` example `complex_pow`
+- `proc complex_from_real` signature `proc complex_from_real(real: int) -> [int] {` example `complex_from_real`
+- `proc complex_swap` signature `proc complex_swap(value: [int]) -> [int] {` example `complex_swap`
+- `proc complex_perp_left` signature `proc complex_perp_left(value: [int]) -> [int] {` example `complex_perp_left`
+- `proc complex_perp_right` signature `proc complex_perp_right(value: [int]) -> [int] {` example `complex_perp_right`
+- `proc complex_mul_i` signature `proc complex_mul_i(value: [int]) -> [int] {` example `complex_mul_i`
+- `proc complex_mul_neg_i` signature `proc complex_mul_neg_i(value: [int]) -> [int] {` example `complex_mul_neg_i`
+- `proc complex_powers` signature `proc complex_powers(value: [int], count: int) -> [[int]] {` example `complex_powers`
+- `proc complex_re` signature `proc complex_re(value: [int]) -> int {` example `complex_re`
+- `proc complex_im` signature `proc complex_im(value: [int]) -> int {` example `complex_im`
+- `proc complex_version` signature `proc complex_version() -> string {` example `complex_version`
+- `proc complex_ready` signature `proc complex_ready() -> bool {` example `complex_ready`
+- `proc complex_selftest` signature `proc complex_selftest() -> bool {` example `complex_selftest`
 
 ## `src/vitte/stdlib/math/geometry.vitl`
 
-- `const PI_TIMES_1000000`
-- `proc abs_int`
-- `proc min_int`
-- `proc max_int`
-- `proc clamp_int`
-- `proc sign_int`
-- `proc sqrt_floor`
-- `proc point2`
-- `proc vec2`
-- `proc point2_zero`
-- `proc point2_is_valid`
-- `proc point2_x`
-- `proc point2_y`
-- `proc vec2_add`
-- `proc vec2_sub`
-- `proc vec2_neg`
-- `proc vec2_scale`
-- `proc vec2_equal`
-- `proc vec2_dot`
-- `proc vec2_cross`
-- `proc vec2_length_sq`
-- `proc vec2_manhattan`
-- `proc vec2_chebyshev`
-- `proc vec2_perp_left`
-- `proc vec2_perp_right`
-- `proc midpoint`
-- `proc midpoint_points`
-- `proc rect_area`
-- `proc rect_perimeter`
-- `proc rect_is_valid`
-- `proc rect_contains`
-- `proc rect_intersects`
-- `proc rect_intersection_area`
-- `proc rect_union_area`
-- `proc triangle_area2`
-- `proc triangle_area`
-- `proc triangle_area2_points`
-- `proc triangle_area_points`
-- `proc triangle_perimeter_manhattan`
-- `proc distance_sq`
-- `proc distance`
-- `proc manhattan_distance`
-- `proc chebyshev_distance`
-- `proc norm1`
-- `proc norm2_sq`
-- `proc norm2`
-- `proc norm_inf`
-- `proc point_to_origin_distance_sq`
-- `proc point_to_origin_distance`
-- `proc cross2`
-- `proc dot2`
-- `proc orientation`
-- `proc collinear`
-- `proc left_turn`
-- `proc right_turn`
-- `proc on_segment`
-- `proc segments_intersect`
-- `proc segment_length_sq`
-- `proc segment_length`
-- `proc circle_area_times_1000000`
-- `proc circle_perimeter_times_1000000`
-- `proc point_in_circle`
-- `proc bbox2`
-- `proc bbox_contains`
-- `proc bbox_width`
-- `proc bbox_height`
-- `proc bbox_area`
-- `proc l1_distance`
-- `proc l2_distance_sq`
-- `proc linf_distance`
-- `proc geometry_version`
-- `proc geometry_ready`
-- `proc geometry_selftest`
+- `const PI_TIMES_1000000` signature `const PI_TIMES_1000000: int = 3141592` example `PI_TIMES_1000000`
+- `proc abs_int` signature `proc abs_int(value: int) -> int {` example `abs_int`
+- `proc min_int` signature `proc min_int(a: int, b: int) -> int {` example `min_int`
+- `proc max_int` signature `proc max_int(a: int, b: int) -> int {` example `max_int`
+- `proc clamp_int` signature `proc clamp_int(value: int, low: int, high: int) -> int {` example `clamp_int`
+- `proc sign_int` signature `proc sign_int(value: int) -> int {` example `sign_int`
+- `proc sqrt_floor` signature `proc sqrt_floor(value: int) -> int {` example `sqrt_floor`
+- `proc point2` signature `proc point2(x: int, y: int) -> [int] {` example `point2`
+- `proc vec2` signature `proc vec2(x: int, y: int) -> [int] {` example `vec2`
+- `proc point2_zero` signature `proc point2_zero() -> [int] {` example `point2_zero`
+- `proc point2_is_valid` signature `proc point2_is_valid(p: [int]) -> bool {` example `point2_is_valid`
+- `proc point2_x` signature `proc point2_x(p: [int]) -> int {` example `point2_x`
+- `proc point2_y` signature `proc point2_y(p: [int]) -> int {` example `point2_y`
+- `proc vec2_add` signature `proc vec2_add(a: [int], b: [int]) -> [int] {` example `vec2_add`
+- `proc vec2_sub` signature `proc vec2_sub(a: [int], b: [int]) -> [int] {` example `vec2_sub`
+- `proc vec2_neg` signature `proc vec2_neg(v: [int]) -> [int] {` example `vec2_neg`
+- `proc vec2_scale` signature `proc vec2_scale(v: [int], k: int) -> [int] {` example `vec2_scale`
+- `proc vec2_equal` signature `proc vec2_equal(a: [int], b: [int]) -> bool {` example `vec2_equal`
+- `proc vec2_dot` signature `proc vec2_dot(a: [int], b: [int]) -> int {` example `vec2_dot`
+- `proc vec2_cross` signature `proc vec2_cross(a: [int], b: [int]) -> int {` example `vec2_cross`
+- `proc vec2_length_sq` signature `proc vec2_length_sq(v: [int]) -> int {` example `vec2_length_sq`
+- `proc vec2_manhattan` signature `proc vec2_manhattan(v: [int]) -> int {` example `vec2_manhattan`
+- `proc vec2_chebyshev` signature `proc vec2_chebyshev(v: [int]) -> int {` example `vec2_chebyshev`
+- `proc vec2_perp_left` signature `proc vec2_perp_left(v: [int]) -> [int] {` example `vec2_perp_left`
+- `proc vec2_perp_right` signature `proc vec2_perp_right(v: [int]) -> [int] {` example `vec2_perp_right`
+- `proc midpoint` signature `proc midpoint(ax: int, ay: int, bx: int, by: int) -> [int] {` example `midpoint`
+- `proc midpoint_points` signature `proc midpoint_points(a: [int], b: [int]) -> [int] {` example `midpoint_points`
+- `proc rect_area` signature `proc rect_area(width: int, height: int) -> int {` example `rect_area`
+- `proc rect_perimeter` signature `proc rect_perimeter(width: int, height: int) -> int {` example `rect_perimeter`
+- `proc rect_is_valid` signature `proc rect_is_valid(width: int, height: int) -> bool {` example `rect_is_valid`
+- `proc rect_contains` signature `proc rect_contains(px: int, py: int, x: int, y: int, width: int, height: int) -> bool {` example `rect_contains`
+- `proc rect_intersects` signature `proc rect_intersects(ax: int, ay: int, aw: int, ah: int, bx: int, by: int, bw: int, bh: int) -> bool {` example `rect_intersects`
+- `proc rect_intersection_area` signature `proc rect_intersection_area(ax: int, ay: int, aw: int, ah: int, bx: int, by: int, bw: int, bh: int) -> int {` example `rect_intersection_area`
+- `proc rect_union_area` signature `proc rect_union_area(ax: int, ay: int, aw: int, ah: int, bx: int, by: int, bw: int, bh: int) -> int {` example `rect_union_area`
+- `proc triangle_area2` signature `proc triangle_area2(base: int, height: int) -> int {` example `triangle_area2`
+- `proc triangle_area` signature `proc triangle_area(base: int, height: int) -> int {` example `triangle_area`
+- `proc triangle_area2_points` signature `proc triangle_area2_points(ax: int, ay: int, bx: int, by: int, cx: int, cy: int) -> int {` example `triangle_area2_points`
+- `proc triangle_area_points` signature `proc triangle_area_points(ax: int, ay: int, bx: int, by: int, cx: int, cy: int) -> int {` example `triangle_area_points`
+- `proc triangle_perimeter_manhattan` signature `proc triangle_perimeter_manhattan(ax: int, ay: int, bx: int, by: int, cx: int, cy: int) -> int {` example `triangle_perimeter_manhattan`
+- `proc distance_sq` signature `proc distance_sq(ax: int, ay: int, bx: int, by: int) -> int {` example `distance_sq`
+- `proc distance` signature `proc distance(ax: int, ay: int, bx: int, by: int) -> int {` example `distance`
+- `proc manhattan_distance` signature `proc manhattan_distance(ax: int, ay: int, bx: int, by: int) -> int {` example `manhattan_distance`
+- `proc chebyshev_distance` signature `proc chebyshev_distance(ax: int, ay: int, bx: int, by: int) -> int {` example `chebyshev_distance`
+- `proc norm1` signature `proc norm1(x: int, y: int) -> int {` example `norm1`
+- `proc norm2_sq` signature `proc norm2_sq(x: int, y: int) -> int {` example `norm2_sq`
+- `proc norm2` signature `proc norm2(x: int, y: int) -> int {` example `norm2`
+- `proc norm_inf` signature `proc norm_inf(x: int, y: int) -> int {` example `norm_inf`
+- `proc point_to_origin_distance_sq` signature `proc point_to_origin_distance_sq(x: int, y: int) -> int {` example `point_to_origin_distance_sq`
+- `proc point_to_origin_distance` signature `proc point_to_origin_distance(x: int, y: int) -> int {` example `point_to_origin_distance`
+- `proc cross2` signature `proc cross2(ax: int, ay: int, bx: int, by: int) -> int {` example `cross2`
+- `proc dot2` signature `proc dot2(ax: int, ay: int, bx: int, by: int) -> int {` example `dot2`
+- `proc orientation` signature `proc orientation(ax: int, ay: int, bx: int, by: int, cx: int, cy: int) -> int {` example `orientation`
+- `proc collinear` signature `proc collinear(ax: int, ay: int, bx: int, by: int, cx: int, cy: int) -> bool {` example `collinear`
+- `proc left_turn` signature `proc left_turn(ax: int, ay: int, bx: int, by: int, cx: int, cy: int) -> bool {` example `left_turn`
+- `proc right_turn` signature `proc right_turn(ax: int, ay: int, bx: int, by: int, cx: int, cy: int) -> bool {` example `right_turn`
+- `proc on_segment` signature `proc on_segment(ax: int, ay: int, bx: int, by: int, px: int, py: int) -> bool {` example `on_segment`
+- `proc segments_intersect` signature `proc segments_intersect(ax: int, ay: int, bx: int, by: int, cx: int, cy: int, dx: int, dy: int) -> bool {` example `segments_intersect`
+- `proc segment_length_sq` signature `proc segment_length_sq(ax: int, ay: int, bx: int, by: int) -> int {` example `segment_length_sq`
+- `proc segment_length` signature `proc segment_length(ax: int, ay: int, bx: int, by: int) -> int {` example `segment_length`
+- `proc circle_area_times_1000000` signature `proc circle_area_times_1000000(radius: int) -> int {` example `circle_area_times_1000000`
+- `proc circle_perimeter_times_1000000` signature `proc circle_perimeter_times_1000000(radius: int) -> int {` example `circle_perimeter_times_1000000`
+- `proc point_in_circle` signature `proc point_in_circle(px: int, py: int, cx: int, cy: int, radius: int) -> bool {` example `point_in_circle`
+- `proc bbox2` signature `proc bbox2(ax: int, ay: int, bx: int, by: int) -> [int] {` example `bbox2`
+- `proc bbox_contains` signature `proc bbox_contains(box: [int], px: int, py: int) -> bool {` example `bbox_contains`
+- `proc bbox_width` signature `proc bbox_width(box: [int]) -> int {` example `bbox_width`
+- `proc bbox_height` signature `proc bbox_height(box: [int]) -> int {` example `bbox_height`
+- `proc bbox_area` signature `proc bbox_area(box: [int]) -> int {` example `bbox_area`
+- `proc l1_distance` signature `proc l1_distance(ax: int, ay: int, bx: int, by: int) -> int {` example `l1_distance`
+- `proc l2_distance_sq` signature `proc l2_distance_sq(ax: int, ay: int, bx: int, by: int) -> int {` example `l2_distance_sq`
+- `proc linf_distance` signature `proc linf_distance(ax: int, ay: int, bx: int, by: int) -> int {` example `linf_distance`
+- `proc geometry_version` signature `proc geometry_version() -> string {` example `geometry_version`
+- `proc geometry_ready` signature `proc geometry_ready() -> bool {` example `geometry_ready`
+- `proc geometry_selftest` signature `proc geometry_selftest() -> bool {` example `geometry_selftest`
 
 ## `src/vitte/stdlib/math/matrix.vitl`
 
-- `proc mat2`
-- `proc mat2_zero`
-- `proc mat2_identity`
-- `proc mat2_diag`
-- `proc mat2_is_valid`
-- `proc mat2_clone`
-- `proc mat2_m11`
-- `proc mat2_m12`
-- `proc mat2_m21`
-- `proc mat2_m22`
-- `proc mat2_row0`
-- `proc mat2_row1`
-- `proc mat2_col0`
-- `proc mat2_col1`
-- `proc mat2_equal`
-- `proc mat2_is_zero`
-- `proc mat2_is_identity`
-- `proc mat2_is_diagonal`
-- `proc mat2_is_symmetric`
-- `proc mat2_is_upper_triangular`
-- `proc mat2_is_lower_triangular`
-- `proc mat2_add`
-- `proc mat2_sub`
-- `proc mat2_neg`
-- `proc mat2_scale`
-- `proc mat2_hadamard`
-- `proc mat2_mul`
-- `proc mat2_mul_vec2`
-- `proc vec2_mul_mat2`
-- `proc mat2_trace`
-- `proc mat2_det`
-- `proc mat2_transpose`
-- `proc mat2_adjugate`
-- `proc mat2_cofactor`
-- `proc mat2_inv`
-- `proc mat2_has_inverse`
-- `proc mat2_pow`
-- `proc mod_norm`
-- `proc mat2_mod_norm`
-- `proc mat2_add_mod`
-- `proc mat2_sub_mod`
-- `proc mat2_scale_mod`
-- `proc mat2_mul_mod`
-- `proc mat2_det_mod`
-- `proc mat2_inv_mod`
-- `proc mat2_pow_mod`
-- `proc mat2_fibonacci_matrix`
-- `proc mat2_fib`
-- `proc mat2_fib_mod`
-- `proc mat2_id`
-- `proc matrix_version`
-- `proc matrix_ready`
-- `proc matrix_selftest`
+- `proc mat2` signature `proc mat2(a: int, b: int, c: int, d: int) -> [int] { give [a, b, c, d] }` example `mat2`
+- `proc mat2_zero` signature `proc mat2_zero() -> [int] { give [0, 0, 0, 0] }` example `mat2_zero`
+- `proc mat2_identity` signature `proc mat2_identity() -> [int] { give [1, 0, 0, 1] }` example `mat2_identity`
+- `proc mat2_diag` signature `proc mat2_diag(a: int, d: int) -> [int] { give [a, 0, 0, d] }` example `mat2_diag`
+- `proc mat2_is_valid` signature `proc mat2_is_valid(m: [int]) -> bool { give m.len == 4 }` example `mat2_is_valid`
+- `proc mat2_clone` signature `proc mat2_clone(m: [int]) -> [int] { give m }` example `mat2_clone`
+- `proc mat2_m11` signature `proc mat2_m11(m: [int]) -> int { if m.len != 4 { give 0 } give m[0] }` example `mat2_m11`
+- `proc mat2_m12` signature `proc mat2_m12(m: [int]) -> int { if m.len != 4 { give 0 } give m[1] }` example `mat2_m12`
+- `proc mat2_m21` signature `proc mat2_m21(m: [int]) -> int { if m.len != 4 { give 0 } give m[2] }` example `mat2_m21`
+- `proc mat2_m22` signature `proc mat2_m22(m: [int]) -> int { if m.len != 4 { give 0 } give m[3] }` example `mat2_m22`
+- `proc mat2_row0` signature `proc mat2_row0(m: [int]) -> [int] { if m.len != 4 { give [] } give [m[0], m[1]] }` example `mat2_row0`
+- `proc mat2_row1` signature `proc mat2_row1(m: [int]) -> [int] { if m.len != 4 { give [] } give [m[2], m[3]] }` example `mat2_row1`
+- `proc mat2_col0` signature `proc mat2_col0(m: [int]) -> [int] { if m.len != 4 { give [] } give [m[0], m[2]] }` example `mat2_col0`
+- `proc mat2_col1` signature `proc mat2_col1(m: [int]) -> [int] { if m.len != 4 { give [] } give [m[1], m[3]] }` example `mat2_col1`
+- `proc mat2_equal` signature `proc mat2_equal(a: [int], b: [int]) -> bool { give a.len == 4 and b.len == 4 and a[0] == b[0] and a[1] == b[1] and a[2] == b[2] and a[3] == b[3] }` example `mat2_equal`
+- `proc mat2_is_zero` signature `proc mat2_is_zero(m: [int]) -> bool { give mat2_equal(m, mat2_zero()) }` example `mat2_is_zero`
+- `proc mat2_is_identity` signature `proc mat2_is_identity(m: [int]) -> bool { give mat2_equal(m, mat2_identity()) }` example `mat2_is_identity`
+- `proc mat2_is_diagonal` signature `proc mat2_is_diagonal(m: [int]) -> bool { give m.len == 4 and m[1] == 0 and m[2] == 0 }` example `mat2_is_diagonal`
+- `proc mat2_is_symmetric` signature `proc mat2_is_symmetric(m: [int]) -> bool { give m.len == 4 and m[1] == m[2] }` example `mat2_is_symmetric`
+- `proc mat2_is_upper_triangular` signature `proc mat2_is_upper_triangular(m: [int]) -> bool { give m.len == 4 and m[2] == 0 }` example `mat2_is_upper_triangular`
+- `proc mat2_is_lower_triangular` signature `proc mat2_is_lower_triangular(m: [int]) -> bool { give m.len == 4 and m[1] == 0 }` example `mat2_is_lower_triangular`
+- `proc mat2_add` signature `proc mat2_add(a: [int], b: [int]) -> [int] { if not mat2_is_valid(a) or not mat2_is_valid(b) { give [] } give [a[0] + b[0], a[1] + b[1], a[2] + b[2], a[3] + b[3]] }` example `mat2_add`
+- `proc mat2_sub` signature `proc mat2_sub(a: [int], b: [int]) -> [int] { if not mat2_is_valid(a) or not mat2_is_valid(b) { give [] } give [a[0] - b[0], a[1] - b[1], a[2] - b[2], a[3] - b[3]] }` example `mat2_sub`
+- `proc mat2_neg` signature `proc mat2_neg(m: [int]) -> [int] { if not mat2_is_valid(m) { give [] } give [0 - m[0], 0 - m[1], 0 - m[2], 0 - m[3]] }` example `mat2_neg`
+- `proc mat2_scale` signature `proc mat2_scale(m: [int], k: int) -> [int] { if not mat2_is_valid(m) { give [] } give [m[0] * k, m[1] * k, m[2] * k, m[3] * k] }` example `mat2_scale`
+- `proc mat2_hadamard` signature `proc mat2_hadamard(a: [int], b: [int]) -> [int] { if not mat2_is_valid(a) or not mat2_is_valid(b) { give [] } give [a[0] * b[0], a[1] * b[1], a[2] * b[2], a[3] * b[3]] }` example `mat2_hadamard`
+- `proc mat2_mul` signature `proc mat2_mul(a: [int], b: [int]) -> [int] { if not mat2_is_valid(a) or not mat2_is_valid(b) { give [] } give [a[0] * b[0] + a[1] * b[2], a[0] * b[1] + a[1] * b[3], a[2] * b[0] + a[3] * b[2], a[2] * b[1] + a[3] * b[3]] }` example `mat2_mul`
+- `proc mat2_mul_vec2` signature `proc mat2_mul_vec2(m: [int], v: [int]) -> [int] { if not mat2_is_valid(m) or v.len != 2 { give [] } give [m[0] * v[0] + m[1] * v[1], m[2] * v[0] + m[3] * v[1]] }` example `mat2_mul_vec2`
+- `proc vec2_mul_mat2` signature `proc vec2_mul_mat2(v: [int], m: [int]) -> [int] { if not mat2_is_valid(m) or v.len != 2 { give [] } give [v[0] * m[0] + v[1] * m[2], v[0] * m[1] + v[1] * m[3]] }` example `vec2_mul_mat2`
+- `proc mat2_trace` signature `proc mat2_trace(m: [int]) -> int { if not mat2_is_valid(m) { give 0 } give m[0] + m[3] }` example `mat2_trace`
+- `proc mat2_det` signature `proc mat2_det(m: [int]) -> int { if not mat2_is_valid(m) { give 0 } give m[0] * m[3] - m[1] * m[2] }` example `mat2_det`
+- `proc mat2_transpose` signature `proc mat2_transpose(m: [int]) -> [int] { if not mat2_is_valid(m) { give [] } give [m[0], m[2], m[1], m[3]] }` example `mat2_transpose`
+- `proc mat2_adjugate` signature `proc mat2_adjugate(m: [int]) -> [int] { if not mat2_is_valid(m) { give [] } give [m[3], 0 - m[1], 0 - m[2], m[0]] }` example `mat2_adjugate`
+- `proc mat2_cofactor` signature `proc mat2_cofactor(m: [int]) -> [int] { give mat2_adjugate(m) }` example `mat2_cofactor`
+- `proc mat2_inv` signature `proc mat2_inv(m: [int]) -> [int] { let det: int = mat2_det(m) if det == 0 { give [] } let adj: [int] = mat2_adjugate(m) give [adj[0] / det, adj[1] / det, adj[2] / det, adj[3] / det] }` example `mat2_inv`
+- `proc mat2_has_inverse` signature `proc mat2_has_inverse(m: [int]) -> bool { give mat2_det(m) != 0 }` example `mat2_has_inverse`
+- `proc mat2_pow` signature `proc mat2_pow(m: [int], exp: int) -> [int] { if exp < 0 { give [] } let out: [int] = mat2_identity() let base: [int] = m let e: int = exp while e > 0 { if e % 2 == 1 { set out = mat2_mul(out, base) } set base = mat2_mul(base, base); set e = e / 2 } give out }` example `mat2_pow`
+- `proc mod_norm` signature `proc mod_norm(value: int, modulus: int) -> int { if modulus <= 0 { give 0 } let out: int = value % modulus if out < 0 { give out + modulus } give out }` example `mod_norm`
+- `proc mat2_mod_norm` signature `proc mat2_mod_norm(m: [int], modulus: int) -> [int] { if not mat2_is_valid(m) { give [] } give [mod_norm(m[0], modulus), mod_norm(m[1], modulus), mod_norm(m[2], modulus), mod_norm(m[3], modulus)] }` example `mat2_mod_norm`
+- `proc mat2_add_mod` signature `proc mat2_add_mod(a: [int], b: [int], modulus: int) -> [int] { give mat2_mod_norm(mat2_add(a, b), modulus) }` example `mat2_add_mod`
+- `proc mat2_sub_mod` signature `proc mat2_sub_mod(a: [int], b: [int], modulus: int) -> [int] { give mat2_mod_norm(mat2_sub(a, b), modulus) }` example `mat2_sub_mod`
+- `proc mat2_scale_mod` signature `proc mat2_scale_mod(m: [int], k: int, modulus: int) -> [int] { give mat2_mod_norm(mat2_scale(m, k), modulus) }` example `mat2_scale_mod`
+- `proc mat2_mul_mod` signature `proc mat2_mul_mod(a: [int], b: [int], modulus: int) -> [int] { give mat2_mod_norm(mat2_mul(a, b), modulus) }` example `mat2_mul_mod`
+- `proc mat2_det_mod` signature `proc mat2_det_mod(m: [int], modulus: int) -> int { give mod_norm(mat2_det(m), modulus) }` example `mat2_det_mod`
+- `proc mat2_inv_mod` signature `proc mat2_inv_mod(m: [int], modulus: int) -> [int] { give mat2_mod_norm(mat2_inv(m), modulus) }` example `mat2_inv_mod`
+- `proc mat2_pow_mod` signature `proc mat2_pow_mod(m: [int], exp: int, modulus: int) -> [int] { give mat2_mod_norm(mat2_pow(m, exp), modulus) }` example `mat2_pow_mod`
+- `proc mat2_fibonacci_matrix` signature `proc mat2_fibonacci_matrix() -> [int] { give [1, 1, 1, 0] }` example `mat2_fibonacci_matrix`
+- `proc mat2_fib` signature `proc mat2_fib(n: int) -> int { if n <= 0 { give 0 } if n == 1 { give 1 } let p: [int] = mat2_pow(mat2_fibonacci_matrix(), n - 1) give p[0] }` example `mat2_fib`
+- `proc mat2_fib_mod` signature `proc mat2_fib_mod(n: int, modulus: int) -> int { give mod_norm(mat2_fib(n), modulus) }` example `mat2_fib_mod`
+- `proc mat2_id` signature `proc mat2_id() -> [int] { give mat2_identity() }` example `mat2_id`
+- `proc matrix_version` signature `proc matrix_version() -> string { give "max-1" }` example `matrix_version`
+- `proc matrix_ready` signature `proc matrix_ready() -> bool { give true }` example `matrix_ready`
+- `proc matrix_selftest` signature `proc matrix_selftest() -> bool { let m: [int] = mat2(1, 2, 3, 4) let inv: [int] = mat2_inv(mat2(2, 0, 0, 2)) give matrix_ready() and matrix_version() == "max-1" and mat2_det(m) == -2 and mat2_trace(m) == 5 and mat2_mul_vec2(m, [1, 1])[0] == 3 and mat2_has_inverse(mat2(2, 0, 0, 2)) and inv.len == 4 and mat2_fib(8) == 21 }` example `matrix_selftest`
 
 ## `src/vitte/stdlib/math/modular.vitl`
 
-- `const MOD_INVALID`
-- `form EgcdResult`
-- `form Crt2Result`
-- `proc abs_int`
-- `proc min_int`
-- `proc max_int`
-- `proc mod_is_valid`
-- `proc mod_norm`
-- `proc mod_is_zero`
-- `proc mod_equal`
-- `proc are_congruent`
-- `proc mod_add`
-- `proc mod_sub`
-- `proc mod_neg`
-- `proc mod_double`
-- `proc mod_mul`
-- `proc mod_mul_safe`
-- `proc mod_square`
-- `proc mod_cube`
-- `proc extended_gcd`
-- `proc mod_is_unit`
-- `proc mod_has_inverse`
-- `proc mod_inv`
-- `proc mod_div`
-- `proc mod_half`
-- `proc mod_pow`
-- `proc mod_pow2`
-- `proc mod_pow10`
-- `proc solve_linear_congruence`
-- `proc crt2_full`
-- `proc crt2`
-- `proc crt`
-- `proc mod_factorial`
-- `proc mod_permutations`
-- `proc mod_combinations_prime`
-- `proc mod_combinations`
-- `proc mod_factorial_table`
-- `proc mod_inverse_table`
-- `proc mod_inverse_factorial_table`
-- `proc mod_fibonacci`
-- `proc mod_arithmetic_sum`
-- `proc mod_geometric_sum`
-- `proc mod_powers`
-- `proc mod_poly_eval`
-- `proc mod_hash_step`
-- `proc mod`
-- `proc inv_mod`
-- `proc modular_version`
-- `proc modular_ready`
-- `proc modular_selftest`
+- `const MOD_INVALID` signature `const MOD_INVALID: int = 0` example `MOD_INVALID`
+- `form EgcdResult` signature `form EgcdResult {` example `EgcdResult`
+- `form Crt2Result` signature `form Crt2Result {` example `Crt2Result`
+- `proc abs_int` signature `proc abs_int(value: int) -> int {` example `abs_int`
+- `proc min_int` signature `proc min_int(a: int, b: int) -> int {` example `min_int`
+- `proc max_int` signature `proc max_int(a: int, b: int) -> int {` example `max_int`
+- `proc mod_is_valid` signature `proc mod_is_valid(modulus: int) -> bool {` example `mod_is_valid`
+- `proc mod_norm` signature `proc mod_norm(value: int, modulus: int) -> int {` example `mod_norm`
+- `proc mod_is_zero` signature `proc mod_is_zero(value: int, modulus: int) -> bool {` example `mod_is_zero`
+- `proc mod_equal` signature `proc mod_equal(a: int, b: int, modulus: int) -> bool {` example `mod_equal`
+- `proc are_congruent` signature `proc are_congruent(a: int, b: int, modulus: int) -> bool {` example `are_congruent`
+- `proc mod_add` signature `proc mod_add(a: int, b: int, modulus: int) -> int {` example `mod_add`
+- `proc mod_sub` signature `proc mod_sub(a: int, b: int, modulus: int) -> int {` example `mod_sub`
+- `proc mod_neg` signature `proc mod_neg(a: int, modulus: int) -> int {` example `mod_neg`
+- `proc mod_double` signature `proc mod_double(a: int, modulus: int) -> int {` example `mod_double`
+- `proc mod_mul` signature `proc mod_mul(a: int, b: int, modulus: int) -> int {` example `mod_mul`
+- `proc mod_mul_safe` signature `proc mod_mul_safe(a: int, b: int, modulus: int) -> int {` example `mod_mul_safe`
+- `proc mod_square` signature `proc mod_square(a: int, modulus: int) -> int {` example `mod_square`
+- `proc mod_cube` signature `proc mod_cube(a: int, modulus: int) -> int {` example `mod_cube`
+- `proc extended_gcd` signature `proc extended_gcd(a: int, b: int) -> EgcdResult {` example `extended_gcd`
+- `proc mod_is_unit` signature `proc mod_is_unit(a: int, modulus: int) -> bool {` example `mod_is_unit`
+- `proc mod_has_inverse` signature `proc mod_has_inverse(a: int, modulus: int) -> bool {` example `mod_has_inverse`
+- `proc mod_inv` signature `proc mod_inv(a: int, modulus: int) -> int {` example `mod_inv`
+- `proc mod_div` signature `proc mod_div(a: int, b: int, modulus: int) -> int {` example `mod_div`
+- `proc mod_half` signature `proc mod_half(a: int, modulus: int) -> int {` example `mod_half`
+- `proc mod_pow` signature `proc mod_pow(a: int, exp: int, modulus: int) -> int {` example `mod_pow`
+- `proc mod_pow2` signature `proc mod_pow2(exp: int, modulus: int) -> int {` example `mod_pow2`
+- `proc mod_pow10` signature `proc mod_pow10(exp: int, modulus: int) -> int {` example `mod_pow10`
+- `proc solve_linear_congruence` signature `proc solve_linear_congruence(a: int, b: int, modulus: int) -> int {` example `solve_linear_congruence`
+- `proc crt2_full` signature `proc crt2_full(a1: int, m1: int, a2: int, m2: int) -> Crt2Result {` example `crt2_full`
+- `proc crt2` signature `proc crt2(a1: int, m1: int, a2: int, m2: int) -> int {` example `crt2`
+- `proc crt` signature `proc crt(residues: [int], moduli: [int]) -> int {` example `crt`
+- `proc mod_factorial` signature `proc mod_factorial(n: int, modulus: int) -> int {` example `mod_factorial`
+- `proc mod_permutations` signature `proc mod_permutations(n: int, k: int, modulus: int) -> int {` example `mod_permutations`
+- `proc mod_combinations_prime` signature `proc mod_combinations_prime(n: int, k: int, modulus: int) -> int {` example `mod_combinations_prime`
+- `proc mod_combinations` signature `proc mod_combinations(n: int, k: int, modulus: int) -> int {` example `mod_combinations`
+- `proc mod_factorial_table` signature `proc mod_factorial_table(n: int, modulus: int) -> [int] {` example `mod_factorial_table`
+- `proc mod_inverse_table` signature `proc mod_inverse_table(n: int, modulus: int) -> [int] {` example `mod_inverse_table`
+- `proc mod_inverse_factorial_table` signature `proc mod_inverse_factorial_table(n: int, modulus: int) -> [int] {` example `mod_inverse_factorial_table`
+- `proc mod_fibonacci` signature `proc mod_fibonacci(n: int, modulus: int) -> int {` example `mod_fibonacci`
+- `proc mod_arithmetic_sum` signature `proc mod_arithmetic_sum(first: int, step: int, count0: int, modulus: int) -> int {` example `mod_arithmetic_sum`
+- `proc mod_geometric_sum` signature `proc mod_geometric_sum(first: int, ratio: int, count0: int, modulus: int) -> int {` example `mod_geometric_sum`
+- `proc mod_powers` signature `proc mod_powers(base: int, count0: int, modulus: int) -> [int] {` example `mod_powers`
+- `proc mod_poly_eval` signature `proc mod_poly_eval(coeffs: [int], x: int, modulus: int) -> int {` example `mod_poly_eval`
+- `proc mod_hash_step` signature `proc mod_hash_step(hash0: int, value: int, base: int, modulus: int) -> int {` example `mod_hash_step`
+- `proc mod` signature `proc mod(value: int, modulus: int) -> int {` example `mod`
+- `proc inv_mod` signature `proc inv_mod(value: int, modulus: int) -> int {` example `inv_mod`
+- `proc modular_version` signature `proc modular_version() -> string {` example `modular_version`
+- `proc modular_ready` signature `proc modular_ready() -> bool {` example `modular_ready`
+- `proc modular_selftest` signature `proc modular_selftest() -> bool {` example `modular_selftest`
 
 ## `src/vitte/stdlib/math/number_theory.vitl`
 
-- `proc abs_int`
-- `proc min_int`
-- `proc max_int`
-- `proc reverse_copy`
-- `proc is_even`
-- `proc is_odd`
-- `proc is_multiple_of`
-- `proc divides`
-- `proc gcd`
-- `proc lcm`
-- `proc are_coprime`
-- `proc gcd_many`
-- `proc lcm_many`
-- `proc is_prime`
-- `proc is_composite`
-- `proc next_prime`
-- `proc prev_prime`
-- `proc nth_prime`
-- `proc primes_up_to`
-- `proc prime_count`
-- `proc prime_factors`
-- `proc distinct_prime_factors`
-- `proc prime_factor_count`
-- `proc distinct_prime_factor_count`
-- `proc smallest_prime_factor`
-- `proc largest_prime_factor`
-- `proc divisors`
-- `proc proper_divisors`
-- `proc divisors_count`
-- `proc sum_of_divisors`
-- `proc proper_divisors_sum`
-- `proc totient`
-- `proc mobius`
-- `proc is_perfect_number`
-- `proc is_abundant_number`
-- `proc is_deficient_number`
-- `proc coprime`
-- `proc number_theory_version`
-- `proc number_theory_ready`
-- `proc number_theory_selftest`
+- `proc abs_int` signature `proc abs_int(value: int) -> int {` example `abs_int`
+- `proc min_int` signature `proc min_int(a: int, b: int) -> int {` example `min_int`
+- `proc max_int` signature `proc max_int(a: int, b: int) -> int {` example `max_int`
+- `proc reverse_copy` signature `proc reverse_copy(values: [int]) -> [int] {` example `reverse_copy`
+- `proc is_even` signature `proc is_even(value: int) -> bool {` example `is_even`
+- `proc is_odd` signature `proc is_odd(value: int) -> bool {` example `is_odd`
+- `proc is_multiple_of` signature `proc is_multiple_of(value: int, divisor: int) -> bool {` example `is_multiple_of`
+- `proc divides` signature `proc divides(divisor: int, value: int) -> bool {` example `divides`
+- `proc gcd` signature `proc gcd(a: int, b: int) -> int {` example `gcd`
+- `proc lcm` signature `proc lcm(a: int, b: int) -> int {` example `lcm`
+- `proc are_coprime` signature `proc are_coprime(a: int, b: int) -> bool {` example `are_coprime`
+- `proc gcd_many` signature `proc gcd_many(values: [int]) -> int {` example `gcd_many`
+- `proc lcm_many` signature `proc lcm_many(values: [int]) -> int {` example `lcm_many`
+- `proc is_prime` signature `proc is_prime(value: int) -> bool {` example `is_prime`
+- `proc is_composite` signature `proc is_composite(value: int) -> bool {` example `is_composite`
+- `proc next_prime` signature `proc next_prime(value: int) -> int {` example `next_prime`
+- `proc prev_prime` signature `proc prev_prime(value: int) -> int {` example `prev_prime`
+- `proc nth_prime` signature `proc nth_prime(index: int) -> int {` example `nth_prime`
+- `proc primes_up_to` signature `proc primes_up_to(limit: int) -> [int] {` example `primes_up_to`
+- `proc prime_count` signature `proc prime_count(limit: int) -> int {` example `prime_count`
+- `proc prime_factors` signature `proc prime_factors(value: int) -> [int] {` example `prime_factors`
+- `proc distinct_prime_factors` signature `proc distinct_prime_factors(value: int) -> [int] {` example `distinct_prime_factors`
+- `proc prime_factor_count` signature `proc prime_factor_count(value: int) -> int {` example `prime_factor_count`
+- `proc distinct_prime_factor_count` signature `proc distinct_prime_factor_count(value: int) -> int {` example `distinct_prime_factor_count`
+- `proc smallest_prime_factor` signature `proc smallest_prime_factor(value: int) -> int {` example `smallest_prime_factor`
+- `proc largest_prime_factor` signature `proc largest_prime_factor(value: int) -> int {` example `largest_prime_factor`
+- `proc divisors` signature `proc divisors(value: int) -> [int] {` example `divisors`
+- `proc proper_divisors` signature `proc proper_divisors(value: int) -> [int] {` example `proper_divisors`
+- `proc divisors_count` signature `proc divisors_count(value: int) -> int {` example `divisors_count`
+- `proc sum_of_divisors` signature `proc sum_of_divisors(value: int) -> int {` example `sum_of_divisors`
+- `proc proper_divisors_sum` signature `proc proper_divisors_sum(value: int) -> int {` example `proper_divisors_sum`
+- `proc totient` signature `proc totient(value: int) -> int {` example `totient`
+- `proc mobius` signature `proc mobius(value: int) -> int {` example `mobius`
+- `proc is_perfect_number` signature `proc is_perfect_number(value: int) -> bool {` example `is_perfect_number`
+- `proc is_abundant_number` signature `proc is_abundant_number(value: int) -> bool {` example `is_abundant_number`
+- `proc is_deficient_number` signature `proc is_deficient_number(value: int) -> bool {` example `is_deficient_number`
+- `proc coprime` signature `proc coprime(a: int, b: int) -> bool {` example `coprime`
+- `proc number_theory_version` signature `proc number_theory_version() -> string {` example `number_theory_version`
+- `proc number_theory_ready` signature `proc number_theory_ready() -> bool {` example `number_theory_ready`
+- `proc number_theory_selftest` signature `proc number_theory_selftest() -> bool {` example `number_theory_selftest`
 
 ## `src/vitte/stdlib/math/powers.vitl`
 
-- `proc abs_int`
-- `proc min_int`
-- `proc gcd_int`
-- `proc pow_int`
-- `proc pow2`
-- `proc pow10`
-- `proc square`
-- `proc cube`
-- `proc factorial`
-- `proc double_factorial`
-- `proc falling_factorial`
-- `proc rising_factorial`
-- `proc triangular`
-- `proc fibonacci`
-- `proc fibonacci_sum`
-- `proc fibonacci_series`
-- `proc is_square_local`
-- `proc is_fibonacci`
-- `proc binomial`
-- `proc combinations`
-- `proc choose`
-- `proc permutations`
-- `proc arrangements`
-- `proc combinations_with_repetition`
-- `proc fib`
-- `proc powers_version`
-- `proc powers_ready`
-- `proc powers_selftest`
+- `proc abs_int` signature `proc abs_int(value: int) -> int {` example `abs_int`
+- `proc min_int` signature `proc min_int(a: int, b: int) -> int {` example `min_int`
+- `proc gcd_int` signature `proc gcd_int(a: int, b: int) -> int {` example `gcd_int`
+- `proc pow_int` signature `proc pow_int(base: int, exponent: int) -> int {` example `pow_int`
+- `proc pow2` signature `proc pow2(exponent: int) -> int {` example `pow2`
+- `proc pow10` signature `proc pow10(exponent: int) -> int {` example `pow10`
+- `proc square` signature `proc square(value: int) -> int {` example `square`
+- `proc cube` signature `proc cube(value: int) -> int {` example `cube`
+- `proc factorial` signature `proc factorial(value: int) -> int {` example `factorial`
+- `proc double_factorial` signature `proc double_factorial(value: int) -> int {` example `double_factorial`
+- `proc falling_factorial` signature `proc falling_factorial(n: int, k: int) -> int {` example `falling_factorial`
+- `proc rising_factorial` signature `proc rising_factorial(n: int, k: int) -> int {` example `rising_factorial`
+- `proc triangular` signature `proc triangular(index: int) -> int {` example `triangular`
+- `proc fibonacci` signature `proc fibonacci(index: int) -> int {` example `fibonacci`
+- `proc fibonacci_sum` signature `proc fibonacci_sum(count: int) -> int {` example `fibonacci_sum`
+- `proc fibonacci_series` signature `proc fibonacci_series(count: int) -> [int] {` example `fibonacci_series`
+- `proc is_square_local` signature `proc is_square_local(value: int) -> bool {` example `is_square_local`
+- `proc is_fibonacci` signature `proc is_fibonacci(value: int) -> bool {` example `is_fibonacci`
+- `proc binomial` signature `proc binomial(n: int, k: int) -> int {` example `binomial`
+- `proc combinations` signature `proc combinations(n: int, k: int) -> int {` example `combinations`
+- `proc choose` signature `proc choose(n: int, k: int) -> int {` example `choose`
+- `proc permutations` signature `proc permutations(n: int, k: int) -> int {` example `permutations`
+- `proc arrangements` signature `proc arrangements(n: int, k: int) -> int {` example `arrangements`
+- `proc combinations_with_repetition` signature `proc combinations_with_repetition(n: int, k: int) -> int {` example `combinations_with_repetition`
+- `proc fib` signature `proc fib(index: int) -> int {` example `fib`
+- `proc powers_version` signature `proc powers_version() -> string {` example `powers_version`
+- `proc powers_ready` signature `proc powers_ready() -> bool {` example `powers_ready`
+- `proc powers_selftest` signature `proc powers_selftest() -> bool {` example `powers_selftest`
 
 ## `src/vitte/stdlib/math/probability.vitl`
 
-- `proc abs_int`
-- `proc min_int`
-- `proc max_int`
-- `proc gcd_int`
-- `proc valid_n_k`
-- `proc clamp_non_negative`
-- `proc factorial`
-- `proc double_factorial`
-- `proc falling_factorial`
-- `proc rising_factorial`
-- `proc permutations`
-- `proc arrangements`
-- `proc permutations_with_repetition`
-- `proc combinations`
-- `proc choose`
-- `proc combinations_with_repetition`
-- `proc multiset_combinations`
-- `proc pairings`
-- `proc unordered_pairs`
-- `proc ordered_pairs`
-- `proc derangements`
-- `proc ratio_f64`
-- `proc percentage_f64`
-- `proc probability`
-- `proc probability_percent`
-- `proc probability_percent_f64`
-- `proc permille_f64`
-- `proc basis_points_f64`
-- `proc complement_probability`
-- `proc complement_percent`
-- `proc success_rate_f64`
-- `proc failure_rate_f64`
-- `proc success_rate_percent`
-- `proc failure_rate_percent`
-- `proc odds_f64`
-- `proc odds_percent`
-- `proc odds_ratio`
-- `proc odds_ratio_f64`
-- `proc success_failure_ratio_percent`
-- `proc relative_risk_f64`
-- `proc odds_ratio_2x2`
-- `proc favorable_probability`
-- `proc equally_likely_probability`
-- `proc union_probability_disjoint`
-- `proc union_probability`
-- `proc intersection_independent`
-- `proc complement_from_probability`
-- `proc conditional_probability`
-- `proc expected_value_binary`
-- `proc binomial_pmf`
-- `proc geometric_pmf`
-- `proc hypergeometric_pmf`
-- `proc percent`
-- `proc percent_f64`
-- `proc choose_probability`
-- `proc probability_version`
-- `proc probability_ready`
-- `proc probability_selftest`
+- `proc abs_int` signature `proc abs_int(value: int) -> int {` example `abs_int`
+- `proc min_int` signature `proc min_int(a: int, b: int) -> int {` example `min_int`
+- `proc max_int` signature `proc max_int(a: int, b: int) -> int {` example `max_int`
+- `proc gcd_int` signature `proc gcd_int(a: int, b: int) -> int {` example `gcd_int`
+- `proc valid_n_k` signature `proc valid_n_k(n: int, k: int) -> bool {` example `valid_n_k`
+- `proc clamp_non_negative` signature `proc clamp_non_negative(value: int) -> int {` example `clamp_non_negative`
+- `proc factorial` signature `proc factorial(value: int) -> int {` example `factorial`
+- `proc double_factorial` signature `proc double_factorial(value: int) -> int {` example `double_factorial`
+- `proc falling_factorial` signature `proc falling_factorial(n: int, k: int) -> int {` example `falling_factorial`
+- `proc rising_factorial` signature `proc rising_factorial(n: int, k: int) -> int {` example `rising_factorial`
+- `proc permutations` signature `proc permutations(n: int, k: int) -> int {` example `permutations`
+- `proc arrangements` signature `proc arrangements(n: int, k: int) -> int {` example `arrangements`
+- `proc permutations_with_repetition` signature `proc permutations_with_repetition(n: int, k: int) -> int {` example `permutations_with_repetition`
+- `proc combinations` signature `proc combinations(n: int, k: int) -> int {` example `combinations`
+- `proc choose` signature `proc choose(n: int, k: int) -> int {` example `choose`
+- `proc combinations_with_repetition` signature `proc combinations_with_repetition(n: int, k: int) -> int {` example `combinations_with_repetition`
+- `proc multiset_combinations` signature `proc multiset_combinations(n: int, k: int) -> int {` example `multiset_combinations`
+- `proc pairings` signature `proc pairings(total: int) -> int {` example `pairings`
+- `proc unordered_pairs` signature `proc unordered_pairs(total: int) -> int {` example `unordered_pairs`
+- `proc ordered_pairs` signature `proc ordered_pairs(total: int) -> int {` example `ordered_pairs`
+- `proc derangements` signature `proc derangements(n: int) -> int {` example `derangements`
+- `proc ratio_f64` signature `proc ratio_f64(part: int, total: int) -> f64 {` example `ratio_f64`
+- `proc percentage_f64` signature `proc percentage_f64(part: int, total: int) -> f64 {` example `percentage_f64`
+- `proc probability` signature `proc probability(part: int, total: int) -> f64 {` example `probability`
+- `proc probability_percent` signature `proc probability_percent(part: int, total: int) -> int {` example `probability_percent`
+- `proc probability_percent_f64` signature `proc probability_percent_f64(part: int, total: int) -> f64 {` example `probability_percent_f64`
+- `proc permille_f64` signature `proc permille_f64(part: int, total: int) -> f64 {` example `permille_f64`
+- `proc basis_points_f64` signature `proc basis_points_f64(part: int, total: int) -> f64 {` example `basis_points_f64`
+- `proc complement_probability` signature `proc complement_probability(part: int, total: int) -> f64 {` example `complement_probability`
+- `proc complement_percent` signature `proc complement_percent(part: int, total: int) -> int {` example `complement_percent`
+- `proc success_rate_f64` signature `proc success_rate_f64(successes: int, total: int) -> f64 {` example `success_rate_f64`
+- `proc failure_rate_f64` signature `proc failure_rate_f64(successes: int, total: int) -> f64 {` example `failure_rate_f64`
+- `proc success_rate_percent` signature `proc success_rate_percent(successes: int, total: int) -> int {` example `success_rate_percent`
+- `proc failure_rate_percent` signature `proc failure_rate_percent(successes: int, total: int) -> int {` example `failure_rate_percent`
+- `proc odds_f64` signature `proc odds_f64(successes: int, failures: int) -> f64 {` example `odds_f64`
+- `proc odds_percent` signature `proc odds_percent(successes: int, failures: int) -> int {` example `odds_percent`
+- `proc odds_ratio` signature `proc odds_ratio(successes: int, failures: int) -> int {` example `odds_ratio`
+- `proc odds_ratio_f64` signature `proc odds_ratio_f64(successes: int, failures: int) -> f64 {` example `odds_ratio_f64`
+- `proc success_failure_ratio_percent` signature `proc success_failure_ratio_percent(successes: int, failures: int) -> int {` example `success_failure_ratio_percent`
+- `proc relative_risk_f64` signature `proc relative_risk_f64(exposed_successes: int, exposed_total: int, control_successes: int, control_total: int) -> f64 {` example `relative_risk_f64`
+- `proc odds_ratio_2x2` signature `proc odds_ratio_2x2(a: int, b: int, c: int, d: int) -> f64 {` example `odds_ratio_2x2`
+- `proc favorable_probability` signature `proc favorable_probability(favorable: int, total: int) -> f64 {` example `favorable_probability`
+- `proc equally_likely_probability` signature `proc equally_likely_probability(favorable: int, possible: int) -> f64 {` example `equally_likely_probability`
+- `proc union_probability_disjoint` signature `proc union_probability_disjoint(p_a: f64, p_b: f64) -> f64 {` example `union_probability_disjoint`
+- `proc union_probability` signature `proc union_probability(p_a: f64, p_b: f64, p_intersection: f64) -> f64 {` example `union_probability`
+- `proc intersection_independent` signature `proc intersection_independent(p_a: f64, p_b: f64) -> f64 {` example `intersection_independent`
+- `proc complement_from_probability` signature `proc complement_from_probability(p: f64) -> f64 {` example `complement_from_probability`
+- `proc conditional_probability` signature `proc conditional_probability(intersection: f64, given_event: f64) -> f64 {` example `conditional_probability`
+- `proc expected_value_binary` signature `proc expected_value_binary(success_probability: f64, success_value: f64, failure_value: f64) -> f64 {` example `expected_value_binary`
+- `proc binomial_pmf` signature `proc binomial_pmf(trials: int, successes: int, p: f64) -> f64 {` example `binomial_pmf`
+- `proc geometric_pmf` signature `proc geometric_pmf(trial_index: int, p: f64) -> f64 {` example `geometric_pmf`
+- `proc hypergeometric_pmf` signature `proc hypergeometric_pmf(population: int, success_population: int, draws: int, observed_successes: int) -> f64 {` example `hypergeometric_pmf`
+- `proc percent` signature `proc percent(part: int, total: int) -> int {` example `percent`
+- `proc percent_f64` signature `proc percent_f64(part: int, total: int) -> f64 {` example `percent_f64`
+- `proc choose_probability` signature `proc choose_probability(favorable: int, total: int) -> f64 {` example `choose_probability`
+- `proc probability_version` signature `proc probability_version() -> string {` example `probability_version`
+- `proc probability_ready` signature `proc probability_ready() -> bool {` example `probability_ready`
+- `proc probability_selftest` signature `proc probability_selftest() -> bool {` example `probability_selftest`
 
 ## `src/vitte/stdlib/math/roots.vitl`
 
-- `proc abs_int`
-- `proc max_int`
-- `proc min_int`
-- `proc square`
-- `proc cube`
-- `proc square_le`
-- `proc square_eq`
-- `proc cube_le_non_negative`
-- `proc cube_eq_non_negative`
-- `proc pow_int`
-- `proc pow_le_non_negative`
-- `proc pow_eq_non_negative`
-- `proc sqrt_floor`
-- `proc sqrt_ceil`
-- `proc sqrt_round`
-- `proc is_square`
-- `proc prev_square`
-- `proc next_square`
-- `proc cube_root_floor_non_negative`
-- `proc cube_root_ceil_non_negative`
-- `proc cube_root_floor`
-- `proc cube_root_ceil`
-- `proc cube_root_round`
-- `proc is_cube`
-- `proc prev_cube`
-- `proc next_cube`
-- `proc iroot_floor_non_negative`
-- `proc iroot_floor`
-- `proc iroot_ceil`
-- `proc iroot_round`
-- `proc is_perfect_power`
-- `proc ilog2_floor`
-- `proc ilog2_ceil`
-- `proc ilog10_floor`
-- `proc ilog10_ceil`
-- `proc ilog_floor`
-- `proc ilog_ceil`
-- `proc is_power_of_two`
-- `proc is_power_of_ten`
-- `proc is_power`
-- `proc decimal_digits`
-- `proc binary_digits`
-- `proc distance_to_prev_square`
-- `proc distance_to_next_square`
-- `proc distance_to_nearest_square`
-- `proc distance_to_prev_cube`
-- `proc distance_to_next_cube`
-- `proc distance_to_nearest_cube`
-- `proc is_perfect_square`
-- `proc is_perfect_cube`
-- `proc roots_version`
-- `proc roots_ready`
-- `proc roots_selftest`
+- `proc abs_int` signature `proc abs_int(value: int) -> int {` example `abs_int`
+- `proc max_int` signature `proc max_int(a: int, b: int) -> int {` example `max_int`
+- `proc min_int` signature `proc min_int(a: int, b: int) -> int {` example `min_int`
+- `proc square` signature `proc square(value: int) -> int {` example `square`
+- `proc cube` signature `proc cube(value: int) -> int {` example `cube`
+- `proc square_le` signature `proc square_le(candidate: int, limit: int) -> bool {` example `square_le`
+- `proc square_eq` signature `proc square_eq(candidate: int, value: int) -> bool {` example `square_eq`
+- `proc cube_le_non_negative` signature `proc cube_le_non_negative(candidate: int, limit: int) -> bool {` example `cube_le_non_negative`
+- `proc cube_eq_non_negative` signature `proc cube_eq_non_negative(candidate: int, value: int) -> bool {` example `cube_eq_non_negative`
+- `proc pow_int` signature `proc pow_int(base: int, exponent: int) -> int {` example `pow_int`
+- `proc pow_le_non_negative` signature `proc pow_le_non_negative(base: int, exponent: int, limit: int) -> bool {` example `pow_le_non_negative`
+- `proc pow_eq_non_negative` signature `proc pow_eq_non_negative(base: int, exponent: int, value: int) -> bool {` example `pow_eq_non_negative`
+- `proc sqrt_floor` signature `proc sqrt_floor(value: int) -> int {` example `sqrt_floor`
+- `proc sqrt_ceil` signature `proc sqrt_ceil(value: int) -> int {` example `sqrt_ceil`
+- `proc sqrt_round` signature `proc sqrt_round(value: int) -> int {` example `sqrt_round`
+- `proc is_square` signature `proc is_square(value: int) -> bool {` example `is_square`
+- `proc prev_square` signature `proc prev_square(value: int) -> int {` example `prev_square`
+- `proc next_square` signature `proc next_square(value: int) -> int {` example `next_square`
+- `proc cube_root_floor_non_negative` signature `proc cube_root_floor_non_negative(value: int) -> int {` example `cube_root_floor_non_negative`
+- `proc cube_root_ceil_non_negative` signature `proc cube_root_ceil_non_negative(value: int) -> int {` example `cube_root_ceil_non_negative`
+- `proc cube_root_floor` signature `proc cube_root_floor(value: int) -> int {` example `cube_root_floor`
+- `proc cube_root_ceil` signature `proc cube_root_ceil(value: int) -> int {` example `cube_root_ceil`
+- `proc cube_root_round` signature `proc cube_root_round(value: int) -> int {` example `cube_root_round`
+- `proc is_cube` signature `proc is_cube(value: int) -> bool {` example `is_cube`
+- `proc prev_cube` signature `proc prev_cube(value: int) -> int {` example `prev_cube`
+- `proc next_cube` signature `proc next_cube(value: int) -> int {` example `next_cube`
+- `proc iroot_floor_non_negative` signature `proc iroot_floor_non_negative(value: int, degree: int) -> int {` example `iroot_floor_non_negative`
+- `proc iroot_floor` signature `proc iroot_floor(value: int, degree: int) -> int {` example `iroot_floor`
+- `proc iroot_ceil` signature `proc iroot_ceil(value: int, degree: int) -> int {` example `iroot_ceil`
+- `proc iroot_round` signature `proc iroot_round(value: int, degree: int) -> int {` example `iroot_round`
+- `proc is_perfect_power` signature `proc is_perfect_power(value: int, degree: int) -> bool {` example `is_perfect_power`
+- `proc ilog2_floor` signature `proc ilog2_floor(value: int) -> int {` example `ilog2_floor`
+- `proc ilog2_ceil` signature `proc ilog2_ceil(value: int) -> int {` example `ilog2_ceil`
+- `proc ilog10_floor` signature `proc ilog10_floor(value: int) -> int {` example `ilog10_floor`
+- `proc ilog10_ceil` signature `proc ilog10_ceil(value: int) -> int {` example `ilog10_ceil`
+- `proc ilog_floor` signature `proc ilog_floor(value: int, base: int) -> int {` example `ilog_floor`
+- `proc ilog_ceil` signature `proc ilog_ceil(value: int, base: int) -> int {` example `ilog_ceil`
+- `proc is_power_of_two` signature `proc is_power_of_two(value: int) -> bool {` example `is_power_of_two`
+- `proc is_power_of_ten` signature `proc is_power_of_ten(value: int) -> bool {` example `is_power_of_ten`
+- `proc is_power` signature `proc is_power(value: int, base: int) -> bool {` example `is_power`
+- `proc decimal_digits` signature `proc decimal_digits(value: int) -> int {` example `decimal_digits`
+- `proc binary_digits` signature `proc binary_digits(value: int) -> int {` example `binary_digits`
+- `proc distance_to_prev_square` signature `proc distance_to_prev_square(value: int) -> int {` example `distance_to_prev_square`
+- `proc distance_to_next_square` signature `proc distance_to_next_square(value: int) -> int {` example `distance_to_next_square`
+- `proc distance_to_nearest_square` signature `proc distance_to_nearest_square(value: int) -> int {` example `distance_to_nearest_square`
+- `proc distance_to_prev_cube` signature `proc distance_to_prev_cube(value: int) -> int {` example `distance_to_prev_cube`
+- `proc distance_to_next_cube` signature `proc distance_to_next_cube(value: int) -> int {` example `distance_to_next_cube`
+- `proc distance_to_nearest_cube` signature `proc distance_to_nearest_cube(value: int) -> int {` example `distance_to_nearest_cube`
+- `proc is_perfect_square` signature `proc is_perfect_square(value: int) -> bool {` example `is_perfect_square`
+- `proc is_perfect_cube` signature `proc is_perfect_cube(value: int) -> bool {` example `is_perfect_cube`
+- `proc roots_version` signature `proc roots_version() -> string {` example `roots_version`
+- `proc roots_ready` signature `proc roots_ready() -> bool {` example `roots_ready`
+- `proc roots_selftest` signature `proc roots_selftest() -> bool {` example `roots_selftest`
 
 ## `src/vitte/stdlib/math/sequences.vitl`
 
-- `proc abs_int`
-- `proc max_int`
-- `proc min_int`
-- `proc clamp_non_negative`
-- `proc pow_int`
-- `proc integer_sqrt`
-- `proc is_perfect_square`
-- `proc arithmetic_term`
-- `proc arithmetic_last`
-- `proc arithmetic_sum`
-- `proc arithmetic_mean`
-- `proc arithmetic_series`
-- `proc geometric_term`
-- `proc geometric_last`
-- `proc geometric_sum`
-- `proc geometric_series`
-- `proc triangular_term`
-- `proc triangular_sum`
-- `proc triangular_series`
-- `proc is_triangular`
-- `proc square_term`
-- `proc square_series`
-- `proc cube_term`
-- `proc cube_series`
-- `proc polygonal_term`
-- `proc pentagonal_term`
-- `proc hexagonal_term`
-- `proc polygonal_series`
-- `proc fibonacci_term`
-- `proc fibonacci_sum`
-- `proc fibonacci_series`
-- `proc is_fibonacci`
-- `proc lucas_term`
-- `proc lucas_series`
-- `proc pell_term`
-- `proc pell_series`
-- `proc factorial`
-- `proc double_factorial`
-- `proc catalan_term`
-- `proc catalan_series`
-- `proc harmonic_numerator_term`
-- `proc harmonic_denominator_term`
-- `proc harmonic_denominators`
-- `proc alternating_sign`
-- `proc alternating_arithmetic_term`
-- `proc alternating_geometric_term`
-- `proc first_arithmetic_ge`
-- `proc first_geometric_ge`
-- `proc fib`
-- `proc lucas`
-- `proc triangular`
-- `proc square`
-- `proc cube`
-- `proc sequences_version`
-- `proc sequences_ready`
-- `proc sequences_selftest`
+- `proc abs_int` signature `proc abs_int(x: int) -> int {` example `abs_int`
+- `proc max_int` signature `proc max_int(a: int, b: int) -> int {` example `max_int`
+- `proc min_int` signature `proc min_int(a: int, b: int) -> int {` example `min_int`
+- `proc clamp_non_negative` signature `proc clamp_non_negative(x: int) -> int {` example `clamp_non_negative`
+- `proc pow_int` signature `proc pow_int(base: int, exponent: int) -> int {` example `pow_int`
+- `proc integer_sqrt` signature `proc integer_sqrt(value: int) -> int {` example `integer_sqrt`
+- `proc is_perfect_square` signature `proc is_perfect_square(value: int) -> bool {` example `is_perfect_square`
+- `proc arithmetic_term` signature `proc arithmetic_term(first: int, step: int, index: int) -> int {` example `arithmetic_term`
+- `proc arithmetic_last` signature `proc arithmetic_last(first: int, step: int, count: int) -> int {` example `arithmetic_last`
+- `proc arithmetic_sum` signature `proc arithmetic_sum(first: int, step: int, count: int) -> int {` example `arithmetic_sum`
+- `proc arithmetic_mean` signature `proc arithmetic_mean(first: int, step: int, count: int) -> int {` example `arithmetic_mean`
+- `proc arithmetic_series` signature `proc arithmetic_series(first: int, step: int, count: int) -> [int] {` example `arithmetic_series`
+- `proc geometric_term` signature `proc geometric_term(first: int, ratio: int, index: int) -> int {` example `geometric_term`
+- `proc geometric_last` signature `proc geometric_last(first: int, ratio: int, count: int) -> int {` example `geometric_last`
+- `proc geometric_sum` signature `proc geometric_sum(first: int, ratio: int, count: int) -> int {` example `geometric_sum`
+- `proc geometric_series` signature `proc geometric_series(first: int, ratio: int, count: int) -> [int] {` example `geometric_series`
+- `proc triangular_term` signature `proc triangular_term(index: int) -> int {` example `triangular_term`
+- `proc triangular_sum` signature `proc triangular_sum(count: int) -> int {` example `triangular_sum`
+- `proc triangular_series` signature `proc triangular_series(count: int) -> [int] {` example `triangular_series`
+- `proc is_triangular` signature `proc is_triangular(value: int) -> bool {` example `is_triangular`
+- `proc square_term` signature `proc square_term(index: int) -> int {` example `square_term`
+- `proc square_series` signature `proc square_series(count: int) -> [int] {` example `square_series`
+- `proc cube_term` signature `proc cube_term(index: int) -> int {` example `cube_term`
+- `proc cube_series` signature `proc cube_series(count: int) -> [int] {` example `cube_series`
+- `proc polygonal_term` signature `proc polygonal_term(sides: int, index: int) -> int {` example `polygonal_term`
+- `proc pentagonal_term` signature `proc pentagonal_term(index: int) -> int {` example `pentagonal_term`
+- `proc hexagonal_term` signature `proc hexagonal_term(index: int) -> int {` example `hexagonal_term`
+- `proc polygonal_series` signature `proc polygonal_series(sides: int, count: int) -> [int] {` example `polygonal_series`
+- `proc fibonacci_term` signature `proc fibonacci_term(index: int) -> int {` example `fibonacci_term`
+- `proc fibonacci_sum` signature `proc fibonacci_sum(count: int) -> int {` example `fibonacci_sum`
+- `proc fibonacci_series` signature `proc fibonacci_series(count: int) -> [int] {` example `fibonacci_series`
+- `proc is_fibonacci` signature `proc is_fibonacci(value: int) -> bool {` example `is_fibonacci`
+- `proc lucas_term` signature `proc lucas_term(index: int) -> int {` example `lucas_term`
+- `proc lucas_series` signature `proc lucas_series(count: int) -> [int] {` example `lucas_series`
+- `proc pell_term` signature `proc pell_term(index: int) -> int {` example `pell_term`
+- `proc pell_series` signature `proc pell_series(count: int) -> [int] {` example `pell_series`
+- `proc factorial` signature `proc factorial(value: int) -> int {` example `factorial`
+- `proc double_factorial` signature `proc double_factorial(value: int) -> int {` example `double_factorial`
+- `proc catalan_term` signature `proc catalan_term(index: int) -> int {` example `catalan_term`
+- `proc catalan_series` signature `proc catalan_series(count: int) -> [int] {` example `catalan_series`
+- `proc harmonic_numerator_term` signature `proc harmonic_numerator_term(index: int) -> int {` example `harmonic_numerator_term`
+- `proc harmonic_denominator_term` signature `proc harmonic_denominator_term(index: int) -> int {` example `harmonic_denominator_term`
+- `proc harmonic_denominators` signature `proc harmonic_denominators(count: int) -> [int] {` example `harmonic_denominators`
+- `proc alternating_sign` signature `proc alternating_sign(index: int) -> int {` example `alternating_sign`
+- `proc alternating_arithmetic_term` signature `proc alternating_arithmetic_term(first: int, step: int, index: int) -> int {` example `alternating_arithmetic_term`
+- `proc alternating_geometric_term` signature `proc alternating_geometric_term(first: int, ratio: int, index: int) -> int {` example `alternating_geometric_term`
+- `proc first_arithmetic_ge` signature `proc first_arithmetic_ge(first: int, step: int, target: int) -> int {` example `first_arithmetic_ge`
+- `proc first_geometric_ge` signature `proc first_geometric_ge(first: int, ratio: int, target: int) -> int {` example `first_geometric_ge`
+- `proc fib` signature `proc fib(index: int) -> int {` example `fib`
+- `proc lucas` signature `proc lucas(index: int) -> int {` example `lucas`
+- `proc triangular` signature `proc triangular(index: int) -> int {` example `triangular`
+- `proc square` signature `proc square(index: int) -> int {` example `square`
+- `proc cube` signature `proc cube(index: int) -> int {` example `cube`
+- `proc sequences_version` signature `proc sequences_version() -> string {` example `sequences_version`
+- `proc sequences_ready` signature `proc sequences_ready() -> bool {` example `sequences_ready`
+- `proc sequences_selftest` signature `proc sequences_selftest() -> bool {` example `sequences_selftest`
 
 ## `src/vitte/stdlib/math/sort.vitl`
 
-- `const INSERTION_THRESHOLD`
-- `proc copy_range`
-- `proc reverse_copy`
-- `proc swap`
-- `proc floor_log2_int`
-- `proc median3_index`
-- `proc is_sorted`
-- `proc is_strictly_sorted`
-- `proc insertion_sort_range`
-- `proc insertion_sort_inplace`
-- `proc insertion_sort`
-- `proc sift_down`
-- `proc heapify`
-- `proc sort_inplace`
-- `proc heapsort_inplace`
-- `proc heapsort`
-- `proc partition`
-- `proc heapsort_range`
-- `proc introsort_rec`
-- `proc quicksort_inplace`
-- `proc quicksort`
-- `proc introsort`
-- `proc merge`
-- `proc mergesort`
-- `proc stable_sort`
-- `proc reverse`
-- `proc reverse_inplace`
-- `proc sort_desc`
-- `proc sort_desc_inplace`
-- `proc nth_element`
-- `proc partial_sort`
-- `proc top_k`
-- `proc bottom_k`
-- `proc lower_bound`
-- `proc upper_bound`
-- `proc binary_search`
-- `proc contains_sorted`
-- `proc sort_int`
-- `proc sort_i32`
-- `proc sort_i64`
-- `proc sort_u32`
-- `proc sort_u64`
-- `proc sort_f64`
-- `proc stable_sort_int`
-- `proc stable_sort_f64`
-- `proc sort`
-- `proc sort_version`
-- `proc sort_ready`
-- `proc sort_selftest`
+- `const INSERTION_THRESHOLD` signature `const INSERTION_THRESHOLD: int = 16` example `INSERTION_THRESHOLD`
+- `proc copy_range` signature `proc copy_range(values: [int], start: int, end: int) -> [int] {` example `copy_range`
+- `proc reverse_copy` signature `proc reverse_copy(values: [int]) -> [int] {` example `reverse_copy`
+- `proc swap` signature `proc swap(values: [int], i: int, j: int) -> [int] {` example `swap`
+- `proc floor_log2_int` signature `proc floor_log2_int(value: int) -> int {` example `floor_log2_int`
+- `proc median3_index` signature `proc median3_index(values: [int], a: int, b: int, c: int) -> int {` example `median3_index`
+- `proc is_sorted` signature `proc is_sorted(values: [int]) -> bool {` example `is_sorted`
+- `proc is_strictly_sorted` signature `proc is_strictly_sorted(values: [int]) -> bool {` example `is_strictly_sorted`
+- `proc insertion_sort_range` signature `proc insertion_sort_range(values: [int], start: int, end: int) -> [int] {` example `insertion_sort_range`
+- `proc insertion_sort_inplace` signature `proc insertion_sort_inplace(values: [int]) -> [int] {` example `insertion_sort_inplace`
+- `proc insertion_sort` signature `proc insertion_sort(values: [int]) -> [int] {` example `insertion_sort`
+- `proc sift_down` signature `proc sift_down(values: [int], start: int, end: int) -> [int] {` example `sift_down`
+- `proc heapify` signature `proc heapify(values: [int]) -> [int] {` example `heapify`
+- `proc sort_inplace` signature `proc sort_inplace(values: [int]) -> [int] {` example `sort_inplace`
+- `proc heapsort_inplace` signature `proc heapsort_inplace(values: [int]) -> [int] {` example `heapsort_inplace`
+- `proc heapsort` signature `proc heapsort(values: [int]) -> [int] {` example `heapsort`
+- `proc partition` signature `proc partition(values: [int], pivot: int) -> [[int]] {` example `partition`
+- `proc heapsort_range` signature `proc heapsort_range(values: [int], start: int, end: int) -> [int] {` example `heapsort_range`
+- `proc introsort_rec` signature `proc introsort_rec(values: [int]) -> [int] {` example `introsort_rec`
+- `proc quicksort_inplace` signature `proc quicksort_inplace(values: [int]) -> [int] {` example `quicksort_inplace`
+- `proc quicksort` signature `proc quicksort(values: [int]) -> [int] {` example `quicksort`
+- `proc introsort` signature `proc introsort(values: [int]) -> [int] {` example `introsort`
+- `proc merge` signature `proc merge(a: [int], b: [int]) -> [int] {` example `merge`
+- `proc mergesort` signature `proc mergesort(values: [int]) -> [int] {` example `mergesort`
+- `proc stable_sort` signature `proc stable_sort(values: [int]) -> [int] {` example `stable_sort`
+- `proc reverse` signature `proc reverse(values: [int]) -> [int] {` example `reverse`
+- `proc reverse_inplace` signature `proc reverse_inplace(values: [int]) -> [int] {` example `reverse_inplace`
+- `proc sort_desc` signature `proc sort_desc(values: [int]) -> [int] {` example `sort_desc`
+- `proc sort_desc_inplace` signature `proc sort_desc_inplace(values: [int]) -> [int] {` example `sort_desc_inplace`
+- `proc nth_element` signature `proc nth_element(values: [int], index: int) -> int {` example `nth_element`
+- `proc partial_sort` signature `proc partial_sort(values: [int], count0: int) -> [int] {` example `partial_sort`
+- `proc top_k` signature `proc top_k(values: [int], k: int) -> [int] {` example `top_k`
+- `proc bottom_k` signature `proc bottom_k(values: [int], k: int) -> [int] {` example `bottom_k`
+- `proc lower_bound` signature `proc lower_bound(values: [int], needle: int) -> int {` example `lower_bound`
+- `proc upper_bound` signature `proc upper_bound(values: [int], needle: int) -> int {` example `upper_bound`
+- `proc binary_search` signature `proc binary_search(values: [int], needle: int) -> int {` example `binary_search`
+- `proc contains_sorted` signature `proc contains_sorted(values: [int], needle: int) -> bool {` example `contains_sorted`
+- `proc sort_int` signature `proc sort_int(values: [int]) -> [int] { give sort_inplace(values) }` example `sort_int`
+- `proc sort_i32` signature `proc sort_i32(values: [int]) -> [int] { give sort_inplace(values) }` example `sort_i32`
+- `proc sort_i64` signature `proc sort_i64(values: [int]) -> [int] { give sort_inplace(values) }` example `sort_i64`
+- `proc sort_u32` signature `proc sort_u32(values: [int]) -> [int] { give sort_inplace(values) }` example `sort_u32`
+- `proc sort_u64` signature `proc sort_u64(values: [int]) -> [int] { give sort_inplace(values) }` example `sort_u64`
+- `proc sort_f64` signature `proc sort_f64(values: [f64]) -> [f64] {` example `sort_f64`
+- `proc stable_sort_int` signature `proc stable_sort_int(values: [int]) -> [int] { give stable_sort(values) }` example `stable_sort_int`
+- `proc stable_sort_f64` signature `proc stable_sort_f64(values: [f64]) -> [f64] { give sort_f64(values) }` example `stable_sort_f64`
+- `proc sort` signature `proc sort(values: [int]) -> [int] { give sort_inplace(values) }` example `sort`
+- `proc sort_version` signature `proc sort_version() -> string {` example `sort_version`
+- `proc sort_ready` signature `proc sort_ready() -> bool {` example `sort_ready`
+- `proc sort_selftest` signature `proc sort_selftest() -> bool {` example `sort_selftest`
 
 ## `src/vitte/stdlib/math/statistics.vitl`
 
-- `const STAT_EPSILON`
-- `proc abs_stat`
-- `proc clamp01`
-- `proc has_values_f64`
-- `proc has_same_length_f64`
-- `proc zeros_int`
-- `proc values_sorted_f64`
-- `proc values_sorted_int`
-- `proc min2_f64`
-- `proc max2_f64`
-- `proc count`
-- `proc sum`
-- `proc product`
-- `proc sum_of_squares`
-- `proc mean`
-- `proc geometric_mean`
-- `proc harmonic_mean`
-- `proc root_mean_square`
-- `proc min`
-- `proc max`
-- `proc range`
-- `proc midrange`
-- `proc mean_absolute_deviation`
-- `proc variance`
-- `proc population_variance`
-- `proc sample_variance`
-- `proc stddev`
-- `proc population_stddev`
-- `proc sample_stddev`
-- `proc median_sorted`
-- `proc median`
-- `proc quantile`
-- `proc percentile`
-- `proc quartile1`
-- `proc quartile2`
-- `proc quartile3`
-- `proc interquartile_range`
-- `proc median_absolute_deviation`
-- `proc covariance`
-- `proc population_covariance`
-- `proc sample_covariance`
-- `proc correlation`
-- `proc pearson_correlation`
-- `proc histogram`
-- `proc histogram_auto`
-- `proc mode`
-- `proc zscore`
-- `proc minmax_normalize`
-- `proc center`
-- `proc trimmed_mean`
-- `proc winsorized_mean`
-- `proc coefficient_of_variation`
-- `proc slice_f64`
-- `proc clamp_bin`
-- `proc pow_root`
-- `proc pow_simple`
-- `proc statistics_version`
-- `proc statistics_ready`
-- `proc statistics_selftest`
+- `const STAT_EPSILON` signature `const STAT_EPSILON: f64 = 0.000001` example `STAT_EPSILON`
+- `proc abs_stat` signature `proc abs_stat(value: f64) -> f64 {` example `abs_stat`
+- `proc clamp01` signature `proc clamp01(value: f64) -> f64 {` example `clamp01`
+- `proc has_values_f64` signature `proc has_values_f64(values: [f64]) -> bool {` example `has_values_f64`
+- `proc has_same_length_f64` signature `proc has_same_length_f64(a: [f64], b: [f64]) -> bool {` example `has_same_length_f64`
+- `proc zeros_int` signature `proc zeros_int(count0: int) -> [int] {` example `zeros_int`
+- `proc values_sorted_f64` signature `proc values_sorted_f64(values: [f64]) -> [f64] {` example `values_sorted_f64`
+- `proc values_sorted_int` signature `proc values_sorted_int(values: [int]) -> [int] {` example `values_sorted_int`
+- `proc min2_f64` signature `proc min2_f64(a: f64, b: f64) -> f64 {` example `min2_f64`
+- `proc max2_f64` signature `proc max2_f64(a: f64, b: f64) -> f64 {` example `max2_f64`
+- `proc count` signature `proc count(values: [f64]) -> int {` example `count`
+- `proc sum` signature `proc sum(values: [f64]) -> f64 {` example `sum`
+- `proc product` signature `proc product(values: [f64]) -> f64 {` example `product`
+- `proc sum_of_squares` signature `proc sum_of_squares(values: [f64]) -> f64 {` example `sum_of_squares`
+- `proc mean` signature `proc mean(values: [f64]) -> f64 {` example `mean`
+- `proc geometric_mean` signature `proc geometric_mean(values: [f64]) -> f64 {` example `geometric_mean`
+- `proc harmonic_mean` signature `proc harmonic_mean(values: [f64]) -> f64 {` example `harmonic_mean`
+- `proc root_mean_square` signature `proc root_mean_square(values: [f64]) -> f64 {` example `root_mean_square`
+- `proc min` signature `proc min(values: [f64]) -> f64 {` example `min`
+- `proc max` signature `proc max(values: [f64]) -> f64 {` example `max`
+- `proc range` signature `proc range(values: [f64]) -> f64 {` example `range`
+- `proc midrange` signature `proc midrange(values: [f64]) -> f64 {` example `midrange`
+- `proc mean_absolute_deviation` signature `proc mean_absolute_deviation(values: [f64]) -> f64 {` example `mean_absolute_deviation`
+- `proc variance` signature `proc variance(values: [f64]) -> f64 {` example `variance`
+- `proc population_variance` signature `proc population_variance(values: [f64]) -> f64 {` example `population_variance`
+- `proc sample_variance` signature `proc sample_variance(values: [f64]) -> f64 {` example `sample_variance`
+- `proc stddev` signature `proc stddev(values: [f64]) -> f64 {` example `stddev`
+- `proc population_stddev` signature `proc population_stddev(values: [f64]) -> f64 {` example `population_stddev`
+- `proc sample_stddev` signature `proc sample_stddev(values: [f64]) -> f64 {` example `sample_stddev`
+- `proc median_sorted` signature `proc median_sorted(values: [f64]) -> f64 {` example `median_sorted`
+- `proc median` signature `proc median(values: [f64]) -> f64 {` example `median`
+- `proc quantile` signature `proc quantile(values: [f64], q: f64) -> f64 {` example `quantile`
+- `proc percentile` signature `proc percentile(values: [f64], p: f64) -> f64 {` example `percentile`
+- `proc quartile1` signature `proc quartile1(values: [f64]) -> f64 {` example `quartile1`
+- `proc quartile2` signature `proc quartile2(values: [f64]) -> f64 {` example `quartile2`
+- `proc quartile3` signature `proc quartile3(values: [f64]) -> f64 {` example `quartile3`
+- `proc interquartile_range` signature `proc interquartile_range(values: [f64]) -> f64 {` example `interquartile_range`
+- `proc median_absolute_deviation` signature `proc median_absolute_deviation(values: [f64]) -> f64 {` example `median_absolute_deviation`
+- `proc covariance` signature `proc covariance(a: [f64], b: [f64]) -> f64 {` example `covariance`
+- `proc population_covariance` signature `proc population_covariance(a: [f64], b: [f64]) -> f64 {` example `population_covariance`
+- `proc sample_covariance` signature `proc sample_covariance(a: [f64], b: [f64]) -> f64 {` example `sample_covariance`
+- `proc correlation` signature `proc correlation(a: [f64], b: [f64]) -> f64 {` example `correlation`
+- `proc pearson_correlation` signature `proc pearson_correlation(a: [f64], b: [f64]) -> f64 {` example `pearson_correlation`
+- `proc histogram` signature `proc histogram(values: [f64], bins: int, low: f64, high: f64) -> [int] {` example `histogram`
+- `proc histogram_auto` signature `proc histogram_auto(values: [f64], bins: int) -> [int] {` example `histogram_auto`
+- `proc mode` signature `proc mode(values: [f64]) -> f64 {` example `mode`
+- `proc zscore` signature `proc zscore(value: f64, values: [f64]) -> f64 {` example `zscore`
+- `proc minmax_normalize` signature `proc minmax_normalize(values: [f64]) -> [f64] {` example `minmax_normalize`
+- `proc center` signature `proc center(values: [f64]) -> [f64] {` example `center`
+- `proc trimmed_mean` signature `proc trimmed_mean(values: [f64], trim_count: int) -> f64 {` example `trimmed_mean`
+- `proc winsorized_mean` signature `proc winsorized_mean(values: [f64], trim_count: int) -> f64 {` example `winsorized_mean`
+- `proc coefficient_of_variation` signature `proc coefficient_of_variation(values: [f64]) -> f64 {` example `coefficient_of_variation`
+- `proc slice_f64` signature `proc slice_f64(values: [f64], start: int, end: int) -> [f64] {` example `slice_f64`
+- `proc clamp_bin` signature `proc clamp_bin(index: int, bins: int) -> int {` example `clamp_bin`
+- `proc pow_root` signature `proc pow_root(value: f64, degree: int) -> f64 {` example `pow_root`
+- `proc pow_simple` signature `proc pow_simple(base: f64, exp: int) -> f64 {` example `pow_simple`
+- `proc statistics_version` signature `proc statistics_version() -> string {` example `statistics_version`
+- `proc statistics_ready` signature `proc statistics_ready() -> bool {` example `statistics_ready`
+- `proc statistics_selftest` signature `proc statistics_selftest() -> bool {` example `statistics_selftest`
 
 ## `src/vitte/stdlib/math/topology.vitl`
 
-- `proc contains`
-- `proc unique`
-- `proc union_sets`
-- `proc intersect_sets`
-- `proc difference_sets`
-- `proc symmetric_difference`
-- `proc is_subset`
-- `proc cartesian_product`
-- `proc power_set`
-- `proc adjacency_matrix_to_list`
-- `proc slice_stack`
-- `proc dfs`
-- `proc topology_version`
-- `proc topology_ready`
-- `proc topology_selftest`
+- `proc contains` signature `proc contains(values: [int], needle: int) -> bool {` example `contains`
+- `proc unique` signature `proc unique(values: [int]) -> [int] {` example `unique`
+- `proc union_sets` signature `proc union_sets(a: [int], b: [int]) -> [int] {` example `union_sets`
+- `proc intersect_sets` signature `proc intersect_sets(a: [int], b: [int]) -> [int] {` example `intersect_sets`
+- `proc difference_sets` signature `proc difference_sets(a: [int], b: [int]) -> [int] {` example `difference_sets`
+- `proc symmetric_difference` signature `proc symmetric_difference(a: [int], b: [int]) -> [int] {` example `symmetric_difference`
+- `proc is_subset` signature `proc is_subset(a: [int], b: [int]) -> bool {` example `is_subset`
+- `proc cartesian_product` signature `proc cartesian_product(a: [int], b: [int]) -> [[int]] {` example `cartesian_product`
+- `proc power_set` signature `proc power_set(values: [int]) -> [[int]] {` example `power_set`
+- `proc adjacency_matrix_to_list` signature `proc adjacency_matrix_to_list(matrix: [[int]]) -> [[int]] {` example `adjacency_matrix_to_list`
+- `proc slice_stack` signature `proc slice_stack(values: [int], end: int) -> [int] {` example `slice_stack`
+- `proc dfs` signature `proc dfs(graph: [[int]], start: int) -> [int] {` example `dfs`
+- `proc topology_version` signature `proc topology_version() -> string {` example `topology_version`
+- `proc topology_ready` signature `proc topology_ready() -> bool {` example `topology_ready`
+- `proc topology_selftest` signature `proc topology_selftest() -> bool {` example `topology_selftest`
 
 ## `src/vitte/stdlib/math/trigonometry.vitl`
 
-- `const PI`
-- `const HALF_PI`
-- `const QUARTER_PI`
-- `const TWO_PI`
-- `const THREE_HALF_PI`
-- `const DEG_TO_RAD`
-- `const RAD_TO_DEG`
-- `const EPSILON`
-- `const SERIES_STEPS`
-- `proc abs_f64`
-- `proc min_f64`
-- `proc max_f64`
-- `proc clamp_f64`
-- `proc sign_f64`
-- `proc is_near_zero`
-- `proc normalize_degrees`
-- `proc normalize_radians`
-- `proc wrap_radians`
-- `proc degrees_to_radians`
-- `proc radians_to_degrees`
-- `proc opposite_angle`
-- `proc complement_angle`
-- `proc supplement_angle`
-- `proc angle_delta_degrees`
-- `proc angle_distance_degrees`
-- `proc angle_delta_radians`
-- `proc angle_distance_radians`
-- `proc quadrant`
-- `proc is_axis_angle`
-- `proc is_right_angle`
-- `proc is_straight_angle`
-- `proc is_full_turn_degrees`
-- `proc turns_to_radians`
-- `proc radians_to_turns`
-- `proc square_f64`
-- `proc cube_f64`
-- `proc reduce_to_half_pi`
-- `proc factorial_f64`
-- `proc sin_series_core`
-- `proc cos_series_core`
-- `proc sin`
-- `proc cos`
-- `proc tan`
-- `proc sec`
-- `proc csc`
-- `proc cot`
-- `proc sin_degrees`
-- `proc cos_degrees`
-- `proc tan_degrees`
-- `proc sec_degrees`
-- `proc csc_degrees`
-- `proc cot_degrees`
-- `proc atan_series`
-- `proc atan`
-- `proc sqrt_f64_local`
-- `proc asin_series`
-- `proc asin_atan_identity`
-- `proc asin`
-- `proc acos`
-- `proc atan2`
-- `proc asec`
-- `proc acsc`
-- `proc acot`
-- `proc atan_degrees`
-- `proc atan2_degrees`
-- `proc asin_degrees`
-- `proc acos_degrees`
-- `proc exp_f64_local`
-- `proc log_f64_local`
-- `proc sinh`
-- `proc cosh`
-- `proc tanh`
-- `proc sech`
-- `proc csch`
-- `proc coth`
-- `proc asinh`
-- `proc acosh`
-- `proc atanh`
-- `proc haversin`
-- `proc ahaversin`
-- `proc versin`
-- `proc coversin`
-- `proc exsec`
-- `proc chord`
-- `proc sinc`
-- `proc normalized_sinc`
-- `proc polar_x`
-- `proc polar_y`
-- `proc polar_x_degrees`
-- `proc polar_y_degrees`
-- `proc pow_f64_local`
-- `proc round_f64_local`
-- `proc trigonometry_version`
-- `proc trigonometry_ready`
-- `proc trigonometry_selftest`
+- `const PI` signature `const PI: f64 = 3.141592653589793` example `PI`
+- `const HALF_PI` signature `const HALF_PI: f64 = 1.5707963267948966` example `HALF_PI`
+- `const QUARTER_PI` signature `const QUARTER_PI: f64 = 0.7853981633974483` example `QUARTER_PI`
+- `const TWO_PI` signature `const TWO_PI: f64 = 6.283185307179586` example `TWO_PI`
+- `const THREE_HALF_PI` signature `const THREE_HALF_PI: f64 = 4.71238898038469` example `THREE_HALF_PI`
+- `const DEG_TO_RAD` signature `const DEG_TO_RAD: f64 = 0.017453292519943295` example `DEG_TO_RAD`
+- `const RAD_TO_DEG` signature `const RAD_TO_DEG: f64 = 57.29577951308232` example `RAD_TO_DEG`
+- `const EPSILON` signature `const EPSILON: f64 = 0.000001` example `EPSILON`
+- `const SERIES_STEPS` signature `const SERIES_STEPS: i64 = 8` example `SERIES_STEPS`
+- `proc abs_f64` signature `proc abs_f64(value: f64) -> f64 {` example `abs_f64`
+- `proc min_f64` signature `proc min_f64(a: f64, b: f64) -> f64 {` example `min_f64`
+- `proc max_f64` signature `proc max_f64(a: f64, b: f64) -> f64 {` example `max_f64`
+- `proc clamp_f64` signature `proc clamp_f64(value: f64, low: f64, high: f64) -> f64 {` example `clamp_f64`
+- `proc sign_f64` signature `proc sign_f64(value: f64) -> f64 {` example `sign_f64`
+- `proc is_near_zero` signature `proc is_near_zero(value: f64) -> bool {` example `is_near_zero`
+- `proc normalize_degrees` signature `proc normalize_degrees(value: f64) -> f64 {` example `normalize_degrees`
+- `proc normalize_radians` signature `proc normalize_radians(value: f64) -> f64 {` example `normalize_radians`
+- `proc wrap_radians` signature `proc wrap_radians(value: f64) -> f64 {` example `wrap_radians`
+- `proc degrees_to_radians` signature `proc degrees_to_radians(value: f64) -> f64 {` example `degrees_to_radians`
+- `proc radians_to_degrees` signature `proc radians_to_degrees(value: f64) -> f64 {` example `radians_to_degrees`
+- `proc opposite_angle` signature `proc opposite_angle(value: f64) -> f64 {` example `opposite_angle`
+- `proc complement_angle` signature `proc complement_angle(value: f64) -> f64 {` example `complement_angle`
+- `proc supplement_angle` signature `proc supplement_angle(value: f64) -> f64 {` example `supplement_angle`
+- `proc angle_delta_degrees` signature `proc angle_delta_degrees(from_value: f64, to_value: f64) -> f64 {` example `angle_delta_degrees`
+- `proc angle_distance_degrees` signature `proc angle_distance_degrees(a: f64, b: f64) -> f64 {` example `angle_distance_degrees`
+- `proc angle_delta_radians` signature `proc angle_delta_radians(from_value: f64, to_value: f64) -> f64 {` example `angle_delta_radians`
+- `proc angle_distance_radians` signature `proc angle_distance_radians(a: f64, b: f64) -> f64 {` example `angle_distance_radians`
+- `proc quadrant` signature `proc quadrant(value: f64) -> i64 {` example `quadrant`
+- `proc is_axis_angle` signature `proc is_axis_angle(value: f64) -> bool {` example `is_axis_angle`
+- `proc is_right_angle` signature `proc is_right_angle(value: f64) -> bool {` example `is_right_angle`
+- `proc is_straight_angle` signature `proc is_straight_angle(value: f64) -> bool {` example `is_straight_angle`
+- `proc is_full_turn_degrees` signature `proc is_full_turn_degrees(value: f64) -> bool {` example `is_full_turn_degrees`
+- `proc turns_to_radians` signature `proc turns_to_radians(turns: f64) -> f64 {` example `turns_to_radians`
+- `proc radians_to_turns` signature `proc radians_to_turns(value: f64) -> f64 {` example `radians_to_turns`
+- `proc square_f64` signature `proc square_f64(value: f64) -> f64 {` example `square_f64`
+- `proc cube_f64` signature `proc cube_f64(value: f64) -> f64 {` example `cube_f64`
+- `proc reduce_to_half_pi` signature `proc reduce_to_half_pi(value: f64) -> f64 {` example `reduce_to_half_pi`
+- `proc factorial_f64` signature `proc factorial_f64(value: i64) -> f64 {` example `factorial_f64`
+- `proc sin_series_core` signature `proc sin_series_core(value: f64) -> f64 {` example `sin_series_core`
+- `proc cos_series_core` signature `proc cos_series_core(value: f64) -> f64 {` example `cos_series_core`
+- `proc sin` signature `proc sin(value: f64) -> f64 {` example `sin`
+- `proc cos` signature `proc cos(value: f64) -> f64 {` example `cos`
+- `proc tan` signature `proc tan(value: f64) -> f64 {` example `tan`
+- `proc sec` signature `proc sec(value: f64) -> f64 {` example `sec`
+- `proc csc` signature `proc csc(value: f64) -> f64 {` example `csc`
+- `proc cot` signature `proc cot(value: f64) -> f64 {` example `cot`
+- `proc sin_degrees` signature `proc sin_degrees(value: f64) -> f64 {` example `sin_degrees`
+- `proc cos_degrees` signature `proc cos_degrees(value: f64) -> f64 {` example `cos_degrees`
+- `proc tan_degrees` signature `proc tan_degrees(value: f64) -> f64 {` example `tan_degrees`
+- `proc sec_degrees` signature `proc sec_degrees(value: f64) -> f64 {` example `sec_degrees`
+- `proc csc_degrees` signature `proc csc_degrees(value: f64) -> f64 {` example `csc_degrees`
+- `proc cot_degrees` signature `proc cot_degrees(value: f64) -> f64 {` example `cot_degrees`
+- `proc atan_series` signature `proc atan_series(value: f64) -> f64 {` example `atan_series`
+- `proc atan` signature `proc atan(value: f64) -> f64 {` example `atan`
+- `proc sqrt_f64_local` signature `proc sqrt_f64_local(value: f64) -> f64 {` example `sqrt_f64_local`
+- `proc asin_series` signature `proc asin_series(value: f64) -> f64 {` example `asin_series`
+- `proc asin_atan_identity` signature `proc asin_atan_identity(value: f64) -> f64 {` example `asin_atan_identity`
+- `proc asin` signature `proc asin(value: f64) -> f64 {` example `asin`
+- `proc acos` signature `proc acos(value: f64) -> f64 {` example `acos`
+- `proc atan2` signature `proc atan2(y: f64, x: f64) -> f64 {` example `atan2`
+- `proc asec` signature `proc asec(value: f64) -> f64 {` example `asec`
+- `proc acsc` signature `proc acsc(value: f64) -> f64 {` example `acsc`
+- `proc acot` signature `proc acot(value: f64) -> f64 {` example `acot`
+- `proc atan_degrees` signature `proc atan_degrees(value: f64) -> f64 {` example `atan_degrees`
+- `proc atan2_degrees` signature `proc atan2_degrees(y: f64, x: f64) -> f64 {` example `atan2_degrees`
+- `proc asin_degrees` signature `proc asin_degrees(value: f64) -> f64 {` example `asin_degrees`
+- `proc acos_degrees` signature `proc acos_degrees(value: f64) -> f64 {` example `acos_degrees`
+- `proc exp_f64_local` signature `proc exp_f64_local(value: f64) -> f64 {` example `exp_f64_local`
+- `proc log_f64_local` signature `proc log_f64_local(value: f64) -> f64 {` example `log_f64_local`
+- `proc sinh` signature `proc sinh(value: f64) -> f64 {` example `sinh`
+- `proc cosh` signature `proc cosh(value: f64) -> f64 {` example `cosh`
+- `proc tanh` signature `proc tanh(value: f64) -> f64 {` example `tanh`
+- `proc sech` signature `proc sech(value: f64) -> f64 {` example `sech`
+- `proc csch` signature `proc csch(value: f64) -> f64 {` example `csch`
+- `proc coth` signature `proc coth(value: f64) -> f64 {` example `coth`
+- `proc asinh` signature `proc asinh(value: f64) -> f64 {` example `asinh`
+- `proc acosh` signature `proc acosh(value: f64) -> f64 {` example `acosh`
+- `proc atanh` signature `proc atanh(value: f64) -> f64 {` example `atanh`
+- `proc haversin` signature `proc haversin(value: f64) -> f64 {` example `haversin`
+- `proc ahaversin` signature `proc ahaversin(value: f64) -> f64 {` example `ahaversin`
+- `proc versin` signature `proc versin(value: f64) -> f64 {` example `versin`
+- `proc coversin` signature `proc coversin(value: f64) -> f64 {` example `coversin`
+- `proc exsec` signature `proc exsec(value: f64) -> f64 {` example `exsec`
+- `proc chord` signature `proc chord(value: f64) -> f64 {` example `chord`
+- `proc sinc` signature `proc sinc(value: f64) -> f64 {` example `sinc`
+- `proc normalized_sinc` signature `proc normalized_sinc(value: f64) -> f64 {` example `normalized_sinc`
+- `proc polar_x` signature `proc polar_x(radius: f64, angle_radians: f64) -> f64 {` example `polar_x`
+- `proc polar_y` signature `proc polar_y(radius: f64, angle_radians: f64) -> f64 {` example `polar_y`
+- `proc polar_x_degrees` signature `proc polar_x_degrees(radius: f64, angle_degrees: f64) -> f64 {` example `polar_x_degrees`
+- `proc polar_y_degrees` signature `proc polar_y_degrees(radius: f64, angle_degrees: f64) -> f64 {` example `polar_y_degrees`
+- `proc pow_f64_local` signature `proc pow_f64_local(base: f64, exponent: i64) -> f64 {` example `pow_f64_local`
+- `proc round_f64_local` signature `proc round_f64_local(value: f64) -> i64 {` example `round_f64_local`
+- `proc trigonometry_version` signature `proc trigonometry_version() -> string {` example `trigonometry_version`
+- `proc trigonometry_ready` signature `proc trigonometry_ready() -> bool {` example `trigonometry_ready`
+- `proc trigonometry_selftest` signature `proc trigonometry_selftest() -> bool {` example `trigonometry_selftest`
 
 ## `src/vitte/stdlib/math/vector.vitl`
 
-- `proc vec2`
-- `proc vec2_add`
-- `proc vec2_sub`
-- `proc vec2_scale`
-- `proc dot2`
-- `proc norm2_sq`
-- `proc vector_version`
-- `proc vector_ready`
-- `proc vector_selftest`
+- `proc vec2` signature `proc vec2(x: int, y: int) -> [int] {` example `vec2`
+- `proc vec2_add` signature `proc vec2_add(a: [int], b: [int]) -> [int] {` example `vec2_add`
+- `proc vec2_sub` signature `proc vec2_sub(a: [int], b: [int]) -> [int] {` example `vec2_sub`
+- `proc vec2_scale` signature `proc vec2_scale(a: [int], factor: int) -> [int] {` example `vec2_scale`
+- `proc dot2` signature `proc dot2(a: [int], b: [int]) -> int {` example `dot2`
+- `proc norm2_sq` signature `proc norm2_sq(a: [int]) -> int {` example `norm2_sq`
+- `proc vector_version` signature `proc vector_version() -> string {` example `vector_version`
+- `proc vector_ready` signature `proc vector_ready() -> bool {` example `vector_ready`
+- `proc vector_selftest` signature `proc vector_selftest() -> bool {` example `vector_selftest`
 
 ## `src/vitte/stdlib/network/http.vitl`
 
-- `form HttpRequest`
-- `form HttpResponse`
-- `proc http_request`
-- `proc http_response`
-- `proc http_is_success`
-- `proc http_selftest`
+- `form HttpRequest` signature `form HttpRequest {` example `HttpRequest`
+- `form HttpResponse` signature `form HttpResponse {` example `HttpResponse`
+- `proc http_request` signature `proc http_request(method: string, path: string, host: string, port: u64) -> HttpRequest {` example `http_request`
+- `proc http_response` signature `proc http_response(status: u64, body_len: u64) -> HttpResponse {` example `http_response`
+- `proc http_is_success` signature `proc http_is_success(response: HttpResponse) -> bool {` example `http_is_success`
+- `proc http_selftest` signature `proc http_selftest() -> bool {` example `http_selftest`
 
 ## `src/vitte/stdlib/network/socket.vitl`
 
-- `form SocketAddress`
-- `form TcpSocket`
-- `proc socket_address`
-- `proc tcp_socket_new`
-- `proc tcp_socket_connect`
-- `proc tcp_socket_set_nonblocking`
-- `proc tcp_socket_ready`
+- `form SocketAddress` signature `form SocketAddress {` example `SocketAddress`
+- `form TcpSocket` signature `form TcpSocket {` example `TcpSocket`
+- `proc socket_address` signature `proc socket_address(host: string, port: u64) -> SocketAddress {` example `socket_address`
+- `proc tcp_socket_new` signature `proc tcp_socket_new(host: string, port: u64) -> TcpSocket {` example `tcp_socket_new`
+- `proc tcp_socket_connect` signature `proc tcp_socket_connect(socket: TcpSocket) -> TcpSocket {` example `tcp_socket_connect`
+- `proc tcp_socket_set_nonblocking` signature `proc tcp_socket_set_nonblocking(socket: TcpSocket, enabled: bool) -> TcpSocket {` example `tcp_socket_set_nonblocking`
+- `proc tcp_socket_ready` signature `proc tcp_socket_ready(socket: TcpSocket) -> bool {` example `tcp_socket_ready`
 
 ## `src/vitte/stdlib/network/udp.vitl`
 
-- `form UdpEndpoint`
-- `form UdpPacket`
-- `proc udp_bind`
-- `proc udp_packet`
-- `proc udp_can_send`
+- `form UdpEndpoint` signature `form UdpEndpoint {` example `UdpEndpoint`
+- `form UdpPacket` signature `form UdpPacket {` example `UdpPacket`
+- `proc udp_bind` signature `proc udp_bind(host: string, port: u64) -> UdpEndpoint {` example `udp_bind`
+- `proc udp_packet` signature `proc udp_packet(host: string, port: u64, bytes: u64) -> UdpPacket {` example `udp_packet`
+- `proc udp_can_send` signature `proc udp_can_send(endpoint: UdpEndpoint, packet: UdpPacket) -> bool {` example `udp_can_send`
 
 ## `src/vitte/stdlib/path/globbing.vitl`
 
-- `form PathGlobbingManifest`
-- `form PathGlobbingHealth`
-- `form PathGlobbingSummary`
-- `proc path_glob`
-- `proc path_glob_recursive`
-- `proc path_matches`
-- `proc path_is_absolute`
-- `proc globbing_version`
-- `proc globbing_ready`
-- `proc globbing_manifest`
-- `proc globbing_health`
-- `proc globbing_summary`
-- `proc path_glob_report`
-- `proc globbing_selftest`
+- `form PathGlobbingManifest` signature `form PathGlobbingManifest {` example `PathGlobbingManifest`
+- `form PathGlobbingHealth` signature `form PathGlobbingHealth {` example `PathGlobbingHealth`
+- `form PathGlobbingSummary` signature `form PathGlobbingSummary {` example `PathGlobbingSummary`
+- `proc path_glob` signature `proc path_glob(pattern: string) -> [string] {` example `path_glob`
+- `proc path_glob_recursive` signature `proc path_glob_recursive(pattern: string) -> [string] {` example `path_glob_recursive`
+- `proc path_matches` signature `proc path_matches(p: string, pattern: string) -> int {` example `path_matches`
+- `proc path_is_absolute` signature `proc path_is_absolute(p: string) -> int {` example `path_is_absolute`
+- `proc globbing_version` signature `proc globbing_version() -> string {` example `globbing_version`
+- `proc globbing_ready` signature `proc globbing_ready() -> bool {` example `globbing_ready`
+- `proc globbing_manifest` signature `proc globbing_manifest() -> PathGlobbingManifest {` example `globbing_manifest`
+- `proc globbing_health` signature `proc globbing_health() -> PathGlobbingHealth {` example `globbing_health`
+- `proc globbing_summary` signature `proc globbing_summary() -> PathGlobbingSummary {` example `globbing_summary`
+- `proc path_glob_report` signature `proc path_glob_report(pattern: string) -> [string] {` example `path_glob_report`
+- `proc globbing_selftest` signature `proc globbing_selftest() -> bool {` example `globbing_selftest`
 
 ## `src/vitte/stdlib/path/manipulation.vitl`
 
-- `const PATH_SEPARATOR`
-- `const PATH_DELIMITER`
-- `form Path`
-- `form PathManipulationManifest`
-- `form PathManipulationHealth`
-- `form PathManipulationSummary`
-- `proc path_new`
-- `proc path_normalize`
-- `proc path_resolve`
-- `proc path_absolute`
-- `proc path_relative`
-- `proc path_get_parent`
-- `proc path_get_filename`
-- `proc path_get_basename`
-- `proc path_get_stem`
-- `proc path_get_extension`
-- `proc path_get_directory`
-- `proc path_get_root`
-- `proc path_join`
-- `proc path_join_multi`
-- `proc path_with_extension`
-- `proc path_with_filename`
-- `proc path_exists`
-- `proc path_is_file`
-- `proc path_is_dir`
-- `proc path_is_symlink`
-- `proc path_is_absolute`
-- `proc path_is_relative`
-- `proc path_is_hidden`
-- `proc path_equals`
-- `proc path_starts_with`
-- `proc path_ends_with`
-- `proc path_clean`
-- `proc path_canonicalize`
-- `proc path_simplify`
-- `proc path_expand_home`
-- `proc path_expand_env`
-- `proc path_version`
-- `proc path_ready`
-- `proc manipulation_version`
-- `proc manipulation_ready`
-- `proc manipulation_manifest`
-- `proc manipulation_health`
-- `proc manipulation_summary`
-- `proc path_report`
-- `proc path_selftest`
+- `const PATH_SEPARATOR` signature `const PATH_SEPARATOR: string = "/"` example `PATH_SEPARATOR`
+- `const PATH_DELIMITER` signature `const PATH_DELIMITER: string = ":"` example `PATH_DELIMITER`
+- `form Path` signature `form Path {` example `Path`
+- `form PathManipulationManifest` signature `form PathManipulationManifest {` example `PathManipulationManifest`
+- `form PathManipulationHealth` signature `form PathManipulationHealth {` example `PathManipulationHealth`
+- `form PathManipulationSummary` signature `form PathManipulationSummary {` example `PathManipulationSummary`
+- `proc path_new` signature `proc path_new(p: string) -> Path {` example `path_new`
+- `proc path_normalize` signature `proc path_normalize(p: string) -> string {` example `path_normalize`
+- `proc path_resolve` signature `proc path_resolve(p: string) -> string {` example `path_resolve`
+- `proc path_absolute` signature `proc path_absolute(p: string) -> string {` example `path_absolute`
+- `proc path_relative` signature `proc path_relative(base: string, target: string) -> string {` example `path_relative`
+- `proc path_get_parent` signature `proc path_get_parent(p: string) -> string {` example `path_get_parent`
+- `proc path_get_filename` signature `proc path_get_filename(p: string) -> string {` example `path_get_filename`
+- `proc path_get_basename` signature `proc path_get_basename(p: string) -> string {` example `path_get_basename`
+- `proc path_get_stem` signature `proc path_get_stem(p: string) -> string {` example `path_get_stem`
+- `proc path_get_extension` signature `proc path_get_extension(p: string) -> string {` example `path_get_extension`
+- `proc path_get_directory` signature `proc path_get_directory(p: string) -> string {` example `path_get_directory`
+- `proc path_get_root` signature `proc path_get_root(p: string) -> string {` example `path_get_root`
+- `proc path_join` signature `proc path_join(base: string, component: string) -> string {` example `path_join`
+- `proc path_join_multi` signature `proc path_join_multi(base: string, components: [string]) -> string {` example `path_join_multi`
+- `proc path_with_extension` signature `proc path_with_extension(p: string, ext: string) -> string {` example `path_with_extension`
+- `proc path_with_filename` signature `proc path_with_filename(p: string, filename: string) -> string {` example `path_with_filename`
+- `proc path_exists` signature `proc path_exists(p: string) -> int {` example `path_exists`
+- `proc path_is_file` signature `proc path_is_file(p: string) -> int {` example `path_is_file`
+- `proc path_is_dir` signature `proc path_is_dir(p: string) -> int {` example `path_is_dir`
+- `proc path_is_symlink` signature `proc path_is_symlink(p: string) -> int {` example `path_is_symlink`
+- `proc path_is_absolute` signature `proc path_is_absolute(p: string) -> int {` example `path_is_absolute`
+- `proc path_is_relative` signature `proc path_is_relative(p: string) -> int {` example `path_is_relative`
+- `proc path_is_hidden` signature `proc path_is_hidden(p: string) -> int {` example `path_is_hidden`
+- `proc path_equals` signature `proc path_equals(p1: string, p2: string) -> int {` example `path_equals`
+- `proc path_starts_with` signature `proc path_starts_with(p: string, prefix: string) -> int {` example `path_starts_with`
+- `proc path_ends_with` signature `proc path_ends_with(p: string, suffix: string) -> int {` example `path_ends_with`
+- `proc path_clean` signature `proc path_clean(p: string) -> string {` example `path_clean`
+- `proc path_canonicalize` signature `proc path_canonicalize(p: string) -> string {` example `path_canonicalize`
+- `proc path_simplify` signature `proc path_simplify(p: string) -> string {` example `path_simplify`
+- `proc path_expand_home` signature `proc path_expand_home(p: string) -> string {` example `path_expand_home`
+- `proc path_expand_env` signature `proc path_expand_env(p: string) -> string {` example `path_expand_env`
+- `proc path_version` signature `proc path_version() -> string {` example `path_version`
+- `proc path_ready` signature `proc path_ready() -> bool {` example `path_ready`
+- `proc manipulation_version` signature `proc manipulation_version() -> string {` example `manipulation_version`
+- `proc manipulation_ready` signature `proc manipulation_ready() -> bool {` example `manipulation_ready`
+- `proc manipulation_manifest` signature `proc manipulation_manifest() -> PathManipulationManifest {` example `manipulation_manifest`
+- `proc manipulation_health` signature `proc manipulation_health() -> PathManipulationHealth {` example `manipulation_health`
+- `proc manipulation_summary` signature `proc manipulation_summary() -> PathManipulationSummary {` example `manipulation_summary`
+- `proc path_report` signature `proc path_report(p: string) -> Path {` example `path_report`
+- `proc path_selftest` signature `proc path_selftest() -> bool {` example `path_selftest`
 
 ## `src/vitte/stdlib/path/special.vitl`
 
-- `form PathSpecialManifest`
-- `form PathSpecialHealth`
-- `form PathSpecialSummary`
-- `proc home_dir`
-- `proc temp_dir`
-- `proc current_dir`
-- `proc config_dir`
-- `proc cache_dir`
-- `proc desktop_dir`
-- `proc documents_dir`
-- `proc downloads_dir`
-- `proc get_path_env`
-- `proc find_in_path`
-- `proc add_to_path`
-- `proc remove_from_path`
-- `proc special_version`
-- `proc special_ready`
-- `proc special_manifest`
-- `proc special_health`
-- `proc special_summary`
-- `proc special_report`
-- `proc special_selftest`
+- `form PathSpecialManifest` signature `form PathSpecialManifest {` example `PathSpecialManifest`
+- `form PathSpecialHealth` signature `form PathSpecialHealth {` example `PathSpecialHealth`
+- `form PathSpecialSummary` signature `form PathSpecialSummary {` example `PathSpecialSummary`
+- `proc home_dir` signature `proc home_dir() -> string {` example `home_dir`
+- `proc temp_dir` signature `proc temp_dir() -> string {` example `temp_dir`
+- `proc current_dir` signature `proc current_dir() -> string {` example `current_dir`
+- `proc config_dir` signature `proc config_dir() -> string {` example `config_dir`
+- `proc cache_dir` signature `proc cache_dir() -> string {` example `cache_dir`
+- `proc desktop_dir` signature `proc desktop_dir() -> string {` example `desktop_dir`
+- `proc documents_dir` signature `proc documents_dir() -> string {` example `documents_dir`
+- `proc downloads_dir` signature `proc downloads_dir() -> string {` example `downloads_dir`
+- `proc get_path_env` signature `proc get_path_env() -> [string] {` example `get_path_env`
+- `proc find_in_path` signature `proc find_in_path(executable: string) -> string {` example `find_in_path`
+- `proc add_to_path` signature `proc add_to_path(directory: string) -> int {` example `add_to_path`
+- `proc remove_from_path` signature `proc remove_from_path(directory: string) -> int {` example `remove_from_path`
+- `proc special_version` signature `proc special_version() -> string {` example `special_version`
+- `proc special_ready` signature `proc special_ready() -> bool {` example `special_ready`
+- `proc special_manifest` signature `proc special_manifest() -> PathSpecialManifest {` example `special_manifest`
+- `proc special_health` signature `proc special_health() -> PathSpecialHealth {` example `special_health`
+- `proc special_summary` signature `proc special_summary() -> PathSpecialSummary {` example `special_summary`
+- `proc special_report` signature `proc special_report() -> [string] {` example `special_report`
+- `proc special_selftest` signature `proc special_selftest() -> bool {` example `special_selftest`
 
 ## `src/vitte/stdlib/path/walker.vitl`
 
-- `form PathWalker`
-- `form PathWalkerManifest`
-- `form PathWalkerHealth`
-- `form PathWalkerSummary`
-- `proc path_walk`
-- `proc path_walk_recursive`
-- `proc path_walker_next`
-- `proc path_walker_has_next`
-- `proc walker_version`
-- `proc walker_ready`
-- `proc walker_manifest`
-- `proc walker_health`
-- `proc walker_summary`
-- `proc walker_report`
-- `proc walker_selftest`
+- `form PathWalker` signature `form PathWalker {` example `PathWalker`
+- `form PathWalkerManifest` signature `form PathWalkerManifest {` example `PathWalkerManifest`
+- `form PathWalkerHealth` signature `form PathWalkerHealth {` example `PathWalkerHealth`
+- `form PathWalkerSummary` signature `form PathWalkerSummary {` example `PathWalkerSummary`
+- `proc path_walk` signature `proc path_walk(root: string) -> PathWalker {` example `path_walk`
+- `proc path_walk_recursive` signature `proc path_walk_recursive(root: string) -> PathWalker {` example `path_walk_recursive`
+- `proc path_walker_next` signature `proc path_walker_next(w: PathWalker) -> string {` example `path_walker_next`
+- `proc path_walker_has_next` signature `proc path_walker_has_next(w: PathWalker) -> int {` example `path_walker_has_next`
+- `proc walker_version` signature `proc walker_version() -> string {` example `walker_version`
+- `proc walker_ready` signature `proc walker_ready() -> bool {` example `walker_ready`
+- `proc walker_manifest` signature `proc walker_manifest() -> PathWalkerManifest {` example `walker_manifest`
+- `proc walker_health` signature `proc walker_health() -> PathWalkerHealth {` example `walker_health`
+- `proc walker_summary` signature `proc walker_summary() -> PathWalkerSummary {` example `walker_summary`
+- `proc walker_report` signature `proc walker_report(root: string) -> PathWalker {` example `walker_report`
+- `proc walker_selftest` signature `proc walker_selftest() -> bool {` example `walker_selftest`
 
 ## `src/vitte/stdlib/platform/abi.vitl`
 
-- `form PlatformInfo`
-- `form PlatformFeature`
-- `proc platform_info`
-- `proc platform_feature`
-- `proc supports_threads`
-- `proc supports_filesystem`
-- `proc supports_process`
-- `proc supports_network`
+- `form PlatformInfo` signature `form PlatformInfo {` example `PlatformInfo`
+- `form PlatformFeature` signature `form PlatformFeature {` example `PlatformFeature`
+- `proc platform_info` signature `proc platform_info() -> PlatformInfo { give compiler_platform_info(); }` example `platform_info`
+- `proc platform_feature` signature `proc platform_feature(name: string) -> PlatformFeature { give compiler_platform_feature(name); }` example `platform_feature`
+- `proc supports_threads` signature `proc supports_threads() -> bool { give platform_feature("threads").enabled; }` example `supports_threads`
+- `proc supports_filesystem` signature `proc supports_filesystem() -> bool { give platform_feature("filesystem").enabled; }` example `supports_filesystem`
+- `proc supports_process` signature `proc supports_process() -> bool { give platform_feature("process").enabled; }` example `supports_process`
+- `proc supports_network` signature `proc supports_network() -> bool { give platform_feature("network").enabled; }` example `supports_network`
+
+## `src/vitte/stdlib/platform/embedded.vitl`
+
+- `form EmbeddedPin` signature `form EmbeddedPin { number: u32 }` example `EmbeddedPin`
+- `form EmbeddedClock` signature `form EmbeddedClock { hz: u64 }` example `EmbeddedClock`
+- `form EmbeddedError` signature `form EmbeddedError { message: String }` example `EmbeddedError`
+- `proc embedded_available` signature `proc embedded_available() -> bool { give compiler_platform_family() == "embedded"; }` example `embedded_available`
+- `proc monotonic_ticks` signature `proc monotonic_ticks() -> u64 { give compiler_embedded_monotonic_ticks(); }` example `monotonic_ticks`
+- `proc clock_frequency` signature `proc clock_frequency() -> EmbeddedClock { give compiler_embedded_clock_frequency(); }` example `clock_frequency`
+- `proc pin` signature `proc pin(number: u32) -> EmbeddedPin { give EmbeddedPin { number: number }; }` example `pin`
+- `proc read_pin` signature `proc read_pin(pin_value: EmbeddedPin) -> Result<bool, EmbeddedError> { give compiler_embedded_read_pin(pin_value); }` example `read_pin`
+- `proc write_pin` signature `proc write_pin(pin_value: EmbeddedPin, value: bool) -> Result<(), EmbeddedError> { give compiler_embedded_write_pin(pin_value, value); }` example `write_pin`
+
+## `src/vitte/stdlib/platform/posix.vitl`
+
+- `form PosixFd` signature `form PosixFd { raw: int }` example `PosixFd`
+- `form PosixError` signature `form PosixError { errno: int message: String }` example `PosixError`
+- `form PosixStat` signature `form PosixStat { mode: u32 size: u64 mtime: i64 }` example `PosixStat`
+- `proc posix_available` signature `proc posix_available() -> bool { give compiler_platform_family() == "posix"; }` example `posix_available`
+- `proc posix_open` signature `proc posix_open(path: PathBuf, flags: int, mode: u32) -> Result<PosixFd, PosixError> { give compiler_posix_open(path, flags, mode); }` example `posix_open`
+- `proc posix_close` signature `proc posix_close(fd: PosixFd) -> Result<(), PosixError> { give compiler_posix_close(fd); }` example `posix_close`
+- `proc posix_read` signature `proc posix_read(fd: PosixFd, buffer: ref mut [byte]) -> Result<usize, PosixError> { give compiler_posix_read(fd, buffer); }` example `posix_read`
+- `proc posix_write` signature `proc posix_write(fd: PosixFd, buffer: [byte]) -> Result<usize, PosixError> { give compiler_posix_write(fd, buffer); }` example `posix_write`
+- `proc posix_stat` signature `proc posix_stat(path: PathBuf) -> Result<PosixStat, PosixError> { give compiler_posix_stat(path); }` example `posix_stat`
+
+## `src/vitte/stdlib/platform/wasm.vitl`
+
+- `form WasmMemory` signature `form WasmMemory { pages: u32 }` example `WasmMemory`
+- `form WasmImport` signature `form WasmImport { module: String name: String }` example `WasmImport`
+- `proc wasm_available` signature `proc wasm_available() -> bool { give compiler_platform_family() == "wasm"; }` example `wasm_available`
+- `proc wasm_memory_pages` signature `proc wasm_memory_pages() -> u32 { give compiler_wasm_memory_pages(); }` example `wasm_memory_pages`
+- `proc wasm_grow_memory` signature `proc wasm_grow_memory(pages: u32) -> Result<WasmMemory, string> { give compiler_wasm_grow_memory(pages); }` example `wasm_grow_memory`
+- `proc wasm_import` signature `proc wasm_import(module: String, name: String) -> WasmImport { give WasmImport { module: module, name: name }; }` example `wasm_import`
+- `proc wasm_call` signature `proc wasm_call(import_value: WasmImport, args: Vec<u64>) -> Result<u64, string> { give compiler_wasm_call(import_value, args); }` example `wasm_call`
+
+## `src/vitte/stdlib/platform/windows.vitl`
+
+- `form WindowsHandle` signature `form WindowsHandle { raw: u64 }` example `WindowsHandle`
+- `form WindowsError` signature `form WindowsError { code: u32 message: String }` example `WindowsError`
+- `form WindowsPath` signature `form WindowsPath { value: String verbatim: bool }` example `WindowsPath`
+- `proc windows_available` signature `proc windows_available() -> bool { give compiler_platform_family() == "windows"; }` example `windows_available`
+- `proc windows_path` signature `proc windows_path(path: PathBuf) -> WindowsPath { give compiler_windows_path(path); }` example `windows_path`
+- `proc windows_open` signature `proc windows_open(path: WindowsPath, access: u32) -> Result<WindowsHandle, WindowsError> { give compiler_windows_open(path, access); }` example `windows_open`
+- `proc windows_close` signature `proc windows_close(handle: WindowsHandle) -> Result<(), WindowsError> { give compiler_windows_close(handle); }` example `windows_close`
+- `proc windows_read` signature `proc windows_read(handle: WindowsHandle, buffer: ref mut [byte]) -> Result<usize, WindowsError> { give compiler_windows_read(handle, buffer); }` example `windows_read`
+- `proc windows_write` signature `proc windows_write(handle: WindowsHandle, buffer: [byte]) -> Result<usize, WindowsError> { give compiler_windows_write(handle, buffer); }` example `windows_write`
 
 ## `src/vitte/stdlib/profiling/profiler.vitl`
 
-- `form ProfilerSample`
-- `form ProfilerReport`
-- `proc profile_report`
-- `proc profiler_summary`
-- `proc profiler_empty`
-- `proc profiler_selftest`
+- `form ProfilerSample` signature `form ProfilerSample {` example `ProfilerSample`
+- `form ProfilerReport` signature `form ProfilerReport {` example `ProfilerReport`
+- `proc profile_report` signature `proc profile_report(target: string, samples: u64, total_ns: u64, allocations: u64, hottest: string) -> ProfilerReport {` example `profile_report`
+- `proc profiler_summary` signature `proc profiler_summary(report: ProfilerReport) -> string {` example `profiler_summary`
+- `proc profiler_empty` signature `proc profiler_empty() -> ProfilerReport {` example `profiler_empty`
+- `proc profiler_selftest` signature `proc profiler_selftest() -> bool {` example `profiler_selftest`
+
+## `src/vitte/stdlib/std/atomic.vitl`
+
+- `pick Ordering` signature `pick Ordering { Relaxed Acquire Release AcqRel SeqCst }` example `Ordering`
+- `form AtomicBool` signature `form AtomicBool { value: bool }` example `AtomicBool`
+- `form AtomicUsize` signature `form AtomicUsize { value: usize }` example `AtomicUsize`
+- `form AtomicU64` signature `form AtomicU64 { value: u64 }` example `AtomicU64`
+- `form AtomicI64` signature `form AtomicI64 { value: i64 }` example `AtomicI64`
+- `proc atomic_bool` signature `proc atomic_bool(value: bool) -> AtomicBool { give AtomicBool { value: value }; }` example `atomic_bool`
+- `proc atomic_usize` signature `proc atomic_usize(value: usize) -> AtomicUsize { give AtomicUsize { value: value }; }` example `atomic_usize`
+- `proc atomic_u64` signature `proc atomic_u64(value: u64) -> AtomicU64 { give AtomicU64 { value: value }; }` example `atomic_u64`
+- `proc atomic_i64` signature `proc atomic_i64(value: i64) -> AtomicI64 { give AtomicI64 { value: value }; }` example `atomic_i64`
+- `proc load_bool` signature `proc load_bool(value: ref AtomicBool, ordering: Ordering) -> bool { give compiler_atomic_load_bool(value, ordering); }` example `load_bool`
+- `proc store_bool` signature `proc store_bool(value: ref AtomicBool, next: bool, ordering: Ordering) { compiler_atomic_store_bool(value, next, ordering); }` example `store_bool`
+- `proc swap_bool` signature `proc swap_bool(value: ref AtomicBool, next: bool, ordering: Ordering) -> bool { give compiler_atomic_swap_bool(value, next, ordering); }` example `swap_bool`
+- `proc compare_exchange_bool` signature `proc compare_exchange_bool(value: ref AtomicBool, current: bool, next: bool, success: Ordering, failure: Ordering) -> Result<bool, bool> {` example `compare_exchange_bool`
+- `proc load_usize` signature `proc load_usize(value: ref AtomicUsize, ordering: Ordering) -> usize { give compiler_atomic_load_usize(value, ordering); }` example `load_usize`
+- `proc store_usize` signature `proc store_usize(value: ref AtomicUsize, next: usize, ordering: Ordering) { compiler_atomic_store_usize(value, next, ordering); }` example `store_usize`
+- `proc fetch_add_usize` signature `proc fetch_add_usize(value: ref AtomicUsize, amount: usize, ordering: Ordering) -> usize { give compiler_atomic_fetch_add_usize(value, amount, ordering); }` example `fetch_add_usize`
+- `proc fetch_sub_usize` signature `proc fetch_sub_usize(value: ref AtomicUsize, amount: usize, ordering: Ordering) -> usize { give compiler_atomic_fetch_sub_usize(value, amount, ordering); }` example `fetch_sub_usize`
 
 ## `src/vitte/stdlib/std/bench.vitl`
 
-- `form Benchmark`
-- `form BenchReport`
-- `proc benchmark`
-- `proc run`
-- `proc threshold`
-- `proc report_text`
+- `form Benchmark` signature `form Benchmark { name: String iterations: u64 }` example `Benchmark`
+- `form BenchReport` signature `form BenchReport { name: String iterations: u64 nanos: u128 passed_threshold: bool }` example `BenchReport`
+- `proc benchmark` signature `proc benchmark(name: String, iterations: u64) -> Benchmark { give Benchmark { name: name, iterations: iterations }; }` example `benchmark`
+- `proc run` signature `proc run(bench: Benchmark, body: proc()) -> BenchReport { give compiler_bench_run(bench, body); }` example `run`
+- `proc threshold` signature `proc threshold(report: BenchReport, max_nanos: u128) -> bool { give report.nanos <= max_nanos; }` example `threshold`
+- `proc report_text` signature `proc report_text(report: BenchReport) -> String { give compiler_bench_report_text(report); }` example `report_text`
 
 ## `src/vitte/stdlib/std/cli.vitl`
 
-- `form Flag`
-- `form CliApp`
-- `form CliMatches`
-- `form CliError`
-- `proc cli_app`
-- `proc flag`
-- `proc add_flag`
-- `proc parse`
-- `proc help`
+- `form Flag` signature `form Flag { name: String short: Option<rune> help: String takes_value: bool }` example `Flag`
+- `form CliApp` signature `form CliApp { name: String about: String flags: Vec<Flag> }` example `CliApp`
+- `form CliMatches` signature `form CliMatches { values: HashMap<String, String> present: HashSet<String> }` example `CliMatches`
+- `form CliError` signature `form CliError { message: String flag: Option<String> }` example `CliError`
+- `proc cli_app` signature `proc cli_app(name: String, about: String) -> CliApp { give CliApp { name: name, about: about, flags: vec_new<Flag>() }; }` example `cli_app`
+- `proc flag` signature `proc flag(name: String, short: Option<rune>, help: String, takes_value: bool) -> Flag { give Flag { name: name, short: short, help: help, takes_value: takes_value }; }` example `flag`
+- `proc add_flag` signature `proc add_flag(app: ref mut CliApp, value: Flag) { vec_push<Flag>(&mut ((*app).flags), value); }` example `add_flag`
+- `proc parse` signature `proc parse(app: CliApp, args: Iterator<String>) -> Result<CliMatches, CliError> { give compiler_cli_parse(app, args); }` example `parse`
+- `proc help` signature `proc help(app: CliApp) -> String { give compiler_cli_help(app); }` example `help`
 
 ## `src/vitte/stdlib/std/env.vitl`
 
-- `form EnvError`
-- `form EnvVar`
-- `proc args`
-- `proc var`
-- `proc vars`
-- `proc set_var`
-- `proc set_var_unicode`
-- `proc remove_var`
-- `proc current_dir`
-- `proc set_current_dir`
-- `proc home_dir`
-- `proc temp_dir`
-- `proc os_string_var`
+- `form EnvError` signature `form EnvError { name: string message: string }` example `EnvError`
+- `form EnvVar` signature `form EnvVar { name: String value: String unicode: bool os_specific: bool }` example `EnvVar`
+- `proc args` signature `proc args() -> Iterator<String> { give compiler_env_args(); }` example `args`
+- `proc var` signature `proc var(name: string) -> Result<String, EnvError> { give compiler_env_var(name); }` example `var`
+- `proc vars` signature `proc vars() -> Iterator<EnvVar> { give compiler_env_vars(); }` example `vars`
+- `proc set_var` signature `proc set_var(name: string, value: string) -> Result<(), EnvError> { give compiler_env_set_var(name, value); }` example `set_var`
+- `proc set_var_unicode` signature `proc set_var_unicode(name: String, value: String) -> Result<(), EnvError> { give compiler_env_set_var_unicode(name, value); }` example `set_var_unicode`
+- `proc remove_var` signature `proc remove_var(name: string) -> Result<(), EnvError> { give compiler_env_remove_var(name); }` example `remove_var`
+- `proc current_dir` signature `proc current_dir() -> Result<Path, EnvError> { give compiler_env_current_dir(); }` example `current_dir`
+- `proc set_current_dir` signature `proc set_current_dir(path_value: Path) -> Result<(), EnvError> { give compiler_env_set_current_dir(path_value); }` example `set_current_dir`
+- `proc home_dir` signature `proc home_dir() -> Option<Path> { give compiler_env_home_dir(); }` example `home_dir`
+- `proc temp_dir` signature `proc temp_dir() -> Path { give compiler_env_temp_dir(); }` example `temp_dir`
+- `proc os_string_var` signature `proc os_string_var(name: String) -> Result<String, EnvError> { give compiler_env_os_string_var(name); }` example `os_string_var`
 
 ## `src/vitte/stdlib/std/error.vitl`
 
-- `form Backtrace`
-- `form Error`
-- `form ErrorTrait`
-- `proc error_new`
-- `proc error_with_source`
-- `proc capture_backtrace`
-- `proc error_with_backtrace`
-- `proc error_chain`
+- `form Backtrace` signature `form Backtrace {` example `Backtrace`
+- `form Error` signature `form Error {` example `Error`
+- `form ErrorTrait` signature `form ErrorTrait<T> {` example `ErrorTrait`
+- `proc error_new` signature `proc error_new(message: String) -> Error {` example `error_new`
+- `proc error_with_source` signature `proc error_with_source(message: String, source: Error) -> Error {` example `error_with_source`
+- `proc capture_backtrace` signature `proc capture_backtrace() -> Backtrace { give compiler_error_capture_backtrace(); }` example `capture_backtrace`
+- `proc error_with_backtrace` signature `proc error_with_backtrace(error: Error) -> Error { give compiler_error_attach_backtrace(error, capture_backtrace()); }` example `error_with_backtrace`
+- `proc error_chain` signature `proc error_chain(error: Error) -> Iterator<Error> { give compiler_error_chain(error); }` example `error_chain`
 
 ## `src/vitte/stdlib/std/format.vitl`
 
-- `pick FormatBase`
-- `form FormatSpec`
-- `form Display`
-- `form Debug`
-- `proc default_spec`
-- `proc format`
-- `proc debug`
-- `proc pad_left`
-- `proc format_int`
-- `proc format_uint`
+- `pick FormatBase` signature `pick FormatBase { Binary Octal Decimal HexLower HexUpper }` example `FormatBase`
+- `form FormatSpec` signature `form FormatSpec { width: Option<usize> pad: rune base: FormatBase debug: bool }` example `FormatSpec`
+- `form Display` signature `form Display<T> { fmt: proc(T, FormatSpec) -> String }` example `Display`
+- `form Debug` signature `form Debug<T> { fmt_debug: proc(T) -> String }` example `Debug`
+- `proc default_spec` signature `proc default_spec() -> FormatSpec { give FormatSpec { width: none<usize>(), pad: 32, base: FormatBase.Decimal, debug: false }; }` example `default_spec`
+- `proc format` signature `proc format<T>(value: T, spec: FormatSpec) -> String { give compiler_format<T>(value, spec); }` example `format`
+- `proc debug` signature `proc debug<T>(value: T) -> String { give compiler_debug<T>(value); }` example `debug`
+- `proc pad_left` signature `proc pad_left(text: String, width: usize, pad: rune) -> String { give compiler_format_pad_left(text, width, pad); }` example `pad_left`
+- `proc format_int` signature `proc format_int(value: i64, base: FormatBase) -> String { give compiler_format_int(value, base); }` example `format_int`
+- `proc format_uint` signature `proc format_uint(value: u64, base: FormatBase) -> String { give compiler_format_uint(value, base); }` example `format_uint`
 
 ## `src/vitte/stdlib/std/fs.vitl`
 
-- `form Path`
-- `form Permissions`
-- `form Metadata`
-- `form FsError`
-- `form DirEntry`
-- `proc path`
-- `proc read`
-- `proc read_to_string`
-- `proc write`
-- `proc create_dir_all`
-- `proc create_dir`
-- `proc remove_file`
-- `proc remove_dir`
-- `proc rename`
-- `proc copy`
-- `proc metadata`
-- `proc permissions`
-- `proc set_permissions`
-- `proc read_dir`
-- `proc exists`
+- `form Path` signature `form Path { text: string }` example `Path`
+- `form Permissions` signature `form Permissions { readonly: bool executable: bool }` example `Permissions`
+- `form Metadata` signature `form Metadata { is_file: bool is_dir: bool len: u64 permissions: Permissions }` example `Metadata`
+- `form FsError` signature `form FsError { code: int message: string path: Path }` example `FsError`
+- `form DirEntry` signature `form DirEntry { path: Path metadata: Metadata }` example `DirEntry`
+- `proc path` signature `proc path(text: string) -> Path { give Path { text: text }; }` example `path`
+- `proc read` signature `proc read(path_value: Path) -> Result<Vec<byte>, FsError> { give compiler_fs_read(path_value); }` example `read`
+- `proc read_to_string` signature `proc read_to_string(path_value: Path) -> Result<String, FsError> { give compiler_fs_read_to_string(path_value); }` example `read_to_string`
+- `proc write` signature `proc write(path_value: Path, bytes: [byte]) -> Result<(), FsError> { give compiler_fs_write(path_value, bytes); }` example `write`
+- `proc create_dir_all` signature `proc create_dir_all(path_value: Path) -> Result<(), FsError> { give compiler_fs_create_dir_all(path_value); }` example `create_dir_all`
+- `proc create_dir` signature `proc create_dir(path_value: Path) -> Result<(), FsError> { give compiler_fs_create_dir(path_value); }` example `create_dir`
+- `proc remove_file` signature `proc remove_file(path_value: Path) -> Result<(), FsError> { give compiler_fs_remove_file(path_value); }` example `remove_file`
+- `proc remove_dir` signature `proc remove_dir(path_value: Path) -> Result<(), FsError> { give compiler_fs_remove_dir(path_value); }` example `remove_dir`
+- `proc rename` signature `proc rename(from: Path, to: Path) -> Result<(), FsError> { give compiler_fs_rename(from, to); }` example `rename`
+- `proc copy` signature `proc copy(from: Path, to: Path) -> Result<u64, FsError> { give compiler_fs_copy(from, to); }` example `copy`
+- `proc metadata` signature `proc metadata(path_value: Path) -> Result<Metadata, FsError> { give compiler_fs_metadata(path_value); }` example `metadata`
+- `proc permissions` signature `proc permissions(path_value: Path) -> Result<Permissions, FsError> { give compiler_fs_permissions(path_value); }` example `permissions`
+- `proc set_permissions` signature `proc set_permissions(path_value: Path, value: Permissions) -> Result<(), FsError> { give compiler_fs_set_permissions(path_value, value); }` example `set_permissions`
+- `proc read_dir` signature `proc read_dir(path_value: Path) -> Result<Iterator<DirEntry>, FsError> { give compiler_fs_read_dir(path_value); }` example `read_dir`
+- `proc exists` signature `proc exists(path_value: Path) -> bool { give compiler_fs_exists(path_value); }` example `exists`
 
 ## `src/vitte/stdlib/std/hash.vitl`
 
-- `form StableHasher`
-- `form RandomHasher`
-- `form SipHasher`
-- `proc stable_hasher`
-- `proc random_hasher`
-- `proc sip_hasher`
-- `proc stable_write`
-- `proc random_write`
-- `proc sip_write`
-- `proc stable_finish`
-- `proc random_finish`
-- `proc sip_finish`
+- `form StableHasher` signature `form StableHasher { state: u64 }` example `StableHasher`
+- `form RandomHasher` signature `form RandomHasher { state: u64 }` example `RandomHasher`
+- `form SipHasher` signature `form SipHasher { k0: u64 k1: u64 state: u64 }` example `SipHasher`
+- `proc stable_hasher` signature `proc stable_hasher() -> StableHasher { give StableHasher { state: 1469598103934665603 }; }` example `stable_hasher`
+- `proc random_hasher` signature `proc random_hasher() -> RandomHasher { give compiler_hash_random_hasher(); }` example `random_hasher`
+- `proc sip_hasher` signature `proc sip_hasher(k0: u64, k1: u64) -> SipHasher { give SipHasher { k0: k0, k1: k1, state: 0 }; }` example `sip_hasher`
+- `proc stable_write` signature `proc stable_write(hasher: ref mut StableHasher, bytes: [byte]) { compiler_hash_stable_write(hasher, bytes); }` example `stable_write`
+- `proc random_write` signature `proc random_write(hasher: ref mut RandomHasher, bytes: [byte]) { compiler_hash_random_write(hasher, bytes); }` example `random_write`
+- `proc sip_write` signature `proc sip_write(hasher: ref mut SipHasher, bytes: [byte]) { compiler_hash_sip_write(hasher, bytes); }` example `sip_write`
+- `proc stable_finish` signature `proc stable_finish(hasher: StableHasher) -> u64 { give compiler_hash_stable_finish(hasher); }` example `stable_finish`
+- `proc random_finish` signature `proc random_finish(hasher: RandomHasher) -> u64 { give compiler_hash_random_finish(hasher); }` example `random_finish`
+- `proc sip_finish` signature `proc sip_finish(hasher: SipHasher) -> u64 { give compiler_hash_sip_finish(hasher); }` example `sip_finish`
 
 ## `src/vitte/stdlib/std/io.vitl`
 
-- `form IoError`
-- `form Reader`
-- `form Writer`
-- `form Read`
-- `form Write`
-- `form BufReader`
-- `form BufWriter`
-- `form Cursor`
-- `proc stdin`
-- `proc stdout`
-- `proc stderr`
-- `proc read_to_string`
-- `proc read`
-- `proc write`
-- `proc write_all`
-- `proc write_string`
-- `proc flush`
-- `proc buf_reader`
-- `proc buf_writer`
-- `proc cursor`
-- `proc cursor_position`
+- `form IoError` signature `form IoError { code: int message: string }` example `IoError`
+- `form Reader` signature `form Reader { handle: int }` example `Reader`
+- `form Writer` signature `form Writer { handle: int }` example `Writer`
+- `form Read` signature `form Read { read: proc(ref mut Reader, ref mut [byte]) -> Result<usize, IoError> }` example `Read`
+- `form Write` signature `form Write { write: proc(ref mut Writer, [byte]) -> Result<usize, IoError> flush: proc(ref mut Writer) -> Result<(), IoError> }` example `Write`
+- `form BufReader` signature `form BufReader { inner: Reader buffer: Vec<byte> position: usize }` example `BufReader`
+- `form BufWriter` signature `form BufWriter { inner: Writer buffer: Vec<byte> }` example `BufWriter`
+- `form Cursor` signature `form Cursor { data: Vec<byte> position: usize }` example `Cursor`
+- `proc stdin` signature `proc stdin() -> Reader { give compiler_stdio_stdin(); }` example `stdin`
+- `proc stdout` signature `proc stdout() -> Writer { give compiler_stdio_stdout(); }` example `stdout`
+- `proc stderr` signature `proc stderr() -> Writer { give compiler_stdio_stderr(); }` example `stderr`
+- `proc read_to_string` signature `proc read_to_string(reader: Reader) -> Result<String, IoError> { give compiler_io_read_to_string(reader); }` example `read_to_string`
+- `proc read` signature `proc read(reader: ref mut Reader, buffer: ref mut [byte]) -> Result<usize, IoError> { give compiler_io_read(reader, buffer); }` example `read`
+- `proc write` signature `proc write(writer: ref mut Writer, bytes: [byte]) -> Result<usize, IoError> { give compiler_io_write(writer, bytes); }` example `write`
+- `proc write_all` signature `proc write_all(writer: Writer, bytes: [byte]) -> Result<(), IoError> { give compiler_io_write_all(writer, bytes); }` example `write_all`
+- `proc write_string` signature `proc write_string(writer: Writer, text: string) -> Result<(), IoError> { give compiler_io_write_string(writer, text); }` example `write_string`
+- `proc flush` signature `proc flush(writer: Writer) -> Result<(), IoError> { give compiler_io_flush(writer); }` example `flush`
+- `proc buf_reader` signature `proc buf_reader(inner: Reader) -> BufReader { give BufReader { inner: inner, buffer: vec_new<byte>(), position: 0 }; }` example `buf_reader`
+- `proc buf_writer` signature `proc buf_writer(inner: Writer) -> BufWriter { give BufWriter { inner: inner, buffer: vec_new<byte>() }; }` example `buf_writer`
+- `proc cursor` signature `proc cursor(data: Vec<byte>) -> Cursor { give Cursor { data: data, position: 0 }; }` example `cursor`
+- `proc cursor_position` signature `proc cursor_position(cursor_value: Cursor) -> usize { give cursor_value.position; }` example `cursor_position`
 
 ## `src/vitte/stdlib/std/log.vitl`
 
-- `pick LogLevel`
-- `form LogRecord`
-- `form Logger`
-- `proc logger`
-- `proc log`
-- `proc trace`
-- `proc info`
-- `proc warn`
-- `proc error`
+- `pick LogLevel` signature `pick LogLevel { Trace Debug Info Warn Error }` example `LogLevel`
+- `form LogRecord` signature `form LogRecord { level: LogLevel target: String message: String }` example `LogRecord`
+- `form Logger` signature `form Logger { sink: Writer min_level: LogLevel compact: bool }` example `Logger`
+- `proc logger` signature `proc logger(sink: Writer, min_level: LogLevel) -> Logger { give Logger { sink: sink, min_level: min_level, compact: true }; }` example `logger`
+- `proc log` signature `proc log(logger_value: ref mut Logger, record: LogRecord) { compiler_log_write(logger_value, record); }` example `log`
+- `proc trace` signature `proc trace(logger_value: ref mut Logger, message: String) { log(logger_value, LogRecord { level: LogLevel.Trace, target: compiler_log_default_target(), message: message }); }` example `trace`
+- `proc info` signature `proc info(logger_value: ref mut Logger, message: String) { log(logger_value, LogRecord { level: LogLevel.Info, target: compiler_log_default_target(), message: message }); }` example `info`
+- `proc warn` signature `proc warn(logger_value: ref mut Logger, message: String) { log(logger_value, LogRecord { level: LogLevel.Warn, target: compiler_log_default_target(), message: message }); }` example `warn`
+- `proc error` signature `proc error(logger_value: ref mut Logger, message: String) { log(logger_value, LogRecord { level: LogLevel.Error, target: compiler_log_default_target(), message: message }); }` example `error`
 
 ## `src/vitte/stdlib/std/net.vitl`
 
-- `form IpAddr`
-- `form SocketAddr`
-- `form TcpStream`
-- `form TcpListener`
-- `form UdpSocket`
-- `form NetError`
-- `proc ip_addr`
-- `proc socket_addr`
-- `proc dns_lookup`
-- `proc tcp_connect`
-- `proc tcp_bind`
-- `proc tcp_accept`
-- `proc udp_bind`
-- `proc udp_send_to`
-- `proc udp_recv_from`
+- `form IpAddr` signature `form IpAddr { text: String }` example `IpAddr`
+- `form SocketAddr` signature `form SocketAddr { ip: IpAddr port: u16 }` example `SocketAddr`
+- `form TcpStream` signature `form TcpStream { handle: int }` example `TcpStream`
+- `form TcpListener` signature `form TcpListener { handle: int }` example `TcpListener`
+- `form UdpSocket` signature `form UdpSocket { handle: int }` example `UdpSocket`
+- `form NetError` signature `form NetError { message: String }` example `NetError`
+- `proc ip_addr` signature `proc ip_addr(text: String) -> Result<IpAddr, NetError> { give compiler_net_ip_addr(text); }` example `ip_addr`
+- `proc socket_addr` signature `proc socket_addr(ip: IpAddr, port: u16) -> SocketAddr { give SocketAddr { ip: ip, port: port }; }` example `socket_addr`
+- `proc dns_lookup` signature `proc dns_lookup(name: String) -> Result<Vec<IpAddr>, NetError> { give compiler_net_dns_lookup(name); }` example `dns_lookup`
+- `proc tcp_connect` signature `proc tcp_connect(addr: SocketAddr) -> Result<TcpStream, NetError> { give compiler_net_tcp_connect(addr); }` example `tcp_connect`
+- `proc tcp_bind` signature `proc tcp_bind(addr: SocketAddr) -> Result<TcpListener, NetError> { give compiler_net_tcp_bind(addr); }` example `tcp_bind`
+- `proc tcp_accept` signature `proc tcp_accept(listener: ref TcpListener) -> Result<TcpStream, NetError> { give compiler_net_tcp_accept(listener); }` example `tcp_accept`
+- `proc udp_bind` signature `proc udp_bind(addr: SocketAddr) -> Result<UdpSocket, NetError> { give compiler_net_udp_bind(addr); }` example `udp_bind`
+- `proc udp_send_to` signature `proc udp_send_to(socket: ref UdpSocket, bytes: [byte], addr: SocketAddr) -> Result<usize, NetError> { give compiler_net_udp_send_to(socket, bytes, addr); }` example `udp_send_to`
+- `proc udp_recv_from` signature `proc udp_recv_from(socket: ref UdpSocket, buffer: ref mut [byte]) -> Result<(usize, SocketAddr), NetError> { give compiler_net_udp_recv_from(socket, buffer); }` example `udp_recv_from`
 
 ## `src/vitte/stdlib/std/parse.vitl`
 
-- `form ParseError`
-- `proc parse_bool`
-- `proc parse_i64`
-- `proc parse_u64`
-- `proc parse_f64`
-- `proc parse_utf8`
-- `proc parse_error`
+- `form ParseError` signature `form ParseError { message: String offset: usize }` example `ParseError`
+- `proc parse_bool` signature `proc parse_bool(text: Utf8View) -> Result<bool, ParseError> { give compiler_parse_bool(text); }` example `parse_bool`
+- `proc parse_i64` signature `proc parse_i64(text: Utf8View, base: u32) -> Result<i64, ParseError> { give compiler_parse_i64(text, base); }` example `parse_i64`
+- `proc parse_u64` signature `proc parse_u64(text: Utf8View, base: u32) -> Result<u64, ParseError> { give compiler_parse_u64(text, base); }` example `parse_u64`
+- `proc parse_f64` signature `proc parse_f64(text: Utf8View) -> Result<f64, ParseError> { give compiler_parse_f64(text); }` example `parse_f64`
+- `proc parse_utf8` signature `proc parse_utf8(bytes: [byte]) -> Result<Utf8View, ParseError> { give compiler_parse_utf8(bytes); }` example `parse_utf8`
+- `proc parse_error` signature `proc parse_error(message: String, offset: usize) -> ParseError { give ParseError { message: message, offset: offset }; }` example `parse_error`
 
 ## `src/vitte/stdlib/std/path.vitl`
 
-- `pick ComponentKind`
-- `form Component`
-- `form PathBuf`
-- `proc path_buf`
-- `proc components`
-- `proc normalize`
-- `proc is_absolute`
-- `proc is_relative`
-- `proc join`
-- `proc parent`
-- `proc file_name`
-- `proc extension`
-- `proc with_extension`
+- `pick ComponentKind` signature `pick ComponentKind { Root Prefix Current Parent Normal }` example `ComponentKind`
+- `form Component` signature `form Component { kind: ComponentKind text: String }` example `Component`
+- `form PathBuf` signature `form PathBuf { value: String absolute: bool }` example `PathBuf`
+- `proc path_buf` signature `proc path_buf(text: String) -> PathBuf { give compiler_path_buf(text); }` example `path_buf`
+- `proc components` signature `proc components(path_value: PathBuf) -> Iterator<Component> { give compiler_path_components(path_value); }` example `components`
+- `proc normalize` signature `proc normalize(path_value: PathBuf) -> PathBuf { give compiler_path_normalize(path_value); }` example `normalize`
+- `proc is_absolute` signature `proc is_absolute(path_value: PathBuf) -> bool { give path_value.absolute; }` example `is_absolute`
+- `proc is_relative` signature `proc is_relative(path_value: PathBuf) -> bool { give not path_value.absolute; }` example `is_relative`
+- `proc join` signature `proc join(base: PathBuf, child: PathBuf) -> PathBuf { give compiler_path_join(base, child); }` example `join`
+- `proc parent` signature `proc parent(path_value: PathBuf) -> Option<PathBuf> { give compiler_path_parent(path_value); }` example `parent`
+- `proc file_name` signature `proc file_name(path_value: PathBuf) -> Option<String> { give compiler_path_file_name(path_value); }` example `file_name`
+- `proc extension` signature `proc extension(path_value: PathBuf) -> Option<String> { give compiler_path_extension(path_value); }` example `extension`
+- `proc with_extension` signature `proc with_extension(path_value: PathBuf, ext: String) -> PathBuf { give compiler_path_with_extension(path_value, ext); }` example `with_extension`
 
 ## `src/vitte/stdlib/std/process.vitl`
 
-- `form ExitStatus`
-- `form Stdio`
-- `form Child`
-- `form Output`
-- `form Command`
-- `form ProcessError`
-- `proc command`
-- `proc arg`
-- `proc env`
-- `proc env_remove`
-- `proc current_dir`
-- `proc stdin_piped`
-- `proc stdout_piped`
-- `proc stderr_piped`
-- `proc spawn`
-- `proc wait`
-- `proc status`
-- `proc output`
-- `proc exit`
+- `form ExitStatus` signature `form ExitStatus { code: int success: bool }` example `ExitStatus`
+- `form Stdio` signature `form Stdio { mode: string }` example `Stdio`
+- `form Child` signature `form Child { id: u64 stdin: Option<Writer> stdout: Option<Reader> stderr: Option<Reader> }` example `Child`
+- `form Output` signature `form Output { status: ExitStatus stdout: Vec<byte> stderr: Vec<byte> }` example `Output`
+- `form Command` signature `form Command { program: String args: Vec<String> env: Vec<(String, String)> stdin: Stdio stdout: Stdio stderr: Stdio cwd: Option<Path> }` example `Command`
+- `form ProcessError` signature `form ProcessError { code: int message: string }` example `ProcessError`
+- `proc command` signature `proc command(program: String) -> Command { give compiler_process_command(program); }` example `command`
+- `proc arg` signature `proc arg(cmd: ref mut Command, value: String) { compiler_process_arg(cmd, value); }` example `arg`
+- `proc env` signature `proc env(cmd: ref mut Command, name: String, value: String) { compiler_process_env(cmd, name, value); }` example `env`
+- `proc env_remove` signature `proc env_remove(cmd: ref mut Command, name: String) { compiler_process_env_remove(cmd, name); }` example `env_remove`
+- `proc current_dir` signature `proc current_dir(cmd: ref mut Command, path_value: Path) { compiler_process_current_dir(cmd, path_value); }` example `current_dir`
+- `proc stdin_piped` signature `proc stdin_piped() -> Stdio { give Stdio { mode: "piped" }; }` example `stdin_piped`
+- `proc stdout_piped` signature `proc stdout_piped() -> Stdio { give Stdio { mode: "piped" }; }` example `stdout_piped`
+- `proc stderr_piped` signature `proc stderr_piped() -> Stdio { give Stdio { mode: "piped" }; }` example `stderr_piped`
+- `proc spawn` signature `proc spawn(cmd: Command) -> Result<Child, ProcessError> { give compiler_process_spawn(cmd); }` example `spawn`
+- `proc wait` signature `proc wait(child: Child) -> Result<ExitStatus, ProcessError> { give compiler_process_wait(child); }` example `wait`
+- `proc status` signature `proc status(cmd: Command) -> Result<ExitStatus, ProcessError> { give compiler_process_status(cmd); }` example `status`
+- `proc output` signature `proc output(cmd: Command) -> Result<Output, ProcessError> { give compiler_process_output(cmd); }` example `output`
+- `proc exit` signature `proc exit(code: int) -> never { give compiler_process_exit(code); }` example `exit`
 
 ## `src/vitte/stdlib/std/random.vitl`
 
-- `form Prng`
-- `form RandomError`
-- `proc prng`
-- `proc next_u64`
-- `proc next_bool`
-- `proc range_u64`
-- `proc os_entropy`
-- `proc random_f64`
+- `form Prng` signature `form Prng { state: u64 }` example `Prng`
+- `form RandomError` signature `form RandomError { message: String }` example `RandomError`
+- `proc prng` signature `proc prng(seed: u64) -> Prng { give Prng { state: seed }; }` example `prng`
+- `proc next_u64` signature `proc next_u64(rng: ref mut Prng) -> u64 {` example `next_u64`
+- `proc next_bool` signature `proc next_bool(rng: ref mut Prng) -> bool { give (next_u64(rng) & 1) == 1; }` example `next_bool`
+- `proc range_u64` signature `proc range_u64(rng: ref mut Prng, upper: u64) -> u64 { give next_u64(rng) % upper; }` example `range_u64`
+- `proc os_entropy` signature `proc os_entropy(buffer: ref mut [byte]) -> Result<(), RandomError> { give compiler_random_os_entropy(buffer); }` example `os_entropy`
+- `proc random_f64` signature `proc random_f64(rng: ref mut Prng) -> f64 { give compiler_random_u64_to_unit_f64(next_u64(rng)); }` example `random_f64`
+
+## `src/vitte/stdlib/std/serialization.vitl`
+
+- `pick JsonTokenKind` signature `pick JsonTokenKind { Null Bool Number String Array Object }` example `JsonTokenKind`
+- `form Encode` signature `form Encode<T> {` example `Encode`
+- `form Decode` signature `form Decode<T> {` example `Decode`
+- `form SerializationError` signature `form SerializationError {` example `SerializationError`
+- `form Encoder` signature `form Encoder {` example `Encoder`
+- `form Decoder` signature `form Decoder {` example `Decoder`
+- `form JsonValue` signature `form JsonValue {` example `JsonValue`
+- `proc serialization_error` signature `proc serialization_error(message: String, offset: usize) -> SerializationError {` example `serialization_error`
+- `proc json_encoder` signature `proc json_encoder() -> Encoder {` example `json_encoder`
+- `proc json_decoder` signature `proc json_decoder(input: Utf8View) -> Decoder {` example `json_decoder`
+- `proc encode_json` signature `proc encode_json<T>(value: T) -> Result<String, SerializationError> {` example `encode_json`
+- `proc decode_json` signature `proc decode_json<T>(input: Utf8View) -> Result<T, SerializationError> {` example `decode_json`
+- `proc json_value` signature `proc json_value(input: Utf8View) -> Result<JsonValue, SerializationError> {` example `json_value`
+- `proc write_json_string` signature `proc write_json_string(encoder: ref mut Encoder, value: String) -> Result<(), SerializationError> {` example `write_json_string`
+- `proc write_json_field` signature `proc write_json_field<T>(encoder: ref mut Encoder, name: String, value: T) -> Result<(), SerializationError> {` example `write_json_field`
 
 ## `src/vitte/stdlib/std/sync.vitl`
 
-- `form Mutex`
-- `form RwLock`
-- `form Once`
-- `form Condvar`
-- `form Atomic`
-- `proc mutex`
-- `proc mutex_lock`
-- `proc mutex_unlock`
-- `proc rwlock`
-- `proc read`
-- `proc write`
-- `proc once`
-- `proc call_once`
-- `proc condvar`
-- `proc wait`
-- `proc notify_one`
-- `proc notify_all`
-- `proc atomic`
-- `proc atomic_load`
-- `proc atomic_store`
-- `proc atomic_compare_exchange`
+- `form Mutex` signature `form Mutex<T> { state: compiler_mutex_state value: T }` example `Mutex`
+- `form RwLock` signature `form RwLock<T> { state: compiler_rwlock_state value: T }` example `RwLock`
+- `form Once` signature `form Once { state: compiler_once_state }` example `Once`
+- `form Condvar` signature `form Condvar { state: compiler_condvar_state }` example `Condvar`
+- `form Atomic` signature `form Atomic<T> { value: T }` example `Atomic`
+- `proc mutex` signature `proc mutex<T>(value: T) -> Mutex<T> { give compiler_mutex_new<T>(value); }` example `mutex`
+- `proc mutex_lock` signature `proc mutex_lock<T>(mutex_value: ref Mutex<T>) -> ref mut T { give compiler_mutex_lock<T>(mutex_value); }` example `mutex_lock`
+- `proc mutex_unlock` signature `proc mutex_unlock<T>(mutex_value: ref Mutex<T>) { compiler_mutex_unlock<T>(mutex_value); }` example `mutex_unlock`
+- `proc rwlock` signature `proc rwlock<T>(value: T) -> RwLock<T> { give compiler_rwlock_new<T>(value); }` example `rwlock`
+- `proc read` signature `proc read<T>(lock: ref RwLock<T>) -> ref T { give compiler_rwlock_read<T>(lock); }` example `read`
+- `proc write` signature `proc write<T>(lock: ref RwLock<T>) -> ref mut T { give compiler_rwlock_write<T>(lock); }` example `write`
+- `proc once` signature `proc once() -> Once { give compiler_once_new(); }` example `once`
+- `proc call_once` signature `proc call_once(once_value: ref Once, f: proc()) { compiler_once_call(once_value, f); }` example `call_once`
+- `proc condvar` signature `proc condvar() -> Condvar { give compiler_condvar_new(); }` example `condvar`
+- `proc wait` signature `proc wait<T>(cond: ref Condvar, mutex_value: ref Mutex<T>) { compiler_condvar_wait<T>(cond, mutex_value); }` example `wait`
+- `proc notify_one` signature `proc notify_one(cond: ref Condvar) { compiler_condvar_notify_one(cond); }` example `notify_one`
+- `proc notify_all` signature `proc notify_all(cond: ref Condvar) { compiler_condvar_notify_all(cond); }` example `notify_all`
+- `proc atomic` signature `proc atomic<T>(value: T) -> Atomic<T> { give Atomic<T> { value: value }; }` example `atomic`
+- `proc atomic_load` signature `proc atomic_load<T>(value: ref Atomic<T>) -> T { give compiler_atomic_load<T>(value); }` example `atomic_load`
+- `proc atomic_store` signature `proc atomic_store<T>(value: ref Atomic<T>, next: T) { compiler_atomic_store<T>(value, next); }` example `atomic_store`
+- `proc atomic_compare_exchange` signature `proc atomic_compare_exchange<T>(value: ref Atomic<T>, current: T, next: T) -> Result<T, T> { give compiler_atomic_compare_exchange<T>(value, current, next); }` example `atomic_compare_exchange`
 
 ## `src/vitte/stdlib/std/testing.vitl`
 
-- `form TestError`
-- `form Fixture`
-- `form Snapshot`
-- `form Case`
-- `proc assert_true`
-- `proc assert_eq`
-- `proc snapshot`
-- `proc assert_snapshot`
-- `proc parameterized`
+- `form TestError` signature `form TestError { message: String file: string line: u32 }` example `TestError`
+- `form Fixture` signature `form Fixture<T> { setup: proc() -> T teardown: proc(T) }` example `Fixture`
+- `form Snapshot` signature `form Snapshot { name: String value: String }` example `Snapshot`
+- `form Case` signature `form Case<T> { name: String value: T }` example `Case`
+- `proc assert_true` signature `proc assert_true(value: bool, message: String) -> Result<(), TestError> { give compiler_testing_assert_true(value, message); }` example `assert_true`
+- `proc assert_eq` signature `proc assert_eq<T>(left: T, right: T, message: String) -> Result<(), TestError> { give compiler_testing_assert_eq<T>(left, right, message); }` example `assert_eq`
+- `proc snapshot` signature `proc snapshot(name: String, value: String) -> Snapshot { give Snapshot { name: name, value: value }; }` example `snapshot`
+- `proc assert_snapshot` signature `proc assert_snapshot(value: Snapshot) -> Result<(), TestError> { give compiler_testing_assert_snapshot(value); }` example `assert_snapshot`
+- `proc parameterized` signature `proc parameterized<T>(cases: Vec<Case<T>>, test: proc(T) -> Result<(), TestError>) -> Result<(), TestError> { give compiler_testing_parameterized<T>(cases, test); }` example `parameterized`
 
 ## `src/vitte/stdlib/std/thread.vitl`
 
-- `form ThreadId`
-- `form JoinHandle`
-- `form ThreadError`
-- `proc current_id`
-- `proc spawn`
-- `proc join`
-- `proc sleep`
-- `proc yield_now`
+- `form ThreadId` signature `form ThreadId { value: u64 }` example `ThreadId`
+- `form JoinHandle` signature `form JoinHandle<T> { id: ThreadId }` example `JoinHandle`
+- `form ThreadError` signature `form ThreadError { message: String }` example `ThreadError`
+- `proc current_id` signature `proc current_id() -> ThreadId { give compiler_thread_current_id(); }` example `current_id`
+- `proc spawn` signature `proc spawn<T>(f: proc() -> T) -> Result<JoinHandle<T>, ThreadError> { give compiler_thread_spawn<T>(f); }` example `spawn`
+- `proc join` signature `proc join<T>(handle: JoinHandle<T>) -> Result<T, ThreadError> { give compiler_thread_join<T>(handle); }` example `join`
+- `proc sleep` signature `proc sleep(duration: Duration) { compiler_thread_sleep(duration); }` example `sleep`
+- `proc yield_now` signature `proc yield_now() { compiler_thread_yield_now(); }` example `yield_now`
 
 ## `src/vitte/stdlib/std/time.vitl`
 
-- `form Duration`
-- `form Instant`
-- `form SystemTime`
-- `form DateTime`
-- `proc duration_from_secs`
-- `proc duration_from_millis`
-- `proc duration_from_micros`
-- `proc duration_from_nanos`
-- `proc duration_as_nanos`
-- `proc duration_as_secs`
-- `proc instant_now`
-- `proc system_time_now`
-- `proc elapsed`
-- `proc checked_add_duration`
-- `proc checked_sub_duration`
-- `proc system_time_to_datetime`
-- `proc datetime_to_system_time`
-- `proc format_datetime`
+- `form Duration` signature `form Duration { nanos: u128 }` example `Duration`
+- `form Instant` signature `form Instant { ticks: u128 }` example `Instant`
+- `form SystemTime` signature `form SystemTime { nanos_since_epoch: i128 }` example `SystemTime`
+- `form DateTime` signature `form DateTime { year: i32 month: u8 day: u8 hour: u8 minute: u8 second: u8 nanos: u32 offset_seconds: i32 }` example `DateTime`
+- `proc duration_from_secs` signature `proc duration_from_secs(secs: u64) -> Duration { give Duration { nanos: secs as u128 * 1000000000 }; }` example `duration_from_secs`
+- `proc duration_from_millis` signature `proc duration_from_millis(ms: u64) -> Duration { give Duration { nanos: ms as u128 * 1000000 }; }` example `duration_from_millis`
+- `proc duration_from_micros` signature `proc duration_from_micros(us: u64) -> Duration { give Duration { nanos: us as u128 * 1000 }; }` example `duration_from_micros`
+- `proc duration_from_nanos` signature `proc duration_from_nanos(ns: u128) -> Duration { give Duration { nanos: ns }; }` example `duration_from_nanos`
+- `proc duration_as_nanos` signature `proc duration_as_nanos(value: Duration) -> u128 { give value.nanos; }` example `duration_as_nanos`
+- `proc duration_as_secs` signature `proc duration_as_secs(value: Duration) -> u64 { give (value.nanos / 1000000000) as u64; }` example `duration_as_secs`
+- `proc instant_now` signature `proc instant_now() -> Instant { give compiler_time_instant_now(); }` example `instant_now`
+- `proc system_time_now` signature `proc system_time_now() -> SystemTime { give compiler_time_system_now(); }` example `system_time_now`
+- `proc elapsed` signature `proc elapsed(start: Instant) -> Duration { give compiler_time_elapsed(start); }` example `elapsed`
+- `proc checked_add_duration` signature `proc checked_add_duration(time: Instant, duration: Duration) -> Option<Instant> { give compiler_time_checked_add(time, duration); }` example `checked_add_duration`
+- `proc checked_sub_duration` signature `proc checked_sub_duration(time: Instant, duration: Duration) -> Option<Instant> { give compiler_time_checked_sub(time, duration); }` example `checked_sub_duration`
+- `proc system_time_to_datetime` signature `proc system_time_to_datetime(time: SystemTime) -> DateTime { give compiler_time_to_datetime(time); }` example `system_time_to_datetime`
+- `proc datetime_to_system_time` signature `proc datetime_to_system_time(value: DateTime) -> SystemTime { give compiler_datetime_to_system_time(value); }` example `datetime_to_system_time`
+- `proc format_datetime` signature `proc format_datetime(value: DateTime, pattern: string) -> String { give compiler_time_format_datetime(value, pattern); }` example `format_datetime`
 
 ## `src/vitte/stdlib/tests/api_contracts.vit`
 
-- `proc stdlib_api_contracts_smoke`
+- `proc stdlib_api_contracts_smoke` signature `proc stdlib_api_contracts_smoke() -> bool {` example `stdlib_api_contracts_smoke`
 
 ## `src/vitte/stdlib/tests/core_alloc_contracts.vit`
 
-- `proc stdlib_core_alloc_contracts_smoke`
+- `proc stdlib_core_alloc_contracts_smoke` signature `proc stdlib_core_alloc_contracts_smoke() -> bool {` example `stdlib_core_alloc_contracts_smoke`
 
 ## `src/vitte/stdlib/tests/range_unicode_std_contracts.vit`
 
-- `proc stdlib_range_unicode_std_contracts_smoke`
+- `proc stdlib_range_unicode_std_contracts_smoke` signature `proc stdlib_range_unicode_std_contracts_smoke() -> bool {` example `stdlib_range_unicode_std_contracts_smoke`
+
+## `src/vitte/stdlib/tests/serialization_platform_contracts.vit`
+
+- `proc stdlib_serialization_platform_contracts_smoke` signature `proc stdlib_serialization_platform_contracts_smoke() -> bool {` example `stdlib_serialization_platform_contracts_smoke`
 
 ## `src/vitte/stdlib/tests/std_runtime_contracts.vit`
 
-- `proc stdlib_runtime_contracts_smoke`
+- `proc stdlib_runtime_contracts_smoke` signature `proc stdlib_runtime_contracts_smoke() -> bool {` example `stdlib_runtime_contracts_smoke`
 
 ## `src/vitte/stdlib/tools/unicode_tables.vitl`
 
-- `form UnicodeTableGeneration`
-- `proc unicode_table_generation`
-- `proc generate_unicode_tables`
-- `proc verify_unicode_tables`
+- `form UnicodeTableGeneration` signature `form UnicodeTableGeneration {` example `UnicodeTableGeneration`
+- `proc unicode_table_generation` signature `proc unicode_table_generation(version: string, source: string, output: string) -> UnicodeTableGeneration {` example `unicode_table_generation`
+- `proc generate_unicode_tables` signature `proc generate_unicode_tables(job: UnicodeTableGeneration) -> Result<(), string> {` example `generate_unicode_tables`
+- `proc verify_unicode_tables` signature `proc verify_unicode_tables(version: string) -> bool {` example `verify_unicode_tables`
