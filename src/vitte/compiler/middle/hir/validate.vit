@@ -85,11 +85,11 @@ proc validate_expr(expr: HirExpr) -> [SemanticDiagnostic] {
   let diagnostics: [SemanticDiagnostic] = []
 
   if not expr.valid {
-    set diagnostics = diagnostics + [validation_error("HIRV0001", "invalid hir expression")]
+    set diagnostics = diagnostics + [validation_error("HIRV0001", "HIR expression is marked unusable by the lowering phase")]
   }
 
   if expr.kind == HirExprKind.Unknown {
-    set diagnostics = diagnostics + [validation_error("HIRV0002", "unknown hir expression kind")]
+    set diagnostics = diagnostics + [validation_error("HIRV0002", "HIR expression kind was not assigned by the lowering phase")]
   }
 
   if expr_requires_place(expr) and not expr_is_place(expr) {
@@ -145,7 +145,7 @@ proc validate_stmt(stmt: HirStmt) -> [SemanticDiagnostic] {
   }
 
   if stmt.kind == HirStmtKind.Unknown {
-    set diagnostics = diagnostics + [validation_error("HIRV0101", "unknown hir statement kind")]
+    set diagnostics = diagnostics + [validation_error("HIRV0101", "HIR statement kind was not assigned by the lowering phase")]
   }
 
   if stmt.kind == HirStmtKind.Let and stmt.name == "" {
@@ -375,7 +375,7 @@ proc validate_module(module: HirModule) -> [SemanticDiagnostic] {
   let diagnostics: [SemanticDiagnostic] = []
 
   if not module.valid {
-    set diagnostics = diagnostics + [validation_error("HIRV0300", "invalid hir module")]
+    set diagnostics = diagnostics + [validation_error("HIRV0300", "HIR module is marked unusable by the lowering phase")]
   }
 
   if len(module.items) == 0 {

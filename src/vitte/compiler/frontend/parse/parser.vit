@@ -128,7 +128,7 @@ proc advance(state: ParserState) -> ParserState {
   give state;
 }
 
-proc with_diag(state: ParserState, code: string, message: string) -> ParserState {
+proc parser_state_with_structured_diag(state: ParserState, code: string, message: string) -> ParserState {
   let tok: Token = current_token(state);
   let width0: u64 = token_diag_width(tok);
   let public_code: string = parser_public_code(code);
@@ -305,14 +305,14 @@ proc expect_text(state: ParserState, text: string, code: string) -> ParserState 
   if at_text(state, text) {
     give advance(state);
   }
-  give with_diag(state, code, expected_text_message_for_code(state, text, code));
+  give parser_state_with_structured_diag(state, code, expected_text_message_for_code(state, text, code));
 }
 
 proc expect_ident(state: ParserState, code: string) -> ParserState {
   if is_ident_like(current_token(state)) {
     give advance(state);
   }
-  give with_diag(state, code, parser_context_for_code(code) + " needs an identifier for " + parser_identifier_context_for_code(code) + " before " + token_display(current_token(state)));
+  give parser_state_with_structured_diag(state, code, parser_context_for_code(code) + " needs an identifier for " + parser_identifier_context_for_code(code) + " before " + token_display(current_token(state)));
 }
 
 proc optional_text(state: ParserState, text: string) -> ParserState {
@@ -558,12 +558,12 @@ proc skip_balanced(state: ParserState, open_text: string, close_text: string, co
   }
   if depth != 0 {
     if close_text == "}" {
-      give with_diag(current, "P000_UNBALANCED", "block is missing closing brace `}` for `{` before " + token_display(current_token(current)));
+      give parser_state_with_structured_diag(current, "P000_UNBALANCED", "block is missing closing brace `}` for `{` before " + token_display(current_token(current)));
     }
     if close_text == ")" {
-      give with_diag(current, "P000_UNBALANCED", "expression or parameter list is missing closing parenthesis `)` for `(` before " + token_display(current_token(current)));
+      give parser_state_with_structured_diag(current, "P000_UNBALANCED", "expression or parameter list is missing closing parenthesis `)` for `(` before " + token_display(current_token(current)));
     }
-    give with_diag(current, "P000_UNBALANCED", "delimited construct is missing closing " + delimiter_name(close_text) + " `" + close_text + "` for `" + open_text + "` before " + token_display(current_token(current)));
+    give parser_state_with_structured_diag(current, "P000_UNBALANCED", "delimited construct is missing closing " + delimiter_name(close_text) + " `" + close_text + "` for `" + open_text + "` before " + token_display(current_token(current)));
   }
   give current;
 }
@@ -615,7 +615,7 @@ proc parse_generic_params(state: ParserState) -> ParserState {
     if at_text(current, ",") {
       set current = advance(current);
     } elif not at_text(current, "]") and not is_eof(current) {
-      set current = with_diag(current, "PLIST_COMMA", expected_text_message(current, ","));
+      set current = parser_state_with_structured_diag(current, "PLIST_COMMA", expected_text_message(current, ","));
     }
   }
   give expect_text(current, "]", "PGEN003");
@@ -731,7 +731,7 @@ proc parse_param_list(state: ParserState, closing: string) -> ParserState {
     if at_text(current, ",") {
       set current = advance(current);
     } elif not at_text(current, closing) and not is_eof(current) {
-      set current = with_diag(current, "PLIST_COMMA", expected_text_message(current, ","));
+      set current = parser_state_with_structured_diag(current, "PLIST_COMMA", expected_text_message(current, ","));
     } else {
       break;
     }
@@ -788,7 +788,7 @@ proc parse_proc_decl(state: ParserState) -> ParserState {
     }
   }
   if modifier_seen and not at_text(current, "proc") {
-    give with_diag(current, "PMODIFIER_MISPLACED", "modifier `" + last_modifier + "` is only valid before a procedure declaration here; move it before `proc` or remove it before " + token_display(current_token(current)));
+    give parser_state_with_structured_diag(current, "PMODIFIER_MISPLACED", "modifier `" + last_modifier + "` is only valid before a procedure declaration here; move it before `proc` or remove it before " + token_display(current_token(current)));
   }
   set current = expect_text(current, "proc", "PPROC001");
   if at_text(current, "operator") {
@@ -814,13 +814,13 @@ proc parse_proc_decl(state: ParserState) -> ParserState {
   if at_text(current, ";") {
     give advance(current);
   }
-  give with_diag(current, "PPROC_BODY_MISSING", "procedure declaration is missing its body; add a block `{ ... }` or end an external declaration with `;` before " + token_display(current_token(current)));
+  give parser_state_with_structured_diag(current, "PPROC_BODY_MISSING", "procedure declaration is missing its body; add a block `{ ... }` or end an external declaration with `;` before " + token_display(current_token(current)));
 }
 
 proc parse_type_primary(state: ParserState) -> ParserState {
   let current: ParserState = state;
   if is_eof(current) or at_text(current, ";") or at_text(current, ",") or is_closing_delimiter_text(current_token(current).lexeme) or at_text(current, "{") or at_text(current, assign_op_eq()) {
-    give with_diag(current, "PTYPE_MISSING", "type annotation is missing a Vitte type name or type expression before " + token_display(current_token(current)));
+    give parser_state_with_structured_diag(current, "PTYPE_MISSING", "type annotation is missing a Vitte type name or type expression before " + token_display(current_token(current)));
   }
   if at_text(current, "[") {
     set current = advance(current);
@@ -926,7 +926,7 @@ proc parse_pattern_atom(state: ParserState) -> ParserState {
       if is_literal_token(current_token(current)) {
         set current = advance(current);
       } else {
-        set current = with_diag(current, "PPAT001", "expected range end literal");
+        set current = parser_state_with_structured_diag(current, "PPAT001", "expected range end literal");
       }
     }
     give current;
@@ -1034,7 +1034,7 @@ proc parse_arg_list(state: ParserState, closing: string) -> ParserState {
     } else {
       set current = parse_expr(current);
       if not at_text(current, ",") and not at_text(current, closing) and not is_eof(current) {
-        set current = with_diag(current, "PLIST_COMMA", expected_text_message(current, ","));
+        set current = parser_state_with_structured_diag(current, "PLIST_COMMA", expected_text_message(current, ","));
       }
     }
   }
@@ -1093,7 +1093,7 @@ proc parse_primary(state: ParserState) -> ParserState {
   let current: ParserState = state;
   let tok: Token = current_token(current);
   if is_eof(current) or at_text(current, ";") or at_text(current, ",") or is_closing_delimiter_text(tok.lexeme) {
-    give with_diag(current, "PPRIMARY_EXPR_MISSING", "expression is missing a Vitte value, name, call, literal, block, or grouped expression before " + token_display(tok));
+    give parser_state_with_structured_diag(current, "PPRIMARY_EXPR_MISSING", "expression is missing a Vitte value, name, call, literal, block, or grouped expression before " + token_display(tok));
   }
   if is_literal_token(tok) {
     give advance(current);
@@ -1176,7 +1176,7 @@ proc parse_primary(state: ParserState) -> ParserState {
     }
     give with_path;
   }
-  give with_diag(current, "PPRIMARY999", "expression needs a Vitte value, name, call, literal, block, grouped expression, array expression, or builtin expression before " + token_display(tok));
+  give parser_state_with_structured_diag(current, "PPRIMARY999", "expression needs a Vitte value, name, call, literal, block, grouped expression, array expression, or builtin expression before " + token_display(tok));
 }
 
 proc parse_postfix_expr(state: ParserState) -> ParserState {
@@ -1306,7 +1306,7 @@ proc parse_stmt(state: ParserState) -> ParserState {
       let exprd: ParserState = parse_expr(advance(target));
       give expect_text(exprd, ";", "PSTMT006");
     }
-    give with_diag(target, "PSTMT007", "assignment statement is missing an assignment operator such as `=` or `+=` before " + token_display(current_token(target)));
+    give parser_state_with_structured_diag(target, "PSTMT007", "assignment statement is missing an assignment operator such as `=` or `+=` before " + token_display(current_token(target)));
   }
   if at_text(current, "give") {
     let walk: ParserState = advance(current);
@@ -1417,7 +1417,7 @@ proc parse_block(state: ParserState) -> ParserState {
     let before_diags: u64 = len(walk.diagnostics);
     set walk = parse_stmt(walk);
     if walk.index == before_index {
-      set walk = with_diag(walk, "PLOOP", "statement parser made no progress");
+      set walk = parser_state_with_structured_diag(walk, "PLOOP", "statement parser stopped at a token that cannot start or continue a statement");
     }
     if len(walk.diagnostics) > before_diags and parser_recovery_allowed(walk, recovery_control) {
       let recovered: ParserState = recover_stmt_state(walk);
@@ -1499,7 +1499,7 @@ proc parse_decl(state: ParserState) -> ParserState {
   let tok: Token = current_token(prefixed);
   if tok.kind == TokenKind.Eof {
     if prefixed.index > current.index {
-      give with_diag(prefixed, "PATTR003", "attribute block must precede a declaration");
+      give parser_state_with_structured_diag(prefixed, "PATTR003", "attribute block must precede a declaration");
     }
     give prefixed;
   }
@@ -1558,14 +1558,14 @@ proc parse_decl(state: ParserState) -> ParserState {
       let abi: ParserState = advance(walk);
       give skip_balanced(abi, "{", "}", "PEXTERN002");
     }
-    give with_diag(walk, "PEXTERN999", "extern declaration is incomplete: write `extern type Name` or a complete extern ABI block before " + token_display(current_token(walk)));
+    give parser_state_with_structured_diag(walk, "PEXTERN999", "extern declaration is incomplete: write `extern type Name` or a complete extern ABI block before " + token_display(current_token(walk)));
   }
   if tok.lexeme == "class" or tok.lexeme == "union" or tok.lexeme == "bits" {
-    let current_form: ParserState = with_diag(prefixed, "PDECL_OLD_VITTE_SYNTAX", "old Vitte container keyword `" + tok.lexeme + "` is no longer canonical here; write `form` for this declaration");
+    let current_form: ParserState = parser_state_with_structured_diag(prefixed, "PDECL_OLD_VITTE_SYNTAX", "old Vitte container keyword `" + tok.lexeme + "` is no longer canonical here; write `form` for this declaration");
     give parse_container_decl(current_form);
   }
   if tok.lexeme == "flags" {
-    let current_pick: ParserState = with_diag(prefixed, "PDECL_OLD_VITTE_SYNTAX", "old Vitte container keyword `flags` is no longer canonical here; write `pick` for this declaration");
+    let current_pick: ParserState = parser_state_with_structured_diag(prefixed, "PDECL_OLD_VITTE_SYNTAX", "old Vitte container keyword `flags` is no longer canonical here; write `pick` for this declaration");
     give parse_container_decl(current_pick);
   }
   if tok.lexeme == "form" or tok.lexeme == "pick" or tok.lexeme == "trait" or tok.lexeme == "impl" {
@@ -1615,9 +1615,9 @@ proc parse_decl(state: ParserState) -> ParserState {
     give parse_block(named);
   }
   if is_toplevel_keyword(tok.lexeme) {
-    give with_diag(prefixed, "PDECL_INCOMPLETE", "declaration is incomplete: start with a Vitte declaration such as `proc`, `const`, `type`, `form`, `trait`, `use`, or `export`, then provide the required name and body");
+    give parser_state_with_structured_diag(prefixed, "PDECL_INCOMPLETE", "declaration is incomplete: start with a Vitte declaration such as `proc`, `const`, `type`, `form`, `trait`, `use`, or `export`, then provide the required name and body");
   }
-  give with_diag(prefixed, "P0001", "top-level declaration expected a Vitte declaration keyword such as `proc`, `const`, `type`, `form`, `trait`, `use`, or `export` before " + token_display(tok));
+  give parser_state_with_structured_diag(prefixed, "P0001", "top-level declaration expected a Vitte declaration keyword such as `proc`, `const`, `type`, `form`, `trait`, `use`, or `export` before " + token_display(tok));
 }
 
 proc parse_source(source_name: string, tokens: [Token]) -> ParseResult {
@@ -1629,7 +1629,7 @@ proc parse_source(source_name: string, tokens: [Token]) -> ParseResult {
     let before_diags: u64 = len(walk.diagnostics);
     set walk = parse_decl(walk);
     if walk.index == before {
-      set walk = with_diag(walk, "PLOOP", "parser made no progress");
+      set walk = parser_state_with_structured_diag(walk, "PLOOP", "top-level parser stopped at a token that cannot start a declaration");
     }
     if (len(walk.diagnostics) > before_diags or walk.index == before) and parser_recovery_allowed(walk, recovery_control) {
       let recovered: ParserState = recover_decl_state(walk);

@@ -20,15 +20,13 @@ SCAN_ROOTS = (
 
 LEGACY_CALL_RE = re.compile(
     r"\b(?:"
-    r"parse_error|parse_error_with_span|lex_error|lex_diag|with_diag|"
-    r"semantic_diagnostic|semantic_error|semantic_warning|validation_error|"
-    r"borrow_diagnostic|session_diagnostic|emit_(?:error|warning|note|fatal)|"
-    r"driver_diagnostic"
+    r"(?:freeform|raw|legacy)_(?:error|warning|diagnostic)|"
+    r"with_diag|semantic_error|semantic_warning|lex_error"
     r")\s*\("
 )
 DIRECT_CONCAT_RE = re.compile(
-    r"\b(?:with_diag|lex_diag|driver_diagnostic|semantic_diagnostic|"
-    r"validation_error|borrow_diagnostic)\s*\([^\n]*\+"
+    r"\b(?:with_diag|(?:freeform|raw|legacy)_(?:error|warning|diagnostic)|"
+    r"semantic_error|semantic_warning|lex_error)\s*\([^\n]*\+"
 )
 CATCH_ALL_RE = re.compile(
     r"\b(?:"

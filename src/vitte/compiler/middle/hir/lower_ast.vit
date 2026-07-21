@@ -474,7 +474,7 @@ proc lower_expr(expr: AstExpr) -> HirExpr {
   let diagnostics: [SemanticDiagnostic] = [];
 
   if not expr.valid or lowered_kind == HirExprKind.Invalid {
-    set diagnostics = diagnostics + [semantic_diagnostic("HIR0001", SemanticSeverity.Error, "invalid ast expression", expr.span, expr.name, "")];
+    set diagnostics = diagnostics + [semantic_diagnostic("HIR0001", SemanticSeverity.Error, "AST expression cannot be lowered because its parsed shape is incomplete", expr.span, expr.name, "")];
   }
   if lowered_kind == HirExprKind.Unknown {
     set diagnostics = diagnostics + [semantic_diagnostic("HIR0004", SemanticSeverity.Error, "unsupported ast expression in hir lowering", expr.span, expr.name, ast_expr_kind_name(expr.kind))];
@@ -604,7 +604,7 @@ proc lower_stmt(stmt: AstStmt, scope_depth: u64) -> HirStmt {
   let lowered_kind: HirStmtKind = lower_stmt_kind(stmt.kind);
 
   if not stmt.valid {
-    set diagnostics = diagnostics + [semantic_diagnostic("HIR0002", SemanticSeverity.Error, "invalid ast statement", stmt.span, stmt.pattern.name, "")];
+    set diagnostics = diagnostics + [semantic_diagnostic("HIR0002", SemanticSeverity.Error, "AST statement cannot be lowered because its parsed shape is incomplete", stmt.span, stmt.pattern.name, "")];
   }
   if lowered_kind == HirStmtKind.Unknown {
     set diagnostics = diagnostics + [semantic_diagnostic("HIR0005", SemanticSeverity.Error, "unsupported ast statement in hir lowering", stmt.span, stmt.pattern.name, ast_stmt_kind_name(stmt.kind))];
@@ -733,7 +733,7 @@ proc lower_item(item: AstItem) -> HirItem {
   let diagnostics: [SemanticDiagnostic] = [];
 
   if not item.valid {
-    set diagnostics = diagnostics + [semantic_diagnostic("HIR0003", SemanticSeverity.Error, "invalid ast item", item.span, item.name, "")];
+    set diagnostics = diagnostics + [semantic_diagnostic("HIR0003", SemanticSeverity.Error, "AST item cannot be lowered because its declaration shape is incomplete", item.span, item.name, "")];
   }
   if lowered_kind == HirItemKind.Unknown {
     set diagnostics = diagnostics + [semantic_diagnostic("HIR0006", SemanticSeverity.Error, "unsupported ast item in hir lowering", item.span, item.name, ast_item_kind_name(item.kind))];

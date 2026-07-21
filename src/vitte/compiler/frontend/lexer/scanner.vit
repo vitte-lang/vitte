@@ -63,7 +63,7 @@ use vitte/compiler/frontend/lexer/errors.{
   diagnostic_summary,
   invalid_character,
   lexer_diagnostic_bag,
-  lex_error,
+  lexer_error_diagnostic,
   token_too_large,
   unterminated_block_comment
 }
@@ -124,8 +124,8 @@ proc scan_result(tokens: [Token], diagnostics: [LexerDiagnostic], metrics: ScanM
   };
 }
 
-proc lex_diag(code: string, message: string, line: u64, column: u64, width: u64) -> LexerDiagnostic {
-  give lex_error(
+proc lexer_structured_diag(code: string, message: string, line: u64, column: u64, width: u64) -> LexerDiagnostic {
+  give lexer_error_diagnostic(
     code,
     message,
     line,
@@ -313,7 +313,7 @@ proc scan_quoted_token(cursor: Cursor, quote: string, kind: TokenKind) -> ScanRe
       set code = "LEX0021";
       set message = "unterminated string literal";
     }
-    set diagnostics = diagnostics + [lex_diag(code, message, start_line, start_col, len(lexeme))];
+    set diagnostics = diagnostics + [lexer_structured_diag(code, message, start_line, start_col, len(lexeme))];
     set tokens = tokens + [token_with_offset(TokenKind.Invalid, lexeme, start_line, start_col, cursor.index)];
   }
   else {
@@ -323,7 +323,7 @@ proc scan_quoted_token(cursor: Cursor, quote: string, kind: TokenKind) -> ScanRe
     }
 
     if not validation.valid {
-      set diagnostics = diagnostics + [lex_diag(validation.error_code, validation.error_message, start_line, start_col, len(lexeme))];
+      set diagnostics = diagnostics + [lexer_structured_diag(validation.error_code, validation.error_message, start_line, start_col, len(lexeme))];
       set tokens = tokens + [token_with_offset(TokenKind.Invalid, lexeme, start_line, start_col, cursor.index)];
     }
     else {
@@ -369,14 +369,14 @@ proc scan_raw_string_token(cursor: Cursor) -> ScanResult {
   let lexeme: string = cursor_slice(cursor, cursor.index, walk.index);
 
   if not closed {
-    set diagnostics = diagnostics + [lex_diag("LEX0021", "unterminated raw string literal", start_line, start_col, len(lexeme))];
+    set diagnostics = diagnostics + [lexer_structured_diag("LEX0021", "unterminated raw string literal", start_line, start_col, len(lexeme))];
     set tokens = tokens + [token_with_offset(TokenKind.Invalid, lexeme, start_line, start_col, cursor.index)];
     give scan_result(tokens, diagnostics, scan_metrics(len(tokens), 0, 0, len(tokens), 0, len(diagnostics), 0, false));
   }
 
   let validation: LiteralValidation = validate_raw_string_lexeme(lexeme);
   if not validation.valid {
-    set diagnostics = diagnostics + [lex_diag(validation.error_code, validation.error_message, start_line, start_col, len(lexeme))];
+    set diagnostics = diagnostics + [lexer_structured_diag(validation.error_code, validation.error_message, start_line, start_col, len(lexeme))];
     set tokens = tokens + [token_with_offset(TokenKind.Invalid, lexeme, start_line, start_col, cursor.index)];
   } else {
     set tokens = tokens + [token_with_offset(TokenKind.String, lexeme, start_line, start_col, cursor.index)];
@@ -476,7 +476,7 @@ proc scan_tokens(text: string) -> ScanResult {
 
       if number_token.kind == TokenKind.Invalid {
         let validation: LiteralValidation = validate_number_lexeme(number_token.lexeme);
-        set diagnostics = diagnostics + [lex_diag(validation.error_code, validation.error_message, walk.line, walk.column, len(number_token.lexeme))];
+        set diagnostics = diagnostics + [lexer_structured_diag(validation.error_code, validation.error_message, walk.line, walk.column, len(number_token.lexeme))];
         set invalid_count = invalid_count + 1;
       }
 
