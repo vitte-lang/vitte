@@ -20,6 +20,54 @@
       "evidence": ["tool:tools/determinism_smoke.sh", "report:target/reports/repro.json"]
     },
     {
+      "id": "bootstrap.stage_chain",
+      "domain": "bootstrap",
+      "title": "stage0, stage1 and stage2 bootstrap chain is gated",
+      "evidence": ["make:stage0-check", "make:stage0-gate", "make:bootstrap-native-fast-contract"]
+    },
+    {
+      "id": "bootstrap.selfhost_repro",
+      "domain": "bootstrap",
+      "title": "self-hosting reproducibility is gated",
+      "evidence": ["make:bootstrap-selfhost-repro", "tool:tools/bootstrap_selfhost_repro.sh"]
+    },
+    {
+      "id": "bootstrap.same_input_hash",
+      "domain": "bootstrap",
+      "title": "same inputs produce the same build hash",
+      "evidence": ["make:same-output-hash", "tool:tools/determinism_smoke.sh"]
+    },
+    {
+      "id": "bootstrap.generated_declared",
+      "domain": "bootstrap",
+      "title": "generated compiler files are declared and checked",
+      "evidence": ["make:bootstrap-generated-code-test", "tool:tools/bootstrap_generated_code_test.sh"]
+    },
+    {
+      "id": "bootstrap.no_orphan_modules",
+      "domain": "bootstrap",
+      "title": "compiler topology has no orphan module surface",
+      "evidence": ["tool:tools/architecture_docs_check.py", "report:target/reports/compiler_topology_coverage.md"]
+    },
+    {
+      "id": "bootstrap.no_legacy_imports",
+      "domain": "bootstrap",
+      "title": "legacy compiler import paths are linted",
+      "evidence": ["make:legacy-import-path-lint", "tool:tools/lint_legacy_import_paths.py"]
+    },
+    {
+      "id": "bootstrap.no_path_typos",
+      "domain": "bootstrap",
+      "title": "vitte/vittee/vittec path typos are blocked",
+      "evidence": ["make:compiler-path-typos", "tool:tools/compiler_max_gate.sh"]
+    },
+    {
+      "id": "bootstrap.cli_options_documented",
+      "domain": "bootstrap",
+      "title": "CLI diagnostic options are documented and tested",
+      "evidence": ["test:tests/diagnostics/check_cli_diagnostic_options.py", "make:diagnostic-quality"]
+    },
+    {
       "id": "lexer.frontend_tokens",
       "domain": "lexer",
       "title": "lexer token contract has tests and a gate",
@@ -30,6 +78,66 @@
       "domain": "lexer",
       "title": "lexer participates in fuzz and recovery smoke tests",
       "evidence": ["tool:tools/parser_lexer_fuzz_smoke.py", "tool:tools/strict_recovery_smoke.sh"]
+    },
+    {
+      "id": "lexer.token_fixtures",
+      "domain": "lexer",
+      "title": "each declared lexer token has a fixture or token contract proof",
+      "evidence": ["make:frontend-token-consistency", "test:src/vitte/compiler/tests/frontend_token_contract_tests.vit", "tool:tools/check_frontend_token_consistency.py"]
+    },
+    {
+      "id": "lexer.errors_cataloged",
+      "domain": "lexer",
+      "title": "lexer errors are cataloged diagnostics",
+      "evidence": ["make:diagnostics-full-coverage", "tool:tools/check_diagnostics_full_coverage.py", "report:target/reports/diagnostics_full_coverage/coverage.json"]
+    },
+    {
+      "id": "lexer.text_matrix",
+      "domain": "lexer",
+      "title": "lexer covers ASCII, Unicode, CRLF, LF and tabs",
+      "evidence": ["test:src/vitte/compiler/tests/lexer_tests.vit", "tool:tools/parser_lexer_fuzz_smoke.py"]
+    },
+    {
+      "id": "lexer.long_lines",
+      "domain": "lexer",
+      "title": "lexer long-line inputs are covered",
+      "evidence": ["test:src/vitte/compiler/tests/lexer_tests.vit", "tool:tools/parser_lexer_fuzz_smoke.py"]
+    },
+    {
+      "id": "lexer.empty_file",
+      "domain": "lexer",
+      "title": "lexer empty-file behavior is covered",
+      "evidence": ["test:src/vitte/compiler/tests/lexer_tests.vit", "test:src/vitte/compiler/tests/frontend_fixtures/invalid/lexer.vit"]
+    },
+    {
+      "id": "lexer.token_order",
+      "domain": "lexer",
+      "title": "lexer token order is stable",
+      "evidence": ["test:src/vitte/compiler/tests/lexer_tests.vit", "make:frontend-token-consistency"]
+    },
+    {
+      "id": "lexer.error_recovery",
+      "domain": "lexer",
+      "title": "lexer recovers after invalid input without aborting the diagnostic stream",
+      "evidence": ["tool:tools/strict_recovery_smoke.sh", "tool:tools/parser_lexer_fuzz_smoke.py"]
+    },
+    {
+      "id": "lexer.span_policy",
+      "domain": "lexer",
+      "title": "lexer spans preserve byte offsets and visual columns",
+      "evidence": ["tool:tools/check_span_provenance_contract.py", "make:diagnostic-contracts"]
+    },
+    {
+      "id": "lexer.no_panic_invalid",
+      "domain": "lexer",
+      "title": "lexer invalid inputs do not panic",
+      "evidence": ["tool:tools/parser_lexer_fuzz_smoke.py", "tool:tools/strict_recovery_smoke.sh"]
+    },
+    {
+      "id": "lexer.snapshots_json_text",
+      "domain": "lexer",
+      "title": "lexer diagnostics have JSON and text snapshots",
+      "evidence": ["test:src/vitte/compiler/tests/diagnostics/lexer/unterminated_string.json.snap", "test:src/vitte/compiler/tests/diagnostics/lexer/unterminated_string.txt.snap"]
     },
     {
       "id": "parser.grammar",
@@ -44,10 +152,130 @@
       "evidence": ["tool:tools/parser_precedence_property_test.py"]
     },
     {
+      "id": "parser.grammar_fixtures",
+      "domain": "parser",
+      "title": "each grammar rule is backed by grammar fixtures",
+      "evidence": ["make:grammar-test", "make:grammar-coverage", "report:target/reports/grammar_coverage/grammar_coverage.json"]
+    },
+    {
+      "id": "parser.recovery_fixtures",
+      "domain": "parser",
+      "title": "parser recovery paths have fixtures",
+      "evidence": ["make:parser-recovery-golden", "tool:tools/strict_recovery_smoke.sh"]
+    },
+    {
+      "id": "parser.ast_nodes_tested",
+      "domain": "parser",
+      "title": "parser-produced AST nodes are tested",
+      "evidence": ["make:frontend-ast-test", "test:src/vitte/compiler/tests/ast_tests.vit", "tool:tools/ast_coverage_gate.py"]
+    },
+    {
+      "id": "parser.root_before_cascade",
+      "domain": "parser",
+      "title": "parser root diagnostics are ordered before cascades",
+      "evidence": ["test:src/vitte/compiler/tests/diagnostic_snapshot_tests.vit", "tool:tools/strict_recovery_smoke.sh"]
+    },
+    {
+      "id": "parser.diagnostic_order",
+      "domain": "parser",
+      "title": "parser diagnostic order is stable",
+      "evidence": ["test:src/vitte/compiler/tests/diagnostic_snapshot_tests.vit", "tool:tools/determinism_smoke.sh"]
+    },
+    {
+      "id": "parser.ast_snapshots",
+      "domain": "parser",
+      "title": "parser has AST snapshot coverage through frontend AST tests",
+      "evidence": ["make:frontend-ast-test", "test:src/vitte/compiler/tests/ast_tests.vit"]
+    },
+    {
+      "id": "parser.diagnostic_snapshots",
+      "domain": "parser",
+      "title": "parser diagnostics have text and JSON snapshots",
+      "evidence": ["test:tests/diag_snapshots/unclosed_block.json.must", "test:tests/diagnostics/catalog/snapshots/parser/PAR0001.snap"]
+    },
+    {
+      "id": "parser.verified_suggestions",
+      "domain": "parser",
+      "title": "parser suggestions participate in verified counterfactual contracts",
+      "evidence": ["make:counterfactual-diagnostics", "test:src/vitte/compiler/tests/diagnostic_snapshot_tests.vit"]
+    },
+    {
+      "id": "parser.no_silent_stray_tokens",
+      "domain": "parser",
+      "title": "parser stray tokens are surfaced by recovery contracts",
+      "evidence": ["test:src/vitte/compiler/tests/diagnostic_snapshot_tests.vit", "tool:tools/strict_recovery_smoke.sh"]
+    },
+    {
+      "id": "parser.no_catch_all_fallback",
+      "domain": "parser",
+      "title": "parser diagnostics cannot fall back to vague catch-all wording",
+      "evidence": ["make:diagnostics-full-coverage", "tool:tools/check_diagnostics_full_coverage.py"]
+    },
+    {
       "id": "ast.surface",
       "domain": "ast",
       "title": "AST surface has tests",
       "evidence": ["make:frontend-ast-test", "test:src/vitte/compiler/tests/ast_tests.vit", "tool:tools/ast_coverage_gate.py"]
+    },
+    {
+      "id": "ast.real_spans",
+      "domain": "ast",
+      "title": "AST nodes carry real source spans",
+      "evidence": ["make:frontend-ast-test", "tool:tools/check_span_provenance_contract.py"]
+    },
+    {
+      "id": "ast.no_synthetic_source_spans",
+      "domain": "ast",
+      "title": "AST lowering does not replace real spans with synthetic spans",
+      "evidence": ["tool:tools/check_span_provenance_contract.py", "test:src/vitte/compiler/tests/ast_tests.vit"]
+    },
+    {
+      "id": "ast.child_order",
+      "domain": "ast",
+      "title": "AST child order is stable",
+      "evidence": ["test:src/vitte/compiler/tests/ast_tests.vit", "tool:tools/determinism_smoke.sh"]
+    },
+    {
+      "id": "ast.attributes",
+      "domain": "ast",
+      "title": "AST attributes valid and invalid placements are covered",
+      "evidence": ["test:src/vitte/compiler/tests/ast_tests.vit", "test:src/vitte/compiler/tests/frontend_fixtures/invalid/ast.vit"]
+    },
+    {
+      "id": "ast.imports_modules",
+      "domain": "ast",
+      "title": "AST imports and modules are covered",
+      "evidence": ["test:src/vitte/compiler/tests/ast_tests.vit", "test:src/vitte/compiler/tests/frontend_fixtures/valid/parser.vit"]
+    },
+    {
+      "id": "ast.expressions",
+      "domain": "ast",
+      "title": "AST expressions are covered",
+      "evidence": ["test:src/vitte/compiler/tests/ast_tests.vit", "make:frontend-ast-test"]
+    },
+    {
+      "id": "ast.statements",
+      "domain": "ast",
+      "title": "AST statements are covered",
+      "evidence": ["test:src/vitte/compiler/tests/ast_tests.vit", "make:frontend-ast-test"]
+    },
+    {
+      "id": "ast.patterns",
+      "domain": "ast",
+      "title": "AST patterns are covered",
+      "evidence": ["test:src/vitte/compiler/tests/ast_tests.vit", "make:frontend-ast-test"]
+    },
+    {
+      "id": "ast.types",
+      "domain": "ast",
+      "title": "AST types are covered",
+      "evidence": ["test:src/vitte/compiler/tests/ast_tests.vit", "make:frontend-ast-test"]
+    },
+    {
+      "id": "ast.json_snapshots",
+      "domain": "ast",
+      "title": "AST JSON-style snapshot coverage is gated",
+      "evidence": ["make:frontend-ast-test", "tool:tools/ast_coverage_gate.py"]
     },
     {
       "id": "hir.coverage",

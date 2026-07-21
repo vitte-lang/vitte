@@ -38,6 +38,48 @@ REQUIRED_DOMAINS = {
 }
 
 MIN_CONTRACTS = 20
+REQUIRED_CONTRACT_IDS = {
+    "bootstrap.source_of_truth",
+    "bootstrap.stage_chain",
+    "bootstrap.selfhost_repro",
+    "bootstrap.same_input_hash",
+    "bootstrap.generated_declared",
+    "bootstrap.no_orphan_modules",
+    "bootstrap.no_legacy_imports",
+    "bootstrap.no_path_typos",
+    "bootstrap.entrypoints",
+    "bootstrap.cli_options_documented",
+    "lexer.token_fixtures",
+    "lexer.errors_cataloged",
+    "lexer.text_matrix",
+    "lexer.long_lines",
+    "lexer.empty_file",
+    "lexer.token_order",
+    "lexer.error_recovery",
+    "lexer.span_policy",
+    "lexer.no_panic_invalid",
+    "lexer.snapshots_json_text",
+    "parser.grammar_fixtures",
+    "parser.recovery_fixtures",
+    "parser.ast_nodes_tested",
+    "parser.root_before_cascade",
+    "parser.diagnostic_order",
+    "parser.ast_snapshots",
+    "parser.diagnostic_snapshots",
+    "parser.verified_suggestions",
+    "parser.no_silent_stray_tokens",
+    "parser.no_catch_all_fallback",
+    "ast.real_spans",
+    "ast.no_synthetic_source_spans",
+    "ast.child_order",
+    "ast.attributes",
+    "ast.imports_modules",
+    "ast.expressions",
+    "ast.statements",
+    "ast.patterns",
+    "ast.types",
+    "ast.json_snapshots",
+}
 REQUIRED_GATE_NEEDLES = (
     "go make compiler-contracts",
     "go make hir-coverage",
@@ -132,6 +174,9 @@ def main() -> int:
     missing_domains = sorted(REQUIRED_DOMAINS - domains)
     for domain in missing_domains:
         failures.append(f"missing required contract domain {domain}")
+    missing_contract_ids = sorted(REQUIRED_CONTRACT_IDS - seen)
+    for cid in missing_contract_ids:
+        failures.append(f"missing required contract id {cid}")
 
     covered = sum(1 for row in rows if row["status"] == "pass")
     total = len(rows)
