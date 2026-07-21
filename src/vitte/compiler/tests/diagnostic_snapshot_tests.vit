@@ -54,7 +54,19 @@ use vitte/compiler/diagnostics/lsp.{ LspCanonicalContext, LspCodeAction, LspDiag
 use vitte/compiler/diagnostics/sarif.{ sarif_report }
 use vitte/compiler/diagnostics/architecture.{ CompilerDiagnosticStage, canonical_diagnostic_stage_count, compiler_diagnostic_error, compiler_diagnostic_report, diagnostic_architecture_covers_required_stages, stage_component, stage_phase }
 use vitte/compiler/diagnostics/phase_policy.{ DiagnosticPhasePolicy, diagnostic_phase_blocks, diagnostic_phase_policy, diagnostic_phase_root_error_codes }
-use vitte/compiler/diagnostics/counterfactual.{ counterfactual_attach_typeck_string_to_int }
+use vitte/compiler/diagnostics/counterfactual.{
+  CounterfactualPipelineCheck,
+  CounterfactualPipelinePhase,
+  CounterfactualVirtualProgram,
+  CounterfactualVirtualResult,
+  counterfactual_attach_typeck_string_to_int,
+  counterfactual_pipeline_check,
+  counterfactual_suggestion_from_virtual_result,
+  counterfactual_standard_pipeline_checks,
+  counterfactual_virtual_program,
+  counterfactual_virtual_result,
+  counterfactual_virtual_result_is_verified
+}
 
 const VERSION_TEXT: string = "diagnostic snapshot tests 0.1.0"
 const BANNER_TEXT: string = "diagnostic snapshot tests"
@@ -426,6 +438,65 @@ proc test_typeck_counterfactual_argument_example_contract() -> bool {
     and len(diag.suggestions) == 3
     and len(diagnostic_verified_suggestions(diag)) == 2
     and diagnostic_has_machine_applicable_fix(diag) == false;
+}
+
+proc test_counterfactual_virtual_pipeline_contract() -> bool {
+  let file: string = "src/vitte/compiler/tests/diagnostics/typeck/virtual_counterfactual.vit";
+  let span: SourceSpan = span_range(file, 4, 16, 4, 21);
+  let program: CounterfactualVirtualProgram = counterfactual_virtual_program(
+    file,
+    "repeat(value)",
+    "repeat(parse_int(value))"
+  );
+  let success: CounterfactualVirtualResult = counterfactual_virtual_result(
+    1 as u64,
+    1 as u64,
+    1 as u64,
+    true,
+    0 as u64,
+    false,
+    true,
+    program,
+    counterfactual_standard_pipeline_checks(),
+    "virtual program passed lexer, parser, resolver, typeck, and borrowck"
+  );
+  let bad_checks: [CounterfactualPipelineCheck] = [
+    counterfactual_pipeline_check(CounterfactualPipelinePhase.Lexer, true, 0 as u64, "lexer accepted the virtual program"),
+    counterfactual_pipeline_check(CounterfactualPipelinePhase.Parser, true, 0 as u64, "parser accepted the virtual program"),
+    counterfactual_pipeline_check(CounterfactualPipelinePhase.Resolver, true, 0 as u64, "resolver accepted the virtual program"),
+    counterfactual_pipeline_check(CounterfactualPipelinePhase.Typeck, false, 1 as u64, "typeck found a new mismatch"),
+    counterfactual_pipeline_check(CounterfactualPipelinePhase.Borrowck, true, 0 as u64, "borrowck was not reached with new borrow errors")
+  ];
+  let failure: CounterfactualVirtualResult = counterfactual_virtual_result(
+    2 as u64,
+    1 as u64,
+    2 as u64,
+    true,
+    1 as u64,
+    false,
+    false,
+    program,
+    bad_checks,
+    "virtual program created a new typeck error"
+  );
+  let suggestion_diag: Diagnostic = diagnostic_with_suggestion_detail(
+    diagnostic_error("TYP0042", DiagnosticPhase.Typeck, "argument `count` receives a `string`", span),
+    DiagnosticSuggestionKind.Replace,
+    "convert `value` with `parse_int(value)`",
+    "parse_int(value)",
+    span,
+    true,
+    "high",
+    "the virtual result decides final certainty"
+  );
+  let suggestion: DiagnosticSuggestion = suggestion_diag.suggestions[0];
+  let verified: DiagnosticSuggestion = counterfactual_suggestion_from_virtual_result(suggestion, success);
+  let rejected: DiagnosticSuggestion = counterfactual_suggestion_from_virtual_result(suggestion, failure);
+  give counterfactual_virtual_result_is_verified(success)
+    and !counterfactual_virtual_result_is_verified(failure)
+    and verified.counterfactual_verified
+    and !rejected.counterfactual_verified
+    and rejected.machine_applicable == false;
 }
 
 proc test_colored_diagnostic_output() -> bool {

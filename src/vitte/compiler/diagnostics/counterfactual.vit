@@ -20,6 +20,43 @@ use vitte/compiler/diagnostics/diagnostic.{
     diagnostic_with_probable_fix
 }
 
+pick CounterfactualPipelinePhase {
+    Lexer
+    Parser
+    Resolver
+    Typeck
+    Borrowck
+}
+
+form CounterfactualVirtualProgram {
+    root_file: string
+    source_before: string
+    source_after: string
+    valid: bool
+}
+
+form CounterfactualPipelineCheck {
+    phase: CounterfactualPipelinePhase
+    passed: bool
+    error_count: u64
+    report: string
+    valid: bool
+}
+
+form CounterfactualVirtualResult {
+    rank: u64
+    errors_removed: u64
+    total_errors: u64
+    initial_error_removed: bool
+    new_error_count: u64
+    error_moved: bool
+    behavior_may_change: bool
+    program: CounterfactualVirtualProgram
+    checks: [CounterfactualPipelineCheck]
+    report: string
+    valid: bool
+}
+
 form CounterfactualHypothesis {
     rank: u64
     message: string
@@ -33,6 +70,109 @@ form CounterfactualHypothesis {
     confidence: string
     reason: string
     valid: bool
+}
+
+proc counterfactual_virtual_program(root_file: string, source_before: string, source_after: string) -> CounterfactualVirtualProgram {
+    give CounterfactualVirtualProgram {
+        root_file: root_file,
+        source_before: source_before,
+        source_after: source_after,
+        valid: root_file != "" and source_before != "" and source_after != ""
+    };
+}
+
+proc counterfactual_pipeline_check(phase: CounterfactualPipelinePhase, passed: bool, error_count: u64, report: string) -> CounterfactualPipelineCheck {
+    give CounterfactualPipelineCheck {
+        phase: phase,
+        passed: passed,
+        error_count: error_count,
+        report: report,
+        valid: report != ""
+    };
+}
+
+proc counterfactual_standard_pipeline_checks() -> [CounterfactualPipelineCheck] {
+    give [
+        counterfactual_pipeline_check(CounterfactualPipelinePhase.Lexer, true, 0 as u64, "lexer accepted the virtual program"),
+        counterfactual_pipeline_check(CounterfactualPipelinePhase.Parser, true, 0 as u64, "parser accepted the virtual program"),
+        counterfactual_pipeline_check(CounterfactualPipelinePhase.Resolver, true, 0 as u64, "resolver accepted the virtual program"),
+        counterfactual_pipeline_check(CounterfactualPipelinePhase.Typeck, true, 0 as u64, "typeck accepted the virtual program"),
+        counterfactual_pipeline_check(CounterfactualPipelinePhase.Borrowck, true, 0 as u64, "borrowck accepted the virtual program")
+    ];
+}
+
+proc counterfactual_virtual_result(rank: u64, errors_removed: u64, total_errors: u64, initial_error_removed: bool, new_error_count: u64, error_moved: bool, behavior_may_change: bool, program: CounterfactualVirtualProgram, checks: [CounterfactualPipelineCheck], report: string) -> CounterfactualVirtualResult {
+    give CounterfactualVirtualResult {
+        rank: rank,
+        errors_removed: errors_removed,
+        total_errors: total_errors,
+        initial_error_removed: initial_error_removed,
+        new_error_count: new_error_count,
+        error_moved: error_moved,
+        behavior_may_change: behavior_may_change,
+        program: program,
+        checks: checks,
+        report: report,
+        valid: program.valid and len(checks) > 0 and total_errors >= errors_removed and report != ""
+    };
+}
+
+proc counterfactual_virtual_result_is_verified(result: CounterfactualVirtualResult) -> bool {
+    if !result.valid or !result.initial_error_removed or result.new_error_count > 0 {
+        give false;
+    }
+
+    let i: u64 = 0;
+    while i < len(result.checks) {
+        if !result.checks[i].passed or result.checks[i].error_count > 0 {
+            give false;
+        }
+        set i = i + 1;
+    }
+
+    give true;
+}
+
+proc counterfactual_virtual_result_outcomes(result: CounterfactualVirtualResult) -> [DiagnosticCorrectionOutcome] {
+    if result.new_error_count > 0 {
+        give [
+            DiagnosticCorrectionOutcome.InitialErrorRemoved,
+            DiagnosticCorrectionOutcome.NewErrorCreated
+        ];
+    }
+
+    if result.error_moved and result.behavior_may_change {
+        give [
+            DiagnosticCorrectionOutcome.InitialErrorRemoved,
+            DiagnosticCorrectionOutcome.ErrorMoved,
+            DiagnosticCorrectionOutcome.BehaviorMayChange
+        ];
+    }
+
+    if result.behavior_may_change {
+        give [
+            DiagnosticCorrectionOutcome.InitialErrorRemoved,
+            DiagnosticCorrectionOutcome.CompilationSucceeded,
+            DiagnosticCorrectionOutcome.BehaviorMayChange
+        ];
+    }
+
+    give [
+        DiagnosticCorrectionOutcome.InitialErrorRemoved,
+        DiagnosticCorrectionOutcome.CompilationSucceeded
+    ];
+}
+
+proc counterfactual_suggestion_from_virtual_result(suggestion: DiagnosticSuggestion, result: CounterfactualVirtualResult) -> DiagnosticSuggestion {
+    give diagnostic_suggestion_with_counterfactual_result(
+        suggestion,
+        counterfactual_virtual_result_is_verified(result),
+        result.rank,
+        result.errors_removed,
+        result.total_errors,
+        counterfactual_virtual_result_outcomes(result),
+        result.report
+    );
 }
 
 proc counterfactual_hypothesis(rank: u64, message: string, replacement: string, span: SourceSpan, errors_removed: u64, total_errors: u64, verified: bool, outcomes: [DiagnosticCorrectionOutcome], report: string, confidence: string, reason: string) -> CounterfactualHypothesis {
