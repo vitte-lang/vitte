@@ -2609,12 +2609,18 @@ optimization-phase2-gate:
 	@test -f data/optimization_phase2/reports/jit_async_loops.md
 
 
-.PHONY: diagnostic-catalog-check diagnostic-audit stdlib-diagnostics diagnostic-contracts
+.PHONY: diagnostic-catalog-check diagnostic-audit diagnostic-catalog-snapshots diagnostics-full-coverage stdlib-diagnostics diagnostic-contracts
 diagnostic-catalog-check:
 	@python3 tools/check_diagnostic_catalog.py
 
 diagnostic-audit:
 	@python3 tools/audit_compiler_diagnostics.py --write
+
+diagnostic-catalog-snapshots:
+	@python3 tools/generate_diagnostic_catalog_snapshots.py
+
+diagnostics-full-coverage:
+	@python3 tools/check_diagnostics_full_coverage.py
 
 stdlib-diagnostics:
 	@python3 tools/check_stdlib_diagnostic_contract.py
@@ -2659,4 +2665,4 @@ diagnostic-fuzz:
 
 
 .PHONY: diagnostic-quality
-diagnostic-quality: diagnostic-contracts diagnostic-snapshots diagnostic-fuzz
+diagnostic-quality: diagnostic-contracts diagnostic-snapshots diagnostic-fuzz diagnostics-full-coverage
