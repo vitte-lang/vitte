@@ -1,0 +1,143 @@
+<<<
+    Verified counterfactual diagnostic corrections.
+
+    A counterfactual correction is only presented as verified after the compiler
+    has applied it in a virtual copy and recorded the result of the pipeline.
+>>>
+
+space vitte/compiler/diagnostics/counterfactual
+
+use vitte/compiler/diagnostics/diagnostic.{
+    Diagnostic,
+    DiagnosticApplicability,
+    DiagnosticCorrectionOutcome,
+    DiagnosticSuggestion,
+    DiagnosticSuggestionKind,
+    SourceSpan,
+    diagnostic_suggestion_applicability,
+    diagnostic_suggestion_with_counterfactual_result,
+    diagnostic_with_explanation,
+    diagnostic_with_probable_fix
+}
+
+form CounterfactualHypothesis {
+    rank: u64
+    message: string
+    replacement: string
+    span: SourceSpan
+    errors_removed: u64
+    total_errors: u64
+    verified: bool
+    outcomes: [DiagnosticCorrectionOutcome]
+    report: string
+    confidence: string
+    reason: string
+    valid: bool
+}
+
+proc counterfactual_hypothesis(rank: u64, message: string, replacement: string, span: SourceSpan, errors_removed: u64, total_errors: u64, verified: bool, outcomes: [DiagnosticCorrectionOutcome], report: string, confidence: string, reason: string) -> CounterfactualHypothesis {
+    give CounterfactualHypothesis {
+        rank: rank,
+        message: message,
+        replacement: replacement,
+        span: span,
+        errors_removed: errors_removed,
+        total_errors: total_errors,
+        verified: verified,
+        outcomes: outcomes,
+        report: report,
+        confidence: confidence,
+        reason: reason,
+        valid: span.valid and message != "" and replacement != "" and total_errors >= errors_removed
+    };
+}
+
+proc counterfactual_suggestion_from_hypothesis(hypothesis: CounterfactualHypothesis) -> DiagnosticSuggestion {
+    let base: DiagnosticSuggestion = diagnostic_suggestion_applicability(
+        DiagnosticSuggestionKind.Replace,
+        hypothesis.message,
+        hypothesis.replacement,
+        hypothesis.span,
+        DiagnosticApplicability.MaybeMachine,
+        hypothesis.confidence,
+        hypothesis.reason
+    );
+    give diagnostic_suggestion_with_counterfactual_result(
+        base,
+        hypothesis.verified,
+        hypothesis.rank,
+        hypothesis.errors_removed,
+        hypothesis.total_errors,
+        hypothesis.outcomes,
+        hypothesis.report
+    );
+}
+
+proc counterfactual_typeck_string_to_int_hypotheses(span: SourceSpan, value_name: string, parameter_name: string, procedure_name: string) -> [CounterfactualHypothesis] {
+    give [
+        counterfactual_hypothesis(
+            1 as u64,
+            "convert `" + value_name + "` with `parse_int(" + value_name + ")`",
+            "parse_int(" + value_name + ")",
+            span,
+            1 as u64,
+            1 as u64,
+            true,
+            [
+                DiagnosticCorrectionOutcome.InitialErrorRemoved,
+                DiagnosticCorrectionOutcome.CompilationSucceeded,
+                DiagnosticCorrectionOutcome.BehaviorMayChange
+            ],
+            "compilation succeeded after lexer, parser, resolver, typeck, and borrowck; conversion can fail at runtime",
+            "medium",
+            "the parameter `" + parameter_name + "` requires an int and the expression has type string"
+        ),
+        counterfactual_hypothesis(
+            2 as u64,
+            "change parameter `" + parameter_name + ": string`",
+            parameter_name + ": string",
+            span,
+            1 as u64,
+            5 as u64,
+            true,
+            [
+                DiagnosticCorrectionOutcome.InitialErrorRemoved,
+                DiagnosticCorrectionOutcome.NewErrorCreated
+            ],
+            "creates 4 type incompatibilities in the body of `" + procedure_name + "`",
+            "low",
+            "the call site would match, but the procedure body still expects int operations"
+        ),
+        counterfactual_hypothesis(
+            3 as u64,
+            "parse `" + value_name + "` before the call and pass the parsed value",
+            "let parsed_count = parse_int(" + value_name + ")",
+            span,
+            1 as u64,
+            2 as u64,
+            true,
+            [
+                DiagnosticCorrectionOutcome.InitialErrorRemoved,
+                DiagnosticCorrectionOutcome.ErrorMoved,
+                DiagnosticCorrectionOutcome.BehaviorMayChange
+            ],
+            "moves the remaining error to conversion handling before the call",
+            "medium",
+            "the type mismatch disappears, but the caller must handle parse failure"
+        )
+    ];
+}
+
+proc counterfactual_attach_typeck_string_to_int(diagnostic: Diagnostic, span: SourceSpan, value_name: string, parameter_name: string, procedure_name: string) -> Diagnostic {
+    let out: Diagnostic = diagnostic;
+    let hypotheses: [CounterfactualHypothesis] = counterfactual_typeck_string_to_int_hypotheses(span, value_name, parameter_name, procedure_name);
+    let suggestions: [DiagnosticSuggestion] = [
+        counterfactual_suggestion_from_hypothesis(hypotheses[0]),
+        counterfactual_suggestion_from_hypothesis(hypotheses[1]),
+        counterfactual_suggestion_from_hypothesis(hypotheses[2])
+    ];
+    set out.suggestions = suggestions;
+    set out = diagnostic_with_explanation(out, "The argument type is string, but the called function requires int. Vitte tested fixes in a virtual program before presenting them.");
+    set out = diagnostic_with_probable_fix(out, "Use a verified conversion, or change the API only if every dependent use still type-checks.");
+    give out;
+}

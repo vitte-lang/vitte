@@ -10,6 +10,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 CANONICAL = ROOT / "src" / "vitte" / "compiler" / "diagnostics" / "diagnostic.vit"
+COUNTERFACTUAL = ROOT / "src" / "vitte" / "compiler" / "diagnostics" / "counterfactual.vit"
 JSON_RENDERER = ROOT / "src" / "vitte" / "compiler" / "diagnostics" / "json.vit"
 TEXT_RENDERER = ROOT / "src" / "vitte" / "compiler" / "diagnostics" / "render.vit"
 TESTS = ROOT / "src" / "vitte" / "compiler" / "tests" / "diagnostic_snapshot_tests.vit"
@@ -34,6 +35,14 @@ CHECKS: tuple[tuple[Path, str], ...] = (
     (CANONICAL, "plans[i].counterfactual_verified"),
     (CANONICAL, "render_counterfactual_solution"),
     (CANONICAL, "compiler tested "),
+    (COUNTERFACTUAL, "form CounterfactualHypothesis"),
+    (COUNTERFACTUAL, "counterfactual_typeck_string_to_int_hypotheses"),
+    (COUNTERFACTUAL, "counterfactual_attach_typeck_string_to_int"),
+    (COUNTERFACTUAL, "parse_int("),
+    (COUNTERFACTUAL, "creates 4 type incompatibilities in the body of `"),
+    (COUNTERFACTUAL, "lexer, parser, resolver, typeck, and borrowck"),
+    (COUNTERFACTUAL, "DiagnosticCorrectionOutcome.ErrorMoved"),
+    (COUNTERFACTUAL, "DiagnosticCorrectionOutcome.BehaviorMayChange"),
     (JSON_RENDERER, "json_counterfactual_outcomes"),
     (JSON_RENDERER, "\"counterfactual_verified\""),
     (JSON_RENDERER, "\"counterfactual_outcomes\""),
@@ -43,8 +52,14 @@ CHECKS: tuple[tuple[Path, str], ...] = (
     (TEXT_RENDERER, "diagnostic_counterfactual_tested_count"),
     (TESTS, "test_unverified_suggestion_is_not_certain"),
     (TESTS, "test_counterfactual_rejects_new_error_solution"),
+    (TESTS, "test_typeck_counterfactual_argument_example_contract"),
+    (TESTS, "sample_counterfactual_typeck_argument_diagnostic"),
+    (TESTS, "error[TYP0042]"),
+    (TESTS, "compiler tested 3 correction(s) in a virtual copy"),
+    (TESTS, "creates 4 type incompatibilities in the body of `repeat`"),
     (TESTS, "diagnostic_verified_counterfactual_solution"),
     (TESTS, "counterfactual_verified"),
+    (MAKEFILE, "src/vitte/compiler/diagnostics/counterfactual.vit"),
     (MAKEFILE, "counterfactual-diagnostics"),
 )
 

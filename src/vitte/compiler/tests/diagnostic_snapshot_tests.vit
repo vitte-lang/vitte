@@ -9,6 +9,7 @@ use vitte/compiler/diagnostics/diagnostic.{
   DiagnosticCorrectionOutcome,
   DiagnosticSuggestion,
   DiagnosticSuggestionKind,
+  SourceSpan,
   DiagnosticReport,
   DiagnosticRenderConfig,
   DIAGNOSTIC_INTERNAL_OFFSET_UNIT,
@@ -53,6 +54,7 @@ use vitte/compiler/diagnostics/lsp.{ LspCanonicalContext, LspCodeAction, LspDiag
 use vitte/compiler/diagnostics/sarif.{ sarif_report }
 use vitte/compiler/diagnostics/architecture.{ CompilerDiagnosticStage, canonical_diagnostic_stage_count, compiler_diagnostic_error, compiler_diagnostic_report, diagnostic_architecture_covers_required_stages, stage_component, stage_phase }
 use vitte/compiler/diagnostics/phase_policy.{ DiagnosticPhasePolicy, diagnostic_phase_blocks, diagnostic_phase_policy, diagnostic_phase_root_error_codes }
+use vitte/compiler/diagnostics/counterfactual.{ counterfactual_attach_typeck_string_to_int }
 
 const VERSION_TEXT: string = "diagnostic snapshot tests 0.1.0"
 const BANNER_TEXT: string = "diagnostic snapshot tests"
@@ -90,6 +92,24 @@ proc sample_typeck_diagnostic() -> Diagnostic {
   set diag = diagnostic_add_pipeline_context(diag, "HIR");
   set diag = diagnostic_add_pipeline_context(diag, "sema");
   set diag = diagnostic_add_pipeline_context(diag, "typeck [FAILED]");
+  give diag;
+}
+
+proc sample_counterfactual_typeck_argument_diagnostic() -> Diagnostic {
+  let file: string = "src/vitte/compiler/tests/diagnostics/typeck/argument_string_to_int.vit";
+  let span: SourceSpan = span_range(file, 7, 18, 7, 23);
+  let diag: Diagnostic = diagnostic_error("TYP0042", DiagnosticPhase.Typeck, "argument `count` receives a `string`", span);
+  set diag.labels = [
+    previous_label("parameter `count` is declared as int", span_range(file, 1, 13, 1, 23)),
+    primary_label("expected: int\nfound: string", span)
+  ];
+  set diag = diagnostic_with_documentation(diag, "docs://language/type-system/argument-compatibility");
+  set diag = diagnostic_add_pipeline_context(diag, "lexer");
+  set diag = diagnostic_add_pipeline_context(diag, "parser");
+  set diag = diagnostic_add_pipeline_context(diag, "resolver");
+  set diag = diagnostic_add_pipeline_context(diag, "typeck [FAILED]");
+  set diag = diagnostic_add_pipeline_context(diag, "borrowck");
+  set diag = counterfactual_attach_typeck_string_to_int(diag, span, "value", "count", "repeat");
   give diag;
 }
 
@@ -385,6 +405,27 @@ proc test_counterfactual_rejects_new_error_solution() -> bool {
     and diagnostic_has_machine_applicable_fix(raw) == false
     and find(rendered, "verified correction rejected 2") >= 0
     and find(rendered, "x new error created") >= 0;
+}
+
+proc test_typeck_counterfactual_argument_example_contract() -> bool {
+  let diag: Diagnostic = sample_counterfactual_typeck_argument_diagnostic();
+  let rendered: string = render_report(diagnostic_report([diag]), human_config());
+  give find(rendered, "error[TYP0042]") >= 0
+    and find(rendered, "argument `count` receives a `string`") >= 0
+    and find(rendered, "expected: int") >= 0
+    and find(rendered, "found: string") >= 0
+    and find(rendered, "compiler tested 3 correction(s) in a virtual copy") >= 0
+    and find(rendered, "verified solution 1") >= 0
+    and find(rendered, "convert `value` with `parse_int(value)`") >= 0
+    and find(rendered, "ok initial error removed") >= 0
+    and find(rendered, "ok compilation succeeded") >= 0
+    and find(rendered, "! behavior may change") >= 0
+    and find(rendered, "verified correction rejected 2") >= 0
+    and find(rendered, "x new error created") >= 0
+    and find(rendered, "creates 4 type incompatibilities in the body of `repeat`") >= 0
+    and len(diag.suggestions) == 3
+    and len(diagnostic_verified_suggestions(diag)) == 2
+    and diagnostic_has_machine_applicable_fix(diag) == false;
 }
 
 proc test_colored_diagnostic_output() -> bool {
