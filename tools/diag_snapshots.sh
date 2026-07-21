@@ -60,6 +60,7 @@ for src in "${files[@]}"; do
   base="${src%.vit}"
   must="$base.must"
   must_json="$base.json.must"
+  ordered="$base.ordered"
   cmd_file="$base.cmd"
   flags_file="$base.flags"
   exit_file="$base.exit"
@@ -101,6 +102,31 @@ for src in "${files[@]}"; do
       die "snapshot mismatch for $src: missing '$needle'"
     fi
   done < "$must"
+
+  if [ -f "$ordered" ]; then
+    ordered_actual="$(mktemp "${TMPDIR:-/tmp}/vitte-diag-ordered.XXXXXX")"
+    printf "%s\n" "$out" > "$ordered_actual"
+    python3 - "$ordered" "$ordered_actual" <<'PY'
+import sys
+from pathlib import Path
+
+ordered = Path(sys.argv[1])
+actual_path = Path(sys.argv[2])
+actual = [line.rstrip("\n") for line in actual_path.read_text(encoding="utf-8").splitlines()]
+expected = [line.rstrip("\n") for line in ordered.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+if not expected:
+    raise SystemExit(0)
+
+for start in range(0, len(actual) - len(expected) + 1):
+    if actual[start : start + len(expected)] == expected:
+        raise SystemExit(0)
+
+print("\n".join(actual))
+raise SystemExit("[diag-snapshots][error] ordered diagnostic block not found: " + str(ordered))
+PY
+    rm -f "$ordered_actual"
+  fi
 
   if [ -f "$must_json" ]; then
     set +e
