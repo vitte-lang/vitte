@@ -1076,7 +1076,7 @@ proc diagnostic_fix_plan_from_suggestion(code: string, index: u64, suggestion: D
         replacement: suggestion.replacement,
         span: suggestion.span,
         secondary_spans: suggestion.secondary_spans,
-        machine_applicable: suggestion.machine_applicable,
+        machine_applicable: suggestion.machine_applicable and suggestion.counterfactual_verified,
         confidence: suggestion.confidence,
         reason: suggestion.reason,
         counterfactual_verified: suggestion.counterfactual_verified,
@@ -2220,9 +2220,47 @@ proc diagnostic_catalog_suggestions(phase: DiagnosticPhase, code: string, span: 
     give [];
 }
 
+proc diagnostic_parser_recovery_suggestions(span: SourceSpan) -> [DiagnosticSuggestion] {
+    give [
+        diagnostic_suggestion_applicability(DiagnosticSuggestionKind.Insert, "close the currently open block with a delimiter", "}", span, DiagnosticApplicability.MaybeMachine, "medium", "parser recovery found a block without its closing delimiter"),
+        diagnostic_suggestion_applicability(DiagnosticSuggestionKind.Insert, "insert the missing separator before the next item", ";", span, DiagnosticApplicability.MaybeMachine, "medium", "the parser needs a separator to keep the following token in the same statement list"),
+        diagnostic_suggestion_applicability(DiagnosticSuggestionKind.Replace, "replace this token with the token expected by the grammar", ")", span, DiagnosticApplicability.MaybeMachine, "medium", "the parser expected a closing token at this location"),
+        diagnostic_suggestion_applicability(DiagnosticSuggestionKind.Help, "move the clause after the declaration header it belongs to", "", span, DiagnosticApplicability.Manual, "medium", "the clause is valid only after the declaration header"),
+        diagnostic_suggestion_applicability(DiagnosticSuggestionKind.Remove, "remove the stray token that is not part of this construct", "", span, DiagnosticApplicability.Manual, "medium", "the parser recovered by skipping this token")
+    ];
+}
+
+proc diagnostic_sema_resolution_suggestions(span: SourceSpan) -> [DiagnosticSuggestion] {
+    give [
+        diagnostic_suggestion_applicability(DiagnosticSuggestionKind.Insert, "import the symbol from the module that defines it", "use module.symbol", span, DiagnosticApplicability.Manual, "medium", "name resolution did not find this symbol in the visible scopes"),
+        diagnostic_suggestion_applicability(DiagnosticSuggestionKind.Replace, "rename this use to the closest visible symbol", "name", span, DiagnosticApplicability.MaybeMachine, "medium", "resolver found a nearby symbol with the same category"),
+        diagnostic_suggestion_applicability(DiagnosticSuggestionKind.Help, "make the declaration public before using it from another module", "", span, DiagnosticApplicability.Manual, "medium", "the symbol exists but its visibility does not allow this access"),
+        diagnostic_suggestion_applicability(DiagnosticSuggestionKind.Remove, "remove the duplicate declaration and keep one binding", "", span, DiagnosticApplicability.Manual, "medium", "two declarations introduce the same name in one namespace"),
+        diagnostic_suggestion_applicability(DiagnosticSuggestionKind.Replace, "rename this binding so both declarations have distinct names", "name", span, DiagnosticApplicability.MaybeMachine, "medium", "renaming preserves both declarations without a collision"),
+        diagnostic_suggestion_applicability(DiagnosticSuggestionKind.Replace, "qualify the symbol with its module path", "module.symbol", span, DiagnosticApplicability.MaybeMachine, "medium", "a qualified path selects the intended module binding")
+    ];
+}
+
+proc diagnostic_with_origin_usage_declaration_consequence(diagnostic: Diagnostic, origin: SourceSpan, usage: SourceSpan, declaration: SourceSpan, consequence: SourceSpan) -> Diagnostic {
+    let out: Diagnostic = diagnostic;
+    set out.labels = out.labels + [
+        secondary_label("origin: value or rule starts here", origin),
+        primary_label("usage: this access triggers the diagnostic", usage),
+        previous_label("declaration: binding was introduced here", declaration),
+        secondary_label("consequence: later code depends on this state", consequence)
+    ];
+    give out;
+}
+
 proc diagnostic_suggestion_list(phase: DiagnosticPhase, code: string, span: SourceSpan) -> [DiagnosticSuggestion] {
     let out: [DiagnosticSuggestion] = diagnostic_catalog_suggestions(phase, code, span);
     let fallback: DiagnosticSuggestion = diagnostic_default_suggestion(phase, code, span);
+    if phase == DiagnosticPhase.Parser {
+        set out = diagnostic_suggestion_list_extend(out, diagnostic_parser_recovery_suggestions(span));
+    }
+    if phase == DiagnosticPhase.Sema or phase == DiagnosticPhase.SymbolResolution or phase == DiagnosticPhase.ModuleResolution {
+        set out = diagnostic_suggestion_list_extend(out, diagnostic_sema_resolution_suggestions(span));
+    }
     give diagnostic_suggestion_list_add(out, fallback);
 }
 

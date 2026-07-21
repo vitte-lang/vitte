@@ -22,7 +22,9 @@ use vitte/compiler/diagnostics/diagnostic.{
     diagnostic_confidence,
     diagnostic_quality_score,
     diagnostic_fix_plans,
-    diagnostic_kind_name
+    diagnostic_kind_name,
+    has_new_error_outcome,
+    suggestion_strategy_name
 }
 
 const USER_DIAGNOSTIC_COLUMNS: string = "one_based_visual_columns"
@@ -108,6 +110,12 @@ form LspCodeAction {
     replacement: string
     applicability: string
     diagnostic_code: string
+    strategy: string
+    proof: string
+    risk: string
+    score: u64
+    disabled: bool
+    disabled_reason: string
     valid: bool
 }
 
@@ -418,6 +426,8 @@ proc lsp_code_action_from_suggestion(diagnostic: Diagnostic, suggestion: Diagnos
     let uri: string = span_uri(suggestion.span);
     let range: LspRange = lsp_range_from_span(suggestion.span);
     let kind: string = if suggestion.replacement != "" { "quickfix" } else { "refactor.rewrite" };
+    let disabled: bool = has_new_error_outcome(suggestion.counterfactual_outcomes);
+    let disabled_reason: string = if disabled { "counterfactual recompilation created a new diagnostic" } elif suggestion.replacement != "" and !suggestion.counterfactual_verified { "replacement has not been verified by virtual recompilation" } else { "" };
     give LspCodeAction {
         title: suggestion.message,
         kind: kind,
@@ -426,6 +436,12 @@ proc lsp_code_action_from_suggestion(diagnostic: Diagnostic, suggestion: Diagnos
         replacement: suggestion.replacement,
         applicability: applicability_name(suggestion.applicability),
         diagnostic_code: diagnostic.code,
+        strategy: suggestion_strategy_name(suggestion.strategy),
+        proof: suggestion.proof,
+        risk: suggestion.risk,
+        score: suggestion.public_score,
+        disabled: disabled or disabled_reason != "",
+        disabled_reason: disabled_reason,
         valid: diagnostic.valid and suggestion.valid
     };
 }
@@ -460,7 +476,8 @@ proc lsp_report_code_actions(report: DiagnosticReport) -> [LspCodeAction] {
 }
 
 proc lsp_code_action_summary(action: LspCodeAction) -> string {
-    give action.kind + ": " + action.title + " [" + action.applicability + "]";
+    let disabled: string = if action.disabled { " disabled=" + action.disabled_reason } else { "" };
+    give action.kind + ": " + action.title + " [" + action.applicability + "] strategy=" + action.strategy + " score=" + (action.score as string) + disabled;
 }
 
 proc lsp_severity_name(severity: LspDiagnosticSeverity) -> string {

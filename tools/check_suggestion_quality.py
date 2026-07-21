@@ -19,6 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 DIAGNOSTIC = ROOT / "src" / "vitte" / "compiler" / "diagnostics" / "diagnostic.vit"
 JSON_RENDERER = ROOT / "src" / "vitte" / "compiler" / "diagnostics" / "json.vit"
 COUNTERFACTUAL = ROOT / "src" / "vitte" / "compiler" / "diagnostics" / "counterfactual.vit"
+LSP = ROOT / "src" / "vitte" / "compiler" / "diagnostics" / "lsp.vit"
 TESTS = ROOT / "src" / "vitte" / "compiler" / "tests" / "diagnostic_snapshot_tests.vit"
 MAKEFILE = ROOT / "Makefile"
 REPORT = ROOT / "target" / "reports" / "suggestion_quality" / "coverage.json"
@@ -46,6 +47,21 @@ REQUIRED_NEEDLES: tuple[tuple[Path, str], ...] = (
     (DIAGNOSTIC, "diagnostic_suggestion_with_quality"),
     (DIAGNOSTIC, "suggestion_strategy_name"),
     (DIAGNOSTIC, "diagnostic_strategy_from_suggestion"),
+    (DIAGNOSTIC, "diagnostic_parser_recovery_suggestions"),
+    (DIAGNOSTIC, "close the currently open block"),
+    (DIAGNOSTIC, "insert the missing separator"),
+    (DIAGNOSTIC, "replace this token with the token expected"),
+    (DIAGNOSTIC, "move the clause after the declaration header"),
+    (DIAGNOSTIC, "remove the stray token"),
+    (DIAGNOSTIC, "diagnostic_sema_resolution_suggestions"),
+    (DIAGNOSTIC, "import the symbol from the module"),
+    (DIAGNOSTIC, "rename this use to the closest visible symbol"),
+    (DIAGNOSTIC, "make the declaration public"),
+    (DIAGNOSTIC, "remove the duplicate declaration"),
+    (DIAGNOSTIC, "rename this binding"),
+    (DIAGNOSTIC, "qualify the symbol with its module path"),
+    (DIAGNOSTIC, "diagnostic_with_origin_usage_declaration_consequence"),
+    (DIAGNOSTIC, "machine_applicable: suggestion.machine_applicable and suggestion.counterfactual_verified"),
     (DIAGNOSTIC, "set out.proof = \"virtual recompilation checked \""),
     (DIAGNOSTIC, "set out.risk = if new_errors > 0"),
     (DIAGNOSTIC, "set out.public_score = diagnostic_suggestion_public_score"),
@@ -61,7 +77,14 @@ REQUIRED_NEEDLES: tuple[tuple[Path, str], ...] = (
     (JSON_RENDERER, "\"error_moved\""),
     (JSON_RENDERER, "\"behavior_changed\""),
     (COUNTERFACTUAL, "counterfactual_hypothesis_score"),
+    (LSP, "disabled: bool"),
+    (LSP, "disabled_reason: string"),
+    (LSP, "has_new_error_outcome"),
+    (LSP, "counterfactual recompilation created a new diagnostic"),
+    (LSP, "replacement has not been verified by virtual recompilation"),
     (TESTS, "test_suggestion_quality_contract"),
+    (TESTS, "test_parser_and_sema_suggestion_surfaces"),
+    (TESTS, "test_multispan_and_lsp_suggestion_proof_contract"),
     (TESTS, "\\\"strategy\\\": \\\""),
     (TESTS, "\\\"proof\\\": \\\""),
     (TESTS, "\\\"score\\\": "),

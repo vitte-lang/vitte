@@ -36,8 +36,11 @@ use vitte/compiler/diagnostics/diagnostic.{
   diagnostic_with_label,
   diagnostic_with_probable_fix,
   diagnostic_with_suggestion_detail,
+  diagnostic_parser_recovery_suggestions,
+  diagnostic_sema_resolution_suggestions,
   diagnostic_verified_counterfactual_solution,
   diagnostic_verified_suggestions,
+  diagnostic_with_origin_usage_declaration_consequence,
   ide_render_config,
   monochrome_render_config,
   primary_label,
@@ -50,7 +53,7 @@ use vitte/compiler/diagnostics/diagnostic.{
   lexer_unterminated_string
 }
 use vitte/compiler/diagnostics/json.{ json_diagnostic, json_report }
-use vitte/compiler/diagnostics/lsp.{ LspCanonicalContext, LspCodeAction, LspDiagnostic, LspPublishDiagnosticsParams, lsp_canonical_context, lsp_code_actions, lsp_diagnostic, lsp_diagnostic_summary, lsp_diagnostic_with_canonical_context, lsp_publish_report_with_canonical_context, lsp_report_code_actions }
+use vitte/compiler/diagnostics/lsp.{ LspCanonicalContext, LspCodeAction, LspDiagnostic, LspPublishDiagnosticsParams, lsp_canonical_context, lsp_code_actions, lsp_code_action_summary, lsp_diagnostic, lsp_diagnostic_summary, lsp_diagnostic_with_canonical_context, lsp_publish_report_with_canonical_context, lsp_report_code_actions }
 use vitte/compiler/diagnostics/sarif.{ sarif_report }
 use vitte/compiler/diagnostics/architecture.{ CompilerDiagnosticStage, canonical_diagnostic_stage_count, compiler_diagnostic_error, compiler_diagnostic_report, diagnostic_architecture_covers_required_stages, stage_component, stage_phase }
 use vitte/compiler/diagnostics/phase_policy.{ DiagnosticPhasePolicy, diagnostic_phase_blocks, diagnostic_phase_policy, diagnostic_phase_root_error_codes }
@@ -544,6 +547,66 @@ proc test_suggestion_quality_contract() -> bool {
     and find(encoded, "\"proof\": \"") >= 0
     and find(encoded, "\"score\": ") >= 0
     and find(encoded, "\"new_errors\": ") >= 0;
+}
+
+proc test_parser_and_sema_suggestion_surfaces() -> bool {
+  let file: string = "src/vitte/compiler/tests/diagnostics/suggestions/parser_sema_surface.vit";
+  let span: SourceSpan = span_range(file, 3, 8, 3, 9);
+  let parser_suggestions: [DiagnosticSuggestion] = diagnostic_parser_recovery_suggestions(span);
+  let sema_suggestions: [DiagnosticSuggestion] = diagnostic_sema_resolution_suggestions(span);
+  give len(parser_suggestions) == 5
+    and find(parser_suggestions[0].message, "close") >= 0
+    and find(parser_suggestions[1].message, "separator") >= 0
+    and find(parser_suggestions[2].message, "replace this token") >= 0
+    and find(parser_suggestions[3].message, "move the clause") >= 0
+    and find(parser_suggestions[4].message, "remove the stray token") >= 0
+    and len(sema_suggestions) == 6
+    and find(sema_suggestions[0].message, "import the symbol") >= 0
+    and find(sema_suggestions[1].message, "rename this use") >= 0
+    and find(sema_suggestions[2].message, "make the declaration public") >= 0
+    and find(sema_suggestions[3].message, "remove the duplicate declaration") >= 0
+    and find(sema_suggestions[4].message, "rename this binding") >= 0
+    and find(sema_suggestions[5].message, "qualify the symbol") >= 0;
+}
+
+proc test_multispan_and_lsp_suggestion_proof_contract() -> bool {
+  let file: string = "src/vitte/compiler/tests/diagnostics/suggestions/multispan_lsp.vit";
+  let span: SourceSpan = span_range(file, 4, 10, 4, 15);
+  let diag0: Diagnostic = diagnostic_error("SEMA_E_UNKNOWN_SYMBOL", DiagnosticPhase.Sema, "symbol `value` is not visible here", span);
+  let diag1: Diagnostic = diagnostic_with_origin_usage_declaration_consequence(
+    diag0,
+    span_range(file, 1, 1, 1, 5),
+    span,
+    span_range(file, 2, 5, 2, 10),
+    span_range(file, 5, 3, 5, 8)
+  );
+  let rejected: DiagnosticSuggestion = diagnostic_verified_counterfactual_solution(
+    diagnostic_sema_resolution_suggestions(span)[1],
+    2 as u64,
+    1 as u64,
+    3 as u64,
+    [
+      DiagnosticCorrectionOutcome.InitialErrorRemoved,
+      DiagnosticCorrectionOutcome.NewErrorCreated
+    ],
+    "renaming resolves this use but creates another unresolved symbol"
+  );
+  set diag1.suggestions = [rejected];
+  let actions: [LspCodeAction] = lsp_code_actions(diag1);
+  let summary: string = lsp_code_action_summary(actions[0]);
+  give len(diag1.labels) == 4
+    and find(diag1.labels[0].message, "origin:") >= 0
+    and find(diag1.labels[1].message, "usage:") >= 0
+    and find(diag1.labels[2].message, "declaration:") >= 0
+    and find(diag1.labels[3].message, "consequence:") >= 0
+    and len(actions) == 1
+    and actions[0].disabled
+    and find(actions[0].disabled_reason, "created a new diagnostic") >= 0
+    and actions[0].score == 0 as u64
+    and actions[0].proof != ""
+    and find(summary, "disabled=") >= 0
+    and find(summary, "strategy=") >= 0
+    and find(summary, "score=0") >= 0;
 }
 
 proc test_colored_diagnostic_output() -> bool {
