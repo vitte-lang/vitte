@@ -15,9 +15,12 @@ expect() {
 }
 
 expect amd64 normalize-arch x86_64
+expect amd64 normalize-arch X86_64
 expect amd64 normalize-arch AMD64
 expect arm64 normalize-arch aarch64
+expect arm64 normalize-arch AArch64
 expect i386 normalize-arch i686
+expect riscv64 normalize-arch RISC-V64
 expect macos normalize-os Darwin
 expect dragonfly normalize-os DragonFly
 expect openbsd normalize-os OpenBSD
@@ -25,11 +28,15 @@ expect netbsd normalize-os NetBSD
 expect solaris normalize-os SunOS
 
 $MATRIX lookup linux x86_64 deb >/dev/null
+$MATRIX lookup linux AArch64 deb >/dev/null
+$MATRIX lookup linux RISC-V64 deb >/dev/null
 $MATRIX lookup macos arm64 dmg >/dev/null
+$MATRIX lookup macos x86_64 pkg >/dev/null
 $MATRIX lookup windows-11 amd64 exe >/dev/null
 $MATRIX lookup windows-xp i386 exe >/dev/null
 $MATRIX lookup freebsd amd64 pkg >/dev/null
 $MATRIX lookup freebsd i386 pkg >/dev/null
+$MATRIX lookup freebsd RISC-V64 pkg >/dev/null
 $MATRIX lookup openbsd i386 tar.xz >/dev/null
 $MATRIX lookup netbsd amd64 tar.xz >/dev/null
 $MATRIX lookup dragonfly amd64 tar.xz >/dev/null

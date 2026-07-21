@@ -1046,10 +1046,13 @@ require_file "$LOGO_FILE" "Vitte logo"
 mkdir -p "$OUT_DIR"
 
 case "$ARCH" in
-  all | arm64 | x86_64 | universal | universal2 | i386 | macos2006-i386)
+  all | arm64 | ARM64 | x86_64 | X86_64 | universal | universal2 | i386 | macos2006-i386)
     ;;
-  amd64)
+  amd64 | AMD64)
     ARCH=x86_64
+    ;;
+  aarch64 | AArch64 | AARCH64)
+    ARCH=arm64
     ;;
   x86)
     ARCH=macos2006-i386

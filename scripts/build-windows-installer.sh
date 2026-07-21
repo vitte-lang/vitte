@@ -275,13 +275,13 @@ case "$ARCH" in
   all)
     arches='i386 amd64 arm64 armv7'
     ;;
-  x86_64 | amd64 | x64)
+  x86_64 | X86_64 | amd64 | AMD64 | x64)
     arches=amd64
     ;;
   i386 | i486 | i586 | i686 | x86)
     arches=i386
     ;;
-  aarch64 | arm64)
+  aarch64 | AArch64 | AARCH64 | arm64 | ARM64)
     arches=arm64
     ;;
   armv7 | arm)

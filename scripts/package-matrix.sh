@@ -3,15 +3,16 @@ set -eu
 
 normalize_arch() {
   case "$1" in
-    x86_64 | amd64 | AMD64) printf 'amd64\n' ;;
-    aarch64 | arm64 | ARM64) printf 'arm64\n' ;;
+    x86_64 | X86_64 | amd64 | AMD64) printf 'amd64\n' ;;
+    aarch64 | AArch64 | AARCH64 | arm64 | ARM64) printf 'arm64\n' ;;
     i386 | i486 | i586 | i686 | x86) printf 'i386\n' ;;
     armhf | armv7 | armv7l) printf 'armv7\n' ;;
     armel | armv6 | armv6l) printf 'armv6\n' ;;
     ppc64el | powerpc64le | ppc64le) printf 'ppc64el\n' ;;
     ppc64 | powerpc64) printf 'powerpc64\n' ;;
     ppc | powerpc) printf 'powerpc\n' ;;
-    riscv64 | s390x | mips64el | mipsel | sparc64 | universal | universal2 | macos2006) printf '%s\n' "$1" ;;
+    riscv64 | RISC-V64 | RISCV64) printf 'riscv64\n' ;;
+    s390x | mips64el | mipsel | sparc64 | universal | universal2 | macos2006) printf '%s\n' "$1" ;;
     *) printf 'unsupported architecture: %s\n' "$1" >&2; exit 1 ;;
   esac
 }
@@ -79,9 +80,10 @@ case "${1:-}" in
     ;;
   lookup)
     os=$(normalize_os "${2:?missing os}")
-    arch=$(normalize_arch "${3:?missing architecture}")
+    raw_arch=${3:?missing architecture}
+    arch=$(normalize_arch "$raw_arch")
     format=${4:?missing package format}
-    emit_rows | awk -v os="$os" -v arch="$arch" -v format="$format" '$1 == os && $2 == arch && $3 == format { print; found=1 } END { exit found ? 0 : 1 }'
+    emit_rows | awk -v os="$os" -v arch="$arch" -v raw_arch="$raw_arch" -v format="$format" '$1 == os && ($2 == arch || $2 == raw_arch) && $3 == format { print; found=1 } END { exit found ? 0 : 1 }'
     ;;
   list)
     emit_rows

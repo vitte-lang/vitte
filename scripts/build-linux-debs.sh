@@ -837,10 +837,10 @@ case "$ARCH" in
       build_one "$arch"
     done
     ;;
-  x86_64 | amd64)
+  x86_64 | X86_64 | amd64 | AMD64)
     build_one amd64
     ;;
-  aarch64 | arm64)
+  aarch64 | AArch64 | AARCH64 | arm64 | ARM64)
     build_one arm64
     ;;
   armhf | armv7 | armv7l)
@@ -852,7 +852,7 @@ case "$ARCH" in
   i386 | i486 | i586 | i686 | x86)
     build_one i386
     ;;
-  riscv64)
+  riscv64 | RISC-V64 | RISCV64)
     build_one riscv64
     ;;
   ppc64el | powerpc64le | ppc64le)

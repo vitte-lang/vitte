@@ -17,13 +17,15 @@ for command in vitte vittec vittec0; do
   chmod 0755 "$TMP_ROOT/bin/$command"
 done
 
-for arch in all amd64 arm64 i386; do
+for arch in all amd64 x86_64 arm64 aarch64 i386 riscv64 RISC-V64; do
   ARCH=$arch "$ROOT_DIR/scripts_build/build-linux-debs.sh" --dry-run >/dev/null
 done
 
 for family in freebsd openbsd netbsd dragonfly; do
   BSD_FAMILY=$family BSD_RELEASE=14 ARCH=amd64 "$ROOT_DIR/scripts_build/build-bsd-installers.sh" --dry-run >/dev/null
 done
+
+BSD_FAMILY=freebsd BSD_RELEASE=14 ARCH=riscv64 "$ROOT_DIR/scripts_build/build-bsd-installers.sh" --dry-run >/dev/null
 
 for arch in amd64 i386; do
   ARCH=$arch "$ROOT_DIR/scripts_build/build-solaris-package.sh" --dry-run >/dev/null
