@@ -234,6 +234,15 @@ proc json_has_default_context(diag: Diagnostic) -> bool {
     and find(actual, "\"quality\": {") >= 0
     and find(actual, "\"suggestions\": [") >= 0
     and find(actual, "\"confidence\": \"") >= 0
+    and find(actual, "\"strategy\": \"") >= 0
+    and find(actual, "\"proof\": \"") >= 0
+    and find(actual, "\"verified_phases\": [") >= 0
+    and find(actual, "\"risk\": \"") >= 0
+    and find(actual, "\"score\": ") >= 0
+    and find(actual, "\"errors_removed\": ") >= 0
+    and find(actual, "\"new_errors\": ") >= 0
+    and find(actual, "\"error_moved\": ") >= 0
+    and find(actual, "\"behavior_changed\": ") >= 0
     and find(actual, "\"counterfactual_verified\": ") >= 0
     and find(actual, "\"counterfactual_outcomes\": [") >= 0
     and find(actual, "\"counterfactual_report\": \"") >= 0
@@ -514,6 +523,27 @@ proc test_counterfactual_ranking_prefers_verified_low_risk_fix() -> bool {
     and ranked[0].message == hypotheses[0].message
     and ranked[1].message == hypotheses[2].message
     and ranked[2].message == hypotheses[1].message;
+}
+
+proc test_suggestion_quality_contract() -> bool {
+  let diag: Diagnostic = sample_counterfactual_typeck_argument_diagnostic();
+  let rendered: string = render_report(diagnostic_report([diag]), human_config());
+  let encoded: string = json_diagnostic(diag);
+  give len(diag.suggestions) == 3
+    and diag.suggestions[0].proof != ""
+    and diag.suggestions[0].risk != ""
+    and diag.suggestions[0].public_score > 0 as u64
+    and diag.suggestions[1].new_errors == 0 as u64
+    and diag.suggestions[2].new_errors > 0 as u64
+    and diag.suggestions[2].public_score == 0 as u64
+    and find(rendered, "strategy=") >= 0
+    and find(rendered, "score=") >= 0
+    and find(rendered, "proof=") >= 0
+    and find(rendered, "risk=") >= 0
+    and find(encoded, "\"strategy\": \"") >= 0
+    and find(encoded, "\"proof\": \"") >= 0
+    and find(encoded, "\"score\": ") >= 0
+    and find(encoded, "\"new_errors\": ") >= 0;
 }
 
 proc test_colored_diagnostic_output() -> bool {

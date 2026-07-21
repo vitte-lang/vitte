@@ -23,6 +23,7 @@ use vitte/compiler/diagnostics/diagnostic.{
     phase_name,
     label_kind_name,
     suggestion_kind_name,
+    suggestion_strategy_name,
     applicability_name,
     fix_kind_name,
     diagnostic_code_family,
@@ -110,6 +111,18 @@ proc json_string_array(values: [string]) -> string {
     while i < len(values) {
         set encoded = encoded + [json_quote(values[i])];
 
+        set i = i + 1;
+    }
+
+    give json_array(encoded);
+}
+
+proc json_phase_array(values: [DiagnosticPhase]) -> string {
+    let encoded: [string] = [];
+    let i: u64 = 0;
+
+    while i < len(values) {
+        set encoded = encoded + [json_quote(phase_name(values[i]))];
         set i = i + 1;
     }
 
@@ -306,6 +319,65 @@ proc json_suggestion(suggestion: DiagnosticSuggestion) -> string {
             "reason",
             json_quote(
                 suggestion.reason
+            )
+        ),
+
+        json_key_value(
+            "strategy",
+            json_quote(
+                suggestion_strategy_name(
+                    suggestion.strategy
+                )
+            )
+        ),
+
+        json_key_value(
+            "proof",
+            json_quote(
+                suggestion.proof
+            )
+        ),
+
+        json_key_value(
+            "verified_phases",
+            json_phase_array(
+                suggestion.verified_phases
+            )
+        ),
+
+        json_key_value(
+            "risk",
+            json_quote(
+                suggestion.risk
+            )
+        ),
+
+        json_key_value(
+            "score",
+            suggestion.public_score as string
+        ),
+
+        json_key_value(
+            "errors_removed",
+            suggestion.errors_removed as string
+        ),
+
+        json_key_value(
+            "new_errors",
+            suggestion.new_errors as string
+        ),
+
+        json_key_value(
+            "error_moved",
+            json_bool(
+                suggestion.error_moved
+            )
+        ),
+
+        json_key_value(
+            "behavior_changed",
+            json_bool(
+                suggestion.behavior_changed
             )
         ),
 

@@ -106,6 +106,21 @@ pick DiagnosticFixKind {
     Help
 }
 
+pick DiagnosticSuggestionStrategy {
+    SyntaxCorrection
+    Conversion
+    ImportSymbol
+    RenameSymbol
+    ChangeType
+    AddAnnotation
+    ChangeMutability
+    ChangeLifetime
+    Ownership
+    ControlFlow
+    MultiFile
+    ManualHelp
+}
+
 pick DiagnosticKind {
     User
     Configuration
@@ -164,6 +179,15 @@ form DiagnosticSuggestion {
     applicability: DiagnosticApplicability
     confidence: string
     reason: string
+    strategy: DiagnosticSuggestionStrategy
+    proof: string
+    verified_phases: [DiagnosticPhase]
+    risk: string
+    public_score: u64
+    errors_removed: u64
+    new_errors: u64
+    error_moved: bool
+    behavior_changed: bool
     counterfactual_verified: bool
     counterfactual_rank: u64
     counterfactual_errors_removed: u64
@@ -596,6 +620,168 @@ proc fix_kind_name(kind: DiagnosticFixKind) -> string {
     give "help";
 }
 
+proc suggestion_strategy_name(strategy: DiagnosticSuggestionStrategy) -> string {
+    if strategy == DiagnosticSuggestionStrategy.SyntaxCorrection {
+        give "syntax-correction";
+    }
+
+    if strategy == DiagnosticSuggestionStrategy.Conversion {
+        give "conversion";
+    }
+
+    if strategy == DiagnosticSuggestionStrategy.ImportSymbol {
+        give "import";
+    }
+
+    if strategy == DiagnosticSuggestionStrategy.RenameSymbol {
+        give "rename";
+    }
+
+    if strategy == DiagnosticSuggestionStrategy.ChangeType {
+        give "change-type";
+    }
+
+    if strategy == DiagnosticSuggestionStrategy.AddAnnotation {
+        give "add-annotation";
+    }
+
+    if strategy == DiagnosticSuggestionStrategy.ChangeMutability {
+        give "change-mutability";
+    }
+
+    if strategy == DiagnosticSuggestionStrategy.ChangeLifetime {
+        give "change-lifetime";
+    }
+
+    if strategy == DiagnosticSuggestionStrategy.Ownership {
+        give "ownership";
+    }
+
+    if strategy == DiagnosticSuggestionStrategy.ControlFlow {
+        give "control-flow";
+    }
+
+    if strategy == DiagnosticSuggestionStrategy.MultiFile {
+        give "multi-file";
+    }
+
+    give "manual-help";
+}
+
+proc diagnostic_phase_list_names(phases: [DiagnosticPhase]) -> string {
+    let out: string = "";
+    let i: u64 = 0;
+
+    while i < len(phases) {
+        if i > 0 {
+            set out = out + " -> ";
+        }
+        set out = out + phase_name(phases[i]);
+        set i = i + 1;
+    }
+
+    give out;
+}
+
+proc diagnostic_default_verified_phases() -> [DiagnosticPhase] {
+    give [
+        DiagnosticPhase.Lexer,
+        DiagnosticPhase.Parser,
+        DiagnosticPhase.SymbolResolution,
+        DiagnosticPhase.Typeck,
+        DiagnosticPhase.Borrowck
+    ];
+}
+
+proc diagnostic_strategy_from_suggestion(kind: DiagnosticSuggestionKind, message: string, reason: string) -> DiagnosticSuggestionStrategy {
+    if kind == DiagnosticSuggestionKind.Insert and (find(message, "delimiter") >= 0 or find(message, "closing") >= 0 or find(reason, "parser") >= 0) {
+        give DiagnosticSuggestionStrategy.SyntaxCorrection;
+    }
+
+    if find(message, "convert") >= 0 or find(message, "parse") >= 0 or find(reason, "convert") >= 0 {
+        give DiagnosticSuggestionStrategy.Conversion;
+    }
+
+    if find(message, "import") >= 0 {
+        give DiagnosticSuggestionStrategy.ImportSymbol;
+    }
+
+    if find(message, "rename") >= 0 {
+        give DiagnosticSuggestionStrategy.RenameSymbol;
+    }
+
+    if find(message, "type") >= 0 or find(reason, "type") >= 0 {
+        give DiagnosticSuggestionStrategy.ChangeType;
+    }
+
+    if find(message, "annotation") >= 0 {
+        give DiagnosticSuggestionStrategy.AddAnnotation;
+    }
+
+    if find(message, "mut") >= 0 or find(message, "mutable") >= 0 {
+        give DiagnosticSuggestionStrategy.ChangeMutability;
+    }
+
+    if find(message, "lifetime") >= 0 {
+        give DiagnosticSuggestionStrategy.ChangeLifetime;
+    }
+
+    if find(message, "borrow") >= 0 or find(message, "move") >= 0 or find(message, "clone") >= 0 or find(reason, "ownership") >= 0 {
+        give DiagnosticSuggestionStrategy.Ownership;
+    }
+
+    if find(message, "reorder") >= 0 or find(message, "scope") >= 0 {
+        give DiagnosticSuggestionStrategy.ControlFlow;
+    }
+
+    give DiagnosticSuggestionStrategy.ManualHelp;
+}
+
+proc diagnostic_suggestion_public_score(errors_removed: u64, new_errors: u64, error_moved: bool, behavior_changed: bool, confidence: string) -> u64 {
+    if new_errors > 0 {
+        give 0 as u64;
+    }
+
+    let score: u64 = 500 as u64 + errors_removed * 100 as u64;
+
+    if error_moved and score > 80 as u64 {
+        set score = score - 80 as u64;
+    }
+
+    if behavior_changed and score > 40 as u64 {
+        set score = score - 40 as u64;
+    }
+
+    if confidence == DIAGNOSTIC_CONFIDENCE_HIGH {
+        set score = score + 50 as u64;
+    } elif confidence == DIAGNOSTIC_CONFIDENCE_LOW and score > 50 as u64 {
+        set score = score - 50 as u64;
+    }
+
+    give score;
+}
+
+proc diagnostic_suggestion_with_quality(suggestion: DiagnosticSuggestion, strategy: DiagnosticSuggestionStrategy, proof: string, verified_phases: [DiagnosticPhase], risk: string, errors_removed: u64, new_errors: u64, error_moved: bool, behavior_changed: bool) -> DiagnosticSuggestion {
+    let out: DiagnosticSuggestion = suggestion;
+    set out.strategy = strategy;
+    set out.proof = proof;
+    set out.verified_phases = verified_phases;
+    set out.risk = risk;
+    set out.errors_removed = errors_removed;
+    set out.new_errors = new_errors;
+    set out.error_moved = error_moved;
+    set out.behavior_changed = behavior_changed;
+    set out.public_score = diagnostic_suggestion_public_score(errors_removed, new_errors, error_moved, behavior_changed, out.confidence);
+
+    if new_errors > 0 {
+        set out.machine_applicable = false;
+        set out.applicability = DiagnosticApplicability.Manual;
+        set out.confidence = DIAGNOSTIC_CONFIDENCE_LOW;
+    }
+
+    give out;
+}
+
 proc diagnostic_label(kind: DiagnosticLabelKind, message: string, span: SourceSpan) -> DiagnosticLabel {
     give DiagnosticLabel {
         kind: kind,
@@ -668,6 +854,15 @@ proc diagnostic_suggestion(kind: DiagnosticSuggestionKind, message: string, repl
         applicability: if machine_applicable { DiagnosticApplicability.Machine } else { DiagnosticApplicability.Manual },
         confidence: confidence,
         reason: message,
+        strategy: diagnostic_strategy_from_suggestion(kind, message, message),
+        proof: if machine_applicable { "pending virtual recompilation proof" } else { "manual suggestion; exact replacement is not applied automatically" },
+        verified_phases: [],
+        risk: if machine_applicable { "not verified yet" } else { "manual review required" },
+        public_score: diagnostic_suggestion_public_score(0 as u64, 0 as u64, false, false, confidence),
+        errors_removed: 0 as u64,
+        new_errors: 0 as u64,
+        error_moved: false,
+        behavior_changed: false,
         counterfactual_verified: false,
         counterfactual_rank: 0 as u64,
         counterfactual_errors_removed: 0 as u64,
@@ -688,6 +883,7 @@ proc diagnostic_suggestion_applicability(kind: DiagnosticSuggestionKind, message
 
     if reason != "" {
         set suggestion.reason = reason;
+        set suggestion.strategy = diagnostic_strategy_from_suggestion(kind, message, reason);
     }
 
     give suggestion;
@@ -700,6 +896,7 @@ proc diagnostic_suggestion_detail(kind: DiagnosticSuggestionKind, message: strin
 
     if reason != "" {
         set suggestion.reason = reason;
+        set suggestion.strategy = diagnostic_strategy_from_suggestion(kind, message, reason);
     }
 
     // Contract: machine_applicable and suggestion.confidence == "high" and replacement != ""
@@ -730,12 +927,23 @@ proc diagnostic_suggestion_with_confidence(kind: DiagnosticSuggestionKind, messa
 
 proc diagnostic_suggestion_with_counterfactual_result(suggestion: DiagnosticSuggestion, verified: bool, rank: u64, errors_removed: u64, total_errors: u64, outcomes: [DiagnosticCorrectionOutcome], report: string) -> DiagnosticSuggestion {
     let out: DiagnosticSuggestion = suggestion;
+    let new_errors: u64 = if has_new_error_outcome(outcomes) { if total_errors > errors_removed { total_errors - errors_removed } else { 1 as u64 } } else { 0 as u64 };
+    let moved: bool = diagnostic_correction_outcomes_have(outcomes, DiagnosticCorrectionOutcome.ErrorMoved);
+    let changed: bool = diagnostic_correction_outcomes_have(outcomes, DiagnosticCorrectionOutcome.BehaviorMayChange);
     set out.counterfactual_verified = verified;
     set out.counterfactual_rank = rank;
     set out.counterfactual_errors_removed = errors_removed;
     set out.counterfactual_total_errors = total_errors;
     set out.counterfactual_outcomes = outcomes;
     set out.counterfactual_report = if report == "" { "virtual recompilation result recorded" } else { report };
+    set out.verified_phases = diagnostic_default_verified_phases();
+    set out.proof = "virtual recompilation checked " + diagnostic_phase_list_names(out.verified_phases);
+    set out.errors_removed = errors_removed;
+    set out.new_errors = new_errors;
+    set out.error_moved = moved;
+    set out.behavior_changed = changed;
+    set out.risk = if new_errors > 0 { "creates new diagnostics" } elif moved { "moves the remaining diagnostic to another location" } elif changed { "may change runtime behavior" } else { "no new diagnostic observed" };
+    set out.public_score = diagnostic_suggestion_public_score(errors_removed, new_errors, moved, changed, out.confidence);
 
     if !verified {
         set out.machine_applicable = false;
@@ -756,11 +964,11 @@ proc diagnostic_verified_counterfactual_solution(suggestion: DiagnosticSuggestio
     give diagnostic_suggestion_with_counterfactual_result(suggestion, true, rank, errors_removed, total_errors, outcomes, report);
 }
 
-proc has_new_error_outcome(outcomes: [DiagnosticCorrectionOutcome]) -> bool {
+proc diagnostic_correction_outcomes_have(outcomes: [DiagnosticCorrectionOutcome], target: DiagnosticCorrectionOutcome) -> bool {
     let i: u64 = 0;
 
     while i < len(outcomes) {
-        if outcomes[i] == DiagnosticCorrectionOutcome.NewErrorCreated {
+        if outcomes[i] == target {
             give true;
         }
 
@@ -768,6 +976,10 @@ proc has_new_error_outcome(outcomes: [DiagnosticCorrectionOutcome]) -> bool {
     }
 
     give false;
+}
+
+proc has_new_error_outcome(outcomes: [DiagnosticCorrectionOutcome]) -> bool {
+    give diagnostic_correction_outcomes_have(outcomes, DiagnosticCorrectionOutcome.NewErrorCreated);
 }
 
 proc diagnostic_normalize_confidence(confidence: string, applicability: DiagnosticApplicability, replacement: string) -> string {
@@ -3607,12 +3819,23 @@ proc render_suggestion(suggestion: DiagnosticSuggestion, config: DiagnosticRende
         set text = text + " " + diag_lparen() + suggestion.confidence + " confidence" + diag_rparen();
     }
 
+    set text = text + " strategy=" + suggestion_strategy_name(suggestion.strategy);
+    set text = text + " score=" + (suggestion.public_score as string);
+
     if applicability != "" {
         set text = text + " [" + applicability + "]";
     }
 
     if suggestion.reason != "" and suggestion.reason != suggestion.message {
         set text = text + " because " + suggestion.reason;
+    }
+
+    if suggestion.proof != "" {
+        set text = text + " proof=" + suggestion.proof;
+    }
+
+    if suggestion.risk != "" {
+        set text = text + " risk=" + suggestion.risk;
     }
 
     give text;
