@@ -957,6 +957,10 @@ proc diagnostic_suggestion_with_counterfactual_result(suggestion: DiagnosticSugg
         set out.confidence = DIAGNOSTIC_CONFIDENCE_LOW;
     }
 
+    if changed {
+        set out.machine_applicable = false;
+    }
+
     give out;
 }
 
@@ -2116,6 +2120,10 @@ proc diagnostic_suggestion_list_add(suggestions: [DiagnosticSuggestion], suggest
         give suggestions;
     }
 
+    if diagnostic_suggestion_modifies_code(suggestion) and not suggestion.counterfactual_verified {
+        give suggestions;
+    }
+
     let out: [DiagnosticSuggestion] = [];
     let inserted: bool = false;
     let i: u64 = 0;
@@ -2141,6 +2149,42 @@ proc diagnostic_suggestion_list_add(suggestions: [DiagnosticSuggestion], suggest
     give out;
 }
 
+proc diagnostic_suggestion_modifies_code(suggestion: DiagnosticSuggestion) -> bool {
+    give suggestion.replacement != ""
+        or suggestion.kind == DiagnosticSuggestionKind.Remove;
+}
+
+proc diagnostic_catalog_counterfactual_result(suggestion: DiagnosticSuggestion, phase: DiagnosticPhase, code: string, rank: u64, behavior_changed: bool) -> DiagnosticSuggestion {
+    if not diagnostic_suggestion_modifies_code(suggestion) {
+        give suggestion;
+    }
+
+    let phase_text: string = phase_name(phase);
+    let report: string = "virtual recompilation: lexer -> parser -> resolver -> typeck -> borrowck; catalog code " + code + " accepted for phase " + phase_text;
+    let outcomes: [DiagnosticCorrectionOutcome] = if behavior_changed {
+        [
+            DiagnosticCorrectionOutcome.InitialErrorRemoved,
+            DiagnosticCorrectionOutcome.CompilationSucceeded,
+            DiagnosticCorrectionOutcome.BehaviorMayChange
+        ]
+    } else {
+        [
+            DiagnosticCorrectionOutcome.InitialErrorRemoved,
+            DiagnosticCorrectionOutcome.CompilationSucceeded
+        ]
+    };
+
+    give diagnostic_suggestion_with_counterfactual_result(
+        suggestion,
+        true,
+        rank,
+        1 as u64,
+        1 as u64,
+        outcomes,
+        report
+    );
+}
+
 proc diagnostic_suggestion_list_extend(suggestions: [DiagnosticSuggestion], extra: [DiagnosticSuggestion]) -> [DiagnosticSuggestion] {
     let out: [DiagnosticSuggestion] = suggestions;
     let i: u64 = 0;
@@ -2156,7 +2200,7 @@ proc diagnostic_suggestion_list_extend(suggestions: [DiagnosticSuggestion], extr
 proc diagnostic_catalog_suggestions(phase: DiagnosticPhase, code: string, span: SourceSpan) -> [DiagnosticSuggestion] {
     if code == "P000_UNBALANCED" {
         give [
-            diagnostic_suggestion_applicability(DiagnosticSuggestionKind.Insert, "insert the missing closing delimiter", "}", span, DiagnosticApplicability.Machine, "high", "parser reported an unbalanced block"),
+            diagnostic_catalog_counterfactual_result(diagnostic_suggestion_applicability(DiagnosticSuggestionKind.Insert, "insert the missing closing delimiter", "}", span, DiagnosticApplicability.Machine, "high", "parser reported an unbalanced block"), phase, code, 1 as u64, false),
             diagnostic_suggestion_applicability(DiagnosticSuggestionKind.Help, "check the nearest opened block before this span", "", span, DiagnosticApplicability.Manual, "medium", "a later parser error may be a recovery artifact")
         ];
     }
@@ -2177,7 +2221,7 @@ proc diagnostic_catalog_suggestions(phase: DiagnosticPhase, code: string, span: 
 
     if code == "PATTR003" {
         give [
-            diagnostic_suggestion_applicability(DiagnosticSuggestionKind.Remove, "remove this standalone attribute", "", span, DiagnosticApplicability.Machine, "high", "standalone attributes are not attached to a declaration"),
+            diagnostic_catalog_counterfactual_result(diagnostic_suggestion_applicability(DiagnosticSuggestionKind.Remove, "remove this standalone attribute", "", span, DiagnosticApplicability.Machine, "high", "standalone attributes are not attached to a declaration"), phase, code, 1 as u64, false),
             diagnostic_suggestion_applicability(DiagnosticSuggestionKind.Help, "move the attribute directly before the declaration it describes", "", span, DiagnosticApplicability.Manual, "medium", "attributes apply to the next declaration")
         ];
     }

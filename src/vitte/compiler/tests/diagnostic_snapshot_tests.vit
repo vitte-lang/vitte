@@ -403,16 +403,31 @@ proc test_rendered_suggestion_applicability_contract() -> bool {
 }
 
 proc test_unverified_suggestion_is_not_certain() -> bool {
-  let raw: Diagnostic = parser_unclosed_block(
-    span_create("src/vitte/compiler/tests/diagnostics/parser/unverified_unclosed_block.vit", 1, 1, 5),
-    span_create("src/vitte/compiler/tests/diagnostics/parser/unverified_unclosed_block.vit", 2, 1, 1)
+  let span: SourceSpan = span_create("src/vitte/compiler/tests/diagnostics/parser/unverified_replacement.vit", 1, 1, 5);
+  let raw0: Diagnostic = diagnostic_error(
+    "TST_UNVERIFIED_REPLACEMENT",
+    DiagnosticPhase.Parser,
+    "test diagnostic with an unverified replacement",
+    span
+  );
+  let raw: Diagnostic = diagnostic_with_suggestion_detail(
+    raw0,
+    DiagnosticSuggestionKind.Replace,
+    "replace this token with a verified token",
+    "proc",
+    span,
+    true,
+    "high",
+    "test-only unverified replacement must not be kept"
   );
   let plans = diagnostic_fix_plans(raw);
   let rendered: string = render_report(diagnostic_report([raw]), human_config());
   give len(plans) > 0
+    and plans[0].replacement == ""
     and plans[0].machine_applicable == false
     and diagnostic_has_machine_applicable_fix(raw) == false
     and len(diagnostic_verified_suggestions(raw)) == 0
+    and find(rendered, "replace this token with a verified token") < 0
     and find(rendered, "verified solution") < 0;
 }
 

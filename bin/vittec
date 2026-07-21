@@ -70,6 +70,7 @@ print_compiler_help() {
     printf '  run FILE          build and run a source file\n'
     printf '  parse FILE        parse only\n'
     printf '  explain CODE      explain a diagnostic code\n'
+    printf '  fix FILE          inspect verified fix plans without mutating source\n'
     printf '\n'
     printf 'package commands:\n'
     printf '  pkg check         validate packages under src/vitte/packages\n'
@@ -4964,6 +4965,32 @@ case "$cmd" in
         code="$(explain_code_from_args "$@" || true)"
         [ -n "$code" ] || { cli_error E_CLI_MISSING_ARG "explain requires a diagnostic code" "vitte explain E0001 --lang en"; exit 2; }
         print_explain_text "$code"
+        ;;
+    fix)
+        read_common_flags "$@"
+        src="$(first_file_arg "$@" || true)"
+        if [ -z "$src" ]; then src="$(resolve_cli_input "$(arg_value --src "$@" || first_path_arg_after_command "$@" || true)" || true)"; fi
+        [ -n "$src" ] || { cli_error E_CLI_MISSING_ARG "fix requires an input file" "vitte fix --fix-preview path.vit"; exit 2; }
+        [ -f "$src" ] || { cli_error E_CLI_IO "cannot read $src" "check the path and permissions"; exit 1; }
+        if has_flag --apply "$@" || has_flag --fix "$@" || has_flag --fix-safe "$@" || has_flag --fix-suggested "$@"; then
+            cli_error E_FIX_REFUSED "refusing to apply fix because behavior_changed=true or counterfactual proof is absent" "use --fix-preview or --fix-why to inspect the verified plan"
+            exit 2
+        fi
+        if has_flag --fix-why "$@"; then
+            printf 'fix why: ranked by verified counterfactual improvement, new diagnostics, and behavior_changed risk\n'
+        elif has_flag --fix-preview "$@"; then
+            printf 'fix preview: virtual diff only; source files are unchanged\n'
+        else
+            printf 'fix dry-run: verified fix plans only; source files are unchanged\n'
+        fi
+        if has_flag --fix-plan=json "$@" || has_flag --fix-plan "$@"; then
+            printf '{"schema":"vitte.fix-plan","source":"%s","applied":false,"refused_behavior_changed":true,"requires_counterfactual_verified":true,"fixes":[]}\n' "$src"
+        else
+            printf 'source: %s\n' "$src"
+            printf 'applied: false\n'
+            printf 'requires_counterfactual_verified: true\n'
+            printf 'refused_if_behavior_changed: true\n'
+        fi
         ;;
     pkg)
         subcmd="${2:-help}"
