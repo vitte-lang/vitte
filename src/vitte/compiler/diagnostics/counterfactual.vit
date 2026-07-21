@@ -72,6 +72,99 @@ form CounterfactualHypothesis {
     valid: bool
 }
 
+proc counterfactual_outcomes_have(outcomes: [DiagnosticCorrectionOutcome], target: DiagnosticCorrectionOutcome) -> bool {
+    let i: u64 = 0;
+    while i < len(outcomes) {
+        if outcomes[i] == target {
+            give true;
+        }
+        set i = i + 1;
+    }
+    give false;
+}
+
+proc counterfactual_hypothesis_has_new_error(hypothesis: CounterfactualHypothesis) -> bool {
+    give counterfactual_outcomes_have(hypothesis.outcomes, DiagnosticCorrectionOutcome.NewErrorCreated);
+}
+
+proc counterfactual_hypothesis_moves_error(hypothesis: CounterfactualHypothesis) -> bool {
+    give counterfactual_outcomes_have(hypothesis.outcomes, DiagnosticCorrectionOutcome.ErrorMoved);
+}
+
+proc counterfactual_hypothesis_changes_behavior(hypothesis: CounterfactualHypothesis) -> bool {
+    give counterfactual_outcomes_have(hypothesis.outcomes, DiagnosticCorrectionOutcome.BehaviorMayChange);
+}
+
+proc counterfactual_hypothesis_score(hypothesis: CounterfactualHypothesis) -> u64 {
+    if !hypothesis.valid or !hypothesis.verified {
+        give 0 as u64;
+    }
+
+    let score: u64 = 1000 as u64 + hypothesis.errors_removed * 100 as u64;
+
+    if hypothesis.total_errors > hypothesis.errors_removed {
+        set score = score - (hypothesis.total_errors - hypothesis.errors_removed) * 20 as u64;
+    }
+
+    if counterfactual_hypothesis_has_new_error(hypothesis) {
+        give 0 as u64;
+    }
+
+    if counterfactual_hypothesis_moves_error(hypothesis) and score > 80 as u64 {
+        set score = score - 80 as u64;
+    }
+
+    if counterfactual_hypothesis_changes_behavior(hypothesis) and score > 40 as u64 {
+        set score = score - 40 as u64;
+    }
+
+    give score;
+}
+
+proc counterfactual_hypothesis_is_better(left: CounterfactualHypothesis, right: CounterfactualHypothesis) -> bool {
+    let left_score: u64 = counterfactual_hypothesis_score(left);
+    let right_score: u64 = counterfactual_hypothesis_score(right);
+    if left_score != right_score {
+        give left_score > right_score;
+    }
+
+    if left.errors_removed != right.errors_removed {
+        give left.errors_removed > right.errors_removed;
+    }
+
+    if left.total_errors != right.total_errors {
+        give left.total_errors < right.total_errors;
+    }
+
+    give left.rank < right.rank;
+}
+
+proc counterfactual_rank_three_hypotheses(first: CounterfactualHypothesis, second: CounterfactualHypothesis, third: CounterfactualHypothesis) -> [CounterfactualHypothesis] {
+    let a: CounterfactualHypothesis = first;
+    let b: CounterfactualHypothesis = second;
+    let c: CounterfactualHypothesis = third;
+
+    if counterfactual_hypothesis_is_better(b, a) {
+        let tmp: CounterfactualHypothesis = a;
+        set a = b;
+        set b = tmp;
+    }
+
+    if counterfactual_hypothesis_is_better(c, b) {
+        let tmp2: CounterfactualHypothesis = b;
+        set b = c;
+        set c = tmp2;
+    }
+
+    if counterfactual_hypothesis_is_better(b, a) {
+        let tmp3: CounterfactualHypothesis = a;
+        set a = b;
+        set b = tmp3;
+    }
+
+    give [a, b, c];
+}
+
 proc counterfactual_virtual_program(root_file: string, source_before: string, source_after: string) -> CounterfactualVirtualProgram {
     give CounterfactualVirtualProgram {
         root_file: root_file,
@@ -271,10 +364,11 @@ proc counterfactual_typeck_string_to_int_hypotheses(span: SourceSpan, value_name
 proc counterfactual_attach_typeck_string_to_int(diagnostic: Diagnostic, span: SourceSpan, value_name: string, parameter_name: string, procedure_name: string) -> Diagnostic {
     let out: Diagnostic = diagnostic;
     let hypotheses: [CounterfactualHypothesis] = counterfactual_typeck_string_to_int_hypotheses(span, value_name, parameter_name, procedure_name);
+    let ranked: [CounterfactualHypothesis] = counterfactual_rank_three_hypotheses(hypotheses[0], hypotheses[1], hypotheses[2]);
     let suggestions: [DiagnosticSuggestion] = [
-        counterfactual_suggestion_from_hypothesis(hypotheses[0]),
-        counterfactual_suggestion_from_hypothesis(hypotheses[1]),
-        counterfactual_suggestion_from_hypothesis(hypotheses[2])
+        counterfactual_suggestion_from_hypothesis(ranked[0]),
+        counterfactual_suggestion_from_hypothesis(ranked[1]),
+        counterfactual_suggestion_from_hypothesis(ranked[2])
     ];
     set out.suggestions = suggestions;
     set out = diagnostic_with_explanation(out, "The argument type is string, but the called function requires int. Vitte tested fixes in a virtual program before presenting them.");

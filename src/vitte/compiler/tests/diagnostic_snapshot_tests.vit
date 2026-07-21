@@ -60,9 +60,13 @@ use vitte/compiler/diagnostics/counterfactual.{
   CounterfactualVirtualProgram,
   CounterfactualVirtualResult,
   counterfactual_attach_typeck_string_to_int,
+  counterfactual_hypothesis_is_better,
+  counterfactual_hypothesis_score,
+  counterfactual_rank_three_hypotheses,
   counterfactual_pipeline_check,
   counterfactual_suggestion_from_virtual_result,
   counterfactual_standard_pipeline_checks,
+  counterfactual_typeck_string_to_int_hypotheses,
   counterfactual_virtual_program,
   counterfactual_virtual_result,
   counterfactual_virtual_result_is_verified
@@ -497,6 +501,19 @@ proc test_counterfactual_virtual_pipeline_contract() -> bool {
     and verified.counterfactual_verified
     and !rejected.counterfactual_verified
     and rejected.machine_applicable == false;
+}
+
+proc test_counterfactual_ranking_prefers_verified_low_risk_fix() -> bool {
+  let file: string = "src/vitte/compiler/tests/diagnostics/typeck/ranked_counterfactual.vit";
+  let span: SourceSpan = span_range(file, 9, 12, 9, 17);
+  let hypotheses = counterfactual_typeck_string_to_int_hypotheses(span, "value", "count", "repeat");
+  let ranked = counterfactual_rank_three_hypotheses(hypotheses[1], hypotheses[2], hypotheses[0]);
+  give counterfactual_hypothesis_score(hypotheses[0]) > counterfactual_hypothesis_score(hypotheses[2])
+    and counterfactual_hypothesis_score(hypotheses[1]) == 0 as u64
+    and counterfactual_hypothesis_is_better(hypotheses[0], hypotheses[1])
+    and ranked[0].message == hypotheses[0].message
+    and ranked[1].message == hypotheses[2].message
+    and ranked[2].message == hypotheses[1].message;
 }
 
 proc test_colored_diagnostic_output() -> bool {
