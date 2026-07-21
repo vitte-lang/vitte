@@ -794,6 +794,66 @@
       "evidence": ["source:src/vitte/compiler/diagnostics/lsp.vit", "test:src/vitte/compiler/tests/diagnostic_snapshot_tests.vit"]
     },
     {
+      "id": "lsp.cli_identical_diagnostics",
+      "domain": "lsp",
+      "title": "LSP diagnostics preserve the same canonical diagnostic as CLI",
+      "evidence": ["source:src/vitte/compiler/diagnostics/lsp.vit", "tool:tools/check_compiler_diagnostic_contract.py", "test:src/vitte/compiler/tests/diagnostic_snapshot_tests.vit"]
+    },
+    {
+      "id": "lsp.code_action_proof",
+      "domain": "lsp",
+      "title": "LSP CodeAction entries carry diagnostic proof metadata",
+      "evidence": ["source:src/vitte/compiler/diagnostics/lsp.vit", "make:suggestion-quality", "test:src/vitte/compiler/tests/diagnostic_snapshot_tests.vit"]
+    },
+    {
+      "id": "lsp.disabled_reason",
+      "domain": "lsp",
+      "title": "LSP rejected CodeActions include a disabled reason",
+      "evidence": ["source:src/vitte/compiler/diagnostics/lsp.vit", "tool:tools/check_suggestion_quality.py", "test:src/vitte/compiler/tests/diagnostic_snapshot_tests.vit"]
+    },
+    {
+      "id": "lsp.hover_explain",
+      "domain": "lsp",
+      "title": "LSP hover exposes diagnostic explanation context",
+      "evidence": ["make:lsp-gate", "tool:tools/lsp/run_checks.py", "report:target/lsp/hover_demo.json"]
+    },
+    {
+      "id": "lsp.goto_declaration",
+      "domain": "lsp",
+      "title": "LSP goto declaration is covered by the protocol gate",
+      "evidence": ["make:lsp-gate", "tool:tools/lsp/run_checks.py", "report:target/lsp/definition_demo.json"]
+    },
+    {
+      "id": "lsp.rename",
+      "domain": "lsp",
+      "title": "LSP rename capability is declared and snapshotted",
+      "evidence": ["make:lsp-gate", "source:src/vitte/tools/lsp/mod.vit", "report:target/lsp/rename_demo.json"]
+    },
+    {
+      "id": "lsp.completion",
+      "domain": "lsp",
+      "title": "LSP completion is covered by gate and artifacts",
+      "evidence": ["make:lsp-gate", "tool:tools/lsp/run_checks.py", "report:target/lsp/completion_demo.json"]
+    },
+    {
+      "id": "lsp.semantic_tokens",
+      "domain": "lsp",
+      "title": "LSP semantic tokens are covered by gate and artifacts",
+      "evidence": ["make:lsp-gate", "source:src/vitte/tools/lsp/mod.vit", "report:target/lsp/semantic_tokens_demo.json"]
+    },
+    {
+      "id": "lsp.formatting",
+      "domain": "lsp",
+      "title": "LSP formatting capability is declared and snapshotted",
+      "evidence": ["make:lsp-gate", "source:src/vitte/tools/lsp/mod.vit", "report:target/lsp/formatting_demo.json"]
+    },
+    {
+      "id": "lsp.protocol_snapshots",
+      "domain": "lsp",
+      "title": "LSP protocol snapshots are generated for core surfaces",
+      "evidence": ["make:lsp-gate", "tool:tools/lsp/generate_artifacts.py", "report:target/reports/lsp_coverage.md"]
+    },
+    {
       "id": "cli.diagnostics",
       "domain": "cli",
       "title": "CLI diagnostics use the canonical renderer and snapshots",
@@ -830,10 +890,178 @@
       "evidence": ["source:src/vitte/compiler/driver/compiler.vit", "test:tests/diagnostics/check_cli_diagnostic_options.py", "source:src/vitte/compiler/diagnostics/render.vit"]
     },
     {
+      "id": "cli.color",
+      "domain": "cli",
+      "title": "--color auto, always and never are parsed and tested",
+      "evidence": ["source:src/vitte/compiler/driver/compiler.vit", "test:tests/diagnostics/check_cli_diagnostic_options.py", "tool:tools/check_compiler_diagnostic_contract.py"]
+    },
+    {
+      "id": "cli.max_errors",
+      "domain": "cli",
+      "title": "--max-errors limits diagnostics after detailed output",
+      "evidence": ["source:src/vitte/compiler/driver/compiler.vit", "test:tests/diagnostics/check_cli_diagnostic_options.py", "tool:tools/check_compiler_diagnostic_contract.py"]
+    },
+    {
+      "id": "cli.deny_warnings",
+      "domain": "cli",
+      "title": "--deny-warnings is parsed and policy-tested",
+      "evidence": ["source:src/vitte/compiler/driver/compiler.vit", "test:tests/diagnostics/check_cli_diagnostic_options.py", "tool:tools/check_compiler_diagnostic_contract.py"]
+    },
+    {
+      "id": "cli.allow_warn_deny_code",
+      "domain": "cli",
+      "title": "--allow, --warn and --deny CODE are parsed without disabling structural errors",
+      "evidence": ["source:src/vitte/compiler/driver/compiler.vit", "test:tests/diagnostics/check_cli_diagnostic_options.py", "source:src/vitte/compiler/analysis/report.vit"]
+    },
+    {
+      "id": "cli.vitte_explain",
+      "domain": "cli",
+      "title": "vitte explain CODE renders full diagnostic explanations",
+      "evidence": ["make:explain-snapshots", "test:tests/diagnostics/check_explain_cli.py", "source:src/vitte/compiler/driver/compiler.vit"]
+    },
+    {
+      "id": "fix_cli.fix",
+      "domain": "cli",
+      "title": "--fix is a parsed fix-plan mode",
+      "evidence": ["source:src/vitte/compiler/driver/compiler.vit", "test:src/vitte/compiler/tests/diagnostic_snapshot_tests.vit", "tool:tools/apply_fixits_recompile_test.py"]
+    },
+    {
+      "id": "fix_cli.fix_safe",
+      "domain": "cli",
+      "title": "--fix-safe restricts application to safe verified fixes",
+      "evidence": ["source:src/vitte/compiler/driver/compiler.vit", "source:src/vitte/compiler/diagnostics/counterfactual.vit", "tool:tools/check_suggestion_quality.py"]
+    },
+    {
+      "id": "fix_cli.fix_suggested",
+      "domain": "cli",
+      "title": "--fix-suggested selects verified suggested fixes",
+      "evidence": ["source:src/vitte/compiler/driver/compiler.vit", "source:src/vitte/compiler/diagnostics/diagnostic.vit", "make:suggestion-quality"]
+    },
+    {
+      "id": "fix_cli.fix_preview",
+      "domain": "cli",
+      "title": "--fix-preview prints a virtual diff without mutating files",
+      "evidence": ["source:src/vitte/compiler/driver/compiler.vit", "source:src/vitte/compiler/diagnostics/counterfactual.vit", "test:src/vitte/compiler/tests/diagnostic_snapshot_tests.vit"]
+    },
+    {
+      "id": "fix_cli.fix_why",
+      "domain": "cli",
+      "title": "--fix-why explains fix ranking and residual risk",
+      "evidence": ["source:src/vitte/compiler/driver/compiler.vit", "source:src/vitte/compiler/diagnostics/counterfactual.vit", "test:src/vitte/compiler/tests/diagnostic_snapshot_tests.vit"]
+    },
+    {
+      "id": "fix_cli.fix_plan_json",
+      "domain": "cli",
+      "title": "--fix-plan=json exposes machine-readable fix plans",
+      "evidence": ["source:src/vitte/compiler/driver/compiler.vit", "source:src/vitte/compiler/diagnostics/json.vit", "test:src/vitte/compiler/tests/diagnostic_snapshot_tests.vit"]
+    },
+    {
+      "id": "fix_cli.max_fix_hypotheses",
+      "domain": "cli",
+      "title": "--max-fix-hypotheses controls counterfactual search breadth",
+      "evidence": ["source:src/vitte/compiler/driver/compiler.vit", "source:src/vitte/compiler/diagnostics/counterfactual.vit", "make:counterfactual-diagnostics"]
+    },
+    {
+      "id": "fix_cli.counterfactual_level",
+      "domain": "cli",
+      "title": "--counterfactual-level selects off, basic, full or exhaustive verification",
+      "evidence": ["source:src/vitte/compiler/driver/compiler.vit", "source:src/vitte/compiler/diagnostics/counterfactual.vit", "make:counterfactual-diagnostics"]
+    },
+    {
+      "id": "fix_cli.no_behavior_changed_fix",
+      "domain": "cli",
+      "title": "fix application refuses behavior-changing corrections",
+      "evidence": ["source:src/vitte/compiler/driver/compiler.vit", "source:src/vitte/compiler/diagnostics/counterfactual.vit", "test:src/vitte/compiler/tests/diagnostic_snapshot_tests.vit"]
+    },
+    {
+      "id": "fix_cli.recompile_after_apply",
+      "domain": "cli",
+      "title": "fix-it gates recompile after applying automatic replacements",
+      "evidence": ["tool:tools/apply_fixits_recompile_test.py", "make:diagnostic-quality", "test:src/vitte/compiler/tests/diagnostic_snapshot_tests.vit"]
+    },
+    {
+      "id": "tests.surface_manifested",
+      "domain": "reports",
+      "title": "compiler test surfaces are manifested",
+      "evidence": ["manifest:src/vitte/compiler/tests/hir_coverage_manifest.json", "manifest:src/vitte/compiler/tests/sema_coverage_manifest.json", "manifest:src/vitte/compiler/tests/typeck_coverage_manifest.json", "manifest:src/vitte/compiler/tests/borrowck_coverage_manifest.json", "manifest:src/vitte/compiler/tests/mir_coverage_manifest.json", "manifest:src/vitte/compiler/tests/ir_coverage_manifest.json"]
+    },
+    {
+      "id": "tests.supported_covered",
+      "domain": "reports",
+      "title": "each supported compiler surface is covered by its gate",
+      "evidence": ["make:hir-coverage", "make:sema-gate", "make:typeck-gate", "make:borrowck-gate", "make:mir-gate", "make:ir-gate"]
+    },
+    {
+      "id": "tests.fixtures_valid_invalid_multifile",
+      "domain": "reports",
+      "title": "valid, invalid and multifile fixtures exist across compiler phases",
+      "evidence": ["test:tests/hir/valid", "test:tests/sema/invalid", "test:tests/typeck/multifile", "test:tests/borrowck/multifile", "test:tests/mir/valid", "test:tests/ir/invalid"]
+    },
+    {
+      "id": "tests.snapshots_text_json_lsp",
+      "domain": "reports",
+      "title": "text, JSON and LSP snapshots are covered",
+      "evidence": ["make:diagnostic-snapshots", "make:lsp-gate", "test:src/vitte/compiler/tests/diagnostic_snapshot_tests.vit"]
+    },
+    {
+      "id": "tests.unicode_crlf_tabs_long_lines",
+      "domain": "reports",
+      "title": "Unicode, CRLF, tabs and long-line diagnostics are covered",
+      "evidence": ["test:tests/diagnostics/sources/unicode.vit", "test:tests/diagnostics/sources/crlf.vit", "test:tests/diagnostics/sources/tabs.vit", "test:tests/diagnostics/sources/long-line.vit"]
+    },
+    {
+      "id": "tests.fuzz",
+      "domain": "reports",
+      "title": "compiler fuzz smoke tests are gated",
+      "evidence": ["tool:tools/parser_lexer_fuzz_smoke.py", "make:diagnostic-fuzz"]
+    },
+    {
+      "id": "tests.property",
+      "domain": "reports",
+      "title": "compiler property tests are gated",
+      "evidence": ["tool:tools/parser_precedence_property_test.py", "make:compiler-max-gate-fast"]
+    },
+    {
+      "id": "tests.determinism",
+      "domain": "reports",
+      "title": "compiler determinism is smoke-tested",
+      "evidence": ["tool:tools/determinism_smoke.sh", "make:same-output-hash"]
+    },
+    {
+      "id": "tests.no_flaky_ordering",
+      "domain": "reports",
+      "title": "diagnostic and compiler ordering is stable",
+      "evidence": ["test:src/vitte/compiler/tests/diagnostic_snapshot_tests.vit", "tool:tools/determinism_smoke.sh", "test:tests/diag_snapshots/multiple_diagnostics_one_file.ordered"]
+    },
+    {
+      "id": "tests.mutation_if_possible",
+      "domain": "reports",
+      "title": "mutation-style fix application is represented by non-mutating recompile tests",
+      "evidence": ["tool:tools/apply_fixits_recompile_test.py", "make:suggestion-quality", "test:src/vitte/compiler/tests/diagnostic_snapshot_tests.vit"]
+    },
+    {
       "id": "ci.compiler_max",
       "domain": "ci",
       "title": "compiler max gate composes core compiler contracts",
       "evidence": ["make:compiler-max-gate-fast", "tool:tools/compiler_max_gate.sh"]
+    },
+    {
+      "id": "ci.compiler_max_gate",
+      "domain": "ci",
+      "title": "compiler-max-gate is the top-level compiler contract gate",
+      "evidence": ["make:compiler-max-gate-fast", "tool:tools/compiler_max_gate.sh"]
+    },
+    {
+      "id": "ci.core_language_gate",
+      "domain": "ci",
+      "title": "core-language-gate composes frontend and middle compiler gates",
+      "evidence": ["make:core-language-gate", "tool:tools/compiler_max_gate.sh"]
+    },
+    {
+      "id": "ci.diagnostic_quality",
+      "domain": "ci",
+      "title": "diagnostic-quality is mandatory in compiler CI",
+      "evidence": ["make:diagnostic-quality", "tool:tools/check_diagnostics_full_coverage.py", "tool:tools/check_suggestion_quality.py"]
     },
     {
       "id": "reports.machine_readable",

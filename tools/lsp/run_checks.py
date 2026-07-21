@@ -33,6 +33,11 @@ REQUIRED_SYMBOLS = [
     'status_health_json',
     'goto_definition',
     'find_references',
+    'semantic_tokens_provider',
+    'lsp_capabilities',
+    'semantic_tokens: true',
+    'rename: true',
+    'formatting: true',
 ]
 
 if not MOD.exists():

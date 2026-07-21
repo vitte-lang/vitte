@@ -226,9 +226,19 @@ form CompilerCliRequest {
     diagnostic_quality: bool
     show_cascades: bool
     fix_apply: bool
+    fix_mode: string
+    fix_preview: bool
+    fix_why: bool
+    fix_plan_format: string
+    max_fix_hypotheses: u64
+    counterfactual_level: string
+    allow_codes: [string]
+    warn_codes: [string]
+    deny_codes: [string]
     deny_warnings: bool
     fail_under: u64
     max_errors: u64
+    diagnostic_width: u64
     stdlib_path: string
     stdlib_version: string
     lang: string
@@ -308,9 +318,19 @@ proc empty_cli_request() -> CompilerCliRequest {
         diagnostic_quality: false,
         show_cascades: false,
         fix_apply: false,
+        fix_mode: "none",
+        fix_preview: false,
+        fix_why: false,
+        fix_plan_format: "",
+        max_fix_hypotheses: 3,
+        counterfactual_level: "basic",
+        allow_codes: [],
+        warn_codes: [],
+        deny_codes: [],
         deny_warnings: false,
         fail_under: 0,
         max_errors: 0,
+        diagnostic_width: 0,
         stdlib_path: "src/vitte/stdlib",
         stdlib_version: "",
         lang: "en",
@@ -416,6 +436,20 @@ proc cli_normalize_color(text: string) -> string {
     give "";
 }
 
+proc cli_normalize_counterfactual_level(text: string) -> string {
+    if text == "off" or text == "basic" or text == "full" or text == "exhaustive" {
+        give text;
+    }
+    give "";
+}
+
+proc cli_fix_contract_allows_apply(request: CompilerCliRequest, behavior_changed: bool, recompiled: bool) -> bool {
+    give request.fix_apply
+        and recompiled
+        and not behavior_changed
+        and (request.fix_mode == "safe" or request.fix_mode == "suggested");
+}
+
 proc cli_explain_command_contract(command: string, code: string) -> bool {
     give command == "explain" and code != "";
 }
@@ -440,9 +474,21 @@ proc cli_is_known_flag(text: string) -> bool {
         or text == "--show-cascades"
         or text == "--dry-run"
         or text == "--apply"
+        or text == "--fix"
+        or text == "--fix-safe"
+        or text == "--fix-suggested"
+        or text == "--fix-preview"
+        or text == "--fix-why"
+        or text == "--fix-plan"
+        or text == "--max-fix-hypotheses"
+        or text == "--counterfactual-level"
+        or text == "--allow"
+        or text == "--warn"
+        or text == "--deny"
         or text == "--deny-warnings"
         or text == "--fail-under"
         or text == "--max-errors"
+        or text == "--diagnostic-width"
         or text == "--stdlib-path"
         or text == "--stdlib-version"
         or text == "--lang"
@@ -486,6 +532,13 @@ proc ends_with_text(text: string, suffix: string) -> bool {
         give false;
     }
     give slice(text, len(text) - len(suffix), len(text)) == suffix;
+}
+
+proc starts_with_text(text: string, prefix: string) -> bool {
+    if len(prefix) > len(text) {
+        give false;
+    }
+    give slice(text, 0, len(prefix)) == prefix;
 }
 
 proc resolve_project_entry_path(project_path: string) -> string {
@@ -648,6 +701,17 @@ proc parse_cli_request(args: list[string]) -> CompilerCliRequest {
             }
             set request.input_path = args[i + 1];
             set i = i + 2;
+        } elif starts_with_text(arg, "--fix-plan=") {
+            set request.fix_plan_format = slice(arg, len("--fix-plan="), len(arg));
+            set i = i + 1;
+        } elif starts_with_text(arg, "--counterfactual-level=") {
+            set request.counterfactual_level = cli_normalize_counterfactual_level(slice(arg, len("--counterfactual-level="), len(arg)));
+            if request.counterfactual_level == "" {
+                set request.status = driver.DriverExitStatus::InvalidArguments;
+                set request.message = "unsupported --counterfactual-level value";
+                give request;
+            }
+            set i = i + 1;
         } elif cli_is_known_flag(arg) {
             if arg == "--verbose" {
                 set request.verbose = true;
@@ -670,6 +734,74 @@ proc parse_cli_request(args: list[string]) -> CompilerCliRequest {
             } elif arg == "--apply" {
                 set request.fix_apply = true;
                 set i = i + 1;
+            } elif arg == "--fix" {
+                set request.fix_mode = "all";
+                set i = i + 1;
+            } elif arg == "--fix-safe" {
+                set request.fix_mode = "safe";
+                set i = i + 1;
+            } elif arg == "--fix-suggested" {
+                set request.fix_mode = "suggested";
+                set i = i + 1;
+            } elif arg == "--fix-preview" {
+                set request.fix_preview = true;
+                set i = i + 1;
+            } elif arg == "--fix-why" {
+                set request.fix_why = true;
+                set i = i + 1;
+            } elif arg == "--fix-plan" {
+                if i + 1 >= len(args) {
+                    set request.status = driver.DriverExitStatus::InvalidArguments;
+                    set request.message = "missing value after " + arg;
+                    give request;
+                }
+                set request.fix_plan_format = args[i + 1];
+                set i = i + 2;
+            } elif arg == "--max-fix-hypotheses" {
+                if i + 1 >= len(args) {
+                    set request.status = driver.DriverExitStatus::InvalidArguments;
+                    set request.message = "missing value after " + arg;
+                    give request;
+                }
+                set request.max_fix_hypotheses = args[i + 1] as u64;
+                set i = i + 2;
+            } elif arg == "--counterfactual-level" {
+                if i + 1 >= len(args) {
+                    set request.status = driver.DriverExitStatus::InvalidArguments;
+                    set request.message = "missing value after " + arg;
+                    give request;
+                }
+                set request.counterfactual_level = cli_normalize_counterfactual_level(args[i + 1]);
+                if request.counterfactual_level == "" {
+                    set request.status = driver.DriverExitStatus::InvalidArguments;
+                    set request.message = "unsupported --counterfactual-level value: " + args[i + 1];
+                    give request;
+                }
+                set i = i + 2;
+            } elif arg == "--allow" {
+                if i + 1 >= len(args) {
+                    set request.status = driver.DriverExitStatus::InvalidArguments;
+                    set request.message = "missing value after " + arg;
+                    give request;
+                }
+                set request.allow_codes = request.allow_codes + [args[i + 1]];
+                set i = i + 2;
+            } elif arg == "--warn" {
+                if i + 1 >= len(args) {
+                    set request.status = driver.DriverExitStatus::InvalidArguments;
+                    set request.message = "missing value after " + arg;
+                    give request;
+                }
+                set request.warn_codes = request.warn_codes + [args[i + 1]];
+                set i = i + 2;
+            } elif arg == "--deny" {
+                if i + 1 >= len(args) {
+                    set request.status = driver.DriverExitStatus::InvalidArguments;
+                    set request.message = "missing value after " + arg;
+                    give request;
+                }
+                set request.deny_codes = request.deny_codes + [args[i + 1]];
+                set i = i + 2;
             } elif arg == "--deny-warnings" {
                 set request.deny_warnings = true;
                 set i = i + 1;
@@ -688,6 +820,14 @@ proc parse_cli_request(args: list[string]) -> CompilerCliRequest {
                     give request;
                 }
                 set request.max_errors = args[i + 1] as u64;
+                set i = i + 2;
+            } elif arg == "--diagnostic-width" {
+                if i + 1 >= len(args) {
+                    set request.status = driver.DriverExitStatus::InvalidArguments;
+                    set request.message = "missing value after " + arg;
+                    give request;
+                }
+                set request.diagnostic_width = args[i + 1] as u64;
                 set i = i + 2;
             } elif arg == "--stdlib-path" {
                 if i + 1 >= len(args) {
@@ -1143,7 +1283,7 @@ proc run_cli_request(request: CompilerCliRequest) -> int {
             print(msg_apply);
             give cli_exit_code(driver.DriverExitStatus::UnsupportedFeature);
         }
-        let msg_fix: string = "fix dry-run: inspect FixPlan entries in diagnostics envelope\n";
+        let msg_fix: string = if request.fix_plan_format == "json" { "fix plan json: inspect FixPlan entries in diagnostics envelope\n" } elif request.fix_preview { "fix preview: virtual diff only; source files are unchanged\n" } elif request.fix_why { "fix why: ranked by verified counterfactual improvement and residual risk\n" } else { "fix dry-run: inspect FixPlan entries in diagnostics envelope\n" };
         let report_json_text: string = report_json + "\n";
         print(msg_fix);
         print(report_json_text);
