@@ -85,6 +85,15 @@ pick DiagnosticApplicability {
     Manual
 }
 
+pick DiagnosticCorrectionOutcome {
+    CompilationSucceeded
+    InitialErrorRemoved
+    ErrorMoved
+    NewErrorCreated
+    BehaviorMayChange
+    NotRecompiled
+}
+
 pick DiagnosticFixKind {
     Insert
     Replace
@@ -155,6 +164,12 @@ form DiagnosticSuggestion {
     applicability: DiagnosticApplicability
     confidence: string
     reason: string
+    counterfactual_verified: bool
+    counterfactual_rank: u64
+    counterfactual_errors_removed: u64
+    counterfactual_total_errors: u64
+    counterfactual_outcomes: [DiagnosticCorrectionOutcome]
+    counterfactual_report: string
     valid: bool
 }
 
@@ -168,6 +183,8 @@ form DiagnosticFixPlan {
     machine_applicable: bool
     confidence: string
     reason: string
+    counterfactual_verified: bool
+    counterfactual_report: string
     valid: bool
 }
 
@@ -651,6 +668,12 @@ proc diagnostic_suggestion(kind: DiagnosticSuggestionKind, message: string, repl
         applicability: if machine_applicable { DiagnosticApplicability.Machine } else { DiagnosticApplicability.Manual },
         confidence: confidence,
         reason: message,
+        counterfactual_verified: false,
+        counterfactual_rank: 0 as u64,
+        counterfactual_errors_removed: 0 as u64,
+        counterfactual_total_errors: 0 as u64,
+        counterfactual_outcomes: [DiagnosticCorrectionOutcome.NotRecompiled],
+        counterfactual_report: "not recompiled",
         valid: message != "" and span.valid
     };
 }
@@ -703,6 +726,48 @@ proc diagnostic_suggestion_with_confidence(kind: DiagnosticSuggestionKind, messa
         DiagnosticApplicability.Manual
     };
     give diagnostic_suggestion_applicability(kind, message, replacement, span, applicability, confidence, reason);
+}
+
+proc diagnostic_suggestion_with_counterfactual_result(suggestion: DiagnosticSuggestion, verified: bool, rank: u64, errors_removed: u64, total_errors: u64, outcomes: [DiagnosticCorrectionOutcome], report: string) -> DiagnosticSuggestion {
+    let out: DiagnosticSuggestion = suggestion;
+    set out.counterfactual_verified = verified;
+    set out.counterfactual_rank = rank;
+    set out.counterfactual_errors_removed = errors_removed;
+    set out.counterfactual_total_errors = total_errors;
+    set out.counterfactual_outcomes = outcomes;
+    set out.counterfactual_report = if report == "" { "virtual recompilation result recorded" } else { report };
+
+    if !verified {
+        set out.machine_applicable = false;
+        set out.applicability = DiagnosticApplicability.Manual;
+        set out.confidence = DIAGNOSTIC_CONFIDENCE_LOW;
+    }
+
+    if has_new_error_outcome(outcomes) {
+        set out.machine_applicable = false;
+        set out.applicability = DiagnosticApplicability.Manual;
+        set out.confidence = DIAGNOSTIC_CONFIDENCE_LOW;
+    }
+
+    give out;
+}
+
+proc diagnostic_verified_counterfactual_solution(suggestion: DiagnosticSuggestion, rank: u64, errors_removed: u64, total_errors: u64, outcomes: [DiagnosticCorrectionOutcome], report: string) -> DiagnosticSuggestion {
+    give diagnostic_suggestion_with_counterfactual_result(suggestion, true, rank, errors_removed, total_errors, outcomes, report);
+}
+
+proc has_new_error_outcome(outcomes: [DiagnosticCorrectionOutcome]) -> bool {
+    let i: u64 = 0;
+
+    while i < len(outcomes) {
+        if outcomes[i] == DiagnosticCorrectionOutcome.NewErrorCreated {
+            give true;
+        }
+
+        set i = i + 1;
+    }
+
+    give false;
 }
 
 proc diagnostic_normalize_confidence(confidence: string, applicability: DiagnosticApplicability, replacement: string) -> string {
@@ -802,6 +867,8 @@ proc diagnostic_fix_plan_from_suggestion(code: string, index: u64, suggestion: D
         machine_applicable: suggestion.machine_applicable,
         confidence: suggestion.confidence,
         reason: suggestion.reason,
+        counterfactual_verified: suggestion.counterfactual_verified,
+        counterfactual_report: suggestion.counterfactual_report,
         valid: suggestion.valid
     };
 }
@@ -829,7 +896,7 @@ proc diagnostic_has_machine_applicable_fix(diagnostic: Diagnostic) -> bool {
     let i: u64 = 0;
 
     while i < len(plans) {
-        if plans[i].machine_applicable and plans[i].confidence == DIAGNOSTIC_CONFIDENCE_HIGH and plans[i].replacement != "" {
+        if plans[i].machine_applicable and plans[i].confidence == DIAGNOSTIC_CONFIDENCE_HIGH and plans[i].replacement != "" and plans[i].counterfactual_verified {
             give true;
         }
 
@@ -837,6 +904,61 @@ proc diagnostic_has_machine_applicable_fix(diagnostic: Diagnostic) -> bool {
     }
 
     give false;
+}
+
+proc diagnostic_counterfactual_outcome_name(outcome: DiagnosticCorrectionOutcome) -> string {
+    if outcome == DiagnosticCorrectionOutcome.CompilationSucceeded {
+        give "compilation succeeded";
+    }
+
+    if outcome == DiagnosticCorrectionOutcome.InitialErrorRemoved {
+        give "initial error removed";
+    }
+
+    if outcome == DiagnosticCorrectionOutcome.ErrorMoved {
+        give "error moved";
+    }
+
+    if outcome == DiagnosticCorrectionOutcome.NewErrorCreated {
+        give "new error created";
+    }
+
+    if outcome == DiagnosticCorrectionOutcome.BehaviorMayChange {
+        give "behavior may change";
+    }
+
+    give "not recompiled";
+}
+
+proc diagnostic_verified_suggestions(diagnostic: Diagnostic) -> [DiagnosticSuggestion] {
+    let out: [DiagnosticSuggestion] = [];
+    let i: u64 = 0;
+
+    while i < len(diagnostic.suggestions) {
+        let suggestion: DiagnosticSuggestion = diagnostic.suggestions[i];
+        if suggestion.counterfactual_verified and not has_new_error_outcome(suggestion.counterfactual_outcomes) {
+            set out = diagnostic_suggestion_list_add(out, suggestion);
+        }
+
+        set i = i + 1;
+    }
+
+    give out;
+}
+
+proc diagnostic_counterfactual_tested_count(diagnostic: Diagnostic) -> u64 {
+    let count: u64 = 0;
+    let i: u64 = 0;
+
+    while i < len(diagnostic.suggestions) {
+        if diagnostic.suggestions[i].counterfactual_verified {
+            set count = count + 1;
+        }
+
+        set i = i + 1;
+    }
+
+    give count;
 }
 
 proc diagnostic_suggestion_replacement_is_valid_vitte(suggestion: DiagnosticSuggestion) -> bool {
@@ -3492,6 +3614,35 @@ proc render_suggestion(suggestion: DiagnosticSuggestion, config: DiagnosticRende
     give text;
 }
 
+proc render_counterfactual_solution(suggestion: DiagnosticSuggestion, config: DiagnosticRenderConfig) -> string {
+    if !suggestion.counterfactual_verified {
+        give "";
+    }
+
+    let rank_text: string = suggestion.counterfactual_rank as string;
+    let removed_text: string = suggestion.counterfactual_errors_removed as string;
+    let total_text: string = suggestion.counterfactual_total_errors as string;
+    let status: string = if has_new_error_outcome(suggestion.counterfactual_outcomes) { "verified correction rejected " } else { "verified solution " };
+    let out: string = status + rank_text + ": " + suggestion.message;
+    let i: u64 = 0;
+
+    set out = append_line(out, "  virtual recompilation: lexer -> parser -> resolver -> typeck -> borrowck");
+    set out = append_line(out, "  errors removed: " + removed_text + "/" + total_text);
+
+    while i < len(suggestion.counterfactual_outcomes) {
+        let outcome: DiagnosticCorrectionOutcome = suggestion.counterfactual_outcomes[i];
+        let marker: string = if outcome == DiagnosticCorrectionOutcome.NewErrorCreated { "x" } elif outcome == DiagnosticCorrectionOutcome.BehaviorMayChange { "!" } else { "ok" };
+        set out = append_line(out, "  " + marker + " " + diagnostic_counterfactual_outcome_name(outcome));
+        set i = i + 1;
+    }
+
+    if suggestion.counterfactual_report != "" {
+        set out = append_line(out, "  result: " + suggestion.counterfactual_report);
+    }
+
+    give out;
+}
+
 proc append_line(text: string, line: string) -> string {
     if text == "" {
         give line;
@@ -3590,10 +3741,20 @@ proc render_diagnostic(diagnostic: Diagnostic, config: DiagnosticRenderConfig) -
         }
 
         if config.show_suggestions {
+            let counterfactual_count: u64 = diagnostic_counterfactual_tested_count(diagnostic);
+            if counterfactual_count > 0 {
+                let counterfactual_count_text: string = counterfactual_count as string;
+                set human_out = append_line(human_out, "compiler tested " + counterfactual_count_text + " correction(s) in a virtual copy");
+            }
+
             let suggestion_human: u64 = 0;
             while suggestion_human < len(diagnostic.suggestions) {
                 let suggestion_text: string = render_suggestion(diagnostic.suggestions[suggestion_human], config);
                 set human_out = append_line(human_out, suggestion_text);
+                let counterfactual_text: string = render_counterfactual_solution(diagnostic.suggestions[suggestion_human], config);
+                if counterfactual_text != "" {
+                    set human_out = append_line(human_out, counterfactual_text);
+                }
                 set suggestion_human = suggestion_human + 1;
             }
         }
@@ -4734,6 +4895,7 @@ share DiagnosticStyle
 share DiagnosticLabelKind
 share DiagnosticSuggestionKind
 share DiagnosticApplicability
+share DiagnosticCorrectionOutcome
 share DiagnosticFixKind
 share DiagnosticKind
 
@@ -4798,6 +4960,11 @@ share diagnostic_normalize_confidence
 share diagnostic_suggestion_applicability
 share diagnostic_suggestion_detail
 share diagnostic_suggestion_with_confidence
+share diagnostic_suggestion_with_counterfactual_result
+share diagnostic_verified_counterfactual_solution
+share diagnostic_counterfactual_outcome_name
+share diagnostic_verified_suggestions
+share diagnostic_counterfactual_tested_count
 share diagnostic_suggestion_with_secondary_span
 share diagnostic_suggestion_with_secondary_spans
 share diagnostic_suggestion_limit

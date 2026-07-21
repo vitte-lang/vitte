@@ -6,6 +6,7 @@ use vitte/compiler/diagnostics/diagnostic.{
   DiagnosticKind,
   DiagnosticPhase,
   DiagnosticStyle,
+  DiagnosticCorrectionOutcome,
   DiagnosticSuggestion,
   DiagnosticSuggestionKind,
   DiagnosticReport,
@@ -34,6 +35,8 @@ use vitte/compiler/diagnostics/diagnostic.{
   diagnostic_with_label,
   diagnostic_with_probable_fix,
   diagnostic_with_suggestion_detail,
+  diagnostic_verified_counterfactual_solution,
+  diagnostic_verified_suggestions,
   ide_render_config,
   monochrome_render_config,
   primary_label,
@@ -132,10 +135,23 @@ proc sample_backend_diagnostic() -> Diagnostic {
 }
 
 proc sample_parser_diagnostic() -> Diagnostic {
-  give parser_unclosed_block(
+  let diag: Diagnostic = parser_unclosed_block(
     span_create("src/vitte/compiler/tests/diagnostics/parser/unclosed_block.vit", 1, 1, 5),
     span_create("src/vitte/compiler/tests/diagnostics/parser/unclosed_block.vit", 2, 1, 1)
   );
+  let verified: DiagnosticSuggestion = diagnostic_verified_counterfactual_solution(
+    diag.suggestions[0],
+    1 as u64,
+    1 as u64,
+    1 as u64,
+    [
+      DiagnosticCorrectionOutcome.InitialErrorRemoved,
+      DiagnosticCorrectionOutcome.CompilationSucceeded
+    ],
+    "virtual check succeeded through lexer, parser, resolver, typeck, and borrowck"
+  );
+  set diag.suggestions = [verified, diag.suggestions[1]];
+  give diag;
 }
 
 proc diagnostic_has_default_context(diag: Diagnostic) -> bool {
@@ -324,7 +340,48 @@ proc test_rendered_suggestion_applicability_contract() -> bool {
   let actual: string = render_report(diagnostic_report([sample_parser_diagnostic()]), human_config());
   give find(actual, "[machine]") >= 0
     and find(actual, "high confidence") >= 0
-    and find(actual, "suggestion: insert") >= 0;
+    and find(actual, "suggestion: insert") >= 0
+    and find(actual, "compiler tested 1 correction(s) in a virtual copy") >= 0
+    and find(actual, "verified solution 1") >= 0
+    and find(actual, "virtual recompilation: lexer -> parser -> resolver -> typeck -> borrowck") >= 0;
+}
+
+proc test_unverified_suggestion_is_not_certain() -> bool {
+  let raw: Diagnostic = parser_unclosed_block(
+    span_create("src/vitte/compiler/tests/diagnostics/parser/unverified_unclosed_block.vit", 1, 1, 5),
+    span_create("src/vitte/compiler/tests/diagnostics/parser/unverified_unclosed_block.vit", 2, 1, 1)
+  );
+  let plans = diagnostic_fix_plans(raw);
+  let rendered: string = render_report(diagnostic_report([raw]), human_config());
+  give len(plans) > 0
+    and plans[0].machine_applicable == false
+    and diagnostic_has_machine_applicable_fix(raw) == false
+    and len(diagnostic_verified_suggestions(raw)) == 0
+    and find(rendered, "verified solution") < 0;
+}
+
+proc test_counterfactual_rejects_new_error_solution() -> bool {
+  let raw: Diagnostic = parser_unclosed_block(
+    span_create("src/vitte/compiler/tests/diagnostics/parser/rejected_counterfactual.vit", 1, 1, 5),
+    span_create("src/vitte/compiler/tests/diagnostics/parser/rejected_counterfactual.vit", 2, 1, 1)
+  );
+  let rejected: DiagnosticSuggestion = diagnostic_verified_counterfactual_solution(
+    raw.suggestions[0],
+    2 as u64,
+    1 as u64,
+    5 as u64,
+    [
+      DiagnosticCorrectionOutcome.InitialErrorRemoved,
+      DiagnosticCorrectionOutcome.NewErrorCreated
+    ],
+    "virtual check created a later type error"
+  );
+  set raw.suggestions = [rejected, raw.suggestions[1]];
+  let rendered: string = render_report(diagnostic_report([raw]), human_config());
+  give len(diagnostic_verified_suggestions(raw)) == 0
+    and diagnostic_has_machine_applicable_fix(raw) == false
+    and find(rendered, "verified correction rejected 2") >= 0
+    and find(rendered, "x new error created") >= 0;
 }
 
 proc test_colored_diagnostic_output() -> bool {
@@ -768,6 +825,8 @@ proc run_all_tests() -> int {
   let valid_suggestions_ok: bool = test_each_suggestion_produces_valid_vitte_contract();
   let catalog_ok: bool = test_typeck_and_borrowck_suggestion_catalog_contract();
   let rendered_suggestions_ok: bool = test_rendered_suggestion_applicability_contract();
+  let unverified_suggestion_ok: bool = test_unverified_suggestion_is_not_certain();
+  let counterfactual_rejects_new_error_ok: bool = test_counterfactual_rejects_new_error_solution();
   let rust_like_block_ok: bool = rust_like_rendered_block_has_three_ordered_diagnostics();
   let report_cascade_ok: bool = test_report_deduplicates_and_limits_cascades();
   let cascade_link_ok: bool = test_cascade_diagnostics_link_to_root();
@@ -827,6 +886,12 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if rendered_suggestions_ok == false {
+    set failures = failures + 1;
+  }
+  if unverified_suggestion_ok == false {
+    set failures = failures + 1;
+  }
+  if counterfactual_rejects_new_error_ok == false {
     set failures = failures + 1;
   }
   if rust_like_block_ok == false {
