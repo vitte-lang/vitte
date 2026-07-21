@@ -20,12 +20,16 @@ use vitte/compiler/diagnostics/diagnostic.{
     DiagnosticHelp,
     DiagnosticSuggestion,
     DiagnosticSuggestionKind,
+    DiagnosticCorrectionOutcome,
     SourceSpan,
     severity_name,
     phase_name,
     label_kind_name,
     suggestion_kind_name,
     applicability_name,
+    diagnostic_counterfactual_outcome_name,
+    diagnostic_counterfactual_tested_count,
+    has_new_error_outcome,
     span_location_text,
     default_render_config
 }
@@ -475,6 +479,31 @@ proc render_suggestion_line(ctx: RenderContext, suggestion: DiagnosticSuggestion
     give color_wrap(ctx, ansi_cyan(), text);
 }
 
+proc render_counterfactual_line(ctx: RenderContext, suggestion: DiagnosticSuggestion) -> string {
+    if !suggestion.counterfactual_verified {
+        give "";
+    }
+
+    let status: string = if has_new_error_outcome(suggestion.counterfactual_outcomes) { "verified correction rejected" } else { "verified solution" };
+    let rank_text: string = suggestion.counterfactual_rank as string;
+    let removed_text: string = suggestion.counterfactual_errors_removed as string;
+    let total_text: string = suggestion.counterfactual_total_errors as string;
+    let out: string = "  " + status + " " + rank_text + ": errors removed " + removed_text + "/" + total_text;
+    let i: u64 = 0;
+
+    while i < len(suggestion.counterfactual_outcomes) {
+        let outcome: DiagnosticCorrectionOutcome = suggestion.counterfactual_outcomes[i];
+        set out = append_line(out, "    - " + diagnostic_counterfactual_outcome_name(outcome));
+        set i = i + 1;
+    }
+
+    if suggestion.counterfactual_report != "" {
+        set out = append_line(out, "    result: " + suggestion.counterfactual_report);
+    }
+
+    give color_wrap(ctx, ansi_cyan(), out);
+}
+
 proc render_notes(ctx: RenderContext, diagnostic: Diagnostic) -> string {
     let out: string = "";
 
@@ -518,10 +547,21 @@ proc render_suggestions(ctx: RenderContext, diagnostic: Diagnostic) -> string {
         give out;
     }
 
+    let tested_count: u64 = diagnostic_counterfactual_tested_count(diagnostic);
     let i: u64 = 0;
+
+    if tested_count > 0 {
+        let tested_count_text: string = tested_count as string;
+        set out = append_line(out, "  compiler tested " + tested_count_text + " correction(s) in a virtual copy");
+    }
 
     while i < len(diagnostic.suggestions) {
         set out = append_line(out, render_suggestion_line(ctx, diagnostic.suggestions[i]));
+        let counterfactual: string = render_counterfactual_line(ctx, diagnostic.suggestions[i]);
+
+        if counterfactual != "" {
+            set out = append_line(out, counterfactual);
+        }
 
         set i = i + 1;
     }

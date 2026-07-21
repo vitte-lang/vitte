@@ -29,6 +29,7 @@ use vitte/compiler/diagnostics/diagnostic.{
     diagnostic_correction_strategy,
     diagnostic_recovery_scope,
     diagnostic_confidence,
+    diagnostic_counterfactual_outcome_name,
     diagnostic_fix_plans,
     diagnostic_quality,
     diagnostic_schema_version,
@@ -241,6 +242,18 @@ proc json_helps(helps: [DiagnosticHelp]) -> string {
     give json_array(encoded);
 }
 
+proc json_counterfactual_outcomes(outcomes: [DiagnosticCorrectionOutcome]) -> string {
+    let encoded: [string] = [];
+    let i: u64 = 0;
+
+    while i < len(outcomes) {
+        set encoded = encoded + [json_quote(diagnostic_counterfactual_outcome_name(outcomes[i]))];
+        set i = i + 1;
+    }
+
+    give json_array(encoded);
+}
+
 proc json_suggestion(suggestion: DiagnosticSuggestion) -> string {
     give json_object([
         json_key_value(
@@ -311,6 +324,42 @@ proc json_suggestion(suggestion: DiagnosticSuggestion) -> string {
         ),
 
         json_key_value(
+            "counterfactual_verified",
+            json_bool(
+                suggestion.counterfactual_verified
+            )
+        ),
+
+        json_key_value(
+            "counterfactual_rank",
+            suggestion.counterfactual_rank as string
+        ),
+
+        json_key_value(
+            "counterfactual_errors_removed",
+            suggestion.counterfactual_errors_removed as string
+        ),
+
+        json_key_value(
+            "counterfactual_total_errors",
+            suggestion.counterfactual_total_errors as string
+        ),
+
+        json_key_value(
+            "counterfactual_outcomes",
+            json_counterfactual_outcomes(
+                suggestion.counterfactual_outcomes
+            )
+        ),
+
+        json_key_value(
+            "counterfactual_report",
+            json_quote(
+                suggestion.counterfactual_report
+            )
+        ),
+
+        json_key_value(
             "valid",
             json_bool(
                 suggestion.valid
@@ -353,6 +402,8 @@ proc json_fix(plan: DiagnosticFixPlan) -> string {
         json_key_value("machine_applicable", json_bool(plan.machine_applicable)),
         json_key_value("confidence", json_quote(plan.confidence)),
         json_key_value("reason", json_quote(plan.reason)),
+        json_key_value("counterfactual_verified", json_bool(plan.counterfactual_verified)),
+        json_key_value("counterfactual_report", json_quote(plan.counterfactual_report)),
         json_key_value("span", json_source_span(plan.span)),
         json_key_value("secondary_spans", json_source_spans(plan.secondary_spans)),
         json_key_value("valid", json_bool(plan.valid))
