@@ -536,10 +536,124 @@
       "evidence": ["report:target/reports/backend_architecture_matrix.json", "tool:tools/backend_ir_contract_audit.py", "report:target/reports/backend_native_toolchain_audit.json"]
     },
     {
+      "id": "backend.feature_matrix",
+      "domain": "backend",
+      "title": "each backend target has a feature matrix entry",
+      "evidence": ["make:backend-architecture-matrix-gate", "tool:tools/backend_architecture_matrix_test.py", "report:target/reports/backend_architecture_matrix.json"]
+    },
+    {
+      "id": "backend.x86_64",
+      "domain": "backend",
+      "title": "x86_64 backend target is declared and audited",
+      "evidence": ["source:src/vitte/compiler/backend/target/x86_64.vit", "report:target/reports/native_object_determinism.json", "test:src/vitte/compiler/tests/pipeline_tests.vit"]
+    },
+    {
+      "id": "backend.aarch64",
+      "domain": "backend",
+      "title": "AArch64 backend target is declared and audited",
+      "evidence": ["source:src/vitte/compiler/backend/target/aarch64.vit", "make:backend-cross-sysroot-gate", "test:src/vitte/compiler/tests/pipeline_tests.vit"]
+    },
+    {
+      "id": "backend.riscv64",
+      "domain": "backend",
+      "title": "RISC-V64 backend target is declared and audited",
+      "evidence": ["source:src/vitte/compiler/backend/target/riscv64.vit", "report:target/reports/llvm_backend_coverage.json", "test:src/vitte/compiler/tests/pipeline_tests.vit"]
+    },
+    {
+      "id": "backend.i386",
+      "domain": "backend",
+      "title": "i386 target configuration is declared and covered",
+      "evidence": ["test:src/vitte/compiler/tests/pipeline_tests.vit", "report:target/reports/backend_architecture_matrix.json", "tool:tools/backend_architecture_matrix_test.py"]
+    },
+    {
+      "id": "backend.object_generation",
+      "domain": "backend",
+      "title": "native object generation is audited",
+      "evidence": ["make:backend-native-object-audit", "tool:tools/backend_native_object_audit.py", "source:src/vitte/compiler/backend/codegen/object.vit", "report:target/reports/backend_native_object_audit.json"]
+    },
+    {
+      "id": "backend.linking",
+      "domain": "backend",
+      "title": "backend linking is represented and diagnosed",
+      "evidence": ["source:src/vitte/compiler/backend/link/linker.vit", "source:src/vitte/compiler/backend/c/linker.vit", "test:src/vitte/compiler/tests/diagnostics/backend/link_failure.txt.snap"]
+    },
+    {
+      "id": "backend.host_toolchain_diagnostics",
+      "domain": "backend",
+      "title": "host toolchain failures produce audited diagnostics",
+      "evidence": ["make:backend-native-toolchain-audit", "tool:tools/backend_native_toolchain_audit.py", "report:target/reports/backend_native_toolchain_audit.json"]
+    },
+    {
+      "id": "backend.command_snapshots",
+      "domain": "backend",
+      "title": "backend command surfaces have snapshots or audit reports",
+      "evidence": ["make:backend-gate", "report:target/reports/backend_surface_audit.json", "report:target/reports/backend_object_structure_audit.json"]
+    },
+    {
       "id": "diagnostics.catalog",
       "domain": "diagnostics",
       "title": "diagnostic catalog is complete and migration-free",
       "evidence": ["make:diagnostic-quality", "tool:tools/check_diagnostics_full_coverage.py", "report:target/reports/diagnostics_full_coverage/coverage.json"]
+    },
+    {
+      "id": "diagnostics.central_catalog",
+      "domain": "diagnostics",
+      "title": "diagnostics use one central catalog",
+      "evidence": ["make:diagnostic-catalog-check", "tool:tools/check_diagnostic_catalog.py", "manifest:schemas/diagnostics/catalog.json"]
+    },
+    {
+      "id": "diagnostics.unique_codes",
+      "domain": "diagnostics",
+      "title": "diagnostic codes are unique",
+      "evidence": ["make:diagnostic-catalog-check", "tool:tools/check_diagnostic_catalog.py", "manifest:schemas/diagnostics/codes.json"]
+    },
+    {
+      "id": "diagnostics.no_dynamic_codes",
+      "domain": "diagnostics",
+      "title": "dynamic diagnostic code construction is forbidden",
+      "evidence": ["make:diagnostic-contracts", "tool:tools/check_compiler_diagnostic_contract.py", "tool:tools/audit_compiler_diagnostics.py"]
+    },
+    {
+      "id": "diagnostics.no_free_messages",
+      "domain": "diagnostics",
+      "title": "free-form diagnostics outside ICE are blocked",
+      "evidence": ["make:diagnostics-full-coverage", "tool:tools/check_diagnostics_full_coverage.py", "report:target/reports/diagnostics_full_coverage/coverage.json"]
+    },
+    {
+      "id": "diagnostics.no_vague_terms",
+      "domain": "diagnostics",
+      "title": "vague diagnostic terms require a precise cause",
+      "evidence": ["make:diagnostics-full-coverage", "tool:tools/check_diagnostics_full_coverage.py", "test:tests/diagnostics/schema/message-quality.json"]
+    },
+    {
+      "id": "diagnostics.each_code_has_test",
+      "domain": "diagnostics",
+      "title": "each real diagnostic code has a test",
+      "evidence": ["make:diagnostics-full-coverage", "tool:tools/check_diagnostics_full_coverage.py", "report:target/reports/diagnostics_full_coverage/coverage.json"]
+    },
+    {
+      "id": "diagnostics.each_code_has_snapshot",
+      "domain": "diagnostics",
+      "title": "each real diagnostic code has a snapshot",
+      "evidence": ["make:diagnostic-catalog-snapshots", "tool:tools/generate_diagnostic_catalog_snapshots.py", "test:tests/diagnostics/catalog/snapshots"]
+    },
+    {
+      "id": "diagnostics.each_diagnostic_has_span",
+      "domain": "diagnostics",
+      "title": "each diagnostic carries a source span",
+      "evidence": ["make:diagnostic-contracts", "tool:tools/check_span_provenance_contract.py", "test:src/vitte/compiler/tests/diagnostic_snapshot_tests.vit"]
+    },
+    {
+      "id": "diagnostics.renderers_identical",
+      "domain": "diagnostics",
+      "title": "JSON, LSP and terminal renderers share the same canonical diagnostic",
+      "evidence": ["test:src/vitte/compiler/tests/diagnostic_snapshot_tests.vit", "source:src/vitte/compiler/diagnostics/json.vit", "source:src/vitte/compiler/diagnostics/lsp.vit", "source:src/vitte/compiler/diagnostics/render.vit"]
+    },
+    {
+      "id": "diagnostics.final_summary",
+      "domain": "diagnostics",
+      "title": "driver summary reports counts, stopped phase and files without replacing details",
+      "evidence": ["test:src/vitte/compiler/tests/diagnostic_snapshot_tests.vit", "source:src/vitte/compiler/diagnostics/render.vit", "source:src/vitte/compiler/driver/compiler.vit"]
     },
     {
       "id": "diagnostics.suggestions",
@@ -548,10 +662,130 @@
       "evidence": ["make:suggestion-quality", "tool:tools/check_suggestion_quality.py", "report:target/reports/suggestion_quality/coverage.json"]
     },
     {
+      "id": "suggestions.no_vague",
+      "domain": "suggestions",
+      "title": "suggestions cannot use vague wording",
+      "evidence": ["make:suggestion-quality", "tool:tools/check_suggestion_quality.py", "report:target/reports/suggestion_quality/coverage.json"]
+    },
+    {
+      "id": "suggestions.strategy_required",
+      "domain": "suggestions",
+      "title": "each suggestion declares a correction strategy",
+      "evidence": ["make:suggestion-quality", "tool:tools/check_suggestion_quality.py", "source:src/vitte/compiler/diagnostics/suggestions.vit"]
+    },
+    {
+      "id": "suggestions.proof_required",
+      "domain": "suggestions",
+      "title": "each actionable suggestion carries proof metadata",
+      "evidence": ["make:suggestion-quality", "tool:tools/check_suggestion_quality.py", "test:src/vitte/compiler/tests/diagnostic_snapshot_tests.vit"]
+    },
+    {
+      "id": "suggestions.risk_required",
+      "domain": "suggestions",
+      "title": "each suggestion exposes residual risk",
+      "evidence": ["make:suggestion-quality", "tool:tools/check_suggestion_quality.py", "test:src/vitte/compiler/tests/diagnostic_snapshot_tests.vit"]
+    },
+    {
+      "id": "suggestions.score_required",
+      "domain": "suggestions",
+      "title": "each counterfactual suggestion has a public score",
+      "evidence": ["make:suggestion-quality", "tool:tools/check_suggestion_quality.py", "source:src/vitte/compiler/diagnostics/counterfactual.vit"]
+    },
+    {
+      "id": "suggestions.exact_replacement_policy",
+      "domain": "suggestions",
+      "title": "automatic suggestions require exact replacements unless manual",
+      "evidence": ["make:suggestion-quality", "tool:tools/check_suggestion_quality.py", "source:src/vitte/compiler/diagnostics/diagnostic.vit"]
+    },
+    {
+      "id": "suggestions.auto_fix_recompiled",
+      "domain": "suggestions",
+      "title": "automatic fix-its are applied in a copy and recompiled",
+      "evidence": ["tool:tools/apply_fixits_recompile_test.py", "test:src/vitte/compiler/tests/diagnostic_snapshot_tests.vit", "make:diagnostic-quality"]
+    },
+    {
+      "id": "suggestions.reject_new_error",
+      "domain": "suggestions",
+      "title": "verified suggestions are rejected when they create a new error",
+      "evidence": ["make:counterfactual-diagnostics", "tool:tools/check_counterfactual_diagnostics.py", "test:src/vitte/compiler/tests/diagnostic_snapshot_tests.vit"]
+    },
+    {
+      "id": "suggestions.rollback_on_apply_failure",
+      "domain": "suggestions",
+      "title": "fix application is non-mutating unless the recompiled plan succeeds",
+      "evidence": ["tool:tools/apply_fixits_recompile_test.py", "source:src/vitte/compiler/diagnostics/counterfactual.vit", "test:src/vitte/compiler/tests/diagnostic_snapshot_tests.vit"]
+    },
+    {
+      "id": "suggestions.fix_plan_snapshots",
+      "domain": "suggestions",
+      "title": "fix plans are snapshotted in text and JSON-oriented tests",
+      "evidence": ["make:diagnostic-snapshots", "test:src/vitte/compiler/tests/diagnostic_snapshot_tests.vit", "report:target/reports/suggestion_quality/coverage.json"]
+    },
+    {
       "id": "diagnostics.counterfactual",
       "domain": "counterfactual",
       "title": "counterfactual fixes are virtually recompiled and ranked",
       "evidence": ["make:counterfactual-diagnostics", "tool:tools/check_counterfactual_diagnostics.py", "source:src/vitte/compiler/diagnostics/counterfactual.vit", "report:target/reports/counterfactual_diagnostics/coverage.json"]
+    },
+    {
+      "id": "counterfactual.multiple_hypotheses",
+      "domain": "counterfactual",
+      "title": "counterfactual diagnostics generate multiple hypotheses",
+      "evidence": ["make:counterfactual-diagnostics", "source:src/vitte/compiler/diagnostics/counterfactual.vit", "test:src/vitte/compiler/tests/diagnostic_snapshot_tests.vit"]
+    },
+    {
+      "id": "counterfactual.virtual_copy",
+      "domain": "counterfactual",
+      "title": "counterfactual validation applies changes in a virtual program copy",
+      "evidence": ["make:counterfactual-diagnostics", "source:src/vitte/compiler/diagnostics/counterfactual.vit", "test:src/vitte/compiler/tests/diagnostic_snapshot_tests.vit"]
+    },
+    {
+      "id": "counterfactual.pipeline",
+      "domain": "counterfactual",
+      "title": "counterfactual validation records lexer, parser, resolver, typeck and borrowck checks",
+      "evidence": ["make:counterfactual-diagnostics", "tool:tools/check_counterfactual_diagnostics.py", "source:src/vitte/compiler/diagnostics/counterfactual.vit"]
+    },
+    {
+      "id": "counterfactual.stable_ranking",
+      "domain": "counterfactual",
+      "title": "counterfactual fixes are ranked deterministically",
+      "evidence": ["make:counterfactual-diagnostics", "source:src/vitte/compiler/diagnostics/counterfactual.vit", "test:src/vitte/compiler/tests/diagnostic_snapshot_tests.vit"]
+    },
+    {
+      "id": "counterfactual.errors_removed_counted",
+      "domain": "counterfactual",
+      "title": "counterfactual results count removed errors",
+      "evidence": ["make:counterfactual-diagnostics", "source:src/vitte/compiler/diagnostics/counterfactual.vit", "source:src/vitte/compiler/diagnostics/diagnostic.vit"]
+    },
+    {
+      "id": "counterfactual.new_errors_counted",
+      "domain": "counterfactual",
+      "title": "counterfactual results count newly created errors",
+      "evidence": ["make:counterfactual-diagnostics", "source:src/vitte/compiler/diagnostics/counterfactual.vit", "test:src/vitte/compiler/tests/diagnostic_snapshot_tests.vit"]
+    },
+    {
+      "id": "counterfactual.error_moved",
+      "domain": "counterfactual",
+      "title": "counterfactual outcomes identify moved errors",
+      "evidence": ["make:counterfactual-diagnostics", "source:src/vitte/compiler/diagnostics/counterfactual.vit", "source:src/vitte/compiler/diagnostics/diagnostic.vit"]
+    },
+    {
+      "id": "counterfactual.behavior_changed",
+      "domain": "counterfactual",
+      "title": "counterfactual outcomes flag potential behavior changes",
+      "evidence": ["make:counterfactual-diagnostics", "source:src/vitte/compiler/diagnostics/counterfactual.vit", "source:src/vitte/compiler/diagnostics/diagnostic.vit"]
+    },
+    {
+      "id": "counterfactual.recompile_cache",
+      "domain": "counterfactual",
+      "title": "counterfactual recompilation cache keys are part of the contract",
+      "evidence": ["make:counterfactual-diagnostics", "source:src/vitte/compiler/diagnostics/counterfactual.vit", "test:src/vitte/compiler/tests/diagnostic_snapshot_tests.vit"]
+    },
+    {
+      "id": "counterfactual.virtual_diff",
+      "domain": "counterfactual",
+      "title": "counterfactual fixes expose a virtual diff",
+      "evidence": ["make:counterfactual-diagnostics", "source:src/vitte/compiler/diagnostics/counterfactual.vit", "test:src/vitte/compiler/tests/diagnostic_snapshot_tests.vit"]
     },
     {
       "id": "lsp.contracts",
@@ -564,6 +798,36 @@
       "domain": "cli",
       "title": "CLI diagnostics use the canonical renderer and snapshots",
       "evidence": ["tool:tools/crash_report_snapshots.sh", "make:diag-snapshots", "test:src/vitte/compiler/tests/diagnostic_snapshot_tests.vit"]
+    },
+    {
+      "id": "cli.vitte_check",
+      "domain": "cli",
+      "title": "vitte check is the reference diagnostic command",
+      "evidence": ["source:src/vitte/compiler/driver/compiler.vit", "test:tests/diagnostics/check_cli_diagnostic_options.py", "make:diagnostic-quality"]
+    },
+    {
+      "id": "cli.vitte_build",
+      "domain": "cli",
+      "title": "vitte build uses the same diagnostic path before final generation",
+      "evidence": ["source:src/vitte/compiler/driver/compiler.vit", "test:tests/diagnostics/check_cli_diagnostic_options.py", "make:diagnostic-quality"]
+    },
+    {
+      "id": "cli.check_build_diagnostic_parity",
+      "domain": "cli",
+      "title": "vitte check and vitte build keep diagnostic parity",
+      "evidence": ["source:src/vitte/compiler/driver/compiler.vit", "tool:tools/check_compiler_diagnostic_contract.py", "test:tests/diagnostics/check_cli_diagnostic_options.py"]
+    },
+    {
+      "id": "cli.error_format",
+      "domain": "cli",
+      "title": "--error-format is parsed and tested",
+      "evidence": ["source:src/vitte/compiler/driver/compiler.vit", "test:tests/diagnostics/check_cli_diagnostic_options.py", "source:src/vitte/compiler/diagnostics/json.vit"]
+    },
+    {
+      "id": "cli.diagnostic_width",
+      "domain": "cli",
+      "title": "--diagnostic-width is parsed and tested",
+      "evidence": ["source:src/vitte/compiler/driver/compiler.vit", "test:tests/diagnostics/check_cli_diagnostic_options.py", "source:src/vitte/compiler/diagnostics/render.vit"]
     },
     {
       "id": "ci.compiler_max",

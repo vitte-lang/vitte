@@ -58,11 +58,15 @@ use vitte/compiler/diagnostics/sarif.{ sarif_report }
 use vitte/compiler/diagnostics/architecture.{ CompilerDiagnosticStage, canonical_diagnostic_stage_count, compiler_diagnostic_error, compiler_diagnostic_report, diagnostic_architecture_covers_required_stages, stage_component, stage_phase }
 use vitte/compiler/diagnostics/phase_policy.{ DiagnosticPhasePolicy, diagnostic_phase_blocks, diagnostic_phase_policy, diagnostic_phase_root_error_codes }
 use vitte/compiler/diagnostics/counterfactual.{
+  CounterfactualCacheKey,
   CounterfactualPipelineCheck,
   CounterfactualPipelinePhase,
+  CounterfactualVirtualDiff,
   CounterfactualVirtualProgram,
   CounterfactualVirtualResult,
   counterfactual_attach_typeck_string_to_int,
+  counterfactual_cache_key,
+  counterfactual_cache_key_text,
   counterfactual_hypothesis_is_better,
   counterfactual_hypothesis_score,
   counterfactual_rank_three_hypotheses,
@@ -70,6 +74,7 @@ use vitte/compiler/diagnostics/counterfactual.{
   counterfactual_suggestion_from_virtual_result,
   counterfactual_standard_pipeline_checks,
   counterfactual_typeck_string_to_int_hypotheses,
+  counterfactual_virtual_diff,
   counterfactual_virtual_program,
   counterfactual_virtual_result,
   counterfactual_virtual_result_is_verified
@@ -526,6 +531,30 @@ proc test_counterfactual_ranking_prefers_verified_low_risk_fix() -> bool {
     and ranked[0].message == hypotheses[0].message
     and ranked[1].message == hypotheses[2].message
     and ranked[2].message == hypotheses[1].message;
+}
+
+proc test_counterfactual_cache_and_diff_contract() -> bool {
+  let file: string = "src/vitte/compiler/tests/diagnostics/typeck/cached_counterfactual.vit";
+  let program: CounterfactualVirtualProgram = counterfactual_virtual_program(
+    file,
+    "repeat(value)",
+    "repeat(parse_int(value))"
+  );
+  let key: CounterfactualCacheKey = counterfactual_cache_key(
+    "TYP0042",
+    "source#1",
+    "replacement#1",
+    "lexer-parser-resolver-typeck-borrowck"
+  );
+  let diff: CounterfactualVirtualDiff = counterfactual_virtual_diff(program, "parse_int(value)");
+  give key.valid
+    and counterfactual_cache_key_text(key) == "TYP0042:source#1:replacement#1:lexer-parser-resolver-typeck-borrowck"
+    and diff.valid
+    and diff.changed
+    and diff.root_file == file
+    and diff.before_text == "repeat(value)"
+    and diff.after_text == "repeat(parse_int(value))"
+    and diff.replacement == "parse_int(value)";
 }
 
 proc test_suggestion_quality_contract() -> bool {
@@ -1052,6 +1081,7 @@ proc run_all_tests() -> int {
   let rendered_suggestions_ok: bool = test_rendered_suggestion_applicability_contract();
   let unverified_suggestion_ok: bool = test_unverified_suggestion_is_not_certain();
   let counterfactual_rejects_new_error_ok: bool = test_counterfactual_rejects_new_error_solution();
+  let counterfactual_cache_diff_ok: bool = test_counterfactual_cache_and_diff_contract();
   let rust_like_block_ok: bool = rust_like_rendered_block_has_three_ordered_diagnostics();
   let report_cascade_ok: bool = test_report_deduplicates_and_limits_cascades();
   let cascade_link_ok: bool = test_cascade_diagnostics_link_to_root();
@@ -1117,6 +1147,9 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if counterfactual_rejects_new_error_ok == false {
+    set failures = failures + 1;
+  }
+  if counterfactual_cache_diff_ok == false {
     set failures = failures + 1;
   }
   if rust_like_block_ok == false {

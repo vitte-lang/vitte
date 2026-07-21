@@ -43,6 +43,23 @@ form CounterfactualPipelineCheck {
     valid: bool
 }
 
+form CounterfactualCacheKey {
+    diagnostic_code: string
+    source_fingerprint: string
+    replacement_fingerprint: string
+    pipeline_fingerprint: string
+    valid: bool
+}
+
+form CounterfactualVirtualDiff {
+    root_file: string
+    before_text: string
+    after_text: string
+    replacement: string
+    changed: bool
+    valid: bool
+}
+
 form CounterfactualVirtualResult {
     rank: u64
     errors_removed: u64
@@ -181,6 +198,34 @@ proc counterfactual_pipeline_check(phase: CounterfactualPipelinePhase, passed: b
         error_count: error_count,
         report: report,
         valid: report != ""
+    };
+}
+
+proc counterfactual_cache_key(diagnostic_code: string, source_fingerprint: string, replacement_fingerprint: string, pipeline_fingerprint: string) -> CounterfactualCacheKey {
+    give CounterfactualCacheKey {
+        diagnostic_code: diagnostic_code,
+        source_fingerprint: source_fingerprint,
+        replacement_fingerprint: replacement_fingerprint,
+        pipeline_fingerprint: pipeline_fingerprint,
+        valid: diagnostic_code != "" and source_fingerprint != "" and replacement_fingerprint != "" and pipeline_fingerprint != ""
+    };
+}
+
+proc counterfactual_cache_key_text(key: CounterfactualCacheKey) -> string {
+    if !key.valid {
+        give "";
+    }
+    give key.diagnostic_code + ":" + key.source_fingerprint + ":" + key.replacement_fingerprint + ":" + key.pipeline_fingerprint;
+}
+
+proc counterfactual_virtual_diff(program: CounterfactualVirtualProgram, replacement: string) -> CounterfactualVirtualDiff {
+    give CounterfactualVirtualDiff {
+        root_file: program.root_file,
+        before_text: program.source_before,
+        after_text: program.source_after,
+        replacement: replacement,
+        changed: program.source_before != program.source_after,
+        valid: program.valid and replacement != "" and program.source_before != program.source_after
     };
 }
 
