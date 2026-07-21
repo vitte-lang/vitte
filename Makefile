@@ -2622,6 +2622,9 @@ diagnostic-catalog-snapshots:
 counterfactual-diagnostics:
 	@python3 tools/check_counterfactual_diagnostics.py
 
+diagnostic-attribution:
+	@python3 tools/check_diagnostic_attribution_coverage.py
+
 diagnostics-full-coverage:
 	@python3 tools/check_diagnostics_full_coverage.py
 
@@ -2668,4 +2671,4 @@ diagnostic-fuzz:
 
 
 .PHONY: diagnostic-quality
-diagnostic-quality: diagnostic-contracts diagnostic-snapshots diagnostic-fuzz diagnostics-full-coverage counterfactual-diagnostics
+diagnostic-quality: diagnostic-contracts diagnostic-snapshots diagnostic-fuzz diagnostics-full-coverage counterfactual-diagnostics diagnostic-attribution
