@@ -1,0 +1,137 @@
+{
+  "schema": 1,
+  "contracts": [
+    {
+      "id": "bootstrap.source_of_truth",
+      "domain": "bootstrap",
+      "title": "bootstrap source of truth is locked",
+      "evidence": ["make:bootstrap-source-of-truth", "tool:tools/check_seed_contract.sh"]
+    },
+    {
+      "id": "bootstrap.entrypoints",
+      "domain": "bootstrap",
+      "title": "compiler entrypoints are stable",
+      "evidence": ["make:compiler-entry-lock"]
+    },
+    {
+      "id": "bootstrap.determinism",
+      "domain": "bootstrap",
+      "title": "compiler output is deterministic for identical inputs",
+      "evidence": ["tool:tools/determinism_smoke.sh", "report:target/reports/repro.json"]
+    },
+    {
+      "id": "lexer.frontend_tokens",
+      "domain": "lexer",
+      "title": "lexer token contract has tests and a gate",
+      "evidence": ["make:frontend-token-consistency", "test:src/vitte/compiler/tests/lexer_tests.vit", "tool:tools/check_frontend_token_contract.sh"]
+    },
+    {
+      "id": "lexer.fuzz_recovery",
+      "domain": "lexer",
+      "title": "lexer participates in fuzz and recovery smoke tests",
+      "evidence": ["tool:tools/parser_lexer_fuzz_smoke.py", "tool:tools/strict_recovery_smoke.sh"]
+    },
+    {
+      "id": "parser.grammar",
+      "domain": "parser",
+      "title": "parser grammar and recovery are gated",
+      "evidence": ["make:grammar-check", "make:grammar-coverage", "test:src/vitte/compiler/tests/parser_tests.vit", "report:target/reports/grammar_coverage/grammar_coverage.json"]
+    },
+    {
+      "id": "parser.precedence",
+      "domain": "parser",
+      "title": "parser precedence has property coverage",
+      "evidence": ["tool:tools/parser_precedence_property_test.py"]
+    },
+    {
+      "id": "ast.surface",
+      "domain": "ast",
+      "title": "AST surface has tests",
+      "evidence": ["make:frontend-ast-test", "test:src/vitte/compiler/tests/ast_tests.vit", "tool:tools/ast_coverage_gate.py"]
+    },
+    {
+      "id": "hir.coverage",
+      "domain": "hir",
+      "title": "HIR supported surface is manifest gated",
+      "evidence": ["make:hir-coverage", "tool:tools/hir_coverage_check.py", "manifest:src/vitte/compiler/tests/hir_coverage_manifest.json", "report:target/reports/hir_coverage/coverage.json"]
+    },
+    {
+      "id": "sema.coverage",
+      "domain": "sema",
+      "title": "Sema supported surface is manifest gated",
+      "evidence": ["make:sema-gate", "tool:tools/sema_coverage_check.py", "manifest:src/vitte/compiler/tests/sema_coverage_manifest.json", "report:target/reports/sema_coverage/coverage.json"]
+    },
+    {
+      "id": "typeck.coverage",
+      "domain": "typeck",
+      "title": "Type checker supported surface is manifest gated",
+      "evidence": ["make:typeck-gate", "tool:tools/typeck_coverage_check.py", "manifest:src/vitte/compiler/tests/typeck_coverage_manifest.json", "test:src/vitte/compiler/tests/typeck_tests.vit"]
+    },
+    {
+      "id": "borrowck.coverage",
+      "domain": "borrowck",
+      "title": "Borrow checker supported surface is manifest gated",
+      "evidence": ["make:borrowck-gate", "tool:tools/borrowck_coverage_check.py", "manifest:src/vitte/compiler/tests/borrowck_coverage_manifest.json", "report:target/reports/borrowck_coverage/coverage.json"]
+    },
+    {
+      "id": "mir.coverage",
+      "domain": "mir",
+      "title": "MIR surface, snapshots and validation are gated",
+      "evidence": ["make:mir-gate", "tool:tools/mir_coverage_check.py", "manifest:src/vitte/compiler/tests/mir_coverage_manifest.json", "report:target/reports/mir_coverage/coverage.json"]
+    },
+    {
+      "id": "ir.contract",
+      "domain": "ir",
+      "title": "backend IR is canonical and versioned",
+      "evidence": ["make:ir-gate", "tool:tools/ir_coverage_check.py", "tool:tools/backend_ir_contract_audit.py", "report:target/reports/ir_coverage/coverage.json"]
+    },
+    {
+      "id": "backend.contracts",
+      "domain": "backend",
+      "title": "backend contracts and architecture matrix are audited",
+      "evidence": ["tool:tools/backend_ir_contract_audit.py", "report:target/reports/backend_architecture_matrix.json", "report:target/reports/backend_native_toolchain_audit.json"]
+    },
+    {
+      "id": "diagnostics.catalog",
+      "domain": "diagnostics",
+      "title": "diagnostic catalog is complete and migration-free",
+      "evidence": ["make:diagnostic-quality", "tool:tools/check_diagnostics_full_coverage.py", "report:target/reports/diagnostics_full_coverage/coverage.json"]
+    },
+    {
+      "id": "diagnostics.suggestions",
+      "domain": "suggestions",
+      "title": "suggestions are classified, scored, proven and non-vague",
+      "evidence": ["make:suggestion-quality", "tool:tools/check_suggestion_quality.py", "report:target/reports/suggestion_quality/coverage.json"]
+    },
+    {
+      "id": "diagnostics.counterfactual",
+      "domain": "counterfactual",
+      "title": "counterfactual fixes are virtually recompiled and ranked",
+      "evidence": ["make:counterfactual-diagnostics", "tool:tools/check_counterfactual_diagnostics.py", "source:src/vitte/compiler/diagnostics/counterfactual.vit", "report:target/reports/counterfactual_diagnostics/coverage.json"]
+    },
+    {
+      "id": "lsp.contracts",
+      "domain": "lsp",
+      "title": "LSP diagnostics and code actions preserve diagnostic proof",
+      "evidence": ["source:src/vitte/compiler/diagnostics/lsp.vit", "test:src/vitte/compiler/tests/diagnostic_snapshot_tests.vit"]
+    },
+    {
+      "id": "cli.diagnostics",
+      "domain": "cli",
+      "title": "CLI diagnostics use the canonical renderer and snapshots",
+      "evidence": ["tool:tools/crash_report_snapshots.sh", "make:diag-snapshots", "test:src/vitte/compiler/tests/diagnostic_snapshot_tests.vit"]
+    },
+    {
+      "id": "ci.compiler_max",
+      "domain": "ci",
+      "title": "compiler max gate composes core compiler contracts",
+      "evidence": ["make:compiler-max-gate-fast", "tool:tools/compiler_max_gate.sh"]
+    },
+    {
+      "id": "reports.machine_readable",
+      "domain": "reports",
+      "title": "contract reports are emitted as machine-readable JSON",
+      "evidence": ["report:target/reports/diagnostics_full_coverage/coverage.json", "report:target/reports/suggestion_quality/coverage.json"]
+    }
+  ]
+}

@@ -57,6 +57,7 @@ if [ "$STRICT" -eq 1 ]; then
 else
   go python3 tools/compiler_effective_gate/check.py
 fi
+go make compiler-contracts
 
 # 4) Pass contracts (audited above)
 go make hir-coverage
