@@ -183,6 +183,51 @@ if exist "%VITTE_ROOT%\INSTALLATION.json" (
   echo FAIL missing installation manifest: %VITTE_ROOT%\INSTALLATION.json
   set "STATUS=1"
 )
+if exist "%~dp0vitte.cmd" (
+  "%~dp0vitte.cmd" --version >nul 2>nul
+  if errorlevel 1 (
+    echo FAIL vitte --version failed
+    set "STATUS=1"
+  ) else (
+    echo OK   vitte --version runs
+  )
+  "%~dp0vitte.cmd" --help >nul 2>nul
+  if errorlevel 1 (
+    echo FAIL vitte --help failed
+    set "STATUS=1"
+  ) else (
+    echo OK   vitte --help runs
+  )
+  set "SMOKE=%TEMP%\vitte-installer-doctor-%RANDOM%"
+  mkdir "%SMOKE%" >nul 2>nul
+  > "%SMOKE%\smoke.vit" echo proc main() -^> int {
+  >> "%SMOKE%\smoke.vit" echo   give 0
+  >> "%SMOKE%\smoke.vit" echo }
+  pushd "%SMOKE%" >nul
+  "%~dp0vitte.cmd" check smoke.vit >nul 2>nul
+  if errorlevel 1 (
+    echo FAIL vitte check smoke.vit failed
+    set "STATUS=1"
+  ) else (
+    echo OK   vitte check smoke.vit runs
+  )
+  "%~dp0vitte.cmd" build smoke.vit -o smoke >nul 2>nul
+  if errorlevel 1 (
+    echo FAIL vitte build smoke.vit -o smoke failed
+    set "STATUS=1"
+  ) else (
+    echo OK   vitte build smoke.vit -o smoke runs
+    if exist smoke.exe smoke.exe >nul 2>nul
+    if errorlevel 1 (
+      echo FAIL built smoke executable failed
+      set "STATUS=1"
+    ) else (
+      echo OK   built smoke executable runs or is not present
+    )
+  )
+  popd >nul
+  rmdir /s /q "%SMOKE%" >nul 2>nul
+)
 if "%STATUS%"=="0" (
   echo installer status: OK
 ) else (

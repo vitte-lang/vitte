@@ -9,6 +9,8 @@ OUT_DIR=${OUT_DIR:-$ROOT_DIR/pkgout}
 case "$OUT_DIR" in /*) ;; *) OUT_DIR=$ROOT_DIR/$OUT_DIR ;; esac
 STRICT_NATIVE=${STRICT_NATIVE:-0}
 FREEBSD_MAJOR=${FREEBSD_MAJOR:-14}
+VERIFY_METADATA=${VERIFY_METADATA:-0}
+RELEASE_INSTALLER_GATE=${RELEASE_INSTALLER_GATE:-0}
 
 die() {
   printf '[verify-installers][error] %s\n' "$*" >&2
@@ -168,6 +170,43 @@ if [ -s "$OUT_DIR/CHECKSUMS.txt" ]; then
     set -- $line
     [ -s "$OUT_DIR/$2" ] || die "CHECKSUMS.txt references missing artifact: $2"
   done < "$OUT_DIR/CHECKSUMS.txt"
+fi
+
+if [ "$VERIFY_METADATA" -eq 1 ] || [ "$RELEASE_INSTALLER_GATE" -eq 1 ]; then
+  require_file "$OUT_DIR/INSTALLERS.json"
+  require_file "$OUT_DIR/CHECKSUMS.txt"
+  require_file "$OUT_DIR/SIGNATURES.json"
+  python3 - "$OUT_DIR" "$RELEASE_INSTALLER_GATE" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+out = Path(sys.argv[1])
+release = sys.argv[2] == "1"
+installers = json.loads((out / "INSTALLERS.json").read_text(encoding="utf-8"))
+signatures = json.loads((out / "SIGNATURES.json").read_text(encoding="utf-8"))
+signature_names = {item["name"] for item in signatures.get("artifacts", [])}
+metadata = {"INSTALLERS.json", "CHECKSUMS.txt", "SIGNATURES.json", "SBOM.spdx.json", "SBOM.cyclonedx.json"}
+for artifact in installers.get("artifacts", []):
+    name = artifact["name"]
+    if name in metadata or name.endswith(".sha256") or name.endswith(".MANIFEST.json"):
+        continue
+    manifest = out / f"{name}.MANIFEST.json"
+    if not manifest.is_file():
+        raise SystemExit(f"missing artifact manifest: {manifest.name}")
+    value = json.loads(manifest.read_text(encoding="utf-8"))
+    for key in ("version", "os", "arch", "abi", "libc", "minimum_version", "sha256", "installed_commands", "contents"):
+        if key not in value:
+            raise SystemExit(f"manifest {manifest.name} missing {key}")
+    if name not in signature_names:
+        raise SystemExit(f"SIGNATURES.json missing {name}")
+if release:
+    for sbom in ("SBOM.spdx.json", "SBOM.cyclonedx.json"):
+        if not (out / sbom).is_file():
+            raise SystemExit(f"release metadata missing {sbom}")
+    if not signatures.get("sign_requested"):
+        raise SystemExit("release metadata requires sign_requested=true")
+PY
 fi
 
   for item in 'amd64 0x8664' 'i386 0x014c' 'arm64 0xaa64' 'armv7 0x01c4'; do

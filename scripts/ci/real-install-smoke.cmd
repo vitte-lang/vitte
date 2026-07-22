@@ -13,6 +13,8 @@ if not exist "%WORKDIR%" mkdir "%WORKDIR%"
 pushd "%WORKDIR%" || exit /b 1
 
 rem Required post-install contract:
+where vitte-installer-doctor >nul 2>nul
+if not errorlevel 1 vitte-installer-doctor || exit /b 1
 "%VITTE_BIN%" --version >nul || exit /b 1
 "%VITTE_BIN%" --help >nul || exit /b 1
 "%VITTE_BIN%" check smoke.vit || exit /b 1

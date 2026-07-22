@@ -1688,6 +1688,10 @@ installer-runtime-contract-check:
 installer-real-platforms-check:
 	@python3 tools/installer_real_platforms_check.py
 
+.PHONY: release-installer-gate
+release-installer-gate: installer-runtime-contract-check installer-real-platforms-check
+	@python3 tools/release_installer_gate.py
+
 .PHONY: pkg-cli-integration
 pkg-cli-integration:
 	@tools/pkg_cli_integration.sh
@@ -2009,7 +2013,7 @@ pkg-macos-uninstall:
 	@VERSION=$(PKG_VERSION) toolchain/scripts/package/make-macos-uninstall-pkg.sh
 
 .PHONY: release-check
-release-check: build core-release-gate ci-fast package-layout-lint-strict legacy-import-allowlist-empty ci-completions pkg-macos release-gate-90-119
+release-check: build core-release-gate ci-fast package-layout-lint-strict legacy-import-allowlist-empty ci-completions pkg-macos release-gate-90-119 release-installer-gate
 
 .PHONY: release-doctor
 release-doctor:
@@ -2292,6 +2296,7 @@ help:
 	@echo "  make pkg-debian-install build and install Debian .deb locally via dpkg"
 	@echo "  make installer-runtime-contract-check validate clean-shell, no-PATH, portable, and post-install build contract"
 	@echo "  make installer-real-platforms-check validate real install matrix and post-install smoke contract"
+	@echo "  make release-installer-gate enforce blocking installer release evidence"
 	@echo "  make pkg-macos build macOS installer pkg (PKG_VERSION=$(PKG_VERSION))"
 	@echo "  make macos-universal-bin build target/universal/vitte (arm64 + x86_64 via lipo)"
 	@echo "  make pkg-macos-universal build macOS universal installer pkg (vitte-$(PKG_VERSION)-universal.pkg)"

@@ -76,6 +76,15 @@ def main() -> int:
             failures.append(f"missing Raspberry Pi target {arch}")
 
     workflow_text = read(WORKFLOW)
+    binary_ci_arches = {target["arch"] for target in data.get("binary_ci_targets", [])}
+    for arch in data["required_binary_architectures"]:
+        if arch not in binary_ci_arches:
+            failures.append(f"missing binary CI target for {arch}")
+    for target in data.get("binary_ci_targets", []):
+        label = target.get("runner_label", "")
+        if label not in workflow_text:
+            failures.append(f"real platform workflow missing binary runner `{label}`")
+
     for required in (
         "workflow_dispatch",
         "self-hosted",
@@ -88,6 +97,15 @@ def main() -> int:
     ):
         if required not in workflow_text:
             failures.append(f"real platform workflow missing `{required}`")
+
+    for key in (
+        "release_requires_sbom",
+        "release_requires_signatures",
+        "release_requires_notarization_for_macos",
+        "artifact_metadata_required",
+    ):
+        if key not in data:
+            failures.append(f"installer real platforms contract missing `{key}`")
 
     posix_text = read(POSIX_SMOKE)
     windows_text = read(WINDOWS_SMOKE)
@@ -102,7 +120,8 @@ def main() -> int:
 
     artifact_root = ROOT / data["strict_artifact_root"]
     strict_rows = []
-    for target in data["real_platform_targets"] + data["raspberry_pi_targets"]:
+    strict_targets = data.get("binary_ci_targets", []) + data["real_platform_targets"] + data["raspberry_pi_targets"]
+    for target in strict_targets:
         path = strict_artifact_path(artifact_root, target["os"], target["arch"])
         present = path.exists() and path.stat().st_size > 0
         strict_rows.append({"target": target, "artifact": str(path.relative_to(ROOT)), "present": present})
@@ -119,9 +138,11 @@ def main() -> int:
         "release_mode": release_mode,
         "release_requires_strict_real_installers": bool(data.get("release_requires_strict_real_installers")),
         "required_binary_architectures": data["required_binary_architectures"],
+        "binary_ci_targets": data.get("binary_ci_targets", []),
         "raspberry_pi_targets": data["raspberry_pi_targets"],
         "real_platform_targets": data["real_platform_targets"],
         "post_install_commands": data["post_install_commands"],
+        "artifact_metadata_required": data.get("artifact_metadata_required", []),
         "strict_artifacts": strict_rows,
         "warnings": warnings,
         "failures": failures,
@@ -137,7 +158,7 @@ def main() -> int:
 
     print(
         f"[installer-real-platforms] OK strict={int(strict)} "
-        f"targets={len(data['real_platform_targets']) + len(data['raspberry_pi_targets'])} "
+        f"targets={len(strict_targets)} "
         f"report={REPORT.relative_to(ROOT)}"
     )
     return 0

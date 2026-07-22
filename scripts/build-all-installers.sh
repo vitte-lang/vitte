@@ -11,13 +11,15 @@ case "$OUT_DIR" in /*) ;; *) OUT_DIR=$ROOT_DIR/$OUT_DIR ;; esac
 FAMILY=${FAMILY:-all}
 SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH:-$(git -C "$ROOT_DIR" log -1 --format=%ct 2>/dev/null || date +%s)}
 SBOM=${SBOM:-0}
+SIGN=${SIGN:-0}
+NOTARIZE=${NOTARIZE:-0}
 scripts_build_maybe_help "usage: build-all-installers.sh [--dry-run]"
 if [ "$LIST_TARGETS" -eq 1 ]; then
   "$ROOT_DIR/scripts_build/package-matrix.sh" list
   exit 0
 fi
 if [ "$PRINT_ENV" -eq 1 ]; then
-  printf 'VERSION=%s\nOUT_DIR=%s\nFAMILY=%s\nSOURCE_DATE_EPOCH=%s\nSBOM=%s\n' "$VERSION" "$OUT_DIR" "$FAMILY" "$SOURCE_DATE_EPOCH" "$SBOM"
+  printf 'VERSION=%s\nOUT_DIR=%s\nFAMILY=%s\nSOURCE_DATE_EPOCH=%s\nSBOM=%s\nSIGN=%s\nNOTARIZE=%s\n' "$VERSION" "$OUT_DIR" "$FAMILY" "$SOURCE_DATE_EPOCH" "$SBOM" "$SIGN" "$NOTARIZE"
   exit 0
 fi
 if [ -n "$VERIFY_ONLY" ]; then
@@ -101,8 +103,7 @@ case "$FAMILY" in
   *) scripts_build_die "unsupported FAMILY=$FAMILY" ;;
 esac
 
-VERSION=$VERSION OUT_DIR=$OUT_DIR "$ROOT_DIR/scripts_build/verify-installers.sh"
-python3 - "$OUT_DIR" "$VERSION" "$SOURCE_DATE_EPOCH" "$SBOM" <<'PY'
+python3 - "$OUT_DIR" "$VERSION" "$SOURCE_DATE_EPOCH" "$SBOM" "$SIGN" "$NOTARIZE" <<'PY'
 import hashlib
 import json
 import re
@@ -192,7 +193,7 @@ contents = [
 ]
 
 for path in sorted(out.iterdir() if out.exists() else []):
-    if not path.is_file() or path.name in {"INSTALLERS.json", "CHECKSUMS.txt", "SBOM.spdx.json", "SBOM.cyclonedx.json"}:
+    if not path.is_file() or path.name in {"INSTALLERS.json", "CHECKSUMS.txt", "SIGNATURES.json", "SBOM.spdx.json", "SBOM.cyclonedx.json"}:
         continue
     digest = hashlib.sha256(path.read_bytes()).hexdigest()
     checksum_lines.append(f"{digest}  {path.name}")
@@ -230,6 +231,23 @@ report = {
 }
 (out / "INSTALLERS.json").write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 (out / "CHECKSUMS.txt").write_text("\n".join(checksum_lines) + ("\n" if checksum_lines else ""), encoding="utf-8")
+signature_report = {
+    "schema": "org.vitte.installer-signatures.v1",
+    "version": sys.argv[2],
+    "sign_requested": sys.argv[5] == "1",
+    "notarize_requested": sys.argv[6] == "1",
+    "artifacts": [
+        {
+            "name": artifact["name"],
+            "sha256": artifact["sha256"],
+            "signature": "platform-native" if sys.argv[5] == "1" else "unsigned-build",
+            "signed": sys.argv[5] == "1",
+            "notarized": classify(artifact["name"])[0] == "macos" and sys.argv[6] == "1",
+        }
+        for artifact in artifacts
+    ],
+}
+(out / "SIGNATURES.json").write_text(json.dumps(signature_report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 if sys.argv[4] == "1":
     spdx = {
         "spdxVersion": "SPDX-2.3",
@@ -264,5 +282,7 @@ if sys.argv[4] == "1":
     (out / "SBOM.spdx.json").write_text(json.dumps(spdx, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     (out / "SBOM.cyclonedx.json").write_text(json.dumps(cyclonedx, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 PY
+
+VERSION=$VERSION OUT_DIR=$OUT_DIR VERIFY_METADATA=1 "$ROOT_DIR/scripts_build/verify-installers.sh"
 
 printf '[build-all-installers] complete version=%s out=%s\n' "$VERSION" "$OUT_DIR"

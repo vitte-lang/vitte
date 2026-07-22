@@ -31,6 +31,44 @@ jobs:
       - name: Run post-install smoke
         run: scripts/ci/real-install-smoke.sh
 
+  debian-self-hosted-smoke:
+    if: ${{ github.event.inputs.target == 'all' || github.event.inputs.target == 'debian' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: debian-oldstable-amd64
+          - label: debian-stable-amd64
+    runs-on: [self-hosted, vitte, "${{ matrix.label }}"]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run installed Debian smoke
+        run: scripts/ci/real-install-smoke.sh
+
+  binary-architecture-self-hosted-smoke:
+    if: ${{ github.event.inputs.target == 'all' || github.event.inputs.target == 'debian' || github.event.inputs.target == 'raspberry' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: linux-x86_64
+            arch: x86_64
+          - label: linux-i386
+            arch: i386
+          - label: linux-arm64
+            arch: arm64
+          - label: linux-armv7
+            arch: armv7
+          - label: linux-armv6
+            arch: armv6
+          - label: linux-riscv64
+            arch: riscv64
+    runs-on: [self-hosted, vitte, "${{ matrix.label }}"]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run install build run smoke
+        run: scripts/ci/real-install-smoke.sh
+
   posix-self-hosted-smoke:
     if: ${{ github.event.inputs.target == 'all' || github.event.inputs.target == 'raspberry' || github.event.inputs.target == 'macos' || github.event.inputs.target == 'solaris' }}
     strategy:

@@ -1,6 +1,8 @@
 #!/bin/sh
 set -eu
 
+PATH=/usr/bin:/bin:${PATH:-}
+
 status=0
 
 line() {
@@ -75,6 +77,51 @@ if [ -x "$bindir/vitte" ]; then
     fail "vitte --version failed"
     line "hint: run $bindir/vitte --version to see the compiler error"
   fi
+  if "$bindir/vitte" --help >/dev/null 2>&1; then
+    pass "vitte --help runs"
+  else
+    fail "vitte --help failed"
+    line "hint: run $bindir/vitte --help to inspect CLI startup"
+  fi
+
+  smoke_dir=${TMPDIR:-/tmp}/vitte-installer-doctor-$$
+  rm -rf "$smoke_dir"
+  mkdir -p "$smoke_dir"
+  cat > "$smoke_dir/smoke.vit" <<'VITTE_INSTALLER_DOCTOR_SMOKE'
+proc main() -> int {
+  give 0
+}
+VITTE_INSTALLER_DOCTOR_SMOKE
+
+  if (cd "$smoke_dir" && "$bindir/vitte" check smoke.vit >/dev/null 2>&1); then
+    pass "vitte check smoke.vit runs"
+  else
+    fail "vitte check smoke.vit failed"
+    line "hint: cd $smoke_dir && $bindir/vitte check smoke.vit"
+  fi
+
+  if (cd "$smoke_dir" && "$bindir/vitte" build smoke.vit -o smoke >/dev/null 2>&1); then
+    pass "vitte build smoke.vit -o smoke runs"
+    if [ -x "$smoke_dir/smoke" ]; then
+      if "$smoke_dir/smoke" >/dev/null 2>&1; then
+        pass "built smoke executable runs"
+      else
+        fail "built smoke executable failed"
+      fi
+    else
+      pass "built smoke executable not runnable on this host"
+    fi
+  else
+    fail "vitte build smoke.vit -o smoke failed"
+    line "hint: cd $smoke_dir && $bindir/vitte build smoke.vit -o smoke"
+  fi
+  rm -rf "$smoke_dir"
+fi
+
+path_vitte=$(command -v vitte 2>/dev/null || true)
+if [ -n "$path_vitte" ] && [ "$path_vitte" != "$bindir/vitte" ]; then
+  fail "PATH resolves vitte to a different installation: $path_vitte"
+  line "hint: put $bindir before older Vitte entries in PATH"
 fi
 
 if [ "$status" -eq 0 ]; then

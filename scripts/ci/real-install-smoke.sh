@@ -14,6 +14,9 @@ VIT
 cd "$WORKDIR"
 
 # Required post-install contract:
+if command -v vitte-installer-doctor >/dev/null 2>&1; then
+  vitte-installer-doctor
+fi
 "$VITTE_BIN" --version >/dev/null
 "$VITTE_BIN" --help >/dev/null
 "$VITTE_BIN" check smoke.vit
