@@ -1810,14 +1810,21 @@ packages-contract-snapshots:
 packages-contract-snapshots-update:
 	@tools/packages_contract_snapshots.sh --update
 
+.PHONY: perl-packages-check
+perl-packages-check:
+	@tools/perl_packages_check.sh
+	@test -f target/perl-packages/registry.json
+	@test -f target/perl-packages/checksums.sha256
+	@test -f target/reports/perl_packages_check.json
+
 .PHONY: packages-gate
-packages-gate: package-layout-lint-strict packages-governance-lint no-std-lint module-naming-lint legacy-import-path-lint critical-runtime-matrix-lint new-public-packages-snapshots-lint modules-perf-cache packages-dependency-overlap-lint packages-contract-snapshots
+packages-gate: package-layout-lint-strict packages-governance-lint no-std-lint module-naming-lint legacy-import-path-lint critical-runtime-matrix-lint new-public-packages-snapshots-lint modules-perf-cache packages-dependency-overlap-lint packages-contract-snapshots perl-packages-check
 
 .PHONY: packages-only-ci
-packages-only-ci: packages-governance-lint packages-check-all pkg-matrix pkg-cli-integration
+packages-only-ci: packages-governance-lint packages-check-all perl-packages-check pkg-matrix pkg-cli-integration
 
 .PHONY: packages-strict-ci
-packages-strict-ci: package-layout-lint-strict packages-governance-lint no-std-lint module-naming-lint packages-check-all pkg-matrix pkg-cli-integration
+packages-strict-ci: package-layout-lint-strict packages-governance-lint no-std-lint module-naming-lint packages-check-all perl-packages-check pkg-matrix pkg-cli-integration
 
 .PHONY: modules-ci-strict
 modules-ci-strict: modules-tests modules-snapshots modules-contract-snapshots module-tree-lint module-naming-lint critical-module-contract-lint experimental-modules-lint public-modules-snapshots-lint modules-perf-cache legacy-import-path-lint migration-check modules-report
@@ -2421,6 +2428,7 @@ help:
 	@echo "  make release-proof-notes generate proof-oriented release notes + tag candidate"
 	@echo "  make all-tests run full grouped test inventory"
 	@echo "  make packages-gate run package governance/layout/perf/contract gate"
+	@echo "  make perl-packages-check validate Perl packages, archives, checksums, and local registry"
 	@echo "  make make-targets-doc regenerate docs/MAKE_TARGETS.md from make help"
 	@echo "  make make-targets-doc-check fail if docs/MAKE_TARGETS.md is out of date"
 	@echo "  make package-index generate docs/PACKAGE_INDEX.md from package metadata"

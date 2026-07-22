@@ -28,3 +28,19 @@ These packages provide standalone Perl utility modules named after familiar Rust
 | `vitte-perl-uuid` | `Vitte::Crates::Uuid` |
 
 Each package contains `META.json`, `README.md`, `lib/`, and `t/basic.t`.
+
+## Gate
+
+Run:
+
+```sh
+make perl-packages-check
+```
+
+The gate validates every `META.json`, checks version `0.1.0`, compiles each `.pm`
+file, runs every `t/basic.t`, tests loading through `PERL5LIB`, and generates:
+
+- `target/perl-packages/archives/*.tar.gz`
+- `target/perl-packages/checksums.sha256`
+- `target/perl-packages/registry.json`
+- `target/reports/perl_packages_check.json`
