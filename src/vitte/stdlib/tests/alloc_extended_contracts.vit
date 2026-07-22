@@ -1,0 +1,37 @@
+space vitte/stdlib/tests/alloc_extended_contracts
+
+use src/vitte/stdlib/alloc/allocator as alloc_allocator
+use src/vitte/stdlib/alloc/box as alloc_box
+use src/vitte/stdlib/alloc/deque as alloc_deque
+use src/vitte/stdlib/alloc/rc as alloc_rc
+use src/vitte/stdlib/alloc/string as alloc_string
+use src/vitte/stdlib/alloc/vec as alloc_vec
+
+proc alloc_extended_contracts_smoke() -> bool {
+    let layout_value: alloc_allocator.AllocationLayout = alloc_allocator.layout(16, 8);
+    let padded: alloc_allocator.AllocationLayout = alloc_allocator.layout_pad_to_align(layout_value);
+    let next = alloc_allocator.next_capacity(4, 9, alloc_allocator.GrowthPolicy.Geometric);
+
+    let vec_value: alloc_vec.Vec<int> = alloc_vec.vec_new<int>();
+    alloc_vec.vec_push<int>(&mut vec_value, 10);
+    alloc_vec.vec_push_repeat<int>(&mut vec_value, 20, 2);
+
+    let text: alloc_string.String = alloc_string.string_new();
+    alloc_string.string_push_str(&mut text, compiler_test_string("alloc"));
+
+    let deque_value: alloc_deque.Deque<int> = alloc_deque.deque_new<int>();
+    alloc_deque.deque_push_back<int>(&mut deque_value, 1);
+    alloc_deque.deque_push_front<int>(&mut deque_value, 0);
+
+    let boxed: alloc_box.Box<int> = alloc_box.box_new<int>(42);
+    let shared: alloc_rc.Rc<int> = alloc_rc.rc_new<int>(7);
+
+    give alloc_allocator.layout_is_valid(layout_value)
+        and padded.size == 16
+        and is_some<usize>(next)
+        and alloc_vec.vec_len<int>(vec_value) == 3
+        and alloc_string.string_len(text) == 5
+        and alloc_deque.deque_len<int>(deque_value) == 2
+        and alloc_box.box_is_non_null<int>(&boxed)
+        and alloc_rc.rc_is_unique<int>(shared);
+}

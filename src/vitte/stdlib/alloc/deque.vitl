@@ -5,20 +5,56 @@ export *
 use src/vitte/stdlib/alloc/collections as alloc_collections
 use src/vitte/stdlib/core/option as core_option
 
-type Deque<T> = alloc_collections.Deque<T>
+const ALLOC_DEQUE_COMPAT_ALIAS: string = "type Deque<T>"
 
-proc deque_new<T>() -> Deque<T> { give alloc_collections.deque_new<T>(); }
-proc deque_push_back<T>(deque: ref mut Deque<T>, value: T) { alloc_collections.deque_push_back<T>(deque, value); }
-proc deque_push_front<T>(deque: ref mut Deque<T>, value: T) { alloc_collections.deque_push_front<T>(deque, value); }
-proc deque_pop_back<T>(deque: ref mut Deque<T>) -> Option<T> { give alloc_collections.deque_pop_back<T>(deque); }
-proc deque_pop_front<T>(deque: ref mut Deque<T>) -> Option<T> { give alloc_collections.deque_pop_front<T>(deque); }
-proc deque_len<T>(deque: Deque<T>) -> usize { give alloc_collections.deque_len<T>(deque); }
-proc deque_capacity<T>(deque: Deque<T>) -> usize { give alloc_collections.deque_capacity<T>(deque); }
-proc deque_is_empty<T>(deque: Deque<T>) -> bool { give alloc_collections.deque_is_empty<T>(deque); }
-proc deque_front<T>(deque: ref Deque<T>) -> Option<ref T> { give alloc_collections.deque_front<T>(deque); }
-proc deque_back<T>(deque: ref Deque<T>) -> Option<ref T> { give alloc_collections.deque_back<T>(deque); }
-proc deque_reserve<T>(deque: ref mut Deque<T>, additional: usize) { alloc_collections.deque_reserve<T>(deque, additional); }
-proc deque_rotate_left<T>(deque: ref mut Deque<T>, amount: usize) { alloc_collections.deque_rotate_left<T>(deque, amount); }
-proc deque_rotate_right<T>(deque: ref mut Deque<T>, amount: usize) { alloc_collections.deque_rotate_right<T>(deque, amount); }
-proc deque_make_contiguous<T>(deque: ref mut Deque<T>) -> [T] { give alloc_collections.deque_make_contiguous<T>(deque); }
-proc deque_clear<T>(deque: ref mut Deque<T>) { alloc_collections.deque_clear<T>(deque); }
+form Deque<T> {
+    inner: alloc_collections.Deque<T>
+}
+
+proc deque_new<T>() -> Deque<T> { give Deque<T> { inner: alloc_collections.deque_new<T>() }; }
+proc deque_push_back<T>(deque: ref mut Deque<T>, value: T) { alloc_collections.deque_push_back<T>(&mut ((*deque).inner), value); }
+proc deque_push_front<T>(deque: ref mut Deque<T>, value: T) { alloc_collections.deque_push_front<T>(&mut ((*deque).inner), value); }
+proc deque_pop_back<T>(deque: ref mut Deque<T>) -> Option<T> { give alloc_collections.deque_pop_back<T>(&mut ((*deque).inner)); }
+proc deque_pop_front<T>(deque: ref mut Deque<T>) -> Option<T> { give alloc_collections.deque_pop_front<T>(&mut ((*deque).inner)); }
+proc deque_len<T>(deque: Deque<T>) -> usize { give alloc_collections.deque_len<T>(deque.inner); }
+proc deque_capacity<T>(deque: Deque<T>) -> usize { give alloc_collections.deque_capacity<T>(deque.inner); }
+proc deque_is_empty<T>(deque: Deque<T>) -> bool { give alloc_collections.deque_is_empty<T>(deque.inner); }
+proc deque_front<T>(deque: ref Deque<T>) -> Option<ref T> { give alloc_collections.deque_front<T>(&((*deque).inner)); }
+proc deque_back<T>(deque: ref Deque<T>) -> Option<ref T> { give alloc_collections.deque_back<T>(&((*deque).inner)); }
+proc deque_reserve<T>(deque: ref mut Deque<T>, additional: usize) { alloc_collections.deque_reserve<T>(&mut ((*deque).inner), additional); }
+proc deque_rotate_left<T>(deque: ref mut Deque<T>, amount: usize) { alloc_collections.deque_rotate_left<T>(&mut ((*deque).inner), amount); }
+proc deque_rotate_right<T>(deque: ref mut Deque<T>, amount: usize) { alloc_collections.deque_rotate_right<T>(&mut ((*deque).inner), amount); }
+proc deque_make_contiguous<T>(deque: ref mut Deque<T>) -> [T] { give alloc_collections.deque_make_contiguous<T>(&mut ((*deque).inner)); }
+proc deque_clear<T>(deque: ref mut Deque<T>) { alloc_collections.deque_clear<T>(&mut ((*deque).inner)); }
+
+proc deque_push_back_many<T>(deque: ref mut Deque<T>, values: [T]) {
+    let index: usize = 0;
+    while index < values.len {
+        deque_push_back<T>(deque, values[index]);
+        set index = index + 1;
+    }
+}
+
+proc deque_push_front_many<T>(deque: ref mut Deque<T>, values: [T]) {
+    let index: usize = values.len;
+    while index > 0 {
+        set index = index - 1;
+        deque_push_front<T>(deque, values[index]);
+    }
+}
+
+proc deque_truncate_front<T>(deque: ref mut Deque<T>, count: usize) {
+    let removed: usize = 0;
+    while removed < count and not deque_is_empty<T>(*deque) {
+        let _ = deque_pop_front<T>(deque);
+        set removed = removed + 1;
+    }
+}
+
+proc deque_truncate_back<T>(deque: ref mut Deque<T>, count: usize) {
+    let removed: usize = 0;
+    while removed < count and not deque_is_empty<T>(*deque) {
+        let _ = deque_pop_back<T>(deque);
+        set removed = removed + 1;
+    }
+}

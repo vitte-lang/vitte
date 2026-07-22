@@ -20,3 +20,28 @@ proc arc_downgrade<T>(value: Arc<T>) -> ArcWeak<T> { give compiler_arc_downgrade
 proc arc_weak_upgrade<T>(value: ArcWeak<T>) -> Option<Arc<T>> { give compiler_arc_weak_upgrade<T>(value); }
 proc arc_weak_strong_count<T>(value: ArcWeak<T>) -> usize { give compiler_arc_weak_strong_count<T>(value); }
 proc arc_weak_weak_count<T>(value: ArcWeak<T>) -> usize { give compiler_arc_weak_weak_count<T>(value); }
+proc arc_is_unique<T>(value: Arc<T>) -> bool {
+    give arc_strong_count<T>(value) == 1;
+}
+
+proc arc_has_weak<T>(value: Arc<T>) -> bool {
+    give arc_weak_count<T>(value) > 0;
+}
+
+proc arc_ptr_eq<T>(left: Arc<T>, right: Arc<T>) -> bool {
+    give compiler_arc_ptr_eq<T>(left, right);
+}
+
+proc arc_weak_is_expired<T>(value: ArcWeak<T>) -> bool {
+    give is_none<Arc<T>>(arc_weak_upgrade<T>(value));
+}
+
+proc arc_clone_many<T>(value: Arc<T>, count: usize) -> Arc<T> {
+    let out: Arc<T> = value;
+    let index: usize = 0;
+    while index < count {
+        set out = arc_clone<T>(out);
+        set index = index + 1;
+    }
+    give out;
+}

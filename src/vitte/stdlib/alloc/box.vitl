@@ -18,3 +18,21 @@ proc box_leak<T>(boxed: Box<T>) -> ref mut T { give compiler_box_leak<T>(boxed);
 proc box_pin<T>(boxed: Box<T>) -> Box<T> { give compiler_box_pin<T>(boxed); }
 proc box_try_new<T>(value: T) -> Option<Box<T>> { give compiler_box_try_new<T>(value); }
 proc box_drop<T>(boxed: Box<T>) { compiler_box_drop<T>(boxed); }
+proc box_map<T, U>(boxed: Box<T>, mapper: proc(T) -> U) -> Box<U> {
+    give box_new<U>(mapper(box_into_inner<T>(boxed)));
+}
+
+proc box_replace_with<T>(boxed: ref mut Box<T>, mapper: proc(T) -> T) -> T {
+    let old: T = box_replace<T>(boxed, compiler_box_default_value<T>());
+    let next: T = mapper(old);
+    let _ = box_replace<T>(boxed, next);
+    give old;
+}
+
+proc box_is_non_null<T>(boxed: ref Box<T>) -> bool {
+    give compiler_box_address<T>(boxed) != 0;
+}
+
+proc box_ptr_eq<T>(left: ref Box<T>, right: ref Box<T>) -> bool {
+    give compiler_box_address<T>(left) == compiler_box_address<T>(right);
+}

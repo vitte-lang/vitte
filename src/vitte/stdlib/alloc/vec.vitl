@@ -4,6 +4,7 @@ export *
 
 use src/vitte/stdlib/core/iterator as core_iterator
 use src/vitte/stdlib/core/option as core_option
+use src/vitte/stdlib/alloc/allocator as alloc_allocator
 
 form Vec<T> {
     ptr: ref mut T
@@ -30,9 +31,13 @@ proc vec_capacity<T>(vec: Vec<T>) -> usize { give vec.capacity; }
 proc vec_is_empty<T>(vec: Vec<T>) -> bool { give vec.length == 0; }
 proc vec_remaining_capacity<T>(vec: Vec<T>) -> usize {
     if vec.capacity < vec.length {
-        give 0;
+        let empty: usize = 0;
+        give empty;
     }
     give vec.capacity - vec.length;
+}
+proc vec_growth_capacity<T>(vec: Vec<T>, additional: usize) -> Option<usize> {
+    give alloc_allocator.next_capacity(vec.capacity, vec.length + additional, alloc_allocator.GrowthPolicy.Geometric);
 }
 proc vec_reserve<T>(vec: ref mut Vec<T>, additional: usize) {
     let required: usize = (*vec).length + additional;
@@ -44,9 +49,18 @@ proc vec_reserve<T>(vec: ref mut Vec<T>, additional: usize) {
         set next_capacity = required;
     }
     if next_capacity == 0 {
-        set next_capacity = 4;
+        let minimum: usize = 4;
+        set next_capacity = minimum;
     }
     compiler_vec_realloc<T>(vec, next_capacity);
+}
+proc vec_try_reserve<T>(vec: ref mut Vec<T>, additional: usize) -> bool {
+    let next = vec_growth_capacity<T>(*vec, additional);
+    if is_none<usize>(next) {
+        give false;
+    }
+    compiler_vec_realloc<T>(vec, unwrap<usize>(next));
+    give true;
 }
 proc vec_reserve_exact<T>(vec: ref mut Vec<T>, additional: usize) {
     let required: usize = (*vec).length + additional;
@@ -68,6 +82,14 @@ proc vec_push<T>(vec: ref mut Vec<T>, value: T) {
     compiler_vec_write<T>(vec, (*vec).length, value);
     set (*vec).length = (*vec).length + 1;
 }
+proc vec_push_repeat<T>(vec: ref mut Vec<T>, value: T, count: usize) {
+    vec_reserve<T>(vec, count);
+    let index: usize = 0;
+    while index < count {
+        vec_push<T>(vec, value);
+        set index = index + 1;
+    }
+}
 proc vec_pop<T>(vec: ref mut Vec<T>) -> Option<T> { give compiler_vec_pop<T>(vec); }
 proc vec_last<T>(vec: Vec<T>) -> Option<ref T> {
     if vec.length == 0 {
@@ -77,6 +99,13 @@ proc vec_last<T>(vec: Vec<T>) -> Option<ref T> {
 }
 proc vec_first<T>(vec: Vec<T>) -> Option<ref T> { give vec_get<T>(vec, 0); }
 proc vec_insert<T>(vec: ref mut Vec<T>, index: usize, value: T) { compiler_vec_insert<T>(vec, index, value); }
+proc vec_swap<T>(vec: ref mut Vec<T>, left: usize, right: usize) -> bool {
+    if left >= (*vec).length or right >= (*vec).length {
+        give false;
+    }
+    compiler_vec_swap<T>(vec, left, right);
+    give true;
+}
 proc vec_remove<T>(vec: ref mut Vec<T>, index: usize) -> Option<T> { give compiler_vec_remove<T>(vec, index); }
 proc vec_swap_remove<T>(vec: ref mut Vec<T>, index: usize) -> Option<T> { give compiler_vec_swap_remove<T>(vec, index); }
 proc vec_truncate<T>(vec: ref mut Vec<T>, len: usize) {
@@ -86,10 +115,39 @@ proc vec_truncate<T>(vec: ref mut Vec<T>, len: usize) {
 }
 proc vec_resize<T>(vec: ref mut Vec<T>, len: usize, value: T) { compiler_vec_resize<T>(vec, len, value); }
 proc vec_extend<T>(vec: ref mut Vec<T>, values: [T]) { compiler_vec_extend<T>(vec, values); }
+proc vec_extend_n<T>(vec: ref mut Vec<T>, values: [T], count: usize) {
+    let limit: usize = values.len;
+    if count < limit {
+        set limit = count;
+    }
+    vec_reserve<T>(vec, limit);
+    let index: usize = 0;
+    while index < limit {
+        vec_push<T>(vec, values[index]);
+        set index = index + 1;
+    }
+}
 proc vec_append<T>(vec: ref mut Vec<T>, other: ref mut Vec<T>) { compiler_vec_append<T>(vec, other); }
 proc vec_split_off<T>(vec: ref mut Vec<T>, at: usize) -> Vec<T> { give compiler_vec_split_off<T>(vec, at); }
 proc vec_drain<T>(vec: ref mut Vec<T>, start: usize, end: usize) -> Iterator<T> { give compiler_vec_drain<T>(vec, start, end); }
-proc vec_retain<T>(vec: ref mut Vec<T>, predicate: proc(ref T) -> bool) { compiler_vec_retain<T>(vec, predicate); }
+proc vec_retain<T>(vec: ref mut Vec<T>, predicate: proc(T) -> bool) { compiler_vec_retain<T>(vec, predicate); }
+proc vec_count<T>(vec: Vec<T>, predicate: proc(T) -> bool) -> usize {
+    let count: usize = 0;
+    let index: usize = 0;
+    while index < vec.length {
+        if predicate(compiler_vec_value_at<T>(vec, index)) {
+            set count = count + 1;
+        }
+        set index = index + 1;
+    }
+    give count;
+}
+proc vec_all<T>(vec: Vec<T>, predicate: proc(T) -> bool) -> bool {
+    give vec_count<T>(vec, predicate) == vec.length;
+}
+proc vec_any<T>(vec: Vec<T>, predicate: proc(T) -> bool) -> bool {
+    give vec_count<T>(vec, predicate) > 0;
+}
 proc vec_dedup<T>(vec: ref mut Vec<T>) { compiler_vec_dedup<T>(vec); }
 proc vec_sort<T>(vec: ref mut Vec<T>) { compiler_vec_sort<T>(vec); }
 proc vec_reverse<T>(vec: ref mut Vec<T>) { compiler_vec_reverse<T>(vec); }

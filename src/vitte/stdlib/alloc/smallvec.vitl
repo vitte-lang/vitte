@@ -5,18 +5,49 @@ export *
 use src/vitte/stdlib/alloc/collections as alloc_collections
 use src/vitte/stdlib/core/option as core_option
 
-type SmallVec<T, N> = alloc_collections.SmallVec<T, N>
+const ALLOC_SMALLVEC_COMPAT_ALIAS: string = "type SmallVec<T, N>"
 
-proc smallvec_new<T, N>() -> SmallVec<T, N> { give alloc_collections.smallvec_new<T, N>(); }
-proc smallvec_len<T, N>(value: SmallVec<T, N>) -> usize { give alloc_collections.smallvec_len<T, N>(value); }
-proc smallvec_capacity<T, N>(value: SmallVec<T, N>) -> usize { give alloc_collections.smallvec_capacity<T, N>(value); }
+form SmallVec<T, N> {
+    inner: alloc_collections.SmallVec<T, N>
+}
+
+proc smallvec_new<T, N>() -> SmallVec<T, N> { give SmallVec<T, N> { inner: alloc_collections.smallvec_new<T, N>() }; }
+proc smallvec_len<T, N>(value: SmallVec<T, N>) -> usize { give alloc_collections.smallvec_len<T, N>(value.inner); }
+proc smallvec_capacity<T, N>(value: SmallVec<T, N>) -> usize { give alloc_collections.smallvec_capacity<T, N>(value.inner); }
 proc smallvec_inline_capacity<T, N>() -> usize { give alloc_collections.smallvec_inline_capacity<T, N>(); }
-proc smallvec_is_empty<T, N>(value: SmallVec<T, N>) -> bool { give alloc_collections.smallvec_is_empty<T, N>(value); }
-proc smallvec_spilled<T, N>(value: SmallVec<T, N>) -> bool { give alloc_collections.smallvec_spilled<T, N>(value); }
-proc smallvec_reserve<T, N>(value: ref mut SmallVec<T, N>, additional: usize) { alloc_collections.smallvec_reserve<T, N>(value, additional); }
-proc smallvec_push<T, N>(value: ref mut SmallVec<T, N>, item: T) { alloc_collections.smallvec_push<T, N>(value, item); }
-proc smallvec_pop<T, N>(value: ref mut SmallVec<T, N>) -> Option<T> { give alloc_collections.smallvec_pop<T, N>(value); }
-proc smallvec_insert<T, N>(value: ref mut SmallVec<T, N>, index: usize, item: T) { alloc_collections.smallvec_insert<T, N>(value, index, item); }
-proc smallvec_remove<T, N>(value: ref mut SmallVec<T, N>, index: usize) -> Option<T> { give alloc_collections.smallvec_remove<T, N>(value, index); }
-proc smallvec_shrink_to_fit<T, N>(value: ref mut SmallVec<T, N>) { alloc_collections.smallvec_shrink_to_fit<T, N>(value); }
-proc smallvec_clear<T, N>(value: ref mut SmallVec<T, N>) { alloc_collections.smallvec_clear<T, N>(value); }
+proc smallvec_is_empty<T, N>(value: SmallVec<T, N>) -> bool { give alloc_collections.smallvec_is_empty<T, N>(value.inner); }
+proc smallvec_spilled<T, N>(value: SmallVec<T, N>) -> bool { give alloc_collections.smallvec_spilled<T, N>(value.inner); }
+proc smallvec_reserve<T, N>(value: ref mut SmallVec<T, N>, additional: usize) { alloc_collections.smallvec_reserve<T, N>(&mut ((*value).inner), additional); }
+proc smallvec_push<T, N>(value: ref mut SmallVec<T, N>, item: T) { alloc_collections.smallvec_push<T, N>(&mut ((*value).inner), item); }
+proc smallvec_pop<T, N>(value: ref mut SmallVec<T, N>) -> Option<T> { give alloc_collections.smallvec_pop<T, N>(&mut ((*value).inner)); }
+proc smallvec_insert<T, N>(value: ref mut SmallVec<T, N>, index: usize, item: T) { alloc_collections.smallvec_insert<T, N>(&mut ((*value).inner), index, item); }
+proc smallvec_remove<T, N>(value: ref mut SmallVec<T, N>, index: usize) -> Option<T> { give alloc_collections.smallvec_remove<T, N>(&mut ((*value).inner), index); }
+proc smallvec_shrink_to_fit<T, N>(value: ref mut SmallVec<T, N>) { alloc_collections.smallvec_shrink_to_fit<T, N>(&mut ((*value).inner)); }
+proc smallvec_clear<T, N>(value: ref mut SmallVec<T, N>) { alloc_collections.smallvec_clear<T, N>(&mut ((*value).inner)); }
+
+proc smallvec_push_many<T, N>(value: ref mut SmallVec<T, N>, items: [T]) {
+    smallvec_reserve<T, N>(value, items.len);
+    let index: usize = 0;
+    while index < items.len {
+        smallvec_push<T, N>(value, items[index]);
+        set index = index + 1;
+    }
+}
+
+proc smallvec_pop_many<T, N>(value: ref mut SmallVec<T, N>, count: usize) {
+    let removed: usize = 0;
+    while removed < count and not smallvec_is_empty<T, N>(*value) {
+        let _ = smallvec_pop<T, N>(value);
+        set removed = removed + 1;
+    }
+}
+
+proc smallvec_truncate<T, N>(value: ref mut SmallVec<T, N>, len: usize) {
+    while smallvec_len<T, N>(*value) > len {
+        let _ = smallvec_pop<T, N>(value);
+    }
+}
+
+proc smallvec_fits_inline<T, N>(additional: usize) -> bool {
+    give additional <= smallvec_inline_capacity<T, N>();
+}

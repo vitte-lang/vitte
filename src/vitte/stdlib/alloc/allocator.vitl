@@ -1,0 +1,216 @@
+space vitte/stdlib/alloc/allocator
+
+export *
+
+use src/vitte/stdlib/core/option as core_option
+
+pick AllocErrorKind {
+    OutOfMemory
+    InvalidLayout
+    CapacityOverflow
+    UnsupportedAlignment
+}
+
+pick GrowthPolicy {
+    Exact
+    Geometric
+    Page
+}
+
+form AllocationLayout {
+    size: usize
+    align: usize
+}
+
+form Allocation {
+    address: usize
+    layout: AllocationLayout
+}
+
+form AllocStats {
+    live_bytes: usize
+    reserved_bytes: usize
+    allocation_count: usize
+    failure_count: usize
+}
+
+form AllocError {
+    kind: AllocErrorKind
+    requested: AllocationLayout
+}
+
+form Allocator {
+    name: string
+    stats: AllocStats
+    policy: GrowthPolicy
+}
+
+proc layout(size: usize, align: usize) -> AllocationLayout {
+    give AllocationLayout { size: size, align: align };
+}
+
+proc layout_empty() -> AllocationLayout {
+    give AllocationLayout { size: 0, align: 1 };
+}
+
+proc layout_is_power_of_two(value: usize) -> bool {
+    give value != 0 and (value & (value - 1)) == 0;
+}
+
+proc layout_is_valid(value: AllocationLayout) -> bool {
+    give layout_is_power_of_two(value.align);
+}
+
+proc layout_array(element: AllocationLayout, count: usize) -> Option<AllocationLayout> {
+    if count != 0 and element.size > (compiler_usize_max() / count) {
+        give none<AllocationLayout>();
+    }
+    give some<AllocationLayout>(AllocationLayout { size: element.size * count, align: element.align });
+}
+
+proc layout_pad_to_align(value: AllocationLayout) -> AllocationLayout {
+    if value.align == 0 {
+        give value;
+    }
+    let remainder: usize = value.size % value.align;
+    if remainder == 0 {
+        give value;
+    }
+    give AllocationLayout { size: value.size + (value.align - remainder), align: value.align };
+}
+
+proc layout_extend(left: AllocationLayout, right: AllocationLayout) -> Option<AllocationLayout> {
+    if not layout_is_valid(left) or not layout_is_valid(right) {
+        give none<AllocationLayout>();
+    }
+    let padded: AllocationLayout = layout_pad_to_align(left);
+    if right.size > compiler_usize_max() - padded.size {
+        give none<AllocationLayout>();
+    }
+    let align: usize = left.align;
+    if right.align > align {
+        set align = right.align;
+    }
+    give some<AllocationLayout>(AllocationLayout { size: padded.size + right.size, align: align });
+}
+
+proc alloc_stats_empty() -> AllocStats {
+    give AllocStats { live_bytes: 0, reserved_bytes: 0, allocation_count: 0, failure_count: 0 };
+}
+
+proc allocator(name: string, policy: GrowthPolicy) -> Allocator {
+    give Allocator { name: name, stats: alloc_stats_empty(), policy: policy };
+}
+
+proc allocator_live_bytes(value: Allocator) -> usize { give value.stats.live_bytes; }
+proc allocator_reserved_bytes(value: Allocator) -> usize { give value.stats.reserved_bytes; }
+proc allocator_allocation_count(value: Allocator) -> usize { give value.stats.allocation_count; }
+proc allocator_failure_count(value: Allocator) -> usize { give value.stats.failure_count; }
+
+proc allocator_remaining(value: Allocator) -> usize {
+    if value.stats.reserved_bytes < value.stats.live_bytes {
+        let empty: usize = 0;
+        give empty;
+    }
+    give value.stats.reserved_bytes - value.stats.live_bytes;
+}
+
+proc allocator_can_fit(value: Allocator, amount: usize) -> bool {
+    give allocator_remaining(value) >= amount;
+}
+
+proc allocator_record_success(value: ref mut Allocator, layout_value: AllocationLayout) {
+    set (*value).stats.live_bytes = (*value).stats.live_bytes + layout_value.size;
+    if (*value).stats.live_bytes > (*value).stats.reserved_bytes {
+        set (*value).stats.reserved_bytes = (*value).stats.live_bytes;
+    }
+    set (*value).stats.allocation_count = (*value).stats.allocation_count + 1;
+}
+
+proc allocator_record_failure(value: ref mut Allocator) {
+    set (*value).stats.failure_count = (*value).stats.failure_count + 1;
+}
+
+proc alloc_error(kind: AllocErrorKind, requested: AllocationLayout) -> AllocError {
+    give AllocError { kind: kind, requested: requested };
+}
+
+proc allocation_null() -> Allocation {
+    give Allocation { address: 0, layout: layout_empty() };
+}
+
+proc allocation_is_null(value: Allocation) -> bool {
+    give value.address == 0;
+}
+
+proc allocation_end(value: Allocation) -> usize {
+    give value.address + value.layout.size;
+}
+
+proc allocation_contains(value: Allocation, address: usize) -> bool {
+    give address >= value.address and address < allocation_end(value);
+}
+
+proc next_capacity(current: usize, required: usize, policy: GrowthPolicy) -> Option<usize> {
+    if required <= current {
+        give some<usize>(current);
+    }
+    if policy == GrowthPolicy.Exact {
+        give some<usize>(required);
+    }
+    if policy == GrowthPolicy.Page {
+        give page_capacity(required);
+    }
+    give geometric_capacity(current, required);
+}
+
+proc geometric_capacity(current: usize, required: usize) -> Option<usize> {
+    let next: usize = current;
+    if next == 0 {
+        let minimum: usize = 4;
+        set next = minimum;
+    }
+    while next < required {
+        if next > compiler_usize_max() / 2 {
+            give none<usize>();
+        }
+        set next = next * 2;
+    }
+    give some<usize>(next);
+}
+
+proc page_capacity(required: usize) -> Option<usize> {
+    let page: usize = 4096;
+    if required > compiler_usize_max() - page {
+        give none<usize>();
+    }
+    let pages: usize = (required + page - 1) / page;
+    give some<usize>(pages * page);
+}
+
+proc try_allocate(value: ref mut Allocator, request: AllocationLayout) -> Option<Allocation> {
+    if not layout_is_valid(request) {
+        allocator_record_failure(value);
+        give none<Allocation>();
+    }
+    let address: usize = compiler_allocator_allocate((*value).name, request.size, request.align);
+    if address == 0 {
+        allocator_record_failure(value);
+        give none<Allocation>();
+    }
+    allocator_record_success(value, request);
+    give some<Allocation>(Allocation { address: address, layout: request });
+}
+
+proc deallocate(value: ref mut Allocator, allocation: Allocation) {
+    if allocation_is_null(allocation) {
+        give;
+    }
+    compiler_allocator_deallocate((*value).name, allocation.address, allocation.layout.size, allocation.layout.align);
+    if allocation.layout.size <= (*value).stats.live_bytes {
+        set (*value).stats.live_bytes = (*value).stats.live_bytes - allocation.layout.size;
+    } else {
+        let empty: usize = 0;
+        set (*value).stats.live_bytes = empty;
+    }
+}

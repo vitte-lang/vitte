@@ -20,3 +20,28 @@ proc rc_downgrade<T>(value: Rc<T>) -> Weak<T> { give compiler_rc_downgrade<T>(va
 proc weak_upgrade<T>(value: Weak<T>) -> Option<Rc<T>> { give compiler_weak_upgrade<T>(value); }
 proc weak_strong_count<T>(value: Weak<T>) -> usize { give compiler_weak_strong_count<T>(value); }
 proc weak_weak_count<T>(value: Weak<T>) -> usize { give compiler_weak_weak_count<T>(value); }
+proc rc_is_unique<T>(value: Rc<T>) -> bool {
+    give rc_strong_count<T>(value) == 1;
+}
+
+proc rc_has_weak<T>(value: Rc<T>) -> bool {
+    give rc_weak_count<T>(value) > 0;
+}
+
+proc rc_ptr_eq<T>(left: Rc<T>, right: Rc<T>) -> bool {
+    give compiler_rc_ptr_eq<T>(left, right);
+}
+
+proc weak_is_expired<T>(value: Weak<T>) -> bool {
+    give is_none<Rc<T>>(weak_upgrade<T>(value));
+}
+
+proc rc_clone_many<T>(value: Rc<T>, count: usize) -> Rc<T> {
+    let out: Rc<T> = value;
+    let index: usize = 0;
+    while index < count {
+        set out = rc_clone<T>(out);
+        set index = index + 1;
+    }
+    give out;
+}

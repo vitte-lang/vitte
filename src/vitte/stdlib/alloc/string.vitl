@@ -45,6 +45,11 @@ proc string_concat(left: String, right: string) -> String {
     string_push_str(&mut out, right);
     give out;
 }
+proc string_clone(value: ref String) -> String {
+    let out: String = string_with_capacity(string_len(*value));
+    string_push_str(&mut out, compiler_string_as_str(*value));
+    give out;
+}
 proc string_repeat(value: ref String, count: usize) -> String { give compiler_string_repeat(value, count); }
 proc string_replace(value: ref String, from: string, to: string) -> String { give compiler_string_replace(value, from, to); }
 proc string_split(value: ref String, needle: string) -> Vec<Utf8View> { give compiler_string_split(value, needle); }
@@ -60,6 +65,41 @@ proc string_slice(value: ref String, start: usize, end: usize) -> Option<Utf8Vie
     }
     give compiler_owned_string_slice(value, start, end);
 }
+proc string_compare_bytes(left: ref String, right: ref String) -> int {
+    let left_bytes: [byte] = string_as_bytes(left);
+    let right_bytes: [byte] = string_as_bytes(right);
+    let index: usize = 0;
+    while index < left_bytes.len and index < right_bytes.len {
+        if left_bytes[index] != right_bytes[index] {
+            give left_bytes[index] as int - right_bytes[index] as int;
+        }
+        set index = index + 1;
+    }
+    if left_bytes.len == right_bytes.len {
+        give 0;
+    }
+    if left_bytes.len < right_bytes.len {
+        give -1;
+    }
+    give 1;
+}
+
+proc string_equals(left: ref String, right: ref String) -> bool {
+    give string_compare_bytes(left, right) == 0;
+}
+
+proc string_byte_at(value: ref String, index: usize) -> Option<byte> {
+    let bytes: [byte] = string_as_bytes(value);
+    if index >= bytes.len {
+        give none<byte>();
+    }
+    give some<byte>(bytes[index]);
+}
+
+proc string_retain_ascii(value: ref mut String) {
+    compiler_string_retain_ascii(value);
+}
+
 proc string_slice_checked(value: ref String, start: usize, end: usize) -> Option<StringSlice> {
     let sliced = string_slice(value, start, end);
     if is_none<Utf8View>(sliced) {
@@ -71,6 +111,9 @@ proc string_reserve(value: ref mut String, additional: usize) { vec_reserve<byte
 proc string_reserve_exact(value: ref mut String, additional: usize) { vec_reserve_exact<byte>(&mut ((*value).bytes), additional); }
 proc string_shrink_to_fit(value: ref mut String) { compiler_string_shrink_to_fit(value); }
 proc string_clear(value: ref mut String) { set (*value).bytes = vec_new<byte>(); }
+proc string_clear_keep_capacity(value: ref mut String) {
+    vec_clear<byte>(&mut ((*value).bytes));
+}
 proc string_truncate(value: ref mut String, new_len: usize) -> bool {
     let view: Utf8View = string_as_utf8_view(value);
     if not is_char_boundary(view, new_len) {
