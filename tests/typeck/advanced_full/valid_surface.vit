@@ -1,0 +1,39 @@
+space tests/typeck/advanced_full/valid
+
+form Box[T] {
+  value: T
+}
+
+form Point {
+  x: int
+}
+
+pick Maybe[T] {
+  None
+  Some(T)
+}
+
+trait Show {
+  type Output = string;
+  proc show(self: Self) -> string;
+}
+
+impl Show for Point {
+  type Output = string;
+
+  proc show(self: Self) -> string {
+    give "point";
+  }
+}
+
+proc identity[T](value: T) -> T {
+  give value;
+}
+
+proc main() -> int {
+  let point = Point { x: 1 };
+  let boxed: Box[Point] = Box[Point] { value: point };
+  let text: string = boxed.value.show();
+  let number: int = identity[int](1);
+  give number;
+}

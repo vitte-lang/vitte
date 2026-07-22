@@ -22,16 +22,20 @@ SECTION = '''
 
 def main() -> int:
     s = MATRIX.read_text(encoding="utf-8")
-    marker = "// Platform Support:"
     if SECTION.strip() in s:
         print("[ffi-abi] matrix ABI section already present")
         return 0
-    idx = s.find(marker)
-    if idx < 0:
-        raise SystemExit("platform support marker not found in matrix")
-    insert_at = s.find("\n\n// ============================================================================\n// INTEGRATION CHECKLIST", idx)
+    markers = (
+        "\n\n// ============================================================================\n// INTEGRATION CHECKLIST",
+        "\nconst STDLIB_COVERAGE_MATRIX_VERSION",
+    )
+    insert_at = -1
+    for marker in markers:
+        insert_at = s.find(marker)
+        if insert_at >= 0:
+            break
     if insert_at < 0:
-        raise SystemExit("integration checklist marker not found")
+        raise SystemExit("matrix insertion marker not found")
     out = s[:insert_at] + "\n" + SECTION + s[insert_at:]
     MATRIX.write_text(out, encoding="utf-8")
     print("[ffi-abi] matrix ABI coverage section inserted")

@@ -1180,6 +1180,47 @@ type-system-advanced-20:
 	@test -f target/type_system/advanced_20/snapshots/json.snapshot
 	@test -f target/type_system/advanced_20/snapshots/lsp.snapshot
 
+.PHONY: typeck-advanced-inference
+typeck-advanced-inference:
+	@python3 tools/type_system_advanced_gate.py --group inference
+
+.PHONY: typeck-generics-gate
+typeck-generics-gate: type-system-advanced-20
+	@python3 tools/type_system_advanced_gate.py --group generics
+
+.PHONY: typeck-traits-gate
+typeck-traits-gate:
+	@python3 tools/type_system_advanced_gate.py --group traits
+
+.PHONY: typeck-coercions-gate
+typeck-coercions-gate:
+	@python3 tools/type_system_advanced_gate.py --group coercions
+
+.PHONY: typeck-lifetimes-gate
+typeck-lifetimes-gate: borrowck-gate
+	@python3 tools/type_system_advanced_gate.py --group lifetimes
+
+.PHONY: typeck-patterns-gate
+typeck-patterns-gate:
+	@python3 tools/type_system_advanced_gate.py --group patterns
+
+.PHONY: typeck-ffi-abi-gate
+typeck-ffi-abi-gate: ffi-abi-gate
+	@python3 tools/type_system_advanced_gate.py --group ffi_abi
+
+.PHONY: typeck-diagnostics-gate
+typeck-diagnostics-gate: diagnostic-quality
+	@python3 tools/type_system_advanced_gate.py --group diagnostics
+
+.PHONY: typeck-fuzz-max
+typeck-fuzz-max: typeck-differential-test typeck-fuzz-test
+	@python3 tools/type_system_advanced_gate.py --group fuzz
+
+.PHONY: type-system-advanced-gate
+type-system-advanced-gate: typeck-advanced-inference typeck-generics-gate typeck-traits-gate typeck-coercions-gate typeck-lifetimes-gate typeck-patterns-gate typeck-ffi-abi-gate typeck-diagnostics-gate typeck-fuzz-max
+	@python3 tools/type_system_advanced_gate.py --group modules
+	@python3 tools/type_system_advanced_gate.py --group all
+
 .PHONY: typeck-gate
 typeck-gate: typeck-analysis-test typeck-fixtures typeck-snapshots typeck-coverage type-system-advanced-20 typeck-differential-test typeck-fuzz-test
 	@python3 tools/typeck_surface_audit.py
@@ -1247,7 +1288,7 @@ parser-lexer-fuzz-smoke:
 	@python3 tools/parser_lexer_fuzz_smoke.py --cases 80 --seed 1337
 
 .PHONY: core-language-gate
-core-language-gate: grammar-check grammar-test core-language-test parser-recovery-golden grammar-coverage lexer-parser-coverage-100 frontend-lexer-test frontend-ast-test hir-lowering-test mir-gate ir-gate sema-gate const-eval-analysis-test typeck-gate borrowck-gate frontend-token-consistency strict-core-guard-test core-forbidden-syntax-lint core-ir-golden-snapshots core-semantic-success core-semantic-snapshots diagnostics-locales-lint
+core-language-gate: grammar-check grammar-test core-language-test parser-recovery-golden grammar-coverage lexer-parser-coverage-100 frontend-lexer-test frontend-ast-test hir-lowering-test mir-gate ir-gate sema-gate const-eval-analysis-test typeck-gate type-system-advanced-gate borrowck-gate frontend-token-consistency strict-core-guard-test core-forbidden-syntax-lint core-ir-golden-snapshots core-semantic-success core-semantic-snapshots diagnostics-locales-lint
 
 .PHONY: core-semantic-success-portable
 core-semantic-success-portable:
@@ -2216,6 +2257,16 @@ help:
 	@echo "  make grammar-check fail if grammar generated artifacts are out of sync"
 	@echo "  make grammar-test validate grammar corpus + diagnostics snapshots"
 	@echo "  make lexer-parser-coverage-100 enforce 100 frontend syntax/parser/diagnostic obligations"
+	@echo "  make typeck-advanced-inference enforce advanced inference/type-flow evidence"
+	@echo "  make typeck-generics-gate enforce advanced generics evidence"
+	@echo "  make typeck-traits-gate enforce trait/method/coherence evidence"
+	@echo "  make typeck-coercions-gate enforce coercion/cast evidence"
+	@echo "  make typeck-lifetimes-gate enforce ownership/borrow/lifetime evidence"
+	@echo "  make typeck-patterns-gate enforce pattern/exhaustiveness evidence"
+	@echo "  make typeck-ffi-abi-gate enforce typeck ABI/FFI evidence"
+	@echo "  make typeck-diagnostics-gate enforce typeck diagnostic quality evidence"
+	@echo "  make typeck-fuzz-max run differential and fuzz type-system checks"
+	@echo "  make type-system-advanced-gate enforce the 81-point advanced type-system matrix"
 	@echo "  make core-language-test validate the focused core language corpus"
 	@echo "  make core-semantic-success validate focused passing core semantic examples"
 	@echo "  make core-semantic-snapshots validate focused core semantic diagnostics"
@@ -2255,7 +2306,7 @@ help:
 	@echo "  make native-binaries-doctor report local compiler binary executability"
 	@echo "  make grammar-docs regenerate railroad SVG diagrams"
 	@echo "  make grammar-gate run grammar-check + grammar-test + lexer-parser-coverage-100"
-	@echo "  make core-language-gate run grammar-check + core-language-test + core semantic gates + diagnostics locales lint"
+	@echo "  make core-language-gate run grammar-check + core-language-test + type-system-advanced-gate + core semantic gates + diagnostics locales lint"
 	@echo "  make core-release-gate run the protected language contract gate for release-facing work"
 	@echo "  make formatter-gate enforce formatter snapshots and --check"
 	@echo "  make release-gate-90-119 enforce package/LSP/formatter release evidence"
@@ -2627,7 +2678,7 @@ typeck-fuzz-test:
 	@python3 tools/typeck_fuzz_test.py
 
 
-type-system-gate: typeck-gate
+type-system-gate: typeck-gate type-system-advanced-gate
 
 
 .PHONY: memory-model-gate
