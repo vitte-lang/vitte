@@ -1,0 +1,71 @@
+name: installer-real-platforms
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Target to run: all, debian, raspberry, windows, macos, solaris"
+        required: true
+        default: "all"
+
+jobs:
+  validate-matrix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Validate real platform installer matrix
+        run: make installer-real-platforms-check
+
+  debian-hosted-smoke:
+    if: ${{ github.event.inputs.target == 'all' || github.event.inputs.target == 'debian' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Debian package
+        run: VERSION=0.1.0 OUT_DIR=target/real-ci/debian ARCH=amd64 RELEASE_READINESS_GATE=0 PACKAGE_AUDIT=0 scripts/build-linux-debs.sh
+      - name: Install package
+        run: sudo dpkg -i target/real-ci/debian/vitte_0.1.0_amd64.deb
+      - name: Run post-install smoke
+        run: scripts/ci/real-install-smoke.sh
+
+  posix-self-hosted-smoke:
+    if: ${{ github.event.inputs.target == 'all' || github.event.inputs.target == 'raspberry' || github.event.inputs.target == 'macos' || github.event.inputs.target == 'solaris' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: raspberrypi-armv6
+          - label: raspberrypi-armv7
+          - label: raspberrypi-aarch64
+          - label: macos-x86_64
+          - label: macos-arm64
+          - label: solaris-amd64
+          - label: solaris-i386
+    runs-on: [self-hosted, vitte, "${{ matrix.label }}"]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run post-install smoke
+        run: scripts/ci/real-install-smoke.sh
+
+  windows-self-hosted-smoke:
+    if: ${{ github.event.inputs.target == 'all' || github.event.inputs.target == 'windows' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: windows-xp-i386
+          - label: windows-7-i386
+          - label: windows-10-amd64
+          - label: windows-11-amd64
+    runs-on: [self-hosted, vitte, "${{ matrix.label }}"]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run cmd post-install smoke
+        shell: cmd
+        run: scripts\ci\real-install-smoke.cmd
+      - name: Run PowerShell post-install smoke when available
+        shell: cmd
+        run: where powershell >nul 2>nul && powershell -NoProfile -ExecutionPolicy Bypass -File scripts\ci\real-install-smoke.ps1 || echo PowerShell unavailable; cmd smoke already passed

@@ -1673,6 +1673,10 @@ pkg-matrix:
 installers-check:
 	@tools/installers_check.sh
 
+.PHONY: installer-real-platforms-check
+installer-real-platforms-check:
+	@python3 tools/installer_real_platforms_check.py
+
 .PHONY: pkg-cli-integration
 pkg-cli-integration:
 	@tools/pkg_cli_integration.sh
@@ -2268,6 +2272,7 @@ help:
 	@echo "  make pkg-debian-min build Debian .deb installer (PACKAGE_PROFILE=minimal, PKG_VERSION=$(PKG_VERSION))"
 	@echo "  make pkg-debian-audit audit generated Debian .deb content and largest files"
 	@echo "  make pkg-debian-install build and install Debian .deb locally via dpkg"
+	@echo "  make installer-real-platforms-check validate real install matrix and post-install smoke contract"
 	@echo "  make pkg-macos build macOS installer pkg (PKG_VERSION=$(PKG_VERSION))"
 	@echo "  make macos-universal-bin build target/universal/vitte (arm64 + x86_64 via lipo)"
 	@echo "  make pkg-macos-universal build macOS universal installer pkg (vitte-$(PKG_VERSION)-universal.pkg)"

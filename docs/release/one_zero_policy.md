@@ -9,6 +9,7 @@ Required green gates:
 - stdlib: `make stdlib-gate`
 - backend: `make backend-gate`
 - packaging: `scripts_build/build-all-installers.sh all`
+- real installation platforms: `STRICT_REAL_INSTALLERS=1 make installer-real-platforms-check`
 - CI platforms: `.github/workflows/ci.yml` and `.github/workflows/bootstrap.yml`
 
 Versioning:

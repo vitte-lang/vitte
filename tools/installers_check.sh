@@ -20,6 +20,7 @@ done
 "$ROOT_DIR/tools/scripts_build_checksum_fallback_test.sh"
 "$ROOT_DIR/tools/scripts_build_reproducibility_test.sh"
 "$ROOT_DIR/tools/scripts_build_arch_matrix_test.sh"
+python3 "$ROOT_DIR/tools/installer_real_platforms_check.py"
 
 if command -v shellcheck >/dev/null 2>&1; then
   shellcheck "$ROOT_DIR"/scripts_build/*.sh "$ROOT_DIR"/tools/scripts_build_*_test.sh
