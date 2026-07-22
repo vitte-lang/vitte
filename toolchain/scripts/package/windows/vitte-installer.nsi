@@ -16,7 +16,7 @@
 ; Configuration
 ; ============================================================
 
-!define VERSION "2.1.1"
+!define VERSION "0.1.0"
 !define PRODUCT_NAME "Vitte"
 !define PRODUCT_DESCRIPTION "Vitte Programming Language Compiler"
 !define COMPANY_NAME "Vitte Authors"
@@ -309,7 +309,7 @@ FunctionEnd
 ; Installer Information
 ; ============================================================
 
-VIProductVersion "2.1.1.0"
+VIProductVersion "0.1.0.0"
 VIAddVersionKey /LANG=${LANG_ENGLISH} "ProductName" "Vitte Programming Language"
 VIAddVersionKey /LANG=${LANG_ENGLISH} "CompanyName" "${COMPANY_NAME}"
 VIAddVersionKey /LANG=${LANG_ENGLISH} "ProductVersion" "${VERSION}"

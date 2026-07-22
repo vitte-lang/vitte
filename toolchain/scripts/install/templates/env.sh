@@ -25,10 +25,11 @@ if [ -z "${VITTE_LANG:-}" ]; then
   esac
 fi
 
-# Best effort: expose local bin first if not already present.
-case ":${PATH}:" in
-  *":/usr/local/bin:"*) ;;
-  *) export PATH="/usr/local/bin:${PATH}" ;;
-esac
+# Keep the package command path deterministic for shells that source this file.
+_vitte_env_bin="/usr/local/bin"
+if [ -x "$_vitte_env_bin/vitte" ]; then
+  export PATH="$_vitte_env_bin${PATH:+:$PATH}"
+fi
 
+unset _vitte_env_bin
 unset _vitte_env_root

@@ -110,9 +110,9 @@ make help
 
 ## Packaging
 
-- `make pkg-debian`: build Debian .deb installer (PACKAGE_PROFILE=full, PKG_VERSION=2.1.1)
+- `make pkg-debian`: build Debian .deb installer (PACKAGE_PROFILE=full, PKG_VERSION=0.1.0)
 - `make pkg-debian-audit`: audit generated Debian .deb content and largest files
-- `make pkg-macos`: build macOS installer pkg (PKG_VERSION=2.1.1)
+- `make pkg-macos`: build macOS installer pkg (PKG_VERSION=0.1.0)
 - `make macos-universal-bin`: build target/universal/vitte (arm64 + x86_64 via lipo)
-- `make pkg-macos-universal`: build macOS universal installer pkg (vitte-2.1.1-universal.pkg)
+- `make pkg-macos-universal`: build macOS universal installer pkg (vitte-0.1.0-universal.pkg)
 - `make release-check`: run build + core-release-gate + ci-fast + ci-completions + pkg build

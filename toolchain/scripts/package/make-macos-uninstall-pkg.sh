@@ -10,7 +10,7 @@ set -euo pipefail
 
 ROOT_DIR="${ROOT_DIR:-$(cd "$(dirname "$0")/../../.." && pwd)}"
 PKG_VERSION_FILE="${PKG_VERSION_FILE:-$ROOT_DIR/toolchain/scripts/package/PACKAGE_VERSION}"
-DEFAULT_VERSION="$(tr -d ' \r\n' < "$PKG_VERSION_FILE" 2>/dev/null || echo 2.1.1)"
+DEFAULT_VERSION="$(tr -d ' \r\n' < "$PKG_VERSION_FILE" 2>/dev/null || echo 0.1.0)"
 VERSION="${VERSION:-$DEFAULT_VERSION}"
 IDENTIFIER="${IDENTIFIER:-org.vitte.toolchain.uninstall}"
 OUT_DIR="${OUT_DIR:-$ROOT_DIR/pkgout}"

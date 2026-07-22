@@ -9,7 +9,7 @@ set -euo pipefail
 
 ROOT_DIR="${ROOT_DIR:-$(cd "$(dirname "$0")/../../.." && pwd)}"
 PKG_VERSION_FILE="${PKG_VERSION_FILE:-$ROOT_DIR/toolchain/scripts/package/PACKAGE_VERSION}"
-DEFAULT_VERSION="$(tr -d ' \r\n' < "$PKG_VERSION_FILE" 2>/dev/null || echo 2.1.1)"
+DEFAULT_VERSION="$(tr -d ' \r\n' < "$PKG_VERSION_FILE" 2>/dev/null || echo 0.1.0)"
 VERSION="${VERSION:-$DEFAULT_VERSION}"
 IDENTIFIER="${IDENTIFIER:-org.vitte.toolchain}"
 OUT_DIR="${OUT_DIR:-$ROOT_DIR/pkgout}"
@@ -529,10 +529,16 @@ append_managed_block() {
   local begin_marker="$2"
   local end_marker="$3"
   local body="$4"
+  local tmp_file="$file_path.vitte-pkg.$$"
   mkdir -p "$(dirname "$file_path")"
   touch "$file_path"
   if grep -Fq "$begin_marker" "$file_path" 2>/dev/null; then
-    return 0
+    awk -v begin="$begin_marker" -v end="$end_marker" '
+      $0 == begin { skipping = 1; next }
+      $0 == end { skipping = 0; next }
+      skipping != 1 { print }
+    ' "$file_path" > "$tmp_file"
+    mv "$tmp_file" "$file_path"
   fi
   {
     printf '\n%s\n' "$begin_marker"
@@ -552,16 +558,18 @@ install_user_shell_support() {
   shell_path="$(dscl . -read "/Users/$user_name" UserShell 2>/dev/null | awk '{print $2}' || true)"
   shell_name="$(basename "$shell_path")"
 
-  local sh_block='export VITTE_ROOT="/usr/local/share/vitte"
-case ":${PATH}:" in
-  *":/usr/local/bin:"*) ;;
-  *) export PATH="/usr/local/bin:${PATH}" ;;
-esac'
+  local sh_block='export VITTE_ROOT="${VITTE_ROOT:-/usr/local/share/vitte}"
+_vitte_pkg_bin="/usr/local/bin"
+if [ -x "$_vitte_pkg_bin/vitte" ]; then
+  export PATH="$_vitte_pkg_bin${PATH:+:$PATH}"
+fi
+unset _vitte_pkg_bin'
 
   case "$shell_name" in
     zsh)
       append_managed_block "$home_dir/.zshrc" "# >>> vitte pkg shell >>>" "# <<< vitte pkg shell <<<" "$sh_block"
-      chown "$user_name" "$home_dir/.zshrc" >/dev/null 2>&1 || true
+      append_managed_block "$home_dir/.zprofile" "# >>> vitte pkg shell >>>" "# <<< vitte pkg shell <<<" "$sh_block"
+      chown "$user_name" "$home_dir/.zshrc" "$home_dir/.zprofile" >/dev/null 2>&1 || true
       ;;
     bash)
       append_managed_block "$home_dir/.bashrc" "# >>> vitte pkg shell >>>" "# <<< vitte pkg shell <<<" "$sh_block"
@@ -572,15 +580,14 @@ esac'
       mkdir -p "$home_dir/.config/fish/conf.d"
       cat > "$home_dir/.config/fish/conf.d/vitte.fish" <<'FEOF'
 set -gx VITTE_ROOT /usr/local/share/vitte
-if not contains /usr/local/bin $PATH
-  set -gx PATH /usr/local/bin $PATH
-end
+set -gx PATH /usr/local/bin $PATH
 FEOF
       chown -R "$user_name" "$home_dir/.config/fish" >/dev/null 2>&1 || true
       ;;
     *)
       append_managed_block "$home_dir/.zshrc" "# >>> vitte pkg shell >>>" "# <<< vitte pkg shell <<<" "$sh_block"
-      chown "$user_name" "$home_dir/.zshrc" >/dev/null 2>&1 || true
+      append_managed_block "$home_dir/.profile" "# >>> vitte pkg shell >>>" "# <<< vitte pkg shell <<<" "$sh_block"
+      chown "$user_name" "$home_dir/.zshrc" "$home_dir/.profile" >/dev/null 2>&1 || true
       ;;
   esac
 }

@@ -41,7 +41,7 @@ EMACS_DIR    ?= $(USER_HOME)/.emacs.d
 NANO_DIR     ?= $(USER_HOME)/.config/nano
 LEGACY_ALLOWLIST_BUDGET ?= 5
 PKG_VERSION_FILE ?= toolchain/scripts/package/PACKAGE_VERSION
-PKG_VERSION ?= $(shell tr -d ' \r\n' < $(PKG_VERSION_FILE) 2>/dev/null || echo 2.1.1)
+PKG_VERSION ?= $(shell tr -d ' \r\n' < $(PKG_VERSION_FILE) 2>/dev/null || echo 0.1.0)
 
 FORMAT_TOOL  ?= true
 
@@ -99,7 +99,7 @@ all: build
 # Install
 # ------------------------------------------------------------
 
-.PHONY: install install-bin install-editors install-geany uninstall-geany install-debian install-debian-2.1.1
+.PHONY: install install-bin install-editors install-geany uninstall-geany install-debian install-debian-0.1.0
 install: build install-bin install-editors
 
 install-bin:
@@ -138,7 +138,7 @@ uninstall-geany:
 install-debian:
 	@$(MAKE) pkg-debian-install
 
-install-debian-2.1.1: install-debian
+install-debian-0.1.0: install-debian
 
 # ------------------------------------------------------------
 # Build
@@ -2152,7 +2152,7 @@ help:
 	@echo "  make build-pgo-use build release binary using merged PGO profile"
 	@echo "  make install    build + install binary + Vim/Emacs/Nano/Geany syntax files"
 	@echo "  make install-debian install vitte on Debian/Ubuntu (deps + build + install via installer profile PKG_VERSION=$(PKG_VERSION))"
-	@echo "  make install-debian-2.1.1 compatibility alias for install-debian"
+	@echo "  make install-debian-0.1.0 compatibility alias for install-debian"
 	@echo "  make install-bin install only the vitte binary (PREFIX=$(PREFIX))"
 	@echo "  make install-editors install syntax configs for Vim/Emacs/Nano/Geany in HOME (override USER_HOME=..., PREFIX=...)"
 	@echo "  make install-geany install Geany Vitte config only (VITTE_GEANY_WD_MODE=file|project|current)"
