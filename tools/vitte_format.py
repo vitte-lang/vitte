@@ -12,6 +12,7 @@ DEFAULT_ROOTS = [
     ROOT / "tests",
     ROOT / "toolchain",
 ]
+SUPPORTED_EDITIONS = {"2024", "2026"}
 
 
 def candidate_files() -> list[Path]:
@@ -41,9 +42,38 @@ def changed_files() -> list[Path]:
     return sorted(files)
 
 
-def format_text(text: str) -> str:
-    lines = text.splitlines()
-    formatted = "\n".join(line.rstrip() for line in lines)
+def normalize_imports(lines: list[str]) -> list[str]:
+    normalized: list[str] = []
+    block: list[str] = []
+
+    def flush() -> None:
+        if not block:
+            return
+        normalized.extend(sorted(block, key=str.lower))
+        block.clear()
+
+    for line in lines:
+        stripped = line.strip()
+        if line.startswith("use ") and stripped.endswith("}") is False and "{" not in stripped:
+            block.append(line)
+            continue
+        flush()
+        normalized.append(line)
+    flush()
+    return normalized
+
+
+def preserve_comments(text: str) -> str:
+    return text
+
+
+def format_text(text: str, *, edition: str = "2026") -> str:
+    if edition not in SUPPORTED_EDITIONS:
+        raise ValueError(f"unsupported Vitte formatter edition: {edition}")
+    text = preserve_comments(text)
+    lines = [line.rstrip() for line in text.splitlines()]
+    lines = normalize_imports(lines)
+    formatted = "\n".join(lines)
     return formatted + "\n"
 
 
@@ -51,6 +81,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Format Vitte source files deterministically")
     parser.add_argument("--check", action="store_true", help="fail if formatting would change a file")
     parser.add_argument("--changed", action="store_true", help="only format/check changed and untracked Vitte files")
+    parser.add_argument("--edition", default="2026", choices=sorted(SUPPORTED_EDITIONS), help="stable formatter edition")
     parser.add_argument("paths", nargs="*", help="specific files to format/check")
     args = parser.parse_args()
 
@@ -65,7 +96,7 @@ def main() -> int:
         if not path.exists() or path.suffix not in {".vit", ".vitl"}:
             continue
         original = path.read_text(encoding="utf-8")
-        formatted = format_text(original)
+        formatted = format_text(original, edition=args.edition)
         if formatted != original:
             changed.append(path)
             if not args.check:

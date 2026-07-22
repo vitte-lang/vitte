@@ -24,6 +24,14 @@ REQUIRED_SYMBOLS = [
     'incremental_compilation',
     'parallel_build_graph',
     'build_graph_parallel_enabled',
+    'package_graph_explain',
+    'package_graph_explain_enabled',
+    'workspace_build_selective',
+    'workspace_build_selective_enabled',
+    'workspace_test_all',
+    'workspace_test_all_enabled',
+    'workspace_publish_dry_run',
+    'workspace_publish_dry_run_enabled',
 ]
 
 if not MOD.exists():

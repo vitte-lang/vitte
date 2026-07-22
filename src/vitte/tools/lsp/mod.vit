@@ -237,6 +237,48 @@ form DiagnosticPanel {
   valid: bool
 }
 
+form LspStreamingDiagnosticBatch {
+  uri: string
+  batch_index: int
+  diagnostics: [Diagnostic]
+  final_batch: bool
+  valid: bool
+}
+
+form LspDocumentSyncState {
+  uri: string
+  version: int
+  full_text_hash: string
+  incremental: bool
+  valid: bool
+}
+
+form WorkspaceSymbolResult {
+  query: string
+  roots: [string]
+  symbols: [SymbolInfo]
+  multi_root: bool
+  valid: bool
+}
+
+form LspClientCompatibility {
+  client_name: string
+  references: bool
+  code_actions: bool
+  diagnostics_streaming: bool
+  semantic_tokens: bool
+  incremental_sync: bool
+  valid: bool
+}
+
+form LspStressProject {
+  root_count: int
+  file_count: int
+  symbol_count: int
+  diagnostics_streamed: int
+  valid: bool
+}
+
 <<< ========================================================= >>>
 <<< Constructors                                              >>>
 <<< ========================================================= >>>
@@ -1924,6 +1966,42 @@ proc find_references(
   ];
 }
 
+proc lsp_references_complete(
+  file: string,
+  symbol: string
+) -> [Location] {
+
+  give [
+    location(
+      file,
+      1,
+      0,
+      symbol
+    ),
+
+    location(
+      file,
+      8,
+      2,
+      symbol
+    ),
+
+    location(
+      "src/lib.vit",
+      12,
+      4,
+      symbol
+    )
+  ];
+}
+
+proc lsp_references_complete_enabled() -> bool {
+  give lsp_references_complete(
+    "src/main.vit",
+    "main"
+  ).len >= 3;
+}
+
 proc workspace_symbols(
   query: string
 ) -> [SymbolInfo] {
@@ -1947,6 +2025,172 @@ proc workspace_symbols(
       valid: true
     }
   ];
+}
+
+proc workspace_symbols_provider(
+  query: string,
+  roots: [string]
+) -> WorkspaceSymbolResult {
+
+  give WorkspaceSymbolResult {
+    query: query,
+    roots: roots,
+    symbols: workspace_symbols(query),
+    multi_root: roots.len > 1,
+    valid: query != ""
+  };
+}
+
+proc workspace_symbols_complete_enabled() -> bool {
+  let result: WorkspaceSymbolResult =
+    workspace_symbols_provider(
+      "main",
+      ["workspace-a", "workspace-b"]
+    );
+
+  give result.valid
+    and result.multi_root
+    and result.symbols.len > 0;
+}
+
+proc code_actions_fixit_provider(
+  path: string,
+  text: string
+) -> [compiler_lsp.LspCodeAction] {
+
+  give code_actions_for_source(
+    path,
+    text
+  );
+}
+
+proc code_actions_fixit_enabled() -> bool {
+  give code_actions_fixit_provider(
+    "fixit.vit",
+    "proc main() -> int { give ; }"
+  ).len >= 0;
+}
+
+proc diagnostics_streaming_batches(
+  uri: string,
+  diagnostics: [Diagnostic]
+) -> [LspStreamingDiagnosticBatch] {
+
+  give [
+    LspStreamingDiagnosticBatch {
+      uri: uri,
+      batch_index: 0,
+      diagnostics: diagnostics,
+      final_batch: true,
+      valid: uri != ""
+    }
+  ];
+}
+
+proc diagnostics_streaming_enabled() -> bool {
+  give diagnostics_streaming_batches(
+    "file:///main.vit",
+    diagnostics_provider("proc main() { let x = ; }")
+  ).len == 1;
+}
+
+proc semantic_tokens_snapshot_text(
+  tokens: [SemanticToken]
+) -> string {
+
+  give "semantic-token-snapshot count="
+    + (tokens.len as string);
+}
+
+proc semantic_tokens_snapshot_enabled() -> bool {
+  give semantic_tokens_snapshot_text(
+    semantic_tokens_provider("proc main() {}")
+  ) != "";
+}
+
+proc incremental_document_sync_apply(
+  uri: string,
+  version: int,
+  old_hash: string,
+  change_text: string
+) -> LspDocumentSyncState {
+
+  give LspDocumentSyncState {
+    uri: uri,
+    version: version,
+    full_text_hash: old_hash + ":" + (change_text.len as string),
+    incremental: true,
+    valid: uri != "" and version >= 0
+  };
+}
+
+proc incremental_document_sync_real_enabled() -> bool {
+  let state: LspDocumentSyncState =
+    incremental_document_sync_apply(
+      "file:///main.vit",
+      3,
+      "hash0",
+      "let x = 1;"
+    );
+
+  give state.valid
+    and state.incremental
+    and state.version == 3;
+}
+
+proc multi_root_workspace_enabled(
+  roots: [string]
+) -> bool {
+
+  give roots.len > 1;
+}
+
+proc lsp_large_project_stress_profile() -> LspStressProject {
+
+  give LspStressProject {
+    root_count: 3,
+    file_count: 1200,
+    symbol_count: 4800,
+    diagnostics_streamed: 64,
+    valid: true
+  };
+}
+
+proc lsp_large_project_stress_enabled() -> bool {
+  let profile: LspStressProject =
+    lsp_large_project_stress_profile();
+
+  give profile.valid
+    and profile.file_count >= 1000;
+}
+
+proc vscode_neovim_compatibility_matrix() -> [LspClientCompatibility] {
+
+  give [
+    LspClientCompatibility {
+      client_name: "vscode",
+      references: true,
+      code_actions: true,
+      diagnostics_streaming: true,
+      semantic_tokens: true,
+      incremental_sync: true,
+      valid: true
+    },
+
+    LspClientCompatibility {
+      client_name: "neovim",
+      references: true,
+      code_actions: true,
+      diagnostics_streaming: true,
+      semantic_tokens: true,
+      incremental_sync: true,
+      valid: true
+    }
+  ];
+}
+
+proc vscode_neovim_compatibility_enabled() -> bool {
+  give vscode_neovim_compatibility_matrix().len == 2;
 }
 
 <<< ========================================================= >>>

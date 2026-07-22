@@ -198,6 +198,12 @@ format:
 format-check:
 	@python3 tools/vitte_format.py --check --changed
 
+.PHONY: formatter-gate
+formatter-gate:
+	@python3 tools/formatter/run_checks.py
+	@python3 tools/formatter/generate_snapshots.py
+	@python3 tools/vitte_format.py --check --changed
+
 .PHONY: vitte-lint
 vitte-lint:
 	@python3 tools/vitte_lint.py --check
@@ -2220,6 +2226,8 @@ help:
 	@echo "  make grammar-gate run grammar-check + grammar-test"
 	@echo "  make core-language-gate run grammar-check + core-language-test + core semantic gates + diagnostics locales lint"
 	@echo "  make core-release-gate run the protected language contract gate for release-facing work"
+	@echo "  make formatter-gate enforce formatter snapshots and --check"
+	@echo "  make release-gate-90-119 enforce package/LSP/formatter release evidence"
 	@echo "  make keywords-normalize apply strict keyword template on docs/book/chapters/keywords/*.md"
 	@echo "  make keywords-lint validate keyword quality sections/diagnostics/links/score"
 	@echo "  make docs-serve serve docs/ locally over HTTP on http://127.0.0.1:8000 for search and smoke checks"
@@ -2493,6 +2501,10 @@ package-manager-gate:
 	@test -f target/package_manager/build_cache.db
 	@test -f target/package_manager/cross_targets.txt
 	@test -f target/package_manager/incremental_status.txt
+	@test -f target/package_manager/package_graph_explain.json
+	@test -f target/package_manager/workspace_build_selective.json
+	@test -f target/package_manager/workspace_test_all.json
+	@test -f target/package_manager/workspace_publish_dry_run.json
 	@test -f target/reports/package_manager_coverage.md
 
 
@@ -2505,6 +2517,15 @@ lsp-gate:
 	@test -f target/lsp/diagnostics_demo.json
 	@test -f target/lsp/definition_demo.json
 	@test -f target/lsp/references_demo.json
+	@test -f target/lsp/references_complete_demo.json
+	@test -f target/lsp/code_actions_fixit_demo.json
+	@test -f target/lsp/diagnostics_streaming_demo.json
+	@test -f target/lsp/semantic_tokens.snapshot.txt
+	@test -f target/lsp/workspace_symbols_demo.json
+	@test -f target/lsp/incremental_sync_demo.json
+	@test -f target/lsp/multi_root_workspace_demo.json
+	@test -f target/lsp/large_project_stress_demo.json
+	@test -f target/lsp/client_compat_vscode_neovim.json
 	@test -f target/reports/lsp_coverage.md
 
 
@@ -2730,3 +2751,12 @@ package-tooling-81-89:
 .PHONY: language-release-90-100
 language-release-90-100:
 	@python3 tools/language_release_90_100_check.py
+
+
+.PHONY: package-lsp-format-96-119
+package-lsp-format-96-119: package-manager-gate lsp-gate formatter-gate
+	@python3 tools/package_lsp_format_96_119_check.py
+
+
+.PHONY: release-gate-90-119
+release-gate-90-119: language-release-90-100 package-tooling-81-89 package-lsp-format-96-119

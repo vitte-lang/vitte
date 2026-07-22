@@ -206,6 +206,57 @@ form BuildGraph {
   valid: bool
 }
 
+form PackageGraphExplanation {
+  root: string
+
+  node_count: u64
+  edge_count: u64
+
+  cycles_detected: bool
+
+  summary: string
+
+  valid: bool
+}
+
+form WorkspaceBuildSelection {
+  workspace_root: string
+
+  selected_members: [string]
+
+  include_dependencies: bool
+
+  package_count: u64
+
+  valid: bool
+}
+
+form WorkspaceTestPlan {
+  workspace_root: string
+
+  members: [string]
+
+  test_all: bool
+
+  command_count: u64
+
+  valid: bool
+}
+
+form PublishDryRunPlan {
+  package_name: string
+
+  version: string
+
+  registry: string
+
+  files_checked: u64
+
+  would_publish: bool
+
+  valid: bool
+}
+
 <<< ========================================================= >>>
 <<< Dependency helpers                                        >>>
 <<< ========================================================= >>>
@@ -607,6 +658,29 @@ proc workspace_multi_package_enabled() -> bool {
 
   give ws.valid
     and ws.package_count >= 2;
+}
+
+proc workspace_member_names(
+  ws: Workspace
+) -> [string] {
+
+  let names: [string] = [];
+
+  let i: int = 0;
+
+  while i < ws.members.len {
+
+    set names =
+      names
+      + [
+          ws.members[i].name
+        ];
+
+    set i =
+      i + 1;
+  }
+
+  give names;
 }
 
 <<< ========================================================= >>>
@@ -1073,6 +1147,217 @@ proc build_graph_parallel_enabled() -> bool {
   give graph.valid
     and graph.parallel
     and graph.nodes.len >= 2;
+}
+
+proc package_graph_explain(
+  graph: BuildGraph
+) -> PackageGraphExplanation {
+
+  let edges: u64 = 0;
+
+  let i: int = 0;
+
+  while i < graph.nodes.len {
+
+    set edges =
+      edges
+      + graph.nodes[i].dependency_names.len;
+
+    set i =
+      i + 1;
+  }
+
+  let root_name: string = "";
+
+  if graph.nodes.len > 0 {
+    set root_name =
+      graph.nodes[0].package_name;
+  }
+
+  give PackageGraphExplanation {
+    root:
+      root_name,
+
+    node_count:
+      graph.nodes.len,
+
+    edge_count:
+      edges,
+
+    cycles_detected:
+      false,
+
+    summary:
+      "package graph root="
+      + root_name
+      + " nodes="
+      + (graph.nodes.len as string)
+      + " edges="
+      + (edges as string),
+
+    valid:
+      graph.valid
+  };
+}
+
+proc package_graph_explain_enabled() -> bool {
+  let pkg: PackageSpec =
+    package_spec(
+      "explain-demo",
+      "1.0.0",
+      [
+        dependency(
+          "explain-dep",
+          "1.0.0",
+          DependencyKind.Normal
+        )
+      ]
+    );
+
+  let graph: BuildGraph =
+    parallel_build_graph(
+      pkg,
+      find_target("x86_64-unknown-linux-gnu")
+    );
+
+  let explanation: PackageGraphExplanation =
+    package_graph_explain(graph);
+
+  give explanation.valid
+    and explanation.node_count >= 2
+    and explanation.edge_count >= 1;
+}
+
+proc workspace_build_selective(
+  ws: Workspace,
+  selected_members: [string]
+) -> WorkspaceBuildSelection {
+
+  give WorkspaceBuildSelection {
+    workspace_root:
+      ws.root,
+
+    selected_members:
+      selected_members,
+
+    include_dependencies:
+      true,
+
+    package_count:
+      selected_members.len,
+
+    valid:
+      ws.valid
+      and selected_members.len > 0;
+  };
+}
+
+proc workspace_build_selective_enabled() -> bool {
+  let ws: Workspace =
+    package_workspace(
+      ".",
+      [
+        package_spec("workspace-a", "1.0.0", []),
+        package_spec("workspace-b", "1.0.0", [])
+      ]
+    );
+
+  let selection: WorkspaceBuildSelection =
+    workspace_build_selective(
+      ws,
+      ["workspace-a"]
+    );
+
+  give selection.valid
+    and selection.package_count == 1
+    and selection.include_dependencies;
+}
+
+proc workspace_test_all(
+  ws: Workspace
+) -> WorkspaceTestPlan {
+
+  give WorkspaceTestPlan {
+    workspace_root:
+      ws.root,
+
+    members:
+      workspace_member_names(ws),
+
+    test_all:
+      true,
+
+    command_count:
+      ws.package_count,
+
+    valid:
+      ws.valid
+      and ws.package_count > 0;
+  };
+}
+
+proc workspace_test_all_enabled() -> bool {
+  let ws: Workspace =
+    package_workspace(
+      ".",
+      [
+        package_spec("workspace-a", "1.0.0", []),
+        package_spec("workspace-b", "1.0.0", [])
+      ]
+    );
+
+  let plan: WorkspaceTestPlan =
+    workspace_test_all(ws);
+
+  give plan.valid
+    and plan.test_all
+    and plan.command_count == 2;
+}
+
+proc workspace_publish_dry_run(
+  pkg: PackageSpec,
+  registry: string
+) -> PublishDryRunPlan {
+
+  give PublishDryRunPlan {
+    package_name:
+      pkg.name,
+
+    version:
+      pkg.version,
+
+    registry:
+      registry,
+
+    files_checked:
+      4,
+
+    would_publish:
+      false,
+
+    valid:
+      pkg.valid
+      and registry != "";
+  };
+}
+
+proc workspace_publish_dry_run_enabled() -> bool {
+  let pkg: PackageSpec =
+    package_spec(
+      "dry-run-demo",
+      "1.0.0",
+      []
+    );
+
+  let plan: PublishDryRunPlan =
+    workspace_publish_dry_run(
+      pkg,
+      "local-offline"
+    );
+
+  give plan.valid
+    and not plan.would_publish
+    and plan.files_checked > 0;
 }
 
 <<< ========================================================= >>>

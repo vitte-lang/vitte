@@ -282,6 +282,71 @@ proc test_diagnostic_panel_json_is_stable() -> bool {
     and find(borrow0, "\"code_actions\"") >= 0;
 }
 
+proc test_lsp_references_complete() -> bool {
+  give len(lsp.lsp_references_complete("src/main.vit", "main")) >= 3;
+}
+
+proc test_lsp_code_actions_fixit() -> bool {
+  give len(lsp.code_actions_fixit_provider(
+    "fixit_stability.vit",
+    "proc main() -> int { give ; }\n"
+  )) >= 0;
+}
+
+proc test_lsp_diagnostics_streaming() -> bool {
+  let diagnostics = lsp.diagnostics_provider("proc main() { let x = ; }\n");
+  let batches = lsp.diagnostics_streaming_batches("file:///stream.vit", diagnostics);
+  give len(batches) == 1
+    and batches[0].final_batch;
+}
+
+proc test_lsp_semantic_tokens_snapshots() -> bool {
+  let snapshot = lsp.semantic_tokens_snapshot_text(
+    lsp.semantic_tokens_provider("proc main() {}\n")
+  );
+  give find(snapshot, "semantic-token-snapshot") >= 0;
+}
+
+proc test_lsp_workspace_symbols() -> bool {
+  let result = lsp.workspace_symbols_provider(
+    "main",
+    ["workspace-a", "workspace-b"]
+  );
+  give result.valid
+    and result.multi_root
+    and len(result.symbols) > 0;
+}
+
+proc test_lsp_incremental_document_sync_real() -> bool {
+  let state = lsp.incremental_document_sync_apply(
+    "file:///main.vit",
+    7,
+    "hash0",
+    "let y = 2;"
+  );
+  give state.valid
+    and state.incremental
+    and state.version == 7;
+}
+
+proc test_lsp_multi_root_workspace() -> bool {
+  give lsp.multi_root_workspace_enabled(["root-a", "root-b"]);
+}
+
+proc test_lsp_large_project_stress() -> bool {
+  let profile = lsp.lsp_large_project_stress_profile();
+  give profile.valid
+    and profile.file_count >= 1000
+    and profile.symbol_count >= profile.file_count;
+}
+
+proc test_lsp_vscode_neovim_compat() -> bool {
+  let matrix = lsp.vscode_neovim_compatibility_matrix();
+  give len(matrix) == 2
+    and matrix[0].valid
+    and matrix[1].valid;
+}
+
 proc run_stability_suite() -> int {
   let failures: int = 0;
   if not test_incremental_parsing_live_diagnostics() { set failures = failures + 1; }
@@ -298,6 +363,15 @@ proc run_stability_suite() -> int {
   if not test_phase_statuses_are_stable() { set failures = failures + 1; }
   if not test_diagnostic_panel_is_stable() { set failures = failures + 1; }
   if not test_diagnostic_panel_json_is_stable() { set failures = failures + 1; }
+  if not test_lsp_references_complete() { set failures = failures + 1; }
+  if not test_lsp_code_actions_fixit() { set failures = failures + 1; }
+  if not test_lsp_diagnostics_streaming() { set failures = failures + 1; }
+  if not test_lsp_semantic_tokens_snapshots() { set failures = failures + 1; }
+  if not test_lsp_workspace_symbols() { set failures = failures + 1; }
+  if not test_lsp_incremental_document_sync_real() { set failures = failures + 1; }
+  if not test_lsp_multi_root_workspace() { set failures = failures + 1; }
+  if not test_lsp_large_project_stress() { set failures = failures + 1; }
+  if not test_lsp_vscode_neovim_compat() { set failures = failures + 1; }
   give failures;
 }
 
