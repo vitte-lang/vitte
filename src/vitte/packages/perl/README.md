@@ -47,3 +47,26 @@ each archive into an isolated install root, and generates:
 - `target/perl-packages/checksums.sha256`
 - `target/perl-packages/registry.json`
 - `target/reports/perl_packages_check.json`
+
+## Vitte Integration
+
+Run:
+
+```sh
+make perl-vitte-integration
+```
+
+This keeps the Perl packages as the source of truth and generates the Vitte
+integration layer:
+
+- `target/vitte-perl-integration/registry.json`
+- `target/vitte-perl-integration/import_map.json`
+- `target/vitte-perl-integration/typed_exports.json`
+- `target/vitte-perl-integration/diagnostics.txt`
+- `target/vitte-perl-integration/PERL5LIB.paths`
+- `target/vitte-perl-integration/vitte-perl-run`
+
+Only complete package directories are compiled. Declared packages that do not
+exist yet remain visible as `pending_declared_packages` in the integration
+report, so Vitte can integrate the working Perl packages without pretending the
+unfinished ones are ready.
