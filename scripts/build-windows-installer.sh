@@ -7,6 +7,7 @@ SCRIPT_NAME=build-windows-installer
 scripts_build_parse_common_flags "$@"
 VERSION=${VERSION:-$(tr -d ' \r\n' < "$ROOT_DIR/toolchain/scripts/package/PACKAGE_VERSION")}
 OUT_DIR=${OUT_DIR:-$ROOT_DIR/pkgout}
+case "$OUT_DIR" in /*) ;; *) OUT_DIR=$ROOT_DIR/$OUT_DIR ;; esac
 ARCH=${ARCH:-all}
 PACKAGE_NAME=${PACKAGE_NAME:-vitte}
 SIGN=${SIGN:-0}
@@ -96,8 +97,24 @@ write_cmd_shims() {
   for command in vitte vittec vittec0; do
     cat > "$payload/bin/$command.cmd" <<EOF
 @echo off
+setlocal
 set "VITTE_ROOT=%~dp0..\share\vitte"
-"%~dp0vitte.exe" %*
+if exist "%~dp0$command.exe" (
+  "%~dp0$command.exe" %*
+) else (
+  "%~dp0vitte.exe" %*
+)
+exit /b %ERRORLEVEL%
+EOF
+    cat > "$payload/bin/$command.ps1" <<EOF
+\$ErrorActionPreference = "Stop"
+\$env:VITTE_ROOT = Join-Path \$PSScriptRoot "..\\share\\vitte"
+\$command = Join-Path \$PSScriptRoot "$command.exe"
+if (-not (Test-Path \$command)) {
+  \$command = Join-Path \$PSScriptRoot "vitte.exe"
+}
+& \$command @args
+exit \$LASTEXITCODE
 EOF
   done
 }
@@ -110,6 +127,7 @@ Unicode true
 !include "MUI2.nsh"
 !include "x64.nsh"
 !include "WinVer.nsh"
+!include "LogicLib.nsh"
 
 !ifndef VERSION
   !define VERSION "0.0.0"
@@ -153,7 +171,7 @@ Function AddToPath
     WriteRegExpandStr HKLM "SYSTEM\CurrentControlSet\Control\Session Manager\Environment" "Path" "$1"
   ${Else}
     StrCmp $0 "$1" done
-    WriteRegExpandStr HKLM "SYSTEM\CurrentControlSet\Control\Session Manager\Environment" "Path" "$0;$1"
+    WriteRegExpandStr HKLM "SYSTEM\CurrentControlSet\Control\Session Manager\Environment" "Path" "$1;$0"
   ${EndIf}
 done:
   WriteRegStr HKLM "SYSTEM\CurrentControlSet\Control\Session Manager\Environment" "VITTE_ROOT" "$INSTDIR\share\vitte"

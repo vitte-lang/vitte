@@ -127,6 +127,34 @@ EOF
   chmod 0755 "$bin_dir/$command"
 }
 
+install_windows_shims() {
+  bin_dir=$1
+
+  for command in vitte vittec vittec0; do
+    cat > "$bin_dir/$command.cmd" <<EOF
+@echo off
+setlocal
+set "VITTE_ROOT=%~dp0..\share\vitte"
+if exist "%~dp0$command.exe" (
+  "%~dp0$command.exe" %*
+) else (
+  "%~dp0vitte.exe" %*
+)
+exit /b %ERRORLEVEL%
+EOF
+    cat > "$bin_dir/$command.ps1" <<EOF
+\$ErrorActionPreference = "Stop"
+\$env:VITTE_ROOT = Join-Path \$PSScriptRoot "..\\share\\vitte"
+\$command = Join-Path \$PSScriptRoot "$command.exe"
+if (-not (Test-Path \$command)) {
+  \$command = Join-Path \$PSScriptRoot "vitte.exe"
+}
+& \$command @args
+exit \$LASTEXITCODE
+EOF
+  done
+}
+
 case "$LAYOUT" in
   unix)
     prefix=$DEST/usr/local
@@ -152,6 +180,7 @@ case "$LAYOUT" in
   windows)
     share_dir=$DEST/share/vitte
     mkdir -p "$DEST/bin" "$share_dir"
+    install_windows_shims "$DEST/bin"
     ;;
   *) die "unsupported layout: $LAYOUT" ;;
 esac

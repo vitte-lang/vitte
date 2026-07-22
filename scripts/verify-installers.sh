@@ -6,6 +6,7 @@ SCRIPT_NAME=verify-installers
 . "$ROOT_DIR/scripts_build/common.sh"
 VERSION=${VERSION:-$(tr -d ' \r\n' < "$ROOT_DIR/toolchain/scripts/package/PACKAGE_VERSION")}
 OUT_DIR=${OUT_DIR:-$ROOT_DIR/pkgout}
+case "$OUT_DIR" in /*) ;; *) OUT_DIR=$ROOT_DIR/$OUT_DIR ;; esac
 STRICT_NATIVE=${STRICT_NATIVE:-0}
 FREEBSD_MAJOR=${FREEBSD_MAJOR:-14}
 
@@ -154,6 +155,20 @@ for item in 'amd64 0x8664' 'i386 0x014c' 'arm64 0xaa64' 'armv7 0x01c4'; do
     for required in installer.nsi BUILD.txt payload/share/vitte/INSTALLATION.json payload/share/vitte/VERSION; do
       tar -tzf "$windows_kit" | grep -Fx "$required" >/dev/null ||
         die "Windows kit missing $required: $windows_kit"
+    done
+    tar -xOzf "$windows_kit" installer.nsi | grep -F '!include "LogicLib.nsh"' >/dev/null ||
+      die "Windows NSIS script missing LogicLib include: $windows_kit"
+    tar -xOzf "$windows_kit" installer.nsi | grep -F 'Windows XP through Windows 11' >/dev/null ||
+      die "Windows NSIS script missing XP through Windows 11 support label: $windows_kit"
+    for command in vitte vittec vittec0; do
+      tar -tzf "$windows_kit" | grep -Fx "payload/bin/$command.cmd" >/dev/null ||
+        die "Windows kit missing cmd shim for $command: $windows_kit"
+      tar -tzf "$windows_kit" | grep -Fx "payload/bin/$command.ps1" >/dev/null ||
+        die "Windows kit missing PowerShell shim for $command: $windows_kit"
+      tar -xOzf "$windows_kit" "payload/bin/$command.cmd" | grep -F 'set "VITTE_ROOT=%~dp0..\share\vitte"' >/dev/null ||
+        die "Windows cmd shim missing VITTE_ROOT for $command: $windows_kit"
+      tar -xOzf "$windows_kit" "payload/bin/$command.ps1" | grep -F '$env:VITTE_ROOT = Join-Path $PSScriptRoot "..\share\vitte"' >/dev/null ||
+        die "Windows PowerShell shim missing VITTE_ROOT for $command: $windows_kit"
     done
   }
 done

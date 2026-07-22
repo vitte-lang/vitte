@@ -68,6 +68,7 @@ scripts_build_maybe_dry_run() {
 scripts_build_sha256_write() {
   file=$1
   output=${2:-$file.sha256}
+  output_name=$(basename "$output")
 
   [ -s "$file" ] ||
     scripts_build_die "checksum input missing or empty: $file"
@@ -75,7 +76,7 @@ scripts_build_sha256_write() {
   if [ "${SCRIPTS_BUILD_SHA256_BACKEND:-auto}" != python ] && command -v shasum >/dev/null 2>&1; then
     (
       cd "$(dirname "$file")"
-      shasum -a 256 "$(basename "$file")" > "$output"
+      shasum -a 256 "$(basename "$file")" > "$output_name"
     )
     return 0
   fi
@@ -83,7 +84,7 @@ scripts_build_sha256_write() {
   if [ "${SCRIPTS_BUILD_SHA256_BACKEND:-auto}" != python ] && command -v sha256sum >/dev/null 2>&1; then
     (
       cd "$(dirname "$file")"
-      sha256sum "$(basename "$file")" > "$output"
+      sha256sum "$(basename "$file")" > "$output_name"
     )
     return 0
   fi

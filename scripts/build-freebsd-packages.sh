@@ -7,6 +7,7 @@ SCRIPT_NAME=build-freebsd-packages
 scripts_build_parse_common_flags "$@"
 VERSION=${VERSION:-$(tr -d ' \r\n' < "$ROOT_DIR/toolchain/scripts/package/PACKAGE_VERSION")}
 OUT_DIR=${OUT_DIR:-$ROOT_DIR/pkgout}
+case "$OUT_DIR" in /*) ;; *) OUT_DIR=$ROOT_DIR/$OUT_DIR ;; esac
 ARCH=${ARCH:-all}
 PACKAGE_NAME=${PACKAGE_NAME:-vitte}
 FREEBSD_MAJOR=${FREEBSD_MAJOR:-14}

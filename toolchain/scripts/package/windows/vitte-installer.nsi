@@ -3,7 +3,7 @@
 ;
 ; NSIS Installation Script for Vitte Programming Language
 ; Platform: Windows x86_64 (64-bit)
-; 
+;
 ; Build with: makensis vitte-installer.nsi
 ; Installation: vitte-${VERSION}-x86_64-installer.exe
 ; ============================================================
@@ -11,6 +11,10 @@
 ; Include Modern UI
 !include "MUI2.nsh"
 !include "x64.nsh"
+!include "LogicLib.nsh"
+!include "StrFunc.nsh"
+${StrRep}
+${UnStrRep}
 
 ; ============================================================
 ; Configuration
@@ -20,7 +24,7 @@
 !define PRODUCT_NAME "Vitte"
 !define PRODUCT_DESCRIPTION "Vitte Programming Language Compiler"
 !define COMPANY_NAME "Vitte Authors"
-!define COMPANY_WEBSITE "https://vitte-lang.io"
+!define COMPANY_WEBSITE "https://vitte-lang.org"
 !define INSTALL_DIR "$PROGRAMFILES64\Vitte"
 
 ; Installer file
@@ -90,7 +94,7 @@ RequestExecutionLevel admin
 Section "Vitte Compiler (required)" SEC_MAIN
   SectionIn RO
   SetOverwrite on
-  
+
   ; Create directories
   CreateDirectory "$INSTDIR\bin"
   CreateDirectory "$INSTDIR\lib"
@@ -98,19 +102,19 @@ Section "Vitte Compiler (required)" SEC_MAIN
   CreateDirectory "$INSTDIR\docs"
   CreateDirectory "$INSTDIR\share\vitte\src"
   CreateDirectory "$INSTDIR\share\locales"
-  
+
   ; Copy compiler binary
   SetOutPath "$INSTDIR\bin"
   File "bin\vitte-x86_64.exe"
-  
+
   ; Copy runtime libraries
   SetOutPath "$INSTDIR\lib"
   File /r "data\lib\*"
-  
+
   ; Copy source packages, standard library and compiler sources
   SetOutPath "$INSTDIR\share\vitte\src"
   File /r "data\src\*"
-  
+
   ; Copy documentation
   SetOutPath "$INSTDIR\docs"
   File "README.md"
@@ -119,21 +123,21 @@ Section "Vitte Compiler (required)" SEC_MAIN
   ; Copy Fluent diagnostic catalogs
   SetOutPath "$INSTDIR\share\locales"
   File /r "locales\*"
-  
+
   ; Create start menu shortcuts
   CreateDirectory "$SMPROGRAMS\Vitte"
   CreateShortCut "$SMPROGRAMS\Vitte\Vitte Compiler.lnk" "$INSTDIR\bin\vitte.exe"
   CreateShortCut "$SMPROGRAMS\Vitte\Uninstall.lnk" "$INSTDIR\uninstall.exe"
-  
+
   ; Add to PATH
   Call AddToPath
 
   ; Persist the selected installer language for CLI diagnostics.
   Call WriteLanguageConfig
-  
+
   ; Create uninstaller
   WriteUninstaller "$INSTDIR\uninstall.exe"
-  
+
   ; Write registry
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Vitte" "DisplayName" "${PRODUCT_NAME} ${VERSION} (x86_64)"
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Vitte" "DisplayVersion" "${VERSION}"
@@ -143,7 +147,7 @@ Section "Vitte Compiler (required)" SEC_MAIN
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Vitte" "UninstallString" "$INSTDIR\uninstall.exe"
   WriteRegDWord HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Vitte" "NoModify" 1
   WriteRegDWord HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Vitte" "NoRepair" 1
-  
+
 SectionEnd
 
 ; Editor integrations
@@ -218,18 +222,18 @@ LangString DESC_SEC_DOCS ${LANG_ARABIC} "Documentation and examples"
 ; ============================================================
 
 Section "Uninstall"
-  
+
   Call un.RemoveFromPath
-  
+
   ; Remove files
   RMDir /r "$INSTDIR"
-  
+
   ; Remove shortcuts
   RMDir /r "$SMPROGRAMS\Vitte"
-  
+
   ; Remove registry entries
   DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Vitte"
-  
+
 SectionEnd
 
 ; ============================================================
@@ -288,20 +292,23 @@ FunctionEnd
 Function AddToPath
   ReadRegStr $0 HKLM "SYSTEM\CurrentControlSet\Control\Session Manager\Environment" "Path"
   ${If} $0 != ""
-    StrCpy $0 "$0;$INSTDIR\bin"
+    StrCpy $0 "$INSTDIR\bin;$0"
   ${Else}
     StrCpy $0 "$INSTDIR\bin"
   ${EndIf}
-  WriteRegStr HKLM "SYSTEM\CurrentControlSet\Control\Session Manager\Environment" "Path" $0
+  WriteRegExpandStr HKLM "SYSTEM\CurrentControlSet\Control\Session Manager\Environment" "Path" $0
+  WriteRegStr HKLM "SYSTEM\CurrentControlSet\Control\Session Manager\Environment" "VITTE_ROOT" "$INSTDIR\share\vitte"
   SendMessage ${HWND_BROADCAST} ${WM_SETTINGCHANGE} 0 "STR:Environment" /TIMEOUT=5000
 FunctionEnd
 
 ; Remove Vitte from PATH
 Function un.RemoveFromPath
   ReadRegStr $0 HKLM "SYSTEM\CurrentControlSet\Control\Session Manager\Environment" "Path"
-  ${StrReplace} $0 "$INSTDIR\bin;" "" $0
-  ${StrReplace} $0 "$INSTDIR\bin" "" $0
-  WriteRegStr HKLM "SYSTEM\CurrentControlSet\Control\Session Manager\Environment" "Path" $0
+  ${UnStrRep} $0 $0 "$INSTDIR\bin;" ""
+  ${UnStrRep} $0 $0 ";$INSTDIR\bin" ""
+  ${UnStrRep} $0 $0 "$INSTDIR\bin" ""
+  WriteRegExpandStr HKLM "SYSTEM\CurrentControlSet\Control\Session Manager\Environment" "Path" $0
+  DeleteRegValue HKLM "SYSTEM\CurrentControlSet\Control\Session Manager\Environment" "VITTE_ROOT"
   SendMessage ${HWND_BROADCAST} ${WM_SETTINGCHANGE} 0 "STR:Environment" /TIMEOUT=5000
 FunctionEnd
 

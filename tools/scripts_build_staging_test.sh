@@ -56,6 +56,10 @@ print(oct(stat.S_IMODE(Path(sys.argv[1]).stat().st_mode)))
 PY
 )" = "0o644"
   grep -F "/usr/local/libexec/vitte/vitte" "$dest/usr/local/bin/vitte" >/dev/null
+  for command in vitte vittec vittec0; do
+    grep -F 'export VITTE_ROOT=${VITTE_ROOT:-/usr/local/share/vitte}' "$dest/usr/local/bin/$command" >/dev/null
+    grep -F "/usr/local/libexec/vitte/$command" "$dest/usr/local/bin/$command" >/dev/null
+  done
 }
 
 stage_windows() {
@@ -69,6 +73,14 @@ stage_windows() {
   test -d "$dest/share/vitte/locales"
   test -d "$dest/share/vitte/completions"
   test -d "$dest/share/vitte/editors"
+  for command in vitte vittec vittec0; do
+    test -s "$dest/bin/$command.cmd"
+    test -s "$dest/bin/$command.ps1"
+    grep -F 'set "VITTE_ROOT=%~dp0..\share\vitte"' "$dest/bin/$command.cmd" >/dev/null
+    grep -F "if exist \"%~dp0$command.exe\"" "$dest/bin/$command.cmd" >/dev/null
+    grep -F 'Join-Path $PSScriptRoot "..\share\vitte"' "$dest/bin/$command.ps1" >/dev/null
+    grep -F "Join-Path \$PSScriptRoot \"$command.exe\"" "$dest/bin/$command.ps1" >/dev/null
+  done
 }
 
 "$ROOT_DIR/scripts_build/package-matrix.sh" list >/dev/null

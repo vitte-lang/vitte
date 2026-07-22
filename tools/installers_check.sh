@@ -92,6 +92,25 @@ if 'export PATH="$_vitte_pkg_bin${PATH:+:$PATH}"' not in macos_pkg:
 if "set -gx PATH /usr/local/bin $PATH" not in macos_pkg:
     version_violations.append("toolchain/scripts/package/make-macos-pkg.sh: fish support must force the installed bin path")
 
+windows_builder = (root / "scripts/build-windows-installer.sh").read_text(encoding="utf-8")
+if '!include "LogicLib.nsh"' not in windows_builder:
+    version_violations.append("scripts/build-windows-installer.sh: generated NSIS script must include LogicLib.nsh")
+if 'if exist "%~dp0$command.exe"' not in windows_builder:
+    version_violations.append("scripts/build-windows-installer.sh: cmd shim must prefer the command-specific executable")
+if '\\$env:VITTE_ROOT = Join-Path \\$PSScriptRoot "..\\\\share\\\\vitte"' not in windows_builder:
+    version_violations.append("scripts/build-windows-installer.sh: PowerShell shim must set VITTE_ROOT")
+if 'WriteRegExpandStr HKLM "SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment" "Path" "$1;$0"' not in windows_builder:
+    version_violations.append("scripts/build-windows-installer.sh: installer must prepend Vitte bin in system PATH")
+
+windows_nsi = (root / "toolchain/scripts/package/windows/vitte-installer.nsi").read_text(encoding="utf-8")
+for include in ('!include "LogicLib.nsh"', '!include "StrFunc.nsh"', '${StrRep}', '${UnStrRep}'):
+    if include not in windows_nsi:
+        version_violations.append(f"toolchain/scripts/package/windows/vitte-installer.nsi: missing {include}")
+if 'WriteRegStr HKLM "SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment" "VITTE_ROOT"' not in windows_nsi:
+    version_violations.append("toolchain/scripts/package/windows/vitte-installer.nsi: must write system VITTE_ROOT")
+if 'DeleteRegValue HKLM "SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment" "VITTE_ROOT"' not in windows_nsi:
+    version_violations.append("toolchain/scripts/package/windows/vitte-installer.nsi: must remove system VITTE_ROOT on uninstall")
+
 data = {
     "schema": "org.vitte.installers-check.v1",
     "status": "PASS" if not violations and not version_violations else "FAIL",
