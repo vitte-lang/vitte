@@ -413,6 +413,8 @@ manifest = {
     "contents": [
         "compiler", "runtime", "stdlib", "sources", "documentation",
         "examples", "editors", "system-completions", "locales", "assets",
+        "compiled-stdlib", "compiled-packages", "local-package-registry",
+        "checksums", "sbom", "installer-doctor",
     ],
     "size": file.stat().st_size,
     "sha256": hashlib.sha256(file.read_bytes()).hexdigest(),

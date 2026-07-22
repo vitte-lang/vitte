@@ -222,6 +222,47 @@ def check_post_install_compile(vitte: Path, tmp: Path) -> None:
     run([str(output)], env=clean_env(), cwd=work)
 
 
+def check_payload_metadata(share: Path) -> None:
+    required = (
+        "packages/registry/registry.json",
+        "packages/registry/checksums.sha256",
+        "packages/registry/lockfile.vitte.lock",
+        "packages/compiled/packages-manifest.json",
+        "stdlib/compiled/stdlib-manifest.json",
+        "CHECKSUMS.sha256",
+        "SBOM.spdx.json",
+        "SBOM.cyclonedx.json",
+        "INSTALLATION.json",
+    )
+    for relative in required:
+        path = share / relative
+        if not path.is_file() or path.stat().st_size == 0:
+            raise AssertionError(f"installed payload metadata missing {path}")
+    manifest = json.loads((share / "INSTALLATION.json").read_text(encoding="utf-8"))
+    for component in (
+        "compiled-stdlib",
+        "compiled-packages",
+        "local-package-registry",
+        "checksums",
+        "sbom",
+        "installer-doctor",
+    ):
+        if component not in manifest.get("components", []):
+            raise AssertionError(f"INSTALLATION.json missing component {component}")
+    checksums = (share / "CHECKSUMS.sha256").read_text(encoding="utf-8")
+    for relative in required:
+        if relative in {"CHECKSUMS.sha256", "INSTALLATION.json"}:
+            continue
+        if f"  {relative}\n" not in checksums:
+            raise AssertionError(f"CHECKSUMS.sha256 missing {relative}")
+    packages = json.loads((share / "packages/compiled/packages-manifest.json").read_text(encoding="utf-8"))
+    if packages.get("package_count", 0) < 1:
+        raise AssertionError("compiled package cache is empty")
+    stdlib = json.loads((share / "stdlib/compiled/stdlib-manifest.json").read_text(encoding="utf-8"))
+    if stdlib.get("file_count", 0) < 1:
+        raise AssertionError("compiled stdlib cache is empty")
+
+
 def check_installer_permissions_uninstall_and_destdir(tmp: Path, stub_bin: Path) -> list[dict[str, str]]:
     checks: list[dict[str, str]] = []
     extract = build_bsd_installer(tmp, stub_bin, "permissions")
@@ -230,6 +271,7 @@ def check_installer_permissions_uninstall_and_destdir(tmp: Path, stub_bin: Path)
     install_from_bsd_kit(extract, custom_prefix)
     doctor = custom_prefix / "bin/vitte-installer-doctor"
     run([str(doctor)], env=clean_env())
+    check_payload_metadata(custom_prefix / "share/vitte")
     for required in (
         custom_prefix / "bin/vitte",
         custom_prefix / "bin/vittec",
@@ -242,6 +284,7 @@ def check_installer_permissions_uninstall_and_destdir(tmp: Path, stub_bin: Path)
         if not os.access(required, os.X_OK):
             raise AssertionError(f"custom prefix install is not executable: {required}")
     checks.append({"contract": "install prefix custom with installer doctor", "status": "PASS"})
+    checks.append({"contract": "platform artifact registry packages stdlib checksums sbom", "status": "PASS"})
 
     user_local = tmp / "home/.local"
     install_from_bsd_kit(extract, user_local)
@@ -255,6 +298,11 @@ def check_installer_permissions_uninstall_and_destdir(tmp: Path, stub_bin: Path)
         destdir / "usr/local/bin/vitte-installer-doctor",
         destdir / "usr/local/libexec/vitte/vitte",
         destdir / "usr/local/share/vitte/INSTALLATION.json",
+        destdir / "usr/local/share/vitte/CHECKSUMS.sha256",
+        destdir / "usr/local/share/vitte/SBOM.spdx.json",
+        destdir / "usr/local/share/vitte/packages/registry/registry.json",
+        destdir / "usr/local/share/vitte/packages/compiled/packages-manifest.json",
+        destdir / "usr/local/share/vitte/stdlib/compiled/stdlib-manifest.json",
     ):
         if not required.exists():
             raise AssertionError(f"DESTDIR install missing {required}")
@@ -381,6 +429,11 @@ def check_portable_tarball(tmp: Path, stub_bin: Path) -> dict[str, str]:
         f"{prefix}/bin/vitte-installer-doctor",
         f"{prefix}/libexec/vitte/vitte",
         f"{prefix}/share/vitte/INSTALLATION.json",
+        f"{prefix}/share/vitte/CHECKSUMS.sha256",
+        f"{prefix}/share/vitte/SBOM.spdx.json",
+        f"{prefix}/share/vitte/packages/registry/registry.json",
+        f"{prefix}/share/vitte/packages/compiled/packages-manifest.json",
+        f"{prefix}/share/vitte/stdlib/compiled/stdlib-manifest.json",
         f"{prefix}/README.portable",
     ):
         if required not in names:

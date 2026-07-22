@@ -280,6 +280,145 @@ for file in LICENSE README.md CHANGELOG.md; do
 done
 printf '%s\n' "$VERSION" > "$share_dir/VERSION"
 
+copy_tree "$ROOT_DIR/src/vitte/packages/registry" "$share_dir/packages/registry"
+mkdir -p "$share_dir/packages/compiled" "$share_dir/stdlib/compiled"
+
+python3 - "$ROOT_DIR" "$share_dir" "$PLATFORM" "$ARCH" "$VERSION" "$LAYOUT" <<'PY'
+import hashlib
+import json
+import sys
+from pathlib import Path
+
+root = Path(sys.argv[1])
+share = Path(sys.argv[2])
+platform = sys.argv[3]
+arch = sys.argv[4]
+version = sys.argv[5]
+layout = sys.argv[6]
+
+registry_path = root / "src/vitte/packages/registry/registry.json"
+registry = json.loads(registry_path.read_text(encoding="utf-8"))
+compiled_packages = share / "packages/compiled"
+compiled_packages.mkdir(parents=True, exist_ok=True)
+package_rows = []
+for package in sorted(registry.get("packages", []), key=lambda item: (item["name"], item["version"])):
+    checksum = package.get("checksum", {})
+    row = {
+        "abi": package.get("abi", ""),
+        "arch": arch,
+        "checksum": checksum,
+        "exports": sorted(package.get("exports", [])),
+        "exports_sha256": package.get("exports_sha256", ""),
+        "language": package.get("language", ""),
+        "name": package["name"],
+        "os": platform,
+        "schema": "org.vitte.compiled-package-cache-entry.v1",
+        "source": package.get("source", ""),
+        "version": package["version"],
+    }
+    package_rows.append(row)
+    (compiled_packages / f"{package['name']}-{package['version']}.vittepkg.json").write_text(
+        json.dumps(row, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+(compiled_packages / "packages-manifest.json").write_text(
+    json.dumps(
+        {
+            "arch": arch,
+            "package_count": len(package_rows),
+            "packages": package_rows,
+            "schema": "org.vitte.compiled-package-cache.v1",
+            "version": version,
+            "os": platform,
+        },
+        indent=2,
+        sort_keys=True,
+    )
+    + "\n",
+    encoding="utf-8",
+)
+
+stdlib_compiled = share / "stdlib/compiled"
+stdlib_files = []
+stdlib_root = root / "src/vitte/stdlib"
+if stdlib_root.is_dir():
+    for path in sorted(stdlib_root.rglob("*")):
+        if path.is_file() and path.suffix in {".vit", ".vitl", ".json"}:
+            stdlib_files.append(
+                {
+                    "path": path.relative_to(stdlib_root).as_posix(),
+                    "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+                    "size": path.stat().st_size,
+                }
+            )
+(stdlib_compiled / "stdlib-manifest.json").write_text(
+    json.dumps(
+        {
+            "arch": arch,
+            "file_count": len(stdlib_files),
+            "files": stdlib_files,
+            "os": platform,
+            "schema": "org.vitte.stdlib-compiled-cache.v1",
+            "version": version,
+        },
+        indent=2,
+        sort_keys=True,
+    )
+    + "\n",
+    encoding="utf-8",
+)
+
+sbom_files = []
+for path in sorted(share.rglob("*")):
+    if path.is_file() and path.name not in {"CHECKSUMS.sha256", "SBOM.spdx.json", "SBOM.cyclonedx.json"}:
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        relative = path.relative_to(share).as_posix()
+        sbom_files.append({"path": relative, "sha256": digest, "size": path.stat().st_size})
+
+spdx = {
+    "SPDXID": "SPDXRef-DOCUMENT",
+    "creationInfo": {"creators": ["Tool: vitte scripts_build"], "created": "1970-01-01T00:00:00Z"},
+    "dataLicense": "CC0-1.0",
+    "name": f"vitte-{version}-{platform}-{arch}",
+    "packages": [
+        {
+            "SPDXID": f"SPDXRef-{index}",
+            "checksums": [{"algorithm": "SHA256", "checksumValue": row["sha256"]}],
+            "downloadLocation": "NOASSERTION",
+            "filesAnalyzed": False,
+            "name": row["path"],
+        }
+        for index, row in enumerate(sbom_files, 1)
+    ],
+    "spdxVersion": "SPDX-2.3",
+}
+cyclonedx = {
+    "bomFormat": "CycloneDX",
+    "components": [
+        {
+            "hashes": [{"alg": "SHA-256", "content": row["sha256"]}],
+            "name": row["path"],
+            "type": "file",
+            "version": version,
+        }
+        for row in sbom_files
+    ],
+    "metadata": {"component": {"name": "vitte", "type": "application", "version": version}},
+    "specVersion": "1.5",
+    "version": 1,
+}
+(share / "SBOM.spdx.json").write_text(json.dumps(spdx, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+(share / "SBOM.cyclonedx.json").write_text(json.dumps(cyclonedx, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+checksum_rows = []
+for path in sorted(share.rglob("*")):
+    if path.is_file() and path.name != "CHECKSUMS.sha256":
+        checksum_rows.append(
+            f"{hashlib.sha256(path.read_bytes()).hexdigest()}  {path.relative_to(share).as_posix()}\n"
+        )
+(share / "CHECKSUMS.sha256").write_text("".join(checksum_rows), encoding="utf-8")
+PY
+
 python3 - "$DEST" "$share_dir/INSTALLATION.json" "$PLATFORM" "$ARCH" "$VERSION" "$LAYOUT" <<'PY'
 import hashlib
 import json
@@ -305,6 +444,8 @@ manifest = {
     "components": [
         "compiler", "runtime", "stdlib", "sources", "documentation",
         "examples", "editors", "system-completions", "locales", "assets",
+        "compiled-stdlib", "compiled-packages", "local-package-registry",
+        "checksums", "sbom", "installer-doctor",
     ],
     "files": files,
 }
