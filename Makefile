@@ -1171,8 +1171,17 @@ typeck-snapshots:
 typeck-coverage:
 	@python3 tools/typeck_coverage_check.py
 
+.PHONY: type-system-advanced-20
+type-system-advanced-20:
+	@python3 tools/type_system_advanced_20.py
+	@test -f target/reports/type_system_advanced_20.json
+	@test -f target/reports/type_system_advanced_20.md
+	@test -f target/type_system/advanced_20/snapshots/text.snapshot
+	@test -f target/type_system/advanced_20/snapshots/json.snapshot
+	@test -f target/type_system/advanced_20/snapshots/lsp.snapshot
+
 .PHONY: typeck-gate
-typeck-gate: typeck-analysis-test typeck-fixtures typeck-snapshots typeck-coverage typeck-differential-test typeck-fuzz-test
+typeck-gate: typeck-analysis-test typeck-fixtures typeck-snapshots typeck-coverage type-system-advanced-20 typeck-differential-test typeck-fuzz-test
 	@python3 tools/typeck_surface_audit.py
 
 .PHONY: borrowck-analysis-test

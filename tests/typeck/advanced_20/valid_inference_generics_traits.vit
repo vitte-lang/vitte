@@ -1,0 +1,36 @@
+space tests/typeck/advanced_20/valid
+
+form Box[T] {
+  value: T
+}
+
+form Point {
+  x: int
+}
+
+trait Show {
+  proc show(self: Self) -> string;
+}
+
+impl Show for Point {
+  proc show(self: Self) -> string {
+    give "point";
+  }
+}
+
+proc identity[T](value: T) -> T {
+  give value;
+}
+
+proc keep[T: Show](value: T) -> T {
+  give value;
+}
+
+proc main() -> int {
+  let point = Point { x: 1 };
+  let kept = keep(point);
+  let boxed: Box[Point] = Box[Point] { value: kept };
+  let text: string = boxed.value.show();
+  let number: int = identity[int](1);
+  give number;
+}
