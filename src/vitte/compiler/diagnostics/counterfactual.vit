@@ -68,9 +68,20 @@ form CounterfactualVirtualResult {
     new_error_count: u64
     error_moved: bool
     behavior_may_change: bool
+    before_fingerprint: string
+    after_fingerprint: string
+    net_score: string
+    cache_key: CounterfactualCacheKey
+    cache_hit: bool
     program: CounterfactualVirtualProgram
     checks: [CounterfactualPipelineCheck]
     report: string
+    valid: bool
+}
+
+form CounterfactualRecompileCacheEntry {
+    key: CounterfactualCacheKey
+    result: CounterfactualVirtualResult
     valid: bool
 }
 
@@ -218,6 +229,43 @@ proc counterfactual_cache_key_text(key: CounterfactualCacheKey) -> string {
     give key.diagnostic_code + ":" + key.source_fingerprint + ":" + key.replacement_fingerprint + ":" + key.pipeline_fingerprint;
 }
 
+proc counterfactual_source_fingerprint(text: string) -> string {
+    give (len(text) as string) + ":" + slice(text, 0, if len(text) > 32 as u64 { 32 as u64 } else { len(text) });
+}
+
+proc counterfactual_net_score(errors_removed: u64, new_error_count: u64) -> string {
+    if errors_removed >= new_error_count {
+        give "+" + ((errors_removed - new_error_count) as string);
+    }
+
+    give "-" + ((new_error_count - errors_removed) as string);
+}
+
+proc counterfactual_recompile_cache_entry(key: CounterfactualCacheKey, result: CounterfactualVirtualResult) -> CounterfactualRecompileCacheEntry {
+    give CounterfactualRecompileCacheEntry {
+        key: key,
+        result: result,
+        valid: key.valid and result.valid
+    };
+}
+
+proc counterfactual_cache_lookup(cache: [CounterfactualRecompileCacheEntry], key: CounterfactualCacheKey) -> CounterfactualVirtualResult {
+    let i: u64 = 0;
+    let target: string = counterfactual_cache_key_text(key);
+
+    while i < len(cache) {
+        if cache[i].valid and counterfactual_cache_key_text(cache[i].key) == target {
+            let cached: CounterfactualVirtualResult = cache[i].result;
+            set cached.cache_hit = true;
+            give cached;
+        }
+
+        set i = i + 1;
+    }
+
+    give counterfactual_virtual_result(0 as u64, 0 as u64, 0 as u64, false, 0 as u64, false, false, counterfactual_virtual_program("", "", ""), [], "cache miss");
+}
+
 proc counterfactual_virtual_diff(program: CounterfactualVirtualProgram, replacement: string) -> CounterfactualVirtualDiff {
     give CounterfactualVirtualDiff {
         root_file: program.root_file,
@@ -240,6 +288,12 @@ proc counterfactual_standard_pipeline_checks() -> [CounterfactualPipelineCheck] 
 }
 
 proc counterfactual_virtual_result(rank: u64, errors_removed: u64, total_errors: u64, initial_error_removed: bool, new_error_count: u64, error_moved: bool, behavior_may_change: bool, program: CounterfactualVirtualProgram, checks: [CounterfactualPipelineCheck], report: string) -> CounterfactualVirtualResult {
+    let key: CounterfactualCacheKey = counterfactual_cache_key(
+        program.root_file,
+        counterfactual_source_fingerprint(program.source_before),
+        counterfactual_source_fingerprint(program.source_after),
+        "lexer-parser-resolver-typeck-borrowck"
+    );
     give CounterfactualVirtualResult {
         rank: rank,
         errors_removed: errors_removed,
@@ -248,6 +302,11 @@ proc counterfactual_virtual_result(rank: u64, errors_removed: u64, total_errors:
         new_error_count: new_error_count,
         error_moved: error_moved,
         behavior_may_change: behavior_may_change,
+        before_fingerprint: counterfactual_source_fingerprint(program.source_before),
+        after_fingerprint: counterfactual_source_fingerprint(program.source_after),
+        net_score: counterfactual_net_score(errors_removed, new_error_count),
+        cache_key: key,
+        cache_hit: false,
         program: program,
         checks: checks,
         report: report,

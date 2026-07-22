@@ -1,0 +1,226 @@
+<<<
+    Transactional diagnostic fix orchestration.
+
+    This layer decides which verified suggestions may be applied. Concrete
+    filesystem writes stay outside this module; callers apply the returned
+    transaction atomically and rollback if any file write fails.
+>>>
+
+space vitte/compiler/diagnostics/fix
+
+use vitte/compiler/diagnostics/diagnostic.{
+    Diagnostic,
+    DiagnosticFixApplyStatus,
+    DiagnosticFixMode,
+    DiagnosticFixPlan,
+    DiagnosticFixTransaction,
+    DiagnosticSuggestion,
+    DiagnosticCounterfactualLevel,
+    diagnostic_fix_plan_from_suggestion,
+    diagnostic_net_score,
+    diagnostic_suggestion_is_auto_safe,
+    diagnostic_suggestion_modifies_code,
+    diagnostic_suggestion_structural_fingerprint,
+    diagnostic_verified_code_modifying_suggestions
+}
+
+proc diagnostic_counterfactual_level_from_text(text: string) -> DiagnosticCounterfactualLevel {
+    if text == "off" {
+        give DiagnosticCounterfactualLevel.Off;
+    }
+    if text == "basic" {
+        give DiagnosticCounterfactualLevel.Basic;
+    }
+    if text == "full" {
+        give DiagnosticCounterfactualLevel.Full;
+    }
+    if text == "exhaustive" {
+        give DiagnosticCounterfactualLevel.Exhaustive;
+    }
+    give DiagnosticCounterfactualLevel.Basic;
+}
+
+proc diagnostic_counterfactual_level_name(level: DiagnosticCounterfactualLevel) -> string {
+    if level == DiagnosticCounterfactualLevel.Off {
+        give "off";
+    }
+    if level == DiagnosticCounterfactualLevel.Full {
+        give "full";
+    }
+    if level == DiagnosticCounterfactualLevel.Exhaustive {
+        give "exhaustive";
+    }
+    give "basic";
+}
+
+proc diagnostic_fix_mode_from_flag(flag: string) -> DiagnosticFixMode {
+    if flag == "--fix" {
+        give DiagnosticFixMode.Fix;
+    }
+    if flag == "--fix-safe" {
+        give DiagnosticFixMode.FixSafe;
+    }
+    if flag == "--fix-preview" {
+        give DiagnosticFixMode.FixPreview;
+    }
+    if flag == "--fix-why" {
+        give DiagnosticFixMode.FixWhy;
+    }
+    give DiagnosticFixMode.None;
+}
+
+proc diagnostic_fix_mode_name(mode: DiagnosticFixMode) -> string {
+    if mode == DiagnosticFixMode.Fix {
+        give "fix";
+    }
+    if mode == DiagnosticFixMode.FixSafe {
+        give "fix-safe";
+    }
+    if mode == DiagnosticFixMode.FixPreview {
+        give "fix-preview";
+    }
+    if mode == DiagnosticFixMode.FixWhy {
+        give "fix-why";
+    }
+    give "none";
+}
+
+proc diagnostic_fix_transaction_id(source: string, before_fingerprint: string, after_fingerprint: string) -> string {
+    give "diag-fix:" + source + ":" + before_fingerprint + "=>" + after_fingerprint;
+}
+
+proc diagnostic_fix_files_add(files: [string], file: string) -> [string] {
+    if file == "" {
+        give files;
+    }
+
+    let i: u64 = 0;
+    while i < len(files) {
+        if files[i] == file {
+            give files;
+        }
+        set i = i + 1;
+    }
+
+    give files + [file];
+}
+
+proc diagnostic_fix_plan_preview(plan: DiagnosticFixPlan) -> string {
+    give plan.id + " " + plan.message + " @" + plan.span.file + ":" + (plan.span.start_line as string) + ":" + (plan.span.start_column as string) + " -> `" + plan.replacement + "`";
+}
+
+proc diagnostic_fix_plans_preview(plans: [DiagnosticFixPlan]) -> string {
+    let out: string = "";
+    let i: u64 = 0;
+    while i < len(plans) {
+        if i > 0 {
+            set out = out + "\n";
+        }
+        set out = out + diagnostic_fix_plan_preview(plans[i]);
+        set i = i + 1;
+    }
+    give out;
+}
+
+proc diagnostic_fix_transaction_empty(mode: DiagnosticFixMode, reason: string) -> DiagnosticFixTransaction {
+    give DiagnosticFixTransaction {
+        id: "diag-fix:empty",
+        mode: mode,
+        files: [],
+        plans: [],
+        before_fingerprint: "",
+        after_fingerprint: "",
+        errors_removed: 0 as u64,
+        errors_created: 0 as u64,
+        net_score: diagnostic_net_score(0 as u64, 0 as u64),
+        behavior_changed: false,
+        status: DiagnosticFixApplyStatus.Refused,
+        rollback_reason: reason,
+        preview: "",
+        why: reason,
+        valid: false
+    };
+}
+
+proc diagnostic_fix_transaction_from_diagnostic(diagnostic: Diagnostic, mode: DiagnosticFixMode) -> DiagnosticFixTransaction {
+    let suggestions: [DiagnosticSuggestion] = diagnostic_verified_code_modifying_suggestions(diagnostic);
+    let plans: [DiagnosticFixPlan] = [];
+    let files: [string] = [];
+    let before: string = diagnostic.code;
+    let after: string = diagnostic.code;
+    let removed: u64 = 0 as u64;
+    let created: u64 = 0 as u64;
+    let behavior_changed: bool = false;
+    let i: u64 = 0;
+
+    while i < len(suggestions) {
+        let suggestion: DiagnosticSuggestion = suggestions[i];
+        if diagnostic_suggestion_modifies_code(suggestion) and not diagnostic_suggestion_is_auto_safe(suggestion) {
+            if suggestion.behavior_changed and mode == DiagnosticFixMode.Fix {
+                give diagnostic_fix_transaction_empty(mode, "--fix refused because behavior_changed=true");
+            }
+        } else {
+            set plans = plans + [diagnostic_fix_plan_from_suggestion(diagnostic.code, i, suggestion)];
+            set files = diagnostic_fix_files_add(files, suggestion.span.file);
+            set before = before + "|" + suggestion.before_fingerprint;
+            set after = after + "|" + suggestion.after_fingerprint + "|" + diagnostic_suggestion_structural_fingerprint(suggestion);
+            set removed = removed + suggestion.errors_removed;
+            set created = created + suggestion.new_errors;
+            set behavior_changed = behavior_changed or suggestion.behavior_changed;
+        }
+
+        set i = i + 1;
+    }
+
+    if behavior_changed and mode == DiagnosticFixMode.Fix {
+        give diagnostic_fix_transaction_empty(mode, "--fix refused because behavior_changed=true");
+    }
+
+    if len(plans) == 0 {
+        give diagnostic_fix_transaction_empty(mode, "no verified code-modifying suggestion is applicable");
+    }
+
+    let status: DiagnosticFixApplyStatus = if mode == DiagnosticFixMode.FixPreview or mode == DiagnosticFixMode.FixWhy {
+        DiagnosticFixApplyStatus.Previewed
+    } else {
+        DiagnosticFixApplyStatus.Pending
+    };
+    let preview: string = diagnostic_fix_plans_preview(plans);
+    let why: string = "counterfactual verified; net_score=" + diagnostic_net_score(removed, created) + "; files=" + (len(files) as string);
+
+    give DiagnosticFixTransaction {
+        id: diagnostic_fix_transaction_id(diagnostic.span.file, before, after),
+        mode: mode,
+        files: files,
+        plans: plans,
+        before_fingerprint: before,
+        after_fingerprint: after,
+        errors_removed: removed,
+        errors_created: created,
+        net_score: diagnostic_net_score(removed, created),
+        behavior_changed: behavior_changed,
+        status: status,
+        rollback_reason: "",
+        preview: preview,
+        why: why,
+        valid: true
+    };
+}
+
+proc diagnostic_fix_transaction_rollback(transaction: DiagnosticFixTransaction, reason: string) -> DiagnosticFixTransaction {
+    let out: DiagnosticFixTransaction = transaction;
+    set out.status = DiagnosticFixApplyStatus.RolledBack;
+    set out.rollback_reason = reason;
+    give out;
+}
+
+share DiagnosticFixMode
+share DiagnosticFixApplyStatus
+share DiagnosticCounterfactualLevel
+share DiagnosticFixTransaction
+share diagnostic_counterfactual_level_from_text
+share diagnostic_counterfactual_level_name
+share diagnostic_fix_mode_from_flag
+share diagnostic_fix_mode_name
+share diagnostic_fix_transaction_from_diagnostic
+share diagnostic_fix_transaction_rollback

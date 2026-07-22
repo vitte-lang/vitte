@@ -525,16 +525,43 @@ proc detect_dump_surface_flag(args: [string]) -> string {
         if arg0 == "--diagnostics-json" or arg0 == "--diag-json" or arg0 == "--diag-json-pretty" {
             give "--diagnostics-json";
         }
+        if arg0 == "--fix-preview" or arg0 == "--fix-why" {
+            give "--diagnostics-json";
+        }
         set i = i + 1;
     }
     give "";
+}
+
+proc detect_fix_flag(args: [string]) -> string {
+    let i: u64 = 0;
+    while i < len(args) {
+        let arg0: string = args[i];
+        if arg0 == "--fix" or arg0 == "--fix-safe" or arg0 == "--fix-preview" or arg0 == "--fix-why" {
+            give arg0;
+        }
+        set i = i + 1;
+    }
+    give "";
+}
+
+proc detect_counterfactual_level(args: [string]) -> string {
+    let i: u64 = 0;
+    while i < len(args) {
+        let arg0: string = args[i];
+        if starts_with(arg0, "--counterfactual-level=") {
+            give slice(arg0, len("--counterfactual-level="), len(arg0));
+        }
+        set i = i + 1;
+    }
+    give "basic";
 }
 
 proc has_surface_json_intent(args: [string]) -> bool {
     let i: u64 = 0;
     while i < len(args) {
         let arg0: string = args[i];
-        if starts_with(arg0, "--dump-") or starts_with(arg0, "--diag") {
+        if starts_with(arg0, "--dump-") or starts_with(arg0, "--diag") or starts_with(arg0, "--fix") or starts_with(arg0, "--counterfactual-level=") {
             give true;
         }
         set i = i + 1;

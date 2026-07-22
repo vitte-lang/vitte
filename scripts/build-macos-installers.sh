@@ -327,23 +327,77 @@ write_editor_postinstall() {
 
   mkdir -p "$scripts_root"
 
+  cat > "$scripts_root/preinstall" <<'EOF'
+#!/bin/sh
+set -eu
+
+LOG_FILE=/var/log/vitte-install.log
+if ! touch "$LOG_FILE" >/dev/null 2>&1; then
+  LOG_FILE=/tmp/vitte-install.log
+  touch "$LOG_FILE" >/dev/null 2>&1 || true
+fi
+
+log_line() {
+  printf "%s %s\n" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" >> "$LOG_FILE" 2>/dev/null || true
+}
+
+prepare_dir() {
+  path=$1
+  if [ -e "$path" ] && [ ! -d "$path" ]; then
+    rm -f "$path"
+    log_line "[editors preinstall] removed blocking file: $path"
+  fi
+  mkdir -p "$path"
+}
+
+prepare_dir /usr/local/share
+prepare_dir /usr/local/share/vim
+prepare_dir /usr/local/share/vim/vimfiles
+prepare_dir /usr/local/share/emacs
+prepare_dir /usr/local/share/emacs/site-lisp
+prepare_dir /usr/local/share/nano
+prepare_dir /usr/local/share/geany
+prepare_dir /usr/local/share/geany/filedefs
+prepare_dir "/Library/Application Support"
+prepare_dir "/Library/Application Support/geany"
+prepare_dir "/Library/Application Support/geany/filedefs"
+
+log_line "[editors preinstall] ready"
+exit 0
+EOF
+
   cat > "$scripts_root/postinstall" <<'EOF'
 #!/bin/sh
 set -eu
 
+LOG_FILE=/var/log/vitte-install.log
+if ! touch "$LOG_FILE" >/dev/null 2>&1; then
+  LOG_FILE=/tmp/vitte-install.log
+  touch "$LOG_FILE" >/dev/null 2>&1 || true
+fi
+
 NANO_SYNTAX=/usr/local/share/nano/vitte.nanorc
 NANO_INCLUDE='include "/usr/local/share/nano/vitte.nanorc"'
+
+log_line() {
+  printf "%s %s\n" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" >> "$LOG_FILE" 2>/dev/null || true
+}
 
 append_nano_include() {
   nanorc=$1
 
   if [ -f "$nanorc" ]; then
     if ! grep -F "$NANO_INCLUDE" "$nanorc" >/dev/null 2>&1; then
-      printf '\n%s\n' "$NANO_INCLUDE" >> "$nanorc"
+      printf '\n%s\n' "$NANO_INCLUDE" >> "$nanorc" ||
+        log_line "[editors postinstall] could not update $nanorc"
     fi
   else
-    mkdir -p "$(dirname "$nanorc")"
-    printf '%s\n' "$NANO_INCLUDE" > "$nanorc"
+    mkdir -p "$(dirname "$nanorc")" 2>/dev/null || {
+      log_line "[editors postinstall] could not create $(dirname "$nanorc")"
+      return 0
+    }
+    printf '%s\n' "$NANO_INCLUDE" > "$nanorc" ||
+      log_line "[editors postinstall] could not write $nanorc"
   fi
 }
 
@@ -356,15 +410,20 @@ install_geany_for_user() {
   [ -d "$user_home" ] || return 0
   [ -f "$source_root/filetypes.Vitte.conf" ] || return 0
 
-  mkdir -p "$destination_root"
+  mkdir -p "$destination_root" 2>/dev/null || {
+    log_line "[editors postinstall] could not create $destination_root"
+    return 0
+  }
 
   cp \
     "$source_root/filetypes.Vitte.conf" \
-    "$destination_root/filetypes.Vitte.conf"
+    "$destination_root/filetypes.Vitte.conf" ||
+    log_line "[editors postinstall] could not install Geany filetype for $user_name"
 
   cp \
     "$source_root/filetypes.vitte.conf" \
-    "$destination_root/filetypes.vitte.conf"
+    "$destination_root/filetypes.vitte.conf" ||
+    log_line "[editors postinstall] could not install lowercase Geany filetype for $user_name"
 
   chown -R "$user_name" "$destination_root" 2>/dev/null || true
 }
@@ -379,6 +438,8 @@ if [ -f "$NANO_SYNTAX" ]; then
   if [ -d /opt/homebrew/etc ]; then
     append_nano_include /opt/homebrew/etc/nanorc
   fi
+else
+  log_line "[editors postinstall] nano syntax not found at $NANO_SYNTAX"
 fi
 
 for user_home in /Users/*; do
@@ -405,9 +466,11 @@ for user_home in /Users/*; do
     "$user_home/Library/Application Support/geany/filedefs"
 done
 
+log_line "[editors postinstall] done"
 exit 0
 EOF
 
+  chmod 0755 "$scripts_root/preinstall"
   chmod 0755 "$scripts_root/postinstall"
 }
 
@@ -541,6 +604,15 @@ verify_product_package() {
 
   test -x "$expanded/vitte-editors.pkg/Scripts/postinstall" ||
     die "missing macOS editor postinstall script"
+
+  test -x "$expanded/vitte-editors.pkg/Scripts/preinstall" ||
+    die "missing macOS editor preinstall script"
+
+  test -x "$expanded/vitte-component.pkg/Scripts/preinstall" ||
+    die "missing macOS toolchain preinstall script"
+
+  test -x "$expanded/vitte-component.pkg/Scripts/postinstall" ||
+    die "missing macOS toolchain postinstall script"
 
   find "$expanded" \
     -path '*/Payload/usr/local/bin/vitte' \

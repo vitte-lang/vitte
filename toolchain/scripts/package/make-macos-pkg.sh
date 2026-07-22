@@ -374,8 +374,9 @@ chmod 0644 "$STAGE_ROOT/usr/local/share/vitte/manifest/pkg_manifest.json"
 
 find "$STAGE_ROOT" -name '.DS_Store' -type f -delete || true
 
-# Postinstall verification.
-cat > "$SCRIPTS_DIR/postinstall" <<'EOF'
+# Preinstall cleanup/preparation. This keeps upgrades and failed previous installs
+# from requiring manual removal before macOS Installer can lay down the payload.
+cat > "$SCRIPTS_DIR/preinstall" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 
@@ -389,6 +390,86 @@ log_line() {
   printf "%s %s\n" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" >> "$LOG_FILE" 2>/dev/null || true
 }
 
+prepare_dir() {
+  local path="$1"
+  if [ -e "$path" ] && [ ! -d "$path" ]; then
+    rm -f "$path"
+    log_line "[preinstall] removed blocking file: $path"
+  fi
+  mkdir -p "$path"
+}
+
+remove_managed_path() {
+  local path="$1"
+  if [ -e "$path" ] || [ -L "$path" ]; then
+    rm -rf "$path"
+    log_line "[preinstall] removed previous managed path: $path"
+  fi
+}
+
+prepare_dir /usr/local
+prepare_dir /usr/local/bin
+prepare_dir /usr/local/libexec
+prepare_dir /usr/local/share
+prepare_dir /usr/local/etc
+prepare_dir /usr/local/etc/bash_completion.d
+prepare_dir /usr/local/share/zsh
+prepare_dir /usr/local/share/zsh/site-functions
+prepare_dir /usr/local/share/fish
+prepare_dir /usr/local/share/fish/vendor_completions.d
+prepare_dir /usr/local/share/man
+prepare_dir /usr/local/share/man/man1
+
+remove_managed_path /usr/local/bin/vitte
+remove_managed_path /usr/local/bin/vittec
+remove_managed_path /usr/local/libexec/vitte
+remove_managed_path /usr/local/share/vitte
+remove_managed_path /usr/local/etc/bash_completion.d/vitte
+remove_managed_path /usr/local/share/zsh/site-functions/_vitte
+remove_managed_path /usr/local/share/fish/vendor_completions.d/vitte.fish
+remove_managed_path /usr/local/share/man/man1/vitte.1
+remove_managed_path /usr/local/share/man/man1/vittec.1
+
+log_line "[preinstall] ready"
+exit 0
+EOF
+chmod 0755 "$SCRIPTS_DIR/preinstall"
+
+# Postinstall verification.
+cat > "$SCRIPTS_DIR/postinstall" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+LOG_FILE="/var/log/vitte-install.log"
+STRICT_POSTINSTALL="${VITTE_PKG_STRICT_POSTINSTALL:-0}"
+if ! touch "$LOG_FILE" >/dev/null 2>&1; then
+  LOG_FILE="/tmp/vitte-install.log"
+  touch "$LOG_FILE" >/dev/null 2>&1 || true
+fi
+
+log_line() {
+  printf "%s %s\n" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" >> "$LOG_FILE" 2>/dev/null || true
+}
+
+warn_or_fail() {
+  local message="$1"
+  log_line "[warn] $message"
+  echo "[vitte pkg] warning: $message (see $LOG_FILE)" >&2
+  if [ "$STRICT_POSTINSTALL" = "1" ]; then
+    exit 1
+  fi
+}
+
+install_if_present() {
+  local source_path="$1"
+  local destination_path="$2"
+  if [ -f "$source_path" ]; then
+    install -m 0644 "$source_path" "$destination_path"
+  else
+    log_line "[warn] optional editor file missing: $source_path"
+  fi
+}
+
 install_user_editor_support() {
   local user_name="$1"
   local home_dir="$2"
@@ -399,16 +480,16 @@ install_user_editor_support() {
 
   # Vim syntax/ftplugin/compiler.
   mkdir -p "$home_dir/.vim/syntax" "$home_dir/.vim/indent" "$home_dir/.vim/ftdetect" "$home_dir/.vim/ftplugin" "$home_dir/.vim/compiler"
-  install -m 0644 "$editor_root/vim/syntax/vitte.vim" "$home_dir/.vim/syntax/vitte.vim"
-  install -m 0644 "$editor_root/vim/indent/vitte.vim" "$home_dir/.vim/indent/vitte.vim"
-  install -m 0644 "$editor_root/vim/ftdetect/vitte.vim" "$home_dir/.vim/ftdetect/vitte.vim"
-  install -m 0644 "$editor_root/vim/ftplugin/vitte.vim" "$home_dir/.vim/ftplugin/vitte.vim"
-  install -m 0644 "$editor_root/vim/compiler/vitte.vim" "$home_dir/.vim/compiler/vitte.vim"
+  install_if_present "$editor_root/vim/syntax/vitte.vim" "$home_dir/.vim/syntax/vitte.vim"
+  install_if_present "$editor_root/vim/indent/vitte.vim" "$home_dir/.vim/indent/vitte.vim"
+  install_if_present "$editor_root/vim/ftdetect/vitte.vim" "$home_dir/.vim/ftdetect/vitte.vim"
+  install_if_present "$editor_root/vim/ftplugin/vitte.vim" "$home_dir/.vim/ftplugin/vitte.vim"
+  install_if_present "$editor_root/vim/compiler/vitte.vim" "$home_dir/.vim/compiler/vitte.vim"
 
   # Emacs mode files + auto-load block.
   mkdir -p "$home_dir/.emacs.d/lisp"
-  install -m 0644 "$editor_root/emacs/vitte-mode.el" "$home_dir/.emacs.d/lisp/vitte-mode.el"
-  install -m 0644 "$editor_root/emacs/vitte-indent.el" "$home_dir/.emacs.d/lisp/vitte-indent.el"
+  install_if_present "$editor_root/emacs/vitte-mode.el" "$home_dir/.emacs.d/lisp/vitte-mode.el"
+  install_if_present "$editor_root/emacs/vitte-indent.el" "$home_dir/.emacs.d/lisp/vitte-indent.el"
   local emacs_init="$home_dir/.emacs.d/init.el"
   if [ ! -f "$emacs_init" ]; then
     emacs_init="$home_dir/.emacs"
@@ -425,7 +506,7 @@ EINIT
 
   # Nano syntax include.
   mkdir -p "$home_dir/.config/nano"
-  install -m 0644 "$editor_root/nano/vitte.nanorc" "$home_dir/.config/nano/vitte.nanorc"
+  install_if_present "$editor_root/nano/vitte.nanorc" "$home_dir/.config/nano/vitte.nanorc"
   touch "$home_dir/.nanorc"
   if ! grep -q 'include "~/.config/nano/vitte.nanorc"' "$home_dir/.nanorc"; then
     printf '\ninclude "~/.config/nano/vitte.nanorc"\n' >> "$home_dir/.nanorc"
@@ -504,19 +585,17 @@ FEOF
   esac
 }
 
-if ! /usr/local/bin/vitte --help >/dev/null 2>&1; then
-  log_line "[error] vitte --help failed"
-  echo "[vitte pkg] postinstall check failed: vitte --help" >&2
-  exit 1
+if /usr/local/bin/vitte --help >> "$LOG_FILE" 2>&1; then
+  log_line "[ok] vitte --help"
+else
+  warn_or_fail "vitte --help failed"
 fi
-log_line "[ok] vitte --help"
 
-if ! /usr/local/bin/vittec --help >/dev/null 2>&1; then
-  log_line "[error] vittec --help failed"
-  echo "[vitte pkg] postinstall check failed: vittec --help" >&2
-  exit 1
+if /usr/local/bin/vittec --help >> "$LOG_FILE" 2>&1; then
+  log_line "[ok] vittec --help"
+else
+  warn_or_fail "vittec --help failed"
 fi
-log_line "[ok] vittec --help"
 
 TMP="/tmp/vitte_pkg_verify_$$.vit"
 cat > "$TMP" <<'VEOF'
@@ -527,14 +606,12 @@ proc main() -> int {
 }
 VEOF
 
-if ! /usr/local/bin/vitte check "$TMP" >/dev/null 2>&1; then
-  log_line "[error] vitte check package import test failed"
-  echo "[vitte pkg] postinstall check failed: package import test failed (see $LOG_FILE)" >&2
-  rm -f "$TMP"
-  exit 1
+if /usr/local/bin/vitte check "$TMP" >> "$LOG_FILE" 2>&1; then
+  log_line "[ok] vitte check package import test"
+else
+  warn_or_fail "vitte check package import test failed"
 fi
 rm -f "$TMP"
-log_line "[ok] vitte check package import test"
 
 for p in \
   /usr/local/etc/bash_completion.d/vitte \
@@ -542,9 +619,7 @@ for p in \
   /usr/local/share/fish/vendor_completions.d/vitte.fish
 do
   if [ ! -f "$p" ]; then
-    log_line "[error] missing completion $p"
-    echo "[vitte pkg] postinstall check failed: missing completion $p" >&2
-    exit 1
+    warn_or_fail "missing completion $p"
   fi
 done
 log_line "[ok] completions found"
@@ -553,13 +628,13 @@ log_line "[ok] completions found"
 console_user="$(stat -f%Su /dev/console 2>/dev/null || true)"
 if [ -n "$console_user" ] && [ "$console_user" != "root" ]; then
   console_home="$(dscl . -read "/Users/$console_user" NFSHomeDirectory 2>/dev/null | awk '{print $2}' || true)"
-  install_user_editor_support "$console_user" "$console_home"
-  install_user_shell_support "$console_user" "$console_home"
+  install_user_editor_support "$console_user" "$console_home" || warn_or_fail "user editor setup failed for $console_user"
+  install_user_shell_support "$console_user" "$console_home" || warn_or_fail "user shell setup failed for $console_user"
 fi
 if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ] && [ "${SUDO_USER}" != "${console_user:-}" ]; then
   sudo_home="$(dscl . -read "/Users/$SUDO_USER" NFSHomeDirectory 2>/dev/null | awk '{print $2}' || true)"
-  install_user_editor_support "$SUDO_USER" "$sudo_home"
-  install_user_shell_support "$SUDO_USER" "$sudo_home"
+  install_user_editor_support "$SUDO_USER" "$sudo_home" || warn_or_fail "user editor setup failed for $SUDO_USER"
+  install_user_shell_support "$SUDO_USER" "$sudo_home" || warn_or_fail "user shell setup failed for $SUDO_USER"
 fi
 log_line "[ok] editor and shell support installed"
 

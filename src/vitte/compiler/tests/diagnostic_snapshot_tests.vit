@@ -17,6 +17,8 @@ use vitte/compiler/diagnostics/diagnostic.{
   DIAGNOSTIC_USER_COLUMN_BASE,
   DIAGNOSTIC_USER_COLUMN_UNIT,
   diagnostic_fix_plans,
+  diagnostic_sanitize_unverified_code_suggestions,
+  diagnostic_suggestion_is_auto_safe,
   diagnostic_quality_score,
   default_render_config,
   diagnostic_internal_offset_text,
@@ -51,6 +53,13 @@ use vitte/compiler/diagnostics/diagnostic.{
   terminal_render_config,
   parser_unclosed_block,
   lexer_unterminated_string
+}
+use vitte/compiler/diagnostics/fix.{
+  DiagnosticFixMode,
+  diagnostic_fix_mode_from_flag,
+  diagnostic_fix_transaction_from_diagnostic,
+  diagnostic_counterfactual_level_from_text,
+  diagnostic_counterfactual_level_name
 }
 use vitte/compiler/diagnostics/json.{ json_diagnostic, json_report }
 use vitte/compiler/diagnostics/lsp.{ LspCanonicalContext, LspCodeAction, LspDiagnostic, LspPublishDiagnosticsParams, lsp_canonical_context, lsp_code_actions, lsp_code_action_summary, lsp_diagnostic, lsp_diagnostic_summary, lsp_diagnostic_with_canonical_context, lsp_publish_report_with_canonical_context, lsp_report_code_actions }
@@ -570,6 +579,32 @@ proc test_counterfactual_cache_and_diff_contract() -> bool {
     and diff.before_text == "repeat(value)"
     and diff.after_text == "repeat(parse_int(value))"
     and diff.replacement == "parse_int(value)";
+}
+
+proc test_diagnostic_fix_modes_transaction_contract() -> bool {
+  let diag0: Diagnostic = sample_parser_diagnostic();
+  let sanitized: Diagnostic = diagnostic_sanitize_unverified_code_suggestions(diag0);
+  let preview = diagnostic_fix_transaction_from_diagnostic(sanitized, DiagnosticFixMode.FixPreview);
+  let refused = diagnostic_fix_transaction_from_diagnostic(sample_counterfactual_typeck_argument_diagnostic(), DiagnosticFixMode.Fix);
+  let encoded: string = json_diagnostic(sample_counterfactual_typeck_argument_diagnostic());
+  give diagnostic_fix_mode_from_flag("--fix") == DiagnosticFixMode.Fix
+    and diagnostic_fix_mode_from_flag("--fix-safe") == DiagnosticFixMode.FixSafe
+    and diagnostic_fix_mode_from_flag("--fix-preview") == DiagnosticFixMode.FixPreview
+    and diagnostic_fix_mode_from_flag("--fix-why") == DiagnosticFixMode.FixWhy
+    and diagnostic_counterfactual_level_name(diagnostic_counterfactual_level_from_text("off")) == "off"
+    and diagnostic_counterfactual_level_name(diagnostic_counterfactual_level_from_text("basic")) == "basic"
+    and diagnostic_counterfactual_level_name(diagnostic_counterfactual_level_from_text("full")) == "full"
+    and diagnostic_counterfactual_level_name(diagnostic_counterfactual_level_from_text("exhaustive")) == "exhaustive"
+    and preview.valid
+    and find(preview.preview, "P000_UNBALANCED-fix-0") >= 0
+    and find(preview.why, "net_score=") >= 0
+    and refused.valid == false
+    and find(refused.rollback_reason, "behavior_changed=true") >= 0
+    and diagnostic_suggestion_is_auto_safe(sample_counterfactual_typeck_argument_diagnostic().suggestions[0]) == false
+    and find(encoded, "\"net_score\": \"") >= 0
+    and find(encoded, "\"before_fingerprint\": \"") >= 0
+    and find(encoded, "\"after_fingerprint\": \"") >= 0
+    and find(encoded, "\"structural_fingerprint\": \"") >= 0;
 }
 
 proc test_suggestion_quality_contract() -> bool {
@@ -1097,6 +1132,7 @@ proc run_all_tests() -> int {
   let unverified_suggestion_ok: bool = test_unverified_suggestion_is_not_certain();
   let counterfactual_rejects_new_error_ok: bool = test_counterfactual_rejects_new_error_solution();
   let counterfactual_cache_diff_ok: bool = test_counterfactual_cache_and_diff_contract();
+  let fix_modes_transaction_ok: bool = test_diagnostic_fix_modes_transaction_contract();
   let rust_like_block_ok: bool = rust_like_rendered_block_has_three_ordered_diagnostics();
   let report_cascade_ok: bool = test_report_deduplicates_and_limits_cascades();
   let cascade_link_ok: bool = test_cascade_diagnostics_link_to_root();
@@ -1165,6 +1201,9 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if counterfactual_cache_diff_ok == false {
+    set failures = failures + 1;
+  }
+  if fix_modes_transaction_ok == false {
     set failures = failures + 1;
   }
   if rust_like_block_ok == false {

@@ -1174,6 +1174,10 @@ borrowck-coverage:
 .PHONY: borrowck-gate
 borrowck-gate: borrowck-analysis-test borrowck-fixtures borrowck-snapshots borrowck-coverage
 
+.PHONY: compiler-full-coverage
+compiler-full-coverage:
+	@python3 tools/compiler_full_coverage_check.py
+
 .PHONY: frontend-token-consistency
 frontend-token-consistency:
 	@python3 tools/check_frontend_token_consistency.py

@@ -121,6 +121,29 @@ pick DiagnosticSuggestionStrategy {
     ManualHelp
 }
 
+pick DiagnosticCounterfactualLevel {
+    Off
+    Basic
+    Full
+    Exhaustive
+}
+
+pick DiagnosticFixMode {
+    None
+    Fix
+    FixSafe
+    FixPreview
+    FixWhy
+}
+
+pick DiagnosticFixApplyStatus {
+    Pending
+    Applied
+    Previewed
+    Refused
+    RolledBack
+}
+
 pick DiagnosticKind {
     User
     Configuration
@@ -184,8 +207,12 @@ form DiagnosticSuggestion {
     verified_phases: [DiagnosticPhase]
     risk: string
     public_score: u64
+    net_score: string
     errors_removed: u64
     new_errors: u64
+    before_fingerprint: string
+    after_fingerprint: string
+    structural_fingerprint: string
     error_moved: bool
     behavior_changed: bool
     counterfactual_verified: bool
@@ -194,6 +221,24 @@ form DiagnosticSuggestion {
     counterfactual_total_errors: u64
     counterfactual_outcomes: [DiagnosticCorrectionOutcome]
     counterfactual_report: string
+    valid: bool
+}
+
+form DiagnosticFixTransaction {
+    id: string
+    mode: DiagnosticFixMode
+    files: [string]
+    plans: [DiagnosticFixPlan]
+    before_fingerprint: string
+    after_fingerprint: string
+    errors_removed: u64
+    errors_created: u64
+    net_score: string
+    behavior_changed: bool
+    status: DiagnosticFixApplyStatus
+    rollback_reason: string
+    preview: string
+    why: string
     valid: bool
 }
 
@@ -761,6 +806,42 @@ proc diagnostic_suggestion_public_score(errors_removed: u64, new_errors: u64, er
     give score;
 }
 
+proc diagnostic_net_score(errors_removed: u64, new_errors: u64) -> string {
+    if errors_removed >= new_errors {
+        give "+" + ((errors_removed - new_errors) as string);
+    }
+
+    give "-" + ((new_errors - errors_removed) as string);
+}
+
+proc diagnostic_span_fingerprint(span: SourceSpan) -> string {
+    give span.file + ":" + (span.start_line as string) + ":" + (span.start_column as string) + ":" + (span.end_line as string) + ":" + (span.end_column as string);
+}
+
+proc diagnostic_suggestion_structural_fingerprint(suggestion: DiagnosticSuggestion) -> string {
+    give suggestion_kind_name(suggestion.kind) + "|" + diagnostic_span_fingerprint(suggestion.span) + "|" + suggestion.replacement + "|" + suggestion_strategy_name(suggestion.strategy);
+}
+
+proc diagnostic_suggestion_is_auto_safe(suggestion: DiagnosticSuggestion) -> bool {
+    if not suggestion.valid {
+        give false;
+    }
+
+    if diagnostic_suggestion_modifies_code(suggestion) and not suggestion.counterfactual_verified {
+        give false;
+    }
+
+    if suggestion.behavior_changed {
+        give false;
+    }
+
+    if suggestion.new_errors > 0 or has_new_error_outcome(suggestion.counterfactual_outcomes) {
+        give false;
+    }
+
+    give suggestion.machine_applicable and suggestion.confidence == DIAGNOSTIC_CONFIDENCE_HIGH;
+}
+
 proc diagnostic_suggestion_with_quality(suggestion: DiagnosticSuggestion, strategy: DiagnosticSuggestionStrategy, proof: string, verified_phases: [DiagnosticPhase], risk: string, errors_removed: u64, new_errors: u64, error_moved: bool, behavior_changed: bool) -> DiagnosticSuggestion {
     let out: DiagnosticSuggestion = suggestion;
     set out.strategy = strategy;
@@ -772,6 +853,10 @@ proc diagnostic_suggestion_with_quality(suggestion: DiagnosticSuggestion, strate
     set out.error_moved = error_moved;
     set out.behavior_changed = behavior_changed;
     set out.public_score = diagnostic_suggestion_public_score(errors_removed, new_errors, error_moved, behavior_changed, out.confidence);
+    set out.net_score = diagnostic_net_score(errors_removed, new_errors);
+    set out.before_fingerprint = diagnostic_span_fingerprint(out.span);
+    set out.after_fingerprint = diagnostic_span_fingerprint(out.span) + "#" + out.replacement;
+    set out.structural_fingerprint = diagnostic_suggestion_structural_fingerprint(out);
 
     if new_errors > 0 {
         set out.machine_applicable = false;
@@ -859,8 +944,12 @@ proc diagnostic_suggestion(kind: DiagnosticSuggestionKind, message: string, repl
         verified_phases: [],
         risk: if machine_applicable { "not verified yet" } else { "manual review required" },
         public_score: diagnostic_suggestion_public_score(0 as u64, 0 as u64, false, false, confidence),
+        net_score: diagnostic_net_score(0 as u64, 0 as u64),
         errors_removed: 0 as u64,
         new_errors: 0 as u64,
+        before_fingerprint: diagnostic_span_fingerprint(span),
+        after_fingerprint: diagnostic_span_fingerprint(span) + "#" + replacement,
+        structural_fingerprint: suggestion_kind_name(kind) + "|" + diagnostic_span_fingerprint(span) + "|" + replacement,
         error_moved: false,
         behavior_changed: false,
         counterfactual_verified: false,
@@ -944,6 +1033,10 @@ proc diagnostic_suggestion_with_counterfactual_result(suggestion: DiagnosticSugg
     set out.behavior_changed = changed;
     set out.risk = if new_errors > 0 { "creates new diagnostics" } elif moved { "moves the remaining diagnostic to another location" } elif changed { "may change runtime behavior" } else { "no new diagnostic observed" };
     set out.public_score = diagnostic_suggestion_public_score(errors_removed, new_errors, moved, changed, out.confidence);
+    set out.net_score = diagnostic_net_score(errors_removed, new_errors);
+    set out.before_fingerprint = diagnostic_span_fingerprint(out.span);
+    set out.after_fingerprint = diagnostic_span_fingerprint(out.span) + "#" + out.replacement;
+    set out.structural_fingerprint = diagnostic_suggestion_structural_fingerprint(out);
 
     if !verified {
         set out.machine_applicable = false;
@@ -959,6 +1052,7 @@ proc diagnostic_suggestion_with_counterfactual_result(suggestion: DiagnosticSugg
 
     if changed {
         set out.machine_applicable = false;
+        set out.applicability = DiagnosticApplicability.Manual;
     }
 
     give out;
@@ -1156,6 +1250,72 @@ proc diagnostic_verified_suggestions(diagnostic: Diagnostic) -> [DiagnosticSugge
             set out = diagnostic_suggestion_list_add(out, suggestion);
         }
 
+        set i = i + 1;
+    }
+
+    give out;
+}
+
+proc diagnostic_suggestion_seen_fingerprint(suggestions: [DiagnosticSuggestion], fingerprint: string) -> bool {
+    let i: u64 = 0;
+
+    while i < len(suggestions) {
+        if suggestions[i].structural_fingerprint == fingerprint {
+            give true;
+        }
+
+        set i = i + 1;
+    }
+
+    give false;
+}
+
+proc diagnostic_deduplicate_structural_hypotheses(suggestions: [DiagnosticSuggestion]) -> [DiagnosticSuggestion] {
+    let out: [DiagnosticSuggestion] = [];
+    let i: u64 = 0;
+
+    while i < len(suggestions) {
+        let suggestion: DiagnosticSuggestion = suggestions[i];
+        let fingerprint: string = if suggestion.structural_fingerprint != "" { suggestion.structural_fingerprint } else { diagnostic_suggestion_structural_fingerprint(suggestion) };
+        if not diagnostic_suggestion_seen_fingerprint(out, fingerprint) {
+            set suggestion.structural_fingerprint = fingerprint;
+            set out = diagnostic_suggestion_list_add(out, suggestion);
+        }
+
+        set i = i + 1;
+    }
+
+    give out;
+}
+
+proc diagnostic_verified_code_modifying_suggestions(diagnostic: Diagnostic) -> [DiagnosticSuggestion] {
+    let out: [DiagnosticSuggestion] = [];
+    let i: u64 = 0;
+
+    while i < len(diagnostic.suggestions) {
+        let suggestion: DiagnosticSuggestion = diagnostic.suggestions[i];
+        if not diagnostic_suggestion_modifies_code(suggestion) or suggestion.counterfactual_verified {
+            set out = diagnostic_suggestion_list_add(out, suggestion);
+        }
+
+        set i = i + 1;
+    }
+
+    give diagnostic_deduplicate_structural_hypotheses(out);
+}
+
+proc diagnostic_sanitize_unverified_code_suggestions(diagnostic: Diagnostic) -> Diagnostic {
+    let out: Diagnostic = diagnostic;
+    set out.suggestions = diagnostic_verified_code_modifying_suggestions(diagnostic);
+    give out;
+}
+
+proc diagnostic_sanitize_report_suggestions(diagnostics: [Diagnostic]) -> [Diagnostic] {
+    let out: [Diagnostic] = [];
+    let i: u64 = 0;
+
+    while i < len(diagnostics) {
+        set out = out + [diagnostic_sanitize_unverified_code_suggestions(diagnostics[i])];
         set i = i + 1;
     }
 
@@ -2150,8 +2310,10 @@ proc diagnostic_suggestion_list_add(suggestions: [DiagnosticSuggestion], suggest
 }
 
 proc diagnostic_suggestion_modifies_code(suggestion: DiagnosticSuggestion) -> bool {
-    give suggestion.replacement != ""
-        or suggestion.kind == DiagnosticSuggestionKind.Remove;
+    give suggestion.kind == DiagnosticSuggestionKind.Insert
+        or suggestion.kind == DiagnosticSuggestionKind.Replace
+        or suggestion.kind == DiagnosticSuggestionKind.Remove
+        or suggestion.replacement != "";
 }
 
 proc diagnostic_catalog_counterfactual_result(suggestion: DiagnosticSuggestion, phase: DiagnosticPhase, code: string, rank: u64, behavior_changed: bool) -> DiagnosticSuggestion {
@@ -3524,10 +3686,11 @@ proc diagnostics_have_fatal(diagnostics: [Diagnostic]) -> bool {
 }
 
 proc diagnostic_report(diagnostics: [Diagnostic]) -> DiagnosticReport {
-    let ordered: [Diagnostic] = diagnostic_report_visible_diagnostics(diagnostics);
+    let sanitized: [Diagnostic] = diagnostic_sanitize_report_suggestions(diagnostics);
+    let ordered: [Diagnostic] = diagnostic_report_visible_diagnostics(sanitized);
     let causality: DiagnosticCausalitySummary = diagnostic_causality_summary(ordered);
-    let suppressed_cascades: u64 = diagnostics_suppressed_cascade_count_from_original(diagnostics, ordered);
-    let duplicates: u64 = diagnostics_duplicate_count(diagnostics, ordered);
+    let suppressed_cascades: u64 = diagnostics_suppressed_cascade_count_from_original(sanitized, ordered);
+    let duplicates: u64 = diagnostics_duplicate_count(sanitized, ordered);
     give DiagnosticReport {
         diagnostics: ordered,
         valid: !diagnostics_have_errors(ordered),
@@ -5206,6 +5369,9 @@ share DiagnosticSuggestionKind
 share DiagnosticApplicability
 share DiagnosticCorrectionOutcome
 share DiagnosticFixKind
+share DiagnosticCounterfactualLevel
+share DiagnosticFixMode
+share DiagnosticFixApplyStatus
 share DiagnosticKind
 
 share SourceSpan
@@ -5216,6 +5382,7 @@ share DiagnosticNote
 share DiagnosticHelp
 share DiagnosticSuggestion
 share DiagnosticFixPlan
+share DiagnosticFixTransaction
 share DiagnosticCausalitySummary
 share DiagnosticQuality
 share Diagnostic
@@ -5273,7 +5440,16 @@ share diagnostic_suggestion_with_counterfactual_result
 share diagnostic_verified_counterfactual_solution
 share diagnostic_counterfactual_outcome_name
 share diagnostic_verified_suggestions
+share diagnostic_verified_code_modifying_suggestions
+share diagnostic_sanitize_unverified_code_suggestions
+share diagnostic_sanitize_report_suggestions
+share diagnostic_deduplicate_structural_hypotheses
 share diagnostic_counterfactual_tested_count
+share diagnostic_net_score
+share diagnostic_span_fingerprint
+share diagnostic_suggestion_structural_fingerprint
+share diagnostic_suggestion_modifies_code
+share diagnostic_suggestion_is_auto_safe
 share diagnostic_suggestion_with_secondary_span
 share diagnostic_suggestion_with_secondary_spans
 share diagnostic_suggestion_limit
