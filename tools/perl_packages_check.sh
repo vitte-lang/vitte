@@ -34,6 +34,7 @@ import gzip
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -121,6 +122,34 @@ def extract_archive(archive: Path, dest: Path) -> None:
         tar.extractall(dest, filter="data")
 
 
+def export_ok_symbols(module_file: Path) -> list[str]:
+    text = module_file.read_text(encoding="utf-8")
+    match = re.search(r"our\s+\@EXPORT_OK\s*=\s*qw\((.*?)\);", text, re.S)
+    if not match:
+        return []
+    return match.group(1).split()
+
+
+def validate_manifest(pkgdir: Path, failures: list[str], name: str) -> None:
+    manifest = pkgdir / "MANIFEST"
+    if not manifest.exists():
+        fail(failures, f"{name}: missing MANIFEST")
+        return
+    listed = {
+        line.strip()
+        for line in manifest.read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.startswith("#")
+    }
+    for path in sorted(pkgdir.rglob("*")):
+        if path.is_dir():
+            continue
+        rel = path.relative_to(pkgdir).as_posix()
+        if rel == "MANIFEST":
+            continue
+        if rel not in listed:
+            fail(failures, f"{name}: MANIFEST missing {rel}")
+
+
 def validate() -> int:
     failures: list[str] = []
     index = json.loads(INDEX.read_text(encoding="utf-8"))
@@ -157,6 +186,7 @@ def validate() -> int:
         module_file = pkgdir / str(package.get("module_file", ""))
         module_name = package.get("module")
         dist = package.get("distribution")
+        declared_exports = package.get("exports", [])
 
         for label, path in (
             ("directory", pkgdir),
@@ -199,9 +229,29 @@ def validate() -> int:
                 fail(failures, f"{name}: provided module version must be {VERSION_REQUIRED}")
 
         if module_file.exists():
-            ok, output = run(["perl", "-c", str(module_file)])
+            module_exports = export_ok_symbols(module_file)
+            if sorted(module_exports) != sorted(declared_exports):
+                fail(failures, f"{name}: packages.json exports differ from module @EXPORT_OK")
+            if readme_path.exists():
+                readme = readme_path.read_text(encoding="utf-8")
+                for symbol in declared_exports:
+                    if f"`{symbol}`" not in readme:
+                        fail(failures, f"{name}: README.md does not document export {symbol}")
+            if test_path.exists():
+                test_text = test_path.read_text(encoding="utf-8")
+                for symbol in declared_exports:
+                    if symbol not in test_text:
+                        fail(failures, f"{name}: {test_path.relative_to(pkgdir)} does not mention export {symbol}")
+
+            env = os.environ.copy()
+            env["PERL5LIB"] = str(pkgdir / "lib")
+            ok, output = run(["perl", "-c", str(module_file)], env=env)
             if not ok:
                 fail(failures, f"{name}: perl -c failed: {output}")
+            for pm_file in sorted((pkgdir / "lib").rglob("*.pm")):
+                ok, output = run(["perl", "-c", str(pm_file)], env=env)
+                if not ok:
+                    fail(failures, f"{name}: perl -c failed for {pm_file.relative_to(pkgdir)}: {output}")
             version_check = (
                 f"use lib q({pkgdir / 'lib'}); "
                 f"use {module_name}; "
@@ -215,9 +265,57 @@ def validate() -> int:
         if test_path.exists():
             env = os.environ.copy()
             env["PERL5LIB"] = str(pkgdir / "lib")
-            ok, output = run(["perl", str(test_path)], env=env)
-            if not ok:
-                fail(failures, f"{name}: t/basic.t failed: {output}")
+            for test_file in sorted((pkgdir / "t").glob("*.t")):
+                ok, output = run(["perl", str(test_file)], env=env)
+                if not ok:
+                    fail(failures, f"{name}: {test_file.relative_to(pkgdir)} failed: {output}")
+
+        examples_dir = pkgdir / "examples"
+        if examples_dir.exists():
+            env = os.environ.copy()
+            env["PERL5LIB"] = str(pkgdir / "lib")
+            for example in sorted(examples_dir.glob("*.pl")):
+                ok, output = run(["perl", "-c", str(example)], env=env)
+                if not ok:
+                    fail(failures, f"{name}: example compile failed for {example.relative_to(pkgdir)}: {output}")
+
+        xt_dir = pkgdir / "xt"
+        if xt_dir.exists():
+            env = os.environ.copy()
+            env["PERL5LIB"] = str(pkgdir / "lib")
+            for xt_test in sorted(xt_dir.glob("*.t")):
+                ok, output = run(["perl", str(xt_test.relative_to(pkgdir))], cwd=pkgdir, env=env)
+                if not ok:
+                    fail(failures, f"{name}: {xt_test.relative_to(pkgdir)} failed: {output}")
+
+        if name == "athens":
+            required = [
+                "LICENSE",
+                "Changes",
+                "MANIFEST",
+                "MANIFEST.SKIP",
+                "Makefile.PL",
+                "cpanfile",
+                "docs/api.md",
+                "docs/design.md",
+                "docs/error-codes.md",
+                "docs/compatibility.md",
+                "snapshots/manifest.txt",
+                "snapshots/manifest.json",
+                "snapshots/errors.txt",
+                "snapshots/README.generated.md",
+                "corpus/paths.txt",
+                "corpus/unicode_paths.txt",
+                "corpus/windows_paths.txt",
+                "corpus/unix_paths.txt",
+                "corpus/cleanup_manifest.json",
+            ]
+            for rel in required:
+                if not (pkgdir / rel).exists():
+                    fail(failures, f"athens: missing required distribution file {rel}")
+            if len(declared_exports) < 30:
+                fail(failures, f"athens: expected at least 30 exports, found {len(declared_exports)}")
+            validate_manifest(pkgdir, failures, name)
 
         archive_name = f"{dist}-{VERSION_REQUIRED}.tar.gz"
         archive_path = ARCHIVE_DIR / archive_name
@@ -230,9 +328,10 @@ def validate() -> int:
         extracted_root = install_dest / f"{dist}-{VERSION_REQUIRED}"
         env = os.environ.copy()
         env["PERL5LIB"] = str(extracted_root / "lib")
-        ok, output = run(["perl", str(extracted_root / "t" / "basic.t")], env=env)
-        if not ok:
-            fail(failures, f"{name}: extracted install test failed: {output}")
+        for extracted_test in sorted((extracted_root / "t").glob("*.t")):
+            ok, output = run(["perl", str(extracted_test)], env=env)
+            if not ok:
+                fail(failures, f"{name}: extracted install test failed for {extracted_test.relative_to(extracted_root)}: {output}")
 
         registry_packages.append({
             "name": name,

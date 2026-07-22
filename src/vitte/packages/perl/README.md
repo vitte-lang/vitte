@@ -20,7 +20,7 @@ and direct loading through `PERL5LIB`.
 | `vitte-perl-sydney` | `Vitte::City::Sydney` | HTTP request, response, router, and header helpers |
 | `vitte-perl-lisbon` | `Vitte::City::Lisbon` | Version parsing, ordering, and range checks |
 | `vitte-perl-madrid` | `Vitte::City::Madrid` | Identifier generation, validation, normalization, and parsing |
-| `vitte-perl-athens` | `Vitte::City::Athens` | Temporary path planning and cleanup manifests |
+| `vitte-perl-athens` | `Vitte::City::Athens` | Paths, temp files, cleanup, manifests, permissions, atomic IO, errors |
 | `vitte-perl-prague` | `Vitte::City::Prague` | Configuration parsing, merging, and emission |
 | `vitte-perl-vienna` | `Vitte::City::Vienna` | Numeric helpers for statistics and bounded arithmetic |
 | `vitte-perl-zurich` | `Vitte::City::Zurich` | Ordered maps, sets, grouping, and indexing helpers |
