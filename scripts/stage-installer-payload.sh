@@ -153,6 +153,43 @@ if (-not (Test-Path \$command)) {
 exit \$LASTEXITCODE
 EOF
   done
+
+  cat > "$bin_dir/vitte-installer-doctor.cmd" <<'EOF'
+@echo off
+setlocal
+set "PREFIX=%~dp0.."
+set "VITTE_ROOT=%~dp0..\share\vitte"
+set "STATUS=0"
+echo Vitte installer doctor
+echo prefix: %PREFIX%
+echo VITTE_ROOT: %VITTE_ROOT%
+for %%C in (vitte vittec vittec0) do (
+  if exist "%~dp0%%C.cmd" (
+    echo OK   wrapper exists: %~dp0%%C.cmd
+  ) else (
+    echo FAIL missing wrapper: %~dp0%%C.cmd
+    set "STATUS=1"
+  )
+)
+if exist "%VITTE_ROOT%\VERSION" (
+  echo OK   version file exists: %VITTE_ROOT%\VERSION
+) else (
+  echo FAIL missing version file: %VITTE_ROOT%\VERSION
+  set "STATUS=1"
+)
+if exist "%VITTE_ROOT%\INSTALLATION.json" (
+  echo OK   installation manifest exists: %VITTE_ROOT%\INSTALLATION.json
+) else (
+  echo FAIL missing installation manifest: %VITTE_ROOT%\INSTALLATION.json
+  set "STATUS=1"
+)
+if "%STATUS%"=="0" (
+  echo installer status: OK
+) else (
+  echo installer status: FAIL
+)
+exit /b %STATUS%
+EOF
 }
 
 case "$LAYOUT" in
@@ -165,6 +202,7 @@ case "$LAYOUT" in
     for command in vitte vittec vittec0; do
       install_unix_command "$command" "$libexec_dir" "$bin_dir"
     done
+    install -m 0755 "$ROOT_DIR/scripts/installer-doctor.sh" "$bin_dir/vitte-installer-doctor"
     copy_tree "$ROOT_DIR/man" "$prefix/share/man/man1"
     mkdir -p \
       "$prefix/etc/bash_completion.d" \

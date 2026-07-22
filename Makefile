@@ -1685,6 +1685,10 @@ installer-real-platforms-check:
 pkg-cli-integration:
 	@tools/pkg_cli_integration.sh
 
+.PHONY: cli-positional-path-test
+cli-positional-path-test:
+	@tools/cli_positional_path_test.sh
+
 .PHONY: modules-perf-cache
 modules-perf-cache:
 	@if [ -x tools/modules_cache_perf.sh ] && [ -f tests/modules/mod_doctor/main.vit ]; then \
@@ -2210,6 +2214,7 @@ help:
 	@echo "  make diagnostics-ftl-check fail if diagnostics locales are out of sync"
 	@echo "  make diagnostics-portable run diagnostics checks through bin/vittec0"
 	@echo "  make compiler-smoke-portable run portable compiler smoke checks through bin/vittec0"
+	@echo "  make cli-positional-path-test verify build FILE -o OUT preserves positional paths"
 	@echo "  make native-binaries-doctor report local compiler binary executability"
 	@echo "  make grammar-docs regenerate railroad SVG diagrams"
 	@echo "  make grammar-gate run grammar-check + grammar-test"

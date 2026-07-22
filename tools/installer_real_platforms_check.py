@@ -54,9 +54,16 @@ def command_present(text: str, command: str, shell: str) -> bool:
 
 def main() -> int:
     strict = os.environ.get("STRICT_REAL_INSTALLERS", "0") == "1"
+    release_mode = (
+        os.environ.get("RELEASE_INSTALLER_GATE", "0") == "1"
+        or os.environ.get("GITHUB_REF_TYPE") == "tag"
+    )
     data = json.loads(MATRIX.read_text(encoding="utf-8"))
     failures: list[str] = []
     warnings: list[str] = []
+
+    if data.get("release_requires_strict_real_installers") and release_mode and not strict:
+        failures.append("release installer gate requires STRICT_REAL_INSTALLERS=1")
 
     for arch in data["required_binary_architectures"]:
         os_name, matrix_arch, fmt = ARCH_ALIASES[arch]
@@ -109,6 +116,8 @@ def main() -> int:
         "version": data["version"],
         "status": "PASS" if not failures else "FAIL",
         "strict": strict,
+        "release_mode": release_mode,
+        "release_requires_strict_real_installers": bool(data.get("release_requires_strict_real_installers")),
         "required_binary_architectures": data["required_binary_architectures"],
         "raspberry_pi_targets": data["raspberry_pi_targets"],
         "real_platform_targets": data["real_platform_targets"],

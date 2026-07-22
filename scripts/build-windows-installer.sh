@@ -128,6 +128,10 @@ Unicode true
 !include "x64.nsh"
 !include "WinVer.nsh"
 !include "LogicLib.nsh"
+!include "StrFunc.nsh"
+
+${StrRep}
+${UnStrRep}
 
 !ifndef VERSION
   !define VERSION "0.0.0"
@@ -179,6 +183,17 @@ done:
   Pop $0
 FunctionEnd
 
+Function un.RemoveFromPath
+  Push $0
+  ReadRegStr $0 HKLM "SYSTEM\CurrentControlSet\Control\Session Manager\Environment" "Path"
+  ${UnStrRep} $0 $0 "$INSTDIR\bin;" ""
+  ${UnStrRep} $0 $0 ";$INSTDIR\bin" ""
+  ${UnStrRep} $0 $0 "$INSTDIR\bin" ""
+  WriteRegExpandStr HKLM "SYSTEM\CurrentControlSet\Control\Session Manager\Environment" "Path" "$0"
+  DeleteRegValue HKLM "SYSTEM\CurrentControlSet\Control\Session Manager\Environment" "VITTE_ROOT"
+  Pop $0
+FunctionEnd
+
 Section "Vitte" SEC_VITTE
   SectionIn RO
   ${IfNot} ${AtLeastWinXP}
@@ -206,6 +221,7 @@ Section "Vitte" SEC_VITTE
 SectionEnd
 
 Section "Uninstall"
+  Call un.RemoveFromPath
   RMDir /r "$SMPROGRAMS\Vitte"
   DeleteRegKey HKCR "Vitte.Source"
   DeleteRegKey HKCR ".vit"

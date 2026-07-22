@@ -14,6 +14,7 @@ VIT
 cd "$WORKDIR"
 
 # Required post-install contract:
+"$VITTE_BIN" --version >/dev/null
 "$VITTE_BIN" --help >/dev/null
 "$VITTE_BIN" check smoke.vit
 "$VITTE_BIN" build smoke.vit -o smoke

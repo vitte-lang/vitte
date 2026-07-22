@@ -291,7 +291,7 @@ manifest = {
     "minimum_version": sys.argv[7],
     "abi": sys.argv[8],
     "static_when_possible": sys.argv[9] == "true",
-    "installed_commands": ["vitte", "vittec", "vittec0"],
+    "installed_commands": ["vitte", "vittec", "vittec0", "vitte-installer-doctor"],
     "contents": [
         "compiler", "runtime", "stdlib", "sources", "documentation",
         "examples", "editors", "system-completions", "locales", "assets",

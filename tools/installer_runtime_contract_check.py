@@ -78,10 +78,9 @@ exit 0
     return bin_dir
 
 
-def stage_install_prefix(tmp: Path, stub_bin: Path) -> Path:
+def build_bsd_installer(tmp: Path, stub_bin: Path, label: str) -> Path:
     out = tmp / "bsd-out"
-    extract = tmp / "bsd-extract"
-    prefix = tmp / "installed-prefix"
+    extract = tmp / f"bsd-extract-{label}"
     env = os.environ.copy()
     env.update(
         {
@@ -101,9 +100,29 @@ def stage_install_prefix(tmp: Path, stub_bin: Path) -> Path:
         raise AssertionError("BSD portable installer archive missing")
     extract.mkdir()
     subprocess.run(["tar", "-xJf", str(archive), "-C", str(extract)], check=True)
+    return extract
+
+
+def install_from_bsd_kit(extract: Path, prefix: Path, *, destdir: Path | None = None) -> None:
     install_env = os.environ.copy()
     install_env.update({"PREFIX": str(prefix), "PATH": os.environ.get("PATH", "/usr/bin:/bin")})
+    if destdir is not None:
+        install_env["DESTDIR"] = str(destdir)
     run([str(extract / "install.sh")], env=install_env)
+
+
+def uninstall_from_bsd_kit(extract: Path, prefix: Path, *, destdir: Path | None = None) -> None:
+    uninstall_env = os.environ.copy()
+    uninstall_env.update({"PREFIX": str(prefix), "PATH": os.environ.get("PATH", "/usr/bin:/bin")})
+    if destdir is not None:
+        uninstall_env["DESTDIR"] = str(destdir)
+    run([str(extract / "uninstall.sh")], env=uninstall_env)
+
+
+def stage_install_prefix(tmp: Path, stub_bin: Path) -> Path:
+    extract = build_bsd_installer(tmp, stub_bin, "primary")
+    prefix = tmp / "installed-prefix"
+    install_from_bsd_kit(extract, prefix)
     return prefix
 
 
@@ -142,6 +161,8 @@ def clean_env(*, path: str = "/does/not/exist") -> dict[str, str]:
 
 
 def check_clean_shells(vitte: Path, work: Path) -> list[dict[str, str]]:
+    home = work / "empty-home"
+    home.mkdir()
     shells: list[tuple[str, str | None]] = [
         ("sh", "/bin/sh"),
         ("bash", shutil.which("bash")),
@@ -154,10 +175,20 @@ def check_clean_shells(vitte: Path, work: Path) -> list[dict[str, str]]:
             results.append({"shell": name, "status": "SKIP", "reason": "not installed on host"})
             continue
         if name == "fish":
-            command = f'set -gx HOME /nonexistent; set -gx LC_ALL C; set -gx PATH /does/not/exist; "{vitte}" --version'
+            completed = run(
+                [shell, "--no-config", "-c", f'set -gx HOME "{home}"; set -gx LC_ALL C; set -gx PATH /does/not/exist; "{vitte}" --version'],
+                env=clean_env(),
+                cwd=work,
+            )
+        elif name == "bash":
+            command = f'HOME="{home}" LC_ALL=C PATH=/does/not/exist "{vitte}" --version'
+            completed = run([shell, "--noprofile", "--norc", "-c", command], env=clean_env(), cwd=work)
+        elif name == "zsh":
+            command = f'HOME="{home}" LC_ALL=C PATH=/does/not/exist "{vitte}" --version'
+            completed = run([shell, "-f", "-c", command], env=clean_env(), cwd=work)
         else:
-            command = f'HOME=/nonexistent LC_ALL=C PATH=/does/not/exist "{vitte}" --version'
-        completed = run([shell, "-c", command], env=clean_env(), cwd=work)
+            command = f'HOME="{home}" LC_ALL=C PATH=/does/not/exist "{vitte}" --version'
+            completed = run([shell, "-c", command], env=clean_env(), cwd=work)
         if f"vitte {VERSION}" not in completed.stdout:
             raise AssertionError(f"{name}: unexpected --version output: {completed.stdout!r}")
         results.append({"shell": name, "status": "PASS"})
@@ -191,23 +222,115 @@ def check_post_install_compile(vitte: Path, tmp: Path) -> None:
     run([str(output)], env=clean_env(), cwd=work)
 
 
-def check_windows_and_macos_static_contracts() -> list[dict[str, str]]:
+def check_installer_permissions_uninstall_and_destdir(tmp: Path, stub_bin: Path) -> list[dict[str, str]]:
+    checks: list[dict[str, str]] = []
+    extract = build_bsd_installer(tmp, stub_bin, "permissions")
+
+    custom_prefix = tmp / "custom-prefix"
+    install_from_bsd_kit(extract, custom_prefix)
+    doctor = custom_prefix / "bin/vitte-installer-doctor"
+    run([str(doctor)], env=clean_env())
+    for required in (
+        custom_prefix / "bin/vitte",
+        custom_prefix / "bin/vittec",
+        custom_prefix / "bin/vittec0",
+        custom_prefix / "bin/vitte-installer-doctor",
+        custom_prefix / "libexec/vitte/vitte",
+    ):
+        if not required.exists():
+            raise AssertionError(f"custom prefix install missing {required}")
+        if not os.access(required, os.X_OK):
+            raise AssertionError(f"custom prefix install is not executable: {required}")
+    checks.append({"contract": "install prefix custom with installer doctor", "status": "PASS"})
+
+    user_local = tmp / "home/.local"
+    install_from_bsd_kit(extract, user_local)
+    run([str(user_local / "bin/vitte-installer-doctor")], env=clean_env())
+    checks.append({"contract": "install user-local prefix", "status": "PASS"})
+
+    destdir = tmp / "destdir-root"
+    install_from_bsd_kit(extract, Path("/usr/local"), destdir=destdir)
+    for required in (
+        destdir / "usr/local/bin/vitte",
+        destdir / "usr/local/bin/vitte-installer-doctor",
+        destdir / "usr/local/libexec/vitte/vitte",
+        destdir / "usr/local/share/vitte/INSTALLATION.json",
+    ):
+        if not required.exists():
+            raise AssertionError(f"DESTDIR install missing {required}")
+    checks.append({"contract": "install root layout through DESTDIR", "status": "PASS"})
+
+    uninstall_from_bsd_kit(extract, custom_prefix)
+    for removed in (
+        custom_prefix / "bin/vitte",
+        custom_prefix / "bin/vittec",
+        custom_prefix / "bin/vittec0",
+        custom_prefix / "libexec/vitte",
+        custom_prefix / "share/vitte",
+    ):
+        if removed.exists():
+            raise AssertionError(f"uninstall left installed path behind: {removed}")
+    checks.append({"contract": "uninstall removes wrappers payload and VITTE_ROOT side effects", "status": "PASS"})
+
+    return checks
+
+
+def check_platform_specific_contracts() -> list[dict[str, str]]:
     checks: list[dict[str, str]] = []
 
     windows_cmd = ROOT / "scripts/ci/real-install-smoke.cmd"
     windows_ps1 = ROOT / "scripts/ci/real-install-smoke.ps1"
+    windows_builder = ROOT / "scripts/build-windows-installer.sh"
+    stage_payload = ROOT / "scripts/stage-installer-payload.sh"
+    windows_nsi_template = ROOT / "toolchain/scripts/package/windows/vitte-installer.nsi"
     for path in (windows_cmd, windows_ps1):
         text = path.read_text(encoding="utf-8")
         for needle in ("--version", "check", "build"):
             if needle not in text:
                 raise AssertionError(f"{path.relative_to(ROOT)} missing {needle}")
         checks.append({"contract": path.relative_to(ROOT).as_posix(), "status": "PASS"})
+    cmd_text = windows_cmd.read_text(encoding="utf-8")
+    if "powershell" in cmd_text.lower():
+        raise AssertionError("Windows XP cmd smoke must not require PowerShell")
+    builder_text = windows_builder.read_text(encoding="utf-8")
+    for needle in ("AtLeastWinXP", "Function un.RemoveFromPath", "DeleteRegValue HKLM", "CreateShortCut", "WriteRegExpandStr HKLM"):
+        if needle not in builder_text:
+            raise AssertionError(f"Windows installer builder missing {needle}")
+    if "vitte-installer-doctor.cmd" not in stage_payload.read_text(encoding="utf-8"):
+        raise AssertionError("Windows payload staging missing vitte-installer-doctor.cmd")
+    nsi_template = windows_nsi_template.read_text(encoding="utf-8")
+    for needle in ("Function un.RemoveFromPath", "DeleteRegValue HKLM", "WriteRegExpandStr HKLM"):
+        if needle not in nsi_template:
+            raise AssertionError(f"Windows NSIS template missing {needle}")
+    checks.append({"contract": "Windows XP cmd-only and Windows 11 PATH registry uninstall", "status": "PASS"})
 
     macos_pkg = (ROOT / "toolchain/scripts/package/make-macos-pkg.sh").read_text(encoding="utf-8")
     for needle in (".zprofile", "/usr/local/bin", "zsh", "fish"):
         if needle not in macos_pkg:
             raise AssertionError(f"macOS package script missing {needle}")
-    checks.append({"contract": "macOS Terminal shell profile setup", "status": "PASS"})
+    macos_builder = (ROOT / "scripts/build-macos-installers.sh").read_text(encoding="utf-8")
+    for needle in ("arm64", "x86_64", "universal", "productsign", "notarytool", "STRICT_DMG"):
+        if needle not in macos_builder:
+            raise AssertionError(f"macOS installer builder missing {needle}")
+    checks.append({"contract": "macOS Intel Apple Silicon universal signature notarization zprofile", "status": "PASS"})
+
+    linux_builder = (ROOT / "scripts/build-linux-debs.sh").read_text(encoding="utf-8")
+    for needle in ("amd64", "i386", "armhf", "arm64", "riscv64", "postinst", "prerm", "#!/bin/sh", "set -eu"):
+        if needle not in linux_builder:
+            raise AssertionError(f"Debian builder missing {needle}")
+    checks.append({"contract": "Debian deb arches and robust postinst/prerm", "status": "PASS"})
+
+    solaris_builder = (ROOT / "scripts/build-solaris-package.sh").read_text(encoding="utf-8")
+    for needle in ("SVR4", "amd64", "i386", "install.sh", "uninstall.sh", "#!/bin/sh", "set -eu"):
+        if needle not in solaris_builder:
+            raise AssertionError(f"Solaris builder missing {needle}")
+    checks.append({"contract": "Solaris SVR4 package portable kit POSIX sh", "status": "PASS"})
+
+    bsd_builder = (ROOT / "scripts/build-bsd-installers.sh").read_text(encoding="utf-8").lower()
+    for needle in ("freebsd", "openbsd", "netbsd", "dragonfly", "install.sh", "uninstall.sh", "pkg"):
+        if needle not in bsd_builder:
+            raise AssertionError(f"BSD builder missing {needle}")
+    checks.append({"contract": "BSD portable install and FreeBSD pkg", "status": "PASS"})
 
     common = (ROOT / "scripts/common.sh").read_text(encoding="utf-8")
     for needle in ("glibc", "musl", "bsd-libc", "solaris-libc", "Windows XP SP3"):
@@ -255,6 +378,7 @@ def check_portable_tarball(tmp: Path, stub_bin: Path) -> dict[str, str]:
     prefix = f"vitte-{VERSION}-portable-linux-amd64"
     for required in (
         f"{prefix}/bin/vitte",
+        f"{prefix}/bin/vitte-installer-doctor",
         f"{prefix}/libexec/vitte/vitte",
         f"{prefix}/share/vitte/INSTALLATION.json",
         f"{prefix}/README.portable",
@@ -269,6 +393,7 @@ def check_portable_tarball(tmp: Path, stub_bin: Path) -> dict[str, str]:
     completed = run([str(vitte), "--version"], env=clean_env())
     if completed.stdout.strip() != f"vitte {VERSION}":
         raise AssertionError("portable wrapper did not run without PATH")
+    run([str(extract / prefix / "bin/vitte-installer-doctor")], env=clean_env())
     data = json.loads(manifest.read_text(encoding="utf-8"))
     for key in ("version", "arch", "os", "abi", "libc", "minimum_version", "sha256", "contents", "installed_commands"):
         if key not in data:
@@ -296,7 +421,8 @@ def main() -> int:
         checks.append(check_clean_shells(vitte, tmp))
         check_post_install_compile(vitte, tmp)
         checks.append({"contract": "post-install check/build/run", "status": "PASS"})
-        checks.extend(check_windows_and_macos_static_contracts())
+        checks.extend(check_installer_permissions_uninstall_and_destdir(tmp, stub_bin))
+        checks.extend(check_platform_specific_contracts())
         checks.append(check_portable_tarball(tmp, stub_bin))
 
         flattened: list[dict[str, str]] = []

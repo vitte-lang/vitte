@@ -99,10 +99,17 @@ if "set -gx PATH /usr/local/bin $PATH" not in macos_pkg:
     version_violations.append("toolchain/scripts/package/make-macos-pkg.sh: fish support must force the installed bin path")
 
 windows_builder = (root / "scripts/build-windows-installer.sh").read_text(encoding="utf-8")
+stage_payload = (root / "scripts/stage-installer-payload.sh").read_text(encoding="utf-8")
 if '!include "LogicLib.nsh"' not in windows_builder:
     version_violations.append("scripts/build-windows-installer.sh: generated NSIS script must include LogicLib.nsh")
 if 'if exist "%~dp0$command.exe"' not in windows_builder:
     version_violations.append("scripts/build-windows-installer.sh: cmd shim must prefer the command-specific executable")
+if "vitte-installer-doctor.cmd" not in stage_payload:
+    version_violations.append("scripts/stage-installer-payload.sh: Windows payload must include cmd installer doctor")
+if '!include "StrFunc.nsh"' not in windows_builder or "Function un.RemoveFromPath" not in windows_builder:
+    version_violations.append("scripts/build-windows-installer.sh: Windows uninstall must remove PATH entries")
+if 'DeleteRegValue HKLM "SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment" "VITTE_ROOT"' not in windows_builder:
+    version_violations.append("scripts/build-windows-installer.sh: Windows uninstall must remove VITTE_ROOT")
 if '\\$env:VITTE_ROOT = Join-Path \\$PSScriptRoot "..\\\\share\\\\vitte"' not in windows_builder:
     version_violations.append("scripts/build-windows-installer.sh: PowerShell shim must set VITTE_ROOT")
 if 'WriteRegExpandStr HKLM "SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment" "Path" "$1;$0"' not in windows_builder:

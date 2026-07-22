@@ -182,8 +182,9 @@ def installed_commands_for(platform: str) -> list[str]:
             "vitte.cmd", "vitte.ps1",
             "vittec.cmd", "vittec.ps1",
             "vittec0.cmd", "vittec0.ps1",
+            "vitte-installer-doctor.cmd",
         ]
-    return ["vitte", "vittec", "vittec0"]
+    return ["vitte", "vittec", "vittec0", "vitte-installer-doctor"]
 
 contents = [
     "compiler", "runtime", "stdlib", "sources", "documentation",

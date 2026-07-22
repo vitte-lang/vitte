@@ -36,7 +36,9 @@ Examples:
 Runtime contract checks:
 
 - `make installer-runtime-contract-check` installs a staged package in a temporary root, opens clean `sh`/`bash`/`zsh`/`fish` shells when available, runs `vitte --version`, verifies absolute-path execution with no usable `PATH`, verifies a polluted old `PATH`, builds and executes a post-install smoke program, and checks the portable `.tar.gz` wrapper.
+- Installed Unix and portable payloads include `vitte-installer-doctor`; Windows payloads include `vitte-installer-doctor.cmd`. The doctor prints the resolved prefix, expected wrapper/payload/share paths, `VITTE_ROOT`, and the exact missing part when an installation is incomplete.
 - Windows `cmd.exe`/PowerShell and macOS Terminal coverage is represented by the real-platform smoke scripts and package shell-profile contract; release CI must execute those scripts on the real target systems.
+- Release gates must run `STRICT_REAL_INSTALLERS=1 RELEASE_INSTALLER_GATE=1 make installer-real-platforms-check`; a release is refused until every target has install + build + run evidence.
 
 Exit codes:
 

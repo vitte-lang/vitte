@@ -33,6 +33,7 @@ stage_unix() {
     "$ROOT_DIR/scripts_build/stage-installer-payload.sh" "$dest" "$platform" "$arch" unix
 
   test -x "$dest/usr/local/bin/vitte"
+  test -x "$dest/usr/local/bin/vitte-installer-doctor"
   test -x "$dest/usr/local/libexec/vitte/vitte"
   test -s "$dest/usr/local/share/vitte/INSTALLATION.json"
   test -s "$dest/usr/local/share/vitte/VERSION"
@@ -60,6 +61,7 @@ PY
     grep -F 'export VITTE_ROOT=${VITTE_ROOT:-/usr/local/share/vitte}' "$dest/usr/local/bin/$command" >/dev/null
     grep -F "/usr/local/libexec/vitte/$command" "$dest/usr/local/bin/$command" >/dev/null
   done
+  "$dest/usr/local/bin/vitte-installer-doctor" >/dev/null || true
 }
 
 stage_windows() {
@@ -81,6 +83,8 @@ stage_windows() {
     grep -F 'Join-Path $PSScriptRoot "..\share\vitte"' "$dest/bin/$command.ps1" >/dev/null
     grep -F "Join-Path \$PSScriptRoot \"$command.exe\"" "$dest/bin/$command.ps1" >/dev/null
   done
+  test -s "$dest/bin/vitte-installer-doctor.cmd"
+  grep -F 'Vitte installer doctor' "$dest/bin/vitte-installer-doctor.cmd" >/dev/null
 }
 
 "$ROOT_DIR/scripts_build/package-matrix.sh" list >/dev/null

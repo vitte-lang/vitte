@@ -51,6 +51,8 @@ verify_deb() {
     bsdtar -xOf "$tmp/data.tar.gz" "./usr/local/bin/$command" 2>/dev/null | grep -F "/usr/local/libexec/vitte/$command" >/dev/null ||
       die "Debian wrapper does not exec libexec $command: $file"
   done
+  bsdtar -tf "$tmp/data.tar.gz" | grep -Eq '^(\./)?usr/local/bin/vitte-installer-doctor$' ||
+    die "Debian package missing installer doctor: $file"
   rm -rf "$tmp"
   trap - EXIT HUP INT TERM
 }
@@ -108,6 +110,8 @@ for bsd_kit in "$OUT_DIR"/vitte-"$VERSION"-*-*-installer.tar.xz; do
     tar -xOf "$bsd_kit" "root/usr/local/bin/$command" 2>/dev/null | grep -F "/usr/local/libexec/vitte/$command" >/dev/null ||
       die "BSD wrapper does not exec libexec $command: $bsd_kit"
   done
+  scripts_build_tar_list_xz "$bsd_kit" | grep -Fx 'root/usr/local/bin/vitte-installer-doctor' >/dev/null ||
+    die "BSD installer missing installer doctor: $bsd_kit"
 done
 
 for portable_kit in "$OUT_DIR"/vitte-"$VERSION"-portable-*-*.tar.gz; do
@@ -118,6 +122,7 @@ for portable_kit in "$OUT_DIR"/vitte-"$VERSION"-portable-*-*.tar.gz; do
     "$package_dir/bin/vitte" \
     "$package_dir/bin/vittec" \
     "$package_dir/bin/vittec0" \
+    "$package_dir/bin/vitte-installer-doctor" \
     "$package_dir/libexec/vitte/vitte" \
     "$package_dir/share/vitte/INSTALLATION.json" \
     "$package_dir/share/vitte/VERSION" \
@@ -165,7 +170,7 @@ if [ -s "$OUT_DIR/CHECKSUMS.txt" ]; then
   done < "$OUT_DIR/CHECKSUMS.txt"
 fi
 
-for item in 'amd64 0x8664' 'i386 0x014c' 'arm64 0xaa64' 'armv7 0x01c4'; do
+  for item in 'amd64 0x8664' 'i386 0x014c' 'arm64 0xaa64' 'armv7 0x01c4'; do
   set -- $item
   windows_kit=$OUT_DIR/vitte-${VERSION}-windows-$1-nsis.tar.gz
   [ ! -e "$windows_kit" ] || {
@@ -180,8 +185,14 @@ for item in 'amd64 0x8664' 'i386 0x014c' 'arm64 0xaa64' 'armv7 0x01c4'; do
     done
     tar -xOzf "$windows_kit" installer.nsi | grep -F '!include "LogicLib.nsh"' >/dev/null ||
       die "Windows NSIS script missing LogicLib include: $windows_kit"
+    tar -xOzf "$windows_kit" installer.nsi | grep -F '!include "StrFunc.nsh"' >/dev/null ||
+      die "Windows NSIS script missing StrFunc include: $windows_kit"
     tar -xOzf "$windows_kit" installer.nsi | grep -F 'Windows XP through Windows 11' >/dev/null ||
       die "Windows NSIS script missing XP through Windows 11 support label: $windows_kit"
+    tar -xOzf "$windows_kit" installer.nsi | grep -F 'Function un.RemoveFromPath' >/dev/null ||
+      die "Windows NSIS script missing PATH uninstall function: $windows_kit"
+    tar -xOzf "$windows_kit" installer.nsi | grep -F 'DeleteRegValue HKLM "SYSTEM\CurrentControlSet\Control\Session Manager\Environment" "VITTE_ROOT"' >/dev/null ||
+      die "Windows NSIS script does not remove VITTE_ROOT: $windows_kit"
     for command in vitte vittec vittec0; do
       tar -tzf "$windows_kit" | grep -Fx "payload/bin/$command.cmd" >/dev/null ||
         die "Windows kit missing cmd shim for $command: $windows_kit"
@@ -192,6 +203,10 @@ for item in 'amd64 0x8664' 'i386 0x014c' 'arm64 0xaa64' 'armv7 0x01c4'; do
       tar -xOzf "$windows_kit" "payload/bin/$command.ps1" | grep -F '$env:VITTE_ROOT = Join-Path $PSScriptRoot "..\share\vitte"' >/dev/null ||
         die "Windows PowerShell shim missing VITTE_ROOT for $command: $windows_kit"
     done
+    tar -tzf "$windows_kit" | grep -Fx 'payload/bin/vitte-installer-doctor.cmd' >/dev/null ||
+      die "Windows kit missing cmd installer doctor: $windows_kit"
+    tar -xOzf "$windows_kit" payload/bin/vitte-installer-doctor.cmd | grep -F 'Vitte installer doctor' >/dev/null ||
+      die "Windows cmd installer doctor missing status output: $windows_kit"
   }
 done
 
