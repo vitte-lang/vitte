@@ -20,6 +20,8 @@ ARCH=${3:?missing architecture}
 LAYOUT=${4:-unix}
 VERSION=${VERSION:-$(tr -d ' \r\n' < "$ROOT_DIR/toolchain/scripts/package/PACKAGE_VERSION")}
 STRICT_PROCESSOR=${STRICT_PROCESSOR:-0}
+VITTE_ABSOLUTE=$(install_vitte_if_missing)
+verify_vitte "$VITTE_ABSOLUTE" >/dev/null
 scripts_build_maybe_dry_run "would stage installer payload platform=$PLATFORM arch=$ARCH layout=$LAYOUT dest=$DEST"
 
 die() {

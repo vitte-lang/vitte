@@ -11,6 +11,124 @@ scripts_build_require() {
     scripts_build_die "missing required tool: $1"
 }
 
+scripts_build_absolute_path() {
+  path=$1
+  case "$path" in
+    /*)
+      printf '%s\n' "$path"
+      ;;
+    */*)
+      directory=${path%/*}
+      name=${path##*/}
+      printf '%s/%s\n' "$(CDPATH= cd -- "$directory" && pwd)" "$name"
+      ;;
+    *)
+      found=$(command -v "$path" 2>/dev/null || true)
+      [ -n "$found" ] || return 1
+      scripts_build_absolute_path "$found"
+      ;;
+  esac
+}
+
+detect_vitte() {
+  root_dir=${ROOT_DIR:-$(CDPATH= cd -- "$(dirname "$0")/.." 2>/dev/null && pwd || pwd)}
+  vitte_root=${VITTE_ROOT:-}
+  vitte_prefix=
+  if [ -n "$vitte_root" ]; then
+    case "$vitte_root" in
+      */share/vitte) vitte_prefix=${vitte_root%/share/vitte} ;;
+      *) vitte_prefix=$vitte_root ;;
+    esac
+  fi
+
+  for candidate in \
+    "${VITTE_BIN:-}" \
+    "$PWD/bin/vitte" \
+    "${vitte_root:+$vitte_root/bin/vitte}" \
+    "${vitte_prefix:+$vitte_prefix/bin/vitte}" \
+    "$root_dir/bin/vitte" \
+    "/usr/local/bin/vitte"
+  do
+    [ -n "$candidate" ] || continue
+    if [ -x "$candidate" ]; then
+      scripts_build_absolute_path "$candidate"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+install_vitte_if_missing() {
+  detected=$(detect_vitte 2>/dev/null || true)
+  if [ -n "$detected" ]; then
+    VITTE_ABSOLUTE=$detected
+    export VITTE_ABSOLUTE
+    printf '%s\n' "$detected"
+    return 0
+  fi
+
+  root_dir=${ROOT_DIR:-$(CDPATH= cd -- "$(dirname "$0")/.." 2>/dev/null && pwd || pwd)}
+  if [ -x "$root_dir/scripts/seed/install_seed.sh" ]; then
+    "$root_dir/scripts/seed/install_seed.sh" >/dev/null
+    detected=$(detect_vitte 2>/dev/null || true)
+    if [ -n "$detected" ]; then
+      VITTE_ABSOLUTE=$detected
+      export VITTE_ABSOLUTE
+      printf '%s\n' "$detected"
+      return 0
+    fi
+  fi
+
+  scripts_build_die "cannot find or install Vitte; checked VITTE_BIN, ./bin/vitte, ROOT_DIR/bin/vitte, VITTE_ROOT/bin/vitte, VITTE_ROOT prefix bin, and /usr/local/bin/vitte"
+}
+
+verify_vitte() {
+  vitte=${1:-${VITTE_ABSOLUTE:-}}
+  if [ -z "$vitte" ]; then
+    vitte=$(install_vitte_if_missing)
+  fi
+  vitte=$(scripts_build_absolute_path "$vitte")
+  [ -x "$vitte" ] ||
+    scripts_build_die "Vitte is not executable: $vitte"
+
+  "$vitte" --version >/dev/null 2>&1 ||
+    scripts_build_die "Vitte version check failed: $vitte --version"
+  "$vitte" --help >/dev/null 2>&1 ||
+    scripts_build_die "Vitte help check failed: $vitte --help"
+
+  smoke_dir=${TMPDIR:-/tmp}/vitte-script-build-verify-$$
+  /bin/rm -rf "$smoke_dir"
+  /bin/mkdir -p "$smoke_dir"
+  {
+    printf '%s\n' 'proc main() -> int {'
+    printf '%s\n' '  give 0'
+    printf '%s\n' '}'
+  } > "$smoke_dir/main.vit"
+  (cd "$smoke_dir" && "$vitte" check main.vit >/dev/null 2>&1) ||
+    scripts_build_die "Vitte post-install check failed: $vitte check main.vit"
+  (cd "$smoke_dir" && "$vitte" build main.vit -o main >/dev/null 2>&1) ||
+    scripts_build_die "Vitte post-install build failed: $vitte build main.vit -o main"
+  if [ -x "$smoke_dir/main" ]; then
+    "$smoke_dir/main" >/dev/null 2>&1 ||
+      scripts_build_die "Vitte post-install executable failed: $smoke_dir/main"
+  fi
+  /bin/rm -rf "$smoke_dir"
+
+  VITTE_ABSOLUTE=$vitte
+  export VITTE_ABSOLUTE
+  printf '%s\n' "$vitte"
+}
+
+run_vitte_absolute() {
+  vitte=${VITTE_ABSOLUTE:-}
+  if [ -z "$vitte" ] || [ ! -x "$vitte" ]; then
+    vitte=$(install_vitte_if_missing)
+  fi
+  vitte=$(scripts_build_absolute_path "$vitte")
+  "$vitte" "$@"
+}
+
 scripts_build_parse_common_flags() {
   DRY_RUN=${DRY_RUN:-0}
   HELP=${HELP:-0}

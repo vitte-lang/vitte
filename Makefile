@@ -1847,6 +1847,32 @@ package-cli-gate: package-registry-gate
 package-lockfile-gate: package-cli-gate
 	@$(CURDIR)/bin/vitte package lock --check --workspace "$(CURDIR)/examples/package-workspace/vitte-workspace.json" >/dev/null
 
+.PHONY: package-format-gate
+package-format-gate: package-lockfile-gate
+	@python3 -c 'import json; from pathlib import Path; root = Path.cwd(); manifests = sorted((root / "examples/package-workspace/packages").glob("*/vitte-package.json")); [(_ for _ in ()).throw(AssertionError(path)) for path in manifests if json.loads(path.read_text(encoding="utf-8"))["schema"] != "vitte.package.manifest.v1" or json.loads(path.read_text(encoding="utf-8"))["version"] != "0.1.0"]; lock = json.loads((root / "examples/package-workspace/vitte.lock").read_text(encoding="utf-8")); assert lock["schema"] == "vitte.workspace.lock.v1"; assert all(entry["checksum"]["algorithm"] == "sha256" and entry["checksum"]["value"] for entry in lock["entries"]); print("[package-format-gate] ok")'
+
+.PHONY: package-compile-gate
+package-compile-gate: package-cli-gate
+
+.PHONY: package-import-gate
+package-import-gate: package-cli-gate
+
+.PHONY: script-build-install-gate
+script-build-install-gate:
+	@chmod 0755 tools/script_build_install_check.sh
+	@sh -n scripts_build/common.sh
+	@sh -n scripts_build/stage-installer-payload.sh
+	@tools/script_build_install_check.sh
+
+.PHONY: installer-doctor-gate
+installer-doctor-gate: installer-runtime-contract-check
+
+.PHONY: post-install-build-run-gate
+post-install-build-run-gate: installer-runtime-contract-check post-install-package-cli-test
+
+.PHONY: vitte-total-integration-gate
+vitte-total-integration-gate: package-format-gate package-registry-gate package-compile-gate package-import-gate package-lockfile-gate script-build-install-gate installer-doctor-gate post-install-build-run-gate package-manager-gate
+
 .PHONY: packages-gate
 packages-gate: package-layout-lint-strict packages-governance-lint no-std-lint module-naming-lint legacy-import-path-lint critical-runtime-matrix-lint new-public-packages-snapshots-lint modules-perf-cache packages-dependency-overlap-lint packages-contract-snapshots package-cli-gate perl-vitte-integration perl-packages-check
 
@@ -2144,7 +2170,7 @@ pkg-macos-uninstall:
 	@VERSION=$(PKG_VERSION) toolchain/scripts/package/make-macos-uninstall-pkg.sh
 
 .PHONY: release-check
-release-check: build core-release-gate ci-fast package-layout-lint-strict legacy-import-allowlist-empty ci-completions pkg-macos release-gate-90-119 vitte-max-construction-gate release-installer-gate
+release-check: build core-release-gate ci-fast package-layout-lint-strict legacy-import-allowlist-empty ci-completions pkg-macos release-gate-90-119 vitte-max-construction-gate release-installer-gate vitte-total-integration-gate
 
 .PHONY: release-doctor
 release-doctor:
