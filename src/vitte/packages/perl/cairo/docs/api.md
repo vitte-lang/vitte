@@ -1,16 +1,8 @@
-# vitte-perl-cairo
+# Cairo API
 
-Version: `0.1.0`
+Cairo provides a broad, versioned structured-data utility surface for Vitte package tooling. The public API is exported by `Vitte::City::Cairo` and implemented by focused submodules.
 
-Cairo is the Vitte Perl package for structured data tooling: scalars, records, lists, tables, schemas, deterministic codecs, and structured validation errors.
-
-## Module
-
-`Vitte::City::Cairo`
-
-## Public API
-
-### Scalars
+## Scalars
 
 Escape, decode, type, convert, trim, normalize case, default, and compare scalar values.
 
@@ -32,7 +24,7 @@ Escape, decode, type, convert, trim, normalize case, default, and compare scalar
 - `scalar_default`
 - `scalar_compare`
 
-### Records
+## Records
 
 Encode, decode, mutate, project, omit, validate required keys, merge, rename, diff, and render query records.
 
@@ -55,7 +47,7 @@ Encode, decode, mutate, project, omit, validate required keys, merge, rename, di
 - `record_diff`
 - `record_to_query`
 
-### Lists
+## Lists
 
 Encode, decode, mutate, slice, sort, reverse, join, search, compact, flatten, and deduplicate lists.
 
@@ -77,7 +69,7 @@ Encode, decode, mutate, slice, sort, reverse, join, search, compact, flatten, an
 - `list_compact`
 - `list_flatten`
 
-### Tables
+## Tables
 
 Create tables from records, add rows, inspect columns, filter, sort, limit, offset, group, index, and export rows.
 
@@ -100,7 +92,7 @@ Create tables from records, add rows, inspect columns, filter, sort, limit, offs
 - `table_join_text`
 - `table_index_by`
 
-### Schemas
+## Schemas
 
 Define fields and schemas, inspect required/optional/default fields, apply defaults, and validate records/tables.
 
@@ -121,7 +113,7 @@ Define fields and schemas, inspect required/optional/default fields, apply defau
 - `type_bool`
 - `type_list`
 
-### Codecs
+## Codecs
 
 Encode/decode documents, lines, pairs, tables, canonical JSON, document mutation, and stable hashes.
 
@@ -140,7 +132,7 @@ Encode/decode documents, lines, pairs, tables, canonical JSON, document mutation
 - `canonical_json`
 - `stable_hash`
 
-### Structured Errors
+## Structured Errors
 
 Create stable Cairo errors with code, message, context, path, field, hash rendering, string rendering, and code matching.
 
@@ -155,28 +147,9 @@ Create stable Cairo errors with code, message, context, path, field, hash render
 - `error_with_context`
 - `error_is`
 
-## Submodules
+## Distribution Contract
 
-- `Vitte::City::Cairo::Scalar`
-- `Vitte::City::Cairo::Record`
-- `Vitte::City::Cairo::List`
-- `Vitte::City::Cairo::Table`
-- `Vitte::City::Cairo::Schema`
-- `Vitte::City::Cairo::Codec`
-- `Vitte::City::Cairo::Error`
-
-## Guarantees
-
-- Versioned distribution metadata stays fixed at `0.1.0`.
-- Every public export is exercised by `t/basic.t`.
-- All modules compile independently under `PERL5LIB`.
-- Scalar, record, and list codecs remain stable for the `0.1.0` format.
-- Document output is canonical JSON for deterministic hashing and snapshots.
-
-## Checks
-
-```sh
-perl -Ilib t/00-load.t
-perl -Ilib t/basic.t
-perl -Ilib t/install-perl5lib.t
-```
+- `META.json` declares every module and core runtime dependency.
+- `packages.json` mirrors `@EXPORT_OK` exactly.
+- `MANIFEST` lists every package file required by the reproducible archive gate.
+- `t/basic.t` mentions every exported symbol and covers all public groups.
