@@ -1178,6 +1178,14 @@ borrowck-gate: borrowck-analysis-test borrowck-fixtures borrowck-snapshots borro
 compiler-full-coverage:
 	@python3 tools/compiler_full_coverage_check.py
 
+.PHONY: diagnostic-hardening
+diagnostic-hardening:
+	@python3 tools/diagnostic_hardening_check.py
+
+.PHONY: release-readiness-28-58
+release-readiness-28-58:
+	@python3 tools/release_readiness_28_58_check.py
+
 .PHONY: frontend-token-consistency
 frontend-token-consistency:
 	@python3 tools/check_frontend_token_consistency.py
@@ -2683,3 +2691,13 @@ diagnostic-fuzz:
 
 .PHONY: diagnostic-quality
 diagnostic-quality: diagnostic-contracts diagnostic-snapshots diagnostic-fuzz diagnostics-full-coverage counterfactual-diagnostics diagnostic-attribution suggestion-quality
+
+
+.PHONY: platform-bootstrap-59-68
+platform-bootstrap-59-68:
+	@python3 tools/platform_bootstrap_59_68_check.py
+
+
+.PHONY: stability-69-80
+stability-69-80:
+	@python3 tools/stability_69_80_check.py
