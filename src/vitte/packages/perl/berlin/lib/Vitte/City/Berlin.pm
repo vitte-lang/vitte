@@ -4,27 +4,269 @@ use strict;
 use warnings;
 use Exporter 'import';
 
-use Vitte::City::Berlin::Base64 qw(base64_decode base64_encode);
-use Vitte::City::Berlin::Buffer qw(
-    append buffer buffer_bytes byte_at clear concat_buffers from_string is_empty
-    length_of resize reverse_bytes slice to_string
+use Vitte::City::Berlin::Base64 qw(
+    base64_decode
+    base64_encode
+    base64_is_valid
+    base64_pad
+    base64_unpad
+    base64url_decode
+    base64url_encode
 );
-use Vitte::City::Berlin::Checksum qw(adler32 checksum8 crc32);
-use Vitte::City::Berlin::Cursor qw(cursor cursor_position read_u8 remaining seek write_u8);
-use Vitte::City::Berlin::Error qw(berlin_error);
-use Vitte::City::Berlin::Hex qw(from_hex is_hex to_hex);
-use Vitte::City::Berlin::Pack qw(pack_i32_be pack_u16_be pack_u16_le pack_u32_be unpack_i32_be unpack_u16_be unpack_u16_le unpack_u32_be);
-use Vitte::City::Berlin::View qw(view view_length view_slice view_to_buffer);
+use Vitte::City::Berlin::Buffer qw(
+    and_buffers
+    append
+    buffer
+    buffer_bytes
+    buffer_clone
+    buffer_compare
+    buffer_equals
+    buffer_frequency
+    byte_at
+    clear
+    concat_buffers
+    contains_bytes
+    ends_with
+    fill
+    from_string
+    index_of
+    insert_bytes
+    is_empty
+    length_of
+    or_buffers
+    pad_left
+    pad_right
+    remove_range
+    repeat_buffer
+    replace_range
+    resize
+    reverse_bytes
+    slice
+    starts_with
+    to_string
+    xor_buffers
+);
+use Vitte::City::Berlin::Checksum qw(
+    adler32
+    checksum8
+    checksum16
+    crc16_ccitt
+    crc32
+    fletcher16
+    fnv1a32
+    parity8
+    xor8
+);
+use Vitte::City::Berlin::Cursor qw(
+    cursor
+    cursor_at_end
+    cursor_position
+    peek_u8
+    read_bytes
+    read_u8
+    read_u16_be
+    read_u16_le
+    read_u32_be
+    read_u32_le
+    remaining
+    rewind
+    seek
+    skip
+    write_bytes
+    write_u8
+    write_u16_be
+    write_u16_le
+    write_u32_be
+    write_u32_le
+);
+use Vitte::City::Berlin::Error qw(
+    berlin_error
+    error_code
+    error_context
+    error_is
+    error_message
+    error_offset
+    error_operation
+    error_to_hash
+    error_to_string
+    error_with_context
+);
+use Vitte::City::Berlin::Hex qw(
+    from_hex
+    from_hex_strict
+    hex_dump
+    hex_group
+    hex_pairs
+    is_hex
+    normalize_hex
+    to_hex
+    to_hex_upper
+);
+use Vitte::City::Berlin::Pack qw(
+    pack_bytes_be
+    pack_bytes_le
+    pack_i8
+    pack_i16_be
+    pack_i16_le
+    pack_i32_be
+    pack_i32_le
+    pack_u8
+    pack_u16_be
+    pack_u16_le
+    pack_u32_be
+    pack_u32_le
+    unpack_bytes_be
+    unpack_bytes_le
+    unpack_i8
+    unpack_i16_be
+    unpack_i16_le
+    unpack_i32_be
+    unpack_i32_le
+    unpack_u8
+    unpack_u16_be
+    unpack_u16_le
+    unpack_u32_be
+    unpack_u32_le
+);
+use Vitte::City::Berlin::View qw(
+    view
+    view_byte_at
+    view_contains
+    view_end
+    view_equals
+    view_index_of
+    view_is_empty
+    view_length
+    view_slice
+    view_start
+    view_to_buffer
+    view_to_hex
+);
 
 our $VERSION = '0.1.0';
 our @EXPORT_OK = qw(
-    buffer from_string append length_of slice to_hex from_hex concat_buffers
-    buffer_bytes byte_at clear is_empty resize reverse_bytes to_string
-    cursor cursor_position remaining seek read_u8 write_u8
-    pack_u16_be pack_u16_le unpack_u16_be unpack_u16_le
-    pack_u32_be unpack_u32_be pack_i32_be unpack_i32_be
-    is_hex base64_encode base64_decode checksum8 adler32 crc32
-    view view_length view_slice view_to_buffer berlin_error
+    buffer
+    from_string
+    append
+    length_of
+    slice
+    to_hex
+    from_hex
+    concat_buffers
+    buffer_bytes
+    byte_at
+    clear
+    is_empty
+    resize
+    reverse_bytes
+    to_string
+    buffer_clone
+    buffer_compare
+    buffer_equals
+    buffer_frequency
+    contains_bytes
+    ends_with
+    fill
+    index_of
+    insert_bytes
+    pad_left
+    pad_right
+    remove_range
+    repeat_buffer
+    replace_range
+    starts_with
+    xor_buffers
+    and_buffers
+    or_buffers
+    cursor
+    cursor_position
+    remaining
+    seek
+    read_u8
+    write_u8
+    cursor_at_end
+    peek_u8
+    read_bytes
+    read_u16_be
+    read_u16_le
+    read_u32_be
+    read_u32_le
+    rewind
+    skip
+    write_bytes
+    write_u16_be
+    write_u16_le
+    write_u32_be
+    write_u32_le
+    pack_u16_be
+    pack_u16_le
+    unpack_u16_be
+    unpack_u16_le
+    pack_u32_be
+    unpack_u32_be
+    pack_i32_be
+    unpack_i32_be
+    pack_i8
+    pack_i16_be
+    pack_i16_le
+    pack_i32_le
+    pack_u8
+    pack_u32_le
+    unpack_i8
+    unpack_i16_be
+    unpack_i16_le
+    unpack_i32_le
+    unpack_u8
+    unpack_u32_le
+    pack_bytes_be
+    pack_bytes_le
+    unpack_bytes_be
+    unpack_bytes_le
+    is_hex
+    normalize_hex
+    from_hex_strict
+    hex_dump
+    hex_group
+    hex_pairs
+    to_hex_upper
+    base64_encode
+    base64_decode
+    base64_is_valid
+    base64_pad
+    base64_unpad
+    base64url_decode
+    base64url_encode
+    checksum8
+    adler32
+    crc32
+    checksum16
+    crc16_ccitt
+    fletcher16
+    fnv1a32
+    parity8
+    xor8
+    view
+    view_length
+    view_slice
+    view_to_buffer
+    view_byte_at
+    view_contains
+    view_end
+    view_equals
+    view_index_of
+    view_is_empty
+    view_start
+    view_to_hex
+    berlin_error
+    error_code
+    error_context
+    error_is
+    error_message
+    error_offset
+    error_operation
+    error_to_hash
+    error_to_string
+    error_with_context
 );
 
 1;

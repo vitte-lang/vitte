@@ -5,15 +5,17 @@ use ExtUtils::MakeMaker;
 WriteMakefile(
     NAME => 'Vitte::City::Berlin',
     VERSION_FROM => 'lib/Vitte/City/Berlin.pm',
-    ABSTRACT => 'Byte buffers, binary packing, codecs, and checksums',
+    ABSTRACT => 'Byte buffers, cursors, binary packing, codecs, views, checksums, and structured errors',
     AUTHOR => 'Vitte Project',
     LICENSE => 'mit',
     MIN_PERL_VERSION => '5.010',
     PREREQ_PM => {
         'Exporter' => 0,
+        'bytes' => 0,
     },
     TEST_REQUIRES => {
         'FindBin' => 0,
+        'JSON::PP' => 0,
         'Test::More' => 0,
     },
 );
