@@ -5,7 +5,9 @@ This matrix is the compatibility source for `make version-compatibility-gate`.
 ## Version Axes
 
 - Language version: `0.2`
+- Language semver: `0.2.0`
 - Stdlib version: `2.0`
+- Stdlib semver: `2.0.0`
 - MIR version: `1.0`
 - Diagnostics version: `1.1`
 - Sysroot version: `2026.1`
@@ -22,6 +24,7 @@ Build fails when one of these conditions happens:
 - old cache not invalidated after MIR or diagnostics schema bump
 - manifest version newer than supported parser contract
 - diagnostics changes shipped without migration policy update
+- language or stdlib semver omitted from the version contract
 
 ## Migration Policy Hooks
 

@@ -26,7 +26,9 @@ def main() -> None:
     data = json.loads(CONTRACT.read_text(encoding="utf-8"))
     required = [
         "language_version",
+        "language_semver",
         "stdlib_version",
+        "stdlib_semver",
         "mir_version",
         "diagnostics_version",
         "sysroot_version",
@@ -49,7 +51,9 @@ def main() -> None:
     matrix = MATRIX.read_text(encoding="utf-8")
     for needle in [
         data["language_version"],
+        data["language_semver"],
         data["stdlib_version"],
+        data["stdlib_semver"],
         data["mir_version"],
         data["diagnostics_version"],
         data["sysroot_version"],
@@ -66,7 +70,9 @@ def main() -> None:
     REPORT.write_text(
         "status=ok\n"
         f"language_version={data['language_version']}\n"
+        f"language_semver={data['language_semver']}\n"
         f"stdlib_version={data['stdlib_version']}\n"
+        f"stdlib_semver={data['stdlib_semver']}\n"
         f"mir_version={data['mir_version']}\n"
         f"diagnostics_version={data['diagnostics_version']}\n"
         f"sysroot_version={data['sysroot_version']}\n"

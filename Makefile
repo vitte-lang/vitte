@@ -198,6 +198,10 @@ format:
 format-check:
 	@python3 tools/vitte_format.py --check --changed
 
+.PHONY: vitte-lint
+vitte-lint:
+	@python3 tools/vitte_lint.py --check
+
 # ------------------------------------------------------------
 # Static analysis
 # ------------------------------------------------------------
@@ -2706,3 +2710,8 @@ stability-69-80:
 .PHONY: package-tooling-81-89
 package-tooling-81-89:
 	@python3 tools/package_tooling_81_89_check.py
+
+
+.PHONY: language-release-90-100
+language-release-90-100:
+	@python3 tools/language_release_90_100_check.py
