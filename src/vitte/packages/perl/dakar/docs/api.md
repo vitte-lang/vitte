@@ -1,16 +1,8 @@
-# vitte-perl-dakar
+# Dakar API
 
-Version: `0.1.0`
+Dakar provides a broad, versioned structured-logging utility surface for Vitte package tooling. The public API is exported by `Vitte::City::Dakar` and implemented by focused submodules.
 
-Dakar is the Vitte Perl package for structured logging: levels, entries, loggers, filters, formatters, sinks, metrics, spans, and structured logging errors.
-
-## Module
-
-`Vitte::City::Dakar`
-
-## Public API
-
-### Logger
+## Logger
 
 Create, configure, clone, snapshot, restore, and mutate in-memory structured loggers.
 
@@ -41,7 +33,7 @@ Create, configure, clone, snapshot, restore, and mutate in-memory structured log
 - `set_capacity`
 - `with_fields`
 
-### Levels
+## Levels
 
 Normalize, compare, inspect, and evaluate log levels.
 
@@ -57,7 +49,7 @@ Normalize, compare, inspect, and evaluate log levels.
 - `level_compare`
 - `level_enabled`
 
-### Entries
+## Entries
 
 Create and inspect structured log entries and immutable entry variants.
 
@@ -76,7 +68,7 @@ Create and inspect structured log entries and immutable entry variants.
 - `entry_timestamp`
 - `timestamp`
 
-### Filters
+## Filters
 
 Select entries by level, minimum level, message, field, time range, predicate, recency, or count.
 
@@ -89,7 +81,7 @@ Select entries by level, minimum level, message, field, time range, predicate, r
 - `filter_field`
 - `filter_limit`
 
-### Formatting
+## Formatting
 
 Render entries as text, JSON, key/value, CSV, pretty lines, badges, and parse simple key/value data.
 
@@ -102,7 +94,7 @@ Render entries as text, JSON, key/value, CSV, pretty lines, badges, and parse si
 - `format_kv`
 - `format_level_badge`
 
-### Sinks
+## Sinks
 
 Write entries to in-memory sinks, drain or clear them, inspect sizes, and tee to multiple sinks.
 
@@ -115,7 +107,7 @@ Write entries to in-memory sinks, drain or clear them, inspect sizes, and tee to
 - `sink_entries`
 - `sink_last`
 
-### Metrics
+## Metrics
 
 Count levels and fields, inspect timestamps, summarize messages, and detect warnings or errors.
 
@@ -132,7 +124,7 @@ Count levels and fields, inspect timestamps, summarize messages, and detect warn
 - `messages_by_level`
 - `levels_seen`
 
-### Tracing
+## Tracing
 
 Create trace/span identifiers, manage span fields/events, finish spans, and compute durations.
 
@@ -146,7 +138,7 @@ Create trace/span identifiers, manage span fields/events, finish spans, and comp
 - `span_fields`
 - `span_event`
 
-### Structured Errors
+## Structured Errors
 
 Create stable Dakar errors with code, message, context, operation, hash rendering, string rendering, and code matching.
 
@@ -163,40 +155,9 @@ Create stable Dakar errors with code, message, context, operation, hash renderin
 - `error_with_context`
 - `error_is`
 
-## Submodules
+## Distribution Contract
 
-- `Vitte::City::Dakar::Level`
-- `Vitte::City::Dakar::Entry`
-- `Vitte::City::Dakar::Logger`
-- `Vitte::City::Dakar::Filter`
-- `Vitte::City::Dakar::Format`
-- `Vitte::City::Dakar::Sink`
-- `Vitte::City::Dakar::Metrics`
-- `Vitte::City::Dakar::Trace`
-- `Vitte::City::Dakar::Error`
-
-## Guarantees
-
-- Versioned distribution metadata stays fixed at `0.1.0`.
-- Every public export is exercised by `t/basic.t`.
-- All modules compile independently under `PERL5LIB`.
-- Existing minimal logging exports remain available.
-- Formatters are deterministic for the same entry payload.
-
-## Checks
-
-```sh
-perl -Ilib t/00-load.t
-perl -Ilib t/basic.t
-perl -Ilib t/level.t
-perl -Ilib t/entry.t
-perl -Ilib t/logger.t
-perl -Ilib t/filter.t
-perl -Ilib t/format.t
-perl -Ilib t/sink.t
-perl -Ilib t/metrics.t
-perl -Ilib t/trace.t
-perl -Ilib t/errors.t
-perl -Ilib t/regression.t
-perl -Ilib t/install-perl5lib.t
-```
+- `META.json` declares every module and core runtime dependency.
+- `packages.json` mirrors `@EXPORT_OK` exactly.
+- `MANIFEST` lists every package file required by the reproducible archive gate.
+- `t/basic.t` mentions every exported symbol and focused tests cover every submodule.
