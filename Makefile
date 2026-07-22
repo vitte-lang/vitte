@@ -1250,8 +1250,17 @@ borrowck-snapshots:
 borrowck-coverage:
 	@python3 tools/borrowck_coverage_check.py
 
+.PHONY: ownership-borrow-lifetimes-max
+ownership-borrow-lifetimes-max: borrowck-analysis-test borrowck-fixtures borrowck-snapshots borrowck-coverage
+	@python3 tools/ownership_borrow_lifetimes_max.py
+	@test -f target/reports/ownership_borrow_lifetimes_max.json
+	@test -f target/reports/ownership_borrow_lifetimes_max.md
+	@test -f target/borrowck/ownership_borrow_lifetimes_max/snapshots/text.snapshot
+	@test -f target/borrowck/ownership_borrow_lifetimes_max/snapshots/json.snapshot
+	@test -f target/borrowck/ownership_borrow_lifetimes_max/snapshots/lsp.snapshot
+
 .PHONY: borrowck-gate
-borrowck-gate: borrowck-analysis-test borrowck-fixtures borrowck-snapshots borrowck-coverage
+borrowck-gate: borrowck-analysis-test borrowck-fixtures borrowck-snapshots borrowck-coverage ownership-borrow-lifetimes-max
 
 .PHONY: compiler-full-coverage
 compiler-full-coverage:
@@ -1297,7 +1306,7 @@ parser-lexer-fuzz-smoke:
 	@python3 tools/parser_lexer_fuzz_smoke.py --cases 80 --seed 1337
 
 .PHONY: core-language-gate
-core-language-gate: grammar-check grammar-test core-language-test parser-recovery-golden grammar-coverage lexer-parser-coverage-100 syntax-parser-diagnostics-max frontend-lexer-test frontend-ast-test hir-lowering-test mir-gate ir-gate sema-gate const-eval-analysis-test typeck-gate type-system-advanced-gate borrowck-gate frontend-token-consistency strict-core-guard-test core-forbidden-syntax-lint core-ir-golden-snapshots core-semantic-success core-semantic-snapshots diagnostics-locales-lint
+core-language-gate: grammar-check grammar-test core-language-test parser-recovery-golden grammar-coverage lexer-parser-coverage-100 syntax-parser-diagnostics-max frontend-lexer-test frontend-ast-test hir-lowering-test mir-gate ir-gate sema-gate const-eval-analysis-test typeck-gate type-system-advanced-gate borrowck-gate ownership-borrow-lifetimes-max frontend-token-consistency strict-core-guard-test core-forbidden-syntax-lint core-ir-golden-snapshots core-semantic-success core-semantic-snapshots diagnostics-locales-lint
 
 .PHONY: core-semantic-success-portable
 core-semantic-success-portable:
@@ -2277,6 +2286,7 @@ help:
 	@echo "  make typeck-diagnostics-gate enforce typeck diagnostic quality evidence"
 	@echo "  make typeck-fuzz-max run differential and fuzz type-system checks"
 	@echo "  make type-system-advanced-gate enforce the 81-point advanced type-system matrix"
+	@echo "  make ownership-borrow-lifetimes-max enforce 147 public borrowck diagnostic and compiler integration contracts"
 	@echo "  make core-language-test validate the focused core language corpus"
 	@echo "  make core-semantic-success validate focused passing core semantic examples"
 	@echo "  make core-semantic-snapshots validate focused core semantic diagnostics"
@@ -2316,7 +2326,7 @@ help:
 	@echo "  make native-binaries-doctor report local compiler binary executability"
 	@echo "  make grammar-docs regenerate railroad SVG diagrams"
 	@echo "  make grammar-gate run grammar-check + grammar-test + lexer-parser-coverage-100 + syntax-parser-diagnostics-max"
-	@echo "  make core-language-gate run grammar-check + core-language-test + syntax-parser-diagnostics-max + type-system-advanced-gate + core semantic gates + diagnostics locales lint"
+	@echo "  make core-language-gate run grammar-check + core-language-test + syntax-parser-diagnostics-max + type-system-advanced-gate + ownership-borrow-lifetimes-max + core semantic gates + diagnostics locales lint"
 	@echo "  make core-release-gate run the protected language contract gate for release-facing work"
 	@echo "  make formatter-gate enforce formatter snapshots and --check"
 	@echo "  make release-gate-90-119 enforce package/LSP/formatter release evidence"

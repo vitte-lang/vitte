@@ -1,0 +1,46 @@
+space tests/borrowck/max/valid_surface
+
+form Box[T] {
+  value: T
+}
+
+proc make_box(value: int) -> Box[int] {
+  give Box[int] { value: value };
+}
+
+proc borrow_box(value: borrow Box[int]) -> int {
+  give value.value;
+}
+
+proc take_box(value: owned Box[int]) -> int {
+  give value.value;
+}
+
+proc copy_value(value: int) -> int {
+  let copied = value;
+  give value + copied;
+}
+
+proc reinit_after_move() -> int {
+  let box = make_box(1);
+  let moved = box;
+  set box = make_box(2);
+  give box.value;
+}
+
+proc borrow_scope_end() -> int {
+  let box = make_box(1);
+  if box.value > 0 {
+    let borrowed = borrow_box(box);
+    give borrowed;
+  } else {
+    give box.value;
+  }
+}
+
+proc main() -> int {
+  let box = make_box(3);
+  let borrowed = borrow_box(box);
+  let copied = copy_value(borrowed);
+  give copied + reinit_after_move() + borrow_scope_end();
+}

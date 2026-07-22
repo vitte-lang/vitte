@@ -65,8 +65,8 @@ make help
 - `make grammar-gate`: run grammar-check + grammar-test + lexer-parser-coverage-100 +
   syntax-parser-diagnostics-max
 - `make core-language-gate`: run grammar-check + core-language-test + syntax-parser-diagnostics-max
-  + type-system-advanced-gate + core semantic gates + diagnostics locales
-  lint
+  + type-system-advanced-gate + ownership-borrow-lifetimes-max + core
+  semantic gates + diagnostics locales lint
 - `make core-release-gate`: run the protected language contract gate for release-facing work
 
 ## Documentation

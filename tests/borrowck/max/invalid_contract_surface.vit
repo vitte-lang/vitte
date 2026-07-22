@@ -1,0 +1,31 @@
+space tests/borrowck/max/invalid_contract_surface
+
+form Box {
+  value: int
+}
+
+proc make_box() -> Box {
+  give Box { value: 1 };
+}
+
+proc take_box(value: owned Box) -> int {
+  give value.value;
+}
+
+proc use_after_move() -> int {
+  let value = make_box();
+  let moved = take_box(value);
+  give value.value;
+}
+
+proc write_while_borrowed() -> int {
+  let value = make_box();
+  let borrowed = value;
+  set value = make_box();
+  give borrowed.value;
+}
+
+proc return_ref_to_local() -> borrow Box {
+  let value = make_box();
+  give value;
+}
