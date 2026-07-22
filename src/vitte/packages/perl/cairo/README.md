@@ -178,5 +178,13 @@ Create stable Cairo errors with code, message, context, path, field, hash render
 ```sh
 perl -Ilib t/00-load.t
 perl -Ilib t/basic.t
+perl -Ilib t/scalar.t
+perl -Ilib t/record.t
+perl -Ilib t/list.t
+perl -Ilib t/table.t
+perl -Ilib t/schema.t
+perl -Ilib t/codec.t
+perl -Ilib t/errors.t
+perl -Ilib t/regression.t
 perl -Ilib t/install-perl5lib.t
 ```
