@@ -21,6 +21,10 @@ for arch in all amd64 x86_64 arm64 aarch64 i386 riscv64 RISC-V64; do
   ARCH=$arch "$ROOT_DIR/scripts_build/build-linux-debs.sh" --dry-run >/dev/null
 done
 
+for arch in all amd64 i386 arm64 armv7 armv6 riscv64; do
+  ARCH=$arch "$ROOT_DIR/scripts_build/build-portable-tarball.sh" --dry-run >/dev/null
+done
+
 for family in freebsd openbsd netbsd dragonfly; do
   BSD_FAMILY=$family BSD_RELEASE=14 ARCH=amd64 "$ROOT_DIR/scripts_build/build-bsd-installers.sh" --dry-run >/dev/null
 done

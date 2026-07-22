@@ -1673,6 +1673,10 @@ pkg-matrix:
 installers-check:
 	@tools/installers_check.sh
 
+.PHONY: installer-runtime-contract-check
+installer-runtime-contract-check:
+	@python3 tools/installer_runtime_contract_check.py
+
 .PHONY: installer-real-platforms-check
 installer-real-platforms-check:
 	@python3 tools/installer_real_platforms_check.py
@@ -2272,6 +2276,7 @@ help:
 	@echo "  make pkg-debian-min build Debian .deb installer (PACKAGE_PROFILE=minimal, PKG_VERSION=$(PKG_VERSION))"
 	@echo "  make pkg-debian-audit audit generated Debian .deb content and largest files"
 	@echo "  make pkg-debian-install build and install Debian .deb locally via dpkg"
+	@echo "  make installer-runtime-contract-check validate clean-shell, no-PATH, portable, and post-install build contract"
 	@echo "  make installer-real-platforms-check validate real install matrix and post-install smoke contract"
 	@echo "  make pkg-macos build macOS installer pkg (PKG_VERSION=$(PKG_VERSION))"
 	@echo "  make macos-universal-bin build target/universal/vitte (arm64 + x86_64 via lipo)"

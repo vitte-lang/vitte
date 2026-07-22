@@ -17,6 +17,7 @@ Set-Content -Path $smoke -Value $source -Encoding ASCII
 Push-Location $WorkDir
 try {
   # Required post-install contract:
+  & $VitteBin --version | Out-Null
   & $VitteBin --help | Out-Null
   & $VitteBin check smoke.vit
   & $VitteBin build smoke.vit -o smoke

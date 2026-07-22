@@ -110,6 +110,28 @@ for bsd_kit in "$OUT_DIR"/vitte-"$VERSION"-*-*-installer.tar.xz; do
   done
 done
 
+for portable_kit in "$OUT_DIR"/vitte-"$VERSION"-portable-*-*.tar.gz; do
+  [ -e "$portable_kit" ] || continue
+  verify_sum "$portable_kit"
+  package_dir=$(basename "$portable_kit" .tar.gz)
+  for required in \
+    "$package_dir/bin/vitte" \
+    "$package_dir/bin/vittec" \
+    "$package_dir/bin/vittec0" \
+    "$package_dir/libexec/vitte/vitte" \
+    "$package_dir/share/vitte/INSTALLATION.json" \
+    "$package_dir/share/vitte/VERSION" \
+    "$package_dir/README.portable"
+  do
+    tar -tzf "$portable_kit" | grep -Fx "$required" >/dev/null ||
+      die "portable archive missing $required: $portable_kit"
+  done
+  tar -xOzf "$portable_kit" "$package_dir/bin/vitte" | grep -F 'VITTE_ROOT=${VITTE_ROOT:-$root/share/vitte}' >/dev/null ||
+    die "portable wrapper does not set relative VITTE_ROOT: $portable_kit"
+  tar -xOzf "$portable_kit" "$package_dir/bin/vitte" | grep -F 'exec "$root/libexec/vitte/vitte" "$@"' >/dev/null ||
+    die "portable wrapper does not exec relative libexec vitte: $portable_kit"
+done
+
 if [ "$(uname -s)" = Darwin ]; then
   for arch in arm64 x86_64 universal universal2 macos2006-i386; do
     verify_optional_sum "$OUT_DIR/vitte-${VERSION}-macos-${arch}.pkg"

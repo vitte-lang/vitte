@@ -20,6 +20,7 @@ done
 "$ROOT_DIR/tools/scripts_build_checksum_fallback_test.sh"
 "$ROOT_DIR/tools/scripts_build_reproducibility_test.sh"
 "$ROOT_DIR/tools/scripts_build_arch_matrix_test.sh"
+python3 "$ROOT_DIR/tools/installer_runtime_contract_check.py"
 python3 "$ROOT_DIR/tools/installer_real_platforms_check.py"
 
 if command -v shellcheck >/dev/null 2>&1; then
@@ -42,12 +43,16 @@ version_violations = []
 allowed = (
     "/usr/local",
     "/usr/bin/env",
+    "/usr/lib/ld-musl-",
     "/bin/sh",
+    "/bin/vitte",
     "/dev/null",
+    "/lib/ld-musl-",
     "/tmp",
     "/var",
     "/Users",
     "/usr/share",
+    "/share/vitte",
     "/etc",
     "/Library",
     "/opt",

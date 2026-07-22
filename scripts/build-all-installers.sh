@@ -57,6 +57,12 @@ case "$FAMILY" in
 esac
 
 case "$FAMILY" in
+  all | portable)
+    run portable 'Portable tar.gz archives: amd64, i386, arm64, armv7, armv6, riscv64' all "$ROOT_DIR/scripts_build/build-portable-tarball.sh"
+    ;;
+esac
+
+case "$FAMILY" in
   all | freebsd)
     run freebsd 'FreeBSD pkg: amd64, i386, arm64, armv7, armv6, riscv64, powerpc, powerpc64, powerpc64le' all "$ROOT_DIR/scripts_build/build-freebsd-packages.sh"
     ;;
@@ -91,7 +97,7 @@ case "$FAMILY" in
 esac
 
 case "$FAMILY" in
-  all | linux | freebsd | bsd | macos | solaris | windows) ;;
+  all | linux | portable | freebsd | bsd | macos | solaris | windows) ;;
   *) scripts_build_die "unsupported FAMILY=$FAMILY" ;;
 esac
 
@@ -108,6 +114,9 @@ artifacts = []
 checksum_lines = []
 
 def classify(name: str) -> tuple[str, str]:
+    portable = re.match(r"vitte-[^-]+-portable-([^-]+)-([^.]+)\.tar\.gz$", name)
+    if portable:
+        return portable.group(1), portable.group(2)
     deb = re.match(r"vitte_[^_]+_([^.]+)\.deb$", name)
     if deb:
         return "linux", deb.group(1)
@@ -128,6 +137,59 @@ def classify(name: str) -> tuple[str, str]:
         return "windows", windows.group(1)
     return "unknown", "unknown"
 
+def libc_for(platform: str) -> str:
+    if platform == "linux":
+        return "glibc-or-musl"
+    if platform in {
+        "freebsd", "openbsd", "netbsd", "dragonfly", "midnightbsd",
+        "ghostbsd", "hardenedbsd", "nomadbsd", "hellosystem",
+    }:
+        return "bsd-libc"
+    if platform == "solaris":
+        return "solaris-libc"
+    if platform == "macos":
+        return "libSystem"
+    if platform == "windows":
+        return "msvcrt-compatible"
+    return "unknown-libc"
+
+def minimum_version_for(platform: str) -> str:
+    return {
+        "linux": "Linux 3.2, glibc 2.17 or musl 1.2",
+        "freebsd": "FreeBSD 13",
+        "openbsd": "OpenBSD 7.0",
+        "netbsd": "NetBSD 9",
+        "dragonfly": "DragonFly BSD 6",
+        "midnightbsd": "MidnightBSD 3",
+        "ghostbsd": "GhostBSD 24",
+        "hardenedbsd": "HardenedBSD 13",
+        "nomadbsd": "NomadBSD 1.4",
+        "hellosystem": "helloSystem 0.8",
+        "solaris": "Solaris 10",
+        "macos": "macOS 10.13",
+        "windows": "Windows XP SP3",
+    }.get(platform, "unknown")
+
+def static_when_possible(platform: str, arch: str) -> bool:
+    return platform == "linux" and arch in {
+        "amd64", "x86_64", "i386", "arm64", "aarch64",
+        "armv7", "armhf", "armv6", "armel", "riscv64",
+    }
+
+def installed_commands_for(platform: str) -> list[str]:
+    if platform == "windows":
+        return [
+            "vitte.cmd", "vitte.ps1",
+            "vittec.cmd", "vittec.ps1",
+            "vittec0.cmd", "vittec0.ps1",
+        ]
+    return ["vitte", "vittec", "vittec0"]
+
+contents = [
+    "compiler", "runtime", "stdlib", "sources", "documentation",
+    "examples", "editors", "system-completions", "locales", "assets",
+]
+
 for path in sorted(out.iterdir() if out.exists() else []):
     if not path.is_file() or path.name in {"INSTALLERS.json", "CHECKSUMS.txt", "SBOM.spdx.json", "SBOM.cyclonedx.json"}:
         continue
@@ -140,12 +202,20 @@ for path in sorted(out.iterdir() if out.exists() else []):
     })
     if not path.name.endswith((".sha256", ".json")):
         platform, arch = classify(path.name)
+        libc = libc_for(platform)
         artifact_manifest = {
             "schema": "org.vitte.installer-artifact.v1",
             "name": path.name,
             "platform": platform,
+            "os": platform,
             "arch": arch,
+            "abi": f"{platform}-{arch}-{libc}",
+            "libc": libc,
+            "minimum_version": minimum_version_for(platform),
             "version": sys.argv[2],
+            "static_when_possible": static_when_possible(platform, arch),
+            "installed_commands": installed_commands_for(platform),
+            "contents": contents,
             "size": path.stat().st_size,
             "sha256": digest,
         }

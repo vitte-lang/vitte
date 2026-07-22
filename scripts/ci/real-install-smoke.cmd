@@ -13,6 +13,7 @@ if not exist "%WORKDIR%" mkdir "%WORKDIR%"
 pushd "%WORKDIR%" || exit /b 1
 
 rem Required post-install contract:
+"%VITTE_BIN%" --version >nul || exit /b 1
 "%VITTE_BIN%" --help >nul || exit /b 1
 "%VITTE_BIN%" check smoke.vit || exit /b 1
 "%VITTE_BIN%" build smoke.vit -o smoke || exit /b 1
