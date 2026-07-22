@@ -2,6 +2,8 @@
 
 Status: official offline surface for Vitte 0.1.0 package and workspace tooling.
 
+Total integration release criteria are defined in [package-total-integration.md](package-total-integration.md).
+
 The package manager supports these release-gated flows:
 
 - `vitte package init NAME`: creates a manifest, source entry and executable test.
