@@ -129,6 +129,34 @@ def main(argv: list[str]) -> int:
             "vitte.package.graph.explain",
         )
         assert explained_before_subcommand["workspace"] == str(workspace_file.resolve()), explained_before_subcommand
+        lock_a = run_json(
+            vitte,
+            ["package", "lock", "--workspace", str(workspace_file)],
+            environment,
+            "vitte.package.lock",
+        )
+        lockfile = workspace / "vitte.lock"
+        first_lock = lockfile.read_bytes()
+        lock_b = run_json(
+            vitte,
+            ["package", "lock", "--workspace", str(workspace_file)],
+            environment,
+            "vitte.package.lock",
+        )
+        second_lock = lockfile.read_bytes()
+        assert first_lock == second_lock, (lock_a, lock_b)
+        lock_data = json.loads(first_lock)
+        assert lock_data["schema"] == "vitte.workspace.lock.v1", lock_data
+        assert lock_data["entries"] == sorted(
+            lock_data["entries"],
+            key=lambda item: (item["source"], item["name"], item["version"]),
+        ), lock_data
+        run_json(
+            vitte,
+            ["package", "lock", "--check", "--workspace", str(workspace_file)],
+            environment,
+            "vitte.package.lock",
+        )
         workspace_build = run_json(
             vitte,
             ["workspace", "build", "--workspace", str(workspace_file), "--package", "workspace-app"],
@@ -143,6 +171,22 @@ def main(argv: list[str]) -> int:
             "vitte.workspace.test",
         )
         assert workspace_test["test_count"] == 2, workspace_test
+        broken_lock = json.loads(first_lock)
+        broken_lock["entries"][0]["version"] = "9.9.9"
+        write_json(lockfile, broken_lock)
+        lock_failure = run(
+            vitte,
+            ["workspace", "build", "--workspace", str(workspace_file)],
+            environment,
+            expected=1,
+        )
+        assert "PKG_E_LOCKFILE_INCOHERENT" in lock_failure.stderr, lock_failure.stderr
+        run_json(
+            vitte,
+            ["package", "lock", "--workspace", str(workspace_file)],
+            environment,
+            "vitte.package.lock",
+        )
 
         broken_manifest = json.loads((standalone / "vitte-package.json").read_text(encoding="utf-8"))
         broken_manifest["dependencies"] = {"missing-offline-package": "9.9.9"}

@@ -23,6 +23,8 @@ REGISTRY_CHECKSUMS = REGISTRY_ROOT / "checksums.sha256"
 EXAMPLE_WORKSPACE = ROOT / "examples" / "package-workspace" / "vitte-workspace.json"
 MANIFEST_NAME = "vitte-package.json"
 MANIFEST_SCHEMA = "vitte.package.manifest.v1"
+WORKSPACE_LOCK_NAME = "vitte.lock"
+WORKSPACE_LOCK_SCHEMA = "vitte.workspace.lock.v1"
 WORKSPACE_SCHEMA = "vitte.workspace.v1"
 VERSION = "0.1.0"
 SEMVER = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:[-+][0-9A-Za-z.-]+)?$")
@@ -426,6 +428,103 @@ def workspace_graph(path: Path, registry: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def workspace_lock_path(workspace_path: Path) -> Path:
+    return workspace_path.expanduser().resolve().parent / WORKSPACE_LOCK_NAME
+
+
+def workspace_relative(root: Path, path: Path) -> str:
+    return path.resolve().relative_to(root.resolve()).as_posix()
+
+
+def workspace_lock_body(workspace_path: Path, registry: dict[str, Any]) -> dict[str, Any]:
+    graph = workspace_graph(workspace_path, registry)
+    root = graph["root"]
+    packages = graph["members"]
+    available = registry_packages(registry)
+    entries: list[dict[str, Any]] = []
+    registry_entries: dict[str, dict[str, Any]] = {}
+    for name in sorted(packages):
+        package_root, manifest = packages[name]
+        source_sha256, source_files = package_source_digest(package_root)
+        dependencies = resolve_manifest_dependencies(manifest, registry, packages)
+        entries.append(
+            {
+                "checksum": {
+                    "algorithm": "sha256",
+                    "value": source_sha256,
+                },
+                "dependencies": sorted(dependencies, key=lambda item: item["name"]),
+                "entry": manifest["entry"],
+                "kind": manifest["kind"],
+                "name": name,
+                "path": workspace_relative(root, package_root),
+                "source": "workspace",
+                "source_files": source_files,
+                "version": manifest["version"],
+            }
+        )
+        for dependency in dependencies:
+            if dependency["source"] != "registry":
+                continue
+            registry_package = available[dependency["name"]]
+            checksum = registry_package.get("checksum", {})
+            if not isinstance(checksum, dict) or checksum.get("algorithm") != "sha256" or not checksum.get("value"):
+                fail("PKG_E_LOCKFILE_INCOHERENT", f"registry dependency {dependency['name']} has no sha256 checksum")
+            key = f"{registry_package['name']}@{registry_package['version']}"
+            registry_entries[key] = {
+                "abi": registry_package.get("abi", ""),
+                "checksum": {
+                    "algorithm": "sha256",
+                    "value": checksum["value"],
+                },
+                "dependencies": sorted(registry_package.get("dependencies", []), key=lambda item: json.dumps(item, sort_keys=True))
+                if isinstance(registry_package.get("dependencies"), list)
+                else [],
+                "name": registry_package["name"],
+                "source": "registry",
+                "version": registry_package["version"],
+            }
+    entries.extend(registry_entries[key] for key in sorted(registry_entries))
+    body = {
+        "entries": sorted(entries, key=lambda item: (item["source"], item["name"], item["version"])),
+        "package_count": len(entries),
+        "registry": {
+            "mode": "offline",
+            "path": "src/vitte/packages/registry/registry.json",
+            "sha256": sha256_file(REGISTRY_PATH),
+        },
+        "schema": WORKSPACE_LOCK_SCHEMA,
+        "version": VERSION,
+        "workspace": {
+            "members": sorted(str(member) for member in graph["workspace"]["members"]),
+            "path": workspace_path.expanduser().resolve().name,
+            "sha256": sha256_file(workspace_path.expanduser().resolve()),
+        },
+    }
+    body["content_sha256"] = sha256_bytes(canonical_bytes(body))
+    return body
+
+
+def verify_workspace_lock(workspace_path: Path, registry: dict[str, Any]) -> dict[str, Any]:
+    lock_path = workspace_lock_path(workspace_path)
+    actual = read_json(lock_path, "PKG_E_LOCKFILE_MISSING")
+    if actual.get("schema") != WORKSPACE_LOCK_SCHEMA:
+        fail("PKG_E_LOCKFILE_VERSION", f"unsupported workspace lockfile schema {actual.get('schema')!r}")
+    content_hash = actual.get("content_sha256")
+    body_without_hash = dict(actual)
+    body_without_hash.pop("content_sha256", None)
+    if content_hash != sha256_bytes(canonical_bytes(body_without_hash)):
+        fail("PKG_E_LOCKFILE_INCOHERENT", "workspace lockfile content hash is invalid")
+    expected = workspace_lock_body(workspace_path, registry)
+    if actual != expected:
+        fail(
+            "PKG_E_LOCKFILE_INCOHERENT",
+            f"{lock_path} is out of date",
+            "run: vitte package lock --workspace path/to/vitte-workspace.json",
+        )
+    return actual
+
+
 def package_workspace_context(package_root: Path) -> dict[str, tuple[Path, dict[str, Any]]] | None:
     package_root = package_root.expanduser().resolve()
     for directory in (package_root, *package_root.parents):
@@ -625,7 +724,45 @@ def command_publish(args: argparse.Namespace, registry: dict[str, Any]) -> int:
     return 0
 
 
+def command_lock(args: argparse.Namespace, registry: dict[str, Any]) -> int:
+    workspace = args.workspace.expanduser().resolve()
+    lock_path = workspace_lock_path(workspace)
+    if args.check:
+        lock = verify_workspace_lock(workspace, registry)
+        write_json(
+            {
+                "checked": True,
+                "content_sha256": lock["content_sha256"],
+                "entries": lock["package_count"],
+                "lockfile": str(lock_path),
+                "schema": "vitte.package.lock",
+                "status": "ok",
+                "version": VERSION,
+                "workspace": str(workspace),
+            }
+        )
+        return 0
+    lock = workspace_lock_body(workspace, registry)
+    previous = lock_path.read_bytes() if lock_path.exists() else b""
+    lock_bytes = json.dumps(lock, indent=2, sort_keys=True, ensure_ascii=True).encode("utf-8") + b"\n"
+    lock_path.write_bytes(lock_bytes)
+    write_json(
+        {
+            "content_sha256": lock["content_sha256"],
+            "entries": lock["package_count"],
+            "lockfile": str(lock_path),
+            "schema": "vitte.package.lock",
+            "stable": previous == lock_bytes if previous else True,
+            "status": "ok",
+            "version": VERSION,
+            "workspace": str(workspace),
+        }
+    )
+    return 0
+
+
 def command_workspace_build(args: argparse.Namespace, registry: dict[str, Any]) -> int:
+    verify_workspace_lock(args.workspace, registry)
     graph = workspace_graph(args.workspace, registry)
     packages = graph["members"]
     if args.package:
@@ -667,6 +804,7 @@ def command_workspace_build(args: argparse.Namespace, registry: dict[str, Any]) 
 def command_workspace_test(args: argparse.Namespace, registry: dict[str, Any]) -> int:
     if not args.all:
         fail("PKG_E_TEST_SCOPE", "workspace test requires --all")
+    verify_workspace_lock(args.workspace, registry)
     graph = workspace_graph(args.workspace, registry)
     packages = graph["members"]
     output_root = graph["root"] / "target" / "tests"
@@ -735,6 +873,9 @@ def build_parser() -> argparse.ArgumentParser:
     graph_explain.add_argument("--workspace", dest="explain_workspace", type=Path)
     publish = package_sub.add_parser("publish")
     add_publish_arguments(publish)
+    lock = package_sub.add_parser("lock")
+    lock.add_argument("--workspace", type=Path, default=default_workspace())
+    lock.add_argument("--check", action="store_true")
 
     workspace = sub.add_parser("workspace")
     workspace_sub = workspace.add_subparsers(dest="workspace_command", required=True)
@@ -764,6 +905,8 @@ def dispatch(args: argparse.Namespace, registry: dict[str, Any]) -> int:
             return command_graph(args, registry, args.graph_command == "explain")
         if args.package_command == "publish":
             return command_publish(args, registry)
+        if args.package_command == "lock":
+            return command_lock(args, registry)
     if args.command == "workspace":
         if args.workspace_command == "build":
             return command_workspace_build(args, registry)

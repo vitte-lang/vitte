@@ -1843,6 +1843,10 @@ package-registry-gate:
 package-cli-gate: package-registry-gate
 	@python3 tools/package_cli_integration_test.py --vitte "$(CURDIR)/bin/vitte"
 
+.PHONY: package-lockfile-gate
+package-lockfile-gate: package-cli-gate
+	@$(CURDIR)/bin/vitte package lock --check --workspace "$(CURDIR)/examples/package-workspace/vitte-workspace.json" >/dev/null
+
 .PHONY: packages-gate
 packages-gate: package-layout-lint-strict packages-governance-lint no-std-lint module-naming-lint legacy-import-path-lint critical-runtime-matrix-lint new-public-packages-snapshots-lint modules-perf-cache packages-dependency-overlap-lint packages-contract-snapshots package-cli-gate perl-vitte-integration perl-packages-check
 
@@ -2647,7 +2651,7 @@ backend-native-gate: vitte-emit-gate
 
 
 .PHONY: package-manager-gate
-package-manager-gate: package-cli-gate
+package-manager-gate: package-lockfile-gate
 	@python3 tools/package_manager/run_checks.py
 	@python3 tools/package_manager/generate_artifacts.py
 	@test -f target/package_manager/registry.json

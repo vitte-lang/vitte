@@ -9,6 +9,8 @@ vitte package check --path packages/app
 vitte package build --path packages/app
 vitte package graph
 vitte package graph explain
+vitte package lock
+vitte package lock --check
 vitte package publish --dry-run --path packages/app
 vitte workspace build --package workspace-app
 vitte workspace test --all
