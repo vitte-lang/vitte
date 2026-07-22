@@ -8,7 +8,7 @@ and direct loading through `PERL5LIB`.
 
 | Package | Perl module | Role |
 | --- | --- | --- |
-| `vitte-perl-berlin` | `Vitte::City::Berlin` | Byte buffer and binary packing helpers |
+| `vitte-perl-berlin` | `Vitte::City::Berlin` | Byte buffers, views, cursors, codecs, packing, checksums, errors |
 | `vitte-perl-lyon` | `Vitte::City::Lyon` | Result values, errors, context chains, and recovery helpers |
 | `vitte-perl-paris` | `Vitte::City::Paris` | Command line flag parsing and usage rendering |
 | `vitte-perl-tokyo` | `Vitte::City::Tokyo` | Deterministic task queue and small runtime helpers |

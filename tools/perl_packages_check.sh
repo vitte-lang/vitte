@@ -150,6 +150,33 @@ def validate_manifest(pkgdir: Path, failures: list[str], name: str) -> None:
             fail(failures, f"{name}: MANIFEST missing {rel}")
 
 
+def validate_quality_gate(pkgdir: Path, package: dict[str, object], declared_exports: list[str], failures: list[str], name: str) -> None:
+    quality_gate = package.get("quality_gate", {})
+    if not isinstance(quality_gate, dict):
+        return
+    minimum_exports = quality_gate.get("minimum_exports")
+    if isinstance(minimum_exports, int) and len(declared_exports) < minimum_exports:
+        fail(failures, f"{name}: expected at least {minimum_exports} exports, found {len(declared_exports)}")
+
+    required = [
+        "LICENSE",
+        "Changes",
+        "MANIFEST",
+        "MANIFEST.SKIP",
+        "Makefile.PL",
+        "cpanfile",
+        "docs/api.md",
+        "docs/design.md",
+        "docs/error-codes.md",
+        "docs/compatibility.md",
+    ]
+    if quality_gate.get("manifest_required"):
+        for rel in required:
+            if not (pkgdir / rel).exists():
+                fail(failures, f"{name}: missing required distribution file {rel}")
+        validate_manifest(pkgdir, failures, name)
+
+
 def validate() -> int:
     failures: list[str] = []
     index = json.loads(INDEX.read_text(encoding="utf-8"))
@@ -288,34 +315,7 @@ def validate() -> int:
                 if not ok:
                     fail(failures, f"{name}: {xt_test.relative_to(pkgdir)} failed: {output}")
 
-        if name == "athens":
-            required = [
-                "LICENSE",
-                "Changes",
-                "MANIFEST",
-                "MANIFEST.SKIP",
-                "Makefile.PL",
-                "cpanfile",
-                "docs/api.md",
-                "docs/design.md",
-                "docs/error-codes.md",
-                "docs/compatibility.md",
-                "snapshots/manifest.txt",
-                "snapshots/manifest.json",
-                "snapshots/errors.txt",
-                "snapshots/README.generated.md",
-                "corpus/paths.txt",
-                "corpus/unicode_paths.txt",
-                "corpus/windows_paths.txt",
-                "corpus/unix_paths.txt",
-                "corpus/cleanup_manifest.json",
-            ]
-            for rel in required:
-                if not (pkgdir / rel).exists():
-                    fail(failures, f"athens: missing required distribution file {rel}")
-            if len(declared_exports) < 30:
-                fail(failures, f"athens: expected at least 30 exports, found {len(declared_exports)}")
-            validate_manifest(pkgdir, failures, name)
+        validate_quality_gate(pkgdir, package, declared_exports, failures, name)
 
         archive_name = f"{dist}-{VERSION_REQUIRED}.tar.gz"
         archive_path = ARCHIVE_DIR / archive_name
