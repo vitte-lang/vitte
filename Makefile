@@ -1692,6 +1692,13 @@ installer-real-platforms-check:
 release-installer-gate: installer-runtime-contract-check installer-real-platforms-check
 	@python3 tools/release_installer_gate.py
 
+.PHONY: stage-real-binary
+stage-real-binary:
+	@test -n "$(OS)" || (echo "usage: make stage-real-binary OS=<os> ARCH=<arch> BIN=<path> [SKIP_SMOKE=1]" >&2; exit 2)
+	@test -n "$(ARCH)" || (echo "usage: make stage-real-binary OS=<os> ARCH=<arch> BIN=<path> [SKIP_SMOKE=1]" >&2; exit 2)
+	@test -n "$(BIN)" || (echo "usage: make stage-real-binary OS=<os> ARCH=<arch> BIN=<path> [SKIP_SMOKE=1]" >&2; exit 2)
+	@python3 tools/stage_real_binary.py --os "$(OS)" --arch "$(ARCH)" --binary "$(BIN)" $(if $(filter 1,$(SKIP_SMOKE)),--skip-smoke,)
+
 .PHONY: pkg-cli-integration
 pkg-cli-integration:
 	@tools/pkg_cli_integration.sh
@@ -2297,6 +2304,7 @@ help:
 	@echo "  make installer-runtime-contract-check validate clean-shell, no-PATH, portable, and post-install build contract"
 	@echo "  make installer-real-platforms-check validate real install matrix and post-install smoke contract"
 	@echo "  make release-installer-gate enforce blocking installer release evidence"
+	@echo "  make stage-real-binary OS=<os> ARCH=<arch> BIN=<path> import and attest a real binary"
 	@echo "  make pkg-macos build macOS installer pkg (PKG_VERSION=$(PKG_VERSION))"
 	@echo "  make macos-universal-bin build target/universal/vitte (arm64 + x86_64 via lipo)"
 	@echo "  make pkg-macos-universal build macOS universal installer pkg (vitte-$(PKG_VERSION)-universal.pkg)"

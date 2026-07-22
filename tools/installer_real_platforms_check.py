@@ -41,6 +41,29 @@ def strict_artifact_path(root: Path, os_name: str, arch: str) -> Path:
     return root / f"{os_name}-{arch}" / f"vitte{suffix}"
 
 
+def binary_format(path: Path) -> str:
+    data = path.read_bytes()[:4096]
+    if data.startswith(b"\x7fELF"):
+        return "ELF"
+    if data.startswith(b"MZ"):
+        pe_offset = int.from_bytes(data[0x3C:0x40], "little", signed=False) if len(data) >= 0x40 else 0
+        if pe_offset > 0 and len(data) >= pe_offset + 4 and data[pe_offset:pe_offset + 4] == b"PE\0\0":
+            return "PE"
+        return "PE"
+    if data[:4] in {
+        b"\xfe\xed\xfa\xce",
+        b"\xfe\xed\xfa\xcf",
+        b"\xce\xfa\xed\xfe",
+        b"\xcf\xfa\xed\xfe",
+        b"\xca\xfe\xba\xbe",
+        b"\xca\xfe\xba\xbf",
+    }:
+        return "Mach-O"
+    if data.startswith(b"#!"):
+        return "script"
+    return "unknown"
+
+
 def command_present(text: str, command: str, shell: str) -> bool:
     if command in text:
         return True
@@ -124,9 +147,36 @@ def main() -> int:
     for target in strict_targets:
         path = strict_artifact_path(artifact_root, target["os"], target["arch"])
         present = path.exists() and path.stat().st_size > 0
-        strict_rows.append({"target": target, "artifact": str(path.relative_to(ROOT)), "present": present})
+        expected_format = data.get("real_binary_formats", {}).get(target["os"], "ELF")
+        actual_format = binary_format(path) if present else ""
+        attestation = path.parent / "ATTESTATION.json"
+        attested = attestation.exists()
+        strict_rows.append({
+            "target": target,
+            "artifact": str(path.relative_to(ROOT)),
+            "present": present,
+            "expected_format": expected_format,
+            "actual_format": actual_format,
+            "attested": attested,
+        })
         if strict and not present:
             failures.append(f"missing strict real binary artifact {path.relative_to(ROOT)}")
+        elif strict and actual_format != expected_format:
+            failures.append(f"invalid real binary format {path.relative_to(ROOT)}: expected {expected_format}, got {actual_format}")
+        elif strict and not attested:
+            failures.append(f"missing real binary attestation {attestation.relative_to(ROOT)}")
+        elif strict and attested:
+            try:
+                attestation_data = json.loads(attestation.read_text(encoding="utf-8"))
+            except json.JSONDecodeError as exc:
+                failures.append(f"invalid attestation JSON {attestation.relative_to(ROOT)}: {exc}")
+            else:
+                if attestation_data.get("format") != expected_format:
+                    failures.append(f"attestation format mismatch {attestation.relative_to(ROOT)}")
+                if attestation_data.get("target", {}).get("os") != target["os"] or attestation_data.get("target", {}).get("arch") != target["arch"]:
+                    failures.append(f"attestation target mismatch {attestation.relative_to(ROOT)}")
+                if not attestation_data.get("smoke_commands"):
+                    failures.append(f"attestation missing smoke commands {attestation.relative_to(ROOT)}")
         elif not present:
             warnings.append(f"pending strict artifact {path.relative_to(ROOT)}")
 

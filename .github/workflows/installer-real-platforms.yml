@@ -38,12 +38,25 @@ jobs:
       matrix:
         include:
           - label: debian-oldstable-amd64
+            os: debian-oldstable
+            arch: amd64
           - label: debian-stable-amd64
+            os: debian-stable
+            arch: amd64
     runs-on: [self-hosted, vitte, "${{ matrix.label }}"]
     steps:
       - uses: actions/checkout@v4
       - name: Run installed Debian smoke
         run: scripts/ci/real-install-smoke.sh
+      - name: Stage real binary attestation
+        run: |
+          VITTE_REAL_BINARY=${VITTE_REAL_BINARY:-$(command -v vitte)}
+          make stage-real-binary OS=${{ matrix.os }} ARCH=${{ matrix.arch }} BIN="$VITTE_REAL_BINARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: real-binary-${{ matrix.label }}
+          path: target/real-binaries/${{ matrix.os }}-${{ matrix.arch }}/
+          if-no-files-found: error
 
   binary-architecture-self-hosted-smoke:
     if: ${{ github.event.inputs.target == 'all' || github.event.inputs.target == 'debian' || github.event.inputs.target == 'raspberry' }}
@@ -68,6 +81,15 @@ jobs:
       - uses: actions/checkout@v4
       - name: Run install build run smoke
         run: scripts/ci/real-install-smoke.sh
+      - name: Stage real binary attestation
+        run: |
+          VITTE_REAL_BINARY=${VITTE_REAL_BINARY:-$(command -v vitte)}
+          make stage-real-binary OS=linux ARCH=${{ matrix.arch }} BIN="$VITTE_REAL_BINARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: real-binary-${{ matrix.label }}
+          path: target/real-binaries/linux-${{ matrix.arch }}/
+          if-no-files-found: error
 
   posix-self-hosted-smoke:
     if: ${{ github.event.inputs.target == 'all' || github.event.inputs.target == 'raspberry' || github.event.inputs.target == 'macos' || github.event.inputs.target == 'solaris' }}
@@ -76,17 +98,40 @@ jobs:
       matrix:
         include:
           - label: raspberrypi-armv6
+            os: raspberry-pi-os
+            arch: armv6
           - label: raspberrypi-armv7
+            os: raspberry-pi-os
+            arch: armv7
           - label: raspberrypi-aarch64
+            os: raspberry-pi-os
+            arch: aarch64
           - label: macos-x86_64
+            os: macos
+            arch: x86_64
           - label: macos-arm64
+            os: macos
+            arch: arm64
           - label: solaris-amd64
+            os: solaris
+            arch: amd64
           - label: solaris-i386
+            os: solaris
+            arch: i386
     runs-on: [self-hosted, vitte, "${{ matrix.label }}"]
     steps:
       - uses: actions/checkout@v4
       - name: Run post-install smoke
         run: scripts/ci/real-install-smoke.sh
+      - name: Stage real binary attestation
+        run: |
+          VITTE_REAL_BINARY=${VITTE_REAL_BINARY:-$(command -v vitte)}
+          make stage-real-binary OS=${{ matrix.os }} ARCH=${{ matrix.arch }} BIN="$VITTE_REAL_BINARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: real-binary-${{ matrix.label }}
+          path: target/real-binaries/${{ matrix.os }}-${{ matrix.arch }}/
+          if-no-files-found: error
 
   windows-self-hosted-smoke:
     if: ${{ github.event.inputs.target == 'all' || github.event.inputs.target == 'windows' }}
@@ -95,9 +140,17 @@ jobs:
       matrix:
         include:
           - label: windows-xp-i386
+            os: windows-xp
+            arch: i386
           - label: windows-7-i386
+            os: windows-7
+            arch: i386
           - label: windows-10-amd64
+            os: windows-10
+            arch: amd64
           - label: windows-11-amd64
+            os: windows-11
+            arch: amd64
     runs-on: [self-hosted, vitte, "${{ matrix.label }}"]
     steps:
       - uses: actions/checkout@v4
@@ -107,3 +160,16 @@ jobs:
       - name: Run PowerShell post-install smoke when available
         shell: cmd
         run: where powershell >nul 2>nul && powershell -NoProfile -ExecutionPolicy Bypass -File scripts\ci\real-install-smoke.ps1 || echo PowerShell unavailable; cmd smoke already passed
+      - name: Stage real binary attestation
+        shell: cmd
+        run: |
+          if "%VITTE_REAL_BINARY%"=="" (
+            echo VITTE_REAL_BINARY must point to the real vitte.exe for this runner
+            exit /b 1
+          )
+          python tools\stage_real_binary.py --os ${{ matrix.os }} --arch ${{ matrix.arch }} --binary "%VITTE_REAL_BINARY%"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: real-binary-${{ matrix.label }}
+          path: target/real-binaries/${{ matrix.os }}-${{ matrix.arch }}/
+          if-no-files-found: error

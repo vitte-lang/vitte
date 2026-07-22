@@ -64,6 +64,10 @@ def main() -> int:
     metadata = set(matrix.get("artifact_metadata_required", []))
     if not REQUIRED_METADATA.issubset(metadata):
         failures.append(f"artifact metadata policy missing {sorted(REQUIRED_METADATA - metadata)}")
+    if "ATTESTATION.json" not in metadata:
+        failures.append("artifact metadata policy missing real binary attestation")
+    if "real_binary_formats" not in matrix:
+        failures.append("installer real platforms contract missing real_binary_formats")
 
     if release_mode and not strict:
         failures.append("release installer gate requires STRICT_REAL_INSTALLERS=1")
@@ -118,11 +122,18 @@ def main() -> int:
             failures.append(f"installer real platform workflow missing runner {label}")
     if "scripts/ci/real-install-smoke.sh" not in workflow_text or "scripts\\ci\\real-install-smoke.cmd" not in workflow_text:
         failures.append("installer real platform workflow missing smoke scripts")
+    for term in ("make stage-real-binary", "tools\\stage_real_binary.py", "actions/upload-artifact", "target/real-binaries"):
+        if term not in workflow_text:
+            failures.append(f"installer real platform workflow missing `{term}`")
 
     release_workflow = read(ROOT / ".github" / "workflows" / "release-stability-gate.yml")
     for term in ("STRICT_REAL_INSTALLERS=1", "RELEASE_INSTALLER_GATE=1", "make release-installer-gate"):
         if term not in release_workflow:
             failures.append(f"release workflow missing `{term}`")
+
+    stage_real = ROOT / "tools" / "stage_real_binary.py"
+    fail_if_missing_terms(stage_real, {"binary_format", "ATTESTATION.json", "smoke_commands", "ELF", "Mach-O", "PE"}, failures)
+    fail_if_missing_terms(ROOT / "docs" / "release" / "real_binary_collection.md", {"make stage-real-binary", "STRICT_REAL_INSTALLERS=1", "ATTESTATION.json"}, failures)
 
     report = {
         "schema": "org.vitte.release-installer-gate.v1",
