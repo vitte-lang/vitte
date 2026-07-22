@@ -8,6 +8,8 @@ our $VERSION = '0.1.0';
 our @EXPORT_OK = qw(
     join_path normalize_path basename dirname extension without_extension
     replace_extension is_absolute is_relative split_path path_components
+    path_stem path_depth path_is_root path_has_extension relative_path
+    resolve_path common_prefix change_basename
 );
 
 sub _as_slash_path {
@@ -125,6 +127,61 @@ sub split_path {
 
 sub path_components {
     return split_path($_[0]);
+}
+
+sub path_stem {
+    my ($path) = @_;
+    my $base = basename($path);
+    $base =~ s{\.[^.]+$}{};
+    return $base;
+}
+
+sub path_depth {
+    my ($path) = @_;
+    return scalar @{ split_path($path) };
+}
+
+sub path_is_root {
+    my ($path) = @_;
+    return normalize_path($path) eq '/' ? 1 : 0;
+}
+
+sub path_has_extension {
+    my ($path, $expected) = @_;
+    my $ext = extension($path);
+    return length($ext) ? (!defined $expected || $ext eq $expected ? 1 : 0) : 0;
+}
+
+sub relative_path {
+    my ($from, $to) = @_;
+    my @from = @{ split_path($from) };
+    my @to = @{ split_path($to) };
+    shift @from, shift @to while @from && @to && $from[0] eq $to[0];
+    return normalize_path(join_path((('../') x scalar(@from)), @to));
+}
+
+sub resolve_path {
+    my ($base, $path) = @_;
+    return normalize_path($path) if is_absolute($path);
+    return normalize_path(join_path($base, $path));
+}
+
+sub common_prefix {
+    my @paths = @_;
+    return '' unless @paths;
+    my @prefix = @{ split_path(shift @paths) };
+    for my $path (@paths) {
+        my @parts = @{ split_path($path) };
+        my $i = 0;
+        $i++ while $i < @prefix && $i < @parts && $prefix[$i] eq $parts[$i];
+        @prefix = @prefix[0 .. $i - 1];
+    }
+    return @prefix ? join_path(@prefix) : '';
+}
+
+sub change_basename {
+    my ($path, $name) = @_;
+    return join_path(dirname($path), $name);
 }
 
 1;
