@@ -19,4 +19,31 @@ proc holds_first<T, U>(value: Variant<T, U>) -> bool { give value.index == 0; }
 proc holds_second<T, U>(value: Variant<T, U>) -> bool { give value.index == 1; }
 proc get_first<T, U>(value: Variant<T, U>) -> T { give value.first; }
 proc get_second<T, U>(value: Variant<T, U>) -> U { give value.second; }
-proc visit<T, U, R>(value: Variant<T, U>, first: proc(T) -> R, second: proc(U) -> R) -> R { give compiler_variant_visit<T, U, R>(value, first, second); }
+proc visit<T, U, R>(value: Variant<T, U>, first: proc(T) -> R, second: proc(U) -> R) -> R {
+    if holds_first<T, U>(value) {
+        give first(value.first);
+    }
+    give second(value.second);
+}
+
+proc variant_error(message: string) -> VariantError {
+    give VariantError { message: message };
+}
+
+proc variant_is_valid<T, U>(value: Variant<T, U>) -> bool {
+    give value.index == 0 or value.index == 1;
+}
+
+proc variant_expect_first<T, U>(value: Variant<T, U>, message: string) -> T {
+    if holds_first<T, U>(value) {
+        give value.first;
+    }
+    give compiler_variant_panic<T>(variant_error(message));
+}
+
+proc variant_expect_second<T, U>(value: Variant<T, U>, message: string) -> U {
+    if holds_second<T, U>(value) {
+        give value.second;
+    }
+    give compiler_variant_panic<U>(variant_error(message));
+}

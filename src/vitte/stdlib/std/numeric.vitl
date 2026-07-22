@@ -14,12 +14,113 @@ form AccumulateResult<T> {
 }
 
 proc numeric_limits<T>() -> NumericLimits<T> { give compiler_numeric_limits<T>(); }
-proc accumulate<T>(values: [T], initial: T) -> T { give compiler_numeric_accumulate<T>(values, initial); }
-proc reduce<T>(values: [T], initial: T) -> T { give compiler_numeric_reduce<T>(values, initial); }
-proc inner_product<T>(left: [T], right: [T], initial: T) -> T { give compiler_numeric_inner_product<T>(left, right, initial); }
-proc partial_sum<T>(values: [T]) -> [T] { give compiler_numeric_partial_sum<T>(values); }
-proc adjacent_difference<T>(values: [T]) -> [T] { give compiler_numeric_adjacent_difference<T>(values); }
-proc gcd<T>(left: T, right: T) -> T { give compiler_numeric_gcd<T>(left, right); }
-proc lcm<T>(left: T, right: T) -> T { give compiler_numeric_lcm<T>(left, right); }
-proc midpoint<T>(left: T, right: T) -> T { give compiler_numeric_midpoint<T>(left, right); }
-proc checked_accumulate<T>(values: [T], initial: T) -> AccumulateResult<T> { give compiler_numeric_checked_accumulate<T>(values, initial); }
+proc zero<T>() -> T { give compiler_numeric_zero<T>(); }
+
+proc accumulate<T>(values: [T], initial: T) -> T {
+    let total: T = initial;
+    let index: usize = 0;
+    while index < values.len {
+        set total = total + values[index];
+        set index = index + 1;
+    }
+    give total;
+}
+
+proc reduce<T>(values: [T], initial: T) -> T {
+    give accumulate<T>(values, initial);
+}
+
+proc inner_product<T>(left: [T], right: [T], initial: T) -> T {
+    let total: T = initial;
+    let index: usize = 0;
+    let limit: usize = min_len(left.len, right.len);
+    while index < limit {
+        set total = total + (left[index] * right[index]);
+        set index = index + 1;
+    }
+    give total;
+}
+
+proc partial_sum<T>(values: [T]) -> [T] {
+    let out: [T] = values;
+    if out.len == 0 {
+        give out;
+    }
+    let index: usize = 1;
+    while index < out.len {
+        set out[index] = out[index - 1] + values[index];
+        set index = index + 1;
+    }
+    give out;
+}
+
+proc adjacent_difference<T>(values: [T]) -> [T] {
+    let out: [T] = values;
+    if out.len <= 1 {
+        give out;
+    }
+    let index: usize = values.len - 1;
+    while index > 0 {
+        set out[index] = values[index] - values[index - 1];
+        set index = index - 1;
+    }
+    give out;
+}
+
+proc gcd<T>(left: T, right: T) -> T {
+    let a: T = abs_value<T>(left);
+    let b: T = abs_value<T>(right);
+    let none: T = zero<T>();
+    while b != none {
+        let next: T = a % b;
+        set a = b;
+        set b = next;
+    }
+    give a;
+}
+
+proc lcm<T>(left: T, right: T) -> T {
+    let none: T = zero<T>();
+    if left == none or right == none {
+        give none;
+    }
+    give abs_value<T>((left / gcd<T>(left, right)) * right);
+}
+
+proc midpoint<T>(left: T, right: T) -> T {
+    give left + ((right - left) / 2);
+}
+
+proc checked_accumulate<T>(values: [T], initial: T) -> AccumulateResult<T> {
+    let total: T = initial;
+    let overflowed: bool = false;
+    let index: usize = 0;
+    while index < values.len {
+        let next: T = total + values[index];
+        let none: T = zero<T>();
+        if values[index] > none and next < total {
+            set overflowed = true;
+        }
+        if values[index] < none and next > total {
+            set overflowed = true;
+        }
+        set total = next;
+        set index = index + 1;
+    }
+    give AccumulateResult<T> { value: total, overflowed: overflowed };
+}
+
+proc min_len(left: usize, right: usize) -> usize {
+    if left < right {
+        give left;
+    }
+    give right;
+}
+
+proc abs_value<T>(value: T) -> T {
+    let none: T = zero<T>();
+    if value < none {
+        give none - value;
+    }
+    give value;
+}

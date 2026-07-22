@@ -13,8 +13,25 @@ form MoveTag {
 
 proc pair<T, U>(first: T, second: U) -> Pair<T, U> { give Pair<T, U> { first: first, second: second }; }
 proc make_pair<T, U>(first: T, second: U) -> Pair<T, U> { give pair<T, U>(first, second); }
-proc exchange<T>(place: ref mut T, replacement: T) -> T { give compiler_utility_exchange<T>(place, replacement); }
-proc move<T>(value: T) -> T { give compiler_utility_move<T>(value); }
-proc forward<T>(value: T) -> T { give compiler_utility_forward<T>(value); }
+proc exchange<T>(place: ref mut T, replacement: T) -> T {
+    let old: T = *place;
+    set *place = replacement;
+    give old;
+}
+
+proc move<T>(value: T) -> T { give value; }
+proc forward<T>(value: T) -> T { give value; }
 proc as_const<T>(value: ref T) -> ref T { give value; }
 proc unreachable() -> never { give compiler_utility_unreachable(); }
+
+proc first<T, U>(value: Pair<T, U>) -> T { give value.first; }
+proc second<T, U>(value: Pair<T, U>) -> U { give value.second; }
+proc pair_swap<T, U>(value: Pair<T, U>) -> Pair<U, T> { give Pair<U, T> { first: value.second, second: value.first }; }
+proc move_tag() -> MoveTag { give MoveTag { moved: true }; }
+proc is_moved(value: MoveTag) -> bool { give value.moved; }
+proc replace_if<T>(place: ref mut T, replacement: T, should_replace: bool) -> T {
+    if should_replace {
+        give exchange<T>(place, replacement);
+    }
+    give *place;
+}

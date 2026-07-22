@@ -13,15 +13,154 @@ form SearchResult {
     index: usize
 }
 
-proc min<T>(left: T, right: T) -> T { give compiler_algorithm_min<T>(left, right); }
-proc max<T>(left: T, right: T) -> T { give compiler_algorithm_max<T>(left, right); }
-proc clamp<T>(value: T, low: T, high: T) -> T { give compiler_algorithm_clamp<T>(value, low, high); }
-proc swap<T>(left: ref mut T, right: ref mut T) { compiler_algorithm_swap<T>(left, right); }
-proc sort<T>(values: ref mut [T]) { compiler_algorithm_sort<T>(values); }
-proc stable_sort<T>(values: ref mut [T]) { compiler_algorithm_stable_sort<T>(values); }
-proc binary_search<T>(values: [T], needle: T) -> SearchResult { give compiler_algorithm_binary_search<T>(values, needle); }
-proc lower_bound<T>(values: [T], needle: T) -> usize { give compiler_algorithm_lower_bound<T>(values, needle); }
-proc upper_bound<T>(values: [T], needle: T) -> usize { give compiler_algorithm_upper_bound<T>(values, needle); }
-proc reverse<T>(values: ref mut [T]) { compiler_algorithm_reverse<T>(values); }
-proc rotate<T>(values: ref mut [T], middle: usize) { compiler_algorithm_rotate<T>(values, middle); }
-proc unique<T>(values: ref mut [T]) -> usize { give compiler_algorithm_unique<T>(values); }
+proc ordering_from_compare(compare: int) -> OrderingResult {
+    give OrderingResult {
+        less: compare < 0
+        equal: compare == 0
+        greater: compare > 0
+    };
+}
+
+proc min<T>(left: T, right: T) -> T {
+    if right < left {
+        give right;
+    }
+    give left;
+}
+
+proc max<T>(left: T, right: T) -> T {
+    if left < right {
+        give right;
+    }
+    give left;
+}
+
+proc clamp<T>(value: T, low: T, high: T) -> T {
+    if value < low {
+        give low;
+    }
+    if high < value {
+        give high;
+    }
+    give value;
+}
+
+proc swap<T>(left: ref mut T, right: ref mut T) {
+    let tmp: T = *left;
+    set *left = *right;
+    set *right = tmp;
+}
+
+proc is_sorted<T>(values: [T]) -> bool {
+    if values.len <= 1 {
+        give true;
+    }
+    let index: usize = 1;
+    while index < values.len {
+        if values[index] < values[index - 1] {
+            give false;
+        }
+        set index = index + 1;
+    }
+    give true;
+}
+
+proc sort<T>(values: ref mut [T]) {
+    stable_sort<T>(values);
+}
+
+proc stable_sort<T>(values: ref mut [T]) {
+    if (*values).len <= 1 {
+        give;
+    }
+    let index: usize = 1;
+    while index < (*values).len {
+        let current: T = (*values)[index];
+        let cursor: usize = index;
+        while cursor > 0 and current < (*values)[cursor - 1] {
+            set (*values)[cursor] = (*values)[cursor - 1];
+            set cursor = cursor - 1;
+        }
+        set (*values)[cursor] = current;
+        set index = index + 1;
+    }
+}
+
+proc lower_bound<T>(values: [T], needle: T) -> usize {
+    let low: usize = 0;
+    let high: usize = values.len;
+    while low < high {
+        let middle: usize = low + ((high - low) / 2);
+        if values[middle] < needle {
+            set low = middle + 1;
+        } else {
+            set high = middle;
+        }
+    }
+    give low;
+}
+
+proc upper_bound<T>(values: [T], needle: T) -> usize {
+    let low: usize = 0;
+    let high: usize = values.len;
+    while low < high {
+        let middle: usize = low + ((high - low) / 2);
+        if not (needle < values[middle]) {
+            set low = middle + 1;
+        } else {
+            set high = middle;
+        }
+    }
+    give low;
+}
+
+proc binary_search<T>(values: [T], needle: T) -> SearchResult {
+    let index: usize = lower_bound<T>(values, needle);
+    if index < values.len and not (needle < values[index]) and not (values[index] < needle) {
+        give SearchResult { found: true, index: index };
+    }
+    give SearchResult { found: false, index: index };
+}
+
+proc reverse_range<T>(values: ref mut [T], start: usize, end_exclusive: usize) {
+    if end_exclusive <= start + 1 {
+        give;
+    }
+    let left: usize = start;
+    let right: usize = end_exclusive - 1;
+    while left < right {
+        swap<T>(&mut ((*values)[left]), &mut ((*values)[right]));
+        set left = left + 1;
+        set right = right - 1;
+    }
+}
+
+proc reverse<T>(values: ref mut [T]) {
+    reverse_range<T>(values, 0, (*values).len);
+}
+
+proc rotate<T>(values: ref mut [T], middle: usize) {
+    if middle == 0 or middle >= (*values).len {
+        give;
+    }
+    reverse_range<T>(values, 0, middle);
+    reverse_range<T>(values, middle, (*values).len);
+    reverse_range<T>(values, 0, (*values).len);
+}
+
+proc unique<T>(values: ref mut [T]) -> usize {
+    if (*values).len == 0 {
+        let empty: usize = 0;
+        give empty;
+    }
+    let write: usize = 1;
+    let read: usize = 1;
+    while read < (*values).len {
+        if (*values)[read] != (*values)[write - 1] {
+            set (*values)[write] = (*values)[read];
+            set write = write + 1;
+        }
+        set read = read + 1;
+    }
+    give write;
+}

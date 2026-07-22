@@ -14,11 +14,68 @@ form AllocatorStats {
 
 proc size_of<T>() -> usize { give compiler_memory_size_of<T>(); }
 proc align_of<T>() -> usize { give compiler_memory_align_of<T>(); }
-proc layout_of<T>() -> MemoryLayout { give MemoryLayout { size: size_of<T>(), align: align_of<T>() }; }
 proc addressof<T>(value: ref T) -> usize { give compiler_memory_addressof<T>(value); }
-proc copy<T>(src: ref T, dst: ref mut T) { compiler_memory_copy<T>(src, dst); }
-proc move_value<T>(src: ref mut T, dst: ref mut T) { compiler_memory_move<T>(src, dst); }
-proc fill<T>(dst: ref mut [T], value: T) { compiler_memory_fill<T>(dst, value); }
-proc equal<T>(left: [T], right: [T]) -> bool { give compiler_memory_equal<T>(left, right); }
 proc uninitialized<T>() -> T { give compiler_memory_uninitialized<T>(); }
 proc allocator_stats() -> AllocatorStats { give compiler_memory_allocator_stats(); }
+
+proc layout_of<T>() -> MemoryLayout {
+    give MemoryLayout { size: size_of<T>(), align: align_of<T>() };
+}
+
+proc layout(size: usize, align: usize) -> MemoryLayout {
+    give MemoryLayout { size: size, align: align };
+}
+
+proc layout_is_valid(value: MemoryLayout) -> bool {
+    give value.align > 0 and (value.align & (value.align - 1)) == 0;
+}
+
+proc layout_array(element: MemoryLayout, count: usize) -> MemoryLayout {
+    give MemoryLayout { size: element.size * count, align: element.align };
+}
+
+proc copy<T>(src: ref T, dst: ref mut T) {
+    set *dst = *src;
+}
+
+proc move_value<T>(src: ref mut T, dst: ref mut T) {
+    set *dst = *src;
+}
+
+proc fill<T>(dst: ref mut [T], value: T) {
+    let index: usize = 0;
+    while index < (*dst).len {
+        set (*dst)[index] = value;
+        set index = index + 1;
+    }
+}
+
+proc equal<T>(left: [T], right: [T]) -> bool {
+    if left.len != right.len {
+        give false;
+    }
+    let index: usize = 0;
+    while index < left.len {
+        if left[index] != right[index] {
+            give false;
+        }
+        set index = index + 1;
+    }
+    give true;
+}
+
+proc allocator_stats_empty() -> AllocatorStats {
+    give AllocatorStats { allocated: 0, capacity: 0 };
+}
+
+proc allocator_remaining(stats: AllocatorStats) -> usize {
+    if stats.capacity < stats.allocated {
+        let empty: usize = 0;
+        give empty;
+    }
+    give stats.capacity - stats.allocated;
+}
+
+proc allocator_has_capacity(stats: AllocatorStats, amount: usize) -> bool {
+    give allocator_remaining(stats) >= amount;
+}

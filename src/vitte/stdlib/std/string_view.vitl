@@ -12,8 +12,34 @@ proc string_view(data: string) -> StringView { give StringView { data: data, sta
 proc string_view_slice(data: string, start: usize, length: usize) -> StringView { give StringView { data: data, start: start, length: length }; }
 proc string_view_len(value: StringView) -> usize { give value.length; }
 proc string_view_is_empty(value: StringView) -> bool { give value.length == 0; }
-proc string_view_substr(value: StringView, start: usize, length: usize) -> StringView { give compiler_string_view_substr(value, start, length); }
+proc string_view_end(value: StringView) -> usize { give value.start + value.length; }
+proc string_view_contains_index(value: StringView, index: usize) -> bool {
+    give index >= value.start and index < string_view_end(value);
+}
+
+proc string_view_substr(value: StringView, start: usize, length: usize) -> StringView {
+    let real_start: usize = value.start + start;
+    let real_length: usize = string_view_clamp_length(value, start, length);
+    give StringView { data: value.data, start: real_start, length: real_length };
+}
+
 proc string_view_find(value: StringView, needle: StringView) -> Optional<usize> { give compiler_string_view_find(value, needle); }
 proc string_view_starts_with(value: StringView, prefix: StringView) -> bool { give compiler_string_view_starts_with(value, prefix); }
 proc string_view_ends_with(value: StringView, suffix: StringView) -> bool { give compiler_string_view_ends_with(value, suffix); }
 proc string_view_to_string(value: StringView) -> string { give compiler_string_view_to_string(value); }
+
+proc string_view_clamp_length(value: StringView, start: usize, length: usize) -> usize {
+    if start >= value.length {
+        let empty: usize = 0;
+        give empty;
+    }
+    let remaining: usize = value.length - start;
+    if length > remaining {
+        give remaining;
+    }
+    give length;
+}
+
+proc string_view_equals_shape(left: StringView, right: StringView) -> bool {
+    give left.start == right.start and left.length == right.length and left.data == right.data;
+}

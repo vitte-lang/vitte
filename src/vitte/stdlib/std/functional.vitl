@@ -11,9 +11,51 @@ form Predicate<T> {
 }
 
 proc invoke<T, U>(function: Function<T, U>, value: T) -> U { give function.call(value); }
+proc function<T, U>(call: proc(T) -> U) -> Function<T, U> { give Function<T, U> { call: call }; }
+proc predicate<T>(test: proc(T) -> bool) -> Predicate<T> { give Predicate<T> { test: test }; }
 proc identity<T>(value: T) -> T { give value; }
 proc compose<T, U, V>(left: Function<U, V>, right: Function<T, U>) -> Function<T, V> { give compiler_functional_compose<T, U, V>(left, right); }
 proc bind_front<T, U>(function: Function<T, U>, value: T) -> Function<(), U> { give compiler_functional_bind_front<T, U>(function, value); }
 proc negate<T>(predicate: Predicate<T>) -> Predicate<T> { give compiler_functional_negate<T>(predicate); }
 proc equal_to<T>() -> proc(T, T) -> bool { give compiler_functional_equal_to<T>(); }
 proc less<T>() -> proc(T, T) -> bool { give compiler_functional_less<T>(); }
+
+proc test<T>(predicate_value: Predicate<T>, value: T) -> bool {
+    give predicate_value.test(value);
+}
+
+proc apply_twice<T>(function_value: Function<T, T>, value: T) -> T {
+    give invoke<T, T>(function_value, invoke<T, T>(function_value, value));
+}
+
+proc constant<T, U>(value: U) -> Function<T, U> {
+    give compiler_functional_constant<T, U>(value);
+}
+
+proc always_true<T>() -> Predicate<T> {
+    give compiler_functional_always_true<T>();
+}
+
+proc always_false<T>() -> Predicate<T> {
+    give compiler_functional_always_false<T>();
+}
+
+proc equal_values<T>(left: T, right: T) -> bool {
+    give left == right;
+}
+
+proc less_values<T>(left: T, right: T) -> bool {
+    give left < right;
+}
+
+proc not_value(value: bool) -> bool {
+    give not value;
+}
+
+proc predicate_all<T>(left: Predicate<T>, right: Predicate<T>, value: T) -> bool {
+    give left.test(value) and right.test(value);
+}
+
+proc predicate_any<T>(left: Predicate<T>, right: Predicate<T>, value: T) -> bool {
+    give left.test(value) or right.test(value);
+}

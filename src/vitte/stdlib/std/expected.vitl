@@ -19,5 +19,38 @@ proc has_value<T, E>(item: Expected<T, E>) -> bool { give item.state == Expected
 proc value<T, E>(item: Expected<T, E>) -> T { give item.value; }
 proc error<T, E>(item: Expected<T, E>) -> E { give item.error; }
 proc value_or<T, E>(item: Expected<T, E>, fallback: T) -> T { if has_value<T, E>(item) { give item.value; } give fallback; }
-proc map<T, U, E>(item: Expected<T, E>, mapper: proc(T) -> U) -> Expected<U, E> { give compiler_expected_map<T, U, E>(item, mapper); }
-proc and_then<T, U, E>(item: Expected<T, E>, mapper: proc(T) -> Expected<U, E>) -> Expected<U, E> { give compiler_expected_and_then<T, U, E>(item, mapper); }
+proc is_error<T, E>(item: Expected<T, E>) -> bool { give item.state == ExpectedState.Error; }
+proc value_or_else<T, E>(item: Expected<T, E>, fallback: proc(E) -> T) -> T {
+    if has_value<T, E>(item) {
+        give item.value;
+    }
+    give fallback(item.error);
+}
+
+proc map<T, U, E>(item: Expected<T, E>, mapper: proc(T) -> U) -> Expected<U, E> {
+    if has_value<T, E>(item) {
+        give expected<U, E>(mapper(item.value));
+    }
+    give unexpected<U, E>(item.error);
+}
+
+proc map_error<T, E, F>(item: Expected<T, E>, mapper: proc(E) -> F) -> Expected<T, F> {
+    if has_value<T, E>(item) {
+        give expected<T, F>(item.value);
+    }
+    give unexpected<T, F>(mapper(item.error));
+}
+
+proc and_then<T, U, E>(item: Expected<T, E>, mapper: proc(T) -> Expected<U, E>) -> Expected<U, E> {
+    if has_value<T, E>(item) {
+        give mapper(item.value);
+    }
+    give unexpected<U, E>(item.error);
+}
+
+proc or_else<T, E, F>(item: Expected<T, E>, mapper: proc(E) -> Expected<T, F>) -> Expected<T, F> {
+    if has_value<T, E>(item) {
+        give expected<T, F>(item.value);
+    }
+    give mapper(item.error);
+}

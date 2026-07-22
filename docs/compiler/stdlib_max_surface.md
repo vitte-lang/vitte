@@ -30,6 +30,10 @@ Required families:
 
 - every required module exists
 - every required symbol fragment is present in the Vitte source
+- every required module has at least 30 source lines
+- every required module has at least 10 public procedures
+- every required module has at least 8 native procedures whose implementation is not a
+  direct `compiler_*` intrinsic handoff
 - every module is an official stdlib entrypoint
 - every module has public example and test coverage
 - `./bin/vitte check` passes for every max-surface module

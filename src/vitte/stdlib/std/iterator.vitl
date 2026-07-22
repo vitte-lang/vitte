@@ -6,6 +6,7 @@ export *
 
 form Iterator<T> {
     state: usize
+    length: usize
 }
 
 form IteratorRange<T> {
@@ -13,13 +14,69 @@ form IteratorRange<T> {
     last: Iterator<T>
 }
 
-proc begin<T>(values: [T]) -> Iterator<T> { give compiler_iterator_begin<T>(values); }
-proc end<T>(values: [T]) -> Iterator<T> { give compiler_iterator_end<T>(values); }
+proc iterator_at<T>(index: usize, length: usize) -> Iterator<T> {
+    give Iterator<T> { state: index, length: length };
+}
+
+proc begin<T>(values: [T]) -> Iterator<T> { give iterator_at<T>(0, values.len); }
+proc end<T>(values: [T]) -> Iterator<T> { give iterator_at<T>(values.len, values.len); }
 proc next<T>(iter: ref mut Iterator<T>) -> T { give compiler_iterator_next<T>(iter); }
-proc has_next<T>(iter: Iterator<T>) -> bool { give compiler_iterator_has_next<T>(iter); }
-proc distance<T>(first: Iterator<T>, last: Iterator<T>) -> isize { give compiler_iterator_distance<T>(first, last); }
-proc advance<T>(iter: ref mut Iterator<T>, amount: isize) { compiler_iterator_advance<T>(iter, amount); }
+proc has_next<T>(iter: Iterator<T>) -> bool { give iter.state < iter.length; }
+proc distance<T>(first: Iterator<T>, last: Iterator<T>) -> isize { give last.state - first.state; }
+
+proc advance<T>(iter: ref mut Iterator<T>, amount: isize) {
+    if amount < 0 {
+        let delta: usize = 0 - amount;
+        if delta > (*iter).state {
+            set (*iter).state = 0;
+            give;
+        }
+        set (*iter).state = (*iter).state - delta;
+        give;
+    }
+    set (*iter).state = (*iter).state + amount;
+    if (*iter).state > (*iter).length {
+        set (*iter).state = (*iter).length;
+    }
+}
+
 proc range<T>(values: [T]) -> IteratorRange<T> { give IteratorRange<T> { first: begin<T>(values), last: end<T>(values) }; }
 proc collect<T>(range_value: IteratorRange<T>) -> [T] { give compiler_iterator_collect<T>(range_value); }
-proc any<T>(values: [T], predicate: proc(T) -> bool) -> bool { give compiler_iterator_any<T>(values, predicate); }
-proc all<T>(values: [T], predicate: proc(T) -> bool) -> bool { give compiler_iterator_all<T>(values, predicate); }
+
+proc iter_index<T>(iter: Iterator<T>) -> usize { give iter.state; }
+proc iter_remaining<T>(iter: Iterator<T>) -> usize { give iter.length - iter.state; }
+proc iter_is_empty<T>(iter: Iterator<T>) -> bool { give iter.state >= iter.length; }
+
+proc any<T>(values: [T], predicate: proc(T) -> bool) -> bool {
+    let index: usize = 0;
+    while index < values.len {
+        if predicate(values[index]) {
+            give true;
+        }
+        set index = index + 1;
+    }
+    give false;
+}
+
+proc all<T>(values: [T], predicate: proc(T) -> bool) -> bool {
+    let index: usize = 0;
+    while index < values.len {
+        if not predicate(values[index]) {
+            give false;
+        }
+        set index = index + 1;
+    }
+    give true;
+}
+
+proc count_if<T>(values: [T], predicate: proc(T) -> bool) -> usize {
+    let count: usize = 0;
+    let index: usize = 0;
+    while index < values.len {
+        if predicate(values[index]) {
+            set count = count + 1;
+        }
+        set index = index + 1;
+    }
+    give count;
+}

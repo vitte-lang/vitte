@@ -46,6 +46,36 @@ def require_fragment(source: str, fragment: str) -> bool:
     return fragment in source
 
 
+def proc_implementation_counts(source: str) -> tuple[int, int]:
+    proc_count = 0
+    native_count = 0
+    lines = source.splitlines()
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        if not line.lstrip().startswith("proc "):
+            index += 1
+            continue
+
+        proc_count += 1
+        body_lines = [line]
+        brace_depth = line.count("{") - line.count("}")
+        saw_body = "{" in line
+        index += 1
+        while index < len(lines) and (not saw_body or brace_depth > 0):
+            body_line = lines[index]
+            body_lines.append(body_line)
+            saw_body = saw_body or "{" in body_line
+            brace_depth += body_line.count("{") - body_line.count("}")
+            index += 1
+
+        body = "\n".join(body_lines)
+        if "compiler_" not in body:
+            native_count += 1
+
+    return proc_count, native_count
+
+
 def render_markdown(payload: dict[str, object]) -> str:
     lines = [
         "# Stdlib Max Gate",
@@ -55,12 +85,16 @@ def render_markdown(payload: dict[str, object]) -> str:
         f"- modules: `{payload['module_count']}`",
         f"- symbols: `{payload['symbol_count']}`",
         f"- source checks: `{payload['source_check_count']}`",
+        f"- native procs: `{payload['native_proc_count']}`",
         "",
         "## Families",
         "",
     ]
     for family in payload["families"]:
-        lines.append(f"- `{family['id']}` `{family['family']}`: `{family['module']}`")
+        lines.append(
+            f"- `{family['id']}` `{family['family']}`: `{family['module']}` "
+            f"procs=`{family['public_procs']}` native=`{family['native_procs']}`"
+        )
     if payload["failures"]:
         lines.extend(["", "## Failures", ""])
         for failure in payload["failures"]:
@@ -96,7 +130,15 @@ def main() -> int:
     families: list[dict[str, str]] = []
     source_check_count = 0
     symbol_count = 0
+    native_proc_count = 0
     seen_modules: set[str] = set()
+
+    implementation_requirements = matrix.get("implementation_requirements", {})
+    if not isinstance(implementation_requirements, dict):
+        implementation_requirements = {}
+    minimum_source_lines = int(implementation_requirements.get("minimum_source_lines", 30))
+    minimum_public_procs = int(implementation_requirements.get("minimum_public_procs", 10))
+    minimum_native_procs = int(implementation_requirements.get("minimum_native_procs", 8))
 
     requirements = matrix.get("requirements", [])
     if not isinstance(requirements, list):
@@ -115,7 +157,6 @@ def main() -> int:
             failures.append(Failure("invalid-symbols", f"{req_id} symbols must be an array"))
             symbols = []
 
-        families.append({"id": req_id, "family": family, "module": module})
         symbol_count += len(symbols)
         seen_modules.add(module)
 
@@ -125,6 +166,24 @@ def main() -> int:
             continue
 
         source = module_path.read_text(encoding="utf-8")
+        source_lines = len(source.splitlines())
+        public_procs, native_procs = proc_implementation_counts(source)
+        native_proc_count += native_procs
+        families.append({
+            "id": req_id,
+            "family": family,
+            "module": module,
+            "public_procs": public_procs,
+            "native_procs": native_procs,
+            "source_lines": source_lines,
+        })
+        if source_lines < minimum_source_lines:
+            failures.append(Failure("module-too-small", f"{req_id} {module}: lines={source_lines} minimum={minimum_source_lines}"))
+        if public_procs < minimum_public_procs:
+            failures.append(Failure("not-enough-public-procs", f"{req_id} {module}: procs={public_procs} minimum={minimum_public_procs}"))
+        if native_procs < minimum_native_procs:
+            failures.append(Failure("not-enough-native-procs", f"{req_id} {module}: native={native_procs} minimum={minimum_native_procs}"))
+
         for symbol in symbols:
             fragment = str(symbol)
             if not require_fragment(source, fragment):
@@ -181,6 +240,10 @@ def main() -> int:
         "module_count": len(seen_modules),
         "symbol_count": symbol_count,
         "source_check_count": source_check_count,
+        "native_proc_count": native_proc_count,
+        "minimum_source_lines": minimum_source_lines,
+        "minimum_public_procs": minimum_public_procs,
+        "minimum_native_procs": minimum_native_procs,
         "families": families,
         "failures": [failure.__dict__ for failure in failures],
     }
