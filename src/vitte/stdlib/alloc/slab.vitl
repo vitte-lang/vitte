@@ -1,0 +1,123 @@
+space vitte/stdlib/alloc/slab
+
+export *
+
+use src/vitte/stdlib/alloc/vec as alloc_vec
+use src/vitte/stdlib/core/iterator as core_iterator
+use src/vitte/stdlib/core/option as core_option
+
+form SlabKey {
+    index: usize
+    generation: usize
+}
+
+form SlabEntry<T> {
+    occupied: bool
+    generation: usize
+    value: T
+}
+
+form Slab<T> {
+    entries: Vec<SlabEntry<T>>
+    free: Vec<usize>
+    length: usize
+    next_generation: usize
+}
+
+proc slab_key(index: usize, generation: usize) -> SlabKey {
+    give SlabKey { index: index, generation: generation };
+}
+
+proc slab_key_index(value: SlabKey) -> usize { give value.index; }
+proc slab_key_generation(value: SlabKey) -> usize { give value.generation; }
+proc slab_key_is_null(value: SlabKey) -> bool { give value.index == compiler_usize_max(); }
+
+proc slab_null_key() -> SlabKey {
+    give SlabKey { index: compiler_usize_max(), generation: 0 };
+}
+
+proc slab_new<T>() -> Slab<T> {
+    give Slab<T> {
+        entries: vec_new<SlabEntry<T>>(),
+        free: vec_new<usize>(),
+        length: 0,
+        next_generation: 1
+    };
+}
+
+proc slab_with_capacity<T>(capacity: usize) -> Slab<T> {
+    give Slab<T> {
+        entries: vec_with_capacity<SlabEntry<T>>(capacity),
+        free: vec_with_capacity<usize>(capacity),
+        length: 0,
+        next_generation: 1
+    };
+}
+
+proc slab_len<T>(value: Slab<T>) -> usize { give value.length; }
+proc slab_capacity<T>(value: Slab<T>) -> usize { give vec_capacity<SlabEntry<T>>(value.entries); }
+proc slab_is_empty<T>(value: Slab<T>) -> bool { give value.length == 0; }
+proc slab_free_len<T>(value: Slab<T>) -> usize { give vec_len<usize>(value.free); }
+
+proc slab_contains<T>(value: ref Slab<T>, key: SlabKey) -> bool {
+    if key.index >= vec_len<SlabEntry<T>>((*value).entries) {
+        give false;
+    }
+    let entry = compiler_slab_entry_ref<T>(value, key.index);
+    give entry.occupied and entry.generation == key.generation;
+}
+
+proc slab_reserve<T>(value: ref mut Slab<T>, additional: usize) {
+    vec_reserve<SlabEntry<T>>(&mut ((*value).entries), additional);
+}
+
+proc slab_insert<T>(value: ref mut Slab<T>, item: T) -> SlabKey {
+    let key: SlabKey = compiler_slab_insert<T>(value, item);
+    set (*value).length = (*value).length + 1;
+    set (*value).next_generation = (*value).next_generation + 1;
+    give key;
+}
+
+proc slab_get<T>(value: ref Slab<T>, key: SlabKey) -> Option<ref T> {
+    if not slab_contains<T>(value, key) {
+        give none<ref T>();
+    }
+    give some<ref T>(compiler_slab_value_ref<T>(value, key.index));
+}
+
+proc slab_get_mut<T>(value: ref mut Slab<T>, key: SlabKey) -> Option<ref mut T> {
+    if not slab_contains<T>(&(*value), key) {
+        give none<ref mut T>();
+    }
+    give some<ref mut T>(compiler_slab_value_mut<T>(value, key.index));
+}
+
+proc slab_remove<T>(value: ref mut Slab<T>, key: SlabKey) -> Option<T> {
+    if not slab_contains<T>(&(*value), key) {
+        give none<T>();
+    }
+    let removed: T = compiler_slab_remove<T>(value, key.index);
+    vec_push<usize>(&mut ((*value).free), key.index);
+    set (*value).length = (*value).length - 1;
+    give some<T>(removed);
+}
+
+proc slab_clear<T>(value: ref mut Slab<T>) {
+    set (*value).entries = vec_new<SlabEntry<T>>();
+    set (*value).free = vec_new<usize>();
+    set (*value).length = 0;
+    set (*value).next_generation = 1;
+}
+
+proc slab_retain<T>(value: ref mut Slab<T>, predicate: proc(T) -> bool) {
+    compiler_slab_retain<T>(value, predicate);
+    set (*value).length = compiler_slab_live_len<T>(*value);
+}
+
+proc slab_iter<T>(value: Slab<T>) -> Iterator<T> {
+    give compiler_slab_iter<T>(value);
+}
+
+proc slab_keys<T>(value: Slab<T>) -> Iterator<SlabKey> {
+    give compiler_slab_keys<T>(value);
+}

@@ -1,0 +1,127 @@
+space vitte/stdlib/alloc/arena
+
+export *
+
+use src/vitte/stdlib/alloc/allocator as alloc_allocator
+use src/vitte/stdlib/alloc/vec as alloc_vec
+use src/vitte/stdlib/core/option as core_option
+
+form ArenaBlock {
+    allocation: alloc_allocator.Allocation
+    used: usize
+    capacity: usize
+}
+
+form ArenaMark {
+    block_count: usize
+    allocated: usize
+}
+
+form Arena {
+    allocator: alloc_allocator.Allocator
+    block_size: usize
+    blocks: Vec<ArenaBlock>
+    allocated: usize
+}
+
+proc arena_block(allocation: alloc_allocator.Allocation) -> ArenaBlock {
+    give ArenaBlock { allocation: allocation, used: 0, capacity: allocation.layout.size };
+}
+
+proc arena_new(name: string, block_size: usize) -> Arena {
+    give Arena {
+        allocator: alloc_allocator.allocator(name, alloc_allocator.GrowthPolicy.Geometric),
+        block_size: block_size,
+        blocks: vec_new<ArenaBlock>(),
+        allocated: 0
+    };
+}
+
+proc arena_default(name: string) -> Arena {
+    give arena_new(name, 4096);
+}
+
+proc arena_allocated(value: Arena) -> usize { give value.allocated; }
+proc arena_block_count(value: Arena) -> usize { give vec_len<ArenaBlock>(value.blocks); }
+proc arena_is_empty(value: Arena) -> bool { give value.allocated == 0; }
+proc arena_default_block_size(value: Arena) -> usize { give value.block_size; }
+
+proc arena_block_remaining(block: ArenaBlock) -> usize {
+    if block.capacity < block.used {
+        let empty: usize = 0;
+        give empty;
+    }
+    give block.capacity - block.used;
+}
+
+proc arena_mark(value: Arena) -> ArenaMark {
+    give ArenaMark { block_count: arena_block_count(value), allocated: value.allocated };
+}
+
+proc arena_can_fit_in_block(block: ArenaBlock, layout_value: alloc_allocator.AllocationLayout) -> bool {
+    give alloc_allocator.layout_is_valid(layout_value) and arena_block_remaining(block) >= layout_value.size;
+}
+
+proc arena_next_block_size(value: Arena, required: usize) -> usize {
+    let next: usize = value.block_size;
+    if next < required {
+        set next = required;
+    }
+    give next;
+}
+
+proc arena_alloc_layout(value: ref mut Arena, layout_value: alloc_allocator.AllocationLayout) -> Option<alloc_allocator.Allocation> {
+    if not alloc_allocator.layout_is_valid(layout_value) {
+        alloc_allocator.allocator_record_failure(&mut ((*value).allocator));
+        give none<alloc_allocator.Allocation>();
+    }
+    let allocation = compiler_arena_allocate(value, layout_value.size, layout_value.align);
+    if is_none<alloc_allocator.Allocation>(allocation) {
+        alloc_allocator.allocator_record_failure(&mut ((*value).allocator));
+        give none<alloc_allocator.Allocation>();
+    }
+    let out: alloc_allocator.Allocation = unwrap<alloc_allocator.Allocation>(allocation);
+    set (*value).allocated = (*value).allocated + layout_value.size;
+    alloc_allocator.allocator_record_success(&mut ((*value).allocator), layout_value);
+    give some<alloc_allocator.Allocation>(out);
+}
+
+proc arena_alloc_bytes(value: ref mut Arena, size: usize, align: usize) -> Option<alloc_allocator.Allocation> {
+    give arena_alloc_layout(value, alloc_allocator.layout(size, align));
+}
+
+proc arena_alloc<T>(value: ref mut Arena) -> Option<alloc_allocator.Allocation> {
+    give arena_alloc_layout(value, alloc_allocator.layout(compiler_size_of<T>(), compiler_align_of<T>()));
+}
+
+proc arena_alloc_array<T>(value: ref mut Arena, count: usize) -> Option<alloc_allocator.Allocation> {
+    let item_layout: alloc_allocator.AllocationLayout = alloc_allocator.layout(compiler_size_of<T>(), compiler_align_of<T>());
+    let array_layout = alloc_allocator.layout_array(item_layout, count);
+    if is_none<alloc_allocator.AllocationLayout>(array_layout) {
+        alloc_allocator.allocator_record_failure(&mut ((*value).allocator));
+        give none<alloc_allocator.Allocation>();
+    }
+    give arena_alloc_layout(value, unwrap<alloc_allocator.AllocationLayout>(array_layout));
+}
+
+proc arena_rewind(value: ref mut Arena, mark: ArenaMark) -> bool {
+    if mark.allocated > (*value).allocated {
+        give false;
+    }
+    compiler_arena_rewind(value, mark.block_count, mark.allocated);
+    set (*value).allocated = mark.allocated;
+    give true;
+}
+
+proc arena_reset(value: ref mut Arena) {
+    compiler_arena_reset(value);
+    set (*value).blocks = vec_new<ArenaBlock>();
+    set (*value).allocated = 0;
+    set (*value).allocator.stats.live_bytes = 0;
+}
+
+proc arena_drop(value: ref mut Arena) {
+    arena_reset(value);
+    set (*value).allocator.stats.reserved_bytes = 0;
+    set (*value).allocator.stats.allocation_count = 0;
+}

@@ -1,0 +1,107 @@
+space vitte/stdlib/alloc/byte_buffer
+
+export *
+
+use src/vitte/stdlib/alloc/vec as alloc_vec
+use src/vitte/stdlib/core/option as core_option
+
+form ByteBuffer {
+    data: Vec<byte>
+    read_index: usize
+    write_index: usize
+}
+
+proc byte_buffer_new() -> ByteBuffer {
+    give ByteBuffer { data: vec_new<byte>(), read_index: 0, write_index: 0 };
+}
+
+proc byte_buffer_with_capacity(capacity: usize) -> ByteBuffer {
+    give ByteBuffer { data: vec_with_capacity<byte>(capacity), read_index: 0, write_index: 0 };
+}
+
+proc byte_buffer_len(value: ByteBuffer) -> usize {
+    if value.write_index < value.read_index {
+        let empty: usize = 0;
+        give empty;
+    }
+    give value.write_index - value.read_index;
+}
+
+proc byte_buffer_capacity(value: ByteBuffer) -> usize { give vec_capacity<byte>(value.data); }
+proc byte_buffer_is_empty(value: ByteBuffer) -> bool { give byte_buffer_len(value) == 0; }
+proc byte_buffer_remaining_capacity(value: ByteBuffer) -> usize { give vec_remaining_capacity<byte>(value.data); }
+
+proc byte_buffer_reserve(value: ref mut ByteBuffer, additional: usize) {
+    vec_reserve<byte>(&mut ((*value).data), additional);
+}
+
+proc byte_buffer_write_byte(value: ref mut ByteBuffer, item: byte) {
+    vec_push<byte>(&mut ((*value).data), item);
+    set (*value).write_index = (*value).write_index + 1;
+}
+
+proc byte_buffer_write(value: ref mut ByteBuffer, bytes: [byte]) {
+    byte_buffer_reserve(value, bytes.len);
+    let index: usize = 0;
+    while index < bytes.len {
+        byte_buffer_write_byte(value, bytes[index]);
+        set index = index + 1;
+    }
+}
+
+proc byte_buffer_read_byte(value: ref mut ByteBuffer) -> Option<byte> {
+    if byte_buffer_is_empty(*value) {
+        give none<byte>();
+    }
+    let item: byte = compiler_byte_buffer_at(*value, (*value).read_index);
+    set (*value).read_index = (*value).read_index + 1;
+    give some<byte>(item);
+}
+
+proc byte_buffer_peek_byte(value: ByteBuffer) -> Option<byte> {
+    if byte_buffer_is_empty(value) {
+        give none<byte>();
+    }
+    give some<byte>(compiler_byte_buffer_at(value, value.read_index));
+}
+
+proc byte_buffer_discard(value: ref mut ByteBuffer, count: usize) -> usize {
+    let discarded: usize = 0;
+    while discarded < count and not byte_buffer_is_empty(*value) {
+        set (*value).read_index = (*value).read_index + 1;
+        set discarded = discarded + 1;
+    }
+    give discarded;
+}
+
+proc byte_buffer_clear(value: ref mut ByteBuffer) {
+    vec_clear<byte>(&mut ((*value).data));
+    set (*value).read_index = 0;
+    set (*value).write_index = 0;
+}
+
+proc byte_buffer_compact(value: ref mut ByteBuffer) {
+    if (*value).read_index == 0 {
+        give;
+    }
+    compiler_byte_buffer_compact(value);
+    set (*value).write_index = byte_buffer_len(*value);
+    set (*value).read_index = 0;
+}
+
+proc byte_buffer_as_slice(value: ByteBuffer) -> [byte] {
+    give compiler_byte_buffer_slice(value, value.read_index, value.write_index);
+}
+
+proc byte_buffer_split_to(value: ref mut ByteBuffer, count: usize) -> ByteBuffer {
+    let out: ByteBuffer = byte_buffer_with_capacity(count);
+    let copied: usize = 0;
+    while copied < count and not byte_buffer_is_empty(*value) {
+        let item = byte_buffer_read_byte(value);
+        if is_some<byte>(item) {
+            byte_buffer_write_byte(&mut out, unwrap<byte>(item));
+        }
+        set copied = copied + 1;
+    }
+    give out;
+}
