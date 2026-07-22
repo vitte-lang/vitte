@@ -63,6 +63,7 @@ SECTIONS: list[tuple[str, list[str]]] = [
             "dx-adoption",
             "public-benchmark-dashboard",
             "release-proof-notes",
+            "vitte-max-construction-gate",
             "all-tests",
             "reports-index",
             "release-doctor",

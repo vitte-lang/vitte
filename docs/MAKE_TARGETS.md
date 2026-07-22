@@ -96,6 +96,8 @@ make help
 - `make dx-adoption`: run DX/adoption quality gates
 - `make public-benchmark-dashboard`: generate publication dashboard + KPI (3/3 use cases)
 - `make release-proof-notes`: generate proof-oriented release notes + tag candidate
+- `make vitte-max-construction-gate`: enforce maximum CLI, build, package, LSP, formatter, and
+  release-construction coverage
 - `make all-tests`: run full grouped test inventory
 - `make reports-index`: build target/reports/index.json (unified reports registry)
 - `make release-doctor`: run the snapshot/release readiness report suite

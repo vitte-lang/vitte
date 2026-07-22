@@ -1773,6 +1773,12 @@ release-installer-gate: installer-runtime-contract-check installer-real-platform
 real-release-gate:
 	@python3 tools/real_release_gate.py
 
+.PHONY: vitte-max-construction-gate
+vitte-max-construction-gate:
+	@python3 tools/vitte_max_construction_gate.py
+	@test -f target/reports/vitte_max_construction_gate.json
+	@test -f target/reports/vitte_max_construction_gate.md
+
 .PHONY: stage-real-binary
 stage-real-binary:
 	@test -n "$(OS)" || (echo "usage: make stage-real-binary OS=<os> ARCH=<arch> BIN=<path> [SKIP_SMOKE=1]" >&2; exit 2)
@@ -2101,7 +2107,7 @@ pkg-macos-uninstall:
 	@VERSION=$(PKG_VERSION) toolchain/scripts/package/make-macos-uninstall-pkg.sh
 
 .PHONY: release-check
-release-check: build core-release-gate ci-fast package-layout-lint-strict legacy-import-allowlist-empty ci-completions pkg-macos release-gate-90-119 release-installer-gate
+release-check: build core-release-gate ci-fast package-layout-lint-strict legacy-import-allowlist-empty ci-completions pkg-macos release-gate-90-119 vitte-max-construction-gate release-installer-gate
 
 .PHONY: release-doctor
 release-doctor:
@@ -2387,6 +2393,7 @@ help:
 	@echo "  make ci-fast-compiler compiler-focused CI with cache skip (grammar + resolve + module snapshots + explain + runtime matrix)"
 	@echo "  make compiler-max-gate-fast run consolidated compiler quality gate (fast profile)"
 	@echo "  make compiler-max-gate run consolidated compiler quality gate (full profile)"
+	@echo "  make vitte-max-construction-gate enforce maximum CLI, build, package, LSP, formatter, and release-construction coverage"
 	@echo "  make vittec-kernel run Vitte-only kernel bootstrap check"
 	@echo "  make vitteos-bin-quality run /bin quality checks + matrix report"
 	@echo "  make vitteos-bin-runnable-check assert bin/vitte is host-runnable (non-regression arch/format guard)"
