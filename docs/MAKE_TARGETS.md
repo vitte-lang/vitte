@@ -117,4 +117,6 @@ make help
 - `make pkg-macos`: build macOS installer pkg (PKG_VERSION=0.1.0)
 - `make macos-universal-bin`: build target/universal/vitte (arm64 + x86_64 via lipo)
 - `make pkg-macos-universal`: build macOS universal installer pkg (vitte-0.1.0-universal.pkg)
+- `make real-release-gate`: require real multi-arch binaries, native compiler entrypoint builds,
+  strict installers, and post-install run evidence
 - `make release-check`: run build + core-release-gate + ci-fast + ci-completions + pkg build

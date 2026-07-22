@@ -1769,6 +1769,10 @@ installer-real-platforms-check:
 release-installer-gate: installer-runtime-contract-check installer-real-platforms-check
 	@python3 tools/release_installer_gate.py
 
+.PHONY: real-release-gate
+real-release-gate:
+	@python3 tools/real_release_gate.py
+
 .PHONY: stage-real-binary
 stage-real-binary:
 	@test -n "$(OS)" || (echo "usage: make stage-real-binary OS=<os> ARCH=<arch> BIN=<path> [SKIP_SMOKE=1]" >&2; exit 2)
@@ -2394,6 +2398,7 @@ help:
 	@echo "  make installer-runtime-contract-check validate clean-shell, no-PATH, portable, and post-install build contract"
 	@echo "  make installer-real-platforms-check validate real install matrix and post-install smoke contract"
 	@echo "  make release-installer-gate enforce blocking installer release evidence"
+	@echo "  make real-release-gate require real multi-arch binaries, native compiler entrypoint builds, strict installers, and post-install run evidence"
 	@echo "  make stage-real-binary OS=<os> ARCH=<arch> BIN=<path> import and attest a real binary"
 	@echo "  make pkg-macos build macOS installer pkg (PKG_VERSION=$(PKG_VERSION))"
 	@echo "  make macos-universal-bin build target/universal/vitte (arm64 + x86_64 via lipo)"

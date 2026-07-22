@@ -75,7 +75,7 @@ def run_smoke(binary: Path, target_dir: Path, windows: bool) -> list[dict[str, o
         results.append({"command": command, "exit_code": code, "output": output_text[:4000]})
         if code != 0:
             raise SystemExit(f"smoke command failed: {' '.join(command)}\n{output_text}")
-    if output.exists() and not windows:
+    if output.exists():
         code, output_text = command_output([str(output)])
         results.append({"command": [str(output)], "exit_code": code, "output": output_text[:4000]})
         if code != 0:

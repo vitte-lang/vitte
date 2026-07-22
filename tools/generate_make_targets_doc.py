@@ -85,6 +85,7 @@ SECTIONS: list[tuple[str, list[str]]] = [
             "pkg-macos",
             "macos-universal-bin",
             "pkg-macos-universal",
+            "real-release-gate",
             "release-check",
         ],
     ),

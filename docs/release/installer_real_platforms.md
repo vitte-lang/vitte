@@ -36,8 +36,9 @@ Every target must install Vitte and run:
 vitte --help
 vitte check smoke.vit
 vitte build smoke.vit -o smoke
+./smoke
 ```
 
 Normal CI validates the matrix and scripts. Release CI must run
 `STRICT_REAL_INSTALLERS=1 make installer-real-platforms-check` with real
-artifacts and real runners.
+artifacts and real runners, then `make real-release-gate`.

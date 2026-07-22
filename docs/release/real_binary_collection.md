@@ -53,6 +53,9 @@ Release check:
 
 ```sh
 STRICT_REAL_INSTALLERS=1 RELEASE_INSTALLER_GATE=1 make release-installer-gate
+make real-release-gate
 ```
 
-This command must fail until every target has a real binary and passing smoke evidence.
+These commands must fail until every target has a real binary, native compiler
+entrypoint build evidence, strict installer artifacts, and passing `check +
+build + run` smoke evidence.

@@ -127,12 +127,13 @@ def main() -> int:
             failures.append(f"installer real platform workflow missing `{term}`")
 
     release_workflow = read(ROOT / ".github" / "workflows" / "release-stability-gate.yml")
-    for term in ("STRICT_REAL_INSTALLERS=1", "RELEASE_INSTALLER_GATE=1", "make release-installer-gate"):
+    for term in ("STRICT_REAL_INSTALLERS=1", "RELEASE_INSTALLER_GATE=1", "make release-installer-gate", "make real-release-gate"):
         if term not in release_workflow:
             failures.append(f"release workflow missing `{term}`")
 
     stage_real = ROOT / "tools" / "stage_real_binary.py"
     fail_if_missing_terms(stage_real, {"binary_format", "ATTESTATION.json", "smoke_commands", "ELF", "Mach-O", "PE"}, failures)
+    fail_if_missing_terms(ROOT / "tools" / "real_release_gate.py", {"native compiler entrypoint builds", "strict installer artifacts", "post-install `check + build + run` evidence"}, failures)
     fail_if_missing_terms(ROOT / "docs" / "release" / "real_binary_collection.md", {"make stage-real-binary", "STRICT_REAL_INSTALLERS=1", "ATTESTATION.json"}, failures)
 
     report = {
