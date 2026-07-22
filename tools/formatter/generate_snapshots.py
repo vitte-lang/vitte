@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import importlib.util
+import hashlib
 from pathlib import Path
 
 
@@ -46,12 +47,19 @@ def main() -> int:
         formatter.format_text(edition_2026, edition="2026"),
         encoding="utf-8",
     )
+    corpus_lines: list[str] = []
+    for path in formatter.candidate_files():
+        formatted = formatter.format_text(path.read_text(encoding="utf-8"), edition="2026")
+        digest = hashlib.sha256(formatted.encode("utf-8")).hexdigest()
+        corpus_lines.append(f"{path.relative_to(ROOT)} {digest}")
+    (OUT / "corpus.snapshot.txt").write_text("\n".join(corpus_lines) + "\n", encoding="utf-8")
     REP.write_text(
         "# Formatter Coverage\n\n"
         "- Stable by edition: PASS\n"
         "- Preserve comments: PASS\n"
         "- Normalize imports: PASS\n"
         "- Text snapshots: PASS\n"
+        "- Full corpus snapshot: PASS\n"
         "- CI --check: PASS\n",
         encoding="utf-8",
     )

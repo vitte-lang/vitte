@@ -202,6 +202,7 @@ format-check:
 formatter-gate:
 	@python3 tools/formatter/run_checks.py
 	@python3 tools/formatter/generate_snapshots.py
+	@test -f target/formatter/corpus.snapshot.txt
 	@python3 tools/vitte_format.py --check --changed
 
 .PHONY: vitte-lint
@@ -2008,7 +2009,7 @@ pkg-macos-uninstall:
 	@VERSION=$(PKG_VERSION) toolchain/scripts/package/make-macos-uninstall-pkg.sh
 
 .PHONY: release-check
-release-check: build core-release-gate ci-fast package-layout-lint-strict legacy-import-allowlist-empty ci-completions pkg-macos
+release-check: build core-release-gate ci-fast package-layout-lint-strict legacy-import-allowlist-empty ci-completions pkg-macos release-gate-90-119
 
 .PHONY: release-doctor
 release-doctor:
@@ -2508,10 +2509,16 @@ package-manager-gate:
 	@test -f target/reports/package_manager_coverage.md
 
 
+.PHONY: post-install-package-cli-test
+post-install-package-cli-test:
+	@sh tools/post_install_package_cli_test.sh
+
+
 .PHONY: lsp-gate
 lsp-gate:
 	@python3 tools/lsp/run_checks.py
 	@python3 tools/lsp/generate_artifacts.py
+	@python3 tools/lsp/jsonrpc_client_test.py
 	@test -f target/lsp/hover_demo.json
 	@test -f target/lsp/completion_demo.json
 	@test -f target/lsp/diagnostics_demo.json
@@ -2754,7 +2761,7 @@ language-release-90-100:
 
 
 .PHONY: package-lsp-format-96-119
-package-lsp-format-96-119: package-manager-gate lsp-gate formatter-gate
+package-lsp-format-96-119: package-manager-gate post-install-package-cli-test lsp-gate formatter-gate
 	@python3 tools/package_lsp_format_96_119_check.py
 
 
