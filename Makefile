@@ -1059,6 +1059,15 @@ parser-sync-coverage:
 grammar-coverage:
 	@python3 tools/parser_sync_coverage_report.py --check
 
+.PHONY: lexer-parser-coverage-100
+lexer-parser-coverage-100:
+	@python3 tools/lexer_parser_coverage_100.py
+	@test -f target/reports/lexer_parser_coverage_100.json
+	@test -f target/reports/lexer_parser_coverage_100.md
+	@test -f target/frontend/lexer_parser_100/snapshots/text.snapshot
+	@test -f target/frontend/lexer_parser_100/snapshots/json.snapshot
+	@test -f target/frontend/lexer_parser_100/snapshots/lsp.snapshot
+
 .PHONY: frontend-lexer-test
 frontend-lexer-test:
 	@bin/vitte check src/vitte/compiler/tests/lexer_tests.vit
@@ -1210,7 +1219,7 @@ grammar-docs-check:
 	@python3 docs/book/grammar/scripts/build_railroad.py --check
 
 .PHONY: grammar-gate
-grammar-gate: grammar-check grammar-test grammar-docs-check
+grammar-gate: grammar-check grammar-test grammar-docs-check lexer-parser-coverage-100
 
 .PHONY: core-forbidden-syntax-lint
 core-forbidden-syntax-lint:
@@ -1229,7 +1238,7 @@ parser-lexer-fuzz-smoke:
 	@python3 tools/parser_lexer_fuzz_smoke.py --cases 80 --seed 1337
 
 .PHONY: core-language-gate
-core-language-gate: grammar-check grammar-test core-language-test parser-recovery-golden grammar-coverage frontend-lexer-test frontend-ast-test hir-lowering-test mir-gate ir-gate sema-gate const-eval-analysis-test typeck-gate borrowck-gate frontend-token-consistency strict-core-guard-test core-forbidden-syntax-lint core-ir-golden-snapshots core-semantic-success core-semantic-snapshots diagnostics-locales-lint
+core-language-gate: grammar-check grammar-test core-language-test parser-recovery-golden grammar-coverage lexer-parser-coverage-100 frontend-lexer-test frontend-ast-test hir-lowering-test mir-gate ir-gate sema-gate const-eval-analysis-test typeck-gate borrowck-gate frontend-token-consistency strict-core-guard-test core-forbidden-syntax-lint core-ir-golden-snapshots core-semantic-success core-semantic-snapshots diagnostics-locales-lint
 
 .PHONY: core-semantic-success-portable
 core-semantic-success-portable:
@@ -1240,7 +1249,7 @@ core-semantic-snapshots-portable:
 	@BIN="$(CURDIR)/bin/vittec0" MANIFEST=tests/diag_snapshots/core_semantic_manifest.txt tools/diag_snapshots.sh
 
 .PHONY: core-language-gate-portable
-core-language-gate-portable: grammar-check grammar-test-portable core-language-test-portable parser-recovery-golden-portable grammar-coverage frontend-ast-test hir-lowering-test mir-lowering-test sema-gate const-eval-analysis-test typeck-analysis-test borrowck-analysis-test frontend-token-consistency strict-core-guard-test-portable core-forbidden-syntax-lint core-ir-golden-snapshots core-semantic-success-portable core-semantic-snapshots-portable diagnostics-locales-lint
+core-language-gate-portable: grammar-check grammar-test-portable core-language-test-portable parser-recovery-golden-portable grammar-coverage lexer-parser-coverage-100 frontend-ast-test hir-lowering-test mir-lowering-test sema-gate const-eval-analysis-test typeck-analysis-test borrowck-analysis-test frontend-token-consistency strict-core-guard-test-portable core-forbidden-syntax-lint core-ir-golden-snapshots core-semantic-success-portable core-semantic-snapshots-portable diagnostics-locales-lint
 
 .PHONY: core-release-gate
 core-release-gate: core-language-gate diagnostics-ftl-check
@@ -2197,6 +2206,7 @@ help:
 	@echo "  make grammar-sync regenerate grammar surface artifacts from src/vitte/grammar/vitte.ebnf"
 	@echo "  make grammar-check fail if grammar generated artifacts are out of sync"
 	@echo "  make grammar-test validate grammar corpus + diagnostics snapshots"
+	@echo "  make lexer-parser-coverage-100 enforce 100 frontend syntax/parser/diagnostic obligations"
 	@echo "  make core-language-test validate the focused core language corpus"
 	@echo "  make core-semantic-success validate focused passing core semantic examples"
 	@echo "  make core-semantic-snapshots validate focused core semantic diagnostics"
@@ -2235,7 +2245,7 @@ help:
 	@echo "  make cli-positional-path-test verify build FILE -o OUT preserves positional paths"
 	@echo "  make native-binaries-doctor report local compiler binary executability"
 	@echo "  make grammar-docs regenerate railroad SVG diagrams"
-	@echo "  make grammar-gate run grammar-check + grammar-test"
+	@echo "  make grammar-gate run grammar-check + grammar-test + lexer-parser-coverage-100"
 	@echo "  make core-language-gate run grammar-check + core-language-test + core semantic gates + diagnostics locales lint"
 	@echo "  make core-release-gate run the protected language contract gate for release-facing work"
 	@echo "  make formatter-gate enforce formatter snapshots and --check"

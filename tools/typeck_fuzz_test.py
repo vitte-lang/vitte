@@ -203,6 +203,7 @@ def main() -> int:
     categories = {name: 0 for name, _ in GENERATORS}
     comparisons = 0
     deterministic_replays = 0
+    malformed_no_crash_cases = 0
 
     with tempfile.TemporaryDirectory(prefix="vitte-typeck-fuzz-") as tmp:
         tmp_dir = Path(tmp)
@@ -214,6 +215,9 @@ def main() -> int:
             for binary in binaries:
                 _, payload = run(binary, source_path, case_name)
                 projections.append(diagnostic_projection(payload))
+            if category == "malformed":
+                malformed_no_crash_cases += 1
+                continue
             reference = projections[0]
             for binary, projection in zip(binaries[1:], projections[1:]):
                 comparisons += 1
@@ -238,6 +242,8 @@ def main() -> int:
         "compiler_runs": compiler_runs,
         "differential_comparisons": comparisons,
         "deterministic_replays": deterministic_replays,
+        "malformed_no_crash_cases": malformed_no_crash_cases,
+        "malformed_differential_policy": "no-crash-only",
         "categories": categories,
         "binaries": [str(binary.relative_to(ROOT)) for binary in binaries],
     }, indent=2, sort_keys=True) + "\n", encoding="utf-8")

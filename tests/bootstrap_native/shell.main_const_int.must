@@ -3016,6 +3016,9 @@ detect_professional_diagnostic() {
             sub(/[)].*$/, "", signature_params)
             proc_param_count[name] = 0
             proc_signature_supported[name] = 1
+            if (index(line, "(") > 0 && index(line, ")") == 0) {
+                proc_signature_supported[name] = 0
+            }
             if (trim(signature_params) != "") {
                 signature_param_count = split(signature_params, signature_param_parts, ",")
                 for (signature_param_index = 1; signature_param_index <= signature_param_count; signature_param_index++) {
@@ -3128,6 +3131,7 @@ detect_professional_diagnostic() {
         }
 
         if ((code_trim ~ /=[ \t]*$/ || code_trim ~ /[+][ \t]*$/ || code_trim ~ /[-][ \t]*$/ || code_trim ~ /[*][ \t]*$/ || code_trim ~ /\/[ \t]*$/) &&
+            code_trim !~ /^(let|set)[ \t].*=[ \t]*$/ &&
             code_trim !~ /^(export|share)[ \t]+[*]([ \t;]*)?$/ &&
             code_trim !~ /:[ \t]*string[ \t]*=[ \t]*$/ &&
             !(code_trim ~ /[+][ \t]*$/ && raw ~ /"/)) {
@@ -3159,7 +3163,8 @@ detect_professional_diagnostic() {
                 "insert a comma between adjacent arguments or fields")
         }
 
-        if (line ~ /:[ \t]*([=;]|$)/) {
+        if (line ~ /:[ \t]*([=;]|$)/ &&
+            line !~ /^[A-Za-z_][A-Za-z0-9_]*[ \t]*:[ \t]*[,]?$/) {
             col = index(raw, ":")
             emit("PARSE_E_TYPE_EXPECTED", "error", "parser",
                 "type expected",

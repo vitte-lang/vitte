@@ -44,6 +44,7 @@ OPTIONAL_PATH_PREFIXES = (
 
 LINK_RE = re.compile(r"\[[^\]]+\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)")
 CODE_RE = re.compile(r"`([^`\n]+)`")
+LINE_REF_RE = re.compile(r"^([^:]+(?:/[^:]+)*):[0-9]+(?::.*)?$")
 
 
 def markdown_files() -> list[pathlib.Path]:
@@ -56,6 +57,9 @@ def clean(token: str) -> str:
     out = token.strip().strip("<>").strip("'\"")
     out = out.rstrip(".,:;!?)]}")
     out = out.lstrip("./")
+    line_ref = LINE_REF_RE.match(out)
+    if line_ref:
+        out = line_ref.group(1)
     return out
 
 
