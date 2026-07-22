@@ -1,0 +1,184 @@
+#![frontend_max]
+space frontend/max
+
+use std/io
+use std/math.{ min, max }
+
+export main
+export Point
+
+const answer: i32 = 42;
+static threshold: i32 = 10;
+global counter: i32 = 0;
+
+type Pair[T] = (T, T);
+type Callback = proc(value: i32) -> i32;
+opaque type RawHandle = *mut c_void;
+
+extern type ForeignBox[T];
+
+extern "C" {
+    proc puts(text: cstr) -> c_int;
+    const errno: c_int = 0
+}
+
+form Point[T] where T: Copy {
+    pub x: T,
+    pub y: T,
+    static dimensions: i32 = 2
+    type Coord = T
+
+    proc sum(self) -> T {
+        give self.x;
+    }
+}
+
+pick Maybe[T] {
+    None,
+    Some(T),
+    Error(i32)
+}
+
+flags Mode: u32 {
+    Read = 1,
+    Write = 2,
+    Exec = 4
+}
+
+trait Show[T] where T: Copy {
+    type Output = string;
+    proc show(self) -> string;
+}
+
+impl Show[i32] for Point[i32] {
+    type Output = string
+
+    proc show(self) -> string {
+        give "point";
+    }
+}
+
+inline proc add(left: i32, right: i32) -> i32 noexcept {
+    give left + right;
+}
+
+unsafe async proc worker(value: i32) -> i32 effects(io) requires(value > 0) {
+    let mut total: i32 = value;
+    set total += 1;
+    give total;
+}
+
+proc main(seed: i32 = 1) -> i32 where i32: Copy {
+    const local_limit: i32 = 4;
+    let point: Point[i32] = Point { x: seed, y: answer };
+    let tuple_value: Pair[i32] = (point.x, point.y);
+    let callback: Callback = proc(value: i32) -> i32 { give value; };
+    let closure = |item| item + 1;
+    let numbers = [1, 2, 3, 4];
+    let filtered = [item for item in numbers if item > 1];
+    let dictionary = map { "one": 1, "two": 2 };
+    let handles = set { 1, 2, 3 };
+    let resource_value = resource { fd: 1, flags: 2 };
+    let optional: ?i32 = null;
+    let pointer: *mut i32 = &seed;
+    let projected: i64 = point.x as i64;
+    let chosen: i32 = optional ?? local_limit;
+    let range_check: bool = chosen in 1..=10;
+    let result: i32 = match chosen {
+        case 0 => 0;
+        case 1 => callback(chosen);
+        case Maybe.Some(value) => value;
+        else => answer;
+    };
+
+    defer {
+        set counter = counter + 1;
+    }
+
+    unsafe {
+        asm("nop");
+    }
+
+    if result > threshold {
+        set counter = result;
+    } elif result == threshold {
+        set counter = threshold;
+    } else {
+        set counter = 0;
+    }
+
+    while counter < 64 {
+        set counter += 1;
+        if counter == local_limit {
+            continue;
+        }
+    }
+
+    loop {
+        break counter;
+    }
+
+    for item in filtered {
+        assert item > 0, "positive";
+    }
+
+    select chosen {
+        when 0 {
+            set counter = 0;
+        }
+        when _ {
+            set counter = chosen;
+        }
+        else {
+            set counter = answer;
+        }
+    }
+
+    when chosen is Maybe.Some(inner) {
+        set counter = inner;
+    }
+
+    with point {
+        emit point.x;
+    }
+
+    critical {
+        try worker(chosen).await;
+    }
+
+    give result;
+}
+
+intrinsic cpu_id() -> i32;
+query feature_enabled(name: string) -> bool {
+    give true;
+}
+
+compiler frontend_max {
+}
+
+pass parser_stability {
+}
+
+backend host {
+}
+
+diagnostic parser_contract {
+}
+
+macro trace(tokens) {
+}
+
+static_assert(true, "frontend max fixture parses");
+
+test "syntax parser diagnostics max" {
+    let value: i32 = add(1, 2);
+    assert value == 3;
+}
+
+bench "syntax parser diagnostics max" {
+    let value: i32 = add(1, 2);
+    assert value > 0;
+}
+
+entry app at frontend/max;

@@ -62,9 +62,11 @@ make help
 ## Core Language
 
 - `make grammar-check`: fail if grammar generated artifacts are out of sync
-- `make grammar-gate`: run grammar-check + grammar-test + lexer-parser-coverage-100
-- `make core-language-gate`: run grammar-check + core-language-test + type-system-advanced-gate +
-  core semantic gates + diagnostics locales lint
+- `make grammar-gate`: run grammar-check + grammar-test + lexer-parser-coverage-100 +
+  syntax-parser-diagnostics-max
+- `make core-language-gate`: run grammar-check + core-language-test + syntax-parser-diagnostics-max
+  + type-system-advanced-gate + core semantic gates + diagnostics locales
+  lint
 - `make core-release-gate`: run the protected language contract gate for release-facing work
 
 ## Documentation

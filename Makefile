@@ -1068,6 +1068,15 @@ lexer-parser-coverage-100:
 	@test -f target/frontend/lexer_parser_100/snapshots/json.snapshot
 	@test -f target/frontend/lexer_parser_100/snapshots/lsp.snapshot
 
+.PHONY: syntax-parser-diagnostics-max
+syntax-parser-diagnostics-max:
+	@python3 tools/syntax_parser_diagnostics_max.py
+	@test -f target/reports/syntax_parser_diagnostics_max.json
+	@test -f target/reports/syntax_parser_diagnostics_max.md
+	@test -f target/frontend/syntax_parser_diagnostics_max/snapshots/text.snapshot
+	@test -f target/frontend/syntax_parser_diagnostics_max/snapshots/json.snapshot
+	@test -f target/frontend/syntax_parser_diagnostics_max/snapshots/lsp.snapshot
+
 .PHONY: frontend-lexer-test
 frontend-lexer-test:
 	@bin/vitte check src/vitte/compiler/tests/lexer_tests.vit
@@ -1269,7 +1278,7 @@ grammar-docs-check:
 	@python3 docs/book/grammar/scripts/build_railroad.py --check
 
 .PHONY: grammar-gate
-grammar-gate: grammar-check grammar-test grammar-docs-check lexer-parser-coverage-100
+grammar-gate: grammar-check grammar-test grammar-docs-check lexer-parser-coverage-100 syntax-parser-diagnostics-max
 
 .PHONY: core-forbidden-syntax-lint
 core-forbidden-syntax-lint:
@@ -1288,7 +1297,7 @@ parser-lexer-fuzz-smoke:
 	@python3 tools/parser_lexer_fuzz_smoke.py --cases 80 --seed 1337
 
 .PHONY: core-language-gate
-core-language-gate: grammar-check grammar-test core-language-test parser-recovery-golden grammar-coverage lexer-parser-coverage-100 frontend-lexer-test frontend-ast-test hir-lowering-test mir-gate ir-gate sema-gate const-eval-analysis-test typeck-gate type-system-advanced-gate borrowck-gate frontend-token-consistency strict-core-guard-test core-forbidden-syntax-lint core-ir-golden-snapshots core-semantic-success core-semantic-snapshots diagnostics-locales-lint
+core-language-gate: grammar-check grammar-test core-language-test parser-recovery-golden grammar-coverage lexer-parser-coverage-100 syntax-parser-diagnostics-max frontend-lexer-test frontend-ast-test hir-lowering-test mir-gate ir-gate sema-gate const-eval-analysis-test typeck-gate type-system-advanced-gate borrowck-gate frontend-token-consistency strict-core-guard-test core-forbidden-syntax-lint core-ir-golden-snapshots core-semantic-success core-semantic-snapshots diagnostics-locales-lint
 
 .PHONY: core-semantic-success-portable
 core-semantic-success-portable:
@@ -2257,6 +2266,7 @@ help:
 	@echo "  make grammar-check fail if grammar generated artifacts are out of sync"
 	@echo "  make grammar-test validate grammar corpus + diagnostics snapshots"
 	@echo "  make lexer-parser-coverage-100 enforce 100 frontend syntax/parser/diagnostic obligations"
+	@echo "  make syntax-parser-diagnostics-max enforce 126 public lexer/parser diagnostic code contracts"
 	@echo "  make typeck-advanced-inference enforce advanced inference/type-flow evidence"
 	@echo "  make typeck-generics-gate enforce advanced generics evidence"
 	@echo "  make typeck-traits-gate enforce trait/method/coherence evidence"
@@ -2305,8 +2315,8 @@ help:
 	@echo "  make cli-positional-path-test verify build FILE -o OUT preserves positional paths"
 	@echo "  make native-binaries-doctor report local compiler binary executability"
 	@echo "  make grammar-docs regenerate railroad SVG diagrams"
-	@echo "  make grammar-gate run grammar-check + grammar-test + lexer-parser-coverage-100"
-	@echo "  make core-language-gate run grammar-check + core-language-test + type-system-advanced-gate + core semantic gates + diagnostics locales lint"
+	@echo "  make grammar-gate run grammar-check + grammar-test + lexer-parser-coverage-100 + syntax-parser-diagnostics-max"
+	@echo "  make core-language-gate run grammar-check + core-language-test + syntax-parser-diagnostics-max + type-system-advanced-gate + core semantic gates + diagnostics locales lint"
 	@echo "  make core-release-gate run the protected language contract gate for release-facing work"
 	@echo "  make formatter-gate enforce formatter snapshots and --check"
 	@echo "  make release-gate-90-119 enforce package/LSP/formatter release evidence"
