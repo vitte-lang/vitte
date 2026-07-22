@@ -2701,3 +2701,8 @@ platform-bootstrap-59-68:
 .PHONY: stability-69-80
 stability-69-80:
 	@python3 tools/stability_69_80_check.py
+
+
+.PHONY: package-tooling-81-89
+package-tooling-81-89:
+	@python3 tools/package_tooling_81_89_check.py

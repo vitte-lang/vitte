@@ -9,10 +9,21 @@ MOD = ROOT / 'src' / 'vitte' / 'tools' / 'package_manager' / 'mod.vit'
 SMOKE = ROOT / 'src' / 'vitte' / 'tools' / 'package_manager' / 'tests' / 'smoke.vit'
 
 REQUIRED_SYMBOLS = [
+    'minimal_package_manager_enabled',
+    'local_offline_registry',
+    'registry_offline_enabled',
+    'deterministic_lockfile',
+    'lockfile_deterministic',
+    'package_workspace',
+    'workspace_multi_package_enabled',
     'resolve_dependencies',
+    'dependency_resolution_enabled',
     'cross_compile_targets',
     'build_cache_enabled',
+    'incremental_build_cache_key',
     'incremental_compilation',
+    'parallel_build_graph',
+    'build_graph_parallel_enabled',
 ]
 
 if not MOD.exists():

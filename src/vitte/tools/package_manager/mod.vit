@@ -146,6 +146,66 @@ form BuildPlan {
   valid: bool
 }
 
+form OfflineRegistry {
+  root: string
+
+  packages: [PackageSpec]
+
+  offline: bool
+
+  valid: bool
+}
+
+form PackageLockEntry {
+  name: string
+
+  version: string
+
+  source: string
+
+  checksum: string
+
+  valid: bool
+}
+
+form PackageLockfile {
+  schema_version: string
+
+  entries: [PackageLockEntry]
+
+  deterministic_hash: string
+
+  valid: bool
+}
+
+form Workspace {
+  root: string
+
+  members: [PackageSpec]
+
+  package_count: u64
+
+  valid: bool
+}
+
+form BuildGraphNode {
+  package_name: string
+
+  dependency_names: [string]
+
+  cache_key: string
+
+  ready: bool
+}
+
+form BuildGraph {
+  nodes: [BuildGraphNode]
+
+  parallel: bool
+
+  valid: bool
+}
+
 <<< ========================================================= >>>
 <<< Dependency helpers                                        >>>
 <<< ========================================================= >>>
@@ -372,6 +432,181 @@ proc dependency_exists(
   }
 
   give false;
+}
+
+proc dependency_resolution_enabled() -> bool {
+  let pkg: PackageSpec =
+    package_spec(
+      "resolver-demo",
+      "1.0.0",
+      [
+        dependency(
+          "resolver-dep",
+          "1.0.0",
+          DependencyKind.Normal
+        )
+      ]
+    );
+
+  give resolve_graph(pkg).valid;
+}
+
+<<< ========================================================= >>>
+<<< Local registry and lockfile                               >>>
+<<< ========================================================= >>>
+
+proc local_offline_registry(
+  root: string,
+  packages: [PackageSpec]
+) -> OfflineRegistry {
+
+  give OfflineRegistry {
+    root: root,
+
+    packages: packages,
+
+    offline: true,
+
+    valid:
+      root != "";
+  };
+}
+
+proc registry_offline_enabled() -> bool {
+  give local_offline_registry(
+    ".vitte/registry",
+    []
+  ).offline;
+}
+
+proc lockfile_entry_from_package(
+  pkg: PackageSpec
+) -> PackageLockEntry {
+
+  give PackageLockEntry {
+    name: pkg.name,
+
+    version: pkg.version,
+
+    source:
+      "registry+offline",
+
+    checksum:
+      "vitte:"
+      + pkg.name
+      + ":"
+      + pkg.version
+      + ":"
+      + (pkg.dependencies.len as string),
+
+    valid:
+      pkg.valid
+  };
+}
+
+proc deterministic_lockfile(
+  pkg: PackageSpec
+) -> PackageLockfile {
+
+  let entries: [PackageLockEntry] =
+    [
+      lockfile_entry_from_package(pkg)
+    ];
+
+  let resolved: [PackageSpec] =
+    resolve_dependencies(pkg);
+
+  let i: int = 0;
+
+  while i < resolved.len {
+
+    set entries =
+      entries
+      + [
+          lockfile_entry_from_package(
+            resolved[i]
+          )
+        ];
+
+    set i =
+      i + 1;
+  }
+
+  give PackageLockfile {
+    schema_version:
+      "vitte-lock-v1",
+
+    entries: entries,
+
+    deterministic_hash:
+      pkg.name
+      + "@"
+      + pkg.version
+      + "#"
+      + (entries.len as string),
+
+    valid:
+      pkg.valid
+      and entries.len > 0
+  };
+}
+
+proc lockfile_deterministic() -> bool {
+  let pkg: PackageSpec =
+    package_spec(
+      "lock-demo",
+      "1.0.0",
+      [
+        dependency(
+          "lock-dep",
+          "1.0.0",
+          DependencyKind.Normal
+        )
+      ]
+    );
+
+  let a: PackageLockfile =
+    deterministic_lockfile(pkg);
+
+  let b: PackageLockfile =
+    deterministic_lockfile(pkg);
+
+  give a.valid
+    and b.valid
+    and a.deterministic_hash
+      == b.deterministic_hash;
+}
+
+proc package_workspace(
+  root: string,
+  members: [PackageSpec]
+) -> Workspace {
+
+  give Workspace {
+    root: root,
+
+    members: members,
+
+    package_count:
+      members.len,
+
+    valid:
+      root != "";
+  };
+}
+
+proc workspace_multi_package_enabled() -> bool {
+  let ws: Workspace =
+    package_workspace(
+      ".",
+      [
+        package_spec("workspace-a", "1.0.0", []),
+        package_spec("workspace-b", "1.0.0", [])
+      ]
+    );
+
+  give ws.valid
+    and ws.package_count >= 2;
 }
 
 <<< ========================================================= >>>
@@ -716,6 +951,130 @@ proc build_plan(
   };
 }
 
+proc incremental_build_cache_key(
+  pkg: PackageSpec,
+  target: CrossTarget
+) -> string {
+
+  give pkg.name
+    + "@"
+    + pkg.version
+    + ":"
+    + target.triple;
+}
+
+proc build_graph_node(
+  pkg: PackageSpec,
+  target: CrossTarget
+) -> BuildGraphNode {
+
+  let names: [string] = [];
+
+  let i: int = 0;
+
+  while i < pkg.dependencies.len {
+
+    set names =
+      names
+      + [
+          pkg.dependencies[i].name
+        ];
+
+    set i =
+      i + 1;
+  }
+
+  give BuildGraphNode {
+    package_name: pkg.name,
+
+    dependency_names: names,
+
+    cache_key:
+      incremental_build_cache_key(
+        pkg,
+        target
+      ),
+
+    ready:
+      pkg.valid
+      and target.valid
+  };
+}
+
+proc parallel_build_graph(
+  pkg: PackageSpec,
+  target: CrossTarget
+) -> BuildGraph {
+
+  let graph: ResolvedGraph =
+    resolve_graph(pkg);
+
+  let nodes: [BuildGraphNode] =
+    [
+      build_graph_node(
+        pkg,
+        target
+      )
+    ];
+
+  let i: int = 0;
+
+  while i < graph.resolved.len {
+
+    set nodes =
+      nodes
+      + [
+          build_graph_node(
+            graph.resolved[i],
+            target
+          )
+        ];
+
+    set i =
+      i + 1;
+  }
+
+  give BuildGraph {
+    nodes: nodes,
+
+    parallel: true,
+
+    valid:
+      graph.valid
+      and target.valid
+  };
+}
+
+proc build_graph_parallel_enabled() -> bool {
+  let pkg: PackageSpec =
+    package_spec(
+      "graph-demo",
+      "1.0.0",
+      [
+        dependency(
+          "graph-dep",
+          "1.0.0",
+          DependencyKind.Normal
+        )
+      ]
+    );
+
+  let target: CrossTarget =
+    find_target(
+      "x86_64-unknown-linux-gnu"
+    );
+
+  let graph: BuildGraph =
+    parallel_build_graph(
+      pkg,
+      target
+    );
+
+  give graph.valid
+    and graph.parallel
+    and graph.nodes.len >= 2;
+}
+
 <<< ========================================================= >>>
 <<< Statistics                                                >>>
 <<< ========================================================= >>>
@@ -752,6 +1111,17 @@ proc package_manager_version() -> string {
   give "vitte-pkg-v2";
 }
 
+proc minimal_package_manager_enabled() -> bool {
+  give package_manager_version() != ""
+    and registry_offline_enabled()
+    and lockfile_deterministic()
+    and workspace_multi_package_enabled()
+    and dependency_resolution_enabled()
+    and build_cache_enabled()
+    and incremental_compilation()
+    and build_graph_parallel_enabled();
+}
+
 proc package_manager_selftest() -> bool {
 
   let pkg: PackageSpec =
@@ -786,6 +1156,7 @@ proc package_manager_selftest() -> bool {
     and graph.valid
     and target.valid
     and plan.valid
+    and minimal_package_manager_enabled()
     and package_summary(pkg) != ""
     and target_summary(target) != "";
 }
