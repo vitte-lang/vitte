@@ -1,0 +1,23 @@
+space vitte/stdlib/std/expected
+
+export *
+
+pick ExpectedState {
+    Value
+    Error
+}
+
+form Expected<T, E> {
+    state: ExpectedState
+    value: T
+    error: E
+}
+
+proc expected<T, E>(value: T) -> Expected<T, E> { give compiler_expected_value<T, E>(value); }
+proc unexpected<T, E>(error: E) -> Expected<T, E> { give compiler_expected_error<T, E>(error); }
+proc has_value<T, E>(item: Expected<T, E>) -> bool { give item.state == ExpectedState.Value; }
+proc value<T, E>(item: Expected<T, E>) -> T { give item.value; }
+proc error<T, E>(item: Expected<T, E>) -> E { give item.error; }
+proc value_or<T, E>(item: Expected<T, E>, fallback: T) -> T { if has_value<T, E>(item) { give item.value; } give fallback; }
+proc map<T, U, E>(item: Expected<T, E>, mapper: proc(T) -> U) -> Expected<U, E> { give compiler_expected_map<T, U, E>(item, mapper); }
+proc and_then<T, U, E>(item: Expected<T, E>, mapper: proc(T) -> Expected<U, E>) -> Expected<U, E> { give compiler_expected_and_then<T, U, E>(item, mapper); }

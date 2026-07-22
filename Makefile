@@ -2364,6 +2364,8 @@ help:
 	@echo "  make stdlib-api-lint check stable stdlib ABI surface entries"
 	@echo "  make stdlib-profile-snapshots check stdlib profile allow/deny matrix"
 	@echo "  make stdlib-abi-compat block ABI removals from v1 to v2"
+	@echo "  make stdlib-gate run complete stdlib coverage and artifact gate"
+	@echo "  make stdlib-max-gate enforce max stdlib module/symbol coverage"
 	@echo "  make ci-std-fast std-focused CI (stdlib + snapshots + wrappers)"
 	@echo "  make ci-bridge-compat alias of ci-mod-fast for vitte liaison compatibility"
 	@echo "  make modules-tests run module graph/doctor fixtures"
@@ -2660,6 +2662,15 @@ stdlib-gate:
 	@test -f target/stdlib/async_demo.txt
 	@test -f target/stdlib/ffi_demo.txt
 	@test -f target/reports/stdlib_coverage.md
+	@python3 tools/stdlib_max_gate.py
+	@test -f target/reports/stdlib_max_gate.json
+	@test -f target/reports/stdlib_max_gate.md
+
+.PHONY: stdlib-max-gate
+stdlib-max-gate:
+	@python3 tools/stdlib_max_gate.py
+	@test -f target/reports/stdlib_max_gate.json
+	@test -f target/reports/stdlib_max_gate.md
 
 
 .PHONY: mir-opt-gate

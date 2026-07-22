@@ -1,0 +1,22 @@
+space vitte/stdlib/std/variant
+
+export *
+
+form Variant<T, U> {
+    index: usize
+    first: T
+    second: U
+}
+
+form VariantError {
+    message: string
+}
+
+proc variant_first<T, U>(value: T) -> Variant<T, U> { give compiler_variant_first<T, U>(value); }
+proc variant_second<T, U>(value: U) -> Variant<T, U> { give compiler_variant_second<T, U>(value); }
+proc variant_index<T, U>(value: Variant<T, U>) -> usize { give value.index; }
+proc holds_first<T, U>(value: Variant<T, U>) -> bool { give value.index == 0; }
+proc holds_second<T, U>(value: Variant<T, U>) -> bool { give value.index == 1; }
+proc get_first<T, U>(value: Variant<T, U>) -> T { give value.first; }
+proc get_second<T, U>(value: Variant<T, U>) -> U { give value.second; }
+proc visit<T, U, R>(value: Variant<T, U>, first: proc(T) -> R, second: proc(U) -> R) -> R { give compiler_variant_visit<T, U, R>(value, first, second); }

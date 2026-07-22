@@ -85,6 +85,8 @@ make help
 - `make modules-snapshots`: assert mod graph/doctor outputs
 - `make modules-contract-snapshots`: assert modules contract snapshots
 - `make packages-gate`: run package governance/layout/perf/contract gate
+- `make stdlib-gate`: run complete stdlib coverage and artifact gate
+- `make stdlib-max-gate`: enforce max stdlib module/symbol coverage
 
 ## CI / Reports
 

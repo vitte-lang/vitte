@@ -1081,7 +1081,11 @@ def load_ci_matrix_manifest() -> dict:
 
 
 def stdlib_sources() -> list[Path]:
-    return sorted(SOURCE_STDLIB_DIR.glob("**/*.vit*"))
+    return sorted(
+        path
+        for path in SOURCE_STDLIB_DIR.rglob("*")
+        if path.suffix in {".vit", ".vitl"}
+    )
 
 
 def architecture_levels(manifest: dict) -> dict[str, dict]:

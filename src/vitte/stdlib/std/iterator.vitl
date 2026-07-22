@@ -1,0 +1,25 @@
+space vitte/stdlib/std/iterator
+
+use src/vitte/stdlib/core/iterator as core_iterator
+
+export *
+
+form Iterator<T> {
+    state: usize
+}
+
+form IteratorRange<T> {
+    first: Iterator<T>
+    last: Iterator<T>
+}
+
+proc begin<T>(values: [T]) -> Iterator<T> { give compiler_iterator_begin<T>(values); }
+proc end<T>(values: [T]) -> Iterator<T> { give compiler_iterator_end<T>(values); }
+proc next<T>(iter: ref mut Iterator<T>) -> T { give compiler_iterator_next<T>(iter); }
+proc has_next<T>(iter: Iterator<T>) -> bool { give compiler_iterator_has_next<T>(iter); }
+proc distance<T>(first: Iterator<T>, last: Iterator<T>) -> isize { give compiler_iterator_distance<T>(first, last); }
+proc advance<T>(iter: ref mut Iterator<T>, amount: isize) { compiler_iterator_advance<T>(iter, amount); }
+proc range<T>(values: [T]) -> IteratorRange<T> { give IteratorRange<T> { first: begin<T>(values), last: end<T>(values) }; }
+proc collect<T>(range_value: IteratorRange<T>) -> [T] { give compiler_iterator_collect<T>(range_value); }
+proc any<T>(values: [T], predicate: proc(T) -> bool) -> bool { give compiler_iterator_any<T>(values, predicate); }
+proc all<T>(values: [T], predicate: proc(T) -> bool) -> bool { give compiler_iterator_all<T>(values, predicate); }

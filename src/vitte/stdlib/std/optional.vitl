@@ -1,0 +1,21 @@
+space vitte/stdlib/std/optional
+
+export *
+
+pick OptionalState {
+    Empty
+    Present
+}
+
+form Optional<T> {
+    state: OptionalState
+    value: T
+}
+
+proc nullopt<T>() -> Optional<T> { give compiler_optional_empty<T>(); }
+proc optional<T>(value: T) -> Optional<T> { give Optional<T> { state: OptionalState.Present, value: value }; }
+proc has_value<T>(value: Optional<T>) -> bool { give value.state == OptionalState.Present; }
+proc value<T>(item: Optional<T>) -> T { give item.value; }
+proc value_or<T>(item: Optional<T>, fallback: T) -> T { if has_value<T>(item) { give item.value; } give fallback; }
+proc reset<T>(item: ref mut Optional<T>) { compiler_optional_reset<T>(item); }
+proc emplace<T>(item: ref mut Optional<T>, value: T) { compiler_optional_emplace<T>(item, value); }

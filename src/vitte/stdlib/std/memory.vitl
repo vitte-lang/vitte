@@ -1,0 +1,24 @@
+space vitte/stdlib/std/memory
+
+export *
+
+form MemoryLayout {
+    size: usize
+    align: usize
+}
+
+form AllocatorStats {
+    allocated: usize
+    capacity: usize
+}
+
+proc size_of<T>() -> usize { give compiler_memory_size_of<T>(); }
+proc align_of<T>() -> usize { give compiler_memory_align_of<T>(); }
+proc layout_of<T>() -> MemoryLayout { give MemoryLayout { size: size_of<T>(), align: align_of<T>() }; }
+proc addressof<T>(value: ref T) -> usize { give compiler_memory_addressof<T>(value); }
+proc copy<T>(src: ref T, dst: ref mut T) { compiler_memory_copy<T>(src, dst); }
+proc move_value<T>(src: ref mut T, dst: ref mut T) { compiler_memory_move<T>(src, dst); }
+proc fill<T>(dst: ref mut [T], value: T) { compiler_memory_fill<T>(dst, value); }
+proc equal<T>(left: [T], right: [T]) -> bool { give compiler_memory_equal<T>(left, right); }
+proc uninitialized<T>() -> T { give compiler_memory_uninitialized<T>(); }
+proc allocator_stats() -> AllocatorStats { give compiler_memory_allocator_stats(); }

@@ -1,0 +1,19 @@
+space vitte/stdlib/std/functional
+
+export *
+
+form Function<T, U> {
+    call: proc(T) -> U
+}
+
+form Predicate<T> {
+    test: proc(T) -> bool
+}
+
+proc invoke<T, U>(function: Function<T, U>, value: T) -> U { give function.call(value); }
+proc identity<T>(value: T) -> T { give value; }
+proc compose<T, U, V>(left: Function<U, V>, right: Function<T, U>) -> Function<T, V> { give compiler_functional_compose<T, U, V>(left, right); }
+proc bind_front<T, U>(function: Function<T, U>, value: T) -> Function<(), U> { give compiler_functional_bind_front<T, U>(function, value); }
+proc negate<T>(predicate: Predicate<T>) -> Predicate<T> { give compiler_functional_negate<T>(predicate); }
+proc equal_to<T>() -> proc(T, T) -> bool { give compiler_functional_equal_to<T>(); }
+proc less<T>() -> proc(T, T) -> bool { give compiler_functional_less<T>(); }

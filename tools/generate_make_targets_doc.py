@@ -50,6 +50,8 @@ SECTIONS: list[tuple[str, list[str]]] = [
             "modules-snapshots",
             "modules-contract-snapshots",
             "packages-gate",
+            "stdlib-gate",
+            "stdlib-max-gate",
         ],
     ),
     (
