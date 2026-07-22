@@ -171,6 +171,12 @@ done <<EOF
 $(discover_modules)
 EOF
 
-[ "$found" -gt 0 ] || die "no package modules discovered under $PACKAGES_ROOT"
+if [ "$found" -eq 0 ]; then
+  if [ -f "$PACKAGES_ROOT/perl/packages.json" ] && [ -x "$ROOT_DIR/tools/perl_packages_check.sh" ]; then
+    log "SKIP no Vitte package modules discovered; Perl packages are validated by perl-packages-check"
+    exit 0
+  fi
+  die "no package modules discovered under $PACKAGES_ROOT"
+fi
 
 log "OK"

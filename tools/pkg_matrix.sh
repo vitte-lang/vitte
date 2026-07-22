@@ -48,6 +48,10 @@ import sys
 root = Path(sys.argv[1])
 mods = sorted(root.glob("src/vitte/packages/**/mod.vit"))
 if not mods:
+    perl_index = root / "src/vitte/packages/perl/packages.json"
+    if perl_index.exists():
+        print("[pkg-matrix] package meta surface delegated to perl-packages-check")
+        raise SystemExit(0)
     print("[pkg-matrix][error] no package mod.vit files found", file=sys.stderr)
     raise SystemExit(1)
 
