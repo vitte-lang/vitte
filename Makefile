@@ -1839,14 +1839,18 @@ package-registry-gate:
 	@test -f src/vitte/packages/registry/checksums.sha256
 	@test -f src/vitte/packages/registry/lockfile.vitte.lock
 
+.PHONY: package-cli-gate
+package-cli-gate: package-registry-gate
+	@python3 tools/package_cli_integration_test.py --vitte "$(CURDIR)/bin/vitte"
+
 .PHONY: packages-gate
-packages-gate: package-layout-lint-strict packages-governance-lint no-std-lint module-naming-lint legacy-import-path-lint critical-runtime-matrix-lint new-public-packages-snapshots-lint modules-perf-cache packages-dependency-overlap-lint packages-contract-snapshots package-registry-gate perl-vitte-integration perl-packages-check
+packages-gate: package-layout-lint-strict packages-governance-lint no-std-lint module-naming-lint legacy-import-path-lint critical-runtime-matrix-lint new-public-packages-snapshots-lint modules-perf-cache packages-dependency-overlap-lint packages-contract-snapshots package-cli-gate perl-vitte-integration perl-packages-check
 
 .PHONY: packages-only-ci
-packages-only-ci: packages-governance-lint packages-check-all package-registry-gate perl-vitte-integration perl-packages-check pkg-matrix pkg-cli-integration
+packages-only-ci: packages-governance-lint packages-check-all package-cli-gate perl-vitte-integration perl-packages-check pkg-matrix pkg-cli-integration
 
 .PHONY: packages-strict-ci
-packages-strict-ci: package-layout-lint-strict packages-governance-lint no-std-lint module-naming-lint packages-check-all package-registry-gate perl-vitte-integration perl-packages-check pkg-matrix pkg-cli-integration
+packages-strict-ci: package-layout-lint-strict packages-governance-lint no-std-lint module-naming-lint packages-check-all package-cli-gate perl-vitte-integration perl-packages-check pkg-matrix pkg-cli-integration
 
 .PHONY: modules-ci-strict
 modules-ci-strict: modules-tests modules-snapshots modules-contract-snapshots module-tree-lint module-naming-lint critical-module-contract-lint experimental-modules-lint public-modules-snapshots-lint modules-perf-cache legacy-import-path-lint migration-check modules-report
@@ -2643,7 +2647,7 @@ backend-native-gate: vitte-emit-gate
 
 
 .PHONY: package-manager-gate
-package-manager-gate: package-registry-gate
+package-manager-gate: package-cli-gate
 	@python3 tools/package_manager/run_checks.py
 	@python3 tools/package_manager/generate_artifacts.py
 	@test -f target/package_manager/registry.json

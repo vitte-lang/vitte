@@ -7,6 +7,7 @@ main_return=0
 error_prefix='[vittec0][error]'
 compiler_source_root=''
 compiler_entry_point=''
+script_root="$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)"
 
 trace_pipeline=0
 strict_mode=0
@@ -82,6 +83,16 @@ print_compiler_help() {
     printf '  fix FILE          inspect verified fix plans without mutating source\n'
     printf '\n'
     printf 'package commands:\n'
+    printf '  package init NAME           create a Vitte package\n'
+    printf '  package check               validate manifest, dependencies, and sources\n'
+    printf '  package build               compile a package with the local compiler\n'
+    printf '  package install             install into the local offline package root\n'
+    printf '  package graph               print the resolved workspace package graph\n'
+    printf '  package graph explain       explain the workspace package graph\n'
+    printf '  package publish --dry-run   validate publish without registry writes\n'
+    printf '  workspace build --package P build selected workspace package\n'
+    printf '  workspace test --all        run all workspace tests\n'
+    printf '  publish --dry-run           compatibility alias for package publish\n'
     printf '  pkg check         validate packages under src/vitte/packages\n'
     printf '  pkg matrix        run package dependency/import checks\n'
     printf '  pkg selftest      run package package checks and matrix\n'
@@ -4709,6 +4720,18 @@ case "$cmd" in
             printf 'requires_counterfactual_verified: true\n'
             printf 'refused_if_behavior_changed: true\n'
         fi
+        ;;
+    package)
+        shift
+        python3 "$script_root/tools/package_cli.py" package "$@"
+        ;;
+    workspace)
+        shift
+        python3 "$script_root/tools/package_cli.py" workspace "$@"
+        ;;
+    publish)
+        shift
+        python3 "$script_root/tools/package_cli.py" publish "$@"
         ;;
     perl)
         shift

@@ -7,6 +7,7 @@ main_return=0
 error_prefix='[vittec0][error]'
 compiler_source_root=''
 compiler_entry_point=''
+script_root="$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)"
 
 trace_pipeline=0
 strict_mode=0
@@ -82,9 +83,20 @@ print_compiler_help() {
     printf '  fix FILE          inspect verified fix plans without mutating source\n'
     printf '\n'
     printf 'package commands:\n'
+    printf '  package init NAME           create a Vitte package\n'
+    printf '  package check               validate manifest, dependencies, and sources\n'
+    printf '  package build               compile a package with the local compiler\n'
+    printf '  package install             install into the local offline package root\n'
+    printf '  package graph               print the resolved workspace package graph\n'
+    printf '  package graph explain       explain the workspace package graph\n'
+    printf '  package publish --dry-run   validate publish without registry writes\n'
+    printf '  workspace build --package P build selected workspace package\n'
+    printf '  workspace test --all        run all workspace tests\n'
+    printf '  publish --dry-run           compatibility alias for package publish\n'
     printf '  pkg check         validate packages under src/vitte/packages\n'
     printf '  pkg matrix        run package dependency/import checks\n'
     printf '  pkg selftest      run package package checks and matrix\n'
+    printf '  perl registry|import-map|run MODULE  integrate Perl packages into Vitte\n'
     printf '\n'
     printf 'debug commands:\n'
     printf '  dump-tokens FILE\n'
@@ -4708,6 +4720,54 @@ case "$cmd" in
             printf 'requires_counterfactual_verified: true\n'
             printf 'refused_if_behavior_changed: true\n'
         fi
+        ;;
+    package)
+        shift
+        python3 "$script_root/tools/package_cli.py" package "$@"
+        ;;
+    workspace)
+        shift
+        python3 "$script_root/tools/package_cli.py" workspace "$@"
+        ;;
+    publish)
+        shift
+        python3 "$script_root/tools/package_cli.py" publish "$@"
+        ;;
+    perl)
+        shift
+        subcmd="${1:-help}"
+        case "$subcmd" in
+            help|--help|-h)
+                printf 'perl subcommands:\n'
+                printf '  compile       compile complete Perl packages into the Vitte integration registry\n'
+                printf '  registry      print the generated Vitte Perl registry\n'
+                printf '  import-map    print the generated Vitte Perl import map\n'
+                printf '  run MODULE    run a Perl module through the generated Vitte PERL5LIB wrapper\n'
+                ;;
+            compile|build)
+                python3 "$script_root/tools/perl_vitte_integration.py"
+                ;;
+            registry)
+                python3 "$script_root/tools/perl_vitte_integration.py" >/dev/null
+                cat "$script_root/target/vitte-perl-integration/registry.json"
+                ;;
+            import-map|imports)
+                python3 "$script_root/tools/perl_vitte_integration.py" >/dev/null
+                cat "$script_root/target/vitte-perl-integration/import_map.json"
+                ;;
+            run)
+                shift
+                module="${1:-}"
+                [ -n "$module" ] || { cli_error E_CLI_MISSING_ARG "perl run requires MODULE" "vitte perl run Vitte::City::Lyon"; exit 2; }
+                shift
+                python3 "$script_root/tools/perl_vitte_integration.py" >/dev/null
+                "$script_root/target/vitte-perl-integration/vitte-perl-run" "$module" "$@"
+                ;;
+            *)
+                cli_error E_CLI_COMMAND "unknown perl subcommand: $subcmd" "use 'vitte perl --help'"
+                exit 2
+                ;;
+        esac
         ;;
     pkg)
         subcmd="${2:-help}"
