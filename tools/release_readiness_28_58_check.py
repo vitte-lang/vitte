@@ -40,7 +40,7 @@ REQS = [
     (54, "signature_notarization", ["scripts/build-macos-installers.sh"], ["SIGN", "NOTARIZE"]),
     (55, "simulated_install_vitte_help", ["tools/scripts_build_arch_matrix_test.sh", "scripts/verify-installers.sh"], ["--help"]),
     (56, "installer_arch_support", ["scripts/package-matrix.sh", "data/ffi/abi/target_abi_v1.json"], ["x86_64", "arm64", "riscv64", "i386"]),
-    (57, "windows_xp_to_11", ["scripts/build-windows-installer.sh", "toolchain/scripts/package/windows/vitte-installer.nsi"], ["XP", "11"]),
+    (57, "windows_xp_to_11", ["scripts/build-windows-installer.sh", "scripts/stage-installer-payload.sh"], ["XP", "11"]),
     (58, "bsd_full_family", ["scripts/build-bsd-installers.sh"], ["FreeBSD", "OpenBSD", "NetBSD", "DragonFly"]),
 ]
 
