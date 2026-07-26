@@ -5,7 +5,7 @@ ROOT_DIR=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 SCRIPT_NAME=build-macos-installers
 . "$ROOT_DIR/scripts_build/common.sh"
 scripts_build_parse_common_flags "$@"
-VERSION=${VERSION:-$(tr -d ' \r\n' < "$ROOT_DIR/toolchain/scripts/package/PACKAGE_VERSION")}
+VERSION=${VERSION:-$(scripts_build_package_version)}
 OUT_DIR=${OUT_DIR:-$ROOT_DIR/pkgout}
 case "$OUT_DIR" in /*) ;; *) OUT_DIR=$ROOT_DIR/$OUT_DIR ;; esac
 ARCH=${ARCH:-all}
@@ -14,7 +14,6 @@ SIGN=${SIGN:-0}
 NOTARIZE=${NOTARIZE:-0}
 MACOS_SIGN_IDENTITY=${MACOS_SIGN_IDENTITY:-}
 MACOS_NOTARY_PROFILE=${MACOS_NOTARY_PROFILE:-}
-PKG_BUILDER=$ROOT_DIR/toolchain/scripts/package/make-macos-pkg.sh
 
 EDITORS_DIR=$ROOT_DIR/editors
 COMPLETIONS_DIR=$ROOT_DIR/completions
@@ -505,6 +504,67 @@ build_editor_component() {
     "Vitte editor integration component package"
 }
 
+write_toolchain_scripts() {
+  scripts_root=$1
+
+  mkdir -p "$scripts_root"
+
+  cat > "$scripts_root/preinstall" <<'EOF'
+#!/bin/sh
+set -eu
+mkdir -p /usr/local/bin /usr/local/libexec /usr/local/share
+exit 0
+EOF
+
+  cat > "$scripts_root/postinstall" <<'EOF'
+#!/bin/sh
+set -eu
+chmod 0755 /usr/local/bin/vitte /usr/local/bin/vittec 2>/dev/null || true
+chmod 0755 /usr/local/libexec/vitte/vitte /usr/local/libexec/vitte/vittec 2>/dev/null || true
+exit 0
+EOF
+
+  chmod 0755 "$scripts_root/preinstall" "$scripts_root/postinstall"
+}
+
+build_toolchain_component() {
+  component_dir=$1
+  component_pkg=$2
+  label=$3
+  binary=$4
+
+  payload_root=$component_dir/toolchain-payload
+  scripts_root=$component_dir/toolchain-scripts
+  command_dir=$ROOT_DIR/target/macos-$label
+
+  rm -rf "$payload_root" "$scripts_root" "$component_pkg" "$command_dir"
+  mkdir -p "$command_dir" "$(dirname "$component_pkg")"
+
+  install -m 0755 "$binary" "$command_dir/vitte"
+  install -m 0755 "$binary" "$command_dir/vittec"
+
+  VERSION=$VERSION \
+    "$ROOT_DIR/scripts_build/stage-installer-payload.sh" \
+    "$payload_root" \
+    macos \
+    "$label" \
+    unix
+
+  write_toolchain_scripts "$scripts_root"
+
+  pkgbuild \
+    --root "$payload_root" \
+    --identifier org.vitte.toolchain \
+    --version "$VERSION" \
+    --install-location / \
+    --scripts "$scripts_root" \
+    "$component_pkg"
+
+  require_file \
+    "$component_pkg" \
+    "Vitte toolchain component package"
+}
+
 create_dmg() {
   package_file=$1
   dmg_file=$2
@@ -880,18 +940,11 @@ build_one() {
     "$components" \
     "$OUT_DIR"
 
-  VERSION=$VERSION \
-    OUT_DIR=$components \
-    OUT_FILE_NAME=vitte-component.pkg \
-    VITTE_BIN_OVERRIDE=$binary \
-    VITTEC_BIN_OVERRIDE=$binary \
-    CHECKSUM_TARGET_BIN=$binary \
-    VITTE_EDITORS_DIR=$EDITORS_DIR \
-    VITTE_COMPLETIONS_DIR=$COMPLETIONS_DIR \
-    VITTE_LICENSE_FILE=$LICENSE_FILE \
-    VITTE_LOGO_FILE=$LOGO_FILE \
-    MACOSX_DEPLOYMENT_TARGET=$minimum_system \
-    "$PKG_BUILDER"
+  build_toolchain_component \
+    "$component_dir" \
+    "$toolchain_component" \
+    "$label" \
+    "$binary"
 
   require_file \
     "$toolchain_component" \
@@ -1107,9 +1160,6 @@ for tool in \
 do
   require "$tool"
 done
-
-[ -x "$PKG_BUILDER" ] ||
-  die "missing package builder: $PKG_BUILDER"
 
 require_directory "$EDITORS_DIR" "editor integrations"
 require_directory "$COMPLETIONS_DIR" "shell completions"
