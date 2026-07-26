@@ -31,6 +31,7 @@ DEF_RE = re.compile(
     r"^\s*(?:form|proc|const|pick|enum|trait|type|alias|intrinsic)\s+([A-Za-z_][A-Za-z0-9_]*)\b",
     re.MULTILINE,
 )
+STDLIB_MANIFEST = ROOT / "src/vitte/stdlib/modules.vitte.json"
 
 
 def rel(path: Path) -> str:
@@ -45,6 +46,12 @@ def module_path_for_file(path: Path) -> str:
 
 
 def allowed_spaces_for_file(path: Path) -> set[str]:
+    if path.is_relative_to(ROOT / "src/vitte/stdlib"):
+        exact = path.relative_to(SRC).with_suffix("").as_posix()
+        if path.name == "mod.vit":
+            exact = path.parent.relative_to(SRC).as_posix()
+        return {exact}
+
     exact = path.relative_to(SRC).with_suffix("").as_posix()
     parent = path.parent.relative_to(SRC).as_posix()
     if path.name == "mod.vit":
@@ -89,118 +96,6 @@ def is_negative_fixture(path: Path) -> bool:
     return any(marker in path_text for marker in NEGATIVE_FIXTURE_MARKERS)
 
 
-def discover_modules(root: Path) -> list[dict[str, object]]:
-    entries: list[dict[str, object]] = []
-    for path in sorted(root.rglob("*.vit")):
-        space = parse_space(path)
-        kind = "negative_fixture" if is_negative_fixture(path) else "module"
-        entries.append(
-            {
-                "path": rel(path),
-                "module": space or module_path_for_file(path),
-                "kind": kind,
-                "space_required": kind == "module",
-            }
-        )
-    return entries
-
-
-def manifest_for(root: str) -> dict[str, object]:
-    root_path = ROOT / root
-    return {
-        "schema": "vitte.source.modules.v1",
-        "root": root,
-        "source_extension": ".vit",
-        "module_resolution": {
-            "module_file": "src/<space>.vit",
-            "library_file": "src/<space>.vitl",
-            "directory_module": "src/<space>/mod.vit",
-            "directory_index": "src/<space>/index.vit",
-        },
-        "modules": discover_modules(root_path),
-    }
-
-
-def write_manifests() -> None:
-    manifests = [
-        (ROOT / "src/vitte/compiler/modules.vitte.json", manifest_for("src/vitte/compiler")),
-        (ROOT / "src/vitte/stdlib/modules.vitte.json", manifest_for("src/vitte/stdlib")),
-    ]
-    for path, data in manifests:
-        path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-        print(f"[src-compiler-stdlib-gate] wrote {rel(path)}")
-
-
-def load_manifest(path: Path) -> dict[str, object]:
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        raise AssertionError(f"missing manifest: {rel(path)}")
-    except json.JSONDecodeError as exc:
-        raise AssertionError(f"invalid JSON in {rel(path)}: {exc}")
-    if data.get("schema") != "vitte.source.modules.v1":
-        raise AssertionError(f"{rel(path)} has invalid schema")
-    if not isinstance(data.get("root"), str) or not data["root"]:
-        raise AssertionError(f"{rel(path)} has invalid root")
-    if not isinstance(data.get("modules"), list):
-        raise AssertionError(f"{rel(path)} has invalid modules list")
-    return data
-
-
-def validate_manifest(path: Path) -> list[str]:
-    errors: list[str] = []
-    data = load_manifest(path)
-    root = ROOT / str(data["root"])
-    if not root.is_dir():
-        errors.append(f"{rel(path)} root does not exist: {data['root']}")
-        return errors
-
-    discovered = {rel(item) for item in sorted(root.rglob("*.vit"))}
-    declared_entries = data["modules"]
-    declared = {entry.get("path") for entry in declared_entries if isinstance(entry, dict)}
-
-    for missing in sorted(discovered - declared):
-        errors.append(f"{rel(path)} missing source entry for {missing}")
-    for stale in sorted(declared - discovered):
-        errors.append(f"{rel(path)} has stale source entry for {stale}")
-
-    for entry in declared_entries:
-        if not isinstance(entry, dict):
-            errors.append(f"{rel(path)} contains non-object module entry")
-            continue
-        source = entry.get("path")
-        module = entry.get("module")
-        kind = entry.get("kind")
-        space_required = entry.get("space_required")
-        if not isinstance(source, str) or not source.endswith(".vit"):
-            errors.append(f"{rel(path)} has invalid module path: {source!r}")
-            continue
-        if not isinstance(module, str) or not module:
-            errors.append(f"{source} has invalid module name")
-            continue
-        if kind not in {"module", "negative_fixture"}:
-            errors.append(f"{source} has invalid kind: {kind!r}")
-            continue
-        if not isinstance(space_required, bool):
-            errors.append(f"{source} has invalid space_required")
-            continue
-
-        source_path = ROOT / source
-        space = parse_space(source_path)
-        if space_required and space is None:
-            errors.append(f"{source} is missing space declaration")
-            continue
-        if space is not None:
-            allowed = allowed_spaces_for_file(source_path)
-            if space not in allowed:
-                errors.append(f"{source} has space {space!r}, expected one of {sorted(allowed)!r}")
-            if space != module:
-                errors.append(f"{source} manifest module {module!r} does not match space {space!r}")
-        elif kind != "negative_fixture":
-            errors.append(f"{source} has no space and is not a negative fixture")
-    return errors
-
-
 def import_candidates(spec: str) -> list[Path]:
     spec = spec.strip()
     spec = spec.split("{", 1)[0].strip()
@@ -220,6 +115,205 @@ def import_candidates(spec: str) -> list[Path]:
         ROOT / base / "mod.vit",
         ROOT / base / "index.vit",
     ]
+
+
+def resolve_import_path(spec: str) -> Path | None:
+    for candidate in import_candidates(spec):
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def split_share_names(raw: str) -> list[str]:
+    return [name for name in re.split(r"[\s,]+", raw.strip()) if name and name != "*"]
+
+
+def defined_symbols(path: Path) -> list[str]:
+    return sorted(set(DEF_RE.findall(read_text(path))))
+
+
+def shared_symbols(path: Path) -> list[str]:
+    symbols: set[str] = set()
+    for raw in SHARE_RE.findall(read_text(path)):
+        symbols.update(split_share_names(raw))
+    return sorted(symbols)
+
+
+def public_exports(path: Path) -> list[str]:
+    shared = shared_symbols(path)
+    if shared:
+        return shared
+    return defined_symbols(path)
+
+
+def dependency_modules(path: Path) -> list[str]:
+    modules: set[str] = set()
+    for raw in iter_use_statements(read_text(path)):
+        resolved = resolve_import_path(raw)
+        if resolved is None:
+            continue
+        if not resolved.is_relative_to(ROOT / "src/vitte/stdlib"):
+            continue
+        space = parse_space(resolved)
+        modules.add(space or module_path_for_file(resolved))
+    modules.discard(parse_space(path) or module_path_for_file(path))
+    return sorted(modules)
+
+
+def discover_modules(root: Path, extensions: tuple[str, ...], public_contract: bool) -> list[dict[str, object]]:
+    entries: list[dict[str, object]] = []
+    paths = sorted(path for path in root.rglob("*") if path.is_file() and path.suffix in extensions)
+    for path in paths:
+        space = parse_space(path)
+        kind = "negative_fixture" if is_negative_fixture(path) else "module"
+        entry: dict[str, object] = {
+            "path": rel(path),
+            "module": space or module_path_for_file(path),
+            "kind": kind,
+            "space_required": kind == "module",
+        }
+        if public_contract:
+            entry["dependencies"] = dependency_modules(path)
+            entry["exports"] = public_exports(path)
+            entry["official"] = kind == "module"
+        entries.append(entry)
+    return entries
+
+
+def manifest_for(root: str, extensions: tuple[str, ...], public_contract: bool) -> dict[str, object]:
+    root_path = ROOT / root
+    manifest: dict[str, object] = {
+        "schema": "vitte.source.modules.v1",
+        "root": root,
+        "module_resolution": {
+            "module_file": "src/<space>.vit",
+            "library_file": "src/<space>.vitl",
+            "directory_module": "src/<space>/mod.vit",
+            "directory_index": "src/<space>/index.vit",
+        },
+        "modules": discover_modules(root_path, extensions, public_contract),
+    }
+    if public_contract:
+        manifest["source_extensions"] = list(extensions)
+        manifest["public_contract"] = {
+            "exports": "checked",
+            "dependencies": "checked",
+            "imports": "checked",
+            "spaces": "checked",
+        }
+    else:
+        manifest["source_extension"] = extensions[0]
+    return manifest
+
+
+def write_manifests() -> None:
+    manifests = [
+        (ROOT / "src/vitte/compiler/modules.vitte.json", manifest_for("src/vitte/compiler", (".vit",), False)),
+        (STDLIB_MANIFEST, manifest_for("src/vitte/stdlib", (".vit", ".vitl"), True)),
+    ]
+    for path, data in manifests:
+        path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        print(f"[src-compiler-stdlib-gate] wrote {rel(path)}")
+
+
+def load_manifest(path: Path) -> dict[str, object]:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        raise AssertionError(f"missing manifest: {rel(path)}")
+    except json.JSONDecodeError as exc:
+        raise AssertionError(f"invalid JSON in {rel(path)}: {exc}")
+    if data.get("schema") != "vitte.source.modules.v1":
+        raise AssertionError(f"{rel(path)} has invalid schema")
+    if not isinstance(data.get("root"), str) or not data["root"]:
+        raise AssertionError(f"{rel(path)} has invalid root")
+    extensions = data.get("source_extensions")
+    if extensions is None and isinstance(data.get("source_extension"), str):
+        extensions = [data["source_extension"]]
+    if not isinstance(extensions, list) or not all(isinstance(ext, str) and ext.startswith(".") for ext in extensions):
+        raise AssertionError(f"{rel(path)} has invalid source_extensions")
+    if not isinstance(data.get("modules"), list):
+        raise AssertionError(f"{rel(path)} has invalid modules list")
+    return data
+
+
+def validate_manifest(path: Path) -> list[str]:
+    errors: list[str] = []
+    data = load_manifest(path)
+    root = ROOT / str(data["root"])
+    if not root.is_dir():
+        errors.append(f"{rel(path)} root does not exist: {data['root']}")
+        return errors
+
+    extensions = data.get("source_extensions")
+    if extensions is None:
+        extensions = [data["source_extension"]]
+    discovered = {rel(item) for item in sorted(root.rglob("*")) if item.is_file() and item.suffix in extensions}
+    declared_entries = data["modules"]
+    declared = {entry.get("path") for entry in declared_entries if isinstance(entry, dict)}
+    require_public_contract = path == STDLIB_MANIFEST
+
+    for missing in sorted(discovered - declared):
+        errors.append(f"{rel(path)} missing source entry for {missing}")
+    for stale in sorted(declared - discovered):
+        errors.append(f"{rel(path)} has stale source entry for {stale}")
+
+    for entry in declared_entries:
+        if not isinstance(entry, dict):
+            errors.append(f"{rel(path)} contains non-object module entry")
+            continue
+        source = entry.get("path")
+        module = entry.get("module")
+        kind = entry.get("kind")
+        space_required = entry.get("space_required")
+        if not isinstance(source, str) or not any(source.endswith(ext) for ext in extensions):
+            errors.append(f"{rel(path)} has invalid module path: {source!r}")
+            continue
+        if not isinstance(module, str) or not module:
+            errors.append(f"{source} has invalid module name")
+            continue
+        if kind not in {"module", "negative_fixture"}:
+            errors.append(f"{source} has invalid kind: {kind!r}")
+            continue
+        if not isinstance(space_required, bool):
+            errors.append(f"{source} has invalid space_required")
+            continue
+        if require_public_contract:
+            official = entry.get("official")
+            exports = entry.get("exports")
+            dependencies = entry.get("dependencies")
+            if not isinstance(official, bool):
+                errors.append(f"{source} has invalid official flag")
+                continue
+            if not isinstance(exports, list) or not all(isinstance(export, str) for export in exports):
+                errors.append(f"{source} has invalid exports list")
+                continue
+            if not isinstance(dependencies, list) or not all(isinstance(dep, str) for dep in dependencies):
+                errors.append(f"{source} has invalid dependencies list")
+                continue
+
+        source_path = ROOT / source
+        space = parse_space(source_path)
+        if space_required and space is None:
+            errors.append(f"{source} is missing space declaration")
+            continue
+        if space is not None:
+            allowed = allowed_spaces_for_file(source_path)
+            if space not in allowed:
+                errors.append(f"{source} has space {space!r}, expected one of {sorted(allowed)!r}")
+            if space != module:
+                errors.append(f"{source} manifest module {module!r} does not match space {space!r}")
+        elif kind != "negative_fixture":
+            errors.append(f"{source} has no space and is not a negative fixture")
+
+        if require_public_contract:
+            current_exports = public_exports(source_path)
+            current_dependencies = dependency_modules(source_path)
+            if exports != current_exports:
+                errors.append(f"{source} exports are stale: manifest={exports!r} actual={current_exports!r}")
+            if dependencies != current_dependencies:
+                errors.append(f"{source} dependencies are stale: manifest={dependencies!r} actual={current_dependencies!r}")
+    return errors
 
 
 def validate_imports() -> list[str]:
