@@ -118,7 +118,7 @@ if [ "$PREFIX" = /usr/local ]; then
 else
   mkdir -p "$target_root$PREFIX"
   tar -cf - -C "$HERE/root/usr/local" . | tar -xf - -C "$target_root$PREFIX"
-  for command in vitte vittec vittec0; do
+  for command in vitte vittec; do
     wrapper=$target_root$PREFIX/bin/$command
     if [ -f "$wrapper" ]; then
       sed "s#/usr/local#$PREFIX#g" "$wrapper" > "$wrapper.tmp"
@@ -154,7 +154,7 @@ esac
 }
 
 root=${DESTDIR:-/}
-rm -f "$root$PREFIX/bin/vitte" "$root$PREFIX/bin/vittec" "$root$PREFIX/bin/vittec0"
+rm -f "$root$PREFIX/bin/vitte" "$root$PREFIX/bin/vittec" "$root$PREFIX/bin/vitte"
 rm -rf "$root$PREFIX/libexec/vitte" "$root$PREFIX/share/vitte"
 printf 'Vitte removed from %s%s.\n' "$DESTDIR" "$PREFIX"
 SH
