@@ -3,7 +3,8 @@ set -eu
 
 ROOT_DIR=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 TMP_ROOT=${TMPDIR:-/tmp}/vitte-scripts-build-staging-$$
-VERSION=$(tr -d ' \r\n' < "$ROOT_DIR/toolchain/scripts/package/PACKAGE_VERSION")
+. "$ROOT_DIR/scripts_build/common.sh"
+VERSION=$(scripts_build_package_version)
 
 cleanup() {
   rm -rf "$TMP_ROOT"
@@ -78,8 +79,9 @@ stage_windows() {
     test -s "$dest/bin/$command.ps1"
     grep -F 'set "VITTE_ROOT=%~dp0..\share\vitte"' "$dest/bin/$command.cmd" >/dev/null
     grep -F "if exist \"%~dp0$command.exe\"" "$dest/bin/$command.cmd" >/dev/null
-    grep -F 'Join-Path $PSScriptRoot "..\share\vitte"' "$dest/bin/$command.ps1" >/dev/null
-    grep -F "Join-Path \$PSScriptRoot \"$command.exe\"" "$dest/bin/$command.ps1" >/dev/null
+    grep -F 'Split-Path -Parent $MyInvocation.MyCommand.Path' "$dest/bin/$command.ps1" >/dev/null
+    grep -F 'Join-Path $ScriptDir "..\share\vitte"' "$dest/bin/$command.ps1" >/dev/null
+    grep -F "Join-Path \$ScriptDir \"$command.exe\"" "$dest/bin/$command.ps1" >/dev/null
   done
   test -s "$dest/bin/vitte-installer-doctor.cmd"
   grep -F 'Vitte installer doctor' "$dest/bin/vitte-installer-doctor.cmd" >/dev/null
