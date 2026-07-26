@@ -498,12 +498,10 @@ ensure_nano_include() {
 
 ensure_executable /usr/local/bin/vitte
 ensure_executable /usr/local/bin/vittec
-ensure_executable /usr/local/bin/vittec0
+ensure_executable /usr/local/bin/vitte
 ensure_executable /usr/local/libexec/vitte/vitte
 ensure_executable /usr/local/libexec/vitte/vittec
-ensure_executable /usr/local/libexec/vitte/vittec0
-
-ensure_nano_include \
+ensure_executableensure_nano_include \
   /etc/nanorc \
   /usr/share/nano/vitte.nanorc
 
