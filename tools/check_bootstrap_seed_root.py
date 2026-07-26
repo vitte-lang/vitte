@@ -1,18 +1,23 @@
 #!/usr/bin/env python3
-"""Validate vittec0.seed as the only bootstrap trust root."""
+"""Validate the TOML-defined bootstrap compiler and stdlib chain."""
 
 from __future__ import annotations
 
 import argparse
 import hashlib
-import json
 import os
 import subprocess
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_CONFIG = ROOT / "toolchain/bootstrap-config.json"
-SEED_MANIFEST = ROOT / "toolchain/seed/manifest.txt"
+TOOLS = ROOT / "tools"
+if str(TOOLS) not in sys.path:
+    sys.path.insert(0, str(TOOLS))
+
+import bootstrap_config  # noqa: E402
+
+DEFAULT_CONFIG = ROOT / "toolchain/vitte-bootstrap.toml"
 
 
 class ContractError(RuntimeError):
@@ -29,29 +34,9 @@ def sha256(path: Path) -> str:
 
 def load_config(path: Path) -> dict[str, object]:
     try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        raise ContractError(f"cannot load {path}: {exc}") from exc
-    if not isinstance(value, dict):
-        raise ContractError(f"{path}: root must be an object")
-    return value
-
-
-def load_seed_manifest() -> dict[str, str]:
-    if not SEED_MANIFEST.is_file():
-        raise ContractError("missing toolchain/seed/manifest.txt")
-    result: dict[str, str] = {}
-    for line in SEED_MANIFEST.read_text(encoding="utf-8").splitlines():
-        if not line or line.startswith("#"):
-            continue
-        if "=" not in line:
-            raise ContractError(f"malformed seed manifest line: {line}")
-        key, value = line.split("=", 1)
-        result[key] = value
-    for key in ("source_file", "seed_file", "sha256", "version"):
-        if not result.get(key):
-            raise ContractError(f"seed manifest missing {key}")
-    return result
+        return bootstrap_config.validate_config(path)
+    except bootstrap_config.BootstrapConfigError as exc:
+        raise ContractError(f"{exc.code}: {exc.message}") from exc
 
 
 def repo_path(value: object, field: str) -> Path:
@@ -63,48 +48,84 @@ def repo_path(value: object, field: str) -> Path:
     return ROOT / relative
 
 
+def require_table(config: dict[str, object], key: str) -> dict[str, object]:
+    value = config.get(key)
+    if not isinstance(value, dict):
+        raise ContractError(f"{key} must be an object")
+    return value
+
+
+def validate_file(value: object, field: str, *, executable: bool = False) -> Path:
+    path = repo_path(value, field)
+    if not path.is_file():
+        raise ContractError(f"{field} is missing or not a file: {path.relative_to(ROOT)}")
+    if executable and not os.access(path, os.X_OK):
+        raise ContractError(f"{field} is not executable: {path.relative_to(ROOT)}")
+    return path
+
+
+def validate_dir(value: object, field: str) -> Path:
+    path = repo_path(value, field)
+    if not path.is_dir():
+        raise ContractError(f"{field} is missing or not a directory: {path.relative_to(ROOT)}")
+    return path
+
+
 def validate_contract(config: dict[str, object]) -> dict[str, object]:
-    if config.get("schema_version") != "2.0.0":
-        raise ContractError("bootstrap config schema_version must be 2.0.0")
-    project = config.get("project")
-    bootstrap = config.get("bootstrap")
-    if not isinstance(project, dict) or not isinstance(bootstrap, dict):
-        raise ContractError("bootstrap config requires project and bootstrap objects")
-    trust_root = bootstrap.get("trust_root")
-    if not isinstance(trust_root, dict):
-        raise ContractError("bootstrap.trust_root must be an object")
-    if project.get("bootstrap_roots") != 1:
-        raise ContractError("project.bootstrap_roots must be 1")
-    if "stages" in bootstrap:
-        raise ContractError("bootstrap.stages is retired; only bootstrap.trust_root is allowed")
+    if config.get("schema") != "vitte.bootstrap.config.v1":
+        raise ContractError("bootstrap TOML schema must be vitte.bootstrap.config.v1")
+    seed = require_table(config, "seed")
+    compiler = require_table(config, "compiler")
+    stdlib = require_table(config, "stdlib")
+    bootstrap = require_table(config, "bootstrap")
 
-    manifest = load_seed_manifest()
-    expected = {
-        "name": "seed",
-        "compiler": manifest["seed_file"],
-        "artifact": manifest["seed_file"],
-        "installed": "bin/vittec0",
-        "version": manifest["version"],
-        "artifact_kind": "bootstrap-script",
-        "verify": True,
+    # Extra trust roots are rejected by the strict TOML validator; keep this
+    # explicit here so callers of validate_contract cannot inject one later.
+    for forbidden in ("stages", "trust_root", "trust_roots", "compiler_fallback", "host_compiler"):
+        if forbidden in bootstrap or forbidden in compiler:
+            raise ContractError(f"additional bootstrap trust root is forbidden: {forbidden}")
+
+    source_path = validate_file(seed.get("source"), "seed.source")
+    seed_path = validate_file(seed.get("artifact"), "seed.artifact", executable=True)
+    manifest_path = validate_file(seed.get("manifest"), "seed.manifest")
+    stage0_path = validate_file(compiler.get("stage0"), "compiler.stage0", executable=True)
+    compiler_root = validate_dir(compiler.get("root"), "compiler.root")
+    compiler_entry = validate_file(compiler.get("entry"), "compiler.entry")
+    stdlib_root = validate_dir(stdlib.get("root"), "stdlib.root")
+    stdlib_core = validate_file(stdlib.get("core"), "stdlib.core")
+    stdlib_alloc = validate_file(stdlib.get("alloc"), "stdlib.alloc")
+    stdlib_std = validate_file(stdlib.get("std"), "stdlib.std")
+
+    for path, field, root in (
+        (compiler_entry, "compiler.entry", compiler_root),
+        (stdlib_core, "stdlib.core", stdlib_root),
+        (stdlib_alloc, "stdlib.alloc", stdlib_root),
+        (stdlib_std, "stdlib.std", stdlib_root),
+    ):
+        try:
+            path.relative_to(root)
+        except ValueError as exc:
+            raise ContractError(f"{field} must be inside its configured root") from exc
+
+    if sha256(seed_path) != seed.get("sha256"):
+        raise ContractError("seed artifact checksum differs from TOML")
+    if sha256(seed_path) != sha256(stage0_path):
+        raise ContractError("compiler.stage0 differs from configured seed artifact")
+
+    return {
+        "artifact": repo_path(seed["artifact"], "seed.artifact").relative_to(ROOT).as_posix(),
+        "compiler_entry": repo_path(compiler["entry"], "compiler.entry").relative_to(ROOT).as_posix(),
+        "installed": repo_path(compiler["stage0"], "compiler.stage0").relative_to(ROOT).as_posix(),
+        "manifest": repo_path(seed["manifest"], "seed.manifest").relative_to(ROOT).as_posix(),
+        "source": repo_path(seed["source"], "seed.source").relative_to(ROOT).as_posix(),
+        "stdlib": {
+            "alloc": repo_path(stdlib["alloc"], "stdlib.alloc").relative_to(ROOT).as_posix(),
+            "core": repo_path(stdlib["core"], "stdlib.core").relative_to(ROOT).as_posix(),
+            "root": repo_path(stdlib["root"], "stdlib.root").relative_to(ROOT).as_posix(),
+            "std": repo_path(stdlib["std"], "stdlib.std").relative_to(ROOT).as_posix(),
+        },
+        "version": str(seed["version"]),
     }
-    for key, value in expected.items():
-        if trust_root.get(key) != value:
-            raise ContractError(f"seed trust root {key} drifted: expected {value!r}, found {trust_root.get(key)!r}")
-
-    if trust_root.get("source") != manifest["source_file"]:
-        raise ContractError("seed trust root source must match toolchain/seed/manifest.txt")
-    for field in ("compiler", "artifact", "installed", "source"):
-        repo_path(trust_root.get(field), f"bootstrap.trust_root.{field}")
-    source_path = repo_path(trust_root["source"], "bootstrap.trust_root.source")
-    seed_path = repo_path(trust_root["artifact"], "bootstrap.trust_root.artifact")
-    if not source_path.is_file():
-        raise ContractError(f"missing seed source: {source_path.relative_to(ROOT)}")
-    if not seed_path.is_file():
-        raise ContractError(f"missing seed artifact: {seed_path.relative_to(ROOT)}")
-    if sha256(seed_path) != manifest["sha256"]:
-        raise ContractError("seed artifact checksum differs from manifest")
-    return trust_root
 
 
 def validate_artifacts(trust_root: dict[str, object]) -> None:
@@ -114,7 +135,7 @@ def validate_artifacts(trust_root: dict[str, object]) -> None:
     if not output.is_file() or not os.access(output, os.X_OK):
         raise ContractError(f"installed seed is missing or not executable: {output.relative_to(ROOT)}")
     if sha256(artifact) != sha256(output):
-        raise ContractError("installed bin/vittec0 differs from toolchain/seed/vittec0.seed")
+        raise ContractError("installed compiler.stage0 differs from configured seed artifact")
     result = subprocess.run([str(output), "--version"], cwd=ROOT, text=True, capture_output=True, check=False)
     actual = (result.stdout + result.stderr).strip()
     if result.returncode != 0 or actual != version:
@@ -135,7 +156,7 @@ def main() -> int:
         print(f"[bootstrap-seed-chain][error] {exc}")
         return 1
     suffix = " + artifacts" if args.artifacts else ""
-    print(f"[bootstrap-seed-root] ok: vittec0.seed is the only trust root{suffix}")
+    print(f"[bootstrap-compiler-stdlib] ok: TOML compiler + stdlib bootstrap contract{suffix}")
     return 0
 
 

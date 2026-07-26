@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Regression tests for the seed-only bootstrap trust contract."""
+"""Regression tests for the TOML bootstrap compiler and stdlib contract."""
 
 from __future__ import annotations
 
@@ -51,8 +51,10 @@ def active_bootstrap_files() -> list[Path]:
 
 def main() -> int:
     config = contract.load_config(contract.DEFAULT_CONFIG)
-    trust_root = contract.validate_contract(config)
-    assert trust_root["artifact"] == "toolchain/seed/vittec0.seed"
+    bootstrap_contract = contract.validate_contract(config)
+    assert bootstrap_contract["artifact"] == "toolchain/seed/vittec0.seed"
+    assert bootstrap_contract["compiler_entry"] == "src/vitte/compiler/main.vit"
+    assert bootstrap_contract["stdlib"]["root"] == "src/vitte/stdlib"
 
     with_stages = copy.deepcopy(config)
     bootstrap = with_stages["bootstrap"]
@@ -61,11 +63,9 @@ def main() -> int:
     expect_rejected(with_stages, "numbered stages")
 
     with_fallback = copy.deepcopy(config)
-    bootstrap = with_fallback["bootstrap"]
-    assert isinstance(bootstrap, dict)
-    root = bootstrap["trust_root"]
-    assert isinstance(root, dict)
-    root["compiler"] = "bin/vitte"
+    compiler = with_fallback["compiler"]
+    assert isinstance(compiler, dict)
+    compiler["host_compiler"] = "bin/vitte"
     expect_rejected(with_fallback, "alternate compiler trust root")
 
     violations = []
@@ -76,7 +76,7 @@ def main() -> int:
     if violations:
         raise AssertionError("active numbered bootstrap references:\n" + "\n".join(violations))
 
-    print("[bootstrap-seed-root-test] OK trust_root=toolchain/seed/vittec0.seed")
+    print("[bootstrap-compiler-stdlib-test] OK compiler=src/vitte/compiler/main.vit stdlib=src/vitte/stdlib")
     return 0
 
 
