@@ -155,7 +155,7 @@ def main() -> int:
                 break
         payload["steps"] = steps
 
-        artifacts = [artifact_state(checkout, "bin/vittec0")]
+        artifacts = [artifact_state(checkout, "bin/vitte")]
         payload["artifacts"] = artifacts
         artifacts_ok = all(bool(item["available"] and item["executable"]) for item in artifacts)
         sidecars = list(checkout.glob("bin/*.bootstrap-bridge"))
