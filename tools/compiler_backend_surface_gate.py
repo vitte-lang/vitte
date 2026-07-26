@@ -68,6 +68,20 @@ EVIDENCE: dict[str, list[tuple[str, str]]] = {
         ("src/vitte/compiler/middle/lower/mir_to_ir.vit", "module_add_external_symbol"),
         ("src/vitte/compiler/backend/link/artifact.vit", "imported"),
     ],
+    "compiler_module_linking": [
+        ("src/vitte/compiler/backend/link/artifact.vit", "LinkSymbolResolution"),
+        ("src/vitte/compiler/backend/link/artifact.vit", "resolved_import_count"),
+        ("src/vitte/compiler/backend/link/artifact.vit", "unresolved_import_count"),
+        ("src/vitte/compiler/middle/lower/mir_to_ir.vit", "IrLinkage.External"),
+        ("src/vitte/compiler/middle/lower/mir_to_ir.vit", "module_add_external_symbol(built, lowered_fn.name)"),
+    ],
+    "local_target_stable_abi": [
+        ("src/vitte/compiler/backend/c/abi.vit", "C_ABI_NAME: string = \"vitte-c-abi-v1\""),
+        ("src/vitte/compiler/backend/c/abi.vit", "C_ABI_SCHEMA_VERSION: u64 = 1"),
+        ("src/vitte/compiler/backend/c/architecture.vit", "calling_convention_for_triple"),
+        ("src/vitte/compiler/backend/c/architecture.vit", "target_layout_for"),
+        ("src/vitte/compiler/backend/c/architecture.vit", "c_profile_summary"),
+    ],
 }
 
 

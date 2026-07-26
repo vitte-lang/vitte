@@ -1,0 +1,50 @@
+name: compiler-vitte-chain
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  compiler-vitte-chain:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Run selfhost full gate
+        run: make selfhost-full-gate
+
+      - name: Run release binary gate
+        run: make release-binary-gate
+
+      - name: Run selfhost stage compare gate
+        run: make selfhost-stage-compare-gate
+
+      - name: Refuse seed and vittec0 regression
+        run: make selfhost-ci-regression-gate
+
+      - name: Index reports
+        if: always()
+        run: make reports-index
+
+      - name: Upload selfhost reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: compiler-vitte-chain-reports
+          path: |
+            target/reports/selfhost_*_gate.json
+            target/reports/selfhost_*_gate.md
+            target/reports/selfhost_stage_compare_gate.json
+            target/reports/selfhost_stage_compare_gate.md
+            target/reports/release_binary_gate.json
+            target/reports/release_binary_gate.md
+            target/reports/selfhost_stage_hashes.json
+            target/reports/selfhost_stage_hashes.sha256
+            target/reports/index.json
+          if-no-files-found: error
