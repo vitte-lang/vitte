@@ -10,9 +10,23 @@ form StdlibPackage {
 form StdlibResolution {
   root_path: string
   packages: [StdlibPackage]
+  core_entrypoint: string
+  alloc_entrypoint: string
+  std_entrypoint: string
   expected_version: string
   valid: bool
   message: string
+}
+
+proc stdlib_version_or_default(expected_version: string) -> string {
+  if expected_version == "" {
+    give "unknown";
+  }
+  give expected_version;
+}
+
+proc stdlib_entrypoint(root_path: string, name: string) -> string {
+  give root_path + "/" + name + "/index.vit";
 }
 
 proc stdlib_package(name: string, version: string, path: string) -> StdlibPackage {
@@ -29,18 +43,31 @@ proc resolve_stdlib(root_path: string, expected_version: string) -> StdlibResolu
     give StdlibResolution {
       root_path: root_path,
       packages: [],
+      core_entrypoint: "",
+      alloc_entrypoint: "",
+      std_entrypoint: "",
       expected_version: expected_version,
       valid: false,
       message: "stdlib introuvable"
     };
   }
-  let pkg: StdlibPackage = stdlib_package("vitte.std", if expected_version == "" { "unknown" } else { expected_version }, root_path + "/runtime.vitl");
+  let version: string = stdlib_version_or_default(expected_version);
+  let core_path: string = stdlib_entrypoint(root_path, "core");
+  let alloc_path: string = stdlib_entrypoint(root_path, "alloc");
+  let std_path: string = stdlib_entrypoint(root_path, "std");
+  let core_pkg: StdlibPackage = stdlib_package("vitte.core", version, core_path);
+  let alloc_pkg: StdlibPackage = stdlib_package("vitte.alloc", version, alloc_path);
+  let std_pkg: StdlibPackage = stdlib_package("vitte.std", version, std_path);
+  let valid: bool = core_pkg.valid and alloc_pkg.valid and std_pkg.valid;
   give StdlibResolution {
     root_path: root_path,
-    packages: [pkg],
+    packages: [core_pkg, alloc_pkg, std_pkg],
+    core_entrypoint: core_path,
+    alloc_entrypoint: alloc_path,
+    std_entrypoint: std_path,
     expected_version: expected_version,
-    valid: pkg.valid,
-    message: if pkg.valid { "stdlib loaded" } else { "stdlib introuvable" }
+    valid: valid,
+    message: if valid { "stdlib core/alloc/std loaded" } else { "stdlib introuvable" }
   };
 }
 
