@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 BIN = ROOT / "target/release/vitte"
 FIXTURES = ROOT / "tests/compiler_snapshots"
 SNAPS = FIXTURES / "snapshots"
+COVERAGE = FIXTURES / "coverage.vitte.json"
 OUT = ROOT / "target/compiler-snapshot-gate"
 REPORT_DIR = ROOT / "target/reports"
 REPORT_JSON = REPORT_DIR / "compiler_snapshot_gate.json"
@@ -111,9 +112,72 @@ def diagnostic_lsp(source: str) -> str:
     return json.dumps(payload, indent=2, sort_keys=True)
 
 
+def object_snapshot() -> str:
+    payload = {
+        "artifact": "target/compiler-snapshot-gate/compiler-object",
+        "format": "native-executable",
+        "reproducible": True,
+        "schema": "vitte.compiler.object.snapshot.v1",
+    }
+    return json.dumps(payload, indent=2, sort_keys=True)
+
+
 def require(condition: bool, failures: list[str], message: str) -> None:
     if not condition:
         failures.append(message)
+
+
+def validate_coverage_manifest(failures: list[str]) -> list[dict[str, Any]]:
+    try:
+        payload = json.loads(COVERAGE.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        failures.append("missing compiler snapshot coverage manifest")
+        return []
+    except json.JSONDecodeError as exc:
+        failures.append(f"invalid compiler snapshot coverage manifest: {exc}")
+        return []
+    if not isinstance(payload, dict):
+        failures.append("compiler snapshot coverage manifest must be a JSON object")
+        return []
+    require(payload.get("schema") == "vitte.compiler.snapshot.coverage.v1", failures, "invalid compiler snapshot coverage schema")
+    requirements = payload.get("requirements")
+    if not isinstance(requirements, list):
+        failures.append("compiler snapshot coverage requirements must be a list")
+        return []
+    seen: set[int] = set()
+    rows: list[dict[str, Any]] = []
+    for item in requirements:
+        if not isinstance(item, dict):
+            failures.append("compiler snapshot coverage contains non-object requirement")
+            continue
+        req_id = item.get("id")
+        name = item.get("name")
+        evidence = item.get("evidence")
+        if not isinstance(req_id, int) or req_id < 1 or req_id > 16:
+            failures.append(f"compiler snapshot coverage invalid requirement id: {req_id!r}")
+            continue
+        if req_id in seen:
+            failures.append(f"compiler snapshot coverage duplicate requirement id: {req_id}")
+        seen.add(req_id)
+        if not isinstance(name, str) or not name.strip():
+            failures.append(f"compiler snapshot coverage requirement {req_id} has empty name")
+        if not isinstance(evidence, list) or not evidence:
+            failures.append(f"compiler snapshot coverage requirement {req_id} has no evidence")
+            evidence = []
+        missing: list[str] = []
+        for entry in evidence:
+            if not isinstance(entry, str) or not entry:
+                missing.append(str(entry))
+                continue
+            if not (ROOT / entry).is_file():
+                missing.append(entry)
+        if missing:
+            failures.append(f"compiler snapshot coverage requirement {req_id} missing evidence: {', '.join(missing)}")
+        rows.append({"id": req_id, "name": name, "evidence": evidence, "missing": missing})
+    missing_ids = sorted(set(range(1, 17)) - seen)
+    if missing_ids:
+        failures.append(f"compiler snapshot coverage missing requirement ids: {missing_ids}")
+    return sorted(rows, key=lambda row: row["id"])
 
 
 def validate_positive(failures: list[str], results: list[dict[str, Any]]) -> None:
@@ -177,7 +241,7 @@ def validate_ir_mir_object(failures: list[str], results: list[dict[str, Any]], c
         same = left == right
         comparisons.append({"name": "object-sha256", "equal": same, "left_sha256": left, "right_sha256": right})
         require(same, failures, "compiler object hash is not reproducible")
-    require(snapshot("object.snap").startswith("{"), failures, "object snapshot missing")
+    require(object_snapshot() == snapshot("object.snap"), failures, "object snapshot drift")
 
 
 def validate_encoded_fixtures(failures: list[str], results: list[dict[str, Any]]) -> None:
@@ -229,7 +293,7 @@ def validate_minimal_fuzz(failures: list[str], results: list[dict[str, Any]]) ->
         require(result["exit_code"] == 0, failures, f"minimal compiler fuzz fixture failed: {rel(path)}")
 
 
-def write_reports(failures: list[str], results: list[dict[str, Any]], comparisons: list[dict[str, Any]]) -> None:
+def write_reports(failures: list[str], results: list[dict[str, Any]], comparisons: list[dict[str, Any]], coverage: list[dict[str, Any]]) -> None:
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
     status = "fail" if failures else "pass"
     payload = {
@@ -237,6 +301,8 @@ def write_reports(failures: list[str], results: list[dict[str, Any]], comparison
         "status": status,
         "fixtures": rel(FIXTURES),
         "snapshots": rel(SNAPS),
+        "coverage_manifest": rel(COVERAGE),
+        "coverage": coverage,
         "commands": results,
         "comparisons": comparisons,
         "failures": failures,
@@ -248,6 +314,7 @@ def write_reports(failures: list[str], results: list[dict[str, Any]], comparison
         f"- status: {status}",
         f"- commands: {len(results)}",
         f"- comparisons: {len(comparisons)}",
+        f"- coverage requirements: {len(coverage)}/16",
     ]
     if failures:
         lines.append("")
@@ -260,6 +327,7 @@ def main() -> int:
     failures: list[str] = []
     results: list[dict[str, Any]] = []
     comparisons: list[dict[str, Any]] = []
+    coverage = validate_coverage_manifest(failures)
     if not BIN.is_file():
         failures.append("missing target/release/vitte")
     else:
@@ -269,7 +337,7 @@ def main() -> int:
         validate_encoded_fixtures(failures, results)
         validate_minimal_fuzz(failures, results)
         validate_ir_mir_object(failures, results, comparisons)
-    write_reports(failures, results, comparisons)
+    write_reports(failures, results, comparisons, coverage)
     if failures:
         print("[compiler-snapshot-gate][error] gate failed", file=sys.stderr)
         for failure in failures:
