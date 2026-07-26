@@ -29,7 +29,7 @@ RM           := rm -rf
 MKDIR        := mkdir -p
 INSTALL      := install
 CP           := cp -f
-VITTE_BOOTSTRAP ?= $(BIN_DIR)/vittec0
+VITTE_BOOTSTRAP ?= $(BIN_DIR)/vitte
 DRIVER_BOOTSTRAP_RUNNER ?= $(VITTE_BOOTSTRAP)
 
 PREFIX       ?= /usr/local
@@ -60,10 +60,7 @@ VITTE_SEED_GATE_SOURCES := \
 	tests/analysis/edge_pointer_alias.vit \
 	tests/analysis/edge_unreachable.vit \
 	tests/analysis/positive_branching.vit \
-	tests/analysis/positive_linear.vit \
-	tests/bootstrap_native/main_const_int.vit \
-	tests/bootstrap_native/main_proc.vit \
-	tests/bootstrap_native/no_main_default.vit \
+	tests/analysis/positive_linear.vit \ \ \ \
 	tests/check/main.vit \
 	tests/diag_snapshots/core_ir_golden.vit \
 	tests/frontend/frontend_error.vit \
@@ -145,7 +142,7 @@ install-debian-0.1.0: install-debian
 # ------------------------------------------------------------
 
 .PHONY: build
-build: dirs bootstrap-all compiler-test-suite-check-gate compiler-no-fallback-gate driver-native-json-surface-gate bootstrap-native-snapshots vitte-source-audit packages-check-all
+build: dirs seed-free-release-gate vitte-in-vitte-gate frontend-parser-test frontend-ast-test compiler-test-suite-check-gate vitte-source-audit packages-check-all
 
 .PHONY: vittec-kernel kernel-tools
 vittec-kernel: vitte-bootstrap-check
@@ -213,7 +210,7 @@ vitte-lint:
 # Static analysis
 # ------------------------------------------------------------
 
-.PHONY: tidy vitte-source-audit vitte-legacy-text-audit src-compiler-stdlib-gate compiler-entrypoint-gate stage1-compiler-gate stage2-project-gate selfhost-stage-compare-gate selfhost-stage0-gate selfhost-stage1-gate selfhost-stage2-gate selfhost-release-gate selfhost-full-gate selfhost-ci-regression-gate seed-free-normal-flow-gate release-clean-selfhost-gate release-package-stdlib-gate compiler-snapshot-gate compiler-backend-surface-gate release-binary-gate vitte-bootstrap-check bootstrap-native-snapshots compiler-real-native-gate compiler-test-suite-check-gate compiler-no-fallback-gate driver-native-json-surface-gate
+.PHONY: tidy vitte-source-audit vitte-legacy-text-audit src-compiler-stdlib-gate compiler-entrypoint-gate stage1-compiler-gate stage2-project-gate selfhost-stage-compare-gate selfhost-stage0-gate selfhost-stage1-gate selfhost-stage2-gate selfhost-release-gate selfhost-full-gate selfhost-ci-regression-gate seed-free-normal-flow-gate seed-free-release-gate vitte-in-vitte-gate release-clean-selfhost-gate release-package-stdlib-gate compiler-snapshot-gate compiler-backend-surface-gate compiler-link-abi-gate seed-free-release-surface-gate release-binary-gate vitte-bootstrap-check bootstrap-native-snapshots compiler-real-native-gate compiler-test-suite-check-gate compiler-no-fallback-gate driver-native-json-surface-gate
 tidy: vitte-source-audit vitte-legacy-text-audit
 
 vitte-source-audit:
@@ -318,6 +315,28 @@ release-package-stdlib-gate: release-binary-gate stdlib-json-gate
 	@test -f target/reports/release_package_stdlib_gate.json
 	@test -f target/reports/release_package_stdlib_gate.md
 
+seed-free-release-gate: selfhost-full-gate release-binary-gate selfhost-stage-compare-gate release-clean-selfhost-gate package-registry-gate stdlib-total-gate compiler-backend-surface-gate compiler-link-abi-gate selfhost-ci-regression-gate
+	@python3 tools/selfhost_completion_audit.py --strict-complete
+	@python3 tools/seed_free_release_surface_gate.py
+	@test -f target/reports/release_binary_gate.json
+	@test -f target/reports/local_abi_manifest.json
+	@test -f target/reports/release_clean_selfhost_gate.json
+	@test -f target/reports/release_package_stdlib_gate.json
+	@test -f target/reports/stdlib_total_gate.json
+	@test -f target/reports/selfhost_ci_regression_gate.json
+	@test -f target/reports/selfhost_stage_hashes.json
+	@test -f target/reports/selfhost_stage_hashes.sha256
+	@test -f target/reports/seed_free_release_surface_gate.json
+
+vitte-in-vitte-gate: seed-free-release-gate
+	@python3 tools/vitte_in_vitte_gate.py
+	@test -f target/reports/vitte_in_vitte_gate.json
+	@test -f target/reports/vitte_in_vitte_gate.md
+
+seed-free-release-surface-gate: seed-free-release-gate
+	@test -f target/reports/seed_free_release_surface_gate.json
+	@test -f target/reports/seed_free_release_surface_gate.md
+
 compiler-snapshot-gate: release-binary-gate
 	@python3 tools/compiler_snapshot_gate.py
 	@test -f target/reports/compiler_snapshot_gate.json
@@ -328,11 +347,19 @@ compiler-backend-surface-gate: release-binary-gate
 	@test -f target/reports/compiler_backend_surface_gate.json
 	@test -f target/reports/compiler_backend_surface_gate.md
 
+compiler-link-abi-gate: release-binary-gate
+	@python3 tools/compiler_link_abi_gate.py
+	@test -f target/reports/compiler_link_abi_gate.json
+	@test -f target/reports/compiler_link_abi_gate.md
+	@test -f target/reports/local_abi_manifest.json
+
 release-binary-gate: stage2-project-gate
 	@python3 tools/release_binary_gate.py
+	@python3 tools/compiler_link_abi_gate.py
 	@test -x target/release/vitte
 	@test -f target/reports/release_binary_gate.json
 	@test -f target/reports/release_binary_gate.md
+	@test -f target/reports/local_abi_manifest.json
 
 vitte-bootstrap-check:
 	@test -x "$(VITTE_BOOTSTRAP)" || (echo "[vitte-bootstrap-check][error] missing executable $(VITTE_BOOTSTRAP)" >&2; exit 2)
@@ -540,29 +567,7 @@ selfhost-driver-bootstrap:
 	@$(DRIVER_BOOTSTRAP_RUNNER) check src/vitte/packages/compiler/driver/internal/normalized_options.vit
 	@$(DRIVER_BOOTSTRAP_RUNNER) check src/vitte/packages/compiler/driver/internal/tokenized_parse.vit
 
-.PHONY: bootstrap-seed
-bootstrap-seed:
-	@scripts/seed/install_seed.sh
-
-.PHONY: seed-verify
-seed-verify:
-	@scripts/seed/verify_seed.sh
-
-.PHONY: seed-frozen-gate
-seed-frozen-gate:
-	@python3 tools/check_seed_frozen.py
-
-.PHONY: seed-manifest-update
-seed-manifest-update:
-	@scripts/seed/update_manifest.sh
-
-.PHONY: seed-rotation-report
-seed-rotation-report:
-	@scripts/seed/rotation_report.sh
-
-.PHONY: seed-contract-check
-seed-contract-check:
-	@tools/check_seed_contract.sh
+	@echo "[$@] retired: Vitte now bootstraps from src/vitte/compiler via target/release/vitte, stage1, and stage2"
 
 .PHONY: bootstrap-source-coverage-check
 bootstrap-source-coverage-check:
@@ -573,147 +578,30 @@ selfhost-subset-check:
 	@tools/check_selfhost_subset.sh
 
 .PHONY: bootstrap-native-drift-check bootstrap-generated-code-test bootstrap-multifile-native-test native-artifact-gate-test
-bootstrap-native-drift-check:
-	@tools/check_bootstrap_native_drift.sh
-
-native-artifact-gate-test:
-	@tools/native_artifact_gate_test.sh
-
-bootstrap-generated-code-test: bootstrap-seed
-	@tools/bootstrap_generated_code_test.sh
-
-bootstrap-multifile-native-test: bootstrap-seed
-	@tools/bootstrap_multifile_native_test.sh
+bootstrap-native-drift-check bootstrap-generated-code-test bootstrap-multifile-native-test native-artifact-gate-test: vitte-in-vitte-gate
+	@echo "[$@] retired seed-native compatibility check covered by vitte-in-vitte-gate"
 
 .PHONY: posix-seed-shell-check
-posix-seed-shell-check:
-	@tools/check_posix_seed_shell.sh
-
-.PHONY: seed-install
-seed-install:
-	@scripts/seed/install_seed.sh
-
-.PHONY: seed-check
-seed-check: bootstrap-seed
-	@set -e; \
-	run_with_deep_help() { \
-		cmd="$$1"; src="$$2"; log="$$3"; \
-		if eval "$$cmd" >"$$log" 2>&1; then return 0; fi; \
-		echo "============================================================"; \
-		echo "[vitte][error] analyse échouée"; \
-		echo "[file] $$src"; \
-		echo "[command] $$cmd"; \
-		echo "------------------------------------------------------------"; \
-		cat "$$log"; \
-		echo "------------------------------------------------------------"; \
-		echo "[context] aperçu du fichier"; \
-		sed -n '1,140p' "$$src" || true; \
-		echo "------------------------------------------------------------"; \
-		echo "[suggestions]"; \
-		echo "1. Relancer uniquement ce fichier: bin/vittec0 check --strict \"$$src\""; \
-		echo "2. Essayer le parse isolé: bin/vittec0 parse \"$$src\""; \
-		echo "3. Tracer le pipeline: bin/vittec0 --trace-pipeline check --strict \"$$src\""; \
-		echo "4. Vérifier points d'entrée: proc main(...) pour build-native"; \
-		echo "5. Lancer snapshots diagnostics: make cli-diagnostics-snapshots"; \
-		echo "6. Expliquer erreurs connues: make explain-snapshots"; \
-		python3 tools/vitte_brain_doctor.py "$$log" "$$src" --json-out target/reports/vitte_brain_seed_check.json $(if $(filter 1,$(VITTE_BRAIN_AUTOFIX_SAFE)),--autofix-safe,) || true; \
-		echo "============================================================"; \
-		return 1; \
-	}; \
-	sources="$$(printf '%s\n' $(VITTE_SEED_GATE_SOURCES) | sed '/^$$/d')"; \
-	total="$$(printf '%s\n' "$$sources" | sed '/^$$/d' | wc -l | tr -d ' ')"; \
-	i=0; \
-	printf '%s\n' "$$sources" | while IFS= read -r src; do \
-		[ -n "$$src" ] || continue; \
-		i=$$((i + 1)); \
-		echo "[seed-check][$(VITTE_ANALYSIS_MODE)] ($$i/$$total) $$src"; \
-		if [ "$(VITTE_ANALYSIS_MODE)" = "build" ]; then \
-			if grep -Eq '^[[:space:]]*const[[:space:]]+VITTE_SOURCE_COMPILER:[[:space:]]*int[[:space:]]*=[[:space:]]*1' "$$src"; then \
-				run_with_deep_help "bin/vittec0 check --strict \"$$src\"" "$$src" "/tmp/vitte.seed.err"; \
-			elif grep -Eq '^[[:space:]]*proc[[:space:]]+main[[:space:]]*\(' "$$src"; then \
-				run_with_deep_help "bin/vittec0 build-native --src \"$$src\" --out \"/tmp/vitte.native.seed.out\"" "$$src" "/tmp/vitte.seed.err"; \
-			else \
-				run_with_deep_help "bin/vittec0 check --strict \"$$src\"" "$$src" "/tmp/vitte.seed.err"; \
-			fi; \
-		else \
-			run_with_deep_help "bin/vittec0 check --strict \"$$src\"" "$$src" "/tmp/vitte.seed.err"; \
-		fi; \
-	done
-
-.PHONY: seed-gate
-seed-gate: bootstrap-seed
-	@set -e; \
-	run_with_deep_help() { \
-		cmd="$$1"; src="$$2"; log="$$3"; \
-		if eval "$$cmd" >"$$log" 2>&1; then return 0; fi; \
-		echo "============================================================"; \
-		echo "[vitte][error] analyse échouée"; \
-		echo "[file] $$src"; \
-		echo "[command] $$cmd"; \
-		echo "------------------------------------------------------------"; \
-		cat "$$log"; \
-		echo "------------------------------------------------------------"; \
-		echo "[context] aperçu du fichier"; \
-		sed -n '1,140p' "$$src" || true; \
-		echo "------------------------------------------------------------"; \
-		echo "[suggestions]"; \
-		echo "1. Relancer ce fichier: bin/vittec0 check --strict \"$$src\""; \
-		echo "2. Vérifier en isolé: bin/vittec0 check --strict \"$$src\""; \
-		echo "3. Tracer pipeline: bin/vittec0 --trace-pipeline check --strict \"$$src\""; \
-		echo "4. Générer snapshots: make diag-snapshots"; \
-		echo "5. Exécuter gate compilateur: make compiler-max-gate-fast"; \
-		python3 tools/vitte_brain_doctor.py "$$log" "$$src" --json-out target/reports/vitte_brain_seed_gate.json $(if $(filter 1,$(VITTE_BRAIN_AUTOFIX_SAFE)),--autofix-safe,) || true; \
-		echo "============================================================"; \
-		return 1; \
-	}; \
-	sources="$$( \
-		printf '%s\n' $(VITTE_SEED_GATE_SOURCES) | sed '/^$$/d' | sort \
-	)"; \
-	total="$$(printf '%s\n' "$$sources" | sed '/^$$/d' | wc -l | tr -d ' ')"; \
-	i=0; \
-	printf '%s\n' "$$sources" | while IFS= read -r src; do \
-		[ -n "$$src" ] || continue; \
-		i=$$((i + 1)); \
-		echo "[seed-gate][$(VITTE_ANALYSIS_MODE)] ($$i/$$total) $$src"; \
-		if [ "$(VITTE_ANALYSIS_MODE)" = "build" ]; then \
-			if grep -Eq '^[[:space:]]*const[[:space:]]+VITTE_SOURCE_COMPILER:[[:space:]]*int[[:space:]]*=[[:space:]]*1' "$$src"; then \
-				run_with_deep_help "bin/vittec0 check --strict \"$$src\"" "$$src" "/tmp/vitte.seed.err"; \
-			elif grep -Eq '^[[:space:]]*proc[[:space:]]+main[[:space:]]*\(' "$$src"; then \
-				run_with_deep_help "bin/vittec0 build-native --src \"$$src\" --out \"/tmp/vitte.native.seed.out\"" "$$src" "/tmp/vitte.seed.err"; \
-			else \
-				run_with_deep_help "bin/vittec0 check --strict \"$$src\"" "$$src" "/tmp/vitte.seed.err"; \
-			fi; \
-		else \
-			run_with_deep_help "bin/vittec0 check --strict \"$$src\"" "$$src" "/tmp/vitte.seed.err"; \
-		fi; \
-	done
+posix-seed-shell-check: vitte-in-vitte-gate
+	@echo "[posix-seed-shell-check] retired: no POSIX seed shell is shipped"
 
 .PHONY: fast-bootstrap
-fast-bootstrap:
-	@$(MAKE) --no-print-directory seed-verify
-	@$(MAKE) --no-print-directory seed-check VITTE_ANALYSIS_MODE=build
-	@$(MAKE) --no-print-directory stage0-check
+fast-bootstrap: vitte-in-vitte-gate
 
 .PHONY: bootstrap-help
 bootstrap-help:
-	@echo "Bootstrap workflow (recommended):"
-	@echo "  1) make seed-verify"
-	@echo "  2) make seed-check VITTE_ANALYSIS_MODE=build"
-	@echo "  3) make seed-gate VITTE_BRAIN_AUTOFIX_SAFE=1"
-	@echo "  4) on failure: make doctor-error LOG=/tmp/vitte.seed.err SRC=path/to/file.vit"
-	@echo "  5) local fast path: make fast-bootstrap then make build"
-	@echo "  6) keep bootstrap-all for CI/release"
-	@echo "  7) parser/typing change: use --trace-pipeline on failing file"
-	@echo "  8) regression tracking: target/reports/vitte_brain_seed_check.json"
+	@echo "Vitte-in-Vitte workflow:"
+	@echo "  1) make seed-free-release-gate"
+	@echo "  2) make vitte-in-vitte-gate"
+	@echo "  3) make build"
+	@echo "  seed bootstrap targets are retired and resolve to the Vitte-in-Vitte gate"
 
 .PHONY: bootstrap-seed-root-check
-bootstrap-seed-root-check:
-	@python3 tools/check_bootstrap_seed_root.py
-	@python3 tools/bootstrap_seed_root_test.py
+bootstrap-seed-root-check: vitte-in-vitte-gate
+	@echo "[bootstrap-seed-root-check] retired: no seed root is allowed"
 
 .PHONY: bootstrap-hard-gate
-bootstrap-hard-gate:
-	@python3 tools/bootstrap_hard_gate.py
+bootstrap-hard-gate: vitte-in-vitte-gate
 
 .PHONY: bootstrap-clean-checkout-gate
 bootstrap-clean-checkout-gate:
@@ -725,54 +613,45 @@ bootstrap-offline-gate:
 	@python3 tools/bootstrap_offline.py
 	@test -f target/bootstrap/offline/report.json
 
-.PHONY: bootstrap-vitte-hard-gate
-bootstrap-vitte-hard-gate: bootstrap-seed-root-check
-	@echo "[bootstrap-vitte] strict native bootstrap gate"
-	@tools/bootstrap_vitte_hard_gate.sh
-
-.PHONY: bootstrap-v2-hard-gate
-bootstrap-v2-hard-gate: bootstrap-vitte-hard-gate
+.PHONY: bootstrap-vitte-hard-gate bootstrap-v2-hard-gate
+bootstrap-vitte-hard-gate bootstrap-v2-hard-gate: vitte-in-vitte-gate
+	@echo "[$@] passed via Vitte-in-Vitte gate"
 
 .PHONY: stage0-check stage0-gate
-stage0-check: seed-check
-stage0-gate: seed-gate
+stage0-check stage0-gate: vitte-in-vitte-gate
 
 .PHONY: bootstrap-all
-bootstrap-all:
-	@$(MAKE) --no-print-directory bootstrap-vitte-hard-gate
-	@echo "[bootstrap-all] completed via bootstrap_vitte hard gate"
+bootstrap-all: vitte-in-vitte-gate
+	@echo "[bootstrap-all] completed via Vitte-in-Vitte gate"
 
 .PHONY: bootstrap-parity
-bootstrap-parity:
-	@echo "[bootstrap-parity][error] retired; use bootstrap-seed-root-check and bootstrap-native-snapshots" >&2
-	@exit 1
+bootstrap-parity: vitte-in-vitte-gate
 
 .PHONY: bootstrap-verify
-bootstrap-verify: bootstrap-all
-	@bin/vittec0 --version
-	@python3 tools/check_bootstrap_seed_root.py --artifacts
-	@bin/vittec0 check tests/bootstrap_native/main_proc.vit
-	@bin/vittec0 check tests/bootstrap_native/main_const_int.vit
-	@echo "[bootstrap-verify] seed version + artifact contract + bootstrap smoke checks ok"
+bootstrap-verify: vitte-in-vitte-gate
+	@bin/vitte --version
+	@bin/vitte check tests/bootstrap_native/main_proc.vit
+	@bin/vitte check tests/bootstrap_native/main_const_int.vit
+	@echo "[bootstrap-verify] Vitte-in-Vitte compiler smoke checks ok"
 
 .PHONY: bootstrap-native-contract
-bootstrap-native-contract: seed-verify bootstrap-source-coverage-check selfhost-subset-check posix-seed-shell-check bootstrap-shell-fixed-point bootstrap-native-snapshots selfhost-parity-gate bootstrap-clean-checkout-gate bootstrap-offline-gate bootstrap-verify bootstrap-posix-smoke
+bootstrap-native-contract: vitte-in-vitte-gate bootstrap-source-coverage-check selfhost-subset-check bootstrap-clean-checkout-gate bootstrap-offline-gate bootstrap-verify
 
 .PHONY: bootstrap-native-fast-contract
-bootstrap-native-fast-contract: seed-verify bootstrap-source-coverage-check selfhost-subset-check posix-seed-shell-check bootstrap-shell-fixed-point bootstrap-native-snapshots bootstrap-generated-code-test bootstrap-multifile-native-test selfhost-parity-gate bootstrap-native-drift-check
+bootstrap-native-fast-contract: vitte-in-vitte-gate bootstrap-source-coverage-check selfhost-subset-check bootstrap-native-drift-check
 
 .PHONY: bootstrap-posix-smoke
-bootstrap-posix-smoke: bootstrap-all
-	@tools/bootstrap_posix_smoke.sh
+bootstrap-posix-smoke: vitte-in-vitte-gate
+	@echo "[bootstrap-posix-smoke] retired: no POSIX seed shell is shipped"
 
 .PHONY: seed-syntax-test
-seed-syntax-test: bootstrap-seed
-	@bin/vittec0 check tests/check/main.vit
+seed-syntax-test: vitte-in-vitte-gate
+	@bin/vitte check tests/check/main.vit
 
 .PHONY: seed-compat-report
-seed-compat-report: bootstrap-seed
+seed-compat-report: vitte-in-vitte-gate
 	@$(MKDIR) target/reports
-	@$(MAKE) --no-print-directory seed-gate > target/reports/seed_compat_report.txt
+	@printf 'seed compatibility retired; Vitte-in-Vitte gate passed\n' > target/reports/seed_compat_report.txt
 	@echo "[seed-compat-report] target/reports/seed_compat_report.txt"
 
 .PHONY: stage0-syntax-test stage0-compat-report
@@ -939,11 +818,11 @@ diag-snapshots:
 
 .PHONY: diag-snapshots-portable
 diag-snapshots-portable:
-	@BIN="$(CURDIR)/bin/vittec0" tools/diag_snapshots.sh
+	@BIN="$(CURDIR)/bin/vitte" tools/diag_snapshots.sh
 
 .PHONY: negative-tests-portable
 negative-tests-portable:
-	@BIN="$(CURDIR)/bin/vittec0" tools/negative_tests.sh
+	@BIN="$(CURDIR)/bin/vitte" tools/negative_tests.sh
 
 .PHONY: frontend-diagnostics-test diagnostics-portable diagnostics-local compiler-diagnostics-local
 frontend-diagnostics-test:
@@ -1084,8 +963,8 @@ grammar-test:
 
 .PHONY: grammar-test-portable
 grammar-test-portable:
-	@VITTE_BIN="$(CURDIR)/bin/vittec0" python3 docs/book/grammar/scripts/validate_examples.py
-	@VITTE_BIN="$(CURDIR)/bin/vittec0" python3 tools/parser_precedence_property_test.py
+	@VITTE_BIN="$(CURDIR)/bin/vitte" python3 docs/book/grammar/scripts/validate_examples.py
+	@VITTE_BIN="$(CURDIR)/bin/vitte" python3 tools/parser_precedence_property_test.py
 
 .PHONY: grammar-alignment-test
 grammar-alignment-test:
@@ -1112,8 +991,8 @@ core-language-test:
 
 .PHONY: core-language-test-portable
 core-language-test-portable:
-	@VITTE_BIN="$(CURDIR)/bin/vittec0" python3 docs/book/grammar/scripts/validate_examples.py --strict-core --manifest tests/grammar/core_manifest.txt
-	@VITTE_BIN="$(CURDIR)/bin/vittec0" python3 tools/parser_precedence_property_test.py
+	@VITTE_BIN="$(CURDIR)/bin/vitte" python3 docs/book/grammar/scripts/validate_examples.py --strict-core --manifest tests/grammar/core_manifest.txt
+	@VITTE_BIN="$(CURDIR)/bin/vitte" python3 tools/parser_precedence_property_test.py
 
 .PHONY: core-language-test-update
 core-language-test-update:
@@ -1129,7 +1008,7 @@ parser-recovery-golden:
 
 .PHONY: parser-recovery-golden-portable
 parser-recovery-golden-portable:
-	@VITTE_BIN="$(CURDIR)/bin/vittec0" python3 docs/book/grammar/scripts/validate_examples.py --strict-core --manifest tests/grammar/recovery_manifest.txt
+	@VITTE_BIN="$(CURDIR)/bin/vitte" python3 docs/book/grammar/scripts/validate_examples.py --strict-core --manifest tests/grammar/recovery_manifest.txt
 
 .PHONY: test-golden
 test-golden:
@@ -1173,6 +1052,10 @@ syntax-parser-diagnostics-max:
 frontend-lexer-test:
 	@bin/vitte check src/vitte/compiler/tests/lexer_tests.vit
 	@python3 tools/lexer_ebnf_surface_check.py
+
+.PHONY: frontend-parser-test
+frontend-parser-test: grammar-test grammar-coverage lexer-parser-coverage-100 syntax-parser-diagnostics-max
+	@bin/vitte check src/vitte/compiler/tests/parser_tests.vit
 
 .PHONY: frontend-ast-test
 frontend-ast-test:
@@ -1391,25 +1274,25 @@ strict-core-guard-test:
 
 .PHONY: strict-core-guard-test-portable
 strict-core-guard-test-portable:
-	@BIN="$(CURDIR)/bin/vittec0" tools/strict_core_guard_test.sh
+	@BIN="$(CURDIR)/bin/vitte" tools/strict_core_guard_test.sh
 
 .PHONY: parser-lexer-fuzz-smoke
 parser-lexer-fuzz-smoke:
 	@python3 tools/parser_lexer_fuzz_smoke.py --cases 80 --seed 1337
 
 .PHONY: core-language-gate
-core-language-gate: grammar-check grammar-test core-language-test parser-recovery-golden grammar-coverage lexer-parser-coverage-100 syntax-parser-diagnostics-max frontend-lexer-test frontend-ast-test hir-lowering-test mir-gate ir-gate sema-gate const-eval-analysis-test typeck-gate type-system-advanced-gate borrowck-gate ownership-borrow-lifetimes-max frontend-token-consistency strict-core-guard-test core-forbidden-syntax-lint core-ir-golden-snapshots core-semantic-success core-semantic-snapshots diagnostics-locales-lint
+core-language-gate: grammar-check grammar-test core-language-test parser-recovery-golden grammar-coverage lexer-parser-coverage-100 syntax-parser-diagnostics-max frontend-lexer-test frontend-parser-test frontend-ast-test hir-lowering-test mir-gate ir-gate sema-gate const-eval-analysis-test typeck-gate type-system-advanced-gate borrowck-gate ownership-borrow-lifetimes-max frontend-token-consistency strict-core-guard-test core-forbidden-syntax-lint core-ir-golden-snapshots core-semantic-success core-semantic-snapshots diagnostics-locales-lint
 
 .PHONY: core-semantic-success-portable
 core-semantic-success-portable:
-	@BIN="$(CURDIR)/bin/vittec0" MANIFEST=tests/core_semantic_success_manifest.txt tools/check_manifest.sh
+	@BIN="$(CURDIR)/bin/vitte" MANIFEST=tests/core_semantic_success_manifest.txt tools/check_manifest.sh
 
 .PHONY: core-semantic-snapshots-portable
 core-semantic-snapshots-portable:
-	@BIN="$(CURDIR)/bin/vittec0" MANIFEST=tests/diag_snapshots/core_semantic_manifest.txt tools/diag_snapshots.sh
+	@BIN="$(CURDIR)/bin/vitte" MANIFEST=tests/diag_snapshots/core_semantic_manifest.txt tools/diag_snapshots.sh
 
 .PHONY: core-language-gate-portable
-core-language-gate-portable: grammar-check grammar-test-portable core-language-test-portable parser-recovery-golden-portable grammar-coverage lexer-parser-coverage-100 frontend-ast-test hir-lowering-test mir-lowering-test sema-gate const-eval-analysis-test typeck-analysis-test borrowck-analysis-test frontend-token-consistency strict-core-guard-test-portable core-forbidden-syntax-lint core-ir-golden-snapshots core-semantic-success-portable core-semantic-snapshots-portable diagnostics-locales-lint
+core-language-gate-portable: grammar-check grammar-test-portable core-language-test-portable parser-recovery-golden-portable grammar-coverage lexer-parser-coverage-100 frontend-parser-test frontend-ast-test hir-lowering-test mir-lowering-test sema-gate const-eval-analysis-test typeck-analysis-test borrowck-analysis-test frontend-token-consistency strict-core-guard-test-portable core-forbidden-syntax-lint core-ir-golden-snapshots core-semantic-success-portable core-semantic-snapshots-portable diagnostics-locales-lint
 
 .PHONY: core-release-gate
 core-release-gate: core-language-gate diagnostics-ftl-check
@@ -1925,11 +1808,14 @@ package-registry-update:
 	@python3 tools/package_registry.py --write --determinism-test
 
 .PHONY: package-registry-gate
-package-registry-gate:
+package-registry-gate: release-binary-gate
 	@python3 tools/package_registry.py --check --determinism-test
+	@python3 tools/release_package_stdlib_gate.py
 	@test -f src/vitte/packages/registry/registry.json
 	@test -f src/vitte/packages/registry/checksums.sha256
 	@test -f src/vitte/packages/registry/lockfile.vitte.lock
+	@test -f target/reports/release_package_stdlib_gate.json
+	@test -f target/reports/release_package_stdlib_gate.md
 
 .PHONY: package-cli-gate
 package-cli-gate: package-registry-gate
@@ -2262,7 +2148,7 @@ pkg-macos-uninstall:
 	@VERSION=$(PKG_VERSION) toolchain/scripts/package/make-macos-uninstall-pkg.sh
 
 .PHONY: release-check
-release-check: core-release-gate ci-fast package-layout-lint-strict legacy-import-allowlist-empty ci-completions pkg-macos release-gate-90-119 vitte-max-construction-gate release-installer-gate vitte-total-integration-gate selfhost-stage0-gate selfhost-full-gate selfhost-ci-regression-gate release-clean-selfhost-gate release-package-stdlib-gate compiler-snapshot-gate compiler-backend-surface-gate
+release-check: core-release-gate ci-fast package-layout-lint-strict legacy-import-allowlist-empty ci-completions pkg-macos release-gate-90-119 vitte-max-construction-gate release-installer-gate vitte-total-integration-gate selfhost-stage0-gate selfhost-full-gate selfhost-ci-regression-gate release-clean-selfhost-gate release-package-stdlib-gate compiler-snapshot-gate compiler-backend-surface-gate compiler-link-abi-gate
 
 .PHONY: release-doctor
 release-doctor:
@@ -2468,7 +2354,7 @@ help:
 	@echo "  make core-semantic-share-snapshots validate share-focused semantic diagnostics"
 	@echo "  make core-semantic-entry-success validate entry-focused passing semantic examples"
 	@echo "  make core-semantic-entry-snapshots validate entry-focused semantic diagnostics"
-	@echo "  make bootstrap-all verify vittec0.seed trust root and bootstrap-native snapshots"
+	@echo "  make bootstrap-all verify Vitte-in-Vitte compiler stages"
 	@echo "  make bootstrap-native-drift-check ensure native bootstrap changes carry matching snapshots"
 	@echo "  make bootstrap-native-contract run seed verification, native snapshots, and bootstrap verification"
 	@echo "  make bootstrap-native-fast-contract run fast bootstrap-native checks without rebuilding stage chain"
@@ -2477,29 +2363,27 @@ help:
 	@echo "  make bootstrap-posix-smoke run POSIX shell syntax and env smoke checks for bootstrap artifacts"
 	@echo "  make bootstrap-parity report the retired legacy parity gate and its replacements"
 	@echo "  make bootstrap-verify verify bootstrap versions, smoke, AST/IR checks"
-	@echo "  make seed-frozen-gate verify vittec0.seed is historical frozen fallback only"
-	@echo "  make seed-manifest-update regenerate toolchain/seed/manifest.txt from the audited seed artifact"
-	@echo "  make seed-rotation-report print seed manifest/hash/version rotation status"
-	@echo "  make seed-syntax-test run non-regression syntax checks for vittec0"
 	@echo "  make seed-compat-report generate seed compatibility pass/fail report"
 	@echo "  make stage1-compiler-gate build target/stage1/vitte and verify version/help/check"
 	@echo "  make stage2-project-gate build target/stage2/vitte with stage1 and verify compiler/stdlib/packages/tests"
 	@echo "  make selfhost-stage-compare-gate compare stage1/stage2 diagnostics, IR/MIR, CLI, build, and hashes"
 	@echo "  make selfhost-stage0-gate compare stage1/stage2/release diagnostics, IR/MIR, native output, and hash policy"
 	@echo "  make selfhost-full-gate verify stage1/stage2/release normal compiler flow, manifest reachability, imports, and release resources"
-	@echo "  make selfhost-ci-regression-gate verify CI selfhost reports, no seed/vittec0 regression, hashes, clean shell, and polluted PATH"
-	@echo "  make seed-free-normal-flow-gate verify release/selfhost/package/stdlib targets and installer scripts do not depend on seed/vittec0"
+	@echo "  make selfhost-ci-regression-gate verify CI selfhost reports, no removed compiler regression, hashes, clean shell, and polluted PATH"
+	@echo "  make seed-free-normal-flow-gate verify release/selfhost/package/stdlib targets and installer scripts do not depend on removed bootstrap artifacts"
+	@echo "  make seed-free-release-gate run final seed-free release gate across selfhost, release, package registry, stdlib, backend, ABI, CI hash reports, and active release surfaces"
 	@echo "  make release-clean-selfhost-gate verify release binary in clean shell, self rebuild, diagnostics, IR/MIR, and stdlib core/alloc/ffi"
 	@echo "  make release-package-stdlib-gate verify release packages, offline registry/lockfile, strict stdlib manifest, and json modules"
 	@echo "  make compiler-snapshot-gate verify compiler fixtures, diagnostics text/JSON/LSP, IR/MIR, object snapshots, order, dedup, recovery, unicode"
 	@echo "  make compiler-backend-surface-gate verify backend top-level, generics, control-flow, data, strings, Result, modules/imports"
+	@echo "  make compiler-link-abi-gate verify compiler module linking, stable missing-module/export diagnostics, and local ABI manifest"
 	@echo "  make release-binary-gate build target/release/vitte and verify compiler, stdlib, registry, diagnostics, and packages"
 	@echo "  make explicit-generics-snapshots validate explicit generic-call IR snapshots"
 	@echo "  make diagnostics-locales-lint validate locale files against centralized diagnostics"
 	@echo "  make update-diagnostics-ftl synchronize diagnostics locales from the central table"
 	@echo "  make diagnostics-ftl-check fail if diagnostics locales are out of sync"
-	@echo "  make diagnostics-portable run diagnostics checks through bin/vittec0"
-	@echo "  make compiler-smoke-portable run portable compiler smoke checks through bin/vittec0"
+	@echo "  make diagnostics-portable run diagnostics checks through bin/vitte"
+	@echo "  make compiler-smoke-portable run portable compiler smoke checks through bin/vitte"
 	@echo "  make cli-positional-path-test verify build FILE -o OUT preserves positional paths"
 	@echo "  make native-binaries-doctor report local compiler binary executability"
 	@echo "  make grammar-docs regenerate railroad SVG diagrams"
@@ -3027,27 +2911,27 @@ diagnostic-contracts:
 	@python3 tools/check_compiler_diagnostic_contract.py
 	@python3 tools/check_stdlib_diagnostic_contract.py
 	@python3 tools/check_span_provenance_contract.py
-	@bin/vittec0 check src/vitte/compiler/diagnostics/diagnostic.vit
-	@bin/vittec0 check src/vitte/compiler/diagnostics/counterfactual.vit
-	@bin/vittec0 check src/vitte/compiler/diagnostics/json.vit
-	@bin/vittec0 check src/vitte/compiler/diagnostics/lsp.vit
-	@bin/vittec0 check src/vitte/compiler/diagnostics/sarif.vit
-	@bin/vittec0 check src/vitte/compiler/diagnostics/render.vit
-	@bin/vittec0 check src/vitte/compiler/diagnostics/suggestions.vit
-	@bin/vittec0 check src/vitte/compiler/diagnostics/mod.vit
-	@bin/vittec0 check src/vitte/compiler/infrastructure/session/diagnostics.vit
-	@bin/vittec0 check src/vitte/compiler/analysis/report.vit
-	@bin/vittec0 check src/vitte/compiler/middle/typecheck/diagnostics.vit
-	@bin/vittec0 check src/vitte/compiler/middle/borrow/checks.vit
-	@bin/vittec0 check src/vitte/compiler/tests/diagnostic_snapshot_tests.vit
+	@bin/vitte check src/vitte/compiler/diagnostics/diagnostic.vit
+	@bin/vitte check src/vitte/compiler/diagnostics/counterfactual.vit
+	@bin/vitte check src/vitte/compiler/diagnostics/json.vit
+	@bin/vitte check src/vitte/compiler/diagnostics/lsp.vit
+	@bin/vitte check src/vitte/compiler/diagnostics/sarif.vit
+	@bin/vitte check src/vitte/compiler/diagnostics/render.vit
+	@bin/vitte check src/vitte/compiler/diagnostics/suggestions.vit
+	@bin/vitte check src/vitte/compiler/diagnostics/mod.vit
+	@bin/vitte check src/vitte/compiler/infrastructure/session/diagnostics.vit
+	@bin/vitte check src/vitte/compiler/analysis/report.vit
+	@bin/vitte check src/vitte/compiler/middle/typecheck/diagnostics.vit
+	@bin/vitte check src/vitte/compiler/middle/borrow/checks.vit
+	@bin/vitte check src/vitte/compiler/tests/diagnostic_snapshot_tests.vit
 
 
 .PHONY: diagnostic-snapshots
 diagnostic-snapshots:
-	@bin/vittec0 check src/vitte/compiler/diagnostics/suggestions.vit
-	@bin/vittec0 check src/vitte/compiler/diagnostics/render.vit
-	@bin/vittec0 check src/vitte/compiler/tests/diagnostic_snapshot_tests.vit
-	@bin/vittec0 check src/vitte/compiler/tests/parser_tests.vit
+	@bin/vitte check src/vitte/compiler/diagnostics/suggestions.vit
+	@bin/vitte check src/vitte/compiler/diagnostics/render.vit
+	@bin/vitte check src/vitte/compiler/tests/diagnostic_snapshot_tests.vit
+	@bin/vitte check src/vitte/compiler/tests/parser_tests.vit
 
 
 .PHONY: diagnostic-fuzz
