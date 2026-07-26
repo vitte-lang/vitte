@@ -4,7 +4,6 @@ set -eu
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
 TARGETS="
-toolchain/seed/src/main.vit
 src/vitte/compiler/main.vit
 "
 
