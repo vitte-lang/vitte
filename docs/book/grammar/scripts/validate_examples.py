@@ -22,18 +22,10 @@ class Diagnostic:
 
 
 def run_parse(vitte_bin: Path, file_path: Path, strict_core: bool = False) -> list[dict[str, object]]:
-    cmd = [
-        str(vitte_bin),
-        "parse",
-        "--parse-silent",
-        "--diag-json",
-        "--lang=en",
-    ]
-    if strict_core:
-        cmd.append("--strict-core")
-    cmd.append(str(file_path))
+    repo = Path(__file__).resolve().parents[4]
+    cmd = ["python3", "tools/frontend_syntax_check.py", "--json", str(file_path)]
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        proc = subprocess.run(cmd, cwd=repo, capture_output=True, text=True, check=False)
     except OSError as exc:
         return [
             {
@@ -42,9 +34,19 @@ def run_parse(vitte_bin: Path, file_path: Path, strict_core: bool = False) -> li
                 "start": 0,
             }
         ]
-    out = f"{proc.stdout}\n{proc.stderr}".strip()
+    out = proc.stdout.strip()
     if not out:
         return []
+
+    start = out.find("[")
+    if start >= 0:
+        try:
+            payload = json.loads(out[start:])
+        except json.JSONDecodeError:
+            payload = []
+        if isinstance(payload, list) and payload:
+            diags = payload[0].get("diagnostics", []) if isinstance(payload[0], dict) else []
+            return diags if isinstance(diags, list) else []
 
     start = out.find("{")
     if start < 0:
@@ -92,6 +94,9 @@ def normalize(file_path: Path, raw_diags: list[dict[str, object]]) -> list[Diagn
     for raw in raw_diags:
         code = str(raw.get("code", ""))
         message = str(raw.get("message", ""))
+        if "line" in raw and "column" in raw:
+            out.append(Diagnostic(code=code, message=message, line=int(raw.get("line", 1)), column=int(raw.get("column", 1))))
+            continue
         start = int(raw.get("start", 0))
         line, col = offset_to_line_col(text, start)
         out.append(Diagnostic(code=code, message=message, line=line, column=col))
