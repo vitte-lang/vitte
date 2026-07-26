@@ -76,6 +76,7 @@ print_compiler_help() {
     printf 'core commands:\n'
     printf '  check FILE        validate a source file\n'
     printf '  build FILE -o OUT build a native executable\n'
+    printf '  test FILE         check, build, and execute a source file\n'
     printf '  run FILE          build and run a source file\n'
     printf '  parse FILE        parse only\n'
     printf '  explain CODE      explain a diagnostic code\n'
@@ -5553,6 +5554,38 @@ case "$cmd" in
         run_rc=$?
         set -e
         rm -f "$tmp_bin"
+        exit "$run_rc"
+        ;;
+    test)
+        read_common_flags "$@"
+        src="$(arg_value --src "$@" || true)"
+        if [ -z "$src" ]; then src="$(first_file_arg "$@" || true)"; fi
+        if [ -z "$src" ]; then src="$(resolve_cli_input "$(arg_value --src "$@" || first_path_arg_after_command "$@" || true)" || true)"; fi
+        [ -n "$src" ] || { cli_error E_CLI_MISSING_ARG "test requires --src or file" "vitte test examples/hello.vit"; exit 2; }
+        [ -f "$src" ] || { cli_error E_CLI_IO "cannot read $src" "check the path and permissions"; exit 1; }
+        base_name="$(basename "$src" .vit)"
+        out="${VITTE_TEST_OUT:-target/test/$base_name}"
+        mkdir -p "$(dirname "$out")"
+        if ! run_check_diagnostics_only "$src" "text"; then
+            exit 1
+        fi
+        set +e
+        build_native_user_program "$src" "$out"
+        build_rc="$?"
+        set -e
+        if [ "$build_rc" -ne 0 ]; then
+            if [ "$build_rc" -eq 125 ]; then
+                delegate_generic_backend_build "$src" "$out"
+                build_rc="$?"
+            fi
+            [ "$build_rc" -eq 0 ] || exit "${build_rc:-3}"
+        fi
+        [ -x "$out" ] || { cli_error E_BUILD_OUTPUT "test build output is not executable: $out"; exit 1; }
+        set +e
+        "$out"
+        run_rc="$?"
+        set -e
+        printf 'test succeeded: %s\n' "$src"
         exit "$run_rc"
         ;;
     dump-tokens)

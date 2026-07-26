@@ -15,6 +15,8 @@ STAGE2 = ROOT / "target/stage2/vitte"
 RELEASE = ROOT / "target/release/vitte"
 ENTRYPOINT = "src/vitte/compiler/main.vit"
 WORKSPACE = "examples/package-workspace/vitte-workspace.json"
+HELLO = "examples/hello.vit"
+HELLO_BIN = "target/test/hello"
 REPORT_DIR = ROOT / "target/reports"
 REPORT_JSON = REPORT_DIR / "release_binary_gate.json"
 REPORT_MD = REPORT_DIR / "release_binary_gate.md"
@@ -30,15 +32,21 @@ REQUIRED_FILES = [
     "src/vitte/packages/registry/checksums.sha256",
     "locales/en/diagnostics.ftl",
     "tools/package_cli.py",
+    HELLO,
 ]
 
-STDLIB_CHECKS = [
-    "src/vitte/stdlib/index.vit",
-    "src/vitte/stdlib/core/index.vit",
-    "src/vitte/stdlib/alloc/index.vit",
-    "src/vitte/stdlib/ffi/index.vit",
-    "src/vitte/stdlib/json/index.vit",
-]
+STDLIB_FAMILIES = ["core", "alloc", "ffi", "json"]
+
+
+def stdlib_checks() -> list[str]:
+    checks = ["src/vitte/stdlib/index.vit"]
+    for family in STDLIB_FAMILIES:
+        root = ROOT / "src/vitte/stdlib" / family
+        checks.extend(path.relative_to(ROOT).as_posix() for path in sorted(root.glob("*.vitl")))
+        index = root / "index.vit"
+        if index.is_file():
+            checks.append(index.relative_to(ROOT).as_posix())
+    return sorted(set(checks))
 
 
 def base_env() -> dict[str, str]:
@@ -134,7 +142,8 @@ def write_reports(status: str, failures: list[str], results: list[dict[str, Any]
         "entrypoint": ENTRYPOINT,
         "compiled_root": compiled_root,
         "required_files": REQUIRED_FILES,
-        "stdlib_checks": STDLIB_CHECKS,
+        "stdlib_checks": stdlib_checks(),
+        "normal_build_seed_use": "absent",
         "commands": results,
         "failures": failures,
     }
@@ -146,7 +155,7 @@ def write_reports(status: str, failures: list[str], results: list[dict[str, Any]
         "- release: target/release/vitte",
         f"- compiled_root: {compiled_root}",
         f"- required files: {len(REQUIRED_FILES)}",
-        f"- stdlib checks: {len(STDLIB_CHECKS)}",
+        f"- stdlib checks: {len(stdlib_checks())}",
         f"- commands: {len(results)}",
     ]
     if failures:
@@ -198,8 +207,12 @@ def main() -> int:
             [str(RELEASE), "check", "tests/negative/type_mismatch.vit"],
             "TYPECK_E_ASSIGN_MISMATCH",
         )
-        for source in STDLIB_CHECKS:
+        for source in stdlib_checks():
             require_ok(results, failures, [str(RELEASE), "check", source])
+
+        require_ok(results, failures, [str(RELEASE), "test", HELLO])
+        require_ok(results, failures, [str(RELEASE), "build", HELLO, "-o", HELLO_BIN])
+        require_ok(results, failures, [str(ROOT / HELLO_BIN)])
 
         graph = require_ok(results, failures, [str(RELEASE), "package", "graph", "--workspace", WORKSPACE])
         graph_payload = parse_json_payload(graph, failures) if graph["exit_code"] == 0 else {}
@@ -226,6 +239,13 @@ def main() -> int:
                 command = compiler.get("command")
                 if isinstance(command, list) and command and not str(command[0]).endswith("/target/release/vitte"):
                     failures.append(f"release package build used non-release compiler: {command[0]}")
+
+    forbidden_normal_build = ("install_seed.sh", "vittec0.seed", "bin/vittec0")
+    for result in results:
+        command_text = " ".join(str(part) for part in result["command"])
+        for forbidden in forbidden_normal_build:
+            if forbidden in command_text:
+                failures.append(f"normal release flow used forbidden bootstrap command: {command_text}")
 
     status = "fail" if failures else "pass"
     write_reports(status, failures, results, compiled_root)
