@@ -209,13 +209,18 @@ proc offset_lookup(manager: SourceManager, file_id: u64, line: u64, column: u64)
   give 0 as u64;
 }
 
-proc include_stdlib(manager: SourceManager) -> SourceManager {
-  let std_path: string = "src/vitte/stdlib/core/index.vit";
+proc include_stdlib_entry(manager: SourceManager, std_path: string, std_space: string, marker_name: string) -> SourceManager {
   if source_manager_file_id(manager, std_path) > 0 {
     give manager;
   }
-  let std_text: string = "space vitte/stdlib/core/index\n\nproc __stdlib_core_marker() -> int { give 0; }\n";
+  let std_text: string = "space " + std_space + "\n\nproc " + marker_name + "() -> int { give 0; }\n";
   give source_manager_with_virtual_file(manager, std_path, std_text);
+}
+
+proc include_stdlib(manager: SourceManager) -> SourceManager {
+  let with_core: SourceManager = include_stdlib_entry(manager, "src/vitte/stdlib/core/index.vit", "vitte/stdlib/core/index", "__stdlib_core_marker");
+  let with_alloc: SourceManager = include_stdlib_entry(with_core, "src/vitte/stdlib/alloc/index.vit", "vitte/stdlib/alloc/index", "__stdlib_alloc_marker");
+  give include_stdlib_entry(with_alloc, "src/vitte/stdlib/std/index.vit", "vitte/stdlib/std/index", "__stdlib_std_marker");
 }
 
 share SourceLocation
