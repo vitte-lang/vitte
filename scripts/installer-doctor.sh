@@ -59,7 +59,7 @@ if [ -n "${VITTE_ROOT:-}" ] && [ "$VITTE_ROOT" != "$prefix/share/vitte" ]; then
   line "hint: unset VITTE_ROOT or set it to $prefix/share/vitte"
 fi
 
-for command in vitte vittec vittec0; do
+for command in vitte vittec; do
   wrapper=$bindir/$command
   payload=$libexec/$command
   [ -x "$wrapper" ] && pass "wrapper exists: $wrapper" || fail "missing wrapper: $wrapper"
