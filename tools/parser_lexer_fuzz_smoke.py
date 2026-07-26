@@ -51,9 +51,9 @@ def main() -> int:
     args = ap.parse_args()
 
     repo = Path(__file__).resolve().parents[1]
-    vitte_bin = (repo / args.bin) if not Path(args.bin).is_absolute() else Path(args.bin)
-    if not vitte_bin.exists():
-        print(f"[fuzz-smoke] missing binary: {vitte_bin}")
+    checker = repo / "tools/frontend_syntax_check.py"
+    if not checker.exists():
+        print(f"[fuzz-smoke] missing frontend checker: {checker}")
         return 1
 
     rng = random.Random(args.seed)
@@ -69,7 +69,8 @@ def main() -> int:
             f.write_text(src, encoding="utf-8")
 
             proc = subprocess.run(
-                [str(vitte_bin), "parse", "--parse-silent", "--lang=en", str(f)],
+                ["python3", str(checker), "--json", str(f)],
+                cwd=repo,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 timeout=5,
