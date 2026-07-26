@@ -1,0 +1,138 @@
+space vitte/stdlib/alloc/scratch
+
+export *
+
+use src/vitte/stdlib/alloc/bump as alloc_bump
+use src/vitte/stdlib/alloc/byte_buffer as alloc_byte_buffer
+use src/vitte/stdlib/alloc/string as alloc_string
+use src/vitte/stdlib/alloc/vec as alloc_vec
+use src/vitte/stdlib/core/option as core_option
+
+pick ScratchPurpose {
+    Compiler
+    Parser
+    Diagnostics
+    Buffer
+    Temporary
+}
+
+form ScratchMark {
+    bump: alloc_bump.BumpMark
+    buffer_len: usize
+    text_len: usize
+    generation: usize
+}
+
+form Scratch {
+    purpose: ScratchPurpose
+    bump: alloc_bump.BumpAllocator
+    buffer: alloc_byte_buffer.ByteBuffer
+    text: alloc_string.String
+    generation: usize
+}
+
+form ScratchProfile {
+    purpose: ScratchPurpose
+    allocated: usize
+    buffer_len: usize
+    text_len: usize
+    generation: usize
+    valid: bool
+}
+
+proc scratch_new(name: string, purpose: ScratchPurpose, capacity: usize) -> Scratch {
+    give Scratch {
+        purpose: purpose,
+        bump: alloc_bump.bump_new(name, capacity),
+        buffer: alloc_byte_buffer.byte_buffer_with_capacity(capacity),
+        text: alloc_string.string_with_capacity(capacity),
+        generation: 1
+    };
+}
+
+proc scratch_for_compiler() -> Scratch {
+    give scratch_new("compiler-scratch", ScratchPurpose.Compiler, 4096);
+}
+
+proc scratch_for_parser() -> Scratch {
+    give scratch_new("parser-scratch", ScratchPurpose.Parser, 2048);
+}
+
+proc scratch_mark(value: Scratch) -> ScratchMark {
+    give ScratchMark {
+        bump: alloc_bump.bump_mark(value.bump),
+        buffer_len: alloc_byte_buffer.byte_buffer_len(value.buffer),
+        text_len: alloc_string.string_len(value.text),
+        generation: value.generation
+    };
+}
+
+proc scratch_profile(value: Scratch) -> ScratchProfile {
+    give ScratchProfile {
+        purpose: value.purpose,
+        allocated: alloc_bump.bump_allocated(value.bump),
+        buffer_len: alloc_byte_buffer.byte_buffer_len(value.buffer),
+        text_len: alloc_string.string_len(value.text),
+        generation: value.generation,
+        valid: alloc_bump.bump_is_valid(value.bump) and alloc_byte_buffer.byte_buffer_is_valid(value.buffer)
+    };
+}
+
+proc scratch_is_valid(value: Scratch) -> bool {
+    give scratch_profile(value).valid;
+}
+
+proc scratch_write_bytes(value: ref mut Scratch, bytes: [byte]) {
+    alloc_byte_buffer.byte_buffer_write(&mut ((*value).buffer), bytes);
+}
+
+proc scratch_write_text(value: ref mut Scratch, text: string) {
+    alloc_string.string_push_str(&mut ((*value).text), text);
+}
+
+proc scratch_take_buffer(value: ref mut Scratch) -> alloc_byte_buffer.ByteBuffer {
+    let out: alloc_byte_buffer.ByteBuffer = (*value).buffer;
+    set (*value).buffer = alloc_byte_buffer.byte_buffer_new();
+    give out;
+}
+
+proc scratch_clear_buffers(value: ref mut Scratch) {
+    alloc_byte_buffer.byte_buffer_clear(&mut ((*value).buffer));
+    alloc_string.string_clear(&mut ((*value).text));
+}
+
+proc scratch_rewind(value: ref mut Scratch, mark: ScratchMark) -> bool {
+    if mark.generation > (*value).generation {
+        give false;
+    }
+    let ok: bool = alloc_bump.bump_rewind(&mut ((*value).bump), mark.bump);
+    if not ok {
+        give false;
+    }
+    alloc_byte_buffer.byte_buffer_rewind(&mut ((*value).buffer));
+    alloc_string.string_truncate(&mut ((*value).text), mark.text_len);
+    set (*value).generation = (*value).generation + 1;
+    give true;
+}
+
+proc scratch_reset(value: ref mut Scratch) {
+    alloc_bump.bump_reset(&mut ((*value).bump));
+    scratch_clear_buffers(value);
+    set (*value).generation = (*value).generation + 1;
+}
+
+proc scratch_purpose_name(purpose: ScratchPurpose) -> string {
+    if purpose == ScratchPurpose.Compiler {
+        give "compiler";
+    }
+    if purpose == ScratchPurpose.Parser {
+        give "parser";
+    }
+    if purpose == ScratchPurpose.Diagnostics {
+        give "diagnostics";
+    }
+    if purpose == ScratchPurpose.Buffer {
+        give "buffer";
+    }
+    give "temporary";
+}

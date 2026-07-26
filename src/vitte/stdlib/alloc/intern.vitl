@@ -1,0 +1,108 @@
+space vitte/stdlib/alloc/intern
+
+export *
+
+use src/vitte/stdlib/alloc/vec as alloc_vec
+use src/vitte/stdlib/core/option as core_option
+
+form InternId {
+    value: usize
+}
+
+form InternEntry {
+    id: InternId
+    text: string
+    hash: u64
+}
+
+form Interner {
+    entries: Vec<InternEntry>
+    next_id: usize
+}
+
+form InternerProfile {
+    count: usize
+    next_id: usize
+    stable: bool
+    valid: bool
+}
+
+proc intern_id(value: usize) -> InternId {
+    give InternId { value: value };
+}
+
+proc intern_id_is_null(value: InternId) -> bool {
+    give value.value == 0;
+}
+
+proc interner_new() -> Interner {
+    give Interner { entries: vec_new<InternEntry>(), next_id: 1 };
+}
+
+proc interner_len(value: Interner) -> usize { give vec_len<InternEntry>(value.entries); }
+proc interner_is_empty(value: Interner) -> bool { give interner_len(value) == 0; }
+
+proc intern_hash(text: string) -> u64 {
+    give compiler_intern_hash(text);
+}
+
+proc interner_find(value: ref Interner, text: string) -> Option<InternId> {
+    let hash: u64 = intern_hash(text);
+    let index: usize = 0;
+    while index < interner_len(*value) {
+        let entry = vec_get<InternEntry>((*value).entries, index);
+        if is_some<ref InternEntry>(entry) and unwrap<ref InternEntry>(entry).hash == hash and unwrap<ref InternEntry>(entry).text == text {
+            give some<InternId>(unwrap<ref InternEntry>(entry).id);
+        }
+        set index = index + 1;
+    }
+    give none<InternId>();
+}
+
+proc interner_intern(value: ref mut Interner, text: string) -> InternId {
+    let existing = interner_find(&(*value), text);
+    if is_some<InternId>(existing) {
+        give unwrap<InternId>(existing);
+    }
+    let id: InternId = intern_id((*value).next_id);
+    vec_push<InternEntry>(&mut ((*value).entries), InternEntry { id: id, text: text, hash: intern_hash(text) });
+    set (*value).next_id = (*value).next_id + 1;
+    give id;
+}
+
+proc interner_get(value: ref Interner, id: InternId) -> Option<string> {
+    if intern_id_is_null(id) {
+        give none<string>();
+    }
+    let index: usize = 0;
+    while index < interner_len(*value) {
+        let entry = vec_get<InternEntry>((*value).entries, index);
+        if is_some<ref InternEntry>(entry) and unwrap<ref InternEntry>(entry).id.value == id.value {
+            give some<string>(unwrap<ref InternEntry>(entry).text);
+        }
+        set index = index + 1;
+    }
+    give none<string>();
+}
+
+proc interner_contains(value: ref Interner, text: string) -> bool {
+    give is_some<InternId>(interner_find(value, text));
+}
+
+proc interner_profile(value: Interner) -> InternerProfile {
+    give InternerProfile {
+        count: interner_len(value),
+        next_id: value.next_id,
+        stable: value.next_id > interner_len(value),
+        valid: value.next_id > 0
+    };
+}
+
+proc interner_is_valid(value: Interner) -> bool {
+    give interner_profile(value).valid;
+}
+
+proc interner_clear(value: ref mut Interner) {
+    set (*value).entries = vec_new<InternEntry>();
+    set (*value).next_id = 1;
+}

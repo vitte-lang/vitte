@@ -1,0 +1,118 @@
+space vitte/stdlib/alloc/rope
+
+export *
+
+use src/vitte/stdlib/alloc/string as alloc_string
+use src/vitte/stdlib/alloc/vec as alloc_vec
+use src/vitte/stdlib/core/option as core_option
+
+form RopeChunk {
+    text: string
+    bytes: usize
+}
+
+form Rope {
+    chunks: Vec<RopeChunk>
+    bytes: usize
+}
+
+form RopeSplit {
+    left: Rope
+    right: Rope
+    valid: bool
+}
+
+form RopeProfile {
+    chunks: usize
+    bytes: usize
+    empty: bool
+    balanced: bool
+    valid: bool
+}
+
+proc rope_chunk(text: string) -> RopeChunk {
+    give RopeChunk { text: text, bytes: len(text) };
+}
+
+proc rope_new() -> Rope {
+    give Rope { chunks: vec_new<RopeChunk>(), bytes: 0 };
+}
+
+proc rope_from_string(text: string) -> Rope {
+    let out: Rope = rope_new();
+    if text != "" {
+        vec_push<RopeChunk>(&mut out.chunks, rope_chunk(text));
+        set out.bytes = len(text);
+    }
+    give out;
+}
+
+proc rope_len(value: Rope) -> usize { give value.bytes; }
+proc rope_chunk_count(value: Rope) -> usize { give vec_len<RopeChunk>(value.chunks); }
+proc rope_is_empty(value: Rope) -> bool { give rope_len(value) == 0; }
+
+proc rope_push(value: ref mut Rope, text: string) {
+    if text == "" {
+        give;
+    }
+    vec_push<RopeChunk>(&mut ((*value).chunks), rope_chunk(text));
+    set (*value).bytes = (*value).bytes + len(text);
+}
+
+proc rope_concat(left: Rope, right: Rope) -> Rope {
+    let out: Rope = left;
+    let index: usize = 0;
+    while index < rope_chunk_count(right) {
+        let chunk = vec_get<RopeChunk>(right.chunks, index);
+        if is_some<ref RopeChunk>(chunk) {
+            rope_push(&mut out, unwrap<ref RopeChunk>(chunk).text);
+        }
+        set index = index + 1;
+    }
+    give out;
+}
+
+proc rope_to_string(value: Rope) -> string {
+    let out: string = "";
+    let index: usize = 0;
+    while index < rope_chunk_count(value) {
+        let chunk = vec_get<RopeChunk>(value.chunks, index);
+        if is_some<ref RopeChunk>(chunk) {
+            set out = out + unwrap<ref RopeChunk>(chunk).text;
+        }
+        set index = index + 1;
+    }
+    give out;
+}
+
+proc rope_split_at(value: Rope, offset: usize) -> RopeSplit {
+    if offset > rope_len(value) {
+        give RopeSplit { left: rope_new(), right: rope_new(), valid: false };
+    }
+    give compiler_rope_split_at(value, offset);
+}
+
+proc rope_slice(value: Rope, start: usize, end: usize) -> Option<Rope> {
+    if start > end or end > rope_len(value) {
+        give none<Rope>();
+    }
+    give some<Rope>(compiler_rope_slice(value, start, end));
+}
+
+proc rope_profile(value: Rope) -> RopeProfile {
+    give RopeProfile {
+        chunks: rope_chunk_count(value),
+        bytes: rope_len(value),
+        empty: rope_is_empty(value),
+        balanced: compiler_rope_is_balanced(value),
+        valid: compiler_rope_byte_count(value) == value.bytes
+    };
+}
+
+proc rope_is_valid(value: Rope) -> bool {
+    give rope_profile(value).valid;
+}
+
+proc rope_rebalance(value: ref mut Rope) {
+    compiler_rope_rebalance(value);
+}

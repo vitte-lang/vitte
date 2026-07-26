@@ -7,14 +7,20 @@ use src/vitte/stdlib/alloc/box as alloc_box
 use src/vitte/stdlib/alloc/btree as alloc_btree
 use src/vitte/stdlib/alloc/bump as alloc_bump
 use src/vitte/stdlib/alloc/byte_buffer as alloc_byte_buffer
+use src/vitte/stdlib/alloc/cache as alloc_cache
 use src/vitte/stdlib/alloc/collections as alloc_collections
 use src/vitte/stdlib/alloc/deque as alloc_deque
 use src/vitte/stdlib/alloc/error as alloc_error
+use src/vitte/stdlib/alloc/intern as alloc_intern
 use src/vitte/stdlib/alloc/layout as alloc_layout
+use src/vitte/stdlib/alloc/page as alloc_page
 use src/vitte/stdlib/alloc/pool as alloc_pool
 use src/vitte/stdlib/alloc/raw as alloc_raw
 use src/vitte/stdlib/alloc/rc as alloc_rc
+use src/vitte/stdlib/alloc/region as alloc_region
+use src/vitte/stdlib/alloc/rope as alloc_rope
 use src/vitte/stdlib/alloc/slab as alloc_slab
+use src/vitte/stdlib/alloc/scratch as alloc_scratch
 use src/vitte/stdlib/alloc/smallvec as alloc_smallvec
 use src/vitte/stdlib/alloc/string as alloc_string
 use src/vitte/stdlib/alloc/vec as alloc_vec
@@ -78,6 +84,54 @@ proc alloc_max_bump_contract(value: alloc_bump.BumpAllocator) -> bool {
     give profile.valid
         and alloc_bump.bump_is_valid(value)
         and alloc_bump.bump_mark_is_valid(value, mark);
+}
+
+proc alloc_max_region_contract(value: alloc_region.Region) -> bool {
+    let profile: alloc_region.RegionProfile = alloc_region.region_profile(value);
+    let mark: alloc_region.RegionMark = alloc_region.region_mark(value);
+    give profile.valid
+        and alloc_region.region_is_valid(value)
+        and alloc_region.region_mark_matches(value, mark);
+}
+
+proc alloc_max_scratch_contract(value: alloc_scratch.Scratch) -> bool {
+    let profile: alloc_scratch.ScratchProfile = alloc_scratch.scratch_profile(value);
+    let mark: alloc_scratch.ScratchMark = alloc_scratch.scratch_mark(value);
+    give profile.valid
+        and alloc_scratch.scratch_is_valid(value)
+        and mark.generation <= profile.generation
+        and alloc_scratch.scratch_purpose_name(value.purpose) != "";
+}
+
+proc alloc_max_page_contract() -> bool {
+    let size: alloc_page.PageSize = alloc_page.page_size_default();
+    let count = alloc_page.page_count_for(8192, size);
+    let aligned = alloc_page.page_align_up(4097, size);
+    give alloc_page.page_size_is_valid(size)
+        and is_some<usize>(count)
+        and unwrap<usize>(count) == 2
+        and is_some<usize>(aligned);
+}
+
+proc alloc_max_cache_contract<K, V>(value: alloc_cache.Cache<K, V>) -> bool {
+    let profile: alloc_cache.CacheProfile = alloc_cache.cache_profile<K, V>(value);
+    give profile.valid
+        and alloc_cache.cache_is_valid<K, V>(value)
+        and profile.length <= profile.limit;
+}
+
+proc alloc_max_intern_contract(value: alloc_intern.Interner) -> bool {
+    let profile: alloc_intern.InternerProfile = alloc_intern.interner_profile(value);
+    give profile.valid
+        and alloc_intern.interner_is_valid(value)
+        and profile.next_id > 0;
+}
+
+proc alloc_max_rope_contract(value: alloc_rope.Rope) -> bool {
+    let profile: alloc_rope.RopeProfile = alloc_rope.rope_profile(value);
+    give profile.valid
+        and alloc_rope.rope_is_valid(value)
+        and profile.bytes == alloc_rope.rope_len(value);
 }
 
 proc alloc_max_vec_contract<T>(value: alloc_vec.Vec<T>) -> bool {
@@ -180,5 +234,5 @@ proc alloc_max_collections_contract<K, V, T>(
 }
 
 proc alloc_max_surface_count() -> usize {
-    give 18 as usize;
+    give 24 as usize;
 }

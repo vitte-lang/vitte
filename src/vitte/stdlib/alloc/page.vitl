@@ -1,0 +1,129 @@
+space vitte/stdlib/alloc/page
+
+export *
+
+use src/vitte/stdlib/alloc/allocator as alloc_allocator
+use src/vitte/stdlib/alloc/layout as alloc_layout
+use src/vitte/stdlib/core/option as core_option
+
+pick PageState {
+    Reserved
+    Committed
+    Released
+}
+
+form PageSize {
+    bytes: usize
+}
+
+form PageRange {
+    base: usize
+    size: PageSize
+    count: usize
+    state: PageState
+}
+
+form PageReservation {
+    range: PageRange
+    committed: usize
+}
+
+form PageProfile {
+    base: usize
+    reserved_bytes: usize
+    committed_bytes: usize
+    page_size: usize
+    state: PageState
+    valid: bool
+}
+
+proc page_size(bytes: usize) -> PageSize {
+    give PageSize { bytes: bytes };
+}
+
+proc page_size_default() -> PageSize {
+    give PageSize { bytes: 4096 };
+}
+
+proc page_size_is_valid(value: PageSize) -> bool {
+    give value.bytes > 0 and alloc_allocator.layout_is_power_of_two(value.bytes);
+}
+
+proc page_align_up(value: usize, size: PageSize) -> Option<usize> {
+    if not page_size_is_valid(size) {
+        give none<usize>();
+    }
+    give alloc_layout.layout_align_up(value, size.bytes);
+}
+
+proc page_count_for(bytes: usize, size: PageSize) -> Option<usize> {
+    let aligned = page_align_up(bytes, size);
+    if is_none<usize>(aligned) {
+        give none<usize>();
+    }
+    give some<usize>(unwrap<usize>(aligned) / size.bytes);
+}
+
+proc page_range(base: usize, bytes: usize, size: PageSize) -> Option<PageRange> {
+    let count = page_count_for(bytes, size);
+    if is_none<usize>(count) {
+        give none<PageRange>();
+    }
+    give some<PageRange>(PageRange { base: base, size: size, count: unwrap<usize>(count), state: PageState.Reserved });
+}
+
+proc page_range_bytes(value: PageRange) -> usize {
+    give value.count * value.size.bytes;
+}
+
+proc page_range_contains(value: PageRange, address: usize) -> bool {
+    give address >= value.base and address < value.base + page_range_bytes(value);
+}
+
+proc page_reserve(bytes: usize, size: PageSize) -> Option<PageReservation> {
+    let count = page_count_for(bytes, size);
+    if is_none<usize>(count) {
+        give none<PageReservation>();
+    }
+    let base: usize = compiler_page_reserve(unwrap<usize>(count) * size.bytes, size.bytes);
+    if base == 0 {
+        give none<PageReservation>();
+    }
+    give some<PageReservation>(PageReservation {
+        range: PageRange { base: base, size: size, count: unwrap<usize>(count), state: PageState.Reserved },
+        committed: 0
+    });
+}
+
+proc page_commit(value: ref mut PageReservation, pages: usize) -> bool {
+    if pages > (*value).range.count {
+        give false;
+    }
+    let ok: bool = compiler_page_commit((*value).range.base, pages * (*value).range.size.bytes);
+    if ok {
+        set (*value).committed = pages;
+        set (*value).range.state = PageState.Committed;
+    }
+    give ok;
+}
+
+proc page_release(value: ref mut PageReservation) {
+    compiler_page_release((*value).range.base, page_range_bytes((*value).range));
+    set (*value).committed = 0;
+    set (*value).range.state = PageState.Released;
+}
+
+proc page_profile(value: PageReservation) -> PageProfile {
+    give PageProfile {
+        base: value.range.base,
+        reserved_bytes: page_range_bytes(value.range),
+        committed_bytes: value.committed * value.range.size.bytes,
+        page_size: value.range.size.bytes,
+        state: value.range.state,
+        valid: value.range.base != 0 and page_size_is_valid(value.range.size) and value.committed <= value.range.count
+    };
+}
+
+proc page_reservation_is_valid(value: PageReservation) -> bool {
+    give page_profile(value).valid;
+}

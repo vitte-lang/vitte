@@ -1,0 +1,149 @@
+space vitte/stdlib/alloc/region
+
+export *
+
+use src/vitte/stdlib/alloc/arena as alloc_arena
+use src/vitte/stdlib/alloc/allocator as alloc_allocator
+use src/vitte/stdlib/alloc/vec as alloc_vec
+use src/vitte/stdlib/core/option as core_option
+
+form RegionId {
+    value: usize
+}
+
+form RegionMark {
+    region: RegionId
+    arena_mark: alloc_arena.ArenaMark
+    generation: usize
+}
+
+form RegionStats {
+    allocated: usize
+    high_water: usize
+    reset_count: usize
+    generation: usize
+}
+
+form Region {
+    id: RegionId
+    name: string
+    arena: alloc_arena.Arena
+    stats: RegionStats
+    active: bool
+}
+
+form RegionSet {
+    regions: Vec<Region>
+    next_id: usize
+}
+
+form RegionProfile {
+    id: RegionId
+    name: string
+    allocated: usize
+    high_water: usize
+    active: bool
+    valid: bool
+}
+
+proc region_id(value: usize) -> RegionId {
+    give RegionId { value: value };
+}
+
+proc region_stats_empty() -> RegionStats {
+    give RegionStats { allocated: 0, high_water: 0, reset_count: 0, generation: 1 };
+}
+
+proc region_new(id: RegionId, name: string, block_size: usize) -> Region {
+    give Region {
+        id: id,
+        name: name,
+        arena: alloc_arena.arena_new(name, block_size),
+        stats: region_stats_empty(),
+        active: true
+    };
+}
+
+proc region_set_new() -> RegionSet {
+    give RegionSet { regions: vec_new<Region>(), next_id: 1 };
+}
+
+proc region_set_create(set: ref mut RegionSet, name: string, block_size: usize) -> RegionId {
+    let id: RegionId = region_id((*set).next_id);
+    vec_push<Region>(&mut ((*set).regions), region_new(id, name, block_size));
+    set (*set).next_id = (*set).next_id + 1;
+    give id;
+}
+
+proc region_profile(value: Region) -> RegionProfile {
+    give RegionProfile {
+        id: value.id,
+        name: value.name,
+        allocated: alloc_arena.arena_allocated(value.arena),
+        high_water: value.stats.high_water,
+        active: value.active,
+        valid: value.id.value > 0 and value.name != "" and alloc_arena.arena_is_valid(value.arena)
+    };
+}
+
+proc region_is_valid(value: Region) -> bool {
+    give region_profile(value).valid;
+}
+
+proc region_mark(value: Region) -> RegionMark {
+    give RegionMark { region: value.id, arena_mark: alloc_arena.arena_mark(value.arena), generation: value.stats.generation };
+}
+
+proc region_mark_matches(value: Region, mark: RegionMark) -> bool {
+    give value.id.value == mark.region.value and mark.generation <= value.stats.generation;
+}
+
+proc region_alloc_layout(value: ref mut Region, layout_value: alloc_allocator.AllocationLayout) -> Option<alloc_allocator.Allocation> {
+    if not (*value).active {
+        give none<alloc_allocator.Allocation>();
+    }
+    let allocation = alloc_arena.arena_alloc_layout(&mut ((*value).arena), layout_value);
+    if is_some<alloc_allocator.Allocation>(allocation) {
+        set (*value).stats.allocated = alloc_arena.arena_allocated((*value).arena);
+        if (*value).stats.allocated > (*value).stats.high_water {
+            set (*value).stats.high_water = (*value).stats.allocated;
+        }
+    }
+    give allocation;
+}
+
+proc region_alloc<T>(value: ref mut Region) -> Option<alloc_allocator.Allocation> {
+    give region_alloc_layout(value, alloc_allocator.layout_for<T>());
+}
+
+proc region_reset(value: ref mut Region) {
+    alloc_arena.arena_reset(&mut ((*value).arena));
+    set (*value).stats.allocated = 0;
+    set (*value).stats.reset_count = (*value).stats.reset_count + 1;
+    set (*value).stats.generation = (*value).stats.generation + 1;
+}
+
+proc region_rewind(value: ref mut Region, mark: RegionMark) -> bool {
+    if not region_mark_matches(*value, mark) {
+        give false;
+    }
+    let ok: bool = alloc_arena.arena_rewind(&mut ((*value).arena), mark.arena_mark);
+    if ok {
+        set (*value).stats.allocated = alloc_arena.arena_allocated((*value).arena);
+        set (*value).stats.generation = (*value).stats.generation + 1;
+    }
+    give ok;
+}
+
+proc region_deactivate(value: ref mut Region) {
+    region_reset(value);
+    set (*value).active = false;
+}
+
+proc region_set_len(set: RegionSet) -> usize {
+    give vec_len<Region>(set.regions);
+}
+
+proc region_set_is_empty(set: RegionSet) -> bool {
+    give region_set_len(set) == 0;
+}

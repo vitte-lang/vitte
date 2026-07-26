@@ -1,0 +1,129 @@
+space vitte/stdlib/alloc/cache
+
+export *
+
+use src/vitte/stdlib/alloc/vec as alloc_vec
+use src/vitte/stdlib/core/option as core_option
+
+pick CachePolicy {
+    Lru
+    Lfu
+}
+
+form CacheEntry<K, V> {
+    key: K
+    value: V
+    hits: usize
+    stamp: usize
+    valid: bool
+}
+
+form CacheStats {
+    hits: usize
+    misses: usize
+    evictions: usize
+}
+
+form Cache<K, V> {
+    entries: Vec<CacheEntry<K, V>>
+    limit: usize
+    clock: usize
+    policy: CachePolicy
+    stats: CacheStats
+}
+
+form CacheProfile {
+    length: usize
+    limit: usize
+    hits: usize
+    misses: usize
+    evictions: usize
+    saturated: bool
+    valid: bool
+}
+
+proc cache_stats_empty() -> CacheStats {
+    give CacheStats { hits: 0, misses: 0, evictions: 0 };
+}
+
+proc cache_new<K, V>(limit: usize, policy: CachePolicy) -> Cache<K, V> {
+    give Cache<K, V> { entries: vec_with_capacity<CacheEntry<K, V>>(limit), limit: limit, clock: 1, policy: policy, stats: cache_stats_empty() };
+}
+
+proc cache_len<K, V>(cache: Cache<K, V>) -> usize { give vec_len<CacheEntry<K, V>>(cache.entries); }
+proc cache_is_empty<K, V>(cache: Cache<K, V>) -> bool { give cache_len<K, V>(cache) == 0; }
+proc cache_is_full<K, V>(cache: Cache<K, V>) -> bool { give cache.limit > 0 and cache_len<K, V>(cache) >= cache.limit; }
+
+proc cache_profile<K, V>(cache: Cache<K, V>) -> CacheProfile {
+    give CacheProfile {
+        length: cache_len<K, V>(cache),
+        limit: cache.limit,
+        hits: cache.stats.hits,
+        misses: cache.stats.misses,
+        evictions: cache.stats.evictions,
+        saturated: cache_is_full<K, V>(cache),
+        valid: cache.limit > 0 and cache_len<K, V>(cache) <= cache.limit
+    };
+}
+
+proc cache_is_valid<K, V>(cache: Cache<K, V>) -> bool {
+    give cache_profile<K, V>(cache).valid;
+}
+
+proc cache_find_index<K, V>(cache: ref Cache<K, V>, key: K) -> Option<usize> {
+    let index: usize = 0;
+    while index < cache_len<K, V>(*cache) {
+        let entry = vec_get<CacheEntry<K, V>>((*cache).entries, index);
+        if is_some<ref CacheEntry<K, V>>(entry) and compiler_cache_key_eq<K, V>(unwrap<ref CacheEntry<K, V>>(entry), key) {
+            give some<usize>(index);
+        }
+        set index = index + 1;
+    }
+    give none<usize>();
+}
+
+proc cache_get<K, V>(cache: ref mut Cache<K, V>, key: K) -> Option<ref V> {
+    let found = cache_find_index<K, V>(&(*cache), key);
+    if is_none<usize>(found) {
+        set (*cache).stats.misses = (*cache).stats.misses + 1;
+        give none<ref V>();
+    }
+    let index: usize = unwrap<usize>(found);
+    compiler_cache_touch<K, V>(cache, index, (*cache).clock);
+    set (*cache).clock = (*cache).clock + 1;
+    set (*cache).stats.hits = (*cache).stats.hits + 1;
+    give some<ref V>(compiler_cache_value_ref<K, V>(cache, index));
+}
+
+proc cache_evict_index<K, V>(cache: ref Cache<K, V>) -> Option<usize> {
+    if cache_is_empty<K, V>(*cache) {
+        give none<usize>();
+    }
+    if (*cache).policy == CachePolicy.Lfu {
+        give some<usize>(compiler_cache_lfu_index<K, V>(cache));
+    }
+    give some<usize>(compiler_cache_lru_index<K, V>(cache));
+}
+
+proc cache_insert<K, V>(cache: ref mut Cache<K, V>, key: K, value: V) {
+    let found = cache_find_index<K, V>(&(*cache), key);
+    if is_some<usize>(found) {
+        compiler_cache_replace<K, V>(cache, unwrap<usize>(found), value);
+        give;
+    }
+    if cache_is_full<K, V>(*cache) {
+        let victim = cache_evict_index<K, V>(&(*cache));
+        if is_some<usize>(victim) {
+            let _ = vec_remove<CacheEntry<K, V>>(&mut ((*cache).entries), unwrap<usize>(victim));
+            set (*cache).stats.evictions = (*cache).stats.evictions + 1;
+        }
+    }
+    vec_push<CacheEntry<K, V>>(&mut ((*cache).entries), CacheEntry<K, V> { key: key, value: value, hits: 0, stamp: (*cache).clock, valid: true });
+    set (*cache).clock = (*cache).clock + 1;
+}
+
+proc cache_clear<K, V>(cache: ref mut Cache<K, V>) {
+    set (*cache).entries = vec_with_capacity<CacheEntry<K, V>>((*cache).limit);
+    set (*cache).clock = 1;
+    set (*cache).stats = cache_stats_empty();
+}
