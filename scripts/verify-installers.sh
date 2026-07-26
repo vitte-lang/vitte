@@ -49,7 +49,7 @@ verify_deb() {
   bsdtar -tf "$tmp/control.tar.gz" | grep -Eq '^(\./)?postinst$' || die "Debian package missing postinst: $file"
   bsdtar -tf "$tmp/control.tar.gz" | grep -Eq '^(\./)?prerm$' || die "Debian package missing prerm: $file"
   bsdtar -tf "$tmp/data.tar.gz" | grep -Eq '^(\./)?usr/local/share/vitte/INSTALLATION.json$' || die "Debian package missing INSTALLATION.json: $file"
-  for command in vitte vittec vittec0; do
+  for command in vitte vittec; do
     bsdtar -xOf "$tmp/data.tar.gz" "./usr/local/bin/$command" 2>/dev/null | grep -F "/usr/local/libexec/vitte/$command" >/dev/null ||
       die "Debian wrapper does not exec libexec $command: $file"
   done
@@ -108,7 +108,7 @@ for bsd_kit in "$OUT_DIR"/vitte-"$VERSION"-*-*-installer.tar.xz; do
     scripts_build_tar_list_xz "$bsd_kit" | grep -q "^root/usr/local/share/vitte/$component/" ||
       die "BSD installer missing payload component $component: $bsd_kit"
   done
-  for command in vitte vittec vittec0; do
+  for command in vitte vittec; do
     tar -xOf "$bsd_kit" "root/usr/local/bin/$command" 2>/dev/null | grep -F "/usr/local/libexec/vitte/$command" >/dev/null ||
       die "BSD wrapper does not exec libexec $command: $bsd_kit"
   done
@@ -123,7 +123,7 @@ for portable_kit in "$OUT_DIR"/vitte-"$VERSION"-portable-*-*.tar.gz; do
   for required in \
     "$package_dir/bin/vitte" \
     "$package_dir/bin/vittec" \
-    "$package_dir/bin/vittec0" \
+    "$package_dir/bin/vitte" \
     "$package_dir/bin/vitte-installer-doctor" \
     "$package_dir/libexec/vitte/vitte" \
     "$package_dir/share/vitte/INSTALLATION.json" \
@@ -232,7 +232,7 @@ fi
       die "Windows NSIS script missing PATH uninstall function: $windows_kit"
     tar -xOzf "$windows_kit" installer.nsi | grep -F 'DeleteRegValue HKLM "SYSTEM\CurrentControlSet\Control\Session Manager\Environment" "VITTE_ROOT"' >/dev/null ||
       die "Windows NSIS script does not remove VITTE_ROOT: $windows_kit"
-    for command in vitte vittec vittec0; do
+    for command in vitte vittec; do
       tar -tzf "$windows_kit" | grep -Fx "payload/bin/$command.cmd" >/dev/null ||
         die "Windows kit missing cmd shim for $command: $windows_kit"
       tar -tzf "$windows_kit" | grep -Fx "payload/bin/$command.ps1" >/dev/null ||
