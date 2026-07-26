@@ -213,7 +213,7 @@ vitte-lint:
 # Static analysis
 # ------------------------------------------------------------
 
-.PHONY: tidy vitte-source-audit vitte-legacy-text-audit src-compiler-stdlib-gate compiler-entrypoint-gate stage1-compiler-gate stage2-project-gate selfhost-stage-compare-gate release-binary-gate vitte-bootstrap-check bootstrap-native-snapshots compiler-real-native-gate compiler-test-suite-check-gate compiler-no-fallback-gate driver-native-json-surface-gate
+.PHONY: tidy vitte-source-audit vitte-legacy-text-audit src-compiler-stdlib-gate compiler-entrypoint-gate stage1-compiler-gate stage2-project-gate selfhost-stage-compare-gate selfhost-stage0-gate release-binary-gate vitte-bootstrap-check bootstrap-native-snapshots compiler-real-native-gate compiler-test-suite-check-gate compiler-no-fallback-gate driver-native-json-surface-gate
 tidy: vitte-source-audit vitte-legacy-text-audit
 
 vitte-source-audit:
@@ -270,6 +270,11 @@ selfhost-stage-compare-gate: stage2-project-gate
 	@python3 tools/selfhost_stage_compare_gate.py
 	@test -f target/reports/selfhost_stage_compare_gate.json
 	@test -f target/reports/selfhost_stage_compare_gate.md
+
+selfhost-stage0-gate: release-binary-gate
+	@python3 tools/selfhost_stage0_gate.py
+	@test -f target/reports/selfhost_stage0_gate.json
+	@test -f target/reports/selfhost_stage0_gate.md
 
 release-binary-gate: stage2-project-gate
 	@python3 tools/release_binary_gate.py
@@ -2205,7 +2210,7 @@ pkg-macos-uninstall:
 	@VERSION=$(PKG_VERSION) toolchain/scripts/package/make-macos-uninstall-pkg.sh
 
 .PHONY: release-check
-release-check: build core-release-gate ci-fast package-layout-lint-strict legacy-import-allowlist-empty ci-completions pkg-macos release-gate-90-119 vitte-max-construction-gate release-installer-gate vitte-total-integration-gate
+release-check: build core-release-gate ci-fast package-layout-lint-strict legacy-import-allowlist-empty ci-completions pkg-macos release-gate-90-119 vitte-max-construction-gate release-installer-gate vitte-total-integration-gate selfhost-stage0-gate
 
 .PHONY: release-doctor
 release-doctor:
@@ -2428,6 +2433,7 @@ help:
 	@echo "  make stage1-compiler-gate build target/stage1/vitte and verify version/help/check"
 	@echo "  make stage2-project-gate build target/stage2/vitte with stage1 and verify compiler/stdlib/packages/tests"
 	@echo "  make selfhost-stage-compare-gate compare stage1/stage2 diagnostics, IR/MIR, CLI, build, and hashes"
+	@echo "  make selfhost-stage0-gate compare stage1/stage2/release diagnostics, IR/MIR, native output, and hash policy"
 	@echo "  make release-binary-gate build target/release/vitte and verify compiler, stdlib, registry, diagnostics, and packages"
 	@echo "  make explicit-generics-snapshots validate explicit generic-call IR snapshots"
 	@echo "  make diagnostics-locales-lint validate locale files against centralized diagnostics"
